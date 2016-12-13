@@ -200,6 +200,7 @@ type Ports struct {
 	HTTP int `mapstructure:"http"`
 	RPC  int `mapstructure:"rpc"`
 	Serf int `mapstructure:"serf"`
+	Nats int `mapstructure:"nats"`
 }
 
 // Addresses encapsulates all of the addresses we bind to for various
@@ -208,6 +209,7 @@ type Addresses struct {
 	HTTP string `mapstructure:"http"`
 	RPC  string `mapstructure:"rpc"`
 	Serf string `mapstructure:"serf"`
+	Nats string `mapstructure:"nats"`
 }
 
 // AdvertiseAddrs is used to control the addresses we advertise out for
@@ -217,6 +219,7 @@ type AdvertiseAddrs struct {
 	HTTP string `mapstructure:"http"`
 	RPC  string `mapstructure:"rpc"`
 	Serf string `mapstructure:"serf"`
+	Nats string `mapstructure:"nats"`
 }
 
 type Resources struct {
@@ -316,6 +319,7 @@ func DefaultConfig() *Config {
 			HTTP: 3000,
 			RPC:  3001,
 			Serf: 3002,
+			Nats: 3003,
 		},
 		Addresses:      &Addresses{},
 		AdvertiseAddrs: &AdvertiseAddrs{},
@@ -573,6 +577,9 @@ func (a *Ports) Merge(b *Ports) *Ports {
 	if b.Serf != 0 {
 		result.Serf = b.Serf
 	}
+	if b.Nats != 0 {
+		result.Nats = b.Nats
+	}
 	return &result
 }
 
@@ -589,6 +596,9 @@ func (a *Addresses) Merge(b *Addresses) *Addresses {
 	if b.Serf != "" {
 		result.Serf = b.Serf
 	}
+	if b.Nats != "" {
+		result.Nats = b.Nats
+	}
 	return &result
 }
 
@@ -604,6 +614,9 @@ func (a *AdvertiseAddrs) Merge(b *AdvertiseAddrs) *AdvertiseAddrs {
 	}
 	if b.HTTP != "" {
 		result.HTTP = b.HTTP
+	}
+	if b.Nats != "" {
+		result.Nats = b.Nats
 	}
 	return &result
 }

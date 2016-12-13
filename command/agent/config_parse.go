@@ -178,6 +178,7 @@ func parsePorts(result **Ports, list *ast.ObjectList) error {
 		"http",
 		"rpc",
 		"serf",
+		"nats",
 	}
 	if err := checkHCLKeys(listVal, valid); err != nil {
 		return err
@@ -210,6 +211,7 @@ func parseAddresses(result **Addresses, list *ast.ObjectList) error {
 		"http",
 		"rpc",
 		"serf",
+		"nats",
 	}
 	if err := checkHCLKeys(listVal, valid); err != nil {
 		return err
@@ -242,6 +244,7 @@ func parseAdvertise(result **AdvertiseAddrs, list *ast.ObjectList) error {
 		"http",
 		"rpc",
 		"serf",
+		"nats",
 	}
 	if err := checkHCLKeys(listVal, valid); err != nil {
 		return err

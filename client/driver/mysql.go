@@ -2,7 +2,6 @@ package driver
 
 import (
 	"fmt"
-	"log"
 	"time"
 
 	"udup/client/config"
@@ -11,17 +10,13 @@ import (
 	"udup/server/structs"
 
 	"github.com/mitchellh/mapstructure"
+	"github.com/nats-io/go-nats"
 )
 
 const (
 	// The key populated in Node Attributes to indicate the presence of the Exec
 	// driver
 	mysqlDriverAttr = "driver.mysql"
-)
-
-const (
-	Extract = "extract"
-	Load    = "load"
 )
 
 // MySQLDriver fork/execs tasks using as many of the underlying OS's isolation
@@ -51,20 +46,43 @@ func (d *MySQLDriver) Periodic() (bool, time.Duration) {
 	return true, 15 * time.Second
 }
 
-func (d *MySQLDriver) Repl(logger *log.Logger, ctx *ExecContext, task *structs.Task) error {
+func (d *MySQLDriver) Sync(ctx *ExecContext, task *structs.Task) error {
 	var driverConfig base.MySQLContext
 	if err := mapstructure.WeakDecode(task.Config, &driverConfig); err != nil {
 		return err
 	}
 
 	switch task.Name {
-	case Extract:
+	case structs.TaskTypeExtract:
 		{
 
+			task.Config["NatsServerAddr"] = d.DriverContext.node.NatsAddr
+			nc, err := nats.Connect(fmt.Sprintf("nats://%s", driverConfig.NatsServerAddr))
+			if err != nil {
+				return err
+			}
+
+			c, _ := nats.NewEncodedConn(nc, nats.GOB_ENCODER)
+
+			if _, err := mysqldriver.InitiateExtracter(d.logger, &driverConfig, c, structs.JobTypeSync); err != nil {
+				return err
+			}
+			return nil
 		}
-	case Load:
+	case structs.TaskTypeReplay:
 		{
+			nc, err := nats.Connect(fmt.Sprintf("nats://%s", driverConfig.NatsServerAddr))
+			if err != nil {
+				return err
+			}
 
+			c, _ := nats.NewEncodedConn(nc, nats.GOB_ENCODER)
+
+			if _, err := mysqldriver.InitiateReplayer(d.logger, &driverConfig, c); err != nil {
+				return err
+			}
+
+			return nil
 		}
 	default:
 		{
@@ -75,49 +93,19 @@ func (d *MySQLDriver) Repl(logger *log.Logger, ctx *ExecContext, task *structs.T
 	return nil
 }
 
-func (d *MySQLDriver) Migrate(logger *log.Logger, ctx *ExecContext, task *structs.Task) error {
+func (d *MySQLDriver) Migrate(ctx *ExecContext, task *structs.Task) error {
 	var driverConfig base.MySQLContext
 	if err := mapstructure.WeakDecode(task.Config, &driverConfig); err != nil {
 		return err
-	}
-
-	switch task.Name {
-	case Extract:
-		{
-
-		}
-	case Load:
-		{
-
-		}
-	default:
-		{
-			return fmt.Errorf("Unknown task : %+v", task.Name)
-		}
 	}
 
 	return nil
 }
 
-func (d *MySQLDriver) Sub(logger *log.Logger, ctx *ExecContext, task *structs.Task) error {
+func (d *MySQLDriver) Sub(ctx *ExecContext, task *structs.Task) error {
 	var driverConfig base.MySQLContext
 	if err := mapstructure.WeakDecode(task.Config, &driverConfig); err != nil {
 		return err
-	}
-
-	switch task.Name {
-	case Extract:
-		{
-
-		}
-	case Load:
-		{
-
-		}
-	default:
-		{
-			return fmt.Errorf("Unknown task : %+v", task.Name)
-		}
 	}
 
 	return nil

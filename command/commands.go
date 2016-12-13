@@ -70,12 +70,6 @@ func Commands(metaPtr *Meta) map[string]cli.CommandFactory {
 				Meta: meta,
 			}, nil
 		},
-
-		"plan": func() (cli.Command, error) {
-			return &PlanCommand{
-				Meta: meta,
-			}, nil
-		},
 		"server-force-leave": func() (cli.Command, error) {
 			return &ServerForceLeaveCommand{
 				Meta: meta,

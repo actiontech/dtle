@@ -40,6 +40,7 @@ type Agent struct {
 
 	client         *client.Client
 	clientHTTPAddr string
+	clientNatsAddr string
 
 	server         *server.Server
 	serverHTTPAddr string
@@ -263,6 +264,19 @@ func (a *Agent) clientConfig() (*clientconfig.Config, error) {
 		conf.MaxKillTimeout = dur
 	}
 
+	// Set up the bind addresses
+	if addr := a.config.BindAddr; addr != "" {
+		conf.NatsAddr.IP = net.ParseIP(addr)
+	}
+	if addr := a.config.Addresses.Nats; addr != "" {
+		conf.NatsAddr.IP = net.ParseIP(addr)
+	}
+
+	// Set up the ports
+	if port := a.config.Ports.Nats; port != 0 {
+		conf.NatsAddr.Port = port
+	}
+
 	// Setup the node
 	conf.Node = new(structs.Node)
 	conf.Node.Datacenter = a.config.Datacenter
@@ -288,6 +302,25 @@ func (a *Agent) clientConfig() (*clientconfig.Config, error) {
 
 	conf.Node.HTTPAddr = httpAddr
 	a.clientHTTPAddr = httpAddr
+
+	// Resolve the Client's Nats address
+	if a.config.AdvertiseAddrs.Nats != "" {
+		a.clientNatsAddr = a.config.AdvertiseAddrs.Nats
+	} else if a.config.Addresses.Nats != "" {
+		a.clientNatsAddr = net.JoinHostPort(a.config.Addresses.Nats, strconv.Itoa(a.config.Ports.Nats))
+	} else if a.config.BindAddr != "" {
+		a.clientNatsAddr = net.JoinHostPort(a.config.BindAddr, strconv.Itoa(a.config.Ports.Nats))
+	} else {
+		a.clientNatsAddr = net.JoinHostPort("127.0.0.1", strconv.Itoa(a.config.Ports.Nats))
+	}
+	addr, err = net.ResolveTCPAddr("tcp", a.clientNatsAddr)
+	if err != nil {
+		return nil, fmt.Errorf("error resolving HTTP addr %+q: %v", a.clientNatsAddr, err)
+	}
+	natsAddr := net.JoinHostPort(addr.IP.String(), strconv.Itoa(addr.Port))
+
+	conf.Node.NatsAddr = natsAddr
+	a.clientNatsAddr = natsAddr
 
 	// Reserve resources on the node.
 	r := conf.Node.Reserved

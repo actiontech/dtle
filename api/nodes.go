@@ -102,6 +102,7 @@ type Node struct {
 	Datacenter        string
 	Name              string
 	HTTPAddr          string
+	NatsAddr          string
 	Attributes        map[string]string
 	Resources         *Resources
 	Reserved          *Resources

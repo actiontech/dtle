@@ -40,6 +40,7 @@ type AllocStatsReporter interface {
 
 // AllocRunner is used to wrap an allocation and provide the execution context.
 type AllocRunner struct {
+	client  *Client
 	config  *config.Config
 	updater AllocStateUpdater
 	logger  *log.Logger
@@ -81,9 +82,10 @@ type allocRunnerState struct {
 }
 
 // NewAllocRunner is used to create a new allocation context
-func NewAllocRunner(logger *log.Logger, config *config.Config, updater AllocStateUpdater,
+func NewAllocRunner(logger *log.Logger, client *Client, config *config.Config, updater AllocStateUpdater,
 	alloc *structs.Allocation) *AllocRunner {
 	ar := &AllocRunner{
+		client:     client,
 		config:     config,
 		updater:    updater,
 		logger:     logger,
@@ -265,7 +267,7 @@ func (r *AllocRunner) Alloc() *structs.Allocation {
 		case structs.TaskStatePending:
 			pending = true
 		case structs.TaskStateDead:
-			if state.Failed() {
+			if state.Failed {
 				failed = true
 			} else {
 				dead = true
@@ -320,7 +322,8 @@ func (r *AllocRunner) setStatus(status, desc string) {
 	}
 }
 
-// setTaskState is used to set the status of a task
+// setTaskState is used to set the status of a task. If state is empty then the
+// event is appended but not synced with the server. The event may be omitted
 func (r *AllocRunner) setTaskState(taskName, state string, event *structs.TaskEvent) {
 	r.taskStatusLock.Lock()
 	defer r.taskStatusLock.Unlock()
@@ -331,12 +334,21 @@ func (r *AllocRunner) setTaskState(taskName, state string, event *structs.TaskEv
 	}
 
 	// Set the tasks state.
-	taskState.State = state
-	r.appendTaskEvent(taskState, event)
+	if event != nil {
+		if event.FailsTask {
+			taskState.Failed = true
+		}
+		r.appendTaskEvent(taskState, event)
+	}
 
+	if state == "" {
+		return
+	}
+
+	taskState.State = state
 	if state == structs.TaskStateDead {
 		// If the task failed, we should kill all the other tasks in the task group.
-		if taskState.Failed() {
+		if taskState.Failed {
 			var destroyingTasks []string
 			for task, tr := range r.tasks {
 				if task != taskName {
@@ -386,6 +398,31 @@ func (r *AllocRunner) Run() {
 		r.setStatus(structs.AllocClientStatusFailed, fmt.Sprintf("missing task group '%s'", alloc.TaskGroup))
 		return
 	}
+	otg := alloc.Job.LookupAnotherTaskGroup(alloc.TaskGroup)
+	if otg == nil {
+		r.logger.Printf("[ERR] client: alloc '%s' for missing another task group '%s'", alloc.ID, alloc.TaskGroup)
+		r.setStatus(structs.AllocClientStatusFailed, fmt.Sprintf("missing another task group '%s'", alloc.TaskGroup))
+		return
+	}
+
+	args := structs.NodeSpecificRequest{
+		NodeID: otg.NodeID,
+	}
+
+	args.QueryOptions = structs.QueryOptions{
+		Region: alloc.Job.Region,
+	}
+
+	var out structs.SingleNodeResponse
+	if err := r.client.RPC("Node.GetNode", &args, &out); err != nil {
+		r.logger.Printf("[ERR] client: failed to GetNode: %v", err)
+		return
+	}
+
+	if out.Node == nil {
+		r.logger.Printf("[WARN] client: node not found")
+		return
+	}
 
 	// Create the execution context
 	r.ctxLock.Lock()
@@ -418,6 +455,8 @@ func (r *AllocRunner) Run() {
 		if _, ok := r.restored[task.Name]; ok {
 			continue
 		}
+
+		task.Config["NatsServerAddr"] = out.Node.NatsAddr
 
 		tr := NewTaskRunner(r.logger, r.config, r.setTaskState, r.ctx, r.Alloc(), task.Copy())
 		r.tasks[task.Name] = tr

@@ -451,7 +451,6 @@ func (s *GenericScheduler) computePlacements(place []allocTuple) error {
 		if err != nil {
 			return err
 		}
-		s.logger.Printf("---preferredNode:%v", preferredNode)
 
 		// Attempt to match the task group
 		var option *RankedNode
@@ -468,13 +467,14 @@ func (s *GenericScheduler) computePlacements(place []allocTuple) error {
 		if option != nil {
 			// Create an allocation for this
 			alloc := &structs.Allocation{
-				ID:            structs.GenerateUUID(),
-				EvalID:        s.eval.ID,
-				Name:          missing.Name,
-				JobID:         s.job.ID,
-				TaskGroup:     missing.TaskGroup.Name,
-				Metrics:       s.ctx.Metrics(),
-				NodeID:        option.Node.ID,
+				ID:        structs.GenerateUUID(),
+				EvalID:    s.eval.ID,
+				Name:      missing.Name,
+				JobID:     s.job.ID,
+				TaskGroup: missing.TaskGroup.Name,
+				Metrics:   s.ctx.Metrics(),
+				//NodeID:        option.Node.ID,
+				NodeID:        missing.TaskGroup.NodeID,
 				TaskResources: option.TaskResources,
 				DesiredStatus: structs.AllocDesiredStatusRun,
 				ClientStatus:  structs.AllocClientStatusPending,

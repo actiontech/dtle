@@ -11,9 +11,9 @@ import (
 // BuiltinSchedulers contains the built in registered schedulers
 // which are available
 var BuiltinSchedulers = map[string]Factory{
-	"Repl":    NewServiceScheduler,
-	"Migrate": NewBatchScheduler,
-	"Sub":     NewBatchScheduler,
+	"sync":    NewServiceScheduler,
+	"migrate": NewBatchScheduler,
+	"sub":     NewBatchScheduler,
 }
 
 // NewScheduler is used to instantiate and return a new scheduler

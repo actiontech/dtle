@@ -34,15 +34,16 @@ func newRestartTracker(policy *structs.RestartPolicy, jobType string) *RestartTr
 }
 
 type RestartTracker struct {
-	waitRes   *cstructs.WaitResult
-	startErr  error
-	count     int       // Current number of attempts.
-	onSuccess bool      // Whether to restart on successful exit code.
-	startTime time.Time // When the interval began
-	reason    string    // The reason for the last state
-	policy    *structs.RestartPolicy
-	rand      *rand.Rand
-	lock      sync.Mutex
+	waitRes          *cstructs.WaitResult
+	startErr         error
+	restartTriggered bool      // Whether the task has been signalled to be restarted
+	count            int       // Current number of attempts.
+	onSuccess        bool      // Whether to restart on successful exit code.
+	startTime        time.Time // When the interval began
+	reason           string    // The reason for the last state
+	policy           *structs.RestartPolicy
+	rand             *rand.Rand
+	lock             sync.Mutex
 }
 
 // SetPolicy updates the policy used to determine restarts.
@@ -69,6 +70,15 @@ func (r *RestartTracker) SetWaitResult(res *cstructs.WaitResult) *RestartTracker
 	return r
 }
 
+// SetRestartTriggered is used to mark that the task has been signalled to be
+// restarted
+func (r *RestartTracker) SetRestartTriggered() *RestartTracker {
+	r.lock.Lock()
+	defer r.lock.Unlock()
+	r.restartTriggered = true
+	return r
+}
+
 // GetReason returns a human-readable description for the last state returned by
 // GetState.
 func (r *RestartTracker) GetReason() string {
@@ -90,6 +100,19 @@ func (r *RestartTracker) GetReason() string {
 func (r *RestartTracker) GetState() (string, time.Duration) {
 	r.lock.Lock()
 	defer r.lock.Unlock()
+
+	// Clear out the existing state
+	defer func() {
+		r.startErr = nil
+		r.waitRes = nil
+		r.restartTriggered = false
+	}()
+
+	// Hot path if a restart was triggered
+	if r.restartTriggered {
+		r.reason = ""
+		return structs.TaskRestarting, 0
+	}
 
 	// Hot path if no attempts are expected
 	if r.policy.Attempts == 0 {

@@ -599,6 +599,8 @@ type Node struct {
 	// requests
 	HTTPAddr string
 
+	NatsAddr string
+
 	// Attributes is an arbitrary set of key/value
 	// data that can be used for constraints. Examples
 	// include "kernel.name=linux", "arch=386", "driver.docker=1",
@@ -688,6 +690,7 @@ func (n *Node) Stub() *NodeListStub {
 	return &NodeListStub{
 		ID:                n.ID,
 		Datacenter:        n.Datacenter,
+		NatsAddr:          n.NatsAddr,
 		Name:              n.Name,
 		NodeClass:         n.NodeClass,
 		Drain:             n.Drain,
@@ -703,6 +706,7 @@ func (n *Node) Stub() *NodeListStub {
 type NodeListStub struct {
 	ID                string
 	Datacenter        string
+	NatsAddr          string
 	Name              string
 	NodeClass         string
 	Drain             bool
@@ -951,10 +955,10 @@ func (n *NetworkResource) MapLabelToValues(port_map map[string]int) map[string]i
 const (
 	// JobTypeUdup is reserved for internal system tasks and is
 	// always handled by the CoreScheduler.
-	JobTypeCore      = "_core"
-	JobTypeSync      = "sync"
-	JobTypeSubscribe = "subscribe"
-	JobTypeMigrate   = "migrate"
+	JobTypeCore    = "_core"
+	JobTypeSync    = "sync"
+	JobTypeSub     = "sub"
+	JobTypeMigrate = "migrate"
 )
 
 const (
@@ -1179,6 +1183,16 @@ func (j *Job) Validate() error {
 func (j *Job) LookupTaskGroup(name string) *TaskGroup {
 	for _, tg := range j.TaskGroups {
 		if tg.Name == name {
+			return tg
+		}
+	}
+	return nil
+}
+
+// LookupAnotherTaskGroup finds a task group by name
+func (j *Job) LookupAnotherTaskGroup(name string) *TaskGroup {
+	for _, tg := range j.TaskGroups {
+		if tg.Name != name {
 			return tg
 		}
 	}
@@ -1423,7 +1437,7 @@ func (r *RestartPolicy) Validate() error {
 
 func NewRestartPolicy(jobType string) *RestartPolicy {
 	switch jobType {
-	case JobTypeMigrate, JobTypeSubscribe:
+	case JobTypeMigrate, JobTypeSub:
 		rp := defaultServiceJobRestartPolicy
 		return &rp
 	case JobTypeSync:
@@ -1433,12 +1447,19 @@ func NewRestartPolicy(jobType string) *RestartPolicy {
 	return nil
 }
 
+const (
+	TaskTypeExtract = "extract"
+	TaskTypeReplay  = "replay"
+)
+
 // TaskGroup is an atomic unit of placement. Each task group belongs to
 // a job and may contain any number of tasks. A task group support running
 // in many replicas using the same configuration..
 type TaskGroup struct {
 	// Name of the task group
 	Name string
+
+	NodeID string
 
 	//RestartPolicy of a TaskGroup
 	RestartPolicy *RestartPolicy
@@ -1603,6 +1624,9 @@ type Task struct {
 
 	// Config is provided to the driver to initialize
 	Config map[string]interface{}
+
+	// Map of environment variables to be used by the driver
+	Env map[string]string
 
 	// Resources is the resources needed by this task
 	Resources *Resources
@@ -1840,6 +1864,9 @@ type TaskState struct {
 	// The current state of the task.
 	State string
 
+	// Failed marks a task as having failed
+	Failed bool
+
 	// Series of task events that transition the state of the task.
 	Events []*TaskEvent
 }
@@ -1860,6 +1887,7 @@ func (ts *TaskState) Copy() *TaskState {
 	return copy
 }
 
+/*
 // Failed returns true if the task has has failed.
 func (ts *TaskState) Failed() bool {
 	l := len(ts.Events)
@@ -1874,7 +1902,7 @@ func (ts *TaskState) Failed() bool {
 	default:
 		return false
 	}
-}
+}*/
 
 // Successful returns whether a task finished successfully.
 func (ts *TaskState) Successful() bool {
@@ -1924,6 +1952,10 @@ const (
 	// restarted because it has exceeded its restart policy.
 	TaskNotRestarting = "Not Restarting"
 
+	// TaskRestartSignal indicates that the task has been signalled to be
+	// restarted
+	TaskRestartSignal = "Restart Signaled"
+
 	// TaskDiskExceeded indicates that one of the tasks in a taskgroup has
 	// exceeded the requested disk resources.
 	TaskDiskExceeded = "Disk Resources Exceeded"
@@ -1938,6 +1970,12 @@ const (
 type TaskEvent struct {
 	Type string
 	Time int64 // Unix Nanosecond timestamp
+
+	// FailsTask marks whether this event fails the task
+	FailsTask bool
+
+	// Setup Failure fields.
+	SetupError string
 
 	// Restart fields.
 	RestartReason string
@@ -1955,6 +1993,9 @@ type TaskEvent struct {
 
 	// Task Killed Fields.
 	KillError string // Error killing the task.
+
+	// KillReason is the reason the task was killed
+	KillReason string
 
 	// TaskRestarting fields.
 	StartDelay int64 // The sleep period before restarting the task in unix nanoseconds.
@@ -1993,6 +2034,20 @@ func NewTaskEvent(event string) *TaskEvent {
 	}
 }
 
+// SetSetupError is used to store an error that occured while setting up the
+// task
+func (e *TaskEvent) SetSetupError(err error) *TaskEvent {
+	if err != nil {
+		e.SetupError = err.Error()
+	}
+	return e
+}
+
+func (e *TaskEvent) SetFailsTask() *TaskEvent {
+	e.FailsTask = true
+	return e
+}
+
 func (e *TaskEvent) SetDriverError(err error) *TaskEvent {
 	if err != nil {
 		e.DriverError = err.Error()
@@ -2021,6 +2076,11 @@ func (e *TaskEvent) SetKillError(err error) *TaskEvent {
 	if err != nil {
 		e.KillError = err.Error()
 	}
+	return e
+}
+
+func (e *TaskEvent) SetKillReason(r string) *TaskEvent {
+	e.KillReason = r
 	return e
 }
 
@@ -2957,4 +3017,28 @@ func Encode(t MessageType, msg interface{}) ([]byte, error) {
 	buf.WriteByte(uint8(t))
 	err := codec.NewEncoder(&buf, MsgpackHandle).Encode(msg)
 	return buf.Bytes(), err
+}
+
+// RecoverableError wraps an error and marks whether it is recoverable and could
+// be retried or it is fatal.
+type RecoverableError struct {
+	Err         string
+	Recoverable bool
+}
+
+// NewRecoverableError is used to wrap an error and mark it as recoverable or
+// not.
+func NewRecoverableError(e error, recoverable bool) *RecoverableError {
+	if e == nil {
+		return nil
+	}
+
+	return &RecoverableError{
+		Err:         e.Error(),
+		Recoverable: recoverable,
+	}
+}
+
+func (r *RecoverableError) Error() string {
+	return r.Err
 }

@@ -217,8 +217,8 @@ func NewClient(cfg *config.Config, logger *log.Logger) (*Client, error) {
 
 	// start yourself an embedded gnatsd server
 	opts := gnatsd.Options{
-		Host:  "127.0.0.1",
-		Port:  13003,
+		Host:  c.config.NatsAddr.IP.String(),
+		Port:  c.config.NatsAddr.Port,
 		Trace: true,
 		Debug: true,
 	}
@@ -436,7 +436,7 @@ func (c *Client) restoreState() error {
 		id := entry.Name()
 		alloc := &structs.Allocation{ID: id}
 		c.configLock.RLock()
-		ar := NewAllocRunner(c.logger, c.configCopy, c.updateAllocStatus, alloc)
+		ar := NewAllocRunner(c.logger, c, c.configCopy, c.updateAllocStatus, alloc)
 		c.configLock.RUnlock()
 		c.allocLock.Lock()
 		c.allocs[id] = ar
@@ -1184,7 +1184,7 @@ func (c *Client) updateAlloc(exist, update *structs.Allocation) error {
 // addAlloc is invoked when we should add an allocation
 func (c *Client) addAlloc(alloc *structs.Allocation) error {
 	c.configLock.RLock()
-	ar := NewAllocRunner(c.logger, c.configCopy, c.updateAllocStatus, alloc)
+	ar := NewAllocRunner(c.logger, c, c.configCopy, c.updateAllocStatus, alloc)
 	c.configLock.RUnlock()
 	go ar.Run()
 

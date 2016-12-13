@@ -66,6 +66,7 @@ type EphemeralDisk struct {
 // TaskGroup is the unit of scheduling.
 type TaskGroup struct {
 	Name          string
+	NodeID        string
 	Tasks         []*Task
 	RestartPolicy *RestartPolicy
 	EphemeralDisk *EphemeralDisk
@@ -169,7 +170,10 @@ func (t *Task) SetLogConfig(l *LogConfig) *Task {
 // TaskState tracks the current state of a task and events that caused state
 // transitions.
 type TaskState struct {
-	State  string
+	State string
+	// Failed marks a task as having failed
+	Failed bool
+
 	Events []*TaskEvent
 }
 
@@ -192,11 +196,14 @@ const (
 type TaskEvent struct {
 	Type            string
 	Time            int64
+	FailsTask       bool
 	RestartReason   string
+	SetupError      string
 	DriverError     string
 	ExitCode        int
 	Signal          int
 	Message         string
+	KillReason      string
 	KillTimeout     time.Duration
 	KillError       string
 	StartDelay      int64

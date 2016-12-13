@@ -3,6 +3,7 @@ package driver
 import (
 	"fmt"
 	"log"
+	"time"
 
 	"udup/client/allocdir"
 	"udup/client/config"
@@ -41,11 +42,11 @@ type Driver interface {
 	fingerprint.Fingerprint
 
 	// Start is used to being task execution
-	Repl(logger *log.Logger, ctx *ExecContext, task *structs.Task) error
+	Sync(ctx *ExecContext, task *structs.Task) error
 
-	Migrate(logger *log.Logger, ctx *ExecContext, task *structs.Task) error
+	Migrate(ctx *ExecContext, task *structs.Task) error
 
-	Sub(logger *log.Logger, ctx *ExecContext, task *structs.Task) error
+	Sub(ctx *ExecContext, task *structs.Task) error
 }
 
 // DriverContext is a means to inject dependencies such as loggers, configs, and
@@ -115,4 +116,27 @@ func mapMergeStrStr(maps ...map[string]string) map[string]string {
 		}
 	}
 	return out
+}
+
+// GetKillTimeout returns the kill timeout to use given the tasks desired kill
+// timeout and the operator configured max kill timeout.
+func GetKillTimeout(desired, max time.Duration) time.Duration {
+	maxNanos := max.Nanoseconds()
+	desiredNanos := desired.Nanoseconds()
+
+	// Make the minimum time between signal and kill, 1 second.
+	if desiredNanos <= 0 {
+		desiredNanos = (1 * time.Second).Nanoseconds()
+	}
+
+	// Protect against max not being set properly.
+	if maxNanos <= 0 {
+		maxNanos = (10 * time.Second).Nanoseconds()
+	}
+
+	if desiredNanos < maxNanos {
+		return time.Duration(desiredNanos)
+	}
+
+	return max
 }

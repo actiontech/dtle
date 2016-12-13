@@ -10,12 +10,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/hashicorp/go-multierror"
+	"github.com/armon/go-metrics"
 	"udup/client/config"
 	"udup/client/driver"
 	"udup/server/structs"
 
-	dstructs "udup/client/driver/structs"
 	cstructs "udup/client/structs"
 )
 
@@ -24,7 +23,7 @@ const (
 	// killing a task.
 	killBackoffBaseline = 5 * time.Second
 
-	// killBackoffLimit is the the limit of the exponential backoff for killing
+	// killBackoffLimit is the limit of the exponential backoff for killing
 	// the task.
 	killBackoffLimit = 2 * time.Minute
 
@@ -49,14 +48,34 @@ type TaskRunner struct {
 	resourceUsage     *cstructs.TaskResourceUsage
 	resourceUsageLock sync.RWMutex
 
-	task     *structs.Task
+	task    *structs.Task
+	taskDir string
+
+	// updateCh is used to receive updated versions of the allocation
 	updateCh chan *structs.Allocation
+
+	// artifactsDownloaded tracks whether the tasks artifacts have been
+	// downloaded
+	artifactsDownloaded bool
+
+	// startCh is used to trigger the start of the task
+	startCh chan struct{}
+
+	// unblockCh is used to unblock the starting of the task
+	unblockCh   chan struct{}
+	unblocked   bool
+	unblockLock sync.Mutex
+
+	// restartCh is used to restart a task
+	restartCh chan *structs.TaskEvent
 
 	destroy      bool
 	destroyCh    chan struct{}
 	destroyLock  sync.Mutex
 	destroyEvent *structs.TaskEvent
-	waitCh       chan struct{}
+
+	// waitCh closing marks the run loop as having exited
+	waitCh chan struct{}
 
 	// serialize SaveState calls
 	persistLock sync.Mutex
@@ -66,7 +85,6 @@ type TaskRunner struct {
 type taskRunnerState struct {
 	Version            string
 	Task               *structs.Task
-	HandleID           string
 	ArtifactDownloaded bool
 }
 
@@ -89,6 +107,13 @@ func NewTaskRunner(logger *log.Logger, config *config.Config,
 	}
 	restartTracker := newRestartTracker(tg.RestartPolicy, alloc.Job.Type)
 
+	// Get the task directory
+	taskDir, ok := ctx.AllocDir.TaskDirs[task.Name]
+	if !ok {
+		logger.Printf("[ERR] client: task directory for alloc %q task %q couldn't be found", alloc.ID, task.Name)
+		return nil
+	}
+
 	tc := &TaskRunner{
 		config:         config,
 		updater:        updater,
@@ -97,9 +122,13 @@ func NewTaskRunner(logger *log.Logger, config *config.Config,
 		ctx:            ctx,
 		alloc:          alloc,
 		task:           task,
+		taskDir:        taskDir,
 		updateCh:       make(chan *structs.Allocation, 64),
 		destroyCh:      make(chan struct{}),
 		waitCh:         make(chan struct{}),
+		startCh:        make(chan struct{}, 1),
+		unblockCh:      make(chan struct{}),
+		restartCh:      make(chan *structs.TaskEvent),
 	}
 
 	return tc
@@ -142,6 +171,7 @@ func (r *TaskRunner) RestoreState() error {
 	} else {
 		r.task = snap.Task
 	}
+	r.artifactsDownloaded = snap.ArtifactDownloaded
 
 	return nil
 }
@@ -152,9 +182,11 @@ func (r *TaskRunner) SaveState() error {
 	defer r.persistLock.Unlock()
 
 	snap := taskRunnerState{
-		Task:    r.task,
-		Version: r.config.Version,
+		Task:               r.task,
+		Version:            r.config.Version,
+		ArtifactDownloaded: r.artifactsDownloaded,
 	}
+
 	return persistState(r.stateFilePath(), &snap)
 }
 
@@ -185,43 +217,20 @@ func (r *TaskRunner) createDriver() (driver.Driver, error) {
 	return driver, err
 }
 
-// Run is a long running routine used to manage the task
+// run is the main run loop that handles starting the application, destroying
+// it, restarts and signals.
 func (r *TaskRunner) Run() {
 	defer close(r.waitCh)
 	r.logger.Printf("[DEBUG] client: starting task context for '%s' (alloc '%s')",
 		r.task.Name, r.alloc.ID)
-
-	if err := r.validateTask(); err != nil {
-		r.setState(
-			structs.TaskStateDead,
-			structs.NewTaskEvent(structs.TaskFailedValidation).SetValidationError(err))
-		return
-	}
-
-	r.run()
-	return
-}
-
-// validateTask validates the fields of the task and returns an error if the
-// task is invalid.
-func (r *TaskRunner) validateTask() error {
-	var mErr multierror.Error
-
-	if len(mErr.Errors) == 1 {
-		return mErr.Errors[0]
-	}
-	return mErr.ErrorOrNil()
-}
-
-func (r *TaskRunner) run() {
 	// Predeclare things so we can jump to the RESTART
 	var stopCollection chan struct{}
 
 	for {
 		startErr := r.startTask()
-		r.logger.Printf("[ERR] client: %v ", startErr)
 		r.restartTracker.SetStartError(startErr)
 		if startErr != nil {
+			r.logger.Printf("[ERR] client: %v ", startErr)
 			r.setState(structs.TaskStateDead, structs.NewTaskEvent(structs.TaskDriverFailure).SetDriverError(startErr))
 			goto RESTART
 		}
@@ -236,49 +245,105 @@ func (r *TaskRunner) run() {
 			stopCollection = make(chan struct{})
 			go r.collectResourceUsageStats(stopCollection)
 		}
+		return
 
 	RESTART:
-		state, when := r.restartTracker.GetState()
-		r.restartTracker.SetStartError(nil).SetWaitResult(nil)
-		reason := r.restartTracker.GetReason()
-		switch state {
-		case structs.TaskNotRestarting, structs.TaskTerminated:
-			r.logger.Printf("[INFO] client: Not restarting task: %v for alloc: %v ", r.task.Name, r.alloc.ID)
-			if state == structs.TaskNotRestarting {
-				r.setState(structs.TaskStateDead,
-					structs.NewTaskEvent(structs.TaskNotRestarting).
-						SetRestartReason(reason))
-			}
-			return
-		case structs.TaskRestarting:
-			r.logger.Printf("[INFO] client: Restarting task %q for alloc %q in %v", r.task.Name, r.alloc.ID, when)
-			r.setState(structs.TaskStatePending,
-				structs.NewTaskEvent(structs.TaskRestarting).
-					SetRestartDelay(when).
-					SetRestartReason(reason))
-		default:
-			r.logger.Printf("[ERR] client: restart tracker returned unknown state: %q", state)
+		restart := r.shouldRestart()
+		if !restart {
+			r.setState(structs.TaskStateDead, nil)
 			return
 		}
 
-		// Sleep but watch for destroy events.
-		select {
-		case <-time.After(when):
-		case <-r.destroyCh:
-		}
-
-		// Destroyed while we were waiting to restart, so abort.
-		r.destroyLock.Lock()
-		destroyed := r.destroy
-		r.destroyLock.Unlock()
-		if destroyed {
-			r.logger.Printf("[DEBUG] client: Not restarting task: %v because it has been destroyed due to: %s", r.task.Name, r.destroyEvent.Message)
-			r.setState(structs.TaskStateDead, r.destroyEvent)
-			return
-		}
-
+		// Clear the handle so a new driver will be created.
 		stopCollection = nil
 	}
+}
+
+// shouldRestart returns if the task should restart. If the return value is
+// true, the task's restart policy has already been considered and any wait time
+// between restarts has been applied.
+func (r *TaskRunner) shouldRestart() bool {
+	state, when := r.restartTracker.GetState()
+	reason := r.restartTracker.GetReason()
+	switch state {
+	case structs.TaskNotRestarting, structs.TaskTerminated:
+		r.logger.Printf("[INFO] client: Not restarting task: %v for alloc: %v ", r.task.Name, r.alloc.ID)
+		if state == structs.TaskNotRestarting {
+			r.setState(structs.TaskStateDead,
+				structs.NewTaskEvent(structs.TaskNotRestarting).
+					SetRestartReason(reason).SetFailsTask())
+		}
+		return false
+	case structs.TaskRestarting:
+		r.logger.Printf("[INFO] client: Restarting task %q for alloc %q in %v", r.task.Name, r.alloc.ID, when)
+		r.setState(structs.TaskStatePending,
+			structs.NewTaskEvent(structs.TaskRestarting).
+				SetRestartDelay(when).
+				SetRestartReason(reason))
+	default:
+		r.logger.Printf("[ERR] client: restart tracker returned unknown state: %q", state)
+		return false
+	}
+
+	// Sleep but watch for destroy events.
+	select {
+	case <-time.After(when):
+	case <-r.destroyCh:
+	}
+
+	// Destroyed while we were waiting to restart, so abort.
+	r.destroyLock.Lock()
+	destroyed := r.destroy
+	r.destroyLock.Unlock()
+	if destroyed {
+		r.logger.Printf("[DEBUG] client: Not restarting task: %v because it has been destroyed", r.task.Name)
+		r.setState(structs.TaskStateDead, r.destroyEvent)
+		return false
+	}
+
+	return true
+}
+
+// killTask kills the running task. A killing event can optionally be passed and
+// this event is used to mark the task as being killed. It provides a means to
+// store extra information.
+func (r *TaskRunner) killTask(killingEvent *structs.TaskEvent) {
+	r.runningLock.Lock()
+	running := r.running
+	r.runningLock.Unlock()
+	if !running {
+		return
+	}
+
+	// Get the kill timeout
+	timeout := driver.GetKillTimeout(r.task.KillTimeout, r.config.MaxKillTimeout)
+
+	// Build the event
+	var event *structs.TaskEvent
+	if killingEvent != nil {
+		event = killingEvent
+		event.Type = structs.TaskKilling
+	} else {
+		event = structs.NewTaskEvent(structs.TaskKilling)
+	}
+	event.SetKillTimeout(timeout)
+
+	// Mark that we received the kill event
+	r.setState(structs.TaskStateRunning, event)
+
+	// Kill the task using an exponential backoff in-case of failures.
+	destroySuccess, err := r.handleDestroy()
+	if !destroySuccess {
+		// We couldn't successfully destroy the resource created.
+		r.logger.Printf("[ERR] client: failed to kill task %q. Resources may have been leaked: %v", r.task.Name, err)
+	}
+
+	r.runningLock.Lock()
+	r.running = false
+	r.runningLock.Unlock()
+
+	// Store that the task has been destroyed and any associated error.
+	r.setState("", structs.NewTaskEvent(structs.TaskKilled).SetKillError(err))
 }
 
 // startTask creates the driver and starts the task.
@@ -291,31 +356,49 @@ func (r *TaskRunner) startTask() error {
 	}
 
 	switch r.alloc.Job.Type {
-	case "Repl":
+	case structs.JobTypeSync:
 		{
 			// Start the job
-			err = driver.Repl(r.logger, r.ctx, r.task)
+			err = driver.Sync(r.ctx, r.task)
 			if err != nil {
-				return fmt.Errorf("failed to start task '%s' for alloc '%s': %v",
+				wrapped := fmt.Errorf("failed to start task '%s' for alloc '%s': %v",
 					r.task.Name, r.alloc.ID, err)
+
+				if rerr, ok := err.(*structs.RecoverableError); ok {
+					return structs.NewRecoverableError(wrapped, rerr.Recoverable)
+				}
+
+				return wrapped
 			}
 		}
-	case "Migrate":
+	case structs.JobTypeMigrate:
 		{
 			// Start the job
-			err = driver.Migrate(r.logger, r.ctx, r.task)
+			err = driver.Migrate(r.ctx, r.task)
 			if err != nil {
-				return fmt.Errorf("failed to start task '%s' for alloc '%s': %v",
+				wrapped := fmt.Errorf("failed to start task '%s' for alloc '%s': %v",
 					r.task.Name, r.alloc.ID, err)
+
+				if rerr, ok := err.(*structs.RecoverableError); ok {
+					return structs.NewRecoverableError(wrapped, rerr.Recoverable)
+				}
+
+				return wrapped
 			}
 		}
-	case "Sub":
+	case structs.JobTypeSub:
 		{
 			// Start the job
-			err = driver.Sub(r.logger, r.ctx, r.task)
+			err = driver.Sub(r.ctx, r.task)
 			if err != nil {
-				return fmt.Errorf("failed to start task '%s' for alloc '%s': %v",
+				wrapped := fmt.Errorf("failed to start task '%s' for alloc '%s': %v",
 					r.task.Name, r.alloc.ID, err)
+
+				if rerr, ok := err.(*structs.RecoverableError); ok {
+					return structs.NewRecoverableError(wrapped, rerr.Recoverable)
+				}
+
+				return wrapped
 			}
 		}
 	default:
@@ -355,8 +438,10 @@ func (r *TaskRunner) collectResourceUsageStats(stopCollection <-chan struct{}) {
 
 			r.resourceUsageLock.Lock()
 			r.resourceUsage = ru
-			r.resourceUsageLock.Unlock()*/
-
+			r.resourceUsageLock.Unlock()
+			if ru != nil {
+				r.emitStats(ru)
+			}*/
 		case <-stopCollection:
 			return
 		}
@@ -391,7 +476,7 @@ func (r *TaskRunner) handleUpdate(update *structs.Allocation) error {
 	var updatedTask *structs.Task
 	for _, t := range tg.Tasks {
 		if t.Name == r.task.Name {
-			updatedTask = t
+			updatedTask = t.Copy()
 		}
 	}
 	if updatedTask == nil {
@@ -401,8 +486,6 @@ func (r *TaskRunner) handleUpdate(update *structs.Allocation) error {
 	// Merge in the task resources
 	updatedTask.Resources = update.TaskResources[updatedTask.Name]
 
-	// Update will update resources and store the new kill timeout.
-	var mErr multierror.Error
 	// Update the restart policy.
 	if r.restartTracker != nil {
 		r.restartTracker.SetPolicy(tg.RestartPolicy)
@@ -411,7 +494,7 @@ func (r *TaskRunner) handleUpdate(update *structs.Allocation) error {
 	// Store the updated alloc.
 	r.alloc = update
 	r.task = updatedTask
-	return mErr.ErrorOrNil()
+	return nil
 }
 
 // handleDestroy kills the task handle. In the case that killing fails,
@@ -439,12 +522,56 @@ func (r *TaskRunner) handleDestroy() (destroyed bool, err error) {
 	return
 }
 
-// Helper function for converting a WaitResult into a TaskTerminated event.
-func (r *TaskRunner) waitErrorToEvent(res *dstructs.WaitResult) *structs.TaskEvent {
-	return structs.NewTaskEvent(structs.TaskTerminated).
-		SetExitCode(res.ExitCode).
-		SetSignal(res.Signal).
-		SetExitMessage(res.Err)
+// Restart will restart the task
+func (r *TaskRunner) Restart(source, reason string) {
+
+	reasonStr := fmt.Sprintf("%s: %s", source, reason)
+	event := structs.NewTaskEvent(structs.TaskRestartSignal).SetRestartReason(reasonStr)
+
+	r.logger.Printf("[DEBUG] client: restarting task %v for alloc %q: %v",
+		r.task.Name, r.alloc.ID, reasonStr)
+
+	r.runningLock.Lock()
+	running := r.running
+	r.runningLock.Unlock()
+
+	// Drop the restart event
+	if !running {
+		r.logger.Printf("[DEBUG] client: skipping restart since task isn't running")
+		return
+	}
+
+	select {
+	case r.restartCh <- event:
+	case <-r.waitCh:
+	}
+}
+
+// Kill will kill a task and store the error, no longer restarting the task. If
+// fail is set, the task is marked as having failed.
+func (r *TaskRunner) Kill(source, reason string, fail bool) {
+	reasonStr := fmt.Sprintf("%s: %s", source, reason)
+	event := structs.NewTaskEvent(structs.TaskKilling).SetKillReason(reasonStr)
+	if fail {
+		event.SetFailsTask()
+	}
+
+	r.logger.Printf("[DEBUG] client: killing task %v for alloc %q: %v", r.task.Name, r.alloc.ID, reasonStr)
+	r.Destroy(event)
+}
+
+// UnblockStart unblocks the starting of the task. It currently assumes only
+// consul-template will unblock
+func (r *TaskRunner) UnblockStart(source string) {
+	r.unblockLock.Lock()
+	defer r.unblockLock.Unlock()
+	if r.unblocked {
+		return
+	}
+
+	r.logger.Printf("[DEBUG] client: unblocking task %v for alloc %q: %v", r.task.Name, r.alloc.ID, source)
+	r.unblocked = true
+	close(r.unblockCh)
 }
 
 // Update is used to update the task of the context
@@ -469,4 +596,26 @@ func (r *TaskRunner) Destroy(event *structs.TaskEvent) {
 	r.destroy = true
 	r.destroyEvent = event
 	close(r.destroyCh)
+}
+
+// emitStats emits resource usage stats of tasks to remote metrics collector
+// sinks
+func (r *TaskRunner) emitStats(ru *cstructs.TaskResourceUsage) {
+	if ru.ResourceUsage.MemoryStats != nil && r.config.PublishAllocationMetrics {
+		metrics.SetGauge([]string{"client", "allocs", r.alloc.Job.Name, r.alloc.TaskGroup, r.alloc.ID, r.task.Name, "memory", "rss"}, float32(ru.ResourceUsage.MemoryStats.RSS))
+		metrics.SetGauge([]string{"client", "allocs", r.alloc.Job.Name, r.alloc.TaskGroup, r.alloc.ID, r.task.Name, "memory", "cache"}, float32(ru.ResourceUsage.MemoryStats.Cache))
+		metrics.SetGauge([]string{"client", "allocs", r.alloc.Job.Name, r.alloc.TaskGroup, r.alloc.ID, r.task.Name, "memory", "swap"}, float32(ru.ResourceUsage.MemoryStats.Swap))
+		metrics.SetGauge([]string{"client", "allocs", r.alloc.Job.Name, r.alloc.TaskGroup, r.alloc.ID, r.task.Name, "memory", "max_usage"}, float32(ru.ResourceUsage.MemoryStats.MaxUsage))
+		metrics.SetGauge([]string{"client", "allocs", r.alloc.Job.Name, r.alloc.TaskGroup, r.alloc.ID, r.task.Name, "memory", "kernel_usage"}, float32(ru.ResourceUsage.MemoryStats.KernelUsage))
+		metrics.SetGauge([]string{"client", "allocs", r.alloc.Job.Name, r.alloc.TaskGroup, r.alloc.ID, r.task.Name, "memory", "kernel_max_usage"}, float32(ru.ResourceUsage.MemoryStats.KernelMaxUsage))
+	}
+
+	if ru.ResourceUsage.CpuStats != nil && r.config.PublishAllocationMetrics {
+		metrics.SetGauge([]string{"client", "allocs", r.alloc.Job.Name, r.alloc.TaskGroup, r.alloc.ID, r.task.Name, "cpu", "total_percent"}, float32(ru.ResourceUsage.CpuStats.Percent))
+		metrics.SetGauge([]string{"client", "allocs", r.alloc.Job.Name, r.alloc.TaskGroup, r.alloc.ID, r.task.Name, "cpu", "system"}, float32(ru.ResourceUsage.CpuStats.SystemMode))
+		metrics.SetGauge([]string{"client", "allocs", r.alloc.Job.Name, r.alloc.TaskGroup, r.alloc.ID, r.task.Name, "cpu", "user"}, float32(ru.ResourceUsage.CpuStats.UserMode))
+		metrics.SetGauge([]string{"client", "allocs", r.alloc.Job.Name, r.alloc.TaskGroup, r.alloc.ID, r.task.Name, "cpu", "throttled_time"}, float32(ru.ResourceUsage.CpuStats.ThrottledTime))
+		metrics.SetGauge([]string{"client", "allocs", r.alloc.Job.Name, r.alloc.TaskGroup, r.alloc.ID, r.task.Name, "cpu", "throttled_periods"}, float32(ru.ResourceUsage.CpuStats.ThrottledPeriods))
+		metrics.SetGauge([]string{"client", "allocs", r.alloc.Job.Name, r.alloc.TaskGroup, r.alloc.ID, r.task.Name, "cpu", "total_ticks"}, float32(ru.ResourceUsage.CpuStats.TotalTicks))
+	}
 }

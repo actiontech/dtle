@@ -3,12 +3,17 @@ package config
 import (
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"strconv"
 	"strings"
 	"time"
 
 	"udup/server/structs"
+)
+
+var (
+	DefaultNatsAddr = &net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 3003}
 )
 
 // RPCHandler can be provided to the Client if there is a local server
@@ -51,6 +56,10 @@ type Config struct {
 	// Servers is a list of known server addresses. These are as "host:port"
 	Servers []string
 
+	// RPCAddr is the RPC address used by Udup. This should be reachable
+	// by the other servers and clients
+	NatsAddr *net.TCPAddr
+
 	// RPCHandler can be provided to avoid network traffic if the
 	// server is running locally.
 	RPCHandler RPCHandler
@@ -81,6 +90,14 @@ type Config struct {
 	// StatsCollectionInterval is the interval at which the Udup client
 	// collects resource usage stats
 	StatsCollectionInterval time.Duration
+
+	// PublishNodeMetrics determines whether nomad is going to publish node
+	// level metrics to remote Telemetry sinks
+	PublishNodeMetrics bool
+
+	// PublishAllocationMetrics determines whether nomad is going to publish
+	// allocation metrics to remote Telemetry sinks
+	PublishAllocationMetrics bool
 }
 
 func (c *Config) Copy() *Config {
@@ -99,6 +116,7 @@ func DefaultConfig() *Config {
 		LogOutput:               os.Stderr,
 		Region:                  "global",
 		StatsCollectionInterval: 1 * time.Second,
+		NatsAddr:                DefaultNatsAddr,
 	}
 }
 
