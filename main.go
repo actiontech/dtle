@@ -5,6 +5,8 @@ import (
 	"os"
 
 	"github.com/mitchellh/cli"
+
+	"udup/agent"
 )
 
 func main() {
@@ -34,27 +36,27 @@ func main() {
 
 	c.Commands = map[string]cli.CommandFactory{
 		"agent": func() (cli.Command, error) {
-			return &AgentCommand{
+			return &agent.AgentCommand{
 				Ui:         ui,
 				ShutdownCh: make(chan struct{}),
 			}, nil
 		},
 		"version": func() (cli.Command, error) {
-			ver := Version
-			rel := VersionPrerelease
-			if GitDescribe != "" {
-				ver = GitDescribe
+			ver := agent.Version
+			rel := agent.VersionPrerelease
+			if agent.GitDescribe != "" {
+				ver = agent.GitDescribe
 				// Trim off a leading 'v', we append it anyways.
 				if ver[0] == 'v' {
 					ver = ver[1:]
 				}
 			}
-			if GitDescribe == "" && rel == "" && VersionPrerelease != "" {
+			if agent.GitDescribe == "" && rel == "" && agent.VersionPrerelease != "" {
 				rel = "dev"
 			}
 
-			return &VersionCommand{
-				Revision:          GitCommit,
+			return &agent.VersionCommand{
+				Revision:          agent.GitCommit,
 				Version:           ver,
 				VersionPrerelease: rel,
 				Ui:                ui,

@@ -1,4 +1,4 @@
-package main
+package agent
 
 import (
 	"flag"
@@ -153,7 +153,7 @@ func (a *AgentCommand) readConfig() *uconf.Config {
 	flags.Usage = func() { a.Ui.Error(a.Help()) }
 
 	// General options
-	flags.StringVar(&cmdConfig.File, "config", "config", "")
+	flags.StringVar(&cmdConfig.File, "config", "udup.conf", "")
 	flags.StringVar(&cmdConfig.LogLevel, "log-level", "info", "")
 
 	if err := flags.Parse(a.args); err != nil {
