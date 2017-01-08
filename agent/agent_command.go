@@ -147,7 +147,10 @@ func (c *AgentCommand) handleReload(config *uconf.Config) *uconf.Config {
 
 func (a *AgentCommand) readConfig() *uconf.Config {
 	// Make a new, empty config.
-	cmdConfig := &uconf.Config{}
+	cmdConfig := &uconf.Config{
+		Extract: &uconf.ExtractorConfig{},
+		Apply:   &uconf.ApplierConfig{},
+	}
 
 	flags := flag.NewFlagSet("agent", flag.ContinueOnError)
 	flags.Usage = func() { a.Ui.Error(a.Help()) }
@@ -155,6 +158,10 @@ func (a *AgentCommand) readConfig() *uconf.Config {
 	// General options
 	flags.StringVar(&cmdConfig.File, "config", "udup.conf", "")
 	flags.StringVar(&cmdConfig.LogLevel, "log-level", "info", "")
+
+	// Role options
+	flags.BoolVar(&cmdConfig.Extract.Enabled, "extract", false, "")
+	flags.BoolVar(&cmdConfig.Apply.Enabled, "apply", false, "")
 
 	if err := flags.Parse(a.args); err != nil {
 		return nil
@@ -179,7 +186,20 @@ func (a *AgentCommand) readConfig() *uconf.Config {
 
 	if config == nil {
 		config = current
+	} else {
+		config = config.Merge(current)
 	}
+
+	// Ensure the sub-structs at least exist
+	if config.Extract == nil {
+		config.Extract = &uconf.ExtractorConfig{}
+	}
+	if config.Apply == nil {
+		config.Apply = &uconf.ApplierConfig{}
+	}
+
+	// Merge any CLI options over config file options
+	config = config.Merge(cmdConfig)
 
 	return config
 }
