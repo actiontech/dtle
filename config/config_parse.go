@@ -72,6 +72,7 @@ func parseConfig(result *Config, list *ast.ObjectList) error {
 		"log_level",
 		"log_file",
 		"log_rotate",
+		"nats_addr",
 		"replicate_do_db",
 		"replicate_do_table",
 		"extract",

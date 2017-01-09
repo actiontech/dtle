@@ -10,6 +10,7 @@ type Config struct {
 	LogLevel  string `mapstructure:"log_level"`
 	LogFile   string `mapstructure:"log_file"`
 	LogRotate string `mapstructure:"log_rotate"`
+	NatsAddr  string `mapstructure:"nats_addr"`
 
 	//Ref:http://dev.mysql.com/doc/refman/5.7/en/replication-options-slave.html#option_mysqld_replicate-do-table
 	ReplicateDoTable []TableName `mapstructure:"replicate_do_table"`
@@ -100,6 +101,10 @@ func (c *Config) Merge(b *Config) *Config {
 
 	if b.LogRotate != "" {
 		result.LogRotate = b.LogRotate
+	}
+
+	if b.NatsAddr != "" {
+		result.NatsAddr = b.NatsAddr
 	}
 
 	// Add the DoDBs

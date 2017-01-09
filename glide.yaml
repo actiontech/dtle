@@ -1,9 +1,26 @@
 package: udup
 import:
+- package: github.com/go-sql-driver/mysql
 - package: github.com/hashicorp/go-multierror
 - package: github.com/hashicorp/hcl
   subpackages:
   - hcl/ast
 - package: github.com/mitchellh/cli
 - package: github.com/mitchellh/mapstructure
+- package: github.com/nats-io/gnatsd
+  subpackages:
+  - server
+- package: github.com/nats-io/go-nats
 - package: github.com/ngaut/log
+- package: github.com/outbrain/golib
+  subpackages:
+  - sqlutils
+- package: github.com/pingcap/tidb
+  subpackages:
+  - ast
+  - parser
+- package: github.com/siddontang/go-mysql
+  subpackages:
+  - mysql
+  - replication
+- package: golang.org/x/net/context
