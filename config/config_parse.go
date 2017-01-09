@@ -79,6 +79,7 @@ func parseConfig(result *Config, list *ast.ObjectList) error {
 		"replicate_do_table",
 		"extract",
 		"apply",
+		"pid_file",
 	}
 	if err := checkHCLKeys(list, valid); err != nil {
 		return multierror.Prefix(err, "config:")

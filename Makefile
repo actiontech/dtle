@@ -26,7 +26,7 @@ build-windows:
 
 # run package script
 package:
-	./scripts/build.py --package --version="$(VERSION)" --platform=linux --arch=amd64 --no-get
+	./scripts/build.py --package --version="$(VERSION)" --platform=linux --arch=amd64 --clean --no-get
 
 # Run "short" unit tests
 test-short: vet

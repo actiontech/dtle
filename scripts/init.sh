@@ -110,7 +110,6 @@ fi
 
 # Configuration file
 config=/etc/udup/udup.conf
-confdir=/etc/udup/udup.d
 
 # If the daemon is not there, then exit.
 [ -x $daemon ] || exit 5
@@ -136,9 +135,9 @@ case $1 in
 
         log_success_msg "Starting the process" "$name"
         if which start-stop-daemon > /dev/null 2>&1; then
-            start-stop-daemon --chuid $USER:$GROUP --start --quiet --pidfile $pidfile --exec $daemon -- -pidfile $pidfile -config $config -config-directory $confdir $UDUP_OPTS >>$STDOUT 2>>$STDERR &
+            start-stop-daemon --chuid $USER:$GROUP --start --quiet --pid-file $pidfile --exec $daemon -- -pid-file $pidfile -config $config $UDUP_OPTS >>$STDOUT 2>>$STDERR &
         else
-            su -s /bin/sh -c "nohup $daemon -pidfile $pidfile -config $config -config-directory $confdir $UDUP_OPTS >>$STDOUT 2>>$STDERR &" $USER
+            su -s /bin/sh -c "nohup $daemon agent -pid-file $pidfile -config $config $UDUP_OPTS >>$STDOUT 2>>$STDERR &" $USER
         fi
         log_success_msg "$name process was started"
         ;;

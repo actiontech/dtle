@@ -158,6 +158,7 @@ func (a *AgentCommand) readConfig() *uconf.Config {
 	// General options
 	flags.StringVar(&cmdConfig.File, "config", "udup.conf", "")
 	flags.StringVar(&cmdConfig.LogLevel, "log-level", "info", "")
+	flags.StringVar(&cmdConfig.PidFile, "pid-file", "udup.pid", "")
 
 	// Role options
 	flags.BoolVar(&cmdConfig.Extract.Enabled, "extract", false, "")
@@ -165,6 +166,17 @@ func (a *AgentCommand) readConfig() *uconf.Config {
 
 	if err := flags.Parse(a.args); err != nil {
 		return nil
+	}
+
+	if cmdConfig.PidFile != "" {
+		f, err := os.Create(cmdConfig.PidFile)
+		if err != nil {
+			log.Fatalf("Unable to create pidfile: %s", err)
+		}
+
+		fmt.Fprintf(f, "%d\n", os.Getpid())
+
+		f.Close()
 	}
 
 	// Load the configuration

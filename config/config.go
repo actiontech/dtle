@@ -23,6 +23,7 @@ type Config struct {
 	Apply *ApplierConfig `mapstructure:"apply"`
 
 	// config file that have been loaded (in order)
+	PidFile    string `mapstructure:"pid_file"`
 	File       string `mapstructure:"-"`
 	PanicAbort chan error
 }
@@ -138,6 +139,10 @@ func (c *Config) Merge(b *Config) *Config {
 		result.Apply = &applier
 	} else if b.Apply != nil {
 		result.Apply = result.Apply.Merge(b.Apply)
+	}
+
+	if b.PidFile != "" {
+		result.PidFile = b.PidFile
 	}
 
 	if b.File != "" {
