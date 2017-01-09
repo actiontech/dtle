@@ -437,6 +437,8 @@ func ParserDDLTableName(sql string) (config.TableName, error) {
 		res = genTableName(v.Table.Schema.O, v.Table.Name.L)
 	case *ast.TruncateTableStmt:
 		res = genTableName(v.Table.Schema.O, v.Table.Name.L)
+	case *ast.AlterTableStmt:
+		res = genTableName(v.Table.Schema.O, v.Table.Name.L)
 	case *ast.DropTableStmt:
 		if len(v.Tables) != 1 {
 			return res, fmt.Errorf("may resovle DDL sql failed")
