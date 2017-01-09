@@ -1,0 +1,15 @@
+[Unit]
+Description=Udup desc
+Documentation=https://
+After=network.target
+
+[Service]
+EnvironmentFile=-/etc/default/udup
+User=udup
+ExecStart=/usr/bin/udup -config /etc/udup/udup.conf -config-directory /etc/udup/udup.d ${UDUP_OPTS}
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=on-failure
+KillMode=control-group
+
+[Install]
+WantedBy=multi-user.target
