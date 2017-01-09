@@ -4,6 +4,15 @@ Udup is ...
 Design goals are to ...
 
 For more information on Extractor and Applier please [read this](./docs/EXTRACTOR_AND_APPLIER.md).
+See the [getting started guide](./docs/GETTING_STARTED.md).This guide will get you up and running with Udup. It walks you through the package, installation, and configuration processes, and it shows how to use Udup to extract and apply data with mysql.
+
+## Installation:
+
+### Linux deb and rpm Packages:
+
+Latest:
+* dist/udup_a427b6b~a427b6b_amd64.deb
+* dist/udup-a427b6b~a427b6b.x86_64.rpm
 
 ## Package Instructions:
 
@@ -36,10 +45,10 @@ udup --help
 ## Example
 
 ```
-udup -config udup.conf
+udup agent -config udup.conf
 ```
 
 ## Configuration
 
-See the [configuration guide](docs/CONFIGURATION.md) for a rundown of the more advanced
+See the [configuration guide](./docs/CONFIGURATION.md) for a rundown of the more advanced
 configuration options.

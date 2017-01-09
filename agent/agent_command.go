@@ -31,13 +31,13 @@ type AgentCommand struct {
 func (c *AgentCommand) setupAgent(config *uconf.Config) error {
 	agent, err := NewAgent(config)
 	if err != nil {
-		c.Ui.Error(fmt.Sprintf("Error starting agent: %s", err))
+		log.Errorf("Error starting agent: %s", err)
 		return err
 	}
 	c.agent = agent
 
 	// Output the header that the server has started
-	c.Ui.Output("Udup agent started!\n")
+	log.Infof("Udup agent started!\n")
 
 	return nil
 }
@@ -53,9 +53,9 @@ func (c *AgentCommand) Run(args []string) int {
 
 	// Log config file
 	if len(config.File) > 0 {
-		c.Ui.Info(fmt.Sprintf("Loaded configuration from %s", config.File))
+		log.Infof("Loaded configuration from %s", config.File)
 	} else {
-		c.Ui.Info("No configuration file loaded")
+		log.Infof("No configuration file loaded")
 	}
 
 	// Create the agent
@@ -93,7 +93,7 @@ WAIT:
 	case <-c.ShutdownCh:
 		sig = os.Interrupt
 	}
-	c.Ui.Output(fmt.Sprintf("Caught signal: %v", sig))
+	log.Infof("Caught signal: %v", sig)
 
 	// Check if this is a SIGHUP
 	if sig == syscall.SIGHUP {
@@ -118,7 +118,7 @@ WAIT:
 
 	// Attempt a graceful leave
 	gracefulCh := make(chan struct{})
-	c.Ui.Output("Gracefully shutting down agent...")
+	log.Infof("Gracefully shutting down agent...")
 
 	// Wait for leave or another signal
 	select {
@@ -133,10 +133,10 @@ WAIT:
 
 // handleReload is invoked when we should reload our configs, e.g. SIGHUP
 func (c *AgentCommand) handleReload(config *uconf.Config) *uconf.Config {
-	c.Ui.Output("Reloading configuration...")
+	log.Infof("Reloading configuration...")
 	newConf := c.readConfig()
 	if newConf == nil {
-		c.Ui.Error(fmt.Sprintf("Failed to reload configs"))
+		log.Errorf(fmt.Sprintf("Failed to reload configs"))
 		return config
 	}
 
@@ -156,7 +156,7 @@ func (a *AgentCommand) readConfig() *uconf.Config {
 	flags.Usage = func() { a.Ui.Error(a.Help()) }
 
 	// General options
-	flags.StringVar(&cmdConfig.File, "config", "udup.conf", "")
+	flags.StringVar(&cmdConfig.File, "config", "/etc/udup/udup.conf", "")
 	flags.StringVar(&cmdConfig.LogLevel, "log-level", "info", "")
 	flags.StringVar(&cmdConfig.PidFile, "pid-file", "udup.pid", "")
 
@@ -185,15 +185,14 @@ func (a *AgentCommand) readConfig() *uconf.Config {
 
 	current, err := uconf.LoadConfig(cmdConfig.File)
 	if err != nil {
-		a.Ui.Error(fmt.Sprintf(
-			"Error loading configuration from %s: %s", cmdConfig.File, err))
+		log.Errorf("Error loading configuration from %s: %s", cmdConfig.File, err)
 		return nil
 	}
 
 	// The user asked us to load some config here but we didn't find any,
 	// so we'll complain but continue.
 	if current == nil || reflect.DeepEqual(current, &uconf.Config{}) {
-		a.Ui.Info(fmt.Sprintf("No configuration loaded from %s", cmdConfig.File))
+		log.Infof("No configuration loaded from %s", cmdConfig.File)
 	}
 
 	if config == nil {
