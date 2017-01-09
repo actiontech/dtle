@@ -7,10 +7,12 @@ import (
 
 // Config is the configuration for the Udup agent.
 type Config struct {
-	LogLevel  string `mapstructure:"log_level"`
-	LogFile   string `mapstructure:"log_file"`
-	LogRotate string `mapstructure:"log_rotate"`
-	NatsAddr  string `mapstructure:"nats_addr"`
+	LogLevel    string `mapstructure:"log_level"`
+	LogFile     string `mapstructure:"log_file"`
+	LogRotate   string `mapstructure:"log_rotate"`
+	NatsAddr    string `mapstructure:"nats_addr"`
+	WorkerCount int    `mapstructure:"worker_count"`
+	Batch       int    `mapstructure:"batch"`
 
 	//Ref:http://dev.mysql.com/doc/refman/5.7/en/replication-options-slave.html#option_mysqld_replicate-do-table
 	ReplicateDoTable []TableName `mapstructure:"replicate_do_table"`
@@ -63,8 +65,10 @@ type TableName struct {
 // DefaultConfig is a the baseline configuration for Udup
 func DefaultConfig() *Config {
 	return &Config{
-		File:     "udup.conf",
-		LogLevel: "INFO",
+		File:        "udup.conf",
+		LogLevel:    "INFO",
+		WorkerCount: 1,
+		Batch:       1,
 		Extract: &ExtractorConfig{
 			Enabled:  false,
 			ServerID: 100,
@@ -105,6 +109,14 @@ func (c *Config) Merge(b *Config) *Config {
 
 	if b.NatsAddr != "" {
 		result.NatsAddr = b.NatsAddr
+	}
+
+	if b.WorkerCount != 0 {
+		result.WorkerCount = b.WorkerCount
+	}
+
+	if b.Batch != 0 {
+		result.Batch = b.Batch
 	}
 
 	// Add the DoDBs

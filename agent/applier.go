@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"strconv"
+	"time"
 
 	gnatsd "github.com/nats-io/gnatsd/server"
 	"github.com/nats-io/go-nats"
@@ -15,10 +16,16 @@ import (
 	uconf "udup/config"
 )
 
+var (
+	waitTime    = 10 * time.Millisecond
+	maxWaitTime = 3 * time.Second
+)
+
 type Applier struct {
-	cfg           *uconf.Config
-	db            *gosql.DB
-	eventsChannel chan *usql.StreamEvent
+	cfg         *uconf.Config
+	dbs         []*gosql.DB
+	singletonDB *gosql.DB
+	eventChans  []chan *usql.StreamEvent
 
 	natsConn *nats.Conn
 	gnatsd   *gnatsd.Server
@@ -26,9 +33,18 @@ type Applier struct {
 
 func NewApplier(cfg *uconf.Config) *Applier {
 	return &Applier{
-		cfg:           cfg,
-		eventsChannel: make(chan *usql.StreamEvent, EventsChannelBufferSize),
+		cfg:        cfg,
+		eventChans: newEventChans(cfg.WorkerCount),
 	}
+}
+
+func newEventChans(count int) []chan *usql.StreamEvent {
+	events := make([]chan *usql.StreamEvent, 0, count)
+	for i := 0; i < count; i++ {
+		events = append(events, make(chan *usql.StreamEvent, 1000))
+	}
+
+	return events
 }
 
 func (a *Applier) initiateApplier() error {
@@ -45,40 +61,80 @@ func (a *Applier) initiateApplier() error {
 		return err
 	}
 
-	go a.applyEventQuery()
+	for i := 0; i < a.cfg.WorkerCount; i++ {
+		go a.applyEventQuery(a.dbs[i], a.eventChans[i])
+	}
 
 	return nil
 }
 
-func (a *Applier) applyEventQuery() (err error) {
-	for event := range a.eventsChannel {
-		err = func() error {
-			tx, err := a.db.Begin()
-			if err != nil {
-				a.cfg.PanicAbort <- err
-			}
-			sessionQuery := `SET
-			SESSION time_zone = '+00:00',
-			sql_mode = CONCAT(@@session.sql_mode, ',STRICT_ALL_TABLES')
-			`
-			if _, err := tx.Exec(sessionQuery); err != nil {
-				a.cfg.PanicAbort <- err
-			}
-			if _, err := tx.Exec(event.Sql, event.Args...); err != nil {
-				a.cfg.PanicAbort <- err
-			}
-			if err := tx.Commit(); err != nil {
-				a.cfg.PanicAbort <- err
-			}
-			return nil
-		}()
+func (a *Applier) applyEventQuery(db *gosql.DB, eventChan chan *usql.StreamEvent) {
+	idx := 0
+	count := a.cfg.Batch
+	sqls := make([]string, 0, count)
+	args := make([][]interface{}, 0, count)
+	lastSyncTime := time.Now()
 
-		if err != nil {
-			err = fmt.Errorf("%s; query=%s; args=%+v", err.Error(), event.Sql, event.Args)
-			a.cfg.PanicAbort <- err
+	var err error
+	for {
+		select {
+		case event, ok := <-eventChan:
+			if !ok {
+				return
+			}
+			idx++
+			if event.Tp == usql.Ddl {
+				err = usql.ExecuteSQL(db, sqls, args, true)
+				if err != nil {
+					a.cfg.PanicAbort <- err
+				}
+
+				err = usql.ExecuteSQL(db, []string{event.Sql}, [][]interface{}{event.Args}, false)
+				if err != nil {
+					if !usql.IgnoreDDLError(err) {
+						a.cfg.PanicAbort <- err
+					} else {
+						log.Warnf("ignore ddl error :%v", err)
+					}
+				}
+
+				idx = 0
+				sqls = sqls[0:0]
+				args = args[0:0]
+				lastSyncTime = time.Now()
+			} else {
+				sqls = append(sqls, event.Sql)
+				args = append(args, event.Args)
+			}
+
+			if idx >= count {
+				err = usql.ExecuteSQL(db, sqls, args, true)
+				if err != nil {
+					a.cfg.PanicAbort <- err
+				}
+
+				idx = 0
+				sqls = sqls[0:0]
+				args = args[0:0]
+				lastSyncTime = time.Now()
+			}
+		default:
+			now := time.Now()
+			if now.Sub(lastSyncTime) >= maxWaitTime {
+				err = usql.ExecuteSQL(db, sqls, args, true)
+				if err != nil {
+					a.cfg.PanicAbort <- err
+				}
+
+				idx = 0
+				sqls = sqls[0:0]
+				args = args[0:0]
+				lastSyncTime = now
+			}
+
+			time.Sleep(waitTime)
 		}
 	}
-	return nil
 }
 
 // initiateStreaming begins treaming of binary log events and registers listeners for such events
@@ -92,7 +148,11 @@ func (a *Applier) initiateStreaming() error {
 	a.natsConn = nc
 
 	if _, err := c.Subscribe("subject", func(event *usql.StreamEvent) {
-		a.eventsChannel <- event
+		if event.Tp == usql.Xid {
+			return
+		}
+		idx := int(usql.GenHashKey(event.Key)) % a.cfg.WorkerCount
+		a.eventChans[idx] <- event
 	}); err != nil {
 		return err
 	}
@@ -130,11 +190,15 @@ func (a *Applier) setupNatsServer() error {
 }
 
 func (a *Applier) initDBConnections() (err error) {
-	if a.db, _, err = sqlutils.GetDB(a.cfg.Apply.ConnCfg.GetDBUri()); err != nil {
+	if a.singletonDB, _, err = sqlutils.GetDB(a.cfg.Apply.ConnCfg.GetDBUri()); err != nil {
 		return err
 	}
+	a.singletonDB.SetMaxOpenConns(1)
 
 	if err := a.validateConnection(); err != nil {
+		return err
+	}
+	if a.dbs, err = GetDBs(a.cfg.Apply.ConnCfg, a.cfg.WorkerCount+1); err != nil {
 		return err
 	}
 	return nil
@@ -144,7 +208,7 @@ func (a *Applier) initDBConnections() (err error) {
 func (a *Applier) validateConnection() error {
 	query := `select @@global.port`
 	var port int
-	if err := a.db.QueryRow(query).Scan(&port); err != nil {
+	if err := a.singletonDB.QueryRow(query).Scan(&port); err != nil {
 		return err
 	}
 	if port != a.cfg.Apply.ConnCfg.Port {
@@ -154,10 +218,30 @@ func (a *Applier) validateConnection() error {
 	return nil
 }
 
-func (a *Applier) Shutdown() error {
-	usql.CloseDBs(a.db)
+func GetDBs(cfg *uconf.ConnectionConfig, count int) ([]*gosql.DB, error) {
+	dbs := make([]*gosql.DB, 0, count)
+	for i := 0; i < count; i++ {
+		db, _, err := sqlutils.GetDB(cfg.GetDBUri())
+		if err != nil {
+			return nil, err
+		}
 
-	close(a.eventsChannel)
+		dbs = append(dbs, db)
+	}
+
+	return dbs, nil
+}
+
+func closeEventChans(events []chan *usql.StreamEvent) {
+	for _, ch := range events {
+		close(ch)
+	}
+}
+
+func (a *Applier) Shutdown() error {
+	usql.CloseDBs(a.dbs...)
+
+	closeEventChans(a.eventChans)
 
 	a.natsConn.Close()
 	a.gnatsd.Shutdown()

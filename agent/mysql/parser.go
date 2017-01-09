@@ -476,6 +476,55 @@ func QuerySQL(db *sql.DB, query string) (*sql.Rows, error) {
 	return nil, err
 }
 
+func ExecuteSQL(db *sql.DB, sqls []string, args [][]interface{}, retry bool) error {
+	if len(sqls) == 0 {
+		return nil
+	}
+
+	var (
+		err error
+		txn *sql.Tx
+	)
+
+	retryCount := 1
+	if retry {
+		retryCount = maxRetryCount
+	}
+
+LOOP:
+	for i := 0; i < retryCount; i++ {
+		if i > 0 {
+			log.Warnf("exec sql retry %d - %v - %v", i, sqls, args)
+			time.Sleep(retryTimeout)
+		}
+
+		txn, err = db.Begin()
+		if err != nil {
+			continue
+		}
+
+		for i := range sqls {
+			_, err = txn.Exec(sqls[i], args[i]...)
+			if err != nil {
+				continue LOOP
+			}
+		}
+
+		err = txn.Commit()
+		if err != nil {
+			continue
+		}
+
+		return nil
+	}
+
+	if err != nil {
+		return err
+	}
+
+	return err
+}
+
 func closeDB(db *sql.DB) error {
 	if db == nil {
 		return nil
