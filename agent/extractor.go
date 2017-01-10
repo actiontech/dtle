@@ -65,28 +65,11 @@ func (e *Extractor) initDBConnections() (err error) {
 	if e.db, _, err = sqlutils.GetDB(e.cfg.Extract.ConnCfg.GetDBUri()); err != nil {
 		return err
 	}
-	if err = e.validateConnection(); err != nil {
-		return err
-	}
 
 	if err = e.initBinlogSyncer(); err != nil {
 		return err
 	}
 
-	return nil
-}
-
-// validateConnection issues a simple can-connect to MySQL
-func (e *Extractor) validateConnection() error {
-	query := `select @@global.port`
-	var port int
-	if err := e.db.QueryRow(query).Scan(&port); err != nil {
-		return err
-	}
-	if port != e.cfg.Extract.ConnCfg.Port {
-		return fmt.Errorf("Unexpected database port reported: %+v", port)
-	}
-	log.Infof("connection validated on %+v", e.cfg.Extract.ConnCfg)
 	return nil
 }
 
@@ -470,6 +453,10 @@ func (e *Extractor) skipRowEvent(schema string, table string) bool {
 
 func (e *Extractor) skipQueryEvent(sql string, schema string) bool {
 	sql = strings.ToUpper(sql)
+
+	if strings.HasPrefix(sql, "CREATE USER") {
+		return true
+	}
 
 	if strings.HasPrefix(sql, "GRANT REPLICATION SLAVE ON") {
 		return true

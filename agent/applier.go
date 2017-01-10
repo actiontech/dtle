@@ -176,8 +176,6 @@ func (a *Applier) setupNatsServer() error {
 		// MAX_PAYLOAD_SIZE is the maximum allowed payload size. Should be using
 		// something different if > 1MB payloads are needed.
 		MaxPayload: (5 * 1024 * 1024),
-		// MAX_PENDING_SIZE is the maximum outbound size (in bytes) per client.
-		MaxPending: (20 * 1024 * 1024),
 		// DEFAULT_MAX_CONNECTIONS is the default maximum connections allowed.
 		MaxConn: (64 * 1024),
 		Trace:   true,
@@ -195,26 +193,9 @@ func (a *Applier) initDBConnections() (err error) {
 	}
 	a.singletonDB.SetMaxOpenConns(1)
 
-	if err := a.validateConnection(); err != nil {
-		return err
-	}
 	if a.dbs, err = GetDBs(a.cfg.Apply.ConnCfg, a.cfg.WorkerCount+1); err != nil {
 		return err
 	}
-	return nil
-}
-
-// validateConnection issues a simple can-connect to MySQL
-func (a *Applier) validateConnection() error {
-	query := `select @@global.port`
-	var port int
-	if err := a.singletonDB.QueryRow(query).Scan(&port); err != nil {
-		return err
-	}
-	if port != a.cfg.Apply.ConnCfg.Port {
-		return fmt.Errorf("Unexpected database port reported: %+v", port)
-	}
-	log.Infof("connection validated on %+v", a.cfg.Apply.ConnCfg)
 	return nil
 }
 
