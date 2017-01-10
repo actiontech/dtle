@@ -1,6 +1,5 @@
 bin/
 vendor/
-udup
 .idea
 
 # Makefile
