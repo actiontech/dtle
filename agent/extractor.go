@@ -45,7 +45,7 @@ func NewExtractor(cfg *uconf.Config) *Extractor {
 
 func (e *Extractor) initiateExtractor() error {
 	log.Infof("Extract binlog events from the datasource :%v", e.cfg.Extract.ConnCfg)
-	time.Sleep(5 * time.Second)
+	time.Sleep(10 * time.Second)
 
 	if err := e.initDBConnections(); err != nil {
 		return err
@@ -71,6 +71,16 @@ func (e *Extractor) initDBConnections() (err error) {
 	}
 
 	return nil
+}
+
+func (e *Extractor) masterStatus() (rowMap sqlutils.RowMap) {
+	rowMap = nil
+	query := `SHOW MASTER STATUS`
+	sqlutils.QueryRowsMap(e.db, query, func(m sqlutils.RowMap) error {
+		rowMap = m
+		return nil
+	})
+	return rowMap
 }
 
 func (e *Extractor) genRegexMap() {
@@ -132,9 +142,19 @@ func (e *Extractor) streamEvents() (err error) {
 		}
 	}()
 
-	pos := gomysql.Position{"", uint32(4)}
-	// Start sync with sepcified binlog file and position
-	if e.binlogStreamer, err = e.binlogSyncer.StartSync(pos); err != nil {
+	rowMap := e.masterStatus()
+	if rowMap == nil {
+		return nil
+	}
+
+	// the mysql GTID set likes this "de278ad0-2106-11e4-9f8e-6edd0ca20947:1-2"
+	executedGtidSet := strings.Split(rowMap["Executed_Gtid_Set"].String, ":")
+	gtidSet, err := gomysql.ParseMysqlGTIDSet(fmt.Sprintf("%s:1", executedGtidSet[0]))
+	if err != nil {
+		return err
+	}
+	// StartSyncGTID starts syncing from the `gset` GTIDSet.
+	if e.binlogStreamer, err = e.binlogSyncer.StartSyncGTID(gtidSet); err != nil {
 		return err
 	}
 
@@ -143,12 +163,18 @@ func (e *Extractor) streamEvents() (err error) {
 		if err != nil {
 			return err
 		}
+		//event.Dump(os.Stdout)
 
 		switch ev := event.Event.(type) {
-		case *replication.RotateEvent:
-			log.Infof("rotate binlog to %v:%v", string(ev.NextLogName), uint32(ev.Position))
+		case *replication.GTIDEvent:
+			//log.Infof("gtid %v", ev)
+		//case *replication.RotateEvent:
 		case *replication.RowsEvent:
 			table := &usql.Table{}
+			if e.skipRowEvent(string(ev.Table.Schema), string(ev.Table.Table)) {
+				log.Warnf("skip RowsEvent with db:%s table:%s", ev.Table.Schema, ev.Table.Table)
+				continue
+			}
 			if table, err = e.getTable(string(ev.Table.Schema), string(ev.Table.Table)); err != nil {
 				return err
 			}
@@ -166,7 +192,7 @@ func (e *Extractor) streamEvents() (err error) {
 				}
 
 				for i := range sqls {
-					se := usql.NewStreamEvent(usql.Insert, sqls[i], args[i], keys[i], true, pos)
+					se := usql.NewStreamEvent(usql.Insert, sqls[i], args[i], keys[i], true)
 					e.eventsChannel <- se
 				}
 			case replication.UPDATE_ROWS_EVENTv0, replication.UPDATE_ROWS_EVENTv1, replication.UPDATE_ROWS_EVENTv2:
@@ -176,7 +202,7 @@ func (e *Extractor) streamEvents() (err error) {
 				}
 
 				for i := range sqls {
-					se := usql.NewStreamEvent(usql.Update, sqls[i], args[i], keys[i], true, pos)
+					se := usql.NewStreamEvent(usql.Update, sqls[i], args[i], keys[i], true)
 					e.eventsChannel <- se
 				}
 			case replication.DELETE_ROWS_EVENTv0, replication.DELETE_ROWS_EVENTv1, replication.DELETE_ROWS_EVENTv2:
@@ -186,7 +212,7 @@ func (e *Extractor) streamEvents() (err error) {
 				}
 
 				for i := range sqls {
-					se := usql.NewStreamEvent(usql.Del, sqls[i], args[i], keys[i], true, pos)
+					se := usql.NewStreamEvent(usql.Del, sqls[i], args[i], keys[i], true)
 					e.eventsChannel <- se
 				}
 			}
@@ -205,7 +231,6 @@ func (e *Extractor) streamEvents() (err error) {
 				continue
 			}
 
-			pos.Pos = event.Header.LogPos
 			for _, sql := range sqls {
 				if e.skipQueryDDL(sql, string(ev.Schema)) {
 					log.Warnf("skip query ddl %s,schema:%s", sql, ev.Schema)
@@ -217,15 +242,11 @@ func (e *Extractor) streamEvents() (err error) {
 					return err
 				}
 
-				se := usql.NewStreamEvent(usql.Ddl, sql, nil, "", false, pos)
+				se := usql.NewStreamEvent(usql.Ddl, sql, nil, "", false)
 				e.eventsChannel <- se
 
 				e.clearTables()
 			}
-		case *replication.XIDEvent:
-			pos.Pos = event.Header.LogPos
-			se := usql.NewStreamEvent(usql.Xid, "", nil, "", false, pos)
-			e.eventsChannel <- se
 		}
 	}
 	return nil

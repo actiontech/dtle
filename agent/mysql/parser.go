@@ -13,7 +13,6 @@ import (
 	"github.com/ngaut/log"
 	"github.com/pingcap/tidb/ast"
 	"github.com/pingcap/tidb/parser"
-	gmysql "github.com/siddontang/go-mysql/mysql"
 
 	"udup/config"
 )
@@ -30,7 +29,7 @@ const (
 	Update
 	Del
 	Ddl
-	Xid
+	Gtid
 )
 
 type StreamEvent struct {
@@ -39,11 +38,10 @@ type StreamEvent struct {
 	Args  []interface{}
 	Key   string
 	Retry bool
-	Pos   gmysql.Position
 }
 
-func NewStreamEvent(tp OpType, sql string, args []interface{}, key string, retry bool, pos gmysql.Position) *StreamEvent {
-	return &StreamEvent{Tp: tp, Sql: sql, Args: args, Key: key, Retry: retry, Pos: pos}
+func NewStreamEvent(tp OpType, sql string, args []interface{}, key string, retry bool) *StreamEvent {
+	return &StreamEvent{Tp: tp, Sql: sql, Args: args, Key: key, Retry: retry}
 }
 
 type Column struct {

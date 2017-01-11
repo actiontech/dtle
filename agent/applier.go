@@ -148,9 +148,6 @@ func (a *Applier) initiateStreaming() error {
 	a.natsConn = nc
 
 	if _, err := c.Subscribe("subject", func(event *usql.StreamEvent) {
-		if event.Tp == usql.Xid {
-			return
-		}
 		idx := int(usql.GenHashKey(event.Key)) % a.cfg.WorkerCount
 		a.eventChans[idx] <- event
 	}); err != nil {
