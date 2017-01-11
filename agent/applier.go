@@ -83,7 +83,7 @@ func (a *Applier) applyEventQuery(db *gosql.DB, eventChan chan *usql.StreamEvent
 				return
 			}
 			idx++
-			if event.Tp == usql.Ddl {
+			if event.Tp == usql.Ddl{
 				err = usql.ExecuteSQL(db, sqls, args, true)
 				if err != nil {
 					a.cfg.PanicAbort <- err
@@ -189,9 +189,24 @@ func (a *Applier) initDBConnections() (err error) {
 		return err
 	}
 	a.singletonDB.SetMaxOpenConns(1)
+	if err := a.mysqlGTIDMode(); err != nil {
+		return err
+	}
 
 	if a.dbs, err = GetDBs(a.cfg.Apply.ConnCfg, a.cfg.WorkerCount+1); err != nil {
 		return err
+	}
+	return nil
+}
+
+func (a *Applier) mysqlGTIDMode() error {
+	query := `SELECT @@gtid_mode`
+	var gtidMode string
+	if err := a.singletonDB.QueryRow(query).Scan(&gtidMode); err != nil {
+		return err
+	}
+	if gtidMode != "ON" {
+		return fmt.Errorf("must have GTID enabled: %+v", gtidMode)
 	}
 	return nil
 }

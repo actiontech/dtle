@@ -65,11 +65,26 @@ func (e *Extractor) initDBConnections() (err error) {
 	if e.db, _, err = sqlutils.GetDB(e.cfg.Extract.ConnCfg.GetDBUri()); err != nil {
 		return err
 	}
+	if err = e.mysqlGTIDMode(); err != nil {
+		return err
+	}
 
 	if err = e.initBinlogSyncer(); err != nil {
 		return err
 	}
 
+	return nil
+}
+
+func (e *Extractor) mysqlGTIDMode() error {
+	query := `SELECT @@gtid_mode`
+	var gtidMode string
+	if err := e.db.QueryRow(query).Scan(&gtidMode); err != nil {
+		return err
+	}
+	if gtidMode != "ON" {
+		return fmt.Errorf("must have GTID enabled: %+v", gtidMode)
+	}
 	return nil
 }
 

@@ -1,0 +1,10 @@
+/var/log/udup/udup.log 
+{
+    rotate 6
+    daily
+    missingok
+    dateext
+    copytruncate
+    notifempty
+    compress
+}
