@@ -13,10 +13,17 @@ import (
 	gomysql "github.com/siddontang/go-mysql/mysql"
 	"github.com/siddontang/go-mysql/replication"
 	"golang.org/x/net/context"
+	"github.com/satori/go.uuid"
 
 	usql "udup/agent/mysql"
 	uconf "udup/config"
+	"sync"
 )
+
+type BinlogEventListener struct {
+	async        bool
+	onEvent   func(event *usql.StreamEvent) error
+}
 
 const (
 	EventsChannelBufferSize = 1
@@ -30,8 +37,10 @@ type Extractor struct {
 	db             *sql.DB
 	eventsChannel  chan *usql.StreamEvent
 	reMap          map[string]*regexp.Regexp
+	listeners                [](*BinlogEventListener)
+	listenersMutex           *sync.Mutex
 
-	natsConn *nats.Conn
+	natsConn *nats.EncodedConn
 }
 
 func NewExtractor(cfg *uconf.Config) *Extractor {
@@ -40,6 +49,39 @@ func NewExtractor(cfg *uconf.Config) *Extractor {
 		tables:        make(map[string]*usql.Table),
 		eventsChannel: make(chan *usql.StreamEvent, EventsChannelBufferSize),
 		reMap:         make(map[string]*regexp.Regexp),
+		listeners:        [](*BinlogEventListener){},
+		listenersMutex:   &sync.Mutex{},
+	}
+}
+
+// AddListener registers a new listener for binlog events, on a per-table basis
+func (e *Extractor) AddListener(async bool, onEvent func(event *usql.StreamEvent) error) (err error) {
+	e.listenersMutex.Lock()
+	defer e.listenersMutex.Unlock()
+
+	listener := &BinlogEventListener{
+		async:        async,
+		onEvent:   onEvent,
+	}
+	e.listeners = append(e.listeners, listener)
+	return nil
+}
+
+// notifyListeners will notify relevant listeners with given DML event. Only
+// listeners registered for changes on the table on which the DML operates are notified.
+func (e *Extractor) notifyListeners(binlogEvent *usql.StreamEvent) {
+	e.listenersMutex.Lock()
+	defer e.listenersMutex.Unlock()
+
+	for _, listener := range e.listeners {
+		listener := listener
+		if listener.async {
+			go func() {
+				listener.onEvent(binlogEvent)
+			}()
+		} else {
+			listener.onEvent(binlogEvent)
+		}
 	}
 }
 
@@ -51,12 +93,10 @@ func (e *Extractor) initiateExtractor() error {
 		return err
 	}
 
-	log.Infof("Beginning streaming")
-	e.genRegexMap()
-	err := e.streamEvents()
-	if err != nil {
+	if err := e.initNatsPubClient(); err != nil {
 		return err
 	}
+	e.genRegexMap()
 
 	return nil
 }
@@ -137,29 +177,29 @@ func (e *Extractor) initBinlogSyncer() (err error) {
 	return nil
 }
 
-func (e *Extractor) streamEvents() (err error) {
+func (e *Extractor) initNatsPubClient() (err error) {
 	nc, err := nats.Connect(fmt.Sprintf("nats://%s", e.cfg.NatsAddr))
 	if err != nil {
 		return err
 	}
 
 	c, _ := nats.NewEncodedConn(nc, nats.GOB_ENCODER)
-	e.natsConn = nc
+	e.natsConn = c
+	return nil
+}
 
+func (e *Extractor) streamEvents() (err error) {
 	go func() {
 		for event := range e.eventsChannel {
 			if event != nil {
-				if err := c.Publish("subject", event); err != nil {
-					log.Infof("err:%v", err)
-					e.cfg.PanicAbort <- err
-				}
+				e.notifyListeners(event)
 			}
 		}
 	}()
 
 	rowMap := e.masterStatus()
 	if rowMap == nil {
-		return nil
+		return fmt.Errorf("Got no results from SHOW MASTER STATUS. Bailing out")
 	}
 
 	// the mysql GTID set likes this "de278ad0-2106-11e4-9f8e-6edd0ca20947:1-2"
@@ -183,6 +223,9 @@ func (e *Extractor) streamEvents() (err error) {
 		switch ev := event.Event.(type) {
 		case *replication.GTIDEvent:
 			//log.Infof("gtid %v", ev)
+			u, _ := uuid.FromBytes(ev.SID)
+			se:=usql.NewStreamEvent(usql.Gtid,fmt.Sprintf(`SET GTID_NEXT='%s:%d'`,u.String(), ev.GNO),nil, "", false)
+			e.eventsChannel <- se
 		//case *replication.RotateEvent:
 		case *replication.RowsEvent:
 			table := &usql.Table{}

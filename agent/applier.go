@@ -61,21 +61,16 @@ func (a *Applier) initiateApplier() error {
 		return err
 	}
 
-	for i := 0; i < a.cfg.WorkerCount; i++ {
-		go a.applyEventQuery(a.dbs[i], a.eventChans[i])
-	}
-
 	return nil
 }
 
-func (a *Applier) applyEventQuery(db *gosql.DB, eventChan chan *usql.StreamEvent) {
+func (a *Applier) ApplyEventQuery(db *gosql.DB, eventChan chan *usql.StreamEvent) (err error){
 	idx := 0
 	count := a.cfg.Batch
 	sqls := make([]string, 0, count)
 	args := make([][]interface{}, 0, count)
 	lastSyncTime := time.Now()
 
-	var err error
 	for {
 		select {
 		case event, ok := <-eventChan:
@@ -83,12 +78,29 @@ func (a *Applier) applyEventQuery(db *gosql.DB, eventChan chan *usql.StreamEvent
 				return
 			}
 			idx++
-			if event.Tp == usql.Ddl{
+			if event.Tp == usql.Gtid {
 				err = usql.ExecuteSQL(db, sqls, args, true)
 				if err != nil {
+					log.Infof("sql:%v,exec err :%v",sqls,err)
 					a.cfg.PanicAbort <- err
 				}
+				idx = 0
+				sqls = sqls[0:0]
+				args = args[0:0]
+				lastSyncTime = time.Now()
 
+				if _, err := sqlutils.ExecNoPrepare(db, event.Sql); err != nil {
+					a.cfg.PanicAbort <- err
+				}
+				if _, err := sqlutils.ExecNoPrepare(db, `SET GTID_NEXT='AUTOMATIC'`); err != nil {
+					a.cfg.PanicAbort <- err
+				}
+			}else if event.Tp == usql.Ddl {
+				err = usql.ExecuteSQL(db, sqls, args, true)
+				if err != nil {
+					log.Infof("sql:%v，ddl err :%v",event.Sql,err)
+					a.cfg.PanicAbort <- err
+				}
 				err = usql.ExecuteSQL(db, []string{event.Sql}, [][]interface{}{event.Args}, false)
 				if err != nil {
 					if !usql.IgnoreDDLError(err) {
@@ -110,6 +122,7 @@ func (a *Applier) applyEventQuery(db *gosql.DB, eventChan chan *usql.StreamEvent
 			if idx >= count {
 				err = usql.ExecuteSQL(db, sqls, args, true)
 				if err != nil {
+					log.Infof("sql:%v，Begin err :%v",sqls,err)
 					a.cfg.PanicAbort <- err
 				}
 
@@ -180,6 +193,10 @@ func (a *Applier) setupNatsServer() error {
 	}
 	gnats := gnatsd.New(&opts)
 	go gnats.Start()
+	// Wait for accept loop(s) to be started
+	if !gnats.ReadyForConnections(10 * time.Second) {
+		return fmt.Errorf("Unable to start NATS Server in Go Routine")
+	}
 	a.gnatsd = gnats
 	return nil
 }
