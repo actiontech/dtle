@@ -7,7 +7,6 @@ import (
 	"github.com/ngaut/log"
 
 	uconf "udup/config"
-	usql "udup/agent/mysql"
 )
 
 type Agent struct {
@@ -52,17 +51,13 @@ func (a *Agent) setupApply() error {
 
 	// Create the applier
 	a.applier = NewApplier(a.config)
-	if err := a.applier.initiateApplier(); err != nil {
-		return fmt.Errorf("applier run failed: %v", err)
-	}
+	go func() {
+		if err := a.applier.initiateApplier(); err != nil {
+			log.Errorf("applier run failed: %v", err)
+			a.config.PanicAbort <- err
+		}
+	}()
 
-	for i := 0; i < a.config.WorkerCount; i++ {
-		go func(){
-			if err := a.applier.ApplyEventQuery(a.applier.dbs[i], a.applier.eventChans[i]); err != nil {
-				a.config.PanicAbort <- err
-			}
-		}()
-	}
 	return nil
 }
 
@@ -74,27 +69,11 @@ func (a *Agent) setupExtract() error {
 
 	// Create the extractor
 	a.extractor = NewExtractor(a.config)
-	if err := a.extractor.initiateExtractor(); err != nil {
-		return fmt.Errorf("extractor run failed: %v", err)
-	}
-
-	a.extractor.AddListener(
-		false,
-		func(ev *usql.StreamEvent) error {
-			if err := a.extractor.natsConn.Publish("subject", ev); err != nil {
-				return err
-			}
-			return nil
-		},
-	)
-
 	go func() {
-		log.Debugf("Beginning streaming")
-		err := a.extractor.streamEvents()
-		if err != nil {
+		if err := a.extractor.initiateExtractor(); err != nil {
+			log.Errorf("extractor run failed: %v", err)
 			a.config.PanicAbort <- err
 		}
-		log.Debugf("Done streaming")
 	}()
 	return nil
 }
@@ -102,6 +81,7 @@ func (a *Agent) setupExtract() error {
 // listenOnPanicAbort aborts on abort request
 func (a *Agent) listenOnPanicAbort() {
 	err := <-a.config.PanicAbort
+	a.Shutdown()
 	log.Errorf("agent run failed: %v", err)
 }
 

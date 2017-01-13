@@ -1,29 +1,25 @@
 package agent
 
 import (
+	"bytes"
 	"database/sql"
+	"encoding/gob"
 	"fmt"
 	"regexp"
 	"strings"
 	"time"
 
-	"github.com/nats-io/go-nats"
+	stan "github.com/nats-io/go-nats-streaming"
 	"github.com/ngaut/log"
 	"github.com/outbrain/golib/sqlutils"
+	"github.com/satori/go.uuid"
 	gomysql "github.com/siddontang/go-mysql/mysql"
 	"github.com/siddontang/go-mysql/replication"
 	"golang.org/x/net/context"
-	"github.com/satori/go.uuid"
 
 	usql "udup/agent/mysql"
 	uconf "udup/config"
-	"sync"
 )
-
-type BinlogEventListener struct {
-	async        bool
-	onEvent   func(event *usql.StreamEvent) error
-}
 
 const (
 	EventsChannelBufferSize = 1
@@ -37,10 +33,8 @@ type Extractor struct {
 	db             *sql.DB
 	eventsChannel  chan *usql.StreamEvent
 	reMap          map[string]*regexp.Regexp
-	listeners                [](*BinlogEventListener)
-	listenersMutex           *sync.Mutex
 
-	natsConn *nats.EncodedConn
+	stanConn stan.Conn
 }
 
 func NewExtractor(cfg *uconf.Config) *Extractor {
@@ -49,39 +43,6 @@ func NewExtractor(cfg *uconf.Config) *Extractor {
 		tables:        make(map[string]*usql.Table),
 		eventsChannel: make(chan *usql.StreamEvent, EventsChannelBufferSize),
 		reMap:         make(map[string]*regexp.Regexp),
-		listeners:        [](*BinlogEventListener){},
-		listenersMutex:   &sync.Mutex{},
-	}
-}
-
-// AddListener registers a new listener for binlog events, on a per-table basis
-func (e *Extractor) AddListener(async bool, onEvent func(event *usql.StreamEvent) error) (err error) {
-	e.listenersMutex.Lock()
-	defer e.listenersMutex.Unlock()
-
-	listener := &BinlogEventListener{
-		async:        async,
-		onEvent:   onEvent,
-	}
-	e.listeners = append(e.listeners, listener)
-	return nil
-}
-
-// notifyListeners will notify relevant listeners with given DML event. Only
-// listeners registered for changes on the table on which the DML operates are notified.
-func (e *Extractor) notifyListeners(binlogEvent *usql.StreamEvent) {
-	e.listenersMutex.Lock()
-	defer e.listenersMutex.Unlock()
-
-	for _, listener := range e.listeners {
-		listener := listener
-		if listener.async {
-			go func() {
-				listener.onEvent(binlogEvent)
-			}()
-		} else {
-			listener.onEvent(binlogEvent)
-		}
 	}
 }
 
@@ -96,7 +57,12 @@ func (e *Extractor) initiateExtractor() error {
 	if err := e.initNatsPubClient(); err != nil {
 		return err
 	}
+
 	e.genRegexMap()
+	log.Infof("Beginning streaming")
+	if err := e.streamEvents(); err != nil {
+		return err
+	}
 
 	return nil
 }
@@ -178,21 +144,36 @@ func (e *Extractor) initBinlogSyncer() (err error) {
 }
 
 func (e *Extractor) initNatsPubClient() (err error) {
-	nc, err := nats.Connect(fmt.Sprintf("nats://%s", e.cfg.NatsAddr))
+	sc, err := stan.Connect("test-cluster", "pub1", stan.NatsURL(fmt.Sprintf("nats://%s", e.cfg.NatsAddr)))
 	if err != nil {
-		return err
+		log.Fatalf("Can't connect: %v.\nMake sure a NATS Streaming Server is running at: %s", err, fmt.Sprintf("nats://%s", e.cfg.NatsAddr))
 	}
-
-	c, _ := nats.NewEncodedConn(nc, nats.GOB_ENCODER)
-	e.natsConn = c
+	e.stanConn = sc
 	return nil
+}
+
+// Encode
+func Encode(v interface{}) ([]byte, error) {
+	b := new(bytes.Buffer)
+	enc := gob.NewEncoder(b)
+	if err := enc.Encode(v); err != nil {
+		return nil, err
+	}
+	return b.Bytes(), nil
 }
 
 func (e *Extractor) streamEvents() (err error) {
 	go func() {
 		for event := range e.eventsChannel {
 			if event != nil {
-				e.notifyListeners(event)
+				msg, err := Encode(event)
+				if err != nil {
+					e.cfg.PanicAbort <- err
+				}
+				if err := e.stanConn.Publish("subject", msg); err != nil {
+					log.Infof("Publish err:%v", err)
+					e.cfg.PanicAbort <- err
+				}
 			}
 		}
 	}()
@@ -224,7 +205,7 @@ func (e *Extractor) streamEvents() (err error) {
 		case *replication.GTIDEvent:
 			//log.Infof("gtid %v", ev)
 			u, _ := uuid.FromBytes(ev.SID)
-			se:=usql.NewStreamEvent(usql.Gtid,fmt.Sprintf(`SET GTID_NEXT='%s:%d'`,u.String(), ev.GNO),nil, "", false)
+			se := usql.NewStreamEvent(usql.Gtid, fmt.Sprintf(`SET GTID_NEXT='%s:%d'`, u.String(), ev.GNO), nil, "", false)
 			e.eventsChannel <- se
 		//case *replication.RotateEvent:
 		case *replication.RowsEvent:
@@ -582,6 +563,6 @@ func (e *Extractor) Shutdown() error {
 
 	close(e.eventsChannel)
 
-	e.natsConn.Close()
+	e.stanConn.Close()
 	return nil
 }

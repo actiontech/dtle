@@ -89,6 +89,7 @@ func DefaultConfig() *Config {
 				Password: "pwd",
 			},
 		},
+		PanicAbort: make(chan error),
 	}
 }
 

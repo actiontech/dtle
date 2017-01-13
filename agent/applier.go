@@ -1,14 +1,17 @@
 package agent
 
 import (
+	"bytes"
 	gosql "database/sql"
+	"encoding/gob"
 	"fmt"
 	"net"
 	"strconv"
 	"time"
 
 	gnatsd "github.com/nats-io/gnatsd/server"
-	"github.com/nats-io/go-nats"
+	stan "github.com/nats-io/go-nats-streaming"
+	stand "github.com/nats-io/nats-streaming-server/server"
 	"github.com/ngaut/log"
 	"github.com/outbrain/golib/sqlutils"
 
@@ -25,9 +28,11 @@ type Applier struct {
 	cfg         *uconf.Config
 	dbs         []*gosql.DB
 	singletonDB *gosql.DB
-	eventChans  []chan *usql.StreamEvent
+	eventChans  []chan usql.StreamEvent
 
-	natsConn *nats.Conn
+	stanConn stan.Conn
+	stanSub  stan.Subscription
+	stand    *stand.StanServer
 	gnatsd   *gnatsd.Server
 }
 
@@ -38,10 +43,10 @@ func NewApplier(cfg *uconf.Config) *Applier {
 	}
 }
 
-func newEventChans(count int) []chan *usql.StreamEvent {
-	events := make([]chan *usql.StreamEvent, 0, count)
+func newEventChans(count int) []chan usql.StreamEvent {
+	events := make([]chan usql.StreamEvent, 0, count)
 	for i := 0; i < count; i++ {
-		events = append(events, make(chan *usql.StreamEvent, 1000))
+		events = append(events, make(chan usql.StreamEvent, 1000))
 	}
 
 	return events
@@ -57,14 +62,20 @@ func (a *Applier) initiateApplier() error {
 		return err
 	}
 
+	if err := a.initNatSubClient(); err != nil {
+		return err
+	}
 	if err := a.initiateStreaming(); err != nil {
 		return err
+	}
+	for i := 0; i < a.cfg.WorkerCount; i++ {
+		go a.applyEventQuery(a.dbs[i], a.eventChans[i])
 	}
 
 	return nil
 }
 
-func (a *Applier) ApplyEventQuery(db *gosql.DB, eventChan chan *usql.StreamEvent) (err error){
+func (a *Applier) applyEventQuery(db *gosql.DB, eventChan chan usql.StreamEvent) {
 	idx := 0
 	count := a.cfg.Batch
 	sqls := make([]string, 0, count)
@@ -79,30 +90,37 @@ func (a *Applier) ApplyEventQuery(db *gosql.DB, eventChan chan *usql.StreamEvent
 			}
 			idx++
 			if event.Tp == usql.Gtid {
-				err = usql.ExecuteSQL(db, sqls, args, true)
-				if err != nil {
-					log.Infof("sql:%v,exec err :%v",sqls,err)
+				if err := usql.ExecuteSQL(db, sqls, args, true); err != nil {
+					log.Infof("sql:%v,exec err :%v", sqls, err)
 					a.cfg.PanicAbort <- err
 				}
-				idx = 0
-				sqls = sqls[0:0]
-				args = args[0:0]
-				lastSyncTime = time.Now()
-
 				if _, err := sqlutils.ExecNoPrepare(db, event.Sql); err != nil {
+					a.cfg.PanicAbort <- err
+				}
+				txn, err := db.Begin()
+				if err != nil {
+					a.cfg.PanicAbort <- err
+				}
+
+				err = txn.Commit()
+				if err != nil {
 					a.cfg.PanicAbort <- err
 				}
 				if _, err := sqlutils.ExecNoPrepare(db, `SET GTID_NEXT='AUTOMATIC'`); err != nil {
 					a.cfg.PanicAbort <- err
 				}
-			}else if event.Tp == usql.Ddl {
-				err = usql.ExecuteSQL(db, sqls, args, true)
-				if err != nil {
-					log.Infof("sql:%v，ddl err :%v",event.Sql,err)
+
+				idx = 0
+				sqls = sqls[0:0]
+				args = args[0:0]
+				lastSyncTime = time.Now()
+
+			} else if event.Tp == usql.Ddl {
+				if err := usql.ExecuteSQL(db, sqls, args, true); err != nil {
+					log.Infof("sql:%v，ddl err :%v", event.Sql, err)
 					a.cfg.PanicAbort <- err
 				}
-				err = usql.ExecuteSQL(db, []string{event.Sql}, [][]interface{}{event.Args}, false)
-				if err != nil {
+				if err := usql.ExecuteSQL(db, []string{event.Sql}, [][]interface{}{event.Args}, false); err != nil {
 					if !usql.IgnoreDDLError(err) {
 						a.cfg.PanicAbort <- err
 					} else {
@@ -120,9 +138,8 @@ func (a *Applier) ApplyEventQuery(db *gosql.DB, eventChan chan *usql.StreamEvent
 			}
 
 			if idx >= count {
-				err = usql.ExecuteSQL(db, sqls, args, true)
-				if err != nil {
-					log.Infof("sql:%v，Begin err :%v",sqls,err)
+				if err := usql.ExecuteSQL(db, sqls, args, true); err != nil {
+					log.Infof("sql:%v，Begin err :%v", sqls, err)
 					a.cfg.PanicAbort <- err
 				}
 
@@ -134,8 +151,7 @@ func (a *Applier) ApplyEventQuery(db *gosql.DB, eventChan chan *usql.StreamEvent
 		default:
 			now := time.Now()
 			if now.Sub(lastSyncTime) >= maxWaitTime {
-				err = usql.ExecuteSQL(db, sqls, args, true)
-				if err != nil {
+				if err := usql.ExecuteSQL(db, sqls, args, true); err != nil {
 					a.cfg.PanicAbort <- err
 				}
 
@@ -149,27 +165,39 @@ func (a *Applier) ApplyEventQuery(db *gosql.DB, eventChan chan *usql.StreamEvent
 		}
 	}
 }
+func (a *Applier) initNatSubClient() (err error) {
+	sc, err := stan.Connect("test-cluster", "sub1", stan.NatsURL(fmt.Sprintf("nats://%s", a.cfg.NatsAddr)))
+	if err != nil {
+		log.Fatalf("Can't connect: %v.\nMake sure a NATS Streaming Server is running at: %s", err, fmt.Sprintf("nats://%s", a.cfg.NatsAddr))
+	}
+	a.stanConn = sc
+	return nil
+}
+
+// Decode
+func Decode(data []byte, vPtr interface{}) (err error) {
+	dec := gob.NewDecoder(bytes.NewBuffer(data))
+	err = dec.Decode(vPtr)
+	return
+}
 
 // initiateStreaming begins treaming of binary log events and registers listeners for such events
 func (a *Applier) initiateStreaming() error {
-	nc, err := nats.Connect(fmt.Sprintf("nats://%s", a.cfg.NatsAddr))
-	if err != nil {
-		return err
-	}
-
-	c, _ := nats.NewEncodedConn(nc, nats.GOB_ENCODER)
-	a.natsConn = nc
-
-	if _, err := c.Subscribe("subject", func(event *usql.StreamEvent) {
+	event := usql.StreamEvent{}
+	sub, err := a.stanConn.Subscribe("subject", func(m *stan.Msg) {
+		if err := Decode(m.Data, &event); err != nil {
+			log.Infof("Subscribe err:%v", err)
+			a.cfg.PanicAbort <- err
+		}
 		idx := int(usql.GenHashKey(event.Key)) % a.cfg.WorkerCount
 		a.eventChans[idx] <- event
-	}); err != nil {
-		return err
-	}
+	})
 
-	if err := c.LastError(); err != nil {
+	if err != nil {
+		log.Errorf("Unexpected error on Subscribe, got %v", err)
 		return err
 	}
+	a.stanSub = sub
 	return nil
 }
 
@@ -180,24 +208,23 @@ func (a *Applier) setupNatsServer() error {
 		return err
 	}
 
-	opts := gnatsd.Options{
-		Host: host,
-		Port: p,
-		// MAX_PAYLOAD_SIZE is the maximum allowed payload size. Should be using
-		// something different if > 1MB payloads are needed.
-		MaxPayload: (5 * 1024 * 1024),
-		// DEFAULT_MAX_CONNECTIONS is the default maximum connections allowed.
-		MaxConn: (64 * 1024),
-		Trace:   true,
-		Debug:   true,
+	nOpts := gnatsd.Options{
+		Host:  host,
+		Port:  p,
+		Trace: true,
+		Debug: true,
 	}
-	gnats := gnatsd.New(&opts)
+	gnats := gnatsd.New(&nOpts)
 	go gnats.Start()
 	// Wait for accept loop(s) to be started
 	if !gnats.ReadyForConnections(10 * time.Second) {
 		return fmt.Errorf("Unable to start NATS Server in Go Routine")
 	}
 	a.gnatsd = gnats
+	sOpts := stand.GetDefaultOptions()
+	sOpts.NATSServerURL = fmt.Sprintf("nats://%s", a.cfg.NatsAddr)
+	s := stand.RunServerWithOpts(sOpts, nil)
+	a.stand = s
 	return nil
 }
 
@@ -242,7 +269,7 @@ func GetDBs(cfg *uconf.ConnectionConfig, count int) ([]*gosql.DB, error) {
 	return dbs, nil
 }
 
-func closeEventChans(events []chan *usql.StreamEvent) {
+func closeEventChans(events []chan usql.StreamEvent) {
 	for _, ch := range events {
 		close(ch)
 	}
@@ -253,7 +280,9 @@ func (a *Applier) Shutdown() error {
 
 	closeEventChans(a.eventChans)
 
-	a.natsConn.Close()
+	a.stanSub.Unsubscribe()
+	a.stanConn.Close()
+	a.stand.Shutdown()
 	a.gnatsd.Shutdown()
 	return nil
 }
