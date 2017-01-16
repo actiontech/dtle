@@ -13,9 +13,8 @@ import (
 	stan "github.com/nats-io/go-nats-streaming"
 	stand "github.com/nats-io/nats-streaming-server/server"
 	"github.com/ngaut/log"
-	"github.com/outbrain/golib/sqlutils"
 
-	usql "udup/agent/mysql"
+	umysql "udup/agent/mysql"
 	uconf "udup/config"
 )
 
@@ -28,7 +27,7 @@ type Applier struct {
 	cfg         *uconf.Config
 	dbs         []*gosql.DB
 	singletonDB *gosql.DB
-	eventChans  []chan usql.StreamEvent
+	eventChans  []chan umysql.StreamEvent
 
 	stanConn stan.Conn
 	stanSub  stan.Subscription
@@ -43,10 +42,10 @@ func NewApplier(cfg *uconf.Config) *Applier {
 	}
 }
 
-func newEventChans(count int) []chan usql.StreamEvent {
-	events := make([]chan usql.StreamEvent, 0, count)
+func newEventChans(count int) []chan umysql.StreamEvent {
+	events := make([]chan umysql.StreamEvent, 0, count)
 	for i := 0; i < count; i++ {
-		events = append(events, make(chan usql.StreamEvent, 1000))
+		events = append(events, make(chan umysql.StreamEvent, 1000))
 	}
 
 	return events
@@ -75,7 +74,7 @@ func (a *Applier) initiateApplier() error {
 	return nil
 }
 
-func (a *Applier) applyEventQuery(db *gosql.DB, eventChan chan usql.StreamEvent) {
+func (a *Applier) applyEventQuery(db *gosql.DB, eventChan chan umysql.StreamEvent) {
 	idx := 0
 	count := a.cfg.Batch
 	sqls := make([]string, 0, count)
@@ -89,12 +88,12 @@ func (a *Applier) applyEventQuery(db *gosql.DB, eventChan chan usql.StreamEvent)
 				return
 			}
 			idx++
-			if event.Tp == usql.Gtid {
-				if err := usql.ExecuteSQL(db, sqls, args, true); err != nil {
-					log.Infof("sql:%v,exec err :%v", sqls, err)
+
+			if event.Tp == umysql.Gtid {
+				if err := umysql.ExecuteSQL(db, sqls, args, true); err != nil {
 					a.cfg.PanicAbort <- err
 				}
-				if _, err := sqlutils.ExecNoPrepare(db, event.Sql); err != nil {
+				if _, err := umysql.ExecNoPrepare(db, event.Sql); err != nil {
 					a.cfg.PanicAbort <- err
 				}
 				txn, err := db.Begin()
@@ -106,7 +105,7 @@ func (a *Applier) applyEventQuery(db *gosql.DB, eventChan chan usql.StreamEvent)
 				if err != nil {
 					a.cfg.PanicAbort <- err
 				}
-				if _, err := sqlutils.ExecNoPrepare(db, `SET GTID_NEXT='AUTOMATIC'`); err != nil {
+				if _, err := umysql.ExecNoPrepare(db, `SET GTID_NEXT='AUTOMATIC'`); err != nil {
 					a.cfg.PanicAbort <- err
 				}
 
@@ -115,13 +114,12 @@ func (a *Applier) applyEventQuery(db *gosql.DB, eventChan chan usql.StreamEvent)
 				args = args[0:0]
 				lastSyncTime = time.Now()
 
-			} else if event.Tp == usql.Ddl {
-				if err := usql.ExecuteSQL(db, sqls, args, true); err != nil {
-					log.Infof("sql:%v，ddl err :%v", event.Sql, err)
+			} else if event.Tp == umysql.Ddl {
+				if err := umysql.ExecuteSQL(db, sqls, args, true); err != nil {
 					a.cfg.PanicAbort <- err
 				}
-				if err := usql.ExecuteSQL(db, []string{event.Sql}, [][]interface{}{event.Args}, false); err != nil {
-					if !usql.IgnoreDDLError(err) {
+				if err := umysql.ExecuteSQL(db, []string{event.Sql}, [][]interface{}{event.Args}, false); err != nil {
+					if !umysql.IgnoreDDLError(err) {
 						a.cfg.PanicAbort <- err
 					} else {
 						log.Warnf("ignore ddl error :%v", err)
@@ -138,8 +136,7 @@ func (a *Applier) applyEventQuery(db *gosql.DB, eventChan chan usql.StreamEvent)
 			}
 
 			if idx >= count {
-				if err := usql.ExecuteSQL(db, sqls, args, true); err != nil {
-					log.Infof("sql:%v，Begin err :%v", sqls, err)
+				if err := umysql.ExecuteSQL(db, sqls, args, true); err != nil {
 					a.cfg.PanicAbort <- err
 				}
 
@@ -151,7 +148,7 @@ func (a *Applier) applyEventQuery(db *gosql.DB, eventChan chan usql.StreamEvent)
 		default:
 			now := time.Now()
 			if now.Sub(lastSyncTime) >= maxWaitTime {
-				if err := usql.ExecuteSQL(db, sqls, args, true); err != nil {
+				if err := umysql.ExecuteSQL(db, sqls, args, true); err != nil {
 					a.cfg.PanicAbort <- err
 				}
 
@@ -183,13 +180,13 @@ func Decode(data []byte, vPtr interface{}) (err error) {
 
 // initiateStreaming begins treaming of binary log events and registers listeners for such events
 func (a *Applier) initiateStreaming() error {
-	event := usql.StreamEvent{}
 	sub, err := a.stanConn.Subscribe("subject", func(m *stan.Msg) {
+		event := umysql.StreamEvent{}
 		if err := Decode(m.Data, &event); err != nil {
 			log.Infof("Subscribe err:%v", err)
 			a.cfg.PanicAbort <- err
 		}
-		idx := int(usql.GenHashKey(event.Key)) % a.cfg.WorkerCount
+		idx := int(umysql.GenHashKey(event.Key)) % a.cfg.WorkerCount
 		a.eventChans[idx] <- event
 	})
 
@@ -229,7 +226,7 @@ func (a *Applier) setupNatsServer() error {
 }
 
 func (a *Applier) initDBConnections() (err error) {
-	if a.singletonDB, _, err = sqlutils.GetDB(a.cfg.Apply.ConnCfg.GetDBUri()); err != nil {
+	if a.singletonDB, _, err = umysql.GetDB(a.cfg.Apply.ConnCfg.GetDBUri()); err != nil {
 		return err
 	}
 	a.singletonDB.SetMaxOpenConns(1)
@@ -258,7 +255,7 @@ func (a *Applier) mysqlGTIDMode() error {
 func GetDBs(cfg *uconf.ConnectionConfig, count int) ([]*gosql.DB, error) {
 	dbs := make([]*gosql.DB, 0, count)
 	for i := 0; i < count; i++ {
-		db, _, err := sqlutils.GetDB(cfg.GetDBUri())
+		db, _, err := umysql.GetDB(cfg.GetDBUri())
 		if err != nil {
 			return nil, err
 		}
@@ -269,14 +266,14 @@ func GetDBs(cfg *uconf.ConnectionConfig, count int) ([]*gosql.DB, error) {
 	return dbs, nil
 }
 
-func closeEventChans(events []chan usql.StreamEvent) {
+func closeEventChans(events []chan umysql.StreamEvent) {
 	for _, ch := range events {
 		close(ch)
 	}
 }
 
 func (a *Applier) Shutdown() error {
-	usql.CloseDBs(a.dbs...)
+	umysql.CloseDBs(a.dbs...)
 
 	closeEventChans(a.eventChans)
 

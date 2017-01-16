@@ -11,27 +11,26 @@ import (
 
 	stan "github.com/nats-io/go-nats-streaming"
 	"github.com/ngaut/log"
-	"github.com/outbrain/golib/sqlutils"
 	"github.com/satori/go.uuid"
 	gomysql "github.com/siddontang/go-mysql/mysql"
 	"github.com/siddontang/go-mysql/replication"
 	"golang.org/x/net/context"
 
-	usql "udup/agent/mysql"
+	umysql "udup/agent/mysql"
 	uconf "udup/config"
 )
 
 const (
-	EventsChannelBufferSize = 1
+	EventsChannelBufferSize = 10000
 )
 
 type Extractor struct {
 	cfg            *uconf.Config
 	binlogSyncer   *replication.BinlogSyncer
 	binlogStreamer *replication.BinlogStreamer
-	tables         map[string]*usql.Table
+	tables         map[string]*umysql.Table
 	db             *sql.DB
-	eventsChannel  chan *usql.StreamEvent
+	eventsChannel  chan *umysql.StreamEvent
 	reMap          map[string]*regexp.Regexp
 
 	stanConn stan.Conn
@@ -40,8 +39,8 @@ type Extractor struct {
 func NewExtractor(cfg *uconf.Config) *Extractor {
 	return &Extractor{
 		cfg:           cfg,
-		tables:        make(map[string]*usql.Table),
-		eventsChannel: make(chan *usql.StreamEvent, EventsChannelBufferSize),
+		tables:        make(map[string]*umysql.Table),
+		eventsChannel: make(chan *umysql.StreamEvent, EventsChannelBufferSize),
 		reMap:         make(map[string]*regexp.Regexp),
 	}
 }
@@ -68,7 +67,7 @@ func (e *Extractor) initiateExtractor() error {
 }
 
 func (e *Extractor) initDBConnections() (err error) {
-	if e.db, _, err = sqlutils.GetDB(e.cfg.Extract.ConnCfg.GetDBUri()); err != nil {
+	if e.db, err = sql.Open("mysql", e.cfg.Extract.ConnCfg.GetDBUri()); err != nil {
 		return err
 	}
 	if err = e.mysqlGTIDMode(); err != nil {
@@ -94,10 +93,10 @@ func (e *Extractor) mysqlGTIDMode() error {
 	return nil
 }
 
-func (e *Extractor) masterStatus() (rowMap sqlutils.RowMap) {
+func (e *Extractor) masterStatus() (rowMap umysql.RowMap) {
 	rowMap = nil
 	query := `SHOW MASTER STATUS`
-	sqlutils.QueryRowsMap(e.db, query, func(m sqlutils.RowMap) error {
+	umysql.QueryRowsMap(e.db, query, func(m umysql.RowMap) error {
 		rowMap = m
 		return nil
 	})
@@ -178,9 +177,9 @@ func (e *Extractor) streamEvents() (err error) {
 		}
 	}()
 
-	rowMap := e.masterStatus()
+	rowMap:= e.masterStatus()
 	if rowMap == nil {
-		return fmt.Errorf("Got no results from SHOW MASTER STATUS. Bailing out")
+		return fmt.Errorf("Got no results from SHOW MASTER STATUS. Bailing out.")
 	}
 
 	// the mysql GTID set likes this "de278ad0-2106-11e4-9f8e-6edd0ca20947:1-2"
@@ -205,11 +204,11 @@ func (e *Extractor) streamEvents() (err error) {
 		case *replication.GTIDEvent:
 			//log.Infof("gtid %v", ev)
 			u, _ := uuid.FromBytes(ev.SID)
-			se := usql.NewStreamEvent(usql.Gtid, fmt.Sprintf(`SET GTID_NEXT='%s:%d'`, u.String(), ev.GNO), nil, "", false)
+			se := umysql.NewStreamEvent(umysql.Gtid, fmt.Sprintf(`SET GTID_NEXT='%s:%d'`, u.String(), ev.GNO), nil, "", false)
 			e.eventsChannel <- se
 		//case *replication.RotateEvent:
 		case *replication.RowsEvent:
-			table := &usql.Table{}
+			table := &umysql.Table{}
 			if e.skipRowEvent(string(ev.Table.Schema), string(ev.Table.Table)) {
 				log.Warnf("skip RowsEvent with db:%s table:%s", ev.Table.Schema, ev.Table.Table)
 				continue
@@ -225,33 +224,33 @@ func (e *Extractor) streamEvents() (err error) {
 			)
 			switch event.Header.EventType {
 			case replication.WRITE_ROWS_EVENTv0, replication.WRITE_ROWS_EVENTv1, replication.WRITE_ROWS_EVENTv2:
-				sqls, keys, args, err = usql.BuildDMLInsertQuery(table.Schema, table.Name, ev.Rows, table.Columns, table.IndexColumns)
+				sqls, keys, args, err = umysql.BuildDMLInsertQuery(table.Schema, table.Name, ev.Rows, table.Columns, table.IndexColumns)
 				if err != nil {
 					return fmt.Errorf("build insert query failed: %v, schema: %s, table: %s", err, table.Schema, table.Name)
 				}
 
 				for i := range sqls {
-					se := usql.NewStreamEvent(usql.Insert, sqls[i], args[i], keys[i], true)
+					se := umysql.NewStreamEvent(umysql.Insert, sqls[i], args[i], keys[i], true)
 					e.eventsChannel <- se
 				}
 			case replication.UPDATE_ROWS_EVENTv0, replication.UPDATE_ROWS_EVENTv1, replication.UPDATE_ROWS_EVENTv2:
-				sqls, keys, args, err = usql.BuildDMLUpdateQuery(table.Schema, table.Name, ev.Rows, table.Columns, table.IndexColumns)
+				sqls, keys, args, err = umysql.BuildDMLUpdateQuery(table.Schema, table.Name, ev.Rows, table.Columns, table.IndexColumns)
 				if err != nil {
 					return fmt.Errorf("build update query failed: %v, schema: %s, table: %s", err, table.Schema, table.Name)
 				}
 
 				for i := range sqls {
-					se := usql.NewStreamEvent(usql.Update, sqls[i], args[i], keys[i], true)
+					se := umysql.NewStreamEvent(umysql.Update, sqls[i], args[i], keys[i], true)
 					e.eventsChannel <- se
 				}
 			case replication.DELETE_ROWS_EVENTv0, replication.DELETE_ROWS_EVENTv1, replication.DELETE_ROWS_EVENTv2:
-				sqls, keys, args, err = usql.BuildDMLDeleteQuery(table.Schema, table.Name, ev.Rows, table.Columns, table.IndexColumns)
+				sqls, keys, args, err = umysql.BuildDMLDeleteQuery(table.Schema, table.Name, ev.Rows, table.Columns, table.IndexColumns)
 				if err != nil {
 					return fmt.Errorf("build delete query failed: %v, schema: %s, table: %s", err, table.Schema, table.Name)
 				}
 
 				for i := range sqls {
-					se := usql.NewStreamEvent(usql.Del, sqls[i], args[i], keys[i], true)
+					se := umysql.NewStreamEvent(umysql.Del, sqls[i], args[i], keys[i], true)
 					e.eventsChannel <- se
 				}
 			}
@@ -262,10 +261,11 @@ func (e *Extractor) streamEvents() (err error) {
 				continue
 			}
 
-			sqls, ok, err := usql.ResolveDDLSQL(sql)
+			sqls, ok, err := umysql.ResolveDDLSQL(sql)
 			if err != nil {
 				return fmt.Errorf("parse query event failed: %v", err)
 			}
+
 			if !ok {
 				continue
 			}
@@ -276,12 +276,12 @@ func (e *Extractor) streamEvents() (err error) {
 					continue
 				}
 
-				sql, err = usql.GenDDLSQL(sql, string(ev.Schema))
+				sql, err = umysql.GenDDLSQL(sql, string(ev.Schema))
 				if err != nil {
-					return err
+					return fmt.Errorf("gen event failed: %v", err)
 				}
 
-				se := usql.NewStreamEvent(usql.Ddl, sql, nil, "", false)
+				se := umysql.NewStreamEvent(umysql.Ddl, sql, nil, "", false)
 				e.eventsChannel <- se
 
 				e.clearTables()
@@ -292,11 +292,11 @@ func (e *Extractor) streamEvents() (err error) {
 }
 
 func (e *Extractor) clearTables() {
-	e.tables = make(map[string]*usql.Table)
+	e.tables = make(map[string]*umysql.Table)
 }
 
-func (e *Extractor) getTableFromDB(db *sql.DB, schema string, name string) (*usql.Table, error) {
-	table := &usql.Table{}
+func (e *Extractor) getTableFromDB(db *sql.DB, schema string, name string) (*umysql.Table, error) {
+	table := &umysql.Table{}
 	table.Schema = schema
 	table.Name = name
 
@@ -317,13 +317,13 @@ func (e *Extractor) getTableFromDB(db *sql.DB, schema string, name string) (*usq
 	return table, nil
 }
 
-func (e *Extractor) getTableColumns(db *sql.DB, table *usql.Table) error {
+func (e *Extractor) getTableColumns(db *sql.DB, table *umysql.Table) error {
 	if table.Schema == "" || table.Name == "" {
 		return fmt.Errorf("schema/table is empty")
 	}
 
 	query := fmt.Sprintf("show columns from %s.%s", table.Schema, table.Name)
-	rows, err := usql.QuerySQL(db, query)
+	rows, err := umysql.QuerySQL(db, query)
 	if err != nil {
 		return err
 	}
@@ -348,7 +348,7 @@ func (e *Extractor) getTableColumns(db *sql.DB, table *usql.Table) error {
 			return err
 		}
 
-		column := &usql.Column{}
+		column := &umysql.Column{}
 		column.Idx = idx
 		column.Name = string(datas[0])
 
@@ -368,13 +368,13 @@ func (e *Extractor) getTableColumns(db *sql.DB, table *usql.Table) error {
 	return nil
 }
 
-func (e *Extractor) getTableIndex(db *sql.DB, table *usql.Table) error {
+func (e *Extractor) getTableIndex(db *sql.DB, table *umysql.Table) error {
 	if table.Schema == "" || table.Name == "" {
 		return fmt.Errorf("schema/table is empty")
 	}
 
 	query := fmt.Sprintf("show index from %s.%s", table.Schema, table.Name)
-	rows, err := usql.QuerySQL(db, query)
+	rows, err := umysql.QuerySQL(db, query)
 	if err != nil {
 		return err
 	}
@@ -418,11 +418,11 @@ func (e *Extractor) getTableIndex(db *sql.DB, table *usql.Table) error {
 		return rows.Err()
 	}
 
-	table.IndexColumns = usql.FindColumns(table.Columns, columns)
+	table.IndexColumns = umysql.FindColumns(table.Columns, columns)
 	return nil
 }
 
-func (e *Extractor) getTable(schema string, table string) (*usql.Table, error) {
+func (e *Extractor) getTable(schema string, table string) (*umysql.Table, error) {
 	key := fmt.Sprintf("%s.%s", schema, table)
 
 	value, ok := e.tables[key]
@@ -514,11 +514,15 @@ func (e *Extractor) skipRowEvent(schema string, table string) bool {
 func (e *Extractor) skipQueryEvent(sql string, schema string) bool {
 	sql = strings.ToUpper(sql)
 
-	if strings.HasPrefix(sql, "CREATE USER") {
+	if strings.HasPrefix(sql, "GRANT REPLICATION SLAVE ON") {
 		return true
 	}
 
-	if strings.HasPrefix(sql, "GRANT REPLICATION SLAVE ON") {
+	if strings.HasPrefix(sql, "BEGIN") {
+		return true
+	}
+
+	if strings.HasPrefix(sql, "COMMIT") {
 		return true
 	}
 
@@ -530,7 +534,7 @@ func (e *Extractor) skipQueryEvent(sql string, schema string) bool {
 }
 
 func (e *Extractor) skipQueryDDL(sql string, schema string) bool {
-	tb, err := usql.ParserDDLTableName(sql)
+	tb, err := umysql.ParserDDLTableName(sql)
 	if err != nil {
 		log.Warnf("[get table failure]:%s %s", sql, err)
 	}
@@ -554,12 +558,9 @@ func (e *Extractor) skipQueryDDL(sql string, schema string) bool {
 }
 
 func (e *Extractor) Shutdown() error {
-	usql.CloseDBs(e.db)
+	umysql.CloseDBs(e.db)
 
-	if e.binlogSyncer != nil {
-		e.binlogSyncer.Close()
-		e.binlogSyncer = nil
-	}
+	e.binlogSyncer.Close()
 
 	close(e.eventsChannel)
 

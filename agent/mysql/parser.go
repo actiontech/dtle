@@ -1,7 +1,6 @@
 package mysql
 
 import (
-	"database/sql"
 	"fmt"
 	"hash/crc32"
 	"reflect"
@@ -10,11 +9,10 @@ import (
 	"time"
 
 	"github.com/go-sql-driver/mysql"
-	"github.com/ngaut/log"
 	"github.com/pingcap/tidb/ast"
 	"github.com/pingcap/tidb/parser"
 
-	"udup/config"
+	uconf "udup/config"
 )
 
 var (
@@ -349,16 +347,6 @@ func IgnoreDDLError(err error) bool {
 	}
 }
 
-func isDDLSQL(sql string) (bool, error) {
-	stmt, err := parser.New().ParseOneStmt(sql, "", "")
-	if err != nil {
-		return false, fmt.Errorf("[sql]%s[error]%v", sql, err)
-	}
-
-	_, isDDL := stmt.(ast.DDLNode)
-	return isDDL, nil
-}
-
 // resolveDDLSQL resolve to one ddl sql
 // example: drop table test.a,test2.b -> drop table test.a; drop table test2.b;
 func ResolveDDLSQL(sql string) (sqls []string, ok bool, err error) {
@@ -367,11 +355,11 @@ func ResolveDDLSQL(sql string) (sqls []string, ok bool, err error) {
 		return nil, false, err
 	}
 
-	_, isDDL := stmt.(ast.DDLNode)
+	/*_, isDDL := stmt.(ast.DDLNode)
 	if !isDDL {
 		sqls = append(sqls, sql)
 		return
-	}
+	}*/
 
 	switch v := stmt.(type) {
 	case *ast.DropTableStmt:
@@ -410,18 +398,18 @@ func GenDDLSQL(sql string, schema string) (string, error) {
 	return fmt.Sprintf("use %s; %s;", schema, sql), nil
 }
 
-func genTableName(schema string, table string) config.TableName {
-	return config.TableName{Schema: schema, Name: table}
+func genTableName(schema string, table string) uconf.TableName {
+	return uconf.TableName{Schema: schema, Name: table}
 
 }
 
-func ParserDDLTableName(sql string) (config.TableName, error) {
+func ParserDDLTableName(sql string) (uconf.TableName, error) {
 	stmt, err := parser.New().ParseOneStmt(sql, "", "")
 	if err != nil {
-		return config.TableName{}, err
+		return uconf.TableName{}, err
 	}
 
-	var res config.TableName
+	var res uconf.TableName
 	switch v := stmt.(type) {
 	case *ast.CreateDatabaseStmt:
 		res = genTableName(v.Name, "")
@@ -437,6 +425,10 @@ func ParserDDLTableName(sql string) (config.TableName, error) {
 		res = genTableName(v.Table.Schema.O, v.Table.Name.L)
 	case *ast.AlterTableStmt:
 		res = genTableName(v.Table.Schema.O, v.Table.Name.L)
+	case *ast.CreateUserStmt:
+		res = genTableName("mysql", "user")
+	case *ast.GrantStmt:
+		res = genTableName("mysql", "user")
 	case *ast.DropTableStmt:
 		if len(v.Tables) != 1 {
 			return res, fmt.Errorf("may resovle DDL sql failed")
@@ -447,113 +439,4 @@ func ParserDDLTableName(sql string) (config.TableName, error) {
 	}
 
 	return res, nil
-}
-
-func QuerySQL(db *sql.DB, query string) (*sql.Rows, error) {
-	var (
-		err  error
-		rows *sql.Rows
-	)
-
-	for i := 0; i < maxRetryCount; i++ {
-		if i > 0 {
-			log.Warnf("query sql retry %d - %s", i, query)
-			time.Sleep(retryTimeout)
-		}
-
-		rows, err = db.Query(query)
-		if err != nil {
-			continue
-		}
-
-		return rows, nil
-	}
-
-	if err != nil {
-		return nil, err
-	}
-
-	return nil, err
-}
-
-func ExecuteSQL(db *sql.DB, sqls []string, args [][]interface{}, retry bool) error {
-	if len(sqls) == 0 {
-		return nil
-	}
-
-	var (
-		err error
-		txn *sql.Tx
-	)
-
-	retryCount := 1
-	if retry {
-		retryCount = maxRetryCount
-	}
-
-LOOP:
-	for i := 0; i < retryCount; i++ {
-		if i > 0 {
-			log.Warnf("exec sql retry %d - %v - %v", i, sqls, args)
-			time.Sleep(retryTimeout)
-		}
-
-		txn, err = db.Begin()
-		if err != nil {
-			continue
-		}
-
-		for i := range sqls {
-			_, err = txn.Exec(sqls[i], args[i]...)
-			if err != nil {
-				continue LOOP
-			}
-		}
-
-		err = txn.Commit()
-		if err != nil {
-			continue
-		}
-
-		return nil
-	}
-
-	if err != nil {
-		return err
-	}
-
-	return err
-}
-
-func closeDB(db *sql.DB) error {
-	if db == nil {
-		return nil
-	}
-
-	err := db.Close()
-	if err != nil {
-		log.Errorf("close db failed - %v", err)
-		return err
-	}
-
-	return nil
-}
-
-func CloseDBs(dbs ...*sql.DB) {
-	for _, db := range dbs {
-		err := closeDB(db)
-		if err != nil {
-			log.Errorf("close db failed - %v", err)
-		}
-	}
-}
-
-// EscapeName will escape a db/table/column/... name by wrapping with backticks.
-// It is not fool proof. I'm just trying to do the right thing here, not solving
-// SQL injection issues, which should be irrelevant for this tool.
-func EscapeName(name string) string {
-	if unquoted, err := strconv.Unquote(name); err == nil {
-		name = unquoted
-	}
-	return fmt.Sprintf("`%s`", name)
 }

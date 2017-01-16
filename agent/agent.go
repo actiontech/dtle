@@ -81,8 +81,8 @@ func (a *Agent) setupExtract() error {
 // listenOnPanicAbort aborts on abort request
 func (a *Agent) listenOnPanicAbort() {
 	err := <-a.config.PanicAbort
-	a.Shutdown()
 	log.Errorf("agent run failed: %v", err)
+	a.Shutdown()
 }
 
 // Shutdown is used to terminate the agent.
