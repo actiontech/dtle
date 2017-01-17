@@ -83,7 +83,7 @@ func (e *Extractor) initiateExtractor() error {
 }
 
 func (e *Extractor) initDBConnections() (err error) {
-	if e.db, err = sql.Open("mysql", e.cfg.Extract.ConnCfg.GetDBUri()); err != nil {
+	if e.db, err = umysql.CreateDB(e.cfg.Extract.ConnCfg); err != nil {
 		return err
 	}
 	if err = e.mysqlGTIDMode(); err != nil {

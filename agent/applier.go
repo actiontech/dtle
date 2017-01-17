@@ -219,6 +219,10 @@ func (a *Applier) setupNatsServer() error {
 	}
 	a.gnatsd = gnats
 	sOpts := stand.GetDefaultOptions()
+	if a.cfg.Apply.StoreType == "FILE" {
+		sOpts.StoreType = a.cfg.Apply.StoreType
+		sOpts.FilestoreDir = a.cfg.Apply.FilestoreDir
+	}
 	sOpts.NATSServerURL = fmt.Sprintf("nats://%s", a.cfg.Apply.NatsAddr)
 	s := stand.RunServerWithOpts(sOpts, nil)
 	a.stand = s
@@ -226,7 +230,7 @@ func (a *Applier) setupNatsServer() error {
 }
 
 func (a *Applier) initDBConnections() (err error) {
-	if a.singletonDB, _, err = umysql.GetDB(a.cfg.Apply.ConnCfg.GetDBUri()); err != nil {
+	if a.singletonDB, err = umysql.CreateDB(a.cfg.Apply.ConnCfg); err != nil {
 		return err
 	}
 	a.singletonDB.SetMaxOpenConns(1)
@@ -234,7 +238,7 @@ func (a *Applier) initDBConnections() (err error) {
 		return err
 	}
 
-	if a.dbs, err = GetDBs(a.cfg.Apply.ConnCfg, a.cfg.Apply.WorkerCount+1); err != nil {
+	if a.dbs, err = umysql.CreateDBs(a.cfg.Apply.ConnCfg, a.cfg.Apply.WorkerCount+1); err != nil {
 		return err
 	}
 	return nil
@@ -250,20 +254,6 @@ func (a *Applier) mysqlGTIDMode() error {
 		return fmt.Errorf("must have GTID enabled: %+v", gtidMode)
 	}
 	return nil
-}
-
-func GetDBs(cfg *uconf.ConnectionConfig, count int) ([]*gosql.DB, error) {
-	dbs := make([]*gosql.DB, 0, count)
-	for i := 0; i < count; i++ {
-		db, _, err := umysql.GetDB(cfg.GetDBUri())
-		if err != nil {
-			return nil, err
-		}
-
-		dbs = append(dbs, db)
-	}
-
-	return dbs, nil
 }
 
 func closeEventChans(events []chan umysql.StreamEvent) {

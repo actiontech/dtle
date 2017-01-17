@@ -184,6 +184,8 @@ func parseApplier(result **ApplierConfig, list *ast.ObjectList) error {
 	valid := []string{
 		"enabled",
 		"nats_addr",
+		"nats_store_type",
+		"nats_file_store_dir",
 		"worker_count",
 		"batch",
 		"conn_cfg",

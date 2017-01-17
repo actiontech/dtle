@@ -6,18 +6,12 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/go-sql-driver/mysql"
 	"github.com/pingcap/tidb/ast"
 	"github.com/pingcap/tidb/parser"
 
 	uconf "udup/config"
-)
-
-var (
-	maxRetryCount = 2
-	retryTimeout  = 3 * time.Second
 )
 
 type OpType byte

@@ -31,4 +31,9 @@ import:
   subpackages:
   - mysql
   - replication
-- package: golang.org/x/net/context
+- package: golang.org/x/net
+  subpackages:
+  - context
+- package: github.com/cznic/golex
+  subpackages:
+  - lex

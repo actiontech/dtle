@@ -35,11 +35,13 @@ type ExtractorConfig struct {
 
 type ApplierConfig struct {
 	// Enabled controls if we are a Apply
-	Enabled     bool              `mapstructure:"enabled"`
-	NatsAddr    string            `mapstructure:"nats_addr"`
-	WorkerCount int               `mapstructure:"worker_count"`
-	Batch       int               `mapstructure:"batch"`
-	ConnCfg     *ConnectionConfig `mapstructure:"conn_cfg"`
+	Enabled      bool              `mapstructure:"enabled"`
+	NatsAddr     string            `mapstructure:"nats_addr"`
+	StoreType    string            `mapstructure:"nats_store_type"`
+	FilestoreDir string            `mapstructure:"nats_file_store_dir"`
+	WorkerCount  int               `mapstructure:"worker_count"`
+	Batch        int               `mapstructure:"batch"`
+	ConnCfg      *ConnectionConfig `mapstructure:"conn_cfg"`
 }
 
 // ConnectionConfig is the DB configuration.
@@ -51,10 +53,6 @@ type ConnectionConfig struct {
 	Password string `mapstructure:"password"`
 
 	Port int `mapstructure:"port"`
-}
-
-func (c *ConnectionConfig) GetDBUri() string {
-	return fmt.Sprintf("%s:%s@tcp(%s:%d)/?charset=utf8mb4,utf8,latin1&multiStatements=true", c.User, c.Password, c.Host, c.Port)
 }
 
 // TableName is the table configuration
@@ -149,7 +147,6 @@ func (a *ExtractorConfig) Merge(b *ExtractorConfig) *ExtractorConfig {
 	if b.Enabled {
 		result.Enabled = true
 	}
-
 	if b.NatsAddr != "" {
 		result.NatsAddr = b.NatsAddr
 	}
@@ -175,9 +172,16 @@ func (a *ApplierConfig) Merge(b *ApplierConfig) *ApplierConfig {
 	if b.Enabled {
 		result.Enabled = true
 	}
-
 	if b.NatsAddr != "" {
 		result.NatsAddr = b.NatsAddr
+	}
+
+	if b.StoreType != "" {
+		result.StoreType = b.StoreType
+	}
+
+	if b.FilestoreDir != "" {
+		result.FilestoreDir = b.FilestoreDir
 	}
 
 	if b.WorkerCount != 0 {
@@ -187,7 +191,6 @@ func (a *ApplierConfig) Merge(b *ApplierConfig) *ApplierConfig {
 	if b.Batch != 0 {
 		result.Batch = b.Batch
 	}
-
 	if result.ConnCfg == nil && b.ConnCfg != nil {
 		cfg := *b.ConnCfg
 		result.ConnCfg = &cfg

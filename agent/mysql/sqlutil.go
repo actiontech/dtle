@@ -6,6 +6,13 @@ import (
 	"github.com/ngaut/log"
 	"sync"
 	"time"
+
+	uconf "udup/config"
+)
+
+var (
+	maxRetryCount = 10
+	retryTimeout  = 3 * time.Second
 )
 
 // RowMap represents one row in a result set. Its objective is to allow
@@ -218,6 +225,30 @@ func closeDB(db *sql.DB) error {
 	}
 
 	return nil
+}
+
+func CreateDB(cfg *uconf.ConnectionConfig) (*sql.DB, error) {
+	dbDSN := fmt.Sprintf("%s:%s@tcp(%s:%d)/?charset=utf8mb4,utf8,latin1&multiStatements=true", cfg.User, cfg.Password, cfg.Host, cfg.Port)
+	db, err := sql.Open("mysql", dbDSN)
+	if err != nil {
+		return nil, err
+	}
+
+	return db, nil
+}
+
+func CreateDBs(cfg *uconf.ConnectionConfig, count int) ([]*sql.DB, error) {
+	dbs := make([]*sql.DB, 0, count)
+	for i := 0; i < count; i++ {
+		db, err := CreateDB(cfg)
+		if err != nil {
+			return nil, err
+		}
+
+		dbs = append(dbs, db)
+	}
+
+	return dbs, nil
 }
 
 func CloseDBs(dbs ...*sql.DB) {
