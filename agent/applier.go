@@ -38,7 +38,7 @@ type Applier struct {
 func NewApplier(cfg *uconf.Config) *Applier {
 	return &Applier{
 		cfg:        cfg,
-		eventChans: newEventChans(cfg.WorkerCount),
+		eventChans: newEventChans(cfg.Apply.WorkerCount),
 	}
 }
 
@@ -67,7 +67,7 @@ func (a *Applier) initiateApplier() error {
 	if err := a.initiateStreaming(); err != nil {
 		return err
 	}
-	for i := 0; i < a.cfg.WorkerCount; i++ {
+	for i := 0; i < a.cfg.Apply.WorkerCount; i++ {
 		go a.applyEventQuery(a.dbs[i], a.eventChans[i])
 	}
 
@@ -76,7 +76,7 @@ func (a *Applier) initiateApplier() error {
 
 func (a *Applier) applyEventQuery(db *gosql.DB, eventChan chan umysql.StreamEvent) {
 	idx := 0
-	count := a.cfg.Batch
+	count := a.cfg.Apply.Batch
 	sqls := make([]string, 0, count)
 	args := make([][]interface{}, 0, count)
 	lastSyncTime := time.Now()
@@ -163,9 +163,9 @@ func (a *Applier) applyEventQuery(db *gosql.DB, eventChan chan umysql.StreamEven
 	}
 }
 func (a *Applier) initNatSubClient() (err error) {
-	sc, err := stan.Connect("test-cluster", "sub1", stan.NatsURL(fmt.Sprintf("nats://%s", a.cfg.NatsAddr)))
+	sc, err := stan.Connect("test-cluster", "sub1", stan.NatsURL(fmt.Sprintf("nats://%s", a.cfg.Apply.NatsAddr)))
 	if err != nil {
-		log.Fatalf("Can't connect: %v.\nMake sure a NATS Streaming Server is running at: %s", err, fmt.Sprintf("nats://%s", a.cfg.NatsAddr))
+		log.Fatalf("Can't connect: %v.\nMake sure a NATS Streaming Server is running at: %s", err, fmt.Sprintf("nats://%s", a.cfg.Apply.NatsAddr))
 	}
 	a.stanConn = sc
 	return nil
@@ -186,7 +186,7 @@ func (a *Applier) initiateStreaming() error {
 			log.Infof("Subscribe err:%v", err)
 			a.cfg.PanicAbort <- err
 		}
-		idx := int(umysql.GenHashKey(event.Key)) % a.cfg.WorkerCount
+		idx := int(umysql.GenHashKey(event.Key)) % a.cfg.Apply.WorkerCount
 		a.eventChans[idx] <- event
 	})
 
@@ -199,7 +199,7 @@ func (a *Applier) initiateStreaming() error {
 }
 
 func (a *Applier) setupNatsServer() error {
-	host, port, err := net.SplitHostPort(a.cfg.NatsAddr)
+	host, port, err := net.SplitHostPort(a.cfg.Apply.NatsAddr)
 	p, err := strconv.Atoi(port)
 	if err != nil {
 		return err
@@ -219,7 +219,7 @@ func (a *Applier) setupNatsServer() error {
 	}
 	a.gnatsd = gnats
 	sOpts := stand.GetDefaultOptions()
-	sOpts.NATSServerURL = fmt.Sprintf("nats://%s", a.cfg.NatsAddr)
+	sOpts.NATSServerURL = fmt.Sprintf("nats://%s", a.cfg.Apply.NatsAddr)
 	s := stand.RunServerWithOpts(sOpts, nil)
 	a.stand = s
 	return nil
@@ -234,7 +234,7 @@ func (a *Applier) initDBConnections() (err error) {
 		return err
 	}
 
-	if a.dbs, err = GetDBs(a.cfg.Apply.ConnCfg, a.cfg.WorkerCount+1); err != nil {
+	if a.dbs, err = GetDBs(a.cfg.Apply.ConnCfg, a.cfg.Apply.WorkerCount+1); err != nil {
 		return err
 	}
 	return nil

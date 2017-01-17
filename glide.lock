@@ -1,10 +1,26 @@
-hash: 7f45103c7be9c6e02dea862d09b9f3630f9555c639fe3de6fdbd5a31cac7dfec
-updated: 2017-01-13T03:01:36.564690932Z
+hash: 85f34e53298bf8d34f40d9e5426baf3d9b80e4e0f1a220305c113e7e992fb57a
+updated: 2017-01-17T03:00:46.738070687Z
 imports:
 - name: github.com/armon/go-radix
   version: 4239b77079c7b5d1243b7b4736304ce8ddb6f0f2
 - name: github.com/bgentry/speakeasy
   version: 675b82c74c0ed12283ee81ba8a534c8982c07b85
+- name: github.com/cznic/golex
+  version: da5a7153a51074477ecac5c45a7e5182a0c72448
+  subpackages:
+  - lex
+- name: github.com/cznic/mathutil
+  version: 78ad7f262603437f0ecfebc835d80094f89c8f54
+- name: github.com/cznic/parser
+  version: 31edd927e5b19d1c4a260c41a397e7f81d6694d9
+  subpackages:
+  - yacc
+- name: github.com/cznic/sortutil
+  version: 4c7342852e65c2088c981288f2c5610d10b9f7f4
+- name: github.com/cznic/strutil
+  version: 1eb03e3cc9d345307a45ec82bd3016cde4bd4464
+- name: github.com/cznic/y
+  version: 938f8e85fcdf318917f03ea45c1f69f16037cd0d
 - name: github.com/go-sql-driver/mysql
   version: a0583e0143b1624142adab07e0e97fe106d99561
 - name: github.com/gogo/protobuf
@@ -51,18 +67,15 @@ imports:
   - util
 - name: github.com/nats-io/go-nats
   version: 6b6bf392d34d01f57cc563ae123f00c13778bd57
-- name: github.com/nats-io/go-nats-streaming
-  version: 6e620057a207bd61e992c1c5b6a2de7b6a4cb010
-  repo: https://github.com/nats-io/go-nats-streaming
-  subpackages:
-  - pb
-- name: github.com/nats-io/nats
-  version: d3ba8c5599d8b24448dfc251ab7b1f7f4c8d3d9d
   subpackages:
   - encoders/builtin
   - util
+- name: github.com/nats-io/go-nats-streaming
+  version: 6e620057a207bd61e992c1c5b6a2de7b6a4cb010
+  subpackages:
+  - pb
 - name: github.com/nats-io/nats-streaming-server
-  version: c056cc001c167576f8e2818e7e1617e35e9bd285
+  version: 5fb065505f4ee0f7faf695c3318aec486077bbd1
   subpackages:
   - server
   - spb
@@ -73,11 +86,6 @@ imports:
   repo: https://github.com/nats-io/nuid
 - name: github.com/ngaut/log
   version: cec23d3e10b016363780d894a0eb732a12c06e02
-- name: github.com/outbrain/golib
-  version: 2418949ac30d9933e7412ccce41f1aa2ae8d5ae8
-  subpackages:
-  - log
-  - sqlutils
 - name: github.com/petar/GoLLRB
   version: 53be0d36a84c2a886ca057d34b6aa4468df9ccb4
   subpackages:

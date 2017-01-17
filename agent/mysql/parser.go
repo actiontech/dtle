@@ -440,3 +440,13 @@ func ParserDDLTableName(sql string) (uconf.TableName, error) {
 
 	return res, nil
 }
+
+// EscapeName will escape a db/table/column/... name by wrapping with backticks.
+// It is not fool proof. I'm just trying to do the right thing here, not solving
+// SQL injection issues, which should be irrelevant for this tool.
+func EscapeName(name string) string {
+	if unquoted, err := strconv.Unquote(name); err == nil {
+		name = unquoted
+	}
+	return fmt.Sprintf("`%s`", name)
+}

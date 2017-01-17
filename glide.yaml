@@ -1,5 +1,12 @@
 package: udup
 import:
+- package: github.com/cznic/mathutil
+- package: github.com/cznic/parser
+  subpackages:
+  - yacc
+- package: github.com/cznic/sortutil
+- package: github.com/cznic/strutil
+- package: github.com/cznic/y
 - package: github.com/go-sql-driver/mysql
 - package: github.com/hashicorp/go-multierror
 - package: github.com/hashicorp/hcl
@@ -10,15 +17,16 @@ import:
 - package: github.com/nats-io/gnatsd
   subpackages:
   - server
-- package: github.com/nats-io/go-nats
-- package: github.com/ngaut/log
-- package: github.com/outbrain/golib
+- package: github.com/nats-io/go-nats-streaming
+- package: github.com/nats-io/nats-streaming-server
   subpackages:
-  - sqlutils
+  - server
+- package: github.com/ngaut/log
 - package: github.com/pingcap/tidb
   subpackages:
   - ast
   - parser
+- package: github.com/satori/go.uuid
 - package: github.com/siddontang/go-mysql
   subpackages:
   - mysql

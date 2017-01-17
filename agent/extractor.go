@@ -21,7 +21,7 @@ import (
 )
 
 const (
-	EventsChannelBufferSize = 10000
+	EventsChannelBufferSize = 1
 )
 
 type Extractor struct {
@@ -56,8 +56,24 @@ func (e *Extractor) initiateExtractor() error {
 	if err := e.initNatsPubClient(); err != nil {
 		return err
 	}
-
+	go func() {
+		for event := range e.eventsChannel {
+			if event != nil {
+				msg, err := Encode(event)
+				if err != nil {
+					e.cfg.PanicAbort <- err
+				}
+				if err := e.stanConn.Publish("subject", msg); err != nil {
+					log.Infof("Publish err:%v", err)
+					e.cfg.PanicAbort <- err
+				}
+			}
+		}
+	}()
 	e.genRegexMap()
+	/*if err := e.copyRows(); err != nil {
+		return err
+	}*/
 	log.Infof("Beginning streaming")
 	if err := e.streamEvents(); err != nil {
 		return err
@@ -143,9 +159,9 @@ func (e *Extractor) initBinlogSyncer() (err error) {
 }
 
 func (e *Extractor) initNatsPubClient() (err error) {
-	sc, err := stan.Connect("test-cluster", "pub1", stan.NatsURL(fmt.Sprintf("nats://%s", e.cfg.NatsAddr)))
+	sc, err := stan.Connect("test-cluster", "pub1", stan.NatsURL(fmt.Sprintf("nats://%s", e.cfg.Extract.NatsAddr)))
 	if err != nil {
-		log.Fatalf("Can't connect: %v.\nMake sure a NATS Streaming Server is running at: %s", err, fmt.Sprintf("nats://%s", e.cfg.NatsAddr))
+		log.Fatalf("Can't connect: %v.\nMake sure a NATS Streaming Server is running at: %s", err, fmt.Sprintf("nats://%s", e.cfg.Extract.NatsAddr))
 	}
 	e.stanConn = sc
 	return nil
@@ -161,23 +177,194 @@ func Encode(v interface{}) ([]byte, error) {
 	return b.Bytes(), nil
 }
 
-func (e *Extractor) streamEvents() (err error) {
-	go func() {
-		for event := range e.eventsChannel {
-			if event != nil {
-				msg, err := Encode(event)
-				if err != nil {
-					e.cfg.PanicAbort <- err
-				}
-				if err := e.stanConn.Publish("subject", msg); err != nil {
-					log.Infof("Publish err:%v", err)
-					e.cfg.PanicAbort <- err
-				}
-			}
-		}
-	}()
+/*func (e *Extractor) copyRows() (err error) {
+// ------
+// STEP 0
+// ------
+// Set the transaction isolation level to REPEATABLE READ. This is the default, but the default can be changed
+// which is why we explicitly set it here.
+//
+// With REPEATABLE READ, all SELECT queries within the scope of a transaction (which we don't yet have) will read
+// from the same MVCC snapshot. Thus each plain (non-locking) SELECT statements within the same transaction are
+// consistent also with respect to each other.
+//
+// See: https://dev.mysql.com/doc/refman/5.7/en/set-transaction.html
+// See: https://dev.mysql.com/doc/refman/5.7/en/innodb-transaction-isolation-levels.html
+// See: https://dev.mysql.com/doc/refman/5.7/en/innodb-consistent-read.html
+log.Infof("Step 0: disabling autocommit and enabling repeatable read transactions")
+if _, err := umysql.ExecNoPrepare(e.db, `SET AUTOCOMMIT = 0`); err != nil {
+	return err
+}
+if _, err := umysql.ExecNoPrepare(e.db, `SET TRANSACTION ISOLATION LEVEL REPEATABLE READ`); err != nil {
+	return err
+}
+// ------
+// STEP 1
+// ------
+// First, start a transaction and request that a consistent MVCC snapshot is obtained immediately.
+// See http://dev.mysql.com/doc/refman/5.7/en/commit.html
+log.Infof("Step 1: start transaction with consistent snapshot")
+if _, err := umysql.ExecNoPrepare(e.db, `START TRANSACTION WITH CONSISTENT SNAPSHOT`); err != nil {
+	return err
+}
+// ------
+// STEP 2
+// ------
+// Obtain read lock on all tables. This statement closes all open tables and locks all tables
+// for all databases with a global read lock, and it prevents ALL updates while we have this lock.
+// It also ensures that everything we do while we have this lock will be consistent.
+lockAcquired := time.Millisecond
+log.Infof("Step 2: flush and obtain global read lock (preventing writes to database)")
+if _, err := umysql.ExecNoPrepare(e.db, `FLUSH TABLES WITH READ LOCK`); err != nil {
+	return err
+}
+// ------
+// STEP 3
+// ------
+// Obtain the binlog position and update the SourceInfo in the context. This means that all source records generated
+// as part of the snapshot will contain the binlog position of the snapshot.
+log.Infof("Step 3: read binlog position of MySQL master")
+foundMasterStatus := false
+err = umysql.QueryRowsMap(e.db, "SHOW MASTER STATUS", func(m umysql.RowMap) error {
+	//source.setBinlogStartPoint(binlogFilename, binlogPosition);
+	gtidSet := m["Executed_Gtid_Set"]
+	//source.setCompletedGtidSet(gtidSet);
+	log.Infof("\t using binlog '%s' at position '%s' and gtid '%s'", m["File"], m["Position"],
+		gtidSet)
+	//source.startSnapshot();
+	foundMasterStatus = true
+	return nil
+})
+if err != nil {
+	return err
+}
+if !foundMasterStatus {
+	return fmt.Errorf("Got no results from SHOW MASTER STATUS. Bailing out")
+}
 
-	rowMap:= e.masterStatus()
+// ------
+// STEP 6
+// ------
+// Transform the current schema so that it reflects the *current* state of the MySQL server's contents.
+// First, get the DROP TABLE and CREATE TABLE statement (with keys and constraint definitions) for our tables ...
+log.Infof("Step 6: generating DROP and CREATE statements to reflect current database schemas:")
+for _, b := range e.cfg.ReplicateDoDb {
+	se := umysql.NewStreamEvent(umysql.Ddl,
+		fmt.Sprintf(`DROP DATABASE IF EXISTS %s`,
+			umysql.EscapeName(b)),
+		nil,
+		"",
+		true)
+	e.eventsChannel <- se
+	se = umysql.NewStreamEvent(umysql.Ddl,
+		fmt.Sprintf(`CREATE DATABASE %s`, umysql.EscapeName(b)),
+		nil,
+		"",
+		true)
+	e.eventsChannel <- se
+	for _, d := range e.cfg.ReplicateDoTable {
+		se = umysql.NewStreamEvent(umysql.Ddl,
+			fmt.Sprintf(`DROP TABLE IF EXISTS %s.%s`,
+				umysql.EscapeName(d.Schema),
+				umysql.EscapeName(d.Name)),
+			nil,
+			"",
+			true)
+		e.eventsChannel <- se
+		createTableStatement := ""
+		err = e.db.QueryRow(fmt.Sprintf(`SHOW CREATE TABLE %s.%s`,
+			umysql.EscapeName(d.Schema),
+			umysql.EscapeName(d.Name))).Scan(&createTableStatement)
+		if err != nil {
+			log.Infof("---err:%v", err)
+			return err
+		}
+		se = umysql.NewStreamEvent(umysql.Ddl,
+			createTableStatement,
+			nil,
+			"",
+			true)
+		e.eventsChannel <- se
+	}
+}
+// ------
+// STEP 7
+// ------
+// We are doing minimal blocking, then we should release the read lock now. All subsequent SELECT
+// should still use the MVCC snapshot obtained when we started our transaction (since we started it
+// "...with consistent snapshot"). So, since we're only doing very simple SELECT without WHERE predicates,
+// we can release the lock now ...
+log.Infof("Step 7: releasing global read lock to enable MySQL writes")
+if _, err := umysql.ExecNoPrepare(e.db, `UNLOCK TABLES`); err != nil {
+	return err
+}
+//unlocked := true
+lockReleased := time.Millisecond
+log.Infof("Step 7: blocked writes to MySQL for a total of %v", lockReleased-lockAcquired)
+
+// ------
+// STEP 8
+// ------
+// Use a buffered blocking consumer to buffer all of the records, so that after we copy all of the tables
+// and produce events we can update the very last event with the non-snapshot offset ...
+// Dump all of the tables and generate source records ...
+log.Infof("Step 8: scanning contents of %d tables", len(e.cfg.ReplicateDoTable))
+
+for _, d := range e.cfg.ReplicateDoTable {
+	if err := e.CountTableRows(d.Schema, d.Name); err != nil {
+		return err
+	}
+
+	rows, err := e.db.Query(`SELECT * FROM %s.%s`, d.Schema, d.Name)
+	if err != nil {
+		return err
+	}
+	log.Infof("---row:%v", rows)
+*/ /*for rows.Next() {
+	if err = rows.Scan(iterationRangeMaxValues.ValuesPointers...); err != nil {
+		return  err
+	}
+}*/ /*
+	}
+
+	// ------
+	// STEP 9
+	// ------
+	// Release the read lock if we have not yet done so ...
+*/ /*if (!unlocked) {
+	log.Infof("Step 9: releasing global read lock to enable MySQL writes")
+	if _, err := umysql.ExecNoPrepare(e.db, `UNLOCK TABLES`); err != nil {
+		return err
+	}
+	unlocked = true;
+	lockReleased = time.Millisecond
+	log.Infof("Writes to MySQL prevented for a total of {}", lockReleased - lockAcquired);
+}*/ /*
+	log.Infof("Step 9: committing transaction")
+	if _, err := umysql.ExecNoPrepare(e.db, `COMMIT`); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// CountTableRows counts exact number of rows on the original table
+func (e *Extractor) CountTableRows(db, table string) error {
+	log.Infof("As instructed, I'm issuing a SELECT COUNT(*) on the table. This may take a while")
+
+	query := fmt.Sprintf(`SELECT COUNT(*) AS ROWS FROM %s.%s`, db, table)
+	var rowsEstimate int64
+	if err := e.db.QueryRow(query).Scan(&rowsEstimate); err != nil {
+		return err
+	}
+
+	log.Infof("Exact number of rows via COUNT: %d", rowsEstimate)
+
+	return nil
+}*/
+
+func (e *Extractor) streamEvents() (err error) {
+	rowMap := e.masterStatus()
 	if rowMap == nil {
 		return fmt.Errorf("Got no results from SHOW MASTER STATUS. Bailing out.")
 	}
@@ -204,7 +391,11 @@ func (e *Extractor) streamEvents() (err error) {
 		case *replication.GTIDEvent:
 			//log.Infof("gtid %v", ev)
 			u, _ := uuid.FromBytes(ev.SID)
-			se := umysql.NewStreamEvent(umysql.Gtid, fmt.Sprintf(`SET GTID_NEXT='%s:%d'`, u.String(), ev.GNO), nil, "", false)
+			se := umysql.NewStreamEvent(umysql.Gtid,
+				fmt.Sprintf(`SET GTID_NEXT='%s:%d'`, u.String(), ev.GNO),
+				nil,
+				"",
+				false)
 			e.eventsChannel <- se
 		//case *replication.RotateEvent:
 		case *replication.RowsEvent:
@@ -230,7 +421,11 @@ func (e *Extractor) streamEvents() (err error) {
 				}
 
 				for i := range sqls {
-					se := umysql.NewStreamEvent(umysql.Insert, sqls[i], args[i], keys[i], true)
+					se := umysql.NewStreamEvent(umysql.Insert,
+						sqls[i],
+						args[i],
+						keys[i],
+						true)
 					e.eventsChannel <- se
 				}
 			case replication.UPDATE_ROWS_EVENTv0, replication.UPDATE_ROWS_EVENTv1, replication.UPDATE_ROWS_EVENTv2:
@@ -240,7 +435,11 @@ func (e *Extractor) streamEvents() (err error) {
 				}
 
 				for i := range sqls {
-					se := umysql.NewStreamEvent(umysql.Update, sqls[i], args[i], keys[i], true)
+					se := umysql.NewStreamEvent(umysql.Update,
+						sqls[i],
+						args[i],
+						keys[i],
+						true)
 					e.eventsChannel <- se
 				}
 			case replication.DELETE_ROWS_EVENTv0, replication.DELETE_ROWS_EVENTv1, replication.DELETE_ROWS_EVENTv2:
@@ -250,7 +449,11 @@ func (e *Extractor) streamEvents() (err error) {
 				}
 
 				for i := range sqls {
-					se := umysql.NewStreamEvent(umysql.Del, sqls[i], args[i], keys[i], true)
+					se := umysql.NewStreamEvent(umysql.Del,
+						sqls[i],
+						args[i],
+						keys[i],
+						true)
 					e.eventsChannel <- se
 				}
 			}
@@ -281,7 +484,11 @@ func (e *Extractor) streamEvents() (err error) {
 					return fmt.Errorf("gen event failed: %v", err)
 				}
 
-				se := umysql.NewStreamEvent(umysql.Ddl, sql, nil, "", false)
+				se := umysql.NewStreamEvent(umysql.Ddl,
+					sql,
+					nil,
+					"",
+					false)
 				e.eventsChannel <- se
 
 				e.clearTables()

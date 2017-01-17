@@ -7,12 +7,9 @@ import (
 
 // Config is the configuration for the Udup agent.
 type Config struct {
-	LogLevel    string `mapstructure:"log_level"`
-	LogFile     string `mapstructure:"log_file"`
-	LogRotate   string `mapstructure:"log_rotate"`
-	NatsAddr    string `mapstructure:"nats_addr"`
-	WorkerCount int    `mapstructure:"worker_count"`
-	Batch       int    `mapstructure:"batch"`
+	LogLevel  string `mapstructure:"log_level"`
+	LogFile   string `mapstructure:"log_file"`
+	LogRotate string `mapstructure:"log_rotate"`
 
 	//Ref:http://dev.mysql.com/doc/refman/5.7/en/replication-options-slave.html#option_mysqld_replicate-do-table
 	ReplicateDoTable []TableName `mapstructure:"replicate_do_table"`
@@ -31,14 +28,18 @@ type Config struct {
 type ExtractorConfig struct {
 	// Enabled controls if we are a Extract
 	Enabled  bool              `mapstructure:"enabled"`
+	NatsAddr string            `mapstructure:"nats_addr"`
 	ServerID int               `mapstructure:"server_id"`
 	ConnCfg  *ConnectionConfig `mapstructure:"conn_cfg"`
 }
 
 type ApplierConfig struct {
 	// Enabled controls if we are a Apply
-	Enabled bool              `mapstructure:"enabled"`
-	ConnCfg *ConnectionConfig `mapstructure:"conn_cfg"`
+	Enabled     bool              `mapstructure:"enabled"`
+	NatsAddr    string            `mapstructure:"nats_addr"`
+	WorkerCount int               `mapstructure:"worker_count"`
+	Batch       int               `mapstructure:"batch"`
+	ConnCfg     *ConnectionConfig `mapstructure:"conn_cfg"`
 }
 
 // ConnectionConfig is the DB configuration.
@@ -66,10 +67,8 @@ type TableName struct {
 // DefaultConfig is a the baseline configuration for Udup
 func DefaultConfig() *Config {
 	return &Config{
-		File:        "udup.conf",
-		LogLevel:    "INFO",
-		WorkerCount: 1,
-		Batch:       1,
+		File:     "udup.conf",
+		LogLevel: "INFO",
 		Extract: &ExtractorConfig{
 			Enabled:  false,
 			ServerID: 100,
@@ -81,7 +80,9 @@ func DefaultConfig() *Config {
 			},
 		},
 		Apply: &ApplierConfig{
-			Enabled: false,
+			Enabled:     false,
+			WorkerCount: 1,
+			Batch:       1,
 			ConnCfg: &ConnectionConfig{
 				Host:     "127.0.0.1",
 				Port:     3307,
@@ -107,18 +108,6 @@ func (c *Config) Merge(b *Config) *Config {
 
 	if b.LogRotate != "" {
 		result.LogRotate = b.LogRotate
-	}
-
-	if b.NatsAddr != "" {
-		result.NatsAddr = b.NatsAddr
-	}
-
-	if b.WorkerCount != 0 {
-		result.WorkerCount = b.WorkerCount
-	}
-
-	if b.Batch != 0 {
-		result.Batch = b.Batch
 	}
 
 	// Add the DoDBs
@@ -161,6 +150,10 @@ func (a *ExtractorConfig) Merge(b *ExtractorConfig) *ExtractorConfig {
 		result.Enabled = true
 	}
 
+	if b.NatsAddr != "" {
+		result.NatsAddr = b.NatsAddr
+	}
+
 	if b.ServerID != 0 {
 		result.ServerID = b.ServerID
 	}
@@ -181,6 +174,18 @@ func (a *ApplierConfig) Merge(b *ApplierConfig) *ApplierConfig {
 
 	if b.Enabled {
 		result.Enabled = true
+	}
+
+	if b.NatsAddr != "" {
+		result.NatsAddr = b.NatsAddr
+	}
+
+	if b.WorkerCount != 0 {
+		result.WorkerCount = b.WorkerCount
+	}
+
+	if b.Batch != 0 {
+		result.Batch = b.Batch
 	}
 
 	if result.ConnCfg == nil && b.ConnCfg != nil {

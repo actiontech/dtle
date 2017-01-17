@@ -72,9 +72,6 @@ func parseConfig(result *Config, list *ast.ObjectList) error {
 		"log_level",
 		"log_file",
 		"log_rotate",
-		"nats_addr",
-		"worker_count",
-		"batch",
 		"replicate_do_db",
 		"replicate_do_table",
 		"extract",
@@ -136,6 +133,7 @@ func parseExtractor(result **ExtractorConfig, list *ast.ObjectList) error {
 	// Check for invalid keys
 	valid := []string{
 		"enabled",
+		"nats_addr",
 		"server_id",
 		"conn_cfg",
 	}
@@ -185,6 +183,9 @@ func parseApplier(result **ApplierConfig, list *ast.ObjectList) error {
 	// Check for invalid keys
 	valid := []string{
 		"enabled",
+		"nats_addr",
+		"worker_count",
+		"batch",
 		"conn_cfg",
 	}
 	if err := checkHCLKeys(listVal, valid); err != nil {

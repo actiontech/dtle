@@ -3,9 +3,9 @@ package mysql
 import (
 	"database/sql"
 	"fmt"
+	"github.com/ngaut/log"
 	"sync"
 	"time"
-	"github.com/ngaut/log"
 )
 
 // RowMap represents one row in a result set. Its objective is to allow
@@ -14,7 +14,6 @@ type RowMap map[string]CellData
 
 // Cell data is the result of a single (atomic) column in a single row
 type CellData sql.NullString
-
 
 func (this *CellData) NullString() *sql.NullString {
 	return (*sql.NullString)(this)
@@ -61,7 +60,6 @@ func QueryRowsMap(db *sql.DB, query string, on_row func(RowMap) error, args ...i
 	err = ScanRowsToMaps(rows, on_row)
 	return err
 }
-
 
 func rowToMap(row []CellData, columns []string) map[string]CellData {
 	m := make(map[string]CellData)
@@ -124,11 +122,10 @@ func ExecNoPrepare(db *sql.DB, query string, args ...interface{}) (sql.Result, e
 	var res sql.Result
 	res, err = db.Exec(query, args...)
 	if err != nil {
-		return nil,err
+		return nil, err
 	}
 	return res, err
 }
-
 
 func ExecuteSQL(db *sql.DB, sqls []string, args [][]interface{}, retry bool) error {
 	if len(sqls) == 0 {
