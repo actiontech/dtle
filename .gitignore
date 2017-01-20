@@ -1,3 +1,9 @@
 bin/
-pkg/
 vendor/
+.idea
+
+# Makefile
+dist
+
+# Vagrant
+.vagrant
