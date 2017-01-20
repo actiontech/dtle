@@ -1,0 +1,167 @@
+hash: 03f40ec70f1050b2e05a171c7324f0e25f771ccb63d07d679055382ab94c3d1e
+updated: 2017-01-17T05:47:15.772344444Z
+imports:
+- name: github.com/armon/go-radix
+  version: 4239b77079c7b5d1243b7b4736304ce8ddb6f0f2
+- name: github.com/bgentry/speakeasy
+  version: 675b82c74c0ed12283ee81ba8a534c8982c07b85
+- name: github.com/cznic/golex
+  version: da5a7153a51074477ecac5c45a7e5182a0c72448
+  subpackages:
+  - lex
+- name: github.com/cznic/mathutil
+  version: 78ad7f262603437f0ecfebc835d80094f89c8f54
+- name: github.com/cznic/parser
+  version: 31edd927e5b19d1c4a260c41a397e7f81d6694d9
+  subpackages:
+  - yacc
+- name: github.com/cznic/sortutil
+  version: 4c7342852e65c2088c981288f2c5610d10b9f7f4
+- name: github.com/cznic/strutil
+  version: 1eb03e3cc9d345307a45ec82bd3016cde4bd4464
+- name: github.com/cznic/y
+  version: 938f8e85fcdf318917f03ea45c1f69f16037cd0d
+- name: github.com/go-sql-driver/mysql
+  version: a0583e0143b1624142adab07e0e97fe106d99561
+- name: github.com/gogo/protobuf
+  version: 99cb9b23110011cc45571c901ecae6f6f5e65cd3
+  repo: https://github.com/gogo/protobuf
+  subpackages:
+  - gogoproto
+  - proto
+  - protoc-gen-gogo/descriptor
+- name: github.com/golang/snappy
+  version: 723cc1e459b8eea2dea4583200fd60757d40097a
+- name: github.com/hashicorp/errwrap
+  version: 7554cd9344cec97297fa6649b055a8c98c2a1e55
+- name: github.com/hashicorp/go-multierror
+  version: ed905158d87462226a13fe39ddf685ea65f1c11f
+- name: github.com/hashicorp/hcl
+  version: eb6f65b2d77ed5078887f960ff570fbddbbeb49d
+  subpackages:
+  - hcl/ast
+  - hcl/parser
+  - hcl/scanner
+  - hcl/strconv
+  - hcl/token
+  - json/parser
+  - json/scanner
+  - json/token
+- name: github.com/juju/errors
+  version: 6f54ff6318409d31ff16261533ce2c8381a4fd5d
+- name: github.com/mattn/go-isatty
+  version: 30a891c33c7cde7b02a981314b4228ec99380cca
+- name: github.com/mitchellh/cli
+  version: fa17b36f6c61f1ddbbb08c9f6fde94b3c065a09d
+- name: github.com/mitchellh/mapstructure
+  version: bfdb1a85537d60bc7e954e600c250219ea497417
+- name: github.com/nats-io/gnatsd
+  version: 5dcad241bcd7fff3aac6e9f8b47350f071f5fd38
+  subpackages:
+  - auth
+  - conf
+  - logger
+  - server
+  - server/pse
+  - test
+  - util
+- name: github.com/nats-io/go-nats
+  version: 6b6bf392d34d01f57cc563ae123f00c13778bd57
+  subpackages:
+  - encoders/builtin
+  - util
+- name: github.com/nats-io/go-nats-streaming
+  version: 6e620057a207bd61e992c1c5b6a2de7b6a4cb010
+  subpackages:
+  - pb
+- name: github.com/nats-io/nats-streaming-server
+  version: 5fb065505f4ee0f7faf695c3318aec486077bbd1
+  subpackages:
+  - server
+  - spb
+  - stores
+  - util
+- name: github.com/nats-io/nuid
+  version: 289cccf02c178dc782430d534e3c1f5b72af807f
+  repo: https://github.com/nats-io/nuid
+- name: github.com/ngaut/log
+  version: cec23d3e10b016363780d894a0eb732a12c06e02
+- name: github.com/petar/GoLLRB
+  version: 53be0d36a84c2a886ca057d34b6aa4468df9ccb4
+  subpackages:
+  - llrb
+- name: github.com/pingcap/goleveldb
+  version: 158edde5a354460121af007d02a00b01c8d03443
+  subpackages:
+  - leveldb
+  - leveldb/cache
+  - leveldb/comparer
+  - leveldb/errors
+  - leveldb/filter
+  - leveldb/iterator
+  - leveldb/journal
+  - leveldb/memdb
+  - leveldb/opt
+  - leveldb/storage
+  - leveldb/table
+  - leveldb/util
+- name: github.com/pingcap/tidb
+  version: d6c45e35bb6e8ec0970858bc8951d12c4d6cf2b3
+  subpackages:
+  - ast
+  - context
+  - kv
+  - model
+  - mysql
+  - parser
+  - parser/opcode
+  - sessionctx/variable
+  - terror
+  - util/charset
+  - util/codec
+  - util/distinct
+  - util/hack
+  - util/types
+- name: github.com/satori/go.uuid
+  version: 879c5887cd475cd7864858769793b2ceb0d44feb
+- name: github.com/siddontang/go
+  version: 354e14e6c093c661abb29fd28403b3c19cff5514
+  subpackages:
+  - hack
+  - ioutil2
+  - sync2
+- name: github.com/siddontang/go-mysql
+  version: 9f867b4076f8de375f64d1b959aa46c601bf7769
+  subpackages:
+  - client
+  - mysql
+  - packet
+  - replication
+- name: golang.org/x/crypto
+  version: 9477e0b78b9ac3d0b03822fd95422e2fe07627cd
+  repo: https://go.googlesource.com/crypto
+  subpackages:
+  - bcrypt
+  - blowfish
+- name: golang.org/x/net
+  version: 6acef71eb69611914f7a30939ea9f6e194c78172
+  subpackages:
+  - context
+- name: golang.org/x/sys
+  version: 8d1157a435470616f975ff9bb013bea8d0962067
+  subpackages:
+  - unix
+- name: golang.org/x/text
+  version: 723492b65e225eafcba054e76ba18bb9c5ac1ea2
+  subpackages:
+  - encoding
+  - encoding/charmap
+  - encoding/internal
+  - encoding/internal/identifier
+  - encoding/japanese
+  - encoding/korean
+  - encoding/simplifiedchinese
+  - encoding/traditionalchinese
+  - encoding/unicode
+  - transform
+testImports: []
