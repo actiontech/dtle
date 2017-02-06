@@ -14,6 +14,7 @@ import (
 	"runtime"
 	"time"
 	uconf "udup/config"
+	"encoding/json"
 )
 
 const (
@@ -49,14 +50,7 @@ func NewAgent(config *uconf.Config) (*Agent, error) {
 	if a.config.Server {
 		a.store = NewStateStore(a.config.Consul.Addresses, a)
 	}
-
-	jobs, err := a.store.GetJobs()
-	if err != nil {
-		log.Fatal(err)
-	}
-	for _,job := range jobs{
-		go job.Run()
-	}
+	go a.eventLoop()
 
 	return a, nil
 }
@@ -221,6 +215,37 @@ func (a *Agent) join(addrs []string, replay bool) (n int, err error) {
 		log.Warnf("agent: error joining: %v", err)
 	}
 	return
+}
+
+// Listens to events from Serf and handle the event.
+func (a *Agent) eventLoop() {
+	serfShutdownCh := a.serf.ShutdownCh()
+	log.Info("agent: Listen for events")
+	for {
+		select {
+		case e := <-a.eventCh:
+			log.Infof("event:%v,agent: Received event",e.String())
+
+			// Log all member events
+			if failed, ok := e.(serf.MemberEvent); ok {
+				for _, member := range failed.Members {
+					log.Infof("node:%v,member:%v,event:%v,agent: Member event",a.config.NodeName,member.Name,e.EventType())
+				}
+			}
+
+			if e.EventType() == serf.EventQuery {
+				query := e.(*serf.Query)
+				if query.Name == "" && a.config.Server {
+					//Unmarshal query.Payload
+					//run job
+				}
+			}
+
+		case <-serfShutdownCh:
+			log.Warn("agent: Serf shutdown detected, quitting")
+			return
+		}
+	}
 }
 
 // listenOnPanicAbort aborts on abort request
