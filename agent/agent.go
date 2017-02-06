@@ -46,6 +46,10 @@ func NewAgent(config *uconf.Config) (*Agent, error) {
 
 	a.join(a.config.StartJoin, true)
 
+	if a.config.Server {
+		a.store = NewStateStore(a.config.Consul.Addresses, a)
+	}
+
 	jobs, err := a.store.GetJobs()
 	if err != nil {
 		log.Fatal(err)

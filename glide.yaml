@@ -28,3 +28,4 @@ import:
   subpackages:
   - context
 - package: github.com/hashicorp/serf
+- package: github.com/docker/libkv

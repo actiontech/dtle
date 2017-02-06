@@ -38,10 +38,16 @@ type Config struct {
 	StartJoin []string `mapstructure:"start_join"`
 	Version   string
 
+	Consul 	*ConsulConfig `mapstructure:"consul"`
+
 	// config file that have been loaded (in order)
 	PidFile    string `mapstructure:"pid_file"`
 	File       string `mapstructure:"-"`
 	PanicAbort chan error
+}
+
+type ConsulConfig struct {
+	Addresses []string            `mapstructure:"addresses"`
 }
 
 // ConnectionConfig is the DB configuration.
@@ -75,6 +81,10 @@ func DefaultConfig() *Config {
 func (c *Config) Merge(b *Config) *Config {
 	result := *c
 
+	if b.NodeName != "" {
+		result.NodeName = b.NodeName
+	}
+
 	if b.LogLevel != "" {
 		result.LogLevel = b.LogLevel
 	}
@@ -87,6 +97,35 @@ func (c *Config) Merge(b *Config) *Config {
 		result.LogRotate = b.LogRotate
 	}
 
+	if b.Region != "" {
+		result.Region = b.Region
+	}
+
+	if b.Datacenter != "" {
+		result.Datacenter = b.Datacenter
+	}
+
+	if b.BindAddr != "" {
+		result.BindAddr = b.BindAddr
+	}
+
+	if b.HTTPAddr != "" {
+		result.HTTPAddr = b.HTTPAddr
+	}
+
+	result.StartJoin = append(result.StartJoin, b.StartJoin...)
+
+	if b.Server {
+		result.Server = true
+	}
+
+	if result.Consul == nil && b.Consul != nil {
+		consul := *b.Consul
+		result.Consul = &consul
+	} else if b.Consul != nil {
+		result.Consul = result.Consul.Merge(b.Consul)
+	}
+
 	if b.PidFile != "" {
 		result.PidFile = b.PidFile
 	}
@@ -95,6 +134,14 @@ func (c *Config) Merge(b *Config) *Config {
 		result.File = b.File
 	}
 
+	return &result
+}
+
+// Merge merges two Atlas configurations together.
+func (a *ConsulConfig) Merge(b *ConsulConfig) *ConsulConfig {
+	result := *a
+
+	result.Addresses = append(result.Addresses, b.Addresses...)
 	return &result
 }
 
