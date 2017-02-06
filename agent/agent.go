@@ -4,25 +4,25 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/ngaut/log"
 	"github.com/hashicorp/serf/serf"
+	"github.com/ngaut/log"
 
-	uconf "udup/config"
-	"path/filepath"
-	"time"
 	"io/ioutil"
 	"net"
-	"runtime"
 	"os"
+	"path/filepath"
+	"runtime"
+	"time"
+	uconf "udup/config"
 )
 
 const (
-	serfSnapshot      = "serf/snapshot"
+	serfSnapshot = "serf/snapshot"
 )
 
 type Agent struct {
-	config    *uconf.Config
-	serf   *serf.Serf
+	config  *uconf.Config
+	serf    *serf.Serf
 	eventCh chan serf.Event
 
 	shutdown     bool
@@ -42,6 +42,8 @@ func NewAgent(config *uconf.Config) (*Agent, error) {
 	if a.serf = a.setupSerf(); a.serf == nil {
 		return nil, fmt.Errorf("Can not setup serf")
 	}
+
+	a.join(a.config.StartJoin, true)
 
 	return a, nil
 }
@@ -192,6 +194,20 @@ func ensurePath(path string, dir bool) error {
 		path = filepath.Dir(path)
 	}
 	return os.MkdirAll(path, 0755)
+}
+
+// Join asks the Serf instance to join. See the Serf.Join function.
+func (a *Agent) join(addrs []string, replay bool) (n int, err error) {
+	log.Infof("agent: joining: %v replay: %v", addrs, replay)
+	ignoreOld := !replay
+	n, err = a.serf.Join(addrs, ignoreOld)
+	if n > 0 {
+		log.Infof("agent: joined: %d nodes", n)
+	}
+	if err != nil {
+		log.Warnf("agent: error joining: %v", err)
+	}
+	return
 }
 
 // listenOnPanicAbort aborts on abort request

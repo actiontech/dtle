@@ -2,9 +2,9 @@ package config
 
 import (
 	"fmt"
+	"net"
 	"path/filepath"
 	"time"
-	"net"
 )
 
 // This is the default port that we use for Serf communication
@@ -31,8 +31,12 @@ type Config struct {
 	TombstoneTimeout      time.Duration `mapstructure:"tombstone_timeout"`
 	DisableNameResolution bool
 	RejoinAfterLeave      bool `mapstructure:"rejoin"`
-	Server bool
-	Version string
+	Server                bool
+	// StartJoin is a list of addresses to attempt to join when the
+	// agent starts. If Serf is unable to communicate with any of these
+	// addresses, then the agent will error and exit.
+	StartJoin []string `mapstructure:"start_join"`
+	Version   string
 
 	// config file that have been loaded (in order)
 	PidFile    string `mapstructure:"pid_file"`
@@ -61,8 +65,8 @@ type TableName struct {
 // DefaultConfig is a the baseline configuration for Udup
 func DefaultConfig() *Config {
 	return &Config{
-		File:     "udup.conf",
-		LogLevel: "INFO",
+		File:       "udup.conf",
+		LogLevel:   "INFO",
 		PanicAbort: make(chan error),
 	}
 }
