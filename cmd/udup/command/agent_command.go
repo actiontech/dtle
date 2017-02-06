@@ -149,9 +149,7 @@ func (c *AgentCommand) handleReload(config *uconf.Config) *uconf.Config {
 
 func (a *AgentCommand) readConfig() *uconf.Config {
 	// Make a new, empty config.
-	cmdConfig := &uconf.Config{
-
-	}
+	cmdConfig := &uconf.Config{}
 
 	flags := flag.NewFlagSet("agent", flag.ContinueOnError)
 	flags.Usage = func() { a.Ui.Error(a.Help()) }

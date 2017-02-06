@@ -36,9 +36,10 @@ type Config struct {
 	// agent starts. If Serf is unable to communicate with any of these
 	// addresses, then the agent will error and exit.
 	StartJoin []string `mapstructure:"start_join"`
+	RPCPort   int      `mapstructure:"rpc_port"`
 	Version   string
 
-	Consul 	*ConsulConfig `mapstructure:"consul"`
+	Consul *ConsulConfig `mapstructure:"consul"`
 
 	// config file that have been loaded (in order)
 	PidFile    string `mapstructure:"pid_file"`
@@ -47,7 +48,7 @@ type Config struct {
 }
 
 type ConsulConfig struct {
-	Addresses []string            `mapstructure:"addresses"`
+	Addresses []string `mapstructure:"addresses"`
 }
 
 // ConnectionConfig is the DB configuration.

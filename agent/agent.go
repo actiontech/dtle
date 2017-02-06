@@ -7,6 +7,7 @@ import (
 	"github.com/hashicorp/serf/serf"
 	"github.com/ngaut/log"
 
+	"encoding/json"
 	"io/ioutil"
 	"net"
 	"os"
@@ -14,7 +15,6 @@ import (
 	"runtime"
 	"time"
 	uconf "udup/config"
-	"encoding/json"
 )
 
 const (
@@ -24,7 +24,7 @@ const (
 type Agent struct {
 	config  *uconf.Config
 	serf    *serf.Serf
-	store     *Store
+	store   *Store
 	eventCh chan serf.Event
 
 	shutdown     bool
@@ -217,6 +217,30 @@ func (a *Agent) join(addrs []string, replay bool) (n int, err error) {
 	return
 }
 
+// Utility method to get leader nodename
+func (a *Agent) leaderMember() (*serf.Member, error) {
+	leaderName := a.store.GetLeader()
+	for _, member := range a.serf.Members() {
+		if member.Name == string(leaderName) {
+			return &member, nil
+		}
+	}
+	return nil, fmt.Errorf("No member leader found in member list")
+}
+
+func (a *Agent) listServers() []serf.Member {
+	members := []serf.Member{}
+
+	for _, member := range a.serf.Members() {
+		if key, ok := member.Tags["udup_server"]; ok {
+			if key == "true" && member.Status == serf.StatusAlive {
+				members = append(members, member)
+			}
+		}
+	}
+	return members
+}
+
 // Listens to events from Serf and handle the event.
 func (a *Agent) eventLoop() {
 	serfShutdownCh := a.serf.ShutdownCh()
@@ -224,12 +248,12 @@ func (a *Agent) eventLoop() {
 	for {
 		select {
 		case e := <-a.eventCh:
-			log.Infof("event:%v,agent: Received event",e.String())
+			log.Infof("event:%v,agent: Received event", e.String())
 
 			// Log all member events
 			if failed, ok := e.(serf.MemberEvent); ok {
 				for _, member := range failed.Members {
-					log.Infof("node:%v,member:%v,event:%v,agent: Member event",a.config.NodeName,member.Name,e.EventType())
+					log.Infof("node:%v,member:%v,event:%v,agent: Member event", a.config.NodeName, member.Name, e.EventType())
 				}
 			}
 
@@ -246,6 +270,28 @@ func (a *Agent) eventLoop() {
 			return
 		}
 	}
+}
+
+func (a *Agent) JobRegister(payload []byte) *Job {
+	var job Job
+	if err := json.Unmarshal(payload, &job); err != nil {
+		log.Fatal(err)
+	}
+
+	// Save the new execution to store
+	if err := a.store.UpsertJob(&job); err != nil {
+		log.Fatal(err)
+	}
+
+	return &job
+}
+
+// This function is called when a client request the RPCAddress
+// of the current member.
+func (a *Agent) getRPCAddr() string {
+	bindIp := a.serf.LocalMember().Addr
+
+	return fmt.Sprintf("%s:%d", bindIp, a.config.RPCPort)
 }
 
 // listenOnPanicAbort aborts on abort request

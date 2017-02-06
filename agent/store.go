@@ -1,22 +1,22 @@
 package agent
 
 import (
-	"github.com/ngaut/log"
+	"encoding/json"
+	"fmt"
 	"github.com/docker/libkv"
 	"github.com/docker/libkv/store"
 	"github.com/docker/libkv/store/consul"
-	"encoding/json"
-	"fmt"
+	"github.com/ngaut/log"
 )
 
 const (
-	backend      = "consul"
+	backend  = "consul"
 	keyspace = "udup"
 )
 
 type Store struct {
-	Client   store.Store
-	agent    *Agent
+	Client store.Store
+	agent  *Agent
 }
 
 func init() {
@@ -30,11 +30,11 @@ func NewStateStore(machines []string, a *Agent) *Store {
 		log.Fatal(err)
 	}
 
-	log.Infof("machines:%v,store: Backend config",machines)
+	log.Infof("machines:%v,store: Backend config", machines)
 
 	_, err = s.List(keyspace)
 	if err != store.ErrKeyNotFound && err != nil {
-		log.Infof("err:%v,store: Store backend not reachable",err)
+		log.Infof("err:%v,store: Store backend not reachable", err)
 	}
 
 	return &Store{Client: s, agent: a}
@@ -49,7 +49,7 @@ func (s *Store) UpsertJob(job *Job) error {
 
 	jobJSON, _ := json.Marshal(job)
 
-	log.Infof("job:%v,json:%v,store: Setting job",job.Name,string(jobJSON))
+	log.Infof("job:%v,json:%v,store: Setting job", job.Name, string(jobJSON))
 
 	if err := s.Client.Put(jobKey, jobJSON, nil); err != nil {
 		return err
@@ -94,7 +94,7 @@ func (s *Store) JobByName(name string) (*Job, error) {
 		return nil, err
 	}
 
-	log.Infof("job:%v,store: Retrieved job from datastore",job.Name)
+	log.Infof("job:%v,store: Retrieved job from datastore", job.Name)
 
 	job.Agent = s.agent
 	return &job, nil
@@ -125,7 +125,7 @@ func (s *Store) GetLeader() []byte {
 		return nil
 	}
 
-	log.Infof("node:%v,store: Retrieved leader from datastore",string(res.Value))
+	log.Infof("node:%v,store: Retrieved leader from datastore", string(res.Value))
 
 	return res.Value
 }
