@@ -3,45 +3,41 @@ package config
 import (
 	"fmt"
 	"path/filepath"
+	"time"
+	"net"
 )
+
+// This is the default port that we use for Serf communication
+const DefaultBindPort int = 8191
 
 // Config is the configuration for the Udup agent.
 type Config struct {
 	LogLevel  string `mapstructure:"log_level"`
 	LogFile   string `mapstructure:"log_file"`
 	LogRotate string `mapstructure:"log_rotate"`
-
-	//Ref:http://dev.mysql.com/doc/refman/5.7/en/replication-options-slave.html#option_mysqld_replicate-do-table
-	ReplicateDoTable []TableName `mapstructure:"replicate_do_table"`
-	ReplicateDoDb    []string    `mapstructure:"replicate_do_db"`
-	// extract related settings
-	Extract *ExtractorConfig `mapstructure:"extract"`
-	// apply related settings
-	Apply *ApplierConfig `mapstructure:"apply"`
+	// Region is the region this agent is in. Defaults to global.
+	Region string
+	// Datacenter is the datacenter this agent is in. Defaults to dc1
+	Datacenter string
+	// NodeName is the name we register as. Defaults to hostname.
+	NodeName string `mapstructure:"name"`
+	// BindAddr is the address on which all of nomad's services will
+	// be bound. If not specified, this defaults to 127.0.0.1.
+	BindAddr              string `mapstructure:"bind_addr"`
+	HTTPAddr              string `mapstructure:"http_addr"`
+	Interface             string
+	ReconnectInterval     time.Duration `mapstructure:"reconnect_interval"`
+	ReconnectTimeout      time.Duration `mapstructure:"reconnect_timeout"`
+	TombstoneTimeout      time.Duration `mapstructure:"tombstone_timeout"`
+	DisableNameResolution bool
+	RejoinAfterLeave      bool `mapstructure:"rejoin"`
+	Server bool
+	Version string
 
 	// config file that have been loaded (in order)
 	PidFile    string `mapstructure:"pid_file"`
 	File       string `mapstructure:"-"`
 	PanicAbort chan error
-}
-
-type ExtractorConfig struct {
-	// Enabled controls if we are a Extract
-	Enabled  bool              `mapstructure:"enabled"`
-	NatsAddr string            `mapstructure:"nats_addr"`
-	ServerID int               `mapstructure:"server_id"`
-	ConnCfg  *ConnectionConfig `mapstructure:"conn_cfg"`
-}
-
-type ApplierConfig struct {
-	// Enabled controls if we are a Apply
-	Enabled      bool              `mapstructure:"enabled"`
-	NatsAddr     string            `mapstructure:"nats_addr"`
-	StoreType    string            `mapstructure:"nats_store_type"`
-	FilestoreDir string            `mapstructure:"nats_file_store_dir"`
-	WorkerCount  int               `mapstructure:"worker_count"`
-	Batch        int               `mapstructure:"batch"`
-	ConnCfg      *ConnectionConfig `mapstructure:"conn_cfg"`
 }
 
 // ConnectionConfig is the DB configuration.
@@ -67,27 +63,6 @@ func DefaultConfig() *Config {
 	return &Config{
 		File:     "udup.conf",
 		LogLevel: "INFO",
-		Extract: &ExtractorConfig{
-			Enabled:  false,
-			ServerID: 100,
-			ConnCfg: &ConnectionConfig{
-				Host:     "127.0.0.1",
-				Port:     3306,
-				User:     "mysql",
-				Password: "pwd",
-			},
-		},
-		Apply: &ApplierConfig{
-			Enabled:     false,
-			WorkerCount: 1,
-			Batch:       1,
-			ConnCfg: &ConnectionConfig{
-				Host:     "127.0.0.1",
-				Port:     3307,
-				User:     "mysql",
-				Password: "pwd",
-			},
-		},
 		PanicAbort: make(chan error),
 	}
 }
@@ -108,94 +83,12 @@ func (c *Config) Merge(b *Config) *Config {
 		result.LogRotate = b.LogRotate
 	}
 
-	// Add the DoDBs
-	result.ReplicateDoDb = append(result.ReplicateDoDb, b.ReplicateDoDb...)
-
-	// Add the DoTables
-	result.ReplicateDoTable = append(result.ReplicateDoTable, b.ReplicateDoTable...)
-
-	// Apply the extract config
-	if result.Extract == nil && b.Extract != nil {
-		extractor := *b.Extract
-		result.Extract = &extractor
-	} else if b.Extract != nil {
-		result.Extract = result.Extract.Merge(b.Extract)
-	}
-
-	if result.Apply == nil && b.Apply != nil {
-		applier := *b.Apply
-		result.Apply = &applier
-	} else if b.Apply != nil {
-		result.Apply = result.Apply.Merge(b.Apply)
-	}
-
 	if b.PidFile != "" {
 		result.PidFile = b.PidFile
 	}
 
 	if b.File != "" {
 		result.File = b.File
-	}
-
-	return &result
-}
-
-// Merge is used to merge two server configs together
-func (a *ExtractorConfig) Merge(b *ExtractorConfig) *ExtractorConfig {
-	result := *a
-
-	if b.Enabled {
-		result.Enabled = true
-	}
-	if b.NatsAddr != "" {
-		result.NatsAddr = b.NatsAddr
-	}
-
-	if b.ServerID != 0 {
-		result.ServerID = b.ServerID
-	}
-
-	if result.ConnCfg == nil && b.ConnCfg != nil {
-		cfg := *b.ConnCfg
-		result.ConnCfg = &cfg
-	} else if b.ConnCfg != nil {
-		result.ConnCfg = result.ConnCfg.Merge(b.ConnCfg)
-	}
-
-	return &result
-}
-
-// Merge is used to merge two server configs together
-func (a *ApplierConfig) Merge(b *ApplierConfig) *ApplierConfig {
-	result := *a
-
-	if b.Enabled {
-		result.Enabled = true
-	}
-	if b.NatsAddr != "" {
-		result.NatsAddr = b.NatsAddr
-	}
-
-	if b.StoreType != "" {
-		result.StoreType = b.StoreType
-	}
-
-	if b.FilestoreDir != "" {
-		result.FilestoreDir = b.FilestoreDir
-	}
-
-	if b.WorkerCount != 0 {
-		result.WorkerCount = b.WorkerCount
-	}
-
-	if b.Batch != 0 {
-		result.Batch = b.Batch
-	}
-	if result.ConnCfg == nil && b.ConnCfg != nil {
-		cfg := *b.ConnCfg
-		result.ConnCfg = &cfg
-	} else if b.ConnCfg != nil {
-		result.ConnCfg = result.ConnCfg.Merge(b.ConnCfg)
 	}
 
 	return &result
@@ -231,4 +124,37 @@ func LoadConfig(path string) (*Config, error) {
 
 	config.File = cleaned
 	return config, nil
+}
+
+// AddrParts returns the parts of the BindAddr that should be
+// used to configure Serf.
+func (c *Config) AddrParts(address string) (string, int, error) {
+	checkAddr := address
+
+START:
+	_, _, err := net.SplitHostPort(checkAddr)
+	if ae, ok := err.(*net.AddrError); ok && ae.Err == "missing port in address" {
+		checkAddr = fmt.Sprintf("%s:%d", checkAddr, DefaultBindPort)
+		goto START
+	}
+	if err != nil {
+		return "", 0, err
+	}
+
+	// Get the address
+	addr, err := net.ResolveTCPAddr("tcp", checkAddr)
+	if err != nil {
+		return "", 0, err
+	}
+
+	return addr.IP.String(), addr.Port, nil
+}
+
+// Networkinterface is used to get the associated network
+// interface from the configured value
+func (c *Config) NetworkInterface() (*net.Interface, error) {
+	if c.Interface == "" {
+		return nil, nil
+	}
+	return net.InterfaceByName(c.Interface)
 }

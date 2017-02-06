@@ -5,14 +5,25 @@ import (
 	"sync"
 
 	"github.com/ngaut/log"
+	"github.com/hashicorp/serf/serf"
 
 	uconf "udup/config"
+	"path/filepath"
+	"time"
+	"io/ioutil"
+	"net"
+	"runtime"
+	"os"
+)
+
+const (
+	serfSnapshot      = "serf/snapshot"
 )
 
 type Agent struct {
 	config    *uconf.Config
-	extractor *Extractor
-	applier   *Applier
+	serf   *serf.Serf
+	eventCh chan serf.Event
 
 	shutdown     bool
 	shutdownCh   chan struct{}
@@ -28,54 +39,159 @@ func NewAgent(config *uconf.Config) (*Agent, error) {
 
 	go a.listenOnPanicAbort()
 
-	if err := a.setupApply(); err != nil {
-		return nil, err
-	}
-
-	if err := a.setupExtract(); err != nil {
-		return nil, err
-	}
-
-	if a.extractor == nil && a.applier == nil {
-		return nil, fmt.Errorf("must have at least extract or apply mode enabled")
+	if a.serf = a.setupSerf(); a.serf == nil {
+		return nil, fmt.Errorf("Can not setup serf")
 	}
 
 	return a, nil
 }
 
-// setupApply is used to setup the applier if enabled
-func (a *Agent) setupApply() error {
-	if !a.config.Apply.Enabled {
+// setupSerf is used to create the agent we use
+func (a *Agent) setupSerf() *serf.Serf {
+	config := a.config
+
+	bindIP, bindPort, err := config.AddrParts(config.BindAddr)
+	if err != nil {
+		log.Infof(fmt.Sprintf("Invalid bind address: %s", err))
 		return nil
 	}
 
-	// Create the applier
-	a.applier = NewApplier(a.config)
-	go func() {
-		if err := a.applier.initiateApplier(); err != nil {
-			log.Errorf("applier run failed: %v", err)
-			a.config.PanicAbort <- err
+	// Check if we have an interface
+	if iface, _ := config.NetworkInterface(); iface != nil {
+		addrs, err := iface.Addrs()
+		if err != nil {
+			log.Infof(fmt.Sprintf("Failed to get interface addresses: %s", err))
+			return nil
 		}
-	}()
+		if len(addrs) == 0 {
+			log.Infof(fmt.Sprintf("Interface '%s' has no addresses", config.Interface))
+			return nil
+		}
 
-	return nil
+		// If there is no bind IP, pick an address
+		if bindIP == "0.0.0.0" {
+			found := false
+			for _, ad := range addrs {
+				var addrIP net.IP
+				if runtime.GOOS == "windows" {
+					// Waiting for https://github.com/golang/go/issues/5395 to use IPNet only
+					addr, ok := ad.(*net.IPAddr)
+					if !ok {
+						continue
+					}
+					addrIP = addr.IP
+				} else {
+					addr, ok := ad.(*net.IPNet)
+					if !ok {
+						continue
+					}
+					addrIP = addr.IP
+				}
+
+				// Skip self-assigned IPs
+				if addrIP.IsLinkLocalUnicast() {
+					continue
+				}
+
+				// Found an IP
+				found = true
+				bindIP = addrIP.String()
+				log.Infof(fmt.Sprintf("Using interface '%s' address '%s'",
+					config.Interface, bindIP))
+
+				// Update the configuration
+				bindAddr := &net.TCPAddr{
+					IP:   net.ParseIP(bindIP),
+					Port: bindPort,
+				}
+				config.BindAddr = bindAddr.String()
+				break
+			}
+			if !found {
+				log.Infof(fmt.Sprintf("Failed to find usable address for interface '%s'", config.Interface))
+				return nil
+			}
+
+		} else {
+			// If there is a bind IP, ensure it is available
+			found := false
+			for _, ad := range addrs {
+				addr, ok := ad.(*net.IPNet)
+				if !ok {
+					continue
+				}
+				if addr.IP.String() == bindIP {
+					found = true
+					break
+				}
+			}
+			if !found {
+				log.Infof(fmt.Sprintf("Interface '%s' has no '%s' address",
+					config.Interface, bindIP))
+				return nil
+			}
+		}
+	}
+
+	serfConfig := serf.DefaultConfig()
+	serfConfig.MemberlistConfig.BindAddr = bindIP
+	serfConfig.MemberlistConfig.BindPort = bindPort
+	serfConfig.NodeName = config.NodeName
+	serfConfig.Init()
+	if config.Server {
+		serfConfig.Tags["udup_server"] = "true"
+	}
+	serfConfig.Tags["udup_version"] = config.Version
+	serfConfig.Tags["role"] = "udup"
+	serfConfig.Tags["region"] = config.Region
+	serfConfig.Tags["dc"] = config.Datacenter
+	serfConfig.SnapshotPath = serfSnapshot
+	serfConfig.SnapshotPath = filepath.Join("./", serfSnapshot)
+	if err := ensurePath(serfConfig.SnapshotPath, false); err != nil {
+		return nil
+	}
+	serfConfig.CoalescePeriod = 3 * time.Second
+	serfConfig.QuiescentPeriod = time.Second
+	serfConfig.UserCoalescePeriod = 3 * time.Second
+	serfConfig.UserQuiescentPeriod = time.Second
+	if config.ReconnectInterval != 0 {
+		serfConfig.ReconnectInterval = config.ReconnectInterval
+	}
+	if config.ReconnectTimeout != 0 {
+		serfConfig.ReconnectTimeout = config.ReconnectTimeout
+	}
+	if config.TombstoneTimeout != 0 {
+		serfConfig.TombstoneTimeout = config.TombstoneTimeout
+	}
+	serfConfig.EnableNameConflictResolution = !config.DisableNameResolution
+	serfConfig.RejoinAfterLeave = config.RejoinAfterLeave
+
+	// Create a channel to listen for events from Serf
+	a.eventCh = make(chan serf.Event, 64)
+	serfConfig.EventCh = a.eventCh
+
+	// Start Serf
+	log.Info("agent: Udup agent starting")
+
+	serfConfig.LogOutput = ioutil.Discard
+	serfConfig.MemberlistConfig.LogOutput = ioutil.Discard
+
+	// Create serf first
+	serf, err := serf.Create(serfConfig)
+	if err != nil {
+		log.Error(err)
+		return nil
+	}
+
+	return serf
 }
 
-// setupExtract is used to setup the extractor if enabled
-func (a *Agent) setupExtract() error {
-	if !a.config.Extract.Enabled {
-		return nil
+// ensurePath is used to make sure a path exists
+func ensurePath(path string, dir bool) error {
+	if !dir {
+		path = filepath.Dir(path)
 	}
-
-	// Create the extractor
-	a.extractor = NewExtractor(a.config)
-	go func() {
-		if err := a.extractor.initiateExtractor(); err != nil {
-			log.Errorf("extractor run failed: %v", err)
-			a.config.PanicAbort <- err
-		}
-	}()
-	return nil
+	return os.MkdirAll(path, 0755)
 }
 
 // listenOnPanicAbort aborts on abort request
@@ -92,18 +208,6 @@ func (a *Agent) Shutdown() error {
 
 	if a.shutdown {
 		return nil
-	}
-
-	log.Infof("[INFO] agent: requesting shutdown")
-	if a.extractor != nil {
-		if err := a.extractor.Shutdown(); err != nil {
-			log.Errorf("[ERR] agent: extractor shutdown failed: %v", err)
-		}
-	}
-	if a.applier != nil {
-		if err := a.applier.Shutdown(); err != nil {
-			log.Errorf("[ERR] agent: applier shutdown failed: %v", err)
-		}
 	}
 
 	log.Infof("[INFO] agent: shutdown complete")

@@ -1,26 +1,12 @@
-hash: 03f40ec70f1050b2e05a171c7324f0e25f771ccb63d07d679055382ab94c3d1e
-updated: 2017-01-17T05:47:15.772344444Z
+hash: 728555fea2a080ff93e8a3f0b65d04b0b72848b77bcb5a883b4c64ada5846a96
+updated: 2017-02-10T11:19:32.5419979+08:00
 imports:
+- name: github.com/armon/go-metrics
+  version: 93f237eba9b0602f3e73710416558854a81d9337
 - name: github.com/armon/go-radix
   version: 4239b77079c7b5d1243b7b4736304ce8ddb6f0f2
 - name: github.com/bgentry/speakeasy
   version: 675b82c74c0ed12283ee81ba8a534c8982c07b85
-- name: github.com/cznic/golex
-  version: da5a7153a51074477ecac5c45a7e5182a0c72448
-  subpackages:
-  - lex
-- name: github.com/cznic/mathutil
-  version: 78ad7f262603437f0ecfebc835d80094f89c8f54
-- name: github.com/cznic/parser
-  version: 31edd927e5b19d1c4a260c41a397e7f81d6694d9
-  subpackages:
-  - yacc
-- name: github.com/cznic/sortutil
-  version: 4c7342852e65c2088c981288f2c5610d10b9f7f4
-- name: github.com/cznic/strutil
-  version: 1eb03e3cc9d345307a45ec82bd3016cde4bd4464
-- name: github.com/cznic/y
-  version: 938f8e85fcdf318917f03ea45c1f69f16037cd0d
 - name: github.com/go-sql-driver/mysql
   version: a0583e0143b1624142adab07e0e97fe106d99561
 - name: github.com/gogo/protobuf
@@ -34,8 +20,14 @@ imports:
   version: 723cc1e459b8eea2dea4583200fd60757d40097a
 - name: github.com/hashicorp/errwrap
   version: 7554cd9344cec97297fa6649b055a8c98c2a1e55
+- name: github.com/hashicorp/go-msgpack
+  version: fa3f63826f7c23912c15263591e65d54d080b458
+  subpackages:
+  - codec
 - name: github.com/hashicorp/go-multierror
   version: ed905158d87462226a13fe39ddf685ea65f1c11f
+- name: github.com/hashicorp/go-sockaddr
+  version: f910dd83c2052566cad78352c33af714358d1372
 - name: github.com/hashicorp/hcl
   version: eb6f65b2d77ed5078887f960ff570fbddbbeb49d
   subpackages:
@@ -47,10 +39,19 @@ imports:
   - json/parser
   - json/scanner
   - json/token
+- name: github.com/hashicorp/memberlist
+  version: 23ad4b7d7b38496cd64c241dfd4c60b7794c254a
+- name: github.com/hashicorp/serf
+  version: b9642a47e6139e50548b6f14588a1a3c0839660a
+  subpackages:
+  - coordinate
+  - serf
 - name: github.com/juju/errors
   version: 6f54ff6318409d31ff16261533ce2c8381a4fd5d
 - name: github.com/mattn/go-isatty
   version: 30a891c33c7cde7b02a981314b4228ec99380cca
+- name: github.com/miekg/dns
+  version: 4e953232d8083f240dff0ac425afcba18bb5b722
 - name: github.com/mitchellh/cli
   version: fa17b36f6c61f1ddbbb08c9f6fde94b3c065a09d
 - name: github.com/mitchellh/mapstructure
@@ -86,10 +87,6 @@ imports:
   repo: https://github.com/nats-io/nuid
 - name: github.com/ngaut/log
   version: cec23d3e10b016363780d894a0eb732a12c06e02
-- name: github.com/petar/GoLLRB
-  version: 53be0d36a84c2a886ca057d34b6aa4468df9ccb4
-  subpackages:
-  - llrb
 - name: github.com/pingcap/goleveldb
   version: 158edde5a354460121af007d02a00b01c8d03443
   subpackages:
@@ -106,7 +103,7 @@ imports:
   - leveldb/table
   - leveldb/util
 - name: github.com/pingcap/tidb
-  version: d6c45e35bb6e8ec0970858bc8951d12c4d6cf2b3
+  version: 8ba5d9ee2a490e90de2b59bee3eb990955c8e12b
   subpackages:
   - ast
   - context
@@ -118,12 +115,12 @@ imports:
   - sessionctx/variable
   - terror
   - util/charset
-  - util/codec
-  - util/distinct
   - util/hack
   - util/types
 - name: github.com/satori/go.uuid
   version: 879c5887cd475cd7864858769793b2ceb0d44feb
+- name: github.com/sean-/seed
+  version: 4969e616e90322a649adab1cd3f42725d99564c7
 - name: github.com/siddontang/go
   version: 354e14e6c093c661abb29fd28403b3c19cff5514
   subpackages:

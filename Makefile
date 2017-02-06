@@ -16,12 +16,12 @@ windows: build-windows
 # Only run the build (no dependency grabbing)
 build:
 	go build -o dist/udup -ldflags \
-		"-X main.version=$(VERSION) -X main.commit=$(COMMIT) -X main.branch=$(BRANCH)" \
+		"-X main.Version=$(VERSION) -X main.GitCommit=$(COMMIT) -X main.GitBranch=$(BRANCH)" \
 		./cmd/udup/main.go
 
 build-windows:
 	GOOS=windows GOARCH=amd64 go build -o dist/udup.exe -ldflags \
-		"-X main.version=$(VERSION) -X main.commit=$(COMMIT) -X main.branch=$(BRANCH)" \
+		"-X main.Version=$(VERSION) -X main.GitCommit=$(COMMIT) -X main.GitBranch=$(BRANCH)" \
 		./cmd/udup/main.go
 
 TEMP_FILE = temp_parser_file

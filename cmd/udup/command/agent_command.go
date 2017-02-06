@@ -1,4 +1,4 @@
-package agent
+package command
 
 import (
 	"flag"
@@ -13,6 +13,7 @@ import (
 	"github.com/mitchellh/cli"
 	"github.com/ngaut/log"
 
+	uagt "udup/agent"
 	uconf "udup/config"
 )
 
@@ -20,16 +21,17 @@ import (
 const gracefulTimeout = 5 * time.Second
 
 type AgentCommand struct {
+	Version    string
 	Ui         cli.Ui
 	ShutdownCh <-chan struct{}
 
 	args  []string
-	agent *Agent
+	agent *uagt.Agent
 }
 
 // setupAgent is used to start the agent and various interfaces
 func (c *AgentCommand) setupAgent(config *uconf.Config) error {
-	agent, err := NewAgent(config)
+	agent, err := uagt.NewAgent(config)
 	if err != nil {
 		log.Errorf("Error starting agent: %s", err)
 		return err

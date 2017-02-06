@@ -6,7 +6,14 @@ import (
 
 	"github.com/mitchellh/cli"
 
-	"udup/agent"
+	"udup/cmd/udup/command"
+)
+
+// The git commit that was compiled. This will be filled in by the compiler.
+var (
+	Version   string
+	GitBranch string
+	GitCommit string
 )
 
 func main() {
@@ -36,30 +43,18 @@ func main() {
 
 	c.Commands = map[string]cli.CommandFactory{
 		"agent": func() (cli.Command, error) {
-			return &agent.AgentCommand{
+			return &command.AgentCommand{
 				Ui:         ui,
+				Version:    Version,
 				ShutdownCh: make(chan struct{}),
 			}, nil
 		},
 		"version": func() (cli.Command, error) {
-			ver := agent.Version
-			rel := agent.VersionPrerelease
-			if agent.GitDescribe != "" {
-				ver = agent.GitDescribe
-				// Trim off a leading 'v', we append it anyways.
-				if ver[0] == 'v' {
-					ver = ver[1:]
-				}
-			}
-			if agent.GitDescribe == "" && rel == "" && agent.VersionPrerelease != "" {
-				rel = "dev"
-			}
-
-			return &agent.VersionCommand{
-				Revision:          agent.GitCommit,
-				Version:           ver,
-				VersionPrerelease: rel,
-				Ui:                ui,
+			return &command.VersionCommand{
+				Version: Version,
+				Commit:  GitCommit,
+				Branch:  GitBranch,
+				Ui:      ui,
 			}, nil
 		},
 	}
