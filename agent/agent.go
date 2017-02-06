@@ -23,6 +23,7 @@ const (
 type Agent struct {
 	config  *uconf.Config
 	serf    *serf.Serf
+	store     *Store
 	eventCh chan serf.Event
 
 	shutdown     bool
@@ -44,6 +45,14 @@ func NewAgent(config *uconf.Config) (*Agent, error) {
 	}
 
 	a.join(a.config.StartJoin, true)
+
+	jobs, err := a.store.GetJobs()
+	if err != nil {
+		log.Fatal(err)
+	}
+	for _,job := range jobs{
+		go job.Run()
+	}
 
 	return a, nil
 }
