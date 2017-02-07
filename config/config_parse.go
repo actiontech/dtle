@@ -76,7 +76,10 @@ func parseConfig(result *Config, list *ast.ObjectList) error {
 		"datacenter",
 		"bind_addr",
 		"http_addr",
-		"join",
+		"rpc_port",
+		"start_join",
+		"server",
+		"consul",
 		"pid_file",
 	}
 	if err := checkHCLKeys(list, valid); err != nil {
@@ -89,11 +92,62 @@ func parseConfig(result *Config, list *ast.ObjectList) error {
 		return err
 	}
 
+	delete(m, "consul")
+
 	// Decode the rest
 	if err := mapstructure.WeakDecode(m, result); err != nil {
 		return err
 	}
 
+	// Parse the consul config
+	if o := list.Filter("consul"); len(o.Items) > 0 {
+		if err := parseConsulConfig(&result.Consul, o); err != nil {
+			return multierror.Prefix(err, "consul ->")
+		}
+	}
+
+	return nil
+}
+
+func parseConsulConfig(result **ConsulConfig, list *ast.ObjectList) error {
+	list = list.Elem()
+	if len(list.Items) > 1 {
+		return fmt.Errorf("only one 'consul' block allowed")
+	}
+
+	// Get our Consul object
+	listVal := list.Items[0].Val
+
+	// Check for invalid keys
+	valid := []string{
+		"addresses",
+		"client_auto_join",
+		"server_auto_join",
+	}
+
+	if err := checkHCLKeys(listVal, valid); err != nil {
+		return err
+	}
+
+	var m map[string]interface{}
+	if err := hcl.DecodeObject(&m, listVal); err != nil {
+		return err
+	}
+
+	var consulConfig ConsulConfig
+	dec, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
+		DecodeHook:       mapstructure.StringToTimeDurationHookFunc(),
+		WeaklyTypedInput: true,
+		Result:           &consulConfig,
+	})
+	if err != nil {
+		return err
+	}
+	if err := dec.Decode(m); err != nil {
+		return err
+	}
+
+	*result = &consulConfig
 	return nil
 }
 
