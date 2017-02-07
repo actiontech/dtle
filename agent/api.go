@@ -31,6 +31,9 @@ func (a *Agent) ServeHTTP() {
 func (a *Agent) apiRoutes(r *mux.Router) {
 	subver := r.PathPrefix("/v1").Subrouter()
 	subver.HandleFunc("/", a.indexHandler)
+	subver.HandleFunc("/members", a.membersHandler)
+	subver.HandleFunc("/leader", a.leaderHandler)
+	subver.HandleFunc("/leave", a.leaveHandler).Methods(http.MethodGet, http.MethodPost)
 }
 
 func printJson(w http.ResponseWriter, r *http.Request, v interface{}) error {
@@ -64,5 +67,31 @@ func (a *Agent) indexHandler(w http.ResponseWriter, r *http.Request) {
 
 	if err := printJson(w, r, stats); err != nil {
 		log.Fatal(err)
+	}
+}
+
+func (a *Agent) membersHandler(w http.ResponseWriter, r *http.Request) {
+	if err := printJson(w, r, a.serf.Members()); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func (a *Agent) leaderHandler(w http.ResponseWriter, r *http.Request) {
+	member, err := a.leaderMember()
+	if err == nil {
+		if err := printJson(w, r, member); err != nil {
+			log.Fatal(err)
+		}
+	}
+}
+
+func (a *Agent) leaveHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodGet {
+		log.Warn("/leave GET is deprecated and will be removed, use POST")
+	}
+	if err := a.serf.Leave(); err != nil {
+		if err := printJson(w, r, a.listServers()); err != nil {
+			log.Fatal(err)
+		}
 	}
 }
