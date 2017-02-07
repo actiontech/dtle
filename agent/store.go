@@ -23,8 +23,8 @@ func init() {
 	consul.Register()
 }
 
-// NewStateStore is used to create a new state store
-func NewStateStore(machines []string, a *Agent) *Store {
+// NewStore is used to create a new state store
+func NewStore(machines []string, a *Agent) *Store {
 	s, err := libkv.NewStore(store.Backend(backend), machines, nil)
 	if err != nil {
 		log.Fatal(err)

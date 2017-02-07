@@ -48,7 +48,7 @@ func NewAgent(config *uconf.Config) (*Agent, error) {
 	a.join(a.config.StartJoin, true)
 
 	if a.config.Server {
-		a.store = NewStateStore(a.config.Consul.Addresses, a)
+		a.store = NewStore(a.config.Consul.Addresses, a)
 	}
 	go a.eventLoop()
 
@@ -259,9 +259,28 @@ func (a *Agent) eventLoop() {
 
 			if e.EventType() == serf.EventQuery {
 				query := e.(*serf.Query)
-				if query.Name == "" && a.config.Server {
-					//Unmarshal query.Payload
-					//run job
+				if query.Name == RestartJob && a.config.Server {
+					jobs, err := a.store.GetJobs()
+					if err != nil {
+						log.Fatal(err)
+					}
+					for _,job := range jobs{
+						go job.Run()
+					}
+				}
+				if query.Name == RunJob {
+					var rqp RunQueryParam
+					if err := json.Unmarshal(query.Payload, &rqp); err != nil {
+						log.Infof("agent: Error unmarshaling query payload:%v",err)
+					}
+					go func() {
+						if err := a.run(rqp.Job); err != nil {
+							log.Infof("err:%v,agent: Error invoking job command",err)
+						}
+					}()
+				}
+				if query.Name == RPCConfig && a.config.Server {
+
 				}
 			}
 
@@ -270,6 +289,10 @@ func (a *Agent) eventLoop() {
 			return
 		}
 	}
+}
+
+func (a *Agent) run(job *Job) error {
+	return nil
 }
 
 func (a *Agent) JobRegister(payload []byte) *Job {
