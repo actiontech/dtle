@@ -158,10 +158,11 @@ func (a *AgentCommand) readConfig() *uconf.Config {
 	flags.StringVar(&cmdConfig.File, "config", "/etc/udup/udup.conf", "")
 	flags.StringVar(&cmdConfig.LogLevel, "log-level", "info", "")
 	flags.StringVar(&cmdConfig.PidFile, "pid-file", "udup.pid", "")
+	flags.StringVar(&cmdConfig.BindAddr, "bind", "", "")
+	flags.StringVar(&cmdConfig.HTTPAddr, "http-addr", "", "")
 
 	// Role options
-	/*flags.BoolVar(&cmdConfig.Extract.Enabled, "extract", false, "")
-	flags.BoolVar(&cmdConfig.Apply.Enabled, "apply", false, "")*/
+	flags.BoolVar(&cmdConfig.Server, "server", true, "")
 
 	if err := flags.Parse(a.args); err != nil {
 		return nil
