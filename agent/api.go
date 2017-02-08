@@ -15,6 +15,9 @@ import (
 )
 
 func (a *Agent) ServeHTTP() {
+	r := mux.NewRouter().StrictSlash(true)
+	a.apiRoutes(r)
+
 	// Start the listener
 	lnAddr, err := net.ResolveTCPAddr("tcp", a.config.HTTPAddr)
 	if err != nil {
