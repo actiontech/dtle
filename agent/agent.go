@@ -276,7 +276,7 @@ func (a *Agent) eventLoop() {
 						log.Infof("agent: Error unmarshaling query payload:%v",err)
 					}
 					go func() {
-						if err := a.run(rqp.Job); err != nil {
+						if err := a.invokeJob(rqp.Job); err != nil {
 							log.Infof("err:%v,agent: Error invoking job command",err)
 						}
 					}()
@@ -293,8 +293,14 @@ func (a *Agent) eventLoop() {
 	}
 }
 
-func (a *Agent) run(job *Job) error {
-	return nil
+func (a *Agent) invokeJob(job *Job) error {
+	rpcServer, err := a.queryRPCConfig()
+	if err != nil {
+		return err
+	}
+
+	rc := &RPCClient{ServerAddr: string(rpcServer)}
+	return rc.callExecutionDone(job)
 }
 
 func (a *Agent) JobRegister(payload []byte) *Job {
