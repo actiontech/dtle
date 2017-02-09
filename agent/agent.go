@@ -50,6 +50,7 @@ func NewAgent(config *uconf.Config) (*Agent, error) {
 	if a.config.Server {
 		a.store = NewStore(a.config.Consul.Addresses, a)
 		a.ServeHTTP()
+		listenRPC(a)
 	}
 	go a.eventLoop()
 

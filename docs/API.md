@@ -3,7 +3,7 @@
 
 <a name="overview"></a>
 ## Overview
-You can communicate with Udup using a RESTful JSON API over HTTP. Dkron nodes usually listen on port `8080` for API requests. All examples in this section assume that you've found a running leader at `localhost:8080`.
+You can communicate with Udup using a RESTful JSON API over HTTP. Udup nodes usually listen on port `8080` for API requests. All examples in this section assume that you've found a running leader at `localhost:8080`.
 
 Udup implements a RESTful JSON API over HTTP to communicate with software clients. Udup listens in port `8080` by default. All examples in this section assume that you're using the default port.
 

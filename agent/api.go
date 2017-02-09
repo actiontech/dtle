@@ -1,25 +1,31 @@
 package agent
 
 import (
-	"net"
 	"net/http"
 
-	"github.com/NYTimes/gziphandler"
 	"github.com/ngaut/log"
+	"github.com/carbocation/interpose"
 	"github.com/gorilla/mux"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"io"
 	"github.com/docker/libkv/store"
+	"strings"
 )
+
+const apiPathPrefix  = "v1"
 
 func (a *Agent) ServeHTTP() {
 	r := mux.NewRouter().StrictSlash(true)
 	a.apiRoutes(r)
 
+	middle := interpose.New()
+	middle.Use(metaMiddleware(a.config.NodeName))
+	middle.UseHandler(r)
+
 	// Start the listener
-	lnAddr, err := net.ResolveTCPAddr("tcp", a.config.HTTPAddr)
+	/*lnAddr, err := net.ResolveTCPAddr("tcp", a.config.HTTPAddr)
 	if err != nil {
 		log.Infof("failed to start HTTP listener: %v", err)
 	}
@@ -31,7 +37,22 @@ func (a *Agent) ServeHTTP() {
 	// Create the mux
 	mux := http.NewServeMux()
 	// Start the server
-	go http.Serve(ln, gziphandler.GzipHandler(mux))
+	go http.Serve(ln, gziphandler.GzipHandler(mux))*/
+	srv := &http.Server{Addr: a.config.HTTPAddr, Handler: middle}
+	log.Infof("address:%v,api: Running HTTP server",a.config.HTTPAddr)
+	go srv.ListenAndServe()
+}
+
+func metaMiddleware(nodeName string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if strings.HasPrefix(r.URL.Path, "/"+apiPathPrefix) {
+				w.Header().Set("Content-Type", "application/json; charset=UTF-8")
+				w.Header().Set("X-Whom", nodeName)
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
 }
 
 func (a *Agent) apiRoutes(r *mux.Router) {

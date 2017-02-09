@@ -1,5 +1,5 @@
 hash: 63dddd7fa34c6dc36263f44c731ea66893f00e856e28a9666ba1d7da3954a91e
-updated: 2017-02-08T10:18:14.4462664+08:00
+updated: 2017-02-09T10:31:58.6898602+08:00
 imports:
 - name: github.com/armon/go-metrics
   version: 93f237eba9b0602f3e73710416558854a81d9337
@@ -7,6 +7,8 @@ imports:
   version: 4239b77079c7b5d1243b7b4736304ce8ddb6f0f2
 - name: github.com/bgentry/speakeasy
   version: 675b82c74c0ed12283ee81ba8a534c8982c07b85
+- name: github.com/carbocation/interpose
+  version: 723534742ba3bbda66268b735aaa41634468acc6
 - name: github.com/docker/libkv
   version: 1d8431073ae03cdaedb198a89722f3aab6d418ef
   subpackages:

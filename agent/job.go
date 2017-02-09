@@ -43,6 +43,9 @@ type Job struct {
 	// Is this job disabled?
 	Disabled bool `json:"disabled"`
 
+	// Tags of the target servers to run this job against.
+	Tags map[string]string `json:"tags"`
+
 	// Pointer to the calling agent.
 	Agent *Agent `json:"-"`
 
