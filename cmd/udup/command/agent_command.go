@@ -25,8 +25,8 @@ type AgentCommand struct {
 	Ui         cli.Ui
 	ShutdownCh <-chan struct{}
 
+	Agent *uagt.Agent
 	args  []string
-	agent *uagt.Agent
 }
 
 // setupAgent is used to start the agent and various interfaces
@@ -36,7 +36,7 @@ func (c *AgentCommand) setupAgent(config *uconf.Config) error {
 		log.Errorf("Error starting agent: %s", err)
 		return err
 	}
-	c.agent = agent
+	c.Agent = agent
 
 	// Output the header that the server has started
 	log.Infof("Udup agent started!\n")
