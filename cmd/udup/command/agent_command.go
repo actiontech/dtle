@@ -151,6 +151,10 @@ func (a *AgentCommand) readConfig() *uconf.Config {
 	// Make a new, empty config.
 	cmdConfig := &uconf.Config{}
 
+	hostname, err := os.Hostname()
+	if err != nil {
+		return nil
+	}
 	flags := flag.NewFlagSet("agent", flag.ContinueOnError)
 	flags.Usage = func() { a.Ui.Error(a.Help()) }
 
@@ -160,6 +164,7 @@ func (a *AgentCommand) readConfig() *uconf.Config {
 	flags.StringVar(&cmdConfig.PidFile, "pid-file", "udup.pid", "")
 	flags.StringVar(&cmdConfig.BindAddr, "bind", "", "")
 	flags.StringVar(&cmdConfig.HTTPAddr, "http-addr", "", "")
+	flags.StringVar(&cmdConfig.NodeName, "name", hostname, "")
 
 	// Role options
 	flags.BoolVar(&cmdConfig.Server, "server", true, "")
@@ -203,6 +208,7 @@ func (a *AgentCommand) readConfig() *uconf.Config {
 
 	// Merge any CLI options over config file options
 	config = config.Merge(cmdConfig)
+	config.Version = a.Version
 
 	return config
 }

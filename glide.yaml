@@ -1,6 +1,6 @@
 package: udup
 import:
-- package: github.com/go-sql-driver/mysql
+- package: github.com/go-sql-driver/inputs
 - package: github.com/hashicorp/go-multierror
 - package: github.com/hashicorp/hcl
   subpackages:
@@ -20,9 +20,9 @@ import:
   - ast
   - parser
 - package: github.com/satori/go.uuid
-- package: github.com/siddontang/go-mysql
+- package: github.com/siddontang/go-inputs
   subpackages:
-  - mysql
+  - inputs
   - replication
 - package: golang.org/x/net
   subpackages:

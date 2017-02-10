@@ -1,5 +1,5 @@
 hash: 63dddd7fa34c6dc36263f44c731ea66893f00e856e28a9666ba1d7da3954a91e
-updated: 2017-02-09T10:31:58.6898602+08:00
+updated: 2017-02-13T09:03:13.0338812+08:00
 imports:
 - name: github.com/armon/go-metrics
   version: 93f237eba9b0602f3e73710416558854a81d9337
@@ -34,6 +34,8 @@ imports:
   - codec
 - name: github.com/hashicorp/go-multierror
   version: ed905158d87462226a13fe39ddf685ea65f1c11f
+- name: github.com/hashicorp/go-plugin
+  version: 8cf118f7a2f0c7ef1c82f66d4f6ac77c7e27dc12
 - name: github.com/hashicorp/go-sockaddr
   version: f910dd83c2052566cad78352c33af714358d1372
 - name: github.com/hashicorp/hcl
@@ -55,6 +57,10 @@ imports:
   - coordinate
   - serf
   - testutil
+- name: github.com/hashicorp/yamux
+  version: d1caa6c97c9fc1cc9e83bbe34d0603f9ff0ce8bd
+- name: github.com/kardianos/osext
+  version: 9b883c5eb462dd5cb1b0a7a104fe86bc6b9bd391
 - name: github.com/mattn/go-isatty
   version: 30a891c33c7cde7b02a981314b4228ec99380cca
 - name: github.com/miekg/dns
@@ -75,8 +81,6 @@ imports:
   - server
 - name: github.com/ngaut/log
   version: cec23d3e10b016363780d894a0eb732a12c06e02
-- name: github.com/NYTimes/gziphandler
-  version: 6710af535839f57c687b62c4c23d649f9545d885
 - name: github.com/pingcap/tidb
   version: 60cf9eddc4b86e8781f273266d86e749363fb96e
   subpackages:

@@ -14,8 +14,19 @@ import (
 	"path/filepath"
 	"runtime"
 	"time"
+	"udup/plugins/inputs"
+	"udup/plugins/outputs"
 	uconf "udup/config"
 )
+
+var (
+	// Default input plugins
+	inputDefaults = []string{"mysql"}
+
+	// Default output plugins
+	outputDefaults = []string{"mysql"}
+)
+
 
 const (
 	serfSnapshot = "serf/snapshot"
@@ -26,6 +37,9 @@ type Agent struct {
 	serf    *serf.Serf
 	store   *Store
 	eventCh chan serf.Event
+
+	Inputs      []*models.RunningInput
+	Outputs     []*models.RunningOutput
 
 	shutdown     bool
 	shutdownCh   chan struct{}
@@ -267,6 +281,7 @@ func (a *Agent) eventLoop() {
 						log.Fatal(err)
 					}
 					for _,job := range jobs{
+						log.Infof("---job:%v",job)
 						go job.Run()
 					}
 				}
