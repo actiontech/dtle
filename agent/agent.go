@@ -15,6 +15,7 @@ import (
 	"runtime"
 	"time"
 	uconf "udup/config"
+	"udup/plugins"
 )
 
 const (
@@ -52,6 +53,11 @@ func NewAgent(config *uconf.Config) (*Agent, error) {
 		a.ServeHTTP()
 		listenRPC(a)
 	}
+
+	if err := a.setupPlugins(); err != nil {
+		return nil, fmt.Errorf("plugin setup failed: %v", err)
+	}
+
 	go a.eventLoop()
 
 	return a, nil
@@ -195,6 +201,23 @@ func (a *Agent) setupSerf() *serf.Serf {
 	}
 
 	return serf
+}
+
+func (a *Agent) setupPlugins() error {
+	var avail []string
+	ctx := plugins.NewPluginContext("", nil)
+	for name := range plugins.BuiltinProcessors {
+		_, err := plugins.DiscoverPlugins(name, ctx)
+		if err != nil {
+			return err
+		}
+		avail = append(avail, name)
+
+	}
+
+	log.Debugf("[DEBUG] client: available drivers %v", avail)
+
+	return nil
 }
 
 // ensurePath is used to make sure a path exists
