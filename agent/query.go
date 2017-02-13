@@ -36,7 +36,7 @@ func (a *Agent) RunQuery(job *Job) {
 
 	params = &serf.QueryParam{
 		FilterNodes: []string{a.config.NodeName},
-		FilterTags:  nil,
+		FilterTags:  job.Tags,
 		RequestAck:  true,
 	}
 
@@ -143,7 +143,7 @@ func (a *Agent) queryRPCConfig() ([]byte, error) {
 			}
 		}
 	}
-	log.Infof("query:%v,rpcAddr:%v,proc: Done receiving acks and responses", RPCConfig,rpcAddr)
+	log.Infof("query:%v,proc: Done receiving acks and responses", RPCConfig)
 
 	return rpcAddr, nil
 }

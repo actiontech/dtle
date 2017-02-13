@@ -6,6 +6,7 @@ import (
 
 	"github.com/hashicorp/serf/serf"
 	"github.com/ngaut/log"
+	"github.com/docker/leadership"
 
 	"encoding/json"
 	"io/ioutil"
@@ -20,6 +21,8 @@ import (
 
 const (
 	serfSnapshot = "serf/snapshot"
+	defaultRecoverTime = 10 * time.Second
+	defaultLeaderTTL   = 20 * time.Second
 )
 
 type Agent struct {
@@ -27,6 +30,7 @@ type Agent struct {
 	serf    *serf.Serf
 	store   *Store
 	eventCh chan serf.Event
+	candidate *leadership.Candidate
 
 	shutdown     bool
 	shutdownCh   chan struct{}
@@ -52,6 +56,7 @@ func NewAgent(config *uconf.Config) (*Agent, error) {
 		a.store = NewStore(a.config.Consul.Addresses, a)
 		a.ServeHTTP()
 		listenRPC(a)
+		a.participate()
 	}
 
 	if err := a.setupPlugins(); err != nil {
@@ -298,11 +303,22 @@ func (a *Agent) eventLoop() {
 					if err := json.Unmarshal(query.Payload, &rqp); err != nil {
 						log.Infof("agent: Error unmarshaling query payload:%v",err)
 					}
+
+					log.Infof("job:%v,Starting job",rqp.Job.Name)
+
+					rpcc := RPCClient{ServerAddr: rqp.RPCAddr}
+					job, err := rpcc.GetJob(rqp.Job.Name)
+					if err != nil {
+						log.Infof("err:%v,agent: Error on rpc.GetJob call",err)
+					}
+
 					go func() {
-						if err := a.invokeJob(rqp.Job); err != nil {
+						if err := a.invokeJob(job); err != nil {
 							log.Infof("err:%v,agent: Error invoking job command",err)
 						}
 					}()
+					jobJson, _ := json.Marshal(job)
+					query.Respond(jobJson)
 				}
 				if query.Name == RPCConfig && a.config.Server {
 					log.Infof("query:%v,payload:%v,at:%v,agent: RPC Config requested",query.Name,string(query.Payload),query.LTime)
@@ -323,10 +339,46 @@ func (a *Agent) invokeJob(job *Job) error {
 	if err != nil {
 		return err
 	}
-	log.Infof("rpcServer:%v",rpcServer)
 
 	rc := &RPCClient{ServerAddr: string(rpcServer)}
 	return rc.callExecutionDone(job)
+}
+
+
+func (a *Agent) participate() {
+	a.candidate = leadership.NewCandidate(a.store.Client, a.store.LeaderKey(), a.config.NodeName, defaultLeaderTTL)
+
+	go func() {
+		for {
+			a.runForElection()
+			// retry
+			time.Sleep(defaultRecoverTime)
+		}
+	}()
+}
+
+// Leader election routine
+func (a *Agent) runForElection() {
+	log.Info("agent: Running for election")
+	electedCh, errCh := a.candidate.RunForElection()
+
+	for {
+		select {
+		case isElected := <-electedCh:
+			if isElected {
+				log.Info("agent: Cluster leadership acquired")
+				// If this server is elected as the leader, start the scheduler
+			} else {
+				log.Info("agent: Cluster leadership lost")
+				// Always stop the schedule of this server to prevent multiple servers with the scheduler on
+			}
+
+		case err := <-errCh:
+			log.Infof("err:%v,Leader election failed, channel is probably closed",err)
+			// Always stop the schedule of this server to prevent multiple servers with the scheduler on
+			return
+		}
+	}
 }
 
 func (a *Agent) JobRegister(payload []byte) *Job {

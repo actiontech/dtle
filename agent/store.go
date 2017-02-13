@@ -47,12 +47,44 @@ func (s *Store) UpsertJob(job *Job) error {
 	// Init the job agent
 	job.Agent = s.agent
 
+	if err := s.validateJob(job); err != nil {
+		return err
+	}
+
+	// Get if the requested job already exist
+	ej, err := s.JobByName(job.Name)
+	if err != nil && err != store.ErrKeyNotFound {
+		return err
+	}
+	if ej != nil {
+		// When the job runs, these status vars are updated
+		// otherwise use the ones that are stored
+		if ej.LastError.After(job.LastError) {
+			job.LastError = ej.LastError
+		}
+		if ej.LastSuccess.After(job.LastSuccess) {
+			job.LastSuccess = ej.LastSuccess
+		}
+	}
+
 	jobJSON, _ := json.Marshal(job)
 
 	log.Infof("job:%v,json:%v,store: Setting job", job.Name, string(jobJSON))
 
 	if err := s.Client.Put(jobKey, jobJSON, nil); err != nil {
 		return err
+	}
+
+	return nil
+}
+
+func (s *Store) validateJob(job *Job) error {
+	if job.ParentJob == job.Name {
+		return ErrSameParent
+	}
+
+	if job.Concurrency != ConcurrencyAllow && job.Concurrency != ConcurrencyForbid && job.Concurrency != "" {
+		return ErrWrongConcurrency
 	}
 
 	return nil

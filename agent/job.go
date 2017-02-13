@@ -24,6 +24,7 @@ var (
 	ErrNoAgent           = errors.New("No agent defined")
 	ErrSameParent        = errors.New("The job can not have itself as parent")
 	ErrNoParent          = errors.New("The job doens't have a parent job set")
+	ErrWrongConcurrency  = errors.New("Wrong concurrency policy value, use: allow/forbid")
 )
 
 type Job struct {

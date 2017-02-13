@@ -120,7 +120,7 @@ type RPCClient struct {
 	ServerAddr string
 }
 
-func (rpcc *RPCClient) callExecutionDone(execution *Job) error {
+func (rpcc *RPCClient) callExecutionDone(job *Job) error {
 	client, err := rpc.DialHTTP("tcp", rpcc.ServerAddr)
 	if err != nil {
 		log.Infof("err:%v,server_addr:%v,rpc: error dialing.",err,rpcc.ServerAddr)
@@ -130,7 +130,7 @@ func (rpcc *RPCClient) callExecutionDone(execution *Job) error {
 
 	// Synchronous call
 	var reply serf.NodeResponse
-	err = client.Call("RPCServer.ExecutionDone", execution, &reply)
+	err = client.Call("RPCServer.ExecutionDone", job, &reply)
 	if err != nil {
 		log.Infof("err:%v,rpc: Error calling ExecutionDone",err)
 		return err
