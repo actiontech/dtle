@@ -1,20 +1,20 @@
 package agent
 
 import (
-	"net/http"
-
-	"github.com/ngaut/log"
-	"github.com/carbocation/interpose"
-	"github.com/gorilla/mux"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"io"
-	"github.com/docker/libkv/store"
+	"io/ioutil"
+	"net/http"
 	"strings"
+
+	"github.com/carbocation/interpose"
+	"github.com/docker/libkv/store"
+	"github.com/gorilla/mux"
+	"github.com/ngaut/log"
 )
 
-const apiPathPrefix  = "v1"
+const apiPathPrefix = "v1"
 
 func (a *Agent) ServeHTTP() {
 	r := mux.NewRouter().StrictSlash(true)
@@ -39,7 +39,7 @@ func (a *Agent) ServeHTTP() {
 	// Start the server
 	go http.Serve(ln, gziphandler.GzipHandler(mux))*/
 	srv := &http.Server{Addr: a.config.HTTPAddr, Handler: middle}
-	log.Infof("address:%v,api: Running HTTP server",a.config.HTTPAddr)
+	log.Infof("address:%v,api: Running HTTP server", a.config.HTTPAddr)
 	go srv.ListenAndServe()
 }
 
@@ -178,7 +178,7 @@ func (a *Agent) jobUpsertHandler(w http.ResponseWriter, r *http.Request) {
 		if err := json.NewEncoder(w).Encode(err); err != nil {
 			log.Fatal(err)
 		}
-		log.Infof("err:%v",err)
+		log.Infof("err:%v", err)
 		return
 	}
 
@@ -227,7 +227,7 @@ func (a *Agent) jobUpsertHandler(w http.ResponseWriter, r *http.Request) {
 	if err := printJson(w, r, &job); err != nil {
 		log.Fatal(err)
 	}
-	log.Infof("job:%v",job)
+	log.Infof("job:%v", job)
 }
 
 func (a *Agent) jobDeleteHandler(w http.ResponseWriter, r *http.Request) {
@@ -242,8 +242,6 @@ func (a *Agent) jobDeleteHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-
-	a.jobRestartQuery(string(a.store.GetLeader()))
 
 	if err := printJson(w, r, job); err != nil {
 		log.Fatal(err)

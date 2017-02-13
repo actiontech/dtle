@@ -1,35 +1,35 @@
 package agent
 
 import (
-	"fmt"
-	"sync"
-
-	"github.com/hashicorp/serf/serf"
-	"github.com/ngaut/log"
-	"github.com/docker/leadership"
-
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"net"
 	"os"
 	"path/filepath"
 	"runtime"
+	"sync"
 	"time"
+
+	"github.com/docker/leadership"
+	"github.com/hashicorp/serf/serf"
+	"github.com/ngaut/log"
+
 	uconf "udup/config"
 	"udup/plugins"
 )
 
 const (
-	serfSnapshot = "serf/snapshot"
+	serfSnapshot       = "serf/snapshot"
 	defaultRecoverTime = 10 * time.Second
 	defaultLeaderTTL   = 20 * time.Second
 )
 
 type Agent struct {
-	config  *uconf.Config
-	serf    *serf.Serf
-	store   *Store
-	eventCh chan serf.Event
+	config    *uconf.Config
+	serf      *serf.Serf
+	store     *Store
+	eventCh   chan serf.Event
 	candidate *leadership.Candidate
 
 	shutdown     bool
@@ -53,10 +53,10 @@ func NewAgent(config *uconf.Config) (*Agent, error) {
 	a.join(a.config.StartJoin, true)
 
 	if a.config.Server {
-		a.store = NewStore(a.config.Consul.Addresses, a)
+		a.store = NewStore(a.config.Consul.Addrs, a)
 		a.ServeHTTP()
 		listenRPC(a)
-		a.participate()
+		//a.participate()
 	}
 
 	if err := a.setupPlugins(); err != nil {
@@ -220,7 +220,7 @@ func (a *Agent) setupPlugins() error {
 
 	}
 
-	log.Debugf("[DEBUG] client: available drivers %v", avail)
+	log.Debugf("[DEBUG] client: available plugins %v", avail)
 
 	return nil
 }
@@ -294,34 +294,34 @@ func (a *Agent) eventLoop() {
 					if err != nil {
 						log.Fatal(err)
 					}
-					for _,job := range jobs{
+					for _, job := range jobs {
 						go job.Run()
 					}
 				}
 				if query.Name == RunJob {
 					var rqp RunQueryParam
 					if err := json.Unmarshal(query.Payload, &rqp); err != nil {
-						log.Infof("agent: Error unmarshaling query payload:%v",err)
+						log.Infof("agent: Error unmarshaling query payload:%v", err)
 					}
 
-					log.Infof("job:%v,Starting job",rqp.Job.Name)
+					log.Infof("job:%v,Starting job", rqp.Job.Name)
 
 					rpcc := RPCClient{ServerAddr: rqp.RPCAddr}
 					job, err := rpcc.GetJob(rqp.Job.Name)
 					if err != nil {
-						log.Infof("err:%v,agent: Error on rpc.GetJob call",err)
+						log.Infof("err:%v,agent: Error on rpc.GetJob call", err)
 					}
 
 					go func() {
 						if err := a.invokeJob(job); err != nil {
-							log.Infof("err:%v,agent: Error invoking job command",err)
+							log.Infof("err:%v,agent: Error invoking job command", err)
 						}
 					}()
 					jobJson, _ := json.Marshal(job)
 					query.Respond(jobJson)
 				}
 				if query.Name == RPCConfig && a.config.Server {
-					log.Infof("query:%v,payload:%v,at:%v,agent: RPC Config requested",query.Name,string(query.Payload),query.LTime)
+					log.Infof("query:%v,payload:%v,at:%v,agent: RPC Config requested", query.Name, string(query.Payload), query.LTime)
 
 					query.Respond([]byte(a.getRPCAddr()))
 				}
@@ -335,6 +335,7 @@ func (a *Agent) eventLoop() {
 }
 
 func (a *Agent) invokeJob(job *Job) error {
+	log.Infof("------invoke job")
 	rpcServer, err := a.queryRPCConfig()
 	if err != nil {
 		return err
@@ -343,7 +344,6 @@ func (a *Agent) invokeJob(job *Job) error {
 	rc := &RPCClient{ServerAddr: string(rpcServer)}
 	return rc.callExecutionDone(job)
 }
-
 
 func (a *Agent) participate() {
 	a.candidate = leadership.NewCandidate(a.store.Client, a.store.LeaderKey(), a.config.NodeName, defaultLeaderTTL)
@@ -374,7 +374,7 @@ func (a *Agent) runForElection() {
 			}
 
 		case err := <-errCh:
-			log.Infof("err:%v,Leader election failed, channel is probably closed",err)
+			log.Infof("err:%v,Leader election failed, channel is probably closed", err)
 			// Always stop the schedule of this server to prevent multiple servers with the scheduler on
 			return
 		}
@@ -399,6 +399,7 @@ func (a *Agent) JobRegister(payload []byte) *Job {
 // of the current member.
 func (a *Agent) getRPCAddr() string {
 	bindIp := a.serf.LocalMember().Addr
+	//bindIp := "192.168.99.1"
 
 	return fmt.Sprintf("%s:%d", bindIp, a.config.RPCPort)
 }

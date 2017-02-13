@@ -120,7 +120,7 @@ func parseConsulConfig(result **ConsulConfig, list *ast.ObjectList) error {
 
 	// Check for invalid keys
 	valid := []string{
-		"addresses",
+		"addrs",
 		"client_auto_join",
 		"server_auto_join",
 	}

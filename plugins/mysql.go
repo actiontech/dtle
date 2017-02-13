@@ -1,14 +1,17 @@
 package plugins
 
+import "github.com/ngaut/log"
+
 type MySQLDriver struct {
 	PluginContext
 }
 
 func NewMySQLDriver(ctx *PluginContext) Plugin {
-	return &MySQLDriver{PluginContext:*ctx}
+	return &MySQLDriver{PluginContext: *ctx}
 }
 
 func (d *MySQLDriver) Start() error {
+	log.Infof("------start mysql driver")
 	return nil
 }
 

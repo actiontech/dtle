@@ -6,6 +6,7 @@ import (
 
 	"github.com/hashicorp/serf/testutil"
 	"github.com/mitchellh/cli"
+
 	"udup/cmd/udup/command"
 )
 

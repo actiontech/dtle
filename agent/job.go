@@ -92,9 +92,9 @@ func (j *Job) Status() int {
 	}
 	var status int
 	job, _ := j.Agent.store.JobByName(j.Name)
-	if job.Success{
+	if job.Success {
 		status = Success
-	} else{
+	} else {
 		status = Failed
 	}
 	return status

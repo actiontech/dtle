@@ -2,13 +2,16 @@ package agent
 
 import (
 	"errors"
+	"fmt"
 	"net"
 	"net/http"
 	"net/rpc"
 
-	"github.com/ngaut/log"
 	"github.com/docker/libkv/store"
 	"github.com/hashicorp/serf/serf"
+	"github.com/ngaut/log"
+
+	"udup/plugins"
 )
 
 var (
@@ -20,7 +23,7 @@ type RPCServer struct {
 }
 
 func (rpcs *RPCServer) GetJob(jobName string, job *Job) error {
-	log.Infof("job:%v,rpc: Received GetJob",jobName)
+	log.Infof("job:%v,rpc: Received GetJob", jobName)
 
 	j, err := rpcs.agent.store.JobByName(jobName)
 	if err != nil {
@@ -34,7 +37,7 @@ func (rpcs *RPCServer) GetJob(jobName string, job *Job) error {
 }
 
 func (rpcs *RPCServer) ExecutionDone(execution Job, reply *serf.NodeResponse) error {
-	log.Infof("job:%v,rpc: eceived execution done",execution.Name)
+	log.Infof("job:%v,rpc: eceived execution done", execution.Name)
 
 	// Load the job from the store
 	job, err := rpcs.agent.store.JobByName(execution.Name)
@@ -53,6 +56,7 @@ func (rpcs *RPCServer) ExecutionDone(execution Job, reply *serf.NodeResponse) er
 
 	// Get the defined output types for the job, and call them
 	//process
+	rpcs.agent.startTask(job)
 
 	if err := rpcs.agent.store.UpsertJob(job); err != nil {
 		log.Fatal("rpc:", err)
@@ -81,6 +85,44 @@ func (rpcs *RPCServer) ExecutionDone(execution Job, reply *serf.NodeResponse) er
 	return nil
 }
 
+// createDriver makes a driver for the task
+func (a *Agent) createDriver(job *Job) (plugins.Plugin, error) {
+	driverCtx := plugins.NewPluginContext(job.Name, a.config)
+	driver, err := plugins.DiscoverPlugins(job.Driver, driverCtx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create driver '%s': %v",
+			job.Driver, err)
+	}
+	return driver, err
+}
+
+func (a *Agent) startTask(job *Job) error {
+	// Create a driver
+	driver, err := a.createDriver(job)
+	if err != nil {
+		return fmt.Errorf("failed to create driver of task '%s': %v",
+			job.Name, err)
+	}
+	log.Infof("driver:%v---job:%v", driver, job)
+
+	switch job.Driver {
+	case plugins.DriverTypeMySQL:
+		{
+			// Start the job
+			err := driver.Start()
+			if err != nil {
+
+			}
+		}
+	default:
+		{
+			return fmt.Errorf("Unknown job type : %+v", job.Driver)
+		}
+	}
+
+	return nil
+}
+
 var workaroundRPCHTTPMux = 0
 
 func listenRPC(a *Agent) {
@@ -88,7 +130,7 @@ func listenRPC(a *Agent) {
 		agent: a,
 	}
 
-	log.Infof("rpc_addr:%v,rpc: Registering RPC server",a.getRPCAddr())
+	log.Infof("rpc_addr:%v,rpc: Registering RPC server", a.getRPCAddr())
 
 	rpc.Register(r)
 
@@ -123,7 +165,7 @@ type RPCClient struct {
 func (rpcc *RPCClient) callExecutionDone(job *Job) error {
 	client, err := rpc.DialHTTP("tcp", rpcc.ServerAddr)
 	if err != nil {
-		log.Infof("err:%v,server_addr:%v,rpc: error dialing.",err,rpcc.ServerAddr)
+		log.Infof("err:%v,server_addr:%v,rpc: error dialing.", err, rpcc.ServerAddr)
 		return err
 	}
 	defer client.Close()
@@ -132,7 +174,7 @@ func (rpcc *RPCClient) callExecutionDone(job *Job) error {
 	var reply serf.NodeResponse
 	err = client.Call("RPCServer.ExecutionDone", job, &reply)
 	if err != nil {
-		log.Infof("err:%v,rpc: Error calling ExecutionDone",err)
+		log.Infof("err:%v,rpc: Error calling ExecutionDone", err)
 		return err
 	}
 	log.Debug("rpc: from: ", reply.From)
@@ -143,7 +185,7 @@ func (rpcc *RPCClient) callExecutionDone(job *Job) error {
 func (rpcc *RPCClient) GetJob(jobName string) (*Job, error) {
 	client, err := rpc.DialHTTP("tcp", rpcc.ServerAddr)
 	if err != nil {
-		log.Infof("err:%v,server_addr:%v,rpc: error dialing.",err,rpcc.ServerAddr)
+		log.Infof("err:%v,server_addr:%v,rpc: error dialing.", err, rpcc.ServerAddr)
 		return nil, err
 	}
 	defer client.Close()
@@ -152,7 +194,7 @@ func (rpcc *RPCClient) GetJob(jobName string) (*Job, error) {
 	var job Job
 	err = client.Call("RPCServer.GetJob", jobName, &job)
 	if err != nil {
-		log.Infof("err:%v,rpc: Error calling GetJob",err)
+		log.Infof("err:%v,rpc: Error calling GetJob", err)
 		return nil, err
 	}
 

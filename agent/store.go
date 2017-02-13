@@ -3,6 +3,7 @@ package agent
 import (
 	"encoding/json"
 	"fmt"
+
 	"github.com/docker/libkv"
 	"github.com/docker/libkv/store"
 	"github.com/docker/libkv/store/consul"
@@ -24,13 +25,13 @@ func init() {
 }
 
 // NewStore is used to create a new state store
-func NewStore(machines []string, a *Agent) *Store {
-	s, err := libkv.NewStore(store.Backend(backend), machines, nil)
+func NewStore(addrs []string, a *Agent) *Store {
+	s, err := libkv.NewStore(store.Backend(backend), addrs, nil)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	log.Infof("machines:%v,store: Backend config", machines)
+	log.Infof("addrs:%v,store: Backend config", addrs)
 
 	_, err = s.List(keyspace)
 	if err != store.ErrKeyNotFound && err != nil {

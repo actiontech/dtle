@@ -48,7 +48,7 @@ type Config struct {
 }
 
 type ConsulConfig struct {
-	Addresses []string `mapstructure:"addresses"`
+	Addrs []string `mapstructure:"addrs"`
 }
 
 // ConnectionConfig is the DB configuration.
@@ -171,7 +171,7 @@ func (c *Config) Merge(b *Config) *Config {
 func (a *ConsulConfig) Merge(b *ConsulConfig) *ConsulConfig {
 	result := *a
 
-	result.Addresses = append(result.Addresses, b.Addresses...)
+	result.Addrs = append(result.Addrs, b.Addrs...)
 	return &result
 }
 

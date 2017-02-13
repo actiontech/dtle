@@ -10,6 +10,7 @@ import (
 	"github.com/hashicorp/serf/testutil"
 	"github.com/mitchellh/cli"
 	"github.com/stretchr/testify/assert"
+
 	"udup/cmd/udup/command"
 )
 

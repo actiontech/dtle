@@ -6,12 +6,15 @@ import (
 	uconf "udup/config"
 )
 
+const (
+	DriverTypeMySQL = "mysql"
+)
+
 var BuiltinProcessors = map[string]Factory{
-	"mysql":   NewMySQLDriver,
+	"mysql": NewMySQLDriver,
 }
 
 type Factory func(ctx *PluginContext) Plugin
-
 
 func DiscoverPlugins(name string, ctx *PluginContext) (Plugin, error) {
 	// Lookup the factory function
