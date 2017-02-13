@@ -290,7 +290,6 @@ func (a *Agent) eventLoop() {
 						log.Fatal(err)
 					}
 					for _,job := range jobs{
-						log.Infof("---job:%v",job)
 						go job.Run()
 					}
 				}
@@ -306,7 +305,9 @@ func (a *Agent) eventLoop() {
 					}()
 				}
 				if query.Name == RPCConfig && a.config.Server {
+					log.Infof("query:%v,payload:%v,at:%v,agent: RPC Config requested",query.Name,string(query.Payload),query.LTime)
 
+					query.Respond([]byte(a.getRPCAddr()))
 				}
 			}
 
@@ -322,6 +323,7 @@ func (a *Agent) invokeJob(job *Job) error {
 	if err != nil {
 		return err
 	}
+	log.Infof("rpcServer:%v",rpcServer)
 
 	rc := &RPCClient{ServerAddr: string(rpcServer)}
 	return rc.callExecutionDone(job)

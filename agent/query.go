@@ -143,7 +143,7 @@ func (a *Agent) queryRPCConfig() ([]byte, error) {
 			}
 		}
 	}
-	log.Infof("query:%v,proc: Done receiving acks and responses", RPCConfig)
+	log.Infof("query:%v,rpcAddr:%v,proc: Done receiving acks and responses", RPCConfig,rpcAddr)
 
 	return rpcAddr, nil
 }
