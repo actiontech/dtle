@@ -51,8 +51,8 @@ type ConsulConfig struct {
 	Addrs []string `mapstructure:"addrs"`
 }
 
-// ConnectionConfig is the DB configuration.
-type ConnectionConfig struct {
+// DriverConfig is the DB configuration.
+type DriverConfig struct {
 	Host string `mapstructure:"host"`
 
 	User string `mapstructure:"user"`
@@ -172,25 +172,6 @@ func (a *ConsulConfig) Merge(b *ConsulConfig) *ConsulConfig {
 	result := *a
 
 	result.Addrs = append(result.Addrs, b.Addrs...)
-	return &result
-}
-
-// Merge merges two Atlas configurations together.
-func (a *ConnectionConfig) Merge(b *ConnectionConfig) *ConnectionConfig {
-	result := *a
-
-	if b.Host != "" {
-		result.Host = b.Host
-	}
-	if b.Port != 0 {
-		result.Port = b.Port
-	}
-	if b.User != "" {
-		result.User = b.User
-	}
-	if b.Password != "" {
-		result.Password = b.Password
-	}
 	return &result
 }
 

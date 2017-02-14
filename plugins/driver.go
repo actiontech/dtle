@@ -8,15 +8,17 @@ import (
 
 const (
 	DriverTypeMySQL = "mysql"
+	ProcessorTypeExtract = "extract"
+	ProcessorTypeApply = "Apply"
 )
 
 var BuiltinProcessors = map[string]Factory{
 	"mysql": NewMySQLDriver,
 }
 
-type Factory func(ctx *PluginContext) Plugin
+type Factory func(ctx *DriverContext) Driver
 
-func DiscoverPlugins(name string, ctx *PluginContext) (Plugin, error) {
+func DiscoverPlugins(name string, ctx *DriverContext) (Driver, error) {
 	// Lookup the factory function
 	factory, ok := BuiltinProcessors[name]
 	if !ok {
@@ -28,21 +30,21 @@ func DiscoverPlugins(name string, ctx *PluginContext) (Plugin, error) {
 	return f, nil
 }
 
-type Plugin interface {
+type Driver interface {
 	// Start is used to being task execution
-	Start() error
+	Start(t string,driverCtx uconf.DriverConfig) error
 
 	// Plugins must validate their configuration
 	Validate(map[string]interface{}) error
 }
 
-type PluginContext struct {
+type DriverContext struct {
 	taskName string
 	config   *uconf.Config
 }
 
-func NewPluginContext(taskName string, config *uconf.Config) *PluginContext {
-	return &PluginContext{
+func NewDriverContext(taskName string, config *uconf.Config) *DriverContext {
+	return &DriverContext{
 		taskName: taskName,
 		config:   config,
 	}

@@ -2,21 +2,30 @@ package agent
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"net"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/docker/leadership"
+	"github.com/hashicorp/memberlist"
 	"github.com/hashicorp/serf/serf"
 	"github.com/ngaut/log"
 
 	uconf "udup/config"
 	"udup/plugins"
+)
+
+var (
+	// Error thrown on obtained leader from store is not found in member list
+	ErrLeaderNotFound = errors.New("No member leader found in member list")
 )
 
 const (
@@ -30,11 +39,14 @@ type Agent struct {
 	serf      *serf.Serf
 	store     *Store
 	eventCh   chan serf.Event
+	sched     *Scheduler
 	candidate *leadership.Candidate
+	ready     bool
 
-	shutdown     bool
-	shutdownCh   chan struct{}
-	shutdownLock sync.Mutex
+	ProcessorPlugins map[string]string
+	shutdown         bool
+	shutdownCh       chan struct{}
+	shutdownLock     sync.Mutex
 }
 
 // NewAgent is used to create a new agent with the given configuration
@@ -47,25 +59,42 @@ func NewAgent(config *uconf.Config) (*Agent, error) {
 	go a.listenOnPanicAbort()
 
 	if a.serf = a.setupSerf(); a.serf == nil {
-		return nil, fmt.Errorf("Can not setup serf")
+		log.Fatal("agent: Can not setup serf")
 	}
-
 	a.join(a.config.StartJoin, true)
 
-	if a.config.Server {
-		a.store = NewStore(a.config.Consul.Addrs, a)
-		a.ServeHTTP()
-		listenRPC(a)
-		//a.participate()
-	}
-
-	if err := a.setupPlugins(); err != nil {
+	if err := a.setupDrivers(); err != nil {
 		return nil, fmt.Errorf("plugin setup failed: %v", err)
 	}
 
-	go a.eventLoop()
+	if a.config.Server {
+		a.store = NewStore(a.config.Consul.Addrs, a)
+		a.sched = NewScheduler()
 
+		a.ServeHTTP()
+		listenRPC(a)
+		a.participate()
+	}
+	go a.eventLoop()
+	a.ready = true
 	return a, nil
+}
+
+func (a *Agent) setupDrivers() error {
+	var avail []string
+	ctx := plugins.NewDriverContext("", nil)
+	for name := range plugins.BuiltinProcessors {
+		_, err := plugins.DiscoverPlugins(name, ctx)
+		if err != nil {
+			return err
+		}
+		avail = append(avail, name)
+
+	}
+
+	log.Debugf("[DEBUG] client: available plugins %v", avail)
+
+	return nil
 }
 
 // setupSerf is used to create the agent we use
@@ -156,6 +185,8 @@ func (a *Agent) setupSerf() *serf.Serf {
 	}
 
 	serfConfig := serf.DefaultConfig()
+	serfConfig.MemberlistConfig = memberlist.DefaultLocalConfig()
+
 	serfConfig.MemberlistConfig.BindAddr = bindIP
 	serfConfig.MemberlistConfig.BindPort = bindPort
 	serfConfig.NodeName = config.NodeName
@@ -208,29 +239,22 @@ func (a *Agent) setupSerf() *serf.Serf {
 	return serf
 }
 
-func (a *Agent) setupPlugins() error {
-	var avail []string
-	ctx := plugins.NewPluginContext("", nil)
-	for name := range plugins.BuiltinProcessors {
-		_, err := plugins.DiscoverPlugins(name, ctx)
-		if err != nil {
-			return err
-		}
-		avail = append(avail, name)
-
-	}
-
-	log.Debugf("[DEBUG] client: available plugins %v", avail)
-
-	return nil
-}
-
 // ensurePath is used to make sure a path exists
 func ensurePath(path string, dir bool) error {
 	if !dir {
 		path = filepath.Dir(path)
 	}
 	return os.MkdirAll(path, 0755)
+}
+
+// Start or restart scheduler
+func (a *Agent) schedule() {
+	log.Debug("agent: Restarting scheduler")
+	jobs, err := a.store.GetJobs()
+	if err != nil {
+		log.Fatal(err)
+	}
+	a.sched.Restart(jobs)
 }
 
 // Join asks the Serf instance to join. See the Serf.Join function.
@@ -255,7 +279,7 @@ func (a *Agent) leaderMember() (*serf.Member, error) {
 			return &member, nil
 		}
 	}
-	return nil, fmt.Errorf("No member leader found in member list")
+	return nil, ErrLeaderNotFound
 }
 
 func (a *Agent) listServers() []serf.Member {
@@ -289,19 +313,17 @@ func (a *Agent) eventLoop() {
 
 			if e.EventType() == serf.EventQuery {
 				query := e.(*serf.Query)
-				if query.Name == RestartJob && a.config.Server {
-					jobs, err := a.store.GetJobs()
-					if err != nil {
-						log.Fatal(err)
-					}
-					for _, job := range jobs {
-						go job.Run()
-					}
+
+				if query.Name == QuerySchedulerRestart && a.config.Server {
+					a.schedule()
 				}
-				if query.Name == RunJob {
+
+				if query.Name == QueryRunJob {
+					log.Infof("query:%v,payload:%v,at:%v,agent: Running job", query.Name, string(query.Payload), query.LTime)
+
 					var rqp RunQueryParam
 					if err := json.Unmarshal(query.Payload, &rqp); err != nil {
-						log.Infof("agent: Error unmarshaling query payload:%v", err)
+						log.Infof("query:%v,agent: Error unmarshaling query payload", QueryRunJob)
 					}
 
 					log.Infof("job:%v,Starting job", rqp.Job.Name)
@@ -312,15 +334,21 @@ func (a *Agent) eventLoop() {
 						log.Infof("err:%v,agent: Error on rpc.GetJob call", err)
 					}
 
+					ex := rqp.Job
+					ex.StartedAt = time.Now()
+					ex.NodeName = a.config.NodeName
+
 					go func() {
-						if err := a.invokeJob(job); err != nil {
+						if err := a.invokeJob(job, ex); err != nil {
 							log.Infof("err:%v,agent: Error invoking job command", err)
 						}
 					}()
-					jobJson, _ := json.Marshal(job)
-					query.Respond(jobJson)
+
+					exJson, _ := json.Marshal(ex)
+					query.Respond(exJson)
 				}
-				if query.Name == RPCConfig && a.config.Server {
+
+				if query.Name == QueryRPCConfig && a.config.Server {
 					log.Infof("query:%v,payload:%v,at:%v,agent: RPC Config requested", query.Name, string(query.Payload), query.LTime)
 
 					query.Respond([]byte(a.getRPCAddr()))
@@ -334,15 +362,18 @@ func (a *Agent) eventLoop() {
 	}
 }
 
-func (a *Agent) invokeJob(job *Job) error {
-	log.Infof("------invoke job")
+// invokeJob will execute the given job. Depending on the event.
+func (a *Agent) invokeJob(job *Job, execution *Job) error {
+	execution.FinishedAt = time.Now()
+	execution.Success = true
+
 	rpcServer, err := a.queryRPCConfig()
 	if err != nil {
 		return err
 	}
 
 	rc := &RPCClient{ServerAddr: string(rpcServer)}
-	return rc.callExecutionDone(job)
+	return rc.callExecutionDone(execution)
 }
 
 func (a *Agent) participate() {
@@ -368,38 +399,65 @@ func (a *Agent) runForElection() {
 			if isElected {
 				log.Info("agent: Cluster leadership acquired")
 				// If this server is elected as the leader, start the scheduler
+				a.schedule()
 			} else {
 				log.Info("agent: Cluster leadership lost")
 				// Always stop the schedule of this server to prevent multiple servers with the scheduler on
+				a.sched.Stop()
 			}
 
 		case err := <-errCh:
 			log.Infof("err:%v,Leader election failed, channel is probably closed", err)
 			// Always stop the schedule of this server to prevent multiple servers with the scheduler on
+			a.sched.Stop()
 			return
 		}
 	}
 }
 
-func (a *Agent) JobRegister(payload []byte) *Job {
-	var job Job
-	if err := json.Unmarshal(payload, &job); err != nil {
-		log.Fatal(err)
+func (a *Agent) processFilteredNodes(job *Job) ([]string, map[string]string, error) {
+	var nodes []string
+	tags := make(map[string]string)
+
+	// Actually copy the map
+	for key, val := range job.Tags {
+		tags[key] = val
 	}
 
-	// Save the new execution to store
-	if err := a.store.UpsertJob(&job); err != nil {
-		log.Fatal(err)
+	for jtk, jtv := range tags {
+		var tc []string
+		if tc = strings.Split(jtv, ":"); len(tc) == 2 {
+			tv := tc[0]
+
+			// Set original tag to clean tag
+			tags[jtk] = tv
+
+			count, err := strconv.Atoi(tc[1])
+			if err != nil {
+				return nil, nil, err
+			}
+
+			for _, member := range a.serf.Members() {
+				if member.Status == serf.StatusAlive {
+					for mtk, mtv := range member.Tags {
+						if mtk == jtk && mtv == tv {
+							if len(nodes) < count {
+								nodes = append(nodes, member.Name)
+							}
+						}
+					}
+				}
+			}
+		}
 	}
 
-	return &job
+	return nodes, tags, nil
 }
 
 // This function is called when a client request the RPCAddress
 // of the current member.
 func (a *Agent) getRPCAddr() string {
 	bindIp := a.serf.LocalMember().Addr
-	//bindIp := "192.168.99.1"
 
 	return fmt.Sprintf("%s:%d", bindIp, a.config.RPCPort)
 }
@@ -419,6 +477,8 @@ func (a *Agent) Shutdown() error {
 	if a.shutdown {
 		return nil
 	}
+
+	log.Infof("[INFO] agent: requesting shutdown")
 
 	log.Infof("[INFO] agent: shutdown complete")
 	a.shutdown = true

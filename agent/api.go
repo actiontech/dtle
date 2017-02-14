@@ -24,23 +24,29 @@ func (a *Agent) ServeHTTP() {
 	middle.Use(metaMiddleware(a.config.NodeName))
 	middle.UseHandler(r)
 
-	// Start the listener
-	/*lnAddr, err := net.ResolveTCPAddr("tcp", a.config.HTTPAddr)
-	if err != nil {
-		log.Infof("failed to start HTTP listener: %v", err)
-	}
-	ln, err := a.config.Listener("tcp", lnAddr.IP.String(), lnAddr.Port)
-	if err != nil {
-		log.Infof("failed to start HTTP listener: %v", err)
-	}
-
-	// Create the mux
-	mux := http.NewServeMux()
-	// Start the server
-	go http.Serve(ln, gziphandler.GzipHandler(mux))*/
 	srv := &http.Server{Addr: a.config.HTTPAddr, Handler: middle}
+
 	log.Infof("address:%v,api: Running HTTP server", a.config.HTTPAddr)
+
 	go srv.ListenAndServe()
+}
+
+func (a *Agent) apiRoutes(r *mux.Router) {
+	subver := r.PathPrefix("/v1").Subrouter()
+	subver.HandleFunc("/", a.indexHandler)
+	subver.HandleFunc("/members", a.membersHandler)
+	subver.HandleFunc("/leader", a.leaderHandler)
+	subver.HandleFunc("/leave", a.leaveHandler).Methods(http.MethodGet, http.MethodPost)
+
+	subver.Path("/jobs").HandlerFunc(a.jobCreateOrUpdateHandler).Methods(http.MethodPost, http.MethodPatch)
+	// Place fallback routes last
+	subver.Path("/jobs").HandlerFunc(a.jobsHandler)
+
+	sub := subver.PathPrefix("/jobs").Subrouter()
+	sub.HandleFunc("/{job}", a.jobDeleteHandler).Methods(http.MethodDelete)
+	sub.HandleFunc("/{job}", a.jobRunHandler).Methods(http.MethodPost)
+	// Place fallback routes last
+	sub.HandleFunc("/{job}", a.jobGetHandler)
 }
 
 func metaMiddleware(nodeName string) func(http.Handler) http.Handler {
@@ -53,24 +59,6 @@ func metaMiddleware(nodeName string) func(http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 		})
 	}
-}
-
-func (a *Agent) apiRoutes(r *mux.Router) {
-	subver := r.PathPrefix("/v1").Subrouter()
-	subver.HandleFunc("/", a.indexHandler)
-	subver.HandleFunc("/members", a.membersHandler)
-	subver.HandleFunc("/leader", a.leaderHandler)
-	subver.HandleFunc("/leave", a.leaveHandler).Methods(http.MethodGet, http.MethodPost)
-
-	subver.Path("/jobs").HandlerFunc(a.jobUpsertHandler).Methods(http.MethodPost, http.MethodPatch)
-	// Place fallback routes last
-	subver.Path("/jobs").HandlerFunc(a.jobsHandler)
-
-	sub := subver.PathPrefix("/jobs").Subrouter()
-	sub.HandleFunc("/{job}", a.jobDeleteHandler).Methods(http.MethodDelete)
-	sub.HandleFunc("/{job}", a.jobRunHandler).Methods(http.MethodPost)
-	// Place fallback routes last
-	sub.HandleFunc("/{job}", a.jobGetHandler)
 }
 
 func printJson(w http.ResponseWriter, r *http.Request, v interface{}) error {
@@ -107,32 +95,6 @@ func (a *Agent) indexHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (a *Agent) membersHandler(w http.ResponseWriter, r *http.Request) {
-	if err := printJson(w, r, a.serf.Members()); err != nil {
-		log.Fatal(err)
-	}
-}
-
-func (a *Agent) leaderHandler(w http.ResponseWriter, r *http.Request) {
-	member, err := a.leaderMember()
-	if err == nil {
-		if err := printJson(w, r, member); err != nil {
-			log.Fatal(err)
-		}
-	}
-}
-
-func (a *Agent) leaveHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method == http.MethodGet {
-		log.Warn("/leave GET is deprecated and will be removed, use POST")
-	}
-	if err := a.serf.Leave(); err != nil {
-		if err := printJson(w, r, a.listServers()); err != nil {
-			log.Fatal(err)
-		}
-	}
-}
-
 func (a *Agent) jobsHandler(w http.ResponseWriter, r *http.Request) {
 	jobs, err := a.store.GetJobs()
 	if err != nil {
@@ -148,7 +110,7 @@ func (a *Agent) jobGetHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	jobName := vars["job"]
 
-	job, err := a.store.JobByName(jobName)
+	job, err := a.store.GetJob(jobName)
 	if err != nil {
 		log.Error(err)
 	}
@@ -162,7 +124,7 @@ func (a *Agent) jobGetHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (a *Agent) jobUpsertHandler(w http.ResponseWriter, r *http.Request) {
+func (a *Agent) jobCreateOrUpdateHandler(w http.ResponseWriter, r *http.Request) {
 	// Init the Job object with defaults
 	job := Job{
 		Concurrency: ConcurrencyAllow,
@@ -187,7 +149,7 @@ func (a *Agent) jobUpsertHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get if the requested job already exist
-	ej, err := a.store.JobByName(job.Name)
+	ej, err := a.store.GetJob(job.Name)
 	if err != nil && err != store.ErrKeyNotFound {
 		w.WriteHeader(422) // unprocessable entity
 		if err := json.NewEncoder(w).Encode(err.Error()); err != nil {
@@ -212,7 +174,7 @@ func (a *Agent) jobUpsertHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Save the job parent
-	if err = a.store.UpsertJobDependencyTree(&job, ej); err != nil {
+	if err = a.store.SetJobDependencyTree(&job, ej); err != nil {
 		w.WriteHeader(422) // unprocessable entity
 		if err := json.NewEncoder(w).Encode(err.Error()); err != nil {
 			log.Fatal(err)
@@ -220,7 +182,7 @@ func (a *Agent) jobUpsertHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	a.jobRestartQuery(string(a.store.GetLeader()))
+	a.schedulerRestartQuery(string(a.store.GetLeader()))
 
 	w.Header().Set("Location", fmt.Sprintf("%s/%s", r.RequestURI, job.Name))
 	w.WriteHeader(http.StatusCreated)
@@ -243,6 +205,8 @@ func (a *Agent) jobDeleteHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	a.schedulerRestartQuery(string(a.store.GetLeader()))
+
 	if err := printJson(w, r, job); err != nil {
 		log.Fatal(err)
 	}
@@ -252,7 +216,7 @@ func (a *Agent) jobRunHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	jobName := vars["job"]
 
-	job, err := a.store.JobByName(jobName)
+	job, err := a.store.GetJob(jobName)
 	if err != nil {
 		w.WriteHeader(http.StatusNotFound)
 		if err := json.NewEncoder(w).Encode(err); err != nil {
@@ -260,12 +224,37 @@ func (a *Agent) jobRunHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-
 	a.RunQuery(job)
 
 	w.Header().Set("Location", r.RequestURI)
 	w.WriteHeader(http.StatusAccepted)
 	if err := printJson(w, r, job); err != nil {
 		log.Fatal(err)
+	}
+}
+
+func (a *Agent) membersHandler(w http.ResponseWriter, r *http.Request) {
+	if err := printJson(w, r, a.serf.Members()); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func (a *Agent) leaderHandler(w http.ResponseWriter, r *http.Request) {
+	member, err := a.leaderMember()
+	if err == nil {
+		if err := printJson(w, r, member); err != nil {
+			log.Fatal(err)
+		}
+	}
+}
+
+func (a *Agent) leaveHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodGet {
+		log.Warn("/leave GET is deprecated and will be removed, use POST")
+	}
+	if err := a.serf.Leave(); err != nil {
+		if err := printJson(w, r, a.listServers()); err != nil {
+			log.Fatal(err)
+		}
 	}
 }

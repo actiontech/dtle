@@ -10,7 +10,6 @@ import (
 	"github.com/docker/libkv/store"
 	"github.com/hashicorp/serf/serf"
 	"github.com/ngaut/log"
-
 	"udup/plugins"
 )
 
@@ -25,7 +24,7 @@ type RPCServer struct {
 func (rpcs *RPCServer) GetJob(jobName string, job *Job) error {
 	log.Infof("job:%v,rpc: Received GetJob", jobName)
 
-	j, err := rpcs.agent.store.JobByName(jobName)
+	j, err := rpcs.agent.store.GetJob(jobName)
 	if err != nil {
 		return err
 	}
@@ -40,7 +39,7 @@ func (rpcs *RPCServer) ExecutionDone(execution Job, reply *serf.NodeResponse) er
 	log.Infof("job:%v,rpc: eceived execution done", execution.Name)
 
 	// Load the job from the store
-	job, err := rpcs.agent.store.JobByName(execution.Name)
+	job, err := rpcs.agent.store.GetJob(execution.Name)
 	if err != nil {
 		if err == store.ErrKeyNotFound {
 			log.Warning(ErrExecutionDoneForDeletedJob)
@@ -55,8 +54,25 @@ func (rpcs *RPCServer) ExecutionDone(execution Job, reply *serf.NodeResponse) er
 	}
 
 	// Get the defined output types for the job, and call them
-	//process
+	/*origExec := execution
+	for k, v := range job.Processors {
+		log.Infof("plugin:%v,rpc: Processing execution with plugin", k)
+		processor := rpcs.agent.ProcessorPlugins[k]
+		e := processor.Process(&ExecutionProcessorArgs{Execution: origExec, Config: v})
+		execution = e
+	}*/
 	rpcs.agent.startTask(job)
+
+	// Save the execution to store
+	/*if _, err := rpcs.agent.store.SetExecution(&execution); err != nil {
+		return err
+	}*/
+
+	if execution.Success {
+		job.LastSuccess = execution.FinishedAt
+	} else {
+		job.LastError = execution.FinishedAt
+	}
 
 	if err := rpcs.agent.store.UpsertJob(job); err != nil {
 		log.Fatal("rpc:", err)
@@ -70,11 +86,21 @@ func (rpcs *RPCServer) ExecutionDone(execution Job, reply *serf.NodeResponse) er
 	reply.From = rpcs.agent.config.NodeName
 	reply.Payload = []byte("saved")
 
+	// If the execution failed, retry it until retries limit (default: don't retry)
+	/*if !execution.Success && execution.Attempt < job.Retries+1 {
+		execution.Attempt++
+
+		log.Infof("attempt:%v,attempt:%v,Retrying execution", execution.Attempt, execution)
+
+		rpcs.agent.RunQuery(&execution)
+		return nil
+	}*/
+
 	// Jobs that have dependent jobs are a bit more expensive because we need to call the Status() method for every execution.
 	// Check first if there's dependent jobs and then check for the job status to begin executiong dependent jobs on success.
 	if len(job.DependentJobs) > 0 && job.Status() == Success {
 		for _, djn := range job.DependentJobs {
-			dj, err := rpcs.agent.store.JobByName(djn)
+			dj, err := rpcs.agent.store.GetJob(djn)
 			if err != nil {
 				return err
 			}
@@ -86,8 +112,8 @@ func (rpcs *RPCServer) ExecutionDone(execution Job, reply *serf.NodeResponse) er
 }
 
 // createDriver makes a driver for the task
-func (a *Agent) createDriver(job *Job) (plugins.Plugin, error) {
-	driverCtx := plugins.NewPluginContext(job.Name, a.config)
+func (a *Agent) createDriver(job *Job) (plugins.Driver, error) {
+	driverCtx := plugins.NewDriverContext(job.Name, a.config)
 	driver, err := plugins.DiscoverPlugins(job.Driver, driverCtx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create driver '%s': %v",
@@ -103,15 +129,17 @@ func (a *Agent) startTask(job *Job) error {
 		return fmt.Errorf("failed to create driver of task '%s': %v",
 			job.Name, err)
 	}
-	log.Infof("driver:%v---job:%v", driver, job)
+	log.Infof("driver:%v,job:%v", driver, job)
 
 	switch job.Driver {
 	case plugins.DriverTypeMySQL:
 		{
-			// Start the job
-			err := driver.Start()
-			if err != nil {
+			for t, driverCtx := range job.Processors {
+				// Start the job
+				err := driver.Start(t, driverCtx)
+				if err != nil {
 
+				}
 			}
 		}
 	default:
@@ -162,7 +190,7 @@ type RPCClient struct {
 	ServerAddr string
 }
 
-func (rpcc *RPCClient) callExecutionDone(job *Job) error {
+func (rpcc *RPCClient) callExecutionDone(execution *Job) error {
 	client, err := rpc.DialHTTP("tcp", rpcc.ServerAddr)
 	if err != nil {
 		log.Infof("err:%v,server_addr:%v,rpc: error dialing.", err, rpcc.ServerAddr)
@@ -170,9 +198,10 @@ func (rpcc *RPCClient) callExecutionDone(job *Job) error {
 	}
 	defer client.Close()
 
+	log.Infof("execution%v", execution)
 	// Synchronous call
 	var reply serf.NodeResponse
-	err = client.Call("RPCServer.ExecutionDone", job, &reply)
+	err = client.Call("RPCServer.ExecutionDone", execution, &reply)
 	if err != nil {
 		log.Infof("err:%v,rpc: Error calling ExecutionDone", err)
 		return err

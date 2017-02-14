@@ -8,12 +8,15 @@ import (
 
 	"github.com/docker/libkv/store"
 	"github.com/ngaut/log"
+
+	uconf "udup/config"
 )
 
 const (
 	Success = iota
 	Running
 	Failed
+	PartialyFailed
 
 	ConcurrencyAllow  = "allow"
 	ConcurrencyForbid = "forbid"
@@ -27,13 +30,20 @@ var (
 	ErrWrongConcurrency  = errors.New("Wrong concurrency policy value, use: allow/forbid")
 )
 
+const (
+	mysqlDriverAttr = "driver.mysql"
+
+	extractProcessor = "extract"
+	applyProcessor   = "apply"
+)
+
 type Job struct {
 	// Job name. Must be unique, acts as the id.
 	Name string `json:"name"`
 
-	Driver string `json:"driver"`
+	Driver string
 
-	Type string `json:"type"`
+	Type string
 
 	// Last time this job executed succesful.
 	LastSuccess time.Time `json:"last_success"`
@@ -63,8 +73,20 @@ type Job struct {
 
 	lock store.Locker
 
+	// Start time of the execution.
+	StartedAt time.Time `json:"started_at,omitempty"`
+
+	// When the execution finished running.
+	FinishedAt time.Time `json:"finished_at,omitempty"`
+
 	// If this execution executed succesfully.
 	Success bool `json:"success,omitempty"`
+
+	// Node name of the node that run this execution.
+	NodeName string `json:"node_name,omitempty"`
+
+	// Processors to use for this job
+	Processors map[string]uconf.DriverConfig `json:"processors"`
 
 	// Concurrency policy for this job (allow, forbid)
 	Concurrency string `json:"concurrency"`
@@ -75,33 +97,59 @@ func (j *Job) Run() {
 	j.running.Lock()
 	defer j.running.Unlock()
 
+	// Maybe we are testing or it's disabled
 	if j.Agent != nil && j.Disabled == false {
 		// Check if it's runnable
 		if j.isRunnable() {
 			log.Infof("job:%v,scheduler: Run job", j.Name)
+
+			// Simple execution wrapper
 			j.Agent.RunQuery(j)
 		}
 	}
 }
 
+// Friendly format a job
+func (j *Job) String() string {
+	return fmt.Sprintf("\"Job: %s, tags:%v\"", j.Name, j.Tags)
+}
+
 // Return the status of a job
 // Wherever it's running, succeded or failed
 func (j *Job) Status() int {
+	// Maybe we are testing
 	if j.Agent == nil {
 		return -1
 	}
-	var status int
-	job, _ := j.Agent.store.JobByName(j.Name)
-	if job.Success {
-		status = Success
-	} else {
-		status = Failed
+
+	job, _ := j.Agent.store.GetJob(j.Name)
+	success := 0
+	failed := 0
+	if job.FinishedAt.IsZero() {
+		return Running
 	}
+
+	var status int
+	if job.Success {
+		success = success + 1
+	} else {
+		failed = failed + 1
+	}
+
+	if failed == 0 {
+		status = Success
+	} else if failed > 0 && success == 0 {
+		status = Failed
+	} else if failed > 0 && success > 0 {
+		status = PartialyFailed
+	}
+
 	return status
 }
 
 // Get the parent job of a job
 func (j *Job) GetParent() (*Job, error) {
+	// Maybe we are testing
 	if j.Agent == nil {
 		return nil, ErrNoAgent
 	}
@@ -114,7 +162,7 @@ func (j *Job) GetParent() (*Job, error) {
 		return nil, ErrNoParent
 	}
 
-	parentJob, err := j.Agent.store.JobByName(j.ParentJob)
+	parentJob, err := j.Agent.store.GetJob(j.ParentJob)
 	if err != nil {
 		if err == store.ErrKeyNotFound {
 			return nil, ErrParentJobNotFound
@@ -128,6 +176,7 @@ func (j *Job) GetParent() (*Job, error) {
 
 // Lock the job in store
 func (j *Job) Lock() error {
+	// Maybe we are testing
 	if j.Agent == nil {
 		return ErrNoAgent
 	}
@@ -150,6 +199,7 @@ func (j *Job) Lock() error {
 
 // Unlock the job in store
 func (j *Job) Unlock() error {
+	// Maybe we are testing
 	if j.Agent == nil {
 		return ErrNoAgent
 	}

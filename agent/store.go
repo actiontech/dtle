@@ -24,14 +24,13 @@ func init() {
 	consul.Register()
 }
 
-// NewStore is used to create a new state store
-func NewStore(addrs []string, a *Agent) *Store {
-	s, err := libkv.NewStore(store.Backend(backend), addrs, nil)
+func NewStore(machines []string, a *Agent) *Store {
+	s, err := libkv.NewStore(store.Backend(backend), machines, nil)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	log.Infof("addrs:%v,store: Backend config", addrs)
+	log.Infof("machines:%v,store: Backend config", machines)
 
 	_, err = s.List(keyspace)
 	if err != store.ErrKeyNotFound && err != nil {
@@ -41,7 +40,7 @@ func NewStore(addrs []string, a *Agent) *Store {
 	return &Store{Client: s, agent: a}
 }
 
-// UpsertJob upserts a job into the state store.
+// Store a job
 func (s *Store) UpsertJob(job *Job) error {
 	jobKey := fmt.Sprintf("%s/jobs/%s", keyspace, job.Name)
 
@@ -53,7 +52,7 @@ func (s *Store) UpsertJob(job *Job) error {
 	}
 
 	// Get if the requested job already exist
-	ej, err := s.JobByName(job.Name)
+	ej, err := s.GetJob(job.Name)
 	if err != nil && err != store.ErrKeyNotFound {
 		return err
 	}
@@ -79,19 +78,9 @@ func (s *Store) UpsertJob(job *Job) error {
 	return nil
 }
 
-func (s *Store) validateJob(job *Job) error {
-	if job.ParentJob == job.Name {
-		return ErrSameParent
-	}
-
-	if job.Concurrency != ConcurrencyAllow && job.Concurrency != ConcurrencyForbid && job.Concurrency != "" {
-		return ErrWrongConcurrency
-	}
-
-	return nil
-}
-
-func (s *Store) UpsertJobDependencyTree(job *Job, previousJob *Job) error {
+// Set the depencency tree for a job given the job and the previous version
+// of the Job or nil if it's new.
+func (s *Store) SetJobDependencyTree(job *Job, previousJob *Job) error {
 	// Existing job that doesn't have parent job set and it's being set
 	if previousJob != nil && previousJob.ParentJob == "" && job.ParentJob != "" {
 		pj, err := job.GetParent()
@@ -147,7 +136,19 @@ func (s *Store) UpsertJobDependencyTree(job *Job, previousJob *Job) error {
 	return nil
 }
 
-// GetJobs returns an iterator over all the jobs
+func (s *Store) validateJob(job *Job) error {
+	if job.ParentJob == job.Name {
+		return ErrSameParent
+	}
+
+	if job.Concurrency != ConcurrencyAllow && job.Concurrency != ConcurrencyForbid && job.Concurrency != "" {
+		return ErrWrongConcurrency
+	}
+
+	return nil
+}
+
+// GetJobs returns all jobs
 func (s *Store) GetJobs() ([]*Job, error) {
 	res, err := s.Client.List(keyspace + "/jobs/")
 	if err != nil {
@@ -171,8 +172,8 @@ func (s *Store) GetJobs() ([]*Job, error) {
 	return jobs, nil
 }
 
-// JobByName is used to lookup a job by its Name
-func (s *Store) JobByName(name string) (*Job, error) {
+// Get a job
+func (s *Store) GetJob(name string) (*Job, error) {
 	res, err := s.Client.Get(keyspace + "/jobs/" + name)
 	if err != nil {
 		return nil, err
@@ -190,7 +191,7 @@ func (s *Store) JobByName(name string) (*Job, error) {
 }
 
 func (s *Store) DeleteJob(name string) (*Job, error) {
-	job, err := s.JobByName(name)
+	job, err := s.GetJob(name)
 	if err != nil {
 		return nil, err
 	}
