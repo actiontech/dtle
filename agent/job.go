@@ -86,7 +86,7 @@ type Job struct {
 	NodeName string `json:"node_name,omitempty"`
 
 	// Processors to use for this job
-	Processors map[string]uconf.DriverConfig `json:"processors"`
+	Processors map[string]*uconf.DriverConfig `json:"processors"`
 
 	// Concurrency policy for this job (allow, forbid)
 	Concurrency string `json:"concurrency"`

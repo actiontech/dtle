@@ -53,6 +53,20 @@ type ConsulConfig struct {
 
 // DriverConfig is the DB configuration.
 type DriverConfig struct {
+	//Ref:http://dev.mysql.com/doc/refman/5.7/en/replication-options-slave.html#option_mysqld_replicate-do-table
+	ReplicateDoTable []TableName `mapstructure:"replicate_do_table"`
+	ReplicateDoDb    []string    `mapstructure:"replicate_do_db"`
+	ServerID int               `mapstructure:"server_id"`
+	NatsAddr     string            `mapstructure:"nats_addr"`
+	StoreType    string            `mapstructure:"nats_store_type"`
+	FilestoreDir string            `mapstructure:"nats_file_store_dir"`
+	WorkerCount  int               `mapstructure:"worker_count"`
+	Batch        int               `mapstructure:"batch"`
+	ConnCfg      *ConnectionConfig `mapstructure:"conn_cfg"`
+}
+
+// ConnectionConfig is the DB configuration.
+type ConnectionConfig struct {
 	Host string `mapstructure:"host"`
 
 	User string `mapstructure:"user"`
