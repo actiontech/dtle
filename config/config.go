@@ -54,26 +54,26 @@ type ConsulConfig struct {
 // DriverConfig is the DB configuration.
 type DriverConfig struct {
 	//Ref:http://dev.mysql.com/doc/refman/5.7/en/replication-options-slave.html#option_mysqld_replicate-do-table
-	ReplicateDoTable []TableName `mapstructure:"replicate_do_table"`
-	ReplicateDoDb    []string    `mapstructure:"replicate_do_db"`
-	ServerID int               `mapstructure:"server_id"`
-	NatsAddr     string            `mapstructure:"nats_addr"`
-	StoreType    string            `mapstructure:"nats_store_type"`
-	FilestoreDir string            `mapstructure:"nats_file_store_dir"`
-	WorkerCount  int               `mapstructure:"worker_count"`
-	Batch        int               `mapstructure:"batch"`
-	ConnCfg      *ConnectionConfig `mapstructure:"conn_cfg"`
+	ReplicateDoTable []TableName       `json:"replicate_do_table"`
+	ReplicateDoDb    []string          `json:"replicate_do_db"`
+	ServerID         int               `json:"server_id"`
+	NatsAddr         string            `json:"nats_addr"`
+	StoreType        string            `json:"nats_store_type"`
+	FilestoreDir     string            `json:"nats_file_store_dir"`
+	WorkerCount      int               `json:"worker_count"`
+	Batch            int               `json:"batch"`
+	ConnCfg          *ConnectionConfig `json:"conn_cfg"`
 }
 
 // ConnectionConfig is the DB configuration.
 type ConnectionConfig struct {
-	Host string `mapstructure:"host"`
+	Host string `json:"host"`
 
-	User string `mapstructure:"user"`
+	User string `json:"user"`
 
-	Password string `mapstructure:"password"`
+	Password string `json:"password"`
 
-	Port int `mapstructure:"port"`
+	Port int `json:"port"`
 }
 
 // TableName is the table configuration
