@@ -16,8 +16,8 @@ import (
 	"github.com/siddontang/go-mysql/replication"
 	"golang.org/x/net/context"
 
-	usql "udup/plugins/mysql/sql"
 	uconf "udup/config"
+	usql "udup/plugins/mysql/sql"
 )
 
 const (
@@ -61,11 +61,11 @@ func (e *Extractor) InitiateExtractor() error {
 			if event != nil {
 				msg, err := Encode(event)
 				if err != nil {
-					//e.cfg.PanicAbort <- err
+					e.cfg.PanicAbort <- err
 				}
 				if err := e.stanConn.Publish("subject", msg); err != nil {
 					log.Infof("Publish err:%v", err)
-					//e.cfg.PanicAbort <- err
+					e.cfg.PanicAbort <- err
 				}
 			}
 		}

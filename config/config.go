@@ -63,6 +63,7 @@ type DriverConfig struct {
 	WorkerCount      int               `json:"worker_count"`
 	Batch            int               `json:"batch"`
 	ConnCfg          *ConnectionConfig `json:"conn_cfg"`
+	PanicAbort       chan error
 }
 
 // ConnectionConfig is the DB configuration.

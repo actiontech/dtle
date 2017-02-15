@@ -56,8 +56,6 @@ func NewAgent(config *uconf.Config) (*Agent, error) {
 		shutdownCh: make(chan struct{}),
 	}
 
-	go a.listenOnPanicAbort()
-
 	if a.serf = a.setupSerf(); a.serf == nil {
 		log.Fatal("agent: Can not setup serf")
 	}
@@ -187,7 +185,6 @@ func (a *Agent) setupSerf() *serf.Serf {
 	serfConfig := serf.DefaultConfig()
 	serfConfig.MemberlistConfig = memberlist.DefaultLocalConfig()
 
-	serfConfig.QuerySizeLimit = 1024 * 10
 	serfConfig.MemberlistConfig.BindAddr = bindIP
 	serfConfig.MemberlistConfig.BindPort = bindPort
 	serfConfig.NodeName = config.NodeName
@@ -204,9 +201,10 @@ func (a *Agent) setupSerf() *serf.Serf {
 	if err := ensurePath(serfConfig.SnapshotPath, false); err != nil {
 		return nil
 	}
-	serfConfig.CoalescePeriod = 3 * time.Second
+	serfConfig.QuerySizeLimit = 1024 * 10
+	serfConfig.CoalescePeriod = 6 * time.Second
 	serfConfig.QuiescentPeriod = time.Second
-	serfConfig.UserCoalescePeriod = 3 * time.Second
+	serfConfig.UserCoalescePeriod = 6 * time.Second
 	serfConfig.UserQuiescentPeriod = time.Second
 	if config.ReconnectInterval != 0 {
 		serfConfig.ReconnectInterval = config.ReconnectInterval
@@ -461,13 +459,6 @@ func (a *Agent) getRPCAddr() string {
 	bindIp := a.serf.LocalMember().Addr
 
 	return fmt.Sprintf("%s:%d", bindIp, a.config.RPCPort)
-}
-
-// listenOnPanicAbort aborts on abort request
-func (a *Agent) listenOnPanicAbort() {
-	err := <-a.config.PanicAbort
-	log.Errorf("agent run failed: %v", err)
-	a.Shutdown()
 }
 
 // Shutdown is used to terminate the agent.

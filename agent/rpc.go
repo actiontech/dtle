@@ -132,9 +132,10 @@ func (a *Agent) startTask(job *Job) error {
 	log.Infof("driver:%v,job:%v", driver, job)
 
 	switch job.Driver {
-	case plugins.DriverTypeMySQL:
+	case plugins.MysqlDriverAttr:
 		{
 			for t, driverCtx := range job.Processors {
+				go job.listenOnPanicAbort(driverCtx)
 				// Start the job
 				err := driver.Start(t, driverCtx)
 				if err != nil {

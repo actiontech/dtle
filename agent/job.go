@@ -30,13 +30,6 @@ var (
 	ErrWrongConcurrency  = errors.New("Wrong concurrency policy value, use: allow/forbid")
 )
 
-const (
-	mysqlDriverAttr = "driver.mysql"
-
-	extractProcessor = "extract"
-	applyProcessor   = "apply"
-)
-
 type Job struct {
 	// Job name. Must be unique, acts as the id.
 	Name string `json:"name"`
@@ -108,6 +101,14 @@ func (j *Job) Run() {
 		}
 	}
 }
+
+
+func (j *Job) listenOnPanicAbort(cfg *uconf.DriverConfig) {
+	err := <-cfg.PanicAbort
+	log.Errorf("job run failed: %v", err)
+	j.Lock()
+}
+
 
 // Friendly format a job
 func (j *Job) String() string {

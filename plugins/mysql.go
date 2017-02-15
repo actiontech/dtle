@@ -26,7 +26,7 @@ func (d *MySQLDriver) Start(t string, driverCtx *uconf.DriverConfig) error {
 			go func() {
 				if err := extractor.InitiateExtractor(); err != nil {
 					log.Errorf("extractor run failed: %v", err)
-					//a.config.PanicAbort <- err
+					driverCtx.PanicAbort <- err
 				}
 			}()
 		}
@@ -37,7 +37,7 @@ func (d *MySQLDriver) Start(t string, driverCtx *uconf.DriverConfig) error {
 			go func() {
 				if err := applier.InitiateApplier(); err != nil {
 					log.Errorf("applier run failed: %v", err)
-					//a.config.PanicAbort <- err
+					driverCtx.PanicAbort <- err
 				}
 			}()
 		}

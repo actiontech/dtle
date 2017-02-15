@@ -7,9 +7,9 @@ import (
 )
 
 const (
-	DriverTypeMySQL = "mysql"
+	MysqlDriverAttr = "mysql"
 	ProcessorTypeExtract = "extract"
-	ProcessorTypeApply = "Apply"
+	ProcessorTypeApply = "apply"
 )
 
 var BuiltinProcessors = map[string]Factory{
