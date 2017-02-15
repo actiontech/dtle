@@ -187,6 +187,7 @@ func (a *Agent) setupSerf() *serf.Serf {
 	serfConfig := serf.DefaultConfig()
 	serfConfig.MemberlistConfig = memberlist.DefaultLocalConfig()
 
+	serfConfig.QuerySizeLimit = 1024 * 10
 	serfConfig.MemberlistConfig.BindAddr = bindIP
 	serfConfig.MemberlistConfig.BindPort = bindPort
 	serfConfig.NodeName = config.NodeName
