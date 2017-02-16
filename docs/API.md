@@ -3,9 +3,9 @@
 
 <a name="overview"></a>
 ## Overview
-You can communicate with Udup using a RESTful JSON API over HTTP. Udup nodes usually listen on port `8080` for API requests. All examples in this section assume that you've found a running leader at `localhost:8080`.
+You can communicate with Udup using a RESTful JSON API over HTTP. Udup nodes usually listen on port `8190` for API requests. All examples in this section assume that you've found a running leader at `localhost:8190`.
 
-Udup implements a RESTful JSON API over HTTP to communicate with software clients. Udup listens in port `8080` by default. All examples in this section assume that you're using the default port.
+Udup implements a RESTful JSON API over HTTP to communicate with software clients. Udup listens in port `8190` by default. All examples in this section assume that you're using the default port.
 
 Default API responses are unformatted JSON add the `pretty=true` param to format the response.
 
@@ -15,7 +15,7 @@ Default API responses are unformatted JSON add the `pretty=true` param to format
 
 
 ### URI scheme
-*Host* : localhost:8080  
+*Host* : localhost:8190  
 *BasePath* : /v1  
 *Schemes* : HTTP
 
@@ -254,13 +254,86 @@ A Job represents a scheduled task to execute.
 |Name|Description|Schema|
 |---|---|---|
 |**name**  <br>*required*|Name for the job.|string|
-|**last_success**  <br>*optional*  <br>*read-only*|Last time this job executed successfully|string(date-time)|
-|**last_error**  <br>*optional*  <br>*read-only*|Last time this job failed|string(date-time)|
 |**disabled**  <br>*optional*|Disabled state of the job|boolean|
 |**tags**  <br>*optional*|Tags asociated with this node|< string, string > map|
-|**retries**  <br>*optional*|Number of times to retry a failed job <br>**Example** : `2`|integer|
-|**parent_job**  <br>*optional*|The name/id of the job that will trigger the execution of this job  <br>**Example** : `"parent_job"`|string|
-|**dependent_jobs**  <br>*optional*  <br>*read-only*|Array containing the jobs that depends on this one  <br>**Example** : `""`|string|
+|**retries**  <br>*optional*|Number of times to retry a failed job <br>*Example* : `2`|integer|
+|**parent_job**  <br>*optional*|The name/id of the job that will trigger the execution of this job  <br>*Example* : `"parent_job"`|string|
+|**dependent_jobs**  <br>*optional*  <br>*read-only*|Array containing the jobs that depends on this one  <br>*Example* : `""`|string|
+|**processors**  <br>*required*|Array containing the processors that will be called|< string, **DriverConfig** > map|
+
+*Example*
+``` json
+{
+    "name": "job1",
+    "disabled": false,
+    "tags": {
+        "dc": "dc1",
+        "region": "r1",
+        "role": "udup",
+        "udup_server": "true",
+        "udup_version": "ed37eb9"
+    },
+    "retries": 2,
+    "parent_job": "",
+    "dependent_jobs": [],
+    "processors": {
+        "extract": {
+        	"driver": "mysql",
+        	"server_id": 100,
+        	"nats_addr": "127.0.0.1:13003",
+            "conn_cfg": {
+                "host": "192.168.99.100",
+                "port": 13004,
+                "user": "gm",
+                "password": "111111"
+            }
+        },
+        "apply": {
+        	"driver": "mysql",
+        	"nats_addr": "127.0.0.1:13003",
+        	"nats_store_type": "MEMORY",
+        	"nats_file_store_dir":"",
+        	"worker_count": 1,
+        	"batch": 1,
+            "conn_cfg": {
+                "host": "192.168.99.100",
+                "port": 13005,
+                "user": "gm",
+                "password": "111111"
+            }
+        }
+    },
+    "concurrency": "allow"
+}
+```
+
+<a name="DriverConfig"></a>
+### DriverConfig
+Arguments for calling an execution processor
+
+
+|Name|Description|Schema|
+|---|---|---|
+|**driver**  <br>*required*|Type for the driver.|string|
+|**server_id**  <br>*optional*|ServerID is the unique ID in mysql cluster|integer|
+|**nats_addr**  <br>*optional*|address of the nats server|string|
+|**nats_store_type**  <br>*optional*| Store type: MEMORY/FILE (default: MEMORY)|string|
+|**nats_file_store_dir**  <br>*optional*| File to redirect message store|string|
+|**worker_count**  <br>*optional*|Parallel worker count|integer|
+|**batch**  <br>*optional*|Batch commit count|integer|
+|**conn_cfg**  <br>*optional*|MySQL Configuration Properties|**ConnectionConfig**|
+
+<a name="ConnectionConfig"></a>
+### ConnectionConfig
+Configuration properties define how connector will make a connection to a MySQL server
+
+
+|Name|Description|Schema|
+|---|---|---|
+|**host**  <br>*required*|MySQL server host TCP connections|string|
+|**user**  <br>*required*|MySQL server user TCP connections|string|
+|**password**<br>*required*|MySQL server password TCP connections|string|
+|**port**  <br>*required*|MySQL server port for TCP connections|integer|
 
 
 <a name="member"></a>
