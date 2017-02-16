@@ -55,6 +55,7 @@ type DriverConfig struct {
 	//Ref:http://dev.mysql.com/doc/refman/5.7/en/replication-options-slave.html#option_mysqld_replicate-do-table
 	ReplicateDoTable []TableName       `json:"replicate_do_table"`
 	ReplicateDoDb    []string          `json:"replicate_do_db"`
+	Driver           string            `json:"driver"`
 	ServerID         int               `json:"server_id"`
 	NatsAddr         string            `json:"nats_addr"`
 	StoreType        string            `json:"nats_store_type"`

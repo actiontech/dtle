@@ -7,9 +7,9 @@ import (
 )
 
 const (
-	MysqlDriverAttr = "mysql"
+	MysqlDriverAttr      = "mysql"
 	ProcessorTypeExtract = "extract"
-	ProcessorTypeApply = "apply"
+	ProcessorTypeApply   = "apply"
 )
 
 var BuiltinProcessors = map[string]Factory{
@@ -32,7 +32,7 @@ func DiscoverPlugins(name string, ctx *DriverContext) (Driver, error) {
 
 type Driver interface {
 	// Start is used to being task execution
-	Start(t string,driverCtx *uconf.DriverConfig) error
+	Start(t string, driverCtx *uconf.DriverConfig) error
 
 	// Plugins must validate their configuration
 	Validate(map[string]interface{}) error

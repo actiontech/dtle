@@ -16,8 +16,8 @@ const (
 )
 
 type RunQueryParam struct {
-	Job *Job `json:"job"`
-	RPCAddr   string     `json:"rpc_addr"`
+	Job     *Job   `json:"job"`
+	RPCAddr string `json:"rpc_addr"`
 }
 
 // Send a serf run query to the cluster, this is used to ask a node or nodes
@@ -54,8 +54,8 @@ func (a *Agent) RunQuery(ex *Job) {
 	}*/
 
 	rqp := &RunQueryParam{
-		Job: ex,
-		RPCAddr:   a.getRPCAddr(),
+		Job:     ex,
+		RPCAddr: a.getRPCAddr(),
 	}
 	rqpJson, _ := json.Marshal(rqp)
 

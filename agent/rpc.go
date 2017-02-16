@@ -64,7 +64,7 @@ func (rpcs *RPCServer) RunProcess(j Job, reply *serf.NodeResponse) error {
 	// Get the defined output types for the job, and call them
 	for k, v := range job.Processors {
 		log.Infof("plugin:%v,rpc: Processing execution with plugin", k)
-		switch job.Driver {
+		switch v.Driver {
 		case plugins.MysqlDriverAttr:
 			{
 				errCh := make(chan error)
@@ -78,7 +78,7 @@ func (rpcs *RPCServer) RunProcess(j Job, reply *serf.NodeResponse) error {
 			}
 		default:
 			{
-				return fmt.Errorf("Unknown job type : %+v", job.Driver)
+				return fmt.Errorf("Unknown job type : %+v", v.Driver)
 			}
 		}
 	}
@@ -119,10 +119,10 @@ func (rpcs *RPCServer) RunProcess(j Job, reply *serf.NodeResponse) error {
 // createDriver makes a driver for the task
 func (a *Agent) createDriver(job *Job) (plugins.Driver, error) {
 	driverCtx := plugins.NewDriverContext(job.Name, a.config)
-	driver, err := plugins.DiscoverPlugins(job.Driver, driverCtx)
+	driver, err := plugins.DiscoverPlugins(job.Name, driverCtx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create driver '%s': %v",
-			job.Driver, err)
+			job.Name, err)
 	}
 	return driver, err
 }

@@ -34,10 +34,6 @@ type Job struct {
 	// Job name. Must be unique, acts as the id.
 	Name string `json:"name"`
 
-	Driver string
-
-	Type string
-
 	// Last time this job executed succesful.
 	LastSuccess time.Time `json:"last_success"`
 
