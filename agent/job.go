@@ -102,13 +102,11 @@ func (j *Job) Run() {
 	}
 }
 
-
 func (j *Job) listenOnPanicAbort(cfg *uconf.DriverConfig) {
-	err := <-cfg.PanicAbort
+	err := <-cfg.ErrCh
 	log.Errorf("job run failed: %v", err)
 	j.Lock()
 }
-
 
 // Friendly format a job
 func (j *Job) String() string {

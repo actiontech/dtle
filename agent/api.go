@@ -174,7 +174,7 @@ func (a *Agent) jobCreateOrUpdateHandler(w http.ResponseWriter, r *http.Request)
 	}
 
 	// Save the job parent
-	if err = a.store.SetJobDependencyTree(&job, ej); err != nil {
+	if err = a.store.UpsertJobDependencyTree(&job, ej); err != nil {
 		w.WriteHeader(422) // unprocessable entity
 		if err := json.NewEncoder(w).Encode(err.Error()); err != nil {
 			log.Fatal(err)

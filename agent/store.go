@@ -69,7 +69,7 @@ func (s *Store) UpsertJob(job *Job) error {
 
 	jobJSON, _ := json.Marshal(job)
 
-	log.Infof("job:%v,json:%v,store: Setting job", job.Name, string(jobJSON))
+	log.Debug("job:%v,json:%v,store: Setting job", job.Name, string(jobJSON))
 
 	if err := s.Client.Put(jobKey, jobJSON, nil); err != nil {
 		return err
@@ -80,7 +80,7 @@ func (s *Store) UpsertJob(job *Job) error {
 
 // Set the depencency tree for a job given the job and the previous version
 // of the Job or nil if it's new.
-func (s *Store) SetJobDependencyTree(job *Job, previousJob *Job) error {
+func (s *Store) UpsertJobDependencyTree(job *Job, previousJob *Job) error {
 	// Existing job that doesn't have parent job set and it's being set
 	if previousJob != nil && previousJob.ParentJob == "" && job.ParentJob != "" {
 		pj, err := job.GetParent()

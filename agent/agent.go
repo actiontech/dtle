@@ -318,7 +318,7 @@ func (a *Agent) eventLoop() {
 				}
 
 				if query.Name == QueryRunJob {
-					log.Infof("query:%v,payload:%v,at:%v,agent: Running job", query.Name, string(query.Payload), query.LTime)
+					log.Debug("query:%v,payload:%v,at:%v,agent: Running job", query.Name, string(query.Payload), query.LTime)
 
 					var rqp RunQueryParam
 					if err := json.Unmarshal(query.Payload, &rqp); err != nil {
@@ -327,24 +327,24 @@ func (a *Agent) eventLoop() {
 
 					log.Infof("job:%v,Starting job", rqp.Job.Name)
 
-					rpcc := RPCClient{ServerAddr: rqp.RPCAddr}
+					/*rpcc := RPCClient{ServerAddr: rqp.RPCAddr}
 					job, err := rpcc.GetJob(rqp.Job.Name)
 					if err != nil {
 						log.Infof("err:%v,agent: Error on rpc.GetJob call", err)
-					}
+					}*/
 
-					ex := rqp.Job
-					ex.StartedAt = time.Now()
-					ex.NodeName = a.config.NodeName
+					job := rqp.Job
+					job.StartedAt = time.Now()
+					job.NodeName = a.config.NodeName
 
 					go func() {
-						if err := a.invokeJob(job, ex); err != nil {
+						if err := a.invokeJob(job); err != nil {
 							log.Infof("err:%v,agent: Error invoking job command", err)
 						}
 					}()
 
-					exJson, _ := json.Marshal(ex)
-					query.Respond(exJson)
+					jobJson, _ := json.Marshal(job)
+					query.Respond(jobJson)
 				}
 
 				if query.Name == QueryRPCConfig && a.config.Server {
@@ -362,9 +362,9 @@ func (a *Agent) eventLoop() {
 }
 
 // invokeJob will execute the given job. Depending on the event.
-func (a *Agent) invokeJob(job *Job, execution *Job) error {
-	execution.FinishedAt = time.Now()
-	execution.Success = true
+func (a *Agent) invokeJob(job *Job) error {
+	job.FinishedAt = time.Now()
+	job.Success = true
 
 	rpcServer, err := a.queryRPCConfig()
 	if err != nil {
@@ -372,7 +372,7 @@ func (a *Agent) invokeJob(job *Job, execution *Job) error {
 	}
 
 	rc := &RPCClient{ServerAddr: string(rpcServer)}
-	return rc.callExecutionDone(execution)
+	return rc.callRunJob(job)
 }
 
 func (a *Agent) participate() {

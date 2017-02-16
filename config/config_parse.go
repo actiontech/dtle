@@ -74,6 +74,7 @@ func parseConfig(result *Config, list *ast.ObjectList) error {
 		"log_rotate",
 		"region",
 		"datacenter",
+		"interface",
 		"bind_addr",
 		"http_addr",
 		"rpc_port",

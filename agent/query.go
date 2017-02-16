@@ -59,7 +59,7 @@ func (a *Agent) RunQuery(ex *Job) {
 	}
 	rqpJson, _ := json.Marshal(rqp)
 
-	log.Infof("query:%v,job_name:%v,json:%v,agent: Sending query", QueryRunJob, job.Name, string(rqpJson))
+	log.Debug("query:%v,job_name:%v,json:%v,agent: Sending query", QueryRunJob, job.Name, string(rqpJson))
 
 	qr, err := a.serf.Query(QueryRunJob, rqpJson, params)
 	if err != nil {
@@ -74,11 +74,11 @@ func (a *Agent) RunQuery(ex *Job) {
 		select {
 		case ack, ok := <-ackCh:
 			if ok {
-				log.Infof("query:%v,from:%v,agent: Received ack", QueryRunJob, ack)
+				log.Debug("query:%v,from:%v,agent: Received ack", QueryRunJob, ack)
 			}
 		case resp, ok := <-respCh:
 			if ok {
-				log.Infof("query:%v,from:%v,response:%v,agent: Received response", QueryRunJob, resp.From, string(resp.Payload))
+				log.Debug("query:%v,from:%v,response:%v,agent: Received response", QueryRunJob, resp.From, string(resp.Payload))
 
 				// Save execution to store
 				a.upsertJob(resp.Payload)

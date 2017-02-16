@@ -91,22 +91,22 @@ func (a *Applier) applyEventQuery(db *gosql.DB, eventChan chan usql.StreamEvent)
 
 			if event.Tp == usql.Gtid {
 				if err := usql.ExecuteSQL(db, sqls, args, true); err != nil {
-					a.cfg.PanicAbort <- err
+					a.cfg.ErrCh <- err
 				}
 				if _, err := usql.ExecNoPrepare(db, event.Sql); err != nil {
-					a.cfg.PanicAbort <- err
+					a.cfg.ErrCh <- err
 				}
 				txn, err := db.Begin()
 				if err != nil {
-					a.cfg.PanicAbort <- err
+					a.cfg.ErrCh <- err
 				}
 
 				err = txn.Commit()
 				if err != nil {
-					a.cfg.PanicAbort <- err
+					a.cfg.ErrCh <- err
 				}
 				if _, err := usql.ExecNoPrepare(db, `SET GTID_NEXT='AUTOMATIC'`); err != nil {
-					a.cfg.PanicAbort <- err
+					a.cfg.ErrCh <- err
 				}
 
 				idx = 0
@@ -116,11 +116,11 @@ func (a *Applier) applyEventQuery(db *gosql.DB, eventChan chan usql.StreamEvent)
 
 			} else if event.Tp == usql.Ddl {
 				if err := usql.ExecuteSQL(db, sqls, args, true); err != nil {
-					a.cfg.PanicAbort <- err
+					a.cfg.ErrCh <- err
 				}
 				if err := usql.ExecuteSQL(db, []string{event.Sql}, [][]interface{}{event.Args}, false); err != nil {
 					if !usql.IgnoreDDLError(err) {
-						a.cfg.PanicAbort <- err
+						a.cfg.ErrCh <- err
 					} else {
 						log.Warnf("ignore ddl error :%v", err)
 					}
@@ -137,7 +137,7 @@ func (a *Applier) applyEventQuery(db *gosql.DB, eventChan chan usql.StreamEvent)
 
 			if idx >= count {
 				if err := usql.ExecuteSQL(db, sqls, args, true); err != nil {
-					a.cfg.PanicAbort <- err
+					a.cfg.ErrCh <- err
 				}
 
 				idx = 0
@@ -149,7 +149,7 @@ func (a *Applier) applyEventQuery(db *gosql.DB, eventChan chan usql.StreamEvent)
 			now := time.Now()
 			if now.Sub(lastSyncTime) >= maxWaitTime {
 				if err := usql.ExecuteSQL(db, sqls, args, true); err != nil {
-					a.cfg.PanicAbort <- err
+					a.cfg.ErrCh <- err
 				}
 
 				idx = 0
@@ -184,7 +184,7 @@ func (a *Applier) initiateStreaming() error {
 		event := usql.StreamEvent{}
 		if err := Decode(m.Data, &event); err != nil {
 			log.Infof("Subscribe err:%v", err)
-			a.cfg.PanicAbort <- err
+			a.cfg.ErrCh <- err
 		}
 		idx := int(usql.GenHashKey(event.Key)) % a.cfg.WorkerCount
 		a.eventChans[idx] <- event

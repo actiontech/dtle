@@ -42,9 +42,8 @@ type Config struct {
 	Consul *ConsulConfig `mapstructure:"consul"`
 
 	// config file that have been loaded (in order)
-	PidFile    string `mapstructure:"pid_file"`
-	File       string `mapstructure:"-"`
-	PanicAbort chan error
+	PidFile string `mapstructure:"pid_file"`
+	File    string `mapstructure:"-"`
 }
 
 type ConsulConfig struct {
@@ -63,7 +62,7 @@ type DriverConfig struct {
 	WorkerCount      int               `json:"worker_count"`
 	Batch            int               `json:"batch"`
 	ConnCfg          *ConnectionConfig `json:"conn_cfg"`
-	PanicAbort       chan error
+	ErrCh            chan error        `json:"-"`
 }
 
 // ConnectionConfig is the DB configuration.
@@ -87,9 +86,8 @@ type TableName struct {
 // DefaultConfig is a the baseline configuration for Udup
 func DefaultConfig() *Config {
 	return &Config{
-		File:       "udup.conf",
-		LogLevel:   "INFO",
-		PanicAbort: make(chan error),
+		File:     "udup.conf",
+		LogLevel: "INFO",
 	}
 }
 
