@@ -24,7 +24,7 @@ func (s *Scheduler) Start(jobs []*Job) {
 			continue
 		}
 
-		log.Infof("job:%v,scheduler: run job", job.Name)
+		log.Infof("scheduler: Run job: %v", job.Name)
 		go job.Run()
 	}
 	s.Started = true

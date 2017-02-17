@@ -26,7 +26,7 @@ func (a *Agent) ServeHTTP() {
 
 	srv := &http.Server{Addr: a.config.HTTPAddr, Handler: middle}
 
-	log.Infof("address:%v,api: Running HTTP server", a.config.HTTPAddr)
+	log.Infof("api: Running HTTP server,address:%v", a.config.HTTPAddr)
 
 	go srv.ListenAndServe()
 }
@@ -38,7 +38,7 @@ func (a *Agent) apiRoutes(r *mux.Router) {
 	subver.HandleFunc("/leader", a.leaderHandler)
 	subver.HandleFunc("/leave", a.leaveHandler).Methods(http.MethodGet, http.MethodPost)
 
-	subver.Path("/jobs").HandlerFunc(a.jobCreateOrUpdateHandler).Methods(http.MethodPost, http.MethodPatch)
+	subver.Path("/jobs").HandlerFunc(a.jobUpsertHandler).Methods(http.MethodPost, http.MethodPatch)
 	// Place fallback routes last
 	subver.Path("/jobs").HandlerFunc(a.jobsHandler)
 
@@ -124,7 +124,7 @@ func (a *Agent) jobGetHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (a *Agent) jobCreateOrUpdateHandler(w http.ResponseWriter, r *http.Request) {
+func (a *Agent) jobUpsertHandler(w http.ResponseWriter, r *http.Request) {
 	// Init the Job object with defaults
 	job := Job{
 		Concurrency: ConcurrencyAllow,
@@ -140,7 +140,6 @@ func (a *Agent) jobCreateOrUpdateHandler(w http.ResponseWriter, r *http.Request)
 		if err := json.NewEncoder(w).Encode(err); err != nil {
 			log.Fatal(err)
 		}
-		log.Infof("err:%v", err)
 		return
 	}
 
@@ -189,7 +188,6 @@ func (a *Agent) jobCreateOrUpdateHandler(w http.ResponseWriter, r *http.Request)
 	if err := printJson(w, r, &job); err != nil {
 		log.Fatal(err)
 	}
-	log.Infof("job:%v", job)
 }
 
 func (a *Agent) jobDeleteHandler(w http.ResponseWriter, r *http.Request) {

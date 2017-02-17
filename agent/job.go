@@ -34,6 +34,9 @@ type Job struct {
 	// Job name. Must be unique, acts as the id.
 	Name string `json:"name"`
 
+	// Node name of the node that run this job.
+	NodeName string `json:"node_name,omitempty"`
+
 	// Is this job disabled?
 	Disabled bool `json:"disabled"`
 
@@ -65,9 +68,6 @@ type Job struct {
 	// If this execution executed succesfully.
 	Success bool `json:"success,omitempty"`
 
-	// Node name of the node that run this execution.
-	NodeName string `json:"node_name,omitempty"`
-
 	// Processors to use for this job
 	Processors map[string]*uconf.DriverConfig `json:"processors"`
 
@@ -80,13 +80,10 @@ func (j *Job) Run() {
 	j.running.Lock()
 	defer j.running.Unlock()
 
-	// Maybe we are testing or it's disabled
 	if j.Agent != nil && j.Disabled == false {
 		// Check if it's runnable
 		if j.isRunnable() {
-			log.Infof("job:%v,scheduler: Run job", j.Name)
-
-			// Simple execution wrapper
+			log.Infof("job: Run job:%v", j.Name)
 			j.Agent.RunQuery(j)
 		}
 	}
@@ -94,13 +91,8 @@ func (j *Job) Run() {
 
 func (j *Job) listenOnPanicAbort(cfg *uconf.DriverConfig) {
 	err := <-cfg.ErrCh
-	log.Errorf("job run failed: %v", err)
+	log.Errorf("job: Run failed: %v", err)
 	j.Lock()
-}
-
-// Friendly format a job
-func (j *Job) String() string {
-	return fmt.Sprintf("\"Job: %s, tags:%v\"", j.Name, j.Tags)
 }
 
 // Return the status of a job
@@ -207,7 +199,7 @@ func (j *Job) isRunnable() bool {
 		if j.Concurrency == ConcurrencyAllow {
 			return true
 		} else if j.Concurrency == ConcurrencyForbid {
-			log.Infof("job:%v,concurrency:%v,job_status:%v,scheduler: Skipping execution", j.Name, j.Concurrency, status)
+			log.Infof("job: Skipping execution, job:%v; concurrency:%v; job_status:%v", j.Name, j.Concurrency, status)
 			return false
 		}
 	}

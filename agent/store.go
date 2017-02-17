@@ -24,17 +24,17 @@ func init() {
 	consul.Register()
 }
 
-func NewStore(machines []string, a *Agent) *Store {
-	s, err := libkv.NewStore(store.Backend(backend), machines, nil)
+func NewStore(addrs []string, a *Agent) *Store {
+	s, err := libkv.NewStore(store.Backend(backend), addrs, nil)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	log.Infof("machines:%v,store: Backend config", machines)
+	log.Infof("store: Backend config: %v", addrs)
 
 	_, err = s.List(keyspace)
 	if err != store.ErrKeyNotFound && err != nil {
-		log.Infof("err:%v,store: Store backend not reachable", err)
+		log.Infof("store: Store backend not reachable: %v", err)
 	}
 
 	return &Store{Client: s, agent: a}
@@ -63,7 +63,7 @@ func (s *Store) UpsertJob(job *Job) error {
 
 	jobJSON, _ := json.Marshal(job)
 
-	log.Debug("job:%v,json:%v,store: Setting job", job.Name, string(jobJSON))
+	log.Debug("store: Setting job: %v; json: %v", job.Name, string(jobJSON))
 
 	if err := s.Client.Put(jobKey, jobJSON, nil); err != nil {
 		return err
@@ -178,7 +178,7 @@ func (s *Store) GetJob(name string) (*Job, error) {
 		return nil, err
 	}
 
-	log.Infof("job:%v,store: Retrieved job from datastore", job.Name)
+	log.Infof("store: Retrieved job from datastore: %v", job.Name)
 
 	job.Agent = s.agent
 	return &job, nil
@@ -209,7 +209,7 @@ func (s *Store) GetLeader() []byte {
 		return nil
 	}
 
-	log.Infof("node:%v,store: Retrieved leader from datastore", string(res.Value))
+	log.Infof("store: Retrieved leader from datastore: %v", string(res.Value))
 
 	return res.Value
 }

@@ -66,7 +66,7 @@ func NewAgent(config *uconf.Config) (*Agent, error) {
 	a.join(a.config.StartJoin, true)
 
 	if err := a.setupDrivers(); err != nil {
-		return nil, fmt.Errorf("plugin setup failed: %v", err)
+		return nil, fmt.Errorf("Failed to setup drivers: %v", err)
 	}
 
 	if a.config.Server {
@@ -94,7 +94,7 @@ func (a *Agent) setupDrivers() error {
 
 	}
 
-	log.Debugf("[DEBUG] client: available plugins %v", avail)
+	log.Debugf("agent: available drivers %v", avail)
 
 	return nil
 }
@@ -302,12 +302,12 @@ func (a *Agent) eventLoop() {
 	for {
 		select {
 		case e := <-a.eventCh:
-			log.Infof("event:%v,agent: Received event", e.String())
+			log.Infof("agent: Received event: %v", e.String())
 
 			// Log all member events
 			if failed, ok := e.(serf.MemberEvent); ok {
 				for _, member := range failed.Members {
-					log.Infof("node:%v,member:%v,event:%v,agent: Member event", a.config.NodeName, member.Name, e.EventType())
+					log.Debug("agent: Member event: %v; Node:%v; Member:%v.", e.EventType(),a.config.NodeName, member.Name)
 				}
 			}
 
@@ -319,14 +319,14 @@ func (a *Agent) eventLoop() {
 				}
 
 				if query.Name == QueryRunJob {
-					log.Debug("query:%v,payload:%v,at:%v,agent: Running job", query.Name, string(query.Payload), query.LTime)
+					log.Debug("agent: Running job: Query:%v; Payload:%v; LTime:%v,", query.Name, string(query.Payload), query.LTime)
 
 					var rqp RunQueryParam
 					if err := json.Unmarshal(query.Payload, &rqp); err != nil {
-						log.Infof("query:%v,agent: Error unmarshaling query payload", QueryRunJob)
+						log.Errorf("agent: Error unmarshaling query payload,Query:%v", QueryRunJob)
 					}
 
-					log.Infof("job:%v,Starting job", rqp.Job.Name)
+					log.Infof("agent: Starting job: %v", rqp.Job.Name)
 
 					/*rpcc := RPCClient{ServerAddr: rqp.RPCAddr}
 					job, err := rpcc.GetJob(rqp.Job.Name)
@@ -340,7 +340,7 @@ func (a *Agent) eventLoop() {
 
 					go func() {
 						if err := a.invokeJob(job); err != nil {
-							log.Infof("err:%v,agent: Error invoking job command", err)
+							log.Errorf("agent: Error invoking job command,err:%v", err)
 						}
 					}()
 
@@ -349,7 +349,7 @@ func (a *Agent) eventLoop() {
 				}
 
 				if query.Name == QueryRPCConfig && a.config.Server {
-					log.Infof("query:%v,payload:%v,at:%v,agent: RPC Config requested", query.Name, string(query.Payload), query.LTime)
+					log.Infof("agent: RPC Config requested,Query:%v; Payload:%v; LTime:%v,", query.Name, string(query.Payload), query.LTime)
 
 					query.Respond([]byte(a.getRPCAddr()))
 				}
@@ -407,7 +407,7 @@ func (a *Agent) runForElection() {
 			}
 
 		case err := <-errCh:
-			log.Infof("err:%v,Leader election failed, channel is probably closed", err)
+			log.Errorf("agent: Leader election failed, channel is probably closed,err:%v", err)
 			// Always stop the schedule of this server to prevent multiple servers with the scheduler on
 			a.sched.Stop()
 			return
@@ -432,9 +432,9 @@ func (a *Agent) Shutdown() error {
 		return nil
 	}
 
-	log.Infof("[INFO] agent: requesting shutdown")
+	log.Infof("agent: requesting shutdown")
 
-	log.Infof("[INFO] agent: shutdown complete")
+	log.Infof("agent: shutdown complete")
 	a.shutdown = true
 	close(a.shutdownCh)
 	return nil
