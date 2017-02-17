@@ -153,6 +153,10 @@ func (c *Config) Merge(b *Config) *Config {
 		result.HTTPAddr = b.HTTPAddr
 	}
 
+	if b.Interface != "" {
+		result.Interface = b.Interface
+	}
+
 	if b.RPCPort != 0 {
 		result.RPCPort = b.RPCPort
 	}

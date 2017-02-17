@@ -12,6 +12,7 @@ import (
 	"github.com/ngaut/log"
 
 	"udup/plugins"
+	uconf "udup/config"
 )
 
 var (
@@ -54,24 +55,24 @@ func (rpcs *RPCServer) RunProcess(j Job, reply *serf.NodeResponse) error {
 		log.Fatal("rpc:", err)
 	}
 
-	driver, err := rpcs.agent.createDriver(job)
-	if err != nil {
-		return fmt.Errorf("failed to create driver of task '%s': %v",
-			job.Name, err)
-	}
-	log.Infof("driver:%v,job:%v", driver, job)
-
 	// Get the defined output types for the job, and call them
 	for k, v := range job.Processors {
 		log.Infof("plugin:%v,rpc: Processing execution with plugin", k)
 		switch v.Driver {
 		case plugins.MysqlDriverAttr:
 			{
+				driver, err := rpcs.agent.createDriver(v)
+				if err != nil {
+					return fmt.Errorf("failed to create driver of task '%s': %v",
+						job.Name, err)
+				}
+				log.Infof("driver:%v,job:%v", driver, job)
+
 				errCh := make(chan error)
 				v.ErrCh = errCh
 				go job.listenOnPanicAbort(v)
 				// Start the job
-				err := driver.Start(k, v)
+				err = driver.Start(k, v)
 				if err != nil {
 					return err
 				}
@@ -117,12 +118,12 @@ func (rpcs *RPCServer) RunProcess(j Job, reply *serf.NodeResponse) error {
 }
 
 // createDriver makes a driver for the task
-func (a *Agent) createDriver(job *Job) (plugins.Driver, error) {
-	driverCtx := plugins.NewDriverContext(job.Name, a.config)
-	driver, err := plugins.DiscoverPlugins(job.Name, driverCtx)
+func (a *Agent) createDriver(cfg *uconf.DriverConfig) (plugins.Driver, error) {
+	driverCtx := plugins.NewDriverContext(cfg.Driver, a.config)
+	driver, err := plugins.DiscoverPlugins(cfg.Driver, driverCtx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create driver '%s': %v",
-			job.Name, err)
+			cfg.Driver, err)
 	}
 	return driver, err
 }

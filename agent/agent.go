@@ -56,8 +56,12 @@ func NewAgent(config *uconf.Config) (*Agent, error) {
 		shutdownCh: make(chan struct{}),
 	}
 
-	if a.serf = a.setupSerf(); a.serf == nil {
-		log.Fatal("agent: Can not setup serf")
+	// Initialize the wan Serf
+	var err error
+	a.serf, err = a.setupSerf()
+	if err != nil {
+		a.Shutdown()
+		return nil, fmt.Errorf("Failed to start serf: %v", err)
 	}
 	a.join(a.config.StartJoin, true)
 
@@ -96,25 +100,76 @@ func (a *Agent) setupDrivers() error {
 }
 
 // setupSerf is used to create the agent we use
-func (a *Agent) setupSerf() *serf.Serf {
-	config := a.config
+func (a *Agent) setupSerf() (*serf.Serf, error) {
+	serfConfig := serf.DefaultConfig()
+	serfConfig.MemberlistConfig = memberlist.DefaultWANConfig()
 
-	bindIP, bindPort, err := config.AddrParts(config.BindAddr)
+	bindIP, bindPort, err := a.getBindAddr()
+	if err != nil {
+		return nil, err
+	}
+	serfConfig.MemberlistConfig.BindAddr = bindIP
+	serfConfig.MemberlistConfig.BindPort = bindPort
+	serfConfig.NodeName = a.config.NodeName
+	serfConfig.Init()
+	if a.config.Server {
+		serfConfig.Tags["udup_server"] = "true"
+	}
+	serfConfig.Tags["udup_version"] = a.config.Version
+	serfConfig.Tags["role"] = "udup"
+	serfConfig.Tags["region"] = a.config.Region
+	serfConfig.Tags["dc"] = a.config.Datacenter
+	serfConfig.SnapshotPath = filepath.Join("./", serfSnapshot)
+	if err := ensurePath(serfConfig.SnapshotPath, false); err != nil {
+		return nil, err
+	}
+	serfConfig.QuerySizeLimit = 1024 * 10
+	serfConfig.CoalescePeriod = 6 * time.Second
+	serfConfig.QuiescentPeriod = time.Second
+	serfConfig.UserCoalescePeriod = 6 * time.Second
+	serfConfig.UserQuiescentPeriod = time.Second
+	if a.config.ReconnectInterval != 0 {
+		serfConfig.ReconnectInterval = a.config.ReconnectInterval
+	}
+	if a.config.ReconnectTimeout != 0 {
+		serfConfig.ReconnectTimeout = a.config.ReconnectTimeout
+	}
+	if a.config.TombstoneTimeout != 0 {
+		serfConfig.TombstoneTimeout = a.config.TombstoneTimeout
+	}
+	serfConfig.EnableNameConflictResolution = !a.config.DisableNameResolution
+	serfConfig.RejoinAfterLeave = a.config.RejoinAfterLeave
+
+	// Create a channel to listen for events from Serf
+	a.eventCh = make(chan serf.Event, 64)
+	serfConfig.EventCh = a.eventCh
+
+	// Start Serf
+	log.Info("agent: Udup agent starting")
+
+	serfConfig.LogOutput = ioutil.Discard
+	serfConfig.MemberlistConfig.LogOutput = ioutil.Discard
+
+	return serf.Create(serfConfig)
+}
+
+func (a *Agent) getBindAddr() (string, int, error) {
+	bindIP, bindPort, err := a.config.AddrParts(a.config.BindAddr)
 	if err != nil {
 		log.Infof(fmt.Sprintf("Invalid bind address: %s", err))
-		return nil
+		return "", 0, err
 	}
 
 	// Check if we have an interface
-	if iface, _ := config.NetworkInterface(); iface != nil {
+	if iface, _ := a.config.NetworkInterface(); iface != nil {
 		addrs, err := iface.Addrs()
 		if err != nil {
 			log.Infof(fmt.Sprintf("Failed to get interface addresses: %s", err))
-			return nil
+			return "", 0, err
 		}
 		if len(addrs) == 0 {
-			log.Infof(fmt.Sprintf("Interface '%s' has no addresses", config.Interface))
-			return nil
+			log.Infof(fmt.Sprintf("Interface '%s' has no addresses", a.config.Interface))
+			return "", 0, err
 		}
 
 		// If there is no bind IP, pick an address
@@ -146,19 +201,19 @@ func (a *Agent) setupSerf() *serf.Serf {
 				found = true
 				bindIP = addrIP.String()
 				log.Infof(fmt.Sprintf("Using interface '%s' address '%s'",
-					config.Interface, bindIP))
+					a.config.Interface, bindIP))
 
 				// Update the configuration
 				bindAddr := &net.TCPAddr{
 					IP:   net.ParseIP(bindIP),
 					Port: bindPort,
 				}
-				config.BindAddr = bindAddr.String()
+				a.config.BindAddr = bindAddr.String()
 				break
 			}
 			if !found {
-				log.Infof(fmt.Sprintf("Failed to find usable address for interface '%s'", config.Interface))
-				return nil
+				log.Infof(fmt.Sprintf("Failed to find usable address for interface '%s'", a.config.Interface))
+				return "", 0, err
 			}
 
 		} else {
@@ -176,66 +231,12 @@ func (a *Agent) setupSerf() *serf.Serf {
 			}
 			if !found {
 				log.Infof(fmt.Sprintf("Interface '%s' has no '%s' address",
-					config.Interface, bindIP))
-				return nil
+					a.config.Interface, bindIP))
+				return "", 0, err
 			}
 		}
 	}
-
-	serfConfig := serf.DefaultConfig()
-	serfConfig.MemberlistConfig = memberlist.DefaultLocalConfig()
-
-	serfConfig.MemberlistConfig.BindAddr = bindIP
-	serfConfig.MemberlistConfig.BindPort = bindPort
-	serfConfig.NodeName = config.NodeName
-	serfConfig.Init()
-	if config.Server {
-		serfConfig.Tags["udup_server"] = "true"
-	}
-	serfConfig.Tags["udup_version"] = config.Version
-	serfConfig.Tags["role"] = "udup"
-	serfConfig.Tags["region"] = config.Region
-	serfConfig.Tags["dc"] = config.Datacenter
-	serfConfig.SnapshotPath = serfSnapshot
-	serfConfig.SnapshotPath = filepath.Join("./", serfSnapshot)
-	if err := ensurePath(serfConfig.SnapshotPath, false); err != nil {
-		return nil
-	}
-	serfConfig.QuerySizeLimit = 1024 * 10
-	serfConfig.CoalescePeriod = 6 * time.Second
-	serfConfig.QuiescentPeriod = time.Second
-	serfConfig.UserCoalescePeriod = 6 * time.Second
-	serfConfig.UserQuiescentPeriod = time.Second
-	if config.ReconnectInterval != 0 {
-		serfConfig.ReconnectInterval = config.ReconnectInterval
-	}
-	if config.ReconnectTimeout != 0 {
-		serfConfig.ReconnectTimeout = config.ReconnectTimeout
-	}
-	if config.TombstoneTimeout != 0 {
-		serfConfig.TombstoneTimeout = config.TombstoneTimeout
-	}
-	serfConfig.EnableNameConflictResolution = !config.DisableNameResolution
-	serfConfig.RejoinAfterLeave = config.RejoinAfterLeave
-
-	// Create a channel to listen for events from Serf
-	a.eventCh = make(chan serf.Event, 64)
-	serfConfig.EventCh = a.eventCh
-
-	// Start Serf
-	log.Info("agent: Udup agent starting")
-
-	serfConfig.LogOutput = ioutil.Discard
-	serfConfig.MemberlistConfig.LogOutput = ioutil.Discard
-
-	// Create serf first
-	serf, err := serf.Create(serfConfig)
-	if err != nil {
-		log.Error(err)
-		return nil
-	}
-
-	return serf
+	return bindIP, bindPort, nil
 }
 
 // ensurePath is used to make sure a path exists
