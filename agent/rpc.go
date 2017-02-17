@@ -38,7 +38,7 @@ func (rpcs *RPCServer) GetJob(jobName string, job *Job) error {
 }
 
 func (rpcs *RPCServer) RunProcess(j Job, reply *serf.NodeResponse) error {
-	log.Infof("job:%v,rpc: eceived execution done", j.Name)
+	log.Infof("----job:%v,rpc: eceived execution done", j.Name)
 
 	// Load the job from the store
 	job, err := rpcs.agent.store.GetJob(j.Name)
@@ -66,7 +66,6 @@ func (rpcs *RPCServer) RunProcess(j Job, reply *serf.NodeResponse) error {
 					return fmt.Errorf("failed to create driver of task '%s': %v",
 						job.Name, err)
 				}
-				log.Infof("driver:%v,job:%v", driver, job)
 
 				errCh := make(chan error)
 				v.ErrCh = errCh
@@ -84,12 +83,6 @@ func (rpcs *RPCServer) RunProcess(j Job, reply *serf.NodeResponse) error {
 		}
 	}
 
-	if j.Success {
-		job.LastSuccess = j.FinishedAt
-	} else {
-		job.LastError = j.FinishedAt
-	}
-
 	if err := rpcs.agent.store.UpsertJob(job); err != nil {
 		log.Fatal("rpc:", err)
 	}
@@ -101,6 +94,16 @@ func (rpcs *RPCServer) RunProcess(j Job, reply *serf.NodeResponse) error {
 
 	reply.From = rpcs.agent.config.NodeName
 	reply.Payload = []byte("saved")
+
+	// If the execution failed, retry it until retries limit (default: don't retry)
+	if !job.Success && job.Attempt < job.Retries+1 {
+		job.Attempt++
+
+		log.Infof("attempt:%v,attempt:%v,Retrying execution", job.Attempt, job)
+
+		rpcs.agent.RunQuery(job)
+		return nil
+	}
 
 	// Jobs that have dependent jobs are a bit more expensive because we need to call the Status() method for every execution.
 	// Check first if there's dependent jobs and then check for the job status to begin executiong dependent jobs on success.

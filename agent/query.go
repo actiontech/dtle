@@ -22,10 +22,10 @@ type RunQueryParam struct {
 
 // Send a serf run query to the cluster, this is used to ask a node or nodes
 // to run a Job.
-func (a *Agent) RunQuery(ex *Job) {
+func (a *Agent) RunQuery(j *Job) {
 	var params *serf.QueryParam
 
-	job, err := a.store.GetJob(ex.Name)
+	job, err := a.store.GetJob(j.Name)
 
 	//Job can be removed and the QuerySchedulerRestart not yet received.
 	//In this case, the job will not be found in the store.
@@ -34,27 +34,13 @@ func (a *Agent) RunQuery(ex *Job) {
 		return
 	}
 
-	// In the first execution attempt we build and filter the target nodes
-	// but we use the existing node target in case of retry.
-	filterNodes, filterTags, err := a.processFilteredNodes(job)
-	if err != nil {
-		log.Infof("job:%v,err:%v,agent: Error processing filtered nodes", job.Name, err.Error())
-	}
-	log.Infof("agent: Filtered nodes to run:%v ", filterNodes)
-	log.Infof("agent: Filtered tags to run:%v ", job.Tags)
-
 	params = &serf.QueryParam{
-		FilterNodes: filterNodes,
-		FilterTags:  filterTags,
+		FilterNodes: []string{j.NodeName},
 		RequestAck:  true,
 	}
-	/*params = &serf.QueryParam{
-		FilterNodes: []string{ex.NodeName},
-		RequestAck:  true,
-	}*/
 
 	rqp := &RunQueryParam{
-		Job:     ex,
+		Job:     j,
 		RPCAddr: a.getRPCAddr(),
 	}
 	rqpJson, _ := json.Marshal(rqp)
@@ -136,8 +122,10 @@ func (a *Agent) schedulerRestartQuery(leaderName string) {
 
 // Broadcast a query to get the RPC config of one udup_server, any that could
 // attend later RPC calls.
-func (a *Agent) queryRPCConfig() ([]byte, error) {
-	nodeName := a.selectServer().Name
+func (a *Agent) queryRPCConfig(nodeName string) ([]byte, error) {
+	if nodeName == "" {
+		nodeName = a.selectServer().Name
+	}
 
 	params := &serf.QueryParam{
 		FilterNodes: []string{nodeName},

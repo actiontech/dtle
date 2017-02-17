@@ -59,12 +59,6 @@ func (s *Store) UpsertJob(job *Job) error {
 	if ej != nil {
 		// When the job runs, these status vars are updated
 		// otherwise use the ones that are stored
-		if ej.LastError.After(job.LastError) {
-			job.LastError = ej.LastError
-		}
-		if ej.LastSuccess.After(job.LastSuccess) {
-			job.LastSuccess = ej.LastSuccess
-		}
 	}
 
 	jobJSON, _ := json.Marshal(job)

@@ -9,8 +9,8 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"strconv"
-	"strings"
+	//"strconv"
+	//"strings"
 	"sync"
 	"time"
 
@@ -367,7 +367,7 @@ func (a *Agent) invokeJob(job *Job) error {
 	job.FinishedAt = time.Now()
 	job.Success = true
 
-	rpcServer, err := a.queryRPCConfig()
+	rpcServer, err := a.queryRPCConfig(job.NodeName)
 	if err != nil {
 		return err
 	}
@@ -413,45 +413,6 @@ func (a *Agent) runForElection() {
 			return
 		}
 	}
-}
-
-func (a *Agent) processFilteredNodes(job *Job) ([]string, map[string]string, error) {
-	var nodes []string
-	tags := make(map[string]string)
-
-	// Actually copy the map
-	for key, val := range job.Tags {
-		tags[key] = val
-	}
-
-	for jtk, jtv := range tags {
-		var tc []string
-		if tc = strings.Split(jtv, ":"); len(tc) == 2 {
-			tv := tc[0]
-
-			// Set original tag to clean tag
-			tags[jtk] = tv
-
-			count, err := strconv.Atoi(tc[1])
-			if err != nil {
-				return nil, nil, err
-			}
-
-			for _, member := range a.serf.Members() {
-				if member.Status == serf.StatusAlive {
-					for mtk, mtv := range member.Tags {
-						if mtk == jtk && mtv == tv {
-							if len(nodes) < count {
-								nodes = append(nodes, member.Name)
-							}
-						}
-					}
-				}
-			}
-		}
-	}
-
-	return nodes, tags, nil
 }
 
 // This function is called when a client request the RPCAddress
