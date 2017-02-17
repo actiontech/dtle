@@ -56,9 +56,9 @@ func TestRPCExecutionDone(t *testing.T) {
 		ServerAddr: a.Agent.getRPCAddr(),
 	}
 
-	rc.callExecutionDone(testJob)
+	rc.callRunJob(testJob)
 
 	// Test store execution on a deleted job
 	store.DeleteJob(testJob.Name)
-	rc.callExecutionDone(testJob)
+	rc.callRunJob(testJob)
 }

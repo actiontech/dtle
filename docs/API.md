@@ -255,8 +255,6 @@ A Job represents a scheduled task to execute.
 |---|---|---|
 |**name**  <br>*required*|Name for the job.|string|
 |**disabled**  <br>*optional*|Disabled state of the job|boolean|
-|**tags**  <br>*optional*|Tags asociated with this node|< string, string > map|
-|**retries**  <br>*optional*|Number of times to retry a failed job <br>*Example* : `2`|integer|
 |**parent_job**  <br>*optional*|The name/id of the job that will trigger the execution of this job  <br>*Example* : `"parent_job"`|string|
 |**dependent_jobs**  <br>*optional*  <br>*read-only*|Array containing the jobs that depends on this one  <br>*Example* : `""`|string|
 |**processors**  <br>*required*|Array containing the processors that will be called|< string, **DriverConfig** > map|
@@ -266,14 +264,6 @@ A Job represents a scheduled task to execute.
 {
     "name": "job1",
     "disabled": false,
-    "tags": {
-        "dc": "dc1",
-        "region": "r1",
-        "role": "udup",
-        "udup_server": "true",
-        "udup_version": "ed37eb9"
-    },
-    "retries": 2,
     "parent_job": "",
     "dependent_jobs": [],
     "processors": {

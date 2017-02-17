@@ -11,8 +11,8 @@ import (
 	"github.com/hashicorp/serf/serf"
 	"github.com/ngaut/log"
 
-	"udup/plugins"
 	uconf "udup/config"
+	"udup/plugins"
 )
 
 var (
@@ -32,7 +32,7 @@ func (rpcs *RPCServer) GetJob(jobName string, job *Job) error {
 	}
 
 	// Copy the data structure
-	job.Tags = j.Tags
+	job = j
 
 	return nil
 }

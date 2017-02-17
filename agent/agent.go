@@ -9,8 +9,6 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	//"strconv"
-	//"strings"
 	"sync"
 	"time"
 
@@ -94,7 +92,7 @@ func (a *Agent) setupDrivers() error {
 
 	}
 
-	log.Debugf("agent: available drivers %v", avail)
+	log.Debugf("agent: Available drivers %v", avail)
 
 	return nil
 }
@@ -307,7 +305,7 @@ func (a *Agent) eventLoop() {
 			// Log all member events
 			if failed, ok := e.(serf.MemberEvent); ok {
 				for _, member := range failed.Members {
-					log.Debug("agent: Member event: %v; Node:%v; Member:%v.", e.EventType(),a.config.NodeName, member.Name)
+					log.Debug("agent: Member event: %v; Node:%v; Member:%v.", e.EventType(), a.config.NodeName, member.Name)
 				}
 			}
 
@@ -328,12 +326,6 @@ func (a *Agent) eventLoop() {
 
 					log.Infof("agent: Starting job: %v", rqp.Job.Name)
 
-					/*rpcc := RPCClient{ServerAddr: rqp.RPCAddr}
-					job, err := rpcc.GetJob(rqp.Job.Name)
-					if err != nil {
-						log.Infof("err:%v,agent: Error on rpc.GetJob call", err)
-					}*/
-
 					job := rqp.Job
 					job.StartedAt = time.Now()
 					job.NodeName = a.config.NodeName
@@ -349,7 +341,7 @@ func (a *Agent) eventLoop() {
 				}
 
 				if query.Name == QueryRPCConfig && a.config.Server {
-					log.Infof("agent: RPC Config requested,Query:%v; Payload:%v; LTime:%v,", query.Name, string(query.Payload), query.LTime)
+					log.Infof("agent: RPC Config requested,Query:%v; Payload:%v; LTime:%v", query.Name, string(query.Payload), query.LTime)
 
 					query.Respond([]byte(a.getRPCAddr()))
 				}

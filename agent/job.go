@@ -40,14 +40,8 @@ type Job struct {
 	// Is this job disabled?
 	Disabled bool `json:"disabled"`
 
-	// Tags of the target servers to run this job against.
-	Tags map[string]string `json:"tags"`
-
 	// Pointer to the calling agent.
 	Agent *Agent `json:"-"`
-
-	// Number of times to retry a job that failed an execution.
-	Retries uint `json:"retries"`
 
 	running sync.Mutex
 

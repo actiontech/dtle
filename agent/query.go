@@ -49,7 +49,7 @@ func (a *Agent) RunQuery(j *Job) {
 
 	qr, err := a.serf.Query(QueryRunJob, rqpJson, params)
 	if err != nil {
-		log.Errorf("query: Sending query error:%v; query:%v",err, QueryRunJob)
+		log.Errorf("query: Sending query error:%v; query:%v", err, QueryRunJob)
 	}
 	defer qr.Close()
 
@@ -64,7 +64,7 @@ func (a *Agent) RunQuery(j *Job) {
 			}
 		case resp, ok := <-respCh:
 			if ok {
-				log.Debug("query: Received response:%v; query:%v; from:%v", string(resp.Payload),QueryRunJob, resp.From)
+				log.Debug("query: Received response:%v; query:%v; from:%v", string(resp.Payload), QueryRunJob, resp.From)
 				a.upsertJob(resp.Payload)
 			}
 		}
@@ -133,7 +133,7 @@ func (a *Agent) queryRPCConfig(nodeName string) ([]byte, error) {
 
 	qr, err := a.serf.Query(QueryRPCConfig, nil, params)
 	if err != nil {
-		log.Errorf("query: Error sending query:%v; query:%v", err,QueryRPCConfig)
+		log.Errorf("query: Error sending query:%v; query:%v", err, QueryRPCConfig)
 		return nil, err
 	}
 	defer qr.Close()
