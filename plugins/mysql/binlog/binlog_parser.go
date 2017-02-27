@@ -3,7 +3,7 @@ package binlog
 import (
 	"fmt"
 	"sync"
-	"os"
+	//"os"
 
 	"github.com/ngaut/log"
 	"github.com/siddontang/go-mysql/replication"
@@ -154,7 +154,7 @@ func (bp *BinlogParser) StreamEvents(eventsChannel chan<- *BinlogEvent) error {
 			return err
 		}
 
-		ev.Dump(os.Stdout)
+		//ev.Dump(os.Stdout)
 		func() {
 			bp.currentCoordinatesMutex.Lock()
 			defer bp.currentCoordinatesMutex.Unlock()

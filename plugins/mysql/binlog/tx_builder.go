@@ -169,21 +169,21 @@ func (tb *TxBuilder) onQueryEvent(event *BinlogEvent) error {
 	}
 
 	query := string(evt.Query)
-	if strings.ToLower(query) == "begin" {
+	if strings.ToUpper(query) == "BEGIN" {
 		tb.currentTx.hasBeginQuery = true
 	} else {
 		// DDL or statement/mixed binlog format
 		tb.setImpactOnAll()
-		if strings.ToLower(query) == "commit" || !tb.currentTx.hasBeginQuery {
+		if strings.ToUpper(query) == "COMMIT" || !tb.currentTx.hasBeginQuery {
 			if tb.skipQueryEvent(query) {
 				log.Infof("skip query %s", query)
 				tb.onCommit(event)
 				return nil
 			}
-			if strings.HasPrefix(query, "CREATE DATABASE") {
+			if strings.HasPrefix(strings.ToUpper(query), "CREATE DATABASE") || string(evt.Schema) == "" {
 				event.Query = query
 			} else {
-				event.Query = fmt.Sprintf("use %s; %s;", string(evt.Schema), query)
+				event.Query = fmt.Sprintf("USE %s; %s;", string(evt.Schema), query)
 			}
 
 			tb.onCommit(event)
