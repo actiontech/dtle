@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"strconv"
+	"sync/atomic"
 	"time"
 
 	gnatsd "github.com/nats-io/gnatsd/server"
@@ -15,6 +16,7 @@ import (
 	"github.com/ngaut/log"
 
 	uconf "udup/config"
+	ubinlog "udup/plugins/mysql/binlog"
 	usql "udup/plugins/mysql/sql"
 )
 
@@ -29,6 +31,10 @@ type Applier struct {
 	singletonDB *gosql.DB
 	eventChans  []chan usql.StreamEvent
 
+	eventsChannel chan *ubinlog.BinlogEvent
+	currentTx     *ubinlog.Transaction_t
+	txChan        chan *ubinlog.Transaction_t
+
 	stanConn stan.Conn
 	stanSub  stan.Subscription
 	stand    *stand.StanServer
@@ -39,6 +45,7 @@ func NewApplier(cfg *uconf.DriverConfig) *Applier {
 	return &Applier{
 		cfg:        cfg,
 		eventChans: newEventChans(cfg.WorkerCount),
+		txChan:     make(chan *ubinlog.Transaction_t, 100),
 	}
 }
 
@@ -64,104 +71,123 @@ func (a *Applier) InitiateApplier() error {
 	if err := a.initNatSubClient(); err != nil {
 		return err
 	}
+
 	if err := a.initiateStreaming(); err != nil {
 		return err
 	}
+
+	// start N applier worker
 	for i := 0; i < a.cfg.WorkerCount; i++ {
-		go a.applyEventQuery(a.dbs[i], a.eventChans[i])
+		go a.startApplierWorker(i, a.dbs[i])
 	}
 
 	return nil
 }
 
-func (a *Applier) applyEventQuery(db *gosql.DB, eventChan chan usql.StreamEvent) {
-	idx := 0
-	count := a.cfg.Batch
-	sqls := make([]string, 0, count)
-	args := make([][]interface{}, 0, count)
-	lastSyncTime := time.Now()
+func (a *Applier) onError(err error) {
+	a.cfg.ErrCh <- err
+}
 
-	for {
-		select {
-		case event, ok := <-eventChan:
-			if !ok {
-				return
-			}
-			idx++
+func (a *Applier) applyTx(db *gosql.DB, transaction *ubinlog.Transaction_t) error {
+	if len(transaction.Query) == 0 {
+		return nil
+	}
 
-			if event.Tp == usql.Gtid {
-				if err := usql.ExecuteSQL(db, sqls, args, true); err != nil {
-					a.cfg.ErrCh <- err
-				}
-				if _, err := usql.ExecNoPrepare(db, event.Sql); err != nil {
-					a.cfg.ErrCh <- err
-				}
-				txn, err := db.Begin()
-				if err != nil {
-					a.cfg.ErrCh <- err
-				}
-
-				err = txn.Commit()
-				if err != nil {
-					a.cfg.ErrCh <- err
-				}
-				if _, err := usql.ExecNoPrepare(db, `SET GTID_NEXT='AUTOMATIC'`); err != nil {
-					a.cfg.ErrCh <- err
-				}
-
-				idx = 0
-				sqls = sqls[0:0]
-				args = args[0:0]
-				lastSyncTime = time.Now()
-
-			} else if event.Tp == usql.Ddl {
-				if err := usql.ExecuteSQL(db, sqls, args, true); err != nil {
-					a.cfg.ErrCh <- err
-				}
-				if err := usql.ExecuteSQL(db, []string{event.Sql}, [][]interface{}{event.Args}, false); err != nil {
-					if !usql.IgnoreDDLError(err) {
-						a.cfg.ErrCh <- err
-					} else {
-						log.Warnf("ignore ddl error :%v", err)
-					}
-				}
-
-				idx = 0
-				sqls = sqls[0:0]
-				args = args[0:0]
-				lastSyncTime = time.Now()
-			} else {
-				sqls = append(sqls, event.Sql)
-				args = append(args, event.Args)
-			}
-
-			if idx >= count {
-				if err := usql.ExecuteSQL(db, sqls, args, true); err != nil {
-					a.cfg.ErrCh <- err
-				}
-
-				idx = 0
-				sqls = sqls[0:0]
-				args = args[0:0]
-				lastSyncTime = time.Now()
-			}
-		default:
-			now := time.Now()
-			if now.Sub(lastSyncTime) >= maxWaitTime {
-				if err := usql.ExecuteSQL(db, sqls, args, true); err != nil {
-					a.cfg.ErrCh <- err
-				}
-
-				idx = 0
-				sqls = sqls[0:0]
-				args = args[0:0]
-				lastSyncTime = now
-			}
-
-			time.Sleep(waitTime)
+	var lastFde, lastGtid string
+	if lastFde != transaction.Fde {
+		lastFde = transaction.Fde // IMO it would comare the internal pointer first
+		_, err := db.Exec(lastFde)
+		if err != nil {
+			log.Errorf("err applying fde::%v\n", err)
+			//a.onError(err)
+			return err
 		}
 	}
+
+	if lastGtid != transaction.Gtid {
+		lastGtid = transaction.Gtid // IMO it would comare the internal pointer first
+		_, err := db.Exec(fmt.Sprintf(`SET GTID_NEXT='%v'`, lastGtid))
+		if err != nil {
+			log.Errorf("err applying gtid::%v\n", err)
+			//a.onError(err)
+			return err
+		}
+
+		txn, err := db.Begin()
+		if err != nil {
+			return err
+		}
+
+		err = txn.Commit()
+		if err != nil {
+			return err
+		}
+
+		if _, err := db.Exec(`SET GTID_NEXT='AUTOMATIC'`); err != nil {
+			return err
+		}
+		a.cfg.GtidCh <- lastGtid
+	}
+
+	tx, err := db.Begin()
+	if err != nil {
+		log.Infof("directlyApplyBinlog Begin err:%v", err)
+		return err
+	}
+	for _, query := range transaction.Query {
+		if query == "" {
+			return nil
+		}
+
+		_, err = tx.Exec(query)
+		if err != nil {
+			log.Errorf("err:%v", err)
+			return err
+		}
+	}
+
+	return tx.Commit()
 }
+
+func (a *Applier) startApplierWorker(i int, db *gosql.DB) {
+	for {
+		var tx *ubinlog.Transaction_t
+		select {
+		case tx = <-a.txChan:
+			err := a.applyTx(db, tx)
+			if err != nil {
+				log.Errorf("err applying tx: %v\n", err)
+				//a.onError(err)
+				a.cfg.ErrCh <- err
+			}
+
+			//__log.Debug("release %v", node.tx.eventSize)
+			atomic.AddInt64(&a.cfg.MemoryLimit, int64(tx.EventSize))
+		default:
+			/*t1 := time.Now().UnixNano()
+				select {
+				case tx = <-a.ds.txChan:
+				case <-time.After(500 * time.Millisecond):
+					a.ds.commit()
+					idle_ns += 500 * 1000000
+					continue
+				}
+			t2 := time.Now().UnixNano()
+			idle_ns += (t2 - t1)*/
+		}
+		/*node := <-chNode
+		node.inDegreeWg.Wait()
+		tx := node.tx*/
+
+		//node.releaseSuccs()
+		//a.wgAllNodes.Done()
+	}
+}
+
+/*func (a *Applier) onError(err error) {
+	a.cfg.ErrCh <- err
+}*/
+
 func (a *Applier) initNatSubClient() (err error) {
 	sc, err := stan.Connect("test-cluster", "sub1", stan.NatsURL(fmt.Sprintf("nats://%s", a.cfg.NatsAddr)))
 	if err != nil {
@@ -181,13 +207,14 @@ func Decode(data []byte, vPtr interface{}) (err error) {
 // initiateStreaming begins treaming of binary log events and registers listeners for such events
 func (a *Applier) initiateStreaming() error {
 	sub, err := a.stanConn.Subscribe("subject", func(m *stan.Msg) {
-		event := usql.StreamEvent{}
-		if err := Decode(m.Data, &event); err != nil {
+		tx := &ubinlog.Transaction_t{}
+		if err := Decode(m.Data, tx); err != nil {
 			log.Infof("Subscribe err:%v", err)
 			a.cfg.ErrCh <- err
 		}
-		idx := int(usql.GenHashKey(event.Key)) % a.cfg.WorkerCount
-		a.eventChans[idx] <- event
+		/*idx := int(usql.GenHashKey(event.Key)) % a.cfg.WorkerCount
+		a.eventChans[idx] <- event*/
+		a.txChan <- tx
 	})
 
 	if err != nil {
@@ -206,10 +233,11 @@ func (a *Applier) setupNatsServer() error {
 	}
 
 	nOpts := gnatsd.Options{
-		Host:  host,
-		Port:  p,
-		Trace: true,
-		Debug: true,
+		Host:       host,
+		Port:       p,
+		MaxPayload: (100 * 1024 * 1024),
+		Trace:      true,
+		Debug:      true,
 	}
 	gnats := gnatsd.New(&nOpts)
 	go gnats.Start()

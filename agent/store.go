@@ -61,10 +61,12 @@ func (s *Store) UpsertJob(job *Job) error {
 		// otherwise use the ones that are stored
 	}
 
-	jobJSON, _ := json.Marshal(job)
+	jobJSON, err := json.Marshal(job)
+	if err !=nil{
+		return err
+	}
 
-	log.Debug("store: Setting job: %v; json: %v", job.Name, string(jobJSON))
-
+	log.Debugf("store: Setting job: %v; json: %v", job.Name, string(jobJSON))
 	if err := s.Client.Put(jobKey, jobJSON, nil); err != nil {
 		return err
 	}

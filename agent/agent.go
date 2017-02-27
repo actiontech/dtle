@@ -245,16 +245,6 @@ func ensurePath(path string, dir bool) error {
 	return os.MkdirAll(path, 0755)
 }
 
-// Start or restart scheduler
-func (a *Agent) schedule() {
-	log.Debug("agent: Restarting scheduler")
-	jobs, err := a.store.GetJobs()
-	if err != nil {
-		log.Fatal(err)
-	}
-	a.sched.Restart(jobs)
-}
-
 // Join asks the Serf instance to join. See the Serf.Join function.
 func (a *Agent) join(addrs []string, replay bool) (n int, err error) {
 	log.Infof("agent: joining: %v replay: %v", addrs, replay)
@@ -313,7 +303,12 @@ func (a *Agent) eventLoop() {
 				query := e.(*serf.Query)
 
 				if query.Name == QuerySchedulerRestart && a.config.Server {
-					a.schedule()
+					log.Debug("agent: Restarting scheduler")
+					jobs, err := a.store.GetJobs()
+					if err != nil {
+						log.Fatal(err)
+					}
+					a.sched.Restart(jobs)
 				}
 
 				if query.Name == QueryRunJob {
@@ -327,7 +322,6 @@ func (a *Agent) eventLoop() {
 					log.Infof("agent: Starting job: %v", rqp.Job.Name)
 
 					job := rqp.Job
-					job.StartedAt = time.Now()
 					job.NodeName = a.config.NodeName
 
 					go func() {
@@ -356,7 +350,6 @@ func (a *Agent) eventLoop() {
 
 // invokeJob will execute the given job. Depending on the event.
 func (a *Agent) invokeJob(job *Job) error {
-	job.FinishedAt = time.Now()
 	job.Success = true
 
 	rpcServer, err := a.queryRPCConfig(job.NodeName)
@@ -391,7 +384,12 @@ func (a *Agent) runForElection() {
 			if isElected {
 				log.Info("agent: Cluster leadership acquired")
 				// If this server is elected as the leader, start the scheduler
-				a.schedule()
+				log.Debug("agent: Restarting scheduler")
+				jobs, err := a.store.GetJobs()
+				if err != nil {
+					log.Fatal(err)
+				}
+				a.sched.Restart(jobs)
 			} else {
 				log.Info("agent: Cluster leadership lost")
 				// Always stop the schedule of this server to prevent multiple servers with the scheduler on

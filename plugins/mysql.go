@@ -5,7 +5,7 @@ import (
 	"github.com/ngaut/log"
 
 	uconf "udup/config"
-	//umysql "udup/plugins/mysql"
+	umysql "udup/plugins/mysql"
 )
 
 type MySQLDriver struct {
@@ -22,24 +22,24 @@ func (d *MySQLDriver) Start(t string, driverCtx *uconf.DriverConfig) error {
 		{
 			log.Infof("start mysql extract")
 			// Create the extractor
-			/*extractor := umysql.NewExtractor(driverCtx)
+			extractor := umysql.NewExtractor(driverCtx)
 			go func() {
 				if err := extractor.InitiateExtractor(); err != nil {
 					log.Errorf("extractor run failed: %v", err)
 					driverCtx.ErrCh <- err
 				}
-			}()*/
+			}()
 		}
 	case ProcessorTypeApply:
 		{
 			log.Infof("start mysql apply")
-			/*applier := umysql.NewApplier(driverCtx)
+			applier := umysql.NewApplier(driverCtx)
 			go func() {
 				if err := applier.InitiateApplier(); err != nil {
 					log.Errorf("applier run failed: %v", err)
 					driverCtx.ErrCh <- err
 				}
-			}()*/
+			}()
 		}
 	default:
 		{

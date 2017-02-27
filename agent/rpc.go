@@ -67,6 +67,10 @@ func (rpcs *RPCServer) RunProcess(j Job, reply *serf.NodeResponse) error {
 				errCh := make(chan error)
 				v.ErrCh = errCh
 				go job.listenOnPanicAbort(v)
+
+				gtidCh := make(chan string,100)
+				v.GtidCh = gtidCh
+				go job.listenOnGtid(v)
 				// Start the job
 				err = driver.Start(k, v)
 				if err != nil {

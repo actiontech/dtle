@@ -53,21 +53,33 @@ type ConsulConfig struct {
 // DriverConfig is the DB configuration.
 type DriverConfig struct {
 	//Ref:http://dev.mysql.com/doc/refman/5.7/en/replication-options-slave.html#option_mysqld_replicate-do-table
-	ReplicateDoTable []TableName       `json:"replicate_do_table"`
-	ReplicateDoDb    []string          `json:"replicate_do_db"`
-	Driver           string            `json:"driver"`
-	ServerID         int               `json:"server_id"`
-	NatsAddr         string            `json:"nats_addr"`
-	StoreType        string            `json:"nats_store_type"`
-	FilestoreDir     string            `json:"nats_file_store_dir"`
-	WorkerCount      int               `json:"worker_count"`
-	Batch            int               `json:"batch"`
-	ConnCfg          *ConnectionConfig `json:"conn_cfg"`
-	ErrCh            chan error        `json:"-"`
+	ReplicateDoTable     []TableName       `json:"replicate_do_table"`
+	ReplicateDoDb        []string          `json:"replicate_do_db"`
+	MaxRetries           int64             `json:"max_retries"`
+	Gtid                 string            `json:"gtid"`
+	Evaling              bool              `json:"evaling"`
+	TxImpactLimit        int               `json:"tx_impactLimit"`
+	Driver               string            `json:"driver"`
+	ServerID             int               `json:"server_id"`
+	NatsAddr             string            `json:"nats_addr"`
+	StoreType            string            `json:"nats_store_type"`
+	FilestoreDir         string            `json:"nats_file_store_dir"`
+	WorkerCount          int               `json:"worker_count"`
+	Batch                int               `json:"batch"`
+	StartBinlogPath      string            `json:"start_binlog_path"`
+	StartBinlogPos       int               `json:"start_binlog_pos"`
+	BinlogReadBufferSize int               `json:"binlog_read_buffer_size"`
+	BinlogChecksumBytes  uint32            `json:"binlog_checksum_bytes"`
+	ConnCfg              *ConnectionConfig `json:"conn_cfg"`
+	MemoryLimit          int64             `json:"memory_limit"`
+	ErrCh                chan error        `json:"-"`
+	GtidCh               chan string       `json:"-"`
 }
 
 // ConnectionConfig is the DB configuration.
 type ConnectionConfig struct {
+	BasePath string `json:"base_path"`
+
 	Host string `json:"host"`
 
 	User string `json:"user"`

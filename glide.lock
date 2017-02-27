@@ -1,5 +1,5 @@
 hash: 77750478cb12d27488b7c2841d9ff1a7afedaa439ff6bc08350fdf5d82824270
-updated: 2017-02-15T16:54:26.5479461+08:00
+updated: 2017-02-20T10:55:53.5183517+08:00
 imports:
 - name: github.com/armon/go-metrics
   version: 93f237eba9b0602f3e73710416558854a81d9337
@@ -46,9 +46,9 @@ imports:
 - name: github.com/gorilla/context
   version: 08b5f424b9271eedf6f9f0ce86cb9396ed337a42
 - name: github.com/gorilla/mux
-  version: 392c28fe23e1c45ddba891b0320b3b5df220beea
+  version: 94e7d24fd285520f3d12ae998f7fdd6b5393d453
 - name: github.com/hashicorp/consul
-  version: 4154fb9c202b93bf96cfa5203da25c5bce8279ed
+  version: 65b7ed462cc574d57dc6dcc9bca74676089f7fee
   subpackages:
   - api
 - name: github.com/hashicorp/errwrap
@@ -82,12 +82,16 @@ imports:
   - coordinate
   - serf
   - testutil
+- name: github.com/issuj/gofaster
+  version: 563fb0062b1759c772f256a7ac240d99ae9b84ae
+  subpackages:
+  - base64
 - name: github.com/juju/errors
   version: 6f54ff6318409d31ff16261533ce2c8381a4fd5d
 - name: github.com/mattn/go-isatty
   version: 30a891c33c7cde7b02a981314b4228ec99380cca
 - name: github.com/miekg/dns
-  version: ec20779724ed7bdc9df41eaac18c84b1cd269de7
+  version: 75229eecb7af00b2736e93b779a78429dcb19472
 - name: github.com/mitchellh/cli
   version: fa17b36f6c61f1ddbbb08c9f6fde94b3c065a09d
 - name: github.com/mitchellh/mapstructure
@@ -139,7 +143,7 @@ imports:
   - leveldb/table
   - leveldb/util
 - name: github.com/pingcap/tidb
-  version: 7fa9e18b0fa4bafd88881a9db5b39286b88390b1
+  version: a202e5085a6d6197e55c6433d3797935fd831aa2
   subpackages:
   - ast
   - context

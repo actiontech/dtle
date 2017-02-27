@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"sync"
-	"time"
 
 	"github.com/docker/libkv/store"
 	"github.com/ngaut/log"
@@ -53,12 +52,6 @@ type Job struct {
 
 	lock store.Locker
 
-	// Start time of the execution.
-	StartedAt time.Time `json:"started_at,omitempty"`
-
-	// When the execution finished running.
-	FinishedAt time.Time `json:"finished_at,omitempty"`
-
 	// If this execution executed succesfully.
 	Success bool `json:"success,omitempty"`
 
@@ -89,6 +82,17 @@ func (j *Job) listenOnPanicAbort(cfg *uconf.DriverConfig) {
 	j.Lock()
 }
 
+func (j *Job) listenOnGtid(cfg *uconf.DriverConfig) {
+	gtid := <-cfg.GtidCh
+	log.Infof("job: set gtid_next: %v", gtid)
+
+	j.Processors["apply"].Gtid = gtid
+	err:=j.Agent.store.UpsertJob(j)
+	if err!=nil{
+		log.Errorf("job: listenOnGtid err: %v", err)
+	}
+}
+
 // Return the status of a job
 // Wherever it's running, succeded or failed
 func (j *Job) Status() int {
@@ -100,9 +104,6 @@ func (j *Job) Status() int {
 	job, _ := j.Agent.store.GetJob(j.Name)
 	success := 0
 	failed := 0
-	if job.FinishedAt.IsZero() {
-		return Running
-	}
 
 	var status int
 	if job.Success {
