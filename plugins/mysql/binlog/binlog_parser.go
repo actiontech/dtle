@@ -3,7 +3,6 @@ package binlog
 import (
 	"fmt"
 	"sync"
-	//"os"
 
 	"github.com/ngaut/log"
 	"github.com/siddontang/go-mysql/replication"

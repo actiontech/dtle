@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	uconf "udup/config"
+	umysql "udup/plugins/mysql"
 )
 
 const (
@@ -32,7 +33,9 @@ func DiscoverPlugins(name string, ctx *DriverContext) (Driver, error) {
 
 type Driver interface {
 	// Start is used to being task execution
-	Start(t string, driverCtx *uconf.DriverConfig) error
+	Start(t string, driverCfg *uconf.DriverConfig) error
+
+	Stop(t string) error
 
 	// Plugins must validate their configuration
 	Validate(map[string]interface{}) error
@@ -40,12 +43,15 @@ type Driver interface {
 
 type DriverContext struct {
 	taskName string
-	config   *uconf.Config
+	config   *uconf.DriverConfig
+	Extractor *umysql.Extractor
+	Applier *umysql.Applier
 }
 
-func NewDriverContext(taskName string, config *uconf.Config) *DriverContext {
+func NewDriverContext(taskName string, config *uconf.DriverConfig) *DriverContext {
 	return &DriverContext{
 		taskName: taskName,
 		config:   config,
 	}
 }
+
