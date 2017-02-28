@@ -302,42 +302,76 @@ func (a *Agent) eventLoop() {
 			if e.EventType() == serf.EventQuery {
 				query := e.(*serf.Query)
 
-				if query.Name == QuerySchedulerRestart && a.config.Server {
-					log.Debug("agent: Restarting scheduler")
-					jobs, err := a.store.GetJobs()
-					if err != nil {
-						log.Fatal(err)
-					}
-					a.sched.Restart(jobs)
-				}
-
-				if query.Name == QueryRunJob {
-					log.Debug("agent: Running job: Query:%v; Payload:%v; LTime:%v,", query.Name, string(query.Payload), query.LTime)
-
-					var rqp RunQueryParam
-					if err := json.Unmarshal(query.Payload, &rqp); err != nil {
-						log.Errorf("agent: Error unmarshaling query payload,Query:%v", QueryRunJob)
-					}
-
-					log.Infof("agent: Starting job: %v", rqp.Job.Name)
-
-					job := rqp.Job
-					job.NodeName = a.config.NodeName
-
-					go func() {
-						if err := a.invokeJob(job); err != nil {
-							log.Errorf("agent: Error invoking job command,err:%v", err)
+				switch query.Name {
+				case QuerySchedulerRestart:
+					{
+						if a.config.Server{
+							log.Debug("agent: Restarting scheduler")
+							jobs, err := a.store.GetJobs()
+							if err != nil {
+								log.Fatal(err)
+							}
+							a.sched.Restart(jobs)
 						}
-					}()
+					}
+				case QueryRunJob:
+					{
+						log.Infof("agent: Running job: Query:%v; Payload:%v; LTime:%v,", query.Name, string(query.Payload), query.LTime)
 
-					jobJson, _ := json.Marshal(job)
-					query.Respond(jobJson)
-				}
+						var rqp RunQueryParam
+						if err := json.Unmarshal(query.Payload, &rqp); err != nil {
+							log.Errorf("agent: Error unmarshaling query payload,Query:%v", QueryRunJob)
+						}
 
-				if query.Name == QueryRPCConfig && a.config.Server {
-					log.Infof("agent: RPC Config requested,Query:%v; Payload:%v; LTime:%v", query.Name, string(query.Payload), query.LTime)
+						log.Infof("agent: Starting job: %v", rqp.Job.Name)
 
-					query.Respond([]byte(a.getRPCAddr()))
+						job := rqp.Job
+						job.NodeName = a.config.NodeName
+
+						go func() {
+							if err := a.invokeJob(job); err != nil {
+								log.Errorf("agent: Error invoking job command,err:%v", err)
+							}
+						}()
+
+						jobJson, _ := json.Marshal(job)
+						query.Respond(jobJson)
+					}
+				case QueryStopJob:
+					{
+						log.Infof("agent: Stop job: Query:%v; Payload:%v; LTime:%v,", query.Name, string(query.Payload), query.LTime)
+
+						var rqp RunQueryParam
+						if err := json.Unmarshal(query.Payload, &rqp); err != nil {
+							log.Errorf("agent: Error unmarshaling query payload,Query:%v", QueryRunJob)
+						}
+
+						log.Infof("agent: Stopping job: %v", rqp.Job.Name)
+
+						job := rqp.Job
+						job.NodeName = a.config.NodeName
+
+						go func() {
+							if err := a.stopJob(job); err != nil {
+								log.Errorf("agent: Error invoking job command,err:%v", err)
+							}
+						}()
+
+						jobJson, _ := json.Marshal(job)
+						query.Respond(jobJson)
+					}
+				case QueryRPCConfig:
+					{
+						if a.config.Server {
+							log.Infof("agent: RPC Config requested,Query:%v; Payload:%v; LTime:%v", query.Name, string(query.Payload), query.LTime)
+
+							query.Respond([]byte(a.getRPCAddr()))
+						}
+					}
+				default:
+					{
+						return
+					}
 				}
 			}
 
@@ -359,6 +393,19 @@ func (a *Agent) invokeJob(job *Job) error {
 
 	rc := &RPCClient{ServerAddr: string(rpcServer)}
 	return rc.callRunJob(job)
+}
+
+// invokeJob will execute the given job. Depending on the event.
+func (a *Agent) stopJob(job *Job) error {
+	job.Success = true
+
+	rpcServer, err := a.queryRPCConfig(job.NodeName)
+	if err != nil {
+		return err
+	}
+
+	rc := &RPCClient{ServerAddr: string(rpcServer)}
+	return rc.callStopJob(job)
 }
 
 func (a *Agent) participate() {

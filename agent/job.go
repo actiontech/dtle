@@ -9,6 +9,7 @@ import (
 	"github.com/ngaut/log"
 
 	uconf "udup/config"
+	"udup/plugins"
 )
 
 const (
@@ -41,6 +42,8 @@ type Job struct {
 
 	// Pointer to the calling agent.
 	Agent *Agent `json:"-"`
+
+	//Drivers map[string]plugins.Driver `json:"-"`
 
 	running sync.Mutex
 

@@ -12,6 +12,7 @@ import (
 const (
 	QuerySchedulerRestart = "scheduler:restart"
 	QueryRunJob           = "run:job"
+	QueryStopJob           = "stop:job"
 	QueryRPCConfig        = "rpc:config"
 )
 
@@ -70,6 +71,56 @@ func (a *Agent) RunQuery(j *Job) {
 		}
 	}
 	log.Infof("query: Done receiving acks and responses:%v", QueryRunJob)
+}
+
+func (a *Agent) StopJobQuery(j *Job) {
+	var params *serf.QueryParam
+
+	job, err := a.store.GetJob(j.Name)
+
+	//Job can be removed and the QuerySchedulerRestart not yet received.
+	//In this case, the job will not be found in the store.
+	if err == store.ErrKeyNotFound {
+		log.Infof("query: Job not found, cancelling this execution")
+		return
+	}
+
+	params = &serf.QueryParam{
+		FilterNodes: []string{j.NodeName},
+		RequestAck:  true,
+	}
+
+	rqp := &RunQueryParam{
+		Job:     j,
+		RPCAddr: a.getRPCAddr(),
+	}
+	rqpJson, _ := json.Marshal(rqp)
+
+	log.Debug("query: Sending query:%v; job_name:%v; json:%v", QueryStopJob, job.Name, string(rqpJson))
+
+	qr, err := a.serf.Query(QueryStopJob, rqpJson, params)
+	if err != nil {
+		log.Errorf("query: Sending query error:%v; query:%v", err, QueryStopJob)
+	}
+	defer qr.Close()
+
+	ackCh := qr.AckCh()
+	respCh := qr.ResponseCh()
+
+	for !qr.Finished() {
+		select {
+		case ack, ok := <-ackCh:
+			if ok {
+				log.Debug("query: Received ack:%v; from:%v", QueryStopJob, ack)
+			}
+		case resp, ok := <-respCh:
+			if ok {
+				log.Debug("query: Received response:%v; query:%v; from:%v", string(resp.Payload), QueryStopJob, resp.From)
+				a.upsertJob(resp.Payload)
+			}
+		}
+	}
+	log.Infof("query: Done receiving acks and responses:%v", QueryStopJob)
 }
 
 func (a *Agent) upsertJob(payload []byte) *Job {

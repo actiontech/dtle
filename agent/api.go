@@ -45,6 +45,7 @@ func (a *Agent) apiRoutes(r *mux.Router) {
 	sub := subver.PathPrefix("/jobs").Subrouter()
 	sub.HandleFunc("/{job}", a.jobDeleteHandler).Methods(http.MethodDelete)
 	sub.HandleFunc("/{job}", a.jobRunHandler).Methods(http.MethodPost)
+	sub.HandleFunc("/{job}", a.jobStopHandler).Methods(http.MethodPut)
 	// Place fallback routes last
 	sub.HandleFunc("/{job}", a.jobGetHandler)
 }
@@ -223,6 +224,27 @@ func (a *Agent) jobRunHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.RunQuery(job)
+
+	w.Header().Set("Location", r.RequestURI)
+	w.WriteHeader(http.StatusAccepted)
+	if err := printJson(w, r, job); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func (a *Agent) jobStopHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	jobName := vars["job"]
+
+	job, err := a.store.GetJob(jobName)
+	if err != nil {
+		w.WriteHeader(http.StatusNotFound)
+		if err := json.NewEncoder(w).Encode(err); err != nil {
+			log.Fatal(err)
+		}
+		return
+	}
+	a.StopJobQuery(job)
 
 	w.Header().Set("Location", r.RequestURI)
 	w.WriteHeader(http.StatusAccepted)
