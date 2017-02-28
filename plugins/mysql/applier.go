@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"net"
 	"strconv"
-	"sync/atomic"
 	"time"
 
 	gnatsd "github.com/nats-io/gnatsd/server"
@@ -150,43 +149,16 @@ func (a *Applier) applyTx(db *gosql.DB, transaction *ubinlog.Transaction_t) erro
 }
 
 func (a *Applier) startApplierWorker(i int, db *gosql.DB) {
-	for {
-		var tx *ubinlog.Transaction_t
-		select {
-		case tx = <-a.txChan:
+	for tx := range a.txChan {
+		if tx != nil {
 			err := a.applyTx(db, tx)
 			if err != nil {
 				log.Errorf("err applying tx: %v\n", err)
-				//a.onError(err)
 				a.cfg.ErrCh <- err
 			}
-
-			//__log.Debug("release %v", node.tx.eventSize)
-			atomic.AddInt64(&a.cfg.MemoryLimit, int64(tx.EventSize))
-		default:
-			/*t1 := time.Now().UnixNano()
-				select {
-				case tx = <-a.ds.txChan:
-				case <-time.After(500 * time.Millisecond):
-					a.ds.commit()
-					idle_ns += 500 * 1000000
-					continue
-				}
-			t2 := time.Now().UnixNano()
-			idle_ns += (t2 - t1)*/
 		}
-		/*node := <-chNode
-		node.inDegreeWg.Wait()
-		tx := node.tx*/
-
-		//node.releaseSuccs()
-		//a.wgAllNodes.Done()
 	}
 }
-
-/*func (a *Applier) onError(err error) {
-	a.cfg.ErrCh <- err
-}*/
 
 func (a *Applier) initNatSubClient() (err error) {
 	sc, err := stan.Connect("test-cluster", "sub1", stan.NatsURL(fmt.Sprintf("nats://%s", a.cfg.NatsAddr)))

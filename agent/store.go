@@ -180,8 +180,6 @@ func (s *Store) GetJob(name string) (*Job, error) {
 		return nil, err
 	}
 
-	log.Infof("store: Retrieved job from datastore: %v", job.Name)
-
 	job.Agent = s.agent
 	return &job, nil
 }

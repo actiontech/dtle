@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"fmt"
 	"strings"
-	"sync/atomic"
 	"time"
 
 	"github.com/issuj/gofaster/base64"
@@ -46,7 +45,6 @@ type TxBuilder struct {
 
 	currentTx          *Transaction_t
 	txCount            int
-	evaluateEventCount int
 	currentFde         string
 	currentSqlB64      *bytes.Buffer
 	arrayCurrentSqlB64 []string
@@ -87,12 +85,6 @@ func (tb *TxBuilder) Run() {
 		if tb.currentTx != nil {
 			tb.currentTx.eventCount++
 			tb.currentTx.EventSize += uint64(event.Header.EventSize)
-		} else {
-			if event.Header.EventType != binlog.GTID_EVENT { // discard the event
-				//__log.Debug("release %v", event.header.EventSize)
-				memoryLimit := int64(float64(tb.cfg.MemoryLimit-15) * 1024.0 * 1024.0 / 3.6)
-				atomic.AddInt64(&memoryLimit, int64(event.Header.EventSize))
-			}
 		}
 
 		switch event.Header.EventType {
@@ -334,7 +326,6 @@ func (tb *TxBuilder) onCommit(lastEvent *BinlogEvent) {
 	log.Debugf("TB -> %+v", tb.currentTx)
 	if tb.cfg.Evaling {
 		tb.txCount++
-		tb.evaluateEventCount += tb.currentTx.eventCount
 	}
 	tb.TxChan <- tb.currentTx
 

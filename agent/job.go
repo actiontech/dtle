@@ -83,13 +83,13 @@ func (j *Job) listenOnPanicAbort(cfg *uconf.DriverConfig) {
 }
 
 func (j *Job) listenOnGtid(cfg *uconf.DriverConfig) {
-	for{
-		gtid := <-cfg.GtidCh
-
-		j.Processors["apply"].Gtid = gtid
-		err:=j.Agent.store.UpsertJob(j)
-		if err!=nil{
-			log.Errorf("job: listenOnGtid err: %v", err)
+	for gtid := range cfg.GtidCh {
+		if gtid != "" {
+			j.Processors["extract"].Gtid = gtid
+			err:=j.Agent.store.UpsertJob(j)
+			if err!=nil{
+				log.Errorf("job: listenOnGtid err: %v", err)
+			}
 		}
 	}
 }

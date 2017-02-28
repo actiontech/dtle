@@ -263,12 +263,14 @@ A Job represents a scheduled task to execute.
 ``` json
 {
     "name": "job1",
+    "node_name": "node1",
     "disabled": false,
     "parent_job": "",
     "dependent_jobs": [],
     "processors": {
         "extract": {
         	"driver": "mysql",
+        	"gtid":" 4a5b5a4d-fcc7-11e6-ace3-0242ac110004:1-1",
         	"server_id": 100,
         	"nats_addr": "127.0.0.1:13003",
             "conn_cfg": {
@@ -284,7 +286,6 @@ A Job represents a scheduled task to execute.
         	"nats_store_type": "MEMORY",
         	"nats_file_store_dir":"",
         	"worker_count": 1,
-        	"batch": 1,
             "conn_cfg": {
                 "host": "192.168.99.100",
                 "port": 13005,
@@ -310,7 +311,6 @@ Arguments for calling an execution processor
 |**nats_store_type**  <br>*optional*| Store type: MEMORY/FILE (default: MEMORY)|string|
 |**nats_file_store_dir**  <br>*optional*| File to redirect message store|string|
 |**worker_count**  <br>*optional*|Parallel worker count|integer|
-|**batch**  <br>*optional*|Batch commit count|integer|
 |**conn_cfg**  <br>*optional*|MySQL Configuration Properties|**ConnectionConfig**|
 
 <a name="ConnectionConfig"></a>

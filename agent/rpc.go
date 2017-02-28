@@ -60,7 +60,7 @@ func (rpcs *RPCServer) RunProcess(j Job, reply *serf.NodeResponse) error {
 			{
 				driver, err := rpcs.agent.createDriver(v)
 				if err != nil {
-					return fmt.Errorf("Failed to create driver of job '%s': %v",
+					return fmt.Errorf("failed to create driver of job '%s': %v",
 						job.Name, err)
 				}
 
@@ -71,6 +71,19 @@ func (rpcs *RPCServer) RunProcess(j Job, reply *serf.NodeResponse) error {
 				gtidCh := make(chan string,100)
 				v.GtidCh = gtidCh
 				go job.listenOnGtid(v)
+				/*if k == plugins.ProcessorTypeExtract {
+					log.Infof("k:%v",k)
+					if job.ParentJob !="" {
+						jp, err := rpcs.agent.store.GetJob(job.ParentJob)
+						if err != nil {
+							return fmt.Errorf("failed to get parent job '%s': %v",
+								job.Name, err)
+						}
+						v.Gtid = jp.Processors["apply"].Gtid
+					}else{
+						v.Gtid = j.Processors["apply"].Gtid
+					}
+				}*/
 				// Start the job
 				err = driver.Start(k, v)
 				if err != nil {
