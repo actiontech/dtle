@@ -92,7 +92,8 @@ func (a *Applier) applyTx(db *gosql.DB, transaction *ubinlog.Transaction_t) erro
 		return nil
 	}
 
-	var lastFde, lastGtid string
+	var lastFde, lastSID string
+	var lastGNO int64
 	if lastFde != transaction.Fde {
 		lastFde = transaction.Fde // IMO it would comare the internal pointer first
 		_, err := db.Exec(lastFde)
@@ -103,9 +104,10 @@ func (a *Applier) applyTx(db *gosql.DB, transaction *ubinlog.Transaction_t) erro
 		}
 	}
 
-	if lastGtid != transaction.Gtid {
-		lastGtid = transaction.Gtid // IMO it would comare the internal pointer first
-		_, err := db.Exec(fmt.Sprintf(`SET GTID_NEXT='%v'`, lastGtid))
+	if lastSID != transaction.SID || lastGNO != transaction.GNO{
+		lastSID = transaction.SID
+		lastGNO = transaction.GNO
+		_, err := db.Exec(fmt.Sprintf(`SET GTID_NEXT='%s:%d'`, lastSID,lastGNO))
 		if err != nil {
 			log.Errorf("err applying gtid::%v\n", err)
 			//a.onError(err)
@@ -125,7 +127,7 @@ func (a *Applier) applyTx(db *gosql.DB, transaction *ubinlog.Transaction_t) erro
 		if _, err := db.Exec(`SET GTID_NEXT='AUTOMATIC'`); err != nil {
 			return err
 		}
-		a.cfg.GtidCh <- lastGtid
+		a.cfg.GtidCh <- fmt.Sprintf("%s:1-%d", lastSID,lastGNO)
 	}
 
 	tx, err := db.Begin()
@@ -263,13 +265,11 @@ func closeEventChans(events []chan usql.StreamEvent) {
 }
 
 func (a *Applier) Shutdown() error {
-	usql.CloseDBs(a.dbs...)
-
-	closeEventChans(a.eventChans)
-
 	a.stanSub.Unsubscribe()
 	a.stanConn.Close()
 	a.stand.Shutdown()
 	a.gnatsd.Shutdown()
+	closeEventChans(a.eventChans)
+	usql.CloseDBs(a.dbs...)
 	return nil
 }

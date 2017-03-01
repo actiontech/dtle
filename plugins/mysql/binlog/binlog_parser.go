@@ -79,7 +79,37 @@ func (bp *BinlogParser) GetCurrentBinlogCoordinates() *BinlogCoordinates {
 	return &returnCoordinates
 }
 
-// StreamEvents
+func (bp *BinlogParser) StreamEvents(eventsChannel chan<- *BinlogEvent) error {
+	for {
+		ev, err := bp.binlogStreamer.GetEvent(context.Background())
+		if err != nil {
+			return err
+		}
+
+		//ev.Dump(os.Stdout)
+		func() {
+			bp.currentCoordinatesMutex.Lock()
+			defer bp.currentCoordinatesMutex.Unlock()
+			bp.currentCoordinates.LogPos = int64(ev.Header.LogPos)
+		}()
+		if rotateEvent, ok := ev.Event.(*replication.RotateEvent); ok {
+			func() {
+				bp.currentCoordinatesMutex.Lock()
+				defer bp.currentCoordinatesMutex.Unlock()
+				bp.currentCoordinates.LogFile = string(rotateEvent.NextLogName)
+			}()
+			log.Infof("rotate to next log name: %s", rotateEvent.NextLogName)
+		} else {
+			if err := bp.handleRowsEvent(ev, eventsChannel); err != nil {
+				return err
+			}
+		}
+	}
+	log.Debugf("done streaming events")
+
+	return nil
+}
+
 func (bp *BinlogParser) handleRowsEvent(ev *replication.BinlogEvent, eventsChannel chan<- *BinlogEvent) error {
 	if bp.currentCoordinates.SmallerThanOrEquals(&bp.LastAppliedRowsEventHint) {
 		log.Debugf("Skipping handled query at %+v", bp.currentCoordinates)
@@ -142,38 +172,6 @@ func (bp *BinlogParser) handleRowsEvent(ev *replication.BinlogEvent, eventsChann
 		}
 	}
 	bp.LastAppliedRowsEventHint = bp.currentCoordinates
-	return nil
-}
-
-// StreamEvents
-func (bp *BinlogParser) StreamEvents(eventsChannel chan<- *BinlogEvent) error {
-	for {
-		ev, err := bp.binlogStreamer.GetEvent(context.Background())
-		if err != nil {
-			return err
-		}
-
-		//ev.Dump(os.Stdout)
-		func() {
-			bp.currentCoordinatesMutex.Lock()
-			defer bp.currentCoordinatesMutex.Unlock()
-			bp.currentCoordinates.LogPos = int64(ev.Header.LogPos)
-		}()
-		if rotateEvent, ok := ev.Event.(*replication.RotateEvent); ok {
-			func() {
-				bp.currentCoordinatesMutex.Lock()
-				defer bp.currentCoordinatesMutex.Unlock()
-				bp.currentCoordinates.LogFile = string(rotateEvent.NextLogName)
-			}()
-			log.Infof("rotate to next log name: %s", rotateEvent.NextLogName)
-		} else {
-			if err := bp.handleRowsEvent(ev, eventsChannel); err != nil {
-				return err
-			}
-		}
-	}
-	log.Debugf("done streaming events")
-
 	return nil
 }
 

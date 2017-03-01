@@ -526,10 +526,9 @@ func newTxWithoutGTIDError(event *ubinlog.BinlogEvent) error {
 
 func (e *Extractor) Shutdown() error {
 	log.Infof("[E]:shutdown :%v", e)
-	usql.CloseDBs(e.db)
-
-	close(e.eventsChannel)
-
+	e.bp.Close()
 	e.stanConn.Close()
+	close(e.eventsChannel)
+	usql.CloseDBs(e.db)
 	return nil
 }

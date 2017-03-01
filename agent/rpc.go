@@ -225,7 +225,6 @@ func (rpcc *RPCClient) callStartJob(job *Job) error {
 	}
 	defer client.Close()
 
-	log.Infof("job:%v",job)
 	// Synchronous call
 	var reply serf.NodeResponse
 	err = client.Call("RPCServer.StartJob", job, &reply)

@@ -19,7 +19,9 @@ type Transaction_t struct {
 	StartEventPos  uint32
 	EndEventFile   string
 	EndEventPos    uint32
-	Gtid           string
+	SID string
+	GNO int64
+	//Gtid           string
 	hasBeginQuery  bool
 	// table -> [row]. row is identified by a hash of pk values.
 	Impacting    map[uint64]([]string)
@@ -140,7 +142,9 @@ func (tb *TxBuilder) newTransaction(event *BinlogEvent) {
 	u, _ := uuid.FromBytes(evt.SID)
 
 	tb.currentTx = &Transaction_t{
-		Gtid:           fmt.Sprintf("%s:%d", u.String(), evt.GNO),
+		SID:u.String(),
+		GNO:evt.GNO,
+		//Gtid:           fmt.Sprintf("%s:%d", u.String(), evt.GNO),
 		StartEventFile: event.BinlogFile,
 		StartEventPos:  event.RealPos,
 		Impacting:      map[uint64]([]string){},
