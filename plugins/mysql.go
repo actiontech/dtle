@@ -58,12 +58,16 @@ func (d *MySQLDriver) Stop(t string) error {
 		{
 			log.Infof("stop mysql extract")
 			// Create the extractor
-			d.Extractor.Shutdown()
+			if err := d.Extractor.Shutdown();err != nil {
+				return err
+			}
 		}
 	case ProcessorTypeApply:
 		{
 			log.Infof("stop mysql apply")
-			d.Applier.Shutdown()
+			if err := d.Applier.Shutdown();err != nil {
+				return err
+			}
 		}
 	default:
 		{

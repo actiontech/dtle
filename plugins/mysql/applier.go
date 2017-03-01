@@ -258,6 +258,10 @@ func (a *Applier) mysqlGTIDMode() error {
 	return nil
 }
 
+func (a *Applier) stopFlag() bool {
+	return a.cfg.Disabled
+}
+
 func closeEventChans(events []chan usql.StreamEvent) {
 	for _, ch := range events {
 		close(ch)
@@ -265,11 +269,20 @@ func closeEventChans(events []chan usql.StreamEvent) {
 }
 
 func (a *Applier) Shutdown() error {
+	if a.stopFlag() {
+		return nil
+	}
 	a.stanSub.Unsubscribe()
 	a.stanConn.Close()
 	a.stand.Shutdown()
 	a.gnatsd.Shutdown()
 	closeEventChans(a.eventChans)
-	usql.CloseDBs(a.dbs...)
+
+	err := usql.CloseDBs(a.dbs...)
+	if err != nil {
+		return err
+	}
+	a.cfg.Disabled = true
+	log.Infof("Closed applier connection.")
 	return nil
 }

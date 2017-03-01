@@ -211,6 +211,10 @@ func (e *Extractor) GetReconnectBinlogCoordinates() *ubinlog.BinlogCoordinates {
 	return &ubinlog.BinlogCoordinates{LogFile: e.GetCurrentBinlogCoordinates().LogFile, LogPos: 4}
 }
 
+func (e *Extractor) stopFlag() bool {
+	return e.cfg.Disabled
+}
+
 func (e *Extractor) streamEvents() error {
 	go func() {
 		for tx := range e.tb.TxChan {
@@ -229,9 +233,12 @@ func (e *Extractor) streamEvents() error {
 	var successiveFailures int64
 	var lastAppliedRowsEventHint ubinlog.BinlogCoordinates
 	for {
-		if err := e.bp.StreamEvents(e.tb.EvtChan); err != nil {
-			log.Infof("StreamEvents encountered unexpected error: %+v", err)
+		if err := e.bp.StreamEvents(e.stopFlag,e.tb.EvtChan); err != nil {
 			time.Sleep(ReconnectStreamerSleepSeconds * time.Second)
+			if e.stopFlag(){
+				return nil
+			}
+			log.Infof("StreamEvents encountered unexpected error: %+v", err)
 
 			// See if there's retry overflow
 			if e.bp.LastAppliedRowsEventHint.Equals(&lastAppliedRowsEventHint) {
@@ -525,10 +532,17 @@ func newTxWithoutGTIDError(event *ubinlog.BinlogEvent) error {
 }
 
 func (e *Extractor) Shutdown() error {
-	log.Infof("[E]:shutdown :%v", e)
+	if e.stopFlag() {
+		return nil
+	}
 	e.bp.Close()
 	e.stanConn.Close()
 	close(e.eventsChannel)
-	usql.CloseDBs(e.db)
+	err := usql.CloseDBs(e.db)
+	if err != nil {
+		return err
+	}
+	e.cfg.Disabled = true
+	log.Infof("Closed streamer connection.")
 	return nil
 }

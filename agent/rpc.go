@@ -97,6 +97,11 @@ func (rpcs *RPCServer) StartJob(j Job, reply *serf.NodeResponse) error {
 		}
 	}
 
+	job.Disabled = false
+	for _,p :=range job.Processors {
+		p.Disabled = false
+	}
+
 	if err := rpcs.agent.store.UpsertJob(job); err != nil {
 		log.Fatal(err)
 	}
@@ -141,10 +146,15 @@ func (rpcs *RPCServer) StopJob(j Job, reply *serf.NodeResponse) error {
 
 	for k, v := range rpcs.agent.processorPlugins {
 		if k.name == j.Name {
-			v.Stop(k.tp)
+			if err = v.Stop(k.tp);err != nil {
+				return err
+			}
 		}
 	}
-
+	job.Disabled = true
+	for _,p :=range job.Processors {
+		p.Disabled = true
+	}
 	if err := rpcs.agent.store.UpsertJob(job); err != nil {
 		log.Fatal(err)
 	}

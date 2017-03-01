@@ -357,7 +357,6 @@ func (a *Agent) eventLoop() {
 
 						job := rqp.Job
 						job.NodeName = a.config.NodeName
-						job.Agent = a
 
 						go func() {
 							if err := a.stopJob(job); err != nil {
