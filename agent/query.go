@@ -11,7 +11,7 @@ import (
 
 const (
 	QuerySchedulerRestart = "scheduler:restart"
-	QueryRunJob           = "run:job"
+	QueryStartJob           = "start:job"
 	QueryStopJob          = "stop:job"
 	QueryRPCConfig        = "rpc:config"
 )
@@ -23,7 +23,7 @@ type RunQueryParam struct {
 
 // Send a serf run query to the cluster, this is used to ask a node or nodes
 // to run a Job.
-func (a *Agent) RunQuery(j *Job) {
+func (a *Agent) StartJobQuery(j *Job) {
 	var params *serf.QueryParam
 
 	job, err := a.store.GetJob(j.Name)
@@ -46,11 +46,11 @@ func (a *Agent) RunQuery(j *Job) {
 	}
 	rqpJson, _ := json.Marshal(rqp)
 
-	log.Debug("query: Sending query:%v; job_name:%v; json:%v", QueryRunJob, job.Name, string(rqpJson))
+	log.Debug("query: Sending query:%v; job_name:%v; json:%v", QueryStartJob, job.Name, string(rqpJson))
 
-	qr, err := a.serf.Query(QueryRunJob, rqpJson, params)
+	qr, err := a.serf.Query(QueryStartJob, rqpJson, params)
 	if err != nil {
-		log.Errorf("query: Sending query error:%v; query:%v", err, QueryRunJob)
+		log.Errorf("query: Sending query error:%v; query:%v", err, QueryStartJob)
 	}
 	defer qr.Close()
 
@@ -61,16 +61,16 @@ func (a *Agent) RunQuery(j *Job) {
 		select {
 		case ack, ok := <-ackCh:
 			if ok {
-				log.Debug("query: Received ack:%v; from:%v", QueryRunJob, ack)
+				log.Debug("query: Received ack:%v; from:%v", QueryStartJob, ack)
 			}
 		case resp, ok := <-respCh:
 			if ok {
-				log.Debug("query: Received response:%v; query:%v; from:%v", string(resp.Payload), QueryRunJob, resp.From)
+				log.Debug("query: Received response:%v; query:%v; from:%v", string(resp.Payload), QueryStartJob, resp.From)
 				a.upsertJob(resp.Payload)
 			}
 		}
 	}
-	log.Infof("query: Done receiving acks and responses:%v", QueryRunJob)
+	log.Infof("query: Done receiving acks and responses:%v", QueryStartJob)
 }
 
 func (a *Agent) StopJobQuery(j *Job) {

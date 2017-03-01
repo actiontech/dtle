@@ -42,6 +42,7 @@ type Agent struct {
 	ready     bool
 
 	processorPlugins map[jobDriver]plugins.Driver
+	Plugins map[string]string
 	shutdown         bool
 	shutdownCh       chan struct{}
 	shutdownLock     sync.Mutex
@@ -320,13 +321,13 @@ func (a *Agent) eventLoop() {
 							a.sched.Restart(jobs)
 						}
 					}
-				case QueryRunJob:
+				case QueryStartJob:
 					{
 						log.Debugf("agent: Running job: Query:%v; Payload:%v; LTime:%v,", query.Name, string(query.Payload), query.LTime)
 
 						var rqp RunQueryParam
 						if err := json.Unmarshal(query.Payload, &rqp); err != nil {
-							log.Errorf("agent: Error unmarshaling query payload,Query:%v", QueryRunJob)
+							log.Errorf("agent: Error unmarshaling query payload,Query:%v", QueryStartJob)
 						}
 
 						log.Infof("agent: Starting job: %v", rqp.Job.Name)
@@ -349,13 +350,14 @@ func (a *Agent) eventLoop() {
 
 						var rqp RunQueryParam
 						if err := json.Unmarshal(query.Payload, &rqp); err != nil {
-							log.Errorf("agent: Error unmarshaling query payload,Query:%v", QueryRunJob)
+							log.Errorf("agent: Error unmarshaling query payload,Query:%v", QueryStopJob)
 						}
 
 						log.Infof("agent: Stopping job: %v", rqp.Job.Name)
 
 						job := rqp.Job
 						job.NodeName = a.config.NodeName
+						job.Agent = a
 
 						go func() {
 							if err := a.stopJob(job); err != nil {
@@ -398,7 +400,7 @@ func (a *Agent) invokeJob(job *Job) error {
 	}
 
 	rc := &RPCClient{ServerAddr: string(rpcServer)}
-	return rc.callRunJob(job)
+	return rc.callStartJob(job)
 }
 
 // invokeJob will execute the given job. Depending on the event.

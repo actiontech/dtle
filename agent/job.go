@@ -71,7 +71,7 @@ func (j *Job) Run() {
 		// Check if it's runnable
 		if j.isRunnable() {
 			log.Infof("job: Run job:%v", j.Name)
-			j.Agent.RunQuery(j)
+			j.Agent.StartJobQuery(j)
 		}
 	}
 }

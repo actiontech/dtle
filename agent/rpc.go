@@ -37,7 +37,7 @@ func (rpcs *RPCServer) GetJob(jobName string, job *Job) error {
 	return nil
 }
 
-func (rpcs *RPCServer) RunProcess(j Job, reply *serf.NodeResponse) error {
+func (rpcs *RPCServer) StartJob(j Job, reply *serf.NodeResponse) error {
 	// Load the job from the store
 	job, err := rpcs.agent.store.GetJob(j.Name)
 	if err != nil {
@@ -217,7 +217,7 @@ type RPCClient struct {
 	ServerAddr string
 }
 
-func (rpcc *RPCClient) callRunJob(job *Job) error {
+func (rpcc *RPCClient) callStartJob(job *Job) error {
 	client, err := rpc.DialHTTP("tcp", rpcc.ServerAddr)
 	if err != nil {
 		log.Errorf("rpc: Error dialing: %v,server_addr:%v.", err, rpcc.ServerAddr)
@@ -225,11 +225,12 @@ func (rpcc *RPCClient) callRunJob(job *Job) error {
 	}
 	defer client.Close()
 
+	log.Infof("job:%v",job)
 	// Synchronous call
 	var reply serf.NodeResponse
-	err = client.Call("RPCServer.RunProcess", job, &reply)
+	err = client.Call("RPCServer.StartJob", job, &reply)
 	if err != nil {
-		log.Errorf("rpc: Error calling RunProcess: %v", err)
+		log.Errorf("rpc: Error calling StartJob: %v", err)
 		return err
 	}
 	log.Debug("rpc: from: ", reply.From)

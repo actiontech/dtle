@@ -44,8 +44,8 @@ func (a *Agent) apiRoutes(r *mux.Router) {
 
 	sub := subver.PathPrefix("/jobs").Subrouter()
 	sub.HandleFunc("/{job}", a.jobDeleteHandler).Methods(http.MethodDelete)
-	sub.HandleFunc("/{job}", a.jobRunHandler).Methods(http.MethodPost)
-	sub.HandleFunc("/{job}", a.jobStopHandler).Methods(http.MethodPut)
+	sub.HandleFunc("/{job}/start", a.jobStartHandler).Methods(http.MethodPost)
+	sub.HandleFunc("/{job}/stop", a.jobStopHandler).Methods(http.MethodPost)
 	// Place fallback routes last
 	sub.HandleFunc("/{job}", a.jobGetHandler)
 }
@@ -211,7 +211,7 @@ func (a *Agent) jobDeleteHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (a *Agent) jobRunHandler(w http.ResponseWriter, r *http.Request) {
+func (a *Agent) jobStartHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	jobName := vars["job"]
 
@@ -223,7 +223,7 @@ func (a *Agent) jobRunHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	a.RunQuery(job)
+	a.StartJobQuery(job)
 
 	w.Header().Set("Location", r.RequestURI)
 	w.WriteHeader(http.StatusAccepted)

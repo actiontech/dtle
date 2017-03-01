@@ -58,7 +58,6 @@ type DriverConfig struct {
 	MaxRetries           int64             `json:"max_retries"`
 	Gtid                 string            `json:"gtid"`
 	Evaling              bool              `json:"evaling"`
-	TxImpactLimit        int               `json:"tx_impactLimit"`
 	Driver               string            `json:"driver"`
 	ServerID             int               `json:"server_id"`
 	NatsAddr             string            `json:"nats_addr"`
@@ -76,8 +75,6 @@ type DriverConfig struct {
 
 // ConnectionConfig is the DB configuration.
 type ConnectionConfig struct {
-	BasePath string `json:"base_path"`
-
 	Host string `json:"host"`
 
 	User string `json:"user"`
