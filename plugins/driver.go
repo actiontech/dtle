@@ -42,10 +42,10 @@ type Driver interface {
 }
 
 type DriverContext struct {
-	taskName string
-	config   *uconf.DriverConfig
+	taskName  string
+	config    *uconf.DriverConfig
 	Extractor *umysql.Extractor
-	Applier *umysql.Applier
+	Applier   *umysql.Applier
 }
 
 func NewDriverContext(taskName string, config *uconf.DriverConfig) *DriverContext {
@@ -54,4 +54,3 @@ func NewDriverContext(taskName string, config *uconf.DriverConfig) *DriverContex
 		config:   config,
 	}
 }
-

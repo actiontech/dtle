@@ -16,7 +16,7 @@ func NewMySQLDriver(ctx *DriverContext) Driver {
 	return &MySQLDriver{DriverContext: *ctx}
 }
 
-func (d *MySQLDriver) Start(t string, driverCfg *uconf.DriverConfig) error{
+func (d *MySQLDriver) Start(t string, driverCfg *uconf.DriverConfig) error {
 	switch t {
 	case ProcessorTypeExtract:
 		{
@@ -25,24 +25,24 @@ func (d *MySQLDriver) Start(t string, driverCfg *uconf.DriverConfig) error{
 			extractor := umysql.NewExtractor(driverCfg)
 			d.Extractor = extractor
 
-			/*go func() {
+			go func() {
 				if err := extractor.InitiateExtractor(); err != nil {
 					log.Errorf("extractor run failed: %v", err)
-					driverCtx.ErrCh <- err
+					driverCfg.ErrCh <- err
 				}
-			}()*/
+			}()
 		}
 	case ProcessorTypeApply:
 		{
 			log.Infof("start mysql apply")
 			applier := umysql.NewApplier(driverCfg)
 			d.Applier = applier
-			/*go func() {
+			go func() {
 				if err := applier.InitiateApplier(); err != nil {
 					log.Errorf("applier run failed: %v", err)
-					driverCtx.ErrCh <- err
+					driverCfg.ErrCh <- err
 				}
-			}()*/
+			}()
 		}
 	default:
 		{

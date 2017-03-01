@@ -12,7 +12,7 @@ import (
 const (
 	QuerySchedulerRestart = "scheduler:restart"
 	QueryRunJob           = "run:job"
-	QueryStopJob           = "stop:job"
+	QueryStopJob          = "stop:job"
 	QueryRPCConfig        = "rpc:config"
 )
 

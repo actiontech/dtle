@@ -67,7 +67,7 @@ func (rpcs *RPCServer) RunProcess(j Job, reply *serf.NodeResponse) error {
 				v.ErrCh = errCh
 				go job.listenOnPanicAbort(v)
 
-				gtidCh := make(chan string,100)
+				gtidCh := make(chan string, 100)
 				v.GtidCh = gtidCh
 				go job.listenOnGtid(v)
 				/*if k == plugins.ProcessorTypeExtract {
@@ -88,6 +88,7 @@ func (rpcs *RPCServer) RunProcess(j Job, reply *serf.NodeResponse) error {
 				if err != nil {
 					return err
 				}
+				rpcs.agent.processorPlugins[jobDriver{name: job.Name, tp: k}] = driver
 			}
 		default:
 			{
@@ -138,10 +139,11 @@ func (rpcs *RPCServer) StopJob(j Job, reply *serf.NodeResponse) error {
 		log.Fatal(err)
 	}
 
-	/*for k,v :=range job.Drivers{
-		log.Infof("k:%v,v:%v",k,v)
-		v.Stop(k)
-	}*/
+	for k, v := range rpcs.agent.processorPlugins {
+		if k.name == j.Name {
+			v.Stop(k.tp)
+		}
+	}
 
 	if err := rpcs.agent.store.UpsertJob(job); err != nil {
 		log.Fatal(err)

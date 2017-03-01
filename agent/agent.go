@@ -41,16 +41,22 @@ type Agent struct {
 	candidate *leadership.Candidate
 	ready     bool
 
-	ProcessorPlugins map[string]string
+	processorPlugins map[jobDriver]plugins.Driver
 	shutdown         bool
 	shutdownCh       chan struct{}
 	shutdownLock     sync.Mutex
+}
+
+type jobDriver struct {
+	name string
+	tp   string
 }
 
 // NewAgent is used to create a new agent with the given configuration
 func NewAgent(config *uconf.Config) (*Agent, error) {
 	a := &Agent{
 		config:     config,
+		processorPlugins:    make(map[jobDriver]plugins.Driver),
 		shutdownCh: make(chan struct{}),
 	}
 
@@ -305,7 +311,7 @@ func (a *Agent) eventLoop() {
 				switch query.Name {
 				case QuerySchedulerRestart:
 					{
-						if a.config.Server{
+						if a.config.Server {
 							log.Debug("agent: Restarting scheduler")
 							jobs, err := a.store.GetJobs()
 							if err != nil {
@@ -316,7 +322,7 @@ func (a *Agent) eventLoop() {
 					}
 				case QueryRunJob:
 					{
-						log.Infof("agent: Running job: Query:%v; Payload:%v; LTime:%v,", query.Name, string(query.Payload), query.LTime)
+						log.Debugf("agent: Running job: Query:%v; Payload:%v; LTime:%v,", query.Name, string(query.Payload), query.LTime)
 
 						var rqp RunQueryParam
 						if err := json.Unmarshal(query.Payload, &rqp); err != nil {
@@ -339,7 +345,7 @@ func (a *Agent) eventLoop() {
 					}
 				case QueryStopJob:
 					{
-						log.Infof("agent: Stop job: Query:%v; Payload:%v; LTime:%v,", query.Name, string(query.Payload), query.LTime)
+						log.Debugf("agent: Stop job: Query:%v; Payload:%v; LTime:%v,", query.Name, string(query.Payload), query.LTime)
 
 						var rqp RunQueryParam
 						if err := json.Unmarshal(query.Payload, &rqp); err != nil {

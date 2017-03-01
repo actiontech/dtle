@@ -62,24 +62,6 @@ func (e *Extractor) InitiateExtractor() error {
 	if err := e.initiateTxBuilder(); err != nil {
 		return err
 	}
-	/*go func() {
-		for event := range e.eventsChannel {
-			if event != nil {
-				msg, err := Encode(event)
-				if err != nil {
-					e.cfg.ErrCh <- err
-				}
-				if err := e.stanConn.Publish("subject", msg); err != nil {
-					log.Infof("Publish err:%v", err)
-					e.cfg.ErrCh <- err
-				}
-			}
-		}
-	}()*/
-
-	/*if err := e.copyRows(); err != nil {
-		return err
-	}*/
 	log.Infof("Beginning streaming")
 	if err := e.streamEvents(); err != nil {
 		return err
@@ -543,7 +525,7 @@ func newTxWithoutGTIDError(event *ubinlog.BinlogEvent) error {
 }
 
 func (e *Extractor) Shutdown() error {
-	log.Infof("[E]:shutdown :%v",e)
+	log.Infof("[E]:shutdown :%v", e)
 	usql.CloseDBs(e.db)
 
 	close(e.eventsChannel)

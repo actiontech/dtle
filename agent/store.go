@@ -62,7 +62,7 @@ func (s *Store) UpsertJob(job *Job) error {
 	}
 
 	jobJSON, err := json.Marshal(job)
-	if err !=nil{
+	if err != nil {
 		return err
 	}
 

@@ -9,7 +9,6 @@ import (
 	"github.com/ngaut/log"
 
 	uconf "udup/config"
-	"udup/plugins"
 )
 
 const (
@@ -42,8 +41,6 @@ type Job struct {
 
 	// Pointer to the calling agent.
 	Agent *Agent `json:"-"`
-
-	//Drivers map[string]plugins.Driver `json:"-"`
 
 	running sync.Mutex
 
@@ -89,8 +86,8 @@ func (j *Job) listenOnGtid(cfg *uconf.DriverConfig) {
 	for gtid := range cfg.GtidCh {
 		if gtid != "" {
 			j.Processors["extract"].Gtid = gtid
-			err:=j.Agent.store.UpsertJob(j)
-			if err!=nil{
+			err := j.Agent.store.UpsertJob(j)
+			if err != nil {
 				log.Errorf("job: listenOnGtid err: %v", err)
 			}
 		}
