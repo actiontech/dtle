@@ -199,7 +199,7 @@ func (a *Applier) setupNatsServer() error {
 	go gnats.Start()
 	// Wait for accept loop(s) to be started
 	if !gnats.ReadyForConnections(10 * time.Second) {
-		return fmt.Errorf("Unable to start NATS Server in Go Routine")
+		log.Infof("Unable to start NATS Server in Go Routine")
 	}
 	a.gnatsd = gnats
 	sOpts := stand.GetDefaultOptions()
@@ -254,14 +254,17 @@ func (a *Applier) Shutdown() error {
 	if !a.stopFlag() {
 		return nil
 	}
-	a.stanSub.Unsubscribe()
-	a.stanConn.Close()
+	if err :=a.stanSub.Unsubscribe(); err != nil {
+		return err
+	}
+	if err :=a.stanConn.Close(); err != nil {
+		return err
+	}
 	a.stand.Shutdown()
 	a.gnatsd.Shutdown()
 	closeEventChans(a.eventChans)
 
-	err := usql.CloseDBs(a.dbs...)
-	if err != nil {
+	if err :=usql.CloseDBs(a.dbs...); err != nil {
 		return err
 	}
 	a.cfg.Enabled = false

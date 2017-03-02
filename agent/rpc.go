@@ -45,6 +45,16 @@ func (rpcs *RPCServer) StartJob(j Job, reply *serf.NodeResponse) error {
 		}
 		return err
 	}
+	// Jobs that have dependent jobs are a bit more expensive because we need to call the Status() method for every execution.
+	// Check first if there's dependent jobs and then check for the job status to begin executiong dependent jobs on success.
+	if job.ParentJob !="" && job.Status() == Success {
+		jp, err := rpcs.agent.store.GetJob(job.ParentJob)
+		if err != nil {
+			return fmt.Errorf("failed to get parent job '%s': %v",
+				job.ParentJob, err)
+		}
+		jp.Start()
+	}
 	// Lock the job while editing
 	if err = job.Lock(); err != nil {
 		log.Fatal(err)
@@ -85,18 +95,6 @@ func (rpcs *RPCServer) StartJob(j Job, reply *serf.NodeResponse) error {
 
 	reply.From = rpcs.agent.config.NodeName
 	reply.Payload = []byte("saved")
-
-	// Jobs that have dependent jobs are a bit more expensive because we need to call the Status() method for every execution.
-	// Check first if there's dependent jobs and then check for the job status to begin executiong dependent jobs on success.
-	if len(job.DependentJobs) > 0 && job.Status() == Success {
-		for _, djn := range job.DependentJobs {
-			dj, err := rpcs.agent.store.GetJob(djn)
-			if err != nil {
-				return err
-			}
-			dj.Run()
-		}
-	}
 
 	return nil
 }
@@ -160,6 +158,19 @@ func (rpcs *RPCServer) StopJob(j Job, reply *serf.NodeResponse) error {
 		}
 		return err
 	}
+
+	// Jobs that have dependent jobs are a bit more expensive because we need to call the Status() method for every execution.
+	// Check first if there's dependent jobs and then check for the job status to begin executiong dependent jobs on success.
+	if len(job.DependentJobs) > 0 && job.Status() == Success {
+		for _, djn := range job.DependentJobs {
+			dj, err := rpcs.agent.store.GetJob(djn)
+			if err != nil {
+				return err
+			}
+			dj.Stop()
+		}
+	}
+
 	// Lock the job while editing
 	if err = job.Lock(); err != nil {
 		log.Fatal(err)
@@ -187,18 +198,6 @@ func (rpcs *RPCServer) StopJob(j Job, reply *serf.NodeResponse) error {
 
 	reply.From = rpcs.agent.config.NodeName
 	reply.Payload = []byte("saved")
-
-	// Jobs that have dependent jobs are a bit more expensive because we need to call the Status() method for every execution.
-	// Check first if there's dependent jobs and then check for the job status to begin executiong dependent jobs on success.
-	if len(job.DependentJobs) > 0 && job.Status() == Success {
-		for _, djn := range job.DependentJobs {
-			dj, err := rpcs.agent.store.GetJob(djn)
-			if err != nil {
-				return err
-			}
-			dj.Run()
-		}
-	}
 
 	return nil
 }

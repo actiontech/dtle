@@ -62,16 +62,30 @@ type Job struct {
 	Concurrency string `json:"concurrency"`
 }
 
-// Run the job
-func (j *Job) Run() {
+// Start the job
+func (j *Job) Start() {
 	j.running.Lock()
 	defer j.running.Unlock()
 
 	if j.Agent != nil && j.Enabled == true {
 		// Check if it's runnable
 		if j.isRunnable() {
-			log.Infof("Run job:%v", j.Name)
+			log.Infof("Start job:%v", j.Name)
 			j.Agent.StartJobQuery(j)
+		}
+	}
+}
+
+// Stop the job
+func (j *Job) Stop() {
+	j.running.Lock()
+	defer j.running.Unlock()
+
+	if j.Agent != nil && j.Enabled == true {
+		// Check if it's runnable
+		if j.isRunnable() {
+			log.Infof("Stop job:%v", j.Name)
+			j.Agent.StopJobQuery(j)
 		}
 	}
 }

@@ -173,6 +173,8 @@ func (a *Agent) jobUpsertHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	log.Infof("job:%v,ej:%v",job,ej)
+
 	// Save the job parent
 	if err = a.store.UpsertJobDependencyTree(&job, ej); err != nil {
 		w.WriteHeader(422) // unprocessable entity
