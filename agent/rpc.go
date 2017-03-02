@@ -52,41 +52,18 @@ func (rpcs *RPCServer) StartJob(j Job, reply *serf.NodeResponse) error {
 	// Get the defined output types for the job, and call them
 	for k, v := range job.Processors {
 		log.Infof("Processing execution with plugin:%v", k)
+		errCh := make(chan error)
+		v.ErrCh = errCh
+		go job.listenOnPanicAbort(v)
+
 		switch v.Driver {
 		case plugins.MysqlDriverAttr:
 			{
-				driver, err := createDriver(v)
-				if err != nil {
-					return fmt.Errorf("failed to create driver of job '%s': %v",
-						job.Name, err)
-				}
-
-				errCh := make(chan error)
-				v.ErrCh = errCh
-				go job.listenOnPanicAbort(v)
-
 				gtidCh := make(chan string, 100)
 				v.GtidCh = gtidCh
 				go job.listenOnGtid(v)
-				/*if k == plugins.ProcessorTypeExtract {
-					log.Infof("k:%v",k)
-					if job.ParentJob !="" {
-						jp, err := rpcs.agent.store.GetJob(job.ParentJob)
-						if err != nil {
-							return fmt.Errorf("failed to get parent job '%s': %v",
-								job.Name, err)
-						}
-						v.Gtid = jp.Processors["apply"].Gtid
-					}else{
-						v.Gtid = j.Processors["apply"].Gtid
-					}
-				}*/
 				// Start the job
-				err = driver.Start(k, v)
-				if err != nil {
-					return err
-				}
-				rpcs.agent.processorPlugins[jobDriver{name: job.Name, tp: k}] = driver
+				go rpcs.startDriver(k,v,job)
 			}
 		default:
 			{
@@ -95,10 +72,7 @@ func (rpcs *RPCServer) StartJob(j Job, reply *serf.NodeResponse) error {
 		}
 	}
 
-	job.Disabled = false
-	for _, p := range job.Processors {
-		p.Disabled = false
-	}
+	job.Enabled = true
 
 	if err := rpcs.agent.store.UpsertJob(job); err != nil {
 		log.Fatal(err)
@@ -127,6 +101,55 @@ func (rpcs *RPCServer) StartJob(j Job, reply *serf.NodeResponse) error {
 	return nil
 }
 
+func (rpcs *RPCServer) startDriver(k string,v *uconf.DriverConfig,j *Job) {
+	for {
+		if k == plugins.ProcessorTypeApply {
+			break
+		}
+
+		job, err := rpcs.agent.store.GetJob(j.Name)
+		if err != nil {
+			if err == store.ErrKeyNotFound {
+				log.Warning(ErrForDeletedJob)
+			}
+			log.Warning(err)
+		}
+		if job.ParentJob !="" {
+			jp, err := rpcs.agent.store.GetJob(job.ParentJob)
+			if err != nil {
+				v.ErrCh <- fmt.Errorf("failed to get parent job '%s': %v",
+					job.ParentJob, err)
+			}
+			if jp.Processors["apply"].Enabled == true{
+				v.Gtid = jp.Processors["apply"].Gtid
+				break
+			}
+		}else {
+			if job.Processors["apply"].Enabled == true{
+				v.Gtid = job.Processors["apply"].Gtid
+				break
+			}
+		}
+	}
+	driver, err := createDriver(v)
+	if err != nil {
+		v.ErrCh <- fmt.Errorf("failed to create driver of job '%s': %v",
+			j.Name, err)
+
+	}
+
+	err = driver.Start(k, v)
+	if err != nil {
+		v.ErrCh <- err
+	}
+	v.Enabled = true
+	if err := rpcs.agent.store.UpsertJob(j); err != nil {
+		log.Fatal(err)
+	}
+
+	rpcs.agent.processorPlugins[jobDriver{name: j.Name, tp: k}] = driver
+}
+
 func (rpcs *RPCServer) StopJob(j Job, reply *serf.NodeResponse) error {
 	// Load the job from the store
 	job, err := rpcs.agent.store.GetJob(j.Name)
@@ -149,9 +172,9 @@ func (rpcs *RPCServer) StopJob(j Job, reply *serf.NodeResponse) error {
 			}
 		}
 	}
-	job.Disabled = true
+	job.Enabled = false
 	for _, p := range job.Processors {
-		p.Disabled = true
+		p.Enabled = false
 	}
 	if err := rpcs.agent.store.UpsertJob(job); err != nil {
 		log.Fatal(err)

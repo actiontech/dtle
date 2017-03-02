@@ -404,7 +404,7 @@ func (a *Agent) invokeJob(job *Job) error {
 
 // invokeJob will execute the given job. Depending on the event.
 func (a *Agent) stopJob(job *Job) error {
-	job.Success = true
+	job.Success = false
 
 	rpcServer, err := a.queryRPCConfig(job.NodeName)
 	if err != nil {

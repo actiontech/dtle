@@ -79,12 +79,12 @@ func (bp *BinlogParser) GetCurrentBinlogCoordinates() *BinlogCoordinates {
 	return &returnCoordinates
 }
 
-func (bp *BinlogParser) StreamEvents(canStopStreaming func() bool, eventsChannel chan<- *BinlogEvent) error {
-	if canStopStreaming() {
+func (bp *BinlogParser) StreamEvents(canStreaming func() bool, eventsChannel chan<- *BinlogEvent) error {
+	if !canStreaming() {
 		return nil
 	}
 	for {
-		if canStopStreaming() {
+		if !canStreaming() {
 			break
 		}
 		ev, err := bp.binlogStreamer.GetEvent(context.Background())

@@ -2,7 +2,6 @@ package plugins
 
 import (
 	"fmt"
-	"github.com/ngaut/log"
 
 	uconf "udup/config"
 	umysql "udup/plugins/mysql"
@@ -21,26 +20,20 @@ func (d *MySQLDriver) Start(t string, driverCfg *uconf.DriverConfig) error {
 	case ProcessorTypeExtract:
 		{
 			// Create the extractor
-			extractor := umysql.NewExtractor(driverCfg)
-			d.Extractor = extractor
+			e := umysql.NewExtractor(driverCfg)
+			d.Extractor = e
 
-			go func() {
-				if err := extractor.InitiateExtractor(); err != nil {
-					log.Errorf("Extractor run failed: %v", err)
-					driverCfg.ErrCh <- err
-				}
-			}()
+			if err := e.InitiateExtractor(); err != nil {
+				return fmt.Errorf("[Extractor]:%+v",err)
+			}
 		}
 	case ProcessorTypeApply:
 		{
-			applier := umysql.NewApplier(driverCfg)
-			d.Applier = applier
-			go func() {
-				if err := applier.InitiateApplier(); err != nil {
-					log.Errorf("Applier run failed: %v", err)
-					driverCfg.ErrCh <- err
-				}
-			}()
+			a := umysql.NewApplier(driverCfg)
+			d.Applier = a
+			if err := a.InitiateApplier(); err != nil {
+				return  fmt.Errorf("[Applier]:%+v",err)
+			}
 		}
 	default:
 		{

@@ -53,7 +53,7 @@ type ConsulConfig struct {
 // DriverConfig is the DB configuration.
 type DriverConfig struct {
 	//Ref:http://dev.mysql.com/doc/refman/5.7/en/replication-options-slave.html#option_mysqld_replicate-do-table
-	Disabled             bool              `json:"disabled"`
+	Enabled bool `json:"enabled"`
 	ReplicateDoTable     []TableName       `json:"replicate_do_table"`
 	ReplicateDoDb        []string          `json:"replicate_do_db"`
 	MaxRetries           int64             `json:"max_retries"`
@@ -83,6 +83,10 @@ type ConnectionConfig struct {
 	Password string `json:"password"`
 
 	Port int `json:"port"`
+}
+
+func (c *ConnectionConfig) String() string {
+	return fmt.Sprintf("%s:%d", c.Host, c.Port)
 }
 
 // TableName is the table configuration

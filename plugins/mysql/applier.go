@@ -53,7 +53,7 @@ func newEventChans(count int) []chan usql.StreamEvent {
 }
 
 func (a *Applier) InitiateApplier() error {
-	log.Infof("Apply binlog events onto the datasource :%v", a.cfg.ConnCfg)
+	log.Infof("Apply binlog events onto the datasource :%v", a.cfg.ConnCfg.String())
 	if err := a.setupNatsServer(); err != nil {
 		return err
 	}
@@ -241,7 +241,7 @@ func (a *Applier) mysqlGTIDMode() error {
 }
 
 func (a *Applier) stopFlag() bool {
-	return a.cfg.Disabled
+	return a.cfg.Enabled
 }
 
 func closeEventChans(events []chan usql.StreamEvent) {
@@ -251,7 +251,7 @@ func closeEventChans(events []chan usql.StreamEvent) {
 }
 
 func (a *Applier) Shutdown() error {
-	if a.stopFlag() {
+	if !a.stopFlag() {
 		return nil
 	}
 	a.stanSub.Unsubscribe()
@@ -264,7 +264,7 @@ func (a *Applier) Shutdown() error {
 	if err != nil {
 		return err
 	}
-	a.cfg.Disabled = true
+	a.cfg.Enabled = false
 	log.Infof("Closed applier connection.")
 	return nil
 }

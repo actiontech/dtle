@@ -37,7 +37,7 @@ type Job struct {
 	NodeName string `json:"node_name,omitempty"`
 
 	// Is this job disabled?
-	Disabled bool `json:"disabled"`
+	Enabled bool `json:"enabled"`
 
 	// Pointer to the calling agent.
 	Agent *Agent `json:"-"`
@@ -67,7 +67,7 @@ func (j *Job) Run() {
 	j.running.Lock()
 	defer j.running.Unlock()
 
-	if j.Agent != nil && j.Disabled == false {
+	if j.Agent != nil && j.Enabled == true {
 		// Check if it's runnable
 		if j.isRunnable() {
 			log.Infof("Run job:%v", j.Name)
@@ -85,7 +85,7 @@ func (j *Job) listenOnPanicAbort(cfg *uconf.DriverConfig) {
 func (j *Job) listenOnGtid(cfg *uconf.DriverConfig) {
 	for gtid := range cfg.GtidCh {
 		if gtid != "" {
-			j.Processors["extract"].Gtid = gtid
+			j.Processors["apply"].Gtid = gtid
 			err := j.Agent.store.UpsertJob(j)
 			if err != nil {
 				log.Errorf(err.Error())

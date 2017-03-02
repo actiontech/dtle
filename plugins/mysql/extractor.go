@@ -48,8 +48,7 @@ func NewExtractor(cfg *uconf.DriverConfig) *Extractor {
 }
 
 func (e *Extractor) InitiateExtractor() error {
-	log.Infof("Extract binlog events from the datasource :%v", e.cfg.ConnCfg)
-	time.Sleep(10 * time.Second)
+	log.Infof("Extract binlog events from the datasource %v", e.cfg.ConnCfg.String())
 
 	if err := e.initDBConnections(); err != nil {
 		return err
@@ -62,10 +61,14 @@ func (e *Extractor) InitiateExtractor() error {
 	if err := e.initiateTxBuilder(); err != nil {
 		return err
 	}
-	log.Infof("Beginning streaming")
-	if err := e.streamEvents(); err != nil {
-		return err
-	}
+
+	go func() {
+		log.Debugf("Beginning streaming")
+		if err := e.streamEvents(); err != nil {
+			e.cfg.ErrCh <- err
+		}
+		log.Debugf("Done streaming")
+	}()
 
 	return nil
 }
@@ -187,7 +190,7 @@ func (e *Extractor) initBinlogParser(binlogCoordinates *ubinlog.BinlogCoordinate
 func (e *Extractor) initNatsPubClient() (err error) {
 	sc, err := stan.Connect("test-cluster", "pub1", stan.NatsURL(fmt.Sprintf("nats://%s", e.cfg.NatsAddr)))
 	if err != nil {
-		log.Fatalf("Can't connect: %v.\nMake sure a NATS Streaming Server is running at: %s", err, fmt.Sprintf("nats://%s", e.cfg.NatsAddr))
+		log.Errorf("Can't connect: %v.\nMake sure a NATS Streaming Server is running at: %s", err, fmt.Sprintf("nats://%s", e.cfg.NatsAddr))
 	}
 	e.stanConn = sc
 	return nil
@@ -212,7 +215,7 @@ func (e *Extractor) GetReconnectBinlogCoordinates() *ubinlog.BinlogCoordinates {
 }
 
 func (e *Extractor) stopFlag() bool {
-	return e.cfg.Disabled
+	return e.cfg.Enabled
 }
 
 func (e *Extractor) streamEvents() error {
@@ -233,7 +236,7 @@ func (e *Extractor) streamEvents() error {
 	for {
 		if err := e.bp.StreamEvents(e.stopFlag, e.tb.EvtChan); err != nil {
 			time.Sleep(ReconnectStreamerSleepSeconds * time.Second)
-			if e.stopFlag() {
+			if !e.stopFlag() {
 				return nil
 			}
 			log.Infof("StreamEvents encountered unexpected error: %+v", err)
@@ -526,7 +529,7 @@ func (e *Extractor) skipQueryDDL(sql string, schema string) bool {
 }
 
 func (e *Extractor) Shutdown() error {
-	if e.stopFlag() {
+	if !e.stopFlag() {
 		return nil
 	}
 	e.bp.Close()
@@ -536,7 +539,7 @@ func (e *Extractor) Shutdown() error {
 	if err != nil {
 		return err
 	}
-	e.cfg.Disabled = true
+	e.cfg.Enabled = false
 	log.Infof("Closed streamer connection.")
 	return nil
 }
