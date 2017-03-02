@@ -42,7 +42,7 @@ type Agent struct {
 	ready     bool
 
 	processorPlugins map[jobDriver]plugins.Driver
-	Plugins map[string]string
+	Plugins          map[string]string
 	shutdown         bool
 	shutdownCh       chan struct{}
 	shutdownLock     sync.Mutex
@@ -56,9 +56,9 @@ type jobDriver struct {
 // NewAgent is used to create a new agent with the given configuration
 func NewAgent(config *uconf.Config) (*Agent, error) {
 	a := &Agent{
-		config:     config,
-		processorPlugins:    make(map[jobDriver]plugins.Driver),
-		shutdownCh: make(chan struct{}),
+		config:           config,
+		processorPlugins: make(map[jobDriver]plugins.Driver),
+		shutdownCh:       make(chan struct{}),
 	}
 
 	// Initialize the wan Serf
@@ -66,12 +66,12 @@ func NewAgent(config *uconf.Config) (*Agent, error) {
 	a.serf, err = a.setupSerf()
 	if err != nil {
 		a.Shutdown()
-		return nil, fmt.Errorf("Failed to start serf: %v", err)
+		return nil, fmt.Errorf("failed to start serf: %v", err)
 	}
 	a.join(a.config.StartJoin, true)
 
 	if err := a.setupDrivers(); err != nil {
-		return nil, fmt.Errorf("Failed to setup drivers: %v", err)
+		return nil, fmt.Errorf("failed to setup drivers: %v", err)
 	}
 
 	if a.config.Server {
@@ -99,7 +99,7 @@ func (a *Agent) setupDrivers() error {
 
 	}
 
-	log.Debugf("agent: Available drivers %v", avail)
+	log.Debugf("Available drivers %v", avail)
 
 	return nil
 }
@@ -150,7 +150,7 @@ func (a *Agent) setupSerf() (*serf.Serf, error) {
 	serfConfig.EventCh = a.eventCh
 
 	// Start Serf
-	log.Info("agent: Udup agent starting")
+	log.Info("Udup agent starting")
 
 	serfConfig.LogOutput = ioutil.Discard
 	serfConfig.MemberlistConfig.LogOutput = ioutil.Discard
@@ -161,7 +161,7 @@ func (a *Agent) setupSerf() (*serf.Serf, error) {
 func (a *Agent) getBindAddr() (string, int, error) {
 	bindIP, bindPort, err := a.config.AddrParts(a.config.BindAddr)
 	if err != nil {
-		log.Infof(fmt.Sprintf("Invalid bind address: %s", err))
+		log.Errorf(fmt.Sprintf("Invalid bind address: [%s]", err))
 		return "", 0, err
 	}
 
@@ -169,11 +169,11 @@ func (a *Agent) getBindAddr() (string, int, error) {
 	if iface, _ := a.config.NetworkInterface(); iface != nil {
 		addrs, err := iface.Addrs()
 		if err != nil {
-			log.Infof(fmt.Sprintf("Failed to get interface addresses: %s", err))
+			log.Errorf(fmt.Sprintf("Failed to get interface addresses: [%s]", err))
 			return "", 0, err
 		}
 		if len(addrs) == 0 {
-			log.Infof(fmt.Sprintf("Interface '%s' has no addresses", a.config.Interface))
+			log.Errorf(fmt.Sprintf("Interface '%s' has no addresses", a.config.Interface))
 			return "", 0, err
 		}
 
@@ -217,7 +217,7 @@ func (a *Agent) getBindAddr() (string, int, error) {
 				break
 			}
 			if !found {
-				log.Infof(fmt.Sprintf("Failed to find usable address for interface '%s'", a.config.Interface))
+				log.Errorf(fmt.Sprintf("Failed to find usable address for interface '%s'", a.config.Interface))
 				return "", 0, err
 			}
 
@@ -235,7 +235,7 @@ func (a *Agent) getBindAddr() (string, int, error) {
 				}
 			}
 			if !found {
-				log.Infof(fmt.Sprintf("Interface '%s' has no '%s' address",
+				log.Errorf(fmt.Sprintf("Interface '%s' has no '%s' address",
 					a.config.Interface, bindIP))
 				return "", 0, err
 			}
@@ -254,14 +254,14 @@ func ensurePath(path string, dir bool) error {
 
 // Join asks the Serf instance to join. See the Serf.Join function.
 func (a *Agent) join(addrs []string, replay bool) (n int, err error) {
-	log.Infof("agent: joining: %v replay: %v", addrs, replay)
+	log.Infof("Joining: %v replay: %v", addrs, replay)
 	ignoreOld := !replay
 	n, err = a.serf.Join(addrs, ignoreOld)
 	if n > 0 {
-		log.Infof("agent: joined: %d nodes", n)
+		log.Infof("Joined: %d nodes", n)
 	}
 	if err != nil {
-		log.Warnf("agent: error joining: %v", err)
+		log.Warnf("Error joining: %v", err)
 	}
 	return
 }
@@ -293,16 +293,16 @@ func (a *Agent) listServers() []serf.Member {
 // Listens to events from Serf and handle the event.
 func (a *Agent) eventLoop() {
 	serfShutdownCh := a.serf.ShutdownCh()
-	log.Info("agent: Listen for events")
+	log.Info("Listen for events")
 	for {
 		select {
 		case e := <-a.eventCh:
-			log.Infof("agent: Received event: %v", e.String())
+			log.Infof("Received event: %v", e.String())
 
 			// Log all member events
 			if failed, ok := e.(serf.MemberEvent); ok {
 				for _, member := range failed.Members {
-					log.Debug("agent: Member event: %v; Node:%v; Member:%v.", e.EventType(), a.config.NodeName, member.Name)
+					log.Debug("Member event: %v; Node:%v; Member:%v.", e.EventType(), a.config.NodeName, member.Name)
 				}
 			}
 
@@ -313,7 +313,7 @@ func (a *Agent) eventLoop() {
 				case QuerySchedulerRestart:
 					{
 						if a.config.Server {
-							log.Debug("agent: Restarting scheduler")
+							log.Debug("Restarting scheduler")
 							jobs, err := a.store.GetJobs()
 							if err != nil {
 								log.Fatal(err)
@@ -323,21 +323,21 @@ func (a *Agent) eventLoop() {
 					}
 				case QueryStartJob:
 					{
-						log.Debugf("agent: Running job: Query:%v; Payload:%v; LTime:%v,", query.Name, string(query.Payload), query.LTime)
+						log.Debugf("Running job: Query:%v; Payload:%v; LTime:%v,", query.Name, string(query.Payload), query.LTime)
 
 						var rqp RunQueryParam
 						if err := json.Unmarshal(query.Payload, &rqp); err != nil {
-							log.Errorf("agent: Error unmarshaling query payload,Query:%v", QueryStartJob)
+							log.Errorf("Error unmarshaling query payload,Query:%v", QueryStartJob)
 						}
 
-						log.Infof("agent: Starting job: %v", rqp.Job.Name)
+						log.Infof("Starting job: %v", rqp.Job.Name)
 
 						job := rqp.Job
 						job.NodeName = a.config.NodeName
 
 						go func() {
 							if err := a.invokeJob(job); err != nil {
-								log.Errorf("agent: Error invoking job command,err:%v", err)
+								log.Errorf("Error invoking job command,err:%v", err)
 							}
 						}()
 
@@ -346,21 +346,21 @@ func (a *Agent) eventLoop() {
 					}
 				case QueryStopJob:
 					{
-						log.Debugf("agent: Stop job: Query:%v; Payload:%v; LTime:%v,", query.Name, string(query.Payload), query.LTime)
+						log.Debugf("Stop job: Query:%v; Payload:%v; LTime:%v,", query.Name, string(query.Payload), query.LTime)
 
 						var rqp RunQueryParam
 						if err := json.Unmarshal(query.Payload, &rqp); err != nil {
-							log.Errorf("agent: Error unmarshaling query payload,Query:%v", QueryStopJob)
+							log.Errorf("Error unmarshaling query payload,Query:%v", QueryStopJob)
 						}
 
-						log.Infof("agent: Stopping job: %v", rqp.Job.Name)
+						log.Infof("Stopping job: %v", rqp.Job.Name)
 
 						job := rqp.Job
 						job.NodeName = a.config.NodeName
 
 						go func() {
 							if err := a.stopJob(job); err != nil {
-								log.Errorf("agent: Error invoking job command,err:%v", err)
+								log.Errorf("Error stop job command,err:%v", err)
 							}
 						}()
 
@@ -370,7 +370,7 @@ func (a *Agent) eventLoop() {
 				case QueryRPCConfig:
 					{
 						if a.config.Server {
-							log.Infof("agent: RPC Config requested,Query:%v; Payload:%v; LTime:%v", query.Name, string(query.Payload), query.LTime)
+							log.Infof("RPC Config requested,Query:%v; Payload:%v; LTime:%v", query.Name, string(query.Payload), query.LTime)
 
 							query.Respond([]byte(a.getRPCAddr()))
 						}
@@ -383,7 +383,7 @@ func (a *Agent) eventLoop() {
 			}
 
 		case <-serfShutdownCh:
-			log.Warn("agent: Serf shutdown detected, quitting")
+			log.Warn("Serf shutdown detected, quitting")
 			return
 		}
 	}
@@ -429,23 +429,23 @@ func (a *Agent) participate() {
 
 // Leader election routine
 func (a *Agent) runForElection() {
-	log.Info("agent: Running for election")
+	log.Info("Running for election")
 	electedCh, errCh := a.candidate.RunForElection()
 
 	for {
 		select {
 		case isElected := <-electedCh:
 			if isElected {
-				log.Info("agent: Cluster leadership acquired")
+				log.Info("Cluster leadership acquired")
 				// If this server is elected as the leader, start the scheduler
-				log.Debug("agent: Restarting scheduler")
+				log.Info("Restarting scheduler")
 				jobs, err := a.store.GetJobs()
 				if err != nil {
 					log.Fatal(err)
 				}
 				a.sched.Restart(jobs)
 			} else {
-				log.Info("agent: Cluster leadership lost")
+				log.Info("Cluster leadership lost")
 				// Always stop the schedule of this server to prevent multiple servers with the scheduler on
 				a.sched.Stop()
 			}
@@ -476,9 +476,9 @@ func (a *Agent) Shutdown() error {
 		return nil
 	}
 
-	log.Infof("agent: requesting shutdown")
+	log.Infof("Requesting shutdown")
 
-	log.Infof("agent: shutdown complete")
+	log.Infof("Shutdown complete")
 	a.shutdown = true
 	close(a.shutdownCh)
 	return nil

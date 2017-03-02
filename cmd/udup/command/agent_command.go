@@ -33,7 +33,7 @@ type AgentCommand struct {
 func (c *AgentCommand) setupAgent(config *uconf.Config) error {
 	agent, err := uagt.NewAgent(config)
 	if err != nil {
-		log.Errorf("Error starting agent: %s", err)
+		log.Errorf("Error starting agent: [%s]", err)
 		return err
 	}
 	c.Agent = agent
@@ -176,7 +176,7 @@ func (a *AgentCommand) readConfig() *uconf.Config {
 	if cmdConfig.PidFile != "" {
 		f, err := os.Create(cmdConfig.PidFile)
 		if err != nil {
-			log.Fatalf("Unable to create pidfile: %s", err)
+			log.Fatalf("Unable to create pidfile: [%s]", err)
 		}
 
 		fmt.Fprintf(f, "%d\n", os.Getpid())
@@ -190,7 +190,7 @@ func (a *AgentCommand) readConfig() *uconf.Config {
 
 	current, err := uconf.LoadConfig(cmdConfig.File)
 	if err != nil {
-		log.Errorf("Error loading configuration from %s: %s", cmdConfig.File, err)
+		log.Errorf("Error loading configuration from %s: [%s]", cmdConfig.File, err)
 		return nil
 	}
 

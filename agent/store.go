@@ -30,11 +30,11 @@ func NewStore(addrs []string, a *Agent) *Store {
 		log.Fatal(err)
 	}
 
-	log.Infof("store: Backend config: %v", addrs)
+	log.Infof("Backend config: %v", addrs)
 
 	_, err = s.List(keyspace)
 	if err != store.ErrKeyNotFound && err != nil {
-		log.Infof("store: Store backend not reachable: %v", err)
+		log.Infof("Store backend not reachable: %v", err)
 	}
 
 	return &Store{Client: s, agent: a}
@@ -66,7 +66,7 @@ func (s *Store) UpsertJob(job *Job) error {
 		return err
 	}
 
-	log.Debugf("store: Setting job: %v; json: %v", job.Name, string(jobJSON))
+	log.Debugf("Setting job: %v; json: %v", job.Name, string(jobJSON))
 	if err := s.Client.Put(jobKey, jobJSON, nil); err != nil {
 		return err
 	}
@@ -149,7 +149,7 @@ func (s *Store) GetJobs() ([]*Job, error) {
 	res, err := s.Client.List(keyspace + "/jobs/")
 	if err != nil {
 		if err == store.ErrKeyNotFound {
-			log.Debug("store: No jobs found")
+			log.Debug("No jobs found")
 			return []*Job{}, nil
 		}
 		return nil, err
@@ -202,14 +202,14 @@ func (s *Store) GetLeader() []byte {
 	res, err := s.Client.Get(s.LeaderKey())
 	if err != nil {
 		if err == store.ErrNotReachable {
-			log.Fatal("store: Store not reachable, be sure you have an existing key-value store running is running and is reachable.")
+			log.Fatal("Store not reachable, be sure you have an existing key-value store running is running and is reachable.")
 		} else if err != store.ErrKeyNotFound {
 			log.Error(err)
 		}
 		return nil
 	}
 
-	log.Infof("store: Retrieved leader from datastore: %v", string(res.Value))
+	log.Infof("Retrieved leader from datastore: %v", string(res.Value))
 
 	return res.Value
 }

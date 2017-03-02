@@ -16,7 +16,7 @@ import (
 )
 
 var (
-	ErrForDeletedJob = errors.New("rpc: Received err for a deleted job.")
+	ErrForDeletedJob = errors.New("Received err for a deleted job.")
 )
 
 type RPCServer struct {
@@ -24,8 +24,6 @@ type RPCServer struct {
 }
 
 func (rpcs *RPCServer) GetJob(jobName string, job *Job) error {
-	log.Infof("rpc: Received GetJob: %v", jobName)
-
 	j, err := rpcs.agent.store.GetJob(jobName)
 	if err != nil {
 		return err
@@ -53,7 +51,7 @@ func (rpcs *RPCServer) StartJob(j Job, reply *serf.NodeResponse) error {
 	}
 	// Get the defined output types for the job, and call them
 	for k, v := range job.Processors {
-		log.Infof("rpc: Processing execution with plugin:%v", k)
+		log.Infof("Processing execution with plugin:%v", k)
 		switch v.Driver {
 		case plugins.MysqlDriverAttr:
 			{
@@ -98,7 +96,7 @@ func (rpcs *RPCServer) StartJob(j Job, reply *serf.NodeResponse) error {
 	}
 
 	job.Disabled = false
-	for _,p :=range job.Processors {
+	for _, p := range job.Processors {
 		p.Disabled = false
 	}
 
@@ -146,13 +144,13 @@ func (rpcs *RPCServer) StopJob(j Job, reply *serf.NodeResponse) error {
 
 	for k, v := range rpcs.agent.processorPlugins {
 		if k.name == j.Name {
-			if err = v.Stop(k.tp);err != nil {
+			if err = v.Stop(k.tp); err != nil {
 				return err
 			}
 		}
 	}
 	job.Disabled = true
-	for _,p :=range job.Processors {
+	for _, p := range job.Processors {
 		p.Disabled = true
 	}
 	if err := rpcs.agent.store.UpsertJob(job); err != nil {
@@ -200,7 +198,7 @@ func listenRPC(a *Agent) {
 		agent: a,
 	}
 
-	log.Infof("rpc: Registering RPC server: %v", a.getRPCAddr())
+	log.Infof("Registering RPC server: %v", a.getRPCAddr())
 
 	rpc.Register(r)
 
@@ -230,7 +228,7 @@ type RPCClient struct {
 func (rpcc *RPCClient) callStartJob(job *Job) error {
 	client, err := rpc.DialHTTP("tcp", rpcc.ServerAddr)
 	if err != nil {
-		log.Errorf("rpc: Error dialing: %v,server_addr:%v.", err, rpcc.ServerAddr)
+		log.Errorf("Error dialing: %v,server_addr:%v.", err, rpcc.ServerAddr)
 		return err
 	}
 	defer client.Close()
@@ -239,10 +237,9 @@ func (rpcc *RPCClient) callStartJob(job *Job) error {
 	var reply serf.NodeResponse
 	err = client.Call("RPCServer.StartJob", job, &reply)
 	if err != nil {
-		log.Errorf("rpc: Error calling StartJob: %v", err)
+		log.Errorf("Error calling StartJob: %v", err)
 		return err
 	}
-	log.Debug("rpc: from: ", reply.From)
 
 	return nil
 }
@@ -250,7 +247,7 @@ func (rpcc *RPCClient) callStartJob(job *Job) error {
 func (rpcc *RPCClient) callStopJob(job *Job) error {
 	client, err := rpc.DialHTTP("tcp", rpcc.ServerAddr)
 	if err != nil {
-		log.Errorf("rpc: Error dialing: %v,server_addr:%v.", err, rpcc.ServerAddr)
+		log.Errorf("Error dialing: %v,server_addr:%v.", err, rpcc.ServerAddr)
 		return err
 	}
 	defer client.Close()
@@ -259,10 +256,9 @@ func (rpcc *RPCClient) callStopJob(job *Job) error {
 	var reply serf.NodeResponse
 	err = client.Call("RPCServer.StopJob", job, &reply)
 	if err != nil {
-		log.Errorf("rpc: Error calling Stop: %v", err)
+		log.Errorf("Error calling Stop: %v", err)
 		return err
 	}
-	log.Debug("rpc: from: ", reply.From)
 
 	return nil
 }
@@ -270,7 +266,7 @@ func (rpcc *RPCClient) callStopJob(job *Job) error {
 func (rpcc *RPCClient) GetJob(jobName string) (*Job, error) {
 	client, err := rpc.DialHTTP("tcp", rpcc.ServerAddr)
 	if err != nil {
-		log.Errorf("rpc: Error dialing: %v,server_addr:%v.", err, rpcc.ServerAddr)
+		log.Errorf("Error dialing: %v,server_addr:%v.", err, rpcc.ServerAddr)
 		return nil, err
 	}
 	defer client.Close()
@@ -279,7 +275,7 @@ func (rpcc *RPCClient) GetJob(jobName string) (*Job, error) {
 	var job Job
 	err = client.Call("RPCServer.GetJob", jobName, &job)
 	if err != nil {
-		log.Errorf("rpc: Error calling GetJob: %v", err)
+		log.Errorf("Error calling GetJob: %v", err)
 		return nil, err
 	}
 

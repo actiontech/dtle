@@ -79,7 +79,7 @@ func (bp *BinlogParser) GetCurrentBinlogCoordinates() *BinlogCoordinates {
 	return &returnCoordinates
 }
 
-func (bp *BinlogParser) StreamEvents(canStopStreaming func() bool,eventsChannel chan<- *BinlogEvent) error {
+func (bp *BinlogParser) StreamEvents(canStopStreaming func() bool, eventsChannel chan<- *BinlogEvent) error {
 	if canStopStreaming() {
 		return nil
 	}
@@ -89,7 +89,6 @@ func (bp *BinlogParser) StreamEvents(canStopStreaming func() bool,eventsChannel 
 		}
 		ev, err := bp.binlogStreamer.GetEvent(context.Background())
 		if err != nil {
-			//log.Infof("ready to quit! [%v]", ev.Header.LogPos)
 			return err
 		}
 
@@ -105,14 +104,14 @@ func (bp *BinlogParser) StreamEvents(canStopStreaming func() bool,eventsChannel 
 				defer bp.currentCoordinatesMutex.Unlock()
 				bp.currentCoordinates.LogFile = string(rotateEvent.NextLogName)
 			}()
-			log.Infof("rotate to next log name: %s", rotateEvent.NextLogName)
+			log.Infof("Rotate to next log name: %s", rotateEvent.NextLogName)
 		} else {
 			if err := bp.handleRowsEvent(ev, eventsChannel); err != nil {
 				return err
 			}
 		}
 	}
-	log.Debugf("done streaming events")
+	log.Debugf("Done streaming events")
 
 	return nil
 }

@@ -19,11 +19,6 @@ import (
 	usql "udup/plugins/mysql/sql"
 )
 
-var (
-	waitTime    = 10 * time.Millisecond
-	maxWaitTime = 3 * time.Second
-)
-
 type Applier struct {
 	cfg         *uconf.DriverConfig
 	dbs         []*gosql.DB
@@ -83,10 +78,6 @@ func (a *Applier) InitiateApplier() error {
 	return nil
 }
 
-func (a *Applier) onError(err error) {
-	a.cfg.ErrCh <- err
-}
-
 func (a *Applier) applyTx(db *gosql.DB, transaction *ubinlog.Transaction_t) error {
 	if len(transaction.Query) == 0 {
 		return nil
@@ -98,19 +89,15 @@ func (a *Applier) applyTx(db *gosql.DB, transaction *ubinlog.Transaction_t) erro
 		lastFde = transaction.Fde // IMO it would comare the internal pointer first
 		_, err := db.Exec(lastFde)
 		if err != nil {
-			log.Errorf("err applying fde::%v\n", err)
-			//a.onError(err)
 			return err
 		}
 	}
 
-	if lastSID != transaction.SID || lastGNO != transaction.GNO{
+	if lastSID != transaction.SID || lastGNO != transaction.GNO {
 		lastSID = transaction.SID
 		lastGNO = transaction.GNO
-		_, err := db.Exec(fmt.Sprintf(`SET GTID_NEXT='%s:%d'`, lastSID,lastGNO))
+		_, err := db.Exec(fmt.Sprintf(`SET GTID_NEXT='%s:%d'`, lastSID, lastGNO))
 		if err != nil {
-			log.Errorf("err applying gtid::%v\n", err)
-			//a.onError(err)
 			return err
 		}
 
@@ -127,12 +114,11 @@ func (a *Applier) applyTx(db *gosql.DB, transaction *ubinlog.Transaction_t) erro
 		if _, err := db.Exec(`SET GTID_NEXT='AUTOMATIC'`); err != nil {
 			return err
 		}
-		a.cfg.GtidCh <- fmt.Sprintf("%s:1-%d", lastSID,lastGNO)
+		a.cfg.GtidCh <- fmt.Sprintf("%s:1-%d", lastSID, lastGNO)
 	}
 
 	tx, err := db.Begin()
 	if err != nil {
-		log.Infof("directlyApplyBinlog Begin err:%v", err)
 		return err
 	}
 	for _, query := range transaction.Query {
@@ -142,7 +128,6 @@ func (a *Applier) applyTx(db *gosql.DB, transaction *ubinlog.Transaction_t) erro
 
 		_, err = tx.Exec(query)
 		if err != nil {
-			log.Errorf("err:%v", err)
 			return err
 		}
 	}
@@ -155,8 +140,7 @@ func (a *Applier) startApplierWorker(i int, db *gosql.DB) {
 		if tx != nil {
 			err := a.applyTx(db, tx)
 			if err != nil {
-				log.Errorf("err applying tx: %v\n", err)
-				a.cfg.ErrCh <- err
+				a.cfg.ErrCh <- fmt.Errorf("Error applying tx: %v", err)
 			}
 		}
 	}
@@ -183,8 +167,7 @@ func (a *Applier) initiateStreaming() error {
 	sub, err := a.stanConn.Subscribe("subject", func(m *stan.Msg) {
 		tx := &ubinlog.Transaction_t{}
 		if err := Decode(m.Data, tx); err != nil {
-			log.Infof("Subscribe err:%v", err)
-			a.cfg.ErrCh <- err
+			a.cfg.ErrCh <- fmt.Errorf("Subscribe err:%v", err)
 		}
 		/*idx := int(usql.GenHashKey(event.Key)) % a.cfg.WorkerCount
 		a.eventChans[idx] <- event*/
@@ -192,8 +175,7 @@ func (a *Applier) initiateStreaming() error {
 	})
 
 	if err != nil {
-		log.Errorf("Unexpected error on Subscribe, got %v", err)
-		return err
+		return fmt.Errorf("Unexpected error on Subscribe, got %v", err)
 	}
 	a.stanSub = sub
 	return nil

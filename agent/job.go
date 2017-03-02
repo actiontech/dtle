@@ -70,7 +70,7 @@ func (j *Job) Run() {
 	if j.Agent != nil && j.Disabled == false {
 		// Check if it's runnable
 		if j.isRunnable() {
-			log.Infof("job: Run job:%v", j.Name)
+			log.Infof("Run job:%v", j.Name)
 			j.Agent.StartJobQuery(j)
 		}
 	}
@@ -78,7 +78,7 @@ func (j *Job) Run() {
 
 func (j *Job) listenOnPanicAbort(cfg *uconf.DriverConfig) {
 	err := <-cfg.ErrCh
-	log.Errorf("job: Run failed: %v", err)
+	log.Errorf("Run failed: %v", err)
 	j.Lock()
 }
 
@@ -88,7 +88,7 @@ func (j *Job) listenOnGtid(cfg *uconf.DriverConfig) {
 			j.Processors["extract"].Gtid = gtid
 			err := j.Agent.store.UpsertJob(j)
 			if err != nil {
-				log.Errorf("job: listenOnGtid err: %v", err)
+				log.Errorf(err.Error())
 			}
 		}
 	}
@@ -195,7 +195,7 @@ func (j *Job) isRunnable() bool {
 		if j.Concurrency == ConcurrencyAllow {
 			return true
 		} else if j.Concurrency == ConcurrencyForbid {
-			log.Infof("job: Skipping execution, job:%v; concurrency:%v; job_status:%v", j.Name, j.Concurrency, status)
+			log.Infof("Skipping execution, job:%v; concurrency:%v; job_status:%v", j.Name, j.Concurrency, status)
 			return false
 		}
 	}

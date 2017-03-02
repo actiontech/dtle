@@ -24,7 +24,7 @@ func (s *Scheduler) Start(jobs []*Job) {
 			continue
 		}
 
-		log.Infof("scheduler: Run job: %v", job.Name)
+		log.Infof("Run job: %v", job.Name)
 		go job.Run()
 	}
 	s.Started = true
@@ -34,7 +34,7 @@ func (s *Scheduler) Start(jobs []*Job) {
 
 func (s *Scheduler) Stop() {
 	if s.Started {
-		log.Infof("scheduler: Stopping scheduler")
+		log.Infof("Stopping scheduler")
 		s.Started = false
 
 		schedulerStarted.Set("false")

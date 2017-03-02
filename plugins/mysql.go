@@ -20,26 +20,24 @@ func (d *MySQLDriver) Start(t string, driverCfg *uconf.DriverConfig) error {
 	switch t {
 	case ProcessorTypeExtract:
 		{
-			log.Infof("start mysql extract")
 			// Create the extractor
 			extractor := umysql.NewExtractor(driverCfg)
 			d.Extractor = extractor
 
 			go func() {
 				if err := extractor.InitiateExtractor(); err != nil {
-					log.Errorf("extractor run failed: %v", err)
+					log.Errorf("Extractor run failed: %v", err)
 					driverCfg.ErrCh <- err
 				}
 			}()
 		}
 	case ProcessorTypeApply:
 		{
-			log.Infof("start mysql apply")
 			applier := umysql.NewApplier(driverCfg)
 			d.Applier = applier
 			go func() {
 				if err := applier.InitiateApplier(); err != nil {
-					log.Errorf("applier run failed: %v", err)
+					log.Errorf("Applier run failed: %v", err)
 					driverCfg.ErrCh <- err
 				}
 			}()
@@ -56,16 +54,14 @@ func (d *MySQLDriver) Stop(t string) error {
 	switch t {
 	case ProcessorTypeExtract:
 		{
-			log.Infof("stop mysql extract")
 			// Create the extractor
-			if err := d.Extractor.Shutdown();err != nil {
+			if err := d.Extractor.Shutdown(); err != nil {
 				return err
 			}
 		}
 	case ProcessorTypeApply:
 		{
-			log.Infof("stop mysql apply")
-			if err := d.Applier.Shutdown();err != nil {
+			if err := d.Applier.Shutdown(); err != nil {
 				return err
 			}
 		}

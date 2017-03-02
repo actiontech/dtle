@@ -220,11 +220,9 @@ func (e *Extractor) streamEvents() error {
 		for tx := range e.tb.TxChan {
 			msg, err := Encode(tx)
 			if err != nil {
-				log.Error("Encode err:%v", err)
 				e.cfg.ErrCh <- err
 			}
 			if err := e.stanConn.Publish("subject", msg); err != nil {
-				log.Error("Publish err:%v", err)
 				e.cfg.ErrCh <- err
 			}
 		}
@@ -233,9 +231,9 @@ func (e *Extractor) streamEvents() error {
 	var successiveFailures int64
 	var lastAppliedRowsEventHint ubinlog.BinlogCoordinates
 	for {
-		if err := e.bp.StreamEvents(e.stopFlag,e.tb.EvtChan); err != nil {
+		if err := e.bp.StreamEvents(e.stopFlag, e.tb.EvtChan); err != nil {
 			time.Sleep(ReconnectStreamerSleepSeconds * time.Second)
-			if e.stopFlag(){
+			if e.stopFlag() {
 				return nil
 			}
 			log.Infof("StreamEvents encountered unexpected error: %+v", err)
@@ -525,10 +523,6 @@ func (e *Extractor) skipQueryDDL(sql string, schema string) bool {
 		return true
 	}
 	return false
-}
-
-func newTxWithoutGTIDError(event *ubinlog.BinlogEvent) error {
-	return fmt.Errorf("transaction without GTID_EVENT %v@%v", event.BinlogFile, event.RealPos)
 }
 
 func (e *Extractor) Shutdown() error {

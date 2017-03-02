@@ -26,7 +26,7 @@ func (a *Agent) ServeHTTP() {
 
 	srv := &http.Server{Addr: a.config.HTTPAddr, Handler: middle}
 
-	log.Infof("api: Running HTTP server,address:%v", a.config.HTTPAddr)
+	log.Infof("Running HTTP server,address:%v", a.config.HTTPAddr)
 
 	go srv.ListenAndServe()
 }
