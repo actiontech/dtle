@@ -251,7 +251,7 @@ func CreateDBs(cfg *uconf.ConnectionConfig, count int) ([]*sql.DB, error) {
 	return dbs, nil
 }
 
-func CloseDBs(dbs ...*sql.DB) error{
+func CloseDBs(dbs ...*sql.DB) error {
 	for _, db := range dbs {
 		err := closeDB(db)
 		if err != nil {

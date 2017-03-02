@@ -128,7 +128,7 @@ func (a *Agent) jobGetHandler(w http.ResponseWriter, r *http.Request) {
 func (a *Agent) jobUpsertHandler(w http.ResponseWriter, r *http.Request) {
 	// Init the Job object with defaults
 	job := Job{
-		Concurrency: ConcurrencyAllow,
+	//Enabled:false,
 	}
 
 	body, err := ioutil.ReadAll(io.LimitReader(r.Body, 1048576))
@@ -172,8 +172,6 @@ func (a *Agent) jobUpsertHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-
-	log.Infof("job:%v,ej:%v",job,ej)
 
 	// Save the job parent
 	if err = a.store.UpsertJobDependencyTree(&job, ej); err != nil {

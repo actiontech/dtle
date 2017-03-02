@@ -254,17 +254,17 @@ func (a *Applier) Shutdown() error {
 	if !a.stopFlag() {
 		return nil
 	}
-	if err :=a.stanSub.Unsubscribe(); err != nil {
+	if err := a.stanSub.Unsubscribe(); err != nil {
 		return err
 	}
-	if err :=a.stanConn.Close(); err != nil {
+	if err := a.stanConn.Close(); err != nil {
 		return err
 	}
 	a.stand.Shutdown()
 	a.gnatsd.Shutdown()
 	closeEventChans(a.eventChans)
 
-	if err :=usql.CloseDBs(a.dbs...); err != nil {
+	if err := usql.CloseDBs(a.dbs...); err != nil {
 		return err
 	}
 	a.cfg.Enabled = false

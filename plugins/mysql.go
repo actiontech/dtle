@@ -24,7 +24,7 @@ func (d *MySQLDriver) Start(t string, driverCfg *uconf.DriverConfig) error {
 			d.Extractor = e
 
 			if err := e.InitiateExtractor(); err != nil {
-				return fmt.Errorf("[Extractor]:%+v",err)
+				return fmt.Errorf("[Extractor]:%+v", err)
 			}
 		}
 	case ProcessorTypeApply:
@@ -32,7 +32,7 @@ func (d *MySQLDriver) Start(t string, driverCfg *uconf.DriverConfig) error {
 			a := umysql.NewApplier(driverCfg)
 			d.Applier = a
 			if err := a.InitiateApplier(); err != nil {
-				return  fmt.Errorf("[Applier]:%+v",err)
+				return fmt.Errorf("[Applier]:%+v", err)
 			}
 		}
 	default:

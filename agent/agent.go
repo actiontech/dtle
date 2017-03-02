@@ -391,7 +391,9 @@ func (a *Agent) eventLoop() {
 
 // invokeJob will execute the given job. Depending on the event.
 func (a *Agent) invokeJob(job *Job) error {
-	job.Success = true
+	if job.Enabled == true {
+		return nil
+	}
 
 	rpcServer, err := a.queryRPCConfig(job.NodeName)
 	if err != nil {
@@ -404,8 +406,9 @@ func (a *Agent) invokeJob(job *Job) error {
 
 // invokeJob will execute the given job. Depending on the event.
 func (a *Agent) stopJob(job *Job) error {
-	job.Success = false
-
+	if job.Enabled == false {
+		return nil
+	}
 	rpcServer, err := a.queryRPCConfig(job.NodeName)
 	if err != nil {
 		return err

@@ -47,13 +47,15 @@ func (rpcs *RPCServer) StartJob(j Job, reply *serf.NodeResponse) error {
 	}
 	// Jobs that have dependent jobs are a bit more expensive because we need to call the Status() method for every execution.
 	// Check first if there's dependent jobs and then check for the job status to begin executiong dependent jobs on success.
-	if job.ParentJob !="" && job.Status() == Success {
-		jp, err := rpcs.agent.store.GetJob(job.ParentJob)
+	if job.ParentJob != "" {
+		pj, err := rpcs.agent.store.GetJob(job.ParentJob)
 		if err != nil {
 			return fmt.Errorf("failed to get parent job '%s': %v",
 				job.ParentJob, err)
 		}
-		jp.Start()
+		if pj.Enabled == false {
+			pj.Start()
+		}
 	}
 	// Lock the job while editing
 	if err = job.Lock(); err != nil {
@@ -73,7 +75,7 @@ func (rpcs *RPCServer) StartJob(j Job, reply *serf.NodeResponse) error {
 				v.GtidCh = gtidCh
 				go job.listenOnGtid(v)
 				// Start the job
-				go rpcs.startDriver(k,v,job)
+				go rpcs.startDriver(k, v, job)
 			}
 		default:
 			{
@@ -99,7 +101,7 @@ func (rpcs *RPCServer) StartJob(j Job, reply *serf.NodeResponse) error {
 	return nil
 }
 
-func (rpcs *RPCServer) startDriver(k string,v *uconf.DriverConfig,j *Job) {
+func (rpcs *RPCServer) startDriver(k string, v *uconf.DriverConfig, j *Job) {
 	for {
 		if k == plugins.ProcessorTypeApply {
 			break
@@ -107,23 +109,20 @@ func (rpcs *RPCServer) startDriver(k string,v *uconf.DriverConfig,j *Job) {
 
 		job, err := rpcs.agent.store.GetJob(j.Name)
 		if err != nil {
-			if err == store.ErrKeyNotFound {
-				log.Warning(ErrForDeletedJob)
-			}
 			log.Warning(err)
 		}
-		if job.ParentJob !="" {
-			jp, err := rpcs.agent.store.GetJob(job.ParentJob)
+		if job.ParentJob != "" {
+			pj, err := rpcs.agent.store.GetJob(job.ParentJob)
 			if err != nil {
 				v.ErrCh <- fmt.Errorf("failed to get parent job '%s': %v",
 					job.ParentJob, err)
 			}
-			if jp.Processors["apply"].Enabled == true{
-				v.Gtid = jp.Processors["apply"].Gtid
+			if pj.Processors["apply"].Enabled == true {
+				v.Gtid = pj.Processors["apply"].Gtid
 				break
 			}
-		}else {
-			if job.Processors["apply"].Enabled == true{
+		} else {
+			if job.Processors["apply"].Enabled == true {
 				v.Gtid = job.Processors["apply"].Gtid
 				break
 			}
@@ -158,16 +157,17 @@ func (rpcs *RPCServer) StopJob(j Job, reply *serf.NodeResponse) error {
 		}
 		return err
 	}
-
 	// Jobs that have dependent jobs are a bit more expensive because we need to call the Status() method for every execution.
 	// Check first if there's dependent jobs and then check for the job status to begin executiong dependent jobs on success.
-	if len(job.DependentJobs) > 0 && job.Status() == Success {
+	if len(job.DependentJobs) > 0 {
 		for _, djn := range job.DependentJobs {
 			dj, err := rpcs.agent.store.GetJob(djn)
 			if err != nil {
 				return err
 			}
-			dj.Stop()
+			if dj.Enabled == true {
+				dj.Stop()
+			}
 		}
 	}
 

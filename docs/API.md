@@ -152,7 +152,7 @@ Show a job.
 
 
 <a name="runjob"></a>
-### POST /jobs/{job_name}
+### POST /jobs/{job_name}/start
 
 #### Description
 Executes a job.
@@ -163,6 +163,31 @@ Executes a job.
 |Type|Name|Description|Schema|Default|
 |---|---|---|---|---|
 |**Path**|**job_name**  <br>*required*|The job that needs to be run.|string||
+
+
+#### Responses
+
+|HTTP Code|Description|Schema|
+|---|---|---|
+|**200**|Successful response|[job](#job)|
+
+
+#### Tags
+
+* jobs
+
+<a name="stopjob"></a>
+### POST /jobs/{job_name}/stop
+
+#### Description
+Executes a job.
+
+
+#### Parameters
+
+|Type|Name|Description|Schema|Default|
+|---|---|---|---|---|
+|**Path**|**job_name**  <br>*required*|The job that needs to be stop.|string||
 
 
 #### Responses
@@ -254,7 +279,7 @@ A Job represents a scheduled task to execute.
 |Name|Description|Schema|
 |---|---|---|
 |**name**  <br>*required*|Name for the job.|string|
-|**disabled**  <br>*optional*|Disabled state of the job|boolean|
+|**enabled**  <br>*optional*|Enabled state of the job|boolean|
 |**parent_job**  <br>*optional*|The name/id of the job that will trigger the execution of this job  <br>*Example* : `"parent_job"`|string|
 |**dependent_jobs**  <br>*optional*  <br>*read-only*|Array containing the jobs that depends on this one  <br>*Example* : `""`|string|
 |**processors**  <br>*required*|Array containing the processors that will be called|< string, **DriverConfig** > map|
@@ -264,13 +289,12 @@ A Job represents a scheduled task to execute.
 {
     "name": "job1",
     "node_name": "node1",
-    "disabled": false,
+    "enabled": true,
     "parent_job": "",
     "dependent_jobs": [],
     "processors": {
         "extract": {
         	"driver": "mysql",
-        	"gtid":" 4a5b5a4d-fcc7-11e6-ace3-0242ac110004:1-1",
         	"server_id": 100,
         	"nats_addr": "127.0.0.1:13003",
             "conn_cfg": {
@@ -282,6 +306,7 @@ A Job represents a scheduled task to execute.
         },
         "apply": {
         	"driver": "mysql",
+        	"gtid":" 4a5b5a4d-fcc7-11e6-ace3-0242ac110004:1-1",
         	"nats_addr": "127.0.0.1:13003",
         	"nats_store_type": "MEMORY",
         	"nats_file_store_dir":"",
@@ -293,8 +318,7 @@ A Job represents a scheduled task to execute.
                 "password": "111111"
             }
         }
-    },
-    "concurrency": "allow"
+    }
 }
 ```
 
