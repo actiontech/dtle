@@ -1,4 +1,4 @@
-package mysql
+package sql
 
 // Schema error codes.
 const (

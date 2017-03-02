@@ -1,4 +1,4 @@
-package agent
+package command
 
 import (
 	"flag"
@@ -13,6 +13,7 @@ import (
 	"github.com/mitchellh/cli"
 	"github.com/ngaut/log"
 
+	uagt "udup/agent"
 	uconf "udup/config"
 )
 
@@ -20,21 +21,22 @@ import (
 const gracefulTimeout = 5 * time.Second
 
 type AgentCommand struct {
+	Version    string
 	Ui         cli.Ui
 	ShutdownCh <-chan struct{}
 
+	Agent *uagt.Agent
 	args  []string
-	agent *Agent
 }
 
 // setupAgent is used to start the agent and various interfaces
 func (c *AgentCommand) setupAgent(config *uconf.Config) error {
-	agent, err := NewAgent(config)
+	agent, err := uagt.NewAgent(config)
 	if err != nil {
-		log.Errorf("Error starting agent: %s", err)
+		log.Errorf("Error starting agent: [%s]", err)
 		return err
 	}
-	c.agent = agent
+	c.Agent = agent
 
 	// Output the header that the server has started
 	log.Infof("Udup agent started!\n")
@@ -147,11 +149,12 @@ func (c *AgentCommand) handleReload(config *uconf.Config) *uconf.Config {
 
 func (a *AgentCommand) readConfig() *uconf.Config {
 	// Make a new, empty config.
-	cmdConfig := &uconf.Config{
-		Extract: &uconf.ExtractorConfig{},
-		Apply:   &uconf.ApplierConfig{},
-	}
+	cmdConfig := &uconf.Config{}
 
+	hostname, err := os.Hostname()
+	if err != nil {
+		return nil
+	}
 	flags := flag.NewFlagSet("agent", flag.ContinueOnError)
 	flags.Usage = func() { a.Ui.Error(a.Help()) }
 
@@ -159,10 +162,12 @@ func (a *AgentCommand) readConfig() *uconf.Config {
 	flags.StringVar(&cmdConfig.File, "config", "/etc/udup/udup.conf", "")
 	flags.StringVar(&cmdConfig.LogLevel, "log-level", "info", "")
 	flags.StringVar(&cmdConfig.PidFile, "pid-file", "udup.pid", "")
+	flags.StringVar(&cmdConfig.BindAddr, "bind", "", "")
+	flags.StringVar(&cmdConfig.HTTPAddr, "http-addr", "", "")
+	flags.StringVar(&cmdConfig.NodeName, "name", hostname, "")
 
 	// Role options
-	flags.BoolVar(&cmdConfig.Extract.Enabled, "extract", false, "")
-	flags.BoolVar(&cmdConfig.Apply.Enabled, "apply", false, "")
+	flags.BoolVar(&cmdConfig.Server, "server", true, "")
 
 	if err := flags.Parse(a.args); err != nil {
 		return nil
@@ -171,7 +176,7 @@ func (a *AgentCommand) readConfig() *uconf.Config {
 	if cmdConfig.PidFile != "" {
 		f, err := os.Create(cmdConfig.PidFile)
 		if err != nil {
-			log.Fatalf("Unable to create pidfile: %s", err)
+			log.Fatalf("Unable to create pidfile: [%s]", err)
 		}
 
 		fmt.Fprintf(f, "%d\n", os.Getpid())
@@ -185,7 +190,7 @@ func (a *AgentCommand) readConfig() *uconf.Config {
 
 	current, err := uconf.LoadConfig(cmdConfig.File)
 	if err != nil {
-		log.Errorf("Error loading configuration from %s: %s", cmdConfig.File, err)
+		log.Errorf("Error loading configuration from %s: [%s]", cmdConfig.File, err)
 		return nil
 	}
 
@@ -201,16 +206,9 @@ func (a *AgentCommand) readConfig() *uconf.Config {
 		config = config.Merge(current)
 	}
 
-	// Ensure the sub-structs at least exist
-	if config.Extract == nil {
-		config.Extract = &uconf.ExtractorConfig{}
-	}
-	if config.Apply == nil {
-		config.Apply = &uconf.ApplierConfig{}
-	}
-
 	// Merge any CLI options over config file options
 	config = config.Merge(cmdConfig)
+	config.Version = a.Version
 
 	return config
 }

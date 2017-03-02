@@ -1,17 +1,21 @@
 package: udup
 import:
-- package: github.com/cznic/mathutil
-- package: github.com/cznic/parser
+- package: github.com/carbocation/interpose
+- package: github.com/docker/leadership
+- package: github.com/docker/libkv
   subpackages:
-  - yacc
-- package: github.com/cznic/sortutil
-- package: github.com/cznic/strutil
-- package: github.com/cznic/y
+  - store
+  - store/consul
 - package: github.com/go-sql-driver/mysql
+- package: github.com/gorilla/mux
 - package: github.com/hashicorp/go-multierror
 - package: github.com/hashicorp/hcl
   subpackages:
   - hcl/ast
+- package: github.com/hashicorp/memberlist
+- package: github.com/hashicorp/serf
+  subpackages:
+  - serf
 - package: github.com/mitchellh/cli
 - package: github.com/mitchellh/mapstructure
 - package: github.com/nats-io/gnatsd
@@ -34,6 +38,17 @@ import:
 - package: golang.org/x/net
   subpackages:
   - context
+- package: github.com/cznic/mathutil
+- package: github.com/cznic/parser
+  subpackages:
+  - yacc
+- package: github.com/cznic/sortutil
+- package: github.com/cznic/strutil
+- package: github.com/cznic/y
 - package: github.com/cznic/golex
   subpackages:
   - lex
+testImport:
+- package: github.com/stretchr/testify
+  subpackages:
+  - assert

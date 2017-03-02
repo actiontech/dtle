@@ -72,10 +72,15 @@ func parseConfig(result *Config, list *ast.ObjectList) error {
 		"log_level",
 		"log_file",
 		"log_rotate",
-		"replicate_do_db",
-		"replicate_do_table",
-		"extract",
-		"apply",
+		"region",
+		"datacenter",
+		"interface",
+		"bind_addr",
+		"http_addr",
+		"rpc_port",
+		"start_join",
+		"server",
+		"consul",
 		"pid_file",
 	}
 	if err := checkHCLKeys(list, valid); err != nil {
@@ -88,55 +93,39 @@ func parseConfig(result *Config, list *ast.ObjectList) error {
 		return err
 	}
 
-	delete(m, "extract")
-	delete(m, "apply")
+	delete(m, "consul")
 
 	// Decode the rest
 	if err := mapstructure.WeakDecode(m, result); err != nil {
 		return err
 	}
 
-	// Parse Extract config
-	if o := list.Filter("extract"); len(o.Items) > 0 {
-		if err := parseExtractor(&result.Extract, o); err != nil {
-			return multierror.Prefix(err, "extract ->")
-		}
-	}
-
-	// Parse Apply config
-	if o := list.Filter("apply"); len(o.Items) > 0 {
-		if err := parseApplier(&result.Apply, o); err != nil {
-			return multierror.Prefix(err, "apply ->")
+	// Parse the consul config
+	if o := list.Filter("consul"); len(o.Items) > 0 {
+		if err := parseConsulConfig(&result.Consul, o); err != nil {
+			return multierror.Prefix(err, "consul ->")
 		}
 	}
 
 	return nil
 }
 
-func parseExtractor(result **ExtractorConfig, list *ast.ObjectList) error {
+func parseConsulConfig(result **ConsulConfig, list *ast.ObjectList) error {
 	list = list.Elem()
 	if len(list.Items) > 1 {
-		return fmt.Errorf("only one 'client' block allowed")
+		return fmt.Errorf("only one 'consul' block allowed")
 	}
 
-	// Get our client object
-	obj := list.Items[0]
-
-	// Value should be an object
-	var listVal *ast.ObjectList
-	if ot, ok := obj.Val.(*ast.ObjectType); ok {
-		listVal = ot.List
-	} else {
-		return fmt.Errorf("client value: should be an object")
-	}
+	// Get our Consul object
+	listVal := list.Items[0].Val
 
 	// Check for invalid keys
 	valid := []string{
-		"enabled",
-		"nats_addr",
-		"server_id",
-		"conn_cfg",
+		"addrs",
+		"client_auto_join",
+		"server_auto_join",
 	}
+
 	if err := checkHCLKeys(listVal, valid); err != nil {
 		return err
 	}
@@ -146,94 +135,20 @@ func parseExtractor(result **ExtractorConfig, list *ast.ObjectList) error {
 		return err
 	}
 
-	delete(m, "conn_cfg")
-
-	var config ExtractorConfig
-	if err := mapstructure.WeakDecode(m, &config); err != nil {
+	var consulConfig ConsulConfig
+	dec, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
+		DecodeHook:       mapstructure.StringToTimeDurationHookFunc(),
+		WeaklyTypedInput: true,
+		Result:           &consulConfig,
+	})
+	if err != nil {
+		return err
+	}
+	if err := dec.Decode(m); err != nil {
 		return err
 	}
 
-	if oo := listVal.Filter("conn_cfg"); len(oo.Items) > 0 {
-		if err := parseConnCfg(&config.ConnCfg, oo); err != nil {
-			return multierror.Prefix(err, "conn_cfg: ")
-		}
-	}
-
-	*result = &config
-	return nil
-}
-
-func parseApplier(result **ApplierConfig, list *ast.ObjectList) error {
-	list = list.Elem()
-	if len(list.Items) > 1 {
-		return fmt.Errorf("only one 'server' block allowed")
-	}
-
-	// Get our server object
-	obj := list.Items[0]
-
-	// Value should be an object
-	var listVal *ast.ObjectList
-	if ot, ok := obj.Val.(*ast.ObjectType); ok {
-		listVal = ot.List
-	} else {
-		return fmt.Errorf("client value: should be an object")
-	}
-
-	// Check for invalid keys
-	valid := []string{
-		"enabled",
-		"nats_addr",
-		"nats_store_type",
-		"nats_file_store_dir",
-		"worker_count",
-		"batch",
-		"conn_cfg",
-	}
-	if err := checkHCLKeys(listVal, valid); err != nil {
-		return err
-	}
-
-	var m map[string]interface{}
-	if err := hcl.DecodeObject(&m, listVal); err != nil {
-		return err
-	}
-
-	delete(m, "conn_cfg")
-
-	var config ApplierConfig
-	if err := mapstructure.WeakDecode(m, &config); err != nil {
-		return err
-	}
-
-	if oo := listVal.Filter("conn_cfg"); len(oo.Items) > 0 {
-		if err := parseConnCfg(&config.ConnCfg, oo); err != nil {
-			return multierror.Prefix(err, "conn_cfg: ")
-		}
-	}
-
-	*result = &config
-	return nil
-}
-
-func parseConnCfg(result **ConnectionConfig, list *ast.ObjectList) error {
-	list = list.Elem()
-	if len(list.Items) > 1 {
-		return fmt.Errorf("only one 'cfg' block allowed per ConnectionConfig")
-	}
-
-	// Get our resource object
-	o := list.Items[0]
-
-	var m map[string]interface{}
-	if err := hcl.DecodeObject(&m, o.Val); err != nil {
-		return err
-	}
-
-	if err := mapstructure.WeakDecode(m, &result); err != nil {
-		return err
-	}
-
+	*result = &consulConfig
 	return nil
 }
 

@@ -1,4 +1,4 @@
-package mysql
+package sql
 
 import (
 	"database/sql"
@@ -251,11 +251,12 @@ func CreateDBs(cfg *uconf.ConnectionConfig, count int) ([]*sql.DB, error) {
 	return dbs, nil
 }
 
-func CloseDBs(dbs ...*sql.DB) {
+func CloseDBs(dbs ...*sql.DB) error {
 	for _, db := range dbs {
 		err := closeDB(db)
 		if err != nil {
-			log.Errorf("close db failed - %v", err)
+			return fmt.Errorf("close db failed - %v", err)
 		}
 	}
+	return nil
 }
