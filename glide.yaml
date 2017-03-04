@@ -16,6 +16,9 @@ import:
 - package: github.com/hashicorp/serf
   subpackages:
   - serf
+- package: github.com/issuj/gofaster
+  subpackages:
+  - base64
 - package: github.com/mitchellh/cli
 - package: github.com/mitchellh/mapstructure
 - package: github.com/nats-io/gnatsd

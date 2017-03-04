@@ -1,9 +1,5 @@
 bin/
-vendor/
 .idea
 
-# Makefile
 dist
-
-# Vagrant
 .vagrant

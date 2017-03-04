@@ -1,5 +1,5 @@
-hash: 77750478cb12d27488b7c2841d9ff1a7afedaa439ff6bc08350fdf5d82824270
-updated: 2017-02-20T10:55:53.5183517+08:00
+hash: 7c562593020f237c84352420595e4adc70cd412e2a16a7dcec2e183a576c7fe8
+updated: 2017-03-03T00:27:35.3649718+08:00
 imports:
 - name: github.com/armon/go-metrics
   version: 93f237eba9b0602f3e73710416558854a81d9337
@@ -14,7 +14,7 @@ imports:
   subpackages:
   - lex
 - name: github.com/cznic/mathutil
-  version: 78ad7f262603437f0ecfebc835d80094f89c8f54
+  version: 4609a45a9e61188d0d69a5d8ad42600c3df35002
 - name: github.com/cznic/parser
   version: 31edd927e5b19d1c4a260c41a397e7f81d6694d9
   subpackages:
@@ -22,18 +22,18 @@ imports:
 - name: github.com/cznic/sortutil
   version: 4c7342852e65c2088c981288f2c5610d10b9f7f4
 - name: github.com/cznic/strutil
-  version: 1eb03e3cc9d345307a45ec82bd3016cde4bd4464
+  version: 43a89592ed56c227c7fdb1fcaf7d1d08be02ec54
 - name: github.com/cznic/y
   version: 938f8e85fcdf318917f03ea45c1f69f16037cd0d
 - name: github.com/docker/leadership
-  version: bfc7753dd48af19513b29deec23c364bf0f274eb
+  version: 0a913e2d71a12fd14a028452435cb71ac8d82cb6
 - name: github.com/docker/libkv
   version: 1d8431073ae03cdaedb198a89722f3aab6d418ef
   subpackages:
   - store
   - store/consul
 - name: github.com/go-sql-driver/mysql
-  version: a0583e0143b1624142adab07e0e97fe106d99561
+  version: 2e00b5cd70399450106cec6431c2e2ce3cae5034
 - name: github.com/gogo/protobuf
   version: 99cb9b23110011cc45571c901ecae6f6f5e65cd3
   repo: https://github.com/gogo/protobuf
@@ -46,9 +46,9 @@ imports:
 - name: github.com/gorilla/context
   version: 08b5f424b9271eedf6f9f0ce86cb9396ed337a42
 - name: github.com/gorilla/mux
-  version: 94e7d24fd285520f3d12ae998f7fdd6b5393d453
+  version: 599cba5e7b6137d46ddf58fb1765f5d928e69604
 - name: github.com/hashicorp/consul
-  version: 65b7ed462cc574d57dc6dcc9bca74676089f7fee
+  version: 5a083488fbc539b21c9620b5ea529a7ec3330aac
   subpackages:
   - api
 - name: github.com/hashicorp/errwrap
@@ -64,7 +64,7 @@ imports:
 - name: github.com/hashicorp/go-sockaddr
   version: f910dd83c2052566cad78352c33af714358d1372
 - name: github.com/hashicorp/hcl
-  version: eb6f65b2d77ed5078887f960ff570fbddbbeb49d
+  version: 630949a3c5fa3c613328e1b8256052cbc2327c9b
   subpackages:
   - hcl/ast
   - hcl/parser
@@ -77,7 +77,7 @@ imports:
 - name: github.com/hashicorp/memberlist
   version: 23ad4b7d7b38496cd64c241dfd4c60b7794c254a
 - name: github.com/hashicorp/serf
-  version: b9642a47e6139e50548b6f14588a1a3c0839660a
+  version: d787b2e8f72b5da48c43b84c2617234401084050
   subpackages:
   - coordinate
   - serf
@@ -89,15 +89,15 @@ imports:
 - name: github.com/juju/errors
   version: 6f54ff6318409d31ff16261533ce2c8381a4fd5d
 - name: github.com/mattn/go-isatty
-  version: 30a891c33c7cde7b02a981314b4228ec99380cca
+  version: dda3de49cbfcec471bd7a70e6cc01fcc3ff90109
 - name: github.com/miekg/dns
-  version: 75229eecb7af00b2736e93b779a78429dcb19472
+  version: eda6b320244f0700772bb765282381d17495e7d3
 - name: github.com/mitchellh/cli
-  version: fa17b36f6c61f1ddbbb08c9f6fde94b3c065a09d
+  version: 4e26b972666dd9db4e1ffee38c8dd0c675bd245d
 - name: github.com/mitchellh/mapstructure
-  version: bfdb1a85537d60bc7e954e600c250219ea497417
+  version: db1efb556f84b25a0a13a04aad883943538ad2e0
 - name: github.com/nats-io/gnatsd
-  version: 5dcad241bcd7fff3aac6e9f8b47350f071f5fd38
+  version: 2c4ffbf7a13189336b7ed85552fcc9321142ae00
   subpackages:
   - auth
   - conf
@@ -112,11 +112,11 @@ imports:
   - encoders/builtin
   - util
 - name: github.com/nats-io/go-nats-streaming
-  version: 6e620057a207bd61e992c1c5b6a2de7b6a4cb010
+  version: e2873f131761560a54341ec8b1c4827857819868
   subpackages:
   - pb
 - name: github.com/nats-io/nats-streaming-server
-  version: 5fb065505f4ee0f7faf695c3318aec486077bbd1
+  version: ebbad5387aa8e57388df44641d4ab9bb008a9722
   subpackages:
   - server
   - spb
@@ -143,7 +143,7 @@ imports:
   - leveldb/table
   - leveldb/util
 - name: github.com/pingcap/tidb
-  version: a202e5085a6d6197e55c6433d3797935fd831aa2
+  version: 8a212e4bf87271defde1f3716234e50c4798a0fe
   subpackages:
   - ast
   - context
@@ -154,6 +154,7 @@ imports:
   - parser/opcode
   - sessionctx/variable
   - terror
+  - util
   - util/charset
   - util/hack
   - util/types
@@ -168,7 +169,7 @@ imports:
   - ioutil2
   - sync2
 - name: github.com/siddontang/go-mysql
-  version: 9f867b4076f8de375f64d1b959aa46c601bf7769
+  version: 3d30cde7c91fcff9d04b2be18c9cc5e271a70cdd
   subpackages:
   - client
   - mysql
@@ -185,9 +186,13 @@ imports:
   subpackages:
   - context
 - name: golang.org/x/sys
-  version: 8d1157a435470616f975ff9bb013bea8d0962067
+  version: d75a52659825e75fff6158388dddc6a5b04f9ba5
+  repo: https://go.googlesource.com/sys
   subpackages:
   - unix
+  - windows
+  - windows/registry
+  - windows/svc/eventlog
 - name: golang.org/x/text
   version: 723492b65e225eafcba054e76ba18bb9c5ac1ea2
   subpackages:
