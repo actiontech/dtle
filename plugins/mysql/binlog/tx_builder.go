@@ -3,6 +3,7 @@ package binlog
 import (
 	"bytes"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
@@ -12,6 +13,7 @@ import (
 	binlog "github.com/siddontang/go-mysql/replication"
 
 	uconf "udup/config"
+	usql "udup/plugins/mysql/sql"
 )
 
 type Transaction_t struct {
@@ -50,6 +52,8 @@ type TxBuilder struct {
 	currentFde         string
 	currentSqlB64      *bytes.Buffer
 	arrayCurrentSqlB64 []string
+
+	reMap map[string]*regexp.Regexp
 }
 
 func NewTxBuilder(cfg *uconf.DriverConfig) *TxBuilder {
@@ -57,6 +61,7 @@ func NewTxBuilder(cfg *uconf.DriverConfig) *TxBuilder {
 		cfg:     cfg,
 		EvtChan: make(chan *BinlogEvent, 200),
 		TxChan:  make(chan *Transaction_t, 100),
+		reMap:   make(map[string]*regexp.Regexp),
 	}
 }
 
@@ -155,6 +160,7 @@ func (tb *TxBuilder) newTransaction(event *BinlogEvent) {
 
 func (tb *TxBuilder) onQueryEvent(event *BinlogEvent) error {
 	evt := event.Evt.(*binlog.QueryEvent)
+	query := string(evt.Query)
 
 	// a tx should contain one DDL at most
 	if tb.currentTx.ErrorCode != evt.ErrorCode {
@@ -164,24 +170,38 @@ func (tb *TxBuilder) onQueryEvent(event *BinlogEvent) error {
 		tb.currentTx.ErrorCode = evt.ErrorCode
 	}
 
-	query := string(evt.Query)
 	if strings.ToUpper(query) == "BEGIN" {
 		tb.currentTx.hasBeginQuery = true
 	} else {
 		// DDL or statement/mixed binlog format
 		tb.setImpactOnAll()
 		if strings.ToUpper(query) == "COMMIT" || !tb.currentTx.hasBeginQuery {
-			if tb.skipQueryEvent(query) {
-				log.Infof("skip query %s", query)
+			if skipQueryEvent(query) {
+				log.Warnf("[skip query-sql]%s  [schema]:%s", query, string(evt.Schema))
 				tb.onCommit(event)
 				return nil
 			}
-			if strings.HasPrefix(strings.ToUpper(query), "CREATE DATABASE") || string(evt.Schema) == "" {
-				event.Query = query
-			} else {
-				event.Query = fmt.Sprintf("USE %s; %s;", string(evt.Schema), query)
+			sqls, ok, err := usql.ResolveDDLSQL(query)
+			if err != nil {
+				return fmt.Errorf("parse query event failed: %v", err)
+			}
+			if !ok {
+				tb.onCommit(event)
+				return nil
 			}
 
+			for _, sql := range sqls {
+				if tb.skipQueryDDL(sql, string(evt.Schema)) {
+					log.Warnf("[skip query-ddl-sql]%s  [schema]:%s", sql, evt.Schema)
+					continue
+				}
+
+				sql, err = usql.GenDDLSQL(sql, string(evt.Schema))
+				if err != nil {
+					return err
+				}
+				event.Query = append(event.Query, sql)
+			}
 			tb.onCommit(event)
 		}
 	}
@@ -189,56 +209,16 @@ func (tb *TxBuilder) onQueryEvent(event *BinlogEvent) error {
 	return nil
 }
 
-func (tb *TxBuilder) skipQueryEvent(sql string) bool {
-	sql = strings.ToUpper(sql)
-
-	if strings.HasPrefix(sql, "GRANT REPLICATION SLAVE ON") {
-		return true
-	}
-
-	if strings.HasPrefix(sql, "GRANT ALL PRIVILEGES ON") {
-		return true
-	}
-
-	if strings.HasPrefix(sql, "ALTER USER") {
-		return true
-	}
-
-	if strings.HasPrefix(sql, "CREATE USER") {
-		return true
-	}
-
-	if strings.HasPrefix(sql, "BEGIN") {
-		return true
-	}
-
-	if strings.HasPrefix(sql, "COMMIT") {
-		return true
-	}
-
-	if strings.HasPrefix(sql, "FLUSH PRIVILEGES") {
-		return true
-	}
-
-	return false
-}
-
 func (tb *TxBuilder) onTableMapEvent(event *BinlogEvent) error {
 	if tb.currentTx.ImpactingAll {
 		return nil
 	}
 
-	/*evt := event.Evt.(*binlog.TableMapEvent)
-	log.Infof("evt.TableID:%v,---evt.Schema:%v,---evt.Table:%v",evt.TableID, string(evt.Schema), string(evt.Table))
-
-	tableInfo, err := tb.tc.queryTableInfo(evt.TableID, string(evt.Schema), string(evt.Table))
-	if err != nil {
-		return err
+	ev := event.Evt.(*binlog.TableMapEvent)
+	if tb.skipRowEvent(string(ev.Schema), string(ev.Table)) {
+		log.Debugf("[skip TableMapEvent]db:%s table:%s", ev.Schema, ev.Table)
+		return nil
 	}
-
-	if tb.cfg.Evaling && tableInfo.hasNoPk() {
-		//tb.booster.eval.TableWithoutPk[fmt.Sprintf("%v.%v", tableInfo.schema, tableInfo.name)] = true
-	}*/
 
 	tb.appendB64TableMapEvent(event)
 	return nil
@@ -249,28 +229,13 @@ func (tb *TxBuilder) onRowEvent(event *BinlogEvent) error {
 		return nil
 	}
 
-	/*evt := event.Evt.(*binlog.RowsEvent)
+	ev := event.Evt.(*binlog.RowsEvent)
 
-	tableInfo, err := tb.tc.getTableInfo(evt.TableID)
-	if nil != err {
-		return err
+	if tb.skipRowEvent(string(ev.Table.Schema), string(ev.Table.Table)) {
+		log.Debugf("[skip RowsEvent]db:%s table:%s", ev.Table.Schema, ev.Table.Table)
+		return nil
 	}
 
-	if tableInfo.hasNoPk() {
-		tb.setImpactOnAll()
-		return nil
-	}*/
-
-	/*for _, row := range evt.Rows {
-		rowId := tableInfo.getRowId(row)
-		tb.currentTx.addImpact(evt.TableID, rowId)
-
-		n_impacted := len(tb.currentTx.Impacting[evt.TableID])
-		if n_impacted > tb.cfg.TxImpactLimit {
-			tb.setImpactOnAll()
-			return nil
-		}
-	}*/
 	tb.appendB64RowEvent(event)
 
 	return nil
@@ -321,7 +286,7 @@ func (tb *TxBuilder) onCommit(lastEvent *BinlogEvent) {
 		tx.Query = tb.arrayCurrentSqlB64
 		tx.Fde = tb.currentFde
 	} else {
-		tx.Query = append(tx.Query, lastEvent.Query)
+		tx.Query = append(tx.Query, lastEvent.Query...)
 	}
 
 	tx.EndEventFile = lastEvent.BinlogFile
@@ -339,4 +304,138 @@ func (tb *TxBuilder) onCommit(lastEvent *BinlogEvent) {
 
 func newTxWithoutGTIDError(event *BinlogEvent) error {
 	return fmt.Errorf("transaction without GTID_EVENT %v@%v", event.BinlogFile, event.RealPos)
+}
+
+func (tb *TxBuilder) matchDB(patternDBS []string, a string) bool {
+	for _, b := range patternDBS {
+		if tb.matchString(b, a) {
+			return true
+		}
+	}
+	return false
+}
+
+func (tb *TxBuilder) matchString(pattern string, t string) bool {
+	if re, ok := tb.reMap[pattern]; ok {
+		return re.MatchString(t)
+	}
+	return pattern == t
+}
+
+func (tb *TxBuilder) matchTable(patternTBS []uconf.TableName, t uconf.TableName) bool {
+	for _, ptb := range patternTBS {
+		retb, oktb := tb.reMap[ptb.Name]
+		redb, okdb := tb.reMap[ptb.Schema]
+
+		if oktb && okdb {
+			if redb.MatchString(t.Schema) && retb.MatchString(t.Name) {
+				return true
+			}
+		}
+		if oktb {
+			if retb.MatchString(t.Name) && t.Schema == ptb.Schema {
+				return true
+			}
+		}
+		if okdb {
+			if redb.MatchString(t.Schema) && t.Name == ptb.Name {
+				return true
+			}
+		}
+
+		//create database or drop database
+		if t.Name == "" {
+			if t.Schema == ptb.Schema {
+				return true
+			}
+		}
+
+		if ptb == t {
+			return true
+		}
+	}
+
+	return false
+}
+
+func skipQueryEvent(sql string) bool {
+	sql = strings.ToUpper(sql)
+
+	if strings.HasPrefix(sql, "GRANT REPLICATION SLAVE") {
+		return true
+	}
+
+	if strings.HasPrefix(sql, "GRANT ALL PRIVILEGES ON") {
+		return true
+	}
+
+	if strings.HasPrefix(sql, "ALTER USER") {
+		return true
+	}
+
+	if strings.HasPrefix(sql, "CREATE USER") {
+		return true
+	}
+
+	if strings.HasPrefix(sql, "GRANT") {
+		return true
+	}
+
+	if strings.HasPrefix(sql, "BEGIN") {
+		return true
+	}
+
+	if strings.HasPrefix(sql, "COMMIT") {
+		return true
+	}
+
+	if strings.HasPrefix(sql, "FLUSH PRIVILEGES") {
+		return true
+	}
+
+	return false
+}
+
+func (tb *TxBuilder) skipQueryDDL(sql string, schema string) bool {
+	t, err := usql.ParserDDLTableName(sql)
+	if err != nil {
+		log.Warnf("[get table failure]:%s %s", sql, err)
+	}
+
+	if err == nil && (tb.cfg.ReplicateDoTable != nil || tb.cfg.ReplicateDoDb != nil) {
+		//if table in target Table, do this sql
+		if t.Schema == "" {
+			t.Schema = schema
+		}
+		if tb.matchTable(tb.cfg.ReplicateDoTable, t) {
+			return false
+		}
+
+		// if  schema in target DB, do this sql
+		if tb.matchDB(tb.cfg.ReplicateDoDb, t.Schema) {
+			return false
+		}
+		return true
+	}
+	return false
+}
+
+func (tb *TxBuilder) skipRowEvent(schema string, table string) bool {
+	if tb.cfg.ReplicateDoTable != nil || tb.cfg.ReplicateDoDb != nil {
+		table = strings.ToLower(table)
+		//if table in tartget Table, do this event
+		for _, d := range tb.cfg.ReplicateDoTable {
+			if tb.matchString(d.Schema, schema) && tb.matchString(d.Name, table) {
+				return false
+			}
+		}
+
+		//if schema in target DB, do this event
+		if tb.matchDB(tb.cfg.ReplicateDoDb, schema) && len(tb.cfg.ReplicateDoDb) > 0 {
+			return false
+		}
+
+		return true
+	}
+	return false
 }

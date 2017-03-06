@@ -17,7 +17,7 @@ type BinlogEvent struct {
 	Header     *replication.EventHeader
 	Evt        replication.Event
 	RawBs      []byte
-	Query      string
+	Query      []string
 
 	Err error
 }
