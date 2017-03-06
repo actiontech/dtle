@@ -9,12 +9,15 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"sync"
 	"time"
 
 	"github.com/docker/leadership"
 	"github.com/hashicorp/memberlist"
 	"github.com/hashicorp/serf/serf"
+	gnatsd "github.com/nats-io/gnatsd/server"
+	stand "github.com/nats-io/nats-streaming-server/server"
 	"github.com/ngaut/log"
 
 	uconf "udup/config"
@@ -27,7 +30,6 @@ var (
 )
 
 const (
-	serfSnapshot       = "serf/snapshot"
 	defaultRecoverTime = 10 * time.Second
 	defaultLeaderTTL   = 20 * time.Second
 )
@@ -40,6 +42,8 @@ type Agent struct {
 	sched     *Scheduler
 	candidate *leadership.Candidate
 	ready     bool
+	gnatsd    *gnatsd.Server
+	stand     *stand.StanServer
 
 	processorPlugins map[jobDriver]plugins.Driver
 	Plugins          map[string]string
@@ -59,6 +63,10 @@ func NewAgent(config *uconf.Config) (*Agent, error) {
 		config:           config,
 		processorPlugins: make(map[jobDriver]plugins.Driver),
 		shutdownCh:       make(chan struct{}),
+	}
+
+	if err := a.setupNatsServer(); err != nil {
+		return nil, err
 	}
 
 	// Initialize the wan Serf
@@ -104,6 +112,39 @@ func (a *Agent) setupDrivers() error {
 	return nil
 }
 
+func (a *Agent) setupNatsServer() error {
+	host, port, err := net.SplitHostPort(a.config.NatsAddr)
+	p, err := strconv.Atoi(port)
+	if err != nil {
+		return err
+	}
+
+	nOpts := gnatsd.Options{
+		Host:       host,
+		Port:       p,
+		MaxPayload: (100 * 1024 * 1024),
+		Trace:      true,
+		Debug:      true,
+	}
+	gnats := gnatsd.New(&nOpts)
+	go gnats.Start()
+	// Wait for accept loop(s) to be started
+	if !gnats.ReadyForConnections(10 * time.Second) {
+		log.Infof("Unable to start NATS Server in Go Routine")
+	}
+	a.gnatsd = gnats
+	sOpts := stand.GetDefaultOptions()
+	sOpts.ID = uconf.DefaultClusterID
+	if a.config.StoreType == "FILE" {
+		sOpts.StoreType = a.config.StoreType
+		sOpts.FilestoreDir = a.config.FilestoreDir
+	}
+	sOpts.NATSServerURL = fmt.Sprintf("nats://%s", a.config.NatsAddr)
+	s := stand.RunServerWithOpts(sOpts, nil)
+	a.stand = s
+	return nil
+}
+
 // setupSerf is used to create the agent we use
 func (a *Agent) setupSerf() (*serf.Serf, error) {
 	serfConfig := serf.DefaultConfig()
@@ -124,10 +165,7 @@ func (a *Agent) setupSerf() (*serf.Serf, error) {
 	serfConfig.Tags["role"] = "udup"
 	serfConfig.Tags["region"] = a.config.Region
 	serfConfig.Tags["dc"] = a.config.Datacenter
-	serfConfig.SnapshotPath = filepath.Join("./", serfSnapshot)
-	if err := ensurePath(serfConfig.SnapshotPath, false); err != nil {
-		return nil, err
-	}
+
 	serfConfig.QuerySizeLimit = 1024 * 10
 	serfConfig.CoalescePeriod = 6 * time.Second
 	serfConfig.QuiescentPeriod = time.Second
@@ -391,10 +429,6 @@ func (a *Agent) eventLoop() {
 
 // invokeJob will execute the given job. Depending on the event.
 func (a *Agent) invokeJob(job *Job) error {
-	if job.Enabled == true {
-		return nil
-	}
-
 	rpcServer, err := a.queryRPCConfig(job.NodeName)
 	if err != nil {
 		return err
@@ -406,9 +440,6 @@ func (a *Agent) invokeJob(job *Job) error {
 
 // invokeJob will execute the given job. Depending on the event.
 func (a *Agent) stopJob(job *Job) error {
-	if job.Enabled == false {
-		return nil
-	}
 	rpcServer, err := a.queryRPCConfig(job.NodeName)
 	if err != nil {
 		return err
@@ -480,7 +511,8 @@ func (a *Agent) Shutdown() error {
 	}
 
 	log.Infof("Requesting shutdown")
-
+	a.stand.Shutdown()
+	a.gnatsd.Shutdown()
 	log.Infof("Shutdown complete")
 	a.shutdown = true
 	close(a.shutdownCh)

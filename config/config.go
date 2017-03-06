@@ -8,7 +8,10 @@ import (
 )
 
 // This is the default port that we use for Serf communication
-const DefaultBindPort int = 8191
+const (
+	DefaultBindPort  int = 8191
+	DefaultClusterID     = "udup-cluster"
+)
 
 // Config is the configuration for the Udup agent.
 type Config struct {
@@ -39,6 +42,10 @@ type Config struct {
 	RPCPort   int      `mapstructure:"rpc_port"`
 	Version   string
 
+	NatsAddr     string `mapstructure:"nats_addr"`
+	StoreType    string `mapstructure:"nats_store_type"`
+	FilestoreDir string `mapstructure:"nats_file_store_dir"`
+
 	Consul *ConsulConfig `mapstructure:"consul"`
 
 	// config file that have been loaded (in order)
@@ -53,7 +60,7 @@ type ConsulConfig struct {
 // DriverConfig is the DB configuration.
 type DriverConfig struct {
 	//Ref:http://dev.mysql.com/doc/refman/5.7/en/replication-options-slave.html#option_mysqld_replicate-do-table
-	Enabled bool `json:"enabled"`
+	Enabled              bool              `json:"enabled"`
 	ReplicateDoTable     []TableName       `json:"replicate_do_table"`
 	ReplicateDoDb        []string          `json:"replicate_do_db"`
 	MaxRetries           int64             `json:"max_retries"`
@@ -62,8 +69,6 @@ type DriverConfig struct {
 	Driver               string            `json:"driver"`
 	ServerID             int               `json:"server_id"`
 	NatsAddr             string            `json:"nats_addr"`
-	StoreType            string            `json:"nats_store_type"`
-	FilestoreDir         string            `json:"nats_file_store_dir"`
 	WorkerCount          int               `json:"worker_count"`
 	StartBinlogPath      string            `json:"start_binlog_path"`
 	StartBinlogPos       int               `json:"start_binlog_pos"`
@@ -177,6 +182,18 @@ func (c *Config) Merge(b *Config) *Config {
 
 	if b.Server {
 		result.Server = true
+	}
+
+	if b.NatsAddr != "" {
+		result.NatsAddr = b.NatsAddr
+	}
+
+	if b.StoreType != "" {
+		result.StoreType = b.StoreType
+	}
+
+	if b.FilestoreDir != "" {
+		result.FilestoreDir = b.FilestoreDir
 	}
 
 	if result.Consul == nil && b.Consul != nil {

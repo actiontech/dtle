@@ -5,18 +5,20 @@ import (
 	gosql "database/sql"
 	"encoding/gob"
 	"fmt"
-	"net"
-	"strconv"
 	"time"
 
-	gnatsd "github.com/nats-io/gnatsd/server"
 	stan "github.com/nats-io/go-nats-streaming"
-	stand "github.com/nats-io/nats-streaming-server/server"
 	"github.com/ngaut/log"
+	"github.com/satori/go.uuid"
 
 	uconf "udup/config"
 	ubinlog "udup/plugins/mysql/binlog"
 	usql "udup/plugins/mysql/sql"
+)
+
+const (
+	// DefaultConnectWait is the default timeout used for the connect operation
+	DefaultConnectWait = 5 * time.Second
 )
 
 type Applier struct {
@@ -31,8 +33,6 @@ type Applier struct {
 
 	stanConn stan.Conn
 	stanSub  stan.Subscription
-	stand    *stand.StanServer
-	gnatsd   *gnatsd.Server
 }
 
 func NewApplier(cfg *uconf.DriverConfig) *Applier {
@@ -54,9 +54,6 @@ func newEventChans(count int) []chan usql.StreamEvent {
 
 func (a *Applier) InitiateApplier() error {
 	log.Infof("Apply binlog events onto the datasource :%v", a.cfg.ConnCfg.String())
-	if err := a.setupNatsServer(); err != nil {
-		return err
-	}
 
 	if err := a.initDBConnections(); err != nil {
 		return err
@@ -82,72 +79,80 @@ func (a *Applier) applyTx(db *gosql.DB, transaction *ubinlog.Transaction_t) erro
 	if len(transaction.Query) == 0 {
 		return nil
 	}
-
-	var lastFde, lastSID string
-	var lastGNO int64
-	if lastFde != transaction.Fde {
-		lastFde = transaction.Fde // IMO it would comare the internal pointer first
-		_, err := db.Exec(lastFde)
-		if err != nil {
-			return err
-		}
-	}
-
-	if lastSID != transaction.SID || lastGNO != transaction.GNO {
-		lastSID = transaction.SID
-		lastGNO = transaction.GNO
-		_, err := db.Exec(fmt.Sprintf(`SET GTID_NEXT='%s:%d'`, lastSID, lastGNO))
-		if err != nil {
-			return err
-		}
-
-		txn, err := db.Begin()
-		if err != nil {
-			return err
-		}
-
-		err = txn.Commit()
-		if err != nil {
-			return err
-		}
-
-		if _, err := db.Exec(`SET GTID_NEXT='AUTOMATIC'`); err != nil {
-			return err
-		}
-		a.cfg.GtidCh <- fmt.Sprintf("%s:1-%d", lastSID, lastGNO)
-	}
-
 	tx, err := db.Begin()
 	if err != nil {
 		return err
 	}
 	for _, query := range transaction.Query {
 		if query == "" {
-			return nil
+			break
 		}
 
 		_, err = tx.Exec(query)
 		if err != nil {
-			return err
+			if !usql.IgnoreDDLError(err) {
+				return err
+			} else {
+				log.Warnf("[ignore ddl error][sql]:%s;[error]:%v", query, err)
+			}
 		}
 	}
-
 	return tx.Commit()
 }
 
 func (a *Applier) startApplierWorker(i int, db *gosql.DB) {
+	var lastFde, lastSID string
+	var lastGNO int64
 	for tx := range a.txChan {
 		if tx != nil {
+			if tx.Fde != "" && lastFde != tx.Fde {
+				lastFde = tx.Fde // IMO it would comare the internal pointer first
+				_, err := usql.ExecNoPrepare(db, lastFde)
+				if err != nil {
+					a.cfg.ErrCh <- fmt.Errorf("error applying tx fde: %v", err)
+					break
+				}
+			}
+
+			if lastSID != tx.SID || lastGNO != tx.GNO {
+				lastSID = tx.SID
+				lastGNO = tx.GNO
+				_, err := usql.ExecNoPrepare(db, fmt.Sprintf(`SET GTID_NEXT='%s:%d'`, lastSID, lastGNO))
+				if err != nil {
+					a.cfg.ErrCh <- err
+					break
+				}
+
+				txn, err := db.Begin()
+				if err != nil {
+					a.cfg.ErrCh <- err
+					break
+				}
+
+				err = txn.Commit()
+				if err != nil {
+					a.cfg.ErrCh <- err
+					break
+				}
+
+				_, err = usql.ExecNoPrepare(db, `SET GTID_NEXT='AUTOMATIC'`)
+				if err != nil {
+					a.cfg.ErrCh <- err
+					break
+				}
+				a.cfg.GtidCh <- fmt.Sprintf("%s:1-%d", lastSID, lastGNO)
+			}
 			err := a.applyTx(db, tx)
 			if err != nil {
-				a.cfg.ErrCh <- fmt.Errorf("Error applying tx: %v", err)
+				a.cfg.ErrCh <- fmt.Errorf("error applying tx: %v", err)
+				break
 			}
 		}
 	}
 }
 
 func (a *Applier) initNatSubClient() (err error) {
-	sc, err := stan.Connect("test-cluster", "sub1", stan.NatsURL(fmt.Sprintf("nats://%s", a.cfg.NatsAddr)))
+	sc, err := stan.Connect(uconf.DefaultClusterID, uuid.NewV4().String(), stan.NatsURL(fmt.Sprintf("nats://%s", a.cfg.NatsAddr)), stan.ConnectWait(DefaultConnectWait))
 	if err != nil {
 		log.Fatalf("Can't connect: %v.\nMake sure a NATS Streaming Server is running at: %s", err, fmt.Sprintf("nats://%s", a.cfg.NatsAddr))
 	}
@@ -178,38 +183,6 @@ func (a *Applier) initiateStreaming() error {
 		return fmt.Errorf("Unexpected error on Subscribe, got %v", err)
 	}
 	a.stanSub = sub
-	return nil
-}
-
-func (a *Applier) setupNatsServer() error {
-	host, port, err := net.SplitHostPort(a.cfg.NatsAddr)
-	p, err := strconv.Atoi(port)
-	if err != nil {
-		return err
-	}
-
-	nOpts := gnatsd.Options{
-		Host:       host,
-		Port:       p,
-		MaxPayload: (100 * 1024 * 1024),
-		Trace:      true,
-		Debug:      true,
-	}
-	gnats := gnatsd.New(&nOpts)
-	go gnats.Start()
-	// Wait for accept loop(s) to be started
-	if !gnats.ReadyForConnections(10 * time.Second) {
-		log.Infof("Unable to start NATS Server in Go Routine")
-	}
-	a.gnatsd = gnats
-	sOpts := stand.GetDefaultOptions()
-	if a.cfg.StoreType == "FILE" {
-		sOpts.StoreType = a.cfg.StoreType
-		sOpts.FilestoreDir = a.cfg.FilestoreDir
-	}
-	sOpts.NATSServerURL = fmt.Sprintf("nats://%s", a.cfg.NatsAddr)
-	s := stand.RunServerWithOpts(sOpts, nil)
-	a.stand = s
 	return nil
 }
 
@@ -260,8 +233,7 @@ func (a *Applier) Shutdown() error {
 	if err := a.stanConn.Close(); err != nil {
 		return err
 	}
-	a.stand.Shutdown()
-	a.gnatsd.Shutdown()
+
 	closeEventChans(a.eventChans)
 
 	if err := usql.CloseDBs(a.dbs...); err != nil {

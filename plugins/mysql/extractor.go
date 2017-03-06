@@ -5,12 +5,12 @@ import (
 	"database/sql"
 	"encoding/gob"
 	"fmt"
-	"regexp"
 	"strings"
 	"time"
 
 	stan "github.com/nats-io/go-nats-streaming"
 	"github.com/ngaut/log"
+	"github.com/satori/go.uuid"
 	gomysql "github.com/siddontang/go-mysql/mysql"
 
 	uconf "udup/config"
@@ -32,7 +32,6 @@ type Extractor struct {
 	eventsChannel            chan *ubinlog.BinlogEvent
 	currentFde               string
 	currentSqlB64            *bytes.Buffer
-	reMap                    map[string]*regexp.Regexp
 	bp                       *ubinlog.BinlogParser
 
 	stanConn stan.Conn
@@ -43,7 +42,6 @@ func NewExtractor(cfg *uconf.DriverConfig) *Extractor {
 		cfg:           cfg,
 		tables:        make(map[string]*usql.Table),
 		eventsChannel: make(chan *ubinlog.BinlogEvent, EventsChannelBufferSize),
-		reMap:         make(map[string]*regexp.Regexp),
 	}
 }
 
@@ -188,7 +186,7 @@ func (e *Extractor) initBinlogParser(binlogCoordinates *ubinlog.BinlogCoordinate
 }
 
 func (e *Extractor) initNatsPubClient() (err error) {
-	sc, err := stan.Connect("test-cluster", "pub1", stan.NatsURL(fmt.Sprintf("nats://%s", e.cfg.NatsAddr)))
+	sc, err := stan.Connect(uconf.DefaultClusterID, uuid.NewV4().String(), stan.NatsURL(fmt.Sprintf("nats://%s", e.cfg.NatsAddr)), stan.ConnectWait(DefaultConnectWait))
 	if err != nil {
 		log.Errorf("Can't connect: %v.\nMake sure a NATS Streaming Server is running at: %s", err, fmt.Sprintf("nats://%s", e.cfg.NatsAddr))
 	}
@@ -410,129 +408,13 @@ func (e *Extractor) getTable(schema string, table string) (*usql.Table, error) {
 	return t, nil
 }
 
-func (e *Extractor) matchDB(patternDBS []string, a string) bool {
-	for _, b := range patternDBS {
-		if e.matchString(b, a) {
-			return true
-		}
-	}
-	return false
-}
-
-func (e *Extractor) matchString(pattern string, t string) bool {
-	if re, ok := e.reMap[pattern]; ok {
-		return re.MatchString(t)
-	}
-	return pattern == t
-}
-
-func (e *Extractor) matchTable(patternTBS []uconf.TableName, tb uconf.TableName) bool {
-	for _, ptb := range patternTBS {
-		retb, oktb := e.reMap[ptb.Name]
-		redb, okdb := e.reMap[ptb.Schema]
-
-		if oktb && okdb {
-			if redb.MatchString(tb.Schema) && retb.MatchString(tb.Name) {
-				return true
-			}
-		}
-		if oktb {
-			if retb.MatchString(tb.Name) && tb.Schema == ptb.Schema {
-				return true
-			}
-		}
-		if okdb {
-			if redb.MatchString(tb.Schema) && tb.Name == ptb.Name {
-				return true
-			}
-		}
-
-		//create database or drop database
-		if tb.Name == "" {
-			if tb.Schema == ptb.Schema {
-				return true
-			}
-		}
-
-		if ptb == tb {
-			return true
-		}
-	}
-
-	return false
-}
-
-func (e *Extractor) skipRowEvent(schema string, table string) bool {
-	if e.cfg.ReplicateDoTable != nil || e.cfg.ReplicateDoDb != nil {
-		table = strings.ToLower(table)
-		//if table in tartget Table, do this event
-		for _, d := range e.cfg.ReplicateDoTable {
-			if e.matchString(d.Schema, schema) && e.matchString(d.Name, table) {
-				return false
-			}
-		}
-
-		//if schema in target DB, do this event
-		if e.matchDB(e.cfg.ReplicateDoDb, schema) && len(e.cfg.ReplicateDoDb) > 0 {
-			return false
-		}
-
-		return true
-	}
-	return false
-}
-
-func (e *Extractor) skipQueryEvent(sql string, schema string) bool {
-	sql = strings.ToUpper(sql)
-
-	if strings.HasPrefix(sql, "GRANT REPLICATION SLAVE ON") {
-		return true
-	}
-
-	if strings.HasPrefix(sql, "BEGIN") {
-		return true
-	}
-
-	if strings.HasPrefix(sql, "COMMIT") {
-		return true
-	}
-
-	if strings.HasPrefix(sql, "FLUSH PRIVILEGES") {
-		return true
-	}
-
-	return false
-}
-
-func (e *Extractor) skipQueryDDL(sql string, schema string) bool {
-	tb, err := usql.ParserDDLTableName(sql)
-	if err != nil {
-		log.Warnf("[get table failure]:%s %s", sql, err)
-	}
-
-	if err == nil && (e.cfg.ReplicateDoTable != nil || e.cfg.ReplicateDoDb != nil) {
-		//if table in target Table, do this sql
-		if tb.Schema == "" {
-			tb.Schema = schema
-		}
-		if e.matchTable(e.cfg.ReplicateDoTable, tb) {
-			return false
-		}
-
-		// if  schema in target DB, do this sql
-		if e.matchDB(e.cfg.ReplicateDoDb, tb.Schema) {
-			return false
-		}
-		return true
-	}
-	return false
-}
-
 func (e *Extractor) Shutdown() error {
 	if !e.stopFlag() {
 		return nil
 	}
-	e.bp.Close()
+	if e.bp != nil {
+		e.bp.Close()
+	}
 	e.stanConn.Close()
 	close(e.eventsChannel)
 	err := usql.CloseDBs(e.db)

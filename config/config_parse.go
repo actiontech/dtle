@@ -80,6 +80,9 @@ func parseConfig(result *Config, list *ast.ObjectList) error {
 		"rpc_port",
 		"start_join",
 		"server",
+		"nats_addr",
+		"nats_store_type",
+		"nats_file_store_dir",
 		"consul",
 		"pid_file",
 	}
