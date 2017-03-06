@@ -11,4 +11,7 @@
 
 ### Bugfixes
 
+- [#UDUP-2](http://10.186.18.21/universe/udup/issues/2): 源库有修改密码的话启动时会报错.
+- [#UDUP-1](http://10.186.18.21/universe/udup/issues/1): Add support for MySQL GTIDs.
+
 This is the initial release of Udup.
