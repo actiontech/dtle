@@ -53,9 +53,7 @@ func (rpcs *RPCServer) StartJob(j Job, reply *serf.NodeResponse) error {
 			return fmt.Errorf("failed to get parent job '%s': %v",
 				job.ParentJob, err)
 		}
-		if pj.Enabled == false {
-			pj.Start()
-		}
+		pj.Start(false)
 	}
 	// Lock the job while editing
 	if err = job.Lock(); err != nil {
@@ -71,7 +69,7 @@ func (rpcs *RPCServer) StartJob(j Job, reply *serf.NodeResponse) error {
 		switch v.Driver {
 		case plugins.MysqlDriverAttr:
 			{
-				gtidCh := make(chan string, 100)
+				gtidCh := make(chan string)
 				v.GtidCh = gtidCh
 				go job.listenOnGtid(v)
 				// Start the job
@@ -165,9 +163,7 @@ func (rpcs *RPCServer) StopJob(j Job, reply *serf.NodeResponse) error {
 			if err != nil {
 				return err
 			}
-			if dj.Enabled == true {
-				dj.Stop()
-			}
+			dj.Stop()
 		}
 	}
 

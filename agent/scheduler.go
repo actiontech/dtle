@@ -20,12 +20,12 @@ func NewScheduler() *Scheduler {
 
 func (s *Scheduler) Start(jobs []*Job) {
 	for _, job := range jobs {
-		if !job.Enabled || job.ParentJob != "" {
+		if !job.Enabled || len(job.DependentJobs) > 0{
 			continue
 		}
 
 		log.Infof("Start job: %v", job.Name)
-		go job.Start()
+		go job.Start(true)
 	}
 	s.Started = true
 

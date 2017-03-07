@@ -46,13 +46,15 @@ type Job struct {
 }
 
 // Start the job
-func (j *Job) Start() {
+func (j *Job) Start(restart bool) {
 	j.running.Lock()
 	defer j.running.Unlock()
 
-	if j.Agent != nil && j.Enabled == false {
-		log.Infof("Start job:%v", j.Name)
-		j.Agent.StartJobQuery(j)
+	if j.Agent != nil {
+		if j.Enabled == false || restart{
+			log.Infof("Start job:%v", j.Name)
+			j.Agent.StartJobQuery(j)
+		}
 	}
 }
 
@@ -75,12 +77,11 @@ func (j *Job) listenOnPanicAbort(cfg *uconf.DriverConfig) {
 
 func (j *Job) listenOnGtid(cfg *uconf.DriverConfig) {
 	for gtid := range cfg.GtidCh {
-		if gtid != "" {
-			j.Processors["apply"].Gtid = gtid
-			err := j.Agent.store.UpsertJob(j)
-			if err != nil {
-				log.Errorf(err.Error())
-			}
+		log.Infof("-j:%v-gtid:%v",j,gtid)
+		j.Processors["apply"].Gtid = gtid
+		err := j.Agent.store.UpsertJob(j)
+		if err != nil {
+			log.Errorf(err.Error())
 		}
 	}
 }

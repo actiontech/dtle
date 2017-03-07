@@ -203,7 +203,6 @@ func (a *Agent) jobDeleteHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-
 	a.schedulerRestartQuery(string(a.store.GetLeader()))
 
 	if err := printJson(w, r, job); err != nil {
@@ -223,7 +222,7 @@ func (a *Agent) jobStartHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	a.StartJobQuery(job)
+	job.Start(false)
 
 	w.Header().Set("Location", r.RequestURI)
 	w.WriteHeader(http.StatusAccepted)
@@ -244,7 +243,8 @@ func (a *Agent) jobStopHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	a.StopJobQuery(job)
+
+	job.Stop()
 
 	w.Header().Set("Location", r.RequestURI)
 	w.WriteHeader(http.StatusAccepted)
