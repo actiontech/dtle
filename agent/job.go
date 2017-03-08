@@ -77,7 +77,6 @@ func (j *Job) listenOnPanicAbort(cfg *uconf.DriverConfig) {
 
 func (j *Job) listenOnGtid(cfg *uconf.DriverConfig) {
 	for gtid := range cfg.GtidCh {
-		log.Infof("-j:%v-gtid:%v",j,gtid)
 		j.Processors["apply"].Gtid = gtid
 		err := j.Agent.store.UpsertJob(j)
 		if err != nil {

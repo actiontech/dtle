@@ -15,7 +15,7 @@ func NewMySQLDriver(ctx *DriverContext) Driver {
 	return &MySQLDriver{DriverContext: *ctx}
 }
 
-func (d *MySQLDriver) Start(t string, driverCfg *uconf.DriverConfig) error {
+func (d *MySQLDriver) Start(jobName string,t string, driverCfg *uconf.DriverConfig) error {
 	switch t {
 	case ProcessorTypeExtract:
 		{
@@ -23,7 +23,7 @@ func (d *MySQLDriver) Start(t string, driverCfg *uconf.DriverConfig) error {
 			e := umysql.NewExtractor(driverCfg)
 			d.Extractor = e
 
-			if err := e.InitiateExtractor(); err != nil {
+			if err := e.InitiateExtractor(jobName); err != nil {
 				return fmt.Errorf("[Extractor]:%+v", err)
 			}
 		}
@@ -31,7 +31,7 @@ func (d *MySQLDriver) Start(t string, driverCfg *uconf.DriverConfig) error {
 		{
 			a := umysql.NewApplier(driverCfg)
 			d.Applier = a
-			if err := a.InitiateApplier(); err != nil {
+			if err := a.InitiateApplier(jobName); err != nil {
 				return fmt.Errorf("[Applier]:%+v", err)
 			}
 		}

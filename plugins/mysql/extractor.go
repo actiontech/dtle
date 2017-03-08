@@ -45,7 +45,7 @@ func NewExtractor(cfg *uconf.DriverConfig) *Extractor {
 	}
 }
 
-func (e *Extractor) InitiateExtractor() error {
+func (e *Extractor) InitiateExtractor(jobName string) error {
 	log.Infof("Extract binlog events from the datasource %v", e.cfg.ConnCfg.String())
 
 	if err := e.initDBConnections(); err != nil {
@@ -62,7 +62,7 @@ func (e *Extractor) InitiateExtractor() error {
 
 	go func() {
 		log.Debugf("Beginning streaming")
-		if err := e.streamEvents(); err != nil {
+		if err := e.streamEvents(jobName); err != nil {
 			e.cfg.ErrCh <- err
 		}
 		log.Debugf("Done streaming")
@@ -216,14 +216,14 @@ func (e *Extractor) stopFlag() bool {
 	return e.cfg.Enabled
 }
 
-func (e *Extractor) streamEvents() error {
+func (e *Extractor) streamEvents(jobName string) error {
 	go func() {
 		for tx := range e.tb.TxChan {
 			msg, err := Encode(tx)
 			if err != nil {
 				e.cfg.ErrCh <- err
 			}
-			if err := e.stanConn.Publish("subject", msg); err != nil {
+			if err := e.stanConn.Publish(jobName, msg); err != nil {
 				e.cfg.ErrCh <- err
 			}
 		}

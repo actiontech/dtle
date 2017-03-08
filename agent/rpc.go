@@ -133,7 +133,7 @@ func (rpcs *RPCServer) startDriver(k string, v *uconf.DriverConfig, j *Job) {
 
 	}
 
-	err = driver.Start(k, v)
+	err = driver.Start(j.Name,k, v)
 	if err != nil {
 		v.ErrCh <- err
 	}
