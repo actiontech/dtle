@@ -348,17 +348,6 @@ func (a *Agent) eventLoop() {
 				query := e.(*serf.Query)
 
 				switch query.Name {
-				case QuerySchedulerRestart:
-					{
-						if a.config.Server {
-							log.Debug("Restarting scheduler")
-							jobs, err := a.store.GetJobs()
-							if err != nil {
-								log.Fatal(err)
-							}
-							a.sched.Restart(jobs)
-						}
-					}
 				case QueryStartJob:
 					{
 						log.Debugf("Running job: Query:%v; Payload:%v; LTime:%v,", query.Name, string(query.Payload), query.LTime)

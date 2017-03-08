@@ -177,7 +177,7 @@ func (tb *TxBuilder) onQueryEvent(event *BinlogEvent) error {
 		tb.setImpactOnAll()
 		if strings.ToUpper(query) == "COMMIT" || !tb.currentTx.hasBeginQuery {
 			if skipQueryEvent(query) {
-				log.Warnf("[skip query-sql]%s  [schema]:%s", query, string(evt.Schema))
+				log.Debugf("[skip query-sql]%s  [schema]:%s", query, string(evt.Schema))
 				tb.onCommit(event)
 				return nil
 			}
@@ -192,7 +192,7 @@ func (tb *TxBuilder) onQueryEvent(event *BinlogEvent) error {
 
 			for _, sql := range sqls {
 				if tb.skipQueryDDL(sql, string(evt.Schema)) {
-					log.Warnf("[skip query-ddl-sql]%s  [schema]:%s", sql, evt.Schema)
+					log.Debugf("[skip query-ddl-sql]%s  [schema]:%s", sql, evt.Schema)
 					continue
 				}
 

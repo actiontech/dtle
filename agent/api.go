@@ -182,8 +182,6 @@ func (a *Agent) jobUpsertHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	a.schedulerRestartQuery(string(a.store.GetLeader()))
-
 	w.Header().Set("Location", fmt.Sprintf("%s/%s", r.RequestURI, job.Name))
 	w.WriteHeader(http.StatusCreated)
 	if err := printJson(w, r, &job); err != nil {
@@ -203,7 +201,6 @@ func (a *Agent) jobDeleteHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	a.schedulerRestartQuery(string(a.store.GetLeader()))
 
 	if err := printJson(w, r, job); err != nil {
 		log.Fatal(err)

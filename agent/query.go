@@ -137,38 +137,6 @@ func (a *Agent) upsertJob(payload []byte) *Job {
 	return &ex
 }
 
-// Broadcast a SchedulerRestartQuery to the cluster, only server members
-// will attend to this. Forces a scheduler restart and reload all jobs.
-func (a *Agent) schedulerRestartQuery(leaderName string) {
-	params := &serf.QueryParam{
-		FilterNodes: []string{leaderName},
-		RequestAck:  true,
-	}
-
-	qr, err := a.serf.Query(QuerySchedulerRestart, []byte(""), params)
-	if err != nil {
-		log.Errorf("Error sending the scheduler reload query:%v", err)
-	}
-	defer qr.Close()
-
-	ackCh := qr.AckCh()
-	respCh := qr.ResponseCh()
-
-	for !qr.Finished() {
-		select {
-		case ack, ok := <-ackCh:
-			if ok {
-				log.Infof("Received ack from:%v", ack)
-			}
-		case resp, ok := <-respCh:
-			if ok {
-				log.Infof("Received response:%v; from:%v", resp.From, string(resp.Payload))
-			}
-		}
-	}
-	log.Infof("Done receiving acks and responses:%v", QuerySchedulerRestart)
-}
-
 // Broadcast a query to get the RPC config of one udup_server, any that could
 // attend later RPC calls.
 func (a *Agent) queryRPCConfig(nodeName string) ([]byte, error) {
