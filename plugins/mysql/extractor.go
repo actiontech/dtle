@@ -105,7 +105,7 @@ func (e *Extractor) initDBConnections() (err error) {
 }
 
 func (e *Extractor) mysqlGTIDMode() error {
-	query := `SELECT @@gtid_mode`
+	query := `SELECT @@GTID_MODE`
 	var gtidMode string
 	if err := e.db.QueryRow(query).Scan(&gtidMode); err != nil {
 		return err
@@ -117,7 +117,7 @@ func (e *Extractor) mysqlGTIDMode() error {
 }
 
 func (e *Extractor) checkForeignKey() error {
-	query := `show variables like 'foreign_key_checks'`
+	query := `SHOW VARIABLES LIKE 'FOREIGN_KEY_CHECKS'`
 	err := usql.QueryRowsMap(e.db, query, func(m usql.RowMap) error {
 		if m["Value"].String == "ON" {
 			return fmt.Errorf("foreign_key_checks == ON detected. need to be off")
@@ -133,7 +133,7 @@ func (e *Extractor) checkForeignKey() error {
 
 // readCurrentBinlogCoordinates reads master status from hooked server
 func (e *Extractor) readCurrentBinlogCoordinates() error {
-	query := `show /* udup readCurrentBinlogCoordinates */ master status`
+	query := `SHOW /* UDUP READCURRENTBINLOGCOORDINATES */ MASTER STATUS`
 	foundMasterStatus := false
 	if e.cfg.Gtid != "" {
 		gtidSet, err := gomysql.ParseMysqlGTIDSet(e.cfg.Gtid)

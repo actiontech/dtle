@@ -169,13 +169,8 @@ func (bp *BinlogParser) handleRowsEvent(ev *replication.BinlogEvent, eventsChann
 			Header:     ev.Header,
 			RealPos:    uint32(ev.Header.LogPos) - ev.Header.EventSize,
 		}
-	case replication.HEARTBEAT_EVENT, replication.IGNORABLE_EVENT, replication.UNKNOWN_EVENT, replication.SLAVE_EVENT,
-		replication.PREVIOUS_GTIDS_EVENT, replication.ROTATE_EVENT:
-		//ignore
 	default:
-		eventsChannel <- &BinlogEvent{
-			Err: fmt.Errorf("Unhandled Event: %v", ev.Header.EventType),
-		}
+		//ignore
 	}
 	bp.LastAppliedRowsEventHint = bp.currentCoordinates
 	return nil

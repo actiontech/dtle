@@ -76,9 +76,43 @@ func (a *Applier) InitiateApplier(jobName string) error {
 }
 
 func (a *Applier) applyTx(db *gosql.DB, transaction *ubinlog.Transaction_t) error {
-	if len(transaction.Query) == 0 {
-		return nil
+	/*if err := disableGTIDTxOnline(db); err != nil {
+		return err
 	}
+	defer enableGTIDTxOnline(db)*/
+	/*_, err := usql.ExecNoPrepare(db, `SET @@GLOBAL.GTID_MODE = ON_PERMISSIVE`)
+	if err != nil {
+		return err
+	}
+
+	_, err = usql.ExecNoPrepare(db, `SET GTID_NEXT='ANONYMOUS'`)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		_, err := usql.ExecNoPrepare(db, `SET @@GLOBAL.GTID_MODE = ON`)
+		if err != nil {
+			log.Errorf(err.Error())
+		}
+
+		_, err = usql.ExecNoPrepare(db, `SET GTID_NEXT='AUTOMATIC'`)
+		if err != nil {
+			log.Errorf(err.Error())
+		}
+	}()*/
+
+	_, err := usql.ExecNoPrepare(db, `SET SQL_LOG_BIN = 0`)
+	if err != nil {
+		return err
+	}
+
+	defer func() {
+		_, err := usql.ExecNoPrepare(db, `SET SQL_LOG_BIN = 1`)
+		if err != nil {
+			log.Errorf(err.Error())
+		}
+	}()
+
 	tx, err := db.Begin()
 	if err != nil {
 		return err
@@ -93,60 +127,66 @@ func (a *Applier) applyTx(db *gosql.DB, transaction *ubinlog.Transaction_t) erro
 			if !usql.IgnoreDDLError(err) {
 				return err
 			} else {
-				log.Warnf("[ignore ddl error][sql]:%s;[error]:%v", query, err)
+				log.Warnf("[ignore ddl error][sql]:%s[error]:%v", query, err)
 			}
 		}
 	}
-	return tx.Commit()
+
+	err = tx.Commit()
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (a *Applier) startApplierWorker(i int, db *gosql.DB) {
 	var lastFde, lastSID string
 	var lastGNO int64
 	for tx := range a.txChan {
-		if tx != nil {
-			if tx.Fde != "" && lastFde != tx.Fde {
-				lastFde = tx.Fde // IMO it would comare the internal pointer first
-				_, err := usql.ExecNoPrepare(db, lastFde)
-				if err != nil {
-					a.cfg.ErrCh <- fmt.Errorf("error applying tx fde: %v", err)
-					break
-				}
-			}
-
-			if lastSID != tx.SID || lastGNO != tx.GNO {
-				lastSID = tx.SID
-				lastGNO = tx.GNO
-				_, err := usql.ExecNoPrepare(db, fmt.Sprintf(`SET GTID_NEXT='%s:%d'`, lastSID, lastGNO))
-				if err != nil {
-					a.cfg.ErrCh <- err
-					break
-				}
-
-				txn, err := db.Begin()
-				if err != nil {
-					a.cfg.ErrCh <- err
-					break
-				}
-
-				err = txn.Commit()
-				if err != nil {
-					a.cfg.ErrCh <- err
-					break
-				}
-
-				_, err = usql.ExecNoPrepare(db, `SET GTID_NEXT='AUTOMATIC'`)
-				if err != nil {
-					a.cfg.ErrCh <- err
-					break
-				}
-				a.cfg.GtidCh <- fmt.Sprintf("%s:1-%d", lastSID, lastGNO)
-			}
-			err := a.applyTx(db, tx)
+		if tx.Fde != "" && lastFde != tx.Fde {
+			lastFde = tx.Fde // IMO it would comare the internal pointer first
+			_, err := usql.ExecNoPrepare(db, lastFde)
 			if err != nil {
-				a.cfg.ErrCh <- fmt.Errorf("error applying tx: %v", err)
+				a.cfg.ErrCh <- fmt.Errorf("error applying tx fde: %v", err)
 				break
 			}
+		}
+
+		if lastSID != tx.SID || lastGNO != tx.GNO {
+			lastSID = tx.SID
+			lastGNO = tx.GNO
+			_, err := usql.ExecNoPrepare(db, fmt.Sprintf(`SET GTID_NEXT='%s:%d'`, lastSID, lastGNO))
+			if err != nil {
+				a.cfg.ErrCh <- err
+				break
+			}
+
+			txn, err := db.Begin()
+			if err != nil {
+				a.cfg.ErrCh <- err
+				break
+			}
+
+			err = txn.Commit()
+			if err != nil {
+				a.cfg.ErrCh <- err
+				break
+			}
+
+			_, err = usql.ExecNoPrepare(db, `SET GTID_NEXT='AUTOMATIC'`)
+			if err != nil {
+				a.cfg.ErrCh <- err
+				break
+			}
+
+			a.cfg.GtidCh <- fmt.Sprintf("%s:1-%d", lastSID, lastGNO)
+		}
+
+		err := a.applyTx(db, tx)
+		if err != nil {
+			a.cfg.ErrCh <- fmt.Errorf("error applying tx: %v", err)
+			break
 		}
 	}
 }
@@ -202,13 +242,55 @@ func (a *Applier) initDBConnections() (err error) {
 }
 
 func (a *Applier) mysqlGTIDMode() error {
-	query := `SELECT @@gtid_mode`
+	query := `SELECT @@GTID_MODE`
 	var gtidMode string
 	if err := a.singletonDB.QueryRow(query).Scan(&gtidMode); err != nil {
 		return err
 	}
 	if gtidMode != "ON" {
 		return fmt.Errorf("must have GTID enabled: %+v", gtidMode)
+	}
+	return nil
+}
+
+func enableGTIDTxOnline(db *gosql.DB) {
+	//https://dev.mysql.com/doc/refman/5.7/en/replication-mode-change-online-enable-gtids.html
+	/*if _, err := usql.ExecNoPrepare(db, `SET @@GLOBAL.ENFORCE_GTID_CONSISTENCY = WARN`); err != nil {
+		log.Errorf(err.Error())
+	}
+
+	if _, err := usql.ExecNoPrepare(db, `SET @@GLOBAL.ENFORCE_GTID_CONSISTENCY = ON`); err != nil {
+		log.Errorf(err.Error())
+	}*/
+
+	if _, err := usql.ExecNoPrepare(db, `SET @@GLOBAL.GTID_MODE = ON_PERMISSIVE`); err != nil {
+		log.Errorf(err.Error())
+	}
+
+	/*showCount := `SHOW STATUS LIKE 'ONGOING_ANONYMOUS_TRANSACTION_COUNT'`
+	err := usql.QueryRowsMap(db, showCount, func(m usql.RowMap) error {
+		if m["Value"].String != "0" {
+			return fmt.Errorf("ONGOING_ANONYMOUS_TRANSACTION_COUNT != 0 detected.")
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}*/
+
+	if _, err := usql.ExecNoPrepare(db, `SET @@GLOBAL.GTID_MODE = ON`); err != nil {
+		log.Errorf(err.Error())
+	}
+}
+
+func disableGTIDTxOnline(db *gosql.DB) error {
+	//https://dev.mysql.com/doc/refman/5.7/en/replication-mode-change-online-disable-gtids.html
+	if _, err := usql.ExecNoPrepare(db, `SET @@GLOBAL.GTID_MODE = ON_PERMISSIVE`); err != nil {
+		return err
+	}
+
+	if _, err := usql.ExecNoPrepare(db, `SET @@GLOBAL.GTID_MODE = OFF_PERMISSIVE`); err != nil {
+		return err
 	}
 	return nil
 }
