@@ -45,7 +45,7 @@ func NewExtractor(cfg *uconf.DriverConfig) *Extractor {
 	}
 }
 
-func (e *Extractor) InitiateExtractor(jobName string) error {
+func (e *Extractor) InitiateExtractor(subject string) error {
 	log.Infof("Extract binlog events from the datasource %v", e.cfg.ConnCfg.String())
 
 	if err := e.initDBConnections(); err != nil {
@@ -62,7 +62,7 @@ func (e *Extractor) InitiateExtractor(jobName string) error {
 
 	go func() {
 		log.Debugf("Beginning streaming")
-		if err := e.streamEvents(jobName); err != nil {
+		if err := e.streamEvents(subject); err != nil {
 			e.cfg.ErrCh <- err
 		}
 		log.Debugf("Done streaming")
@@ -116,6 +116,16 @@ func (e *Extractor) mysqlGTIDMode() error {
 	return nil
 }
 
+func (e *Extractor) mysqlServerUUID() string {
+	query := `SELECT @@SERVER_UUID`
+	var server_uuid string
+	if err := e.db.QueryRow(query).Scan(&server_uuid); err != nil {
+		log.Errorf("error to SELECT @@SERVER_UUID:%v",err)
+		return ""
+	}
+	return server_uuid
+}
+
 func (e *Extractor) checkForeignKey() error {
 	query := `SHOW VARIABLES LIKE 'FOREIGN_KEY_CHECKS'`
 	err := usql.QueryRowsMap(e.db, query, func(m usql.RowMap) error {
@@ -133,8 +143,6 @@ func (e *Extractor) checkForeignKey() error {
 
 // readCurrentBinlogCoordinates reads master status from hooked server
 func (e *Extractor) readCurrentBinlogCoordinates() error {
-	query := `SHOW /* UDUP READCURRENTBINLOGCOORDINATES */ MASTER STATUS`
-	foundMasterStatus := false
 	if e.cfg.Gtid != "" {
 		gtidSet, err := gomysql.ParseMysqlGTIDSet(e.cfg.Gtid)
 		if err != nil {
@@ -143,31 +151,17 @@ func (e *Extractor) readCurrentBinlogCoordinates() error {
 		e.initialBinlogCoordinates = &ubinlog.BinlogCoordinates{
 			GtidSet: gtidSet,
 		}
-		foundMasterStatus = true
-
-		return nil
-	}
-	err := usql.QueryRowsMap(e.db, query, func(m usql.RowMap) error {
-		// the mysql GTID set likes this "de278ad0-2106-11e4-9f8e-6edd0ca20947:1-2"
-		/*executedGtidSet := strings.Split(rowMap["Executed_Gtid_Set"].String, ":")
-		gtidSet, err := gomysql.ParseMysqlGTIDSet(fmt.Sprintf("%s:1", executedGtidSet[0]))*/
-		gtidSet, err := gomysql.ParseMysqlGTIDSet(m["Executed_Gtid_Set"].String)
+	}else {
+		server_uuid := e.mysqlServerUUID()
+		gtidSet, err := gomysql.ParseMysqlGTIDSet(fmt.Sprintf("%s:1", server_uuid))
 		if err != nil {
 			return err
 		}
 		e.initialBinlogCoordinates = &ubinlog.BinlogCoordinates{
 			GtidSet: gtidSet,
 		}
-		foundMasterStatus = true
+	}
 
-		return nil
-	})
-	if err != nil {
-		return err
-	}
-	if !foundMasterStatus {
-		return fmt.Errorf("Got no results from SHOW MASTER STATUS. Bailing out")
-	}
 	log.Debugf("Streamer binlog coordinates: %+v", *e.initialBinlogCoordinates)
 	return nil
 }
@@ -216,14 +210,14 @@ func (e *Extractor) stopFlag() bool {
 	return e.cfg.Enabled
 }
 
-func (e *Extractor) streamEvents(jobName string) error {
+func (e *Extractor) streamEvents(subject string) error {
 	go func() {
 		for tx := range e.tb.TxChan {
 			msg, err := Encode(tx)
 			if err != nil {
 				e.cfg.ErrCh <- err
 			}
-			if err := e.stanConn.Publish(jobName, msg); err != nil {
+			if err := e.stanConn.Publish(subject, msg); err != nil {
 				e.cfg.ErrCh <- err
 			}
 		}

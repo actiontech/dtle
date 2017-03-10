@@ -100,8 +100,10 @@ func (rpcs *RPCServer) StartJob(j Job, reply *serf.NodeResponse) error {
 }
 
 func (rpcs *RPCServer) startDriver(k string, v *uconf.DriverConfig, j *Job) {
+	var subject string
 	for {
 		if k == plugins.ProcessorTypeApply {
+			subject = j.Name
 			break
 		}
 
@@ -117,6 +119,7 @@ func (rpcs *RPCServer) startDriver(k string, v *uconf.DriverConfig, j *Job) {
 			}
 			if pj.Processors["apply"].Enabled == true {
 				v.Gtid = pj.Processors["apply"].Gtid
+				subject = pj.Name
 				break
 			}
 		} else {
@@ -133,7 +136,7 @@ func (rpcs *RPCServer) startDriver(k string, v *uconf.DriverConfig, j *Job) {
 
 	}
 
-	err = driver.Start(j.Name,k, v)
+	err = driver.Start(subject,k, v)
 	if err != nil {
 		v.ErrCh <- err
 	}

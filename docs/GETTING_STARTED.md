@@ -56,18 +56,18 @@ Open a new terminal, and use it to start the Udup service in a new container by 
 
  > $ docker run -it --rm --name udup -p 8190:8190 -e GROUP_ID=1 --link udup-consul:udup-consul actiontech/udup-runtime-centos7
 
- This runs a new Docker container named connect using version 0.4 of the debezium/connect image. The -it flag makes the container interactive, meaning it attaches the terminal’s standard input and output to the container so that you can see what is going on in the container. The --rm flag instructs Docker to remove the container when it is stopped. The command maps port 8083 in the container to the same port on the Docker host so that software outside of the container can use Kafka Connect’s REST API to set up and manage new connector instances. The command uses the --link zookeeper:zookeeper, --link kafka:kafka, and --link mysql:mysql, arguments to tell the container that it can find Zookeeper running in the container named zookeeper, the Kafka broker running in the container named kafka, and the MySQL server running in the container named mysql, all running on the same Docker host. And finally, it also uses the -e option three times to set the GROUP_ID, CONFIG_STORAGE_TOPIC, and OFFSET_STORAGE_TOPIC environment variables, which are all required by this Debezium image (though you can use different values as desired).
-You should see in your terminal the typical output of Kafka, ending with:
+This runs a new Docker container named udup using the actiontech/udup image.
+You should see in your terminal the typical output of Udup, ending with:
 
  > ...
-2017-02-07 20:48:16,223 INFO   ||  Udup version : 0.10.1.1  
+2017-03-09 14:48:16,223 INFO   ||  Udup version : 0.1.3  
 
 - **Start a MySQL database**
 At this point, we’ve started Consul and Udup, but we don’t yet have a database server from which Udup can capture changes. Now, let’s start a MySQL server with an example database.
 Open a new terminal, and use it to start a new container that runs a MySQL database server preconfigured with an inventory database:
   > $ docker run -it --rm --name udup-mysql -p 13306:3306 -e MYSQL_ROOT_PASSWORD=rootroot -e MYSQL_USER=mysqluser -e MYSQL_PASSWORD=mysqlpwd actiontech/udup-mysql
                                 
-  This runs a new container using version v1 of the debezium/example-mysql image, which is based on the mysql:5.7 image, defines and populate a sample "inventory" database, and creates a udup user with password '111111' that has the minimum privileges required by Udup’s MySQL connector. The command assigns the name mysql to the container so that it can be easily referenced later. The -it flag makes the container interactive, meaning it attaches the terminal’s standard input and output to the container so that you can see what is going on in the container. The --rm flag instructs Docker to remove the container when it is stopped. The command maps port 3306 (the default MySQL port) in the container to the same port on the Docker host so that software outside of the container can connect to the database server. And finally, it also uses the -e option three times to set the MYSQL_ROOT_PASSWORD, MYSQL_USER, and MYSQL_PASSWORD environment variables to specific values.
+  This runs a new container using version v1 of the debezium/example-mysql image, which is based on the mysql:5.7 image, defines and populate a sample "inventory" database, and creates a udup user with password 'mysqlpwd' that has the minimum privileges required by Udup’s MySQL connector. The command assigns the name mysql to the container so that it can be easily referenced later. The -it flag makes the container interactive, meaning it attaches the terminal’s standard input and output to the container so that you can see what is going on in the container. The --rm flag instructs Docker to remove the container when it is stopped. The command maps port 3306 (the default MySQL port) in the container to the same port on the Docker host so that software outside of the container can connect to the database server. And finally, it also uses the -e option three times to set the MYSQL_ROOT_PASSWORD, MYSQL_USER, and MYSQL_PASSWORD environment variables to specific values.
   You should see in your terminal something like the following:
                                   
  > ...

@@ -52,7 +52,7 @@ func newEventChans(count int) []chan usql.StreamEvent {
 	return events
 }
 
-func (a *Applier) InitiateApplier(jobName string) error {
+func (a *Applier) InitiateApplier(subject string) error {
 	log.Infof("Apply binlog events onto the datasource :%v", a.cfg.ConnCfg.String())
 
 	if err := a.initDBConnections(); err != nil {
@@ -63,7 +63,7 @@ func (a *Applier) InitiateApplier(jobName string) error {
 		return err
 	}
 
-	if err := a.initiateStreaming(jobName); err != nil {
+	if err := a.initiateStreaming(subject); err != nil {
 		return err
 	}
 
@@ -208,14 +208,12 @@ func Decode(data []byte, vPtr interface{}) (err error) {
 }
 
 // initiateStreaming begins treaming of binary log events and registers listeners for such events
-func (a *Applier) initiateStreaming(jobName string) error {
-	sub, err := a.stanConn.Subscribe(jobName, func(m *stan.Msg) {
+func (a *Applier) initiateStreaming(subject string) error {
+	sub, err := a.stanConn.Subscribe(subject, func(m *stan.Msg) {
 		tx := &ubinlog.Transaction_t{}
 		if err := Decode(m.Data, tx); err != nil {
 			a.cfg.ErrCh <- fmt.Errorf("Subscribe err:%v", err)
 		}
-		/*idx := int(usql.GenHashKey(event.Key)) % a.cfg.WorkerCount
-		a.eventChans[idx] <- event*/
 		a.txChan <- tx
 	})
 

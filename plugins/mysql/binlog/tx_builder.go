@@ -293,9 +293,9 @@ func (tb *TxBuilder) onCommit(lastEvent *BinlogEvent) {
 	tx.EndEventPos = lastEvent.RealPos
 
 	log.Debugf("TB -> %+v", tb.currentTx)
-	if tb.cfg.Evaling {
+	/*if tb.cfg.Evaling {
 		tb.txCount++
-	}
+	}*/
 	tb.TxChan <- tb.currentTx
 
 	tb.currentTx = nil

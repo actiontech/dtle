@@ -65,7 +65,6 @@ type DriverConfig struct {
 	ReplicateDoDb        []string          `json:"replicate_do_db"`
 	MaxRetries           int64             `json:"max_retries"`
 	Gtid                 string            `json:"gtid"`
-	Evaling              bool              `json:"evaling"`
 	Driver               string            `json:"driver"`
 	ServerID             int               `json:"server_id"`
 	NatsAddr             string            `json:"nats_addr"`
