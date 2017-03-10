@@ -7,6 +7,7 @@ import (
 	"github.com/docker/libkv/store"
 	"github.com/hashicorp/serf/serf"
 	"github.com/ngaut/log"
+	"fmt"
 )
 
 const (
@@ -23,7 +24,7 @@ type RunQueryParam struct {
 
 // Send a serf run query to the cluster, this is used to ask a node or nodes
 // to run a Job.
-func (a *Agent) StartJobQuery(j *Job) {
+func (a *Agent) StartJobQuery(j *Job) error{
 	var params *serf.QueryParam
 
 	job, err := a.store.GetJob(j.Name)
@@ -32,7 +33,39 @@ func (a *Agent) StartJobQuery(j *Job) {
 	//In this case, the job will not be found in the store.
 	if err == store.ErrKeyNotFound {
 		log.Infof("Job not found, cancelling this execution")
-		return
+		return err
+	}
+
+	var statusAlive bool
+	for _, m := range a.serf.Members() {
+		if m.Name == job.NodeName && m.Status == serf.StatusAlive {
+			statusAlive = true
+		}
+	}
+	if !statusAlive {
+		return ErrMemberNotFound
+	}
+
+	// Jobs that have dependent jobs are a bit more expensive because we need to call the Status() method for every execution.
+	// Check first if there's dependent jobs and then check for the job status to begin executiong dependent jobs on success.
+	if job.ParentJob != "" {
+		pj, err := a.store.GetJob(job.ParentJob)
+		if err != nil {
+			return fmt.Errorf("failed to get parent job '%s': %v",
+				job.ParentJob, err)
+		}
+
+		statusAlive = false
+		for _, m := range a.serf.Members() {
+			if m.Name == pj.NodeName && m.Status == serf.StatusAlive {
+				statusAlive = true
+			}
+		}
+		if !statusAlive {
+			return ErrMemberNotFound
+		}
+
+		pj.Start(false)
 	}
 
 	params = &serf.QueryParam{
@@ -51,6 +84,7 @@ func (a *Agent) StartJobQuery(j *Job) {
 	qr, err := a.serf.Query(QueryStartJob, rqpJson, params)
 	if err != nil {
 		log.Errorf("Sending query error:%v; query:%v", err, QueryStartJob)
+		return err
 	}
 	defer qr.Close()
 
@@ -71,9 +105,10 @@ func (a *Agent) StartJobQuery(j *Job) {
 		}
 	}
 	log.Infof("Done receiving acks and responses:%v", QueryStartJob)
+	return nil
 }
 
-func (a *Agent) StopJobQuery(j *Job) {
+func (a *Agent) StopJobQuery(j *Job) error{
 	var params *serf.QueryParam
 
 	job, err := a.store.GetJob(j.Name)
@@ -82,7 +117,55 @@ func (a *Agent) StopJobQuery(j *Job) {
 	//In this case, the job will not be found in the store.
 	if err == store.ErrKeyNotFound {
 		log.Infof("Job not found, cancelling this execution")
-		return
+		return err
+	}
+
+	var statusAlive bool
+	for _, m := range a.serf.Members() {
+		if m.Name == job.NodeName && m.Status == serf.StatusAlive {
+			statusAlive = true
+		}
+	}
+	if !statusAlive {
+		// Lock the job while editing
+		if err = job.Lock(); err != nil {
+			log.Fatal(err)
+		}
+
+		job.Status = Queued
+		for _, p := range job.Processors {
+			p.Running = false
+		}
+		if err := a.store.UpsertJob(job); err != nil {
+			log.Fatal(err)
+		}
+
+		// Release the lock
+		if err = job.Unlock(); err != nil {
+			log.Fatal(err)
+		}
+		return ErrMemberNotFound
+	}
+
+	// Jobs that have dependent jobs are a bit more expensive because we need to call the Status() method for every execution.
+	// Check first if there's dependent jobs and then check for the job status to begin executiong dependent jobs on success.
+	if len(job.DependentJobs) > 0 {
+		for _, djn := range job.DependentJobs {
+			dj, err := a.store.GetJob(djn)
+			if err != nil {
+				return err
+			}
+			statusAlive = false
+			for _, m := range a.serf.Members() {
+				if m.Name == dj.NodeName && m.Status == serf.StatusAlive {
+					statusAlive = true
+				}
+			}
+			if !statusAlive {
+				return ErrMemberNotFound
+			}
+			dj.Stop()
+		}
 	}
 
 	params = &serf.QueryParam{
@@ -121,6 +204,7 @@ func (a *Agent) StopJobQuery(j *Job) {
 		}
 	}
 	log.Infof("Done receiving acks and responses:%v", QueryStopJob)
+	return nil
 }
 
 func (a *Agent) upsertJob(payload []byte) *Job {

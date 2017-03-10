@@ -207,7 +207,7 @@ func (e *Extractor) GetReconnectBinlogCoordinates() *ubinlog.BinlogCoordinates {
 }
 
 func (e *Extractor) stopFlag() bool {
-	return e.cfg.Enabled
+	return e.cfg.Running
 }
 
 func (e *Extractor) streamEvents(subject string) error {
@@ -415,7 +415,7 @@ func (e *Extractor) Shutdown() error {
 	if err != nil {
 		return err
 	}
-	e.cfg.Enabled = false
+	e.cfg.Running = false
 	log.Infof("Closed streamer connection.")
 	return nil
 }

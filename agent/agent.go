@@ -27,6 +27,7 @@ import (
 var (
 	// Error thrown on obtained leader from store is not found in member list
 	ErrLeaderNotFound = errors.New("No member leader found in member list")
+	ErrMemberNotFound = errors.New("No alive member found in member list")
 )
 
 const (
@@ -338,9 +339,46 @@ func (a *Agent) eventLoop() {
 			log.Infof("Received event: %v", e.String())
 
 			// Log all member events
-			if failed, ok := e.(serf.MemberEvent); ok {
-				for _, member := range failed.Members {
-					log.Debug("Member event: %v; Node:%v; Member:%v.", e.EventType(), a.config.NodeName, member.Name)
+			if e, ok := e.(serf.MemberEvent); ok {
+				for _, m := range e.Members {
+					log.Debug("Member event: %v; Node:%v; Member:%v.", e.EventType(), a.config.NodeName, m.Name)
+					switch e.EventType() {
+					case serf.EventMemberJoin:
+						jobs, err := a.store.GetJobs()
+						if err != nil {
+							log.Fatal(err)
+						}
+						for _,j :=range jobs {
+							if j.NodeName == m.Name && j.Status == Queued {
+								go func() {
+									if err := a.invokeJob(j); err != nil {
+										log.Errorf("Error dequeue job command,err:%v", err)
+									}
+								}()
+							}
+						}
+					/*case serf.EventMemberLeave:
+
+					case serf.EventMemberFailed:
+
+					case serf.EventMemberUpdate:
+
+					case serf.EventMemberReap:*/
+					default:
+						jobs, err := a.store.GetJobs()
+						if err != nil {
+							log.Fatal(err)
+						}
+						for _,j :=range jobs {
+							if j.NodeName == m.Name {
+								go func() {
+									if err := a.enqueueJob(j); err != nil {
+										log.Errorf("Error enqueue job command,err:%v", err)
+									}
+								}()
+							}
+						}
+					}
 				}
 			}
 
@@ -436,6 +474,16 @@ func (a *Agent) stopJob(job *Job) error {
 
 	rc := &RPCClient{ServerAddr: string(rpcServer)}
 	return rc.callStopJob(job)
+}
+
+func (a *Agent) enqueueJob(job *Job) error {
+	rpcServer, err := a.queryRPCConfig("")
+	if err != nil {
+		return err
+	}
+
+	rc := &RPCClient{ServerAddr: string(rpcServer)}
+	return rc.callEnqueueJob(job)
 }
 
 func (a *Agent) participate() {

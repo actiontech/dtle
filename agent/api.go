@@ -128,7 +128,7 @@ func (a *Agent) jobGetHandler(w http.ResponseWriter, r *http.Request) {
 func (a *Agent) jobUpsertHandler(w http.ResponseWriter, r *http.Request) {
 	// Init the Job object with defaults
 	job := Job{
-	//Enabled:false,
+		Status:Stopped,
 	}
 
 	body, err := ioutil.ReadAll(io.LimitReader(r.Body, 1048576))
@@ -146,6 +146,16 @@ func (a *Agent) jobUpsertHandler(w http.ResponseWriter, r *http.Request) {
 
 	if err := r.Body.Close(); err != nil {
 		log.Fatal(err)
+	}
+
+	if job.ParentJob != "" {
+		if _, err := a.store.GetJob(job.ParentJob); err != nil {
+			w.WriteHeader(422) // unprocessable entity
+			if err := json.NewEncoder(w).Encode(err.Error()); err != nil {
+				log.Fatal(err)
+			}
+			return
+		}
 	}
 
 	// Get if the requested job already exist
@@ -192,6 +202,59 @@ func (a *Agent) jobUpsertHandler(w http.ResponseWriter, r *http.Request) {
 func (a *Agent) jobDeleteHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	jobName := vars["job"]
+
+	j, err := a.store.GetJob(jobName)
+	if err != nil && err != store.ErrKeyNotFound {
+		w.WriteHeader(422) // unprocessable entity
+		if err := json.NewEncoder(w).Encode(err.Error()); err != nil {
+			log.Fatal(err)
+		}
+		return
+	}
+
+	if j.Status == Running {
+		w.WriteHeader(422) // unprocessable entity
+		if err := json.NewEncoder(w).Encode("Status cannot be deleted"); err != nil {
+			log.Fatal(err)
+		}
+		return
+	}
+
+	if len(j.DependentJobs) > 0 {
+		w.WriteHeader(422) // unprocessable entity
+		if err := json.NewEncoder(w).Encode(fmt.Sprintf("unable to delete %s (cannot be forced) - has dependent child jobs",jobName)); err != nil {
+			log.Fatal(err)
+		}
+		return
+	}
+
+	if j.ParentJob != "" {
+		pj, err := j.GetParent()
+		if err != nil {
+			w.WriteHeader(422) // unprocessable entity
+			if err := json.NewEncoder(w).Encode(err.Error()); err != nil {
+				log.Fatal(err)
+			}
+			return
+		}
+		pj.Lock()
+		defer pj.Unlock()
+
+		djs := []string{}
+		for _,dj :=range pj.DependentJobs {
+			if dj != j.Name {
+				djs = append(djs, j.Name)
+			}
+		}
+		pj.DependentJobs = djs
+		if err := a.store.UpsertJob(pj); err != nil {
+			w.WriteHeader(422) // unprocessable entity
+			if err := json.NewEncoder(w).Encode(err.Error()); err != nil {
+				log.Fatal(err)
+			}
+			return
+		}
+	}
 
 	job, err := a.store.DeleteJob(jobName)
 	if err != nil {

@@ -17,6 +17,30 @@ var (
 	ErrSameParent        = errors.New("The job can not have itself as parent")
 	ErrNoParent          = errors.New("The job doens't have a parent job set")
 )
+// JobStatus is the status of the Job.
+type JobStatus int
+
+const (
+	Running JobStatus = iota
+	Queued
+	Stopped
+	Failed
+)
+
+func (s JobStatus) String() string {
+	switch s {
+	case Running:
+		return "running"
+	case Queued:
+		return "queued"
+	case Stopped:
+		return "stopped"
+	case Failed:
+		return "failed"
+	default:
+		return "unknown"
+	}
+}
 
 type Job struct {
 	// Job name. Must be unique, acts as the id.
@@ -25,8 +49,8 @@ type Job struct {
 	// Node name of the node that run this job.
 	NodeName string `json:"node_name,omitempty"`
 
-	// Is this job disabled?
-	Enabled bool `json:"enabled"`
+	// Job status
+	Status JobStatus `json:"status"`
 
 	// Pointer to the calling agent.
 	Agent *Agent `json:"-"`
@@ -51,7 +75,7 @@ func (j *Job) Start(restart bool) {
 	defer j.running.Unlock()
 
 	if j.Agent != nil {
-		if j.Enabled == false || restart{
+		if j.Status == Stopped || restart{
 			log.Infof("Start job:%v", j.Name)
 			j.Agent.StartJobQuery(j)
 		}
@@ -63,7 +87,7 @@ func (j *Job) Stop() {
 	j.running.Lock()
 	defer j.running.Unlock()
 
-	if j.Agent != nil && j.Enabled == true {
+	if j.Agent != nil && j.Status == Running {
 		log.Infof("Stop job:%v", j.Name)
 		j.Agent.StopJobQuery(j)
 	}
@@ -87,7 +111,6 @@ func (j *Job) listenOnGtid(cfg *uconf.DriverConfig) {
 
 // Get the parent job of a job
 func (j *Job) GetParent() (*Job, error) {
-	// Maybe we are testing
 	if j.Agent == nil {
 		return nil, ErrNoAgent
 	}

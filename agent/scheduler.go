@@ -20,7 +20,7 @@ func NewScheduler() *Scheduler {
 
 func (s *Scheduler) Start(jobs []*Job) {
 	for _, job := range jobs {
-		if !job.Enabled || len(job.DependentJobs) > 0{
+		if job.Status != Running || len(job.DependentJobs) > 0{
 			continue
 		}
 

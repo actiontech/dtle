@@ -60,7 +60,7 @@ type ConsulConfig struct {
 // DriverConfig is the DB configuration.
 type DriverConfig struct {
 	//Ref:http://dev.mysql.com/doc/refman/5.7/en/replication-options-slave.html#option_mysqld_replicate-do-table
-	Enabled              bool              `json:"enabled"`
+	Running              bool              `json:"running"`
 	ReplicateDoTable     []TableName       `json:"replicate_do_table"`
 	ReplicateDoDb        []string          `json:"replicate_do_db"`
 	MaxRetries           int64             `json:"max_retries"`

@@ -45,16 +45,7 @@ func (rpcs *RPCServer) StartJob(j Job, reply *serf.NodeResponse) error {
 		}
 		return err
 	}
-	// Jobs that have dependent jobs are a bit more expensive because we need to call the Status() method for every execution.
-	// Check first if there's dependent jobs and then check for the job status to begin executiong dependent jobs on success.
-	if job.ParentJob != "" {
-		pj, err := rpcs.agent.store.GetJob(job.ParentJob)
-		if err != nil {
-			return fmt.Errorf("failed to get parent job '%s': %v",
-				job.ParentJob, err)
-		}
-		pj.Start(false)
-	}
+
 	// Lock the job while editing
 	if err = job.Lock(); err != nil {
 		log.Fatal(err)
@@ -82,7 +73,7 @@ func (rpcs *RPCServer) StartJob(j Job, reply *serf.NodeResponse) error {
 		}
 	}
 
-	job.Enabled = true
+	job.Status = Running
 
 	if err := rpcs.agent.store.UpsertJob(job); err != nil {
 		log.Fatal(err)
@@ -117,13 +108,13 @@ func (rpcs *RPCServer) startDriver(k string, v *uconf.DriverConfig, j *Job) {
 				v.ErrCh <- fmt.Errorf("failed to get parent job '%s': %v",
 					job.ParentJob, err)
 			}
-			if pj.Processors["apply"].Enabled == true {
+			if pj.Processors["apply"].Running == true {
 				v.Gtid = pj.Processors["apply"].Gtid
 				subject = pj.Name
 				break
 			}
 		} else {
-			if job.Processors["apply"].Enabled == true {
+			if job.Processors["apply"].Running == true {
 				v.Gtid = job.Processors["apply"].Gtid
 				break
 			}
@@ -140,7 +131,7 @@ func (rpcs *RPCServer) startDriver(k string, v *uconf.DriverConfig, j *Job) {
 	if err != nil {
 		v.ErrCh <- err
 	}
-	v.Enabled = true
+	v.Running = true
 	if err := rpcs.agent.store.UpsertJob(j); err != nil {
 		log.Fatal(err)
 	}
@@ -158,17 +149,6 @@ func (rpcs *RPCServer) StopJob(j Job, reply *serf.NodeResponse) error {
 		}
 		return err
 	}
-	// Jobs that have dependent jobs are a bit more expensive because we need to call the Status() method for every execution.
-	// Check first if there's dependent jobs and then check for the job status to begin executiong dependent jobs on success.
-	if len(job.DependentJobs) > 0 {
-		for _, djn := range job.DependentJobs {
-			dj, err := rpcs.agent.store.GetJob(djn)
-			if err != nil {
-				return err
-			}
-			dj.Stop()
-		}
-	}
 
 	// Lock the job while editing
 	if err = job.Lock(); err != nil {
@@ -182,9 +162,45 @@ func (rpcs *RPCServer) StopJob(j Job, reply *serf.NodeResponse) error {
 			}
 		}
 	}
-	job.Enabled = false
+
+	job.Status = Stopped
 	for _, p := range job.Processors {
-		p.Enabled = false
+		p.Running = false
+	}
+	if err := rpcs.agent.store.UpsertJob(job); err != nil {
+		log.Fatal(err)
+	}
+
+	// Release the lock
+	if err = job.Unlock(); err != nil {
+		log.Fatal(err)
+	}
+
+	reply.From = rpcs.agent.config.NodeName
+	reply.Payload = []byte("saved")
+
+	return nil
+}
+
+func (rpcs *RPCServer) EnqueueJob(j Job, reply *serf.NodeResponse) error {
+	// Load the job from the store
+	job, err := rpcs.agent.store.GetJob(j.Name)
+	if err != nil {
+		if err == store.ErrKeyNotFound {
+			log.Warning(ErrForDeletedJob)
+			return ErrForDeletedJob
+		}
+		return err
+	}
+
+	// Lock the job while editing
+	if err = job.Lock(); err != nil {
+		log.Fatal(err)
+	}
+
+	job.Status = Queued
+	for _, p := range job.Processors {
+		p.Running = false
 	}
 	if err := rpcs.agent.store.UpsertJob(job); err != nil {
 		log.Fatal(err)
@@ -276,6 +292,25 @@ func (rpcc *RPCClient) callStopJob(job *Job) error {
 	// Synchronous call
 	var reply serf.NodeResponse
 	err = client.Call("RPCServer.StopJob", job, &reply)
+	if err != nil {
+		log.Errorf("Error calling Stop: %v", err)
+		return err
+	}
+
+	return nil
+}
+
+func (rpcc *RPCClient) callEnqueueJob(job *Job) error {
+	client, err := rpc.DialHTTP("tcp", rpcc.ServerAddr)
+	if err != nil {
+		log.Errorf("Error dialing: %v,server_addr:%v.", err, rpcc.ServerAddr)
+		return err
+	}
+	defer client.Close()
+
+	// Synchronous call
+	var reply serf.NodeResponse
+	err = client.Call("RPCServer.EnqueueJob", job, &reply)
 	if err != nil {
 		log.Errorf("Error calling Stop: %v", err)
 		return err

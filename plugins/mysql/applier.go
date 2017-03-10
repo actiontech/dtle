@@ -294,7 +294,7 @@ func disableGTIDTxOnline(db *gosql.DB) error {
 }
 
 func (a *Applier) stopFlag() bool {
-	return a.cfg.Enabled
+	return a.cfg.Running
 }
 
 func closeEventChans(events []chan usql.StreamEvent) {
@@ -319,7 +319,7 @@ func (a *Applier) Shutdown() error {
 	if err := usql.CloseDBs(a.dbs...); err != nil {
 		return err
 	}
-	a.cfg.Enabled = false
+	a.cfg.Running = false
 	log.Infof("Closed applier connection.")
 	return nil
 }
