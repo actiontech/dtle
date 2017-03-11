@@ -24,7 +24,7 @@ func init() {
 	consul.Register()
 }
 
-func NewStore(addrs []string, a *Agent) *Store {
+func SetupStore(addrs []string, a *Agent) *Store {
 	s, err := libkv.NewStore(store.Backend(backend), addrs, nil)
 	if err != nil {
 		log.Fatal(err)

@@ -16,7 +16,7 @@ import (
 
 const apiPathPrefix = "v1"
 
-func (a *Agent) ServeHTTP() {
+func (a *Agent) NewHTTPServer() {
 	r := mux.NewRouter().StrictSlash(true)
 	a.apiRoutes(r)
 

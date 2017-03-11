@@ -38,6 +38,11 @@ func (c *AgentCommand) setupAgent(config *uconf.Config) error {
 	}
 	c.Agent = agent
 
+	// Setup the HTTP server
+	if config.Server {
+		agent.NewHTTPServer()
+	}
+
 	// Output the header that the server has started
 	log.Infof("Udup agent started!\n")
 
@@ -64,6 +69,7 @@ func (c *AgentCommand) Run(args []string) int {
 	if err := c.setupAgent(config); err != nil {
 		return 1
 	}
+	defer c.Agent.Shutdown()
 
 	log.SetLevelByString(config.LogLevel)
 	if len(config.LogFile) > 0 {

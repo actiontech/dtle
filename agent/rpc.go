@@ -3,8 +3,6 @@ package agent
 import (
 	"errors"
 	"fmt"
-	"net"
-	"net/http"
 	"net/rpc"
 
 	"github.com/docker/libkv/store"
@@ -226,35 +224,6 @@ func createDriver(cfg *uconf.DriverConfig) (plugins.Driver, error) {
 			cfg.Driver, err)
 	}
 	return driver, err
-}
-
-var workaroundRPCHTTPMux = 0
-
-func listenRPC(a *Agent) {
-	r := &RPCServer{
-		agent: a,
-	}
-
-	log.Infof("Registering RPC server: %v", a.getRPCAddr())
-
-	rpc.Register(r)
-
-	oldMux := http.DefaultServeMux
-	if workaroundRPCHTTPMux > 0 {
-		mux := http.NewServeMux()
-		http.DefaultServeMux = mux
-	}
-	workaroundRPCHTTPMux = workaroundRPCHTTPMux + 1
-
-	rpc.HandleHTTP()
-
-	http.DefaultServeMux = oldMux
-
-	l, e := net.Listen("tcp", a.getRPCAddr())
-	if e != nil {
-		log.Fatal(e)
-	}
-	go http.Serve(l, nil)
 }
 
 type RPCClient struct {

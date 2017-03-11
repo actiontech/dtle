@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net"
-	"os"
-	"path/filepath"
+	"net/rpc"
+	"net/http"
 	"runtime"
 	"strconv"
 	"sync"
@@ -40,7 +40,6 @@ type Agent struct {
 	serf      *serf.Serf
 	store     *Store
 	eventCh   chan serf.Event
-	sched     *Scheduler
 	candidate *leadership.Candidate
 	ready     bool
 	gnatsd    *gnatsd.Server
@@ -77,23 +76,110 @@ func NewAgent(config *uconf.Config) (*Agent, error) {
 		a.Shutdown()
 		return nil, fmt.Errorf("failed to start serf: %v", err)
 	}
-	a.join(a.config.StartJoin, true)
+
+	// Join startup nodes if specified
+	if err := a.startupJoin(config); err != nil {
+		log.Errorf(err.Error())
+		return nil, err
+	}
 
 	if err := a.setupDrivers(); err != nil {
 		return nil, fmt.Errorf("failed to setup drivers: %v", err)
 	}
 
-	if a.config.Server {
-		a.store = NewStore(a.config.Consul.Addrs, a)
-		a.sched = NewScheduler()
-
-		a.ServeHTTP()
-		listenRPC(a)
-		a.participate()
+	if err := a.setupServer(); err != nil {
+		return nil, fmt.Errorf("failed to setup server: %v", err)
 	}
 	go a.eventLoop()
 	a.ready = true
 	return a, nil
+}
+
+
+func (a *Agent) startupJoin(config *uconf.Config) error {
+	if len(config.StartJoin) == 0 || !config.Server {
+		return nil
+	}
+
+	log.Infof("Joining cluster...")
+	log.Infof("Joining: %v replay: %v", config.StartJoin, true)
+	n, err := a.serf.Join(config.StartJoin, false)
+	if err != nil {
+		return err
+	}
+
+	log.Infof(fmt.Sprintf("Join completed. Synced with %d initial agents", n))
+	return nil
+}
+
+// setupServer is used to setup the server if enabled
+func (a *Agent) setupServer() error {
+	if !a.config.Server {
+		return nil
+	}
+	a.store = SetupStore(a.config.Consul.Addrs, a)
+
+	// Initialize the RPC layer
+	if err := a.setupRPC(); err != nil {
+		a.Shutdown()
+		log.Errorf("failed to start RPC layer: %s", err)
+		return fmt.Errorf("Failed to start RPC layer: %v", err)
+	}
+
+	if err := a.setupSched(); err != nil {
+		a.Shutdown()
+		log.Errorf("failed to start schedule: %s", err)
+		return fmt.Errorf("Failed to start schedule: %v", err)
+	}
+
+	return nil
+}
+
+func (a *Agent) setupSched() error{
+	jobs, err := a.store.GetJobs()
+	if err != nil {
+		log.Errorf(err.Error())
+		return err
+	}
+	for _, job := range jobs {
+		if job.NodeName == a.config.NodeName && job.Status == Running {
+			log.Infof("Start job: %v", job.Name)
+			go job.Start(true)
+		}
+	}
+	return nil
+}
+
+var workaroundRPCHTTPMux = 0
+
+// setupRPC is used to setup the RPC listener
+func (a *Agent) setupRPC() error {
+	r := &RPCServer{
+		agent: a,
+	}
+
+	log.Infof("Registering RPC server: %v", a.getRPCAddr())
+
+	rpc.Register(r)
+
+	oldMux := http.DefaultServeMux
+	if workaroundRPCHTTPMux > 0 {
+		mux := http.NewServeMux()
+		http.DefaultServeMux = mux
+	}
+	workaroundRPCHTTPMux = workaroundRPCHTTPMux + 1
+
+	rpc.HandleHTTP()
+
+	http.DefaultServeMux = oldMux
+
+	l, err := net.Listen("tcp", a.getRPCAddr())
+	if err != nil {
+		log.Fatal(err)
+		return err
+	}
+	go http.Serve(l, nil)
+	return nil
 }
 
 func (a *Agent) setupDrivers() error {
@@ -283,28 +369,6 @@ func (a *Agent) getBindAddr() (string, int, error) {
 	return bindIP, bindPort, nil
 }
 
-// ensurePath is used to make sure a path exists
-func ensurePath(path string, dir bool) error {
-	if !dir {
-		path = filepath.Dir(path)
-	}
-	return os.MkdirAll(path, 0755)
-}
-
-// Join asks the Serf instance to join. See the Serf.Join function.
-func (a *Agent) join(addrs []string, replay bool) (n int, err error) {
-	log.Infof("Joining: %v replay: %v", addrs, replay)
-	ignoreOld := !replay
-	n, err = a.serf.Join(addrs, ignoreOld)
-	if n > 0 {
-		log.Infof("Joined: %d nodes", n)
-	}
-	if err != nil {
-		log.Warnf("Error joining: %v", err)
-	}
-	return
-}
-
 // Utility method to get leader nodename
 func (a *Agent) leaderMember() (*serf.Member, error) {
 	leaderName := a.store.GetLeader()
@@ -343,7 +407,7 @@ func (a *Agent) eventLoop() {
 				for _, m := range e.Members {
 					log.Debug("Member event: %v; Node:%v; Member:%v.", e.EventType(), a.config.NodeName, m.Name)
 					switch e.EventType() {
-					case serf.EventMemberJoin:
+					case serf.EventMemberJoin :
 						jobs, err := a.store.GetJobs()
 						if err != nil {
 							log.Fatal(err)
@@ -351,7 +415,7 @@ func (a *Agent) eventLoop() {
 						for _,j :=range jobs {
 							if j.NodeName == m.Name && j.Status == Queued {
 								go func() {
-									if err := a.invokeJob(j); err != nil {
+									if err := a.startJob(j); err != nil {
 										log.Errorf("Error dequeue job command,err:%v", err)
 									}
 								}()
@@ -401,7 +465,7 @@ func (a *Agent) eventLoop() {
 						job.NodeName = a.config.NodeName
 
 						go func() {
-							if err := a.invokeJob(job); err != nil {
+							if err := a.startJob(job); err != nil {
 								log.Errorf("Error invoking job command,err:%v", err)
 							}
 						}()
@@ -455,7 +519,7 @@ func (a *Agent) eventLoop() {
 }
 
 // invokeJob will execute the given job. Depending on the event.
-func (a *Agent) invokeJob(job *Job) error {
+func (a *Agent) startJob(job *Job) error {
 	rpcServer, err := a.queryRPCConfig(job.NodeName)
 	if err != nil {
 		return err
@@ -510,21 +574,21 @@ func (a *Agent) runForElection() {
 				log.Info("Cluster leadership acquired")
 				// If this server is elected as the leader, start the scheduler
 				log.Info("Restarting scheduler")
-				jobs, err := a.store.GetJobs()
+				/*jobs, err := a.store.GetJobs()
 				if err != nil {
 					log.Fatal(err)
 				}
-				a.sched.Restart(jobs)
+				a.sched.Restart(jobs)*/
 			} else {
 				log.Info("Cluster leadership lost")
 				// Always stop the schedule of this server to prevent multiple servers with the scheduler on
-				a.sched.Stop()
+				//a.sched.Stop()
 			}
 
 		case err := <-errCh:
 			log.Errorf("agent: Leader election failed, channel is probably closed,err:%v", err)
 			// Always stop the schedule of this server to prevent multiple servers with the scheduler on
-			a.sched.Stop()
+			//a.sched.Stop()
 			return
 		}
 	}
@@ -548,6 +612,11 @@ func (a *Agent) Shutdown() error {
 	}
 
 	log.Infof("Requesting shutdown")
+	for k, v := range a.processorPlugins {
+		if err := v.Stop(k.tp); err != nil {
+			return err
+		}
+	}
 	a.stand.Shutdown()
 	a.gnatsd.Shutdown()
 	log.Infof("Shutdown complete")
