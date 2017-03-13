@@ -502,56 +502,69 @@ func (a *Agent) eventLoop() {
 	}
 }
 
-func (a *Agent) startJob(job *Job) error {
-	rpcServer, err := a.queryRPCConfig()
-	if err != nil {
-		return err
+func (a *Agent) startJob(job *Job) (err error) {
+	var rpcServer []byte
+	if !a.config.Server{
+		rpcServer, err = a.queryRPCConfig()
+		if err != nil {
+			return err
+		}
 	}
 
-	rc := &RPCClient{ServerAddr: string(rpcServer)}
-	job.Agent = a
+	rc := &RPCClient{ServerAddr: string(rpcServer),agent:a}
 	return rc.startJob(job)
 }
 
-func (a *Agent) stopJob(job *Job) error {
-	rpcServer, err := a.queryRPCConfig()
-	if err != nil {
-		return err
+func (a *Agent) stopJob(job *Job) (err error) {
+	var rpcServer []byte
+	if !a.config.Server{
+		rpcServer, err = a.queryRPCConfig()
+		if err != nil {
+			return err
+		}
 	}
 
-	rc := &RPCClient{ServerAddr: string(rpcServer)}
+	rc := &RPCClient{ServerAddr: string(rpcServer),agent:a}
 	return rc.stopJob(job)
 }
 
-func (a *Agent) enqueueJobs(nodeName string) error {
-	rpcServer, err := a.queryRPCConfig()
-	if err != nil {
-		return err
+func (a *Agent) enqueueJobs(nodeName string) (err error) {
+	var rpcServer []byte
+	if !a.config.Server{
+		rpcServer, err = a.queryRPCConfig()
+		if err != nil {
+			return err
+		}
 	}
-
-	rc := &RPCClient{ServerAddr: string(rpcServer)}
+	rc := &RPCClient{ServerAddr: string(rpcServer),agent:a}
 	return rc.enqueueJobs(nodeName)
 }
 
-func (a *Agent) enqueueJob(job *Job) error {
-	rpcServer, err := a.queryRPCConfig()
-	if err != nil {
-		return err
+func (a *Agent) enqueueJob(job *Job) (err error) {
+	var rpcServer []byte
+	if !a.config.Server{
+		rpcServer, err = a.queryRPCConfig()
+		if err != nil {
+			return err
+		}
 	}
 
-	rc := &RPCClient{ServerAddr: string(rpcServer)}
+	rc := &RPCClient{ServerAddr: string(rpcServer),agent:a}
 	return rc.enqueueJob(job)
 }
 
 
-func (a *Agent) dequeueJobs(nodeName string) error {
-	rpcServer, err := a.queryRPCConfig()
-	if err != nil {
-		return err
+func (a *Agent) dequeueJobs(nodeName string) (err error) {
+	var rpcServer []byte
+	if !a.config.Server{
+		rpcServer, err = a.queryRPCConfig()
+		if err != nil {
+			return err
+		}
 	}
 
-	rc := &RPCClient{ServerAddr: string(rpcServer)}
-	return rc.dequeueJobs(nodeName,a)
+	rc := &RPCClient{ServerAddr: string(rpcServer),agent:a}
+	return rc.dequeueJobs(nodeName)
 }
 
 func (a *Agent) participate() {

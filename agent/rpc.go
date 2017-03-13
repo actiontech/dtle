@@ -79,7 +79,7 @@ func (rpcc *RPCClient) startJob(job *Job) error {
 				return fmt.Errorf("agent: Error on rpc.GetJob call")
 			}
 
-			for _, m := range job.Agent.serf.Members() {
+			for _, m := range rpcc.agent.serf.Members() {
 				if m.Name == pj.NodeName && m.Status == serf.StatusAlive && pj.Status == Running{
 					break OUTER
 				}
@@ -163,7 +163,7 @@ func (rpcc *RPCClient) setupDriver(k string, v *uconf.DriverConfig, j *Job) {
 		log.Errorf("agent: Error on rpc.UpsertJob call")
 	}
 
-	j.Agent.processorPlugins[jobDriver{name: j.Name, tp: k}] = driver
+	rpcc.agent.processorPlugins[jobDriver{name: j.Name, tp: k}] = driver
 }
 
 func (rpcc *RPCClient) stopJob(j *Job) error {
@@ -176,7 +176,7 @@ func (rpcc *RPCClient) stopJob(j *Job) error {
 
 func (rpcc *RPCClient) Stop(job *Job,status JobStatus) error {
 	// Lock the job while editing
-	for k, v := range job.Agent.processorPlugins {
+	for k, v := range rpcc.agent.processorPlugins {
 		if k.name == job.Name {
 			if err := v.Stop(k.tp); err != nil {
 				return err
@@ -230,7 +230,7 @@ func (rpcc *RPCClient) enqueueJobs(nodeName string) error {
 	return nil
 }
 
-func (rpcc *RPCClient) dequeueJobs(nodeName string,a *Agent) error {
+func (rpcc *RPCClient) dequeueJobs(nodeName string) (err error) {
 	// Load the job from the store
 	jobs, err := rpcc.CallGetJobs(nodeName)
 	if err != nil {
@@ -244,13 +244,14 @@ func (rpcc *RPCClient) dequeueJobs(nodeName string,a *Agent) error {
 				log.Errorf("failed to get parent job '%s': %v",
 					j.ParentJob, err)
 			}
-			if pj.NodeName == nodeName && a.config.NodeName == nodeName && pj.Status == Queued {
+
+			if pj.NodeName == nodeName && rpcc.agent.config.NodeName == nodeName && pj.Status == Queued {
 				if err := rpcc.startJob(pj); err != nil {
 					log.Errorf("Error dequeue job command,err:%v", err)
 				}
 			}
 		}else {
-			if a.config.NodeName == nodeName && j.Status == Queued {
+			if rpcc.agent.config.NodeName == nodeName && j.Status == Queued {
 				if err := rpcc.startJob(j); err != nil {
 					log.Errorf("Error dequeue job command,err:%v", err)
 				}
@@ -275,6 +276,7 @@ func createDriver(cfg *uconf.DriverConfig) (plugins.Driver, error) {
 type RPCClient struct {
 	//Addres of the server to call
 	ServerAddr string
+	agent *Agent
 }
 
 
@@ -294,6 +296,14 @@ func (rpcc *RPCClient) listenOnGtid(j *Job,cfg *uconf.DriverConfig) {
 }
 
 func (rpcc *RPCClient) CallGetJob(jobName string) (*Job, error) {
+	if rpcc.agent.config.Server {
+		j, err := rpcc.agent.store.GetJob(jobName)
+		if err != nil {
+			log.Errorf("failed to get job '%s': %v",
+				jobName, err)
+		}
+		return j,err
+	}
 	client, err := rpc.DialHTTP("tcp", rpcc.ServerAddr)
 	if err != nil {
 		log.Errorf("Error dialing: %v,server_addr:%v.", err, rpcc.ServerAddr)
@@ -313,6 +323,14 @@ func (rpcc *RPCClient) CallGetJob(jobName string) (*Job, error) {
 }
 
 func (rpcc *RPCClient) CallGetJobs(nodeName string) (*JobResponse, error) {
+	if rpcc.agent.config.Server {
+		js, err := rpcc.agent.store.GetJobByNode(nodeName)
+		if err != nil {
+			log.Errorf("failed to get job '%s': %v",
+				nodeName, err)
+		}
+		return js,err
+	}
 	client, err := rpc.DialHTTP("tcp", rpcc.ServerAddr)
 	if err != nil {
 		log.Errorf("Error dialing: %v,server_addr:%v.", err, rpcc.ServerAddr)
@@ -332,6 +350,15 @@ func (rpcc *RPCClient) CallGetJobs(nodeName string) (*JobResponse, error) {
 }
 
 func (rpcc *RPCClient) CallUpsertJob(j *Job) error {
+	if rpcc.agent.config.Server {
+		err := rpcc.agent.store.UpsertJob(j)
+		if err != nil {
+			log.Errorf("failed to upsert job '%s': %v",
+				j.Name, err)
+			return err
+		}
+		return nil
+	}
 	client, err := rpc.DialHTTP("tcp", rpcc.ServerAddr)
 	if err != nil {
 		log.Errorf("Error dialing: %v,server_addr:%v.", err, rpcc.ServerAddr)
