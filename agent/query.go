@@ -7,13 +7,12 @@ import (
 	"github.com/docker/libkv/store"
 	"github.com/hashicorp/serf/serf"
 	"github.com/ngaut/log"
-	"fmt"
 )
 
 const (
-	QuerySchedulerRestart = "scheduler:restart"
 	QueryStartJob         = "start:job"
 	QueryStopJob          = "stop:job"
+	QueryEnqueueJob	= "equeue:job"
 	QueryRPCConfig        = "rpc:config"
 )
 
@@ -24,26 +23,14 @@ type RunQueryParam struct {
 
 // Send a serf run query to the cluster, this is used to ask a node or nodes
 // to run a Job.
-func (a *Agent) StartJobQuery(j *Job) error{
+func (a *Agent) StartJobQuery(j *Job){
 	var params *serf.QueryParam
 
 	job, err := a.store.GetJob(j.Name)
 
-	//Job can be removed and the QuerySchedulerRestart not yet received.
 	//In this case, the job will not be found in the store.
 	if err == store.ErrKeyNotFound {
 		log.Infof("Job not found, cancelling this execution")
-		return err
-	}
-
-	var statusAlive bool
-	for _, m := range a.serf.Members() {
-		if m.Name == job.NodeName && m.Status == serf.StatusAlive {
-			statusAlive = true
-		}
-	}
-	if !statusAlive {
-		return ErrMemberNotFound
 	}
 
 	// Jobs that have dependent jobs are a bit more expensive because we need to call the Status() method for every execution.
@@ -51,18 +38,38 @@ func (a *Agent) StartJobQuery(j *Job) error{
 	if job.ParentJob != "" {
 		pj, err := a.store.GetJob(job.ParentJob)
 		if err != nil {
-			return fmt.Errorf("failed to get parent job '%s': %v",
+			log.Errorf("failed to get parent job '%s': %v",
 				job.ParentJob, err)
 		}
 
-		statusAlive = false
-		for _, m := range a.serf.Members() {
-			if m.Name == pj.NodeName && m.Status == serf.StatusAlive {
-				statusAlive = true
+		var statusAlive bool
+		for {
+			for _, m := range a.serf.Members() {
+				if m.Name == pj.NodeName && m.Status == serf.StatusAlive {
+					statusAlive = true
+				}
 			}
-		}
-		if !statusAlive {
-			return ErrMemberNotFound
+			if statusAlive {
+				break
+			}
+
+			// Lock the job while editing
+			if err = job.Lock(); err != nil {
+				log.Fatal(err)
+			}
+
+			job.Status = Queued
+			for _, p := range job.Processors {
+				p.Running = false
+			}
+			if err := a.store.UpsertJob(job); err != nil {
+				log.Fatal(err)
+			}
+
+			// Release the lock
+			if err = job.Unlock(); err != nil {
+				log.Fatal(err)
+			}
 		}
 
 		pj.Start(false)
@@ -84,7 +91,6 @@ func (a *Agent) StartJobQuery(j *Job) error{
 	qr, err := a.serf.Query(QueryStartJob, rqpJson, params)
 	if err != nil {
 		log.Errorf("Sending query error:%v; query:%v", err, QueryStartJob)
-		return err
 	}
 	defer qr.Close()
 
@@ -105,19 +111,17 @@ func (a *Agent) StartJobQuery(j *Job) error{
 		}
 	}
 	log.Infof("Done receiving acks and responses:%v", QueryStartJob)
-	return nil
 }
 
-func (a *Agent) StopJobQuery(j *Job) error{
+func (a *Agent) StopJobQuery(j *Job){
+	log.Infof("agent StopJobQuery:%v",a.config.NodeName)
 	var params *serf.QueryParam
 
 	job, err := a.store.GetJob(j.Name)
 
-	//Job can be removed and the QuerySchedulerRestart not yet received.
 	//In this case, the job will not be found in the store.
 	if err == store.ErrKeyNotFound {
 		log.Infof("Job not found, cancelling this execution")
-		return err
 	}
 
 	var statusAlive bool
@@ -144,7 +148,7 @@ func (a *Agent) StopJobQuery(j *Job) error{
 		if err = job.Unlock(); err != nil {
 			log.Fatal(err)
 		}
-		return ErrMemberNotFound
+		return
 	}
 
 	// Jobs that have dependent jobs are a bit more expensive because we need to call the Status() method for every execution.
@@ -153,7 +157,7 @@ func (a *Agent) StopJobQuery(j *Job) error{
 		for _, djn := range job.DependentJobs {
 			dj, err := a.store.GetJob(djn)
 			if err != nil {
-				return err
+				return
 			}
 			statusAlive = false
 			for _, m := range a.serf.Members() {
@@ -162,7 +166,7 @@ func (a *Agent) StopJobQuery(j *Job) error{
 				}
 			}
 			if !statusAlive {
-				return ErrMemberNotFound
+				return
 			}
 			dj.Stop()
 		}
@@ -174,7 +178,7 @@ func (a *Agent) StopJobQuery(j *Job) error{
 	}
 
 	rqp := &RunQueryParam{
-		Job:     j,
+		Job:     job,
 		RPCAddr: a.getRPCAddr(),
 	}
 	rqpJson, _ := json.Marshal(rqp)
@@ -204,29 +208,123 @@ func (a *Agent) StopJobQuery(j *Job) error{
 		}
 	}
 	log.Infof("Done receiving acks and responses:%v", QueryStopJob)
-	return nil
+}
+
+func (a *Agent) EnqueueJobQuery(j *Job){
+	log.Infof("agent EnqueueJobQuery:%v",a.config.NodeName)
+	var params *serf.QueryParam
+
+	job, err := a.store.GetJob(j.Name)
+
+	//In this case, the job will not be found in the store.
+	if err == store.ErrKeyNotFound {
+		log.Infof("Job not found, cancelling this execution")
+	}
+
+	var statusAlive bool
+	for _, m := range a.serf.Members() {
+		if m.Name == job.NodeName && m.Status == serf.StatusAlive {
+			statusAlive = true
+		}
+	}
+	if !statusAlive {
+		// Lock the job while editing
+		if err = job.Lock(); err != nil {
+			log.Fatal(err)
+		}
+
+		job.Status = Queued
+		for _, p := range job.Processors {
+			p.Running = false
+		}
+		if err := a.store.UpsertJob(job); err != nil {
+			log.Fatal(err)
+		}
+
+		// Release the lock
+		if err = job.Unlock(); err != nil {
+			log.Fatal(err)
+		}
+		return
+	}
+
+	// Jobs that have dependent jobs are a bit more expensive because we need to call the Status() method for every execution.
+	// Check first if there's dependent jobs and then check for the job status to begin executiong dependent jobs on success.
+	if len(job.DependentJobs) > 0 {
+		for _, djn := range job.DependentJobs {
+			dj, err := a.store.GetJob(djn)
+			if err != nil {
+				return
+			}
+			statusAlive = false
+			for _, m := range a.serf.Members() {
+				if m.Name == dj.NodeName && m.Status == serf.StatusAlive {
+					statusAlive = true
+				}
+			}
+			if !statusAlive {
+				return
+			}
+			dj.Enqueue()
+		}
+	}
+
+	params = &serf.QueryParam{
+		FilterNodes: []string{j.NodeName},
+		RequestAck:  true,
+	}
+
+	rqp := &RunQueryParam{
+		Job:     j,
+		RPCAddr: a.getRPCAddr(),
+	}
+	rqpJson, _ := json.Marshal(rqp)
+
+	log.Debug("Sending query:%v; job_name:%v; json:%v", QueryEnqueueJob, job.Name, string(rqpJson))
+
+	qr, err := a.serf.Query(QueryEnqueueJob, rqpJson, params)
+	if err != nil {
+		log.Errorf("Sending query error:%v; query:%v", err, QueryEnqueueJob)
+	}
+	defer qr.Close()
+
+	ackCh := qr.AckCh()
+	respCh := qr.ResponseCh()
+
+	for !qr.Finished() {
+		select {
+		case ack, ok := <-ackCh:
+			if ok {
+				log.Debug("Received ack:%v; from:%v", QueryEnqueueJob, ack)
+			}
+		case resp, ok := <-respCh:
+			if ok {
+				log.Debug("Received response:%v; query:%v; from:%v", string(resp.Payload), QueryEnqueueJob, resp.From)
+				a.upsertJob(resp.Payload)
+			}
+		}
+	}
+	log.Infof("Done receiving acks and responses:%v", QueryEnqueueJob)
 }
 
 func (a *Agent) upsertJob(payload []byte) *Job {
-	var ex Job
-	if err := json.Unmarshal(payload, &ex); err != nil {
+	var j Job
+	if err := json.Unmarshal(payload, &j); err != nil {
 		log.Fatal(err)
 	}
 
 	// Save the new execution to store
-	if err := a.store.UpsertJob(&ex); err != nil {
+	if err := a.store.UpsertJob(&j); err != nil {
 		log.Fatal(err)
 	}
 
-	return &ex
+	return &j
 }
 
 // Broadcast a query to get the RPC config of one udup_server, any that could
 // attend later RPC calls.
-func (a *Agent) queryRPCConfig(nodeName string) ([]byte, error) {
-	if nodeName == "" {
-		nodeName = a.selectServer().Name
-	}
+func (a *Agent) queryRPCConfig() ([]byte, error) {
+	nodeName := a.selectServer().Name
 
 	params := &serf.QueryParam{
 		FilterNodes: []string{nodeName},

@@ -165,6 +165,33 @@ func (s *Store) GetJobs() ([]*Job, error) {
 }
 
 // Get a job
+func (s *Store) GetJobByNode(nodeName string) (*JobResponse, error) {
+	res, err := s.Client.List(keyspace + "/jobs/")
+	if err != nil {
+		if err == store.ErrKeyNotFound {
+			log.Debug("No jobs found")
+			return &JobResponse{}, nil
+		}
+		return nil, err
+	}
+
+	jobs := &JobResponse{}
+	for _, node := range res {
+		var job Job
+		err := json.Unmarshal([]byte(node.Value), &job)
+		if err != nil {
+			return nil, err
+		}
+		if job.NodeName != nodeName{
+			continue
+		}
+		job.Agent = s.agent
+		jobs.Payload = append(jobs.Payload, &job)
+	}
+	return jobs, nil
+}
+
+// Get a job
 func (s *Store) GetJob(name string) (*Job, error) {
 	res, err := s.Client.Get(keyspace + "/jobs/" + name)
 	if err != nil {

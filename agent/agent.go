@@ -27,7 +27,6 @@ import (
 var (
 	// Error thrown on obtained leader from store is not found in member list
 	ErrLeaderNotFound = errors.New("No member leader found in member list")
-	ErrMemberNotFound = errors.New("No alive member found in member list")
 )
 
 const (
@@ -41,7 +40,6 @@ type Agent struct {
 	store     *Store
 	eventCh   chan serf.Event
 	candidate *leadership.Candidate
-	ready     bool
 	gnatsd    *gnatsd.Server
 	stand     *stand.StanServer
 
@@ -90,14 +88,14 @@ func NewAgent(config *uconf.Config) (*Agent, error) {
 	if err := a.setupServer(); err != nil {
 		return nil, fmt.Errorf("failed to setup server: %v", err)
 	}
+
 	go a.eventLoop()
-	a.ready = true
 	return a, nil
 }
 
 
 func (a *Agent) startupJoin(config *uconf.Config) error {
-	if len(config.StartJoin) == 0 || !config.Server {
+	if len(config.StartJoin) == 0 {
 		return nil
 	}
 
@@ -118,35 +116,14 @@ func (a *Agent) setupServer() error {
 		return nil
 	}
 	a.store = SetupStore(a.config.Consul.Addrs, a)
-
 	// Initialize the RPC layer
 	if err := a.setupRPC(); err != nil {
 		a.Shutdown()
 		log.Errorf("failed to start RPC layer: %s", err)
 		return fmt.Errorf("Failed to start RPC layer: %v", err)
 	}
+	a.participate()
 
-	if err := a.setupSched(); err != nil {
-		a.Shutdown()
-		log.Errorf("failed to start schedule: %s", err)
-		return fmt.Errorf("Failed to start schedule: %v", err)
-	}
-
-	return nil
-}
-
-func (a *Agent) setupSched() error{
-	jobs, err := a.store.GetJobs()
-	if err != nil {
-		log.Errorf(err.Error())
-		return err
-	}
-	for _, job := range jobs {
-		if job.NodeName == a.config.NodeName && job.Status == Running {
-			log.Infof("Start job: %v", job.Name)
-			go job.Start(true)
-		}
-	}
 	return nil
 }
 
@@ -254,9 +231,9 @@ func (a *Agent) setupSerf() (*serf.Serf, error) {
 	serfConfig.Tags["dc"] = a.config.Datacenter
 
 	serfConfig.QuerySizeLimit = 1024 * 10
-	serfConfig.CoalescePeriod = 6 * time.Second
+	serfConfig.CoalescePeriod = 3 * time.Second
 	serfConfig.QuiescentPeriod = time.Second
-	serfConfig.UserCoalescePeriod = 6 * time.Second
+	serfConfig.UserCoalescePeriod = 3 * time.Second
 	serfConfig.UserQuiescentPeriod = time.Second
 	if a.config.ReconnectInterval != 0 {
 		serfConfig.ReconnectInterval = a.config.ReconnectInterval
@@ -403,48 +380,32 @@ func (a *Agent) eventLoop() {
 			log.Infof("Received event: %v", e.String())
 
 			// Log all member events
-			if e, ok := e.(serf.MemberEvent); ok {
-				for _, m := range e.Members {
-					log.Debug("Member event: %v; Node:%v; Member:%v.", e.EventType(), a.config.NodeName, m.Name)
-					switch e.EventType() {
-					case serf.EventMemberJoin :
-						jobs, err := a.store.GetJobs()
-						if err != nil {
-							log.Fatal(err)
-						}
-						for _,j :=range jobs {
-							if j.NodeName == m.Name && j.Status == Queued {
-								go func() {
-									if err := a.startJob(j); err != nil {
-										log.Errorf("Error dequeue job command,err:%v", err)
-									}
-								}()
+			go func(){
+				if e, ok := e.(serf.MemberEvent); ok {
+					for _, m := range e.Members {
+						log.Infof("Member event: %v; Node:%v; Member:%v.", e.EventType(), a.config.NodeName, m.Name)
+						switch e.EventType() {
+						case serf.EventMemberJoin :
+							if err := a.dequeueJobs(m.Name); err != nil {
+								log.Errorf("Error dequeue job command,err:%v", err)
 							}
-						}
-					/*case serf.EventMemberLeave:
 
-					case serf.EventMemberFailed:
+						/*case serf.EventMemberLeave:
 
-					case serf.EventMemberUpdate:
+						case serf.EventMemberFailed:
 
-					case serf.EventMemberReap:*/
-					default:
-						jobs, err := a.store.GetJobs()
-						if err != nil {
-							log.Fatal(err)
-						}
-						for _,j :=range jobs {
-							if j.NodeName == m.Name {
-								go func() {
-									if err := a.enqueueJob(j); err != nil {
-										log.Errorf("Error enqueue job command,err:%v", err)
-									}
-								}()
+						case serf.EventMemberUpdate:
+
+						case serf.EventMemberReap:*/
+						default:
+							if err := a.enqueueJobs(m.Name); err != nil {
+								log.Errorf("Error enqueue job command,err:%v", err)
 							}
 						}
 					}
 				}
-			}
+			}()
+
 
 			if e.EventType() == serf.EventQuery {
 				query := e.(*serf.Query)
@@ -452,7 +413,7 @@ func (a *Agent) eventLoop() {
 				switch query.Name {
 				case QueryStartJob:
 					{
-						log.Debugf("Running job: Query:%v; Payload:%v; LTime:%v,", query.Name, string(query.Payload), query.LTime)
+						log.Infof("Running job: Query:%v; Payload:%v; LTime:%v,", query.Name, string(query.Payload), query.LTime)
 
 						var rqp RunQueryParam
 						if err := json.Unmarshal(query.Payload, &rqp); err != nil {
@@ -466,7 +427,7 @@ func (a *Agent) eventLoop() {
 
 						go func() {
 							if err := a.startJob(job); err != nil {
-								log.Errorf("Error invoking job command,err:%v", err)
+								log.Errorf("Error start job command,err:%v", err)
 							}
 						}()
 
@@ -496,6 +457,29 @@ func (a *Agent) eventLoop() {
 						jobJson, _ := json.Marshal(job)
 						query.Respond(jobJson)
 					}
+				case QueryEnqueueJob:
+					{
+						log.Debugf("Enqueue job: Query:%v; Payload:%v; LTime:%v,", query.Name, string(query.Payload), query.LTime)
+
+						var rqp RunQueryParam
+						if err := json.Unmarshal(query.Payload, &rqp); err != nil {
+							log.Errorf("Error unmarshaling query payload,Query:%v", QueryEnqueueJob)
+						}
+
+						log.Infof("Stopping job: %v", rqp.Job.Name)
+
+						job := rqp.Job
+						job.NodeName = a.config.NodeName
+
+						go func() {
+							if err := a.enqueueJob(job); err != nil {
+								log.Errorf("Error stop job command,err:%v", err)
+							}
+						}()
+
+						jobJson, _ := json.Marshal(job)
+						query.Respond(jobJson)
+					}
 				case QueryRPCConfig:
 					{
 						if a.config.Server {
@@ -518,36 +502,56 @@ func (a *Agent) eventLoop() {
 	}
 }
 
-// invokeJob will execute the given job. Depending on the event.
 func (a *Agent) startJob(job *Job) error {
-	rpcServer, err := a.queryRPCConfig(job.NodeName)
+	rpcServer, err := a.queryRPCConfig()
 	if err != nil {
 		return err
 	}
 
 	rc := &RPCClient{ServerAddr: string(rpcServer)}
-	return rc.callStartJob(job)
+	job.Agent = a
+	return rc.startJob(job)
 }
 
-// invokeJob will execute the given job. Depending on the event.
 func (a *Agent) stopJob(job *Job) error {
-	rpcServer, err := a.queryRPCConfig(job.NodeName)
+	rpcServer, err := a.queryRPCConfig()
 	if err != nil {
 		return err
 	}
 
 	rc := &RPCClient{ServerAddr: string(rpcServer)}
-	return rc.callStopJob(job)
+	return rc.stopJob(job)
+}
+
+func (a *Agent) enqueueJobs(nodeName string) error {
+	rpcServer, err := a.queryRPCConfig()
+	if err != nil {
+		return err
+	}
+
+	rc := &RPCClient{ServerAddr: string(rpcServer)}
+	return rc.enqueueJobs(nodeName)
 }
 
 func (a *Agent) enqueueJob(job *Job) error {
-	rpcServer, err := a.queryRPCConfig("")
+	rpcServer, err := a.queryRPCConfig()
 	if err != nil {
 		return err
 	}
 
 	rc := &RPCClient{ServerAddr: string(rpcServer)}
-	return rc.callEnqueueJob(job)
+	return rc.enqueueJob(job)
+}
+
+
+func (a *Agent) dequeueJobs(nodeName string) error {
+	rpcServer, err := a.queryRPCConfig()
+	if err != nil {
+		return err
+	}
+
+	rc := &RPCClient{ServerAddr: string(rpcServer)}
+	return rc.dequeueJobs(nodeName,a)
 }
 
 func (a *Agent) participate() {
@@ -574,21 +578,24 @@ func (a *Agent) runForElection() {
 				log.Info("Cluster leadership acquired")
 				// If this server is elected as the leader, start the scheduler
 				log.Info("Restarting scheduler")
-				/*jobs, err := a.store.GetJobs()
+				jobs, err := a.store.GetJobs()
 				if err != nil {
 					log.Fatal(err)
 				}
-				a.sched.Restart(jobs)*/
+				for _, job := range jobs {
+					if job.Status == Running {
+						log.Infof("Start job: %v", job.Name)
+						go job.Start(true)
+					}
+				}
 			} else {
 				log.Info("Cluster leadership lost")
 				// Always stop the schedule of this server to prevent multiple servers with the scheduler on
-				//a.sched.Stop()
 			}
 
 		case err := <-errCh:
 			log.Errorf("agent: Leader election failed, channel is probably closed,err:%v", err)
 			// Always stop the schedule of this server to prevent multiple servers with the scheduler on
-			//a.sched.Stop()
 			return
 		}
 	}

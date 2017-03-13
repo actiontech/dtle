@@ -18,7 +18,7 @@ import (
 )
 
 // gracefulTimeout controls how long we wait before forcefully terminating
-const gracefulTimeout = 5 * time.Second
+const gracefulTimeout = 3 * time.Second
 
 type AgentCommand struct {
 	Version    string
@@ -173,7 +173,7 @@ func (a *AgentCommand) readConfig() *uconf.Config {
 	flags.StringVar(&cmdConfig.NodeName, "name", hostname, "")
 
 	// Role options
-	flags.BoolVar(&cmdConfig.Server, "server", true, "")
+	flags.BoolVar(&cmdConfig.Server, "server", false, "")
 
 	if err := flags.Parse(a.args); err != nil {
 		return nil

@@ -93,16 +93,27 @@ func (j *Job) Stop() {
 	}
 }
 
+// Enqueue the job
+func (j *Job) Enqueue() {
+	j.running.Lock()
+	defer j.running.Unlock()
+
+	if j.Agent != nil && j.Status == Running {
+		log.Infof("Enqueue job:%v", j.Name)
+		j.Agent.EnqueueJobQuery(j)
+	}
+}
+
 func (j *Job) listenOnPanicAbort(cfg *uconf.DriverConfig) {
 	err := <-cfg.ErrCh
 	log.Errorf("Run failed: %v", err)
-	j.Stop()
+	j.Enqueue()
 }
 
-func (j *Job) listenOnGtid(cfg *uconf.DriverConfig) {
+func (j *Job) listenOnGtid(a *Agent,cfg *uconf.DriverConfig) {
 	for gtid := range cfg.GtidCh {
 		j.Processors["apply"].Gtid = gtid
-		err := j.Agent.store.UpsertJob(j)
+		err := a.store.UpsertJob(j)
 		if err != nil {
 			log.Errorf(err.Error())
 		}
