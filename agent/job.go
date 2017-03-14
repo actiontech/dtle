@@ -17,6 +17,7 @@ var (
 	ErrSameParent        = errors.New("The job can not have itself as parent")
 	ErrNoParent          = errors.New("The job doens't have a parent job set")
 )
+
 // JobStatus is the status of the Job.
 type JobStatus int
 
@@ -75,7 +76,7 @@ func (j *Job) Start(restart bool) {
 	defer j.running.Unlock()
 
 	if j.Agent != nil {
-		if j.Status == Stopped || restart{
+		if j.Status != Running || restart {
 			log.Infof("Start job:%v", j.Name)
 			j.Agent.StartJobQuery(j)
 		}
@@ -110,7 +111,7 @@ func (j *Job) listenOnPanicAbort(cfg *uconf.DriverConfig) {
 	j.Enqueue()
 }
 
-func (j *Job) listenOnGtid(a *Agent,cfg *uconf.DriverConfig) {
+func (j *Job) listenOnGtid(a *Agent, cfg *uconf.DriverConfig) {
 	for gtid := range cfg.GtidCh {
 		j.Processors["apply"].Gtid = gtid
 		err := a.store.UpsertJob(j)

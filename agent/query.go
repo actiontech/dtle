@@ -10,10 +10,10 @@ import (
 )
 
 const (
-	QueryStartJob         = "start:job"
-	QueryStopJob          = "stop:job"
-	QueryEnqueueJob	= "equeue:job"
-	QueryRPCConfig        = "rpc:config"
+	QueryStartJob   = "start:job"
+	QueryStopJob    = "stop:job"
+	QueryEnqueueJob = "equeue:job"
+	QueryRPCConfig  = "rpc:config"
 )
 
 type RunQueryParam struct {
@@ -23,7 +23,7 @@ type RunQueryParam struct {
 
 // Send a serf run query to the cluster, this is used to ask a node or nodes
 // to run a Job.
-func (a *Agent) StartJobQuery(j *Job){
+func (a *Agent) StartJobQuery(j *Job) {
 	var params *serf.QueryParam
 
 	job, err := a.store.GetJob(j.Name)
@@ -113,8 +113,8 @@ func (a *Agent) StartJobQuery(j *Job){
 	log.Infof("Done receiving acks and responses:%v", QueryStartJob)
 }
 
-func (a *Agent) StopJobQuery(j *Job){
-	log.Infof("agent StopJobQuery:%v",a.config.NodeName)
+func (a *Agent) StopJobQuery(j *Job) {
+	log.Infof("agent StopJobQuery:%v", a.config.NodeName)
 	var params *serf.QueryParam
 
 	job, err := a.store.GetJob(j.Name)
@@ -210,8 +210,8 @@ func (a *Agent) StopJobQuery(j *Job){
 	log.Infof("Done receiving acks and responses:%v", QueryStopJob)
 }
 
-func (a *Agent) EnqueueJobQuery(j *Job){
-	log.Infof("agent EnqueueJobQuery:%v",a.config.NodeName)
+func (a *Agent) EnqueueJobQuery(j *Job) {
+	log.Infof("agent EnqueueJobQuery:%v", a.config.NodeName)
 	var params *serf.QueryParam
 
 	job, err := a.store.GetJob(j.Name)

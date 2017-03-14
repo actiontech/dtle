@@ -128,7 +128,7 @@ func (a *Agent) jobGetHandler(w http.ResponseWriter, r *http.Request) {
 func (a *Agent) jobUpsertHandler(w http.ResponseWriter, r *http.Request) {
 	// Init the Job object with defaults
 	job := Job{
-		Status:Stopped,
+		Status: Stopped,
 	}
 
 	body, err := ioutil.ReadAll(io.LimitReader(r.Body, 1048576))
@@ -222,7 +222,7 @@ func (a *Agent) jobDeleteHandler(w http.ResponseWriter, r *http.Request) {
 
 	if len(j.DependentJobs) > 0 {
 		w.WriteHeader(422) // unprocessable entity
-		if err := json.NewEncoder(w).Encode(fmt.Sprintf("unable to delete %s (cannot be forced) - has dependent child jobs",jobName)); err != nil {
+		if err := json.NewEncoder(w).Encode(fmt.Sprintf("unable to delete %s (cannot be forced) - has dependent child jobs", jobName)); err != nil {
 			log.Fatal(err)
 		}
 		return
@@ -241,7 +241,7 @@ func (a *Agent) jobDeleteHandler(w http.ResponseWriter, r *http.Request) {
 		defer pj.Unlock()
 
 		djs := []string{}
-		for _,dj :=range pj.DependentJobs {
+		for _, dj := range pj.DependentJobs {
 			if dj != j.Name {
 				djs = append(djs, j.Name)
 			}

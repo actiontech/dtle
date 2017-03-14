@@ -182,7 +182,7 @@ func (s *Store) GetJobByNode(nodeName string) (*JobResponse, error) {
 		if err != nil {
 			return nil, err
 		}
-		if job.NodeName != nodeName{
+		if job.NodeName != nodeName {
 			continue
 		}
 		job.Agent = s.agent

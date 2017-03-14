@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net"
-	"net/rpc"
 	"net/http"
+	"net/rpc"
 	"runtime"
 	"strconv"
 	"sync"
@@ -40,7 +40,6 @@ type Agent struct {
 	store     *Store
 	eventCh   chan serf.Event
 	candidate *leadership.Candidate
-	gnatsd    *gnatsd.Server
 	stand     *stand.StanServer
 
 	processorPlugins map[jobDriver]plugins.Driver
@@ -92,7 +91,6 @@ func NewAgent(config *uconf.Config) (*Agent, error) {
 	go a.eventLoop()
 	return a, nil
 }
-
 
 func (a *Agent) startupJoin(config *uconf.Config) error {
 	if len(config.StartJoin) == 0 {
@@ -190,21 +188,14 @@ func (a *Agent) setupNatsServer() error {
 		Trace:      true,
 		Debug:      true,
 	}
-	gnats := gnatsd.New(&nOpts)
-	go gnats.Start()
-	// Wait for accept loop(s) to be started
-	if !gnats.ReadyForConnections(10 * time.Second) {
-		log.Infof("Unable to start NATS Server in Go Routine")
-	}
-	a.gnatsd = gnats
+	log.Infof("Starting nats-streaming-server [%s]",a.config.NatsAddr)
 	sOpts := stand.GetDefaultOptions()
 	sOpts.ID = uconf.DefaultClusterID
 	if a.config.StoreType == "FILE" {
 		sOpts.StoreType = a.config.StoreType
 		sOpts.FilestoreDir = a.config.FilestoreDir
 	}
-	sOpts.NATSServerURL = fmt.Sprintf("nats://%s", a.config.NatsAddr)
-	s := stand.RunServerWithOpts(sOpts, nil)
+	s := stand.RunServerWithOpts(sOpts, &nOpts)
 	a.stand = s
 	return nil
 }
@@ -380,32 +371,26 @@ func (a *Agent) eventLoop() {
 			log.Infof("Received event: %v", e.String())
 
 			// Log all member events
-			go func(){
+			go func() {
 				if e, ok := e.(serf.MemberEvent); ok {
 					for _, m := range e.Members {
 						log.Infof("Member event: %v; Node:%v; Member:%v.", e.EventType(), a.config.NodeName, m.Name)
 						switch e.EventType() {
-						case serf.EventMemberJoin :
+						case serf.EventMemberJoin, serf.EventMemberUpdate, serf.EventMemberReap:
 							if err := a.dequeueJobs(m.Name); err != nil {
 								log.Errorf("Error dequeue job command,err:%v", err)
 							}
 
-						/*case serf.EventMemberLeave:
-
-						case serf.EventMemberFailed:
-
-						case serf.EventMemberUpdate:
-
-						case serf.EventMemberReap:*/
-						default:
+						case serf.EventMemberLeave, serf.EventMemberFailed:
 							if err := a.enqueueJobs(m.Name); err != nil {
 								log.Errorf("Error enqueue job command,err:%v", err)
 							}
+						default:
+							//ignore
 						}
 					}
 				}
 			}()
-
 
 			if e.EventType() == serf.EventQuery {
 				query := e.(*serf.Query)
@@ -504,66 +489,65 @@ func (a *Agent) eventLoop() {
 
 func (a *Agent) startJob(job *Job) (err error) {
 	var rpcServer []byte
-	if !a.config.Server{
+	if !a.config.Server {
 		rpcServer, err = a.queryRPCConfig()
 		if err != nil {
 			return err
 		}
 	}
 
-	rc := &RPCClient{ServerAddr: string(rpcServer),agent:a}
+	rc := &RPCClient{ServerAddr: string(rpcServer), agent: a}
 	return rc.startJob(job)
 }
 
 func (a *Agent) stopJob(job *Job) (err error) {
 	var rpcServer []byte
-	if !a.config.Server{
+	if !a.config.Server {
 		rpcServer, err = a.queryRPCConfig()
 		if err != nil {
 			return err
 		}
 	}
 
-	rc := &RPCClient{ServerAddr: string(rpcServer),agent:a}
+	rc := &RPCClient{ServerAddr: string(rpcServer), agent: a}
 	return rc.stopJob(job)
 }
 
 func (a *Agent) enqueueJobs(nodeName string) (err error) {
 	var rpcServer []byte
-	if !a.config.Server{
+	if !a.config.Server {
 		rpcServer, err = a.queryRPCConfig()
 		if err != nil {
 			return err
 		}
 	}
-	rc := &RPCClient{ServerAddr: string(rpcServer),agent:a}
+	rc := &RPCClient{ServerAddr: string(rpcServer), agent: a}
 	return rc.enqueueJobs(nodeName)
 }
 
 func (a *Agent) enqueueJob(job *Job) (err error) {
 	var rpcServer []byte
-	if !a.config.Server{
+	if !a.config.Server {
 		rpcServer, err = a.queryRPCConfig()
 		if err != nil {
 			return err
 		}
 	}
 
-	rc := &RPCClient{ServerAddr: string(rpcServer),agent:a}
+	rc := &RPCClient{ServerAddr: string(rpcServer), agent: a}
 	return rc.enqueueJob(job)
 }
 
-
 func (a *Agent) dequeueJobs(nodeName string) (err error) {
 	var rpcServer []byte
-	if !a.config.Server{
+	if !a.config.Server {
 		rpcServer, err = a.queryRPCConfig()
 		if err != nil {
 			return err
 		}
 	}
 
-	rc := &RPCClient{ServerAddr: string(rpcServer),agent:a}
+	rc := &RPCClient{ServerAddr: string(rpcServer), agent: a}
 	return rc.dequeueJobs(nodeName)
 }
 
@@ -638,7 +622,6 @@ func (a *Agent) Shutdown() error {
 		}
 	}
 	a.stand.Shutdown()
-	a.gnatsd.Shutdown()
 	log.Infof("Shutdown complete")
 	a.shutdown = true
 	close(a.shutdownCh)

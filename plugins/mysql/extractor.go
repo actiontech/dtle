@@ -120,7 +120,7 @@ func (e *Extractor) mysqlServerUUID() string {
 	query := `SELECT @@SERVER_UUID`
 	var server_uuid string
 	if err := e.db.QueryRow(query).Scan(&server_uuid); err != nil {
-		log.Errorf("error to SELECT @@SERVER_UUID:%v",err)
+		log.Errorf("error to SELECT @@SERVER_UUID:%v", err)
 		return ""
 	}
 	return server_uuid
@@ -151,7 +151,7 @@ func (e *Extractor) readCurrentBinlogCoordinates() error {
 		e.initialBinlogCoordinates = &ubinlog.BinlogCoordinates{
 			GtidSet: gtidSet,
 		}
-	}else {
+	} else {
 		server_uuid := e.mysqlServerUUID()
 		gtidSet, err := gomysql.ParseMysqlGTIDSet(fmt.Sprintf("%s:1", server_uuid))
 		if err != nil {
@@ -206,7 +206,7 @@ func (e *Extractor) GetReconnectBinlogCoordinates() *ubinlog.BinlogCoordinates {
 	return &ubinlog.BinlogCoordinates{LogFile: e.GetCurrentBinlogCoordinates().LogFile, LogPos: 4}
 }
 
-func (e *Extractor) stopFlag() bool {
+func (e *Extractor) Running() bool {
 	return e.cfg.Running
 }
 
@@ -226,9 +226,9 @@ func (e *Extractor) streamEvents(subject string) error {
 	var successiveFailures int64
 	var lastAppliedRowsEventHint ubinlog.BinlogCoordinates
 	for {
-		if err := e.bp.StreamEvents(e.stopFlag, e.tb.EvtChan); err != nil {
+		if err := e.bp.StreamEvents(e.Running, e.tb.EvtChan); err != nil {
 			time.Sleep(ReconnectStreamerSleepSeconds * time.Second)
-			if !e.stopFlag() {
+			if !e.Running() {
 				return nil
 			}
 			log.Infof("StreamEvents encountered unexpected error: %+v", err)
@@ -403,7 +403,7 @@ func (e *Extractor) getTable(schema string, table string) (*usql.Table, error) {
 }
 
 func (e *Extractor) Shutdown() error {
-	if !e.stopFlag() {
+	if !e.Running() {
 		return nil
 	}
 	if e.bp != nil {
@@ -411,6 +411,12 @@ func (e *Extractor) Shutdown() error {
 	}
 	e.stanConn.Close()
 	close(e.eventsChannel)
+	/*_, isClose := <-e.eventsChannel
+	if !isClose {
+		close(e.eventsChannel)
+		log.Infof("event channel closed.")
+	}*/
+
 	err := usql.CloseDBs(e.db)
 	if err != nil {
 		return err

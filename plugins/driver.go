@@ -8,7 +8,10 @@ import (
 )
 
 const (
-	MysqlDriverAttr      = "mysql"
+	MysqlDriverAttr = "mysql"
+)
+
+const (
 	ProcessorTypeExtract = "extract"
 	ProcessorTypeApply   = "apply"
 )
@@ -33,7 +36,7 @@ func DiscoverPlugins(name string, ctx *DriverContext) (Driver, error) {
 
 type Driver interface {
 	// Start is used to being task execution
-	Start(jobName string,t string, driverCfg *uconf.DriverConfig) error
+	Start(jobName string, t string, driverCfg *uconf.DriverConfig) error
 
 	Stop(t string) error
 

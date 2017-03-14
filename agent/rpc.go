@@ -21,7 +21,7 @@ type RPCServer struct {
 }
 
 type JobResponse struct {
-	Payload	 []*Job
+	Payload []*Job
 }
 
 func (rpcs *RPCServer) GetJob(jobName string, job *Job) error {
@@ -38,7 +38,7 @@ func (rpcs *RPCServer) GetJob(jobName string, job *Job) error {
 	return nil
 }
 
-func (rpcs *RPCServer) GetJobs(nodeName string,js *JobResponse) error {
+func (rpcs *RPCServer) GetJobs(nodeName string, js *JobResponse) error {
 	jobs, err := rpcs.agent.store.GetJobByNode(nodeName)
 	if err != nil {
 		return err
@@ -49,7 +49,7 @@ func (rpcs *RPCServer) GetJobs(nodeName string,js *JobResponse) error {
 	return nil
 }
 
-func (rpcs *RPCServer) Upsert(job *Job,reply *serf.NodeResponse) error {
+func (rpcs *RPCServer) Upsert(job *Job, reply *serf.NodeResponse) error {
 	job.Agent = rpcs.agent
 	// Lock the job while editing
 	if err := job.Lock(); err != nil {
@@ -80,7 +80,7 @@ func (rpcc *RPCClient) startJob(job *Job) error {
 			}
 
 			for _, m := range rpcc.agent.serf.Members() {
-				if m.Name == pj.NodeName && m.Status == serf.StatusAlive && pj.Status == Running{
+				if m.Name == pj.NodeName && m.Status == serf.StatusAlive && pj.Status == Running {
 					break OUTER
 				}
 			}
@@ -92,14 +92,14 @@ func (rpcc *RPCClient) startJob(job *Job) error {
 		log.Infof("Processing execution with plugin:%v", k)
 		errCh := make(chan error)
 		v.ErrCh = errCh
-		go rpcc.listenOnPanicAbort(job,v)
+		go rpcc.listenOnPanicAbort(job, v)
 
 		switch v.Driver {
 		case plugins.MysqlDriverAttr:
 			{
 				gtidCh := make(chan string)
 				v.GtidCh = gtidCh
-				go rpcc.listenOnGtid(job,v)
+				go rpcc.listenOnGtid(job, v)
 				// Start the job
 				go rpcc.setupDriver(k, v, job)
 			}
@@ -153,7 +153,7 @@ func (rpcc *RPCClient) setupDriver(k string, v *uconf.DriverConfig, j *Job) {
 
 	}
 
-	err = driver.Start(subject,k, v)
+	err = driver.Start(subject, k, v)
 	if err != nil {
 		v.ErrCh <- err
 	}
@@ -167,14 +167,14 @@ func (rpcc *RPCClient) setupDriver(k string, v *uconf.DriverConfig, j *Job) {
 }
 
 func (rpcc *RPCClient) stopJob(j *Job) error {
-	if err := rpcc.Stop(j,Stopped); err != nil {
+	if err := rpcc.stop(j, Stopped); err != nil {
 		return err
 	}
 
 	return nil
 }
 
-func (rpcc *RPCClient) Stop(job *Job,status JobStatus) error {
+func (rpcc *RPCClient) stop(job *Job, status JobStatus) error {
 	// Lock the job while editing
 	for k, v := range rpcc.agent.processorPlugins {
 		if k.name == job.Name {
@@ -188,7 +188,7 @@ func (rpcc *RPCClient) Stop(job *Job,status JobStatus) error {
 	for _, p := range job.Processors {
 		p.Running = false
 	}
-	if err := rpcc.CallUpsertJob(job);err != nil {
+	if err := rpcc.CallUpsertJob(job); err != nil {
 		return fmt.Errorf("agent: Error on rpc.UpsertJob call")
 	}
 
@@ -202,11 +202,11 @@ func (rpcc *RPCClient) enqueueJob(j *Job) error {
 			return fmt.Errorf("agent: Error on rpc.GetJob call")
 		}
 
-		if err := rpcc.Stop(dj,Queued); err != nil {
+		if err := rpcc.stop(dj, Queued); err != nil {
 			return err
 		}
 	}
-	if err := rpcc.Stop(j,Queued); err != nil {
+	if err := rpcc.stop(j, Queued); err != nil {
 		return err
 	}
 
@@ -220,8 +220,8 @@ func (rpcc *RPCClient) enqueueJobs(nodeName string) error {
 		return err
 	}
 
-	for _,job :=range jobs.Payload {
-		if job.Status == Running{
+	for _, job := range jobs.Payload {
+		if job.Status == Running {
 			rpcc.enqueueJob(job)
 
 		}
@@ -237,7 +237,7 @@ func (rpcc *RPCClient) dequeueJobs(nodeName string) (err error) {
 		return err
 	}
 
-	for _,j :=range jobs.Payload {
+	for _, j := range jobs.Payload {
 		if j.ParentJob != "" {
 			pj, err := rpcc.CallGetJob(j.ParentJob)
 			if err != nil {
@@ -250,7 +250,7 @@ func (rpcc *RPCClient) dequeueJobs(nodeName string) (err error) {
 					log.Errorf("Error dequeue job command,err:%v", err)
 				}
 			}
-		}else {
+		} else {
 			if rpcc.agent.config.NodeName == nodeName && j.Status == Queued {
 				if err := rpcc.startJob(j); err != nil {
 					log.Errorf("Error dequeue job command,err:%v", err)
@@ -276,20 +276,19 @@ func createDriver(cfg *uconf.DriverConfig) (plugins.Driver, error) {
 type RPCClient struct {
 	//Addres of the server to call
 	ServerAddr string
-	agent *Agent
+	agent      *Agent
 }
 
-
-func (rpcc *RPCClient) listenOnPanicAbort(job *Job,cfg *uconf.DriverConfig) {
+func (rpcc *RPCClient) listenOnPanicAbort(job *Job, cfg *uconf.DriverConfig) {
 	err := <-cfg.ErrCh
 	log.Errorf("Run failed: %v", err)
 	rpcc.enqueueJob(job)
 }
 
-func (rpcc *RPCClient) listenOnGtid(j *Job,cfg *uconf.DriverConfig) {
+func (rpcc *RPCClient) listenOnGtid(j *Job, cfg *uconf.DriverConfig) {
 	for gtid := range cfg.GtidCh {
 		j.Processors["apply"].Gtid = gtid
-		if err := rpcc.CallUpsertJob(j);err != nil {
+		if err := rpcc.CallUpsertJob(j); err != nil {
 			log.Errorf("agent: Error on rpc.UpsertJob call")
 		}
 	}
@@ -302,7 +301,7 @@ func (rpcc *RPCClient) CallGetJob(jobName string) (*Job, error) {
 			log.Errorf("failed to get job '%s': %v",
 				jobName, err)
 		}
-		return j,err
+		return j, err
 	}
 	client, err := rpc.DialHTTP("tcp", rpcc.ServerAddr)
 	if err != nil {
@@ -329,7 +328,7 @@ func (rpcc *RPCClient) CallGetJobs(nodeName string) (*JobResponse, error) {
 			log.Errorf("failed to get job '%s': %v",
 				nodeName, err)
 		}
-		return js,err
+		return js, err
 	}
 	client, err := rpc.DialHTTP("tcp", rpcc.ServerAddr)
 	if err != nil {
@@ -368,11 +367,11 @@ func (rpcc *RPCClient) CallUpsertJob(j *Job) error {
 
 	// Synchronous call
 	var reply serf.NodeResponse
-	err = client.Call("RPCServer.Upsert", j,&reply)
+	err = client.Call("RPCServer.Upsert", j, &reply)
 	if err != nil {
 		log.Errorf("Error calling Upsert: %v", err)
-		return  err
+		return err
 	}
 
-	return  nil
+	return nil
 }

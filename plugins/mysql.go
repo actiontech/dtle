@@ -15,7 +15,7 @@ func NewMySQLDriver(ctx *DriverContext) Driver {
 	return &MySQLDriver{DriverContext: *ctx}
 }
 
-func (d *MySQLDriver) Start(subject string,t string, driverCfg *uconf.DriverConfig) error {
+func (d *MySQLDriver) Start(subject string, t string, driverCfg *uconf.DriverConfig) error {
 	switch t {
 	case ProcessorTypeExtract:
 		{
