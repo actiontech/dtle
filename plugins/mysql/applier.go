@@ -314,8 +314,6 @@ func (a *Applier) Shutdown() error {
 		return err
 	}
 
-	closeEventChans(a.eventChans)
-
 	if err := usql.CloseDBs(a.dbs...); err != nil {
 		return err
 	}

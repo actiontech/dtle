@@ -19,8 +19,7 @@ import (
 )
 
 const (
-	EventsChannelBufferSize       = 1
-	ReconnectStreamerSleepSeconds = 5
+	ReconnectStreamerSleepSeconds = 10
 )
 
 type Extractor struct {
@@ -29,7 +28,6 @@ type Extractor struct {
 	tables                   map[string]*usql.Table
 	db                       *sql.DB
 	tb                       *ubinlog.TxBuilder
-	eventsChannel            chan *ubinlog.BinlogEvent
 	currentFde               string
 	currentSqlB64            *bytes.Buffer
 	bp                       *ubinlog.BinlogParser
@@ -41,7 +39,6 @@ func NewExtractor(cfg *uconf.DriverConfig) *Extractor {
 	return &Extractor{
 		cfg:           cfg,
 		tables:        make(map[string]*usql.Table),
-		eventsChannel: make(chan *ubinlog.BinlogEvent, EventsChannelBufferSize),
 	}
 }
 
@@ -240,14 +237,14 @@ func (e *Extractor) streamEvents(subject string) error {
 				successiveFailures = 0
 			}
 			if successiveFailures > e.cfg.MaxRetries {
-				return fmt.Errorf("%d successive failures in streamer reconnect at coordinates %+v", successiveFailures, e.GetReconnectBinlogCoordinates())
+				log.Errorf("%d successive failures in streamer reconnect at coordinates %+v", successiveFailures, e.GetReconnectBinlogCoordinates())
 			}
 
 			// Reposition at same binlog file.
 			lastAppliedRowsEventHint = e.bp.LastAppliedRowsEventHint
 			log.Infof("Reconnecting... Will resume at %+v", lastAppliedRowsEventHint)
 			if err := e.initBinlogParser(e.GetReconnectBinlogCoordinates()); err != nil {
-				return err
+				log.Errorf(err.Error())
 			}
 			e.bp.LastAppliedRowsEventHint = lastAppliedRowsEventHint
 		}
@@ -406,16 +403,11 @@ func (e *Extractor) Shutdown() error {
 	if !e.Running() {
 		return nil
 	}
+
 	if e.bp != nil {
 		e.bp.Close()
 	}
 	e.stanConn.Close()
-	close(e.eventsChannel)
-	/*_, isClose := <-e.eventsChannel
-	if !isClose {
-		close(e.eventsChannel)
-		log.Infof("event channel closed.")
-	}*/
 
 	err := usql.CloseDBs(e.db)
 	if err != nil {

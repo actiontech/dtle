@@ -282,7 +282,7 @@ func (a *Agent) jobStartHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	job.Start(false)
+	job.Start()
 
 	w.Header().Set("Location", r.RequestURI)
 	w.WriteHeader(http.StatusAccepted)

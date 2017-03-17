@@ -16,6 +16,10 @@ import (
 	usql "udup/plugins/mysql/sql"
 )
 
+const (
+	EventsChannelBufferSize       = 200
+)
+
 type Transaction_t struct {
 	StartEventFile string
 	StartEventPos  uint32
@@ -43,7 +47,7 @@ func (tx *Transaction_t) addImpact(tableId uint64, rowId string) {
 }
 
 type TxBuilder struct {
-	cfg     *uconf.DriverConfig
+	Cfg     *uconf.DriverConfig
 	EvtChan chan *BinlogEvent
 	TxChan  chan *Transaction_t
 
@@ -58,8 +62,8 @@ type TxBuilder struct {
 
 func NewTxBuilder(cfg *uconf.DriverConfig) *TxBuilder {
 	return &TxBuilder{
-		cfg:     cfg,
-		EvtChan: make(chan *BinlogEvent, 200),
+		Cfg:     cfg,
+		EvtChan: make(chan *BinlogEvent, EventsChannelBufferSize),
 		TxChan:  make(chan *Transaction_t, 100),
 		reMap:   make(map[string]*regexp.Regexp),
 	}
@@ -83,7 +87,7 @@ func (tb *TxBuilder) Run() {
 			idle_ns += (t2 - t1)
 		}
 		if event.Err != nil {
-			tb.cfg.ErrCh <- event.Err
+			tb.Cfg.ErrCh <- event.Err
 			return
 		}
 
@@ -97,25 +101,25 @@ func (tb *TxBuilder) Run() {
 		switch event.Header.EventType {
 		case binlog.GTID_EVENT:
 			if tb.currentTx != nil {
-				tb.cfg.ErrCh <- fmt.Errorf("unfinished transaction %v@%v", event.BinlogFile, event.RealPos)
+				tb.Cfg.ErrCh <- fmt.Errorf("unfinished transaction %v@%v", event.BinlogFile, event.RealPos)
 				return
 			}
 			tb.newTransaction(event)
 
 		case binlog.QUERY_EVENT:
 			if tb.currentTx == nil {
-				tb.cfg.ErrCh <- newTxWithoutGTIDError(event)
+				tb.Cfg.ErrCh <- newTxWithoutGTIDError(event)
 				return
 			}
 			err := tb.onQueryEvent(event)
 			if err != nil {
-				tb.cfg.ErrCh <- err
+				tb.Cfg.ErrCh <- err
 				return
 			}
 
 		case binlog.XID_EVENT:
 			if tb.currentTx == nil {
-				tb.cfg.ErrCh <- newTxWithoutGTIDError(event)
+				tb.Cfg.ErrCh <- newTxWithoutGTIDError(event)
 				return
 			}
 			tb.onCommit(event)
@@ -127,14 +131,14 @@ func (tb *TxBuilder) Run() {
 		case binlog.TABLE_MAP_EVENT:
 			err := tb.onTableMapEvent(event)
 			if err != nil {
-				tb.cfg.ErrCh <- err
+				tb.Cfg.ErrCh <- err
 				return
 			}
 
 		case binlog.WRITE_ROWS_EVENTv2, binlog.UPDATE_ROWS_EVENTv2, binlog.DELETE_ROWS_EVENTv2:
 			err := tb.onRowEvent(event)
 			if err != nil {
-				tb.cfg.ErrCh <- err
+				tb.Cfg.ErrCh <- err
 				return
 			}
 		}
@@ -402,17 +406,17 @@ func (tb *TxBuilder) skipQueryDDL(sql string, schema string) bool {
 		log.Warnf("[get table failure]:%s %s", sql, err)
 	}
 
-	if err == nil && (tb.cfg.ReplicateDoTable != nil || tb.cfg.ReplicateDoDb != nil) {
+	if err == nil && (tb.Cfg.ReplicateDoTable != nil || tb.Cfg.ReplicateDoDb != nil) {
 		//if table in target Table, do this sql
 		if t.Schema == "" {
 			t.Schema = schema
 		}
-		if tb.matchTable(tb.cfg.ReplicateDoTable, t) {
+		if tb.matchTable(tb.Cfg.ReplicateDoTable, t) {
 			return false
 		}
 
 		// if  schema in target DB, do this sql
-		if tb.matchDB(tb.cfg.ReplicateDoDb, t.Schema) {
+		if tb.matchDB(tb.Cfg.ReplicateDoDb, t.Schema) {
 			return false
 		}
 		return true
@@ -421,17 +425,17 @@ func (tb *TxBuilder) skipQueryDDL(sql string, schema string) bool {
 }
 
 func (tb *TxBuilder) skipRowEvent(schema string, table string) bool {
-	if tb.cfg.ReplicateDoTable != nil || tb.cfg.ReplicateDoDb != nil {
+	if tb.Cfg.ReplicateDoTable != nil || tb.Cfg.ReplicateDoDb != nil {
 		table = strings.ToLower(table)
 		//if table in tartget Table, do this event
-		for _, d := range tb.cfg.ReplicateDoTable {
+		for _, d := range tb.Cfg.ReplicateDoTable {
 			if tb.matchString(d.Schema, schema) && tb.matchString(d.Name, table) {
 				return false
 			}
 		}
 
 		//if schema in target DB, do this event
-		if tb.matchDB(tb.cfg.ReplicateDoDb, schema) && len(tb.cfg.ReplicateDoDb) > 0 {
+		if tb.matchDB(tb.Cfg.ReplicateDoDb, schema) && len(tb.Cfg.ReplicateDoDb) > 0 {
 			return false
 		}
 

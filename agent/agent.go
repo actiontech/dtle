@@ -88,6 +88,10 @@ func NewAgent(config *uconf.Config) (*Agent, error) {
 		return nil, fmt.Errorf("failed to setup server: %v", err)
 	}
 
+	if err := a.setupSched(); err != nil {
+		return nil, fmt.Errorf("failed to setup scheduler: %v", err)
+	}
+
 	go a.eventLoop()
 	return a, nil
 }
@@ -121,6 +125,29 @@ func (a *Agent) setupServer() error {
 		return fmt.Errorf("Failed to start RPC layer: %v", err)
 	}
 	a.participate()
+
+	return nil
+}
+
+func (a *Agent) setupSched() error {
+	rpcServer, err := a.queryRPCConfig()
+	if err != nil {
+		return err
+	}
+
+	rc := &RPCClient{ServerAddr: string(rpcServer), agent: a}
+
+	jobs, err := rc.CallGetJobs(a.config.NodeName)
+	if err != nil {
+		return err
+	}
+
+	for _, job := range jobs.Payload {
+		if job.Status == Running {
+			log.Infof("Start job: %v", job.Name)
+			go rc.startJob(job)
+		}
+	}
 
 	return nil
 }
@@ -188,7 +215,7 @@ func (a *Agent) setupNatsServer() error {
 		Trace:      true,
 		Debug:      true,
 	}
-	log.Infof("Starting nats-streaming-server [%s]",a.config.NatsAddr)
+	log.Infof("Starting nats-streaming-server [%s]", a.config.NatsAddr)
 	sOpts := stand.GetDefaultOptions()
 	sOpts.ID = uconf.DefaultClusterID
 	if a.config.StoreType == "FILE" {
@@ -575,16 +602,7 @@ func (a *Agent) runForElection() {
 				log.Info("Cluster leadership acquired")
 				// If this server is elected as the leader, start the scheduler
 				log.Info("Restarting scheduler")
-				jobs, err := a.store.GetJobs()
-				if err != nil {
-					log.Fatal(err)
-				}
-				for _, job := range jobs {
-					if job.Status == Running {
-						log.Infof("Start job: %v", job.Name)
-						go job.Start(true)
-					}
-				}
+
 			} else {
 				log.Info("Cluster leadership lost")
 				// Always stop the schedule of this server to prevent multiple servers with the scheduler on

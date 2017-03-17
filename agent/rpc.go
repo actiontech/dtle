@@ -92,13 +92,13 @@ func (rpcc *RPCClient) startJob(job *Job) error {
 		log.Infof("Processing execution with plugin:%v", k)
 		errCh := make(chan error)
 		v.ErrCh = errCh
+		gtidCh := make(chan string)
+		v.GtidCh = gtidCh
 		go rpcc.listenOnPanicAbort(job, v)
 
 		switch v.Driver {
 		case plugins.MysqlDriverAttr:
 			{
-				gtidCh := make(chan string)
-				v.GtidCh = gtidCh
 				go rpcc.listenOnGtid(job, v)
 				// Start the job
 				go rpcc.setupDriver(k, v, job)
@@ -245,14 +245,28 @@ func (rpcc *RPCClient) dequeueJobs(nodeName string) (err error) {
 					j.ParentJob, err)
 			}
 
-			if pj.NodeName == nodeName && rpcc.agent.config.NodeName == nodeName && pj.Status == Queued {
+			if pj.NodeName == rpcc.agent.config.NodeName && pj.Status == Queued {
 				if err := rpcc.startJob(pj); err != nil {
 					log.Errorf("Error dequeue job command,err:%v", err)
 				}
 			}
-		} else {
-			if rpcc.agent.config.NodeName == nodeName && j.Status == Queued {
-				if err := rpcc.startJob(j); err != nil {
+		}
+
+		if j.NodeName == rpcc.agent.config.NodeName && j.Status == Queued {
+			if err := rpcc.startJob(j); err != nil {
+				log.Errorf("Error dequeue job command,err:%v", err)
+			}
+		}
+
+		for _, djn := range j.DependentJobs {
+			dj, err := rpcc.CallGetJob(djn)
+			if err != nil {
+				log.Errorf("failed to get dep job '%s': %v",
+					djn, err)
+			}
+
+			if dj.NodeName == rpcc.agent.config.NodeName && dj.Status == Queued {
+				if err := rpcc.startJob(dj); err != nil {
 					log.Errorf("Error dequeue job command,err:%v", err)
 				}
 			}
@@ -280,16 +294,21 @@ type RPCClient struct {
 }
 
 func (rpcc *RPCClient) listenOnPanicAbort(job *Job, cfg *uconf.DriverConfig) {
-	err := <-cfg.ErrCh
-	log.Errorf("Run failed: %v", err)
-	rpcc.enqueueJob(job)
+	for err := range cfg.ErrCh {
+		if err != nil {
+			log.Errorf("Run failed: %v", err)
+			rpcc.enqueueJob(job)
+		}
+	}
 }
 
 func (rpcc *RPCClient) listenOnGtid(j *Job, cfg *uconf.DriverConfig) {
 	for gtid := range cfg.GtidCh {
-		j.Processors["apply"].Gtid = gtid
-		if err := rpcc.CallUpsertJob(j); err != nil {
-			log.Errorf("agent: Error on rpc.UpsertJob call")
+		if gtid != "" {
+			j.Processors["apply"].Gtid = gtid
+			if err := rpcc.CallUpsertJob(j); err != nil {
+				log.Errorf("agent: Error on rpc.UpsertJob call")
+			}
 		}
 	}
 }

@@ -72,7 +72,7 @@ func (a *Agent) StartJobQuery(j *Job) {
 			}
 		}
 
-		pj.Start(false)
+		pj.Start()
 	}
 
 	params = &serf.QueryParam{

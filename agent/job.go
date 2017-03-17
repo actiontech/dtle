@@ -71,12 +71,12 @@ type Job struct {
 }
 
 // Start the job
-func (j *Job) Start(restart bool) {
+func (j *Job) Start() {
 	j.running.Lock()
 	defer j.running.Unlock()
 
 	if j.Agent != nil {
-		if j.Status != Running || restart {
+		if j.Status != Running {
 			log.Infof("Start job:%v", j.Name)
 			j.Agent.StartJobQuery(j)
 		}

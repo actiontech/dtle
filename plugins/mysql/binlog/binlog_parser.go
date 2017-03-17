@@ -23,7 +23,6 @@ type BinlogEvent struct {
 }
 
 type BinlogParser struct {
-	EventsChannel   chan *BinlogEvent
 	lastPos         int64
 	currentFilePath string
 	currentHeader   *replication.EventHeader
