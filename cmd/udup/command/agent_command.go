@@ -38,11 +38,6 @@ func (c *AgentCommand) setupAgent(config *uconf.Config) error {
 	}
 	c.Agent = agent
 
-	// Setup the HTTP server
-	if config.Server {
-		agent.NewHTTPServer()
-	}
-
 	// Output the header that the server has started
 	log.Infof("Udup agent started!\n")
 

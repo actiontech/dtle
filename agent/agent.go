@@ -124,6 +124,9 @@ func (a *Agent) setupServer() error {
 		log.Errorf("failed to start RPC layer: %s", err)
 		return fmt.Errorf("Failed to start RPC layer: %v", err)
 	}
+
+	// Setup the HTTP server
+	a.NewHTTPServer()
 	a.participate()
 
 	return nil
