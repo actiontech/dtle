@@ -139,8 +139,13 @@ func (rpcc *RPCClient) setupDriver(k string, v *uconf.DriverConfig, j *Job) {
 				break
 			}
 		} else {
-			if j.Processors["apply"].Running == true {
-				v.Gtid = j.Processors["apply"].Gtid
+			job, err := rpcc.CallGetJob(j.Name)
+			if err != nil {
+				log.Errorf("agent: Error on rpc.GetJob call")
+			}
+			if job.Processors["apply"].Running == true {
+				v.Gtid = job.Processors["apply"].Gtid
+				subject = job.Name
 				break
 			}
 		}

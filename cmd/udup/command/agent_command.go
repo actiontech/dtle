@@ -60,12 +60,6 @@ func (c *AgentCommand) Run(args []string) int {
 		log.Infof("No configuration file loaded")
 	}
 
-	// Create the agent
-	if err := c.setupAgent(config); err != nil {
-		return 1
-	}
-	defer c.Agent.Shutdown()
-
 	log.SetLevelByString(config.LogLevel)
 	if len(config.LogFile) > 0 {
 		log.SetOutputByName(config.LogFile)
@@ -77,6 +71,12 @@ func (c *AgentCommand) Run(args []string) int {
 			log.SetRotateByDay()
 		}
 	}
+
+	// Create the agent
+	if err := c.setupAgent(config); err != nil {
+		return 1
+	}
+	defer c.Agent.Shutdown()
 
 	// Wait for exit
 	return c.handleSignals(config)

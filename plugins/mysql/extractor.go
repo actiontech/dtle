@@ -83,13 +83,6 @@ func (e *Extractor) initDBConnections() (err error) {
 		return err
 	}
 
-	// expecting 'foreign_key_checks = OFF'
-	// NB you should use `set global foreign_key_checks = 0'.
-	//
-	if err = e.checkForeignKey(); err != nil {
-		return err
-	}
-
 	if err := e.readCurrentBinlogCoordinates(); err != nil {
 		return err
 	}

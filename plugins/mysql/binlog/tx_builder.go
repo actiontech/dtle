@@ -365,7 +365,7 @@ func (tb *TxBuilder) matchTable(patternTBS []uconf.TableName, t uconf.TableName)
 func skipQueryEvent(sql string) bool {
 	sql = strings.ToUpper(sql)
 
-	if strings.HasPrefix(sql, "GRANT REPLICATION SLAVE") {
+	/*if strings.HasPrefix(sql, "GRANT REPLICATION SLAVE") {
 		return true
 	}
 
@@ -383,7 +383,7 @@ func skipQueryEvent(sql string) bool {
 
 	if strings.HasPrefix(sql, "GRANT") {
 		return true
-	}
+	}*/
 
 	if strings.HasPrefix(sql, "BEGIN") {
 		return true
@@ -404,42 +404,53 @@ func (tb *TxBuilder) skipQueryDDL(sql string, schema string) bool {
 	t, err := usql.ParserDDLTableName(sql)
 	if err != nil {
 		log.Warnf("[get table failure]:%s %s", sql, err)
+		return false
 	}
 
-	if err == nil && (tb.Cfg.ReplicateDoTable != nil || tb.Cfg.ReplicateDoDb != nil) {
-		//if table in target Table, do this sql
-		if t.Schema == "" {
-			t.Schema = schema
-		}
-		if tb.matchTable(tb.Cfg.ReplicateDoTable, t) {
-			return false
-		}
-
-		// if  schema in target DB, do this sql
-		if tb.matchDB(tb.Cfg.ReplicateDoDb, t.Schema) {
-			return false
-		}
+	switch strings.ToLower(schema) {
+	case "sys", "mysql", "information_schema", "performance_schema":
 		return true
+	default:
+		if len(tb.Cfg.ReplicateDoTable) > 0 || len(tb.Cfg.ReplicateDoDb) > 0 {
+			//if table in target Table, do this sql
+			if t.Schema == "" {
+				t.Schema = schema
+			}
+			if tb.matchTable(tb.Cfg.ReplicateDoTable, t) {
+				return false
+			}
+
+			// if  schema in target DB, do this sql
+			if tb.matchDB(tb.Cfg.ReplicateDoDb, t.Schema) {
+				return false
+			}
+			return true
+		}
 	}
 	return false
 }
 
 func (tb *TxBuilder) skipRowEvent(schema string, table string) bool {
-	if tb.Cfg.ReplicateDoTable != nil || tb.Cfg.ReplicateDoDb != nil {
-		table = strings.ToLower(table)
-		//if table in tartget Table, do this event
-		for _, d := range tb.Cfg.ReplicateDoTable {
-			if tb.matchString(d.Schema, schema) && tb.matchString(d.Name, table) {
+	switch strings.ToLower(schema) {
+	case "sys","mysql","information_schema","performance_schema":
+		return true
+	default:
+		if len(tb.Cfg.ReplicateDoTable) > 0 || len(tb.Cfg.ReplicateDoDb) > 0 {
+			table = strings.ToLower(table)
+			//if table in tartget Table, do this event
+			for _, d := range tb.Cfg.ReplicateDoTable {
+				if tb.matchString(d.Schema, schema) && tb.matchString(d.Name, table) {
+					return false
+				}
+			}
+
+			//if schema in target DB, do this event
+			if tb.matchDB(tb.Cfg.ReplicateDoDb, schema) && len(tb.Cfg.ReplicateDoDb) > 0 {
 				return false
 			}
-		}
 
-		//if schema in target DB, do this event
-		if tb.matchDB(tb.Cfg.ReplicateDoDb, schema) && len(tb.Cfg.ReplicateDoDb) > 0 {
-			return false
+			return true
 		}
-
-		return true
 	}
 	return false
 }
