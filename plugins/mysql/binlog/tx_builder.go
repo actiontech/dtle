@@ -17,7 +17,7 @@ import (
 )
 
 const (
-	EventsChannelBufferSize       = 200
+	EventsChannelBufferSize = 200
 )
 
 type Transaction_t struct {
@@ -432,7 +432,7 @@ func (tb *TxBuilder) skipQueryDDL(sql string, schema string) bool {
 
 func (tb *TxBuilder) skipRowEvent(schema string, table string) bool {
 	switch strings.ToLower(schema) {
-	case "sys","mysql","information_schema","performance_schema":
+	case "sys", "mysql", "information_schema", "performance_schema":
 		return true
 	default:
 		if len(tb.Cfg.ReplicateDoTable) > 0 || len(tb.Cfg.ReplicateDoDb) > 0 {

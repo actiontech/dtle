@@ -100,9 +100,9 @@ func (a *Applier) applyTx(db *gosql.DB, transaction *ubinlog.Transaction_t) erro
 		_, err = tx.Exec(query)
 		if err != nil {
 			if !usql.IgnoreDDLError(err) {
-				return fmt.Errorf("[GTID]:%v:%v;[Err]:%v",transaction.SID,transaction.GNO,err)
+				return fmt.Errorf("[GTID]:%v:%v;[Err]:%v", transaction.SID, transaction.GNO, err)
 			} else {
-				log.Warnf("[Query]:%s;[Err]:%v.ignore ddl error.", query, err)
+				log.Warnf("[GTID]:%v:%v;[Err]:%v.ignore ddl error.", transaction.SID, transaction.GNO, err)
 			}
 		}
 	}

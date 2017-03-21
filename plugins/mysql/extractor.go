@@ -37,8 +37,8 @@ type Extractor struct {
 
 func NewExtractor(cfg *uconf.DriverConfig) *Extractor {
 	return &Extractor{
-		cfg:           cfg,
-		tables:        make(map[string]*usql.Table),
+		cfg:    cfg,
+		tables: make(map[string]*usql.Table),
 	}
 }
 
