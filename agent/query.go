@@ -17,76 +17,28 @@ const (
 )
 
 type RunQueryParam struct {
-	Job     *Job   `json:"job"`
+	JobName string `json:"job_name"`
+	Type    string `json:"type"`
 	RPCAddr string `json:"rpc_addr"`
 }
 
 // Send a serf run query to the cluster, this is used to ask a node or nodes
 // to run a Job.
-func (a *Agent) StartJobQuery(j *Job) {
+func (a *Agent) StartJobQuery(j *Job, k string) {
 	var params *serf.QueryParam
-
-	job, err := a.store.GetJob(j.Name)
-
-	//In this case, the job will not be found in the store.
-	if err == store.ErrKeyNotFound {
-		log.Infof("Job not found, cancelling this execution")
-	}
-
-	// Jobs that have dependent jobs are a bit more expensive because we need to call the Status() method for every execution.
-	// Check first if there's dependent jobs and then check for the job status to begin executiong dependent jobs on success.
-	if job.ParentJob != "" {
-		pj, err := a.store.GetJob(job.ParentJob)
-		if err != nil {
-			log.Errorf("failed to get parent job '%s': %v",
-				job.ParentJob, err)
-		}
-
-		var statusAlive bool
-		for {
-			for _, m := range a.serf.Members() {
-				if m.Name == pj.NodeName && m.Status == serf.StatusAlive {
-					statusAlive = true
-				}
-			}
-			if statusAlive {
-				break
-			}
-
-			// Lock the job while editing
-			if err = job.Lock(); err != nil {
-				log.Fatal(err)
-			}
-
-			job.Status = Queued
-			for _, p := range job.Processors {
-				p.Running = false
-			}
-			if err := a.store.UpsertJob(job); err != nil {
-				log.Fatal(err)
-			}
-
-			// Release the lock
-			if err = job.Unlock(); err != nil {
-				log.Fatal(err)
-			}
-		}
-
-		pj.Start()
-	}
-
 	params = &serf.QueryParam{
-		FilterNodes: []string{j.NodeName},
+		FilterNodes: []string{j.Processors[k].NodeName},
 		RequestAck:  true,
 	}
 
 	rqp := &RunQueryParam{
-		Job:     j,
+		JobName: j.Name,
+		Type:    k,
 		RPCAddr: a.getRPCAddr(),
 	}
 	rqpJson, _ := json.Marshal(rqp)
 
-	log.Debug("Sending query:%v; job_name:%v; json:%v", QueryStartJob, job.Name, string(rqpJson))
+	log.Debug("Sending query:%v; job_name:%v; json:%v", QueryStartJob, j.Name, string(rqpJson))
 
 	qr, err := a.serf.Query(QueryStartJob, rqpJson, params)
 	if err != nil {
@@ -101,20 +53,19 @@ func (a *Agent) StartJobQuery(j *Job) {
 		select {
 		case ack, ok := <-ackCh:
 			if ok {
-				log.Debug("Received ack:%v; from:%v", QueryStartJob, ack)
+				log.Infof("Received ack:%v; from:%v", QueryStartJob, ack)
 			}
 		case resp, ok := <-respCh:
 			if ok {
-				log.Debug("Received response:%v; query:%v; from:%v", string(resp.Payload), QueryStartJob, resp.From)
-				a.upsertJob(resp.Payload)
+				log.Infof("Received response:%v; query:%v; from:%v", string(resp.Payload), QueryStartJob, resp.From)
+				//a.upsertJob(resp.Payload,Running)
 			}
 		}
 	}
 	log.Infof("Done receiving acks and responses:%v", QueryStartJob)
 }
 
-func (a *Agent) StopJobQuery(j *Job) {
-	log.Infof("agent StopJobQuery:%v", a.config.NodeName)
+func (a *Agent) StopJobQuery(j *Job, k string) {
 	var params *serf.QueryParam
 
 	job, err := a.store.GetJob(j.Name)
@@ -126,7 +77,7 @@ func (a *Agent) StopJobQuery(j *Job) {
 
 	var statusAlive bool
 	for _, m := range a.serf.Members() {
-		if m.Name == job.NodeName && m.Status == serf.StatusAlive {
+		if m.Name == j.Processors[k].NodeName && m.Status == serf.StatusAlive {
 			statusAlive = true
 		}
 	}
@@ -151,34 +102,14 @@ func (a *Agent) StopJobQuery(j *Job) {
 		return
 	}
 
-	// Jobs that have dependent jobs are a bit more expensive because we need to call the Status() method for every execution.
-	// Check first if there's dependent jobs and then check for the job status to begin executiong dependent jobs on success.
-	if len(job.DependentJobs) > 0 {
-		for _, djn := range job.DependentJobs {
-			dj, err := a.store.GetJob(djn)
-			if err != nil {
-				return
-			}
-			statusAlive = false
-			for _, m := range a.serf.Members() {
-				if m.Name == dj.NodeName && m.Status == serf.StatusAlive {
-					statusAlive = true
-				}
-			}
-			if !statusAlive {
-				return
-			}
-			dj.Stop()
-		}
-	}
-
 	params = &serf.QueryParam{
-		FilterNodes: []string{j.NodeName},
+		FilterNodes: []string{j.Processors[k].NodeName},
 		RequestAck:  true,
 	}
 
 	rqp := &RunQueryParam{
-		Job:     job,
+		JobName: j.Name,
+		Type:    k,
 		RPCAddr: a.getRPCAddr(),
 	}
 	rqpJson, _ := json.Marshal(rqp)
@@ -203,7 +134,7 @@ func (a *Agent) StopJobQuery(j *Job) {
 		case resp, ok := <-respCh:
 			if ok {
 				log.Debug("Received response:%v; query:%v; from:%v", string(resp.Payload), QueryStopJob, resp.From)
-				a.upsertJob(resp.Payload)
+				//a.upsertJob(resp.Payload,Stopped)
 			}
 		}
 	}
@@ -222,11 +153,11 @@ func (a *Agent) EnqueueJobQuery(j *Job) {
 	}
 
 	var statusAlive bool
-	for _, m := range a.serf.Members() {
+	/*for _, m := range a.serf.Members() {
 		if m.Name == job.NodeName && m.Status == serf.StatusAlive {
 			statusAlive = true
 		}
-	}
+	}*/
 	if !statusAlive {
 		// Lock the job while editing
 		if err = job.Lock(); err != nil {
@@ -248,7 +179,7 @@ func (a *Agent) EnqueueJobQuery(j *Job) {
 		return
 	}
 
-	// Jobs that have dependent jobs are a bit more expensive because we need to call the Status() method for every execution.
+	/*// Jobs that have dependent jobs are a bit more expensive because we need to call the Status() method for every execution.
 	// Check first if there's dependent jobs and then check for the job status to begin executiong dependent jobs on success.
 	if len(job.DependentJobs) > 0 {
 		for _, djn := range job.DependentJobs {
@@ -272,10 +203,11 @@ func (a *Agent) EnqueueJobQuery(j *Job) {
 	params = &serf.QueryParam{
 		FilterNodes: []string{j.NodeName},
 		RequestAck:  true,
-	}
+	}*/
 
 	rqp := &RunQueryParam{
-		Job:     j,
+		/*Type:     k,
+		DriverConfig:v,*/
 		RPCAddr: a.getRPCAddr(),
 	}
 	rqpJson, _ := json.Marshal(rqp)
@@ -300,23 +232,44 @@ func (a *Agent) EnqueueJobQuery(j *Job) {
 		case resp, ok := <-respCh:
 			if ok {
 				log.Debug("Received response:%v; query:%v; from:%v", string(resp.Payload), QueryEnqueueJob, resp.From)
-				a.upsertJob(resp.Payload)
+				a.upsertJob(resp.Payload, Queued)
 			}
 		}
 	}
 	log.Infof("Done receiving acks and responses:%v", QueryEnqueueJob)
 }
 
-func (a *Agent) upsertJob(payload []byte) *Job {
+func (a *Agent) upsertJob(payload []byte, status JobStatus) *Job {
 	var j Job
 	if err := json.Unmarshal(payload, &j); err != nil {
 		log.Fatal(err)
 	}
 
+	/*j.Agent = a
+	// Lock the job while editing
+	if err := j.Lock(); err != nil {
+		log.Fatal("rpc:", err)
+	}
+
+	j.Status = status
+	if status == Running {
+		for _, p := range j.Processors {
+			p.Running = true
+		}
+	}else {
+		for _, p := range j.Processors {
+			p.Running = false
+		}
+	}*/
 	// Save the new execution to store
 	if err := a.store.UpsertJob(&j); err != nil {
 		log.Fatal(err)
 	}
+
+	// Release the lock
+	/*if err := j.Unlock(); err != nil {
+		log.Fatal("rpc:", err)
+	}*/
 
 	return &j
 }

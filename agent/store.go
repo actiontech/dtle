@@ -8,6 +8,8 @@ import (
 	"github.com/docker/libkv/store"
 	"github.com/docker/libkv/store/consul"
 	"github.com/ngaut/log"
+
+	"udup/plugins"
 )
 
 const (
@@ -74,68 +76,10 @@ func (s *Store) UpsertJob(job *Job) error {
 	return nil
 }
 
-// Set the depencency tree for a job given the job and the previous version
-// of the Job or nil if it's new.
-func (s *Store) UpsertJobDependencyTree(job *Job, previousJob *Job) error {
-	// Existing job that doesn't have parent job set and it's being set
-	if previousJob != nil && previousJob.ParentJob == "" && job.ParentJob != "" {
-		pj, err := job.GetParent()
-		if err != nil {
-			return err
-		}
-		pj.Lock()
-		defer pj.Unlock()
-
-		pj.DependentJobs = append(pj.DependentJobs, job.Name)
-		if err := s.UpsertJob(pj); err != nil {
-			return err
-		}
-	}
-
-	// Existing job that has parent job set and it's being removed
-	if previousJob != nil && previousJob.ParentJob != "" && job.ParentJob == "" {
-		pj, err := previousJob.GetParent()
-		if err != nil {
-			return err
-		}
-		pj.Lock()
-		defer pj.Unlock()
-
-		ndx := 0
-		for i, djn := range pj.DependentJobs {
-			if djn == job.Name {
-				ndx = i
-				break
-			}
-		}
-		pj.DependentJobs = append(pj.DependentJobs[:ndx], pj.DependentJobs[ndx+1:]...)
-		if err := s.UpsertJob(pj); err != nil {
-			return err
-		}
-	}
-
-	// New job that has parent job set
-	if previousJob == nil && job.ParentJob != "" {
-		pj, err := job.GetParent()
-		if err != nil {
-			return err
-		}
-		pj.Lock()
-		defer pj.Unlock()
-
-		pj.DependentJobs = append(pj.DependentJobs, job.Name)
-		if err := s.UpsertJob(pj); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
 func (s *Store) validateJob(job *Job) error {
-	if job.ParentJob == job.Name {
+	/*if job.ParentJob == job.Name {
 		return ErrSameParent
-	}
+	}*/
 
 	return nil
 }
@@ -182,7 +126,7 @@ func (s *Store) GetJobByNode(nodeName string) (*JobResponse, error) {
 		if err != nil {
 			return nil, err
 		}
-		if job.NodeName != nodeName {
+		if job.Processors[plugins.ProcessorTypeExtract].NodeName != nodeName && job.Processors[plugins.ProcessorTypeApply].NodeName != nodeName {
 			continue
 		}
 		job.Agent = s.agent

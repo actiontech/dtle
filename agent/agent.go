@@ -148,7 +148,9 @@ func (a *Agent) setupSched() error {
 	for _, job := range jobs.Payload {
 		if job.Status == Running {
 			log.Infof("Start job: %v", job.Name)
-			go rc.startJob(job)
+			for k, _ := range job.Processors {
+				go rc.startJob(job.Name, k)
+			}
 		}
 	}
 
@@ -435,18 +437,21 @@ func (a *Agent) eventLoop() {
 							log.Errorf("Error unmarshaling query payload,Query:%v", QueryStartJob)
 						}
 
-						log.Infof("Starting job: %v", rqp.Job.Name)
-
-						job := rqp.Job
-						job.NodeName = a.config.NodeName
+						/*rpcc := RPCClient{ServerAddr: rqp.RPCAddr,agent:a}
+						job, err := rpcc.CallGetJob(rqp.Job)
+						if err != nil {
+							log.Errorf("agent: Error on rpc.GetJob call")
+						}*/
+						job := rqp.JobName
+						k := rqp.Type
 
 						go func() {
-							if err := a.startJob(job); err != nil {
+							if err := a.startJob(job, k); err != nil {
 								log.Errorf("Error start job command,err:%v", err)
 							}
 						}()
 
-						jobJson, _ := json.Marshal(job)
+						jobJson, _ := json.Marshal(fmt.Sprintf("Start job [%v] success", job))
 						query.Respond(jobJson)
 					}
 				case QueryStopJob:
@@ -458,18 +463,16 @@ func (a *Agent) eventLoop() {
 							log.Errorf("Error unmarshaling query payload,Query:%v", QueryStopJob)
 						}
 
-						log.Infof("Stopping job: %v", rqp.Job.Name)
-
-						job := rqp.Job
-						job.NodeName = a.config.NodeName
+						job := rqp.JobName
+						k := rqp.Type
 
 						go func() {
-							if err := a.stopJob(job); err != nil {
+							if err := a.stopJob(job, k); err != nil {
 								log.Errorf("Error stop job command,err:%v", err)
 							}
 						}()
 
-						jobJson, _ := json.Marshal(job)
+						jobJson, _ := json.Marshal(fmt.Sprintf("Stop job [%v] success", job))
 						query.Respond(jobJson)
 					}
 				case QueryEnqueueJob:
@@ -481,10 +484,7 @@ func (a *Agent) eventLoop() {
 							log.Errorf("Error unmarshaling query payload,Query:%v", QueryEnqueueJob)
 						}
 
-						log.Infof("Stopping job: %v", rqp.Job.Name)
-
-						job := rqp.Job
-						job.NodeName = a.config.NodeName
+						job := rqp.JobName
 
 						go func() {
 							if err := a.enqueueJob(job); err != nil {
@@ -492,7 +492,7 @@ func (a *Agent) eventLoop() {
 							}
 						}()
 
-						jobJson, _ := json.Marshal(job)
+						jobJson, _ := json.Marshal(fmt.Sprintf("Enqueue job [%v] success", job))
 						query.Respond(jobJson)
 					}
 				case QueryRPCConfig:
@@ -517,7 +517,7 @@ func (a *Agent) eventLoop() {
 	}
 }
 
-func (a *Agent) startJob(job *Job) (err error) {
+func (a *Agent) startJob(j string, k string) (err error) {
 	var rpcServer []byte
 	if !a.config.Server {
 		rpcServer, err = a.queryRPCConfig()
@@ -527,10 +527,10 @@ func (a *Agent) startJob(job *Job) (err error) {
 	}
 
 	rc := &RPCClient{ServerAddr: string(rpcServer), agent: a}
-	return rc.startJob(job)
+	return rc.startJob(j, k)
 }
 
-func (a *Agent) stopJob(job *Job) (err error) {
+func (a *Agent) stopJob(j string, k string) (err error) {
 	var rpcServer []byte
 	if !a.config.Server {
 		rpcServer, err = a.queryRPCConfig()
@@ -540,7 +540,7 @@ func (a *Agent) stopJob(job *Job) (err error) {
 	}
 
 	rc := &RPCClient{ServerAddr: string(rpcServer), agent: a}
-	return rc.stopJob(job)
+	return rc.stopJob(j, k)
 }
 
 func (a *Agent) enqueueJobs(nodeName string) (err error) {
@@ -555,7 +555,7 @@ func (a *Agent) enqueueJobs(nodeName string) (err error) {
 	return rc.enqueueJobs(nodeName)
 }
 
-func (a *Agent) enqueueJob(job *Job) (err error) {
+func (a *Agent) enqueueJob(j string) (err error) {
 	var rpcServer []byte
 	if !a.config.Server {
 		rpcServer, err = a.queryRPCConfig()
@@ -565,6 +565,10 @@ func (a *Agent) enqueueJob(job *Job) (err error) {
 	}
 
 	rc := &RPCClient{ServerAddr: string(rpcServer), agent: a}
+	job, err := rc.CallGetJob(j)
+	if err != nil {
+		return fmt.Errorf("agent: Error on rpc.GetJob call")
+	}
 	return rc.enqueueJob(job)
 }
 

@@ -6,16 +6,14 @@ import (
 	"sync"
 
 	"github.com/docker/libkv/store"
+	"github.com/hashicorp/serf/serf"
 	"github.com/ngaut/log"
 
 	uconf "udup/config"
 )
 
 var (
-	ErrParentJobNotFound = errors.New("Specified parent job not found")
-	ErrNoAgent           = errors.New("No agent defined")
-	ErrSameParent        = errors.New("The job can not have itself as parent")
-	ErrNoParent          = errors.New("The job doens't have a parent job set")
+	ErrNoAgent = errors.New("No agent defined")
 )
 
 // JobStatus is the status of the Job.
@@ -47,9 +45,6 @@ type Job struct {
 	// Job name. Must be unique, acts as the id.
 	Name string `json:"name"`
 
-	// Node name of the node that run this job.
-	NodeName string `json:"node_name,omitempty"`
-
 	// Job status
 	Status JobStatus `json:"status"`
 
@@ -57,12 +52,6 @@ type Job struct {
 	Agent *Agent `json:"-"`
 
 	running sync.Mutex
-
-	// Jobs that are dependent upon this one will be run after this job runs.
-	DependentJobs []string `json:"dependent_jobs"`
-
-	// Job id of job that this job is dependent upon.
-	ParentJob string `json:"parent_job"`
 
 	lock store.Locker
 
@@ -77,8 +66,24 @@ func (j *Job) Start() {
 
 	if j.Agent != nil {
 		if j.Status != Running {
+			for _, m := range j.Agent.serf.Members() {
+				for k, v := range j.Processors {
+					if m.Name == v.NodeName && m.Status != serf.StatusAlive {
+						j.Status = Queued
+						j.Processors[k].Running = false
+						if err := j.Agent.store.UpsertJob(j); err != nil {
+							log.Fatal(err)
+						}
+						return
+					}
+				}
+			}
 			log.Infof("Start job:%v", j.Name)
-			j.Agent.StartJobQuery(j)
+			for k, v := range j.Processors {
+				if v.Running != true {
+					go j.Agent.StartJobQuery(j, k)
+				}
+			}
 		}
 	}
 }
@@ -90,7 +95,9 @@ func (j *Job) Stop() {
 
 	if j.Agent != nil && j.Status == Running {
 		log.Infof("Stop job:%v", j.Name)
-		j.Agent.StopJobQuery(j)
+		for k, _ := range j.Processors {
+			go j.Agent.StopJobQuery(j, k)
+		}
 	}
 }
 
@@ -119,32 +126,6 @@ func (j *Job) listenOnGtid(a *Agent, cfg *uconf.DriverConfig) {
 			log.Errorf(err.Error())
 		}
 	}
-}
-
-// Get the parent job of a job
-func (j *Job) GetParent() (*Job, error) {
-	if j.Agent == nil {
-		return nil, ErrNoAgent
-	}
-
-	if j.Name == j.ParentJob {
-		return nil, ErrSameParent
-	}
-
-	if j.ParentJob == "" {
-		return nil, ErrNoParent
-	}
-
-	parentJob, err := j.Agent.store.GetJob(j.ParentJob)
-	if err != nil {
-		if err == store.ErrKeyNotFound {
-			return nil, ErrParentJobNotFound
-		} else {
-			return nil, err
-		}
-	}
-
-	return parentJob, nil
 }
 
 // Lock the job in store

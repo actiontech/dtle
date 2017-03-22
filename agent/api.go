@@ -148,16 +148,6 @@ func (a *Agent) jobUpsertHandler(w http.ResponseWriter, r *http.Request) {
 		log.Fatal(err)
 	}
 
-	if job.ParentJob != "" {
-		if _, err := a.store.GetJob(job.ParentJob); err != nil {
-			w.WriteHeader(422) // unprocessable entity
-			if err := json.NewEncoder(w).Encode(err.Error()); err != nil {
-				log.Fatal(err)
-			}
-			return
-		}
-	}
-
 	// Get if the requested job already exist
 	ej, err := a.store.GetJob(job.Name)
 	if err != nil && err != store.ErrKeyNotFound {
@@ -176,15 +166,6 @@ func (a *Agent) jobUpsertHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Save the job to the store
 	if err = a.store.UpsertJob(&job); err != nil {
-		w.WriteHeader(422) // unprocessable entity
-		if err := json.NewEncoder(w).Encode(err.Error()); err != nil {
-			log.Fatal(err)
-		}
-		return
-	}
-
-	// Save the job parent
-	if err = a.store.UpsertJobDependencyTree(&job, ej); err != nil {
 		w.WriteHeader(422) // unprocessable entity
 		if err := json.NewEncoder(w).Encode(err.Error()); err != nil {
 			log.Fatal(err)
@@ -218,42 +199,6 @@ func (a *Agent) jobDeleteHandler(w http.ResponseWriter, r *http.Request) {
 			log.Fatal(err)
 		}
 		return
-	}
-
-	if len(j.DependentJobs) > 0 {
-		w.WriteHeader(422) // unprocessable entity
-		if err := json.NewEncoder(w).Encode(fmt.Sprintf("unable to delete %s (cannot be forced) - has dependent child jobs", jobName)); err != nil {
-			log.Fatal(err)
-		}
-		return
-	}
-
-	if j.ParentJob != "" {
-		pj, err := j.GetParent()
-		if err != nil {
-			w.WriteHeader(422) // unprocessable entity
-			if err := json.NewEncoder(w).Encode(err.Error()); err != nil {
-				log.Fatal(err)
-			}
-			return
-		}
-		pj.Lock()
-		defer pj.Unlock()
-
-		djs := []string{}
-		for _, dj := range pj.DependentJobs {
-			if dj != j.Name {
-				djs = append(djs, j.Name)
-			}
-		}
-		pj.DependentJobs = djs
-		if err := a.store.UpsertJob(pj); err != nil {
-			w.WriteHeader(422) // unprocessable entity
-			if err := json.NewEncoder(w).Encode(err.Error()); err != nil {
-				log.Fatal(err)
-			}
-			return
-		}
 	}
 
 	job, err := a.store.DeleteJob(jobName)

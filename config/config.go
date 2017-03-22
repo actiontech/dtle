@@ -59,8 +59,10 @@ type ConsulConfig struct {
 
 // DriverConfig is the DB configuration.
 type DriverConfig struct {
+	// Node name of the node that run this job.
+	NodeName string `json:"node_name,omitempty"`
+	Running  bool   `json:"running"`
 	//Ref:http://dev.mysql.com/doc/refman/5.7/en/replication-options-slave.html#option_mysqld_replicate-do-table
-	Running              bool              `json:"running"`
 	ReplicateDoTable     []TableName       `json:"replicate_do_table"`
 	ReplicateDoDb        []string          `json:"replicate_do_db"`
 	MaxRetries           int64             `json:"max_retries"`

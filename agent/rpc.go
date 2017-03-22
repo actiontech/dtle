@@ -32,7 +32,6 @@ func (rpcs *RPCServer) GetJob(jobName string, job *Job) error {
 
 	// Copy the data structure
 	job.Name = j.Name
-	job.NodeName = j.NodeName
 	job.Agent = j.Agent
 	job.Processors = j.Processors
 	return nil
@@ -68,51 +67,52 @@ func (rpcs *RPCServer) Upsert(job *Job, reply *serf.NodeResponse) error {
 	return nil
 }
 
-func (rpcc *RPCClient) startJob(job *Job) error {
-	// Jobs that have dependent jobs are a bit more expensive because we need to call the Status() method for every execution.
-	// Check first if there's dependent jobs and then check for the job status to begin executiong dependent jobs on success.
-	if job.ParentJob != "" {
-	OUTER:
+func (rpcc *RPCClient) startJob(jobName string, k string) error {
+	// Get the defined output types for the job, and call them
+	log.Infof("Processing execution with plugin:%v", k)
+
+	if k == plugins.ProcessorTypeExtract {
 		for {
-			pj, err := rpcc.CallGetJob(job.ParentJob)
+			ej, err := rpcc.CallGetJob(jobName)
 			if err != nil {
 				return fmt.Errorf("agent: Error on rpc.GetJob call")
 			}
-
-			for _, m := range rpcc.agent.serf.Members() {
-				if m.Name == pj.NodeName && m.Status == serf.StatusAlive && pj.Status == Running {
-					break OUTER
-				}
+			if ej.Processors[plugins.ProcessorTypeApply].Running {
+				break
 			}
 		}
 	}
+	job, err := rpcc.CallGetJob(jobName)
+	if err != nil {
+		return fmt.Errorf("agent: Error on rpc.GetJob call")
+	}
 
-	// Get the defined output types for the job, and call them
-	for k, v := range job.Processors {
-		log.Infof("Processing execution with plugin:%v", k)
-		errCh := make(chan error)
-		v.ErrCh = errCh
-		gtidCh := make(chan string)
-		v.GtidCh = gtidCh
-		go rpcc.listenOnPanicAbort(job, v)
+	errCh := make(chan error)
+	job.Processors[k].ErrCh = errCh
 
-		switch v.Driver {
-		case plugins.MysqlDriverAttr:
-			{
-				go rpcc.listenOnGtid(job, v)
-				// Start the job
-				go rpcc.setupDriver(k, v, job)
+	go rpcc.listenOnPanicAbort(job, job.Processors[k])
+	job.Processors[k].Running = true
+
+	switch job.Processors[k].Driver {
+	case plugins.MysqlDriverAttr:
+		{
+			if k == plugins.ProcessorTypeApply {
+				gtidCh := make(chan string)
+				job.Processors[k].GtidCh = gtidCh
+				go rpcc.listenOnGtid(job, job.Processors[k])
+			} else {
+				job.Status = Running
 			}
-		default:
-			{
-				return fmt.Errorf("Unknown job type : %+v", v.Driver)
-			}
+			// Start the job
+			go rpcc.setupDriver(job, k, job.Processors[k])
+		}
+	default:
+		{
+			return fmt.Errorf("Unknown job type : %+v", job.Processors[k].Driver)
 		}
 	}
 
-	job.Status = Running
-
-	err := rpcc.CallUpsertJob(job)
+	err = rpcc.CallUpsertJob(job)
 	if err != nil {
 		return fmt.Errorf("agent: Error on rpc.GetJob call")
 	}
@@ -120,59 +120,30 @@ func (rpcc *RPCClient) startJob(job *Job) error {
 	return nil
 }
 
-func (rpcc *RPCClient) setupDriver(k string, v *uconf.DriverConfig, j *Job) {
-	var subject string
-	for {
-		if k == plugins.ProcessorTypeApply {
-			subject = j.Name
-			break
-		}
-
-		if j.ParentJob != "" {
-			pj, err := rpcc.CallGetJob(j.ParentJob)
-			if err != nil {
-				log.Errorf("agent: Error on rpc.GetJob call")
-			}
-			if pj.Processors["apply"].Running == true {
-				v.Gtid = pj.Processors["apply"].Gtid
-				subject = pj.Name
-				break
-			}
-		} else {
-			job, err := rpcc.CallGetJob(j.Name)
-			if err != nil {
-				log.Errorf("agent: Error on rpc.GetJob call")
-			}
-			if job.Processors["apply"].Running == true {
-				v.Gtid = job.Processors["apply"].Gtid
-				subject = job.Name
-				break
-			}
-		}
-	}
-
+func (rpcc *RPCClient) setupDriver(j *Job, k string, v *uconf.DriverConfig) {
 	driver, err := createDriver(v)
 	if err != nil {
 		v.ErrCh <- fmt.Errorf("failed to create driver of job '%s': %v",
-			j.Name, err)
+			j, err)
 
-	}
-
-	err = driver.Start(subject, k, v)
-	if err != nil {
-		v.ErrCh <- err
 	}
 	v.Running = true
-	err = rpcc.CallUpsertJob(j)
+	v.Gtid = j.Processors[plugins.ProcessorTypeApply].Gtid
+	err = driver.Start(j.Name, k, v)
 	if err != nil {
-		log.Errorf("agent: Error on rpc.UpsertJob call")
+		v.ErrCh <- err
 	}
 
 	rpcc.agent.processorPlugins[jobDriver{name: j.Name, tp: k}] = driver
 }
 
-func (rpcc *RPCClient) stopJob(j *Job) error {
-	if err := rpcc.stop(j, Stopped); err != nil {
+func (rpcc *RPCClient) stopJob(jobName string, k string) error {
+	job, err := rpcc.CallGetJob(jobName)
+	if err != nil {
+		return fmt.Errorf("agent: Error on rpc.GetJob call")
+	}
+
+	if err := rpcc.stop(job, Stopped); err != nil {
 		return err
 	}
 
@@ -201,16 +172,6 @@ func (rpcc *RPCClient) stop(job *Job, status JobStatus) error {
 }
 
 func (rpcc *RPCClient) enqueueJob(j *Job) error {
-	for _, djn := range j.DependentJobs {
-		dj, err := rpcc.CallGetJob(djn)
-		if err != nil {
-			return fmt.Errorf("agent: Error on rpc.GetJob call")
-		}
-
-		if err := rpcc.stop(dj, Queued); err != nil {
-			return err
-		}
-	}
 	if err := rpcc.stop(j, Queued); err != nil {
 		return err
 	}
@@ -243,35 +204,9 @@ func (rpcc *RPCClient) dequeueJobs(nodeName string) (err error) {
 	}
 
 	for _, j := range jobs.Payload {
-		if j.ParentJob != "" {
-			pj, err := rpcc.CallGetJob(j.ParentJob)
-			if err != nil {
-				log.Errorf("failed to get parent job '%s': %v",
-					j.ParentJob, err)
-			}
-
-			if pj.NodeName == rpcc.agent.config.NodeName && pj.Status == Queued {
-				if err := rpcc.startJob(pj); err != nil {
-					log.Errorf("Error dequeue job command,err:%v", err)
-				}
-			}
-		}
-
-		if j.NodeName == rpcc.agent.config.NodeName && j.Status == Queued {
-			if err := rpcc.startJob(j); err != nil {
-				log.Errorf("Error dequeue job command,err:%v", err)
-			}
-		}
-
-		for _, djn := range j.DependentJobs {
-			dj, err := rpcc.CallGetJob(djn)
-			if err != nil {
-				log.Errorf("failed to get dep job '%s': %v",
-					djn, err)
-			}
-
-			if dj.NodeName == rpcc.agent.config.NodeName && dj.Status == Queued {
-				if err := rpcc.startJob(dj); err != nil {
+		for k, v := range j.Processors {
+			if v.NodeName == rpcc.agent.config.NodeName && j.Status == Queued {
+				if err := rpcc.startJob(j.Name, k); err != nil {
 					log.Errorf("Error dequeue job command,err:%v", err)
 				}
 			}
@@ -307,10 +242,15 @@ func (rpcc *RPCClient) listenOnPanicAbort(job *Job, cfg *uconf.DriverConfig) {
 	}
 }
 
-func (rpcc *RPCClient) listenOnGtid(j *Job, cfg *uconf.DriverConfig) {
-	for gtid := range cfg.GtidCh {
+func (rpcc *RPCClient) listenOnGtid(job *Job, v *uconf.DriverConfig) {
+	for gtid := range v.GtidCh {
 		if gtid != "" {
-			j.Processors["apply"].Gtid = gtid
+			j, err := rpcc.CallGetJob(job.Name)
+			if err != nil {
+				log.Errorf("agent: Error on rpc.GetJob call")
+			}
+
+			j.Processors[plugins.ProcessorTypeApply].Gtid = gtid
 			if err := rpcc.CallUpsertJob(j); err != nil {
 				log.Errorf("agent: Error on rpc.UpsertJob call")
 			}
