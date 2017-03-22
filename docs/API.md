@@ -279,21 +279,17 @@ A Job represents a scheduled task to execute.
 |Name|Description|Schema|
 |---|---|---|
 |**name**  <br>*required*|Name for the job.|string|
-|**enabled**  <br>*optional*|Enabled state of the job|boolean|
-|**parent_job**  <br>*optional*|The name/id of the job that will trigger the execution of this job  <br>*Example* : `"parent_job"`|string|
-|**dependent_jobs**  <br>*optional*  <br>*read-only*|Array containing the jobs that depends on this one  <br>*Example* : `""`|string|
+|**status**  <br>*optional*|Enabled state of the job|boolean|
 |**processors**  <br>*required*|Array containing the processors that will be called|< string, **DriverConfig** > map|
 
 *Example*
 ``` json
 {
     "name": "job1",
-    "node_name": "node1",
-    "enabled": true,
-    "parent_job": "",
-    "dependent_jobs": [],
+    "status": 0,
     "processors": {
         "extract": {
+            "node_name": "node1",
         	"driver": "mysql",
         	"server_id": 100,
         	"nats_addr": "127.0.0.1:13003",
@@ -305,11 +301,10 @@ A Job represents a scheduled task to execute.
             }
         },
         "apply": {
+            "node_name": "node1",
         	"driver": "mysql",
         	"gtid":" 4a5b5a4d-fcc7-11e6-ace3-0242ac110004:1-1",
         	"nats_addr": "127.0.0.1:13003",
-        	"nats_store_type": "MEMORY",
-        	"nats_file_store_dir":"",
         	"worker_count": 1,
             "conn_cfg": {
                 "host": "192.168.99.100",
