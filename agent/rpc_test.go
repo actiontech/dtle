@@ -45,7 +45,7 @@ func TestRPCExecutionDone(t *testing.T) {
 
 	testJob := &Job{
 		Name:     "test",
-		Disabled: true,
+		Status: 0,
 	}
 
 	if err := store.UpsertJob(testJob); err != nil {

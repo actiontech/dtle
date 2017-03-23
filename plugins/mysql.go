@@ -17,7 +17,7 @@ func NewMySQLDriver(ctx *DriverContext) Driver {
 
 func (d *MySQLDriver) Start(subject string, t string, driverCfg *uconf.DriverConfig) error {
 	switch t {
-	case ProcessorTypeExtract:
+	case DataSrc:
 		{
 			// Create the extractor
 			e := umysql.NewExtractor(driverCfg)
@@ -27,7 +27,7 @@ func (d *MySQLDriver) Start(subject string, t string, driverCfg *uconf.DriverCon
 				return fmt.Errorf("[Extractor]:%+v", err)
 			}
 		}
-	case ProcessorTypeApply:
+	case DataDest:
 		{
 			a := umysql.NewApplier(driverCfg)
 			d.Applier = a
@@ -45,14 +45,14 @@ func (d *MySQLDriver) Start(subject string, t string, driverCfg *uconf.DriverCon
 
 func (d *MySQLDriver) Stop(t string) error {
 	switch t {
-	case ProcessorTypeExtract:
+	case DataSrc:
 		{
 			// Create the extractor
 			if err := d.Extractor.Shutdown(); err != nil {
 				return err
 			}
 		}
-	case ProcessorTypeApply:
+	case DataDest:
 		{
 			if err := d.Applier.Shutdown(); err != nil {
 				return err

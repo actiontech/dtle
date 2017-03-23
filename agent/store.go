@@ -126,7 +126,7 @@ func (s *Store) GetJobByNode(nodeName string) (*JobResponse, error) {
 		if err != nil {
 			return nil, err
 		}
-		if job.Processors[plugins.ProcessorTypeExtract].NodeName != nodeName && job.Processors[plugins.ProcessorTypeApply].NodeName != nodeName {
+		if job.Processors[plugins.DataSrc].NodeName != nodeName && job.Processors[plugins.DataDest].NodeName != nodeName {
 			continue
 		}
 		job.Agent = s.agent

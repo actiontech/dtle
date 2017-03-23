@@ -286,31 +286,32 @@ A Job represents a scheduled task to execute.
 ``` json
 {
     "name": "job1",
-    "status": 0,
     "processors": {
-        "extract": {
-            "node_name": "node1",
-        	"driver": "mysql",
-        	"server_id": 100,
-        	"nats_addr": "127.0.0.1:13003",
+        "src": {
+        	"node_name": "node1",
+            "replicate_do_db": [],
+            "replicate_do_table": [],
+            "driver": "mysql",
+            "server_id": 101,
+            "nats_addr": "172.17.0.3:13003",
             "conn_cfg": {
                 "host": "192.168.99.100",
-                "port": 13004,
-                "user": "gm",
-                "password": "111111"
+                "port": 13307,
+                "user": "root",
+                "password": "rootroot"
             }
         },
-        "apply": {
-            "node_name": "node1",
-        	"driver": "mysql",
-        	"gtid":" 4a5b5a4d-fcc7-11e6-ace3-0242ac110004:1-1",
-        	"nats_addr": "127.0.0.1:13003",
-        	"worker_count": 1,
+        "dest": {
+        	"node_name": "node2",
+            "driver": "mysql",
+            "gtid": "",
+            "nats_addr": "172.17.0.3:13003",
+            "worker_count": 1,
             "conn_cfg": {
                 "host": "192.168.99.100",
-                "port": 13005,
-                "user": "gm",
-                "password": "111111"
+                "port": 13308,
+                "user": "root",
+                "password": "rootroot"
             }
         }
     }

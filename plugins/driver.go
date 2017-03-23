@@ -12,8 +12,8 @@ const (
 )
 
 const (
-	ProcessorTypeExtract = "extract"
-	ProcessorTypeApply   = "apply"
+	DataSrc = "src"
+	DataDest   = "dest"
 )
 
 var BuiltinProcessors = map[string]Factory{

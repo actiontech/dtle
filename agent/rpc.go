@@ -71,13 +71,13 @@ func (rpcc *RPCClient) startJob(jobName string, k string) error {
 	// Get the defined output types for the job, and call them
 	log.Infof("Processing execution with plugin:%v", k)
 
-	if k == plugins.ProcessorTypeExtract {
+	if k == plugins.DataSrc {
 		for {
 			ej, err := rpcc.CallGetJob(jobName)
 			if err != nil {
 				return fmt.Errorf("agent: Error on rpc.GetJob call")
 			}
-			if ej.Processors[plugins.ProcessorTypeApply].Running {
+			if ej.Processors[plugins.DataDest].Running {
 				break
 			}
 		}
@@ -96,7 +96,7 @@ func (rpcc *RPCClient) startJob(jobName string, k string) error {
 	switch job.Processors[k].Driver {
 	case plugins.MysqlDriverAttr:
 		{
-			if k == plugins.ProcessorTypeApply {
+			if k == plugins.DataDest {
 				gtidCh := make(chan string)
 				job.Processors[k].GtidCh = gtidCh
 				go rpcc.listenOnGtid(job, job.Processors[k])
@@ -128,7 +128,7 @@ func (rpcc *RPCClient) setupDriver(j *Job, k string, v *uconf.DriverConfig) {
 
 	}
 	v.Running = true
-	v.Gtid = j.Processors[plugins.ProcessorTypeApply].Gtid
+	v.Gtid = j.Processors[plugins.DataDest].Gtid
 	err = driver.Start(j.Name, k, v)
 	if err != nil {
 		v.ErrCh <- err
@@ -250,7 +250,7 @@ func (rpcc *RPCClient) listenOnGtid(job *Job, v *uconf.DriverConfig) {
 				log.Errorf("agent: Error on rpc.GetJob call")
 			}
 
-			j.Processors[plugins.ProcessorTypeApply].Gtid = gtid
+			j.Processors[plugins.DataDest].Gtid = gtid
 			if err := rpcc.CallUpsertJob(j); err != nil {
 				log.Errorf("agent: Error on rpc.UpsertJob call")
 			}
