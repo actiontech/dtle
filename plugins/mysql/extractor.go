@@ -116,21 +116,6 @@ func (e *Extractor) mysqlServerUUID() string {
 	return server_uuid
 }
 
-func (e *Extractor) checkForeignKey() error {
-	query := `SHOW VARIABLES LIKE 'FOREIGN_KEY_CHECKS'`
-	err := usql.QueryRowsMap(e.db, query, func(m usql.RowMap) error {
-		if m["Value"].String == "ON" {
-			return fmt.Errorf("foreign_key_checks == ON detected. need to be off")
-		}
-
-		return nil
-	})
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
 // readCurrentBinlogCoordinates reads master status from hooked server
 func (e *Extractor) readCurrentBinlogCoordinates() error {
 	if e.cfg.Gtid != "" {

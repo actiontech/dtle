@@ -20,7 +20,14 @@ const (
 	EventsChannelBufferSize = 200
 )
 
+type Last_tx struct {
+	LastFde string
+	LastSID string
+	LastGNO int64
+}
+
 type Transaction_t struct {
+	ServerId       string
 	StartEventFile string
 	StartEventPos  uint32
 	EndEventFile   string
@@ -151,8 +158,9 @@ func (tb *TxBuilder) newTransaction(event *BinlogEvent) {
 	u, _ := uuid.FromBytes(evt.SID)
 
 	tb.currentTx = &Transaction_t{
-		SID: u.String(),
-		GNO: evt.GNO,
+		ServerId: fmt.Sprintf("%d", event.Header.ServerID),
+		SID:      u.String(),
+		GNO:      evt.GNO,
 		//Gtid:           fmt.Sprintf("%s:%d", u.String(), evt.GNO),
 		StartEventFile: event.BinlogFile,
 		StartEventPos:  event.RealPos,

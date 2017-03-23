@@ -75,18 +75,52 @@ func (a *Applier) InitiateApplier(subject string) error {
 	return nil
 }
 
-func (a *Applier) applyTx(db *gosql.DB, transaction *ubinlog.Transaction_t) error {
-	_, err := usql.ExecNoPrepare(db, `SET SQL_LOG_BIN = 0`)
+func (a *Applier) applyTx(db *gosql.DB, transaction *ubinlog.Transaction_t,lastTx *ubinlog.Last_tx,serverId string) error {
+	_, err := usql.ExecNoPrepare(db, fmt.Sprintf("SET GLOBAL SERVER_ID=%s", transaction.ServerId))
 	if err != nil {
 		return err
 	}
 
 	defer func() {
-		_, err := usql.ExecNoPrepare(db, `SET SQL_LOG_BIN = 1`)
+		_, err = usql.ExecNoPrepare(db, fmt.Sprintf("SET GLOBAL SERVER_ID=%s", serverId))
 		if err != nil {
-			log.Errorf(err.Error())
+			a.cfg.ErrCh <- err
 		}
 	}()
+
+	if transaction.Fde != "" && lastTx.LastFde != transaction.Fde {
+		lastTx.LastFde = transaction.Fde // IMO it would comare the internal pointer first
+		_, err := usql.ExecNoPrepare(db, lastTx.LastFde)
+		if err != nil {
+			return err
+		}
+	}
+
+	if lastTx.LastSID != transaction.SID || lastTx.LastGNO != transaction.GNO {
+		lastTx.LastSID = transaction.SID
+		lastTx.LastGNO = transaction.GNO
+		_, err := usql.ExecNoPrepare(db, fmt.Sprintf(`SET GTID_NEXT='%s:%d'`, lastTx.LastSID, lastTx.LastGNO))
+		if err != nil {
+			return err
+		}
+
+		txn, err := db.Begin()
+		if err != nil {
+			return err
+		}
+
+		err = txn.Commit()
+		if err != nil {
+			return err
+		}
+
+		_, err = usql.ExecNoPrepare(db, `SET GTID_NEXT='AUTOMATIC'`)
+		if err != nil {
+			return err
+		}
+
+		a.cfg.GtidCh <- fmt.Sprintf("%s:1-%d", lastTx.LastSID, lastTx.LastGNO)
+	}
 
 	tx, err := db.Begin()
 	if err != nil {
@@ -116,49 +150,16 @@ func (a *Applier) applyTx(db *gosql.DB, transaction *ubinlog.Transaction_t) erro
 }
 
 func (a *Applier) startApplierWorker(i int, db *gosql.DB) {
-	var lastFde, lastSID string
-	var lastGNO int64
+	lastTx := &ubinlog.Last_tx{}
+	serverId, err := a.showServerId()
+	if err != nil {
+		a.cfg.ErrCh <- err
+	}
 	for tx := range a.txChan {
-		if tx.Fde != "" && lastFde != tx.Fde {
-			lastFde = tx.Fde // IMO it would comare the internal pointer first
-			_, err := usql.ExecNoPrepare(db, lastFde)
-			if err != nil {
-				a.cfg.ErrCh <- err
-				break
-			}
+		if serverId == tx.ServerId {
+			continue
 		}
-
-		if lastSID != tx.SID || lastGNO != tx.GNO {
-			lastSID = tx.SID
-			lastGNO = tx.GNO
-			_, err := usql.ExecNoPrepare(db, fmt.Sprintf(`SET GTID_NEXT='%s:%d'`, lastSID, lastGNO))
-			if err != nil {
-				a.cfg.ErrCh <- err
-				break
-			}
-
-			txn, err := db.Begin()
-			if err != nil {
-				a.cfg.ErrCh <- err
-				break
-			}
-
-			err = txn.Commit()
-			if err != nil {
-				a.cfg.ErrCh <- err
-				break
-			}
-
-			_, err = usql.ExecNoPrepare(db, `SET GTID_NEXT='AUTOMATIC'`)
-			if err != nil {
-				a.cfg.ErrCh <- err
-				break
-			}
-
-			a.cfg.GtidCh <- fmt.Sprintf("%s:1-%d", lastSID, lastGNO)
-		}
-
-		err := a.applyTx(db, tx)
+		err = a.applyTx(db, tx,lastTx,serverId)
 		if err != nil {
 			a.cfg.ErrCh <- err
 			break
@@ -224,6 +225,19 @@ func (a *Applier) mysqlGTIDMode() error {
 		return fmt.Errorf("must have GTID enabled: %+v", gtidMode)
 	}
 	return nil
+}
+
+func (a *Applier) showServerId() (string, error) {
+	query := `SHOW VARIABLES LIKE 'SERVER_ID'`
+	var serverId string
+	err := usql.QueryRowsMap(a.singletonDB, query, func(m usql.RowMap) error {
+		serverId = m["Value"].String
+		return nil
+	})
+	if err != nil {
+		return "", err
+	}
+	return serverId, nil
 }
 
 func (a *Applier) stopFlag() bool {
