@@ -148,8 +148,10 @@ func (a *Agent) setupSched() error {
 	for _, job := range jobs.Payload {
 		if job.Status == Running {
 			log.Infof("Start job: %v", job.Name)
-			for k, _ := range job.Processors {
-				go rc.startJob(job.Name, k)
+			for k, v := range job.Processors {
+				if v.NodeName == a.config.NodeName {
+					go rc.startJob(job.Name, k)
+				}
 			}
 		}
 	}
