@@ -188,11 +188,11 @@ func (tb *TxBuilder) onQueryEvent(event *BinlogEvent) error {
 		// DDL or statement/mixed binlog format
 		tb.setImpactOnAll()
 		if strings.ToUpper(query) == "COMMIT" || !tb.currentTx.hasBeginQuery {
-			if skipQueryEvent(query) {
+			/*if skipQueryEvent(query) {
 				log.Debugf("[skip query-sql]%s  [schema]:%s", query, string(evt.Schema))
 				tb.onCommit(event)
 				return nil
-			}
+			}*/
 			sqls, ok, err := usql.ResolveDDLSQL(query)
 			if err != nil {
 				return fmt.Errorf("parse query event failed: %v", err)
