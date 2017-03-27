@@ -292,7 +292,6 @@ A Job represents a scheduled task to execute.
             "replicate_do_db": [],
             "replicate_do_table": [],
             "driver": "mysql",
-            "server_id": 101,
             "nats_addr": "172.17.0.3:13003",
             "conn_cfg": {
                 "host": "192.168.99.100",
@@ -326,7 +325,6 @@ Arguments for calling an execution processor
 |Name|Description|Schema|
 |---|---|---|
 |**driver**  <br>*required*|Type for the driver.|string|
-|**server_id**  <br>*optional*|ServerID is the unique ID in mysql cluster|integer|
 |**nats_addr**  <br>*optional*|address of the nats server|string|
 |**nats_store_type**  <br>*optional*| Store type: MEMORY/FILE (default: MEMORY)|string|
 |**nats_file_store_dir**  <br>*optional*| File to redirect message store|string|

@@ -44,7 +44,7 @@ func NewBinlogParser(config *uconf.DriverConfig) (binlogParser *BinlogParser, er
 		binlogStreamer:          nil,
 	}
 	cfg := replication.BinlogSyncerConfig{
-		ServerID:        uint32(config.ServerID),
+		ServerID:        config.ServerID,
 		Flavor:          "mysql",
 		Host:            config.ConnCfg.Host,
 		Port:            uint16(config.ConnCfg.Port),

@@ -216,6 +216,7 @@ func (e *Extractor) streamEvents(subject string) error {
 			}
 			if successiveFailures > e.cfg.MaxRetries {
 				log.Errorf("%d successive failures in streamer reconnect at coordinates %+v", successiveFailures, e.GetReconnectBinlogCoordinates())
+				e.cfg.ErrCh <- err
 			}
 
 			// Reposition at same binlog file.

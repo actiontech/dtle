@@ -68,7 +68,7 @@ type DriverConfig struct {
 	MaxRetries           int64             `json:"max_retries"`
 	Gtid                 string            `json:"gtid"`
 	Driver               string            `json:"driver"`
-	ServerID             int               `json:"server_id"`
+	ServerID             uint32            `json:"server_id"`
 	NatsAddr             string            `json:"nats_addr"`
 	WorkerCount          int               `json:"worker_count"`
 	StartBinlogPath      string            `json:"start_binlog_path"`

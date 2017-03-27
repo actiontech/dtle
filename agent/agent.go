@@ -22,6 +22,7 @@ import (
 
 	uconf "udup/config"
 	"udup/plugins"
+	uutil "udup/plugins/mysql/util"
 )
 
 var (
@@ -41,6 +42,7 @@ type Agent struct {
 	eventCh   chan serf.Event
 	candidate *leadership.Candidate
 	stand     *stand.StanServer
+	idWorker  *uutil.IdWorker
 
 	processorPlugins map[jobDriver]plugins.Driver
 	Plugins          map[string]string
@@ -62,12 +64,18 @@ func NewAgent(config *uconf.Config) (*Agent, error) {
 		shutdownCh:       make(chan struct{}),
 	}
 
-	if err := a.setupNatsServer(); err != nil {
+	var err error
+	if err = a.setupNatsServer(); err != nil {
 		return nil, err
 	}
 
+	a.idWorker, err = uutil.NewIdWorker(0, 0, uutil.SnsEpoch)
+	if err != nil {
+		a.Shutdown()
+		return nil, fmt.Errorf("failed to new id worker: %v", err)
+	}
+
 	// Initialize the wan Serf
-	var err error
 	a.serf, err = a.setupSerf()
 	if err != nil {
 		a.Shutdown()

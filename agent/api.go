@@ -12,6 +12,7 @@ import (
 	"github.com/docker/libkv/store"
 	"github.com/gorilla/mux"
 	"github.com/ngaut/log"
+	"udup/plugins"
 )
 
 const apiPathPrefix = "v1"
@@ -162,6 +163,14 @@ func (a *Agent) jobUpsertHandler(w http.ResponseWriter, r *http.Request) {
 	if ej != nil {
 		ej.Lock()
 		defer ej.Unlock()
+	}
+	for k,v :=range job.Processors {
+		if k == plugins.DataSrc && v.ServerID == 0 {
+			job.Processors[plugins.DataSrc].ServerID, err = a.idWorker.NextId()
+			if err != nil {
+				log.Fatal(err)
+			}
+		}
 	}
 
 	// Save the job to the store
