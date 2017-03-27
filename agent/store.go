@@ -47,7 +47,7 @@ func (s *Store) UpsertJob(job *Job) error {
 	jobKey := fmt.Sprintf("%s/jobs/%s", keyspace, job.Name)
 
 	// Init the job agent
-	job.Agent = s.agent
+	job.agent = s.agent
 
 	if err := s.validateJob(job); err != nil {
 		return err
@@ -102,7 +102,7 @@ func (s *Store) GetJobs() ([]*Job, error) {
 		if err != nil {
 			return nil, err
 		}
-		job.Agent = s.agent
+		job.agent = s.agent
 		jobs = append(jobs, &job)
 	}
 	return jobs, nil
@@ -129,7 +129,7 @@ func (s *Store) GetJobByNode(nodeName string) (*JobResponse, error) {
 		if job.Processors[plugins.DataSrc].NodeName != nodeName && job.Processors[plugins.DataDest].NodeName != nodeName {
 			continue
 		}
-		job.Agent = s.agent
+		job.agent = s.agent
 		jobs.Payload = append(jobs.Payload, &job)
 	}
 	return jobs, nil
@@ -147,7 +147,7 @@ func (s *Store) GetJob(name string) (*Job, error) {
 		return nil, err
 	}
 
-	job.Agent = s.agent
+	job.agent = s.agent
 	return &job, nil
 }
 

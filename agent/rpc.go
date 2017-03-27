@@ -1,7 +1,6 @@
 package agent
 
 import (
-	"errors"
 	"fmt"
 	"net/rpc"
 
@@ -10,10 +9,6 @@ import (
 
 	uconf "udup/config"
 	"udup/plugins"
-)
-
-var (
-	ErrForDeletedJob = errors.New("Received err for a deleted job.")
 )
 
 type RPCServer struct {
@@ -32,7 +27,7 @@ func (rpcs *RPCServer) GetJob(jobName string, job *Job) error {
 
 	// Copy the data structure
 	job.Name = j.Name
-	job.Agent = j.Agent
+	job.agent = j.agent
 	job.Processors = j.Processors
 	return nil
 }
@@ -49,7 +44,7 @@ func (rpcs *RPCServer) GetJobs(nodeName string, js *JobResponse) error {
 }
 
 func (rpcs *RPCServer) Upsert(job *Job, reply *serf.NodeResponse) error {
-	job.Agent = rpcs.agent
+	job.agent = rpcs.agent
 	// Lock the job while editing
 	if err := job.Lock(); err != nil {
 		log.Fatal("rpc:", err)

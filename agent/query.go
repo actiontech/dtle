@@ -66,6 +66,7 @@ func (a *Agent) StartJobQuery(j *Job, k string) {
 }
 
 func (a *Agent) StopJobQuery(j *Job, k string) {
+	log.Infof("agent StopJobQuery:%v", a.config.NodeName)
 	var params *serf.QueryParam
 
 	job, err := a.store.GetJob(j.Name)

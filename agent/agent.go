@@ -45,7 +45,6 @@ type Agent struct {
 	idWorker  *uutil.IdWorker
 
 	processorPlugins map[jobDriver]plugins.Driver
-	Plugins          map[string]string
 	shutdown         bool
 	shutdownCh       chan struct{}
 	shutdownLock     sync.Mutex

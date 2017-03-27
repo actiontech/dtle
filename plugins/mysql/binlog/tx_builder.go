@@ -20,12 +20,6 @@ const (
 	EventsChannelBufferSize = 200
 )
 
-type Last_tx struct {
-	LastFde string
-	LastSID string
-	LastGNO int64
-}
-
 type Transaction_t struct {
 	ServerId       string
 	StartEventFile string
