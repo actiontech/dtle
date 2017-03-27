@@ -2,6 +2,7 @@ package util
 
 import (
 	"github.com/ngaut/log"
+	"strconv"
 	"testing"
 )
 
@@ -17,4 +18,12 @@ func TestID(t *testing.T) {
 		t.FailNow()
 	}
 	log.Infof("snowflake id: %d", sid)
+
+	bid := []byte(strconv.FormatUint(uint64(sid), 10))
+	uid, err := strconv.ParseUint(string(bid), 10, 32)
+	if err != nil {
+		log.Errorf(err.Error())
+		t.FailNow()
+	}
+	log.Infof("snowflake id: %d", uint32(uid))
 }

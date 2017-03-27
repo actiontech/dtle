@@ -166,7 +166,7 @@ func (a *Agent) jobUpsertHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	for k,v :=range job.Processors {
 		if k == plugins.DataSrc && v.ServerID == 0 {
-			job.Processors[plugins.DataSrc].ServerID, err = a.idWorker.NextId()
+			job.Processors[plugins.DataSrc].ServerID, err = a.genServerId(string(a.store.GetLeader()))
 			if err != nil {
 				log.Fatal(err)
 			}

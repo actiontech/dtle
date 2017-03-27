@@ -68,13 +68,6 @@ func NewAgent(config *uconf.Config) (*Agent, error) {
 		return nil, err
 	}
 
-	snsEpoch :=uint32(time.Now().UnixNano())
-	a.idWorker, err = uutil.NewIdWorker(0, 0, snsEpoch)
-	if err != nil {
-		a.Shutdown()
-		return nil, fmt.Errorf("failed to new id worker: %v", err)
-	}
-
 	// Initialize the wan Serf
 	a.serf, err = a.setupSerf()
 	if err != nil {
@@ -125,12 +118,19 @@ func (a *Agent) setupServer() error {
 	if !a.config.Server {
 		return nil
 	}
+	var err error
+	snsEpoch := uint32(time.Now().UnixNano())
+	a.idWorker, err = uutil.NewIdWorker(0, 0, snsEpoch)
+	if err != nil {
+		a.Shutdown()
+		return fmt.Errorf("failed to new id worker: %v", err)
+	}
+
 	a.store = SetupStore(a.config.Consul.Addrs, a)
 	// Initialize the RPC layer
 	if err := a.setupRPC(); err != nil {
 		a.Shutdown()
-		log.Errorf("failed to start RPC layer: %s", err)
-		return fmt.Errorf("Failed to start RPC layer: %v", err)
+		return fmt.Errorf("failed to start RPC layer: %v", err)
 	}
 
 	// Setup the HTTP server
@@ -447,11 +447,6 @@ func (a *Agent) eventLoop() {
 							log.Errorf("Error unmarshaling query payload,Query:%v", QueryStartJob)
 						}
 
-						/*rpcc := RPCClient{ServerAddr: rqp.RPCAddr,agent:a}
-						job, err := rpcc.CallGetJob(rqp.Job)
-						if err != nil {
-							log.Errorf("agent: Error on rpc.GetJob call")
-						}*/
 						job := rqp.JobName
 						k := rqp.Type
 
@@ -510,6 +505,17 @@ func (a *Agent) eventLoop() {
 							log.Infof("RPC Config requested,Query:%v; Payload:%v; LTime:%v", query.Name, string(query.Payload), query.LTime)
 
 							query.Respond([]byte(a.getRPCAddr()))
+						}
+					}
+				case QueryGenId:
+					{
+						if a.config.Server {
+							log.Infof("RPC Config requested,Query:%v; Payload:%v; LTime:%v", query.Name, string(query.Payload), query.LTime)
+							serverID, err := a.idWorker.NextId()
+							if err != nil {
+								log.Fatal(err)
+							}
+							query.Respond([]byte(strconv.FormatUint(uint64(serverID), 10)))
 						}
 					}
 				default:
@@ -617,7 +623,6 @@ func (a *Agent) runForElection() {
 			if isElected {
 				log.Info("Cluster leadership acquired")
 				// If this server is elected as the leader, start the scheduler
-				log.Info("Restarting scheduler")
 
 			} else {
 				log.Info("Cluster leadership lost")

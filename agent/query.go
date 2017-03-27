@@ -3,6 +3,7 @@ package agent
 import (
 	"encoding/json"
 	"math/rand"
+	"strconv"
 
 	"github.com/docker/libkv/store"
 	"github.com/hashicorp/serf/serf"
@@ -14,6 +15,7 @@ const (
 	QueryStopJob    = "stop:job"
 	QueryEnqueueJob = "equeue:job"
 	QueryRPCConfig  = "rpc:config"
+	QueryGenId      = "generate:id"
 )
 
 type RunQueryParam struct {
@@ -223,33 +225,58 @@ func (a *Agent) upsertJob(payload []byte, status JobStatus) *Job {
 		log.Fatal(err)
 	}
 
-	/*j.Agent = a
-	// Lock the job while editing
-	if err := j.Lock(); err != nil {
-		log.Fatal("rpc:", err)
-	}
-
-	j.Status = status
-	if status == Running {
-		for _, p := range j.Processors {
-			p.Running = true
-		}
-	}else {
-		for _, p := range j.Processors {
-			p.Running = false
-		}
-	}*/
 	// Save the new execution to store
 	if err := a.store.UpsertJob(&j); err != nil {
 		log.Fatal(err)
 	}
 
-	// Release the lock
-	/*if err := j.Unlock(); err != nil {
-		log.Fatal("rpc:", err)
-	}*/
-
 	return &j
+}
+
+func (a *Agent) genServerId(leaderName string) (uint32, error) {
+	if a.config.NodeName == leaderName {
+		serverID, err := a.idWorker.NextId()
+		if err != nil {
+			return 0, err
+		}
+		return serverID, nil
+	}
+	params := &serf.QueryParam{
+		FilterNodes: []string{leaderName},
+		RequestAck:  true,
+	}
+
+	qr, err := a.serf.Query(QueryGenId, nil, params)
+	if err != nil {
+		log.Errorf("Error sending query:%v; query:%v", err, QueryGenId)
+		return 0, err
+	}
+	defer qr.Close()
+
+	ackCh := qr.AckCh()
+	respCh := qr.ResponseCh()
+
+	var serverId []byte
+	for !qr.Finished() {
+		select {
+		case ack, ok := <-ackCh:
+			if ok {
+				log.Infof("Received ack:%v; from:%v", QueryGenId, ack)
+			}
+		case resp, ok := <-respCh:
+			if ok {
+				log.Infof("Received response:%v; from:%v; payload:%v", QueryGenId, resp.From, string(resp.Payload))
+				serverId = resp.Payload
+			}
+		}
+	}
+	log.Infof("Done receiving acks and responses:%v", QueryGenId)
+
+	uid, err := strconv.ParseUint(string(serverId), 10, 32)
+	if err != nil {
+		return 0, err
+	}
+	return uint32(uid), nil
 }
 
 // Broadcast a query to get the RPC config of one udup_server, any that could
