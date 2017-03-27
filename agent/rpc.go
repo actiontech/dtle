@@ -132,7 +132,7 @@ func (rpcc *RPCClient) setupDriver(j *Job, k string, v *uconf.DriverConfig) {
 	rpcc.agent.processorPlugins[jobDriver{name: j.Name, tp: k}] = driver
 }
 
-func (rpcc *RPCClient) stopJob(jobName string, k string) error {
+func (rpcc *RPCClient) stopJob(jobName string) error {
 	job, err := rpcc.CallGetJob(jobName)
 	if err != nil {
 		return fmt.Errorf("agent: Error on rpc.GetJob call")

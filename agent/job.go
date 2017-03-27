@@ -108,7 +108,9 @@ func (j *Job) Enqueue() {
 
 	if j.agent != nil && j.Status == Running {
 		log.Infof("Enqueue job:%v", j.Name)
-		j.agent.EnqueueJobQuery(j)
+		for k, _ := range j.Processors {
+			go j.agent.EnqueueJobQuery(j,k)
+		}
 	}
 }
 

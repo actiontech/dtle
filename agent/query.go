@@ -110,7 +110,6 @@ func (a *Agent) StopJobQuery(j *Job, k string) {
 
 	rqp := &RunQueryParam{
 		JobName: j.Name,
-		Type:    k,
 		RPCAddr: a.getRPCAddr(),
 	}
 	rqpJson, _ := json.Marshal(rqp)
@@ -142,7 +141,7 @@ func (a *Agent) StopJobQuery(j *Job, k string) {
 	log.Infof("Done receiving acks and responses:%v", QueryStopJob)
 }
 
-func (a *Agent) EnqueueJobQuery(j *Job) {
+func (a *Agent) EnqueueJobQuery(j *Job, k string) {
 	log.Infof("agent EnqueueJobQuery:%v", a.config.NodeName)
 	var params *serf.QueryParam
 
@@ -154,11 +153,11 @@ func (a *Agent) EnqueueJobQuery(j *Job) {
 	}
 
 	var statusAlive bool
-	/*for _, m := range a.serf.Members() {
-		if m.Name == job.NodeName && m.Status == serf.StatusAlive {
+	for _, m := range a.serf.Members() {
+		if m.Name == j.Processors[k].NodeName && m.Status == serf.StatusAlive {
 			statusAlive = true
 		}
-	}*/
+	}
 	if !statusAlive {
 		// Lock the job while editing
 		if err = job.Lock(); err != nil {
@@ -180,35 +179,13 @@ func (a *Agent) EnqueueJobQuery(j *Job) {
 		return
 	}
 
-	/*// Jobs that have dependent jobs are a bit more expensive because we need to call the Status() method for every execution.
-	// Check first if there's dependent jobs and then check for the job status to begin executiong dependent jobs on success.
-	if len(job.DependentJobs) > 0 {
-		for _, djn := range job.DependentJobs {
-			dj, err := a.store.GetJob(djn)
-			if err != nil {
-				return
-			}
-			statusAlive = false
-			for _, m := range a.serf.Members() {
-				if m.Name == dj.NodeName && m.Status == serf.StatusAlive {
-					statusAlive = true
-				}
-			}
-			if !statusAlive {
-				return
-			}
-			dj.Enqueue()
-		}
+	params = &serf.QueryParam{
+		FilterNodes: []string{j.Processors[k].NodeName},
+		RequestAck:  true,
 	}
 
-	params = &serf.QueryParam{
-		FilterNodes: []string{j.NodeName},
-		RequestAck:  true,
-	}*/
-
 	rqp := &RunQueryParam{
-		/*Type:     k,
-		DriverConfig:v,*/
+		JobName: j.Name,
 		RPCAddr: a.getRPCAddr(),
 	}
 	rqpJson, _ := json.Marshal(rqp)

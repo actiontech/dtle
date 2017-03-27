@@ -68,7 +68,8 @@ func NewAgent(config *uconf.Config) (*Agent, error) {
 		return nil, err
 	}
 
-	a.idWorker, err = uutil.NewIdWorker(0, 0, uutil.SnsEpoch)
+	snsEpoch :=uint32(time.Now().UnixNano())
+	a.idWorker, err = uutil.NewIdWorker(0, 0, snsEpoch)
 	if err != nil {
 		a.Shutdown()
 		return nil, fmt.Errorf("failed to new id worker: %v", err)
@@ -473,10 +474,9 @@ func (a *Agent) eventLoop() {
 						}
 
 						job := rqp.JobName
-						k := rqp.Type
 
 						go func() {
-							if err := a.stopJob(job, k); err != nil {
+							if err := a.stopJob(job); err != nil {
 								log.Errorf("Error stop job command,err:%v", err)
 							}
 						}()
@@ -539,7 +539,7 @@ func (a *Agent) startJob(j string, k string) (err error) {
 	return rc.startJob(j, k)
 }
 
-func (a *Agent) stopJob(j string, k string) (err error) {
+func (a *Agent) stopJob(j string) (err error) {
 	var rpcServer []byte
 	if !a.config.Server {
 		rpcServer, err = a.queryRPCConfig()
@@ -549,7 +549,7 @@ func (a *Agent) stopJob(j string, k string) (err error) {
 	}
 
 	rc := &RPCClient{ServerAddr: string(rpcServer), agent: a}
-	return rc.stopJob(j, k)
+	return rc.stopJob(j)
 }
 
 func (a *Agent) enqueueJobs(nodeName string) (err error) {
