@@ -124,6 +124,7 @@ func (rpcc *RPCClient) setupDriver(j *Job, k string, v *uconf.DriverConfig) {
 	}
 	v.Running = true
 	v.Gtid = j.Processors[plugins.DataDest].Gtid
+	v.NatsAddr = rpcc.agent.getNatsAddr(j.Processors[plugins.DataDest].NodeName)
 	err = driver.Start(j.Name, k, v)
 	if err != nil {
 		v.ErrCh <- err

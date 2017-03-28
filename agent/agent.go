@@ -8,7 +8,6 @@ import (
 	"net"
 	"net/http"
 	"net/rpc"
-	"runtime"
 	"strconv"
 	"sync"
 	"time"
@@ -247,12 +246,13 @@ func (a *Agent) setupSerf() (*serf.Serf, error) {
 	serfConfig := serf.DefaultConfig()
 	serfConfig.MemberlistConfig = memberlist.DefaultWANConfig()
 
-	bindIP, bindPort, err := a.getBindAddr()
+	serfAddr, err := net.ResolveTCPAddr("tcp", a.config.BindAddr)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to parse Serf address %q: %v", a.config.BindAddr, err)
 	}
-	serfConfig.MemberlistConfig.BindAddr = bindIP
-	serfConfig.MemberlistConfig.BindPort = bindPort
+	serfConfig.MemberlistConfig.BindAddr = serfAddr.IP.String()
+	serfConfig.MemberlistConfig.BindPort = serfAddr.Port
+
 	serfConfig.NodeName = a.config.NodeName
 	serfConfig.Init()
 	if a.config.Server {
@@ -262,6 +262,13 @@ func (a *Agent) setupSerf() (*serf.Serf, error) {
 	serfConfig.Tags["role"] = "udup"
 	serfConfig.Tags["region"] = a.config.Region
 	serfConfig.Tags["dc"] = a.config.Datacenter
+
+	natsAddr, err := net.ResolveTCPAddr("tcp", a.config.NatsAddr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse Nats address %q: %v", a.config.NatsAddr, err)
+	}
+	serfConfig.Tags["nats_ip"] = natsAddr.IP.String()
+	serfConfig.Tags["nats_port"] = strconv.Itoa(natsAddr.Port)
 
 	serfConfig.QuerySizeLimit = 1024 * 10
 	serfConfig.CoalescePeriod = 3 * time.Second
@@ -293,92 +300,6 @@ func (a *Agent) setupSerf() (*serf.Serf, error) {
 	return serf.Create(serfConfig)
 }
 
-func (a *Agent) getBindAddr() (string, int, error) {
-	bindIP, bindPort, err := a.config.AddrParts(a.config.BindAddr)
-	if err != nil {
-		log.Errorf(fmt.Sprintf("Invalid bind address: [%s]", err))
-		return "", 0, err
-	}
-
-	// Check if we have an interface
-	if iface, _ := a.config.NetworkInterface(); iface != nil {
-		addrs, err := iface.Addrs()
-		if err != nil {
-			log.Errorf(fmt.Sprintf("Failed to get interface addresses: [%s]", err))
-			return "", 0, err
-		}
-		if len(addrs) == 0 {
-			log.Errorf(fmt.Sprintf("Interface '%s' has no addresses", a.config.Interface))
-			return "", 0, err
-		}
-
-		// If there is no bind IP, pick an address
-		if bindIP == "0.0.0.0" {
-			found := false
-			for _, ad := range addrs {
-				var addrIP net.IP
-				if runtime.GOOS == "windows" {
-					// Waiting for https://github.com/golang/go/issues/5395 to use IPNet only
-					addr, ok := ad.(*net.IPAddr)
-					if !ok {
-						continue
-					}
-					addrIP = addr.IP
-				} else {
-					addr, ok := ad.(*net.IPNet)
-					if !ok {
-						continue
-					}
-					addrIP = addr.IP
-				}
-
-				// Skip self-assigned IPs
-				if addrIP.IsLinkLocalUnicast() {
-					continue
-				}
-
-				// Found an IP
-				found = true
-				bindIP = addrIP.String()
-				log.Infof(fmt.Sprintf("Using interface '%s' address '%s'",
-					a.config.Interface, bindIP))
-
-				// Update the configuration
-				bindAddr := &net.TCPAddr{
-					IP:   net.ParseIP(bindIP),
-					Port: bindPort,
-				}
-				a.config.BindAddr = bindAddr.String()
-				break
-			}
-			if !found {
-				log.Errorf(fmt.Sprintf("Failed to find usable address for interface '%s'", a.config.Interface))
-				return "", 0, err
-			}
-
-		} else {
-			// If there is a bind IP, ensure it is available
-			found := false
-			for _, ad := range addrs {
-				addr, ok := ad.(*net.IPNet)
-				if !ok {
-					continue
-				}
-				if addr.IP.String() == bindIP {
-					found = true
-					break
-				}
-			}
-			if !found {
-				log.Errorf(fmt.Sprintf("Interface '%s' has no '%s' address",
-					a.config.Interface, bindIP))
-				return "", 0, err
-			}
-		}
-	}
-	return bindIP, bindPort, nil
-}
-
 // Utility method to get leader nodename
 func (a *Agent) leaderMember() (*serf.Member, error) {
 	leaderName := a.store.GetLeader()
@@ -401,6 +322,20 @@ func (a *Agent) listServers() []serf.Member {
 		}
 	}
 	return members
+}
+
+func (a *Agent) getNatsAddr(nodeName string) string {
+	for _, member := range a.serf.Members() {
+		if member.Name == nodeName {
+			if ip, ok := member.Tags["nats_ip"]; ok {
+				if port, ok := member.Tags["nats_port"]; ok {
+					return fmt.Sprintf("%s:%s",ip,port)
+				}
+			}
+			return ""
+		}
+	}
+	return ""
 }
 
 // Listens to events from Serf and handle the event.

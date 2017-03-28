@@ -292,7 +292,6 @@ A Job represents a scheduled task to execute.
             "replicate_do_db": [],
             "replicate_do_table": [],
             "driver": "mysql",
-            "nats_addr": "172.17.0.3:13003",
             "conn_cfg": {
                 "host": "192.168.99.100",
                 "port": 13307,
@@ -304,7 +303,6 @@ A Job represents a scheduled task to execute.
         	"node_name": "node2",
             "driver": "mysql",
             "gtid": "",
-            "nats_addr": "172.17.0.3:13003",
             "worker_count": 1,
             "conn_cfg": {
                 "host": "192.168.99.100",
@@ -325,9 +323,6 @@ Arguments for calling an execution processor
 |Name|Description|Schema|
 |---|---|---|
 |**driver**  <br>*required*|Type for the driver.|string|
-|**nats_addr**  <br>*optional*|address of the nats server|string|
-|**nats_store_type**  <br>*optional*| Store type: MEMORY/FILE (default: MEMORY)|string|
-|**nats_file_store_dir**  <br>*optional*| File to redirect message store|string|
 |**worker_count**  <br>*optional*|Parallel worker count|integer|
 |**conn_cfg**  <br>*optional*|MySQL Configuration Properties|**ConnectionConfig**|
 
