@@ -12,6 +12,7 @@ import (
 	"github.com/docker/libkv/store"
 	"github.com/gorilla/mux"
 	"github.com/ngaut/log"
+
 	"udup/plugins"
 )
 
@@ -164,7 +165,7 @@ func (a *Agent) jobUpsertHandler(w http.ResponseWriter, r *http.Request) {
 		ej.Lock()
 		defer ej.Unlock()
 	}
-	for k,v :=range job.Processors {
+	for k, v := range job.Processors {
 		if k == plugins.DataSrc && v.ServerID == 0 {
 			job.Processors[plugins.DataSrc].ServerID, err = a.genServerId(string(a.store.GetLeader()))
 			if err != nil {

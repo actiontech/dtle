@@ -11,22 +11,21 @@ import (
 )
 
 const (
-	QueryStartJob   = "start:job"
-	QueryStopJob    = "stop:job"
-	QueryEnqueueJob = "equeue:job"
-	QueryRPCConfig  = "rpc:config"
-	QueryGenId      = "generate:id"
+	QueryStartJob  = "start:job"
+	QueryStopJob   = "stop:job"
+	QueryRPCConfig = "rpc:config"
+	QueryGenId     = "generate:id"
 )
 
 type RunQueryParam struct {
-	JobName string `json:"job_name"`
+	Job     *Job   `json:"job"`
 	Type    string `json:"type"`
 	RPCAddr string `json:"rpc_addr"`
 }
 
 // Send a serf run query to the cluster, this is used to ask a node or nodes
 // to run a Job.
-func (a *Agent) StartJobQuery(j *Job, k string) {
+func (j *Job) StartJobQuery(k string) {
 	var params *serf.QueryParam
 	params = &serf.QueryParam{
 		FilterNodes: []string{j.Processors[k].NodeName},
@@ -34,15 +33,15 @@ func (a *Agent) StartJobQuery(j *Job, k string) {
 	}
 
 	rqp := &RunQueryParam{
-		JobName: j.Name,
+		Job:     j,
 		Type:    k,
-		RPCAddr: a.getRPCAddr(),
+		RPCAddr: j.agent.getRPCAddr(),
 	}
 	rqpJson, _ := json.Marshal(rqp)
 
 	log.Debug("Sending query:%v; job_name:%v; json:%v", QueryStartJob, j.Name, string(rqpJson))
 
-	qr, err := a.serf.Query(QueryStartJob, rqpJson, params)
+	qr, err := j.agent.serf.Query(QueryStartJob, rqpJson, params)
 	if err != nil {
 		log.Errorf("Sending query error:%v; query:%v", err, QueryStartJob)
 	}
@@ -60,18 +59,18 @@ func (a *Agent) StartJobQuery(j *Job, k string) {
 		case resp, ok := <-respCh:
 			if ok {
 				log.Infof("Received response:%v; query:%v; from:%v", string(resp.Payload), QueryStartJob, resp.From)
-				//a.upsertJob(resp.Payload,Running)
+				//j.agent.upsertJob(resp.Payload)
 			}
 		}
 	}
 	log.Infof("Done receiving acks and responses:%v", QueryStartJob)
 }
 
-func (a *Agent) StopJobQuery(j *Job, k string) {
-	log.Infof("agent StopJobQuery:%v", a.config.NodeName)
+func (j *Job) StopJobQuery(k string) {
+	log.Infof("agent StopJobQuery:%v", j.agent.config.NodeName)
 	var params *serf.QueryParam
 
-	job, err := a.store.GetJob(j.Name)
+	job, err := j.agent.store.GetJob(j.Name)
 
 	//In this case, the job will not be found in the store.
 	if err == store.ErrKeyNotFound {
@@ -79,7 +78,7 @@ func (a *Agent) StopJobQuery(j *Job, k string) {
 	}
 
 	var statusAlive bool
-	for _, m := range a.serf.Members() {
+	for _, m := range j.agent.serf.Members() {
 		if m.Name == j.Processors[k].NodeName && m.Status == serf.StatusAlive {
 			statusAlive = true
 		}
@@ -94,7 +93,7 @@ func (a *Agent) StopJobQuery(j *Job, k string) {
 		for _, p := range job.Processors {
 			p.Running = false
 		}
-		if err := a.store.UpsertJob(job); err != nil {
+		if err := j.agent.store.UpsertJob(job); err != nil {
 			log.Fatal(err)
 		}
 
@@ -111,14 +110,14 @@ func (a *Agent) StopJobQuery(j *Job, k string) {
 	}
 
 	rqp := &RunQueryParam{
-		JobName: j.Name,
-		RPCAddr: a.getRPCAddr(),
+		Job:     j,
+		RPCAddr: j.agent.getRPCAddr(),
 	}
 	rqpJson, _ := json.Marshal(rqp)
 
 	log.Debug("Sending query:%v; job_name:%v; json:%v", QueryStopJob, job.Name, string(rqpJson))
 
-	qr, err := a.serf.Query(QueryStopJob, rqpJson, params)
+	qr, err := j.agent.serf.Query(QueryStopJob, rqpJson, params)
 	if err != nil {
 		log.Errorf("Sending query error:%v; query:%v", err, QueryStopJob)
 	}
@@ -136,90 +135,14 @@ func (a *Agent) StopJobQuery(j *Job, k string) {
 		case resp, ok := <-respCh:
 			if ok {
 				log.Debug("Received response:%v; query:%v; from:%v", string(resp.Payload), QueryStopJob, resp.From)
-				//a.upsertJob(resp.Payload,Stopped)
+				//j.agent.upsertJob(resp.Payload)
 			}
 		}
 	}
 	log.Infof("Done receiving acks and responses:%v", QueryStopJob)
 }
 
-func (a *Agent) EnqueueJobQuery(j *Job, k string) {
-	log.Infof("agent EnqueueJobQuery:%v", a.config.NodeName)
-	var params *serf.QueryParam
-
-	job, err := a.store.GetJob(j.Name)
-
-	//In this case, the job will not be found in the store.
-	if err == store.ErrKeyNotFound {
-		log.Infof("Job not found, cancelling this execution")
-	}
-
-	var statusAlive bool
-	for _, m := range a.serf.Members() {
-		if m.Name == j.Processors[k].NodeName && m.Status == serf.StatusAlive {
-			statusAlive = true
-		}
-	}
-	if !statusAlive {
-		// Lock the job while editing
-		if err = job.Lock(); err != nil {
-			log.Fatal(err)
-		}
-
-		job.Status = Queued
-		for _, p := range job.Processors {
-			p.Running = false
-		}
-		if err := a.store.UpsertJob(job); err != nil {
-			log.Fatal(err)
-		}
-
-		// Release the lock
-		if err = job.Unlock(); err != nil {
-			log.Fatal(err)
-		}
-		return
-	}
-
-	params = &serf.QueryParam{
-		FilterNodes: []string{j.Processors[k].NodeName},
-		RequestAck:  true,
-	}
-
-	rqp := &RunQueryParam{
-		JobName: j.Name,
-		RPCAddr: a.getRPCAddr(),
-	}
-	rqpJson, _ := json.Marshal(rqp)
-
-	log.Debug("Sending query:%v; job_name:%v; json:%v", QueryEnqueueJob, job.Name, string(rqpJson))
-
-	qr, err := a.serf.Query(QueryEnqueueJob, rqpJson, params)
-	if err != nil {
-		log.Errorf("Sending query error:%v; query:%v", err, QueryEnqueueJob)
-	}
-	defer qr.Close()
-
-	ackCh := qr.AckCh()
-	respCh := qr.ResponseCh()
-
-	for !qr.Finished() {
-		select {
-		case ack, ok := <-ackCh:
-			if ok {
-				log.Debug("Received ack:%v; from:%v", QueryEnqueueJob, ack)
-			}
-		case resp, ok := <-respCh:
-			if ok {
-				log.Debug("Received response:%v; query:%v; from:%v", string(resp.Payload), QueryEnqueueJob, resp.From)
-				a.upsertJob(resp.Payload, Queued)
-			}
-		}
-	}
-	log.Infof("Done receiving acks and responses:%v", QueryEnqueueJob)
-}
-
-func (a *Agent) upsertJob(payload []byte, status JobStatus) *Job {
+func (a *Agent) upsertJob(payload []byte) *Job {
 	var j Job
 	if err := json.Unmarshal(payload, &j); err != nil {
 		log.Fatal(err)
@@ -324,4 +247,11 @@ func (a *Agent) selectServer() serf.Member {
 	server := servers[rand.Intn(len(servers))]
 
 	return server
+}
+
+func (a *Agent) selectAgent() serf.Member {
+	agents := a.listAlivedMembers()
+	agent := agents[rand.Intn(len(agents))]
+
+	return agent
 }

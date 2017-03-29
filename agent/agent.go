@@ -157,7 +157,7 @@ func (a *Agent) setupSched() error {
 			log.Infof("Start job: %v", job.Name)
 			for k, v := range job.Processors {
 				if v.NodeName == a.config.NodeName {
-					go rc.startJob(job.Name, k)
+					go rc.startJob(job, k)
 				}
 			}
 		}
@@ -324,12 +324,23 @@ func (a *Agent) listServers() []serf.Member {
 	return members
 }
 
+func (a *Agent) listAlivedMembers() []serf.Member {
+	members := []serf.Member{}
+
+	for _, member := range a.serf.Members() {
+		if member.Status == serf.StatusAlive {
+			members = append(members, member)
+		}
+	}
+	return members
+}
+
 func (a *Agent) getNatsAddr(nodeName string) string {
 	for _, member := range a.serf.Members() {
 		if member.Name == nodeName {
 			if ip, ok := member.Tags["nats_ip"]; ok {
 				if port, ok := member.Tags["nats_port"]; ok {
-					return fmt.Sprintf("%s:%s",ip,port)
+					return fmt.Sprintf("%s:%s", ip, port)
 				}
 			}
 			return ""
@@ -382,7 +393,7 @@ func (a *Agent) eventLoop() {
 							log.Errorf("Error unmarshaling query payload,Query:%v", QueryStartJob)
 						}
 
-						job := rqp.JobName
+						job := rqp.Job
 						k := rqp.Type
 
 						go func() {
@@ -391,7 +402,7 @@ func (a *Agent) eventLoop() {
 							}
 						}()
 
-						jobJson, _ := json.Marshal(fmt.Sprintf("Start job [%v] success", job))
+						jobJson, _ := json.Marshal(job)
 						query.Respond(jobJson)
 					}
 				case QueryStopJob:
@@ -403,7 +414,7 @@ func (a *Agent) eventLoop() {
 							log.Errorf("Error unmarshaling query payload,Query:%v", QueryStopJob)
 						}
 
-						job := rqp.JobName
+						job := rqp.Job
 
 						go func() {
 							if err := a.stopJob(job); err != nil {
@@ -411,27 +422,7 @@ func (a *Agent) eventLoop() {
 							}
 						}()
 
-						jobJson, _ := json.Marshal(fmt.Sprintf("Stop job [%v] success", job))
-						query.Respond(jobJson)
-					}
-				case QueryEnqueueJob:
-					{
-						log.Debugf("Enqueue job: Query:%v; Payload:%v; LTime:%v,", query.Name, string(query.Payload), query.LTime)
-
-						var rqp RunQueryParam
-						if err := json.Unmarshal(query.Payload, &rqp); err != nil {
-							log.Errorf("Error unmarshaling query payload,Query:%v", QueryEnqueueJob)
-						}
-
-						job := rqp.JobName
-
-						go func() {
-							if err := a.enqueueJob(job); err != nil {
-								log.Errorf("Error stop job command,err:%v", err)
-							}
-						}()
-
-						jobJson, _ := json.Marshal(fmt.Sprintf("Enqueue job [%v] success", job))
+						jobJson, _ := json.Marshal(job)
 						query.Respond(jobJson)
 					}
 				case QueryRPCConfig:
@@ -467,7 +458,7 @@ func (a *Agent) eventLoop() {
 	}
 }
 
-func (a *Agent) startJob(j string, k string) (err error) {
+func (a *Agent) startJob(j *Job, k string) (err error) {
 	var rpcServer []byte
 	if !a.config.Server {
 		rpcServer, err = a.queryRPCConfig()
@@ -480,7 +471,7 @@ func (a *Agent) startJob(j string, k string) (err error) {
 	return rc.startJob(j, k)
 }
 
-func (a *Agent) stopJob(j string) (err error) {
+func (a *Agent) stopJob(j *Job) (err error) {
 	var rpcServer []byte
 	if !a.config.Server {
 		rpcServer, err = a.queryRPCConfig()

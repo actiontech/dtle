@@ -49,10 +49,6 @@ func (s *Store) UpsertJob(job *Job) error {
 	// Init the job agent
 	job.agent = s.agent
 
-	if err := s.validateJob(job); err != nil {
-		return err
-	}
-
 	// Get if the requested job already exist
 	ej, err := s.GetJob(job.Name)
 	if err != nil && err != store.ErrKeyNotFound {
@@ -72,14 +68,6 @@ func (s *Store) UpsertJob(job *Job) error {
 	if err := s.Client.Put(jobKey, jobJSON, nil); err != nil {
 		return err
 	}
-
-	return nil
-}
-
-func (s *Store) validateJob(job *Job) error {
-	/*if job.ParentJob == job.Name {
-		return ErrSameParent
-	}*/
 
 	return nil
 }

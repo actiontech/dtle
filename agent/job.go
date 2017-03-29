@@ -45,6 +45,8 @@ type Job struct {
 	// Job name. Must be unique, acts as the id.
 	Name string `json:"name"`
 
+	Failover bool `json:"failover"`
+
 	// Job status
 	Status JobStatus `json:"status"`
 
@@ -81,7 +83,7 @@ func (j *Job) Start() {
 			log.Infof("Start job:%v", j.Name)
 			for k, v := range j.Processors {
 				if v.Running != true {
-					go j.agent.StartJobQuery(j, k)
+					go j.StartJobQuery(k)
 				}
 			}
 		}
@@ -96,36 +98,7 @@ func (j *Job) Stop() {
 	if j.agent != nil && j.Status == Running {
 		log.Infof("Stop job:%v", j.Name)
 		for k, _ := range j.Processors {
-			go j.agent.StopJobQuery(j, k)
-		}
-	}
-}
-
-// Enqueue the job
-func (j *Job) Enqueue() {
-	j.running.Lock()
-	defer j.running.Unlock()
-
-	if j.agent != nil && j.Status == Running {
-		log.Infof("Enqueue job:%v", j.Name)
-		for k, _ := range j.Processors {
-			go j.agent.EnqueueJobQuery(j,k)
-		}
-	}
-}
-
-func (j *Job) listenOnPanicAbort(cfg *uconf.DriverConfig) {
-	err := <-cfg.ErrCh
-	log.Errorf("Run failed: %v", err)
-	j.Enqueue()
-}
-
-func (j *Job) listenOnGtid(a *Agent, cfg *uconf.DriverConfig) {
-	for gtid := range cfg.GtidCh {
-		j.Processors["apply"].Gtid = gtid
-		err := a.store.UpsertJob(j)
-		if err != nil {
-			log.Errorf(err.Error())
+			go j.StopJobQuery(k)
 		}
 	}
 }

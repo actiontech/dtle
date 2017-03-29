@@ -44,7 +44,7 @@ func TestRPCExecutionDone(t *testing.T) {
 	time.Sleep(2 * time.Second)
 
 	testJob := &Job{
-		Name:     "test",
+		Name:   "test",
 		Status: 0,
 	}
 

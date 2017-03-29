@@ -71,10 +71,6 @@ type DriverConfig struct {
 	ServerID             uint32            `json:"server_id"`
 	NatsAddr             string            `json:"nats_addr"`
 	WorkerCount          int               `json:"worker_count"`
-	StartBinlogPath      string            `json:"start_binlog_path"`
-	StartBinlogPos       int               `json:"start_binlog_pos"`
-	BinlogReadBufferSize int               `json:"binlog_read_buffer_size"`
-	BinlogChecksumBytes  uint32            `json:"binlog_checksum_bytes"`
 	ConnCfg              *ConnectionConfig `json:"conn_cfg"`
 	ErrCh                chan error        `json:"-"`
 	GtidCh               chan string       `json:"-"`
