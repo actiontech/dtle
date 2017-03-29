@@ -11,36 +11,28 @@ log_rotate:
 
 ## General Configuration
 
-worker_count:
-batch:
+Udup has a few options you can configure under the `General Configuration` section of the config.
+
+region:Name of the region the Udup agent will be a member of. By default this value is set to "global".
+datacenter:The name of the datacenter this Udup agent is a member of. By default this is set to "dc1".
+server:Enable server mode for the agent.
+http_addr:The `address` and port of the Udup HTTP agent
+bind_addr:The address the agent will bind to for all of its various network services.
+start_join:Address of an agent to join at start time.
+rpc_port:
+
+## Nats Configuration
+
+The following config parameters are available for Nats:
+
 nats_addr:
-replicate_do_db:
-replicate_do_table:
+nats_store_type:
+nats_file_store_dir:
 
-Udup has a few options you can configure under the `replicate_do_table` section of the config.
-db_name:
-tbl_name:
+## Consul Configuration
 
-## Extractor Configuration
+The following config parameters available for Consul.
 
-The following config parameters are available for extractor:
-
-enabled:
-server_id:
-conn_cfg:
-
-## Applier Configuration
-
-The following config parameters available for applier.
-
-enabled:
-conn_cfg:
-
-## Connection Configuration
-
-Udup has a few options you can configure under the `conn_cfg` section of the config.
-
-host:
-port:
-user:
-password:
+addrs:The address to the Consul agent
+server_auto_join:Enabling the server to bootstrap using Consul.
+client_auto_join:Enabling the client to bootstrap using Consul.

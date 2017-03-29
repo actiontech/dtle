@@ -223,11 +223,6 @@ func (a *AgentCommand) Help() string {
 Usage: udup agent [options]
 
   Starts the Udup agent and runs until an interrupt is received.
-  The agent may be a extractor and/or applier.
-
-  The Udup agent's configuration primarily comes from the config
-  file used, but a subset of the options may also be passed directly
-  as CLI arguments, listed below.
 
 General Options (clients and servers):
 
@@ -236,19 +231,6 @@ General Options (clients and servers):
     DEBUG, INFO, and WARN, in decreasing order of verbosity. The
     default is INFO.
 
-Extractor Options:
-
-  -extract
-    Enable extract mode for the agent. Extract mode enables a given node to be
-    extract for events. If extract mode is not enabled, no work will be
-    extract to the agent.
-
-Applier Options:
-
-  -apply
-    Enable apply mode for the agent. Apply mode enables a given node to be
-    applied for events. If apply mode is not enabled, no work will be
-    applied to the agent.
  `
 	return strings.TrimSpace(helpText)
 }

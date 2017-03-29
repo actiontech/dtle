@@ -122,7 +122,6 @@ func (bp *BinlogParser) handleRowsEvent(ev *replication.BinlogEvent, eventsChann
 	}
 
 	switch ev.Header.EventType {
-	case replication.STOP_EVENT:
 	case replication.FORMAT_DESCRIPTION_EVENT:
 		eventsChannel <- &BinlogEvent{
 			BinlogFile: bp.currentCoordinates.LogFile,

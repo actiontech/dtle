@@ -1,6 +1,19 @@
+## v0.2.0 [2017-03-29]
+
+### Features 
+- Support service health queries and failover to remote nodes based on network coordinates
+- Allows filtering production of DML events by GTIDs
+- Populate job status
+- Improved restart policy
+
+### Bugfixes
+
 ## v0.1.3 [2017-03-09]
 
 ### Features 
+- MySQL connector supports failing over based on subset of GTIDs
+- Use docker images with the custom scripts and config baked into the image
+- Enhance Udup Consul image to support clustering
 
 ### Bugfixes
 
@@ -9,7 +22,6 @@
 ### Features 
 - Ingest change data from MySQL databases
 - Processor plugins, allows flexible routing of execution results
-- Support chained jobs
 - Ability to encrypt serf network traffic between nodes.
 - Using Libkv allows to use consul storage backends
 - Includes cluster nodes
