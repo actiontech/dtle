@@ -159,16 +159,23 @@ func (a *AgentCommand) readConfig() *uconf.Config {
 	flags := flag.NewFlagSet("agent", flag.ContinueOnError)
 	flags.Usage = func() { a.Ui.Error(a.Help()) }
 
+	// Role options
+	flags.BoolVar(&cmdConfig.Server.Enabled, "server", false, "")
+
+	// Server-only options
+	flags.StringVar(&cmdConfig.Server.HTTPAddr, "http-addr", "", "")
+
+	// Client-only options
+	//flags.StringVar(&cmdConfig.Client.Join, "join", "", "")
+
 	// General options
 	flags.StringVar(&cmdConfig.File, "config", "/etc/udup/udup.conf", "")
 	flags.StringVar(&cmdConfig.LogLevel, "log-level", "info", "")
 	flags.StringVar(&cmdConfig.PidFile, "pid-file", "udup.pid", "")
 	flags.StringVar(&cmdConfig.BindAddr, "bind", "", "")
-	flags.StringVar(&cmdConfig.HTTPAddr, "http-addr", "", "")
-	flags.StringVar(&cmdConfig.NodeName, "name", hostname, "")
-
-	// Role options
-	flags.BoolVar(&cmdConfig.Server, "server", false, "")
+	flags.StringVar(&cmdConfig.Region, "region", "", "")
+	flags.StringVar(&cmdConfig.Datacenter, "dc", "", "")
+	flags.StringVar(&cmdConfig.NodeName, "node", hostname, "")
 
 	if err := flags.Parse(a.args); err != nil {
 		return nil
@@ -223,13 +230,86 @@ func (a *AgentCommand) Help() string {
 Usage: udup agent [options]
 
   Starts the Udup agent and runs until an interrupt is received.
+  The agent may be a client and/or server.
+
+  The Udup agent's configuration primarily comes from the config
+  files used, but a subset of the options may also be passed directly
+  as CLI arguments, listed below.
 
 General Options (clients and servers):
 
+  -bind=<addr>
+    The address the agent will bind to for all of its various network
+    services. The individual services that run bind to individual
+    ports on this address. Defaults to the loopback 127.0.0.1.
+
+  -config=<path>
+    The path to either a single config file or a directory of config
+    files to use for configuring the Nomad agent. This option may be
+    specified multiple times. If multiple config files are used, the
+    values from each will be merged together. During merging, values
+    from files found later in the list are merged over values from
+    previously parsed files.
+
+  -dc=<datacenter>
+    The name of the datacenter this Nomad agent is a member of. By
+    default this is set to "dc1".
+
   -log-level=<level>
-    Specify the verbosity level of Udup's logs. Valid values include
+    Specify the verbosity level of Nomad's logs. Valid values include
     DEBUG, INFO, and WARN, in decreasing order of verbosity. The
     default is INFO.
+
+  -node=<name>
+    The name of the local agent. This name is used to identify the node
+    in the cluster. The name must be unique per region. The default is
+    the current hostname of the machine.
+
+  -region=<region>
+    Name of the region the Nomad agent will be a member of. By default
+    this value is set to "global".
+
+Server Options:
+
+  -server
+    Enable server mode for the agent. Agents in server mode are
+    clustered together and handle the additional responsibility of
+    leader election, data replication, and scheduling work onto
+    eligible client nodes.
+
+  -http-addr=<address>
+     The address and port of the Udup HTTP agent. The value can be
+     an IP address or DNS address, but it must also include the port.
+     This can also be specified via the UDUP_HTTP_ADDR environment
+     variable. The default value is http://127.0.0.1:8190.
+
+Client Options:
+
+  -join=<address>
+    Address of an agent to join at start time. Can be specified
+    multiple times.
+
+Nats Options:
+
+  -addrs=<address>
+    The address to communicate with Nats.
+
+  -store-type
+    Possible values are file or memory (case insensitive)
+
+  -file-store-dir
+    When using a file store, need to provide the root directory.
+
+Consul Options:
+
+  -addrs=<address>
+    The address to communicate with Consul.
+
+  -server-auto-join
+    Enable the server to bootstrap using Consul.
+
+  -client-auto-join
+    Enable the client to bootstrap using Consul.
 
  `
 	return strings.TrimSpace(helpText)

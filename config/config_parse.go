@@ -76,13 +76,10 @@ func parseConfig(result *Config, list *ast.ObjectList) error {
 		"datacenter",
 		"interface",
 		"bind_addr",
-		"http_addr",
 		"rpc_port",
-		"start_join",
 		"server",
-		"nats_addr",
-		"nats_store_type",
-		"nats_file_store_dir",
+		"client",
+		"nats",
 		"consul",
 		"pid_file",
 	}
@@ -96,11 +93,35 @@ func parseConfig(result *Config, list *ast.ObjectList) error {
 		return err
 	}
 
+	delete(m, "client")
+	delete(m, "server")
+	delete(m, "nats")
 	delete(m, "consul")
 
 	// Decode the rest
 	if err := mapstructure.WeakDecode(m, result); err != nil {
 		return err
+	}
+
+	// Parse client config
+	if o := list.Filter("client"); len(o.Items) > 0 {
+		if err := parseClient(&result.Client, o); err != nil {
+			return multierror.Prefix(err, "client ->")
+		}
+	}
+
+	// Parse server config
+	if o := list.Filter("server"); len(o.Items) > 0 {
+		if err := parseServer(&result.Server, o); err != nil {
+			return multierror.Prefix(err, "server ->")
+		}
+	}
+
+	// Parse nats config
+	if o := list.Filter("nats"); len(o.Items) > 0 {
+		if err := parseNats(&result.Nats, o); err != nil {
+			return multierror.Prefix(err, "nats ->")
+		}
 	}
 
 	// Parse the consul config
@@ -110,6 +131,129 @@ func parseConfig(result *Config, list *ast.ObjectList) error {
 		}
 	}
 
+	return nil
+}
+
+func parseServer(result **ServerConfig, list *ast.ObjectList) error {
+	list = list.Elem()
+	if len(list.Items) > 1 {
+		return fmt.Errorf("only one 'server' block allowed")
+	}
+
+	// Get our Consul object
+	listVal := list.Items[0].Val
+
+	// Check for invalid keys
+	valid := []string{
+		"server",
+		"http_addr",
+	}
+
+	if err := checkHCLKeys(listVal, valid); err != nil {
+		return err
+	}
+
+	var m map[string]interface{}
+	if err := hcl.DecodeObject(&m, listVal); err != nil {
+		return err
+	}
+
+	var config ServerConfig
+	dec, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
+		DecodeHook:       mapstructure.StringToTimeDurationHookFunc(),
+		WeaklyTypedInput: true,
+		Result:           &config,
+	})
+	if err != nil {
+		return err
+	}
+	if err := dec.Decode(m); err != nil {
+		return err
+	}
+
+	*result = &config
+	return nil
+}
+
+func parseClient(result **ClientConfig, list *ast.ObjectList) error {
+	list = list.Elem()
+	if len(list.Items) > 1 {
+		return fmt.Errorf("only one 'client' block allowed")
+	}
+
+	// Get our Consul object
+	listVal := list.Items[0].Val
+
+	// Check for invalid keys
+	valid := []string{
+		"join",
+	}
+
+	if err := checkHCLKeys(listVal, valid); err != nil {
+		return err
+	}
+
+	var m map[string]interface{}
+	if err := hcl.DecodeObject(&m, listVal); err != nil {
+		return err
+	}
+
+	var config ClientConfig
+	dec, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
+		DecodeHook:       mapstructure.StringToTimeDurationHookFunc(),
+		WeaklyTypedInput: true,
+		Result:           &config,
+	})
+	if err != nil {
+		return err
+	}
+	if err := dec.Decode(m); err != nil {
+		return err
+	}
+
+	*result = &config
+	return nil
+}
+
+func parseNats(result **NatsConfig, list *ast.ObjectList) error {
+	list = list.Elem()
+	if len(list.Items) > 1 {
+		return fmt.Errorf("only one 'nats' block allowed")
+	}
+
+	// Get our Consul object
+	listVal := list.Items[0].Val
+
+	// Check for invalid keys
+	valid := []string{
+		"nats_addr",
+		"nats_store_type",
+		"nats_file_store_dir",
+	}
+
+	if err := checkHCLKeys(listVal, valid); err != nil {
+		return err
+	}
+
+	var m map[string]interface{}
+	if err := hcl.DecodeObject(&m, listVal); err != nil {
+		return err
+	}
+
+	var config NatsConfig
+	dec, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
+		DecodeHook:       mapstructure.StringToTimeDurationHookFunc(),
+		WeaklyTypedInput: true,
+		Result:           &config,
+	})
+	if err != nil {
+		return err
+	}
+	if err := dec.Decode(m); err != nil {
+		return err
+	}
+
+	*result = &config
 	return nil
 }
 

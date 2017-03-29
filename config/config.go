@@ -27,30 +27,46 @@ type Config struct {
 	// BindAddr is the address on which all of nomad's services will
 	// be bound. If not specified, this defaults to 127.0.0.1.
 	BindAddr              string `mapstructure:"bind_addr"`
-	HTTPAddr              string `mapstructure:"http_addr"`
 	Interface             string
 	ReconnectInterval     time.Duration `mapstructure:"reconnect_interval"`
 	ReconnectTimeout      time.Duration `mapstructure:"reconnect_timeout"`
 	TombstoneTimeout      time.Duration `mapstructure:"tombstone_timeout"`
 	DisableNameResolution bool
 	RejoinAfterLeave      bool `mapstructure:"rejoin"`
-	Server                bool
-	// StartJoin is a list of addresses to attempt to join when the
-	// agent starts. If Serf is unable to communicate with any of these
-	// addresses, then the agent will error and exit.
-	StartJoin []string `mapstructure:"start_join"`
+	// Client has our client related settings
+	Client *ClientConfig `mapstructure:"client"`
+
+	// Server has our server related settings
+	Server *ServerConfig `mapstructure:"server"`
+
 	RPCPort   int      `mapstructure:"rpc_port"`
 	Version   string
 
-	NatsAddr     string `mapstructure:"nats_addr"`
-	StoreType    string `mapstructure:"nats_store_type"`
-	FilestoreDir string `mapstructure:"nats_file_store_dir"`
-
+	Nats *NatsConfig `mapstructure:"nats"`
 	Consul *ConsulConfig `mapstructure:"consul"`
 
 	// config file that have been loaded (in order)
 	PidFile string `mapstructure:"pid_file"`
 	File    string `mapstructure:"-"`
+}
+
+type ServerConfig struct {
+	// Enabled controls if we are a server
+	Enabled bool `mapstructure:"enabled"`
+	HTTPAddr              string `mapstructure:"http_addr"`
+}
+
+type ClientConfig struct {
+	// StartJoin is a list of addresses to attempt to join when the
+	// agent starts. If Serf is unable to communicate with any of these
+	// addresses, then the agent will error and exit.
+	Join []string `mapstructure:"join"`
+}
+
+type NatsConfig struct {
+	Addr string `mapstructure:"nats_addr"`
+	StoreType string `mapstructure:"nats_store_type"`
+	FilestoreDir string `mapstructure:"nats_file_store_dir"`
 }
 
 type ConsulConfig struct {
@@ -163,10 +179,6 @@ func (c *Config) Merge(b *Config) *Config {
 		result.BindAddr = b.BindAddr
 	}
 
-	if b.HTTPAddr != "" {
-		result.HTTPAddr = b.HTTPAddr
-	}
-
 	if b.Interface != "" {
 		result.Interface = b.Interface
 	}
@@ -175,22 +187,28 @@ func (c *Config) Merge(b *Config) *Config {
 		result.RPCPort = b.RPCPort
 	}
 
-	result.StartJoin = append(result.StartJoin, b.StartJoin...)
-
-	if b.Server {
-		result.Server = true
+	// Apply the client config
+	if result.Client == nil && b.Client != nil {
+		client := *b.Client
+		result.Client = &client
+	} else if b.Client != nil {
+		result.Client = result.Client.Merge(b.Client)
 	}
 
-	if b.NatsAddr != "" {
-		result.NatsAddr = b.NatsAddr
+	// Apply the server config
+	if result.Server == nil && b.Server != nil {
+		server := *b.Server
+		result.Server = &server
+	} else if b.Server != nil {
+		result.Server = result.Server.Merge(b.Server)
 	}
 
-	if b.StoreType != "" {
-		result.StoreType = b.StoreType
-	}
-
-	if b.FilestoreDir != "" {
-		result.FilestoreDir = b.FilestoreDir
+	// Apply the client config
+	if result.Nats == nil && b.Nats != nil {
+		nats := *b.Nats
+		result.Nats = &nats
+	} else if b.Nats != nil {
+		result.Nats = result.Nats.Merge(b.Nats)
 	}
 
 	if result.Consul == nil && b.Consul != nil {
@@ -211,7 +229,52 @@ func (c *Config) Merge(b *Config) *Config {
 	return &result
 }
 
-// Merge merges two Atlas configurations together.
+// Merge is used to merge two server configs together
+func (a *ServerConfig) Merge(b *ServerConfig) *ServerConfig {
+	result := *a
+
+	if b.Enabled {
+		result.Enabled = true
+	}
+
+	if b.HTTPAddr != "" {
+		result.HTTPAddr = b.HTTPAddr
+	}
+
+	return &result
+}
+
+// Merge is used to merge two client configs together
+func (a *ClientConfig) Merge(b *ClientConfig) *ClientConfig {
+	result := *a
+
+	// Copy the start join addresses
+	result.Join = make([]string, 0, len(a.Join)+len(b.Join))
+	result.Join = append(result.Join, a.Join...)
+	result.Join = append(result.Join, b.Join...)
+	return &result
+}
+
+// Merge is used to merge two Nats configs together
+func (a *NatsConfig) Merge(b *NatsConfig) *NatsConfig {
+	result := *a
+
+	if b.Addr != "" {
+		result.Addr = b.Addr
+	}
+
+	if b.StoreType != "" {
+		result.StoreType = b.StoreType
+	}
+
+	if b.FilestoreDir != "" {
+		result.FilestoreDir = b.FilestoreDir
+	}
+
+	return &result
+}
+
+// Merge merges two Consul configurations together.
 func (a *ConsulConfig) Merge(b *ConsulConfig) *ConsulConfig {
 	result := *a
 

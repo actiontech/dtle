@@ -232,7 +232,7 @@ func (a *Agent) setupNatsServer() error {
 	log.Infof("Starting nats-streaming-server [%s]", a.config.NatsAddr)
 	sOpts := stand.GetDefaultOptions()
 	sOpts.ID = uconf.DefaultClusterID
-	if a.config.StoreType == "FILE" {
+	if a.config.StoreType == "file" {
 		sOpts.StoreType = a.config.StoreType
 		sOpts.FilestoreDir = a.config.FilestoreDir
 	}
