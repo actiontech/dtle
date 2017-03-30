@@ -153,14 +153,10 @@ func (a *AgentCommand) readConfig() *uconf.Config {
 	cmdConfig := &uconf.Config{
 		Server: &uconf.ServerConfig{},
 		Client: &uconf.ClientConfig{},
-		Nats: &uconf.NatsConfig{},
+		Nats:   &uconf.NatsConfig{},
 		Consul: &uconf.ConsulConfig{},
 	}
 
-	hostname, err := os.Hostname()
-	if err != nil {
-		return nil
-	}
 	flags := flag.NewFlagSet("agent", flag.ContinueOnError)
 	flags.Usage = func() { a.Ui.Error(a.Help()) }
 
@@ -171,7 +167,7 @@ func (a *AgentCommand) readConfig() *uconf.Config {
 	flags.StringVar(&cmdConfig.BindAddr, "bind", "", "")
 	flags.StringVar(&cmdConfig.Region, "region", "", "")
 	flags.StringVar(&cmdConfig.Datacenter, "dc", "", "")
-	flags.StringVar(&cmdConfig.NodeName, "node", hostname, "")
+	flags.StringVar(&cmdConfig.NodeName, "node", "", "")
 
 	// Role options
 	flags.BoolVar(&cmdConfig.Server.Enabled, "server", false, "")

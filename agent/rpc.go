@@ -7,6 +7,7 @@ import (
 	"github.com/hashicorp/serf/serf"
 	"github.com/ngaut/log"
 
+	"time"
 	uconf "udup/config"
 	"udup/plugins"
 )
@@ -67,15 +68,40 @@ func (rpcc *RPCClient) startJob(j *Job, k string) error {
 	// Get the defined output types for the job, and call them
 	log.Infof("Processing execution with plugin:%v", k)
 
+	ts := time.Now()
 	if k == plugins.DataSrc {
+	OUTER:
 		for {
 			ej, err := rpcc.CallGetJob(j.Name)
 			if err != nil {
 				return fmt.Errorf("agent: Error on rpc.GetJob call")
 			}
-			if ej.Processors[plugins.DataDest].Running {
-				break
+
+			for _, member := range rpcc.agent.serf.Members() {
+				if member.Name == ej.Processors[plugins.DataDest].NodeName &&
+					member.Status == serf.StatusAlive && ej.Processors[plugins.DataDest].Running {
+					break OUTER
+				}
 			}
+
+			endTime := time.Now()
+			if endTime.Sub(ts) > defaultWaitTime {
+				log.Infof("timed out after waiting %s", defaultWaitTime)
+				if j.Failover {
+					j.Processors[plugins.DataDest].NodeName = j.agent.selectAgent().Name
+					for k, _ := range j.Processors {
+						j.Processors[k].NatsAddr = rpcc.agent.getNatsAddr(j.Processors[plugins.DataDest].NodeName)
+						if err := rpcc.CallUpsertJob(j); err != nil {
+							log.Errorf("error on rpc.UpsertJob call")
+						}
+					}
+					j.StartJobQuery(plugins.DataDest)
+				} else {
+					rpcc.enqueueJob(j)
+					return fmt.Errorf("error status")
+				}
+			}
+			time.Sleep(defaultCheckInterval)
 		}
 	}
 
@@ -209,26 +235,6 @@ func (rpcc *RPCClient) enqueueJobs(nodeName string) error {
 				}
 			} else {
 				rpcc.enqueueJob(job)
-			}
-		}
-	}
-
-	return nil
-}
-
-func (rpcc *RPCClient) dequeueJobs(nodeName string) (err error) {
-	// Load the job from the store
-	jobs, err := rpcc.CallGetJobs(nodeName)
-	if err != nil {
-		return err
-	}
-
-	for _, j := range jobs.Payload {
-		for k, v := range j.Processors {
-			if v.NodeName == rpcc.agent.config.NodeName && j.Status == Queued {
-				if err := rpcc.startJob(j, k); err != nil {
-					log.Errorf("Error dequeue job command,err:%v", err)
-				}
 			}
 		}
 	}

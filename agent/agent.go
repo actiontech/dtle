@@ -30,8 +30,10 @@ var (
 )
 
 const (
-	defaultRecoverTime = 10 * time.Second
-	defaultLeaderTTL   = 20 * time.Second
+	defaultCheckInterval = 5 * time.Second
+	defaultWaitTime      = 60 * time.Second
+	defaultRecoverTime   = 10 * time.Second
+	defaultLeaderTTL     = 20 * time.Second
 )
 
 type Agent struct {
@@ -153,7 +155,7 @@ func (a *Agent) setupSched() error {
 	}
 
 	for _, job := range jobs.Payload {
-		if job.Status == Running {
+		if job.Status == Running || job.Status == Queued {
 			log.Infof("Start job: %v", job.Name)
 			for k, v := range job.Processors {
 				if v.NodeName == a.config.NodeName {
@@ -364,11 +366,6 @@ func (a *Agent) eventLoop() {
 					for _, m := range e.Members {
 						log.Infof("Member event: %v; Node:%v; Member:%v.", e.EventType(), a.config.NodeName, m.Name)
 						switch e.EventType() {
-						case serf.EventMemberJoin, serf.EventMemberUpdate, serf.EventMemberReap:
-							if err := a.dequeueJobs(m.Name); err != nil {
-								log.Errorf("Error dequeue job command,err:%v", err)
-							}
-
 						case serf.EventMemberLeave, serf.EventMemberFailed:
 							if err := a.enqueueJobs(m.Name); err != nil {
 								log.Errorf("Error enqueue job command,err:%v", err)
@@ -513,19 +510,6 @@ func (a *Agent) enqueueJob(j string) (err error) {
 	return rc.enqueueJob(job)
 }
 
-func (a *Agent) dequeueJobs(nodeName string) (err error) {
-	var rpcServer []byte
-	if !a.config.Server.Enabled {
-		rpcServer, err = a.queryRPCConfig()
-		if err != nil {
-			return err
-		}
-	}
-
-	rc := &RPCClient{ServerAddr: string(rpcServer), agent: a}
-	return rc.dequeueJobs(nodeName)
-}
-
 func (a *Agent) participate() {
 	a.candidate = leadership.NewCandidate(a.store.Client, a.store.LeaderKey(), a.config.NodeName, defaultLeaderTTL)
 
@@ -549,6 +533,31 @@ func (a *Agent) runForElection() {
 			if isElected {
 				log.Info("Cluster leadership acquired")
 				// If this server is elected as the leader, start the scheduler
+				jobs, err := a.store.GetJobs()
+				if err != nil {
+					log.Errorf("agent: Error on rpc.GetJob call")
+				}
+				for _, job := range jobs {
+					if job.Status == Running {
+						for _, v := range job.Processors {
+							m := &serf.Member{}
+							for _, member := range a.serf.Members() {
+								if v.NodeName == member.Name {
+									m = &member
+								}
+							}
+							if m == nil || m.Status != serf.StatusAlive {
+								job.Status = Queued
+								for _, p := range job.Processors {
+									p.Running = false
+								}
+								if err := a.store.UpsertJob(job); err != nil {
+									log.Errorf("agent: Error on rpc.UpsertJob call")
+								}
+							}
+						}
+					}
+				}
 
 			} else {
 				log.Info("Cluster leadership lost")

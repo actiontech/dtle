@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"net"
+	"os"
 	"path/filepath"
 	"time"
 )
@@ -118,7 +119,12 @@ type TableName struct {
 
 // DefaultConfig is a the baseline configuration for Udup
 func DefaultConfig() *Config {
+	hostname, err := os.Hostname()
+	if err != nil {
+		panic(err)
+	}
 	return &Config{
+		NodeName:   hostname,
 		File:       "udup.conf",
 		LogLevel:   "INFO",
 		Region:     "global",
