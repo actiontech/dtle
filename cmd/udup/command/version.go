@@ -18,7 +18,7 @@ type VersionCommand struct {
 func (c *VersionCommand) Run(_ []string) int {
 	var versionString bytes.Buffer
 
-	fmt.Fprintf(&versionString, "Udup v%s (git: %s %s)", c.Version, c.Branch, c.Commit)
+	fmt.Fprintf(&versionString, "Udup %s (git: %s %s)", c.Version, c.Branch, c.Commit)
 	c.Ui.Output(versionString.String())
 	return 0
 }

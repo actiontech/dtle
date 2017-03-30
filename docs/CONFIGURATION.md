@@ -15,11 +15,21 @@ Udup has a few options you can configure under the `General Configuration` secti
 
 region:Name of the region the Udup agent will be a member of. By default this value is set to "global".
 datacenter:The name of the datacenter this Udup agent is a member of. By default this is set to "dc1".
+bind_addr:The address the agent will bind to for all of its various network services.
+rpc_port:
+
+## Server Configuration
+
+The following config parameters are available for Server:
+
 server:Enable server mode for the agent.
 http_addr:The `address` and port of the Udup HTTP agent
-bind_addr:The address the agent will bind to for all of its various network services.
-start_join:Address of an agent to join at start time.
-rpc_port:
+
+## Client Configuration
+
+The following config parameters are available for Client:
+
+join:Address of an agent to join at start time.
 
 ## Nats Configuration
 

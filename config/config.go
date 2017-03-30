@@ -39,10 +39,10 @@ type Config struct {
 	// Server has our server related settings
 	Server *ServerConfig `mapstructure:"server"`
 
-	RPCPort   int      `mapstructure:"rpc_port"`
-	Version   string
+	RPCPort int `mapstructure:"rpc_port"`
+	Version string
 
-	Nats *NatsConfig `mapstructure:"nats"`
+	Nats   *NatsConfig   `mapstructure:"nats"`
 	Consul *ConsulConfig `mapstructure:"consul"`
 
 	// config file that have been loaded (in order)
@@ -52,8 +52,8 @@ type Config struct {
 
 type ServerConfig struct {
 	// Enabled controls if we are a server
-	Enabled bool `mapstructure:"enabled"`
-	HTTPAddr              string `mapstructure:"http_addr"`
+	Enabled  bool   `mapstructure:"enabled"`
+	HTTPAddr string `mapstructure:"http_addr"`
 }
 
 type ClientConfig struct {
@@ -64,13 +64,15 @@ type ClientConfig struct {
 }
 
 type NatsConfig struct {
-	Addr string `mapstructure:"nats_addr"`
-	StoreType string `mapstructure:"nats_store_type"`
+	Addr         string `mapstructure:"nats_addr"`
+	StoreType    string `mapstructure:"nats_store_type"`
 	FilestoreDir string `mapstructure:"nats_file_store_dir"`
 }
 
 type ConsulConfig struct {
-	Addrs []string `mapstructure:"addrs"`
+	Addrs          []string `mapstructure:"addrs"`
+	ServerAutoJoin bool     `mapstructure:"server_auto_join"`
+	ClientAutoJoin bool     `mapstructure:"client_auto_join"`
 }
 
 // DriverConfig is the DB configuration.
@@ -79,17 +81,17 @@ type DriverConfig struct {
 	NodeName string `json:"node_name,omitempty"`
 	Running  bool   `json:"running"`
 	//Ref:http://dev.mysql.com/doc/refman/5.7/en/replication-options-slave.html#option_mysqld_replicate-do-table
-	ReplicateDoTable     []TableName       `json:"replicate_do_table"`
-	ReplicateDoDb        []string          `json:"replicate_do_db"`
-	MaxRetries           int64             `json:"max_retries"`
-	Gtid                 string            `json:"gtid"`
-	Driver               string            `json:"driver"`
-	ServerID             uint32            `json:"server_id"`
-	NatsAddr             string            `json:"nats_addr"`
-	WorkerCount          int               `json:"worker_count"`
-	ConnCfg              *ConnectionConfig `json:"conn_cfg"`
-	ErrCh                chan error        `json:"-"`
-	GtidCh               chan string       `json:"-"`
+	ReplicateDoTable []TableName       `json:"replicate_do_table"`
+	ReplicateDoDb    []string          `json:"replicate_do_db"`
+	MaxRetries       int64             `json:"max_retries"`
+	Gtid             string            `json:"gtid"`
+	Driver           string            `json:"driver"`
+	ServerID         uint32            `json:"server_id"`
+	NatsAddr         string            `json:"nats_addr"`
+	WorkerCount      int               `json:"worker_count"`
+	ConnCfg          *ConnectionConfig `json:"conn_cfg"`
+	ErrCh            chan error        `json:"-"`
+	GtidCh           chan string       `json:"-"`
 }
 
 // ConnectionConfig is the DB configuration.
@@ -117,8 +119,28 @@ type TableName struct {
 // DefaultConfig is a the baseline configuration for Udup
 func DefaultConfig() *Config {
 	return &Config{
-		File:     "udup.conf",
-		LogLevel: "INFO",
+		File:       "udup.conf",
+		LogLevel:   "INFO",
+		Region:     "global",
+		Datacenter: "dc1",
+		BindAddr:   "0.0.0.0",
+		Consul:     DefaultConsulConfig(),
+		Client: &ClientConfig{
+			Join: []string{},
+		},
+		Server: &ServerConfig{
+			Enabled: false,
+		},
+	}
+}
+
+// DefaultConsulConfig() returns the canonical defaults for the Nomad
+// `consul` configuration.
+func DefaultConsulConfig() *ConsulConfig {
+	return &ConsulConfig{
+		ServerAutoJoin: true,
+		ClientAutoJoin: true,
+		//Timeout:           5 * time.Second,
 	}
 }
 

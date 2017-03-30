@@ -140,15 +140,22 @@ func parseServer(result **ServerConfig, list *ast.ObjectList) error {
 		return fmt.Errorf("only one 'server' block allowed")
 	}
 
-	// Get our Consul object
-	listVal := list.Items[0].Val
+	// Get our server object
+	obj := list.Items[0]
+
+	// Value should be an object
+	var listVal *ast.ObjectList
+	if ot, ok := obj.Val.(*ast.ObjectType); ok {
+		listVal = ot.List
+	} else {
+		return fmt.Errorf("client value: should be an object")
+	}
 
 	// Check for invalid keys
 	valid := []string{
-		"server",
+		"enabled",
 		"http_addr",
 	}
-
 	if err := checkHCLKeys(listVal, valid); err != nil {
 		return err
 	}
@@ -159,15 +166,7 @@ func parseServer(result **ServerConfig, list *ast.ObjectList) error {
 	}
 
 	var config ServerConfig
-	dec, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
-		DecodeHook:       mapstructure.StringToTimeDurationHookFunc(),
-		WeaklyTypedInput: true,
-		Result:           &config,
-	})
-	if err != nil {
-		return err
-	}
-	if err := dec.Decode(m); err != nil {
+	if err := mapstructure.WeakDecode(m, &config); err != nil {
 		return err
 	}
 
@@ -181,14 +180,21 @@ func parseClient(result **ClientConfig, list *ast.ObjectList) error {
 		return fmt.Errorf("only one 'client' block allowed")
 	}
 
-	// Get our Consul object
-	listVal := list.Items[0].Val
+	// Get our server object
+	obj := list.Items[0]
+
+	// Value should be an object
+	var listVal *ast.ObjectList
+	if ot, ok := obj.Val.(*ast.ObjectType); ok {
+		listVal = ot.List
+	} else {
+		return fmt.Errorf("client value: should be an object")
+	}
 
 	// Check for invalid keys
 	valid := []string{
 		"join",
 	}
-
 	if err := checkHCLKeys(listVal, valid); err != nil {
 		return err
 	}
@@ -199,15 +205,7 @@ func parseClient(result **ClientConfig, list *ast.ObjectList) error {
 	}
 
 	var config ClientConfig
-	dec, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
-		DecodeHook:       mapstructure.StringToTimeDurationHookFunc(),
-		WeaklyTypedInput: true,
-		Result:           &config,
-	})
-	if err != nil {
-		return err
-	}
-	if err := dec.Decode(m); err != nil {
+	if err := mapstructure.WeakDecode(m, &config); err != nil {
 		return err
 	}
 

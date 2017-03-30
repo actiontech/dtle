@@ -150,7 +150,12 @@ func (c *AgentCommand) handleReload(config *uconf.Config) *uconf.Config {
 
 func (a *AgentCommand) readConfig() *uconf.Config {
 	// Make a new, empty config.
-	cmdConfig := &uconf.Config{}
+	cmdConfig := &uconf.Config{
+		Server: &uconf.ServerConfig{},
+		Client: &uconf.ClientConfig{},
+		Nats: &uconf.NatsConfig{},
+		Consul: &uconf.ConsulConfig{},
+	}
 
 	hostname, err := os.Hostname()
 	if err != nil {
@@ -158,15 +163,6 @@ func (a *AgentCommand) readConfig() *uconf.Config {
 	}
 	flags := flag.NewFlagSet("agent", flag.ContinueOnError)
 	flags.Usage = func() { a.Ui.Error(a.Help()) }
-
-	// Role options
-	flags.BoolVar(&cmdConfig.Server.Enabled, "server", false, "")
-
-	// Server-only options
-	flags.StringVar(&cmdConfig.Server.HTTPAddr, "http-addr", "", "")
-
-	// Client-only options
-	//flags.StringVar(&cmdConfig.Client.Join, "join", "", "")
 
 	// General options
 	flags.StringVar(&cmdConfig.File, "config", "/etc/udup/udup.conf", "")
@@ -176,6 +172,15 @@ func (a *AgentCommand) readConfig() *uconf.Config {
 	flags.StringVar(&cmdConfig.Region, "region", "", "")
 	flags.StringVar(&cmdConfig.Datacenter, "dc", "", "")
 	flags.StringVar(&cmdConfig.NodeName, "node", hostname, "")
+
+	// Role options
+	flags.BoolVar(&cmdConfig.Server.Enabled, "server", false, "")
+
+	// Server-only options
+	flags.StringVar(&cmdConfig.Server.HTTPAddr, "http-addr", "", "")
+
+	// Client-only options
+	//flags.StringVar(&cmdConfig.Client.Join, "join", "", "")
 
 	if err := flags.Parse(a.args); err != nil {
 		return nil

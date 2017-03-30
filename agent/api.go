@@ -26,9 +26,9 @@ func (a *Agent) NewHTTPServer() {
 	middle.Use(metaMiddleware(a.config.NodeName))
 	middle.UseHandler(r)
 
-	srv := &http.Server{Addr: a.config.HTTPAddr, Handler: middle}
+	srv := &http.Server{Addr: a.config.Server.HTTPAddr, Handler: middle}
 
-	log.Infof("Running HTTP server,address:%v", a.config.HTTPAddr)
+	log.Infof("Running HTTP server,address:%v", a.config.Server.HTTPAddr)
 
 	go srv.ListenAndServe()
 }

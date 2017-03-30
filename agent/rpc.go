@@ -279,7 +279,7 @@ func (rpcc *RPCClient) listenOnGtid(job *Job, k string) {
 }
 
 func (rpcc *RPCClient) CallGetJob(jobName string) (*Job, error) {
-	if rpcc.agent.config.Server {
+	if rpcc.agent.config.Server.Enabled {
 		j, err := rpcc.agent.store.GetJob(jobName)
 		if err != nil {
 			log.Errorf("failed to get job '%s': %v",
@@ -306,7 +306,7 @@ func (rpcc *RPCClient) CallGetJob(jobName string) (*Job, error) {
 }
 
 func (rpcc *RPCClient) CallGetJobs(nodeName string) (*JobResponse, error) {
-	if rpcc.agent.config.Server {
+	if rpcc.agent.config.Server.Enabled {
 		js, err := rpcc.agent.store.GetJobByNode(nodeName)
 		if err != nil {
 			log.Errorf("failed to get job '%s': %v",
@@ -333,7 +333,7 @@ func (rpcc *RPCClient) CallGetJobs(nodeName string) (*JobResponse, error) {
 }
 
 func (rpcc *RPCClient) CallUpsertJob(j *Job) error {
-	if rpcc.agent.config.Server {
+	if rpcc.agent.config.Server.Enabled {
 		err := rpcc.agent.store.UpsertJob(j)
 		if err != nil {
 			log.Errorf("failed to upsert job '%s': %v",

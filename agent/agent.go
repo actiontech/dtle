@@ -97,13 +97,13 @@ func NewAgent(config *uconf.Config) (*Agent, error) {
 }
 
 func (a *Agent) startupJoin(config *uconf.Config) error {
-	if len(config.StartJoin) == 0 {
+	if len(config.Client.Join) == 0 {
 		return nil
 	}
 
 	log.Infof("Joining cluster...")
-	log.Infof("Joining: %v replay: %v", config.StartJoin, true)
-	n, err := a.serf.Join(config.StartJoin, false)
+	log.Infof("Joining: %v replay: %v", config.Client.Join, true)
+	n, err := a.serf.Join(config.Client.Join, false)
 	if err != nil {
 		return err
 	}
@@ -114,7 +114,7 @@ func (a *Agent) startupJoin(config *uconf.Config) error {
 
 // setupServer is used to setup the server if enabled
 func (a *Agent) setupServer() error {
-	if !a.config.Server {
+	if !a.config.Server.Enabled {
 		return nil
 	}
 	var err error
@@ -216,7 +216,7 @@ func (a *Agent) setupDrivers() error {
 }
 
 func (a *Agent) setupNatsServer() error {
-	host, port, err := net.SplitHostPort(a.config.NatsAddr)
+	host, port, err := net.SplitHostPort(a.config.Nats.Addr)
 	p, err := strconv.Atoi(port)
 	if err != nil {
 		return err
@@ -229,12 +229,12 @@ func (a *Agent) setupNatsServer() error {
 		Trace:      true,
 		Debug:      true,
 	}
-	log.Infof("Starting nats-streaming-server [%s]", a.config.NatsAddr)
+	log.Infof("Starting nats-streaming-server [%s]", a.config.Nats.Addr)
 	sOpts := stand.GetDefaultOptions()
 	sOpts.ID = uconf.DefaultClusterID
-	if a.config.StoreType == "file" {
-		sOpts.StoreType = a.config.StoreType
-		sOpts.FilestoreDir = a.config.FilestoreDir
+	if a.config.Nats.StoreType == "file" {
+		sOpts.StoreType = a.config.Nats.StoreType
+		sOpts.FilestoreDir = a.config.Nats.FilestoreDir
 	}
 	s := stand.RunServerWithOpts(sOpts, &nOpts)
 	a.stand = s
@@ -255,7 +255,7 @@ func (a *Agent) setupSerf() (*serf.Serf, error) {
 
 	serfConfig.NodeName = a.config.NodeName
 	serfConfig.Init()
-	if a.config.Server {
+	if a.config.Server.Enabled {
 		serfConfig.Tags["udup_server"] = "true"
 	}
 	serfConfig.Tags["udup_version"] = a.config.Version
@@ -263,9 +263,9 @@ func (a *Agent) setupSerf() (*serf.Serf, error) {
 	serfConfig.Tags["region"] = a.config.Region
 	serfConfig.Tags["dc"] = a.config.Datacenter
 
-	natsAddr, err := net.ResolveTCPAddr("tcp", a.config.NatsAddr)
+	natsAddr, err := net.ResolveTCPAddr("tcp", a.config.Nats.Addr)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse Nats address %q: %v", a.config.NatsAddr, err)
+		return nil, fmt.Errorf("failed to parse Nats address %q: %v", a.config.Nats.Addr, err)
 	}
 	serfConfig.Tags["nats_ip"] = natsAddr.IP.String()
 	serfConfig.Tags["nats_port"] = strconv.Itoa(natsAddr.Port)
@@ -427,7 +427,7 @@ func (a *Agent) eventLoop() {
 					}
 				case QueryRPCConfig:
 					{
-						if a.config.Server {
+						if a.config.Server.Enabled {
 							log.Infof("RPC Config requested,Query:%v; Payload:%v; LTime:%v", query.Name, string(query.Payload), query.LTime)
 
 							query.Respond([]byte(a.getRPCAddr()))
@@ -435,7 +435,7 @@ func (a *Agent) eventLoop() {
 					}
 				case QueryGenId:
 					{
-						if a.config.Server {
+						if a.config.Server.Enabled {
 							log.Infof("RPC Config requested,Query:%v; Payload:%v; LTime:%v", query.Name, string(query.Payload), query.LTime)
 							serverID, err := a.idWorker.NextId()
 							if err != nil {
@@ -460,7 +460,7 @@ func (a *Agent) eventLoop() {
 
 func (a *Agent) startJob(j *Job, k string) (err error) {
 	var rpcServer []byte
-	if !a.config.Server {
+	if !a.config.Server.Enabled {
 		rpcServer, err = a.queryRPCConfig()
 		if err != nil {
 			return err
@@ -473,7 +473,7 @@ func (a *Agent) startJob(j *Job, k string) (err error) {
 
 func (a *Agent) stopJob(j *Job) (err error) {
 	var rpcServer []byte
-	if !a.config.Server {
+	if !a.config.Server.Enabled {
 		rpcServer, err = a.queryRPCConfig()
 		if err != nil {
 			return err
@@ -486,7 +486,7 @@ func (a *Agent) stopJob(j *Job) (err error) {
 
 func (a *Agent) enqueueJobs(nodeName string) (err error) {
 	var rpcServer []byte
-	if !a.config.Server {
+	if !a.config.Server.Enabled {
 		rpcServer, err = a.queryRPCConfig()
 		if err != nil {
 			return err
@@ -498,7 +498,7 @@ func (a *Agent) enqueueJobs(nodeName string) (err error) {
 
 func (a *Agent) enqueueJob(j string) (err error) {
 	var rpcServer []byte
-	if !a.config.Server {
+	if !a.config.Server.Enabled {
 		rpcServer, err = a.queryRPCConfig()
 		if err != nil {
 			return err
@@ -515,7 +515,7 @@ func (a *Agent) enqueueJob(j string) (err error) {
 
 func (a *Agent) dequeueJobs(nodeName string) (err error) {
 	var rpcServer []byte
-	if !a.config.Server {
+	if !a.config.Server.Enabled {
 		rpcServer, err = a.queryRPCConfig()
 		if err != nil {
 			return err
