@@ -176,7 +176,7 @@ case $1 in
 
     restart)
         # Restart the daemon.
-        $0 stop && sleep 2 && $0 start
+        $0 stop && sleep 3 && $0 start
         ;;
 
     status)
