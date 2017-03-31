@@ -14,8 +14,19 @@
 package expression
 
 import (
+	"bytes"
+	"compress/zlib"
+	"crypto/md5"
+	"crypto/rand"
+	"crypto/sha1"
+	"crypto/sha256"
+	"crypto/sha512"
+	"fmt"
+	"hash"
+
 	"github.com/juju/errors"
 	"github.com/pingcap/tidb/context"
+	"github.com/pingcap/tidb/mysql"
 	"github.com/pingcap/tidb/util/encrypt"
 	"github.com/pingcap/tidb/util/types"
 )
@@ -102,16 +113,23 @@ type builtinAesDecryptSig struct {
 func (b *builtinAesDecryptSig) eval(row []types.Datum) (d types.Datum, err error) {
 	args, err := b.evalArgs(row)
 	if err != nil {
-		return types.Datum{}, errors.Trace(err)
+		return d, errors.Trace(err)
 	}
 	for _, arg := range args {
 		// If either function argument is NULL, the function returns NULL.
 		if arg.IsNull() {
-			return
+			return d, nil
 		}
 	}
-	cryptStr := args[0].GetBytes()
-	key := args[1].GetBytes()
+
+	cryptStr, err := args[0].ToBytes()
+	if err != nil {
+		return d, errors.Trace(err)
+	}
+	key, err := args[1].ToBytes()
+	if err != nil {
+		return d, errors.Trace(err)
+	}
 	key = handleAESKey(key, aes128ecb)
 	// By default these functions implement AES with a 128-bit key length.
 	// TODO: We only support aes-128-ecb now. We should support other mode latter.
@@ -120,7 +138,7 @@ func (b *builtinAesDecryptSig) eval(row []types.Datum) (d types.Datum, err error
 		return d, errors.Trace(err)
 	}
 	d.SetString(string(data))
-	return
+	return d, nil
 }
 
 type aesEncryptFunctionClass struct {
@@ -151,8 +169,14 @@ func (b *builtinAesEncryptSig) eval(row []types.Datum) (d types.Datum, err error
 			return
 		}
 	}
-	str := args[0].GetBytes()
-	key := args[1].GetBytes()
+	str, err := args[0].ToBytes()
+	if err != nil {
+		return d, errors.Trace(err)
+	}
+	key, err := args[1].ToBytes()
+	if err != nil {
+		return d, errors.Trace(err)
+	}
 	key = handleAESKey(key, aes128ecb)
 	crypted, err := encrypt.AESEncryptWithECB(str, key)
 	if err != nil {
@@ -277,7 +301,27 @@ type builtinCompressSig struct {
 
 // See https://dev.mysql.com/doc/refman/5.7/en/encryption-functions.html#function_compress
 func (b *builtinCompressSig) eval(row []types.Datum) (d types.Datum, err error) {
-	return d, errFunctionNotExists.GenByArgs("COMPRESS")
+	args, err := b.evalArgs(row)
+	if err != nil {
+		return d, errors.Trace(err)
+	}
+
+	arg := args[0]
+	if arg.IsNull() {
+		return d, nil
+	}
+
+	compressStr, err := arg.ToBytes()
+	if err != nil {
+		return d, errors.Trace(err)
+	}
+
+	var in bytes.Buffer
+	w := zlib.NewWriter(&in)
+	w.Write(compressStr)
+	w.Close()
+	d.SetBytes(in.Bytes())
+	return d, nil
 }
 
 type createAsymmetricPrivKeyFunctionClass struct {
@@ -447,7 +491,23 @@ type builtinMD5Sig struct {
 
 // See https://dev.mysql.com/doc/refman/5.7/en/encryption-functions.html#function_md5
 func (b *builtinMD5Sig) eval(row []types.Datum) (d types.Datum, err error) {
-	return d, errFunctionNotExists.GenByArgs("MD5")
+	args, err := b.evalArgs(row)
+	if err != nil {
+		return types.Datum{}, errors.Trace(err)
+	}
+	// This function takes one argument.
+	arg := args[0]
+	if arg.IsNull() {
+		return
+	}
+	bin, err := arg.ToBytes()
+	if err != nil {
+		return d, errors.Trace(err)
+	}
+	sum := md5.Sum(bin)
+	hexStr := fmt.Sprintf("%x", sum)
+	d.SetString(hexStr)
+	return d, nil
 }
 
 type oldPasswordFunctionClass struct {
@@ -498,7 +558,26 @@ type builtinRandomBytesSig struct {
 
 // See https://dev.mysql.com/doc/refman/5.7/en/encryption-functions.html#function_random-bytes
 func (b *builtinRandomBytesSig) eval(row []types.Datum) (d types.Datum, err error) {
-	return d, errFunctionNotExists.GenByArgs("RANDOM_BYTES")
+	args, err := b.evalArgs(row)
+	if err != nil {
+		return types.Datum{}, errors.Trace(err)
+	}
+	arg := args[0]
+	if arg.IsNull() {
+		return d, nil
+	}
+	size := arg.GetInt64()
+	if size < 1 || size > 1024 {
+		return d, mysql.NewErr(mysql.ErrDataOutOfRange, "length", "random_bytes")
+	}
+	buf := make([]byte, size)
+	if n, err := rand.Read(buf); err != nil {
+		return d, errors.Trace(err)
+	} else if int64(n) != size {
+		return d, errors.New("fail to generate random bytes")
+	}
+	d.SetBytes(buf)
+	return d, nil
 }
 
 type sha1FunctionClass struct {
@@ -514,8 +593,26 @@ type builtinSHA1Sig struct {
 }
 
 // See https://dev.mysql.com/doc/refman/5.7/en/encryption-functions.html#function_sha1
+// The value is returned as a string of 40 hexadecimal digits, or NULL if the argument was NULL.
 func (b *builtinSHA1Sig) eval(row []types.Datum) (d types.Datum, err error) {
-	return d, errFunctionNotExists.GenByArgs("SHA1")
+	args, err := b.evalArgs(row)
+	if err != nil {
+		return types.Datum{}, errors.Trace(err)
+	}
+	// SHA/SHA1 function only accept 1 parameter
+	arg := args[0]
+	if arg.IsNull() {
+		return d, nil
+	}
+	bin, err := arg.ToBytes()
+	if err != nil {
+		return d, errors.Trace(err)
+	}
+	hasher := sha1.New()
+	hasher.Write(bin)
+	data := fmt.Sprintf("%x", hasher.Sum(nil))
+	d.SetString(data)
+	return d, nil
 }
 
 type sha2FunctionClass struct {
@@ -530,9 +627,54 @@ type builtinSHA2Sig struct {
 	baseBuiltinFunc
 }
 
+// Supported hash length of SHA-2 family
+const (
+	SHA0   int = 0
+	SHA224 int = 224
+	SHA256 int = 256
+	SHA384 int = 384
+	SHA512 int = 512
+)
+
 // See https://dev.mysql.com/doc/refman/5.7/en/encryption-functions.html#function_sha2
 func (b *builtinSHA2Sig) eval(row []types.Datum) (d types.Datum, err error) {
-	return d, errFunctionNotExists.GenByArgs("SHA2")
+	args, err := b.evalArgs(row)
+	if err != nil {
+		return d, errors.Trace(err)
+	}
+	for _, arg := range args {
+		if arg.IsNull() {
+			return d, nil
+		}
+	}
+	// Meaning of each argument:
+	// args[0]: the cleartext string to be hashed
+	// args[1]: desired bit length of result
+	bin, err := args[0].ToBytes()
+	if err != nil {
+		return d, errors.Trace(err)
+	}
+	hashLength, err := args[1].ToInt64(b.ctx.GetSessionVars().StmtCtx)
+	if err != nil {
+		return d, errors.Trace(err)
+	}
+	var hasher hash.Hash
+	switch int(hashLength) {
+	case SHA0, SHA256:
+		hasher = sha256.New()
+	case SHA224:
+		hasher = sha256.New224()
+	case SHA384:
+		hasher = sha512.New384()
+	case SHA512:
+		hasher = sha512.New()
+	}
+	if hasher != nil {
+		hasher.Write(bin)
+		data := fmt.Sprintf("%x", hasher.Sum(nil))
+		d.SetString(data)
+	}
+	return d, nil
 }
 
 type uncompressFunctionClass struct {

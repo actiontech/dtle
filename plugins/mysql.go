@@ -20,24 +20,24 @@ func (d *MySQLDriver) Start(subject string, t string, driverCfg *uconf.DriverCon
 	case DataSrc:
 		{
 			// Create the extractor
-			e := umysql.NewExtractor(driverCfg)
+			e := umysql.NewExtractor(driverCfg, subject)
 			d.Extractor = e
 
-			if err := e.InitiateExtractor(subject); err != nil {
-				return fmt.Errorf("[Extractor]:%+v", err)
+			if err := e.InitiateExtractor(); err != nil {
+				return err
 			}
 		}
 	case DataDest:
 		{
-			a := umysql.NewApplier(driverCfg)
+			a := umysql.NewApplier(driverCfg, subject)
 			d.Applier = a
-			if err := a.InitiateApplier(subject); err != nil {
-				return fmt.Errorf("[Applier]:%+v", err)
+			if err := a.InitiateApplier(); err != nil {
+				return err
 			}
 		}
 	default:
 		{
-			return fmt.Errorf("Unknown job type : %+v", t)
+			return fmt.Errorf("unknown processor type : %+v", t)
 		}
 	}
 	return nil
@@ -60,7 +60,7 @@ func (d *MySQLDriver) Stop(t string) error {
 		}
 	default:
 		{
-			return fmt.Errorf("Unknown job type : %+v", t)
+			return fmt.Errorf("unknown processor type : %+v", t)
 		}
 	}
 	return nil

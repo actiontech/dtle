@@ -504,6 +504,12 @@
 			"revisionTime": "2016-07-17T02:21:40Z"
 		},
 		{
+			"checksumSHA1": "tUGxc7rfX0cmhOOUDhMuAZ9rWsA=",
+			"path": "github.com/hashicorp/go-version",
+			"revision": "03c5bf6be031b6dd45afec16b1cf94fc8938bc77",
+			"revisionTime": "2017-02-02T08:07:59Z"
+		},
+		{
 			"checksumSHA1": "d9PxF1XQGLMJZRct2R8qVM/eYlE=",
 			"path": "github.com/hashicorp/golang-lru",
 			"revision": "a0d98a5f288019575c6d1f4bb1573fef2d1fcdc4",
@@ -588,10 +594,10 @@
 			"revisionTime": "2015-06-09T07:04:31Z"
 		},
 		{
-			"checksumSHA1": "1zk7IeGClUqBo+Phsx89p7fQ/rQ=",
+			"checksumSHA1": "JJsKjmgNTUTaEHEEAQgb9jCGGiM=",
 			"path": "github.com/hashicorp/memberlist",
-			"revision": "23ad4b7d7b38496cd64c241dfd4c60b7794c254a",
-			"revisionTime": "2017-02-08T21:15:06Z"
+			"revision": "6cc6075ba9fba1915fa0416f00d2b4efa9dc2262",
+			"revisionTime": "2017-03-17T22:24:04Z"
 		},
 		{
 			"checksumSHA1": "qnlqWJYV81ENr61SZk9c65R1mDo=",
@@ -600,10 +606,12 @@
 			"revisionTime": "2015-11-16T02:03:38Z"
 		},
 		{
-			"checksumSHA1": "wpirHJV/6VEbbD+HyAP2/6Xc0ek=",
+			"checksumSHA1": "NvFexY/rs9sPfve+ny/rkMkCL5M=",
 			"path": "github.com/hashicorp/raft",
-			"revision": "aaad9f10266e089bd401e7a6487651a69275641b",
-			"revisionTime": "2016-11-10T00:52:40Z"
+			"revision": "6b063a18bfe6e0da3fdc2b9bf6256be9c0a4849a",
+			"revisionTime": "2017-03-16T02:42:32Z",
+			"version": "library-v2-stage-one",
+			"versionExact": "library-v2-stage-one"
 		},
 		{
 			"checksumSHA1": "QAxukkv54/iIvLfsUP6IK4R0m/A=",
@@ -690,6 +698,13 @@
 			"path": "github.com/opencontainers/runc/libcontainer/user",
 			"revision": "0f764571384a3ff16c6fed25ace5b7c83f0f0379",
 			"revisionTime": "2016-08-09T12:22:04Z"
+		},
+		{
+			"checksumSHA1": "ynJSWoF6v+3zMnh9R0QmmG6iGV8=",
+			"path": "github.com/pkg/errors",
+			"revision": "ff09b135c25aae272398c51a07235b90a75aa4f0",
+			"revisionTime": "2017-03-16T20:15:38Z",
+			"tree": true
 		},
 		{
 			"checksumSHA1": "ExnVEVNT8APpFTm26cUb5T09yR4=",

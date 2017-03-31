@@ -18,7 +18,6 @@ import (
 
 	"github.com/nats-io/gnatsd/auth"
 	"github.com/nats-io/gnatsd/server"
-	natsd "github.com/nats-io/gnatsd/test"
 	"github.com/nats-io/go-nats"
 	"github.com/nats-io/go-nats-streaming/pb"
 	"github.com/nats-io/nats-streaming-server/spb"
@@ -42,6 +41,10 @@ const (
 	DefaultUnSubPrefix    = "_STAN.unsub"
 	DefaultClosePrefix    = "_STAN.close"
 	DefaultStoreType      = stores.TypeMemory
+
+	// The prefixes should not have been made public (since we do not expose ways
+	// to change them). Add the new ones as private.
+	acksSubsPoolPrefix = "_STAN.subacks"
 
 	// DefaultHeartBeatInterval is the interval at which server sends heartbeat to a client
 	DefaultHeartBeatInterval = 30 * time.Second
@@ -761,18 +764,17 @@ func (s *StanServer) createNatsClientConn(name string, sOpts *Options, nOpts *se
 	return nc, err
 }
 
-func (s *StanServer) createNatsConnections(sOpts *Options, nOpts *server.Options) {
+func (s *StanServer) createNatsConnections(sOpts *Options, nOpts *server.Options) error {
 	var err error
-	if s.ncs, err = s.createNatsClientConn("send", sOpts, nOpts); err != nil {
-		panic(fmt.Sprintf("Can't connect to NATS server (send): %v\n", err))
+	s.ncs, err = s.createNatsClientConn("send", sOpts, nOpts)
+	if err == nil {
+		s.nc, err = s.createNatsClientConn("general", sOpts, nOpts)
 	}
-	if s.nc, err = s.createNatsClientConn("general", sOpts, nOpts); err != nil {
-		panic(fmt.Sprintf("Can't connect to NATS server (general): %v\n", err))
-	}
+	return err
 }
 
 // RunServer will startup an embedded STAN server and a nats-server to support it.
-func RunServer(ID string) *StanServer {
+func RunServer(ID string) (*StanServer, error) {
 	sOpts := GetDefaultOptions()
 	sOpts.ID = ID
 	nOpts := DefaultNatsServerOptions
@@ -780,12 +782,14 @@ func RunServer(ID string) *StanServer {
 }
 
 // RunServerWithOpts will startup an embedded STAN server and a nats-server to support it.
-func RunServerWithOpts(stanOpts *Options, natsOpts *server.Options) *StanServer {
+func RunServerWithOpts(stanOpts *Options, natsOpts *server.Options) (*StanServer, error) {
 	testInbox := nats.NewInbox()
 	// We rely heavily on the format of a NATS inbox.
 	// Since we vendor nats and nuid, it should not change without our knowledge.
 	if testInbox[0] != natsInboxFirstChar || len(testInbox) != natsInboxLen {
-		panic(fmt.Errorf("STAN: inbox format has changed, new inbox looks like: %v", testInbox))
+		err := fmt.Errorf("invalid inbox format: %v", testInbox)
+		Errorf("STAN: %v", err)
+		return nil, err
 	}
 
 	// Run a nats server by default
@@ -837,10 +841,13 @@ func RunServerWithOpts(stanOpts *Options, natsOpts *server.Options) *StanServer 
 	// Get the store limits
 	limits := &sOpts.StoreLimits
 
-	var err error
-	var recoveredState *stores.RecoveredState
-	var recoveredSubs []*subState
-	var store stores.Store
+	var (
+		err            error
+		recoveredState *stores.RecoveredState
+		recoveredSubs  []*subState
+		store          stores.Store
+		callStoreInit  bool
+	)
 
 	// Ensure store type option is in upper-case
 	sOpts.StoreType = strings.ToUpper(sOpts.StoreType)
@@ -861,7 +868,7 @@ func RunServerWithOpts(stanOpts *Options, natsOpts *server.Options) *StanServer 
 		err = fmt.Errorf("unsupported store type: %v", sOpts.StoreType)
 	}
 	if err != nil {
-		panic(err)
+		goto handleError
 	}
 	// StanServer.store (s.store here) is of type stores.Store, which is an
 	// interace. If we assign s.store in the call of the constructor and there
@@ -876,14 +883,14 @@ func RunServerWithOpts(stanOpts *Options, natsOpts *server.Options) *StanServer 
 	// Create clientStore
 	s.clients = &clientStore{store: s.store}
 
-	callStoreInit := false
 	if recoveredState != nil {
 		// Copy content
 		s.info = *recoveredState.Info
 		// Check cluster IDs match
 		if s.opts.ID != s.info.ClusterID {
-			panic(fmt.Errorf("Cluster ID %q does not match recovered value of %q",
-				s.opts.ID, s.info.ClusterID))
+			err = fmt.Errorf("cluster ID %q does not match recovered value of %q",
+				s.opts.ID, s.info.ClusterID)
+			goto handleError
 		}
 		// Check to see if SubClose subject is present or not.
 		// If not, it means we recovered from an older server, so
@@ -891,6 +898,11 @@ func RunServerWithOpts(stanOpts *Options, natsOpts *server.Options) *StanServer 
 		if s.info.SubClose == "" {
 			s.info.SubClose = fmt.Sprintf("%s.%s", DefaultSubClosePrefix, nuid.Next())
 			// Update the store with the server info
+			callStoreInit = true
+		}
+		// Same for AcksSubs (use of pool of subscriptions for subscriptions' acks)
+		if s.info.AcksSubs == "" {
+			s.info.AcksSubs = fmt.Sprintf("%s.%s", acksSubsPoolPrefix, nuid.Next())
 			callStoreInit = true
 		}
 
@@ -909,24 +921,32 @@ func RunServerWithOpts(stanOpts *Options, natsOpts *server.Options) *StanServer 
 		s.info.SubClose = fmt.Sprintf("%s.%s", DefaultSubClosePrefix, nuid.Next())
 		s.info.Unsubscribe = fmt.Sprintf("%s.%s", DefaultUnSubPrefix, nuid.Next())
 		s.info.Close = fmt.Sprintf("%s.%s", DefaultClosePrefix, nuid.Next())
+		s.info.AcksSubs = fmt.Sprintf("%s.%s", acksSubsPoolPrefix, nuid.Next())
 
 		callStoreInit = true
 	}
 	if callStoreInit {
 		// Initialize the store with the server info
-		if err := s.store.Init(&s.info); err != nil {
-			panic(fmt.Errorf("Unable to initialize the store: %v", err))
+		err = s.store.Init(&s.info)
+		if err != nil {
+			err = fmt.Errorf("Unable to initialize the store: %v", err)
+			goto handleError
 		}
 	}
 
 	// If no NATS server url is provided, it means that we embed the NATS Server
 	if sOpts.NATSServerURL == "" {
-		s.startNATSServer(nOpts)
+		err = s.startNATSServer(nOpts)
 	}
-
-	s.createNatsConnections(sOpts, nOpts)
-
-	s.ensureRunningStandAlone()
+	if err == nil {
+		err = s.createNatsConnections(sOpts, nOpts)
+	}
+	if err == nil {
+		err = s.ensureRunningStandAlone()
+	}
+	if err != nil {
+		goto handleError
+	}
 
 	// Start the go-routine responsible to start sending messages to newly
 	// started subscriptions. We do that before opening the gates in
@@ -935,20 +955,27 @@ func RunServerWithOpts(stanOpts *Options, natsOpts *server.Options) *StanServer 
 	s.wg.Add(1)
 	go s.processSubscriptionsStart()
 
-	s.initSubscriptions()
+	err = s.initSubscriptions()
+	if err != nil {
+		goto handleError
+	}
 
 	if recoveredState != nil {
 		// Do some post recovery processing (create subs on AckInbox, setup
 		// some timers, etc...)
-		if err := s.postRecoveryProcessing(recoveredState.Clients, recoveredSubs); err != nil {
-			panic(fmt.Errorf("error during post recovery processing: %v", err))
+		err = s.postRecoveryProcessing(recoveredState.Clients, recoveredSubs)
+		if err != nil {
+			err = fmt.Errorf("error during post recovery processing: %v", err)
+			goto handleError
 		}
 	}
 
 	// Flush to make sure all subscriptions are processed before
 	// we return control to the user.
-	if err := s.nc.Flush(); err != nil {
-		panic(fmt.Sprintf("Could not flush the subscriptions, %v\n", err))
+	err = s.nc.Flush()
+	if err != nil {
+		err = fmt.Errorf("could not flush the subscriptions, %v", err)
+		goto handleError
 	}
 
 	Noticef("STAN: Message store is %s", s.store.Name())
@@ -971,7 +998,12 @@ func RunServerWithOpts(stanOpts *Options, natsOpts *server.Options) *StanServer 
 	s.wg.Add(1)
 	go s.performRedeliveryOnStartup(recoveredSubs)
 
-	return &s
+	return &s, nil
+
+handleError:
+	s.Shutdown()
+	Fatalf("Failed to start: %v", err)
+	return nil, err
 }
 
 func printLimits(isGlobal bool, limits, parentLimits *stores.ChannelLimits) {
@@ -1068,7 +1100,7 @@ func (s *StanServer) configureClusterOpts(opts *server.Options) error {
 // configureNATSServerTLS sets up TLS for the NATS Server.
 // Additional TLS parameters (e.g. cipher suites) will need to be placed
 // in a configuration file specified through the -config parameter.
-func (s *StanServer) configureNATSServerTLS(opts *server.Options) {
+func (s *StanServer) configureNATSServerTLS(opts *server.Options) error {
 	tlsSet := false
 	tc := server.TLSConfigOpts{}
 	if opts.TLSCert != "" {
@@ -1093,9 +1125,10 @@ func (s *StanServer) configureNATSServerTLS(opts *server.Options) {
 	if tlsSet {
 		if opts.TLSConfig, err = server.GenTLSConfig(&tc); err != nil {
 			// The connection will fail later if the problem is severe enough.
-			Errorf("STAN:  Unable to setup NATS Server TLS:  %v", err)
+			return fmt.Errorf("unable to setup NATS Server TLS:  %v", err)
 		}
 	}
+	return nil
 }
 
 // configureNATSServerAuth sets up user authentication for the NATS Server.
@@ -1115,18 +1148,35 @@ func (s *StanServer) configureNATSServerAuth(opts *server.Options) server.Auth {
 }
 
 // startNATSServer massages options as necessary, and starts the embedded
-// NATS server.  No errors, only panics upon error conditions.
-func (s *StanServer) startNATSServer(opts *server.Options) {
-	s.configureClusterOpts(opts)
-	s.configureNATSServerTLS(opts)
+// NATS server.
+func (s *StanServer) startNATSServer(opts *server.Options) error {
+	if err := s.configureClusterOpts(opts); err != nil {
+		return err
+	}
+	if err := s.configureNATSServerTLS(opts); err != nil {
+		return err
+	}
 	a := s.configureNATSServerAuth(opts)
-	s.natsServer = natsd.RunServerWithAuth(opts, a)
+	s.natsServer = server.New(opts)
+	if s.natsServer == nil {
+		return fmt.Errorf("no NATS Server object returned")
+	}
+	if a != nil {
+		s.natsServer.SetClientAuthMethod(a)
+	}
+	// Run server in Go routine.
+	go s.natsServer.Start()
+	// Wait for accept loop(s) to be started
+	if !s.natsServer.ReadyForConnections(10 * time.Second) {
+		return fmt.Errorf("unable to start a NATS Server on %s:%d", opts.Host, opts.Port)
+	}
+	return nil
 }
 
 // ensureRunningStandAlone prevents this streaming server from starting
 // if another is found using the same cluster ID - a possibility when
 // routing is enabled.
-func (s *StanServer) ensureRunningStandAlone() {
+func (s *StanServer) ensureRunningStandAlone() error {
 	clusterID := s.ClusterID()
 	hbInbox := nats.NewInbox()
 	timeout := time.Millisecond * 250
@@ -1139,26 +1189,25 @@ func (s *StanServer) ensureRunningStandAlone() {
 	reply, err := s.nc.Request(s.info.Discovery, b, timeout)
 	if err == nats.ErrTimeout {
 		Debugf("Did not detect another server instance")
-		return
+		return nil
 	}
 	if err != nil {
-		Errorf("Request error detecting another server instance: %v", err)
-		return
+		return fmt.Errorf("request error detecting another server instance: %v", err)
 	}
 	// See if the response is valid and can be unmarshalled.
 	cr := &pb.ConnectResponse{}
 	err = cr.Unmarshal(reply.Data)
 	if err != nil {
-		// something other than a compatible streaming server responded
-		// so continue.
-		Errorf("Unmarshall error while detecting another server instance: %v", err)
-		return
+		// Something other than a compatible streaming server responded.
+		// This may cause other problems in the long run, so better fail
+		// the startup early.
+		return fmt.Errorf("unmarshall error while detecting another server instance: %v", err)
 	}
-	// Another streaming server was found, cleanup then panic.
+	// Another streaming server was found, cleanup then return error.
 	clreq := &pb.CloseRequest{ClientID: clusterID}
 	b, _ = clreq.Marshal()
 	s.nc.Request(cr.CloseRequests, b, timeout)
-	panic(fmt.Errorf("discovered another streaming server with cluster ID %q", clusterID))
+	return fmt.Errorf("discovered another streaming server with cluster ID %q", clusterID)
 }
 
 // Binds server's view of a client with stored Client objects.
@@ -1262,23 +1311,31 @@ func (s *StanServer) postRecoveryProcessing(recoveredClients []*stores.Client, r
 				ackSubject := sub.AckInbox
 				createSub := ackSubject[0] == natsInboxFirstChar
 				if !createSub {
-					ackSubIndex := 0
-					// This server instance could have been started with a
-					// pool size lower than before. We need to make sure
-					// that if the AckInbox is for a ackSubIndex that is
-					// higher than the current max, we create an individual
-					// ack subscription.
-					ackSubIndexEnd := strings.Index(sub.AckInbox, ".")
-					if ackSubIndexEnd != -1 {
-						ackSubIndexStr := sub.AckInbox[:ackSubIndexEnd]
-						ackSubIndex, err = strconv.Atoi(ackSubIndexStr)
-						if err == nil {
-							createSub = ackSubIndex >= s.acksSubsPoolSize
-							ackSubject = s.acksSubsPrefix + sub.AckInbox
+					// The saved AckInbox indicates that this was for a pool
+					// of acksSubs. If the server is currently not running
+					// in that mode, we need to create the subscription.
+					createSub = s.acksSubsPoolSize == 0
+					// If not, check that the recovered AckInbox index is
+					// below the pool size, otherwise we need to create an
+					// individual subscription.
+					if !createSub {
+						ackSubIndex := 0
+						ackSubIndexEnd := strings.Index(sub.AckInbox, ".")
+						if ackSubIndexEnd != -1 {
+							ackSubIndexStr := sub.AckInbox[:ackSubIndexEnd]
+							ackSubIndex, err = strconv.Atoi(ackSubIndexStr)
+							if err == nil {
+								createSub = ackSubIndex >= s.acksSubsPoolSize
+							}
+						}
+						if ackSubIndexEnd == -1 || err != nil {
+							err = fmt.Errorf("invalid ack inbox: %s", sub.AckInbox)
 						}
 					}
-					if ackSubIndexEnd == -1 || err != nil {
-						err = fmt.Errorf("invalid ack inbox: %s", sub.AckInbox)
+					// If we need to create an individual subscription,
+					// set the appropriate ack subject.
+					if err == nil && createSub {
+						ackSubject = s.acksSubsPrefix + sub.AckInbox
 					}
 				}
 				if err == nil && createSub {
@@ -1363,63 +1420,65 @@ func (s *StanServer) performRedeliveryOnStartup(recoveredSubs []*subState) {
 }
 
 // initSubscriptions will setup initial subscriptions for discovery etc.
-func (s *StanServer) initSubscriptions() {
+func (s *StanServer) initSubscriptions() error {
 
 	s.startIOLoop()
 
 	// Listen for connection requests.
 	_, err := s.nc.Subscribe(s.info.Discovery, s.connectCB)
 	if err != nil {
-		panic(fmt.Sprintf("Could not subscribe to discover subject, %v\n", err))
+		return fmt.Errorf("could not subscribe to discover subject, %v", err)
 	}
 	// Receive published messages from clients.
 	pubSubject := fmt.Sprintf("%s.>", s.info.Publish)
 	pubSub, err := s.nc.Subscribe(pubSubject, s.processClientPublish)
 	if err != nil {
-		panic(fmt.Sprintf("Could not subscribe to publish subject, %v\n", err))
+		return fmt.Errorf("could not subscribe to publish subject, %v", err)
 	}
 	pubSub.SetPendingLimits(-1, -1)
 	// Receive subscription requests from clients.
 	_, err = s.nc.Subscribe(s.info.Subscribe, s.processSubscriptionRequest)
 	if err != nil {
-		panic(fmt.Sprintf("Could not subscribe to subscribe request subject, %v\n", err))
+		return fmt.Errorf("could not subscribe to subscribe request subject, %v", err)
 	}
 	// Receive unsubscribe requests from clients.
 	_, err = s.nc.Subscribe(s.info.Unsubscribe, s.processUnsubscribeRequest)
 	if err != nil {
-		panic(fmt.Sprintf("Could not subscribe to unsubscribe request subject, %v\n", err))
+		return fmt.Errorf("could not subscribe to unsubscribe request subject, %v", err)
 	}
 	// Receive subscription close requests from clients.
 	_, err = s.nc.Subscribe(s.info.SubClose, s.processSubCloseRequest)
 	if err != nil {
-		panic(fmt.Sprintf("Could not subscribe to subscription close request subject, %v\n", err))
+		return fmt.Errorf("could not subscribe to subscription close request subject, %v", err)
 	}
 	// Receive close requests from clients.
 	_, err = s.nc.Subscribe(s.info.Close, s.processCloseRequest)
 	if err != nil {
-		panic(fmt.Sprintf("Could not subscribe to close request subject, %v\n", err))
+		return fmt.Errorf("could not subscribe to close request subject, %v", err)
 	}
+	// We need to set this regardless if server is currently running
+	// with the pool or not (since we may need those when recovering subscriptions)
+	s.acksSubsPrefix = s.info.AcksSubs + "."
+	s.acksSubsPrefixLen = len(s.acksSubsPrefix)
 	// Optionally receive ACKs from clients using this pool of ack subscribers.
 	if s.acksSubsPoolSize > 0 {
-		s.acksSubsPrefix = "_STAN.subacks." + s.info.ClusterID + "."
-		s.acksSubsPrefixLen = len(s.acksSubsPrefix)
 		for i := 0; i < s.acksSubsPoolSize; i++ {
 			ackSub, err := s.nc.Subscribe(fmt.Sprintf("%s%d.>", s.acksSubsPrefix, i),
 				s.processAckMsg)
 			if err != nil {
-				panic(fmt.Errorf("Could not subscribe to subscriptions acks subject: %v", err))
+				return fmt.Errorf("Could not subscribe to subscriptions acks subject: %v", err)
 			}
 			ackSub.SetPendingLimits(-1, -1)
 			s.acksSubs = append(s.acksSubs, ackSub)
 		}
 	}
-
 	Debugf("STAN: Discover subject:           %s", s.info.Discovery)
 	Debugf("STAN: Publish subject:            %s", pubSubject)
 	Debugf("STAN: Subscribe subject:          %s", s.info.Subscribe)
 	Debugf("STAN: Subscription Close subject: %s", s.info.SubClose)
 	Debugf("STAN: Unsubscribe subject:        %s", s.info.Unsubscribe)
 	Debugf("STAN: Close subject:              %s", s.info.Close)
+	return nil
 }
 
 // Process a client connect request
@@ -1964,6 +2023,7 @@ func (s *StanServer) performDurableRedelivery(cs *stores.ChannelStore, sub *subS
 	sub.RLock()
 	sortedSeqs := makeSortedSequences(sub.acksPending)
 	clientID := sub.ClientID
+	newOnHold := sub.newOnHold
 	sub.RUnlock()
 
 	if s.debug && len(sortedSeqs) > 0 {
@@ -2000,6 +2060,12 @@ func (s *StanServer) performDurableRedelivery(cs *stores.ChannelStore, sub *subS
 		sub.Lock()
 		// Force delivery
 		s.sendMsgToSub(sub, m, forceDelivery)
+		sub.Unlock()
+	}
+	// Release newOnHold if needed.
+	if newOnHold {
+		sub.Lock()
+		sub.newOnHold = false
 		sub.Unlock()
 	}
 }
@@ -2835,6 +2901,9 @@ func (s *StanServer) processSubscriptionRequest(m *nats.Msg) {
 		sub.ackWait = time.Duration(sr.AckWaitInSecs) * time.Second
 		sub.stalled = false
 		if len(sub.acksPending) > 0 {
+			// We have a durable with pending messages, set newOnHold
+			// until we have performed the initial redelivery.
+			sub.newOnHold = true
 			s.setupAckTimer(sub, sub.ackWait)
 		}
 		sub.Unlock()

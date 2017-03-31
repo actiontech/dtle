@@ -7,10 +7,10 @@ import (
 
 	"github.com/carbocation/interpose"
 	"github.com/carbocation/interpose/adaptors"
-	"github.com/urfave/negroni"
 	"github.com/gorilla/mux"
 	"github.com/meatballhat/negroni-logrus"
 	"github.com/stretchr/graceful"
+	"github.com/urfave/negroni"
 )
 
 func main() {

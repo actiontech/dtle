@@ -419,6 +419,24 @@ func (a *Agent) consulConfig() *consul.Config {
 	if a.config.Autopilot.CleanupDeadServers != nil {
 		base.AutopilotConfig.CleanupDeadServers = *a.config.Autopilot.CleanupDeadServers
 	}
+	if a.config.Autopilot.LastContactThreshold != nil {
+		base.AutopilotConfig.LastContactThreshold = *a.config.Autopilot.LastContactThreshold
+	}
+	if a.config.Autopilot.MaxTrailingLogs != nil {
+		base.AutopilotConfig.MaxTrailingLogs = *a.config.Autopilot.MaxTrailingLogs
+	}
+	if a.config.Autopilot.ServerStabilizationTime != nil {
+		base.AutopilotConfig.ServerStabilizationTime = *a.config.Autopilot.ServerStabilizationTime
+	}
+	if a.config.NonVotingServer {
+		base.NonVoter = a.config.NonVotingServer
+	}
+	if a.config.Autopilot.RedundancyZoneTag != "" {
+		base.AutopilotConfig.RedundancyZoneTag = a.config.Autopilot.RedundancyZoneTag
+	}
+	if a.config.Autopilot.DisableUpgradeMigration != nil {
+		base.AutopilotConfig.DisableUpgradeMigration = *a.config.Autopilot.DisableUpgradeMigration
+	}
 
 	// Format the build string
 	revision := a.config.Revision
@@ -637,6 +655,7 @@ func (a *Agent) setupNodeID(config *Config) error {
 	// If they've configured a node ID manually then just use that, as
 	// long as it's valid.
 	if config.NodeID != "" {
+		config.NodeID = types.NodeID(strings.ToLower(string(config.NodeID)))
 		if _, err := uuid.ParseUUID(string(config.NodeID)); err != nil {
 			return err
 		}
@@ -665,6 +684,7 @@ func (a *Agent) setupNodeID(config *Config) error {
 		}
 
 		nodeID := strings.TrimSpace(string(rawID))
+		nodeID = strings.ToLower(nodeID)
 		if _, err := uuid.ParseUUID(nodeID); err != nil {
 			return err
 		}
@@ -1172,11 +1192,7 @@ func (a *Agent) RemoveService(serviceID string, persist bool) error {
 	}
 
 	// Remove service immediately
-	err := a.state.RemoveService(serviceID)
-
-	// TODO: Return the error instead of just logging here in Consul 0.8
-	// For now, keep the current idempotent behavior on deleting a nonexistent service
-	if err != nil {
+	if err := a.state.RemoveService(serviceID); err != nil {
 		a.logger.Printf("[WARN] agent: Failed to deregister service %q: %s", serviceID, err)
 		return nil
 	}

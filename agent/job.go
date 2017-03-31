@@ -5,11 +5,12 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/Sirupsen/logrus"
 	"github.com/docker/libkv/store"
 	"github.com/hashicorp/serf/serf"
-	"github.com/ngaut/log"
 
 	uconf "udup/config"
+	ulog "udup/logger"
 )
 
 var (
@@ -74,13 +75,17 @@ func (j *Job) Start() {
 						j.Status = Queued
 						j.Processors[k].Running = false
 						if err := j.agent.store.UpsertJob(j); err != nil {
-							log.Fatal(err)
+							ulog.Logger.Fatal(err)
 						}
 						return
 					}
 				}
 			}
-			log.Infof("Start job:%v", j.Name)
+
+			ulog.Logger.WithFields(logrus.Fields{
+				"job": j.Name,
+			}).Debug("job: Run job")
+
 			for k, v := range j.Processors {
 				if v.Running != true {
 					go j.StartJobQuery(k)
@@ -96,7 +101,10 @@ func (j *Job) Stop() {
 	defer j.running.Unlock()
 
 	if j.agent != nil && j.Status == Running {
-		log.Infof("Stop job:%v", j.Name)
+		ulog.Logger.WithFields(logrus.Fields{
+			"job": j.Name,
+		}).Debug("job: Stop job")
+
 		for k, _ := range j.Processors {
 			go j.StopJobQuery(k)
 		}

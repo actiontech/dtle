@@ -8,8 +8,10 @@ package agent
 import (
 	"fmt"
 	"net"
+	"regexp"
 	"strconv"
 
+	"github.com/hashicorp/go-version"
 	"github.com/hashicorp/serf/serf"
 )
 
@@ -29,11 +31,15 @@ type Server struct {
 	ID          string
 	Datacenter  string
 	Port        int
+	WanJoinPort int
 	Bootstrap   bool
 	Expect      int
+	Build       version.Version
 	Version     int
 	RaftVersion int
+	NonVoter    bool
 	Addr        net.Addr
+	Status      serf.MemberStatus
 }
 
 // Key returns the corresponding Key
@@ -53,6 +59,8 @@ func (s *Server) String() string {
 
 	return fmt.Sprintf("%s (Addr: %s/%s) (DC: %s)", s.Name, networkStr, addrStr, s.Datacenter)
 }
+
+var versionFormat = regexp.MustCompile(`\d+\.\d+\.\d+`)
 
 // IsConsulServer returns true if a serf member is a consul server
 // agent. Returns a bool and a pointer to the Server.
@@ -80,17 +88,36 @@ func IsConsulServer(m serf.Member) (bool, *Server) {
 		return false, nil
 	}
 
+	build_version, err := version.NewVersion(versionFormat.FindString(m.Tags["build"]))
+	if err != nil {
+		return false, nil
+	}
+
+	wan_join_port := 0
+	wan_join_port_str, ok := m.Tags["wan_join_port"]
+	if ok {
+		wan_join_port, err = strconv.Atoi(wan_join_port_str)
+		if err != nil {
+			return false, nil
+		}
+	}
+
 	vsn_str := m.Tags["vsn"]
 	vsn, err := strconv.Atoi(vsn_str)
 	if err != nil {
 		return false, nil
 	}
 
-	raft_vsn_str := m.Tags["raft_vsn"]
-	raft_vsn, err := strconv.Atoi(raft_vsn_str)
-	if err != nil {
-		return false, nil
+	raft_vsn := 0
+	raft_vsn_str, ok := m.Tags["raft_vsn"]
+	if ok {
+		raft_vsn, err = strconv.Atoi(raft_vsn_str)
+		if err != nil {
+			return false, nil
+		}
 	}
+
+	_, nonVoter := m.Tags["nonvoter"]
 
 	addr := &net.TCPAddr{IP: m.Addr, Port: port}
 
@@ -99,11 +126,15 @@ func IsConsulServer(m serf.Member) (bool, *Server) {
 		ID:          m.Tags["id"],
 		Datacenter:  datacenter,
 		Port:        port,
+		WanJoinPort: wan_join_port,
 		Bootstrap:   bootstrap,
 		Expect:      expect,
 		Addr:        addr,
+		Build:       *build_version,
 		Version:     vsn,
 		RaftVersion: raft_vsn,
+		Status:      m.Status,
+		NonVoter:    nonVoter,
 	}
 	return true, parts
 }

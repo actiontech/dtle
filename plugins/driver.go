@@ -12,8 +12,8 @@ const (
 )
 
 const (
-	DataSrc = "src"
-	DataDest   = "dest"
+	DataSrc  = "src"
+	DataDest = "dest"
 )
 
 var BuiltinProcessors = map[string]Factory{

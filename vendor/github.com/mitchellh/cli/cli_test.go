@@ -230,7 +230,7 @@ func TestCLIRun_helpNested(t *testing.T) {
 		t.Fatalf("Error: %s", err)
 	}
 
-	if code != 1 {
+	if code != 0 {
 		t.Fatalf("Code: %d", code)
 	}
 
@@ -299,8 +299,47 @@ func TestCLIRun_nestedMissingParent(t *testing.T) {
 
 func TestCLIRun_printHelp(t *testing.T) {
 	testCases := [][]string{
-		{},
 		{"-h"},
+		{"--help"},
+	}
+
+	for _, testCase := range testCases {
+		buf := new(bytes.Buffer)
+		helpText := "foo"
+
+		cli := &CLI{
+			Args: testCase,
+			Commands: map[string]CommandFactory{
+				"foo": func() (Command, error) {
+					return new(MockCommand), nil
+				},
+			},
+			HelpFunc: func(map[string]CommandFactory) string {
+				return helpText
+			},
+			HelpWriter: buf,
+		}
+
+		code, err := cli.Run()
+		if err != nil {
+			t.Errorf("Args: %#v. Error: %s", testCase, err)
+			continue
+		}
+
+		if code != 0 {
+			t.Errorf("Args: %#v. Code: %d", testCase, code)
+			continue
+		}
+
+		if !strings.Contains(buf.String(), helpText) {
+			t.Errorf("Args: %#v. Text: %v", testCase, buf.String())
+		}
+	}
+}
+
+func TestCLIRun_printHelpIllegal(t *testing.T) {
+	testCases := [][]string{
+		{},
 		{"i-dont-exist"},
 		{"-bad-flag", "foo"},
 	}
@@ -384,7 +423,7 @@ func TestCLIRun_printCommandHelp(t *testing.T) {
 			t.Fatalf("err: %s", err)
 		}
 
-		if exitCode != 1 {
+		if exitCode != 0 {
 			t.Fatalf("bad exit code: %d", exitCode)
 		}
 
@@ -421,7 +460,7 @@ func TestCLIRun_printCommandHelpNested(t *testing.T) {
 			t.Fatalf("err: %s", err)
 		}
 
-		if exitCode != 1 {
+		if exitCode != 0 {
 			t.Fatalf("bad exit code: %d", exitCode)
 		}
 
@@ -476,12 +515,61 @@ func TestCLIRun_printCommandHelpSubcommands(t *testing.T) {
 			t.Fatalf("err: %s", err)
 		}
 
-		if exitCode != 1 {
+		if exitCode != 0 {
 			t.Fatalf("bad exit code: %d", exitCode)
 		}
 
 		if buf.String() != testCommandHelpSubcommandsOutput {
 			t.Fatalf("bad: %#v\n\n'%#v'\n\n'%#v'", args, buf.String(), testCommandHelpSubcommandsOutput)
+		}
+	}
+}
+
+func TestCLIRun_printCommandHelpSubcommandsNestedTwoLevel(t *testing.T) {
+	testCases := [][]string{
+		{"--help", "L1"},
+		{"-h", "L1"},
+	}
+
+	for _, args := range testCases {
+		command := &MockCommand{
+			HelpText: "donuts",
+		}
+
+		buf := new(bytes.Buffer)
+		cli := &CLI{
+			Args: args,
+			Commands: map[string]CommandFactory{
+				"L1": func() (Command, error) {
+					return command, nil
+				},
+				"L1 L2A": func() (Command, error) {
+					return &MockCommand{SynopsisText: "hi!"}, nil
+				},
+				"L1 L2B": func() (Command, error) {
+					return &MockCommand{SynopsisText: "hi!"}, nil
+				},
+				"L1 L2A L3A": func() (Command, error) {
+					return &MockCommand{SynopsisText: "hi!"}, nil
+				},
+				"L1 L2A L3B": func() (Command, error) {
+					return &MockCommand{SynopsisText: "hi!"}, nil
+				},
+			},
+			HelpWriter: buf,
+		}
+
+		exitCode, err := cli.Run()
+		if err != nil {
+			t.Fatalf("err: %s", err)
+		}
+
+		if exitCode != 0 {
+			t.Fatalf("bad exit code: %d", exitCode)
+		}
+
+		if buf.String() != testCommandHelpSubcommandsTwoLevelOutput {
+			t.Fatalf("bad: %#v\n\n%s\n\n%s", args, buf.String(), testCommandHelpSubcommandsOutput)
 		}
 	}
 }
@@ -517,7 +605,7 @@ func TestCLIRun_printCommandHelpTemplate(t *testing.T) {
 			t.Fatalf("err: %s", err)
 		}
 
-		if exitCode != 1 {
+		if exitCode != 0 {
 			t.Fatalf("bad exit code: %d", exitCode)
 		}
 
@@ -595,4 +683,11 @@ Subcommands:
     longer    hi!
     zap       hi!
     zip       hi!
+`
+
+const testCommandHelpSubcommandsTwoLevelOutput = `donuts
+
+Subcommands:
+    L2A    hi!
+    L2B    hi!
 `

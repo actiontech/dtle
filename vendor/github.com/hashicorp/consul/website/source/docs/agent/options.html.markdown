@@ -13,6 +13,12 @@ the command-line or via configuration files. All of the configuration
 options are completely optional. Defaults are specified with their
 descriptions.
 
+Configuration precedence is evaluated in the following order:
+
+1. Command line arguments
+2. Environment Variables
+3. Configuration files
+
 When loading configuration, Consul loads the configuration from files
 and directories in lexical order. For example, configuration file `basic_config.json`
 will be processed before `extra_config.json`. Configuration specified later
@@ -91,6 +97,7 @@ The options below are all specified on the command-line.
   the cluster. When provided, Consul waits until the specified number of servers are
   available and then bootstraps the cluster. This allows an initial leader to be elected
   automatically. This cannot be used in conjunction with the legacy [`-bootstrap`](#_bootstrap) flag.
+  This flag implies server mode.
 
 * <a name="_bind"></a><a href="#_bind">`-bind`</a> - The address that should be bound to
   for internal cluster communications.
@@ -311,6 +318,11 @@ will exit with an error at startup.
   use. This defaults to the latest version. This should be set only when [upgrading](/docs/upgrading.html).
   You can view the protocol versions supported by Consul by running `consul -v`.
 
+* <a name="_raft_protocol"></a><a href="#_raft_protocol">`-raft-protocol`</a> - This controls the internal
+  version of the Raft consensus protocol used for server communications. This defaults to 2 but must
+  be set to 3 in order to gain access to Autopilot features, with the exception of
+  [`cleanup_dead_servers`](#cleanup_dead_servers).
+
 * <a name="_recursor"></a><a href="#_recursor">`-recursor`</a> - Specifies the address of an upstream DNS
   server. This option may be provided multiple times, and is functionally
   equivalent to the [`recursors` configuration option](#recursors).
@@ -328,6 +340,11 @@ will exit with an error at startup.
   is maintained on all server nodes to ensure availability in the case of node failure. Server nodes also
   participate in a WAN gossip pool with server nodes in other datacenters. Servers act as gateways
   to other datacenters and forward traffic as appropriate.
+
+* <a name="_non_voting_server"></a><a href="#_non_voting_server">`-non-voting-server`</a> - (Enterprise-only)
+  This flag is used to make the server not participate in the Raft quorum, and have it only receive the data
+  replication stream. This can be used to add read scalability to a cluster in cases where a high volume of
+  reads to servers are needed.
 
 * <a name="_syslog"></a><a href="#_syslog">`-syslog`</a> - This flag enables logging to syslog. This
   is only supported on Linux and OSX. It will result in an error if provided on Windows.
@@ -411,13 +428,12 @@ Consul will not enable TLS for the HTTP API unless the `https` port has been ass
 
 #### Configuration Key Reference
 
-* <a name="acl_datacenter"></a><a href="#acl_datacenter">`acl_datacenter`</a> - Only
-  used by servers. This designates the datacenter which
-  is authoritative for ACL information. It must be provided to enable ACLs.
-  All servers and datacenters must agree on the ACL datacenter. Setting it on
-  the servers is all you need for enforcement, but for the APIs to forward properly
-  from the clients, it must be set on them too. Future changes may move
-  enforcement to the edges, so it's best to just set `acl_datacenter` on all nodes.
+* <a name="acl_datacenter"></a><a href="#acl_datacenter">`acl_datacenter`</a> - This designates
+  the datacenter which is authoritative for ACL information. It must be provided to enable ACLs.
+  All servers and datacenters must agree on the ACL datacenter. Setting it on the servers is all
+  you need for cluster-level enforcement, but for the APIs to forward properly from the clients,
+  it must be set on them too. In Consul 0.8 and later, this also enables agent-level enforcement
+  of ACLs. Please see the [ACL internals guide](/docs/internals/acl.html) for more details.
 
 * <a name="acl_default_policy"></a><a href="#acl_default_policy">`acl_default_policy`</a> - Either
   "allow" or "deny"; defaults to "allow". The default policy controls the behavior of a token when
@@ -443,9 +459,8 @@ Consul will not enable TLS for the HTTP API unless the `https` port has been ass
   and servers to perform internal operations to the service catalog. If this isn't specified, then
   the <a href="#acl_token">`acl_token`</a> will be used. This was added in Consul 0.7.2.
   <br><br>
-  For clients, this token must at least have write access to the node name it will register as. For
-  servers, this must have write access to all nodes that are expected to join the cluster, as well
-  as write access to the "consul" service, which will be registered automatically on its behalf.
+  This token must at least have write access to the node name it will register as in order to set any
+  of the node-level information in the catalog such as metadata, or the node's tagged addresses.
 
 * <a name="acl_enforce_version_8"></a><a href="#acl_enforce_version_8">`acl_enforce_version_8`</a> -
   Used for clients and servers to determine if enforcement should occur for new ACL policies being
@@ -548,21 +563,38 @@ Consul will not enable TLS for the HTTP API unless the `https` port has been ass
 * <a name="atlas_endpoint"></a><a href="#atlas_endpoint">`atlas_endpoint`</a> Equivalent to the
   [`-atlas-endpoint` command-line flag](#_atlas_endpoint).
 
-* <a name="atlas_endpoint"></a><a href="#atlas_endpoint">`atlas_endpoint`</a> Equivalent to the
-  [`-atlas-endpoint` command-line flag](#_atlas_endpoint).
-
 * <a name="autopilot"></a><a href="#autopilot">`autopilot`</a> Added in Consul 0.8, this object
   allows a number of sub-keys to be set which can configure operator-friendly settings for Consul servers.
+  For more information about Autopilot, see the [Autopilot Guide](/docs/guides/autopilot.html).
   <br><br>
   The following sub-keys are available:
 
-  * <a name="raft_protocol"></a><a href="#raft_protocol">`raft_protocol`</a> - This controls the internal
-  version of the Raft consensus protocol used for server communications. This defaults to 2 but must
-  be set to 3 in order to gain access to other Autopilot features, with the exception of
-  [`cleanup_dead_servers`](#cleanup_dead_servers).
-
   * <a name="cleanup_dead_servers"></a><a href="#cleanup_dead_servers">`cleanup_dead_servers`</a> - This controls
-  the automatic removal of dead server nodes whenever a new server is added to the cluster. Defaults to `true`.
+  the automatic removal of dead server nodes periodically and whenever a new server is added to the cluster.
+  Defaults to `true`.
+
+  * <a name="last_contact_threshold"></a><a href="#last_contact_threshold">`last_contact_threshold`</a> - Controls
+  the maximum amount of time a server can go without contact from the leader before being considered unhealthy.
+  Must be a duration value such as `10s`. Defaults to `200ms`.
+
+  * <a name="max_trailing_threshold"></a><a href="#max_trailing_threshold">`max_trailing_threshold`</a> - Controls
+  the maximum number of log entries that a server can trail the leader by before being considered unhealthy. Defaults
+  to 250.
+
+  * <a name="server_stabilization_time"></a><a href="#server_stabilization_time">`server_stabilization_time`</a> -
+  Controls the minimum amount of time a server must be stable in the 'healthy' state before being added to the
+  cluster. Only takes effect if all servers are running Raft protocol version 3 or higher. Must be a duration value
+  such as `30s`. Defaults to `10s`.
+
+  * <a name="redundancy_zone_tag"></a><a href="#redundancy_zone_tag">`redundancy_zone_tag`</a> - (Enterprise-only)
+  This controls the [`-node-meta`](#_node_meta) key to use when Autopilot is separating servers into zones for
+  redundancy. Only one server in each zone can be a voting member at one time. If left blank (the default), this
+  feature will be disabled.
+
+  * <a name="disable_upgrade_migration"></a><a href="#disable_upgrade_migration">`disable_upgrade_migration`</a> - (Enterprise-only)
+  If set to `true`, this setting will disable Autopilot's upgrade migration strategy in Consul Enterprise of waiting
+  until enough newer-versioned servers have been added to the cluster before promoting any of them to voters. Defaults
+  to `false`.
 
 * <a name="bootstrap"></a><a href="#bootstrap">`bootstrap`</a> Equivalent to the
   [`-bootstrap` command-line flag](#_bootstrap).
@@ -606,7 +638,8 @@ Consul will not enable TLS for the HTTP API unless the `https` port has been ass
 
 * <a name="disable_remote_exec"></a><a href="#disable_remote_exec">`disable_remote_exec`</a>
   Disables support for remote execution. When set to true, the agent will ignore any incoming
-  remote exec requests.
+  remote exec requests. In versions of Consul prior to 0.8, this defaulted to false. In Consul
+  0.8 the default was changed to true, to make remote exec opt-in instead of opt-out.
 
 * <a name="disable_update_check"></a><a href="#disable_update_check">`disable_update_check`</a>
   Disables automatic checking for security bulletins and new version releases.
@@ -762,12 +795,17 @@ Consul will not enable TLS for the HTTP API unless the `https` port has been ass
     * <a name="dns_port"></a><a href="#dns_port">`dns`</a> - The DNS server, -1 to disable. Default 8600.
     * <a name="http_port"></a><a href="#http_port">`http`</a> - The HTTP API, -1 to disable. Default 8500.
     * <a name="https_port"></a><a href="#https_port">`https`</a> - The HTTPS API, -1 to disable. Default -1 (disabled).
+    * <a name="rpc_port"></a><a href="#rpc_port">`rpc`</a> - The CLI RPC endpoint. Default 8400. This is deprecated
+      in Consul 0.8 and later.
     * <a name="serf_lan_port"></a><a href="#serf_lan_port">`serf_lan`</a> - The Serf LAN port. Default 8301.
     * <a name="serf_wan_port"></a><a href="#serf_wan_port">`serf_wan`</a> - The Serf WAN port. Default 8302.
     * <a name="server_rpc_port"></a><a href="#server_rpc_port">`server`</a> - Server RPC address. Default 8300.
 
 * <a name="protocol"></a><a href="#protocol">`protocol`</a> Equivalent to the
   [`-protocol` command-line flag](#_protocol).
+
+* <a name="raft_protocol"></a><a href="#raft_protocol">`raft_protocol`</a> Equivalent to the
+  [`-raft-protocol` command-line flag](#_raft_protocol).
 
 * <a name="reap"></a><a href="#reap">`reap`</a> This controls Consul's automatic reaping of child processes,
   which is useful if Consul is running as PID 1 in a Docker container. If this isn't specified, then Consul will
@@ -852,6 +890,9 @@ Consul will not enable TLS for the HTTP API unless the `https` port has been ass
 
 * <a name="server"></a><a href="#server">`server`</a> Equivalent to the
   [`-server` command-line flag](#_server).
+
+* <a name="non_voting_server"></a><a href="#non_voting_server">`non_voting_server`</a> - Equivalent to the
+  [`-non-voting-server` command-line flag](#_non_voting_server).
 
 * <a name="server_name"></a><a href="#server_name">`server_name`</a> When provided, this overrides
   the [`node_name`](#_node) for the TLS certificate. It can be used to ensure that the certificate
@@ -1069,6 +1110,11 @@ port.
 * Serf WAN (Default 8302). This is used by servers to gossip over the
   WAN to other servers. TCP and UDP.
 
+* CLI RPC (Default 8400). This is used by all agents to handle RPC
+  from the CLI, but is deprecated in Consul 0.8 and later. TCP only.
+  In Consul 0.8 all CLI commands were changed to use the HTTP API and
+  the RPC interface was completely removed.
+
 * HTTP API (Default 8500). This is used by clients to talk to the HTTP
   API. TCP only.
 
@@ -1088,6 +1134,7 @@ items which are reloaded include:
 * Services
 * Watches
 * HTTP Client Address
+* <a href="#node_meta">Node Metadata</a>
 * Atlas Token
 * Atlas Infrastructure
 * Atlas Endpoint

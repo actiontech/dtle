@@ -90,7 +90,7 @@ func (s *testParserSuite) TestSimple(c *C) {
 		"compact", "redundant", "sql_no_cache sql_no_cache", "sql_cache sql_cache", "action", "round",
 		"enable", "disable", "reverse", "space", "privileges", "get_lock", "release_lock", "sleep", "no", "greatest", "least",
 		"binlog", "hex", "unhex", "function", "indexes", "from_unixtime", "processlist", "events", "less", "than", "timediff",
-		"ln", "log", "log2", "log10", "timestampdiff", "pi",
+		"ln", "log", "log2", "log10", "timestampdiff", "pi", "quote", "none",
 	}
 	for _, kw := range unreservedKws {
 		src := fmt.Sprintf("SELECT %s FROM tbl;", kw)
@@ -165,6 +165,11 @@ func (s *testParserSuite) TestSimple(c *C) {
 	c.Assert(cs.Cols, HasLen, 1)
 	c.Assert(cs.Cols[0].Options, HasLen, 1)
 	c.Assert(cs.Cols[0].Options[0].Tp, Equals, ast.ColumnOptionPrimaryKey)
+
+	// for issue 2803
+	src = "use quote;"
+	_, err = parser.ParseOneStmt(src, "", "")
+	c.Assert(err, IsNil)
 }
 
 type testCase struct {
@@ -483,6 +488,8 @@ func (s *testParserSuite) TestExpression(c *C) {
 		{`select """a""";`, true},
 		{`select _utf8"string";`, true},
 		{`select _binary"string";`, true},
+		{"select N'string'", true},
+		{"select n'string'", true},
 		// for comparison
 		{"select 1 <=> 0, 1 <=> null, 1 = null", true},
 	}
@@ -659,6 +666,11 @@ func (s *testParserSuite) TestBuiltin(c *C) {
 
 		// for CONVERT_TZ
 		{"SELECT CONVERT_TZ('2004-01-01 12:00:00','+00:00','+10:00');", true},
+
+		// for GET_FORMAT
+		{"SELECT GET_FORMAT(DATE, 'USA');", true},
+		{"SELECT GET_FORMAT(DATETIME, 'USA');", true},
+		{"SELECT GET_FORMAT(TIME, 'USA');", true},
 
 		// for LOCALTIME, LOCALTIMESTAMP
 		{"SELECT LOCALTIME(), LOCALTIME(1)", true},
@@ -1188,6 +1200,7 @@ func (s *testParserSuite) TestDDL(c *C) {
 		{"ALTER TABLE t ALTER COLUMN a SET DEFAULT 1+1", false},
 		{"ALTER TABLE t ALTER COLUMN a DROP DEFAULT", true},
 		{"ALTER TABLE t ALTER a DROP DEFAULT", true},
+		{"ALTER TABLE t ADD COLUMN a SMALLINT UNSIGNED, lock=none", true},
 
 		// for rename table statement
 		{"RENAME TABLE t TO t1", true},
@@ -1198,6 +1211,26 @@ func (s *testParserSuite) TestDDL(c *C) {
 		{"TRUNCATE t1", true},
 	}
 	s.RunTest(c, table)
+}
+
+func (s *testParserSuite) TestOptimizerHints(c *C) {
+	parser := New()
+	stmt, err := parser.Parse("select /*+ tidb_SMJ(T1,t2) tidb_smj(T3,t4) */ c1, c2 from t1, t2 where t1.c1 = t2.c1", "", "")
+	c.Assert(err, IsNil)
+	selectStmt := stmt[0].(*ast.SelectStmt)
+
+	hints := selectStmt.TableHints
+	c.Assert(len(hints), Equals, 2)
+	c.Assert(hints[0].HintName.L, Equals, "tidb_smj")
+	c.Assert(len(hints[0].Tables), Equals, 2)
+	c.Assert(hints[0].Tables[0].L, Equals, "t1")
+	c.Assert(hints[0].Tables[1].L, Equals, "t2")
+
+	c.Assert(hints[1].HintName.L, Equals, "tidb_smj")
+	c.Assert(hints[1].Tables[0].L, Equals, "t3")
+	c.Assert(hints[1].Tables[1].L, Equals, "t4")
+
+	c.Assert(len(selectStmt.TableHints), Equals, 2)
 }
 
 func (s *testParserSuite) TestType(c *C) {
@@ -1470,6 +1503,7 @@ func (s *testParserSuite) TestSessionManage(c *C) {
 		{"kill tidb 23123", true},
 		{"kill tidb connection 23123", true},
 		{"kill tidb query 23123", true},
+		{"show processlist", true},
 	}
 	s.RunTest(c, table)
 }

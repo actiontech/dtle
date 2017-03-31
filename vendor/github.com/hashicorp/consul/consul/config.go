@@ -80,6 +80,10 @@ type Config struct {
 	// RaftConfig is the configuration used for Raft in the local DC
 	RaftConfig *raft.Config
 
+	// (Enterprise-only) NonVoter is used to prevent this server from being added
+	// as a voting member of the Raft cluster.
+	NonVoter bool
+
 	// RPCAddr is the RPC address used by Consul. This should be reachable
 	// by the WAN and LAN
 	RPCAddr *net.TCPAddr
@@ -95,6 +99,11 @@ type Config struct {
 
 	// SerfWANConfig is the configuration for the cross-dc serf
 	SerfWANConfig *serf.Config
+
+	// SerfFloodInterval controls how often we attempt to flood local Serf
+	// Consul servers into the global areas (WAN and user-defined areas in
+	// Consul Enterprise).
+	SerfFloodInterval time.Duration
 
 	// ReconcileInterval controls how often we reconcile the strongly
 	// consistent store with the Serf info. This is used to handle nodes
@@ -251,9 +260,6 @@ type Config struct {
 	// user events. This function should not block.
 	UserEventHandler func(serf.UserEvent)
 
-	// DisableCoordinates controls features related to network coordinates.
-	DisableCoordinates bool
-
 	// CoordinateUpdatePeriod controls how long a server batches coordinate
 	// updates before applying them in a Raft transaction. A larger period
 	// leads to fewer Raft transactions, but also the stored coordinates
@@ -279,6 +285,15 @@ type Config struct {
 	// AutopilotConfig is used to apply the initial autopilot config when
 	// bootstrapping.
 	AutopilotConfig *structs.AutopilotConfig
+
+	// ServerHealthInterval is the frequency with which the health of the
+	// servers in the cluster will be updated.
+	ServerHealthInterval time.Duration
+
+	// AutopilotInterval is the frequency with which the leader will perform
+	// autopilot tasks, such as promoting eligible non-voters and removing
+	// dead servers.
+	AutopilotInterval time.Duration
 }
 
 // CheckVersion is used to check if the ProtocolVersion is valid
@@ -319,12 +334,14 @@ func DefaultConfig() *Config {
 	}
 
 	conf := &Config{
+		Build:                    "0.8.0",
 		Datacenter:               DefaultDC,
 		NodeName:                 hostname,
 		RPCAddr:                  DefaultRPCAddr,
 		RaftConfig:               raft.DefaultConfig(),
 		SerfLANConfig:            serf.DefaultConfig(),
 		SerfWANConfig:            serf.DefaultConfig(),
+		SerfFloodInterval:        60 * time.Second,
 		ReconcileInterval:        60 * time.Second,
 		ProtocolVersion:          ProtocolVersion2Compatible,
 		ACLTTL:                   30 * time.Second,
@@ -335,7 +352,6 @@ func DefaultConfig() *Config {
 		TombstoneTTL:             15 * time.Minute,
 		TombstoneTTLGranularity:  30 * time.Second,
 		SessionTTLMin:            10 * time.Second,
-		DisableCoordinates:       false,
 
 		// These are tuned to provide a total throughput of 128 updates
 		// per second. If you update these, you should update the client-
@@ -353,8 +369,13 @@ func DefaultConfig() *Config {
 		TLSMinVersion: "tls10",
 
 		AutopilotConfig: &structs.AutopilotConfig{
-			CleanupDeadServers: true,
+			CleanupDeadServers:      true,
+			LastContactThreshold:    200 * time.Millisecond,
+			MaxTrailingLogs:         250,
+			ServerStabilizationTime: 10 * time.Second,
 		},
+		ServerHealthInterval: 2 * time.Second,
+		AutopilotInterval:    10 * time.Second,
 	}
 
 	// Increase our reap interval to 3 days instead of 24h.

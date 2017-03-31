@@ -4,11 +4,11 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/ngaut/log"
 	"github.com/siddontang/go-mysql/replication"
 	"golang.org/x/net/context"
 
 	uconf "udup/config"
+	ulog "udup/logger"
 )
 
 type BinlogEvent struct {
@@ -53,7 +53,8 @@ func NewBinlogParser(config *uconf.DriverConfig) (binlogParser *BinlogParser, er
 		RawModeEanbled:  false,
 		SemiSyncEnabled: false,
 	}
-	log.Infof("Registering replica at %+v:%+v", config.ConnCfg.Host, uint16(config.ConnCfg.Port))
+	ulog.Logger.Infof("Registering replica at %+v:%+v", config.ConnCfg.Host, uint16(config.ConnCfg.Port))
+
 	binlogParser.binlogSyncer = replication.NewBinlogSyncer(&cfg)
 	return binlogParser, err
 }
@@ -65,7 +66,7 @@ func (bp *BinlogParser) ConnectBinlogStreamer(coordinates BinlogCoordinates) (er
 	}
 
 	bp.currentCoordinates = coordinates
-	log.Infof("Connecting binlog streamer at %+v", bp.currentCoordinates)
+	ulog.Logger.Infof("Connecting binlog streamer at %+v", bp.currentCoordinates)
 	// Start sync with sepcified binlog file and position
 	bp.binlogStreamer, err = bp.binlogSyncer.StartSyncGTID(bp.currentCoordinates.GtidSet)
 	return err
@@ -103,21 +104,21 @@ func (bp *BinlogParser) StreamEvents(canStreaming func() bool, eventsChannel cha
 				defer bp.currentCoordinatesMutex.Unlock()
 				bp.currentCoordinates.LogFile = string(rotateEvent.NextLogName)
 			}()
-			log.Infof("Rotate to next log name: %s", rotateEvent.NextLogName)
+			ulog.Logger.Infof("Rotate to next log name: %s", rotateEvent.NextLogName)
 		} else {
 			if err := bp.handleRowsEvent(ev, eventsChannel); err != nil {
 				return err
 			}
 		}
 	}
-	log.Debugf("Done streaming events")
+	ulog.Logger.Debugf("Done streaming events")
 
 	return nil
 }
 
 func (bp *BinlogParser) handleRowsEvent(ev *replication.BinlogEvent, eventsChannel chan<- *BinlogEvent) error {
 	if bp.currentCoordinates.SmallerThanOrEquals(&bp.LastAppliedRowsEventHint) {
-		log.Debugf("Skipping handled query at %+v", bp.currentCoordinates)
+		ulog.Logger.Debugf("Skipping handled query at %+v", bp.currentCoordinates)
 		return nil
 	}
 

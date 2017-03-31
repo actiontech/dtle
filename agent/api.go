@@ -8,11 +8,12 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/Sirupsen/logrus"
 	"github.com/carbocation/interpose"
 	"github.com/docker/libkv/store"
 	"github.com/gorilla/mux"
-	"github.com/ngaut/log"
 
+	ulog "udup/logger"
 	"udup/plugins"
 )
 
@@ -28,7 +29,9 @@ func (a *Agent) NewHTTPServer() {
 
 	srv := &http.Server{Addr: a.config.Server.HTTPAddr, Handler: middle}
 
-	log.Infof("Running HTTP server,address:%v", a.config.Server.HTTPAddr)
+	ulog.Logger.WithFields(logrus.Fields{
+		"address": a.config.Server.HTTPAddr,
+	}).Info("api: Running HTTP server")
 
 	go srv.ListenAndServe()
 }
@@ -94,18 +97,18 @@ func (a *Agent) indexHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := printJson(w, r, stats); err != nil {
-		log.Fatal(err)
+		ulog.Logger.Fatal(err)
 	}
 }
 
 func (a *Agent) jobsHandler(w http.ResponseWriter, r *http.Request) {
 	jobs, err := a.store.GetJobs()
 	if err != nil {
-		log.Fatal(err)
+		ulog.Logger.Fatal(err)
 	}
 
 	if err := printJson(w, r, jobs); err != nil {
-		log.Fatal(err)
+		ulog.Logger.Fatal(err)
 	}
 }
 
@@ -115,7 +118,7 @@ func (a *Agent) jobGetHandler(w http.ResponseWriter, r *http.Request) {
 
 	job, err := a.store.GetJob(jobName)
 	if err != nil {
-		log.Error(err)
+		ulog.Logger.Error(err)
 	}
 	if job == nil {
 		w.WriteHeader(http.StatusNotFound)
@@ -123,7 +126,7 @@ func (a *Agent) jobGetHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := printJson(w, r, job); err != nil {
-		log.Fatal(err)
+		ulog.Logger.Fatal(err)
 	}
 }
 
@@ -135,19 +138,19 @@ func (a *Agent) jobUpsertHandler(w http.ResponseWriter, r *http.Request) {
 
 	body, err := ioutil.ReadAll(io.LimitReader(r.Body, 1048576))
 	if err != nil {
-		log.Fatal(err)
+		ulog.Logger.Fatal(err)
 	}
 
 	if err := json.Unmarshal(body, &job); err != nil {
 		w.WriteHeader(422) // unprocessable entity
 		if err := json.NewEncoder(w).Encode(err); err != nil {
-			log.Fatal(err)
+			ulog.Logger.Fatal(err)
 		}
 		return
 	}
 
 	if err := r.Body.Close(); err != nil {
-		log.Fatal(err)
+		ulog.Logger.Fatal(err)
 	}
 
 	// Get if the requested job already exist
@@ -155,7 +158,7 @@ func (a *Agent) jobUpsertHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil && err != store.ErrKeyNotFound {
 		w.WriteHeader(422) // unprocessable entity
 		if err := json.NewEncoder(w).Encode(err.Error()); err != nil {
-			log.Fatal(err)
+			ulog.Logger.Fatal(err)
 		}
 		return
 	}
@@ -169,7 +172,7 @@ func (a *Agent) jobUpsertHandler(w http.ResponseWriter, r *http.Request) {
 		if k == plugins.DataSrc && v.ServerID == 0 {
 			job.Processors[plugins.DataSrc].ServerID, err = a.genServerId(string(a.store.GetLeader()))
 			if err != nil {
-				log.Fatal(err)
+				ulog.Logger.Fatal(err)
 			}
 		}
 	}
@@ -178,7 +181,7 @@ func (a *Agent) jobUpsertHandler(w http.ResponseWriter, r *http.Request) {
 	if err = a.store.UpsertJob(&job); err != nil {
 		w.WriteHeader(422) // unprocessable entity
 		if err := json.NewEncoder(w).Encode(err.Error()); err != nil {
-			log.Fatal(err)
+			ulog.Logger.Fatal(err)
 		}
 		return
 	}
@@ -186,7 +189,7 @@ func (a *Agent) jobUpsertHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Location", fmt.Sprintf("%s/%s", r.RequestURI, job.Name))
 	w.WriteHeader(http.StatusCreated)
 	if err := printJson(w, r, &job); err != nil {
-		log.Fatal(err)
+		ulog.Logger.Fatal(err)
 	}
 }
 
@@ -198,7 +201,7 @@ func (a *Agent) jobDeleteHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil && err != store.ErrKeyNotFound {
 		w.WriteHeader(422) // unprocessable entity
 		if err := json.NewEncoder(w).Encode(err.Error()); err != nil {
-			log.Fatal(err)
+			ulog.Logger.Fatal(err)
 		}
 		return
 	}
@@ -206,7 +209,7 @@ func (a *Agent) jobDeleteHandler(w http.ResponseWriter, r *http.Request) {
 	if j.Status == Running {
 		w.WriteHeader(422) // unprocessable entity
 		if err := json.NewEncoder(w).Encode("Status cannot be deleted"); err != nil {
-			log.Fatal(err)
+			ulog.Logger.Fatal(err)
 		}
 		return
 	}
@@ -215,13 +218,13 @@ func (a *Agent) jobDeleteHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		w.WriteHeader(http.StatusNotFound)
 		if err := json.NewEncoder(w).Encode(err); err != nil {
-			log.Fatal(err)
+			ulog.Logger.Fatal(err)
 		}
 		return
 	}
 
 	if err := printJson(w, r, job); err != nil {
-		log.Fatal(err)
+		ulog.Logger.Fatal(err)
 	}
 }
 
@@ -233,7 +236,7 @@ func (a *Agent) jobStartHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		w.WriteHeader(http.StatusNotFound)
 		if err := json.NewEncoder(w).Encode(err); err != nil {
-			log.Fatal(err)
+			ulog.Logger.Fatal(err)
 		}
 		return
 	}
@@ -242,7 +245,7 @@ func (a *Agent) jobStartHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Location", r.RequestURI)
 	w.WriteHeader(http.StatusAccepted)
 	if err := printJson(w, r, job); err != nil {
-		log.Fatal(err)
+		ulog.Logger.Fatal(err)
 	}
 }
 
@@ -254,7 +257,7 @@ func (a *Agent) jobStopHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		w.WriteHeader(http.StatusNotFound)
 		if err := json.NewEncoder(w).Encode(err); err != nil {
-			log.Fatal(err)
+			ulog.Logger.Fatal(err)
 		}
 		return
 	}
@@ -264,13 +267,13 @@ func (a *Agent) jobStopHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Location", r.RequestURI)
 	w.WriteHeader(http.StatusAccepted)
 	if err := printJson(w, r, job); err != nil {
-		log.Fatal(err)
+		ulog.Logger.Fatal(err)
 	}
 }
 
 func (a *Agent) membersHandler(w http.ResponseWriter, r *http.Request) {
 	if err := printJson(w, r, a.serf.Members()); err != nil {
-		log.Fatal(err)
+		ulog.Logger.Fatal(err)
 	}
 }
 
@@ -278,18 +281,18 @@ func (a *Agent) leaderHandler(w http.ResponseWriter, r *http.Request) {
 	member, err := a.leaderMember()
 	if err == nil {
 		if err := printJson(w, r, member); err != nil {
-			log.Fatal(err)
+			ulog.Logger.Fatal(err)
 		}
 	}
 }
 
 func (a *Agent) leaveHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodGet {
-		log.Warn("/leave GET is deprecated and will be removed, use POST")
+		ulog.Logger.Warn("/leave GET is deprecated and will be removed, use POST")
 	}
 	if err := a.serf.Leave(); err != nil {
 		if err := printJson(w, r, a.listServers()); err != nil {
-			log.Fatal(err)
+			ulog.Logger.Fatal(err)
 		}
 	}
 }

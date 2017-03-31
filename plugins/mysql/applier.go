@@ -7,11 +7,12 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/Sirupsen/logrus"
 	stan "github.com/nats-io/go-nats-streaming"
-	"github.com/ngaut/log"
 	"github.com/satori/go.uuid"
 
 	uconf "udup/config"
+	ulog "udup/logger"
 	ubinlog "udup/plugins/mysql/binlog"
 	usql "udup/plugins/mysql/sql"
 )
@@ -22,6 +23,7 @@ const (
 )
 
 type Applier struct {
+	subject     string
 	cfg         *uconf.DriverConfig
 	dbs         []*gosql.DB
 	singletonDB *gosql.DB
@@ -35,8 +37,9 @@ type Applier struct {
 	stanSub  stan.Subscription
 }
 
-func NewApplier(cfg *uconf.DriverConfig) *Applier {
+func NewApplier(cfg *uconf.DriverConfig, subject string) *Applier {
 	return &Applier{
+		subject:    subject,
 		cfg:        cfg,
 		eventChans: newEventChans(cfg.WorkerCount),
 		txChan:     make(chan *ubinlog.Transaction_t, 100),
@@ -52,8 +55,11 @@ func newEventChans(count int) []chan usql.StreamEvent {
 	return events
 }
 
-func (a *Applier) InitiateApplier(subject string) error {
-	log.Infof("Apply binlog events onto the datasource :%v", a.cfg.ConnCfg.String())
+func (a *Applier) InitiateApplier() error {
+	ulog.Logger.WithFields(logrus.Fields{
+		"job":    a.subject,
+		"config": a.cfg.ConnCfg.String(),
+	}).Info("applier: Apply binlog events")
 
 	if err := a.initDBConnections(); err != nil {
 		return err
@@ -63,7 +69,7 @@ func (a *Applier) InitiateApplier(subject string) error {
 		return err
 	}
 
-	if err := a.initiateStreaming(subject); err != nil {
+	if err := a.initiateStreaming(); err != nil {
 		return err
 	}
 
@@ -91,9 +97,10 @@ func (a *Applier) applyTx(db *gosql.DB, transaction *ubinlog.Transaction_t) erro
 		_, err := usql.ExecNoPrepare(db, query)
 		if err != nil {
 			if !usql.IgnoreDDLError(err) {
-				return fmt.Errorf("[GTID]:%v:%v;[Err]:%v", transaction.SID, transaction.GNO, err)
+				ulog.Logger.WithField("gtid", fmt.Sprintf("%s:%d", transaction.SID, transaction.GNO)).WithError(err).Error("applier: Exec sql error")
+				return err
 			} else {
-				log.Warnf("[GTID]:%v:%v;[Err]:%v.ignore ddl error.", transaction.SID, transaction.GNO, err)
+				ulog.Logger.WithField("gtid", fmt.Sprintf("%s:%d", transaction.SID, transaction.GNO)).WithError(err).Error("applier: Ignore ddl error")
 			}
 		}
 	}
@@ -106,7 +113,7 @@ func (a *Applier) startApplierWorker(i int, db *gosql.DB) {
 	sid := a.mysqlServerUUID()
 
 	for tx := range a.txChan {
-		if len(tx.Query)==0 || sid == tx.SID {
+		if len(tx.Query) == 0 || sid == tx.SID {
 			continue
 		}
 
@@ -138,7 +145,10 @@ func (a *Applier) startApplierWorker(i int, db *gosql.DB) {
 func (a *Applier) initNatSubClient() (err error) {
 	sc, err := stan.Connect(uconf.DefaultClusterID, uuid.NewV4().String(), stan.NatsURL(fmt.Sprintf("nats://%s", a.cfg.NatsAddr)), stan.ConnectWait(DefaultConnectWait))
 	if err != nil {
-		log.Fatalf("Can't connect: %v.\nMake sure a NATS Streaming Server is running at: %s", err, fmt.Sprintf("nats://%s", a.cfg.NatsAddr))
+		ulog.Logger.WithFields(logrus.Fields{
+			"err":         err,
+			"nats_server": fmt.Sprintf("nats://%s", a.cfg.NatsAddr),
+		}).Error("extractor: Can't connect nats server.\nMake sure a NATS Streaming Server is running.")
 	}
 	a.stanConn = sc
 	return nil
@@ -152,17 +162,17 @@ func Decode(data []byte, vPtr interface{}) (err error) {
 }
 
 // initiateStreaming begins treaming of binary log events and registers listeners for such events
-func (a *Applier) initiateStreaming(subject string) error {
-	sub, err := a.stanConn.Subscribe(subject, func(m *stan.Msg) {
+func (a *Applier) initiateStreaming() error {
+	sub, err := a.stanConn.Subscribe(a.subject, func(m *stan.Msg) {
 		tx := &ubinlog.Transaction_t{}
 		if err := Decode(m.Data, tx); err != nil {
-			a.cfg.ErrCh <- fmt.Errorf("Subscribe err:%v", err)
+			a.cfg.ErrCh <- fmt.Errorf("subscribe err:%v", err)
 		}
 		a.txChan <- tx
 	})
 
 	if err != nil {
-		return fmt.Errorf("Unexpected error on Subscribe, got %v", err)
+		return fmt.Errorf("unexpected error on Subscribe, got %v", err)
 	}
 	a.stanSub = sub
 	return nil
@@ -199,7 +209,10 @@ func (a *Applier) mysqlServerUUID() string {
 	query := `SELECT @@SERVER_UUID`
 	var server_uuid string
 	if err := a.singletonDB.QueryRow(query).Scan(&server_uuid); err != nil {
-		log.Errorf("error to SELECT @@SERVER_UUID:%v", err)
+		ulog.Logger.WithFields(logrus.Fields{
+			"err": err,
+			"job": a.subject,
+		}).Error("applier: Select server_uuid error")
 		return ""
 	}
 	return server_uuid
@@ -224,6 +237,9 @@ func (a *Applier) Shutdown() error {
 		return err
 	}
 	a.cfg.Running = false
-	log.Infof("Closed applier connection.")
+
+	ulog.Logger.WithFields(logrus.Fields{
+		"job": a.subject,
+	}).Info("applier: Closed applier connection.")
 	return nil
 }

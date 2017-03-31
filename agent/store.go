@@ -4,11 +4,12 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/Sirupsen/logrus"
 	"github.com/docker/libkv"
 	"github.com/docker/libkv/store"
 	"github.com/docker/libkv/store/consul"
-	"github.com/ngaut/log"
 
+	ulog "udup/logger"
 	"udup/plugins"
 )
 
@@ -29,14 +30,18 @@ func init() {
 func SetupStore(addrs []string, a *Agent) *Store {
 	s, err := libkv.NewStore(store.Backend(backend), addrs, nil)
 	if err != nil {
-		log.Fatal(err)
+		ulog.Logger.Fatal(err)
 	}
 
-	log.Infof("Backend config: %v", addrs)
+	ulog.Logger.WithFields(logrus.Fields{
+		"backend":  backend,
+		"machines": addrs,
+		"keyspace": keyspace,
+	}).Debug("store: Backend config")
 
 	_, err = s.List(keyspace)
 	if err != store.ErrKeyNotFound && err != nil {
-		log.Infof("Store backend not reachable: %v", err)
+		ulog.Logger.WithError(err).Fatal("store: Store backend not reachable")
 	}
 
 	return &Store{Client: s, agent: a}
@@ -64,7 +69,11 @@ func (s *Store) UpsertJob(job *Job) error {
 		return err
 	}
 
-	log.Debugf("Setting job: %v; json: %v", job.Name, string(jobJSON))
+	ulog.Logger.WithFields(logrus.Fields{
+		"job":  job.Name,
+		"json": string(jobJSON),
+	}).Debug("store: Setting key")
+
 	if err := s.Client.Put(jobKey, jobJSON, nil); err != nil {
 		return err
 	}
@@ -77,7 +86,7 @@ func (s *Store) GetJobs() ([]*Job, error) {
 	res, err := s.Client.List(keyspace + "/jobs/")
 	if err != nil {
 		if err == store.ErrKeyNotFound {
-			log.Debug("No jobs found")
+			ulog.Logger.Debug("No jobs found")
 			return []*Job{}, nil
 		}
 		return nil, err
@@ -101,7 +110,7 @@ func (s *Store) GetJobByNode(nodeName string) (*JobResponse, error) {
 	res, err := s.Client.List(keyspace + "/jobs/")
 	if err != nil {
 		if err == store.ErrKeyNotFound {
-			log.Debug("No jobs found")
+			ulog.Logger.Debug("No jobs found")
 			return &JobResponse{}, nil
 		}
 		return nil, err
@@ -157,14 +166,14 @@ func (s *Store) GetLeader() []byte {
 	res, err := s.Client.Get(s.LeaderKey())
 	if err != nil {
 		if err == store.ErrNotReachable {
-			log.Fatal("Store not reachable, be sure you have an existing key-value store running is running and is reachable.")
+			ulog.Logger.Fatal("store: Store not reachable, be sure you have an existing key-value store running is running and is reachable.")
 		} else if err != store.ErrKeyNotFound {
-			log.Error(err)
+			ulog.Logger.Error(err)
 		}
 		return nil
 	}
 
-	log.Infof("Retrieved leader from datastore: %v", string(res.Value))
+	ulog.Logger.WithField("node", string(res.Value)).Debug("store: Retrieved leader from datastore")
 
 	return res.Value
 }

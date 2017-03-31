@@ -1,5 +1,6 @@
 package: udup
 import:
+- package: github.com/Sirupsen/logrus
 - package: github.com/carbocation/interpose
 - package: github.com/docker/leadership
 - package: github.com/docker/libkv
@@ -28,7 +29,6 @@ import:
 - package: github.com/nats-io/nats-streaming-server
   subpackages:
   - server
-- package: github.com/ngaut/log
 - package: github.com/pingcap/tidb
   subpackages:
   - ast

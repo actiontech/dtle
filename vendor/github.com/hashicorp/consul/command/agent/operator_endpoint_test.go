@@ -7,11 +7,14 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/hashicorp/consul/api"
 	"github.com/hashicorp/consul/consul/structs"
+	"github.com/hashicorp/consul/testutil"
 )
 
-func TestOperator_OperatorRaftConfiguration(t *testing.T) {
+func TestOperator_RaftConfiguration(t *testing.T) {
 	httpTest(t, func(srv *HTTPServer) {
 		body := bytes.NewBuffer(nil)
 		req, err := http.NewRequest("GET", "/v1/operator/raft/configuration", body)
@@ -39,7 +42,7 @@ func TestOperator_OperatorRaftConfiguration(t *testing.T) {
 	})
 }
 
-func TestOperator_OperatorRaftPeer(t *testing.T) {
+func TestOperator_RaftPeer(t *testing.T) {
 	httpTest(t, func(srv *HTTPServer) {
 		body := bytes.NewBuffer(nil)
 		req, err := http.NewRequest("DELETE", "/v1/operator/raft/peer?address=nope", body)
@@ -53,6 +56,23 @@ func TestOperator_OperatorRaftPeer(t *testing.T) {
 		_, err = srv.OperatorRaftPeer(resp, req)
 		if err == nil || !strings.Contains(err.Error(),
 			"address \"nope\" was not found in the Raft configuration") {
+			t.Fatalf("err: %v", err)
+		}
+	})
+
+	httpTest(t, func(srv *HTTPServer) {
+		body := bytes.NewBuffer(nil)
+		req, err := http.NewRequest("DELETE", "/v1/operator/raft/peer?id=nope", body)
+		if err != nil {
+			t.Fatalf("err: %v", err)
+		}
+
+		// If we get this error, it proves we sent the ID all the
+		// way through.
+		resp := httptest.NewRecorder()
+		_, err = srv.OperatorRaftPeer(resp, req)
+		if err == nil || !strings.Contains(err.Error(),
+			"id \"nope\" was not found in the Raft configuration") {
 			t.Fatalf("err: %v", err)
 		}
 	})
@@ -302,7 +322,7 @@ func TestOperator_AutopilotGetConfiguration(t *testing.T) {
 		if resp.Code != 200 {
 			t.Fatalf("bad code: %d", resp.Code)
 		}
-		out, ok := obj.(structs.AutopilotConfig)
+		out, ok := obj.(api.AutopilotConfiguration)
 		if !ok {
 			t.Fatalf("unexpected: %T", obj)
 		}
@@ -419,4 +439,84 @@ func TestOperator_AutopilotCASConfiguration(t *testing.T) {
 			t.Fatalf("bad: %#v", reply)
 		}
 	})
+}
+
+func TestOperator_ServerHealth(t *testing.T) {
+	cb := func(c *Config) {
+		c.RaftProtocol = 3
+	}
+	httpTestWithConfig(t, func(srv *HTTPServer) {
+		body := bytes.NewBuffer(nil)
+		req, err := http.NewRequest("GET", "/v1/operator/autopilot/health", body)
+		if err != nil {
+			t.Fatalf("err: %v", err)
+		}
+
+		if err := testutil.WaitForResult(func() (bool, error) {
+			resp := httptest.NewRecorder()
+			obj, err := srv.OperatorServerHealth(resp, req)
+			if err != nil {
+				return false, fmt.Errorf("err: %v", err)
+			}
+			if resp.Code != 200 {
+				return false, fmt.Errorf("bad code: %d", resp.Code)
+			}
+			out, ok := obj.(*api.OperatorHealthReply)
+			if !ok {
+				return false, fmt.Errorf("unexpected: %T", obj)
+			}
+			if len(out.Servers) != 1 ||
+				!out.Servers[0].Healthy ||
+				out.Servers[0].Name != srv.agent.config.NodeName ||
+				out.Servers[0].SerfStatus != "alive" ||
+				out.FailureTolerance != 0 {
+				return false, fmt.Errorf("bad: %v", out)
+			}
+
+			return true, nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+
+	}, cb)
+}
+
+func TestOperator_ServerHealth_Unhealthy(t *testing.T) {
+	threshold := time.Duration(-1)
+	cb := func(c *Config) {
+		c.RaftProtocol = 3
+		c.Autopilot.LastContactThreshold = &threshold
+	}
+	httpTestWithConfig(t, func(srv *HTTPServer) {
+		body := bytes.NewBuffer(nil)
+		req, err := http.NewRequest("GET", "/v1/operator/autopilot/health", body)
+		if err != nil {
+			t.Fatalf("err: %v", err)
+		}
+
+		if err := testutil.WaitForResult(func() (bool, error) {
+			resp := httptest.NewRecorder()
+			obj, err := srv.OperatorServerHealth(resp, req)
+			if err != nil {
+				return false, fmt.Errorf("err: %v", err)
+			}
+			if resp.Code != 429 {
+				return false, fmt.Errorf("bad code: %d", resp.Code)
+			}
+			out, ok := obj.(*api.OperatorHealthReply)
+			if !ok {
+				return false, fmt.Errorf("unexpected: %T", obj)
+			}
+			if len(out.Servers) != 1 ||
+				out.Healthy ||
+				out.Servers[0].Name != srv.agent.config.NodeName {
+				return false, fmt.Errorf("bad: %v", out)
+			}
+
+			return true, nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+
+	}, cb)
 }

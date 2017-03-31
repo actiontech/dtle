@@ -125,10 +125,10 @@ func init() {
 	initTokenFunc("-", startWithDash)
 	initTokenFunc("#", startWithSharp)
 	initTokenFunc("Xx", startWithXx)
-	initTokenFunc("x", startWithXx)
-	initTokenFunc("b", startWithb)
+	initTokenFunc("Nn", startWithNn)
+	initTokenFunc("Bb", startWithBb)
 	initTokenFunc(".", startWithDot)
-	initTokenFunc("_$ABCDEFGHIJKLMNOPQRSTUVWYZacdefghijklmnopqrstuvwyz", scanIdentifier)
+	initTokenFunc("_$ACDEFGHIJKLMOPQRSTUVWYZacdefghijklmopqrstuvwyz", scanIdentifier)
 	initTokenFunc("`", scanQuotedIdent)
 	initTokenFunc("0123456789", startWithNumber)
 	initTokenFunc("'\"", startString)
@@ -229,6 +229,7 @@ var tokenMap = map[string]int{
 	"DESCRIBE":                   describe,
 	"DISABLE":                    disable,
 	"DISTINCT":                   distinct,
+	"TIDB_SMJ":                   tidbSMJ,
 	"DIV":                        div,
 	"DO":                         do,
 	"DROP":                       drop,
@@ -272,6 +273,7 @@ var tokenMap = map[string]int{
 	"FUNCTION":                   function,
 	"FLOOR":                      floor,
 	"FLUSH":                      flush,
+	"GET_FORMAT":                 getFormat,
 	"GET_LOCK":                   getLock,
 	"GLOBAL":                     global,
 	"GRANT":                      grant,
@@ -348,6 +350,7 @@ var tokenMap = map[string]int{
 	"MONTHNAME":                  monthname,
 	"NAMES":                      names,
 	"NATIONAL":                   national,
+	"NONE":                       none,
 	"NOT":                        not,
 	"NO_WRITE_TO_BINLOG":         noWriteToBinLog,
 	"NULL":                       null,
@@ -621,6 +624,6 @@ func handleIdent(lval *yySymType) int {
 	if err != nil {
 		return identifier
 	}
-	lval.item = cs
+	lval.ident = cs
 	return underscoreCS
 }

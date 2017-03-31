@@ -90,11 +90,13 @@ func (c *Catalog) Register(args *structs.RegisterRequest, reply *struct{}) error
 		}
 	}
 
-	_, err = c.srv.raftApply(structs.RegisterRequestType, args)
+	resp, err := c.srv.raftApply(structs.RegisterRequestType, args)
 	if err != nil {
 		return err
 	}
-
+	if respErr, ok := resp.(error); ok {
+		return respErr
+	}
 	return nil
 }
 
@@ -149,7 +151,7 @@ func (c *Catalog) Deregister(args *structs.DeregisterRequest, reply *struct{}) e
 
 // ListDatacenters is used to query for the list of known datacenters
 func (c *Catalog) ListDatacenters(args *struct{}, reply *[]string) error {
-	dcs, err := c.srv.getDatacentersByDistance()
+	dcs, err := c.srv.router.GetDatacentersByDistance()
 	if err != nil {
 		return err
 	}

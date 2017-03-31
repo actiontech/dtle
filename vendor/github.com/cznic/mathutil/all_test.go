@@ -3689,7 +3689,10 @@ func TestQuadPolyFactors(t *testing.T) {
 	cases := 0
 
 	const N = 1e4
-	const mask = 1<<14 - 1
+	mask := 1<<14 - 1
+	if IntBits < 64 {
+		mask = 1<<7 - 1
+	}
 	rng := rand.New(rand.NewSource(42))
 	for i := 0; i < N; i++ {
 		p1 := int(rng.Int63()) & mask

@@ -18,10 +18,12 @@ import (
 
 	"github.com/hashicorp/consul/acl"
 	"github.com/hashicorp/consul/consul/agent"
+	"github.com/hashicorp/consul/consul/servers"
 	"github.com/hashicorp/consul/consul/state"
 	"github.com/hashicorp/consul/consul/structs"
 	"github.com/hashicorp/consul/lib"
 	"github.com/hashicorp/consul/tlsutil"
+	"github.com/hashicorp/consul/types"
 	"github.com/hashicorp/raft"
 	"github.com/hashicorp/raft-boltdb"
 	"github.com/hashicorp/serf/coordinate"
@@ -76,6 +78,22 @@ type Server struct {
 	// aclCache is the non-authoritative ACL cache.
 	aclCache *aclCache
 
+	// autopilotPolicy controls the behavior of Autopilot for certain tasks.
+	autopilotPolicy AutopilotPolicy
+
+	// autopilotRemoveDeadCh is used to trigger a check for dead server removals.
+	autopilotRemoveDeadCh chan struct{}
+
+	// autopilotShutdownCh is used to stop the Autopilot loop.
+	autopilotShutdownCh chan struct{}
+
+	// autopilotWaitGroup is used to block until Autopilot shuts down.
+	autopilotWaitGroup sync.WaitGroup
+
+	// clusterHealth stores the current view of the cluster's health.
+	clusterHealth     structs.OperatorHealthReply
+	clusterHealthLock sync.RWMutex
+
 	// Consul configuration
 	config *Config
 
@@ -119,10 +137,9 @@ type Server struct {
 	// updated
 	reconcileCh chan serf.Member
 
-	// remoteConsuls is used to track the known consuls in
-	// remote datacenters. Used to do DC forwarding.
-	remoteConsuls map[string][]*agent.Server
-	remoteLock    sync.RWMutex
+	// router is used to map out Consul servers in the WAN and in Consul
+	// Enterprise user-defined areas.
+	router *servers.Router
 
 	// rpcListener is used to listen for incoming connections
 	rpcListener net.Listener
@@ -139,11 +156,19 @@ type Server struct {
 	// which SHOULD only consist of Consul servers
 	serfWAN *serf.Serf
 
+	// floodLock controls access to floodCh.
+	floodLock sync.RWMutex
+	floodCh   []chan struct{}
+
 	// sessionTimers track the expiration time of each Session that has
 	// a TTL. On expiration, a SessionDestroy event will occur, and
 	// destroy the session via standard session destroy processing
 	sessionTimers     map[string]*time.Timer
 	sessionTimersLock sync.Mutex
+
+	// statsFetcher is used by autopilot to check the status of the other
+	// Consul servers.
+	statsFetcher *StatsFetcher
 
 	// tombstoneGC is used to track the pending GC invocations
 	// for the KV tombstones
@@ -220,21 +245,32 @@ func NewServer(config *Config) (*Server, error) {
 		return nil, err
 	}
 
+	// Create the shutdown channel - this is closed but never written to.
+	shutdownCh := make(chan struct{})
+
 	// Create server.
 	s := &Server{
-		config:        config,
-		connPool:      NewPool(config.LogOutput, serverRPCCache, serverMaxStreams, tlsWrap),
-		eventChLAN:    make(chan serf.Event, 256),
-		eventChWAN:    make(chan serf.Event, 256),
-		localConsuls:  make(map[raft.ServerAddress]*agent.Server),
-		logger:        logger,
-		reconcileCh:   make(chan serf.Member, 32),
-		remoteConsuls: make(map[string][]*agent.Server, 4),
-		rpcServer:     rpc.NewServer(),
-		rpcTLS:        incomingTLS,
-		tombstoneGC:   gc,
-		shutdownCh:    make(chan struct{}),
+		autopilotRemoveDeadCh: make(chan struct{}),
+		autopilotShutdownCh:   make(chan struct{}),
+		config:                config,
+		connPool:              NewPool(config.LogOutput, serverRPCCache, serverMaxStreams, tlsWrap),
+		eventChLAN:            make(chan serf.Event, 256),
+		eventChWAN:            make(chan serf.Event, 256),
+		localConsuls:          make(map[raft.ServerAddress]*agent.Server),
+		logger:                logger,
+		reconcileCh:           make(chan serf.Member, 32),
+		router:                servers.NewRouter(logger, shutdownCh, config.Datacenter),
+		rpcServer:             rpc.NewServer(),
+		rpcTLS:                incomingTLS,
+		tombstoneGC:           gc,
+		shutdownCh:            make(chan struct{}),
 	}
+
+	// Set up the autopilot policy
+	s.autopilotPolicy = &BasicAutopilot{server: s}
+
+	// Initialize the stats fetcher that autopilot will use.
+	s.statsFetcher = NewStatsFetcher(logger, s.connPool, s.config.Datacenter)
 
 	// Initialize the authoritative ACL cache.
 	s.aclAuthCache, err = acl.NewCache(aclCacheSize, s.aclLocalFault)
@@ -271,7 +307,7 @@ func NewServer(config *Config) (*Server, error) {
 		s.eventChLAN, serfLANSnapshot, false)
 	if err != nil {
 		s.Shutdown()
-		return nil, fmt.Errorf("Failed to start lan serf: %v", err)
+		return nil, fmt.Errorf("Failed to start LAN Serf: %v", err)
 	}
 	go s.lanEventHandler()
 
@@ -280,9 +316,25 @@ func NewServer(config *Config) (*Server, error) {
 		s.eventChWAN, serfWANSnapshot, true)
 	if err != nil {
 		s.Shutdown()
-		return nil, fmt.Errorf("Failed to start wan serf: %v", err)
+		return nil, fmt.Errorf("Failed to start WAN Serf: %v", err)
 	}
-	go s.wanEventHandler()
+
+	// Add a "static route" to the WAN Serf and hook it up to Serf events.
+	if err := s.router.AddArea(types.AreaWAN, s.serfWAN, s.connPool); err != nil {
+		s.Shutdown()
+		return nil, fmt.Errorf("Failed to add WAN serf route: %v", err)
+	}
+	go servers.HandleSerfEvents(s.logger, s.router, types.AreaWAN, s.serfWAN.ShutdownCh(), s.eventChWAN)
+
+	// Fire up the LAN <-> WAN join flooder.
+	portFn := func(s *agent.Server) (int, bool) {
+		if s.WanJoinPort > 0 {
+			return s.WanJoinPort, true
+		} else {
+			return 0, false
+		}
+	}
+	go s.Flood(portFn, s.serfWAN)
 
 	// Start monitoring leadership. This must happen after Serf is set up
 	// since it can fire events when leadership is obtained.
@@ -299,6 +351,9 @@ func NewServer(config *Config) (*Server, error) {
 	// Start the metrics handlers.
 	go s.sessionStats()
 
+	// Start the server health checking.
+	go s.serverHealthLoop()
+
 	return s, nil
 }
 
@@ -310,6 +365,7 @@ func (s *Server) setupSerf(conf *serf.Config, ch chan serf.Event, path string, w
 		conf.NodeName = fmt.Sprintf("%s.%s", s.config.NodeName, s.config.Datacenter)
 	} else {
 		conf.NodeName = s.config.NodeName
+		conf.Tags["wan_join_port"] = fmt.Sprintf("%d", s.config.SerfWANConfig.MemberlistConfig.BindPort)
 	}
 	conf.Tags["role"] = "consul"
 	conf.Tags["dc"] = s.config.Datacenter
@@ -326,6 +382,9 @@ func (s *Server) setupSerf(conf *serf.Config, ch chan serf.Event, path string, w
 	if s.config.BootstrapExpect != 0 {
 		conf.Tags["expect"] = fmt.Sprintf("%d", s.config.BootstrapExpect)
 	}
+	if s.config.NonVoter {
+		conf.Tags["nonvoter"] = "1"
+	}
 	conf.MemberlistConfig.LogOutput = s.config.LogOutput
 	conf.LogOutput = s.config.LogOutput
 	conf.EventCh = ch
@@ -337,7 +396,11 @@ func (s *Server) setupSerf(conf *serf.Config, ch chan serf.Event, path string, w
 	if wan {
 		conf.Merge = &wanMergeDelegate{}
 	} else {
-		conf.Merge = &lanMergeDelegate{dc: s.config.Datacenter}
+		conf.Merge = &lanMergeDelegate{
+			dc:       s.config.Datacenter,
+			nodeID:   s.config.NodeID,
+			nodeName: s.config.NodeName,
+		}
 	}
 
 	// Until Consul supports this fully, we disable automatic resolution.
@@ -347,9 +410,6 @@ func (s *Server) setupSerf(conf *serf.Config, ch chan serf.Event, path string, w
 	if err := lib.EnsurePath(conf.SnapshotPath, false); err != nil {
 		return nil, err
 	}
-
-	// Plumb down the enable coordinates flag.
-	conf.DisableCoordinates = s.config.DisableCoordinates
 
 	return serf.Create(conf)
 }
@@ -580,6 +640,9 @@ func (s *Server) Shutdown() error {
 
 	if s.serfWAN != nil {
 		s.serfWAN.Shutdown()
+		if err := s.router.RemoveArea(types.AreaWAN); err != nil {
+			s.logger.Printf("[WARN] consul: error removing WAN area: %v", err)
+		}
 	}
 
 	if s.raft != nil {
@@ -615,19 +678,29 @@ func (s *Server) Leave() error {
 		return err
 	}
 
-	// TODO (slackpad) - This will need to be updated once we support node
-	// IDs.
 	addr := s.raftTransport.LocalAddr()
 
 	// If we are the current leader, and we have any other peers (cluster has multiple
-	// servers), we should do a RemovePeer to safely reduce the quorum size. If we are
-	// not the leader, then we should issue our leave intention and wait to be removed
-	// for some sane period of time.
+	// servers), we should do a RemoveServer/RemovePeer to safely reduce the quorum size.
+	// If we are not the leader, then we should issue our leave intention and wait to be
+	// removed for some sane period of time.
 	isLeader := s.IsLeader()
 	if isLeader && numPeers > 1 {
-		future := s.raft.RemovePeer(addr)
-		if err := future.Error(); err != nil {
-			s.logger.Printf("[ERR] consul: failed to remove ourself as raft peer: %v", err)
+		minRaftProtocol, err := ServerMinRaftProtocol(s.serfLAN.Members())
+		if err != nil {
+			return err
+		}
+
+		if minRaftProtocol >= 2 && s.config.RaftConfig.ProtocolVersion >= 3 {
+			future := s.raft.RemoveServer(raft.ServerID(s.config.NodeID), 0, 0)
+			if err := future.Error(); err != nil {
+				s.logger.Printf("[ERR] consul: failed to remove ourself as raft peer: %v", err)
+			}
+		} else {
+			future := s.raft.RemovePeer(addr)
+			if err := future.Error(); err != nil {
+				s.logger.Printf("[ERR] consul: failed to remove ourself as raft peer: %v", err)
+			}
 		}
 	}
 
@@ -859,9 +932,7 @@ func (s *Server) Stats() map[string]map[string]string {
 	toString := func(v uint64) string {
 		return strconv.FormatUint(v, 10)
 	}
-	s.remoteLock.RLock()
-	numKnownDCs := len(s.remoteConsuls)
-	s.remoteLock.RUnlock()
+	numKnownDCs := len(s.router.GetDatacenters())
 	stats := map[string]map[string]string{
 		"consul": map[string]string{
 			"server":            "true",

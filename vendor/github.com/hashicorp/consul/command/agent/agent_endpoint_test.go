@@ -242,16 +242,6 @@ func TestAgent_Self(t *testing.T) {
 		t.Fatalf("meta fields are not equal: %v != %v", meta, val.Meta)
 	}
 
-	srv.agent.config.DisableCoordinates = true
-	obj, err = srv.AgentSelf(nil, req)
-	if err != nil {
-		t.Fatalf("err: %v", err)
-	}
-	val = obj.(AgentSelf)
-	if val.Coord != nil {
-		t.Fatalf("should have been nil: %v", val.Coord)
-	}
-
 	// Make sure there's nothing called "token" that's leaked.
 	raw, err := srv.marshalJSON(req, obj)
 	if err != nil {
@@ -322,7 +312,7 @@ func TestAgent_Reload(t *testing.T) {
 	if err != nil {
 		t.Fatalf("err: %s", err)
 	}
-	_, err = tmpFile.WriteString(`{"service":{"name":"redis"}}`)
+	_, err = tmpFile.WriteString(`{"acl_enforce_version_8": false, "service":{"name":"redis"}}`)
 	if err != nil {
 		t.Fatalf("err: %s", err)
 	}
@@ -356,17 +346,17 @@ func TestAgent_Reload(t *testing.T) {
 		close(doneCh)
 	}()
 
-	testutil.WaitForResult(func() (bool, error) {
+	if err := testutil.WaitForResult(func() (bool, error) {
 		return len(cmd.httpServers) == 1, nil
-	}, func(err error) {
+	}); err != nil {
 		t.Fatalf("should have an http server")
-	})
+	}
 
 	if _, ok := cmd.agent.state.services["redis"]; !ok {
 		t.Fatalf("missing redis service")
 	}
 
-	err = ioutil.WriteFile(tmpFile.Name(), []byte(`{"service":{"name":"redis-reloaded"}}`), 0644)
+	err = ioutil.WriteFile(tmpFile.Name(), []byte(`{"acl_enforce_version_8": false, "service":{"name":"redis-reloaded"}}`), 0644)
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
@@ -545,11 +535,11 @@ func TestAgent_Join(t *testing.T) {
 		t.Fatalf("should have 2 members")
 	}
 
-	testutil.WaitForResult(func() (bool, error) {
+	if err := testutil.WaitForResult(func() (bool, error) {
 		return len(a2.LANMembers()) == 2, nil
-	}, func(err error) {
-		t.Fatalf("should have 2 members")
-	})
+	}); err != nil {
+		t.Fatal("should have 2 members")
+	}
 }
 
 func TestAgent_Join_WAN(t *testing.T) {
@@ -580,11 +570,11 @@ func TestAgent_Join_WAN(t *testing.T) {
 		t.Fatalf("should have 2 members")
 	}
 
-	testutil.WaitForResult(func() (bool, error) {
+	if err := testutil.WaitForResult(func() (bool, error) {
 		return len(a2.WANMembers()) == 2, nil
-	}, func(err error) {
-		t.Fatalf("should have 2 members")
-	})
+	}); err != nil {
+		t.Fatal("should have 2 members")
+	}
 }
 
 func TestAgent_Join_ACLDeny(t *testing.T) {
@@ -673,13 +663,13 @@ func TestAgent_Leave(t *testing.T) {
 		t.Fatalf("Err: %v", obj)
 	}
 
-	testutil.WaitForResult(func() (bool, error) {
+	if err := testutil.WaitForResult(func() (bool, error) {
 		m := srv.agent.LANMembers()
 		success := m[1].Status == serf.StatusLeft
 		return success, errors.New(m[1].Status.String())
-	}, func(err error) {
+	}); err != nil {
 		t.Fatalf("member status is %v, should be left", err)
-	})
+	}
 }
 
 func TestAgent_Leave_ACLDeny(t *testing.T) {
@@ -772,13 +762,13 @@ func TestAgent_ForceLeave(t *testing.T) {
 		t.Fatalf("Err: %v", obj)
 	}
 
-	testutil.WaitForResult(func() (bool, error) {
+	if err := testutil.WaitForResult(func() (bool, error) {
 		m := srv.agent.LANMembers()
 		success := m[1].Status == serf.StatusLeft
 		return success, errors.New(m[1].Status.String())
-	}, func(err error) {
+	}); err != nil {
 		t.Fatalf("member status is %v, should be left", err)
-	})
+	}
 }
 
 func TestAgent_ForceLeave_ACLDeny(t *testing.T) {
@@ -1941,7 +1931,7 @@ func TestAgent_Monitor(t *testing.T) {
 
 	// Try to stream logs until we see the expected log line
 	expected := []byte("raft: Initial configuration (index=1)")
-	testutil.WaitForResult(func() (bool, error) {
+	if err := testutil.WaitForResult(func() (bool, error) {
 		req, _ = http.NewRequest("GET", "/v1/agent/monitor?loglevel=debug", nil)
 		resp = newClosableRecorder()
 		done := make(chan struct{})
@@ -1960,9 +1950,9 @@ func TestAgent_Monitor(t *testing.T) {
 		} else {
 			return false, fmt.Errorf("didn't see expected")
 		}
-	}, func(err error) {
+	}); err != nil {
 		t.Fatalf("err: %v", err)
-	})
+	}
 }
 
 type closableRecorder struct {

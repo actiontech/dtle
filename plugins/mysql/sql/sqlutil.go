@@ -3,11 +3,11 @@ package sql
 import (
 	"database/sql"
 	"fmt"
-	"github.com/ngaut/log"
 	"sync"
 	"time"
 
 	uconf "udup/config"
+	ulog "udup/logger"
 )
 
 var (
@@ -152,23 +152,23 @@ func ExecuteSQL(db *sql.DB, sqls []string, args [][]interface{}, retry bool) err
 LOOP:
 	for i := 0; i < retryCount; i++ {
 		if i > 0 {
-			log.Warnf("exec sql retry %d - %v - %v", i, sqls[0], args[0])
+			ulog.Logger.Warnf("exec sql retry %d - %v - %v", i, sqls[0], args[0])
 			time.Sleep(retryTimeout)
 		}
 
 		txn, err = db.Begin()
 		if err != nil {
-			log.Errorf("Failed to execute SQL :[%v] when begin tx，[error] :%v", sqls, err)
+			ulog.Logger.Errorf("Failed to execute SQL :[%v] when begin tx，[error] :%v", sqls, err)
 			continue
 		}
 
 		for i := range sqls {
 			_, err = txn.Exec(sqls[i], args[i]...)
 			if err != nil {
-				log.Warnf("Failed to execute SQL :%s with args :%v,[error] :%v", sqls[i], args[i], err)
+				ulog.Logger.Warnf("Failed to execute SQL :%s with args :%v,[error] :%v", sqls[i], args[i], err)
 				rerr := txn.Rollback()
 				if rerr != nil {
-					log.Errorf("Failed to rollback SQL :%s with args :%v,[error] :%v", sqls[i], args[i], rerr)
+					ulog.Logger.Errorf("Failed to rollback SQL :%s with args :%v,[error] :%v", sqls[i], args[i], rerr)
 				}
 				continue LOOP
 			}
@@ -176,7 +176,7 @@ LOOP:
 
 		err = txn.Commit()
 		if err != nil {
-			log.Errorf("Failed to commit SQL :[%v],[error] :%v", sqls, err)
+			ulog.Logger.Errorf("Failed to commit SQL :[%v],[error] :%v", sqls, err)
 			continue
 		}
 
@@ -194,7 +194,7 @@ func QuerySQL(db *sql.DB, query string) (*sql.Rows, error) {
 
 	for i := 0; i < maxRetryCount; i++ {
 		if i > 0 {
-			log.Warnf("query sql retry %d - %s", i, query)
+			ulog.Logger.Warnf("query sql retry %d - %s", i, query)
 			time.Sleep(retryTimeout)
 		}
 
@@ -220,7 +220,7 @@ func closeDB(db *sql.DB) error {
 
 	err := db.Close()
 	if err != nil {
-		log.Errorf("close db failed - %v", err)
+		ulog.Logger.Errorf("close db failed - %v", err)
 		return err
 	}
 

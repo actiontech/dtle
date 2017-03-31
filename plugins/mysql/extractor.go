@@ -8,12 +8,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Sirupsen/logrus"
 	stan "github.com/nats-io/go-nats-streaming"
-	"github.com/ngaut/log"
 	"github.com/satori/go.uuid"
 	gomysql "github.com/siddontang/go-mysql/mysql"
 
 	uconf "udup/config"
+	ulog "udup/logger"
 	ubinlog "udup/plugins/mysql/binlog"
 	usql "udup/plugins/mysql/sql"
 )
@@ -23,6 +24,7 @@ const (
 )
 
 type Extractor struct {
+	subject                  string
 	cfg                      *uconf.DriverConfig
 	initialBinlogCoordinates *ubinlog.BinlogCoordinates
 	tables                   map[string]*usql.Table
@@ -35,15 +37,19 @@ type Extractor struct {
 	stanConn stan.Conn
 }
 
-func NewExtractor(cfg *uconf.DriverConfig) *Extractor {
+func NewExtractor(cfg *uconf.DriverConfig, subject string) *Extractor {
 	return &Extractor{
-		cfg:    cfg,
-		tables: make(map[string]*usql.Table),
+		subject: subject,
+		cfg:     cfg,
+		tables:  make(map[string]*usql.Table),
 	}
 }
 
-func (e *Extractor) InitiateExtractor(subject string) error {
-	log.Infof("Extract binlog events from the datasource %v", e.cfg.ConnCfg.String())
+func (e *Extractor) InitiateExtractor() error {
+	ulog.Logger.WithFields(logrus.Fields{
+		"job":    e.subject,
+		"config": e.cfg.ConnCfg.String(),
+	}).Info("extractor: Extract binlog events")
 
 	if err := e.initDBConnections(); err != nil {
 		return err
@@ -58,11 +64,12 @@ func (e *Extractor) InitiateExtractor(subject string) error {
 	}
 
 	go func() {
-		log.Debugf("Beginning streaming")
-		if err := e.streamEvents(subject); err != nil {
+		ulog.Logger.WithFields(logrus.Fields{
+			"job": e.subject,
+		}).Info("extractor: Beginning streaming")
+		if err := e.streamEvents(); err != nil {
 			e.cfg.ErrCh <- err
 		}
-		log.Debugf("Done streaming")
 	}()
 
 	return nil
@@ -110,7 +117,7 @@ func (e *Extractor) mysqlServerUUID() string {
 	query := `SELECT @@SERVER_UUID`
 	var server_uuid string
 	if err := e.db.QueryRow(query).Scan(&server_uuid); err != nil {
-		log.Errorf("error to SELECT @@SERVER_UUID:%v", err)
+		ulog.Logger.Errorf("error to SELECT @@SERVER_UUID:%v", err)
 		return ""
 	}
 	return server_uuid
@@ -137,7 +144,9 @@ func (e *Extractor) readCurrentBinlogCoordinates() error {
 		}
 	}
 
-	log.Debugf("Streamer binlog coordinates: %+v", *e.initialBinlogCoordinates)
+	ulog.Logger.WithFields(logrus.Fields{
+		"coordinates": *e.initialBinlogCoordinates,
+	}).Debug("extractor: Streamer binlog coordinates")
 	return nil
 }
 
@@ -157,7 +166,10 @@ func (e *Extractor) initBinlogParser(binlogCoordinates *ubinlog.BinlogCoordinate
 func (e *Extractor) initNatsPubClient() (err error) {
 	sc, err := stan.Connect(uconf.DefaultClusterID, uuid.NewV4().String(), stan.NatsURL(fmt.Sprintf("nats://%s", e.cfg.NatsAddr)), stan.ConnectWait(DefaultConnectWait))
 	if err != nil {
-		log.Errorf("Can't connect: %v.\nMake sure a NATS Streaming Server is running at: %s", err, fmt.Sprintf("nats://%s", e.cfg.NatsAddr))
+		ulog.Logger.WithFields(logrus.Fields{
+			"err":         err,
+			"nats_server": fmt.Sprintf("nats://%s", e.cfg.NatsAddr),
+		}).Error("extractor: Can't connect nats server.\nMake sure a NATS Streaming Server is running.")
 	}
 	e.stanConn = sc
 	return nil
@@ -185,14 +197,14 @@ func (e *Extractor) Running() bool {
 	return e.cfg.Running
 }
 
-func (e *Extractor) streamEvents(subject string) error {
+func (e *Extractor) streamEvents() error {
 	go func() {
 		for tx := range e.tb.TxChan {
 			msg, err := Encode(tx)
 			if err != nil {
 				e.cfg.ErrCh <- err
 			}
-			if err := e.stanConn.Publish(subject, msg); err != nil {
+			if err := e.stanConn.Publish(e.subject, msg); err != nil {
 				e.cfg.ErrCh <- err
 			}
 		}
@@ -206,7 +218,7 @@ func (e *Extractor) streamEvents(subject string) error {
 			if !e.Running() {
 				return nil
 			}
-			log.Infof("StreamEvents encountered unexpected error: %+v", err)
+			ulog.Logger.WithField("job", e.subject).WithError(err).Info("extractor: StreamEvents encountered unexpected error")
 
 			// See if there's retry overflow
 			if e.bp.LastAppliedRowsEventHint.Equals(&lastAppliedRowsEventHint) {
@@ -215,15 +227,22 @@ func (e *Extractor) streamEvents(subject string) error {
 				successiveFailures = 0
 			}
 			if successiveFailures > e.cfg.MaxRetries {
-				log.Errorf("%d successive failures in streamer reconnect at coordinates %+v", successiveFailures, e.GetReconnectBinlogCoordinates())
+				ulog.Logger.WithField("job", e.subject).
+					WithError(err).Errorf(
+					"extractor: %d successive failures in streamer reconnect at coordinates %+v",
+					successiveFailures, e.GetReconnectBinlogCoordinates())
 				e.cfg.ErrCh <- err
 			}
 
 			// Reposition at same binlog file.
 			lastAppliedRowsEventHint = e.bp.LastAppliedRowsEventHint
-			log.Infof("Reconnecting... Will resume at %+v", lastAppliedRowsEventHint)
+
+			ulog.Logger.WithFields(logrus.Fields{
+				"job": e.subject,
+			}).Infof("extractor: Reconnecting... Will resume at %+v", lastAppliedRowsEventHint)
+
 			if err := e.initBinlogParser(e.GetReconnectBinlogCoordinates()); err != nil {
-				log.Errorf(err.Error())
+				ulog.Logger.Errorf(err.Error())
 			}
 			e.bp.LastAppliedRowsEventHint = lastAppliedRowsEventHint
 		}
@@ -393,6 +412,9 @@ func (e *Extractor) Shutdown() error {
 		return err
 	}
 	e.cfg.Running = false
-	log.Infof("Closed streamer connection.")
+
+	ulog.Logger.WithFields(logrus.Fields{
+		"job": e.subject,
+	}).Info("extractor: Closed streamer connection.")
 	return nil
 }

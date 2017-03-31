@@ -12,14 +12,15 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Sirupsen/logrus"
 	"github.com/docker/leadership"
 	"github.com/hashicorp/memberlist"
 	"github.com/hashicorp/serf/serf"
 	gnatsd "github.com/nats-io/gnatsd/server"
 	stand "github.com/nats-io/nats-streaming-server/server"
-	"github.com/ngaut/log"
 
 	uconf "udup/config"
+	ulog "udup/logger"
 	"udup/plugins"
 	uutil "udup/plugins/mysql/util"
 )
@@ -78,7 +79,7 @@ func NewAgent(config *uconf.Config) (*Agent, error) {
 
 	// Join startup nodes if specified
 	if err := a.startupJoin(config); err != nil {
-		log.Errorf(err.Error())
+		ulog.Logger.Errorf(err.Error())
 		return nil, err
 	}
 
@@ -103,14 +104,14 @@ func (a *Agent) startupJoin(config *uconf.Config) error {
 		return nil
 	}
 
-	log.Infof("Joining cluster...")
-	log.Infof("Joining: %v replay: %v", config.Client.Join, true)
+	ulog.Logger.Infof("agent: Joining cluster...")
+	ulog.Logger.Infof("agent: Joining: %v replay: %v", config.Client.Join, true)
 	n, err := a.serf.Join(config.Client.Join, false)
 	if err != nil {
 		return err
 	}
 
-	log.Infof(fmt.Sprintf("Join completed. Synced with %d initial agents", n))
+	ulog.Logger.Infof(fmt.Sprintf("agent: Join completed. Synced with %d initial agents", n))
 	return nil
 }
 
@@ -156,7 +157,7 @@ func (a *Agent) setupSched() error {
 
 	for _, job := range jobs.Payload {
 		if job.Status == Running || job.Status == Queued {
-			log.Infof("Start job: %v", job.Name)
+			ulog.Logger.Infof("agent: Start job: %v", job.Name)
 			for k, v := range job.Processors {
 				if v.NodeName == a.config.NodeName {
 					go rc.startJob(job, k)
@@ -176,7 +177,9 @@ func (a *Agent) setupRPC() error {
 		agent: a,
 	}
 
-	log.Infof("Registering RPC server: %v", a.getRPCAddr())
+	ulog.Logger.WithFields(logrus.Fields{
+		"rpc_addr": a.getRPCAddr(),
+	}).Debug("rpc: Registering RPC server")
 
 	rpc.Register(r)
 
@@ -193,7 +196,7 @@ func (a *Agent) setupRPC() error {
 
 	l, err := net.Listen("tcp", a.getRPCAddr())
 	if err != nil {
-		log.Fatal(err)
+		ulog.Logger.Fatal(err)
 		return err
 	}
 	go http.Serve(l, nil)
@@ -212,7 +215,7 @@ func (a *Agent) setupDrivers() error {
 
 	}
 
-	log.Debugf("Available drivers %v", avail)
+	ulog.Logger.Debugf("agent: Available drivers %v", avail)
 
 	return nil
 }
@@ -231,14 +234,17 @@ func (a *Agent) setupNatsServer() error {
 		Trace:      true,
 		Debug:      true,
 	}
-	log.Infof("Starting nats-streaming-server [%s]", a.config.Nats.Addr)
+	ulog.Logger.Infof("agent: Starting nats-streaming-server [%s]", a.config.Nats.Addr)
 	sOpts := stand.GetDefaultOptions()
 	sOpts.ID = uconf.DefaultClusterID
 	if a.config.Nats.StoreType == "file" {
 		sOpts.StoreType = a.config.Nats.StoreType
 		sOpts.FilestoreDir = a.config.Nats.FilestoreDir
 	}
-	s := stand.RunServerWithOpts(sOpts, &nOpts)
+	s, err := stand.RunServerWithOpts(sOpts, &nOpts)
+	if err != nil {
+		return err
+	}
 	a.stand = s
 	return nil
 }
@@ -254,6 +260,8 @@ func (a *Agent) setupSerf() (*serf.Serf, error) {
 	}
 	serfConfig.MemberlistConfig.BindAddr = serfAddr.IP.String()
 	serfConfig.MemberlistConfig.BindPort = serfAddr.Port
+	serfConfig.MemberlistConfig.AdvertiseAddr = serfAddr.IP.String()
+	serfConfig.MemberlistConfig.AdvertisePort = serfAddr.Port
 
 	serfConfig.NodeName = a.config.NodeName
 	serfConfig.Init()
@@ -294,7 +302,7 @@ func (a *Agent) setupSerf() (*serf.Serf, error) {
 	serfConfig.EventCh = a.eventCh
 
 	// Start Serf
-	log.Info("Udup agent starting")
+	ulog.Logger.Debugf("agent: Udup agent starting")
 
 	serfConfig.LogOutput = ioutil.Discard
 	serfConfig.MemberlistConfig.LogOutput = ioutil.Discard
@@ -354,21 +362,28 @@ func (a *Agent) getNatsAddr(nodeName string) string {
 // Listens to events from Serf and handle the event.
 func (a *Agent) eventLoop() {
 	serfShutdownCh := a.serf.ShutdownCh()
-	log.Info("Listen for events")
+	ulog.Logger.Info("agent: Listen for events")
 	for {
 		select {
 		case e := <-a.eventCh:
-			log.Infof("Received event: %v", e.String())
+			ulog.Logger.WithFields(logrus.Fields{
+				"event": e.String(),
+			}).Debug("agent: Received event")
 
 			// Log all member events
 			go func() {
 				if e, ok := e.(serf.MemberEvent); ok {
 					for _, m := range e.Members {
-						log.Infof("Member event: %v; Node:%v; Member:%v.", e.EventType(), a.config.NodeName, m.Name)
+						ulog.Logger.WithFields(logrus.Fields{
+							"node":   a.config.NodeName,
+							"member": m.Name,
+							"event":  e.EventType(),
+						}).Debug("agent: Member event")
+
 						switch e.EventType() {
 						case serf.EventMemberLeave, serf.EventMemberFailed:
 							if err := a.enqueueJobs(m.Name); err != nil {
-								log.Errorf("Error enqueue job command,err:%v", err)
+								ulog.Logger.Errorf("agent: Error enqueue job command,err:%v", err)
 							}
 						default:
 							//ignore
@@ -383,19 +398,27 @@ func (a *Agent) eventLoop() {
 				switch query.Name {
 				case QueryStartJob:
 					{
-						log.Infof("Running job: Query:%v; Payload:%v; LTime:%v,", query.Name, string(query.Payload), query.LTime)
-
+						ulog.Logger.WithFields(logrus.Fields{
+							"query":   query.Name,
+							"payload": string(query.Payload),
+							"at":      query.LTime,
+						}).Debug("agent: Starting job")
 						var rqp RunQueryParam
 						if err := json.Unmarshal(query.Payload, &rqp); err != nil {
-							log.Errorf("Error unmarshaling query payload,Query:%v", QueryStartJob)
+							ulog.Logger.WithField("query", QueryStartJob).Fatal("agent: Error unmarshaling query payload")
 						}
+
+						ulog.Logger.WithFields(logrus.Fields{
+							"job": rqp.Job.Name,
+						}).Info("agent: Starting job")
 
 						job := rqp.Job
 						k := rqp.Type
 
 						go func() {
 							if err := a.startJob(job, k); err != nil {
-								log.Errorf("Error start job command,err:%v", err)
+								ulog.Logger.WithError(err).Errorf("agent: Error start job command,err:%v", err)
+								ulog.Logger.WithField("query", QueryStartJob).Fatalf("agent: Error start job command,err:%v", err)
 							}
 						}()
 
@@ -404,18 +427,58 @@ func (a *Agent) eventLoop() {
 					}
 				case QueryStopJob:
 					{
-						log.Debugf("Stop job: Query:%v; Payload:%v; LTime:%v,", query.Name, string(query.Payload), query.LTime)
+						ulog.Logger.WithFields(logrus.Fields{
+							"query":   query.Name,
+							"payload": string(query.Payload),
+							"at":      query.LTime,
+						}).Debug("agent: Stopping job")
 
 						var rqp RunQueryParam
 						if err := json.Unmarshal(query.Payload, &rqp); err != nil {
-							log.Errorf("Error unmarshaling query payload,Query:%v", QueryStopJob)
+							ulog.Logger.WithField("query", QueryStopJob).Fatal("agent: Error unmarshaling query payload")
 						}
 
+						ulog.Logger.WithFields(logrus.Fields{
+							"job": rqp.Job.Name,
+						}).Info("agent: Stopping job")
+
 						job := rqp.Job
+						k := rqp.Type
 
 						go func() {
-							if err := a.stopJob(job); err != nil {
-								log.Errorf("Error stop job command,err:%v", err)
+							if err := a.stopJob(job, k); err != nil {
+								ulog.Logger.WithError(err).Errorf("agent: Error stop job command,err:%v", err)
+								ulog.Logger.WithField("query", QueryStopJob).Fatalf("agent: Error stop job command,err:%v", err)
+							}
+						}()
+
+						jobJson, _ := json.Marshal(job)
+						query.Respond(jobJson)
+					}
+				case QueryEnqueueJob:
+					{
+						ulog.Logger.WithFields(logrus.Fields{
+							"query":   query.Name,
+							"payload": string(query.Payload),
+							"at":      query.LTime,
+						}).Debug("agent: Enqueue job")
+
+						var rqp RunQueryParam
+						if err := json.Unmarshal(query.Payload, &rqp); err != nil {
+							ulog.Logger.Errorf("agent: Error unmarshaling query payload,Query:%v", QueryEnqueueJob)
+						}
+
+						ulog.Logger.WithFields(logrus.Fields{
+							"job": rqp.Job.Name,
+						}).Info("agent: Enqueue job")
+
+						job := rqp.Job
+						k := rqp.Type
+
+						go func() {
+							if err := a.enqueueJob(job, k); err != nil {
+								ulog.Logger.WithError(err).Errorf("agent: Error enqueue job command,err:%v", err)
+								ulog.Logger.WithField("query", QueryEnqueueJob).Fatalf("agent: Error enqueue job command,err:%v", err)
 							}
 						}()
 
@@ -425,7 +488,11 @@ func (a *Agent) eventLoop() {
 				case QueryRPCConfig:
 					{
 						if a.config.Server.Enabled {
-							log.Infof("RPC Config requested,Query:%v; Payload:%v; LTime:%v", query.Name, string(query.Payload), query.LTime)
+							ulog.Logger.WithFields(logrus.Fields{
+								"query":   query.Name,
+								"payload": string(query.Payload),
+								"at":      query.LTime,
+							}).Debug("agent: RPC Config requested")
 
 							query.Respond([]byte(a.getRPCAddr()))
 						}
@@ -433,10 +500,15 @@ func (a *Agent) eventLoop() {
 				case QueryGenId:
 					{
 						if a.config.Server.Enabled {
-							log.Infof("RPC Config requested,Query:%v; Payload:%v; LTime:%v", query.Name, string(query.Payload), query.LTime)
+							ulog.Logger.WithFields(logrus.Fields{
+								"query":   query.Name,
+								"payload": string(query.Payload),
+								"at":      query.LTime,
+							}).Debug("agent: Generate id requested")
+
 							serverID, err := a.idWorker.NextId()
 							if err != nil {
-								log.Fatal(err)
+								ulog.Logger.Fatal(err)
 							}
 							query.Respond([]byte(strconv.FormatUint(uint64(serverID), 10)))
 						}
@@ -449,7 +521,7 @@ func (a *Agent) eventLoop() {
 			}
 
 		case <-serfShutdownCh:
-			log.Warn("Serf shutdown detected, quitting")
+			ulog.Logger.Warn("agent: Serf shutdown detected, quitting")
 			return
 		}
 	}
@@ -468,7 +540,7 @@ func (a *Agent) startJob(j *Job, k string) (err error) {
 	return rc.startJob(j, k)
 }
 
-func (a *Agent) stopJob(j *Job) (err error) {
+func (a *Agent) stopJob(j *Job, k string) (err error) {
 	var rpcServer []byte
 	if !a.config.Server.Enabled {
 		rpcServer, err = a.queryRPCConfig()
@@ -478,7 +550,7 @@ func (a *Agent) stopJob(j *Job) (err error) {
 	}
 
 	rc := &RPCClient{ServerAddr: string(rpcServer), agent: a}
-	return rc.stopJob(j)
+	return rc.stopJob(j, k)
 }
 
 func (a *Agent) enqueueJobs(nodeName string) (err error) {
@@ -493,7 +565,7 @@ func (a *Agent) enqueueJobs(nodeName string) (err error) {
 	return rc.enqueueJobs(nodeName)
 }
 
-func (a *Agent) enqueueJob(j string) (err error) {
+func (a *Agent) enqueueJob(job *Job, k string) (err error) {
 	var rpcServer []byte
 	if !a.config.Server.Enabled {
 		rpcServer, err = a.queryRPCConfig()
@@ -503,11 +575,7 @@ func (a *Agent) enqueueJob(j string) (err error) {
 	}
 
 	rc := &RPCClient{ServerAddr: string(rpcServer), agent: a}
-	job, err := rc.CallGetJob(j)
-	if err != nil {
-		return fmt.Errorf("agent: Error on rpc.GetJob call")
-	}
-	return rc.enqueueJob(job)
+	return rc.enqueueJob(job, k)
 }
 
 func (a *Agent) participate() {
@@ -524,18 +592,18 @@ func (a *Agent) participate() {
 
 // Leader election routine
 func (a *Agent) runForElection() {
-	log.Info("Running for election")
+	ulog.Logger.Info("agent: Running for election")
 	electedCh, errCh := a.candidate.RunForElection()
 
 	for {
 		select {
 		case isElected := <-electedCh:
 			if isElected {
-				log.Info("Cluster leadership acquired")
+				ulog.Logger.Info("agent: Cluster leadership acquired")
 				// If this server is elected as the leader, start the scheduler
 				jobs, err := a.store.GetJobs()
 				if err != nil {
-					log.Errorf("agent: Error on rpc.GetJob call")
+					ulog.Logger.Errorf("agent: Error on rpc.GetJob call")
 				}
 				for _, job := range jobs {
 					if job.Status == Running {
@@ -552,7 +620,7 @@ func (a *Agent) runForElection() {
 									p.Running = false
 								}
 								if err := a.store.UpsertJob(job); err != nil {
-									log.Errorf("agent: Error on rpc.UpsertJob call")
+									ulog.Logger.Errorf("agent: Error on rpc.UpsertJob call")
 								}
 							}
 						}
@@ -560,12 +628,12 @@ func (a *Agent) runForElection() {
 				}
 
 			} else {
-				log.Info("Cluster leadership lost")
+				ulog.Logger.Info("agent: Cluster leadership lost")
 				// Always stop the schedule of this server to prevent multiple servers with the scheduler on
 			}
 
 		case err := <-errCh:
-			log.Errorf("agent: Leader election failed, channel is probably closed,err:%v", err)
+			ulog.Logger.WithError(err).Debugf("agent: Leader election failed, channel is probably closed,err:%v", err)
 			// Always stop the schedule of this server to prevent multiple servers with the scheduler on
 			return
 		}
@@ -589,14 +657,14 @@ func (a *Agent) Shutdown() error {
 		return nil
 	}
 
-	log.Infof("Requesting shutdown")
+	ulog.Logger.Infof("agent: Requesting shutdown")
 	for k, v := range a.processorPlugins {
 		if err := v.Stop(k.tp); err != nil {
 			return err
 		}
 	}
 	a.stand.Shutdown()
-	log.Infof("Shutdown complete")
+	ulog.Logger.Infof("agent: Shutdown complete")
 	a.shutdown = true
 	close(a.shutdownCh)
 	return nil

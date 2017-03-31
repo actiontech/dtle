@@ -7,12 +7,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Sirupsen/logrus"
 	"github.com/issuj/gofaster/base64"
-	"github.com/ngaut/log"
 	"github.com/satori/go.uuid"
 	binlog "github.com/siddontang/go-mysql/replication"
 
 	uconf "udup/config"
+	ulog "udup/logger"
 	usql "udup/plugins/mysql/sql"
 )
 
@@ -92,7 +93,7 @@ func (tb *TxBuilder) Run() {
 			return
 		}
 
-		log.Debugf("TB et:%v<- %+v", event.Header.EventType, event)
+		//ulog.Logger.Debugf("TB et:%v<- %+v", event.Header.EventType, event)
 
 		if tb.currentTx != nil {
 			tb.currentTx.eventCount++
@@ -182,11 +183,6 @@ func (tb *TxBuilder) onQueryEvent(event *BinlogEvent) error {
 		// DDL or statement/mixed binlog format
 		tb.setImpactOnAll()
 		if strings.ToUpper(query) == "COMMIT" || !tb.currentTx.hasBeginQuery {
-			/*if skipQueryEvent(query) {
-				log.Debugf("[skip query-sql]%s  [schema]:%s", query, string(evt.Schema))
-				tb.onCommit(event)
-				return nil
-			}*/
 			sqls, ok, err := usql.ResolveDDLSQL(query)
 			if err != nil {
 				return fmt.Errorf("parse query event failed: %v", err)
@@ -198,7 +194,10 @@ func (tb *TxBuilder) onQueryEvent(event *BinlogEvent) error {
 
 			for _, sql := range sqls {
 				if tb.skipQueryDDL(sql, string(evt.Schema)) {
-					log.Debugf("[skip query-ddl-sql]%s  [schema]:%s", sql, evt.Schema)
+					ulog.Logger.WithFields(logrus.Fields{
+						"schema": fmt.Sprintf("%s",evt.Schema),
+						"sql":    fmt.Sprintf("%s",sql),
+					}).Debug("builder: skip query-ddl-sql")
 					continue
 				}
 
@@ -222,7 +221,10 @@ func (tb *TxBuilder) onTableMapEvent(event *BinlogEvent) error {
 
 	ev := event.Evt.(*binlog.TableMapEvent)
 	if tb.skipRowEvent(string(ev.Schema), string(ev.Table)) {
-		log.Debugf("[skip TableMapEvent]db:%s table:%s", ev.Schema, ev.Table)
+		ulog.Logger.WithFields(logrus.Fields{
+			"schema": fmt.Sprintf("%s",ev.Schema),
+			"table":  fmt.Sprintf("%s",ev.Table),
+		}).Debug("builder: skip TableMapEvent")
 		return nil
 	}
 
@@ -238,7 +240,10 @@ func (tb *TxBuilder) onRowEvent(event *BinlogEvent) error {
 	ev := event.Evt.(*binlog.RowsEvent)
 
 	if tb.skipRowEvent(string(ev.Table.Schema), string(ev.Table.Table)) {
-		log.Debugf("[skip RowsEvent]db:%s table:%s", ev.Table.Schema, ev.Table.Table)
+		ulog.Logger.WithFields(logrus.Fields{
+			"schema": fmt.Sprintf("%s",ev.Table.Schema),
+			"table":  fmt.Sprintf("%s",ev.Table.Table),
+		}).Debug("builder: skip RowsEvent")
 		return nil
 	}
 
@@ -298,10 +303,8 @@ func (tb *TxBuilder) onCommit(lastEvent *BinlogEvent) {
 	tx.EndEventFile = lastEvent.BinlogFile
 	tx.EndEventPos = lastEvent.RealPos
 
-	log.Debugf("TB -> %+v", tb.currentTx)
-	/*if tb.cfg.Evaling {
-		tb.txCount++
-	}*/
+	//ulog.Logger.Debugf("TB -> %+v", tb.currentTx)
+
 	tb.TxChan <- tb.currentTx
 
 	tb.currentTx = nil
@@ -364,48 +367,10 @@ func (tb *TxBuilder) matchTable(patternTBS []uconf.TableName, t uconf.TableName)
 	return false
 }
 
-func skipQueryEvent(sql string) bool {
-	sql = strings.ToUpper(sql)
-
-	/*if strings.HasPrefix(sql, "GRANT REPLICATION SLAVE") {
-		return true
-	}
-
-	if strings.HasPrefix(sql, "GRANT ALL PRIVILEGES ON") {
-		return true
-	}
-
-	if strings.HasPrefix(sql, "ALTER USER") {
-		return true
-	}
-
-	if strings.HasPrefix(sql, "CREATE USER") {
-		return true
-	}
-
-	if strings.HasPrefix(sql, "GRANT") {
-		return true
-	}*/
-
-	if strings.HasPrefix(sql, "BEGIN") {
-		return true
-	}
-
-	if strings.HasPrefix(sql, "COMMIT") {
-		return true
-	}
-
-	if strings.HasPrefix(sql, "FLUSH PRIVILEGES") {
-		return true
-	}
-
-	return false
-}
-
 func (tb *TxBuilder) skipQueryDDL(sql string, schema string) bool {
 	t, err := usql.ParserDDLTableName(sql)
 	if err != nil {
-		log.Warnf("[get table failure]:%s %s", sql, err)
+		ulog.Logger.WithField("sql", sql).WithError(err).Error("builder: Get table failure")
 		return false
 	}
 

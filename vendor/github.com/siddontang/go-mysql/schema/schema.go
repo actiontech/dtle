@@ -12,6 +12,8 @@ import (
 	"github.com/siddontang/go-mysql/mysql"
 )
 
+var ErrTableNotExist = errors.New("table is not exist")
+
 const (
 	TYPE_NUMBER    = iota + 1 // tinyint, smallint, mediumint, int, bigint, year
 	TYPE_FLOAT                // float, double
@@ -144,6 +146,16 @@ func (idx *Index) FindColumn(name string) int {
 	return -1
 }
 
+func IsTableExist(conn mysql.Executer, schema string, name string) (bool, error) {
+	query := fmt.Sprintf("SELECT * FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = '%s' and TABLE_NAME = '%s' LIMIT 1", schema, name)
+	r, err := conn.Execute(query)
+	if err != nil {
+		return false, errors.Trace(err)
+	}
+
+	return r.RowNumber() == 1, nil
+}
+
 func NewTable(conn mysql.Executer, schema string, name string) (*Table, error) {
 	ta := &Table{
 		Schema:  schema,
@@ -153,11 +165,11 @@ func NewTable(conn mysql.Executer, schema string, name string) (*Table, error) {
 	}
 
 	if err := ta.fetchColumns(conn); err != nil {
-		return nil, err
+		return nil, errors.Trace(err)
 	}
 
 	if err := ta.fetchIndexes(conn); err != nil {
-		return nil, err
+		return nil, errors.Trace(err)
 	}
 
 	return ta, nil

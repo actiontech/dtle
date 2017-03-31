@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ngaut/log"
+	ulog "udup/logger"
 )
 
 //http://sumory.com/2014/02/15/id-generator/
@@ -36,11 +36,11 @@ type IdWorker struct {
 func NewIdWorker(workerId, datacenterId uint32, snsEpoch uint32) (*IdWorker, error) {
 	idWorker := &IdWorker{}
 	if workerId > maxWorkerId || workerId < 0 {
-		log.Errorf("worker Id can't be greater than %d or less than 0", maxWorkerId)
+		ulog.Logger.Errorf("worker Id can't be greater than %d or less than 0", maxWorkerId)
 		return nil, errors.New(fmt.Sprintf("worker Id: %d error", workerId))
 	}
 	if datacenterId > maxDatacenterId || datacenterId < 0 {
-		log.Errorf("datacenter Id can't be greater than %d or less than 0", maxDatacenterId)
+		ulog.Logger.Errorf("datacenter Id can't be greater than %d or less than 0", maxDatacenterId)
 		return nil, errors.New(fmt.Sprintf("datacenter Id: %d error", datacenterId))
 	}
 	idWorker.workerId = workerId
@@ -49,7 +49,7 @@ func NewIdWorker(workerId, datacenterId uint32, snsEpoch uint32) (*IdWorker, err
 	idWorker.sequence = 0
 	idWorker.snsEpoch = snsEpoch
 	idWorker.mutex = sync.Mutex{}
-	log.Debugf("worker starting. timestamp left shift %d, datacenter id bits %d, worker id bits %d, sequence bits %d, workerid %d", timestampLeftShift, datacenterIdBits, workerIdBits, sequenceBits, workerId)
+	ulog.Logger.Debugf("worker starting. timestamp left shift %d, datacenter id bits %d, worker id bits %d, sequence bits %d, workerid %d", timestampLeftShift, datacenterIdBits, workerIdBits, sequenceBits, workerId)
 	return idWorker, nil
 }
 
@@ -73,7 +73,7 @@ func (id *IdWorker) NextId() (uint32, error) {
 	defer id.mutex.Unlock()
 	timestamp := timeGen()
 	if timestamp < id.lastTimestamp {
-		log.Errorf("clock is moving backwards.  Rejecting requests until %d.", id.lastTimestamp)
+		ulog.Logger.Errorf("clock is moving backwards.  Rejecting requests until %d.", id.lastTimestamp)
 		return 0, errors.New(fmt.Sprintf("Clock moved backwards.  Refusing to generate id for %d milliseconds", id.lastTimestamp-timestamp))
 	}
 	if id.lastTimestamp == timestamp {

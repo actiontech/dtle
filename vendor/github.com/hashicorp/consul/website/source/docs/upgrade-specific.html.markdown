@@ -33,6 +33,50 @@ and update any scripts that passed a custom `-rpc-addr` to the following command
 * `monitor`
 * `reload`
 
+#### Version 8 ACLs Are Now Opt-Out
+
+The [`acl_enforce_version_8`](/docs/agent/options.html#acl_enforce_version_8) configuration now defaults to `true` to enable [full version 8 ACL support](/docs/internals/acl.html#version_8_acls) by default. If you are upgrading an existing cluster with ACLs enabled, you will need to set this to `false` during the upgrade on **both Consul agents and Consul servers**. Version 8 ACLs were also changed so that [`acl_datacenter`](/docs/agent/options.html#acl_datacenter) must be set on agents in order to enable the agent-side enforcement of ACLs. This makes for a smoother experience in clusters where ACLs aren't enabled at all, but where the agents would have to wait to contact a Consul server before learning that.
+
+#### Remote Exec Is Now Opt-In
+
+The default for [`disable_remote_exec`](/docs/agent/options.html#disable_remote_exec) was
+changed to "true", so now operators need to opt-in to having agents support running
+commands remotely via [`consul exec`](/docs/commands/exec.html).
+
+#### Raft Protocol Version Compatibility
+
+When upgrading to Consul 0.8.0 from a version lower than 0.7.0, users will need to
+set the [`-raft-protocol`](/docs/agent/options.html#_raft_protocol) option to 1 in
+order to maintain backwards compatibility with the old servers during the upgrade.
+After the servers have been migrated to version 0.8.0, `-raft-protocol` can be moved
+up to 2 and the servers restarted to match the default.
+
+The Raft protocol must be stepped up in this way; only adjacent version numbers are
+compatible (for example, version 1 cannot talk to version 3). Here is a table of the
+Raft Protocol versions supported by each Consul version:
+
+<table class="table table-bordered table-striped">
+  <tr>
+    <th>Version</th>
+    <th>Supported Raft Protocols</th>
+  </tr>
+  <tr>
+    <td>0.6 and earlier</td>
+    <td>0</td>
+  </tr>
+  <tr>
+    <td>0.7</td>
+    <td>1</td>
+  </tr>
+  <tr>
+    <td>0.8</td>
+    <td>1, 2, 3</td>
+  </tr>
+</table>
+
+In order to enable all [Autopilot](/docs/guides/autopilot.html) features, all servers
+in a Consul cluster must be running with Raft protocol version 3 or later.
+
 ## Consul 0.7.1
 
 #### Child Process Reaping

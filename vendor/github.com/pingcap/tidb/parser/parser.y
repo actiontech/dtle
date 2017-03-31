@@ -48,6 +48,8 @@ import (
 	/*yy:token "%c"     */	identifier      "identifier"
 	/*yy:token "\"%c\"" */	stringLit       "string literal"
 	invalid		"a special token never used by parser, used by lexer to indicate error"
+	hintBegin	"hintBegin is a virtual token for optimizer hint grammar"
+	hintEnd		"hintEnd is a virtual token for optimizer hint grammar"
 	andand		"&&"
 	oror		"||"
 
@@ -94,6 +96,7 @@ import (
 	desc			"DESC"
 	describe		"DESCRIBE"
 	distinct		"DISTINCT"
+	tidbSMJ			"TIDB_SMJ"
 	div 			"DIV"
 	doubleType		"DOUBLE"
 	drop			"DROP"
@@ -181,7 +184,7 @@ import (
 	repeat			"REPEAT"
 	replace			"REPLACE"
 	restrict		"RESTRICT"
-	revoke		"REVOKE"
+	revoke			"REVOKE"
 	right			"RIGHT"
 	rlike			"RLIKE"
 	schema			"SCHEMA"
@@ -268,6 +271,7 @@ import (
 	foundRows			"FOUND_ROWS"
 	fromUnixTime			"FROM_UNIXTIME"
 	fromBase64			"FROM_BASE64"
+	getFormat			"GET_FORMAT"
 	grant				"GRANT"
 	groupConcat			"GROUP_CONCAT"
 	greatest			"GREATEST"
@@ -397,6 +401,7 @@ import (
 	releaseAllLocks			"RELEASE_ALL_LOCKS"
 	uuid				"UUID"
 	uuidShort			"UUID_SHORT"
+	underscoreCS			"UNDERSCORE_CHARSET"
 
 	/* the following tokens belong to UnReservedKeyword*/
 	action		"ACTION"
@@ -462,6 +467,7 @@ import (
 	names		"NAMES"
 	national	"NATIONAL"
 	no		"NO"
+	none		"NONE"
 	offset		"OFFSET"
 	only		"ONLY"
 	password	"PASSWORD"
@@ -534,7 +540,6 @@ import (
 	placeholder	"PLACEHOLDER"
 	rsh		">>"
 	sysVar		"SYS_VAR"
-	underscoreCS	"UNDERSCORE_CHARSET"
 	userVar		"USER_VAR"
 
 %type   <item>
@@ -783,6 +788,10 @@ import (
 	OptCollate		"Optional Collate setting"
 	NUM			"numbers"
 	LengthNum		"Field length num(uint64)"
+	HintTableList		"Table list in optimizer hint"
+	TableOptimizerHintOpt	"Table level optimizer hint"
+	TableOptimizerHints	"Table level optimizer hints"
+	TableOptimizerHintList	"Table level optimizer hint list"
 
 %type	<ident>
 	KeyOrIndex		"{KEY|INDEX}"
@@ -814,6 +823,7 @@ import (
 	logAnd			"logical and operator"
 	logOr			"logical or operator"
 	FieldsOrColumns 	"Fields or columns"
+	GetFormatSelector	"{DATE|DATETIME|TIME}"
 
 %type	<ident>
 	Identifier			"identifier or unreserved keyword"
@@ -1010,6 +1020,12 @@ AlterTableSpec:
 		$$ = &ast.AlterTableSpec{
 			Tp:    		ast.AlterTableRenameTable,
 			NewTable:      $3.(*ast.TableName),
+		}
+	}
+|	"LOCK" eq "NONE"
+	{
+		$$ = &ast.AlterTableSpec{
+			Tp:    		ast.AlterTableLock,
 		}
 	}
 
@@ -2247,7 +2263,7 @@ UnReservedKeyword:
 | "MIN_ROWS" | "NATIONAL" | "ROW" | "ROW_FORMAT" | "QUARTER" | "GRANTS" | "TRIGGERS" | "DELAY_KEY_WRITE" | "ISOLATION"
 | "REPEATABLE" | "COMMITTED" | "UNCOMMITTED" | "ONLY" | "SERIALIZABLE" | "LEVEL" | "VARIABLES" | "SQL_CACHE" | "INDEXES" | "PROCESSLIST"
 | "SQL_NO_CACHE" | "DISABLE"  | "ENABLE" | "REVERSE" | "SPACE" | "PRIVILEGES" | "NO" | "BINLOG" | "FUNCTION" | "VIEW" | "MODIFY" | "EVENTS" | "PARTITIONS"
-| "TIMESTAMPDIFF"
+| "TIMESTAMPDIFF" | "NONE"
 
 ReservedKeyword:
 "ADD" | "ALL" | "ALTER" | "ANALYZE" | "AND" | "AS" | "ASC" | "BETWEEN" | "BIGINT"
@@ -2277,12 +2293,12 @@ ReservedKeyword:
 NotKeywordToken:
 	"ABS" | "ACOS" | "ADDTIME" | "ADDDATE" | "ADMIN" | "ASIN" | "ATAN" | "ATAN2" | "BENCHMARK" | "BIN" | "COALESCE" | "COERCIBILITY" | "CONCAT" | "CONCAT_WS" | "CONNECTION_ID" | "CONVERT_TZ" | "CUR_TIME"| "COS" | "COT" | "COUNT" | "DAY"
 |	"DATEDIFF" | "DATE_ADD" | "DATE_FORMAT" | "DATE_SUB" | "DAYNAME" | "DAYOFMONTH" | "DAYOFWEEK" | "DAYOFYEAR" | "DEGREES" | "ELT" | "EXP" | "EXPORT_SET" | "FROM_DAYS" | "FROM_BASE64" | "FIND_IN_SET" | "FOUND_ROWS"
-|	"GROUP_CONCAT"| "GREATEST" | "LEAST" | "HOUR" | "HEX" | "UNHEX" | "IFNULL" | "INSTR" | "ISNULL" | "LAST_INSERT_ID" | "LCASE" | "LENGTH" | "LOAD_FILE" | "LOCATE" | "LOWER" | "LPAD" | "LTRIM"
+|	"GET_FORMAT" | "GROUP_CONCAT" | "GREATEST" | "LEAST" | "HOUR" | "HEX" | "UNHEX" | "IFNULL" | "INSTR" | "ISNULL" | "LAST_INSERT_ID" | "LCASE" | "LENGTH" | "LOAD_FILE" | "LOCATE" | "LOWER" | "LPAD" | "LTRIM"
 |	"MAKE_SET" | "MAX" | "MAKEDATE" | "MAKETIME" | "MICROSECOND" | "MID" | "MIN" |	"MINUTE" | "NULLIF" | "MONTH" | "MONTHNAME" | "NOW" |  "OCT" | "OCTET_LENGTH" | "ORD" | "POSITION" | "PERIOD_ADD" | "PERIOD_DIFF" | "PI" | "POW" | "POWER" | "RAND" | "RADIANS" | "ROW_COUNT"
 	"QUOTE" | "SEC_TO_TIME" | "SECOND" | "SIGN" | "SIN" | "SLEEP" | "SQRT" | "SQL_CALC_FOUND_ROWS" | "STR_TO_DATE" | "SUBTIME" | "SUBDATE" | "SUBSTRING" %prec lowerThanLeftParen |
 	"SESSION_USER" | "SUBSTRING_INDEX" | "SUM" | "SYSTEM_USER" | "TAN" | "TIME_FORMAT" | "TIME_TO_SEC" | "TIMESTAMPADD" | "TO_DAYS" | "TO_SECONDS" | "TRIM" | "RTRIM" | "UCASE" | "UTC_TIME" | "UPPER" | "VERSION" | "WEEKDAY" | "WEEKOFYEAR" | "YEARWEEK" | "ROUND"
 |	"STATS_PERSISTENT" | "GET_LOCK" | "RELEASE_LOCK" | "CEIL" | "CEILING" | "FLOOR" | "FROM_UNIXTIME" | "TIMEDIFF" | "LN" | "LOG" | "LOG2" | "LOG10" | "FIELD_KWD"
-|	"AES_DECRYPT" | "AES_ENCRYPT"
+|	"AES_DECRYPT" | "AES_ENCRYPT" | "QUOTE"
 |	"ANY_VALUE" | "INET_ATON" | "INET_NTOA" | "INET6_ATON" | "INET6_NTOA" | "IS_FREE_LOCK" | "IS_IPV4" | "IS_IPV4_COMPAT" | "IS_IPV4_MAPPED" | "IS_IPV6" | "IS_USED_LOCK" | "MASTER_POS_WAIT" | "NAME_CONST" | "RELEASE_ALL_LOCKS" | "UUID" | "UUID_SHORT"
 |	"ASYMMETRIC_DECRYPT" | "ASYMMETRIC_DERIVE" | "ASYMMETRIC_ENCRYPT" | "ASYMMETRIC_SIGN" | "ASYMMETRIC_VERIFY" | "COMPRESS" | "CREATE_ASYMMETRIC_PRIV_KEY" | "CREATE_ASYMMETRIC_PUB_KEY" | "CREATE_DH_PARAMETERS" | "CREATE_DIGEST" | "DECODE" | "DES_DECRYPT" | "DES_ENCRYPT" | "ENCODE" | "ENCRYPT" | "MD5" | "OLD_PASSWORD" | "RANDOM_BYTES" | "SHA1" | "SHA" | "SHA2" | "UNCOMPRESS" | "UNCOMPRESSED_LENGTH" | "VALIDATE_PASSWORD_STRENGTH"
 
@@ -2461,7 +2477,7 @@ Literal:
 	{
 		// See https://dev.mysql.com/doc/refman/5.7/en/charset-literal.html
 		tp := types.NewFieldType(mysql.TypeString)
-		tp.Charset = $1.(string)
+		tp.Charset = $1
 		co, err := charset.GetDefaultCollation(tp.Charset)
 		if err != nil {
 			yylex.Errorf("Get collation error for charset: %s", tp.Charset)
@@ -3083,6 +3099,13 @@ FunctionCallNonKeyword:
 		$$ = &ast.FuncCallExpr{
 			FnName: model.NewCIStr($1),
 			Args: []ast.ExprNode{$3.(ast.ExprNode), $5.(ast.ExprNode)},
+		}
+	}
+|	"GET_FORMAT" '(' GetFormatSelector ','  Expression ')'
+	{
+		$$ = &ast.FuncCallExpr{
+			FnName: model.NewCIStr($1),
+			Args: []ast.ExprNode{ast.NewValueExpr($3), $5.(ast.ExprNode)},
 		}
 	}
 |	"GREATEST" '(' ExpressionList ')'
@@ -3947,6 +3970,20 @@ FunctionCallNonKeyword:
 		}
 	}
 
+GetFormatSelector:
+	"DATE"
+	{
+		$$ = strings.ToUpper($1)
+	}
+| 	"DATETIME"
+	{
+		$$ = strings.ToUpper($1)
+	}
+|	"TIME"
+	{
+		$$ = strings.ToUpper($1)
+	}
+
 FunctionNameDateArith:
 	"DATE_ADD"
 |	"DATE_SUB"
@@ -4408,7 +4445,7 @@ SelectStmt:
 	"SELECT" SelectStmtOpts SelectStmtFieldList SelectStmtLimit SelectLockOpt
 	{
 		st := &ast.SelectStmt {
-			Distinct:      $2.(bool),
+			Distinct:      $2.(*ast.SelectStmtOpts).Distinct,
 			Fields:        $3.(*ast.FieldList),
 			LockTp:	       $5.(ast.SelectLockType),
 		}
@@ -4436,7 +4473,7 @@ SelectStmt:
 |	"SELECT" SelectStmtOpts SelectStmtFieldList FromDual WhereClauseOptional SelectStmtLimit SelectLockOpt
 	{
 		st := &ast.SelectStmt {
-			Distinct:      $2.(bool),
+			Distinct:      $2.(*ast.SelectStmtOpts).Distinct,
 			Fields:        $3.(*ast.FieldList),
 			LockTp:	       $7.(ast.SelectLockType),
 		}
@@ -4457,11 +4494,15 @@ SelectStmt:
 	TableRefsClause WhereClauseOptional SelectStmtGroup HavingClause OrderByOptional
 	SelectStmtLimit SelectLockOpt
 	{
+		opts := $2.(*ast.SelectStmtOpts)
 		st := &ast.SelectStmt{
-			Distinct:	$2.(bool),
+			Distinct:		opts.Distinct,
 			Fields:		$3.(*ast.FieldList),
 			From:		$5.(*ast.TableRefsClause),
 			LockTp:		$11.(ast.SelectLockType),
+		}
+		if opts.TableHints != nil {
+			st.TableHints = opts.TableHints
 		}
 
 		lastField := st.Fields.Fields[len(st.Fields.Fields)-1]
@@ -4752,10 +4793,59 @@ SelectStmtDistinct:
 	}
 
 SelectStmtOpts:
-	SelectStmtDistinct SelectStmtSQLCache SelectStmtCalcFoundRows
+	TableOptimizerHints SelectStmtDistinct SelectStmtSQLCache SelectStmtCalcFoundRows
 	{
-		// TODO: return calc_found_rows opt and support more other options
-		$$ = $1
+		opt := &ast.SelectStmtOpts{}
+		if $1 != nil {
+		    opt.TableHints = $1.([]*ast.TableOptimizerHint)
+		}
+		if $2 != nil {
+		    opt.Distinct = $2.(bool)
+		}
+		if $3 != nil {
+		    opt.SQLCache = $3.(bool)
+		}
+		if $4 != nil {
+		    opt.CalcFoundRows = $4.(bool)
+		}
+
+		$$ = opt
+	}
+
+TableOptimizerHints:
+    /* empty */
+	{
+		$$ = nil
+	}
+|	hintBegin TableOptimizerHintList hintEnd
+	{
+		$$ = $2
+	}
+
+HintTableList:
+	Identifier
+	{
+		$$ = []model.CIStr{model.NewCIStr($1)}
+	}
+|	HintTableList ',' Identifier
+	{
+		$$ = append($1.([]model.CIStr), model.NewCIStr($3))
+	}
+
+TableOptimizerHintList:
+	TableOptimizerHintOpt
+	{
+		$$ = []*ast.TableOptimizerHint{$1.(*ast.TableOptimizerHint)}
+	}
+|	TableOptimizerHintList TableOptimizerHintOpt
+	{
+		$$ = append($1.([]*ast.TableOptimizerHint), $2.(*ast.TableOptimizerHint))
+	}
+
+TableOptimizerHintOpt:
+	tidbSMJ '(' HintTableList ')'
+	{
+		$$ = &ast.TableOptimizerHint{HintName: model.NewCIStr($1), Tables: $3.([]model.CIStr)}
 	}
 
 SelectStmtCalcFoundRows:

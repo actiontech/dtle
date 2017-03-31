@@ -10,11 +10,12 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/Sirupsen/logrus"
 	"github.com/mitchellh/cli"
-	"github.com/ngaut/log"
 
 	uagt "udup/agent"
 	uconf "udup/config"
+	ulog "udup/logger"
 )
 
 // gracefulTimeout controls how long we wait before forcefully terminating
@@ -33,13 +34,14 @@ type AgentCommand struct {
 func (c *AgentCommand) setupAgent(config *uconf.Config) error {
 	agent, err := uagt.NewAgent(config)
 	if err != nil {
-		log.Errorf("Error starting agent: [%s]", err)
+		//logger.Errorf("Error starting agent: [%s]", err)
+		ulog.Logger.Errorf("command: Error starting agent: [%s]", err)
 		return err
 	}
 	c.Agent = agent
 
 	// Output the header that the server has started
-	log.Infof("Udup agent started!\n")
+	ulog.Logger.Info("command: Udup agent started!")
 
 	return nil
 }
@@ -55,22 +57,12 @@ func (c *AgentCommand) Run(args []string) int {
 
 	// Log config file
 	if len(config.File) > 0 {
-		log.Infof("Loaded configuration from %s", config.File)
+		ulog.Logger.Infof("command: Loaded configuration from %s", config.File)
 	} else {
-		log.Infof("No configuration file loaded")
+		ulog.Logger.Info("command: No configuration file loaded")
 	}
 
-	log.SetLevelByString(config.LogLevel)
-	if len(config.LogFile) > 0 {
-		log.SetOutputByName(config.LogFile)
-		log.SetHighlighting(false)
-
-		if config.LogRotate == "hour" {
-			log.SetRotateByHour()
-		} else {
-			log.SetRotateByDay()
-		}
-	}
+	ulog.InitLogger(config.LogLevel, config.NodeName)
 
 	// Create the agent
 	if err := c.setupAgent(config); err != nil {
@@ -96,7 +88,8 @@ WAIT:
 	case <-c.ShutdownCh:
 		sig = os.Interrupt
 	}
-	log.Infof("Caught signal: %v", sig)
+
+	ulog.Logger.Infof("command: Caught signal: %v", sig)
 
 	// Check if this is a SIGHUP
 	if sig == syscall.SIGHUP {
@@ -121,7 +114,7 @@ WAIT:
 
 	// Attempt a graceful leave
 	gracefulCh := make(chan struct{})
-	log.Infof("Gracefully shutting down agent...")
+	ulog.Logger.Infof("command: Gracefully shutting down agent...")
 
 	// Wait for leave or another signal
 	select {
@@ -136,15 +129,21 @@ WAIT:
 
 // handleReload is invoked when we should reload our configs, e.g. SIGHUP
 func (c *AgentCommand) handleReload(config *uconf.Config) *uconf.Config {
-	log.Infof("Reloading configuration...")
+	ulog.Logger.Info("command: Reloading configuration...")
 	newConf := c.readConfig()
 	if newConf == nil {
-		log.Errorf(fmt.Sprintf("Failed to reload configs"))
+		ulog.Logger.Error("command: Failed to reload configs")
 		return config
 	}
 
 	// Change the log level
-	log.SetLevelByString(newConf.LogLevel)
+	level, err := logrus.ParseLevel(newConf.LogLevel)
+	if err != nil {
+		ulog.Logger.Error("command: Error parsing log level, using: info")
+		level = logrus.InfoLevel
+	}
+	ulog.Logger.Level = level
+
 	return newConf
 }
 
@@ -162,7 +161,7 @@ func (a *AgentCommand) readConfig() *uconf.Config {
 
 	// General options
 	flags.StringVar(&cmdConfig.File, "config", "/etc/udup/udup.conf", "")
-	flags.StringVar(&cmdConfig.LogLevel, "log-level", "info", "")
+	flags.StringVar(&cmdConfig.LogLevel, "log-level", "", "")
 	flags.StringVar(&cmdConfig.PidFile, "pid-file", "udup.pid", "")
 	flags.StringVar(&cmdConfig.BindAddr, "bind", "", "")
 	flags.StringVar(&cmdConfig.Region, "region", "", "")
@@ -185,7 +184,7 @@ func (a *AgentCommand) readConfig() *uconf.Config {
 	if cmdConfig.PidFile != "" {
 		f, err := os.Create(cmdConfig.PidFile)
 		if err != nil {
-			log.Fatalf("Unable to create pidfile: [%s]", err)
+			ulog.Logger.Fatalf("command: Unable to create pidfile: [%s]", err)
 		}
 
 		fmt.Fprintf(f, "%d\n", os.Getpid())
@@ -199,14 +198,14 @@ func (a *AgentCommand) readConfig() *uconf.Config {
 
 	current, err := uconf.LoadConfig(cmdConfig.File)
 	if err != nil {
-		log.Errorf("Error loading configuration from %s: [%s]", cmdConfig.File, err)
+		ulog.Logger.Errorf("command: Error loading configuration from %s: [%s]", cmdConfig.File, err)
 		return nil
 	}
 
 	// The user asked us to load some config here but we didn't find any,
 	// so we'll complain but continue.
 	if current == nil || reflect.DeepEqual(current, &uconf.Config{}) {
-		log.Infof("No configuration loaded from %s", cmdConfig.File)
+		ulog.Logger.Infof("command: No configuration loaded from %s", cmdConfig.File)
 	}
 
 	if config == nil {

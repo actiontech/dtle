@@ -20,6 +20,7 @@ import (
 	"github.com/hashicorp/consul/logger"
 	"github.com/hashicorp/consul/testutil"
 	"github.com/hashicorp/consul/types"
+	"github.com/hashicorp/consul/version"
 	"github.com/hashicorp/go-uuid"
 	"github.com/hashicorp/raft"
 )
@@ -37,18 +38,28 @@ const (
 	numPortsPerIndex
 )
 
+func init() {
+	version.Version = "0.8.0"
+}
+
 var offset uint64 = basePortNumber
 
 func nextConfig() *Config {
 	idx := int(atomic.AddUint64(&offset, numPortsPerIndex))
 	conf := DefaultConfig()
 
-	conf.Version = "a.b"
+	nodeID, err := uuid.GenerateUUID()
+	if err != nil {
+		panic(err)
+	}
+
+	conf.Version = version.Version
 	conf.VersionPrerelease = "c.d"
 	conf.AdvertiseAddr = "127.0.0.1"
 	conf.Bootstrap = true
 	conf.Datacenter = "dc1"
 	conf.NodeName = fmt.Sprintf("Node %d", idx)
+	conf.NodeID = types.NodeID(nodeID)
 	conf.BindAddr = "127.0.0.1"
 	conf.Ports.DNS = basePortNumber + idx + portOffsetDNS
 	conf.Ports.HTTP = basePortNumber + idx + portOffsetHTTP
@@ -77,7 +88,6 @@ func nextConfig() *Config {
 	cons.RaftConfig.HeartbeatTimeout = 40 * time.Millisecond
 	cons.RaftConfig.ElectionTimeout = 40 * time.Millisecond
 
-	cons.DisableCoordinates = false
 	cons.CoordinateUpdatePeriod = 100 * time.Millisecond
 	return conf
 }
@@ -310,6 +320,7 @@ func TestAgent_ReconnectConfigSettings(t *testing.T) {
 
 func TestAgent_NodeID(t *testing.T) {
 	c := nextConfig()
+	c.NodeID = ""
 	dir, agent := makeAgent(t, c)
 	defer os.RemoveAll(dir)
 	defer agent.Shutdown()
@@ -341,7 +352,7 @@ func TestAgent_NodeID(t *testing.T) {
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
-	c.NodeID = types.NodeID(newID)
+	c.NodeID = types.NodeID(strings.ToUpper(newID))
 	if err := agent.setupNodeID(c); err != nil {
 		t.Fatalf("err: %v", err)
 	}
@@ -361,7 +372,7 @@ func TestAgent_NodeID(t *testing.T) {
 	}
 
 	// Set a valid ID via the file.
-	if err := ioutil.WriteFile(fileID, []byte("adf4238a-882b-9ddc-4a9d-5b6758e4159e"), 0600); err != nil {
+	if err := ioutil.WriteFile(fileID, []byte("ADF4238a-882b-9ddc-4a9d-5b6758e4159e"), 0600); err != nil {
 		t.Fatalf("err: %v", err)
 	}
 	c.NodeID = ""

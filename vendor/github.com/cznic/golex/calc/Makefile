@@ -15,7 +15,7 @@ tokenizer.go: tokenizer.l
 	golex -o $@ $<
 
 calc.go: calc.y
-	go tool yacc -o $@ $<
+	goyacc -o $@ $<
 
 clean:
 	go clean

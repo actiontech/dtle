@@ -12,6 +12,7 @@ import (
 
 	"github.com/hashicorp/consul/command/base"
 	"github.com/hashicorp/consul/testutil"
+	"github.com/hashicorp/consul/version"
 	"github.com/mitchellh/cli"
 )
 
@@ -70,6 +71,7 @@ func TestRetryJoin(t *testing.T) {
 	}()
 
 	cmd := &Command{
+		Version:    version.Version,
 		ShutdownCh: shutdownCh,
 		Command:    baseCommand(new(cli.MockUi)),
 	}
@@ -102,7 +104,7 @@ func TestRetryJoin(t *testing.T) {
 		close(doneCh)
 	}()
 
-	testutil.WaitForResult(func() (bool, error) {
+	if err := testutil.WaitForResult(func() (bool, error) {
 		mem := agent.LANMembers()
 		if len(mem) != 2 {
 			return false, fmt.Errorf("bad: %#v", mem)
@@ -112,9 +114,9 @@ func TestRetryJoin(t *testing.T) {
 			return false, fmt.Errorf("bad (wan): %#v", mem)
 		}
 		return true, nil
-	}, func(err error) {
-		t.Fatalf(err.Error())
-	})
+	}); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestReadCliConfig(t *testing.T) {

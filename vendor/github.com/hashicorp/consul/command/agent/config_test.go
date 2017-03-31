@@ -163,6 +163,17 @@ func TestDecodeConfig(t *testing.T) {
 		t.Fatalf("bad: %#v", config)
 	}
 
+	// Deprecated RPC configs - TODO: remove this in a future release
+	input = `{"ports": {"rpc": 1234}}`
+	config, err = DecodeConfig(bytes.NewReader([]byte(input)))
+	if err != nil {
+		t.Fatalf("err: %s", err)
+	}
+
+	if config.Ports.RPC != 1234 {
+		t.Fatalf("bad: %#v", config)
+	}
+
 	// Serf configs
 	input = `{"ports": {"serf_lan": 1000, "serf_wan": 2000}}`
 	config, err = DecodeConfig(bytes.NewReader([]byte(input)))
@@ -736,9 +747,9 @@ func TestDecodeConfig(t *testing.T) {
 	}
 
 	// ACL flag for Consul version 0.8 features (broken out since we will
-	// eventually remove this). We first verify this is opt-out.
+	// eventually remove this).
 	config = DefaultConfig()
-	if *config.ACLEnforceVersion8 != false {
+	if *config.ACLEnforceVersion8 != true {
 		t.Fatalf("bad: %#v", config)
 	}
 
@@ -772,14 +783,19 @@ func TestDecodeConfig(t *testing.T) {
 		t.Fatalf("bad: %#v", config)
 	}
 
-	// remote exec
-	input = `{"disable_remote_exec": true}`
+	// Remote exec is disabled by default.
+	config = DefaultConfig()
+	if *config.DisableRemoteExec != true {
+		t.Fatalf("bad: %#v", config)
+	}
+
+	// Test re-enabling remote exec.
+	input = `{"disable_remote_exec": false}`
 	config, err = DecodeConfig(bytes.NewReader([]byte(input)))
 	if err != nil {
 		t.Fatalf("err: %s", err)
 	}
-
-	if !config.DisableRemoteExec {
+	if *config.DisableRemoteExec != false {
 		t.Fatalf("bad: %#v", config)
 	}
 
@@ -920,6 +936,17 @@ func TestDecodeConfig(t *testing.T) {
 		t.Fatalf("bad: %#v", config)
 	}
 	if config.Addresses.HTTPS != "127.0.0.1" {
+		t.Fatalf("bad: %#v", config)
+	}
+
+	// RPC Addresses - TODO: remove in a future release
+	input = `{"addresses": {"rpc": "1.2.3.4"}}`
+	config, err = DecodeConfig(bytes.NewReader([]byte(input)))
+	if err != nil {
+		t.Fatalf("err: %s", err)
+	}
+
+	if config.Addresses.RPC != "1.2.3.4" {
 		t.Fatalf("bad: %#v", config)
 	}
 
@@ -1103,13 +1130,35 @@ func TestDecodeConfig_Performance(t *testing.T) {
 }
 
 func TestDecodeConfig_Autopilot(t *testing.T) {
-	input := `{"autopilot": { "cleanup_dead_servers": true }}`
+	input := `{"autopilot": {
+	  "cleanup_dead_servers": true,
+	  "last_contact_threshold": "100ms",
+	  "max_trailing_logs": 10,
+	  "server_stabilization_time": "10s",
+	  "redundancy_zone_tag": "az",
+	  "disable_upgrade_migration": true
+	 }}`
 	config, err := DecodeConfig(bytes.NewReader([]byte(input)))
 	if err != nil {
 		t.Fatalf("err: %s", err)
 	}
 	if config.Autopilot.CleanupDeadServers == nil || !*config.Autopilot.CleanupDeadServers {
-		t.Fatalf("bad: cleanup_dead_servers isn't set: %#v", config)
+		t.Fatalf("bad: %#v", config)
+	}
+	if config.Autopilot.LastContactThreshold == nil || *config.Autopilot.LastContactThreshold != 100*time.Millisecond {
+		t.Fatalf("bad: %#v", config)
+	}
+	if config.Autopilot.MaxTrailingLogs == nil || *config.Autopilot.MaxTrailingLogs != 10 {
+		t.Fatalf("bad: %#v", config)
+	}
+	if config.Autopilot.ServerStabilizationTime == nil || *config.Autopilot.ServerStabilizationTime != 10*time.Second {
+		t.Fatalf("bad: %#v", config)
+	}
+	if config.Autopilot.RedundancyZoneTag != "az" {
+		t.Fatalf("bad: %#v", config)
+	}
+	if config.Autopilot.DisableUpgradeMigration == nil || !*config.Autopilot.DisableUpgradeMigration {
+		t.Fatalf("bad: %#v", config)
 	}
 }
 
@@ -1629,7 +1678,10 @@ func TestMergeConfig(t *testing.T) {
 		SkipLeaveOnInt: Bool(true),
 		RaftProtocol:   3,
 		Autopilot: Autopilot{
-			CleanupDeadServers: Bool(true),
+			CleanupDeadServers:      Bool(true),
+			LastContactThreshold:    Duration(time.Duration(10)),
+			MaxTrailingLogs:         Uint64(10),
+			ServerStabilizationTime: Duration(time.Duration(100)),
 		},
 		EnableDebug:            true,
 		VerifyIncoming:         true,
@@ -1676,7 +1728,7 @@ func TestMergeConfig(t *testing.T) {
 				"handler": "foobar",
 			},
 		},
-		DisableRemoteExec: true,
+		DisableRemoteExec: Bool(true),
 		Telemetry: Telemetry{
 			StatsiteAddr:    "127.0.0.1:7250",
 			StatsitePrefix:  "stats_prefix",

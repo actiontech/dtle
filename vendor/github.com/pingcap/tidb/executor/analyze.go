@@ -20,10 +20,8 @@ import (
 	"github.com/pingcap/tidb/ast"
 	"github.com/pingcap/tidb/context"
 	"github.com/pingcap/tidb/expression"
-	"github.com/pingcap/tidb/meta"
 	"github.com/pingcap/tidb/model"
-	"github.com/pingcap/tidb/plan/statistics"
-	"github.com/pingcap/tidb/plan/statscache"
+	"github.com/pingcap/tidb/statistics"
 	"github.com/pingcap/tidb/util/types"
 )
 
@@ -97,11 +95,9 @@ func (e *AnalyzeExec) Next() (*Row, error) {
 }
 
 func (e *AnalyzeExec) buildStatisticsAndSaveToKV(count int64, columnSamples [][]types.Datum, idxRS []ast.RecordSet, pkRS ast.RecordSet) error {
-	txn := e.ctx.Txn()
 	statBuilder := &statistics.Builder{
-		Sc:            e.ctx.GetSessionVars().StmtCtx,
+		Ctx:           e.ctx,
 		TblInfo:       e.tblInfo,
-		StartTS:       int64(txn.StartTS()),
 		Count:         count,
 		NumBuckets:    defaultBucketCount,
 		ColumnSamples: columnSamples,
@@ -115,17 +111,8 @@ func (e *AnalyzeExec) buildStatisticsAndSaveToKV(count int64, columnSamples [][]
 	if err != nil {
 		return errors.Trace(err)
 	}
-	statscache.SetStatisticsTableCache(e.tblInfo.ID, t)
-	tpb, err := t.ToPB()
-	if err != nil {
-		return errors.Trace(err)
-	}
-	m := meta.NewMeta(txn)
-	err = m.SetTableStats(e.tblInfo.ID, tpb)
-	if err != nil {
-		return errors.Trace(err)
-	}
-	return nil
+	err = t.SaveToStorage(e.ctx)
+	return errors.Trace(err)
 }
 
 // collectSamples collects sample from the result set, using Reservoir Sampling algorithm.

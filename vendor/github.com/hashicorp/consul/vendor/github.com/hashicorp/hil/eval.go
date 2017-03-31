@@ -77,7 +77,7 @@ func Eval(root ast.Node, config *EvalConfig) (EvaluationResult, error) {
 			Value: output,
 		})
 		return EvaluationResult{
-			Type: TypeMap,
+			Type:  TypeMap,
 			Value: val,
 		}, err
 	case ast.TypeString:

@@ -19,12 +19,13 @@ two versions of Go, currently: 1.6 and 1.7.
 
 * KISS;
 * Fast;
-* Small API, if its easy to code in Go, don't make a function for it.
+* Small API. If it's easy to code in Go, don't make a function for it.
 
 # Users
 
 A not-so-up-to-date-list-that-may-be-actually-current:
 
+* https://github.com/coredns/coredns
 * https://cloudflare.com
 * https://github.com/abh/geodns
 * http://www.statdns.com/
@@ -56,6 +57,7 @@ A not-so-up-to-date-list-that-may-be-actually-current:
 * https://github.com/fffaraz/microdns
 * http://quilt.io
 * https://github.com/ipdcode/hades (JD.COM)
+* https://github.com/StackExchange/dnscontrol/
 
 Send pull request if you want to be listed here.
 

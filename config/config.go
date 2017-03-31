@@ -16,9 +16,7 @@ const (
 
 // Config is the configuration for the Udup agent.
 type Config struct {
-	LogLevel  string `mapstructure:"log_level"`
-	LogFile   string `mapstructure:"log_file"`
-	LogRotate string `mapstructure:"log_rotate"`
+	LogLevel string `mapstructure:"log_level"`
 	// Region is the region this agent is in. Defaults to global.
 	Region string
 	// Datacenter is the datacenter this agent is in. Defaults to dc1
@@ -126,10 +124,11 @@ func DefaultConfig() *Config {
 	return &Config{
 		NodeName:   hostname,
 		File:       "udup.conf",
-		LogLevel:   "INFO",
+		LogLevel:   "info",
 		Region:     "global",
 		Datacenter: "dc1",
 		BindAddr:   "0.0.0.0",
+		PidFile:    "udup.pid",
 		Consul:     DefaultConsulConfig(),
 		Client: &ClientConfig{
 			Join: []string{},
@@ -185,14 +184,6 @@ func (c *Config) Merge(b *Config) *Config {
 
 	if b.LogLevel != "" {
 		result.LogLevel = b.LogLevel
-	}
-
-	if b.LogFile != "" {
-		result.LogFile = b.LogFile
-	}
-
-	if b.LogRotate != "" {
-		result.LogRotate = b.LogRotate
 	}
 
 	if b.Region != "" {

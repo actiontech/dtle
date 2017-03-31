@@ -78,7 +78,7 @@ func (mw *Middleware) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	if len(mw.Wares) < 1 {
 		return
 	}
-	
+
 	next := mw.Handler()
 
 	//Finally, serve back up the chain
