@@ -81,17 +81,16 @@ type DriverConfig struct {
 	NodeName string `json:"node_name,omitempty"`
 	Running  bool   `json:"running"`
 	//Ref:http://dev.mysql.com/doc/refman/5.7/en/replication-options-slave.html#option_mysqld_replicate-do-table
-	ReplicateDoTable []TableName       `json:"replicate_do_table"`
-	ReplicateDoDb    []string          `json:"replicate_do_db"`
-	MaxRetries       int64             `json:"max_retries"`
-	Gtid             string            `json:"gtid"`
-	Driver           string            `json:"driver"`
-	ServerID         uint32            `json:"server_id"`
-	NatsAddr         string            `json:"nats_addr"`
-	WorkerCount      int               `json:"worker_count"`
-	ConnCfg          *ConnectionConfig `json:"conn_cfg"`
-	ErrCh            chan error        `json:"-"`
-	GtidCh           chan string       `json:"-"`
+	ReplicateDoDb []TableName       `json:"replicate_do_db"`
+	MaxRetries    int64             `json:"max_retries"`
+	Gtid          string            `json:"gtid"`
+	Driver        string            `json:"driver"`
+	ServerID      uint32            `json:"server_id"`
+	NatsAddr      string            `json:"nats_addr"`
+	WorkerCount   int               `json:"worker_count"`
+	ConnCfg       *ConnectionConfig `json:"conn_cfg"`
+	ErrCh         chan error        `json:"-"`
+	GtidCh        chan string       `json:"-"`
 }
 
 // ConnectionConfig is the DB configuration.
@@ -112,8 +111,8 @@ func (c *ConnectionConfig) String() string {
 // TableName is the table configuration
 // slave restrict replication to a given table
 type TableName struct {
-	Schema string `mapstructure:"db_name"`
-	Name   string `mapstructure:"tbl_name"`
+	Schema string `json:"db_name"`
+	Name   string `json:"tb_name"`
 }
 
 // DefaultConfig is a the baseline configuration for Udup

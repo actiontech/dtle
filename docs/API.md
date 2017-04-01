@@ -286,11 +286,16 @@ A Job represents a scheduled task to execute.
 ``` json
 {
     "name": "job1",
+    "failover": false,
     "processors": {
         "src": {
-        	"node_name": "node1",
-            "replicate_do_db": [],
-            "replicate_do_table": [],
+            "node_name": "node2",
+            "replicate_do_db": [
+                {
+                    "db_name": "s1",
+                    "tb_name": "dbtest"
+                }
+            ],
             "driver": "mysql",
             "conn_cfg": {
                 "host": "192.168.99.100",
@@ -300,7 +305,7 @@ A Job represents a scheduled task to execute.
             }
         },
         "dest": {
-        	"node_name": "node2",
+            "node_name": "node1",
             "driver": "mysql",
             "gtid": "",
             "worker_count": 1,

@@ -93,8 +93,6 @@ func (tb *TxBuilder) Run() {
 			return
 		}
 
-		//ulog.Logger.Debugf("TB et:%v<- %+v", event.Header.EventType, event)
-
 		if tb.currentTx != nil {
 			tb.currentTx.eventCount++
 			tb.currentTx.EventSize += uint64(event.Header.EventSize)
@@ -195,8 +193,8 @@ func (tb *TxBuilder) onQueryEvent(event *BinlogEvent) error {
 			for _, sql := range sqls {
 				if tb.skipQueryDDL(sql, string(evt.Schema)) {
 					ulog.Logger.WithFields(logrus.Fields{
-						"schema": fmt.Sprintf("%s",evt.Schema),
-						"sql":    fmt.Sprintf("%s",sql),
+						"schema": fmt.Sprintf("%s", evt.Schema),
+						"sql":    fmt.Sprintf("%s", sql),
 					}).Debug("builder: skip query-ddl-sql")
 					continue
 				}
@@ -222,8 +220,8 @@ func (tb *TxBuilder) onTableMapEvent(event *BinlogEvent) error {
 	ev := event.Evt.(*binlog.TableMapEvent)
 	if tb.skipRowEvent(string(ev.Schema), string(ev.Table)) {
 		ulog.Logger.WithFields(logrus.Fields{
-			"schema": fmt.Sprintf("%s",ev.Schema),
-			"table":  fmt.Sprintf("%s",ev.Table),
+			"schema": fmt.Sprintf("%s", ev.Schema),
+			"table":  fmt.Sprintf("%s", ev.Table),
 		}).Debug("builder: skip TableMapEvent")
 		return nil
 	}
@@ -241,8 +239,8 @@ func (tb *TxBuilder) onRowEvent(event *BinlogEvent) error {
 
 	if tb.skipRowEvent(string(ev.Table.Schema), string(ev.Table.Table)) {
 		ulog.Logger.WithFields(logrus.Fields{
-			"schema": fmt.Sprintf("%s",ev.Table.Schema),
-			"table":  fmt.Sprintf("%s",ev.Table.Table),
+			"schema": fmt.Sprintf("%s", ev.Table.Schema),
+			"table":  fmt.Sprintf("%s", ev.Table.Table),
 		}).Debug("builder: skip RowsEvent")
 		return nil
 	}
@@ -303,8 +301,6 @@ func (tb *TxBuilder) onCommit(lastEvent *BinlogEvent) {
 	tx.EndEventFile = lastEvent.BinlogFile
 	tx.EndEventPos = lastEvent.RealPos
 
-	//ulog.Logger.Debugf("TB -> %+v", tb.currentTx)
-
 	tb.TxChan <- tb.currentTx
 
 	tb.currentTx = nil
@@ -313,15 +309,6 @@ func (tb *TxBuilder) onCommit(lastEvent *BinlogEvent) {
 
 func newTxWithoutGTIDError(event *BinlogEvent) error {
 	return fmt.Errorf("transaction without GTID_EVENT %v@%v", event.BinlogFile, event.RealPos)
-}
-
-func (tb *TxBuilder) matchDB(patternDBS []string, a string) bool {
-	for _, b := range patternDBS {
-		if tb.matchString(b, a) {
-			return true
-		}
-	}
-	return false
 }
 
 func (tb *TxBuilder) matchString(pattern string, t string) bool {
@@ -359,7 +346,7 @@ func (tb *TxBuilder) matchTable(patternTBS []uconf.TableName, t uconf.TableName)
 			}
 		}
 
-		if ptb == t {
+		if (ptb.Schema == t.Schema || ptb.Schema == "") && (ptb.Name == t.Name || ptb.Name == "") {
 			return true
 		}
 	}
@@ -378,17 +365,12 @@ func (tb *TxBuilder) skipQueryDDL(sql string, schema string) bool {
 	case "sys", "mysql", "information_schema", "performance_schema":
 		return true
 	default:
-		if len(tb.Cfg.ReplicateDoTable) > 0 || len(tb.Cfg.ReplicateDoDb) > 0 {
+		if len(tb.Cfg.ReplicateDoDb) > 0 {
 			//if table in target Table, do this sql
 			if t.Schema == "" {
 				t.Schema = schema
 			}
-			if tb.matchTable(tb.Cfg.ReplicateDoTable, t) {
-				return false
-			}
-
-			// if  schema in target DB, do this sql
-			if tb.matchDB(tb.Cfg.ReplicateDoDb, t.Schema) {
+			if tb.matchTable(tb.Cfg.ReplicateDoDb, t) {
 				return false
 			}
 			return true
@@ -402,20 +384,14 @@ func (tb *TxBuilder) skipRowEvent(schema string, table string) bool {
 	case "sys", "mysql", "information_schema", "performance_schema":
 		return true
 	default:
-		if len(tb.Cfg.ReplicateDoTable) > 0 || len(tb.Cfg.ReplicateDoDb) > 0 {
+		if len(tb.Cfg.ReplicateDoDb) > 0 {
 			table = strings.ToLower(table)
 			//if table in tartget Table, do this event
-			for _, d := range tb.Cfg.ReplicateDoTable {
-				if tb.matchString(d.Schema, schema) && tb.matchString(d.Name, table) {
+			for _, d := range tb.Cfg.ReplicateDoDb {
+				if (tb.matchString(d.Schema, schema) || d.Schema == "") && (tb.matchString(d.Name, table) || d.Name == "") {
 					return false
 				}
 			}
-
-			//if schema in target DB, do this event
-			if tb.matchDB(tb.Cfg.ReplicateDoDb, schema) && len(tb.Cfg.ReplicateDoDb) > 0 {
-				return false
-			}
-
 			return true
 		}
 	}
