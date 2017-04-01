@@ -138,7 +138,7 @@ func (a *Applier) startApplierWorker(i int, db *gosql.DB) {
 			break
 		}
 
-		a.cfg.GtidCh <- fmt.Sprintf("%s:1-%d", tx.SID, tx.GNO)
+		a.cfg.GtidCh <- fmt.Sprintf("%s:%d", tx.SID, tx.GNO)
 	}
 }
 
@@ -148,7 +148,7 @@ func (a *Applier) initNatSubClient() (err error) {
 		ulog.Logger.WithFields(logrus.Fields{
 			"err":         err,
 			"nats_server": fmt.Sprintf("nats://%s", a.cfg.NatsAddr),
-		}).Error("extractor: Can't connect nats server.\nMake sure a NATS Streaming Server is running.")
+		}).Error("applier: Can't connect nats server.\nMake sure a NATS Streaming Server is running.")
 	}
 	a.stanConn = sc
 	return nil

@@ -86,7 +86,7 @@ func (s *Store) GetJobs() ([]*Job, error) {
 	res, err := s.Client.List(keyspace + "/jobs/")
 	if err != nil {
 		if err == store.ErrKeyNotFound {
-			ulog.Logger.Debug("No jobs found")
+			ulog.Logger.Debug("store: No jobs found")
 			return []*Job{}, nil
 		}
 		return nil, err
@@ -110,7 +110,7 @@ func (s *Store) GetJobByNode(nodeName string) (*JobResponse, error) {
 	res, err := s.Client.List(keyspace + "/jobs/")
 	if err != nil {
 		if err == store.ErrKeyNotFound {
-			ulog.Logger.Debug("No jobs found")
+			ulog.Logger.Debug("store: No jobs found")
 			return &JobResponse{}, nil
 		}
 		return nil, err

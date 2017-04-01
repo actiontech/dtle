@@ -8,7 +8,7 @@ var Logger = logrus.NewEntry(logrus.New())
 
 func InitLogger(logLevel string, node string) {
 	formattedLogger := logrus.New()
-	formattedLogger.Formatter = &logrus.TextFormatter{FullTimestamp: true}
+	formattedLogger.Formatter = &logrus.TextFormatter{FullTimestamp: false}
 
 	level, err := logrus.ParseLevel(logLevel)
 	if err != nil {
