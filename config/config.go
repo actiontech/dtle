@@ -26,6 +26,7 @@ type Config struct {
 	// BindAddr is the address on which all of nomad's services will
 	// be bound. If not specified, this defaults to 127.0.0.1.
 	BindAddr              string `mapstructure:"bind_addr"`
+	AdvertiseAddr         string `mapstructure:"advertise"`
 	Interface             string
 	ReconnectInterval     time.Duration `mapstructure:"reconnect_interval"`
 	ReconnectTimeout      time.Duration `mapstructure:"reconnect_timeout"`
@@ -196,6 +197,10 @@ func (c *Config) Merge(b *Config) *Config {
 
 	if b.BindAddr != "" {
 		result.BindAddr = b.BindAddr
+	}
+
+	if b.AdvertiseAddr != "" {
+		result.AdvertiseAddr = b.AdvertiseAddr
 	}
 
 	if b.Interface != "" {

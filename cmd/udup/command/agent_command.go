@@ -34,8 +34,7 @@ type AgentCommand struct {
 func (c *AgentCommand) setupAgent(config *uconf.Config) error {
 	agent, err := uagt.NewAgent(config)
 	if err != nil {
-		//logger.Errorf("Error starting agent: [%s]", err)
-		ulog.Logger.Errorf("command: Error starting agent: [%s]", err)
+		ulog.Logger.WithError(err).Error("command: Starting agent error")
 		return err
 	}
 	c.Agent = agent

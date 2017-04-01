@@ -76,6 +76,7 @@ func parseConfig(result *Config, list *ast.ObjectList) error {
 		"datacenter",
 		"interface",
 		"bind_addr",
+		"advertise",
 		"rpc_port",
 		"server",
 		"client",

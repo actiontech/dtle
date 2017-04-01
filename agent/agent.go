@@ -256,12 +256,19 @@ func (a *Agent) setupSerf() (*serf.Serf, error) {
 
 	serfAddr, err := net.ResolveTCPAddr("tcp", a.config.BindAddr)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse Serf address %q: %v", a.config.BindAddr, err)
+		return nil, fmt.Errorf("failed to parse serf address %q: %v", a.config.BindAddr, err)
 	}
 	serfConfig.MemberlistConfig.BindAddr = serfAddr.IP.String()
 	serfConfig.MemberlistConfig.BindPort = serfAddr.Port
-	serfConfig.MemberlistConfig.AdvertiseAddr = serfAddr.IP.String()
-	serfConfig.MemberlistConfig.AdvertisePort = serfAddr.Port
+
+	if a.config.AdvertiseAddr != "" {
+		advertise, err := net.ResolveTCPAddr("tcp", a.config.AdvertiseAddr)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse advertise address %q: %v", a.config.AdvertiseAddr, err)
+		}
+		serfConfig.MemberlistConfig.AdvertiseAddr = advertise.IP.String()
+		serfConfig.MemberlistConfig.AdvertisePort = advertise.Port
+	}
 
 	serfConfig.NodeName = a.config.NodeName
 	serfConfig.Init()

@@ -76,7 +76,7 @@ type BinlogSyncer struct {
 
 // NewBinlogSyncer creates the BinlogSyncer with cfg.
 func NewBinlogSyncer(cfg *BinlogSyncerConfig) *BinlogSyncer {
-	log.Infof("create BinlogSyncer with config %v", cfg)
+	//log.Infof("create BinlogSyncer with config %v", cfg)
 
 	b := new(BinlogSyncer)
 
@@ -103,7 +103,7 @@ func (b *BinlogSyncer) close() {
 		return
 	}
 
-	log.Info("syncer is closing...")
+	//log.Info("syncer is closing...")
 
 	b.running = false
 	b.cancel()
@@ -118,7 +118,7 @@ func (b *BinlogSyncer) close() {
 		b.c.Close()
 	}
 
-	log.Info("syncer is closed")
+	//log.Info("syncer is closed")
 }
 
 func (b *BinlogSyncer) isClosed() bool {
@@ -135,7 +135,7 @@ func (b *BinlogSyncer) registerSlave() error {
 		b.c.Close()
 	}
 
-	log.Infof("register slave for master server %s:%d", b.cfg.Host, b.cfg.Port)
+	//log.Infof("register slave for master server %s:%d", b.cfg.Host, b.cfg.Port)
 	var err error
 	b.c, err = client.Connect(fmt.Sprintf("%s:%d", b.cfg.Host, b.cfg.Port), b.cfg.User, b.cfg.Password, "", func(c *client.Conn) {
 		c.TLSConfig = b.cfg.TLSConfig
@@ -242,7 +242,7 @@ func (b *BinlogSyncer) startDumpStream() *BinlogStreamer {
 
 // StartSync starts syncing from the `pos` position.
 func (b *BinlogSyncer) StartSync(pos Position) (*BinlogStreamer, error) {
-	log.Infof("begin to sync binlog from position %s", pos)
+	//log.Infof("begin to sync binlog from position %s", pos)
 
 	b.m.Lock()
 	defer b.m.Unlock()
@@ -260,7 +260,7 @@ func (b *BinlogSyncer) StartSync(pos Position) (*BinlogStreamer, error) {
 
 // StartSyncGTID starts syncing from the `gset` GTIDSet.
 func (b *BinlogSyncer) StartSyncGTID(gset GTIDSet) (*BinlogStreamer, error) {
-	log.Infof("begin to sync binlog from GTID %s", gset)
+	//log.Infof("begin to sync binlog from GTID %s", gset)
 
 	b.m.Lock()
 	defer b.m.Unlock()
@@ -569,7 +569,7 @@ func (b *BinlogSyncer) parseEvent(s *BinlogStreamer, data []byte) error {
 	if re, ok := e.Event.(*RotateEvent); ok {
 		b.nextPos.Name = string(re.NextLogName)
 		b.nextPos.Pos = uint32(re.Position)
-		log.Infof("rotate to %s", b.nextPos)
+		//log.Infof("rotate to %s", b.nextPos)
 	}
 
 	needStop := false
