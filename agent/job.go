@@ -51,6 +51,9 @@ type Job struct {
 	// Job status
 	Status JobStatus `json:"status"`
 
+	// Tags of the target servers to run this job against.
+	Tags map[string]string `json:"tags"`
+
 	// Pointer to the calling agent.
 	agent *Agent `json:"-"`
 

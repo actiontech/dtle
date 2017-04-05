@@ -5,10 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"math/rand"
 	"net"
 	"net/http"
 	"net/rpc"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -390,7 +392,7 @@ func (a *Agent) eventLoop() {
 						switch e.EventType() {
 						case serf.EventMemberLeave, serf.EventMemberFailed:
 							if err := a.enqueueJobs(m.Name); err != nil {
-								ulog.Logger.Errorf("agent: Error enqueue job command,err:%v", err)
+								ulog.Logger.WithError(err).Error("agent: Error enqueue job command")
 							}
 						default:
 							//ignore
@@ -424,8 +426,7 @@ func (a *Agent) eventLoop() {
 
 						go func() {
 							if err := a.startJob(job, k); err != nil {
-								ulog.Logger.WithError(err).Errorf("agent: Error start job command,err:%v", err)
-								ulog.Logger.WithField("query", QueryStartJob).Fatalf("agent: Error start job command,err:%v", err)
+								ulog.Logger.WithError(err).Error("agent: Error start job command")
 							}
 						}()
 
@@ -454,8 +455,7 @@ func (a *Agent) eventLoop() {
 
 						go func() {
 							if err := a.stopJob(job, k); err != nil {
-								ulog.Logger.WithError(err).Errorf("agent: Error stop job command,err:%v", err)
-								ulog.Logger.WithField("query", QueryStopJob).Fatalf("agent: Error stop job command,err:%v", err)
+								ulog.Logger.WithError(err).Error("agent: Error stop job command")
 							}
 						}()
 
@@ -484,8 +484,7 @@ func (a *Agent) eventLoop() {
 
 						go func() {
 							if err := a.enqueueJob(job, k); err != nil {
-								ulog.Logger.WithError(err).Errorf("agent: Error enqueue job command,err:%v", err)
-								ulog.Logger.WithField("query", QueryEnqueueJob).Fatalf("agent: Error enqueue job command,err:%v", err)
+								ulog.Logger.WithError(err).Error("agent: Error enqueue job command")
 							}
 						}()
 
@@ -645,6 +644,59 @@ func (a *Agent) runForElection() {
 			return
 		}
 	}
+}
+
+func (a *Agent) processFilteredNode(job *Job, host string) (string, map[string]string, error) {
+	var nodes []string
+	tags := make(map[string]string)
+
+	// Actually copy the map
+	for key, val := range job.Tags {
+		tags[key] = val
+	}
+
+	if len(tags) > 0 {
+		for jtk, jtv := range tags {
+			var tc []string
+			if tc = strings.Split(jtv, ":"); len(tc) == 2 {
+				tv := tc[0]
+
+				// Set original tag to clean tag
+				tags[jtk] = tv
+
+				count, err := strconv.Atoi(tc[1])
+				if err != nil {
+					return "", nil, err
+				}
+
+				for _, member := range a.serf.Members() {
+					if member.Status == serf.StatusAlive {
+						for mtk, mtv := range member.Tags {
+							if mtk == jtk && mtv == tv {
+								if string(member.Addr) == host {
+									return member.Name, member.Tags, nil
+								}
+								if len(nodes) < count {
+									nodes = append(nodes, member.Name)
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	} else {
+		for _, member := range a.serf.Members() {
+			if member.Status == serf.StatusAlive {
+				if fmt.Sprintf("%s", member.Addr) == host {
+					return member.Name, member.Tags, nil
+				}
+				nodes = append(nodes, member.Name)
+			}
+		}
+	}
+
+	return nodes[rand.Intn(len(nodes))], tags, nil
 }
 
 // This function is called when a client request the RPCAddress

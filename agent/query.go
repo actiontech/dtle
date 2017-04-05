@@ -30,9 +30,27 @@ type RunQueryParam struct {
 // to run a Job.
 func (j *Job) StartJobQuery(k string) {
 	var params *serf.QueryParam
+
+	if j.Processors[k].NodeName == "" {
+		filterNode, _, err := j.agent.processFilteredNode(j, j.Processors[k].ConnCfg.Host)
+		if err != nil {
+			ulog.Logger.WithFields(logrus.Fields{
+				"job": j.Name,
+				"err": err.Error(),
+			}).Fatal("agent: Error processing filtered nodes")
+		}
+		ulog.Logger.Info("agent: Filtered node to run: ", filterNode)
+		j.Processors[k].NodeName = filterNode
+
+		if err := j.agent.store.UpsertJob(j); err != nil {
+			ulog.Logger.Fatal(err)
+		}
+	}
+
 	params = &serf.QueryParam{
 		FilterNodes: []string{j.Processors[k].NodeName},
-		RequestAck:  true,
+		//FilterTags:  filterTags,
+		RequestAck: true,
 	}
 
 	rqp := &RunQueryParam{
