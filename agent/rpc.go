@@ -9,8 +9,8 @@ import (
 	"github.com/hashicorp/serf/serf"
 
 	uconf "udup/config"
+	"udup/internal/client/plugins"
 	ulog "udup/logger"
-	"udup/plugins"
 )
 
 type RPCServer struct {

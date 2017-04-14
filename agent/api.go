@@ -13,8 +13,8 @@ import (
 	"github.com/docker/libkv/store"
 	"github.com/gorilla/mux"
 
+	"udup/internal/client/plugins"
 	ulog "udup/logger"
-	"udup/plugins"
 )
 
 const apiPathPrefix = "v1"

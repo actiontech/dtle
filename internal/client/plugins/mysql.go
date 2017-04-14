@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	uconf "udup/config"
-	umysql "udup/plugins/mysql"
+	umysql "udup/internal/client/plugins/mysql"
 )
 
 type MySQLDriver struct {

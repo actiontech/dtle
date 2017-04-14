@@ -13,8 +13,8 @@ import (
 	binlog "github.com/siddontang/go-mysql/replication"
 
 	uconf "udup/config"
+	usql "udup/internal/client/plugins/mysql/sql"
 	ulog "udup/logger"
-	usql "udup/plugins/mysql/sql"
 )
 
 const (

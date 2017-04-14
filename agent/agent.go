@@ -22,9 +22,9 @@ import (
 	stand "github.com/nats-io/nats-streaming-server/server"
 
 	uconf "udup/config"
+	"udup/internal/client/plugins"
+	uutil "udup/internal/client/plugins/mysql/util"
 	ulog "udup/logger"
-	"udup/plugins"
-	uutil "udup/plugins/mysql/util"
 )
 
 var (

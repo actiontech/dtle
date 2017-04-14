@@ -14,9 +14,9 @@ import (
 	gomysql "github.com/siddontang/go-mysql/mysql"
 
 	uconf "udup/config"
+	ubinlog "udup/internal/client/plugins/mysql/binlog"
+	usql "udup/internal/client/plugins/mysql/sql"
 	ulog "udup/logger"
-	ubinlog "udup/plugins/mysql/binlog"
-	usql "udup/plugins/mysql/sql"
 )
 
 const (
