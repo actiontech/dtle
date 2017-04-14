@@ -35,26 +35,29 @@ func main() {
 		HelpFunc: cli.BasicHelpFunc("Udup"),
 	}
 
-	ui := &cli.BasicUi{
-		Reader:      os.Stdin,
-		Writer:      os.Stdout,
-		ErrorWriter: os.Stderr,
+	meta := Meta{}
+	if meta.Ui == nil {
+		meta.Ui = &cli.BasicUi{
+			Reader:      os.Stdin,
+			Writer:      os.Stdout,
+			ErrorWriter: os.Stderr,
+		}
 	}
 
 	c.Commands = map[string]cli.CommandFactory{
 		"agent": func() (cli.Command, error) {
-			return &command.AgentCommand{
-				Ui:         ui,
+			return &agent.Command{
 				Version:    Version,
+				Ui:         meta.Ui,
 				ShutdownCh: make(chan struct{}),
 			}, nil
 		},
 		"version": func() (cli.Command, error) {
-			return &command.VersionCommand{
+			return &VersionCommand{
 				Version: Version,
 				Commit:  GitCommit,
 				Branch:  GitBranch,
-				Ui:      ui,
+				Ui:      meta.Ui,
 			}, nil
 		},
 	}
