@@ -244,18 +244,18 @@ General Options (clients and servers):
 
   -config=<path>
     The path to either a single config file or a directory of config
-    files to use for configuring the Nomad agent. This option may be
+    files to use for configuring the Udup agent. This option may be
     specified multiple times. If multiple config files are used, the
     values from each will be merged together. During merging, values
     from files found later in the list are merged over values from
     previously parsed files.
 
   -dc=<datacenter>
-    The name of the datacenter this Nomad agent is a member of. By
+    The name of the datacenter this Udup agent is a member of. By
     default this is set to "dc1".
 
   -log-level=<level>
-    Specify the verbosity level of Nomad's logs. Valid values include
+    Specify the verbosity level of Udup's logs. Valid values include
     DEBUG, INFO, and WARN, in decreasing order of verbosity. The
     default is INFO.
 
@@ -265,7 +265,7 @@ General Options (clients and servers):
     the current hostname of the machine.
 
   -region=<region>
-    Name of the region the Nomad agent will be a member of. By default
+    Name of the region the Udup agent will be a member of. By default
     this value is set to "global".
 
 Server Options:

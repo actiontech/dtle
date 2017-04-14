@@ -19,7 +19,7 @@ const (
 )
 
 // Meta contains the meta-options and functionality that nearly every
-// Nomad command inherits.
+// Udup command inherits.
 type Meta struct {
 	Ui cli.Ui
 

@@ -23,7 +23,7 @@ type Config struct {
 	Datacenter string
 	// NodeName is the name we register as. Defaults to hostname.
 	NodeName string `mapstructure:"name"`
-	// BindAddr is the address on which all of nomad's services will
+	// BindAddr is the address on which all of udup's services will
 	// be bound. If not specified, this defaults to 127.0.0.1.
 	BindAddr              string `mapstructure:"bind_addr"`
 	AdvertiseAddr         string `mapstructure:"advertise"`
@@ -139,7 +139,7 @@ func DefaultConfig() *Config {
 	}
 }
 
-// DefaultConsulConfig() returns the canonical defaults for the Nomad
+// DefaultConsulConfig() returns the canonical defaults for the Udup
 // `consul` configuration.
 func DefaultConsulConfig() *ConsulConfig {
 	return &ConsulConfig{
