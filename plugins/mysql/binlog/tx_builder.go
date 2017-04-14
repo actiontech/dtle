@@ -18,7 +18,7 @@ import (
 )
 
 const (
-	EventsChannelBufferSize = 200
+	EventsChannelBufferSize = 500000
 )
 
 type Transaction_t struct {
