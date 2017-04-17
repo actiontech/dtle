@@ -100,6 +100,7 @@ type Server struct {
 // Holds the RPC endpoints
 type endpoints struct {
 	Status *Status
+	Client *Client
 }
 
 // NewServer is used to construct a new Udup server from the
@@ -206,7 +207,7 @@ func (s *Server) Shutdown() error {
 
 // Leave is used to prepare for a graceful shutdown of the server
 func (s *Server) Leave() error {
-	s.logger.Printf("[INFO] Udup: server starting leave")
+	s.logger.Printf("[INFO] server: server starting leave")
 	s.left = true
 
 	// Check the number of known peers
@@ -267,9 +268,11 @@ func (s *Server) Leave() error {
 func (s *Server) setupRPC(tlsWrap tlsutil.DCWrapper) error {
 	// Create endpoints
 	s.endpoints.Status = &Status{s}
+	s.endpoints.Client = &Client{s}
 
 	// Register the handlers
 	s.rpcServer.Register(s.endpoints.Status)
+	s.rpcServer.Register(s.endpoints.Client)
 
 	list, err := net.ListenTCP("tcp", s.config.RPCAddr)
 	if err != nil {

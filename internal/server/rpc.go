@@ -167,7 +167,7 @@ func (s *Server) handleUdupConn(conn net.Conn) {
 
 // forward is used to forward to a remote region or to forward to the local leader
 // Returns a bool of if forwarding was performed, as well as any error
-func (s *Server) forward(method string, info structs.RPCInfo, args interface{}, reply interface{}) (bool, error) {
+func (s *Server) forward(method string, info models.RPCInfo, args interface{}, reply interface{}) (bool, error) {
 	// Handle region forwarding
 	region := info.RequestRegion()
 	if region != s.config.Region {
@@ -193,7 +193,7 @@ func (s *Server) forwardLeader(method string, args interface{}, reply interface{
 	// Get the leader
 	leader := s.raft.Leader()
 	if leader == "" {
-		return structs.ErrNoLeader
+		return models.ErrNoLeader
 	}
 
 	// Lookup the server
@@ -203,7 +203,7 @@ func (s *Server) forwardLeader(method string, args interface{}, reply interface{
 
 	// Handle a missing server
 	if server == nil {
-		return structs.ErrNoLeader
+		return models.ErrNoLeader
 	}
 	return s.connPool.RPC(s.config.Region, server.Addr, server.Version, method, args, reply)
 }
@@ -217,7 +217,7 @@ func (s *Server) forwardRegion(method, region string, args interface{}, reply in
 		s.peerLock.RUnlock()
 		s.logger.Printf("[WARN] server.rpc: RPC request for region '%s', no path found",
 			region)
-		return structs.ErrNoRegionPath
+		return models.ErrNoRegionPath
 	}
 
 	// Select a random addr
@@ -232,8 +232,8 @@ func (s *Server) forwardRegion(method, region string, args interface{}, reply in
 
 // raftApply is used to encode a message, run it through raft, and return
 // the FSM response along with any errors
-func (s *Server) raftApply(t structs.MessageType, msg interface{}) (interface{}, error) {
-	buf, err := structs.Encode(t, msg)
+func (s *Server) raftApply(t models.MessageType, msg interface{}) (interface{}, error) {
+	buf, err := models.Encode(t, msg)
 	if err != nil {
 		return nil, fmt.Errorf("Failed to encode request: %v", err)
 	}
