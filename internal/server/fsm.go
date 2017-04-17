@@ -8,6 +8,7 @@ import (
 
 	"github.com/armon/go-metrics"
 	"github.com/hashicorp/raft"
+	"udup/internal/server/store"
 	"udup/server/models"
 )
 
@@ -30,7 +31,7 @@ type udupSnapshot struct {
 // NewFSMPath is used to construct a new FSM with a blank state
 func NewFSM(logOutput io.Writer) (*udupFSM, error) {
 	// Create a state store
-	state, err := NewStateStore(logOutput)
+	state, err := store.NewStateStore(logOutput)
 	if err != nil {
 		return nil, err
 	}
