@@ -91,6 +91,14 @@ type Server struct {
 	// eventCh is used to receive events from the serf cluster
 	eventCh chan serf.Event
 
+	// evalBroker is used to manage the in-progress evaluations
+	// that are waiting to be brokered to a sub-scheduler
+	evalBroker *EvalBroker
+
+	// planQueue is used to manage the submitted allocation
+	// plans that are waiting to be assessed by the leader
+	planQueue *PlanQueue
+
 	left         bool
 	shutdown     bool
 	shutdownCh   chan struct{}
@@ -101,6 +109,8 @@ type Server struct {
 type endpoints struct {
 	Status *Status
 	Client *Client
+	Job    *Job
+	Eval   *Eval
 }
 
 // NewServer is used to construct a new Udup server from the
@@ -119,6 +129,18 @@ func NewServer(config *Config) (*Server, error) {
 	// Create a logger
 	logger := log.New(config.LogOutput, "", log.LstdFlags)
 
+	// Create an eval broker
+	evalBroker, err := NewEvalBroker(config.EvalNackTimeout)
+	if err != nil {
+		return nil, err
+	}
+
+	// Create a plan queue
+	planQueue, err := NewPlanQueue()
+	if err != nil {
+		return nil, err
+	}
+
 	// Create the server
 	s := &Server{
 		config:      config,
@@ -129,6 +151,8 @@ func NewServer(config *Config) (*Server, error) {
 		localPeers:  make(map[string]*serverParts),
 		reconcileCh: make(chan serf.Member, 32),
 		eventCh:     make(chan serf.Event, 256),
+		evalBroker:  evalBroker,
+		planQueue:   planQueue,
 		shutdownCh:  make(chan struct{}),
 	}
 
@@ -146,7 +170,6 @@ func NewServer(config *Config) (*Server, error) {
 	}
 
 	// Initialize the wan Serf
-	var err error
 	s.serf, err = s.setupSerf(config.SerfConfig, s.eventCh, serfSnapshot)
 	if err != nil {
 		s.Shutdown()
@@ -156,6 +179,12 @@ func NewServer(config *Config) (*Server, error) {
 
 	// Start the RPC listeners
 	go s.listen()
+
+	// Emit metrics for the eval broker
+	go evalBroker.EmitStats(time.Second)
+
+	// Emit metrics for the plan queue
+	go planQueue.EmitStats(time.Second)
 
 	// Done
 	return s, nil
@@ -269,10 +298,14 @@ func (s *Server) setupRPC(tlsWrap tlsutil.DCWrapper) error {
 	// Create endpoints
 	s.endpoints.Status = &Status{s}
 	s.endpoints.Client = &Client{s}
+	s.endpoints.Job = &Job{s}
+	s.endpoints.Eval = &Eval{s}
 
 	// Register the handlers
 	s.rpcServer.Register(s.endpoints.Status)
 	s.rpcServer.Register(s.endpoints.Client)
+	s.rpcServer.Register(s.endpoints.Job)
+	s.rpcServer.Register(s.endpoints.Eval)
 
 	list, err := net.ListenTCP("tcp", s.config.RPCAddr)
 	if err != nil {
@@ -314,7 +347,7 @@ func (s *Server) setupRaft() error {
 
 	// Create the FSM
 	var err error
-	s.fsm, err = NewFSM(s.config.LogOutput)
+	s.fsm, err = NewFSM(s.evalBroker, s.config.LogOutput)
 	if err != nil {
 		return err
 	}

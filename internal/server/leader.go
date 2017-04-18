@@ -36,6 +36,47 @@ func (s *Server) monitorLeadership() {
 // leaderLoop runs as long as we are the leader to run various
 // maintence activities
 func (s *Server) leaderLoop(stopCh chan struct{}) {
+	// Ensure we revoke leadership on stepdown
+	defer s.revokeLeadership()
+
+	var reconcileCh chan serf.Member
+	establishedLeader := false
+
+RECONCILE:
+	// Setup a reconciliation timer
+	reconcileCh = nil
+	interval := time.After(s.config.ReconcileInterval)
+
+	// Apply a raft barrier to ensure our FSM is caught up
+	start := time.Now()
+	barrier := s.raft.Barrier(0)
+	if err := barrier.Error(); err != nil {
+		s.logger.Printf("[ERR] server: failed to wait for barrier: %v", err)
+		goto WAIT
+	}
+	metrics.MeasureSince([]string{"server", "leader", "barrier"}, start)
+
+	// Check if we need to handle initial leadership actions
+	if !establishedLeader {
+		if err := s.establishLeadership(); err != nil {
+			s.logger.Printf("[ERR] server: failed to establish leadership: %v",
+				err)
+			goto WAIT
+		}
+		establishedLeader = true
+	}
+
+	// Reconcile any missing data
+	if err := s.reconcile(); err != nil {
+		s.logger.Printf("[ERR] server: failed to reconcile: %v", err)
+		goto WAIT
+	}
+
+	// Initial reconcile worked, now we can process the channel
+	// updates
+	reconcileCh = s.reconcileCh
+
+WAIT:
 	// Wait until leadership is lost
 	for {
 		select {
@@ -43,10 +84,54 @@ func (s *Server) leaderLoop(stopCh chan struct{}) {
 			return
 		case <-s.shutdownCh:
 			return
-		case member := <-s.reconcileCh:
+		case <-interval:
+			goto RECONCILE
+		case member := <-reconcileCh:
 			s.reconcileMember(member)
 		}
 	}
+}
+
+// establishLeadership is invoked once we become leader and are able
+// to invoke an initial barrier. The barrier is used to ensure any
+// previously inflight transactions have been commited and that our
+// state is up-to-date.
+func (s *Server) establishLeadership() error {
+	// Enable the plan queue, since we are now the leader
+	s.planQueue.SetEnabled(true)
+
+	// TODO: Start the plan evaluator
+
+	// Enable the eval broker, since we are now the leader
+	s.evalBroker.SetEnabled(true)
+
+	// TODO: Restore the eval broker state
+
+	return nil
+}
+
+// revokeLeadership is invoked once we step down as leader.
+// This is used to cleanup any state that may be specific to a leader.
+func (s *Server) revokeLeadership() error {
+	// Disable the plan queue, since we are no longer leader
+	s.planQueue.SetEnabled(false)
+
+	// Disable the eval broker, since it is only useful as a leader
+	s.evalBroker.SetEnabled(false)
+	return nil
+}
+
+// reconcile is used to reconcile the differences between Serf
+// membership and what is reflected in our strongly consistent store.
+func (s *Server) reconcile() error {
+	defer metrics.MeasureSince([]string{"server", "leader", "reconcile"}, time.Now())
+	members := s.serf.Members()
+	for _, member := range members {
+		if err := s.reconcileMember(member); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // reconcileMember is used to do an async reconcile of a single serf member
@@ -97,6 +182,8 @@ func (s *Server) addRaftPeer(m serf.Member, parts *serverParts) error {
 	if err := future.Error(); err != nil && err != raft.ErrKnownPeer {
 		s.logger.Printf("[ERR] server: failed to add raft peer: %v", err)
 		return err
+	} else if err == nil {
+		s.logger.Printf("[INFO] server: added raft peer: %v", parts)
 	}
 	return nil
 }
