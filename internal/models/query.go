@@ -3,9 +3,11 @@ package models
 import (
 	"bytes"
 	"fmt"
+	"reflect"
 	"time"
 
-	"github.com/hashicorp/go-msgpack/codec"
+	hcodec "github.com/hashicorp/go-msgpack/codec"
+	"github.com/ugorji/go/codec"
 )
 
 var (
@@ -16,7 +18,17 @@ var (
 type MessageType uint8
 
 const (
-	RegisterRequestType MessageType = iota
+	NodeRegisterRequestType MessageType = iota
+	NodeDeregisterRequestType
+	NodeUpdateStatusRequestType
+	JobUpdateStatusRequestType
+	JobRegisterRequestType
+	JobDeregisterRequestType
+	EvalUpdateRequestType
+	EvalDeleteRequestType
+	AllocUpdateRequestType
+	AllocClientUpdateRequestType
+	ReconcileJobSummariesRequestType
 )
 
 const (
@@ -37,6 +49,9 @@ type RPCInfo interface {
 
 // QueryOptions is used to specify various flags for read queries
 type QueryOptions struct {
+	// The target region for this query
+	Region string
+
 	// If set, wait until query exceeds given index. Must be provided
 	// with MaxQueryTime.
 	MinQueryIndex uint64
@@ -44,12 +59,12 @@ type QueryOptions struct {
 	// Provided with MinQueryIndex to wait for change.
 	MaxQueryTime time.Duration
 
-	// The target region for this query
-	Region string
-
 	// If set, any follower can service the request. Results
 	// may be arbitrarily stale.
 	AllowStale bool
+
+	// If set, used as prefix for resource list searches
+	Prefix string
 }
 
 func (q QueryOptions) RequestRegion() string {
@@ -66,6 +81,7 @@ func (q QueryOptions) AllowStaleRead() bool {
 }
 
 type WriteRequest struct {
+	// The target region for this write
 	Region string
 }
 
@@ -98,97 +114,113 @@ type QueryMeta struct {
 	KnownLeader bool
 }
 
-const (
-	// CoreCapability is used to convey the client core
-	// version. This is a special reserved capability.
-	CoreCapability = "core"
-)
-
-const (
-	StatusInit  = "initializing"
-	StatusReady = "ready"
-	StatusMaint = "maintenance"
-	StatusDown  = "down"
-)
-
-// RegisterRequest is used for Client.Register endpoint
-// to register a node as being a schedulable entity.
-type RegisterRequest struct {
-	// Datacenter for this node
-	Datacenter string
-
-	// Node name
-	Node string
-
-	// Status of this node
-	Status string
-
-	// Scheduling capabilities are used by drivers.
-	// e.g. core = 2, docker = 1, java = 2, etc
-	Capabilities map[string]int
-
-	// Attributes is an arbitrary set of key/value
-	// data that can be used for constraints. Examples
-	// include "os=linux", "arch=386", "docker.runtime=1.8.3"
-	Attributes map[string]interface{}
-
-	// Resources is the available resources on the client.
-	// For example 'cpu=2' 'memory=2048'
-	Resouces *Resources
-
-	// Links are used to 'link' this client to external
-	// systems. For example 'consul=foo.dc1' 'aws=i-83212'
-	// 'ami=ami-123'
-	Links map[string]interface{}
-
-	// Meta is used to associate arbitrary metadata with this
-	// client. This is opaque to Udup.
-	Meta map[string]string
-
-	WriteRequest
+// WriteMeta allows a write response to include potentially
+// useful metadata about the write
+type WriteMeta struct {
+	// This is the index associated with the write
+	Index uint64
 }
 
-// Resources is used to define the resources available
-// on a client
-type Resources struct {
-	CPU              float64
-	CPUReserved      float64
-	MemoryMB         int
-	MemoryMBReserved int
-	DiskMB           int
-	DiskMBReservered int
-	IOPS             int
-	IOPSReserved     int
-	Networks         []*NetworkResource
-	Other            map[string]interface{}
+// GenericRequest is used to request where no
+// specific information is needed.
+type GenericRequest struct {
+	QueryOptions
 }
 
-// NetworkResource is used to represesent available network
-// resources>
-type NetworkResource struct {
-	Public        bool   // Is this a public address?
-	CIDR          string // CIDR block of addresses
-	ReservedPorts []int  // Reserved ports
-	MBits         int    // Throughput
-	MBitsReserved int
+// GenericResponse is used to respond to a request where no
+// specific response information is needed.
+type GenericResponse struct {
+	WriteMeta
 }
 
-// RegisterResponse is used to respond to a register request
-type RegisterResponse struct {
+// VersionResponse is used for the Status.Version reseponse
+type VersionResponse struct {
+	Build    string
+	Versions map[string]int
+	QueryMeta
 }
 
 // msgpackHandle is a shared handle for encoding/decoding of structs
-var msgpackHandle = &codec.MsgpackHandle{}
+var MsgpackHandle = func() *codec.MsgpackHandle {
+	h := &codec.MsgpackHandle{RawToString: true}
+
+	// Sets the default type for decoding a map into a nil interface{}.
+	// This is necessary in particular because we store the driver configs as a
+	// nil interface{}.
+	h.MapType = reflect.TypeOf(map[string]interface{}(nil))
+	return h
+}()
+
+var HashiMsgpackHandle = func() *hcodec.MsgpackHandle {
+	h := &hcodec.MsgpackHandle{RawToString: true}
+
+	// Sets the default type for decoding a map into a nil interface{}.
+	// This is necessary in particular because we store the driver configs as a
+	// nil interface{}.
+	h.MapType = reflect.TypeOf(map[string]interface{}(nil))
+	return h
+}()
 
 // Decode is used to decode a MsgPack encoded object
 func Decode(buf []byte, out interface{}) error {
-	return codec.NewDecoder(bytes.NewReader(buf), msgpackHandle).Decode(out)
+	return codec.NewDecoder(bytes.NewReader(buf), MsgpackHandle).Decode(out)
 }
 
 // Encode is used to encode a MsgPack object with type prefix
 func Encode(t MessageType, msg interface{}) ([]byte, error) {
 	var buf bytes.Buffer
 	buf.WriteByte(uint8(t))
-	err := codec.NewEncoder(&buf, msgpackHandle).Encode(msg)
+	err := codec.NewEncoder(&buf, MsgpackHandle).Encode(msg)
 	return buf.Bytes(), err
+}
+
+// RecoverableError wraps an error and marks whether it is recoverable and could
+// be retried or it is fatal.
+type RecoverableError struct {
+	Err         string
+	Recoverable bool
+}
+
+// NewRecoverableError is used to wrap an error and mark it as recoverable or
+// not.
+func NewRecoverableError(e error, recoverable bool) error {
+	if e == nil {
+		return nil
+	}
+
+	return &RecoverableError{
+		Err:         e.Error(),
+		Recoverable: recoverable,
+	}
+}
+
+// WrapRecoverable wraps an existing error in a new RecoverableError with a new
+// message. If the error was recoverable before the returned error is as well;
+// otherwise it is unrecoverable.
+func WrapRecoverable(msg string, err error) error {
+	return &RecoverableError{Err: msg, Recoverable: IsRecoverable(err)}
+}
+
+func (r *RecoverableError) Error() string {
+	return r.Err
+}
+
+func (r *RecoverableError) IsRecoverable() bool {
+	return r.Recoverable
+}
+
+// Recoverable is an interface for errors to implement to indicate whether or
+// not they are fatal or recoverable.
+type Recoverable interface {
+	error
+	IsRecoverable() bool
+}
+
+// IsRecoverable returns true if error is a RecoverableError with
+// Recoverable=true. Otherwise false is returned.
+func IsRecoverable(e error) bool {
+	if re, ok := e.(Recoverable); ok {
+		return re.IsRecoverable()
+	}
+	return false
 }

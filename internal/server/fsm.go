@@ -8,8 +8,7 @@ import (
 
 	"github.com/armon/go-metrics"
 	"github.com/hashicorp/raft"
-	"udup/internal/server/store"
-	"udup/server/models"
+	"udup/internal/server/models"
 )
 
 // udupFSM implements a finite state machine that is used
@@ -31,7 +30,7 @@ type udupSnapshot struct {
 // NewFSMPath is used to construct a new FSM with a blank state
 func NewFSM(logOutput io.Writer) (*udupFSM, error) {
 	// Create a state store
-	state, err := store.NewStateStore(logOutput)
+	state, err := NewStateStore(logOutput)
 	if err != nil {
 		return nil, err
 	}
@@ -46,7 +45,7 @@ func NewFSM(logOutput io.Writer) (*udupFSM, error) {
 
 // Close is used to cleanup resources associated with the FSM
 func (n *udupFSM) Close() error {
-	return n.state.Close()
+	return nil
 }
 
 // State is used to return a handle to the current state
@@ -68,6 +67,12 @@ func (n *udupFSM) Apply(log *raft.Log) interface{} {
 	}
 
 	switch msgType {
+	case models.NodeRegisterRequestType:
+		return n.decodeRegister(buf[1:], log.Index)
+	case models.NodeDeregisterRequestType:
+		return n.applyDeregister(buf[1:], log.Index)
+	case models.NodeUpdateStatusRequestType:
+		return n.applyStatusUpdate(buf[1:], log.Index)
 	default:
 		if ignoreUnknown {
 			n.logger.Printf("[WARN] server.fsm: ignoring unknown message type (%d), upgrade to newer version", msgType)
@@ -77,6 +82,52 @@ func (n *udupFSM) Apply(log *raft.Log) interface{} {
 		}
 	}
 }
+
+func (n *udupFSM) decodeRegister(buf []byte, index uint64) interface{} {
+	var req models.RegisterRequest
+	if err := models.Decode(buf, &req); err != nil {
+		panic(fmt.Errorf("failed to decode request: %v", err))
+	}
+	return n.applyRegister(&req, index)
+}
+
+func (n *udupFSM) applyRegister(req *models.RegisterRequest, index uint64) interface{} {
+	defer metrics.MeasureSince([]string{"server", "fsm", "register"}, time.Now())
+	if err := n.state.RegisterNode(index, req.Node); err != nil {
+		n.logger.Printf("[ERR] server.fsm: RegisterNode failed: %v", err)
+		return err
+	}
+	return nil
+}
+
+func (n *udupFSM) applyDeregister(buf []byte, index uint64) interface{} {
+	defer metrics.MeasureSince([]string{"server", "fsm", "deregister"}, time.Now())
+	var req models.DeregisterRequest
+	if err := models.Decode(buf, &req); err != nil {
+		panic(fmt.Errorf("failed to decode request: %v", err))
+	}
+
+	if err := n.state.DeregisterNode(index, req.NodeID); err != nil {
+		n.logger.Printf("[ERR] server.fsm: DeregisterNode failed: %v", err)
+		return err
+	}
+	return nil
+}
+
+func (n *udupFSM) applyStatusUpdate(buf []byte, index uint64) interface{} {
+	defer metrics.MeasureSince([]string{"server", "fsm", "node_status_update"}, time.Now())
+	var req models.UpdateStatusRequest
+	if err := models.Decode(buf, &req); err != nil {
+		panic(fmt.Errorf("failed to decode request: %v", err))
+	}
+
+	if err := n.state.UpdateNodeStatus(index, req.NodeID, req.Status); err != nil {
+		n.logger.Printf("[ERR] server.fsm: UpdateNodeStatus failed: %v", err)
+		return err
+	}
+	return nil
+}
+
 func (n *udupFSM) Snapshot() (raft.FSMSnapshot, error) {
 	// Create a new snapshot
 	snap, err := n.state.Snapshot()
@@ -97,5 +148,5 @@ func (s *udupSnapshot) Persist(sink raft.SnapshotSink) error {
 }
 
 func (s *udupSnapshot) Release() {
-	s.state.Close()
+	return
 }
