@@ -198,9 +198,53 @@ func (w *Worker) invokeScheduler(eval *models.Evaluation) error {
 
 // SubmitPlan is used to submit a plan for consideration. This allows
 // the worker to act as the planner for the scheduler.
-func (w *Worker) SubmitPlan(*models.Plan) (*models.PlanResult, scheduler.State, error) {
-	// TODO
-	return nil, nil, nil
+func (w *Worker) SubmitPlan(plan *models.Plan) (*models.PlanResult, scheduler.State, error) {
+	defer metrics.MeasureSince([]string{"server", "worker", "submit_plan"}, time.Now())
+	// Setup the request
+	req := models.PlanRequest{
+		Plan: plan,
+		WriteRequest: models.WriteRequest{
+			Region: w.srv.config.Region,
+		},
+	}
+	var resp models.PlanResponse
+
+	// Make the RPC call
+	if err := w.srv.RPC("Plan.Submit", &req, &resp); err != nil {
+		w.logger.Printf("[ERR] worker: failed to submit plan for evaluation %s: %v",
+			plan.EvalID, err)
+		return nil, nil, err
+	} else {
+		w.logger.Printf("[DEBUG] worker: submitted plan for evaluation %s", plan.EvalID)
+	}
+
+	// Look for a result
+	result := resp.Result
+	if result == nil {
+		return nil, nil, fmt.Errorf("missing result")
+	}
+
+	// Check if a state update is required. This could be required if we
+	// planning based on stale data, which is causing issues. For example, a
+	// node failure since the time we've started planning or conflicting task
+	// allocations.
+	var state scheduler.State
+	if result.RefreshIndex != 0 {
+		// Wait for the the raft log to catchup to the evaluation
+		if err := w.waitForIndex(result.RefreshIndex, raftSyncLimit); err != nil {
+			return nil, nil, err
+		}
+
+		// Snapshot the current state
+		snap, err := w.srv.fsm.State().Snapshot()
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to snapshot state: %v", err)
+		}
+		state = snap
+	}
+
+	// Return the result and potential state update
+	return result, state, nil
 }
 
 // backoffErr is used to do an exponential back off on error. This is
