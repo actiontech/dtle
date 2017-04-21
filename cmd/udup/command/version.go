@@ -15,6 +15,10 @@ type VersionCommand struct {
 	Ui      cli.Ui
 }
 
+func (c *VersionCommand) Help() string {
+	return ""
+}
+
 func (c *VersionCommand) Run(_ []string) int {
 	var versionString bytes.Buffer
 
@@ -25,8 +29,4 @@ func (c *VersionCommand) Run(_ []string) int {
 
 func (c *VersionCommand) Synopsis() string {
 	return "Prints the Udup version"
-}
-
-func (c *VersionCommand) Help() string {
-	return ""
 }

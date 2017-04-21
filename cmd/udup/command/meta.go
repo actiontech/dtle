@@ -4,8 +4,24 @@ import (
 	"bufio"
 	"flag"
 	"io"
+	"os"
+	"strings"
 
 	"github.com/mitchellh/cli"
+	"github.com/mitchellh/colorstring"
+
+	"udup/api"
+)
+
+const (
+	// Names of environment variables used to supply various
+	// config options to the Udup CLI.
+	EnvUdupAddress = "UDUP_ADDR"
+	EnvUdupRegion  = "UDUP_REGION"
+
+	// Constants for CLI identifier length
+	shortId = 8
+	fullId  = 36
 )
 
 // FlagSetFlags is an enum to define what flags are present in the
@@ -14,8 +30,8 @@ type FlagSetFlags uint
 
 const (
 	FlagSetNone    FlagSetFlags = 0
-	FlagSetServer  FlagSetFlags = 1 << iota
-	FlagSetDefault              = FlagSetServer
+	FlagSetClient  FlagSetFlags = 1 << iota
+	FlagSetDefault              = FlagSetClient
 )
 
 // Meta contains the meta-options and functionality that nearly every
@@ -25,6 +41,12 @@ type Meta struct {
 
 	// These are set by the command line flags.
 	flagAddress string
+
+	// Whether to not-colorize output
+	noColor bool
+
+	// The region to send API requests
+	region string
 }
 
 // FlagSet returns a FlagSet with the common flags that every
@@ -34,13 +56,16 @@ type Meta struct {
 func (m *Meta) FlagSet(n string, fs FlagSetFlags) *flag.FlagSet {
 	f := flag.NewFlagSet(n, flag.ContinueOnError)
 
-	// FlagSetServer tells us to enable the settings for selecting
-	// the server information.
-	if fs&FlagSetServer != 0 {
+	// FlagSetClient is used to enable the settings for specifying
+	// client connectivity options.
+	if fs&FlagSetClient != 0 {
 		f.StringVar(&m.flagAddress, "address", "", "")
+		f.StringVar(&m.region, "region", "", "")
+		f.BoolVar(&m.noColor, "no-color", false, "")
+
 	}
 
-	// Create an io.Writer that writes to our Ui properly for errors.
+	// Create an io.Writer that writes to our UI properly for errors.
 	// This is kind of a hack, but it does the job. Basically: create
 	// a pipe, use a scanner to break it into lines, and output each line
 	// to the UI. Do this forever.
@@ -54,4 +79,51 @@ func (m *Meta) FlagSet(n string, fs FlagSetFlags) *flag.FlagSet {
 	f.SetOutput(errW)
 
 	return f
+}
+
+// Client is used to initialize and return a new API client using
+// the default command line arguments and env vars.
+func (m *Meta) Client() (*api.Client, error) {
+	config := api.DefaultConfig()
+	if v := os.Getenv(EnvUdupAddress); v != "" {
+		config.Address = v
+	}
+	if m.flagAddress != "" {
+		config.Address = m.flagAddress
+	}
+	if v := os.Getenv(EnvUdupRegion); v != "" {
+		config.Region = v
+	}
+	if m.region != "" {
+		config.Region = m.region
+	}
+
+	return api.NewClient(config)
+}
+
+func (m *Meta) Colorize() *colorstring.Colorize {
+	return &colorstring.Colorize{
+		Colors:  colorstring.DefaultColors,
+		Disable: m.noColor,
+		Reset:   true,
+	}
+}
+
+// generalOptionsUsage returns the help string for the global options.
+func generalOptionsUsage() string {
+	helpText := `
+  -address=<addr>
+    The address of the Udup server.
+    Overrides the UDUP_ADDR environment variable if set.
+    Default = http://127.0.0.1:8190
+
+  -region=<region>
+    The region of the Udup servers to forward commands to.
+    Overrides the UDUP_REGION environment variable if set.
+    Defaults to the Agent's local region.
+  
+  -no-color
+    Disables colored command output.
+`
+	return strings.TrimSpace(helpText)
 }

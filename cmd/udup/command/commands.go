@@ -1,12 +1,11 @@
-package main
+package command
 
 import (
-	"fmt"
 	"os"
 
 	"github.com/mitchellh/cli"
 
-	"udup/cmd/udup/command"
+	"udup/agent"
 )
 
 // The git commit that was compiled. This will be filled in by the compiler.
@@ -16,25 +15,10 @@ var (
 	GitCommit string
 )
 
-func main() {
-	// Get the command line args. We shortcut "--version" and "-v" to
-	// just show the version.
-	args := os.Args[1:]
-	for _, arg := range args {
-		if arg == "-v" || arg == "--version" {
-			newArgs := make([]string, len(args)+1)
-			newArgs[0] = "version"
-			copy(newArgs[1:], args)
-			args = newArgs
-			break
-		}
-	}
+// Commands is the mapping of all the available Serf commands.
+var Commands map[string]cli.CommandFactory
 
-	c := &cli.CLI{
-		Args:     args,
-		HelpFunc: cli.BasicHelpFunc("Udup"),
-	}
-
+func init() {
 	meta := Meta{}
 	if meta.Ui == nil {
 		meta.Ui = &cli.BasicUi{
@@ -44,7 +28,7 @@ func main() {
 		}
 	}
 
-	c.Commands = map[string]cli.CommandFactory{
+	Commands = map[string]cli.CommandFactory{
 		"agent": func() (cli.Command, error) {
 			return &agent.Command{
 				Version:    Version,
@@ -121,12 +105,4 @@ func main() {
 			}, nil
 		},
 	}
-
-	exitCode, err := c.Run()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error executing CLI: %s\n", err.Error())
-		os.Exit(1)
-	}
-
-	os.Exit(exitCode)
 }
