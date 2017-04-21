@@ -1,120 +1,194 @@
 package agent
 
 import (
-	"encoding/json"
-	"errors"
 	"fmt"
-	"io/ioutil"
-	"math/rand"
+	"io"
+	"log"
 	"net"
-	"net/http"
-	"net/rpc"
-	"strconv"
-	"strings"
+	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"time"
 
-	"github.com/Sirupsen/logrus"
-	"github.com/docker/leadership"
-	"github.com/hashicorp/memberlist"
-	"github.com/hashicorp/serf/serf"
-	gnatsd "github.com/nats-io/gnatsd/server"
-	stand "github.com/nats-io/nats-streaming-server/server"
-
-	uconf "udup/config"
-	"udup/internal/client/plugins"
-	uutil "udup/internal/client/plugins/mysql/util"
-	ulog "udup/logger"
+	ucli "udup/internal/client"
+	uconf "udup/internal/config"
+	umodel "udup/internal/models"
+	usrv "udup/internal/server"
 )
 
-var (
-	// Error thrown on obtained leader from store is not found in member list
-	ErrLeaderNotFound = errors.New("No member leader found in member list")
-)
-
-const (
-	defaultCheckInterval = 5 * time.Second
-	defaultWaitTime      = 60 * time.Second
-	defaultRecoverTime   = 10 * time.Second
-	defaultLeaderTTL     = 20 * time.Second
-)
-
+// Agent is a long running daemon that is used to run both
+// clients and servers. Servers are responsible for managing
+// state and making scheduling decisions. Clients can be
+// scheduled to, and are responsible for interfacing with
+// servers to run allocations.
 type Agent struct {
-	config    *uconf.Config
-	serf      *serf.Serf
-	store     *Store
-	eventCh   chan serf.Event
-	candidate *leadership.Candidate
-	stand     *stand.StanServer
-	idWorker  *uutil.IdWorker
+	config    *Config
+	logger    *log.Logger
+	logOutput io.Writer
 
-	processorPlugins map[jobDriver]plugins.Driver
-	shutdown         bool
-	shutdownCh       chan struct{}
-	shutdownLock     sync.Mutex
-}
+	client *ucli.Client
 
-type jobDriver struct {
-	name string
-	tp   string
+	server *usrv.Server
+
+	shutdown     bool
+	shutdownCh   chan struct{}
+	shutdownLock sync.Mutex
 }
 
 // NewAgent is used to create a new agent with the given configuration
-func NewAgent(config *uconf.Config) (*Agent, error) {
+func NewAgent(config *Config, logOutput io.Writer) (*Agent, error) {
 	a := &Agent{
-		config:           config,
-		processorPlugins: make(map[jobDriver]plugins.Driver),
-		shutdownCh:       make(chan struct{}),
+		config:     config,
+		logger:     log.New(logOutput, "", log.LstdFlags|log.Lmicroseconds),
+		logOutput:  logOutput,
+		shutdownCh: make(chan struct{}),
 	}
-
-	var err error
-	if err = a.setupNatsServer(); err != nil {
-		return nil, err
-	}
-
-	// Initialize the wan Serf
-	a.serf, err = a.setupSerf()
-	if err != nil {
-		a.Shutdown()
-		return nil, fmt.Errorf("failed to start serf: %v", err)
-	}
-
-	// Join startup nodes if specified
-	if err := a.startupJoin(config); err != nil {
-		ulog.Logger.Errorf(err.Error())
-		return nil, err
-	}
-
-	if err := a.setupDrivers(); err != nil {
-		return nil, fmt.Errorf("failed to setup drivers: %v", err)
-	}
-
 	if err := a.setupServer(); err != nil {
-		return nil, fmt.Errorf("failed to setup server: %v", err)
+		return nil, err
+	}
+	if err := a.setupClient(); err != nil {
+		return nil, err
+	}
+	if a.client == nil && a.server == nil {
+		return nil, fmt.Errorf("must have at least client or server mode enabled")
 	}
 
-	if err := a.setupSched(); err != nil {
-		return nil, fmt.Errorf("failed to setup scheduler: %v", err)
-	}
-
-	go a.eventLoop()
 	return a, nil
 }
 
-func (a *Agent) startupJoin(config *uconf.Config) error {
-	if len(config.Client.Join) == 0 {
-		return nil
+// convertServerConfig takes an agent config and log output and returns a Udup Config.
+func convertServerConfig(agentConfig *Config, logOutput io.Writer) (*uconf.ServerConfig, error) {
+	conf := agentConfig.UdupConfig
+	if conf == nil {
+		conf = uconf.DefaultServerConfig()
+	}
+	conf.LogOutput = logOutput
+	conf.Build = agentConfig.Version
+	if agentConfig.Region != "" {
+		conf.Region = agentConfig.Region
+	}
+	if agentConfig.Datacenter != "" {
+		conf.Datacenter = agentConfig.Datacenter
+	}
+	if agentConfig.NodeName != "" {
+		conf.NodeName = agentConfig.NodeName
+	}
+	if agentConfig.Server.BootstrapExpect > 0 {
+		if agentConfig.Server.BootstrapExpect == 1 {
+			conf.Bootstrap = true
+		} else {
+			atomic.StoreInt32(&conf.BootstrapExpect, int32(agentConfig.Server.BootstrapExpect))
+		}
+	}
+	if agentConfig.DataDir != "" {
+		conf.DataDir = filepath.Join(agentConfig.DataDir, "server")
+	}
+	if agentConfig.Server.DataDir != "" {
+		conf.DataDir = agentConfig.Server.DataDir
+	}
+	if agentConfig.Server.NumSchedulers != 0 {
+		conf.NumSchedulers = agentConfig.Server.NumSchedulers
+	}
+	if len(agentConfig.Server.EnabledSchedulers) != 0 {
+		conf.EnabledSchedulers = agentConfig.Server.EnabledSchedulers
 	}
 
-	ulog.Logger.Infof("agent: Joining cluster...")
-	ulog.Logger.Infof("agent: Joining: %v replay: %v", config.Client.Join, true)
-	n, err := a.serf.Join(config.Client.Join, false)
+	// Set up the bind addresses
+	rpcAddr, err := net.ResolveTCPAddr("tcp", agentConfig.normalizedAddrs.RPC)
 	if err != nil {
-		return err
+		return nil, fmt.Errorf("Failed to parse RPC address %q: %v", agentConfig.normalizedAddrs.RPC, err)
+	}
+	serfAddr, err := net.ResolveTCPAddr("tcp", agentConfig.normalizedAddrs.Serf)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to parse Serf address %q: %v", agentConfig.normalizedAddrs.Serf, err)
+	}
+	conf.RPCAddr.Port = rpcAddr.Port
+	conf.RPCAddr.IP = rpcAddr.IP
+	conf.SerfConfig.MemberlistConfig.BindPort = serfAddr.Port
+	conf.SerfConfig.MemberlistConfig.BindAddr = serfAddr.IP.String()
+
+	// Set up the advertise addresses
+	rpcAddr, err = net.ResolveTCPAddr("tcp", agentConfig.AdvertiseAddrs.RPC)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to parse RPC advertise address %q: %v", agentConfig.AdvertiseAddrs.RPC, err)
+	}
+	serfAddr, err = net.ResolveTCPAddr("tcp", agentConfig.AdvertiseAddrs.Serf)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to parse Serf advertise address %q: %v", agentConfig.AdvertiseAddrs.Serf, err)
+	}
+	conf.RPCAdvertise = rpcAddr
+	conf.SerfConfig.MemberlistConfig.AdvertiseAddr = serfAddr.IP.String()
+	conf.SerfConfig.MemberlistConfig.AdvertisePort = serfAddr.Port
+
+	if heartbeatGrace := agentConfig.Server.HeartbeatGrace; heartbeatGrace != "" {
+		dur, err := time.ParseDuration(heartbeatGrace)
+		if err != nil {
+			return nil, err
+		}
+		conf.HeartbeatGrace = dur
 	}
 
-	ulog.Logger.Infof(fmt.Sprintf("agent: Join completed. Synced with %d initial agents", n))
-	return nil
+	if *agentConfig.Consul.AutoAdvertise && agentConfig.Consul.ServerServiceName == "" {
+		return nil, fmt.Errorf("server_service_name must be set when auto_advertise is enabled")
+	}
+
+	// Add the Consul config
+	conf.ConsulConfig = agentConfig.Consul
+
+	return conf, nil
+}
+
+// serverConfig is used to generate a new server configuration struct
+// for initializing a server server.
+func (a *Agent) serverConfig() (*uconf.ServerConfig, error) {
+	return convertServerConfig(a.config, a.logOutput)
+}
+
+// clientConfig is used to generate a new client configuration struct
+// for initializing a Udup client.
+func (a *Agent) clientConfig() (*uconf.ClientConfig, error) {
+	// Setup the configuration
+	conf := a.config.ClientConfig
+	if conf == nil {
+		conf = uconf.DefaultClientConfig()
+	}
+	if a.server != nil {
+		conf.RPCHandler = a.server
+	}
+	conf.LogOutput = a.logOutput
+	conf.LogLevel = a.config.LogLevel
+	if a.config.Region != "" {
+		conf.Region = a.config.Region
+	}
+	if a.config.DataDir != "" {
+		conf.StateDir = filepath.Join(a.config.DataDir, "client")
+	}
+	if a.config.Client.StateDir != "" {
+		conf.StateDir = a.config.Client.StateDir
+	}
+	conf.Servers = a.config.Client.Servers
+
+	// Setup the node
+	conf.Node = new(umodel.Node)
+	conf.Node.Datacenter = a.config.Datacenter
+	conf.Node.Name = a.config.NodeName
+
+	// Set up the HTTP advertise address
+	conf.Node.HTTPAddr = a.config.AdvertiseAddrs.HTTP
+	conf.Version = a.config.Version
+
+	if *a.config.Consul.AutoAdvertise && a.config.Consul.ClientServiceName == "" {
+		return nil, fmt.Errorf("client_service_name must be set when auto_advertise is enabled")
+	}
+
+	conf.ConsulConfig = a.config.Consul
+	conf.StatsCollectionInterval = a.config.Metric.collectionInterval
+	conf.PublishNodeMetrics = a.config.Metric.PublishNodeMetrics
+	conf.PublishAllocationMetrics = a.config.Metric.PublishAllocationMetrics
+
+	conf.NoHostUUID = a.config.Client.NoHostUUID
+
+	return conf, nil
 }
 
 // setupServer is used to setup the server if enabled
@@ -122,589 +196,59 @@ func (a *Agent) setupServer() error {
 	if !a.config.Server.Enabled {
 		return nil
 	}
-	var err error
-	snsEpoch := uint32(time.Now().UnixNano())
-	a.idWorker, err = uutil.NewIdWorker(0, 0, snsEpoch)
+
+	// Setup the configuration
+	conf, err := a.serverConfig()
 	if err != nil {
-		a.Shutdown()
-		return fmt.Errorf("failed to new id worker: %v", err)
+		return fmt.Errorf("server config setup failed: %s", err)
 	}
 
-	a.store = SetupStore(a.config.Consul.Addrs, a)
-	// Initialize the RPC layer
-	if err := a.setupRPC(); err != nil {
-		a.Shutdown()
-		return fmt.Errorf("failed to start RPC layer: %v", err)
+	// Create the server
+	server, err := usrv.NewServer(conf, a.logger)
+	if err != nil {
+		return fmt.Errorf("server setup failed: %v", err)
 	}
-
-	// Setup the HTTP server
-	a.NewHTTPServer()
-	a.participate()
+	a.server = server
 
 	return nil
 }
 
-func (a *Agent) setupSched() error {
-	rpcServer, err := a.queryRPCConfig()
+// setupClient is used to setup the client if enabled
+func (a *Agent) setupClient() error {
+	if !a.config.Client.Enabled {
+		return nil
+	}
+
+	// Setup the configuration
+	conf, err := a.clientConfig()
 	if err != nil {
-		return err
+		return fmt.Errorf("client setup failed: %v", err)
 	}
 
-	rc := &RPCClient{ServerAddr: string(rpcServer), agent: a}
-
-	jobs, err := rc.CallGetJobs(a.config.NodeName)
+	// Create the client
+	client, err := ucli.NewClient(conf, a.logger)
 	if err != nil {
-		return err
+		return fmt.Errorf("client setup failed: %v", err)
 	}
-
-	for _, job := range jobs.Payload {
-		if job.Status == Running || job.Status == Queued {
-			ulog.Logger.Infof("agent: Start job: %v", job.Name)
-			for k, v := range job.Processors {
-				if v.NodeName == a.config.NodeName {
-					go rc.startJob(job, k)
-				}
-			}
-		}
-	}
+	a.client = client
 
 	return nil
 }
 
-var workaroundRPCHTTPMux = 0
-
-// setupRPC is used to setup the RPC listener
-func (a *Agent) setupRPC() error {
-	r := &RPCServer{
-		agent: a,
+// Leave is used gracefully exit. Clients will inform servers
+// of their departure so that allocations can be rescheduled.
+func (a *Agent) Leave() error {
+	if a.client != nil {
+		if err := a.client.Leave(); err != nil {
+			a.logger.Printf("[ERR] agent: client leave failed: %v", err)
+		}
 	}
-
-	ulog.Logger.WithFields(logrus.Fields{
-		"rpc_addr": a.getRPCAddr(),
-	}).Debug("rpc: Registering RPC server")
-
-	rpc.Register(r)
-
-	oldMux := http.DefaultServeMux
-	if workaroundRPCHTTPMux > 0 {
-		mux := http.NewServeMux()
-		http.DefaultServeMux = mux
+	if a.server != nil {
+		if err := a.server.Leave(); err != nil {
+			a.logger.Printf("[ERR] agent: server leave failed: %v", err)
+		}
 	}
-	workaroundRPCHTTPMux = workaroundRPCHTTPMux + 1
-
-	rpc.HandleHTTP()
-
-	http.DefaultServeMux = oldMux
-
-	l, err := net.Listen("tcp", a.getRPCAddr())
-	if err != nil {
-		ulog.Logger.Fatal(err)
-		return err
-	}
-	go http.Serve(l, nil)
 	return nil
-}
-
-func (a *Agent) setupDrivers() error {
-	var avail []string
-	ctx := plugins.NewDriverContext("", nil)
-	for name := range plugins.BuiltinProcessors {
-		_, err := plugins.DiscoverPlugins(name, ctx)
-		if err != nil {
-			return err
-		}
-		avail = append(avail, name)
-
-	}
-
-	ulog.Logger.Debugf("agent: Available drivers %v", avail)
-
-	return nil
-}
-
-func (a *Agent) setupNatsServer() error {
-	host, port, err := net.SplitHostPort(a.config.Nats.Addr)
-	p, err := strconv.Atoi(port)
-	if err != nil {
-		return err
-	}
-
-	nOpts := gnatsd.Options{
-		Host:       host,
-		Port:       p,
-		MaxPayload: (100 * 1024 * 1024),
-		Trace:      true,
-		Debug:      true,
-	}
-	ulog.Logger.Infof("agent: Starting nats-streaming-server [%s]", a.config.Nats.Addr)
-	sOpts := stand.GetDefaultOptions()
-	sOpts.ID = uconf.DefaultClusterID
-	if a.config.Nats.StoreType == "file" {
-		sOpts.StoreType = a.config.Nats.StoreType
-		sOpts.FilestoreDir = a.config.Nats.FilestoreDir
-	}
-	s, err := stand.RunServerWithOpts(sOpts, &nOpts)
-	if err != nil {
-		return err
-	}
-	a.stand = s
-	return nil
-}
-
-// setupSerf is used to create the agent we use
-func (a *Agent) setupSerf() (*serf.Serf, error) {
-	serfConfig := serf.DefaultConfig()
-	serfConfig.MemberlistConfig = memberlist.DefaultWANConfig()
-
-	serfAddr, err := net.ResolveTCPAddr("tcp", a.config.BindAddr)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse serf address %q: %v", a.config.BindAddr, err)
-	}
-	serfConfig.MemberlistConfig.BindAddr = serfAddr.IP.String()
-	serfConfig.MemberlistConfig.BindPort = serfAddr.Port
-
-	if a.config.AdvertiseAddr != "" {
-		advertise, err := net.ResolveTCPAddr("tcp", a.config.AdvertiseAddr)
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse advertise address %q: %v", a.config.AdvertiseAddr, err)
-		}
-		serfConfig.MemberlistConfig.AdvertiseAddr = advertise.IP.String()
-		serfConfig.MemberlistConfig.AdvertisePort = advertise.Port
-	}
-
-	serfConfig.NodeName = a.config.NodeName
-	serfConfig.Init()
-	if a.config.Server.Enabled {
-		serfConfig.Tags["udup_server"] = "true"
-	}
-	serfConfig.Tags["udup_version"] = a.config.Version
-	serfConfig.Tags["role"] = "udup"
-	serfConfig.Tags["region"] = a.config.Region
-	serfConfig.Tags["dc"] = a.config.Datacenter
-
-	natsAddr, err := net.ResolveTCPAddr("tcp", a.config.Nats.Addr)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse Nats address %q: %v", a.config.Nats.Addr, err)
-	}
-	serfConfig.Tags["nats_ip"] = natsAddr.IP.String()
-	serfConfig.Tags["nats_port"] = strconv.Itoa(natsAddr.Port)
-
-	serfConfig.QuerySizeLimit = 1024 * 10
-	serfConfig.CoalescePeriod = 3 * time.Second
-	serfConfig.QuiescentPeriod = time.Second
-	serfConfig.UserCoalescePeriod = 3 * time.Second
-	serfConfig.UserQuiescentPeriod = time.Second
-	if a.config.ReconnectInterval != 0 {
-		serfConfig.ReconnectInterval = a.config.ReconnectInterval
-	}
-	if a.config.ReconnectTimeout != 0 {
-		serfConfig.ReconnectTimeout = a.config.ReconnectTimeout
-	}
-	if a.config.TombstoneTimeout != 0 {
-		serfConfig.TombstoneTimeout = a.config.TombstoneTimeout
-	}
-	serfConfig.EnableNameConflictResolution = !a.config.DisableNameResolution
-	serfConfig.RejoinAfterLeave = a.config.RejoinAfterLeave
-
-	// Create a channel to listen for events from Serf
-	a.eventCh = make(chan serf.Event, 64)
-	serfConfig.EventCh = a.eventCh
-
-	// Start Serf
-	ulog.Logger.Debugf("agent: Udup agent starting")
-
-	serfConfig.LogOutput = ioutil.Discard
-	serfConfig.MemberlistConfig.LogOutput = ioutil.Discard
-
-	return serf.Create(serfConfig)
-}
-
-// Utility method to get leader nodename
-func (a *Agent) leaderMember() (*serf.Member, error) {
-	leaderName := a.store.GetLeader()
-	for _, member := range a.serf.Members() {
-		if member.Name == string(leaderName) {
-			return &member, nil
-		}
-	}
-	return nil, ErrLeaderNotFound
-}
-
-func (a *Agent) listServers() []serf.Member {
-	members := []serf.Member{}
-
-	for _, member := range a.serf.Members() {
-		if key, ok := member.Tags["udup_server"]; ok {
-			if key == "true" && member.Status == serf.StatusAlive {
-				members = append(members, member)
-			}
-		}
-	}
-	return members
-}
-
-func (a *Agent) listAlivedMembers() []serf.Member {
-	members := []serf.Member{}
-
-	for _, member := range a.serf.Members() {
-		if member.Status == serf.StatusAlive {
-			members = append(members, member)
-		}
-	}
-	return members
-}
-
-func (a *Agent) getNatsAddr(nodeName string) string {
-	for _, member := range a.serf.Members() {
-		if member.Name == nodeName {
-			if ip, ok := member.Tags["nats_ip"]; ok {
-				if port, ok := member.Tags["nats_port"]; ok {
-					return fmt.Sprintf("%s:%s", ip, port)
-				}
-			}
-			return ""
-		}
-	}
-	return ""
-}
-
-// Listens to events from Serf and handle the event.
-func (a *Agent) eventLoop() {
-	serfShutdownCh := a.serf.ShutdownCh()
-	ulog.Logger.Info("agent: Listen for events")
-	for {
-		select {
-		case e := <-a.eventCh:
-			ulog.Logger.WithFields(logrus.Fields{
-				"event": e.String(),
-			}).Debug("agent: Received event")
-
-			// Log all member events
-			go func() {
-				if e, ok := e.(serf.MemberEvent); ok {
-					for _, m := range e.Members {
-						ulog.Logger.WithFields(logrus.Fields{
-							"node":   a.config.NodeName,
-							"member": m.Name,
-							"event":  e.EventType(),
-						}).Debug("agent: Member event")
-
-						switch e.EventType() {
-						case serf.EventMemberLeave, serf.EventMemberFailed:
-							if err := a.enqueueJobs(m.Name); err != nil {
-								ulog.Logger.WithError(err).Error("agent: Error enqueue job command")
-							}
-						default:
-							//ignore
-						}
-					}
-				}
-			}()
-
-			if e.EventType() == serf.EventQuery {
-				query := e.(*serf.Query)
-
-				switch query.Name {
-				case QueryStartJob:
-					{
-						ulog.Logger.WithFields(logrus.Fields{
-							"query":   query.Name,
-							"payload": string(query.Payload),
-							"at":      query.LTime,
-						}).Debug("agent: Starting job")
-						var rqp RunQueryParam
-						if err := json.Unmarshal(query.Payload, &rqp); err != nil {
-							ulog.Logger.WithField("query", QueryStartJob).Fatal("agent: Error unmarshaling query payload")
-						}
-
-						ulog.Logger.WithFields(logrus.Fields{
-							"job": rqp.Job.Name,
-						}).Info("agent: Starting job")
-
-						job := rqp.Job
-						k := rqp.Type
-
-						go func() {
-							if err := a.startJob(job, k); err != nil {
-								ulog.Logger.WithError(err).Error("agent: Error start job command")
-							}
-						}()
-
-						jobJson, _ := json.Marshal(job)
-						query.Respond(jobJson)
-					}
-				case QueryStopJob:
-					{
-						ulog.Logger.WithFields(logrus.Fields{
-							"query":   query.Name,
-							"payload": string(query.Payload),
-							"at":      query.LTime,
-						}).Debug("agent: Stopping job")
-
-						var rqp RunQueryParam
-						if err := json.Unmarshal(query.Payload, &rqp); err != nil {
-							ulog.Logger.WithField("query", QueryStopJob).Fatal("agent: Error unmarshaling query payload")
-						}
-
-						ulog.Logger.WithFields(logrus.Fields{
-							"job": rqp.Job.Name,
-						}).Info("agent: Stopping job")
-
-						job := rqp.Job
-						k := rqp.Type
-
-						go func() {
-							if err := a.stopJob(job, k); err != nil {
-								ulog.Logger.WithError(err).Error("agent: Error stop job command")
-							}
-						}()
-
-						jobJson, _ := json.Marshal(job)
-						query.Respond(jobJson)
-					}
-				case QueryEnqueueJob:
-					{
-						ulog.Logger.WithFields(logrus.Fields{
-							"query":   query.Name,
-							"payload": string(query.Payload),
-							"at":      query.LTime,
-						}).Debug("agent: Enqueue job")
-
-						var rqp RunQueryParam
-						if err := json.Unmarshal(query.Payload, &rqp); err != nil {
-							ulog.Logger.Errorf("agent: Error unmarshaling query payload,Query:%v", QueryEnqueueJob)
-						}
-
-						ulog.Logger.WithFields(logrus.Fields{
-							"job": rqp.Job.Name,
-						}).Info("agent: Enqueue job")
-
-						job := rqp.Job
-						k := rqp.Type
-
-						go func() {
-							if err := a.enqueueJob(job, k); err != nil {
-								ulog.Logger.WithError(err).Error("agent: Error enqueue job command")
-							}
-						}()
-
-						jobJson, _ := json.Marshal(job)
-						query.Respond(jobJson)
-					}
-				case QueryRPCConfig:
-					{
-						if a.config.Server.Enabled {
-							ulog.Logger.WithFields(logrus.Fields{
-								"query":   query.Name,
-								"payload": string(query.Payload),
-								"at":      query.LTime,
-							}).Debug("agent: RPC Config requested")
-
-							query.Respond([]byte(a.getRPCAddr()))
-						}
-					}
-				case QueryGenId:
-					{
-						if a.config.Server.Enabled {
-							ulog.Logger.WithFields(logrus.Fields{
-								"query":   query.Name,
-								"payload": string(query.Payload),
-								"at":      query.LTime,
-							}).Debug("agent: Generate id requested")
-
-							serverID, err := a.idWorker.NextId()
-							if err != nil {
-								ulog.Logger.Fatal(err)
-							}
-							query.Respond([]byte(strconv.FormatUint(uint64(serverID), 10)))
-						}
-					}
-				default:
-					{
-						return
-					}
-				}
-			}
-
-		case <-serfShutdownCh:
-			ulog.Logger.Warn("agent: Serf shutdown detected, quitting")
-			return
-		}
-	}
-}
-
-func (a *Agent) startJob(j *Job, k string) (err error) {
-	var rpcServer []byte
-	if !a.config.Server.Enabled {
-		rpcServer, err = a.queryRPCConfig()
-		if err != nil {
-			return err
-		}
-	}
-
-	rc := &RPCClient{ServerAddr: string(rpcServer), agent: a}
-	return rc.startJob(j, k)
-}
-
-func (a *Agent) stopJob(j *Job, k string) (err error) {
-	var rpcServer []byte
-	if !a.config.Server.Enabled {
-		rpcServer, err = a.queryRPCConfig()
-		if err != nil {
-			return err
-		}
-	}
-
-	rc := &RPCClient{ServerAddr: string(rpcServer), agent: a}
-	return rc.stopJob(j, k)
-}
-
-func (a *Agent) enqueueJobs(nodeName string) (err error) {
-	var rpcServer []byte
-	if !a.config.Server.Enabled {
-		rpcServer, err = a.queryRPCConfig()
-		if err != nil {
-			return err
-		}
-	}
-	rc := &RPCClient{ServerAddr: string(rpcServer), agent: a}
-	return rc.enqueueJobs(nodeName)
-}
-
-func (a *Agent) enqueueJob(job *Job, k string) (err error) {
-	var rpcServer []byte
-	if !a.config.Server.Enabled {
-		rpcServer, err = a.queryRPCConfig()
-		if err != nil {
-			return err
-		}
-	}
-
-	rc := &RPCClient{ServerAddr: string(rpcServer), agent: a}
-	return rc.enqueueJob(job, k)
-}
-
-func (a *Agent) participate() {
-	a.candidate = leadership.NewCandidate(a.store.Client, a.store.LeaderKey(), a.config.NodeName, defaultLeaderTTL)
-
-	go func() {
-		for {
-			a.runForElection()
-			// retry
-			time.Sleep(defaultRecoverTime)
-		}
-	}()
-}
-
-// Leader election routine
-func (a *Agent) runForElection() {
-	ulog.Logger.Info("agent: Running for election")
-	electedCh, errCh := a.candidate.RunForElection()
-
-	for {
-		select {
-		case isElected := <-electedCh:
-			if isElected {
-				ulog.Logger.Info("agent: Cluster leadership acquired")
-				// If this server is elected as the leader, start the scheduler
-				jobs, err := a.store.GetJobs()
-				if err != nil {
-					ulog.Logger.Errorf("agent: Error on rpc.GetJob call")
-				}
-				for _, job := range jobs {
-					if job.Status == Running {
-						for _, v := range job.Processors {
-							m := &serf.Member{}
-							for _, member := range a.serf.Members() {
-								if v.NodeName == member.Name {
-									m = &member
-								}
-							}
-							if m == nil || m.Status != serf.StatusAlive {
-								job.Status = Queued
-								for _, p := range job.Processors {
-									p.Running = false
-								}
-								if err := a.store.UpsertJob(job); err != nil {
-									ulog.Logger.Errorf("agent: Error on rpc.UpsertJob call")
-								}
-							}
-						}
-					}
-				}
-
-			} else {
-				ulog.Logger.Info("agent: Cluster leadership lost")
-				// Always stop the schedule of this server to prevent multiple servers with the scheduler on
-			}
-
-		case err := <-errCh:
-			ulog.Logger.WithError(err).Debugf("agent: Leader election failed, channel is probably closed,err:%v", err)
-			// Always stop the schedule of this server to prevent multiple servers with the scheduler on
-			return
-		}
-	}
-}
-
-func (a *Agent) processFilteredNode(job *Job, host string) (string, map[string]string, error) {
-	var nodes []string
-	tags := make(map[string]string)
-
-	// Actually copy the map
-	for key, val := range job.Tags {
-		tags[key] = val
-	}
-
-	if len(tags) > 0 {
-		for jtk, jtv := range tags {
-			var tc []string
-			if tc = strings.Split(jtv, ":"); len(tc) == 2 {
-				tv := tc[0]
-
-				// Set original tag to clean tag
-				tags[jtk] = tv
-
-				count, err := strconv.Atoi(tc[1])
-				if err != nil {
-					return "", nil, err
-				}
-
-				for _, member := range a.serf.Members() {
-					if member.Status == serf.StatusAlive {
-						for mtk, mtv := range member.Tags {
-							if mtk == jtk && mtv == tv {
-								if string(member.Addr) == host {
-									return member.Name, member.Tags, nil
-								}
-								if len(nodes) < count {
-									nodes = append(nodes, member.Name)
-								}
-							}
-						}
-					}
-				}
-			}
-		}
-	} else {
-		for _, member := range a.serf.Members() {
-			if member.Status == serf.StatusAlive {
-				if fmt.Sprintf("%s", member.Addr) == host {
-					return member.Name, member.Tags, nil
-				}
-				nodes = append(nodes, member.Name)
-			}
-		}
-	}
-
-	return nodes[rand.Intn(len(nodes))], tags, nil
-}
-
-// This function is called when a client request the RPCAddress
-// of the current member.
-func (a *Agent) getRPCAddr() string {
-	bindIp := a.serf.LocalMember().Addr
-
-	return fmt.Sprintf("%s:%d", bindIp, a.config.RPCPort)
 }
 
 // Shutdown is used to terminate the agent.
@@ -716,15 +260,57 @@ func (a *Agent) Shutdown() error {
 		return nil
 	}
 
-	ulog.Logger.Infof("agent: Requesting shutdown")
-	for k, v := range a.processorPlugins {
-		if err := v.Stop(k.tp); err != nil {
-			return err
+	a.logger.Println("[INFO] agent: requesting shutdown")
+	if a.client != nil {
+		if err := a.client.Shutdown(); err != nil {
+			a.logger.Printf("[ERR] agent: client shutdown failed: %v", err)
 		}
 	}
-	a.stand.Shutdown()
-	ulog.Logger.Infof("agent: Shutdown complete")
+	if a.server != nil {
+		if err := a.server.Shutdown(); err != nil {
+			a.logger.Printf("[ERR] agent: server shutdown failed: %v", err)
+		}
+	}
+
+	a.logger.Println("[INFO] agent: shutdown complete")
 	a.shutdown = true
 	close(a.shutdownCh)
 	return nil
+}
+
+// RPC is used to make an RPC call to the Udup servers
+func (a *Agent) RPC(method string, args interface{}, reply interface{}) error {
+	if a.server != nil {
+		return a.server.RPC(method, args, reply)
+	}
+	return a.client.RPC(method, args, reply)
+}
+
+// Client returns the configured client or nil
+func (a *Agent) Client() *ucli.Client {
+	return a.client
+}
+
+// Server returns the configured server or nil
+func (a *Agent) Server() *usrv.Server {
+	return a.server
+}
+
+// Stats is used to return statistics for debugging and insight
+// for various sub-systems
+func (a *Agent) Stats() map[string]map[string]string {
+	stats := make(map[string]map[string]string)
+	if a.server != nil {
+		subStat := a.server.Stats()
+		for k, v := range subStat {
+			stats[k] = v
+		}
+	}
+	if a.client != nil {
+		subStat := a.client.Stats()
+		for k, v := range subStat {
+			stats[k] = v
+		}
+	}
+	return stats
 }
