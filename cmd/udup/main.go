@@ -2,6 +2,8 @@ package main
 
 import (
 	"fmt"
+	"io/ioutil"
+	"log"
 	"os"
 
 	"github.com/mitchellh/cli"
@@ -9,14 +11,13 @@ import (
 	"udup/cmd/udup/command"
 )
 
-// The git commit that was compiled. This will be filled in by the compiler.
-var (
-	Version   string
-	GitBranch string
-	GitCommit string
-)
-
 func main() {
+	os.Exit(realMain())
+}
+
+func realMain() int {
+	log.SetOutput(ioutil.Discard)
+
 	// Get the command line args. We shortcut "--version" and "-v" to
 	// just show the version.
 	args := os.Args[1:]
@@ -30,12 +31,12 @@ func main() {
 		}
 	}
 
-	c := &cli.CLI{
+	cli := &cli.CLI{
 		Args:     args,
 		HelpFunc: cli.BasicHelpFunc("Udup"),
 	}
 
-	meta := Meta{}
+	meta := command.Meta{}
 	if meta.Ui == nil {
 		meta.Ui = &cli.BasicUi{
 			Reader:      os.Stdin,
@@ -122,11 +123,11 @@ func main() {
 		},
 	}
 
-	exitCode, err := c.Run()
+	exitCode, err := cli.Run()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error executing CLI: %s\n", err.Error())
-		os.Exit(1)
+		return 1
 	}
 
-	os.Exit(exitCode)
+	return exitCode
 }

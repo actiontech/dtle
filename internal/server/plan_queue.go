@@ -7,7 +7,8 @@ import (
 	"time"
 
 	"github.com/armon/go-metrics"
-	"udup/internal/server/models"
+
+	"udup/internal/models"
 )
 
 var (
@@ -50,9 +51,10 @@ func NewPlanQueue() (*PlanQueue, error) {
 // pendingPlan is used to wrap a plan that is enqueued
 // so that we can re-use it as a future.
 type pendingPlan struct {
-	plan   *models.Plan
-	result *models.PlanResult
-	errCh  chan error
+	plan        *models.Plan
+	enqueueTime time.Time
+	result      *models.PlanResult
+	errCh       chan error
 }
 
 // Wait is used to block for the plan result or potential error
@@ -71,6 +73,13 @@ func (p *pendingPlan) respond(result *models.PlanResult, err error) {
 // We implement the container/heap interface so that this is a
 // priority queue
 type PendingPlans []*pendingPlan
+
+// Enabled is used to check if the queue is enabled.
+func (q *PlanQueue) Enabled() bool {
+	q.l.RLock()
+	defer q.l.RUnlock()
+	return q.enabled
+}
 
 // SetEnabled is used to control if the queue is enabled. The queue
 // should only be enabled on the active leader.
@@ -95,8 +104,9 @@ func (q *PlanQueue) Enqueue(plan *models.Plan) (PlanFuture, error) {
 
 	// Wrap the pending plan
 	pending := &pendingPlan{
-		plan:  plan,
-		errCh: make(chan error, 1),
+		plan:        plan,
+		enqueueTime: time.Now(),
+		errCh:       make(chan error, 1),
 	}
 
 	// Push onto the heap
@@ -135,17 +145,18 @@ SCAN:
 	q.l.Unlock()
 
 	// Setup the timeout timer
-	var timer *time.Timer
-	if timer == nil && timeout > 0 {
-		timer = time.NewTimer(timeout)
+	var timerCh <-chan time.Time
+	if timerCh == nil && timeout > 0 {
+		timer := time.NewTimer(timeout)
 		defer timer.Stop()
+		timerCh = timer.C
 	}
 
 	// Wait for timeout or new work
 	select {
 	case <-q.waitCh:
 		goto SCAN
-	case <-timer.C:
+	case <-timerCh:
 		return nil, nil
 	}
 }
@@ -185,12 +196,16 @@ func (q *PlanQueue) Stats() *QueueStats {
 }
 
 // EmitStats is used to export metrics about the broker while enabled
-func (q *PlanQueue) EmitStats(period time.Duration) {
+func (q *PlanQueue) EmitStats(period time.Duration, stopCh chan struct{}) {
 	for {
-		<-time.After(period)
+		select {
+		case <-time.After(period):
+			stats := q.Stats()
+			metrics.SetGauge([]string{"server", "plan", "queue_depth"}, float32(stats.Depth))
 
-		stats := q.Stats()
-		metrics.SetGauge([]string{"server", "plan", "queue_depth"}, float32(stats.Depth))
+		case <-stopCh:
+			return
+		}
 	}
 }
 
@@ -206,13 +221,10 @@ func (p PendingPlans) Len() int {
 
 // Less is for the sorting interface. We flip the check
 // so that the "min" in the min-heap is the element with the
-// highest priority. For the same priority, we use the create
-// index of the evaluation to give a FIFO ordering.
+// highest priority. For the same priority, we use the enqueue
+// time of the evaluation to give a FIFO ordering.
 func (p PendingPlans) Less(i, j int) bool {
-	if p[i].plan.Priority != p[j].plan.Priority {
-		return !(p[i].plan.Priority < p[j].plan.Priority)
-	}
-	return p[i].plan.EvalCreateIndex < p[j].plan.EvalCreateIndex
+	return p[i].enqueueTime.Before(p[j].enqueueTime)
 }
 
 // Swap is for the sorting interface

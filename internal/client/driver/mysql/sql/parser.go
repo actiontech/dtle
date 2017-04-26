@@ -8,7 +8,7 @@ import (
 	"github.com/pingcap/tidb/ast"
 	"github.com/pingcap/tidb/parser"
 
-	uconf "udup/config"
+	uconf "udup/internal/config"
 )
 
 type OpType byte
@@ -148,7 +148,7 @@ func GenDDLSQL(sql string, schema string) (string, error) {
 }
 
 func genTableName(schema string, table string) uconf.TableName {
-	return uconf.TableName{Schema: schema, Name: table}
+	return uconf.TableName{Schema: schema, Table: table}
 
 }
 

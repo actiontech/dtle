@@ -6,8 +6,7 @@ import (
 	"sync"
 	"time"
 
-	uconf "udup/config"
-	ulog "udup/logger"
+	uconf "udup/internal/config"
 )
 
 var (
@@ -152,23 +151,23 @@ func ExecuteSQL(db *sql.DB, sqls []string, args [][]interface{}, retry bool) err
 LOOP:
 	for i := 0; i < retryCount; i++ {
 		if i > 0 {
-			ulog.Logger.Warnf("exec sql retry %d - %v - %v", i, sqls[0], args[0])
+			//ulog.Logger.Warnf("exec sql retry %d - %v - %v", i, sqls[0], args[0])
 			time.Sleep(retryTimeout)
 		}
 
 		txn, err = db.Begin()
 		if err != nil {
-			ulog.Logger.Errorf("Failed to execute SQL :[%v] when begin tx，[error] :%v", sqls, err)
+			//ulog.Logger.Errorf("Failed to execute SQL :[%v] when begin tx，[error] :%v", sqls, err)
 			continue
 		}
 
 		for i := range sqls {
 			_, err = txn.Exec(sqls[i], args[i]...)
 			if err != nil {
-				ulog.Logger.Warnf("Failed to execute SQL :%s with args :%v,[error] :%v", sqls[i], args[i], err)
+				//ulog.Logger.Warnf("Failed to execute SQL :%s with args :%v,[error] :%v", sqls[i], args[i], err)
 				rerr := txn.Rollback()
 				if rerr != nil {
-					ulog.Logger.Errorf("Failed to rollback SQL :%s with args :%v,[error] :%v", sqls[i], args[i], rerr)
+					//ulog.Logger.Errorf("Failed to rollback SQL :%s with args :%v,[error] :%v", sqls[i], args[i], rerr)
 				}
 				continue LOOP
 			}
@@ -176,7 +175,7 @@ LOOP:
 
 		err = txn.Commit()
 		if err != nil {
-			ulog.Logger.Errorf("Failed to commit SQL :[%v],[error] :%v", sqls, err)
+			//ulog.Logger.Errorf("Failed to commit SQL :[%v],[error] :%v", sqls, err)
 			continue
 		}
 
@@ -194,7 +193,7 @@ func QuerySQL(db *sql.DB, query string) (*sql.Rows, error) {
 
 	for i := 0; i < maxRetryCount; i++ {
 		if i > 0 {
-			ulog.Logger.Warnf("query sql retry %d - %s", i, query)
+			//ulog.Logger.Warnf("query sql retry %d - %s", i, query)
 			time.Sleep(retryTimeout)
 		}
 
@@ -220,15 +219,15 @@ func closeDB(db *sql.DB) error {
 
 	err := db.Close()
 	if err != nil {
-		ulog.Logger.Errorf("close db failed - %v", err)
+		//ulog.Logger.Errorf("close db failed - %v", err)
 		return err
 	}
 
 	return nil
 }
 
-func CreateDB(cfg *uconf.ConnectionConfig) (*sql.DB, error) {
-	dbDSN := fmt.Sprintf("%s:%s@tcp(%s:%d)/?charset=utf8mb4,utf8,latin1&multiStatements=true", cfg.User, cfg.Password, cfg.Host, cfg.Port)
+func CreateDB(cfg *uconf.Dsn) (*sql.DB, error) {
+	dbDSN := fmt.Sprintf("%s:%s@tcp(%s:%d)/?timeout=5s&tls=false&autocommit=true&charset=utf8mb4,utf8,latin1&multiStatements=true", cfg.User, cfg.Password, cfg.Host, cfg.Port)
 	db, err := sql.Open("mysql", dbDSN)
 	if err != nil {
 		return nil, err
@@ -237,7 +236,7 @@ func CreateDB(cfg *uconf.ConnectionConfig) (*sql.DB, error) {
 	return db, nil
 }
 
-func CreateDBs(cfg *uconf.ConnectionConfig, count int) ([]*sql.DB, error) {
+func CreateDBs(cfg *uconf.Dsn, count int) ([]*sql.DB, error) {
 	dbs := make([]*sql.DB, 0, count)
 	for i := 0; i < count; i++ {
 		db, err := CreateDB(cfg)

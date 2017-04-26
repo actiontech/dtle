@@ -4,6 +4,8 @@ import (
 	"fmt"
 
 	"github.com/hashicorp/go-memdb"
+
+	"udup/internal/models"
 )
 
 // stateStoreSchema is used to return the schema for the state store
@@ -15,9 +17,12 @@ func stateStoreSchema() *memdb.DBSchema {
 
 	// Collect all the schemas that are needed
 	schemas := []func() *memdb.TableSchema{
+		indexTableSchema,
 		nodeTableSchema,
 		jobTableSchema,
-		taskTableSchema,
+		jobSummarySchema,
+		evalTableSchema,
+		allocTableSchema,
 	}
 
 	// Add each of the tables
@@ -29,6 +34,24 @@ func stateStoreSchema() *memdb.DBSchema {
 		db.Tables[schema.Name] = schema
 	}
 	return db
+}
+
+// indexTableSchema is used for
+func indexTableSchema() *memdb.TableSchema {
+	return &memdb.TableSchema{
+		Name: "index",
+		Indexes: map[string]*memdb.IndexSchema{
+			"id": &memdb.IndexSchema{
+				Name:         "id",
+				AllowMissing: false,
+				Unique:       true,
+				Indexer: &memdb.StringFieldIndex{
+					Field:     "Key",
+					Lowercase: true,
+				},
+			},
+		},
+	}
 }
 
 // nodeTableSchema returns the MemDB schema for the nodes table.
@@ -44,31 +67,8 @@ func nodeTableSchema() *memdb.TableSchema {
 				Name:         "id",
 				AllowMissing: false,
 				Unique:       true,
-				Indexer: &memdb.StringFieldIndex{
-					Field:     "ID",
-					Lowercase: true,
-				},
-			},
-
-			// DC status is a compound index on both the
-			// datacenter and the node status. This allows
-			// us to filter to a set of eligible nodes more
-			// quickly for selection.
-			"dc-status": &memdb.IndexSchema{
-				Name:         "dc-status",
-				AllowMissing: false,
-				Unique:       false,
-				Indexer: &memdb.CompoundIndex{
-					AllowMissing: false,
-					Indexes: []memdb.Indexer{
-						&memdb.StringFieldIndex{
-							Field:     "Datacenter",
-							Lowercase: true,
-						},
-						&memdb.StringFieldIndex{
-							Field: "Status",
-						},
-					},
+				Indexer: &memdb.UUIDFieldIndex{
+					Field: "ID",
 				},
 			},
 		},
@@ -89,48 +89,144 @@ func jobTableSchema() *memdb.TableSchema {
 				AllowMissing: false,
 				Unique:       true,
 				Indexer: &memdb.StringFieldIndex{
-					Field:     "Name",
+					Field:     "ID",
 					Lowercase: true,
 				},
 			},
-
-			// Status is used to scan for jobs that are in need
-			// of scheduling attention.
-			"status": &memdb.IndexSchema{
-				Name:         "status",
+			"type": &memdb.IndexSchema{
+				Name:         "type",
 				AllowMissing: false,
 				Unique:       false,
 				Indexer: &memdb.StringFieldIndex{
-					Field: "Status",
+					Field:     "Type",
+					Lowercase: false,
 				},
 			},
 		},
 	}
 }
 
-// taskTableSchema returns the MemDB schema for the tasks table.
-// This table is used to store all the task groups belonging to a job.
-func taskTableSchema() *memdb.TableSchema {
+// jobSummarySchema returns the memdb schema for the job summary table
+func jobSummarySchema() *memdb.TableSchema {
 	return &memdb.TableSchema{
-		Name: "tasks",
+		Name: "job_summary",
 		Indexes: map[string]*memdb.IndexSchema{
-			// Primary index is compount of {Job, Name}
 			"id": &memdb.IndexSchema{
 				Name:         "id",
 				AllowMissing: false,
 				Unique:       true,
+				Indexer: &memdb.StringFieldIndex{
+					Field:     "JobID",
+					Lowercase: true,
+				},
+			},
+		},
+	}
+}
+
+// evalTableSchema returns the MemDB schema for the eval table.
+// This table is used to store all the evaluations that are pending
+// or recently completed.
+func evalTableSchema() *memdb.TableSchema {
+	return &memdb.TableSchema{
+		Name: "evals",
+		Indexes: map[string]*memdb.IndexSchema{
+			// Primary index is used for direct lookup.
+			"id": &memdb.IndexSchema{
+				Name:         "id",
+				AllowMissing: false,
+				Unique:       true,
+				Indexer: &memdb.UUIDFieldIndex{
+					Field: "ID",
+				},
+			},
+
+			// Job index is used to lookup allocations by job
+			"job": &memdb.IndexSchema{
+				Name:         "job",
+				AllowMissing: false,
+				Unique:       false,
 				Indexer: &memdb.CompoundIndex{
-					AllowMissing: false,
 					Indexes: []memdb.Indexer{
 						&memdb.StringFieldIndex{
-							Field:     "Job",
+							Field:     "JobID",
 							Lowercase: true,
 						},
 						&memdb.StringFieldIndex{
-							Field:     "Name",
+							Field:     "Status",
 							Lowercase: true,
 						},
 					},
+				},
+			},
+		},
+	}
+}
+
+// allocTableSchema returns the MemDB schema for the allocation table.
+// This table is used to store all the task allocations between tasks
+// and nodes.
+func allocTableSchema() *memdb.TableSchema {
+	return &memdb.TableSchema{
+		Name: "allocs",
+		Indexes: map[string]*memdb.IndexSchema{
+			// Primary index is a UUID
+			"id": &memdb.IndexSchema{
+				Name:         "id",
+				AllowMissing: false,
+				Unique:       true,
+				Indexer: &memdb.UUIDFieldIndex{
+					Field: "ID",
+				},
+			},
+
+			// Node index is used to lookup allocations by node
+			"node": &memdb.IndexSchema{
+				Name:         "node",
+				AllowMissing: true, // Missing is allow for failed allocations
+				Unique:       false,
+				Indexer: &memdb.CompoundIndex{
+					Indexes: []memdb.Indexer{
+						&memdb.StringFieldIndex{
+							Field:     "NodeID",
+							Lowercase: true,
+						},
+
+						// Conditional indexer on if allocation is terminal
+						&memdb.ConditionalIndex{
+							Conditional: func(obj interface{}) (bool, error) {
+								// Cast to allocation
+								alloc, ok := obj.(*models.Allocation)
+								if !ok {
+									return false, fmt.Errorf("wrong type, got %t should be Allocation", obj)
+								}
+
+								// Check if the allocation is terminal
+								return alloc.TerminalStatus(), nil
+							},
+						},
+					},
+				},
+			},
+
+			// Job index is used to lookup allocations by job
+			"job": &memdb.IndexSchema{
+				Name:         "job",
+				AllowMissing: false,
+				Unique:       false,
+				Indexer: &memdb.StringFieldIndex{
+					Field:     "JobID",
+					Lowercase: true,
+				},
+			},
+
+			// Eval index is used to lookup allocations by eval
+			"eval": &memdb.IndexSchema{
+				Name:         "eval",
+				AllowMissing: false,
+				Unique:       false,
+				Indexer: &memdb.UUIDFieldIndex{
+					Field: "EvalID",
 				},
 			},
 		},

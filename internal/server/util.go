@@ -2,6 +2,7 @@ package server
 
 import (
 	"fmt"
+	"math/rand"
 	"net"
 	"os"
 	"path/filepath"
@@ -19,15 +20,15 @@ func ensurePath(path string, dir bool) error {
 	return os.MkdirAll(path, 0755)
 }
 
-// runtimeStats is used to return various runtime information
-func runtimeStats() map[string]string {
+// RuntimeStats is used to return various runtime information
+func RuntimeStats() map[string]string {
 	return map[string]string{
-		"os":         runtime.GOOS,
-		"arch":       runtime.GOARCH,
-		"version":    runtime.Version(),
-		"max_procs":  strconv.FormatInt(int64(runtime.GOMAXPROCS(0)), 10),
-		"goroutines": strconv.FormatInt(int64(runtime.NumGoroutine()), 10),
-		"cpu_count":  strconv.FormatInt(int64(runtime.NumCPU()), 10),
+		"kernel.name": runtime.GOOS,
+		"arch":        runtime.GOARCH,
+		"version":     runtime.Version(),
+		"max_procs":   strconv.FormatInt(int64(runtime.GOMAXPROCS(0)), 10),
+		"goroutines":  strconv.FormatInt(int64(runtime.NumGoroutine()), 10),
+		"cpu_count":   strconv.FormatInt(int64(runtime.NumCPU()), 10),
 	}
 }
 
@@ -39,7 +40,6 @@ type serverParts struct {
 	Port       int
 	Bootstrap  bool
 	Expect     int
-	Version    int
 	Addr       net.Addr
 }
 
@@ -51,7 +51,7 @@ func (s *serverParts) String() string {
 // Returns if a member is a Udup server. Returns a boolean,
 // and a struct with the various important components
 func isUdupServer(m serf.Member) (bool, *serverParts) {
-	if m.Tags["role"] != "udup" {
+	if m.Tags["role"] != "server" {
 		return false, nil
 	}
 
@@ -75,12 +75,6 @@ func isUdupServer(m serf.Member) (bool, *serverParts) {
 		return false, nil
 	}
 
-	vsn_str := m.Tags["vsn"]
-	vsn, err := strconv.Atoi(vsn_str)
-	if err != nil {
-		return false, nil
-	}
-
 	addr := &net.TCPAddr{IP: m.Addr, Port: port}
 	parts := &serverParts{
 		Name:       m.Name,
@@ -90,7 +84,22 @@ func isUdupServer(m serf.Member) (bool, *serverParts) {
 		Bootstrap:  bootstrap,
 		Expect:     expect,
 		Addr:       addr,
-		Version:    vsn,
 	}
 	return true, parts
+}
+
+// shuffleStrings randomly shuffles the list of strings
+func shuffleStrings(list []string) {
+	for i := range list {
+		j := rand.Intn(i + 1)
+		list[i], list[j] = list[j], list[i]
+	}
+}
+
+// maxUint64 returns the maximum value
+func maxUint64(a, b uint64) uint64 {
+	if a >= b {
+		return a
+	}
+	return b
 }

@@ -2,13 +2,15 @@ package binlog
 
 import (
 	"fmt"
+	"log"
+	"strconv"
 	"sync"
 
 	"github.com/siddontang/go-mysql/replication"
 	"golang.org/x/net/context"
 
-	uconf "udup/config"
-	ulog "udup/logger"
+	uutil "udup/internal/client/driver/mysql/util"
+	uconf "udup/internal/config"
 )
 
 type BinlogEvent struct {
@@ -27,33 +29,51 @@ type BinlogParser struct {
 	currentFilePath string
 	currentHeader   *replication.EventHeader
 
-	config                   *uconf.DriverConfig
+	logger                   *log.Logger
+	config                   *uconf.MySQLDriverConfig
 	binlogSyncer             *replication.BinlogSyncer
 	binlogStreamer           *replication.BinlogStreamer
 	currentCoordinates       BinlogCoordinates
 	currentCoordinatesMutex  *sync.Mutex
 	LastAppliedRowsEventHint BinlogCoordinates
+	WaitCh                   chan error
 }
 
-func NewBinlogParser(config *uconf.DriverConfig) (binlogParser *BinlogParser, err error) {
+func NewBinlogParser(config *uconf.MySQLDriverConfig, logger *log.Logger) (binlogParser *BinlogParser, err error) {
 	binlogParser = &BinlogParser{
+		logger:                  logger,
 		config:                  config,
 		currentCoordinates:      BinlogCoordinates{},
 		currentCoordinatesMutex: &sync.Mutex{},
 		binlogSyncer:            nil,
 		binlogStreamer:          nil,
 	}
+
+	id, err := uutil.NewIdWorker(2, 3, uutil.SnsEpoch)
+	if err != nil {
+		return nil, err
+	}
+	sid, err := id.NextId()
+	if err != nil {
+		return nil, err
+	}
+
+	bid := []byte(strconv.FormatUint(uint64(sid), 10))
+	uid, err := strconv.ParseUint(string(bid), 10, 32)
+	if err != nil {
+		return nil, err
+	}
 	cfg := replication.BinlogSyncerConfig{
-		ServerID:        config.ServerID,
+		ServerID:        uint32(uid),
 		Flavor:          "mysql",
-		Host:            config.ConnCfg.Host,
-		Port:            uint16(config.ConnCfg.Port),
-		User:            config.ConnCfg.User,
-		Password:        config.ConnCfg.Password,
+		Host:            config.Dsn.Host,
+		Port:            uint16(config.Dsn.Port),
+		User:            config.Dsn.User,
+		Password:        config.Dsn.Password,
 		RawModeEanbled:  false,
 		SemiSyncEnabled: false,
 	}
-	ulog.Logger.Infof("Registering replica at %+v:%+v", config.ConnCfg.Host, uint16(config.ConnCfg.Port))
+	logger.Printf("[INFO] mysql.parser: registering replica at %+v:%+v with server-id %+v", config.Dsn.Host, uint16(config.Dsn.Port), uint32(uid))
 
 	binlogParser.binlogSyncer = replication.NewBinlogSyncer(&cfg)
 	return binlogParser, err
@@ -62,11 +82,11 @@ func NewBinlogParser(config *uconf.DriverConfig) (binlogParser *BinlogParser, er
 // ConnectBinlogStreamer
 func (bp *BinlogParser) ConnectBinlogStreamer(coordinates BinlogCoordinates) (err error) {
 	if coordinates.IsEmpty() {
-		return fmt.Errorf("Emptry coordinates at ConnectBinlogStreamer()")
+		return fmt.Errorf("emptry coordinates at ConnectBinlogStreamer()")
 	}
 
 	bp.currentCoordinates = coordinates
-	ulog.Logger.Infof("Connecting binlog streamer at %+v", bp.currentCoordinates)
+	bp.logger.Printf("[INFO] mysql.parser: connecting binlog streamer at %+v", bp.currentCoordinates)
 	// Start sync with sepcified binlog file and position
 	bp.binlogStreamer, err = bp.binlogSyncer.StartSyncGTID(bp.currentCoordinates.GtidSet)
 	return err
@@ -79,14 +99,8 @@ func (bp *BinlogParser) GetCurrentBinlogCoordinates() *BinlogCoordinates {
 	return &returnCoordinates
 }
 
-func (bp *BinlogParser) StreamEvents(canStreaming func() bool, eventsChannel chan<- *BinlogEvent) error {
-	if !canStreaming() {
-		return nil
-	}
+func (bp *BinlogParser) StreamEvents(eventsChannel chan<- *BinlogEvent) error {
 	for {
-		if !canStreaming() {
-			break
-		}
 		ev, err := bp.binlogStreamer.GetEvent(context.Background())
 		if err != nil {
 			return err
@@ -104,21 +118,20 @@ func (bp *BinlogParser) StreamEvents(canStreaming func() bool, eventsChannel cha
 				defer bp.currentCoordinatesMutex.Unlock()
 				bp.currentCoordinates.LogFile = string(rotateEvent.NextLogName)
 			}()
-			ulog.Logger.Infof("Rotate to next log name: %s", rotateEvent.NextLogName)
+			bp.logger.Printf("[INFO] mysql.parser: rotate to next log name: %s", rotateEvent.NextLogName)
 		} else {
 			if err := bp.handleRowsEvent(ev, eventsChannel); err != nil {
 				return err
 			}
 		}
 	}
-	ulog.Logger.Debugf("Done streaming events")
 
 	return nil
 }
 
 func (bp *BinlogParser) handleRowsEvent(ev *replication.BinlogEvent, eventsChannel chan<- *BinlogEvent) error {
 	if bp.currentCoordinates.SmallerThanOrEquals(&bp.LastAppliedRowsEventHint) {
-		ulog.Logger.Debugf("Skipping handled query at %+v", bp.currentCoordinates)
+		bp.logger.Printf("[DEBUG] mysql.parser: skipping handled query at %+v", bp.currentCoordinates)
 		return nil
 	}
 
@@ -176,6 +189,6 @@ func (bp *BinlogParser) handleRowsEvent(ev *replication.BinlogEvent, eventsChann
 }
 
 func (bp *BinlogParser) Close() error {
-	bp.binlogSyncer.Close()
+	//bp.binlogSyncer.Close()
 	return nil
 }

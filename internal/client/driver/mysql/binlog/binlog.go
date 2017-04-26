@@ -18,6 +18,16 @@ func init() {
 
 type BinlogType int
 
+type OpType byte
+
+const (
+	Insert = iota + 1
+	Update
+	Del
+	Ddl
+	Xid
+)
+
 const (
 	BinaryLog BinlogType = iota
 	RelayLog

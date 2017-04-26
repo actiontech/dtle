@@ -7,18 +7,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Sirupsen/logrus"
 	"github.com/issuj/gofaster/base64"
 	"github.com/satori/go.uuid"
 	binlog "github.com/siddontang/go-mysql/replication"
+	"github.com/siddontang/go/sync2"
 
-	uconf "udup/config"
-	usql "udup/internal/client/plugins/mysql/sql"
-	ulog "udup/logger"
-)
-
-const (
-	EventsChannelBufferSize = 500000
+	usql "udup/internal/client/driver/mysql/sql"
+	uconf "udup/internal/config"
 )
 
 type Transaction_t struct {
@@ -49,7 +44,8 @@ func (tx *Transaction_t) addImpact(tableId uint64, rowId string) {
 }
 
 type TxBuilder struct {
-	Cfg     *uconf.DriverConfig
+	Cfg     *uconf.MySQLDriverConfig
+	WaitCh  chan error
 	EvtChan chan *BinlogEvent
 	TxChan  chan *Transaction_t
 
@@ -59,16 +55,14 @@ type TxBuilder struct {
 	currentSqlB64      *bytes.Buffer
 	arrayCurrentSqlB64 []string
 
-	reMap map[string]*regexp.Regexp
-}
+	DdlCount    sync2.AtomicInt64
+	InsertCount sync2.AtomicInt64
+	UpdateCount sync2.AtomicInt64
+	DeleteCount sync2.AtomicInt64
+	LastCount   sync2.AtomicInt64
+	Count       sync2.AtomicInt64
 
-func NewTxBuilder(cfg *uconf.DriverConfig) *TxBuilder {
-	return &TxBuilder{
-		Cfg:     cfg,
-		EvtChan: make(chan *BinlogEvent, EventsChannelBufferSize),
-		TxChan:  make(chan *Transaction_t, 100),
-		reMap:   make(map[string]*regexp.Regexp),
-	}
+	ReMap map[string]*regexp.Regexp
 }
 
 func (tb *TxBuilder) Run() {
@@ -89,7 +83,7 @@ func (tb *TxBuilder) Run() {
 			idle_ns += (t2 - t1)
 		}
 		if event.Err != nil {
-			tb.Cfg.ErrCh <- event.Err
+			tb.WaitCh <- event.Err
 			return
 		}
 
@@ -101,28 +95,30 @@ func (tb *TxBuilder) Run() {
 		switch event.Header.EventType {
 		case binlog.GTID_EVENT:
 			if tb.currentTx != nil {
-				tb.Cfg.ErrCh <- fmt.Errorf("unfinished transaction %v@%v", event.BinlogFile, event.RealPos)
+				tb.WaitCh <- fmt.Errorf("unfinished transaction %v@%v", event.BinlogFile, event.RealPos)
 				return
 			}
 			tb.newTransaction(event)
 
 		case binlog.QUERY_EVENT:
 			if tb.currentTx == nil {
-				tb.Cfg.ErrCh <- newTxWithoutGTIDError(event)
+				tb.WaitCh <- newTxWithoutGTIDError(event)
 				return
 			}
 			err := tb.onQueryEvent(event)
 			if err != nil {
-				tb.Cfg.ErrCh <- err
+				tb.WaitCh <- err
 				return
 			}
+			tb.addCount(Ddl)
 
 		case binlog.XID_EVENT:
 			if tb.currentTx == nil {
-				tb.Cfg.ErrCh <- newTxWithoutGTIDError(event)
+				tb.WaitCh <- newTxWithoutGTIDError(event)
 				return
 			}
 			tb.onCommit(event)
+			tb.addCount(Xid)
 
 		// process: optional FDE event -> TableMapEvent -> RowEvents
 		case binlog.FORMAT_DESCRIPTION_EVENT:
@@ -131,18 +127,46 @@ func (tb *TxBuilder) Run() {
 		case binlog.TABLE_MAP_EVENT:
 			err := tb.onTableMapEvent(event)
 			if err != nil {
-				tb.Cfg.ErrCh <- err
+				tb.WaitCh <- err
 				return
 			}
-
-		case binlog.WRITE_ROWS_EVENTv2, binlog.UPDATE_ROWS_EVENTv2, binlog.DELETE_ROWS_EVENTv2:
+		case binlog.WRITE_ROWS_EVENTv0, binlog.WRITE_ROWS_EVENTv1, binlog.WRITE_ROWS_EVENTv2:
 			err := tb.onRowEvent(event)
 			if err != nil {
-				tb.Cfg.ErrCh <- err
+				tb.WaitCh <- err
 				return
 			}
+			tb.addCount(Insert)
+		case binlog.UPDATE_ROWS_EVENTv0, binlog.UPDATE_ROWS_EVENTv1, binlog.UPDATE_ROWS_EVENTv2:
+			err := tb.onRowEvent(event)
+			if err != nil {
+				tb.WaitCh <- err
+				return
+			}
+			tb.addCount(Update)
+		case binlog.DELETE_ROWS_EVENTv0, binlog.DELETE_ROWS_EVENTv1, binlog.DELETE_ROWS_EVENTv2:
+			err := tb.onRowEvent(event)
+			if err != nil {
+				tb.WaitCh <- err
+				return
+			}
+			tb.addCount(Del)
 		}
 	}
+}
+
+func (tb *TxBuilder) addCount(tp OpType) {
+	switch tp {
+	case Insert:
+		tb.InsertCount.Add(1)
+	case Update:
+		tb.UpdateCount.Add(1)
+	case Del:
+		tb.DeleteCount.Add(1)
+	case Ddl:
+		tb.DdlCount.Add(1)
+	}
+	tb.Count.Add(1)
 }
 
 // event handlers
@@ -192,10 +216,10 @@ func (tb *TxBuilder) onQueryEvent(event *BinlogEvent) error {
 
 			for _, sql := range sqls {
 				if tb.skipQueryDDL(sql, string(evt.Schema)) {
-					ulog.Logger.WithFields(logrus.Fields{
+					/*ulog.Logger.WithFields(logrus.Fields{
 						"schema": fmt.Sprintf("%s", evt.Schema),
 						"sql":    fmt.Sprintf("%s", sql),
-					}).Debug("builder: skip query-ddl-sql")
+					}).Debug("builder: skip query-ddl-sql")*/
 					continue
 				}
 
@@ -219,10 +243,10 @@ func (tb *TxBuilder) onTableMapEvent(event *BinlogEvent) error {
 
 	ev := event.Evt.(*binlog.TableMapEvent)
 	if tb.skipRowEvent(string(ev.Schema), string(ev.Table)) {
-		ulog.Logger.WithFields(logrus.Fields{
+		/*ulog.Logger.WithFields(logrus.Fields{
 			"schema": fmt.Sprintf("%s", ev.Schema),
 			"table":  fmt.Sprintf("%s", ev.Table),
-		}).Debug("builder: skip TableMapEvent")
+		}).Debug("builder: skip TableMapEvent")*/
 		return nil
 	}
 
@@ -238,10 +262,10 @@ func (tb *TxBuilder) onRowEvent(event *BinlogEvent) error {
 	ev := event.Evt.(*binlog.RowsEvent)
 
 	if tb.skipRowEvent(string(ev.Table.Schema), string(ev.Table.Table)) {
-		ulog.Logger.WithFields(logrus.Fields{
+		/*ulog.Logger.WithFields(logrus.Fields{
 			"schema": fmt.Sprintf("%s", ev.Table.Schema),
 			"table":  fmt.Sprintf("%s", ev.Table.Table),
-		}).Debug("builder: skip RowsEvent")
+		}).Debug("builder: skip RowsEvent")*/
 		return nil
 	}
 
@@ -312,7 +336,7 @@ func newTxWithoutGTIDError(event *BinlogEvent) error {
 }
 
 func (tb *TxBuilder) matchString(pattern string, t string) bool {
-	if re, ok := tb.reMap[pattern]; ok {
+	if re, ok := tb.ReMap[pattern]; ok {
 		return re.MatchString(t)
 	}
 	return pattern == t
@@ -320,33 +344,33 @@ func (tb *TxBuilder) matchString(pattern string, t string) bool {
 
 func (tb *TxBuilder) matchTable(patternTBS []uconf.TableName, t uconf.TableName) bool {
 	for _, ptb := range patternTBS {
-		retb, oktb := tb.reMap[ptb.Name]
-		redb, okdb := tb.reMap[ptb.Schema]
+		retb, oktb := tb.ReMap[ptb.Table]
+		redb, okdb := tb.ReMap[ptb.Schema]
 
 		if oktb && okdb {
-			if redb.MatchString(t.Schema) && retb.MatchString(t.Name) {
+			if redb.MatchString(t.Schema) && retb.MatchString(t.Table) {
 				return true
 			}
 		}
 		if oktb {
-			if retb.MatchString(t.Name) && t.Schema == ptb.Schema {
+			if retb.MatchString(t.Table) && t.Schema == ptb.Schema {
 				return true
 			}
 		}
 		if okdb {
-			if redb.MatchString(t.Schema) && t.Name == ptb.Name {
+			if redb.MatchString(t.Schema) && t.Table == ptb.Table {
 				return true
 			}
 		}
 
 		//create database or drop database
-		if t.Name == "" {
+		if t.Table == "" {
 			if t.Schema == ptb.Schema {
 				return true
 			}
 		}
 
-		if (ptb.Schema == t.Schema || ptb.Schema == "") && (ptb.Name == t.Name || ptb.Name == "") {
+		if (ptb.Schema == t.Schema || ptb.Schema == "") && (ptb.Table == t.Table || ptb.Table == "") {
 			return true
 		}
 	}
@@ -357,7 +381,7 @@ func (tb *TxBuilder) matchTable(patternTBS []uconf.TableName, t uconf.TableName)
 func (tb *TxBuilder) skipQueryDDL(sql string, schema string) bool {
 	t, err := usql.ParserDDLTableName(sql)
 	if err != nil {
-		ulog.Logger.WithField("sql", sql).WithError(err).Error("builder: Get table failure")
+		//ulog.Logger.WithField("sql", sql).WithError(err).Error("builder: Get table failure")
 		return false
 	}
 
@@ -388,7 +412,7 @@ func (tb *TxBuilder) skipRowEvent(schema string, table string) bool {
 			table = strings.ToLower(table)
 			//if table in tartget Table, do this event
 			for _, d := range tb.Cfg.ReplicateDoDb {
-				if (tb.matchString(d.Schema, schema) || d.Schema == "") && (tb.matchString(d.Name, table) || d.Name == "") {
+				if (tb.matchString(d.Schema, schema) || d.Schema == "") && (tb.matchString(d.Table, table) || d.Table == "") {
 					return false
 				}
 			}
