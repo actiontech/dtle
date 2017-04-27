@@ -24,8 +24,8 @@ const (
 	// open to a server.  127s was chosen as the first prime above 120s
 	// (arbitrarily chose to use a prime) with the intent of reusing
 	// connections who are used by once-a-minute cron(8) jobs *and* who
-	// use a 60s jitter window (e.g. in vixie cron job execution can
-	// drift by up to 59s per job, or 119s for a once-a-minute cron job).
+	// use a 60s jitter window (e.g. in vixie cron server execution can
+	// drift by up to 59s per server, or 119s for a once-a-minute cron server).
 	clientRPCConnMaxIdle = 127 * time.Second
 
 	// clientMaxStreams controls how many idle streams we keep

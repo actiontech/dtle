@@ -108,7 +108,7 @@ type Job struct {
 	TableID  int64         `json:"table_id"`
 	State    JobState      `json:"state"`
 	Error    *terror.Error `json:"err"`
-	// Every time we meet an error when running job, we will increase it.
+	// Every time we meet an error when running server, we will increase it.
 	ErrorCount int64 `json:"err_count"`
 	// The number of rows that are processed.
 	RowCount int64         `json:"row_count"`
@@ -117,12 +117,12 @@ type Job struct {
 	// We must use json raw message to delay parsing special args.
 	RawArgs     json.RawMessage `json:"raw_args"`
 	SchemaState SchemaState     `json:"schema_state"`
-	// Snapshot version for this job.
+	// Snapshot version for this server.
 	SnapshotVer uint64 `json:"snapshot_ver"`
 	// unix nano seconds
 	// TODO: Use timestamp allocated by TSO.
 	LastUpdateTS int64 `json:"last_update_ts"`
-	// Query string of the ddl job.
+	// Query string of the ddl server.
 	Query      string       `json:"query"`
 	BinlogInfo *HistoryInfo `json:"binlog"`
 }
@@ -143,7 +143,7 @@ func (job *Job) GetRowCount() int64 {
 	return job.RowCount
 }
 
-// Encode encodes job with json format.
+// Encode encodes server with json format.
 func (job *Job) Encode() ([]byte, error) {
 	var err error
 	job.RawArgs, err = json.Marshal(job.Args)
@@ -159,14 +159,14 @@ func (job *Job) Encode() ([]byte, error) {
 	return b, errors.Trace(err)
 }
 
-// Decode decodes job from the json buffer, we must use DecodeArgs later to
-// decode special args for this job.
+// Decode decodes server from the json buffer, we must use DecodeArgs later to
+// decode special args for this server.
 func (job *Job) Decode(b []byte) error {
 	err := json.Unmarshal(b, job)
 	return errors.Trace(err)
 }
 
-// DecodeArgs decodes job args.
+// DecodeArgs decodes server args.
 func (job *Job) DecodeArgs(args ...interface{}) error {
 	job.Args = args
 	err := json.Unmarshal(job.RawArgs, &job.Args)
@@ -180,26 +180,26 @@ func (job *Job) String() string {
 		job.ID, job.Type, job.State, job.SchemaState, job.SchemaID, job.TableID, rowCount, len(job.Args))
 }
 
-// IsFinished returns whether job is finished or not.
-// If the job state is Done or Cancelled, it is finished.
+// IsFinished returns whether server is finished or not.
+// If the server state is Done or Cancelled, it is finished.
 func (job *Job) IsFinished() bool {
 	return job.State == JobDone || job.State == JobRollbackDone || job.State == JobCancelled
 }
 
-// IsDone returns whether job is done.
+// IsDone returns whether server is done.
 func (job *Job) IsDone() bool {
 	return job.State == JobDone
 }
 
-// IsRunning returns whether job is still running or not.
+// IsRunning returns whether server is still running or not.
 func (job *Job) IsRunning() bool {
 	return job.State == JobRunning
 }
 
-// JobState is for job state.
+// JobState is for server state.
 type JobState byte
 
-// List job states.
+// List server states.
 const (
 	JobNone JobState = iota
 	JobRunning

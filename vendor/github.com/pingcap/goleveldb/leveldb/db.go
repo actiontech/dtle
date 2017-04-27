@@ -276,7 +276,7 @@ func RecoverFile(path string, o *opt.Options) (db *DB, err error) {
 
 func recoverTable(s *session, o *opt.Options) error {
 	o = dupOptions(o)
-	// Mask StrictReader, lets StrictRecovery doing its job.
+	// Mask StrictReader, lets StrictRecovery doing its server.
 	o.Strict &= ^opt.StrictReader
 
 	// Get all tables and sort it by file number.

@@ -104,7 +104,7 @@ func (s *testIndexChangeSuite) TestIndexChange(c *C) {
 			}
 		case model.StatePublic:
 			if job.GetRowCount() != 3 {
-				checkErr = errors.Errorf("job's row count %d != 3", job.GetRowCount())
+				checkErr = errors.Errorf("server's row count %d != 3", job.GetRowCount())
 			}
 			publicTable, err = getCurrentTable(d, s.dbInfo.ID, tblInfo.ID)
 			if err != nil {
@@ -151,7 +151,7 @@ func (s *testIndexChangeSuite) TestIndexChange(c *C) {
 			}
 		case model.StateNone:
 			if job.GetRowCount() != 4 {
-				checkErr = errors.Errorf("job's row count %d != 4", job.GetRowCount())
+				checkErr = errors.Errorf("server's row count %d != 4", job.GetRowCount())
 			}
 			noneTable, err = getCurrentTable(d, s.dbInfo.ID, tblInfo.ID)
 			if err != nil {

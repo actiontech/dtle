@@ -41,9 +41,9 @@ var (
 	errInvalidWorker = terror.ClassDDL.New(codeInvalidWorker, "invalid worker")
 	// errNotOwner means we are not owner and can't handle DDL jobs.
 	errNotOwner              = terror.ClassDDL.New(codeNotOwner, "not Owner")
-	errInvalidDDLJob         = terror.ClassDDL.New(codeInvalidDDLJob, "invalid ddl job")
-	errInvalidBgJob          = terror.ClassDDL.New(codeInvalidBgJob, "invalid background job")
-	errInvalidJobFlag        = terror.ClassDDL.New(codeInvalidJobFlag, "invalid job flag")
+	errInvalidDDLJob         = terror.ClassDDL.New(codeInvalidDDLJob, "invalid ddl server")
+	errInvalidBgJob          = terror.ClassDDL.New(codeInvalidBgJob, "invalid background server")
+	errInvalidJobFlag        = terror.ClassDDL.New(codeInvalidJobFlag, "invalid server flag")
 	errRunMultiSchemaChanges = terror.ClassDDL.New(codeRunMultiSchemaChanges, "can't run multi schema change")
 	errWaitReorgTimeout      = terror.ClassDDL.New(codeWaitReorgTimeout, "wait for reorganization timeout")
 	errInvalidStoreVer       = terror.ClassDDL.New(codeInvalidStoreVer, "invalid storage current version")
@@ -136,14 +136,14 @@ type ddl struct {
 	uuid         string
 	ddlJobCh     chan struct{}
 	ddlJobDoneCh chan struct{}
-	// Drop database/table job that runs in the background.
+	// Drop database/table server that runs in the background.
 	bgJobCh chan struct{}
-	// reorgDoneCh is for reorganization, if the reorganization job is done,
+	// reorgDoneCh is for reorganization, if the reorganization server is done,
 	// we will use this channel to notify outer.
 	// TODO: Now we use goroutine to simulate reorganization jobs, later we may
-	// use a persistent job list.
+	// use a persistent server list.
 	reorgDoneCh chan error
-	// reorgRowCount is for reorganization, it uses to simulate a job's row count.
+	// reorgRowCount is for reorganization, it uses to simulate a server's row count.
 	reorgRowCount int64
 
 	quitCh chan struct{}
@@ -195,7 +195,7 @@ func (d *ddl) Stop() error {
 			return nil
 		}
 
-		// DDL job's owner is me, clean it so other servers can complete it quickly.
+		// DDL server's owner is me, clean it so other servers can complete it quickly.
 		return t.SetDDLJobOwner(&model.Owner{})
 	})
 	if err != nil {
@@ -212,7 +212,7 @@ func (d *ddl) Stop() error {
 			return nil
 		}
 
-		// Background job's owner is me, clean it so other servers can complete it quickly.
+		// Background server's owner is me, clean it so other servers can complete it quickly.
 		return t.SetBgJobOwner(&model.Owner{})
 	})
 	log.Infof("stop DDL:%s", d.uuid)
@@ -238,8 +238,8 @@ func (d *ddl) start() {
 	d.wait.Add(2)
 	go d.onBackgroundWorker()
 	go d.onDDLWorker()
-	// For every start, we will send a fake job to let worker
-	// check owner firstly and try to find whether a job exists and run.
+	// For every start, we will send a fake server to let worker
+	// check owner firstly and try to find whether a server exists and run.
 	asyncNotify(d.ddlJobCh)
 	asyncNotify(d.bgJobCh)
 }
@@ -314,19 +314,19 @@ func (d *ddl) doDDLJob(ctx context.Context, job *model.Job) error {
 		return errors.Trace(err)
 	}
 
-	// Get a global job ID and put the DDL job in the queue.
+	// Get a global server ID and put the DDL server in the queue.
 	err := d.addDDLJob(ctx, job)
 	if err != nil {
 		return errors.Trace(err)
 	}
 
-	// Notice worker that we push a new job and wait the job done.
+	// Notice worker that we push a new server and wait the server done.
 	asyncNotify(d.ddlJobCh)
-	log.Infof("[ddl] start DDL job %s, Query:\n%s", job, job.Query)
+	log.Infof("[ddl] start DDL server %s, Query:\n%s", job, job.Query)
 
 	var historyJob *model.Job
 	jobID := job.ID
-	// For a job from start to end, the state of it will be none -> delete only -> write only -> reorganization -> public
+	// For a server from start to end, the state of it will be none -> delete only -> write only -> reorganization -> public
 	// For every state changes, we will wait as lease 2 * lease time, so here the ticker check is 10 * lease.
 	ticker := time.NewTicker(chooseLeaseTime(10*d.lease, 10*time.Second))
 	startTime := time.Now()
@@ -349,16 +349,16 @@ func (d *ddl) doDDLJob(ctx context.Context, job *model.Job) error {
 
 		historyJob, err = d.getHistoryDDLJob(jobID)
 		if err != nil {
-			log.Errorf("[ddl] get history DDL job err %v, check again", err)
+			log.Errorf("[ddl] get history DDL server err %v, check again", err)
 			continue
 		} else if historyJob == nil {
-			log.Warnf("[ddl] DDL job %d is not in history, maybe not run", jobID)
+			log.Warnf("[ddl] DDL server %d is not in history, maybe not run", jobID)
 			continue
 		}
 
-		// If a job is a history job, the state must be JobDone or JobCancel.
+		// If a server is a history server, the state must be JobDone or JobCancel.
 		if historyJob.State == model.JobDone {
-			log.Infof("[ddl] DDL job %d is finished", jobID)
+			log.Infof("[ddl] DDL server %d is finished", jobID)
 			return nil
 		}
 

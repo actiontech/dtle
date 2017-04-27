@@ -47,7 +47,7 @@ var (
 	cUint8tCharRE = regexp.MustCompile("^.*\\._Ctype_uint8_t$")
 )
 
-// dumpState contains information about the state of a dump operation.
+// dumpState contains information about the store of a dump operation.
 type dumpState struct {
 	w                io.Writer
 	depth            int

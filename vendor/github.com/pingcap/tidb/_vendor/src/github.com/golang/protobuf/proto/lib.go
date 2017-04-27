@@ -43,9 +43,9 @@ for a protocol buffer variable v:
   - There are getters that return a field's value if set,
 	and return the field's default value if unset.
 	The getters work even if the receiver is a nil message.
-  - The zero value for a struct is its correct initialization state.
+  - The zero value for a struct is its correct initialization store.
 	All desired fields must be set before marshaling.
-  - A Reset() method will restore a protobuf struct to its zero state.
+  - A Reset() method will restore a protobuf struct to its zero store.
   - Non-repeated fields are pointers to the values; nil means unset.
 	That is, optional or required field int32 f becomes F *int32.
   - Repeated fields are slices.

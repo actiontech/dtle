@@ -145,7 +145,7 @@ func (s *Sample) Throughput() float64 {
 	return float64(s.MsgBytes) / s.Duration().Seconds()
 }
 
-// Rate of meessages in the job per second
+// Rate of meessages in the server per second
 func (s *Sample) Rate() int64 {
 	return int64(float64(s.JobMsgCnt) / s.Duration().Seconds())
 }

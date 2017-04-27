@@ -1,57 +1,89 @@
 package: udup
 import:
-- package: github.com/Sirupsen/logrus
-- package: github.com/carbocation/interpose
-- package: github.com/docker/leadership
-- package: github.com/docker/libkv
+- package: github.com/NYTimes/gziphandler
+- package: github.com/RackSec/srslog
+- package: github.com/armon/go-metrics
   subpackages:
-  - store
-  - store/consul
+  - circonus
+  - datadog
+- package: github.com/docker/docker
+  subpackages:
+  - pkg/ioutils
+- package: github.com/dustin/go-humanize
 - package: github.com/go-sql-driver/mysql
-- package: github.com/gorilla/mux
+- package: github.com/golang/snappy
+- package: github.com/hashicorp/consul-template
+  subpackages:
+  - signals
+- package: github.com/hashicorp/consul
+  subpackages:
+  - api
+  - lib
+- package: github.com/hashicorp/go-cleanhttp
+- package: github.com/hashicorp/go-getter
+- package: github.com/hashicorp/go-memdb
+- package: github.com/hashicorp/go-msgpack
+  subpackages:
+  - codec
 - package: github.com/hashicorp/go-multierror
+- package: github.com/hashicorp/go-plugin
+- package: github.com/hashicorp/go-rootcerts
+- package: github.com/hashicorp/go-syslog
+- package: github.com/hashicorp/go-version
 - package: github.com/hashicorp/hcl
   subpackages:
   - hcl/ast
+- package: github.com/hashicorp/logutils
 - package: github.com/hashicorp/memberlist
+- package: github.com/hashicorp/net-rpc-msgpackrpc
+- package: github.com/hashicorp/raft
+- package: github.com/hashicorp/raft-boltdb
 - package: github.com/hashicorp/serf
   subpackages:
   - serf
+- package: github.com/hashicorp/yamux
+- package: github.com/hpcloud/tail
+  subpackages:
+  - watch
 - package: github.com/issuj/gofaster
   subpackages:
   - base64
+- package: github.com/kardianos/osext
 - package: github.com/mitchellh/cli
+- package: github.com/mitchellh/colorstring
+- package: github.com/mitchellh/copystructure
+- package: github.com/mitchellh/hashstructure
 - package: github.com/mitchellh/mapstructure
-- package: github.com/nats-io/gnatsd
-  subpackages:
-  - server
 - package: github.com/nats-io/go-nats-streaming
-- package: github.com/nats-io/nats-streaming-server
+- package: github.com/opencontainers/runc
   subpackages:
-  - server
+  - libcontainer/cgroups
+  - libcontainer/configs
 - package: github.com/pingcap/tidb
   subpackages:
   - ast
   - parser
+- package: github.com/ryanuber/columnize
 - package: github.com/satori/go.uuid
+- package: github.com/shirou/gopsutil
+  subpackages:
+  - cpu
+  - disk
+  - host
+  - mem
 - package: github.com/siddontang/go-mysql
   subpackages:
   - mysql
   - replication
+- package: github.com/ugorji/go
+  subpackages:
+  - codec
 - package: golang.org/x/net
   subpackages:
   - context
-- package: github.com/cznic/mathutil
-- package: github.com/cznic/parser
+- package: golang.org/x/sys
   subpackages:
-  - yacc
-- package: github.com/cznic/sortutil
-- package: github.com/cznic/strutil
-- package: github.com/cznic/y
-- package: github.com/cznic/golex
-  subpackages:
-  - lex
+  - unix
+- package: gopkg.in/tomb.v1
 testImport:
-- package: github.com/stretchr/testify
-  subpackages:
-  - assert
+- package: github.com/kr/pretty

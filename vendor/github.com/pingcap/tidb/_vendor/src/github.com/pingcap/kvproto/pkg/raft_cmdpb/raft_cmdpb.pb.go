@@ -783,13 +783,13 @@ func (m *RegionLeaderResponse) GetLeader() *metapb.Peer {
 }
 
 // For getting more information of the region.
-// We add some admin operations (ChangePeer, Split...) into the pb job list,
-// then pd server will peek the first one, handle it and then pop it from the job lib.
+// We add some admin operations (ChangePeer, Split...) into the pb server list,
+// then pd server will peek the first one, handle it and then pop it from the server lib.
 // But sometimes, the pd server may crash before popping. When another pd server
-// starts and finds the job is running but not finished, it will first check whether
-// the raft server already has handled this job.
+// starts and finds the server is running but not finished, it will first check whether
+// the raft server already has handled this server.
 // E,g, for ChangePeer, if we add Peer10 into region1 and find region1 has already had
-// Peer10, we can think this ChangePeer is finished, and can pop this job from job list
+// Peer10, we can think this ChangePeer is finished, and can pop this server from server list
 // directly.
 type RegionDetailRequest struct {
 	XXX_unrecognized []byte `json:"-"`

@@ -9,6 +9,14 @@ import (
 	"github.com/mitchellh/cli"
 
 	"udup/cmd/udup/command"
+	"udup/agent"
+)
+
+// The git commit that was compiled. This will be filled in by the compiler.
+var (
+	Version   string
+	GitBranch string
+	GitCommit string
 )
 
 func main() {
@@ -31,7 +39,7 @@ func realMain() int {
 		}
 	}
 
-	cli := &cli.CLI{
+	c := &cli.CLI{
 		Args:     args,
 		HelpFunc: cli.BasicHelpFunc("Udup"),
 	}
@@ -54,67 +62,67 @@ func realMain() int {
 			}, nil
 		},
 		"alloc-status": func() (cli.Command, error) {
-			return &AllocStatusCommand{
+			return &command.AllocStatusCommand{
 				Meta: meta,
 			}, nil
 		},
 		"agent-info": func() (cli.Command, error) {
-			return &AgentInfoCommand{
+			return &command.AgentInfoCommand{
 				Meta: meta,
 			}, nil
 		},
 		"client-config": func() (cli.Command, error) {
-			return &ClientConfigCommand{
+			return &command.ClientConfigCommand{
 				Meta: meta,
 			}, nil
 		},
 		"eval-status": func() (cli.Command, error) {
-			return &EvalStatusCommand{
+			return &command.EvalStatusCommand{
 				Meta: meta,
 			}, nil
 		},
 		"node-status": func() (cli.Command, error) {
-			return &NodeStatusCommand{
+			return &command.NodeStatusCommand{
 				Meta: meta,
 			}, nil
 		},
 		"run": func() (cli.Command, error) {
-			return &RunCommand{
+			return &command.RunCommand{
 				Meta: meta,
 			}, nil
 		},
 		"stop": func() (cli.Command, error) {
-			return &StopCommand{
+			return &command.StopCommand{
 				Meta: meta,
 			}, nil
 		},
 		"server-force-leave": func() (cli.Command, error) {
-			return &ServerForceLeaveCommand{
+			return &command.ServerForceLeaveCommand{
 				Meta: meta,
 			}, nil
 		},
 		"server-join": func() (cli.Command, error) {
-			return &ServerJoinCommand{
+			return &command.ServerJoinCommand{
 				Meta: meta,
 			}, nil
 		},
 		"server-members": func() (cli.Command, error) {
-			return &ServerMembersCommand{
+			return &command.ServerMembersCommand{
 				Meta: meta,
 			}, nil
 		},
 		"status": func() (cli.Command, error) {
-			return &StatusCommand{
+			return &command.StatusCommand{
 				Meta: meta,
 			}, nil
 		},
 		"validate": func() (cli.Command, error) {
-			return &ValidateCommand{
+			return &command.ValidateCommand{
 				Meta: meta,
 			}, nil
 		},
 		"version": func() (cli.Command, error) {
-			return &VersionCommand{
+			return &command.VersionCommand{
 				Version: Version,
 				Commit:  GitCommit,
 				Branch:  GitBranch,
@@ -123,7 +131,7 @@ func realMain() int {
 		},
 	}
 
-	exitCode, err := cli.Run()
+	exitCode, err := c.Run()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error executing CLI: %s\n", err.Error())
 		return 1

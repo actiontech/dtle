@@ -17,8 +17,8 @@ import (
 
 const (
 	// remoteExecFileName is the name of the file we append to
-	// the path, e.g. _rexec/session_id/job
-	remoteExecFileName = "job"
+	// the path, e.g. _rexec/session_id/server
+	remoteExecFileName = "server"
 
 	// rExecAck is the suffix added to an ack path
 	remoteExecAckSuffix = "ack"
@@ -124,7 +124,7 @@ func (a *Agent) handleRemoteExec(msg *UserEvent) {
 		return
 	}
 
-	// Read the job specification
+	// Read the server specification
 	var spec remoteExecSpec
 	if !a.remoteExecGetSpec(&event, &spec) {
 		return
@@ -246,17 +246,17 @@ func (a *Agent) remoteExecGetSpec(event *remoteExecEvent, spec *remoteExecSpec) 
 	var out structs.IndexedDirEntries
 QUERY:
 	if err := a.RPC("KVS.Get", &get, &out); err != nil {
-		a.logger.Printf("[ERR] agent: failed to get remote exec job: %v", err)
+		a.logger.Printf("[ERR] agent: failed to get remote exec server: %v", err)
 		return false
 	}
 	if len(out.Entries) == 0 {
 		// If the initial read was stale and had no data, retry as a consistent read
 		if get.QueryOptions.AllowStale {
-			a.logger.Printf("[DEBUG] agent: trying consistent fetch of remote exec job spec")
+			a.logger.Printf("[DEBUG] agent: trying consistent fetch of remote exec server spec")
 			get.QueryOptions.AllowStale = false
 			goto QUERY
 		} else {
-			a.logger.Printf("[DEBUG] agent: remote exec aborted, job spec missing")
+			a.logger.Printf("[DEBUG] agent: remote exec aborted, server spec missing")
 			return false
 		}
 	}
@@ -271,7 +271,7 @@ QUERY:
 // continue.
 func (a *Agent) remoteExecWriteAck(event *remoteExecEvent) bool {
 	if err := a.remoteExecWriteKey(event, remoteExecAckSuffix, nil); err != nil {
-		a.logger.Printf("[ERR] agent: failed to ack remote exec job: %v", err)
+		a.logger.Printf("[ERR] agent: failed to ack remote exec server: %v", err)
 		return false
 	}
 	return true
@@ -281,7 +281,7 @@ func (a *Agent) remoteExecWriteAck(event *remoteExecEvent) bool {
 func (a *Agent) remoteExecWriteOutput(event *remoteExecEvent, num int, output []byte) bool {
 	suffix := path.Join(remoteExecOutputDivider, fmt.Sprintf("%05x", num))
 	if err := a.remoteExecWriteKey(event, suffix, output); err != nil {
-		a.logger.Printf("[ERR] agent: failed to write output for remote exec job: %v", err)
+		a.logger.Printf("[ERR] agent: failed to write output for remote exec server: %v", err)
 		return false
 	}
 	return true
@@ -291,13 +291,13 @@ func (a *Agent) remoteExecWriteOutput(event *remoteExecEvent, num int, output []
 func (a *Agent) remoteExecWriteExitCode(event *remoteExecEvent, exitCode *int) bool {
 	val := []byte(strconv.FormatInt(int64(*exitCode), 10))
 	if err := a.remoteExecWriteKey(event, remoteExecExitSuffix, val); err != nil {
-		a.logger.Printf("[ERR] agent: failed to write exit code for remote exec job: %v", err)
+		a.logger.Printf("[ERR] agent: failed to write exit code for remote exec server: %v", err)
 		return false
 	}
 	return true
 }
 
-// remoteExecWriteKey is used to write an output key for a remote exec job
+// remoteExecWriteKey is used to write an output key for a remote exec server
 func (a *Agent) remoteExecWriteKey(event *remoteExecEvent, suffix string, val []byte) error {
 	key := path.Join(event.Prefix, event.Session, a.config.NodeName, suffix)
 	write := structs.KVSRequest{

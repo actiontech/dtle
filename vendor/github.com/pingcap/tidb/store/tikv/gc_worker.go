@@ -166,13 +166,13 @@ func (w *GCWorker) storeIsBootstrapped() bool {
 	return ver > notBootstrappedVer
 }
 
-// Leader of GC worker checks if it should start a GC job every tick.
+// Leader of GC worker checks if it should start a GC server every tick.
 func (w *GCWorker) leaderTick() error {
 	if w.gcIsRunning {
 		return nil
 	}
-	// When the worker is just started, or an old GC job has just finished,
-	// wait a while before starting a new job.
+	// When the worker is just started, or an old GC server has just finished,
+	// wait a while before starting a new server.
 	if time.Since(w.lastFinish) < gcWaitTime {
 		return nil
 	}
@@ -183,13 +183,13 @@ func (w *GCWorker) leaderTick() error {
 	}
 
 	w.gcIsRunning = true
-	log.Infof("[gc worker] %s starts GC job, safePoint: %v", w.uuid, safePoint)
+	log.Infof("[gc worker] %s starts GC server, safePoint: %v", w.uuid, safePoint)
 	go w.runGCJob(safePoint)
 	return nil
 }
 
-// prepare checks required conditions for starting a GC job. It returns a bool
-// that indicates whether the GC job should start and the new safePoint.
+// prepare checks required conditions for starting a GC server. It returns a bool
+// that indicates whether the GC server should start and the new safePoint.
 func (w *GCWorker) prepare() (bool, uint64, error) {
 	now, err := w.getOracleTime()
 	if err != nil {
@@ -292,7 +292,7 @@ func (w *GCWorker) resolveLocks(safePoint uint64) error {
 	for {
 		select {
 		case <-w.quit:
-			return errors.New("[gc worker] gc job canceled")
+			return errors.New("[gc worker] gc server canceled")
 		default:
 		}
 
@@ -366,7 +366,7 @@ func (w *GCWorker) DoGC(safePoint uint64) error {
 	for {
 		select {
 		case <-w.quit:
-			return errors.New("[gc worker] gc job canceled")
+			return errors.New("[gc worker] gc server canceled")
 		default:
 		}
 

@@ -953,7 +953,7 @@ func (m *Memberlist) readRemoteState(bufConn io.Reader, dec *codec.Decoder) (boo
 	return header.Join, remoteNodes, userBuf, nil
 }
 
-// mergeRemoteState is used to merge the remote state with our local state
+// mergeRemoteState is used to merge the remote store with our local store
 func (m *Memberlist) mergeRemoteState(join bool, remoteNodes []pushNodeState, userBuf []byte) error {
 	if err := m.verifyProtocol(remoteNodes); err != nil {
 		return err

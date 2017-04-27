@@ -127,7 +127,7 @@ func testRemoteExecGetSpec(t *testing.T, c *Config) {
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
-	key := "_rexec/" + event.Session + "/job"
+	key := "_rexec/" + event.Session + "/server"
 	setKV(t, agent, key, buf)
 
 	var out remoteExecSpec
@@ -226,7 +226,7 @@ func testHandleRemoteExec(t *testing.T, command string, expectedSubstring string
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
-	key := "_rexec/" + event.Session + "/job"
+	key := "_rexec/" + event.Session + "/server"
 	setKV(t, agent, key, buf)
 
 	buf, err = json.Marshal(event)

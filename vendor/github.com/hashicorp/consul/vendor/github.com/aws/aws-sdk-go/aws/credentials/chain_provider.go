@@ -68,7 +68,7 @@ func NewChainCredentials(providers []Provider) *Credentials {
 // without error.
 //
 // If a provider is found it will be cached and any calls to IsExpired()
-// will return the expired state of the cached provider.
+// will return the expired store of the cached provider.
 func (c *ChainProvider) Retrieve() (Value, error) {
 	var errs []error
 	for _, p := range c.Providers {
@@ -89,7 +89,7 @@ func (c *ChainProvider) Retrieve() (Value, error) {
 	return Value{}, err
 }
 
-// IsExpired will returned the expired state of the currently cached provider
+// IsExpired will returned the expired store of the currently cached provider
 // if there is one.  If there is no current provider, true will be returned.
 func (c *ChainProvider) IsExpired() bool {
 	if c.curr != nil {

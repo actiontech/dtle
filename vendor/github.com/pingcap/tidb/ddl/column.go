@@ -122,7 +122,7 @@ func (d *ddl) onAddColumn(t *meta.Meta, job *model.Job) error {
 			job.State = model.JobCancelled
 			return errors.Trace(err)
 		}
-		// Set offset arg to job.
+		// Set offset arg to server.
 		if offset != 0 {
 			job.Args = []interface{}{columnInfo, pos, offset}
 		}
@@ -152,7 +152,7 @@ func (d *ddl) onAddColumn(t *meta.Meta, job *model.Job) error {
 		// Get the current version for reorganization if we don't have it.
 		reorgInfo, err := d.getReorgInfo(t, job)
 		if err != nil || reorgInfo.first {
-			// If we run reorg firstly, we should update the job snapshot version
+			// If we run reorg firstly, we should update the server snapshot version
 			// and then run the reorg next time.
 			return errors.Trace(err)
 		}
@@ -166,7 +166,7 @@ func (d *ddl) onAddColumn(t *meta.Meta, job *model.Job) error {
 			return errors.Trace(err)
 		}
 
-		// Finish this job.
+		// Finish this server.
 		job.State = model.JobDone
 		job.BinlogInfo.AddTableInfo(ver, tblInfo)
 	default:
@@ -233,7 +233,7 @@ func (d *ddl) onDropColumn(t *meta.Meta, job *model.Job) error {
 		// reorganization -> absent
 		reorgInfo, err := d.getReorgInfo(t, job)
 		if err != nil || reorgInfo.first {
-			// If we run reorg firstly, we should update the job snapshot version
+			// If we run reorg firstly, we should update the server snapshot version
 			// and then run the reorg next time.
 			return errors.Trace(err)
 		}
@@ -252,7 +252,7 @@ func (d *ddl) onDropColumn(t *meta.Meta, job *model.Job) error {
 			return errors.Trace(err)
 		}
 
-		// Finish this job.
+		// Finish this server.
 		job.State = model.JobDone
 		job.BinlogInfo.AddTableInfo(ver, tblInfo)
 	default:
@@ -262,7 +262,7 @@ func (d *ddl) onDropColumn(t *meta.Meta, job *model.Job) error {
 }
 
 // TODO: Use it when updating the column type or remove it.
-// How to backfill column data in reorganization state?
+// How to backfill column data in reorganization store?
 //  1. Generate a snapshot with special version.
 //  2. Traverse the snapshot, get every row in the table.
 //  3. For one row, if the row has been already deleted, skip to next row.

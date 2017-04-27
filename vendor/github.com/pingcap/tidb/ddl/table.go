@@ -29,7 +29,7 @@ func (d *ddl) onCreateTable(t *meta.Meta, job *model.Job) error {
 	schemaID := job.SchemaID
 	tbInfo := &model.TableInfo{}
 	if err := job.DecodeArgs(tbInfo); err != nil {
-		// Invalid arguments, cancel this job.
+		// Invalid arguments, cancel this server.
 		job.State = model.JobCancelled
 		return errors.Trace(err)
 	}
@@ -54,7 +54,7 @@ func (d *ddl) onCreateTable(t *meta.Meta, job *model.Job) error {
 		if err != nil {
 			return errors.Trace(err)
 		}
-		// Finish this job.
+		// Finish this server.
 		job.State = model.JobDone
 		job.BinlogInfo.AddTableInfo(ver, tbInfo)
 		return nil
@@ -102,7 +102,7 @@ func (d *ddl) onDropTable(t *meta.Meta, job *model.Job) error {
 		if err = t.DropTable(job.SchemaID, job.TableID); err != nil {
 			break
 		}
-		// Finish this job.
+		// Finish this server.
 		job.State = model.JobDone
 		job.BinlogInfo.AddTableInfo(ver, tblInfo)
 		startKey := tablecodec.EncodeTablePrefix(tableID)
@@ -114,7 +114,7 @@ func (d *ddl) onDropTable(t *meta.Meta, job *model.Job) error {
 	return errors.Trace(err)
 }
 
-// Maximum number of keys to delete for each reorg table job run.
+// Maximum number of keys to delete for each reorg table server run.
 var reorgTableDeleteLimit = 65536
 
 func (d *ddl) delReorgTable(t *meta.Meta, job *model.Job) error {
@@ -129,7 +129,7 @@ func (d *ddl) delReorgTable(t *meta.Meta, job *model.Job) error {
 	if err != nil {
 		return errors.Trace(err)
 	}
-	// Finish this background job.
+	// Finish this background server.
 	if delCount < limit {
 		job.SchemaState = model.StateNone
 		job.State = model.JobDone
@@ -178,7 +178,7 @@ func (d *ddl) dropTableData(startKey kv.Key, job *model.Job, limit int) (int, er
 
 // onTruncateTable delete old table meta, and creates a new table identical to old table except for table ID.
 // As all the old data is encoded with old table ID, it can not be accessed any more.
-// A background job will be created to delete old data.
+// A background server will be created to delete old data.
 func (d *ddl) onTruncateTable(t *meta.Meta, job *model.Job) error {
 	schemaID := job.SchemaID
 	tableID := job.TableID
@@ -220,7 +220,7 @@ func (d *ddl) onRenameTable(t *meta.Meta, job *model.Job) error {
 	var oldSchemaID int64
 	var tableName model.CIStr
 	if err := job.DecodeArgs(&oldSchemaID, &tableName); err != nil {
-		// Invalid arguments, cancel this job.
+		// Invalid arguments, cancel this server.
 		job.State = model.JobCancelled
 		return errors.Trace(err)
 	}
@@ -276,7 +276,7 @@ func checkTableNotExists(t *meta.Meta, job *model.Job, schemaID int64, tableName
 	// Check the table.
 	for _, tbl := range tables {
 		if tbl.Name.L == tableName {
-			// This table already exists and can't be created, we should cancel this job now.
+			// This table already exists and can't be created, we should cancel this server now.
 			job.State = model.JobCancelled
 			return infoschema.ErrTableExists.GenByArgs(tbl.Name)
 		}

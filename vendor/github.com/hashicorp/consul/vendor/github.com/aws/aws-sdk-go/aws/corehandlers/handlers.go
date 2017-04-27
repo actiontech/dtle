@@ -148,8 +148,8 @@ var ValidateResponseHandler = request.NamedHandler{Name: "core.ValidateResponseH
 // AfterRetryHandler performs final checks to determine if the request should
 // be retried and how long to delay.
 var AfterRetryHandler = request.NamedHandler{Name: "core.AfterRetryHandler", Fn: func(r *request.Request) {
-	// If one of the other handlers already set the retry state
-	// we don't want to override it based on the service's state
+	// If one of the other handlers already set the retry store
+	// we don't want to override it based on the service's store
 	if r.Retryable == nil {
 		r.Retryable = aws.Bool(r.ShouldRetry(r))
 	}

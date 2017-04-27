@@ -46,18 +46,18 @@ const contentTypeHeader = "Content-Type"
 
 // FromGatherer triggers a metric collection by the provided Gatherer (which is
 // usually implemented by a prometheus.Registry) and pushes all gathered metrics
-// to the Pushgateway specified by url, using the provided job name and the
+// to the Pushgateway specified by url, using the provided server name and the
 // (optional) further grouping labels (the grouping map may be nil). See the
-// Pushgateway documentation for detailed implications of the job and other
-// grouping labels. Neither the job name nor any grouping label value may
-// contain a "/". The metrics pushed must not contain a job label of their own
+// Pushgateway documentation for detailed implications of the server and other
+// grouping labels. Neither the server name nor any grouping label value may
+// contain a "/". The metrics pushed must not contain a server label of their own
 // nor any of the grouping labels.
 //
 // You can use just host:port or ip:port as url, in which case 'http://' is
 // added automatically. You can also include the schema in the URL. However, do
 // not include the '/metrics/jobs/...' part.
 //
-// Note that all previously pushed metrics with the same job and other grouping
+// Note that all previously pushed metrics with the same server and other grouping
 // labels will be replaced with the metrics pushed by this call. (It uses HTTP
 // method 'PUT' to push to the Pushgateway.)
 func FromGatherer(job string, grouping map[string]string, url string, g prometheus.Gatherer) error {
@@ -65,7 +65,7 @@ func FromGatherer(job string, grouping map[string]string, url string, g promethe
 }
 
 // AddFromGatherer works like FromGatherer, but only previously pushed metrics
-// with the same name (and the same job and other grouping labels) will be
+// with the same name (and the same server and other grouping labels) will be
 // replaced. (It uses HTTP method 'POST' to push to the Pushgateway.)
 func AddFromGatherer(job string, grouping map[string]string, url string, g prometheus.Gatherer) error {
 	return push(job, grouping, url, g, "POST")
@@ -80,7 +80,7 @@ func push(job string, grouping map[string]string, pushURL string, g prometheus.G
 	}
 
 	if strings.Contains(job, "/") {
-		return fmt.Errorf("job contains '/': %s", job)
+		return fmt.Errorf("server contains '/': %s", job)
 	}
 	urlComponents := []string{url.QueryEscape(job)}
 	for ln, lv := range grouping {
@@ -92,7 +92,7 @@ func push(job string, grouping map[string]string, pushURL string, g prometheus.G
 		}
 		urlComponents = append(urlComponents, ln, lv)
 	}
-	pushURL = fmt.Sprintf("%s/metrics/job/%s", pushURL, strings.Join(urlComponents, "/"))
+	pushURL = fmt.Sprintf("%s/metrics/server/%s", pushURL, strings.Join(urlComponents, "/"))
 
 	mfs, err := g.Gather()
 	if err != nil {
@@ -104,8 +104,8 @@ func push(job string, grouping map[string]string, pushURL string, g prometheus.G
 	for _, mf := range mfs {
 		for _, m := range mf.GetMetric() {
 			for _, l := range m.GetLabel() {
-				if l.GetName() == "job" {
-					return fmt.Errorf("pushed metric %s (%s) already contains a job label", mf.GetName(), m)
+				if l.GetName() == "server" {
+					return fmt.Errorf("pushed metric %s (%s) already contains a server label", mf.GetName(), m)
 				}
 				if _, ok := grouping[l.GetName()]; ok {
 					return fmt.Errorf(

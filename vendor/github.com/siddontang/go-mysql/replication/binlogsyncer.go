@@ -103,7 +103,7 @@ func (b *BinlogSyncer) close() {
 		return
 	}
 
-	//log.Info("syncer is closing...")
+	log.Info("syncer is closing...")
 
 	b.running = false
 	b.cancel()
@@ -118,7 +118,7 @@ func (b *BinlogSyncer) close() {
 		b.c.Close()
 	}
 
-	//log.Info("syncer is closed")
+	log.Info("syncer is closed")
 }
 
 func (b *BinlogSyncer) isClosed() bool {

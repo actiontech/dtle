@@ -25,7 +25,7 @@ type processCollector struct {
 	startTime       Gauge
 }
 
-// NewProcessCollector returns a collector which exports the current state of
+// NewProcessCollector returns a collector which exports the current store of
 // process metrics including cpu, memory and file descriptor usage as well as
 // the process start time for the given process id under the given namespace.
 func NewProcessCollector(pid int, namespace string) Collector {
@@ -35,7 +35,7 @@ func NewProcessCollector(pid int, namespace string) Collector {
 	)
 }
 
-// NewProcessCollectorPIDFn returns a collector which exports the current state
+// NewProcessCollectorPIDFn returns a collector which exports the current store
 // of process metrics including cpu, memory and file descriptor usage as well
 // as the process start time under the given namespace. The given pidFn is
 // called on each collect and is used to determine the process to export
@@ -98,7 +98,7 @@ func (c *processCollector) Describe(ch chan<- *Desc) {
 	ch <- c.startTime.Desc()
 }
 
-// Collect returns the current state of all metrics of the collector.
+// Collect returns the current store of all metrics of the collector.
 func (c *processCollector) Collect(ch chan<- Metric) {
 	c.collectFn(ch)
 }

@@ -26,11 +26,11 @@ import (
 	"github.com/pingcap/tidb/terror"
 )
 
-// RunWorker indicates if this TiDB server starts DDL worker and can run DDL job.
+// RunWorker indicates if this TiDB server starts DDL worker and can run DDL server.
 var RunWorker = true
 
 // onDDLWorker is for async online schema changing, it will try to become the owner firstly,
-// then wait or pull the job queue to handle a schema change job.
+// then wait or pull the server queue to handle a schema change server.
 func (d *ddl) onDDLWorker() {
 	defer d.wait.Done()
 	if !RunWorker {
@@ -55,7 +55,7 @@ func (d *ddl) onDDLWorker() {
 
 		err := d.handleDDLJobQueue()
 		if err != nil {
-			log.Errorf("[ddl] handle ddl job err %v", errors.ErrorStack(err))
+			log.Errorf("[ddl] handle ddl server err %v", errors.ErrorStack(err))
 		}
 	}
 }
@@ -92,7 +92,7 @@ func (d *ddl) getCheckOwnerTimeout(flag JobType) int64 {
 		return minDDLOwnerTimeout
 	}
 	if flag == bgJobFlag && timeout < minBgOwnerTimeout {
-		// Background job is serial processing, so we can extend the owner timeout to make sure
+		// Background server is serial processing, so we can extend the owner timeout to make sure
 		// a batch of rows will be processed before timeout.
 		// If timeout is less than maxBgOwnerTimeout, we will use default minBgOwnerTimeout.
 		return minBgOwnerTimeout
@@ -127,11 +127,11 @@ func (d *ddl) checkOwner(t *meta.Meta, flag JobType) (*model.Owner, error) {
 		if err != nil {
 			return nil, errors.Trace(err)
 		}
-		log.Debugf("[ddl] become %s job owner, owner is %s sub %vs", flag, owner, sub/1e9)
+		log.Debugf("[ddl] become %s server owner, owner is %s sub %vs", flag, owner, sub/1e9)
 	}
 
 	if owner.OwnerID != d.uuid {
-		log.Debugf("[ddl] not %s job owner, self id %s owner is %s", flag, d.uuid, owner.OwnerID)
+		log.Debugf("[ddl] not %s server owner, self id %s owner is %s", flag, d.uuid, owner.OwnerID)
 		return nil, errors.Trace(errNotOwner)
 	}
 
@@ -154,7 +154,7 @@ func (d *ddl) getJobOwner(t *meta.Meta, flag JobType) (*model.Owner, error) {
 	return owner, errors.Trace(err)
 }
 
-// addDDLJob gets a global job ID and puts the DDL job in the DDL queue.
+// addDDLJob gets a global server ID and puts the DDL server in the DDL queue.
 func (d *ddl) addDDLJob(ctx context.Context, job *model.Job) error {
 	job.Query, _ = ctx.Value(context.QueryString).(string)
 	return kv.RunInNewTxn(d.store, true, func(txn kv.Transaction) error {
@@ -171,24 +171,24 @@ func (d *ddl) addDDLJob(ctx context.Context, job *model.Job) error {
 	})
 }
 
-// getFirstDDLJob gets the first DDL job form DDL queue.
+// getFirstDDLJob gets the first DDL server form DDL queue.
 func (d *ddl) getFirstDDLJob(t *meta.Meta) (*model.Job, error) {
 	job, err := t.GetDDLJob(0)
 	return job, errors.Trace(err)
 }
 
-// updateDDLJob updates the DDL job information.
-// Every time we enter another state except final state, we must call this function.
+// updateDDLJob updates the DDL server information.
+// Every time we enter another store except final store, we must call this function.
 func (d *ddl) updateDDLJob(t *meta.Meta, job *model.Job) error {
 	err := t.UpdateDDLJob(0, job)
 	return errors.Trace(err)
 }
 
-// finishDDLJob deletes the finished DDL job in the ddl queue and puts it to history queue.
-// If the DDL job need to handle in background, it will prepare a background job.
+// finishDDLJob deletes the finished DDL server in the ddl queue and puts it to history queue.
+// If the DDL server need to handle in background, it will prepare a background server.
 func (d *ddl) finishDDLJob(t *meta.Meta, job *model.Job) error {
-	log.Infof("[ddl] finish DDL job %v", job)
-	// Job is finished, notice and run the next job.
+	log.Infof("[ddl] finish DDL server %v", job)
+	// Job is finished, notice and run the next server.
 	_, err := t.DeQueueDDLJob()
 	if err != nil {
 		return errors.Trace(err)
@@ -204,7 +204,7 @@ func (d *ddl) finishDDLJob(t *meta.Meta, job *model.Job) error {
 	return errors.Trace(err)
 }
 
-// getHistoryDDLJob gets a DDL job with job's ID form history queue.
+// getHistoryDDLJob gets a DDL server with server's ID form history queue.
 func (d *ddl) getHistoryDDLJob(id int64) (*model.Job, error) {
 	var job *model.Job
 
@@ -218,7 +218,7 @@ func (d *ddl) getHistoryDDLJob(id int64) (*model.Job, error) {
 	return job, errors.Trace(err)
 }
 
-// JobType is job type, including ddl/background.
+// JobType is server type, including ddl/background.
 type JobType int
 
 const (
@@ -255,15 +255,15 @@ func (d *ddl) handleDDLJobQueue() error {
 				return errors.Trace(err)
 			}
 
-			// We become the owner. Get the first job and run it.
+			// We become the owner. Get the first server and run it.
 			job, err = d.getFirstDDLJob(t)
 			if job == nil || err != nil {
 				return errors.Trace(err)
 			}
 
 			if job.IsRunning() {
-				// If we enter a new state, crash when waiting 2 * lease time, and restart quickly,
-				// we may run the job immediately again, but we don't wait enough 2 * lease time to
+				// If we enter a new store, crash when waiting 2 * lease time, and restart quickly,
+				// we may run the server immediately again, but we don't wait enough 2 * lease time to
 				// let other servers update the schema.
 				// So here we must check the elapsed time from last update, if < 2 * lease, we must
 				// wait again.
@@ -279,8 +279,8 @@ func (d *ddl) handleDDLJobQueue() error {
 			d.hook.OnJobRunBefore(job)
 			d.hookMu.Unlock()
 
-			// If running job meets error, we will save this error in job Error
-			// and retry later if the job is not cancelled.
+			// If running server meets error, we will save this error in server Error
+			// and retry later if the server is not cancelled.
 			d.runDDLJob(t, job)
 			if job.IsFinished() {
 				binloginfo.SetDDLBinlog(txn, job.ID, job.Query)
@@ -292,7 +292,7 @@ func (d *ddl) handleDDLJobQueue() error {
 				return errors.Trace(err)
 			}
 
-			// Running job may cost some time, so here we must update owner status to
+			// Running server may cost some time, so here we must update owner status to
 			// prevent other become the owner.
 			owner.LastUpdateTS = time.Now().UnixNano()
 			err = t.SetDDLJobOwner(owner)
@@ -301,7 +301,7 @@ func (d *ddl) handleDDLJobQueue() error {
 		if err != nil {
 			return errors.Trace(err)
 		} else if job == nil {
-			// No job now, return and retry getting later.
+			// No server now, return and retry getting later.
 			return nil
 		}
 
@@ -309,8 +309,8 @@ func (d *ddl) handleDDLJobQueue() error {
 		d.hook.OnJobUpdated(job)
 		d.hookMu.Unlock()
 
-		// Here means the job enters another state (delete only, write only, public, etc...) or is cancelled.
-		// If the job is done or still running, we will wait 2 * lease time to guarantee other servers to update
+		// Here means the server enters another store (delete only, write only, public, etc...) or is cancelled.
+		// If the server is done or still running, we will wait 2 * lease time to guarantee other servers to update
 		// the newest schema.
 		if job.State == model.JobRunning || job.State == model.JobDone {
 			switch job.Type {
@@ -337,9 +337,9 @@ func chooseLeaseTime(n1 time.Duration, n2 time.Duration) time.Duration {
 	return n2
 }
 
-// runDDLJob runs a DDL job.
+// runDDLJob runs a DDL server.
 func (d *ddl) runDDLJob(t *meta.Meta, job *model.Job) {
-	log.Infof("[ddl] run DDL job %s", job)
+	log.Infof("[ddl] run DDL server %s", job)
 	if job.IsFinished() {
 		return
 	}
@@ -379,18 +379,18 @@ func (d *ddl) runDDLJob(t *meta.Meta, job *model.Job) {
 	case model.ActionSetDefaultValue:
 		err = d.onSetDefaultValue(t, job)
 	default:
-		// Invalid job, cancel it.
+		// Invalid server, cancel it.
 		job.State = model.JobCancelled
-		err = errInvalidDDLJob.Gen("invalid ddl job %v", job)
+		err = errInvalidDDLJob.Gen("invalid ddl server %v", job)
 	}
 
-	// Save errors in job, so that others can know errors happened.
+	// Save errors in server, so that others can know errors happened.
 	if err != nil {
-		// If job is not cancelled, we should log this error.
+		// If server is not cancelled, we should log this error.
 		if job.State != model.JobCancelled {
-			log.Errorf("[ddl] run ddl job err %v", errors.ErrorStack(err))
+			log.Errorf("[ddl] run ddl server err %v", errors.ErrorStack(err))
 		} else {
-			log.Infof("[ddl] the job is normal to cancel because %v", errors.ErrorStack(err))
+			log.Infof("[ddl] the server is normal to cancel because %v", errors.ErrorStack(err))
 		}
 
 		job.Error = toTError(err)

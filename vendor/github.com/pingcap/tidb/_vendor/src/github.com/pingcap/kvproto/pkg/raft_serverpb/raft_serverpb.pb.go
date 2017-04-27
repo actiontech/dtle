@@ -382,7 +382,7 @@ func (m *RaftApplyState) GetTruncatedState() *RaftTruncatedState {
 }
 
 type RegionLocalState struct {
-	State            *PeerState     `protobuf:"varint,1,opt,name=state,enum=raft_serverpb.PeerState" json:"state,omitempty"`
+	State            *PeerState     `protobuf:"varint,1,opt,name=store,enum=raft_serverpb.PeerState" json:"store,omitempty"`
 	Region           *metapb.Region `protobuf:"bytes,2,opt,name=region" json:"region,omitempty"`
 	XXX_unrecognized []byte         `json:"-"`
 }

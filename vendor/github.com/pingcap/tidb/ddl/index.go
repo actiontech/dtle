@@ -165,7 +165,7 @@ func dropIndexColumnFlag(tblInfo *model.TableInfo, indexInfo *model.IndexInfo) {
 }
 
 func (d *ddl) onCreateIndex(t *meta.Meta, job *model.Job) error {
-	// Handle rollback job.
+	// Handle rollback server.
 	if job.State == model.JobRollback {
 		err := d.onDropIndex(t, job)
 		if err != nil {
@@ -174,7 +174,7 @@ func (d *ddl) onCreateIndex(t *meta.Meta, job *model.Job) error {
 		return nil
 	}
 
-	// Handle normal job.
+	// Handle normal server.
 	schemaID := job.SchemaID
 	tblInfo, err := getTableInfo(t, job, schemaID)
 	if err != nil {
@@ -233,7 +233,7 @@ func (d *ddl) onCreateIndex(t *meta.Meta, job *model.Job) error {
 		// reorganization -> public
 		reorgInfo, err := d.getReorgInfo(t, job)
 		if err != nil || reorgInfo.first {
-			// If we run reorg firstly, we should update the job snapshot version
+			// If we run reorg firstly, we should update the server snapshot version
 			// and then run the reorg next time.
 			return errors.Trace(err)
 		}
@@ -249,11 +249,11 @@ func (d *ddl) onCreateIndex(t *meta.Meta, job *model.Job) error {
 		})
 		if err != nil {
 			if terror.ErrorEqual(err, errWaitReorgTimeout) {
-				// if timeout, we should return, check for the owner and re-wait job done.
+				// if timeout, we should return, check for the owner and re-wait server done.
 				return nil
 			}
 			if terror.ErrorEqual(err, kv.ErrKeyExists) {
-				log.Warnf("[ddl] run DDL job %v err %v, convert job to rollback job", job, err)
+				log.Warnf("[ddl] run DDL server %v err %v, convert server to rollback server", job, err)
 				err = d.convert2RollbackJob(t, job, tblInfo, indexInfo)
 			}
 			return errors.Trace(err)
@@ -269,7 +269,7 @@ func (d *ddl) onCreateIndex(t *meta.Meta, job *model.Job) error {
 			return errors.Trace(err)
 		}
 
-		// Finish this job.
+		// Finish this server.
 		job.State = model.JobDone
 		job.BinlogInfo.AddTableInfo(ver, tblInfo)
 	default:
@@ -282,10 +282,10 @@ func (d *ddl) onCreateIndex(t *meta.Meta, job *model.Job) error {
 func (d *ddl) convert2RollbackJob(t *meta.Meta, job *model.Job, tblInfo *model.TableInfo, indexInfo *model.IndexInfo) error {
 	job.State = model.JobRollback
 	job.Args = []interface{}{indexInfo.Name}
-	// If add index job rollbacks in write reorganization state, its need to delete all keys which has been added.
-	// Its work is the same as drop index job do.
-	// The write reorganization state in add index job that likes write only state in drop index job.
-	// So the next state is delete only state.
+	// If add index server rollbacks in write reorganization state, its need to delete all keys which has been added.
+	// Its work is the same as drop index server do.
+	// The write reorganization store in add index server that likes write only store in drop index server.
+	// So the next store is delete only store.
 	indexInfo.State = model.StateDeleteOnly
 	originalState := indexInfo.State
 	job.SchemaState = model.StateDeleteOnly
@@ -339,7 +339,7 @@ func (d *ddl) onDropIndex(t *meta.Meta, job *model.Job) error {
 		})
 		if err != nil {
 			// If the timeout happens, we should return.
-			// Then check for the owner and re-wait job to finish.
+			// Then check for the owner and re-wait server to finish.
 			return errors.Trace(filterError(err, errWaitReorgTimeout))
 		}
 
@@ -360,7 +360,7 @@ func (d *ddl) onDropIndex(t *meta.Meta, job *model.Job) error {
 			return errors.Trace(err)
 		}
 
-		// Finish this job.
+		// Finish this server.
 		if job.State == model.JobRollback {
 			job.State = model.JobRollbackDone
 		} else {

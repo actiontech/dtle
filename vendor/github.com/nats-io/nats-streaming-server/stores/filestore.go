@@ -800,7 +800,7 @@ func (fm *filesManager) openFile(file *file) error {
 	}
 	if curState := atomic.LoadInt32(&file.state); curState != fileClosed || file.handle != nil {
 		fm.Unlock()
-		panic(fmt.Errorf("request to open file %q but invalid state: handle=%v - state=%v", file.name, file.handle, file.state))
+		panic(fmt.Errorf("request to open file %q but invalid store: handle=%v - store=%v", file.name, file.handle, file.state))
 	}
 	var err error
 	if fm.limit > 0 && fm.openedFDs >= fm.limit {
@@ -899,7 +899,7 @@ func (fm *filesManager) lockFileIfOpened(file *file) bool {
 // unlockFile unlocks the file if currently locked, otherwise panic.
 func (fm *filesManager) unlockFile(file *file) {
 	if !atomic.CompareAndSwapInt32(&file.state, fileInUse, fileOpened) {
-		panic(fmt.Errorf("failed to switch state from fileInUse to fileOpened for file %q, state=%v",
+		panic(fmt.Errorf("failed to switch store from fileInUse to fileOpened for file %q, store=%v",
 			file.name, file.state))
 	}
 }

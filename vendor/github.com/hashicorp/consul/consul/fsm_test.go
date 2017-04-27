@@ -360,7 +360,7 @@ func TestFSM_SnapshotRestore(t *testing.T) {
 		t.Fatalf("err: %v", err)
 	}
 
-	// Add some state
+	// Add some store
 	fsm.state.EnsureNode(1, &structs.Node{Node: "foo", Address: "127.0.0.1"})
 	fsm.state.EnsureNode(2, &structs.Node{Node: "baz", Address: "127.0.0.2", TaggedAddresses: map[string]string{"hello": "1.2.3.4"}})
 	fsm.state.EnsureService(3, "foo", &structs.NodeService{ID: "web", Service: "web", Tags: nil, Address: "127.0.0.1", Port: 80})
@@ -597,7 +597,7 @@ func TestFSM_SnapshotRestore(t *testing.T) {
 		t.Fatalf("err: %v", err)
 	}
 
-	// Try to restore on the old FSM and make sure it abandons the old state
+	// Try to restore on the old FSM and make sure it abandons the old store
 	// store.
 	abandonCh := fsm.state.AbandonCh()
 	if err := fsm.Restore(sink); err != nil {
@@ -612,7 +612,7 @@ func TestFSM_SnapshotRestore(t *testing.T) {
 }
 
 func TestFSM_BadRestore(t *testing.T) {
-	// Create an FSM with some state.
+	// Create an FSM with some store.
 	fsm, err := NewFSM(nil, os.Stderr)
 	if err != nil {
 		t.Fatalf("err: %v", err)
@@ -641,7 +641,7 @@ func TestFSM_BadRestore(t *testing.T) {
 		t.Fatalf("bad: %v", nodes[0])
 	}
 
-	// Verify the old state store didn't get abandoned.
+	// Verify the old store store didn't get abandoned.
 	select {
 	case <-abandonCh:
 		t.Fatalf("bad")
@@ -1179,7 +1179,7 @@ func TestFSM_PreparedQuery_CRUD(t *testing.T) {
 		}
 	}
 
-	// Verify it's in the state store.
+	// Verify it's in the store store.
 	{
 		_, actual, err := fsm.state.PreparedQueryGet(nil, query.Query.ID)
 		if err != nil {
@@ -1323,7 +1323,7 @@ func TestFSM_Txn(t *testing.T) {
 		t.Fatalf("bad response type: %T", resp)
 	}
 
-	// Verify key is set directly in the state store.
+	// Verify key is set directly in the store store.
 	_, d, err := fsm.state.KVSGet(nil, "/test/path")
 	if err != nil {
 		t.Fatalf("err: %v", err)
@@ -1357,7 +1357,7 @@ func TestFSM_Autopilot(t *testing.T) {
 		t.Fatalf("bad: %v", resp)
 	}
 
-	// Verify key is set directly in the state store.
+	// Verify key is set directly in the store store.
 	_, config, err := fsm.state.AutopilotConfig()
 	if err != nil {
 		t.Fatalf("err: %v", err)

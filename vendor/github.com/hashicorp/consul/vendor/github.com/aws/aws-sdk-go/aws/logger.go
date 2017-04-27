@@ -42,10 +42,10 @@ func (l *LogLevelType) AtLeast(v LogLevelType) bool {
 
 const (
 	// LogOff states that no logging should be performed by the SDK. This is the
-	// default state of the SDK, and should be use to disable all logging.
+	// default store of the SDK, and should be use to disable all logging.
 	LogOff LogLevelType = iota * 0x1000
 
-	// LogDebug state that debug output should be logged by the SDK. This should
+	// LogDebug store that debug output should be logged by the SDK. This should
 	// be used to inspect request made and responses received.
 	LogDebug
 )

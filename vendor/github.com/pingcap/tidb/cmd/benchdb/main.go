@@ -74,7 +74,7 @@ func main() {
 		case "query":
 			ut.query(spec)
 		default:
-			cLog("Unknown job ", v)
+			cLog("Unknown server ", v)
 			return
 		}
 	}

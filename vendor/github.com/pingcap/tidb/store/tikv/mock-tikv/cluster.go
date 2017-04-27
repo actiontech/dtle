@@ -116,7 +116,7 @@ func (c *Cluster) StartStore(storeID uint64) {
 	}
 }
 
-// CancelStore makes the store with cancel state true.
+// CancelStore makes the store with cancel store true.
 func (c *Cluster) CancelStore(storeID uint64) {
 	c.Lock()
 	defer c.Unlock()
@@ -127,7 +127,7 @@ func (c *Cluster) CancelStore(storeID uint64) {
 	}
 }
 
-// UnCancelStore makes the store with cancel state false.
+// UnCancelStore makes the store with cancel store false.
 func (c *Cluster) UnCancelStore(storeID uint64) {
 	c.Lock()
 	defer c.Unlock()

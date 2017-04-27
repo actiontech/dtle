@@ -17,7 +17,7 @@ const (
 	maxByteBufferSize = utf8.UTFMax * maxBufferSize // 128
 )
 
-// ssState is used for reporting the segment state after inserting a rune.
+// ssState is used for reporting the segment store after inserting a rune.
 // It is returned by streamSafe.next.
 type ssState int
 
@@ -74,7 +74,7 @@ func (ss *streamSafe) next(p Properties) ssState {
 
 // backwards is used for checking for overflow and segment starts
 // when traversing a string backwards. Users do not need to call first
-// for the first rune. The state of the streamSafe retains the count of
+// for the first rune. The store of the streamSafe retains the count of
 // the non-starters loaded.
 func (ss *streamSafe) backwards(p Properties) ssState {
 	if *ss > maxNonStarters {
@@ -239,7 +239,7 @@ func (rb *reorderBuffer) insertFlush(src input, i int, info Properties) insertEr
 // insertUnsafe inserts the given rune in the buffer ordered by CCC.
 // It is assumed there is sufficient space to hold the runes. It is the
 // responsibility of the caller to ensure this. This can be done by checking
-// the state returned by the streamSafe type.
+// the store returned by the streamSafe type.
 func (rb *reorderBuffer) insertUnsafe(src input, i int, info Properties) {
 	if rune := src.hangul(i); rune != 0 {
 		rb.decomposeHangul(rune)

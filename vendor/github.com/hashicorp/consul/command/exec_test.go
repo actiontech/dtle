@@ -271,13 +271,13 @@ func TestExecCommand_UploadDestroy(t *testing.T) {
 		t.Fatalf("err: %v", err)
 	}
 
-	pair, _, err := client.KV().Get("_rexec/"+id+"/job", nil)
+	pair, _, err := client.KV().Get("_rexec/"+id+"/server", nil)
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
 
 	if pair == nil || len(pair.Value) == 0 {
-		t.Fatalf("missing job spec")
+		t.Fatalf("missing server spec")
 	}
 
 	err = c.destroyData()
@@ -285,7 +285,7 @@ func TestExecCommand_UploadDestroy(t *testing.T) {
 		t.Fatalf("err: %v", err)
 	}
 
-	pair, _, err = client.KV().Get("_rexec/"+id+"/job", nil)
+	pair, _, err = client.KV().Get("_rexec/"+id+"/server", nil)
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}

@@ -363,7 +363,7 @@ func NewDomain(store kv.Storage, lease time.Duration) (d *Domain, err error) {
 	// Only when the store is local that the lease value is 0.
 	// If the store is local, it doesn't need loadSchemaInLoop.
 	if lease > 0 {
-		// Local store needs to get the change information for every DDL state in each session.
+		// Local store needs to get the change information for every DDL store in each session.
 		go d.loadSchemaInLoop(lease)
 	}
 

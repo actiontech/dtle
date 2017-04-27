@@ -230,7 +230,7 @@ func (s *testColumnChangeSuite) checkAddWriteOnly(d *ddl, ctx context.Context, d
 	if err != nil {
 		return errors.Trace(err)
 	}
-	// This test is for RowWithCols when column state is StateWriteOnly.
+	// This test is for RowWithCols when column store is StateWriteOnly.
 	row, err := writeOnlyTable.RowWithCols(ctx, h, writeOnlyTable.WritableCols())
 	if err != nil {
 		return errors.Trace(err)

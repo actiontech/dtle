@@ -48,7 +48,7 @@ func (d *ddl) getReorgRowCount() int64 {
 
 func (d *ddl) runReorgJob(job *model.Job, f func() error) error {
 	if d.reorgDoneCh == nil {
-		// start a reorganization job
+		// start a reorganization server
 		d.wait.Add(1)
 		d.reorgDoneCh = make(chan error, 1)
 		go func() {
@@ -67,25 +67,25 @@ func (d *ddl) runReorgJob(job *model.Job, f func() error) error {
 		waitTimeout = 1 * time.Millisecond
 	}
 
-	// wait reorganization job done or timeout
+	// wait reorganization server done or timeout
 	select {
 	case err := <-d.reorgDoneCh:
-		log.Info("[ddl] run reorg job done")
+		log.Info("[ddl] run reorg server done")
 		d.reorgDoneCh = nil
-		// Update a job's RowCount.
+		// Update a server's RowCount.
 		job.SetRowCount(d.getReorgRowCount())
 		d.setReorgRowCount(0)
 		return errors.Trace(err)
 	case <-d.quitCh:
-		log.Info("[ddl] run reorg job ddl quit")
+		log.Info("[ddl] run reorg server ddl quit")
 		d.setReorgRowCount(0)
 		// We return errWaitReorgTimeout here too, so that outer loop will break.
 		return errWaitReorgTimeout
 	case <-time.After(waitTimeout):
-		log.Infof("[ddl] run reorg job wait timeout %v", waitTimeout)
-		// Update a job's RowCount.
+		log.Infof("[ddl] run reorg server wait timeout %v", waitTimeout)
+		// Update a server's RowCount.
 		job.SetRowCount(d.getReorgRowCount())
-		// If timeout, we will return, check the owner and retry to wait job done again.
+		// If timeout, we will return, check the owner and retry to wait server done again.
 		return errWaitReorgTimeout
 	}
 }
@@ -104,7 +104,7 @@ func (d *ddl) isReorgRunnable(txn kv.Transaction, flag JobType) error {
 	if owner == nil || owner.OwnerID != d.uuid {
 		// if no owner, we will try later, so here just return error.
 		// or another server is owner, return error too.
-		log.Infof("[ddl] %s job, self id %s owner %s, txnTS:%d", flag, d.uuid, owner, txn.StartTS())
+		log.Infof("[ddl] %s server, self id %s owner %s, txnTS:%d", flag, d.uuid, owner, txn.StartTS())
 		return errors.Trace(errNotOwner)
 	}
 
@@ -170,7 +170,7 @@ func (d *ddl) delKeysWithStartKey(prefix, startKey kv.Key, jobType JobType, job 
 			return 0, startKey, errors.Trace(err)
 		}
 
-		// Update the background job's RowCount.
+		// Update the background server's RowCount.
 		job.SetRowCount(total)
 		d.setReorgRowCount(total)
 		batchHandleDataHistogram.WithLabelValues(batchDelData).Observe(sub)

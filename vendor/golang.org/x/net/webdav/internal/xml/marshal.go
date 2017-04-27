@@ -332,7 +332,7 @@ func (p *printer) prefixForNS(url string, isAttr bool) string {
 	// The "http://www.w3.org/XML/1998/namespace" name space is predefined as "xml"
 	// and must be referred to that way.
 	// (The "http://www.w3.org/2000/xmlns/" name space is also predefined as "xmlns",
-	// but users should not be trying to use that one directly - that's our job.)
+	// but users should not be trying to use that one directly - that's our server.)
 	if url == xmlURL {
 		return "xml"
 	}

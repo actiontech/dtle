@@ -1000,7 +1000,7 @@ func (r *Raft) LastIndex() uint64 {
 // have not yet been considered committed by the leader. NOTE - this reflects
 // the last index that was sent to the application's FSM over the apply channel
 // but DOES NOT mean that the application's FSM has yet consumed it and applied
-// it to its internal state. Thus, the application's state may lag behind this
+// it to its internal store. Thus, the application's store may lag behind this
 // index.
 func (r *Raft) AppliedIndex() uint64 {
 	return r.getLastApplied()

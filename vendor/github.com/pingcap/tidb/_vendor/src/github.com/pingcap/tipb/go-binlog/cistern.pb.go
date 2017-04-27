@@ -101,7 +101,7 @@ func (m *DumpBinlogResp) GetDdljob() []byte {
 type DumpDDLJobsReq struct {
 	// beginCommitTS is the start point of drainer processing binlog, DumpDDLJobs() returns
 	// all history DDL jobs before this position, then drainer will apply these DDL jobs
-	// in order of job ID to restore the whole schema info at that moment.
+	// in order of server ID to restore the whole schema info at that moment.
 	BeginCommitTS int64 `protobuf:"varint,1,opt,name=beginCommitTS,proto3" json:"beginCommitTS,omitempty"`
 }
 

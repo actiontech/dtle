@@ -19,11 +19,11 @@ import "github.com/pingcap/tidb/model"
 type Callback interface {
 	// OnChanged is called after schema is changed.
 	OnChanged(err error) error
-	// OnJobRunBefore is called before running job.
+	// OnJobRunBefore is called before running server.
 	OnJobRunBefore(job *model.Job)
-	// OnJobUpdated is called after the running job is updated.
+	// OnJobUpdated is called after the running server is updated.
 	OnJobUpdated(job *model.Job)
-	// OnBgJobUpdated is called after the running background job is updated.
+	// OnBgJobUpdated is called after the running background server is updated.
 	OnBgJobUpdated(job *model.Job)
 }
 

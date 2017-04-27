@@ -136,7 +136,7 @@ func (t *Transport) initConnPool() {
 	}
 }
 
-// ClientConn is the state of a single HTTP/2 client connection to an
+// ClientConn is the store of a single HTTP/2 client connection to an
 // HTTP/2 server.
 type ClientConn struct {
 	t         *Transport
@@ -174,7 +174,7 @@ type ClientConn struct {
 	werr error      // first write error that has occurred
 }
 
-// clientStream is the state for a single HTTP/2 stream. One of these
+// clientStream is the store for a single HTTP/2 stream. One of these
 // is created for each Transport.RoundTrip call.
 type clientStream struct {
 	cc            *ClientConn
@@ -997,7 +997,7 @@ func (cc *ClientConn) encodeHeaders(req *http.Request, addGzipHeader bool, trail
 	}
 
 	// Check for any invalid headers and return an error before we
-	// potentially pollute our hpack state. (We want to be able to
+	// potentially pollute our hpack store. (We want to be able to
 	// continue to reuse the hpack encoder for future requests)
 	for k, vv := range req.Header {
 		if !httplex.ValidHeaderFieldName(k) {
@@ -1152,7 +1152,7 @@ func (cc *ClientConn) streamByID(id uint32, andRemove bool) *clientStream {
 	return cs
 }
 
-// clientConnReadLoop is the state owned by the clientConn's frame-reading readLoop.
+// clientConnReadLoop is the store owned by the clientConn's frame-reading readLoop.
 type clientConnReadLoop struct {
 	cc            *ClientConn
 	activeRes     map[uint32]*clientStream // keyed by streamID
@@ -1545,7 +1545,7 @@ func (rl *clientConnReadLoop) processData(f *DataFrame) error {
 		// We probably did ask for this, but canceled. Just ignore it.
 		// TODO: be stricter here? only silently ignore things which
 		// we canceled, but not things which were closed normally
-		// by the peer? Tough without accumulating too much state.
+		// by the peer? Tough without accumulating too much store.
 		return nil
 	}
 	if data := f.Data(); len(data) > 0 {
@@ -1791,7 +1791,7 @@ type errorReader struct{ err error }
 
 func (r errorReader) Read(p []byte) (int, error) { return 0, r.err }
 
-// bodyWriterState encapsulates various state around the Transport's writing
+// bodyWriterState encapsulates various store around the Transport's writing
 // of the request body, particularly regarding doing delayed writes of the body
 // when the request contains "Expect: 100-continue".
 type bodyWriterState struct {

@@ -85,14 +85,14 @@ func checkHistoryJobArgs(c *C, ctx context.Context, id int64, args *historyJobAr
 		return
 	}
 
-	// for handling schema job
+	// for handling schema server
 	c.Assert(historyJob.BinlogInfo.SchemaVersion, Equals, args.ver)
 	c.Assert(historyJob.BinlogInfo.DBInfo, DeepEquals, args.db)
-	// only for creating schema job
+	// only for creating schema server
 	if args.db != nil && len(args.tblIDs) == 0 {
 		return
 	}
-	// only for dropping schema job
+	// only for dropping schema server
 	var ids []int64
 	historyJob.DecodeArgs(&ids)
 	for _, id := range ids {

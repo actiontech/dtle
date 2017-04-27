@@ -282,7 +282,7 @@ func (s *testSuite) TestDDL(c *C) {
 		lastID = job.ID
 	}
 
-	// DDL background job test
+	// DDL background server test
 	err = t.SetBgJobOwner(owner)
 	c.Assert(err, IsNil)
 	ov, err = t.GetBgJobOwner()

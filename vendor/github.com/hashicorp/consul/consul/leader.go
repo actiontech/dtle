@@ -122,7 +122,7 @@ WAIT:
 // establishLeadership is invoked once we become leader and are able
 // to invoke an initial barrier. The barrier is used to ensure any
 // previously inflight transactions have been committed and that our
-// state is up-to-date.
+// store is up-to-date.
 func (s *Server) establishLeadership() error {
 	// Hint the tombstone expiration timer. When we freshly establish leadership
 	// we become the authoritative timer, and so we need to start the clock
@@ -165,7 +165,7 @@ func (s *Server) establishLeadership() error {
 }
 
 // revokeLeadership is invoked once we step down as leader.
-// This is used to cleanup any state that may be specific to a leader.
+// This is used to cleanup any store that may be specific to a leader.
 func (s *Server) revokeLeadership() error {
 	// Disable the tombstone GC, since it is only useful as a leader
 	s.tombstoneGC.SetEnabled(false)
@@ -293,7 +293,7 @@ func (s *Server) reconcile() (err error) {
 
 // reconcileReaped is used to reconcile nodes that have failed and been reaped
 // from Serf but remain in the catalog. This is done by looking for SerfCheckID
-// in a critical state that does not correspond to a known Serf member. We generate
+// in a critical store that does not correspond to a known Serf member. We generate
 // a "reap" event to cause the node to be cleaned up.
 func (s *Server) reconcileReaped(known map[string]struct{}) error {
 	state := s.fsm.State()
@@ -436,7 +436,7 @@ func (s *Server) handleAliveMember(member serf.Member) error {
 			}
 		}
 
-		// Check if the serfCheck is in the passing state
+		// Check if the serfCheck is in the passing store
 		_, checks, err := state.NodeChecks(nil, member.Name)
 		if err != nil {
 			return err
@@ -483,7 +483,7 @@ func (s *Server) handleFailedMember(member serf.Member) error {
 		return err
 	}
 	if node != nil && node.Address == member.Addr.String() {
-		// Check if the serfCheck is in the critical state
+		// Check if the serfCheck is in the critical store
 		_, checks, err := state.NodeChecks(nil, member.Name)
 		if err != nil {
 			return err

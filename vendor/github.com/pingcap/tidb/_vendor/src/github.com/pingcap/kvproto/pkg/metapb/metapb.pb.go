@@ -130,7 +130,7 @@ func (m *StoreLabel) GetValue() string {
 type Store struct {
 	Id               uint64        `protobuf:"varint,1,opt,name=id" json:"id"`
 	Address          string        `protobuf:"bytes,2,opt,name=address" json:"address"`
-	State            StoreState    `protobuf:"varint,3,opt,name=state,enum=metapb.StoreState" json:"state"`
+	State            StoreState    `protobuf:"varint,3,opt,name=store,enum=metapb.StoreState" json:"store"`
 	Labels           []*StoreLabel `protobuf:"bytes,4,rep,name=labels" json:"labels,omitempty"`
 	XXX_unrecognized []byte        `json:"-"`
 }

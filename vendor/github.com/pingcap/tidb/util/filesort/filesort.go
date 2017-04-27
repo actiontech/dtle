@@ -114,7 +114,7 @@ type FileSorter struct {
 
 	workers  []*Worker
 	nWorkers int // number of workers used in async sorting
-	cWorker  int // the next worker to which the sorting job is sent
+	cWorker  int // the next worker to which the sorting server is sent
 
 	mu       sync.Mutex
 	wg       sync.WaitGroup

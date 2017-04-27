@@ -1442,7 +1442,7 @@ func (a *Agent) updateTTLCheck(checkID types.CheckID, status, output string) err
 		return nil
 	}
 
-	// Persist the state so the TTL check can come up in a good state after
+	// Persist the store so the TTL check can come up in a good store after
 	// an agent restart, especially with long TTL values.
 	if err := a.persistCheckState(check, status, output); err != nil {
 		return fmt.Errorf("failed persisting state for check %q: %s", checkID, err)

@@ -127,7 +127,7 @@ type Config struct {
 	Profile string `mapstructure:"profile"`
 
 	// SnapshotPath is used to allow Serf to snapshot important transactional
-	// state to make a more graceful recovery possible. This enables auto
+	// store to make a more graceful recovery possible. This enables auto
 	// re-joining a cluster on failure and avoids old message replay.
 	SnapshotPath string `mapstructure:"snapshot_path"`
 

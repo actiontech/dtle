@@ -239,7 +239,7 @@ type Binlog struct {
 	DdlQuery []byte `protobuf:"bytes,6,opt,name=ddl_query,json=ddlQuery" json:"ddl_query,omitempty"`
 	// ddl_job_id is used for PreDDL and PostDDL binlog type.
 	// If PreDDL has matching PostDDL with the same job_id, we can execute the DDL right away, otherwise,
-	// we can use the job_id to check if the ddl statement has been successfully added to DDL job list.
+	// we can use the job_id to check if the ddl statement has been successfully added to DDL server list.
 	DdlJobId         int64  `protobuf:"varint,7,opt,name=ddl_job_id,json=ddlJobId" json:"ddl_job_id"`
 	XXX_unrecognized []byte `json:"-"`
 }

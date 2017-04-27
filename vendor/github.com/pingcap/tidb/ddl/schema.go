@@ -26,7 +26,7 @@ func (d *ddl) onCreateSchema(t *meta.Meta, job *model.Job) error {
 	schemaID := job.SchemaID
 	dbInfo := &model.DBInfo{}
 	if err := job.DecodeArgs(dbInfo); err != nil {
-		// Invalid arguments, cancel this job.
+		// Invalid arguments, cancel this server.
 		job.State = model.JobCancelled
 		return errors.Trace(err)
 	}
@@ -42,7 +42,7 @@ func (d *ddl) onCreateSchema(t *meta.Meta, job *model.Job) error {
 	for _, db := range dbs {
 		if db.Name.L == dbInfo.Name.L {
 			if db.ID != schemaID {
-				// The database already exists, can't create it, we should cancel this job now.
+				// The database already exists, can't create it, we should cancel this server now.
 				job.State = model.JobCancelled
 				return infoschema.ErrDatabaseExists.GenByArgs(db.Name)
 			}
@@ -64,7 +64,7 @@ func (d *ddl) onCreateSchema(t *meta.Meta, job *model.Job) error {
 		if err != nil {
 			return errors.Trace(err)
 		}
-		// Finish this job.
+		// Finish this server.
 		job.State = model.JobDone
 		job.BinlogInfo.AddDBInfo(ver, dbInfo)
 		return nil
@@ -112,7 +112,7 @@ func (d *ddl) onDropSchema(t *meta.Meta, job *model.Job) error {
 			break
 		}
 
-		// Finish this job.
+		// Finish this server.
 		job.BinlogInfo.AddDBInfo(ver, dbInfo)
 		if len(tables) > 0 {
 			job.Args = append(job.Args, getIDs(tables))
@@ -152,7 +152,7 @@ func (d *ddl) delReorgSchema(t *meta.Meta, job *model.Job) error {
 		return nil
 	}
 
-	// Finish this background job.
+	// Finish this background server.
 	job.SchemaState = model.StateNone
 	job.State = model.JobDone
 

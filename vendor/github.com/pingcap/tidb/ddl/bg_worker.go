@@ -23,7 +23,7 @@ import (
 	"github.com/pingcap/tidb/model"
 )
 
-// handleBgJobQueue handles the background job queue.
+// handleBgJobQueue handles the background server queue.
 func (d *ddl) handleBgJobQueue() error {
 	if d.isClosed() {
 		return nil
@@ -37,7 +37,7 @@ func (d *ddl) handleBgJobQueue() error {
 			return errors.Trace(filterError(err, errNotOwner))
 		}
 
-		// Get the first background job and run it.
+		// Get the first background server and run it.
 		job, err = d.getFirstBgJob(t)
 		if err != nil {
 			return errors.Trace(err)
@@ -72,9 +72,9 @@ func (d *ddl) handleBgJobQueue() error {
 	return nil
 }
 
-// runBgJob runs a background job.
+// runBgJob runs a background server.
 func (d *ddl) runBgJob(t *meta.Meta, job *model.Job) {
-	log.Infof("[ddl] run background job %s", job)
+	log.Infof("[ddl] run background server %s", job)
 	job.State = model.JobRunning
 
 	var err error
@@ -90,14 +90,14 @@ func (d *ddl) runBgJob(t *meta.Meta, job *model.Job) {
 
 	if err != nil {
 		if job.State != model.JobCancelled {
-			log.Errorf("[ddl] run background job err %v", errors.ErrorStack(err))
+			log.Errorf("[ddl] run background server err %v", errors.ErrorStack(err))
 		}
 		job.Error = toTError(err)
 		job.ErrorCount++
 	}
 }
 
-// prepareBgJob prepares a background job.
+// prepareBgJob prepares a background server.
 func (d *ddl) prepareBgJob(t *meta.Meta, ddlJob *model.Job) error {
 	job := &model.Job{
 		ID:       ddlJob.ID,
@@ -111,7 +111,7 @@ func (d *ddl) prepareBgJob(t *meta.Meta, ddlJob *model.Job) error {
 	return errors.Trace(err)
 }
 
-// startBgJob starts a background job.
+// startBgJob starts a background server.
 func (d *ddl) startBgJob(tp model.ActionType) {
 	switch tp {
 	case model.ActionDropSchema, model.ActionDropTable, model.ActionTruncateTable:
@@ -119,21 +119,21 @@ func (d *ddl) startBgJob(tp model.ActionType) {
 	}
 }
 
-// getFirstBgJob gets the first background job.
+// getFirstBgJob gets the first background server.
 func (d *ddl) getFirstBgJob(t *meta.Meta) (*model.Job, error) {
 	job, err := t.GetBgJob(0)
 	return job, errors.Trace(err)
 }
 
-// updateBgJob updates a background job.
+// updateBgJob updates a background server.
 func (d *ddl) updateBgJob(t *meta.Meta, job *model.Job) error {
 	err := t.UpdateBgJob(0, job)
 	return errors.Trace(err)
 }
 
-// finishBgJob finishes a background job.
+// finishBgJob finishes a background server.
 func (d *ddl) finishBgJob(t *meta.Meta, job *model.Job) error {
-	log.Infof("[ddl] finish background job %v", job)
+	log.Infof("[ddl] finish background server %v", job)
 	if _, err := t.DeQueueBgJob(); err != nil {
 		return errors.Trace(err)
 	}
@@ -156,7 +156,7 @@ func (d *ddl) onBackgroundWorker() {
 	for {
 		select {
 		case <-ticker.C:
-			log.Debugf("[ddl] wait %s to check background job status again", checkTime)
+			log.Debugf("[ddl] wait %s to check background server status again", checkTime)
 		case <-d.bgJobCh:
 		case <-d.quitCh:
 			return
@@ -164,7 +164,7 @@ func (d *ddl) onBackgroundWorker() {
 
 		err := d.handleBgJobQueue()
 		if err != nil {
-			log.Errorf("[ddl] handle background job err %v", errors.ErrorStack(err))
+			log.Errorf("[ddl] handle background server err %v", errors.ErrorStack(err))
 		}
 	}
 }

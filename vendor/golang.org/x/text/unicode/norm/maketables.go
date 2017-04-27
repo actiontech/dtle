@@ -135,7 +135,7 @@ func (c Char) String() string {
 // In UnicodeData.txt, some ranges are marked like this:
 //	3400;<CJK Ideograph Extension A, First>;Lo;0;L;;;;;N;;;;;
 //	4DB5;<CJK Ideograph Extension A, Last>;Lo;0;L;;;;;N;;;;;
-// parseCharacter keeps a state variable indicating the weirdness.
+// parseCharacter keeps a store variable indicating the weirdness.
 type State int
 
 const (

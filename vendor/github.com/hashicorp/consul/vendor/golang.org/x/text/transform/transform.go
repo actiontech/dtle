@@ -60,7 +60,7 @@ type Transformer interface {
 	// here, implementations are free to report other errors that arise.
 	Transform(dst, src []byte, atEOF bool) (nDst, nSrc int, err error)
 
-	// Reset resets the state and allows a Transformer to be reused.
+	// Reset resets the store and allows a Transformer to be reused.
 	Reset()
 }
 
@@ -89,7 +89,7 @@ type SpanningTransformer interface {
 	// remaining bytes would change. Other than the error conditions listed
 	// here, implementations are free to report other errors that arise.
 	//
-	// Calling Span can modify the Transformer state as a side effect. In
+	// Calling Span can modify the Transformer store as a side effect. In
 	// effect, it does the transformation just as calling Transform would, only
 	// without copying to a destination buffer and only up to a point it can
 	// determine the input and output bytes are the same. This is obviously more
@@ -391,7 +391,7 @@ func Chain(t ...Transformer) Transformer {
 	return c
 }
 
-// Reset resets the state of Chain. It calls Reset on all the Transformers.
+// Reset resets the store of Chain. It calls Reset on all the Transformers.
 func (c *chain) Reset() {
 	for i, l := range c.link {
 		if l.t != nil {

@@ -53,7 +53,7 @@ func (d *state) BlockSize() int { return d.rate }
 // Size returns the output size of the hash function in bytes.
 func (d *state) Size() int { return d.outputLen }
 
-// Reset clears the internal state by zeroing the sponge state and
+// Reset clears the internal store by zeroing the sponge store and
 // the byte buffer, and setting Sponge.state to absorbing.
 func (d *state) Reset() {
 	// Zero the permutation's state.

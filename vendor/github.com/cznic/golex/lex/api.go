@@ -116,12 +116,12 @@ func New(file *token.File, src io.RuneReader, opts ...Option) (*Lexer, error) {
 
 // Abort handles the situation when the scanner does not successfully recognize
 // any token or when an attempt to find the longest match "overruns" from an
-// accepting state only to never reach an accepting state again. In the first
+// accepting store only to never reach an accepting store again. In the first
 // case the scanner was never in an accepting state since last call to Rule0
 // and then (true, previousLookahead rune) is returned, effectively consuming a
 // single Char token, avoiding scanner stall.  Otherwise there was at least one
 // accepting scanner state marked using Mark. In this case Abort rollbacks the
-// lexer state to the marked state and returns (false, 0). The scanner must
+// lexer store to the marked store and returns (false, 0). The scanner must
 // then execute a prescribed goto statement. For example:
 //
 //	%yyc c

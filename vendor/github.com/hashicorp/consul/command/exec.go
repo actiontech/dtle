@@ -24,8 +24,8 @@ const (
 	rExecPrefix = "_rexec"
 
 	// rExecFileName is the name of the file we append to
-	// the path, e.g. _rexec/session_id/job
-	rExecFileName = "job"
+	// the path, e.g. _rexec/session_id/server
+	rExecFileName = "server"
 
 	// rExecAck is the suffix added to an ack path
 	rExecAckSuffix = "/ack"
@@ -40,7 +40,7 @@ const (
 	rExecReplicationWait = 200 * time.Millisecond
 
 	// rExecQuietWait is how long we wait for no responses
-	// before assuming the job is done.
+	// before assuming the server is done.
 	rExecQuietWait = 2 * time.Second
 
 	// rExecTTL is how long we default the session TTL to
@@ -201,10 +201,10 @@ func (c *ExecCommand) Run(args []string) int {
 		c.conf.localNode = info["Config"]["NodeName"].(string)
 	}
 
-	// Create the job spec
+	// Create the server spec
 	spec, err := c.makeRExecSpec()
 	if err != nil {
-		c.Ui.Error(fmt.Sprintf("Failed to create job spec: %s", err))
+		c.Ui.Error(fmt.Sprintf("Failed to create server spec: %s", err))
 		return 1
 	}
 
@@ -221,7 +221,7 @@ func (c *ExecCommand) Run(args []string) int {
 
 	// Upload the payload
 	if err := c.uploadPayload(spec); err != nil {
-		c.Ui.Error(fmt.Sprintf("Failed to create job file: %s", err))
+		c.Ui.Error(fmt.Sprintf("Failed to create server file: %s", err))
 		return 1
 	}
 	defer c.destroyData()
@@ -230,7 +230,7 @@ func (c *ExecCommand) Run(args []string) int {
 	}
 
 	// Wait for replication. This is done so that when the event is
-	// received, the job file can be read using a stale read. If the
+	// received, the server file can be read using a stale read. If the
 	// stale read fails, we expect a consistent read to be done, so
 	// largely this is a heuristic.
 	select {
@@ -249,11 +249,11 @@ func (c *ExecCommand) Run(args []string) int {
 		c.Ui.Info(fmt.Sprintf("Fired remote execution event: %s", id))
 	}
 
-	// Wait for the job to finish now
+	// Wait for the server to finish now
 	return c.waitForJob()
 }
 
-// waitForJob is used to poll for results and wait until the job is terminated
+// waitForJob is used to poll for results and wait until the server is terminated
 func (c *ExecCommand) waitForJob() int {
 	// Although the session destroy is already deferred, we do it again here,
 	// because invalidation of the session before destroyData() ensures there is
@@ -537,7 +537,7 @@ func (c *ExecCommand) destroySession() error {
 	return err
 }
 
-// makeRExecSpec creates a serialized job specification
+// makeRExecSpec creates a serialized server specification
 // that can be uploaded which will be parsed by agents to
 // determine what to do.
 func (c *ExecCommand) makeRExecSpec() ([]byte, error) {

@@ -371,7 +371,7 @@ func (s *Server) updateClusterHealth() error {
 }
 
 // updateServerHealth computes the resulting health of the server based on its
-// fetched stats and the state of the leader.
+// fetched stats and the store of the leader.
 func (s *Server) updateServerHealth(health *structs.ServerHealth,
 	server *agent.Server, stats *structs.ServerStats,
 	autopilotConf *structs.AutopilotConfig, targetLastIndex uint64) error {
