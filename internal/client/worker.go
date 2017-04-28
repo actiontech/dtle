@@ -16,6 +16,7 @@ import (
 	"udup/internal/client/driver"
 	uconf "udup/internal/config"
 	"udup/internal/models"
+	"encoding/json"
 )
 
 const (
@@ -70,6 +71,7 @@ type Worker struct {
 	destroyCh    chan struct{}
 	destroyLock  sync.Mutex
 	destroyEvent *models.TaskEvent
+	workUpdates chan *models.TaskUpdate
 
 	// waitCh closing marks the run loop as having exited
 	waitCh chan struct{}
@@ -95,7 +97,7 @@ type TaskStateUpdater func(taskName, state string, event *models.TaskEvent)
 // NewWorker is used to create a new task context
 func NewWorker(logger *log.Logger, config *uconf.ClientConfig,
 	updater TaskStateUpdater, alloc *models.Allocation,
-	task *models.Task) *Worker {
+	task *models.Task,workUpdates chan *models.TaskUpdate) *Worker {
 
 	// Build the restart tracker.
 	t := alloc.Job.LookupTask(alloc.Task)
@@ -118,6 +120,7 @@ func NewWorker(logger *log.Logger, config *uconf.ClientConfig,
 		startCh:        make(chan struct{}, 1),
 		unblockCh:      make(chan struct{}),
 		restartCh:      make(chan *models.TaskEvent),
+		workUpdates: workUpdates,
 	}
 
 	return tc
@@ -195,14 +198,25 @@ func (r *Worker) SaveState() error {
 	defer r.persistLock.Unlock()
 
 	snap := workerState{
-		Task:            r.task,
 		Version:         r.config.Version,
 		PayloadRendered: r.payloadRendered,
 	}
 
 	r.handleLock.Lock()
 	if r.handle != nil {
+		id := &uconf.DriverCtx{}
+		handleID:=r.handle.ID()
+		if err := json.Unmarshal([]byte(handleID), id); err != nil {
+			r.logger.Printf("[ERR] client: failed to parse handle '%s': %v",
+				handleID, err)
+		}
+		r.workUpdates <- &models.TaskUpdate{
+			JobID:r.alloc.JobID,
+			Gtid:id.DriverConfig.Gtid,
+		}
+		r.task.Config["Gtid"] = id.DriverConfig.Gtid
 		snap.HandleID = r.handle.ID()
+		snap.Task = r.task
 	}
 	r.handleLock.Unlock()
 	return persistState(r.stateFilePath(), &snap)
@@ -543,6 +557,7 @@ func (r *Worker) startTask() error {
 	// Run prestart
 	ctx := driver.NewExecContext(r.alloc.Job.Name, r.task.Type)
 
+	r.logger.Printf("--r.task:%v",r.task)
 	// Start the job
 	handle, err := drv.Start(ctx, r.task)
 	if err != nil {

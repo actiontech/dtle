@@ -42,6 +42,7 @@ type Allocator struct {
 	taskStatusLock sync.RWMutex
 
 	updateCh chan *models.Allocation
+	workUpdates chan *models.TaskUpdate
 
 	destroy     bool
 	destroyCh   chan struct{}
@@ -62,7 +63,7 @@ type allocatorState struct {
 
 // NewAllocator is used to create a new allocation context
 func NewAllocator(logger *log.Logger, config *uconf.ClientConfig, updater AllocStateUpdater,
-	alloc *models.Allocation) *Allocator {
+	alloc *models.Allocation,workUpdates chan *models.TaskUpdate) *Allocator {
 	ar := &Allocator{
 		config:     config,
 		updater:    updater,
@@ -73,6 +74,7 @@ func NewAllocator(logger *log.Logger, config *uconf.ClientConfig, updater AllocS
 		taskStates: copyTaskStates(alloc.TaskStates),
 		restored:   make(map[string]struct{}),
 		updateCh:   make(chan *models.Allocation, 64),
+		workUpdates:   workUpdates,
 		destroyCh:  make(chan struct{}),
 		waitCh:     make(chan struct{}),
 	}
@@ -117,7 +119,7 @@ func (r *Allocator) RestoreState() error {
 		r.restored[name] = struct{}{}
 
 		task := &models.Task{Type: name}
-		tr := NewWorker(r.logger, r.config, r.setTaskState, r.Alloc(), task)
+		tr := NewWorker(r.logger, r.config, r.setTaskState, r.Alloc(), task,r.workUpdates)
 		r.tasks[name] = tr
 
 		// Skip tasks in terminal states.
@@ -412,7 +414,7 @@ func (r *Allocator) Run() {
 		return
 	}
 
-	tr := NewWorker(r.logger, r.config, r.setTaskState, r.Alloc(), t.Copy())
+	tr := NewWorker(r.logger, r.config, r.setTaskState, r.Alloc(), t.Copy(),r.workUpdates)
 	r.tasks[t.Type] = tr
 	tr.MarkReceived()
 

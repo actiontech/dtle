@@ -11,7 +11,7 @@ if you don't have it already. You also must build with golang version 1.5+.
 2. [Setup your GOPATH](https://golang.org/doc/code.html#GOPATH)
 3. Run `git clone git@10.186.18.21:universe/udup.git`
 4. Run `cd $GOPATH/src/udup`
-5. Run `make package`
+5. Run `make prepare package`
 
 Note: Udup will start automatically using the default configuration when installed from a deb or rpm package.
 

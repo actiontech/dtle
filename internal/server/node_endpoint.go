@@ -503,6 +503,28 @@ func (n *Node) GetClientAllocs(args *models.NodeSpecificRequest,
 	return n.srv.blockingRPC(&opts)
 }
 
+func (n *Node) UpdateJob(args *models.JobUpdateRequest, reply *models.GenericResponse) error {
+	if done, err := n.srv.forward("Node.UpdateJob", args, args, reply); done {
+		return err
+	}
+	defer metrics.MeasureSince([]string{"server", "client", "update_job"}, time.Now())
+
+	// Ensure at least a single job
+	if len(args.JobUpdates) == 0 {
+		return fmt.Errorf("must update at least one job")
+	}
+
+	_, index, err := n.srv.raftApply(models.JobClientUpdateRequestType, args)
+	if err != nil {
+		n.srv.logger.Printf("[ERR] server.job: client update failed: %v", err)
+		return err
+	}
+
+	// Setup the response
+	reply.Index = index
+	return nil
+}
+
 // UpdateAlloc is used to update the client status of an allocation
 func (n *Node) UpdateAlloc(args *models.AllocUpdateRequest, reply *models.GenericResponse) error {
 	if done, err := n.srv.forward("Node.UpdateAlloc", args, args, reply); done {

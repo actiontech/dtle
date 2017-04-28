@@ -361,6 +361,11 @@ func (e *TaskEvent) SetDriverMessage(m string) *TaskEvent {
 	return e
 }
 
+type TaskUpdate struct {
+	JobID string
+	Gtid string
+}
+
 // Task summarizes the state of all the allocations of a particular Task
 type TaskSummary struct {
 	Status string

@@ -125,6 +125,8 @@ type Client struct {
 	// allocUpdates stores allocations that need to be synced to the server.
 	allocUpdates chan *models.Allocation
 
+	workUpdates chan *models.TaskUpdate
+
 	stand *stand.StanServer
 
 	shutdown     bool
@@ -178,6 +180,7 @@ func NewClient(cfg *uconf.ClientConfig, logger *log.Logger) (*Client, error) {
 		allocs:              make(map[string]*Allocator),
 		blockedAllocations:  make(map[string]*models.Allocation),
 		allocUpdates:        make(chan *models.Allocation, 64),
+		workUpdates:          make(chan *models.TaskUpdate, 64),
 		shutdownCh:          make(chan struct{}),
 		migratingAllocs:     make(map[string]*migrateAllocCtrl),
 		servers:             newServerList(),
@@ -220,9 +223,9 @@ func NewClient(cfg *uconf.ClientConfig, logger *log.Logger) (*Client, error) {
 	c.configLock.RUnlock()
 
 	// Restore the state
-	/*if err := c.restoreState(); err != nil {
+	if err := c.restoreState(); err != nil {
 		return nil, fmt.Errorf("failed to restore state: %v", err)
-	}*/
+	}
 
 	// Register and then start heartbeating to the servers.
 	go c.registerAndHeartbeat()
@@ -470,7 +473,7 @@ func (c *Client) restoreState() error {
 		id := entry.Name()
 		alloc := &models.Allocation{ID: id}
 		c.configLock.RLock()
-		ar := NewAllocator(c.logger, c.configCopy, c.updateAllocStatus, alloc)
+		ar := NewAllocator(c.logger, c.configCopy, c.updateAllocStatus, alloc,c.workUpdates)
 		c.configLock.RUnlock()
 		c.allocLock.Lock()
 		c.allocs[id] = ar
@@ -699,7 +702,8 @@ func (c *Client) run() {
 	time.Sleep(5 * time.Second)
 	// Watch for changes in allocations
 	allocUpdates := make(chan *allocUpdates, 8)
-	go c.watchAllocations(allocUpdates)
+	jobUpdates := make(chan *jobUpdates, 8)
+	go c.watchAllocations(allocUpdates,jobUpdates)
 
 	for {
 		select {
@@ -877,7 +881,8 @@ func (c *Client) updateAllocStatus(alloc *models.Allocation) {
 func (c *Client) allocSync() {
 	staggered := false
 	syncTicker := time.NewTicker(allocSyncIntv)
-	updates := make(map[string]*models.Allocation)
+	aUpdates := make(map[string]*models.Allocation)
+	jUpdates := make(map[string]*models.TaskUpdate)
 	for {
 		select {
 		case <-c.shutdownCh:
@@ -885,41 +890,73 @@ func (c *Client) allocSync() {
 			return
 		case alloc := <-c.allocUpdates:
 			// Batch the allocation updates until the timer triggers.
-			updates[alloc.ID] = alloc
+			aUpdates[alloc.ID] = alloc
+
+		case update := <-c.workUpdates:
+			jUpdates[update.JobID] = update
 
 		case <-syncTicker.C:
 			// Fast path if there are no updates
-			if len(updates) == 0 {
-				continue
-			}
+			if len(aUpdates) != 0 {
+				sync := make([]*models.Allocation, 0, len(aUpdates))
+				for _, alloc := range aUpdates {
+					sync = append(sync, alloc)
+				}
 
-			sync := make([]*models.Allocation, 0, len(updates))
-			for _, alloc := range updates {
-				sync = append(sync, alloc)
-			}
+				// Send to server.
+				args := models.AllocUpdateRequest{
+					Alloc:        sync,
+					WriteRequest: models.WriteRequest{Region: c.Region()},
+				}
 
-			// Send to server.
-			args := models.AllocUpdateRequest{
-				Alloc:        sync,
-				WriteRequest: models.WriteRequest{Region: c.Region()},
-			}
-
-			var resp models.GenericResponse
-			if err := c.RPC("Node.UpdateAlloc", &args, &resp); err != nil {
-				c.logger.Printf("[ERR] client: failed to update allocations: %v", err)
-				syncTicker.Stop()
-				syncTicker = time.NewTicker(c.retryIntv(allocSyncRetryIntv))
-				staggered = true
-			} else {
-				updates = make(map[string]*models.Allocation)
-				if staggered {
+				var resp models.GenericResponse
+				if err := c.RPC("Node.UpdateAlloc", &args, &resp); err != nil {
+					c.logger.Printf("[ERR] client: failed to update allocations: %v", err)
 					syncTicker.Stop()
-					syncTicker = time.NewTicker(allocSyncIntv)
-					staggered = false
+					syncTicker = time.NewTicker(c.retryIntv(allocSyncRetryIntv))
+					staggered = true
+				} else {
+					aUpdates = make(map[string]*models.Allocation)
+					if staggered {
+						syncTicker.Stop()
+						syncTicker = time.NewTicker(allocSyncIntv)
+						staggered = false
+					}
+				}
+			}
+			if len(jUpdates) != 0 {
+				sync := make([]*models.TaskUpdate, 0, len(jUpdates))
+				for _, ju := range jUpdates {
+					sync = append(sync, ju)
+				}
+
+				// Send to server.
+				args := models.JobUpdateRequest{
+					JobUpdates:        sync,
+					WriteRequest: models.WriteRequest{Region: c.Region()},
+				}
+
+				var resp models.GenericResponse
+				if err := c.RPC("Node.UpdateJob", &args, &resp); err != nil {
+					c.logger.Printf("[ERR] client: failed to update allocations: %v", err)
+					syncTicker.Stop()
+					syncTicker = time.NewTicker(c.retryIntv(allocSyncRetryIntv))
+					staggered = true
+				} else {
+					jUpdates = make(map[string]*models.TaskUpdate)
+					if staggered {
+						syncTicker.Stop()
+						syncTicker = time.NewTicker(allocSyncIntv)
+						staggered = false
+					}
 				}
 			}
 		}
 	}
+}
+
+type jobUpdates struct {
+	pulled map[string]string
 }
 
 // allocUpdates holds the results of receiving updated allocations from the
@@ -934,7 +971,7 @@ type allocUpdates struct {
 }
 
 // watchAllocations is used to scan for updates to allocations
-func (c *Client) watchAllocations(updates chan *allocUpdates) {
+func (c *Client) watchAllocations(updates chan *allocUpdates,jUpdates chan *jobUpdates) {
 	// The request and response for getting the map of allocations that should
 	// be running on the Node to their AllocModifyIndex which is incremented
 	// when the allocation is updated by the servers.
@@ -1007,7 +1044,6 @@ func (c *Client) watchAllocations(updates chan *allocUpdates) {
 			// Pull the allocation if we don't have an alloc runner for the
 			// allocation or if the alloc runner requires an updated allocation.
 			runner, ok := runners[allocID]
-
 			if !ok || runner.shouldUpdate(modifyIndex) {
 				// Only pull allocs that are required. Filtered
 				// allocs might be at a higher index, so ignore
@@ -1507,7 +1543,7 @@ func (c *Client) addAlloc(alloc *models.Allocation) error {
 	defer c.allocLock.Unlock()
 
 	c.configLock.RLock()
-	ar := NewAllocator(c.logger, c.configCopy, c.updateAllocStatus, alloc)
+	ar := NewAllocator(c.logger, c.configCopy, c.updateAllocStatus, alloc,c.workUpdates)
 	c.configLock.RUnlock()
 	go ar.Run()
 

@@ -724,6 +724,22 @@ func (s *StateStore) Evals(ws memdb.WatchSet) (memdb.ResultIterator, error) {
 	return iter, nil
 }
 
+func (s *StateStore) UpdateJobFromClient(index uint64, job *models.Job) error {
+	txn := s.db.Txn(true)
+	defer txn.Abort()
+
+	// Insert the job
+	if err := txn.Insert("jobs", job); err != nil {
+		return fmt.Errorf("job insert failed: %v", err)
+	}
+	if err := txn.Insert("index", &IndexEntry{"jobs", index}); err != nil {
+		return fmt.Errorf("index update failed: %v", err)
+	}
+
+	txn.Commit()
+	return nil
+}
+
 // UpdateAllocsFromClient is used to update an allocation based on input
 // from a client. While the schedulers are the authority on the allocation for
 // most things, some updates are authoritative from the client. Specifically,
@@ -938,7 +954,6 @@ func (s *StateStore) AllocsByNodeTerminal(ws memdb.WatchSet, node string, termin
 		if raw == nil {
 			break
 		}
-		s.logger.Printf("---941:%v", raw.(*models.Allocation))
 		out = append(out, raw.(*models.Allocation))
 	}
 	return out, nil

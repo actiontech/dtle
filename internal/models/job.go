@@ -299,6 +299,13 @@ type JobRegisterRequest struct {
 	WriteRequest
 }
 
+type JobUpdateRequest struct {
+	// Alloc is the list of new allocations to assign
+	JobUpdates []*TaskUpdate
+
+	WriteRequest
+}
+
 // JobUpdateResponse is used to respond to a job update
 type JobUpdateResponse struct {
 	EvalID          string

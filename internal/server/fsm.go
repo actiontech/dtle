@@ -136,6 +136,8 @@ func (n *udupFSM) Apply(log *raft.Log) interface{} {
 		return n.applyUpsertJob(buf[1:], log.Index)
 	case models.JobDeregisterRequestType:
 		return n.applyDeregisterJob(buf[1:], log.Index)
+	case models.JobClientUpdateRequestType:
+		return n.applyJobClientUpdate(buf[1:], log.Index)
 	case models.EvalUpdateRequestType:
 		return n.applyUpdateEval(buf[1:], log.Index)
 	case models.EvalDeleteRequestType:
@@ -329,6 +331,37 @@ func (n *udupFSM) applyAllocUpdate(buf []byte, index uint64) interface{} {
 		n.logger.Printf("[ERR] server.fsm: UpsertAllocs failed: %v", err)
 		return err
 	}
+	return nil
+}
+
+
+func (n *udupFSM) applyJobClientUpdate(buf []byte, index uint64) interface{} {
+	defer metrics.MeasureSince([]string{"server", "fsm", "job_client_update"}, time.Now())
+	var req models.JobUpdateRequest
+	if err := models.Decode(buf, &req); err != nil {
+		panic(fmt.Errorf("failed to decode request: %v", err))
+	}
+	if len(req.JobUpdates) == 0 {
+		return nil
+	}
+
+	// Create a watch set
+	ws := memdb.NewWatchSet()
+
+	// Updating the allocs with the job id and task name
+	for _, ju := range req.JobUpdates {
+		if existing, _ := n.state.JobByID(ws, ju.JobID); existing != nil {
+			for _,t :=range existing.Tasks {
+				t.Config["Gtid"] = ju.Gtid
+			}
+			// Update all the client allocations
+			if err := n.state.UpdateJobFromClient(index, existing); err != nil {
+				n.logger.Printf("[ERR] server.fsm: UpdateJobFromClient failed: %v", err)
+				return err
+			}
+		}
+	}
+
 	return nil
 }
 
