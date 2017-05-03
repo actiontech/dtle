@@ -6,12 +6,13 @@ SCRIPT_DIR=/usr/lib/udup/scripts
 LOGROTATE_DIR=/etc/logrotate.d
 
 function install_init {
-    cp -f $SCRIPT_DIR/init.sh /etc/init.d/udup
+#%installpath
+    cp -f $RPM_INSTALL_PREFIX$SCRIPT_DIR/init.sh /etc/init.d/udup
     chmod +x /etc/init.d/udup
 }
 
 function install_systemd {
-    cp -f $SCRIPT_DIR/udup.service /lib/systemd/system/udup.service
+    cp -f $RPM_INSTALL_PREFIX$SCRIPT_DIR/udup.service /lib/systemd/system/udup.service
     systemctl enable udup || true
     systemctl daemon-reload || true
 }
