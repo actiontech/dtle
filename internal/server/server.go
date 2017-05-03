@@ -22,6 +22,7 @@ import (
 
 	uconf "udup/internal/config"
 	"udup/internal/server/store"
+	"udup/internal"
 )
 
 const (
@@ -126,7 +127,6 @@ type endpoints struct {
 	Eval   *Eval
 	Plan   *Plan
 	Alloc  *Alloc
-	System *System
 }
 
 // NewServer is used to construct a new Udup server from the
@@ -365,7 +365,6 @@ func (s *Server) setupRPC() error {
 	s.endpoints.Node = &Node{srv: s}
 	s.endpoints.Plan = &Plan{s}
 	s.endpoints.Status = &Status{s}
-	s.endpoints.System = &System{s}
 
 	// Register the handlers
 	s.rpcServer.Register(s.endpoints.Alloc)
@@ -374,7 +373,6 @@ func (s *Server) setupRPC() error {
 	s.rpcServer.Register(s.endpoints.Node)
 	s.rpcServer.Register(s.endpoints.Plan)
 	s.rpcServer.Register(s.endpoints.Status)
-	s.rpcServer.Register(s.endpoints.System)
 
 	list, err := net.ListenTCP("tcp", s.config.RPCAddr)
 	if err != nil {
@@ -729,7 +727,7 @@ func (s *Server) Stats() map[string]map[string]string {
 		},
 		"raft":    s.raft.Stats(),
 		"serf":    s.serf.Stats(),
-		"runtime": RuntimeStats(),
+		"runtime": internal.RuntimeStats(),
 	}
 
 	return stats

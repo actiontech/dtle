@@ -19,12 +19,6 @@ const (
 	// allocNotNeeded is the status used when a job no longer requires an allocation
 	allocNotNeeded = "alloc not needed due to job update"
 
-	// allocMigrating is the status used when we must migrate an allocation
-	allocMigrating = "alloc is being migrated"
-
-	// allocUpdating is the status used when a job requires an update
-	allocUpdating = "alloc is being updated due to job update"
-
 	// allocLost is the status used when an allocation is lost
 	allocLost = "alloc is lost since its node is down"
 
@@ -318,7 +312,7 @@ func (s *SyncScheduler) computeJobAllocs() error {
 	}
 
 	for _, e := range diff.pause {
-		s.plan.AppendUpdate(e.Alloc, models.AllocDesiredStatusPause, "", "")
+		s.plan.AppendUpdate(e.Alloc, models.AllocDesiredStatusPause, "", models.AllocClientStatusPending)
 	}
 
 	for _, e := range diff.resume {

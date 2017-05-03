@@ -366,11 +366,6 @@ type TaskUpdate struct {
 	Gtid string
 }
 
-// Task summarizes the state of all the allocations of a particular Task
-type TaskSummary struct {
-	Status string
-}
-
 const (
 	// DefaultKillTimeout is the default timeout between signaling a task it
 	// will be killed and killing it.

@@ -184,44 +184,6 @@ func (j *Job) UpdateStatus(args *models.JobUpdateStatusRequest, reply *models.Jo
 	return nil
 }
 
-// Summary retreives the summary of a job
-func (j *Job) Summary(args *models.JobSummaryRequest,
-	reply *models.JobSummaryResponse) error {
-	if done, err := j.srv.forward("Job.Summary", args, args, reply); done {
-		return err
-	}
-	defer metrics.MeasureSince([]string{"udup", "job_summary", "get_job_summary"}, time.Now())
-	// Setup the blocking query
-	opts := blockingOptions{
-		queryOpts: &args.QueryOptions,
-		queryMeta: &reply.QueryMeta,
-		run: func(ws memdb.WatchSet, state *store.StateStore) error {
-			// Look for job summary
-			out, err := state.JobSummaryByID(ws, args.JobID)
-			if err != nil {
-				return err
-			}
-
-			// Setup the output
-			reply.JobSummary = out
-			if out != nil {
-				reply.Index = out.ModifyIndex
-			} else {
-				// Use the last index that affected the job_summary table
-				index, err := state.Index("job_summary")
-				if err != nil {
-					return err
-				}
-				reply.Index = index
-			}
-
-			// Set the query response
-			j.srv.setQueryMeta(&reply.QueryMeta)
-			return nil
-		}}
-	return j.srv.blockingRPC(&opts)
-}
-
 // Validate validates a job
 func (j *Job) Validate(args *models.JobValidateRequest,
 	reply *models.JobValidateResponse) error {
@@ -420,11 +382,7 @@ func (j *Job) List(args *models.JobListRequest,
 					break
 				}
 				job := raw.(*models.Job)
-				summary, err := state.JobSummaryByID(ws, job.ID)
-				if err != nil {
-					return fmt.Errorf("unable to look up summary for job: %v", job.ID)
-				}
-				jobs = append(jobs, job.Stub(summary))
+				jobs = append(jobs, job.Stub(job))
 			}
 			reply.Jobs = jobs
 

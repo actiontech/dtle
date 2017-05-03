@@ -3,7 +3,21 @@ package internal
 import (
 	"regexp"
 	"time"
+	"runtime"
+	"strconv"
 )
+
+// RuntimeStats is used to return various runtime information
+func RuntimeStats() map[string]string {
+	return map[string]string{
+		"kernel.name": runtime.GOOS,
+		"arch":        runtime.GOARCH,
+		"version":     runtime.Version(),
+		"max_procs":   strconv.FormatInt(int64(runtime.GOMAXPROCS(0)), 10),
+		"goroutines":  strconv.FormatInt(int64(runtime.NumGoroutine()), 10),
+		"cpu_count":   strconv.FormatInt(int64(runtime.NumCPU()), 10),
+	}
+}
 
 // validUUID is used to check if a given string looks like a UUID
 var validUUID = regexp.MustCompile(`(?i)^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$`)

@@ -59,9 +59,6 @@ func (s *HTTPServer) JobSpecificRequest(resp http.ResponseWriter, req *http.Requ
 	case strings.HasSuffix(path, "/plan"):
 		jobName := strings.TrimSuffix(path, "/plan")
 		return s.jobPlan(resp, req, jobName)
-	case strings.HasSuffix(path, "/summary"):
-		jobName := strings.TrimSuffix(path, "/summary")
-		return s.jobSummaryRequest(resp, req, jobName)
 	default:
 		return s.jobCRUD(resp, req, path)
 	}
@@ -283,27 +280,6 @@ func (s *HTTPServer) jobPauseRequest(resp http.ResponseWriter, req *http.Request
 	}
 	setIndex(resp, out.Index)
 	return out, nil
-}
-
-func (s *HTTPServer) jobSummaryRequest(resp http.ResponseWriter, req *http.Request, name string) (interface{}, error) {
-	args := models.JobSummaryRequest{
-		JobID: name,
-	}
-	if s.parse(resp, req, &args.Region, &args.QueryOptions) {
-		return nil, nil
-	}
-
-	var out models.JobSummaryResponse
-	if err := s.agent.RPC("Job.Summary", &args, &out); err != nil {
-		return nil, err
-	}
-
-	setMeta(resp, &out.QueryMeta)
-	if out.JobSummary == nil {
-		return nil, CodedError(404, "job not found")
-	}
-	setIndex(resp, out.Index)
-	return out.JobSummary, nil
 }
 
 func ApiJobToStructJob(job *api.Job) *models.Job {

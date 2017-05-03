@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/armon/go-metrics"
-	memdb "github.com/hashicorp/go-memdb"
 
 	"udup/internal/models"
 	"udup/internal/server/scheduler"
@@ -441,30 +440,6 @@ func (w *Worker) ReblockEval(eval *models.Evaluation) error {
 		return fmt.Errorf("shutdown while planning")
 	}
 	defer metrics.MeasureSince([]string{"server", "worker", "reblock_eval"}, time.Now())
-
-	// Update the evaluation if the queued jobs is not same as what is
-	// recorded in the job summary
-	ws := memdb.NewWatchSet()
-	summary, err := w.srv.fsm.state.JobSummaryByID(ws, eval.JobID)
-	if err != nil {
-		return fmt.Errorf("couldn't retreive job summary: %v", err)
-	}
-	if summary != nil {
-		var hasChanged bool
-		for tg, summary := range summary.Tasks {
-			if _, ok := eval.QueuedAllocations[tg]; ok {
-				if summary.Status != models.TaskStateQueued {
-					hasChanged = true
-					break
-				}
-			}
-		}
-		if hasChanged {
-			if err := w.UpdateEval(eval); err != nil {
-				return err
-			}
-		}
-	}
 
 	// Store the snapshot index in the eval
 	eval.SnapshotIndex = w.snapshotIndex

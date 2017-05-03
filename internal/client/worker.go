@@ -557,7 +557,6 @@ func (r *Worker) startTask() error {
 	// Run prestart
 	ctx := driver.NewExecContext(r.alloc.Job.Name, r.task.Type)
 
-	r.logger.Printf("--r.task:%v",r.task)
 	// Start the job
 	handle, err := drv.Start(ctx, r.task)
 	if err != nil {

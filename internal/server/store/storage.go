@@ -86,25 +86,6 @@ func (s *StateStore) Abandon() {
 	close(s.abandonCh)
 }
 
-// UpsertJobSummary upserts a job summary into the state store.
-func (s *StateStore) UpsertJobSummary(index uint64, jobSummary *models.JobSummary) error {
-	txn := s.db.Txn(true)
-	defer txn.Abort()
-
-	// Update the index
-	if err := txn.Insert("job_summary", jobSummary); err != nil {
-		return err
-	}
-
-	// Update the indexes table for job summary
-	if err := txn.Insert("index", &IndexEntry{"job_summary", index}); err != nil {
-		return fmt.Errorf("index update failed: %v", err)
-	}
-
-	txn.Commit()
-	return nil
-}
-
 // UpsertNode is used to register a node or update a node definition
 // This is assumed to be triggered by the client, so we retain the value
 // of drain which is set by the scheduler.
@@ -189,10 +170,6 @@ func (s *StateStore) UpdateJobStatus(index uint64, jobID, status string) error {
 	copyJob.Status = status
 	copyJob.ModifyIndex = index
 	copyJob.JobModifyIndex = index
-
-	if err := s.updateSummaryWithJob(index, copyJob, txn); err != nil {
-		return fmt.Errorf("unable to create job summary: %v", err)
-	}
 
 	// Insert the job
 	if err := txn.Insert("jobs", copyJob); err != nil {
@@ -325,10 +302,6 @@ func (s *StateStore) UpsertJob(index uint64, job *models.Job) error {
 		}
 	}
 
-	if err := s.updateSummaryWithJob(index, job, txn); err != nil {
-		return fmt.Errorf("unable to create job summary: %v", err)
-	}
-
 	// Insert the job
 	if err := txn.Insert("jobs", job); err != nil {
 		return fmt.Errorf("job insert failed: %v", err)
@@ -436,54 +409,6 @@ func (s *StateStore) JobsByScheduler(ws memdb.WatchSet, schedulerType string) (m
 	return iter, nil
 }
 
-// JobSummary returns a job summary object which matches a specific id.
-func (s *StateStore) JobSummaryByID(ws memdb.WatchSet, jobID string) (*models.JobSummary, error) {
-	txn := s.db.Txn(false)
-
-	watchCh, existing, err := txn.FirstWatch("job_summary", "id", jobID)
-	if err != nil {
-		return nil, err
-	}
-
-	ws.Add(watchCh)
-
-	if existing != nil {
-		summary := existing.(*models.JobSummary)
-		return summary, nil
-	}
-
-	return nil, nil
-}
-
-// JobSummaries walks the entire job summary table and returns all the job
-// summary objects
-func (s *StateStore) JobSummaries(ws memdb.WatchSet) (memdb.ResultIterator, error) {
-	txn := s.db.Txn(false)
-
-	iter, err := txn.Get("job_summary", "id")
-	if err != nil {
-		return nil, err
-	}
-
-	ws.Add(iter.WatchCh())
-
-	return iter, nil
-}
-
-// JobSummaryByPrefix is used to look up Job Summary by id prefix
-func (s *StateStore) JobSummaryByPrefix(ws memdb.WatchSet, id string) (memdb.ResultIterator, error) {
-	txn := s.db.Txn(false)
-
-	iter, err := txn.Get("job_summary", "id_prefix", id)
-	if err != nil {
-		return nil, fmt.Errorf("eval lookup failed: %v", err)
-	}
-
-	ws.Add(iter.WatchCh())
-
-	return iter, nil
-}
-
 // UpsertEvals is used to upsert a set of evaluations
 func (s *StateStore) UpsertEvals(index uint64, evals []*models.Evaluation) error {
 	txn := s.db.Txn(true)
@@ -523,38 +448,6 @@ func (s *StateStore) nestedUpsertEval(txn *memdb.Txn, index uint64, eval *models
 	} else {
 		eval.CreateIndex = index
 		eval.ModifyIndex = index
-	}
-
-	// Update the job summary
-	summaryRaw, err := txn.First("job_summary", "id", eval.JobID)
-	if err != nil {
-		return fmt.Errorf("job summary lookup failed: %v", err)
-	}
-	if summaryRaw != nil {
-		js := summaryRaw.(*models.JobSummary).Copy()
-		hasSummaryChanged := false
-		for tg, _ := range eval.QueuedAllocations {
-			if summary, ok := js.Tasks[tg]; ok {
-				if summary.Status != models.TaskStateQueued {
-					//summary.Status = models.TaskStateQueued
-					js.Tasks[tg] = summary
-					hasSummaryChanged = true
-				}
-			} else {
-				s.logger.Printf("[ERR] state_store: unable to update queued for job %q and task %q", eval.JobID, tg)
-			}
-		}
-
-		// Insert the job summary
-		if hasSummaryChanged {
-			js.ModifyIndex = index
-			if err := txn.Insert("job_summary", js); err != nil {
-				return fmt.Errorf("job summary insert failed: %v", err)
-			}
-			if err := txn.Insert("index", &IndexEntry{"job_summary", index}); err != nil {
-				return fmt.Errorf("index update failed: %v", err)
-			}
-		}
 	}
 
 	// Check if the job has any blocked evaluations and cancel them
@@ -783,18 +676,14 @@ func (s *StateStore) nestedUpdateAllocFromClient(txn *memdb.Txn, index uint64, a
 	copyAlloc := exist.Copy()
 
 	// Pull in anything the client is the authority on
-	if exist.DesiredStatus != models.AllocDesiredStatusPause {
+	//if exist.DesiredStatus != models.AllocDesiredStatusPause {
 		copyAlloc.ClientStatus = alloc.ClientStatus
 		copyAlloc.ClientDescription = alloc.ClientDescription
 		copyAlloc.TaskStates = alloc.TaskStates
-	}
+	//}
 
 	// Update the modify index
 	copyAlloc.ModifyIndex = index
-
-	if err := s.updateSummaryWithAlloc(index, copyAlloc, exist, txn); err != nil {
-		return fmt.Errorf("error updating job summary: %v", err)
-	}
 
 	// Update the allocation
 	if err := txn.Insert("allocs", copyAlloc); err != nil {
@@ -848,10 +737,6 @@ func (s *StateStore) UpsertAllocs(index uint64, allocs []*models.Allocation) err
 			if alloc.Job == nil {
 				alloc.Job = exist.Job
 			}
-		}
-
-		if err := s.updateSummaryWithAlloc(index, alloc, exist, txn); err != nil {
-			return fmt.Errorf("error updating job summary: %v", err)
 		}
 
 		if err := txn.Insert("allocs", alloc); err != nil {
@@ -1104,90 +989,6 @@ func (s *StateStore) Indexes() (memdb.ResultIterator, error) {
 	return iter, nil
 }
 
-// ReconcileJobSummaries re-creates summaries for all jobs present in the state
-// store
-func (s *StateStore) ReconcileJobSummaries(index uint64) error {
-	txn := s.db.Txn(true)
-	defer txn.Abort()
-
-	// Get all the jobs
-	iter, err := txn.Get("jobs", "id")
-	if err != nil {
-		return err
-	}
-	for {
-		rawJob := iter.Next()
-		if rawJob == nil {
-			break
-		}
-		job := rawJob.(*models.Job)
-
-		// Create a job summary for the job
-		summary := &models.JobSummary{
-			JobID: job.ID,
-			Tasks: make(map[string]models.TaskSummary),
-		}
-		for _, t := range job.Tasks {
-			summary.Tasks[t.Type] = models.TaskSummary{}
-		}
-
-		// Find all the allocations for the jobs
-		iterAllocs, err := txn.Get("allocs", "job", job.ID)
-		if err != nil {
-			return err
-		}
-
-		// Calculate the summary for the job
-		for {
-			rawAlloc := iterAllocs.Next()
-			if rawAlloc == nil {
-				break
-			}
-			alloc := rawAlloc.(*models.Allocation)
-
-			// Ignore the allocation if it doesn't belong to the currently
-			// registered job. The allocation is checked because of issue #2304
-			if alloc.Job == nil || alloc.Job.CreateIndex != job.CreateIndex {
-				continue
-			}
-
-			t := summary.Tasks[alloc.Task]
-			switch alloc.ClientStatus {
-			case models.AllocClientStatusFailed:
-				t.Status = models.TaskStateFailed
-			case models.AllocClientStatusLost:
-				t.Status = models.TaskStateLost
-			case models.AllocClientStatusComplete:
-				t.Status = models.TaskStateComplete
-			case models.AllocClientStatusRunning:
-				t.Status = models.TaskStateRunning
-			case models.AllocClientStatusPending:
-				t.Status = models.TaskStateStarting
-			default:
-				s.logger.Printf("[ERR] state_store: invalid client status: %v in allocation %q", alloc.ClientStatus, alloc.ID)
-			}
-			summary.Tasks[alloc.Task] = t
-		}
-
-		// Set the create index of the summary same as the job's create index
-		// and the modify index to the current index
-		summary.CreateIndex = job.CreateIndex
-		summary.ModifyIndex = index
-
-		// Insert the job summary
-		if err := txn.Insert("job_summary", summary); err != nil {
-			return fmt.Errorf("error inserting job summary: %v", err)
-		}
-	}
-
-	// Update the indexes table for job summary
-	if err := txn.Insert("index", &IndexEntry{"job_summary", index}); err != nil {
-		return fmt.Errorf("index update failed: %v", err)
-	}
-	txn.Commit()
-	return nil
-}
-
 // setJobStatuses is a helper for calling setJobStatus on multiple jobs by ID.
 // It takes a map of job IDs to an optional forceStatus string. It returns an
 // error if the job doesn't exist or setJobStatus fails.
@@ -1305,151 +1106,6 @@ func (s *StateStore) getJobStatus(txn *memdb.Txn, job *models.Job, evalDelete bo
 	return models.JobStatusPending, nil
 }
 
-// updateSummaryWithJob creates or updates job summaries when new jobs are
-// upserted or existing ones are updated
-func (s *StateStore) updateSummaryWithJob(index uint64, job *models.Job,
-	txn *memdb.Txn) error {
-
-	// Update the job summary
-	summaryRaw, err := txn.First("job_summary", "id", job.ID)
-	if err != nil {
-		return fmt.Errorf("job summary lookup failed: %v", err)
-	}
-
-	// Get the summary or create if necessary
-	var summary *models.JobSummary
-	hasSummaryChanged := false
-	if summaryRaw != nil {
-		summary = summaryRaw.(*models.JobSummary).Copy()
-	} else {
-		summary = &models.JobSummary{
-			JobID:       job.ID,
-			Tasks:       make(map[string]models.TaskSummary),
-			CreateIndex: index,
-		}
-		hasSummaryChanged = true
-	}
-
-	for _, t := range job.Tasks {
-		if _, ok := summary.Tasks[t.Type]; !ok {
-			newSummary := models.TaskSummary{
-				Status: "",
-			}
-			summary.Tasks[t.Type] = newSummary
-			hasSummaryChanged = true
-		}
-	}
-
-	// The job summary has changed, so update the modify index.
-	if hasSummaryChanged {
-		summary.ModifyIndex = index
-
-		// Update the indexes table for job summary
-		if err := txn.Insert("index", &IndexEntry{"job_summary", index}); err != nil {
-			return fmt.Errorf("index update failed: %v", err)
-		}
-		if err := txn.Insert("job_summary", summary); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-// updateSummaryWithAlloc updates the job summary when allocations are updated
-// or inserted
-func (s *StateStore) updateSummaryWithAlloc(index uint64, alloc *models.Allocation,
-	existingAlloc *models.Allocation, txn *memdb.Txn) error {
-
-	// We don't have to update the summary if the job is missing
-	if alloc.Job == nil {
-		return nil
-	}
-
-	summaryRaw, err := txn.First("job_summary", "id", alloc.JobID)
-	if err != nil {
-		return fmt.Errorf("unable to lookup job summary for job id %q: %v", alloc.JobID, err)
-	}
-
-	if summaryRaw == nil {
-		// Check if the job is de-registered
-		rawJob, err := txn.First("jobs", "id", alloc.JobID)
-		if err != nil {
-			return fmt.Errorf("unable to query job: %v", err)
-		}
-
-		// If the job is de-registered then we skip updating it's summary
-		if rawJob == nil {
-			return nil
-		}
-
-		return fmt.Errorf("job summary for job %q is not present", alloc.JobID)
-	}
-
-	// Get a copy of the existing summary
-	jobSummary := summaryRaw.(*models.JobSummary).Copy()
-
-	// Not updating the job summary because the allocation doesn't belong to the
-	// currently registered job
-	if jobSummary.CreateIndex != alloc.Job.CreateIndex {
-		return nil
-	}
-
-	tgSummary, ok := jobSummary.Tasks[alloc.Task]
-	if !ok {
-		return fmt.Errorf("unable to find task in the job summary: %v", alloc.Task)
-	}
-
-	summaryChanged := false
-	if existingAlloc == nil {
-		switch alloc.DesiredStatus {
-		case models.AllocDesiredStatusStop, models.AllocDesiredStatusEvict:
-			s.logger.Printf("[ERR] state_store: new allocation inserted into store store with id: %v and store: %v",
-				alloc.ID, alloc.DesiredStatus)
-		}
-		switch alloc.ClientStatus {
-		case models.AllocClientStatusPending:
-			tgSummary.Status = models.TaskStateStarting
-			summaryChanged = true
-		case models.AllocClientStatusRunning, models.AllocClientStatusFailed,
-			models.AllocClientStatusComplete:
-			s.logger.Printf("[ERR] state_store: new allocation inserted into store store with id: %v and store: %v",
-				alloc.ID, alloc.ClientStatus)
-		}
-	} else if existingAlloc.ClientStatus != alloc.ClientStatus {
-		// Incrementing the client of the bin of the current state
-		switch alloc.ClientStatus {
-		case models.AllocClientStatusRunning:
-			tgSummary.Status = models.TaskStateRunning
-		case models.AllocClientStatusFailed:
-			tgSummary.Status = models.TaskStateFailed
-		case models.AllocClientStatusPending:
-			tgSummary.Status = models.TaskStateStarting
-		case models.AllocClientStatusComplete:
-			tgSummary.Status = models.TaskStateComplete
-		case models.AllocClientStatusLost:
-			tgSummary.Status = models.TaskStateLost
-		}
-		summaryChanged = true
-	}
-	jobSummary.Tasks[alloc.Task] = tgSummary
-
-	if summaryChanged {
-		jobSummary.ModifyIndex = index
-
-		// Update the indexes table for job summary
-		if err := txn.Insert("index", &IndexEntry{"job_summary", index}); err != nil {
-			return fmt.Errorf("index update failed: %v", err)
-		}
-
-		if err := txn.Insert("job_summary", jobSummary); err != nil {
-			return fmt.Errorf("updating job summary failed: %v", err)
-		}
-	}
-
-	return nil
-}
-
 // StateSnapshot is used to provide a point-in-time snapshot
 type StateSnapshot struct {
 	StateStore
@@ -1508,14 +1164,6 @@ func (r *StateRestore) AllocRestore(alloc *models.Allocation) error {
 func (r *StateRestore) IndexRestore(idx *IndexEntry) error {
 	if err := r.txn.Insert("index", idx); err != nil {
 		return fmt.Errorf("index insert failed: %v", err)
-	}
-	return nil
-}
-
-// JobSummaryRestore is used to restore a job summary
-func (r *StateRestore) JobSummaryRestore(jobSummary *models.JobSummary) error {
-	if err := r.txn.Insert("job_summary", jobSummary); err != nil {
-		return fmt.Errorf("job summary insert failed: %v", err)
 	}
 	return nil
 }

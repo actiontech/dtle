@@ -174,7 +174,7 @@ func (j *Job) LookupTask(tp string) *Task {
 }
 
 // Stub is used to return a summary of the job
-func (j *Job) Stub(summary *JobSummary) *JobListStub {
+func (j *Job) Stub(job *Job) *JobListStub {
 	return &JobListStub{
 		ID:                j.ID,
 		Name:              j.Name,
@@ -184,7 +184,7 @@ func (j *Job) Stub(summary *JobSummary) *JobListStub {
 		CreateIndex:       j.CreateIndex,
 		ModifyIndex:       j.ModifyIndex,
 		JobModifyIndex:    j.JobModifyIndex,
-		JobSummary:        summary,
+		JobSummary:        job,
 	}
 }
 
@@ -196,33 +196,10 @@ type JobListStub struct {
 	Type              string
 	Status            string
 	StatusDescription string
-	JobSummary        *JobSummary
+	JobSummary        *Job
 	CreateIndex       uint64
 	ModifyIndex       uint64
 	JobModifyIndex    uint64
-}
-
-// JobSummary summarizes the store of the allocations of a job
-type JobSummary struct {
-	JobID string
-
-	Tasks map[string]TaskSummary
-
-	// Raft Indexes
-	CreateIndex uint64
-	ModifyIndex uint64
-}
-
-// Copy returns a new copy of JobSummary
-func (js *JobSummary) Copy() *JobSummary {
-	newJobSummary := new(JobSummary)
-	*newJobSummary = *js
-	newTaskSummary := make(map[string]TaskSummary, len(js.Tasks))
-	for k, v := range js.Tasks {
-		newTaskSummary[k] = v
-	}
-	newJobSummary.Tasks = newTaskSummary
-	return newJobSummary
 }
 
 // JobRegisterResponse is used to respond to a job registration
@@ -244,12 +221,6 @@ type JobDeregisterResponse struct {
 // SingleJobResponse is used to return a single job
 type SingleJobResponse struct {
 	Job *Job
-	QueryMeta
-}
-
-// JobSummaryResponse is used to return a single job summary
-type JobSummaryResponse struct {
-	JobSummary *JobSummary
 	QueryMeta
 }
 

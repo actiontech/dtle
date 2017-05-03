@@ -18,6 +18,7 @@ import (
 	usql "udup/internal/client/driver/mysql/sql"
 	uconf "udup/internal/config"
 	"udup/internal/models"
+	"github.com/hashicorp/consul/lib"
 )
 
 const (
@@ -326,6 +327,10 @@ func (e *Extractor) readCurrentBinlogCoordinates() error {
 	return nil
 }
 
+func (e *Extractor) retryIntv(base time.Duration) time.Duration {
+	return base + lib.RandomStagger(base)
+}
+
 // initBinlogParser creates and connects the reader: we hook up to a MySQL server as a replica
 func (e *Extractor) initBinlogParser(binlogCoordinates *ubinlog.BinlogCoordinates) error {
 	binlogParser, err := ubinlog.NewBinlogParser(e.cfg, e.logger)
@@ -343,7 +348,7 @@ func (e *Extractor) initBinlogParser(binlogCoordinates *ubinlog.BinlogCoordinate
 func (e *Extractor) initNatsPubClient() (err error) {
 	sc, err := stan.Connect(uconf.DefaultClusterID, uuid.NewV4().String(), stan.NatsURL(fmt.Sprintf("nats://%s", e.cfg.NatsAddr)), stan.ConnectWait(DefaultConnectWait))
 	if err != nil {
-
+		e.logger.Printf("[ERR] mysql.extractor: Can't connect nats server %v.Make sure a NATS Streaming Server is running.%v",fmt.Sprintf("nats://%s", e.cfg.NatsAddr),err)
 	}
 	e.stanConn = sc
 	return nil

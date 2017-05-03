@@ -379,7 +379,7 @@ func (c *Client) Stats() map[string]map[string]string {
 			"last_heartbeat":  fmt.Sprintf("%v", time.Since(c.lastHeartbeat)),
 			"heartbeat_ttl":   fmt.Sprintf("%v", c.heartbeatTTL),
 		},
-		"runtime": server.RuntimeStats(),
+		"runtime": internal.RuntimeStats(),
 	}
 	return stats
 }
@@ -1081,7 +1081,36 @@ func (c *Client) watchAllocations(updates chan *allocUpdates,jUpdates chan *jobU
 			// Ensure that we received all the allocations we wanted
 			pulledAllocs = make(map[string]*models.Allocation, len(allocsResp.Allocs))
 			for _, alloc := range allocsResp.Allocs {
-				pulledAllocs[alloc.ID] = alloc
+				if alloc.Task == models.TaskTypeSrc {
+					args := models.JobSpecificRequest{
+						JobID:     alloc.Job.ID,
+						AllAllocs: true,
+						QueryOptions: models.QueryOptions{
+							Region:     c.Region(),
+							AllowStale: true,
+						},
+					}
+					var out models.JobAllocationsResponse
+					if err := c.RPC("Job.Allocations", &args, &out); err != nil {
+						c.logger.Printf("[ERR] client: failed to query job allocations: %v", err)
+						retry := c.retryIntv(getAllocRetryIntv)
+						select {
+						case <-c.serversDiscoveredCh:
+							continue
+						case <-time.After(retry):
+							continue
+						case <-c.shutdownCh:
+							return
+						}
+					}
+					for _, ja := range out.Allocations {
+						if ja.Task!=alloc.Task && ja.ClientStatus == models.TaskStateRunning{
+							pulledAllocs[alloc.ID] = alloc
+						}
+					}
+				}else{
+					pulledAllocs[alloc.ID] = alloc
+				}
 			}
 
 			/*for _, desiredID := range pull {

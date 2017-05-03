@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"reflect"
 	"sync"
 	"time"
 
@@ -37,7 +36,6 @@ const (
 	EvalSnapshot
 	AllocSnapshot
 	TimeTableSnapshot
-	JobSummarySnapshot
 )
 
 // udupFSM implements a finite store machine that is used
@@ -146,8 +144,6 @@ func (n *udupFSM) Apply(log *raft.Log) interface{} {
 		return n.applyAllocUpdate(buf[1:], log.Index)
 	case models.AllocClientUpdateRequestType:
 		return n.applyAllocClientUpdate(buf[1:], log.Index)
-	case models.ReconcileJobSummariesRequestType:
-		return n.applyReconcileSummaries(buf[1:], log.Index)
 	default:
 		if ignoreUnknown {
 			n.logger.Printf("[WARN] server.fsm: ignoring unknown message type (%d), upgrade to newer version", msgType)
@@ -411,14 +407,6 @@ func (n *udupFSM) applyAllocClientUpdate(buf []byte, index uint64) interface{} {
 	return nil
 }
 
-// applyReconcileSummaries reconciles summaries for all the jobs
-func (n *udupFSM) applyReconcileSummaries(buf []byte, index uint64) interface{} {
-	if err := n.state.ReconcileJobSummaries(index); err != nil {
-		return err
-	}
-	return n.reconcileQueuedAllocations(index)
-}
-
 func (n *udupFSM) Snapshot() (raft.FSMSnapshot, error) {
 	// Create a new snapshot
 	snap, err := n.state.Snapshot()
@@ -524,45 +512,12 @@ func (n *udupFSM) Restore(old io.ReadCloser) error {
 				return err
 			}
 
-		case JobSummarySnapshot:
-			summary := new(models.JobSummary)
-			if err := dec.Decode(summary); err != nil {
-				return err
-			}
-			if err := restore.JobSummaryRestore(summary); err != nil {
-				return err
-			}
-
 		default:
 			return fmt.Errorf("Unrecognized snapshot type: %v", msgType)
 		}
 	}
 
 	restore.Commit()
-
-	// Create Job Summaries
-	// COMPAT 0.4 -> 0.4.1
-	// We can remove this in 0.5. This exists so that the server creates job
-	// summaries if they were not present previously. When users upgrade to 0.5
-	// from 0.4.1, the snapshot will contain job summaries so it will be safe to
-	// remove this block.
-	index, err := newState.Index("job_summary")
-	if err != nil {
-		return fmt.Errorf("couldn't fetch index of job summary table: %v", err)
-	}
-
-	// If the index is 0 that means there is no job summary in the snapshot so
-	// we will have to create them
-	if index == 0 {
-		// query the latest index
-		latestIndex, err := newState.LatestIndex()
-		if err != nil {
-			return fmt.Errorf("unable to query latest index: %v", index)
-		}
-		if err := newState.ReconcileJobSummaries(latestIndex); err != nil {
-			return fmt.Errorf("error reconciling summaries: %v", err)
-		}
-	}
 
 	// External code might be calling State(), so we need to synchronize
 	// here to make sure we swap in the new store store atomically.
@@ -625,55 +580,6 @@ func (n *udupFSM) reconcileQueuedAllocations(index uint64) error {
 		if err := sched.Process(eval); err != nil {
 			return err
 		}
-
-		// Get the job summary from the fsm store store
-		originalSummary, err := n.state.JobSummaryByID(ws, job.ID)
-		if err != nil {
-			return err
-		}
-		summary := originalSummary.Copy()
-
-		// Add the allocations scheduler has made to queued since these
-		// allocations are never getting placed until the scheduler is invoked
-		// with a real planner
-		if l := len(planner.Plans); l != 1 {
-			return fmt.Errorf("unexpected number of plans during restore %d. Please file an issue including the logs", l)
-		}
-		for _, allocations := range planner.Plans[0].NodeAllocation {
-			for _, allocation := range allocations {
-				tgSummary, ok := summary.Tasks[allocation.Task]
-				if !ok {
-					return fmt.Errorf("task %q not found while updating queued count", allocation.Task)
-				}
-				tgSummary.Status = models.TaskStateQueued
-				summary.Tasks[allocation.Task] = tgSummary
-			}
-		}
-
-		// Add the queued allocations attached to the evaluation to the queued
-		// counter of the job summary
-		if l := len(planner.Evals); l != 1 {
-			return fmt.Errorf("unexpected number of evals during restore %d. Please file an issue including the logs", l)
-		}
-		for t, _ := range planner.Evals[0].QueuedAllocations {
-			taskSummary, ok := summary.Tasks[t]
-			if !ok {
-				return fmt.Errorf("task %q not found while updating queued count", t)
-			}
-
-			// We add instead of setting here because we want to take into
-			// consideration what the scheduler with a mock planner thinks it
-			// placed. Those should be counted as queued as well
-			taskSummary.Status = models.TaskStateQueued
-			summary.Tasks[t] = taskSummary
-		}
-
-		if !reflect.DeepEqual(summary, originalSummary) {
-			summary.ModifyIndex = index
-			if err := n.state.UpsertJobSummary(index, summary); err != nil {
-				return err
-			}
-		}
 	}
 	return nil
 }
@@ -718,10 +624,7 @@ func (s *udupSnapshot) Persist(sink raft.SnapshotSink) error {
 		sink.Cancel()
 		return err
 	}
-	if err := s.persistJobSummaries(sink, encoder); err != nil {
-		sink.Cancel()
-		return err
-	}
+
 	return nil
 }
 
@@ -858,31 +761,6 @@ func (s *udupSnapshot) persistAllocs(sink raft.SnapshotSink,
 		// Write out the evaluation
 		sink.Write([]byte{byte(AllocSnapshot)})
 		if err := encoder.Encode(alloc); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func (s *udupSnapshot) persistJobSummaries(sink raft.SnapshotSink,
-	encoder *codec.Encoder) error {
-
-	ws := memdb.NewWatchSet()
-	summaries, err := s.snap.JobSummaries(ws)
-	if err != nil {
-		return err
-	}
-
-	for {
-		raw := summaries.Next()
-		if raw == nil {
-			break
-		}
-
-		jobSummary := raw.(*models.JobSummary)
-
-		sink.Write([]byte{byte(JobSummarySnapshot)})
-		if err := encoder.Encode(jobSummary); err != nil {
 			return err
 		}
 	}

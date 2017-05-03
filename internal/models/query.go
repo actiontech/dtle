@@ -29,7 +29,6 @@ const (
 	EvalDeleteRequestType
 	AllocUpdateRequestType
 	AllocClientUpdateRequestType
-	ReconcileJobSummariesRequestType
 )
 
 const (
