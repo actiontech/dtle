@@ -1,8 +1,8 @@
 package store
 
 import (
-	"log"
 	"fmt"
+	"log"
 
 	"github.com/docker/libkv"
 	"github.com/docker/libkv/store"
@@ -35,13 +35,12 @@ func NewConsulStore(addrs []string) (*Store, error) {
 	}
 
 	s := &Store{
-		Client:        c,
+		Client: c,
 	}
-	return s,nil
+	return s, nil
 }
 
 // Retrieve the leader key used in the KV store to store the leader node
 func (s *Store) LeaderKey() string {
 	return keyspace + "/leader"
 }
-

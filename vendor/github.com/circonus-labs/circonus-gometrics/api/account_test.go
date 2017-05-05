@@ -24,7 +24,7 @@ var (
 		},
 		OwnerCID: "/user/42",
 		Usage: []AccountLimit{
-			AccountLimit{
+			{
 				Limit: 50,
 				Type:  "Host",
 				Used:  7,
@@ -37,11 +37,11 @@ var (
 		Country:     "US",
 		Description: &[]string{"Hooper's Store Account"}[0],
 		Invites: []AccountInvite{
-			AccountInvite{
+			{
 				Email: "alan@example.com",
 				Role:  "Admin",
 			},
-			AccountInvite{
+			{
 				Email: "chris.robinson@example.com",
 				Role:  "Normal",
 			},
@@ -50,7 +50,7 @@ var (
 		StateProv: &[]string{"NY"}[0],
 		Timezone:  "America/New_York",
 		Users: []AccountUser{
-			AccountUser{
+			{
 				Role:    "Admin",
 				UserCID: "/user/42",
 			},
@@ -296,7 +296,7 @@ func TestSearchAccounts(t *testing.T) {
 		t.Errorf("Expected no error, got '%v'", err)
 	}
 
-	filter := SearchFilterType(map[string][]string{"f_name_wildcard": []string{"*ops*"}})
+	filter := SearchFilterType(map[string][]string{"f_name_wildcard": {"*ops*"}})
 
 	t.Log("no filter")
 	{

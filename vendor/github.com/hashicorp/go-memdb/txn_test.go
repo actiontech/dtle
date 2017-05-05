@@ -879,22 +879,22 @@ func (*CustomIndex) PrefixFromArgs(args ...interface{}) ([]byte, error) {
 func TestTxn_InsertGet_LongestPrefix(t *testing.T) {
 	schema := &DBSchema{
 		Tables: map[string]*TableSchema{
-			"main": &TableSchema{
+			"main": {
 				Name: "main",
 				Indexes: map[string]*IndexSchema{
-					"id": &IndexSchema{
+					"id": {
 						Name:   "id",
 						Unique: true,
 						Indexer: &StringFieldIndex{
 							Field: "ID",
 						},
 					},
-					"foo": &IndexSchema{
+					"foo": {
 						Name:    "foo",
 						Unique:  true,
 						Indexer: &CustomIndex{},
 					},
-					"nope": &IndexSchema{
+					"nope": {
 						Name:    "nope",
 						Indexer: &CustomIndex{},
 					},

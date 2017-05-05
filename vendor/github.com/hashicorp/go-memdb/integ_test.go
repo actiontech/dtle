@@ -372,15 +372,15 @@ type TestVisit struct {
 func testComplexSchema() *DBSchema {
 	return &DBSchema{
 		Tables: map[string]*TableSchema{
-			"people": &TableSchema{
+			"people": {
 				Name: "people",
 				Indexes: map[string]*IndexSchema{
-					"id": &IndexSchema{
+					"id": {
 						Name:    "id",
 						Unique:  true,
 						Indexer: &UUIDFieldIndex{Field: "ID"},
 					},
-					"name": &IndexSchema{
+					"name": {
 						Name:   "name",
 						Unique: true,
 						Indexer: &CompoundIndex{
@@ -390,37 +390,37 @@ func testComplexSchema() *DBSchema {
 							},
 						},
 					},
-					"age": &IndexSchema{
+					"age": {
 						Name:    "age",
 						Unique:  false,
 						Indexer: &UintFieldIndex{Field: "Age"},
 					},
-					"sibling": &IndexSchema{
+					"sibling": {
 						Name:    "sibling",
 						Unique:  false,
 						Indexer: &FieldSetIndex{Field: "Sibling"},
 					},
 				},
 			},
-			"places": &TableSchema{
+			"places": {
 				Name: "places",
 				Indexes: map[string]*IndexSchema{
-					"id": &IndexSchema{
+					"id": {
 						Name:    "id",
 						Unique:  true,
 						Indexer: &UUIDFieldIndex{Field: "ID"},
 					},
-					"name": &IndexSchema{
+					"name": {
 						Name:    "name",
 						Unique:  true,
 						Indexer: &StringFieldIndex{Field: "Name"},
 					},
 				},
 			},
-			"visits": &TableSchema{
+			"visits": {
 				Name: "visits",
 				Indexes: map[string]*IndexSchema{
-					"id": &IndexSchema{
+					"id": {
 						Name:   "id",
 						Unique: true,
 						Indexer: &CompoundIndex{

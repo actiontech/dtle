@@ -23,26 +23,26 @@ var (
 		AggregationWindow: 300,
 		Contacts: ContactGroupContacts{
 			External: []ContactGroupContactsExternal{
-				ContactGroupContactsExternal{
+				{
 					Info:   "12125550100",
 					Method: "sms",
 				},
-				ContactGroupContactsExternal{
+				{
 					Info:   "bert@example.com",
 					Method: "xmpp",
 				},
-				ContactGroupContactsExternal{
+				{
 					Info:   "ernie@example.com",
 					Method: "email",
 				},
 			},
 			Users: []ContactGroupContactsUser{
-				ContactGroupContactsUser{
+				{
 					Info:    "snuffy@example.com",
 					Method:  "email",
 					UserCID: "/user/1234",
 				},
-				ContactGroupContactsUser{
+				{
 					Info:    "12125550199",
 					Method:  "sms",
 					UserCID: "/user/4567",
@@ -50,7 +50,7 @@ var (
 			},
 		},
 		Escalations: []*ContactGroupEscalation{
-			&ContactGroupEscalation{
+			{
 				After:           900,
 				ContactGroupCID: "/contact_group/4567",
 			},
@@ -510,7 +510,7 @@ func TestSearchContactGroups(t *testing.T) {
 
 	t.Log("no search, filter")
 	{
-		filter := SearchFilterType(map[string][]string{"f__last_modified_gt": []string{"1483639916"}})
+		filter := SearchFilterType(map[string][]string{"f__last_modified_gt": {"1483639916"}})
 		groups, err := apih.SearchContactGroups(nil, &filter)
 		if err != nil {
 			t.Fatalf("Expected no error, got '%v'", err)
@@ -526,7 +526,7 @@ func TestSearchContactGroups(t *testing.T) {
 	t.Log("search, filter")
 	{
 		search := SearchQueryType(`(name="ops")`)
-		filter := SearchFilterType(map[string][]string{"f__last_modified_gt": []string{"1483639916"}})
+		filter := SearchFilterType(map[string][]string{"f__last_modified_gt": {"1483639916"}})
 		groups, err := apih.SearchContactGroups(&search, &filter)
 		if err != nil {
 			t.Fatalf("Expected no error, got '%v'", err)

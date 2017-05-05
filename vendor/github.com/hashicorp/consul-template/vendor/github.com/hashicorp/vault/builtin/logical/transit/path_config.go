@@ -11,18 +11,18 @@ func (b *backend) pathConfig() *framework.Path {
 	return &framework.Path{
 		Pattern: "keys/" + framework.GenericNameRegex("name") + "/config",
 		Fields: map[string]*framework.FieldSchema{
-			"name": &framework.FieldSchema{
+			"name": {
 				Type:        framework.TypeString,
 				Description: "Name of the key",
 			},
 
-			"min_decryption_version": &framework.FieldSchema{
+			"min_decryption_version": {
 				Type: framework.TypeInt,
 				Description: `If set, the minimum version of the key allowed
 to be decrypted.`,
 			},
 
-			"deletion_allowed": &framework.FieldSchema{
+			"deletion_allowed": {
 				Type:        framework.TypeBool,
 				Description: "Whether to allow deletion of the key",
 			},

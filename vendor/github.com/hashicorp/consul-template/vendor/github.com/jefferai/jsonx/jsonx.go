@@ -118,7 +118,7 @@ func sortAndTransformObject(o *bytes.Buffer, cont *namedContainer) error {
 	}
 
 	sortedNames := make([]string, 0, len(objectChildren))
-	for name, _ := range objectChildren {
+	for name := range objectChildren {
 		sortedNames = append(sortedNames, name)
 	}
 	sort.Strings(sortedNames)

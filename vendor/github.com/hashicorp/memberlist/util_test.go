@@ -95,28 +95,28 @@ func TestRetransmitLimit(t *testing.T) {
 
 func TestShuffleNodes(t *testing.T) {
 	orig := []*nodeState{
-		&nodeState{
+		{
 			State: stateDead,
 		},
-		&nodeState{
+		{
 			State: stateAlive,
 		},
-		&nodeState{
+		{
 			State: stateAlive,
 		},
-		&nodeState{
+		{
 			State: stateDead,
 		},
-		&nodeState{
+		{
 			State: stateAlive,
 		},
-		&nodeState{
+		{
 			State: stateAlive,
 		},
-		&nodeState{
+		{
 			State: stateDead,
 		},
-		&nodeState{
+		{
 			State: stateAlive,
 		},
 	}
@@ -155,29 +155,29 @@ func TestPushPullScale(t *testing.T) {
 
 func TestMoveDeadNodes(t *testing.T) {
 	nodes := []*nodeState{
-		&nodeState{
+		{
 			State:       stateDead,
 			StateChange: time.Now().Add(-20 * time.Second),
 		},
-		&nodeState{
+		{
 			State:       stateAlive,
 			StateChange: time.Now().Add(-20 * time.Second),
 		},
 		// This dead node should not be moved, as its state changed
 		// less than the specified GossipToTheDead time ago
-		&nodeState{
+		{
 			State:       stateDead,
 			StateChange: time.Now().Add(-10 * time.Second),
 		},
-		&nodeState{
+		{
 			State:       stateAlive,
 			StateChange: time.Now().Add(-20 * time.Second),
 		},
-		&nodeState{
+		{
 			State:       stateDead,
 			StateChange: time.Now().Add(-20 * time.Second),
 		},
-		&nodeState{
+		{
 			State:       stateAlive,
 			StateChange: time.Now().Add(-20 * time.Second),
 		},

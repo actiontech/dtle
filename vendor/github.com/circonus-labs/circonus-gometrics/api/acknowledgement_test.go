@@ -360,7 +360,7 @@ func TestSearchAcknowledgement(t *testing.T) {
 
 	t.Log("no search, filter")
 	{
-		filter := SearchFilterType(map[string][]string{"f__active": []string{"true"}})
+		filter := SearchFilterType(map[string][]string{"f__active": {"true"}})
 		acknowledgements, err := apih.SearchAcknowledgements(nil, &filter)
 		if err != nil {
 			t.Fatalf("Expected no error, got '%v'", err)
@@ -376,7 +376,7 @@ func TestSearchAcknowledgement(t *testing.T) {
 	t.Log("search, filter")
 	{
 		search := SearchQueryType(`(notes="something")`)
-		filter := SearchFilterType(map[string][]string{"f__active": []string{"true"}})
+		filter := SearchFilterType(map[string][]string{"f__active": {"true"}})
 		acknowledgements, err := apih.SearchAcknowledgements(&search, &filter)
 		if err != nil {
 			t.Fatalf("Expected no error, got '%v'", err)

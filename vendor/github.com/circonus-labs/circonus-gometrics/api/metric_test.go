@@ -247,7 +247,7 @@ func TestSearchMetrics(t *testing.T) {
 	}
 
 	search := SearchQueryType("vm`memory`used")
-	filter := SearchFilterType(map[string][]string{"f_tags_has": []string{"service:cache"}})
+	filter := SearchFilterType(map[string][]string{"f_tags_has": {"service:cache"}})
 
 	t.Log("no search, no filter")
 	{

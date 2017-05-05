@@ -108,7 +108,7 @@ func (cldr *CLDR) Supplemental() *SupplementalData {
 // Valid sublocales for which there is no file are not included.
 func (cldr *CLDR) Locales() []string {
 	loc := []string{}
-	for l, _ := range cldr.locale {
+	for l := range cldr.locale {
 		loc = append(loc, l)
 	}
 	sort.Strings(loc)

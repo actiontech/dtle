@@ -154,7 +154,7 @@ func TestHealthServiceQuery_Fetch(t *testing.T) {
 			"consul",
 			"consul",
 			[]*HealthService{
-				&HealthService{
+				{
 					Node:        testConsul.Config.NodeName,
 					NodeAddress: testConsul.Config.Bind,
 					NodeTaggedAddresses: map[string]string{
@@ -180,7 +180,7 @@ func TestHealthServiceQuery_Fetch(t *testing.T) {
 			"multifilter",
 			"consul|warning,passing",
 			[]*HealthService{
-				&HealthService{
+				{
 					Node:        testConsul.Config.NodeName,
 					NodeAddress: testConsul.Config.Bind,
 					NodeTaggedAddresses: map[string]string{

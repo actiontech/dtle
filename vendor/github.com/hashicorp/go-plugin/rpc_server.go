@@ -74,7 +74,7 @@ func (s *RPCServer) ServeConn(conn io.ReadWriteCloser) {
 
 	// Connect the stdstreams (in, out, err)
 	stdstream := make([]net.Conn, 2)
-	for i, _ := range stdstream {
+	for i := range stdstream {
 		stdstream[i], err = mux.Accept()
 		if err != nil {
 			mux.Close()

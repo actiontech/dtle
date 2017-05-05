@@ -98,7 +98,7 @@ func (p *Path) helpCallback(
 
 	// Alphabetize the fields
 	fieldKeys := make([]string, 0, len(p.Fields))
-	for k, _ := range p.Fields {
+	for k := range p.Fields {
 		fieldKeys = append(fieldKeys, k)
 	}
 	sort.Strings(fieldKeys)

@@ -339,16 +339,16 @@ type bintree struct {
 }
 
 var _bintree = &bintree{nil, map[string]*bintree{
-	"web_ui": &bintree{nil, map[string]*bintree{
-		"index.html": &bintree{web_uiIndexHtml, map[string]*bintree{}},
-		"static": &bintree{nil, map[string]*bintree{
-			"application.min.js":       &bintree{web_uiStaticApplicationMinJs, map[string]*bintree{}},
-			"base.css":                 &bintree{web_uiStaticBaseCss, map[string]*bintree{}},
-			"base.css.map":             &bintree{web_uiStaticBaseCssMap, map[string]*bintree{}},
-			"bootstrap.min.css":        &bintree{web_uiStaticBootstrapMinCss, map[string]*bintree{}},
-			"consul-logo.png":          &bintree{web_uiStaticConsulLogoPng, map[string]*bintree{}},
-			"favicon.png":              &bintree{web_uiStaticFaviconPng, map[string]*bintree{}},
-			"loading-cylon-purple.svg": &bintree{web_uiStaticLoadingCylonPurpleSvg, map[string]*bintree{}},
+	"web_ui": {nil, map[string]*bintree{
+		"index.html": {web_uiIndexHtml, map[string]*bintree{}},
+		"static": {nil, map[string]*bintree{
+			"application.min.js":       {web_uiStaticApplicationMinJs, map[string]*bintree{}},
+			"base.css":                 {web_uiStaticBaseCss, map[string]*bintree{}},
+			"base.css.map":             {web_uiStaticBaseCssMap, map[string]*bintree{}},
+			"bootstrap.min.css":        {web_uiStaticBootstrapMinCss, map[string]*bintree{}},
+			"consul-logo.png":          {web_uiStaticConsulLogoPng, map[string]*bintree{}},
+			"favicon.png":              {web_uiStaticFaviconPng, map[string]*bintree{}},
+			"loading-cylon-purple.svg": {web_uiStaticLoadingCylonPurpleSvg, map[string]*bintree{}},
 		}},
 	}},
 }}

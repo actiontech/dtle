@@ -160,17 +160,17 @@ func TestKVListQuery_Fetch(t *testing.T) {
 			"exists",
 			"test-kv-list/prefix",
 			[]*KeyPair{
-				&KeyPair{
+				{
 					Path:  "test-kv-list/prefix/foo",
 					Key:   "foo",
 					Value: "bar",
 				},
-				&KeyPair{
+				{
 					Path:  "test-kv-list/prefix/wave/ocean",
 					Key:   "wave/ocean",
 					Value: "sleek",
 				},
-				&KeyPair{
+				{
 					Path:  "test-kv-list/prefix/zip",
 					Key:   "zip",
 					Value: "zap",
@@ -181,17 +181,17 @@ func TestKVListQuery_Fetch(t *testing.T) {
 			"trailing",
 			"test-kv-list/prefix/",
 			[]*KeyPair{
-				&KeyPair{
+				{
 					Path:  "test-kv-list/prefix/foo",
 					Key:   "foo",
 					Value: "bar",
 				},
-				&KeyPair{
+				{
 					Path:  "test-kv-list/prefix/wave/ocean",
 					Key:   "wave/ocean",
 					Value: "sleek",
 				},
-				&KeyPair{
+				{
 					Path:  "test-kv-list/prefix/zip",
 					Key:   "zip",
 					Value: "zap",

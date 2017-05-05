@@ -22,7 +22,7 @@ var (
 		CID:        "/graph/01234567-89ab-cdef-0123-456789abcdef",
 		AccessKeys: []GraphAccessKey{},
 		Composites: []GraphComposite{
-			GraphComposite{
+			{
 				Axis:        "l",
 				Color:       "#000000",
 				DataFormula: &testFormula1,
@@ -31,7 +31,7 @@ var (
 			},
 		},
 		Datapoints: []GraphDatapoint{
-			GraphDatapoint{
+			{
 				Axis:        "l",
 				CheckID:     1234,
 				Color:       &[]string{"#ff0000"}[0],
@@ -42,7 +42,7 @@ var (
 				MetricType:  "numeric",
 				Name:        "Total Request Time",
 			},
-			GraphDatapoint{
+			{
 				Axis:        "l",
 				CheckID:     2345,
 				Color:       &[]string{"#00ff00"}[0],
@@ -486,7 +486,7 @@ func TestSearchGraphs(t *testing.T) {
 	}
 
 	search := SearchQueryType("CPU Utilization")
-	filter := SearchFilterType(map[string][]string{"f__tags_has": []string{"os:rhel7"}})
+	filter := SearchFilterType(map[string][]string{"f__tags_has": {"os:rhel7"}})
 
 	t.Log("no search, no filter")
 	{

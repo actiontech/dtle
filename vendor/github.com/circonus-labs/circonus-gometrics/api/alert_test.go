@@ -249,7 +249,7 @@ func TestSearchAlerts(t *testing.T) {
 
 	t.Log("no search, filter")
 	{
-		filter := SearchFilterType(map[string][]string{"f__cleared_on": []string{"null"}})
+		filter := SearchFilterType(map[string][]string{"f__cleared_on": {"null"}})
 		alerts, err := apih.SearchAlerts(nil, &filter)
 		if err != nil {
 			t.Fatalf("Expected no error, got '%v'", err)
@@ -265,7 +265,7 @@ func TestSearchAlerts(t *testing.T) {
 	t.Log("search, filter")
 	{
 		search := SearchQueryType(`(host="somehost.example.com")`)
-		filter := SearchFilterType(map[string][]string{"f__cleared_on": []string{"null"}})
+		filter := SearchFilterType(map[string][]string{"f__cleared_on": {"null"}})
 		alerts, err := apih.SearchAlerts(&search, &filter)
 		if err != nil {
 			t.Fatalf("Expected no error, got '%v'", err)

@@ -1,7 +1,7 @@
 //go:generate sh -c "go run watch-gen/main.go >watch_few.go"
 package memdb
 
-import(
+import (
 	"time"
 )
 

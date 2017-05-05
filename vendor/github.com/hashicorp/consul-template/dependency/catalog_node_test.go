@@ -91,7 +91,7 @@ func TestCatalogNodeQuery_Fetch(t *testing.T) {
 					Meta: map[string]string{},
 				},
 				Services: []*CatalogNodeService{
-					&CatalogNodeService{
+					{
 						ID:      "consul",
 						Service: "consul",
 						Port:    testConsul.Config.Ports.Server,

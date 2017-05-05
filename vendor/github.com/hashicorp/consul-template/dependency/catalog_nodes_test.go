@@ -83,7 +83,7 @@ func TestCatalogNodesQuery_Fetch(t *testing.T) {
 			"all",
 			"",
 			[]*Node{
-				&Node{
+				{
 					Node:    testConsul.Config.NodeName,
 					Address: testConsul.Config.Bind,
 					TaggedAddresses: map[string]string{

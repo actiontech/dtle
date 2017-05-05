@@ -18,17 +18,17 @@ func (b *backend) pathHMAC() *framework.Path {
 	return &framework.Path{
 		Pattern: "hmac/" + framework.GenericNameRegex("name") + framework.OptionalParamRegex("urlalgorithm"),
 		Fields: map[string]*framework.FieldSchema{
-			"name": &framework.FieldSchema{
+			"name": {
 				Type:        framework.TypeString,
 				Description: "The key to use for the HMAC function",
 			},
 
-			"input": &framework.FieldSchema{
+			"input": {
 				Type:        framework.TypeString,
 				Description: "The base64-encoded input data",
 			},
 
-			"algorithm": &framework.FieldSchema{
+			"algorithm": {
 				Type:    framework.TypeString,
 				Default: "sha2-256",
 				Description: `Algorithm to use (POST body parameter). Valid values are:
@@ -41,7 +41,7 @@ func (b *backend) pathHMAC() *framework.Path {
 Defaults to "sha2-256".`,
 			},
 
-			"urlalgorithm": &framework.FieldSchema{
+			"urlalgorithm": {
 				Type:        framework.TypeString,
 				Description: `Algorithm to use (POST URL parameter)`,
 			},

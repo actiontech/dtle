@@ -56,4 +56,7 @@ test-short: vet
 vet:
 	go vet ./...
 
-.PHONY: test-short vet build default
+fmt:
+	gofmt -s -w .
+
+.PHONY: test-short vet fmt build default

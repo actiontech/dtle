@@ -368,7 +368,7 @@ func (c *Core) ClusterTLSConfig() (*tls.Config, error) {
 
 	tlsConfig := &tls.Config{
 		Certificates: []tls.Certificate{
-			tls.Certificate{
+			{
 				Certificate: [][]byte{c.localClusterCert},
 				PrivateKey:  c.localClusterPrivateKey,
 			},

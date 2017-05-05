@@ -19,7 +19,7 @@ var (
 	testProvisionBroker = ProvisionBroker{
 		Cert: "...",
 		Stratcons: []BrokerStratcon{
-			BrokerStratcon{CN: "foobar", Host: "foobar.example.com", Port: "12345"},
+			{CN: "foobar", Host: "foobar.example.com", Port: "12345"},
 		},
 		CSR:          "...",
 		ExternalHost: "abc-123.example.com",

@@ -53,7 +53,7 @@ var (
 		// 	ReverseSecret: "blah",
 		// },
 		Metrics: []api.CheckBundleMetric{
-			api.CheckBundleMetric{
+			{
 				Name:   "elmo",
 				Type:   "numeric",
 				Status: "active",
@@ -74,7 +74,7 @@ var (
 		Name: "test broker",
 		Type: "enterprise",
 		Details: []api.BrokerDetail{
-			api.BrokerDetail{
+			{
 				CN:           "testbroker.example.com",
 				ExternalHost: nil,
 				ExternalPort: 43191,

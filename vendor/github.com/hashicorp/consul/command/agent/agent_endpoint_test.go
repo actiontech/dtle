@@ -1246,9 +1246,9 @@ func TestAgent_UpdateCheck(t *testing.T) {
 	}
 
 	cases := []checkUpdate{
-		checkUpdate{structs.HealthPassing, "hello-passing"},
-		checkUpdate{structs.HealthCritical, "hello-critical"},
-		checkUpdate{structs.HealthWarning, "hello-warning"},
+		{structs.HealthPassing, "hello-passing"},
+		{structs.HealthCritical, "hello-critical"},
+		{structs.HealthWarning, "hello-warning"},
 	}
 
 	for _, c := range cases {

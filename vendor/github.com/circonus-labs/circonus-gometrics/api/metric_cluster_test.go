@@ -20,7 +20,7 @@ var (
 		Name: "test",
 		CID:  "/metric_cluster/1234",
 		Queries: []MetricQuery{
-			MetricQuery{
+			{
 				Query: "*Req*",
 				Type:  "average",
 			},
@@ -507,7 +507,7 @@ func TestSearchMetricClusters(t *testing.T) {
 	}
 
 	search := SearchQueryType("web servers")
-	filter := SearchFilterType(map[string][]string{"f_tags_has": []string{"dc:sfo1"}})
+	filter := SearchFilterType(map[string][]string{"f_tags_has": {"dc:sfo1"}})
 
 	t.Log("no search, no filter")
 	{

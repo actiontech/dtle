@@ -240,7 +240,7 @@ func (v *evalCall) Eval(s ast.Scope, stack *ast.Stack) (interface{}, ast.Type, e
 
 	// The arguments are on the stack in reverse order, so pop them off.
 	args := make([]interface{}, len(v.Args))
-	for i, _ := range v.Args {
+	for i := range v.Args {
 		node := stack.Pop().(*ast.LiteralNode)
 		args[len(v.Args)-1-i] = node.Value
 	}

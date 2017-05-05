@@ -1,16 +1,16 @@
 package command
 
 import (
-	"bytes"
-	"encoding/gob"
 	"encoding/json"
 	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
 
+	"github.com/hashicorp/go-multierror"
+
+	"udup/agent"
 	"udup/api"
-	"udup/internal/models"
 )
 
 var (
@@ -18,14 +18,14 @@ var (
 	enforceIndexRegex = regexp.MustCompile(`\((Enforcing job modify index.*)\)`)
 )
 
-type RunCommand struct {
+type StartCommand struct {
 	Meta
 	JobGetter
 }
 
-func (c *RunCommand) Help() string {
+func (c *StartCommand) Help() string {
 	helpText := `
-Usage: server run [options] <path>
+Usage: server start [options] <path>
 
   Starts running a new job or updates an existing job using
   the specification located at <path>. This is the main command
@@ -79,15 +79,15 @@ Run Options:
 	return strings.TrimSpace(helpText)
 }
 
-func (c *RunCommand) Synopsis() string {
+func (c *StartCommand) Synopsis() string {
 	return "Run a new job or update an existing job"
 }
 
-func (c *RunCommand) Run(args []string) int {
+func (c *StartCommand) Run(args []string) int {
 	var detach, verbose, output bool
 	var checkIndexStr string
 
-	flags := c.Meta.FlagSet("run", FlagSetClient)
+	flags := c.Meta.FlagSet("start", FlagSetClient)
 	flags.Usage = func() { c.Ui.Output(c.Help()) }
 	flags.BoolVar(&detach, "detach", false, "")
 	flags.BoolVar(&verbose, "verbose", false, "")
@@ -135,6 +135,28 @@ func (c *RunCommand) Run(args []string) int {
 	// Force the region to be that of the job.
 	if r := job.Region; r != nil {
 		client.SetRegion(*r)
+	}
+
+	// Check that the job is valid
+	jr, _, err := client.Jobs().Validate(job, nil)
+	if err != nil {
+		jr, err = c.validateLocal(job)
+	}
+	if err != nil {
+		c.Ui.Error(fmt.Sprintf("Error validating job: %s", err))
+		return 1
+	}
+
+	if jr != nil && !jr.DriverConfigValidated {
+		c.Ui.Output(
+			c.Colorize().Color("[bold][yellow]Driver configuration not validated since connection to Udup agent couldn't be established.[reset]\n"))
+	}
+
+	if jr != nil && jr.Error != "" {
+		c.Ui.Error(
+			c.Colorize().Color("[bold][red]Job validation errors:[reset]"))
+		c.Ui.Error(jr.Error)
+		return 1
 	}
 
 	if output {
@@ -204,18 +226,24 @@ func parseCheckIndex(input string) (uint64, bool, error) {
 	return u, true, err
 }
 
-// convertStructJob is used to take a *models.Job and convert it to an *api.Job.
-// This function is just a hammer and probably needs to be revisited.
-func convertStructJob(in *models.Job) (*api.Job, error) {
-	gob.Register([]map[string]interface{}{})
-	gob.Register([]interface{}{})
-	var apiJob *api.Job
-	buf := new(bytes.Buffer)
-	if err := gob.NewEncoder(buf).Encode(in); err != nil {
-		return nil, err
+// validateLocal validates without talking to a Udup agent
+func (c *StartCommand) validateLocal(aj *api.Job) (*api.JobValidateResponse, error) {
+	var out api.JobValidateResponse
+
+	job := agent.ApiJobToStructJob(aj)
+	job.Canonicalize()
+
+	if vErr := job.Validate(); vErr != nil {
+		if merr, ok := vErr.(*multierror.Error); ok {
+			for _, err := range merr.Errors {
+				out.ValidationErrors = append(out.ValidationErrors, err.Error())
+			}
+			out.Error = merr.Error()
+		} else {
+			out.ValidationErrors = append(out.ValidationErrors, vErr.Error())
+			out.Error = vErr.Error()
+		}
 	}
-	if err := gob.NewDecoder(buf).Decode(&apiJob); err != nil {
-		return nil, err
-	}
-	return apiJob, nil
+
+	return &out, nil
 }

@@ -19,11 +19,11 @@ var (
 	testCheckBundleMetrics = CheckBundleMetrics{
 		CID: "/check_bundle_metrics/1234",
 		Metrics: []CheckBundleMetric{
-			CheckBundleMetric{Name: "foo", Type: "numeric", Status: "active"},
-			CheckBundleMetric{Name: "bar", Type: "histogram", Status: "active"},
-			CheckBundleMetric{Name: "baz", Type: "text", Status: "available"},
-			CheckBundleMetric{Name: "fum", Type: "composite", Status: "active", Tags: []string{"cat:tag"}},
-			CheckBundleMetric{Name: "zot", Type: "caql", Status: "active", Units: &[]string{"milliseconds"}[0]},
+			{Name: "foo", Type: "numeric", Status: "active"},
+			{Name: "bar", Type: "histogram", Status: "active"},
+			{Name: "baz", Type: "text", Status: "available"},
+			{Name: "fum", Type: "composite", Status: "active", Tags: []string{"cat:tag"}},
+			{Name: "zot", Type: "caql", Status: "active", Units: &[]string{"milliseconds"}[0]},
 		},
 	}
 )

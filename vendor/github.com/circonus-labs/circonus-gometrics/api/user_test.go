@@ -266,7 +266,7 @@ func TestSearchUsers(t *testing.T) {
 		t.Errorf("Expected no error, got '%v'", err)
 	}
 
-	filter := SearchFilterType(map[string][]string{"f_firstname": []string{"john"}, "f_lastname": []string{"doe"}})
+	filter := SearchFilterType(map[string][]string{"f_firstname": {"john"}, "f_lastname": {"doe"}})
 
 	t.Log("no filter")
 	{

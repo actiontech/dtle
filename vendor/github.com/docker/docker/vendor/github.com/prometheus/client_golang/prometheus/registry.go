@@ -424,7 +424,7 @@ func (r *registry) writePB(encoder expfmt.Encoder) error {
 
 	// Drain metricChan in case of premature return.
 	defer func() {
-		for _ = range metricChan {
+		for range metricChan {
 		}
 	}()
 

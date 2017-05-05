@@ -329,7 +329,6 @@ func (n *udupFSM) applyAllocUpdate(buf []byte, index uint64) interface{} {
 	return nil
 }
 
-
 func (n *udupFSM) applyJobClientUpdate(buf []byte, index uint64) interface{} {
 	defer metrics.MeasureSince([]string{"server", "fsm", "job_client_update"}, time.Now())
 	var req models.JobUpdateRequest
@@ -346,7 +345,7 @@ func (n *udupFSM) applyJobClientUpdate(buf []byte, index uint64) interface{} {
 	// Updating the allocs with the job id and task name
 	for _, ju := range req.JobUpdates {
 		if existing, _ := n.state.JobByID(ws, ju.JobID); existing != nil {
-			for _,t :=range existing.Tasks {
+			for _, t := range existing.Tasks {
 				t.Config["Gtid"] = ju.Gtid
 			}
 			// Update all the client allocations

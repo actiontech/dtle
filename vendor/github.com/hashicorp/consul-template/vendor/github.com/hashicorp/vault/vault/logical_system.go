@@ -49,15 +49,15 @@ func NewSystemBackend(core *Core, config *logical.BackendConfig) (logical.Backen
 		},
 
 		Paths: []*framework.Path{
-			&framework.Path{
+			{
 				Pattern: "capabilities-accessor$",
 
 				Fields: map[string]*framework.FieldSchema{
-					"accessor": &framework.FieldSchema{
+					"accessor": {
 						Type:        framework.TypeString,
 						Description: "Accessor of the token for which capabilities are being queried.",
 					},
-					"path": &framework.FieldSchema{
+					"path": {
 						Type:        framework.TypeString,
 						Description: "Path on which capabilities are being queried.",
 					},
@@ -71,15 +71,15 @@ func NewSystemBackend(core *Core, config *logical.BackendConfig) (logical.Backen
 				HelpDescription: strings.TrimSpace(sysHelp["capabilities_accessor"][1]),
 			},
 
-			&framework.Path{
+			{
 				Pattern: "capabilities$",
 
 				Fields: map[string]*framework.FieldSchema{
-					"token": &framework.FieldSchema{
+					"token": {
 						Type:        framework.TypeString,
 						Description: "Token for which capabilities are being queried.",
 					},
-					"path": &framework.FieldSchema{
+					"path": {
 						Type:        framework.TypeString,
 						Description: "Path on which capabilities are being queried.",
 					},
@@ -93,15 +93,15 @@ func NewSystemBackend(core *Core, config *logical.BackendConfig) (logical.Backen
 				HelpDescription: strings.TrimSpace(sysHelp["capabilities"][1]),
 			},
 
-			&framework.Path{
+			{
 				Pattern: "capabilities-self$",
 
 				Fields: map[string]*framework.FieldSchema{
-					"token": &framework.FieldSchema{
+					"token": {
 						Type:        framework.TypeString,
 						Description: "Token for which capabilities are being queried.",
 					},
-					"path": &framework.FieldSchema{
+					"path": {
 						Type:        framework.TypeString,
 						Description: "Path on which capabilities are being queried.",
 					},
@@ -115,19 +115,19 @@ func NewSystemBackend(core *Core, config *logical.BackendConfig) (logical.Backen
 				HelpDescription: strings.TrimSpace(sysHelp["capabilities_self"][1]),
 			},
 
-			&framework.Path{
+			{
 				Pattern:         "generate-root(/attempt)?$",
 				HelpSynopsis:    strings.TrimSpace(sysHelp["generate-root"][0]),
 				HelpDescription: strings.TrimSpace(sysHelp["generate-root"][1]),
 			},
 
-			&framework.Path{
+			{
 				Pattern:         "init$",
 				HelpSynopsis:    strings.TrimSpace(sysHelp["init"][0]),
 				HelpDescription: strings.TrimSpace(sysHelp["init"][1]),
 			},
 
-			&framework.Path{
+			{
 				Pattern: "rekey/backup$",
 
 				Fields: map[string]*framework.FieldSchema{},
@@ -141,7 +141,7 @@ func NewSystemBackend(core *Core, config *logical.BackendConfig) (logical.Backen
 				HelpDescription: strings.TrimSpace(sysHelp["rekey_backup"][0]),
 			},
 
-			&framework.Path{
+			{
 				Pattern: "rekey/recovery-key-backup$",
 
 				Fields: map[string]*framework.FieldSchema{},
@@ -155,18 +155,18 @@ func NewSystemBackend(core *Core, config *logical.BackendConfig) (logical.Backen
 				HelpDescription: strings.TrimSpace(sysHelp["rekey_backup"][0]),
 			},
 
-			&framework.Path{
+			{
 				Pattern: "auth/(?P<path>.+?)/tune$",
 				Fields: map[string]*framework.FieldSchema{
-					"path": &framework.FieldSchema{
+					"path": {
 						Type:        framework.TypeString,
 						Description: strings.TrimSpace(sysHelp["auth_tune"][0]),
 					},
-					"default_lease_ttl": &framework.FieldSchema{
+					"default_lease_ttl": {
 						Type:        framework.TypeString,
 						Description: strings.TrimSpace(sysHelp["tune_default_lease_ttl"][0]),
 					},
-					"max_lease_ttl": &framework.FieldSchema{
+					"max_lease_ttl": {
 						Type:        framework.TypeString,
 						Description: strings.TrimSpace(sysHelp["tune_max_lease_ttl"][0]),
 					},
@@ -179,19 +179,19 @@ func NewSystemBackend(core *Core, config *logical.BackendConfig) (logical.Backen
 				HelpDescription: strings.TrimSpace(sysHelp["auth_tune"][1]),
 			},
 
-			&framework.Path{
+			{
 				Pattern: "mounts/(?P<path>.+?)/tune$",
 
 				Fields: map[string]*framework.FieldSchema{
-					"path": &framework.FieldSchema{
+					"path": {
 						Type:        framework.TypeString,
 						Description: strings.TrimSpace(sysHelp["mount_path"][0]),
 					},
-					"default_lease_ttl": &framework.FieldSchema{
+					"default_lease_ttl": {
 						Type:        framework.TypeString,
 						Description: strings.TrimSpace(sysHelp["tune_default_lease_ttl"][0]),
 					},
-					"max_lease_ttl": &framework.FieldSchema{
+					"max_lease_ttl": {
 						Type:        framework.TypeString,
 						Description: strings.TrimSpace(sysHelp["tune_max_lease_ttl"][0]),
 					},
@@ -206,23 +206,23 @@ func NewSystemBackend(core *Core, config *logical.BackendConfig) (logical.Backen
 				HelpDescription: strings.TrimSpace(sysHelp["mount_tune"][1]),
 			},
 
-			&framework.Path{
+			{
 				Pattern: "mounts/(?P<path>.+?)",
 
 				Fields: map[string]*framework.FieldSchema{
-					"path": &framework.FieldSchema{
+					"path": {
 						Type:        framework.TypeString,
 						Description: strings.TrimSpace(sysHelp["mount_path"][0]),
 					},
-					"type": &framework.FieldSchema{
+					"type": {
 						Type:        framework.TypeString,
 						Description: strings.TrimSpace(sysHelp["mount_type"][0]),
 					},
-					"description": &framework.FieldSchema{
+					"description": {
 						Type:        framework.TypeString,
 						Description: strings.TrimSpace(sysHelp["mount_desc"][0]),
 					},
-					"config": &framework.FieldSchema{
+					"config": {
 						Type:        framework.TypeMap,
 						Description: strings.TrimSpace(sysHelp["mount_config"][0]),
 					},
@@ -237,7 +237,7 @@ func NewSystemBackend(core *Core, config *logical.BackendConfig) (logical.Backen
 				HelpDescription: strings.TrimSpace(sysHelp["mount"][1]),
 			},
 
-			&framework.Path{
+			{
 				Pattern: "mounts$",
 
 				Callbacks: map[logical.Operation]framework.OperationFunc{
@@ -248,15 +248,15 @@ func NewSystemBackend(core *Core, config *logical.BackendConfig) (logical.Backen
 				HelpDescription: strings.TrimSpace(sysHelp["mounts"][1]),
 			},
 
-			&framework.Path{
+			{
 				Pattern: "remount",
 
 				Fields: map[string]*framework.FieldSchema{
-					"from": &framework.FieldSchema{
+					"from": {
 						Type:        framework.TypeString,
 						Description: "The previous mount point.",
 					},
-					"to": &framework.FieldSchema{
+					"to": {
 						Type:        framework.TypeString,
 						Description: "The new mount point.",
 					},
@@ -270,19 +270,19 @@ func NewSystemBackend(core *Core, config *logical.BackendConfig) (logical.Backen
 				HelpDescription: strings.TrimSpace(sysHelp["remount"][1]),
 			},
 
-			&framework.Path{
+			{
 				Pattern: "renew" + framework.OptionalParamRegex("url_lease_id"),
 
 				Fields: map[string]*framework.FieldSchema{
-					"url_lease_id": &framework.FieldSchema{
+					"url_lease_id": {
 						Type:        framework.TypeString,
 						Description: strings.TrimSpace(sysHelp["lease_id"][0]),
 					},
-					"lease_id": &framework.FieldSchema{
+					"lease_id": {
 						Type:        framework.TypeString,
 						Description: strings.TrimSpace(sysHelp["lease_id"][0]),
 					},
-					"increment": &framework.FieldSchema{
+					"increment": {
 						Type:        framework.TypeDurationSecond,
 						Description: strings.TrimSpace(sysHelp["increment"][0]),
 					},
@@ -296,11 +296,11 @@ func NewSystemBackend(core *Core, config *logical.BackendConfig) (logical.Backen
 				HelpDescription: strings.TrimSpace(sysHelp["renew"][1]),
 			},
 
-			&framework.Path{
+			{
 				Pattern: "revoke/(?P<lease_id>.+)",
 
 				Fields: map[string]*framework.FieldSchema{
-					"lease_id": &framework.FieldSchema{
+					"lease_id": {
 						Type:        framework.TypeString,
 						Description: strings.TrimSpace(sysHelp["lease_id"][0]),
 					},
@@ -314,11 +314,11 @@ func NewSystemBackend(core *Core, config *logical.BackendConfig) (logical.Backen
 				HelpDescription: strings.TrimSpace(sysHelp["revoke"][1]),
 			},
 
-			&framework.Path{
+			{
 				Pattern: "revoke-force/(?P<prefix>.+)",
 
 				Fields: map[string]*framework.FieldSchema{
-					"prefix": &framework.FieldSchema{
+					"prefix": {
 						Type:        framework.TypeString,
 						Description: strings.TrimSpace(sysHelp["revoke-force-path"][0]),
 					},
@@ -332,11 +332,11 @@ func NewSystemBackend(core *Core, config *logical.BackendConfig) (logical.Backen
 				HelpDescription: strings.TrimSpace(sysHelp["revoke-force"][1]),
 			},
 
-			&framework.Path{
+			{
 				Pattern: "revoke-prefix/(?P<prefix>.+)",
 
 				Fields: map[string]*framework.FieldSchema{
-					"prefix": &framework.FieldSchema{
+					"prefix": {
 						Type:        framework.TypeString,
 						Description: strings.TrimSpace(sysHelp["revoke-prefix-path"][0]),
 					},
@@ -350,7 +350,7 @@ func NewSystemBackend(core *Core, config *logical.BackendConfig) (logical.Backen
 				HelpDescription: strings.TrimSpace(sysHelp["revoke-prefix"][1]),
 			},
 
-			&framework.Path{
+			{
 				Pattern: "auth$",
 
 				Callbacks: map[logical.Operation]framework.OperationFunc{
@@ -361,19 +361,19 @@ func NewSystemBackend(core *Core, config *logical.BackendConfig) (logical.Backen
 				HelpDescription: strings.TrimSpace(sysHelp["auth-table"][1]),
 			},
 
-			&framework.Path{
+			{
 				Pattern: "auth/(?P<path>.+)",
 
 				Fields: map[string]*framework.FieldSchema{
-					"path": &framework.FieldSchema{
+					"path": {
 						Type:        framework.TypeString,
 						Description: strings.TrimSpace(sysHelp["auth_path"][0]),
 					},
-					"type": &framework.FieldSchema{
+					"type": {
 						Type:        framework.TypeString,
 						Description: strings.TrimSpace(sysHelp["auth_type"][0]),
 					},
-					"description": &framework.FieldSchema{
+					"description": {
 						Type:        framework.TypeString,
 						Description: strings.TrimSpace(sysHelp["auth_desc"][0]),
 					},
@@ -388,7 +388,7 @@ func NewSystemBackend(core *Core, config *logical.BackendConfig) (logical.Backen
 				HelpDescription: strings.TrimSpace(sysHelp["auth"][1]),
 			},
 
-			&framework.Path{
+			{
 				Pattern: "policy$",
 
 				Callbacks: map[logical.Operation]framework.OperationFunc{
@@ -400,15 +400,15 @@ func NewSystemBackend(core *Core, config *logical.BackendConfig) (logical.Backen
 				HelpDescription: strings.TrimSpace(sysHelp["policy-list"][1]),
 			},
 
-			&framework.Path{
+			{
 				Pattern: "policy/(?P<name>.+)",
 
 				Fields: map[string]*framework.FieldSchema{
-					"name": &framework.FieldSchema{
+					"name": {
 						Type:        framework.TypeString,
 						Description: strings.TrimSpace(sysHelp["policy-name"][0]),
 					},
-					"rules": &framework.FieldSchema{
+					"rules": {
 						Type:        framework.TypeString,
 						Description: strings.TrimSpace(sysHelp["policy-rules"][0]),
 					},
@@ -424,34 +424,34 @@ func NewSystemBackend(core *Core, config *logical.BackendConfig) (logical.Backen
 				HelpDescription: strings.TrimSpace(sysHelp["policy"][1]),
 			},
 
-			&framework.Path{
+			{
 				Pattern:         "seal-status$",
 				HelpSynopsis:    strings.TrimSpace(sysHelp["seal-status"][0]),
 				HelpDescription: strings.TrimSpace(sysHelp["seal-status"][1]),
 			},
 
-			&framework.Path{
+			{
 				Pattern:         "seal$",
 				HelpSynopsis:    strings.TrimSpace(sysHelp["seal"][0]),
 				HelpDescription: strings.TrimSpace(sysHelp["seal"][1]),
 			},
 
-			&framework.Path{
+			{
 				Pattern:         "unseal$",
 				HelpSynopsis:    strings.TrimSpace(sysHelp["unseal"][0]),
 				HelpDescription: strings.TrimSpace(sysHelp["unseal"][1]),
 			},
 
-			&framework.Path{
+			{
 				Pattern: "audit-hash/(?P<path>.+)",
 
 				Fields: map[string]*framework.FieldSchema{
-					"path": &framework.FieldSchema{
+					"path": {
 						Type:        framework.TypeString,
 						Description: strings.TrimSpace(sysHelp["audit_path"][0]),
 					},
 
-					"input": &framework.FieldSchema{
+					"input": {
 						Type: framework.TypeString,
 					},
 				},
@@ -464,7 +464,7 @@ func NewSystemBackend(core *Core, config *logical.BackendConfig) (logical.Backen
 				HelpDescription: strings.TrimSpace(sysHelp["audit-hash"][1]),
 			},
 
-			&framework.Path{
+			{
 				Pattern: "audit$",
 
 				Callbacks: map[logical.Operation]framework.OperationFunc{
@@ -475,23 +475,23 @@ func NewSystemBackend(core *Core, config *logical.BackendConfig) (logical.Backen
 				HelpDescription: strings.TrimSpace(sysHelp["audit-table"][1]),
 			},
 
-			&framework.Path{
+			{
 				Pattern: "audit/(?P<path>.+)",
 
 				Fields: map[string]*framework.FieldSchema{
-					"path": &framework.FieldSchema{
+					"path": {
 						Type:        framework.TypeString,
 						Description: strings.TrimSpace(sysHelp["audit_path"][0]),
 					},
-					"type": &framework.FieldSchema{
+					"type": {
 						Type:        framework.TypeString,
 						Description: strings.TrimSpace(sysHelp["audit_type"][0]),
 					},
-					"description": &framework.FieldSchema{
+					"description": {
 						Type:        framework.TypeString,
 						Description: strings.TrimSpace(sysHelp["audit_desc"][0]),
 					},
-					"options": &framework.FieldSchema{
+					"options": {
 						Type:        framework.TypeMap,
 						Description: strings.TrimSpace(sysHelp["audit_opts"][0]),
 					},
@@ -506,14 +506,14 @@ func NewSystemBackend(core *Core, config *logical.BackendConfig) (logical.Backen
 				HelpDescription: strings.TrimSpace(sysHelp["audit"][1]),
 			},
 
-			&framework.Path{
+			{
 				Pattern: "raw/(?P<path>.+)",
 
 				Fields: map[string]*framework.FieldSchema{
-					"path": &framework.FieldSchema{
+					"path": {
 						Type: framework.TypeString,
 					},
-					"value": &framework.FieldSchema{
+					"value": {
 						Type: framework.TypeString,
 					},
 				},
@@ -525,7 +525,7 @@ func NewSystemBackend(core *Core, config *logical.BackendConfig) (logical.Backen
 				},
 			},
 
-			&framework.Path{
+			{
 				Pattern: "key-status$",
 
 				Callbacks: map[logical.Operation]framework.OperationFunc{
@@ -536,7 +536,7 @@ func NewSystemBackend(core *Core, config *logical.BackendConfig) (logical.Backen
 				HelpDescription: strings.TrimSpace(sysHelp["key-status"][1]),
 			},
 
-			&framework.Path{
+			{
 				Pattern: "rotate$",
 
 				Callbacks: map[logical.Operation]framework.OperationFunc{
@@ -561,7 +561,7 @@ func NewSystemBackend(core *Core, config *logical.BackendConfig) (logical.Backen
 				},
 			*/
 
-			&framework.Path{
+			{
 				Pattern: "wrapping/wrap$",
 
 				Callbacks: map[logical.Operation]framework.OperationFunc{
@@ -572,11 +572,11 @@ func NewSystemBackend(core *Core, config *logical.BackendConfig) (logical.Backen
 				HelpDescription: strings.TrimSpace(sysHelp["wrap"][1]),
 			},
 
-			&framework.Path{
+			{
 				Pattern: "wrapping/unwrap$",
 
 				Fields: map[string]*framework.FieldSchema{
-					"token": &framework.FieldSchema{
+					"token": {
 						Type: framework.TypeString,
 					},
 				},
@@ -589,11 +589,11 @@ func NewSystemBackend(core *Core, config *logical.BackendConfig) (logical.Backen
 				HelpDescription: strings.TrimSpace(sysHelp["unwrap"][1]),
 			},
 
-			&framework.Path{
+			{
 				Pattern: "wrapping/lookup$",
 
 				Fields: map[string]*framework.FieldSchema{
-					"token": &framework.FieldSchema{
+					"token": {
 						Type: framework.TypeString,
 					},
 				},
@@ -606,11 +606,11 @@ func NewSystemBackend(core *Core, config *logical.BackendConfig) (logical.Backen
 				HelpDescription: strings.TrimSpace(sysHelp["wraplookup"][1]),
 			},
 
-			&framework.Path{
+			{
 				Pattern: "wrapping/rewrap$",
 
 				Fields: map[string]*framework.FieldSchema{
-					"token": &framework.FieldSchema{
+					"token": {
 						Type: framework.TypeString,
 					},
 				},
@@ -623,14 +623,14 @@ func NewSystemBackend(core *Core, config *logical.BackendConfig) (logical.Backen
 				HelpDescription: strings.TrimSpace(sysHelp["rewrap"][1]),
 			},
 
-			&framework.Path{
+			{
 				Pattern: "config/auditing/request-headers/(?P<header>.+)",
 
 				Fields: map[string]*framework.FieldSchema{
-					"header": &framework.FieldSchema{
+					"header": {
 						Type: framework.TypeString,
 					},
-					"hmac": &framework.FieldSchema{
+					"hmac": {
 						Type: framework.TypeBool,
 					},
 				},
@@ -644,7 +644,7 @@ func NewSystemBackend(core *Core, config *logical.BackendConfig) (logical.Backen
 				HelpSynopsis:    strings.TrimSpace(sysHelp["audited-headers-name"][0]),
 				HelpDescription: strings.TrimSpace(sysHelp["audited-headers-name"][1]),
 			},
-			&framework.Path{
+			{
 				Pattern: "config/auditing/request-headers$",
 
 				Callbacks: map[logical.Operation]framework.OperationFunc{

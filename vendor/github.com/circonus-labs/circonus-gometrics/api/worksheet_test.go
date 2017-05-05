@@ -21,13 +21,13 @@ var (
 		Description: &[]string{"One graph per active server in our primary data center"}[0],
 		Favorite:    true,
 		Graphs: []WorksheetGraph{
-			WorksheetGraph{GraphCID: "/graph/aaaaaaaa-0000-1111-2222-0123456789ab"},
-			WorksheetGraph{GraphCID: "/graph/bbbbbbbb-3333-4444-5555-0123456789ab"},
-			WorksheetGraph{GraphCID: "/graph/cccccccc-6666-7777-8888-0123456789ab"},
+			{GraphCID: "/graph/aaaaaaaa-0000-1111-2222-0123456789ab"},
+			{GraphCID: "/graph/bbbbbbbb-3333-4444-5555-0123456789ab"},
+			{GraphCID: "/graph/cccccccc-6666-7777-8888-0123456789ab"},
 		},
 		Notes: &[]string{"Currently maintained by Oscar"}[0],
 		SmartQueries: []WorksheetSmartQuery{
-			WorksheetSmartQuery{
+			{
 				Name:  "Virtual Machines",
 				Order: []string{"/graph/dddddddd-9999-aaaa-bbbb-0123456789ab"},
 				Query: "virtual",
@@ -461,7 +461,7 @@ func TestSearchWorksheets(t *testing.T) {
 	}
 
 	search := SearchQueryType("web servers")
-	filter := SearchFilterType(map[string][]string{"f_favorite": []string{"true"}})
+	filter := SearchFilterType(map[string][]string{"f_favorite": {"true"}})
 
 	t.Log("no search, no filter")
 	{

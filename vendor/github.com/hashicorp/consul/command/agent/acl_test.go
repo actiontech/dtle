@@ -267,7 +267,7 @@ func TestACL_Down_Extend(t *testing.T) {
 			Parent: "allow",
 			Policy: &rawacl.Policy{
 				Agents: []*rawacl.AgentPolicy{
-					&rawacl.AgentPolicy{
+					{
 						Node:   config.NodeName,
 						Policy: "read",
 					},
@@ -347,7 +347,7 @@ func TestACL_Cache(t *testing.T) {
 			Parent: "deny",
 			Policy: &rawacl.Policy{
 				Agents: []*rawacl.AgentPolicy{
-					&rawacl.AgentPolicy{
+					{
 						Node:   config.NodeName,
 						Policy: "read",
 					},
@@ -414,7 +414,7 @@ func TestACL_Cache(t *testing.T) {
 			Parent: "deny",
 			Policy: &rawacl.Policy{
 				Agents: []*rawacl.AgentPolicy{
-					&rawacl.AgentPolicy{
+					{
 						Node:   config.NodeName,
 						Policy: "write",
 					},
@@ -762,9 +762,9 @@ func TestACL_filterMembers(t *testing.T) {
 	}
 
 	members = []serf.Member{
-		serf.Member{Name: "Node 1"},
-		serf.Member{Name: "Nope"},
-		serf.Member{Name: "Node 2"},
+		{Name: "Node 1"},
+		{Name: "Nope"},
+		{Name: "Node 2"},
 	}
 	if err := agent.filterMembers("node-ro", &members); err != nil {
 		t.Fatalf("err: %v", err)

@@ -288,7 +288,7 @@ func TestStateStore_Txn_KVS(t *testing.T) {
 	if len(results) != len(expected) {
 		t.Fatalf("bad: %v", results)
 	}
-	for i, _ := range results {
+	for i := range results {
 		if !reflect.DeepEqual(results[i], expected[i]) {
 			t.Fatalf("bad %d", i)
 		}
@@ -333,7 +333,7 @@ func TestStateStore_Txn_KVS(t *testing.T) {
 	if len(actual) != len(entries) {
 		t.Fatalf("bad len: %d != %d", len(actual), len(entries))
 	}
-	for i, _ := range actual {
+	for i := range actual {
 		if !reflect.DeepEqual(actual[i], entries[i]) {
 			t.Fatalf("bad %d", i)
 		}
@@ -404,7 +404,7 @@ func TestStateStore_Txn_KVS_Rollback(t *testing.T) {
 		if len(actual) != len(entries) {
 			t.Fatalf("bad len (%s): %d != %d", desc, len(actual), len(entries))
 		}
-		for i, _ := range actual {
+		for i := range actual {
 			if !reflect.DeepEqual(actual[i], entries[i]) {
 				t.Fatalf("bad (%s): op %d: %v != %v", desc, i, *(actual[i]), *(entries[i]))
 			}
@@ -641,7 +641,7 @@ func TestStateStore_Txn_KVS_RO(t *testing.T) {
 	if len(results) != len(expected) {
 		t.Fatalf("bad: %v", results)
 	}
-	for i, _ := range results {
+	for i := range results {
 		if !reflect.DeepEqual(results[i], expected[i]) {
 			t.Fatalf("bad %d", i)
 		}

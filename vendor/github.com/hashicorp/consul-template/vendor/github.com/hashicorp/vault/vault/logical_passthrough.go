@@ -32,7 +32,7 @@ func LeaseSwitchedPassthroughBackend(conf *logical.BackendConfig, leases bool) (
 		Help: strings.TrimSpace(passthroughHelp),
 
 		Paths: []*framework.Path{
-			&framework.Path{
+			{
 				Pattern: ".*",
 
 				Callbacks: map[logical.Operation]framework.OperationFunc{
@@ -52,7 +52,7 @@ func LeaseSwitchedPassthroughBackend(conf *logical.BackendConfig, leases bool) (
 	}
 
 	b.Backend.Secrets = []*framework.Secret{
-		&framework.Secret{
+		{
 			Type: "generic",
 
 			Renew:  b.handleRead,

@@ -677,9 +677,9 @@ func (s *StateStore) nestedUpdateAllocFromClient(txn *memdb.Txn, index uint64, a
 
 	// Pull in anything the client is the authority on
 	//if exist.DesiredStatus != models.AllocDesiredStatusPause {
-		copyAlloc.ClientStatus = alloc.ClientStatus
-		copyAlloc.ClientDescription = alloc.ClientDescription
-		copyAlloc.TaskStates = alloc.TaskStates
+	copyAlloc.ClientStatus = alloc.ClientStatus
+	copyAlloc.ClientDescription = alloc.ClientDescription
+	copyAlloc.TaskStates = alloc.TaskStates
 	//}
 
 	// Update the modify index

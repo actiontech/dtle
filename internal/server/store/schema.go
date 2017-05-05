@@ -40,7 +40,7 @@ func indexTableSchema() *memdb.TableSchema {
 	return &memdb.TableSchema{
 		Name: "index",
 		Indexes: map[string]*memdb.IndexSchema{
-			"id": &memdb.IndexSchema{
+			"id": {
 				Name:         "id",
 				AllowMissing: false,
 				Unique:       true,
@@ -62,7 +62,7 @@ func nodeTableSchema() *memdb.TableSchema {
 			// Primary index is used for node management
 			// and simple direct lookup. ID is required to be
 			// unique.
-			"id": &memdb.IndexSchema{
+			"id": {
 				Name:         "id",
 				AllowMissing: false,
 				Unique:       true,
@@ -83,7 +83,7 @@ func jobTableSchema() *memdb.TableSchema {
 			// Primary index is used for job management
 			// and simple direct lookup. ID is required to be
 			// unique.
-			"id": &memdb.IndexSchema{
+			"id": {
 				Name:         "id",
 				AllowMissing: false,
 				Unique:       true,
@@ -92,7 +92,7 @@ func jobTableSchema() *memdb.TableSchema {
 					Lowercase: true,
 				},
 			},
-			"type": &memdb.IndexSchema{
+			"type": {
 				Name:         "type",
 				AllowMissing: false,
 				Unique:       false,
@@ -113,7 +113,7 @@ func evalTableSchema() *memdb.TableSchema {
 		Name: "evals",
 		Indexes: map[string]*memdb.IndexSchema{
 			// Primary index is used for direct lookup.
-			"id": &memdb.IndexSchema{
+			"id": {
 				Name:         "id",
 				AllowMissing: false,
 				Unique:       true,
@@ -123,7 +123,7 @@ func evalTableSchema() *memdb.TableSchema {
 			},
 
 			// Job index is used to lookup allocations by job
-			"job": &memdb.IndexSchema{
+			"job": {
 				Name:         "job",
 				AllowMissing: false,
 				Unique:       false,
@@ -152,7 +152,7 @@ func allocTableSchema() *memdb.TableSchema {
 		Name: "allocs",
 		Indexes: map[string]*memdb.IndexSchema{
 			// Primary index is a UUID
-			"id": &memdb.IndexSchema{
+			"id": {
 				Name:         "id",
 				AllowMissing: false,
 				Unique:       true,
@@ -162,7 +162,7 @@ func allocTableSchema() *memdb.TableSchema {
 			},
 
 			// Node index is used to lookup allocations by node
-			"node": &memdb.IndexSchema{
+			"node": {
 				Name:         "node",
 				AllowMissing: true, // Missing is allow for failed allocations
 				Unique:       false,
@@ -191,7 +191,7 @@ func allocTableSchema() *memdb.TableSchema {
 			},
 
 			// Job index is used to lookup allocations by job
-			"job": &memdb.IndexSchema{
+			"job": {
 				Name:         "job",
 				AllowMissing: false,
 				Unique:       false,
@@ -202,7 +202,7 @@ func allocTableSchema() *memdb.TableSchema {
 			},
 
 			// Eval index is used to lookup allocations by eval
-			"eval": &memdb.IndexSchema{
+			"eval": {
 				Name:         "eval",
 				AllowMissing: false,
 				Unique:       false,

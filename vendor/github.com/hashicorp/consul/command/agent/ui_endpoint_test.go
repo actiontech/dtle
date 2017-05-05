@@ -178,23 +178,23 @@ func TestSummarizeServices(t *testing.T) {
 			Node:    "foo",
 			Address: "127.0.0.1",
 			Services: []*structs.NodeService{
-				&structs.NodeService{
+				{
 					Service: "api",
 				},
-				&structs.NodeService{
+				{
 					Service: "web",
 				},
 			},
 			Checks: []*structs.HealthCheck{
-				&structs.HealthCheck{
+				{
 					Status:      structs.HealthPassing,
 					ServiceName: "",
 				},
-				&structs.HealthCheck{
+				{
 					Status:      structs.HealthPassing,
 					ServiceName: "web",
 				},
-				&structs.HealthCheck{
+				{
 					Status:      structs.HealthWarning,
 					ServiceName: "api",
 				},
@@ -204,12 +204,12 @@ func TestSummarizeServices(t *testing.T) {
 			Node:    "bar",
 			Address: "127.0.0.2",
 			Services: []*structs.NodeService{
-				&structs.NodeService{
+				{
 					Service: "web",
 				},
 			},
 			Checks: []*structs.HealthCheck{
-				&structs.HealthCheck{
+				{
 					Status:      structs.HealthCritical,
 					ServiceName: "web",
 				},
@@ -219,7 +219,7 @@ func TestSummarizeServices(t *testing.T) {
 			Node:    "zip",
 			Address: "127.0.0.3",
 			Services: []*structs.NodeService{
-				&structs.NodeService{
+				{
 					Service: "cache",
 				},
 			},

@@ -201,7 +201,7 @@ func TestOCSPResponse(t *testing.T) {
 
 	extensionBytes, _ := hex.DecodeString(ocspExtensionValueHex)
 	extensions := []pkix.Extension{
-		pkix.Extension{
+		{
 			Id:       ocspExtensionOID,
 			Critical: false,
 			Value:    extensionBytes,

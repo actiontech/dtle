@@ -5,13 +5,13 @@ import (
 	"strings"
 )
 
-type ClientConfigCommand struct {
+type ConfigCommand struct {
 	Meta
 }
 
-func (c *ClientConfigCommand) Help() string {
+func (c *ConfigCommand) Help() string {
 	helpText := `
-Usage: server client-config [options]
+Usage: server config [options]
 
   View or modify client configuration details. This command only
   works on client nodes, and can be used to update the running
@@ -44,11 +44,11 @@ Client Config Options:
 	return strings.TrimSpace(helpText)
 }
 
-func (c *ClientConfigCommand) Synopsis() string {
+func (c *ConfigCommand) Synopsis() string {
 	return "View or modify client configuration details"
 }
 
-func (c *ClientConfigCommand) Run(args []string) int {
+func (c *ConfigCommand) Run(args []string) int {
 	var listServers, updateServers bool
 
 	flags := c.Meta.FlagSet("client-servers", FlagSetClient)

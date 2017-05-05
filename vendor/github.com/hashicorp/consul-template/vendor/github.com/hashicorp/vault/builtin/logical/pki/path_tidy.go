@@ -13,21 +13,21 @@ func pathTidy(b *backend) *framework.Path {
 	return &framework.Path{
 		Pattern: "tidy",
 		Fields: map[string]*framework.FieldSchema{
-			"tidy_cert_store": &framework.FieldSchema{
+			"tidy_cert_store": {
 				Type: framework.TypeBool,
 				Description: `Set to true to enable tidying up
 the certificate store`,
 				Default: false,
 			},
 
-			"tidy_revocation_list": &framework.FieldSchema{
+			"tidy_revocation_list": {
 				Type: framework.TypeBool,
 				Description: `Set to true to enable tidying up
 the revocation list`,
 				Default: false,
 			},
 
-			"safety_buffer": &framework.FieldSchema{
+			"safety_buffer": {
 				Type: framework.TypeDurationSecond,
 				Description: `The amount of extra time that must have passed
 beyond certificate expiration before it is removed

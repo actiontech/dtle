@@ -13,10 +13,10 @@ import (
 
 	"github.com/armon/go-metrics"
 
+	"encoding/json"
 	"udup/internal/client/driver"
 	uconf "udup/internal/config"
 	"udup/internal/models"
-	"encoding/json"
 )
 
 const (
@@ -71,7 +71,7 @@ type Worker struct {
 	destroyCh    chan struct{}
 	destroyLock  sync.Mutex
 	destroyEvent *models.TaskEvent
-	workUpdates chan *models.TaskUpdate
+	workUpdates  chan *models.TaskUpdate
 
 	// waitCh closing marks the run loop as having exited
 	waitCh chan struct{}
@@ -97,7 +97,7 @@ type TaskStateUpdater func(taskName, state string, event *models.TaskEvent)
 // NewWorker is used to create a new task context
 func NewWorker(logger *log.Logger, config *uconf.ClientConfig,
 	updater TaskStateUpdater, alloc *models.Allocation,
-	task *models.Task,workUpdates chan *models.TaskUpdate) *Worker {
+	task *models.Task, workUpdates chan *models.TaskUpdate) *Worker {
 
 	// Build the restart tracker.
 	t := alloc.Job.LookupTask(alloc.Task)
@@ -120,7 +120,7 @@ func NewWorker(logger *log.Logger, config *uconf.ClientConfig,
 		startCh:        make(chan struct{}, 1),
 		unblockCh:      make(chan struct{}),
 		restartCh:      make(chan *models.TaskEvent),
-		workUpdates: workUpdates,
+		workUpdates:    workUpdates,
 	}
 
 	return tc
@@ -205,14 +205,14 @@ func (r *Worker) SaveState() error {
 	r.handleLock.Lock()
 	if r.handle != nil {
 		id := &uconf.DriverCtx{}
-		handleID:=r.handle.ID()
+		handleID := r.handle.ID()
 		if err := json.Unmarshal([]byte(handleID), id); err != nil {
 			r.logger.Printf("[ERR] client: failed to parse handle '%s': %v",
 				handleID, err)
 		}
 		r.workUpdates <- &models.TaskUpdate{
-			JobID:r.alloc.JobID,
-			Gtid:id.DriverConfig.Gtid,
+			JobID: r.alloc.JobID,
+			Gtid:  id.DriverConfig.Gtid,
 		}
 		r.task.Config["Gtid"] = id.DriverConfig.Gtid
 		snap.HandleID = r.handle.ID()

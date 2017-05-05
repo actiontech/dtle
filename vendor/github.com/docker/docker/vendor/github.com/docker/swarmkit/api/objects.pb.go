@@ -1315,7 +1315,7 @@ func (m *Cluster) MarshalTo(dAtA []byte) (int, error) {
 		i = encodeVarintObjects(dAtA, i, uint64(m.EncryptionKeyLamportClock))
 	}
 	if len(m.BlacklistedCertificates) > 0 {
-		for k, _ := range m.BlacklistedCertificates {
+		for k := range m.BlacklistedCertificates {
 			dAtA[i] = 0x42
 			i++
 			v := m.BlacklistedCertificates[k]
@@ -4420,7 +4420,7 @@ func (this *Cluster) String() string {
 		return "nil"
 	}
 	keysForBlacklistedCertificates := make([]string, 0, len(this.BlacklistedCertificates))
-	for k, _ := range this.BlacklistedCertificates {
+	for k := range this.BlacklistedCertificates {
 		keysForBlacklistedCertificates = append(keysForBlacklistedCertificates, k)
 	}
 	github_com_gogo_protobuf_sortkeys.Strings(keysForBlacklistedCertificates)

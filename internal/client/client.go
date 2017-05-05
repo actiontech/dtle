@@ -180,7 +180,7 @@ func NewClient(cfg *uconf.ClientConfig, logger *log.Logger) (*Client, error) {
 		allocs:              make(map[string]*Allocator),
 		blockedAllocations:  make(map[string]*models.Allocation),
 		allocUpdates:        make(chan *models.Allocation, 64),
-		workUpdates:          make(chan *models.TaskUpdate, 64),
+		workUpdates:         make(chan *models.TaskUpdate, 64),
 		shutdownCh:          make(chan struct{}),
 		migratingAllocs:     make(map[string]*migrateAllocCtrl),
 		servers:             newServerList(),
@@ -372,7 +372,7 @@ func (c *Client) Stats() map[string]map[string]string {
 	c.heartbeatLock.Lock()
 	defer c.heartbeatLock.Unlock()
 	stats := map[string]map[string]string{
-		"client": map[string]string{
+		"client": {
 			"node_id":         c.Node().ID,
 			"known_servers":   c.servers.all().String(),
 			"num_allocations": strconv.Itoa(numAllocs),
@@ -473,7 +473,7 @@ func (c *Client) restoreState() error {
 		id := entry.Name()
 		alloc := &models.Allocation{ID: id}
 		c.configLock.RLock()
-		ar := NewAllocator(c.logger, c.configCopy, c.updateAllocStatus, alloc,c.workUpdates)
+		ar := NewAllocator(c.logger, c.configCopy, c.updateAllocStatus, alloc, c.workUpdates)
 		c.configLock.RUnlock()
 		c.allocLock.Lock()
 		c.allocs[id] = ar
@@ -703,7 +703,7 @@ func (c *Client) run() {
 	// Watch for changes in allocations
 	allocUpdates := make(chan *allocUpdates, 8)
 	jobUpdates := make(chan *jobUpdates, 8)
-	go c.watchAllocations(allocUpdates,jobUpdates)
+	go c.watchAllocations(allocUpdates, jobUpdates)
 
 	for {
 		select {
@@ -932,7 +932,7 @@ func (c *Client) allocSync() {
 
 				// Send to server.
 				args := models.JobUpdateRequest{
-					JobUpdates:        sync,
+					JobUpdates:   sync,
 					WriteRequest: models.WriteRequest{Region: c.Region()},
 				}
 
@@ -971,7 +971,7 @@ type allocUpdates struct {
 }
 
 // watchAllocations is used to scan for updates to allocations
-func (c *Client) watchAllocations(updates chan *allocUpdates,jUpdates chan *jobUpdates) {
+func (c *Client) watchAllocations(updates chan *allocUpdates, jUpdates chan *jobUpdates) {
 	// The request and response for getting the map of allocations that should
 	// be running on the Node to their AllocModifyIndex which is incremented
 	// when the allocation is updated by the servers.
@@ -1104,11 +1104,11 @@ func (c *Client) watchAllocations(updates chan *allocUpdates,jUpdates chan *jobU
 						}
 					}
 					for _, ja := range out.Allocations {
-						if ja.Task!=alloc.Task && ja.ClientStatus == models.TaskStateRunning{
+						if ja.Task != alloc.Task && ja.ClientStatus == models.TaskStateRunning {
 							pulledAllocs[alloc.ID] = alloc
 						}
 					}
-				}else{
+				} else {
 					pulledAllocs[alloc.ID] = alloc
 				}
 			}
@@ -1572,7 +1572,7 @@ func (c *Client) addAlloc(alloc *models.Allocation) error {
 	defer c.allocLock.Unlock()
 
 	c.configLock.RLock()
-	ar := NewAllocator(c.logger, c.configCopy, c.updateAllocStatus, alloc,c.workUpdates)
+	ar := NewAllocator(c.logger, c.configCopy, c.updateAllocStatus, alloc, c.workUpdates)
 	c.configLock.RUnlock()
 	go ar.Run()
 

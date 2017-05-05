@@ -17,7 +17,7 @@ func CubbyholeBackendFactory(conf *logical.BackendConfig) (logical.Backend, erro
 		Help: strings.TrimSpace(cubbyholeHelp),
 
 		Paths: []*framework.Path{
-			&framework.Path{
+			{
 				Pattern: ".*",
 
 				Callbacks: map[logical.Operation]framework.OperationFunc{

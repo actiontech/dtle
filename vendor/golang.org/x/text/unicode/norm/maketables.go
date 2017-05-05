@@ -244,7 +244,7 @@ func compactCCC() {
 		m[c.ccc] = 0
 	}
 	cccs := []int{}
-	for v, _ := range m {
+	for v := range m {
 		cccs = append(cccs, int(v))
 	}
 	sort.Ints(cccs)

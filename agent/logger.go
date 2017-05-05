@@ -1,8 +1,8 @@
 package agent
 
 import (
-	"io/ioutil"
 	"io"
+	"io/ioutil"
 	"sync"
 
 	"github.com/hashicorp/logutils"
@@ -28,7 +28,6 @@ func ValidateLevelFilter(minLevel logutils.LogLevel, filter *logutils.LevelFilte
 	}
 	return false
 }
-
 
 // Writer is an io.Writer implementation that buffers all of its
 // data into an internal buffer until it is told to let data through.

@@ -450,7 +450,7 @@ func TestSearchOutlierReports(t *testing.T) {
 	}
 
 	search := SearchQueryType("requests per second")
-	filter := SearchFilterType(map[string][]string{"f_tags_has": []string{"service:web"}})
+	filter := SearchFilterType(map[string][]string{"f_tags_has": {"service:web"}})
 
 	t.Log("no search, no filter")
 	{

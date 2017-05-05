@@ -20,11 +20,11 @@ var (
 		CID:      "/rule_set/1234_tt_firstbyte",
 		CheckCID: "/check/1234",
 		ContactGroups: map[uint8][]string{
-			1: []string{"/contact_group/1234", "/contact_group/5678"},
-			2: []string{"/contact_group/1234"},
-			3: []string{"/contact_group/1234"},
-			4: []string{},
-			5: []string{},
+			1: {"/contact_group/1234", "/contact_group/5678"},
+			2: {"/contact_group/1234"},
+			3: {"/contact_group/1234"},
+			4: {},
+			5: {},
 		},
 		Derive:     nil,
 		Link:       &[]string{"http://example.com/how2fix/webserver_down/"}[0],
@@ -33,7 +33,7 @@ var (
 		Notes:      &[]string{"Determine if the HTTP request is taking too long to start (or is down.)  Don't fire if ping is already alerting"}[0],
 		Parent:     &[]string{"1233_ping"}[0],
 		Rules: []RuleSetRule{
-			RuleSetRule{
+			{
 				Criteria:          "on absence",
 				Severity:          1,
 				Value:             "300",
@@ -41,7 +41,7 @@ var (
 				WindowingDuration: 300,
 				WindowingFunction: nil,
 			},
-			RuleSetRule{
+			{
 				Criteria: "max value",
 				Severity: 2,
 				Value:    "1000",
@@ -471,7 +471,7 @@ func TestSearchRuleSets(t *testing.T) {
 	}
 
 	search := SearchQueryType("request`latency_ms")
-	filter := SearchFilterType(map[string][]string{"f_tags_has": []string{"service:web"}})
+	filter := SearchFilterType(map[string][]string{"f_tags_has": {"service:web"}})
 
 	t.Log("no search, no filter")
 	{

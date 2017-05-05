@@ -3597,7 +3597,7 @@ func (m *ListNodesRequest_Filters) MarshalTo(dAtA []byte) (int, error) {
 		}
 	}
 	if len(m.Labels) > 0 {
-		for k, _ := range m.Labels {
+		for k := range m.Labels {
 			dAtA[i] = 0x1a
 			i++
 			v := m.Labels[k]
@@ -3987,7 +3987,7 @@ func (m *ListTasksRequest_Filters) MarshalTo(dAtA []byte) (int, error) {
 		}
 	}
 	if len(m.Labels) > 0 {
-		for k, _ := range m.Labels {
+		for k := range m.Labels {
 			dAtA[i] = 0x1a
 			i++
 			v := m.Labels[k]
@@ -4434,7 +4434,7 @@ func (m *ListServicesRequest_Filters) MarshalTo(dAtA []byte) (int, error) {
 		}
 	}
 	if len(m.Labels) > 0 {
-		for k, _ := range m.Labels {
+		for k := range m.Labels {
 			dAtA[i] = 0x1a
 			i++
 			v := m.Labels[k]
@@ -4749,7 +4749,7 @@ func (m *ListNetworksRequest_Filters) MarshalTo(dAtA []byte) (int, error) {
 		}
 	}
 	if len(m.Labels) > 0 {
-		for k, _ := range m.Labels {
+		for k := range m.Labels {
 			dAtA[i] = 0x1a
 			i++
 			v := m.Labels[k]
@@ -4939,7 +4939,7 @@ func (m *ListClustersRequest_Filters) MarshalTo(dAtA []byte) (int, error) {
 		}
 	}
 	if len(m.Labels) > 0 {
-		for k, _ := range m.Labels {
+		for k := range m.Labels {
 			dAtA[i] = 0x1a
 			i++
 			v := m.Labels[k]
@@ -5329,7 +5329,7 @@ func (m *ListSecretsRequest_Filters) MarshalTo(dAtA []byte) (int, error) {
 		}
 	}
 	if len(m.Labels) > 0 {
-		for k, _ := range m.Labels {
+		for k := range m.Labels {
 			dAtA[i] = 0x1a
 			i++
 			v := m.Labels[k]
@@ -5689,7 +5689,7 @@ func (m *ListConfigsRequest_Filters) MarshalTo(dAtA []byte) (int, error) {
 		}
 	}
 	if len(m.Labels) > 0 {
-		for k, _ := range m.Labels {
+		for k := range m.Labels {
 			dAtA[i] = 0x1a
 			i++
 			v := m.Labels[k]
@@ -7930,7 +7930,7 @@ func (this *ListNodesRequest_Filters) String() string {
 		return "nil"
 	}
 	keysForLabels := make([]string, 0, len(this.Labels))
-	for k, _ := range this.Labels {
+	for k := range this.Labels {
 		keysForLabels = append(keysForLabels, k)
 	}
 	github_com_gogo_protobuf_sortkeys.Strings(keysForLabels)
@@ -8056,7 +8056,7 @@ func (this *ListTasksRequest_Filters) String() string {
 		return "nil"
 	}
 	keysForLabels := make([]string, 0, len(this.Labels))
-	for k, _ := range this.Labels {
+	for k := range this.Labels {
 		keysForLabels = append(keysForLabels, k)
 	}
 	github_com_gogo_protobuf_sortkeys.Strings(keysForLabels)
@@ -8187,7 +8187,7 @@ func (this *ListServicesRequest_Filters) String() string {
 		return "nil"
 	}
 	keysForLabels := make([]string, 0, len(this.Labels))
-	for k, _ := range this.Labels {
+	for k := range this.Labels {
 		keysForLabels = append(keysForLabels, k)
 	}
 	github_com_gogo_protobuf_sortkeys.Strings(keysForLabels)
@@ -8292,7 +8292,7 @@ func (this *ListNetworksRequest_Filters) String() string {
 		return "nil"
 	}
 	keysForLabels := make([]string, 0, len(this.Labels))
-	for k, _ := range this.Labels {
+	for k := range this.Labels {
 		keysForLabels = append(keysForLabels, k)
 	}
 	github_com_gogo_protobuf_sortkeys.Strings(keysForLabels)
@@ -8355,7 +8355,7 @@ func (this *ListClustersRequest_Filters) String() string {
 		return "nil"
 	}
 	keysForLabels := make([]string, 0, len(this.Labels))
-	for k, _ := range this.Labels {
+	for k := range this.Labels {
 		keysForLabels = append(keysForLabels, k)
 	}
 	github_com_gogo_protobuf_sortkeys.Strings(keysForLabels)
@@ -8475,7 +8475,7 @@ func (this *ListSecretsRequest_Filters) String() string {
 		return "nil"
 	}
 	keysForLabels := make([]string, 0, len(this.Labels))
-	for k, _ := range this.Labels {
+	for k := range this.Labels {
 		keysForLabels = append(keysForLabels, k)
 	}
 	github_com_gogo_protobuf_sortkeys.Strings(keysForLabels)
@@ -8599,7 +8599,7 @@ func (this *ListConfigsRequest_Filters) String() string {
 		return "nil"
 	}
 	keysForLabels := make([]string, 0, len(this.Labels))
-	for k, _ := range this.Labels {
+	for k := range this.Labels {
 		keysForLabels = append(keysForLabels, k)
 	}
 	github_com_gogo_protobuf_sortkeys.Strings(keysForLabels)

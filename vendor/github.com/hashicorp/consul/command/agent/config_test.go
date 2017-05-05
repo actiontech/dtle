@@ -1222,7 +1222,7 @@ func TestDecodeConfig_Services(t *testing.T) {
 
 	expected := &Config{
 		Services: []*ServiceDefinition{
-			&ServiceDefinition{
+			{
 				Check: CheckType{
 					Interval: 5 * time.Second,
 					Script:   "/bin/check_redis -p 6000",
@@ -1245,7 +1245,7 @@ func TestDecodeConfig_Services(t *testing.T) {
 				},
 				Port: 6000,
 			},
-			&ServiceDefinition{
+			{
 				Check: CheckType{
 					Interval: 30 * time.Second,
 					Script:   "/bin/check_redis -p 7000",
@@ -1259,7 +1259,7 @@ func TestDecodeConfig_Services(t *testing.T) {
 				},
 				Port: 7000,
 			},
-			&ServiceDefinition{
+			{
 				Check: CheckType{
 					HTTP:     "http://localhost:9200/_cluster_health",
 					Interval: 10 * time.Second,
@@ -1365,7 +1365,7 @@ func TestDecodeConfig_Checks(t *testing.T) {
 
 	expected := &Config{
 		Checks: []*CheckDefinition{
-			&CheckDefinition{
+			{
 				ID:   "chk1",
 				Name: "mem",
 				CheckType: CheckType{
@@ -1373,7 +1373,7 @@ func TestDecodeConfig_Checks(t *testing.T) {
 					Interval: 5 * time.Second,
 				},
 			},
-			&CheckDefinition{
+			{
 				ID:   "chk2",
 				Name: "cpu",
 				CheckType: CheckType{
@@ -1381,7 +1381,7 @@ func TestDecodeConfig_Checks(t *testing.T) {
 					Interval: 10 * time.Second,
 				},
 			},
-			&CheckDefinition{
+			{
 				ID:        "chk3",
 				Name:      "service:redis:tx",
 				ServiceID: "redis",
@@ -1390,7 +1390,7 @@ func TestDecodeConfig_Checks(t *testing.T) {
 					Interval: time.Minute,
 				},
 			},
-			&CheckDefinition{
+			{
 				ID:        "chk4",
 				Name:      "service:elasticsearch:health",
 				ServiceID: "elasticsearch",
@@ -1400,7 +1400,7 @@ func TestDecodeConfig_Checks(t *testing.T) {
 					Timeout:  100 * time.Millisecond,
 				},
 			},
-			&CheckDefinition{
+			{
 				ID:        "chk5",
 				Name:      "service:sslservice",
 				ServiceID: "sslservice",
@@ -1411,7 +1411,7 @@ func TestDecodeConfig_Checks(t *testing.T) {
 					TLSSkipVerify: false,
 				},
 			},
-			&CheckDefinition{
+			{
 				ID:        "chk6",
 				Name:      "service:insecure-sslservice",
 				ServiceID: "insecure-sslservice",
@@ -1464,7 +1464,7 @@ func TestDecodeConfig_Multiples(t *testing.T) {
 
 	expected := &Config{
 		Services: []*ServiceDefinition{
-			&ServiceDefinition{
+			{
 				Check: CheckType{
 					Interval: 5 * time.Second,
 					Script:   "/bin/check_redis -p 6000",
@@ -1479,7 +1479,7 @@ func TestDecodeConfig_Multiples(t *testing.T) {
 			},
 		},
 		Checks: []*CheckDefinition{
-			&CheckDefinition{
+			{
 				ID:   "chk1",
 				Name: "mem",
 				CheckType: CheckType{
@@ -1722,7 +1722,7 @@ func TestMergeConfig(t *testing.T) {
 		ACLReplicationToken:    "8765309",
 		ACLEnforceVersion8:     Bool(true),
 		Watches: []map[string]interface{}{
-			map[string]interface{}{
+			{
 				"type":    "keyprefix",
 				"prefix":  "foo/",
 				"handler": "foobar",

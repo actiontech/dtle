@@ -139,7 +139,7 @@ func NewTokenStore(c *Core, config *logical.BackendConfig) (*TokenStore, error) 
 		},
 
 		Paths: []*framework.Path{
-			&framework.Path{
+			{
 				Pattern: "roles/?$",
 
 				Callbacks: map[logical.Operation]framework.OperationFunc{
@@ -150,7 +150,7 @@ func NewTokenStore(c *Core, config *logical.BackendConfig) (*TokenStore, error) 
 				HelpDescription: tokenListRolesHelp,
 			},
 
-			&framework.Path{
+			{
 				Pattern: "accessors/?$",
 
 				Callbacks: map[logical.Operation]framework.OperationFunc{
@@ -161,51 +161,51 @@ func NewTokenStore(c *Core, config *logical.BackendConfig) (*TokenStore, error) 
 				HelpDescription: tokenListAccessorsHelp,
 			},
 
-			&framework.Path{
+			{
 				Pattern: "roles/" + framework.GenericNameRegex("role_name"),
 				Fields: map[string]*framework.FieldSchema{
-					"role_name": &framework.FieldSchema{
+					"role_name": {
 						Type:        framework.TypeString,
 						Description: "Name of the role",
 					},
 
-					"allowed_policies": &framework.FieldSchema{
+					"allowed_policies": {
 						Type:        framework.TypeString,
 						Default:     "",
 						Description: tokenAllowedPoliciesHelp,
 					},
 
-					"disallowed_policies": &framework.FieldSchema{
+					"disallowed_policies": {
 						Type:        framework.TypeString,
 						Default:     "",
 						Description: tokenDisallowedPoliciesHelp,
 					},
 
-					"orphan": &framework.FieldSchema{
+					"orphan": {
 						Type:        framework.TypeBool,
 						Default:     false,
 						Description: tokenOrphanHelp,
 					},
 
-					"period": &framework.FieldSchema{
+					"period": {
 						Type:        framework.TypeDurationSecond,
 						Default:     0,
 						Description: tokenPeriodHelp,
 					},
 
-					"path_suffix": &framework.FieldSchema{
+					"path_suffix": {
 						Type:        framework.TypeString,
 						Default:     "",
 						Description: tokenPathSuffixHelp + pathSuffixSanitize.String(),
 					},
 
-					"explicit_max_ttl": &framework.FieldSchema{
+					"explicit_max_ttl": {
 						Type:        framework.TypeDurationSecond,
 						Default:     0,
 						Description: tokenExplicitMaxTTLHelp,
 					},
 
-					"renewable": &framework.FieldSchema{
+					"renewable": {
 						Type:        framework.TypeBool,
 						Default:     true,
 						Description: tokenRenewableHelp,
@@ -225,7 +225,7 @@ func NewTokenStore(c *Core, config *logical.BackendConfig) (*TokenStore, error) 
 				HelpDescription: tokenPathRolesHelp,
 			},
 
-			&framework.Path{
+			{
 				Pattern: "create-orphan$",
 
 				Callbacks: map[logical.Operation]framework.OperationFunc{
@@ -236,11 +236,11 @@ func NewTokenStore(c *Core, config *logical.BackendConfig) (*TokenStore, error) 
 				HelpDescription: strings.TrimSpace(tokenCreateOrphanHelp),
 			},
 
-			&framework.Path{
+			{
 				Pattern: "create/" + framework.GenericNameRegex("role_name"),
 
 				Fields: map[string]*framework.FieldSchema{
-					"role_name": &framework.FieldSchema{
+					"role_name": {
 						Type:        framework.TypeString,
 						Description: "Name of the role",
 					},
@@ -254,7 +254,7 @@ func NewTokenStore(c *Core, config *logical.BackendConfig) (*TokenStore, error) 
 				HelpDescription: strings.TrimSpace(tokenCreateRoleHelp),
 			},
 
-			&framework.Path{
+			{
 				Pattern: "create$",
 
 				Callbacks: map[logical.Operation]framework.OperationFunc{
@@ -265,15 +265,15 @@ func NewTokenStore(c *Core, config *logical.BackendConfig) (*TokenStore, error) 
 				HelpDescription: strings.TrimSpace(tokenCreateHelp),
 			},
 
-			&framework.Path{
+			{
 				Pattern: "lookup" + framework.OptionalParamRegex("urltoken"),
 
 				Fields: map[string]*framework.FieldSchema{
-					"urltoken": &framework.FieldSchema{
+					"urltoken": {
 						Type:        framework.TypeString,
 						Description: "Token to lookup (URL parameter)",
 					},
-					"token": &framework.FieldSchema{
+					"token": {
 						Type:        framework.TypeString,
 						Description: "Token to lookup (POST request body)",
 					},
@@ -288,15 +288,15 @@ func NewTokenStore(c *Core, config *logical.BackendConfig) (*TokenStore, error) 
 				HelpDescription: strings.TrimSpace(tokenLookupHelp),
 			},
 
-			&framework.Path{
+			{
 				Pattern: "lookup-accessor" + framework.OptionalParamRegex("urlaccessor"),
 
 				Fields: map[string]*framework.FieldSchema{
-					"urlaccessor": &framework.FieldSchema{
+					"urlaccessor": {
 						Type:        framework.TypeString,
 						Description: "Accessor of the token to look up (URL parameter)",
 					},
-					"accessor": &framework.FieldSchema{
+					"accessor": {
 						Type:        framework.TypeString,
 						Description: "Accessor of the token to look up (request body)",
 					},
@@ -310,11 +310,11 @@ func NewTokenStore(c *Core, config *logical.BackendConfig) (*TokenStore, error) 
 				HelpDescription: strings.TrimSpace(tokenLookupAccessorHelp),
 			},
 
-			&framework.Path{
+			{
 				Pattern: "lookup-self$",
 
 				Fields: map[string]*framework.FieldSchema{
-					"token": &framework.FieldSchema{
+					"token": {
 						Type:        framework.TypeString,
 						Description: "Token to look up (unused, does not need to be set)",
 					},
@@ -329,15 +329,15 @@ func NewTokenStore(c *Core, config *logical.BackendConfig) (*TokenStore, error) 
 				HelpDescription: strings.TrimSpace(tokenLookupHelp),
 			},
 
-			&framework.Path{
+			{
 				Pattern: "revoke-accessor" + framework.OptionalParamRegex("urlaccessor"),
 
 				Fields: map[string]*framework.FieldSchema{
-					"urlaccessor": &framework.FieldSchema{
+					"urlaccessor": {
 						Type:        framework.TypeString,
 						Description: "Accessor of the token (URL parameter)",
 					},
-					"accessor": &framework.FieldSchema{
+					"accessor": {
 						Type:        framework.TypeString,
 						Description: "Accessor of the token (request body)",
 					},
@@ -351,7 +351,7 @@ func NewTokenStore(c *Core, config *logical.BackendConfig) (*TokenStore, error) 
 				HelpDescription: strings.TrimSpace(tokenRevokeAccessorHelp),
 			},
 
-			&framework.Path{
+			{
 				Pattern: "revoke-self$",
 
 				Callbacks: map[logical.Operation]framework.OperationFunc{
@@ -362,15 +362,15 @@ func NewTokenStore(c *Core, config *logical.BackendConfig) (*TokenStore, error) 
 				HelpDescription: strings.TrimSpace(tokenRevokeSelfHelp),
 			},
 
-			&framework.Path{
+			{
 				Pattern: "revoke" + framework.OptionalParamRegex("urltoken"),
 
 				Fields: map[string]*framework.FieldSchema{
-					"urltoken": &framework.FieldSchema{
+					"urltoken": {
 						Type:        framework.TypeString,
 						Description: "Token to revoke (URL parameter)",
 					},
-					"token": &framework.FieldSchema{
+					"token": {
 						Type:        framework.TypeString,
 						Description: "Token to revoke (request body)",
 					},
@@ -384,15 +384,15 @@ func NewTokenStore(c *Core, config *logical.BackendConfig) (*TokenStore, error) 
 				HelpDescription: strings.TrimSpace(tokenRevokeHelp),
 			},
 
-			&framework.Path{
+			{
 				Pattern: "revoke-orphan" + framework.OptionalParamRegex("urltoken"),
 
 				Fields: map[string]*framework.FieldSchema{
-					"urltoken": &framework.FieldSchema{
+					"urltoken": {
 						Type:        framework.TypeString,
 						Description: "Token to revoke (URL parameter)",
 					},
-					"token": &framework.FieldSchema{
+					"token": {
 						Type:        framework.TypeString,
 						Description: "Token to revoke (request body)",
 					},
@@ -406,15 +406,15 @@ func NewTokenStore(c *Core, config *logical.BackendConfig) (*TokenStore, error) 
 				HelpDescription: strings.TrimSpace(tokenRevokeOrphanHelp),
 			},
 
-			&framework.Path{
+			{
 				Pattern: "renew-self$",
 
 				Fields: map[string]*framework.FieldSchema{
-					"token": &framework.FieldSchema{
+					"token": {
 						Type:        framework.TypeString,
 						Description: "Token to renew (unused, does not need to be set)",
 					},
-					"increment": &framework.FieldSchema{
+					"increment": {
 						Type:        framework.TypeDurationSecond,
 						Default:     0,
 						Description: "The desired increment in seconds to the token expiration",
@@ -429,19 +429,19 @@ func NewTokenStore(c *Core, config *logical.BackendConfig) (*TokenStore, error) 
 				HelpDescription: strings.TrimSpace(tokenRenewSelfHelp),
 			},
 
-			&framework.Path{
+			{
 				Pattern: "renew" + framework.OptionalParamRegex("urltoken"),
 
 				Fields: map[string]*framework.FieldSchema{
-					"urltoken": &framework.FieldSchema{
+					"urltoken": {
 						Type:        framework.TypeString,
 						Description: "Token to renew (URL parameter)",
 					},
-					"token": &framework.FieldSchema{
+					"token": {
 						Type:        framework.TypeString,
 						Description: "Token to renew (request body)",
 					},
-					"increment": &framework.FieldSchema{
+					"increment": {
 						Type:        framework.TypeDurationSecond,
 						Default:     0,
 						Description: "The desired increment in seconds to the token expiration",
@@ -456,7 +456,7 @@ func NewTokenStore(c *Core, config *logical.BackendConfig) (*TokenStore, error) 
 				HelpDescription: strings.TrimSpace(tokenRenewHelp),
 			},
 
-			&framework.Path{
+			{
 				Pattern: "tidy$",
 
 				Callbacks: map[logical.Operation]framework.OperationFunc{
@@ -1241,7 +1241,7 @@ func (ts *TokenStore) handleUpdateLookupAccessor(req *logical.Request, data *fra
 			"token": aEntry.TokenID,
 		},
 		Schema: map[string]*framework.FieldSchema{
-			"token": &framework.FieldSchema{
+			"token": {
 				Type:        framework.TypeString,
 				Description: "Token to lookup",
 			},

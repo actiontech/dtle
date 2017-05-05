@@ -225,7 +225,7 @@ func (c *Command) setupLoggers(config *Config) io.Writer {
 	}
 
 	c.logOutput = oFile
-	c.logger =log.New(c.logOutput, "", log.LstdFlags|log.Lmicroseconds)
+	c.logger = log.New(c.logOutput, "", log.LstdFlags|log.Lmicroseconds)
 	log.SetOutput(oFile)
 	return oFile
 }
@@ -253,7 +253,7 @@ func (c *Command) setupAgent(config *Config, logOutput io.Writer) error {
 }
 
 func (c *Command) Run(args []string) int {
-	c.logger =log.New(os.Stderr, "", log.LstdFlags|log.Lmicroseconds)
+	c.logger = log.New(os.Stderr, "", log.LstdFlags|log.Lmicroseconds)
 	// Parse our configs
 	c.args = args
 	config := c.readConfig()
@@ -291,7 +291,7 @@ func (c *Command) Run(args []string) int {
 
 	// Join startup nodes if specified
 	if err := c.startupJoin(config); err != nil {
-		c.logger.Printf("[ERR] %v",err.Error())
+		c.logger.Printf("[ERR] %v", err.Error())
 		return 1
 	}
 

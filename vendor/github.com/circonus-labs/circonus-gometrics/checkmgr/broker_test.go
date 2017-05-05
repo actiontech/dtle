@@ -30,7 +30,7 @@ var (
 		Tags:      []string{},
 		Type:      "foo",
 		Details: []api.BrokerDetail{
-			api.BrokerDetail{
+			{
 				CN:           "testbroker.example.com",
 				ExternalHost: &[]string{"testbroker.example.com"}[0],
 				ExternalPort: 43191,
@@ -53,7 +53,7 @@ var (
 		Tags:      []string{},
 		Type:      "enterprise",
 		Details: []api.BrokerDetail{
-			api.BrokerDetail{
+			{
 				CN:           "testbroker.example.com",
 				ExternalHost: nil,
 				ExternalPort: 43191,
@@ -76,7 +76,7 @@ var (
 		Tags:      []string{},
 		Type:      "foo",
 		Details: []api.BrokerDetail{
-			api.BrokerDetail{
+			{
 				CN:           "testbroker.example.com",
 				ExternalHost: nil,
 				ExternalPort: 43191,
@@ -339,7 +339,7 @@ func TestIsValidBroker(t *testing.T) {
 		Name: "test broker",
 		Type: "enterprise",
 		Details: []api.BrokerDetail{
-			api.BrokerDetail{
+			{
 				CN:           "testbroker.example.com",
 				ExternalHost: nil,
 				ExternalPort: 43191,
@@ -384,7 +384,7 @@ func TestIsValidBrokerTimeout(t *testing.T) {
 		Name: "test broker",
 		Type: "enterprise",
 		Details: []api.BrokerDetail{
-			api.BrokerDetail{
+			{
 				CN:           "testbroker.example.com",
 				ExternalHost: nil,
 				ExternalPort: 43191,

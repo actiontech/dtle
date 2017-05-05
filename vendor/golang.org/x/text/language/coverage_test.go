@@ -45,9 +45,9 @@ func TestSupported(t *testing.T) {
 }
 
 func TestNewCoverage(t *testing.T) {
-	bases := []Base{Base{0}, Base{3}, Base{7}}
-	scripts := []Script{Script{11}, Script{17}, Script{23}}
-	regions := []Region{Region{101}, Region{103}, Region{107}}
+	bases := []Base{{0}, {3}, {7}}
+	scripts := []Script{{11}, {17}, {23}}
+	regions := []Region{{101}, {103}, {107}}
 	tags := []Tag{Make("pt"), Make("en"), Make("en-GB"), Make("en-US"), Make("pt-PT")}
 	fbases := func() []Base { return bases }
 	fscripts := func() []Script { return scripts }
@@ -83,7 +83,7 @@ func TestNewCoverage(t *testing.T) {
 		{
 			desc:  "bases derives from tags",
 			list:  []interface{}{tags},
-			bases: []Base{Base{_en}, Base{_pt}},
+			bases: []Base{{_en}, {_pt}},
 			tags:  tags,
 		},
 		{
@@ -118,7 +118,7 @@ func TestNewCoverage(t *testing.T) {
 		{
 			desc:  "tags func",
 			list:  []interface{}{ftags},
-			bases: []Base{Base{_en}, Base{_pt}},
+			bases: []Base{{_en}, {_pt}},
 			tags:  tags,
 		},
 		{

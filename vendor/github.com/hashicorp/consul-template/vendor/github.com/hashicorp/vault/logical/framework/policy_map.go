@@ -55,7 +55,7 @@ func (p *PolicyMap) Policies(s logical.Storage, names ...string) ([]string, erro
 	}
 
 	list := make([]string, 0, len(set))
-	for k, _ := range set {
+	for k := range set {
 		list = append(list, k)
 	}
 	sort.Strings(list)

@@ -357,7 +357,7 @@ func (hd *HappyDevFormatter) Format(writer io.Writer, level int, msg string, arg
 			if !disableColors {
 				buf.WriteString(color)
 			}
-			addLF = context[len(context)-1:len(context)] != "\n"
+			addLF = context[len(context)-1:] != "\n"
 			buf.WriteString(context)
 			if !disableColors {
 				buf.WriteString(ansi.Reset)

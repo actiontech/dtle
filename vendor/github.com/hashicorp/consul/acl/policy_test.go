@@ -70,93 +70,93 @@ query "bar" {
 	`
 	exp := &Policy{
 		Agents: []*AgentPolicy{
-			&AgentPolicy{
+			{
 				Node:   "foo",
 				Policy: PolicyRead,
 			},
-			&AgentPolicy{
+			{
 				Node:   "bar",
 				Policy: PolicyWrite,
 			},
 		},
 		Events: []*EventPolicy{
-			&EventPolicy{
+			{
 				Event:  "",
 				Policy: PolicyRead,
 			},
-			&EventPolicy{
+			{
 				Event:  "foo",
 				Policy: PolicyWrite,
 			},
-			&EventPolicy{
+			{
 				Event:  "bar",
 				Policy: PolicyDeny,
 			},
 		},
 		Keyring: PolicyDeny,
 		Keys: []*KeyPolicy{
-			&KeyPolicy{
+			{
 				Prefix: "",
 				Policy: PolicyRead,
 			},
-			&KeyPolicy{
+			{
 				Prefix: "foo/",
 				Policy: PolicyWrite,
 			},
-			&KeyPolicy{
+			{
 				Prefix: "foo/bar/",
 				Policy: PolicyRead,
 			},
-			&KeyPolicy{
+			{
 				Prefix: "foo/bar/baz",
 				Policy: PolicyDeny,
 			},
 		},
 		Nodes: []*NodePolicy{
-			&NodePolicy{
+			{
 				Name:   "",
 				Policy: PolicyRead,
 			},
-			&NodePolicy{
+			{
 				Name:   "foo",
 				Policy: PolicyWrite,
 			},
-			&NodePolicy{
+			{
 				Name:   "bar",
 				Policy: PolicyDeny,
 			},
 		},
 		Operator: PolicyDeny,
 		PreparedQueries: []*PreparedQueryPolicy{
-			&PreparedQueryPolicy{
+			{
 				Prefix: "",
 				Policy: PolicyRead,
 			},
-			&PreparedQueryPolicy{
+			{
 				Prefix: "foo",
 				Policy: PolicyWrite,
 			},
-			&PreparedQueryPolicy{
+			{
 				Prefix: "bar",
 				Policy: PolicyDeny,
 			},
 		},
 		Services: []*ServicePolicy{
-			&ServicePolicy{
+			{
 				Name:   "",
 				Policy: PolicyWrite,
 			},
-			&ServicePolicy{
+			{
 				Name:   "foo",
 				Policy: PolicyRead,
 			},
 		},
 		Sessions: []*SessionPolicy{
-			&SessionPolicy{
+			{
 				Node:   "foo",
 				Policy: PolicyWrite,
 			},
-			&SessionPolicy{
+			{
 				Node:   "bar",
 				Policy: PolicyDeny,
 			},
@@ -251,93 +251,93 @@ func TestACLPolicy_Parse_JSON(t *testing.T) {
 }`
 	exp := &Policy{
 		Agents: []*AgentPolicy{
-			&AgentPolicy{
+			{
 				Node:   "foo",
 				Policy: PolicyWrite,
 			},
-			&AgentPolicy{
+			{
 				Node:   "bar",
 				Policy: PolicyDeny,
 			},
 		},
 		Events: []*EventPolicy{
-			&EventPolicy{
+			{
 				Event:  "",
 				Policy: PolicyRead,
 			},
-			&EventPolicy{
+			{
 				Event:  "foo",
 				Policy: PolicyWrite,
 			},
-			&EventPolicy{
+			{
 				Event:  "bar",
 				Policy: PolicyDeny,
 			},
 		},
 		Keyring: PolicyDeny,
 		Keys: []*KeyPolicy{
-			&KeyPolicy{
+			{
 				Prefix: "",
 				Policy: PolicyRead,
 			},
-			&KeyPolicy{
+			{
 				Prefix: "foo/",
 				Policy: PolicyWrite,
 			},
-			&KeyPolicy{
+			{
 				Prefix: "foo/bar/",
 				Policy: PolicyRead,
 			},
-			&KeyPolicy{
+			{
 				Prefix: "foo/bar/baz",
 				Policy: PolicyDeny,
 			},
 		},
 		Nodes: []*NodePolicy{
-			&NodePolicy{
+			{
 				Name:   "",
 				Policy: PolicyRead,
 			},
-			&NodePolicy{
+			{
 				Name:   "foo",
 				Policy: PolicyWrite,
 			},
-			&NodePolicy{
+			{
 				Name:   "bar",
 				Policy: PolicyDeny,
 			},
 		},
 		Operator: PolicyDeny,
 		PreparedQueries: []*PreparedQueryPolicy{
-			&PreparedQueryPolicy{
+			{
 				Prefix: "",
 				Policy: PolicyRead,
 			},
-			&PreparedQueryPolicy{
+			{
 				Prefix: "foo",
 				Policy: PolicyWrite,
 			},
-			&PreparedQueryPolicy{
+			{
 				Prefix: "bar",
 				Policy: PolicyDeny,
 			},
 		},
 		Services: []*ServicePolicy{
-			&ServicePolicy{
+			{
 				Name:   "",
 				Policy: PolicyWrite,
 			},
-			&ServicePolicy{
+			{
 				Name:   "foo",
 				Policy: PolicyRead,
 			},
 		},
 		Sessions: []*SessionPolicy{
-			&SessionPolicy{
+			{
 				Node:   "foo",
 				Policy: PolicyWrite,
 			},
-			&SessionPolicy{
+			{
 				Node:   "bar",
 				Policy: PolicyDeny,
 			},

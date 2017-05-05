@@ -2,9 +2,9 @@ package internal
 
 import (
 	"regexp"
-	"time"
 	"runtime"
 	"strconv"
+	"time"
 )
 
 // RuntimeStats is used to return various runtime information

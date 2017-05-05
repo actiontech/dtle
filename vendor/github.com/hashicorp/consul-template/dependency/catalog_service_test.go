@@ -146,7 +146,7 @@ func TestCatalogServiceQuery_Fetch(t *testing.T) {
 			"consul",
 			"consul",
 			[]*CatalogService{
-				&CatalogService{
+				{
 					Node:    testConsul.Config.NodeName,
 					Address: testConsul.Config.Bind,
 					TaggedAddresses: map[string]string{

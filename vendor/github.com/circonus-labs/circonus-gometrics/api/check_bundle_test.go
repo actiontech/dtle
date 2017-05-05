@@ -459,7 +459,7 @@ func TestSearchCheckBundles(t *testing.T) {
 
 	t.Log("no search, filter")
 	{
-		filter := map[string][]string{"f__tags_has": []string{"cat:tag"}}
+		filter := map[string][]string{"f__tags_has": {"cat:tag"}}
 		bundles, err := apih.SearchCheckBundles(nil, &filter)
 		if err != nil {
 			t.Fatalf("Expected no error, got '%v'", err)
@@ -475,7 +475,7 @@ func TestSearchCheckBundles(t *testing.T) {
 	t.Log("search, filter")
 	{
 		search := SearchQueryType("test")
-		filter := map[string][]string{"f__tags_has": []string{"cat:tag"}}
+		filter := map[string][]string{"f__tags_has": {"cat:tag"}}
 		bundles, err := apih.SearchCheckBundles(&search, &filter)
 		if err != nil {
 			t.Fatalf("Expected no error, got '%v'", err)

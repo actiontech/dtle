@@ -46,22 +46,22 @@ func (b *backend) pathEncrypt() *framework.Path {
 	return &framework.Path{
 		Pattern: "encrypt/" + framework.GenericNameRegex("name"),
 		Fields: map[string]*framework.FieldSchema{
-			"name": &framework.FieldSchema{
+			"name": {
 				Type:        framework.TypeString,
 				Description: "Name of the policy",
 			},
 
-			"plaintext": &framework.FieldSchema{
+			"plaintext": {
 				Type:        framework.TypeString,
 				Description: "Base64 encoded plaintext value to be encrypted",
 			},
 
-			"context": &framework.FieldSchema{
+			"context": {
 				Type:        framework.TypeString,
 				Description: "Base64 encoded context for key derivation. Required if key derivation is enabled",
 			},
 
-			"nonce": &framework.FieldSchema{
+			"nonce": {
 				Type: framework.TypeString,
 				Description: `
 Base64 encoded nonce value. Must be provided if convergent encryption is
@@ -72,7 +72,7 @@ encryption key) this nonce value is **never reused**.
 `,
 			},
 
-			"type": &framework.FieldSchema{
+			"type": {
 				Type:    framework.TypeString,
 				Default: "aes256-gcm96",
 				Description: `
@@ -82,7 +82,7 @@ When performing an upsert operation, the type of key to create. Currently,
 "aes256-gcm96".`,
 			},
 
-			"convergent_encryption": &framework.FieldSchema{
+			"convergent_encryption": {
 				Type: framework.TypeBool,
 				Description: `
 This parameter will only be used when a key is expected to be created.  Whether
@@ -95,7 +95,7 @@ you ensure that all nonces are unique for a given context.  Failing to do so
 will severely impact the ciphertext's security.`,
 			},
 
-			"batch_input": &framework.FieldSchema{
+			"batch_input": {
 				Type: framework.TypeString,
 				Description: `
 Base64 encoded list of items to be encrypted in a single batch. When this

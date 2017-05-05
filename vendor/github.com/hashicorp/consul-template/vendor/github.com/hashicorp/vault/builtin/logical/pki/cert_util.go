@@ -892,7 +892,7 @@ func createCertificate(creationInfo *creationBundle) (*certutil.ParsedCertBundle
 			!bytes.Equal(creationInfo.SigningBundle.Certificate.AuthorityKeyId, creationInfo.SigningBundle.Certificate.SubjectKeyId) {
 
 			result.CAChain = []*certutil.CertBlock{
-				&certutil.CertBlock{
+				{
 					Certificate: creationInfo.SigningBundle.Certificate,
 					Bytes:       creationInfo.SigningBundle.CertificateBytes,
 				},

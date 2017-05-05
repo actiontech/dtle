@@ -446,7 +446,7 @@ func TestSearchMaintenances(t *testing.T) {
 	}
 
 	search := SearchQueryType("/check_bundle/1234")
-	filter := SearchFilterType(map[string][]string{"f_start_gt": []string{"1483639916"}})
+	filter := SearchFilterType(map[string][]string{"f_start_gt": {"1483639916"}})
 
 	t.Log("no search, no filter")
 	{

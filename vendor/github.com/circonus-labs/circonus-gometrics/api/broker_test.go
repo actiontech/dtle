@@ -23,7 +23,7 @@ var (
 		Tags:      []string{},
 		Type:      "enterprise",
 		Details: []BrokerDetail{
-			BrokerDetail{
+			{
 				CN:           "testbroker.example.com",
 				ExternalHost: &[]string{"testbroker.example.com"}[0],
 				ExternalPort: 43191,

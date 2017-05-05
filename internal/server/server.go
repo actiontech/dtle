@@ -20,9 +20,9 @@ import (
 	"github.com/hashicorp/raft-boltdb"
 	"github.com/hashicorp/serf/serf"
 
+	"udup/internal"
 	uconf "udup/internal/config"
 	"udup/internal/server/store"
-	"udup/internal"
 )
 
 const (
@@ -67,8 +67,8 @@ type Server struct {
 	raftTransport *raft.NetworkTransport
 
 	// fsm is the store machine used with Raft
-	fsm *udupFSM
-	store     *store.Store
+	fsm   *udupFSM
+	store *store.Store
 
 	// rpcListener is used to listen for incoming connections
 	rpcListener  net.Listener
@@ -171,7 +171,7 @@ func NewServer(config *uconf.ServerConfig, logger *log.Logger) (*Server, error) 
 		return nil, fmt.Errorf("Failed to start RPC layer: %v", err)
 	}
 
-	if s.config.ConsulConfig.Addr !="" {
+	if s.config.ConsulConfig.Addr != "" {
 		// Initialize the Store server
 		s.store, err = store.NewConsulStore([]string{s.config.ConsulConfig.Addr})
 		if err != nil {
@@ -179,7 +179,7 @@ func NewServer(config *uconf.ServerConfig, logger *log.Logger) (*Server, error) 
 			s.logger.Printf("[ERR] server: failed to setup Store: %s", err)
 			return nil, fmt.Errorf("Failed to start Store: %v", err)
 		}
-	}else {
+	} else {
 		// Initialize the Raft server
 		if err := s.setupRaft(); err != nil {
 			s.Shutdown()
@@ -533,7 +533,7 @@ func (s *Server) setupRaft() error {
 			// we add support for node IDs.
 			configuration := raft.Configuration{
 				Servers: []raft.Server{
-					raft.Server{
+					{
 						ID:      raft.ServerID(trans.LocalAddr()),
 						Address: trans.LocalAddr(),
 					},
@@ -625,9 +625,9 @@ func (s *Server) numPeers() (int, error) {
 
 // IsLeader checks if this server is the cluster leader
 func (s *Server) IsLeader() bool {
-	if s.raft !=nil{
+	if s.raft != nil {
 		return s.raft.State() == raft.Leader
-	}else{
+	} else {
 		res, err := s.store.Client.Get(s.store.LeaderKey())
 		if err != nil {
 			s.logger.Printf("[ERR] be sure you have an existing key-value store is running and is reachable.")
@@ -676,7 +676,7 @@ func (s *Server) Regions() []string {
 	defer s.peerLock.RUnlock()
 
 	regions := make([]string, 0, len(s.peers))
-	for region, _ := range s.peers {
+	for region := range s.peers {
 		regions = append(regions, region)
 	}
 	sort.Strings(regions)
@@ -738,7 +738,7 @@ func (s *Server) Stats() map[string]map[string]string {
 		return strconv.FormatUint(v, 10)
 	}
 	stats := map[string]map[string]string{
-		"server": map[string]string{
+		"server": {
 			"server":        "true",
 			"leader":        fmt.Sprintf("%v", s.IsLeader()),
 			"leader_addr":   string(s.raft.Leader()),

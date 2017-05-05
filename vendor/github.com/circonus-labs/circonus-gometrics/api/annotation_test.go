@@ -448,7 +448,7 @@ func TestSearchAnnotations(t *testing.T) {
 	}
 
 	search := SearchQueryType(`(category="updates")`)
-	filter := SearchFilterType(map[string][]string{"f__created_gt": []string{"1483639916"}})
+	filter := SearchFilterType(map[string][]string{"f__created_gt": {"1483639916"}})
 
 	t.Log("no search, no filter")
 	{

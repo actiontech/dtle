@@ -19,19 +19,19 @@ var (
 	testRuleSetGroup = RuleSetGroup{
 		CID: "/rule_set_group/1234",
 		ContactGroups: map[uint8][]string{
-			1: []string{"/contact_group/1234", "/contact_group/5678"},
-			2: []string{"/contact_group/1234"},
-			3: []string{"/contact_group/1234"},
-			4: []string{},
-			5: []string{},
+			1: {"/contact_group/1234", "/contact_group/5678"},
+			2: {"/contact_group/1234"},
+			3: {"/contact_group/1234"},
+			4: {},
+			5: {},
 		},
 		Formulas: []RuleSetGroupFormula{
-			RuleSetGroupFormula{
+			{
 				Expression:    "(A and B) and not C",
 				RaiseSeverity: 2,
 				Wait:          0,
 			},
-			RuleSetGroupFormula{
+			{
 				Expression:    "3",
 				RaiseSeverity: 1,
 				Wait:          5,
@@ -39,15 +39,15 @@ var (
 		},
 		Name: "Multiple webservers gone bad",
 		RuleSetConditions: []RuleSetGroupCondition{
-			RuleSetGroupCondition{
+			{
 				MatchingSeverities: []string{"1", "2"},
 				RuleSetCID:         "/rule_set/1234_tt_firstbyte",
 			},
-			RuleSetGroupCondition{
+			{
 				MatchingSeverities: []string{"1", "2"},
 				RuleSetCID:         "/rule_set/5678_tt_firstbyte",
 			},
-			RuleSetGroupCondition{
+			{
 				MatchingSeverities: []string{"1", "2"},
 				RuleSetCID:         "/rule_set/9012_tt_firstbyte",
 			},
@@ -475,7 +475,7 @@ func TestSearchRuleSetGroups(t *testing.T) {
 	}
 
 	search := SearchQueryType("web requests")
-	filter := SearchFilterType(map[string][]string{"f_tags_has": []string{"location:conus"}})
+	filter := SearchFilterType(map[string][]string{"f_tags_has": {"location:conus"}})
 
 	t.Log("no search, no filter")
 	{

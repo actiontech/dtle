@@ -8,8 +8,8 @@ import (
 
 	"github.com/mitchellh/cli"
 
-	"udup/cmd/udup/command"
 	"udup/agent"
+	"udup/cmd/udup/command"
 )
 
 // The git commit that was compiled. This will be filled in by the compiler.
@@ -54,20 +54,20 @@ func realMain() int {
 	}
 
 	c.Commands = map[string]cli.CommandFactory{
-		"agent": func() (cli.Command, error) {
+		"server": func() (cli.Command, error) {
 			return &agent.Command{
 				Version:    Version,
 				Ui:         meta.Ui,
 				ShutdownCh: make(chan struct{}),
 			}, nil
 		},
-		"agent-info": func() (cli.Command, error) {
-			return &command.AgentInfoCommand{
+		"init": func() (cli.Command, error) {
+			return &command.InitCommand{
 				Meta: meta,
 			}, nil
 		},
-		"client-config": func() (cli.Command, error) {
-			return &command.ClientConfigCommand{
+		"config": func() (cli.Command, error) {
+			return &command.ConfigCommand{
 				Meta: meta,
 			}, nil
 		},
@@ -76,8 +76,13 @@ func realMain() int {
 				Meta: meta,
 			}, nil
 		},
-		"run": func() (cli.Command, error) {
-			return &command.RunCommand{
+		"members": func() (cli.Command, error) {
+			return &command.ServerMembersCommand{
+				Meta: meta,
+			}, nil
+		},
+		"start": func() (cli.Command, error) {
+			return &command.StartCommand{
 				Meta: meta,
 			}, nil
 		},
@@ -86,18 +91,8 @@ func realMain() int {
 				Meta: meta,
 			}, nil
 		},
-		"members": func() (cli.Command, error) {
-			return &command.ServerMembersCommand{
-				Meta: meta,
-			}, nil
-		},
 		"status": func() (cli.Command, error) {
 			return &command.StatusCommand{
-				Meta: meta,
-			}, nil
-		},
-		"validate": func() (cli.Command, error) {
-			return &command.ValidateCommand{
 				Meta: meta,
 			}, nil
 		},

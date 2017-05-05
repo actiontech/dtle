@@ -187,7 +187,7 @@ func NewCirconusMetrics(cfg *Config) (*CirconusMetrics, error) {
 // submission process of all metrics collected.
 func (m *CirconusMetrics) Start() {
 	go func() {
-		for _ = range time.NewTicker(m.flushInterval).C {
+		for range time.NewTicker(m.flushInterval).C {
 			m.Flush()
 		}
 	}()

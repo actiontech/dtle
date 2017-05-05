@@ -95,7 +95,7 @@ func ScanRowsToMaps(rows *sql.Rows, on_row func(RowMap) error) error {
 func RowToArray(rows *sql.Rows, columns []string) []CellData {
 	buff := make([]interface{}, len(columns))
 	data := make([]CellData, len(columns))
-	for i, _ := range buff {
+	for i := range buff {
 		buff[i] = data[i].NullString()
 	}
 	rows.Scan(buff...)

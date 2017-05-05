@@ -16,17 +16,17 @@ func (b *backend) pathSign() *framework.Path {
 	return &framework.Path{
 		Pattern: "sign/" + framework.GenericNameRegex("name") + framework.OptionalParamRegex("urlalgorithm"),
 		Fields: map[string]*framework.FieldSchema{
-			"name": &framework.FieldSchema{
+			"name": {
 				Type:        framework.TypeString,
 				Description: "The key to use",
 			},
 
-			"input": &framework.FieldSchema{
+			"input": {
 				Type:        framework.TypeString,
 				Description: "The base64-encoded input data",
 			},
 
-			"algorithm": &framework.FieldSchema{
+			"algorithm": {
 				Type:    framework.TypeString,
 				Default: "sha2-256",
 				Description: `Hash algorithm to use (POST body parameter). Valid values are:
@@ -39,7 +39,7 @@ func (b *backend) pathSign() *framework.Path {
 Defaults to "sha2-256".`,
 			},
 
-			"urlalgorithm": &framework.FieldSchema{
+			"urlalgorithm": {
 				Type:        framework.TypeString,
 				Description: `Hash algorithm to use (POST URL parameter)`,
 			},
@@ -58,32 +58,32 @@ func (b *backend) pathVerify() *framework.Path {
 	return &framework.Path{
 		Pattern: "verify/" + framework.GenericNameRegex("name") + framework.OptionalParamRegex("urlalgorithm"),
 		Fields: map[string]*framework.FieldSchema{
-			"name": &framework.FieldSchema{
+			"name": {
 				Type:        framework.TypeString,
 				Description: "The key to use",
 			},
 
-			"signature": &framework.FieldSchema{
+			"signature": {
 				Type:        framework.TypeString,
 				Description: "The signature, including vault header/key version",
 			},
 
-			"hmac": &framework.FieldSchema{
+			"hmac": {
 				Type:        framework.TypeString,
 				Description: "The HMAC, including vault header/key version",
 			},
 
-			"input": &framework.FieldSchema{
+			"input": {
 				Type:        framework.TypeString,
 				Description: "The base64-encoded input data to verify",
 			},
 
-			"urlalgorithm": &framework.FieldSchema{
+			"urlalgorithm": {
 				Type:        framework.TypeString,
 				Description: `Hash algorithm to use (POST URL parameter)`,
 			},
 
-			"algorithm": &framework.FieldSchema{
+			"algorithm": {
 				Type:    framework.TypeString,
 				Default: "sha2-256",
 				Description: `Hash algorithm to use (POST body parameter). Valid values are:

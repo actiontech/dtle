@@ -14,27 +14,27 @@ func (b *backend) pathRewrap() *framework.Path {
 	return &framework.Path{
 		Pattern: "rewrap/" + framework.GenericNameRegex("name"),
 		Fields: map[string]*framework.FieldSchema{
-			"name": &framework.FieldSchema{
+			"name": {
 				Type:        framework.TypeString,
 				Description: "Name of the key",
 			},
 
-			"ciphertext": &framework.FieldSchema{
+			"ciphertext": {
 				Type:        framework.TypeString,
 				Description: "Ciphertext value to rewrap",
 			},
 
-			"context": &framework.FieldSchema{
+			"context": {
 				Type:        framework.TypeString,
 				Description: "Base64 encoded context for key derivation. Required for derived keys.",
 			},
 
-			"nonce": &framework.FieldSchema{
+			"nonce": {
 				Type:        framework.TypeString,
 				Description: "Nonce for when convergent encryption is used",
 			},
 
-			"batch_input": &framework.FieldSchema{
+			"batch_input": {
 				Type: framework.TypeString,
 				Description: `
 Base64 encoded list of items to be rewrapped in a single batch. When this

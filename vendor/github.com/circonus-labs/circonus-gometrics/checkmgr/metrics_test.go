@@ -46,12 +46,12 @@ func TestActivateMetric(t *testing.T) {
 	cm := &CheckManager{}
 	cm.checkBundle = &api.CheckBundle{}
 	cm.checkBundle.Metrics = []api.CheckBundleMetric{
-		api.CheckBundleMetric{
+		{
 			Name:   "foo",
 			Type:   "numeric",
 			Status: "active",
 		},
-		api.CheckBundleMetric{
+		{
 			Name:   "bar",
 			Type:   "numeric",
 			Status: "available",
@@ -98,12 +98,12 @@ func TestInventoryMetrics(t *testing.T) {
 	cm := &CheckManager{}
 	cm.checkBundle = &api.CheckBundle{}
 	cm.checkBundle.Metrics = []api.CheckBundleMetric{
-		api.CheckBundleMetric{
+		{
 			Name:   "foo",
 			Type:   "numeric",
 			Status: "active",
 		},
-		api.CheckBundleMetric{
+		{
 			Name:   "bar",
 			Type:   "numeric",
 			Status: "available",
@@ -171,17 +171,17 @@ func TestAddMetricTags(t *testing.T) {
 	}
 
 	cm.checkBundle.Metrics = []api.CheckBundleMetric{
-		api.CheckBundleMetric{
+		{
 			Name:   "bar",
 			Type:   "numeric",
 			Status: "active",
 		},
-		api.CheckBundleMetric{
+		{
 			Name:   "foo",
 			Type:   "numeric",
 			Status: "active",
 		},
-		api.CheckBundleMetric{
+		{
 			Name:   "baz",
 			Type:   "numeric",
 			Status: "active",

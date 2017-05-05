@@ -268,11 +268,11 @@ func TestStateStore_NodeSessions(t *testing.T) {
 		},
 	}
 	sessions2 := []*structs.Session{
-		&structs.Session{
+		{
 			ID:   testUUID(),
 			Node: "node2",
 		},
-		&structs.Session{
+		{
 			ID:   testUUID(),
 			Node: "node2",
 		},
@@ -429,7 +429,7 @@ func TestStateStore_Session_Snapshot_Restore(t *testing.T) {
 		dump = append(dump, sess)
 
 		found := false
-		for i, _ := range sessions {
+		for i := range sessions {
 			if sess.ID == sessions[i].ID {
 				if !reflect.DeepEqual(sess, sessions[i]) {
 					t.Fatalf("bad: %#v", sess)
@@ -464,7 +464,7 @@ func TestStateStore_Session_Snapshot_Restore(t *testing.T) {
 		}
 		for _, sess := range res {
 			found := false
-			for i, _ := range sessions {
+			for i := range sessions {
 				if sess.ID == sessions[i].ID {
 					if !reflect.DeepEqual(sess, sessions[i]) {
 						t.Fatalf("bad: %#v", sess)

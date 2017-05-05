@@ -1,9 +1,9 @@
 package util
 
 import (
+	"fmt"
 	"strconv"
 	"testing"
-	"fmt"
 )
 
 func TestID(t *testing.T) {

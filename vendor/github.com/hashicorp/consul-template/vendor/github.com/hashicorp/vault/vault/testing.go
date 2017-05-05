@@ -540,7 +540,7 @@ func TestCluster(t *testing.T, handlers []http.Handler, base *CoreConfig, unseal
 	if err != nil {
 		t.Fatal(err)
 	}
-	c1lns := []*TestListener{&TestListener{
+	c1lns := []*TestListener{{
 		Listener: tls.NewListener(ln, tlsConfig),
 		Address:  ln.Addr().(*net.TCPAddr),
 	},
@@ -570,7 +570,7 @@ func TestCluster(t *testing.T, handlers []http.Handler, base *CoreConfig, unseal
 	if err != nil {
 		t.Fatal(err)
 	}
-	c2lns := []*TestListener{&TestListener{
+	c2lns := []*TestListener{{
 		Listener: tls.NewListener(ln, tlsConfig),
 		Address:  ln.Addr().(*net.TCPAddr),
 	},
@@ -589,7 +589,7 @@ func TestCluster(t *testing.T, handlers []http.Handler, base *CoreConfig, unseal
 	if err != nil {
 		t.Fatal(err)
 	}
-	c3lns := []*TestListener{&TestListener{
+	c3lns := []*TestListener{{
 		Listener: tls.NewListener(ln, tlsConfig),
 		Address:  ln.Addr().(*net.TCPAddr),
 	},
