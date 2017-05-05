@@ -68,6 +68,7 @@ type Server struct {
 
 	// fsm is the store machine used with Raft
 	fsm *udupFSM
+	store     *store.Store
 
 	// rpcListener is used to listen for incoming connections
 	rpcListener  net.Listener
@@ -170,11 +171,21 @@ func NewServer(config *uconf.ServerConfig, logger *log.Logger) (*Server, error) 
 		return nil, fmt.Errorf("Failed to start RPC layer: %v", err)
 	}
 
-	// Initialize the Raft server
-	if err := s.setupRaft(); err != nil {
-		s.Shutdown()
-		s.logger.Printf("[ERR] server: failed to start Raft: %s", err)
-		return nil, fmt.Errorf("Failed to start Raft: %v", err)
+	if s.config.ConsulConfig.Addr !="" {
+		// Initialize the Store server
+		s.store, err = store.NewConsulStore([]string{s.config.ConsulConfig.Addr})
+		if err != nil {
+			s.Shutdown()
+			s.logger.Printf("[ERR] server: failed to setup Store: %s", err)
+			return nil, fmt.Errorf("Failed to start Store: %v", err)
+		}
+	}else {
+		// Initialize the Raft server
+		if err := s.setupRaft(); err != nil {
+			s.Shutdown()
+			s.logger.Printf("[ERR] server: failed to start Raft: %s", err)
+			return nil, fmt.Errorf("Failed to start Raft: %v", err)
+		}
 	}
 
 	// Initialize the wan Serf
@@ -614,7 +625,16 @@ func (s *Server) numPeers() (int, error) {
 
 // IsLeader checks if this server is the cluster leader
 func (s *Server) IsLeader() bool {
-	return s.raft.State() == raft.Leader
+	if s.raft !=nil{
+		return s.raft.State() == raft.Leader
+	}else{
+		res, err := s.store.Client.Get(s.store.LeaderKey())
+		if err != nil {
+			s.logger.Printf("[ERR] be sure you have an existing key-value store is running and is reachable.")
+			return false
+		}
+		return s.config.NodeName == string(res.Value)
+	}
 }
 
 // Join is used to have Udup join the gossip ring

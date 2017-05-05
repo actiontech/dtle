@@ -8,7 +8,6 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"reflect"
 	"sort"
 	"strconv"
 	"strings"
@@ -36,6 +35,7 @@ type Command struct {
 	args           []string
 	agent          *Agent
 	httpServer     *HTTPServer
+	logger         *log.Logger
 	logFilter      *logutils.LevelFilter
 	logOutput      io.Writer
 	retryJoinErrCh chan struct{}
@@ -94,15 +94,8 @@ func (c *Command) readConfig() *Config {
 	for _, path := range configPath {
 		current, err := LoadConfig(path)
 		if err != nil {
-			c.Ui.Error(fmt.Sprintf(
-				"Error loading configuration from %s: %s", path, err))
+			c.logger.Printf("[ERR] Error loading configuration from %s: %s", path, err)
 			return nil
-		}
-
-		// The user asked us to load some config here but we didn't find any,
-		// so we'll complain but continue.
-		if current == nil || reflect.DeepEqual(current, &Config{}) {
-			c.Ui.Warn(fmt.Sprintf("No configuration loaded from %s", path))
 		}
 
 		if config == nil {
@@ -128,21 +121,21 @@ func (c *Command) readConfig() *Config {
 
 	// Normalize binds, ports, addresses, and advertise
 	if err := config.normalizeAddrs(); err != nil {
-		c.Ui.Error(err.Error())
+		log.Fatal(err.Error())
 		return nil
 	}
 
 	// Parse the RetryInterval.
 	dur, err := time.ParseDuration(config.Server.RetryInterval)
 	if err != nil {
-		c.Ui.Error(fmt.Sprintf("Error parsing retry interval: %s", err))
+		c.logger.Printf("[ERR] Error parsing retry interval: %s", err)
 		return nil
 	}
 	config.Server.retryInterval = dur
 
 	// Check that the server is running in at least one mode.
 	if !(config.Server.Enabled || config.Client.Enabled) {
-		c.Ui.Error("Must specify either server, client or dev mode for the agent.")
+		c.logger.Printf("[ERR] Must specify either server, client or dev mode for the agent.")
 		return nil
 	}
 
@@ -157,14 +150,14 @@ func (c *Command) readConfig() *Config {
 		}
 
 		if !filepath.IsAbs(dir) {
-			c.Ui.Error(fmt.Sprintf("%s must be given as an absolute path: got %v", k, dir))
+			c.logger.Printf("[ERR] %s must be given as an absolute path: got %v", k, dir)
 			return nil
 		}
 	}
 
 	// Ensure that we have the directories we neet to run.
 	if config.Server.Enabled && config.DataDir == "" {
-		c.Ui.Error("Must specify data directory")
+		c.logger.Printf("[ERR] Must specify data directory")
 		return nil
 	}
 
@@ -172,18 +165,18 @@ func (c *Command) readConfig() *Config {
 	// alloc-dir and store-dir are set.
 	if config.Client.Enabled && config.DataDir == "" {
 		if config.Client.StateDir == "" {
-			c.Ui.Error("Must specify the state dir if data-dir is omitted.")
+			c.logger.Printf("[ERR] Must specify the state dir if data-dir is omitted.")
 			return nil
 		}
 	}
 
 	// Check the bootstrap flags
 	if config.Server.BootstrapExpect > 0 && !config.Server.Enabled {
-		c.Ui.Error("Bootstrap requires server mode to be enabled")
+		c.logger.Printf("[ERR] Bootstrap requires server mode to be enabled")
 		return nil
 	}
 	if config.Server.BootstrapExpect == 1 {
-		c.Ui.Error("WARNING: Bootstrap mode enabled! Potentially unsafe operation.")
+		c.logger.Printf("[WARN] Bootstrap mode enabled! Potentially unsafe operation.")
 	}
 
 	return config
@@ -203,38 +196,27 @@ func (s *StringFlag) Set(value string) error {
 }
 
 // setupLoggers is used to setup the logGate, logWriter, and our logOutput
-func (c *Command) setupLoggers(config *Config) (*Writer, io.Writer) {
-	// Setup logging. First create the gated log writer, which will
-	// store logs until we're ready to show them. Then create the level
-	// filter, filtering logs of the specified level.
-	logGate := &Writer{
-		Writer: &cli.UiWriter{Ui: c.Ui},
-	}
-
+func (c *Command) setupLoggers(config *Config) io.Writer {
 	c.logFilter = LevelFilter()
 	c.logFilter.MinLevel = logutils.LogLevel(strings.ToUpper(config.LogLevel))
-	c.logFilter.Writer = logGate
 	if !ValidateLevelFilter(c.logFilter.MinLevel, c.logFilter) {
-		c.Ui.Error(fmt.Sprintf(
-			"Invalid log level: %s. Valid log levels are: %v",
-			c.logFilter.MinLevel, c.logFilter.Levels))
-		return nil, nil
+		c.logger.Printf("[ERR] Invalid log level: %s. Valid log levels are: %v",
+			c.logFilter.MinLevel, c.logFilter.Levels)
+		return nil
 	}
 
 	var oFile *os.File
 	if config.LogFile != "" {
 		if _, err := os.Stat(config.LogFile); os.IsNotExist(err) {
 			if oFile, err = os.Create(config.LogFile); err != nil {
-				c.Ui.Error(fmt.Sprintf(
-					"Unable to create %s (%s), using stderr",
-					config.LogFile, err))
+				c.logger.Printf("[ERR] Unable to create %s (%s), using stderr",
+					config.LogFile, err)
 				oFile = os.Stderr
 			}
 		} else {
 			if oFile, err = os.OpenFile(config.LogFile, os.O_APPEND|os.O_WRONLY, os.ModeAppend); err != nil {
-				c.Ui.Error(fmt.Sprintf(
-					"Unable to append to %s (%s), using stderr",
-					config.LogFile, err))
+				c.logger.Printf("[ERR] Unable to append to %s (%s), using stderr",
+					config.LogFile, err)
 				oFile = os.Stderr
 			}
 		}
@@ -243,16 +225,17 @@ func (c *Command) setupLoggers(config *Config) (*Writer, io.Writer) {
 	}
 
 	c.logOutput = oFile
+	c.logger =log.New(c.logOutput, "", log.LstdFlags|log.Lmicroseconds)
 	log.SetOutput(oFile)
-	return logGate, oFile
+	return oFile
 }
 
 // setupAgent is used to start the agent and various interfaces
 func (c *Command) setupAgent(config *Config, logOutput io.Writer) error {
-	c.Ui.Output("Starting Udup agent...")
+	c.logger.Printf("[INFO] Starting Udup agent...")
 	agent, err := NewAgent(config, logOutput)
 	if err != nil {
-		c.Ui.Error(fmt.Sprintf("Error starting agent: %s", err))
+		c.logger.Printf("[ERR] Error starting agent: %s", err)
 		return err
 	}
 	c.agent = agent
@@ -261,7 +244,7 @@ func (c *Command) setupAgent(config *Config, logOutput io.Writer) error {
 	http, err := NewHTTPServer(agent, config, logOutput)
 	if err != nil {
 		agent.Shutdown()
-		c.Ui.Error(fmt.Sprintf("Error starting http server: %s", err))
+		c.logger.Printf("[ERR] Error starting http server: %s", err)
 		return err
 	}
 	c.httpServer = http
@@ -270,13 +253,7 @@ func (c *Command) setupAgent(config *Config, logOutput io.Writer) error {
 }
 
 func (c *Command) Run(args []string) int {
-	c.Ui = &cli.PrefixedUi{
-		OutputPrefix: "==> ",
-		InfoPrefix:   "    ",
-		ErrorPrefix:  "==> ",
-		Ui:           c.Ui,
-	}
-
+	c.logger =log.New(os.Stderr, "", log.LstdFlags|log.Lmicroseconds)
 	// Parse our configs
 	c.args = args
 	config := c.readConfig()
@@ -285,27 +262,23 @@ func (c *Command) Run(args []string) int {
 	}
 
 	// Setup the log outputs
-	logGate, logOutput := c.setupLoggers(config)
-	if logGate == nil {
-		return 1
-	}
+	logOutput := c.setupLoggers(config)
 
 	// Log config files
 	if len(config.Files) > 0 {
-		c.Ui.Info(fmt.Sprintf("Loaded configuration from %s", strings.Join(config.Files, ", ")))
+		c.logger.Printf("[INFO] Loaded configuration from %s", strings.Join(config.Files, ", "))
 	} else {
-		c.Ui.Info("No configuration files loaded")
+		c.logger.Printf("[INFO] No configuration files loaded")
 	}
 
 	// Initialize the metric
 	if err := c.setupMetric(config); err != nil {
-		c.Ui.Error(fmt.Sprintf("Error initializing metric: %s", err))
+		c.logger.Printf("[ERR] Error initializing metric: %s", err)
 		return 1
 	}
 
 	// Create the agent
 	if err := c.setupAgent(config, logOutput); err != nil {
-		logGate.Flush()
 		return 1
 	}
 	defer c.agent.Shutdown()
@@ -318,7 +291,7 @@ func (c *Command) Run(args []string) int {
 
 	// Join startup nodes if specified
 	if err := c.startupJoin(config); err != nil {
-		c.Ui.Error(err.Error())
+		c.logger.Printf("[ERR] %v",err.Error())
 		return 1
 	}
 
@@ -339,21 +312,16 @@ func (c *Command) Run(args []string) int {
 
 	// Agent configuration output
 	padding := 18
-	c.Ui.Output("Udup agent configuration:\n")
+	c.logger.Printf("[INFO] Udup agent configuration:\n")
 	for _, k := range infoKeys {
-		c.Ui.Info(fmt.Sprintf(
-			"%s%s: %s",
+		c.logger.Printf(fmt.Sprintf(
+			"[INFO] %s%s: %s",
 			strings.Repeat(" ", padding-len(k)),
 			strings.Title(k),
 			info[k]))
 	}
-	c.Ui.Output("")
-
 	// Output the header that the server has started
-	c.Ui.Output("Udup agent started! Log data will stream in below:\n")
-
-	// Enable log streaming
-	logGate.Flush()
+	c.logger.Printf("[INFO] Udup agent started! Log data will stream in below:\n")
 
 	// Start retry join process
 	c.retryJoinErrCh = make(chan struct{})
@@ -379,7 +347,7 @@ WAIT:
 	case <-c.retryJoinErrCh:
 		return 1
 	}
-	c.Ui.Output(fmt.Sprintf("Caught signal: %v", sig))
+	c.logger.Printf("[INFO] Caught signal: %v", sig)
 
 	// Skip any SIGPIPE signal (See issue #1798)
 	if sig == syscall.SIGPIPE {
@@ -409,10 +377,10 @@ WAIT:
 
 	// Attempt a graceful leave
 	gracefulCh := make(chan struct{})
-	c.Ui.Output("Gracefully shutting down agent...")
+	c.logger.Printf("[INFO] Gracefully shutting down agent...")
 	go func() {
 		if err := c.agent.Leave(); err != nil {
-			c.Ui.Error(fmt.Sprintf("Error: %s", err))
+			c.logger.Printf("[ERR] %s", err)
 			return
 		}
 		close(gracefulCh)
@@ -431,10 +399,10 @@ WAIT:
 
 // handleReload is invoked when we should reload our configs, e.g. SIGHUP
 func (c *Command) handleReload(config *Config) *Config {
-	c.Ui.Output("Reloading configuration...")
+	c.logger.Printf("[INFO] Reloading configuration...")
 	newConf := c.readConfig()
 	if newConf == nil {
-		c.Ui.Error(fmt.Sprintf("Failed to reload configs"))
+		c.logger.Printf("[ERR] Failed to reload configs")
 		return config
 	}
 
@@ -443,9 +411,8 @@ func (c *Command) handleReload(config *Config) *Config {
 	if ValidateLevelFilter(minLevel, c.logFilter) {
 		c.logFilter.SetMinLevel(minLevel)
 	} else {
-		c.Ui.Error(fmt.Sprintf(
-			"Invalid log level: %s. Valid log levels are: %v",
-			minLevel, c.logFilter.Levels))
+		c.logger.Printf("[INFO] Invalid log level: %s. Valid log levels are: %v",
+			minLevel, c.logFilter.Levels)
 
 		// Keep the current log level
 		newConf.LogLevel = config.LogLevel
@@ -454,7 +421,7 @@ func (c *Command) handleReload(config *Config) *Config {
 	if s := c.agent.Server(); s != nil {
 		_, err := convertServerConfig(newConf, c.logOutput)
 		if err != nil {
-			c.agent.logger.Printf("[ERR] agent: failed to convert server config: %v", err)
+			c.logger.Printf("[ERR] agent: failed to convert server config: %v", err)
 		}
 	}
 
@@ -528,13 +495,13 @@ func (c *Command) startupJoin(config *Config) error {
 		return nil
 	}
 
-	c.Ui.Output("Joining cluster...")
+	c.logger.Printf("[INFO] Joining cluster...")
 	n, err := c.agent.server.Join(config.Server.StartJoin)
 	if err != nil {
 		return err
 	}
 
-	c.Ui.Info(fmt.Sprintf("Join completed. Synced with %d initial agents", n))
+	c.logger.Printf("[INFO] Join completed. Synced with %d initial agents", n)
 	return nil
 }
 
@@ -545,25 +512,24 @@ func (c *Command) retryJoin(config *Config) {
 		return
 	}
 
-	logger := c.agent.logger
-	logger.Printf("[INFO] agent: Joining cluster...")
+	c.logger.Printf("[INFO] agent: Joining cluster...")
 
 	attempt := 0
 	for {
 		n, err := c.agent.server.Join(config.Server.RetryJoin)
 		if err == nil {
-			logger.Printf("[INFO] agent: Join completed. Synced with %d initial agents", n)
+			c.logger.Printf("[INFO] agent: Join completed. Synced with %d initial agents", n)
 			return
 		}
 
 		attempt++
 		if config.Server.RetryMaxAttempts > 0 && attempt > config.Server.RetryMaxAttempts {
-			logger.Printf("[ERR] agent: max join retry exhausted, exiting")
+			c.logger.Printf("[ERR] agent: max join retry exhausted, exiting")
 			close(c.retryJoinErrCh)
 			return
 		}
 
-		logger.Printf("[WARN] agent: Join failed: %v, retrying in %v", err,
+		c.logger.Printf("[WARN] agent: Join failed: %v, retrying in %v", err,
 			config.Server.RetryInterval)
 		time.Sleep(config.Server.retryInterval)
 	}
