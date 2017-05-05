@@ -61,11 +61,6 @@ func realMain() int {
 				ShutdownCh: make(chan struct{}),
 			}, nil
 		},
-		"alloc-status": func() (cli.Command, error) {
-			return &command.AllocStatusCommand{
-				Meta: meta,
-			}, nil
-		},
 		"agent-info": func() (cli.Command, error) {
 			return &command.AgentInfoCommand{
 				Meta: meta,
@@ -73,11 +68,6 @@ func realMain() int {
 		},
 		"client-config": func() (cli.Command, error) {
 			return &command.ClientConfigCommand{
-				Meta: meta,
-			}, nil
-		},
-		"eval-status": func() (cli.Command, error) {
-			return &command.EvalStatusCommand{
 				Meta: meta,
 			}, nil
 		},
@@ -96,17 +86,7 @@ func realMain() int {
 				Meta: meta,
 			}, nil
 		},
-		"server-force-leave": func() (cli.Command, error) {
-			return &command.ServerForceLeaveCommand{
-				Meta: meta,
-			}, nil
-		},
-		"server-join": func() (cli.Command, error) {
-			return &command.ServerJoinCommand{
-				Meta: meta,
-			}, nil
-		},
-		"server-members": func() (cli.Command, error) {
+		"members": func() (cli.Command, error) {
 			return &command.ServerMembersCommand{
 				Meta: meta,
 			}, nil

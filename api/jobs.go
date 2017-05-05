@@ -164,9 +164,9 @@ func (j *Jobs) Plan(job *Job, diff bool, q *WriteOptions) (*JobPlanResponse, *Wr
 	return &resp, wm, nil
 }
 
-func (j *Jobs) Summary(jobID string, q *QueryOptions) (*JobSummary, *QueryMeta, error) {
-	var resp JobSummary
-	qm, err := j.client.query("/v1/job/"+jobID+"/summary", &resp, q)
+func (j *Jobs) Summary(jobID string, q *QueryOptions) (*Job, *QueryMeta, error) {
+	var resp Job
+	qm, err := j.client.query("/v1/job/"+jobID, &resp, q)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -218,21 +218,6 @@ func (j *Job) Canonicalize() {
 	}
 }
 
-// JobSummary summarizes the store of the allocations of a job
-type JobSummary struct {
-	JobID   string
-	Summary map[string]TaskSummary
-
-	// Raft Indexes
-	CreateIndex uint64
-	ModifyIndex uint64
-}
-
-// Task summarizes the store of all the allocations of a particular Task
-type TaskSummary struct {
-	Status string
-}
-
 // JobListStub is used to return a subset of information about
 // jobs during list operations.
 type JobListStub struct {
@@ -241,7 +226,7 @@ type JobListStub struct {
 	Type              string
 	Status            string
 	StatusDescription string
-	JobSummary        *JobSummary
+	JobSummary        *Job
 	CreateIndex       uint64
 	ModifyIndex       uint64
 	JobModifyIndex    uint64

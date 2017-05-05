@@ -95,30 +95,6 @@ func (a *Agent) Region() (string, error) {
 	return a.region, err
 }
 
-// Join is used to instruct a server node to join another server
-// via the gossip protocol. Multiple addresses may be specified.
-// We attempt to join all of the hosts in the list. Returns the
-// number of nodes successfully joined and any error. If one or
-// more nodes have a successful result, no error is returned.
-func (a *Agent) Join(addrs ...string) (int, error) {
-	// Accumulate the addresses
-	v := url.Values{}
-	for _, addr := range addrs {
-		v.Add("address", addr)
-	}
-
-	// Send the join request
-	var resp joinResponse
-	_, err := a.client.write("/v1/agent/join?"+v.Encode(), nil, &resp, nil)
-	if err != nil {
-		return 0, fmt.Errorf("failed joining: %s", err)
-	}
-	if resp.Error != "" {
-		return 0, fmt.Errorf("failed joining: %s", resp.Error)
-	}
-	return resp.NumJoined, nil
-}
-
 // Members is used to query all of the known server members
 func (a *Agent) Members() (*ServerMembers, error) {
 	var resp *ServerMembers
@@ -129,12 +105,6 @@ func (a *Agent) Members() (*ServerMembers, error) {
 		return nil, err
 	}
 	return resp, nil
-}
-
-// ForceLeave is used to eject an existing node from the cluster.
-func (a *Agent) ForceLeave(node string) error {
-	_, err := a.client.write("/v1/agent/force-leave?node="+node, nil, nil, nil)
-	return err
 }
 
 // Servers is used to query the list of servers on a client node.

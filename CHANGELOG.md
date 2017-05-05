@@ -1,3 +1,12 @@
+## v0.3.0 [2017-05-5]
+
+### Features 
+- 
+
+### Bugfixes
+
+- [#UDUP-5](http://10.186.18.21/universe/udup/issues/5): rpm打包应支持relocation.
+
 ## v0.2.0 [2017-03-29]
 
 ### Features 

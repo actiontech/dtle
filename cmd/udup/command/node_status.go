@@ -82,8 +82,6 @@ func (c *NodeStatusCommand) Run(args []string) int {
 	flags.BoolVar(&c.list_allocs, "allocs", false, "")
 	flags.BoolVar(&c.self, "self", false, "")
 	flags.BoolVar(&c.stats, "stats", false, "")
-	flags.BoolVar(&c.json, "json", false, "")
-	flags.StringVar(&c.tmpl, "t", "", "")
 
 	if err := flags.Parse(args); err != nil {
 		return 1
@@ -111,17 +109,6 @@ func (c *NodeStatusCommand) Run(args []string) int {
 
 	// Use list mode if no node name was provided
 	if len(args) == 0 && !c.self {
-		// If output format is specified, format and output the node data list
-		var format string
-		if c.json && len(c.tmpl) > 0 {
-			c.Ui.Error("Both -json and -t are not allowed")
-			return 1
-		} else if c.json {
-			format = "json"
-		} else if len(c.tmpl) > 0 {
-			format = "template"
-		}
-
 		// Query the node info
 		nodes, _, err := client.Nodes().List(nil)
 		if err != nil {
@@ -131,22 +118,6 @@ func (c *NodeStatusCommand) Run(args []string) int {
 
 		// Return nothing if no nodes found
 		if len(nodes) == 0 {
-			return 0
-		}
-
-		if len(format) > 0 {
-			f, err := DataFormat(format, c.tmpl)
-			if err != nil {
-				c.Ui.Error(fmt.Sprintf("Error getting formatter: %s", err))
-				return 1
-			}
-
-			out, err := f.TransformData(nodes)
-			if err != nil {
-				c.Ui.Error(fmt.Sprintf("Error formatting the data: %s", err))
-				return 1
-			}
-			c.Ui.Output(out)
 			return 0
 		}
 
@@ -237,32 +208,6 @@ func (c *NodeStatusCommand) Run(args []string) int {
 	if err != nil {
 		c.Ui.Error(fmt.Sprintf("Error querying node info: %s", err))
 		return 1
-	}
-
-	// If output format is specified, format and output the data
-	var format string
-	if c.json && len(c.tmpl) > 0 {
-		c.Ui.Error("Both -json and -t are not allowed")
-		return 1
-	} else if c.json {
-		format = "json"
-	} else if len(c.tmpl) > 0 {
-		format = "template"
-	}
-	if len(format) > 0 {
-		f, err := DataFormat(format, c.tmpl)
-		if err != nil {
-			c.Ui.Error(fmt.Sprintf("Error getting formatter: %s", err))
-			return 1
-		}
-
-		out, err := f.TransformData(node)
-		if err != nil {
-			c.Ui.Error(fmt.Sprintf("Error formatting the data: %s", err))
-			return 1
-		}
-		c.Ui.Output(out)
-		return 0
 	}
 
 	return c.formatNode(client, node)

@@ -13,7 +13,6 @@ import (
 	"github.com/ugorji/go/codec"
 
 	"udup/internal/models"
-	"udup/internal/server/scheduler"
 	"udup/internal/server/store"
 )
 
@@ -531,56 +530,6 @@ func (n *udupFSM) Restore(old io.ReadCloser) error {
 	// blocking queries won't see any changes and need to be woken up.
 	stateOld.Abandon()
 
-	return nil
-}
-
-// reconcileSummaries re-calculates the queued allocations for every job that we
-// created a Job Summary during the snap shot restore
-func (n *udupFSM) reconcileQueuedAllocations(index uint64) error {
-	// Get all the jobs
-	ws := memdb.NewWatchSet()
-	iter, err := n.state.Jobs(ws)
-	if err != nil {
-		return err
-	}
-
-	snap, err := n.state.Snapshot()
-	if err != nil {
-		return fmt.Errorf("unable to create snapshot: %v", err)
-	}
-
-	// Invoking the scheduler for every job so that we can populate the number
-	// of queued allocations for every job
-	for {
-		rawJob := iter.Next()
-		if rawJob == nil {
-			break
-		}
-		job := rawJob.(*models.Job)
-		planner := &scheduler.Harness{
-			State: &snap.StateStore,
-		}
-		// Create an eval and mark it as requiring annotations and insert that as well
-		eval := &models.Evaluation{
-			ID:             models.GenerateUUID(),
-			Type:           job.Type,
-			TriggeredBy:    models.EvalTriggerJobRegister,
-			JobID:          job.ID,
-			JobModifyIndex: job.JobModifyIndex + 1,
-			Status:         models.EvalStatusPending,
-			AnnotatePlan:   true,
-		}
-
-		// Create the scheduler and run it
-		sched, err := scheduler.NewScheduler(eval.Type, n.logger, snap, planner)
-		if err != nil {
-			return err
-		}
-
-		if err := sched.Process(eval); err != nil {
-			return err
-		}
-	}
 	return nil
 }
 

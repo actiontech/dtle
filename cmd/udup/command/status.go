@@ -2,8 +2,8 @@ package command
 
 import (
 	"fmt"
-	"sort"
 	"strings"
+	"sort"
 
 	"udup/api"
 )
@@ -253,17 +253,12 @@ func (c *StatusCommand) outputJobSummary(client *api.Client, job *api.Job) error
 
 	c.Ui.Output(fmt.Sprintf("---summary：%v", summary))
 	c.Ui.Output(c.Colorize().Color("\n[bold]Summary[reset]"))
-	summaries := make([]string, len(summary.Summary)+1)
+	summaries := make([]string, len(summary.Tasks)+1)
 	summaries[0] = "Task|Status"
-	tasks := make([]string, 0, len(summary.Summary))
-	for task := range summary.Summary {
-		tasks = append(tasks, task)
-	}
-	sort.Strings(tasks)
-	for idx, task := range tasks {
-		ts := summary.Summary[task]
+
+	for idx, task := range summary.Tasks {
 		summaries[idx+1] = fmt.Sprintf("%s|%s",
-			task, ts.Status,
+			task, task.Status,
 		)
 	}
 	c.Ui.Output(formatList(summaries))
@@ -296,6 +291,15 @@ func (c *StatusCommand) outputFailedPlacements(failedEval *api.Evaluation) {
 		trunc := fmt.Sprintf("\nPlacement failures truncated. To see remainder run:\nserver eval-status %s", failedEval.ID)
 		c.Ui.Output(trunc)
 	}
+}
+
+func sortedTaskFromMetrics(groups map[string]*api.AllocationMetric) []string {
+	tgs := make([]string, 0, len(groups))
+	for tg, _ := range groups {
+		tgs = append(tgs, tg)
+	}
+	sort.Strings(tgs)
+	return tgs
 }
 
 // list general information about a list of jobs

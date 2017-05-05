@@ -203,7 +203,7 @@ func (s *StringFlag) Set(value string) error {
 }
 
 // setupLoggers is used to setup the logGate, logWriter, and our logOutput
-func (c *Command) setupLoggers(config *Config) (*Writer, *logWriter, io.Writer) {
+func (c *Command) setupLoggers(config *Config) (*Writer, io.Writer) {
 	// Setup logging. First create the gated log writer, which will
 	// store logs until we're ready to show them. Then create the level
 	// filter, filtering logs of the specified level.
@@ -218,23 +218,33 @@ func (c *Command) setupLoggers(config *Config) (*Writer, *logWriter, io.Writer) 
 		c.Ui.Error(fmt.Sprintf(
 			"Invalid log level: %s. Valid log levels are: %v",
 			c.logFilter.MinLevel, c.logFilter.Levels))
-		return nil, nil, nil
+		return nil, nil
 	}
 
-	// Check if syslog is enabled
-	var syslog io.Writer
-
-	// Create a log writer, and wrap a logOutput around it
-	logWriter := NewLogWriter(512)
-	var logOutput io.Writer
-	if syslog != nil {
-		logOutput = io.MultiWriter(c.logFilter, logWriter, syslog)
+	var oFile *os.File
+	if config.LogFile != "" {
+		if _, err := os.Stat(config.LogFile); os.IsNotExist(err) {
+			if oFile, err = os.Create(config.LogFile); err != nil {
+				c.Ui.Error(fmt.Sprintf(
+					"Unable to create %s (%s), using stderr",
+					config.LogFile, err))
+				oFile = os.Stderr
+			}
+		} else {
+			if oFile, err = os.OpenFile(config.LogFile, os.O_APPEND|os.O_WRONLY, os.ModeAppend); err != nil {
+				c.Ui.Error(fmt.Sprintf(
+					"Unable to append to %s (%s), using stderr",
+					config.LogFile, err))
+				oFile = os.Stderr
+			}
+		}
 	} else {
-		logOutput = io.MultiWriter(c.logFilter, logWriter)
+		oFile = os.Stderr
 	}
-	c.logOutput = logOutput
-	log.SetOutput(logOutput)
-	return logGate, logWriter, logOutput
+
+	c.logOutput = oFile
+	log.SetOutput(oFile)
+	return logGate, oFile
 }
 
 // setupAgent is used to start the agent and various interfaces
@@ -275,7 +285,7 @@ func (c *Command) Run(args []string) int {
 	}
 
 	// Setup the log outputs
-	logGate, _, logOutput := c.setupLoggers(config)
+	logGate, logOutput := c.setupLoggers(config)
 	if logGate == nil {
 		return 1
 	}

@@ -31,6 +31,9 @@ type Config struct {
 	// LogLevel is the level of the logs to putout
 	LogLevel string `mapstructure:"log_level"`
 
+	// Specify the log file name. The empty string means to log to stdout.
+	LogFile string `mapstructure:"log_file"`
+
 	// BindAddr is the address on which all of server's services will
 	// be bound. If not specified, this defaults to 127.0.0.1.
 	BindAddr string `mapstructure:"bind_addr"`
@@ -265,6 +268,9 @@ func (c *Config) Merge(b *Config) *Config {
 	}
 	if b.LogLevel != "" {
 		result.LogLevel = b.LogLevel
+	}
+	if b.LogFile != "" {
+		result.LogFile = b.LogFile
 	}
 	if b.BindAddr != "" {
 		result.BindAddr = b.BindAddr

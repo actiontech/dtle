@@ -17,7 +17,7 @@ type ServerMembersCommand struct {
 
 func (c *ServerMembersCommand) Help() string {
 	helpText := `
-Usage: server server-members [options]
+Usage: server members [options]
 
   Display a list of the known servers and their status. Only Udup servers are
   able to service this command.
@@ -26,7 +26,7 @@ General Options:
 
   ` + generalOptionsUsage() + `
 
-Server Members Options:
+Members Options:
 
   -detailed
     Show detailed information about each member. This dumps
@@ -43,7 +43,7 @@ func (c *ServerMembersCommand) Synopsis() string {
 func (c *ServerMembersCommand) Run(args []string) int {
 	var detailed bool
 
-	flags := c.Meta.FlagSet("server-members", FlagSetClient)
+	flags := c.Meta.FlagSet("members", FlagSetClient)
 	flags.Usage = func() { c.Ui.Output(c.Help()) }
 	flags.BoolVar(&detailed, "detailed", false, "Show detailed output")
 
