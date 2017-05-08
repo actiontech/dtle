@@ -22,13 +22,13 @@ func (c *Client) Agent() *Agent {
 	return &Agent{client: c}
 }
 
-// Self is used to query the /v1/agent/self endpoint and
+// Self is used to query the /v1/self endpoint and
 // returns information specific to the running agent.
 func (a *Agent) Self() (*AgentSelf, error) {
 	var out *AgentSelf
 
 	// Query the self endpoint on the agent
-	_, err := a.client.query("/v1/agent/self", &out, nil)
+	_, err := a.client.query("/v1/self", &out, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed querying self endpoint: %s", err)
 	}
@@ -100,7 +100,7 @@ func (a *Agent) Members() (*ServerMembers, error) {
 	var resp *ServerMembers
 
 	// Query the known members
-	_, err := a.client.query("/v1/agent/members", &resp, nil)
+	_, err := a.client.query("/v1/members", &resp, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -110,7 +110,7 @@ func (a *Agent) Members() (*ServerMembers, error) {
 // Servers is used to query the list of servers on a client node.
 func (a *Agent) Servers() ([]string, error) {
 	var resp []string
-	_, err := a.client.query("/v1/agent/servers", &resp, nil)
+	_, err := a.client.query("/v1/servers", &resp, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -125,7 +125,7 @@ func (a *Agent) SetServers(addrs []string) error {
 		v.Add("address", addr)
 	}
 
-	_, err := a.client.write("/v1/agent/servers?"+v.Encode(), nil, nil, nil)
+	_, err := a.client.write("/v1/servers?"+v.Encode(), nil, nil, nil)
 	return err
 }
 

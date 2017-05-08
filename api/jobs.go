@@ -183,6 +183,7 @@ type Job struct {
 	Tasks             []*Task
 	Status            *string
 	StatusDescription *string
+	EnforceIndex   	  bool
 	CreateIndex       *uint64
 	ModifyIndex       *uint64
 	JobModifyIndex    *uint64

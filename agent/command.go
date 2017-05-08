@@ -272,10 +272,10 @@ func (c *Command) Run(args []string) int {
 	}
 
 	// Initialize the metric
-	if err := c.setupMetric(config); err != nil {
+	/*if err := c.setupMetric(config); err != nil {
 		c.logger.Printf("[ERR] Error initializing metric: %s", err)
 		return 1
-	}
+	}*/
 
 	// Create the agent
 	if err := c.setupAgent(config, logOutput); err != nil {

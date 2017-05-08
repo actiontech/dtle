@@ -13,7 +13,7 @@ func (c *Client) Status() *Status {
 // Leader is used to query for the current cluster leader.
 func (s *Status) Leader() (string, error) {
 	var resp string
-	_, err := s.client.query("/v1/status/leader", &resp, nil)
+	_, err := s.client.query("/v1/leader", &resp, nil)
 	if err != nil {
 		return "", err
 	}
@@ -24,7 +24,7 @@ func (s *Status) Leader() (string, error) {
 func (s *Status) RegionLeader(region string) (string, error) {
 	var resp string
 	q := QueryOptions{Region: region}
-	_, err := s.client.query("/v1/status/leader", &resp, &q)
+	_, err := s.client.query("/v1/leader", &resp, &q)
 	if err != nil {
 		return "", err
 	}
@@ -35,7 +35,7 @@ func (s *Status) RegionLeader(region string) (string, error) {
 // in the cluster.
 func (s *Status) Peers() ([]string, error) {
 	var resp []string
-	_, err := s.client.query("/v1/status/peers", &resp, nil)
+	_, err := s.client.query("/v1/peers", &resp, nil)
 	if err != nil {
 		return nil, err
 	}

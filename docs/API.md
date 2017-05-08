@@ -11,7 +11,7 @@ Default API responses are unformatted JSON add the `pretty=true` param to format
 
 
 ### Version information
-*Version* : 0.1.0
+*Version* : 0.3.0
 
 
 ### URI scheme
@@ -100,7 +100,7 @@ Create or updates a new job.
 
 
 <a name="deletejob"></a>
-### DELETE /jobs/{job_name}
+### DELETE /jobs/{ID}
 
 #### Description
 Delete a job.
@@ -110,7 +110,7 @@ Delete a job.
 
 |Type|Name|Description|Schema|Default|
 |---|---|---|---|---|
-|**Path**|**job_name**  <br>*required*|The job that needs to be deleted.|string||
+|**Path**|**ID**  <br>*required*|The job that needs to be deleted.|string||
 
 
 #### Responses
@@ -126,7 +126,7 @@ Delete a job.
 
 
 <a name="showjobbyname"></a>
-### GET /jobs/{job_name}
+### GET /jobs/{ID}
 
 #### Description
 Show a job.
@@ -136,7 +136,7 @@ Show a job.
 
 |Type|Name|Description|Schema|Default|
 |---|---|---|---|---|
-|**Path**|**job_name**  <br>*required*|The job that needs to be fetched.|string||
+|**Path**|**ID**  <br>*required*|The job that needs to be fetched.|string||
 
 
 #### Responses
@@ -152,7 +152,7 @@ Show a job.
 
 
 <a name="runjob"></a>
-### POST /jobs/{job_name}/start
+### POST /jobs/{ID}/resume
 
 #### Description
 Executes a job.
@@ -162,7 +162,7 @@ Executes a job.
 
 |Type|Name|Description|Schema|Default|
 |---|---|---|---|---|
-|**Path**|**job_name**  <br>*required*|The job that needs to be run.|string||
+|**Path**|**ID**  <br>*required*|The job that needs to be run.|string||
 
 
 #### Responses
@@ -177,7 +177,7 @@ Executes a job.
 * jobs
 
 <a name="stopjob"></a>
-### POST /jobs/{job_name}/stop
+### POST /jobs/{ID}/pause
 
 #### Description
 Executes a job.
@@ -187,7 +187,7 @@ Executes a job.
 
 |Type|Name|Description|Schema|Default|
 |---|---|---|---|---|
-|**Path**|**job_name**  <br>*required*|The job that needs to be stop.|string||
+|**Path**|**ID**  <br>*required*|The job that needs to be stop.|string||
 
 
 #### Responses
@@ -285,38 +285,51 @@ A Job represents a scheduled task to execute.
 *Example*
 ``` json
 {
-    "name": "job1",
-    "failover": false,
-    "processors": {
-        "src": {
-            "node_name": "node2",
-            "replicate_do_db": [
-                {
-                    "db_name": "s1",
-                    "tb_name": "dbtest"
+    "ID": "1",
+    "Region": "global",
+    "Name": "example",
+    "Type": "synchronous",
+    "Datacenters": [
+        "dc1"
+    ],
+    "Tasks": [
+        {
+            "Type": "Src",
+            "NodeId": "ab8c6e62-98f5-438f-9f39-91fbf09f9882",
+            "Driver": "MySQL",
+            "Config": {
+                "Gtid": "",
+                "NatsAddr": "127.0.0.1:8193",
+                "ReplicateDoDb": [
+                    {
+                        "Schema": "",
+                        "Table": ""
+                    }
+                ],
+                "Dsn": {
+                    "Host": "192.168.99.100",
+                    "Port": 13307,
+                    "User": "root",
+                    "Password": "rootroot"
                 }
-            ],
-            "driver": "mysql",
-            "conn_cfg": {
-                "host": "192.168.99.100",
-                "port": 13307,
-                "user": "root",
-                "password": "rootroot"
             }
         },
-        "dest": {
-            "node_name": "node1",
-            "driver": "mysql",
-            "gtid": "",
-            "worker_count": 1,
-            "conn_cfg": {
-                "host": "192.168.99.100",
-                "port": 13308,
-                "user": "root",
-                "password": "rootroot"
+        {
+            "Type": "Dest",
+            "NodeId": "3ae42225-d03d-44b2-8739-c7aae3e9eff1",
+            "Driver": "MySQL",
+            "Config": {
+                "Gtid": "",
+                "NatsAddr": "127.0.0.1:8193",
+                "Dsn": {
+                    "Host": "192.168.99.100",
+                    "Port": 13308,
+                    "User": "root",
+                    "Password": "rootroot"
+                }
             }
         }
-    }
+    ]
 }
 ```
 

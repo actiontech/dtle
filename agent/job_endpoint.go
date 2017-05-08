@@ -47,72 +47,15 @@ func (s *HTTPServer) JobSpecificRequest(resp http.ResponseWriter, req *http.Requ
 	case strings.HasSuffix(path, "/pause"):
 		jobName := strings.TrimSuffix(path, "/pause")
 		return s.jobPauseRequest(resp, req, jobName)
-	case strings.HasSuffix(path, "/evaluate"):
-		jobName := strings.TrimSuffix(path, "/evaluate")
-		return s.jobForceEvaluate(resp, req, jobName)
 	case strings.HasSuffix(path, "/allocations"):
 		jobName := strings.TrimSuffix(path, "/allocations")
 		return s.jobAllocations(resp, req, jobName)
 	case strings.HasSuffix(path, "/evaluations"):
 		jobName := strings.TrimSuffix(path, "/evaluations")
 		return s.jobEvaluations(resp, req, jobName)
-	case strings.HasSuffix(path, "/plan"):
-		jobName := strings.TrimSuffix(path, "/plan")
-		return s.jobPlan(resp, req, jobName)
 	default:
 		return s.jobCRUD(resp, req, path)
 	}
-}
-
-func (s *HTTPServer) jobForceEvaluate(resp http.ResponseWriter, req *http.Request,
-	jobName string) (interface{}, error) {
-	if req.Method != "PUT" && req.Method != "POST" {
-		return nil, CodedError(405, ErrInvalidMethod)
-	}
-	args := models.JobEvaluateRequest{
-		JobID: jobName,
-	}
-	s.parseRegion(req, &args.Region)
-
-	var out models.JobRegisterResponse
-	if err := s.agent.RPC("Job.Evaluate", &args, &out); err != nil {
-		return nil, err
-	}
-	setIndex(resp, out.Index)
-	return out, nil
-}
-
-func (s *HTTPServer) jobPlan(resp http.ResponseWriter, req *http.Request,
-	jobName string) (interface{}, error) {
-	if req.Method != "PUT" && req.Method != "POST" {
-		return nil, CodedError(405, ErrInvalidMethod)
-	}
-
-	var args api.JobPlanRequest
-	if err := decodeBody(req, &args); err != nil {
-		return nil, CodedError(400, err.Error())
-	}
-	if args.Job == nil {
-		return nil, CodedError(400, "Job must be specified")
-	}
-	if args.Job.Name == nil {
-		return nil, CodedError(400, "Job must have a valid Name")
-	}
-	s.parseRegion(req, &args.Region)
-
-	sJob := ApiJobToStructJob(args.Job)
-	planReq := models.JobPlanRequest{
-		Job: sJob,
-		WriteRequest: models.WriteRequest{
-			Region: args.WriteRequest.Region,
-		},
-	}
-	var out models.JobPlanResponse
-	if err := s.agent.RPC("Job.Plan", &planReq, &out); err != nil {
-		return nil, err
-	}
-	setIndex(resp, out.Index)
-	return out, nil
 }
 
 func (s *HTTPServer) jobAllocations(resp http.ResponseWriter, req *http.Request,
@@ -206,30 +149,27 @@ func (s *HTTPServer) jobQuery(resp http.ResponseWriter, req *http.Request,
 
 func (s *HTTPServer) jobUpdate(resp http.ResponseWriter, req *http.Request,
 	jobName string) (interface{}, error) {
-	var args api.JobRegisterRequest
+	var args *api.Job
 	if err := decodeBody(req, &args); err != nil {
 		return nil, CodedError(400, err.Error())
 	}
-	if args.Job == nil {
-		return nil, CodedError(400, "Job must be specified")
-	}
 
-	if args.Job.Name == nil {
+	if args.Name == nil {
 		return nil, CodedError(400, "Job Name hasn't been provided")
 	}
-	s.parseRegion(req, &args.Region)
+	s.parseRegion(req, args.Region)
 
-	sJob := ApiJobToStructJob(args.Job)
+	sJob := ApiJobToStructJob(args)
 
 	regReq := models.JobRegisterRequest{
 		Job:            sJob,
 		EnforceIndex:   args.EnforceIndex,
-		JobModifyIndex: args.JobModifyIndex,
+		JobModifyIndex: *args.JobModifyIndex,
 		WriteRequest: models.WriteRequest{
-			Region: args.WriteRequest.Region,
+			Region: *args.Region,
 		},
 	}
-	var out models.JobRegisterResponse
+	var out models.JobResponse
 	if err := s.agent.RPC("Job.Register", &regReq, &out); err != nil {
 		return nil, err
 	}
@@ -244,7 +184,7 @@ func (s *HTTPServer) jobDelete(resp http.ResponseWriter, req *http.Request,
 	}
 	s.parseRegion(req, &args.Region)
 
-	var out models.JobDeregisterResponse
+	var out models.JobResponse
 	if err := s.agent.RPC("Job.Deregister", &args, &out); err != nil {
 		return nil, err
 	}
@@ -259,7 +199,7 @@ func (s *HTTPServer) jobResumeRequest(resp http.ResponseWriter, req *http.Reques
 	}
 	s.parseRegion(req, &args.Region)
 
-	var out models.JobUpdateResponse
+	var out models.JobResponse
 	if err := s.agent.RPC("Job.UpdateStatus", &args, &out); err != nil {
 		return nil, err
 	}
@@ -274,7 +214,7 @@ func (s *HTTPServer) jobPauseRequest(resp http.ResponseWriter, req *http.Request
 	}
 	s.parseRegion(req, &args.Region)
 
-	var out models.JobUpdateResponse
+	var out models.JobResponse
 	if err := s.agent.RPC("Job.UpdateStatus", &args, &out); err != nil {
 		return nil, err
 	}

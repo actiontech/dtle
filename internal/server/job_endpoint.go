@@ -26,7 +26,7 @@ type Job struct {
 }
 
 // Register is used to upsert a job for scheduling
-func (j *Job) Register(args *models.JobRegisterRequest, reply *models.JobRegisterResponse) error {
+func (j *Job) Register(args *models.JobRegisterRequest, reply *models.JobResponse) error {
 	if done, err := j.srv.forward("Job.Register", args, args, reply); done {
 		return err
 	}
@@ -34,6 +34,7 @@ func (j *Job) Register(args *models.JobRegisterRequest, reply *models.JobRegiste
 
 	// Validate the arguments
 	if args.Job == nil {
+		reply.Success = false
 		return fmt.Errorf("missing job for registration")
 	}
 
@@ -42,6 +43,7 @@ func (j *Job) Register(args *models.JobRegisterRequest, reply *models.JobRegiste
 
 	// Validate the job.
 	if err := validateJob(args.Job); err != nil {
+		reply.Success = false
 		return err
 	}
 
@@ -49,22 +51,27 @@ func (j *Job) Register(args *models.JobRegisterRequest, reply *models.JobRegiste
 		// Lookup the job
 		snap, err := j.srv.fsm.State().Snapshot()
 		if err != nil {
+			reply.Success = false
 			return err
 		}
 		ws := memdb.NewWatchSet()
 		job, err := snap.JobByID(ws, args.Job.ID)
 		if err != nil {
+			reply.Success = false
 			return err
 		}
 		jmi := args.JobModifyIndex
 		if job != nil {
 			if jmi == 0 {
+				reply.Success = false
 				return fmt.Errorf("%s 0: job already exists", RegisterEnforceIndexErrPrefix)
 			} else if jmi != job.JobModifyIndex {
+				reply.Success = false
 				return fmt.Errorf("%s %d: job exists with conflicting job modify index: %d",
 					RegisterEnforceIndexErrPrefix, jmi, job.JobModifyIndex)
 			}
 		} else if jmi != 0 {
+			reply.Success = false
 			return fmt.Errorf("%s %d: job does not exist", RegisterEnforceIndexErrPrefix, jmi)
 		}
 	}
@@ -73,11 +80,9 @@ func (j *Job) Register(args *models.JobRegisterRequest, reply *models.JobRegiste
 	_, index, err := j.srv.raftApply(models.JobRegisterRequestType, args)
 	if err != nil {
 		j.srv.logger.Printf("[ERR] server.job: Register failed: %v", err)
+		reply.Success = false
 		return err
 	}
-
-	// Populate the reply with job information
-	reply.JobModifyIndex = index
 
 	// Create a new evaluation
 	eval := &models.Evaluation{
@@ -99,18 +104,18 @@ func (j *Job) Register(args *models.JobRegisterRequest, reply *models.JobRegiste
 	_, evalIndex, err := j.srv.raftApply(models.EvalUpdateRequestType, update)
 	if err != nil {
 		j.srv.logger.Printf("[ERR] server.job: Eval create failed: %v", err)
+		reply.Success = false
 		return err
 	}
 
 	// Populate the reply with eval information
-	reply.EvalID = eval.ID
-	reply.EvalCreateIndex = evalIndex
+	reply.Success = true
 	reply.Index = evalIndex
 	return nil
 }
 
 // UpdateStatus is used to update the status of a client node
-func (j *Job) UpdateStatus(args *models.JobUpdateStatusRequest, reply *models.JobUpdateResponse) error {
+func (j *Job) UpdateStatus(args *models.JobUpdateStatusRequest, reply *models.JobResponse) error {
 	if done, err := j.srv.forward("Job.UpdateStatus", args, args, reply); done {
 		return err
 	}
@@ -118,24 +123,29 @@ func (j *Job) UpdateStatus(args *models.JobUpdateStatusRequest, reply *models.Jo
 
 	// Verify the arguments
 	if args.JobID == "" {
+		reply.Success = false
 		return fmt.Errorf("missing job ID for client status update")
 	}
 	if !models.ValidJobStatus(args.Status) {
+		reply.Success = false
 		return fmt.Errorf("invalid status for job")
 	}
 
 	// Look for the job
 	snap, err := j.srv.fsm.State().Snapshot()
 	if err != nil {
+		reply.Success = false
 		return err
 	}
 
 	ws := memdb.NewWatchSet()
 	job, err := snap.JobByID(ws, args.JobID)
 	if err != nil {
+		reply.Success = false
 		return err
 	}
 	if job == nil {
+		reply.Success = false
 		return fmt.Errorf("job not found")
 	}
 	// Commit this update via Raft
@@ -143,9 +153,9 @@ func (j *Job) UpdateStatus(args *models.JobUpdateStatusRequest, reply *models.Jo
 		_, index, err := j.srv.raftApply(models.JobUpdateStatusRequestType, args)
 		if err != nil {
 			j.srv.logger.Printf("[ERR] server.job: status update failed: %v", err)
+			reply.Success = false
 			return err
 		}
-		reply.JobModifyIndex = index
 		var triggeredBy string
 		if args.Status == models.JobStatusPause {
 			triggeredBy = models.EvalTriggerJobPause
@@ -172,12 +182,12 @@ func (j *Job) UpdateStatus(args *models.JobUpdateStatusRequest, reply *models.Jo
 		_, evalIndex, err := j.srv.raftApply(models.EvalUpdateRequestType, update)
 		if err != nil {
 			j.srv.logger.Printf("[ERR] server.job: Eval create failed: %v", err)
+			reply.Success = false
 			return err
 		}
 
 		// Populate the reply with eval information
-		reply.EvalID = eval.ID
-		reply.EvalCreateIndex = evalIndex
+		reply.Success = true
 		reply.Index = evalIndex
 	}
 
@@ -204,7 +214,7 @@ func (j *Job) Validate(args *models.JobValidateRequest,
 }
 
 // Evaluate is used to force a job for re-evaluation
-func (j *Job) Evaluate(args *models.JobEvaluateRequest, reply *models.JobRegisterResponse) error {
+func (j *Job) Evaluate(args *models.JobEvaluateRequest, reply *models.JobResponse) error {
 	if done, err := j.srv.forward("Job.Evaluate", args, args, reply); done {
 		return err
 	}
@@ -212,20 +222,24 @@ func (j *Job) Evaluate(args *models.JobEvaluateRequest, reply *models.JobRegiste
 
 	// Validate the arguments
 	if args.JobID == "" {
+		reply.Success = false
 		return fmt.Errorf("missing job ID for evaluation")
 	}
 
 	// Lookup the job
 	snap, err := j.srv.fsm.State().Snapshot()
 	if err != nil {
+		reply.Success = false
 		return err
 	}
 	ws := memdb.NewWatchSet()
 	job, err := snap.JobByID(ws, args.JobID)
 	if err != nil {
+		reply.Success = false
 		return err
 	}
 	if job == nil {
+		reply.Success = false
 		return fmt.Errorf("job not found")
 	}
 
@@ -247,19 +261,18 @@ func (j *Job) Evaluate(args *models.JobEvaluateRequest, reply *models.JobRegiste
 	_, evalIndex, err := j.srv.raftApply(models.EvalUpdateRequestType, update)
 	if err != nil {
 		j.srv.logger.Printf("[ERR] server.job: Eval create failed: %v", err)
+		reply.Success = false
 		return err
 	}
 
 	// Setup the reply
-	reply.EvalID = eval.ID
-	reply.EvalCreateIndex = evalIndex
-	reply.JobModifyIndex = job.ModifyIndex
+	reply.Success = true
 	reply.Index = evalIndex
 	return nil
 }
 
 // Deregister is used to remove a job the cluster.
-func (j *Job) Deregister(args *models.JobDeregisterRequest, reply *models.JobDeregisterResponse) error {
+func (j *Job) Deregister(args *models.JobDeregisterRequest, reply *models.JobResponse) error {
 	if done, err := j.srv.forward("Job.Deregister", args, args, reply); done {
 		return err
 	}
@@ -267,6 +280,7 @@ func (j *Job) Deregister(args *models.JobDeregisterRequest, reply *models.JobDer
 
 	// Validate the arguments
 	if args.JobID == "" {
+		reply.Success = false
 		return fmt.Errorf("missing job ID for evaluation")
 	}
 
@@ -274,11 +288,9 @@ func (j *Job) Deregister(args *models.JobDeregisterRequest, reply *models.JobDer
 	_, index, err := j.srv.raftApply(models.JobDeregisterRequestType, args)
 	if err != nil {
 		j.srv.logger.Printf("[ERR] server.job: Deregister failed: %v", err)
+		reply.Success = false
 		return err
 	}
-
-	// Populate the reply with job information
-	reply.JobModifyIndex = index
 
 	// Create a new evaluation
 	// XXX: The job priority / type is strange for this, since it's not a high
@@ -301,12 +313,12 @@ func (j *Job) Deregister(args *models.JobDeregisterRequest, reply *models.JobDer
 	_, evalIndex, err := j.srv.raftApply(models.EvalUpdateRequestType, update)
 	if err != nil {
 		j.srv.logger.Printf("[ERR] server.job: Eval create failed: %v", err)
+		reply.Success = false
 		return err
 	}
 
 	// Populate the reply with eval information
-	reply.EvalID = eval.ID
-	reply.EvalCreateIndex = evalIndex
+	reply.Success = true
 	reply.Index = evalIndex
 	return nil
 }

@@ -4,37 +4,6 @@ import (
 	"time"
 )
 
-type TableStats struct {
-	InsertCount int64
-	UpdateCount int64
-	DelCount    int64
-}
-
-type DelayCount struct {
-	Num  uint64
-	Time uint64
-}
-
-type ThroughputStat struct {
-	Num  uint64
-	Time uint64
-}
-
-type Stats struct {
-	TableStats     *TableStats
-	DelayCount     *DelayCount
-	ThroughputStat *ThroughputStat
-}
-
-type TaskStatistics struct {
-	Stats     *Stats
-	Timestamp int64
-}
-
-type AllocStatistics struct {
-	Tasks map[string]*TaskStatistics
-}
-
 // Task is a single process in a task.
 type Task struct {
 	Type   string
@@ -83,6 +52,38 @@ const (
 	TaskRestartSignal    = "Restart Signaled"
 	TaskLeaderDead       = "Leader Task Dead"
 )
+
+
+type TableStats struct {
+	InsertCount int64
+	UpdateCount int64
+	DelCount    int64
+}
+
+type DelayCount struct {
+	Num  uint64
+	Time uint64
+}
+
+type ThroughputStat struct {
+	Num  uint64
+	Time uint64
+}
+
+type Stats struct {
+	TableStats     *TableStats
+	DelayCount     *DelayCount
+	ThroughputStat *ThroughputStat
+}
+
+type TaskStatistics struct {
+	Stats     *Stats
+	Timestamp int64
+}
+
+type AllocStatistics struct {
+	Tasks map[string]*TaskStatistics
+}
 
 // TaskEvent is an event that effects the state of a task and contains meta-data
 // appropriate to the events type.

@@ -73,6 +73,8 @@ type Job struct {
 	// StatusDescription is meant to provide more human useful information
 	StatusDescription string
 
+	EnforceIndex   	  bool
+
 	// Raft Indexes
 	CreateIndex    uint64
 	ModifyIndex    uint64
@@ -202,19 +204,8 @@ type JobListStub struct {
 	JobModifyIndex    uint64
 }
 
-// JobRegisterResponse is used to respond to a job registration
-type JobRegisterResponse struct {
-	EvalID          string
-	EvalCreateIndex uint64
-	JobModifyIndex  uint64
-	QueryMeta
-}
-
-// JobDeregisterResponse is used to respond to a job deregistration
-type JobDeregisterResponse struct {
-	EvalID          string
-	EvalCreateIndex uint64
-	JobModifyIndex  uint64
+type JobResponse struct {
+	Success	bool
 	QueryMeta
 }
 
@@ -275,14 +266,6 @@ type JobUpdateRequest struct {
 	JobUpdates []*TaskUpdate
 
 	WriteRequest
-}
-
-// JobUpdateResponse is used to respond to a job update
-type JobUpdateResponse struct {
-	EvalID          string
-	EvalCreateIndex uint64
-	JobModifyIndex  uint64
-	QueryMeta
 }
 
 // JobDeregisterRequest is used for Job.Deregister endpoint
