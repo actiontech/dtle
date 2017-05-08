@@ -19,6 +19,7 @@ import (
 	"github.com/hashicorp/raft"
 	"github.com/hashicorp/raft-boltdb"
 	"github.com/hashicorp/serf/serf"
+	"github.com/docker/leadership"
 
 	"udup/internal"
 	uconf "udup/internal/config"
@@ -69,6 +70,7 @@ type Server struct {
 	// fsm is the store machine used with Raft
 	fsm   *udupFSM
 	store *store.Store
+	candidate *leadership.Candidate
 
 	// rpcListener is used to listen for incoming connections
 	rpcListener  net.Listener
@@ -173,12 +175,17 @@ func NewServer(config *uconf.ServerConfig, logger *log.Logger) (*Server, error) 
 
 	if s.config.ConsulConfig.Addr != "" {
 		// Initialize the Store server
-		s.store, err = store.NewConsulStore([]string{s.config.ConsulConfig.Addr})
+		s.store, err = store.NewConsulStore([]string{s.config.ConsulConfig.Addr},s.logger)
 		if err != nil {
 			s.Shutdown()
 			s.logger.Printf("[ERR] server: failed to setup Store: %s", err)
 			return nil, fmt.Errorf("Failed to start Store: %v", err)
 		}
+
+		s.candidate = leadership.NewCandidate(s.store.Client, s.store.LeaderKey(), s.config.NodeName, defaultLeaderTTL)
+		electedCh, _ := s.candidate.RunForElection()
+		// Setup the leader channel
+		s.leaderCh = electedCh
 	} else {
 		// Initialize the Raft server
 		if err := s.setupRaft(); err != nil {
@@ -628,12 +635,7 @@ func (s *Server) IsLeader() bool {
 	if s.raft != nil {
 		return s.raft.State() == raft.Leader
 	} else {
-		res, err := s.store.Client.Get(s.store.LeaderKey())
-		if err != nil {
-			s.logger.Printf("[ERR] be sure you have an existing key-value store is running and is reachable.")
-			return false
-		}
-		return s.config.NodeName == string(res.Value)
+		return s.candidate.IsLeader()
 	}
 }
 
