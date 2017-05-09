@@ -3,15 +3,18 @@
 BIN_DIR=/usr/bin
 LOG_DIR=/var/log/udup
 SCRIPT_DIR=/usr/lib/udup/scripts
+CONFIG_DIR=/etc/udup
 LOGROTATE_DIR=/etc/logrotate.d
 
 function install_init {
-#%installpath
+    #%installpath
     cp -f $RPM_INSTALL_PREFIX$SCRIPT_DIR/init.sh /etc/init.d/udup
     chmod +x /etc/init.d/udup
 }
 
 function install_systemd {
+    sudo sed -i 's|'ExecStart=$BIN_DIR'|'ExecStart=$RPM_INSTALL_PREFIX$BIN_DIR'|g' $RPM_INSTALL_PREFIX$SCRIPT_DIR/udup.service
+    sudo sed -i 's|'-config\ $CONFIG_DIR'|'-config\ $RPM_INSTALL_PREFIX$CONFIG_DIR'|g' $RPM_INSTALL_PREFIX$SCRIPT_DIR/udup.service
     cp -f $RPM_INSTALL_PREFIX$SCRIPT_DIR/udup.service /lib/systemd/system/udup.service
     systemctl enable udup || true
     systemctl daemon-reload || true
@@ -46,11 +49,6 @@ fi
 # Add defaults file, if it doesn't exist
 if [[ ! -f /etc/default/udup ]]; then
     touch /etc/default/udup
-fi
-
-# Add .d configuration directory
-if [[ ! -d /etc/udup/udup.d ]]; then
-    mkdir -p /etc/udup/udup.d
 fi
 
 # Distribution-specific logic
