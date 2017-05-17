@@ -73,7 +73,7 @@ type Job struct {
 	// StatusDescription is meant to provide more human useful information
 	StatusDescription string
 
-	EnforceIndex   	  bool
+	EnforceIndex bool
 
 	// Raft Indexes
 	CreateIndex    uint64
@@ -205,7 +205,7 @@ type JobListStub struct {
 }
 
 type JobResponse struct {
-	Success	bool
+	Success bool
 	QueryMeta
 }
 

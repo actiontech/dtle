@@ -182,15 +182,20 @@ func newEventChans(count int) []chan usql.StreamEvent {
 
 func (a *Applier) applyTx(db *gosql.DB, transaction *ubinlog.Transaction_t) error {
 	defer func() {
-		_, err := usql.ExecNoPrepare(db, `SET GTID_NEXT='AUTOMATIC'`)
+		_, err := usql.ExecNoPrepare(db, `COMMIT;SET GTID_NEXT='AUTOMATIC'`)
 		if err != nil {
 			a.waitCh <- err
 		}
 	}()
 
+	_, err := usql.ExecNoPrepare(db, fmt.Sprintf(`SET GTID_NEXT='%s:%d'`, transaction.SID, transaction.GNO))
+	if err != nil {
+		return err
+	}
+
 	for _, query := range transaction.Query {
 		if query == "" {
-			break
+			continue
 		}
 
 		_, err := usql.ExecNoPrepare(db, query)
@@ -202,7 +207,7 @@ func (a *Applier) applyTx(db *gosql.DB, transaction *ubinlog.Transaction_t) erro
 				a.logger.Printf("[WARN] mysql.applier: ignore ddl error: %v", err)
 			}
 		}
-		a.addCount(ubinlog.Ddl)
+		//a.addCount(ubinlog.Ddl)
 	}
 
 	return nil
@@ -227,20 +232,13 @@ func (a *Applier) startApplierWorker(i int, db *gosql.DB) {
 				}
 			}
 
-			_, err := usql.ExecNoPrepare(db, fmt.Sprintf(`SET GTID_NEXT='%s:%d'`, tx.SID, tx.GNO))
-			if err != nil {
-				a.waitCh <- err
-				break
-			}
-
-			err = a.applyTx(db, tx)
+			err := a.applyTx(db, tx)
 			if err != nil {
 				a.waitCh <- err
 				break
 			}
 
 			gtid = fmt.Sprintf("%s:1-%d", tx.SID, tx.GNO)
-			//a.gtidCh <- fmt.Sprintf("%s:1-%d", tx.SID, tx.GNO)
 		}
 	}
 }

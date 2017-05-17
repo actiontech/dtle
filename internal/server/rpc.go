@@ -52,7 +52,7 @@ const (
 	// the requesting goroutine forever.
 	enqueueLimit = 30 * time.Second
 
-	defaultLeaderTTL     = 20 * time.Second
+	defaultLeaderTTL = 20 * time.Second
 )
 
 // NewClientCodec returns a new rpc.ClientCodec to be used to make RPC calls to
@@ -193,7 +193,6 @@ CHECK_LEADER:
 		err := s.forwardLeader(remoteServer, method, args, reply)
 		return true, err
 	}
-
 
 	// Gate the request until there is a leader
 	if firstCheck.IsZero() {

@@ -53,7 +53,6 @@ const (
 	TaskLeaderDead       = "Leader Task Dead"
 )
 
-
 type TableStats struct {
 	InsertCount int64
 	UpdateCount int64

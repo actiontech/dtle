@@ -16,10 +16,10 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/docker/leadership"
 	"github.com/hashicorp/raft"
 	"github.com/hashicorp/raft-boltdb"
 	"github.com/hashicorp/serf/serf"
-	"github.com/docker/leadership"
 
 	"udup/internal"
 	uconf "udup/internal/config"
@@ -68,8 +68,8 @@ type Server struct {
 	raftTransport *raft.NetworkTransport
 
 	// fsm is the store machine used with Raft
-	fsm   *udupFSM
-	store *store.Store
+	fsm       *udupFSM
+	store     *store.Store
 	candidate *leadership.Candidate
 
 	// rpcListener is used to listen for incoming connections
@@ -175,7 +175,7 @@ func NewServer(config *uconf.ServerConfig, logger *log.Logger) (*Server, error) 
 
 	if s.config.ConsulConfig.Addr != "" {
 		// Initialize the Store server
-		s.store, err = store.NewConsulStore([]string{s.config.ConsulConfig.Addr},s.logger)
+		s.store, err = store.NewConsulStore([]string{s.config.ConsulConfig.Addr}, s.logger)
 		if err != nil {
 			s.Shutdown()
 			s.logger.Printf("[ERR] server: failed to setup Store: %s", err)

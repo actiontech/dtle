@@ -252,6 +252,7 @@ func (e *Extractor) ID() string {
 // initiateStreaming begins treaming of binary log events and registers listeners for such events
 func (e *Extractor) initiateTxBuilder() error {
 	e.tb = &ubinlog.TxBuilder{
+		Logger:  e.logger,
 		Cfg:     e.cfg,
 		WaitCh:  e.waitCh,
 		EvtChan: make(chan *ubinlog.BinlogEvent, EventsChannelBufferSize),

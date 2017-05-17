@@ -68,7 +68,7 @@ var defaultJob = strings.TrimSpace(`
 # "example" so it will create a job with the ID and Name "example".
 
 # The "job" stanza is the top-most configuration option in the job
-# specification. A job is a declarative specification of tasks that Nomad
+# specification. A job is a declarative specification of tasks that Udup
 # should run. Jobs have a globally unique name, one or many task groups, which
 # are themselves collections of one or many tasks.
 #
@@ -93,107 +93,34 @@ job "example" {
   # at the "job",or "task" level, and supports variable interpolation.
   #
   # constraint {
-  #   attribute = "${attr.kernel.name}"
-  #   value     = "linux"
+  #   attribute = ""
+  #   value     = ""
   # }
 
-  # The "update" stanza specifies the job update strategy. The update strategy
-  # is used to control things like rolling upgrades. If omitted, rolling
-  # updates are disabled.
+  # The "task" stanza defines a task that should be co-located on
+  # the same Udup client.
   #
-  update {
-    # The "stagger" parameter specifies to do rolling updates of this job every
-    # 10 seconds.
-    stagger = "10s"
+  task "src" {
+    # The "driver" parameter specifies the task driver that should be used to
+    # run the task.
+    driver = "MySQL"
 
-    # The "max_parallel" parameter specifies the maximum number of updates to
-    # perform in parallel. In this case, this specifies to update a single task
-    # at a time.
-    max_parallel = 1
-  }
-
-  # The "group" stanza defines a series of tasks that should be co-located on
-  # the same Nomad client. Any task within a group will be placed on the same
-  # client.
-  #
-  group "cache" {
-    # The "count" parameter specifies the number of the task groups that should
-    # be running under this group. This value must be non-negative and defaults
-    # to 1.
-    count = 1
-
-    # The "restart" stanza configures a group's behavior on task failure. If
-    # left unspecified, a default restart policy is used based on the job type.
-    #
-    restart {
-      # The number of attempts to run the job within the specified interval.
-      attempts = 10
-      interval = "5m"
-
-      # The "delay" parameter specifies the duration to wait before restarting
-      # a task after it has failed.
-      delay = "25s"
-
-     # The "mode" parameter controls what happens when a task has restarted
-     # "attempts" times within the interval. "delay" mode delays the next
-     # restart until the next interval. "fail" mode does not restart the task
-     # if "attempts" has been hit within the interval.
-      mode = "delay"
-    }
-
-    # The "task" stanza creates an individual unit of work, such as a Docker
-    # container, web application, or batch processing.
-    #
-    task "redis" {
-      # The "driver" parameter specifies the task driver that should be used to
-      # run the task.
-      driver = "docker"
-
-      # The "config" stanza specifies the driver configuration, which is passed
-      # directly to the driver to start the task. The details of configurations
-      # are specific to each driver, so please see specific driver
-      # documentation for more information.
-      config {
-        image = "redis:3.2"
-        port_map {
-          db = 6379
-        }
+    # The "config" stanza specifies the driver configuration, which is passed
+    # directly to the driver to start the task. The details of configurations
+    # are specific to each driver, so please see specific driver
+    # documentation for more information.
+    config {
+      nats_addr = "127.0.0.1:8193"
+      replicate_do_db {
+        schema = ""
+        table = ""
       }
-
-      # The "resources" stanza describes the requirements a task needs to
-      # execute. Resource requirements include memory, network, cpu, and more.
-      # This ensures the task will execute on a machine that contains enough
-      # resource capacity.
-      #
-      resources {
-        cpu    = 500 # 500 MHz
-        memory = 256 # 256MB
-        network {
-          mbits = 10
-          port "db" {}
-        }
+      dsn {
+        host = "127.0.0.1"
+        port = 3306
+        user = "repluser"
+        password = "replpwd"
       }
-
-      # The "service" stanza instructs Nomad to register this task as a service
-      # in the service discovery engine, which is currently Consul. This will
-      # make the service addressable after Nomad has placed it on a host and
-      # port.
-      #
-      service {
-        name = "global-redis-check"
-        tags = ["global", "cache"]
-        port = "db"
-        check {
-          name     = "alive"
-          type     = "tcp"
-          interval = "10s"
-          timeout  = "2s"
-        }
-      }
-
-      # Controls the timeout between signalling a task it will be killed
-      # and killing the task. If not set a default is used.
-      # kill_timeout = "20s"
     }
   }
 }

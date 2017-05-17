@@ -3,9 +3,9 @@ package binlog
 import (
 	"bytes"
 	"fmt"
+	"log"
 	"regexp"
 	"strings"
-	"time"
 
 	"github.com/issuj/gofaster/base64"
 	"github.com/satori/go.uuid"
@@ -44,6 +44,7 @@ func (tx *Transaction_t) addImpact(tableId uint64, rowId string) {
 }
 
 type TxBuilder struct {
+	Logger  *log.Logger
 	Cfg     *uconf.MySQLDriverConfig
 	WaitCh  chan error
 	EvtChan chan *BinlogEvent
@@ -66,91 +67,81 @@ type TxBuilder struct {
 }
 
 func (tb *TxBuilder) Run() {
-	idle_ns := int64(0)
-	defer func(t *int64) {
-		//fmt.Printf("txbuilder idleness: %v s\n", float64(*t)/1000000000)
-	}(&idle_ns)
-
+	var event *BinlogEvent
 	for {
-		var event *BinlogEvent
-
 		select {
 		case event = <-tb.EvtChan:
-		default:
-			t1 := time.Now().UnixNano()
-			event = <-tb.EvtChan
-			t2 := time.Now().UnixNano()
-			idle_ns += (t2 - t1)
-		}
-		if event.Err != nil {
-			tb.WaitCh <- event.Err
-			return
-		}
+			if event.Err != nil {
+				tb.WaitCh <- event.Err
+				return
+			}
 
-		if tb.currentTx != nil {
-			tb.currentTx.eventCount++
-			tb.currentTx.EventSize += uint64(event.Header.EventSize)
-		}
-
-		switch event.Header.EventType {
-		case binlog.GTID_EVENT:
 			if tb.currentTx != nil {
-				tb.WaitCh <- fmt.Errorf("unfinished transaction %v@%v", event.BinlogFile, event.RealPos)
-				return
+				tb.currentTx.eventCount++
+				tb.currentTx.EventSize += uint64(event.Header.EventSize)
 			}
-			tb.newTransaction(event)
 
-		case binlog.QUERY_EVENT:
-			if tb.currentTx == nil {
-				tb.WaitCh <- newTxWithoutGTIDError(event)
-				return
-			}
-			err := tb.onQueryEvent(event)
-			if err != nil {
-				tb.WaitCh <- err
-				return
-			}
-			tb.addCount(Ddl)
+			switch event.Header.EventType {
+			case binlog.GTID_EVENT:
+				if tb.currentTx != nil {
+					tb.WaitCh <- fmt.Errorf("unfinished transaction %v@%v", event.BinlogFile, event.RealPos)
+					return
+				}
+				tb.newTransaction(event)
 
-		case binlog.XID_EVENT:
-			if tb.currentTx == nil {
-				tb.WaitCh <- newTxWithoutGTIDError(event)
-				return
-			}
-			tb.onCommit(event)
-			tb.addCount(Xid)
+			case binlog.QUERY_EVENT:
+				if tb.currentTx == nil {
+					tb.WaitCh <- newTxWithoutGTIDError(event)
+					return
+				}
+				err := tb.onQueryEvent(event)
+				if err != nil {
+					tb.WaitCh <- err
+					return
+				}
+				tb.addCount(Ddl)
 
-		// process: optional FDE event -> TableMapEvent -> RowEvents
-		case binlog.FORMAT_DESCRIPTION_EVENT:
-			tb.currentFde = "BINLOG '\n" + base64.StdEncoding.EncodeToString(event.RawBs) + "\n'"
+			case binlog.XID_EVENT:
+				if tb.currentTx == nil {
+					tb.WaitCh <- newTxWithoutGTIDError(event)
+					return
+				}
+				tb.onCommit(event)
+				tb.addCount(Xid)
 
-		case binlog.TABLE_MAP_EVENT:
-			err := tb.onTableMapEvent(event)
-			if err != nil {
-				tb.WaitCh <- err
-				return
+				// process: optional FDE event -> TableMapEvent -> RowEvents
+			case binlog.FORMAT_DESCRIPTION_EVENT:
+				tb.currentFde = "BINLOG '\n" + base64.StdEncoding.EncodeToString(event.RawBs) + "\n'"
+
+			case binlog.TABLE_MAP_EVENT:
+				err := tb.onTableMapEvent(event)
+				if err != nil {
+					tb.WaitCh <- err
+					return
+				}
+			case binlog.WRITE_ROWS_EVENTv0, binlog.WRITE_ROWS_EVENTv1, binlog.WRITE_ROWS_EVENTv2:
+				err := tb.onRowEvent(event)
+				if err != nil {
+					tb.WaitCh <- err
+					return
+				}
+				tb.addCount(Insert)
+			case binlog.UPDATE_ROWS_EVENTv0, binlog.UPDATE_ROWS_EVENTv1, binlog.UPDATE_ROWS_EVENTv2:
+				err := tb.onRowEvent(event)
+				if err != nil {
+					tb.WaitCh <- err
+					return
+				}
+				tb.addCount(Update)
+			case binlog.DELETE_ROWS_EVENTv0, binlog.DELETE_ROWS_EVENTv1, binlog.DELETE_ROWS_EVENTv2:
+				err := tb.onRowEvent(event)
+				if err != nil {
+					tb.WaitCh <- err
+					return
+				}
+				tb.addCount(Del)
 			}
-		case binlog.WRITE_ROWS_EVENTv0, binlog.WRITE_ROWS_EVENTv1, binlog.WRITE_ROWS_EVENTv2:
-			err := tb.onRowEvent(event)
-			if err != nil {
-				tb.WaitCh <- err
-				return
-			}
-			tb.addCount(Insert)
-		case binlog.UPDATE_ROWS_EVENTv0, binlog.UPDATE_ROWS_EVENTv1, binlog.UPDATE_ROWS_EVENTv2:
-			err := tb.onRowEvent(event)
-			if err != nil {
-				tb.WaitCh <- err
-				return
-			}
-			tb.addCount(Update)
-		case binlog.DELETE_ROWS_EVENTv0, binlog.DELETE_ROWS_EVENTv1, binlog.DELETE_ROWS_EVENTv2:
-			err := tb.onRowEvent(event)
-			if err != nil {
-				tb.WaitCh <- err
-				return
-			}
-			tb.addCount(Del)
+		default:
 		}
 	}
 }
@@ -185,6 +176,9 @@ func (tb *TxBuilder) newTransaction(event *BinlogEvent) {
 		EventSize:      uint64(event.Header.EventSize),
 		Query:          []string{},
 	}
+
+	tb.currentSqlB64 = new(bytes.Buffer)
+	tb.currentSqlB64.WriteString("BINLOG '\n")
 }
 
 func (tb *TxBuilder) onQueryEvent(event *BinlogEvent) error {
@@ -250,7 +244,7 @@ func (tb *TxBuilder) onTableMapEvent(event *BinlogEvent) error {
 		return nil
 	}
 
-	tb.appendB64TableMapEvent(event)
+	tb.appendB64Sql(event)
 	return nil
 }
 
@@ -269,7 +263,7 @@ func (tb *TxBuilder) onRowEvent(event *BinlogEvent) error {
 		return nil
 	}
 
-	tb.appendB64RowEvent(event)
+	tb.appendB64Sql(event)
 
 	return nil
 }
@@ -285,9 +279,19 @@ func (tb *TxBuilder) clearB64Sql() {
 
 var appendB64SqlBs []byte = make([]byte, 1024*1024)
 
-func (tb *TxBuilder) appendB64TableMapEvent(event *BinlogEvent) {
-	tb.currentSqlB64 = new(bytes.Buffer)
-	tb.currentSqlB64.WriteString("BINLOG '")
+/*func (tb *TxBuilder) appendB64TableMapEvent(event *BinlogEvent) {
+	n := base64.StdEncoding.EncodedLen(len(event.RawBs))
+	// enlarge only
+	if len(appendB64SqlBs) < n {
+		appendB64SqlBs = make([]byte, n)
+	}
+	base64.StdEncoding.Encode(appendB64SqlBs, event.RawBs)
+	tb.currentTableMapB64.Write(appendB64SqlBs[0:n])
+
+	tb.currentTableMapB64.WriteString("\n")
+}*/
+
+func (tb *TxBuilder) appendB64Sql(event *BinlogEvent) {
 	n := base64.StdEncoding.EncodedLen(len(event.RawBs))
 	// enlarge only
 	if len(appendB64SqlBs) < n {
@@ -297,27 +301,16 @@ func (tb *TxBuilder) appendB64TableMapEvent(event *BinlogEvent) {
 	tb.currentSqlB64.Write(appendB64SqlBs[0:n])
 
 	tb.currentSqlB64.WriteString("\n")
-}
-
-func (tb *TxBuilder) appendB64RowEvent(event *BinlogEvent) {
-	n := base64.StdEncoding.EncodedLen(len(event.RawBs))
-	// enlarge only
-	if len(appendB64SqlBs) < n {
-		appendB64SqlBs = make([]byte, n)
-	}
-	base64.StdEncoding.Encode(appendB64SqlBs, event.RawBs)
-	tb.currentSqlB64.Write(appendB64SqlBs[0:n])
-
-	tb.currentSqlB64.WriteString("\n'")
 	tb.arrayCurrentSqlB64 = append(tb.arrayCurrentSqlB64, tb.currentSqlB64.String())
-	tb.currentSqlB64 = nil
 }
 
 func (tb *TxBuilder) onCommit(lastEvent *BinlogEvent) {
 	tx := tb.currentTx
-	if nil != tb.arrayCurrentSqlB64 {
-		tx.Query = tb.arrayCurrentSqlB64
+	if nil != tb.currentSqlB64 {
+		tb.currentSqlB64.WriteString("'")
 		tx.Fde = tb.currentFde
+		tx.Query = append(tx.Query, tb.currentSqlB64.String())
+		tx.Query = append(tx.Query, lastEvent.Query...)
 	} else {
 		tx.Query = append(tx.Query, lastEvent.Query...)
 	}
