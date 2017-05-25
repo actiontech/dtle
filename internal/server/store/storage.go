@@ -329,18 +329,12 @@ func (s *StateStore) DeleteJob(index uint64, jobID string) error {
 	}
 
 	// Delete the job
-	if err := txn.Delete("jobs", existing); err != nil {
+	job := existing.(*models.Job)
+
+	if err := txn.Delete("jobs", job); err != nil {
 		return fmt.Errorf("job delete failed: %v", err)
 	}
 	if err := txn.Insert("index", &IndexEntry{"jobs", index}); err != nil {
-		return fmt.Errorf("index update failed: %v", err)
-	}
-
-	// Delete the job summary
-	if _, err = txn.DeleteAll("job_summary", "id", jobID); err != nil {
-		return fmt.Errorf("deleing job summary failed: %v", err)
-	}
-	if err := txn.Insert("index", &IndexEntry{"job_summary", index}); err != nil {
 		return fmt.Errorf("index update failed: %v", err)
 	}
 
