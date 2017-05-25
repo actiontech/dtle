@@ -178,7 +178,7 @@ func (tb *TxBuilder) newTransaction(event *BinlogEvent) {
 	}
 
 	tb.currentSqlB64 = new(bytes.Buffer)
-	tb.currentSqlB64.WriteString("BINLOG '\n")
+	tb.currentSqlB64.WriteString("BINLOG '")
 }
 
 func (tb *TxBuilder) onQueryEvent(event *BinlogEvent) error {
@@ -199,11 +199,19 @@ func (tb *TxBuilder) onQueryEvent(event *BinlogEvent) error {
 		// DDL or statement/mixed binlog format
 		tb.setImpactOnAll()
 		if strings.ToUpper(query) == "COMMIT" || !tb.currentTx.hasBeginQuery {
+			if tb.skipQueryEvent(query, string(evt.Schema)) {
+				tb.Logger.Printf("[WARN] skip query %s", query)
+				event.Query = nil
+				tb.onCommit(event)
+				return nil
+			}
+
 			sqls, ok, err := usql.ResolveDDLSQL(query)
 			if err != nil {
-				return fmt.Errorf("parse query event failed: %v", err)
+				return fmt.Errorf("parse query [%v] event failed: %v", query,err)
 			}
 			if !ok {
+				event.Query = nil
 				tb.onCommit(event)
 				return nil
 			}
@@ -223,6 +231,7 @@ func (tb *TxBuilder) onQueryEvent(event *BinlogEvent) error {
 				}
 				event.Query = append(event.Query, sql)
 			}
+
 			tb.onCommit(event)
 		}
 	}
@@ -301,18 +310,30 @@ func (tb *TxBuilder) appendB64Sql(event *BinlogEvent) {
 	tb.currentSqlB64.Write(appendB64SqlBs[0:n])
 
 	tb.currentSqlB64.WriteString("\n")
-	tb.arrayCurrentSqlB64 = append(tb.arrayCurrentSqlB64, tb.currentSqlB64.String())
+	//tb.arrayCurrentSqlB64 = append(tb.arrayCurrentSqlB64, tb.currentSqlB64.String())
 }
 
 func (tb *TxBuilder) onCommit(lastEvent *BinlogEvent) {
 	tx := tb.currentTx
 	if nil != tb.currentSqlB64 {
-		tb.currentSqlB64.WriteString("'")
+		if strings.HasSuffix(tb.currentSqlB64.String(), "BINLOG '") && len(lastEvent.Query) < 1{
+			tb.currentSqlB64 = nil
+			tb.currentTx = nil
+			return
+		}
 		tx.Fde = tb.currentFde
-		tx.Query = append(tx.Query, tb.currentSqlB64.String())
+		if !strings.HasSuffix(tb.currentSqlB64.String(), "BINLOG '"){
+			tb.currentSqlB64.WriteString("'")
+			tx.Query = append(tx.Query, tb.currentSqlB64.String())
+		}
 		tx.Query = append(tx.Query, lastEvent.Query...)
 	} else {
 		tx.Query = append(tx.Query, lastEvent.Query...)
+		if len(tx.Query) < 1{
+			tb.currentSqlB64 = nil
+			tb.currentTx = nil
+			return
+		}
 	}
 
 	tx.EndEventFile = lastEvent.BinlogFile
@@ -321,7 +342,7 @@ func (tb *TxBuilder) onCommit(lastEvent *BinlogEvent) {
 	tb.TxChan <- tb.currentTx
 
 	tb.currentTx = nil
-	tb.arrayCurrentSqlB64 = nil
+	//tb.arrayCurrentSqlB64 = nil
 }
 
 func newTxWithoutGTIDError(event *BinlogEvent) error {
@@ -412,5 +433,19 @@ func (tb *TxBuilder) skipRowEvent(schema string, table string) bool {
 			return true
 		}
 	}
+	return false
+}
+
+func (tb *TxBuilder) skipQueryEvent(sql string, schema string) bool {
+	sql = strings.ToUpper(sql)
+
+	if strings.HasPrefix(sql, "CREATE USER") {
+		return true
+	}
+
+	if strings.HasPrefix(sql, "GRANT REPLICATION SLAVE ON") {
+		return true
+	}
+
 	return false
 }

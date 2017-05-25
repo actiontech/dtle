@@ -201,7 +201,7 @@ func (a *Applier) applyTx(db *gosql.DB, transaction *ubinlog.Transaction_t) erro
 		_, err := usql.ExecNoPrepare(db, query)
 		if err != nil {
 			if !usql.IgnoreDDLError(err) {
-				a.logger.Printf("[ERR] mysql.applier: exec sql error: %v", err)
+				a.logger.Printf("[ERR] mysql.applier: exec [%v] error: %v", query,err)
 				return err
 			} else {
 				a.logger.Printf("[WARN] mysql.applier: ignore ddl error: %v", err)
