@@ -88,7 +88,7 @@ func IgnoreDDLError(err error) bool {
 	switch mysqlErr.Number {
 	case ErrDatabaseExists, ErrDatabaseNotExists, ErrDatabaseDropExists,
 		ErrTableExists, ErrTableNotExists, ErrTableDropExists,
-		ErrColumnExists, ErrColumnNotExists,
+		ErrColumnExists, ErrColumnNotExists,ErrDupKeyName,
 		ErrIndexExists, ErrCantDropFieldOrKey:
 		return true
 	default:
