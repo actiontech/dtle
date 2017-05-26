@@ -443,7 +443,7 @@ func (tb *TxBuilder) skipQueryEvent(sql string, schema string) bool {
 		return true
 	}
 
-	if strings.HasPrefix(sql, "GRANT REPLICATION SLAVE ON") {
+	if strings.HasPrefix(sql, "GRANT") {
 		return true
 	}
 
