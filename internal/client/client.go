@@ -1039,6 +1039,7 @@ func (c *Client) watchAllocations(updates chan *allocUpdates, jUpdates chan *job
 		var pull []string
 		filtered := make(map[string]struct{})
 		runners := c.getAllocRunners()
+
 		var pullIndex uint64
 		for allocID, modifyIndex := range resp.Allocs {
 			// Pull the allocation if we don't have an alloc runner for the
@@ -1249,7 +1250,7 @@ func (c *Client) runAllocs(update *allocUpdates) {
 				c.logger.Printf("[ERR] client: failed to resume alloc '%s': %v",
 					update.updated.ID, err)
 			}
-		} else {
+		}else {
 			if err := c.updateAlloc(update.exist, update.updated); err != nil {
 				c.logger.Printf("[ERR] client: failed to update alloc '%s': %v",
 					update.exist.ID, err)
@@ -1512,7 +1513,7 @@ func (c *Client) getNode(nodeID string) (*models.Node, error) {
 // removeAlloc is invoked when we should remove an allocation
 func (c *Client) removeAlloc(alloc *models.Allocation) error {
 	c.allocLock.Lock()
-	_, ok := c.allocs[alloc.ID]
+	ar, ok := c.allocs[alloc.ID]
 	if !ok {
 		c.allocLock.Unlock()
 		c.logger.Printf("[WARN] client: missing context for alloc '%s'", alloc.ID)
@@ -1521,6 +1522,11 @@ func (c *Client) removeAlloc(alloc *models.Allocation) error {
 
 	delete(c.allocs, alloc.ID)
 	c.allocLock.Unlock()
+
+	if err := ar.DestroyState(); err != nil {
+		c.logger.Printf("[ERR] client: failed to destroy state for alloc '%s': %v",
+			alloc.ID, err)
+	}
 
 	return nil
 }

@@ -319,6 +319,58 @@ func (s *StateStore) DeleteJob(index uint64, jobID string) error {
 	txn := s.db.Txn(true)
 	defer txn.Abort()
 
+	iterEval, err := txn.Get("evals", "job", jobID, models.EvalStatusComplete)
+	if err != nil {
+		return fmt.Errorf("failed to get blocked evals for job %q: %v", jobID, err)
+	}
+
+	for {
+		raw := iterEval.Next()
+		if raw == nil {
+			break
+		}
+		existing, err := txn.First("evals", "id", raw.(*models.Evaluation).ID)
+		if err != nil {
+			return fmt.Errorf("eval lookup failed: %v", err)
+		}
+		if existing == nil {
+			continue
+		}
+		if err := txn.Delete("evals", existing); err != nil {
+			return fmt.Errorf("eval delete failed: %v", err)
+		}
+	}
+
+	iterAlloc, err := txn.Get("allocs", "job", jobID)
+	if err != nil {
+		return fmt.Errorf("failed to get blocked allocs for job %q: %v", jobID, err)
+	}
+
+	for {
+		raw := iterAlloc.Next()
+		if raw == nil {
+			break
+		}
+		existing, err := txn.First("allocs", "id", raw.(*models.Allocation).ID)
+		if err != nil {
+			return fmt.Errorf("alloc lookup failed: %v", err)
+		}
+		if existing == nil {
+			continue
+		}
+		if err := txn.Delete("allocs", existing); err != nil {
+			return fmt.Errorf("alloc delete failed: %v", err)
+		}
+	}
+
+	// Update the indexes
+	if err := txn.Insert("index", &IndexEntry{"evals", index}); err != nil {
+		return fmt.Errorf("index update failed: %v", err)
+	}
+	if err := txn.Insert("index", &IndexEntry{"allocs", index}); err != nil {
+		return fmt.Errorf("index update failed: %v", err)
+	}
+
 	// Lookup the node
 	existing, err := txn.First("jobs", "id", jobID)
 	if err != nil {
