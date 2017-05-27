@@ -84,6 +84,16 @@ func (this *BinlogCoordinates) SmallerThan(other *BinlogCoordinates) bool {
 	return false
 }
 
+func (this *BinlogCoordinates) SmallerGtidThan(other *BinlogCoordinates) bool {
+	if this.GtidSet.Contain(other.GtidSet) {
+		return true
+	}
+	if this.GtidSet.Equal(other.GtidSet){
+		return true
+	}
+	return false
+}
+
 // SmallerThanOrEquals returns true if this coordinate is the same or equal to the other one.
 // We do NOT compare the type so we can not use this.Equals()
 func (this *BinlogCoordinates) SmallerThanOrEquals(other *BinlogCoordinates) bool {
@@ -91,6 +101,13 @@ func (this *BinlogCoordinates) SmallerThanOrEquals(other *BinlogCoordinates) boo
 		return true
 	}
 	return this.LogFile == other.LogFile && this.LogPos == other.LogPos // No Type comparison
+}
+
+func (this *BinlogCoordinates) SmallerGtidThanOrEquals(other *BinlogCoordinates) bool {
+	if this.SmallerGtidThan(other) {
+		return true
+	}
+	return this.GtidSet.Equal(other.GtidSet)// No Type comparison
 }
 
 // FileSmallerThan returns true if this coordinate's file is strictly smaller than the other's.

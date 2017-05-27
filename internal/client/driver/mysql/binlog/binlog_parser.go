@@ -7,7 +7,9 @@ import (
 	"sync"
 
 	"github.com/siddontang/go-mysql/replication"
+	gomysql "github.com/siddontang/go-mysql/mysql"
 	"golang.org/x/net/context"
+	"github.com/satori/go.uuid"
 
 	uutil "udup/internal/client/driver/mysql/util"
 	uconf "udup/internal/config"
@@ -106,6 +108,7 @@ func (bp *BinlogParser) StreamEvents(eventsChannel chan<- *BinlogEvent) error {
 			return err
 		}
 
+		//bp.logger.Printf("-----bp.currentCoordinates:%v",bp.currentCoordinates)
 		//ev.Dump(os.Stdout)
 		func() {
 			bp.currentCoordinatesMutex.Lock()
@@ -130,6 +133,7 @@ func (bp *BinlogParser) StreamEvents(eventsChannel chan<- *BinlogEvent) error {
 }
 
 func (bp *BinlogParser) handleRowsEvent(ev *replication.BinlogEvent, eventsChannel chan<- *BinlogEvent) error {
+	//bp.logger.Printf("---c:%v----:%v",bp.currentCoordinates,bp.LastAppliedRowsEventHint)
 	if bp.currentCoordinates.SmallerThanOrEquals(&bp.LastAppliedRowsEventHint) {
 		bp.logger.Printf("[DEBUG] mysql.parser: skipping handled query at %+v", bp.currentCoordinates)
 		return nil
@@ -151,6 +155,18 @@ func (bp *BinlogParser) handleRowsEvent(ev *replication.BinlogEvent, eventsChann
 			RealPos:    uint32(ev.Header.LogPos) - ev.Header.EventSize,
 			Evt:        ev.Event,
 			RawBs:      ev.RawData,
+		}
+		if gtidEvent, ok := ev.Event.(*replication.GTIDEvent); ok {
+			func() {
+				bp.currentCoordinatesMutex.Lock()
+				defer bp.currentCoordinatesMutex.Unlock()
+				u, _ := uuid.FromBytes(gtidEvent.SID)
+				gtidSet, err := gomysql.ParseMysqlGTIDSet(fmt.Sprintf("%s:%d",u.String(),gtidEvent.GNO))
+				if err != nil {
+					bp.logger.Printf("[ERR]: parse mysql gtid error %v",err)
+				}
+				bp.currentCoordinates.GtidSet = gtidSet
+			}()
 		}
 	case replication.QUERY_EVENT:
 		eventsChannel <- &BinlogEvent{

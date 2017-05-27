@@ -99,7 +99,7 @@ func (tb *TxBuilder) Run() {
 					tb.WaitCh <- err
 					return
 				}
-				tb.addCount(Ddl)
+				//tb.addCount(Ddl)
 
 			case binlog.XID_EVENT:
 				if tb.currentTx == nil {
@@ -107,7 +107,7 @@ func (tb *TxBuilder) Run() {
 					return
 				}
 				tb.onCommit(event)
-				tb.addCount(Xid)
+				//tb.addCount(Xid)
 
 				// process: optional FDE event -> TableMapEvent -> RowEvents
 			case binlog.FORMAT_DESCRIPTION_EVENT:
@@ -125,21 +125,21 @@ func (tb *TxBuilder) Run() {
 					tb.WaitCh <- err
 					return
 				}
-				tb.addCount(Insert)
+				//tb.addCount(Insert)
 			case binlog.UPDATE_ROWS_EVENTv0, binlog.UPDATE_ROWS_EVENTv1, binlog.UPDATE_ROWS_EVENTv2:
 				err := tb.onRowEvent(event)
 				if err != nil {
 					tb.WaitCh <- err
 					return
 				}
-				tb.addCount(Update)
+				//tb.addCount(Update)
 			case binlog.DELETE_ROWS_EVENTv0, binlog.DELETE_ROWS_EVENTv1, binlog.DELETE_ROWS_EVENTv2:
 				err := tb.onRowEvent(event)
 				if err != nil {
 					tb.WaitCh <- err
 					return
 				}
-				tb.addCount(Del)
+				//tb.addCount(Del)
 			}
 		default:
 		}
