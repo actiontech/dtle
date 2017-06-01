@@ -111,10 +111,16 @@ job "example" {
     # documentation for more information.
     config {
       nats_addr = "127.0.0.1:8193"
-      replicate_do_db {
-        schema = ""
-        table = ""
-      }
+      replicate_do_db = [
+        {
+          schema = ""
+          table = ""
+        },
+        {
+          schema = ""
+          table = ""
+        }
+      ]
       dsn {
         host = "127.0.0.1"
         port = 3306

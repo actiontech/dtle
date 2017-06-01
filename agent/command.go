@@ -56,8 +56,8 @@ func (c *Command) readConfig() *Config {
 	flags.Usage = func() { c.Ui.Error(c.Help()) }
 
 	// Role options
-	flags.BoolVar(&cmdConfig.Server.Enabled, "server", true, "")
-	flags.BoolVar(&cmdConfig.Client.Enabled, "client", true, "")
+	flags.BoolVar(&cmdConfig.Server.Enabled, "server", false, "")
+	flags.BoolVar(&cmdConfig.Client.Enabled, "client", false, "")
 
 	// Server-only options
 	flags.IntVar(&cmdConfig.Server.BootstrapExpect, "bootstrap-expect", 0, "")

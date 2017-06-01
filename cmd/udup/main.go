@@ -54,7 +54,7 @@ func realMain() int {
 	}
 
 	c.Commands = map[string]cli.CommandFactory{
-		"server": func() (cli.Command, error) {
+		"agent": func() (cli.Command, error) {
 			return &agent.Command{
 				Version:    Version,
 				Ui:         meta.Ui,

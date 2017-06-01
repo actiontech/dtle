@@ -208,6 +208,7 @@ func DefaultConfig() *Config {
 		Addresses:      &Addresses{},
 		AdvertiseAddrs: &AdvertiseAddrs{},
 		Consul:         uconf.DefaultConsulConfig(),
+		Nats:           uconf.DefaultNatsConfig(),
 		Client: &ClientConfig{
 			Enabled: false,
 		},

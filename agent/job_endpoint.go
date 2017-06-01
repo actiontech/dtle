@@ -124,9 +124,9 @@ func (s *HTTPServer) jobCRUD(resp http.ResponseWriter, req *http.Request,
 }
 
 func (s *HTTPServer) jobQuery(resp http.ResponseWriter, req *http.Request,
-	jobName string) (interface{}, error) {
+	jobId string) (interface{}, error) {
 	args := models.JobSpecificRequest{
-		JobID: jobName,
+		JobID: jobId,
 	}
 	if s.parse(resp, req, &args.Region, &args.QueryOptions) {
 		return nil, nil
