@@ -89,56 +89,6 @@ func (r *Allocator) stateFilePath() string {
 	return path
 }
 
-// RestoreState is used to restore the store of the alloc runner
-func (r *Allocator) RestoreState() error {
-	// Load the snapshot
-	var snap allocatorState
-	if err := restoreState(r.stateFilePath(), &snap); err != nil {
-		return err
-	}
-
-	// Restore fields
-	r.alloc = snap.Alloc
-	r.allocClientStatus = snap.AllocClientStatus
-	r.allocClientDescription = snap.AllocClientDescription
-
-	var snapshotErrors multierror.Error
-	if r.alloc == nil {
-		snapshotErrors.Errors = append(snapshotErrors.Errors, fmt.Errorf("alloc_runner snapshot includes a nil allocation"))
-	}
-	if e := snapshotErrors.ErrorOrNil(); e != nil {
-		return e
-	}
-
-	r.taskStates = snap.Alloc.TaskStates
-
-	// Restore the task runners
-	var mErr multierror.Error
-	for name, state := range r.taskStates {
-		// Mark the task as restored.
-		r.restored[name] = struct{}{}
-
-		task := &models.Task{Type: name}
-		tr := NewWorker(r.logger, r.config, r.setTaskState, r.Alloc(), task, r.workUpdates)
-		r.tasks[name] = tr
-
-		// Skip tasks in terminal states.
-		if state.State == models.TaskStateDead {
-			continue
-		}
-
-		if err := tr.RestoreState(); err != nil {
-			r.logger.Printf("[ERR] client: failed to restore state for alloc %s task '%s': %v", r.alloc.ID, name, err)
-			mErr.Errors = append(mErr.Errors, err)
-		} else if !r.alloc.ClientTerminalStatus() {
-			// Only start if the alloc isn't in a terminal status.
-			go tr.Run()
-		}
-	}
-
-	return mErr.ErrorOrNil()
-}
-
 // SaveState is used to snapshot the store of the alloc runner
 // if the fullSync is marked as false only the store of the Alloc Runner
 // is snapshotted. If fullSync is marked as true, we snapshot

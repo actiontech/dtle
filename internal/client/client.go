@@ -50,6 +50,8 @@ const (
 	// to fetch allocations. We pick a value between this and 2x this.
 	getAllocRetryIntv = 30 * time.Second
 
+	getJobRetryIntv = 5 * time.Second
+
 	// stateSnapshotIntv is how often the client snapshots state
 	stateSnapshotIntv = 60 * time.Second
 
@@ -221,11 +223,6 @@ func NewClient(cfg *uconf.ClientConfig, logger *log.Logger) (*Client, error) {
 		}
 	}
 	c.configLock.RUnlock()
-
-	// Restore the state
-	if err := c.restoreState(); err != nil {
-		return nil, fmt.Errorf("failed to restore state: %v", err)
-	}
 
 	// Register and then start heartbeating to the servers.
 	go c.registerAndHeartbeat()
@@ -455,37 +452,6 @@ func (c *Client) SetServers(servers []string) error {
 
 	c.servers.set(endpoints)
 	return nil
-}
-
-// restoreState is used to restore our state from the data dir
-func (c *Client) restoreState() error {
-	// Scan the directory
-	list, err := ioutil.ReadDir(filepath.Join(c.config.StateDir, "alloc"))
-	if err != nil && os.IsNotExist(err) {
-		return nil
-	} else if err != nil {
-		return fmt.Errorf("failed to list alloc state: %v", err)
-	}
-
-	// Load each alloc back
-	var mErr multierror.Error
-	for _, entry := range list {
-		id := entry.Name()
-		alloc := &models.Allocation{ID: id}
-		c.configLock.RLock()
-		ar := NewAllocator(c.logger, c.configCopy, c.updateAllocStatus, alloc, c.workUpdates)
-		c.configLock.RUnlock()
-		c.allocLock.Lock()
-		c.allocs[id] = ar
-		c.allocLock.Unlock()
-		if err := ar.RestoreState(); err != nil {
-			c.logger.Printf("[ERR] client: failed to restore state for alloc %s: %v", id, err)
-			mErr.Errors = append(mErr.Errors, err)
-		} else {
-			go ar.Run()
-		}
-	}
-	return mErr.ErrorOrNil()
 }
 
 // saveState is used to snapshot our state into the data dir
@@ -1039,7 +1005,6 @@ func (c *Client) watchAllocations(updates chan *allocUpdates, jUpdates chan *job
 		var pull []string
 		filtered := make(map[string]struct{})
 		runners := c.getAllocRunners()
-
 		var pullIndex uint64
 		for allocID, modifyIndex := range resp.Allocs {
 			// Pull the allocation if we don't have an alloc runner for the
@@ -1250,7 +1215,7 @@ func (c *Client) runAllocs(update *allocUpdates) {
 				c.logger.Printf("[ERR] client: failed to resume alloc '%s': %v",
 					update.updated.ID, err)
 			}
-		}else {
+		} else {
 			if err := c.updateAlloc(update.exist, update.updated); err != nil {
 				c.logger.Printf("[ERR] client: failed to update alloc '%s': %v",
 					update.exist.ID, err)
@@ -1333,11 +1298,29 @@ func (c *Client) blockForRemoteAlloc(alloc *models.Allocation) {
 
 	// If the allocation is not sticky then we won't wait for the previous
 	// allocation to be terminal
-	tg := alloc.Job.LookupTask(alloc.Task)
-	if tg == nil {
-		c.logger.Printf("[ERR] client: task %q not found in job %q", tg.Type, alloc.Job.ID)
+	t := alloc.Job.LookupTask(alloc.Task)
+	if t == nil {
+		c.logger.Printf("[ERR] client: task %q not found in job %q", t.Type, alloc.Job.ID)
 		goto ADDALLOC
 	}
+
+	/*if alloc.Task == models.TaskTypeSrc {
+	c.logger.Printf("[DEBUG] client: blocking alloc %q for previous allocation %q", alloc.ID, alloc.PreviousAllocation)
+	// Block until the previous allocation migrates to terminal state
+	stopCh := c.migratingAllocs[alloc.ID]
+	prevAlloc, err := c.waitForAllocTerminal(alloc.PreviousAllocation, stopCh)
+	if err != nil {
+		c.logger.Printf("[ERR] client: error waiting for allocation %q: %v",
+			alloc.PreviousAllocation, err)
+	}
+	c.logger.Printf("[INFO] client: prevAlloc:%v",prevAlloc)
+	// Migrate the data from the remote node
+	*/ /*prevAllocDir, err = c.migrateRemoteAllocDir(prevAlloc, alloc.ID)
+	if err != nil {
+		c.logger.Printf("[ERR] client: error migrating data from remote alloc %q: %v",
+			alloc.PreviousAllocation, err)
+	}*/ /*
+		}*/
 
 ADDALLOC:
 	// Add the allocation

@@ -149,49 +149,6 @@ func (r *Worker) stateFilePath() string {
 	return path
 }
 
-// RestoreState is used to restore our store
-func (r *Worker) RestoreState() error {
-	// Load the snapshot
-	var snap workerState
-	if err := restoreState(r.stateFilePath(), &snap); err != nil {
-		return err
-	}
-
-	// Restore fields
-	if snap.Task == nil {
-		return fmt.Errorf("task runner snapshot includes nil Task")
-	} else {
-		r.task = snap.Task
-	}
-	r.payloadRendered = snap.PayloadRendered
-
-	// Restore the driver
-	if snap.HandleID != "" {
-		d, err := r.createDriver()
-		if err != nil {
-			return err
-		}
-
-		ctx := driver.NewExecContext(r.alloc.Job.Name, r.task.Type)
-		handle, err := d.Open(ctx, snap.HandleID)
-
-		// In the case it fails, we relaunch the task in the Run() method.
-		if err != nil {
-			r.logger.Printf("[ERR] client: failed to open handle to task %q for alloc %q: %v",
-				r.task.Type, r.alloc.ID, err)
-			return nil
-		}
-		r.handleLock.Lock()
-		r.handle = handle
-		r.handleLock.Unlock()
-
-		r.runningLock.Lock()
-		r.running = true
-		r.runningLock.Unlock()
-	}
-	return nil
-}
-
 // SaveState is used to snapshot our store
 func (r *Worker) SaveState() error {
 	r.persistLock.Lock()
@@ -210,11 +167,13 @@ func (r *Worker) SaveState() error {
 			r.logger.Printf("[ERR] client: failed to parse handle '%s': %v",
 				handleID, err)
 		}
-		r.workUpdates <- &models.TaskUpdate{
-			JobID: r.alloc.JobID,
-			Gtid:  id.DriverConfig.Gtid,
+		if r.task.Type == models.TaskTypeDest {
+			r.workUpdates <- &models.TaskUpdate{
+				JobID: r.alloc.JobID,
+				Gtid:  id.DriverConfig.Gtid,
+			}
+			r.task.Config["Gtid"] = id.DriverConfig.Gtid
 		}
-		r.task.Config["Gtid"] = id.DriverConfig.Gtid
 		snap.HandleID = r.handle.ID()
 		snap.Task = r.task
 	}
