@@ -319,13 +319,13 @@ func (s *StateStore) DeleteJob(index uint64, jobID string) error {
 	txn := s.db.Txn(true)
 	defer txn.Abort()
 
-	iterEval, err := txn.Get("evals", "job", jobID, models.EvalStatusComplete)
+	eval, err := txn.Get("evals", "job", jobID, models.EvalStatusComplete)
 	if err != nil {
 		return fmt.Errorf("failed to get blocked evals for job %q: %v", jobID, err)
 	}
 
 	for {
-		raw := iterEval.Next()
+		raw := eval.Next()
 		if raw == nil {
 			break
 		}
@@ -341,13 +341,13 @@ func (s *StateStore) DeleteJob(index uint64, jobID string) error {
 		}
 	}
 
-	iterAlloc, err := txn.Get("allocs", "job", jobID)
+	alloc, err := txn.Get("allocs", "job", jobID)
 	if err != nil {
 		return fmt.Errorf("failed to get blocked allocs for job %q: %v", jobID, err)
 	}
 
 	for {
-		raw := iterAlloc.Next()
+		raw := alloc.Next()
 		if raw == nil {
 			break
 		}

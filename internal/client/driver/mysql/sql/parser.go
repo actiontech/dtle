@@ -1,38 +1,126 @@
 package sql
 
 import (
-	"fmt"
+	"regexp"
 	"strconv"
+	"strings"
 
 	"github.com/go-sql-driver/mysql"
-	"github.com/pingcap/tidb/ast"
-	"github.com/pingcap/tidb/parser"
 
-	uconf "udup/internal/config"
+	umconf "udup/internal/config/mysql"
 )
 
-type OpType byte
+var (
+	sanitizeQuotesRegexp = regexp.MustCompile("('[^']*')")
+	renameColumnRegexp   = regexp.MustCompile(`(?i)\bchange\s+(column\s+|)([\S]+)\s+([\S]+)\s+`)
+	dropColumnRegexp     = regexp.MustCompile(`(?i)\bdrop\s+(column\s+|)([\S]+)$`)
+)
 
-type StreamEvent struct {
-	Tp    OpType
-	Sql   string
-	Args  []interface{}
-	Key   string
-	Retry bool
+type Parser struct {
+	ColumnRenameMap map[string]string
+	DroppedColumns  map[string]bool
 }
 
-type Column struct {
-	Idx      int
-	Name     string
-	Unsigned bool
+func NewParser() *Parser {
+	return &Parser{
+		ColumnRenameMap: make(map[string]string),
+		DroppedColumns:  make(map[string]bool),
+	}
+}
+
+func (this *Parser) tokenizeAlterStatement(alterStatement string) (tokens []string, err error) {
+	terminatingQuote := rune(0)
+	f := func(c rune) bool {
+		switch {
+		case c == terminatingQuote:
+			terminatingQuote = rune(0)
+			return false
+		case terminatingQuote != rune(0):
+			return false
+		case c == '\'':
+			terminatingQuote = c
+			return false
+		case c == '(':
+			terminatingQuote = ')'
+			return false
+		default:
+			return c == ','
+		}
+	}
+
+	tokens = strings.FieldsFunc(alterStatement, f)
+	for i := range tokens {
+		tokens[i] = strings.TrimSpace(tokens[i])
+	}
+	return tokens, nil
+}
+
+func (this *Parser) sanitizeQuotesFromAlterStatement(alterStatement string) (strippedStatement string) {
+	strippedStatement = alterStatement
+	strippedStatement = sanitizeQuotesRegexp.ReplaceAllString(strippedStatement, "''")
+	return strippedStatement
+}
+
+func (this *Parser) parseAlterToken(alterToken string) (err error) {
+	{
+		// rename
+		allStringSubmatch := renameColumnRegexp.FindAllStringSubmatch(alterToken, -1)
+		for _, submatch := range allStringSubmatch {
+			if unquoted, err := strconv.Unquote(submatch[2]); err == nil {
+				submatch[2] = unquoted
+			}
+			if unquoted, err := strconv.Unquote(submatch[3]); err == nil {
+				submatch[3] = unquoted
+			}
+			this.ColumnRenameMap[submatch[2]] = submatch[3]
+		}
+	}
+	{
+		// drop
+		allStringSubmatch := dropColumnRegexp.FindAllStringSubmatch(alterToken, -1)
+		for _, submatch := range allStringSubmatch {
+			if unquoted, err := strconv.Unquote(submatch[2]); err == nil {
+				submatch[2] = unquoted
+			}
+			this.DroppedColumns[submatch[2]] = true
+		}
+	}
+	return nil
+}
+
+func (this *Parser) ParseAlterStatement(alterStatement string) (err error) {
+	alterTokens, _ := this.tokenizeAlterStatement(alterStatement)
+	for _, alterToken := range alterTokens {
+		alterToken = this.sanitizeQuotesFromAlterStatement(alterToken)
+		this.parseAlterToken(alterToken)
+	}
+	return nil
+}
+
+func (this *Parser) GetNonTrivialRenames() map[string]string {
+	result := make(map[string]string)
+	for column, renamed := range this.ColumnRenameMap {
+		if column != renamed {
+			result[column] = renamed
+		}
+	}
+	return result
+}
+
+func (this *Parser) HasNonTrivialRenames() bool {
+	return len(this.GetNonTrivialRenames()) > 0
+}
+
+func (this *Parser) DroppedColumnsMap() map[string]bool {
+	return this.DroppedColumns
 }
 
 type Table struct {
 	Schema string
 	Name   string
 
-	Columns      []*Column
-	IndexColumns []*Column
+	Columns      []*umconf.Column
+	IndexColumns []*umconf.Column
 }
 
 func castUnsigned(data interface{}, unsigned bool) interface{} {
@@ -56,7 +144,7 @@ func castUnsigned(data interface{}, unsigned bool) interface{} {
 	return data
 }
 
-func findColumn(columns []*Column, indexColumn string) *Column {
+func findColumn(columns []*umconf.Column, indexColumn string) *umconf.Column {
 	for _, column := range columns {
 		if column.Name == indexColumn {
 			return column
@@ -66,8 +154,8 @@ func findColumn(columns []*Column, indexColumn string) *Column {
 	return nil
 }
 
-func FindColumns(columns []*Column, indexColumns []string) []*Column {
-	result := make([]*Column, 0, len(indexColumns))
+func FindColumns(columns []*umconf.Column, indexColumns []string) []*umconf.Column {
+	result := make([]*umconf.Column, 0, len(indexColumns))
 
 	for _, name := range indexColumns {
 		column := findColumn(columns, name)
@@ -88,114 +176,10 @@ func IgnoreDDLError(err error) bool {
 	switch mysqlErr.Number {
 	case ErrDatabaseExists, ErrDatabaseNotExists, ErrDatabaseDropExists,
 		ErrTableExists, ErrTableNotExists, ErrTableDropExists,
-		ErrColumnExists, ErrColumnNotExists,ErrDupKeyName,
+		ErrColumnExists, ErrColumnNotExists, ErrDupKeyName,
 		ErrIndexExists, ErrCantDropFieldOrKey:
 		return true
 	default:
 		return false
 	}
-}
-
-// resolveDDLSQL resolve to one ddl sql
-// example: drop table test.a,test2.b -> drop table test.a; drop table test2.b;
-func ResolveDDLSQL(sql string) (sqls []string, ok bool, err error) {
-	stmt, err := parser.New().ParseOneStmt(sql, "", "")
-	if err != nil {
-		return nil, false, err
-	}
-
-	_, isDDL := stmt.(ast.DDLNode)
-	if !isDDL {
-		sqls = append(sqls, sql)
-		return
-	}
-
-	switch v := stmt.(type) {
-	case *ast.DropTableStmt:
-		var ex string
-		if v.IfExists {
-			ex = "if exists"
-		}
-		for _, t := range v.Tables {
-			var db string
-			if t.Schema.O != "" {
-				db = fmt.Sprintf("%s.", t.Schema.O)
-			}
-			s := fmt.Sprintf("drop table %s %s%s", ex, db, t.Name.L)
-			sqls = append(sqls, s)
-		}
-
-	default:
-		sqls = append(sqls, sql)
-	}
-	return sqls, true, nil
-}
-
-func GenDDLSQL(sql string, schema string) (string, error) {
-	stmt, err := parser.New().ParseOneStmt(sql, "", "")
-	if err != nil {
-		return "", err
-	}
-	_, isCreateDatabase := stmt.(*ast.CreateDatabaseStmt)
-	if isCreateDatabase {
-		return fmt.Sprintf("%s;", sql), nil
-	}
-	if schema == "" {
-		return fmt.Sprintf("%s;", sql), nil
-	}
-
-	return fmt.Sprintf("use %s; %s;", schema, sql), nil
-}
-
-func genTableName(schema string, table string) uconf.TableName {
-	return uconf.TableName{Schema: schema, Table: table}
-
-}
-
-func ParserDDLTableName(sql string) (uconf.TableName, error) {
-	stmt, err := parser.New().ParseOneStmt(sql, "", "")
-	if err != nil {
-		return uconf.TableName{}, err
-	}
-
-	var res uconf.TableName
-	switch v := stmt.(type) {
-	case *ast.CreateDatabaseStmt:
-		res = genTableName(v.Name, "")
-	case *ast.DropDatabaseStmt:
-		res = genTableName(v.Name, "")
-	case *ast.CreateIndexStmt:
-		res = genTableName(v.Table.Schema.O, v.Table.Name.L)
-	case *ast.CreateTableStmt:
-		res = genTableName(v.Table.Schema.O, v.Table.Name.L)
-	case *ast.DropIndexStmt:
-		res = genTableName(v.Table.Schema.O, v.Table.Name.L)
-	case *ast.TruncateTableStmt:
-		res = genTableName(v.Table.Schema.O, v.Table.Name.L)
-	case *ast.AlterTableStmt:
-		res = genTableName(v.Table.Schema.O, v.Table.Name.L)
-	case *ast.CreateUserStmt:
-		res = genTableName("mysql", "user")
-	case *ast.GrantStmt:
-		res = genTableName("mysql", "user")
-	case *ast.DropTableStmt:
-		if len(v.Tables) != 1 {
-			return res, fmt.Errorf("may resovle DDL sql failed")
-		}
-		res = genTableName(v.Tables[0].Schema.O, v.Tables[0].Name.L)
-	default:
-		return res, fmt.Errorf("unkown DDL type")
-	}
-
-	return res, nil
-}
-
-// EscapeName will escape a db/table/column/... name by wrapping with backticks.
-// It is not fool proof. I'm just trying to do the right thing here, not solving
-// SQL injection issues, which should be irrelevant for this tool.
-func EscapeName(name string) string {
-	if unquoted, err := strconv.Unquote(name); err == nil {
-		name = unquoted
-	}
-	return fmt.Sprintf("`%s`", name)
 }

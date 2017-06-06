@@ -20,6 +20,7 @@ type Stats struct {
 	TableStats     *TableStats
 	DelayCount     *DelayCount
 	ThroughputStat *ThroughputStat
+	Status         string
 }
 
 type TaskStatistics struct {

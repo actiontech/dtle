@@ -165,6 +165,7 @@ func (s *SyncScheduler) process() (bool, error) {
 		return false, fmt.Errorf("failed to get job '%s': %v",
 			s.eval.JobID, err)
 	}
+
 	numTaskGroups := 0
 	if s.job != nil {
 		numTaskGroups = len(s.job.Tasks)

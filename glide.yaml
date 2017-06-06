@@ -1,20 +1,15 @@
 package: udup
 import:
 - package: github.com/NYTimes/gziphandler
-- package: github.com/RackSec/srslog
 - package: github.com/armon/go-metrics
   subpackages:
-  - circonus
   - datadog
-- package: github.com/docker/docker
+- package: github.com/docker/leadership
+- package: github.com/docker/libkv
   subpackages:
-  - pkg/ioutils
-- package: github.com/dustin/go-humanize
+  - store
+  - store/consul
 - package: github.com/go-sql-driver/mysql
-- package: github.com/golang/snappy
-- package: github.com/hashicorp/consul-template
-  subpackages:
-  - signals
 - package: github.com/hashicorp/consul
   subpackages:
   - api
@@ -26,9 +21,6 @@ import:
   subpackages:
   - codec
 - package: github.com/hashicorp/go-multierror
-- package: github.com/hashicorp/go-plugin
-- package: github.com/hashicorp/go-rootcerts
-- package: github.com/hashicorp/go-syslog
 - package: github.com/hashicorp/go-version
 - package: github.com/hashicorp/hcl
   subpackages:
@@ -42,35 +34,21 @@ import:
   subpackages:
   - serf
 - package: github.com/hashicorp/yamux
-- package: github.com/hpcloud/tail
-  subpackages:
-  - watch
-- package: github.com/issuj/gofaster
-  subpackages:
-  - base64
-- package: github.com/kardianos/osext
 - package: github.com/mitchellh/cli
 - package: github.com/mitchellh/colorstring
 - package: github.com/mitchellh/copystructure
 - package: github.com/mitchellh/hashstructure
 - package: github.com/mitchellh/mapstructure
-- package: github.com/nats-io/go-nats-streaming
-- package: github.com/opencontainers/runc
+- package: github.com/nats-io/gnatsd
   subpackages:
-  - libcontainer/cgroups
-  - libcontainer/configs
-- package: github.com/pingcap/tidb
+  - server
+- package: github.com/nats-io/nats-streaming-server
   subpackages:
-  - ast
-  - parser
+  - server
 - package: github.com/ryanuber/columnize
-- package: github.com/satori/go.uuid
 - package: github.com/shirou/gopsutil
   subpackages:
-  - cpu
-  - disk
   - host
-  - mem
 - package: github.com/siddontang/go-mysql
   subpackages:
   - mysql
@@ -81,9 +59,14 @@ import:
 - package: golang.org/x/net
   subpackages:
   - context
-- package: golang.org/x/sys
+- package: golang.org/x/text
   subpackages:
-  - unix
-- package: gopkg.in/tomb.v1
+  - encoding
+  - encoding/charmap
+- package: github.com/golang/protobuf
+  subpackages:
+  - proto
 testImport:
-- package: github.com/kr/pretty
+- package: github.com/outbrain/golib
+  subpackages:
+  - tests

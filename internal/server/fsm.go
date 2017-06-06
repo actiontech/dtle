@@ -344,14 +344,20 @@ func (n *udupFSM) applyJobClientUpdate(buf []byte, index uint64) interface{} {
 
 	// Updating the allocs with the job id and task name
 	for _, ju := range req.JobUpdates {
+		// Check if the job already exists
 		if existing, _ := n.state.JobByID(ws, ju.JobID); existing != nil {
-			for _, t := range existing.Tasks {
-				t.Config["Gtid"] = ju.Gtid
-			}
-			// Update all the client allocations
-			if err := n.state.UpdateJobFromClient(index, existing); err != nil {
-				n.logger.Printf("[ERR] server.fsm: UpdateJobFromClient failed: %v", err)
-				return err
+			if ju.Gtid != "" {
+				existing.CreateIndex = existing.CreateIndex
+				existing.ModifyIndex = index
+				existing.JobModifyIndex = index
+				for _, t := range existing.Tasks {
+					t.Config["Gtid"] = ju.Gtid
+				}
+				// Update all the client allocations
+				if err := n.state.UpdateJobFromClient(index, existing); err != nil {
+					n.logger.Printf("[ERR] server.fsm: UpdateJobFromClient failed: %v", err)
+					return err
+				}
 			}
 		}
 	}
