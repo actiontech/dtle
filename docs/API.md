@@ -298,17 +298,23 @@ A Job represents a scheduled task to execute.
             "NodeId": "ab8c6e62-98f5-438f-9f39-91fbf09f9882",
             "Driver": "MySQL",
             "Config": {
-                "Gtid": "",
+                "Gtid": "64a1499d-4f4b-11e7-a79d-0242ac110002:1",
                 "NatsAddr": "127.0.0.1:8193",
                 "ReplicateDoDb": [
                     {
-                        "Schema": "",
-                        "Table": ""
+                        "Database": "s1",
+                        "Table": [
+                        	{
+                        		"Name":"dbtest1"
+                        	}
+                        ]
                     }
                 ],
-                "Dsn": {
-                    "Host": "192.168.99.100",
-                    "Port": 13307,
+                "ConnectionConfig": {
+                    "Key": {
+                    	"Host":"192.168.99.100",
+                    	"Port": 13307	
+                    },
                     "User": "root",
                     "Password": "rootroot"
                 }
@@ -321,9 +327,21 @@ A Job represents a scheduled task to execute.
             "Config": {
                 "Gtid": "",
                 "NatsAddr": "127.0.0.1:8193",
-                "Dsn": {
-                    "Host": "192.168.99.100",
-                    "Port": 13308,
+                "ReplicateDoDb": [
+                    {
+                        "Database": "s1",
+                        "Table": [
+                        	{
+                        		"Name":"dbtest1"
+                        	}
+                        ]
+                    }
+                ],
+                "ConnectionConfig": {
+                    "Key": {
+                    	"Host":"192.168.99.100",
+                    	"Port": 13309	
+                    },
                     "User": "root",
                     "Password": "rootroot"
                 }
