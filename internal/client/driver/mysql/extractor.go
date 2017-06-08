@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"math"
+	//"math"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -164,14 +164,17 @@ func (e *Extractor) Run() {
 	e.mysqlContext.StartTime = time.Now()
 	if err := e.initiateInspector(); err != nil {
 		e.onError(err)
+		return
 	}
 	for _, doDb := range e.mysqlContext.ReplicateDoDb {
 		for _, doTb := range doDb.Table {
 			if err := e.parser.ParseAlterStatement(doTb.AlterStatement); err != nil {
 				e.onError(err)
+				return
 			}
 			if err := e.validateStatement(doTb); err != nil {
 				e.onError(err)
+				return
 			}
 			/*if err := e.inspector.inspectTables(doDb.Database, doTb); err != nil {
 				e.logger.Printf("[ERR] mysql.extractor: unexpected error on inspectOriginalAndGhostTables, got %v", err)
@@ -180,6 +183,7 @@ func (e *Extractor) Run() {
 			if err := e.countTableRows(doDb.Database, doTb); err != nil {
 				e.logger.Printf("[ERR] mysql.extractor: unexpected error on countTableRows, got %v", err)
 				e.onError(err)
+				return
 			}
 			/*if err := e.ReadMigrationRangeValues(doDb.Database, doTb); err != nil {
 				e.logger.Printf("[ERR] mysql.extractor: unexpected error on ReadMigrationRangeValues, got %v", err)
@@ -189,11 +193,13 @@ func (e *Extractor) Run() {
 	}
 	if err := e.initNatsPubClient(); err != nil {
 		e.onError(err)
+		return
 	}
 	if e.mysqlContext.Gtid == "" {
 		e.mysqlContext.RowCopyStartTime = time.Now()
 		if err := e.mysqlDump(); err != nil {
 			e.onError(err)
+			return
 		}
 		e.logger.Printf("[INFO] mysql.extractor: Operating until row copy is complete")
 		e.consumeRowCopyComplete()
@@ -201,10 +207,12 @@ func (e *Extractor) Run() {
 	}
 	if err := e.initiateStreaming(); err != nil {
 		e.onError(err)
+		return
 	}
 
 	if err := e.retryOperation(e.cutOver); err != nil {
 		e.onError(err)
+		return
 	}
 }
 
@@ -644,6 +652,7 @@ func (e *Extractor) StreamEvents(approveHeterogeneous bool, canStopStreaming fun
 			for binlogTx := range e.binlogChannel {
 				if err := e.gobEncodedConn.Publish(fmt.Sprintf("%s_incr", e.subject), binlogTx); err != nil {
 					e.logger.Printf("[ERR] mysql.extractor: unexpected error on publish, got %v", err)
+					e.onError(err)
 				}
 			}
 		}()
@@ -1046,10 +1055,10 @@ func (e *Extractor) WaitCh() chan error {
 }
 
 func (e *Extractor) Stats() (*umodels.TaskStatistics, error) {
-	elapsedTime := e.mysqlContext.ElapsedTime()
+	/*elapsedTime := e.mysqlContext.ElapsedTime()
 	elapsedSeconds := int64(elapsedTime.Seconds())
 	totalRowsCopied := e.mysqlContext.GetTotalRowsCopied()
-	rowsEstimate := atomic.LoadInt64(&e.mysqlContext.RowsDeltaEstimate /*RowsEstimate*/) + atomic.LoadInt64(&e.mysqlContext.RowsDeltaEstimate)
+	rowsEstimate := atomic.LoadInt64(&e.mysqlContext.RowsDeltaEstimate *//*RowsEstimate*//*) + atomic.LoadInt64(&e.mysqlContext.RowsDeltaEstimate)
 	if atomic.LoadInt64(&e.rowCopyCompleteFlag) == 1 {
 		// Done copying rows. The totalRowsCopied value is the de-facto number of rows,
 		// and there is no further need to keep updating the value.
@@ -1090,9 +1099,9 @@ func (e *Extractor) Stats() (*umodels.TaskStatistics, error) {
 	} else if atomic.LoadInt64(&e.mysqlContext.IsPostponingCutOver) > 0 {
 		eta = "due"
 		state = "postponing cut-over"
-	} /*else if isThrottled, throttleReason, _ := e.mysqlContext.IsThrottled(); isThrottled {
+	} *//*else if isThrottled, throttleReason, _ := e.mysqlContext.IsThrottled(); isThrottled {
 		state = fmt.Sprintf("throttled, %s", throttleReason)
-	}*/
+	}*//*
 
 	shouldPrintStatus := false
 	if elapsedSeconds <= 60 {
@@ -1131,7 +1140,8 @@ func (e *Extractor) Stats() (*umodels.TaskStatistics, error) {
 		},
 		Timestamp: time.Now().UTC().UnixNano(),
 	}
-	return &taskResUsage, nil
+	return &taskResUsage, nil*/
+	return nil,nil
 }
 
 func (e *Extractor) ID() string {

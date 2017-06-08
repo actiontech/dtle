@@ -3,14 +3,14 @@ package binlog
 import (
 	"bytes"
 	gosql "database/sql"
-	"encoding/hex"
+	//"encoding/hex"
 	"fmt"
 	"log"
 	"regexp"
 	"strconv"
 	"strings"
 	"sync"
-	"time"
+	//"time"
 
 	"github.com/issuj/gofaster/base64"
 	"github.com/pingcap/tidb/ast"
@@ -275,11 +275,11 @@ func (b *BinlogReader) DataStreamEvents(canStopStreaming func() bool, entriesCha
 				defer b.currentCoordinatesMutex.Unlock()
 				b.currentCoordinates.LogFile = string(rotateEvent.NextLogName)
 			}()
-			b.logger.Printf("[DEBUG] mysql.reader: === %s ===", replication.EventType(ev.Header.EventType))
+			/*b.logger.Printf("[DEBUG] mysql.reader: === %s ===", replication.EventType(ev.Header.EventType))
 			b.logger.Printf("[DEBUG] mysql.reader: Date: %s", time.Unix(int64(ev.Header.Timestamp), 0).Format(gomysql.TimeFormat))
 			b.logger.Printf("[DEBUG] mysql.reader: Position: %d", rotateEvent.Position)
 			b.logger.Printf("[DEBUG] mysql.reader: Event size: %d", ev.Header.EventSize)
-			b.logger.Printf("[DEBUG] mysql.reader: rotate to next log name: %s", rotateEvent.NextLogName)
+			b.logger.Printf("[DEBUG] mysql.reader: rotate to next log name: %s", rotateEvent.NextLogName)*/
 		} else if gtidEvent, ok := ev.Event.(*replication.GTIDEvent); ok {
 			func() {
 				b.currentCoordinatesMutex.Lock()
@@ -320,11 +320,11 @@ func (b *BinlogReader) BinlogStreamEvents(txChannel chan<- *BinlogTx) error {
 				defer b.currentCoordinatesMutex.Unlock()
 				b.currentCoordinates.LogFile = string(rotateEvent.NextLogName)
 			}()
-			b.logger.Printf("[DEBUG] mysql.reader: === %s ===", replication.EventType(ev.Header.EventType))
+			/*b.logger.Printf("[DEBUG] mysql.reader: === %s ===", replication.EventType(ev.Header.EventType))
 			b.logger.Printf("[DEBUG] mysql.reader: Date: %s", time.Unix(int64(ev.Header.Timestamp), 0).Format(gomysql.TimeFormat))
 			b.logger.Printf("[DEBUG] mysql.reader: Position: %d", rotateEvent.Position)
 			b.logger.Printf("[DEBUG] mysql.reader: Event size: %d", ev.Header.EventSize)
-			b.logger.Printf("[DEBUG] mysql.reader: rotate to next log name: %s", rotateEvent.NextLogName)
+			b.logger.Printf("[DEBUG] mysql.reader: rotate to next log name: %s", rotateEvent.NextLogName)*/
 		} else {
 			if err := b.handleBinlogRowsEvent(ev, txChannel); err != nil {
 				return err
@@ -635,7 +635,7 @@ func (b *BinlogReader) onCommit(lastEvent *BinlogEvent, txChannel chan<- *Binlog
 		}
 	}
 
-	for _, ev := range b.currentTx.events {
+	/*for _, ev := range b.currentTx.events {
 		if len(b.currentTx.Query) > 0 {
 			b.logger.Printf("[DEBUG] mysql.reader: === %s ===", replication.EventType(ev.Header.EventType))
 			b.logger.Printf("[DEBUG] mysql.reader: Date: %s", time.Unix(int64(ev.Header.Timestamp), 0).Format(gomysql.TimeFormat))
@@ -688,7 +688,7 @@ func (b *BinlogReader) onCommit(lastEvent *BinlogEvent, txChannel chan<- *Binlog
 				b.logger.Printf("[DEBUG] mysql.reader: XID: %d", evt.XID)
 			}
 		}
-	}
+	}*/
 
 	b.currentTx.EndEventFile = lastEvent.BinlogFile
 	b.currentTx.EndEventPos = lastEvent.RealPos

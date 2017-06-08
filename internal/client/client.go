@@ -1047,7 +1047,8 @@ func (c *Client) watchAllocations(updates chan *allocUpdates, jUpdates chan *job
 			// Ensure that we received all the allocations we wanted
 			pulledAllocs = make(map[string]*models.Allocation, len(allocsResp.Allocs))
 			for _, alloc := range allocsResp.Allocs {
-				if alloc.Task == models.TaskTypeSrc {
+				pulledAllocs[alloc.ID] = alloc
+				/*if alloc.Task == models.TaskTypeSrc {
 					args := models.JobSpecificRequest{
 						JobID:     alloc.Job.ID,
 						AllAllocs: true,
@@ -1076,7 +1077,7 @@ func (c *Client) watchAllocations(updates chan *allocUpdates, jUpdates chan *job
 					}
 				} else {
 					pulledAllocs[alloc.ID] = alloc
-				}
+				}*/
 			}
 
 			/*for _, desiredID := range pull {

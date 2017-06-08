@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"math"
+	//"math"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -24,7 +24,7 @@ import (
 
 const (
 	applyEventsQueueBuffer        = 100
-	applyDataQueueBuffer          = 10000
+	applyDataQueueBuffer          = 1000000
 	applyCopyRowsQueueQueueBuffer = 100
 )
 
@@ -143,26 +143,32 @@ func (a *Applier) Run() {
 		for _, doTb := range doDb.Table {
 			if err := a.parser.ParseAlterStatement(doTb.AlterStatement); err != nil {
 				a.onError(err)
+				return
 			}
 			if err := a.validateStatement(doTb); err != nil {
 				a.onError(err)
+				return
 			}
 		}
 	}
 	if err := a.initDBConnections(); err != nil {
 		a.onError(err)
+		return
 	}
 	if err := a.initNatSubClient(); err != nil {
 		a.onError(err)
+		return
 	}
 	if err := a.initiateStreaming(); err != nil {
 		a.onError(err)
+		return
 	}
 
 	go a.executeWriteFuncs()
 
 	if err := a.retryOperation(a.cutOver); err != nil {
 		a.onError(err)
+		return
 	}
 }
 
@@ -546,7 +552,7 @@ OUTER:
 				//if err := a.onApplyTxStruct(binlogEntry); err != nil {
 				if err := a.onApplyEventStruct(binlogEntry); err != nil {
 					a.onError(err)
-					continue OUTER
+					break OUTER
 				}
 			}
 		case binlogTx := <-a.applyBinlogTxQueue:
@@ -560,14 +566,14 @@ OUTER:
 					_, err := usql.ExecNoPrepare(a.db, lastFde)
 					if err != nil {
 						a.onError(err)
-						break
+						break OUTER
 					}
 				}
 
 				//if err := a.onApplyTxStruct(binlogEntry); err != nil {
 				if err := a.onApplyTxStruct(binlogTx); err != nil {
 					a.onError(err)
-					continue OUTER
+					break OUTER
 				}
 			}
 		default:
@@ -591,6 +597,7 @@ OUTER:
 							}
 							if err := a.ApplyEventQueries(queries); err != nil {
 								a.onError(err)
+								break OUTER
 							}
 						}
 						a.logger.Printf("[INFO] mysql.applier: operating until row copy is complete")
@@ -642,22 +649,31 @@ func (a *Applier) initNatSubClient() (err error) {
 // initiateStreaming begins treaming of binary log events and registers listeners for such events
 func (a *Applier) initiateStreaming() error {
 	if a.mysqlContext.Gtid == "" {
-		a.jsonEncodedConn.Subscribe(fmt.Sprintf("%s_full", a.subject), func(d *dump) {
+		_,err := a.jsonEncodedConn.Subscribe(fmt.Sprintf("%s_full", a.subject), func(d *dump) {
 			//a.logger.Printf("[DEBUG] mysql.applier: received binlogEntry: %+v", binlogEntry)
 			a.copyRowsQueue <- d
 		})
+		if err !=nil{
+			return err
+		}
 	}
 
 	if a.mysqlContext.ApproveHeterogeneous {
-		a.jsonEncodedConn.Subscribe(fmt.Sprintf("%s_incr_heterogeneous", a.subject), func(binlogEntry *ubinlog.BinlogEntry) {
+		_,err := a.jsonEncodedConn.Subscribe(fmt.Sprintf("%s_incr_heterogeneous", a.subject), func(binlogEntry *ubinlog.BinlogEntry) {
 			//a.logger.Printf("[DEBUG] mysql.applier: received binlogEntry: %+v", binlogEntry)
 			a.applyDataEntryQueue <- binlogEntry
 		})
+		if err !=nil{
+			return err
+		}
 	} else {
-		a.gobEncodedConn.Subscribe(fmt.Sprintf("%s_incr", a.subject), func(binlogEntry *ubinlog.BinlogTx) {
+		_,err := a.gobEncodedConn.Subscribe(fmt.Sprintf("%s_incr", a.subject), func(binlogEntry *ubinlog.BinlogTx) {
 			//a.logger.Printf("[DEBUG] mysql.applier: received binlogEntry: %+v", binlogEntry)
 			a.applyBinlogTxQueue <- binlogEntry
 		})
+		if err !=nil{
+			return err
+		}
 	}
 
 	return nil
@@ -1366,10 +1382,13 @@ func (a *Applier) WaitCh() chan error {
 }
 
 func (a *Applier) Stats() (*umodels.TaskStatistics, error) {
-	elapsedTime := a.mysqlContext.ElapsedTime()
+	/*if a.stanConn !=nil{
+		a.logger.Printf("sc.NatsConn().Statistics:%v",a.stanConn.NatsConn().Statistics)
+	}*/
+	/*elapsedTime := a.mysqlContext.ElapsedTime()
 	elapsedSeconds := int64(elapsedTime.Seconds())
 	totalRowsCopied := a.mysqlContext.GetTotalRowsCopied()
-	rowsEstimate := atomic.LoadInt64(&a.mysqlContext.RowsDeltaEstimate /*RowsEstimate*/) + atomic.LoadInt64(&a.mysqlContext.RowsDeltaEstimate)
+	rowsEstimate := atomic.LoadInt64(&a.mysqlContext.RowsDeltaEstimate *//*RowsEstimate*//*) + atomic.LoadInt64(&a.mysqlContext.RowsDeltaEstimate)
 	if atomic.LoadInt64(&a.rowCopyCompleteFlag) == 1 {
 		// Done copying rows. The totalRowsCopied value is the de-facto number of rows,
 		// and there is no further need to keep updating the value.
@@ -1410,9 +1429,9 @@ func (a *Applier) Stats() (*umodels.TaskStatistics, error) {
 	} else if atomic.LoadInt64(&a.mysqlContext.IsPostponingCutOver) > 0 {
 		eta = "due"
 		state = "postponing cut-over"
-	} /*else if isThrottled, throttleReason, _ := e.mysqlContext.IsThrottled(); isThrottled {
+	} *//*else if isThrottled, throttleReason, _ := e.mysqlContext.IsThrottled(); isThrottled {
 		state = fmt.Sprintf("throttled, %s", throttleReason)
-	}*/
+	}*//*
 
 	shouldPrintStatus := false
 	if elapsedSeconds <= 60 {
@@ -1451,7 +1470,8 @@ func (a *Applier) Stats() (*umodels.TaskStatistics, error) {
 		},
 		Timestamp: time.Now().UTC().UnixNano(),
 	}
-	return &taskResUsage, nil
+	return &taskResUsage, nil*/
+	return nil,nil
 }
 
 func (a *Applier) ID() string {

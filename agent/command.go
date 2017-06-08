@@ -170,15 +170,6 @@ func (c *Command) readConfig() *Config {
 		}
 	}
 
-	// Check the bootstrap flags
-	if config.Server.BootstrapExpect > 0 && !config.Server.Enabled {
-		c.logger.Printf("[ERR] Bootstrap requires server mode to be enabled")
-		return nil
-	}
-	if config.Server.BootstrapExpect == 1 {
-		c.logger.Printf("[WARN] Bootstrap mode enabled! Potentially unsafe operation.")
-	}
-
 	return config
 }
 
