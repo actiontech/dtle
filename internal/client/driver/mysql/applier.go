@@ -13,6 +13,7 @@ import (
 	gonats "github.com/nats-io/go-nats"
 	stan "github.com/nats-io/go-nats-streaming"
 	"github.com/satori/go.uuid"
+	gomysql "github.com/siddontang/go-mysql/mysql"
 
 	ubase "udup/internal/client/driver/mysql/base"
 	ubinlog "udup/internal/client/driver/mysql/binlog"
@@ -53,8 +54,8 @@ type Applier struct {
 	waitCh          chan error
 }
 
-func NewApplier(subject string, cfg *uconf.MySQLDriverConfig, logger *log.Logger) *Applier {
-	applier := &Applier{
+func NewApplier(subject string, cfg *uconf.MySQLDriverConfig, logger *log.Logger) (*Applier, error) {
+	a := &Applier{
 		logger:                     logger,
 		subject:                    subject,
 		mysqlContext:               cfg,
@@ -66,7 +67,10 @@ func NewApplier(subject string, cfg *uconf.MySQLDriverConfig, logger *log.Logger
 		applyBinlogTxQueue:         make(chan *ubinlog.BinlogTx, applyDataQueueBuffer),
 		waitCh:                     make(chan error, 1),
 	}
-	return applier
+	if err := a.initDBConnections(); err != nil {
+		return nil,err
+	}
+	return a,nil
 }
 
 // sleepWhileTrue sleeps indefinitely until the given function returns 'false'
@@ -151,10 +155,6 @@ func (a *Applier) Run() {
 			}
 		}
 	}
-	if err := a.initDBConnections(); err != nil {
-		a.onError(err)
-		return
-	}
 	if err := a.initNatSubClient(); err != nil {
 		a.onError(err)
 		return
@@ -170,6 +170,31 @@ func (a *Applier) Run() {
 		a.onError(err)
 		return
 	}
+}
+
+// readCurrentBinlogCoordinates reads master status from hooked server
+func (a *Applier) readCurrentBinlogCoordinates() error {
+	query := `show master status`
+	foundMasterStatus := false
+	err := usql.QueryRowsMap(a.db, query, func(m usql.RowMap) error {
+		gtidSet, err := gomysql.ParseMysqlGTIDSet(m.GetString("Executed_Gtid_Set"))
+		if err != nil {
+			return err
+		}
+
+		a.mysqlContext.Gtid = gtidSet.String()
+		foundMasterStatus = true
+
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	if !foundMasterStatus {
+		return fmt.Errorf("Got no results from SHOW MASTER STATUS. Bailing out")
+	}
+
+	return nil
 }
 
 // cutOver performs the final step of migration, based on migration
@@ -685,11 +710,11 @@ const (
 
 func (a *Applier) initDBConnections() (err error) {
 	applierUri := a.mysqlContext.ConnectionConfig.GetDBUri()
-	if a.db, _, err = usql.GetDB(applierUri); err != nil {
+	if a.db, err = usql.CreateDB(applierUri); err != nil {
 		return err
 	}
 	singletonApplierUri := fmt.Sprintf("%s&timeout=0", applierUri)
-	if a.singletonDB, _, err = usql.GetDB(singletonApplierUri); err != nil {
+	if a.singletonDB, err = usql.CreateDB(singletonApplierUri); err != nil {
 		return err
 	}
 	a.singletonDB.SetMaxOpenConns(1)
@@ -700,6 +725,9 @@ func (a *Applier) initDBConnections() (err error) {
 		return err
 	}
 	if err := a.validateAndReadTimeZone(); err != nil {
+		return err
+	}
+	if err := a.readCurrentBinlogCoordinates(); err != nil {
 		return err
 	}
 	/*if err := a.readTableColumns(); err != nil {
@@ -1493,13 +1521,13 @@ func (a *Applier) ID() string {
 }
 
 func (a *Applier) Shutdown() error {
-	/*if err := a.stanConn.Close(); err != nil {
+	if err := a.stanConn.Close(); err != nil {
 		return err
 	}
 
 	if err := usql.CloseDBs(a.db); err != nil {
 		return err
-	}*/
+	}
 
 	a.logger.Printf("[INFO] mysql.applier: closed applier connection.")
 	return nil

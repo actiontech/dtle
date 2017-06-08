@@ -127,6 +127,15 @@ func GetDB(mysql_uri string) (*gosql.DB, bool, error) {
 	return knownDBs[mysql_uri], exists, nil
 }
 
+func CreateDB(mysql_uri string) (*gosql.DB, error) {
+	db, err := gosql.Open("mysql", mysql_uri)
+	if err != nil {
+		return nil, err
+	}
+
+	return db, nil
+}
+
 // RowToArray is a convenience function, typically not called directly, which maps a
 // single read database row into a NullString
 func RowToArray(rows *gosql.Rows, columns []string) []CellData {

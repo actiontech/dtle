@@ -33,7 +33,7 @@ func NewInspector(ctx *uconf.MySQLDriverConfig, logger *log.Logger) *Inspector {
 
 func (i *Inspector) InitDBConnections() (err error) {
 	inspectorUri := i.mysqlContext.ConnectionConfig.GetDBUri()
-	if i.db, _, err = usql.GetDB(inspectorUri); err != nil {
+	if i.db, err = usql.CreateDB(inspectorUri); err != nil {
 		return err
 	}
 	if err := i.validateConnection(); err != nil {

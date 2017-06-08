@@ -519,13 +519,13 @@ func (e *Extractor) initiateStreaming() error {
 //--EventsStreamer--
 func (e *Extractor) initDBConnections() (err error) {
 	EventsStreamerUri := e.mysqlContext.ConnectionConfig.GetDBUri()
-	if e.db, _, err = usql.GetDB(EventsStreamerUri); err != nil {
+	if e.db, err = usql.CreateDB(EventsStreamerUri); err != nil {
 		return err
 	}
 	if err := e.validateConnection(); err != nil {
 		return err
 	}
-	if err := e.readCurrentBinlogCoordinates(false); err != nil {
+	if err := e.readCurrentBinlogCoordinates(); err != nil {
 		return err
 	}
 	if err := e.initBinlogReader(e.initialBinlogCoordinates); err != nil {
@@ -567,7 +567,7 @@ func (e *Extractor) GetReconnectBinlogCoordinates() *ubase.BinlogCoordinates {
 }
 
 // readCurrentBinlogCoordinates reads master status from hooked server
-func (e *Extractor) readCurrentBinlogCoordinates(isDump bool) error {
+func (e *Extractor) readCurrentBinlogCoordinates() error {
 	if e.mysqlContext.Gtid != "" {
 		gtidSet, err := gomysql.ParseMysqlGTIDSet(e.mysqlContext.Gtid)
 		if err != nil {
@@ -622,8 +622,12 @@ func (e *Extractor) StreamEvents(approveHeterogeneous bool, canStopStreaming fun
 		// The next should block and execute forever, unless there's a serious error
 		var successiveFailures int64
 		var lastAppliedRowsEventHint ubase.BinlogCoordinates
+	OUTER_DS:
 		for {
 			if err := e.binlogReader.DataStreamEvents(canStopStreaming, e.dataChannel); err != nil {
+				if atomic.LoadInt64(&e.mysqlContext.ShutdownFlag) > 0 {
+					break OUTER_DS
+				}
 				e.logger.Printf("[INFO] mysql.extractor: streamEvents encountered unexpected error: %+v", err)
 				e.mysqlContext.MarkPointOfInterest()
 				time.Sleep(ReconnectStreamerSleepSeconds * time.Second)
@@ -659,8 +663,12 @@ func (e *Extractor) StreamEvents(approveHeterogeneous bool, canStopStreaming fun
 		// The next should block and execute forever, unless there's a serious error
 		var successiveFailures int64
 		var lastAppliedRowsEventHint ubase.BinlogCoordinates
+	OUTER_BS:
 		for {
 			if err := e.binlogReader.BinlogStreamEvents(e.binlogChannel); err != nil {
+				if atomic.LoadInt64(&e.mysqlContext.ShutdownFlag) > 0 {
+					break OUTER_BS
+				}
 				e.logger.Printf("[INFO] mysql.extractor: streamEvents encountered unexpected error: %+v", err)
 				e.mysqlContext.MarkPointOfInterest()
 				time.Sleep(ReconnectStreamerSleepSeconds * time.Second)
@@ -685,6 +693,7 @@ func (e *Extractor) StreamEvents(approveHeterogeneous bool, canStopStreaming fun
 			}
 		}
 	}
+	return nil
 }
 
 //Perform the snapshot using the same logic as the "mysqldump" utility.
@@ -750,7 +759,7 @@ func (e *Extractor) mysqlDump() error {
 	// Obtain the binlog position and update the SourceInfo in the context. This means that all source records generated
 	// as part of the snapshot will contain the binlog position of the snapshot.
 	e.logger.Printf("Step 3: read binlog position of MySQL master")
-	if err := e.readCurrentBinlogCoordinates(true); err != nil {
+	if err := e.readCurrentBinlogCoordinates(); err != nil {
 		return err
 	}
 
@@ -780,7 +789,7 @@ func (e *Extractor) mysqlDump() error {
 		e.logger.Printf("Step 6: generating DROP and CREATE statements to reflect current database schemas:")
 		for _, doDb := range e.mysqlContext.ReplicateDoDb {
 			uri := e.mysqlContext.ConnectionConfig.GetDBUriByDbName(doDb.Database)
-			db, _, err := usql.GetDB(uri)
+			db, err := usql.CreateDB(uri)
 			if err != nil {
 				return err
 			}
@@ -1163,17 +1172,18 @@ func (e *Extractor) ID() string {
 }
 
 func (e *Extractor) Shutdown() error {
-	/*e.stanConn.Close()
+	e.stanConn.Close()
+	close(e.binlogChannel)
 
 	if err := usql.CloseDBs(e.db); err != nil {
 		return err
 	}
 
-	atomic.StoreInt64(&e.mysqlContext.CleanupImminentFlag, 1)
+	atomic.StoreInt64(&e.mysqlContext.ShutdownFlag, 1)
 
 	if err := e.binlogReader.Close(); err != nil {
 		return err
-	}*/
+	}
 
 	e.logger.Printf("[INFO] mysql.extractor: closed streamer connection.")
 	return nil

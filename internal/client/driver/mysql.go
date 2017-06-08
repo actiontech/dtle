@@ -35,7 +35,10 @@ func (m *MySQLDriver) Start(ctx *ExecContext, task *models.Task) (DriverHandle, 
 		}
 	case models.TaskTypeDest:
 		{
-			a := umysql.NewApplier(ctx.Subject, &driverConfig, m.logger)
+			a,err := umysql.NewApplier(ctx.Subject, &driverConfig, m.logger)
+			if err !=nil {
+				return nil,err
+			}
 			go a.Run()
 			return a, nil
 		}

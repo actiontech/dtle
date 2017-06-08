@@ -149,6 +149,7 @@ type MySQLDriverConfig struct {
 	IsPostponingCutOver                    int64
 	CountingRowsFlag                       int64
 	AllEventsUpToLockProcessedInjectedFlag int64
+	ShutdownFlag                           int64
 	UserCommandedUnpostponeFlag            int64
 	CutOverCompleteFlag                    int64
 	InCutOverCriticalSectionFlag           int64

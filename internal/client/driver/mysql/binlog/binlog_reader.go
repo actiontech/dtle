@@ -25,6 +25,7 @@ import (
 	uutil "udup/internal/client/driver/mysql/util"
 	uconf "udup/internal/config"
 	umconf "udup/internal/config/mysql"
+	"sync/atomic"
 )
 
 // BinlogReader is a general interface whose implementations can choose their methods of reading
@@ -303,7 +304,11 @@ func (b *BinlogReader) DataStreamEvents(canStopStreaming func() bool, entriesCha
 }
 
 func (b *BinlogReader) BinlogStreamEvents(txChannel chan<- *BinlogTx) error {
+	OUTER:
 	for {
+		if atomic.LoadInt64(&b.MysqlContext.ShutdownFlag) > 0 {
+			break OUTER
+		}
 		ev, err := b.binlogStreamer.GetEvent(context.Background())
 		if err != nil {
 			return err
