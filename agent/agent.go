@@ -156,6 +156,7 @@ func (a *Agent) clientConfig() (*uconf.ClientConfig, error) {
 		conf.RPCHandler = a.server
 	}
 	conf.LogOutput = a.logOutput
+	conf.LogFile = a.config.LogFile
 	conf.LogLevel = a.config.LogLevel
 	if a.config.Region != "" {
 		conf.Region = a.config.Region

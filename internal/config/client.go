@@ -37,6 +37,9 @@ type ClientConfig struct {
 	// LogOutput is the destination for logs
 	LogOutput io.Writer
 
+	// Specify the log file name. The empty string means to log to stdout.
+	LogFile string
+
 	// Region is the clients region
 	Region string
 

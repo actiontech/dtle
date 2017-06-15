@@ -698,6 +698,7 @@ func (b *BinlogReader) onCommit(lastEvent *BinlogEvent, txChannel chan<- *Binlog
 	b.currentTx.EndEventFile = lastEvent.BinlogFile
 	b.currentTx.EndEventPos = lastEvent.RealPos
 
+	//b.logger.Printf("[DEBUG] mysql.reader: currentTx: %+v", b.currentTx.GNO)
 	txChannel <- b.currentTx
 
 	b.currentTx = nil

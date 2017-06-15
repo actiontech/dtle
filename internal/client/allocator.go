@@ -420,7 +420,7 @@ func (r *Allocator) destroyWorkers(destroyEvent *models.TaskEvent) {
 	}
 
 	// Final store sync
-	r.syncStatus()
+	//r.syncStatus()
 }
 
 // handleDestroy blocks till the Allocator should be destroyed and does the

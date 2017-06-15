@@ -25,7 +25,7 @@ import (
 
 const (
 	applyEventsQueueBuffer        = 100
-	applyDataQueueBuffer          = 1000000
+	applyDataQueueBuffer          = 100
 	applyCopyRowsQueueQueueBuffer = 100
 )
 
@@ -51,6 +51,8 @@ type Applier struct {
 	stanConn        stan.Conn
 	jsonEncodedConn *gonats.EncodedConn
 	gobEncodedConn  *gonats.EncodedConn
+	jsonSub  *gonats.Subscription
+	gobSub  *gonats.Subscription
 	waitCh          chan error
 }
 
@@ -136,7 +138,7 @@ func (a *Applier) validateStatement(doTb *uconf.Table) (err error) {
 func (a *Applier) onError(err error) {
 	a.logger.Printf("[ERR] mysql.applier: unexpected error: %v", err)
 	a.waitCh <- err
-	close(a.waitCh)
+	//close(a.waitCh)
 }
 
 // Run executes the complete apply logic.
@@ -177,12 +179,14 @@ func (a *Applier) readCurrentBinlogCoordinates() error {
 	query := `show master status`
 	foundMasterStatus := false
 	err := usql.QueryRowsMap(a.db, query, func(m usql.RowMap) error {
-		gtidSet, err := gomysql.ParseMysqlGTIDSet(m.GetString("Executed_Gtid_Set"))
-		if err != nil {
-			return err
-		}
+		if m.GetString("Executed_Gtid_Set")!="" {
+			gtidSet, err := gomysql.ParseMysqlGTIDSet(m.GetString("Executed_Gtid_Set"))
+			if err != nil {
+				return err
+			}
 
-		a.mysqlContext.Gtid = gtidSet.String()
+			a.mysqlContext.Gtid = gtidSet.String()
+		}
 		foundMasterStatus = true
 
 		return nil
@@ -684,21 +688,37 @@ func (a *Applier) initiateStreaming() error {
 	}
 
 	if a.mysqlContext.ApproveHeterogeneous {
-		_,err := a.jsonEncodedConn.Subscribe(fmt.Sprintf("%s_incr_heterogeneous", a.subject), func(binlogEntry *ubinlog.BinlogEntry) {
+		sub,err := a.jsonEncodedConn.Subscribe(fmt.Sprintf("%s_incr_heterogeneous", a.subject), func(binlogEntry *ubinlog.BinlogEntry) {
 			//a.logger.Printf("[DEBUG] mysql.applier: received binlogEntry: %+v", binlogEntry)
 			a.applyDataEntryQueue <- binlogEntry
 		})
 		if err !=nil{
 			return err
 		}
+		a.jsonSub = sub
 	} else {
-		_,err := a.gobEncodedConn.Subscribe(fmt.Sprintf("%s_incr", a.subject), func(binlogEntry *ubinlog.BinlogTx) {
-			//a.logger.Printf("[DEBUG] mysql.applier: received binlogEntry: %+v", binlogEntry)
+		sub,err := a.gobEncodedConn.Subscribe(fmt.Sprintf("%s_incr", a.subject), func(binlogEntry *ubinlog.BinlogTx) {
+			//a.logger.Printf("[DEBUG] mysql.applier: received binlogEntry: %+v", binlogEntry.GNO)
 			a.applyBinlogTxQueue <- binlogEntry
 		})
 		if err !=nil{
 			return err
 		}
+		msgLimit := 100000 * 1024 * 100
+		bytesLimit := 1000000 * 1024 * 100
+		// Limit internal subchan length to trip condition easier.
+		if err = sub.SetPendingLimits(msgLimit, bytesLimit); err != nil {
+			return fmt.Errorf("Got an error on subscription.SetPendingLimit(%v, %v) for subj:'%s_incr': %v\n", msgLimit, bytesLimit, a.subject, err)
+		}
+		a.gobEncodedConn.Conn.SetErrorHandler(func(c *gonats.Conn, s *gonats.Subscription, e error) {
+			if s != sub {
+				a.logger.Printf("[ERR] Did not receive proper subscription")
+			}
+			if e != gonats.ErrSlowConsumer {
+				a.logger.Printf("[ERR] Did not receive proper error: %v vs %v\n", e, gonats.ErrSlowConsumer)
+			}
+		})
+		a.gobSub = sub
 	}
 
 	return nil
@@ -1521,10 +1541,19 @@ func (a *Applier) ID() string {
 }
 
 func (a *Applier) Shutdown() error {
+	if a.jsonSub !=nil {
+		if err := a.jsonSub.Unsubscribe(); err != nil {
+			return err
+		}
+	}
+	if a.gobSub !=nil {
+		if err := a.gobSub.Unsubscribe(); err != nil {
+			return err
+		}
+	}
 	if err := a.stanConn.Close(); err != nil {
 		return err
 	}
-
 	if err := usql.CloseDBs(a.db); err != nil {
 		return err
 	}

@@ -155,7 +155,7 @@ func (e *Extractor) countTableRows(doDb string, doTb *uconf.Table) (err error) {
 func (e *Extractor) onError(err error) {
 	e.logger.Printf("[ERR] mysql.extractor: unexpected error: %v", err)
 	e.waitCh <- err
-	close(e.waitCh)
+	//close(e.waitCh)
 }
 
 // Run executes the complete extract logic.
@@ -615,6 +615,7 @@ func (e *Extractor) StreamEvents(approveHeterogeneous bool, canStopStreaming fun
 				if binlogEntry.Events != nil {
 					if err := e.jsonEncodedConn.Publish(fmt.Sprintf("%s_incr_heterogeneous", e.subject), binlogEntry); err != nil {
 						e.logger.Printf("[ERR] mysql.extractor: unexpected error on publish, got %v", err)
+						e.onError(err)
 					}
 				}
 			}
@@ -1172,16 +1173,15 @@ func (e *Extractor) ID() string {
 }
 
 func (e *Extractor) Shutdown() error {
+	atomic.StoreInt64(&e.mysqlContext.ShutdownFlag, 1)
+	//close(e.binlogChannel)
 	e.stanConn.Close()
-	close(e.binlogChannel)
 
-	if err := usql.CloseDBs(e.db); err != nil {
+	if err := e.binlogReader.Close(); err != nil {
 		return err
 	}
 
-	atomic.StoreInt64(&e.mysqlContext.ShutdownFlag, 1)
-
-	if err := e.binlogReader.Close(); err != nil {
+	if err := usql.CloseDBs(e.db); err != nil {
 		return err
 	}
 

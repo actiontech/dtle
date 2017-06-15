@@ -90,22 +90,7 @@ func persistState(path string, data interface{}) error {
 	if stat, err := os.Stat(path); err != nil {
 		return fmt.Errorf("unable to stat state file %s: %v", path, err)
 	} else if stat.Size() == 0 {
-		return fmt.Errorf("persisted invalid state file %s; see https://github.com/hashicorp/server/issues/1367", path)
-	}
-	return nil
-}
-
-// restoreState is used to read back in the persisted state
-func restoreState(path string, data interface{}) error {
-	buf, err := ioutil.ReadFile(path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil
-		}
-		return fmt.Errorf("failed to read state: %v", err)
-	}
-	if err := json.Unmarshal(buf, data); err != nil {
-		return fmt.Errorf("failed to decode state: %v", err)
+		return fmt.Errorf("persisted invalid state file %s", path)
 	}
 	return nil
 }
