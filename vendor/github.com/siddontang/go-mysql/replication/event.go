@@ -11,7 +11,7 @@ import (
 	"unicode"
 
 	"github.com/juju/errors"
-	"github.com/satori/go.uuid"
+	//"github.com/satori/go.uuid"
 	. "github.com/siddontang/go-mysql/mysql"
 )
 
@@ -279,6 +279,44 @@ func (e *QueryEvent) Dump(w io.Writer) {
 }
 
 type GTIDEvent struct {
+	GTID MysqlGTID
+}
+
+/*
+   The layout of the buffer is as follows:
+   +------+--------+-------+-------+--------------+---------------+
+   |unused|SID     |GNO    |lt_type|last_committed|sequence_number|
+   |1 byte|16 bytes|8 bytes|1 byte |8 bytes       |8 bytes        |
+   +------+--------+-------+-------+--------------+---------------+
+
+   The 'unused' field is not used.
+
+   lt_type (for logical timestamp typecode) is always equal to the
+   constant LOGICAL_TIMESTAMP_TYPECODE.
+
+   5.6 did not have TS_TYPE and the following fields. 5.7.4 and
+   earlier had a different value for TS_TYPE and a shorter length for
+   the following fields. Both these cases are accepted and ignored.
+
+   The buffer is advanced in Binary_log_event constructor to point to
+   beginning of post-header
+ */
+func (e *GTIDEvent) Decode(data []byte) error {
+	e.GTID.CommitFlag = uint8(data[0])
+	e.GTID.SID = data[1:17]
+	e.GTID.GNO = int64(binary.LittleEndian.Uint64(data[17:25]))
+	e.GTID.LtType = data[25]
+	e.GTID.LastCommitted = int64(binary.LittleEndian.Uint64(data[26:34]))
+	e.GTID.SequenceNumber = int64(binary.LittleEndian.Uint64(data[34:]))
+	return nil
+}
+
+func (e *GTIDEvent) Dump(w io.Writer) {
+	fmt.Fprintf(w, "GTID: %s\n", e.GTID)
+	fmt.Fprintln(w)
+}
+
+/*type GTIDEvent struct {
 	CommitFlag uint8
 	SID        []byte
 	GNO        int64
@@ -298,7 +336,7 @@ func (e *GTIDEvent) Dump(w io.Writer) {
 	u, _ := uuid.FromBytes(e.SID)
 	fmt.Fprintf(w, "GTID_NEXT: %s:%d\n", u.String(), e.GNO)
 	fmt.Fprintln(w)
-}
+}*/
 
 type BeginLoadQueryEvent struct {
 	FileID    uint32
