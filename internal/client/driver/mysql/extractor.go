@@ -580,7 +580,7 @@ func (e *Extractor) readCurrentBinlogCoordinates() error {
 				e.initialBinlogCoordinates = &ubase.BinlogCoordinates{
 					GtidSet: gtidSet.String(),
 				}
-			}else {
+			} else {
 				gtidSet, err := gomysql.ParseMysqlGTIDSet(e.mysqlContext.Gtid)
 				if err != nil {
 					return err

@@ -556,8 +556,8 @@ func (c *Client) setupNatsServer() error {
 		HTTPPort:   8199,
 		MaxPayload: 100 * 1024 * 1024,
 		//LogFile:    c.config.LogFile,
-		Trace:      true,
-		Debug:      true,
+		Trace: true,
+		Debug: true,
 	}
 	c.logger.Printf("[DEBUG] client: starting nats streaming server [%s]", c.config.NatsConfig.Addr)
 	sOpts := stand.GetDefaultOptions()
