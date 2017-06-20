@@ -178,7 +178,8 @@ func (r *Worker) SaveState() error {
 		snap.Task = r.task
 	}
 	r.handleLock.Unlock()
-	return persistState(r.stateFilePath(), &snap)
+	return nil
+	//return persistState(r.stateFilePath(), &snap)
 }
 
 // DestroyState is used to cleanup after ourselves
@@ -395,7 +396,6 @@ func (r *Worker) run() {
 
 				r.killTask(killEvent)
 				close(stopCollection)
-
 				// Wait for handler to exit before calling cleanup
 				<-handleWaitCh
 

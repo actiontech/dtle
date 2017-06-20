@@ -555,7 +555,7 @@ func (c *Client) setupNatsServer() error {
 		Port:       p,
 		HTTPPort:   8199,
 		MaxPayload: 100 * 1024 * 1024,
-		LogFile:    c.config.LogFile,
+		//LogFile:    c.config.LogFile,
 		Trace:      true,
 		Debug:      true,
 	}
@@ -566,7 +566,7 @@ func (c *Client) setupNatsServer() error {
 		sOpts.StoreType = c.config.NatsConfig.StoreType
 		sOpts.FilestoreDir = c.config.NatsConfig.FilestoreDir
 	}
-	stand.ConfigureLogger(sOpts, &nOpts)
+	//stand.ConfigureLogger(sOpts, &nOpts)
 	s, err := stand.RunServerWithOpts(sOpts, &nOpts)
 	if err != nil {
 		return err
@@ -1507,9 +1507,6 @@ func (c *Client) removeAlloc(alloc *models.Allocation) error {
 		c.logger.Printf("[WARN] client: missing context for alloc '%s'", alloc.ID)
 		return nil
 	}
-
-	// Kill the task runners
-	ar.destroyWorkers(models.NewTaskEvent(models.TaskKilled))
 
 	ar.Destroy()
 

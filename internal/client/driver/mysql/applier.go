@@ -27,6 +27,7 @@ import (
 const (
 	applyEventsQueueBuffer        = 100
 	applyDataQueueBuffer          = 100
+	applyBinlogTxQueueBuffer      = 500
 	applyCopyRowsQueueQueueBuffer = 100
 )
 
@@ -59,6 +60,7 @@ type Applier struct {
 }
 
 func NewApplier(subject string, cfg *uconf.MySQLDriverConfig, logger *log.Logger) (*Applier, error) {
+	cfg = cfg.SetDefault()
 	a := &Applier{
 		logger:                     logger,
 		subject:                    subject,
@@ -68,7 +70,7 @@ func NewApplier(subject string, cfg *uconf.MySQLDriverConfig, logger *log.Logger
 		allEventsUpToLockProcessed: make(chan string),
 		copyRowsQueue:              make(chan *dump, applyCopyRowsQueueQueueBuffer),
 		applyDataEntryQueue:        make(chan *ubinlog.BinlogEntry, applyDataQueueBuffer),
-		applyBinlogTxQueue:         make(chan *ubinlog.BinlogTx, applyDataQueueBuffer),
+		applyBinlogTxQueue:         make(chan *ubinlog.BinlogTx, applyBinlogTxQueueBuffer),
 		applyBinlogGroupTxQueue:    make(chan []*ubinlog.BinlogTx, applyDataQueueBuffer),
 		waitCh:                     make(chan error, 1),
 	}
@@ -648,24 +650,6 @@ OUTER:
 						time.Sleep(time.Second)
 					}
 				}
-
-				/*select {
-				case binlogTx := <-a.applyBinlogTxQueue:
-					if sid == binlogTx.ServerId {
-						return
-					}
-
-					if binlogTx.LastCommitted == lastCommitted {
-						groupTx = append(groupTx,binlogTx)
-					}else {
-						a.applyBinlogGroupTxQueue <- groupTx
-						groupTx = nil
-						groupTx = append(groupTx,binlogTx)
-					}
-					lastCommitted = binlogTx.LastCommitted
-				case <-time.After(time.Second * 1):
-					a.applyBinlogGroupTxQueue <- groupTx
-				}*/
 			}
 		}
 	}
@@ -696,9 +680,6 @@ func (a *Applier) initNatSubClient() (err error) {
 
 // initiateStreaming begins treaming of binary log events and registers listeners for such events
 func (a *Applier) initiateStreaming() error {
-	var lastCommitted int64
-	var groupTx []*ubinlog.BinlogTx
-	sid := a.validateServerUUID()
 	if a.mysqlContext.Gtid == "" {
 		_, err := a.jsonEncodedConn.Subscribe(fmt.Sprintf("%s_full", a.subject), func(d *dump) {
 			//a.logger.Printf("[DEBUG] mysql.applier: received binlogEntry: %+v", binlogEntry)
@@ -719,24 +700,15 @@ func (a *Applier) initiateStreaming() error {
 		}
 		a.jsonSub = sub
 	} else {
-		sub, err := a.gobEncodedConn.Subscribe(fmt.Sprintf("%s_incr", a.subject), func(binlogTx *ubinlog.BinlogTx) {
-			if sid == binlogTx.ServerId {
-				return
-			}
+		go a.groupCommit()
 
-			if binlogTx.LastCommitted == lastCommitted {
-				groupTx = append(groupTx, binlogTx)
-			} else {
-				a.applyBinlogGroupTxQueue <- groupTx
-				groupTx = nil
-				groupTx = append(groupTx, binlogTx)
-			}
-			lastCommitted = binlogTx.LastCommitted
-			//a.applyBinlogTxQueue <- binlogTx
+		sub, err := a.gobEncodedConn.Subscribe(fmt.Sprintf("%s_incr", a.subject), func(binlogTx *ubinlog.BinlogTx) {
+			a.applyBinlogTxQueue <- binlogTx
 		})
 		if err != nil {
 			return err
 		}
+
 		msgLimit := 1000000 * 100
 		bytesLimit := 1000000 * 1024 * 100
 		// Limit internal subchan length to trip condition easier.
@@ -747,6 +719,38 @@ func (a *Applier) initiateStreaming() error {
 	}
 
 	return nil
+}
+func (a *Applier) groupCommit() {
+	var lastCommitted int64
+	var groupTx []*ubinlog.BinlogTx
+	sid := a.validateServerUUID()
+	timeout := time.NewTimer(time.Second * time.Duration(1))
+	for {
+		select {
+		case <-timeout.C:
+			{
+				if groupTx != nil {
+					a.applyBinlogGroupTxQueue <- groupTx
+				}
+			}
+		case binlogTx := <-a.applyBinlogTxQueue:
+			{
+				if sid == binlogTx.ServerId {
+					continue
+				}
+				if binlogTx.LastCommitted == lastCommitted {
+					groupTx = append(groupTx, binlogTx)
+				} else {
+					if groupTx != nil {
+						a.applyBinlogGroupTxQueue <- groupTx
+					}
+					groupTx = nil
+					groupTx = append(groupTx, binlogTx)
+				}
+				lastCommitted = binlogTx.LastCommitted
+			}
+		}
+	}
 }
 
 func (a *Applier) initDBConnections() (err error) {

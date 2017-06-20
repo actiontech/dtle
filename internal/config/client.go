@@ -162,6 +162,15 @@ type MySQLDriverConfig struct {
 	recentBinlogCoordinates ubase.BinlogCoordinates
 }
 
+func (a *MySQLDriverConfig) SetDefault() *MySQLDriverConfig {
+	result := *a
+
+	if result.ParallelWorkers == 0 {
+		result.ParallelWorkers = 1
+	}
+	return &result
+}
+
 // RequiresBinlogFormatChange is `true` when the original binlog format isn't `ROW`
 func (m *MySQLDriverConfig) RequiresBinlogFormatChange() bool {
 	return m.BinlogFormat != "ROW"
@@ -247,8 +256,8 @@ func (m *MySQLDriverConfig) GetCriticalLoad() umconf.LoadMap {
 }
 
 func (m *MySQLDriverConfig) MarkPointOfInterest() int64 {
-	m.pointOfInterestTimeMutex.Lock()
-	defer m.pointOfInterestTimeMutex.Unlock()
+	//m.pointOfInterestTimeMutex.Lock()
+	//defer m.pointOfInterestTimeMutex.Unlock()
 
 	m.PointOfInterestTime = time.Now()
 	return atomic.LoadInt64(&m.Iteration)

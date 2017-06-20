@@ -94,9 +94,9 @@ func (r *Allocator) stateFilePath() string {
 // is snapshotted. If fullSync is marked as true, we snapshot
 // all the Task Runners associated with the Alloc
 func (r *Allocator) SaveState() error {
-	if err := r.saveAllocatorState(); err != nil {
+	/*if err := r.saveAllocatorState(); err != nil {
 		return err
-	}
+	}*/
 
 	// Save store for each task
 	runners := r.getWorkers()
@@ -223,7 +223,8 @@ func (r *Allocator) syncStatus() error {
 	// Get a copy of our alloc, update status server side and sync to disk
 	alloc := r.Alloc()
 	r.updater(alloc)
-	return r.saveAllocatorState()
+	//return r.saveAllocatorState()
+	return nil
 }
 
 // setStatus is used to update the allocation status
@@ -396,7 +397,6 @@ OUTER:
 			break OUTER
 		}
 	}
-
 	// Kill the task runners
 	r.destroyWorkers(taskDestroyEvent)
 
@@ -418,14 +418,14 @@ func (r *Allocator) destroyWorkers(destroyEvent *models.TaskEvent) {
 	for _, tr := range runners {
 		<-tr.WaitCh()
 	}
-
-	// Final store sync
-	//r.syncStatus()
 }
 
 // handleDestroy blocks till the Allocator should be destroyed and does the
 // necessary cleanup.
 func (r *Allocator) handleDestroy() {
+	// Final state sync. We do this to ensure that the server has the correct
+	// state as we wait for a destroy.
+	//r.syncStatus()
 	for {
 		select {
 		case <-r.destroyCh:
@@ -433,7 +433,6 @@ func (r *Allocator) handleDestroy() {
 				r.logger.Printf("[ERR] client: failed to destroy state for alloc '%s': %v",
 					r.alloc.ID, err)
 			}
-
 			return
 		case <-r.updateCh:
 			r.logger.Printf("[ERR] client: dropping update to terminal alloc '%s'", r.alloc.ID)
