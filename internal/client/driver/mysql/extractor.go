@@ -844,7 +844,7 @@ func (e *Extractor) mysqlDump() error {
 	// ------
 	// STEP 7
 	// ------
-	unlocked:= false
+	unlocked := false
 	minimalBlocking := true
 	if minimalBlocking {
 		// We are doing minimal blocking, then we should release the read lock now. All subsequent SELECT
@@ -1065,10 +1065,13 @@ func (e *Extractor) WaitCh() chan error {
 }
 
 func (e *Extractor) Stats() (*umodels.TaskStatistics, error) {
+	/*if e.stanConn !=nil{
+		e.logger.Printf("Tracks various stats send on this connection:%v",e.stanConn.NatsConn().Statistics)
+	}*/
 	/*elapsedTime := e.mysqlContext.ElapsedTime()
 	elapsedSeconds := int64(elapsedTime.Seconds())
 	totalRowsCopied := e.mysqlContext.GetTotalRowsCopied()
-	rowsEstimate := atomic.LoadInt64(&e.mysqlContext.RowsDeltaEstimate *//*RowsEstimate*//*) + atomic.LoadInt64(&e.mysqlContext.RowsDeltaEstimate)
+	rowsEstimate := atomic.LoadInt64(&e.mysqlContext.RowsDeltaEstimate */ /*RowsEstimate*/ /*) + atomic.LoadInt64(&e.mysqlContext.RowsDeltaEstimate)
 	if atomic.LoadInt64(&e.rowCopyCompleteFlag) == 1 {
 		// Done copying rows. The totalRowsCopied value is the de-facto number of rows,
 		// and there is no further need to keep updating the value.
@@ -1109,49 +1112,49 @@ func (e *Extractor) Stats() (*umodels.TaskStatistics, error) {
 	} else if atomic.LoadInt64(&e.mysqlContext.IsPostponingCutOver) > 0 {
 		eta = "due"
 		state = "postponing cut-over"
-	} *//*else if isThrottled, throttleReason, _ := e.mysqlContext.IsThrottled(); isThrottled {
+	} */ /*else if isThrottled, throttleReason, _ := e.mysqlContext.IsThrottled(); isThrottled {
 		state = fmt.Sprintf("throttled, %s", throttleReason)
-	}*//*
+	}*/ /*
 
-	shouldPrintStatus := false
-	if elapsedSeconds <= 60 {
-		shouldPrintStatus = true
-	} else if etaSeconds <= 60 {
-		shouldPrintStatus = true
-	} else if etaSeconds <= 180 {
-		shouldPrintStatus = (elapsedSeconds%5 == 0)
-	} else if elapsedSeconds <= 180 {
-		shouldPrintStatus = (elapsedSeconds%5 == 0)
-	} else if e.mysqlContext.TimeSincePointOfInterest().Seconds() <= 60 {
-		shouldPrintStatus = (elapsedSeconds%5 == 0)
-	} else {
-		shouldPrintStatus = (elapsedSeconds%30 == 0)
-	}
-	if !shouldPrintStatus {
-		return nil, nil
-	}
+		shouldPrintStatus := false
+		if elapsedSeconds <= 60 {
+			shouldPrintStatus = true
+		} else if etaSeconds <= 60 {
+			shouldPrintStatus = true
+		} else if etaSeconds <= 180 {
+			shouldPrintStatus = (elapsedSeconds%5 == 0)
+		} else if elapsedSeconds <= 180 {
+			shouldPrintStatus = (elapsedSeconds%5 == 0)
+		} else if e.mysqlContext.TimeSincePointOfInterest().Seconds() <= 60 {
+			shouldPrintStatus = (elapsedSeconds%5 == 0)
+		} else {
+			shouldPrintStatus = (elapsedSeconds%30 == 0)
+		}
+		if !shouldPrintStatus {
+			return nil, nil
+		}
 
-	status := fmt.Sprintf("Copy: %d/%d %.1f%%; Applied: %d; Time: %+v(total), %+v(copy); streamer: %+v; State: %s; ETA: %s",
-		totalRowsCopied, rowsEstimate, progressPct,
-		atomic.LoadInt64(&e.mysqlContext.TotalDMLEventsApplied),
-		ubase.PrettifyDurationOutput(elapsedTime), ubase.PrettifyDurationOutput(e.mysqlContext.ElapsedRowCopyTime()),
-		e.currentBinlogCoordinates,
-		state,
-		eta,
-	)
-	//e.logger.Printf("[INFO] mysql.extractor: copy iteration %d at %d,status:%v", e.mysqlContext.GetIteration(), time.Now().Unix(), status)
+		status := fmt.Sprintf("Copy: %d/%d %.1f%%; Applied: %d; Time: %+v(total), %+v(copy); streamer: %+v; State: %s; ETA: %s",
+			totalRowsCopied, rowsEstimate, progressPct,
+			atomic.LoadInt64(&e.mysqlContext.TotalDMLEventsApplied),
+			ubase.PrettifyDurationOutput(elapsedTime), ubase.PrettifyDurationOutput(e.mysqlContext.ElapsedRowCopyTime()),
+			e.currentBinlogCoordinates,
+			state,
+			eta,
+		)
+		//e.logger.Printf("[INFO] mysql.extractor: copy iteration %d at %d,status:%v", e.mysqlContext.GetIteration(), time.Now().Unix(), status)
 
-	if elapsedSeconds%60 == 0 {
-		//e.hooksExecutor.onStatus(status)
-	}
-	taskResUsage := umodels.TaskStatistics{
-		Stats: &umodels.Stats{
-			Status: status,
-		},
-		Timestamp: time.Now().UTC().UnixNano(),
-	}
-	return &taskResUsage, nil*/
-	return nil,nil
+		if elapsedSeconds%60 == 0 {
+			//e.hooksExecutor.onStatus(status)
+		}
+		taskResUsage := umodels.TaskStatistics{
+			Stats: &umodels.Stats{
+				Status: status,
+			},
+			Timestamp: time.Now().UTC().UnixNano(),
+		}
+		return &taskResUsage, nil*/
+	return nil, nil
 }
 
 func (e *Extractor) ID() string {
@@ -1160,7 +1163,6 @@ func (e *Extractor) ID() string {
 			ReplicateDoDb:    e.mysqlContext.ReplicateDoDb,
 			Gtid:             e.mysqlContext.Gtid,
 			NatsAddr:         e.mysqlContext.NatsAddr,
-			WorkerCount:      e.mysqlContext.WorkerCount,
 			ConnectionConfig: e.mysqlContext.ConnectionConfig,
 		},
 	}
@@ -1181,7 +1183,7 @@ func (e *Extractor) Shutdown() error {
 		return err
 	}
 
-	if err := usql.CloseDBs(e.db); err != nil {
+	if err := usql.CloseDB(e.db); err != nil {
 		return err
 	}
 

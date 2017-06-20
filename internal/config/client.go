@@ -128,7 +128,7 @@ type MySQLDriverConfig struct {
 
 	Gtid                     string
 	NatsAddr                 string
-	WorkerCount              int
+	ParallelWorkers          int
 	ConnectionConfig         *umconf.ConnectionConfig
 	HasSuperPrivilege        bool
 	BinlogFormat             string

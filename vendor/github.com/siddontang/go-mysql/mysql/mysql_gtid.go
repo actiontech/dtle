@@ -286,17 +286,17 @@ func (s *UUIDSet) Decode(data []byte) error {
 }
 
 type MysqlGTID struct {
-	CommitFlag uint8
-	SID        []byte
-	GNO        int64
-	LtType        byte
-	LastCommitted       int64
+	CommitFlag     uint8
+	SID            []byte
+	GNO            int64
+	LtType         byte
+	LastCommitted  int64
 	SequenceNumber int64
 }
 
 func (gtid MysqlGTID) String() string {
 	u, _ := uuid.FromBytes(gtid.SID)
-	return fmt.Sprintf("Commit flag: %d\n GTID_NEXT: %s:%d\n LastCommitted: %d\n SequenceNumber:%d\n", gtid.CommitFlag, u.String(), gtid.GNO,gtid.LastCommitted,gtid.SequenceNumber)
+	return fmt.Sprintf("Commit flag: %d\n GTID_NEXT: %s:%d\n LastCommitted: %d\n SequenceNumber:%d\n", gtid.CommitFlag, u.String(), gtid.GNO, gtid.LastCommitted, gtid.SequenceNumber)
 }
 
 type MysqlGTIDSet struct {

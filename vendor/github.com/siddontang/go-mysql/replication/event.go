@@ -300,7 +300,7 @@ type GTIDEvent struct {
 
    The buffer is advanced in Binary_log_event constructor to point to
    beginning of post-header
- */
+*/
 func (e *GTIDEvent) Decode(data []byte) error {
 	e.GTID.CommitFlag = uint8(data[0])
 	e.GTID.SID = data[1:17]

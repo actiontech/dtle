@@ -10,7 +10,8 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	//"time"
+	"sync/atomic"
+	"time"
 
 	"github.com/issuj/gofaster/base64"
 	"github.com/pingcap/tidb/ast"
@@ -25,7 +26,6 @@ import (
 	uutil "udup/internal/client/driver/mysql/util"
 	uconf "udup/internal/config"
 	umconf "udup/internal/config/mysql"
-	"sync/atomic"
 )
 
 // BinlogReader is a general interface whose implementations can choose their methods of reading
@@ -276,17 +276,17 @@ func (b *BinlogReader) DataStreamEvents(canStopStreaming func() bool, entriesCha
 				defer b.currentCoordinatesMutex.Unlock()
 				b.currentCoordinates.LogFile = string(rotateEvent.NextLogName)
 			}()
-			/*b.logger.Printf("[DEBUG] mysql.reader: === %s ===", replication.EventType(ev.Header.EventType))
+			b.logger.Printf("[DEBUG] mysql.reader: === %s ===", replication.EventType(ev.Header.EventType))
 			b.logger.Printf("[DEBUG] mysql.reader: Date: %s", time.Unix(int64(ev.Header.Timestamp), 0).Format(gomysql.TimeFormat))
 			b.logger.Printf("[DEBUG] mysql.reader: Position: %d", rotateEvent.Position)
 			b.logger.Printf("[DEBUG] mysql.reader: Event size: %d", ev.Header.EventSize)
-			b.logger.Printf("[DEBUG] mysql.reader: rotate to next log name: %s", rotateEvent.NextLogName)*/
+			b.logger.Printf("[DEBUG] mysql.reader: rotate to next log name: %s", rotateEvent.NextLogName)
 		} else if gtidEvent, ok := ev.Event.(*replication.GTIDEvent); ok {
 			func() {
 				b.currentCoordinatesMutex.Lock()
 				defer b.currentCoordinatesMutex.Unlock()
-				u, _ := uuid.FromBytes(gtidEvent.SID)
-				gtidSet, err := gomysql.ParseMysqlGTIDSet(fmt.Sprintf("%s:%d", u.String(), gtidEvent.GNO))
+				u, _ := uuid.FromBytes(gtidEvent.GTID.SID)
+				gtidSet, err := gomysql.ParseMysqlGTIDSet(fmt.Sprintf("%s:%d", u.String(), gtidEvent.GTID.GNO))
 				if err != nil {
 					b.logger.Printf("[ERR] mysql.reader: err: %v", err)
 				}
@@ -304,7 +304,7 @@ func (b *BinlogReader) DataStreamEvents(canStopStreaming func() bool, entriesCha
 }
 
 func (b *BinlogReader) BinlogStreamEvents(txChannel chan<- *BinlogTx) error {
-	OUTER:
+OUTER:
 	for {
 		if atomic.LoadInt64(&b.MysqlContext.ShutdownFlag) > 0 {
 			break OUTER
@@ -325,11 +325,11 @@ func (b *BinlogReader) BinlogStreamEvents(txChannel chan<- *BinlogTx) error {
 				defer b.currentCoordinatesMutex.Unlock()
 				b.currentCoordinates.LogFile = string(rotateEvent.NextLogName)
 			}()
-			/*b.logger.Printf("[DEBUG] mysql.reader: === %s ===", replication.EventType(ev.Header.EventType))
+			b.logger.Printf("[DEBUG] mysql.reader: === %s ===", replication.EventType(ev.Header.EventType))
 			b.logger.Printf("[DEBUG] mysql.reader: Date: %s", time.Unix(int64(ev.Header.Timestamp), 0).Format(gomysql.TimeFormat))
 			b.logger.Printf("[DEBUG] mysql.reader: Position: %d", rotateEvent.Position)
 			b.logger.Printf("[DEBUG] mysql.reader: Event size: %d", ev.Header.EventSize)
-			b.logger.Printf("[DEBUG] mysql.reader: rotate to next log name: %s", rotateEvent.NextLogName)*/
+			b.logger.Printf("[DEBUG] mysql.reader: rotate to next log name: %s", rotateEvent.NextLogName)
 		} else {
 			if err := b.handleBinlogRowsEvent(ev, txChannel); err != nil {
 				return err
@@ -362,12 +362,13 @@ func (b *BinlogReader) handleBinlogRowsEvent(ev *replication.BinlogEvent, txChan
 		}
 
 		evt := ev.Event.(*replication.GTIDEvent)
-		u, _ := uuid.FromBytes(evt.SID)
+		u, _ := uuid.FromBytes(evt.GTID.SID)
 
 		b.currentTx = &BinlogTx{
-			ServerId: fmt.Sprintf("%d", ev.Header.ServerID),
-			SID:      u.String(),
-			GNO:      evt.GNO,
+			ServerId:      fmt.Sprintf("%d", ev.Header.ServerID),
+			SID:           u.String(),
+			GNO:           evt.GTID.GNO,
+			LastCommitted: evt.GTID.LastCommitted,
 			//Gtid:           fmt.Sprintf("%s:%d", u.String(), evt.GNO),
 			StartEventFile: b.currentCoordinates.LogFile,
 			StartEventPos:  uint32(ev.Header.LogPos) - ev.Header.EventSize,
@@ -660,9 +661,11 @@ func (b *BinlogReader) onCommit(lastEvent *BinlogEvent, txChannel chan<- *Binlog
 				b.logger.Printf("[DEBUG] mysql.reader: NULL bitmap: \n%s", hex.Dump(evt.NullBitmap))
 			case replication.GTID_EVENT:
 				evt := ev.Evt.(*replication.GTIDEvent)
-				u, _ := uuid.FromBytes(evt.SID)
-				b.logger.Printf("[DEBUG] mysql.reader: Commit flag: %d", evt.CommitFlag)
-				b.logger.Printf("[DEBUG] mysql.reader: GTID_NEXT: %s:%d", u.String(), evt.GNO)
+				u, _ := uuid.FromBytes(evt.GTID.SID)
+				b.logger.Printf("[DEBUG] mysql.reader: Last committed: %d", evt.GTID.LastCommitted)
+				b.logger.Printf("[DEBUG] mysql.reader: Sequence number: %d", evt.GTID.SequenceNumber)
+				b.logger.Printf("[DEBUG] mysql.reader: Commit flag: %d", evt.GTID.CommitFlag)
+				b.logger.Printf("[DEBUG] mysql.reader: GTID_NEXT: %s:%d", u.String(), evt.GTID.GNO)
 			case replication.QUERY_EVENT:
 				evt := ev.Evt.(*replication.QueryEvent)
 				b.logger.Printf("[DEBUG] mysql.reader: Slave proxy ID: %d", evt.SlaveProxyID)

@@ -25,6 +25,7 @@ type BinlogTx struct {
 	EndEventPos    uint32
 	SID            string
 	GNO            int64
+	LastCommitted  int64
 	//Gtid           string
 	// table -> [row]. row is identified by a hash of pk values.
 	Impacting    map[uint64]([]string)

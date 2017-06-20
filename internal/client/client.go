@@ -553,22 +553,14 @@ func (c *Client) setupNatsServer() error {
 	nOpts := gnatsd.Options{
 		Host:       host,
 		Port:       p,
-		HTTPPort:8199,
-		MaxPayload: (100 * 1024 * 1024),
-		LogFile:c.config.LogFile,
+		HTTPPort:   8199,
+		MaxPayload: 100 * 1024 * 1024,
+		LogFile:    c.config.LogFile,
 		Trace:      true,
 		Debug:      true,
 	}
 	c.logger.Printf("[DEBUG] client: starting nats streaming server [%s]", c.config.NatsConfig.Addr)
 	sOpts := stand.GetDefaultOptions()
-	sOpts.StoreLimits.MaxChannels = 100
-	// How many messages are allowed.
-	//a value of 0 means "unlimited".
-	sOpts.StoreLimits.MaxMsgs = 0
-	// How many bytes are allowed.
-	sOpts.StoreLimits.MaxBytes = 0
-	sOpts.MaxAge = 2 * time.Hour
-	sOpts.StoreLimits.MaxSubscriptions = 1000
 	sOpts.ID = config.DefaultClusterID
 	if c.config.NatsConfig.StoreType == "file" {
 		sOpts.StoreType = c.config.NatsConfig.StoreType

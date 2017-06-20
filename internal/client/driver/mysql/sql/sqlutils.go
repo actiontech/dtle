@@ -127,6 +127,11 @@ func GetDB(mysql_uri string) (*gosql.DB, bool, error) {
 	return knownDBs[mysql_uri], exists, nil
 }
 
+type DbApplier struct {
+	DbMutex *sync.Mutex
+	Db      *gosql.DB
+}
+
 func CreateDB(mysql_uri string) (*gosql.DB, error) {
 	db, err := gosql.Open("mysql", mysql_uri)
 	if err != nil {
@@ -134,6 +139,23 @@ func CreateDB(mysql_uri string) (*gosql.DB, error) {
 	}
 
 	return db, nil
+}
+
+func CreateDBs(mysql_uri string, count int) ([]*DbApplier, error) {
+	dbs := make([]*DbApplier, 0, count)
+	for i := 0; i < count; i++ {
+		db, err := CreateDB(mysql_uri)
+		if err != nil {
+			return nil, err
+		}
+		dbApplier := &DbApplier{
+			DbMutex: &sync.Mutex{},
+			Db:      db,
+		}
+		dbs = append(dbs, dbApplier)
+	}
+
+	return dbs, nil
 }
 
 // RowToArray is a convenience function, typically not called directly, which maps a
@@ -318,7 +340,7 @@ func Args(args ...interface{}) []interface{} {
 	return args
 }
 
-func closeDB(db *gosql.DB) error {
+func CloseDB(db *gosql.DB) error {
 	if db == nil {
 		return nil
 	}
@@ -331,9 +353,9 @@ func closeDB(db *gosql.DB) error {
 	return nil
 }
 
-func CloseDBs(dbs ...*gosql.DB) error {
+func CloseDBs(dbs ...*DbApplier) error {
 	for _, db := range dbs {
-		err := closeDB(db)
+		err := CloseDB(db.Db)
 		if err != nil {
 			return fmt.Errorf("close db failed - %v", err)
 		}
