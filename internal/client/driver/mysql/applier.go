@@ -735,7 +735,7 @@ func (a *Applier) groupCommit() {
 			}
 		case binlogTx := <-a.applyBinlogTxQueue:
 			{
-				if sid == binlogTx.ServerId {
+				if sid == binlogTx.SID {
 					continue
 				}
 				if binlogTx.LastCommitted == lastCommitted {

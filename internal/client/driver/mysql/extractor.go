@@ -569,12 +569,26 @@ func (e *Extractor) GetReconnectBinlogCoordinates() *ubase.BinlogCoordinates {
 // readCurrentBinlogCoordinates reads master status from hooked server
 func (e *Extractor) readCurrentBinlogCoordinates() error {
 	if e.mysqlContext.Gtid != "" {
-		gtidSet, err := gomysql.ParseMysqlGTIDSet(e.mysqlContext.Gtid)
-		if err != nil {
-			return err
-		}
-		e.initialBinlogCoordinates = &ubase.BinlogCoordinates{
-			GtidSet: gtidSet.String(),
+		sid := e.validateServerUUID()
+		for _, gtid := range strings.Split(e.mysqlContext.Gtid, ",") {
+			id := strings.Split(gtid, ":")[0]
+			if id == sid {
+				gtidSet, err := gomysql.ParseMysqlGTIDSet(gtid)
+				if err != nil {
+					return err
+				}
+				e.initialBinlogCoordinates = &ubase.BinlogCoordinates{
+					GtidSet: gtidSet.String(),
+				}
+			}else {
+				gtidSet, err := gomysql.ParseMysqlGTIDSet(e.mysqlContext.Gtid)
+				if err != nil {
+					return err
+				}
+				e.initialBinlogCoordinates = &ubase.BinlogCoordinates{
+					GtidSet: gtidSet.String(),
+				}
+			}
 		}
 	} else {
 		query := `show master status`
@@ -604,6 +618,15 @@ func (e *Extractor) readCurrentBinlogCoordinates() error {
 
 	e.logger.Printf("[INFO] mysql.extractor: streamer binlog coordinates: %+v", *e.initialBinlogCoordinates)
 	return nil
+}
+
+func (e *Extractor) validateServerUUID() string {
+	query := `SELECT @@SERVER_UUID`
+	var server_uuid string
+	if err := e.db.QueryRow(query).Scan(&server_uuid); err != nil {
+		return ""
+	}
+	return server_uuid
 }
 
 // StreamEvents will begin streaming events. It will be blocking, so should be

@@ -154,10 +154,10 @@ func (r *Worker) SaveState() error {
 	r.persistLock.Lock()
 	defer r.persistLock.Unlock()
 
-	snap := workerState{
+	/*snap := workerState{
 		Version:         r.config.Version,
 		PayloadRendered: r.payloadRendered,
-	}
+	}*/
 
 	r.handleLock.Lock()
 	if r.handle != nil {
@@ -167,15 +167,15 @@ func (r *Worker) SaveState() error {
 			r.logger.Printf("[ERR] client: failed to parse handle '%s': %v",
 				handleID, err)
 		}
-		if r.task.Type == models.TaskTypeDest {
+		if r.task.Type == models.TaskTypeDest && id.DriverConfig.Gtid != ""{
 			r.workUpdates <- &models.TaskUpdate{
 				JobID: r.alloc.JobID,
 				Gtid:  id.DriverConfig.Gtid,
 			}
 			r.task.Config["Gtid"] = id.DriverConfig.Gtid
 		}
-		snap.HandleID = r.handle.ID()
-		snap.Task = r.task
+		//snap.HandleID = r.handle.ID()
+		//snap.Task = r.task
 	}
 	r.handleLock.Unlock()
 	return nil
