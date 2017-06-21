@@ -9,13 +9,13 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
+	"sync"
 
 	gonats "github.com/nats-io/go-nats"
 	stan "github.com/nats-io/go-nats-streaming"
 	"github.com/satori/go.uuid"
 	gomysql "github.com/siddontang/go-mysql/mysql"
 
-	"sync"
 	ubase "udup/internal/client/driver/mysql/base"
 	ubinlog "udup/internal/client/driver/mysql/binlog"
 	usql "udup/internal/client/driver/mysql/sql"
@@ -680,6 +680,36 @@ func (a *Applier) initNatSubClient() (err error) {
 
 // initiateStreaming begins treaming of binary log events and registers listeners for such events
 func (a *Applier) initiateStreaming() error {
+	var lastCommitted int64
+	var groupTx []*ubinlog.BinlogTx
+	sid := a.validateServerUUID()
+
+	go func() {
+		for {
+			select {
+			case binlogTx :=<-a.applyBinlogTxQueue:
+				if sid == binlogTx.SID {
+					return
+				}
+				if binlogTx.LastCommitted == lastCommitted {
+					groupTx = append(groupTx, binlogTx)
+				} else {
+					if groupTx != nil {
+						a.applyBinlogGroupTxQueue <- groupTx
+						groupTx = nil
+					}
+					groupTx = append(groupTx, binlogTx)
+				}
+				lastCommitted = binlogTx.LastCommitted
+			case <-time.After(1 * time.Second):
+				if groupTx != nil {
+					a.applyBinlogGroupTxQueue <- groupTx
+					groupTx = nil
+				}
+			}
+		}
+	}()
+
 	if a.mysqlContext.Gtid == "" {
 		_, err := a.jsonEncodedConn.Subscribe(fmt.Sprintf("%s_full", a.subject), func(d *dump) {
 			//a.logger.Printf("[DEBUG] mysql.applier: received binlogEntry: %+v", binlogEntry)
@@ -700,8 +730,6 @@ func (a *Applier) initiateStreaming() error {
 		}
 		a.jsonSub = sub
 	} else {
-		go a.groupCommit()
-
 		sub, err := a.gobEncodedConn.Subscribe(fmt.Sprintf("%s_incr", a.subject), func(binlogTx *ubinlog.BinlogTx) {
 			a.applyBinlogTxQueue <- binlogTx
 		})
@@ -719,38 +747,6 @@ func (a *Applier) initiateStreaming() error {
 	}
 
 	return nil
-}
-func (a *Applier) groupCommit() {
-	var lastCommitted int64
-	var groupTx []*ubinlog.BinlogTx
-	sid := a.validateServerUUID()
-	timeout := time.NewTimer(time.Second * time.Duration(1))
-	for {
-		select {
-		case <-timeout.C:
-			{
-				if groupTx != nil {
-					a.applyBinlogGroupTxQueue <- groupTx
-				}
-			}
-		case binlogTx := <-a.applyBinlogTxQueue:
-			{
-				if sid == binlogTx.SID {
-					continue
-				}
-				if binlogTx.LastCommitted == lastCommitted {
-					groupTx = append(groupTx, binlogTx)
-				} else {
-					if groupTx != nil {
-						a.applyBinlogGroupTxQueue <- groupTx
-					}
-					groupTx = nil
-					groupTx = append(groupTx, binlogTx)
-				}
-				lastCommitted = binlogTx.LastCommitted
-			}
-		}
-	}
 }
 
 func (a *Applier) initDBConnections() (err error) {
