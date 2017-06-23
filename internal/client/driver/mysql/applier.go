@@ -10,10 +10,10 @@ import (
 	"sync/atomic"
 	"time"
 	"sync"
+	"encoding/gob"
+	"bytes"
 
 	gonats "github.com/nats-io/go-nats"
-	stan "github.com/nats-io/go-nats-streaming"
-	"github.com/satori/go.uuid"
 	gomysql "github.com/siddontang/go-mysql/mysql"
 
 	ubase "udup/internal/client/driver/mysql/base"
@@ -27,7 +27,7 @@ import (
 const (
 	applyEventsQueueBuffer        = 100
 	applyDataQueueBuffer          = 100
-	applyBinlogTxQueueBuffer      = 500
+	applyBinlogTxQueueBuffer      = 10000
 	applyCopyRowsQueueQueueBuffer = 100
 )
 
@@ -51,7 +51,7 @@ type Applier struct {
 	applyBinlogTxQueue      chan *ubinlog.BinlogTx
 	applyBinlogGroupTxQueue chan []*ubinlog.BinlogTx
 
-	stanConn        stan.Conn
+	stanConn        *gonats.Conn
 	jsonEncodedConn *gonats.EncodedConn
 	gobEncodedConn  *gonats.EncodedConn
 	jsonSub         *gonats.Subscription
@@ -141,7 +141,7 @@ func (a *Applier) validateStatement(doTb *uconf.Table) (err error) {
 }
 
 func (a *Applier) onError(err error) {
-	a.logger.Printf("[ERR] mysql.applier: unexpected error: %v", err)
+	a.logger.Printf("[ERR] mysql.applier: unexpected onError: %v", err)
 	a.waitCh <- err
 	//close(a.waitCh)
 }
@@ -452,7 +452,7 @@ func (a *Applier) onApplyTxStruct(dbApplier *usql.DbApplier, binlogTx *ubinlog.B
 	defer func() {
 		_, err := usql.ExecNoPrepare(dbApplier.Db, `commit;set gtid_next='automatic'`)
 		if err != nil {
-			a.logger.Printf("[ERR] mysql.applier: exec set gtid_next err:%v", err)
+			a.logger.Printf("[ERR] mysql.applier: exec set gtid_next automatic err:%v", err)
 			a.onError(err)
 		}
 		dbApplier.DbMutex.Unlock()
@@ -656,12 +656,12 @@ OUTER:
 }
 
 func (a *Applier) initNatSubClient() (err error) {
-	sc, err := stan.Connect(uconf.DefaultClusterID, uuid.NewV4().String(), stan.NatsURL(fmt.Sprintf("nats://%s", a.mysqlContext.NatsAddr)), stan.ConnectWait(DefaultConnectWait))
+	sc, err := gonats.Connect(fmt.Sprintf("nats://%s", a.mysqlContext.NatsAddr))
 	if err != nil {
 		a.logger.Printf("[ERR] mysql.applier: can't connect nats server %v.make sure a nats streaming server is running.%v", fmt.Sprintf("nats://%s", a.mysqlContext.NatsAddr), err)
 		return err
 	}
-	jsonEncodedConn, err := gonats.NewEncodedConn(sc.NatsConn(), gonats.JSON_ENCODER)
+	/*jsonEncodedConn, err := gonats.NewEncodedConn(sc.NatsConn(), gonats.JSON_ENCODER)
 	if err != nil {
 		a.logger.Printf("[ERR] mysql.applier: Unable to create encoded connection: %v", err)
 		return err
@@ -673,9 +673,16 @@ func (a *Applier) initNatSubClient() (err error) {
 		a.logger.Printf("[ERR] mysql.applier: Unable to create encoded connection: %v", err)
 		return err
 	}
-	a.gobEncodedConn = gobEncodedConn
+	a.gobEncodedConn = gobEncodedConn*/
 	a.stanConn = sc
 	return nil
+}
+
+// Decode
+func Decode(data []byte, vPtr interface{}) (err error) {
+	dec := gob.NewDecoder(bytes.NewBuffer(data))
+	err = dec.Decode(vPtr)
+	return
 }
 
 // initiateStreaming begins treaming of binary log events and registers listeners for such events
@@ -730,18 +737,18 @@ func (a *Applier) initiateStreaming() error {
 		}
 		a.jsonSub = sub
 	} else {
-		sub, err := a.gobEncodedConn.Subscribe(fmt.Sprintf("%s_incr", a.subject), func(binlogTx *ubinlog.BinlogTx) {
+		sub, err := a.stanConn.Subscribe(fmt.Sprintf("%s_incr", a.subject), func(m *gonats.Msg) {
+			binlogTx := &ubinlog.BinlogTx{}
+			if err := Decode(m.Data, binlogTx); err != nil {
+				a.waitCh <- fmt.Errorf("subscribe err:%v", err)
+			}
 			a.applyBinlogTxQueue <- binlogTx
+			if err := a.stanConn.Publish(m.Reply, []byte(string(binlogTx.GNO))); err != nil {
+				a.waitCh <- fmt.Errorf("publish err:%v", err)
+			}
 		})
 		if err != nil {
 			return err
-		}
-
-		msgLimit := 1000000 * 100
-		bytesLimit := 1000000 * 1024 * 100
-		// Limit internal subchan length to trip condition easier.
-		if err = sub.SetPendingLimits(msgLimit, bytesLimit); err != nil {
-			return fmt.Errorf("Got an error on subscription.SetPendingLimit(%v, %v) for subj:'%s_incr': %v\n", msgLimit, bytesLimit, a.subject, err)
 		}
 		a.gobSub = sub
 	}
@@ -1523,9 +1530,7 @@ func (a *Applier) Shutdown() error {
 			return err
 		}
 	}
-	if err := a.stanConn.Close(); err != nil {
-		return err
-	}
+	a.stanConn.Close()
 	if err := usql.CloseDBs(a.dbs...); err != nil {
 		return err
 	}
