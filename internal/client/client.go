@@ -26,7 +26,6 @@ import (
 	"udup/internal"
 	"udup/internal/client/driver"
 	"udup/internal/config"
-	uconf "udup/internal/config"
 	"udup/internal/models"
 	"udup/internal/server"
 )
@@ -83,11 +82,11 @@ type ClientStatsReporter interface {
 // are expected to register as a schedulable node to the servers, and to
 // run allocations as determined by the servers.
 type Client struct {
-	config *uconf.ClientConfig
+	config *config.ClientConfig
 	start  time.Time
 
 	// configCopy is a copy that should be passed to alloc-runners.
-	configCopy *uconf.ClientConfig
+	configCopy *config.ClientConfig
 	configLock sync.RWMutex
 
 	logger *log.Logger
@@ -170,7 +169,7 @@ var (
 )
 
 // NewClient is used to create a new client from the given configuration
-func NewClient(cfg *uconf.ClientConfig, logger *log.Logger) (*Client, error) {
+func NewClient(cfg *config.ClientConfig, logger *log.Logger) (*Client, error) {
 	// Create the client
 	c := &Client{
 		config:              cfg,

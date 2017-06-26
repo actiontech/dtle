@@ -6,20 +6,21 @@ import (
 	"fmt"
 	"log"
 	//"math"
+	"bytes"
+	"encoding/gob"
 	"strings"
 	"sync/atomic"
 	"time"
 
 	gonats "github.com/nats-io/go-nats"
 	gomysql "github.com/siddontang/go-mysql/mysql"
+	//"github.com/golang/snappy"
 
-	ubase "udup/internal/client/driver/mysql/base"
-	ubinlog "udup/internal/client/driver/mysql/binlog"
-	usql "udup/internal/client/driver/mysql/sql"
-	uconf "udup/internal/config"
-	umodels "udup/internal/models"
-	"bytes"
-	"encoding/gob"
+	"udup/internal/client/driver/mysql/base"
+	"udup/internal/client/driver/mysql/binlog"
+	"udup/internal/client/driver/mysql/sql"
+	"udup/internal/config"
+	"udup/internal/models"
 )
 
 const (
@@ -38,33 +39,34 @@ const (
 type Extractor struct {
 	logger                     *log.Logger
 	subject                    string
-	mysqlContext               *uconf.MySQLDriverConfig
+	mysqlContext               *config.MySQLDriverConfig
 	db                         *gosql.DB
-	binlogChannel              chan *ubinlog.BinlogTx
-	dataChannel                chan *ubinlog.BinlogEntry
-	parser                     *usql.Parser
+	binlogChannel              chan *binlog.BinlogTx
+	dataChannel                chan *binlog.BinlogEntry
+	parser                     *sql.Parser
 	inspector                  *Inspector
-	binlogReader               *ubinlog.BinlogReader
-	initialBinlogCoordinates   *ubase.BinlogCoordinates
-	currentBinlogCoordinates   *ubase.BinlogCoordinates
+	binlogReader               *binlog.BinlogReader
+	initialBinlogCoordinates   *base.BinlogCoordinates
+	currentBinlogCoordinates   *base.BinlogCoordinates
 	rowCopyComplete            chan bool
 	allEventsUpToLockProcessed chan string
 	rowCopyCompleteFlag        int64
 
-	stanConn        *gonats.Conn
+	pubConn         *gonats.Conn
+	subConn         *gonats.Conn
 	jsonEncodedConn *gonats.EncodedConn
 	gobEncodedConn  *gonats.EncodedConn
 	waitCh          chan error
 }
 
-func NewExtractor(subject string, cfg *uconf.MySQLDriverConfig, logger *log.Logger) *Extractor {
+func NewExtractor(subject string, cfg *config.MySQLDriverConfig, logger *log.Logger) *Extractor {
 	extractor := &Extractor{
 		logger:                     logger,
 		subject:                    subject,
 		mysqlContext:               cfg,
-		binlogChannel:              make(chan *ubinlog.BinlogTx, ChannelBufferSize),
-		dataChannel:                make(chan *ubinlog.BinlogEntry, ChannelBufferSize),
-		parser:                     usql.NewParser(),
+		binlogChannel:              make(chan *binlog.BinlogTx, ChannelBufferSize),
+		dataChannel:                make(chan *binlog.BinlogEntry, ChannelBufferSize),
+		parser:                     sql.NewParser(),
 		rowCopyComplete:            make(chan bool),
 		allEventsUpToLockProcessed: make(chan string),
 		waitCh: make(chan error, 1),
@@ -126,7 +128,7 @@ func (e *Extractor) canStopStreaming() bool {
 // validateStatement validates the `alter` statement meets criteria.
 // At this time this means:
 // - column renames are approved
-func (e *Extractor) validateStatement(doTb *uconf.Table) (err error) {
+func (e *Extractor) validateStatement(doTb *config.Table) (err error) {
 	if e.parser.HasNonTrivialRenames() && !e.mysqlContext.SkipRenamedColumns {
 		doTb.ColumnRenameMap = e.parser.GetNonTrivialRenames()
 		e.logger.Printf("[INFO] mysql.extractor: Alter statement has column(s) renamed. udup finds the following renames: %v.", e.parser.GetNonTrivialRenames())
@@ -135,7 +137,7 @@ func (e *Extractor) validateStatement(doTb *uconf.Table) (err error) {
 	return nil
 }
 
-func (e *Extractor) countTableRows(doDb string, doTb *uconf.Table) (err error) {
+func (e *Extractor) countTableRows(doDb string, doTb *config.Table) (err error) {
 	countRowsFunc := func() error {
 		if err := e.inspector.CountTableRows(doDb, doTb); err != nil {
 			return err
@@ -153,7 +155,6 @@ func (e *Extractor) countTableRows(doDb string, doTb *uconf.Table) (err error) {
 }
 
 func (e *Extractor) onError(err error) {
-	e.logger.Printf("[ERR] mysql.extractor: unexpected error: %v", err)
 	e.waitCh <- err
 	//close(e.waitCh)
 }
@@ -191,11 +192,11 @@ func (e *Extractor) Run() {
 			}*/
 		}
 	}
-	if err := e.initDBConnections(); err != nil {
+	if err := e.initNatsPubClient(); err != nil {
 		e.onError(err)
 		return
 	}
-	if err := e.initNatsPubClient(); err != nil {
+	if err := e.initDBConnections(); err != nil {
 		e.onError(err)
 		return
 	}
@@ -234,7 +235,7 @@ func (e *Extractor) cutOver() (err error) {
 				atomic.StoreInt64(&e.mysqlContext.UserCommandedUnpostponeFlag, 0)
 				return false, nil
 			}
-			if ubase.FileExists(e.mysqlContext.PostponeCutOverFlagFile) {
+			if base.FileExists(e.mysqlContext.PostponeCutOverFlagFile) {
 				atomic.StoreInt64(&e.mysqlContext.IsPostponingCutOver, 1)
 				return true, nil
 			}
@@ -245,7 +246,7 @@ func (e *Extractor) cutOver() (err error) {
 	e.mysqlContext.MarkPointOfInterest()
 	e.logger.Printf("[INFO] mysql.extractor: checking for cut-over postpone: complete")
 
-	if e.mysqlContext.CutOverType == uconf.CutOverAtomic {
+	if e.mysqlContext.CutOverType == config.CutOverAtomic {
 		// Atomic solution: we use low timeout and multiple attempts. But for
 		// each failed attempt, we throttle until replication lag is back to normal
 		for _, doDb := range e.mysqlContext.ReplicateDoDb {
@@ -256,7 +257,7 @@ func (e *Extractor) cutOver() (err error) {
 		}
 		return nil
 	}
-	if e.mysqlContext.CutOverType == uconf.CutOverTwoStep {
+	if e.mysqlContext.CutOverType == config.CutOverTwoStep {
 		err := e.cutOverTwoStep()
 		return err
 	}
@@ -322,7 +323,7 @@ func (e *Extractor) cutOverTwoStep() (err error) {
 
 	//lockAndRenameDuration := e.mysqlContext.RenameTablesEndTime.Sub(e.mysqlContext.LockTablesStartTime)
 	//renameDuration := e.mysqlContext.RenameTablesEndTime.Sub(e.mysqlContext.RenameTablesStartTime)
-	//e.logger.Printf("[DEBUG] mysql.extractor: Lock & rename duration: %s (rename only: %s). During this time, queries on %s were locked or failing", lockAndRenameDuration, renameDuration, usql.EscapeName(e.mysqlContext.OriginalTableName))
+	//e.logger.Printf("[DEBUG] mysql.extractor: Lock & rename duration: %s (rename only: %s). During this time, queries on %s were locked or failing", lockAndRenameDuration, renameDuration, sql.EscapeName(e.mysqlContext.OriginalTableName))
 	return nil
 }
 
@@ -414,7 +415,7 @@ func (e *Extractor) atomicCutOver(tableName string) (err error) {
 	e.mysqlContext.RenameTablesEndTime = time.Now()
 
 	lockAndRenameDuration := e.mysqlContext.RenameTablesEndTime.Sub(e.mysqlContext.LockTablesStartTime)
-	e.logger.Printf("[INFO] mysql.extractor: Lock & rename duration: %s. During this time, queries on %s were blocked", lockAndRenameDuration, usql.EscapeName(tableName))
+	e.logger.Printf("[INFO] mysql.extractor: Lock & rename duration: %s. During this time, queries on %s were blocked", lockAndRenameDuration, sql.EscapeName(tableName))
 	return nil
 }
 
@@ -441,8 +442,8 @@ func (e *Extractor) initiateInspector() (err error) {
 // migration, and as reponse to the "status" interactive command.
 func (e *Extractor) printMigrationStatusHint(databaseName, tableName string) {
 	e.logger.Printf("[INFO] mysql.extractor # Migrating %s.%s",
-		usql.EscapeName(databaseName),
-		usql.EscapeName(tableName),
+		sql.EscapeName(databaseName),
+		sql.EscapeName(tableName),
 	)
 	e.logger.Printf("[INFO] mysql.extractor # Migrating %+v; inspecting %+v",
 		e.mysqlContext.ConnectionConfig.Key,
@@ -463,7 +464,7 @@ func (e *Extractor) printMigrationStatusHint(databaseName, tableName string) {
 
 	if e.mysqlContext.PostponeCutOverFlagFile != "" {
 		setIndicator := ""
-		if ubase.FileExists(e.mysqlContext.PostponeCutOverFlagFile) {
+		if base.FileExists(e.mysqlContext.PostponeCutOverFlagFile) {
 			setIndicator = "[set]"
 		}
 		e.logger.Printf("[INFO] mysql.extractor # postpone-cut-over-flag-file: %+v %+v",
@@ -473,27 +474,19 @@ func (e *Extractor) printMigrationStatusHint(databaseName, tableName string) {
 }
 
 func (e *Extractor) initNatsPubClient() (err error) {
-	sc, err := gonats.Connect(fmt.Sprintf("nats://%s", e.mysqlContext.NatsAddr))
+	pc, err := gonats.Connect(fmt.Sprintf("nats://%s", e.mysqlContext.NatsAddr))
 	if err != nil {
 		e.logger.Printf("[ERR] mysql.extractor: can't connect nats server %v.make sure a nats streaming server is running.%v", fmt.Sprintf("nats://%s", e.mysqlContext.NatsAddr), err)
 		return err
 	}
-	//encodedConn, err := gonats.NewEncodedConn(sc.NatsConn(), protobuf.PROTOBUF_ENCODER)
-	/*jsonEncodedConn, err := gonats.NewEncodedConn(sc.NatsConn(), gonats.JSON_ENCODER)
-	if err != nil {
-		e.logger.Printf("[ERR] mysql.extractor: Unable to create encoded connection: %v", err)
-		return err
-	}
-	e.jsonEncodedConn = jsonEncodedConn
+	e.pubConn = pc
 
-	gobEncodedConn, err := gonats.NewEncodedConn(sc.NatsConn(), gonats.GOB_ENCODER)
+	sc, err := gonats.Connect(fmt.Sprintf("nats://127.0.0.1:8193"))
 	if err != nil {
-		e.logger.Printf("[ERR] mysql.extractor: Unable to create encoded connection: %v", err)
+		e.logger.Printf("[ERR] mysql.extractor: can't connect nats server %v.make sure a nats streaming server is running.%v", fmt.Sprintf("nats://%s", e.mysqlContext.NatsAddr), err)
 		return err
 	}
-	e.gobEncodedConn = gobEncodedConn*/
-	//defer c.Close()
-	e.stanConn = sc
+	e.subConn = sc
 	return nil
 }
 
@@ -508,9 +501,12 @@ func (e *Extractor) initiateStreaming() error {
 	}()
 
 	go func() {
-		ticker := time.Tick(1 * time.Second)
-		for range ticker {
-			//e.mysqlContext.SetRecentBinlogCoordinates(*e.GetCurrentBinlogCoordinates())
+		_, err := e.subConn.Subscribe(fmt.Sprintf("%s_incr_restart", e.subject), func(m *gonats.Msg) {
+			e.mysqlContext.Gtid = string(m.Data)
+			e.onError(fmt.Errorf("restart"))
+		})
+		if err != nil {
+			e.onError(err)
 		}
 	}()
 	return nil
@@ -519,7 +515,7 @@ func (e *Extractor) initiateStreaming() error {
 //--EventsStreamer--
 func (e *Extractor) initDBConnections() (err error) {
 	EventsStreamerUri := e.mysqlContext.ConnectionConfig.GetDBUri()
-	if e.db, err = usql.CreateDB(EventsStreamerUri); err != nil {
+	if e.db, err = sql.CreateDB(EventsStreamerUri); err != nil {
 		return err
 	}
 	if err := e.validateConnection(); err != nil {
@@ -536,8 +532,8 @@ func (e *Extractor) initDBConnections() (err error) {
 }
 
 // initBinlogReader creates and connects the reader: we hook up to a MySQL server as a replica
-func (e *Extractor) initBinlogReader(binlogCoordinates *ubase.BinlogCoordinates) error {
-	binlogReader, err := ubinlog.NewMySQLReader(e.mysqlContext, e.logger)
+func (e *Extractor) initBinlogReader(binlogCoordinates *base.BinlogCoordinates) error {
+	binlogReader, err := binlog.NewMySQLReader(e.mysqlContext, e.logger)
 	if err != nil {
 		return err
 	}
@@ -558,12 +554,12 @@ func (e *Extractor) validateConnection() error {
 	return nil
 }
 
-func (e *Extractor) GetCurrentBinlogCoordinates() *ubase.BinlogCoordinates {
+func (e *Extractor) GetCurrentBinlogCoordinates() *base.BinlogCoordinates {
 	return e.binlogReader.GetCurrentBinlogCoordinates()
 }
 
-func (e *Extractor) GetReconnectBinlogCoordinates() *ubase.BinlogCoordinates {
-	return &ubase.BinlogCoordinates{LogFile: e.GetCurrentBinlogCoordinates().LogFile, LogPos: 4}
+func (e *Extractor) GetReconnectBinlogCoordinates() *base.BinlogCoordinates {
+	return &base.BinlogCoordinates{LogFile: e.GetCurrentBinlogCoordinates().LogFile, LogPos: 4}
 }
 
 // readCurrentBinlogCoordinates reads master status from hooked server
@@ -577,7 +573,7 @@ func (e *Extractor) readCurrentBinlogCoordinates() error {
 				if err != nil {
 					return err
 				}
-				e.initialBinlogCoordinates = &ubase.BinlogCoordinates{
+				e.initialBinlogCoordinates = &base.BinlogCoordinates{
 					GtidSet: gtidSet.String(),
 				}
 			} else {
@@ -585,7 +581,7 @@ func (e *Extractor) readCurrentBinlogCoordinates() error {
 				if err != nil {
 					return err
 				}
-				e.initialBinlogCoordinates = &ubase.BinlogCoordinates{
+				e.initialBinlogCoordinates = &base.BinlogCoordinates{
 					GtidSet: gtidSet.String(),
 				}
 			}
@@ -593,13 +589,13 @@ func (e *Extractor) readCurrentBinlogCoordinates() error {
 	} else {
 		query := `show master status`
 		foundMasterStatus := false
-		err := usql.QueryRowsMap(e.db, query, func(m usql.RowMap) error {
+		err := sql.QueryRowsMap(e.db, query, func(m sql.RowMap) error {
 			gtidSet, err := gomysql.ParseMysqlGTIDSet(m.GetString("Executed_Gtid_Set"))
 			if err != nil {
 				return err
 			}
 
-			e.initialBinlogCoordinates = &ubase.BinlogCoordinates{
+			e.initialBinlogCoordinates = &base.BinlogCoordinates{
 				LogFile: m.GetString("File"),
 				LogPos:  m.GetInt64("Position"),
 				GtidSet: gtidSet.String(),
@@ -665,15 +661,15 @@ func (e *Extractor) setStatementFor() string {
 	var buffer bytes.Buffer
 	first := true
 	buffer.WriteString("SET ")
-	for valName,value := range e.mysqlContext.SystemVariables {
-		if (first) {
-			first = false;
+	for valName, value := range e.mysqlContext.SystemVariables {
+		if first {
+			first = false
 		} else {
 			buffer.WriteString(", ")
 		}
-		buffer.WriteString(valName+" = ")
+		buffer.WriteString(valName + " = ")
 		if strings.Contains(value, ",") || strings.Contains(value, ";") {
-			value = "'" + value + "'";
+			value = "'" + value + "'"
 		}
 		buffer.WriteString(value)
 	}
@@ -696,6 +692,7 @@ func Encode(v interface{}) ([]byte, error) {
 	if err := enc.Encode(v); err != nil {
 		return nil, err
 	}
+	//return snappy.Encode(nil, b.Bytes()), nil
 	return b.Bytes(), nil
 }
 
@@ -715,14 +712,14 @@ func (e *Extractor) StreamEvents(approveHeterogeneous bool, canStopStreaming fun
 		}()
 		// The next should block and execute forever, unless there's a serious error
 		var successiveFailures int64
-		var lastAppliedRowsEventHint ubase.BinlogCoordinates
+		var lastAppliedRowsEventHint base.BinlogCoordinates
 	OUTER_DS:
 		for {
 			if err := e.binlogReader.DataStreamEvents(canStopStreaming, e.dataChannel); err != nil {
 				if atomic.LoadInt64(&e.mysqlContext.ShutdownFlag) > 0 {
 					break OUTER_DS
 				}
-				e.logger.Printf("[INFO] mysql.extractor: streamEvents encountered unexpected error: %+v", err)
+				e.logger.Printf("[ERR] mysql.extractor: streamEvents encountered unexpected error: %+v", err)
 				e.mysqlContext.MarkPointOfInterest()
 				time.Sleep(ReconnectStreamerSleepSeconds * time.Second)
 
@@ -753,20 +750,13 @@ func (e *Extractor) StreamEvents(approveHeterogeneous bool, canStopStreaming fun
 					e.waitCh <- err
 				}
 
-				msg,err := e.stanConn.Request(fmt.Sprintf("%s_incr", e.subject), txMsg, 1*time.Second)
-				if err != nil {
-					e.logger.Printf("Error in Request: %v\n", err)
-					e.waitCh <- err
-				}
-				e.logger.Printf("Received [%v] : '%s'\n", msg.Subject, string(msg.Data))
-				if string(msg.Data) != string(binlogTx.GNO) {
-					e.waitCh <- fmt.Errorf("Received err msg")
-				}
+				e.requestMsg(txMsg)
+				e.mysqlContext.Gtid = fmt.Sprintf("%s:1-%d", binlogTx.SID, binlogTx.GNO)
 			}
 		}()
 		// The next should block and execute forever, unless there's a serious error
 		var successiveFailures int64
-		var lastAppliedRowsEventHint ubase.BinlogCoordinates
+		var lastAppliedRowsEventHint base.BinlogCoordinates
 	OUTER_BS:
 		for {
 			if err := e.binlogReader.BinlogStreamEvents(e.binlogChannel); err != nil {
@@ -799,6 +789,19 @@ func (e *Extractor) StreamEvents(approveHeterogeneous bool, canStopStreaming fun
 	}
 	return nil
 }
+func (e *Extractor) requestMsg(txMsg []byte) {
+	_, err := e.pubConn.Request(fmt.Sprintf("%s_incr", e.subject), txMsg, 10*time.Second)
+	if err != nil {
+		if err == gonats.ErrTimeout {
+			e.logger.Printf("[ERR] mysql.extractor: ErrTimeout in Request: %v\n", err)
+			time.Sleep(1 * time.Second)
+			e.requestMsg(txMsg)
+			return
+		}
+		e.logger.Printf("[ERR] mysql.extractor: Error in Request: %v\n", err)
+		e.waitCh <- err
+	}
+}
 
 //Perform the snapshot using the same logic as the "mysqldump" utility.
 func (e *Extractor) mysqlDump() error {
@@ -816,13 +819,13 @@ func (e *Extractor) mysqlDump() error {
 	// See: https://dev.mysql.com/doc/refman/5.7/en/innodb-transaction-isolation-levels.html
 	// See: https://dev.mysql.com/doc/refman/5.7/en/innodb-consistent-read.html
 	e.logger.Printf("[INFO] mysql.extractor: Step 0: disabling autocommit and enabling repeatable read transactions")
-	_, err := usql.ExecNoPrepare(e.db, "SET autocommit = 0")
+	_, err := sql.ExecNoPrepare(e.db, "SET autocommit = 0")
 	if err != nil {
 		e.logger.Printf("[ERR] mysql.extractor: %v", err)
 		return err
 	}
 	query := "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ"
-	_, err = usql.ExecNoPrepare(e.db, query)
+	_, err = sql.ExecNoPrepare(e.db, query)
 	if err != nil {
 		e.logger.Printf("[ERR] mysql.extractor: exec %+v, error: %v", query, err)
 		return err
@@ -842,7 +845,7 @@ func (e *Extractor) mysqlDump() error {
 	// See http://dev.mysql.com/doc/refman/5.7/en/commit.html
 	e.logger.Printf("[INFO] mysql.extractor: Step 1: start transaction with consistent snapshot")
 	query = "START TRANSACTION WITH CONSISTENT SNAPSHOT"
-	_, err = usql.ExecNoPrepare(e.db, query)
+	_, err = sql.ExecNoPrepare(e.db, query)
 	if err != nil {
 		e.logger.Printf("[ERR] mysql.extractor: exec %+v, error: %v", query, err)
 		return err
@@ -857,7 +860,7 @@ func (e *Extractor) mysqlDump() error {
 	lockAcquired := currentTimeMillis()
 	e.logger.Printf("[INFO] mysql.extractor: Step 2: flush and obtain global read lock (preventing writes to database)")
 	query = "FLUSH TABLES WITH READ LOCK"
-	_, err = usql.ExecNoPrepare(e.db, query)
+	_, err = sql.ExecNoPrepare(e.db, query)
 	if err != nil {
 		e.logger.Printf("[ERR] mysql.extractor: exec %+v, error: %v", query, err)
 		return err
@@ -893,7 +896,7 @@ func (e *Extractor) mysqlDump() error {
 		e.logger.Printf("[INFO] mysql.extractor: Step 5: generating DROP and CREATE statements to reflect current database schemas:")
 		for _, doDb := range e.mysqlContext.ReplicateDoDb {
 			uri := e.mysqlContext.ConnectionConfig.GetDBUriByDbName(doDb.Database)
-			db, err := usql.CreateDB(uri)
+			db, err := sql.CreateDB(uri)
 			if err != nil {
 				return err
 			}
@@ -955,7 +958,7 @@ func (e *Extractor) mysqlDump() error {
 		// we can release the lock now ...
 		e.logger.Printf("[INFO] mysql.extractor: Step 6: releasing global read lock to enable MySQL writes")
 		query = "UNLOCK TABLES"
-		_, err = usql.ExecNoPrepare(e.db, query)
+		_, err = sql.ExecNoPrepare(e.db, query)
 		if err != nil {
 			e.logger.Printf("[ERR] mysql.extractor: exec %+v, error: %v", query, err)
 			return err
@@ -985,7 +988,7 @@ func (e *Extractor) mysqlDump() error {
 		if true {
 			// Choose how we create statements based on the # of rows ...
 			var numRows int
-			query := fmt.Sprintf(`SELECT COUNT(*) FROM %s.%s`, tb.DbName,tb.TbName)
+			query := fmt.Sprintf(`SELECT COUNT(*) FROM %s.%s`, tb.DbName, tb.TbName)
 			if err := e.db.QueryRow(query).Scan(&numRows); err != nil {
 				return err
 			}
@@ -993,8 +996,8 @@ func (e *Extractor) mysqlDump() error {
 			// Scan the rows in the table ...
 			start := currentTimeMillis()
 			counter++
-			e.logger.Printf("[INFO] mysql.extractor: Step 7: - scanning table '%s.%s' (%d of %d tables)", tb.DbName,tb.TbName, counter, len(data.Tables))
-			rows, err := e.db.Query(fmt.Sprintf(`SELECT * FROM %s.%s`, tb.DbName,tb.TbName))
+			e.logger.Printf("[INFO] mysql.extractor: Step 7: - scanning table '%s.%s' (%d of %d tables)", tb.DbName, tb.TbName, counter, len(data.Tables))
+			rows, err := e.db.Query(fmt.Sprintf(`SELECT * FROM %s.%s`, tb.DbName, tb.TbName))
 			if err != nil {
 				return err
 			}
@@ -1040,7 +1043,7 @@ func (e *Extractor) mysqlDump() error {
 					data_text = append(data_text, "('"+strings.Join(dataStrings, "','")+"')")
 				}
 			}
-			totalRowCount =totalRowCount + numRows
+			totalRowCount = totalRowCount + numRows
 		}
 		completedCounter++
 	}
@@ -1050,7 +1053,7 @@ func (e *Extractor) mysqlDump() error {
 	//source.markLastSnapshot()
 	stop := currentTimeMillis()
 	e.logger.Printf("Step 7: scanned {} rows in {} tables in {}",
-		totalRowCount, len(data.Tables), time.Duration(stop - startScan))
+		totalRowCount, len(data.Tables), time.Duration(stop-startScan))
 
 	// ------
 	// STEP 8
@@ -1061,7 +1064,7 @@ func (e *Extractor) mysqlDump() error {
 		step++
 		e.logger.Printf("[INFO] mysql.extractor: Step %d: releasing global read lock to enable MySQL writes", step)
 		query = "UNLOCK TABLES"
-		_, err = usql.ExecNoPrepare(e.db, query)
+		_, err = sql.ExecNoPrepare(e.db, query)
 		if err != nil {
 			e.logger.Printf("[ERR] mysql.extractor: exec %+v, error: %v", query, err)
 			return err
@@ -1080,7 +1083,7 @@ func (e *Extractor) mysqlDump() error {
 		step++
 		e.logger.Printf("[INFO] mysql.extractor: Step %d: rolling back transaction after abort", step)
 		query = "ROLLBACK"
-		_, err = usql.ExecNoPrepare(e.db, query)
+		_, err = sql.ExecNoPrepare(e.db, query)
 		if err != nil {
 			e.logger.Printf("[ERR] mysql.extractor: exec %+v, error: %v", query, err)
 			return err
@@ -1092,7 +1095,7 @@ func (e *Extractor) mysqlDump() error {
 	step++
 	e.logger.Printf("[INFO] mysql.extractor: Step %d: committing transaction", step)
 	query = "COMMIT"
-	_, err = usql.ExecNoPrepare(e.db, query)
+	_, err = sql.ExecNoPrepare(e.db, query)
 	if err != nil {
 		e.logger.Printf("[ERR] mysql.extractor: exec %+v, error: %v", query, err)
 		return err
@@ -1102,7 +1105,7 @@ func (e *Extractor) mysqlDump() error {
 	/*if len(e.mysqlContext.ReplicateDoDb) > 0 {
 		for _, doDb := range e.mysqlContext.ReplicateDoDb {
 			uri := e.mysqlContext.ConnectionConfig.GetDBUriByDbName(doDb.Database)
-			db, _, err := usql.GetDB(uri)
+			db, _, err := sql.GetDB(uri)
 			if err != nil {
 				return err
 			}
@@ -1153,7 +1156,7 @@ func (e *Extractor) WaitCh() chan error {
 	return e.waitCh
 }
 
-func (e *Extractor) Stats() (*umodels.TaskStatistics, error) {
+func (e *Extractor) Stats() (*models.TaskStatistics, error) {
 	/*if e.stanConn !=nil{
 		e.logger.Printf("Tracks various stats send on this connection:%v",e.stanConn.NatsConn().Statistics)
 	}*/
@@ -1189,7 +1192,7 @@ func (e *Extractor) Stats() (*umodels.TaskStatistics, error) {
 		etaSeconds = totalExpectedSeconds - elapsedRowCopySeconds
 		if etaSeconds >= 0 {
 			etaDuration := time.Duration(etaSeconds) * time.Second
-			eta = ubase.PrettifyDurationOutput(etaDuration)
+			eta = base.PrettifyDurationOutput(etaDuration)
 		} else {
 			eta = "due"
 		}
@@ -1226,7 +1229,7 @@ func (e *Extractor) Stats() (*umodels.TaskStatistics, error) {
 		status := fmt.Sprintf("Copy: %d/%d %.1f%%; Applied: %d; Time: %+v(total), %+v(copy); streamer: %+v; State: %s; ETA: %s",
 			totalRowsCopied, rowsEstimate, progressPct,
 			atomic.LoadInt64(&e.mysqlContext.TotalDMLEventsApplied),
-			ubase.PrettifyDurationOutput(elapsedTime), ubase.PrettifyDurationOutput(e.mysqlContext.ElapsedRowCopyTime()),
+			base.PrettifyDurationOutput(elapsedTime), base.PrettifyDurationOutput(e.mysqlContext.ElapsedRowCopyTime()),
 			e.currentBinlogCoordinates,
 			state,
 			eta,
@@ -1236,8 +1239,8 @@ func (e *Extractor) Stats() (*umodels.TaskStatistics, error) {
 		if elapsedSeconds%60 == 0 {
 			//e.hooksExecutor.onStatus(status)
 		}
-		taskResUsage := umodels.TaskStatistics{
-			Stats: &umodels.Stats{
+		taskResUsage := models.TaskStatistics{
+			Stats: &models.Stats{
 				Status: status,
 			},
 			Timestamp: time.Now().UTC().UnixNano(),
@@ -1247,8 +1250,8 @@ func (e *Extractor) Stats() (*umodels.TaskStatistics, error) {
 }
 
 func (e *Extractor) ID() string {
-	id := uconf.DriverCtx{
-		DriverConfig: &uconf.MySQLDriverConfig{
+	id := config.DriverCtx{
+		DriverConfig: &config.MySQLDriverConfig{
 			ReplicateDoDb:    e.mysqlContext.ReplicateDoDb,
 			Gtid:             e.mysqlContext.Gtid,
 			NatsAddr:         e.mysqlContext.NatsAddr,
@@ -1266,13 +1269,14 @@ func (e *Extractor) ID() string {
 func (e *Extractor) Shutdown() error {
 	atomic.StoreInt64(&e.mysqlContext.ShutdownFlag, 1)
 	//close(e.binlogChannel)
-	e.stanConn.Close()
+	e.pubConn.Close()
+	e.subConn.Close()
 
 	if err := e.binlogReader.Close(); err != nil {
 		return err
 	}
 
-	if err := usql.CloseDB(e.db); err != nil {
+	if err := sql.CloseDB(e.db); err != nil {
 		return err
 	}
 

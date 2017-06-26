@@ -5,8 +5,8 @@ import (
 
 	"github.com/mitchellh/mapstructure"
 
-	umysql "udup/internal/client/driver/mysql"
-	uconf "udup/internal/config"
+	"udup/internal/client/driver/mysql"
+	"udup/internal/config"
 	"udup/internal/models"
 )
 
@@ -20,7 +20,7 @@ func NewMySQLDriver(ctx *DriverContext) Driver {
 }
 
 func (m *MySQLDriver) Start(ctx *ExecContext, task *models.Task) (DriverHandle, error) {
-	var driverConfig uconf.MySQLDriverConfig
+	var driverConfig config.MySQLDriverConfig
 	if err := mapstructure.WeakDecode(task.Config, &driverConfig); err != nil {
 		return nil, err
 	}
@@ -29,16 +29,13 @@ func (m *MySQLDriver) Start(ctx *ExecContext, task *models.Task) (DriverHandle, 
 	case models.TaskTypeSrc:
 		{
 			// Create the extractor
-			e := umysql.NewExtractor(ctx.Subject, &driverConfig, m.logger)
+			e := mysql.NewExtractor(ctx.Subject, &driverConfig, m.logger)
 			go e.Run()
 			return e, nil
 		}
 	case models.TaskTypeDest:
 		{
-			a, err := umysql.NewApplier(ctx.Subject, &driverConfig, m.logger)
-			if err != nil {
-				return nil, err
-			}
+			a := mysql.NewApplier(ctx.Subject, &driverConfig, m.logger)
 			go a.Run()
 			return a, nil
 		}

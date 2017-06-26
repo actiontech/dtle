@@ -15,7 +15,7 @@ import (
 
 	"encoding/json"
 	"udup/internal/client/driver"
-	uconf "udup/internal/config"
+	"udup/internal/config"
 	"udup/internal/models"
 )
 
@@ -35,7 +35,7 @@ const (
 
 // Worker is used to wrap a task within an allocation and provide the execution context.
 type Worker struct {
-	config         *uconf.ClientConfig
+	config         *config.ClientConfig
 	updater        TaskStateUpdater
 	logger         *log.Logger
 	alloc          *models.Allocation
@@ -95,7 +95,7 @@ type workerState struct {
 type TaskStateUpdater func(taskName, state string, event *models.TaskEvent)
 
 // NewWorker is used to create a new task context
-func NewWorker(logger *log.Logger, config *uconf.ClientConfig,
+func NewWorker(logger *log.Logger, config *config.ClientConfig,
 	updater TaskStateUpdater, alloc *models.Allocation,
 	task *models.Task, workUpdates chan *models.TaskUpdate) *Worker {
 
@@ -154,14 +154,9 @@ func (r *Worker) SaveState() error {
 	r.persistLock.Lock()
 	defer r.persistLock.Unlock()
 
-	/*snap := workerState{
-		Version:         r.config.Version,
-		PayloadRendered: r.payloadRendered,
-	}*/
-
 	r.handleLock.Lock()
 	if r.handle != nil {
-		id := &uconf.DriverCtx{}
+		id := &config.DriverCtx{}
 		handleID := r.handle.ID()
 		if err := json.Unmarshal([]byte(handleID), id); err != nil {
 			r.logger.Printf("[ERR] client: failed to parse handle '%s': %v",
@@ -172,14 +167,11 @@ func (r *Worker) SaveState() error {
 				JobID: r.alloc.JobID,
 				Gtid:  id.DriverConfig.Gtid,
 			}
-			r.task.Config["Gtid"] = id.DriverConfig.Gtid
 		}
-		//snap.HandleID = r.handle.ID()
-		//snap.Task = r.task
+		r.task.Config["Gtid"] = id.DriverConfig.Gtid
 	}
 	r.handleLock.Unlock()
 	return nil
-	//return persistState(r.stateFilePath(), &snap)
 }
 
 // DestroyState is used to cleanup after ourselves

@@ -1,11 +1,11 @@
 package sql
 
 import (
+	"bytes"
 	"fmt"
 	"strconv"
 	"strings"
 
-	"bytes"
 	umconf "udup/internal/config/mysql"
 )
 

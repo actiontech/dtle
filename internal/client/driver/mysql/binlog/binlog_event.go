@@ -5,7 +5,7 @@ import (
 
 	"github.com/siddontang/go-mysql/replication"
 
-	umconf "udup/internal/config/mysql"
+	"udup/internal/config/mysql"
 )
 
 type EventDML string
@@ -60,13 +60,13 @@ type DataEvent struct {
 	DatabaseName            string
 	TableName               string
 	DML                     EventDML
-	OriginalTableColumns    *umconf.ColumnList
-	OriginalTableUniqueKeys [](*umconf.UniqueKey)
-	WhereColumnValues       *umconf.ColumnValues
-	NewColumnValues         []*umconf.ColumnValues
+	OriginalTableColumns    *mysql.ColumnList
+	OriginalTableUniqueKeys [](*mysql.UniqueKey)
+	WhereColumnValues       *mysql.ColumnValues
+	NewColumnValues         []*mysql.ColumnValues
 }
 
-func NewDataEvent(query, databaseName, tableName string, dml EventDML, tableColumns *umconf.ColumnList, tableUniqueKey [](*umconf.UniqueKey)) DataEvent {
+func NewDataEvent(query, databaseName, tableName string, dml EventDML, tableColumns *mysql.ColumnList, tableUniqueKey [](*mysql.UniqueKey)) DataEvent {
 	event := DataEvent{
 		Query:                   query,
 		DatabaseName:            databaseName,

@@ -3,12 +3,12 @@ package binlog
 import (
 	"fmt"
 
-	ubase "udup/internal/client/driver/mysql/base"
+	"udup/internal/client/driver/mysql/base"
 )
 
 // BinlogEntry describes an entry in the binary log
 type BinlogEntry struct {
-	Coordinates ubase.BinlogCoordinates
+	Coordinates base.BinlogCoordinates
 	EndLogPos   uint64
 
 	Events []DataEvent
@@ -17,13 +17,13 @@ type BinlogEntry struct {
 // NewBinlogEntry creates an empty, ready to go BinlogEntry object
 func NewBinlogEntry(logFile string, logPos uint64) *BinlogEntry {
 	binlogEntry := &BinlogEntry{
-		Coordinates: ubase.BinlogCoordinates{LogFile: logFile, LogPos: int64(logPos)},
+		Coordinates: base.BinlogCoordinates{LogFile: logFile, LogPos: int64(logPos)},
 	}
 	return binlogEntry
 }
 
 // NewBinlogEntry creates an empty, ready to go BinlogEntry object
-func NewBinlogEntryAt(coordinates ubase.BinlogCoordinates) *BinlogEntry {
+func NewBinlogEntryAt(coordinates base.BinlogCoordinates) *BinlogEntry {
 	binlogEntry := &BinlogEntry{
 		Coordinates: coordinates,
 	}

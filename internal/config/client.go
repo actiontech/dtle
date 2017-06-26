@@ -296,7 +296,7 @@ type Table struct {
 // DefaultConfig returns the default configuration
 func DefaultClientConfig() *ClientConfig {
 	return &ClientConfig{
-		NatsPort:              8193,
+		NatsPort:                8193,
 		ConsulConfig:            DefaultConsulConfig(),
 		LogOutput:               os.Stderr,
 		Region:                  "global",

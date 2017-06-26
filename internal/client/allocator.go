@@ -10,7 +10,7 @@ import (
 
 	"github.com/hashicorp/go-multierror"
 
-	uconf "udup/internal/config"
+	"udup/internal/config"
 	"udup/internal/models"
 )
 
@@ -23,7 +23,7 @@ type AllocStatsReporter interface {
 
 // Allocator is used to wrap an allocation and provide the execution context.
 type Allocator struct {
-	config  *uconf.ClientConfig
+	config  *config.ClientConfig
 	updater AllocStateUpdater
 	logger  *log.Logger
 
@@ -62,7 +62,7 @@ type allocatorState struct {
 }
 
 // NewAllocator is used to create a new allocation context
-func NewAllocator(logger *log.Logger, config *uconf.ClientConfig, updater AllocStateUpdater,
+func NewAllocator(logger *log.Logger, config *config.ClientConfig, updater AllocStateUpdater,
 	alloc *models.Allocation, workUpdates chan *models.TaskUpdate) *Allocator {
 	ar := &Allocator{
 		config:      config,

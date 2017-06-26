@@ -21,25 +21,25 @@ import (
 	"github.com/siddontang/go-mysql/replication"
 	"golang.org/x/net/context"
 
-	ubase "udup/internal/client/driver/mysql/base"
-	usql "udup/internal/client/driver/mysql/sql"
-	uutil "udup/internal/client/driver/mysql/util"
-	uconf "udup/internal/config"
-	umconf "udup/internal/config/mysql"
+	"udup/internal/client/driver/mysql/base"
+	"udup/internal/client/driver/mysql/sql"
+	"udup/internal/client/driver/mysql/util"
+	"udup/internal/config"
+	"udup/internal/config/mysql"
 )
 
 // BinlogReader is a general interface whose implementations can choose their methods of reading
 // a binary log file and parsing it into binlog entries
 type BinlogReader struct {
 	logger                   *log.Logger
-	connectionConfig         *umconf.ConnectionConfig
+	connectionConfig         *mysql.ConnectionConfig
 	db                       *gosql.DB
 	binlogSyncer             *replication.BinlogSyncer
 	binlogStreamer           *replication.BinlogStreamer
-	currentCoordinates       ubase.BinlogCoordinates
+	currentCoordinates       base.BinlogCoordinates
 	currentCoordinatesMutex  *sync.Mutex
-	LastAppliedRowsEventHint ubase.BinlogCoordinates
-	MysqlContext             *uconf.MySQLDriverConfig
+	LastAppliedRowsEventHint base.BinlogCoordinates
+	MysqlContext             *config.MySQLDriverConfig
 
 	EvtChan chan *BinlogEvent
 
@@ -51,10 +51,10 @@ type BinlogReader struct {
 	ReMap              map[string]*regexp.Regexp
 }
 
-func NewMySQLReader(cfg *uconf.MySQLDriverConfig, logger *log.Logger) (binlogReader *BinlogReader, err error) {
+func NewMySQLReader(cfg *config.MySQLDriverConfig, logger *log.Logger) (binlogReader *BinlogReader, err error) {
 	binlogReader = &BinlogReader{
 		logger:                  logger,
-		currentCoordinates:      ubase.BinlogCoordinates{},
+		currentCoordinates:      base.BinlogCoordinates{},
 		currentCoordinatesMutex: &sync.Mutex{},
 		binlogSyncer:            nil,
 		binlogStreamer:          nil,
@@ -62,11 +62,11 @@ func NewMySQLReader(cfg *uconf.MySQLDriverConfig, logger *log.Logger) (binlogRea
 	}
 
 	uri := cfg.ConnectionConfig.GetDBUri()
-	if binlogReader.db, _, err = usql.GetDB(uri); err != nil {
+	if binlogReader.db, _, err = sql.GetDB(uri); err != nil {
 		return nil, err
 	}
 
-	id, err := uutil.NewIdWorker(2, 3, uutil.SnsEpoch)
+	id, err := util.NewIdWorker(2, 3, util.SnsEpoch)
 	if err != nil {
 		return nil, err
 	}
@@ -95,7 +95,7 @@ func NewMySQLReader(cfg *uconf.MySQLDriverConfig, logger *log.Logger) (binlogRea
 }
 
 // ConnectBinlogStreamer
-func (b *BinlogReader) ConnectBinlogStreamer(coordinates ubase.BinlogCoordinates) (err error) {
+func (b *BinlogReader) ConnectBinlogStreamer(coordinates base.BinlogCoordinates) (err error) {
 	if coordinates.IsEmpty() {
 		return fmt.Errorf("Emptry coordinates at ConnectBinlogStreamer()")
 	}
@@ -113,7 +113,7 @@ func (b *BinlogReader) ConnectBinlogStreamer(coordinates ubase.BinlogCoordinates
 	return err
 }
 
-func (b *BinlogReader) GetCurrentBinlogCoordinates() *ubase.BinlogCoordinates {
+func (b *BinlogReader) GetCurrentBinlogCoordinates() *base.BinlogCoordinates {
 	b.currentCoordinatesMutex.Lock()
 	defer b.currentCoordinatesMutex.Unlock()
 	returnCoordinates := b.currentCoordinates
@@ -185,8 +185,8 @@ func (b *BinlogReader) handleRowsEvent(ev *replication.BinlogEvent, be *BinlogEn
 			originalTableUniqueKeys,
 		)
 		for _, row := range rowsEvent.Rows {
-			//dmlEvent.NewColumnValues = umconf.ToColumnValues(row)
-			dmlEvent.NewColumnValues = append(dmlEvent.NewColumnValues, umconf.ToColumnValues(row))
+			//dmlEvent.NewColumnValues = mysql.ToColumnValues(row)
+			dmlEvent.NewColumnValues = append(dmlEvent.NewColumnValues, mysql.ToColumnValues(row))
 		}
 		be.Events = append(be.Events, dmlEvent)
 	case replication.UPDATE_ROWS_EVENTv2:
@@ -214,8 +214,8 @@ func (b *BinlogReader) handleRowsEvent(ev *replication.BinlogEvent, be *BinlogEn
 				continue
 			}
 
-			dmlEvent.WhereColumnValues = umconf.ToColumnValues(row)
-			dmlEvent.NewColumnValues = append(dmlEvent.NewColumnValues, umconf.ToColumnValues(rowsEvent.Rows[i+1]))
+			dmlEvent.WhereColumnValues = mysql.ToColumnValues(row)
+			dmlEvent.NewColumnValues = append(dmlEvent.NewColumnValues, mysql.ToColumnValues(rowsEvent.Rows[i+1]))
 		}
 		be.Events = append(be.Events, dmlEvent)
 	case replication.DELETE_ROWS_EVENTv2:
@@ -237,7 +237,7 @@ func (b *BinlogReader) handleRowsEvent(ev *replication.BinlogEvent, be *BinlogEn
 			originalTableUniqueKeys,
 		)
 		for _, row := range rowsEvent.Rows {
-			dmlEvent.WhereColumnValues = umconf.ToColumnValues(row)
+			dmlEvent.WhereColumnValues = mysql.ToColumnValues(row)
 			be.Events = append(be.Events, dmlEvent)
 		}
 	case replication.XID_EVENT:
@@ -708,7 +708,7 @@ func (b *BinlogReader) onCommit(lastEvent *BinlogEvent, txChannel chan<- *Binlog
 	//tb.arrayCurrentSqlB64 = nil
 }
 
-func (b *BinlogReader) InspectTableColumnsAndUniqueKeys(databaseName, tableName string) (columns *umconf.ColumnList, uniqueKeys [](*umconf.UniqueKey), err error) {
+func (b *BinlogReader) InspectTableColumnsAndUniqueKeys(databaseName, tableName string) (columns *mysql.ColumnList, uniqueKeys [](*mysql.UniqueKey), err error) {
 	uniqueKeys, err = b.getCandidateUniqueKeys(databaseName, tableName)
 	if err != nil {
 		return columns, uniqueKeys, err
@@ -716,7 +716,7 @@ func (b *BinlogReader) InspectTableColumnsAndUniqueKeys(databaseName, tableName 
 	/*if len(uniqueKeys) == 0 {
 		return columns, uniqueKeys, fmt.Errorf("No PRIMARY nor UNIQUE key found in table! Bailing out")
 	}*/
-	columns, err = ubase.GetTableColumns(b.db, databaseName, tableName)
+	columns, err = base.GetTableColumns(b.db, databaseName, tableName)
 	if err != nil {
 		return columns, uniqueKeys, err
 	}
@@ -726,7 +726,7 @@ func (b *BinlogReader) InspectTableColumnsAndUniqueKeys(databaseName, tableName 
 
 // getCandidateUniqueKeys investigates a table and returns the list of unique keys
 // candidate for chunking
-func (b *BinlogReader) getCandidateUniqueKeys(databaseName, tableName string) (uniqueKeys [](*umconf.UniqueKey), err error) {
+func (b *BinlogReader) getCandidateUniqueKeys(databaseName, tableName string) (uniqueKeys [](*mysql.UniqueKey), err error) {
 	query := `
     SELECT
       COLUMNS.TABLE_SCHEMA,
@@ -786,10 +786,10 @@ func (b *BinlogReader) getCandidateUniqueKeys(databaseName, tableName string) (u
       END,
       COUNT_COLUMN_IN_INDEX
   `
-	err = usql.QueryRowsMap(b.db, query, func(m usql.RowMap) error {
-		uniqueKey := &umconf.UniqueKey{
+	err = sql.QueryRowsMap(b.db, query, func(m sql.RowMap) error {
+		uniqueKey := &mysql.UniqueKey{
 			Name:            m.GetString("INDEX_NAME"),
-			Columns:         *umconf.ParseColumnList(m.GetString("COLUMN_NAMES")),
+			Columns:         *mysql.ParseColumnList(m.GetString("COLUMN_NAMES")),
 			HasNullable:     m.GetBool("has_nullable"),
 			IsAutoIncrement: m.GetBool("is_auto_increment"),
 		}
@@ -854,18 +854,18 @@ func resolveDDLSQL(sql string) (sqls []string, ok bool, err error) {
 	return sqls, true, nil
 }
 
-func genTableName(schema string, table string) uconf.TableName {
-	return uconf.TableName{Database: schema, Name: table}
+func genTableName(schema string, table string) config.TableName {
+	return config.TableName{Database: schema, Name: table}
 
 }
 
-func parserDDLTableName(sql string) (uconf.TableName, error) {
+func parserDDLTableName(sql string) (config.TableName, error) {
 	stmt, err := parser.New().ParseOneStmt(sql, "", "")
 	if err != nil {
-		return uconf.TableName{}, err
+		return config.TableName{}, err
 	}
 
-	var res uconf.TableName
+	var res config.TableName
 	switch v := stmt.(type) {
 	case *ast.CreateDatabaseStmt:
 		res = genTableName(v.Name, "")
@@ -991,7 +991,7 @@ func (b *BinlogReader) matchString(pattern string, t string) bool {
 	return pattern == t
 }
 
-func (b *BinlogReader) matchDB(patternDBS []*uconf.DataSource, a string) bool {
+func (b *BinlogReader) matchDB(patternDBS []*config.DataSource, a string) bool {
 	for _, pdb := range patternDBS {
 		if b.matchString(pdb.Database, a) {
 			return true
@@ -1000,7 +1000,7 @@ func (b *BinlogReader) matchDB(patternDBS []*uconf.DataSource, a string) bool {
 	return false
 }
 
-func (b *BinlogReader) matchTable(patternTBS []*uconf.DataSource, t uconf.TableName) bool {
+func (b *BinlogReader) matchTable(patternTBS []*config.DataSource, t config.TableName) bool {
 	for _, pdb := range patternTBS {
 		redb, okdb := b.ReMap[pdb.Database]
 		for _, ptb := range pdb.Table {
