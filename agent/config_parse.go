@@ -88,7 +88,6 @@ func parseConfig(result *Config, list *ast.ObjectList) error {
 		"leave_on_interrupt",
 		"leave_on_terminate",
 		"consul",
-		"nats",
 		"http_api_response_headers",
 	}
 	if err := checkHCLKeys(list, valid); err != nil {
@@ -107,7 +106,6 @@ func parseConfig(result *Config, list *ast.ObjectList) error {
 	delete(m, "server")
 	delete(m, "metric")
 	delete(m, "consul")
-	delete(m, "nats")
 	delete(m, "http_api_response_headers")
 
 	// Decode the rest
@@ -164,13 +162,6 @@ func parseConfig(result *Config, list *ast.ObjectList) error {
 		}
 	}
 
-	// Parse the nats config
-	if o := list.Filter("nats"); len(o.Items) > 0 {
-		if err := parseNatsConfig(&result.Nats, o); err != nil {
-			return multierror.Prefix(err, "nats ->")
-		}
-	}
-
 	// Parse out http_api_response_headers fields. These are in HCL as a list so
 	// we need to iterate over them and merge them.
 	if headersO := list.Filter("http_api_response_headers"); len(headersO.Items) > 0 {
@@ -202,6 +193,7 @@ func parsePorts(result **Ports, list *ast.ObjectList) error {
 		"http",
 		"rpc",
 		"serf",
+		"nats",
 	}
 	if err := checkHCLKeys(listVal, valid); err != nil {
 		return err
@@ -493,48 +485,6 @@ func parseConsulConfig(result **uconf.ConsulConfig, list *ast.ObjectList) error 
 	}
 
 	*result = consulConfig
-	return nil
-}
-
-func parseNatsConfig(result **uconf.NatsConfig, list *ast.ObjectList) error {
-	list = list.Elem()
-	if len(list.Items) > 1 {
-		return fmt.Errorf("only one 'consul' block allowed")
-	}
-
-	// Get our Consul object
-	listVal := list.Items[0].Val
-
-	// Check for invalid keys
-	valid := []string{
-		"address",
-		"store_type",
-		"file_store_dir",
-	}
-
-	if err := checkHCLKeys(listVal, valid); err != nil {
-		return err
-	}
-
-	var m map[string]interface{}
-	if err := hcl.DecodeObject(&m, listVal); err != nil {
-		return err
-	}
-
-	natsConfig := uconf.DefaultNatsConfig()
-	dec, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
-		DecodeHook:       mapstructure.StringToTimeDurationHookFunc(),
-		WeaklyTypedInput: true,
-		Result:           &natsConfig,
-	})
-	if err != nil {
-		return err
-	}
-	if err := dec.Decode(m); err != nil {
-		return err
-	}
-
-	*result = natsConfig
 	return nil
 }
 

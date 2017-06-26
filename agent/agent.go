@@ -183,7 +183,7 @@ func (a *Agent) clientConfig() (*uconf.ClientConfig, error) {
 	}
 
 	conf.ConsulConfig = a.config.Consul
-	conf.NatsConfig = a.config.Nats
+	conf.NatsPort = a.config.Ports.Nats
 	conf.StatsCollectionInterval = a.config.Metric.collectionInterval
 	conf.PublishNodeMetrics = a.config.Metric.PublishNodeMetrics
 	conf.PublishAllocationMetrics = a.config.Metric.PublishAllocationMetrics

@@ -1,10 +1,8 @@
 package client
 
 import (
-	"archive/tar"
 	"errors"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"log"
 	"math/rand"
@@ -544,29 +542,21 @@ func (c *Client) setupNode() error {
 }
 
 func (c *Client) setupNatsServer() error {
-	host, port, err := net.SplitHostPort(c.config.NatsConfig.Addr)
-	p, err := strconv.Atoi(port)
-	if err != nil {
-		return err
-	}
-
 	nOpts := gnatsd.Options{
-		Host:       host,
-		Port:       p,
-		HTTPPort:   8199,
+		Host:       "0.0.0.0",
+		Port:       c.config.NatsPort,
 		MaxPayload: 100 * 1024 * 1024,
-		//LogFile:    c.config.LogFile,
-		Trace: true,
-		Debug: true,
+		//HTTPPort:   8199,
+		LogFile: c.config.LogFile,
+		Trace:   true,
+		Debug:   true,
 	}
-	c.logger.Printf("[DEBUG] client: starting nats streaming server [%s]", c.config.NatsConfig.Addr)
+	c.logger.Printf("[DEBUG] client: starting nats streaming server [0.0.0.0:%d]", c.config.NatsPort)
 	sOpts := stand.GetDefaultOptions()
 	sOpts.ID = config.DefaultClusterID
-	if c.config.NatsConfig.StoreType == "file" {
-		sOpts.StoreType = c.config.NatsConfig.StoreType
-		sOpts.FilestoreDir = c.config.NatsConfig.FilestoreDir
-	}
-	//stand.ConfigureLogger(sOpts, &nOpts)
+	/*if c.config.LogLevel == "DEBUG" {
+		stand.ConfigureLogger(sOpts, &nOpts)
+	}*/
 	s, err := stand.RunServerWithOpts(sOpts, &nOpts)
 	if err != nil {
 		return err
@@ -669,7 +659,7 @@ func (c *Client) periodicSnapshot() {
 
 // run is a long lived goroutine used to run the client
 func (c *Client) run() {
-	time.Sleep(5 * time.Second)
+	time.Sleep(15 * time.Second)
 	// Watch for changes in allocations
 	allocUpdates := make(chan *allocUpdates, 8)
 	jobUpdates := make(chan *jobUpdates, 8)
@@ -967,6 +957,9 @@ func (c *Client) watchAllocations(updates chan *allocUpdates, jUpdates chan *job
 
 	//OUTER:
 	for {
+		/*if c.config.Node.Status != "ready"{
+			continue
+		}*/
 		// Get the allocation modify index map, blocking for updates. We will
 		// use this to determine exactly what allocations need to be downloaded
 		// in full.
@@ -1052,36 +1045,6 @@ func (c *Client) watchAllocations(updates chan *allocUpdates, jUpdates chan *job
 			pulledAllocs = make(map[string]*models.Allocation, len(allocsResp.Allocs))
 			for _, alloc := range allocsResp.Allocs {
 				pulledAllocs[alloc.ID] = alloc
-				/*if alloc.Task == models.TaskTypeSrc {
-					args := models.JobSpecificRequest{
-						JobID:     alloc.Job.ID,
-						AllAllocs: true,
-						QueryOptions: models.QueryOptions{
-							Region:     c.Region(),
-							AllowStale: true,
-						},
-					}
-					var out models.JobAllocationsResponse
-					if err := c.RPC("Job.Allocations", &args, &out); err != nil {
-						c.logger.Printf("[ERR] client: failed to query job allocations: %v", err)
-						retry := c.retryIntv(getAllocRetryIntv)
-						select {
-						case <-c.serversDiscoveredCh:
-							continue
-						case <-time.After(retry):
-							continue
-						case <-c.shutdownCh:
-							return
-						}
-					}
-					for _, ja := range out.Allocations {
-						if ja.Task != alloc.Task && ja.ClientStatus == models.TaskStateRunning {
-							pulledAllocs[alloc.ID] = alloc
-						}
-					}
-				} else {
-					pulledAllocs[alloc.ID] = alloc
-				}*/
 			}
 
 			/*for _, desiredID := range pull {
@@ -1372,100 +1335,6 @@ func (c *Client) waitForAllocTerminal(allocID string, stopCh *migrateAllocCtrl) 
 			req.MinQueryIndex = resp.Index
 		}
 
-	}
-}
-
-// unarchiveAllocDir reads the stream of a compressed allocation directory and
-// writes them to the disk.
-func (c *Client) unarchiveAllocDir(resp io.ReadCloser, allocID string, pathToAllocDir string) error {
-	tr := tar.NewReader(resp)
-	defer resp.Close()
-
-	buf := make([]byte, 1024)
-
-	stopMigrating, ok := c.migratingAllocs[allocID]
-	if !ok {
-		os.RemoveAll(pathToAllocDir)
-		return fmt.Errorf("Allocation %q is not marked for remote migration", allocID)
-	}
-	for {
-		// See if the alloc still needs migration
-		select {
-		case <-stopMigrating.ch:
-			os.RemoveAll(pathToAllocDir)
-			c.logger.Printf("[INFO] client: stopping migration of allocdir for alloc: %v", allocID)
-			return nil
-		case <-c.shutdownCh:
-			os.RemoveAll(pathToAllocDir)
-			c.logger.Printf("[INFO] client: stopping migration of alloc %q since client is shutting down", allocID)
-			return nil
-		default:
-		}
-
-		// Get the next header
-		hdr, err := tr.Next()
-
-		// Snapshot has ended
-		if err == io.EOF {
-			return nil
-		}
-		// If there is an error then we avoid creating the alloc dir
-		if err != nil {
-			os.RemoveAll(pathToAllocDir)
-			return fmt.Errorf("error creating alloc dir for alloc %q: %v", allocID, err)
-		}
-
-		// If the header is for a directory we create the directory
-		if hdr.Typeflag == tar.TypeDir {
-			os.MkdirAll(filepath.Join(pathToAllocDir, hdr.Name), os.FileMode(hdr.Mode))
-			continue
-		}
-		// If the header is a file, we write to a file
-		if hdr.Typeflag == tar.TypeReg {
-			f, err := os.Create(filepath.Join(pathToAllocDir, hdr.Name))
-			if err != nil {
-				c.logger.Printf("[ERR] client: error creating file: %v", err)
-				continue
-			}
-
-			// Setting the permissions of the file as the origin.
-			if err := f.Chmod(os.FileMode(hdr.Mode)); err != nil {
-				f.Close()
-				c.logger.Printf("[ERR] client: error chmod-ing file %s: %v", f.Name(), err)
-				return fmt.Errorf("error chmoding file %v", err)
-			}
-			if err := f.Chown(hdr.Uid, hdr.Gid); err != nil {
-				f.Close()
-				c.logger.Printf("[ERR] client: error chown-ing file %s: %v", f.Name(), err)
-				return fmt.Errorf("error chowning file %v", err)
-			}
-
-			// We write in chunks of 32 bytes so that we can test if
-			// the client is still alive
-			for {
-				if c.shutdown {
-					f.Close()
-					os.RemoveAll(pathToAllocDir)
-					c.logger.Printf("[INFO] client: stopping migration of alloc %q because client is shutting down", allocID)
-					return nil
-				}
-
-				n, err := tr.Read(buf)
-				if err != nil {
-					f.Close()
-					if err != io.EOF {
-						return fmt.Errorf("error reading snapshot: %v", err)
-					}
-					break
-				}
-				if _, err := f.Write(buf[:n]); err != nil {
-					f.Close()
-					os.RemoveAll(pathToAllocDir)
-					return fmt.Errorf("error writing to file %q: %v", f.Name(), err)
-				}
-			}
-
-		}
 	}
 }
 

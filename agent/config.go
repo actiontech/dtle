@@ -70,11 +70,6 @@ type Config struct {
 	// discover the current Udup servers.
 	Consul *uconf.ConsulConfig `mapstructure:"consul"`
 
-	// Consul contains the configuration for the Consul Agent and
-	// parameters necessary to register services, their checks, and
-	// discover the current Udup servers.
-	Nats *uconf.NatsConfig `mapstructure:"nats"`
-
 	// UdupConfig is used to override the default config.
 	// This is largly used for testing purposes.
 	UdupConfig *uconf.ServerConfig `mapstructure:"-" json:"-"`
@@ -174,6 +169,7 @@ type Ports struct {
 	HTTP int `mapstructure:"http"`
 	RPC  int `mapstructure:"rpc"`
 	Serf int `mapstructure:"serf"`
+	Nats int `mapstructure:"nats"`
 }
 
 // Addresses encapsulates all of the addresses we bind to for various
@@ -204,11 +200,11 @@ func DefaultConfig() *Config {
 			HTTP: 8190,
 			RPC:  8191,
 			Serf: 8192,
+			Nats: 8193,
 		},
 		Addresses:      &Addresses{},
 		AdvertiseAddrs: &AdvertiseAddrs{},
 		Consul:         uconf.DefaultConsulConfig(),
-		Nats:           uconf.DefaultNatsConfig(),
 		Client: &ClientConfig{
 			Enabled: false,
 		},
@@ -336,14 +332,6 @@ func (c *Config) Merge(b *Config) *Config {
 		result.Consul = b.Consul.Copy()
 	} else if b.Consul != nil {
 		result.Consul = result.Consul.Merge(b.Consul)
-	}
-
-	// Apply the Nats Configuration
-	if result.Nats == nil && b.Nats != nil {
-		nats := *b.Nats
-		result.Nats = &nats
-	} else if b.Nats != nil {
-		result.Nats = result.Nats.Merge(b.Nats)
 	}
 
 	// Merge config files lists
@@ -588,6 +576,9 @@ func (a *Ports) Merge(b *Ports) *Ports {
 	}
 	if b.Serf != 0 {
 		result.Serf = b.Serf
+	}
+	if b.Nats != 0 {
+		result.Nats = b.Nats
 	}
 	return &result
 }

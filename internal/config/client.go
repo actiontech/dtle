@@ -3,10 +3,10 @@ package config
 import (
 	"io"
 	"os"
-	"time"
-
 	"sync"
 	"sync/atomic"
+	"time"
+
 	"udup/internal"
 	ubase "udup/internal/client/driver/mysql/base"
 	umconf "udup/internal/config/mysql"
@@ -62,7 +62,7 @@ type ClientConfig struct {
 	// ConsulConfig is this Agent's Consul configuration
 	ConsulConfig *ConsulConfig
 
-	NatsConfig *NatsConfig
+	NatsPort int
 
 	// StatsCollectionInterval is the interval at which the Udup client
 	// collects resource usage stats
@@ -97,12 +97,6 @@ type DriverCtx struct {
 	DriverConfig *MySQLDriverConfig
 }
 
-type NatsConfig struct {
-	Addr         string `mapstructure:"address"`
-	StoreType    string `mapstructure:"store_type"`
-	FilestoreDir string `mapstructure:"file_store_dir"`
-}
-
 type CutOver int
 
 const (
@@ -130,6 +124,7 @@ type MySQLDriverConfig struct {
 	NatsAddr                 string
 	ParallelWorkers          int
 	ConnectionConfig         *umconf.ConnectionConfig
+	SystemVariables          map[string]string
 	HasSuperPrivilege        bool
 	BinlogFormat             string
 	BinlogRowImage           string
@@ -301,37 +296,11 @@ type Table struct {
 // DefaultConfig returns the default configuration
 func DefaultClientConfig() *ClientConfig {
 	return &ClientConfig{
-		NatsConfig:              DefaultNatsConfig(),
+		NatsPort:              8193,
 		ConsulConfig:            DefaultConsulConfig(),
 		LogOutput:               os.Stderr,
 		Region:                  "global",
 		StatsCollectionInterval: 1 * time.Second,
 		LogLevel:                "DEBUG",
 	}
-}
-
-// DefaultNatsConfig() returns the canonical defaults for the Udup
-// `nats` configuration.
-func DefaultNatsConfig() *NatsConfig {
-	return &NatsConfig{
-		Addr:         "127.0.0.1:8193",
-		StoreType:    "memory",
-		FilestoreDir: "",
-	}
-}
-
-// Merge merges two Consul Configurations together.
-func (a *NatsConfig) Merge(b *NatsConfig) *NatsConfig {
-	result := *a
-
-	if b.Addr != "" {
-		result.Addr = b.Addr
-	}
-	if b.StoreType != "" {
-		result.StoreType = b.StoreType
-	}
-	if b.FilestoreDir != "" {
-		result.FilestoreDir = b.FilestoreDir
-	}
-	return &result
 }
