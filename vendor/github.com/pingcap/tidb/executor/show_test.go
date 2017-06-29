@@ -47,16 +47,16 @@ func (s *testSuite) TestShow(c *C) {
 	row := result.Rows()[0]
 	// For issue https://github.com/pingcap/tidb/issues/1061
 	expectedRow := []interface{}{
-		"SHOW_test", "CREATE TABLE `SHOW_test` (\n  `id` int(11) NOT NULL AUTO_INCREMENT,\n  `c1` int(11) DEFAULT NULL COMMENT 'c1_comment',\n  `c2` int(11) DEFAULT NULL,\n  `c3` int(11) DEFAULT '1',\n PRIMARY KEY (`id`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8 AUTO_INCREMENT=28934 COMMENT='table_comment'"}
+		"SHOW_test", "CREATE TABLE `SHOW_test` (\n  `id` int(11) NOT NULL AUTO_INCREMENT,\n  `c1` int(11) DEFAULT NULL COMMENT 'c1_comment',\n  `c2` int(11) DEFAULT NULL,\n  `c3` int(11) DEFAULT '1',\n PRIMARY KEY (`id`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_bin AUTO_INCREMENT=28934 COMMENT='table_comment'"}
 	for i, r := range row {
 		c.Check(r, Equals, expectedRow[i])
 	}
 
 	// For issue https://github.com/pingcap/tidb/issues/1918
 	testSQL = `create table ptest(
-		a int primary key, 
-		b double NOT NULL DEFAULT 2.0, 
-		c varchar(10) NOT NULL, 
+		a int primary key,
+		b double NOT NULL DEFAULT 2.0,
+		c varchar(10) NOT NULL,
 		d time unique,
 		e timestamp NULL
 	);`
@@ -66,7 +66,7 @@ func (s *testSuite) TestShow(c *C) {
 	c.Check(result.Rows(), HasLen, 1)
 	row = result.Rows()[0]
 	expectedRow = []interface{}{
-		"ptest", "CREATE TABLE `ptest` (\n  `a` int(11) NOT NULL,\n  `b` double NOT NULL DEFAULT '2.0',\n  `c` varchar(10) NOT NULL,\n  `d` time DEFAULT NULL,\n  `e` timestamp NULL DEFAULT NULL,\n PRIMARY KEY (`a`),\n  UNIQUE KEY `d` (`d`)\n) ENGINE=InnoDB"}
+		"ptest", "CREATE TABLE `ptest` (\n  `a` int(11) NOT NULL,\n  `b` double NOT NULL DEFAULT '2.0',\n  `c` varchar(10) NOT NULL,\n  `d` time DEFAULT NULL,\n  `e` timestamp NULL DEFAULT NULL,\n PRIMARY KEY (`a`),\n  UNIQUE KEY `d` (`d`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_bin"}
 	for i, r := range row {
 		c.Check(r, Equals, expectedRow[i])
 	}
@@ -78,24 +78,10 @@ func (s *testSuite) TestShow(c *C) {
 	// Test case for index type and comment
 	tk.MustExec(`create table show_index (id int, c int, primary key (id), index cIdx using hash (c) comment "index_comment_for_cIdx");`)
 	testSQL = "SHOW index from show_index;"
-	result = tk.MustQuery(testSQL)
-	c.Check(result.Rows(), HasLen, 2)
-	expectedRow = []interface{}{
-		"show_index", int64(0), "PRIMARY", int64(1), "id", "utf8_bin",
-		int64(0), nil, nil, "", "BTREE", "", ""}
-	row = result.Rows()[0]
-	c.Check(row, HasLen, len(expectedRow))
-	for i, r := range row {
-		c.Check(r, Equals, expectedRow[i])
-	}
-	expectedRow = []interface{}{
-		"show_index", int64(1), "cIdx", int64(1), "c", "utf8_bin",
-		int64(0), nil, nil, "YES", "HASH", "", "index_comment_for_cIdx"}
-	row = result.Rows()[1]
-	c.Check(row, HasLen, len(expectedRow))
-	for i, r := range row {
-		c.Check(r, Equals, expectedRow[i])
-	}
+	tk.MustQuery(testSQL).Check(testutil.RowsWithSep("|",
+		"show_index|0|PRIMARY|1|id|utf8_bin|0|<nil>|<nil>||BTREE||",
+		"show_index|1|cIdx|1|c|utf8_bin|0|<nil>|<nil>|YES|HASH||index_comment_for_cIdx",
+	))
 
 	// For show like with escape
 	testSQL = `show tables like 'show\_test'`
@@ -111,7 +97,7 @@ func (s *testSuite) TestShow(c *C) {
 	c.Check(result.Rows(), NotNil)
 
 	tk.MustQuery("SHOW PROCEDURE STATUS WHERE Db='test'").Check(testkit.Rows())
-	tk.MustQuery("SHOW TRIGGERS WHERE Trigger ='test'").Check(testkit.Rows())
+	tk.MustQuery("SHOW TRIGGERS WHERE `Trigger` ='test'").Check(testkit.Rows())
 	tk.MustQuery("SHOW processlist;").Check(testkit.Rows())
 	tk.MustQuery("SHOW EVENTS WHERE Db = 'test'").Check(testkit.Rows())
 
@@ -119,14 +105,9 @@ func (s *testSuite) TestShow(c *C) {
 	testSQL = `create database show_test_DB`
 	tk.MustExec(testSQL)
 	testSQL = "show create database show_test_DB;"
-	result = tk.MustQuery(testSQL)
-	c.Check(result.Rows(), HasLen, 1)
-	row = result.Rows()[0]
-	expectedRow = []interface{}{
-		"show_test_DB", "CREATE DATABASE `show_test_DB` /* !40100 DEFAULT CHARACTER SET utf8 */"}
-	for i, r := range row {
-		c.Check(r, Equals, expectedRow[i])
-	}
+	tk.MustQuery(testSQL).Check(testutil.RowsWithSep("|",
+		"show_test_DB|CREATE DATABASE `show_test_DB` /* !40100 DEFAULT CHARACTER SET utf8 */",
+	))
 
 	tk.MustExec("use show_test_DB")
 	result = tk.MustQuery("SHOW index from show_index from test where Column_name = 'c'")
@@ -142,6 +123,7 @@ func (s *testSuite) TestShowVisibility(c *C) {
 	tk.MustExec("create table t1 (id int)")
 	tk.MustExec("create table t2 (id int)")
 	tk.MustExec(`create user 'show'@'%'`)
+	tk.MustExec(`flush privileges`)
 
 	se, err := tidb.CreateSession(s.store)
 	c.Assert(err, IsNil)
@@ -156,6 +138,7 @@ func (s *testSuite) TestShowVisibility(c *C) {
 
 	// After grant, the user can see the database.
 	tk.MustExec(`grant select on showdatabase.t1 to 'show'@'%'`)
+	tk.MustExec(`flush privileges`)
 	rs, err = se.Execute("show databases")
 	c.Assert(err, IsNil)
 	rows, err = tidb.GetRows(rs[0])
@@ -207,7 +190,7 @@ func (s *testSuite) TestForeignKeyInShowCreateTable(c *C) {
 		"  `id` int(11) NOT NULL AUTO_INCREMENT,",
 		" PRIMARY KEY (`id`),",
 		"  CONSTRAINT `Fk` FOREIGN KEY (`id`) REFERENCES `t1` (`id`) ON DELETE CASCADE ON UPDATE CASCADE",
-		") ENGINE=InnoDB",
+		") ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_bin",
 	}
 	testSQL = strings.Join(sqlLines, "\n")
 	tk.MustExec(testSQL)
@@ -226,7 +209,7 @@ func (s *testSuite) TestForeignKeyInShowCreateTable(c *C) {
 		"  `language_id` int(11) NOT NULL,",
 		"  CONSTRAINT `pilot_language_fkey` FOREIGN KEY (`pilot_id`) REFERENCES `pilots` (`pilot_id`),",
 		"  CONSTRAINT `languages_fkey` FOREIGN KEY (`language_id`) REFERENCES `languages` (`language_id`)",
-		") ENGINE=InnoDB",
+		") ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_bin",
 	}
 	testSQL = strings.Join(sqlLines, "\n")
 	tk.MustExec(testSQL)
@@ -245,7 +228,7 @@ func (s *testSuite) TestForeignKeyInShowCreateTable(c *C) {
 	c.Check(result.Rows(), HasLen, 1)
 	row = result.Rows()[0]
 	expectedRow = []interface{}{
-		"show_test", "CREATE TABLE `show_test` (\n  `id` int(11) NOT NULL AUTO_INCREMENT,\n PRIMARY KEY (`id`)\n) ENGINE=InnoDB"}
+		"show_test", "CREATE TABLE `show_test` (\n  `id` int(11) NOT NULL AUTO_INCREMENT,\n PRIMARY KEY (`id`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_bin"}
 	for i, r := range row {
 		c.Check(r, Equals, expectedRow[i])
 	}
@@ -257,7 +240,7 @@ func (s *testSuite) TestForeignKeyInShowCreateTable(c *C) {
 	c.Check(result.Rows(), HasLen, 1)
 	row = result.Rows()[0]
 	expectedRow = []interface{}{
-		"show_test", "CREATE TABLE `show_test` (\n  `id` int(11) NOT NULL AUTO_INCREMENT,\n PRIMARY KEY (`id`),\n  CONSTRAINT `Fk` FOREIGN KEY (`id`) REFERENCES `t1` (`id`) ON DELETE CASCADE ON UPDATE CASCADE\n) ENGINE=InnoDB"}
+		"show_test", "CREATE TABLE `show_test` (\n  `id` int(11) NOT NULL AUTO_INCREMENT,\n PRIMARY KEY (`id`),\n  CONSTRAINT `Fk` FOREIGN KEY (`id`) REFERENCES `t1` (`id`) ON DELETE CASCADE ON UPDATE CASCADE\n) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_bin"}
 	for i, r := range row {
 		c.Check(r, Equals, expectedRow[i])
 	}

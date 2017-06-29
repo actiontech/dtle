@@ -60,10 +60,10 @@ type lexer struct {
 	state stateFn
 	items chan item
 
-	// A stack of store functions used to maintain context.
-	// The idea is to reuse parts of the store machine in various places.
+	// A stack of state functions used to maintain context.
+	// The idea is to reuse parts of the state machine in various places.
 	// For example, values can appear at the top level or within arbitrarily
-	// nested arrays. The last store on the stack is used after a value has
+	// nested arrays. The last state on the stack is used after a value has
 	// been lexed. Similarly for comments.
 	stack []stateFn
 }
@@ -367,7 +367,7 @@ func lexKeyEnd(lx *lexer) stateFn {
 
 // lexValue starts the consumption of a value anywhere a value is expected.
 // lexValue will ignore whitespace.
-// After a value is lexed, the last store on the next is popped and returned.
+// After a value is lexed, the last state on the next is popped and returned.
 func lexValue(lx *lexer) stateFn {
 	// We allow whitespace to precede a value, but NOT new lines.
 	// In array syntax, the array states are responsible for ignoring new
@@ -409,7 +409,7 @@ func lexValue(lx *lexer) stateFn {
 	case r == '-':
 		return lexNumberStart
 	case isDigit(r):
-		lx.backup() // avoid an extra store and use the same as above
+		lx.backup() // avoid an extra state and use the same as above
 		return lexNumberOrDateStart
 	case r == '.': // special error case, be kind to users
 		return lx.errorf("Floats must start with a digit, not '.'.")
@@ -780,7 +780,7 @@ func lexCommentStart(lx *lexer) stateFn {
 
 // lexComment lexes an entire comment. It assumes that '#' has been consumed.
 // It will consume *up to* the first new line character, and pass control
-// back to the last store on the stack.
+// back to the last state on the stack.
 func lexComment(lx *lexer) stateFn {
 	r := lx.peek()
 	if isNL(r) || r == eof {
@@ -791,7 +791,7 @@ func lexComment(lx *lexer) stateFn {
 	return lexComment
 }
 
-// lexSkip ignores all slurped input and moves on to the next store.
+// lexSkip ignores all slurped input and moves on to the next state.
 func lexSkip(lx *lexer, nextState stateFn) stateFn {
 	return func(lx *lexer) stateFn {
 		lx.ignore()

@@ -88,7 +88,7 @@ func (txn *dbTxn) doCommit() error {
 	// Check schema lease.
 	checker, ok := txn.us.GetOption(kv.SchemaLeaseChecker).(schemaLeaseChecker)
 	if ok {
-		// DDL server doesn't set this option.
+		// DDL job doesn't set this option.
 		currVer, err := txn.store.CurrentVersion()
 		if err != nil {
 			return errors.Trace(err)

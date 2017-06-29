@@ -24,7 +24,7 @@ var (
 			Help:      "Gauge of jobs.",
 		}, []string{"type", "action"})
 
-	// handle server result state.
+	// handle job result state.
 	handleJobSucc      = "handle_job_succ"
 	handleJobFailed    = "handle_job_failed"
 	handleJobHistogram = prometheus.NewHistogramVec(

@@ -55,8 +55,8 @@ func TestMSUseDefaultLimits(t *testing.T) {
 		t.Fatalf("Unexpected error: %v", err)
 	}
 	defer ms.Close()
-	if !reflect.DeepEqual(ms.limits, DefaultStoreLimits) {
-		t.Fatalf("Default limits are not used: %v\n", ms.limits)
+	if !reflect.DeepEqual(*ms.limits, DefaultStoreLimits) {
+		t.Fatalf("Default limits are not used: %v\n", *ms.limits)
 	}
 }
 
@@ -217,4 +217,59 @@ func TestMSIncrementalTimestamp(t *testing.T) {
 	defer ms.Close()
 
 	testIncrementalTimestamp(t, ms)
+}
+
+func TestMSGetExclusiveLock(t *testing.T) {
+	ms := createDefaultMemStore(t)
+	defer ms.Close()
+	// GetExclusiveLock is not supported
+	locked, err := ms.GetExclusiveLock()
+	if err == nil {
+		t.Fatal("Should have failed, it did not")
+	}
+	if locked {
+		t.Fatal("Should not be locked")
+	}
+}
+
+func TestMSRecover(t *testing.T) {
+	ms, err := NewMemoryStore(nil)
+	if err != nil {
+		t.Fatalf("Error creating store: %v", err)
+	}
+	defer ms.Close()
+	state, err := ms.Recover()
+	if err != nil {
+		t.Fatalf("Recover should not return an error, got %v", err)
+	}
+	if state != nil {
+		t.Fatalf("State should be nil, got %v", state)
+	}
+}
+
+func TestMSNegativeLimits(t *testing.T) {
+	limits := DefaultStoreLimits
+	limits.MaxMsgs = -1000
+	if ms, err := NewMemoryStore(&limits); ms != nil || err == nil {
+		if ms != nil {
+			ms.Close()
+		}
+		t.Fatal("Should have failed to create store with a negative limit")
+	}
+	ms := createDefaultMemStore(t)
+	defer ms.Close()
+
+	testNegativeLimit(t, ms)
+}
+
+func TestMSLimitWithWildcardsInConfig(t *testing.T) {
+	ms := createDefaultMemStore(t)
+	defer ms.Close()
+	testLimitWithWildcardsInConfig(t, ms)
+}
+
+func TestMSGetChannels(t *testing.T) {
+	ms := createDefaultMemStore(t)
+	defer ms.Close()
+	testGetChannels(t, ms)
 }

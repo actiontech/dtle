@@ -82,7 +82,7 @@ type Value struct {
 }
 
 // A Provider is the interface for any component which will provide credentials
-// Value. A provider is required to manage its own Expired store, and what to
+// Value. A provider is required to manage its own Expired state, and what to
 // be expired means.
 //
 // The Provider should not need to implement its own mutexes, because
@@ -146,7 +146,7 @@ func (e *Expiry) IsExpired() bool {
 // expires the next Get will attempt to retrieve valid credentials.
 //
 // Credentials is safe to use across multiple goroutines and will manage the
-// synchronous store so the Providers do not need to implement their own
+// synchronous state so the Providers do not need to implement their own
 // synchronization.
 //
 // The first Credentials.Get() will always call Provider.Retrieve() to get the
@@ -196,7 +196,7 @@ func (c *Credentials) Get() (Value, error) {
 // Expire expires the credentials and forces them to be retrieved on the
 // next call to Get().
 //
-// This will override the Provider's expired store, and force Credentials
+// This will override the Provider's expired state, and force Credentials
 // to call the Provider's Retrieve().
 func (c *Credentials) Expire() {
 	c.m.Lock()

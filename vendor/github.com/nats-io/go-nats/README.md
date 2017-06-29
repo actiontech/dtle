@@ -1,7 +1,7 @@
 # NATS - Go Client
 A [Go](http://golang.org) client for the [NATS messaging system](https://nats.io).
 
-[![License MIT](https://img.shields.io/npm/l/express.svg)](http://opensource.org/licenses/MIT)
+[![License MIT](https://img.shields.io/badge/License-MIT-blue.svg)](http://opensource.org/licenses/MIT)
 [![Go Report Card](https://goreportcard.com/badge/github.com/nats-io/go-nats)](https://goreportcard.com/report/github.com/nats-io/go-nats) [![Build Status](https://travis-ci.org/nats-io/go-nats.svg?branch=master)](http://travis-ci.org/nats-io/go-nats) [![GoDoc](https://godoc.org/github.com/nats-io/go-nats?status.svg)](http://godoc.org/github.com/nats-io/go-nats) [![Coverage Status](https://coveralls.io/repos/nats-io/go-nats/badge.svg?branch=master)](https://coveralls.io/r/nats-io/go-nats?branch=master)
 
 ## Installation
@@ -35,7 +35,7 @@ m, err := sub.NextMsg(timeout)
 // Channel Subscriber
 ch := make(chan *nats.Msg, 64)
 sub, err := nc.ChanSubscribe("foo", ch)
-msg <- ch
+msg := <- ch
 
 // Unsubscribe
 sub.Unsubscribe()
@@ -49,7 +49,7 @@ nc.Subscribe("help", func(m *Msg) {
 })
 
 // Close connection
-nc := nats.Connect("nats://localhost:4222")
+nc, _ := nats.Connect("nats://localhost:4222")
 nc.Close();
 ```
 
@@ -297,11 +297,39 @@ nc, err = nats.Connect("nats://my:pwd@localhost:4222", nats.UserInfo("foo", "bar
 
 ```
 
+## Context support (+Go 1.7)
+
+```go
+ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+defer cancel()
+
+nc, err := nats.Connect(nats.DefaultURL)
+
+// Request with context
+msg, err := nc.RequestWithContext(ctx, "foo", []byte("bar"))
+
+// Synchronous subscriber with context
+sub, err := nc.SubscribeSync("foo")
+msg, err := sub.NextMsgWithContext(ctx)
+
+// Encoded Request with context
+c, err := nats.NewEncodedConn(nc, nats.JSON_ENCODER)
+type request struct {
+	Message string `json:"message"`
+}
+type response struct {
+	Code int `json:"code"`
+}
+req := &request{Message: "Hello"}
+resp := &response{}
+err := c.RequestWithContext(ctx, "foo", req, resp)
+```
+
 ## License
 
 (The MIT License)
 
-Copyright (c) 2012-2016 Apcera Inc.
+Copyright (c) 2012-2017 Apcera Inc.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to

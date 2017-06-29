@@ -396,7 +396,7 @@ func (p *parser) acknowledgeSelfClosingTag() {
 }
 
 // An insertion mode (section 12.2.3.1) is the state transition function from
-// a particular store in the HTML5 parser's store machine. It updates the
+// a particular state in the HTML5 parser's state machine. It updates the
 // parser's fields depending on parser.tok (where ErrorToken means EOF).
 // It returns whether the token was consumed.
 type insertionMode func(*parser) bool

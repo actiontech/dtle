@@ -4,6 +4,7 @@ import (
 	"crypto/tls"
 	"encoding/binary"
 	"fmt"
+	"net"
 	"os"
 	"sync"
 	"time"
@@ -40,11 +41,14 @@ type BinlogSyncerConfig struct {
 	// If not set, use os.Hostname() instead.
 	Localhost string
 
+	// Charset is for MySQL client character set
+	Charset string
+
 	// SemiSyncEnabled enables semi-sync or not.
 	SemiSyncEnabled bool
 
-	// RawModeEanbled is for not parsing binlog event.
-	RawModeEanbled bool
+	// RawModeEnabled is for not parsing binlog event.
+	RawModeEnabled bool
 
 	// If not nil, use the provided tls.Config to connect to the database using TLS/SSL.
 	TLSConfig *tls.Config
@@ -52,6 +56,11 @@ type BinlogSyncerConfig struct {
 	// Use replication.Time structure for timestamp and datetime.
 	// We will use Local location for timestamp and UTC location for datatime.
 	ParseTime bool
+
+	LogLevel string
+
+	// RecvBufferSize sets the size in bytes of the operating system's receive buffer associated with the connection.
+	RecvBufferSize int
 }
 
 // BinlogSyncer syncs binlog event from server.
@@ -76,13 +85,18 @@ type BinlogSyncer struct {
 
 // NewBinlogSyncer creates the BinlogSyncer with cfg.
 func NewBinlogSyncer(cfg *BinlogSyncerConfig) *BinlogSyncer {
-	//log.Infof("create BinlogSyncer with config %v", cfg)
+	if cfg.LogLevel == "" {
+		cfg.LogLevel = "info"
+	}
+	log.SetLevelByString(cfg.LogLevel)
+
+	log.Infof("create BinlogSyncer with config %v", cfg)
 
 	b := new(BinlogSyncer)
 
 	b.cfg = cfg
 	b.parser = NewBinlogParser()
-	b.parser.SetRawMode(b.cfg.RawModeEanbled)
+	b.parser.SetRawMode(b.cfg.RawModeEnabled)
 	b.parser.SetParseTime(b.cfg.ParseTime)
 	b.running = false
 	b.ctx, b.cancel = context.WithCancel(context.Background())
@@ -135,13 +149,22 @@ func (b *BinlogSyncer) registerSlave() error {
 		b.c.Close()
 	}
 
-	//log.Infof("register slave for master server %s:%d", b.cfg.Host, b.cfg.Port)
+	log.Infof("register slave for master server %s:%d", b.cfg.Host, b.cfg.Port)
 	var err error
 	b.c, err = client.Connect(fmt.Sprintf("%s:%d", b.cfg.Host, b.cfg.Port), b.cfg.User, b.cfg.Password, "", func(c *client.Conn) {
 		c.TLSConfig = b.cfg.TLSConfig
 	})
 	if err != nil {
 		return errors.Trace(err)
+	}
+	if len(b.cfg.Charset) != 0 {
+		b.c.SetCharset(b.cfg.Charset)
+	}
+
+	if b.cfg.RecvBufferSize > 0 {
+		if tcp, ok := b.c.Conn.Conn.(*net.TCPConn); ok {
+			tcp.SetReadBuffer(b.cfg.RecvBufferSize)
+		}
 	}
 
 	//for mysql 5.6+, binlog has a crc32 checksum
@@ -242,7 +265,7 @@ func (b *BinlogSyncer) startDumpStream() *BinlogStreamer {
 
 // StartSync starts syncing from the `pos` position.
 func (b *BinlogSyncer) StartSync(pos Position) (*BinlogStreamer, error) {
-	//log.Infof("begin to sync binlog from position %s", pos)
+	log.Infof("begin to sync binlog from position %s", pos)
 
 	b.m.Lock()
 	defer b.m.Unlock()
@@ -260,7 +283,7 @@ func (b *BinlogSyncer) StartSync(pos Position) (*BinlogStreamer, error) {
 
 // StartSyncGTID starts syncing from the `gset` GTIDSet.
 func (b *BinlogSyncer) StartSyncGTID(gset GTIDSet) (*BinlogStreamer, error) {
-	//log.Infof("begin to sync binlog from GTID %s", gset)
+	log.Infof("begin to sync binlog from GTID %s", gset)
 
 	b.m.Lock()
 	defer b.m.Unlock()
@@ -556,7 +579,7 @@ func (b *BinlogSyncer) parseEvent(s *BinlogStreamer, data []byte) error {
 		data = data[2:]
 	}
 
-	e, err := b.parser.parse(data)
+	e, err := b.parser.Parse(data)
 	if err != nil {
 		return errors.Trace(err)
 	}
@@ -569,7 +592,7 @@ func (b *BinlogSyncer) parseEvent(s *BinlogStreamer, data []byte) error {
 	if re, ok := e.Event.(*RotateEvent); ok {
 		b.nextPos.Name = string(re.NextLogName)
 		b.nextPos.Pos = uint32(re.Position)
-		//log.Infof("rotate to %s", b.nextPos)
+		log.Infof("rotate to %s", b.nextPos)
 	}
 
 	needStop := false

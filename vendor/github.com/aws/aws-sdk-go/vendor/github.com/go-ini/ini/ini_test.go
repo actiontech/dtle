@@ -397,8 +397,8 @@ func Test_File_WriteTo_SectionRaw(t *testing.T) {
 	Time            = 00:02:30
 
 [CORE_LESSON]
-my lesson store data – 1111111111111111111000000000000000001110000
-111111111111111111100000000000111000000000 – end my lesson store data
+my lesson state data – 1111111111111111111000000000000000001110000
+111111111111111111100000000000111000000000 – end my lesson state data
 [COMMENTS]
 <1><L.Slide#2> This slide has the fuel listed in the wrong units <e.1>
 `)

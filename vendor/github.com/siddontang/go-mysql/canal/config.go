@@ -1,12 +1,12 @@
 package canal
 
 import (
+	"github.com/BurntSushi/toml"
+	"github.com/juju/errors"
+	"github.com/siddontang/go-mysql/mysql"
 	"io/ioutil"
 	"math/rand"
 	"time"
-
-	"github.com/BurntSushi/toml"
-	"github.com/juju/errors"
 )
 
 type DumpConfig struct {
@@ -32,9 +32,9 @@ type Config struct {
 	User     string `toml:"user"`
 	Password string `toml:"password"`
 
+	Charset  string `toml:"charset"`
 	ServerID uint32 `toml:"server_id"`
 	Flavor   string `toml:"flavor"`
-	DataDir  string `toml:"data_dir"`
 
 	Dump DumpConfig `toml:"dump"`
 }
@@ -66,12 +66,12 @@ func NewDefaultConfig() *Config {
 	c.User = "root"
 	c.Password = ""
 
+	c.Charset = mysql.DEFAULT_CHARSET
 	rand.Seed(time.Now().Unix())
 	c.ServerID = uint32(rand.Intn(1000)) + 1001
 
 	c.Flavor = "mysql"
 
-	c.DataDir = "./var"
 	c.Dump.ExecutionPath = "mysqldump"
 	c.Dump.DiscardErr = true
 

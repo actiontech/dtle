@@ -43,9 +43,9 @@ for a protocol buffer variable v:
   - There are getters that return a field's value if set,
 	and return the field's default value if unset.
 	The getters work even if the receiver is a nil message.
-  - The zero value for a struct is its correct initialization store.
+  - The zero value for a struct is its correct initialization state.
 	All desired fields must be set before marshaling.
-  - A Reset() method will restore a protobuf struct to its zero store.
+  - A Reset() method will restore a protobuf struct to its zero state.
   - Non-repeated fields are pointers to the values; nil means unset.
 	That is, optional or required field int32 f becomes F *int32.
   - Repeated fields are slices.
@@ -308,7 +308,7 @@ func GetStats() Stats { return stats }
 // temporary Buffer and are fine for most applications.
 type Buffer struct {
 	buf   []byte // encode/decode byte stream
-	index int    // write point
+	index int    // read point
 
 	// pools of basic types to amortize allocation.
 	bools   []bool

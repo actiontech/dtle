@@ -5,12 +5,12 @@ import (
 	"sync/atomic"
 )
 
-// RaftState captures the store of a Raft node: Follower, Candidate, Leader,
+// RaftState captures the state of a Raft node: Follower, Candidate, Leader,
 // or Shutdown.
 type RaftState uint32
 
 const (
-	// Follower is the initial store of a Raft node.
+	// Follower is the initial state of a Raft node.
 	Follower RaftState = iota
 
 	// Candidate is one of the valid states of a Raft node.
@@ -19,7 +19,7 @@ const (
 	// Leader is one of the valid states of a Raft node.
 	Leader
 
-	// Shutdown is the terminal store of a Raft node.
+	// Shutdown is the terminal state of a Raft node.
 	Shutdown
 )
 
@@ -38,7 +38,7 @@ func (s RaftState) String() string {
 	}
 }
 
-// raftState is used to maintain various store variables
+// raftState is used to maintain various state variables
 // and provides an interface to set/get the variables in a
 // thread safe manner.
 type raftState struct {
@@ -65,7 +65,7 @@ type raftState struct {
 	// Tracks running goroutines
 	routinesGroup sync.WaitGroup
 
-	// The current store
+	// The current state
 	state RaftState
 }
 

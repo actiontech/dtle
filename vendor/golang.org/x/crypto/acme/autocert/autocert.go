@@ -372,7 +372,7 @@ func (m *Manager) createCert(ctx context.Context, domain string) (*tls.Certifica
 }
 
 // certState returns a new or existing certState.
-// If a new certState is returned, store.exist is false and the store is locked.
+// If a new certState is returned, state.exist is false and the state is locked.
 // The returned error is non-nil only in the case where a new state could not be created.
 func (m *Manager) certState(domain string) (*certState, error) {
 	m.stateMu.Lock()

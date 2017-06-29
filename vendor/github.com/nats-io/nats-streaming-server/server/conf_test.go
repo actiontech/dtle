@@ -1,10 +1,11 @@
-// Copyright 2016 Apcera Inc. All rights reserved.
+// Copyright 2016-2017 Apcera Inc. All rights reserved.
 
 package server
 
 import (
 	"io/ioutil"
 	"os"
+	"reflect"
 	"runtime"
 	"strings"
 	"testing"
@@ -17,6 +18,7 @@ const (
 	mapStructErr = "map/struct"
 	wrongTypeErr = "value is expected to be"
 	wrongTimeErr = "time: "
+	wrongSubjErr = "invalid channel name"
 )
 
 func TestParseConfig(t *testing.T) {
@@ -98,6 +100,9 @@ func TestParseConfig(t *testing.T) {
 	if opts.FileStoreOpts.FileDescriptorsLimit != 8 {
 		t.Fatalf("Expected FileDescriptorsLimit to be 8, got %v", opts.FileStoreOpts.FileDescriptorsLimit)
 	}
+	if opts.FileStoreOpts.ParallelRecovery != 9 {
+		t.Fatalf("Expected ParallelRecovery to be 9, got %v", opts.FileStoreOpts.ParallelRecovery)
+	}
 	if opts.MaxChannels != 11 {
 		t.Fatalf("Expected MaxChannels to be 11, got %v", opts.MaxChannels)
 	}
@@ -159,6 +164,12 @@ func TestParseConfig(t *testing.T) {
 	}
 	if opts.AckSubsPoolSize != 3 {
 		t.Fatalf("Expected AckSubscriptions to be 3, got %v", opts.AckSubsPoolSize)
+	}
+	if opts.FTGroupName != "ft" {
+		t.Fatalf("Expected FTGroupName to be %q, got %q", "ft", opts.FTGroupName)
+	}
+	if !opts.Partitioning {
+		t.Fatalf("Expected Partitioning to be true, got false")
 	}
 }
 
@@ -222,7 +233,34 @@ func TestParseStoreType(t *testing.T) {
 	defer os.Remove(confFile)
 	opts = Options{}
 	if err := ProcessConfigFile(confFile, &opts); err == nil {
-		t.Fatal("Expected failure due to unkown store type, got none")
+		t.Fatal("Expected failure due to unknown store type, got none")
+	}
+}
+
+func TestParsePerChannelLimitsSetToZero(t *testing.T) {
+	confFile := "config.conf"
+	defer os.Remove(confFile)
+	if err := ioutil.WriteFile(confFile,
+		[]byte("store_limits: {channels: {foo: {max_msgs: 0, max_bytes: 0, max_age: \"0\", max_subs: 0}}}"), 0660); err != nil {
+		t.Fatalf("Unexpected error creating conf file: %v", err)
+	}
+	opts := Options{}
+	if err := ProcessConfigFile(confFile, &opts); err != nil {
+		t.Fatalf("Unexpected failure: %v", err)
+	}
+	cl := opts.StoreLimits.PerChannel["foo"]
+	if cl == nil {
+		t.Fatal("PerChannel foo should exist")
+	}
+	// The config should set all the limits to -1 since they are
+	// set to 0 (unlimited) in the config file.
+	expected := stores.ChannelLimits{}
+	expected.MaxMsgs = -1
+	expected.MaxBytes = -1
+	expected.MaxAge = -1
+	expected.MaxSubscriptions = -1
+	if !reflect.DeepEqual(*cl, expected) {
+		t.Fatalf("Expected channel limits for foo to be %v, got %v", expected, *cl)
 	}
 }
 
@@ -249,6 +287,8 @@ func TestParseWrongTypes(t *testing.T) {
 	expectFailureFor(t, "hb_timeout: \"foo\"", wrongTimeErr)
 	expectFailureFor(t, "hb_fail_count: false", wrongTypeErr)
 	expectFailureFor(t, "ack_subs_pool_size: false", wrongTypeErr)
+	expectFailureFor(t, "ft_group: 123", wrongTypeErr)
+	expectFailureFor(t, "partitioning: 123", wrongTypeErr)
 	expectFailureFor(t, "store_limits:{max_channels:false}", wrongTypeErr)
 	expectFailureFor(t, "store_limits:{max_msgs:false}", wrongTypeErr)
 	expectFailureFor(t, "store_limits:{max_bytes:false}", wrongTypeErr)
@@ -260,6 +300,9 @@ func TestParseWrongTypes(t *testing.T) {
 	expectFailureFor(t, "store_limits:{channels:{\"foo\":{max_age:\"1h:0m\"}}}", wrongTimeErr)
 	expectFailureFor(t, "store_limits:{channels:{\"foo\":{max_age:false}}}", wrongTypeErr)
 	expectFailureFor(t, "store_limits:{channels:{\"foo\":{max_subs:false}}}", wrongTypeErr)
+	expectFailureFor(t, "store_limits:{channels:{\"foo.*bar\":{}}}", wrongSubjErr)
+	expectFailureFor(t, "store_limits:{channels:{\"foo.>.>\":{}}}", wrongSubjErr)
+	expectFailureFor(t, "store_limits:{channels:{\"foo..bar\":{}}}", wrongSubjErr)
 	expectFailureFor(t, "tls:{client_cert:123}", wrongTypeErr)
 	expectFailureFor(t, "tls:{client_key:123}", wrongTypeErr)
 	expectFailureFor(t, "tls:{client_ca:123}", wrongTypeErr)
@@ -277,6 +320,7 @@ func TestParseWrongTypes(t *testing.T) {
 	expectFailureFor(t, "file:{slice_max_age:\"1h:0m\"}", wrongTimeErr)
 	expectFailureFor(t, "file:{slice_archive_script:123}", wrongTypeErr)
 	expectFailureFor(t, "file:{fds_limit:false}", wrongTypeErr)
+	expectFailureFor(t, "file:{parallel_recovery:false}", wrongTypeErr)
 }
 
 func expectFailureFor(t *testing.T, content, errorMatch string) {

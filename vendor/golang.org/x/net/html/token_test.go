@@ -43,7 +43,7 @@ var tokenTests = []tokenTest{
 		"one &lt; two",
 	},
 	// A start, self-closing and end tag. The tokenizer does not care if the start
-	// and end tokens don't match; that is the server of the parser.
+	// and end tokens don't match; that is the job of the parser.
 	{
 		"tags",
 		"<a>b<c/>d</e>",

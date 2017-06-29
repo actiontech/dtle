@@ -621,7 +621,6 @@ type QueryParam struct {
 	FilterNodes []string            // A list of node names to restrict query to
 	FilterTags  map[string]string   // A map of tag name to regex to filter on
 	RequestAck  bool                // Should nodes ack the query receipt
-	RelayFactor uint8               // Duplicate response count to be relayed back to sender for redundancy.
 	Timeout     time.Duration       // Maximum query duration. Optional, will be set automatically.
 	Name        string              // Opaque query name
 	Payload     []byte              // Opaque query payload
@@ -644,7 +643,6 @@ func (c *RPCClient) Query(params *QueryParam) error {
 		FilterNodes: params.FilterNodes,
 		FilterTags:  params.FilterTags,
 		RequestAck:  params.RequestAck,
-		RelayFactor: params.RelayFactor,
 		Timeout:     params.Timeout,
 		Name:        params.Name,
 		Payload:     params.Payload,

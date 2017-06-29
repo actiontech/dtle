@@ -27,7 +27,7 @@ func (s *buildKeySolver) optimize(lp LogicalPlan, _ context.Context, _ *idAlloca
 	return lp, nil
 }
 
-func (p *Aggregation) buildKeyInfo() {
+func (p *LogicalAggregation) buildKeyInfo() {
 	p.baseLogicalPlan.buildKeyInfo()
 	for _, key := range p.Children()[0].Schema().Keys {
 		indices := p.schema.ColumnsIndices(key)
@@ -96,7 +96,7 @@ func (p *Projection) buildSchemaByExprs() *expression.Schema {
 		} else {
 			// If the expression is not a column, we add a column to occupy the position.
 			schema.Append(&expression.Column{
-				Position: -1})
+				Position: -1, RetType: expr.GetType()})
 		}
 	}
 	return schema
@@ -119,7 +119,7 @@ func (p *Projection) buildKeyInfo() {
 	}
 }
 
-func (p *Join) buildKeyInfo() {
+func (p *LogicalJoin) buildKeyInfo() {
 	p.baseLogicalPlan.buildKeyInfo()
 	p.schema.MaxOneRow = p.children[0].Schema().MaxOneRow && p.children[1].Schema().MaxOneRow
 	switch p.JoinType {

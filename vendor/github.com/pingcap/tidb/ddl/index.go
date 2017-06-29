@@ -49,6 +49,11 @@ func buildIndexColumns(columns []*model.ColumnInfo, idxColNames []*ast.IndexColN
 			return nil, errKeyColumnDoesNotExits.Gen("column does not exist: %s", ic.Column.Name)
 		}
 
+		// JSON column cannot index.
+		if col.FieldType.Tp == mysql.TypeJSON {
+			return nil, errors.Trace(errJSONUsedAsKey.GenByArgs(col.Name.O))
+		}
+
 		// Length must be specified for BLOB and TEXT column indexes.
 		if types.IsTypeBlob(col.FieldType.Tp) && ic.Length == types.UnspecifiedLength {
 			return nil, errors.Trace(errBlobKeyWithoutLength)
@@ -164,21 +169,21 @@ func dropIndexColumnFlag(tblInfo *model.TableInfo, indexInfo *model.IndexInfo) {
 	}
 }
 
-func (d *ddl) onCreateIndex(t *meta.Meta, job *model.Job) error {
-	// Handle rollback server.
+func (d *ddl) onCreateIndex(t *meta.Meta, job *model.Job) (ver int64, err error) {
+	// Handle rollback job.
 	if job.State == model.JobRollback {
-		err := d.onDropIndex(t, job)
+		ver, err = d.onDropIndex(t, job)
 		if err != nil {
-			return errors.Trace(err)
+			return ver, errors.Trace(err)
 		}
-		return nil
+		return ver, nil
 	}
 
-	// Handle normal server.
+	// Handle normal job.
 	schemaID := job.SchemaID
 	tblInfo, err := getTableInfo(t, job, schemaID)
 	if err != nil {
-		return errors.Trace(err)
+		return ver, errors.Trace(err)
 	}
 
 	var (
@@ -189,20 +194,20 @@ func (d *ddl) onCreateIndex(t *meta.Meta, job *model.Job) error {
 	err = job.DecodeArgs(&unique, &indexName, &idxColNames)
 	if err != nil {
 		job.State = model.JobCancelled
-		return errors.Trace(err)
+		return ver, errors.Trace(err)
 	}
 
 	indexInfo := findIndexByName(indexName.L, tblInfo.Indices)
 	if indexInfo != nil && indexInfo.State == model.StatePublic {
 		job.State = model.JobCancelled
-		return errDupKeyName.Gen("index already exist %s", indexName)
+		return ver, errDupKeyName.Gen("index already exist %s", indexName)
 	}
 
 	if indexInfo == nil {
 		indexInfo, err = buildIndexInfo(tblInfo, indexName, idxColNames, model.StateNone)
 		if err != nil {
 			job.State = model.JobCancelled
-			return errors.Trace(err)
+			return ver, errors.Trace(err)
 		}
 		indexInfo.Primary = false
 		indexInfo.Unique = unique
@@ -216,32 +221,32 @@ func (d *ddl) onCreateIndex(t *meta.Meta, job *model.Job) error {
 		// none -> delete only
 		job.SchemaState = model.StateDeleteOnly
 		indexInfo.State = model.StateDeleteOnly
-		_, err = updateTableInfo(t, job, tblInfo, originalState)
+		ver, err = updateTableInfo(t, job, tblInfo, originalState)
 	case model.StateDeleteOnly:
 		// delete only -> write only
 		job.SchemaState = model.StateWriteOnly
 		indexInfo.State = model.StateWriteOnly
-		_, err = updateTableInfo(t, job, tblInfo, originalState)
+		ver, err = updateTableInfo(t, job, tblInfo, originalState)
 	case model.StateWriteOnly:
 		// write only -> reorganization
 		job.SchemaState = model.StateWriteReorganization
 		indexInfo.State = model.StateWriteReorganization
 		// Initialize SnapshotVer to 0 for later reorganization check.
 		job.SnapshotVer = 0
-		_, err = updateTableInfo(t, job, tblInfo, originalState)
+		ver, err = updateTableInfo(t, job, tblInfo, originalState)
 	case model.StateWriteReorganization:
 		// reorganization -> public
 		reorgInfo, err := d.getReorgInfo(t, job)
 		if err != nil || reorgInfo.first {
-			// If we run reorg firstly, we should update the server snapshot version
+			// If we run reorg firstly, we should update the job snapshot version
 			// and then run the reorg next time.
-			return errors.Trace(err)
+			return ver, errors.Trace(err)
 		}
 
 		var tbl table.Table
 		tbl, err = d.getTable(schemaID, tblInfo)
 		if err != nil {
-			return errors.Trace(err)
+			return ver, errors.Trace(err)
 		}
 
 		err = d.runReorgJob(job, func() error {
@@ -249,14 +254,14 @@ func (d *ddl) onCreateIndex(t *meta.Meta, job *model.Job) error {
 		})
 		if err != nil {
 			if terror.ErrorEqual(err, errWaitReorgTimeout) {
-				// if timeout, we should return, check for the owner and re-wait server done.
-				return nil
+				// if timeout, we should return, check for the owner and re-wait job done.
+				return ver, nil
 			}
 			if terror.ErrorEqual(err, kv.ErrKeyExists) {
-				log.Warnf("[ddl] run DDL server %v err %v, convert server to rollback server", job, err)
-				err = d.convert2RollbackJob(t, job, tblInfo, indexInfo)
+				log.Warnf("[ddl] run DDL job %v err %v, convert job to rollback job", job, err)
+				ver, err = d.convert2RollbackJob(t, job, tblInfo, indexInfo)
 			}
-			return errors.Trace(err)
+			return ver, errors.Trace(err)
 		}
 
 		indexInfo.State = model.StatePublic
@@ -266,53 +271,53 @@ func (d *ddl) onCreateIndex(t *meta.Meta, job *model.Job) error {
 		job.SchemaState = model.StatePublic
 		ver, err := updateTableInfo(t, job, tblInfo, originalState)
 		if err != nil {
-			return errors.Trace(err)
+			return ver, errors.Trace(err)
 		}
 
-		// Finish this server.
+		// Finish this job.
 		job.State = model.JobDone
 		job.BinlogInfo.AddTableInfo(ver, tblInfo)
 	default:
 		err = ErrInvalidIndexState.Gen("invalid index state %v", tblInfo.State)
 	}
 
-	return errors.Trace(err)
+	return ver, errors.Trace(err)
 }
 
-func (d *ddl) convert2RollbackJob(t *meta.Meta, job *model.Job, tblInfo *model.TableInfo, indexInfo *model.IndexInfo) error {
+func (d *ddl) convert2RollbackJob(t *meta.Meta, job *model.Job, tblInfo *model.TableInfo, indexInfo *model.IndexInfo) (ver int64, _ error) {
 	job.State = model.JobRollback
 	job.Args = []interface{}{indexInfo.Name}
-	// If add index server rollbacks in write reorganization state, its need to delete all keys which has been added.
-	// Its work is the same as drop index server do.
-	// The write reorganization store in add index server that likes write only store in drop index server.
-	// So the next store is delete only store.
+	// If add index job rollbacks in write reorganization state, its need to delete all keys which has been added.
+	// Its work is the same as drop index job do.
+	// The write reorganization state in add index job that likes write only state in drop index job.
+	// So the next state is delete only state.
 	indexInfo.State = model.StateDeleteOnly
 	originalState := indexInfo.State
 	job.SchemaState = model.StateDeleteOnly
 	_, err := updateTableInfo(t, job, tblInfo, originalState)
 	if err != nil {
-		return errors.Trace(err)
+		return ver, errors.Trace(err)
 	}
-	return kv.ErrKeyExists.Gen("Duplicate for key %s", indexInfo.Name.O)
+	return ver, kv.ErrKeyExists.Gen("Duplicate for key %s", indexInfo.Name.O)
 }
 
-func (d *ddl) onDropIndex(t *meta.Meta, job *model.Job) error {
+func (d *ddl) onDropIndex(t *meta.Meta, job *model.Job) (ver int64, _ error) {
 	schemaID := job.SchemaID
 	tblInfo, err := getTableInfo(t, job, schemaID)
 	if err != nil {
-		return errors.Trace(err)
+		return ver, errors.Trace(err)
 	}
 
 	var indexName model.CIStr
 	if err = job.DecodeArgs(&indexName); err != nil {
 		job.State = model.JobCancelled
-		return errors.Trace(err)
+		return ver, errors.Trace(err)
 	}
 
 	indexInfo := findIndexByName(indexName.L, tblInfo.Indices)
 	if indexInfo == nil {
 		job.State = model.JobCancelled
-		return ErrCantDropFieldOrKey.Gen("index %s doesn't exist", indexName)
+		return ver, ErrCantDropFieldOrKey.Gen("index %s doesn't exist", indexName)
 	}
 
 	originalState := indexInfo.State
@@ -321,17 +326,17 @@ func (d *ddl) onDropIndex(t *meta.Meta, job *model.Job) error {
 		// public -> write only
 		job.SchemaState = model.StateWriteOnly
 		indexInfo.State = model.StateWriteOnly
-		_, err = updateTableInfo(t, job, tblInfo, originalState)
+		ver, err = updateTableInfo(t, job, tblInfo, originalState)
 	case model.StateWriteOnly:
 		// write only -> delete only
 		job.SchemaState = model.StateDeleteOnly
 		indexInfo.State = model.StateDeleteOnly
-		_, err = updateTableInfo(t, job, tblInfo, originalState)
+		ver, err = updateTableInfo(t, job, tblInfo, originalState)
 	case model.StateDeleteOnly:
 		// delete only -> reorganization
 		job.SchemaState = model.StateDeleteReorganization
 		indexInfo.State = model.StateDeleteReorganization
-		_, err = updateTableInfo(t, job, tblInfo, originalState)
+		ver, err = updateTableInfo(t, job, tblInfo, originalState)
 	case model.StateDeleteReorganization:
 		// reorganization -> absent
 		err = d.runReorgJob(job, func() error {
@@ -339,8 +344,8 @@ func (d *ddl) onDropIndex(t *meta.Meta, job *model.Job) error {
 		})
 		if err != nil {
 			// If the timeout happens, we should return.
-			// Then check for the owner and re-wait server to finish.
-			return errors.Trace(filterError(err, errWaitReorgTimeout))
+			// Then check for the owner and re-wait job to finish.
+			return ver, errors.Trace(filterError(err, errWaitReorgTimeout))
 		}
 
 		// All reorganization jobs are done, drop this index.
@@ -357,24 +362,26 @@ func (d *ddl) onDropIndex(t *meta.Meta, job *model.Job) error {
 		job.SchemaState = model.StateNone
 		ver, err := updateTableInfo(t, job, tblInfo, originalState)
 		if err != nil {
-			return errors.Trace(err)
+			return ver, errors.Trace(err)
 		}
 
-		// Finish this server.
+		// Finish this job.
 		if job.State == model.JobRollback {
 			job.State = model.JobRollbackDone
 		} else {
 			job.State = model.JobDone
 		}
 		job.BinlogInfo.AddTableInfo(ver, tblInfo)
+		d.asyncNotifyEvent(&Event{Tp: model.ActionDropIndex, TableInfo: tblInfo, IndexInfo: indexInfo})
 	default:
 		err = ErrInvalidTableState.Gen("invalid table state %v", tblInfo.State)
 	}
-	return errors.Trace(err)
+	return ver, errors.Trace(err)
 }
 
 func (d *ddl) fetchRowColVals(txn kv.Transaction, t table.Table, taskOpInfo *indexTaskOpInfo, handleInfo *handleInfo) (
 	[]*indexRecord, *taskResult) {
+	startTime := time.Now()
 	handleCnt := defaultTaskHandleCnt
 	rawRecords := make([][]byte, 0, handleCnt)
 	idxRecords := make([]*indexRecord, 0, handleCnt)
@@ -408,14 +415,17 @@ func (d *ddl) fetchRowColVals(txn kv.Transaction, t table.Table, taskOpInfo *ind
 		handleInfo.endHandle = ret.doneHandle
 		handleInfo.isSent = true
 	}
+	log.Debugf("[ddl] txn %v fetches handle info %v takes time %v", txn.StartTS(), handleInfo, time.Since(startTime))
 	if ret.count == 0 {
 		return nil, ret
 	}
 
 	cols := t.Cols()
+	ctx := d.newContext()
 	idxInfo := taskOpInfo.tblIndex.Meta()
+	defaultVals := make([]types.Datum, len(cols))
 	for i, idxRecord := range idxRecords {
-		rowMap, err := tablecodec.DecodeRow(rawRecords[i], taskOpInfo.colMap)
+		rowMap, err := tablecodec.DecodeRow(rawRecords[i], taskOpInfo.colMap, time.UTC)
 		if err != nil {
 			ret.err = errors.Trace(err)
 			return nil, ret
@@ -423,7 +433,17 @@ func (d *ddl) fetchRowColVals(txn kv.Transaction, t table.Table, taskOpInfo *ind
 		idxVal := make([]types.Datum, 0, len(idxInfo.Columns))
 		for _, v := range idxInfo.Columns {
 			col := cols[v.Offset]
-			idxVal = append(idxVal, rowMap[col.ID])
+			idxColumnVal := rowMap[col.ID]
+			if _, ok := rowMap[col.ID]; ok {
+				idxVal = append(idxVal, idxColumnVal)
+				continue
+			}
+			idxColumnVal, ret.err = tables.GetColDefaultValue(ctx, col, defaultVals)
+			if ret.err != nil {
+				ret.err = errors.Trace(ret.err)
+				return nil, ret
+			}
+			idxVal = append(idxVal, idxColumnVal)
 		}
 		idxRecord.vals = idxVal
 	}
@@ -465,6 +485,8 @@ type indexTaskOpInfo struct {
 	nextCh    chan int64                 // It notifies to start the next task.
 }
 
+// addTableIndex adds index into table.
+// TODO: Move this to doc or wiki.
 // How to add index in reorganization state?
 // Concurrently process the defaultTaskHandleCnt tasks. Each task deals with a handle range of the index record.
 // The handle range size is defaultTaskHandleCnt.
@@ -499,6 +521,7 @@ func (d *ddl) addTableIndex(t table.Table, indexInfo *model.IndexInfo, reorgInfo
 
 	addedCount := job.GetRowCount()
 	taskStartHandle := reorgInfo.Handle
+
 	for {
 		startTime := time.Now()
 		wg := sync.WaitGroup{}
@@ -587,6 +610,7 @@ func getCountAndHandle(taskOpInfo *indexTaskOpInfo) (int64, int64, error) {
 func (d *ddl) doBackfillIndexTask(t table.Table, taskOpInfo *indexTaskOpInfo, startHandle int64, wg *sync.WaitGroup) {
 	defer wg.Done()
 
+	startTime := time.Now()
 	ret := new(taskResult)
 	handleInfo := &handleInfo{startHandle: startHandle}
 	err := kv.RunInNewTxn(d.store, true, func(txn kv.Transaction) error {
@@ -610,6 +634,8 @@ func (d *ddl) doBackfillIndexTask(t table.Table, taskOpInfo *indexTaskOpInfo, st
 	}
 
 	taskOpInfo.taskRetCh <- ret
+	log.Debugf("[ddl] add index completes backfill index task %v takes time %v",
+		handleInfo, time.Since(startTime))
 }
 
 // doBackfillIndexTaskInTxn deals with a part of backfilling index data in a Transaction.
@@ -623,7 +649,7 @@ func (d *ddl) doBackfillIndexTaskInTxn(t table.Table, txn kv.Transaction, taskOp
 	}
 
 	for _, idxRecord := range idxRecords {
-		log.Debug("[ddl] backfill index...", idxRecord.handle)
+		log.Debugf("[ddl] txn %v backfill index handle...%v", txn.StartTS(), idxRecord.handle)
 		err := txn.LockKeys(idxRecord.key)
 		if err != nil {
 			taskRet.err = errors.Trace(err)

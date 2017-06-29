@@ -2,8 +2,6 @@ package: udup
 import:
 - package: github.com/NYTimes/gziphandler
 - package: github.com/armon/go-metrics
-  subpackages:
-  - datadog
 - package: github.com/docker/leadership
 - package: github.com/docker/libkv
   subpackages:
@@ -34,6 +32,9 @@ import:
   subpackages:
   - serf
 - package: github.com/hashicorp/yamux
+- package: github.com/issuj/gofaster
+  subpackages:
+  - base64
 - package: github.com/mitchellh/cli
 - package: github.com/mitchellh/colorstring
 - package: github.com/mitchellh/copystructure
@@ -42,10 +43,16 @@ import:
 - package: github.com/nats-io/gnatsd
   subpackages:
   - server
+- package: github.com/nats-io/go-nats
 - package: github.com/nats-io/nats-streaming-server
   subpackages:
   - server
+- package: github.com/pingcap/tidb
+  subpackages:
+  - ast
+  - parser
 - package: github.com/ryanuber/columnize
+- package: github.com/satori/go.uuid
 - package: github.com/shirou/gopsutil
   subpackages:
   - host
@@ -63,9 +70,7 @@ import:
   subpackages:
   - encoding
   - encoding/charmap
-- package: github.com/golang/protobuf
-  subpackages:
-  - proto
+  - transform
 testImport:
 - package: github.com/outbrain/golib
   subpackages:

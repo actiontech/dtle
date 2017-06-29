@@ -5,80 +5,13 @@
 package language
 
 import (
-	"strings"
 	"testing"
+
+	"golang.org/x/text/internal/tag"
 )
-
-var strdata = []string{
-	"aa  ",
-	"aaa ",
-	"aaaa",
-	"aaab",
-	"aab ",
-	"ab  ",
-	"ba  ",
-	"xxxx",
-}
-
-func strtests() map[string]int {
-	return map[string]int{
-		"    ": 0,
-		"a":    0,
-		"aa":   0,
-		"aaa":  4,
-		"aa ":  0,
-		"aaaa": 8,
-		"aaab": 12,
-		"aaax": 16,
-		"b":    24,
-		"ba":   24,
-		"bbbb": 28,
-	}
-}
-
-func TestSearch(t *testing.T) {
-	for k, v := range strtests() {
-		if i := search(strings.Join(strdata, ""), []byte(k)); i != v {
-			t.Errorf("%s: found %d; want %d", k, i, v)
-		}
-	}
-}
-
-func TestIndex(t *testing.T) {
-	strtests := strtests()
-	strtests["    "] = -1
-	strtests["aaax"] = -1
-	strtests["bbbb"] = -1
-	for k, v := range strtests {
-		if i := index(strings.Join(strdata, ""), []byte(k)); i != v {
-			t.Errorf("%s: found %d; want %d", k, i, v)
-		}
-	}
-}
 
 func b(s string) []byte {
 	return []byte(s)
-}
-
-func TestFixCase(t *testing.T) {
-	tests := []string{
-		"aaaa", "AbCD", "abcd",
-		"Zzzz", "AbCD", "Abcd",
-		"Zzzz", "AbC", "Zzzz",
-		"XXX", "ab ", "XXX",
-		"XXX", "usd", "USD",
-		"cmn", "AB ", "cmn",
-		"gsw", "CMN", "cmn",
-	}
-	for i := 0; i+3 < len(tests); i += 3 {
-		tt := tests[i:]
-		buf := [4]byte{}
-		b := buf[:copy(buf[:], tt[1])]
-		res := fixCase(tt[0], b)
-		if res && cmp(tt[2], b) != 0 || !res && tt[0] != tt[2] {
-			t.Errorf("%s+%s: found %q; want %q", tt[0], tt[1], b, tt[2])
-		}
-	}
 }
 
 func TestLangID(t *testing.T) {
@@ -168,6 +101,7 @@ func TestGrandfathered(t *testing.T) {
 		{"sgn-BE-FR", "sfb"},
 		{"sgn-BE-NL", "vgt"},
 		{"sgn-CH-DE", "sgg"},
+		{"sgn-ch-de", "sgg"},
 		{"zh-guoyu", "cmn"},
 		{"zh-hakka", "hak"},
 		{"zh-min-nan", "nan"},
@@ -175,11 +109,17 @@ func TestGrandfathered(t *testing.T) {
 
 		// Grandfathered tags with no modern replacement will be converted as follows:
 		{"cel-gaulish", "xtg-x-cel-gaulish"},
-		{"en-GB-oed", "en-GB-x-oed"},
+		{"en-GB-oed", "en-GB-oxendict"},
+		{"en-gb-oed", "en-GB-oxendict"},
 		{"i-default", "en-x-i-default"},
 		{"i-enochian", "und-x-i-enochian"},
 		{"i-mingo", "see-x-i-mingo"},
 		{"zh-min", "nan-x-zh-min"},
+
+		{"root", "und"},
+		{"en_US_POSIX", "en-US-u-va-posix"},
+		{"en_us_posix", "en-US-u-va-posix"},
+		{"en-us-posix", "en-US-u-va-posix"},
 	} {
 		got := Raw.Make(tt.in)
 		want := Raw.MustParse(tt.out)
@@ -427,7 +367,7 @@ func TestRegionDeprecation(t *testing.T) {
 }
 
 func TestGetScriptID(t *testing.T) {
-	idx := "0000BbbbDdddEeeeZzzz\xff\xff\xff\xff"
+	idx := tag.Index("0000BbbbDdddEeeeZzzz\xff\xff\xff\xff")
 	tests := []struct {
 		in  string
 		out scriptID
@@ -449,49 +389,6 @@ func TestGetScriptID(t *testing.T) {
 			t.Errorf("%d:%s: found %d; want %d", i, tt.in, id, tt.out)
 		} else if id == 0 && err == nil {
 			t.Errorf("%d:%s: no error; expected one", i, tt.in)
-		}
-	}
-}
-
-func TestCurrency(t *testing.T) {
-	idx := strings.Join([]string{
-		"   \x00",
-		"BBB" + mkCurrencyInfo(5, 2),
-		"DDD\x00",
-		"XXX\x00",
-		"ZZZ\x00",
-		"\xff\xff\xff\xff",
-	}, "")
-	tests := []struct {
-		in         string
-		out        currencyID
-		round, dec int
-	}{
-		{"   ", 0, 0, 0},
-		{"     ", 0, 0, 0},
-		{" ", 0, 0, 0},
-		{"", 0, 0, 0},
-		{"BBB", 1, 5, 2},
-		{"DDD", 2, 0, 0},
-		{"dDd", 2, 0, 0},
-		{"ddd", 2, 0, 0},
-		{"XXX", 3, 0, 0},
-		{"Zzz", 4, 0, 0},
-	}
-	for i, tt := range tests {
-		id, err := getCurrencyID(idx, b(tt.in))
-		if id != tt.out {
-			t.Errorf("%d:%s: found %d; want %d", i, tt.in, id, tt.out)
-		} else if tt.out == 0 && err == nil {
-			t.Errorf("%d:%s: no error; expected one", i, tt.in)
-		}
-		if id > 0 {
-			if d := decimals(idx, id); d != tt.dec {
-				t.Errorf("%d:dec(%s): found %d; want %d", i, tt.in, d, tt.dec)
-			}
-			if d := round(idx, id); d != tt.round {
-				t.Errorf("%d:round(%s): found %d; want %d", i, tt.in, d, tt.round)
-			}
 		}
 	}
 }

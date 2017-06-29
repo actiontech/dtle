@@ -18,6 +18,8 @@ import (
 
 	"github.com/juju/errors"
 	"github.com/pingcap/tidb/ast"
+	"github.com/pingcap/tidb/model"
+	"github.com/pingcap/tidb/mysql"
 	"github.com/pingcap/tidb/sessionctx/variable"
 	"github.com/pingcap/tidb/util/codec"
 	"github.com/pingcap/tidb/util/mock"
@@ -68,6 +70,15 @@ var distFuncs = map[tipb.ExprType]string{
 	tipb.ExprType_In:       ast.In,
 	tipb.ExprType_IsNull:   ast.IsNull,
 	tipb.ExprType_Coalesce: ast.Coalesce,
+
+	// for json functions.
+	tipb.ExprType_JsonType:    ast.JSONType,
+	tipb.ExprType_JsonExtract: ast.JSONExtract,
+	tipb.ExprType_JsonUnquote: ast.JSONUnquote,
+	tipb.ExprType_JsonMerge:   ast.JSONMerge,
+	tipb.ExprType_JsonSet:     ast.JSONSet,
+	tipb.ExprType_JsonInsert:  ast.JSONInsert,
+	tipb.ExprType_JsonReplace: ast.JSONReplace,
 }
 
 // newDistSQLFunction only creates function for mock-tikv.
@@ -79,24 +90,58 @@ func newDistSQLFunction(sc *variable.StatementContext, exprType tipb.ExprType, a
 	// TODO: Too ugly...
 	ctx := mock.NewContext()
 	ctx.GetSessionVars().StmtCtx = sc
-	return NewFunction(ctx, name, nil, args...)
+	tp, err := reinferFuncType(sc, name, args)
+	if err != nil {
+		return nil, errors.Trace(err)
+	}
+	return NewFunction(ctx, name, tp, args...)
+}
+
+// reinferFuncType re-infer FieldType of ScalarFunction because FieldType information will be lost after ScalarFunction be converted to pb.
+// reinferFuncType is only used by mock-tikv, the real TiKV do not need to re-infer field type.
+// This is a temporary solution to make the new type inferer works normally, and will be replaced by passing function signature in the future.
+func reinferFuncType(sc *variable.StatementContext, funcName string, args []Expression) (*types.FieldType, error) {
+	newArgs := make([]ast.ExprNode, len(args))
+	for i, arg := range args {
+		switch x := arg.(type) {
+		case *Constant:
+			newArgs[i] = &ast.ValueExpr{}
+			newArgs[i].SetValue(x.Value.GetValue())
+		case *Column:
+			newArgs[i] = &ast.ColumnNameExpr{
+				Refer: &ast.ResultField{
+					Column: &model.ColumnInfo{
+						FieldType: *x.GetType(),
+					},
+				},
+			}
+		case *ScalarFunction:
+			newArgs[i] = &ast.FuncCallExpr{FnName: x.FuncName}
+			_, err := reinferFuncType(sc, x.FuncName.O, x.GetArgs())
+			if err != nil {
+				return nil, errors.Trace(err)
+			}
+		}
+	}
+	funcNode := &ast.FuncCallExpr{FnName: model.NewCIStr(funcName), Args: newArgs}
+	err := InferType(sc, funcNode)
+	if err != nil {
+		return nil, errors.Trace(err)
+	}
+	return funcNode.GetType(), nil
 }
 
 // PBToExpr converts pb structure to expression.
-func PBToExpr(expr *tipb.Expr, colIDs map[int64]int, sc *variable.StatementContext) (Expression, error) {
+func PBToExpr(expr *tipb.Expr, tps []*types.FieldType, sc *variable.StatementContext) (Expression, error) {
 	switch expr.Tp {
 	case tipb.ExprType_ColumnRef:
-		_, id, err := codec.DecodeInt(expr.Val)
+		_, offset, err := codec.DecodeInt(expr.Val)
 		if err != nil {
 			return nil, errors.Trace(err)
 		}
-		offset, ok := colIDs[id]
-		if !ok {
-			return nil, errors.Errorf("Can't find column id %d", id)
-		}
-		return &Column{Index: offset}, nil
+		return &Column{Index: int(offset), RetType: tps[offset]}, nil
 	case tipb.ExprType_Null:
-		return &Constant{}, nil
+		return &Constant{Value: types.Datum{}, RetType: types.NewFieldType(mysql.TypeNull)}, nil
 	case tipb.ExprType_Int64:
 		return convertInt(expr.Val)
 	case tipb.ExprType_Uint64:
@@ -104,7 +149,7 @@ func PBToExpr(expr *tipb.Expr, colIDs map[int64]int, sc *variable.StatementConte
 	case tipb.ExprType_String:
 		return convertString(expr.Val)
 	case tipb.ExprType_Bytes:
-		return &Constant{Value: types.NewBytesDatum(expr.Val)}, nil
+		return &Constant{Value: types.NewBytesDatum(expr.Val), RetType: types.NewFieldType(mysql.TypeString)}, nil
 	case tipb.ExprType_Float32:
 		return convertFloat(expr.Val, true)
 	case tipb.ExprType_Float64:
@@ -123,12 +168,12 @@ func PBToExpr(expr *tipb.Expr, colIDs map[int64]int, sc *variable.StatementConte
 				return nil, errors.Trace(err)
 			}
 			if len(results) == 0 {
-				return &Constant{Value: types.NewDatum(false)}, nil
+				return &Constant{Value: types.NewDatum(false), RetType: types.NewFieldType(mysql.TypeLonglong)}, nil
 			}
 			args = append(args, results...)
 			continue
 		}
-		arg, err := PBToExpr(child, colIDs, sc)
+		arg, err := PBToExpr(child, tps, sc)
 		if err != nil {
 			return nil, errors.Trace(err)
 		}
@@ -159,7 +204,7 @@ func convertInt(val []byte) (*Constant, error) {
 		return nil, errors.Errorf("invalid int % x", val)
 	}
 	d.SetInt64(i)
-	return &Constant{Value: d}, nil
+	return &Constant{Value: d, RetType: types.NewFieldType(mysql.TypeLonglong)}, nil
 }
 
 func convertUint(val []byte) (*Constant, error) {
@@ -169,13 +214,13 @@ func convertUint(val []byte) (*Constant, error) {
 		return nil, errors.Errorf("invalid uint % x", val)
 	}
 	d.SetUint64(u)
-	return &Constant{Value: d}, nil
+	return &Constant{Value: d, RetType: types.NewFieldType(mysql.TypeLonglong)}, nil
 }
 
 func convertString(val []byte) (*Constant, error) {
 	var d types.Datum
 	d.SetBytesAsString(val)
-	return &Constant{Value: d}, nil
+	return &Constant{Value: d, RetType: types.NewFieldType(mysql.TypeVarString)}, nil
 }
 
 func convertFloat(val []byte, f32 bool) (*Constant, error) {
@@ -189,7 +234,7 @@ func convertFloat(val []byte, f32 bool) (*Constant, error) {
 	} else {
 		d.SetFloat64(f)
 	}
-	return &Constant{Value: d}, nil
+	return &Constant{Value: d, RetType: types.NewFieldType(mysql.TypeDouble)}, nil
 }
 
 func convertDecimal(val []byte) (*Constant, error) {
@@ -197,7 +242,7 @@ func convertDecimal(val []byte) (*Constant, error) {
 	if err != nil {
 		return nil, errors.Errorf("invalid decimal % x", val)
 	}
-	return &Constant{Value: dec}, nil
+	return &Constant{Value: dec, RetType: types.NewFieldType(mysql.TypeNewDecimal)}, nil
 }
 
 func convertDuration(val []byte) (*Constant, error) {
@@ -207,5 +252,5 @@ func convertDuration(val []byte) (*Constant, error) {
 		return nil, errors.Errorf("invalid duration %d", i)
 	}
 	d.SetMysqlDuration(types.Duration{Duration: time.Duration(i), Fsp: types.MaxFsp})
-	return &Constant{Value: d}, nil
+	return &Constant{Value: d, RetType: types.NewFieldType(mysql.TypeDuration)}, nil
 }

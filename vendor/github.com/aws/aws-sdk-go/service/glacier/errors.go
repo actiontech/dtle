@@ -33,7 +33,7 @@ const (
 	// ErrCodePolicyEnforcedException for service response error code
 	// "PolicyEnforcedException".
 	//
-	// Returned if a retrieval server would exceed the current data policy's retrieval
+	// Returned if a retrieval job would exceed the current data policy's retrieval
 	// rate limit. For more information about data retrieval policies,
 	ErrCodePolicyEnforcedException = "PolicyEnforcedException"
 
@@ -47,7 +47,7 @@ const (
 	// ErrCodeResourceNotFoundException for service response error code
 	// "ResourceNotFoundException".
 	//
-	// Returned if the specified resource (such as a vault, upload ID, or server ID)
+	// Returned if the specified resource (such as a vault, upload ID, or job ID)
 	// doesn't exist.
 	ErrCodeResourceNotFoundException = "ResourceNotFoundException"
 

@@ -396,19 +396,6 @@ func parseMetric(result **Metric, list *ast.ObjectList) error {
 		"collection_interval",
 		"publish_allocation_metrics",
 		"publish_node_metrics",
-		"circonus_api_token",
-		"circonus_api_app",
-		"circonus_api_url",
-		"circonus_submission_interval",
-		"circonus_submission_url",
-		"circonus_check_id",
-		"circonus_check_force_metric_activation",
-		"circonus_check_instance_id",
-		"circonus_check_search_tag",
-		"circonus_check_display_name",
-		"circonus_check_tags",
-		"circonus_broker_id",
-		"circonus_broker_select_tag",
 	}
 	if err := checkHCLKeys(listVal, valid); err != nil {
 		return err

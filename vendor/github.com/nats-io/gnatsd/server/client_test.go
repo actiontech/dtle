@@ -30,12 +30,6 @@ type serverInfo struct {
 	MaxPayload   int64  `json:"max_payload"`
 }
 
-type mockAuth struct{}
-
-func (m *mockAuth) Check(c ClientAuth) bool {
-	return true
-}
-
 func createClientAsync(ch chan *client, s *Server, cli net.Conn) {
 	go func() {
 		c := s.createClient(cli)
@@ -56,9 +50,6 @@ func rawSetup(serverOptions Options) (*Server, *client, *bufio.Reader, string) {
 	cli, srv := net.Pipe()
 	cr := bufio.NewReaderSize(cli, maxBufSize)
 	s := New(&serverOptions)
-	if serverOptions.Authorization != "" {
-		s.SetClientAuthMethod(&mockAuth{})
-	}
 
 	ch := make(chan *client)
 	createClientAsync(ch, s, srv)
@@ -177,7 +168,7 @@ func TestClientConnect(t *testing.T) {
 }
 
 func TestClientConnectProto(t *testing.T) {
-	_, c, _ := setupClient()
+	_, c, r := setupClient()
 
 	// Basic Connect setting flags, proto should be zero (original proto)
 	connectOp := []byte("CONNECT {\"verbose\":true,\"pedantic\":true,\"ssl_required\":false}\r\n")
@@ -210,6 +201,19 @@ func TestClientConnectProto(t *testing.T) {
 
 	// Illegal Option
 	connectOp = []byte("CONNECT {\"protocol\":22}\r\n")
+	wg := sync.WaitGroup{}
+	wg.Add(1)
+	// The client here is using a pipe, we need to be dequeuing
+	// data otherwise the server would be blocked trying to send
+	// the error back to it.
+	go func() {
+		defer wg.Done()
+		for {
+			if _, _, err := r.ReadLine(); err != nil {
+				return
+			}
+		}
+	}()
 	err = c.parse(connectOp)
 	if err == nil {
 		t.Fatalf("Expected to receive an error\n")
@@ -217,6 +221,7 @@ func TestClientConnectProto(t *testing.T) {
 	if err != ErrBadClientProtocol {
 		t.Fatalf("Expected err of %q, got  %q\n", ErrBadClientProtocol, err)
 	}
+	wg.Wait()
 }
 
 func TestClientPing(t *testing.T) {
@@ -587,11 +592,19 @@ func TestAuthorizationTimeout(t *testing.T) {
 	serverOptions := defaultServerOptions
 	serverOptions.Authorization = "my_token"
 	serverOptions.AuthTimeout = 1
-	s, _, cr, _ := rawSetup(serverOptions)
-	s.SetClientAuthMethod(&mockAuth{})
+	s := RunServer(&serverOptions)
+	defer s.Shutdown()
 
-	time.Sleep(secondsToDuration(serverOptions.AuthTimeout))
-	l, err := cr.ReadString('\n')
+	conn, err := net.Dial("tcp", fmt.Sprintf("%s:%d", serverOptions.Host, serverOptions.Port))
+	if err != nil {
+		t.Fatalf("Error dialing server: %v\n", err)
+	}
+	defer conn.Close()
+	client := bufio.NewReaderSize(conn, maxBufSize)
+	if _, err := client.ReadString('\n'); err != nil {
+		t.Fatalf("Error receiving info from server: %v\n", err)
+	}
+	l, err := client.ReadString('\n')
 	if err != nil {
 		t.Fatalf("Error receiving info from server: %v\n", err)
 	}
@@ -668,7 +681,6 @@ func TestTLSCloseClientConnection(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Error processing config file: %v", err)
 	}
-	opts.Authorization = ""
 	opts.TLSTimeout = 100
 	s := RunServer(opts)
 	defer s.Shutdown()
@@ -690,7 +702,7 @@ func TestTLSCloseClientConnection(t *testing.T) {
 		t.Fatalf("Unexpected error during handshake: %v", err)
 	}
 	br = bufio.NewReaderSize(tlsConn, 100)
-	connectOp := []byte("CONNECT {\"verbose\":false,\"pedantic\":false,\"tls_required\":true}\r\n")
+	connectOp := []byte("CONNECT {\"user\":\"derek\",\"pass\":\"foo\",\"verbose\":false,\"pedantic\":false,\"tls_required\":true}\r\n")
 	if _, err := tlsConn.Write(connectOp); err != nil {
 		t.Fatalf("Unexpected error writing CONNECT: %v", err)
 	}

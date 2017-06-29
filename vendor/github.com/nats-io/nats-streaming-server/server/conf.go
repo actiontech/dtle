@@ -1,4 +1,4 @@
-// Copyright 2016 Apcera Inc. All rights reserved.
+// Copyright 2016-2017 Apcera Inc. All rights reserved.
 
 package server
 
@@ -11,6 +11,7 @@ import (
 
 	"github.com/nats-io/gnatsd/conf"
 	"github.com/nats-io/nats-streaming-server/stores"
+	"github.com/nats-io/nats-streaming-server/util"
 )
 
 // ProcessConfigFile parses the configuration file `configFile` and updates
@@ -47,7 +48,7 @@ func ProcessConfigFile(configFile string, opts *Options) error {
 			case stores.TypeMemory:
 				opts.StoreType = stores.TypeMemory
 			default:
-				return fmt.Errorf("Unknown store type: %v", v.(string))
+				return fmt.Errorf("unknown store type: %v", v.(string))
 			}
 		case "dir", "datastore":
 			if err := checkType(k, reflect.String, v); err != nil {
@@ -114,6 +115,16 @@ func ProcessConfigFile(configFile string, opts *Options) error {
 				return err
 			}
 			opts.AckSubsPoolSize = int(v.(int64))
+		case "ft_group", "ft_group_name":
+			if err := checkType(k, reflect.String, v); err != nil {
+				return err
+			}
+			opts.FTGroupName = v.(string)
+		case "partitioning":
+			if err := checkType(k, reflect.Bool, v); err != nil {
+				return err
+			}
+			opts.Partitioning = v.(bool)
 		}
 	}
 	return nil
@@ -123,7 +134,7 @@ func ProcessConfigFile(configFile string, opts *Options) error {
 func checkType(name string, kind reflect.Kind, v interface{}) error {
 	actualKind := reflect.TypeOf(v).Kind()
 	if actualKind != kind {
-		return fmt.Errorf("Parameter %q value is expected to be %v, got %v",
+		return fmt.Errorf("parameter %q value is expected to be %v, got %v",
 			name, kind.String(), actualKind.String())
 	}
 	return nil
@@ -133,7 +144,7 @@ func checkType(name string, kind reflect.Kind, v interface{}) error {
 func parseTLS(itf interface{}, opts *Options) error {
 	m, ok := itf.(map[string]interface{})
 	if !ok {
-		return fmt.Errorf("Expected TLS to be a map/struct, got %v", itf)
+		return fmt.Errorf("expected TLS to be a map/struct, got %v", itf)
 	}
 	for k, v := range m {
 		name := strings.ToLower(k)
@@ -162,7 +173,7 @@ func parseTLS(itf interface{}, opts *Options) error {
 func parseStoreLimits(itf interface{}, opts *Options) error {
 	m, ok := itf.(map[string]interface{})
 	if !ok {
-		return fmt.Errorf("Expected store limits to be a map/struct, got %v", itf)
+		return fmt.Errorf("expected store limits to be a map/struct, got %v", itf)
 	}
 	for k, v := range m {
 		name := strings.ToLower(k)
@@ -178,7 +189,7 @@ func parseStoreLimits(itf interface{}, opts *Options) error {
 			}
 		default:
 			// Check for the global limits (MaxMsgs, MaxBytes, etc..)
-			if err := parseChannelLimits(&opts.ChannelLimits, k, name, v); err != nil {
+			if err := parseChannelLimits(&opts.ChannelLimits, k, name, v, true); err != nil {
 				return err
 			}
 		}
@@ -187,23 +198,32 @@ func parseStoreLimits(itf interface{}, opts *Options) error {
 }
 
 // parseChannelLimits updates `cl` with channel limits.
-func parseChannelLimits(cl *stores.ChannelLimits, k, name string, v interface{}) error {
+func parseChannelLimits(cl *stores.ChannelLimits, k, name string, v interface{}, isGlobal bool) error {
 	switch name {
 	case "msu", "max_subs", "max_subscriptions", "maxsubscriptions":
 		if err := checkType(k, reflect.Int64, v); err != nil {
 			return err
 		}
 		cl.MaxSubscriptions = int(v.(int64))
+		if !isGlobal && cl.MaxSubscriptions == 0 {
+			cl.MaxSubscriptions = -1
+		}
 	case "mm", "max_msgs", "maxmsgs", "max_count", "maxcount":
 		if err := checkType(k, reflect.Int64, v); err != nil {
 			return err
 		}
 		cl.MaxMsgs = int(v.(int64))
+		if !isGlobal && cl.MaxMsgs == 0 {
+			cl.MaxMsgs = -1
+		}
 	case "mb", "max_bytes", "maxbytes":
 		if err := checkType(k, reflect.Int64, v); err != nil {
 			return err
 		}
 		cl.MaxBytes = v.(int64)
+		if !isGlobal && cl.MaxBytes == 0 {
+			cl.MaxBytes = -1
+		}
 	case "ma", "max_age", "maxage":
 		if err := checkType(k, reflect.String, v); err != nil {
 			return err
@@ -213,6 +233,9 @@ func parseChannelLimits(cl *stores.ChannelLimits, k, name string, v interface{})
 			return err
 		}
 		cl.MaxAge = dur
+		if !isGlobal && cl.MaxAge == 0 {
+			cl.MaxAge = -1
+		}
 	}
 	return nil
 }
@@ -221,17 +244,20 @@ func parseChannelLimits(cl *stores.ChannelLimits, k, name string, v interface{})
 func parsePerChannelLimits(itf interface{}, opts *Options) error {
 	m, ok := itf.(map[string]interface{})
 	if !ok {
-		return fmt.Errorf("Expected per channel limits to be a map/struct, got %v", itf)
+		return fmt.Errorf("expected per channel limits to be a map/struct, got %v", itf)
 	}
 	for channelName, limits := range m {
 		limitsMap, ok := limits.(map[string]interface{})
 		if !ok {
-			return fmt.Errorf("Expected channel limits to be a map/struct, got %v", limits)
+			return fmt.Errorf("expected channel limits to be a map/struct, got %v", limits)
+		}
+		if !util.IsSubjectValid(channelName, true) {
+			return fmt.Errorf("invalid channel name %q", channelName)
 		}
 		cl := &stores.ChannelLimits{}
 		for k, v := range limitsMap {
 			name := strings.ToLower(k)
-			if err := parseChannelLimits(cl, k, name, v); err != nil {
+			if err := parseChannelLimits(cl, k, name, v, false); err != nil {
 				return err
 			}
 		}
@@ -244,7 +270,7 @@ func parsePerChannelLimits(itf interface{}, opts *Options) error {
 func parseFileOptions(itf interface{}, opts *Options) error {
 	m, ok := itf.(map[string]interface{})
 	if !ok {
-		return fmt.Errorf("Expected file options to be a map/struct, got %v", itf)
+		return fmt.Errorf("expected file options to be a map/struct, got %v", itf)
 	}
 	for k, v := range m {
 		name := strings.ToLower(k)
@@ -318,6 +344,11 @@ func parseFileOptions(itf interface{}, opts *Options) error {
 				return err
 			}
 			opts.FileStoreOpts.FileDescriptorsLimit = v.(int64)
+		case "parallel_recovery":
+			if err := checkType(k, reflect.Int64, v); err != nil {
+				return err
+			}
+			opts.FileStoreOpts.ParallelRecovery = int(v.(int64))
 		}
 	}
 	return nil

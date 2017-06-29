@@ -7,7 +7,8 @@
   <title>Consul by HashiCorp</title>
   <link rel="stylesheet" href="static/bootstrap.min.css">
   <link rel="stylesheet" href="static/base.css">
-  <link rel="shortcut icon" href="static/favicon.png">
+  <link rel="icon" type="image/png" href="static/favicon-32x32.png" sizes="32x32">
+  <link rel="icon" type="image/png" href="static/favicon-16x16.png" sizes="16x16">
 
   <script type="text/javascript">
     // Change this value to your consul host if you are not running
@@ -76,7 +77,7 @@
           <p>The default agent token does not
           have the appropriate permissions to perform the expected action.</p>
           {{/if}}
-          <p>Learn more in the <a href="https://www.consul.io/docs/internals/acl.html">ACL documentation</a>.</p>
+          <p>Learn more in the <a href="https://www.consul.io/docs/guides/acl.html" target="_blank">ACL documentation</a>.</p>
         </div>
       </div>
     </div>
@@ -88,7 +89,7 @@
         <div class="text-center vertical-center">
           <p class="bold">ACLs Disabled</p>
           <p>ACLs are disabled in this Consul cluster. This is the default behavior, as you have to explicitly enable them.</p>
-          </p>Learn more in the <a href="https://www.consul.io/docs/internals/acl.html">ACL documentation</a>.</p>
+          </p>Learn more in the <a href="https://www.consul.io/docs/guides/acl.html" target="_blank">ACL documentation</a>.</p>
         </div>
       </div>
     </div>
@@ -98,7 +99,7 @@
     <div class="row">
       <div class="col-md-8 col-md-offset-2 col-sm-12 col-xs-12">
         <div class="text-center vertical-center">
-          <img src="static/loading-cylon-purple.svg" width="384" height="48">
+          <img src="static/loading-cylon-pink.svg" width="384" height="48">
           <p><small>Loading...</small></p>
         </div>
       </div>
@@ -243,13 +244,16 @@
                   {{#if newKey.isFolder }}
                   <p>No value needed for nested keys.</p>
                   {{else}}
-                  <div class="form-group">
+                  <div {{ bind-attr class=":form-group newKey.validateJson:validate newKey.isValidJson:success:error" }}>
                     {{ textarea value=newKey.Value class="form-control"}}
                     <span class="help-block">Value can be any format and length</span>
                   </div>
                   {{/if}}
 
                   <button {{ action "createKey"}} {{bind-attr disabled=newKey.isInvalid }} {{ bind-attr class=":btn newKey.isValid:btn-success:btn-default" }}>Create</button>
+                  {{#unless newKey.isFolder }}
+                  <label class="form-checkbox">{{ input type=checkbox checked=newKey.validateJson }}Validate JSON</label>
+                  {{/unless}}
                   <button {{ action "deleteFolder"}} {{ bind-attr class=":btn :pull-right isLoading:btn-warning:btn-danger isRoot:hidden" }}>Delete folder</button>
                 </form>
               </div>
@@ -285,7 +289,7 @@
         <hr>
       </div>
 
-      <div class="col-md-6 col-lg-7 border-left">
+      <div class="col-md-6 col-lg-7 border-left sticky-scroll">
         <div class="padded-border">
 
           <div class="panel">
@@ -306,11 +310,12 @@
                 {{errorMessage}}
               </div>
               <form class="form">
-                <div class="form-group">
+                <div {{ bind-attr class=":form-group model.validateJson:validate model.isValidJson:success:error" }}>
                   {{ textarea value=model.valueDecoded class="form-control" disabled=model.isLocked}}
                 </div>
                 <button {{action "updateKey"}} {{bind-attr disabled=isLoading}} {{bind-attr class=":btn isLoading:btn-warning:btn-success"}} {{bind-attr disabled=isLocked}}>Update</button>
                 <button {{action "cancelEdit"}} {{bind-attr disabled=isLoading}} {{bind-attr class=":btn isLoading:btn-warning:btn-default"}}>Cancel</button>
+                <label class="form-checkbox">{{ input type=checkbox checked=model.validateJson }}Validate JSON</label>
                 <button {{action "deleteKey"}} {{bind-attr disabled=isLoading}} {{bind-attr class=":btn :pull-right isLoading:btn-warning:btn-danger"}} {{bind-attr disabled=isLocked}}>Delete key</button>
               </form>
             </div>
@@ -340,7 +345,7 @@
     <div class="row">
       <div class="col-md-8 col-md-offset-2 col-sm-12 col-xs-12">
         <div class="text-center vertical-center">
-          <img src="static/loading-cylon-purple.svg" width="384" height="48">
+          <img src="static/loading-cylon-pink.svg" width="384" height="48">
           <p><small>Loading...</small></p>
         </div>
       </div>
@@ -667,7 +672,7 @@
                     <div class="form-group">
                       <label>Rules</label>
                       {{ textarea value=newAcl.Rules class="form-control" }}
-                      <span class="help-block">For more information on rules, visit the <a href="https://www.consul.io/docs/internals/acl.html">ACL documentation.</a></span>
+                      <span class="help-block">For more information on rules, visit the <a href="https://www.consul.io/docs/guides/acl.html" target="_blank">ACL documentation.</a></span>
                     </div>
 
                     <button {{ action "createAcl"}} {{ bind-attr class=":btn :btn-success" }}>Create</button>
@@ -713,7 +718,7 @@
                 <div class="form-group">
                   <label>Rules</label>
                   {{ textarea value=model.Rules class="form-control" }}
-                  <span class="help-block">For more information on rules, visit the <a href="https://www.consul.io/docs/internals/acl.html">ACL documentation.</a></span>
+                  <span class="help-block">For more information on rules, visit the <a href="https://www.consul.io/docs/guides/acl.html" target="_blank">ACL documentation.</a></span>
                 </div>
 
                 <button {{ action "updateAcl"}} {{ bind-attr class=":btn :btn-success" }}>Update</button>

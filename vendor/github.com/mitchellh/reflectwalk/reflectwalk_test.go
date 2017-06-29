@@ -713,3 +713,64 @@ func TestWalk_StructWithSkipEntry(t *testing.T) {
 		}
 	}
 }
+
+type TestStructWalker_valueSkip struct {
+	Skip   bool
+	Fields int
+}
+
+func (t *TestStructWalker_valueSkip) Enter(l Location) error {
+	if l == StructField {
+		t.Fields++
+	}
+
+	return nil
+}
+
+func (t *TestStructWalker_valueSkip) Exit(Location) error {
+	return nil
+}
+
+func (t *TestStructWalker_valueSkip) Struct(v reflect.Value) error {
+	if t.Skip {
+		return SkipEntry
+	}
+
+	return nil
+}
+
+func (t *TestStructWalker_valueSkip) StructField(sf reflect.StructField, v reflect.Value) error {
+	return nil
+}
+
+func TestWalk_StructParentWithSkipEntry(t *testing.T) {
+	data := &struct {
+		Foo, _Bar int
+	}{
+		Foo:  1,
+		_Bar: 2,
+	}
+
+	{
+		var s TestStructWalker_valueSkip
+		if err := Walk(data, &s); err != nil {
+			t.Fatalf("err: %s", err)
+		}
+
+		if s.Fields != 2 {
+			t.Fatalf("bad: %d", s.Fields)
+		}
+	}
+
+	{
+		var s TestStructWalker_valueSkip
+		s.Skip = true
+		if err := Walk(data, &s); err != nil {
+			t.Fatalf("err: %s", err)
+		}
+
+		if s.Fields != 0 {
+			t.Fatalf("bad: %d", s.Fields)
+		}
+	}
+}

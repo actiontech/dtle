@@ -51,7 +51,7 @@ The response is an error string followed by the response object,
 both are encoded using MsgPack.
 
 InstallSnapshot is special, in that after the RPC request we stream
-the entire store. That socket is not re-used as the connection store
+the entire state. That socket is not re-used as the connection state
 is not known if there is an error.
 
 */

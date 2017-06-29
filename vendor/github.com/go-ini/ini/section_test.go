@@ -68,8 +68,8 @@ func Test_SectionRaw(t *testing.T) {
 		})
 
 		Convey("Validate raw section", func() {
-			So(cfg.Section("core_lesson").Body(), ShouldEqual, `my lesson store data – 1111111111111111111000000000000000001110000
-111111111111111111100000000000111000000000 – end my lesson store data`)
+			So(cfg.Section("core_lesson").Body(), ShouldEqual, `my lesson state data – 1111111111111111111000000000000000001110000
+111111111111111111100000000000111000000000 – end my lesson state data`)
 		})
 	})
 }

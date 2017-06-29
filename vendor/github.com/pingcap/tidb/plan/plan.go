@@ -19,74 +19,19 @@ import (
 	"fmt"
 
 	"github.com/juju/errors"
+	"github.com/pingcap/tidb/ast"
 	"github.com/pingcap/tidb/context"
 	"github.com/pingcap/tidb/expression"
+	"github.com/pingcap/tidb/kv"
 	"github.com/pingcap/tidb/util/codec"
 	"github.com/pingcap/tidb/util/types"
+	"github.com/pingcap/tipb/go-tipb"
 )
 
-const (
-	// TypeSel is the type of Selection.
-	TypeSel = "Selection"
-	// TypeSet is the type of Set.
-	TypeSet = "Set"
-	// TypeProj is the type of Projection.
-	TypeProj = "Projection"
-	// TypeAgg is the type of Aggregation.
-	TypeAgg = "Aggregation"
-	// TypeStreamAgg is the type of StreamAgg.
-	TypeStreamAgg = "StreamAgg"
-	// TypeHashAgg is the type of HashAgg.
-	TypeHashAgg = "HashAgg"
-	// TypeCache is the type of cache.
-	TypeCache = "Cache"
-	// TypeShow is the type of show.
-	TypeShow = "Show"
-	// TypeJoin is the type of Join.
-	TypeJoin = "Join"
-	// TypeUnion is the type of Union.
-	TypeUnion = "Union"
-	// TypeTableScan is the type of TableScan.
-	TypeTableScan = "TableScan"
-	// TypeMemTableScan is the type of TableScan.
-	TypeMemTableScan = "MemTableScan"
-	// TypeDummy is the type of TableScan.
-	TypeDummy = "Dummy"
-	// TypeUnionScan is the type of UnionScan.
-	TypeUnionScan = "UnionScan"
-	// TypeIdxScan is the type of IndexScan.
-	TypeIdxScan = "IndexScan"
-	// TypeSort is the type of Sort.
-	TypeSort = "Sort"
-	// TypeLimit is the type of Limit.
-	TypeLimit = "Limit"
-	// TypeHashSemiJoin is the type of hash semi join.
-	TypeHashSemiJoin = "HashSemiJoin"
-	// TypeHashLeftJoin is the type of left hash join.
-	TypeHashLeftJoin = "HashLeftJoin"
-	// TypeHashRightJoin is the type of right hash join.
-	TypeHashRightJoin = "HashRightJoin"
-	// TypeMergeJoin is the type of merge join.
-	TypeMergeJoin = "MergeJoin"
-	// TypeApply is the type of Apply.
-	TypeApply = "Apply"
-	// TypeMaxOneRow is the type of MaxOneRow.
-	TypeMaxOneRow = "MaxOneRow"
-	// TypeExists is the type of Exists.
-	TypeExists = "Exists"
-	// TypeDual is the type of TableDual.
-	TypeDual = "TableDual"
-	// TypeLock is the type of SelectLock.
-	TypeLock = "SelectLock"
-	// TypeInsert is the type of Insert
-	TypeInsert = "Insert"
-	// TypeUpate is the type of Update.
-	TypeUpate = "Update"
-	// TypeDelete is the type of Delete.
-	TypeDelete = "Delete"
-	// TypeAnalyze is the type of Analyze.
-	TypeAnalyze = "Analyze"
-)
+// UseDAGPlanBuilder checks if we use new DAG planner.
+func UseDAGPlanBuilder(ctx context.Context) bool {
+	return ctx.GetClient().IsRequestTypeSupported(kv.ReqTypeDAG, kv.ReqSubTypeBasic)
+}
 
 // Plan is the description of an execution flow.
 // It is created from ast.Node first, then optimized by the optimizer,
@@ -114,12 +59,19 @@ type Plan interface {
 	Allocator() *idAllocator
 	// SetParents sets the parents for the plan.
 	SetParents(...Plan)
-	// SetParents sets the children for the plan.
+	// SetChildren sets the children for the plan.
 	SetChildren(...Plan)
 
 	context() context.Context
 
 	extractCorrelatedCols() []*expression.CorrelatedColumn
+
+	// ResolveIndices resolves the indices for columns. After doing this, the columns can evaluate the rows by their indices.
+	ResolveIndices()
+
+	// findColumn finds the column in basePlan's schema.
+	// If the column is not in the schema, returns error.
+	findColumn(*ast.ColumnName) (*expression.Column, int, error)
 }
 
 type columnProp struct {
@@ -129,6 +81,77 @@ type columnProp struct {
 
 func (c *columnProp) equal(nc *columnProp, ctx context.Context) bool {
 	return c.col.Equal(nc.col, ctx) && c.desc == nc.desc
+}
+
+// taskType is the type of execution task.
+type taskType int
+
+const (
+	rootTaskType          taskType = iota
+	copSingleReadTaskType          // TableScan and IndexScan
+	copDoubleReadTaskType          // IndexLookUp
+)
+
+// String implements fmt.Stringer interface.
+func (t taskType) String() string {
+	switch t {
+	case rootTaskType:
+		return "rootTask"
+	case copSingleReadTaskType:
+		return "copSingleReadTask"
+	case copDoubleReadTaskType:
+		return "copDoubleReadTask"
+	}
+	return "UnknownTaskType"
+}
+
+// requriedProp stands for the required physical property by parents.
+// It contains the orders, if the order is desc and the task types.
+type requiredProp struct {
+	cols []*expression.Column
+	desc bool
+	// taskTp means the type of task that an operator requires.
+	// It needs to be specified because two different tasks can't be compared with cost directly.
+	// e.g. If a copTask takes less cost than a rootTask, we can't sure that we must choose the former one. Because the copTask
+	// must be finished and increase its cost in sometime, but we can't make sure the finishing time. So the best way
+	// to let the comparison fair is to add taskType to required property.
+	taskTp taskType
+}
+
+func (p *requiredProp) equal(prop *requiredProp) bool {
+	if len(p.cols) != len(prop.cols) || p.desc != prop.desc {
+		return false
+	}
+	if p.taskTp != prop.taskTp {
+		return false
+	}
+	for i := range p.cols {
+		if !p.cols[i].Equal(prop.cols[i], nil) {
+			return false
+		}
+	}
+	return true
+}
+
+func (p *requiredProp) isEmpty() bool {
+	return len(p.cols) == 0
+}
+
+// getHashKey encodes prop to a unique key. The key will be stored in the memory table.
+func (p *requiredProp) getHashKey() ([]byte, error) {
+	datums := make([]types.Datum, 0, len(p.cols)*2+2)
+	datums = append(datums, types.NewDatum(p.desc))
+	for _, c := range p.cols {
+		datums = append(datums, types.NewDatum(c.FromID), types.NewDatum(c.Position))
+	}
+	datums = append(datums, types.NewDatum(int(p.taskTp)))
+	bytes, err := codec.EncodeValue(nil, datums...)
+	return bytes, errors.Trace(err)
+}
+
+// String implements fmt.Stringer interface. Just for test.
+func (p *requiredProp) String() string {
+	return fmt.Sprintf("Prop{cols: %s, desc: %v, taskTp: %s}", p.cols, p.desc, p.taskTp)
 }
 
 type requiredProperty struct {
@@ -164,7 +187,11 @@ func (p *requiredProperty) String() string {
 type physicalPlanInfo struct {
 	p     PhysicalPlan
 	cost  float64
-	count uint64
+	count float64
+
+	// If the count is calculated by pseudo table, it's not reliable. Otherwise it's reliable.
+	// But if we has limit or maxOneRow, the count is reliable.
+	reliable bool
 }
 
 // LogicalPlan is a tree of logical operators.
@@ -180,17 +207,30 @@ type LogicalPlan interface {
 	// PruneColumns prunes the unused columns.
 	PruneColumns([]*expression.Column)
 
-	// ResolveIndicesAndCorCols resolves the index for columns and initializes the correlated columns.
-	ResolveIndicesAndCorCols()
-
 	// convert2PhysicalPlan converts the logical plan to the physical plan.
 	// It is called recursively from the parent to the children to create the result physical plan.
 	// Some logical plans will convert the children to the physical plans in different ways, and return the one
 	// with the lowest cost.
 	convert2PhysicalPlan(prop *requiredProperty) (*physicalPlanInfo, error)
 
+	// convert2NewPhysicalPlan converts the logical plan to the physical plan. It's a new interface.
+	// It is called recursively from the parent to the children to create the result physical plan.
+	// Some logical plans will convert the children to the physical plans in different ways, and return the one
+	// with the lowest cost.
+	convert2NewPhysicalPlan(prop *requiredProp) (task, error)
+
 	// buildKeyInfo will collect the information of unique keys into schema.
 	buildKeyInfo()
+
+	// pushDownTopN will push down the topN or limit operator during logical optimization.
+	pushDownTopN(topN *TopN) LogicalPlan
+
+	// statsProfile will return the stats for this plan.
+	statsProfile() *statsProfile
+
+	// preparePossibleProperties is only used for join and aggregation. Like group by a,b,c, all permutation of (a,b,c) is
+	// valid, but the ordered indices in leaf plan is limited. So we can get all possible order properties by a pre-walking.
+	preparePossibleProperties() [][]*expression.Column
 }
 
 // PhysicalPlan is a tree of the physical operators.
@@ -211,12 +251,32 @@ type PhysicalPlan interface {
 
 	// Copy copies the current plan.
 	Copy() PhysicalPlan
+
+	// attach2Task makes the current physical plan as the father of task's physicalPlan and updates the cost of
+	// current task. If the child's task is cop task, some operator may close this task and return a new rootTask.
+	attach2Task(...task) task
+
+	// ToPB converts physical plan to tipb executor.
+	ToPB(ctx context.Context) (*tipb.Executor, error)
 }
 
 type baseLogicalPlan struct {
-	basePlan
-	planMap map[string]*physicalPlanInfo
-	self    LogicalPlan
+	basePlan *basePlan
+	planMap  map[string]*physicalPlanInfo
+	taskMap  map[string]task
+	profile  *statsProfile
+}
+
+type basePhysicalPlan struct {
+	basePlan *basePlan
+}
+
+func (p *baseLogicalPlan) getTask(prop *requiredProp) (task, error) {
+	key, err := prop.getHashKey()
+	if err != nil {
+		return nil, errors.Trace(err)
+	}
+	return p.taskMap[string(key)], nil
 }
 
 func (p *baseLogicalPlan) getPlanInfo(prop *requiredProperty) (*physicalPlanInfo, error) {
@@ -235,16 +295,25 @@ func (p *baseLogicalPlan) convert2PhysicalPlan(prop *requiredProperty) (*physica
 	if info != nil {
 		return info, nil
 	}
-	if len(p.children) == 0 {
-		return &physicalPlanInfo{p: p.self.(PhysicalPlan)}, nil
+	if len(p.basePlan.children) == 0 {
+		return &physicalPlanInfo{p: p.basePlan.self.(PhysicalPlan)}, nil
 	}
-	child := p.children[0].(LogicalPlan)
+	child := p.basePlan.children[0].(LogicalPlan)
 	info, err = child.convert2PhysicalPlan(prop)
 	if err != nil {
 		return nil, errors.Trace(err)
 	}
-	info = addPlanToResponse(p.self.(PhysicalPlan), info)
+	info = addPlanToResponse(p.basePlan.self.(PhysicalPlan), info)
 	return info, p.storePlanInfo(prop, info)
+}
+
+func (p *baseLogicalPlan) storeTask(prop *requiredProp, task task) error {
+	key, err := prop.getHashKey()
+	if err != nil {
+		return errors.Trace(err)
+	}
+	p.taskMap[string(key)] = task
+	return nil
 }
 
 func (p *baseLogicalPlan) storePlanInfo(prop *requiredProperty, info *physicalPlanInfo) error {
@@ -258,50 +327,68 @@ func (p *baseLogicalPlan) storePlanInfo(prop *requiredProperty, info *physicalPl
 }
 
 func (p *baseLogicalPlan) buildKeyInfo() {
-	for _, child := range p.Children() {
+	for _, child := range p.basePlan.children {
 		child.(LogicalPlan).buildKeyInfo()
 	}
-	if len(p.children) == 1 {
-		switch p.self.(type) {
-		case *Exists, *Aggregation, *Projection:
-			p.schema.Keys = nil
+	if len(p.basePlan.children) == 1 {
+		switch p.basePlan.self.(type) {
+		case *Exists, *LogicalAggregation, *Projection:
+			p.basePlan.schema.Keys = nil
 		case *SelectLock:
-			p.schema.Keys = p.children[0].Schema().Keys
+			p.basePlan.schema.Keys = p.basePlan.children[0].Schema().Keys
 		default:
-			p.schema.Keys = p.children[0].Schema().Clone().Keys
+			p.basePlan.schema.Keys = p.basePlan.children[0].Schema().Clone().Keys
 		}
 	} else {
-		p.schema.Keys = nil
+		p.basePlan.schema.Keys = nil
 	}
 }
 
-func newBaseLogicalPlan(tp string, a *idAllocator) baseLogicalPlan {
-	return baseLogicalPlan{
-		planMap: make(map[string]*physicalPlanInfo),
-		basePlan: basePlan{
-			tp:        tp,
-			allocator: a,
-		},
+func newBasePlan(tp string, allocator *idAllocator, ctx context.Context, p Plan) *basePlan {
+	return &basePlan{
+		tp:        tp,
+		allocator: allocator,
+		id:        tp + allocator.allocID(),
+		ctx:       ctx,
+		self:      p,
 	}
+}
+
+func newBaseLogicalPlan(basePlan *basePlan) baseLogicalPlan {
+	return baseLogicalPlan{
+		planMap:  make(map[string]*physicalPlanInfo),
+		taskMap:  make(map[string]task),
+		basePlan: basePlan,
+	}
+}
+
+func newBasePhysicalPlan(basePlan *basePlan) basePhysicalPlan {
+	return basePhysicalPlan{
+		basePlan: basePlan,
+	}
+}
+
+func (p *basePhysicalPlan) matchProperty(prop *requiredProperty, childPlanInfo ...*physicalPlanInfo) *physicalPlanInfo {
+	panic("You can't call this function!")
 }
 
 // PredicatePushDown implements LogicalPlan interface.
 func (p *baseLogicalPlan) PredicatePushDown(predicates []expression.Expression) ([]expression.Expression, LogicalPlan, error) {
-	if len(p.Children()) == 0 {
-		return predicates, p.self, nil
+	if len(p.basePlan.children) == 0 {
+		return predicates, p.basePlan.self.(LogicalPlan), nil
 	}
-	child := p.children[0].(LogicalPlan)
+	child := p.basePlan.children[0].(LogicalPlan)
 	rest, _, err := child.PredicatePushDown(predicates)
 	if err != nil {
 		return nil, nil, errors.Trace(err)
 	}
 	if len(rest) > 0 {
-		err = addSelection(p, child, rest, p.allocator)
+		err = addSelection(p.basePlan.self, child, rest, p.basePlan.allocator)
 		if err != nil {
 			return nil, nil, errors.Trace(err)
 		}
 	}
-	return nil, p.self, nil
+	return nil, p.basePlan.self.(LogicalPlan), nil
 }
 
 func (p *basePlan) extractCorrelatedCols() []*expression.CorrelatedColumn {
@@ -316,26 +403,14 @@ func (p *basePlan) Allocator() *idAllocator {
 	return p.allocator
 }
 
-// ResolveIndicesAndCorCols implements LogicalPlan interface.
-func (p *baseLogicalPlan) ResolveIndicesAndCorCols() {
-	for _, child := range p.children {
-		child.(LogicalPlan).ResolveIndicesAndCorCols()
-	}
-}
-
 // PruneColumns implements LogicalPlan interface.
 func (p *baseLogicalPlan) PruneColumns(parentUsedCols []*expression.Column) {
-	if len(p.children) == 0 {
+	if len(p.basePlan.children) == 0 {
 		return
 	}
-	child := p.children[0].(LogicalPlan)
+	child := p.basePlan.children[0].(LogicalPlan)
 	child.PruneColumns(parentUsedCols)
-	p.SetSchema(child.Schema())
-}
-
-func (p *basePlan) initIDAndContext(ctx context.Context) {
-	p.id = p.tp + p.allocator.allocID()
-	p.ctx = ctx
+	p.basePlan.SetSchema(child.Schema())
 }
 
 // basePlan implements base Plan interface.
@@ -349,6 +424,12 @@ type basePlan struct {
 	id        string
 	allocator *idAllocator
 	ctx       context.Context
+	self      Plan
+}
+
+func (p *basePlan) copy() *basePlan {
+	np := *p
+	return &np
 }
 
 // MarshalJSON implements json.Marshaler interface.
@@ -424,16 +505,24 @@ func (p *basePlan) Children() []Plan {
 	return p.children
 }
 
-// RemoveAllParents implements Plan RemoveAllParents interface.
+// SetParents implements Plan SetParents interface.
 func (p *basePlan) SetParents(pars ...Plan) {
 	p.parents = pars
 }
 
-// RemoveAllParents implements Plan RemoveAllParents interface.
+// SetChildren implements Plan SetChildren interface.
 func (p *basePlan) SetChildren(children ...Plan) {
 	p.children = children
 }
 
 func (p *basePlan) context() context.Context {
 	return p.ctx
+}
+
+func (p *basePlan) findColumn(column *ast.ColumnName) (*expression.Column, int, error) {
+	col, idx, err := p.Schema().FindColumnAndIndex(column)
+	if err == nil && col == nil {
+		err = errors.Errorf("column %s not found", column.Name.O)
+	}
+	return col, idx, errors.Trace(err)
 }

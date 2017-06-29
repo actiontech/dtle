@@ -15,11 +15,6 @@ import (
 	"github.com/hashicorp/go-msgpack/codec"
 )
 
-// As a regression we left this test very low-level and network-ey, even after
-// we abstracted the transport. We added some basic network-free transport tests
-// in transport_test.go to prove that we didn't hard code some network stuff
-// outside of NetTransport.
-
 func TestHandleCompoundPing(t *testing.T) {
 	m := GetMemberlist(t)
 	m.config.EnableCompression = false
@@ -295,7 +290,7 @@ func TestTCPPing(t *testing.T) {
 		}
 		defer conn.Close()
 
-		msgType, _, dec, err := m.readStream(conn)
+		msgType, _, dec, err := m.readTCP(conn)
 		if err != nil {
 			t.Fatalf("failed to read ping: %s", err)
 		}
@@ -323,13 +318,13 @@ func TestTCPPing(t *testing.T) {
 			t.Fatalf("failed to encode ack: %s", err)
 		}
 
-		err = m.rawSendMsgStream(conn, out.Bytes())
+		err = m.rawSendMsgTCP(conn, out.Bytes())
 		if err != nil {
 			t.Fatalf("failed to send ack: %s", err)
 		}
 	}()
 	deadline := time.Now().Add(pingTimeout)
-	didContact, err := m.sendPingAndWaitForAck(tcpAddr.String(), pingOut, deadline)
+	didContact, err := m.sendPingAndWaitForAck(tcpAddr, pingOut, deadline)
 	if err != nil {
 		t.Fatalf("error trying to ping: %s", err)
 	}
@@ -346,7 +341,7 @@ func TestTCPPing(t *testing.T) {
 		}
 		defer conn.Close()
 
-		_, _, dec, err := m.readStream(conn)
+		_, _, dec, err := m.readTCP(conn)
 		if err != nil {
 			t.Fatalf("failed to read ping: %s", err)
 		}
@@ -362,13 +357,13 @@ func TestTCPPing(t *testing.T) {
 			t.Fatalf("failed to encode ack: %s", err)
 		}
 
-		err = m.rawSendMsgStream(conn, out.Bytes())
+		err = m.rawSendMsgTCP(conn, out.Bytes())
 		if err != nil {
 			t.Fatalf("failed to send ack: %s", err)
 		}
 	}()
 	deadline = time.Now().Add(pingTimeout)
-	didContact, err = m.sendPingAndWaitForAck(tcpAddr.String(), pingOut, deadline)
+	didContact, err = m.sendPingAndWaitForAck(tcpAddr, pingOut, deadline)
 	if err == nil || !strings.Contains(err.Error(), "Sequence number") {
 		t.Fatalf("expected an error from mis-matched sequence number")
 	}
@@ -385,7 +380,7 @@ func TestTCPPing(t *testing.T) {
 		}
 		defer conn.Close()
 
-		_, _, _, err = m.readStream(conn)
+		_, _, _, err = m.readTCP(conn)
 		if err != nil {
 			t.Fatalf("failed to read ping: %s", err)
 		}
@@ -396,13 +391,13 @@ func TestTCPPing(t *testing.T) {
 			t.Fatalf("failed to encode bogus msg: %s", err)
 		}
 
-		err = m.rawSendMsgStream(conn, out.Bytes())
+		err = m.rawSendMsgTCP(conn, out.Bytes())
 		if err != nil {
 			t.Fatalf("failed to send bogus msg: %s", err)
 		}
 	}()
 	deadline = time.Now().Add(pingTimeout)
-	didContact, err = m.sendPingAndWaitForAck(tcpAddr.String(), pingOut, deadline)
+	didContact, err = m.sendPingAndWaitForAck(tcpAddr, pingOut, deadline)
 	if err == nil || !strings.Contains(err.Error(), "Unexpected msgType") {
 		t.Fatalf("expected an error from bogus message")
 	}
@@ -415,7 +410,7 @@ func TestTCPPing(t *testing.T) {
 	tcp.Close()
 	deadline = time.Now().Add(pingTimeout)
 	startPing := time.Now()
-	didContact, err = m.sendPingAndWaitForAck(tcpAddr.String(), pingOut, deadline)
+	didContact, err = m.sendPingAndWaitForAck(tcpAddr, pingOut, deadline)
 	pingTime := time.Now().Sub(startPing)
 	if err != nil {
 		t.Fatalf("expected no error during ping on closed socket, got: %s", err)
@@ -694,7 +689,7 @@ func TestRawSendUdp_CRC(t *testing.T) {
 
 	// Pass a nil node with no nodes registered, should result in no checksum
 	payload := []byte{3, 3, 3, 3}
-	m.rawSendMsgPacket(udp.LocalAddr().String(), nil, payload)
+	m.rawSendMsgUDP(udp.LocalAddr(), nil, payload)
 
 	in := make([]byte, 1500)
 	n, _, err := udp.ReadFrom(in)
@@ -708,7 +703,7 @@ func TestRawSendUdp_CRC(t *testing.T) {
 	}
 
 	// Pass a non-nil node with PMax >= 5, should result in a checksum
-	m.rawSendMsgPacket(udp.LocalAddr().String(), &Node{PMax: 5}, payload)
+	m.rawSendMsgUDP(udp.LocalAddr(), &Node{PMax: 5}, payload)
 
 	in = make([]byte, 1500)
 	n, _, err = udp.ReadFrom(in)
@@ -725,7 +720,7 @@ func TestRawSendUdp_CRC(t *testing.T) {
 	m.nodeMap["127.0.0.1"] = &nodeState{
 		Node: Node{PMax: 5},
 	}
-	m.rawSendMsgPacket(udp.LocalAddr().String(), nil, payload)
+	m.rawSendMsgUDP(udp.LocalAddr(), nil, payload)
 
 	in = make([]byte, 1500)
 	n, _, err = udp.ReadFrom(in)
@@ -760,7 +755,7 @@ func TestIngestPacket_CRC(t *testing.T) {
 
 	// Get a message with a checksum
 	payload := []byte{3, 3, 3, 3}
-	m.rawSendMsgPacket(udp.LocalAddr().String(), &Node{PMax: 5}, payload)
+	m.rawSendMsgUDP(udp.LocalAddr(), &Node{PMax: 5}, payload)
 
 	in := make([]byte, 1500)
 	n, _, err := udp.ReadFrom(in)

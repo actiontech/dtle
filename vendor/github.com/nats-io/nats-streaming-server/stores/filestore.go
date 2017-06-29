@@ -94,6 +94,9 @@ const (
 
 	// defaultFileFlags are the default file flags used when opening a file
 	defaultFileFlags = os.O_RDWR | os.O_CREATE | os.O_APPEND
+
+	// Lock file name
+	lockFileName = ".rootdir.lck"
 )
 
 // FileStoreOption is a function on the options for a File Store
@@ -145,13 +148,16 @@ type FileStoreOptions struct {
 	// slice (and the corresponding index file) is going to be removed.
 	// The script will be invoked with the channel name and names of data and
 	// index files (which both have been previously renamed with a '.bak'
-	// extension). It is the responsability of the script to move/remove
+	// extension). It is the responsibility of the script to move/remove
 	// those files.
 	SliceArchiveScript string
 
 	// FileDescriptorsLimit is a soft limit hinting at FileStore to try to
 	// limit the number of concurrent opened files to that limit.
 	FileDescriptorsLimit int64
+
+	// Number of channels recovered in parallel (default is 1).
+	ParallelRecovery int
 }
 
 // DefaultFileStoreOptions defines the default options for a File Store.
@@ -165,12 +171,16 @@ var DefaultFileStoreOptions = FileStoreOptions{
 	CRCPolynomial:        int64(crc32.IEEE),
 	DoSync:               true,
 	SliceMaxBytes:        64 * 1024 * 1024, // 64MB
+	ParallelRecovery:     1,
 }
 
 // BufferSize is a FileStore option that sets the size of the buffer used
 // during store writes. This can help improve write performance.
 func BufferSize(size int) FileStoreOption {
 	return func(o *FileStoreOptions) error {
+		if size < 0 {
+			return fmt.Errorf("buffer size value must be a positive number")
+		}
 		o.BufferSize = size
 		return nil
 	}
@@ -190,6 +200,9 @@ func CompactEnabled(enabled bool) FileStoreOption {
 // prevents compaction to happen too often.
 func CompactInterval(seconds int) FileStoreOption {
 	return func(o *FileStoreOptions) error {
+		if seconds <= 0 {
+			return fmt.Errorf("compact interval value must at least be 1 seconds")
+		}
 		o.CompactInterval = seconds
 		return nil
 	}
@@ -201,15 +214,21 @@ func CompactInterval(seconds int) FileStoreOption {
 // after 50% of the file has data that is no longer valid.
 func CompactFragmentation(fragmentation int) FileStoreOption {
 	return func(o *FileStoreOptions) error {
+		if fragmentation <= 0 {
+			return fmt.Errorf("compact fragmentation value must at least be 1")
+		}
 		o.CompactFragmentation = fragmentation
 		return nil
 	}
 }
 
 // CompactMinFileSize is a FileStore option that defines the minimum file size below
-// which compaction would not occur. Specify `-1` if you don't want any minimum.
+// which compaction would not occur. Specify `0` if you don't want any minimum.
 func CompactMinFileSize(fileSize int64) FileStoreOption {
 	return func(o *FileStoreOptions) error {
+		if fileSize < 0 {
+			return fmt.Errorf("compact minimum file size value must be a positive number")
+		}
 		o.CompactMinFileSize = fileSize
 		return nil
 	}
@@ -229,6 +248,9 @@ func DoCRC(enableCRC bool) FileStoreOption {
 // See https://golang.org/pkg/hash/crc32/#MakeTable
 func CRCPolynomial(polynomial int64) FileStoreOption {
 	return func(o *FileStoreOptions) error {
+		if polynomial <= 0 || polynomial > int64(0xFFFFFFFF) {
+			return fmt.Errorf("crc polynomial should be between 1 and %v", int64(0xFFFFFFFF))
+		}
 		o.CRCPolynomial = polynomial
 		return nil
 	}
@@ -247,6 +269,9 @@ func DoSync(enableFileSync bool) FileStoreOption {
 // file slice limits and optional archive script file name.
 func SliceConfig(maxMsgs int, maxBytes int64, maxAge time.Duration, script string) FileStoreOption {
 	return func(o *FileStoreOptions) error {
+		if maxMsgs < 0 || maxBytes < 0 || maxAge < 0 {
+			return fmt.Errorf("slice max values must be positive numbers")
+		}
 		o.SliceMaxMsgs = maxMsgs
 		o.SliceMaxBytes = maxBytes
 		o.SliceMaxAge = maxAge
@@ -259,7 +284,24 @@ func SliceConfig(maxMsgs int, maxBytes int64, maxAge time.Duration, script strin
 // limit the number of concurrent opened files to that limit.
 func FileDescriptorsLimit(limit int64) FileStoreOption {
 	return func(o *FileStoreOptions) error {
+		if limit < 0 {
+			return fmt.Errorf("file descriptor limit must be a positive number")
+		}
 		o.FileDescriptorsLimit = limit
+		return nil
+	}
+}
+
+// ParallelRecovery is a FileStore option that allows the parallel
+// recovery of channels. When running with SSDs, try to use a higher
+// value than the default number of 1. When running with HDDs,
+// performance may be better if it stays at 1.
+func ParallelRecovery(count int) FileStoreOption {
+	return func(o *FileStoreOptions) error {
+		if count <= 0 {
+			return fmt.Errorf("parallel recovery value must be at least 1")
+		}
+		o.ParallelRecovery = count
 		return nil
 	}
 }
@@ -268,8 +310,33 @@ func FileDescriptorsLimit(limit int64) FileStoreOption {
 // structure to the constructor.
 func AllOptions(opts *FileStoreOptions) FileStoreOption {
 	return func(o *FileStoreOptions) error {
-		// Make a copy
-		*o = *opts
+		if err := BufferSize(opts.BufferSize)(o); err != nil {
+			return err
+		}
+		if err := CompactInterval(opts.CompactInterval)(o); err != nil {
+			return err
+		}
+		if err := CompactFragmentation(opts.CompactFragmentation)(o); err != nil {
+			return err
+		}
+		if err := CompactMinFileSize(opts.CompactMinFileSize)(o); err != nil {
+			return err
+		}
+		if err := CRCPolynomial(opts.CRCPolynomial)(o); err != nil {
+			return err
+		}
+		if err := SliceConfig(opts.SliceMaxMsgs, opts.SliceMaxBytes, opts.SliceMaxAge, opts.SliceArchiveScript)(o); err != nil {
+			return err
+		}
+		if err := FileDescriptorsLimit(opts.FileDescriptorsLimit)(o); err != nil {
+			return err
+		}
+		if err := ParallelRecovery(opts.ParallelRecovery)(o); err != nil {
+			return err
+		}
+		o.CompactEnabled = opts.CompactEnabled
+		o.DoCRC = opts.DoCRC
+		o.DoSync = opts.DoSync
 		return nil
 	}
 }
@@ -356,6 +423,7 @@ type FileStore struct {
 	cliDeleteRecs int // Number of deleted client records
 	cliCompactTS  time.Time
 	crcTable      *crc32.Table
+	lockFile      util.LockFile
 }
 
 type subscription struct {
@@ -794,13 +862,14 @@ func (fm *filesManager) openFile(file *file) error {
 		fm.Unlock()
 		return fmt.Errorf("unable to open file %q, store is being closed", file.name)
 	}
-	if _, exists := fm.files[file.id]; !exists {
+	curState := atomic.LoadInt32(&file.state)
+	if curState == fileRemoved {
 		fm.Unlock()
 		return fmt.Errorf("unable to open file %q, it has been removed", file.name)
 	}
-	if curState := atomic.LoadInt32(&file.state); curState != fileClosed || file.handle != nil {
+	if curState != fileClosed || file.handle != nil {
 		fm.Unlock()
-		panic(fmt.Errorf("request to open file %q but invalid store: handle=%v - store=%v", file.name, file.handle, file.state))
+		panic(fmt.Errorf("request to open file %q but invalid state: handle=%v - state=%v", file.name, file.handle, file.state))
 	}
 	var err error
 	if fm.limit > 0 && fm.openedFDs >= fm.limit {
@@ -899,7 +968,7 @@ func (fm *filesManager) lockFileIfOpened(file *file) bool {
 // unlockFile unlocks the file if currently locked, otherwise panic.
 func (fm *filesManager) unlockFile(file *file) {
 	if !atomic.CompareAndSwapInt32(&file.state, fileInUse, fileOpened) {
-		panic(fmt.Errorf("failed to switch store from fileInUse to fileOpened for file %q, store=%v",
+		panic(fmt.Errorf("failed to switch state from fileInUse to fileOpened for file %q, state=%v",
 			file.name, file.state))
 	}
 }
@@ -938,11 +1007,12 @@ func (fm *filesManager) trySwitchState(file *file, newState int32) (bool, error)
 // for its state). So it is still possible for caller to read/write (if handle is
 // valid) or close this file.
 func (fm *filesManager) remove(file *file) bool {
+	fm.Lock()
 	wasOpened, err := fm.trySwitchState(file, fileRemoved)
 	if err != nil {
+		fm.Unlock()
 		return false
 	}
-	fm.Lock()
 	// With code above, we can't be removing a file twice, so no need to check if
 	// file is present in map.
 	delete(fm.files, file.id)
@@ -1003,17 +1073,22 @@ func (fm *filesManager) close() error {
 // FileStore methods
 ////////////////////////////////////////////////////////////////////////////
 
-// NewFileStore returns a factory for stores backed by files, and recovers
-// any state present.
+// NewFileStore returns a factory for stores backed by files.
 // If not limits are provided, the store will be created with
 // DefaultStoreLimits.
-func NewFileStore(rootDir string, limits *StoreLimits, options ...FileStoreOption) (*FileStore, *RecoveredState, error) {
+func NewFileStore(rootDir string, limits *StoreLimits, options ...FileStoreOption) (*FileStore, error) {
+	if rootDir == "" {
+		return nil, fmt.Errorf("for %v stores, root directory must be specified", TypeFile)
+	}
+
 	fs := &FileStore{opts: DefaultFileStoreOptions}
-	fs.init(TypeFile, limits)
+	if err := fs.init(TypeFile, limits); err != nil {
+		return nil, err
+	}
 
 	for _, opt := range options {
 		if err := opt(&fs.opts); err != nil {
-			return nil, nil, err
+			return nil, err
 		}
 	}
 	// Create filesManager based on options' FD limit
@@ -1028,17 +1103,34 @@ func NewFileStore(rootDir string, limits *StoreLimits, options ...FileStoreOptio
 	}
 
 	if err := os.MkdirAll(rootDir, os.ModeDir+os.ModePerm); err != nil && !os.IsExist(err) {
-		return nil, nil, fmt.Errorf("unable to create the root directory [%s]: %v", rootDir, err)
+		return nil, fmt.Errorf("unable to create the root directory [%s]: %v", rootDir, err)
 	}
+	return fs, nil
+}
 
-	var err error
-	var recoveredState *RecoveredState
-	var serverInfo *spb.ServerInfo
-	var recoveredClients []*Client
-	var recoveredSubs = make(RecoveredSubscriptions)
-	var channels []os.FileInfo
-	var msgStore *FileMsgStore
-	var subStore *FileSubStore
+type recoveredChannelInfo struct {
+	name string
+	subs []*RecoveredSubState
+	cs   *ChannelStore
+}
+
+type channelRecoveryCtx struct {
+	wg        *sync.WaitGroup
+	poolCh    chan struct{}
+	errCh     chan error
+	recoverCh chan *recoveredChannelInfo
+}
+
+// Recover implements the Store interface
+func (fs *FileStore) Recover() (*RecoveredState, error) {
+	var (
+		err              error
+		recoveredState   *RecoveredState
+		serverInfo       *spb.ServerInfo
+		recoveredClients []*Client
+		recoveredSubs    = make(RecoveredSubscriptions)
+		channels         []os.FileInfo
+	)
 
 	// Ensure store is closed in case of return with error
 	defer func() {
@@ -1057,94 +1149,79 @@ func NewFileStore(rootDir string, limits *StoreLimits, options ...FileStoreOptio
 	// in APPEND mode to allow truncate to work).
 	fs.serverFile, err = fs.fm.createFile(serverFileName, os.O_RDWR|os.O_CREATE, nil)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
 	// Open/Create the client file.
 	fs.clientsFile, err = fs.fm.createFile(clientsFileName, defaultFileFlags, nil)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
 	// Recover the server file.
 	serverInfo, err = fs.recoverServerInfo(fs.serverFile.handle)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	// If the server file is empty, then we are done
 	if serverInfo == nil {
 		// We return the file store instance, but no recovered state.
-		return fs, nil, nil
+		return nil, nil
 	}
 
 	// Recover the clients file
 	recoveredClients, err = fs.recoverClients(fs.clientsFile.handle)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
 	// Get the channels (there are subdirectories of rootDir)
-	channels, err = ioutil.ReadDir(rootDir)
+	channels, err = ioutil.ReadDir(fs.fm.rootDir)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
-	// Go through the list
-	for _, c := range channels {
-		// Channels are directories. Ignore simple files
-		if !c.IsDir() {
-			continue
-		}
-
-		channel := c.Name()
-		channelDirName := filepath.Join(rootDir, channel)
-
-		// Recover messages for this channel
-		msgStore, err = fs.newFileMsgStore(channelDirName, channel, true)
-		if err != nil {
-			break
-		}
-		subStore, err = fs.newFileSubStore(channel, true)
-		if err != nil {
-			msgStore.Close()
-			break
-		}
-
-		// For this channel, construct an array of RecoveredSubState
-		rssArray := make([]*RecoveredSubState, 0, len(subStore.subs))
-
-		// Fill that array with what we got from newFileSubStore.
-		for _, sub := range subStore.subs {
-			// The server is making a copy of rss.Sub, still it is not
-			// a good idea to return a pointer to an object that belong
-			// to the store. So make a copy and return the pointer to
-			// that copy.
-			csub := *sub.sub
-			rss := &RecoveredSubState{
-				Sub:     &csub,
-				Pending: make(PendingAcks),
+	if len(channels) > 0 {
+		Noticef("Recovering the state...")
+		wg, poolCh, errCh, recoverCh := initParalleRecovery(fs.opts.ParallelRecovery, len(channels))
+		ctx := &channelRecoveryCtx{wg: wg, poolCh: poolCh, errCh: errCh, recoverCh: recoverCh}
+		for _, c := range channels {
+			// Channels are directories. Ignore simple files
+			if !c.IsDir() {
+				continue
 			}
-			// If we recovered any seqno...
-			if len(sub.seqnos) > 0 {
-				// Lookup messages, and if we find those, update the
-				// Pending map.
-				for seq := range sub.seqnos {
-					rss.Pending[seq] = struct{}{}
-				}
+			channel := c.Name()
+			channelDirName := filepath.Join(fs.fm.rootDir, channel)
+			limits := fs.genericStore.getChannelLimits(channel)
+			// This will block if the max number of go-routines is reached.
+			// When one of the go-routine finishes, it will add back to the
+			// pool and we will be able to start the recovery of another
+			// channel.
+			<-poolCh
+			wg.Add(1)
+			go fs.recoverOneChannel(channelDirName, channel, limits, ctx)
+			// Fail as soon as we detect that a go routine has encountered
+			// an error
+			if len(errCh) > 0 {
+				break
 			}
-			// Add to the array of recovered subscriptions
-			rssArray = append(rssArray, rss)
 		}
-
-		// This is the recovered subscription state for this channel
-		recoveredSubs[channel] = rssArray
-
-		fs.channels[channel] = &ChannelStore{
-			Subs: subStore,
-			Msgs: msgStore,
+		// We need to wait for all current go routines to exit
+		wg.Wait()
+		select {
+		case err = <-errCh:
+			return nil, err
+		default:
 		}
-	}
-	if err != nil {
-		return nil, nil, err
+		done := false
+		for !done {
+			select {
+			case rc := <-recoverCh:
+				recoveredSubs[rc.name] = rc.subs
+				fs.channels[rc.name] = rc.cs
+			default:
+				done = true
+			}
+		}
 	}
 	// Create the recovered state to return
 	recoveredState = &RecoveredState{
@@ -1152,7 +1229,104 @@ func NewFileStore(rootDir string, limits *StoreLimits, options ...FileStoreOptio
 		Clients: recoveredClients,
 		Subs:    recoveredSubs,
 	}
-	return fs, recoveredState, nil
+	Noticef("Recovered %v channels", len(fs.channels))
+	return recoveredState, nil
+}
+
+func initParalleRecovery(maxGoRoutines, foundChannels int) (*sync.WaitGroup, chan struct{}, chan error, chan *recoveredChannelInfo) {
+	wg := sync.WaitGroup{}
+	poolCh := make(chan struct{}, maxGoRoutines)
+	for i := 0; i < maxGoRoutines; i++ {
+		poolCh <- struct{}{}
+	}
+	errCh := make(chan error, 1)
+	// foundChannels is the number of directories (channels) found
+	// in the root directory. It is the max number of elements we will
+	// put in this channel during the recovery process.
+	recoverCh := make(chan *recoveredChannelInfo, foundChannels)
+	return &wg, poolCh, errCh, recoverCh
+}
+
+func (fs *FileStore) recoverOneChannel(dir, name string, limits *ChannelLimits, ctx *channelRecoveryCtx) {
+	var (
+		msgStore *FileMsgStore
+		subStore *FileSubStore
+		err      error
+	)
+	defer func() {
+		if err != nil {
+			select {
+			case ctx.errCh <- err:
+			default:
+			}
+		}
+		ctx.poolCh <- struct{}{}
+		ctx.wg.Done()
+	}()
+	msgStore, err = fs.newFileMsgStore(dir, name, &limits.MsgStoreLimits, true)
+	if err != nil {
+		return
+	}
+	subStore, err = fs.newFileSubStore(name, &limits.SubStoreLimits, true)
+	if err != nil {
+		msgStore.Close()
+		return
+	}
+
+	// For this channel, construct an array of RecoveredSubState
+	rssArray := make([]*RecoveredSubState, 0, len(subStore.subs))
+
+	// Fill that array with what we got from newFileSubStore.
+	for _, sub := range subStore.subs {
+		// The server is making a copy of rss.Sub, still it is not
+		// a good idea to return a pointer to an object that belong
+		// to the store. So make a copy and return the pointer to
+		// that copy.
+		csub := *sub.sub
+		rss := &RecoveredSubState{
+			Sub:     &csub,
+			Pending: make(PendingAcks),
+		}
+		// If we recovered any seqno...
+		if len(sub.seqnos) > 0 {
+			// Lookup messages, and if we find those, update the
+			// Pending map.
+			for seq := range sub.seqnos {
+				rss.Pending[seq] = struct{}{}
+			}
+		}
+		// Add to the array of recovered subscriptions
+		rssArray = append(rssArray, rss)
+	}
+	// Push our recovered info into the recovered channel.
+	ctx.recoverCh <- &recoveredChannelInfo{
+		name: name,
+		subs: rssArray,
+		cs: &ChannelStore{
+			Subs: subStore,
+			Msgs: msgStore,
+		},
+	}
+}
+
+// GetExclusiveLock implements the Store interface
+func (fs *FileStore) GetExclusiveLock() (bool, error) {
+	fs.Lock()
+	defer fs.Unlock()
+	if fs.lockFile != nil {
+		return true, nil
+	}
+	f, err := util.CreateLockFile(filepath.Join(fs.fm.rootDir, lockFileName))
+	if err != nil {
+		if err == util.ErrUnableToLockNow {
+			return false, nil
+		}
+		return false, err
+	}
+	// We must keep a reference to the file, otherwise, it `f` is GC'ed,
+	// its file descriptor is closed, which automatically releases the lock.
+	fs.lockFile = f
+	return true, nil
 }
 
 // Init is used to persist server's information after the first start
@@ -1291,11 +1465,13 @@ func (fs *FileStore) CreateChannel(channel string, userData interface{}) (*Chann
 	var msgStore MsgStore
 	var subStore SubStore
 
-	msgStore, err = fs.newFileMsgStore(channelDirName, channel, false)
+	channelLimits := fs.genericStore.getChannelLimits(channel)
+
+	msgStore, err = fs.newFileMsgStore(channelDirName, channel, &channelLimits.MsgStoreLimits, false)
 	if err != nil {
 		return nil, false, err
 	}
-	subStore, err = fs.newFileSubStore(channel, false)
+	subStore, err = fs.newFileSubStore(channel, &channelLimits.SubStoreLimits, false)
 	if err != nil {
 		msgStore.Close()
 		return nil, false, err
@@ -1432,7 +1608,7 @@ func (fs *FileStore) compactClientFile(orgFileName string) error {
 	if err := os.Rename(tmpFile.Name(), orgFileName); err != nil {
 		return err
 	}
-	// Avoid unnecesary attempt to cleanup
+	// Avoid unnecessary attempt to cleanup
 	tmpFile = nil
 
 	fs.cliDeleteRecs = 0
@@ -1465,12 +1641,16 @@ func (fs *FileStore) Close() error {
 	err := fs.genericStore.close()
 
 	fm := fs.fm
+	lockFile := fs.lockFile
 	fs.Unlock()
 
 	if fm != nil {
 		if fmerr := fm.close(); fmerr != nil && err == nil {
 			err = fmerr
 		}
+	}
+	if lockFile != nil {
+		err = util.CloseFile(err, lockFile)
 	}
 	return err
 }
@@ -1480,7 +1660,7 @@ func (fs *FileStore) Close() error {
 ////////////////////////////////////////////////////////////////////////////
 
 // newFileMsgStore returns a new instace of a file MsgStore.
-func (fs *FileStore) newFileMsgStore(channelDirName, channel string, doRecover bool) (*FileMsgStore, error) {
+func (fs *FileStore) newFileMsgStore(channelDirName, channel string, limits *MsgStoreLimits, doRecover bool) (*FileMsgStore, error) {
 	// Create an instance and initialize
 	ms := &FileMsgStore{
 		fm:           fs.fm,
@@ -1492,15 +1672,7 @@ func (fs *FileStore) newFileMsgStore(channelDirName, channel string, doRecover b
 		bkgTasksDone: make(chan bool, 1),
 		bkgTasksWake: make(chan bool, 1),
 	}
-	// Defaults to the global limits
-	msgStoreLimits := fs.limits.MsgStoreLimits
-	// See if there is an override
-	thisChannelLimits, exists := fs.limits.PerChannel[channel]
-	if exists {
-		// Use this channel specific limits
-		msgStoreLimits = thisChannelLimits.MsgStoreLimits
-	}
-	ms.init(channel, &msgStoreLimits)
+	ms.init(channel, limits)
 
 	ms.setSliceLimits()
 	ms.initCache()
@@ -2248,10 +2420,12 @@ func (ms *FileMsgStore) expireMsgs(now, maxAge int64) int64 {
 		elapsed := now - m.timestamp
 		if elapsed >= maxAge {
 			ms.removeFirstMsg(m, false)
-		} else if elapsed < 0 {
-			ms.expiration = m.timestamp + maxAge
 		} else {
-			ms.expiration = now + (maxAge - elapsed)
+			if elapsed < 0 {
+				ms.expiration = m.timestamp + maxAge
+			} else {
+				ms.expiration = now + (maxAge - elapsed)
+			}
 			break
 		}
 	}
@@ -2279,7 +2453,8 @@ func (ms *FileMsgStore) enforceLimits(reportHitLimit, lockFile bool) error {
 		ms.removeFirstMsg(nil, lockFile)
 		if reportHitLimit && !ms.hitLimit {
 			ms.hitLimit = true
-			Noticef(droppingMsgsFmt, ms.subject, ms.totalCount, ms.limits.MaxMsgs, ms.totalBytes, ms.limits.MaxBytes)
+			Noticef(droppingMsgsFmt, ms.subject, ms.totalCount, ms.limits.MaxMsgs,
+				util.FriendlyBytes(int64(ms.totalBytes)), util.FriendlyBytes(ms.limits.MaxBytes))
 		}
 	}
 	return nil
@@ -2397,9 +2572,9 @@ func (ms *FileMsgStore) removeFirstSlice() {
 				cmd := exec.Command(script, subj, dat, idx)
 				output, err := cmd.CombinedOutput()
 				if err != nil {
-					Noticef("STAN: Error invoking archive script %q: %v (output=%v)", script, err, string(output))
+					Noticef("Error invoking archive script %q: %v (output=%v)", script, err, string(output))
 				} else {
-					Noticef("STAN: Output of archive script for %s (%s and %s): %v", subj, dat, idx, string(output))
+					Noticef("Output of archive script for %s (%s and %s): %v", subj, dat, idx, string(output))
 				}
 			}(ms.subject, datBak, idxBak)
 		}
@@ -2847,22 +3022,14 @@ func (ms *FileMsgStore) Flush() error {
 ////////////////////////////////////////////////////////////////////////////
 
 // newFileSubStore returns a new instace of a file SubStore.
-func (fs *FileStore) newFileSubStore(channel string, doRecover bool) (*FileSubStore, error) {
+func (fs *FileStore) newFileSubStore(channel string, limits *SubStoreLimits, doRecover bool) (*FileSubStore, error) {
 	ss := &FileSubStore{
 		fm:       fs.fm,
 		subs:     make(map[uint64]*subscription),
 		opts:     &fs.opts,
 		crcTable: fs.crcTable,
 	}
-	// Defaults to the global limits
-	subStoreLimits := fs.limits.SubStoreLimits
-	// See if there is an override
-	thisChannelLimits, exists := fs.limits.PerChannel[channel]
-	if exists {
-		// Use this channel specific limits
-		subStoreLimits = thisChannelLimits.SubStoreLimits
-	}
-	ss.init(channel, &subStoreLimits)
+	ss.init(channel, limits)
 	// Convert the CompactInterval in time.Duration
 	ss.compactItvl = time.Duration(ss.opts.CompactInterval) * time.Second
 

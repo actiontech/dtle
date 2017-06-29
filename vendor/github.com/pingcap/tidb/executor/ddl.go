@@ -15,7 +15,6 @@ package executor
 
 import (
 	"strings"
-	"time"
 
 	"github.com/juju/errors"
 	"github.com/pingcap/tidb/ast"
@@ -24,7 +23,6 @@ import (
 	"github.com/pingcap/tidb/infoschema"
 	"github.com/pingcap/tidb/model"
 	"github.com/pingcap/tidb/mysql"
-	"github.com/pingcap/tidb/privilege"
 	"github.com/pingcap/tidb/sessionctx"
 	"github.com/pingcap/tidb/sessionctx/variable"
 	"github.com/pingcap/tidb/sessionctx/varsutil"
@@ -51,29 +49,20 @@ func (e *DDLExec) Next() (*Row, error) {
 	if e.done {
 		return nil, nil
 	}
-	// For create/drop database, create/drop/truncate table
-	// DDL worker do not wait 2 lease, so we need to wait in executor to make sure
-	// all TiDB server has updated the schema.
-	var needWait bool
 	var err error
 	switch x := e.Statement.(type) {
 	case *ast.TruncateTableStmt:
 		err = e.executeTruncateTable(x)
-		needWait = true
 	case *ast.CreateDatabaseStmt:
 		err = e.executeCreateDatabase(x)
-		needWait = true
 	case *ast.CreateTableStmt:
 		err = e.executeCreateTable(x)
-		needWait = true
 	case *ast.CreateIndexStmt:
 		err = e.executeCreateIndex(x)
 	case *ast.DropDatabaseStmt:
 		err = e.executeDropDatabase(x)
-		needWait = true
 	case *ast.DropTableStmt:
 		err = e.executeDropTable(x)
-		needWait = true
 	case *ast.DropIndexStmt:
 		err = e.executeDropIndex(x)
 	case *ast.AlterTableStmt:
@@ -84,15 +73,8 @@ func (e *DDLExec) Next() (*Row, error) {
 	if err != nil {
 		return nil, errors.Trace(err)
 	}
-	if e.ctx.GetSessionVars().SkipDDLWait {
-		needWait = false
-	}
 
 	dom := sessionctx.GetDomain(e.ctx)
-	if needWait {
-		time.Sleep(dom.DDL().GetLease() * 2)
-	}
-
 	// Update InfoSchema in TxnCtx, so it will pass schema check.
 	is := dom.InfoSchema()
 	txnCtx := e.ctx.GetSessionVars().TxnCtx
@@ -106,6 +88,11 @@ func (e *DDLExec) Next() (*Row, error) {
 
 // Close implements the Executor Close interface.
 func (e *DDLExec) Close() error {
+	return nil
+}
+
+// Open implements the Executor Open interface.
+func (e *DDLExec) Open() error {
 	return nil
 }
 
@@ -197,28 +184,19 @@ func (e *DDLExec) executeDropTable(s *ast.DropTableStmt) error {
 	var notExistTables []string
 	for _, tn := range s.Tables {
 		fullti := ast.Ident{Schema: tn.Schema, Name: tn.Name}
-		schema, ok := e.is.SchemaByName(tn.Schema)
+		_, ok := e.is.SchemaByName(tn.Schema)
 		if !ok {
 			// TODO: we should return special error for table not exist, checking "not exist" is not enough,
 			// because some other errors may contain this error string too.
 			notExistTables = append(notExistTables, fullti.String())
 			continue
 		}
-		tb, err := e.is.TableByName(tn.Schema, tn.Name)
+		_, err := e.is.TableByName(tn.Schema, tn.Name)
 		if err != nil && infoschema.ErrTableNotExists.Equal(err) {
 			notExistTables = append(notExistTables, fullti.String())
 			continue
 		} else if err != nil {
 			return errors.Trace(err)
-		}
-		// Check Privilege
-		privChecker := privilege.GetPrivilegeManager(e.ctx)
-		hasPriv, err := privChecker.Check(e.ctx, schema, tb.Meta(), mysql.DropPriv)
-		if err != nil {
-			return errors.Trace(err)
-		}
-		if !hasPriv {
-			return errors.Errorf("You do not have the privilege to drop table %s.%s.", tn.Schema, tn.Name)
 		}
 
 		err = sessionctx.GetDomain(e.ctx).DDL().DropTable(e.ctx, fullti)

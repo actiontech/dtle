@@ -114,7 +114,7 @@ func (p Port) Proto() string {
 	return parts[1]
 }
 
-// State represents the store of a container.
+// State represents the state of a container.
 type State struct {
 	Status            string    `json:"Status,omitempty" yaml:"Status,omitempty"`
 	Running           bool      `json:"Running,omitempty" yaml:"Running,omitempty"`
@@ -130,7 +130,7 @@ type State struct {
 	FinishedAt        time.Time `json:"FinishedAt,omitempty" yaml:"FinishedAt,omitempty"`
 }
 
-// String returns a human-readable description of the store
+// String returns a human-readable description of the state
 func (s *State) String() string {
 	if s.Running {
 		if s.Paused {
@@ -162,7 +162,7 @@ func (s *State) String() string {
 	return fmt.Sprintf("Exited (%d) %s ago", s.ExitCode, units.HumanDuration(time.Now().UTC().Sub(s.FinishedAt)))
 }
 
-// StateString returns a single string to describe store
+// StateString returns a single string to describe state
 func (s *State) StateString() string {
 	if s.Running {
 		if s.Paused {

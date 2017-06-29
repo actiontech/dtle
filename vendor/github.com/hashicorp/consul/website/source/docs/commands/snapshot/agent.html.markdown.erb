@@ -9,7 +9,7 @@ sidebar_current: "docs-commands-snapshot-agent"
 Command: `consul snapshot agent`
 
 ~> The [`agent`](/docs/commands/snapshot/agent.html) subcommand described here is
-   available only in [Consul Enterprise](https://www.hashicorp.com/consul.html)
+   available only in [Consul Enterprise](https://www.hashicorp.com/products/consul/)
    version 0.7.1 and later. All other [snapshot subcommands](/docs/commands/snapshot.html)
    are available in the open source version of Consul.
 
@@ -49,7 +49,7 @@ remote storage.
 
 Snapshots can be restored using the
 [`consul snapshot restore`](/docs/commands/snapshot/restore.html) command, or
-the [HTTP API](/docs/agent/http/snapshot.html).
+the [HTTP API](/api/snapshot.html).
 
 If ACLs are enabled, a management token must be supplied in order to perform
 snapshot operations.
@@ -103,7 +103,9 @@ Usage: `consul snapshot agent [options]`
         "secret_access_key": "",
         "s3_region": "",
         "s3_bucket": "",
-        "s3_key_prefix": "consul-snapshot"
+        "s3_key_prefix": "consul-snapshot",
+        "s3_server_side_encryption":false,
+        "s3_static_snapshot_name":""
       }
     }
   }
@@ -122,7 +124,7 @@ if desired.
   or hours. If 0 is provided, the agent will take a single snapshot and then exit,
   which is useful for running snapshots via batch jobs. Defaults to "1h"
 
-* `-lock-key` - A prefix in Consul's key-value store used to coordinate between
+* `-lock-key` - A prefix in Consul's KV store used to coordinate between
   different instances of the snapshot agent order to only have one active instance
   at a time. For highly available operation of the snapshot agent, simply run
   multiple instances. All instances must be configured with the same lock key in
@@ -186,6 +188,10 @@ if desired.
 
 * `-aws-s3-region` - S3 region to use. Required for S3 storage.
 
+* `-aws-s3-server-side-encryption` - Enables saving snapshots to S3 using server side encryption with [Amazon S3-Managed Encryption Keys](http://docs.aws.amazon.com/AmazonS3/latest/dev/UsingServerSideEncryption.html)
+
+* `-aws-s3-static-snapshot-name` - If this is given, all snapshots are saved with the same file name. The agent will not rotate or versionize snapshots, and will save them with the same name each time.
+                                   Use this if you want to rely on [S3's versioning capabilities](http://docs.aws.amazon.com/AmazonS3/latest/dev/Versioning.html) instead of the agent handling it for you.
 ## Examples
 
 Running the agent with no arguments will run a long-running daemon process that will
@@ -205,5 +211,5 @@ leader election or service registration:
 $ consul snapshot agent -interval=0
 ```
 
-Please see the [HTTP API](/docs/agent/http/snapshot.html) documentation for
+Please see the [HTTP API](/api/snapshot.html) documentation for
 more details about snapshot internals.

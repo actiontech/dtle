@@ -18,7 +18,9 @@ import (
 	"time"
 
 	"github.com/juju/errors"
+	"github.com/pingcap/tidb/mysql"
 	"github.com/pingcap/tidb/util/types"
+	"github.com/pingcap/tidb/util/types/json"
 )
 
 // First byte in the encoded value which specifies the encoding type.
@@ -33,6 +35,7 @@ const (
 	durationFlag     byte = 7
 	varintFlag       byte = 8
 	uvarintFlag      byte = 9
+	jsonFlag         byte = 10
 	maxFlag          byte = 250
 )
 
@@ -50,7 +53,13 @@ func encode(b []byte, vals []types.Datum, comparable bool) ([]byte, error) {
 			b = encodeBytes(b, val.GetBytes(), comparable)
 		case types.KindMysqlTime:
 			b = append(b, uintFlag)
-			v, err := val.GetMysqlTime().ToPackedUint()
+			t := val.GetMysqlTime()
+			// Encoding timestamp need to consider timezone.
+			// If it's not in UTC, transform to UTC first.
+			if t.Type == mysql.TypeTimestamp && t.TimeZone != time.UTC {
+				t.ConvertTimeZone(t.TimeZone, time.UTC)
+			}
+			v, err := t.ToPackedUint()
 			if err != nil {
 				return nil, errors.Trace(err)
 			}
@@ -70,6 +79,9 @@ func encode(b []byte, vals []types.Datum, comparable bool) ([]byte, error) {
 			b = encodeUnsignedInt(b, uint64(val.GetMysqlEnum().ToNumber()), comparable)
 		case types.KindMysqlSet:
 			b = encodeUnsignedInt(b, uint64(val.GetMysqlSet().ToNumber()), comparable)
+		case types.KindMysqlJSON:
+			b = append(b, jsonFlag)
+			b = append(b, json.Serialize(val.GetMysqlJSON())...)
 		case types.KindNull:
 			b = append(b, NilFlag)
 		case types.KindMinNotNull:
@@ -95,8 +107,8 @@ func encodeBytes(b []byte, v []byte, comparable bool) []byte {
 	return b
 }
 
-func encodeSignedInt(b []byte, v int64, comaprable bool) []byte {
-	if comaprable {
+func encodeSignedInt(b []byte, v int64, comparable bool) []byte {
+	if comparable {
 		b = append(b, intFlag)
 		b = EncodeInt(b, v)
 	} else {
@@ -202,6 +214,10 @@ func DecodeOne(b []byte) (remain []byte, d types.Datum, err error) {
 			v := types.Duration{Duration: time.Duration(r), Fsp: types.MaxFsp}
 			d.SetValue(v)
 		}
+	case jsonFlag:
+		if j, err := json.Deserialize(b); err == nil {
+			d.SetMysqlJSON(j)
+		}
 	case NilFlag:
 	default:
 		return b, d, errors.Errorf("invalid encoded key flag %v", flag)
@@ -235,7 +251,7 @@ func SetRawValues(data []byte, values []types.Datum) error {
 	return nil
 }
 
-// peeks the first encoded value from b and returns its length.
+// peek peeks the first encoded value from b and returns its length.
 func peek(b []byte) (length int, err error) {
 	if len(b) < 1 {
 		return 0, errors.New("invalid encoded key")
@@ -259,6 +275,8 @@ func peek(b []byte) (length int, err error) {
 		l, err = peekVarint(b)
 	case uvarintFlag:
 		l, err = peekUvarint(b)
+	case jsonFlag:
+		l, err = json.PeekBytesAsJSON(b)
 	default:
 		return 0, errors.Errorf("invalid encoded key flag %v", flag)
 	}

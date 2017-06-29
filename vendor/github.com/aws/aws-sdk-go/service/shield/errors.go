@@ -47,7 +47,7 @@ const (
 	// ErrCodeOptimisticLockException for service response error code
 	// "OptimisticLockException".
 	//
-	// Exception that indicates that the protection store has been modified by another
+	// Exception that indicates that the protection state has been modified by another
 	// client. You can retry the request.
 	ErrCodeOptimisticLockException = "OptimisticLockException"
 

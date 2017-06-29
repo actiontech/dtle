@@ -123,7 +123,7 @@ func (s *SWbemServices) process(initError chan error) {
 	}
 	//fmt.Println("process: queries channel closed")
 	s.queries = nil //set channel to nil so we know it is closed
-	//TODO: I think the Release/Clear calls can panic if things are in a bad store.
+	//TODO: I think the Release/Clear calls can panic if things are in a bad state.
 	//TODO: May need to recover from panics and send error to method caller instead.
 	close(s.closeError)
 }

@@ -26,7 +26,9 @@ import (
 	pb "github.com/pingcap/kvproto/pkg/kvrpcpb"
 	"github.com/pingcap/tidb/kv"
 	"github.com/pingcap/tidb/sessionctx/binloginfo"
+	"github.com/pingcap/tidb/store/tikv/tikvrpc"
 	"github.com/pingcap/tidb/tablecodec"
+	"github.com/pingcap/tidb/terror"
 	"github.com/pingcap/tipb/go-binlog"
 	goctx "golang.org/x/net/context"
 )
@@ -67,9 +69,11 @@ type twoPhaseCommitter struct {
 	commitTS  uint64
 	mu        struct {
 		sync.RWMutex
-		writtenKeys [][]byte
-		committed   bool
+		writtenKeys  [][]byte
+		committed    bool
+		undetermined bool
 	}
+	priority pb.CommandPri
 }
 
 // newTwoPhaseCommitter creates a twoPhaseCommitter.
@@ -108,11 +112,6 @@ func newTwoPhaseCommitter(txn *tikvTxn) (*twoPhaseCommitter, error) {
 	if err != nil {
 		return nil, errors.Trace(err)
 	}
-	// Transactions without Put/Del, only Locks are readonly.
-	// We can skip commit directly.
-	if len(keys) == 0 {
-		return nil, nil
-	}
 	for _, lockKey := range txn.lockKeys {
 		if _, ok := mutations[string(lockKey)]; !ok {
 			mutations[string(lockKey)] = &pb.Mutation{
@@ -123,6 +122,9 @@ func newTwoPhaseCommitter(txn *tikvTxn) (*twoPhaseCommitter, error) {
 			keys = append(keys, lockKey)
 			size += len(lockKey)
 		}
+	}
+	if len(keys) == 0 {
+		return nil, nil
 	}
 	entrylimit := atomic.LoadUint64(&kv.TxnEntryCountLimit)
 	if len(keys) > int(entrylimit) || size > kv.TxnTotalSizeLimit {
@@ -139,18 +141,14 @@ func newTwoPhaseCommitter(txn *tikvTxn) (*twoPhaseCommitter, error) {
 	txnWriteKVCountHistogram.Observe(float64(len(keys)))
 	txnWriteSizeHistogram.Observe(float64(size / 1024))
 
-	lockTTL, err := txnLockTTL(txn.startTime, size)
-	if err != nil {
-		return nil, errors.Trace(err)
-	}
-
 	return &twoPhaseCommitter{
 		store:     txn.store,
 		txn:       txn,
 		startTS:   txn.StartTS(),
 		keys:      keys,
 		mutations: mutations,
-		lockTTL:   lockTTL,
+		lockTTL:   txnLockTTL(txn.startTime, size),
+		priority:  getTxnPriority(txn),
 	}, nil
 }
 
@@ -160,14 +158,13 @@ func (c *twoPhaseCommitter) primary() []byte {
 
 const bytesPerMiB = 1024 * 1024
 
-func txnLockTTL(startTime monotime.Time, txnSize int) (uint64, error) {
+func txnLockTTL(startTime monotime.Time, txnSize int) uint64 {
 	// Increase lockTTL for large transactions.
 	// The formula is `ttl = ttlFactor * sqrt(sizeInMiB)`.
-	// When writeSize <= 256K, ttl is defaultTTL (3s);
+	// When writeSize is less than 256KB, the base ttl is defaultTTL (3s);
 	// When writeSize is 1MiB, 100MiB, or 400MiB, ttl is 6s, 60s, 120s correspondingly;
-	// When writeSize >= 400MiB, we return kv.ErrTxnTooLarge.
-	var lockTTL uint64
-	if txnSize > txnCommitBatchSize {
+	lockTTL := defaultLockTTL
+	if txnSize >= txnCommitBatchSize {
 		sizeMiB := float64(txnSize) / bytesPerMiB
 		lockTTL = uint64(float64(ttlFactor) * math.Sqrt(float64(sizeMiB)))
 		if lockTTL < defaultLockTTL {
@@ -182,7 +179,7 @@ func txnLockTTL(startTime monotime.Time, txnSize int) (uint64, error) {
 	// When resolving a lock, we compare current ts and startTS+lockTTL to decide whether to clean up. If a txn
 	// takes a long time to read, increasing its TTL will help to prevent it from been aborted soon after prewrite.
 	elapsed := time.Duration(monotime.Now()-startTime) / time.Millisecond
-	return lockTTL + uint64(elapsed), nil
+	return lockTTL + uint64(elapsed)
 }
 
 // doActionOnKeys groups keys into primary batch and secondary batches, if primary batch exists in the key,
@@ -212,7 +209,8 @@ func (c *twoPhaseCommitter) doActionOnKeys(bo *Backoffer, action twoPhaseCommitA
 	}
 
 	firstIsPrimary := bytes.Equal(keys[0], c.primary())
-	if firstIsPrimary {
+	if firstIsPrimary && (action == actionCommit || action == actionCleanup) {
+		// primary should be committed/cleanup first.
 		err = c.doActionOnBatches(bo, action, batches[:1])
 		if err != nil {
 			return errors.Trace(err)
@@ -222,6 +220,7 @@ func (c *twoPhaseCommitter) doActionOnKeys(bo *Backoffer, action twoPhaseCommitA
 	if action == actionCommit {
 		// Commit secondary batches in background goroutine to reduce latency.
 		go func() {
+			reserveStack(false)
 			e := c.doActionOnBatches(bo, action, batches)
 			if e != nil {
 				log.Debugf("2PC async doActionOnBatches %s err: %v", action, e)
@@ -231,6 +230,17 @@ func (c *twoPhaseCommitter) doActionOnKeys(bo *Backoffer, action twoPhaseCommitA
 		err = c.doActionOnBatches(bo, action, batches)
 	}
 	return errors.Trace(err)
+}
+
+// reserveStack reserves 4KB memory on the stack to avoid runtime.morestack, call it after new a goroutine if necessary.
+func reserveStack(dummy bool) {
+	var buf [8 << 10]byte
+	// avoid compiler optimize the buf out.
+	if dummy {
+		for i := range buf {
+			buf[i] = byte(i)
+		}
+	}
 }
 
 // doActionOnBatches does action to batches in parallel.
@@ -256,16 +266,32 @@ func (c *twoPhaseCommitter) doActionOnBatches(bo *Backoffer, action twoPhaseComm
 	}
 
 	// For prewrite, stop sending other requests after receiving first error.
+	backoffer := bo
 	var cancel goctx.CancelFunc
 	if action == actionPrewrite {
-		cancel = bo.WithCancel()
+		backoffer, cancel = bo.Fork()
 	}
 
 	// Concurrently do the work for each batch.
 	ch := make(chan error, len(batches))
 	for _, batch := range batches {
 		go func(batch batchKeys) {
-			ch <- singleBatchActionFunc(bo.Fork(), batch)
+			reserveStack(false)
+			if action == actionCommit {
+				// Because the secondary batches of the commit actions are implemented to be
+				// committed asynchronously in background goroutines, we should not
+				// fork a child context and call cancel() while the foreground goroutine exits.
+				// Otherwise the background goroutines will be canceled execeptionally.
+				// Here we makes a new clone of the original backoffer for this goroutine
+				// exclusively to avoid the data race when using the same backoffer
+				// in concurrent goroutines.
+				singleBatchBackoffer := backoffer.Clone()
+				ch <- singleBatchActionFunc(singleBatchBackoffer, batch)
+			} else {
+				singleBatchBackoffer, singleBatchCancel := backoffer.Fork()
+				defer singleBatchCancel()
+				ch <- singleBatchActionFunc(singleBatchBackoffer, batch)
+			}
 		}(batch)
 	}
 	var err error
@@ -274,6 +300,7 @@ func (c *twoPhaseCommitter) doActionOnBatches(bo *Backoffer, action twoPhaseComm
 			log.Debugf("2PC doActionOnBatches %s failed: %v, tid: %d", action, e, c.startTS)
 			// Cancel other requests and return the first error.
 			if cancel != nil {
+				log.Debugf("2PC doActionOnBatches %s to cancel other actions, tid: %d", action, c.startTS)
 				cancel()
 			}
 			if err == nil {
@@ -307,9 +334,10 @@ func (c *twoPhaseCommitter) prewriteSingleBatch(bo *Backoffer, batch batchKeys) 
 	if skip, ok := optSkipCheck.(bool); ok && skip {
 		skipCheck = true
 	}
-	req := &pb.Request{
-		Type: pb.MessageType_CmdPrewrite,
-		CmdPrewriteReq: &pb.CmdPrewriteRequest{
+	req := &tikvrpc.Request{
+		Type:     tikvrpc.CmdPrewrite,
+		Priority: c.priority,
+		Prewrite: &pb.PrewriteRequest{
 			Mutations:           mutations,
 			PrimaryLock:         c.primary(),
 			StartVersion:        c.startTS,
@@ -317,13 +345,16 @@ func (c *twoPhaseCommitter) prewriteSingleBatch(bo *Backoffer, batch batchKeys) 
 			SkipConstraintCheck: skipCheck,
 		},
 	}
-
 	for {
-		resp, err := c.store.SendKVReq(bo, req, batch.region, readTimeoutShort)
+		resp, err := c.store.SendReq(bo, req, batch.region, readTimeoutShort)
 		if err != nil {
 			return errors.Trace(err)
 		}
-		if regionErr := resp.GetRegionError(); regionErr != nil {
+		regionErr, err := resp.GetRegionError()
+		if err != nil {
+			return errors.Trace(err)
+		}
+		if regionErr != nil {
 			err = bo.Backoff(boRegionMiss, errors.New(regionErr.String()))
 			if err != nil {
 				return errors.Trace(err)
@@ -331,7 +362,7 @@ func (c *twoPhaseCommitter) prewriteSingleBatch(bo *Backoffer, batch batchKeys) 
 			err = c.prewriteKeys(bo, batch.keys)
 			return errors.Trace(err)
 		}
-		prewriteResp := resp.GetCmdPrewriteResp()
+		prewriteResp := resp.Prewrite
 		if prewriteResp == nil {
 			return errors.Trace(errBodyMissing)
 		}
@@ -340,7 +371,15 @@ func (c *twoPhaseCommitter) prewriteSingleBatch(bo *Backoffer, batch batchKeys) 
 			// We need to cleanup all written keys if transaction aborts.
 			c.mu.Lock()
 			defer c.mu.Unlock()
-			c.mu.writtenKeys = append(c.mu.writtenKeys, batch.keys...)
+			// Primary key should always been in the front since in `cleanup` we
+			// would check whether the `writtenKeys`'s first key is primary key.
+			if bytes.Equal(batch.keys[0], c.primary()) {
+				tmpKeys := make([][]byte, 0, len(batch.keys)+len(c.mu.writtenKeys))
+				tmpKeys = append(tmpKeys, batch.keys...)
+				c.mu.writtenKeys = append(tmpKeys, c.mu.writtenKeys...)
+			} else {
+				c.mu.writtenKeys = append(c.mu.writtenKeys, batch.keys...)
+			}
 			return nil
 		}
 		var locks []*Lock
@@ -365,10 +404,28 @@ func (c *twoPhaseCommitter) prewriteSingleBatch(bo *Backoffer, batch batchKeys) 
 	}
 }
 
+func getTxnPriority(txn *tikvTxn) pb.CommandPri {
+	if pri := txn.us.GetOption(kv.Priority); pri != nil {
+		return kvPriorityToCommandPri(pri.(int))
+	}
+	return pb.CommandPri_Normal
+}
+
+func kvPriorityToCommandPri(pri int) pb.CommandPri {
+	switch pri {
+	case kv.PriorityLow:
+		return pb.CommandPri_Low
+	case kv.PriorityHigh:
+		return pb.CommandPri_High
+	}
+	return pb.CommandPri_Normal
+}
+
 func (c *twoPhaseCommitter) commitSingleBatch(bo *Backoffer, batch batchKeys) error {
-	req := &pb.Request{
-		Type: pb.MessageType_CmdCommit,
-		CmdCommitReq: &pb.CmdCommitRequest{
+	req := &tikvrpc.Request{
+		Type:     tikvrpc.CmdCommit,
+		Priority: c.priority,
+		Commit: &pb.CommitRequest{
 			StartVersion:  c.startTS,
 			Keys:          batch.keys,
 			CommitVersion: c.commitTS,
@@ -379,16 +436,22 @@ func (c *twoPhaseCommitter) commitSingleBatch(bo *Backoffer, batch batchKeys) er
 	// transaction has been successfully committed.
 	// Under this circumstance,  we can not declare the commit is complete (may lead to data lost), nor can we throw
 	// an error (may lead to the duplicated key error when upper level restarts the transaction). Currently the best
-	// workaround seems to be an infinite retry until server recovers and returns a success or failure response.
-	if bytes.Compare(batch.keys[0], c.primary()) == 0 {
-		bo = NewBackoffer(commitPrimaryMaxBackoff, bo.ctx)
-	}
+	// solution is to populate this error and let upper layer drop the connection to the corresponding mysql client.
+	isPrimary := bytes.Compare(batch.keys[0], c.primary()) == 0
 
-	resp, err := c.store.SendKVReq(bo, req, batch.region, readTimeoutShort)
+	resp, err := c.store.SendReq(bo, req, batch.region, readTimeoutShort)
+	if err != nil {
+		if isPrimary {
+			// change the Cause of the error to be returned
+			return errors.Trace(errors.Wrap(err, terror.ErrResultUndetermined))
+		}
+		return errors.Trace(err)
+	}
+	regionErr, err := resp.GetRegionError()
 	if err != nil {
 		return errors.Trace(err)
 	}
-	if regionErr := resp.GetRegionError(); regionErr != nil {
+	if regionErr != nil {
 		err = bo.Backoff(boRegionMiss, errors.New(regionErr.String()))
 		if err != nil {
 			return errors.Trace(err)
@@ -397,7 +460,7 @@ func (c *twoPhaseCommitter) commitSingleBatch(bo *Backoffer, batch batchKeys) er
 		err = c.commitKeys(bo, batch.keys)
 		return errors.Trace(err)
 	}
-	commitResp := resp.GetCmdCommitResp()
+	commitResp := resp.Commit
 	if commitResp == nil {
 		return errors.Trace(errBodyMissing)
 	}
@@ -425,18 +488,22 @@ func (c *twoPhaseCommitter) commitSingleBatch(bo *Backoffer, batch batchKeys) er
 }
 
 func (c *twoPhaseCommitter) cleanupSingleBatch(bo *Backoffer, batch batchKeys) error {
-	req := &pb.Request{
-		Type: pb.MessageType_CmdBatchRollback,
-		CmdBatchRollbackReq: &pb.CmdBatchRollbackRequest{
+	req := &tikvrpc.Request{
+		Type: tikvrpc.CmdBatchRollback,
+		BatchRollback: &pb.BatchRollbackRequest{
 			Keys:         batch.keys,
 			StartVersion: c.startTS,
 		},
 	}
-	resp, err := c.store.SendKVReq(bo, req, batch.region, readTimeoutShort)
+	resp, err := c.store.SendReq(bo, req, batch.region, readTimeoutShort)
 	if err != nil {
 		return errors.Trace(err)
 	}
-	if regionErr := resp.GetRegionError(); regionErr != nil {
+	regionErr, err := resp.GetRegionError()
+	if err != nil {
+		return errors.Trace(err)
+	}
+	if regionErr != nil {
 		err = bo.Backoff(boRegionMiss, errors.New(regionErr.String()))
 		if err != nil {
 			return errors.Trace(err)
@@ -444,7 +511,7 @@ func (c *twoPhaseCommitter) cleanupSingleBatch(bo *Backoffer, batch batchKeys) e
 		err = c.cleanupKeys(bo, batch.keys)
 		return errors.Trace(err)
 	}
-	if keyErr := resp.GetCmdBatchRollbackResp().GetError(); keyErr != nil {
+	if keyErr := resp.BatchRollback.GetError(); keyErr != nil {
 		err = errors.Errorf("2PC cleanup failed: %s", keyErr)
 		log.Debugf("2PC failed cleanup key: %v, tid: %d", err, c.startTS)
 		return errors.Trace(err)
@@ -471,16 +538,17 @@ const maxTxnTimeUse = 590000
 
 // execute executes the two-phase commit protocol.
 func (c *twoPhaseCommitter) execute() error {
-	ctx := goctx.Background()
 	defer func() {
 		// Always clean up all written keys if the txn does not commit.
 		c.mu.RLock()
 		writtenKeys := c.mu.writtenKeys
 		committed := c.mu.committed
+		undetermined := c.mu.undetermined
 		c.mu.RUnlock()
-		if !committed {
+		if !committed && !undetermined {
 			go func() {
-				err := c.cleanupKeys(NewBackoffer(cleanupMaxBackoff, ctx), writtenKeys)
+				reserveStack(false)
+				err := c.cleanupKeys(NewBackoffer(cleanupMaxBackoff, goctx.Background()), writtenKeys)
 				if err != nil {
 					log.Infof("2PC cleanup err: %v, tid: %d", err, c.startTS)
 				} else {
@@ -490,6 +558,7 @@ func (c *twoPhaseCommitter) execute() error {
 		}
 	}()
 
+	ctx := goctx.Background()
 	binlogChan := c.prewriteBinlog()
 	err := c.prewriteKeys(NewBackoffer(prewriteMaxBackoff, ctx), c.keys)
 	if binlogChan != nil {
@@ -529,6 +598,9 @@ func (c *twoPhaseCommitter) execute() error {
 
 	err = c.commitKeys(NewBackoffer(commitMaxBackoff, ctx), c.keys)
 	if err != nil {
+		if errors.Cause(err) == terror.ErrResultUndetermined {
+			c.mu.undetermined = true
+		}
 		if !c.mu.committed {
 			log.Debugf("2PC failed on commit: %v, tid: %d", err, c.startTS)
 			return errors.Trace(err)
@@ -559,12 +631,13 @@ func (c *twoPhaseCommitter) prewriteBinlog() chan error {
 	}
 	ch := make(chan error, 1)
 	go func() {
-		bin := c.txn.us.GetOption(kv.BinlogData).(*binlog.Binlog)
+		binInfo := c.txn.us.GetOption(kv.BinlogInfo).(*binloginfo.BinlogInfo)
+		bin := binInfo.Data
 		bin.StartTs = int64(c.startTS)
 		if bin.Tp == binlog.BinlogType_Prewrite {
 			bin.PrewriteKey = c.keys[0]
 		}
-		err := binloginfo.WriteBinlog(bin, c.store.clusterID)
+		err := binInfo.WriteBinlog(c.store.clusterID)
 		ch <- errors.Trace(err)
 	}()
 	return ch
@@ -574,11 +647,11 @@ func (c *twoPhaseCommitter) writeFinishBinlog(tp binlog.BinlogType, commitTS int
 	if !c.shouldWriteBinlog() {
 		return
 	}
-	bin := c.txn.us.GetOption(kv.BinlogData).(*binlog.Binlog)
-	bin.Tp = tp
-	bin.CommitTs = commitTS
+	binInfo := c.txn.us.GetOption(kv.BinlogInfo).(*binloginfo.BinlogInfo)
+	binInfo.Data.Tp = tp
+	binInfo.Data.CommitTs = commitTS
 	go func() {
-		err := binloginfo.WriteBinlog(bin, c.store.clusterID)
+		err := binInfo.WriteBinlog(c.store.clusterID)
 		if err != nil {
 			log.Errorf("failed to write binlog: %v", err)
 		}
@@ -586,16 +659,12 @@ func (c *twoPhaseCommitter) writeFinishBinlog(tp binlog.BinlogType, commitTS int
 }
 
 func (c *twoPhaseCommitter) shouldWriteBinlog() bool {
-	if binloginfo.PumpClient == nil {
-		return false
-	}
-	_, ok := c.txn.us.GetOption(kv.BinlogData).(*binlog.Binlog)
-	return ok
+	return c.txn.us.GetOption(kv.BinlogInfo) != nil
 }
 
 // TiKV recommends each RPC packet should be less than ~1MB. We keep each packet's
-// Key+Value size below 4KB.
-const txnCommitBatchSize = 4 * 1024
+// Key+Value size below 16KB.
+const txnCommitBatchSize = 16 * 1024
 
 // batchKeys is a batch of keys in the same region.
 type batchKeys struct {

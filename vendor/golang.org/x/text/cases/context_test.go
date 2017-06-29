@@ -9,6 +9,7 @@ import (
 	"testing"
 	"unicode"
 
+	"golang.org/x/text/internal/testtext"
 	"golang.org/x/text/language"
 	"golang.org/x/text/transform"
 	"golang.org/x/text/unicode/norm"
@@ -63,6 +64,11 @@ func contextFromRune(r rune) *context {
 }
 
 func TestCaseProperties(t *testing.T) {
+	if unicode.Version != UnicodeVersion {
+		// Properties of existing code points may change by Unicode version, so
+		// we need to skip.
+		t.Skipf("Skipping as core Unicode version %s different than %s", unicode.Version, UnicodeVersion)
+	}
 	assigned := rangetable.Assigned(UnicodeVersion)
 	coreVersion := rangetable.Assigned(unicode.Version)
 	for r := rune(0); r <= lastRuneForTesting; r++ {
@@ -97,6 +103,9 @@ func TestCaseProperties(t *testing.T) {
 func TestMapping(t *testing.T) {
 	assigned := rangetable.Assigned(UnicodeVersion)
 	coreVersion := rangetable.Assigned(unicode.Version)
+	if coreVersion == nil {
+		coreVersion = assigned
+	}
 	apply := func(r rune, f func(c *context) bool) string {
 		c := contextFromRune(r)
 		f(c)
@@ -142,6 +151,43 @@ func TestMapping(t *testing.T) {
 	}
 }
 
+func runeFoldData(r rune) (x struct{ simple, full, special string }) {
+	x = foldMap[r]
+	if x.simple == "" {
+		x.simple = string(unicode.ToLower(r))
+	}
+	if x.full == "" {
+		x.full = string(unicode.ToLower(r))
+	}
+	if x.special == "" {
+		x.special = x.full
+	}
+	return
+}
+
+func TestFoldData(t *testing.T) {
+	assigned := rangetable.Assigned(UnicodeVersion)
+	coreVersion := rangetable.Assigned(unicode.Version)
+	if coreVersion == nil {
+		coreVersion = assigned
+	}
+	apply := func(r rune, f func(c *context) bool) (string, info) {
+		c := contextFromRune(r)
+		f(c)
+		return string(c.dst[:c.pDst]), c.info.cccType()
+	}
+	for r := rune(0); r <= lastRuneForTesting; r++ {
+		if !unicode.In(r, assigned) || !unicode.In(r, coreVersion) {
+			continue
+		}
+		x := runeFoldData(r)
+		if got, info := apply(r, foldFull); got != x.full {
+			t.Errorf("full:%q (%U): got %q %U; want %q %U (ccc=%x)", r, r, got, []rune(got), x.full, []rune(x.full), info)
+		}
+		// TODO: special and simple.
+	}
+}
+
 func TestCCC(t *testing.T) {
 	assigned := rangetable.Assigned(UnicodeVersion)
 	normVersion := rangetable.Assigned(norm.Version)
@@ -166,17 +212,31 @@ func TestCCC(t *testing.T) {
 }
 
 func TestWordBreaks(t *testing.T) {
-	for i, tt := range breakTest {
-		parts := strings.Split(tt, "|")
-		want := ""
-		for _, s := range parts {
-			want += Title(language.Und).String(s)
-		}
-		src := strings.Join(parts, "")
-		got := Title(language.Und).String(src)
-		if got != want {
-			t.Errorf("%d: title(%q) = %q; want %q", i, src, got, want)
-		}
+	for _, tt := range breakTest {
+		testtext.Run(t, tt, func(t *testing.T) {
+			parts := strings.Split(tt, "|")
+			want := ""
+			for _, s := range parts {
+				found := false
+				// This algorithm implements title casing given word breaks
+				// as defined in the Unicode standard 3.13 R3.
+				for _, r := range s {
+					title := unicode.ToTitle(r)
+					lower := unicode.ToLower(r)
+					if !found && title != lower {
+						found = true
+						want += string(title)
+					} else {
+						want += string(lower)
+					}
+				}
+			}
+			src := strings.Join(parts, "")
+			got := Title(language.Und).String(src)
+			if got != want {
+				t.Errorf("got %q; want %q", got, want)
+			}
+		})
 	}
 }
 

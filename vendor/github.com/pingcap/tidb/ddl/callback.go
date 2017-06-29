@@ -13,18 +13,23 @@
 
 package ddl
 
-import "github.com/pingcap/tidb/model"
+import (
+	"github.com/pingcap/tidb/model"
+	goctx "golang.org/x/net/context"
+)
 
 // Callback is the interface supporting callback function when DDL changed.
 type Callback interface {
 	// OnChanged is called after schema is changed.
 	OnChanged(err error) error
-	// OnJobRunBefore is called before running server.
+	// OnJobRunBefore is called before running job.
 	OnJobRunBefore(job *model.Job)
-	// OnJobUpdated is called after the running server is updated.
+	// OnJobUpdated is called after the running job is updated.
 	OnJobUpdated(job *model.Job)
-	// OnBgJobUpdated is called after the running background server is updated.
+	// OnBgJobUpdated is called after the running background job is updated.
 	OnBgJobUpdated(job *model.Job)
+	// OnWatched is called after watching owner is completed.
+	OnWatched(ctx goctx.Context)
 }
 
 // BaseCallback implements Callback.OnChanged interface.
@@ -48,5 +53,10 @@ func (c *BaseCallback) OnJobUpdated(job *model.Job) {
 
 // OnBgJobUpdated implements Callback.OnBgJobUpdated interface.
 func (c *BaseCallback) OnBgJobUpdated(job *model.Job) {
+	// Nothing to do.
+}
+
+// OnWatched implements Callback.OnWatched interface.
+func (c *BaseCallback) OnWatched(ctx goctx.Context) {
 	// Nothing to do.
 }

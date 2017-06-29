@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/bash -e
 go get github.com/mitchellh/gox
 go get github.com/tcnksm/ghr
 
@@ -12,7 +12,7 @@ if [[ -n $1 ]]; then
     export APPNAME=$APPNAME-$1
 fi
 
-gox -osarch="$OSARCH" -ldflags="-s -w" -output "$OUTDIR/$APPNAME-{{.OS}}-{{.Arch}}/$APPNAME"
+gox -osarch="$OSARCH" -ldflags="-s -w" -output "$OUTDIR/$APPNAME-{{.OS}}-{{.Arch}}/nats-streaming-server"
 for dir in $DIRS; do \
     (cp README.md $OUTDIR/$APPNAME-$dir/README.md) ;\
     (cp LICENSE $OUTDIR/$APPNAME-$dir/LICENSE) ;\

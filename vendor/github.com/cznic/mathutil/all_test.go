@@ -3719,3 +3719,48 @@ func TestQuadPolyFactors(t *testing.T) {
 		}
 	}
 }
+
+// https://github.com/cznic/sqlite/issues/12#issuecomment-310155204
+func TestFCPRNG(t *testing.T) {
+	const N = 131072
+	rng, err := NewFC32(1, N, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var mods, exp [3]int
+	m := make(map[int]byte, N)
+	for i := 1; i <= N; i++ {
+		n := rng.Next()
+		if _, ok := m[n]; ok {
+			t.Fatal(i, n)
+		}
+
+		m[n] = 1
+		mods[n%len(mods)]++
+	}
+	if g, e := len(m), N; g != e {
+		t.Fatal(g, e)
+	}
+
+	for i := 1; i <= N; i++ {
+		n := rng.Next()
+		if m[n] != 1 {
+			t.Fatal(i, n)
+		}
+
+		m[n] = 0
+	}
+
+	for i := 1; i <= N; i++ {
+		exp[i%len(mods)]++
+	}
+
+	for i, g := range mods {
+		if e := exp[i]; g != e {
+			t.Fatal(g, e)
+		}
+	}
+
+	t.Log(mods)
+}

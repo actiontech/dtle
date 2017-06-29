@@ -74,7 +74,7 @@ type commitTuple struct {
 	future *logFuture
 }
 
-// leaderState is store that is used while we are a leader.
+// leaderState is state that is used while we are a leader.
 type leaderState struct {
 	commitCh   chan struct{}
 	commitment *commitment
@@ -181,7 +181,7 @@ func (r *Raft) runFollower() {
 				continue
 			}
 
-			// Heartbeat failed! Transition to the candidate store
+			// Heartbeat failed! Transition to the candidate state
 			lastLeader := r.Leader()
 			r.setLeader("")
 
@@ -211,7 +211,7 @@ func (r *Raft) runFollower() {
 
 // liveBootstrap attempts to seed an initial configuration for the cluster. See
 // the Raft object's member BootstrapCluster for more details. This must only be
-// called on the main thread, and only makes sense in the follower store.
+// called on the main thread, and only makes sense in the follower state.
 func (r *Raft) liveBootstrap(configuration Configuration) error {
 	// Use the pre-init API to make the static updates.
 	err := BootstrapCluster(&r.conf, r.logs, r.stable, r.snapshots,
@@ -327,7 +327,7 @@ func (r *Raft) runLeader() {
 		}
 	}
 
-	// Setup leader store
+	// Setup leader state
 	r.leaderState.commitCh = make(chan struct{}, 1)
 	r.leaderState.commitment = newCommitment(r.leaderState.commitCh,
 		r.configurations.latest,
@@ -337,7 +337,7 @@ func (r *Raft) runLeader() {
 	r.leaderState.notify = make(map[*verifyFuture]struct{})
 	r.leaderState.stepDown = make(chan struct{}, 1)
 
-	// Cleanup store on step down
+	// Cleanup state on step down
 	defer func() {
 		// Since we were the leader previously, we update our
 		// last contact time when we step down, so that we are not
@@ -361,7 +361,7 @@ func (r *Raft) runLeader() {
 			future.respond(ErrLeadershipLost)
 		}
 
-		// Clear all the store
+		// Clear all the state
 		r.leaderState.commitCh = nil
 		r.leaderState.commitment = nil
 		r.leaderState.inflight = nil
@@ -415,7 +415,7 @@ func (r *Raft) runLeader() {
 	r.leaderLoop()
 }
 
-// startStopReplication will set up store and start asynchronous replication to
+// startStopReplication will set up state and start asynchronous replication to
 // new peers, and stop replication to removed peers. Before removing a peer,
 // it'll instruct the replication routines to try to replicate to the current
 // index. This must only be called from the main thread.
@@ -696,7 +696,7 @@ func (r *Raft) quorumSize() int {
 // as if restoring from a backup. We will use the current Raft configuration,
 // not the one from the snapshot, so that we can restore into a new cluster. We
 // will also use the higher of the index of the snapshot, or the current index,
-// and then add 1 to that, so we force a new store with a hole in the Raft log,
+// and then add 1 to that, so we force a new state with a hole in the Raft log,
 // so that the snapshot will be sent to followers and used for any new joiners.
 // This can only be run on the leader, and returns a future that can be used to
 // block until complete.
@@ -711,7 +711,7 @@ func (r *Raft) restoreUserSnapshot(meta *SnapshotMeta, reader io.Reader) error {
 
 	// We don't support snapshots while there's a config change
 	// outstanding since the snapshot doesn't have a means to
-	// represent this store.
+	// represent this state.
 	committedIndex := r.configurations.committedIndex
 	latestIndex := r.configurations.latestIndex
 	if committedIndex != latestIndex {
@@ -763,7 +763,7 @@ func (r *Raft) restoreUserSnapshot(meta *SnapshotMeta, reader io.Reader) error {
 	r.logger.Printf("[INFO] raft: Copied %d bytes to local snapshot", n)
 
 	// Restore the snapshot into the FSM. If this fails we are in a
-	// bad store so we panic to take ourselves out.
+	// bad state so we panic to take ourselves out.
 	fsm := &restoreFuture{ID: sink.ID()}
 	fsm.init()
 	select {
@@ -777,7 +777,7 @@ func (r *Raft) restoreUserSnapshot(meta *SnapshotMeta, reader io.Reader) error {
 
 	// We set the last log so it looks like we've stored the empty
 	// index we burned. The last applied is set because we made the
-	// FSM take the snapshot store, and we store the last snapshot
+	// FSM take the snapshot state, and we store the last snapshot
 	// in the stable store since we created a snapshot as part of
 	// this process.
 	r.setLastLog(lastIndex, term)
@@ -1082,7 +1082,7 @@ func (r *Raft) appendEntries(rpc RPC, a *AppendEntriesRequest) {
 			if err := r.logs.StoreLogs(newEntries); err != nil {
 				r.logger.Printf("[ERR] raft: Failed to append to logs: %v", err)
 				// TODO: leaving r.getLastLog() in the wrong
-				// store if there was a truncation above
+				// state if there was a truncation above
 				return
 			}
 
@@ -1226,7 +1226,7 @@ func (r *Raft) requestVote(rpc RPC, req *RequestVoteRequest) {
 }
 
 // installSnapshot is invoked when we get a InstallSnapshot RPC call.
-// We must be in the follower store for this, since it means we are
+// We must be in the follower state for this, since it means we are
 // too far behind a leader for log replay. This must only be called
 // from the main thread.
 func (r *Raft) installSnapshot(rpc RPC, req *InstallSnapshotRequest) {
@@ -1443,9 +1443,9 @@ func (r *Raft) setCurrentTerm(t uint64) {
 	r.raftState.setCurrentTerm(t)
 }
 
-// setState is used to update the current store. Any store
+// setState is used to update the current state. Any state
 // transition causes the known leader to be cleared. This means
-// that leader should be set only after updating the store.
+// that leader should be set only after updating the state.
 func (r *Raft) setState(state RaftState) {
 	r.setLeader("")
 	oldState := r.raftState.getState()

@@ -23,6 +23,38 @@ import (
 	"github.com/pingcap/tidb/util/types"
 )
 
+func (s *testEvaluatorSuite) TestInetAton(c *C) {
+	defer testleak.AfterTest(c)()
+	tbl := []struct {
+		Input    interface{}
+		Expected interface{}
+	}{
+		{"", nil},
+		{nil, nil},
+		{"255.255.255.255", 4294967295},
+		{"0.0.0.0", 0},
+		{"127.0.0.1", 2130706433},
+		{"0.0.0.256", nil},
+		{"113.14.22.3", 1896748547},
+		{"127", 127},
+		{"127.255", 2130706687},
+		{"127,256", nil},
+		{"127.2.1", 2130837505},
+		{"123.2.1.", nil},
+		{"127.0.0.1.1", nil},
+	}
+
+	dtbl := tblToDtbl(tbl)
+	fc := funcs[ast.InetAton]
+	for _, t := range dtbl {
+		f, err := fc.getFunction(datumsToConstants(t["Input"]), s.ctx)
+		c.Assert(err, IsNil)
+		d, err := f.eval(nil)
+		c.Assert(err, IsNil)
+		c.Assert(d, testutil.DatumEquals, t["Expected"][0])
+	}
+}
+
 func (s *testEvaluatorSuite) TestIsIPv4(c *C) {
 	tests := []struct {
 		ip     string
@@ -99,6 +131,7 @@ func (s *testEvaluatorSuite) TestAnyValue(c *C) {
 		f, err := fc.getFunction(datumsToConstants(types.MakeDatums(t.arg)), s.ctx)
 		c.Assert(err, IsNil)
 		r, err := f.eval(nil)
+		c.Assert(err, IsNil)
 		c.Assert(r, testutil.DatumEquals, types.NewDatum(t.ret))
 	}
 }
@@ -158,4 +191,128 @@ func (s *testEvaluatorSuite) TestInetNtoa(c *C) {
 	r, err := f.eval(nil)
 	c.Assert(err, IsNil)
 	c.Assert(r.IsNull(), IsTrue)
+}
+
+func (s *testEvaluatorSuite) TestInet6NtoA(c *C) {
+	tests := []struct {
+		ip     []byte
+		expect interface{}
+	}{
+		// Success cases
+		{[]byte{0x00, 0x00, 0x00, 0x00}, "0.0.0.0"},
+		{[]byte{0x0A, 0x00, 0x05, 0x09}, "10.0.5.9"},
+		{[]byte{0xFD, 0xFE, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x5A, 0x55, 0xCA, 0xFF, 0xFE,
+			0xFA, 0x90, 0x89}, "fdfe::5a55:caff:fefa:9089"},
+		{[]byte{0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xFF, 0xFF, 0x01,
+			0x02, 0x03, 0x04}, "::ffff:1.2.3.4"},
+		{[]byte{0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xFF, 0xFF, 0xFF,
+			0xFF, 0xFF, 0xFF}, "::ffff:255.255.255.255"},
+		// Fail cases
+		{[]byte{}, nil},                 // missing bytes
+		{[]byte{0x0A, 0x00, 0x05}, nil}, // missing a byte ipv4
+		{[]byte{0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xFF, 0xFF, 0xFF,
+			0xFF, 0xFF}, nil}, // missing a byte ipv6
+	}
+	fc := funcs[ast.Inet6Ntoa]
+	for _, test := range tests {
+		ip := types.NewDatum(test.ip)
+		f, err := fc.getFunction(datumsToConstants([]types.Datum{ip}), s.ctx)
+		c.Assert(err, IsNil)
+		result, err := f.eval(nil)
+		c.Assert(err, IsNil)
+		c.Assert(result, testutil.DatumEquals, types.NewDatum(test.expect))
+	}
+
+	var argNull types.Datum
+	f, _ := fc.getFunction(datumsToConstants([]types.Datum{argNull}), s.ctx)
+	r, err := f.eval(nil)
+	c.Assert(err, IsNil)
+	c.Assert(r.IsNull(), IsTrue)
+}
+
+func (s *testEvaluatorSuite) TestInet6AtoN(c *C) {
+	tests := []struct {
+		ip     string
+		expect interface{}
+	}{
+		{"0.0.0.0", []byte{0x00, 0x00, 0x00, 0x00}},
+		{"10.0.5.9", []byte{0x0A, 0x00, 0x05, 0x09}},
+		{"fdfe::5a55:caff:fefa:9089", []byte{0xFD, 0xFE, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x5A, 0x55, 0xCA, 0xFF, 0xFE, 0xFA, 0x90, 0x89}},
+		{"::ffff:1.2.3.4", []byte{0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xFF, 0xFF, 0x01, 0x02, 0x03, 0x04}},
+		{"", nil},
+		{"Not IP address", nil},
+		{"::ffff:255.255.255.255", []byte{0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}},
+	}
+	fc := funcs[ast.Inet6Aton]
+	for _, test := range tests {
+		ip := types.NewDatum(test.ip)
+		f, err := fc.getFunction(datumsToConstants([]types.Datum{ip}), s.ctx)
+		c.Assert(err, IsNil)
+		result, err := f.eval(nil)
+		c.Assert(err, IsNil)
+		c.Assert(result, testutil.DatumEquals, types.NewDatum(test.expect))
+	}
+
+	var argNull types.Datum
+	f, _ := fc.getFunction(datumsToConstants([]types.Datum{argNull}), s.ctx)
+	r, err := f.eval(nil)
+	c.Assert(err, IsNil)
+	c.Assert(r.IsNull(), IsTrue)
+}
+
+func (s *testEvaluatorSuite) TestIsIPv4Mapped(c *C) {
+	tests := []struct {
+		ip     []byte
+		expect interface{}
+	}{
+		{[]byte{}, 0},
+		{[]byte{0x10, 0x10, 0x10, 0x10}, 0},
+		{[]byte{0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0xff, 0xff, 0x1, 0x2, 0x3, 0x4}, 1},
+		{[]byte{0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x1, 0xff, 0xff, 0x1, 0x2, 0x3, 0x4}, 0},
+		{[]byte{0x0, 0x1, 0x2, 0x3, 0x4, 0x5, 0x6}, 0},
+	}
+	fc := funcs[ast.IsIPv4Mapped]
+	for _, test := range tests {
+		ip := types.NewDatum(test.ip)
+		f, err := fc.getFunction(datumsToConstants([]types.Datum{ip}), s.ctx)
+		c.Assert(err, IsNil)
+		result, err := f.eval(nil)
+		c.Assert(err, IsNil)
+		c.Assert(result, testutil.DatumEquals, types.NewDatum(test.expect))
+	}
+
+	var argNull types.Datum
+	f, _ := fc.getFunction(datumsToConstants([]types.Datum{argNull}), s.ctx)
+	r, err := f.eval(nil)
+	c.Assert(err, IsNil)
+	c.Assert(r, testutil.DatumEquals, types.NewDatum(0))
+}
+
+func (s *testEvaluatorSuite) TestIsIPv4Compat(c *C) {
+	tests := []struct {
+		ip     []byte
+		expect interface{}
+	}{
+		{[]byte{}, 0},
+		{[]byte{0x10, 0x10, 0x10, 0x10}, 0},
+		{[]byte{0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x1, 0x2, 0x3, 0x4}, 1},
+		{[]byte{0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x1, 0x0, 0x0, 0x1, 0x2, 0x3, 0x4}, 0},
+		{[]byte{0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x1, 0xff, 0xff, 0x1, 0x2, 0x3, 0x4}, 0},
+		{[]byte{0x0, 0x1, 0x2, 0x3, 0x4, 0x5, 0x6}, 0},
+	}
+	fc := funcs[ast.IsIPv4Compat]
+	for _, test := range tests {
+		ip := types.NewDatum(test.ip)
+		f, err := fc.getFunction(datumsToConstants([]types.Datum{ip}), s.ctx)
+		c.Assert(err, IsNil)
+		result, err := f.eval(nil)
+		c.Assert(err, IsNil)
+		c.Assert(result, testutil.DatumEquals, types.NewDatum(test.expect))
+	}
+
+	var argNull types.Datum
+	f, _ := fc.getFunction(datumsToConstants([]types.Datum{argNull}), s.ctx)
+	r, err := f.eval(nil)
+	c.Assert(err, IsNil)
+	c.Assert(r, testutil.DatumEquals, types.NewDatum(0))
 }

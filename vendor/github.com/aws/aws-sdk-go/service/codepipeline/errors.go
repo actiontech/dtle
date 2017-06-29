@@ -49,13 +49,13 @@ const (
 	// ErrCodeInvalidJobException for service response error code
 	// "InvalidJobException".
 	//
-	// The specified server was specified in an invalid format or cannot be found.
+	// The specified job was specified in an invalid format or cannot be found.
 	ErrCodeInvalidJobException = "InvalidJobException"
 
 	// ErrCodeInvalidJobStateException for service response error code
 	// "InvalidJobStateException".
 	//
-	// The specified server store was specified in an invalid format.
+	// The specified job state was specified in an invalid format.
 	ErrCodeInvalidJobStateException = "InvalidJobStateException"
 
 	// ErrCodeInvalidNextTokenException for service response error code
@@ -86,7 +86,7 @@ const (
 	// ErrCodeJobNotFoundException for service response error code
 	// "JobNotFoundException".
 	//
-	// The specified server was specified in an invalid format or cannot be found.
+	// The specified job was specified in an invalid format or cannot be found.
 	ErrCodeJobNotFoundException = "JobNotFoundException"
 
 	// ErrCodeLimitExceededException for service response error code
@@ -139,7 +139,7 @@ const (
 	// "StageNotRetryableException".
 	//
 	// The specified stage can't be retried because the pipeline structure or stage
-	// store changed after the stage was not completed; the stage contains no failed
+	// state changed after the stage was not completed; the stage contains no failed
 	// actions; one or more actions are still in progress; or another retry attempt
 	// is already in progress.
 	ErrCodeStageNotRetryableException = "StageNotRetryableException"

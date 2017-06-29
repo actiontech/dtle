@@ -39,7 +39,7 @@ const (
 	// "ResourceInUseException".
 	//
 	// The resource is not available for this operation. For successful operation,
-	// the resource needs to be in the ACTIVE store.
+	// the resource needs to be in the ACTIVE state.
 	ErrCodeResourceInUseException = "ResourceInUseException"
 
 	// ErrCodeResourceNotFoundException for service response error code

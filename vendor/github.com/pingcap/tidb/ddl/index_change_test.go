@@ -24,6 +24,7 @@ import (
 	"github.com/pingcap/tidb/table"
 	"github.com/pingcap/tidb/util/testleak"
 	"github.com/pingcap/tidb/util/types"
+	goctx "golang.org/x/net/context"
 )
 
 var _ = Suite(&testIndexChangeSuite{})
@@ -48,7 +49,7 @@ func (s *testIndexChangeSuite) SetUpSuite(c *C) {
 
 func (s *testIndexChangeSuite) TestIndexChange(c *C) {
 	defer testleak.AfterTest(c)()
-	d := newDDL(s.store, nil, nil, testLease)
+	d := newDDL(goctx.Background(), nil, s.store, nil, nil, testLease)
 	defer d.Stop()
 	// create table t (c1 int primary key, c2 int);
 	tblInfo := testTableInfo(c, d, "t", 2)
@@ -104,7 +105,7 @@ func (s *testIndexChangeSuite) TestIndexChange(c *C) {
 			}
 		case model.StatePublic:
 			if job.GetRowCount() != 3 {
-				checkErr = errors.Errorf("server's row count %d != 3", job.GetRowCount())
+				checkErr = errors.Errorf("job's row count %d != 3", job.GetRowCount())
 			}
 			publicTable, err = getCurrentTable(d, s.dbInfo.ID, tblInfo.ID)
 			if err != nil {
@@ -151,7 +152,7 @@ func (s *testIndexChangeSuite) TestIndexChange(c *C) {
 			}
 		case model.StateNone:
 			if job.GetRowCount() != 4 {
-				checkErr = errors.Errorf("server's row count %d != 4", job.GetRowCount())
+				checkErr = errors.Errorf("job's row count %d != 4", job.GetRowCount())
 			}
 			noneTable, err = getCurrentTable(d, s.dbInfo.ID, tblInfo.ID)
 			if err != nil {
@@ -162,7 +163,7 @@ func (s *testIndexChangeSuite) TestIndexChange(c *C) {
 			}
 		}
 	}
-	d.start()
+	d.start(goctx.Background())
 	testDropIndex(c, ctx, d, s.dbInfo, publicTable.Meta(), "c2")
 	c.Check(errors.ErrorStack(checkErr), Equals, "")
 }

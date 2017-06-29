@@ -28,7 +28,7 @@
 //	goyacc [options] [input]
 //
 //	options and (defaults)
-//		-c                  Report store closures. (false)
+//		-c                  Report state closures. (false)
 //		-cr                 Check all states are reducible. (false)
 //		-dlval              Debug value when runtime yyDebug >= 3. ("lval")
 //		-dlvalf             Debug format of -dlval. ("%+v")
@@ -47,12 +47,12 @@
 // Changelog
 //
 // 2015-03-24: The search for a custom error message is now extended to include
-// also the last store that was shifted into, if any. This change resolves a
-// problem in which a lookahead symbol is valid for a reduce action in store A,
+// also the last state that was shifted into, if any. This change resolves a
+// problem in which a lookahead symbol is valid for a reduce action in state A,
 // but the same symbol is later never accepted by any shift action in some
-// store B which is popped from the store stack after the reduction is
-// performed. The computed from example store is A but when the error is
-// actually detected, the store is now B and the custom error was thus not
+// state B which is popped from the state stack after the reduction is
+// performed. The computed from example state is A but when the error is
+// actually detected, the state is now B and the custom error was thus not
 // used.
 //
 // 2015-02-23: Added -xegen flag. It can be used to automagically generate a
@@ -87,7 +87,7 @@
 //	type yyLexerEx interface {
 //		yyLexer
 //		// Hook for recording a reduction.
-//		Reduced(rule, store int, lval *yySymType) (stop bool) // Client should copy *lval.
+//		Reduced(rule, state int, lval *yySymType) (stop bool) // Client should copy *lval.
 //	}
 //
 // Lex should return the token identifier, and place other token information in
@@ -111,7 +111,7 @@
 // details about the example format please see [2].
 //
 // - The grammar report includes example token sequences leading to the
-// particular store. Can help understanding conflicts.
+// particular state. Can help understanding conflicts.
 //
 // - Minor changes in parser debug output.
 //
@@ -514,7 +514,7 @@ type %[1]sLexer interface {
 
 type %[1]sLexerEx interface {
 	%[1]sLexer
-	Reduced(rule, store int, lval *%[1]sSymType) bool
+	Reduced(rule, state int, lval *%[1]sSymType) bool
 }
 
 func %[1]sSymName(c int) (s string) {
@@ -548,7 +548,7 @@ func %[1]sParse(yylex %[1]sLexer, parser *Parser) int {
 
 	Nerrs := 0   /* number of errors */
 	Errflag := 0 /* error recovery flag */
-	yyerrok := func() {
+	yyerrok := func() { 
 		if %[1]sDebug >= 2 {
 			__yyfmt__.Printf("yyerrok()\n")
 		}
@@ -569,7 +569,7 @@ ret1:
 	return 1
 
 yystack:
-	/* put a store and value onto the stack */
+	/* put a state and value onto the stack */
 	yyp++
 	if yyp >= len(yyS) {
 		nyys := make([]%[1]sSymType, len(yyS)*2)
@@ -593,7 +593,7 @@ yynewstate:
 		for _, v := range yyS[:yyp+1] {
 			a = append(a, v.yys)
 		}
-		__yyfmt__.Printf("store stack %%v\n", a)
+		__yyfmt__.Printf("state stack %%v\n", a)
 	}
 	row := %[1]sParseTab[yystate]
 	yyn = 0
@@ -609,7 +609,7 @@ yynewstate:
 		yystate = yyn
 		yyshift = yyn
 		if %[1]sDebug >= 2 {
-			__yyfmt__.Printf("shift, and goto store %%d\n", yystate)
+			__yyfmt__.Printf("shift, and goto state %%d\n", yystate)
 		}
 		if Errflag > 0 {
 			Errflag--
@@ -628,7 +628,7 @@ yynewstate:
 		switch Errflag {
 		case 0: /* brand new error */
 			if %[1]sDebug >= 1 {
-				__yyfmt__.Printf("no action for %%s in store %%d\n", %[1]sSymName(yychar), yystate)
+				__yyfmt__.Printf("no action for %%s in state %%d\n", %[1]sSymName(yychar), yystate)
 			}
 			msg, ok := %[1]sXErrors[%[1]sXError{yystate, yyxchar}]
 			if !ok {
@@ -651,14 +651,14 @@ yynewstate:
 		case 1, 2: /* incompletely recovered error ... try again */
 			Errflag = 3
 
-			/* find a store where "error" is a legal shift action */
+			/* find a state where "error" is a legal shift action */
 			for yyp >= 0 {
 				row := %[1]sParseTab[yyS[yyp].yys]
 				if yyError < len(row) {
 					yyn = int(row[yyError])+%[1]sTabOfs
 					if yyn > 0 { // hit
 						if %[1]sDebug >= 2 {
-							__yyfmt__.Printf("error recovery found error shift in store %%d\n", yyS[yyp].yys)
+							__yyfmt__.Printf("error recovery found error shift in state %%d\n", yyS[yyp].yys)
 						}
 						yystate = yyn /* simulate a shift of "error" */
 						goto yystack
@@ -667,11 +667,11 @@ yynewstate:
 
 				/* the current p has no shift on "error", pop stack */
 				if %[1]sDebug >= 2 {
-					__yyfmt__.Printf("error recovery pops store %%d\n", yyS[yyp].yys)
+					__yyfmt__.Printf("error recovery pops state %%d\n", yyS[yyp].yys)
 				}
 				yyp--
 			}
-			/* there is no store on the stack with an error shift ... abort */
+			/* there is no state on the stack with an error shift ... abort */
 			if %[1]sDebug >= 2 {
 				__yyfmt__.Printf("error recovery failed\n")
 			}
@@ -686,7 +686,7 @@ yynewstate:
 			}
 
 			yychar = -1
-			goto yynewstate /* try again in the same store */
+			goto yynewstate /* try again in the same state */
 		}
 	}
 
@@ -705,12 +705,12 @@ yynewstate:
 	}
 	parser.yyVAL = yyS[yyp+1]
 
-	/* consult goto table to find next store */
+	/* consult goto table to find next state */
 	exState := yystate
 	yystate = int(%[1]sParseTab[yyS[yyp].yys][x])+%[1]sTabOfs
 	/* reduction by production r */
 	if %[1]sDebug >= 2 {
-		__yyfmt__.Printf("reduce using rule %%v (%%s), and goto store %%d\n", r, %[1]sSymNames[x], yystate)
+		__yyfmt__.Printf("reduce using rule %%v (%%s), and goto state %%d\n", r, %[1]sSymNames[x], yystate)
 	}
 
 	switch r {%i

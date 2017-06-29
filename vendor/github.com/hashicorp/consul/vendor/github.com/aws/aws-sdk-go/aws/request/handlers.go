@@ -143,7 +143,7 @@ func (l *HandlerList) Run(r *Request) {
 	}
 }
 
-// HandlerListLogItem logs the request handler and the store of the
+// HandlerListLogItem logs the request handler and the state of the
 // request's Error value. Always returns true to continue iterating
 // request handlers in a HandlerList.
 func HandlerListLogItem(item HandlerListRunItem) bool {

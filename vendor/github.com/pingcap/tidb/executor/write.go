@@ -15,6 +15,7 @@ package executor
 
 import (
 	"bytes"
+	"fmt"
 	"strings"
 
 	"github.com/juju/errors"
@@ -131,15 +132,17 @@ func updateRecord(ctx context.Context, h int64, oldData, newData []types.Datum, 
 	} else {
 		sc.AddAffectedRows(2)
 	}
+	ctx.GetSessionVars().TxnCtx.UpdateDeltaForTable(t.Meta().ID, 0, 1)
 	return nil
 }
 
 // DeleteExec represents a delete executor.
 // See https://dev.mysql.com/doc/refman/5.7/en/delete.html
 type DeleteExec struct {
+	baseExecutor
+
 	SelectExec Executor
 
-	ctx          context.Context
 	Tables       []*ast.TableName
 	IsMultiTable bool
 
@@ -252,6 +255,7 @@ func (e *DeleteExec) removeRow(ctx context.Context, t table.Table, h int64, data
 	}
 	getDirtyDB(ctx).deleteRow(t.Meta().ID, h)
 	ctx.GetSessionVars().StmtCtx.AddAffectedRows(1)
+	ctx.GetSessionVars().TxnCtx.UpdateDeltaForTable(t.Meta().ID, -1, 1)
 	return nil
 }
 
@@ -260,13 +264,19 @@ func (e *DeleteExec) Close() error {
 	return e.SelectExec.Close()
 }
 
+// Open implements the Executor Open interface.
+func (e *DeleteExec) Open() error {
+	return e.SelectExec.Open()
+}
+
 // NewLoadDataInfo returns a LoadDataInfo structure, and it's only used for tests now.
-func NewLoadDataInfo(row []types.Datum, ctx context.Context, tbl table.Table) *LoadDataInfo {
+func NewLoadDataInfo(row []types.Datum, ctx context.Context, tbl table.Table, cols []*table.Column) *LoadDataInfo {
 	return &LoadDataInfo{
 		row:       row,
 		insertVal: &InsertValues{ctx: ctx, Table: tbl},
 		Table:     tbl,
 		Ctx:       ctx,
+		columns:   cols,
 	}
 }
 
@@ -280,6 +290,7 @@ type LoadDataInfo struct {
 	FieldsInfo *ast.FieldsClause
 	LinesInfo  *ast.LinesClause
 	Ctx        context.Context
+	columns    []*table.Column
 }
 
 // SetBatchCount sets the number of rows to insert in a batch.
@@ -447,6 +458,7 @@ func escapeCols(strs [][]byte) []string {
 	return ret
 }
 
+// escape handles escape characters when running load data statement.
 // TODO: escape need to be improved, it should support ESCAPED BY to specify
 // the escape character and handle \N escape.
 // See http://dev.mysql.com/doc/refman/5.7/en/load-data.html
@@ -495,15 +507,23 @@ func (e *LoadDataInfo) insertData(cols []string) {
 		}
 		e.row[i].SetString(cols[i])
 	}
-	row, err := e.insertVal.fillRowData(e.Table.Cols(), e.row, true)
+	row, err := e.insertVal.fillRowData(e.columns, e.row, true)
 	if err != nil {
-		log.Warnf("Load Data: insert data:%v failed:%v", e.row, errors.ErrorStack(err))
+		warnLog := fmt.Sprintf("Load Data: insert data:%v failed:%v", e.row, errors.ErrorStack(err))
+		e.insertVal.handleLoadDataWarnings(err, warnLog)
 		return
 	}
 	_, err = e.Table.AddRecord(e.insertVal.ctx, row)
 	if err != nil {
-		log.Warnf("Load Data: insert data:%v failed:%v", row, errors.ErrorStack(err))
+		warnLog := fmt.Sprintf("Load Data: insert data:%v failed:%v", row, errors.ErrorStack(err))
+		e.insertVal.handleLoadDataWarnings(err, warnLog)
 	}
+}
+
+func (e *InsertValues) handleLoadDataWarnings(err error, logInfo string) {
+	sc := e.ctx.GetSessionVars().StmtCtx
+	sc.AppendWarning(err)
+	log.Warn(logInfo)
 }
 
 // LoadData represents a load data executor.
@@ -558,6 +578,11 @@ func (e *LoadData) Close() error {
 	return nil
 }
 
+// Open implements the Executor Open interface.
+func (e *LoadData) Open() error {
+	return nil
+}
+
 // InsertValues is the data to insert.
 type InsertValues struct {
 	currRow      int64
@@ -579,7 +604,7 @@ type InsertExec struct {
 
 	OnDuplicate []*expression.Assignment
 
-	Priority int
+	Priority mysql.PriorityEnum
 	Ignore   bool
 
 	finished bool
@@ -607,7 +632,6 @@ func (e *InsertExec) Next() (*Row, error) {
 	if err != nil {
 		return nil, errors.Trace(err)
 	}
-	toUpdateColumns, err := getOnDuplicateUpdateColumns(e.OnDuplicate, e.Table)
 	if err != nil {
 		return nil, errors.Trace(err)
 	}
@@ -655,7 +679,7 @@ func (e *InsertExec) Next() (*Row, error) {
 				continue
 			}
 			if len(e.OnDuplicate) > 0 {
-				if err = e.onDuplicateUpdate(row, h, toUpdateColumns); err != nil {
+				if err = e.onDuplicateUpdate(row, h, e.OnDuplicate); err != nil {
 					return nil, errors.Trace(err)
 				}
 				continue
@@ -680,6 +704,15 @@ func (e *InsertExec) Close() error {
 	return nil
 }
 
+// Open implements the Executor Close interface.
+func (e *InsertExec) Open() error {
+	if e.SelectExec != nil {
+		return e.SelectExec.Open()
+	}
+	return nil
+}
+
+// getColumns gets the explicitly specified columns of an insert statement. There are three cases:
 // There are three types of insert statements:
 // 1 insert ... values(...)  --> name type column
 // 2 insert ... set x=y...   --> set type column
@@ -752,13 +785,13 @@ func (e *InsertValues) checkValueCount(insertValueCount, valueCount, num int, co
 		// "insert into t values (1), ()" is not valid.
 		// "insert into t values (1,2), (1)" is not valid.
 		// So the value count must be same for all insert list.
-		return errors.Errorf("Column count doesn't match value count at row %d", num+1)
+		return ErrWrongValueCountOnRow.GenByArgs(num + 1)
 	}
 	if valueCount == 0 && len(e.Columns) > 0 {
 		// "insert into t (c1) values ()" is not valid.
-		return errors.Errorf("INSERT INTO %s: expected %d value(s), have %d", e.Table.Meta().Name.O, len(e.Columns), 0)
+		return ErrWrongValueCountOnRow.GenByArgs(num + 1)
 	} else if valueCount > 0 && valueCount != len(cols) {
-		return errors.Errorf("INSERT INTO %s: expected %d value(s), have %d", e.Table.Meta().Name.O, len(cols), valueCount)
+		return ErrWrongValueCountOnRow.GenByArgs(num + 1)
 	}
 	return nil
 }
@@ -799,7 +832,7 @@ func (e *InsertValues) getRow(cols []*table.Column, list []expression.Expression
 func (e *InsertValues) getRowsSelect(cols []*table.Column) ([][]types.Datum, error) {
 	// process `insert|replace into ... select ... from ...`
 	if e.SelectExec.Schema().Len() != len(cols) {
-		return nil, errors.Errorf("Column count %d doesn't match value count %d", len(cols), e.SelectExec.Schema().Len())
+		return nil, ErrWrongValueCountOnRow.GenByArgs(1)
 	}
 	var rows [][]types.Datum
 	for {
@@ -843,14 +876,16 @@ func (e *InsertValues) fillRowData(cols []*table.Column, vals []types.Datum, ign
 	return row, nil
 }
 
-func filterErr(err error, ignoreErr bool) error {
+func (e *InsertValues) filterErr(err error, ignoreErr bool) error {
 	if err == nil {
 		return nil
 	}
 	if !ignoreErr {
 		return errors.Trace(err)
 	}
-	log.Warning("ignore err:%v", errors.ErrorStack(err))
+
+	warnLog := fmt.Sprintf("ignore err:%v", errors.ErrorStack(err))
+	e.handleLoadDataWarnings(err, warnLog)
 	return nil
 }
 
@@ -873,11 +908,12 @@ func (e *InsertValues) initDefaultValues(row []types.Datum, marked map[int]struc
 				continue
 			}
 			val, err := row[i].ToInt64(sc)
-			if filterErr(errors.Trace(err), ignoreErr) != nil {
+			if e.filterErr(errors.Trace(err), ignoreErr) != nil {
 				return errors.Trace(err)
 			}
 			row[i].SetInt64(val)
 			if val != 0 {
+				e.ctx.GetSessionVars().InsertID = uint64(val)
 				e.Table.RebaseAutoID(val, true)
 				continue
 			}
@@ -905,7 +941,7 @@ func (e *InsertValues) initDefaultValues(row []types.Datum, marked map[int]struc
 		} else {
 			var err error
 			row[i], err = table.GetColDefaultValue(e.ctx, c.ToInfo())
-			if filterErr(err, ignoreErr) != nil {
+			if e.filterErr(err, ignoreErr) != nil {
 				return errors.Trace(err)
 			}
 		}
@@ -921,36 +957,25 @@ func (e *InsertValues) initDefaultValues(row []types.Datum, marked map[int]struc
 
 // onDuplicateUpdate updates the duplicate row.
 // TODO: Report rows affected and last insert id.
-func (e *InsertExec) onDuplicateUpdate(row []types.Datum, h int64, cols map[int]*expression.Assignment) error {
+func (e *InsertExec) onDuplicateUpdate(row []types.Datum, h int64, cols []*expression.Assignment) error {
 	data, err := e.Table.Row(e.ctx, h)
 	if err != nil {
 		return errors.Trace(err)
 	}
-
 	// See http://dev.mysql.com/doc/refman/5.7/en/miscellaneous-functions.html#function_values
 	e.ctx.GetSessionVars().CurrInsertValues = row
+
 	// evaluate assignment
+	assignFlag := make([]bool, len(e.Table.Cols()))
 	newData := make([]types.Datum, len(data))
-	for i, c := range row {
-		asgn, ok := cols[i]
-		if !ok {
-			newData[i] = c
-			continue
-		}
-		val, err1 := asgn.Expr.Eval(data)
+	copy(newData, data)
+	for _, col := range cols {
+		val, err1 := col.Expr.Eval(newData)
 		if err1 != nil {
 			return errors.Trace(err1)
 		}
-		newData[i] = val
-	}
-
-	assignFlag := make([]bool, len(e.Table.Cols()))
-	for i, asgn := range cols {
-		if asgn != nil {
-			assignFlag[i] = true
-		} else {
-			assignFlag[i] = false
-		}
+		newData[col.Col.Index] = val
+		assignFlag[col.Col.Index] = true
 	}
 	if err = updateRecord(e.ctx, h, data, newData, assignFlag, e.Table, true); err != nil {
 		return errors.Trace(err)
@@ -970,20 +995,6 @@ func findColumnByName(t table.Table, tableName, colName string) (*table.Column, 
 	return c, nil
 }
 
-func getOnDuplicateUpdateColumns(assignList []*expression.Assignment, t table.Table) (map[int]*expression.Assignment, error) {
-	m := make(map[int]*expression.Assignment, len(assignList))
-
-	for _, v := range assignList {
-		col := v.Col
-		c, err := findColumnByName(t, col.TblName.L, col.ColName.L)
-		if err != nil {
-			return nil, errors.Trace(err)
-		}
-		m[c.Offset] = v
-	}
-	return m, nil
-}
-
 // ReplaceExec represents a replace executor.
 type ReplaceExec struct {
 	*InsertValues
@@ -1000,6 +1011,14 @@ func (e *ReplaceExec) Schema() *expression.Schema {
 func (e *ReplaceExec) Close() error {
 	if e.SelectExec != nil {
 		return e.SelectExec.Close()
+	}
+	return nil
+}
+
+// Open implements the Executor Open interface.
+func (e *ReplaceExec) Open() error {
+	if e.SelectExec != nil {
+		return e.SelectExec.Open()
 	}
 	return nil
 }
@@ -1085,22 +1104,18 @@ func (e *ReplaceExec) Next() (*Row, error) {
 
 // UpdateExec represents a new update executor.
 type UpdateExec struct {
+	baseExecutor
+
 	SelectExec  Executor
 	OrderedList []*expression.Assignment
 
-	// Map for unique (Table, handle) pair.
+	// updatedRowKeys is a map for unique (Table, handle) pair.
 	updatedRowKeys map[table.Table]map[int64]struct{}
-	ctx            context.Context
 
 	rows        []*Row          // The rows fetched from TableExec.
 	newRowsData [][]types.Datum // The new values to be set.
 	fetched     bool
 	cursor      int
-}
-
-// Schema implements the Executor Schema interface.
-func (e *UpdateExec) Schema() *expression.Schema {
-	return expression.NewSchema()
 }
 
 // Next implements the Executor Next interface.
@@ -1113,7 +1128,7 @@ func (e *UpdateExec) Next() (*Row, error) {
 		e.fetched = true
 	}
 
-	assignFlag, err := getUpdateColumns(e.OrderedList)
+	assignFlag, err := getUpdateColumns(e.OrderedList, e.SelectExec.Schema().Len())
 	if err != nil {
 		return nil, errors.Trace(err)
 	}
@@ -1152,13 +1167,12 @@ func (e *UpdateExec) Next() (*Row, error) {
 	return &Row{}, nil
 }
 
-func getUpdateColumns(assignList []*expression.Assignment) ([]bool, error) {
-	assignFlag := make([]bool, len(assignList))
-	for i, v := range assignList {
+func getUpdateColumns(assignList []*expression.Assignment, schemaLen int) ([]bool, error) {
+	assignFlag := make([]bool, schemaLen)
+	for _, v := range assignList {
+		idx := v.Col.Index
 		if v != nil {
-			assignFlag[i] = true
-		} else {
-			assignFlag[i] = false
+			assignFlag[idx] = true
 		}
 	}
 	return assignFlag, nil
@@ -1173,23 +1187,17 @@ func (e *UpdateExec) fetchRows() error {
 		if row == nil {
 			return nil
 		}
-		l := len(e.OrderedList)
-		data := make([]types.Datum, l)
-		newData := make([]types.Datum, l)
-		for i := 0; i < l; i++ {
-			data[i] = row.Data[i]
-			newData[i] = data[i]
-			if e.OrderedList[i] != nil {
-				val, err := e.OrderedList[i].Expr.Eval(row.Data)
-				if err != nil {
-					return errors.Trace(err)
-				}
-				newData[i] = val
+		newRowData := make([]types.Datum, len(row.Data))
+		copy(newRowData, row.Data)
+		for _, assign := range e.OrderedList {
+			val, err := assign.Expr.Eval(newRowData)
+			if err != nil {
+				return errors.Trace(err)
 			}
+			newRowData[assign.Col.Index] = val
 		}
-		row.Data = data
 		e.rows = append(e.rows, row)
-		e.newRowsData = append(e.newRowsData, newData)
+		e.newRowsData = append(e.newRowsData, newRowData)
 	}
 }
 
@@ -1206,4 +1214,9 @@ func getTableOffset(schema *expression.Schema, entry *RowKeyEntry) int {
 // Close implements the Executor Close interface.
 func (e *UpdateExec) Close() error {
 	return e.SelectExec.Close()
+}
+
+// Open implements the Executor Open interface.
+func (e *UpdateExec) Open() error {
+	return e.SelectExec.Open()
 }

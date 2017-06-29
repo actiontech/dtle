@@ -26,12 +26,14 @@ func TestTLSConnection(t *testing.T) {
 	nurl := fmt.Sprintf("tls://%s:%s@%s/", opts.Username, opts.Password, endpoint)
 	nc, err := nats.Connect(nurl)
 	if err == nil {
+		nc.Close()
 		t.Fatalf("Expected error trying to connect to secure server")
 	}
 
 	// Do simple SecureConnect
 	nc, err = nats.Connect(fmt.Sprintf("tls://%s/", endpoint))
 	if err == nil {
+		nc.Close()
 		t.Fatalf("Expected error trying to connect to secure server with no auth")
 	}
 
@@ -158,6 +160,28 @@ func TestTLSConnectionTimeout(t *testing.T) {
 	}
 }
 
+// Ensure there is no race between authorization timeout and TLS handshake.
+func TestTLSAuthorizationShortTimeout(t *testing.T) {
+	opts := LoadConfig("./configs/tls.conf")
+	opts.AuthTimeout = 0.001
+
+	srv := RunServer(opts)
+	defer srv.Shutdown()
+
+	endpoint := fmt.Sprintf("%s:%d", opts.Host, opts.Port)
+	nurl := fmt.Sprintf("tls://%s:%s@%s/", opts.Username, opts.Password, endpoint)
+
+	// Expect an error here (no CA) but not a TLS oversized record error which
+	// indicates the authorization timeout fired too soon.
+	_, err := nats.Connect(nurl)
+	if err == nil {
+		t.Fatal("Expected error trying to connect to secure server")
+	}
+	if strings.Contains(err.Error(), "oversized record") {
+		t.Fatal("Corrupted TLS handshake:", err)
+	}
+}
+
 func stressConnect(t *testing.T, wg *sync.WaitGroup, errCh chan error, url string, index int) {
 	defer wg.Done()
 
@@ -199,7 +223,8 @@ func TestTLSStressConnect(t *testing.T) {
 	opts.NoSigs, opts.NoLog = true, true
 
 	// For this test, remove the authorization
-	opts.Authorization = ""
+	opts.Username = ""
+	opts.Password = ""
 
 	// Increase ssl timeout
 	opts.TLSTimeout = 2.0
@@ -223,7 +248,6 @@ func TestTLSStressConnect(t *testing.T) {
 	wg.Wait()
 
 	var lastError error
-	lastError = nil
 	for i := 0; i < threadCount; i++ {
 		err := <-errCh
 		if err != nil {
@@ -268,12 +292,14 @@ func TestTLSConnectionCurvePref(t *testing.T) {
 	nurl := fmt.Sprintf("tls://%s:%s@%s/", opts.Username, opts.Password, endpoint)
 	nc, err := nats.Connect(nurl)
 	if err == nil {
+		nc.Close()
 		t.Fatalf("Expected error trying to connect to secure server")
 	}
 
 	// Do simple SecureConnect
 	nc, err = nats.Connect(fmt.Sprintf("tls://%s/", endpoint))
 	if err == nil {
+		nc.Close()
 		t.Fatalf("Expected error trying to connect to secure server with no auth")
 	}
 

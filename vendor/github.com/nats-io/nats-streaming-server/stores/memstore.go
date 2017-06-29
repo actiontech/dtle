@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/nats-io/go-nats-streaming/pb"
+	"github.com/nats-io/nats-streaming-server/util"
 )
 
 // MemoryStore is a factory for message and subscription stores.
@@ -37,7 +38,9 @@ type MemoryMsgStore struct {
 // DefaultStoreLimits.
 func NewMemoryStore(limits *StoreLimits) (*MemoryStore, error) {
 	ms := &MemoryStore{}
-	ms.init(TypeMemory, limits)
+	if err := ms.init(TypeMemory, limits); err != nil {
+		return nil, err
+	}
 	return ms, nil
 }
 
@@ -55,22 +58,13 @@ func (ms *MemoryStore) CreateChannel(channel string, userData interface{}) (*Cha
 		return nil, false, err
 	}
 
-	// Defaults to the global limits
-	msgStoreLimits := ms.limits.MsgStoreLimits
-	subStoreLimits := ms.limits.SubStoreLimits
-	// See if there is an override
-	thisChannelLimits, exists := ms.limits.PerChannel[channel]
-	if exists {
-		// Use this channel specific limits
-		msgStoreLimits = thisChannelLimits.MsgStoreLimits
-		subStoreLimits = thisChannelLimits.SubStoreLimits
-	}
+	channelLimits := ms.genericStore.getChannelLimits(channel)
 
 	msgStore := &MemoryMsgStore{msgs: make(map[uint64]*pb.MsgProto, 64)}
-	msgStore.init(channel, &msgStoreLimits)
+	msgStore.init(channel, &channelLimits.MsgStoreLimits)
 
 	subStore := &MemorySubStore{}
-	subStore.init(channel, &subStoreLimits)
+	subStore.init(channel, &channelLimits.SubStoreLimits)
 
 	channelStore = &ChannelStore{
 		Subs:     subStore,
@@ -116,7 +110,8 @@ func (ms *MemoryMsgStore) Store(data []byte) (uint64, error) {
 			ms.removeFirstMsg()
 			if !ms.hitLimit {
 				ms.hitLimit = true
-				Noticef(droppingMsgsFmt, ms.subject, ms.totalCount, ms.limits.MaxMsgs, ms.totalBytes, ms.limits.MaxBytes)
+				Noticef(droppingMsgsFmt, ms.subject, ms.totalCount, ms.limits.MaxMsgs,
+					util.FriendlyBytes(int64(ms.totalBytes)), util.FriendlyBytes(ms.limits.MaxBytes))
 			}
 		}
 	}
@@ -195,10 +190,12 @@ func (ms *MemoryMsgStore) expireMsgs() {
 		elapsed := now - m.Timestamp
 		if elapsed >= maxAge {
 			ms.removeFirstMsg()
-		} else if elapsed < 0 {
-			ms.ageTimer.Reset(time.Duration(m.Timestamp - now + maxAge))
 		} else {
-			ms.ageTimer.Reset(time.Duration(maxAge - elapsed))
+			if elapsed < 0 {
+				ms.ageTimer.Reset(time.Duration(m.Timestamp - now + maxAge))
+			} else {
+				ms.ageTimer.Reset(time.Duration(maxAge - elapsed))
+			}
 			return
 		}
 	}

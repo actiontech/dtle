@@ -27,6 +27,7 @@ const (
 var (
 	ErrTooManyChannels = errors.New("too many channels")
 	ErrTooManySubs     = errors.New("too many subscriptions per channel")
+	ErrNotSupported    = errors.New("not supported")
 )
 
 // Noticef logs a notice statement
@@ -37,12 +38,13 @@ func Noticef(format string, v ...interface{}) {
 // StoreLimits define limits for a store.
 type StoreLimits struct {
 	// How many channels are allowed.
-	MaxChannels int
+	MaxChannels int `json:"max_channels"`
 	// Global limits. Any 0 value means that the limit is ignored (unlimited).
 	ChannelLimits
-	// Per-channel limits. If a limit for a channel in this map is 0,
-	// the corresponding global limit (specified above) is used.
-	PerChannel map[string]*ChannelLimits
+	// Per-channel limits. Special values for limits in this map:
+	// - == 0 means that the corresponding global limit is used.
+	// -  < 0 means that limit is ignored (unlimited).
+	PerChannel map[string]*ChannelLimits `json:"channels,omitempty"`
 }
 
 // ChannelLimits defines limits for a given channel
@@ -59,17 +61,17 @@ type ChannelLimits struct {
 // limit is used.
 type MsgStoreLimits struct {
 	// How many messages are allowed.
-	MaxMsgs int
+	MaxMsgs int `json:"max_msgs"`
 	// How many bytes are allowed.
-	MaxBytes int64
+	MaxBytes int64 `json:"max_bytes"`
 	// How long messages are kept in the log (unit is seconds)
-	MaxAge time.Duration
+	MaxAge time.Duration `json:"max_age"`
 }
 
 // SubStoreLimits defines limits for a SubStore
 type SubStoreLimits struct {
 	// How many subscriptions are allowed.
-	MaxSubscriptions int
+	MaxSubscriptions int `json:"max_subscriptions"`
 }
 
 // DefaultStoreLimits are the limits that a Store must
@@ -133,11 +135,49 @@ type ChannelStore struct {
 // implementations supporting recovery.
 //
 type Store interface {
+	// GetExclusiveLock is an advisory lock to prevent concurrent
+	// access to the store from multiple instances.
+	// This is not to protect individual API calls, instead, it
+	// is meant to protect the store for the entire duration the
+	// store is being used. This is why there is no `Unlock` API.
+	// The lock should be released when the store is closed.
+	//
+	// If an exclusive lock can be immediately acquired (that is,
+	// it should not block waiting for the lock to be acquired),
+	// this call will return `true` with no error. Once a store
+	// instance has acquired an exclusive lock, calling this
+	// function has no effect and `true` with no error will again
+	// be returned.
+	//
+	// If the lock cannot be acquired, this call will return
+	// `false` with no error: the caller can try again later.
+	//
+	// If, however, the lock cannot be acquired due to a fatal
+	// error, this call should return `false` and the error.
+	//
+	// It is important to note that the implementation should
+	// make an effort to distinguish error conditions deemed
+	// fatal (and therefore trying again would invariabily result
+	// in the same error) and those deemed transient, in which
+	// case no error should be returned to indicate that the
+	// caller could try later.
+	//
+	// Implementations that do not support exclusive locks should
+	// return `false` and `ErrNotSupported`.
+	GetExclusiveLock() (bool, error)
+
 	// Init can be used to initialize the store with server's information.
 	Init(info *spb.ServerInfo) error
 
 	// Name returns the name type of this store (e.g: MEMORY, FILESTORE, etc...).
 	Name() string
+
+	// Recover returns the recovered state.
+	// Implementations that do not persist state and therefore cannot
+	// recover from a previous run MUST return nil, not an error.
+	// However, an error must be returned for implementions that are
+	// attempting to recover the state but fail to do so.
+	Recover() (*RecoveredState, error)
 
 	// SetLimits sets limits for this store. The action is not expected
 	// to be retroactive.
@@ -159,6 +199,13 @@ type Store interface {
 	// HasChannel returns true if this store has any channel.
 	HasChannel() bool
 
+	// GetChannels returns a map of *ChannelStore, with channels' name as the key.
+	// The returned map is a copy of the state maintained by the store.
+	GetChannels() map[string]*ChannelStore
+
+	// GetChannelsCount returns the number of channels currently stored.
+	GetChannelsCount() int
+
 	// MsgsState returns message store statistics for a given channel, or all
 	// if 'channel' is AllChannels.
 	MsgsState(channel string) (numMessages int, byteSize uint64, err error)
@@ -172,7 +219,8 @@ type Store interface {
 	// GetClient returns the stored Client, or nil if it does not exist.
 	GetClient(clientID string) *Client
 
-	// GetClients returns a map of all stored Client objects, keyed by client IDs.
+	// GetClients returns a map of all stored Client objects, with client IDs
+	// as the key.
 	// The returned map is a copy of the state maintained by the store so that
 	// it is safe for the caller to walk through the map while clients may be
 	// added/deleted from the store.
@@ -185,7 +233,8 @@ type Store interface {
 	// and returns it to the caller.
 	DeleteClient(clientID string) *Client
 
-	// Close closes all stores.
+	// Close closes this store (including all MsgStore and SubStore).
+	// If an exlusive lock was acquired, the lock shall be released.
 	Close() error
 }
 

@@ -48,7 +48,7 @@ func (d *ddl) getReorgRowCount() int64 {
 
 func (d *ddl) runReorgJob(job *model.Job, f func() error) error {
 	if d.reorgDoneCh == nil {
-		// start a reorganization server
+		// start a reorganization job
 		d.wait.Add(1)
 		d.reorgDoneCh = make(chan error, 1)
 		go func() {
@@ -67,25 +67,25 @@ func (d *ddl) runReorgJob(job *model.Job, f func() error) error {
 		waitTimeout = 1 * time.Millisecond
 	}
 
-	// wait reorganization server done or timeout
+	// wait reorganization job done or timeout
 	select {
 	case err := <-d.reorgDoneCh:
-		log.Info("[ddl] run reorg server done")
+		log.Info("[ddl] run reorg job done")
 		d.reorgDoneCh = nil
-		// Update a server's RowCount.
+		// Update a job's RowCount.
 		job.SetRowCount(d.getReorgRowCount())
 		d.setReorgRowCount(0)
 		return errors.Trace(err)
 	case <-d.quitCh:
-		log.Info("[ddl] run reorg server ddl quit")
+		log.Info("[ddl] run reorg job ddl quit")
 		d.setReorgRowCount(0)
 		// We return errWaitReorgTimeout here too, so that outer loop will break.
 		return errWaitReorgTimeout
 	case <-time.After(waitTimeout):
-		log.Infof("[ddl] run reorg server wait timeout %v", waitTimeout)
-		// Update a server's RowCount.
+		log.Infof("[ddl] run reorg job wait timeout %v", waitTimeout)
+		// Update a job's RowCount.
 		job.SetRowCount(d.getReorgRowCount())
-		// If timeout, we will return, check the owner and retry to wait server done again.
+		// If timeout, we will return, check the owner and retry to wait job done again.
 		return errWaitReorgTimeout
 	}
 }
@@ -96,18 +96,11 @@ func (d *ddl) isReorgRunnable(txn kv.Transaction, flag JobType) error {
 		return errInvalidWorker.Gen("worker is closed")
 	}
 
-	t := meta.NewMeta(txn)
-	owner, err := d.getJobOwner(t, flag)
-	if err != nil {
-		return errors.Trace(err)
-	}
-	if owner == nil || owner.OwnerID != d.uuid {
-		// if no owner, we will try later, so here just return error.
-		// or another server is owner, return error too.
-		log.Infof("[ddl] %s server, self id %s owner %s, txnTS:%d", flag, d.uuid, owner, txn.StartTS())
+	if !d.isOwner(flag) {
+		// If it's not the owner, we will try later, so here just returns an error.
+		log.Infof("[ddl] the %s not the %s job owner, txnTS:%d", d.uuid, flag, txn.StartTS())
 		return errors.Trace(errNotOwner)
 	}
-
 	return nil
 }
 
@@ -170,7 +163,7 @@ func (d *ddl) delKeysWithStartKey(prefix, startKey kv.Key, jobType JobType, job 
 			return 0, startKey, errors.Trace(err)
 		}
 
-		// Update the background server's RowCount.
+		// Update the background job's RowCount.
 		job.SetRowCount(total)
 		d.setReorgRowCount(total)
 		batchHandleDataHistogram.WithLabelValues(batchDelData).Observe(sub)

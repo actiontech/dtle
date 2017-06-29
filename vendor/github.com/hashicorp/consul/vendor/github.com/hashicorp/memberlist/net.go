@@ -55,6 +55,7 @@ const (
 	encryptMsg
 	nackRespMsg
 	hasCrcMsg
+	errMsg
 )
 
 // compressionType is used to specify the compression algorithm
@@ -103,6 +104,11 @@ type ackResp struct {
 // that the indirect ping attempt happened but didn't succeed.
 type nackResp struct {
 	SeqNo uint32
+}
+
+// err response is sent to relay the error from the remote end
+type errResp struct {
+	Error string
 }
 
 // suspect is broadcast when we suspect a node is dead
@@ -209,6 +215,19 @@ func (m *Memberlist) handleConn(conn net.Conn) {
 	if err != nil {
 		if err != io.EOF {
 			m.logger.Printf("[ERR] memberlist: failed to receive: %s %s", err, LogConn(conn))
+
+			resp := errResp{err.Error()}
+			out, err := encode(errMsg, &resp)
+			if err != nil {
+				m.logger.Printf("[ERR] memberlist: Failed to encode error response: %s", err)
+				return
+			}
+
+			err = m.rawSendMsgStream(conn, out.Bytes())
+			if err != nil {
+				m.logger.Printf("[ERR] memberlist: Failed to send error: %s %s", err, LogConn(conn))
+				return
+			}
 		}
 		return
 	}
@@ -283,8 +302,13 @@ func (m *Memberlist) ingestPacket(buf []byte, from net.Addr, timestamp time.Time
 		// Decrypt the payload
 		plain, err := decryptPayload(m.config.Keyring.GetKeys(), buf, nil)
 		if err != nil {
-			m.logger.Printf("[ERR] memberlist: Decrypt packet failed: %v %s", err, LogAddress(from))
-			return
+			if !m.config.GossipVerifyIncoming {
+				// Treat the message as plaintext
+				plain = buf
+			} else {
+				m.logger.Printf("[ERR] memberlist: Decrypt packet failed: %v %s", err, LogAddress(from))
+				return
+			}
 		}
 
 		// Continue processing the plaintext buffer
@@ -557,7 +581,7 @@ func (m *Memberlist) encodeAndSendMsg(addr string, msgType messageType, msg inte
 func (m *Memberlist) sendMsg(addr string, msg []byte) error {
 	// Check if we can piggy back any messages
 	bytesAvail := m.config.UDPBufferSize - len(msg) - compoundHeaderOverhead
-	if m.config.EncryptionEnabled() {
+	if m.config.EncryptionEnabled() && m.config.GossipVerifyOutgoing {
 		bytesAvail -= encryptOverhead(m.encryptionVersion())
 	}
 	extra := m.getBroadcasts(compoundOverhead, bytesAvail)
@@ -621,7 +645,7 @@ func (m *Memberlist) rawSendMsgPacket(addr string, node *Node, msg []byte) error
 	}
 
 	// Check if we have encryption enabled
-	if m.config.EncryptionEnabled() {
+	if m.config.EncryptionEnabled() && m.config.GossipVerifyOutgoing {
 		// Encrypt the payload
 		var buf bytes.Buffer
 		primaryKey := m.config.Keyring.GetPrimaryKey()
@@ -652,7 +676,7 @@ func (m *Memberlist) rawSendMsgStream(conn net.Conn, sendBuf []byte) error {
 	}
 
 	// Check if encryption is enabled
-	if m.config.EncryptionEnabled() {
+	if m.config.EncryptionEnabled() && m.config.GossipVerifyOutgoing {
 		crypt, err := m.encryptLocalState(sendBuf)
 		if err != nil {
 			m.logger.Printf("[ERROR] memberlist: Failed to encrypt local state: %v", err)
@@ -719,6 +743,14 @@ func (m *Memberlist) sendAndReceiveState(addr string, join bool) ([]pushNodeStat
 	msgType, bufConn, dec, err := m.readStream(conn)
 	if err != nil {
 		return nil, nil, err
+	}
+
+	if msgType == errMsg {
+		var resp errResp
+		if err := dec.Decode(&resp); err != nil {
+			return nil, nil, err
+		}
+		return nil, nil, fmt.Errorf("remote error: %v", resp.Error)
 	}
 
 	// Quit if not push/pull
@@ -876,7 +908,7 @@ func (m *Memberlist) readStream(conn net.Conn) (messageType, io.Reader, *codec.D
 		// Reset message type and bufConn
 		msgType = messageType(plain[0])
 		bufConn = bytes.NewReader(plain[1:])
-	} else if m.config.EncryptionEnabled() {
+	} else if m.config.EncryptionEnabled() && m.config.GossipVerifyIncoming {
 		return 0, nil, nil,
 			fmt.Errorf("Encryption is configured but remote state is not encrypted")
 	}
@@ -953,7 +985,7 @@ func (m *Memberlist) readRemoteState(bufConn io.Reader, dec *codec.Decoder) (boo
 	return header.Join, remoteNodes, userBuf, nil
 }
 
-// mergeRemoteState is used to merge the remote store with our local store
+// mergeRemoteState is used to merge the remote state with our local state
 func (m *Memberlist) mergeRemoteState(join bool, remoteNodes []pushNodeState, userBuf []byte) error {
 	if err := m.verifyProtocol(remoteNodes); err != nil {
 		return err

@@ -33,32 +33,10 @@ type BoltStore struct {
 	path string
 }
 
-// Options contains all the configuraiton used to open the BoltDB
-type Options struct {
-	// Path is the file path to the BoltDB to use
-	Path string
-
-	// BoltOptions contains any specific BoltDB options you might
-	// want to specify [e.g. open timeout]
-	BoltOptions *bolt.Options
-}
-
-// readOnly returns true if the contained bolt options say to open
-// the DB in readOnly mode [this can be useful to tools that want
-// to examine the log]
-func (o *Options) readOnly() bool {
-	return o != nil && o.BoltOptions != nil && o.BoltOptions.ReadOnly
-}
-
 // NewBoltStore takes a file path and returns a connected Raft backend.
 func NewBoltStore(path string) (*BoltStore, error) {
-	return New(Options{Path: path})
-}
-
-// New uses the supplied options to open the BoltDB and prepare it for use as a raft backend.
-func New(options Options) (*BoltStore, error) {
 	// Try to connect
-	handle, err := bolt.Open(options.Path, dbFileMode, options.BoltOptions)
+	handle, err := bolt.Open(path, dbFileMode, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -66,17 +44,15 @@ func New(options Options) (*BoltStore, error) {
 	// Create the new store
 	store := &BoltStore{
 		conn: handle,
-		path: options.Path,
+		path: path,
 	}
 
-	// If the store was opened read-only, don't try and create buckets
-	if !options.readOnly() {
-		// Set up our buckets
-		if err := store.initialize(); err != nil {
-			store.Close()
-			return nil, err
-		}
+	// Set up our buckets
+	if err := store.initialize(); err != nil {
+		store.Close()
+		return nil, err
 	}
+
 	return store, nil
 }
 
@@ -237,7 +213,7 @@ func (b *BoltStore) Get(k []byte) ([]byte, error) {
 	if val == nil {
 		return nil, ErrKeyNotFound
 	}
-	return append([]byte(nil), val...), nil
+	return append([]byte{}, val...), nil
 }
 
 // SetUint64 is like Set, but handles uint64 values

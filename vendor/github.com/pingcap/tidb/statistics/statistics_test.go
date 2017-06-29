@@ -21,6 +21,7 @@ import (
 	"github.com/pingcap/tidb/model"
 	"github.com/pingcap/tidb/mysql"
 	"github.com/pingcap/tidb/sessionctx/variable"
+	"github.com/pingcap/tidb/util/codec"
 	"github.com/pingcap/tidb/util/mock"
 	"github.com/pingcap/tidb/util/types"
 )
@@ -113,123 +114,134 @@ func (s *testStatisticsSuite) SetUpSuite(c *C) {
 	s.pk = pk
 }
 
-func (s *testStatisticsSuite) TestEstimateNDV(c *C) {
-	sc := new(variable.StatementContext)
-	ndv, err := estimateNDV(sc, s.count, s.samples)
-	c.Check(err, IsNil)
-	c.Check(ndv, Equals, int64(49792))
+func encodeKey(key types.Datum) types.Datum {
+	bytes, _ := codec.EncodeKey(nil, key)
+	return types.NewBytesDatum(bytes)
 }
 
-func (s *testStatisticsSuite) TestTable(c *C) {
-	tblInfo := &model.TableInfo{
-		ID: 1,
-	}
-	columns := []*model.ColumnInfo{
-		{
-			ID:        2,
-			Name:      model.NewCIStr("a"),
-			FieldType: *types.NewFieldType(mysql.TypeLonglong),
-		},
-		{
-			ID:        3,
-			Name:      model.NewCIStr("b"),
-			FieldType: *types.NewFieldType(mysql.TypeLonglong),
-		},
-		{
-			ID:        4,
-			Name:      model.NewCIStr("c"),
-			FieldType: *types.NewFieldType(mysql.TypeLonglong),
-		},
-	}
-	indices := []*model.IndexInfo{
-		{
-			Columns: []*model.IndexColumn{
-				{
-					Name:   model.NewCIStr("b"),
-					Length: types.UnspecifiedLength,
-					Offset: 1,
-				},
-			},
-		},
-	}
-	tblInfo.Columns = columns
-	tblInfo.Indices = indices
-	timestamp := int64(10)
+func (s *testStatisticsSuite) TestBuild(c *C) {
 	bucketCount := int64(256)
-	builder := &Builder{
-		Ctx:           mock.NewContext(),
-		TblInfo:       tblInfo,
-		StartTS:       timestamp,
-		Count:         s.count,
-		NumBuckets:    bucketCount,
-		ColumnSamples: [][]types.Datum{s.samples},
-		ColOffsets:    []int{0},
-		IdxRecords:    []ast.RecordSet{s.rc},
-		IdxOffsets:    []int{0},
-		PkRecords:     ast.RecordSet(s.pk),
-		PkOffset:      2,
-	}
-	sc := builder.Ctx.GetSessionVars().StmtCtx
-	t, err := builder.NewTable()
-	c.Check(err, IsNil)
+	_, ndv, _ := buildFMSketch(s.rc.(*recordSet).data, 1000)
+	ctx := mock.NewContext()
+	sc := ctx.GetSessionVars().StmtCtx
 
-	col := t.Columns[0]
-	count, err := col.EqualRowCount(sc, types.NewIntDatum(1000))
+	col, err := BuildColumn(ctx, bucketCount, 2, ndv, s.count, 0, s.samples)
 	c.Check(err, IsNil)
-	c.Check(count, Equals, int64(2))
-	count, err = col.LessRowCount(sc, types.NewIntDatum(2000))
+	c.Check(len(col.Buckets), Equals, 232)
+	count, err := col.equalRowCount(sc, types.NewIntDatum(1000))
 	c.Check(err, IsNil)
-	c.Check(count, Equals, int64(19955))
-	count, err = col.BetweenRowCount(sc, types.NewIntDatum(3000), types.NewIntDatum(3500))
+	c.Check(int(count), Equals, 0)
+	count, err = col.lessRowCount(sc, types.NewIntDatum(1000))
 	c.Check(err, IsNil)
-	c.Check(count, Equals, int64(5075))
+	c.Check(int(count), Equals, 10000)
+	count, err = col.lessRowCount(sc, types.NewIntDatum(2000))
+	c.Check(err, IsNil)
+	c.Check(int(count), Equals, 19964)
+	count, err = col.greaterRowCount(sc, types.NewIntDatum(2000))
+	c.Check(err, IsNil)
+	c.Check(int(count), Equals, 80034)
+	count, err = col.lessRowCount(sc, types.NewIntDatum(200000000))
+	c.Check(err, IsNil)
+	c.Check(int(count), Equals, 100000)
+	count, err = col.greaterRowCount(sc, types.NewIntDatum(200000000))
+	c.Check(err, IsNil)
+	c.Check(count, Equals, 0.0)
+	count, err = col.equalRowCount(sc, types.NewIntDatum(200000000))
+	c.Check(err, IsNil)
+	c.Check(count, Equals, 0.0)
+	count, err = col.betweenRowCount(sc, types.NewIntDatum(3000), types.NewIntDatum(3500))
+	c.Check(err, IsNil)
+	c.Check(int(count), Equals, 5075)
 
-	col = t.Columns[1]
-	count, err = col.EqualRowCount(sc, types.NewIntDatum(10000))
+	tblCount, col, err := BuildIndex(ctx, bucketCount, 1, ast.RecordSet(s.rc))
 	c.Check(err, IsNil)
-	c.Check(count, Equals, int64(1))
-	count, err = col.LessRowCount(sc, types.NewIntDatum(20000))
+	c.Check(int(tblCount), Equals, 100000)
+	count, err = col.equalRowCount(sc, encodeKey(types.NewIntDatum(10000)))
 	c.Check(err, IsNil)
-	c.Check(count, Equals, int64(19984))
-	count, err = col.BetweenRowCount(sc, types.NewIntDatum(30000), types.NewIntDatum(35000))
+	c.Check(int(count), Equals, 1)
+	count, err = col.lessRowCount(sc, encodeKey(types.NewIntDatum(20000)))
 	c.Check(err, IsNil)
-	c.Check(count, Equals, int64(4618))
+	c.Check(int(count), Equals, 19983)
+	count, err = col.betweenRowCount(sc, encodeKey(types.NewIntDatum(30000)), encodeKey(types.NewIntDatum(35000)))
+	c.Check(err, IsNil)
+	c.Check(int(count), Equals, 4618)
 
-	col = t.Columns[2]
-	count, err = col.EqualRowCount(sc, types.NewIntDatum(10000))
+	tblCount, col, err = BuildPK(ctx, bucketCount, 4, ast.RecordSet(s.pk))
 	c.Check(err, IsNil)
-	c.Check(count, Equals, int64(1))
-	count, err = col.LessRowCount(sc, types.NewIntDatum(20000))
+	c.Check(int(tblCount), Equals, 100000)
+	count, err = col.equalRowCount(sc, types.NewIntDatum(10000))
 	c.Check(err, IsNil)
-	c.Check(count, Equals, int64(20224))
-	count, err = col.BetweenRowCount(sc, types.NewIntDatum(30000), types.NewIntDatum(35000))
+	c.Check(int(count), Equals, 1)
+	count, err = col.lessRowCount(sc, types.NewIntDatum(20000))
 	c.Check(err, IsNil)
-	c.Check(count, Equals, int64(5120))
-
-	str := t.String()
-	c.Check(len(str), Greater, 0)
-
+	c.Check(int(count), Equals, 20223)
+	count, err = col.betweenRowCount(sc, types.NewIntDatum(30000), types.NewIntDatum(35000))
+	c.Check(err, IsNil)
+	c.Check(int(count), Equals, 5120)
+	count, err = col.greaterAndEqRowCount(sc, types.NewIntDatum(1001))
+	c.Check(err, IsNil)
+	c.Check(int(count), Equals, 99232)
+	count, err = col.lessAndEqRowCount(sc, types.NewIntDatum(99999))
+	c.Check(err, IsNil)
+	c.Check(int(count), Equals, 100000)
+	count, err = col.lessAndEqRowCount(sc, types.Datum{})
+	c.Check(err, IsNil)
+	c.Check(int(count), Equals, 256)
+	count, err = col.greaterRowCount(sc, types.NewIntDatum(1001))
+	c.Check(err, IsNil)
+	c.Check(int(count), Equals, 99231)
+	count, err = col.lessRowCount(sc, types.NewIntDatum(99999))
+	c.Check(err, IsNil)
+	c.Check(int(count), Equals, 99999)
 }
 
 func (s *testStatisticsSuite) TestPseudoTable(c *C) {
 	ti := &model.TableInfo{}
-	ti.Columns = append(ti.Columns, &model.ColumnInfo{
+	colInfo := &model.ColumnInfo{
 		ID:        1,
 		FieldType: *types.NewFieldType(mysql.TypeLonglong),
-	})
-	tbl := PseudoTable(ti)
+	}
+	ti.Columns = append(ti.Columns, colInfo)
+	tbl := PseudoTable(ti.ID)
 	c.Assert(tbl.Count, Greater, int64(0))
-	col := tbl.Columns[0]
-	c.Assert(col.ID, Greater, int64(0))
-	c.Assert(col.NDV, Greater, int64(0))
 	sc := new(variable.StatementContext)
-	count, err := col.LessRowCount(sc, types.NewIntDatum(100))
+	count, err := tbl.ColumnLessRowCount(sc, types.NewIntDatum(100), colInfo)
 	c.Assert(err, IsNil)
-	c.Assert(count, Equals, int64(3333333))
-	count, err = col.EqualRowCount(sc, types.NewIntDatum(1000))
+	c.Assert(int(count), Equals, 3333333)
+	count, err = tbl.ColumnEqualRowCount(sc, types.NewIntDatum(1000), colInfo)
 	c.Assert(err, IsNil)
-	c.Assert(count, Equals, int64(10000))
-	count, err = col.BetweenRowCount(sc, types.NewIntDatum(1000), types.NewIntDatum(5000))
+	c.Assert(int(count), Equals, 10000)
+	count, err = tbl.ColumnBetweenRowCount(sc, types.NewIntDatum(1000), types.NewIntDatum(5000), colInfo)
 	c.Assert(err, IsNil)
-	c.Assert(count, Equals, int64(250000))
+	c.Assert(int(count), Equals, 250000)
+}
+
+func (s *testStatisticsSuite) TestColumnRange(c *C) {
+	bucketCount := int64(256)
+	_, ndv, _ := buildFMSketch(s.rc.(*recordSet).data, 1000)
+	ctx := mock.NewContext()
+	sc := ctx.GetSessionVars().StmtCtx
+
+	hg, err := BuildColumn(ctx, bucketCount, 5, ndv, s.count, 0, s.samples)
+	c.Check(err, IsNil)
+	col := &Column{Histogram: *hg}
+	ran := types.ColumnRange{
+		Low:  types.Datum{},
+		High: types.Datum{},
+	}
+	count, err := col.getColumnRowCount(sc, ran)
+	c.Assert(err, IsNil)
+	c.Assert(int(count), Equals, 10000)
+	ran.Low = types.NewIntDatum(1000)
+	ran.LowExcl = true
+	ran.High = types.NewIntDatum(2000)
+	ran.HighExcl = true
+	count, err = col.getColumnRowCount(sc, ran)
+	c.Assert(err, IsNil)
+	c.Assert(int(count), Equals, 9964)
+	ran.LowExcl = false
+	ran.HighExcl = false
+	count, err = col.getColumnRowCount(sc, ran)
+	c.Assert(err, IsNil)
+	c.Assert(int(count), Equals, 9965)
 }

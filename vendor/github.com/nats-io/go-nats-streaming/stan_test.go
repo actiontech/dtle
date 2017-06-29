@@ -83,7 +83,7 @@ func stackFatalf(t tLogger, f string, args ...interface{}) {
 	// Generate the Stack of callers:
 	for i := 1; true; i++ {
 		_, file, line, ok := runtime.Caller(i)
-		if ok == false {
+		if !ok {
 			break
 		}
 		msg := fmt.Sprintf("%d - %s:%d", i, file, line)
@@ -677,7 +677,7 @@ func TestSubscriptionStartAtTime(t *testing.T) {
 	}
 
 	// Now test Ago helper
-	delta := time.Now().Sub(startTime)
+	delta := time.Since(startTime)
 
 	sub, err = sc.Subscribe("foo", mcb, StartAtTimeDelta(delta))
 	if err != nil {
@@ -1355,7 +1355,7 @@ func TestMaxChannels(t *testing.T) {
 	opts.MaxChannels = 10
 
 	// Run a NATS Streaming server
-	s := server.RunServerWithOpts(opts, nil)
+	s := test.RunServerWithOpts(opts, nil)
 	defer s.Shutdown()
 
 	sc := NewDefaultConnection(t)
@@ -1438,31 +1438,31 @@ func TestNatsConn(t *testing.T) {
 
 	// Bail if we have a custom connection but not connected
 	cnc := nats.Conn{Opts: nats.DefaultOptions}
-	sc, err := Connect(clusterName, clientName, NatsConn(&cnc))
-	if err != ErrBadConnection {
-		stackFatalf(t, "Expected to get an invalid connection error, got %v", err)
+	if _, err := Connect(clusterName, clientName, NatsConn(&cnc)); err != ErrBadConnection {
+		t.Fatalf("Expected to get an invalid connection error, got %v", err)
 	}
 
 	// Allow custom conn only if already connected
 	opts := nats.DefaultOptions
-	nc, err = opts.Connect()
+	nc, err := opts.Connect()
 	if err != nil {
-		stackFatalf(t, "Expected to connect correctly, got err %v", err)
+		t.Fatalf("Expected to connect correctly, got err %v", err)
 	}
 	sc, err = Connect(clusterName, clientName, NatsConn(nc))
 	if err != nil {
-		stackFatalf(t, "Expected to connect correctly, got err %v", err)
+		t.Fatalf("Expected to connect correctly, got err %v", err)
 	}
 	nc.Close()
 	if nc.Status() != nats.CLOSED {
 		t.Fatal("Should have status set to CLOSED")
 	}
+	sc.Close()
 
 	// Make sure we can get the Conn we provide.
 	nc = natstest.NewDefaultConnection(t)
 	sc, err = Connect(clusterName, clientName, NatsConn(nc))
 	if err != nil {
-		stackFatalf(t, "Expected to connect correctly, got err %v", err)
+		t.Fatalf("Expected to connect correctly, got err %v", err)
 	}
 	defer sc.Close()
 	if sc.NatsConn() != nc {
@@ -1611,7 +1611,7 @@ func TestTimeoutOnRequests(t *testing.T) {
 	opts := server.GetDefaultOptions()
 	opts.ID = clusterName
 	opts.NATSServerURL = nats.DefaultURL
-	s := server.RunServerWithOpts(opts, nil)
+	s := test.RunServerWithOpts(opts, nil)
 	defer s.Shutdown()
 
 	sc := NewDefaultConnection(t)

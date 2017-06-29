@@ -33,15 +33,12 @@ Options:
                             responses to only named nodes.
 
   -tag key=regexp           This flag can be provided multiple times to filter
-                            responses to only nodes matching the tags.
+                            responses to only nodes matching the tags
 
-  -timeout="15s"            Providing a timeout overrides the default timeout.
+  -timeout="15s"            Providing a timeout overrides the default timeout
 
   -no-ack                   Setting this prevents nodes from sending an acknowledgement
-                            of the query.
-
-  -relay-factor             If provided, query responses will be relayed through this
-                            number of extra nodes for redundancy.
+                            of the query
 
   -rpc-addr=127.0.0.1:7373  RPC address of the Serf agent.
 
@@ -56,7 +53,6 @@ func (c *QueryCommand) Run(args []string) int {
 	var tags []string
 	var timeout time.Duration
 	var format string
-	var relayFactor int
 	cmdFlags := flag.NewFlagSet("event", flag.ContinueOnError)
 	cmdFlags.Usage = func() { c.Ui.Output(c.Help()) }
 	cmdFlags.Var((*agent.AppendSliceValue)(&nodes), "node", "node filter")
@@ -64,7 +60,6 @@ func (c *QueryCommand) Run(args []string) int {
 	cmdFlags.DurationVar(&timeout, "timeout", 0, "query timeout")
 	cmdFlags.BoolVar(&noAck, "no-ack", false, "no-ack")
 	cmdFlags.StringVar(&format, "format", "text", "output format")
-	cmdFlags.IntVar(&relayFactor, "relay-factor", 0, "response relay count")
 	rpcAddr := RPCAddrFlag(cmdFlags)
 	rpcAuth := RPCAuthFlag(cmdFlags)
 	if err := cmdFlags.Parse(args); err != nil {
@@ -88,11 +83,6 @@ func (c *QueryCommand) Run(args []string) int {
 		c.Ui.Error("Too many command line arguments. Only a name and payload must be specified.")
 		c.Ui.Error("")
 		c.Ui.Error(c.Help())
-		return 1
-	}
-
-	if relayFactor > 255 || relayFactor < 0 {
-		c.Ui.Error("Relay factor must be between 0 and 255")
 		return 1
 	}
 
@@ -135,7 +125,6 @@ func (c *QueryCommand) Run(args []string) int {
 		FilterNodes: nodes,
 		FilterTags:  filterTags,
 		RequestAck:  !noAck,
-		RelayFactor: uint8(relayFactor),
 		Timeout:     timeout,
 		Name:        name,
 		Payload:     payload,

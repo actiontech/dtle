@@ -101,7 +101,7 @@ const (
 	// ErrCodeStateMachineLimitExceeded for service response error code
 	// "StateMachineLimitExceeded".
 	//
-	// The maximum number of store machines has been reached. Existing store machines
+	// The maximum number of state machines has been reached. Existing state machines
 	// must be deleted before a new state machine can be created.
 	ErrCodeStateMachineLimitExceeded = "StateMachineLimitExceeded"
 

@@ -108,21 +108,21 @@ type Job struct {
 	TableID  int64         `json:"table_id"`
 	State    JobState      `json:"state"`
 	Error    *terror.Error `json:"err"`
-	// Every time we meet an error when running server, we will increase it.
+	// ErrorCount will be increased, every time we meet an error when running job.
 	ErrorCount int64 `json:"err_count"`
-	// The number of rows that are processed.
+	// RowCount means the number of rows that are processed.
 	RowCount int64         `json:"row_count"`
 	Mu       sync.Mutex    `json:"-"`
 	Args     []interface{} `json:"-"`
-	// We must use json raw message to delay parsing special args.
+	// RawArgs : We must use json raw message to delay parsing special args.
 	RawArgs     json.RawMessage `json:"raw_args"`
 	SchemaState SchemaState     `json:"schema_state"`
-	// Snapshot version for this server.
+	// SnapshotVer means snapshot version for this job.
 	SnapshotVer uint64 `json:"snapshot_ver"`
-	// unix nano seconds
+	// LastUpdateTS now uses unix nano seconds
 	// TODO: Use timestamp allocated by TSO.
 	LastUpdateTS int64 `json:"last_update_ts"`
-	// Query string of the ddl server.
+	// Query string of the ddl job.
 	Query      string       `json:"query"`
 	BinlogInfo *HistoryInfo `json:"binlog"`
 }
@@ -143,12 +143,15 @@ func (job *Job) GetRowCount() int64 {
 	return job.RowCount
 }
 
-// Encode encodes server with json format.
-func (job *Job) Encode() ([]byte, error) {
+// Encode encodes job with json format.
+// updateRawArgs is used to determine whether to update the raw args.
+func (job *Job) Encode(updateRawArgs bool) ([]byte, error) {
 	var err error
-	job.RawArgs, err = json.Marshal(job.Args)
-	if err != nil {
-		return nil, errors.Trace(err)
+	if updateRawArgs {
+		job.RawArgs, err = json.Marshal(job.Args)
+		if err != nil {
+			return nil, errors.Trace(err)
+		}
 	}
 
 	var b []byte
@@ -159,14 +162,14 @@ func (job *Job) Encode() ([]byte, error) {
 	return b, errors.Trace(err)
 }
 
-// Decode decodes server from the json buffer, we must use DecodeArgs later to
-// decode special args for this server.
+// Decode decodes job from the json buffer, we must use DecodeArgs later to
+// decode special args for this job.
 func (job *Job) Decode(b []byte) error {
 	err := json.Unmarshal(b, job)
 	return errors.Trace(err)
 }
 
-// DecodeArgs decodes server args.
+// DecodeArgs decodes job args.
 func (job *Job) DecodeArgs(args ...interface{}) error {
 	job.Args = args
 	err := json.Unmarshal(job.RawArgs, &job.Args)
@@ -180,26 +183,36 @@ func (job *Job) String() string {
 		job.ID, job.Type, job.State, job.SchemaState, job.SchemaID, job.TableID, rowCount, len(job.Args))
 }
 
-// IsFinished returns whether server is finished or not.
-// If the server state is Done or Cancelled, it is finished.
+// IsFinished returns whether job is finished or not.
+// If the job state is Done or Cancelled, it is finished.
 func (job *Job) IsFinished() bool {
 	return job.State == JobDone || job.State == JobRollbackDone || job.State == JobCancelled
 }
 
-// IsDone returns whether server is done.
+// IsCancelled returns whether the job is cancelled or not.
+func (job *Job) IsCancelled() bool {
+	return job.State == JobCancelled || job.State == JobRollbackDone
+}
+
+// IsSynced returns whether the DDL modification is synced among all TiDB servers.
+func (job *Job) IsSynced() bool {
+	return job.State == JobSynced
+}
+
+// IsDone returns whether job is done.
 func (job *Job) IsDone() bool {
 	return job.State == JobDone
 }
 
-// IsRunning returns whether server is still running or not.
+// IsRunning returns whether job is still running or not.
 func (job *Job) IsRunning() bool {
 	return job.State == JobRunning
 }
 
-// JobState is for server state.
+// JobState is for job state.
 type JobState byte
 
-// List server states.
+// List job states.
 const (
 	JobNone JobState = iota
 	JobRunning
@@ -210,6 +223,9 @@ const (
 	JobRollbackDone
 	JobDone
 	JobCancelled
+	// JobSynced is used to mark the information about the completion of this job
+	// has been synchronized to all servers.
+	JobSynced
 )
 
 // String implements fmt.Stringer interface.
@@ -225,22 +241,11 @@ func (s JobState) String() string {
 		return "done"
 	case JobCancelled:
 		return "cancelled"
+	case JobSynced:
+		return "synced"
 	default:
 		return "none"
 	}
-}
-
-// Owner is for DDL Owner.
-type Owner struct {
-	OwnerID string `json:"owner_id"`
-	// unix nano seconds
-	// TODO: Use timestamp allocated by TSO.
-	LastUpdateTS int64 `json:"last_update_ts"`
-}
-
-// String implements fmt.Stringer interface.
-func (o *Owner) String() string {
-	return fmt.Sprintf("ID:%s, LastUpdateTS:%d", o.OwnerID, o.LastUpdateTS)
 }
 
 // SchemaDiff contains the schema modification at a particular schema version.

@@ -6,12 +6,12 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"os/signal"
 	"reflect"
 	"runtime"
 	"strings"
 	"time"
 
+	"github.com/nats-io/gnatsd/conf"
 	natsd "github.com/nats-io/gnatsd/server"
 	stand "github.com/nats-io/nats-streaming-server/server"
 	"github.com/nats-io/nats-streaming-server/stores"
@@ -21,81 +21,83 @@ var usageStr = `
 Usage: nats-streaming-server [options]
 
 Streaming Server Options:
-    -cid, --cluster_id  <cluster ID> Cluster ID (default: test-cluster)
-    -st,  --store <type>             Store type: MEMORY|FILE (default: MEMORY)
-          --dir <directory>          For FILE store type, this is the root directory
-    -mc,  --max_channels <number>    Max number of channels (0 for unlimited)
-    -msu, --max_subs <number>        Max number of subscriptions per channel (0 for unlimited)
-    -mm,  --max_msgs <number>        Max number of messages per channel (0 for unlimited)
-    -mb,  --max_bytes <number>       Max messages total size per channel (0 for unlimited)
-    -ma,  --max_age <seconds>        Max duration a message can be stored ("0s" for unlimited)
-    -ns,  --nats_server <url>        Connect to this external NATS Server (embedded otherwise)
-    -sc,  --stan_config <file>       Streaming server configuration file
+    -cid, --cluster_id  <string>     Cluster ID (default: test-cluster)
+    -st,  --store <string>           Store type: MEMORY|FILE (default: MEMORY)
+          --dir <string>             For FILE store type, this is the root directory
+    -mc,  --max_channels <int>       Max number of channels (0 for unlimited)
+    -msu, --max_subs <int>           Max number of subscriptions per channel (0 for unlimited)
+    -mm,  --max_msgs <int>           Max number of messages per channel (0 for unlimited)
+    -mb,  --max_bytes <size>         Max messages total size per channel (0 for unlimited)
+    -ma,  --max_age <duration>       Max duration a message can be stored ("0s" for unlimited)
+    -ns,  --nats_server <string>     Connect to this external NATS Server URL (embedded otherwise)
+    -sc,  --stan_config <string>     Streaming server configuration file
     -hbi, --hb_interval <duration>   Interval at which server sends heartbeat to a client
     -hbt, --hb_timeout <duration>    How long server waits for a heartbeat response
-    -hbf, --hb_fail_count <number>   Number of failed heartbeats before server closes the client connection
-          --ack_subs <number>        Number of internal subscriptions handling incoming ACKs (0 means one per client's subscription)
+    -hbf, --hb_fail_count <int>      Number of failed heartbeats before server closes the client connection
+          --ack_subs <int>           Number of internal subscriptions handling incoming ACKs (0 means one per client's subscription)
+          --ft_group <string>        Name of the FT Group. A group can be 2 or more servers with a single active server and all sharing the same datastore.
 
 Streaming Server File Store Options:
-    --file_compact_enabled           Enable file compaction
-    --file_compact_frag              File fragmentation threshold for compaction
-    --file_compact_interval <int>    Minimum interval (in seconds) between file compactions
-    --file_compact_min_size <int>    Minimum file size for compaction
-    --file_buffer_size <int>         File buffer size (in bytes)
-    --file_crc                       Enable file CRC-32 checksum
-    --file_crc_poly <int>            Polynomial used to make the table used for CRC-32 checksum
-    --file_sync                      Enable File.Sync on Flush
-    --file_slice_max_msgs            Maximum number of messages per file slice (subject to channel limits)
-    --file_slice_max_bytes           Maximum file slice size - including index file (subject to channel limits)
-    --file_slice_max_age             Maximum file slice duration starting when the first message is stored (subject to channel limits)
-    --file_slice_archive_script      Path to script to use if you want to archive a file slice being removed
-    --file_fds_limit                 Store will try to use no more file descriptors than this given limit
+    --file_compact_enabled <bool>        Enable file compaction
+    --file_compact_frag <int>            File fragmentation threshold for compaction
+    --file_compact_interval <int>        Minimum interval (in seconds) between file compactions
+    --file_compact_min_size <size>       Minimum file size for compaction
+    --file_buffer_size <size>            File buffer size (in bytes)
+    --file_crc <bool>                    Enable file CRC-32 checksum
+    --file_crc_poly <int>                Polynomial used to make the table used for CRC-32 checksum
+    --file_sync <bool>                   Enable File.Sync on Flush
+    --file_slice_max_msgs <int>          Maximum number of messages per file slice (subject to channel limits)
+    --file_slice_max_bytes <size>        Maximum file slice size - including index file (subject to channel limits)
+    --file_slice_max_age <duration>      Maximum file slice duration starting when the first message is stored (subject to channel limits)
+    --file_slice_archive_script <string> Path to script to use if you want to archive a file slice being removed
+    --file_fds_limit <int>               Store will try to use no more file descriptors than this given limit
+    --file_parallel_recovery <int>       On startup, number of channels that can be recovered in parallel
 
 Streaming Server TLS Options:
-    -secure                          Use a TLS connection to the NATS server without
+    -secure <bool>                   Use a TLS connection to the NATS server without
                                      verification; weaker than specifying certificates.
-    -tls_client_key                  Client key for the streaming server
-    -tls_client_cert                 Client certificate for the streaming server
-    -tls_client_cacert               Client certificate CA for the streaming server
+    -tls_client_key <string>         Client key for the streaming server
+    -tls_client_cert <string>        Client certificate for the streaming server
+    -tls_client_cacert <string>      Client certificate CA for the streaming server
 
 Streaming Server Logging Options:
-    -SD, --stan_debug                Enable STAN debugging output
-    -SV, --stan_trace                Trace the raw STAN protocol
+    -SD, --stan_debug=<bool>         Enable STAN debugging output
+    -SV, --stan_trace=<bool>         Trace the raw STAN protocol
     -SDV                             Debug and trace STAN
     (See additional NATS logging options below)
 
 Embedded NATS Server Options:
-    -a, --addr <host>                Bind to host address (default: 0.0.0.0)
-    -p, --port <port>                Use port for clients (default: 4222)
-    -P, --pid <file>                 File to store PID
-    -m, --http_port <port>           Use port for http monitoring
-    -ms,--https_port <port>          Use port for https monitoring
-    -c, --config <file>              Configuration file
+    -a, --addr <string>              Bind to host address (default: 0.0.0.0)
+    -p, --port <int>                 Use port for clients (default: 4222)
+    -P, --pid <string>               File to store PID
+    -m, --http_port <int>            Use port for http monitoring
+    -ms,--https_port <int>           Use port for https monitoring
+    -c, --config <string>            Configuration file
 
 Logging Options:
-    -l, --log <file>                 File to redirect log output
-    -T, --logtime                    Timestamp log entries (default: true)
-    -s, --syslog                     Enable syslog as log method
-    -r, --remote_syslog <addr>       Syslog server addr (udp://localhost:514)
-    -D, --debug                      Enable debugging output
-    -V, --trace                      Trace the raw protocol
+    -l, --log <string>               File to redirect log output
+    -T, --logtime=<bool>             Timestamp log entries (default: true)
+    -s, --syslog <string>            Enable syslog as log method
+    -r, --remote_syslog <string>     Syslog server addr (udp://localhost:514)
+    -D, --debug=<bool>               Enable debugging output
+    -V, --trace=<bool>               Trace the raw protocol
     -DV                              Debug and trace
 
 Authorization Options:
-        --user <user>                User required for connections
-        --pass <password>            Password required for connections
-        --auth <token>               Authorization token required for connections
+        --user <string>              User required for connections
+        --pass <string>              Password required for connections
+        --auth <string>              Authorization token required for connections
 
 TLS Options:
-        --tls                        Enable TLS, do not verify clients (default: false)
-        --tlscert <file>             Server certificate file
-        --tlskey <file>              Private key for server certificate
-        --tlsverify                  Enable TLS, verify client certificates
-        --tlscacert <file>           Client certificate CA for verification
+        --tls=<bool>                 Enable TLS, do not verify clients (default: false)
+        --tlscert <string>           Server certificate file
+        --tlskey <string>            Private key for server certificate
+        --tlsverify=<bool>           Enable TLS, verify client certificates
+        --tlscacert <string>         Client certificate CA for verification
 
 NATS Clustering Options:
-        --routes <rurl-1, rurl-2>    Routes to solicit and connect
-        --cluster <cluster-url>      Cluster URL for solicited routes
+        --routes <string, ...>       Routes to solicit and connect
+        --cluster <string>           Cluster URL for solicited routes
 
 Common Options:
     -h, --help                       Show this message
@@ -110,25 +112,17 @@ func usage() {
 }
 
 func main() {
-
 	// Parse flags
 	sOpts, nOpts := parseFlags()
-	// override the NoSigs for NATS since we have our own signal handler below
+	// Force the streaming server to setup its own signal handler
+	sOpts.HandleSignals = true
+	// override the NoSigs for NATS since Streaming has its own signal handler
 	nOpts.NoSigs = true
 	stand.ConfigureLogger(sOpts, nOpts)
-	s, err := stand.RunServerWithOpts(sOpts, nOpts)
-	if err != nil {
+	if _, err := stand.RunServerWithOpts(sOpts, nOpts); err != nil {
 		fmt.Println(err)
 		os.Exit(1)
 	}
-	c := make(chan os.Signal, 1)
-	signal.Notify(c, os.Interrupt)
-	go func() {
-		<-c
-		s.Shutdown()
-		os.Exit(0)
-	}()
-
 	runtime.Goexit()
 }
 
@@ -156,8 +150,8 @@ func parseFlags() (*stand.Options, *natsd.Options) {
 	flag.Int("msu", stores.DefaultStoreLimits.MaxSubscriptions, "MaxSubscriptions")
 	flag.Int("max_msgs", stores.DefaultStoreLimits.MaxMsgs, "MaxMsgs")
 	flag.Int("mm", stores.DefaultStoreLimits.MaxMsgs, "MaxMsgs")
-	flag.Int64("max_bytes", stores.DefaultStoreLimits.MaxBytes, "MaxBytes")
-	flag.Int64("mb", stores.DefaultStoreLimits.MaxBytes, "MaxBytes")
+	flag.String("max_bytes", fmt.Sprintf("%v", stores.DefaultStoreLimits.MaxBytes), "MaxBytes")
+	flag.String("mb", fmt.Sprintf("%v", stores.DefaultStoreLimits.MaxBytes), "MaxBytes")
 	flag.String("max_age", "0s", "MaxAge")
 	flag.String("ma", "0s", "MaxAge")
 	flag.String("hbi", stand.DefaultHeartBeatInterval.String(), "ClientHBInterval")
@@ -183,24 +177,26 @@ func parseFlags() (*stand.Options, *natsd.Options) {
 	flag.Bool("file_compact_enabled", stores.DefaultFileStoreOptions.CompactEnabled, "FileStoreOpts.CompactEnabled")
 	flag.Int("file_compact_frag", stores.DefaultFileStoreOptions.CompactFragmentation, "FileStoreOpts.CompactFragmentation")
 	flag.Int("file_compact_interval", stores.DefaultFileStoreOptions.CompactInterval, "FileStoreOpts.CompactInterval")
-	flag.Int64("file_compact_min_size", stores.DefaultFileStoreOptions.CompactMinFileSize, "FileStoreOpts.CompactMinFileSize")
-	flag.Int("file_buffer_size", stores.DefaultFileStoreOptions.BufferSize, "FileStoreOpts.BufferSize")
+	flag.String("file_compact_min_size", fmt.Sprintf("%v", stores.DefaultFileStoreOptions.CompactMinFileSize), "FileStoreOpts.CompactMinFileSize")
+	flag.String("file_buffer_size", fmt.Sprintf("%v", stores.DefaultFileStoreOptions.BufferSize), "FileStoreOpts.BufferSize")
 	flag.Bool("file_crc", stores.DefaultFileStoreOptions.DoCRC, "FileStoreOpts.DoCRC")
 	flag.Int64("file_crc_poly", stores.DefaultFileStoreOptions.CRCPolynomial, "FileStoreOpts.CRCPolynomial")
 	flag.Bool("file_sync", stores.DefaultFileStoreOptions.DoSync, "FileStoreOpts.DoSync")
 	flag.Int("file_slice_max_msgs", stores.DefaultFileStoreOptions.SliceMaxMsgs, "FileStoreOpts.SliceMaxMsgs")
-	flag.Int64("file_slice_max_bytes", stores.DefaultFileStoreOptions.SliceMaxBytes, "FileStoreOpts.SliceMaxBytes")
+	flag.String("file_slice_max_bytes", fmt.Sprintf("%v", stores.DefaultFileStoreOptions.SliceMaxBytes), "FileStoreOpts.SliceMaxBytes")
 	flag.String("file_slice_max_age", "0s", "FileStoreOpts.SliceMaxAge")
 	flag.String("file_slice_archive_script", "", "FileStoreOpts.SliceArchiveScript")
 	flag.Int64("file_fds_limit", stores.DefaultFileStoreOptions.FileDescriptorsLimit, "FileStoreOpts.FileDescriptorsLimit")
+	flag.Int("file_parallel_recovery", stores.DefaultFileStoreOptions.ParallelRecovery, "FileStoreOpts.ParallelRecovery")
 	flag.Int("io_batch_size", stand.DefaultIOBatchSize, "IOBatchSize")
 	flag.Int64("io_sleep_time", stand.DefaultIOSleepTime, "IOSleepTime")
+	flag.String("ft_group", "", "FTGroupName")
 
 	// NATS options
 	var showVersion bool
 	var natsDebugAndTrace bool
 	var showTLSHelp bool
-	var configFile string
+	var gnatsdConfigFile string
 
 	natsOpts := natsd.Options{}
 
@@ -230,8 +226,8 @@ func parseFlags() (*stand.Options, *natsd.Options) {
 	flag.IntVar(&natsOpts.HTTPPort, "http_port", 0, "")
 	flag.IntVar(&natsOpts.HTTPSPort, "ms", 0, "")
 	flag.IntVar(&natsOpts.HTTPSPort, "https_port", 0, "")
-	flag.StringVar(&configFile, "c", "", "")
-	flag.StringVar(&configFile, "config", "", "")
+	flag.StringVar(&gnatsdConfigFile, "c", "", "")
+	flag.StringVar(&gnatsdConfigFile, "config", "", "")
 	flag.StringVar(&natsOpts.PidFile, "P", "", "")
 	flag.StringVar(&natsOpts.PidFile, "pid", "", "")
 	flag.StringVar(&natsOpts.LogFile, "l", "", "")
@@ -283,11 +279,18 @@ func parseFlags() (*stand.Options, *natsd.Options) {
 		usage()
 	}
 
+	// If user provides explicit config files for "-sc" and "-c" then use
+	// given config file only, otherwise, try to parse the same config file
+	// for each components.
+	cfgFile := stanConfigFile
+	if cfgFile == "" && gnatsdConfigFile != "" {
+		cfgFile = gnatsdConfigFile
+	}
 	// Parse NATS Streaming configuration file, updating stanOpts with
 	// what is found in the file, possibly overriding the defaults.
-	if stanConfigFile != "" {
-		if err := stand.ProcessConfigFile(stanConfigFile, stanOpts); err != nil {
-			natsd.PrintAndDie(err.Error())
+	if cfgFile != "" {
+		if err := stand.ProcessConfigFile(cfgFile, stanOpts); err != nil {
+			natsd.PrintAndDie(fmt.Sprintf("Configuration error: %v", err.Error()))
 		}
 	}
 	// Now apply all parameters provided on the command line.
@@ -296,20 +299,17 @@ func parseFlags() (*stand.Options, *natsd.Options) {
 	}
 
 	// Parse NATS config if given
-	if configFile != "" {
-		fileOpts, err := natsd.ProcessConfigFile(configFile)
+	cfgFile = gnatsdConfigFile
+	if cfgFile == "" && stanConfigFile != "" {
+		cfgFile = stanConfigFile
+	}
+	if cfgFile != "" {
+		fileOpts, err := natsd.ProcessConfigFile(cfgFile)
 		if err != nil {
 			natsd.PrintAndDie(err.Error())
 		}
 		natsOpts = *natsd.MergeOptions(fileOpts, &natsOpts)
 	}
-
-	// Remove any host/ip that points to itself in Route
-	newroutes, err := natsd.RemoveSelfReference(natsOpts.Cluster.Port, natsOpts.Routes)
-	if err != nil {
-		natsd.PrintAndDie(err.Error())
-	}
-	natsOpts.Routes = newroutes
 
 	// One flag can set multiple options.
 	if natsDebugAndTrace {
@@ -319,32 +319,12 @@ func parseFlags() (*stand.Options, *natsd.Options) {
 	// for now, key off of one flag - the NATS flag to disable logging.
 	natsOpts.NoLog = false
 
-	//
-	// STAN server special option handling
-	//
-	// Ensure some options are set based on selected store type
-	checkStoreOpts(stanOpts)
-
 	// One flag can set multiple options.
 	if stanDebugAndTrace {
 		stanOpts.Trace, stanOpts.Debug = true, true
 	}
 
 	return stanOpts, &natsOpts
-}
-
-func checkStoreOpts(opts *stand.Options) {
-	// Convert the user input to upper case
-	storeType := strings.ToUpper(opts.StoreType)
-
-	// If FILE, check some parameters
-	if storeType == stores.TypeFile {
-		if opts.FilestoreDir == "" {
-			fmt.Printf("\nFor %v stores, option \"-dir\" must be specified\n", stores.TypeFile)
-			flag.Usage()
-			os.Exit(0)
-		}
-	}
 }
 
 // overrideWithCmdLineParams applies the flags passed in the command line
@@ -380,11 +360,21 @@ func overrideWithCmdLineParams(opts *stand.Options) error {
 		switch valKind {
 		case reflect.String:
 			switch f.Usage {
-			case "MaxAge":
-				fallthrough
-			case "ClientHBInterval":
-				fallthrough
-			case "ClientHBTimeout":
+			// Parameters that can be size are configured as string and we then use
+			// gnatsd's configuration parser to convert to a int64.
+			case "MaxBytes", "FileStoreOpts.CompactMinFileSize", "FileStoreOpts.BufferSize", "FileStoreOpts.SliceMaxBytes":
+				var res map[string]interface{}
+				res, err = conf.Parse(fmt.Sprintf("bytes: %v", val))
+				if err != nil {
+					return
+				}
+				resVal := res["bytes"]
+				if resVal == nil || reflect.TypeOf(resVal).Kind() != reflect.Int64 {
+					err = fmt.Errorf("%v should be a size, got '%v'", f.Name, resVal)
+					return
+				}
+				o.SetInt(int64(resVal.(int64)))
+			case "MaxAge", "ClientHBInterval", "ClientHBTimeout", "FileStoreOpts.SliceMaxAge":
 				var dur time.Duration
 				dur, err = time.ParseDuration(val.(string))
 				if err != nil {

@@ -33,6 +33,7 @@ const (
 	flagDecorrelate
 	flagPredicatePushDown
 	flagAggregationOptimize
+	flagPushDownTopN
 )
 
 var optRuleList = []logicalOptRule{
@@ -41,6 +42,7 @@ var optRuleList = []logicalOptRule{
 	&decorrelateSolver{},
 	&ppdSolver{},
 	&aggregationOptimizer{},
+	&pushDownTopNOptimizer{},
 }
 
 // logicalOptRule means a logical optimizing rule, which contains decorrelate, ppd, column pruning, etc.
@@ -52,7 +54,7 @@ type logicalOptRule interface {
 // The node must be prepared first.
 func Optimize(ctx context.Context, node ast.Node, is infoschema.InfoSchema) (Plan, error) {
 	// We have to infer type again because after parameter is set, the expression type may change.
-	if err := InferType(ctx.GetSessionVars().StmtCtx, node); err != nil {
+	if err := expression.InferType(ctx.GetSessionVars().StmtCtx, node); err != nil {
 		return nil, errors.Trace(err)
 	}
 	allocator := new(idAllocator)
@@ -81,6 +83,25 @@ func Optimize(ctx context.Context, node ast.Node, is infoschema.InfoSchema) (Pla
 	return p, nil
 }
 
+// BuildLogicalPlan is exported and only used for test.
+func BuildLogicalPlan(ctx context.Context, node ast.Node, is infoschema.InfoSchema) (Plan, error) {
+	// We have to infer type again because after parameter is set, the expression type may change.
+	if err := expression.InferType(ctx.GetSessionVars().StmtCtx, node); err != nil {
+		return nil, errors.Trace(err)
+	}
+	builder := &planBuilder{
+		ctx:       ctx,
+		is:        is,
+		colMapper: make(map[*ast.ColumnNameExpr]int),
+		allocator: new(idAllocator),
+	}
+	p := builder.build(node)
+	if builder.err != nil {
+		return nil, errors.Trace(builder.err)
+	}
+	return p, nil
+}
+
 func checkPrivilege(pm privilege.Manager, vs []visitInfo) bool {
 	for _, v := range vs {
 		if !pm.RequestVerification(v.db, v.table, v.column, v.privilege) {
@@ -98,7 +119,10 @@ func doOptimize(flag uint64, logic LogicalPlan, ctx context.Context, allocator *
 	if !AllowCartesianProduct && existsCartesianProduct(logic) {
 		return nil, errors.Trace(ErrCartesianProductUnsupported)
 	}
-	logic.ResolveIndicesAndCorCols()
+	if UseDAGPlanBuilder(ctx) {
+		return dagPhysicalOptimize(logic)
+	}
+	logic.ResolveIndices()
 	return physicalOptimize(flag, logic, allocator)
 }
 
@@ -119,6 +143,17 @@ func logicalOptimize(flag uint64, logic LogicalPlan, ctx context.Context, alloc 
 	return logic, errors.Trace(err)
 }
 
+func dagPhysicalOptimize(logic LogicalPlan) (PhysicalPlan, error) {
+	logic.preparePossibleProperties()
+	task, err := logic.convert2NewPhysicalPlan(&requiredProp{taskTp: rootTaskType})
+	if err != nil {
+		return nil, errors.Trace(err)
+	}
+	p := EliminateProjection(task.plan())
+	p.ResolveIndices()
+	return p, nil
+}
+
 func physicalOptimize(flag uint64, logic LogicalPlan, allocator *idAllocator) (PhysicalPlan, error) {
 	info, err := logic.convert2PhysicalPlan(&requiredProperty{})
 	if err != nil {
@@ -133,7 +168,7 @@ func physicalOptimize(flag uint64, logic LogicalPlan, allocator *idAllocator) (P
 }
 
 func existsCartesianProduct(p LogicalPlan) bool {
-	if join, ok := p.(*Join); ok && len(join.EqualConditions) == 0 {
+	if join, ok := p.(*LogicalJoin); ok && len(join.EqualConditions) == 0 {
 		return join.JoinType == InnerJoin || join.JoinType == LeftOuterJoin || join.JoinType == RightOuterJoin
 	}
 	for _, child := range p.Children() {

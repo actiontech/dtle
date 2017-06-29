@@ -30,6 +30,7 @@ import (
 	"github.com/pingcap/tidb/util/testleak"
 	"github.com/pingcap/tidb/util/testutil"
 	"github.com/pingcap/tidb/util/types"
+	goctx "golang.org/x/net/context"
 )
 
 var _ = Suite(&testColumnChangeSuite{})
@@ -54,7 +55,7 @@ func (s *testColumnChangeSuite) SetUpSuite(c *C) {
 
 func (s *testColumnChangeSuite) TestColumnChange(c *C) {
 	defer testleak.AfterTest(c)()
-	d := newDDL(s.store, nil, nil, testLease)
+	d := newDDL(goctx.Background(), nil, s.store, nil, nil, testLease)
 	defer d.Stop()
 	// create table t (c1 int, c2 int);
 	tblInfo := testTableInfo(c, d, "t", 2)
@@ -177,7 +178,7 @@ func (s *testColumnChangeSuite) testAddColumnNoDefault(c *C, ctx context.Context
 		}
 	}
 	d.setHook(tc)
-	d.start()
+	d.start(goctx.Background())
 	job := testCreateColumn(c, ctx, d, s.dbInfo, tblInfo, "c3", &ast.ColumnPosition{Tp: ast.ColumnPositionNone}, nil)
 	c.Assert(errors.ErrorStack(checkErr), Equals, "")
 	testCheckJobDone(c, d, job, true)
@@ -206,7 +207,7 @@ func (s *testColumnChangeSuite) testColumnDrop(c *C, ctx context.Context, d *ddl
 		}
 	}
 	d.setHook(tc)
-	d.start()
+	d.start(goctx.Background())
 	c.Assert(errors.ErrorStack(checkErr), Equals, "")
 	testDropColumn(c, ctx, d, s.dbInfo, tbl.Meta(), dropCol.Name.L, false)
 }
@@ -230,7 +231,7 @@ func (s *testColumnChangeSuite) checkAddWriteOnly(d *ddl, ctx context.Context, d
 	if err != nil {
 		return errors.Trace(err)
 	}
-	// This test is for RowWithCols when column store is StateWriteOnly.
+	// This test is for RowWithCols when column state is StateWriteOnly.
 	row, err := writeOnlyTable.RowWithCols(ctx, h, writeOnlyTable.WritableCols())
 	if err != nil {
 		return errors.Trace(err)

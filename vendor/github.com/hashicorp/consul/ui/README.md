@@ -5,7 +5,7 @@ HTTP server that serves this directory, but any common HTTP server
 is capable of serving it.
 
 It uses JavaScript and [Ember](http://emberjs.com) to communicate with
-the [Consul API](https://www.consul.io/docs/agent/http.html). The basic
+the [Consul API](https://www.consul.io/api/index.html). The basic
 features it provides are:
 
 - Service view. A list of your registered services, their
@@ -58,8 +58,9 @@ development configuration.
 
 The `../pkg/web_ui` folder will contain the files you should use for deployment.
 
-###Acknowledgements
-cog icon by useiconic.com from the [Noun Project](https://thenounproject.com/term/setting/45865/)
+### Acknowledgments
+
+Cog icon by useiconic.com from the [Noun Project](https://thenounproject.com/term/setting/45865/)
 
 ### Compiling the UI into the Go binary
 

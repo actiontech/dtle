@@ -533,7 +533,7 @@ func TestCopy_embeddedLocker(t *testing.T) {
 
 	<-copied
 
-	// test that the mutex is in the correct store
+	// test that the mutex is in the correct state
 	result.(*EmbeddedLocker).Lock()
 	result.(*EmbeddedLocker).Unlock()
 
@@ -574,7 +574,7 @@ func TestCopy_lockRace(t *testing.T) {
 	wg.Wait()
 	result, err := Config{Lock: true}.Copy(v)
 
-	// test that the mutex is in the correct store
+	// test that the mutex is in the correct state
 	result.(*EmbeddedLocker).Lock()
 	result.(*EmbeddedLocker).Unlock()
 
@@ -590,7 +590,7 @@ func TestCopy_lockRace(t *testing.T) {
 type LockedField struct {
 	String string
 	Locker *EmbeddedLocker
-	// this should not get locked or have its store copied
+	// this should not get locked or have its state copied
 	Mutex    sync.Mutex
 	nilMutex *sync.Mutex
 }
@@ -627,7 +627,7 @@ func TestCopy_lockedField(t *testing.T) {
 
 	<-copied
 
-	// test that the mutexes are in the correct store
+	// test that the mutexes are in the correct state
 	result.(*LockedField).Locker.Lock()
 	result.(*LockedField).Locker.Unlock()
 	result.(*LockedField).Mutex.Lock()
@@ -677,7 +677,7 @@ func TestCopy_lockedMap(t *testing.T) {
 
 	<-copied
 
-	// test that the mutex is in the correct store
+	// test that the mutex is in the correct state
 	result.(*lockedMap).Lock()
 	result.(*lockedMap).Unlock()
 
@@ -722,7 +722,7 @@ func TestCopy_rLocker(t *testing.T) {
 
 	<-copied
 
-	// test that the mutex is in the correct store
+	// test that the mutex is in the correct state
 	vCopy := result.(*RLocker)
 	vCopy.Lock()
 	vCopy.Unlock()
@@ -1004,6 +1004,72 @@ func TestCopy_nilPointerInSlice(t *testing.T) {
 
 	v := &T{
 		Ps: []*int{nil},
+	}
+
+	result, err := Copy(v)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !reflect.DeepEqual(v, result) {
+		t.Fatalf("\n%#v\n\n%#v", v, result)
+	}
+}
+
+//-------------------------------------------------------------------
+// The tests below all tests various pointer cases around copying
+// a structure that uses a defined Copier. This was originally raised
+// around issue #26.
+
+func TestCopy_timePointer(t *testing.T) {
+	type T struct {
+		Value *time.Time
+	}
+
+	now := time.Now()
+	v := &T{
+		Value: &now,
+	}
+
+	result, err := Copy(v)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !reflect.DeepEqual(v, result) {
+		t.Fatalf("\n%#v\n\n%#v", v, result)
+	}
+}
+
+func TestCopy_timeNonPointer(t *testing.T) {
+	type T struct {
+		Value time.Time
+	}
+
+	v := &T{
+		Value: time.Now(),
+	}
+
+	result, err := Copy(v)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !reflect.DeepEqual(v, result) {
+		t.Fatalf("\n%#v\n\n%#v", v, result)
+	}
+}
+
+func TestCopy_timeDoublePointer(t *testing.T) {
+	type T struct {
+		Value **time.Time
+	}
+
+	now := time.Now()
+	nowP := &now
+	nowPP := &nowP
+	v := &T{
+		Value: nowPP,
 	}
 
 	result, err := Copy(v)

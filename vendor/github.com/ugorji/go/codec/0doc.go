@@ -111,7 +111,7 @@ Consequently, the usage model is basically:
       They only read information off the Handle (never write).
     - However, each Encoder or Decoder MUST not be used concurrently
     - To re-use an Encoder/Decoder, call Reset(...) on it first.
-      This allows you use store maintained on the Encoder/Decoder.
+      This allows you use state maintained on the Encoder/Decoder.
 
 Sample usage model:
 

@@ -1,4 +1,4 @@
-// Copyright 2012-2016 Apcera Inc. All rights reserved.
+// Copyright 2012-2017 Apcera Inc. All rights reserved.
 
 package server
 
@@ -16,20 +16,6 @@ import (
 
 	"github.com/nats-io/gnatsd/conf"
 )
-
-// For multiple accounts/users.
-type User struct {
-	Username    string       `json:"user"`
-	Password    string       `json:"password"`
-	Permissions *Permissions `json:"permissions"`
-}
-
-// Authorization are the allowed subjects on a per
-// publish or subscribe basis.
-type Permissions struct {
-	Publish   []string `json:"publish"`
-	Subscribe []string `json:"subscribe"`
-}
 
 // Options for clusters.
 type ClusterOpts struct {
@@ -82,13 +68,15 @@ type Options struct {
 	TLSKey         string        `json:"-"`
 	TLSCaCert      string        `json:"-"`
 	TLSConfig      *tls.Config   `json:"-"`
+	WriteDeadline  time.Duration `json:"-"`
 }
 
 // Configuration file authorization section.
 type authorization struct {
 	// Singles
-	user string
-	pass string
+	user  string
+	pass  string
+	token string
 	// Multiple Users
 	users              []*User
 	timeout            float64
@@ -173,11 +161,18 @@ func ProcessConfigFile(configFile string) (*Options, error) {
 			}
 			opts.Username = auth.user
 			opts.Password = auth.pass
+			opts.Authorization = auth.token
+			if (auth.user != "" || auth.pass != "") && auth.token != "" {
+				return nil, fmt.Errorf("Cannot have a user/pass and token")
+			}
 			opts.AuthTimeout = auth.timeout
 			// Check for multiple users defined
 			if auth.users != nil {
 				if auth.user != "" {
 					return nil, fmt.Errorf("Can not have a single user/pass and a users array")
+				}
+				if auth.token != "" {
+					return nil, fmt.Errorf("Can not have a token and a users array")
 				}
 				opts.Users = auth.users
 			}
@@ -234,6 +229,20 @@ func ProcessConfigFile(configFile string) (*Options, error) {
 				return nil, err
 			}
 			opts.TLSTimeout = tc.Timeout
+		case "write_deadline":
+			wd, ok := v.(string)
+			if ok {
+				dur, err := time.ParseDuration(wd)
+				if err != nil {
+					return nil, fmt.Errorf("error parsing write_deadline: %v", err)
+				}
+				opts.WriteDeadline = dur
+			} else {
+				// Backward compatible with old type, assume this is the
+				// number of seconds.
+				opts.WriteDeadline = time.Duration(v.(int64)) * time.Second
+				fmt.Printf("WARNING: write_deadline should be converted to a duration\n")
+			}
 		}
 	}
 	return opts, nil
@@ -337,6 +346,8 @@ func parseAuthorization(am map[string]interface{}) (*authorization, error) {
 			auth.user = mv.(string)
 		case "pass", "password":
 			auth.pass = mv.(string)
+		case "token":
+			auth.token = mv.(string)
 		case "timeout":
 			at := float64(1)
 			switch mv.(type) {
@@ -398,7 +409,7 @@ func parseUsers(mv interface{}) ([]*User, error) {
 				user.Username = v.(string)
 			case "pass", "password":
 				user.Password = v.(string)
-			case "permission", "permissions", "authroization":
+			case "permission", "permissions", "authorization":
 				pm, ok := v.(map[string]interface{})
 				if !ok {
 					return nil, fmt.Errorf("Expected user permissions to be a map/struct, got %+v", v)
@@ -622,7 +633,7 @@ func GenTLSConfig(tc *TLSConfigOpts) (*tls.Config, error) {
 			return nil, err
 		}
 		pool := x509.NewCertPool()
-		ok := pool.AppendCertsFromPEM([]byte(rootPEM))
+		ok := pool.AppendCertsFromPEM(rootPEM)
 		if !ok {
 			return nil, fmt.Errorf("failed to parse root ca certificate")
 		}
@@ -840,5 +851,8 @@ func processOptions(opts *Options) {
 	}
 	if opts.MaxPayload == 0 {
 		opts.MaxPayload = MAX_PAYLOAD_SIZE
+	}
+	if opts.WriteDeadline == time.Duration(0) {
+		opts.WriteDeadline = DEFAULT_FLUSH_DEADLINE
 	}
 }

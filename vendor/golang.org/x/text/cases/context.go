@@ -4,9 +4,7 @@
 
 package cases
 
-import (
-	"golang.org/x/text/transform"
-)
+import "golang.org/x/text/transform"
 
 // A context is used for iterating over source bytes, fetching case info and
 // writing to a destination buffer.
@@ -54,6 +52,14 @@ func (c *context) ret() (nDst, nSrc int, err error) {
 		return c.pDst, c.pSrc, nil
 	}
 	return c.nDst, c.nSrc, transform.ErrShortSrc
+}
+
+// retSpan returns the return values for the Span method. It checks whether
+// there were insufficient bytes in src to complete and introduces an error
+// accordingly, if necessary.
+func (c *context) retSpan() (n int, err error) {
+	_, nSrc, err := c.ret()
+	return nSrc, err
 }
 
 // checkpoint sets the return value buffer points for Transform to the current
@@ -181,4 +187,190 @@ func (c *context) caseType() info {
 		return cLower
 	}
 	return cUncased
+}
+
+// lower writes the lowercase version of the current rune to dst.
+func lower(c *context) bool {
+	ct := c.caseType()
+	if c.info&hasMappingMask == 0 || ct == cLower {
+		return c.copy()
+	}
+	if c.info&exceptionBit == 0 {
+		return c.copyXOR()
+	}
+	e := exceptions[c.info>>exceptionShift:]
+	offset := 2 + e[0]&lengthMask // size of header + fold string
+	if nLower := (e[1] >> lengthBits) & lengthMask; nLower != noChange {
+		return c.writeString(e[offset : offset+nLower])
+	}
+	return c.copy()
+}
+
+func isLower(c *context) bool {
+	ct := c.caseType()
+	if c.info&hasMappingMask == 0 || ct == cLower {
+		return true
+	}
+	if c.info&exceptionBit == 0 {
+		c.err = transform.ErrEndOfSpan
+		return false
+	}
+	e := exceptions[c.info>>exceptionShift:]
+	if nLower := (e[1] >> lengthBits) & lengthMask; nLower != noChange {
+		c.err = transform.ErrEndOfSpan
+		return false
+	}
+	return true
+}
+
+// upper writes the uppercase version of the current rune to dst.
+func upper(c *context) bool {
+	ct := c.caseType()
+	if c.info&hasMappingMask == 0 || ct == cUpper {
+		return c.copy()
+	}
+	if c.info&exceptionBit == 0 {
+		return c.copyXOR()
+	}
+	e := exceptions[c.info>>exceptionShift:]
+	offset := 2 + e[0]&lengthMask // size of header + fold string
+	// Get length of first special case mapping.
+	n := (e[1] >> lengthBits) & lengthMask
+	if ct == cTitle {
+		// The first special case mapping is for lower. Set n to the second.
+		if n == noChange {
+			n = 0
+		}
+		n, e = e[1]&lengthMask, e[n:]
+	}
+	if n != noChange {
+		return c.writeString(e[offset : offset+n])
+	}
+	return c.copy()
+}
+
+// isUpper writes the isUppercase version of the current rune to dst.
+func isUpper(c *context) bool {
+	ct := c.caseType()
+	if c.info&hasMappingMask == 0 || ct == cUpper {
+		return true
+	}
+	if c.info&exceptionBit == 0 {
+		c.err = transform.ErrEndOfSpan
+		return false
+	}
+	e := exceptions[c.info>>exceptionShift:]
+	// Get length of first special case mapping.
+	n := (e[1] >> lengthBits) & lengthMask
+	if ct == cTitle {
+		n = e[1] & lengthMask
+	}
+	if n != noChange {
+		c.err = transform.ErrEndOfSpan
+		return false
+	}
+	return true
+}
+
+// title writes the title case version of the current rune to dst.
+func title(c *context) bool {
+	ct := c.caseType()
+	if c.info&hasMappingMask == 0 || ct == cTitle {
+		return c.copy()
+	}
+	if c.info&exceptionBit == 0 {
+		if ct == cLower {
+			return c.copyXOR()
+		}
+		return c.copy()
+	}
+	// Get the exception data.
+	e := exceptions[c.info>>exceptionShift:]
+	offset := 2 + e[0]&lengthMask // size of header + fold string
+
+	nFirst := (e[1] >> lengthBits) & lengthMask
+	if nTitle := e[1] & lengthMask; nTitle != noChange {
+		if nFirst != noChange {
+			e = e[nFirst:]
+		}
+		return c.writeString(e[offset : offset+nTitle])
+	}
+	if ct == cLower && nFirst != noChange {
+		// Use the uppercase version instead.
+		return c.writeString(e[offset : offset+nFirst])
+	}
+	// Already in correct case.
+	return c.copy()
+}
+
+// isTitle reports whether the current rune is in title case.
+func isTitle(c *context) bool {
+	ct := c.caseType()
+	if c.info&hasMappingMask == 0 || ct == cTitle {
+		return true
+	}
+	if c.info&exceptionBit == 0 {
+		if ct == cLower {
+			c.err = transform.ErrEndOfSpan
+			return false
+		}
+		return true
+	}
+	// Get the exception data.
+	e := exceptions[c.info>>exceptionShift:]
+	if nTitle := e[1] & lengthMask; nTitle != noChange {
+		c.err = transform.ErrEndOfSpan
+		return false
+	}
+	nFirst := (e[1] >> lengthBits) & lengthMask
+	if ct == cLower && nFirst != noChange {
+		c.err = transform.ErrEndOfSpan
+		return false
+	}
+	return true
+}
+
+// foldFull writes the foldFull version of the current rune to dst.
+func foldFull(c *context) bool {
+	if c.info&hasMappingMask == 0 {
+		return c.copy()
+	}
+	ct := c.caseType()
+	if c.info&exceptionBit == 0 {
+		if ct != cLower || c.info&inverseFoldBit != 0 {
+			return c.copyXOR()
+		}
+		return c.copy()
+	}
+	e := exceptions[c.info>>exceptionShift:]
+	n := e[0] & lengthMask
+	if n == 0 {
+		if ct == cLower {
+			return c.copy()
+		}
+		n = (e[1] >> lengthBits) & lengthMask
+	}
+	return c.writeString(e[2 : 2+n])
+}
+
+// isFoldFull reports whether the current run is mapped to foldFull
+func isFoldFull(c *context) bool {
+	if c.info&hasMappingMask == 0 {
+		return true
+	}
+	ct := c.caseType()
+	if c.info&exceptionBit == 0 {
+		if ct != cLower || c.info&inverseFoldBit != 0 {
+			c.err = transform.ErrEndOfSpan
+			return false
+		}
+		return true
+	}
+	e := exceptions[c.info>>exceptionShift:]
+	n := e[0] & lengthMask
+	if n == 0 && ct == cLower {
+		return true
+	}
+	c.err = transform.ErrEndOfSpan
+	return false
 }

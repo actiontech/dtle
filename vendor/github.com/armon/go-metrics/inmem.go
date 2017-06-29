@@ -3,6 +3,7 @@ package metrics
 import (
 	"fmt"
 	"math"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -118,6 +119,24 @@ func (a *AggregateSample) String() string {
 		return fmt.Sprintf("Count: %d Min: %0.3f Mean: %0.3f Max: %0.3f Stddev: %0.3f Sum: %0.3f LastUpdated: %s",
 			a.Count, a.Min, a.Mean(), a.Max, a.Stddev(), a.Sum, a.LastUpdated)
 	}
+}
+
+// NewInmemSinkFromURL creates an InmemSink from a URL. It is used
+// (and tested) from NewMetricSinkFromURL.
+func NewInmemSinkFromURL(u *url.URL) (MetricSink, error) {
+	params := u.Query()
+
+	interval, err := time.ParseDuration(params.Get("interval"))
+	if err != nil {
+		return nil, fmt.Errorf("Bad 'interval' param: %s", err)
+	}
+
+	retain, err := time.ParseDuration(params.Get("retain"))
+	if err != nil {
+		return nil, fmt.Errorf("Bad 'retain' param: %s", err)
+	}
+
+	return NewInmemSink(interval, retain), nil
 }
 
 // NewInmemSink is used to construct a new in-memory sink.

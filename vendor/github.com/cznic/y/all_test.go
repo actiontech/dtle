@@ -207,7 +207,7 @@ func test0(t *testing.T, root string, filter func(pth string) bool, opts *Option
 				}
 
 				if g, e := stop, si; g != e {
-					t.Errorf("store %d not reached (final store %d)", si, stop)
+					t.Errorf("state %d not reached (final state %d)", si, stop)
 				}
 			}
 		}
@@ -426,7 +426,7 @@ states:
 				if ok {
 					if g, e := ys.lookahead[i].dump(y), la; g != e {
 						b.err(
-							"store %d (bison store %d), item %s [%s] // bison LA [%s]",
+							"state %d (bison state %d), item %s [%s] // bison LA [%s]",
 							s, bisonState, item.dump(y), g, e,
 						)
 					}
@@ -435,12 +435,12 @@ states:
 
 				i, ok = ys.xitems.find(item)
 				if !ok {
-					return nil, fmt.Errorf("store %d (bison store %d): cannot find item %s", s, bisonState, item.dump(y))
+					return nil, fmt.Errorf("state %d (bison state %d): cannot find item %s", s, bisonState, item.dump(y))
 				}
 
 				if g, e := ys.xla[i].dump(y), la; g != e {
 					b.err(
-						"store %d (bison store %d), item %s [%s] // bison LA [%s]",
+						"state %d (bison state %d), item %s [%s] // bison LA [%s]",
 						s, bisonState, item.dump(y), g, e,
 					)
 				}

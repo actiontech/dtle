@@ -24629,7 +24629,7 @@ type DescribeAvailabilityZonesInput struct {
 	//    * region-name - The name of the region for the Availability Zone (for
 	//    example, us-east-1).
 	//
-	//    * store - The store of the Availability Zone (available | information
+	//    * state - The state of the Availability Zone (available | information
 	//    | impaired | unavailable).
 	//
 	//    * zone-name - The name of the Availability Zone (for example, us-east-1a).
@@ -24727,7 +24727,7 @@ type DescribeBundleTasksInput struct {
 	//
 	//    * start-time - The time the task started (for example, 2013-09-15T17:15:20.000Z).
 	//
-	//    * store - The store of the task (pending | waiting-for-shutdown | bundling
+	//    * state - The state of the task (pending | waiting-for-shutdown | bundling
 	//    | storing | cancelling | complete | failed).
 	//
 	//    * update-time - The time of the most recent update for the task.
@@ -25001,7 +25001,7 @@ type DescribeCustomerGatewaysInput struct {
 	//    * ip-address - The IP address of the customer gateway's Internet-routable
 	//    external interface.
 	//
-	//    * store - The store of the customer gateway (pending | available | deleting
+	//    * state - The state of the customer gateway (pending | available | deleting
 	//    | deleted).
 	//
 	//    * type - The type of customer gateway. Currently, the only supported type
@@ -25542,7 +25542,7 @@ type DescribeHostReservationsInput struct {
 	//
 	//    * payment-option - The payment option (NoUpfront | PartialUpfront | AllUpfront).
 	//
-	//    * store - The store of the reservation (payment-pending | payment-failed
+	//    * state - The state of the reservation (payment-pending | payment-failed
 	//    | active | retired).
 	Filter []*Filter `locationNameList:"Filter" type:"list"`
 
@@ -25645,7 +25645,7 @@ type DescribeHostsInput struct {
 	//    * client-token - The idempotency token you provided when you launched
 	//    the instance
 	//
-	//    * store- The allocation store of the Dedicated Host (available | under-assessment
+	//    * state- The allocation state of the Dedicated Host (available | under-assessment
 	//    | permanent-failure | released | released-permanent-failure).
 	//
 	//    * availability-zone - The Availability Zone of the host.
@@ -25745,7 +25745,7 @@ type DescribeIamInstanceProfileAssociationsInput struct {
 	//
 	//    * instance-id - The ID of the instance.
 	//
-	//    * store - The store of the association (associating | associated | disassociating
+	//    * state - The state of the association (associating | associated | disassociating
 	//    | disassociated).
 	Filters []*Filter `locationName:"Filter" locationNameList:"Filter" type:"list"`
 
@@ -26197,11 +26197,11 @@ type DescribeImagesInput struct {
 	//
 	//    * root-device-type - The type of the root device volume (ebs | instance-store).
 	//
-	//    * store - The store of the image (available | pending | failed).
+	//    * state - The state of the image (available | pending | failed).
 	//
-	//    * store-reason-code - The reason code for the store change.
+	//    * state-reason-code - The reason code for the state change.
 	//
-	//    * store-reason-message - The message for the store change.
+	//    * state-reason-message - The message for the state change.
 	//
 	//    * tag:key=value - The key/value combination of a tag assigned to the resource.
 	//    Specify the key of the tag in the filter name and the value of the tag
@@ -26752,13 +26752,13 @@ type DescribeInstanceStatusInput struct {
 	//    * event.not-before - The earliest start time for the scheduled event (for
 	//    example, 2014-09-15T17:15:20.000Z).
 	//
-	//    * instance-store-code - The code for the instance store, as a 16-bit unsigned
+	//    * instance-state-code - The code for the instance state, as a 16-bit unsigned
 	//    integer. The high byte is an opaque internal value and should be ignored.
 	//    The low byte is set based on the state represented. The valid values are
 	//    0 (pending), 16 (running), 32 (shutting-down), 48 (terminated), 64 (stopping),
 	//    and 80 (stopped).
 	//
-	//    * instance-store-name - The store of the instance (pending | running |
+	//    * instance-state-name - The state of the instance (pending | running |
 	//    shutting-down | terminated | stopping | stopped).
 	//
 	//    * instance-status.reachability - Filters on instance status where the
@@ -26950,13 +26950,13 @@ type DescribeInstancesInput struct {
 	//    * instance-lifecycle - Indicates whether this is a Spot Instance or a
 	//    Scheduled Instance (spot | scheduled).
 	//
-	//    * instance-store-code - The store of the instance, as a 16-bit unsigned
+	//    * instance-state-code - The state of the instance, as a 16-bit unsigned
 	//    integer. The high byte is an opaque internal value and should be ignored.
 	//    The low byte is set based on the state represented. The valid values are:
 	//    0 (pending), 16 (running), 32 (shutting-down), 48 (terminated), 64 (stopping),
 	//    and 80 (stopped).
 	//
-	//    * instance-store-name - The store of the instance (pending | running |
+	//    * instance-state-name - The state of the instance (pending | running |
 	//    shutting-down | terminated | stopping | stopped).
 	//
 	//    * instance-type - The type of instance (for example, t2.micro).
@@ -27101,9 +27101,9 @@ type DescribeInstancesInput struct {
 	//
 	//    * spot-instance-request-id - The ID of the Spot instance request.
 	//
-	//    * store-reason-code - The reason code for the store change.
+	//    * state-reason-code - The reason code for the state change.
 	//
-	//    * store-reason-message - A message that describes the store change.
+	//    * state-reason-message - A message that describes the state change.
 	//
 	//    * subnet-id - The ID of the subnet for the instance.
 	//
@@ -27234,7 +27234,7 @@ type DescribeInternetGatewaysInput struct {
 
 	// One or more filters.
 	//
-	//    * attachment.store - The current store of the attachment between the gateway
+	//    * attachment.state - The current state of the attachment between the gateway
 	//    and the VPC (available). Present only if a VPC is attached.
 	//
 	//    * attachment.vpc-id - The ID of an attached VPC.
@@ -27510,7 +27510,7 @@ type DescribeNatGatewaysInput struct {
 	//
 	//    * nat-gateway-id - The ID of the NAT gateway.
 	//
-	//    * store - The store of the NAT gateway (pending | failed | available |
+	//    * state - The state of the NAT gateway (pending | failed | available |
 	//    deleting | deleted).
 	//
 	//    * subnet-id - The ID of the subnet in which the NAT gateway resides.
@@ -28049,7 +28049,7 @@ type DescribePlacementGroupsInput struct {
 	//
 	//    * group-name - The name of the placement group.
 	//
-	//    * store - The store of the placement group (pending | available | deleting
+	//    * state - The state of the placement group (pending | available | deleting
 	//    | deleted).
 	//
 	//    * strategy - The strategy of the placement group (cluster).
@@ -28341,7 +28341,7 @@ type DescribeReservedInstancesInput struct {
 	//    * start - The time at which the Reserved Instance purchase request was
 	//    placed (for example, 2014-08-07T11:54:42.000Z).
 	//
-	//    * store - The store of the Reserved Instance (payment-pending | active
+	//    * state - The state of the Reserved Instance (payment-pending | active
 	//    | payment-failed | retired).
 	//
 	//    * tag:key=value - The key/value combination of a tag assigned to the resource.
@@ -28924,7 +28924,7 @@ type DescribeRouteTablesInput struct {
 	//    the route table; EnableVgwRoutePropagation indicates that the route was
 	//    propagated by route propagation.
 	//
-	//    * route.store - The store of a route in the route table (active | blackhole).
+	//    * route.state - The state of a route in the route table (active | blackhole).
 	//    The blackhole state indicates that the route's target isn't available
 	//    (for example, the specified gateway isn't attached to the VPC, the specified
 	//    NAT instance has been terminated, and so on).
@@ -30303,7 +30303,7 @@ type DescribeSpotInstanceRequestsInput struct {
 	//    * spot-price - The maximum hourly price for any Spot instance launched
 	//    to fulfill the request.
 	//
-	//    * store - The store of the Spot instance request (open | active | closed
+	//    * state - The state of the Spot instance request (open | active | closed
 	//    | cancelled | failed). Spot bid status information can help you track
 	//    your Amazon EC2 Spot instance requests. For more information, see Spot
 	//    Bid Status (http://docs.aws.amazon.com/AWSEC2/latest/UserGuide/spot-bid-status.html)
@@ -30698,10 +30698,10 @@ type DescribeSubnetsInput struct {
 	//    * ipv6-cidr-block-association.association-id - An association ID for an
 	//    IPv6 CIDR block associated with the subnet.
 	//
-	//    * ipv6-cidr-block-association.store - The store of an IPv6 CIDR block
+	//    * ipv6-cidr-block-association.state - The state of an IPv6 CIDR block
 	//    associated with the subnet.
 	//
-	//    * store - The store of the subnet (pending | available).
+	//    * state - The state of the subnet (pending | available).
 	//
 	//    * subnet-id - The ID of the subnet.
 	//
@@ -31795,7 +31795,7 @@ type DescribeVpcEndpointsInput struct {
 	//
 	//    * vpc-endpoint-id: The ID of the endpoint.
 	//
-	//    * vpc-endpoint-store: The store of the endpoint. (pending | available
+	//    * vpc-endpoint-state: The state of the endpoint. (pending | available
 	//    | deleting | deleted)
 	Filters []*Filter `locationName:"Filter" locationNameList:"Filter" type:"list"`
 
@@ -32029,12 +32029,12 @@ type DescribeVpcsInput struct {
 	//    * ipv6-cidr-block-association.association-id - The association ID for
 	//    an IPv6 CIDR block associated with the VPC.
 	//
-	//    * ipv6-cidr-block-association.store - The store of an IPv6 CIDR block
+	//    * ipv6-cidr-block-association.state - The state of an IPv6 CIDR block
 	//    associated with the VPC.
 	//
 	//    * isDefault - Indicates whether the VPC is the default VPC.
 	//
-	//    * store - The store of the VPC (pending | available).
+	//    * state - The state of the VPC (pending | available).
 	//
 	//    * tag:key=value - The key/value combination of a tag assigned to the resource.
 	//    Specify the key of the tag in the filter name and the value of the tag
@@ -32133,7 +32133,7 @@ type DescribeVpnConnectionsInput struct {
 	//    * customer-gateway-id - The ID of a customer gateway associated with the
 	//    VPN connection.
 	//
-	//    * store - The store of the VPN connection (pending | available | deleting
+	//    * state - The state of the VPN connection (pending | available | deleting
 	//    | deleted).
 	//
 	//    * option.static-routes-only - Indicates whether the connection has static
@@ -32243,7 +32243,7 @@ type DescribeVpnGatewaysInput struct {
 
 	// One or more filters.
 	//
-	//    * attachment.store - The current store of the attachment between the gateway
+	//    * attachment.state - The current state of the attachment between the gateway
 	//    and the VPC (attaching | attached | detaching | detached).
 	//
 	//    * attachment.vpc-id - The ID of an attached VPC.
@@ -32251,7 +32251,7 @@ type DescribeVpnGatewaysInput struct {
 	//    * availability-zone - The Availability Zone for the virtual private gateway
 	//    (if applicable).
 	//
-	//    * store - The store of the virtual private gateway (pending | available
+	//    * state - The state of the virtual private gateway (pending | available
 	//    | deleting | deleted).
 	//
 	//    * tag:key=value - The key/value combination of a tag assigned to the resource.
@@ -35823,7 +35823,7 @@ type Image struct {
 	// interface is enabled.
 	SriovNetSupport *string `locationName:"sriovNetSupport" type:"string"`
 
-	// The current store of the AMI. If the store is available, the image is successfully
+	// The current state of the AMI. If the state is available, the image is successfully
 	// registered and can be used to launch an instance.
 	State *string `locationName:"imageState" type:"string" enum:"ImageState"`
 
@@ -37768,7 +37768,7 @@ func (s *InstanceCapacity) SetTotalCapacity(v int64) *InstanceCapacity {
 type InstanceCount struct {
 	_ struct{} `type:"structure"`
 
-	// The number of listed Reserved Instances in the store specified by the store.
+	// The number of listed Reserved Instances in the state specified by the state.
 	InstanceCount *int64 `locationName:"instanceCount" type:"integer"`
 
 	// The states of the listed Reserved Instances.
@@ -44231,7 +44231,7 @@ type ReportInstanceStatusInput struct {
 
 	// One or more reason codes that describes the health state of your instance.
 	//
-	//    * instance-stuck-in-store: My instance is stuck in a store.
+	//    * instance-stuck-in-state: My instance is stuck in a state.
 	//
 	//    * unresponsive: My instance is unresponsive.
 	//
@@ -46417,7 +46417,7 @@ type Route struct {
 	//    * EnableVgwRoutePropagation - The route was propagated by route propagation.
 	Origin *string `locationName:"origin" type:"string" enum:"RouteOrigin"`
 
-	// The store of the route. The blackhole store indicates that the route's target
+	// The state of the route. The blackhole state indicates that the route's target
 	// isn't available (for example, the specified gateway isn't attached to the
 	// VPC, or the specified NAT instance has been terminated).
 	State *string `locationName:"state" type:"string" enum:"RouteState"`

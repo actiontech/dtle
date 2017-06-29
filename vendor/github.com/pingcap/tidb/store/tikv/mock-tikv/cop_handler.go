@@ -17,6 +17,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"sort"
+	"time"
 
 	"github.com/golang/protobuf/proto"
 	"github.com/juju/errors"
@@ -25,6 +26,7 @@ import (
 	"github.com/pingcap/tidb/distsql"
 	"github.com/pingcap/tidb/distsql/xeval"
 	"github.com/pingcap/tidb/kv"
+	"github.com/pingcap/tidb/mysql"
 	"github.com/pingcap/tidb/sessionctx/variable"
 	"github.com/pingcap/tidb/tablecodec"
 	"github.com/pingcap/tidb/util/codec"
@@ -37,14 +39,14 @@ type selectContext struct {
 	eval         *xeval.Evaluator
 	whereColumns map[int64]*tipb.ColumnInfo
 	aggColumns   map[int64]*tipb.ColumnInfo
-	topnColumns  map[int64]*tipb.ColumnInfo
-	groups       map[string]bool
+	topNColumns  map[int64]*tipb.ColumnInfo
+	groups       map[string]struct{}
 	groupKeys    [][]byte
 	aggregates   []*aggregateFuncExpr
 	aggregate    bool
 	descScan     bool
-	topn         bool
-	topnHeap     *topnHeap
+	topN         bool
+	topNHeap     *topNHeap
 	keyRanges    []*coprocessor.KeyRange
 
 	// Use for DecodeRow.
@@ -54,14 +56,16 @@ type selectContext struct {
 
 func (h *rpcHandler) handleCopRequest(req *coprocessor.Request) (*coprocessor.Response, error) {
 	resp := &coprocessor.Response{}
-	if err := h.checkContext(req.GetContext()); err != nil {
+	if err := h.checkRequestContext(req.GetContext()); err != nil {
 		resp.RegionError = err
 		return resp, nil
 	}
 	if len(req.Ranges) == 0 {
 		return resp, nil
 	}
-	if req.GetTp() == kv.ReqTypeSelect || req.GetTp() == kv.ReqTypeIndex {
+	if req.GetTp() == kv.ReqTypeDAG {
+		return h.handleCopDAGRequest(req)
+	} else if req.GetTp() == kv.ReqTypeSelect || req.GetTp() == kv.ReqTypeIndex {
 		sel := new(tipb.SelectRequest)
 		err := proto.Unmarshal(req.Data, sel)
 		if err != nil {
@@ -72,7 +76,8 @@ func (h *rpcHandler) handleCopRequest(req *coprocessor.Request) (*coprocessor.Re
 			keyRanges: req.Ranges,
 			sc:        xeval.FlagsToStatementContext(sel.Flags),
 		}
-		ctx.eval = xeval.NewEvaluator(ctx.sc)
+		loc := time.FixedZone("UTC", int(sel.TimeZoneOffset))
+		ctx.eval = xeval.NewEvaluator(ctx.sc, loc)
 		if sel.Where != nil {
 			ctx.whereColumns = make(map[int64]*tipb.ColumnInfo)
 			collectColumnsInExpr(sel.Where, ctx, ctx.whereColumns)
@@ -84,21 +89,21 @@ func (h *rpcHandler) handleCopRequest(req *coprocessor.Request) (*coprocessor.Re
 				if sel.Limit == nil {
 					return nil, errors.New("We don't support pushing down Sort without Limit")
 				}
-				ctx.topn = true
-				ctx.topnHeap = &topnHeap{
+				ctx.topN = true
+				ctx.topNHeap = &topNHeap{
 					totalCount: int(*sel.Limit),
-					topnSorter: topnSorter{
+					topNSorter: topNSorter{
 						orderByItems: sel.OrderBy,
 						sc:           ctx.sc,
 					},
 				}
-				ctx.topnColumns = make(map[int64]*tipb.ColumnInfo)
+				ctx.topNColumns = make(map[int64]*tipb.ColumnInfo)
 				for _, item := range sel.OrderBy {
-					collectColumnsInExpr(item.Expr, ctx, ctx.topnColumns)
+					collectColumnsInExpr(item.Expr, ctx, ctx.topNColumns)
 				}
 				for k := range ctx.whereColumns {
 					// It will be handled in where.
-					delete(ctx.topnColumns, k)
+					delete(ctx.topNColumns, k)
 				}
 			}
 		}
@@ -112,7 +117,7 @@ func (h *rpcHandler) handleCopRequest(req *coprocessor.Request) (*coprocessor.Re
 				ctx.aggregates = append(ctx.aggregates, aggExpr)
 				collectColumnsInExpr(agg, ctx, ctx.aggColumns)
 			}
-			ctx.groups = make(map[string]bool)
+			ctx.groups = make(map[string]struct{})
 			ctx.groupKeys = make([][]byte, 0)
 			for _, item := range ctx.sel.GetGroupBy() {
 				collectColumnsInExpr(item.Expr, ctx, ctx.aggColumns)
@@ -134,7 +139,7 @@ func (h *rpcHandler) handleCopRequest(req *coprocessor.Request) (*coprocessor.Re
 			}
 			chunks, err = h.getChunksFromIndexReq(ctx)
 		}
-		if ctx.topn {
+		if ctx.topN {
 			chunks = h.setTopNDataForCtx(ctx)
 		}
 		resp, err = buildResp(chunks, err)
@@ -172,10 +177,14 @@ func buildResp(chunks []tipb.Chunk, err error) (*coprocessor.Response, error) {
 }
 
 func (h *rpcHandler) setTopNDataForCtx(ctx *selectContext) []tipb.Chunk {
-	sort.Sort(&ctx.topnHeap.topnSorter)
-	chunks := make([]tipb.Chunk, 0, len(ctx.topnHeap.rows)/rowsPerChunk)
-	for _, row := range ctx.topnHeap.rows {
-		chunks = appendRow(chunks, row.meta.Handle, row.data)
+	sort.Sort(&ctx.topNHeap.topNSorter)
+	chunks := make([]tipb.Chunk, 0, len(ctx.topNHeap.rows)/rowsPerChunk)
+	for _, row := range ctx.topNHeap.rows {
+		var data []byte
+		for _, d := range row.data {
+			data = append(data, d...)
+		}
+		chunks = appendRow(chunks, row.meta.Handle, data)
 	}
 	return chunks
 }
@@ -189,7 +198,7 @@ func (h *rpcHandler) getRowsFromAgg(ctx *selectContext) ([]tipb.Chunk, error) {
 		rowData = append(rowData, types.NewBytesDatum(gk))
 		for _, agg := range ctx.aggregates {
 			agg.currentGroup = gk
-			ds, err := agg.toDatums(ctx)
+			ds, err := agg.toDatums(ctx.eval)
 			if err != nil {
 				return nil, errors.Trace(err)
 			}
@@ -315,14 +324,14 @@ func reverseKVRanges(kvRanges []kv.KeyRange) {
 }
 
 func (h *rpcHandler) getRowsFromRange(ctx *selectContext, ran kv.KeyRange, limit *int64, chunks []tipb.Chunk) ([]tipb.Chunk, error) {
-	startKey := maxStartKey(ran.StartKey, h.rawStartKey)
-	endKey := minEndKey(ran.EndKey, h.rawEndKey)
+	startKey := ran.StartKey
+	endKey := ran.EndKey
 	if (*limit) == 0 || bytes.Compare(startKey, endKey) >= 0 {
 		return chunks, nil
 	}
 
 	if ran.IsPoint() {
-		val, err := h.mvccStore.Get(startKey, ctx.sel.GetStartTs())
+		val, err := h.mvccStore.Get(startKey, ctx.sel.GetStartTs(), h.isolationLevel)
 		if len(val) == 0 {
 			return chunks, nil
 		} else if err != nil {
@@ -357,9 +366,9 @@ func (h *rpcHandler) getRowsFromRange(ctx *selectContext, ran kv.KeyRange, limit
 			err   error
 		)
 		if ctx.descScan {
-			pairs = h.mvccStore.ReverseScan(startKey, seekKey, 1, ctx.sel.GetStartTs())
+			pairs = h.mvccStore.ReverseScan(startKey, seekKey, 1, ctx.sel.GetStartTs(), h.isolationLevel)
 		} else {
-			pairs = h.mvccStore.Scan(seekKey, endKey, 1, ctx.sel.GetStartTs())
+			pairs = h.mvccStore.Scan(seekKey, endKey, 1, ctx.sel.GetStartTs(), h.isolationLevel)
 		}
 		if len(pairs) > 0 {
 			pair = pairs[0]
@@ -403,10 +412,42 @@ func (h *rpcHandler) getRowsFromRange(ctx *selectContext, ran kv.KeyRange, limit
 //	2. Checks if it fit where condition.
 //	3. Update aggregate functions.
 func (h *rpcHandler) handleRowData(ctx *selectContext, handle int64, value []byte) ([]byte, error) {
-	values, err := handleRowData(ctx.sel.TableInfo.Columns, ctx.colTps, handle, value)
+	columns := ctx.sel.TableInfo.Columns
+	values, err := getRowVals(value, ctx.colTps)
 	if err != nil {
 		return nil, errors.Trace(err)
 	}
+	// Fill the handle and null columns.
+	for _, col := range columns {
+		if col.GetPkHandle() {
+			var handleDatum types.Datum
+			if mysql.HasUnsignedFlag(uint(col.GetFlag())) {
+				// PK column is Unsigned.
+				handleDatum = types.NewUintDatum(uint64(handle))
+			} else {
+				handleDatum = types.NewIntDatum(handle)
+			}
+			handleData, err1 := codec.EncodeValue(nil, handleDatum)
+			if err1 != nil {
+				return nil, errors.Trace(err1)
+			}
+			values[col.GetColumnId()] = handleData
+			continue
+		}
+		_, ok := values[col.GetColumnId()]
+		if ok {
+			continue
+		}
+		if len(col.DefaultVal) > 0 {
+			values[col.GetColumnId()] = col.DefaultVal
+			continue
+		}
+		if mysql.HasNotNullFlag(uint(col.GetFlag())) {
+			return nil, errors.Errorf("Miss column %d", col.GetColumnId())
+		}
+		values[col.GetColumnId()] = []byte{codec.NilFlag}
+	}
+
 	return h.valuesToRow(ctx, handle, values)
 }
 
@@ -427,13 +468,13 @@ func (h *rpcHandler) valuesToRow(ctx *selectContext, handle int64, values map[in
 	if !match {
 		return nil, nil
 	}
-	if ctx.topn {
+	if ctx.topN {
 		return nil, errors.Trace(h.evalTopN(ctx, handle, values, columns))
 	}
 	data := dummySlice
 	if ctx.aggregate {
 		// Update aggregate functions.
-		err = h.aggregate(ctx, handle, values)
+		err = aggregate(ctx, handle, values)
 		if err != nil {
 			return nil, errors.Trace(err)
 		}
@@ -446,7 +487,7 @@ func (h *rpcHandler) valuesToRow(ctx *selectContext, handle int64, values map[in
 	return data, nil
 }
 
-func getRowData(value []byte, colTps map[int64]*types.FieldType) (map[int64][]byte, error) {
+func getRowVals(value []byte, colTps map[int64]*types.FieldType) (map[int64][]byte, error) {
 	res, err := tablecodec.CutRow(value, colTps)
 	if err != nil {
 		return nil, errors.Trace(err)
@@ -504,8 +545,8 @@ func (h *rpcHandler) getChunksFromIndexReq(ctx *selectContext) ([]tipb.Chunk, er
 
 func (h *rpcHandler) getIndexRowFromRange(ctx *selectContext, ran kv.KeyRange, limit *int64, chunks []tipb.Chunk) ([]tipb.Chunk, error) {
 	idxInfo := ctx.sel.IndexInfo
-	startKey := maxStartKey(ran.StartKey, h.rawStartKey)
-	endKey := minEndKey(ran.EndKey, h.rawEndKey)
+	startKey := ran.StartKey
+	endKey := ran.EndKey
 	if (*limit) == 0 || bytes.Compare(startKey, endKey) >= 0 {
 		return nil, nil
 	}
@@ -529,9 +570,9 @@ func (h *rpcHandler) getIndexRowFromRange(ctx *selectContext, ran kv.KeyRange, l
 			err   error
 		)
 		if ctx.descScan {
-			pairs = h.mvccStore.ReverseScan(startKey, seekKey, 1, ctx.sel.GetStartTs())
+			pairs = h.mvccStore.ReverseScan(startKey, seekKey, 1, ctx.sel.GetStartTs(), h.isolationLevel)
 		} else {
-			pairs = h.mvccStore.Scan(seekKey, endKey, 1, ctx.sel.GetStartTs())
+			pairs = h.mvccStore.Scan(seekKey, endKey, 1, ctx.sel.GetStartTs(), h.isolationLevel)
 		}
 		if len(pairs) > 0 {
 			pair = pairs[0]
@@ -611,4 +652,26 @@ func decodeHandle(data []byte) (int64, error) {
 	buf := bytes.NewBuffer(data)
 	err := binary.Read(buf, binary.BigEndian, &h)
 	return h, errors.Trace(err)
+}
+
+// setColumnValueToEval puts column values into evaluator, the values will be used for expr evaluation.
+func setColumnValueToEval(eval *xeval.Evaluator, handle int64, row map[int64][]byte, cols map[int64]*tipb.ColumnInfo) error {
+	for colID, col := range cols {
+		if col.GetPkHandle() {
+			if mysql.HasUnsignedFlag(uint(col.GetFlag())) {
+				eval.Row[colID] = types.NewUintDatum(uint64(handle))
+			} else {
+				eval.Row[colID] = types.NewIntDatum(handle)
+			}
+		} else {
+			data := row[colID]
+			ft := distsql.FieldTypeFromPBColumn(col)
+			datum, err := tablecodec.DecodeColumnValue(data, ft, eval.TimeZone)
+			if err != nil {
+				return errors.Trace(err)
+			}
+			eval.Row[colID] = datum
+		}
+	}
+	return nil
 }

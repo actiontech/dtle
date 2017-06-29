@@ -145,7 +145,7 @@ func (s *Sample) Throughput() float64 {
 	return float64(s.MsgBytes) / s.Duration().Seconds()
 }
 
-// Rate of meessages in the server per second
+// Rate of meessages in the job per second
 func (s *Sample) Rate() int64 {
 	return int64(float64(s.JobMsgCnt) / s.Duration().Seconds())
 }
@@ -169,7 +169,7 @@ func (s *Sample) Seconds() float64 {
 // NewSampleGroup initializer
 func NewSampleGroup() *SampleGroup {
 	s := new(SampleGroup)
-	s.Samples = make([]*Sample, 0, 0)
+	s.Samples = make([]*Sample, 0)
 	return s
 }
 

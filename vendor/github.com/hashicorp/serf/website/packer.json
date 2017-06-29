@@ -8,16 +8,15 @@
   "builders": [
     {
       "type": "docker",
-      "image": "hashicorp/middleman-hashicorp:0.3.12",
-      "discard": "true",
-      "run_command": ["-d", "-i", "-t", "{{ .Image }}", "/bin/sh"]
+      "image": "ruby:2.3-slim",
+      "commit": "true"
     }
   ],
   "provisioners": [
     {
       "type": "file",
       "source": ".",
-      "destination": "/website"
+      "destination": "/app"
     },
     {
       "type": "shell",
@@ -28,9 +27,16 @@
         "FASTLY_API_KEY={{ user `fastly_api_key` }}"
       ],
       "inline": [
-        "bundle check || bundle install",
+        "apt-get -qq update",
+        "apt-get -yqq install build-essential curl git libffi-dev wget",
+        "apt-get -yqq install python-pip",
+        "pip install s3cmd",
+        "cd /app",
+
+        "bundle check || bundle install --jobs 7",
         "bundle exec middleman build",
-        "/bin/sh ./scripts/deploy.sh"
+
+        "/bin/bash ./scripts/deploy.sh"
       ]
     }
   ]

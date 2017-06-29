@@ -35,7 +35,6 @@ func DefaultConfig() *Config {
 		SyslogFacility:         "LOCAL0",
 		QueryResponseSizeLimit: 1024,
 		QuerySizeLimit:         1024,
-		BroadcastTimeout:       5 * time.Second,
 	}
 }
 
@@ -127,7 +126,7 @@ type Config struct {
 	Profile string `mapstructure:"profile"`
 
 	// SnapshotPath is used to allow Serf to snapshot important transactional
-	// store to make a more graceful recovery possible. This enables auto
+	// state to make a more graceful recovery possible. This enables auto
 	// re-joining a cluster on failure and avoids old message replay.
 	SnapshotPath string `mapstructure:"snapshot_path"`
 
@@ -211,12 +210,6 @@ type Config struct {
 	// StatsdAddr is the address of a statsd instance. If provided,
 	// metrics will be sent to that instance.
 	StatsdAddr string `mapstructure:"statsd_addr"`
-
-	// BroadcastTimeoutRaw is the string retry interval. This interval
-	// controls the timeout for broadcast events. This defaults to
-	// 5 seconds.
-	BroadcastTimeoutRaw string        `mapstructure:"broadcast_timeout"`
-	BroadcastTimeout    time.Duration `mapstructure:"-"`
 }
 
 // BindAddrParts returns the parts of the BindAddr that should be
@@ -324,14 +317,6 @@ func DecodeConfig(r io.Reader) (*Config, error) {
 			return nil, err
 		}
 		result.RetryInterval = dur
-	}
-
-	if result.BroadcastTimeoutRaw != "" {
-		dur, err := time.ParseDuration(result.BroadcastTimeoutRaw)
-		if err != nil {
-			return nil, err
-		}
-		result.BroadcastTimeout = dur
 	}
 
 	return &result, nil
@@ -457,9 +442,6 @@ func MergeConfig(a, b *Config) *Config {
 	}
 	if b.QuerySizeLimit != 0 {
 		result.QuerySizeLimit = b.QuerySizeLimit
-	}
-	if b.BroadcastTimeout != 0 {
-		result.BroadcastTimeout = b.BroadcastTimeout
 	}
 
 	// Copy the event handlers

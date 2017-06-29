@@ -19,6 +19,7 @@ import (
 
 	"github.com/juju/errors"
 	"github.com/pingcap/tidb/ast"
+	"github.com/pingcap/tidb/ddl"
 	"github.com/pingcap/tidb/infoschema"
 	"github.com/pingcap/tidb/mysql"
 	"github.com/pingcap/tidb/parser"
@@ -205,6 +206,11 @@ func (v *validator) checkAutoIncrement(stmt *ast.CreateTableStmt) {
 }
 
 func (v *validator) checkCreateTableGrammar(stmt *ast.CreateTableStmt) {
+	if stmt.Table == nil || stmt.Table.Name.String() == "" {
+		v.err = ddl.ErrWrongTableName.GenByArgs("")
+		return
+	}
+
 	countPrimaryKey := 0
 	for _, colDef := range stmt.Cols {
 		tp := colDef.Tp
@@ -270,6 +276,13 @@ func (v *validator) checkAlterTableGrammar(stmt *ast.AlterTableStmt) {
 				}
 			default:
 				// Nothing to do now.
+			}
+		case ast.AlterTableOption:
+			for _, opt := range spec.Options {
+				if opt.Tp == ast.TableOptionAutoIncrement {
+					v.err = ErrAlterAutoID
+					return
+				}
 			}
 		default:
 			// Nothing to do now.

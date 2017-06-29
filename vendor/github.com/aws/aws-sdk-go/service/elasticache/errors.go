@@ -133,20 +133,20 @@ const (
 	// ErrCodeInvalidCacheClusterStateFault for service response error code
 	// "InvalidCacheClusterState".
 	//
-	// The requested cache cluster is not in the available store.
+	// The requested cache cluster is not in the available state.
 	ErrCodeInvalidCacheClusterStateFault = "InvalidCacheClusterState"
 
 	// ErrCodeInvalidCacheParameterGroupStateFault for service response error code
 	// "InvalidCacheParameterGroupState".
 	//
-	// The current store of the cache parameter group does not allow the requested
+	// The current state of the cache parameter group does not allow the requested
 	// operation to occur.
 	ErrCodeInvalidCacheParameterGroupStateFault = "InvalidCacheParameterGroupState"
 
 	// ErrCodeInvalidCacheSecurityGroupStateFault for service response error code
 	// "InvalidCacheSecurityGroupState".
 	//
-	// The current store of the cache security group does not allow deletion.
+	// The current state of the cache security group does not allow deletion.
 	ErrCodeInvalidCacheSecurityGroupStateFault = "InvalidCacheSecurityGroupState"
 
 	// ErrCodeInvalidParameterCombinationException for service response error code
@@ -164,13 +164,13 @@ const (
 	// ErrCodeInvalidReplicationGroupStateFault for service response error code
 	// "InvalidReplicationGroupState".
 	//
-	// The requested replication group is not in the available store.
+	// The requested replication group is not in the available state.
 	ErrCodeInvalidReplicationGroupStateFault = "InvalidReplicationGroupState"
 
 	// ErrCodeInvalidSnapshotStateFault for service response error code
 	// "InvalidSnapshotState".
 	//
-	// The current store of the snapshot does not allow the requested operation
+	// The current state of the snapshot does not allow the requested operation
 	// to occur.
 	ErrCodeInvalidSnapshotStateFault = "InvalidSnapshotState"
 
@@ -183,7 +183,7 @@ const (
 	// ErrCodeInvalidVPCNetworkStateFault for service response error code
 	// "InvalidVPCNetworkStateFault".
 	//
-	// The VPC network is in an invalid store.
+	// The VPC network is in an invalid state.
 	ErrCodeInvalidVPCNetworkStateFault = "InvalidVPCNetworkStateFault"
 
 	// ErrCodeNodeGroupNotFoundFault for service response error code

@@ -1,4 +1,4 @@
-// Copyright 2015-2016 Apcera Inc. All rights reserved.
+// Copyright 2015-2017 Apcera Inc. All rights reserved.
 
 package server
 
@@ -478,6 +478,31 @@ func TestConnzWithOffsetAndLimit(t *testing.T) {
 	}
 	if c.Conns == nil || len(c.Conns) != 0 {
 		t.Fatalf("Expected 0 connections in array, got %p\n", c.Conns)
+	}
+
+	// Test that when given negative values, 0 or default is used
+	resp, err = http.Get(url + "connz?offset=-1&limit=-1")
+	if err != nil {
+		t.Fatalf("Expected no error: Got %v\n", err)
+	}
+	if resp.StatusCode != 200 {
+		t.Fatalf("Expected a 200 response, got %d\n", resp.StatusCode)
+	}
+	defer resp.Body.Close()
+	body, err = ioutil.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("Got an error reading the body: %v\n", err)
+	}
+	c = Connz{}
+	if err := json.Unmarshal(body, &c); err != nil {
+		t.Fatalf("Got an error unmarshalling the body: %v\n", err)
+	}
+	if c.Conns == nil || len(c.Conns) != 0 {
+		t.Fatalf("Expected 0 connections in array, got %p\n", c.Conns)
+	}
+	if c.Offset != 0 {
+		t.Fatalf("Expected offset to be 0, and limit to be %v, got %v and %v",
+			DefaultConnListSize, c.Offset, c.Limit)
 	}
 
 	cl1 := createClientConnSubscribeAndPublish(t)
@@ -1311,28 +1336,54 @@ func TestConcurrentMonitoring(t *testing.T) {
 	endpoints := []string{"varz", "varz", "varz", "connz", "connz", "subsz", "subsz", "routez", "routez"}
 	wg := &sync.WaitGroup{}
 	wg.Add(len(endpoints))
+	ech := make(chan string, len(endpoints))
+
 	for _, e := range endpoints {
 		go func(endpoint string) {
 			defer wg.Done()
 			for i := 0; i < 150; i++ {
 				resp, err := http.Get(url + endpoint)
 				if err != nil {
-					t.Fatalf("Expected no error: Got %v\n", err)
+					ech <- fmt.Sprintf("Expected no error: Got %v\n", err)
+					return
 				}
 				if resp.StatusCode != 200 {
-					t.Fatalf("Expected a 200 response, got %d\n", resp.StatusCode)
+					ech <- fmt.Sprintf("Expected a 200 response, got %d\n", resp.StatusCode)
+					return
 				}
 				ct := resp.Header.Get("Content-Type")
 				if ct != "application/json" {
-					t.Fatalf("Expected application/json content-type, got %s\n", ct)
+					ech <- fmt.Sprintf("Expected application/json content-type, got %s\n", ct)
+					return
 				}
 				defer resp.Body.Close()
 				if _, err := ioutil.ReadAll(resp.Body); err != nil {
-					t.Fatalf("Got an error reading the body: %v\n", err)
+					ech <- fmt.Sprintf("Got an error reading the body: %v\n", err)
+					return
 				}
 				resp.Body.Close()
 			}
 		}(e)
 	}
 	wg.Wait()
+	// Check for any errors
+	select {
+	case err := <-ech:
+		t.Fatal(err)
+	default:
+	}
+}
+
+func TestMonitorHandler(t *testing.T) {
+	s := runMonitorServer()
+	defer s.Shutdown()
+	handler := s.HTTPHandler()
+	if handler == nil {
+		t.Fatal("HTTP Handler should be set")
+	}
+	s.Shutdown()
+	handler = s.HTTPHandler()
+	if handler != nil {
+		t.Fatal("HTTP Handler should be nil")
+	}
 }

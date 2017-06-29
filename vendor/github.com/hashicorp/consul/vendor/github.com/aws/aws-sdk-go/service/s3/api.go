@@ -2165,7 +2165,7 @@ func (c *S3) GetBucketVersioningRequest(input *GetBucketVersioningInput) (req *r
 
 // GetBucketVersioning API operation for Amazon Simple Storage Service.
 //
-// Returns the versioning store of a bucket.
+// Returns the versioning state of a bucket.
 //
 // Returns awserr.Error for service API and SDK errors. Use runtime type assertions
 // with awserr.Error's Code and Message methods to get detailed information about
@@ -4330,7 +4330,7 @@ func (c *S3) PutBucketVersioningRequest(input *PutBucketVersioningInput) (req *r
 
 // PutBucketVersioning API operation for Amazon Simple Storage Service.
 //
-// Sets the versioning store of an existing bucket. To set the versioning store,
+// Sets the versioning state of an existing bucket. To set the versioning state,
 // you must be the bucket owner.
 //
 // Returns awserr.Error for service API and SDK errors. Use runtime type assertions
@@ -9175,7 +9175,7 @@ type GetBucketVersioningOutput struct {
 	// delete. If the bucket has never been so configured, this element is not returned.
 	MFADelete *string `locationName:"MfaDelete" type:"string" enum:"MFADeleteStatus"`
 
-	// The versioning store of the bucket.
+	// The versioning state of the bucket.
 	Status *string `type:"string" enum:"BucketVersioningStatus"`
 }
 
@@ -16355,7 +16355,7 @@ type RestoreRequest struct {
 	// Days is a required field
 	Days *int64 `type:"integer" required:"true"`
 
-	// Glacier related prameters pertaining to this server.
+	// Glacier related prameters pertaining to this job.
 	GlacierJobParameters *GlacierJobParameters `type:"structure"`
 }
 
@@ -17528,7 +17528,7 @@ type VersioningConfiguration struct {
 	// delete. If the bucket has never been so configured, this element is not returned.
 	MFADelete *string `locationName:"MfaDelete" type:"string" enum:"MFADelete"`
 
-	// The versioning store of the bucket.
+	// The versioning state of the bucket.
 	Status *string `type:"string" enum:"BucketVersioningStatus"`
 }
 

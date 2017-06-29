@@ -93,7 +93,7 @@ import (
 // v3: Changes for Kubernetes:
 //     changes in signature of some unpublished helper methods and codecgen cmdline arguments.
 // v4: Removed separator support from (en|de)cDriver, and refactored codec(gen)
-// v5: changes to support faster json decoding. Let encoder/decoder maintain store of collections.
+// v5: changes to support faster json decoding. Let encoder/decoder maintain state of collections.
 const GenVersion = 5
 
 const (
@@ -129,7 +129,7 @@ var (
 	genCheckVendor         bool
 )
 
-// genRunner holds some store used during a Gen run.
+// genRunner holds some state used during a Gen run.
 type genRunner struct {
 	w io.Writer      // output
 	c uint64         // counter used for generating varsfx
@@ -1653,15 +1653,8 @@ func (x *genV) MethodNamePfx(prefix string, prim bool) string {
 func genImportPath(t reflect.Type) (s string) {
 	s = t.PkgPath()
 	if genCheckVendor {
-		// HACK: Misbehaviour occurs in go 1.5. May have to re-visit this later.
-		// if s contains /vendor/ OR startsWith vendor/, then return everything after it.
-		const vendorStart = "vendor/"
-		const vendorInline = "/vendor/"
-		if i := strings.LastIndex(s, vendorInline); i >= 0 {
-			s = s[i+len(vendorInline):]
-		} else if strings.HasPrefix(s, vendorStart) {
-			s = s[len(vendorStart):]
-		}
+		// HACK: always handle vendoring. It should be typically on in go 1.6, 1.7
+		s = stripVendor(s)
 	}
 	return
 }
@@ -1882,6 +1875,19 @@ func genInternalSortType(s string, elem bool) string {
 		}
 	}
 	panic("sorttype: unexpected type: " + s)
+}
+
+func stripVendor(s string) string {
+	// HACK: Misbehaviour occurs in go 1.5. May have to re-visit this later.
+	// if s contains /vendor/ OR startsWith vendor/, then return everything after it.
+	const vendorStart = "vendor/"
+	const vendorInline = "/vendor/"
+	if i := strings.LastIndex(s, vendorInline); i >= 0 {
+		s = s[i+len(vendorInline):]
+	} else if strings.HasPrefix(s, vendorStart) {
+		s = s[len(vendorStart):]
+	}
+	return s
 }
 
 // var genInternalMu sync.Mutex

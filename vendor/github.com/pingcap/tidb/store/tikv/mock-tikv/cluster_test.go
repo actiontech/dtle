@@ -17,8 +17,10 @@ import (
 	"bytes"
 	"math"
 	"strconv"
+	"time"
 
 	. "github.com/pingcap/check"
+	"github.com/pingcap/kvproto/pkg/kvrpcpb"
 	"github.com/pingcap/tidb/kv"
 	"github.com/pingcap/tidb/store/tikv"
 	"github.com/pingcap/tidb/store/tikv/mock-tikv"
@@ -34,7 +36,7 @@ type testClusterSuite struct {
 }
 
 func (s *testClusterSuite) TestClusterSplit(c *C) {
-	store, err := tikv.NewMockTikvStore()
+	store, err := tikv.NewMockTikvStore("")
 	c.Assert(err, IsNil)
 
 	txn, err := store.Begin()
@@ -48,7 +50,8 @@ func (s *testClusterSuite) TestClusterSplit(c *C) {
 	for i := 0; i < 1000; i++ {
 		rowKey := tablecodec.EncodeRowKeyWithHandle(tblID, handle)
 		colValue := types.NewStringDatum(strconv.Itoa(int(handle)))
-		rowValue, err1 := tablecodec.EncodeRow([]types.Datum{colValue}, []int64{colID})
+		// TODO: Should use session's TimeZone instead of UTC.
+		rowValue, err1 := tablecodec.EncodeRow([]types.Datum{colValue}, []int64{colID}, time.UTC)
 		c.Assert(err1, IsNil)
 		txn.Set(rowKey, rowValue)
 
@@ -78,7 +81,7 @@ func (s *testClusterSuite) TestClusterSplit(c *C) {
 		if !bytes.HasPrefix(startKey, recordPrefix) {
 			continue
 		}
-		pairs := cli.MvccStore.Scan(startKey, endKey, math.MaxInt64, math.MaxUint64)
+		pairs := cli.MvccStore.Scan(startKey, endKey, math.MaxInt64, math.MaxUint64, kvrpcpb.IsolationLevel_SI)
 		if len(pairs) > 0 {
 			c.Assert(pairs, HasLen, 100)
 		}
@@ -99,7 +102,7 @@ func (s *testClusterSuite) TestClusterSplit(c *C) {
 		if !bytes.HasPrefix(startKey, indexPrefix) {
 			continue
 		}
-		pairs := cli.MvccStore.Scan(startKey, endKey, math.MaxInt64, math.MaxUint64)
+		pairs := cli.MvccStore.Scan(startKey, endKey, math.MaxInt64, math.MaxUint64, kvrpcpb.IsolationLevel_SI)
 		if len(pairs) > 0 {
 			c.Assert(pairs, HasLen, 100)
 		}

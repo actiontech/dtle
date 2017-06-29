@@ -1,3 +1,5 @@
+// Copyright 2016-2017 Apcera Inc. All rights reserved.
+
 package server
 
 import (
@@ -6,6 +8,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"os/exec"
 	"reflect"
 	"runtime"
 	"strconv"
@@ -15,12 +18,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/nats-io/gnatsd/auth"
 	natsd "github.com/nats-io/gnatsd/server"
 	natsdTest "github.com/nats-io/gnatsd/test"
 	"github.com/nats-io/go-nats"
 	"github.com/nats-io/go-nats-streaming"
 	"github.com/nats-io/go-nats-streaming/pb"
+	"github.com/nats-io/nats-streaming-server/spb"
 	"github.com/nats-io/nats-streaming-server/stores"
 	"github.com/nats-io/nuid"
 )
@@ -49,6 +52,8 @@ func init() {
 	defaultDataStore = tmpDir
 	// Set debug and trace for this file.
 	setDebugAndTraceToDefaultOptions(true)
+	// For FT tests, reduce the HB/Timeout intervals
+	setFTTestsHBInterval()
 }
 
 func stackFatalf(t tLogger, f string, args ...interface{}) {
@@ -71,6 +76,13 @@ func stackFatalf(t tLogger, f string, args ...interface{}) {
 
 // Helper function to shutdown last, a server that is being restarted in a test.
 func shutdownRestartedServerOnTestExit(s **StanServer) {
+	srv := *s
+	srv.Shutdown()
+	srv = nil
+}
+
+// Helper function to shutdown last, a NATS server that is being restarted in a test.
+func shutdownRestartedNATSServerOnTestExit(s **natsd.Server) {
 	srv := *s
 	srv.Shutdown()
 	srv = nil
@@ -303,6 +315,15 @@ func TestDoubleShutdown(t *testing.T) {
 	}
 }
 
+func TestServerStates(t *testing.T) {
+	s := runServer(t, clusterName)
+	defer s.Shutdown()
+	checkState(t, s, Standalone)
+	s.Shutdown()
+	checkState(t, s, Shutdown)
+	// FT states are checked in ft_test.go
+}
+
 type response interface {
 	Unmarshal([]byte) error
 }
@@ -409,7 +430,7 @@ func TestClientIDIsValid(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Unexpected response object: %v", err)
 		}
-		if r.Error == "" {
+		if r.Error != ErrInvalidClientID.Error() {
 			t.Fatal("Expected error, got none")
 		}
 	}
@@ -2267,20 +2288,24 @@ func TestStartPositionFirstSequence(t *testing.T) {
 	defer sub2.Unsubscribe()
 
 	first := true
-	select {
-	case m := <-mch:
-		if first {
-			if string(m.Data) != "msg1" {
-				t.Fatalf("Expected msg1 first, got %v", string(m.Data))
+	for {
+		select {
+		case m := <-mch:
+			if first {
+				if string(m.Data) != "msg1" {
+					t.Fatalf("Expected msg1 first, got %v", string(m.Data))
+				}
+				first = false
+			} else {
+				if string(m.Data) != "msg2" {
+					t.Fatalf("Expected msg2 second, got %v", string(m.Data))
+				}
+				// We are done!
+				return
 			}
-			first = false
-		} else {
-			if string(m.Data) != "msg2" {
-				t.Fatalf("Expected msg2 second, got %v", string(m.Data))
-			}
+		case <-time.After(5 * time.Second):
+			t.Fatal("Did not get our message")
 		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("Did not get our message")
 	}
 }
 
@@ -3395,8 +3420,7 @@ func TestFileStorePersistMsgRedeliveredToDifferentQSub(t *testing.T) {
 		stan.SetManualAckMode()); err != nil {
 		t.Fatalf("Unexpected error on subscribe: %v", err)
 	}
-	// Create this subscriber that will receive and ack the message
-	sub2, err = sc.QueueSubscribe("foo", "g1", cb, stan.AckWait(time.Second),
+	sub2, err = sc.QueueSubscribe("foo", "g1", cb, stan.AckWait(10*time.Second),
 		stan.SetManualAckMode())
 	if err != nil {
 		t.Fatalf("Unexpected error on subscribe: %v", err)
@@ -3410,6 +3434,7 @@ func TestFileStorePersistMsgRedeliveredToDifferentQSub(t *testing.T) {
 	// Wait for sub2 to receive the message.
 	select {
 	case <-sub2Recv:
+		waitForAcks(t, s, clientName, 1, 0)
 		break
 	case e := <-errs:
 		t.Fatalf("%v", e)
@@ -3989,8 +4014,6 @@ func TestDontEmbedNATSMultipleURLs(t *testing.T) {
 	nOpts.Password = "pwd"
 	natsServer := natsdTest.RunServer(&nOpts)
 	defer natsServer.Shutdown()
-	auth := &auth.Plain{Username: nOpts.Username, Password: nOpts.Password}
-	natsServer.SetClientAuthMethod(auth)
 
 	sOpts := GetDefaultOptions()
 
@@ -4256,11 +4279,15 @@ func TestNonDurableRemovedFromStoreOnConnClose(t *testing.T) {
 	s.Shutdown()
 	// Open the store directly and verify that the sub record is not even found.
 	limits := stores.DefaultStoreLimits
-	store, recoveredState, err := stores.NewFileStore(defaultDataStore, &limits)
+	store, err := stores.NewFileStore(defaultDataStore, &limits)
 	if err != nil {
 		t.Fatalf("Error opening file: %v", err)
 	}
 	defer store.Close()
+	recoveredState, err := store.Recover()
+	if err != nil {
+		t.Fatalf("Error recovering state: %v", err)
+	}
 	if recoveredState == nil {
 		t.Fatal("Expected to recover state, got none")
 	}
@@ -4464,13 +4491,13 @@ func checkQueueGroupSize(t *testing.T, s *StanServer, channelName, groupName str
 	if cs == nil {
 		stackFatalf(t, "Expected channel store %q to exist", channelName)
 	}
-	s.RLock()
+	s.mu.RLock()
 	groupSize := 0
 	group, exist := cs.UserData.(*subStore).qsubs[groupName]
 	if exist {
 		groupSize = len(group.subs)
 	}
-	s.RUnlock()
+	s.mu.RUnlock()
 	if expectedExist && !exist {
 		stackFatalf(t, "Expected group to still exist, does not")
 	}
@@ -4817,30 +4844,6 @@ func TestFileStoreDurableQueueSubRedeliveryOnRejoin(t *testing.T) {
 	}
 }
 
-func TestIsValidSubject(t *testing.T) {
-	subject := ""
-	for i := 0; i < 100; i++ {
-		subject += "foo."
-	}
-	subject += "foo"
-	if !isValidSubject(subject) {
-		t.Fatalf("Subject %q should be valid", subject)
-	}
-	subjects := []string{
-		"foo.bar*",
-		"foo.bar>",
-		"foo.bar.*",
-		"foo.bar.>",
-		"foo*.bar",
-		"foo>.bar",
-	}
-	for _, s := range subjects {
-		if isValidSubject(s) {
-			t.Fatalf("Subject %q expected to be invalid", s)
-		}
-	}
-}
-
 func TestDroppedMessagesOnSendToSub(t *testing.T) {
 	opts := GetDefaultOptions()
 	opts.MaxMsgs = 3
@@ -5029,9 +5032,13 @@ func TestPerChannelLimits(t *testing.T) {
 		clfoo.MaxMsgs = 2
 		clbar := stores.ChannelLimits{}
 		clbar.MaxBytes = 1000
+		clbaz := stores.ChannelLimits{}
+		clbaz.MaxSubscriptions = 1
+		clbaz.MaxAge = time.Second
 		sl := &opts.StoreLimits
 		sl.AddPerChannel("foo", &clfoo)
 		sl.AddPerChannel("bar", &clbar)
+		sl.AddPerChannel("baz", &clbaz)
 
 		s := runServerWithOpts(t, opts, nil)
 		defer s.Shutdown()
@@ -5046,9 +5053,9 @@ func TestPerChannelLimits(t *testing.T) {
 			}
 		}
 		// Check messages count
-		s.RLock()
+		s.mu.RLock()
 		n, _, err := s.store.MsgsState("foo")
-		s.RUnlock()
+		s.mu.RUnlock()
 		if err != nil {
 			t.Fatalf("Unexpected error getting state: %v", err)
 		}
@@ -5064,9 +5071,9 @@ func TestPerChannelLimits(t *testing.T) {
 			}
 		}
 		// Check messages count
-		s.RLock()
+		s.mu.RLock()
 		n, b, err := s.store.MsgsState("bar")
-		s.RUnlock()
+		s.mu.RUnlock()
 		if err != nil {
 			t.Fatalf("Unexpected error getting state: %v", err)
 		}
@@ -5080,6 +5087,29 @@ func TestPerChannelLimits(t *testing.T) {
 		// The size should be lower than clbar.MaxBytes
 		if b > uint64(clbar.MaxBytes) {
 			t.Fatalf("Expected less than %v bytes, got %v", clbar.MaxBytes, b)
+		}
+
+		// Number of subscriptions on baz should be limited to 1
+		for i := 0; i < 2; i++ {
+			if _, err := sc.Subscribe("baz", func(_ *stan.Msg) {}); i == 1 && err == nil {
+				t.Fatal("Expected max subscriptions to be 1")
+			}
+		}
+		// Max Age for baz should be 1sec.
+		if err := sc.Publish("baz", []byte("hello")); err != nil {
+			t.Fatalf("Unexpected error on publish: %v", err)
+		}
+		// Wait more than max age
+		time.Sleep(1500 * time.Millisecond)
+		// Check state
+		s.mu.RLock()
+		n, _, err = s.store.MsgsState("baz")
+		s.mu.RUnlock()
+		if err != nil {
+			t.Fatalf("Unexpected error getting state: %v", err)
+		}
+		if n != 0 {
+			t.Fatalf("Message should have expired")
 		}
 	}
 	for i := 0; i < 2; i++ {
@@ -5389,7 +5419,7 @@ func closeSubscriber(t *testing.T, subType string) {
 	}
 	wait()
 
-	s.RLock()
+	s.mu.RLock()
 	cs := s.store.LookupChannel("foo")
 	ss := cs.UserData.(*subStore)
 	var dur *subState
@@ -5398,7 +5428,7 @@ func closeSubscriber(t *testing.T, subType string) {
 	} else {
 		dur = ss.qsubs[durKey].subs[0]
 	}
-	s.RUnlock()
+	s.mu.RUnlock()
 	if dur == nil {
 		stackFatalf(t, "Durable should have been found")
 	}
@@ -5572,10 +5602,10 @@ func TestFileStoreQMemberRemovedFromStore(t *testing.T) {
 		t.Fatal("Did not get our message")
 	}
 	// Check server state
-	s.RLock()
+	s.mu.RLock()
 	cs, _ := s.lookupOrCreateChannel("foo")
 	ss := cs.UserData.(*subStore)
-	s.RUnlock()
+	s.mu.RUnlock()
 	ss.RLock()
 	qs := ss.qsubs["dur:group"]
 	ss.RUnlock()
@@ -5824,9 +5854,9 @@ func TestFileStoreAcksPool(t *testing.T) {
 
 	// Check server's ackSub pool
 	checkPoolSize := func() {
-		s.RLock()
+		s.mu.RLock()
 		poolSize := len(s.acksSubs)
-		s.RUnlock()
+		s.mu.RUnlock()
 		if poolSize != opts.AckSubsPoolSize {
 			stackFatalf(t, "Expected acksSubs pool size to be %v, got %v", opts.AckSubsPoolSize, poolSize)
 		}
@@ -6032,15 +6062,15 @@ func TestAckSubsSubjectsInPoolUseUniqueSubject(t *testing.T) {
 	// Wait for ack of sc2 to be processed by s2
 	waitForAcks(t, s2, "otherClient", 1, 0)
 
-	s1.Lock()
+	s1.mu.Lock()
 	s1AcksReceived, _ := s1.acksSubs[0].Delivered()
-	s1.Unlock()
+	s1.mu.Unlock()
 	if s1AcksReceived != 1 {
 		t.Fatalf("Expected pooled ack sub to receive only 1 message, got %v", s1AcksReceived)
 	}
-	s2.Lock()
+	s2.mu.Lock()
 	s2AcksReceived, _ := s2.acksSubs[0].Delivered()
-	s2.Unlock()
+	s2.mu.Unlock()
 	if s2AcksReceived != 1 {
 		t.Fatalf("Expected pooled ack sub to receive only 1 message, got %v", s2AcksReceived)
 	}
@@ -6130,5 +6160,198 @@ func TestNewOnHoldSetOnDurableRestart(t *testing.T) {
 	// Check our success
 	if failed {
 		t.Fatal("Did not receive the redelivered messages first")
+	}
+}
+
+func TestUnlimitedPerChannelLimits(t *testing.T) {
+	opts := GetDefaultOptions()
+	opts.StoreLimits.MaxChannels = 2
+	// Set very small global limits
+	opts.StoreLimits.MaxMsgs = 1
+	opts.StoreLimits.MaxBytes = 1
+	opts.StoreLimits.MaxAge = time.Millisecond
+	opts.StoreLimits.MaxSubscriptions = 1
+	// Add a channel that has all unlimited values
+	cl := &stores.ChannelLimits{}
+	cl.MaxMsgs = -1
+	cl.MaxBytes = -1
+	cl.MaxAge = -1
+	cl.MaxSubscriptions = -1
+	opts.StoreLimits.AddPerChannel("foo", cl)
+	s := runServerWithOpts(t, opts, nil)
+	defer s.Shutdown()
+	sc := NewDefaultConnection(t)
+	defer sc.Close()
+	// Check that we can send more than 1 message of more than 1 byte
+	total := 10
+	for i := 0; i < total; i++ {
+		if err := sc.Publish("foo", []byte("hello")); err != nil {
+			t.Fatalf("Unexpected error on publish: %v", err)
+		}
+	}
+	count := int32(0)
+	ch := make(chan bool)
+	cb := func(_ *stan.Msg) {
+		if c := atomic.AddInt32(&count, 1); c == int32(2*total) {
+			ch <- true
+		}
+	}
+	for i := 0; i < 2; i++ {
+		if _, err := sc.Subscribe("foo", cb, stan.DeliverAllAvailable()); err != nil {
+			t.Fatalf("Unexpected error on subscribe: %v", err)
+		}
+	}
+	if err := Wait(ch); err != nil {
+		t.Fatal("Did not get our messages")
+	}
+	// Wait for more than the global limit MaxAge and verify messages
+	// are still there
+	time.Sleep(15 * time.Millisecond)
+	s.mu.RLock()
+	n, _, _ := s.store.MsgsState("foo")
+	s.mu.RUnlock()
+	if n != total {
+		t.Fatalf("Should be %v messages, store reports %v", total, n)
+	}
+	// Now use a channel not defined in PerChannel and we should be subject
+	// to global limits.
+	for i := 0; i < total; i++ {
+		if err := sc.Publish("bar", []byte("hello")); err != nil {
+			t.Fatalf("Unexpected error on publish: %v", err)
+		}
+	}
+	if _, err := sc.Subscribe("bar", func(_ *stan.Msg) {}); err != nil {
+		t.Fatalf("Unexpected error on subscribe: %v", err)
+	}
+	// This one should fail
+	if _, err := sc.Subscribe("bar", func(_ *stan.Msg) {}); err == nil {
+		t.Fatal("Expected to fail to subscribe, did not")
+	}
+	// Wait more than MaxAge
+	time.Sleep(15 * time.Millisecond)
+	// Messages should have all disappear
+	s.mu.RLock()
+	n, _, _ = s.store.MsgsState("bar")
+	s.mu.RUnlock()
+	if n != 0 {
+		t.Fatalf("Expected 0 messages, store reports %v", n)
+	}
+}
+
+func TestSingleConfFileForBoth(t *testing.T) {
+	configFile := "config.cfg"
+	defer os.Remove(configFile)
+	content := []byte(`
+	port: 4223
+	store_limits: {
+		max_channels: 1
+	}`)
+	if err := ioutil.WriteFile(configFile, content, 0666); err != nil {
+		t.Fatalf("Error writing config file: %v", err)
+	}
+	var cmd *exec.Cmd
+	defer func() {
+		if cmd != nil {
+			cmd.Process.Kill()
+			cmd.Wait()
+		}
+	}()
+	param := []string{"-sc", "-c"}
+	for i := 0; i < 2; i++ {
+		cmd = exec.Command("nats-streaming-server", param[i], configFile)
+		if err := cmd.Start(); err != nil {
+			t.Fatalf("Error starting process: %v", err)
+		}
+		var (
+			sc     stan.Conn
+			err    error
+			failed int
+		)
+		for {
+			sc, err = stan.Connect(clusterName, clientName,
+				stan.NatsURL("nats://localhost:4223"),
+				stan.ConnectWait(250*time.Millisecond))
+			if err != nil {
+				failed++
+				if failed < 10 {
+					time.Sleep(100 * time.Millisecond)
+					continue
+				}
+				t.Fatalf("Unable to connect: %v", err)
+			}
+			break
+		}
+		defer sc.Close()
+		// Should be able to create 1 channel
+		if err := sc.Publish("foo", []byte("hello")); err != nil {
+			t.Fatalf("Unexpected error on publish: %v", err)
+		}
+		// But not 2.
+		if err := sc.Publish("bar", []byte("hello")); err == nil {
+			t.Fatalf("Param %v, should have failed to create a 2nd channel", param[i])
+		}
+		sc.Close()
+		cmd.Process.Kill()
+		cmd.Wait()
+		cmd = nil
+	}
+}
+
+func TestFileStoreMultipleShadowQSubs(t *testing.T) {
+	cleanupDatastore(t, defaultDataStore)
+	defer cleanupDatastore(t, defaultDataStore)
+
+	opts := getTestDefaultOptsForFileStore()
+	s := runServerWithOpts(t, opts, nil)
+	s.Shutdown()
+
+	fs, err := stores.NewFileStore(defaultDataStore, &stores.DefaultStoreLimits)
+	if err != nil {
+		t.Fatalf("Error creating store: %v", err)
+	}
+	defer fs.Close()
+	cs, _, err := fs.CreateChannel("foo", nil)
+	if err != nil {
+		t.Fatalf("Error creating channel: %v", err)
+	}
+	sub := spb.SubState{
+		ID:            1,
+		AckInbox:      nats.NewInbox(),
+		Inbox:         nats.NewInbox(),
+		AckWaitInSecs: 30,
+		MaxInFlight:   10,
+		LastSent:      1,
+		IsDurable:     true,
+		QGroup:        "dur:queue",
+	}
+	cs.Subs.CreateSub(&sub)
+	sub.ID = 2
+	sub.LastSent = 2
+	cs.Subs.CreateSub(&sub)
+	fs.Close()
+
+	// Should not panic
+	s = runServerWithOpts(t, opts, nil)
+	defer s.Shutdown()
+	scs, err := s.lookupOrCreateChannel("foo")
+	if err != nil {
+		t.Fatalf("Error looking up channel: %v", err)
+	}
+	ss := scs.UserData.(*subStore)
+	ss.RLock()
+	qs := ss.qsubs["dur:queue"]
+	ss.RUnlock()
+	if qs == nil {
+		t.Fatal("Should have recovered queue group")
+	}
+	qs.RLock()
+	shadow := qs.shadow
+	lastSent := qs.lastSent
+	qs.RUnlock()
+	if shadow == nil {
+		t.Fatal("Should have recovered a shadow queue sub")
+	}
+	if shadow.ID != 2 || lastSent != 2 {
+		t.Fatalf("Recovered shadow queue sub should be ID 2, lastSent 2, got %v, %v", shadow.ID, lastSent)
 	}
 }

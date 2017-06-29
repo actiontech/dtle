@@ -1,28 +1,3 @@
-## 0.8.2 (UNRELEASED)
-
-FEATURES:
-
-IMRPOVEMENTS:
-
-* agent: Fixed a missing case where gossip would stop flowing to dead nodes for a short while. [GH-451]
-* agent: Uses the go-sockaddr library to look for private IP addresses, which prefers non-loopback private addresses over loopback ones when trying to automatically determine the advertise address. [GH-451]
-* agent: Properly seeds Go's random number generator using the seed library. [GH-451]
-* agent: Serf is now built with Go 1.8. [GH-455]
-* agent: Improved address comparison during conflict resolution. [GH-433]
-* library: Moved close of shutdown channel until after network resorces are released. [GH-453]
-
-BUG FIXES:
-
-## 0.8.1 (February 6, 2017)
-
-IMPROVEMENTS:
-
- * agent: Added support for relaying query responses through N other nodes for redundancy. [GH-439]
- * agent: Added the ability to tune the broadcast timeout, which might be necessary in very large clusters that experience very large, simultaneous changes to the cluster. [GH-412]
- * agent: Added a checksum to UDP gossip messages to guard against packet corruption. [GH-432]
- * agent: Added a short window where gossip will still flow to dead nodes so that they can more quickly refute. [GH-440]
- * build: Serf now builds with Go 1.7.5. [GH-443]
-
 ## 0.8 (September 14, 2016)
 
 FEATURES:

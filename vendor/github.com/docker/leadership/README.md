@@ -32,7 +32,7 @@ for isElected := range electedCh {
 		candidate.Resign()
 	} else {
 		// We lost the election but are still running for leadership.
-		store
+		// `elected == false` is the default state and is the first event
 		// we'll receive from the channel. After a successful election,
 		// this event can get triggered if someone else steals the
 		// leadership or if we resign.

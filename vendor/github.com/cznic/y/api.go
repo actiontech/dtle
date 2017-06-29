@@ -118,7 +118,7 @@ type AssocDef struct {
 //
 // The identifiers used in XErrorsSrc must be those defined as tokens in the
 // yacc file. An implicit $end token is inserted at the end of the example
-// input if no store set is given for that example. Examples with a store set
+// input if no state set is given for that example. Examples with a state set
 // are assumed to always specify the error-triggering lookahead token as the
 // last example token, which is usually, but not necessarily  the reserved
 // error terminal symbol. If an example has a state set but no example tokens,
@@ -645,7 +645,7 @@ func (s *State) syms0() []*Symbol {
 }
 
 // Syms0 returns an example of a string and a lookahead, if any, required to
-// get to store s starting at store 0. If s is shifted into the lookahead is
+// get to state s starting at state 0. If s is shifted into the lookahead is
 // nil.
 //
 // Note: Invalid grammars and grammars with conflicts may have not all states

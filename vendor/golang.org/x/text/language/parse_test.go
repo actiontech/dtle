@@ -8,6 +8,8 @@ import (
 	"bytes"
 	"strings"
 	"testing"
+
+	"golang.org/x/text/internal/tag"
 )
 
 type scanTest struct {
@@ -50,13 +52,13 @@ func TestScan(t *testing.T) {
 		for j := 0; !scan.done; j++ {
 			if j >= len(tt.tok) {
 				t.Errorf("%d: extra token %q", i, scan.token)
-			} else if cmp(tt.tok[j], scan.token) != 0 {
+			} else if tag.Compare(tt.tok[j], scan.token) != 0 {
 				t.Errorf("%d: token %d: found %q; want %q", i, j, scan.token, tt.tok[j])
 				break
 			}
 			scan.scan()
 		}
-		if s := strings.Join(tt.tok, "-"); cmp(s, bytes.Replace(scan.b, b("_"), b("-"), -1)) != 0 {
+		if s := strings.Join(tt.tok, "-"); tag.Compare(s, bytes.Replace(scan.b, b("_"), b("-"), -1)) != 0 {
 			t.Errorf("%d: input: found %q; want %q", i, scan.b, s)
 		}
 		if (scan.err == nil) != tt.ok {
@@ -428,8 +430,10 @@ func TestParseAcceptLanguage(t *testing.T) {
 		{en, ",en", true},
 		{en, ",,,en,,,", true},
 		{en, ",en;q=1", true},
+
 		// We allow an empty input, contrary to spec.
 		{nil, "", true},
+		{[]res{{mk("aa"), 1}}, "aa;", true}, // allow unspecified weight
 
 		// errors
 		{nil, ";", false},
@@ -438,7 +442,6 @@ func TestParseAcceptLanguage(t *testing.T) {
 		{nil, "x;", false},
 		{nil, "x", false},
 		{nil, "ac", false}, // non-existing language
-		{nil, "aa;", false},
 		{nil, "aa;q", false},
 		{nil, "aa;q=", false},
 		{nil, "aa;q=.", false},

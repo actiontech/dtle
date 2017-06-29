@@ -48,6 +48,13 @@ the community.
   <li>
     <a href="https://github.com/Ecwid/consul-api">consul-api</a> - Java client for the Consul HTTP API
   </li>
+   <li>
+   <a href="http://cloud.spring.io/spring-cloud-consul/">Spring Cloud Consul</a> - Consul integration for <a href="https://projects.spring.io/spring-boot/">Spring Boot</a> applications (Uses
+    <a href="https://github.com/Ecwid/consul-api">consul-api</a> internally)
+  </li>
+  <li>
+    <a href="https://github.com/vert-x3/vertx-consul-client">vertx-consul-client</a> - Vert.x client for the Consul HTTP API
+  </li>
   <li>
     <a href="https://github.com/undeadlabs/discovery">discovery</a> - Erlang/OTP client for the Consul HTTP API
   </li>
@@ -68,5 +75,8 @@ the community.
   </li>
   <li>
     <a href="https://github.com/Drawaes/CondenserDotNet">CondenserDotNet</a> - C# an opinionated API for .NET that provides higher level functionality for services using the HTTP API
+  </li>
+  <li>
+    <a href="https://github.com/cpageler93/ConsulSwift">ConsulSwift</a> - Swift client for the Consul HTTP API
   </li>
 </ul>

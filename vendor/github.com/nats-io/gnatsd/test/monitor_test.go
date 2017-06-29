@@ -10,6 +10,9 @@ import (
 	"io/ioutil"
 	"net"
 	"net/http"
+	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -28,6 +31,34 @@ func runMonitorServer() *server.Server {
 	opts.HTTPHost = "localhost"
 
 	return RunServer(&opts)
+}
+
+// Runs a clustered pair of monitor servers for testing the /routez endpoint
+func runMonitorServerClusteredPair(t *testing.T) (*server.Server, *server.Server) {
+	resetPreviousHTTPConnections()
+	opts := DefaultTestOptions
+	opts.Port = CLIENT_PORT
+	opts.HTTPPort = MONITOR_PORT
+	opts.HTTPHost = "localhost"
+	opts.Cluster.Host = "127.0.0.1"
+	opts.Cluster.Port = 10223
+	opts.Routes = server.RoutesFromStr("nats-route://127.0.0.1:10222")
+
+	s1 := RunServer(&opts)
+
+	opts2 := DefaultTestOptions
+	opts2.Port = CLIENT_PORT + 1
+	opts2.HTTPPort = MONITOR_PORT + 1
+	opts2.HTTPHost = "localhost"
+	opts2.Cluster.Host = "127.0.0.1"
+	opts2.Cluster.Port = 10222
+	opts2.Routes = server.RoutesFromStr("nats-route://127.0.0.1:10223")
+
+	s2 := RunServer(&opts2)
+
+	checkClusterFormed(t, s1, s2)
+
+	return s1, s2
 }
 
 func runMonitorServerNoHTTPPort() *server.Server {
@@ -58,6 +89,68 @@ func TestNoMonitorPort(t *testing.T) {
 	if resp, err := http.Get(url + "connz"); err == nil {
 		t.Fatalf("Expected error: Got %+v\n", resp)
 	}
+}
+
+// testEndpointDataRace tests a monitoring endpoint for data races by polling
+// while client code acts to ensure statistics are updated. It is designed to
+// run under the -race flag to catch  violations. The caller must start the
+// NATS server.
+func testEndpointDataRace(endpoint string, t *testing.T) {
+	var doneWg sync.WaitGroup
+
+	url := fmt.Sprintf("http://localhost:%d/", MONITOR_PORT)
+
+	// Poll as fast as we can, while creating connections, publishing,
+	// and subscribing.
+	clientDone := int64(0)
+	doneWg.Add(1)
+	go func() {
+		for atomic.LoadInt64(&clientDone) == 0 {
+			resp, err := http.Get(url + endpoint)
+			if err != nil {
+				t.Errorf("Expected no error: Got %v\n", err)
+			} else {
+				resp.Body.Close()
+			}
+		}
+		doneWg.Done()
+	}()
+
+	// create connections, subscriptions, and publish messages to
+	// update the monitor variables.
+	var conns []net.Conn
+	for i := 0; i < 50; i++ {
+		cl := createClientConnSubscribeAndPublish(t)
+		// keep a few connections around to test monitor variables.
+		if i%10 == 0 {
+			conns = append(conns, cl)
+		} else {
+			cl.Close()
+		}
+	}
+	atomic.AddInt64(&clientDone, 1)
+
+	// wait for the endpoint polling goroutine to exit
+	doneWg.Wait()
+
+	// cleanup the conns
+	for _, cl := range conns {
+		cl.Close()
+	}
+}
+
+func TestEndpointDataRaces(t *testing.T) {
+	// setup a small cluster to test /routez
+	s1, s2 := runMonitorServerClusteredPair(t)
+	defer s1.Shutdown()
+	defer s2.Shutdown()
+
+	// test all of our endpoints
+	testEndpointDataRace("varz", t)
+	testEndpointDataRace("connz", t)
+	testEndpointDataRace("routez", t)
+	testEndpointDataRace("subsz", t)
+	testEndpointDataRace("stacksz", t)
 }
 
 func TestVarz(t *testing.T) {
@@ -548,4 +641,80 @@ func createClientConnSubscribeAndPublish(t *testing.T) net.Conn {
 	expectMsgs(1)
 
 	return cl
+}
+
+func TestMonitorNoTLSConfig(t *testing.T) {
+	opts := DefaultTestOptions
+	opts.Port = CLIENT_PORT
+	opts.HTTPHost = "localhost"
+	opts.HTTPSPort = MONITOR_PORT
+	s := server.New(&opts)
+	defer s.Shutdown()
+	// Check with manually starting the monitoring, which should return an error
+	if err := s.StartMonitoring(); err == nil || !strings.Contains(err.Error(), "TLS") {
+		t.Fatalf("Expected error about missing TLS config, got %v", err)
+	}
+	// Also check by calling Start(), which should produce a fatal error
+	dl := &dummyLogger{}
+	s.SetLogger(dl, false, false)
+	defer s.SetLogger(nil, false, false)
+	s.Start()
+	if !strings.Contains(dl.msg, "TLS") {
+		t.Fatalf("Expected error about missing TLS config, got %v", dl.msg)
+	}
+}
+
+func TestMonitorErrorOnListen(t *testing.T) {
+	s := runMonitorServer()
+	defer s.Shutdown()
+
+	opts := DefaultTestOptions
+	opts.Port = CLIENT_PORT + 1
+	opts.HTTPHost = "localhost"
+	opts.HTTPPort = MONITOR_PORT
+	s2 := server.New(&opts)
+	defer s2.Shutdown()
+	if err := s2.StartMonitoring(); err == nil || !strings.Contains(err.Error(), "listen") {
+		t.Fatalf("Expected error about not able to start listener, got %v", err)
+	}
+}
+
+func TestMonitorBothPortsConfigured(t *testing.T) {
+	opts := DefaultTestOptions
+	opts.Port = CLIENT_PORT
+	opts.HTTPHost = "localhost"
+	opts.HTTPPort = MONITOR_PORT
+	opts.HTTPSPort = MONITOR_PORT + 1
+	s := server.New(&opts)
+	defer s.Shutdown()
+	if err := s.StartMonitoring(); err == nil || !strings.Contains(err.Error(), "specify both") {
+		t.Fatalf("Expected error about ports configured, got %v", err)
+	}
+}
+
+func TestMonitorStop(t *testing.T) {
+	resetPreviousHTTPConnections()
+	opts := DefaultTestOptions
+	opts.Port = CLIENT_PORT
+	opts.HTTPHost = "localhost"
+	opts.HTTPPort = MONITOR_PORT
+	url := fmt.Sprintf("http://%v:%d/", opts.HTTPHost, MONITOR_PORT)
+	// Create a server instance and start only the monitoring http server.
+	s := server.New(&opts)
+	if err := s.StartMonitoring(); err != nil {
+		t.Fatalf("Error starting monitoring: %v", err)
+	}
+	// Make sure http server is started
+	resp, err := http.Get(url + "varz")
+	if err != nil {
+		t.Fatalf("Error on http request: %v", err)
+	}
+	resp.Body.Close()
+	// Although the server itself was not started (we did not call s.Start()),
+	// Shutdown() should stop the http server.
+	s.Shutdown()
+	// HTTP request should now fail
+	if resp, err := http.Get(url + "varz"); err == nil {
+		t.Fatalf("Expected error: Got %+v\n", resp)
+	}
 }

@@ -31,7 +31,7 @@ type ProcStat struct {
 	PID int
 	// The filename of the executable.
 	Comm string
-	// The process store.
+	// The process state.
 	State string
 	// The PID of the parent of this process.
 	PPID int

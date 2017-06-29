@@ -21,7 +21,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/juju/errors"
 	"github.com/pingcap/tidb/kv"
@@ -84,6 +83,7 @@ type Meta struct {
 
 // NewMeta creates a Meta in transaction txn.
 func NewMeta(txn kv.Transaction) *Meta {
+	txn.SetOption(kv.Priority, kv.PriorityHigh)
 	t := structure.NewStructure(txn, txn, mMetaPrefix)
 	return &Meta{txn: t}
 }
@@ -291,7 +291,9 @@ func (m *Meta) DropDatabase(dbID int64) error {
 }
 
 // DropTable drops table in database.
-func (m *Meta) DropTable(dbID int64, tableID int64) error {
+// If delAutoID is true, it will delete the auto_increment id key-value of the table.
+// For rename table, we do not need to rename auto_increment id key-value.
+func (m *Meta) DropTable(dbID int64, tableID int64, delAutoID bool) error {
 	// Check if db exists.
 	dbKey := m.dbKey(dbID)
 	if err := m.checkDBExists(dbKey); err != nil {
@@ -308,10 +310,11 @@ func (m *Meta) DropTable(dbID int64, tableID int64) error {
 		return errors.Trace(err)
 	}
 
-	if err := m.txn.HDel(dbKey, m.autoTalbeIDKey(tableID)); err != nil {
-		return errors.Trace(err)
+	if delAutoID {
+		if err := m.txn.HDel(dbKey, m.autoTalbeIDKey(tableID)); err != nil {
+			return errors.Trace(err)
+		}
 	}
-
 	return nil
 }
 
@@ -421,7 +424,7 @@ func (m *Meta) GetTable(dbID int64, tableID int64) (*model.TableInfo, error) {
 	return tableInfo, errors.Trace(err)
 }
 
-// DDL server structure
+// DDL job structure
 //	DDLOnwer: []byte
 //	DDLJobList: list jobs
 //	DDLJobHistory: hash
@@ -431,52 +434,22 @@ func (m *Meta) GetTable(dbID int64, tableID int64) (*model.TableInfo, error) {
 // to operate DDL jobs, and dispatch them to MR Jobs.
 
 var (
-	mDDLJobOwnerKey   = []byte("DDLJobOwner")
 	mDDLJobListKey    = []byte("DDLJobList")
 	mDDLJobHistoryKey = []byte("DDLJobHistory")
 	mDDLJobReorgKey   = []byte("DDLJobReorg")
 )
 
-func (m *Meta) getJobOwner(key []byte) (*model.Owner, error) {
-	value, err := m.txn.Get(key)
-	if err != nil || value == nil {
-		return nil, errors.Trace(err)
-	}
-
-	owner := &model.Owner{}
-	err = json.Unmarshal(value, owner)
-	return owner, errors.Trace(err)
-}
-
-// GetDDLJobOwner gets the current owner for DDL.
-func (m *Meta) GetDDLJobOwner() (*model.Owner, error) {
-	return m.getJobOwner(mDDLJobOwnerKey)
-}
-
-func (m *Meta) setJobOwner(key []byte, o *model.Owner) error {
-	b, err := json.Marshal(o)
-	if err != nil {
-		return errors.Trace(err)
-	}
-	return m.txn.Set(key, b)
-}
-
-// SetDDLJobOwner sets the current owner for DDL.
-func (m *Meta) SetDDLJobOwner(o *model.Owner) error {
-	return m.setJobOwner(mDDLJobOwnerKey, o)
-}
-
-func (m *Meta) enQueueDDLJob(key []byte, job *model.Job) error {
-	b, err := job.Encode()
+func (m *Meta) enQueueDDLJob(key []byte, job *model.Job, updateRawArgs bool) error {
+	b, err := job.Encode(updateRawArgs)
 	if err != nil {
 		return errors.Trace(err)
 	}
 	return m.txn.RPush(key, b)
 }
 
-// EnQueueDDLJob adds a DDL server to the list.
+// EnQueueDDLJob adds a DDL job to the list.
 func (m *Meta) EnQueueDDLJob(job *model.Job) error {
-	return m.enQueueDDLJob(mDDLJobListKey, job)
+	return m.enQueueDDLJob(mDDLJobListKey, job, true)
 }
 
 func (m *Meta) deQueueDDLJob(key []byte) (*model.Job, error) {
@@ -490,7 +463,7 @@ func (m *Meta) deQueueDDLJob(key []byte) (*model.Job, error) {
 	return job, errors.Trace(err)
 }
 
-// DeQueueDDLJob pops a DDL server from the list.
+// DeQueueDDLJob pops a DDL job from the list.
 func (m *Meta) DeQueueDDLJob() (*model.Job, error) {
 	return m.deQueueDDLJob(mDDLJobListKey)
 }
@@ -506,28 +479,26 @@ func (m *Meta) getDDLJob(key []byte, index int64) (*model.Job, error) {
 	return job, errors.Trace(err)
 }
 
-// GetDDLJob returns the DDL server with index.
+// GetDDLJob returns the DDL job with index.
 func (m *Meta) GetDDLJob(index int64) (*model.Job, error) {
 	job, err := m.getDDLJob(mDDLJobListKey, index)
 	return job, errors.Trace(err)
 }
 
 func (m *Meta) updateDDLJob(index int64, job *model.Job, key []byte) error {
-	// TODO: use timestamp allocated by TSO
-	job.LastUpdateTS = time.Now().UnixNano()
-	b, err := job.Encode()
+	b, err := job.Encode(true)
 	if err != nil {
 		return errors.Trace(err)
 	}
 	return m.txn.LSet(key, index, b)
 }
 
-// UpdateDDLJob updates the DDL server with index.
+// UpdateDDLJob updates the DDL job with index.
 func (m *Meta) UpdateDDLJob(index int64, job *model.Job) error {
 	return m.updateDDLJob(index, job, mDDLJobListKey)
 }
 
-// DDLJobQueueLen returns the DDL server queue length.
+// DDLJobQueueLen returns the DDL job queue length.
 func (m *Meta) DDLJobQueueLen() (int64, error) {
 	return m.txn.LLen(mDDLJobListKey)
 }
@@ -539,7 +510,7 @@ func (m *Meta) jobIDKey(id int64) []byte {
 }
 
 func (m *Meta) addHistoryDDLJob(key []byte, job *model.Job) error {
-	b, err := job.Encode()
+	b, err := job.Encode(true)
 	if err != nil {
 		return errors.Trace(err)
 	}
@@ -547,7 +518,7 @@ func (m *Meta) addHistoryDDLJob(key []byte, job *model.Job) error {
 	return m.txn.HSet(key, m.jobIDKey(job.ID), b)
 }
 
-// AddHistoryDDLJob adds DDL server to history.
+// AddHistoryDDLJob adds DDL job to history.
 func (m *Meta) AddHistoryDDLJob(job *model.Job) error {
 	return m.addHistoryDDLJob(mDDLJobHistoryKey, job)
 }
@@ -563,7 +534,7 @@ func (m *Meta) getHistoryDDLJob(key []byte, id int64) (*model.Job, error) {
 	return job, errors.Trace(err)
 }
 
-// GetHistoryDDLJob gets a history DDL server.
+// GetHistoryDDLJob gets a history DDL job.
 func (m *Meta) GetHistoryDDLJob(id int64) (*model.Job, error) {
 	return m.getHistoryDDLJob(mDDLJobHistoryKey, id)
 }
@@ -618,13 +589,13 @@ func (m *Meta) FinishBootstrap(version int64) error {
 	return errors.Trace(err)
 }
 
-// UpdateDDLReorgHandle saves the server reorganization latest processed handle for later resuming.
+// UpdateDDLReorgHandle saves the job reorganization latest processed handle for later resuming.
 func (m *Meta) UpdateDDLReorgHandle(job *model.Job, handle int64) error {
 	err := m.txn.HSet(mDDLJobReorgKey, m.jobIDKey(job.ID), []byte(strconv.FormatInt(handle, 10)))
 	return errors.Trace(err)
 }
 
-// RemoveDDLReorgHandle removes the server reorganization handle.
+// RemoveDDLReorgHandle removes the job reorganization handle.
 func (m *Meta) RemoveDDLReorgHandle(job *model.Job) error {
 	err := m.txn.HDel(mDDLJobReorgKey, m.jobIDKey(job.ID))
 	return errors.Trace(err)
@@ -636,66 +607,59 @@ func (m *Meta) GetDDLReorgHandle(job *model.Job) (int64, error) {
 	return value, errors.Trace(err)
 }
 
-// DDL background server structure
+// DDL background job structure
 //	BgJobOnwer: []byte
 //	BgJobList: list jobs
 //	BgJobHistory: hash
 //	BgJobReorg: hash
 //
 // for multi background worker, only one can become the owner
-// to operate background server, and dispatch them to MR background server.
+// to operate background job, and dispatch them to MR background job.
 
 var (
-	mBgJobOwnerKey   = []byte("BgJobOwner")
 	mBgJobListKey    = []byte("BgJobList")
 	mBgJobHistoryKey = []byte("BgJobHistory")
 )
 
-// UpdateBgJob updates the background server with index.
+// UpdateBgJob updates the background job with index.
 func (m *Meta) UpdateBgJob(index int64, job *model.Job) error {
 	return m.updateDDLJob(index, job, mBgJobListKey)
 }
 
-// GetBgJob returns the background server with index.
+// GetBgJob returns the background job with index.
 func (m *Meta) GetBgJob(index int64) (*model.Job, error) {
 	job, err := m.getDDLJob(mBgJobListKey, index)
 
 	return job, errors.Trace(err)
 }
 
-// EnQueueBgJob adds a background server to the list.
+// EnQueueBgJob adds a background job to the list.
 func (m *Meta) EnQueueBgJob(job *model.Job) error {
-	return m.enQueueDDLJob(mBgJobListKey, job)
+	var updateRawArgs bool
+	if job.RawArgs == nil {
+		updateRawArgs = true
+	}
+	return m.enQueueDDLJob(mBgJobListKey, job, updateRawArgs)
 }
 
-// BgJobQueueLen returns the background server queue length.
+// BgJobQueueLen returns the background job queue length.
 func (m *Meta) BgJobQueueLen() (int64, error) {
 	return m.txn.LLen(mBgJobListKey)
 }
 
-// AddHistoryBgJob adds background server to history.
+// AddHistoryBgJob adds background job to history.
 func (m *Meta) AddHistoryBgJob(job *model.Job) error {
 	return m.addHistoryDDLJob(mBgJobHistoryKey, job)
 }
 
-// GetHistoryBgJob gets a history background server.
+// GetHistoryBgJob gets a history background job.
 func (m *Meta) GetHistoryBgJob(id int64) (*model.Job, error) {
 	return m.getHistoryDDLJob(mBgJobHistoryKey, id)
 }
 
-// DeQueueBgJob pops a background server from the list.
+// DeQueueBgJob pops a background job from the list.
 func (m *Meta) DeQueueBgJob() (*model.Job, error) {
 	return m.deQueueDDLJob(mBgJobListKey)
-}
-
-// GetBgJobOwner gets the current background server owner.
-func (m *Meta) GetBgJobOwner() (*model.Owner, error) {
-	return m.getJobOwner(mBgJobOwnerKey)
-}
-
-// SetBgJobOwner sets the current background server owner.
-func (m *Meta) SetBgJobOwner(o *model.Owner) error {
-	return m.setJobOwner(mBgJobOwnerKey, o)
 }
 
 func (m *Meta) tableStatsKey(tableID int64) []byte {

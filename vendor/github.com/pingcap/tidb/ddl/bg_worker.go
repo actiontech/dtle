@@ -23,7 +23,7 @@ import (
 	"github.com/pingcap/tidb/model"
 )
 
-// handleBgJobQueue handles the background server queue.
+// handleBgJobQueue handles the background job queue.
 func (d *ddl) handleBgJobQueue() error {
 	if d.isClosed() {
 		return nil
@@ -31,13 +31,13 @@ func (d *ddl) handleBgJobQueue() error {
 
 	job := &model.Job{}
 	err := kv.RunInNewTxn(d.store, false, func(txn kv.Transaction) error {
-		t := meta.NewMeta(txn)
-		owner, err := d.checkOwner(t, bgJobFlag)
-		if err != nil {
-			return errors.Trace(filterError(err, errNotOwner))
+		if !d.isOwner(bgJobFlag) {
+			return nil
 		}
 
-		// Get the first background server and run it.
+		var err error
+		t := meta.NewMeta(txn)
+		// Get the first background job and run it.
 		job, err = d.getFirstBgJob(t)
 		if err != nil {
 			return errors.Trace(err)
@@ -52,13 +52,6 @@ func (d *ddl) handleBgJobQueue() error {
 		} else {
 			err = d.updateBgJob(t, job)
 		}
-		if err != nil {
-			return errors.Trace(err)
-		}
-
-		owner.LastUpdateTS = time.Now().UnixNano()
-		err = t.SetBgJobOwner(owner)
-
 		return errors.Trace(err)
 	})
 	if err != nil {
@@ -72,9 +65,9 @@ func (d *ddl) handleBgJobQueue() error {
 	return nil
 }
 
-// runBgJob runs a background server.
+// runBgJob runs a background job.
 func (d *ddl) runBgJob(t *meta.Meta, job *model.Job) {
-	log.Infof("[ddl] run background server %s", job)
+	log.Infof("[ddl] run background job %s", job)
 	job.State = model.JobRunning
 
 	var err error
@@ -90,28 +83,28 @@ func (d *ddl) runBgJob(t *meta.Meta, job *model.Job) {
 
 	if err != nil {
 		if job.State != model.JobCancelled {
-			log.Errorf("[ddl] run background server err %v", errors.ErrorStack(err))
+			log.Errorf("[ddl] run background job err %v", errors.ErrorStack(err))
 		}
 		job.Error = toTError(err)
 		job.ErrorCount++
 	}
 }
 
-// prepareBgJob prepares a background server.
+// prepareBgJob prepares a background job.
 func (d *ddl) prepareBgJob(t *meta.Meta, ddlJob *model.Job) error {
 	job := &model.Job{
 		ID:       ddlJob.ID,
 		SchemaID: ddlJob.SchemaID,
 		TableID:  ddlJob.TableID,
 		Type:     ddlJob.Type,
-		Args:     ddlJob.Args,
+		RawArgs:  ddlJob.RawArgs,
 	}
 
 	err := t.EnQueueBgJob(job)
 	return errors.Trace(err)
 }
 
-// startBgJob starts a background server.
+// startBgJob starts a background job.
 func (d *ddl) startBgJob(tp model.ActionType) {
 	switch tp {
 	case model.ActionDropSchema, model.ActionDropTable, model.ActionTruncateTable:
@@ -119,21 +112,21 @@ func (d *ddl) startBgJob(tp model.ActionType) {
 	}
 }
 
-// getFirstBgJob gets the first background server.
+// getFirstBgJob gets the first background job.
 func (d *ddl) getFirstBgJob(t *meta.Meta) (*model.Job, error) {
 	job, err := t.GetBgJob(0)
 	return job, errors.Trace(err)
 }
 
-// updateBgJob updates a background server.
+// updateBgJob updates a background job.
 func (d *ddl) updateBgJob(t *meta.Meta, job *model.Job) error {
 	err := t.UpdateBgJob(0, job)
 	return errors.Trace(err)
 }
 
-// finishBgJob finishes a background server.
+// finishBgJob finishes a background job.
 func (d *ddl) finishBgJob(t *meta.Meta, job *model.Job) error {
-	log.Infof("[ddl] finish background server %v", job)
+	log.Infof("[ddl] finish background job %v", job)
 	if _, err := t.DeQueueBgJob(); err != nil {
 		return errors.Trace(err)
 	}
@@ -156,7 +149,7 @@ func (d *ddl) onBackgroundWorker() {
 	for {
 		select {
 		case <-ticker.C:
-			log.Debugf("[ddl] wait %s to check background server status again", checkTime)
+			log.Debugf("[ddl] wait %s to check background job status again", checkTime)
 		case <-d.bgJobCh:
 		case <-d.quitCh:
 			return
@@ -164,7 +157,7 @@ func (d *ddl) onBackgroundWorker() {
 
 		err := d.handleBgJobQueue()
 		if err != nil {
-			log.Errorf("[ddl] handle background server err %v", errors.ErrorStack(err))
+			log.Errorf("[ddl] handle background job err %v", errors.ErrorStack(err))
 		}
 	}
 }

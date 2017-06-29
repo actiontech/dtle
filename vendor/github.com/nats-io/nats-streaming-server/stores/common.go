@@ -9,6 +9,7 @@ import (
 
 	"github.com/nats-io/go-nats-streaming/pb"
 	"github.com/nats-io/nats-streaming-server/spb"
+	"github.com/nats-io/nats-streaming-server/util"
 )
 
 // format string used to report that limit is reached when storing
@@ -25,7 +26,8 @@ type commonStore struct {
 // genericStore is the generic store implementation with a map of channels.
 type genericStore struct {
 	commonStore
-	limits   StoreLimits
+	limits   *StoreLimits
+	sublist  *util.Sublist
 	name     string
 	channels map[string]*ChannelStore
 	clients  map[string]*Client
@@ -60,15 +62,24 @@ type genericMsgStore struct {
 ////////////////////////////////////////////////////////////////////////////
 
 // init initializes the structure of a generic store
-func (gs *genericStore) init(name string, limits *StoreLimits) {
+func (gs *genericStore) init(name string, limits *StoreLimits) error {
 	gs.name = name
 	if limits == nil {
 		limits = &DefaultStoreLimits
 	}
-	gs.setLimits(limits)
+	if err := gs.setLimits(limits); err != nil {
+		return err
+	}
 	// Do not use limits values to create the map.
 	gs.channels = make(map[string]*ChannelStore)
 	gs.clients = make(map[string]*Client)
+	return nil
+}
+
+// GetExclusiveLock implements the Store interface.
+func (gs *genericStore) GetExclusiveLock() (bool, error) {
+	// Need to be implementation specific.
+	return false, ErrNotSupported
 }
 
 // Init can be used to initialize the store with server's information.
@@ -81,23 +92,48 @@ func (gs *genericStore) Name() string {
 	return gs.name
 }
 
+// Recover implements the Store interface.
+func (gs *genericStore) Recover() (*RecoveredState, error) {
+	// Implementations that can recover their state need to
+	// override this.
+	return nil, nil
+}
+
 // setLimits makes a copy of the given StoreLimits,
 // validates the limits and if ok, applies the inheritance.
 func (gs *genericStore) setLimits(limits *StoreLimits) error {
-	// Make a copy
-	gs.limits = *limits
-	// of the map too
-	if len(limits.PerChannel) > 0 {
-		gs.limits.PerChannel = make(map[string]*ChannelLimits, len(limits.PerChannel))
-		for key, val := range limits.PerChannel {
-			// Make a copy of the values. We want ownership
-			// of those structures
-			gs.limits.PerChannel[key] = &(*val)
-		}
-	}
+	// Make a copy.
+	gs.limits = limits.Clone()
 	// Build will validate and apply inheritance if no error.
-	sl := &gs.limits
-	return sl.Build()
+	if err := gs.limits.Build(); err != nil {
+		return err
+	}
+	// We don't need the PerChannel map and the sublist. So replace
+	// the map with the sublist instead.
+	gs.sublist = util.NewSublist()
+	for key, val := range gs.limits.PerChannel {
+		// val is already a copy of the original limits.PerChannel[key],
+		// so don't need to make a copy again, we own this.
+		gs.sublist.Insert(key, val)
+	}
+	// Get rid of the map now.
+	gs.limits.PerChannel = nil
+	return nil
+}
+
+// Returns the appropriate limits for this channel based on inheritance.
+// The channel is assumed to be a literal, and the store lock held on entry.
+func (gs *genericStore) getChannelLimits(channel string) *ChannelLimits {
+	r := gs.sublist.Match(channel)
+	if len(r) == 0 {
+		// If there is no match, that means we need to use the global limits.
+		return &gs.limits.ChannelLimits
+	}
+	// If there is a match, use the limits from the last element because
+	// we know that the returned array is ordered from widest to narrowest,
+	// and the only literal that there is would be the channel we are
+	// looking up.
+	return r[len(r)-1].(*ChannelLimits)
 }
 
 // SetLimits sets limits for this store
@@ -112,7 +148,7 @@ func (gs *genericStore) SetLimits(limits *StoreLimits) error {
 // `true` to indicate that the channel is new, false if it already exists.
 func (gs *genericStore) CreateChannel(channel string, userData interface{}) (*ChannelStore, bool, error) {
 	// no-op
-	return nil, false, fmt.Errorf("Generic store, feature not implemented")
+	return nil, false, fmt.Errorf("generic store: feature not implemented")
 }
 
 // LookupChannel returns a ChannelStore for the given channel.
@@ -129,6 +165,25 @@ func (gs *genericStore) HasChannel() bool {
 	l := len(gs.channels)
 	gs.RUnlock()
 	return l > 0
+}
+
+// GetChannelNames implements the Store interface.
+func (gs *genericStore) GetChannels() map[string]*ChannelStore {
+	gs.RLock()
+	defer gs.RUnlock()
+	res := make(map[string]*ChannelStore, len(gs.channels))
+	for k, v := range gs.channels {
+		copyVal := *v
+		res[k] = &copyVal
+	}
+	return res
+}
+
+// GetChannelsCount implements the Store interface.
+func (gs *genericStore) GetChannelsCount() int {
+	gs.RLock()
+	defer gs.RUnlock()
+	return len(gs.channels)
 }
 
 // State returns message store statistics for a given channel ('*' for all)
