@@ -1,5 +1,7 @@
 package models
 
+import gonats "github.com/nats-io/go-nats"
+
 type TableStats struct {
 	InsertCount int64
 	UpdateCount int64
@@ -16,10 +18,18 @@ type ThroughputStat struct {
 	Time uint64
 }
 
+type MsgStat struct {
+	InMsgs   uint64
+	OutMsgs  uint64
+	InBytes  uint64
+	OutBytes uint64
+}
+
 type Stats struct {
 	TableStats     *TableStats
 	DelayCount     *DelayCount
 	ThroughputStat *ThroughputStat
+	MsgStat        gonats.Statistics
 	Status         string
 }
 

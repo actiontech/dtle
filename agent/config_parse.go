@@ -390,14 +390,12 @@ func parseMetric(result **Metric, list *ast.ObjectList) error {
 
 	// Check for invalid keys
 	valid := []string{
-		"statsite_address",
-		"statsd_address",
+		"prometheus_address",
 		"disable_hostname",
 		"use_node_name",
 		"collection_interval",
 		"publish_allocation_metrics",
 		"publish_node_metrics",
-		"datadog_address",
 		"circonus_api_token",
 		"circonus_api_app",
 		"circonus_api_url",

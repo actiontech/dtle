@@ -671,6 +671,12 @@ func (r *Worker) Destroy(event *models.TaskEvent) {
 // emitStats emits resource usage stats of tasks to remote metrics collector
 // sinks
 func (r *Worker) emitStats(ru *models.TaskStatistics) {
+	if r.config.PublishAllocationMetrics {
+		metrics.SetGauge([]string{"client", "allocs", r.alloc.Job.Name, r.alloc.Task, r.alloc.ID, r.task.Type, "table", "InMsgs"}, float32(ru.Stats.MsgStat.InMsgs))
+		metrics.SetGauge([]string{"client", "allocs", r.alloc.Job.Name, r.alloc.Task, r.alloc.ID, r.task.Type, "table", "OutMsgs"}, float32(ru.Stats.MsgStat.OutMsgs))
+		metrics.SetGauge([]string{"client", "allocs", r.alloc.Job.Name, r.alloc.Task, r.alloc.ID, r.task.Type, "table", "InBytes"}, float32(ru.Stats.MsgStat.InBytes))
+		metrics.SetGauge([]string{"client", "allocs", r.alloc.Job.Name, r.alloc.Task, r.alloc.ID, r.task.Type, "table", "OutBytes"}, float32(ru.Stats.MsgStat.OutBytes))
+	}
 	if ru.Stats.TableStats != nil && r.config.PublishAllocationMetrics {
 		metrics.SetGauge([]string{"client", "allocs", r.alloc.Job.Name, r.alloc.Task, r.alloc.ID, r.task.Type, "table", "insert"}, float32(ru.Stats.TableStats.InsertCount))
 		metrics.SetGauge([]string{"client", "allocs", r.alloc.Job.Name, r.alloc.Task, r.alloc.ID, r.task.Type, "table", "update"}, float32(ru.Stats.TableStats.UpdateCount))

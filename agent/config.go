@@ -152,9 +152,7 @@ type ServerConfig struct {
 }
 
 type Metric struct {
-	StatsiteAddr             string        `mapstructure:"statsite_address"`
-	StatsdAddr               string        `mapstructure:"statsd_address"`
-	DataDogAddr              string        `mapstructure:"datadog_address"`
+	PrometheusAddr           string        `mapstructure:"prometheus_address"`
 	DisableHostname          bool          `mapstructure:"disable_hostname"`
 	UseNodeName              bool          `mapstructure:"use_node_name"`
 	CollectionInterval       string        `mapstructure:"collection_interval"`
@@ -547,14 +545,8 @@ func (a *ClientConfig) Merge(b *ClientConfig) *ClientConfig {
 func (a *Metric) Merge(b *Metric) *Metric {
 	result := *a
 
-	if b.StatsiteAddr != "" {
-		result.StatsiteAddr = b.StatsiteAddr
-	}
-	if b.StatsdAddr != "" {
-		result.StatsdAddr = b.StatsdAddr
-	}
-	if b.DataDogAddr != "" {
-		result.DataDogAddr = b.DataDogAddr
+	if b.PrometheusAddr != "" {
+		result.PrometheusAddr = b.PrometheusAddr
 	}
 	if b.DisableHostname {
 		result.DisableHostname = true

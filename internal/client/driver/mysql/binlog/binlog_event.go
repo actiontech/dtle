@@ -28,15 +28,15 @@ type BinlogTx struct {
 	LastCommitted  int64
 	//Gtid           string
 	// table -> [row]. row is identified by a hash of pk values.
-	hasBeginQuery  bool
-	Impacting    map[uint64]([]string)
-	ImpactingAll bool
-	Query        []*BinlogQuery
-	Fde          string
-	events       []*BinlogEvent
-	eventCount   int //for evaluate
-	EventSize    uint64
-	ErrorCode    uint16
+	hasBeginQuery bool
+	Impacting     map[uint64]([]string)
+	ImpactingAll  bool
+	Query         []*BinlogQuery
+	Fde           string
+	events        []*BinlogEvent
+	eventCount    int //for evaluate
+	EventSize     uint64
+	ErrorCode     uint16
 }
 
 type BinlogQuery struct {

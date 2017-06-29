@@ -25,7 +25,7 @@ import (
 
 const (
 	// DefaultConnectWait is the default timeout used for the connect operation
-	DefaultConnectWait = 5 * time.Second
+	DefaultConnectWait = 10 * time.Second
 
 	AllEventsUpToLockProcessed = "AllEventsUpToLockProcessed"
 )
@@ -52,8 +52,8 @@ type Extractor struct {
 	allEventsUpToLockProcessed chan string
 	rowCopyCompleteFlag        int64
 
-	pubConn         *gonats.Conn
-	waitCh          chan error
+	pubConn *gonats.Conn
+	waitCh  chan error
 }
 
 func NewExtractor(subject string, cfg *config.MySQLDriverConfig, logger *log.Logger) *Extractor {
@@ -491,7 +491,7 @@ func (e *Extractor) initiateStreaming() error {
 //--EventsStreamer--
 func (e *Extractor) initDBConnections() (err error) {
 	EventsStreamerUri := e.mysqlContext.ConnectionConfig.GetDBUri()
-	if e.db, _,err = sql.GetDB(EventsStreamerUri); err != nil {
+	if e.db, _, err = sql.GetDB(EventsStreamerUri); err != nil {
 		return err
 	}
 	if err := e.validateConnection(); err != nil {
@@ -727,7 +727,7 @@ func (e *Extractor) StreamEvents(approveHeterogeneous bool, canStopStreaming fun
 					break
 				}
 
-				_, err = e.pubConn.Request(fmt.Sprintf("%s_incr", e.subject), txMsg, 10*time.Second)
+				_, err = e.pubConn.Request(fmt.Sprintf("%s_incr", e.subject), txMsg, DefaultConnectWait)
 				if err != nil {
 					e.logger.Printf("[ERR] mysql.extractor: Error in Request: %v\n", err)
 					e.onError(err)
@@ -775,7 +775,7 @@ func (e *Extractor) StreamEvents(approveHeterogeneous bool, canStopStreaming fun
 	}
 	return nil
 }
-func (e *Extractor) requestMsg(txMsg []byte) error{
+func (e *Extractor) requestMsg(txMsg []byte) error {
 	_, err := e.pubConn.Request(fmt.Sprintf("%s_incr", e.subject), txMsg, 10*time.Second)
 	if err != nil {
 		e.logger.Printf("[ERR] mysql.extractor: Error in Request: %v\n", err)
@@ -877,7 +877,7 @@ func (e *Extractor) mysqlDump() error {
 		e.logger.Printf("[INFO] mysql.extractor: Step 5: generating DROP and CREATE statements to reflect current database schemas:")
 		for _, doDb := range e.mysqlContext.ReplicateDoDb {
 			uri := e.mysqlContext.ConnectionConfig.GetDBUriByDbName(doDb.Database)
-			db,_, err := sql.GetDB(uri)
+			db, _, err := sql.GetDB(uri)
 			if err != nil {
 				return err
 			}
@@ -1134,9 +1134,14 @@ func currentTimeMillis() int64 {
 }
 
 func (e *Extractor) Stats() (*models.TaskStatistics, error) {
-	/*if e.stanConn !=nil{
-		e.logger.Printf("Tracks various stats send on this connection:%v",e.stanConn.NatsConn().Statistics)
-	}*/
+	//e.logger.Printf("Tracks various stats send on this connection:%v",e.pubConn.Statistics)
+	taskResUsage := models.TaskStatistics{
+		Stats: &models.Stats{
+			MsgStat: e.pubConn.Statistics,
+			Status:  "",
+		},
+		Timestamp: time.Now().UTC().UnixNano(),
+	}
 	/*elapsedTime := e.mysqlContext.ElapsedTime()
 	elapsedSeconds := int64(elapsedTime.Seconds())
 	totalRowsCopied := e.mysqlContext.GetTotalRowsCopied()
@@ -1221,9 +1226,8 @@ func (e *Extractor) Stats() (*models.TaskStatistics, error) {
 				Status: status,
 			},
 			Timestamp: time.Now().UTC().UnixNano(),
-		}
-		return &taskResUsage, nil*/
-	return nil, nil
+		}*/
+	return &taskResUsage, nil
 }
 
 func (e *Extractor) ID() string {

@@ -15,7 +15,7 @@ import (
 	"time"
 
 	"github.com/armon/go-metrics"
-	"github.com/armon/go-metrics/datadog"
+	"github.com/armon/go-metrics/prometheus"
 	"github.com/hashicorp/logutils"
 	"github.com/mitchellh/cli"
 )
@@ -435,35 +435,17 @@ func (c *Command) setupMetric(config *Config) error {
 		telConfig = config.Metric
 	}
 
-	metricsConf := metrics.DefaultConfig("server")
+	metricsConf := metrics.DefaultConfig("udup")
 	metricsConf.EnableHostname = !telConfig.DisableHostname
 	if telConfig.UseNodeName {
 		metricsConf.HostName = config.NodeName
 		metricsConf.EnableHostname = true
 	}
 
-	// Configure the statsite sink
+	// Configure the prometheus sink
 	var fanout metrics.FanoutSink
-	if telConfig.StatsiteAddr != "" {
-		sink, err := metrics.NewStatsiteSink(telConfig.StatsiteAddr)
-		if err != nil {
-			return err
-		}
-		fanout = append(fanout, sink)
-	}
-
-	// Configure the statsd sink
-	if telConfig.StatsdAddr != "" {
-		sink, err := metrics.NewStatsdSink(telConfig.StatsdAddr)
-		if err != nil {
-			return err
-		}
-		fanout = append(fanout, sink)
-	}
-
-	// Configure the datadog sink
-	if telConfig.DataDogAddr != "" {
-		sink, err := datadog.NewDogStatsdSink(telConfig.DataDogAddr, config.NodeName)
+	if telConfig.PrometheusAddr != "" {
+		sink, err := prometheus.NewPrometheusSink( /*telConfig.PrometheusAddr*/ )
 		if err != nil {
 			return err
 		}

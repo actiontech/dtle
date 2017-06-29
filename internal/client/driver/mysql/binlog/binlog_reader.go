@@ -40,15 +40,15 @@ type BinlogReader struct {
 	currentCoordinatesMutex  *sync.Mutex
 	LastAppliedRowsEventHint base.BinlogCoordinates
 	MysqlContext             *config.MySQLDriverConfig
-	waitGroup *sync.WaitGroup
+	waitGroup                *sync.WaitGroup
 
 	EvtChan chan *BinlogEvent
 
-	currentTx          *BinlogTx
-	txCount            int
-	currentFde         string
-	currentSqlB64      *bytes.Buffer
-	ReMap              map[string]*regexp.Regexp
+	currentTx     *BinlogTx
+	txCount       int
+	currentFde    string
+	currentSqlB64 *bytes.Buffer
+	ReMap         map[string]*regexp.Regexp
 }
 
 func NewMySQLReader(cfg *config.MySQLDriverConfig, logger *log.Logger) (binlogReader *BinlogReader, err error) {
@@ -59,7 +59,7 @@ func NewMySQLReader(cfg *config.MySQLDriverConfig, logger *log.Logger) (binlogRe
 		binlogSyncer:            nil,
 		binlogStreamer:          nil,
 		MysqlContext:            cfg,
-		waitGroup: &sync.WaitGroup{},
+		waitGroup:               &sync.WaitGroup{},
 	}
 
 	uri := cfg.ConnectionConfig.GetDBUri()
@@ -305,7 +305,7 @@ func (b *BinlogReader) DataStreamEvents(canStopStreaming func() bool, entriesCha
 }
 
 func (b *BinlogReader) BinlogStreamEvents(txChannel chan<- *BinlogTx) error {
-//OUTER:
+	//OUTER:
 	for {
 		if atomic.LoadInt64(&b.MysqlContext.ShutdownFlag) > 0 {
 			//break OUTER
@@ -628,7 +628,7 @@ func (b *BinlogReader) onCommit(lastEvent *BinlogEvent, txChannel chan<- *Binlog
 	b.waitGroup.Add(1)
 	defer b.waitGroup.Done()
 
-	if nil != b.currentSqlB64 && !strings.HasSuffix(b.currentSqlB64.String(), "BINLOG '"){
+	if nil != b.currentSqlB64 && !strings.HasSuffix(b.currentSqlB64.String(), "BINLOG '") {
 		b.currentSqlB64.WriteString("'")
 		b.currentTx.Query = append(b.currentTx.Query, &BinlogQuery{b.currentSqlB64.String(), InsertDML})
 		b.currentTx.Fde = b.currentFde

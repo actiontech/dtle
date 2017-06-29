@@ -52,12 +52,8 @@ type Applier struct {
 	applyBinlogTxQueue      chan *binlog.BinlogTx
 	applyBinlogGroupTxQueue chan []*binlog.BinlogTx
 
-	subConn         *gonats.Conn
-	jsonEncodedConn *gonats.EncodedConn
-	gobEncodedConn  *gonats.EncodedConn
-	jsonSub         *gonats.Subscription
-	gobSub          *gonats.Subscription
-	waitCh          chan error
+	subConn *gonats.Conn
+	waitCh  chan error
 }
 
 func NewApplier(subject string, cfg *config.MySQLDriverConfig, logger *log.Logger) *Applier {
@@ -73,7 +69,7 @@ func NewApplier(subject string, cfg *config.MySQLDriverConfig, logger *log.Logge
 		applyDataEntryQueue:        make(chan *binlog.BinlogEntry, applyDataQueueBuffer),
 		applyBinlogTxQueue:         make(chan *binlog.BinlogTx, applyBinlogTxQueueBuffer),
 		applyBinlogGroupTxQueue:    make(chan []*binlog.BinlogTx, applyDataQueueBuffer),
-		waitCh: make(chan error, 1),
+		waitCh:                     make(chan error, 1),
 	}
 	return a
 }
@@ -469,7 +465,7 @@ func (a *Applier) onApplyTxStruct(dbApplier *sql.DbApplier, binlogTx *binlog.Bin
 		if err != nil {
 			return err
 		}
-	}else {
+	} else {
 		//var ignoreDDLError error
 		for _, query := range binlogTx.Query {
 			if query.Sql == "" {
@@ -698,16 +694,16 @@ func (a *Applier) initiateStreaming() error {
 	}*/
 
 	if a.mysqlContext.ApproveHeterogeneous {
-		sub, err := a.jsonEncodedConn.Subscribe(fmt.Sprintf("%s_incr_heterogeneous", a.subject), func(binlogEntry *binlog.BinlogEntry) {
+		/*sub, err := a.jsonEncodedConn.Subscribe(fmt.Sprintf("%s_incr_heterogeneous", a.subject), func(binlogEntry *binlog.BinlogEntry) {
 			//a.logger.Printf("[DEBUG] mysql.applier: received binlogEntry: %+v", binlogEntry)
 			a.applyDataEntryQueue <- binlogEntry
 		})
 		if err != nil {
 			return err
 		}
-		a.jsonSub = sub
+		a.jsonSub = sub*/
 	} else {
-		sub, err := a.subConn.Subscribe(fmt.Sprintf("%s_incr", a.subject), func(m *gonats.Msg) {
+		_, err := a.subConn.Subscribe(fmt.Sprintf("%s_incr", a.subject), func(m *gonats.Msg) {
 			binlogTx := &binlog.BinlogTx{}
 			if err := Decode(m.Data, binlogTx); err != nil {
 				a.onError(err)
@@ -720,7 +716,6 @@ func (a *Applier) initiateStreaming() error {
 		if err != nil {
 			return err
 		}
-		a.gobSub = sub
 	}
 
 	return nil
@@ -732,7 +727,7 @@ func (a *Applier) initDBConnections() (err error) {
 		return err
 	}
 	singletonApplierUri := fmt.Sprintf("%s&timeout=0", applierUri)
-	if a.singletonDB,_, err = sql.GetDB(singletonApplierUri); err != nil {
+	if a.singletonDB, _, err = sql.GetDB(singletonApplierUri); err != nil {
 		return err
 	}
 	a.singletonDB.SetMaxOpenConns(1)
@@ -1375,9 +1370,14 @@ func (a *Applier) ApplyEventQueries(queries []string) error {
 }
 
 func (a *Applier) Stats() (*models.TaskStatistics, error) {
-	/*if a.stanConn !=nil{
-		a.logger.Printf("Tracks various stats received on this connection:%v",a.stanConn.NatsConn().Statistics)
-	}*/
+	taskResUsage := models.TaskStatistics{
+		Stats: &models.Stats{
+			MsgStat: a.subConn.Statistics,
+			Status:  "",
+		},
+		Timestamp: time.Now().UTC().UnixNano(),
+	}
+	//a.logger.Printf("Tracks various stats received on this connection:%v",a.subConn.Statistics)
 	/*elapsedTime := a.mysqlContext.ElapsedTime()
 	elapsedSeconds := int64(elapsedTime.Seconds())
 	totalRowsCopied := a.mysqlContext.GetTotalRowsCopied()
@@ -1462,9 +1462,8 @@ func (a *Applier) Stats() (*models.TaskStatistics, error) {
 				Status: status,
 			},
 			Timestamp: time.Now().UTC().UnixNano(),
-		}
-		return &taskResUsage, nil*/
-	return nil, nil
+		}*/
+	return &taskResUsage, nil
 }
 
 func (a *Applier) ID() string {
