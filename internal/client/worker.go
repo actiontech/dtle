@@ -162,13 +162,15 @@ func (r *Worker) SaveState() error {
 			r.logger.Printf("[ERR] client: failed to parse handle '%s': %v",
 				handleID, err)
 		}
-		if r.task.Type == models.TaskTypeDest && id.DriverConfig.Gtid != "" {
-			r.workUpdates <- &models.TaskUpdate{
-				JobID: r.alloc.JobID,
-				Gtid:  id.DriverConfig.Gtid,
+		if id.DriverConfig.Gtid != "" {
+			if r.task.Type == models.TaskTypeDest {
+				r.workUpdates <- &models.TaskUpdate{
+					JobID: r.alloc.JobID,
+					Gtid:  id.DriverConfig.Gtid,
+				}
 			}
+			r.task.Config["Gtid"] = id.DriverConfig.Gtid
 		}
-		r.task.Config["Gtid"] = id.DriverConfig.Gtid
 	}
 	r.handleLock.Unlock()
 	return nil

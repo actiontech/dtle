@@ -40,6 +40,7 @@ type BinlogReader struct {
 	currentCoordinatesMutex  *sync.Mutex
 	LastAppliedRowsEventHint base.BinlogCoordinates
 	MysqlContext             *config.MySQLDriverConfig
+	waitGroup *sync.WaitGroup
 
 	EvtChan chan *BinlogEvent
 
@@ -47,7 +48,6 @@ type BinlogReader struct {
 	txCount            int
 	currentFde         string
 	currentSqlB64      *bytes.Buffer
-	arrayCurrentSqlB64 []string
 	ReMap              map[string]*regexp.Regexp
 }
 
@@ -59,6 +59,7 @@ func NewMySQLReader(cfg *config.MySQLDriverConfig, logger *log.Logger) (binlogRe
 		binlogSyncer:            nil,
 		binlogStreamer:          nil,
 		MysqlContext:            cfg,
+		waitGroup: &sync.WaitGroup{},
 	}
 
 	uri := cfg.ConnectionConfig.GetDBUri()
@@ -304,16 +305,16 @@ func (b *BinlogReader) DataStreamEvents(canStopStreaming func() bool, entriesCha
 }
 
 func (b *BinlogReader) BinlogStreamEvents(txChannel chan<- *BinlogTx) error {
-OUTER:
+//OUTER:
 	for {
 		if atomic.LoadInt64(&b.MysqlContext.ShutdownFlag) > 0 {
-			break OUTER
+			//break OUTER
+			return nil
 		}
 		ev, err := b.binlogStreamer.GetEvent(context.Background())
 		if err != nil {
 			return err
 		}
-
 		func() {
 			b.currentCoordinatesMutex.Lock()
 			defer b.currentCoordinatesMutex.Unlock()
@@ -325,10 +326,10 @@ OUTER:
 				defer b.currentCoordinatesMutex.Unlock()
 				b.currentCoordinates.LogFile = string(rotateEvent.NextLogName)
 			}()
-			b.logger.Printf("[DEBUG] mysql.reader: === %s ===", replication.EventType(ev.Header.EventType))
+			/*b.logger.Printf("[DEBUG] mysql.reader: === %s ===", replication.EventType(ev.Header.EventType))
 			b.logger.Printf("[DEBUG] mysql.reader: Date: %s", time.Unix(int64(ev.Header.Timestamp), 0).Format(gomysql.TimeFormat))
 			b.logger.Printf("[DEBUG] mysql.reader: Position: %d", rotateEvent.Position)
-			b.logger.Printf("[DEBUG] mysql.reader: Event size: %d", ev.Header.EventSize)
+			b.logger.Printf("[DEBUG] mysql.reader: Event size: %d", ev.Header.EventSize)*/
 			b.logger.Printf("[DEBUG] mysql.reader: rotate to next log name: %s", rotateEvent.NextLogName)
 		} else {
 			if err := b.handleBinlogRowsEvent(ev, txChannel); err != nil {
@@ -413,43 +414,46 @@ func (b *BinlogReader) handleBinlogRowsEvent(ev *replication.BinlogEvent, txChan
 		}
 
 		if strings.ToUpper(query) == "BEGIN" {
+			b.currentTx.hasBeginQuery = true
 			b.currentTx.Query = append(b.currentTx.Query, &BinlogQuery{query, NotDML})
 		} else {
 			// DDL or statement/mixed binlog format
 			b.setImpactOnAll()
-			if skipQueryEvent(query) {
-				b.logger.Printf("[WARN] skip query %s", query)
-				b.onCommit(event, txChannel)
-				return nil
-			}
-
-			sqls, ok, err := resolveDDLSQL(query)
-			if err != nil {
-				return fmt.Errorf("parse query [%v] event failed: %v", query, err)
-			}
-			if !ok {
-				b.onCommit(event, txChannel)
-				return nil
-			}
-
-			for _, sql := range sqls {
-				if b.skipQueryDDL(sql, string(evt.Schema)) {
-					/*ulog.Logger.WithFields(logrus.Fields{
-						"schema": fmt.Sprintf("%s", evt.Schema),
-						"sql":    fmt.Sprintf("%s", sql),
-					}).Debug("builder: skip query-ddl-sql")*/
-					continue
+			if strings.ToUpper(query) == "COMMIT" || !b.currentTx.hasBeginQuery {
+				if skipQueryEvent(query) {
+					b.logger.Printf("[WARN] skip query %s", query)
+					return nil
 				}
 
-				sql, err = GenDDLSQL(sql, string(evt.Schema))
+				sqls, ok, err := resolveDDLSQL(query)
 				if err != nil {
-					return err
+					return fmt.Errorf("parse query [%v] event failed: %v", query, err)
 				}
-				b.currentTx.Query = append(b.currentTx.Query, &BinlogQuery{sql, NotDML})
-			}
+				if !ok {
+					b.currentTx.Query = append(b.currentTx.Query, &BinlogQuery{query, NotDML})
+					b.onCommit(event, txChannel)
+					return nil
+				}
 
-			b.currentTx.events = append(b.currentTx.events, event)
-			b.onCommit(event, txChannel)
+				for _, sql := range sqls {
+					if b.skipQueryDDL(sql, string(evt.Schema)) {
+						/*ulog.Logger.WithFields(logrus.Fields{
+							"schema": fmt.Sprintf("%s", evt.Schema),
+							"sql":    fmt.Sprintf("%s", sql),
+						}).Debug("builder: skip query-ddl-sql")*/
+						continue
+					}
+
+					sql, err = GenDDLSQL(sql, string(evt.Schema))
+					if err != nil {
+						return err
+					}
+					b.currentTx.Query = append(b.currentTx.Query, &BinlogQuery{sql, NotDML})
+				}
+
+				b.currentTx.events = append(b.currentTx.events, event)
+				b.onCommit(event, txChannel)
+			}
 		}
 
 	case replication.TABLE_MAP_EVENT:
@@ -482,15 +486,6 @@ func (b *BinlogReader) handleBinlogRowsEvent(ev *replication.BinlogEvent, txChan
 			RawBs:      ev.RawData,
 		})
 		b.currentTx.events = append(b.currentTx.events, event)
-	/*case replication.WRITE_ROWS_EVENTv2, replication.UPDATE_ROWS_EVENTv2, replication.DELETE_ROWS_EVENTv2:
-	event := &BinlogEvent{
-		BinlogFile: b.currentCoordinates.LogFile,
-		Header:     ev.Header,
-		RealPos:    uint32(ev.Header.LogPos) - ev.Header.EventSize,
-		Evt:        ev.Event,
-		RawBs:ev.RawData,
-	}
-	b.currentTx.events = append(b.currentTx.events,event)*/
 
 	case replication.WRITE_ROWS_EVENTv0, replication.WRITE_ROWS_EVENTv1, replication.WRITE_ROWS_EVENTv2:
 		event := &BinlogEvent{
@@ -612,7 +607,7 @@ func (b *BinlogReader) setImpactOnAll() {
 	b.clearB64Sql()
 }
 func (b *BinlogReader) clearB64Sql() {
-	b.arrayCurrentSqlB64 = nil
+	b.currentSqlB64 = nil
 }
 
 var appendB64SqlBs []byte = make([]byte, 1024*1024)
@@ -627,19 +622,22 @@ func (b *BinlogReader) appendB64Sql(event *BinlogEvent) {
 	b.currentSqlB64.Write(appendB64SqlBs[0:n])
 
 	b.currentSqlB64.WriteString("\n")
-	//tb.arrayCurrentSqlB64 = append(tb.arrayCurrentSqlB64, tb.currentSqlB64.String())
 }
 
 func (b *BinlogReader) onCommit(lastEvent *BinlogEvent, txChannel chan<- *BinlogTx) {
-	if strings.HasSuffix(b.currentSqlB64.String(), "BINLOG '") {
-		b.currentSqlB64 = nil
-	} else {
+	b.waitGroup.Add(1)
+	defer b.waitGroup.Done()
+
+	if nil != b.currentSqlB64 && !strings.HasSuffix(b.currentSqlB64.String(), "BINLOG '"){
+		b.currentSqlB64.WriteString("'")
+		b.currentTx.Query = append(b.currentTx.Query, &BinlogQuery{b.currentSqlB64.String(), InsertDML})
 		b.currentTx.Fde = b.currentFde
-		if !strings.HasSuffix(b.currentSqlB64.String(), "BINLOG '") {
-			b.currentSqlB64.WriteString("'")
-			b.currentTx.Query = append(b.currentTx.Query, &BinlogQuery{b.currentSqlB64.String(), InsertDML})
-		}
 	}
+
+	b.currentTx.EndEventFile = lastEvent.BinlogFile
+	b.currentTx.EndEventPos = lastEvent.RealPos
+
+	txChannel <- b.currentTx
 
 	/*for _, ev := range b.currentTx.events {
 		if len(b.currentTx.Query) > 0 {
@@ -698,14 +696,7 @@ func (b *BinlogReader) onCommit(lastEvent *BinlogEvent, txChannel chan<- *Binlog
 		}
 	}*/
 
-	b.currentTx.EndEventFile = lastEvent.BinlogFile
-	b.currentTx.EndEventPos = lastEvent.RealPos
-
-	//b.logger.Printf("[DEBUG] mysql.reader: currentTx: %+v", b.currentTx.GNO)
-	txChannel <- b.currentTx
-
 	b.currentTx = nil
-	//tb.arrayCurrentSqlB64 = nil
 }
 
 func (b *BinlogReader) InspectTableColumnsAndUniqueKeys(databaseName, tableName string) (columns *mysql.ColumnList, uniqueKeys [](*mysql.UniqueKey), err error) {
@@ -1039,10 +1030,12 @@ func (b *BinlogReader) matchTable(patternTBS []*config.DataSource, t config.Tabl
 }
 
 func (b *BinlogReader) Close() error {
+	atomic.StoreInt64(&b.MysqlContext.ShutdownFlag, 1)
 	// Historically there was a:
-	//   b.binlogSyncer.Close()
+	b.binlogSyncer.Close()
 	// here. A new go-mysql version closes the binlog syncer connection independently.
 	// I will go against the sacred rules of comments and just leave this here.
 	// This is the year 2017. Let's see what year these comments get deleted.
+	b.waitGroup.Wait()
 	return nil
 }

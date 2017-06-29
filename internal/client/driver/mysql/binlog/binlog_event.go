@@ -28,6 +28,7 @@ type BinlogTx struct {
 	LastCommitted  int64
 	//Gtid           string
 	// table -> [row]. row is identified by a hash of pk values.
+	hasBeginQuery  bool
 	Impacting    map[uint64]([]string)
 	ImpactingAll bool
 	Query        []*BinlogQuery

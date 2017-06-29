@@ -54,8 +54,6 @@ type Extractor struct {
 
 	pubConn         *gonats.Conn
 	subConn         *gonats.Conn
-	jsonEncodedConn *gonats.EncodedConn
-	gobEncodedConn  *gonats.EncodedConn
 	waitCh          chan error
 }
 
@@ -115,10 +113,10 @@ func (e *Extractor) consumeRowCopyComplete() {
 	<-e.rowCopyComplete
 	atomic.StoreInt64(&e.rowCopyCompleteFlag, 1)
 	e.mysqlContext.MarkRowCopyEndTime()
-	go func() {
+	/*go func() {
 		for <-e.rowCopyComplete {
 		}
-	}()
+	}()*/
 }
 
 func (e *Extractor) canStopStreaming() bool {
@@ -152,11 +150,6 @@ func (e *Extractor) countTableRows(doDb string, doTb *config.Table) (err error) 
 		return nil
 	}
 	return countRowsFunc()
-}
-
-func (e *Extractor) onError(err error) {
-	e.waitCh <- err
-	//close(e.waitCh)
 }
 
 // Run executes the complete extract logic.
@@ -499,8 +492,7 @@ func (e *Extractor) initiateStreaming() error {
 			e.onError(err)
 		}
 	}()
-
-	go func() {
+	/*go func() {
 		_, err := e.subConn.Subscribe(fmt.Sprintf("%s_incr_restart", e.subject), func(m *gonats.Msg) {
 			e.mysqlContext.Gtid = string(m.Data)
 			e.onError(fmt.Errorf("restart"))
@@ -508,14 +500,14 @@ func (e *Extractor) initiateStreaming() error {
 		if err != nil {
 			e.onError(err)
 		}
-	}()
+	}()*/
 	return nil
 }
 
 //--EventsStreamer--
 func (e *Extractor) initDBConnections() (err error) {
 	EventsStreamerUri := e.mysqlContext.ConnectionConfig.GetDBUri()
-	if e.db, err = sql.CreateDB(EventsStreamerUri); err != nil {
+	if e.db, _,err = sql.GetDB(EventsStreamerUri); err != nil {
 		return err
 	}
 	if err := e.validateConnection(); err != nil {
@@ -703,10 +695,10 @@ func (e *Extractor) StreamEvents(approveHeterogeneous bool, canStopStreaming fun
 		go func() {
 			for binlogEntry := range e.dataChannel {
 				if binlogEntry.Events != nil {
-					if err := e.jsonEncodedConn.Publish(fmt.Sprintf("%s_incr_heterogeneous", e.subject), binlogEntry); err != nil {
+					/*if err := e.jsonEncodedConn.Publish(fmt.Sprintf("%s_incr_heterogeneous", e.subject), binlogEntry); err != nil {
 						e.logger.Printf("[ERR] mysql.extractor: unexpected error on publish, got %v", err)
 						e.onError(err)
-					}
+					}*/
 				}
 			}
 		}()
@@ -747,10 +739,20 @@ func (e *Extractor) StreamEvents(approveHeterogeneous bool, canStopStreaming fun
 			for binlogTx := range e.binlogChannel {
 				txMsg, err := Encode(binlogTx)
 				if err != nil {
-					e.waitCh <- err
+					e.onError(err)
+					break
 				}
 
-				e.requestMsg(txMsg)
+				_, err = e.pubConn.Request(fmt.Sprintf("%s_incr", e.subject), txMsg, 10*time.Second)
+				if err != nil {
+					e.logger.Printf("[ERR] mysql.extractor: Error in Request: %v\n", err)
+					e.onError(err)
+					break
+				}
+				/*err = e.requestMsg(txMsg);if err != nil {
+					e.waitCh <- err
+					break
+				}*/
 				e.mysqlContext.Gtid = fmt.Sprintf("%s:1-%d", binlogTx.SID, binlogTx.GNO)
 			}
 		}()
@@ -789,18 +791,13 @@ func (e *Extractor) StreamEvents(approveHeterogeneous bool, canStopStreaming fun
 	}
 	return nil
 }
-func (e *Extractor) requestMsg(txMsg []byte) {
+func (e *Extractor) requestMsg(txMsg []byte) error{
 	_, err := e.pubConn.Request(fmt.Sprintf("%s_incr", e.subject), txMsg, 10*time.Second)
 	if err != nil {
-		if err == gonats.ErrTimeout {
-			e.logger.Printf("[ERR] mysql.extractor: ErrTimeout in Request: %v\n", err)
-			time.Sleep(1 * time.Second)
-			e.requestMsg(txMsg)
-			return
-		}
 		e.logger.Printf("[ERR] mysql.extractor: Error in Request: %v\n", err)
-		e.waitCh <- err
+		return err
 	}
+	return nil
 }
 
 //Perform the snapshot using the same logic as the "mysqldump" utility.
@@ -896,7 +893,7 @@ func (e *Extractor) mysqlDump() error {
 		e.logger.Printf("[INFO] mysql.extractor: Step 5: generating DROP and CREATE statements to reflect current database schemas:")
 		for _, doDb := range e.mysqlContext.ReplicateDoDb {
 			uri := e.mysqlContext.ConnectionConfig.GetDBUriByDbName(doDb.Database)
-			db, err := sql.CreateDB(uri)
+			db,_, err := sql.GetDB(uri)
 			if err != nil {
 				return err
 			}
@@ -1142,18 +1139,14 @@ func (e *Extractor) mysqlDump() error {
 	// Set complete time
 	data.CompleteTime = time.Now().String()
 
-	if err := e.jsonEncodedConn.Publish(fmt.Sprintf("%s_full", e.subject), data); err != nil {
+	/*if err := e.jsonEncodedConn.Publish(fmt.Sprintf("%s_full", e.subject), data); err != nil {
 		e.logger.Printf("[ERR] mysql.extractor: unexpected error on publish, got %v", err)
-	}
+	}*/
 	return nil
 }
 
 func currentTimeMillis() int64 {
 	return time.Now().UnixNano() / 1000000
-}
-
-func (e *Extractor) WaitCh() chan error {
-	return e.waitCh
 }
 
 func (e *Extractor) Stats() (*models.TaskStatistics, error) {
@@ -1266,19 +1259,34 @@ func (e *Extractor) ID() string {
 	return string(data)
 }
 
+func (e *Extractor) onError(err error) {
+	if atomic.LoadInt64(&e.mysqlContext.ShutdownFlag) > 0 {
+		return
+	}
+	e.waitCh <- err
+	e.Shutdown()
+}
+
+func (e *Extractor) WaitCh() chan error {
+	return e.waitCh
+}
+
 func (e *Extractor) Shutdown() error {
 	atomic.StoreInt64(&e.mysqlContext.ShutdownFlag, 1)
-	//close(e.binlogChannel)
-	e.pubConn.Close()
-	e.subConn.Close()
+
+	close(e.dataChannel)
+	if e.subConn != nil {
+		e.subConn.Close()
+	}
+	if e.pubConn != nil {
+		e.pubConn.Close()
+	}
 
 	if err := e.binlogReader.Close(); err != nil {
 		return err
 	}
 
-	if err := sql.CloseDB(e.db); err != nil {
-		return err
-	}
+	close(e.binlogChannel)
 
 	e.logger.Printf("[INFO] mysql.extractor: closed streamer connection.")
 	return nil

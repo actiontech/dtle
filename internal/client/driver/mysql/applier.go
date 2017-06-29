@@ -74,7 +74,7 @@ func NewApplier(subject string, cfg *config.MySQLDriverConfig, logger *log.Logge
 		applyDataEntryQueue:        make(chan *binlog.BinlogEntry, applyDataQueueBuffer),
 		applyBinlogTxQueue:         make(chan *binlog.BinlogTx, applyBinlogTxQueueBuffer),
 		applyBinlogGroupTxQueue:    make(chan []*binlog.BinlogTx, applyDataQueueBuffer),
-		waitCh:                     make(chan error, 1),
+		waitCh: make(chan error, 1),
 	}
 	return a
 }
@@ -137,16 +137,6 @@ func (a *Applier) validateStatement(doTb *config.Table) (err error) {
 	}
 	doTb.DroppedColumnsMap = a.parser.DroppedColumnsMap()
 	return nil
-}
-
-func (a *Applier) onError(err error) {
-	if a.pubConn != nil {
-		if err := a.pubConn.Publish(fmt.Sprintf("%s_incr_restart", a.subject), []byte(a.mysqlContext.Gtid)); err != nil {
-			a.logger.Printf("[ERR] mysql.applier: trigger restart extractor : %v", err)
-		}
-	}
-
-	a.waitCh <- err
 }
 
 // Run executes the complete apply logic.
@@ -474,50 +464,33 @@ func (a *Applier) onApplyTxStruct(dbApplier *sql.DbApplier, binlogTx *binlog.Bin
 	if err != nil {
 		return err
 	}
-	/*var notDml bool
-	for _, query := range binlogTx.Query {
-		if query.DML != binlog.NotDML {
-			notDml = false
-			break
-		}
-		notDml = true
-		break
-	}
-	if !notDml {
-		_, err = sql.ExecNoPrepare(a.db, `begin`)
+
+	if len(binlogTx.Query) == 0 {
+		_, err = sql.ExecNoPrepare(dbApplier.Db, `begin;commit`)
 		if err != nil {
-			a.logger.Printf("[ERR] mysql.applier: exec begin err:%v", err)
 			return err
 		}
-	}*/
-	var ignoreDDLError error
-	for _, query := range binlogTx.Query {
-		if query.Sql == "" {
-			continue
-		}
-
-		_, err := sql.ExecNoPrepare(dbApplier.Db, query.Sql)
-		if err != nil {
-			if !sql.IgnoreDDLError(err) {
-				a.logger.Printf("[ERR] mysql.applier: exec [%v] error: %v", query, err)
-				return err
-			} else {
-				a.logger.Printf("[WARN] mysql.applier: ignore ddl error: %v", err)
-				ignoreDDLError = err
+	}else {
+		//var ignoreDDLError error
+		for _, query := range binlogTx.Query {
+			if query.Sql == "" {
+				continue
 			}
+
+			_, err := sql.ExecNoPrepare(dbApplier.Db, query.Sql)
+			if err != nil {
+				if !sql.IgnoreDDLError(err) {
+					a.logger.Printf("[ERR] mysql.applier: exec [%v] error: %v", query.Sql, err)
+					return err
+				}
+				a.logger.Printf("[WARN] mysql.applier: ignore ddl error: %v", err)
+				//ignoreDDLError = err
+			}
+			//a.addCount(binlog.Ddl)
 		}
-		//a.addCount(binlog.Ddl)
 	}
 
-	/*if !notDml{
-		_, err = sql.ExecNoPrepare(a.db, `commit`)
-		if err != nil {
-			a.logger.Printf("[ERR] mysql.applier: exec commit err:%v", err)
-			return err
-		}
-	}*/
-
-	if ignoreDDLError != nil {
+	/*if ignoreDDLError != nil {
 		_, err := sql.ExecNoPrepare(dbApplier.Db, fmt.Sprintf(`set gtid_next='%s:%d'`, binlogTx.SID, binlogTx.GNO))
 		if err != nil {
 			return err
@@ -531,7 +504,7 @@ func (a *Applier) onApplyTxStruct(dbApplier *sql.DbApplier, binlogTx *binlog.Bin
 			a.logger.Printf("[ERR] mysql.applier: exec commit err:%v", err)
 			return err
 		}
-	}
+	}*/
 	a.mysqlContext.Gtid = fmt.Sprintf("%s:1-%d", binlogTx.SID, binlogTx.GNO)
 	return nil
 }
@@ -721,7 +694,7 @@ func (a *Applier) initiateStreaming() error {
 		}
 	}()
 
-	if a.mysqlContext.Gtid == "" {
+	/*if a.mysqlContext.Gtid == "" {
 		_, err := a.jsonEncodedConn.Subscribe(fmt.Sprintf("%s_full", a.subject), func(d *dump) {
 			//a.logger.Printf("[DEBUG] mysql.applier: received binlogEntry: %+v", binlogEntry)
 			a.copyRowsQueue <- d
@@ -729,7 +702,7 @@ func (a *Applier) initiateStreaming() error {
 		if err != nil {
 			return err
 		}
-	}
+	}*/
 
 	if a.mysqlContext.ApproveHeterogeneous {
 		sub, err := a.jsonEncodedConn.Subscribe(fmt.Sprintf("%s_incr_heterogeneous", a.subject), func(binlogEntry *binlog.BinlogEntry) {
@@ -744,11 +717,11 @@ func (a *Applier) initiateStreaming() error {
 		sub, err := a.subConn.Subscribe(fmt.Sprintf("%s_incr", a.subject), func(m *gonats.Msg) {
 			binlogTx := &binlog.BinlogTx{}
 			if err := Decode(m.Data, binlogTx); err != nil {
-				a.waitCh <- fmt.Errorf("subscribe err:%v", err)
+				a.onError(err)
 			}
 			a.applyBinlogTxQueue <- binlogTx
 			if err := a.subConn.Publish(m.Reply, []byte(string(binlogTx.GNO))); err != nil {
-				a.waitCh <- fmt.Errorf("publish err:%v", err)
+				a.onError(err)
 			}
 		})
 		if err != nil {
@@ -766,7 +739,7 @@ func (a *Applier) initDBConnections() (err error) {
 		return err
 	}
 	singletonApplierUri := fmt.Sprintf("%s&timeout=0", applierUri)
-	if a.singletonDB, err = sql.CreateDB(singletonApplierUri); err != nil {
+	if a.singletonDB,_, err = sql.GetDB(singletonApplierUri); err != nil {
 		return err
 	}
 	a.singletonDB.SetMaxOpenConns(1)
@@ -1408,10 +1381,6 @@ func (a *Applier) ApplyEventQueries(queries []string) error {
 	return nil
 }
 
-func (a *Applier) WaitCh() chan error {
-	return a.waitCh
-}
-
 func (a *Applier) Stats() (*models.TaskStatistics, error) {
 	/*if a.stanConn !=nil{
 		a.logger.Printf("Tracks various stats received on this connection:%v",a.stanConn.NatsConn().Statistics)
@@ -1523,14 +1492,44 @@ func (a *Applier) ID() string {
 	return string(data)
 }
 
+func (a *Applier) onError(err error) {
+	/*if a.pubConn != nil {
+		if err := a.pubConn.Publish(fmt.Sprintf("%s_incr_restart", a.subject), []byte(a.mysqlContext.Gtid)); err != nil {
+			a.logger.Printf("[ERR] mysql.applier: trigger restart extractor : %v", err)
+		}
+	}*/
+	if atomic.LoadInt64(&a.mysqlContext.ShutdownFlag) > 0 {
+		return
+	}
+
+	a.waitCh <- err
+	a.Shutdown()
+}
+
+func (a *Applier) WaitCh() chan error {
+	return a.waitCh
+}
+
 func (a *Applier) Shutdown() error {
 	if a.subConn != nil {
 		a.subConn.Close()
+		for {
+			if a.subConn.IsClosed() {
+				break
+			}
+		}
 	}
-
 	if a.pubConn != nil {
 		a.pubConn.Close()
+		for {
+			if a.subConn.IsClosed() {
+				break
+			}
+		}
 	}
+	close(a.applyDataEntryQueue)
+	close(a.applyBinlogTxQueue)
+	close(a.applyBinlogGroupTxQueue)
 
 	if err := sql.CloseDBs(a.dbs...); err != nil {
 		return err
