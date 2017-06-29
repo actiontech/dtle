@@ -52,7 +52,6 @@ type Applier struct {
 	applyBinlogTxQueue      chan *binlog.BinlogTx
 	applyBinlogGroupTxQueue chan []*binlog.BinlogTx
 
-	pubConn         *gonats.Conn
 	subConn         *gonats.Conn
 	jsonEncodedConn *gonats.EncodedConn
 	gobEncodedConn  *gonats.EncodedConn
@@ -636,13 +635,7 @@ OUTER:
 }
 
 func (a *Applier) initNatSubClient() (err error) {
-	pc, err := gonats.Connect(fmt.Sprintf("nats://%s", a.mysqlContext.NatsAddr))
-	if err != nil {
-		a.logger.Printf("[ERR] mysql.applier: can't connect nats server %v.make sure a nats streaming server is running.%v", fmt.Sprintf("nats://%s", a.mysqlContext.NatsAddr), err)
-		return err
-	}
-	a.pubConn = pc
-	sc, err := gonats.Connect(fmt.Sprintf("nats://127.0.0.1:8193"))
+	sc, err := gonats.Connect(fmt.Sprintf("nats://%s", a.mysqlContext.NatsAddr))
 	if err != nil {
 		a.logger.Printf("[ERR] mysql.applier: can't connect nats server %v.make sure a nats streaming server is running.%v", fmt.Sprintf("nats://%s", a.mysqlContext.NatsAddr), err)
 		return err
@@ -1493,11 +1486,6 @@ func (a *Applier) ID() string {
 }
 
 func (a *Applier) onError(err error) {
-	/*if a.pubConn != nil {
-		if err := a.pubConn.Publish(fmt.Sprintf("%s_incr_restart", a.subject), []byte(a.mysqlContext.Gtid)); err != nil {
-			a.logger.Printf("[ERR] mysql.applier: trigger restart extractor : %v", err)
-		}
-	}*/
 	if atomic.LoadInt64(&a.mysqlContext.ShutdownFlag) > 0 {
 		return
 	}
@@ -1513,19 +1501,6 @@ func (a *Applier) WaitCh() chan error {
 func (a *Applier) Shutdown() error {
 	if a.subConn != nil {
 		a.subConn.Close()
-		for {
-			if a.subConn.IsClosed() {
-				break
-			}
-		}
-	}
-	if a.pubConn != nil {
-		a.pubConn.Close()
-		for {
-			if a.subConn.IsClosed() {
-				break
-			}
-		}
 	}
 	close(a.applyDataEntryQueue)
 	close(a.applyBinlogTxQueue)

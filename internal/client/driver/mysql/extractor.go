@@ -53,7 +53,6 @@ type Extractor struct {
 	rowCopyCompleteFlag        int64
 
 	pubConn         *gonats.Conn
-	subConn         *gonats.Conn
 	waitCh          chan error
 }
 
@@ -474,12 +473,6 @@ func (e *Extractor) initNatsPubClient() (err error) {
 	}
 	e.pubConn = pc
 
-	sc, err := gonats.Connect(fmt.Sprintf("nats://127.0.0.1:8193"))
-	if err != nil {
-		e.logger.Printf("[ERR] mysql.extractor: can't connect nats server %v.make sure a nats streaming server is running.%v", fmt.Sprintf("nats://%s", e.mysqlContext.NatsAddr), err)
-		return err
-	}
-	e.subConn = sc
 	return nil
 }
 
@@ -492,15 +485,6 @@ func (e *Extractor) initiateStreaming() error {
 			e.onError(err)
 		}
 	}()
-	/*go func() {
-		_, err := e.subConn.Subscribe(fmt.Sprintf("%s_incr_restart", e.subject), func(m *gonats.Msg) {
-			e.mysqlContext.Gtid = string(m.Data)
-			e.onError(fmt.Errorf("restart"))
-		})
-		if err != nil {
-			e.onError(err)
-		}
-	}()*/
 	return nil
 }
 
@@ -1273,19 +1257,13 @@ func (e *Extractor) WaitCh() chan error {
 
 func (e *Extractor) Shutdown() error {
 	atomic.StoreInt64(&e.mysqlContext.ShutdownFlag, 1)
-
-	close(e.dataChannel)
-	if e.subConn != nil {
-		e.subConn.Close()
-	}
 	if e.pubConn != nil {
 		e.pubConn.Close()
 	}
-
 	if err := e.binlogReader.Close(); err != nil {
 		return err
 	}
-
+	close(e.dataChannel)
 	close(e.binlogChannel)
 
 	e.logger.Printf("[INFO] mysql.extractor: closed streamer connection.")
