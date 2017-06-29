@@ -178,6 +178,7 @@ type Addresses struct {
 	HTTP string `mapstructure:"http"`
 	RPC  string `mapstructure:"rpc"`
 	Serf string `mapstructure:"serf"`
+	Nats string `mapstructure:"nats"`
 }
 
 // AdvertiseAddrs is used to control the addresses we advertise out for
@@ -187,6 +188,7 @@ type AdvertiseAddrs struct {
 	HTTP string `mapstructure:"http"`
 	RPC  string `mapstructure:"rpc"`
 	Serf string `mapstructure:"serf"`
+	Nats string `mapstructure:"nats"`
 }
 
 // DefaultConfig is a the baseline configuration for Udup
@@ -354,10 +356,12 @@ func (c *Config) normalizeAddrs() error {
 	c.Addresses.HTTP = normalizeBind(c.Addresses.HTTP, c.BindAddr)
 	c.Addresses.RPC = normalizeBind(c.Addresses.RPC, c.BindAddr)
 	c.Addresses.Serf = normalizeBind(c.Addresses.Serf, c.BindAddr)
+	c.Addresses.Nats = normalizeBind(c.Addresses.Nats, c.BindAddr)
 	c.normalizedAddrs = &Addresses{
 		HTTP: net.JoinHostPort(c.Addresses.HTTP, strconv.Itoa(c.Ports.HTTP)),
 		RPC:  net.JoinHostPort(c.Addresses.RPC, strconv.Itoa(c.Ports.RPC)),
 		Serf: net.JoinHostPort(c.Addresses.Serf, strconv.Itoa(c.Ports.Serf)),
+		Nats: net.JoinHostPort(c.Addresses.Nats, strconv.Itoa(c.Ports.Nats)),
 	}
 
 	addr, err := normalizeAdvertise(c.AdvertiseAddrs.HTTP, c.Addresses.HTTP, c.Ports.HTTP)
@@ -371,6 +375,12 @@ func (c *Config) normalizeAddrs() error {
 		return fmt.Errorf("Failed to parse RPC advertise address: %v", err)
 	}
 	c.AdvertiseAddrs.RPC = addr
+
+	addr, err = normalizeAdvertise(c.AdvertiseAddrs.Nats, c.Addresses.Nats, c.Ports.Nats)
+	if err != nil {
+		return fmt.Errorf("Failed to parse Nats advertise address: %v", err)
+	}
+	c.AdvertiseAddrs.Nats = addr
 
 	// Skip serf if server is disabled
 	if c.Server != nil && c.Server.Enabled {
@@ -596,6 +606,9 @@ func (a *Addresses) Merge(b *Addresses) *Addresses {
 	if b.Serf != "" {
 		result.Serf = b.Serf
 	}
+	if b.Nats != "" {
+		result.Nats = b.Nats
+	}
 	return &result
 }
 
@@ -611,6 +624,9 @@ func (a *AdvertiseAddrs) Merge(b *AdvertiseAddrs) *AdvertiseAddrs {
 	}
 	if b.HTTP != "" {
 		result.HTTP = b.HTTP
+	}
+	if b.Nats != "" {
+		result.Nats = b.Nats
 	}
 	return &result
 }

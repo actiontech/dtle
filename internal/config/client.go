@@ -62,7 +62,7 @@ type ClientConfig struct {
 	// ConsulConfig is this Agent's Consul configuration
 	ConsulConfig *ConsulConfig
 
-	NatsPort int
+	NatsAddr string
 
 	// StatsCollectionInterval is the interval at which the Udup client
 	// collects resource usage stats
@@ -296,7 +296,7 @@ type Table struct {
 // DefaultConfig returns the default configuration
 func DefaultClientConfig() *ClientConfig {
 	return &ClientConfig{
-		NatsPort:                8193,
+		NatsAddr:                "0.0.0.0:8193",
 		ConsulConfig:            DefaultConsulConfig(),
 		LogOutput:               os.Stderr,
 		Region:                  "global",

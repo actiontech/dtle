@@ -13,7 +13,7 @@ import (
 	"github.com/hashicorp/hcl/hcl/ast"
 	"github.com/mitchellh/mapstructure"
 
-	uconf "udup/internal/config"
+	"udup/internal/config"
 )
 
 // ParseConfigFile parses the given path as a config file.
@@ -226,6 +226,7 @@ func parseAddresses(result **Addresses, list *ast.ObjectList) error {
 		"http",
 		"rpc",
 		"serf",
+		"nats",
 	}
 	if err := checkHCLKeys(listVal, valid); err != nil {
 		return err
@@ -258,6 +259,7 @@ func parseAdvertise(result **AdvertiseAddrs, list *ast.ObjectList) error {
 		"http",
 		"rpc",
 		"serf",
+		"nats",
 	}
 	if err := checkHCLKeys(listVal, valid); err != nil {
 		return err
@@ -434,7 +436,7 @@ func parseMetric(result **Metric, list *ast.ObjectList) error {
 	return nil
 }
 
-func parseConsulConfig(result **uconf.ConsulConfig, list *ast.ObjectList) error {
+func parseConsulConfig(result **config.ConsulConfig, list *ast.ObjectList) error {
 	list = list.Elem()
 	if len(list.Items) > 1 {
 		return fmt.Errorf("only one 'consul' block allowed")
@@ -471,7 +473,7 @@ func parseConsulConfig(result **uconf.ConsulConfig, list *ast.ObjectList) error 
 		return err
 	}
 
-	consulConfig := uconf.DefaultConsulConfig()
+	consulConfig := config.DefaultConsulConfig()
 	dec, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
 		DecodeHook:       mapstructure.StringToTimeDurationHookFunc(),
 		WeaklyTypedInput: true,

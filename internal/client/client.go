@@ -541,16 +541,20 @@ func (c *Client) setupNode() error {
 }
 
 func (c *Client) setupNatsServer() error {
+	natsAddr, err := net.ResolveTCPAddr("tcp", c.config.NatsAddr)
+	if err != nil {
+		return fmt.Errorf("Failed to parse Nats address %q: %v", c.config.NatsAddr, err)
+	}
 	nOpts := gnatsd.Options{
-		Host:       "0.0.0.0",
-		Port:       c.config.NatsPort,
+		Host:       natsAddr.IP.String(),
+		Port:       natsAddr.Port,
 		MaxPayload: 100 * 1024 * 1024,
 		//HTTPPort:   8199,
 		LogFile: c.config.LogFile,
 		Trace:   true,
 		Debug:   true,
 	}
-	c.logger.Printf("[DEBUG] client: starting nats streaming server [0.0.0.0:%d]", c.config.NatsPort)
+	c.logger.Printf("[DEBUG] client: starting nats streaming server [%v]", natsAddr)
 	sOpts := stand.GetDefaultOptions()
 	sOpts.ID = config.DefaultClusterID
 	/*if c.config.LogLevel == "DEBUG" {
