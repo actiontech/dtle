@@ -1371,11 +1371,11 @@ func (a *Applier) ApplyEventQueries(queries []string) error {
 
 func (a *Applier) Stats() (*models.TaskStatistics, error) {
 	taskResUsage := models.TaskStatistics{
-		Stats: &models.Stats{
-			MsgStat: a.subConn.Statistics,
-			Status:  "",
-		},
+		Status:  "",
 		Timestamp: time.Now().UTC().UnixNano(),
+	}
+	if a.subConn !=nil {
+		taskResUsage.MsgStat = a.subConn.Statistics
 	}
 	//a.logger.Printf("Tracks various stats received on this connection:%v",a.subConn.Statistics)
 	/*elapsedTime := a.mysqlContext.ElapsedTime()

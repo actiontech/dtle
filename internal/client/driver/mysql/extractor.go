@@ -1135,12 +1135,13 @@ func currentTimeMillis() int64 {
 
 func (e *Extractor) Stats() (*models.TaskStatistics, error) {
 	//e.logger.Printf("Tracks various stats send on this connection:%v",e.pubConn.Statistics)
+
 	taskResUsage := models.TaskStatistics{
-		Stats: &models.Stats{
-			MsgStat: e.pubConn.Statistics,
-			Status:  "",
-		},
+		Status:  "",
 		Timestamp: time.Now().UTC().UnixNano(),
+	}
+	if e.pubConn !=nil {
+		taskResUsage.MsgStat = e.pubConn.Statistics
 	}
 	/*elapsedTime := e.mysqlContext.ElapsedTime()
 	elapsedSeconds := int64(elapsedTime.Seconds())

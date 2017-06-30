@@ -25,16 +25,12 @@ type MsgStat struct {
 	OutBytes uint64
 }
 
-type Stats struct {
+type TaskStatistics struct {
 	TableStats     *TableStats
 	DelayCount     *DelayCount
 	ThroughputStat *ThroughputStat
 	MsgStat        gonats.Statistics
 	Status         string
-}
-
-type TaskStatistics struct {
-	Stats     *Stats
 	Timestamp int64
 }
 

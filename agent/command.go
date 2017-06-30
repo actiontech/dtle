@@ -15,7 +15,6 @@ import (
 	"time"
 
 	"github.com/armon/go-metrics"
-	"github.com/armon/go-metrics/prometheus"
 	"github.com/hashicorp/logutils"
 	"github.com/mitchellh/cli"
 )
@@ -263,10 +262,10 @@ func (c *Command) Run(args []string) int {
 	}
 
 	// Initialize the metric
-	/*if err := c.setupMetric(config); err != nil {
+	if err := c.setupMetric(config); err != nil {
 		c.logger.Printf("[ERR] Error initializing metric: %s", err)
 		return 1
-	}*/
+	}
 
 	// Create the agent
 	if err := c.setupAgent(config, logOutput); err != nil {
@@ -445,7 +444,7 @@ func (c *Command) setupMetric(config *Config) error {
 	// Configure the prometheus sink
 	var fanout metrics.FanoutSink
 	if telConfig.PrometheusAddr != "" {
-		sink, err := prometheus.NewPrometheusSink( /*telConfig.PrometheusAddr*/ )
+		sink, err := NewPrometheusSink(telConfig.PrometheusAddr,telConfig.collectionInterval)
 		if err != nil {
 			return err
 		}

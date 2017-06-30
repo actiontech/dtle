@@ -60,6 +60,13 @@ The following config parameters are available for Client:
 - state_dir:StateDir is the state directory.
 - servers:Servers is a list of known server addresses. These are as "host:port".
 
+## Metric Configuration
+
+- prometheus_address:Prometheus pushgateway address, leaves it empty will disable prometheus push.
+- collection_interval:Prometheus client push interval in second, set \"0\" to disable prometheus push.
+- publish_allocation_metrics:PublishAllocationMetrics determines whether udup is going to publish allocation metrics to remote Telemetry sinks
+- publish_node_metrics:PublishNodeMetrics determines whether udup is going to publish node level metrics to remote Telemetry sinks
+
 ## Consul Configuration
 
 The following config parameters available for Consul.
