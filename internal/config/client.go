@@ -17,6 +17,9 @@ import (
 const (
 	DefaultBindPort  int = 8191
 	DefaultClusterID     = "udup-cluster"
+
+	defaultNumRetries = 5
+	defaultNumWorkers = 1
 )
 
 // RPCHandler can be provided to the Client if there is a local server
@@ -160,8 +163,11 @@ type MySQLDriverConfig struct {
 func (a *MySQLDriverConfig) SetDefault() *MySQLDriverConfig {
 	result := *a
 
+	if result.MaxRetries == 0 {
+		result.MaxRetries = defaultNumRetries
+	}
 	if result.ParallelWorkers == 0 {
-		result.ParallelWorkers = 1
+		result.ParallelWorkers = defaultNumWorkers
 	}
 	return &result
 }

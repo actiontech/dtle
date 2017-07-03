@@ -177,7 +177,7 @@ func IgnoreDDLError(err error) bool {
 	case ErrDatabaseExists, ErrDatabaseNotExists, ErrDatabaseDropExists,
 		ErrTableExists, ErrTableNotExists, ErrTableDropExists,
 		ErrColumnExists, ErrColumnNotExists, ErrDupKeyName,
-		ErrIndexExists, ErrCantDropFieldOrKey, ErrDupKey:
+		ErrIndexExists, ErrCantDropFieldOrKey, ErrDupKey, ErrDupEntry:
 		return true
 	default:
 		return false

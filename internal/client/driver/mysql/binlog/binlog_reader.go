@@ -11,7 +11,6 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
-	"time"
 
 	"github.com/issuj/gofaster/base64"
 	"github.com/pingcap/tidb/ast"
@@ -40,13 +39,14 @@ type BinlogReader struct {
 	currentCoordinatesMutex  *sync.Mutex
 	LastAppliedRowsEventHint base.BinlogCoordinates
 	MysqlContext             *config.MySQLDriverConfig
-	waitGroup                *sync.WaitGroup
+	//waitGroup                *sync.WaitGroup
 
 	EvtChan chan *BinlogEvent
 
 	currentTx     *BinlogTx
 	txCount       int
 	currentFde    string
+	currentQuery  *bytes.Buffer
 	currentSqlB64 *bytes.Buffer
 	ReMap         map[string]*regexp.Regexp
 }
@@ -59,7 +59,7 @@ func NewMySQLReader(cfg *config.MySQLDriverConfig, logger *log.Logger) (binlogRe
 		binlogSyncer:            nil,
 		binlogStreamer:          nil,
 		MysqlContext:            cfg,
-		waitGroup:               &sync.WaitGroup{},
+		//waitGroup:               &sync.WaitGroup{},
 	}
 
 	uri := cfg.ConnectionConfig.GetDBUri()
@@ -277,10 +277,6 @@ func (b *BinlogReader) DataStreamEvents(canStopStreaming func() bool, entriesCha
 				defer b.currentCoordinatesMutex.Unlock()
 				b.currentCoordinates.LogFile = string(rotateEvent.NextLogName)
 			}()
-			b.logger.Printf("[DEBUG] mysql.reader: === %s ===", replication.EventType(ev.Header.EventType))
-			b.logger.Printf("[DEBUG] mysql.reader: Date: %s", time.Unix(int64(ev.Header.Timestamp), 0).Format(gomysql.TimeFormat))
-			b.logger.Printf("[DEBUG] mysql.reader: Position: %d", rotateEvent.Position)
-			b.logger.Printf("[DEBUG] mysql.reader: Event size: %d", ev.Header.EventSize)
 			b.logger.Printf("[DEBUG] mysql.reader: rotate to next log name: %s", rotateEvent.NextLogName)
 		} else if gtidEvent, ok := ev.Event.(*replication.GTIDEvent); ok {
 			func() {
@@ -326,10 +322,6 @@ func (b *BinlogReader) BinlogStreamEvents(txChannel chan<- *BinlogTx) error {
 				defer b.currentCoordinatesMutex.Unlock()
 				b.currentCoordinates.LogFile = string(rotateEvent.NextLogName)
 			}()
-			/*b.logger.Printf("[DEBUG] mysql.reader: === %s ===", replication.EventType(ev.Header.EventType))
-			b.logger.Printf("[DEBUG] mysql.reader: Date: %s", time.Unix(int64(ev.Header.Timestamp), 0).Format(gomysql.TimeFormat))
-			b.logger.Printf("[DEBUG] mysql.reader: Position: %d", rotateEvent.Position)
-			b.logger.Printf("[DEBUG] mysql.reader: Event size: %d", ev.Header.EventSize)*/
 			b.logger.Printf("[DEBUG] mysql.reader: rotate to next log name: %s", rotateEvent.NextLogName)
 		} else {
 			if err := b.handleBinlogRowsEvent(ev, txChannel); err != nil {
@@ -375,20 +367,10 @@ func (b *BinlogReader) handleBinlogRowsEvent(ev *replication.BinlogEvent, txChan
 			StartEventPos:  uint32(ev.Header.LogPos) - ev.Header.EventSize,
 			Impacting:      map[uint64]([]string){},
 			EventSize:      uint64(ev.Header.EventSize),
-			Query:          []*BinlogQuery{},
 		}
 
 		b.currentSqlB64 = new(bytes.Buffer)
-		b.currentSqlB64.WriteString("BINLOG '")
-
-		event := &BinlogEvent{
-			BinlogFile: b.currentCoordinates.LogFile,
-			Header:     ev.Header,
-			RealPos:    uint32(ev.Header.LogPos) - ev.Header.EventSize,
-			Evt:        ev.Event,
-		}
-
-		b.currentTx.events = append(b.currentTx.events, event)
+		b.currentSqlB64.WriteString("BINLOG '\n")
 
 	case replication.QUERY_EVENT:
 		event := &BinlogEvent{
@@ -415,7 +397,7 @@ func (b *BinlogReader) handleBinlogRowsEvent(ev *replication.BinlogEvent, txChan
 
 		if strings.ToUpper(query) == "BEGIN" {
 			b.currentTx.hasBeginQuery = true
-			b.currentTx.Query = append(b.currentTx.Query, &BinlogQuery{query, NotDML})
+			b.appendQuery(query)
 		} else {
 			// DDL or statement/mixed binlog format
 			b.setImpactOnAll()
@@ -430,7 +412,7 @@ func (b *BinlogReader) handleBinlogRowsEvent(ev *replication.BinlogEvent, txChan
 					return fmt.Errorf("parse query [%v] event failed: %v", query, err)
 				}
 				if !ok {
-					b.currentTx.Query = append(b.currentTx.Query, &BinlogQuery{query, NotDML})
+					b.appendQuery(query)
 					b.onCommit(event, txChannel)
 					return nil
 				}
@@ -448,23 +430,14 @@ func (b *BinlogReader) handleBinlogRowsEvent(ev *replication.BinlogEvent, txChan
 					if err != nil {
 						return err
 					}
-					b.currentTx.Query = append(b.currentTx.Query, &BinlogQuery{sql, NotDML})
+					b.appendQuery(sql)
 				}
 
-				b.currentTx.events = append(b.currentTx.events, event)
 				b.onCommit(event, txChannel)
 			}
 		}
 
 	case replication.TABLE_MAP_EVENT:
-		event := &BinlogEvent{
-			BinlogFile: b.currentCoordinates.LogFile,
-			Header:     ev.Header,
-			RealPos:    uint32(ev.Header.LogPos) - ev.Header.EventSize,
-			Evt:        ev.Event,
-			RawBs:      ev.RawData,
-		}
-
 		if b.currentTx.ImpactingAll {
 			return nil
 		}
@@ -485,17 +458,8 @@ func (b *BinlogReader) handleBinlogRowsEvent(ev *replication.BinlogEvent, txChan
 			Evt:        ev.Event,
 			RawBs:      ev.RawData,
 		})
-		b.currentTx.events = append(b.currentTx.events, event)
 
 	case replication.WRITE_ROWS_EVENTv0, replication.WRITE_ROWS_EVENTv1, replication.WRITE_ROWS_EVENTv2:
-		event := &BinlogEvent{
-			BinlogFile: b.currentCoordinates.LogFile,
-			Header:     ev.Header,
-			RealPos:    uint32(ev.Header.LogPos) - ev.Header.EventSize,
-			Evt:        ev.Event,
-			RawBs:      ev.RawData,
-		}
-
 		if b.currentTx.ImpactingAll {
 			return nil
 		}
@@ -515,19 +479,12 @@ func (b *BinlogReader) handleBinlogRowsEvent(ev *replication.BinlogEvent, txChan
 			Evt:        ev.Event,
 			RawBs:      ev.RawData,
 		})
-		b.currentTx.events = append(b.currentTx.events, event)
 		//tb.addCount(Insert)
+
 	case replication.UPDATE_ROWS_EVENTv0, replication.UPDATE_ROWS_EVENTv1, replication.UPDATE_ROWS_EVENTv2:
 		if b.currentTx.ImpactingAll {
 			return nil
 		}
-		event := &BinlogEvent{
-			BinlogFile: b.currentCoordinates.LogFile,
-			Header:     ev.Header,
-			RealPos:    uint32(ev.Header.LogPos) - ev.Header.EventSize,
-			Evt:        ev.Event,
-			RawBs:      ev.RawData,
-		}
 
 		evt := ev.Event.(*replication.RowsEvent)
 		if b.skipRowEvent(string(evt.Table.Schema), string(evt.Table.Table)) {
@@ -545,19 +502,12 @@ func (b *BinlogReader) handleBinlogRowsEvent(ev *replication.BinlogEvent, txChan
 			Evt:        ev.Event,
 			RawBs:      ev.RawData,
 		})
-		b.currentTx.events = append(b.currentTx.events, event)
 		//tb.addCount(Update)
+
 	case replication.DELETE_ROWS_EVENTv0, replication.DELETE_ROWS_EVENTv1, replication.DELETE_ROWS_EVENTv2:
 		if b.currentTx.ImpactingAll {
 			return nil
 		}
-		event := &BinlogEvent{
-			BinlogFile: b.currentCoordinates.LogFile,
-			Header:     ev.Header,
-			RealPos:    uint32(ev.Header.LogPos) - ev.Header.EventSize,
-			Evt:        ev.Event,
-			RawBs:      ev.RawData,
-		}
 
 		evt := ev.Event.(*replication.RowsEvent)
 		if b.skipRowEvent(string(evt.Table.Schema), string(evt.Table.Table)) {
@@ -575,7 +525,6 @@ func (b *BinlogReader) handleBinlogRowsEvent(ev *replication.BinlogEvent, txChan
 			Evt:        ev.Event,
 			RawBs:      ev.RawData,
 		})
-		b.currentTx.events = append(b.currentTx.events, event)
 
 	case replication.XID_EVENT:
 		event := &BinlogEvent{
@@ -589,13 +538,21 @@ func (b *BinlogReader) handleBinlogRowsEvent(ev *replication.BinlogEvent, txChan
 		if b.currentTx == nil {
 			return newTxWithoutGTIDError(event)
 		}
-		b.currentTx.events = append(b.currentTx.events, event)
 		b.onCommit(event, txChannel)
 	default:
 		//ignore
 	}
 	b.LastAppliedRowsEventHint = b.currentCoordinates
 	return nil
+}
+func (b *BinlogReader) appendQuery(query string) {
+	if b.currentQuery == nil {
+		b.currentQuery = new(bytes.Buffer)
+	}
+	if b.currentQuery.String() != "" {
+		b.currentQuery.WriteString(";")
+	}
+	b.currentQuery.WriteString(query)
 }
 
 func newTxWithoutGTIDError(event *BinlogEvent) error {
@@ -625,77 +582,24 @@ func (b *BinlogReader) appendB64Sql(event *BinlogEvent) {
 }
 
 func (b *BinlogReader) onCommit(lastEvent *BinlogEvent, txChannel chan<- *BinlogTx) {
-	b.waitGroup.Add(1)
-	defer b.waitGroup.Done()
+	//b.waitGroup.Add(1)
+	//defer b.waitGroup.Done()
 
 	if nil != b.currentSqlB64 && !strings.HasSuffix(b.currentSqlB64.String(), "BINLOG '") {
 		b.currentSqlB64.WriteString("'")
-		b.currentTx.Query = append(b.currentTx.Query, &BinlogQuery{b.currentSqlB64.String(), InsertDML})
-		b.currentTx.Fde = b.currentFde
+		b.appendQuery(b.currentSqlB64.String())
 	}
 
+	if nil != b.currentQuery {
+		b.currentTx.Fde = b.currentFde
+		b.currentTx.Query = b.currentQuery.String()
+	}
 	b.currentTx.EndEventFile = lastEvent.BinlogFile
 	b.currentTx.EndEventPos = lastEvent.RealPos
 
 	txChannel <- b.currentTx
 
-	/*for _, ev := range b.currentTx.events {
-		if len(b.currentTx.Query) > 0 {
-			b.logger.Printf("[DEBUG] mysql.reader: === %s ===", replication.EventType(ev.Header.EventType))
-			b.logger.Printf("[DEBUG] mysql.reader: Date: %s", time.Unix(int64(ev.Header.Timestamp), 0).Format(gomysql.TimeFormat))
-			b.logger.Printf("[DEBUG] mysql.reader: Log position: %d", ev.Header.LogPos)
-			b.logger.Printf("[DEBUG] mysql.reader: Event size: %d", ev.Header.EventSize)
-
-			switch ev.Header.EventType {
-			case replication.TABLE_MAP_EVENT:
-				evt := ev.Evt.(*replication.TableMapEvent)
-				b.logger.Printf("[DEBUG] mysql.reader: TableID: %d", evt.TableID)
-				//b.logger.Printf("TableID size: %d\n", evt.tableIDSize)
-				b.logger.Printf("[DEBUG] mysql.reader: Flags: %d", evt.Flags)
-				b.logger.Printf("[DEBUG] mysql.reader: Schema: %s", evt.Schema)
-				b.logger.Printf("[DEBUG] mysql.reader: Table: %s", evt.Table)
-				b.logger.Printf("[DEBUG] mysql.reader: Column count: %d", evt.ColumnCount)
-				b.logger.Printf("[DEBUG] mysql.reader: Column type: \n%s", hex.Dump(evt.ColumnType))
-				b.logger.Printf("[DEBUG] mysql.reader: NULL bitmap: \n%s", hex.Dump(evt.NullBitmap))
-			case replication.GTID_EVENT:
-				evt := ev.Evt.(*replication.GTIDEvent)
-				u, _ := uuid.FromBytes(evt.GTID.SID)
-				b.logger.Printf("[DEBUG] mysql.reader: Last committed: %d", evt.GTID.LastCommitted)
-				b.logger.Printf("[DEBUG] mysql.reader: Sequence number: %d", evt.GTID.SequenceNumber)
-				b.logger.Printf("[DEBUG] mysql.reader: Commit flag: %d", evt.GTID.CommitFlag)
-				b.logger.Printf("[DEBUG] mysql.reader: GTID_NEXT: %s:%d", u.String(), evt.GTID.GNO)
-			case replication.QUERY_EVENT:
-				evt := ev.Evt.(*replication.QueryEvent)
-				b.logger.Printf("[DEBUG] mysql.reader: Slave proxy ID: %d", evt.SlaveProxyID)
-				b.logger.Printf("[DEBUG] mysql.reader: Execution time: %d", evt.ExecutionTime)
-				b.logger.Printf("[DEBUG] mysql.reader: Error code: %d", evt.ErrorCode)
-				//b.logger.Printf( "Status vars: \n%s", hex.Dump(e.StatusVars))
-				b.logger.Printf("[DEBUG] mysql.reader: Schema: %s", evt.Schema)
-				b.logger.Printf("[DEBUG] mysql.reader: Query: %s", evt.Query)
-			case replication.WRITE_ROWS_EVENTv2, replication.UPDATE_ROWS_EVENTv2, replication.DELETE_ROWS_EVENTv2:
-				evt := ev.Evt.(*replication.RowsEvent)
-				b.logger.Printf("[DEBUG] mysql.reader: TableID: %d", evt.TableID)
-				b.logger.Printf("[DEBUG] mysql.reader: Flags: %d", evt.Flags)
-				b.logger.Printf("[DEBUG] mysql.reader: Column count: %d", evt.ColumnCount)
-
-				b.logger.Printf("[DEBUG] mysql.reader: Values:")
-				for _, rows := range evt.Rows {
-					b.logger.Printf("[DEBUG] mysql.reader: --")
-					for j, d := range rows {
-						if _, ok := d.([]byte); ok {
-							b.logger.Printf("[DEBUG] mysql.reader: %d:%q", j, d)
-						} else {
-							b.logger.Printf("[DEBUG] mysql.reader: %d:%#v", j, d)
-						}
-					}
-				}
-			case replication.XID_EVENT:
-				evt := ev.Evt.(*replication.XIDEvent)
-				b.logger.Printf("[DEBUG] mysql.reader: XID: %d", evt.XID)
-			}
-		}
-	}*/
-
+	b.currentQuery = nil
 	b.currentTx = nil
 }
 
@@ -807,7 +711,7 @@ func GenDDLSQL(sql string, schema string) (string, error) {
 		return sql, nil
 	}
 
-	return fmt.Sprintf("use %s; %s", schema, sql), nil
+	return fmt.Sprintf("USE %s;%s", schema, sql), nil
 }
 
 // resolveDDLSQL resolve to one ddl sql
@@ -1036,6 +940,6 @@ func (b *BinlogReader) Close() error {
 	// here. A new go-mysql version closes the binlog syncer connection independently.
 	// I will go against the sacred rules of comments and just leave this here.
 	// This is the year 2017. Let's see what year these comments get deleted.
-	b.waitGroup.Wait()
+	//b.waitGroup.Wait()
 	return nil
 }

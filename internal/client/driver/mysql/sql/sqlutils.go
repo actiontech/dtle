@@ -130,6 +130,7 @@ func GetDB(mysql_uri string) (*gosql.DB, bool, error) {
 type DbApplier struct {
 	DbMutex *sync.Mutex
 	Db      *gosql.DB
+	Fde     string
 }
 
 func CreateDB(mysql_uri string) (*gosql.DB, error) {

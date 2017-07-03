@@ -1,10 +1,10 @@
 package agent
 
 import (
+	"log"
 	"strings"
 	"sync"
 	"time"
-	"log"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/push"
@@ -17,7 +17,7 @@ type PrometheusSink struct {
 	counters  map[string]prometheus.Counter
 }
 
-func NewPrometheusSink(metricsAddr string,metricsInterval time.Duration) (*PrometheusSink, error) {
+func NewPrometheusSink(metricsAddr string, metricsInterval time.Duration) (*PrometheusSink, error) {
 	s := &PrometheusSink{
 		gauges:    make(map[string]prometheus.Gauge),
 		summaries: make(map[string]prometheus.Summary),

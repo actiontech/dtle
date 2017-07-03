@@ -31,7 +31,7 @@ type TaskStatistics struct {
 	ThroughputStat *ThroughputStat
 	MsgStat        gonats.Statistics
 	Status         string
-	Timestamp int64
+	Timestamp      int64
 }
 
 type AllocStatistics struct {

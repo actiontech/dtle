@@ -13,9 +13,9 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/golang/snappy"
 	gonats "github.com/nats-io/go-nats"
 	gomysql "github.com/siddontang/go-mysql/mysql"
-	//"github.com/golang/snappy"
 
 	"udup/internal/client/driver/mysql/base"
 	"udup/internal/client/driver/mysql/binlog"
@@ -27,8 +27,8 @@ import (
 
 const (
 	applyEventsQueueBuffer        = 100
-	applyDataQueueBuffer          = 100
-	applyBinlogTxQueueBuffer      = 100
+	applyDataQueueBuffer          = 600
+	applyBinlogTxQueueBuffer      = 600
 	applyCopyRowsQueueQueueBuffer = 100
 )
 
@@ -449,57 +449,59 @@ func (a *Applier) onApplyTxStruct(dbApplier *sql.DbApplier, binlogTx *binlog.Bin
 		}
 		dbApplier.DbMutex.Unlock()
 	}()
-	if binlogTx.Fde != "" {
+
+	/*switch binlogTx.GNO {
+	case 2022044:
+		a.logger.Printf("[TEST] binlogTx:%s:%d", binlogTx.SID, binlogTx.GNO)
+	case 100000:
+		a.logger.Printf("[TEST] binlogTx:%s:%d", binlogTx.SID, binlogTx.GNO)
+	case 200000:
+		a.logger.Printf("[TEST] binlogTx:%s:%d", binlogTx.SID, binlogTx.GNO)
+	case 500000:
+		a.logger.Printf("[TEST] binlogTx:%s:%d", binlogTx.SID, binlogTx.GNO)
+	}*/
+
+	if binlogTx.Fde != "" && dbApplier.Fde != binlogTx.Fde {
+		dbApplier.Fde = binlogTx.Fde // IMO it would comare the internal pointer first
 		_, err := sql.ExecNoPrepare(dbApplier.Db, binlogTx.Fde)
 		if err != nil {
-			return err
+			a.onError(err)
 		}
 	}
+
 	_, err := sql.ExecNoPrepare(dbApplier.Db, fmt.Sprintf(`set gtid_next='%s:%d'`, binlogTx.SID, binlogTx.GNO))
 	if err != nil {
 		return err
 	}
-
-	if len(binlogTx.Query) == 0 {
+	var ignoreDDLError error
+	if binlogTx.Query == "" {
 		_, err = sql.ExecNoPrepare(dbApplier.Db, `begin;commit`)
 		if err != nil {
 			return err
 		}
 	} else {
-		//var ignoreDDLError error
-		for _, query := range binlogTx.Query {
-			if query.Sql == "" {
-				continue
+		_, err := sql.ExecNoPrepare(dbApplier.Db, binlogTx.Query)
+		if err != nil {
+			if !sql.IgnoreDDLError(err) {
+				a.logger.Printf("[ERR] mysql.applier: gtid:[%s:%d],exec [%v] error: %v", binlogTx.SID, binlogTx.GNO, binlogTx.Query, err)
+				return err
 			}
-
-			_, err := sql.ExecNoPrepare(dbApplier.Db, query.Sql)
-			if err != nil {
-				if !sql.IgnoreDDLError(err) {
-					a.logger.Printf("[ERR] mysql.applier: exec [%v] error: %v", query.Sql, err)
-					return err
-				}
-				a.logger.Printf("[WARN] mysql.applier: ignore ddl error: %v", err)
-				//ignoreDDLError = err
-			}
-			//a.addCount(binlog.Ddl)
+			a.logger.Printf("[WARN] mysql.applier: gtid:[%s:%d],exec [%v],ignore ddl error: %v", binlogTx.SID, binlogTx.GNO, binlogTx.Query, err)
+			ignoreDDLError = err
 		}
+		//a.addCount(binlog.Ddl)
 	}
 
-	/*if ignoreDDLError != nil {
-		_, err := sql.ExecNoPrepare(dbApplier.Db, fmt.Sprintf(`set gtid_next='%s:%d'`, binlogTx.SID, binlogTx.GNO))
+	if ignoreDDLError != nil {
+		_, err := sql.ExecNoPrepare(dbApplier.Db, fmt.Sprintf(`commit;set gtid_next='%s:%d'`, binlogTx.SID, binlogTx.GNO))
 		if err != nil {
 			return err
 		}
-		_, err = sql.ExecNoPrepare(dbApplier.Db, `begin`)
+		_, err = sql.ExecNoPrepare(dbApplier.Db, `begin;commit`)
 		if err != nil {
 			return err
 		}
-		_, err = sql.ExecNoPrepare(dbApplier.Db, `commit`)
-		if err != nil {
-			a.logger.Printf("[ERR] mysql.applier: exec commit err:%v", err)
-			return err
-		}
-	}*/
+	}
 	a.mysqlContext.Gtid = fmt.Sprintf("%s:1-%d", binlogTx.SID, binlogTx.GNO)
 	return nil
 }
@@ -572,15 +574,15 @@ OUTER:
 				}
 			}
 		case groupTx := <-a.applyBinlogGroupTxQueue:
+			barrier.Add(len(groupTx))
 			for idx, binlogTx := range groupTx {
-				barrier.Add(1)
-				go func(i int, tx *binlog.BinlogTx) {
-					dbApplier = a.dbs[i%a.mysqlContext.ParallelWorkers]
+				dbApplier = a.dbs[idx%a.mysqlContext.ParallelWorkers]
+				go func(tx *binlog.BinlogTx) {
 					if err := a.onApplyTxStruct(dbApplier, tx); err != nil {
 						a.onError(err)
 					}
 					barrier.Done()
-				}(idx, binlogTx)
+				}(binlogTx)
 			}
 			barrier.Wait() // Waiting for all goroutines to finish
 		default:
@@ -642,13 +644,13 @@ func (a *Applier) initNatSubClient() (err error) {
 
 // Decode
 func Decode(data []byte, vPtr interface{}) (err error) {
-	/*msg, err := snappy.Decode(nil, data)
+	msg, err := snappy.Decode(nil, data)
 	if err != nil {
 		return err
-	}*/
-	dec := gob.NewDecoder(bytes.NewBuffer(data))
-	err = dec.Decode(vPtr)
-	return
+	}
+
+	dec := gob.NewDecoder(bytes.NewBuffer(msg))
+	return dec.Decode(vPtr)
 }
 
 // initiateStreaming begins treaming of binary log events and registers listeners for such events
@@ -704,12 +706,16 @@ func (a *Applier) initiateStreaming() error {
 		a.jsonSub = sub*/
 	} else {
 		_, err := a.subConn.Subscribe(fmt.Sprintf("%s_incr", a.subject), func(m *gonats.Msg) {
-			binlogTx := &binlog.BinlogTx{}
-			if err := Decode(m.Data, binlogTx); err != nil {
+			var binlogTx []*binlog.BinlogTx
+			var gno int64
+			if err := Decode(m.Data, &binlogTx); err != nil {
 				a.onError(err)
 			}
-			a.applyBinlogTxQueue <- binlogTx
-			if err := a.subConn.Publish(m.Reply, []byte(string(binlogTx.GNO))); err != nil {
+			for _, tx := range binlogTx {
+				a.applyBinlogTxQueue <- tx
+				gno = tx.GNO
+			}
+			if err := a.subConn.Publish(m.Reply, []byte(string(gno))); err != nil {
 				a.onError(err)
 			}
 		})
@@ -1371,10 +1377,10 @@ func (a *Applier) ApplyEventQueries(queries []string) error {
 
 func (a *Applier) Stats() (*models.TaskStatistics, error) {
 	taskResUsage := models.TaskStatistics{
-		Status:  "",
+		Status:    "",
 		Timestamp: time.Now().UTC().UnixNano(),
 	}
-	if a.subConn !=nil {
+	if a.subConn != nil {
 		taskResUsage.MsgStat = a.subConn.Statistics
 	}
 	//a.logger.Printf("Tracks various stats received on this connection:%v",a.subConn.Statistics)
@@ -1485,10 +1491,10 @@ func (a *Applier) ID() string {
 }
 
 func (a *Applier) onError(err error) {
+	a.logger.Printf("[ERR] mysql.applier: %v", err)
 	if atomic.LoadInt64(&a.mysqlContext.ShutdownFlag) > 0 {
 		return
 	}
-
 	a.waitCh <- err
 	a.Shutdown()
 }
@@ -1501,13 +1507,13 @@ func (a *Applier) Shutdown() error {
 	if a.subConn != nil {
 		a.subConn.Close()
 	}
-	close(a.applyDataEntryQueue)
-	close(a.applyBinlogTxQueue)
-	close(a.applyBinlogGroupTxQueue)
+	//close(a.applyDataEntryQueue)
+	//close(a.applyBinlogTxQueue)
+	//close(a.applyBinlogGroupTxQueue)
 
-	if err := sql.CloseDBs(a.dbs...); err != nil {
+	/*if err := sql.CloseDBs(a.dbs...); err != nil {
 		return err
-	}
+	}*/
 
 	a.logger.Printf("[INFO] mysql.applier: closed applier connection.")
 	return nil

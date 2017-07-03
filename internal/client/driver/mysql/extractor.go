@@ -12,9 +12,9 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/golang/snappy"
 	gonats "github.com/nats-io/go-nats"
 	gomysql "github.com/siddontang/go-mysql/mysql"
-	//"github.com/golang/snappy"
 
 	"udup/internal/client/driver/mysql/base"
 	"udup/internal/client/driver/mysql/binlog"
@@ -25,14 +25,12 @@ import (
 
 const (
 	// DefaultConnectWait is the default timeout used for the connect operation
-	DefaultConnectWait = 10 * time.Second
-
-	AllEventsUpToLockProcessed = "AllEventsUpToLockProcessed"
-)
-
-const (
-	ChannelBufferSize             = 100
+	DefaultConnectWait            = 10 * time.Second
+	AllEventsUpToLockProcessed    = "AllEventsUpToLockProcessed"
+	ChannelBufferSize             = 600
 	ReconnectStreamerSleepSeconds = 5
+	defaultMsgBytes               = 20 * 1024
+	streamTimeoutMilliseconds     = 100
 )
 
 // Extractor is the main schema extract flow manager.
@@ -57,6 +55,7 @@ type Extractor struct {
 }
 
 func NewExtractor(subject string, cfg *config.MySQLDriverConfig, logger *log.Logger) *Extractor {
+	cfg = cfg.SetDefault()
 	extractor := &Extractor{
 		logger:                     logger,
 		subject:                    subject,
@@ -664,12 +663,11 @@ func (e *Extractor) validateServerUUID() string {
 // Encode
 func Encode(v interface{}) ([]byte, error) {
 	b := new(bytes.Buffer)
-	enc := gob.NewEncoder(b)
-	if err := enc.Encode(v); err != nil {
+	if err := gob.NewEncoder(b).Encode(v); err != nil {
 		return nil, err
 	}
-	//return snappy.Encode(nil, b.Bytes()), nil
-	return b.Bytes(), nil
+	return snappy.Encode(nil, b.Bytes()), nil
+	//return b.Bytes(), nil
 }
 
 // StreamEvents will begin streaming events. It will be blocking, so should be
@@ -720,24 +718,45 @@ func (e *Extractor) StreamEvents(approveHeterogeneous bool, canStopStreaming fun
 		}
 	} else {
 		go func() {
-			for binlogTx := range e.binlogChannel {
-				txMsg, err := Encode(binlogTx)
-				if err != nil {
-					e.onError(err)
-					break
+			var txArray []*binlog.BinlogTx
+			timeout := time.NewTimer(time.Millisecond * time.Duration(streamTimeoutMilliseconds))
+		OUTER:
+			for {
+				select {
+				case <-timeout.C:
+					{
+						if len(txArray) != 0 {
+							txMsg, err := Encode(&txArray)
+							if err != nil {
+								e.onError(err)
+								break OUTER
+							}
+							if err := e.requestMsg(txMsg); err != nil {
+								e.onError(err)
+								break OUTER
+							}
+							txArray = nil
+						}
+					}
+				case binlogTx := <-e.binlogChannel:
+					{
+						txArray = append(txArray, binlogTx)
+						txMsg, err := Encode(&txArray)
+						if err != nil {
+							e.onError(err)
+							break OUTER
+						}
+						if uint64(len(txMsg)) > defaultMsgBytes {
+							e.logger.Printf("[TEST] msg bytes :%v,tx len :%v", uint64(len(txMsg)), len(txArray))
+							if err := e.requestMsg(txMsg); err != nil {
+								e.onError(err)
+								break OUTER
+							}
+							txArray = nil
+						}
+						e.mysqlContext.Gtid = fmt.Sprintf("%s:1-%d", binlogTx.SID, binlogTx.GNO)
+					}
 				}
-
-				_, err = e.pubConn.Request(fmt.Sprintf("%s_incr", e.subject), txMsg, DefaultConnectWait)
-				if err != nil {
-					e.logger.Printf("[ERR] mysql.extractor: Error in Request: %v\n", err)
-					e.onError(err)
-					break
-				}
-				/*err = e.requestMsg(txMsg);if err != nil {
-					e.waitCh <- err
-					break
-				}*/
-				e.mysqlContext.Gtid = fmt.Sprintf("%s:1-%d", binlogTx.SID, binlogTx.GNO)
 			}
 		}()
 		// The next should block and execute forever, unless there's a serious error
@@ -775,13 +794,22 @@ func (e *Extractor) StreamEvents(approveHeterogeneous bool, canStopStreaming fun
 	}
 	return nil
 }
-func (e *Extractor) requestMsg(txMsg []byte) error {
-	_, err := e.pubConn.Request(fmt.Sprintf("%s_incr", e.subject), txMsg, 10*time.Second)
-	if err != nil {
-		e.logger.Printf("[ERR] mysql.extractor: Error in Request: %v\n", err)
-		return err
+
+// retryOperation attempts up to `count` attempts at running given function,
+// exiting as soon as it returns with non-error.
+func (e *Extractor) requestMsg(txMsg []byte) (err error) {
+	for i := 0; i < int(e.mysqlContext.MaxRetries); i++ {
+		if i != 0 {
+			// sleep after previous iteration
+			time.Sleep(1 * time.Second)
+		}
+		_, err = e.pubConn.Request(fmt.Sprintf("%s_incr", e.subject), txMsg, DefaultConnectWait)
+		if err == nil {
+			return nil
+		}
+		// there's an error. Let's try again.
 	}
-	return nil
+	return err
 }
 
 //Perform the snapshot using the same logic as the "mysqldump" utility.
@@ -1137,10 +1165,10 @@ func (e *Extractor) Stats() (*models.TaskStatistics, error) {
 	//e.logger.Printf("Tracks various stats send on this connection:%v",e.pubConn.Statistics)
 
 	taskResUsage := models.TaskStatistics{
-		Status:  "",
+		Status:    "",
 		Timestamp: time.Now().UTC().UnixNano(),
 	}
-	if e.pubConn !=nil {
+	if e.pubConn != nil {
 		taskResUsage.MsgStat = e.pubConn.Statistics
 	}
 	/*elapsedTime := e.mysqlContext.ElapsedTime()
@@ -1249,6 +1277,7 @@ func (e *Extractor) ID() string {
 }
 
 func (e *Extractor) onError(err error) {
+	e.logger.Printf("[ERR] mysql.extractor: %v", err)
 	if atomic.LoadInt64(&e.mysqlContext.ShutdownFlag) > 0 {
 		return
 	}
@@ -1268,8 +1297,8 @@ func (e *Extractor) Shutdown() error {
 	if err := e.binlogReader.Close(); err != nil {
 		return err
 	}
-	close(e.dataChannel)
-	close(e.binlogChannel)
+	//close(e.dataChannel)
+	//close(e.binlogChannel)
 
 	e.logger.Printf("[INFO] mysql.extractor: closed streamer connection.")
 	return nil

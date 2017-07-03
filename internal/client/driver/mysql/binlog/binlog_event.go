@@ -31,9 +31,8 @@ type BinlogTx struct {
 	hasBeginQuery bool
 	Impacting     map[uint64]([]string)
 	ImpactingAll  bool
-	Query         []*BinlogQuery
+	Query         string
 	Fde           string
-	events        []*BinlogEvent
 	eventCount    int //for evaluate
 	EventSize     uint64
 	ErrorCode     uint16
