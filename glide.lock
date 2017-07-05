@@ -76,7 +76,7 @@ imports:
   - proto
   - ptypes/any
 - name: github.com/golang/snappy
-  version: 723cc1e459b8eea2dea4583200fd60757d40097a
+  version: 553a641470496b2327abcac10b36396bd98e45c9
 - name: github.com/hashicorp/consul
   version: c42c1cf3546bf375206fc4b3b26333f581f38d89
   subpackages:

@@ -30,7 +30,6 @@ const (
 	ChannelBufferSize             = 600
 	ReconnectStreamerSleepSeconds = 5
 	defaultMsgBytes               = 20 * 1024
-	streamTimeoutMilliseconds     = 100
 )
 
 // Extractor is the main schema extract flow manager.
@@ -719,11 +718,10 @@ func (e *Extractor) StreamEvents(approveHeterogeneous bool, canStopStreaming fun
 	} else {
 		go func() {
 			var txArray []*binlog.BinlogTx
-			timeout := time.NewTimer(time.Millisecond * time.Duration(streamTimeoutMilliseconds))
 		OUTER:
 			for {
 				select {
-				case <-timeout.C:
+				case <-time.After(100 * time.Millisecond):
 					{
 						if len(txArray) != 0 {
 							txMsg, err := Encode(&txArray)
@@ -747,7 +745,6 @@ func (e *Extractor) StreamEvents(approveHeterogeneous bool, canStopStreaming fun
 							break OUTER
 						}
 						if uint64(len(txMsg)) > defaultMsgBytes {
-							e.logger.Printf("[TEST] msg bytes :%v,tx len :%v", uint64(len(txMsg)), len(txArray))
 							if err := e.requestMsg(txMsg); err != nil {
 								e.onError(err)
 								break OUTER
@@ -1294,9 +1291,12 @@ func (e *Extractor) Shutdown() error {
 	if e.pubConn != nil {
 		e.pubConn.Close()
 	}
-	if err := e.binlogReader.Close(); err != nil {
-		return err
+	if e.binlogReader !=nil {
+		if err := e.binlogReader.Close(); err != nil {
+			return err
+		}
 	}
+
 	//close(e.dataChannel)
 	//close(e.binlogChannel)
 

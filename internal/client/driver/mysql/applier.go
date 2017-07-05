@@ -450,7 +450,7 @@ func (a *Applier) onApplyTxStruct(dbApplier *sql.DbApplier, binlogTx *binlog.Bin
 		dbApplier.DbMutex.Unlock()
 	}()
 
-	/*switch binlogTx.GNO {
+	switch binlogTx.GNO {
 	case 2022044:
 		a.logger.Printf("[TEST] binlogTx:%s:%d", binlogTx.SID, binlogTx.GNO)
 	case 100000:
@@ -459,7 +459,7 @@ func (a *Applier) onApplyTxStruct(dbApplier *sql.DbApplier, binlogTx *binlog.Bin
 		a.logger.Printf("[TEST] binlogTx:%s:%d", binlogTx.SID, binlogTx.GNO)
 	case 500000:
 		a.logger.Printf("[TEST] binlogTx:%s:%d", binlogTx.SID, binlogTx.GNO)
-	}*/
+	}
 
 	if binlogTx.Fde != "" && dbApplier.Fde != binlogTx.Fde {
 		dbApplier.Fde = binlogTx.Fde // IMO it would comare the internal pointer first
@@ -712,6 +712,7 @@ func (a *Applier) initiateStreaming() error {
 				a.onError(err)
 			}
 			for _, tx := range binlogTx {
+				//a.logger.Printf("[TEST] binlogTx: %v - %s:%d",a.mysqlContext.ConnectionConfig.Key.Port,tx.SID,tx.GNO)
 				a.applyBinlogTxQueue <- tx
 				gno = tx.GNO
 			}
