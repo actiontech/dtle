@@ -483,6 +483,16 @@ func (e *Extractor) initiateStreaming() error {
 			e.onError(err)
 		}
 	}()
+
+	go func() {
+		_, err := e.pubConn.Subscribe(fmt.Sprintf("%s_restart", e.subject), func(m *gonats.Msg) {
+			e.mysqlContext.Gtid = string(m.Data)
+			e.onError(fmt.Errorf("restart"))
+		})
+		if err != nil {
+			e.onError(err)
+		}
+	}()
 	return nil
 }
 
@@ -805,6 +815,7 @@ func (e *Extractor) requestMsg(txMsg []byte) (err error) {
 			return nil
 		}
 		// there's an error. Let's try again.
+		e.logger.Printf("[WARN] mysql.extractor: request error: %v",err)
 	}
 	return err
 }
@@ -1163,6 +1174,9 @@ func (e *Extractor) Stats() (*models.TaskStatistics, error) {
 
 	taskResUsage := models.TaskStatistics{
 		Status:    "",
+		BufferStat:&models.BufferStat{
+			InMsgBufferSize:len(e.binlogChannel),
+		},
 		Timestamp: time.Now().UTC().UnixNano(),
 	}
 	if e.pubConn != nil {
@@ -1298,7 +1312,7 @@ func (e *Extractor) Shutdown() error {
 	}
 
 	//close(e.dataChannel)
-	//close(e.binlogChannel)
+	close(e.binlogChannel)
 
 	e.logger.Printf("[INFO] mysql.extractor: closed streamer connection.")
 	return nil

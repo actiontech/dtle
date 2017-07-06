@@ -25,11 +25,18 @@ type MsgStat struct {
 	OutBytes uint64
 }
 
+type BufferStat struct {
+	InMsgBufferSize   int
+	OutMsgBufferSize  int
+	OutGroupMsgBufferSize  int
+}
+
 type TaskStatistics struct {
 	TableStats     *TableStats
 	DelayCount     *DelayCount
 	ThroughputStat *ThroughputStat
 	MsgStat        gonats.Statistics
+	BufferStat	   *BufferStat
 	Status         string
 	Timestamp      int64
 }

@@ -3,9 +3,9 @@ package binlog
 import (
 	"bytes"
 	gosql "database/sql"
-	//"encoding/hex"
 	"fmt"
 	"log"
+	//"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -39,7 +39,7 @@ type BinlogReader struct {
 	currentCoordinatesMutex  *sync.Mutex
 	LastAppliedRowsEventHint base.BinlogCoordinates
 	MysqlContext             *config.MySQLDriverConfig
-	//waitGroup                *sync.WaitGroup
+	waitGroup                *sync.WaitGroup
 
 	EvtChan chan *BinlogEvent
 
@@ -59,7 +59,7 @@ func NewMySQLReader(cfg *config.MySQLDriverConfig, logger *log.Logger) (binlogRe
 		binlogSyncer:            nil,
 		binlogStreamer:          nil,
 		MysqlContext:            cfg,
-		//waitGroup:               &sync.WaitGroup{},
+		waitGroup:               &sync.WaitGroup{},
 	}
 
 	uri := cfg.ConnectionConfig.GetDBUri()
@@ -311,6 +311,9 @@ func (b *BinlogReader) BinlogStreamEvents(txChannel chan<- *BinlogTx) error {
 		if err != nil {
 			return err
 		}
+		/*if _, ok := ev.Event.(*replication.RowsEvent); !ok {
+			ev.Dump(os.Stdout)
+		}*/
 		func() {
 			b.currentCoordinatesMutex.Lock()
 			defer b.currentCoordinatesMutex.Unlock()
@@ -582,8 +585,8 @@ func (b *BinlogReader) appendB64Sql(event *BinlogEvent) {
 }
 
 func (b *BinlogReader) onCommit(lastEvent *BinlogEvent, txChannel chan<- *BinlogTx) {
-	//b.waitGroup.Add(1)
-	//defer b.waitGroup.Done()
+	b.waitGroup.Add(1)
+	defer b.waitGroup.Done()
 
 	if nil != b.currentSqlB64 && !strings.HasSuffix(b.currentSqlB64.String(), "BINLOG '") {
 		b.currentSqlB64.WriteString("'")
@@ -940,6 +943,6 @@ func (b *BinlogReader) Close() error {
 	// here. A new go-mysql version closes the binlog syncer connection independently.
 	// I will go against the sacred rules of comments and just leave this here.
 	// This is the year 2017. Let's see what year these comments get deleted.
-	//b.waitGroup.Wait()
+	b.waitGroup.Wait()
 	return nil
 }

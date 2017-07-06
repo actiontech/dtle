@@ -51,6 +51,8 @@ type Applier struct {
 	applyDataEntryQueue     chan *binlog.BinlogEntry
 	applyBinlogTxQueue      chan *binlog.BinlogTx
 	applyBinlogGroupTxQueue chan []*binlog.BinlogTx
+	twg                *sync.WaitGroup
+	gwg                *sync.WaitGroup
 
 	subConn *gonats.Conn
 	waitCh  chan error
@@ -69,6 +71,8 @@ func NewApplier(subject string, cfg *config.MySQLDriverConfig, logger *log.Logge
 		applyDataEntryQueue:        make(chan *binlog.BinlogEntry, applyDataQueueBuffer),
 		applyBinlogTxQueue:         make(chan *binlog.BinlogTx, applyBinlogTxQueueBuffer),
 		applyBinlogGroupTxQueue:    make(chan []*binlog.BinlogTx, applyDataQueueBuffer),
+		twg:               &sync.WaitGroup{},
+		gwg:               &sync.WaitGroup{},
 		waitCh:                     make(chan error, 1),
 	}
 	return a
@@ -150,11 +154,11 @@ func (a *Applier) Run() {
 			}
 		}
 	}
-	if err := a.initNatSubClient(); err != nil {
+	if err := a.initDBConnections(); err != nil {
 		a.onError(err)
 		return
 	}
-	if err := a.initDBConnections(); err != nil {
+	if err := a.initNatSubClient(); err != nil {
 		a.onError(err)
 		return
 	}
@@ -453,9 +457,9 @@ func (a *Applier) onApplyTxStruct(dbApplier *sql.DbApplier, binlogTx *binlog.Bin
 	switch binlogTx.GNO {
 	case 2022044:
 		a.logger.Printf("[TEST] binlogTx:%s:%d", binlogTx.SID, binlogTx.GNO)
-	case 100000:
+	case 50000:
 		a.logger.Printf("[TEST] binlogTx:%s:%d", binlogTx.SID, binlogTx.GNO)
-	case 200000:
+	case 100000:
 		a.logger.Printf("[TEST] binlogTx:%s:%d", binlogTx.SID, binlogTx.GNO)
 	case 500000:
 		a.logger.Printf("[TEST] binlogTx:%s:%d", binlogTx.SID, binlogTx.GNO)
@@ -502,7 +506,6 @@ func (a *Applier) onApplyTxStruct(dbApplier *sql.DbApplier, binlogTx *binlog.Bin
 			return err
 		}
 	}
-	a.mysqlContext.Gtid = fmt.Sprintf("%s:1-%d", binlogTx.SID, binlogTx.GNO)
 	return nil
 }
 
@@ -585,6 +588,8 @@ OUTER:
 				}(binlogTx)
 			}
 			barrier.Wait() // Waiting for all goroutines to finish
+			a.mysqlContext.Gtid = fmt.Sprintf("%s:1-%d", groupTx[len(groupTx)-1].SID, groupTx[len(groupTx)-1].GNO)
+
 		default:
 			{
 				select {
@@ -670,14 +675,18 @@ func (a *Applier) initiateStreaming() error {
 					groupTx = append(groupTx, binlogTx)
 				} else {
 					if groupTx != nil {
+						a.gwg.Add(1)
+						defer a.gwg.Done()
 						a.applyBinlogGroupTxQueue <- groupTx
 						groupTx = nil
 					}
 					groupTx = append(groupTx, binlogTx)
 				}
 				lastCommitted = binlogTx.LastCommitted
-			case <-time.After(1 * time.Second):
+			case <-time.After(100 * time.Millisecond):
 				if groupTx != nil {
+					a.gwg.Add(1)
+					defer a.gwg.Done()
 					a.applyBinlogGroupTxQueue <- groupTx
 					groupTx = nil
 				}
@@ -712,7 +721,8 @@ func (a *Applier) initiateStreaming() error {
 				a.onError(err)
 			}
 			for _, tx := range binlogTx {
-				//a.logger.Printf("[TEST] binlogTx: %v - %s:%d",a.mysqlContext.ConnectionConfig.Key.Port,tx.SID,tx.GNO)
+				a.twg.Add(1)
+				defer a.twg.Done()
 				a.applyBinlogTxQueue <- tx
 				gno = tx.GNO
 			}
@@ -1379,6 +1389,10 @@ func (a *Applier) ApplyEventQueries(queries []string) error {
 func (a *Applier) Stats() (*models.TaskStatistics, error) {
 	taskResUsage := models.TaskStatistics{
 		Status:    "",
+		BufferStat:&models.BufferStat{
+			OutMsgBufferSize:len(a.applyBinlogTxQueue),
+			OutGroupMsgBufferSize:len(a.applyBinlogGroupTxQueue),
+		},
 		Timestamp: time.Now().UTC().UnixNano(),
 	}
 	if a.subConn != nil {
@@ -1493,8 +1507,10 @@ func (a *Applier) ID() string {
 
 func (a *Applier) onError(err error) {
 	a.logger.Printf("[ERR] mysql.applier: %v", err)
-	if atomic.LoadInt64(&a.mysqlContext.ShutdownFlag) > 0 {
-		return
+	if a.subConn != nil {
+		if err := a.subConn.Publish(fmt.Sprintf("%s_restart", a.subject), []byte(a.mysqlContext.Gtid)); err != nil {
+			a.logger.Printf("[ERR] mysql.applier: trigger restart extractor : %v", err)
+		}
 	}
 	a.waitCh <- err
 	a.Shutdown()
@@ -1508,13 +1524,15 @@ func (a *Applier) Shutdown() error {
 	if a.subConn != nil {
 		a.subConn.Close()
 	}
+	a.twg.Wait()
+	a.gwg.Wait()
 	//close(a.applyDataEntryQueue)
-	//close(a.applyBinlogTxQueue)
-	//close(a.applyBinlogGroupTxQueue)
+	close(a.applyBinlogTxQueue)
+	close(a.applyBinlogGroupTxQueue)
 
-	/*if err := sql.CloseDBs(a.dbs...); err != nil {
+	if err := sql.CloseDBs(a.dbs...); err != nil {
 		return err
-	}*/
+	}
 
 	a.logger.Printf("[INFO] mysql.applier: closed applier connection.")
 	return nil
