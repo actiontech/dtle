@@ -3,9 +3,9 @@ package binlog
 import (
 	"bytes"
 	gosql "database/sql"
+	//"encoding/hex"
 	"fmt"
 	"log"
-	//"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -41,13 +41,12 @@ type BinlogReader struct {
 	MysqlContext             *config.MySQLDriverConfig
 	waitGroup                *sync.WaitGroup
 
-	EvtChan chan *BinlogEvent
-
 	currentTx     *BinlogTx
 	txCount       int
 	currentFde    string
 	currentQuery  *bytes.Buffer
 	currentSqlB64 *bytes.Buffer
+	appendB64SqlBs []byte
 	ReMap         map[string]*regexp.Regexp
 }
 
@@ -59,6 +58,7 @@ func NewMySQLReader(cfg *config.MySQLDriverConfig, logger *log.Logger) (binlogRe
 		binlogSyncer:            nil,
 		binlogStreamer:          nil,
 		MysqlContext:            cfg,
+		appendB64SqlBs:make([]byte, 1024*1024),
 		waitGroup:               &sync.WaitGroup{},
 	}
 
@@ -311,9 +311,55 @@ func (b *BinlogReader) BinlogStreamEvents(txChannel chan<- *BinlogTx) error {
 		if err != nil {
 			return err
 		}
-		/*if _, ok := ev.Event.(*replication.RowsEvent); !ok {
-			ev.Dump(os.Stdout)
+
+		/*switch ev.Header.EventType {
+		case replication.TABLE_MAP_EVENT:
+			evt := ev.Event.(*replication.TableMapEvent)
+			b.logger.Printf("[DEBUG] mysql.reader: TableID: %d", evt.TableID)
+			//b.logger.Printf("TableID size: %d\n", evt.tableIDSize)
+			b.logger.Printf("[DEBUG] mysql.reader: Flags: %d", evt.Flags)
+			b.logger.Printf("[DEBUG] mysql.reader: Schema: %s", evt.Schema)
+			b.logger.Printf("[DEBUG] mysql.reader: Table: %s", evt.Table)
+			b.logger.Printf("[DEBUG] mysql.reader: Column count: %d", evt.ColumnCount)
+			b.logger.Printf("[DEBUG] mysql.reader: Column type: \n%s", hex.Dump(evt.ColumnType))
+			b.logger.Printf("[DEBUG] mysql.reader: NULL bitmap: \n%s", hex.Dump(evt.NullBitmap))
+		case replication.GTID_EVENT:
+			evt := ev.Event.(*replication.GTIDEvent)
+			u, _ := uuid.FromBytes(evt.GTID.SID)
+			b.logger.Printf("[DEBUG] mysql.reader: Last committed: %d", evt.GTID.LastCommitted)
+			b.logger.Printf("[DEBUG] mysql.reader: Sequence number: %d", evt.GTID.SequenceNumber)
+			b.logger.Printf("[DEBUG] mysql.reader: Commit flag: %d", evt.GTID.CommitFlag)
+			b.logger.Printf("[DEBUG] mysql.reader: GTID_NEXT: %s:%d", u.String(), evt.GTID.GNO)
+		case replication.QUERY_EVENT:
+			evt := ev.Event.(*replication.QueryEvent)
+			b.logger.Printf("[DEBUG] mysql.reader: Slave proxy ID: %d", evt.SlaveProxyID)
+			b.logger.Printf("[DEBUG] mysql.reader: Execution time: %d", evt.ExecutionTime)
+			b.logger.Printf("[DEBUG] mysql.reader: Error code: %d", evt.ErrorCode)
+			//b.logger.Printf( "Status vars: \n%s", hex.Dump(e.StatusVars))
+			b.logger.Printf("[DEBUG] mysql.reader: Schema: %s", evt.Schema)
+			b.logger.Printf("[DEBUG] mysql.reader: Query: %s", evt.Query)
+		case replication.WRITE_ROWS_EVENTv2, replication.UPDATE_ROWS_EVENTv2, replication.DELETE_ROWS_EVENTv2:
+			evt := ev.Event.(*replication.RowsEvent)
+			b.logger.Printf("[DEBUG] mysql.reader: TableID: %d", evt.TableID)
+			b.logger.Printf("[DEBUG] mysql.reader: Flags: %d", evt.Flags)
+			b.logger.Printf("[DEBUG] mysql.reader: Column count: %d", evt.ColumnCount)
+
+			b.logger.Printf("[DEBUG] mysql.reader: Values:")
+			for _, rows := range evt.Rows {
+				b.logger.Printf("[DEBUG] mysql.reader: --")
+				for j, d := range rows {
+					if _, ok := d.([]byte); ok {
+						b.logger.Printf("[DEBUG] mysql.reader: %d:%q", j, d)
+					} else {
+						b.logger.Printf("[DEBUG] mysql.reader: %d:%#v", j, d)
+					}
+				}
+			}
+		case replication.XID_EVENT:
+			evt := ev.Event.(*replication.XIDEvent)
+			b.logger.Printf("[DEBUG] mysql.reader: XID: %d", evt.XID)
 		}*/
+
 		func() {
 			b.currentCoordinatesMutex.Lock()
 			defer b.currentCoordinatesMutex.Unlock()
@@ -337,7 +383,7 @@ func (b *BinlogReader) BinlogStreamEvents(txChannel chan<- *BinlogTx) error {
 }
 
 func (b *BinlogReader) handleBinlogRowsEvent(ev *replication.BinlogEvent, txChannel chan<- *BinlogTx) error {
-	//bp.logger.Printf("---c:%v----:%v",bp.currentCoordinates,bp.LastAppliedRowsEventHint)
+	//bp.logger.Printf("[TEST] currentCoordinates: %v,LastAppliedRowsEventHint: %v",bp.currentCoordinates,bp.LastAppliedRowsEventHint)
 	if b.currentCoordinates.SmallerThanOrEquals(&b.LastAppliedRowsEventHint) {
 		b.logger.Printf("[DEBUG] mysql.reader: skipping handled query at %+v", b.currentCoordinates)
 		return nil
@@ -361,7 +407,6 @@ func (b *BinlogReader) handleBinlogRowsEvent(ev *replication.BinlogEvent, txChan
 		u, _ := uuid.FromBytes(evt.GTID.SID)
 
 		b.currentTx = &BinlogTx{
-			ServerId:      fmt.Sprintf("%d", ev.Header.ServerID),
 			SID:           u.String(),
 			GNO:           evt.GTID.GNO,
 			LastCommitted: evt.GTID.LastCommitted,
@@ -570,16 +615,14 @@ func (b *BinlogReader) clearB64Sql() {
 	b.currentSqlB64 = nil
 }
 
-var appendB64SqlBs []byte = make([]byte, 1024*1024)
-
 func (b *BinlogReader) appendB64Sql(event *BinlogEvent) {
 	n := base64.StdEncoding.EncodedLen(len(event.RawBs))
 	// enlarge only
-	if len(appendB64SqlBs) < n {
-		appendB64SqlBs = make([]byte, n)
+	if len(b.appendB64SqlBs) < n {
+		b.appendB64SqlBs = make([]byte, n)
 	}
-	base64.StdEncoding.Encode(appendB64SqlBs, event.RawBs)
-	b.currentSqlB64.Write(appendB64SqlBs[0:n])
+	base64.StdEncoding.Encode(b.appendB64SqlBs, event.RawBs)
+	b.currentSqlB64.Write(b.appendB64SqlBs[0:n])
 
 	b.currentSqlB64.WriteString("\n")
 }

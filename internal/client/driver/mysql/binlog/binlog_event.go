@@ -18,7 +18,6 @@ const (
 )
 
 type BinlogTx struct {
-	ServerId       string
 	StartEventFile string
 	StartEventPos  uint32
 	EndEventFile   string

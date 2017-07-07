@@ -815,7 +815,6 @@ func (e *Extractor) requestMsg(txMsg []byte) (err error) {
 			return nil
 		}
 		// there's an error. Let's try again.
-		e.logger.Printf("[WARN] mysql.extractor: request error: %v",err)
 	}
 	return err
 }
