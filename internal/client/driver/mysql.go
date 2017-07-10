@@ -26,23 +26,77 @@ func (m *MySQLDriver) Start(ctx *ExecContext, task *models.Task) (DriverHandle, 
 	}
 
 	switch ctx.Tp {
-	case models.TaskTypeSrc:
+	case models.JobTypeSync:
 		{
-			// Create the extractor
-			e := mysql.NewExtractor(ctx.Subject, &driverConfig, m.logger)
-			go e.Run()
-			return e, nil
+			switch task.Type {
+			case models.TaskTypeSrc:
+				{
+					// Create the extractor
+					e := mysql.NewExtractor(ctx.Subject, &driverConfig, m.logger)
+					go e.Run()
+					return e, nil
+				}
+			case models.TaskTypeDest:
+				{
+					a := mysql.NewApplier(ctx.Subject, &driverConfig, m.logger)
+					go a.Run()
+					return a, nil
+				}
+			default:
+				{
+					return nil, fmt.Errorf("unknown processor type : %+v", task.Type)
+				}
+			}
 		}
-	case models.TaskTypeDest:
+	case models.JobTypeMig:
 		{
-			a := mysql.NewApplier(ctx.Subject, &driverConfig, m.logger)
-			go a.Run()
-			return a, nil
+			switch task.Type {
+			case models.TaskTypeSrc:
+				{
+					// Create the extractor
+					e := mysql.NewExtractor(ctx.Subject, &driverConfig, m.logger)
+					go e.Run()
+					return e, nil
+				}
+			case models.TaskTypeDest:
+				{
+					a := mysql.NewApplier(ctx.Subject, &driverConfig, m.logger)
+					go a.Run()
+					return a, nil
+				}
+			default:
+				{
+					return nil, fmt.Errorf("unknown processor type : %+v", task.Type)
+				}
+			}
+		}
+	case models.JobTypeSub:
+		{
+			switch task.Type {
+			case models.TaskTypeSrc:
+				{
+					// Create the extractor
+					e := mysql.NewExtractor(ctx.Subject, &driverConfig, m.logger)
+					go e.Run()
+					return e, nil
+				}
+			case models.TaskTypeDest:
+				{
+					a := mysql.NewApplier(ctx.Subject, &driverConfig, m.logger)
+					go a.Run()
+					return a, nil
+				}
+			default:
+				{
+					return nil, fmt.Errorf("unknown processor type : %+v", task.Type)
+				}
+			}
 		}
 	default:
 		{
-			return nil, fmt.Errorf("unknown processor type : %+v", ctx.Tp)
+			return nil, fmt.Errorf("unknown job type : %+v", ctx.Tp)
 		}
 	}
+
 	return nil, nil
 }

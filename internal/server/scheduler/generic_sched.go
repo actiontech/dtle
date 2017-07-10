@@ -44,12 +44,11 @@ func (s *SetStatusError) Error() string {
 	return s.Err.Error()
 }
 
-// GenericScheduler is used for 'service' and 'batch' type jobs. This scheduler is
+// GenericScheduler is used for 'synchronous' 'migration' and 'subscribe' type jobs. This scheduler is
 // designed for long-lived services, and as such spends more time attemping
 // to make a high quality placement. This is the primary scheduler for
-// most workloads. It also supports a 'batch' mode to optimize for fast decision
-// making at the cost of quality.
-type SyncScheduler struct {
+// most workloads.
+type GenericScheduler struct {
 	logger  *log.Logger
 	state   State
 	planner Planner
@@ -67,9 +66,9 @@ type SyncScheduler struct {
 	queuedAllocs   map[string]int
 }
 
-// NewServiceScheduler is a factory function to instantiate a new service scheduler
-func NewSyncScheduler(logger *log.Logger, state State, planner Planner) Scheduler {
-	s := &SyncScheduler{
+// NewGenericScheduler is a factory function to instantiate a new synchronous scheduler
+func NewGenericScheduler(logger *log.Logger, state State, planner Planner) Scheduler {
+	s := &GenericScheduler{
 		logger:  logger,
 		state:   state,
 		planner: planner,
@@ -78,7 +77,7 @@ func NewSyncScheduler(logger *log.Logger, state State, planner Planner) Schedule
 }
 
 // Process is used to handle a single evaluation
-func (s *SyncScheduler) Process(eval *models.Evaluation) error {
+func (s *GenericScheduler) Process(eval *models.Evaluation) error {
 	// Store the evaluation
 	s.eval = eval
 
@@ -97,8 +96,7 @@ func (s *SyncScheduler) Process(eval *models.Evaluation) error {
 
 	// Retry up to the maxScheduleAttempts and reset if progress is made.
 	progress := func() bool { return progressMade(s.planResult) }
-	limit := maxScheduleAttempts
-	if err := retryMax(limit, s.process, progress); err != nil {
+	if err := retryMax(maxScheduleAttempts, s.process, progress); err != nil {
 		if statusErr, ok := err.(*SetStatusError); ok {
 			// Scheduling was tried but made no forward progress so create a
 			// blocked eval to retry once resources become available.
@@ -133,7 +131,7 @@ func (s *SyncScheduler) Process(eval *models.Evaluation) error {
 
 // createBlockedEval creates a blocked eval and submits it to the planner. If
 // failure is set to true, the eval's trigger reason reflects that.
-func (s *SyncScheduler) createBlockedEval(planFailure bool) error {
+func (s *GenericScheduler) createBlockedEval(planFailure bool) error {
 	e := s.ctx.Eligibility()
 	escaped := e.HasEscaped()
 
@@ -156,7 +154,7 @@ func (s *SyncScheduler) createBlockedEval(planFailure bool) error {
 
 // process is wrapped in retryMax to iteratively run the handler until we have no
 // further work or we've made the maximum number of attempts.
-func (s *SyncScheduler) process() (bool, error) {
+func (s *GenericScheduler) process() (bool, error) {
 	// Lookup the Job by ID
 	var err error
 	ws := memdb.NewWatchSet()
@@ -239,7 +237,7 @@ func (s *SyncScheduler) process() (bool, error) {
 
 // filterCompleteAllocs filters allocations that are terminal and should be
 // re-placed.
-func (s *SyncScheduler) filterCompleteAllocs(allocs []*models.Allocation) ([]*models.Allocation, map[string]*models.Allocation) {
+func (s *GenericScheduler) filterCompleteAllocs(allocs []*models.Allocation) ([]*models.Allocation, map[string]*models.Allocation) {
 	filter := func(a *models.Allocation) bool {
 		// Filter terminal, non batch allocations
 		return a.TerminalStatus()
@@ -274,7 +272,7 @@ func (s *SyncScheduler) filterCompleteAllocs(allocs []*models.Allocation) ([]*mo
 
 // computeJobAllocs is used to reconcile differences between the job,
 // existing allocations and node status to update the allocations.
-func (s *SyncScheduler) computeJobAllocs() error {
+func (s *GenericScheduler) computeJobAllocs() error {
 	// Materialize all the tasks, job could be missing if deregistered
 	var tasks map[string]*models.Task
 	if s.job != nil {
@@ -350,7 +348,7 @@ func (s *SyncScheduler) computeJobAllocs() error {
 }
 
 // computePlacements computes placements for allocations
-func (s *SyncScheduler) computePlacements(place []allocTuple) error {
+func (s *GenericScheduler) computePlacements(place []allocTuple) error {
 	// Get the base nodes
 	nodes, byDC, err := readyNodesInDCs(s.state, s.job.Datacenters)
 	if err != nil {
@@ -421,7 +419,7 @@ func (s *SyncScheduler) computePlacements(place []allocTuple) error {
 }
 
 // findPreferredNode finds the preferred node for an allocation
-func (s *SyncScheduler) findPreferredNode(allocTuple *allocTuple) (node *models.Node, err error) {
+func (s *GenericScheduler) findPreferredNode(allocTuple *allocTuple) (node *models.Node, err error) {
 	if allocTuple.Alloc != nil {
 		task := allocTuple.Alloc.Job.LookupTask(allocTuple.Alloc.Task)
 		if task == nil {
