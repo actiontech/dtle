@@ -49,8 +49,8 @@ type Extractor struct {
 	allEventsUpToLockProcessed chan string
 	rowCopyCompleteFlag        int64
 
-	pubConn *gonats.Conn
-	waitCh  chan error
+	natsConn *gonats.Conn
+	waitCh   chan error
 }
 
 func NewExtractor(subject string, cfg *config.MySQLDriverConfig, logger *log.Logger) *Extractor {
@@ -132,23 +132,6 @@ func (e *Extractor) validateStatement(doTb *config.Table) (err error) {
 	return nil
 }
 
-func (e *Extractor) countTableRows(doDb string, doTb *config.Table) (err error) {
-	countRowsFunc := func() error {
-		if err := e.inspector.CountTableRows(doDb, doTb); err != nil {
-			return err
-		}
-		return nil
-	}
-
-	if e.mysqlContext.ConcurrentCountTableRows {
-		e.logger.Printf("As instructed, counting rows in the background; meanwhile I will use an estimated count, and will update it later on")
-		go countRowsFunc()
-		// and we ignore errors, because this turns to be a background job
-		return nil
-	}
-	return countRowsFunc()
-}
-
 // Run executes the complete extract logic.
 func (e *Extractor) Run() {
 	e.logger.Printf("[INFO] mysql.extractor: extract binlog events from %s.%d", e.mysqlContext.ConnectionConfig.Key.Host, e.mysqlContext.ConnectionConfig.Key.Port)
@@ -171,11 +154,6 @@ func (e *Extractor) Run() {
 				e.logger.Printf("[ERR] mysql.extractor: unexpected error on inspectOriginalAndGhostTables, got %v", err)
 				return err
 			}*/
-			if err := e.countTableRows(doDb.Database, doTb); err != nil {
-				e.logger.Printf("[ERR] mysql.extractor: unexpected error on countTableRows, got %v", err)
-				e.onError(err)
-				return
-			}
 			/*if err := e.ReadMigrationRangeValues(doDb.Database, doTb); err != nil {
 				e.logger.Printf("[ERR] mysql.extractor: unexpected error on ReadMigrationRangeValues, got %v", err)
 				return err
@@ -197,9 +175,15 @@ func (e *Extractor) Run() {
 			return
 		}
 		e.logger.Printf("[INFO] mysql.extractor: Operating until row copy is complete")
-		e.consumeRowCopyComplete()
+		//e.consumeRowCopyComplete()
 		e.logger.Printf("[INFO] mysql.extractor: Row copy complete")
 	}
+
+	if err := e.initBinlogReader(e.initialBinlogCoordinates); err != nil {
+		e.onError(err)
+		return
+	}
+
 	if err := e.initiateStreaming(); err != nil {
 		e.onError(err)
 		return
@@ -469,7 +453,7 @@ func (e *Extractor) initNatsPubClient() (err error) {
 		e.logger.Printf("[ERR] mysql.extractor: can't connect nats server %v.make sure a nats streaming server is running.%v", fmt.Sprintf("nats://%s", e.mysqlContext.NatsAddr), err)
 		return err
 	}
-	e.pubConn = pc
+	e.natsConn = pc
 
 	return nil
 }
@@ -485,7 +469,7 @@ func (e *Extractor) initiateStreaming() error {
 	}()
 
 	go func() {
-		_, err := e.pubConn.Subscribe(fmt.Sprintf("%s_restart", e.subject), func(m *gonats.Msg) {
+		_, err := e.natsConn.Subscribe(fmt.Sprintf("%s_restart", e.subject), func(m *gonats.Msg) {
 			e.mysqlContext.Gtid = string(m.Data)
 			e.onError(fmt.Errorf("restart"))
 		})
@@ -506,9 +490,6 @@ func (e *Extractor) initDBConnections() (err error) {
 		return err
 	}
 	if err := e.readCurrentBinlogCoordinates(); err != nil {
-		return err
-	}
-	if err := e.initBinlogReader(e.initialBinlogCoordinates); err != nil {
 		return err
 	}
 
@@ -596,7 +577,8 @@ func (e *Extractor) readCurrentBinlogCoordinates() error {
 		}
 	}
 
-	e.logger.Printf("[INFO] mysql.extractor: streamer binlog coordinates: %+v", *e.initialBinlogCoordinates)
+	e.logger.Printf("[INFO] mysql.extractor: Step 0: read binlog coordinates of MySQL master: %+v", *e.initialBinlogCoordinates)
+
 	return nil
 }
 
@@ -619,6 +601,7 @@ func (e *Extractor) readMySqlCharsetSystemVariables() error {
 		| collation_server     | utf8_general_ci |
 		+----------------------+-----------------+
 	*/
+	e.mysqlContext.SystemVariables = make(map[string]string)
 	for rows.Next() {
 		var (
 			variable string
@@ -728,6 +711,7 @@ func (e *Extractor) StreamEvents(approveHeterogeneous bool, canStopStreaming fun
 	} else {
 		go func() {
 			var txArray []*binlog.BinlogTx
+			subject := fmt.Sprintf("%s_incr", e.subject)
 		OUTER:
 			for {
 				select {
@@ -739,7 +723,10 @@ func (e *Extractor) StreamEvents(approveHeterogeneous bool, canStopStreaming fun
 								e.onError(err)
 								break OUTER
 							}
-							if err := e.requestMsg(txMsg); err != nil {
+							if uint64(len(txMsg)) > 100*1024*1024 {
+								e.onError(gonats.ErrMaxPayload)
+							}
+							if err := e.requestMsg(subject, txMsg); err != nil {
 								e.onError(err)
 								break OUTER
 							}
@@ -754,8 +741,11 @@ func (e *Extractor) StreamEvents(approveHeterogeneous bool, canStopStreaming fun
 							e.onError(err)
 							break OUTER
 						}
+						if uint64(len(txMsg)) > 100*1024*1024 {
+							e.onError(gonats.ErrMaxPayload)
+						}
 						if uint64(len(txMsg)) > defaultMsgBytes {
-							if err := e.requestMsg(txMsg); err != nil {
+							if err := e.requestMsg(subject, txMsg); err != nil {
 								e.onError(err)
 								break OUTER
 							}
@@ -804,13 +794,13 @@ func (e *Extractor) StreamEvents(approveHeterogeneous bool, canStopStreaming fun
 
 // retryOperation attempts up to `count` attempts at running given function,
 // exiting as soon as it returns with non-error.
-func (e *Extractor) requestMsg(txMsg []byte) (err error) {
+func (e *Extractor) requestMsg(subject string, txMsg []byte) (err error) {
 	for i := 0; i < int(e.mysqlContext.MaxRetries); i++ {
 		if i != 0 {
 			// sleep after previous iteration
 			time.Sleep(1 * time.Second)
 		}
-		_, err = e.pubConn.Request(fmt.Sprintf("%s_incr", e.subject), txMsg, DefaultConnectWait)
+		_, err = e.natsConn.Request(subject, txMsg, DefaultConnectWait)
 		if err == nil {
 			return nil
 		}
@@ -821,346 +811,106 @@ func (e *Extractor) requestMsg(txMsg []byte) (err error) {
 
 //Perform the snapshot using the same logic as the "mysqldump" utility.
 func (e *Extractor) mysqlDump() error {
-	// ------
-	// STEP 0
-	// ------
-	// Set the transaction isolation level to REPEATABLE READ. This is the default, but the default can be changed
-	// which is why we explicitly set it here.
-	//
-	// With REPEATABLE READ, all SELECT queries within the scope of a transaction (which we don't yet have) will read
-	// from the same MVCC snapshot. Thus each plain (non-locking) SELECT statements within the same transaction are
-	// consistent also with respect to each other.
-	//
-	// See: https://dev.mysql.com/doc/refman/5.7/en/set-transaction.html
-	// See: https://dev.mysql.com/doc/refman/5.7/en/innodb-transaction-isolation-levels.html
-	// See: https://dev.mysql.com/doc/refman/5.7/en/innodb-consistent-read.html
-	e.logger.Printf("[INFO] mysql.extractor: Step 0: disabling autocommit and enabling repeatable read transactions")
-	_, err := sql.ExecNoPrepare(e.db, "SET autocommit = 0")
-	if err != nil {
-		e.logger.Printf("[ERR] mysql.extractor: %v", err)
-		return err
-	}
-	query := "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ"
-	_, err = sql.ExecNoPrepare(e.db, query)
-	if err != nil {
-		e.logger.Printf("[ERR] mysql.extractor: exec %+v, error: %v", query, err)
-		return err
-	}
-	//metrics.globalLockAcquired();
-
 	// Generate the DDL statements that set the charset-related system variables ...
 	if err := e.readMySqlCharsetSystemVariables(); err != nil {
 		return err
 	}
-	//setSystemVariablesStatement := e.setStatementFor()
+	setSystemVariablesStatement := e.setStatementFor()
 
 	// ------
 	// STEP 1
 	// ------
-	// First, start a transaction and request that a consistent MVCC snapshot is obtained immediately.
-	// See http://dev.mysql.com/doc/refman/5.7/en/commit.html
-	e.logger.Printf("[INFO] mysql.extractor: Step 1: start transaction with consistent snapshot")
-	query = "START TRANSACTION WITH CONSISTENT SNAPSHOT"
-	_, err = sql.ExecNoPrepare(e.db, query)
-	if err != nil {
-		e.logger.Printf("[ERR] mysql.extractor: exec %+v, error: %v", query, err)
-		return err
-	}
+	// Get the list of table IDs for each database. We can't use a prepared statement with MySQL, so we have to
+	// build the SQL statement each time. Although in other cases this might lead to SQL injection, in our case
+	// we are reading the database names from the database and not taking them from the user ...
+	e.logger.Printf("[INFO] mysql.extractor: Step 1: read list of available tables in each database")
 
-	// ------
-	// STEP 2
-	// ------
-	// Obtain read lock on all tables. This statement closes all open tables and locks all tables
-	// for all databases with a global read lock, and it prevents ALL updates while we have this lock.
-	// It also ensures that everything we do while we have this lock will be consistent.
-	lockAcquired := currentTimeMillis()
-	e.logger.Printf("[INFO] mysql.extractor: Step 2: flush and obtain global read lock (preventing writes to database)")
-	query = "FLUSH TABLES WITH READ LOCK"
-	_, err = sql.ExecNoPrepare(e.db, query)
-	if err != nil {
-		e.logger.Printf("[ERR] mysql.extractor: exec %+v, error: %v", query, err)
-		return err
+	// Creates a MYSQL Dump based on the options supplied through the dumper.
+	tables := make([]*table, 0)
+	if len(e.mysqlContext.ReplicateDoDb) > 0 {
+		// ------
+		// STEP 2
+		// ------
+		// Transform the current schema so that it reflects the *current* state of the MySQL server's contents.
+		// First, get the DROP TABLE and CREATE TABLE statement (with keys and constraint definitions) for our tables ...
+		e.logger.Printf("[INFO] mysql.extractor: Step 2: generating DROP and CREATE statements to reflect current database schemas: %v", e.mysqlContext.ReplicateDoDb)
+
+		for _, doDb := range e.mysqlContext.ReplicateDoDb {
+			for _, tb := range doDb.Table {
+				t := &table{DbName: doDb.Database, TbName: tb.Name}
+				tables = append(tables, t)
+			}
+		}
+	} else {
+		dbs, err := showDatabases(e.db)
+		if err != nil {
+			return err
+		}
+		// ------
+		// STEP 2
+		// ------
+		// Transform the current schema so that it reflects the *current* state of the MySQL server's contents.
+		// First, get the DROP TABLE and CREATE TABLE statement (with keys and constraint definitions) for our tables ...
+		e.logger.Printf("[INFO] mysql.extractor: Step 2: generating DROP and CREATE statements to reflect current database schemas: %v", dbs)
+		for _, dbName := range dbs {
+			tbs, err := showTables(e.db, dbName)
+			if err != nil {
+				return err
+			}
+			for _, tbName := range tbs {
+				t := &table{DbName: dbName, TbName: tbName}
+				tables = append(tables, t)
+			}
+		}
 	}
 
 	// ------
 	// STEP 3
 	// ------
-	// Obtain the binlog position and update the SourceInfo in the context. This means that all source records generated
-	// as part of the snapshot will contain the binlog position of the snapshot.
-	e.logger.Printf("[INFO] mysql.extractor: Step 3: read binlog position of MySQL master")
-	if err := e.readCurrentBinlogCoordinates(); err != nil {
-		return err
-	}
-
-	// ------
-	// STEP 4
-	// ------
-	// Get the list of table IDs for each database. We can't use a prepared statement with MySQL, so we have to
-	// build the SQL statement each time. Although in other cases this might lead to SQL injection, in our case
-	// we are reading the database names from the database and not taking them from the user ...
-	e.logger.Printf("[INFO] mysql.extractor: Step 4: read list of available tables in each database")
-	// Creates a MYSQL Dump based on the options supplied through the dumper.
-	data := dump{
-		Tables: make([]*table, 0),
-	}
-	if len(e.mysqlContext.ReplicateDoDb) > 0 {
-		// ------
-		// STEP 5
-		// ------
-		// Transform the current schema so that it reflects the *current* state of the MySQL server's contents.
-		// First, get the DROP TABLE and CREATE TABLE statement (with keys and constraint definitions) for our tables ...
-		e.logger.Printf("[INFO] mysql.extractor: Step 5: generating DROP and CREATE statements to reflect current database schemas:")
-		for _, doDb := range e.mysqlContext.ReplicateDoDb {
-			uri := e.mysqlContext.ConnectionConfig.GetDBUriByDbName(doDb.Database)
-			db, _, err := sql.GetDB(uri)
-			if err != nil {
-				return err
-			}
-
-			for _, tb := range doDb.Table {
-				/*t, err := createTable(db, doDb.Database, tb.Name)
-				if err != nil {
-					e.logger.Printf("err:%v", err)
-					return err
-				}*/
-				t := &table{DbName: doDb.Database, TbName: tb.Name}
-				if t.SQL, err = createTableSQL(db, tb.Name); err != nil {
-					return err
-				}
-				data.Tables = append(data.Tables, t)
-			}
-		}
-	} else {
-		dbs, err := getDatabases(e.db)
-		if err != nil {
-			return err
-		}
-		e.logger.Printf("[INFO] mysql.extractor: Step 4: read list of available tables in each database")
-		// ------
-		// STEP 5
-		// ------
-		// Transform the current schema so that it reflects the *current* state of the MySQL server's contents.
-		// First, get the DROP TABLE and CREATE TABLE statement (with keys and constraint definitions) for our tables ...
-		e.logger.Printf("[INFO] mysql.extractor: Step 5: generating DROP and CREATE statements to reflect current database schemas:")
-		for _, dbName := range dbs {
-			tbs, err := getTables(e.db, dbName)
-			if err != nil {
-				return err
-			}
-			for _, tbName := range tbs {
-				/*t, err := createTable(e.db, dbName, tbName)
-				if err != nil {
-					e.logger.Printf("err:%v", err)
-					return err
-				}*/
-				t := &table{DbName: dbName, TbName: tbName}
-				if t.SQL, err = createTableSQL(e.db, tbName); err != nil {
-					return err
-				}
-				data.Tables = append(data.Tables, t)
-			}
-		}
-	}
-
-	// ------
-	// STEP 6
-	// ------
-	unlocked := false
-	minimalBlocking := true
-	if minimalBlocking {
-		// We are doing minimal blocking, then we should release the read lock now. All subsequent SELECT
-		// should still use the MVCC snapshot obtained when we started our transaction (since we started it
-		// "...with consistent snapshot"). So, since we're only doing very simple SELECT without WHERE predicates,
-		// we can release the lock now ...
-		e.logger.Printf("[INFO] mysql.extractor: Step 6: releasing global read lock to enable MySQL writes")
-		query = "UNLOCK TABLES"
-		_, err = sql.ExecNoPrepare(e.db, query)
-		if err != nil {
-			e.logger.Printf("[ERR] mysql.extractor: exec %+v, error: %v", query, err)
-			return err
-		}
-		unlocked = true
-		lockReleased := currentTimeMillis()
-		//metrics.globalLockReleased();
-		e.logger.Printf("[INFO] mysql.extractor: Step 6: blocked writes to MySQL for a total of %v", time.Duration(lockReleased-lockAcquired))
-	}
-
-	interrupted := false
-	// ------
-	// STEP 7
-	// ------
-	// Use a buffered blocking consumer to buffer all of the records, so that after we copy all of the tables
-	// and produce events we can update the very last event with the non-snapshot offset ...
 	// Dump all of the tables and generate source records ...
-	e.logger.Printf("[INFO] mysql.extractor: Step 7: scanning contents of %d tables", len(data.Tables))
+	e.logger.Printf("[INFO] mysql.extractor: Step 3: scanning contents of %d tables", len(tables))
 	startScan := currentTimeMillis()
 	totalRowCount := 0
 	counter := 0
 	completedCounter := 0
-	for _, tb := range data.Tables {
+	concurrency := 5 //Concurrency workerks
+	chunkSize := 1000
+	for _, d := range tables {
 		// Obtain a record maker for this table, which knows about the schema ...
-		//RecordsForTable recordMaker = context.makeRecord().forTable(tableId, null, bufferedRecordQueue)
-		//if (recordMaker != null) {
-		if true {
-			// Choose how we create statements based on the # of rows ...
-			var numRows int
-			query := fmt.Sprintf(`SELECT COUNT(*) FROM %s.%s`, tb.DbName, tb.TbName)
-			if err := e.db.QueryRow(query).Scan(&numRows); err != nil {
-				return err
-			}
+		// Choose how we create statements based on the # of rows ...
+		counter++
+		e.logger.Printf("[INFO] mysql.extractor: Step 3: - scanning table '%s.%s' (%d of %d tables)", d.DbName, d.TbName, counter, len(tables))
 
-			// Scan the rows in the table ...
-			start := currentTimeMillis()
-			counter++
-			e.logger.Printf("[INFO] mysql.extractor: Step 7: - scanning table '%s.%s' (%d of %d tables)", tb.DbName, tb.TbName, counter, len(data.Tables))
-			rows, err := e.db.Query(fmt.Sprintf(`SELECT * FROM %s.%s`, tb.DbName, tb.TbName))
+		dmp := NewDumper(e.db, d.DbName, d.TbName, setSystemVariablesStatement, concurrency, chunkSize)
+		result, err := dmp.Dump()
+		if err != nil {
+			return err
+		}
+
+		// Scan the rows in the table ...
+		for _, job := range result {
+			if job.err != nil {
+				return job.err
+			}
+			dmp.Values = fmt.Sprintf(`replace into %s.%s values %s`, dmp.DbName, dmp.TableName, strings.Join(job.data_text, ","))
+			txMsg, err := Encode(dmp)
 			if err != nil {
 				return err
 			}
-			defer rows.Close()
-			rowNum := 0
-			// Get columns
-			numColumns, err := rows.Columns()
-			if err != nil {
-				return err
+			if err := e.requestMsg(fmt.Sprintf("%s_full", e.subject), txMsg); err != nil {
+				return fmt.Errorf("request full msg err: %v", err)
 			}
-			if len(numColumns) == 0 {
-				return fmt.Errorf("No columns in table " + tb.TbName + ".")
-			}
-
-			// Read data
-			data_text := make([]string, 0)
-			for rows.Next() {
-				data := make([]*gosql.NullString, len(numColumns))
-				ptrs := make([]interface{}, len(numColumns))
-				for i := range data {
-					ptrs[i] = &data[i]
-				}
-
-				// Read data
-				if err := rows.Scan(ptrs...); err != nil {
-					return err
-				}
-
-				dataStrings := make([]string, len(numColumns))
-
-				for key, value := range data {
-					if value != nil && value.Valid {
-						dataStrings[key] = value.String
-					}
-				}
-				//recorder.recordRow(recordMaker, row, ts); // has no row number!
-				rowNum++
-				if rowNum%100000 == 0 || rowNum == numRows {
-					stop := currentTimeMillis()
-					e.logger.Printf("[INFO] mysql.extractor: Step 7: - %v of %v rows scanned from table '%v' after %v", rowNum, numRows, tb.TbName,
-						time.Duration(stop-start))
-
-					data_text = append(data_text, "('"+strings.Join(dataStrings, "','")+"')")
-				}
-			}
-			totalRowCount = totalRowCount + numRows
+			totalRowCount = totalRowCount + int(job.counter)
 		}
 		completedCounter++
 	}
 
 	// We've copied all of the tables, but our buffer holds onto the very last record.
 	// First mark the snapshot as complete and then apply the updated offset to the buffered record ...
-	//source.markLastSnapshot()
 	stop := currentTimeMillis()
-	e.logger.Printf("Step 7: scanned {} rows in {} tables in {}",
-		totalRowCount, len(data.Tables), time.Duration(stop-startScan))
+	e.logger.Printf("[INFO] mysql.extractor: Step 3: scanned %d rows in %d tables in %s",
+		totalRowCount, len(tables), time.Duration(stop-startScan))
 
-	// ------
-	// STEP 8
-	// ------
-	// Release the read lock if we have not yet done so ...
-	step := 8
-	if !unlocked {
-		step++
-		e.logger.Printf("[INFO] mysql.extractor: Step %d: releasing global read lock to enable MySQL writes", step)
-		query = "UNLOCK TABLES"
-		_, err = sql.ExecNoPrepare(e.db, query)
-		if err != nil {
-			e.logger.Printf("[ERR] mysql.extractor: exec %+v, error: %v", query, err)
-			return err
-		}
-		unlocked = true
-		lockReleased := currentTimeMillis()
-		//metrics.globalLockReleased();
-		e.logger.Printf("[INFO] mysql.extractor: Writes to MySQL prevented for a total of {}", time.Duration(lockReleased-lockAcquired))
-	}
-
-	// -------
-	// STEP 9
-	// -------
-	if interrupted {
-		// We were interrupted while reading the tables, so roll back the transaction and return immediately ...
-		step++
-		e.logger.Printf("[INFO] mysql.extractor: Step %d: rolling back transaction after abort", step)
-		query = "ROLLBACK"
-		_, err = sql.ExecNoPrepare(e.db, query)
-		if err != nil {
-			e.logger.Printf("[ERR] mysql.extractor: exec %+v, error: %v", query, err)
-			return err
-		}
-		//metrics.abortSnapshot();
-		return nil
-	}
-	// Otherwise, commit our transaction
-	step++
-	e.logger.Printf("[INFO] mysql.extractor: Step %d: committing transaction", step)
-	query = "COMMIT"
-	_, err = sql.ExecNoPrepare(e.db, query)
-	if err != nil {
-		e.logger.Printf("[ERR] mysql.extractor: exec %+v, error: %v", query, err)
-		return err
-	}
-	//metrics.completeSnapshot();
-
-	/*if len(e.mysqlContext.ReplicateDoDb) > 0 {
-		for _, doDb := range e.mysqlContext.ReplicateDoDb {
-			uri := e.mysqlContext.ConnectionConfig.GetDBUriByDbName(doDb.Database)
-			db, _, err := sql.GetDB(uri)
-			if err != nil {
-				return err
-			}
-
-			for _, tb := range doDb.Table {
-				t, err := createTable(db, doDb.Database, tb.Name)
-				if err != nil {
-					e.logger.Printf("err:%v", err)
-					return err
-				}
-				data.Tables = append(data.Tables, t)
-			}
-		}
-	} else {
-		dbs, err := getDatabases(e.db)
-		if err != nil {
-			return err
-		}
-		for _, dbName := range dbs {
-			tbs, err := getTables(e.db, dbName)
-			if err != nil {
-				return err
-			}
-			for _, tbName := range tbs {
-				t, err := createTable(e.db, dbName, tbName)
-				if err != nil {
-					e.logger.Printf("err:%v", err)
-					return err
-				}
-				data.Tables = append(data.Tables, t)
-			}
-		}
-	}*/
-	// Set complete time
-	data.CompleteTime = time.Now().String()
-
-	/*if err := e.jsonEncodedConn.Publish(fmt.Sprintf("%s_full", e.subject), data); err != nil {
-		e.logger.Printf("[ERR] mysql.extractor: unexpected error on publish, got %v", err)
-	}*/
 	return nil
 }
 
@@ -1172,14 +922,14 @@ func (e *Extractor) Stats() (*models.TaskStatistics, error) {
 	//e.logger.Printf("Tracks various stats send on this connection:%v",e.pubConn.Statistics)
 
 	taskResUsage := models.TaskStatistics{
-		Status:    "",
-		BufferStat:&models.BufferStat{
-			InMsgBufferSize:len(e.binlogChannel),
+		Status: "",
+		BufferStat: &models.BufferStat{
+			InMsgBufferSize: len(e.binlogChannel),
 		},
 		Timestamp: time.Now().UTC().UnixNano(),
 	}
-	if e.pubConn != nil {
-		taskResUsage.MsgStat = e.pubConn.Statistics
+	if e.natsConn != nil {
+		taskResUsage.MsgStat = e.natsConn.Statistics
 	}
 	/*elapsedTime := e.mysqlContext.ElapsedTime()
 	elapsedSeconds := int64(elapsedTime.Seconds())
@@ -1301,10 +1051,10 @@ func (e *Extractor) WaitCh() chan error {
 
 func (e *Extractor) Shutdown() error {
 	atomic.StoreInt64(&e.mysqlContext.ShutdownFlag, 1)
-	if e.pubConn != nil {
-		e.pubConn.Close()
+	if e.natsConn != nil {
+		e.natsConn.Close()
 	}
-	if e.binlogReader !=nil {
+	if e.binlogReader != nil {
 		if err := e.binlogReader.Close(); err != nil {
 			return err
 		}

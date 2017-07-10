@@ -26,9 +26,9 @@ type MsgStat struct {
 }
 
 type BufferStat struct {
-	InMsgBufferSize   int
-	OutMsgBufferSize  int
-	OutGroupMsgBufferSize  int
+	InMsgBufferSize       int
+	OutMsgBufferSize      int
+	OutGroupMsgBufferSize int
 }
 
 type TaskStatistics struct {
@@ -36,7 +36,7 @@ type TaskStatistics struct {
 	DelayCount     *DelayCount
 	ThroughputStat *ThroughputStat
 	MsgStat        gonats.Statistics
-	BufferStat	   *BufferStat
+	BufferStat     *BufferStat
 	Status         string
 	Timestamp      int64
 }

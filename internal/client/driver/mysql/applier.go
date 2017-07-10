@@ -47,15 +47,15 @@ type Applier struct {
 	rowCopyCompleteFlag        int64
 	// copyRowsQueue should not be buffered; if buffered some non-damaging but
 	//  excessive work happens at the end of the iteration as new copy-jobs arrive befroe realizing the copy is complete
-	copyRowsQueue           chan *dump
+	copyRowsQueue           chan *dumper
 	applyDataEntryQueue     chan *binlog.BinlogEntry
 	applyBinlogTxQueue      chan *binlog.BinlogTx
 	applyBinlogGroupTxQueue chan []*binlog.BinlogTx
-	twg                *sync.WaitGroup
-	gwg                *sync.WaitGroup
+	twg                     *sync.WaitGroup
+	gwg                     *sync.WaitGroup
 
-	subConn *gonats.Conn
-	waitCh  chan error
+	natsConn *gonats.Conn
+	waitCh   chan error
 }
 
 func NewApplier(subject string, cfg *config.MySQLDriverConfig, logger *log.Logger) *Applier {
@@ -67,13 +67,13 @@ func NewApplier(subject string, cfg *config.MySQLDriverConfig, logger *log.Logge
 		parser:                     sql.NewParser(),
 		rowCopyComplete:            make(chan bool),
 		allEventsUpToLockProcessed: make(chan string),
-		copyRowsQueue:              make(chan *dump, applyCopyRowsQueueQueueBuffer),
+		copyRowsQueue:              make(chan *dumper, applyCopyRowsQueueQueueBuffer),
 		applyDataEntryQueue:        make(chan *binlog.BinlogEntry, applyDataQueueBuffer),
 		applyBinlogTxQueue:         make(chan *binlog.BinlogTx, applyBinlogTxQueueBuffer),
 		applyBinlogGroupTxQueue:    make(chan []*binlog.BinlogTx, applyDataQueueBuffer),
-		twg:               &sync.WaitGroup{},
-		gwg:               &sync.WaitGroup{},
-		waitCh:                     make(chan error, 1),
+		twg:    &sync.WaitGroup{},
+		gwg:    &sync.WaitGroup{},
+		waitCh: make(chan error, 1),
 	}
 	return a
 }
@@ -454,17 +454,6 @@ func (a *Applier) onApplyTxStruct(dbApplier *sql.DbApplier, binlogTx *binlog.Bin
 		dbApplier.DbMutex.Unlock()
 	}()
 
-	/*switch binlogTx.GNO {
-	case 2022044:
-		a.logger.Printf("[TEST] binlogTx:%s:%d", binlogTx.SID, binlogTx.GNO)
-	case 50000:
-		a.logger.Printf("[TEST] binlogTx:%s:%d", binlogTx.SID, binlogTx.GNO)
-	case 100000:
-		a.logger.Printf("[TEST] binlogTx:%s:%d", binlogTx.SID, binlogTx.GNO)
-	case 500000:
-		a.logger.Printf("[TEST] binlogTx:%s:%d", binlogTx.SID, binlogTx.GNO)
-	}*/
-
 	if binlogTx.Fde != "" && dbApplier.Fde != binlogTx.Fde {
 		dbApplier.Fde = binlogTx.Fde // IMO it would comare the internal pointer first
 		_, err := sql.ExecNoPrepare(dbApplier.Db, binlogTx.Fde)
@@ -486,11 +475,11 @@ func (a *Applier) onApplyTxStruct(dbApplier *sql.DbApplier, binlogTx *binlog.Bin
 	} else {
 		_, err := sql.ExecNoPrepare(dbApplier.Db, binlogTx.Query)
 		if err != nil {
-			if !sql.IgnoreDDLError(err) {
-				a.logger.Printf("[ERR] mysql.applier: gtid:[%s:%d],exec [%v] error: %v", binlogTx.SID, binlogTx.GNO, binlogTx.Query, err)
+			if !sql.IgnoreError(err) {
+				a.logger.Printf("[ERR] mysql.applier: gtid:[%s:%d],exec [%v] error: %v", binlogTx.SID, binlogTx.GNO, substr(binlogTx.Query, 0, 5000), err)
 				return err
 			}
-			a.logger.Printf("[WARN] mysql.applier: gtid:[%s:%d],exec [%v],ignore ddl error: %v", binlogTx.SID, binlogTx.GNO, binlogTx.Query, err)
+			a.logger.Printf("[WARN] mysql.applier: gtid:[%s:%d],exec [%v],ignore error: %v", binlogTx.SID, binlogTx.GNO, substr(binlogTx.Query, 0, 5000), err)
 			ignoreDDLError = err
 		}
 		//a.addCount(binlog.Ddl)
@@ -507,6 +496,15 @@ func (a *Applier) onApplyTxStruct(dbApplier *sql.DbApplier, binlogTx *binlog.Bin
 		}
 	}
 	return nil
+}
+
+func substr(s string, pos, length int) string {
+	runes := []rune(s)
+	l := pos + length
+	if l > len(runes) {
+		l = len(runes)
+	}
+	return string(runes[pos:l])
 }
 
 func (a *Applier) onApplyEventStruct(db *gosql.DB, binlogEntry *binlog.BinlogEntry) error {
@@ -577,61 +575,55 @@ OUTER:
 				}
 			}
 		case groupTx := <-a.applyBinlogGroupTxQueue:
-			barrier.Add(len(groupTx))
-			for idx, binlogTx := range groupTx {
-				dbApplier = a.dbs[idx%a.mysqlContext.ParallelWorkers]
-				go func(tx *binlog.BinlogTx) {
-					if err := a.onApplyTxStruct(dbApplier, tx); err != nil {
-						a.onError(err)
-					}
-					barrier.Done()
-				}(binlogTx)
+			{
+				barrier.Add(len(groupTx))
+				for idx, binlogTx := range groupTx {
+					dbApplier = a.dbs[idx%a.mysqlContext.ParallelWorkers]
+					go func(tx *binlog.BinlogTx) {
+						if err := a.onApplyTxStruct(dbApplier, tx); err != nil {
+							a.onError(err)
+						}
+						barrier.Done()
+					}(binlogTx)
+				}
+				barrier.Wait() // Waiting for all goroutines to finish
+				a.mysqlContext.Gtid = fmt.Sprintf("%s:1-%d", groupTx[len(groupTx)-1].SID, groupTx[len(groupTx)-1].GNO)
 			}
-			barrier.Wait() // Waiting for all goroutines to finish
-			a.mysqlContext.Gtid = fmt.Sprintf("%s:1-%d", groupTx[len(groupTx)-1].SID, groupTx[len(groupTx)-1].GNO)
+
+		case copyRows := <-a.copyRowsQueue:
+			{
+				//copyRowsStartTime := time.Now()
+				// Retries are handled within the copyRowsFunc
+				/*if err := copyRowsFunc(); err != nil {
+					return err
+				}*/
+				queries := []string{}
+				//queries = append(queries,copyRows.SystemVariablesStatement)
+				queries = append(queries, copyRows.DbSQL, copyRows.TbSQL)
+				if copyRows.Values != "" {
+					queries = append(queries, copyRows.Values)
+				}
+				if err := a.ApplyEventQueries(queries); err != nil {
+					a.onError(err)
+					break OUTER
+				}
+				/*a.logger.Printf("[INFO] mysql.applier: operating until row copy is complete")
+				a.consumeRowCopyComplete()
+				a.logger.Printf("[INFO] mysql.applier: row copy complete")
+				if niceRatio := a.mysqlContext.GetNiceRatio(); niceRatio > 0 {
+					copyRowsDuration := time.Since(copyRowsStartTime)
+					sleepTimeNanosecondFloat64 := niceRatio * float64(copyRowsDuration.Nanoseconds())
+					sleepTime := time.Duration(time.Duration(int64(sleepTimeNanosecondFloat64)) * time.Nanosecond)
+					time.Sleep(sleepTime)
+				}*/
+			}
 
 		default:
 			{
-				select {
-				case copyRows := <-a.copyRowsQueue:
-					{
-						copyRowsStartTime := time.Now()
-						// Retries are handled within the copyRowsFunc
-						/*if err := copyRowsFunc(); err != nil {
-							return err
-						}*/
-						queries := []string{}
-						for _, t := range copyRows.Tables {
-							createDb := fmt.Sprintf("CREATE DATABASE %s", t.DbName)
-							createTb := fmt.Sprintf("USE %s;%s", t.DbName, t.SQL)
-							queries = append(queries, createDb, createTb)
-							if t.Values != "" {
-								query := fmt.Sprintf(`insert into %s.%s values %s`, t.DbName, t.TbName, t.Values)
-								queries = append(queries, query)
-							}
-							if err := a.ApplyEventQueries(queries); err != nil {
-								a.onError(err)
-								break OUTER
-							}
-						}
-						a.logger.Printf("[INFO] mysql.applier: operating until row copy is complete")
-						a.consumeRowCopyComplete()
-						a.logger.Printf("[INFO] mysql.applier: row copy complete")
-						if niceRatio := a.mysqlContext.GetNiceRatio(); niceRatio > 0 {
-							copyRowsDuration := time.Since(copyRowsStartTime)
-							sleepTimeNanosecondFloat64 := niceRatio * float64(copyRowsDuration.Nanoseconds())
-							sleepTime := time.Duration(time.Duration(int64(sleepTimeNanosecondFloat64)) * time.Nanosecond)
-							time.Sleep(sleepTime)
-						}
-					}
-				default:
-					{
-						// Hmmmmm... nothing in the queue; no events, but also no row copy.
-						// This is possible upon load. Let's just sleep it over.
-						//a.logger.Printf("[DEBUG] mysql.applier: Getting nothing in the write queue. Sleeping...")
-						time.Sleep(time.Second)
-					}
-				}
+				// Hmmmmm... nothing in the queue; no events, but also no row copy.
+				// This is possible upon load. Let's just sleep it over.
+				//a.logger.Printf("[DEBUG] mysql.applier: Getting nothing in the write queue. Sleeping...")
+				time.Sleep(time.Second)
 			}
 		}
 	}
@@ -643,7 +635,7 @@ func (a *Applier) initNatSubClient() (err error) {
 		a.logger.Printf("[ERR] mysql.applier: can't connect nats server %v.make sure a nats streaming server is running.%v", fmt.Sprintf("nats://%s", a.mysqlContext.NatsAddr), err)
 		return err
 	}
-	a.subConn = sc
+	a.natsConn = sc
 	return nil
 }
 
@@ -694,15 +686,21 @@ func (a *Applier) initiateStreaming() error {
 		}
 	}()
 
-	/*if a.mysqlContext.Gtid == "" {
-		_, err := a.jsonEncodedConn.Subscribe(fmt.Sprintf("%s_full", a.subject), func(d *dump) {
-			//a.logger.Printf("[DEBUG] mysql.applier: received binlogEntry: %+v", binlogEntry)
-			a.copyRowsQueue <- d
+	if a.mysqlContext.Gtid == "" {
+		_, err := a.natsConn.Subscribe(fmt.Sprintf("%s_full", a.subject), func(m *gonats.Msg) {
+			dumpData := &dumper{}
+			if err := Decode(m.Data, dumpData); err != nil {
+				a.onError(err)
+			}
+			a.copyRowsQueue <- dumpData
+			if err := a.natsConn.Publish(m.Reply, nil); err != nil {
+				a.onError(err)
+			}
 		})
 		if err != nil {
 			return err
 		}
-	}*/
+	}
 
 	if a.mysqlContext.ApproveHeterogeneous {
 		/*sub, err := a.jsonEncodedConn.Subscribe(fmt.Sprintf("%s_incr_heterogeneous", a.subject), func(binlogEntry *binlog.BinlogEntry) {
@@ -714,9 +712,8 @@ func (a *Applier) initiateStreaming() error {
 		}
 		a.jsonSub = sub*/
 	} else {
-		_, err := a.subConn.Subscribe(fmt.Sprintf("%s_incr", a.subject), func(m *gonats.Msg) {
+		_, err := a.natsConn.Subscribe(fmt.Sprintf("%s_incr", a.subject), func(m *gonats.Msg) {
 			var binlogTx []*binlog.BinlogTx
-			var gno int64
 			if err := Decode(m.Data, &binlogTx); err != nil {
 				a.onError(err)
 			}
@@ -724,9 +721,8 @@ func (a *Applier) initiateStreaming() error {
 				a.twg.Add(1)
 				defer a.twg.Done()
 				a.applyBinlogTxQueue <- tx
-				gno = tx.GNO
 			}
-			if err := a.subConn.Publish(m.Reply, []byte(string(gno))); err != nil {
+			if err := a.natsConn.Publish(m.Reply, nil); err != nil {
 				a.onError(err)
 			}
 		})
@@ -754,9 +750,9 @@ func (a *Applier) initDBConnections() (err error) {
 	if err := a.validateAndReadTimeZone(); err != nil {
 		return err
 	}
-	if err := a.readCurrentBinlogCoordinates(); err != nil {
+	/*if err := a.readCurrentBinlogCoordinates(); err != nil {
 		return err
-	}
+	}*/
 	/*if err := a.readTableColumns(); err != nil {
 		return err
 	}*/
@@ -1335,11 +1331,11 @@ func (a *Applier) ApplyBinlogEvent(db *gosql.DB, events [](binlog.DataEvent)) er
 		case binlog.NotDML:
 			_, err := sql.ExecNoPrepare(db, event.Query)
 			if err != nil {
-				if !sql.IgnoreDDLError(err) {
-					a.logger.Printf("[ERR] mysql.applier: exec %+v, error: %v", event.Query, err)
+				if !sql.IgnoreError(err) {
+					a.logger.Printf("[ERR] mysql.applier: exec %+v, error: %v", substr(event.Query, 0, 5000), err)
 					return err
 				} else {
-					a.logger.Printf("[WARN] mysql.applier: ignore ddl error: %v", err)
+					a.logger.Printf("[WARN] mysql.applier: ignore error: %v", err)
 				}
 			}
 		default:
@@ -1368,11 +1364,11 @@ func (a *Applier) ApplyEventQueries(queries []string) error {
 		for _, query := range queries {
 			_, err := sql.ExecNoPrepare(a.dbs[0].Db, query)
 			if err != nil {
-				if !sql.IgnoreDDLError(err) {
+				if !sql.IgnoreError(err) {
 					a.logger.Printf("[ERR] mysql.applier: exec sql error: %v", err)
 					return err
 				} else {
-					a.logger.Printf("[WARN] mysql.applier: ignore ddl error: %v", err)
+					a.logger.Printf("[WARN] mysql.applier: ignore error: %v", err)
 				}
 			}
 
@@ -1388,15 +1384,15 @@ func (a *Applier) ApplyEventQueries(queries []string) error {
 
 func (a *Applier) Stats() (*models.TaskStatistics, error) {
 	taskResUsage := models.TaskStatistics{
-		Status:    "",
-		BufferStat:&models.BufferStat{
-			OutMsgBufferSize:len(a.applyBinlogTxQueue),
-			OutGroupMsgBufferSize:len(a.applyBinlogGroupTxQueue),
+		Status: "",
+		BufferStat: &models.BufferStat{
+			OutMsgBufferSize:      len(a.applyBinlogTxQueue),
+			OutGroupMsgBufferSize: len(a.applyBinlogGroupTxQueue),
 		},
 		Timestamp: time.Now().UTC().UnixNano(),
 	}
-	if a.subConn != nil {
-		taskResUsage.MsgStat = a.subConn.Statistics
+	if a.natsConn != nil {
+		taskResUsage.MsgStat = a.natsConn.Statistics
 	}
 	//a.logger.Printf("Tracks various stats received on this connection:%v",a.subConn.Statistics)
 	/*elapsedTime := a.mysqlContext.ElapsedTime()
@@ -1507,8 +1503,8 @@ func (a *Applier) ID() string {
 
 func (a *Applier) onError(err error) {
 	a.logger.Printf("[ERR] mysql.applier: %v", err)
-	if a.subConn != nil {
-		if err := a.subConn.Publish(fmt.Sprintf("%s_restart", a.subject), []byte(a.mysqlContext.Gtid)); err != nil {
+	if a.natsConn != nil {
+		if err := a.natsConn.Publish(fmt.Sprintf("%s_restart", a.subject), []byte(a.mysqlContext.Gtid)); err != nil {
 			a.logger.Printf("[ERR] mysql.applier: trigger restart extractor : %v", err)
 		}
 	}
@@ -1521,8 +1517,8 @@ func (a *Applier) WaitCh() chan error {
 }
 
 func (a *Applier) Shutdown() error {
-	if a.subConn != nil {
-		a.subConn.Close()
+	if a.natsConn != nil {
+		a.natsConn.Close()
 	}
 	a.twg.Wait()
 	a.gwg.Wait()

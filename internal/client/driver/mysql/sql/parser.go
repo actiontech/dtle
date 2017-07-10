@@ -167,7 +167,7 @@ func FindColumns(columns []*umconf.Column, indexColumns []string) []*umconf.Colu
 	return result
 }
 
-func IgnoreDDLError(err error) bool {
+func IgnoreError(err error) bool {
 	mysqlErr, ok := err.(*mysql.MySQLError)
 	if !ok {
 		return false
@@ -177,7 +177,8 @@ func IgnoreDDLError(err error) bool {
 	case ErrDatabaseExists, ErrDatabaseNotExists, ErrDatabaseDropExists,
 		ErrTableExists, ErrTableNotExists, ErrTableDropExists,
 		ErrColumnExists, ErrColumnNotExists, ErrDupKeyName,
-		ErrIndexExists, ErrCantDropFieldOrKey, ErrDupKey, ErrDupEntry:
+		ErrIndexExists, ErrCantDropFieldOrKey, ErrDupKey,
+		ErrDupEntry, ErrKeyNotFound:
 		return true
 	default:
 		return false

@@ -41,13 +41,13 @@ type BinlogReader struct {
 	MysqlContext             *config.MySQLDriverConfig
 	waitGroup                *sync.WaitGroup
 
-	currentTx     *BinlogTx
-	txCount       int
-	currentFde    string
-	currentQuery  *bytes.Buffer
-	currentSqlB64 *bytes.Buffer
+	currentTx      *BinlogTx
+	txCount        int
+	currentFde     string
+	currentQuery   *bytes.Buffer
+	currentSqlB64  *bytes.Buffer
 	appendB64SqlBs []byte
-	ReMap         map[string]*regexp.Regexp
+	ReMap          map[string]*regexp.Regexp
 }
 
 func NewMySQLReader(cfg *config.MySQLDriverConfig, logger *log.Logger) (binlogReader *BinlogReader, err error) {
@@ -58,7 +58,7 @@ func NewMySQLReader(cfg *config.MySQLDriverConfig, logger *log.Logger) (binlogRe
 		binlogSyncer:            nil,
 		binlogStreamer:          nil,
 		MysqlContext:            cfg,
-		appendB64SqlBs:make([]byte, 1024*1024),
+		appendB64SqlBs:          make([]byte, 1024*1024),
 		waitGroup:               &sync.WaitGroup{},
 	}
 

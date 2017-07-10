@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log"
 	"strings"
-	"sync/atomic"
 	"time"
 
 	ubase "udup/internal/client/driver/mysql/base"
@@ -235,25 +234,6 @@ func (i *Inspector) validateLogSlaveUpdates() error {
 	}
 
 	return fmt.Errorf("%s:%d must have log_slave_updates enabled for executing migration", i.mysqlContext.ConnectionConfig.Key.Host, i.mysqlContext.ConnectionConfig.Key.Port)
-}
-
-// CountTableRows counts exact number of rows on the original table
-func (i *Inspector) CountTableRows(doDb string, doTb *uconf.Table) error {
-	atomic.StoreInt64(&i.mysqlContext.CountingRowsFlag, 1)
-	defer atomic.StoreInt64(&i.mysqlContext.CountingRowsFlag, 0)
-
-	i.logger.Printf("[INFO] mysql.inspector: As instructed, I'm issuing a SELECT COUNT(*) on the table. This may take a while")
-
-	query := fmt.Sprintf(`select count(*) as rows from %s.%s`, usql.EscapeName(doDb), usql.EscapeName(doTb.Name))
-	var rowsEstimate int64
-	if err := i.db.QueryRow(query).Scan(&rowsEstimate); err != nil {
-		return err
-	}
-	atomic.StoreInt64(&doTb.RowsEstimate, rowsEstimate)
-
-	i.logger.Printf("[INFO] mysql.inspector: Exact number of rows via COUNT: %d", rowsEstimate)
-
-	return nil
 }
 
 // applyColumnTypes
