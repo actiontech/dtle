@@ -52,3 +52,12 @@ udup agent -config udup.conf
 
 See the [configuration guide](./docs/CONFIGURATION.md) for a rundown of the more advanced
 configuration options.
+
+## Notice
+
+* binlog format must be row.
+* binlog row image must be full for MySQL, you may lost some field data if you update PK data in MySQL with minimal or noblob binlog row image.
+* only supports the InnoDB storage engine for MySQL (not MyISAM)
+* MySQL character set that supports only latin1、latin2、gbk、utf8、utf8mb4、binary
+
+## Todo
