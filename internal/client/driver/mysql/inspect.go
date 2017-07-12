@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"sort"
 	ubase "udup/internal/client/driver/mysql/base"
 	usql "udup/internal/client/driver/mysql/sql"
 	uconf "udup/internal/config"
@@ -18,9 +19,10 @@ const startSlavePostWaitMilliseconds = 500 * time.Millisecond
 // Inspector reads data from the read-MySQL-server (typically a replica, but can be the master)
 // It is used for gaining initial status and structure, and later also follow up on progress and changelog
 type Inspector struct {
-	logger       *log.Logger
-	db           *gosql.DB
-	mysqlContext *uconf.MySQLDriverConfig
+	logger               *log.Logger
+	db                   *gosql.DB
+	mysqlContext         *uconf.MySQLDriverConfig
+	tablesWithForeignKey []umconf.TableWithForeignKey
 }
 
 func NewInspector(ctx *uconf.MySQLDriverConfig, logger *log.Logger) *Inspector {
@@ -63,16 +65,13 @@ func (i *Inspector) InitDBConnections() (err error) {
 	return nil
 }
 
-func (i *Inspector) ValidateOriginalTable() (err error) {
-	/*if err := i.validateTable(); err != nil {
+func (i *Inspector) ValidateOriginalTable(databaseName, tableName string) (err error) {
+	if err := i.validateTable(databaseName, tableName); err != nil {
 		return err
 	}
-	if err := i.validateTableForeignKeys(); err != nil {
+	if err := i.validateTableTriggers(databaseName, tableName); err != nil {
 		return err
 	}
-	if err := i.validateTableTriggers(); err != nil {
-		return err
-	}*/
 	return nil
 }
 
@@ -249,9 +248,8 @@ func (i *Inspector) validateLogSlaveUpdates() error {
 	return fmt.Errorf("%s:%d must have log_slave_updates enabled for executing migration", i.mysqlContext.ConnectionConfig.Key.Host, i.mysqlContext.ConnectionConfig.Key.Port)
 }
 
-
 // validateTable makes sure the table we need to operate on actually exists
-func (i *Inspector) validateTable(databaseName,tableName string) error {
+func (i *Inspector) validateTable(databaseName, tableName string) error {
 	query := fmt.Sprintf(`show table status from %s like '%s'`, usql.EscapeName(databaseName), tableName)
 
 	tableFound := false
@@ -276,49 +274,52 @@ func (i *Inspector) validateTable(databaseName,tableName string) error {
 }
 
 // validateTableForeignKeys makes sure no foreign keys exist on the migrated table
-func (i *Inspector) validateTableForeignKeys(databaseName,tableName string) error {
+func (i *Inspector) validateTableForeignKeys() error {
 	query := `
 		SELECT
-			SUM(REFERENCED_TABLE_NAME IS NOT NULL AND TABLE_SCHEMA=? AND TABLE_NAME=?) as num_child_side_fk,
-			SUM(REFERENCED_TABLE_NAME IS NOT NULL AND REFERENCED_TABLE_SCHEMA=? AND REFERENCED_TABLE_NAME=?) as num_parent_side_fk
+			REFERENCED_TABLE_SCHEMA,REFERENCED_TABLE_NAME,
+			TABLE_SCHEMA,TABLE_NAME
 		FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE
 		WHERE
 				REFERENCED_TABLE_NAME IS NOT NULL
-				AND ((TABLE_SCHEMA=? AND TABLE_NAME=?)
-					OR (REFERENCED_TABLE_SCHEMA=? AND REFERENCED_TABLE_NAME=?)
-				)
+		ORDER BY
+			REFERENCED_TABLE_NAME
 	`
-	numParentForeignKeys := 0
-	numChildForeignKeys := 0
 	err := usql.QueryRowsMap(i.db, query, func(m usql.RowMap) error {
-		numChildForeignKeys = m.GetInt("num_child_side_fk")
-		numParentForeignKeys = m.GetInt("num_parent_side_fk")
+		tableWithForeignKey := umconf.TableWithForeignKey{
+			ReferencedTableSchema: m.GetString("REFERENCED_TABLE_SCHEMA"),
+			ReferencedTableName:   m.GetString("REFERENCED_TABLE_NAME"),
+			TableSchema:           m.GetString("TABLE_SCHEMA"),
+			TableName:             m.GetString("TABLE_NAME"),
+			Index:                 0,
+		}
+		i.tablesWithForeignKey = append(i.tablesWithForeignKey, tableWithForeignKey)
 		return nil
-	},
-		databaseName,
-		tableName,
-		databaseName,
-		tableName,
-		databaseName,
-		tableName,
-		databaseName,
-		tableName,
-	)
+	})
 	if err != nil {
 		return err
 	}
-	if numParentForeignKeys > 0 {
-		return fmt.Errorf("Found %d parent-side foreign keys on %s.%s. Parent-side foreign keys are not supported. Bailing out", numParentForeignKeys, usql.EscapeName(databaseName), usql.EscapeName(tableName))
+
+	for _, t1 := range i.tablesWithForeignKey {
+		for idx, t2 := range i.tablesWithForeignKey {
+			if t2.ReferencedTableSchema == t1.TableSchema &&
+				t2.ReferencedTableName == t1.TableName {
+				t2.Index = t1.Index + 1
+				i.tablesWithForeignKey[idx] = t2
+			}
+		}
 	}
-	if numChildForeignKeys > 0 {
-		return fmt.Errorf("Found %d child-side foreign keys on %s.%s. Child-side foreign keys are not supported. Bailing out", numChildForeignKeys, usql.EscapeName(databaseName), usql.EscapeName(tableName))
-	}
-	i.logger.Printf("[DEBUG] Validated no foreign keys exist on table")
+
+	sort.Sort(umconf.TableWrapper{i.tablesWithForeignKey, func(p, q *umconf.TableWithForeignKey) bool {
+		return q.Index < p.Index // Index desc sort
+	}})
+
+	i.logger.Printf("[DEBUG] validated foreign keys on table")
 	return nil
 }
 
 // validateTableTriggers makes sure no triggers exist on the migrated table
-func (i *Inspector) validateTableTriggers(databaseName,tableName string) error {
+func (i *Inspector) validateTableTriggers(databaseName, tableName string) error {
 	query := `
 		SELECT COUNT(*) AS num_triggers
 			FROM INFORMATION_SCHEMA.TRIGGERS
@@ -344,7 +345,6 @@ func (i *Inspector) validateTableTriggers(databaseName,tableName string) error {
 	i.logger.Printf("[DEBUG] Validated no triggers exist on table")
 	return nil
 }
-
 
 // applyColumnTypes
 func (i *Inspector) applyColumnTypes(databaseName, tableName string, columnsLists ...*umconf.ColumnList) error {

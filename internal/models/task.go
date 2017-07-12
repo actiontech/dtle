@@ -366,7 +366,6 @@ const (
 	DefaultKillTimeout = 5 * time.Second
 )
 
-
 // WaitResult stores the result of a Wait operation.
 type WaitResult struct {
 	ExitCode int
