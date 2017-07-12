@@ -448,7 +448,7 @@ func (b *BinlogReader) handleBinlogRowsEvent(ev *replication.BinlogEvent, txChan
 			b.appendQuery(query)
 		} else {
 			// DDL or statement/mixed binlog format
-			b.setImpactOnAll()
+			b.clearB64Sql()
 			if strings.ToUpper(query) == "COMMIT" || !b.currentTx.hasBeginQuery {
 				if skipQueryEvent(query) {
 					b.logger.Printf("[WARN] skip query %s", query)
@@ -467,10 +467,7 @@ func (b *BinlogReader) handleBinlogRowsEvent(ev *replication.BinlogEvent, txChan
 
 				for _, sql := range sqls {
 					if b.skipQueryDDL(sql, string(evt.Schema)) {
-						/*ulog.Logger.WithFields(logrus.Fields{
-							"schema": fmt.Sprintf("%s", evt.Schema),
-							"sql":    fmt.Sprintf("%s", sql),
-						}).Debug("builder: skip query-ddl-sql")*/
+						b.logger.Printf("[DEBUG] mysql.reader: skip QueryEvent at schema: %s,sql: %s", fmt.Sprintf("%s", evt.Schema), sql)
 						continue
 					}
 
@@ -486,16 +483,10 @@ func (b *BinlogReader) handleBinlogRowsEvent(ev *replication.BinlogEvent, txChan
 		}
 
 	case replication.TABLE_MAP_EVENT:
-		if b.currentTx.ImpactingAll {
-			return nil
-		}
 		evt := ev.Event.(*replication.TableMapEvent)
 
 		if b.skipRowEvent(string(evt.Schema), string(evt.Table)) {
-			/*ulog.Logger.WithFields(logrus.Fields{
-				"schema": fmt.Sprintf("%s", ev.Schema),
-				"table":  fmt.Sprintf("%s", ev.Table),
-			}).Debug("builder: skip TableMapEvent")*/
+			b.logger.Printf("[DEBUG] mysql.reader: skip TableMapEvent at schema: %s,table: %s", fmt.Sprintf("%s", evt.Schema), fmt.Sprintf("%s", evt.Table))
 			return nil
 		}
 
@@ -508,15 +499,9 @@ func (b *BinlogReader) handleBinlogRowsEvent(ev *replication.BinlogEvent, txChan
 		})
 
 	case replication.WRITE_ROWS_EVENTv0, replication.WRITE_ROWS_EVENTv1, replication.WRITE_ROWS_EVENTv2:
-		if b.currentTx.ImpactingAll {
-			return nil
-		}
 		evt := ev.Event.(*replication.RowsEvent)
 		if b.skipRowEvent(string(evt.Table.Schema), string(evt.Table.Table)) {
-			/*ulog.Logger.WithFields(logrus.Fields{
-				"schema": fmt.Sprintf("%s", ev.Table.Schema),
-				"table":  fmt.Sprintf("%s", ev.Table.Table),
-			}).Debug("builder: skip RowsEvent")*/
+			b.logger.Printf("[DEBUG] mysql.reader: skip RowsEvent at schema: %s,table: %s", fmt.Sprintf("%s", evt.Table.Schema), fmt.Sprintf("%s", evt.Table.Table))
 			return nil
 		}
 
@@ -530,16 +515,9 @@ func (b *BinlogReader) handleBinlogRowsEvent(ev *replication.BinlogEvent, txChan
 		//tb.addCount(Insert)
 
 	case replication.UPDATE_ROWS_EVENTv0, replication.UPDATE_ROWS_EVENTv1, replication.UPDATE_ROWS_EVENTv2:
-		if b.currentTx.ImpactingAll {
-			return nil
-		}
-
 		evt := ev.Event.(*replication.RowsEvent)
 		if b.skipRowEvent(string(evt.Table.Schema), string(evt.Table.Table)) {
-			/*ulog.Logger.WithFields(logrus.Fields{
-				"schema": fmt.Sprintf("%s", ev.Table.Schema),
-				"table":  fmt.Sprintf("%s", ev.Table.Table),
-			}).Debug("builder: skip RowsEvent")*/
+			b.logger.Printf("[DEBUG] mysql.reader: skip RowsEvent at schema: %s,table: %s", fmt.Sprintf("%s", evt.Table.Schema), fmt.Sprintf("%s", evt.Table.Table))
 			return nil
 		}
 
@@ -553,16 +531,9 @@ func (b *BinlogReader) handleBinlogRowsEvent(ev *replication.BinlogEvent, txChan
 		//tb.addCount(Update)
 
 	case replication.DELETE_ROWS_EVENTv0, replication.DELETE_ROWS_EVENTv1, replication.DELETE_ROWS_EVENTv2:
-		if b.currentTx.ImpactingAll {
-			return nil
-		}
-
 		evt := ev.Event.(*replication.RowsEvent)
 		if b.skipRowEvent(string(evt.Table.Schema), string(evt.Table.Table)) {
-			/*ulog.Logger.WithFields(logrus.Fields{
-				"schema": fmt.Sprintf("%s", ev.Table.Schema),
-				"table":  fmt.Sprintf("%s", ev.Table.Table),
-			}).Debug("builder: skip RowsEvent")*/
+			b.logger.Printf("[DEBUG] mysql.reader: skip RowsEvent at schema: %s,table: %s", fmt.Sprintf("%s", evt.Table.Schema), fmt.Sprintf("%s", evt.Table.Table))
 			return nil
 		}
 
@@ -607,10 +578,6 @@ func newTxWithoutGTIDError(event *BinlogEvent) error {
 	return fmt.Errorf("transaction without GTID_EVENT %v@%v", event.BinlogFile, event.RealPos)
 }
 
-func (b *BinlogReader) setImpactOnAll() {
-	b.currentTx.ImpactingAll = true
-	b.clearB64Sql()
-}
 func (b *BinlogReader) clearB64Sql() {
 	b.currentSqlB64 = nil
 }

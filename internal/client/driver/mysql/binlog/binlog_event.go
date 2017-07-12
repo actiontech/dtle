@@ -29,7 +29,6 @@ type BinlogTx struct {
 	// table -> [row]. row is identified by a hash of pk values.
 	hasBeginQuery bool
 	Impacting     map[uint64]([]string)
-	ImpactingAll  bool
 	Query         string
 	Fde           string
 	eventCount    int //for evaluate
