@@ -38,6 +38,8 @@ type Extractor struct {
 	subject                    string
 	mysqlContext               *config.MySQLDriverConfig
 	db                         *gosql.DB
+	tables                     []*Table
+	tablesWithForeignKey       []*Table
 	binlogChannel              chan *binlog.BinlogTx
 	dataChannel                chan *binlog.BinlogEntry
 	parser                     *sql.Parser
@@ -59,6 +61,8 @@ func NewExtractor(subject string, cfg *config.MySQLDriverConfig, logger *log.Log
 		logger:                     logger,
 		subject:                    subject,
 		mysqlContext:               cfg,
+		tables:                     make([]*Table, 0),
+		tablesWithForeignKey:       make([]*Table, 0),
 		binlogChannel:              make(chan *binlog.BinlogTx, ChannelBufferSize),
 		dataChannel:                make(chan *binlog.BinlogEntry, ChannelBufferSize),
 		parser:                     sql.NewParser(),
@@ -403,7 +407,7 @@ func (e *Extractor) initiateInspector() (err error) {
 	if err := e.inspector.InitDBConnections(); err != nil {
 		return err
 	}
-	if err := e.inspector.ValidateOriginalTable(); err != nil {
+	if err := e.inspector.validateTableForeignKeys(); err != nil {
 		return err
 	}
 	if err := e.inspector.validateLogSlaveUpdates(); err != nil {
@@ -812,6 +816,20 @@ func (e *Extractor) requestMsg(subject string, txMsg []byte) (err error) {
 	return err
 }
 
+func (e *Extractor) isContains(tb *Table) bool {
+	for _, t := range e.tables {
+		if t.TableSchema == tb.TableSchema && t.TableName == tb.TableName {
+			return true
+		}
+	}
+	for _, t := range e.tablesWithForeignKey {
+		if t.TableSchema == tb.TableSchema && t.TableName == tb.TableName {
+			return true
+		}
+	}
+	return false
+}
+
 //Perform the snapshot using the same logic as the "mysqldump" utility.
 func (e *Extractor) mysqlDump() error {
 	// Generate the DDL statements that set the charset-related system variables ...
@@ -829,7 +847,6 @@ func (e *Extractor) mysqlDump() error {
 	e.logger.Printf("[INFO] mysql.extractor: Step 1: read list of available tables in each database")
 
 	// Creates a MYSQL Dump based on the options supplied through the dumper.
-	tables := make([]*table, 0)
 	if len(e.mysqlContext.ReplicateDoDb) > 0 {
 		// ------
 		// STEP 2
@@ -839,9 +856,20 @@ func (e *Extractor) mysqlDump() error {
 		e.logger.Printf("[INFO] mysql.extractor: Step 2: generating DROP and CREATE statements to reflect current database schemas: %v", e.mysqlContext.ReplicateDoDb)
 
 		for _, doDb := range e.mysqlContext.ReplicateDoDb {
-			for _, tb := range doDb.Table {
-				t := &table{DbName: doDb.Database, TbName: tb.Name}
-				tables = append(tables, t)
+			for _, doTb := range doDb.Table {
+				if err := e.inspector.ValidateOriginalTable(doDb.Database, doTb.Name); err != nil {
+					return err
+				}
+				tb := &Table{TableSchema: doDb.Database, TableName: doTb.Name}
+				if e.inspector.isContains(tb) {
+					if !e.isContains(tb) {
+						e.tablesWithForeignKey = append(e.tablesWithForeignKey, tb)
+					}
+				}else {
+					if !e.isContains(tb) {
+						e.tables = append(e.tables, tb)
+					}
+				}
 			}
 		}
 	} else {
@@ -861,8 +889,19 @@ func (e *Extractor) mysqlDump() error {
 				return err
 			}
 			for _, tbName := range tbs {
-				t := &table{DbName: dbName, TbName: tbName}
-				tables = append(tables, t)
+				if err := e.inspector.ValidateOriginalTable(dbName, tbName); err != nil {
+					return err
+				}
+				tb := &Table{TableSchema: dbName, TableName: tbName}
+				if e.inspector.isContains(tb) {
+					if !e.isContains(tb) {
+						e.tablesWithForeignKey = append(e.tablesWithForeignKey, tb)
+					}
+				}else {
+					if !e.isContains(tb) {
+						e.tables = append(e.tables, tb)
+					}
+				}
 			}
 		}
 	}
@@ -871,20 +910,49 @@ func (e *Extractor) mysqlDump() error {
 	// STEP 3
 	// ------
 	// Dump all of the tables and generate source records ...
-	e.logger.Printf("[INFO] mysql.extractor: Step 3: scanning contents of %d tables", len(tables))
+	e.logger.Printf("[INFO] mysql.extractor: Step 3: scanning contents of %d tables", len(e.tablesWithForeignKey)+len(e.tables))
 	startScan := currentTimeMillis()
 	totalRowCount := 0
 	counter := 0
 	completedCounter := 0
 	concurrency := 5 //Concurrency workerks
 	chunkSize := 1000
-	for _, d := range tables {
+	for _, t := range e.tables {
 		// Obtain a record maker for this table, which knows about the schema ...
 		// Choose how we create statements based on the # of rows ...
 		counter++
-		e.logger.Printf("[INFO] mysql.extractor: Step 3: - scanning table '%s.%s' (%d of %d tables)", d.DbName, d.TbName, counter, len(tables))
+		e.logger.Printf("[INFO] mysql.extractor: Step 3: - scanning table '%s.%s' (%d of %d tables)", t.TableSchema, t.TableName, counter, len(e.tablesWithForeignKey)+len(e.tables))
 
-		dmp := NewDumper(e.db, d.DbName, d.TbName, concurrency, chunkSize,e.logger)
+		dmp := NewDumper(e.db, t.TableSchema, t.TableName, concurrency, chunkSize, e.logger)
+		result, err := dmp.Dump(setSystemVariablesStatement)
+		if err != nil {
+			return err
+		}
+
+		// Scan the rows in the table ...
+		for _, entry := range result {
+			if entry.err != nil {
+				return entry.err
+			}
+			txMsg, err := Encode(entry)
+			if err != nil {
+				return err
+			}
+			if err := e.requestMsg(fmt.Sprintf("%s_full", e.subject), txMsg); err != nil {
+				return fmt.Errorf("request full msg err: %v", err)
+			}
+			totalRowCount = totalRowCount + int(entry.Counter)
+		}
+		completedCounter++
+	}
+
+	for _, t := range e.tablesWithForeignKey {
+		// Obtain a record maker for this table, which knows about the schema ...
+		// Choose how we create statements based on the # of rows ...
+		counter++
+		e.logger.Printf("[INFO] mysql.extractor: Step 3: - scanning table with foreignKey '%s.%s' (%d of %d tables)", t.TableSchema, t.TableName, counter, len(e.tablesWithForeignKey)+len(e.tables))
+
+		dmp := NewDumper(e.db, t.TableSchema, t.TableName, concurrency, chunkSize, e.logger)
 		result, err := dmp.Dump(setSystemVariablesStatement)
 		if err != nil {
 			return err
@@ -911,7 +979,7 @@ func (e *Extractor) mysqlDump() error {
 	// First mark the snapshot as complete and then apply the updated offset to the buffered record ...
 	stop := currentTimeMillis()
 	e.logger.Printf("[INFO] mysql.extractor: Step 3: scanned %d rows in %d tables in %s",
-		totalRowCount, len(tables), time.Duration(stop-startScan))
+		totalRowCount, len(e.tablesWithForeignKey)+len(e.tables), time.Duration(stop-startScan))
 
 	return nil
 }

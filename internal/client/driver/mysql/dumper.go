@@ -3,8 +3,8 @@ package mysql
 import (
 	"database/sql"
 	"fmt"
-	"math"
 	"log"
+	"math"
 	"strconv"
 	"strings"
 
@@ -12,30 +12,30 @@ import (
 )
 
 type dumper struct {
-	logger                     *log.Logger
-	concurrency              int
-	chunkSize                int
-	DbName                   string
-	TableName                string
+	logger      *log.Logger
+	concurrency int
+	chunkSize   int
+	TableSchema string
+	TableName   string
 
 	// DB is safe for using in goroutines
 	// http://golang.org/src/database/sql/sql.go?s=5574:6362#L201
 	db *sql.DB
 }
 
-type table struct {
-	DbName string
-	TbName string
+type Table struct {
+	TableSchema string
+	TableName   string
 }
 
-func NewDumper(db *sql.DB, dbName, tableName string, concurrency, chunkSize int,logger *log.Logger) *dumper {
+func NewDumper(db *sql.DB, dbName, tableName string, concurrency, chunkSize int, logger *log.Logger) *dumper {
 	dumper := &dumper{
-		logger:                     logger,
-		db:                    db,
-		DbName:              dbName,
-		TableName:               tableName,
-		concurrency:            concurrency,
-		chunkSize: chunkSize,
+		logger:      logger,
+		db:          db,
+		TableSchema: dbName,
+		TableName:   tableName,
+		concurrency: concurrency,
+		chunkSize:   chunkSize,
 	}
 
 	return dumper
@@ -44,7 +44,7 @@ func NewDumper(db *sql.DB, dbName, tableName string, concurrency, chunkSize int,
 func (d *dumper) getRowsCount() (uint64, error) {
 	var res sql.NullString
 	query := fmt.Sprintf(`SELECT COUNT(*) FROM %s.%s`,
-		usql.EscapeName(d.DbName),
+		usql.EscapeName(d.TableSchema),
 		usql.EscapeName(d.TableName),
 	)
 	err := d.db.QueryRow(query).Scan(&res)
@@ -65,44 +65,50 @@ type dumpEntry struct {
 	DbSQL                    string
 	TbSQL                    string
 	Values                   string
-	RowsCount	uint64
-	Offset    uint64
-	Counter   uint64
-	Rows_cnt uint32
-	Rows_crc32 uint32
-	data_text []string
-	err       error
+	RowsCount                uint64
+	Offset                   uint64
+	Counter                  uint64
+	Rows_cnt                 uint32
+	Rows_crc32               uint32
+	data_text                []string
+	err                      error
 }
 
 func (j *dumpEntry) incrementCounter() {
 	j.Counter++
 }
 
-func (d *dumper) getDumpEntries(systemVariablesStatement,dbSQL,tbSQL string) ([]*dumpEntry, error) {
+func (d *dumper) getDumpEntries(systemVariablesStatement, dbSQL, tbSQL string) ([]*dumpEntry, error) {
 	total, err := d.getRowsCount()
 	if err != nil {
 		return nil, err
 	}
 
 	sliceCount := int(math.Ceil(float64(total) / float64(d.chunkSize)))
+	if sliceCount == 0 {
+		sliceCount = 1
+	}
 	entries := make([]*dumpEntry, sliceCount)
 	for i := 0; i < sliceCount; i++ {
 		offset := uint64(i) * uint64(d.chunkSize)
 		entries[i] = &dumpEntry{
-			SystemVariablesStatement:systemVariablesStatement,
-			DbSQL:dbSQL,
-			TbSQL:tbSQL,
-			RowsCount:total,
-			Offset: offset,
-			Counter: 0}
+			SystemVariablesStatement: systemVariablesStatement,
+			DbSQL:     dbSQL,
+			TbSQL:     tbSQL,
+			RowsCount: total,
+			Offset:    offset,
+			Counter:   0}
 	}
 	return entries, nil
 }
 
 // dumps a specific chunk, reading chunk info from the channel
 func (d *dumper) getChunkData(entry *dumpEntry) error {
+	if entry.RowsCount == 0 {
+		return nil
+	}
 	query := fmt.Sprintf(`SELECT * FROM %s.%s LIMIT %d OFFSET %d`,
-		usql.EscapeName(d.DbName),
+		usql.EscapeName(d.TableSchema),
 		usql.EscapeName(d.TableName),
 		d.chunkSize,
 		entry.Offset,
@@ -167,7 +173,7 @@ func (d *dumper) getChunkData(entry *dumpEntry) error {
 		entry.incrementCounter()
 	}
 	//entry.Rows_crc32 = crc32.ChecksumIEEE([]byte(strings.Join(entry.data_text, ",")))
-	entry.Values = fmt.Sprintf(`replace into %s.%s values %s`, d.DbName, d.TableName, strings.Join(entry.data_text, ","))
+	entry.Values = fmt.Sprintf(`replace into %s.%s values %s`, d.TableSchema, d.TableName, strings.Join(entry.data_text, ","))
 	return nil
 }
 
@@ -282,12 +288,12 @@ func (d *dumper) worker(entriesChannel <-chan *dumpEntry, resultsChannel chan<- 
 }
 
 func (d *dumper) Dump(systemVariablesStatement string) ([]*dumpEntry, error) {
-	dbSQL := fmt.Sprintf("CREATE DATABASE %s", d.DbName)
-	tbSQL,err := d.createTableSQL()
+	dbSQL := fmt.Sprintf("CREATE DATABASE %s", d.TableSchema)
+	tbSQL, err := d.createTableSQL()
 	if err != nil {
 		return nil, err
 	}
-	entries, err := d.getDumpEntries(systemVariablesStatement,dbSQL,tbSQL)
+	entries, err := d.getDumpEntries(systemVariablesStatement, dbSQL, tbSQL)
 	if err != nil {
 		return nil, err
 	}
@@ -372,9 +378,9 @@ func showTables(db *sql.DB, dbName string) ([]string, error) {
 	return tables, rows.Err()
 }
 
-func (d *dumper) createTableSQL() (string,error) {
+func (d *dumper) createTableSQL() (string, error) {
 	query := fmt.Sprintf(`SHOW CREATE TABLE %s.%s`,
-		usql.EscapeName(d.DbName),
+		usql.EscapeName(d.TableSchema),
 		usql.EscapeName(d.TableName),
 	)
 	// Get table creation SQL
@@ -382,11 +388,11 @@ func (d *dumper) createTableSQL() (string,error) {
 	var table_sql sql.NullString
 	err := d.db.QueryRow(query).Scan(&table_return, &table_sql)
 	if err != nil {
-		return "",err
+		return "", err
 	}
 	if table_return.String != d.TableName {
-		return "",fmt.Errorf("Returned table is not the same as requested table")
+		return "", fmt.Errorf("Returned table is not the same as requested table")
 	}
 
-	return fmt.Sprintf("USE %s;%s", d.DbName, table_sql.String),nil
+	return fmt.Sprintf("USE %s;%s", d.TableSchema, table_sql.String), nil
 }

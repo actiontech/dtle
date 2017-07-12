@@ -8,6 +8,7 @@ import (
 	//"math"
 	"bytes"
 	"encoding/gob"
+	//"encoding/base64"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -51,11 +52,8 @@ type Applier struct {
 	applyDataEntryQueue     chan *binlog.BinlogEntry
 	applyBinlogTxQueue      chan *binlog.BinlogTx
 	applyBinlogGroupTxQueue chan []*binlog.BinlogTx
-	twg                     *sync.WaitGroup
-	gwg                     *sync.WaitGroup
 
 	natsConn *gonats.Conn
-	fullSub *gonats.Subscription
 	waitCh   chan *models.WaitResult
 }
 
@@ -72,9 +70,7 @@ func NewApplier(subject string, cfg *config.MySQLDriverConfig, logger *log.Logge
 		applyDataEntryQueue:        make(chan *binlog.BinlogEntry, applyDataQueueBuffer),
 		applyBinlogTxQueue:         make(chan *binlog.BinlogTx, applyBinlogTxQueueBuffer),
 		applyBinlogGroupTxQueue:    make(chan []*binlog.BinlogTx, applyDataQueueBuffer),
-		twg:    &sync.WaitGroup{},
-		gwg:    &sync.WaitGroup{},
-		waitCh: make(chan *models.WaitResult, 1),
+		waitCh:                     make(chan *models.WaitResult, 1),
 	}
 	return a
 }
@@ -467,7 +463,7 @@ func (a *Applier) onApplyTxStruct(dbApplier *sql.DbApplier, binlogTx *binlog.Bin
 	if err != nil {
 		return err
 	}
-	var ignoreDDLError error
+	var ignoreError error
 	if binlogTx.Query == "" {
 		_, err = sql.ExecNoPrepare(dbApplier.Db, `begin;commit`)
 		if err != nil {
@@ -477,16 +473,17 @@ func (a *Applier) onApplyTxStruct(dbApplier *sql.DbApplier, binlogTx *binlog.Bin
 		_, err := sql.ExecNoPrepare(dbApplier.Db, binlogTx.Query)
 		if err != nil {
 			if !sql.IgnoreError(err) {
-				a.logger.Printf("[ERR] mysql.applier: gtid:[%s:%d],exec [%v] error: %v", binlogTx.SID, binlogTx.GNO, substr(binlogTx.Query, 0, 5000), err)
+				//SELECT FROM_BASE64('')
+				a.logger.Printf("[ERR] mysql.applier: exec gtid:[%s:%d] error: %v", binlogTx.SID, binlogTx.GNO, err)
 				return err
 			}
-			a.logger.Printf("[WARN] mysql.applier: gtid:[%s:%d],exec [%v],ignore error: %v", binlogTx.SID, binlogTx.GNO, substr(binlogTx.Query, 0, 5000), err)
-			ignoreDDLError = err
+			a.logger.Printf("[WARN] mysql.applier: exec gtid:[%s:%d],ignore error: %v", binlogTx.SID, binlogTx.GNO, err)
+			ignoreError = err
 		}
 		//a.addCount(binlog.Ddl)
 	}
 
-	if ignoreDDLError != nil {
+	if ignoreError != nil {
 		_, err := sql.ExecNoPrepare(dbApplier.Db, fmt.Sprintf(`commit;set gtid_next='%s:%d'`, binlogTx.SID, binlogTx.GNO))
 		if err != nil {
 			return err
@@ -497,15 +494,6 @@ func (a *Applier) onApplyTxStruct(dbApplier *sql.DbApplier, binlogTx *binlog.Bin
 		}
 	}
 	return nil
-}
-
-func substr(s string, pos, length int) string {
-	runes := []rune(s)
-	l := pos + length
-	if l > len(runes) {
-		l = len(runes)
-	}
-	return string(runes[pos:l])
 }
 
 func (a *Applier) onApplyEventStruct(db *gosql.DB, binlogEntry *binlog.BinlogEntry) error {
@@ -602,7 +590,7 @@ OUTER:
 					a.onError(err)
 					break OUTER
 				}
-				a.waitCh <- models.NewWaitResult(0, nil)
+				//a.waitCh <- models.NewWaitResult(0, nil)
 				/*a.logger.Printf("[INFO] mysql.applier: operating until row copy is complete")
 				a.consumeRowCopyComplete()
 				a.logger.Printf("[INFO] mysql.applier: row copy complete")
@@ -656,9 +644,6 @@ func (a *Applier) initiateStreaming() error {
 		for {
 			select {
 			case binlogTx := <-a.applyBinlogTxQueue:
-				if err := a.fullSub.Unsubscribe(); err != nil {
-					a.onError(err)
-				}
 				if sid == binlogTx.SID {
 					return
 				}
@@ -666,8 +651,6 @@ func (a *Applier) initiateStreaming() error {
 					groupTx = append(groupTx, binlogTx)
 				} else {
 					if groupTx != nil {
-						a.gwg.Add(1)
-						defer a.gwg.Done()
 						a.applyBinlogGroupTxQueue <- groupTx
 						groupTx = nil
 					}
@@ -676,8 +659,6 @@ func (a *Applier) initiateStreaming() error {
 				lastCommitted = binlogTx.LastCommitted
 			case <-time.After(100 * time.Millisecond):
 				if groupTx != nil {
-					a.gwg.Add(1)
-					defer a.gwg.Done()
 					a.applyBinlogGroupTxQueue <- groupTx
 					groupTx = nil
 				}
@@ -686,7 +667,7 @@ func (a *Applier) initiateStreaming() error {
 	}()
 
 	if a.mysqlContext.Gtid == "" {
-		sub, err := a.natsConn.Subscribe(fmt.Sprintf("%s_full", a.subject), func(m *gonats.Msg) {
+		_, err := a.natsConn.Subscribe(fmt.Sprintf("%s_full", a.subject), func(m *gonats.Msg) {
 			dumpData := &dumpEntry{}
 			if err := Decode(m.Data, dumpData); err != nil {
 				a.onError(err)
@@ -699,7 +680,6 @@ func (a *Applier) initiateStreaming() error {
 		if err != nil {
 			return err
 		}
-		a.fullSub = sub
 	}
 
 	if a.mysqlContext.ApproveHeterogeneous {
@@ -718,8 +698,6 @@ func (a *Applier) initiateStreaming() error {
 				a.onError(err)
 			}
 			for _, tx := range binlogTx {
-				a.twg.Add(1)
-				defer a.twg.Done()
 				a.applyBinlogTxQueue <- tx
 			}
 			if err := a.natsConn.Publish(m.Reply, nil); err != nil {
@@ -1332,7 +1310,7 @@ func (a *Applier) ApplyBinlogEvent(db *gosql.DB, events [](binlog.DataEvent)) er
 			_, err := sql.ExecNoPrepare(db, event.Query)
 			if err != nil {
 				if !sql.IgnoreError(err) {
-					a.logger.Printf("[ERR] mysql.applier: exec %+v, error: %v", substr(event.Query, 0, 5000), err)
+					a.logger.Printf("[ERR] mysql.applier: exec sql error: %v", err)
 					return err
 				} else {
 					a.logger.Printf("[WARN] mysql.applier: ignore error: %v", err)
@@ -1361,7 +1339,7 @@ func (a *Applier) ApplyBinlogEvent(db *gosql.DB, events [](binlog.DataEvent)) er
 
 func (a *Applier) ApplyEventQueries(entry *dumpEntry) error {
 	queries := []string{}
-	//queries = append(queries,copyRows.SystemVariablesStatement)
+	queries = append(queries,entry.SystemVariablesStatement)
 	queries = append(queries, entry.DbSQL, entry.TbSQL)
 	if entry.Values != "" {
 		queries = append(queries, entry.Values)
@@ -1529,11 +1507,9 @@ func (a *Applier) Shutdown() error {
 	if a.natsConn != nil {
 		a.natsConn.Close()
 	}
-	a.twg.Wait()
-	a.gwg.Wait()
 	//close(a.applyDataEntryQueue)
 	//close(a.applyBinlogTxQueue)
-	close(a.applyBinlogGroupTxQueue)
+	//close(a.applyBinlogGroupTxQueue)
 
 	if err := sql.CloseDBs(a.dbs...); err != nil {
 		return err

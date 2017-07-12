@@ -273,6 +273,15 @@ func (i *Inspector) validateTable(databaseName, tableName string) error {
 	return nil
 }
 
+func (i *Inspector) isContains(tb *Table) bool {
+	for _, t := range i.tablesWithForeignKey {
+		if t.TableSchema == tb.TableSchema && t.TableName == tb.TableName {
+			return true
+		}
+	}
+	return false
+}
+
 // validateTableForeignKeys makes sure no foreign keys exist on the migrated table
 func (i *Inspector) validateTableForeignKeys() error {
 	query := `
@@ -309,10 +318,11 @@ func (i *Inspector) validateTableForeignKeys() error {
 			}
 		}
 	}
-
+	i.logger.Printf("[TEST] i.tablesWithForeignKey: %++v", i.tablesWithForeignKey)
 	sort.Sort(umconf.TableWrapper{i.tablesWithForeignKey, func(p, q *umconf.TableWithForeignKey) bool {
 		return q.Index < p.Index // Index desc sort
 	}})
+	i.logger.Printf("[TEST] i.tablesWithForeignKey: %++v", i.tablesWithForeignKey)
 
 	i.logger.Printf("[DEBUG] validated foreign keys on table")
 	return nil
