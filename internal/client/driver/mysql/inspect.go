@@ -63,6 +63,19 @@ func (i *Inspector) InitDBConnections() (err error) {
 	return nil
 }
 
+func (i *Inspector) ValidateOriginalTable() (err error) {
+	/*if err := i.validateTable(); err != nil {
+		return err
+	}
+	if err := i.validateTableForeignKeys(); err != nil {
+		return err
+	}
+	if err := i.validateTableTriggers(); err != nil {
+		return err
+	}*/
+	return nil
+}
+
 func (i *Inspector) InspectTableColumnsAndUniqueKeys(databaseName, tableName string) (columns *umconf.ColumnList, uniqueKeys [](*umconf.UniqueKey), err error) {
 	uniqueKeys, err = i.getCandidateUniqueKeys(databaseName, tableName)
 	if err != nil {
@@ -235,6 +248,103 @@ func (i *Inspector) validateLogSlaveUpdates() error {
 
 	return fmt.Errorf("%s:%d must have log_slave_updates enabled for executing migration", i.mysqlContext.ConnectionConfig.Key.Host, i.mysqlContext.ConnectionConfig.Key.Port)
 }
+
+
+// validateTable makes sure the table we need to operate on actually exists
+func (i *Inspector) validateTable(databaseName,tableName string) error {
+	query := fmt.Sprintf(`show table status from %s like '%s'`, usql.EscapeName(databaseName), tableName)
+
+	tableFound := false
+	tableEngine := ""
+	err := usql.QueryRowsMap(i.db, query, func(rowMap usql.RowMap) error {
+		tableEngine = rowMap.GetString("Engine")
+		if rowMap.GetString("Comment") == "VIEW" {
+			return fmt.Errorf("%s.%s is a VIEW, not a real table. Bailing out", usql.EscapeName(databaseName), usql.EscapeName(tableName))
+		}
+		tableFound = true
+
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	if !tableFound {
+		return fmt.Errorf("Cannot find table %s.%s!", usql.EscapeName(databaseName), usql.EscapeName(tableName))
+	}
+	i.logger.Printf("[INFO] Table found. Engine=%s", tableEngine)
+	return nil
+}
+
+// validateTableForeignKeys makes sure no foreign keys exist on the migrated table
+func (i *Inspector) validateTableForeignKeys(databaseName,tableName string) error {
+	query := `
+		SELECT
+			SUM(REFERENCED_TABLE_NAME IS NOT NULL AND TABLE_SCHEMA=? AND TABLE_NAME=?) as num_child_side_fk,
+			SUM(REFERENCED_TABLE_NAME IS NOT NULL AND REFERENCED_TABLE_SCHEMA=? AND REFERENCED_TABLE_NAME=?) as num_parent_side_fk
+		FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE
+		WHERE
+				REFERENCED_TABLE_NAME IS NOT NULL
+				AND ((TABLE_SCHEMA=? AND TABLE_NAME=?)
+					OR (REFERENCED_TABLE_SCHEMA=? AND REFERENCED_TABLE_NAME=?)
+				)
+	`
+	numParentForeignKeys := 0
+	numChildForeignKeys := 0
+	err := usql.QueryRowsMap(i.db, query, func(m usql.RowMap) error {
+		numChildForeignKeys = m.GetInt("num_child_side_fk")
+		numParentForeignKeys = m.GetInt("num_parent_side_fk")
+		return nil
+	},
+		databaseName,
+		tableName,
+		databaseName,
+		tableName,
+		databaseName,
+		tableName,
+		databaseName,
+		tableName,
+	)
+	if err != nil {
+		return err
+	}
+	if numParentForeignKeys > 0 {
+		return fmt.Errorf("Found %d parent-side foreign keys on %s.%s. Parent-side foreign keys are not supported. Bailing out", numParentForeignKeys, usql.EscapeName(databaseName), usql.EscapeName(tableName))
+	}
+	if numChildForeignKeys > 0 {
+		return fmt.Errorf("Found %d child-side foreign keys on %s.%s. Child-side foreign keys are not supported. Bailing out", numChildForeignKeys, usql.EscapeName(databaseName), usql.EscapeName(tableName))
+	}
+	i.logger.Printf("[DEBUG] Validated no foreign keys exist on table")
+	return nil
+}
+
+// validateTableTriggers makes sure no triggers exist on the migrated table
+func (i *Inspector) validateTableTriggers(databaseName,tableName string) error {
+	query := `
+		SELECT COUNT(*) AS num_triggers
+			FROM INFORMATION_SCHEMA.TRIGGERS
+			WHERE
+				TRIGGER_SCHEMA=?
+				AND EVENT_OBJECT_TABLE=?
+	`
+	numTriggers := 0
+	err := usql.QueryRowsMap(i.db, query, func(rowMap usql.RowMap) error {
+		numTriggers = rowMap.GetInt("num_triggers")
+
+		return nil
+	},
+		databaseName,
+		tableName,
+	)
+	if err != nil {
+		return err
+	}
+	if numTriggers > 0 {
+		return fmt.Errorf("Found triggers on %s.%s. Triggers are not supported at this time. Bailing out", usql.EscapeName(databaseName), usql.EscapeName(tableName))
+	}
+	i.logger.Printf("[DEBUG] Validated no triggers exist on table")
+	return nil
+}
+
 
 // applyColumnTypes
 func (i *Inspector) applyColumnTypes(databaseName, tableName string, columnsLists ...*umconf.ColumnList) error {

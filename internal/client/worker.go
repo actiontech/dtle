@@ -266,7 +266,7 @@ func (r *Worker) prestart(resultCh chan bool) {
 func (r *Worker) run() {
 	// Predeclare things so we can jump to the RESTART
 	var stopCollection chan struct{}
-	var handleWaitCh chan error
+	var handleWaitCh chan *models.WaitResult
 
 	// If we already have a handle, populate the stopCollection and handleWaitCh
 	// to fix the invariant that it exists.
@@ -338,7 +338,11 @@ func (r *Worker) run() {
 				// Log whether the task was successful or not.
 				r.restartTracker.SetWaitResult(waitRes)
 				r.setState("", r.waitErrorToEvent(waitRes))
-				r.logger.Printf("[ERR] client: task %q for alloc %q failed: %v", r.task.Type, r.alloc.ID, waitRes)
+				if !waitRes.Successful() {
+					r.logger.Printf("[INFO] client: task %q for alloc %q failed: %v", r.task.Type, r.alloc.ID, waitRes)
+				} else {
+					r.logger.Printf("[INFO] client: task %q for alloc %q completed successfully", r.task.Type, r.alloc.ID)
+				}
 
 				break WAIT
 
@@ -649,9 +653,10 @@ func (r *Worker) UnblockStart(source string) {
 }
 
 // Helper function for converting a WaitResult into a TaskTerminated event.
-func (r *Worker) waitErrorToEvent(res error) *models.TaskEvent {
+func (r *Worker) waitErrorToEvent(res *models.WaitResult) *models.TaskEvent {
 	return models.NewTaskEvent(models.TaskTerminated).
-		SetExitMessage(res)
+		SetExitCode(res.ExitCode).
+		SetExitMessage(res.Err)
 }
 
 // Destroy is used to indicate that the task context should be destroyed. The

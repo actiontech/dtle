@@ -27,7 +27,7 @@ func newRestartTracker() *RestartTracker {
 }
 
 type RestartTracker struct {
-	waitRes          error
+	waitRes          *models.WaitResult
 	startErr         error
 	restartTriggered bool      // Whether the task has been signalled to be restarted
 	count            int       // Current number of attempts.
@@ -48,7 +48,7 @@ func (r *RestartTracker) SetStartError(err error) *RestartTracker {
 }
 
 // SetWaitResult is used to mark the most recent wait result.
-func (r *RestartTracker) SetWaitResult(res error) *RestartTracker {
+func (r *RestartTracker) SetWaitResult(res *models.WaitResult) *RestartTracker {
 	r.lock.Lock()
 	defer r.lock.Unlock()
 	r.waitRes = res
@@ -97,6 +97,10 @@ func (r *RestartTracker) GetState() (string, time.Duration) {
 	if r.restartTriggered {
 		r.reason = ""
 		return models.TaskRestarting, 0
+	}
+
+	if r.waitRes != nil && r.waitRes.Successful() {
+		return models.TaskTerminated, 0
 	}
 
 	r.count++

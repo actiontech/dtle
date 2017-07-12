@@ -47,7 +47,7 @@ type Applier struct {
 	rowCopyCompleteFlag        int64
 	// copyRowsQueue should not be buffered; if buffered some non-damaging but
 	//  excessive work happens at the end of the iteration as new copy-jobs arrive befroe realizing the copy is complete
-	copyRowsQueue           chan *dumper
+	copyRowsQueue           chan *dumpEntry
 	applyDataEntryQueue     chan *binlog.BinlogEntry
 	applyBinlogTxQueue      chan *binlog.BinlogTx
 	applyBinlogGroupTxQueue chan []*binlog.BinlogTx
@@ -55,7 +55,8 @@ type Applier struct {
 	gwg                     *sync.WaitGroup
 
 	natsConn *gonats.Conn
-	waitCh   chan error
+	fullSub *gonats.Subscription
+	waitCh   chan *models.WaitResult
 }
 
 func NewApplier(subject string, cfg *config.MySQLDriverConfig, logger *log.Logger) *Applier {
@@ -67,13 +68,13 @@ func NewApplier(subject string, cfg *config.MySQLDriverConfig, logger *log.Logge
 		parser:                     sql.NewParser(),
 		rowCopyComplete:            make(chan bool),
 		allEventsUpToLockProcessed: make(chan string),
-		copyRowsQueue:              make(chan *dumper, applyCopyRowsQueueQueueBuffer),
+		copyRowsQueue:              make(chan *dumpEntry, applyCopyRowsQueueQueueBuffer),
 		applyDataEntryQueue:        make(chan *binlog.BinlogEntry, applyDataQueueBuffer),
 		applyBinlogTxQueue:         make(chan *binlog.BinlogTx, applyBinlogTxQueueBuffer),
 		applyBinlogGroupTxQueue:    make(chan []*binlog.BinlogTx, applyDataQueueBuffer),
 		twg:    &sync.WaitGroup{},
 		gwg:    &sync.WaitGroup{},
-		waitCh: make(chan error, 1),
+		waitCh: make(chan *models.WaitResult, 1),
 	}
 	return a
 }
@@ -597,16 +598,11 @@ OUTER:
 				/*if err := copyRowsFunc(); err != nil {
 					return err
 				}*/
-				queries := []string{}
-				//queries = append(queries,copyRows.SystemVariablesStatement)
-				queries = append(queries, copyRows.DbSQL, copyRows.TbSQL)
-				if copyRows.Values != "" {
-					queries = append(queries, copyRows.Values)
-				}
-				if err := a.ApplyEventQueries(queries); err != nil {
+				if err := a.ApplyEventQueries(copyRows); err != nil {
 					a.onError(err)
 					break OUTER
 				}
+				a.waitCh <- models.NewWaitResult(0, nil)
 				/*a.logger.Printf("[INFO] mysql.applier: operating until row copy is complete")
 				a.consumeRowCopyComplete()
 				a.logger.Printf("[INFO] mysql.applier: row copy complete")
@@ -660,6 +656,9 @@ func (a *Applier) initiateStreaming() error {
 		for {
 			select {
 			case binlogTx := <-a.applyBinlogTxQueue:
+				if err := a.fullSub.Unsubscribe(); err != nil {
+					a.onError(err)
+				}
 				if sid == binlogTx.SID {
 					return
 				}
@@ -687,8 +686,8 @@ func (a *Applier) initiateStreaming() error {
 	}()
 
 	if a.mysqlContext.Gtid == "" {
-		_, err := a.natsConn.Subscribe(fmt.Sprintf("%s_full", a.subject), func(m *gonats.Msg) {
-			dumpData := &dumper{}
+		sub, err := a.natsConn.Subscribe(fmt.Sprintf("%s_full", a.subject), func(m *gonats.Msg) {
+			dumpData := &dumpEntry{}
 			if err := Decode(m.Data, dumpData); err != nil {
 				a.onError(err)
 			}
@@ -700,6 +699,7 @@ func (a *Applier) initiateStreaming() error {
 		if err != nil {
 			return err
 		}
+		a.fullSub = sub
 	}
 
 	if a.mysqlContext.ApproveHeterogeneous {
@@ -1359,9 +1359,18 @@ func (a *Applier) ApplyBinlogEvent(db *gosql.DB, events [](binlog.DataEvent)) er
 	return nil
 }
 
-func (a *Applier) ApplyEventQueries(queries []string) error {
+func (a *Applier) ApplyEventQueries(entry *dumpEntry) error {
+	queries := []string{}
+	//queries = append(queries,copyRows.SystemVariablesStatement)
+	queries = append(queries, entry.DbSQL, entry.TbSQL)
+	if entry.Values != "" {
+		queries = append(queries, entry.Values)
+	}
 	err := func() error {
 		for _, query := range queries {
+			if query == "" {
+				continue
+			}
 			_, err := sql.ExecNoPrepare(a.dbs[0].Db, query)
 			if err != nil {
 				if !sql.IgnoreError(err) {
@@ -1508,11 +1517,11 @@ func (a *Applier) onError(err error) {
 			a.logger.Printf("[ERR] mysql.applier: trigger restart extractor : %v", err)
 		}
 	}
-	a.waitCh <- err
+	a.waitCh <- models.NewWaitResult(1, err)
 	a.Shutdown()
 }
 
-func (a *Applier) WaitCh() chan error {
+func (a *Applier) WaitCh() chan *models.WaitResult {
 	return a.waitCh
 }
 
@@ -1523,7 +1532,7 @@ func (a *Applier) Shutdown() error {
 	a.twg.Wait()
 	a.gwg.Wait()
 	//close(a.applyDataEntryQueue)
-	close(a.applyBinlogTxQueue)
+	//close(a.applyBinlogTxQueue)
 	close(a.applyBinlogGroupTxQueue)
 
 	if err := sql.CloseDBs(a.dbs...); err != nil {

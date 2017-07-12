@@ -50,7 +50,7 @@ type Extractor struct {
 	rowCopyCompleteFlag        int64
 
 	natsConn *gonats.Conn
-	waitCh   chan error
+	waitCh   chan *models.WaitResult
 }
 
 func NewExtractor(subject string, cfg *config.MySQLDriverConfig, logger *log.Logger) *Extractor {
@@ -64,7 +64,7 @@ func NewExtractor(subject string, cfg *config.MySQLDriverConfig, logger *log.Log
 		parser:                     sql.NewParser(),
 		rowCopyComplete:            make(chan bool),
 		allEventsUpToLockProcessed: make(chan string),
-		waitCh: make(chan error, 1),
+		waitCh: make(chan *models.WaitResult, 1),
 	}
 	return extractor
 }
@@ -401,6 +401,9 @@ func (e *Extractor) atomicCutOver(tableName string) (err error) {
 func (e *Extractor) initiateInspector() (err error) {
 	e.inspector = NewInspector(e.mysqlContext, e.logger)
 	if err := e.inspector.InitDBConnections(); err != nil {
+		return err
+	}
+	if err := e.inspector.ValidateOriginalTable(); err != nil {
 		return err
 	}
 	if err := e.inspector.validateLogSlaveUpdates(); err != nil {
@@ -881,26 +884,25 @@ func (e *Extractor) mysqlDump() error {
 		counter++
 		e.logger.Printf("[INFO] mysql.extractor: Step 3: - scanning table '%s.%s' (%d of %d tables)", d.DbName, d.TbName, counter, len(tables))
 
-		dmp := NewDumper(e.db, d.DbName, d.TbName, setSystemVariablesStatement, concurrency, chunkSize)
-		result, err := dmp.Dump()
+		dmp := NewDumper(e.db, d.DbName, d.TbName, concurrency, chunkSize,e.logger)
+		result, err := dmp.Dump(setSystemVariablesStatement)
 		if err != nil {
 			return err
 		}
 
 		// Scan the rows in the table ...
-		for _, job := range result {
-			if job.err != nil {
-				return job.err
+		for _, entry := range result {
+			if entry.err != nil {
+				return entry.err
 			}
-			dmp.Values = fmt.Sprintf(`replace into %s.%s values %s`, dmp.DbName, dmp.TableName, strings.Join(job.data_text, ","))
-			txMsg, err := Encode(dmp)
+			txMsg, err := Encode(entry)
 			if err != nil {
 				return err
 			}
 			if err := e.requestMsg(fmt.Sprintf("%s_full", e.subject), txMsg); err != nil {
 				return fmt.Errorf("request full msg err: %v", err)
 			}
-			totalRowCount = totalRowCount + int(job.counter)
+			totalRowCount = totalRowCount + int(entry.Counter)
 		}
 		completedCounter++
 	}
@@ -1041,11 +1043,12 @@ func (e *Extractor) onError(err error) {
 	if atomic.LoadInt64(&e.mysqlContext.ShutdownFlag) > 0 {
 		return
 	}
-	e.waitCh <- err
+	e.waitCh <- models.NewWaitResult(1, err)
+	//close(e.waitCh)
 	e.Shutdown()
 }
 
-func (e *Extractor) WaitCh() chan error {
+func (e *Extractor) WaitCh() chan *models.WaitResult {
 	return e.waitCh
 }
 

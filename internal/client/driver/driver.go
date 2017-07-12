@@ -85,7 +85,7 @@ type DriverHandle interface {
 	ID() string
 
 	// WaitChan is used to return a channel used wait for task completion
-	WaitCh() chan error
+	WaitCh() chan *models.WaitResult
 
 	// Shutdown is used to stop the task
 	Shutdown() error

@@ -213,7 +213,6 @@ type TaskEvent struct {
 
 	// Task Terminated Fields.
 	ExitCode int    // The exit code of the task.
-	Signal   int    // The signal that terminated the task.
 	Message  string // A possible message explaining the termination of the task.
 
 	// Killing fields
@@ -297,11 +296,6 @@ func (e *TaskEvent) SetExitCode(c int) *TaskEvent {
 	return e
 }
 
-func (e *TaskEvent) SetSignal(s int) *TaskEvent {
-	e.Signal = s
-	return e
-}
-
 func (e *TaskEvent) SetExitMessage(err error) *TaskEvent {
 	if err != nil {
 		e.Message = err.Error()
@@ -371,3 +365,26 @@ const (
 	// will be killed and killing it.
 	DefaultKillTimeout = 5 * time.Second
 )
+
+
+// WaitResult stores the result of a Wait operation.
+type WaitResult struct {
+	ExitCode int
+	Err      error
+}
+
+func NewWaitResult(code int, err error) *WaitResult {
+	return &WaitResult{
+		ExitCode: code,
+		Err:      err,
+	}
+}
+
+func (r *WaitResult) Successful() bool {
+	return r.ExitCode == 0 && r.Err == nil
+}
+
+func (r *WaitResult) String() string {
+	return fmt.Sprintf("Wait returned exit code %v, and error %v",
+		r.ExitCode, r.Err)
+}

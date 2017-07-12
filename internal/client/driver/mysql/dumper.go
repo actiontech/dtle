@@ -4,19 +4,19 @@ import (
 	"database/sql"
 	"fmt"
 	"math"
+	"log"
 	"strconv"
 	"strings"
+
+	usql "udup/internal/client/driver/mysql/sql"
 )
 
 type dumper struct {
+	logger                     *log.Logger
 	concurrency              int
 	chunkSize                int
-	SystemVariablesStatement string
 	DbName                   string
 	TableName                string
-	DbSQL                    string
-	TbSQL                    string
-	Values                   string
 
 	// DB is safe for using in goroutines
 	// http://golang.org/src/database/sql/sql.go?s=5574:6362#L201
@@ -28,22 +28,25 @@ type table struct {
 	TbName string
 }
 
-func NewDumper(db *sql.DB, dbName, tableName, systemVariablesStatement string, concurrency, chunkSize int) *dumper {
-	dumper := new(dumper)
-	dumper.db = db
-	dumper.SystemVariablesStatement = systemVariablesStatement
-	dumper.DbName = dbName
-	dumper.TableName = tableName
-	dumper.DbSQL = fmt.Sprintf("CREATE DATABASE %s", dbName)
-	dumper.concurrency = concurrency
-	dumper.chunkSize = chunkSize
+func NewDumper(db *sql.DB, dbName, tableName string, concurrency, chunkSize int,logger *log.Logger) *dumper {
+	dumper := &dumper{
+		logger:                     logger,
+		db:                    db,
+		DbName:              dbName,
+		TableName:               tableName,
+		concurrency:            concurrency,
+		chunkSize: chunkSize,
+	}
 
 	return dumper
 }
 
 func (d *dumper) getRowsCount() (uint64, error) {
 	var res sql.NullString
-	query := fmt.Sprintf("SELECT COUNT(*) FROM %s.%s", d.DbName, d.TableName)
+	query := fmt.Sprintf(`SELECT COUNT(*) FROM %s.%s`,
+		usql.EscapeName(d.DbName),
+		usql.EscapeName(d.TableName),
+	)
 	err := d.db.QueryRow(query).Scan(&res)
 	if err != nil {
 		return 0, err
@@ -57,37 +60,53 @@ func (d *dumper) getRowsCount() (uint64, error) {
 	return strconv.ParseUint(val.(string), 0, 64)
 }
 
-type job struct {
-	offset    uint64
-	counter   uint64
+type dumpEntry struct {
+	SystemVariablesStatement string
+	DbSQL                    string
+	TbSQL                    string
+	Values                   string
+	RowsCount	uint64
+	Offset    uint64
+	Counter   uint64
+	Rows_cnt uint32
+	Rows_crc32 uint32
 	data_text []string
 	err       error
 }
 
-func (j *job) incrementCounter() {
-	j.counter++
+func (j *dumpEntry) incrementCounter() {
+	j.Counter++
 }
 
-func (d *dumper) getJobs() ([]*job, error) {
+func (d *dumper) getDumpEntries(systemVariablesStatement,dbSQL,tbSQL string) ([]*dumpEntry, error) {
 	total, err := d.getRowsCount()
 	if err != nil {
 		return nil, err
 	}
 
 	sliceCount := int(math.Ceil(float64(total) / float64(d.chunkSize)))
-	jobs := make([]*job, sliceCount)
+	entries := make([]*dumpEntry, sliceCount)
 	for i := 0; i < sliceCount; i++ {
 		offset := uint64(i) * uint64(d.chunkSize)
-		jobs[i] = &job{offset: offset, counter: 0}
+		entries[i] = &dumpEntry{
+			SystemVariablesStatement:systemVariablesStatement,
+			DbSQL:dbSQL,
+			TbSQL:tbSQL,
+			RowsCount:total,
+			Offset: offset,
+			Counter: 0}
 	}
-	return jobs, nil
+	return entries, nil
 }
 
 // dumps a specific chunk, reading chunk info from the channel
-func (d *dumper) getChunkData(job *job) error {
-	query := fmt.Sprintf(
-		"SELECT * FROM %s.%s LIMIT %d OFFSET %d",
-		d.DbName, d.TableName, d.chunkSize, job.offset)
+func (d *dumper) getChunkData(entry *dumpEntry) error {
+	query := fmt.Sprintf(`SELECT * FROM %s.%s LIMIT %d OFFSET %d`,
+		usql.EscapeName(d.DbName),
+		usql.EscapeName(d.TableName),
+		d.chunkSize,
+		entry.Offset,
+	)
 	rows, err := d.db.Query(query)
 	if err != nil {
 		return err
@@ -98,6 +117,26 @@ func (d *dumper) getChunkData(job *job) error {
 		return err
 	}
 
+	/*queries := []string{}
+	for _,column :=range columns {
+		query = fmt.Sprintf(`SUM(CRC32(%s))`,
+			column,
+		)
+		queries = append(queries,query)
+	}
+
+	query = fmt.Sprintf(`SELECT %v FROM (SELECT * FROM %s.%s LIMIT %d OFFSET %d) q`,
+		strings.Join(queries, ","),
+		usql.EscapeName(d.DbName),
+		usql.EscapeName(d.TableName),
+		d.chunkSize,
+		entry.offset,
+	)
+
+	if err := d.db.QueryRow(query).Scan(&entry.rows_crc32); err != nil {
+		return err
+	}*/
+
 	columnsCount := len(columns)
 	values := make([]sql.RawBytes, columnsCount)
 
@@ -106,7 +145,7 @@ func (d *dumper) getChunkData(job *job) error {
 		scanArgs[i] = &values[i]
 	}
 
-	job.data_text = make([]string, 0)
+	entry.data_text = make([]string, 0)
 	for rows.Next() {
 		err = rows.Scan(scanArgs...)
 		if err != nil {
@@ -124,55 +163,158 @@ func (d *dumper) getChunkData(job *job) error {
 			}
 			dataStrings[i] = value
 		}
-		job.data_text = append(job.data_text, "('"+strings.Join(dataStrings, "','")+"')")
-		job.incrementCounter()
+		entry.data_text = append(entry.data_text, "('"+strings.Join(dataStrings, "','")+"')")
+		entry.incrementCounter()
 	}
-
+	//entry.Rows_crc32 = crc32.ChecksumIEEE([]byte(strings.Join(entry.data_text, ",")))
+	entry.Values = fmt.Sprintf(`replace into %s.%s values %s`, d.DbName, d.TableName, strings.Join(entry.data_text, ","))
 	return nil
 }
 
-func (d *dumper) worker(jobsChannel <-chan *job, resultsChannel chan<- *job) {
-	for job := range jobsChannel {
-		err := d.getChunkData(job)
+// dumps a specific chunk, reading chunk info from the channel
+/*func (d *dumper) getChunkData(entry *dumpEntry) error {
+	query := fmt.Sprintf(`SELECT * FROM %s.%s LIMIT %d OFFSET %d LOCK IN SHARE MODE`,
+		usql.EscapeName(d.DbName),
+		usql.EscapeName(d.TableName),
+		d.chunkSize,
+		entry.Offset,
+	)
+
+	d.logger.Printf("query:%v",query)
+
+	err := func() error {
+		tx, err := d.db.Begin()
 		if err != nil {
-			job.err = err
+			return err
 		}
-		resultsChannel <- job
+
+		rollback := func(err error) error {
+			tx.Rollback()
+			return err
+		}
+
+		rows, err := tx.Query(query)
+		if err != nil {
+			return rollback(err)
+		}
+
+		columns, err := rows.Columns()
+		if err != nil {
+			return err
+		}
+
+		queries := []string{}
+		for _,column :=range columns {
+			query = fmt.Sprintf("'%s'",column)
+			queries = append(queries,query)
+		}
+
+		query = fmt.Sprintf(`SELECT
+			COUNT(*) AS cnt,
+			COALESCE(LOWER(CONV(BIT_XOR(CAST(CRC32(CONCAT_WS('#',
+			%s)) AS UNSIGNED)), 10, 16)), 0)
+			AS crc FROM %s.%s FORCE INDEX('PRIMARY')
+			WHERE id >= %d AND id <= %d
+			`,
+			strings.Join(queries, ","),
+			usql.EscapeName(d.DbName),
+			usql.EscapeName(d.TableName),
+			entry.Offset,
+			d.chunkSize,
+		)
+
+		columnsCount := len(columns)
+		values := make([]sql.RawBytes, columnsCount)
+
+		scanArgs := make([]interface{}, len(values))
+		for i := range values {
+			scanArgs[i] = &values[i]
+		}
+
+		entry.data_text = make([]string, 0)
+		for rows.Next() {
+			err = rows.Scan(scanArgs...)
+			if err != nil {
+				return err
+			}
+
+			var value string
+			dataStrings := make([]string, columnsCount)
+			for i, col := range values {
+				// Here we can check if the value is nil (NULL value)
+				if col == nil {
+					value = "NULL"
+				} else {
+					value = string(col)
+				}
+				dataStrings[i] = value
+			}
+			entry.data_text = append(entry.data_text, "('"+strings.Join(dataStrings, "','")+"')")
+			entry.incrementCounter()
+		}
+
+		if err = tx.QueryRow(query).Scan(&entry.Rows_cnt,&entry.Rows_crc);err != nil {
+			return rollback(err)
+		}
+
+		if err := tx.Commit(); err != nil {
+			return err
+		}
+		return nil
+	}()
+
+	if err != nil {
+		return err
+	}
+
+	entry.Values = fmt.Sprintf(`replace into %s.%s values %s`, d.DbName, d.TableName, strings.Join(entry.data_text, ","))
+	return nil
+}*/
+
+func (d *dumper) worker(entriesChannel <-chan *dumpEntry, resultsChannel chan<- *dumpEntry) {
+	for e := range entriesChannel {
+		err := d.getChunkData(e)
+		if err != nil {
+			e.err = err
+		}
+		resultsChannel <- e
 	}
 }
 
-func (d *dumper) Dump() ([]*job, error) {
-	if err := d.createTableSQL(); err != nil {
+func (d *dumper) Dump(systemVariablesStatement string) ([]*dumpEntry, error) {
+	dbSQL := fmt.Sprintf("CREATE DATABASE %s", d.DbName)
+	tbSQL,err := d.createTableSQL()
+	if err != nil {
 		return nil, err
 	}
-	jobs, err := d.getJobs()
+	entries, err := d.getDumpEntries(systemVariablesStatement,dbSQL,tbSQL)
 	if err != nil {
 		return nil, err
 	}
 
-	workersCount := int(math.Min(float64(d.concurrency), float64(len(jobs))))
+	workersCount := int(math.Min(float64(d.concurrency), float64(len(entries))))
 	if workersCount < 1 {
 		return nil, nil
 	}
 
-	jobsCount := len(jobs)
-	jobsChannel := make(chan *job)
-	resultsChannel := make(chan *job)
+	entriesCount := len(entries)
+	entriesChannel := make(chan *dumpEntry)
+	resultsChannel := make(chan *dumpEntry)
 	for i := 0; i < workersCount; i++ {
-		go d.worker(jobsChannel, resultsChannel)
+		go d.worker(entriesChannel, resultsChannel)
 	}
 
 	go func() {
-		for _, job := range jobs {
-			jobsChannel <- job
+		for _, e := range entries {
+			entriesChannel <- e
 		}
-		close(jobsChannel)
+		close(entriesChannel)
 	}()
 
-	result := make([]*job, jobsCount)
-	for i := 0; i < jobsCount; i++ {
-		job := <-resultsChannel
-		result[i] = job
+	result := make([]*dumpEntry, entriesCount)
+	for i := 0; i < entriesCount; i++ {
+		e := <-resultsChannel
+		result[i] = e
 	}
 	close(resultsChannel)
 
@@ -230,19 +372,21 @@ func showTables(db *sql.DB, dbName string) ([]string, error) {
 	return tables, rows.Err()
 }
 
-func (d *dumper) createTableSQL() error {
-	query := fmt.Sprintf("SHOW CREATE TABLE %s.%s", d.DbName, d.TableName)
+func (d *dumper) createTableSQL() (string,error) {
+	query := fmt.Sprintf(`SHOW CREATE TABLE %s.%s`,
+		usql.EscapeName(d.DbName),
+		usql.EscapeName(d.TableName),
+	)
 	// Get table creation SQL
 	var table_return sql.NullString
 	var table_sql sql.NullString
 	err := d.db.QueryRow(query).Scan(&table_return, &table_sql)
 	if err != nil {
-		return err
+		return "",err
 	}
 	if table_return.String != d.TableName {
-		return fmt.Errorf("Returned table is not the same as requested table")
+		return "",fmt.Errorf("Returned table is not the same as requested table")
 	}
-	d.TbSQL = fmt.Sprintf("USE %s;%s", d.DbName, table_sql.String)
 
-	return nil
+	return fmt.Sprintf("USE %s;%s", d.DbName, table_sql.String),nil
 }
