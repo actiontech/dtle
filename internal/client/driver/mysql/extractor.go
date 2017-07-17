@@ -895,6 +895,7 @@ func (e *Extractor) mysqlDump() error {
 				doDb.Tables = tbs
 			}
 			for _, doTb := range doDb.Tables {
+				doTb.TableSchema = doDb.TableSchema
 				if err := e.inspector.ValidateOriginalTable(doDb.TableSchema, doTb.TableName); err != nil {
 					return err
 				}
