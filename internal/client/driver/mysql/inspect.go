@@ -318,11 +318,9 @@ func (i *Inspector) validateTableForeignKeys() error {
 			}
 		}
 	}
-	i.logger.Printf("[TEST] i.tablesWithForeignKey: %++v", i.tablesWithForeignKey)
 	sort.Sort(umconf.TableWrapper{i.tablesWithForeignKey, func(p, q *umconf.TableWithForeignKey) bool {
 		return q.Index < p.Index // Index desc sort
 	}})
-	i.logger.Printf("[TEST] i.tablesWithForeignKey: %++v", i.tablesWithForeignKey)
 
 	i.logger.Printf("[DEBUG] validated foreign keys on table")
 	return nil

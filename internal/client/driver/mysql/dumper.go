@@ -165,11 +165,11 @@ func (d *dumper) getChunkData(entry *dumpEntry) error {
 			if col == nil {
 				value = "NULL"
 			} else {
-				value = string(col)
+				value = fmt.Sprintf("'%s'",col)
 			}
 			dataStrings[i] = value
 		}
-		entry.data_text = append(entry.data_text, "('"+strings.Join(dataStrings, "','")+"')")
+		entry.data_text = append(entry.data_text, "("+strings.Join(dataStrings, ",")+")")
 		entry.incrementCounter()
 	}
 	//entry.Rows_crc32 = crc32.ChecksumIEEE([]byte(strings.Join(entry.data_text, ",")))
