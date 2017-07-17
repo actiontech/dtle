@@ -762,18 +762,18 @@ func resolveDDLSQL(sql string) (sqls []string, ok bool, err error) {
 	return sqls, true, nil
 }
 
-func genTableName(schema string, table string) config.TableName {
-	return config.TableName{Database: schema, Name: table}
+func genTableName(schema string, table string) config.Table {
+	return config.Table{TableSchema: schema, TableName: table}
 
 }
 
-func parserDDLTableName(sql string) (config.TableName, error) {
+func parserDDLTableName(sql string) (config.Table, error) {
 	stmt, err := parser.New().ParseOneStmt(sql, "", "")
 	if err != nil {
-		return config.TableName{}, err
+		return config.Table{}, err
 	}
 
-	var res config.TableName
+	var res config.Table
 	switch v := stmt.(type) {
 	case *ast.CreateDatabaseStmt:
 		res = genTableName(v.Name, "")
@@ -818,8 +818,8 @@ func (b *BinlogReader) skipQueryDDL(sql string, schema string) bool {
 	default:
 		if len(b.MysqlContext.ReplicateDoDb) > 0 {
 			//if table in target Table, do this sql
-			if t.Database == "" {
-				t.Database = schema
+			if t.TableSchema == "" {
+				t.TableSchema = schema
 			}
 			/*if tb.matchTable(tb.cfg.ReplicateDoDb, t.Database) {
 				return false
@@ -829,7 +829,7 @@ func (b *BinlogReader) skipQueryDDL(sql string, schema string) bool {
 			}
 
 			// if  schema in target DB, do this sql
-			if b.matchDB(b.MysqlContext.ReplicateDoDb, t.Database) {
+			if b.matchDB(b.MysqlContext.ReplicateDoDb, t.TableSchema) {
 				return false
 			}
 			return true
@@ -875,12 +875,12 @@ func (b *BinlogReader) skipRowEvent(schema string, table string) bool {
 			table = strings.ToLower(table)
 			//if table in tartget Table, do this event
 			for _, d := range b.MysqlContext.ReplicateDoDb {
-				if b.matchString(d.Database, schema) || d.Database == "" {
-					if len(d.Table) == 0 {
+				if b.matchString(d.TableSchema, schema) || d.TableSchema == "" {
+					if len(d.Tables) == 0 {
 						return false
 					}
-					for _, dt := range d.Table {
-						if b.matchString(dt.Name, table) {
+					for _, dt := range d.Tables {
+						if b.matchString(dt.TableName, table) {
 							return false
 						}
 					}
@@ -901,38 +901,38 @@ func (b *BinlogReader) matchString(pattern string, t string) bool {
 
 func (b *BinlogReader) matchDB(patternDBS []*config.DataSource, a string) bool {
 	for _, pdb := range patternDBS {
-		if b.matchString(pdb.Database, a) {
+		if b.matchString(pdb.TableSchema, a) {
 			return true
 		}
 	}
 	return false
 }
 
-func (b *BinlogReader) matchTable(patternTBS []*config.DataSource, t config.TableName) bool {
+func (b *BinlogReader) matchTable(patternTBS []*config.DataSource, t config.Table) bool {
 	for _, pdb := range patternTBS {
-		redb, okdb := b.ReMap[pdb.Database]
-		for _, ptb := range pdb.Table {
-			retb, oktb := b.ReMap[ptb.Name]
+		redb, okdb := b.ReMap[pdb.TableSchema]
+		for _, ptb := range pdb.Tables {
+			retb, oktb := b.ReMap[ptb.TableName]
 
 			if oktb && okdb {
-				if redb.MatchString(t.Database) && retb.MatchString(t.Name) {
+				if redb.MatchString(t.TableSchema) && retb.MatchString(t.TableName) {
 					return true
 				}
 			}
 			if oktb {
-				if retb.MatchString(t.Name) && t.Database == pdb.Database {
+				if retb.MatchString(t.TableName) && t.TableSchema == pdb.TableSchema {
 					return true
 				}
 			}
 			if okdb {
-				if redb.MatchString(t.Database) && t.Name == ptb.Name {
+				if redb.MatchString(t.TableSchema) && t.TableName == ptb.TableName {
 					return true
 				}
 			}
 
 			//create database or drop database
-			if t.Name == "" {
-				if t.Database == pdb.Database {
+			if t.TableName == "" {
+				if t.TableSchema == pdb.TableSchema {
 					return true
 				}
 			}

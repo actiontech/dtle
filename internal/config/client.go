@@ -267,19 +267,13 @@ func (m *MySQLDriverConfig) MarkPointOfInterest() int64 {
 // TableName is the table configuration
 // slave restrict replication to a given table
 type DataSource struct {
-	Database string
-	Table    []*Table
-}
-
-// TableName is the Table configuration
-// slave restrict replication to a given table
-type TableName struct {
-	Database string
-	Name     string
+	TableSchema string
+	Tables    []*Table
 }
 
 type Table struct {
-	Name string
+	TableName string
+	TableSchema string
 
 	AlterStatement                   string
 	OriginalTableColumnsOnApplier    *umconf.ColumnList

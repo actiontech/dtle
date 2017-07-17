@@ -25,76 +25,23 @@ func (m *MySQLDriver) Start(ctx *ExecContext, task *models.Task) (DriverHandle, 
 		return nil, err
 	}
 
-	switch ctx.Tp {
-	case models.JobTypeSync:
+	switch task.Type {
+	case models.TaskTypeSrc:
 		{
-			switch task.Type {
-			case models.TaskTypeSrc:
-				{
-					// Create the extractor
-					e := mysql.NewExtractor(ctx.Subject, &driverConfig, m.logger)
-					go e.Run()
-					return e, nil
-				}
-			case models.TaskTypeDest:
-				{
-					a := mysql.NewApplier(ctx.Subject, &driverConfig, m.logger)
-					go a.Run()
-					return a, nil
-				}
-			default:
-				{
-					return nil, fmt.Errorf("unknown processor type : %+v", task.Type)
-				}
-			}
+			// Create the extractor
+			e := mysql.NewExtractor(ctx.Subject, ctx.Tp, &driverConfig, m.logger)
+			go e.Run()
+			return e, nil
 		}
-	case models.JobTypeMig:
+	case models.TaskTypeDest:
 		{
-			switch task.Type {
-			case models.TaskTypeSrc:
-				{
-					// Create the extractor
-					e := mysql.NewExtractor(ctx.Subject, &driverConfig, m.logger)
-					go e.Run()
-					return e, nil
-				}
-			case models.TaskTypeDest:
-				{
-					a := mysql.NewApplier(ctx.Subject, &driverConfig, m.logger)
-					go a.Run()
-					return a, nil
-				}
-			default:
-				{
-					return nil, fmt.Errorf("unknown processor type : %+v", task.Type)
-				}
-			}
-		}
-	case models.JobTypeSub:
-		{
-			switch task.Type {
-			case models.TaskTypeSrc:
-				{
-					// Create the extractor
-					e := mysql.NewExtractor(ctx.Subject, &driverConfig, m.logger)
-					go e.Run()
-					return e, nil
-				}
-			case models.TaskTypeDest:
-				{
-					a := mysql.NewApplier(ctx.Subject, &driverConfig, m.logger)
-					go a.Run()
-					return a, nil
-				}
-			default:
-				{
-					return nil, fmt.Errorf("unknown processor type : %+v", task.Type)
-				}
-			}
+			a := mysql.NewApplier(ctx.Subject, ctx.Tp, &driverConfig, m.logger)
+			go a.Run()
+			return a, nil
 		}
 	default:
 		{
-			return nil, fmt.Errorf("unknown job type : %+v", ctx.Tp)
+			return nil, fmt.Errorf("unknown processor type : %+v", task.Type)
 		}
 	}
 

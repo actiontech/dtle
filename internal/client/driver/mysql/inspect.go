@@ -69,9 +69,9 @@ func (i *Inspector) ValidateOriginalTable(databaseName, tableName string) (err e
 	if err := i.validateTable(databaseName, tableName); err != nil {
 		return err
 	}
-	if err := i.validateTableTriggers(databaseName, tableName); err != nil {
+	/*if err := i.validateTableTriggers(databaseName, tableName); err != nil {
 		return err
-	}
+	}*/
 	return nil
 }
 
@@ -92,7 +92,7 @@ func (i *Inspector) InspectTableColumnsAndUniqueKeys(databaseName, tableName str
 }
 
 func (i *Inspector) InspectOriginalTable(databaseName string, doTb *uconf.Table) (err error) {
-	doTb.OriginalTableColumns, doTb.OriginalTableUniqueKeys, err = i.InspectTableColumnsAndUniqueKeys(databaseName, doTb.Name)
+	doTb.OriginalTableColumns, doTb.OriginalTableUniqueKeys, err = i.InspectTableColumnsAndUniqueKeys(databaseName, doTb.TableName)
 	if err != nil {
 		return err
 	}
@@ -273,7 +273,7 @@ func (i *Inspector) validateTable(databaseName, tableName string) error {
 	return nil
 }
 
-func (i *Inspector) isContains(tb *Table) bool {
+func (i *Inspector) isContains(tb *uconf.Table) bool {
 	for _, t := range i.tablesWithForeignKey {
 		if t.TableSchema == tb.TableSchema && t.TableName == tb.TableName {
 			return true

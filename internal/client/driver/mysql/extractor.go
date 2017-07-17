@@ -36,10 +36,11 @@ const (
 type Extractor struct {
 	logger                     *log.Logger
 	subject                    string
+	tp                         string
 	mysqlContext               *config.MySQLDriverConfig
 	db                         *gosql.DB
-	tables                     []*Table
-	tablesWithForeignKey       []*Table
+	tables                     []*config.Table
+	tablesWithForeignKey       []*config.Table
 	binlogChannel              chan *binlog.BinlogTx
 	dataChannel                chan *binlog.BinlogEntry
 	parser                     *sql.Parser
@@ -55,14 +56,15 @@ type Extractor struct {
 	waitCh   chan *models.WaitResult
 }
 
-func NewExtractor(subject string, cfg *config.MySQLDriverConfig, logger *log.Logger) *Extractor {
+func NewExtractor(subject, tp string, cfg *config.MySQLDriverConfig, logger *log.Logger) *Extractor {
 	cfg = cfg.SetDefault()
 	extractor := &Extractor{
 		logger:                     logger,
 		subject:                    subject,
+		tp:                         tp,
 		mysqlContext:               cfg,
-		tables:                     make([]*Table, 0),
-		tablesWithForeignKey:       make([]*Table, 0),
+		tables:                     make([]*config.Table, 0),
+		tablesWithForeignKey:       make([]*config.Table, 0),
 		binlogChannel:              make(chan *binlog.BinlogTx, ChannelBufferSize),
 		dataChannel:                make(chan *binlog.BinlogEntry, ChannelBufferSize),
 		parser:                     sql.NewParser(),
@@ -145,7 +147,7 @@ func (e *Extractor) Run() {
 		return
 	}
 	for _, doDb := range e.mysqlContext.ReplicateDoDb {
-		for _, doTb := range doDb.Table {
+		for _, doTb := range doDb.Tables {
 			if err := e.parser.ParseAlterStatement(doTb.AlterStatement); err != nil {
 				e.onError(err)
 				return
@@ -193,6 +195,19 @@ func (e *Extractor) Run() {
 		return
 	}
 
+	if e.tp == models.JobTypeMig {
+		for {
+			binlogCoordinates,err := showMasterStatus(e.db)
+			if err != nil {
+				e.onError(err)
+				return
+			}
+			if e.mysqlContext.Gtid == binlogCoordinates.DisplayString(){
+				e.waitCh <- models.NewWaitResult(0, nil)
+			}
+		}
+	}
+
 	if err := e.retryOperation(e.cutOver); err != nil {
 		e.onError(err)
 		return
@@ -228,8 +243,8 @@ func (e *Extractor) cutOver() (err error) {
 		// Atomic solution: we use low timeout and multiple attempts. But for
 		// each failed attempt, we throttle until replication lag is back to normal
 		for _, doDb := range e.mysqlContext.ReplicateDoDb {
-			for _, doTb := range doDb.Table {
-				err := e.atomicCutOver(doTb.Name)
+			for _, doTb := range doDb.Tables {
+				err := e.atomicCutOver(doTb.TableName)
 				return err
 			}
 		}
@@ -559,34 +574,44 @@ func (e *Extractor) readCurrentBinlogCoordinates() error {
 			}
 		}
 	} else {
-		query := `show master status`
-		foundMasterStatus := false
-		err := sql.QueryRowsMap(e.db, query, func(m sql.RowMap) error {
-			gtidSet, err := gomysql.ParseMysqlGTIDSet(m.GetString("Executed_Gtid_Set"))
-			if err != nil {
-				return err
-			}
-
-			e.initialBinlogCoordinates = &base.BinlogCoordinates{
-				LogFile: m.GetString("File"),
-				LogPos:  m.GetInt64("Position"),
-				GtidSet: gtidSet.String(),
-			}
-			foundMasterStatus = true
-
-			return nil
-		})
+		binlogCoordinates,err := showMasterStatus(e.db)
 		if err != nil {
 			return err
 		}
-		if !foundMasterStatus {
-			return fmt.Errorf("Got no results from SHOW MASTER STATUS. Bailing out")
-		}
+		e.initialBinlogCoordinates = binlogCoordinates
 	}
 
 	e.logger.Printf("[INFO] mysql.extractor: Step 0: read binlog coordinates of MySQL master: %+v", *e.initialBinlogCoordinates)
 
 	return nil
+}
+
+func showMasterStatus(db *gosql.DB) (binlogCoordinates *base.BinlogCoordinates,err error) {
+	query := `show master status`
+	foundMasterStatus := false
+	err = sql.QueryRowsMap(db, query, func(m sql.RowMap) error {
+		gtidSet, err := gomysql.ParseMysqlGTIDSet(m.GetString("Executed_Gtid_Set"))
+		if err != nil {
+			return err
+		}
+
+		binlogCoordinates = &base.BinlogCoordinates{
+			LogFile: m.GetString("File"),
+			LogPos:  m.GetInt64("Position"),
+			GtidSet: gtidSet.String(),
+		}
+		foundMasterStatus = true
+
+		return nil
+	})
+	if err != nil {
+		return nil,err
+	}
+	if !foundMasterStatus {
+		return nil,fmt.Errorf("Got no results from SHOW MASTER STATUS. Bailing out")
+	}
+
+	return binlogCoordinates,nil
 }
 
 // Read the MySQL charset-related system variables.
@@ -733,7 +758,11 @@ func (e *Extractor) StreamEvents(approveHeterogeneous bool, canStopStreaming fun
 							if uint64(len(txMsg)) > 100*1024*1024 {
 								e.onError(gonats.ErrMaxPayload)
 							}
-							if err := e.requestMsg(subject, txMsg); err != nil {
+							if err := e.requestMsg(subject,
+								fmt.Sprintf("%s:1-%d",
+									txArray[len(txArray)-1].SID,
+									txArray[len(txArray)-1].GNO),
+								txMsg); err != nil {
 								e.onError(err)
 								break OUTER
 							}
@@ -752,13 +781,12 @@ func (e *Extractor) StreamEvents(approveHeterogeneous bool, canStopStreaming fun
 							e.onError(gonats.ErrMaxPayload)
 						}
 						if uint64(len(txMsg)) > defaultMsgBytes {
-							if err := e.requestMsg(subject, txMsg); err != nil {
+							if err := e.requestMsg(subject,fmt.Sprintf("%s:1-%d", binlogTx.SID, binlogTx.GNO), txMsg); err != nil {
 								e.onError(err)
 								break OUTER
 							}
 							txArray = nil
 						}
-						e.mysqlContext.Gtid = fmt.Sprintf("%s:1-%d", binlogTx.SID, binlogTx.GNO)
 					}
 				}
 			}
@@ -801,7 +829,7 @@ func (e *Extractor) StreamEvents(approveHeterogeneous bool, canStopStreaming fun
 
 // retryOperation attempts up to `count` attempts at running given function,
 // exiting as soon as it returns with non-error.
-func (e *Extractor) requestMsg(subject string, txMsg []byte) (err error) {
+func (e *Extractor) requestMsg(subject,gtid string, txMsg []byte) (err error) {
 	for i := 0; i < int(e.mysqlContext.MaxRetries); i++ {
 		if i != 0 {
 			// sleep after previous iteration
@@ -809,6 +837,9 @@ func (e *Extractor) requestMsg(subject string, txMsg []byte) (err error) {
 		}
 		_, err = e.natsConn.Request(subject, txMsg, DefaultConnectWait)
 		if err == nil {
+			if gtid != ""{
+				e.mysqlContext.Gtid = gtid
+			}
 			return nil
 		}
 		// there's an error. Let's try again.
@@ -816,7 +847,7 @@ func (e *Extractor) requestMsg(subject string, txMsg []byte) (err error) {
 	return err
 }
 
-func (e *Extractor) isContains(tb *Table) bool {
+func (e *Extractor) isContains(tb *config.Table) bool {
 	for _, t := range e.tables {
 		if t.TableSchema == tb.TableSchema && t.TableName == tb.TableName {
 			return true
@@ -853,21 +884,27 @@ func (e *Extractor) mysqlDump() error {
 		// ------
 		// Transform the current schema so that it reflects the *current* state of the MySQL server's contents.
 		// First, get the DROP TABLE and CREATE TABLE statement (with keys and constraint definitions) for our tables ...
-		e.logger.Printf("[INFO] mysql.extractor: Step 2: generating DROP and CREATE statements to reflect current database schemas: %v", e.mysqlContext.ReplicateDoDb)
+		e.logger.Printf("[INFO] mysql.extractor: Step 2: generating DROP and CREATE statements to reflect current database schemas:  %+v", e.mysqlContext.ReplicateDoDb)
 
 		for _, doDb := range e.mysqlContext.ReplicateDoDb {
-			for _, doTb := range doDb.Table {
-				if err := e.inspector.ValidateOriginalTable(doDb.Database, doTb.Name); err != nil {
+			if len(doDb.Tables) == 0 {
+				tbs, err := showTables(e.db, doDb.TableSchema)
+				if err != nil {
 					return err
 				}
-				tb := &Table{TableSchema: doDb.Database, TableName: doTb.Name}
-				if e.inspector.isContains(tb) {
-					if !e.isContains(tb) {
-						e.tablesWithForeignKey = append(e.tablesWithForeignKey, tb)
+				doDb.Tables = tbs
+			}
+			for _, doTb := range doDb.Tables {
+				if err := e.inspector.ValidateOriginalTable(doDb.TableSchema, doTb.TableName); err != nil {
+					return err
+				}
+				if e.inspector.isContains(doTb) {
+					if !e.isContains(doTb) {
+						e.tablesWithForeignKey = append(e.tablesWithForeignKey, doTb)
 					}
-				}else {
-					if !e.isContains(tb) {
-						e.tables = append(e.tables, tb)
+				} else {
+					if !e.isContains(doTb) {
+						e.tables = append(e.tables, doTb)
 					}
 				}
 			}
@@ -888,16 +925,15 @@ func (e *Extractor) mysqlDump() error {
 			if err != nil {
 				return err
 			}
-			for _, tbName := range tbs {
-				if err := e.inspector.ValidateOriginalTable(dbName, tbName); err != nil {
+			for _, tb := range tbs {
+				if err := e.inspector.ValidateOriginalTable(dbName, tb.TableName); err != nil {
 					return err
 				}
-				tb := &Table{TableSchema: dbName, TableName: tbName}
 				if e.inspector.isContains(tb) {
 					if !e.isContains(tb) {
 						e.tablesWithForeignKey = append(e.tablesWithForeignKey, tb)
 					}
-				}else {
+				} else {
 					if !e.isContains(tb) {
 						e.tables = append(e.tables, tb)
 					}
@@ -938,7 +974,7 @@ func (e *Extractor) mysqlDump() error {
 			if err != nil {
 				return err
 			}
-			if err := e.requestMsg(fmt.Sprintf("%s_full", e.subject), txMsg); err != nil {
+			if err := e.requestMsg(fmt.Sprintf("%s_full",e.subject),"", txMsg); err != nil {
 				return fmt.Errorf("request full msg err: %v", err)
 			}
 			totalRowCount = totalRowCount + int(entry.Counter)
@@ -967,7 +1003,7 @@ func (e *Extractor) mysqlDump() error {
 			if err != nil {
 				return err
 			}
-			if err := e.requestMsg(fmt.Sprintf("%s_full", e.subject), txMsg); err != nil {
+			if err := e.requestMsg(fmt.Sprintf("%s_full", e.subject),"", txMsg); err != nil {
 				return fmt.Errorf("request full msg err: %v", err)
 			}
 			totalRowCount = totalRowCount + int(entry.Counter)
@@ -990,7 +1026,6 @@ func currentTimeMillis() int64 {
 
 func (e *Extractor) Stats() (*models.TaskStatistics, error) {
 	//e.logger.Printf("Tracks various stats send on this connection:%v",e.pubConn.Statistics)
-
 	taskResUsage := models.TaskStatistics{
 		Status: "",
 		BufferStat: &models.BufferStat{

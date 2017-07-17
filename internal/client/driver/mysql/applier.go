@@ -38,6 +38,7 @@ const (
 type Applier struct {
 	logger       *log.Logger
 	subject      string
+	tp           string
 	mysqlContext *config.MySQLDriverConfig
 	dbs          []*sql.DbApplier
 	singletonDB  *gosql.DB
@@ -57,11 +58,12 @@ type Applier struct {
 	waitCh   chan *models.WaitResult
 }
 
-func NewApplier(subject string, cfg *config.MySQLDriverConfig, logger *log.Logger) *Applier {
+func NewApplier(subject, tp string, cfg *config.MySQLDriverConfig, logger *log.Logger) *Applier {
 	cfg = cfg.SetDefault()
 	a := &Applier{
 		logger:                     logger,
 		subject:                    subject,
+		tp:                         tp,
 		mysqlContext:               cfg,
 		parser:                     sql.NewParser(),
 		rowCopyComplete:            make(chan bool),
@@ -140,7 +142,7 @@ func (a *Applier) Run() {
 	a.logger.Printf("[INFO] mysql.applier: apply binlog events to %s.%d", a.mysqlContext.ConnectionConfig.Key.Host, a.mysqlContext.ConnectionConfig.Key.Port)
 	a.mysqlContext.StartTime = time.Now()
 	for _, doDb := range a.mysqlContext.ReplicateDoDb {
-		for _, doTb := range doDb.Table {
+		for _, doTb := range doDb.Tables {
 			if err := a.parser.ParseAlterStatement(doTb.AlterStatement); err != nil {
 				a.onError(err)
 				return
@@ -165,6 +167,19 @@ func (a *Applier) Run() {
 	}
 
 	go a.executeWriteFuncs()
+
+	if a.tp == models.JobTypeMig {
+		for {
+			binlogCoordinates,err := showMasterStatus(a.dbs[0].Db)
+			if err != nil {
+				a.onError(err)
+				return
+			}
+			if a.mysqlContext.Gtid == binlogCoordinates.DisplayString(){
+				a.waitCh <- models.NewWaitResult(0, nil)
+			}
+		}
+	}
 
 	if err := a.retryOperation(a.cutOver); err != nil {
 		a.onError(err)
@@ -590,7 +605,7 @@ OUTER:
 					a.onError(err)
 					break OUTER
 				}
-				//a.waitCh <- models.NewWaitResult(0, nil)
+
 				/*a.logger.Printf("[INFO] mysql.applier: operating until row copy is complete")
 				a.consumeRowCopyComplete()
 				a.logger.Printf("[INFO] mysql.applier: row copy complete")
@@ -772,8 +787,8 @@ func (a *Applier) validateAndReadTimeZone() error {
 func (a *Applier) readTableColumns() (err error) {
 	a.logger.Printf("[INFO] mysql.applier: examining table structure on applier")
 	for _, doDb := range a.mysqlContext.ReplicateDoDb {
-		for _, doTb := range doDb.Table {
-			doTb.OriginalTableColumnsOnApplier, err = base.GetTableColumns(a.singletonDB, doDb.Database, doTb.Name)
+		for _, doTb := range doDb.Tables {
+			doTb.OriginalTableColumnsOnApplier, err = base.GetTableColumns(a.singletonDB, doDb.TableSchema, doTb.TableName)
 			if err != nil {
 				a.logger.Printf("[ERR] mysql.applier: unexpected error on readTableColumns, got %v", err)
 				return err
@@ -897,14 +912,14 @@ func (a *Applier) ApplyIterationInsertQuery() (chunkSize int64, rowsAffected int
 // LockOriginalTable places a write lock on the original table
 func (a *Applier) LockOriginalTable() error {
 	for _, doDb := range a.mysqlContext.ReplicateDoDb {
-		for _, doTb := range doDb.Table {
+		for _, doTb := range doDb.Tables {
 			query := fmt.Sprintf(`lock tables %s.%s write`,
-				sql.EscapeName(doDb.Database),
-				sql.EscapeName(doTb.Name),
+				sql.EscapeName(doDb.TableSchema),
+				sql.EscapeName(doTb.TableName),
 			)
 			a.logger.Printf("[INFO] mysql.applier: Locking %s.%s",
-				sql.EscapeName(doDb.Database),
-				sql.EscapeName(doTb.Name),
+				sql.EscapeName(doDb.TableSchema),
+				sql.EscapeName(doTb.TableName),
 			)
 			a.mysqlContext.LockTablesStartTime = time.Now()
 			if _, err := sql.ExecNoPrepare(a.singletonDB, query); err != nil {
@@ -1339,7 +1354,7 @@ func (a *Applier) ApplyBinlogEvent(db *gosql.DB, events [](binlog.DataEvent)) er
 
 func (a *Applier) ApplyEventQueries(entry *dumpEntry) error {
 	queries := []string{}
-	queries = append(queries,entry.SystemVariablesStatement)
+	queries = append(queries, entry.SystemVariablesStatement)
 	queries = append(queries, entry.DbSQL, entry.TbSQL)
 	if entry.Values != "" {
 		queries = append(queries, entry.Values)
@@ -1352,7 +1367,7 @@ func (a *Applier) ApplyEventQueries(entry *dumpEntry) error {
 			_, err := sql.ExecNoPrepare(a.dbs[0].Db, query)
 			if err != nil {
 				if !sql.IgnoreError(err) {
-					a.logger.Printf("[ERR] mysql.applier: exec sql error: %v", err)
+					a.logger.Printf("[ERR] mysql.applier: exec [%s] error: %v", query,err)
 					return err
 				} else {
 					a.logger.Printf("[WARN] mysql.applier: ignore error: %v", err)

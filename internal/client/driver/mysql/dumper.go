@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	usql "udup/internal/client/driver/mysql/sql"
+	"udup/internal/config"
 )
 
 type dumper struct {
@@ -21,11 +22,6 @@ type dumper struct {
 	// DB is safe for using in goroutines
 	// http://golang.org/src/database/sql/sql.go?s=5574:6362#L201
 	db *sql.DB
-}
-
-type Table struct {
-	TableSchema string
-	TableName   string
 }
 
 func NewDumper(db *sql.DB, dbName, tableName string, concurrency, chunkSize int, logger *log.Logger) *dumper {
@@ -166,7 +162,7 @@ func (d *dumper) getChunkData(entry *dumpEntry) error {
 				value = "NULL"
 			} else {
 				b := make([]byte, 0)
-				value = fmt.Sprintf("%s", strconv.AppendQuote(b, fmt.Sprintf("%s",col)))
+				value = fmt.Sprintf("%s", strconv(b, fmt.Sprintf("%s",col)))
 			}
 			dataStrings[i] = value
 		}
@@ -358,8 +354,8 @@ func showDatabases(db *sql.DB) ([]string, error) {
 	return dbs, rows.Err()
 }
 
-func showTables(db *sql.DB, dbName string) ([]string, error) {
-	tables := make([]string, 0)
+func showTables(db *sql.DB, dbName string) ([]*config.Table, error) {
+	tables := make([]*config.Table, 0)
 
 	// Get table list
 	rows, err := db.Query(fmt.Sprintf("SHOW TABLES IN %s", dbName))
@@ -374,7 +370,8 @@ func showTables(db *sql.DB, dbName string) ([]string, error) {
 		if err := rows.Scan(&table); err != nil {
 			return tables, err
 		}
-		tables = append(tables, table.String)
+		tb := &config.Table{TableSchema:dbName,TableName:table.String}
+		tables = append(tables, tb)
 	}
 	return tables, rows.Err()
 }
