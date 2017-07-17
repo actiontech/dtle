@@ -884,7 +884,7 @@ func (e *Extractor) mysqlDump() error {
 		// ------
 		// Transform the current schema so that it reflects the *current* state of the MySQL server's contents.
 		// First, get the DROP TABLE and CREATE TABLE statement (with keys and constraint definitions) for our tables ...
-		e.logger.Printf("[INFO] mysql.extractor: Step 2: generating DROP and CREATE statements to reflect current database schemas:  %+v", e.mysqlContext.ReplicateDoDb)
+		e.logger.Printf("[INFO] mysql.extractor: Step 2: generating DROP and CREATE statements to reflect current database schemas")
 
 		for _, doDb := range e.mysqlContext.ReplicateDoDb {
 			if len(doDb.Tables) == 0 {

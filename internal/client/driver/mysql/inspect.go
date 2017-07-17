@@ -269,7 +269,6 @@ func (i *Inspector) validateTable(databaseName, tableName string) error {
 	if !tableFound {
 		return fmt.Errorf("Cannot find table %s.%s!", usql.EscapeName(databaseName), usql.EscapeName(tableName))
 	}
-	i.logger.Printf("[INFO] Table found. Engine=%s", tableEngine)
 	return nil
 }
 

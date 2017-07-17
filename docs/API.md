@@ -302,10 +302,10 @@ A Job represents a scheduled task to execute.
                 "NatsAddr": "127.0.0.1:8193",
                 "ReplicateDoDb": [
                     {
-                        "Database": "s1",
-                        "Table": [
+                        "TableSchema": "s1",
+                        "Tables": [
                         	{
-                        		"Name":"dbtest1"
+                        		"TableName":"dbtest1"
                         	}
                         ]
                     }
@@ -329,10 +329,10 @@ A Job represents a scheduled task to execute.
                 "NatsAddr": "127.0.0.1:8193",
                 "ReplicateDoDb": [
                     {
-                        "Database": "s1",
-                        "Table": [
+                        "TableSchema": "s1",
+                        "Tables": [
                         	{
-                        		"Name":"dbtest1"
+                        		"TableName":"dbtest1"
                         	}
                         ]
                     }
