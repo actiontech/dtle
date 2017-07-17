@@ -165,7 +165,8 @@ func (d *dumper) getChunkData(entry *dumpEntry) error {
 			if col == nil {
 				value = "NULL"
 			} else {
-				value = fmt.Sprintf("'%s'",col)
+				b := make([]byte, 0)
+				value = fmt.Sprintf("%s", strconv.AppendQuote(b, fmt.Sprintf("%s",col)))
 			}
 			dataStrings[i] = value
 		}
