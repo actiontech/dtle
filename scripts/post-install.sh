@@ -7,7 +7,8 @@ CONFIG_DIR=/etc/udup
 LOGROTATE_DIR=/etc/logrotate.d
 
 function install_init {
-    #%installpath
+    sudo sed -i 's|'daemon=$BIN_DIR'|'daemon=$RPM_INSTALL_PREFIX$BIN_DIR'|g' $RPM_INSTALL_PREFIX$SCRIPT_DIR/init.sh
+    sudo sed -i 's|'config=$CONFIG_DIR'|'config=$RPM_INSTALL_PREFIX$CONFIG_DIR'|g' $RPM_INSTALL_PREFIX$SCRIPT_DIR/init.sh
     cp -f $RPM_INSTALL_PREFIX$SCRIPT_DIR/init.sh /etc/init.d/udup
     chmod +x /etc/init.d/udup
 }
