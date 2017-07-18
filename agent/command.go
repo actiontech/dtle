@@ -120,7 +120,7 @@ func (c *Command) readConfig() *Config {
 
 	// Normalize binds, ports, addresses, and advertise
 	if err := config.normalizeAddrs(); err != nil {
-		log.Fatal(err.Error())
+		c.logger.Printf("[ERR] Error normalizes Addresses: %s", err)
 		return nil
 	}
 
