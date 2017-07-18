@@ -67,6 +67,8 @@ type ClientConfig struct {
 
 	NatsAddr string
 
+	MaxPayload int
+
 	// StatsCollectionInterval is the interval at which the Udup client
 	// collects resource usage stats
 	StatsCollectionInterval time.Duration
@@ -268,11 +270,11 @@ func (m *MySQLDriverConfig) MarkPointOfInterest() int64 {
 // slave restrict replication to a given table
 type DataSource struct {
 	TableSchema string
-	Tables    []*Table
+	Tables      []*Table
 }
 
 type Table struct {
-	TableName string
+	TableName   string
 	TableSchema string
 
 	AlterStatement                   string

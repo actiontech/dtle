@@ -14,6 +14,12 @@ import (
 	uconf "udup/internal/config"
 )
 
+// This is the default addr to all interfaces.
+const (
+	DefaultAddr       = "0.0.0.0"
+	DefaultMaxPayload = 100 * 1024 * 1024 // 100M
+)
+
 // Config is the configuration for the Udup agent.
 type Config struct {
 	// Region is the region this agent is in. Defaults to global.
@@ -58,6 +64,10 @@ type Config struct {
 	Server *ServerConfig `mapstructure:"server"`
 
 	Metric *Metric `mapstructure:"metric"`
+
+	// MAX_PAYLOAD is the maximum allowed payload size. Should be using
+	// something different if > 1MB payloads are needed.
+	MaxPayload int `mapstructure:"max_payload"`
 
 	// LeaveOnInt is used to gracefully leave on the interrupt signal
 	LeaveOnInt bool `mapstructure:"leave_on_interrupt"`
@@ -195,20 +205,26 @@ func DefaultConfig() *Config {
 		LogLevel:   "INFO",
 		Region:     "global",
 		Datacenter: "dc1",
-		BindAddr:   "0.0.0.0",
+		BindAddr:   DefaultAddr,
 		Ports: &Ports{
 			HTTP: 8190,
 			RPC:  8191,
 			Serf: 8192,
 			Nats: 8193,
 		},
-		Addresses: &Addresses{},
+		Addresses: &Addresses{
+			HTTP: DefaultAddr,
+			RPC:  DefaultAddr,
+			Serf: DefaultAddr,
+			Nats: DefaultAddr,
+		},
 		AdvertiseAddrs: &AdvertiseAddrs{
-			Nats: "0.0.0.0",
+			Nats: DefaultAddr,
 		},
 		Consul: uconf.DefaultConsulConfig(),
 		Client: &ClientConfig{
-			Enabled: false,
+			Enabled:    false,
+			NoHostUUID: true,
 		},
 		Server: &ServerConfig{
 			Enabled:          false,
@@ -221,6 +237,7 @@ func DefaultConfig() *Config {
 			CollectionInterval: "1s",
 			collectionInterval: 1 * time.Second,
 		},
+		MaxPayload: DefaultMaxPayload,
 	}
 }
 
@@ -279,6 +296,10 @@ func (c *Config) Merge(b *Config) *Config {
 	}
 	if b.LeaveOnTerm {
 		result.LeaveOnTerm = true
+	}
+
+	if b.MaxPayload != 0 {
+		result.MaxPayload = b.MaxPayload
 	}
 
 	// Apply the metric config

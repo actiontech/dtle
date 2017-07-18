@@ -8,16 +8,16 @@ import (
 	"strconv"
 	"strings"
 
+	"bytes"
 	usql "udup/internal/client/driver/mysql/sql"
 	"udup/internal/config"
-	"bytes"
 )
 
 var (
-	stringOfBackslashChars = []string{"\u005c","\u00a5","\u0160","\u20a9","\u2216","\ufe68","uff3c"}
-	stringOfQuoteChars = []string{"\u0022","\u0027","\u0060","\u00b4","\u02b9","\u02ba","\u02bb","\u02bc",
-		"\u02c8","\u02ca","\u02cb","\u02d9","\u0300","\u0301","\u2018","\u2019","\u201a","\u2032","\u2035",
-	"\u275b","\u275c","\uff07"}
+	stringOfBackslashChars = []string{"\u005c", "\u00a5", "\u0160", "\u20a9", "\u2216", "\ufe68", "uff3c"}
+	stringOfQuoteChars     = []string{"\u0022", "\u0027", "\u0060", "\u00b4", "\u02b9", "\u02ba", "\u02bb", "\u02bc",
+		"\u02c8", "\u02ca", "\u02cb", "\u02d9", "\u0300", "\u0301", "\u2018", "\u2019", "\u201a", "\u2032", "\u2035",
+		"\u275b", "\u275c", "\uff07"}
 )
 
 type dumper struct {
@@ -170,20 +170,20 @@ func (d *dumper) getChunkData(entry *dumpEntry) error {
 				value = "NULL"
 			} else {
 				colValue := string(col)
-				if !needsQuoting(colValue){
+				if !needsQuoting(colValue) {
 					value = colValue
-				}else {
+				} else {
 					colBuffer := new(bytes.Buffer)
-					for _,char_c :=range colValue {
-						c:=fmt.Sprintf("%c",char_c)
-						if needsQuoting(c){
+					for _, char_c := range colValue {
+						c := fmt.Sprintf("%c", char_c)
+						if needsQuoting(c) {
 							colBuffer.WriteString("\\")
 						}
 						colBuffer.WriteString(c)
 					}
 					value = colBuffer.String()
 				}
-				value = fmt.Sprintf("'%s'",value)
+				value = fmt.Sprintf("'%s'", value)
 			}
 			dataStrings[i] = value
 		}
@@ -195,15 +195,15 @@ func (d *dumper) getChunkData(entry *dumpEntry) error {
 	return nil
 }
 
-func needsQuoting(s string) bool{
-	for _,char_c:=range s {
-		for _,bc:=range stringOfBackslashChars {
-			if bc == fmt.Sprintf("%c",char_c) {
+func needsQuoting(s string) bool {
+	for _, char_c := range s {
+		for _, bc := range stringOfBackslashChars {
+			if bc == fmt.Sprintf("%c", char_c) {
 				return true
 			}
 		}
-		for _,qc:=range stringOfQuoteChars {
-			if qc == fmt.Sprintf("%c",char_c) {
+		for _, qc := range stringOfQuoteChars {
+			if qc == fmt.Sprintf("%c", char_c) {
 				return true
 			}
 		}
@@ -405,7 +405,7 @@ func showTables(db *sql.DB, dbName string) (tables []*config.Table, err error) {
 		if err := rows.Scan(&table); err != nil {
 			return tables, err
 		}
-		tb := &config.Table{TableSchema:dbName,TableName:table.String}
+		tb := &config.Table{TableSchema: dbName, TableName: table.String}
 		tables = append(tables, tb)
 	}
 	return tables, rows.Err()

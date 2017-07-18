@@ -85,6 +85,7 @@ func parseConfig(result *Config, list *ast.ObjectList) error {
 		"client",
 		"server",
 		"metric",
+		"max_payload",
 		"leave_on_interrupt",
 		"leave_on_terminate",
 		"consul",

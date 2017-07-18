@@ -548,7 +548,7 @@ func (c *Client) setupNatsServer() error {
 	nOpts := gnatsd.Options{
 		Host:       natsAddr.IP.String(),
 		Port:       natsAddr.Port,
-		MaxPayload: 100 * 1024 * 1024,
+		MaxPayload: c.config.MaxPayload,
 		//HTTPPort:   8199,
 		LogFile: c.config.LogFile,
 		Trace:   true,

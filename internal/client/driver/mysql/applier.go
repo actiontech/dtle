@@ -170,21 +170,21 @@ func (a *Applier) Run() {
 
 	if a.tp == models.JobTypeMig {
 		for {
-			binlogCoordinates,err := showMasterStatus(a.dbs[0].Db)
+			binlogCoordinates, err := showMasterStatus(a.dbs[0].Db)
 			if err != nil {
 				a.onError(err)
 				return
 			}
-			if a.mysqlContext.Gtid == binlogCoordinates.DisplayString(){
+			if a.mysqlContext.Gtid == binlogCoordinates.DisplayString() {
 				a.waitCh <- models.NewWaitResult(0, nil)
 			}
 		}
 	}
 
-	if err := a.retryOperation(a.cutOver); err != nil {
+	/*if err := a.retryOperation(a.cutOver); err != nil {
 		a.onError(err)
 		return
-	}
+	}*/
 }
 
 // readCurrentBinlogCoordinates reads master status from hooked server
@@ -629,9 +629,10 @@ OUTER:
 }
 
 func (a *Applier) initNatSubClient() (err error) {
-	sc, err := gonats.Connect(fmt.Sprintf("nats://%s", a.mysqlContext.NatsAddr))
+	natsAddr := fmt.Sprintf("nats://%s", a.mysqlContext.NatsAddr)
+	sc, err := gonats.Connect(natsAddr)
 	if err != nil {
-		a.logger.Printf("[ERR] mysql.applier: can't connect nats server %v.make sure a nats streaming server is running.%v", fmt.Sprintf("nats://%s", a.mysqlContext.NatsAddr), err)
+		a.logger.Printf("[ERR] mysql.applier: can't connect nats server %v. make sure a nats streaming server is running.%v", natsAddr, err)
 		return err
 	}
 	a.natsConn = sc
@@ -1367,7 +1368,7 @@ func (a *Applier) ApplyEventQueries(entry *dumpEntry) error {
 			_, err := sql.ExecNoPrepare(a.dbs[0].Db, query)
 			if err != nil {
 				if !sql.IgnoreError(err) {
-					a.logger.Printf("[ERR] mysql.applier: exec [%s] error: %v", query,err)
+					a.logger.Printf("[ERR] mysql.applier: exec [%s] error: %v", query, err)
 					return err
 				} else {
 					a.logger.Printf("[WARN] mysql.applier: ignore error: %v", err)

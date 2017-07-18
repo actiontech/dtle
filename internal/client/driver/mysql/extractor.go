@@ -197,21 +197,21 @@ func (e *Extractor) Run() {
 
 	if e.tp == models.JobTypeMig {
 		for {
-			binlogCoordinates,err := showMasterStatus(e.db)
+			binlogCoordinates, err := showMasterStatus(e.db)
 			if err != nil {
 				e.onError(err)
 				return
 			}
-			if e.mysqlContext.Gtid == binlogCoordinates.DisplayString(){
+			if e.mysqlContext.Gtid == binlogCoordinates.DisplayString() {
 				e.waitCh <- models.NewWaitResult(0, nil)
 			}
 		}
 	}
 
-	if err := e.retryOperation(e.cutOver); err != nil {
+	/*if err := e.retryOperation(e.cutOver); err != nil {
 		e.onError(err)
 		return
-	}
+	}*/
 }
 
 // cutOver performs the final step of migration, based on migration
@@ -470,9 +470,10 @@ func (e *Extractor) printMigrationStatusHint(databaseName, tableName string) {
 }
 
 func (e *Extractor) initNatsPubClient() (err error) {
-	pc, err := gonats.Connect(fmt.Sprintf("nats://%s", e.mysqlContext.NatsAddr))
+	natsAddr := fmt.Sprintf("nats://%s", e.mysqlContext.NatsAddr)
+	pc, err := gonats.Connect(natsAddr)
 	if err != nil {
-		e.logger.Printf("[ERR] mysql.extractor: can't connect nats server %v.make sure a nats streaming server is running.%v", fmt.Sprintf("nats://%s", e.mysqlContext.NatsAddr), err)
+		e.logger.Printf("[ERR] mysql.extractor: can't connect nats server %v. make sure a nats streaming server is running.%v", natsAddr, err)
 		return err
 	}
 	e.natsConn = pc
@@ -574,7 +575,7 @@ func (e *Extractor) readCurrentBinlogCoordinates() error {
 			}
 		}
 	} else {
-		binlogCoordinates,err := showMasterStatus(e.db)
+		binlogCoordinates, err := showMasterStatus(e.db)
 		if err != nil {
 			return err
 		}
@@ -586,7 +587,7 @@ func (e *Extractor) readCurrentBinlogCoordinates() error {
 	return nil
 }
 
-func showMasterStatus(db *gosql.DB) (binlogCoordinates *base.BinlogCoordinates,err error) {
+func showMasterStatus(db *gosql.DB) (binlogCoordinates *base.BinlogCoordinates, err error) {
 	query := `show master status`
 	foundMasterStatus := false
 	err = sql.QueryRowsMap(db, query, func(m sql.RowMap) error {
@@ -605,13 +606,13 @@ func showMasterStatus(db *gosql.DB) (binlogCoordinates *base.BinlogCoordinates,e
 		return nil
 	})
 	if err != nil {
-		return nil,err
+		return nil, err
 	}
 	if !foundMasterStatus {
-		return nil,fmt.Errorf("Got no results from SHOW MASTER STATUS. Bailing out")
+		return nil, fmt.Errorf("Got no results from SHOW MASTER STATUS. Bailing out")
 	}
 
-	return binlogCoordinates,nil
+	return binlogCoordinates, nil
 }
 
 // Read the MySQL charset-related system variables.
@@ -781,7 +782,7 @@ func (e *Extractor) StreamEvents(approveHeterogeneous bool, canStopStreaming fun
 							e.onError(gonats.ErrMaxPayload)
 						}
 						if uint64(len(txMsg)) > defaultMsgBytes {
-							if err := e.requestMsg(subject,fmt.Sprintf("%s:1-%d", binlogTx.SID, binlogTx.GNO), txMsg); err != nil {
+							if err := e.requestMsg(subject, fmt.Sprintf("%s:1-%d", binlogTx.SID, binlogTx.GNO), txMsg); err != nil {
 								e.onError(err)
 								break OUTER
 							}
@@ -829,7 +830,7 @@ func (e *Extractor) StreamEvents(approveHeterogeneous bool, canStopStreaming fun
 
 // retryOperation attempts up to `count` attempts at running given function,
 // exiting as soon as it returns with non-error.
-func (e *Extractor) requestMsg(subject,gtid string, txMsg []byte) (err error) {
+func (e *Extractor) requestMsg(subject, gtid string, txMsg []byte) (err error) {
 	for i := 0; i < int(e.mysqlContext.MaxRetries); i++ {
 		if i != 0 {
 			// sleep after previous iteration
@@ -837,7 +838,7 @@ func (e *Extractor) requestMsg(subject,gtid string, txMsg []byte) (err error) {
 		}
 		_, err = e.natsConn.Request(subject, txMsg, DefaultConnectWait)
 		if err == nil {
-			if gtid != ""{
+			if gtid != "" {
 				e.mysqlContext.Gtid = gtid
 			}
 			return nil
@@ -975,7 +976,7 @@ func (e *Extractor) mysqlDump() error {
 			if err != nil {
 				return err
 			}
-			if err := e.requestMsg(fmt.Sprintf("%s_full",e.subject),"", txMsg); err != nil {
+			if err := e.requestMsg(fmt.Sprintf("%s_full", e.subject), "", txMsg); err != nil {
 				return fmt.Errorf("request full msg err: %v", err)
 			}
 			totalRowCount = totalRowCount + int(entry.Counter)
@@ -1004,7 +1005,7 @@ func (e *Extractor) mysqlDump() error {
 			if err != nil {
 				return err
 			}
-			if err := e.requestMsg(fmt.Sprintf("%s_full", e.subject),"", txMsg); err != nil {
+			if err := e.requestMsg(fmt.Sprintf("%s_full", e.subject), "", txMsg); err != nil {
 				return fmt.Errorf("request full msg err: %v", err)
 			}
 			totalRowCount = totalRowCount + int(entry.Counter)
