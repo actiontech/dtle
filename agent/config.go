@@ -37,6 +37,9 @@ type Config struct {
 	// LogLevel is the level of the logs to putout
 	LogLevel string `mapstructure:"log_level"`
 
+	// file to write our pid to
+	PidFile string `mapstructure:"pid_file"`
+
 	// Specify the log file name. The empty string means to log to stdout.
 	LogFile string `mapstructure:"log_file"`
 
@@ -203,6 +206,7 @@ type AdvertiseAddrs struct {
 func DefaultConfig() *Config {
 	return &Config{
 		LogLevel:   "INFO",
+		PidFile:    "/var/run/udup/udup.pid",
 		Region:     "global",
 		Datacenter: "dc1",
 		BindAddr:   DefaultAddr,
@@ -287,6 +291,9 @@ func (c *Config) Merge(b *Config) *Config {
 	}
 	if b.LogFile != "" {
 		result.LogFile = b.LogFile
+	}
+	if b.PidFile != "" {
+		result.PidFile = b.PidFile
 	}
 	if b.BindAddr != "" {
 		result.BindAddr = b.BindAddr

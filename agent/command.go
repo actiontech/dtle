@@ -76,11 +76,24 @@ func (c *Command) readConfig() *Config {
 	flags.StringVar(&cmdConfig.DataDir, "data-dir", "", "")
 	flags.StringVar(&cmdConfig.Datacenter, "dc", "", "")
 	flags.StringVar(&cmdConfig.LogLevel, "log-level", "", "")
+	flags.StringVar(&cmdConfig.PidFile, "pid-file", "", "")
 	flags.StringVar(&cmdConfig.NodeName, "node", "", "")
 
 	if err := flags.Parse(c.args); err != nil {
 		return nil
 	}
+
+	if cmdConfig.PidFile != "" {
+		f, err := os.Create(cmdConfig.PidFile)
+		if err != nil {
+			log.Fatalf("Unable to create pidfile: %s", err)
+		}
+
+		fmt.Fprintf(f, "%d\n", os.Getpid())
+
+		f.Close()
+	}
+
 
 	// Split the servers.
 	if servers != "" {

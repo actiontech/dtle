@@ -78,6 +78,7 @@ func parseConfig(result *Config, list *ast.ObjectList) error {
 		"data_dir",
 		"log_level",
 		"log_file",
+		"pid_file",
 		"bind_addr",
 		"ports",
 		"addresses",
