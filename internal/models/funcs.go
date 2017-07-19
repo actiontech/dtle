@@ -3,6 +3,7 @@ package models
 import (
 	crand "crypto/rand"
 	"fmt"
+	"sync"
 )
 
 // RemoveAllocs is used to remove any allocs with the given IDs
@@ -53,4 +54,38 @@ func CopySliceConstraints(s []*Constraint) []*Constraint {
 		c[i] = v.Copy()
 	}
 	return c
+}
+
+type pool struct {
+	queue chan int
+	wg    *sync.WaitGroup
+}
+
+func NewPool(size int) *pool {
+	if size <= 0 {
+		size = 1
+	}
+	return &pool{
+		queue: make(chan int, size),
+		wg:    &sync.WaitGroup{},
+	}
+}
+
+func (p *pool) Add(delta int) {
+	for i := 0; i < delta; i++ {
+		p.queue <- 1
+	}
+	for i := 0; i > delta; i-- {
+		<-p.queue
+	}
+	p.wg.Add(delta)
+}
+
+func (p *pool) Done() {
+	<-p.queue
+	p.wg.Done()
+}
+
+func (p *pool) Wait() {
+	p.wg.Wait()
 }

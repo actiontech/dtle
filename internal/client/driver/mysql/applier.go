@@ -170,7 +170,7 @@ func (a *Applier) Run() {
 
 	if a.tp == models.JobTypeMig {
 		for {
-			binlogCoordinates, err := showMasterStatus(a.dbs[0].Db)
+			binlogCoordinates, err := base.GetSelfBinlogCoordinates(a.dbs[0].Db)
 			if err != nil {
 				a.onError(err)
 				return

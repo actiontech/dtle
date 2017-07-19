@@ -7,7 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"sort"
 	ubase "udup/internal/client/driver/mysql/base"
 	usql "udup/internal/client/driver/mysql/sql"
 	uconf "udup/internal/config"
@@ -69,9 +68,14 @@ func (i *Inspector) ValidateOriginalTable(databaseName, tableName string) (err e
 	if err := i.validateTable(databaseName, tableName); err != nil {
 		return err
 	}
-	/*if err := i.validateTableTriggers(databaseName, tableName); err != nil {
+
+	if err := i.validateTableForeignKeys(databaseName, tableName, true /*this.migrationContext.DiscardForeignKeys*/); err != nil {
 		return err
-	}*/
+	}
+
+	if err := i.validateTableTriggers(databaseName, tableName); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -272,56 +276,44 @@ func (i *Inspector) validateTable(databaseName, tableName string) error {
 	return nil
 }
 
-func (i *Inspector) isContains(tb *uconf.Table) bool {
-	for _, t := range i.tablesWithForeignKey {
-		if t.TableSchema == tb.TableSchema && t.TableName == tb.TableName {
-			return true
-		}
-	}
-	return false
-}
-
 // validateTableForeignKeys makes sure no foreign keys exist on the migrated table
-func (i *Inspector) validateTableForeignKeys() error {
+func (i *Inspector) validateTableForeignKeys(databaseName, tableName string, allowChildForeignKeys bool) error {
+	/*if i.mysqlContext.SkipForeignKeyChecks {
+		i.logger.Printf("[WARN] --skip-foreign-key-checks provided: will not check for foreign keys")
+		return nil
+	}*/
 	query := `
 		SELECT
-			REFERENCED_TABLE_SCHEMA,REFERENCED_TABLE_NAME,
-			TABLE_SCHEMA,TABLE_NAME
+			SUM(REFERENCED_TABLE_NAME IS NOT NULL AND TABLE_SCHEMA=? AND TABLE_NAME=?) as num_child_side_fk,
+			SUM(REFERENCED_TABLE_NAME IS NOT NULL AND REFERENCED_TABLE_SCHEMA=? AND REFERENCED_TABLE_NAME=?) as num_parent_side_fk
 		FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE
 		WHERE
 				REFERENCED_TABLE_NAME IS NOT NULL
-		ORDER BY
-			REFERENCED_TABLE_NAME
+				AND ((TABLE_SCHEMA=? AND TABLE_NAME=?)
+					OR (REFERENCED_TABLE_SCHEMA=? AND REFERENCED_TABLE_NAME=?)
+				)
 	`
+	numParentForeignKeys := 0
+	numChildForeignKeys := 0
 	err := usql.QueryRowsMap(i.db, query, func(m usql.RowMap) error {
-		tableWithForeignKey := umconf.TableWithForeignKey{
-			ReferencedTableSchema: m.GetString("REFERENCED_TABLE_SCHEMA"),
-			ReferencedTableName:   m.GetString("REFERENCED_TABLE_NAME"),
-			TableSchema:           m.GetString("TABLE_SCHEMA"),
-			TableName:             m.GetString("TABLE_NAME"),
-			Index:                 0,
-		}
-		i.tablesWithForeignKey = append(i.tablesWithForeignKey, tableWithForeignKey)
+		numChildForeignKeys = m.GetInt("num_child_side_fk")
+		numParentForeignKeys = m.GetInt("num_parent_side_fk")
 		return nil
-	})
+	}, databaseName, tableName, databaseName, tableName, databaseName, tableName, databaseName, tableName,
+	)
 	if err != nil {
 		return err
 	}
-
-	for _, t1 := range i.tablesWithForeignKey {
-		for idx, t2 := range i.tablesWithForeignKey {
-			if t2.ReferencedTableSchema == t1.TableSchema &&
-				t2.ReferencedTableName == t1.TableName {
-				t2.Index = t1.Index + 1
-				i.tablesWithForeignKey[idx] = t2
-			}
-		}
+	if numParentForeignKeys > 0 {
+		return fmt.Errorf("Found %d parent-side foreign keys on %s.%s. Parent-side foreign keys are not supported. Bailing out", numParentForeignKeys, usql.EscapeName(databaseName), usql.EscapeName(tableName))
 	}
-	sort.Sort(umconf.TableWrapper{i.tablesWithForeignKey, func(p, q *umconf.TableWithForeignKey) bool {
-		return q.Index < p.Index // Index desc sort
-	}})
-
-	i.logger.Printf("[DEBUG] validated foreign keys on table")
+	if numChildForeignKeys > 0 {
+		if allowChildForeignKeys {
+			i.logger.Printf("[DEBUG] Foreign keys found and will be dropped, as per given --discard-foreign-keys flag")
+			return nil
+		}
+		return fmt.Errorf("Found %d child-side foreign keys on %s.%s. Child-side foreign keys are not supported. Bailing out", numChildForeignKeys, usql.EscapeName(databaseName), usql.EscapeName(tableName))
+	}
 	return nil
 }
 
@@ -349,7 +341,6 @@ func (i *Inspector) validateTableTriggers(databaseName, tableName string) error 
 	if numTriggers > 0 {
 		return fmt.Errorf("Found triggers on %s.%s. Triggers are not supported at this time. Bailing out", usql.EscapeName(databaseName), usql.EscapeName(tableName))
 	}
-	i.logger.Printf("[DEBUG] Validated no triggers exist on table")
 	return nil
 }
 

@@ -13,6 +13,12 @@ import (
 	"udup/internal/config"
 )
 
+const (
+	//Concurrency workerks
+	defaultConcurrency = 5
+	defaultChunkSize   = 1000
+)
+
 var (
 	stringOfBackslashChars = []string{"\u005c", "\u00a5", "\u0160", "\u20a9", "\u2216", "\ufe68", "uff3c"}
 	stringOfQuoteChars     = []string{"\u0022", "\u0027", "\u0060", "\u00b4", "\u02b9", "\u02ba", "\u02bb", "\u02bc",
@@ -32,14 +38,14 @@ type dumper struct {
 	db *sql.DB
 }
 
-func NewDumper(db *sql.DB, dbName, tableName string, concurrency, chunkSize int, logger *log.Logger) *dumper {
+func NewDumper(db *sql.DB, dbName, tableName string, logger *log.Logger) *dumper {
 	dumper := &dumper{
 		logger:      logger,
 		db:          db,
 		TableSchema: dbName,
 		TableName:   tableName,
-		concurrency: concurrency,
-		chunkSize:   chunkSize,
+		concurrency: defaultConcurrency,
+		chunkSize:   defaultChunkSize,
 	}
 
 	return dumper
@@ -72,8 +78,6 @@ type dumpEntry struct {
 	RowsCount                uint64
 	Offset                   uint64
 	Counter                  uint64
-	Rows_cnt                 uint32
-	Rows_crc32               uint32
 	data_text                []string
 	err                      error
 }
@@ -127,26 +131,6 @@ func (d *dumper) getChunkData(entry *dumpEntry) error {
 		return err
 	}
 
-	/*queries := []string{}
-	for _,column :=range columns {
-		query = fmt.Sprintf(`SUM(CRC32(%s))`,
-			column,
-		)
-		queries = append(queries,query)
-	}
-
-	query = fmt.Sprintf(`SELECT %v FROM (SELECT * FROM %s.%s LIMIT %d OFFSET %d) q`,
-		strings.Join(queries, ","),
-		usql.EscapeName(d.DbName),
-		usql.EscapeName(d.TableName),
-		d.chunkSize,
-		entry.offset,
-	)
-
-	if err := d.db.QueryRow(query).Scan(&entry.rows_crc32); err != nil {
-		return err
-	}*/
-
 	columnsCount := len(columns)
 	values := make([]sql.RawBytes, columnsCount)
 
@@ -190,7 +174,6 @@ func (d *dumper) getChunkData(entry *dumpEntry) error {
 		entry.data_text = append(entry.data_text, "("+strings.Join(dataStrings, ",")+")")
 		entry.incrementCounter()
 	}
-	//entry.Rows_crc32 = crc32.ChecksumIEEE([]byte(strings.Join(entry.data_text, ",")))
 	entry.Values = fmt.Sprintf(`replace into %s.%s values %s`, d.TableSchema, d.TableName, strings.Join(entry.data_text, ","))
 	return nil
 }
@@ -210,106 +193,6 @@ func needsQuoting(s string) bool {
 	}
 	return false
 }
-
-// dumps a specific chunk, reading chunk info from the channel
-/*func (d *dumper) getChunkData(entry *dumpEntry) error {
-	query := fmt.Sprintf(`SELECT * FROM %s.%s LIMIT %d OFFSET %d LOCK IN SHARE MODE`,
-		usql.EscapeName(d.DbName),
-		usql.EscapeName(d.TableName),
-		d.chunkSize,
-		entry.Offset,
-	)
-
-	d.logger.Printf("query:%v",query)
-
-	err := func() error {
-		tx, err := d.db.Begin()
-		if err != nil {
-			return err
-		}
-
-		rollback := func(err error) error {
-			tx.Rollback()
-			return err
-		}
-
-		rows, err := tx.Query(query)
-		if err != nil {
-			return rollback(err)
-		}
-
-		columns, err := rows.Columns()
-		if err != nil {
-			return err
-		}
-
-		queries := []string{}
-		for _,column :=range columns {
-			query = fmt.Sprintf("'%s'",column)
-			queries = append(queries,query)
-		}
-
-		query = fmt.Sprintf(`SELECT
-			COUNT(*) AS cnt,
-			COALESCE(LOWER(CONV(BIT_XOR(CAST(CRC32(CONCAT_WS('#',
-			%s)) AS UNSIGNED)), 10, 16)), 0)
-			AS crc FROM %s.%s FORCE INDEX('PRIMARY')
-			WHERE id >= %d AND id <= %d
-			`,
-			strings.Join(queries, ","),
-			usql.EscapeName(d.DbName),
-			usql.EscapeName(d.TableName),
-			entry.Offset,
-			d.chunkSize,
-		)
-
-		columnsCount := len(columns)
-		values := make([]sql.RawBytes, columnsCount)
-
-		scanArgs := make([]interface{}, len(values))
-		for i := range values {
-			scanArgs[i] = &values[i]
-		}
-
-		entry.data_text = make([]string, 0)
-		for rows.Next() {
-			err = rows.Scan(scanArgs...)
-			if err != nil {
-				return err
-			}
-
-			var value string
-			dataStrings := make([]string, columnsCount)
-			for i, col := range values {
-				// Here we can check if the value is nil (NULL value)
-				if col == nil {
-					value = "NULL"
-				} else {
-					value = string(col)
-				}
-				dataStrings[i] = value
-			}
-			entry.data_text = append(entry.data_text, "('"+strings.Join(dataStrings, "','")+"')")
-			entry.incrementCounter()
-		}
-
-		if err = tx.QueryRow(query).Scan(&entry.Rows_cnt,&entry.Rows_crc);err != nil {
-			return rollback(err)
-		}
-
-		if err := tx.Commit(); err != nil {
-			return err
-		}
-		return nil
-	}()
-
-	if err != nil {
-		return err
-	}
-
-	entry.Values = fmt.Sprintf(`replace into %s.%s values %s`, d.DbName, d.TableName, strings.Join(entry.data_text, ","))
-	return nil
-}*/
 
 func (d *dumper) worker(entriesChannel <-chan *dumpEntry, resultsChannel chan<- *dumpEntry) {
 	for e := range entriesChannel {

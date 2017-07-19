@@ -94,7 +94,6 @@ func (c *Command) readConfig() *Config {
 		f.Close()
 	}
 
-
 	// Split the servers.
 	if servers != "" {
 		cmdConfig.Client.Servers = strings.Split(servers, ",")

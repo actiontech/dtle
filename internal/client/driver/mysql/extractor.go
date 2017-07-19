@@ -40,7 +40,6 @@ type Extractor struct {
 	mysqlContext               *config.MySQLDriverConfig
 	db                         *gosql.DB
 	tables                     []*config.Table
-	tablesWithForeignKey       []*config.Table
 	binlogChannel              chan *binlog.BinlogTx
 	dataChannel                chan *binlog.BinlogEntry
 	parser                     *sql.Parser
@@ -64,7 +63,6 @@ func NewExtractor(subject, tp string, cfg *config.MySQLDriverConfig, logger *log
 		tp:                         tp,
 		mysqlContext:               cfg,
 		tables:                     make([]*config.Table, 0),
-		tablesWithForeignKey:       make([]*config.Table, 0),
 		binlogChannel:              make(chan *binlog.BinlogTx, ChannelBufferSize),
 		dataChannel:                make(chan *binlog.BinlogEntry, ChannelBufferSize),
 		parser:                     sql.NewParser(),
@@ -197,7 +195,7 @@ func (e *Extractor) Run() {
 
 	if e.tp == models.JobTypeMig {
 		for {
-			binlogCoordinates, err := showMasterStatus(e.db)
+			binlogCoordinates, err := base.GetSelfBinlogCoordinates(e.db)
 			if err != nil {
 				e.onError(err)
 				return
@@ -422,9 +420,7 @@ func (e *Extractor) initiateInspector() (err error) {
 	if err := e.inspector.InitDBConnections(); err != nil {
 		return err
 	}
-	if err := e.inspector.validateTableForeignKeys(); err != nil {
-		return err
-	}
+
 	if err := e.inspector.validateLogSlaveUpdates(); err != nil {
 		return err
 	}
@@ -575,7 +571,7 @@ func (e *Extractor) readCurrentBinlogCoordinates() error {
 			}
 		}
 	} else {
-		binlogCoordinates, err := showMasterStatus(e.db)
+		binlogCoordinates, err := base.GetSelfBinlogCoordinates(e.db)
 		if err != nil {
 			return err
 		}
@@ -585,34 +581,6 @@ func (e *Extractor) readCurrentBinlogCoordinates() error {
 	e.logger.Printf("[INFO] mysql.extractor: Step 0: read binlog coordinates of MySQL master: %+v", *e.initialBinlogCoordinates)
 
 	return nil
-}
-
-func showMasterStatus(db *gosql.DB) (binlogCoordinates *base.BinlogCoordinates, err error) {
-	query := `show master status`
-	foundMasterStatus := false
-	err = sql.QueryRowsMap(db, query, func(m sql.RowMap) error {
-		gtidSet, err := gomysql.ParseMysqlGTIDSet(m.GetString("Executed_Gtid_Set"))
-		if err != nil {
-			return err
-		}
-
-		binlogCoordinates = &base.BinlogCoordinates{
-			LogFile: m.GetString("File"),
-			LogPos:  m.GetInt64("Position"),
-			GtidSet: gtidSet.String(),
-		}
-		foundMasterStatus = true
-
-		return nil
-	})
-	if err != nil {
-		return nil, err
-	}
-	if !foundMasterStatus {
-		return nil, fmt.Errorf("Got no results from SHOW MASTER STATUS. Bailing out")
-	}
-
-	return binlogCoordinates, nil
 }
 
 // Read the MySQL charset-related system variables.
@@ -848,20 +816,6 @@ func (e *Extractor) requestMsg(subject, gtid string, txMsg []byte) (err error) {
 	return err
 }
 
-func (e *Extractor) isContains(tb *config.Table) bool {
-	for _, t := range e.tables {
-		if t.TableSchema == tb.TableSchema && t.TableName == tb.TableName {
-			return true
-		}
-	}
-	for _, t := range e.tablesWithForeignKey {
-		if t.TableSchema == tb.TableSchema && t.TableName == tb.TableName {
-			return true
-		}
-	}
-	return false
-}
-
 //Perform the snapshot using the same logic as the "mysqldump" utility.
 func (e *Extractor) mysqlDump() error {
 	// Generate the DDL statements that set the charset-related system variables ...
@@ -898,17 +852,10 @@ func (e *Extractor) mysqlDump() error {
 			for _, doTb := range doDb.Tables {
 				doTb.TableSchema = doDb.TableSchema
 				if err := e.inspector.ValidateOriginalTable(doDb.TableSchema, doTb.TableName); err != nil {
-					return err
+					e.logger.Printf("[WARN] mysql.extractor: %v", err)
+					continue
 				}
-				if e.inspector.isContains(doTb) {
-					if !e.isContains(doTb) {
-						e.tablesWithForeignKey = append(e.tablesWithForeignKey, doTb)
-					}
-				} else {
-					if !e.isContains(doTb) {
-						e.tables = append(e.tables, doTb)
-					}
-				}
+				e.tables = append(e.tables, doTb)
 			}
 		}
 	} else {
@@ -929,17 +876,10 @@ func (e *Extractor) mysqlDump() error {
 			}
 			for _, tb := range tbs {
 				if err := e.inspector.ValidateOriginalTable(dbName, tb.TableName); err != nil {
-					return err
+					e.logger.Printf("[WARN] mysql.extractor: %v", err)
+					continue
 				}
-				if e.inspector.isContains(tb) {
-					if !e.isContains(tb) {
-						e.tablesWithForeignKey = append(e.tablesWithForeignKey, tb)
-					}
-				} else {
-					if !e.isContains(tb) {
-						e.tables = append(e.tables, tb)
-					}
-				}
+				e.tables = append(e.tables, tb)
 			}
 		}
 	}
@@ -948,76 +888,49 @@ func (e *Extractor) mysqlDump() error {
 	// STEP 3
 	// ------
 	// Dump all of the tables and generate source records ...
-	e.logger.Printf("[INFO] mysql.extractor: Step 3: scanning contents of %d tables", len(e.tablesWithForeignKey)+len(e.tables))
+	e.logger.Printf("[INFO] mysql.extractor: Step 3: scanning contents of %d tables", len(e.tables))
 	startScan := currentTimeMillis()
 	totalRowCount := 0
 	counter := 0
-	completedCounter := 0
-	concurrency := 5 //Concurrency workerks
-	chunkSize := 1000
-	for _, t := range e.tables {
-		// Obtain a record maker for this table, which knows about the schema ...
-		// Choose how we create statements based on the # of rows ...
-		counter++
-		e.logger.Printf("[INFO] mysql.extractor: Step 3: - scanning table '%s.%s' (%d of %d tables)", t.TableSchema, t.TableName, counter, len(e.tablesWithForeignKey)+len(e.tables))
+	pool := models.NewPool(10)
+	for _, tb := range e.tables {
+		pool.Add(1)
+		go func(t *config.Table) {
+			// Obtain a record maker for this table, which knows about the schema ...
+			// Choose how we create statements based on the # of rows ...
+			counter++
+			e.logger.Printf("[INFO] mysql.extractor: Step 3: - scanning table '%s.%s' (%d of %d tables)", t.TableSchema, t.TableName, counter, len(e.tables))
 
-		dmp := NewDumper(e.db, t.TableSchema, t.TableName, concurrency, chunkSize, e.logger)
-		result, err := dmp.Dump(setSystemVariablesStatement)
-		if err != nil {
-			return err
-		}
-
-		// Scan the rows in the table ...
-		for _, entry := range result {
-			if entry.err != nil {
-				return entry.err
-			}
-			txMsg, err := Encode(entry)
+			dmp := NewDumper(e.db, t.TableSchema, t.TableName, e.logger)
+			result, err := dmp.Dump(setSystemVariablesStatement)
 			if err != nil {
-				return err
+				e.onError(err)
 			}
-			if err := e.requestMsg(fmt.Sprintf("%s_full", e.subject), "", txMsg); err != nil {
-				return fmt.Errorf("request full msg err: %v", err)
+
+			// Scan the rows in the table ...
+			for _, entry := range result {
+				if entry.err != nil {
+					e.onError(entry.err)
+				}
+				txMsg, err := Encode(entry)
+				if err != nil {
+					e.onError(err)
+				}
+				if err := e.requestMsg(fmt.Sprintf("%s_full", e.subject), "", txMsg); err != nil {
+					e.onError(err)
+				}
+				totalRowCount = totalRowCount + int(entry.Counter)
 			}
-			totalRowCount = totalRowCount + int(entry.Counter)
-		}
-		completedCounter++
+			pool.Done()
+		}(tb)
 	}
-
-	for _, t := range e.tablesWithForeignKey {
-		// Obtain a record maker for this table, which knows about the schema ...
-		// Choose how we create statements based on the # of rows ...
-		counter++
-		e.logger.Printf("[INFO] mysql.extractor: Step 3: - scanning table with foreignKey '%s.%s' (%d of %d tables)", t.TableSchema, t.TableName, counter, len(e.tablesWithForeignKey)+len(e.tables))
-
-		dmp := NewDumper(e.db, t.TableSchema, t.TableName, concurrency, chunkSize, e.logger)
-		result, err := dmp.Dump(setSystemVariablesStatement)
-		if err != nil {
-			return err
-		}
-
-		// Scan the rows in the table ...
-		for _, entry := range result {
-			if entry.err != nil {
-				return entry.err
-			}
-			txMsg, err := Encode(entry)
-			if err != nil {
-				return err
-			}
-			if err := e.requestMsg(fmt.Sprintf("%s_full", e.subject), "", txMsg); err != nil {
-				return fmt.Errorf("request full msg err: %v", err)
-			}
-			totalRowCount = totalRowCount + int(entry.Counter)
-		}
-		completedCounter++
-	}
+	pool.Wait()
 
 	// We've copied all of the tables, but our buffer holds onto the very last record.
 	// First mark the snapshot as complete and then apply the updated offset to the buffered record ...
 	stop := currentTimeMillis()
 	e.logger.Printf("[INFO] mysql.extractor: Step 3: scanned %d rows in %d tables in %s",
-		totalRowCount, len(e.tablesWithForeignKey)+len(e.tables), time.Duration(stop-startScan))
+		totalRowCount, len(e.tables), time.Duration(stop-startScan))
 
 	return nil
 }

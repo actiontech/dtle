@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	gomysql "github.com/siddontang/go-mysql/mysql"
+
 	usql "udup/internal/client/driver/mysql/sql"
 	umconf "udup/internal/config/mysql"
 )
@@ -169,9 +171,14 @@ func GetReplicationBinlogCoordinates(db *gosql.DB) (readBinlogCoordinates *Binlo
 
 func GetSelfBinlogCoordinates(db *gosql.DB) (selfBinlogCoordinates *BinlogCoordinates, err error) {
 	err = usql.QueryRowsMap(db, `show master status`, func(m usql.RowMap) error {
+		gtidSet, err := gomysql.ParseMysqlGTIDSet(m.GetString("Executed_Gtid_Set"))
+		if err != nil {
+			return err
+		}
 		selfBinlogCoordinates = &BinlogCoordinates{
 			LogFile: m.GetString("File"),
 			LogPos:  m.GetInt64("Position"),
+			GtidSet: gtidSet.String(),
 		}
 		return nil
 	})
