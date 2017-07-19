@@ -97,9 +97,9 @@ func NewMySQLReader(cfg *config.MySQLDriverConfig, logger *log.Logger) (binlogRe
 
 // ConnectBinlogStreamer
 func (b *BinlogReader) ConnectBinlogStreamer(coordinates base.BinlogCoordinates) (err error) {
-	if coordinates.IsEmpty() {
-		return fmt.Errorf("Emptry coordinates at ConnectBinlogStreamer()")
-	}
+	/*if coordinates.IsEmpty() {
+		b.logger.Printf("[WARN] mysql.reader: Emptry coordinates at ConnectBinlogStreamer()")
+	}*/
 
 	b.currentCoordinates = coordinates
 	b.logger.Printf("[DEBUG] mysql.reader: connecting binlog streamer at %+v", b.currentCoordinates)
