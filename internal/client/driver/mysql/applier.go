@@ -1409,8 +1409,8 @@ func (a *Applier) Stats() (*models.TaskStatistics, error) {
 	taskResUsage := models.TaskStatistics{
 		Status: "",
 		BufferStat: &models.BufferStat{
-			OutMsgBufferSize:      len(a.applyBinlogTxQueue),
-			OutGroupMsgBufferSize: len(a.applyBinlogGroupTxQueue),
+			ApplierTxQueueSize:      len(a.applyBinlogTxQueue),
+			ApplierGroupTxQueueSize: len(a.applyBinlogGroupTxQueue),
 		},
 		Timestamp: time.Now().UTC().UnixNano(),
 	}

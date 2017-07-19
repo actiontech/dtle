@@ -26,9 +26,9 @@ type MsgStat struct {
 }
 
 type BufferStat struct {
-	InMsgBufferSize       int
-	OutMsgBufferSize      int
-	OutGroupMsgBufferSize int
+	ExtractorTxQueueSize    int
+	ApplierTxQueueSize      int
+	ApplierGroupTxQueueSize int
 }
 
 type TaskStatistics struct {

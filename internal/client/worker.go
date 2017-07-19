@@ -677,10 +677,13 @@ func (r *Worker) Destroy(event *models.TaskEvent) {
 // sinks
 func (r *Worker) emitStats(ru *models.TaskStatistics) {
 	if r.config.PublishAllocationMetrics {
-		metrics.SetGauge([]string{"client", "allocs", r.alloc.Job.Name, r.alloc.Task, r.alloc.ID, r.task.Type, "table", "InMsgs"}, float32(ru.MsgStat.InMsgs))
-		metrics.SetGauge([]string{"client", "allocs", r.alloc.Job.Name, r.alloc.Task, r.alloc.ID, r.task.Type, "table", "OutMsgs"}, float32(ru.MsgStat.OutMsgs))
-		metrics.SetGauge([]string{"client", "allocs", r.alloc.Job.Name, r.alloc.Task, r.alloc.ID, r.task.Type, "table", "InBytes"}, float32(ru.MsgStat.InBytes))
-		metrics.SetGauge([]string{"client", "allocs", r.alloc.Job.Name, r.alloc.Task, r.alloc.ID, r.task.Type, "table", "OutBytes"}, float32(ru.MsgStat.OutBytes))
+		metrics.SetGauge([]string{"client", "allocs", r.alloc.Job.Name, r.alloc.Task, r.alloc.ID, r.task.Type, "table", "in_msgs"}, float32(ru.MsgStat.InMsgs))
+		metrics.SetGauge([]string{"client", "allocs", r.alloc.Job.Name, r.alloc.Task, r.alloc.ID, r.task.Type, "table", "out_msgs"}, float32(ru.MsgStat.OutMsgs))
+		metrics.SetGauge([]string{"client", "allocs", r.alloc.Job.Name, r.alloc.Task, r.alloc.ID, r.task.Type, "table", "in_bytes"}, float32(ru.MsgStat.InBytes))
+		metrics.SetGauge([]string{"client", "allocs", r.alloc.Job.Name, r.alloc.Task, r.alloc.ID, r.task.Type, "table", "out_bytes"}, float32(ru.MsgStat.OutBytes))
+		metrics.SetGauge([]string{"client", "allocs", r.alloc.Job.Name, r.alloc.Task, r.alloc.ID, r.task.Type, "table", "src_queue_size"}, float32(ru.BufferStat.ExtractorTxQueueSize))
+		metrics.SetGauge([]string{"client", "allocs", r.alloc.Job.Name, r.alloc.Task, r.alloc.ID, r.task.Type, "table", "dest_group_queue_size"}, float32(ru.BufferStat.ApplierGroupTxQueueSize))
+		metrics.SetGauge([]string{"client", "allocs", r.alloc.Job.Name, r.alloc.Task, r.alloc.ID, r.task.Type, "table", "dest_queue_size"}, float32(ru.BufferStat.ApplierTxQueueSize))
 	}
 	if ru.TableStats != nil && r.config.PublishAllocationMetrics {
 		metrics.SetGauge([]string{"client", "allocs", r.alloc.Job.Name, r.alloc.Task, r.alloc.ID, r.task.Type, "table", "insert"}, float32(ru.TableStats.InsertCount))

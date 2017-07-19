@@ -968,7 +968,7 @@ func (e *Extractor) Stats() (*models.TaskStatistics, error) {
 	taskResUsage := models.TaskStatistics{
 		Status: "",
 		BufferStat: &models.BufferStat{
-			InMsgBufferSize: len(e.binlogChannel),
+			ExtractorTxQueueSize: len(e.binlogChannel),
 		},
 		Timestamp: time.Now().UTC().UnixNano(),
 	}
