@@ -124,7 +124,7 @@ func (b *BinlogReader) GetCurrentBinlogCoordinates() *base.BinlogCoordinates {
 // StreamEvents
 func (b *BinlogReader) handleRowsEvent(ev *replication.BinlogEvent, be *BinlogEntry, entriesChannel chan<- *BinlogEntry) error {
 	if b.currentCoordinates.SmallerThanOrEquals(&b.LastAppliedRowsEventHint) {
-		b.logger.Printf("[DEBUG] mysql.reader: Skipping handled query at %+v", b.currentCoordinates)
+		//b.logger.Printf("[DEBUG] mysql.reader: Skipping handled query at %+v", b.currentCoordinates)
 		return nil
 	}
 

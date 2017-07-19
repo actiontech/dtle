@@ -168,7 +168,7 @@ func (a *MySQLDriverConfig) SetDefault() *MySQLDriverConfig {
 	if result.MaxRetries == 0 {
 		result.MaxRetries = defaultNumRetries
 	}
-	if result.ParallelWorkers == 0 {
+	if result.ParallelWorkers <= 0 {
 		result.ParallelWorkers = defaultNumWorkers
 	}
 	return &result

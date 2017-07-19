@@ -742,6 +742,9 @@ func (a *Applier) initDBConnections() (err error) {
 	if err := a.validateConnection(a.singletonDB); err != nil {
 		return err
 	}
+	if err := a.validateTableForeignKeys(); err != nil {
+		return err
+	}
 	if err := a.validateAndReadTimeZone(); err != nil {
 		return err
 	}
@@ -772,6 +775,22 @@ func (a *Applier) validateConnection(db *gosql.DB) error {
 	}
 	a.logger.Printf("[DEBUG] mysql.applier: connection validated on %+v", a.mysqlContext.ConnectionConfig.Key)
 	return nil
+}
+
+// validateTableForeignKeys checks that binary log foreign_key_checks is set.
+func (a *Applier) validateTableForeignKeys() error {
+	query := `select @@global.foreign_key_checks`
+	var foreignKeyChecks bool
+	if err := a.singletonDB.QueryRow(query).Scan(&foreignKeyChecks); err != nil {
+		return err
+	}
+
+	if foreignKeyChecks {
+		a.logger.Printf("[INFO] mysql.inspector: foreign_key_checks validated on %s:%d", a.mysqlContext.ConnectionConfig.Key.Host, a.mysqlContext.ConnectionConfig.Key.Port)
+		return nil
+	}
+
+	return fmt.Errorf("%s:%d must have foreign_key_checks disabled for executing", a.mysqlContext.ConnectionConfig.Key.Host, a.mysqlContext.ConnectionConfig.Key.Port)
 }
 
 // validateAndReadTimeZone potentially reads server time-zone

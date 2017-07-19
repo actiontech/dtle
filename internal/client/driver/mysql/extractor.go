@@ -139,6 +139,9 @@ func (e *Extractor) validateStatement(doTb *config.Table) (err error) {
 
 // Run executes the complete extract logic.
 func (e *Extractor) Run() {
+	/*logrus.WithFields(logrus.Fields{
+		"job": e.subject,
+	}).Warn("extract binlog events from %s.%d", e.mysqlContext.ConnectionConfig.Key.Host, e.mysqlContext.ConnectionConfig.Key.Port)*/
 	e.logger.Printf("[INFO] mysql.extractor: extract binlog events from %s.%d", e.mysqlContext.ConnectionConfig.Key.Host, e.mysqlContext.ConnectionConfig.Key.Port)
 	e.mysqlContext.StartTime = time.Now()
 	if err := e.initiateInspector(); err != nil {

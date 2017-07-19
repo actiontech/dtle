@@ -21,7 +21,6 @@ type Inspector struct {
 	logger               *log.Logger
 	db                   *gosql.DB
 	mysqlContext         *uconf.MySQLDriverConfig
-	tablesWithForeignKey []umconf.TableWithForeignKey
 }
 
 func NewInspector(ctx *uconf.MySQLDriverConfig, logger *log.Logger) *Inspector {
