@@ -635,6 +635,7 @@ func (a *Applier) initNatSubClient() (err error) {
 		a.logger.Printf("[ERR] mysql.applier: can't connect nats server %v. make sure a nats streaming server is running.%v", natsAddr, err)
 		return err
 	}
+	a.logger.Printf("[DEBUG] mysql.applier: connect nats server %v", natsAddr)
 	a.natsConn = sc
 	return nil
 }

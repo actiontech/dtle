@@ -25,7 +25,7 @@ import (
 
 const (
 	// DefaultConnectWait is the default timeout used for the connect operation
-	DefaultConnectWait            = 10 * time.Second
+	DefaultConnectWait            = 30 * time.Minute
 	AllEventsUpToLockProcessed    = "AllEventsUpToLockProcessed"
 	ChannelBufferSize             = 600
 	ReconnectStreamerSleepSeconds = 5
@@ -39,6 +39,7 @@ type Extractor struct {
 	tp                         string
 	mysqlContext               *config.MySQLDriverConfig
 	db                         *gosql.DB
+	databases                  []string
 	tables                     []*config.Table
 	binlogChannel              chan *binlog.BinlogTx
 	dataChannel                chan *binlog.BinlogEntry
@@ -472,6 +473,7 @@ func (e *Extractor) initNatsPubClient() (err error) {
 		e.logger.Printf("[ERR] mysql.extractor: can't connect nats server %v. make sure a nats streaming server is running.%v", natsAddr, err)
 		return err
 	}
+	e.logger.Printf("[DEBUG] mysql.extractor: connect nats server %v", natsAddr)
 	e.natsConn = pc
 
 	return nil
@@ -804,7 +806,7 @@ func (e *Extractor) requestMsg(subject, gtid string, txMsg []byte) (err error) {
 			// sleep after previous iteration
 			time.Sleep(1 * time.Second)
 		}
-		_, err = e.natsConn.Request(subject, txMsg, DefaultConnectWait)
+		_, err := e.natsConn.Request(subject, txMsg, DefaultConnectWait)
 		if err == nil {
 			if gtid != "" {
 				e.mysqlContext.Gtid = gtid
@@ -842,6 +844,7 @@ func (e *Extractor) mysqlDump() error {
 		e.logger.Printf("[INFO] mysql.extractor: Step 2: generating DROP and CREATE statements to reflect current database schemas")
 
 		for _, doDb := range e.mysqlContext.ReplicateDoDb {
+			e.databases = append(e.databases, doDb.TableSchema)
 			if len(doDb.Tables) == 0 {
 				tbs, err := showTables(e.db, doDb.TableSchema)
 				if err != nil {
@@ -863,13 +866,14 @@ func (e *Extractor) mysqlDump() error {
 		if err != nil {
 			return err
 		}
+		e.databases = dbs
 		// ------
 		// STEP 2
 		// ------
 		// Transform the current schema so that it reflects the *current* state of the MySQL server's contents.
 		// First, get the DROP TABLE and CREATE TABLE statement (with keys and constraint definitions) for our tables ...
-		e.logger.Printf("[INFO] mysql.extractor: Step 2: generating DROP and CREATE statements to reflect current database schemas: %v", dbs)
-		for _, dbName := range dbs {
+		e.logger.Printf("[INFO] mysql.extractor: Step 2: generating DROP and CREATE statements to reflect current database schemas: %v", e.databases)
+		for _, dbName := range e.databases {
 			tbs, err := showTables(e.db, dbName)
 			if err != nil {
 				return err
@@ -925,6 +929,23 @@ func (e *Extractor) mysqlDump() error {
 		}(tb)
 	}
 	pool.Wait()
+
+	if len(e.tables) == 0 {
+		for _, db := range e.databases {
+			dbSQL := fmt.Sprintf("CREATE DATABASE %s", db)
+			entry := &dumpEntry{
+				SystemVariablesStatement: setSystemVariablesStatement,
+				DbSQL: dbSQL,
+			}
+			txMsg, err := Encode(entry)
+			if err != nil {
+				e.onError(err)
+			}
+			if err := e.requestMsg(fmt.Sprintf("%s_full", e.subject), "", txMsg); err != nil {
+				e.onError(err)
+			}
+		}
+	}
 
 	// We've copied all of the tables, but our buffer holds onto the very last record.
 	// First mark the snapshot as complete and then apply the updated offset to the buffered record ...
