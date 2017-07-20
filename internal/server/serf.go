@@ -39,7 +39,7 @@ func (s *Server) serfEventHandler() {
 				s.localMemberEvent(e.(serf.MemberEvent))
 			case serf.EventMemberUpdate, serf.EventUser, serf.EventQuery: // Ignore
 			default:
-				s.logger.Printf("[WARN] server: unhandled serf event: %#v", e)
+				s.logger.Warnf("server: unhandled serf event: %#v", e)
 			}
 
 		case <-s.shutdownCh:
@@ -53,10 +53,10 @@ func (s *Server) nodeJoin(me serf.MemberEvent) {
 	for _, m := range me.Members {
 		ok, parts := isUdupServer(m)
 		if !ok {
-			s.logger.Printf("[WARN] server: non-server in gossip pool: %s", m.Name)
+			s.logger.Warnf("server: non-server in gossip pool: %s", m.Name)
 			continue
 		}
-		s.logger.Printf("[INFO] server: adding server %s", parts)
+		s.logger.Printf("server: adding server %s", parts)
 
 		// Check if this server is known
 		found := false
@@ -103,7 +103,7 @@ func (s *Server) maybeBootstrap() {
 		panic("neither raftInmem or raftStore is initialized")
 	}
 	if err != nil {
-		s.logger.Printf("[ERR] server: failed to read last raft index: %v", err)
+		s.logger.Errorf("server: failed to read last raft index: %v", err)
 		return
 	}
 
@@ -126,11 +126,11 @@ func (s *Server) maybeBootstrap() {
 			continue
 		}
 		if p.Expect != 0 && p.Expect != int(atomic.LoadInt32(&s.config.BootstrapExpect)) {
-			s.logger.Printf("[ERR] server: peer %v has a conflicting expect value. All nodes should expect the same number.", member)
+			s.logger.Errorf("server: peer %v has a conflicting expect value. All nodes should expect the same number.", member)
 			return
 		}
 		if p.Bootstrap {
-			s.logger.Printf("[ERR] server: peer %v has bootstrap mode. Expect disabled.", member)
+			s.logger.Errorf("server: peer %v has bootstrap mode. Expect disabled.", member)
 			return
 		}
 		servers = append(servers, *p)
@@ -155,7 +155,7 @@ func (s *Server) maybeBootstrap() {
 			if err := s.connPool.RPC(s.config.Region, server.Addr,
 				"Status.Peers", req, &peers); err != nil {
 				nextRetry := time.Duration((1 << attempt) * peerRetryBase)
-				s.logger.Printf("[ERR] consul: Failed to confirm peer status for %s: %v. Retrying in "+
+				s.logger.Errorf("consul: Failed to confirm peer status for %s: %v. Retrying in "+
 					"%v...", server.Name, err, nextRetry.String())
 				time.Sleep(nextRetry)
 			} else {
@@ -175,7 +175,7 @@ func (s *Server) maybeBootstrap() {
 		// correctness because no server in the existing cluster will vote
 		// for this server, but it makes things much more stable.
 		if len(peers) > 0 {
-			s.logger.Printf("[INFO] server: Existing Raft peers reported by %s (%v), disabling bootstrap mode", server.Name, server.Addr)
+			s.logger.Printf("server: Existing Raft peers reported by %s (%v), disabling bootstrap mode", server.Name, server.Addr)
 			s.config.BootstrapExpect = 0
 			return
 		}
@@ -194,11 +194,11 @@ func (s *Server) maybeBootstrap() {
 		}
 		configuration.Servers = append(configuration.Servers, peer)
 	}
-	s.logger.Printf("[INFO] server: Found expected number of peers (%s), attempting to bootstrap cluster...",
+	s.logger.Printf("server: Found expected number of peers (%s), attempting to bootstrap cluster...",
 		strings.Join(addrs, ","))
 	future := s.raft.BootstrapCluster(configuration)
 	if err := future.Error(); err != nil {
-		s.logger.Printf("[ERR] server: Failed to bootstrap cluster: %v", err)
+		s.logger.Errorf("server: Failed to bootstrap cluster: %v", err)
 	}
 
 	// Bootstrapping complete, or failed for some reason, don't enter this again
@@ -212,7 +212,7 @@ func (s *Server) nodeFailed(me serf.MemberEvent) {
 		if !ok {
 			continue
 		}
-		s.logger.Printf("[INFO] server: removing server %s", parts)
+		s.logger.Printf("server: removing server %s", parts)
 
 		// Remove the server if known
 		s.peerLock.Lock()

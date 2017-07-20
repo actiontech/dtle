@@ -177,7 +177,7 @@ func (p *BinlogParser) parseEvent(h *EventHeader, data []byte) (Event, error) {
 				serverVerion := string(p.format.ServerVersion)
 				if strings.HasPrefix(serverVerion, "5.7") {
 					e = &GTIDEventV57{}
-				}else {
+				} else {
 					e = &GTIDEvent{}
 				}
 			case BEGIN_LOAD_QUERY_EVENT:

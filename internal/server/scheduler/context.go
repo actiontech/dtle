@@ -1,12 +1,12 @@
 package scheduler
 
 import (
-	"log"
 	"regexp"
 
 	memdb "github.com/hashicorp/go-memdb"
 	"github.com/hashicorp/go-version"
 
+	log "udup/internal/logger"
 	"udup/internal/models"
 )
 

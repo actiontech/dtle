@@ -2,13 +2,13 @@ package scheduler
 
 import (
 	"fmt"
-	"log"
 	"os"
 	"sync"
 	"testing"
 
 	memdb "github.com/hashicorp/go-memdb"
 
+	log "udup/internal/logger"
 	"udup/internal/models"
 	"udup/internal/server/store"
 )
@@ -147,7 +147,7 @@ func (h *Harness) Snapshot() State {
 // Scheduler is used to return a new scheduler from
 // a snapshot of current store using the harness for planning.
 func (h *Harness) Scheduler(factory Factory) Scheduler {
-	logger := log.New(os.Stderr, "", log.LstdFlags)
+	logger := log.New(os.Stderr, log.InfoLevel)
 	return factory(logger, h.Snapshot(), h)
 }
 

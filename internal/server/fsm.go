@@ -3,7 +3,6 @@ package server
 import (
 	"fmt"
 	"io"
-	"log"
 	"sync"
 	"time"
 
@@ -12,6 +11,7 @@ import (
 	"github.com/hashicorp/raft"
 	"github.com/ugorji/go/codec"
 
+	log "udup/internal/logger"
 	"udup/internal/models"
 	"udup/internal/server/store"
 )
@@ -69,7 +69,7 @@ type snapshotHeader struct {
 
 // NewFSMPath is used to construct a new FSM with a blank store
 func NewFSM(evalBroker *EvalBroker,
-	blocked *BlockedEvals, logOutput io.Writer) (*udupFSM, error) {
+	blocked *BlockedEvals, logOutput io.Writer, logger *log.Logger) (*udupFSM, error) {
 	// Create a store store
 	state, err := store.NewStateStore(logOutput)
 	if err != nil {
@@ -80,7 +80,7 @@ func NewFSM(evalBroker *EvalBroker,
 		evalBroker:   evalBroker,
 		blockedEvals: blocked,
 		logOutput:    logOutput,
-		logger:       log.New(logOutput, "", log.LstdFlags),
+		logger:       logger,
 		state:        state,
 		timetable:    NewTimeTable(timeTableGranularity, timeTableLimit),
 	}
@@ -145,7 +145,7 @@ func (n *udupFSM) Apply(log *raft.Log) interface{} {
 		return n.applyAllocClientUpdate(buf[1:], log.Index)
 	default:
 		if ignoreUnknown {
-			n.logger.Printf("[WARN] server.fsm: ignoring unknown message type (%d), upgrade to newer version", msgType)
+			n.logger.Warnf("server.fsm: ignoring unknown message type (%d), upgrade to newer version", msgType)
 			return nil
 		} else {
 			panic(fmt.Errorf("failed to apply request: %#v", buf))
@@ -161,7 +161,7 @@ func (n *udupFSM) applyUpsertNode(buf []byte, index uint64) interface{} {
 	}
 
 	if err := n.state.UpsertNode(index, req.Node); err != nil {
-		n.logger.Printf("[ERR] server.fsm: UpsertNode failed: %v", err)
+		n.logger.Errorf("server.fsm: UpsertNode failed: %v", err)
 		return err
 	}
 
@@ -182,7 +182,7 @@ func (n *udupFSM) applyDeregisterNode(buf []byte, index uint64) interface{} {
 	}
 
 	if err := n.state.DeleteNode(index, req.NodeID); err != nil {
-		n.logger.Printf("[ERR] server.fsm: DeleteNode failed: %v", err)
+		n.logger.Errorf("server.fsm: DeleteNode failed: %v", err)
 		return err
 	}
 	return nil
@@ -196,7 +196,7 @@ func (n *udupFSM) applyStatusUpdate(buf []byte, index uint64) interface{} {
 	}
 
 	if err := n.state.UpdateNodeStatus(index, req.NodeID, req.Status); err != nil {
-		n.logger.Printf("[ERR] server.fsm: UpdateNodeStatus failed: %v", err)
+		n.logger.Errorf("server.fsm: UpdateNodeStatus failed: %v", err)
 		return err
 	}
 
@@ -206,7 +206,7 @@ func (n *udupFSM) applyStatusUpdate(buf []byte, index uint64) interface{} {
 		ws := memdb.NewWatchSet()
 		node, err := n.state.NodeByID(ws, req.NodeID)
 		if err != nil {
-			n.logger.Printf("[ERR] server.fsm: looking up node %q failed: %v", req.NodeID, err)
+			n.logger.Errorf("server.fsm: looking up node %q failed: %v", req.NodeID, err)
 			return err
 
 		}
@@ -224,7 +224,7 @@ func (n *udupFSM) applyJobStatusUpdate(buf []byte, index uint64) interface{} {
 	}
 
 	if err := n.state.UpdateJobStatus(index, req.JobID, req.Status); err != nil {
-		n.logger.Printf("[ERR] server.fsm: UpdateJobStatus failed: %v", err)
+		n.logger.Errorf("server.fsm: UpdateJobStatus failed: %v", err)
 		return err
 	}
 
@@ -241,7 +241,7 @@ func (n *udupFSM) applyUpsertJob(buf []byte, index uint64) interface{} {
 	req.Job.Canonicalize()
 
 	if err := n.state.UpsertJob(index, req.Job); err != nil {
-		n.logger.Printf("[ERR] server.fsm: UpsertJob failed: %v", err)
+		n.logger.Errorf("server.fsm: UpsertJob failed: %v", err)
 		return err
 	}
 
@@ -256,7 +256,7 @@ func (n *udupFSM) applyDeregisterJob(buf []byte, index uint64) interface{} {
 	}
 
 	if err := n.state.DeleteJob(index, req.JobID); err != nil {
-		n.logger.Printf("[ERR] server.fsm: DeleteJob failed: %v", err)
+		n.logger.Errorf("server.fsm: DeleteJob failed: %v", err)
 		return err
 	}
 
@@ -271,7 +271,7 @@ func (n *udupFSM) applyUpdateEval(buf []byte, index uint64) interface{} {
 	}
 
 	if err := n.state.UpsertEvals(index, req.Evals); err != nil {
-		n.logger.Printf("[ERR] server.fsm: UpsertEvals failed: %v", err)
+		n.logger.Errorf("server.fsm: UpsertEvals failed: %v", err)
 		return err
 	}
 
@@ -298,7 +298,7 @@ func (n *udupFSM) applyDeleteEval(buf []byte, index uint64) interface{} {
 	}
 
 	if err := n.state.DeleteEval(index, req.Evals, req.Allocs); err != nil {
-		n.logger.Printf("[ERR] server.fsm: DeleteEval failed: %v", err)
+		n.logger.Errorf("server.fsm: DeleteEval failed: %v", err)
 		return err
 	}
 	return nil
@@ -323,7 +323,7 @@ func (n *udupFSM) applyAllocUpdate(buf []byte, index uint64) interface{} {
 	}
 
 	if err := n.state.UpsertAllocs(index, req.Alloc); err != nil {
-		n.logger.Printf("[ERR] server.fsm: UpsertAllocs failed: %v", err)
+		n.logger.Errorf("server.fsm: UpsertAllocs failed: %v", err)
 		return err
 	}
 	return nil
@@ -355,7 +355,7 @@ func (n *udupFSM) applyJobClientUpdate(buf []byte, index uint64) interface{} {
 				}
 				// Update all the client allocations
 				if err := n.state.UpdateJobFromClient(index, existing); err != nil {
-					n.logger.Printf("[ERR] server.fsm: UpdateJobFromClient failed: %v", err)
+					n.logger.Errorf("server.fsm: UpdateJobFromClient failed: %v", err)
 					return err
 				}
 			}
@@ -388,7 +388,7 @@ func (n *udupFSM) applyAllocClientUpdate(buf []byte, index uint64) interface{} {
 
 	// Update all the client allocations
 	if err := n.state.UpdateAllocsFromClient(index, req.Alloc); err != nil {
-		n.logger.Printf("[ERR] server.fsm: UpdateAllocFromClient failed: %v", err)
+		n.logger.Errorf("server.fsm: UpdateAllocFromClient failed: %v", err)
 		return err
 	}
 
@@ -400,7 +400,7 @@ func (n *udupFSM) applyAllocClientUpdate(buf []byte, index uint64) interface{} {
 			nodeID := alloc.NodeID
 			node, err := n.state.NodeByID(ws, nodeID)
 			if err != nil || node == nil {
-				n.logger.Printf("[ERR] server.fsm: looking up node %q failed: %v", nodeID, err)
+				n.logger.Errorf("server.fsm: looking up node %q failed: %v", nodeID, err)
 				return err
 
 			}

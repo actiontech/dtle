@@ -4,7 +4,6 @@ import (
 	"crypto/md5"
 	"encoding/hex"
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -16,6 +15,7 @@ import (
 	"encoding/json"
 	"udup/internal/client/driver"
 	"udup/internal/config"
+	log "udup/internal/logger"
 	"udup/internal/models"
 )
 
@@ -102,7 +102,7 @@ func NewWorker(logger *log.Logger, config *config.ClientConfig,
 	// Build the restart tracker.
 	t := alloc.Job.LookupTask(alloc.Task)
 	if t == nil {
-		logger.Printf("[ERR] client: alloc '%s' for missing task '%s'", alloc.ID, alloc.Task)
+		logger.Errorf("client: alloc '%s' for missing task '%s'", alloc.ID, alloc.Task)
 		return nil
 	}
 
@@ -159,7 +159,7 @@ func (r *Worker) SaveState() error {
 		id := &config.DriverCtx{}
 		handleID := r.handle.ID()
 		if err := json.Unmarshal([]byte(handleID), id); err != nil {
-			r.logger.Printf("[ERR] client: failed to parse handle '%s': %v",
+			r.logger.Errorf("client: failed to parse handle '%s': %v",
 				handleID, err)
 		}
 		if id.DriverConfig.Gtid != "" {
@@ -188,7 +188,7 @@ func (r *Worker) DestroyState() error {
 func (r *Worker) setState(state string, event *models.TaskEvent) {
 	// Persist our store to disk.
 	if err := r.SaveState(); err != nil {
-		r.logger.Printf("[ERR] client: failed to save store of Task Runner for task %q: %v", r.task.Type, err)
+		r.logger.Errorf("client: failed to save store of Task Runner for task %q: %v", r.task.Type, err)
 	}
 
 	// Indicate the task has been updated.
@@ -209,7 +209,7 @@ func (r *Worker) createDriver() (driver.Driver, error) {
 // Run is a long running routine used to manage the task
 func (r *Worker) Run() {
 	defer close(r.waitCh)
-	r.logger.Printf("[DEBUG] client: starting task context for '%s' (alloc '%s')",
+	r.logger.Debugf("client: starting task context for '%s' (alloc '%s')",
 		r.task.Type, r.alloc.ID)
 
 	// Create a driver so that we can determine the FSIsolation required
@@ -339,9 +339,9 @@ func (r *Worker) run() {
 				r.restartTracker.SetWaitResult(waitRes)
 				r.setState("", r.waitErrorToEvent(waitRes))
 				if !waitRes.Successful() {
-					r.logger.Printf("[INFO] client: task %q for alloc %q failed: %v", r.task.Type, r.alloc.ID, waitRes)
+					r.logger.Printf("client: task %q for alloc %q failed: %v", r.task.Type, r.alloc.ID, waitRes)
 				} else {
-					r.logger.Printf("[INFO] client: task %q for alloc %q completed successfully", r.task.Type, r.alloc.ID)
+					r.logger.Printf("client: task %q for alloc %q completed successfully", r.task.Type, r.alloc.ID)
 				}
 
 				break WAIT
@@ -352,11 +352,11 @@ func (r *Worker) run() {
 				r.runningLock.Unlock()
 				common := fmt.Sprintf("task %v for alloc %q", r.task.Type, r.alloc.ID)
 				if !running {
-					r.logger.Printf("[DEBUG] client: skipping restart of %v: task isn't running", common)
+					r.logger.Debugf("client: skipping restart of %v: task isn't running", common)
 					continue
 				}
 
-				r.logger.Printf("[DEBUG] client: restarting %s: %v", common, event.RestartReason)
+				r.logger.Debugf("client: restarting %s: %v", common, event.RestartReason)
 				r.setState(models.TaskStateRunning, event)
 				r.killTask(nil)
 
@@ -426,7 +426,7 @@ func (r *Worker) shouldRestart() bool {
 	reason := r.restartTracker.GetReason()
 	switch state {
 	case models.TaskNotRestarting, models.TaskTerminated:
-		r.logger.Printf("[INFO] client: Not restarting task: %v for alloc: %v ", r.task.Type, r.alloc.ID)
+		r.logger.Printf("client: Not restarting task: %v for alloc: %v ", r.task.Type, r.alloc.ID)
 		if state == models.TaskNotRestarting {
 			r.setState(models.TaskStateDead,
 				models.NewTaskEvent(models.TaskNotRestarting).
@@ -434,13 +434,13 @@ func (r *Worker) shouldRestart() bool {
 		}
 		return false
 	case models.TaskRestarting:
-		r.logger.Printf("[INFO] client: Restarting task %q for alloc %q in %v", r.task.Type, r.alloc.ID, when)
+		r.logger.Printf("client: Restarting task %q for alloc %q in %v", r.task.Type, r.alloc.ID, when)
 		r.setState(models.TaskStatePending,
 			models.NewTaskEvent(models.TaskRestarting).
 				SetRestartDelay(when).
 				SetRestartReason(reason))
 	default:
-		r.logger.Printf("[ERR] client: restart tracker returned unknown store: %q", state)
+		r.logger.Errorf("client: restart tracker returned unknown store: %q", state)
 		return false
 	}
 
@@ -455,7 +455,7 @@ func (r *Worker) shouldRestart() bool {
 	destroyed := r.destroy
 	r.destroyLock.Unlock()
 	if destroyed {
-		r.logger.Printf("[DEBUG] client: Not restarting task: %v because it has been destroyed", r.task.Type)
+		r.logger.Debugf("client: Not restarting task: %v because it has been destroyed", r.task.Type)
 		r.setState(models.TaskStateDead, r.destroyEvent)
 		return false
 	}
@@ -491,7 +491,7 @@ func (r *Worker) killTask(killingEvent *models.TaskEvent) {
 	destroySuccess, err := r.handleDestroy()
 	if !destroySuccess {
 		// We couldn't successfully destroy the resource created.
-		r.logger.Printf("[ERR] client: failed to kill task %q. Resources may have been leaked: %v", r.task.Type, err)
+		r.logger.Errorf("client: failed to kill task %q. Resources may have been leaked: %v", r.task.Type, err)
 	}
 
 	r.runningLock.Lock()
@@ -519,7 +519,7 @@ func (r *Worker) startTask() error {
 	if err != nil {
 		wrapped := fmt.Sprintf("failed to start task %q for alloc %q: %v",
 			r.task.Type, r.alloc.ID, err)
-		r.logger.Printf("[WARN] client: %s", wrapped)
+		r.logger.Warnf("client: %s", wrapped)
 		return models.WrapRecoverable(wrapped, err)
 
 	}
@@ -549,7 +549,7 @@ func (r *Worker) collectResourceUsageStats(stopCollection <-chan struct{}) {
 			if err != nil {
 				// Check if the driver doesn't implement stats
 				if err.Error() == driver.DriverStatsNotImplemented.Error() {
-					r.logger.Printf("[DEBUG] client: driver for task %q in allocation %q doesn't support stats", r.task.Type, r.alloc.ID)
+					r.logger.Debugf("client: driver for task %q in allocation %q doesn't support stats", r.task.Type, r.alloc.ID)
 					return
 				}
 
@@ -557,7 +557,7 @@ func (r *Worker) collectResourceUsageStats(stopCollection <-chan struct{}) {
 				// race between the stopCollection channel being closed and calling
 				// Stats on the handle.
 				if !strings.Contains(err.Error(), "connection is shut down") {
-					r.logger.Printf("[WARN] client: error fetching stats of task %v: %v", r.task.Type, err)
+					r.logger.Warnf("client: error fetching stats of task %v: %v", r.task.Type, err)
 				}
 				continue
 			}
@@ -603,7 +603,7 @@ func (r *Worker) handleDestroy() (destroyed bool, err error) {
 				backoff = killBackoffLimit
 			}
 
-			r.logger.Printf("[ERR] client: failed to kill task '%s' for alloc %q. Retrying in %v: %v",
+			r.logger.Errorf("client: failed to kill task '%s' for alloc %q. Retrying in %v: %v",
 				r.task.Type, r.alloc.ID, backoff, err)
 			time.Sleep(time.Duration(backoff))
 		} else {
@@ -634,7 +634,7 @@ func (r *Worker) Kill(source, reason string, fail bool) {
 		event.SetFailsTask()
 	}
 
-	r.logger.Printf("[DEBUG] client: killing task %v for alloc %q: %v", r.task.Type, r.alloc.ID, reasonStr)
+	r.logger.Debugf("client: killing task %v for alloc %q: %v", r.task.Type, r.alloc.ID, reasonStr)
 	r.Destroy(event)
 }
 
@@ -647,7 +647,7 @@ func (r *Worker) UnblockStart(source string) {
 		return
 	}
 
-	r.logger.Printf("[DEBUG] client: unblocking task %v for alloc %q: %v", r.task.Type, r.alloc.ID, source)
+	r.logger.Debugf("client: unblocking task %v for alloc %q: %v", r.task.Type, r.alloc.ID, source)
 	r.unblocked = true
 	close(r.unblockCh)
 }
@@ -677,27 +677,27 @@ func (r *Worker) Destroy(event *models.TaskEvent) {
 // sinks
 func (r *Worker) emitStats(ru *models.TaskStatistics) {
 	if r.config.PublishAllocationMetrics {
-		metrics.SetGauge([]string{"client", "allocs", r.alloc.Job.Name, r.alloc.Task, r.alloc.ID, r.task.Type, "table", "in_msgs"}, float32(ru.MsgStat.InMsgs))
-		metrics.SetGauge([]string{"client", "allocs", r.alloc.Job.Name, r.alloc.Task, r.alloc.ID, r.task.Type, "table", "out_msgs"}, float32(ru.MsgStat.OutMsgs))
-		metrics.SetGauge([]string{"client", "allocs", r.alloc.Job.Name, r.alloc.Task, r.alloc.ID, r.task.Type, "table", "in_bytes"}, float32(ru.MsgStat.InBytes))
-		metrics.SetGauge([]string{"client", "allocs", r.alloc.Job.Name, r.alloc.Task, r.alloc.ID, r.task.Type, "table", "out_bytes"}, float32(ru.MsgStat.OutBytes))
-		metrics.SetGauge([]string{"client", "allocs", r.alloc.Job.Name, r.alloc.Task, r.alloc.ID, r.task.Type, "table", "src_queue_size"}, float32(ru.BufferStat.ExtractorTxQueueSize))
-		metrics.SetGauge([]string{"client", "allocs", r.alloc.Job.Name, r.alloc.Task, r.alloc.ID, r.task.Type, "table", "dest_group_queue_size"}, float32(ru.BufferStat.ApplierGroupTxQueueSize))
-		metrics.SetGauge([]string{"client", "allocs", r.alloc.Job.Name, r.alloc.Task, r.alloc.ID, r.task.Type, "table", "dest_queue_size"}, float32(ru.BufferStat.ApplierTxQueueSize))
+		metrics.SetGauge([]string{"client", "allocs", r.alloc.Job.Name, r.alloc.Task, r.task.Type, "table", "in_msgs"}, float32(ru.MsgStat.InMsgs))
+		metrics.SetGauge([]string{"client", "allocs", r.alloc.Job.Name, r.alloc.Task, r.task.Type, "table", "out_msgs"}, float32(ru.MsgStat.OutMsgs))
+		metrics.SetGauge([]string{"client", "allocs", r.alloc.Job.Name, r.alloc.Task, r.task.Type, "table", "in_bytes"}, float32(ru.MsgStat.InBytes))
+		metrics.SetGauge([]string{"client", "allocs", r.alloc.Job.Name, r.alloc.Task, r.task.Type, "table", "out_bytes"}, float32(ru.MsgStat.OutBytes))
+		metrics.SetGauge([]string{"client", "allocs", r.alloc.Job.Name, r.alloc.Task, r.task.Type, "table", "src_queue_size"}, float32(ru.BufferStat.ExtractorTxQueueSize))
+		metrics.SetGauge([]string{"client", "allocs", r.alloc.Job.Name, r.alloc.Task, r.task.Type, "table", "dest_group_queue_size"}, float32(ru.BufferStat.ApplierGroupTxQueueSize))
+		metrics.SetGauge([]string{"client", "allocs", r.alloc.Job.Name, r.alloc.Task, r.task.Type, "table", "dest_queue_size"}, float32(ru.BufferStat.ApplierTxQueueSize))
 	}
 	if ru.TableStats != nil && r.config.PublishAllocationMetrics {
-		metrics.SetGauge([]string{"client", "allocs", r.alloc.Job.Name, r.alloc.Task, r.alloc.ID, r.task.Type, "table", "insert"}, float32(ru.TableStats.InsertCount))
-		metrics.SetGauge([]string{"client", "allocs", r.alloc.Job.Name, r.alloc.Task, r.alloc.ID, r.task.Type, "table", "update"}, float32(ru.TableStats.UpdateCount))
-		metrics.SetGauge([]string{"client", "allocs", r.alloc.Job.Name, r.alloc.Task, r.alloc.ID, r.task.Type, "table", "delete"}, float32(ru.TableStats.DelCount))
+		metrics.SetGauge([]string{"client", "allocs", r.alloc.Job.Name, r.alloc.Task, r.task.Type, "table", "insert"}, float32(ru.TableStats.InsertCount))
+		metrics.SetGauge([]string{"client", "allocs", r.alloc.Job.Name, r.alloc.Task, r.task.Type, "table", "update"}, float32(ru.TableStats.UpdateCount))
+		metrics.SetGauge([]string{"client", "allocs", r.alloc.Job.Name, r.alloc.Task, r.task.Type, "table", "delete"}, float32(ru.TableStats.DelCount))
 	}
 
 	if ru.DelayCount != nil && r.config.PublishAllocationMetrics {
-		metrics.SetGauge([]string{"client", "allocs", r.alloc.Job.Name, r.alloc.Task, r.alloc.ID, r.task.Type, "delay", "num"}, float32(ru.DelayCount.Num))
-		metrics.SetGauge([]string{"client", "allocs", r.alloc.Job.Name, r.alloc.Task, r.alloc.ID, r.task.Type, "delay", "time"}, float32(ru.DelayCount.Time))
+		metrics.SetGauge([]string{"client", "allocs", r.alloc.Job.Name, r.alloc.Task, r.task.Type, "delay", "num"}, float32(ru.DelayCount.Num))
+		metrics.SetGauge([]string{"client", "allocs", r.alloc.Job.Name, r.alloc.Task, r.task.Type, "delay", "time"}, float32(ru.DelayCount.Time))
 	}
 
 	if ru.ThroughputStat != nil && r.config.PublishAllocationMetrics {
-		metrics.SetGauge([]string{"client", "allocs", r.alloc.Job.Name, r.alloc.Task, r.alloc.ID, r.task.Type, "throughput", "num"}, float32(ru.ThroughputStat.Num))
-		metrics.SetGauge([]string{"client", "allocs", r.alloc.Job.Name, r.alloc.Task, r.alloc.ID, r.task.Type, "throughput", "time"}, float32(ru.ThroughputStat.Time))
+		metrics.SetGauge([]string{"client", "allocs", r.alloc.Job.Name, r.alloc.Task, r.task.Type, "throughput", "num"}, float32(ru.ThroughputStat.Num))
+		metrics.SetGauge([]string{"client", "allocs", r.alloc.Job.Name, r.alloc.Task, r.task.Type, "throughput", "time"}, float32(ru.ThroughputStat.Time))
 	}
 }

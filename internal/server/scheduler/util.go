@@ -2,12 +2,12 @@ package scheduler
 
 import (
 	"fmt"
-	"log"
 	"math/rand"
 	"reflect"
 
 	memdb "github.com/hashicorp/go-memdb"
 
+	log "udup/internal/logger"
 	"udup/internal/models"
 )
 
@@ -294,7 +294,7 @@ func setStatus(logger *log.Logger, planner Planner,
 	tgMetrics map[string]*models.AllocMetric, status, desc string,
 	queuedAllocs map[string]int) error {
 
-	logger.Printf("[DEBUG] sched: %#v: setting status to %s", eval, status)
+	logger.Debugf("sched: %#v: setting status to %s", eval, status)
 	newEval := eval.Copy()
 	newEval.Status = status
 	newEval.StatusDescription = desc
@@ -352,7 +352,7 @@ func inplaceUpdate(ctx Context, eval *models.Evaluation, job *models.Job,
 		// Get the existing node
 		node, err := ctx.State().NodeByID(ws, update.Alloc.NodeID)
 		if err != nil {
-			ctx.Logger().Printf("[ERR] sched: %#v failed to get node '%s': %v",
+			ctx.Logger().Errorf("sched: %#v failed to get node '%s': %v",
 				eval, update.Alloc.NodeID, err)
 			continue
 		}
@@ -385,7 +385,7 @@ func inplaceUpdate(ctx Context, eval *models.Evaluation, job *models.Job,
 	}
 
 	if len(updates) > 0 {
-		ctx.Logger().Printf("[DEBUG] sched: %#v: %d in-place updates of %d", eval, inplaceCount, len(updates))
+		ctx.Logger().Debugf("sched: %#v: %d in-place updates of %d", eval, inplaceCount, len(updates))
 	}
 	return updates[:n], updates[n:]
 }
@@ -508,7 +508,7 @@ func adjustQueuedAllocations(logger *log.Logger, result *models.PlanResult, queu
 				if _, ok := queuedAllocs[allocation.Task]; ok {
 					queuedAllocs[allocation.Task] -= 1
 				} else {
-					logger.Printf("[ERR] sched: allocation %q placed but not in list of unplaced allocations", allocation.Task)
+					logger.Errorf("sched: allocation %q placed but not in list of unplaced allocations", allocation.Task)
 				}
 			}
 		}

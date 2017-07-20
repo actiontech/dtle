@@ -79,7 +79,7 @@ func (j *Job) Register(args *models.JobRegisterRequest, reply *models.JobRespons
 	// Commit this update via Raft
 	_, index, err := j.srv.raftApply(models.JobRegisterRequestType, args)
 	if err != nil {
-		j.srv.logger.Printf("[ERR] server.job: Register failed: %v", err)
+		j.srv.logger.Errorf("server.job: Register failed: %v", err)
 		reply.Success = false
 		return err
 	}
@@ -103,7 +103,7 @@ func (j *Job) Register(args *models.JobRegisterRequest, reply *models.JobRespons
 	// but that the EvalUpdate does not.
 	_, evalIndex, err := j.srv.raftApply(models.EvalUpdateRequestType, update)
 	if err != nil {
-		j.srv.logger.Printf("[ERR] server.job: Eval create failed: %v", err)
+		j.srv.logger.Errorf("server.job: Eval create failed: %v", err)
 		reply.Success = false
 		return err
 	}
@@ -152,7 +152,7 @@ func (j *Job) UpdateStatus(args *models.JobUpdateStatusRequest, reply *models.Jo
 	if job.Status != args.Status {
 		_, index, err := j.srv.raftApply(models.JobUpdateStatusRequestType, args)
 		if err != nil {
-			j.srv.logger.Printf("[ERR] server.job: status update failed: %v", err)
+			j.srv.logger.Errorf("server.job: status update failed: %v", err)
 			reply.Success = false
 			return err
 		}
@@ -181,7 +181,7 @@ func (j *Job) UpdateStatus(args *models.JobUpdateStatusRequest, reply *models.Jo
 		// but that the EvalUpdate does not.
 		_, evalIndex, err := j.srv.raftApply(models.EvalUpdateRequestType, update)
 		if err != nil {
-			j.srv.logger.Printf("[ERR] server.job: Eval create failed: %v", err)
+			j.srv.logger.Errorf("server.job: Eval create failed: %v", err)
 			reply.Success = false
 			return err
 		}
@@ -260,7 +260,7 @@ func (j *Job) Evaluate(args *models.JobEvaluateRequest, reply *models.JobRespons
 	// Commit this evaluation via Raft
 	_, evalIndex, err := j.srv.raftApply(models.EvalUpdateRequestType, update)
 	if err != nil {
-		j.srv.logger.Printf("[ERR] server.job: Eval create failed: %v", err)
+		j.srv.logger.Errorf("server.job: Eval create failed: %v", err)
 		reply.Success = false
 		return err
 	}
@@ -287,7 +287,7 @@ func (j *Job) Deregister(args *models.JobDeregisterRequest, reply *models.JobRes
 	// Commit this update via Raft
 	_, index, err := j.srv.raftApply(models.JobDeregisterRequestType, args)
 	if err != nil {
-		j.srv.logger.Printf("[ERR] server.job: Deregister failed: %v", err)
+		j.srv.logger.Errorf("server.job: Deregister failed: %v", err)
 		reply.Success = false
 		return err
 	}
@@ -312,7 +312,7 @@ func (j *Job) Deregister(args *models.JobDeregisterRequest, reply *models.JobRes
 	// Commit this evaluation via Raft
 	_, evalIndex, err := j.srv.raftApply(models.EvalUpdateRequestType, update)
 	if err != nil {
-		j.srv.logger.Printf("[ERR] server.job: Eval create failed: %v", err)
+		j.srv.logger.Errorf("server.job: Eval create failed: %v", err)
 		reply.Success = false
 		return err
 	}

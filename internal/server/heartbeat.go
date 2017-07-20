@@ -90,7 +90,7 @@ func (s *Server) invalidateHeartbeat(id string) {
 	s.heartbeatTimersLock.Lock()
 	delete(s.heartbeatTimers, id)
 	s.heartbeatTimersLock.Unlock()
-	s.logger.Printf("[WARN] server.heartbeat: node '%s' TTL expired", id)
+	s.logger.Warnf("server.heartbeat: node '%s' TTL expired", id)
 
 	// Make a request to update the node status
 	req := models.NodeUpdateStatusRequest{
@@ -102,7 +102,7 @@ func (s *Server) invalidateHeartbeat(id string) {
 	}
 	var resp models.NodeUpdateResponse
 	if err := s.endpoints.Node.UpdateStatus(&req, &resp); err != nil {
-		s.logger.Printf("[ERR] server.heartbeat: update status failed: %v", err)
+		s.logger.Errorf("server.heartbeat: update status failed: %v", err)
 	}
 }
 

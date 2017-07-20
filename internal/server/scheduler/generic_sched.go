@@ -2,12 +2,12 @@ package scheduler
 
 import (
 	"fmt"
-	"log"
 	"math/rand"
 
 	memdb "github.com/hashicorp/go-memdb"
 	"github.com/hashicorp/go-multierror"
 
+	log "udup/internal/logger"
 	"udup/internal/models"
 )
 
@@ -181,7 +181,7 @@ func (s *GenericScheduler) process() (bool, error) {
 
 	// Compute the target job allocations
 	if err := s.computeJobAllocs(); err != nil {
-		s.logger.Printf("[ERR] sched: %#v: %v", s.eval, err)
+		s.logger.Errorf("sched: %#v: %v", s.eval, err)
 		return false, err
 	}
 
@@ -190,10 +190,10 @@ func (s *GenericScheduler) process() (bool, error) {
 	// current evaluation is already a blocked eval, we reuse it.
 	if s.eval.Status != models.EvalStatusBlocked && len(s.failedTGAllocs) != 0 && s.blocked == nil {
 		if err := s.createBlockedEval(false); err != nil {
-			s.logger.Printf("[ERR] sched: %#v failed to make blocked eval: %v", s.eval, err)
+			s.logger.Errorf("sched: %#v failed to make blocked eval: %v", s.eval, err)
 			return false, err
 		}
-		s.logger.Printf("[DEBUG] sched: %#v: failed to place all allocations, blocked eval '%s' created", s.eval, s.blocked.ID)
+		s.logger.Debugf("sched: %#v: failed to place all allocations, blocked eval '%s' created", s.eval, s.blocked.ID)
 	}
 
 	// If the plan is a no-op, we can bail. If AnnotatePlan is set submit the plan
@@ -215,7 +215,7 @@ func (s *GenericScheduler) process() (bool, error) {
 
 	// If we got a store refresh, try again since we have stale data
 	if newState != nil {
-		s.logger.Printf("[DEBUG] sched: %#v: refresh forced", s.eval)
+		s.logger.Debugf("sched: %#v: refresh forced", s.eval)
 		s.state = newState
 		return false, nil
 	}
@@ -223,7 +223,7 @@ func (s *GenericScheduler) process() (bool, error) {
 	// Try again if the plan was not fully committed, potential conflict
 	fullCommit, expected, actual := result.FullCommit(s.plan)
 	if !fullCommit {
-		s.logger.Printf("[DEBUG] sched: %#v: attempted %d placements, %d placed",
+		s.logger.Debugf("sched: %#v: attempted %d placements, %d placed",
 			s.eval, expected, actual)
 		if newState == nil {
 			return false, fmt.Errorf("missing state refresh after partial commit")
@@ -303,7 +303,7 @@ func (s *GenericScheduler) computeJobAllocs() error {
 
 	// Diff the required and existing allocations
 	diff := diffAllocs(s.job, tainted, tasks, allocs, terminalAllocs)
-	s.logger.Printf("[DEBUG] sched: %#v: %#v", s.eval, diff)
+	s.logger.Debugf("sched: %#v: %#v", s.eval, diff)
 
 	// Add all the allocs to stop
 	for _, e := range diff.stop {
@@ -438,7 +438,7 @@ func (s *GenericScheduler) findPreferredNode(allocTuple *allocTuple) (node *mode
 		ws := memdb.NewWatchSet()
 		preferredNode, err = s.state.NodeByID(ws, allocTuple.Task.NodeId)
 		if err != nil || preferredNode == nil {
-			s.logger.Printf("[DEBUG] sched: can't find preferred node %s", allocTuple.Task.NodeId)
+			s.logger.Debugf("sched: can't find preferred node %s", allocTuple.Task.NodeId)
 			return
 		}
 		if preferredNode.Ready() {

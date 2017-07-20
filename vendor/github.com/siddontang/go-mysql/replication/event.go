@@ -278,7 +278,6 @@ func (e *QueryEvent) Dump(w io.Writer) {
 	fmt.Fprintln(w)
 }
 
-
 type GTIDEventV57 struct {
 	GTID MysqlGTID
 }

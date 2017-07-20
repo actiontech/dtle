@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net"
 	"net/http"
 	"strconv"
@@ -15,6 +14,7 @@ import (
 	"github.com/ugorji/go/codec"
 	_ "net/http/pprof"
 
+	log "udup/internal/logger"
 	umodel "udup/internal/models"
 )
 
@@ -100,7 +100,7 @@ func (ln tcpKeepAliveListener) Accept() (c net.Conn, err error) {
 // Shutdown is used to shutdown the HTTP server
 func (s *HTTPServer) Shutdown() {
 	if s != nil {
-		s.logger.Printf("[DEBUG] http: Shutting down http server")
+		s.logger.Debugf("http: Shutting down http server")
 		s.listener.Close()
 	}
 }
@@ -162,14 +162,14 @@ func (s *HTTPServer) wrap(handler func(resp http.ResponseWriter, req *http.Reque
 		reqURL := req.URL.String()
 		start := time.Now()
 		defer func() {
-			s.logger.Printf("[DEBUG] http: Request %v (%v)", reqURL, time.Now().Sub(start))
+			s.logger.Debugf("http: Request %v (%v)", reqURL, time.Now().Sub(start))
 		}()
 		obj, err := handler(resp, req)
 
 		// Check for an error
 	HAS_ERR:
 		if err != nil {
-			s.logger.Printf("[ERR] http: Request %v, error: %v", reqURL, err)
+			s.logger.Errorf("http: Request %v, error: %v", reqURL, err)
 			code := 500
 			if http, ok := err.(HTTPCodedError); ok {
 				code = http.Code()

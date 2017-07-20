@@ -3,7 +3,6 @@ package mysql
 import (
 	"database/sql"
 	"fmt"
-	"log"
 	"math"
 	"strconv"
 	"strings"
@@ -11,6 +10,7 @@ import (
 	"bytes"
 	usql "udup/internal/client/driver/mysql/sql"
 	"udup/internal/config"
+	log "udup/internal/logger"
 )
 
 const (
@@ -27,7 +27,7 @@ var (
 )
 
 type dumper struct {
-	logger      *log.Logger
+	logger      *log.Entry
 	concurrency int
 	chunkSize   int
 	TableSchema string
@@ -38,7 +38,7 @@ type dumper struct {
 	db *sql.DB
 }
 
-func NewDumper(db *sql.DB, dbName, tableName string, logger *log.Logger) *dumper {
+func NewDumper(db *sql.DB, dbName, tableName string, logger *log.Entry) *dumper {
 	dumper := &dumper{
 		logger:      logger,
 		db:          db,

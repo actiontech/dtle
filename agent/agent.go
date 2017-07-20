@@ -3,7 +3,6 @@ package agent
 import (
 	"fmt"
 	"io"
-	"log"
 	"net"
 	"path/filepath"
 	"sync"
@@ -12,6 +11,7 @@ import (
 
 	ucli "udup/internal/client"
 	uconf "udup/internal/config"
+	ulog "udup/internal/logger"
 	umodel "udup/internal/models"
 	usrv "udup/internal/server"
 )
@@ -23,7 +23,7 @@ import (
 // servers to run allocations.
 type Agent struct {
 	config    *Config
-	logger    *log.Logger
+	logger    *ulog.Logger
 	logOutput io.Writer
 
 	client *ucli.Client
@@ -36,10 +36,10 @@ type Agent struct {
 }
 
 // NewAgent is used to create a new agent with the given configuration
-func NewAgent(config *Config, logOutput io.Writer) (*Agent, error) {
+func NewAgent(config *Config, logOutput io.Writer, log *ulog.Logger) (*Agent, error) {
 	a := &Agent{
 		config:     config,
-		logger:     log.New(logOutput, "", log.LstdFlags|log.Lmicroseconds),
+		logger:     log,
 		logOutput:  logOutput,
 		shutdownCh: make(chan struct{}),
 	}
@@ -243,12 +243,12 @@ func (a *Agent) setupClient() error {
 func (a *Agent) Leave() error {
 	if a.client != nil {
 		if err := a.client.Leave(); err != nil {
-			a.logger.Printf("[ERR] agent: client leave failed: %v", err)
+			a.logger.Errorf("agent: client leave failed: %v", err)
 		}
 	}
 	if a.server != nil {
 		if err := a.server.Leave(); err != nil {
-			a.logger.Printf("[ERR] agent: server leave failed: %v", err)
+			a.logger.Errorf("agent: server leave failed: %v", err)
 		}
 	}
 	return nil
@@ -266,12 +266,12 @@ func (a *Agent) Shutdown() error {
 	a.logger.Println("[INFO] agent: requesting shutdown")
 	if a.client != nil {
 		if err := a.client.Shutdown(); err != nil {
-			a.logger.Printf("[ERR] agent: client shutdown failed: %v", err)
+			a.logger.Errorf("agent: client shutdown failed: %v", err)
 		}
 	}
 	if a.server != nil {
 		if err := a.server.Shutdown(); err != nil {
-			a.logger.Printf("[ERR] agent: server shutdown failed: %v", err)
+			a.logger.Errorf("agent: server shutdown failed: %v", err)
 		}
 	}
 

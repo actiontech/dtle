@@ -1,24 +1,27 @@
 package agent
 
 import (
-	"log"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/push"
+
+	log "udup/internal/logger"
 )
 
 type PrometheusSink struct {
 	mu        sync.Mutex
+	logger    *log.Logger
 	gauges    map[string]prometheus.Gauge
 	summaries map[string]prometheus.Summary
 	counters  map[string]prometheus.Counter
 }
 
-func NewPrometheusSink(metricsAddr string, metricsInterval time.Duration) (*PrometheusSink, error) {
+func NewPrometheusSink(metricsAddr string, metricsInterval time.Duration, logger *log.Logger) (*PrometheusSink, error) {
 	s := &PrometheusSink{
+		logger:    logger,
 		gauges:    make(map[string]prometheus.Gauge),
 		summaries: make(map[string]prometheus.Summary),
 		counters:  make(map[string]prometheus.Counter),
@@ -97,15 +100,15 @@ const zeroDuration = time.Duration(0)
 // pushMetric pushs metircs in background.
 func (p *PrometheusSink) pushMetric(addr string, interval time.Duration) {
 	if interval == zeroDuration || len(addr) == 0 {
-		log.Printf("[INFO] disable Prometheus push client")
+		p.logger.Printf("disable Prometheus push client")
 		return
 	}
-	log.Printf("[INFO] start Prometheus push client with server addr %s and interval %s", addr, interval)
-	go prometheusPushClient(addr, interval)
+	p.logger.Printf("start Prometheus push client with server addr %s and interval %s", addr, interval)
+	go p.prometheusPushClient(addr, interval)
 }
 
 // prometheusPushClient pushs metrics to Prometheus Pushgateway.
-func prometheusPushClient(addr string, interval time.Duration) {
+func (p *PrometheusSink) prometheusPushClient(addr string, interval time.Duration) {
 	// TODO: udup do not have uniq name, so we use host+port to compose a name.
 	job := "udup"
 	for {
@@ -115,7 +118,7 @@ func prometheusPushClient(addr string, interval time.Duration) {
 			prometheus.DefaultGatherer,
 		)
 		if err != nil {
-			log.Printf("[ERR] could not push metrics to Prometheus Pushgateway: %v", err)
+			p.logger.Errorf("could not push metrics to Prometheus Pushgateway: %v", err)
 		}
 		time.Sleep(interval)
 	}

@@ -18,9 +18,9 @@ const (
 )
 
 type BinlogTx struct {
-	SID            string
-	GNO            int64
-	LastCommitted  int64
+	SID           string
+	GNO           int64
+	LastCommitted int64
 	//Gtid           string
 	// table -> [row]. row is identified by a hash of pk values.
 	hasBeginQuery bool

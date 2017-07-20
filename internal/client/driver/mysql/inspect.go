@@ -3,7 +3,6 @@ package mysql
 import (
 	gosql "database/sql"
 	"fmt"
-	"log"
 	"strings"
 	"time"
 
@@ -11,6 +10,7 @@ import (
 	usql "udup/internal/client/driver/mysql/sql"
 	uconf "udup/internal/config"
 	umconf "udup/internal/config/mysql"
+	log "udup/internal/logger"
 )
 
 const startSlavePostWaitMilliseconds = 500 * time.Millisecond
@@ -18,12 +18,12 @@ const startSlavePostWaitMilliseconds = 500 * time.Millisecond
 // Inspector reads data from the read-MySQL-server (typically a replica, but can be the master)
 // It is used for gaining initial status and structure, and later also follow up on progress and changelog
 type Inspector struct {
-	logger       *log.Logger
+	logger       *log.Entry
 	db           *gosql.DB
 	mysqlContext *uconf.MySQLDriverConfig
 }
 
-func NewInspector(ctx *uconf.MySQLDriverConfig, logger *log.Logger) *Inspector {
+func NewInspector(ctx *uconf.MySQLDriverConfig, logger *log.Entry) *Inspector {
 	return &Inspector{
 		logger:       logger,
 		mysqlContext: ctx,
@@ -39,14 +39,14 @@ func (i *Inspector) InitDBConnections() (err error) {
 		return err
 	}
 	if err := i.validateGrants(); err != nil {
-		i.logger.Printf("[ERR] mysql.inspector: unexpected error on validateGrants, got %v", err)
+		i.logger.Errorf("mysql.inspector: unexpected error on validateGrants, got %v", err)
 		return err
 	}
 	/*for _, doDb := range i.mysqlContext.ReplicateDoDb {
 
 		for _, doTb := range doDb.Table {
 			if err := i.InspectOriginalTable(doDb.Database, doTb); err != nil {
-				i.logger.Printf("[ERR] mysql.inspector: unexpected error on InspectOriginalTable, got %v", err)
+				i.logger.Errorf("mysql.inspector: unexpected error on InspectOriginalTable, got %v", err)
 				return err
 			}
 		}
@@ -59,7 +59,7 @@ func (i *Inspector) InitDBConnections() (err error) {
 	if err := i.validateBinlogs(); err != nil {
 		return err
 	}
-	i.logger.Printf("[INFO] mysql.inspector: initiated on %+v, version %+v", i.mysqlContext.ConnectionConfig.Key, i.mysqlContext.MySQLVersion)
+	i.logger.Printf("mysql.inspector: initiated on %+v, version %+v", i.mysqlContext.ConnectionConfig.Key, i.mysqlContext.MySQLVersion)
 	return nil
 }
 
@@ -111,7 +111,7 @@ if !reflect.DeepEqual(originalNames, originalNamesOnApplier) {
 }*/ /*
 
 	doTb.SharedColumns, doTb.MappedSharedColumns = i.getSharedColumns(*doTb)
-	i.logger.Printf("[INFO] mysql.inspector: Shared columns are %s", doTb.SharedColumns)
+	i.logger.Printf("mysql.inspector: Shared columns are %s", doTb.SharedColumns)
 	// By fact that a non-empty unique key exists we also know the shared columns are non-empty
 
 	// This additional step looks at which columns are unsigned. We could have merged this within
@@ -137,7 +137,7 @@ func (i *Inspector) validateConnection() error {
 		return err
 	}
 
-	i.logger.Printf("[INFO] mysql.inspector: connection validated on %+v", i.mysqlContext.ConnectionConfig.Key)
+	i.logger.Printf("mysql.inspector: connection validated on %+v", i.mysqlContext.ConnectionConfig.Key)
 	return nil
 }
 
@@ -184,18 +184,18 @@ func (i *Inspector) validateGrants() error {
 	i.mysqlContext.HasSuperPrivilege = foundSuper
 
 	if foundAll {
-		i.logger.Printf("[INFO] mysql.inspector: user has ALL privileges")
+		i.logger.Printf("mysql.inspector: user has ALL privileges")
 		return nil
 	}
 	if foundSuper && foundReplicationSlave && foundDBAll {
-		i.logger.Printf("[INFO] mysql.inspector: user has SUPER, REPLICATION SLAVE privileges, and has ALL privileges on *.*")
+		i.logger.Printf("mysql.inspector: user has SUPER, REPLICATION SLAVE privileges, and has ALL privileges on *.*")
 		return nil
 	}
 	if foundReplicationClient && foundReplicationSlave && foundDBAll {
-		i.logger.Printf("[INFO] mysql.inspector: user has REPLICATION CLIENT, REPLICATION SLAVE privileges, and has ALL privileges on *.*")
+		i.logger.Printf("mysql.inspector: user has REPLICATION CLIENT, REPLICATION SLAVE privileges, and has ALL privileges on *.*")
 		return nil
 	}
-	i.logger.Printf("[DEBUG] mysql.inspector: privileges: super: %t, REPLICATION CLIENT: %t, REPLICATION SLAVE: %t, ALL on *.*: %t, ALL on *.*: %t", foundSuper, foundReplicationClient, foundReplicationSlave, foundAll, foundDBAll)
+	i.logger.Debugf("mysql.inspector: privileges: super: %t, REPLICATION CLIENT: %t, REPLICATION SLAVE: %t, ALL on *.*: %t, ALL on *.*: %t", foundSuper, foundReplicationClient, foundReplicationSlave, foundAll, foundDBAll)
 	return fmt.Errorf("user has insufficient privileges for migration. Needed: SUPER|REPLICATION CLIENT, REPLICATION SLAVE and ALL on *.*")
 }
 
@@ -231,7 +231,7 @@ func (i *Inspector) validateBinlogs() error {
 	}
 	i.mysqlContext.BinlogRowImage = strings.ToUpper(i.mysqlContext.BinlogRowImage)
 
-	i.logger.Printf("[INFO] mysql.inspector: binary logs validated on %s:%d", i.mysqlContext.ConnectionConfig.Key.Host, i.mysqlContext.ConnectionConfig.Key.Port)
+	i.logger.Printf("mysql.inspector: binary logs validated on %s:%d", i.mysqlContext.ConnectionConfig.Key.Host, i.mysqlContext.ConnectionConfig.Key.Port)
 	return nil
 }
 
@@ -244,7 +244,7 @@ func (i *Inspector) validateLogSlaveUpdates() error {
 	}
 
 	if logSlaveUpdates {
-		i.logger.Printf("[INFO] mysql.inspector: log_slave_updates validated on %s:%d", i.mysqlContext.ConnectionConfig.Key.Host, i.mysqlContext.ConnectionConfig.Key.Port)
+		i.logger.Printf("mysql.inspector: log_slave_updates validated on %s:%d", i.mysqlContext.ConnectionConfig.Key.Host, i.mysqlContext.ConnectionConfig.Key.Port)
 		return nil
 	}
 
@@ -278,7 +278,7 @@ func (i *Inspector) validateTable(databaseName, tableName string) error {
 // validateTableForeignKeys makes sure no foreign keys exist on the migrated table
 func (i *Inspector) validateTableForeignKeys(databaseName, tableName string, allowChildForeignKeys bool) error {
 	/*if i.mysqlContext.SkipForeignKeyChecks {
-		i.logger.Printf("[WARN] --skip-foreign-key-checks provided: will not check for foreign keys")
+		i.logger.Warnf("--skip-foreign-key-checks provided: will not check for foreign keys")
 		return nil
 	}*/
 	query := `
@@ -308,7 +308,7 @@ func (i *Inspector) validateTableForeignKeys(databaseName, tableName string, all
 	}
 	if numChildForeignKeys > 0 {
 		if allowChildForeignKeys {
-			i.logger.Printf("[DEBUG] Foreign keys found and will be dropped, as per given --discard-foreign-keys flag")
+			i.logger.Debugf("Foreign keys found and will be dropped, as per given --discard-foreign-keys flag")
 			return nil
 		}
 		return fmt.Errorf("Found %d child-side foreign keys on %s.%s. Child-side foreign keys are not supported. Bailing out", numChildForeignKeys, usql.EscapeName(databaseName), usql.EscapeName(tableName))
@@ -467,7 +467,7 @@ func (i *Inspector) getCandidateUniqueKeys(databaseName, tableName string) (uniq
 	if err != nil {
 		return uniqueKeys, err
 	}
-	i.logger.Printf("[DEBUG] mysql.inspector: potential unique keys in %+v.%+v: %+v", databaseName, tableName, uniqueKeys)
+	i.logger.Debugf("mysql.inspector: potential unique keys in %+v.%+v: %+v", databaseName, tableName, uniqueKeys)
 	return uniqueKeys, nil
 }
 

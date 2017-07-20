@@ -3,9 +3,9 @@ package driver
 import (
 	"errors"
 	"fmt"
-	"log"
 
 	uconf "udup/internal/config"
+	log "udup/internal/logger"
 	"udup/internal/models"
 )
 

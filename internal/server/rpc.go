@@ -76,7 +76,7 @@ func (s *Server) listen() {
 			if s.shutdown {
 				return
 			}
-			s.logger.Printf("[ERR] server.rpc: failed to accept RPC conn: %v", err)
+			s.logger.Errorf("server.rpc: failed to accept RPC conn: %v", err)
 			continue
 		}
 
@@ -92,7 +92,7 @@ func (s *Server) handleConn(conn net.Conn) {
 	buf := make([]byte, 1)
 	if _, err := conn.Read(buf); err != nil {
 		if err != io.EOF {
-			s.logger.Printf("[ERR] server.rpc: failed to read byte: %v", err)
+			s.logger.Errorf("server.rpc: failed to read byte: %v", err)
 		}
 		conn.Close()
 		return
@@ -111,7 +111,7 @@ func (s *Server) handleConn(conn net.Conn) {
 		s.handleMultiplex(conn)
 
 	default:
-		s.logger.Printf("[ERR] server.rpc: unrecognized RPC byte: %v", buf[0])
+		s.logger.Errorf("server.rpc: unrecognized RPC byte: %v", buf[0])
 		conn.Close()
 		return
 	}
@@ -128,7 +128,7 @@ func (s *Server) handleMultiplex(conn net.Conn) {
 		sub, err := server.Accept()
 		if err != nil {
 			if err != io.EOF {
-				s.logger.Printf("[ERR] server.rpc: multiplex conn accept failed: %v", err)
+				s.logger.Errorf("server.rpc: multiplex conn accept failed: %v", err)
 			}
 			return
 		}
@@ -149,7 +149,7 @@ func (s *Server) handleUdupConn(conn net.Conn) {
 
 		if err := s.rpcServer.ServeRequest(rpcCodec); err != nil {
 			if err != io.EOF && !strings.Contains(err.Error(), "closed") {
-				s.logger.Printf("[ERR] server.rpc: RPC error: %v (%v)", err, conn)
+				s.logger.Errorf("server.rpc: RPC error: %v (%v)", err, conn)
 				metrics.IncrCounter([]string{"server", "rpc", "request_error"}, 1)
 			}
 			return
@@ -251,7 +251,7 @@ func (s *Server) forwardRegion(region, method string, args interface{}, reply in
 	servers := s.peers[region]
 	if len(servers) == 0 {
 		s.peerLock.RUnlock()
-		s.logger.Printf("[WARN] server.rpc: RPC request for region '%s', no path found",
+		s.logger.Warnf("server.rpc: RPC request for region '%s', no path found",
 			region)
 		return models.ErrNoRegionPath
 	}
@@ -275,7 +275,7 @@ func (s *Server) raftApplyFuture(t models.MessageType, msg interface{}) (raft.Ap
 
 	// Warn if the command is very large
 	if n := len(buf); n > raftWarnSize {
-		s.logger.Printf("[WARN] server: Attempting to apply large raft entry (type %d) (%d bytes)", t, n)
+		s.logger.Warnf("server: Attempting to apply large raft entry (type %d) (%d bytes)", t, n)
 	}
 
 	future := s.raft.Apply(buf, enqueueLimit)

@@ -420,7 +420,7 @@ func (s *MysqlGTIDSet) Encode() []byte {
 
 	binary.Write(&buf, binary.LittleEndian, uint64(len(s.Sets)))
 
-	for i, _ := range s.Sets {
+	for i := range s.Sets {
 		s.Sets[i].encode(&buf)
 	}
 

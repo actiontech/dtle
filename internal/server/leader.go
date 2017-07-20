@@ -31,11 +31,11 @@ func (s *Server) monitorLeadership() {
 			if isLeader {
 				stopCh = make(chan struct{})
 				go s.leaderLoop(stopCh)
-				s.logger.Printf("[INFO] server: cluster leadership acquired")
+				s.logger.Printf("server: cluster leadership acquired")
 			} else if stopCh != nil {
 				close(stopCh)
 				stopCh = nil
-				s.logger.Printf("[INFO] server: cluster leadership lost")
+				s.logger.Printf("server: cluster leadership lost")
 			}
 		case <-s.shutdownCh:
 			return
@@ -61,7 +61,7 @@ RECONCILE:
 	start := time.Now()
 	barrier := s.raft.Barrier(0)
 	if err := barrier.Error(); err != nil {
-		s.logger.Printf("[ERR] server: failed to wait for barrier: %v", err)
+		s.logger.Errorf("server: failed to wait for barrier: %v", err)
 		goto WAIT
 	}
 	metrics.MeasureSince([]string{"server", "leader", "barrier"}, start)
@@ -69,7 +69,7 @@ RECONCILE:
 	// Check if we need to handle initial leadership actions
 	if !establishedLeader {
 		if err := s.establishLeadership(stopCh); err != nil {
-			s.logger.Printf("[ERR] server: failed to establish leadership: %v",
+			s.logger.Errorf("server: failed to establish leadership: %v",
 				err)
 			goto WAIT
 		}
@@ -78,7 +78,7 @@ RECONCILE:
 
 	// Reconcile any missing data
 	if err := s.reconcile(); err != nil {
-		s.logger.Printf("[ERR] server: failed to reconcile: %v", err)
+		s.logger.Errorf("server: failed to reconcile: %v", err)
 		goto WAIT
 	}
 
@@ -153,7 +153,7 @@ func (s *Server) establishLeadership(stopCh chan struct{}) error {
 	// are available to be initialized. Otherwise initialization may use stale
 	// data.
 	if err := s.initializeHeartbeatTimers(); err != nil {
-		s.logger.Printf("[ERR] server: heartbeat timer setup failed: %v", err)
+		s.logger.Errorf("server: heartbeat timer setup failed: %v", err)
 		return err
 	}
 
@@ -209,14 +209,14 @@ func (s *Server) reapFailedEvaluations(stopCh chan struct{}) {
 			newEval := eval.Copy()
 			newEval.Status = models.EvalStatusFailed
 			newEval.StatusDescription = fmt.Sprintf("evaluation reached delivery limit (%d)", s.config.EvalDeliveryLimit)
-			s.logger.Printf("[WARN] server: eval %#v reached delivery limit, marking as failed", newEval)
+			s.logger.Warnf("server: eval %#v reached delivery limit, marking as failed", newEval)
 
 			// Update via Raft
 			req := models.EvalUpdateRequest{
 				Evals: []*models.Evaluation{newEval},
 			}
 			if _, _, err := s.raftApply(models.EvalUpdateRequestType, &req); err != nil {
-				s.logger.Printf("[ERR] server: failed to update failed eval %#v: %v", newEval, err)
+				s.logger.Errorf("server: failed to update failed eval %#v: %v", newEval, err)
 				continue
 			}
 
@@ -254,7 +254,7 @@ func (s *Server) reapDupBlockedEvaluations(stopCh chan struct{}) {
 				Evals: cancel,
 			}
 			if _, _, err := s.raftApply(models.EvalUpdateRequestType, &req); err != nil {
-				s.logger.Printf("[ERR] server: failed to update duplicate evals %#v: %v", cancel, err)
+				s.logger.Errorf("server: failed to update duplicate evals %#v: %v", cancel, err)
 				continue
 			}
 		}
@@ -291,7 +291,7 @@ func (s *Server) revokeLeadership() error {
 	// Clear the heartbeat timers on either shutdown or step down,
 	// since we are no longer responsible for TTL expirations.
 	if err := s.clearAllHeartbeatTimers(); err != nil {
-		s.logger.Printf("[ERR] server: clearing heartbeat timers failed: %v", err)
+		s.logger.Errorf("server: clearing heartbeat timers failed: %v", err)
 		return err
 	}
 
@@ -339,7 +339,7 @@ func (s *Server) reconcileMember(member serf.Member) error {
 		err = s.removeRaftPeer(member, parts)
 	}
 	if err != nil {
-		s.logger.Printf("[ERR] server: failed to reconcile member: %v: %v",
+		s.logger.Errorf("server: failed to reconcile member: %v: %v",
 			member, err)
 		return err
 	}
@@ -350,7 +350,7 @@ func (s *Server) reconcileMember(member serf.Member) error {
 func (s *Server) addRaftPeer(m serf.Member, parts *serverParts) error {
 	// Do not join ourselfs
 	if m.Name == s.config.NodeName {
-		s.logger.Printf("[DEBUG] server: adding self (%q) as raft peer skipped", m.Name)
+		s.logger.Debugf("server: adding self (%q) as raft peer skipped", m.Name)
 		return nil
 	}
 
@@ -360,7 +360,7 @@ func (s *Server) addRaftPeer(m serf.Member, parts *serverParts) error {
 		for _, member := range members {
 			valid, p := isUdupServer(member)
 			if valid && member.Name != m.Name && p.Bootstrap {
-				s.logger.Printf("[ERR] server: '%v' and '%v' are both in bootstrap mode. Only one node should be in bootstrap mode, not adding Raft peer.", m.Name, member.Name)
+				s.logger.Errorf("server: '%v' and '%v' are both in bootstrap mode. Only one node should be in bootstrap mode, not adding Raft peer.", m.Name, member.Name)
 				return nil
 			}
 		}
@@ -374,7 +374,7 @@ func (s *Server) addRaftPeer(m serf.Member, parts *serverParts) error {
 	// log entries.
 	configFuture := s.raft.GetConfiguration()
 	if err := configFuture.Error(); err != nil {
-		s.logger.Printf("[ERR] server: failed to get raft configuration: %v", err)
+		s.logger.Errorf("server: failed to get raft configuration: %v", err)
 		return err
 	}
 	for _, server := range configFuture.Configuration().Servers {
@@ -386,10 +386,10 @@ func (s *Server) addRaftPeer(m serf.Member, parts *serverParts) error {
 	// Attempt to add as a peer
 	addFuture := s.raft.AddPeer(raft.ServerAddress(addr))
 	if err := addFuture.Error(); err != nil {
-		s.logger.Printf("[ERR] server: failed to add raft peer: %v", err)
+		s.logger.Errorf("server: failed to add raft peer: %v", err)
 		return err
 	} else if err == nil {
-		s.logger.Printf("[INFO] server: added raft peer: %v", parts)
+		s.logger.Printf("server: added raft peer: %v", parts)
 	}
 	return nil
 }
@@ -405,7 +405,7 @@ func (s *Server) removeRaftPeer(m serf.Member, parts *serverParts) error {
 	// log entries.
 	configFuture := s.raft.GetConfiguration()
 	if err := configFuture.Error(); err != nil {
-		s.logger.Printf("[ERR] server: failed to get raft configuration: %v", err)
+		s.logger.Errorf("server: failed to get raft configuration: %v", err)
 		return err
 	}
 	for _, server := range configFuture.Configuration().Servers {
@@ -419,7 +419,7 @@ REMOVE:
 	// Attempt to remove as a peer.
 	future := s.raft.RemovePeer(raft.ServerAddress(addr))
 	if err := future.Error(); err != nil {
-		s.logger.Printf("[ERR] server: failed to remove raft peer '%v': %v",
+		s.logger.Errorf("server: failed to remove raft peer '%v': %v",
 			parts, err)
 		return err
 	}
