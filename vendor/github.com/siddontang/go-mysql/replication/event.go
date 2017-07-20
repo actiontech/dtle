@@ -11,7 +11,7 @@ import (
 	"unicode"
 
 	"github.com/juju/errors"
-	//"github.com/satori/go.uuid"
+	"github.com/satori/go.uuid"
 	. "github.com/siddontang/go-mysql/mysql"
 )
 
@@ -278,7 +278,8 @@ func (e *QueryEvent) Dump(w io.Writer) {
 	fmt.Fprintln(w)
 }
 
-type GTIDEvent struct {
+
+type GTIDEventV57 struct {
 	GTID MysqlGTID
 }
 
@@ -301,7 +302,7 @@ type GTIDEvent struct {
    The buffer is advanced in Binary_log_event constructor to point to
    beginning of post-header
 */
-func (e *GTIDEvent) Decode(data []byte) error {
+func (e *GTIDEventV57) Decode(data []byte) error {
 	e.GTID.CommitFlag = uint8(data[0])
 	e.GTID.SID = data[1:17]
 	e.GTID.GNO = int64(binary.LittleEndian.Uint64(data[17:25]))
@@ -311,12 +312,12 @@ func (e *GTIDEvent) Decode(data []byte) error {
 	return nil
 }
 
-func (e *GTIDEvent) Dump(w io.Writer) {
+func (e *GTIDEventV57) Dump(w io.Writer) {
 	fmt.Fprintf(w, "GTID: %s\n", e.GTID)
 	fmt.Fprintln(w)
 }
 
-/*type GTIDEvent struct {
+type GTIDEvent struct {
 	CommitFlag uint8
 	SID        []byte
 	GNO        int64
@@ -336,7 +337,7 @@ func (e *GTIDEvent) Dump(w io.Writer) {
 	u, _ := uuid.FromBytes(e.SID)
 	fmt.Fprintf(w, "GTID_NEXT: %s:%d\n", u.String(), e.GNO)
 	fmt.Fprintln(w)
-}*/
+}
 
 type BeginLoadQueryEvent struct {
 	FileID    uint32
