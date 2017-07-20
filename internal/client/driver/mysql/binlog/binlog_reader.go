@@ -103,6 +103,7 @@ func (b *BinlogReader) ConnectBinlogStreamer(coordinates base.BinlogCoordinates)
 
 	b.currentCoordinates = coordinates
 	b.logger.Printf("[DEBUG] mysql.reader: connecting binlog streamer at %+v", b.currentCoordinates)
+
 	// Start sync with sepcified binlog file and position
 	//b.binlogStreamer, err = b.binlogSyncer.StartSync(gomysql.Position{b.currentCoordinates.LogFile, uint32(b.currentCoordinates.LogPos)})
 	gtidSet, err := gomysql.ParseMysqlGTIDSet(b.currentCoordinates.GtidSet)
@@ -256,7 +257,7 @@ func (b *BinlogReader) DataStreamEvents(canStopStreaming func() bool, entriesCha
 	if canStopStreaming() {
 		return nil
 	}
-	var be *BinlogEntry
+	//var be *BinlogEntry
 	for {
 		if canStopStreaming() {
 			break
@@ -271,7 +272,7 @@ func (b *BinlogReader) DataStreamEvents(canStopStreaming func() bool, entriesCha
 			defer b.currentCoordinatesMutex.Unlock()
 			b.currentCoordinates.LogPos = int64(ev.Header.LogPos)
 		}()
-		if rotateEvent, ok := ev.Event.(*replication.RotateEvent); ok {
+		/*if rotateEvent, ok := ev.Event.(*replication.RotateEvent); ok {
 			func() {
 				b.currentCoordinatesMutex.Lock()
 				defer b.currentCoordinatesMutex.Unlock()
@@ -294,7 +295,7 @@ func (b *BinlogReader) DataStreamEvents(canStopStreaming func() bool, entriesCha
 			if err := b.handleRowsEvent(ev, be, entriesChannel); err != nil {
 				return err
 			}
-		}
+		}*/
 	}
 
 	return nil
@@ -403,22 +404,36 @@ func (b *BinlogReader) handleBinlogRowsEvent(ev *replication.BinlogEvent, txChan
 			return fmt.Errorf("unfinished transaction %v@%v", b.currentCoordinates.LogFile, uint32(ev.Header.LogPos)-ev.Header.EventSize)
 		}
 
-		evt := ev.Event.(*replication.GTIDEvent)
-		u, _ := uuid.FromBytes(evt.GTID.SID)
+		// Match the version string (from SELECT VERSION()).
+		if strings.HasPrefix(b.MysqlContext.MySQLVersion, "5.7") {
+			evt := ev.Event.(*replication.GTIDEventV57)
+			u, _ := uuid.FromBytes(evt.GTID.SID)
 
-		b.currentTx = &BinlogTx{
-			SID:           u.String(),
-			GNO:           evt.GTID.GNO,
-			LastCommitted: evt.GTID.LastCommitted,
-			//Gtid:           fmt.Sprintf("%s:%d", u.String(), evt.GNO),
-			StartEventFile: b.currentCoordinates.LogFile,
-			StartEventPos:  uint32(ev.Header.LogPos) - ev.Header.EventSize,
-			Impacting:      map[uint64]([]string){},
-			EventSize:      uint64(ev.Header.EventSize),
+			b.currentTx = &BinlogTx{
+				SID:           u.String(),
+				GNO:           evt.GTID.GNO,
+				LastCommitted: evt.GTID.LastCommitted,
+				//Gtid:           fmt.Sprintf("%s:%d", u.String(), evt.GNO),
+				Impacting:      map[uint64]([]string){},
+				EventSize:      uint64(ev.Header.EventSize),
+			}
+
+			b.currentSqlB64 = new(bytes.Buffer)
+			b.currentSqlB64.WriteString("BINLOG '\n")
+		}else {
+			evt := ev.Event.(*replication.GTIDEvent)
+			u, _ := uuid.FromBytes(evt.SID)
+
+			b.currentTx = &BinlogTx{
+				SID:           u.String(),
+				GNO:           evt.GNO,
+				Impacting:      map[uint64]([]string){},
+				EventSize:      uint64(ev.Header.EventSize),
+			}
+
+			b.currentSqlB64 = new(bytes.Buffer)
+			b.currentSqlB64.WriteString("BINLOG '\n")
 		}
-
-		b.currentSqlB64 = new(bytes.Buffer)
-		b.currentSqlB64.WriteString("BINLOG '\n")
 
 	case replication.QUERY_EVENT:
 		event := &BinlogEvent{
@@ -607,8 +622,6 @@ func (b *BinlogReader) onCommit(lastEvent *BinlogEvent, txChannel chan<- *Binlog
 		b.currentTx.Fde = b.currentFde
 		b.currentTx.Query = b.currentQuery.String()
 	}
-	b.currentTx.EndEventFile = lastEvent.BinlogFile
-	b.currentTx.EndEventPos = lastEvent.RealPos
 
 	txChannel <- b.currentTx
 

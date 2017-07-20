@@ -18,10 +18,6 @@ const (
 )
 
 type BinlogTx struct {
-	StartEventFile string
-	StartEventPos  uint32
-	EndEventFile   string
-	EndEventPos    uint32
 	SID            string
 	GNO            int64
 	LastCommitted  int64

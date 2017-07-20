@@ -485,6 +485,7 @@ func (a *Applier) onApplyTxStruct(dbApplier *sql.DbApplier, binlogTx *binlog.Bin
 			return err
 		}
 	} else {
+		a.logger.Printf("---query:%v",binlogTx.Query)
 		_, err := sql.ExecNoPrepare(dbApplier.Db, binlogTx.Query)
 		if err != nil {
 			if !sql.IgnoreError(err) {
@@ -664,16 +665,23 @@ func (a *Applier) initiateStreaming() error {
 				if sid == binlogTx.SID {
 					return
 				}
-				if binlogTx.LastCommitted == lastCommitted {
-					groupTx = append(groupTx, binlogTx)
-				} else {
-					if groupTx != nil {
-						a.applyBinlogGroupTxQueue <- groupTx
-						groupTx = nil
+				if a.mysqlContext.ParallelWorkers <= 1{
+					if err := a.onApplyTxStruct(a.dbs[0], binlogTx); err != nil {
+						a.onError(err)
 					}
-					groupTx = append(groupTx, binlogTx)
+				}else {
+					if binlogTx.LastCommitted == lastCommitted {
+						groupTx = append(groupTx, binlogTx)
+					} else {
+						if groupTx != nil {
+							a.applyBinlogGroupTxQueue <- groupTx
+							groupTx = nil
+						}
+						groupTx = append(groupTx, binlogTx)
+					}
+					lastCommitted = binlogTx.LastCommitted
 				}
-				lastCommitted = binlogTx.LastCommitted
+
 			case <-time.After(100 * time.Millisecond):
 				if groupTx != nil {
 					a.applyBinlogGroupTxQueue <- groupTx
@@ -773,6 +781,10 @@ func (a *Applier) validateConnection(db *gosql.DB) error {
 	if err := db.QueryRow(query).Scan(&a.mysqlContext.MySQLVersion); err != nil {
 		return err
 	}
+	// Match the version string (from SELECT VERSION()).
+	if strings.HasPrefix(a.mysqlContext.MySQLVersion, "5.6") {
+		a.mysqlContext.ParallelWorkers = 1
+	}
 	a.logger.Printf("[DEBUG] mysql.applier: connection validated on %+v", a.mysqlContext.ConnectionConfig.Key)
 	return nil
 }
@@ -785,11 +797,12 @@ func (a *Applier) validateTableForeignKeys() error {
 		return err
 	}
 
-	if foreignKeyChecks {
+	if !foreignKeyChecks {
 		a.logger.Printf("[INFO] mysql.inspector: foreign_key_checks validated on %s:%d", a.mysqlContext.ConnectionConfig.Key.Host, a.mysqlContext.ConnectionConfig.Key.Port)
 		return nil
 	}
 
+	//SET @@global.foreign_key_checks = 0;
 	return fmt.Errorf("%s:%d must have foreign_key_checks disabled for executing", a.mysqlContext.ConnectionConfig.Key.Host, a.mysqlContext.ConnectionConfig.Key.Port)
 }
 

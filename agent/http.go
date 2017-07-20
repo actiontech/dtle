@@ -13,7 +13,7 @@ import (
 
 	"github.com/NYTimes/gziphandler"
 	"github.com/ugorji/go/codec"
-	//_ "net/http/pprof"
+	_ "net/http/pprof"
 
 	umodel "udup/internal/models"
 )
@@ -69,11 +69,11 @@ func NewHTTPServer(agent *Agent, config *Config, logOutput io.Writer) (*HTTPServ
 	}
 	srv.registerHandlers()
 
-	/*if config.LogLevel == "DEBUG" {
+	if config.LogLevel == "DEBUG" {
 		go func() {
 			http.ListenAndServe("0.0.0.0:8119", nil)
 		}()
-	}*/
+	}
 
 	// Start the server
 	go http.Serve(ln, gziphandler.GzipHandler(mux))
