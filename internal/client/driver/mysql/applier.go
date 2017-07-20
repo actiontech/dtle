@@ -485,6 +485,7 @@ func (a *Applier) onApplyTxStruct(dbApplier *sql.DbApplier, binlogTx *binlog.Bin
 			return err
 		}
 	} else {
+		a.logger.Printf("---query:%v",binlogTx.Query)
 		_, err := sql.ExecNoPrepare(dbApplier.Db, binlogTx.Query)
 		if err != nil {
 			if !sql.IgnoreError(err) {
