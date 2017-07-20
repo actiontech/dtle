@@ -677,27 +677,27 @@ func (r *Worker) Destroy(event *models.TaskEvent) {
 // sinks
 func (r *Worker) emitStats(ru *models.TaskStatistics) {
 	if r.config.PublishAllocationMetrics {
-		metrics.SetGauge([]string{"client", "allocs", r.alloc.Job.Name, r.alloc.Task, r.task.Type, "table", "in_msgs"}, float32(ru.MsgStat.InMsgs))
-		metrics.SetGauge([]string{"client", "allocs", r.alloc.Job.Name, r.alloc.Task, r.task.Type, "table", "out_msgs"}, float32(ru.MsgStat.OutMsgs))
-		metrics.SetGauge([]string{"client", "allocs", r.alloc.Job.Name, r.alloc.Task, r.task.Type, "table", "in_bytes"}, float32(ru.MsgStat.InBytes))
-		metrics.SetGauge([]string{"client", "allocs", r.alloc.Job.Name, r.alloc.Task, r.task.Type, "table", "out_bytes"}, float32(ru.MsgStat.OutBytes))
-		metrics.SetGauge([]string{"client", "allocs", r.alloc.Job.Name, r.alloc.Task, r.task.Type, "table", "src_queue_size"}, float32(ru.BufferStat.ExtractorTxQueueSize))
-		metrics.SetGauge([]string{"client", "allocs", r.alloc.Job.Name, r.alloc.Task, r.task.Type, "table", "dest_group_queue_size"}, float32(ru.BufferStat.ApplierGroupTxQueueSize))
-		metrics.SetGauge([]string{"client", "allocs", r.alloc.Job.Name, r.alloc.Task, r.task.Type, "table", "dest_queue_size"}, float32(ru.BufferStat.ApplierTxQueueSize))
+		metrics.SetGauge([]string{r.alloc.Job.Name, r.alloc.Task, "table", "in_msgs"}, float32(ru.MsgStat.InMsgs))
+		metrics.SetGauge([]string{r.alloc.Job.Name, r.alloc.Task, "table", "out_msgs"}, float32(ru.MsgStat.OutMsgs))
+		metrics.SetGauge([]string{r.alloc.Job.Name, r.alloc.Task, "table", "in_bytes"}, float32(ru.MsgStat.InBytes))
+		metrics.SetGauge([]string{r.alloc.Job.Name, r.alloc.Task, "table", "out_bytes"}, float32(ru.MsgStat.OutBytes))
+		metrics.SetGauge([]string{r.alloc.Job.Name, r.alloc.Task, "table", "src_queue_size"}, float32(ru.BufferStat.ExtractorTxQueueSize))
+		metrics.SetGauge([]string{r.alloc.Job.Name, r.alloc.Task, "table", "dest_group_queue_size"}, float32(ru.BufferStat.ApplierGroupTxQueueSize))
+		metrics.SetGauge([]string{r.alloc.Job.Name, r.alloc.Task, "table", "dest_queue_size"}, float32(ru.BufferStat.ApplierTxQueueSize))
 	}
 	if ru.TableStats != nil && r.config.PublishAllocationMetrics {
-		metrics.SetGauge([]string{"client", "allocs", r.alloc.Job.Name, r.alloc.Task, r.task.Type, "table", "insert"}, float32(ru.TableStats.InsertCount))
-		metrics.SetGauge([]string{"client", "allocs", r.alloc.Job.Name, r.alloc.Task, r.task.Type, "table", "update"}, float32(ru.TableStats.UpdateCount))
-		metrics.SetGauge([]string{"client", "allocs", r.alloc.Job.Name, r.alloc.Task, r.task.Type, "table", "delete"}, float32(ru.TableStats.DelCount))
+		metrics.SetGauge([]string{r.alloc.Job.Name, r.alloc.Task, "table", "insert"}, float32(ru.TableStats.InsertCount))
+		metrics.SetGauge([]string{r.alloc.Job.Name, r.alloc.Task, "table", "update"}, float32(ru.TableStats.UpdateCount))
+		metrics.SetGauge([]string{r.alloc.Job.Name, r.alloc.Task, "table", "delete"}, float32(ru.TableStats.DelCount))
 	}
 
 	if ru.DelayCount != nil && r.config.PublishAllocationMetrics {
-		metrics.SetGauge([]string{"client", "allocs", r.alloc.Job.Name, r.alloc.Task, r.task.Type, "delay", "num"}, float32(ru.DelayCount.Num))
-		metrics.SetGauge([]string{"client", "allocs", r.alloc.Job.Name, r.alloc.Task, r.task.Type, "delay", "time"}, float32(ru.DelayCount.Time))
+		metrics.SetGauge([]string{r.alloc.Job.Name, r.alloc.Task, "delay", "num"}, float32(ru.DelayCount.Num))
+		metrics.SetGauge([]string{r.alloc.Job.Name, r.alloc.Task, "delay", "time"}, float32(ru.DelayCount.Time))
 	}
 
 	if ru.ThroughputStat != nil && r.config.PublishAllocationMetrics {
-		metrics.SetGauge([]string{"client", "allocs", r.alloc.Job.Name, r.alloc.Task, r.task.Type, "throughput", "num"}, float32(ru.ThroughputStat.Num))
-		metrics.SetGauge([]string{"client", "allocs", r.alloc.Job.Name, r.alloc.Task, r.task.Type, "throughput", "time"}, float32(ru.ThroughputStat.Time))
+		metrics.SetGauge([]string{r.alloc.Job.Name, r.alloc.Task, "throughput", "num"}, float32(ru.ThroughputStat.Num))
+		metrics.SetGauge([]string{r.alloc.Job.Name, r.alloc.Task, "throughput", "time"}, float32(ru.ThroughputStat.Time))
 	}
 }

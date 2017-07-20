@@ -300,6 +300,7 @@ A Job represents a scheduled task to execute.
             "Config": {
                 "Gtid": "64a1499d-4f4b-11e7-a79d-0242ac110002:1",
                 "NatsAddr": "127.0.0.1:8193",
+                "ReplChanBufferSize":600,
                 "ReplicateDoDb": [
                     {
                         "TableSchema": "s1",

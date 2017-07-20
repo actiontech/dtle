@@ -29,7 +29,6 @@ import (
 const (
 	applyEventsQueueBuffer        = 100
 	applyDataQueueBuffer          = 600
-	applyBinlogTxQueueBuffer      = 600
 	applyCopyRowsQueueQueueBuffer = 100
 )
 
@@ -73,8 +72,8 @@ func NewApplier(subject, tp string, cfg *config.MySQLDriverConfig, logger *log.L
 		allEventsUpToLockProcessed: make(chan string),
 		copyRowsQueue:              make(chan *dumpEntry, applyCopyRowsQueueQueueBuffer),
 		applyDataEntryQueue:        make(chan *binlog.BinlogEntry, applyDataQueueBuffer),
-		applyBinlogTxQueue:         make(chan *binlog.BinlogTx, applyBinlogTxQueueBuffer),
-		applyBinlogGroupTxQueue:    make(chan []*binlog.BinlogTx, applyDataQueueBuffer),
+		applyBinlogTxQueue:         make(chan *binlog.BinlogTx, cfg.ReplChanBufferSize),
+		applyBinlogGroupTxQueue:    make(chan []*binlog.BinlogTx, cfg.ReplChanBufferSize),
 		waitCh:                     make(chan *models.WaitResult, 1),
 	}
 	return a

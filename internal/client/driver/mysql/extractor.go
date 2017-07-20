@@ -27,7 +27,6 @@ const (
 	// DefaultConnectWait is the default timeout used for the connect operation
 	DefaultConnectWait            = 30 * time.Minute
 	AllEventsUpToLockProcessed    = "AllEventsUpToLockProcessed"
-	ChannelBufferSize             = 600
 	ReconnectStreamerSleepSeconds = 5
 	defaultMsgBytes               = 20 * 1024
 )
@@ -67,8 +66,8 @@ func NewExtractor(subject, tp string, cfg *config.MySQLDriverConfig, logger *log
 		tp:                         tp,
 		mysqlContext:               cfg,
 		tables:                     make([]*config.Table, 0),
-		binlogChannel:              make(chan *binlog.BinlogTx, ChannelBufferSize),
-		dataChannel:                make(chan *binlog.BinlogEntry, ChannelBufferSize),
+		binlogChannel:              make(chan *binlog.BinlogTx, cfg.ReplChanBufferSize),
+		dataChannel:                make(chan *binlog.BinlogEntry, cfg.ReplChanBufferSize),
 		parser:                     sql.NewParser(),
 		rowCopyComplete:            make(chan bool),
 		allEventsUpToLockProcessed: make(chan string),
