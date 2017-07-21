@@ -835,12 +835,19 @@ func TestSerf_ReapHandler_Shutdown(t *testing.T) {
 		t.Fatalf("err: %s", err)
 	}
 
+	// Make sure the reap handler exits on shutdown.
+	doneCh := make(chan struct{})
 	go func() {
-		s.Shutdown()
-		time.Sleep(time.Millisecond)
-		t.Fatalf("timeout")
+		s.handleReap()
+		close(doneCh)
 	}()
-	s.handleReap()
+
+	s.Shutdown()
+	select {
+	case <-doneCh:
+	case <-time.After(1 * time.Second):
+		t.Fatalf("timeout")
+	}
 }
 
 func TestSerf_ReapHandler(t *testing.T) {
@@ -856,9 +863,9 @@ func TestSerf_ReapHandler(t *testing.T) {
 
 	m := Member{}
 	s.leftMembers = []*memberState{
-		{m, 0, time.Now()},
-		{m, 0, time.Now().Add(-5 * time.Second)},
-		{m, 0, time.Now().Add(-10 * time.Second)},
+		&memberState{m, 0, time.Now()},
+		&memberState{m, 0, time.Now().Add(-5 * time.Second)},
+		&memberState{m, 0, time.Now().Add(-10 * time.Second)},
 	}
 
 	upsertIntent(s.recentIntents, "alice", messageJoinType, 1, time.Now)
@@ -903,9 +910,9 @@ func TestSerf_Reap(t *testing.T) {
 
 	m := Member{}
 	old := []*memberState{
-		{m, 0, time.Now()},
-		{m, 0, time.Now().Add(-5 * time.Second)},
-		{m, 0, time.Now().Add(-10 * time.Second)},
+		&memberState{m, 0, time.Now()},
+		&memberState{m, 0, time.Now().Add(-5 * time.Second)},
+		&memberState{m, 0, time.Now().Add(-10 * time.Second)},
 	}
 
 	old = s.reap(old, time.Now(), time.Second*6)
@@ -916,9 +923,9 @@ func TestSerf_Reap(t *testing.T) {
 
 func TestRemoveOldMember(t *testing.T) {
 	old := []*memberState{
-		{Member: Member{Name: "foo"}},
-		{Member: Member{Name: "bar"}},
-		{Member: Member{Name: "baz"}},
+		&memberState{Member: Member{Name: "foo"}},
+		&memberState{Member: Member{Name: "bar"}},
+		&memberState{Member: Member{Name: "baz"}},
 	}
 
 	old = removeOldMember(old, "bar")
@@ -1508,10 +1515,25 @@ func TestSerf_Query_Filter(t *testing.T) {
 	}
 	testutil.Yield()
 
+	s3Config := testConfig()
+	s3, err := Create(s3Config)
+	if err != nil {
+		t.Fatalf("err: %s", err)
+	}
+	defer s3.Shutdown()
+	testutil.Yield()
+
+	_, err = s1.Join([]string{s3Config.MemberlistConfig.BindAddr}, false)
+	if err != nil {
+		t.Fatalf("err: %s", err)
+	}
+	testutil.Yield()
+
 	// Filter to only s1!
 	params := s2.DefaultQueryParams()
 	params.FilterNodes = []string{s1Config.NodeName}
 	params.RequestAck = true
+	params.RelayFactor = 1
 
 	// Start a query from s2
 	resp, err := s2.Query("load", []byte("sup girl"), params)
@@ -1548,6 +1570,57 @@ func TestSerf_Query_Filter(t *testing.T) {
 	}
 	if len(responses) != 1 {
 		t.Fatalf("missing responses: %v", responses)
+	}
+}
+
+func TestSerf_Query_Deduplicate(t *testing.T) {
+	s := &Serf{}
+
+	// Set up a dummy query and response
+	mq := &messageQuery{
+		LTime:   123,
+		ID:      123,
+		Timeout: time.Second,
+		Flags:   queryFlagAck,
+	}
+	query := newQueryResponse(3, mq)
+	response := &messageQueryResponse{
+		LTime: mq.LTime,
+		ID:    mq.ID,
+		From:  "node1",
+	}
+	s.queryResponse = map[LamportTime]*QueryResponse{mq.LTime: query}
+
+	// Send a few duplicate responses
+	s.handleQueryResponse(response)
+	s.handleQueryResponse(response)
+	response.Flags |= queryFlagAck
+	s.handleQueryResponse(response)
+	s.handleQueryResponse(response)
+
+	// Ensure we only get one NodeResponse off the channel
+	select {
+	case <-query.respCh:
+	default:
+		t.Fatalf("Should have a response")
+	}
+
+	select {
+	case <-query.ackCh:
+	default:
+		t.Fatalf("Should have an ack")
+	}
+
+	select {
+	case <-query.respCh:
+		t.Fatalf("Should not have any other responses")
+	default:
+	}
+
+	select {
+	case <-query.ackCh:
+		t.Fatalf("Should not have any other acks")
+	default:
 	}
 }
 

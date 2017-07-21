@@ -254,7 +254,7 @@ func TestSerf_ListKeys(t *testing.T) {
 	}
 
 	found := false
-	for key := range resp.Keys {
+	for key, _ := range resp.Keys {
 		if key == extraKey {
 			found = true
 		}

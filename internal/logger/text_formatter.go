@@ -55,8 +55,47 @@ type TextFormatter struct {
 	sync.Once
 }
 
+
+// Cheap integer to fixed-width decimal ASCII.  Give a negative width to avoid zero-padding.
+func itoa(buf *[]byte, i int, wid int) {
+	// Assemble decimal in reverse order.
+	var b [20]byte
+	bp := len(b) - 1
+	for i >= 10 || wid > 1 {
+		wid--
+		q := i / 10
+		b[bp] = byte('0' + i - q*10)
+		bp--
+		i = q
+	}
+	// i < 10
+	b[bp] = byte('0' + i)
+	*buf = append(*buf, b[bp:]...)
+}
+
+
+func (f *TextFormatter) formatHeader(buf *[]byte,t time.Time) {
+	year, month, day := t.Date()
+	itoa(buf, year, 4)
+	*buf = append(*buf, '/')
+	itoa(buf, int(month), 2)
+	*buf = append(*buf, '/')
+	itoa(buf, day, 2)
+	*buf = append(*buf, ' ')
+
+	hour, min, sec := t.Clock()
+	itoa(buf, hour, 2)
+	*buf = append(*buf, ':')
+	itoa(buf, min, 2)
+	*buf = append(*buf, ':')
+	itoa(buf, sec, 2)
+	*buf = append(*buf, '.')
+	itoa(buf, t.Nanosecond()/1e3, 6)
+}
+
 func (f *TextFormatter) Format(entry *Entry) ([]byte, error) {
 	var b *bytes.Buffer
+	var buf []byte
 	keys := make([]string, 0, len(entry.Data))
 	for k := range entry.Data {
 		keys = append(keys, k)
@@ -83,7 +122,9 @@ func (f *TextFormatter) Format(entry *Entry) ([]byte, error) {
 		f.printColored(b, entry, keys, timestampFormat)
 	} else {
 		if !f.DisableTimestamp {
-			f.appendKeyValue(b, "time", entry.Time.Format(timestampFormat))
+			buf = buf[:0]
+			f.formatHeader(&buf,entry.Time)
+			f.appendKeyValue(b, "time", string(buf[:]))
 		}
 		f.appendKeyValue(b, "level", fmt.Sprintf("[%s]", entry.Level.String()))
 		for _, key := range keys {

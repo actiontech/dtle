@@ -132,7 +132,7 @@ imports:
 - name: github.com/hashicorp/raft-boltdb
   version: d1e82c1ec3f15ee991f7cc7ffd5b67ff6f5bbaee
 - name: github.com/hashicorp/serf
-  version: b9642a47e6139e50548b6f14588a1a3c0839660a
+  version: bbeddf0b3ab3072a60525afbd6b6f47d33839eee
   subpackages:
   - coordinate
   - serf

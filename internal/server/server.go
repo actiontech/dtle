@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"net"
 	"net/rpc"
+	"log"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -443,7 +444,8 @@ func (s *Server) setupRaft() error {
 	s.raftTransport = trans
 
 	// Make sure we set the LogOutput.
-	s.config.RaftConfig.LogOutput = s.config.LogOutput
+	//s.config.RaftConfig.LogOutput = s.config.LogOutput
+	s.config.RaftConfig.Logger = log.New(s.config.LogOutput, "", log.LstdFlags|log.Lmicroseconds)
 
 	// Our version of Raft protocol requires the LocalID to match the network
 	// address of the transport.
@@ -582,7 +584,9 @@ func (s *Server) setupSerf(conf *serf.Config, ch chan serf.Event, path string) (
 	if bootstrapExpect != 0 {
 		conf.Tags["expect"] = fmt.Sprintf("%d", bootstrapExpect)
 	}
-	conf.MemberlistConfig.LogOutput = s.config.LogOutput
+	//conf.MemberlistConfig.LogOutput = s.config.LogOutput
+	conf.Logger = log.New(s.config.LogOutput, "", log.LstdFlags|log.Lmicroseconds)
+	conf.MemberlistConfig.Logger = conf.Logger
 	conf.LogOutput = s.config.LogOutput
 	conf.EventCh = ch
 	conf.SnapshotPath = filepath.Join(s.config.DataDir, path)

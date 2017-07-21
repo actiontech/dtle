@@ -79,6 +79,42 @@ The changes from SWIM are noted here:
   state immediately upon learning that the node is dead. This change again helps
   the cluster converge more quickly.
 
+<a name="lifeguard"></a>
+## Lifeguard Enhancements
+
+SWIM makes the assumption that the local node is healthy in the sense
+that soft real-time processing of packets is possible. However, in cases
+where the local node is experiencing CPU or network exhaustion this assumption
+can be violated. The result is that the node health can occassionally flap,
+resulting in false monitoring alarms, adding noise to telemetry, and simply
+causing the overall cluster to waste CPU and network resources diagnosing a
+failure that may not truly exist.
+
+Serf 0.8 added Lifeguard, which completely resolves this issue with novel
+enhancements to SWIM.
+
+The first extension introduces a "nack" message to probe queries. If the
+probing node realizes it is missing "nack" messages then it becomes aware
+that it may be degraded and slows down its failure detector. As nack messages
+begin arriving, the failure detector is sped back up.
+
+The second change introduces a dynamically changing suspicion timeout
+before declaring another node as failured. The probing node will initially
+start with a very long suspicion timeout. As other nodes in the cluster confirm
+a node is suspect, the timer accelerates. During normal operations the
+detection time is actually the same as in previous versions of Serf. However,
+if a node is degraded and doesn't get confirmations, there is a long timeout
+which allows the suspected node to refute its status and remain healthy.
+
+These two mechanisms combine to make Serf much more robust to degraded nodes in a
+cluster, while keeping failure detection performance unchanged. There is no
+additional configuration for Lifeguard, it tunes itself automatically.
+
+For more details about Lifeguard, please see the
+[Making Gossip More Robust with Lifeguard](https://www.hashicorp.com/blog/making-gossip-more-robust-with-lifeguard/)
+blog post, which provides a high level overview of the HashiCorp Research paper
+[Lifeguard : SWIM-ing with Situational Awareness](https://arxiv.org/abs/1707.00788).
+
 ## Serf-Specific Messages
 
 On top of the SWIM-based gossip layer, Serf sends some custom message types.

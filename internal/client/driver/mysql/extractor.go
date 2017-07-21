@@ -715,7 +715,7 @@ func (e *Extractor) StreamEvents(approveHeterogeneous bool, canStopStreaming fun
 		}
 	} else {
 		go func() {
-			var txArray []*binlog.BinlogTx
+			txArray :=[]*binlog.BinlogTx{}
 			subject := fmt.Sprintf("%s_incr", e.subject)
 		OUTER:
 			for {
@@ -739,7 +739,7 @@ func (e *Extractor) StreamEvents(approveHeterogeneous bool, canStopStreaming fun
 								e.onError(err)
 								break OUTER
 							}
-							txArray = nil
+							txArray = []*binlog.BinlogTx{}
 						}
 					}
 				case binlogTx := <-e.binlogChannel:
@@ -758,7 +758,7 @@ func (e *Extractor) StreamEvents(approveHeterogeneous bool, canStopStreaming fun
 								e.onError(err)
 								break OUTER
 							}
-							txArray = nil
+							txArray = []*binlog.BinlogTx{}
 						}
 					}
 				}

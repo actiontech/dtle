@@ -429,7 +429,7 @@ func (a *Agent) Stats() map[string]map[string]string {
 	}
 
 	output := map[string]map[string]string{
-		"agent": {
+		"agent": map[string]string{
 			"name": local.Name,
 		},
 		"runtime":        runtimeStats(),

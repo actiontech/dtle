@@ -80,8 +80,9 @@ The options below are all specified on the command-line.
   than one encryption key until all members have received the new key. The
   keyring file helps persist changes to the encryption keyring, allowing the
   agent to start and rejoin the cluster successfully later on, even if key
-  rotations had been initiated by other members in the cluster. More information
-  on the format of the keyring file can be found below in the examples section.
+  rotations had been initiated by other members in the cluster. If left blank, the
+  keyring will not be persisted to a file. More information on the format of the
+  keyring file can be found below in the examples section.
 
   NOTE: this option is not compatible with the `-encrypt` option.
 
@@ -183,6 +184,10 @@ The options below are all specified on the command-line.
 * `-syslog` - When provided, the logs will also be sent to the syslog facility.
   This flag can only be enabled on Linux or OSX systems, as Windows and Plan 9 do
   not provide the syslog facility.
+
+* `-broadcast-timeout` - Sets the broadcast timeout, which is the max time allowed for
+  responses to events including leave and force remove messages. Defaults to 5s. This
+  should use the "s" suffix for second, "m" for minute, or "h" for hour.
 
 ## Configuration Files
 
@@ -311,6 +316,8 @@ at a single JSON object with configuration within it.
   payload sizes for queries, respectively. These must fit in a UDP packet with some
   additional overhead, so tuning these past the default values of 1024 will depend
   on your network configuration.
+
+* `broadcast_timeout` - Equivalent to the `-broadcast-timeout` command-line flag.
 
 #### Example Keyring File
 

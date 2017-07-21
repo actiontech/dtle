@@ -25,7 +25,9 @@ func TestSnapshotter(t *testing.T) {
 	}
 	coord := coordinate.NewCoordinate(coordinate.DefaultConfig())
 	coord.Vec[0] = 123.4
-	coordClient.SetCoordinate(coord)
+	if err := coordClient.SetCoordinate(coord); err != nil {
+		t.Fatalf("err: %v", err)
+	}
 
 	clock := new(LamportClock)
 	outCh := make(chan Event, 64)
@@ -56,7 +58,7 @@ func TestSnapshotter(t *testing.T) {
 	meJoin := MemberEvent{
 		Type: EventMemberJoin,
 		Members: []Member{
-			{
+			Member{
 				Name: "foo",
 				Addr: []byte{127, 0, 0, 1},
 				Port: 5000,
@@ -66,7 +68,7 @@ func TestSnapshotter(t *testing.T) {
 	meFail := MemberEvent{
 		Type: EventMemberFailed,
 		Members: []Member{
-			{
+			Member{
 				Name: "foo",
 				Addr: []byte{127, 0, 0, 1},
 				Port: 5000,
@@ -203,7 +205,9 @@ func TestSnapshotter_forceCompact(t *testing.T) {
 	}
 	coord := coordinate.NewCoordinate(coordinate.DefaultConfig())
 	coord.Vec[0] = 123.4
-	coordClient.SetCoordinate(coord)
+	if err := coordClient.SetCoordinate(coord); err != nil {
+		t.Fatalf("err: %v", err)
+	}
 
 	clock := new(LamportClock)
 	stopCh := make(chan struct{})
@@ -308,7 +312,7 @@ func TestSnapshotter_leave(t *testing.T) {
 	meJoin := MemberEvent{
 		Type: EventMemberJoin,
 		Members: []Member{
-			{
+			Member{
 				Name: "foo",
 				Addr: []byte{127, 0, 0, 1},
 				Port: 5000,
@@ -389,7 +393,7 @@ func TestSnapshotter_leave_rejoin(t *testing.T) {
 	meJoin := MemberEvent{
 		Type: EventMemberJoin,
 		Members: []Member{
-			{
+			Member{
 				Name: "foo",
 				Addr: []byte{127, 0, 0, 1},
 				Port: 5000,

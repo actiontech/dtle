@@ -43,7 +43,7 @@ func NewStateStore(logOutput io.Writer) (*StateStore, error) {
 
 	// Create the state store
 	s := &StateStore{
-		logger:    log.New(logOutput, "", log.LstdFlags),
+		logger:    log.New(logOutput, "", log.LstdFlags|log.Lmicroseconds),
 		db:        db,
 		abandonCh: make(chan struct{}),
 	}
