@@ -18,9 +18,10 @@ const (
 	DefaultBindPort  int = 8191
 	DefaultClusterID     = "udup-cluster"
 
-	channelBufferSize             = 600
-	defaultNumRetries 			= 5
-	defaultNumWorkers 			= 1
+	channelBufferSize = 600
+	defaultNumRetries = 5
+	defaultNumWorkers = 1
+	defaultMsgBytes   = 20 * 1024
 )
 
 // RPCHandler can be provided to the Client if there is a local server
@@ -113,7 +114,8 @@ const (
 type MySQLDriverConfig struct {
 	//Ref:http://dev.mysql.com/doc/refman/5.7/en/replication-options-slave.html#option_mysqld_replicate-do-table
 	ReplicateDoDb                       []*DataSource
-	ReplChanBufferSize					int64
+	ReplChanBufferSize                  int64
+	MsgBytesLimit                       uint64
 	ConcurrentCountTableRows            bool
 	SkipRenamedColumns                  bool
 	MaxRetries                          int64
@@ -175,6 +177,9 @@ func (a *MySQLDriverConfig) SetDefault() *MySQLDriverConfig {
 	}
 	if result.ParallelWorkers <= 0 {
 		result.ParallelWorkers = defaultNumWorkers
+	}
+	if result.MsgBytesLimit <= 0 {
+		result.MsgBytesLimit = defaultMsgBytes
 	}
 	return &result
 }

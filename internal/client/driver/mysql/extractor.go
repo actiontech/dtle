@@ -28,7 +28,6 @@ const (
 	DefaultConnectWait            = 30 * time.Minute
 	AllEventsUpToLockProcessed    = "AllEventsUpToLockProcessed"
 	ReconnectStreamerSleepSeconds = 5
-	defaultMsgBytes               = 20 * 1024
 )
 
 // Extractor is the main schema extract flow manager.
@@ -50,6 +49,9 @@ type Extractor struct {
 	rowCopyComplete            chan bool
 	allEventsUpToLockProcessed chan string
 	rowCopyCompleteFlag        int64
+
+	sendByTimeoutCounter  int
+	sendBySizeFullCounter int
 
 	natsConn *gonats.Conn
 	waitCh   chan *models.WaitResult
@@ -715,7 +717,7 @@ func (e *Extractor) StreamEvents(approveHeterogeneous bool, canStopStreaming fun
 		}
 	} else {
 		go func() {
-			txArray :=[]*binlog.BinlogTx{}
+			txArray := []*binlog.BinlogTx{}
 			subject := fmt.Sprintf("%s_incr", e.subject)
 		OUTER:
 			for {
@@ -739,6 +741,8 @@ func (e *Extractor) StreamEvents(approveHeterogeneous bool, canStopStreaming fun
 								e.onError(err)
 								break OUTER
 							}
+							//send_by_timeout
+							e.sendByTimeoutCounter += len(txArray)
 							txArray = []*binlog.BinlogTx{}
 						}
 					}
@@ -753,11 +757,13 @@ func (e *Extractor) StreamEvents(approveHeterogeneous bool, canStopStreaming fun
 						if uint64(len(txMsg)) > 100*1024*1024 {
 							e.onError(gonats.ErrMaxPayload)
 						}
-						if uint64(len(txMsg)) > defaultMsgBytes {
+						if uint64(len(txMsg)) > e.mysqlContext.MsgBytesLimit {
 							if err := e.requestMsg(subject, fmt.Sprintf("%s:1-%d", binlogTx.SID, binlogTx.GNO), txMsg); err != nil {
 								e.onError(err)
 								break OUTER
 							}
+							//send_by_size_full
+							e.sendBySizeFullCounter += len(txArray)
 							txArray = []*binlog.BinlogTx{}
 						}
 					}
@@ -968,6 +974,8 @@ func (e *Extractor) Stats() (*models.TaskStatistics, error) {
 		Status: "",
 		BufferStat: &models.BufferStat{
 			ExtractorTxQueueSize: len(e.binlogChannel),
+			SendByTimeout:        e.sendByTimeoutCounter,
+			SendBySizeFull:       e.sendBySizeFullCounter,
 		},
 		Timestamp: time.Now().UTC().UnixNano(),
 	}

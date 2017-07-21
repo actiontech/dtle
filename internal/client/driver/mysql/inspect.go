@@ -68,7 +68,7 @@ func (i *Inspector) ValidateOriginalTable(databaseName, tableName string) (err e
 		return err
 	}
 
-	/*if err := i.validateTableForeignKeys(databaseName, tableName, true *//*this.migrationContext.DiscardForeignKeys*//*); err != nil {
+	/*if err := i.validateTableForeignKeys(databaseName, tableName, true */ /*this.migrationContext.DiscardForeignKeys*/ /*); err != nil {
 		return err
 	}*/
 

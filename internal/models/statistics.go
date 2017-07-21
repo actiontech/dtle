@@ -29,6 +29,8 @@ type BufferStat struct {
 	ExtractorTxQueueSize    int
 	ApplierTxQueueSize      int
 	ApplierGroupTxQueueSize int
+	SendByTimeout           int
+	SendBySizeFull          int
 }
 
 type TaskStatistics struct {

@@ -55,7 +55,6 @@ type TextFormatter struct {
 	sync.Once
 }
 
-
 // Cheap integer to fixed-width decimal ASCII.  Give a negative width to avoid zero-padding.
 func itoa(buf *[]byte, i int, wid int) {
 	// Assemble decimal in reverse order.
@@ -73,8 +72,7 @@ func itoa(buf *[]byte, i int, wid int) {
 	*buf = append(*buf, b[bp:]...)
 }
 
-
-func (f *TextFormatter) formatHeader(buf *[]byte,t time.Time) {
+func (f *TextFormatter) formatHeader(buf *[]byte, t time.Time) {
 	year, month, day := t.Date()
 	itoa(buf, year, 4)
 	*buf = append(*buf, '/')
@@ -123,7 +121,7 @@ func (f *TextFormatter) Format(entry *Entry) ([]byte, error) {
 	} else {
 		if !f.DisableTimestamp {
 			buf = buf[:0]
-			f.formatHeader(&buf,entry.Time)
+			f.formatHeader(&buf, entry.Time)
 			f.appendKeyValue(b, "time", string(buf[:]))
 		}
 		f.appendKeyValue(b, "level", fmt.Sprintf("[%s]", entry.Level.String()))
