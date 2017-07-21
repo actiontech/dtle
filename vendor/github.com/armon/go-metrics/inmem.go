@@ -153,6 +153,15 @@ func NewInmemSink(interval, retain time.Duration) *InmemSink {
 	return i
 }
 
+func (i *InmemSink) SetGaugeOpts(labels map[string]string,key []string, val float32) {
+	k := i.flattenKey(key)
+	intv := i.getInterval()
+
+	intv.Lock()
+	defer intv.Unlock()
+	intv.Gauges[k] = val
+}
+
 func (i *InmemSink) SetGauge(key []string, val float32) {
 	k := i.flattenKey(key)
 	intv := i.getInterval()

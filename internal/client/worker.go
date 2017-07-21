@@ -9,10 +9,11 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"encoding/json"
 
 	"github.com/armon/go-metrics"
+	"github.com/prometheus/client_golang/prometheus"
 
-	"encoding/json"
 	"udup/internal/client/driver"
 	"udup/internal/config"
 	log "udup/internal/logger"
@@ -676,28 +677,31 @@ func (r *Worker) Destroy(event *models.TaskEvent) {
 // emitStats emits resource usage stats of tasks to remote metrics collector
 // sinks
 func (r *Worker) emitStats(ru *models.TaskStatistics) {
+	labels := prometheus.Labels{"task_name":fmt.Sprintf("%s_%s",r.alloc.Job.Name, r.alloc.Task)}
 	if r.config.PublishAllocationMetrics {
-		metrics.SetGauge([]string{r.alloc.Job.Name, r.alloc.Task, "table", "in_msgs"}, float32(ru.MsgStat.InMsgs))
-		metrics.SetGauge([]string{r.alloc.Job.Name, r.alloc.Task, "table", "out_msgs"}, float32(ru.MsgStat.OutMsgs))
-		metrics.SetGauge([]string{r.alloc.Job.Name, r.alloc.Task, "table", "in_bytes"}, float32(ru.MsgStat.InBytes))
-		metrics.SetGauge([]string{r.alloc.Job.Name, r.alloc.Task, "table", "out_bytes"}, float32(ru.MsgStat.OutBytes))
-		metrics.SetGauge([]string{r.alloc.Job.Name, r.alloc.Task, "table", "src_queue_size"}, float32(ru.BufferStat.ExtractorTxQueueSize))
-		metrics.SetGauge([]string{r.alloc.Job.Name, r.alloc.Task, "table", "dest_group_queue_size"}, float32(ru.BufferStat.ApplierGroupTxQueueSize))
-		metrics.SetGauge([]string{r.alloc.Job.Name, r.alloc.Task, "table", "dest_queue_size"}, float32(ru.BufferStat.ApplierTxQueueSize))
+		metrics.SetGaugeOpts(labels,[]string{"network", "in_msgs"}, float32(ru.MsgStat.InMsgs))
+		metrics.SetGaugeOpts(labels,[]string{"network", "out_msgs"}, float32(ru.MsgStat.OutMsgs))
+		metrics.SetGaugeOpts(labels,[]string{"network", "in_bytes"}, float32(ru.MsgStat.InBytes))
+		metrics.SetGaugeOpts(labels,[]string{"network", "out_bytes"}, float32(ru.MsgStat.OutBytes))
+		metrics.SetGaugeOpts(labels,[]string{"buffer", "src_queue_size"}, float32(ru.BufferStat.ExtractorTxQueueSize))
+		metrics.SetGaugeOpts(labels,[]string{"buffer", "dest_group_queue_size"}, float32(ru.BufferStat.ApplierGroupTxQueueSize))
+		metrics.SetGaugeOpts(labels,[]string{"buffer", "dest_queue_size"}, float32(ru.BufferStat.ApplierTxQueueSize))
+		metrics.SetGaugeOpts(labels,[]string{"buffer", "send_by_timeout"}, float32(ru.BufferStat.SendByTimeout))
+		metrics.SetGaugeOpts(labels,[]string{"buffer", "send_by_size_full"}, float32(ru.BufferStat.SendBySizeFull))
 	}
 	if ru.TableStats != nil && r.config.PublishAllocationMetrics {
-		metrics.SetGauge([]string{r.alloc.Job.Name, r.alloc.Task, "table", "insert"}, float32(ru.TableStats.InsertCount))
-		metrics.SetGauge([]string{r.alloc.Job.Name, r.alloc.Task, "table", "update"}, float32(ru.TableStats.UpdateCount))
-		metrics.SetGauge([]string{r.alloc.Job.Name, r.alloc.Task, "table", "delete"}, float32(ru.TableStats.DelCount))
+		metrics.SetGaugeOpts(labels,[]string{"table", "insert"}, float32(ru.TableStats.InsertCount))
+		metrics.SetGaugeOpts(labels,[]string{"table", "update"}, float32(ru.TableStats.UpdateCount))
+		metrics.SetGaugeOpts(labels,[]string{"table", "delete"}, float32(ru.TableStats.DelCount))
 	}
 
 	if ru.DelayCount != nil && r.config.PublishAllocationMetrics {
-		metrics.SetGauge([]string{r.alloc.Job.Name, r.alloc.Task, "delay", "num"}, float32(ru.DelayCount.Num))
-		metrics.SetGauge([]string{r.alloc.Job.Name, r.alloc.Task, "delay", "time"}, float32(ru.DelayCount.Time))
+		metrics.SetGaugeOpts(labels,[]string{"delay", "num"}, float32(ru.DelayCount.Num))
+		metrics.SetGaugeOpts(labels,[]string{"delay", "time"}, float32(ru.DelayCount.Time))
 	}
 
 	if ru.ThroughputStat != nil && r.config.PublishAllocationMetrics {
-		metrics.SetGauge([]string{r.alloc.Job.Name, r.alloc.Task, "throughput", "num"}, float32(ru.ThroughputStat.Num))
-		metrics.SetGauge([]string{r.alloc.Job.Name, r.alloc.Task, "throughput", "time"}, float32(ru.ThroughputStat.Time))
+		metrics.SetGaugeOpts(labels,[]string{"throughput", "num"}, float32(ru.ThroughputStat.Num))
+		metrics.SetGaugeOpts(labels,[]string{"throughput", "time"}, float32(ru.ThroughputStat.Time))
 	}
 }

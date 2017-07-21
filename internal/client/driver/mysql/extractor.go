@@ -756,6 +756,7 @@ func (e *Extractor) StreamEvents(approveHeterogeneous bool, canStopStreaming fun
 						}
 						if uint64(len(txMsg)) > 100*1024*1024 {
 							e.onError(gonats.ErrMaxPayload)
+							break OUTER
 						}
 						if uint64(len(txMsg)) > e.mysqlContext.MsgBytesLimit {
 							if err := e.requestMsg(subject, fmt.Sprintf("%s:1-%d", binlogTx.SID, binlogTx.GNO), txMsg); err != nil {
@@ -814,6 +815,7 @@ func (e *Extractor) requestMsg(subject, gtid string, txMsg []byte) (err error) {
 			// sleep after previous iteration
 			time.Sleep(1 * time.Second)
 		}
+
 		_, err := e.natsConn.Request(subject, txMsg, DefaultConnectWait)
 		if err == nil {
 			if gtid != "" {
@@ -969,7 +971,6 @@ func currentTimeMillis() int64 {
 }
 
 func (e *Extractor) Stats() (*models.TaskStatistics, error) {
-	//e.logger.Printf("Tracks various stats send on this connection:%v",e.pubConn.Statistics)
 	taskResUsage := models.TaskStatistics{
 		Status: "",
 		BufferStat: &models.BufferStat{

@@ -263,7 +263,7 @@ func (c *Client) init() error {
 	c.logger.Printf("client: using state directory %v", c.config.StateDir)
 
 	// Ensure the alloc dir exists if we have one
-	if c.config.AllocDir != "" {
+	/*if c.config.AllocDir != "" {
 		if err := os.MkdirAll(c.config.AllocDir, 0755); err != nil {
 			return fmt.Errorf("failed creating alloc dir: %s", err)
 		}
@@ -287,7 +287,7 @@ func (c *Client) init() error {
 		c.config.AllocDir = p
 	}
 
-	c.logger.Printf("client: using alloc directory %v", c.config.AllocDir)
+	c.logger.Printf("client: using alloc directory %v", c.config.AllocDir)*/
 	return nil
 }
 

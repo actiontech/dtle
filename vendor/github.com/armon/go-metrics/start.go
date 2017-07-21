@@ -79,6 +79,10 @@ func SetGauge(key []string, val float32) {
 	globalMetrics.Load().(*Metrics).SetGauge(key, val)
 }
 
+func SetGaugeOpts(labels map[string]string, key []string, val float32) {
+	globalMetrics.Load().(*Metrics).SetGaugeOpts(labels,key, val)
+}
+
 func EmitKey(key []string, val float32) {
 	globalMetrics.Load().(*Metrics).EmitKey(key, val)
 }

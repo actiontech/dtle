@@ -3,6 +3,7 @@ package metrics
 import (
 	"runtime"
 	"time"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 func (m *Metrics) SetGauge(key []string, val float32) {
@@ -16,6 +17,19 @@ func (m *Metrics) SetGauge(key []string, val float32) {
 		key = insert(0, m.ServiceName, key)
 	}
 	m.sink.SetGauge(key, val)
+}
+
+func (m *Metrics) SetGaugeOpts(labels prometheus.Labels,key []string, val float32) {
+	if m.HostName != "" && m.EnableHostname {
+		key = insert(0, m.HostName, key)
+	}
+	if m.EnableTypePrefix {
+		key = insert(0, "gauge", key)
+	}
+	if m.ServiceName != "" {
+		key = insert(0, m.ServiceName, key)
+	}
+	m.sink.SetGaugeOpts(labels,key, val)
 }
 
 func (m *Metrics) EmitKey(key []string, val float32) {
