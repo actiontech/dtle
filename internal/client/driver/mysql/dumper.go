@@ -32,6 +32,8 @@ type dumper struct {
 	chunkSize   int
 	TableSchema string
 	TableName   string
+	entriesCount int
+	resultsChannel chan *dumpEntry
 
 	// DB is safe for using in goroutines
 	// http://golang.org/src/database/sql/sql.go?s=5574:6362#L201
@@ -44,6 +46,7 @@ func NewDumper(db *sql.DB, dbName, tableName string, logger *log.Entry) *dumper 
 		db:          db,
 		TableSchema: dbName,
 		TableName:   tableName,
+		resultsChannel : make(chan *dumpEntry),
 		concurrency: defaultConcurrency,
 		chunkSize:   defaultChunkSize,
 	}
@@ -194,37 +197,36 @@ func needsQuoting(s string) bool {
 	return false
 }
 
-func (d *dumper) worker(entriesChannel <-chan *dumpEntry, resultsChannel chan<- *dumpEntry) {
+func (d *dumper) worker(entriesChannel <-chan *dumpEntry) {
 	for e := range entriesChannel {
 		err := d.getChunkData(e)
 		if err != nil {
 			e.err = err
 		}
-		resultsChannel <- e
+		d.resultsChannel <- e
 	}
 }
 
-func (d *dumper) Dump(systemVariablesStatement string) ([]*dumpEntry, error) {
+func (d *dumper) Dump(systemVariablesStatement string) error {
 	dbSQL := fmt.Sprintf("CREATE DATABASE %s", d.TableSchema)
 	tbSQL, err := d.createTableSQL()
 	if err != nil {
-		return nil, err
+		return err
 	}
 	entries, err := d.getDumpEntries(systemVariablesStatement, dbSQL, tbSQL)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	workersCount := int(math.Min(float64(d.concurrency), float64(len(entries))))
 	if workersCount < 1 {
-		return nil, nil
+		return nil
 	}
 
-	entriesCount := len(entries)
+	d.entriesCount = len(entries)
 	entriesChannel := make(chan *dumpEntry)
-	resultsChannel := make(chan *dumpEntry)
 	for i := 0; i < workersCount; i++ {
-		go d.worker(entriesChannel, resultsChannel)
+		go d.worker(entriesChannel)
 	}
 
 	go func() {
@@ -234,14 +236,7 @@ func (d *dumper) Dump(systemVariablesStatement string) ([]*dumpEntry, error) {
 		close(entriesChannel)
 	}()
 
-	result := make([]*dumpEntry, entriesCount)
-	for i := 0; i < entriesCount; i++ {
-		e := <-resultsChannel
-		result[i] = e
-	}
-	close(resultsChannel)
-
-	return result, nil
+	return nil
 }
 
 //LOCK TABLES {{ .Name }} WRITE;

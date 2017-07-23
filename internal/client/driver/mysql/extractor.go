@@ -906,7 +906,7 @@ func (e *Extractor) mysqlDump() error {
 	startScan := currentTimeMillis()
 	totalRowCount := 0
 	counter := 0
-	pool := models.NewPool(10)
+	pool := models.NewPool(3)
 	for _, tb := range e.tables {
 		pool.Add(1)
 		go func(t *config.Table) {
@@ -915,14 +915,14 @@ func (e *Extractor) mysqlDump() error {
 			counter++
 			e.logger.Printf("mysql.extractor: Step 3: - scanning table '%s.%s' (%d of %d tables)", t.TableSchema, t.TableName, counter, len(e.tables))
 
-			dmp := NewDumper(e.db, t.TableSchema, t.TableName, e.logger)
-			result, err := dmp.Dump(setSystemVariablesStatement)
-			if err != nil {
+			d := NewDumper(e.db, t.TableSchema, t.TableName, e.logger)
+			if err := d.Dump(setSystemVariablesStatement);err != nil {
 				e.onError(err)
 			}
 
 			// Scan the rows in the table ...
-			for _, entry := range result {
+			for i := 0; i < d.entriesCount; i++ {
+				entry := <-d.resultsChannel
 				if entry.err != nil {
 					e.onError(entry.err)
 				}
@@ -935,6 +935,7 @@ func (e *Extractor) mysqlDump() error {
 				}
 				totalRowCount = totalRowCount + int(entry.Counter)
 			}
+			close(d.resultsChannel)
 			pool.Done()
 		}(tb)
 	}
