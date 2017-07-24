@@ -127,7 +127,7 @@ func GetDB(mysql_uri string) (*gosql.DB, bool, error) {
 	return knownDBs[mysql_uri], exists, nil
 }
 
-type DbApplier struct {
+type DB struct {
 	DbMutex *sync.Mutex
 	Db      *gosql.DB
 	Fde     string
@@ -142,14 +142,14 @@ func CreateDB(mysql_uri string) (*gosql.DB, error) {
 	return db, nil
 }
 
-func CreateDBs(mysql_uri string, count int) ([]*DbApplier, error) {
-	dbs := make([]*DbApplier, 0, count)
+func CreateDBs(mysql_uri string, count int) ([]*DB, error) {
+	dbs := make([]*DB, 0, count)
 	for i := 0; i < count; i++ {
 		db, err := CreateDB(mysql_uri)
 		if err != nil {
 			return nil, err
 		}
-		dbApplier := &DbApplier{
+		dbApplier := &DB{
 			DbMutex: &sync.Mutex{},
 			Db:      db,
 		}
@@ -354,7 +354,7 @@ func CloseDB(db *gosql.DB) error {
 	return nil
 }
 
-func CloseDBs(dbs ...*DbApplier) error {
+func CloseDBs(dbs ...*DB) error {
 	for _, db := range dbs {
 		err := CloseDB(db.Db)
 		if err != nil {

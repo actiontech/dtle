@@ -55,19 +55,19 @@ func (p *PrometheusSink) SetGauge(parts []string, val float32) {
 	g.Set(float64(val))
 }
 
-func (p *PrometheusSink) SetGaugeOpts(labels map[string]string,parts []string, val float32) {
+func (p *PrometheusSink) SetGaugeOpts(labels map[string]string, parts []string, val float32) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	key := p.flattenKey(parts)
-	s :=""
-	for _,lab :=range labels {
+	s := ""
+	for _, lab := range labels {
 		s += lab
 	}
 	g, ok := p.gauges[key+s]
 	if !ok {
 		g = prometheus.NewGauge(prometheus.GaugeOpts{
-			Name: key,
-			Help: key,
+			Name:        key,
+			Help:        key,
 			ConstLabels: labels,
 		})
 		prometheus.MustRegister(g)

@@ -35,25 +35,6 @@ Default API responses are unformatted JSON add the `pretty=true` param to format
 <a name="paths"></a>
 ## Paths
 
-<a name="status"></a>
-### GET /
-
-#### Description
-Gets `Status` object.
-
-
-#### Responses
-
-|HTTP Code|Description|Schema|
-|---|---|---|
-|**200**|Successful response|[status](#status)|
-
-
-#### Tags
-
-* default
-
-
 <a name="getjobs"></a>
 ### GET /jobs
 
@@ -91,7 +72,7 @@ Create or updates a new job.
 
 |HTTP Code|Description|Schema|
 |---|---|---|
-|**201**|Successful response|[job](#job)|
+|**200**|Successful response|[job](#job)|
 
 
 #### Tags
@@ -100,7 +81,7 @@ Create or updates a new job.
 
 
 <a name="deletejob"></a>
-### DELETE /jobs/{ID}
+### DELETE /job/{ID}
 
 #### Description
 Delete a job.
@@ -126,7 +107,7 @@ Delete a job.
 
 
 <a name="showjobbyname"></a>
-### GET /jobs/{ID}
+### GET /job/{ID}
 
 #### Description
 Show a job.
@@ -152,7 +133,7 @@ Show a job.
 
 
 <a name="runjob"></a>
-### POST /jobs/{ID}/resume
+### POST /job/{ID}/resume
 
 #### Description
 Executes a job.
@@ -177,7 +158,7 @@ Executes a job.
 * jobs
 
 <a name="stopjob"></a>
-### POST /jobs/{ID}/pause
+### POST /job/{ID}/pause
 
 #### Description
 Executes a job.
@@ -278,91 +259,46 @@ A Job represents a scheduled task to execute.
 
 |Name|Description|Schema|
 |---|---|---|
-|**name**  <br>*required*|Name for the job.|string|
-|**status**  <br>*optional*|Enabled state of the job|boolean|
-|**processors**  <br>*required*|Array containing the processors that will be called|< string, **DriverConfig** > map|
+|**Name**  <br>*required*|Name for the job.|string|
+|**Type**  <br>*required*|job type (synchronous)|boolean|
+|**Tasks**  <br>*required*|Array containing the tasks that will be called|< string, **Task** > array|
 
-*Example*
-``` json
-{
-    "ID": "1",
-    "Region": "global",
-    "Name": "example",
-    "Type": "synchronous",
-    "Datacenters": [
-        "dc1"
-    ],
-    "Tasks": [
-        {
-            "Type": "Src",
-            "NodeId": "ab8c6e62-98f5-438f-9f39-91fbf09f9882",
-            "Driver": "MySQL",
-            "Config": {
-                "Gtid": "64a1499d-4f4b-11e7-a79d-0242ac110002:1",
-                "NatsAddr": "127.0.0.1:8193",
-                "ReplChanBufferSize":600,
-                "MsgBytesLimit":20480,
-                "ReplicateDoDb": [
-                    {
-                        "TableSchema": "s1",
-                        "Tables": [
-                        	{
-                        		"TableName":"dbtest1"
-                        	}
-                        ]
-                    }
-                ],
-                "ConnectionConfig": {
-                    "Key": {
-                    	"Host":"192.168.99.100",
-                    	"Port": 13307	
-                    },
-                    "User": "root",
-                    "Password": "rootroot"
-                }
-            }
-        },
-        {
-            "Type": "Dest",
-            "NodeId": "3ae42225-d03d-44b2-8739-c7aae3e9eff1",
-            "Driver": "MySQL",
-            "Config": {
-                "Gtid": "",
-                "NatsAddr": "127.0.0.1:8193",
-                "ReplicateDoDb": [
-                    {
-                        "TableSchema": "s1",
-                        "Tables": [
-                        	{
-                        		"TableName":"dbtest1"
-                        	}
-                        ]
-                    }
-                ],
-                "ConnectionConfig": {
-                    "Key": {
-                    	"Host":"192.168.99.100",
-                    	"Port": 13309	
-                    },
-                    "User": "root",
-                    "Password": "rootroot"
-                }
-            }
-        }
-    ]
-}
-```
-
-<a name="DriverConfig"></a>
-### DriverConfig
-Arguments for calling an execution processor
+<a name="Task"></a>
+### Task
+Arguments for calling an execution task
 
 
 |Name|Description|Schema|
 |---|---|---|
-|**driver**  <br>*required*|Type for the driver.|string|
-|**worker_count**  <br>*optional*|Parallel worker count|integer|
-|**conn_cfg**  <br>*optional*|MySQL Configuration Properties|**ConnectionConfig**|
+|**Type**  <br>*required*|Type for the task.|string|
+|**NodeId**  <br>*optional*|Parallel worker count|string|
+|**Driver**  <br>*required*|Driver for the task.|string|
+|**Config**  <br>*required*|DataSource Configuration Properties|**Config**|
+
+<a name="Config"></a>
+### Config
+Configuration properties define how connector will make a connection to a MySQL server
+
+
+|Name|Description|Schema|
+|---|---|---|
+|**Gtid**  <br>*optional*|MySQL Gtid|string|
+|**NatsAddr**  <br>*required*|Nats host|string|
+|**ParallelWorkers**<br>*optional*|Parallel worker count|integer|
+|**ReplChanBufferSize**  <br>*optional*|buffer size|integer|
+|**MsgBytesLimit**  <br>*optional*|msg limit|integer|
+|**ReplicateDoDb**  <br>*optional*|DataSource Configuration Properties|**ReplicateDoDb**|
+|**ConnectionConfig**  <br>*required*|DataSource Configuration Properties|**ConnectionConfig**|
+
+<a name="ReplicateDoDb"></a>
+### ReplicateDoDb
+Configuration properties define how connector will make a connection to a MySQL server
+
+
+|Name|Description|Schema|
+|---|---|---|
+|**TableSchema**  <br>*required*|MySQL server host TCP connections|string|
+|**Tables**  <br>*required*|MySQL server user TCP connections|string|
 
 <a name="ConnectionConfig"></a>
 ### ConnectionConfig
@@ -377,21 +313,55 @@ Configuration properties define how connector will make a connection to a MySQL 
 |**port**  <br>*required*|MySQL server port for TCP connections|integer|
 
 
-<a name="member"></a>
-### member
-A member represents a cluster member node.
-
-
-|Name|Description|Schema|
-|---|---|---|
-|**Name**  <br>*optional*|Node name|string|
-|**Addr**  <br>*optional*|IP Address|string|
-|**Port**  <br>*optional*|Port number|integer|
-|**Tags**  <br>*optional*|Tags asociated with this node|< string, string > map|
-|**Status**  <br>*optional*|The serf status of the node see: https://godoc.org/github.com/hashicorp/serf/serf#MemberStatus|integer|
-|**ProtocolMin**  <br>*optional*|Serf protocol minimum version this node can understand or speak|integer|
-|**ProtocolMax**  <br>*optional*||integer|
-|**ProtocolCur**  <br>*optional*|Serf protocol current version this node can understand or speak|integer|
-|**DelegateMin**  <br>*optional*|Serf delegate protocol minimum version this node can understand or speak|integer|
-|**DelegateMax**  <br>*optional*|Serf delegate protocol minimum version this node can understand or speak|integer|
-|**DelegateCur**  <br>*optional*|Serf delegate protocol minimum version this node can understand or speak|integer|
+*Example*
+``` json
+{
+    "Name": "exam-7-9", 
+    "Type": "synchronous",  
+    "Tasks": [
+        {
+            "Type": "Src", 
+            "NodeId": "1eda45f8-df9b-1541-9009-83952e7b672a", 
+            "Driver": "MySQL", 
+            "Config": {
+                "Gtid": "", 
+                "NatsAddr": "127.0.0.1:8193", 
+                "ParallelWorkers": 4,
+                "ReplChanBufferSize": 600, 
+                "MsgBytesLimit": 20480,
+                "ReplicateDoDb": [
+                    {
+                        "TableSchema": "sbtest"
+                    }
+                ], 
+                "ConnectionConfig": {
+                    "Key": {
+                        "Host": "192.168.99.100", 
+                        "Port": 13307
+                    }, 
+                    "User": "root", 
+                    "Password": "rootroot"
+                }
+            }
+        }, 
+        {
+            "Type": "Dest", 
+            "NodeId": "a5e9ad80-8e77-03fd-7fa3-31e007ecdcbe", 
+            "Driver": "MySQL", 
+            "Config": {
+                "Gtid": "", 
+                "NatsAddr": "127.0.0.1:8193",  
+                "ParallelWorkers": 4, 
+                "ConnectionConfig": {
+                    "Key": {
+                        "Host": "192.168.99.100", 
+                        "Port": 13309
+                    }, 
+                    "User": "root", 
+                    "Password": "rootroot"
+                }
+            }
+        }
+    ]
+}
+```

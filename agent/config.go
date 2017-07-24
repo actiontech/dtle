@@ -234,8 +234,9 @@ func DefaultConfig() *Config {
 			Enabled:          false,
 			StartJoin:        []string{},
 			RetryJoin:        []string{},
-			RetryInterval:    "30s",
-			RetryMaxAttempts: 0,
+			RetryInterval:    "15s",
+			HeartbeatGrace:   "30s",
+			RetryMaxAttempts: 3,
 		},
 		Metric: &Metric{
 			CollectionInterval: "1s",

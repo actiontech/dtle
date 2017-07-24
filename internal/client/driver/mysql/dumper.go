@@ -1,38 +1,32 @@
 package mysql
 
 import (
+	"bytes"
 	"database/sql"
 	"fmt"
 	"math"
 	"strconv"
 	"strings"
 
-	"bytes"
 	usql "udup/internal/client/driver/mysql/sql"
 	"udup/internal/config"
 	log "udup/internal/logger"
 )
 
 const (
-	//Concurrency workerks
-	defaultConcurrency = 5
-	defaultChunkSize   = 1000
+	defaultChunkSize = 1000
 )
 
 var (
-	stringOfBackslashChars = []string{"\u005c", "\u00a5", "\u0160", "\u20a9", "\u2216", "\ufe68", "uff3c"}
-	stringOfQuoteChars     = []string{"\u0022", "\u0027", "\u0060", "\u00b4", "\u02b9", "\u02ba", "\u02bb", "\u02bc",
-		"\u02c8", "\u02ca", "\u02cb", "\u02d9", "\u0300", "\u0301", "\u2018", "\u2019", "\u201a", "\u2032", "\u2035",
-		"\u275b", "\u275c", "\uff07"}
+	stringOfBackslashAndQuoteChars = "\u005c\u00a5\u0160\u20a9\u2216\ufe68uff3c\u0022\u0027\u0060\u00b4\u02b9\u02ba\u02bb\u02bc\u02c8\u02ca\u02cb\u02d9\u0300\u0301\u2018\u2019\u201a\u2032\u2035\u275b\u275c\uff07"
 )
 
 type dumper struct {
-	logger      *log.Entry
-	concurrency int
-	chunkSize   int
-	TableSchema string
-	TableName   string
-	entriesCount int
+	logger         *log.Entry
+	chunkSize      int
+	TableSchema    string
+	TableName      string
+	entriesCount   int
 	resultsChannel chan *dumpEntry
 
 	// DB is safe for using in goroutines
@@ -42,13 +36,12 @@ type dumper struct {
 
 func NewDumper(db *sql.DB, dbName, tableName string, logger *log.Entry) *dumper {
 	dumper := &dumper{
-		logger:      logger,
-		db:          db,
-		TableSchema: dbName,
-		TableName:   tableName,
-		resultsChannel : make(chan *dumpEntry),
-		concurrency: defaultConcurrency,
-		chunkSize:   defaultChunkSize,
+		logger:         logger,
+		db:             db,
+		TableSchema:    dbName,
+		TableName:      tableName,
+		resultsChannel: make(chan *dumpEntry),
+		chunkSize:      defaultChunkSize,
 	}
 
 	return dumper
@@ -82,6 +75,7 @@ type dumpEntry struct {
 	Offset                   uint64
 	Counter                  uint64
 	data_text                []string
+	colBuffer                *bytes.Buffer
 	err                      error
 }
 
@@ -160,15 +154,15 @@ func (d *dumper) getChunkData(entry *dumpEntry) error {
 				if !needsQuoting(colValue) {
 					value = colValue
 				} else {
-					colBuffer := new(bytes.Buffer)
+					entry.colBuffer = new(bytes.Buffer)
 					for _, char_c := range colValue {
 						c := fmt.Sprintf("%c", char_c)
 						if needsQuoting(c) {
-							colBuffer.WriteString("\\")
+							entry.colBuffer.WriteString("\\")
 						}
-						colBuffer.WriteString(c)
+						entry.colBuffer.WriteString(c)
 					}
-					value = colBuffer.String()
+					value = entry.colBuffer.String()
 				}
 				value = fmt.Sprintf("'%s'", value)
 			}
@@ -177,22 +171,28 @@ func (d *dumper) getChunkData(entry *dumpEntry) error {
 		entry.data_text = append(entry.data_text, "("+strings.Join(dataStrings, ",")+")")
 		entry.incrementCounter()
 	}
-	entry.Values = fmt.Sprintf(`replace into %s.%s values %s`, d.TableSchema, d.TableName, strings.Join(entry.data_text, ","))
+	query = fmt.Sprintf(`
+			insert into %s.%s
+				(%s)
+			values
+				%s
+			on duplicate key update
+				%s=VALUES(%s)
+		`,
+		usql.EscapeName(d.TableSchema),
+		usql.EscapeName(d.TableName),
+		strings.Join(columns, ","),
+		strings.Join(entry.data_text, ","),
+		columns[0],
+		columns[0],
+	)
+	entry.Values = query
 	return nil
 }
 
 func needsQuoting(s string) bool {
-	for _, char_c := range s {
-		for _, bc := range stringOfBackslashChars {
-			if bc == fmt.Sprintf("%c", char_c) {
-				return true
-			}
-		}
-		for _, qc := range stringOfQuoteChars {
-			if qc == fmt.Sprintf("%c", char_c) {
-				return true
-			}
-		}
+	if strings.ContainsAny(s, stringOfBackslashAndQuoteChars) {
+		return true
 	}
 	return false
 }
@@ -207,7 +207,7 @@ func (d *dumper) worker(entriesChannel <-chan *dumpEntry) {
 	}
 }
 
-func (d *dumper) Dump(systemVariablesStatement string) error {
+func (d *dumper) Dump(systemVariablesStatement string, w int) error {
 	dbSQL := fmt.Sprintf("CREATE DATABASE %s", d.TableSchema)
 	tbSQL, err := d.createTableSQL()
 	if err != nil {
@@ -218,12 +218,12 @@ func (d *dumper) Dump(systemVariablesStatement string) error {
 		return err
 	}
 
-	workersCount := int(math.Min(float64(d.concurrency), float64(len(entries))))
+	workersCount := int(math.Min(float64(w), float64(len(entries))))
 	if workersCount < 1 {
 		return nil
 	}
-
 	d.entriesCount = len(entries)
+
 	entriesChannel := make(chan *dumpEntry)
 	for i := 0; i < workersCount; i++ {
 		go d.worker(entriesChannel)

@@ -13,6 +13,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/go-sql-driver/mysql"
 	"github.com/golang/snappy"
 	gonats "github.com/nats-io/go-nats"
 	gomysql "github.com/siddontang/go-mysql/mysql"
@@ -21,7 +22,7 @@ import (
 	"udup/internal/client/driver/mysql/binlog"
 	"udup/internal/client/driver/mysql/sql"
 	"udup/internal/config"
-	"udup/internal/config/mysql"
+	umconf "udup/internal/config/mysql"
 	log "udup/internal/logger"
 	"udup/internal/models"
 )
@@ -39,7 +40,7 @@ type Applier struct {
 	subject      string
 	tp           string
 	mysqlContext *config.MySQLDriverConfig
-	dbs          []*sql.DbApplier
+	dbs          []*sql.DB
 	singletonDB  *gosql.DB
 	parser       *sql.Parser
 
@@ -457,7 +458,7 @@ func (a *Applier) printMigrationStatusHint(databaseName, tableName string) {
 	}
 }
 
-func (a *Applier) onApplyTxStruct(dbApplier *sql.DbApplier, binlogTx *binlog.BinlogTx) error {
+func (a *Applier) onApplyTxStruct(dbApplier *sql.DB, binlogTx *binlog.BinlogTx) error {
 	dbApplier.DbMutex.Lock()
 	defer func() {
 		_, err := sql.ExecNoPrepare(dbApplier.Db, `commit;set gtid_next='automatic'`)
@@ -562,7 +563,7 @@ func (a *Applier) onApplyEventStruct(db *gosql.DB, binlogEntry *binlog.BinlogEnt
 // Both event backlog and rowcopy events are polled; the backlog events have precedence.
 func (a *Applier) executeWriteFuncs() {
 	var barrier sync.WaitGroup
-	var dbApplier *sql.DbApplier
+	var dbApplier *sql.DB
 
 OUTER:
 	for {
@@ -1182,7 +1183,7 @@ func (a *Applier) ShowStatusVariable(variableName string) (result int64, err err
 
 // getCandidateUniqueKeys investigates a table and returns the list of unique keys
 // candidate for chunking
-func (a *Applier) getCandidateUniqueKeys(databaseName, tableName string) (uniqueKeys [](*mysql.UniqueKey), err error) {
+func (a *Applier) getCandidateUniqueKeys(databaseName, tableName string) (uniqueKeys [](*umconf.UniqueKey), err error) {
 	query := `
     SELECT
       COLUMNS.TABLE_SCHEMA,
@@ -1243,9 +1244,9 @@ func (a *Applier) getCandidateUniqueKeys(databaseName, tableName string) (unique
       COUNT_COLUMN_IN_INDEX
   `
 	err = sql.QueryRowsMap(a.singletonDB, query, func(m sql.RowMap) error {
-		uniqueKey := &mysql.UniqueKey{
+		uniqueKey := &umconf.UniqueKey{
 			Name:            m.GetString("INDEX_NAME"),
-			Columns:         *mysql.ParseColumnList(m.GetString("COLUMN_NAMES")),
+			Columns:         *umconf.ParseColumnList(m.GetString("COLUMN_NAMES")),
 			HasNullable:     m.GetBool("has_nullable"),
 			IsAutoIncrement: m.GetBool("is_auto_increment"),
 		}
@@ -1259,7 +1260,7 @@ func (a *Applier) getCandidateUniqueKeys(databaseName, tableName string) (unique
 	return uniqueKeys, nil
 }
 
-func (a *Applier) InspectTableColumnsAndUniqueKeys(databaseName, tableName string) (columns *mysql.ColumnList, uniqueKeys [](*mysql.UniqueKey), err error) {
+func (a *Applier) InspectTableColumnsAndUniqueKeys(databaseName, tableName string) (columns *umconf.ColumnList, uniqueKeys [](*umconf.UniqueKey), err error) {
 	uniqueKeys, err = a.getCandidateUniqueKeys(databaseName, tableName)
 	if err != nil {
 		return columns, uniqueKeys, err
@@ -1276,7 +1277,7 @@ func (a *Applier) InspectTableColumnsAndUniqueKeys(databaseName, tableName strin
 }
 
 // getSharedColumns returns the intersection of two lists of columns in same order as the first list
-func (a *Applier) getSharedColumns(originalColumns, ghostColumns *mysql.ColumnList, columnRenameMap map[string]string) (*mysql.ColumnList, *mysql.ColumnList) {
+func (a *Applier) getSharedColumns(originalColumns, ghostColumns *umconf.ColumnList, columnRenameMap map[string]string) (*umconf.ColumnList, *umconf.ColumnList) {
 	columnsInGhost := make(map[string]bool)
 	for _, ghostColumn := range ghostColumns.Names() {
 		columnsInGhost[ghostColumn] = true
@@ -1302,7 +1303,7 @@ func (a *Applier) getSharedColumns(originalColumns, ghostColumns *mysql.ColumnLi
 			mappedSharedColumnNames = append(mappedSharedColumnNames, columnName)
 		}
 	}
-	return mysql.NewColumnList(sharedColumnNames), mysql.NewColumnList(mappedSharedColumnNames)
+	return umconf.NewColumnList(sharedColumnNames), umconf.NewColumnList(mappedSharedColumnNames)
 }
 
 // buildDMLEventQuery creates a query to operate on the ghost table, based on an intercepted binlog
@@ -1404,11 +1405,12 @@ func (a *Applier) ApplyEventQueries(entry *dumpEntry) error {
 				if !sql.IgnoreError(err) {
 					a.logger.Errorf("mysql.applier: exec [%s] error: %v", query, err)
 					return err
-				} else {
+				}
+				mysqlErr, _ := err.(*mysql.MySQLError)
+				if mysqlErr.Number != sql.ErrDatabaseExists && mysqlErr.Number != sql.ErrTableExists {
 					a.logger.Warnf("mysql.applier: ignore error: %v", err)
 				}
 			}
-
 		}
 		return nil
 	}()
@@ -1557,10 +1559,10 @@ func (a *Applier) Shutdown() error {
 	if a.natsConn != nil {
 		a.natsConn.Close()
 	}
-	//close(a.applyDataEntryQueue)
-	//close(a.applyBinlogTxQueue)
-	//close(a.applyBinlogGroupTxQueue)
 
+	if err := sql.CloseDB(a.singletonDB); err != nil {
+		return err
+	}
 	if err := sql.CloseDBs(a.dbs...); err != nil {
 		return err
 	}

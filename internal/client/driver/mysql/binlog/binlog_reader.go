@@ -63,7 +63,7 @@ func NewMySQLReader(cfg *config.MySQLDriverConfig, logger *log.Entry) (binlogRea
 	}
 
 	uri := cfg.ConnectionConfig.GetDBUri()
-	if binlogReader.db, _, err = sql.GetDB(uri); err != nil {
+	if binlogReader.db, err = sql.CreateDB(uri); err != nil {
 		return nil, err
 	}
 
@@ -325,7 +325,7 @@ func (b *BinlogReader) BinlogStreamEvents(txChannel chan<- *BinlogTx) error {
 			b.logger.Debugf("mysql.reader: Column type: \n%s", hex.Dump(evt.ColumnType))
 			b.logger.Debugf("mysql.reader: NULL bitmap: \n%s", hex.Dump(evt.NullBitmap))
 		case replication.GTID_EVENT:
-			evt := ev.Event.(*replication.GTIDEvent)
+			evt := ev.Event.(*replication.GTIDEventV57)
 			u, _ := uuid.FromBytes(evt.GTID.SID)
 			b.logger.Debugf("mysql.reader: Last committed: %d", evt.GTID.LastCommitted)
 			b.logger.Debugf("mysql.reader: Sequence number: %d", evt.GTID.SequenceNumber)

@@ -50,7 +50,7 @@ func (s *StatsiteSink) SetGauge(key []string, val float32) {
 	s.pushMetric(fmt.Sprintf("%s:%f|g\n", flatKey, val))
 }
 
-func (s *StatsiteSink) SetGaugeOpts(labels map[string]string,key []string, val float32) {
+func (s *StatsiteSink) SetGaugeOpts(labels map[string]string, key []string, val float32) {
 }
 
 func (s *StatsiteSink) EmitKey(key []string, val float32) {
