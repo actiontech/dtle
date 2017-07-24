@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"math"
+	"io"
 	"strconv"
 	"strings"
 
@@ -28,6 +29,7 @@ type dumper struct {
 	TableName      string
 	entriesCount   int
 	resultsChannel chan *dumpEntry
+	entriesChannel chan *dumpEntry
 
 	// DB is safe for using in goroutines
 	// http://golang.org/src/database/sql/sql.go?s=5574:6362#L201
@@ -41,6 +43,7 @@ func NewDumper(db *sql.DB, dbName, tableName string, logger *log.Entry) *dumper 
 		TableSchema:    dbName,
 		TableName:      tableName,
 		resultsChannel: make(chan *dumpEntry),
+		entriesChannel: make(chan *dumpEntry),
 		chunkSize:      defaultChunkSize,
 	}
 
@@ -74,8 +77,7 @@ type dumpEntry struct {
 	RowsCount                uint64
 	Offset                   uint64
 	Counter                  uint64
-	data_text                []string
-	colBuffer                *bytes.Buffer
+	colBuffer                bytes.Buffer
 	err                      error
 }
 
@@ -128,47 +130,29 @@ func (d *dumper) getChunkData(entry *dumpEntry) error {
 		return err
 	}
 
-	columnsCount := len(columns)
-	values := make([]sql.RawBytes, columnsCount)
-
+	values := make([]*sql.RawBytes, len(columns))
 	scanArgs := make([]interface{}, len(values))
 	for i := range values {
 		scanArgs[i] = &values[i]
 	}
 
-	entry.data_text = make([]string, 0)
+	data :=make([]string, 0)
 	for rows.Next() {
 		err = rows.Scan(scanArgs...)
 		if err != nil {
 			return err
 		}
 
-		var value string
-		dataStrings := make([]string, columnsCount)
-		for i, col := range values {
+		vals :=make([]string, 0)
+		for _, col := range values {
 			// Here we can check if the value is nil (NULL value)
-			if col == nil {
-				value = "NULL"
-			} else {
-				colValue := string(col)
-				if !needsQuoting(colValue) {
-					value = colValue
-				} else {
-					entry.colBuffer = new(bytes.Buffer)
-					for _, char_c := range colValue {
-						c := fmt.Sprintf("%c", char_c)
-						if needsQuoting(c) {
-							entry.colBuffer.WriteString("\\")
-						}
-						entry.colBuffer.WriteString(c)
-					}
-					value = entry.colBuffer.String()
-				}
-				value = fmt.Sprintf("'%s'", value)
+			val := "NULL"
+			if col != nil {
+				val = fmt.Sprintf("'%s'", entry.escape(string(*col)))
 			}
-			dataStrings[i] = value
+			vals = append(vals, val)
 		}
-		entry.data_text = append(entry.data_text, "("+strings.Join(dataStrings, ",")+")")
+		data = append(data, fmt.Sprintf("( %s )", strings.Join(vals, ", ")))
 		entry.incrementCounter()
 	}
 	query = fmt.Sprintf(`
@@ -182,7 +166,7 @@ func (d *dumper) getChunkData(entry *dumpEntry) error {
 		usql.EscapeName(d.TableSchema),
 		usql.EscapeName(d.TableName),
 		strings.Join(columns, ","),
-		strings.Join(entry.data_text, ","),
+		strings.Join(data, ","),
 		columns[0],
 		columns[0],
 	)
@@ -190,15 +174,45 @@ func (d *dumper) getChunkData(entry *dumpEntry) error {
 	return nil
 }
 
-func needsQuoting(s string) bool {
-	if strings.ContainsAny(s, stringOfBackslashAndQuoteChars) {
-		return true
+
+func (e *dumpEntry) escape(colValue string) string {
+	var esc string
+	e.colBuffer = *new(bytes.Buffer)
+	last := 0
+	/*for _, char_c := range colValue {
+		if strings.Contains(stringOfBackslashAndQuoteChars, fmt.Sprintf("%c",char_c)) {
+			esc = `\\`
+		}
+	}*/
+	for i, c := range colValue {
+		switch c {
+		case 0:
+			esc = `\0`
+		case '\n':
+			esc = `\n`
+		case '\r':
+			esc = `\r`
+		case '\\':
+			esc = `\\`
+		case '\'':
+			esc = `\'`
+		case '"':
+			esc = `\"`
+		case '\032':
+			esc = `\Z`
+		default:
+			continue
+		}
+		io.WriteString(&e.colBuffer, colValue[last:i])
+		io.WriteString(&e.colBuffer, esc)
+		last = i + 1
 	}
-	return false
+	io.WriteString(&e.colBuffer, colValue[last:])
+	return e.colBuffer.String()
 }
 
-func (d *dumper) worker(entriesChannel <-chan *dumpEntry) {
-	for e := range entriesChannel {
+func (d *dumper) worker() {
+	for e := range d.entriesChannel {
 		err := d.getChunkData(e)
 		if err != nil {
 			e.err = err
@@ -222,18 +236,17 @@ func (d *dumper) Dump(systemVariablesStatement string, w int) error {
 	if workersCount < 1 {
 		return nil
 	}
-	d.entriesCount = len(entries)
 
-	entriesChannel := make(chan *dumpEntry)
 	for i := 0; i < workersCount; i++ {
-		go d.worker(entriesChannel)
+		go d.worker()
 	}
 
+	d.entriesCount = len(entries)
 	go func() {
 		for _, e := range entries {
-			entriesChannel <- e
+			d.entriesChannel <- e
 		}
-		close(entriesChannel)
+		close(d.entriesChannel)
 	}()
 
 	return nil

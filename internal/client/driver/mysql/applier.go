@@ -583,6 +583,9 @@ OUTER:
 			}
 		case groupTx := <-a.applyBinlogGroupTxQueue:
 			{
+				if len(a.copyRowsQueue) > 0 {
+					time.Sleep(5 * time.Second)
+				}
 				barrier.Add(len(groupTx))
 				for idx, binlogTx := range groupTx {
 					dbApplier = a.dbs[idx%a.mysqlContext.ParallelWorkers]
