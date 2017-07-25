@@ -44,6 +44,8 @@ type Applier struct {
 	singletonDB  *gosql.DB
 	parser       *sql.Parser
 
+	totalRowCount int
+	applyRowCount int
 	rowCopyComplete            chan bool
 	allEventsUpToLockProcessed chan string
 	rowCopyCompleteFlag        int64
@@ -122,6 +124,7 @@ func (a *Applier) consumeRowCopyComplete() {
 	<-a.rowCopyComplete
 	atomic.StoreInt64(&a.rowCopyCompleteFlag, 1)
 	a.mysqlContext.MarkRowCopyEndTime()
+
 	go func() {
 		for <-a.rowCopyComplete {
 		}
@@ -164,12 +167,17 @@ func (a *Applier) Run() {
 		a.onError(err)
 		return
 	}
+
 	if err := a.initiateStreaming(); err != nil {
 		a.onError(err)
 		return
 	}
 
 	go a.executeWriteFuncs()
+
+	a.logger.Printf("mysql.applier: operating until row copy is complete")
+	a.consumeRowCopyComplete()
+	a.logger.Printf("mysql.applier: row copy complete")
 
 	if a.tp == models.JobTypeMig {
 		for {
@@ -583,9 +591,6 @@ OUTER:
 			}
 		case groupTx := <-a.applyBinlogGroupTxQueue:
 			{
-				if len(a.copyRowsQueue) > 0 {
-					time.Sleep(5 * time.Second)
-				}
 				barrier.Add(len(groupTx))
 				for idx, binlogTx := range groupTx {
 					dbApplier = a.dbs[idx%a.mysqlContext.ParallelWorkers]
@@ -610,6 +615,11 @@ OUTER:
 				if err := a.ApplyEventQueries(copyRows); err != nil {
 					a.onError(err)
 					break OUTER
+				}
+				a.applyRowCount += copyRows.Counter
+
+				if a.totalRowCount == a.applyRowCount {
+					a.rowCopyComplete <- true
 				}
 
 				/*a.logger.Printf("mysql.applier: operating until row copy is complete")
@@ -659,10 +669,55 @@ func Decode(data []byte, vPtr interface{}) (err error) {
 
 // initiateStreaming begins treaming of binary log events and registers listeners for such events
 func (a *Applier) initiateStreaming() error {
+	if a.mysqlContext.Gtid == "" {
+		_, err := a.natsConn.Subscribe(fmt.Sprintf("%s_full", a.subject), func(m *gonats.Msg) {
+			dumpData := &dumpEntry{}
+			if err := Decode(m.Data, dumpData); err != nil {
+				a.onError(err)
+			}
+			a.copyRowsQueue <- dumpData
+			if err := a.natsConn.Publish(m.Reply, nil); err != nil {
+				a.onError(err)
+			}
+			a.totalRowCount += dumpData.Counter
+		})
+		if err != nil {
+			return err
+		}
+	}else {
+		a.rowCopyComplete <- true
+	}
+
+	if a.mysqlContext.ApproveHeterogeneous {
+		/*sub, err := a.jsonEncodedConn.Subscribe(fmt.Sprintf("%s_incr_heterogeneous", a.subject), func(binlogEntry *binlog.BinlogEntry) {
+			//a.logger.Debugf("mysql.applier: received binlogEntry: %+v", binlogEntry)
+			a.applyDataEntryQueue <- binlogEntry
+		})
+		if err != nil {
+			return err
+		}
+		a.jsonSub = sub*/
+	} else {
+		_, err := a.natsConn.Subscribe(fmt.Sprintf("%s_incr", a.subject), func(m *gonats.Msg) {
+			var binlogTx []*binlog.BinlogTx
+			if err := Decode(m.Data, &binlogTx); err != nil {
+				a.onError(err)
+			}
+			for _, tx := range binlogTx {
+				a.applyBinlogTxQueue <- tx
+			}
+			if err := a.natsConn.Publish(m.Reply, nil); err != nil {
+				a.onError(err)
+			}
+		})
+		if err != nil {
+			return err
+		}
+	}
+
 	var lastCommitted int64
 	var groupTx []*binlog.BinlogTx
 	sid := a.validateServerUUID()
-
 	go func() {
 		for {
 			select {
@@ -695,49 +750,6 @@ func (a *Applier) initiateStreaming() error {
 			}
 		}
 	}()
-
-	if a.mysqlContext.Gtid == "" {
-		_, err := a.natsConn.Subscribe(fmt.Sprintf("%s_full", a.subject), func(m *gonats.Msg) {
-			dumpData := &dumpEntry{}
-			if err := Decode(m.Data, dumpData); err != nil {
-				a.onError(err)
-			}
-			a.copyRowsQueue <- dumpData
-			if err := a.natsConn.Publish(m.Reply, nil); err != nil {
-				a.onError(err)
-			}
-		})
-		if err != nil {
-			return err
-		}
-	}
-
-	if a.mysqlContext.ApproveHeterogeneous {
-		/*sub, err := a.jsonEncodedConn.Subscribe(fmt.Sprintf("%s_incr_heterogeneous", a.subject), func(binlogEntry *binlog.BinlogEntry) {
-			//a.logger.Debugf("mysql.applier: received binlogEntry: %+v", binlogEntry)
-			a.applyDataEntryQueue <- binlogEntry
-		})
-		if err != nil {
-			return err
-		}
-		a.jsonSub = sub*/
-	} else {
-		_, err := a.natsConn.Subscribe(fmt.Sprintf("%s_incr", a.subject), func(m *gonats.Msg) {
-			var binlogTx []*binlog.BinlogTx
-			if err := Decode(m.Data, &binlogTx); err != nil {
-				a.onError(err)
-			}
-			for _, tx := range binlogTx {
-				a.applyBinlogTxQueue <- tx
-			}
-			if err := a.natsConn.Publish(m.Reply, nil); err != nil {
-				a.onError(err)
-			}
-		})
-		if err != nil {
-			return err
-		}
-	}
 
 	return nil
 }

@@ -191,21 +191,15 @@ func (m *MySQLDriverConfig) RequiresBinlogFormatChange() bool {
 
 // ElapsedRowCopyTime returns time since starting to copy chunks of rows
 func (m *MySQLDriverConfig) MarkRowCopyEndTime() {
-	m.throttleMutex.Lock()
-	defer m.throttleMutex.Unlock()
 	m.RowCopyEndTime = time.Now()
 }
 
 // MarkRowCopyStartTime
 func (m *MySQLDriverConfig) MarkRowCopyStartTime() {
-	m.throttleMutex.Lock()
-	defer m.throttleMutex.Unlock()
 	m.RowCopyStartTime = time.Now()
 }
 
 func (m *MySQLDriverConfig) SetRecentBinlogCoordinates(coordinates ubase.BinlogCoordinates) {
-	m.throttleMutex.Lock()
-	defer m.throttleMutex.Unlock()
 	m.recentBinlogCoordinates = coordinates
 }
 

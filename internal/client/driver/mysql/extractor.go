@@ -183,8 +183,6 @@ func (e *Extractor) Run() {
 			e.onError(err)
 			return
 		}
-		e.logger.Printf("mysql.extractor: Operating until row copy is complete")
-		//e.consumeRowCopyComplete()
 		e.logger.Printf("mysql.extractor: Row copy complete")
 	} else {
 		if err := e.readCurrentBinlogCoordinates(); err != nil {
@@ -1032,6 +1030,7 @@ func (e *Extractor) mysqlDump() error {
 	}
 	pool.Wait()
 
+	time.Sleep(5 * time.Second)
 	// We've copied all of the tables, but our buffer holds onto the very last record.
 	// First mark the snapshot as complete and then apply the updated offset to the buffered record ...
 	stop := currentTimeMillis()

@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"fmt"
 	"math"
-	"io"
 	"strconv"
 	"strings"
 
@@ -76,7 +75,7 @@ type dumpEntry struct {
 	Values                   string
 	RowsCount                uint64
 	Offset                   uint64
-	Counter                  uint64
+	Counter                  int
 	colBuffer                bytes.Buffer
 	err                      error
 }
@@ -203,11 +202,11 @@ func (e *dumpEntry) escape(colValue string) string {
 		default:
 			continue
 		}
-		io.WriteString(&e.colBuffer, colValue[last:i])
-		io.WriteString(&e.colBuffer, esc)
+		e.colBuffer.WriteString(colValue[last:i])
+		e.colBuffer.WriteString(esc)
 		last = i + 1
 	}
-	io.WriteString(&e.colBuffer, colValue[last:])
+	e.colBuffer.WriteString(colValue[last:])
 	return e.colBuffer.String()
 }
 
