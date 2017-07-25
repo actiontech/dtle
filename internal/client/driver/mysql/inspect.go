@@ -59,7 +59,7 @@ func (i *Inspector) InitDBConnections() (err error) {
 	if err := i.validateBinlogs(); err != nil {
 		return err
 	}
-	i.logger.Printf("mysql.inspector: initiated on %s:%d, version %+v", i.mysqlContext.ConnectionConfig.Host,i.mysqlContext.ConnectionConfig.Port, i.mysqlContext.MySQLVersion)
+	i.logger.Printf("mysql.inspector: initiated on %s:%d, version %+v", i.mysqlContext.ConnectionConfig.Host, i.mysqlContext.ConnectionConfig.Port, i.mysqlContext.MySQLVersion)
 	return nil
 }
 
@@ -137,7 +137,7 @@ func (i *Inspector) validateConnection() error {
 		return err
 	}
 
-	i.logger.Printf("mysql.inspector: connection validated on %s:%d", i.mysqlContext.ConnectionConfig.Host,i.mysqlContext.ConnectionConfig.Port)
+	i.logger.Printf("mysql.inspector: connection validated on %s:%d", i.mysqlContext.ConnectionConfig.Host, i.mysqlContext.ConnectionConfig.Port)
 	return nil
 }
 

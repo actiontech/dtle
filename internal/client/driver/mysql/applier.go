@@ -44,8 +44,8 @@ type Applier struct {
 	singletonDB  *gosql.DB
 	parser       *sql.Parser
 
-	totalRowCount int
-	applyRowCount int
+	totalRowCount              int
+	applyRowCount              int
 	rowCopyComplete            chan bool
 	allEventsUpToLockProcessed chan string
 	rowCopyCompleteFlag        int64
@@ -680,7 +680,7 @@ func (a *Applier) initiateStreaming() error {
 		if err != nil {
 			return err
 		}
-	}else {
+	} else {
 		a.rowCopyComplete <- true
 	}
 
@@ -775,7 +775,7 @@ func (a *Applier) initDBConnections() (err error) {
 	/*if err := a.readTableColumns(); err != nil {
 		return err
 	}*/
-	a.logger.Printf("mysql.applier: initiated on %s:%d, version %+v", a.mysqlContext.ConnectionConfig.Host,a.mysqlContext.ConnectionConfig.Port, a.mysqlContext.MySQLVersion)
+	a.logger.Printf("mysql.applier: initiated on %s:%d, version %+v", a.mysqlContext.ConnectionConfig.Host, a.mysqlContext.ConnectionConfig.Port, a.mysqlContext.MySQLVersion)
 	return nil
 }
 
@@ -798,7 +798,7 @@ func (a *Applier) validateConnection(db *gosql.DB) error {
 	if strings.HasPrefix(a.mysqlContext.MySQLVersion, "5.6") {
 		a.mysqlContext.ParallelWorkers = 1
 	}
-	a.logger.Debugf("mysql.applier: connection validated on %s:%d", a.mysqlContext.ConnectionConfig.Host,a.mysqlContext.ConnectionConfig.Port)
+	a.logger.Debugf("mysql.applier: connection validated on %s:%d", a.mysqlContext.ConnectionConfig.Host, a.mysqlContext.ConnectionConfig.Port)
 	return nil
 }
 

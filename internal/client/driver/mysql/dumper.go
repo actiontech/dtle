@@ -135,14 +135,14 @@ func (d *dumper) getChunkData(entry *dumpEntry) error {
 		scanArgs[i] = &values[i]
 	}
 
-	data :=make([]string, 0)
+	data := make([]string, 0)
 	for rows.Next() {
 		err = rows.Scan(scanArgs...)
 		if err != nil {
 			return err
 		}
 
-		vals :=make([]string, 0)
+		vals := make([]string, 0)
 		for _, col := range values {
 			// Here we can check if the value is nil (NULL value)
 			val := "NULL"
@@ -173,17 +173,21 @@ func (d *dumper) getChunkData(entry *dumpEntry) error {
 	return nil
 }
 
-
 func (e *dumpEntry) escape(colValue string) string {
 	var esc string
 	e.colBuffer = *new(bytes.Buffer)
 	last := 0
-	/*for _, char_c := range colValue {
-		if strings.Contains(stringOfBackslashAndQuoteChars, fmt.Sprintf("%c",char_c)) {
+	for i, char_c := range colValue {
+		if strings.Contains(stringOfBackslashAndQuoteChars, fmt.Sprintf("%c", char_c)) {
 			esc = `\\`
+			e.colBuffer.WriteString(esc)
+			e.colBuffer.WriteString(fmt.Sprintf("%c", char_c))
+		} else {
+			e.colBuffer.WriteString(fmt.Sprintf("%c", char_c))
 		}
-	}*/
-	for i, c := range colValue {
+		last = i + 1
+	}
+	/*for i, c := range colValue {
 		switch c {
 		case 0:
 			esc = `\0`
@@ -205,7 +209,7 @@ func (e *dumpEntry) escape(colValue string) string {
 		e.colBuffer.WriteString(colValue[last:i])
 		e.colBuffer.WriteString(esc)
 		last = i + 1
-	}
+	}*/
 	e.colBuffer.WriteString(colValue[last:])
 	return e.colBuffer.String()
 }

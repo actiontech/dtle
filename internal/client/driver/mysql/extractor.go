@@ -539,7 +539,7 @@ func (e *Extractor) validateConnection() error {
 	if err := e.db.QueryRow(query).Scan(&e.mysqlContext.MySQLVersion); err != nil {
 		return err
 	}
-	e.logger.Printf("mysql.extractor: connection validated on %s:%d", e.mysqlContext.ConnectionConfig.Host,e.mysqlContext.ConnectionConfig.Port)
+	e.logger.Printf("mysql.extractor: connection validated on %s:%d", e.mysqlContext.ConnectionConfig.Host, e.mysqlContext.ConnectionConfig.Port)
 	return nil
 }
 
@@ -991,40 +991,40 @@ func (e *Extractor) mysqlDump() error {
 	startScan := currentTimeMillis()
 	totalRowCount := 0
 	counter := 0
-	pool := models.NewPool(3)
-	for _, tb := range e.tables {
-		pool.Add(1)
-		go func(t *config.Table) {
-			// Obtain a record maker for this table, which knows about the schema ...
-			// Choose how we create statements based on the # of rows ...
-			counter++
-			e.logger.Printf("mysql.extractor: Step 5: - scanning table '%s.%s' (%d of %d tables)", t.TableSchema, t.TableName, counter, len(e.tables))
+	//pool := models.NewPool(3)
+	for _, t := range e.tables {
+		//pool.Add(1)
+		//go func(t *config.Table) {
+		// Obtain a record maker for this table, which knows about the schema ...
+		// Choose how we create statements based on the # of rows ...
+		counter++
+		e.logger.Printf("mysql.extractor: Step 5: - scanning table '%s.%s' (%d of %d tables)", t.TableSchema, t.TableName, counter, len(e.tables))
 
-			d := NewDumper(e.db, t.TableSchema, t.TableName, e.logger)
-			if err := d.Dump(setSystemVariablesStatement, e.mysqlContext.ParallelWorkers); err != nil {
+		d := NewDumper(e.db, t.TableSchema, t.TableName, e.logger)
+		if err := d.Dump(setSystemVariablesStatement, e.mysqlContext.ParallelWorkers); err != nil {
+			e.onError(err)
+		}
+
+		// Scan the rows in the table ...
+		for i := 0; i < d.entriesCount; i++ {
+			entry := <-d.resultsChannel
+			if entry.err != nil {
+				e.onError(entry.err)
+			}
+			txMsg, err := Encode(entry)
+			if err != nil {
 				e.onError(err)
 			}
-
-			// Scan the rows in the table ...
-			for i := 0; i < d.entriesCount; i++ {
-				entry := <-d.resultsChannel
-				if entry.err != nil {
-					e.onError(entry.err)
-				}
-				txMsg, err := Encode(entry)
-				if err != nil {
-					e.onError(err)
-				}
-				if err := e.requestMsg(fmt.Sprintf("%s_full", e.subject), "", txMsg); err != nil {
-					e.onError(err)
-				}
-				totalRowCount += int(entry.Counter)
+			if err := e.requestMsg(fmt.Sprintf("%s_full", e.subject), "", txMsg); err != nil {
+				e.onError(err)
 			}
-			close(d.resultsChannel)
-			pool.Done()
-		}(tb)
+			totalRowCount += int(entry.Counter)
+		}
+		close(d.resultsChannel)
+		//pool.Done()
+		//}(tb)
 	}
-	pool.Wait()
+	//pool.Wait()
 
 	time.Sleep(5 * time.Second)
 	// We've copied all of the tables, but our buffer holds onto the very last record.

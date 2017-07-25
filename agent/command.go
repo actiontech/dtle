@@ -61,12 +61,10 @@ func (c *Command) readConfig() *Config {
 	// Server-only options
 	flags.IntVar(&cmdConfig.Server.BootstrapExpect, "bootstrap-expect", 0, "")
 	flags.Var((*StringFlag)(&cmdConfig.Server.StartJoin), "join", "")
-	flags.Var((*StringFlag)(&cmdConfig.Server.RetryJoin), "retry-join", "")
 	flags.IntVar(&cmdConfig.Server.RetryMaxAttempts, "retry-max", 0, "")
 	flags.StringVar(&cmdConfig.Server.RetryInterval, "retry-interval", "", "")
 
 	// Client-only options
-	flags.StringVar(&cmdConfig.Client.StateDir, "state-dir", "", "")
 	flags.StringVar(&servers, "servers", "", "")
 
 	// General options
@@ -170,15 +168,6 @@ func (c *Command) readConfig() *Config {
 	if config.Server.Enabled && config.DataDir == "" {
 		c.logger.Errorf("Must specify data directory")
 		return nil
-	}
-
-	// The config is valid if the top-level data-dir is set or if both
-	// alloc-dir and store-dir are set.
-	if config.Client.Enabled && config.DataDir == "" {
-		if config.Client.StateDir == "" {
-			c.logger.Errorf("Must specify the state dir if data-dir is omitted.")
-			return nil
-		}
 	}
 
 	return config
@@ -477,7 +466,7 @@ func (c *Command) startupJoin(config *Config) error {
 // retryJoin is used to handle retrying a join until it succeeds or all retries
 // are exhausted.
 func (c *Command) retryJoin(config *Config) {
-	if len(config.Server.RetryJoin) == 0 || !config.Server.Enabled {
+	if len(config.Server.StartJoin) == 0 || !config.Server.Enabled {
 		return
 	}
 
@@ -485,7 +474,7 @@ func (c *Command) retryJoin(config *Config) {
 
 	attempt := 0
 	for {
-		n, err := c.agent.server.Join(config.Server.RetryJoin)
+		n, err := c.agent.server.Join(config.Server.StartJoin)
 		if err == nil {
 			c.logger.Printf("agent: Join completed. Synced with %d initial agents", n)
 			return

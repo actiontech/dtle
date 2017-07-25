@@ -147,10 +147,7 @@ type ServerConfig struct {
 	// StartJoin is a list of addresses to attempt to join when the
 	// agent starts. If Serf is unable to communicate with any of these
 	// addresses, then the agent will error and exit.
-	StartJoin []string `mapstructure:"start_join"`
-
-	// RetryJoin is a list of addresses to join with retry enabled.
-	RetryJoin []string `mapstructure:"retry_join"`
+	StartJoin []string `mapstructure:"join"`
 
 	// RetryMaxAttempts specifies the maximum number of times to retry joining a
 	// host on startup. This is useful for cases where we know the node will be
@@ -206,6 +203,7 @@ type AdvertiseAddrs struct {
 func DefaultConfig() *Config {
 	return &Config{
 		LogLevel:   "INFO",
+		LogFile:    "/var/log/udup/udup.log",
 		PidFile:    "/var/run/udup/udup.pid",
 		Region:     "global",
 		Datacenter: "dc1",
@@ -233,7 +231,6 @@ func DefaultConfig() *Config {
 		Server: &ServerConfig{
 			Enabled:          false,
 			StartJoin:        []string{},
-			RetryJoin:        []string{},
 			RetryInterval:    "15s",
 			HeartbeatGrace:   "30s",
 			RetryMaxAttempts: 3,
@@ -517,9 +514,6 @@ func (a *ServerConfig) Merge(b *ServerConfig) *ServerConfig {
 	if b.Enabled {
 		result.Enabled = true
 	}
-	if b.BootstrapExpect > 0 {
-		result.BootstrapExpect = b.BootstrapExpect
-	}
 	if b.DataDir != "" {
 		result.DataDir = b.DataDir
 	}
@@ -544,10 +538,11 @@ func (a *ServerConfig) Merge(b *ServerConfig) *ServerConfig {
 	result.StartJoin = append(result.StartJoin, a.StartJoin...)
 	result.StartJoin = append(result.StartJoin, b.StartJoin...)
 
-	// Copy the retry join addresses
-	result.RetryJoin = make([]string, 0, len(a.RetryJoin)+len(b.RetryJoin))
-	result.RetryJoin = append(result.RetryJoin, a.RetryJoin...)
-	result.RetryJoin = append(result.RetryJoin, b.RetryJoin...)
+	if b.BootstrapExpect > 0 {
+		result.BootstrapExpect = b.BootstrapExpect
+	}else {
+		result.BootstrapExpect = len(result.StartJoin)
+	}
 
 	return &result
 }

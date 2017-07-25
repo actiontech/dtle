@@ -300,7 +300,6 @@ func parseClient(result **ClientConfig, list *ast.ObjectList) error {
 	// Check for invalid keys
 	valid := []string{
 		"enabled",
-		"state_dir",
 		"servers",
 		"stats",
 		"no_host_uuid",
@@ -358,8 +357,7 @@ func parseServer(result **ServerConfig, list *ast.ObjectList) error {
 		"num_schedulers",
 		"enabled_schedulers",
 		"heartbeat_grace",
-		"start_join",
-		"retry_join",
+		"join",
 		"retry_max",
 		"retry_interval",
 	}

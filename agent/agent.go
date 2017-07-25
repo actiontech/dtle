@@ -164,9 +164,6 @@ func (a *Agent) clientConfig() (*uconf.ClientConfig, error) {
 	if a.config.DataDir != "" {
 		conf.StateDir = filepath.Join(a.config.DataDir, "client")
 	}
-	if a.config.Client.StateDir != "" {
-		conf.StateDir = a.config.Client.StateDir
-	}
 	conf.Servers = a.config.Client.Servers
 
 	// Setup the node

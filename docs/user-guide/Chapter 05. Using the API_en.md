@@ -1,6 +1,5 @@
 # Udup REST API
 
-
 <a name="overview"></a>
 ## Overview
 You can communicate with Udup using a RESTful JSON API over HTTP. Udup nodes usually listen on port `8190` for API requests. All examples in this section assume that you've found a running leader at `localhost:8190`.
@@ -9,15 +8,24 @@ Udup implements a RESTful JSON API over HTTP to communicate with software client
 
 Default API responses are unformatted JSON add the `pretty=true` param to format the response.
 
-
 ### Version information
 *Version* : 0.3.0
-
 
 ### URI scheme
 *Host* : localhost:8190  
 *BasePath* : /v1  
 *Schemes* : HTTP
+
+### Consumes
+
+* `application/json`
+
+### Produces
+
+* `application/json`
+
+<a name="paths"></a>
+## Paths
 
 ### POST /jobs
 ## 1. API Description
@@ -28,28 +36,31 @@ The following request parameter list only provides API request parameters.
 
 | Parameter Name | Required | Type | Description |
 |---------|---------|---------|---------|
-| ID | No | Int | ID of data synchronization job. Please use API "Query Data Synchronization Task List" to query the task ID |
-| Name | Yes | String | Name of data replication task |
-| Type | Yes | String | Type of data replication task. Possible values include: < br> synchronous <br> migration <br> subscribe |
-| Tasks | Yes | Array |  |
+| ID | No | Int | ID of data synchronization/migration job. Please use API "Query Data Synchronization Task List" to query the task ID |
+| Name | Yes | String | Name of job |
+| Type | Yes | String | Type of job. Possible values include: < br> synchronous <br> migration <br> subscribe |
+| Tasks | Yes | Array | A group of tasks |
 
 Each element in the Tasks is an Object, which is composed of the following parameters:
 
 | Parameter Name | Required | Type | Description |
 |---------|---------|---------|---------|
-| Type | Yes | String | task type（extract/apply）,Possible values include: <br>Src-source<br>Dest-dest |
-| Driver | Yes | String | task driver,Possible values include: <br>MySQL<br>Oracle |
-| NodeId | No | String | node id |
-| Config | Yes | Object | config |
+| Type | Yes | String | Type of task（extract/apply）,Possible values include: <br>Src-Source MySQL instance (master instance)<br>Dest-Destination MySQL instance (disaster recovery instance) |
+| Driver | Yes | String | Specifies the task driver that should be used to run the task. Possible values include: <br>MySQL<br>Oracle |
+| NodeId | No | String | The node in which to execute the job. |
+| Config | Yes | Object | Information on the datasource |
 
 Parameter Config is composed of the following parameters:
 
 | Parameter Name | Required | Type | Description |
 |---------|---------|---------|---------|
-| Gtid | No | String | MySQL Gtid |
-| NatsAddr | Yes | String | nats server address |
-| ConnectionConfig | Yes | Object | MySQL connection |
-| ReplicateDoDb | No | Array | MySQL Gtid |
+| Gtid | No | String | MySQL Binlog Coordinates |
+| NatsAddr | Yes | String | Nats server address |
+| ParallelWorkers | No | Int | Parallel workers |
+| ReplChanBufferSize | No | Int | Limit message from the Buffer |
+| MsgBytesLimit | No | Int | Set the limits for sending msg bytes for this subscription |
+| ReplicateDoDb | No | Array | Information on the source database table to be synchronized. If you need to synchronize the entire instance, this field can be left empty. The composition of each element is shown in the table below |
+| ConnectionConfig | Yes | Object | Mysql server information |
 
 Parameter ConnectionConfig is composed of the following parameters:
 
@@ -60,23 +71,23 @@ Parameter ConnectionConfig is composed of the following parameters:
 | User | Yes | String | MySQL server user TCP connections |
 | Password | Yes | String | MySQL server password TCP connections |
 
-Parameter ReplicateDoDb is composed of the following parameters:
+Parameter ReplicateDoDb is used to specify the information on the database table to be synchronized. Each element in the array is an Object, which is composed as follows:
 
 | Parameter Name | Required | Type | Description |
 |---------|---------|---------|---------|
-| TableSchema | No | String | table schema
-| Tables | No | Array | tables name
+| TableSchema | No | String | Database name
+| Tables | No | Array | Name of the table under the current database. If you need to synchronize all the tables of the current database, this field can be left empty
 
 Parameter Tables is composed of the following parameters:
 
 | Parameter Name | Required | Type | Description |
 |---------|---------|---------|---------|
-| TableName | No | String | table name
+| TableName | No | String | Name of the table
 
 ## 3. Output Parameters
 | Parameter Name | Type | Description |
 |---------|---------|---------|
-| Success | Bool | Module error message description depending on API.  |
+| Success | Bool | returns. |
 
 ## 4. Example
 Input
@@ -136,6 +147,8 @@ Output
      "LastContact": 0,
      "Success": true
  }
- ```
+ ````
+ 
+ ### GET /jobs
 
 

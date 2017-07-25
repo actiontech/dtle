@@ -1,23 +1,28 @@
-# Udup REST API
-
+# Udup 接口
 
 <a name="overview"></a>
-## Overview
-You can communicate with Udup using a RESTful JSON API over HTTP. Udup nodes usually listen on port `8190` for API requests. All examples in this section assume that you've found a running leader at `localhost:8190`.
+## 概览
 
-Udup implements a RESTful JSON API over HTTP to communicate with software clients. Udup listens in port `8190` by default. All examples in this section assume that you're using the default port.
+Udup 通过 http 实现一个 rest 风格的 json api 来与软件客户端进行通信。默认情况下, Udup 监听端口 `8190`。本节中的所有示例都假定您使用的是默认端口。
 
-Default API responses are unformatted JSON add the `pretty=true` param to format the response.
+### 版本信息
+*版本* : 0.3.0
 
-
-### Version information
-*Version* : 0.3.0
-
-
-### URI scheme
+### 请求信息
 *Host* : localhost:8190  
 *BasePath* : /v1  
 *Schemes* : HTTP
+
+### Consumes
+
+* `application/json`
+
+### Produces
+
+* `application/json`
+
+<a name="paths"></a>
+## API接口一览
 
 ### POST /jobs
 ## 1. 接口描述
@@ -37,35 +42,38 @@ Default API responses are unformatted JSON add the `pretty=true` param to format
 
 | 参数名称 | 是否必选  | 类型 | 描述 |
 |---------|---------|---------|---------|
-| Type | 是 | String | 数据复制任务类型（抽取/回放）,可取值包括：<br>Src-源端<br>Dest-目标端 |
+| Type | 是 | String | 数据复制任务类型（抽取/回放）,可取值包括：<br>Src-源MySQL实例（主实例）<br>Dest-目的MySQL实例（灾备实例） |
 | Driver | 是 | String | 数据复制对象类型,可取值包括：<br>MySQL<br>Oracle |
-| NodeId | 否 | String | 抽取节点ID，可使用[查询节点列表](/docs/api/) 接口获取，其值为输出参数中字段 id 的值。 |
+| NodeId | 否 | String | 指定任务节点ID，可使用[查询节点列表](/docs/api/) 接口获取，其值为输出参数中字段 id 的值。 |
 | Config | 是 | Object | 配置信息 |
 
 Config 为该任务中数据相关的配置，字段描述为：
 
 | 参数名称 | 是否必选  | 类型 | 描述 |
 |---------|---------|---------|---------|
-| Gtid | 否 | String | MySQL Gtid |
-| NatsAddr | 是 | String | nats server address |
-| ConnectionConfig | 是 | Object | MySQL connection |
-| ReplicateDoDb | 否 | Array | MySQL Gtid |
+| Gtid | 否 | String | MySQL Gtid位置 |
+| NatsAddr | 是 | String | 数据传输地址 |
+| ParallelWorkers | 否 | Int | 并行回放数 |
+| ReplChanBufferSize | 否 | Int | 复制任务缓存限制 |
+| MsgBytesLimit | 否 | Int | 传输消息大小限制 |
+| ReplicateDoDb | 否 | Array | 需要同步的源数据库表信息，如果您需要同步的是整个实例，该字段可不填写，每个元素具体构成见下表 |
+| ConnectionConfig | 是 | Object | 数据源连接信息 |
 
 其中， ConnectionConfig 的构成为：
 
 | 参数名称 | 是否必选  | 类型 | 描述 |
 |---------|---------|---------|---------|
-| Host | 是 | String | MySQL server host TCP connections |
-| Port | 是 | Int | MySQL server port for TCP connections |
-| User | 是 | String | MySQL server user TCP connections |
-| Password | 是 | String | MySQL server password TCP connections |
+| Host | 是 | String | 数据源主机 |
+| Port | 是 | Int | 数据源端口 |
+| User | 是 | String | 数据源帐号 |
+| Password | 是 | String | 数据源密码 |
 
-其中， ReplicateDoDb 的构成为：
+其中， ReplicateDoDb 可指定需要同步的数据库表信息，数组中的每个元素为Object，其构成如下：
 
 | 参数名称 | 是否必选  | 类型 | 描述 |
 |---------|---------|---------|---------|
-| TableSchema | 否 | String | 数据复制schema对象
-| Tables | 否 | Array | 数据复制table对象集合
+| TableSchema | 否 | String | 数据库名
+| Tables | 否 | Array | 当前数据库下的表名，如果您需要同步的是当前数据库的所有表，该字段可不填写
 
 其中， Tables 的构成为：
 
@@ -136,5 +144,21 @@ Config 为该任务中数据相关的配置，字段描述为：
      "LastContact": 0,
      "Success": true
  }
- ```
+ ````
 
+### GET /jobs
+## 1. 接口描述
+该接口于查询数据同步/迁移作业列表，返回作业的详细信息。
+
+## 2. 输入参数
+无
+## 3. 输出参数
+返回一个数组对象，其中每一个元素为Object，其构成如下：
+
+| 参数名称 | 类型 | 描述 |
+|---------|---------|---------|
+| ID | String |  |
+| Name | String |  |
+| JobSummary | Object | 返回的数据 |
+| Status | Int | 数据任务执行状态，值包括：<br>running |
+| Type | String | 数据任务类型，值包括：<br>synchronous-同步任务|

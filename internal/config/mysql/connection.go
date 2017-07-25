@@ -6,8 +6,8 @@ import (
 
 // ConnectionConfig is the minimal configuration required to connect to a MySQL server
 type ConnectionConfig struct {
-	Host string
-	Port int
+	Host     string
+	Port     int
 	User     string
 	Password string
 }
