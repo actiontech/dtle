@@ -85,8 +85,8 @@ func NewMySQLReader(cfg *config.MySQLDriverConfig, logger *log.Entry) (binlogRea
 	binlogSyncerConfig := &replication.BinlogSyncerConfig{
 		ServerID: uint32(serverId),
 		Flavor:   "mysql",
-		Host:     cfg.ConnectionConfig.Key.Host,
-		Port:     uint16(cfg.ConnectionConfig.Key.Port),
+		Host:     cfg.ConnectionConfig.Host,
+		Port:     uint16(cfg.ConnectionConfig.Port),
 		User:     cfg.ConnectionConfig.User,
 		Password: cfg.ConnectionConfig.Password,
 	}

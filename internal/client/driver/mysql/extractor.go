@@ -143,7 +143,7 @@ func (e *Extractor) validateStatement(doTb *config.Table) (err error) {
 
 // Run executes the complete extract logic.
 func (e *Extractor) Run() {
-	e.logger.Printf("mysql.extractor: extract binlog events from %s.%d", e.mysqlContext.ConnectionConfig.Key.Host, e.mysqlContext.ConnectionConfig.Key.Port)
+	e.logger.Printf("mysql.extractor: extract binlog events from %s.%d", e.mysqlContext.ConnectionConfig.Host, e.mysqlContext.ConnectionConfig.Port)
 	e.mysqlContext.StartTime = time.Now()
 	if err := e.initiateInspector(); err != nil {
 		e.onError(err)
@@ -445,10 +445,6 @@ func (e *Extractor) printMigrationStatusHint(databaseName, tableName string) {
 		sql.EscapeName(databaseName),
 		sql.EscapeName(tableName),
 	)
-	e.logger.Printf("mysql.extractor # Migrating %+v; inspecting %+v",
-		e.mysqlContext.ConnectionConfig.Key,
-		e.inspector.mysqlContext.ConnectionConfig.Key,
-	)
 	e.logger.Printf("mysql.extractor # Migration started at %+v",
 		e.mysqlContext.StartTime.Format(time.RubyDate),
 	)
@@ -543,7 +539,7 @@ func (e *Extractor) validateConnection() error {
 	if err := e.db.QueryRow(query).Scan(&e.mysqlContext.MySQLVersion); err != nil {
 		return err
 	}
-	e.logger.Printf("mysql.extractor: connection validated on %+v", e.mysqlContext.ConnectionConfig.Key)
+	e.logger.Printf("mysql.extractor: connection validated on %s:%d", e.mysqlContext.ConnectionConfig.Host,e.mysqlContext.ConnectionConfig.Port)
 	return nil
 }
 

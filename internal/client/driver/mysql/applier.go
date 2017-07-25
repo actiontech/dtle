@@ -145,7 +145,7 @@ func (a *Applier) validateStatement(doTb *config.Table) (err error) {
 
 // Run executes the complete apply logic.
 func (a *Applier) Run() {
-	a.logger.Printf("mysql.applier: apply binlog events to %s.%d", a.mysqlContext.ConnectionConfig.Key.Host, a.mysqlContext.ConnectionConfig.Key.Port)
+	a.logger.Printf("mysql.applier: apply binlog events to %s.%d", a.mysqlContext.ConnectionConfig.Host, a.mysqlContext.ConnectionConfig.Port)
 	a.mysqlContext.StartTime = time.Now()
 	for _, doDb := range a.mysqlContext.ReplicateDoDb {
 		for _, doTb := range doDb.Tables {
@@ -437,10 +437,6 @@ func (a *Applier) printMigrationStatusHint(databaseName, tableName string) {
 	a.logger.Printf("mysql.applier # Applying %s.%s",
 		sql.EscapeName(databaseName),
 		sql.EscapeName(tableName),
-	)
-	a.logger.Printf("mysql.applier # Migrating %+v; inspecting %+v",
-		a.mysqlContext.ConnectionConfig.Key,
-		a.mysqlContext.ConnectionConfig.Key,
 	)
 	a.logger.Printf("mysql.applier # Migration started at %+v",
 		a.mysqlContext.StartTime.Format(time.RubyDate),
@@ -779,7 +775,7 @@ func (a *Applier) initDBConnections() (err error) {
 	/*if err := a.readTableColumns(); err != nil {
 		return err
 	}*/
-	a.logger.Printf("mysql.applier: initiated on %+v, version %+v", a.mysqlContext.ConnectionConfig.Key, a.mysqlContext.MySQLVersion)
+	a.logger.Printf("mysql.applier: initiated on %s:%d, version %+v", a.mysqlContext.ConnectionConfig.Host,a.mysqlContext.ConnectionConfig.Port, a.mysqlContext.MySQLVersion)
 	return nil
 }
 
@@ -802,7 +798,7 @@ func (a *Applier) validateConnection(db *gosql.DB) error {
 	if strings.HasPrefix(a.mysqlContext.MySQLVersion, "5.6") {
 		a.mysqlContext.ParallelWorkers = 1
 	}
-	a.logger.Debugf("mysql.applier: connection validated on %+v", a.mysqlContext.ConnectionConfig.Key)
+	a.logger.Debugf("mysql.applier: connection validated on %s:%d", a.mysqlContext.ConnectionConfig.Host,a.mysqlContext.ConnectionConfig.Port)
 	return nil
 }
 
@@ -815,12 +811,12 @@ func (a *Applier) validateTableForeignKeys() error {
 	}
 
 	if !foreignKeyChecks {
-		a.logger.Printf("mysql.inspector: foreign_key_checks validated on %s:%d", a.mysqlContext.ConnectionConfig.Key.Host, a.mysqlContext.ConnectionConfig.Key.Port)
+		a.logger.Printf("mysql.inspector: foreign_key_checks validated on %s:%d", a.mysqlContext.ConnectionConfig.Host, a.mysqlContext.ConnectionConfig.Port)
 		return nil
 	}
 
 	//SET @@global.foreign_key_checks = 0;
-	return fmt.Errorf("%s:%d must have foreign_key_checks disabled for executing", a.mysqlContext.ConnectionConfig.Key.Host, a.mysqlContext.ConnectionConfig.Key.Port)
+	return fmt.Errorf("%s:%d must have foreign_key_checks disabled for executing", a.mysqlContext.ConnectionConfig.Host, a.mysqlContext.ConnectionConfig.Port)
 }
 
 // validateAndReadTimeZone potentially reads server time-zone

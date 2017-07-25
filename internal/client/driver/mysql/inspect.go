@@ -59,7 +59,7 @@ func (i *Inspector) InitDBConnections() (err error) {
 	if err := i.validateBinlogs(); err != nil {
 		return err
 	}
-	i.logger.Printf("mysql.inspector: initiated on %+v, version %+v", i.mysqlContext.ConnectionConfig.Key, i.mysqlContext.MySQLVersion)
+	i.logger.Printf("mysql.inspector: initiated on %s:%d, version %+v", i.mysqlContext.ConnectionConfig.Host,i.mysqlContext.ConnectionConfig.Port, i.mysqlContext.MySQLVersion)
 	return nil
 }
 
@@ -137,7 +137,7 @@ func (i *Inspector) validateConnection() error {
 		return err
 	}
 
-	i.logger.Printf("mysql.inspector: connection validated on %+v", i.mysqlContext.ConnectionConfig.Key)
+	i.logger.Printf("mysql.inspector: connection validated on %s:%d", i.mysqlContext.ConnectionConfig.Host,i.mysqlContext.ConnectionConfig.Port)
 	return nil
 }
 
@@ -219,10 +219,10 @@ func (i *Inspector) validateBinlogs() error {
 		return err
 	}
 	if !hasBinaryLogs {
-		return fmt.Errorf("%s:%d must have binary logs enabled", i.mysqlContext.ConnectionConfig.Key.Host, i.mysqlContext.ConnectionConfig.Key.Port)
+		return fmt.Errorf("%s:%d must have binary logs enabled", i.mysqlContext.ConnectionConfig.Host, i.mysqlContext.ConnectionConfig.Port)
 	}
 	if i.mysqlContext.RequiresBinlogFormatChange() {
-		return fmt.Errorf("You must be using ROW binlog format. I can switch it for you, provided --switch-to-rbr and that %s:%d doesn't have replicas", i.mysqlContext.ConnectionConfig.Key.Host, i.mysqlContext.ConnectionConfig.Key.Port)
+		return fmt.Errorf("You must be using ROW binlog format. I can switch it for you, provided --switch-to-rbr and that %s:%d doesn't have replicas", i.mysqlContext.ConnectionConfig.Host, i.mysqlContext.ConnectionConfig.Port)
 	}
 	query = `select @@global.binlog_row_image`
 	if err := i.db.QueryRow(query).Scan(&i.mysqlContext.BinlogRowImage); err != nil {
@@ -231,7 +231,7 @@ func (i *Inspector) validateBinlogs() error {
 	}
 	i.mysqlContext.BinlogRowImage = strings.ToUpper(i.mysqlContext.BinlogRowImage)
 
-	i.logger.Printf("mysql.inspector: binary logs validated on %s:%d", i.mysqlContext.ConnectionConfig.Key.Host, i.mysqlContext.ConnectionConfig.Key.Port)
+	i.logger.Printf("mysql.inspector: binary logs validated on %s:%d", i.mysqlContext.ConnectionConfig.Host, i.mysqlContext.ConnectionConfig.Port)
 	return nil
 }
 
@@ -244,11 +244,11 @@ func (i *Inspector) validateLogSlaveUpdates() error {
 	}
 
 	if logSlaveUpdates {
-		i.logger.Printf("mysql.inspector: log_slave_updates validated on %s:%d", i.mysqlContext.ConnectionConfig.Key.Host, i.mysqlContext.ConnectionConfig.Key.Port)
+		i.logger.Printf("mysql.inspector: log_slave_updates validated on %s:%d", i.mysqlContext.ConnectionConfig.Host, i.mysqlContext.ConnectionConfig.Port)
 		return nil
 	}
 
-	return fmt.Errorf("%s:%d must have log_slave_updates enabled for executing migration", i.mysqlContext.ConnectionConfig.Key.Host, i.mysqlContext.ConnectionConfig.Key.Port)
+	return fmt.Errorf("%s:%d must have log_slave_updates enabled for executing migration", i.mysqlContext.ConnectionConfig.Host, i.mysqlContext.ConnectionConfig.Port)
 }
 
 // validateTable makes sure the table we need to operate on actually exists
