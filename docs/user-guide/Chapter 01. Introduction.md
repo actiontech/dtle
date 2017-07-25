@@ -9,4 +9,4 @@ Features in Udup 1.0：
 
 * Includes support for replicating into
 
-In [Chapter 2. Overview](./docs/user-guide/Chapter2.Overview.md) you will find a detailed overview of Udup. 
+In [Chapter 2. Overview](./docs/user-guide/Chapter02.Overview.md) you will find a detailed overview of Udup. 

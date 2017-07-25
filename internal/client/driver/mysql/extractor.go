@@ -1201,9 +1201,9 @@ func (e *Extractor) Shutdown() error {
 		}
 	}
 
-	if err := sql.CloseDB(e.db); err != nil {
+	/*if err := sql.CloseDB(e.db); err != nil {
 		return err
-	}
+	}*/
 
 	e.logger.Printf("mysql.extractor: closed streamer connection.")
 	return nil

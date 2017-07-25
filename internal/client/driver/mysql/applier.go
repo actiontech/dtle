@@ -1571,12 +1571,12 @@ func (a *Applier) Shutdown() error {
 		a.natsConn.Close()
 	}
 
-	if err := sql.CloseDB(a.singletonDB); err != nil {
+	/*if err := sql.CloseDB(a.singletonDB); err != nil {
 		return err
 	}
 	if err := sql.CloseDBs(a.dbs...); err != nil {
 		return err
-	}
+	}*/
 
 	a.logger.Printf("mysql.applier: closed applier connection.")
 	return nil
