@@ -4,7 +4,7 @@ Udup is ...
 Design goals are to ...
 
 For more information on Extractor and Applier please [read this](./docs/EXTRACTOR_AND_APPLIER.md).
-See the [getting started guide](./docs/GETTING_STARTED.md).This guide will get you up and running with Udup. It walks you through the package, installation, and configuration processes, and it shows how to use Udup to extract and apply data with mysql.
+See the [getting started guide](docs/user-guide/Chapter%2003.%20Installing.md).This guide will get you up and running with Udup. It walks you through the package, installation, and configuration processes, and it shows how to use Udup to extract and apply data with mysql.
 
 ## Installation:
 
@@ -50,7 +50,7 @@ udup agent -config udup.conf
 
 ## Configuration
 
-See the [configuration guide](./docs/CONFIGURATION.md) for a rundown of the more advanced
+See the [configuration guide](docs/user-guide/Chapter%2004.%20Configuration.md) for a rundown of the more advanced
 configuration options.
 
 ## Notice

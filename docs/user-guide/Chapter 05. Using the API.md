@@ -1,4 +1,5 @@
-# Udup 接口
+Chapter 5. Udup 接口 
+===================
 
 <a name="overview"></a>
 ## 概览
@@ -44,7 +45,7 @@ Udup 通过 http 实现一个 rest 风格的 json api 来与软件客户端进�
 |---------|---------|---------|---------|
 | Type | 是 | String | 数据复制任务类型（抽取/回放）,可取值包括：<br>Src-源MySQL实例（主实例）<br>Dest-目的MySQL实例（灾备实例） |
 | Driver | 是 | String | 数据复制对象类型,可取值包括：<br>MySQL<br>Oracle |
-| NodeId | 否 | String | 指定任务节点ID，可使用[查询节点列表](/docs/api/) 接口获取，其值为输出参数中字段 id 的值。 |
+| NodeId | 否 | String | 指定任务节点ID，可使用[查询节点列表](#Node) 接口获取，其值为输出参数中字段 id 的值。 |
 | Config | 是 | Object | 配置信息 |
 
 Config 为该任务中数据相关的配置，字段描述为：
