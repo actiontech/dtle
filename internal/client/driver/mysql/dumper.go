@@ -45,7 +45,6 @@ func NewDumper(db *sql.DB, dbName, tableName string, logger *log.Entry) *dumper 
 		entriesChannel: make(chan *dumpEntry),
 		chunkSize:      defaultChunkSize,
 	}
-
 	return dumper
 }
 
@@ -84,7 +83,7 @@ func (j *dumpEntry) incrementCounter() {
 	j.Counter++
 }
 
-func (d *dumper) getDumpEntries(tbSQL string) ([]*dumpEntry, error) {
+func (d *dumper) getDumpEntries() ([]*dumpEntry, error) {
 	total, err := d.getRowsCount()
 	if err != nil {
 		return nil, err
@@ -98,7 +97,6 @@ func (d *dumper) getDumpEntries(tbSQL string) ([]*dumpEntry, error) {
 	for i := 0; i < sliceCount; i++ {
 		offset := uint64(i) * uint64(d.chunkSize)
 		entries[i] = &dumpEntry{
-			TbSQL:     tbSQL,
 			RowsCount: total,
 			Offset:    offset,
 			Counter:   0}
@@ -231,11 +229,7 @@ func (d *dumper) worker() {
 }
 
 func (d *dumper) Dump(w int) error {
-	tbSQL, err := d.createTableSQL()
-	if err != nil {
-		return err
-	}
-	entries, err := d.getDumpEntries(tbSQL)
+	entries, err := d.getDumpEntries()
 	if err != nil {
 		return err
 	}
@@ -310,21 +304,25 @@ func showTables(db *sql.DB, dbName string) (tables []*config.Table, err error) {
 	return tables, rows.Err()
 }
 
-func (d *dumper) createTableSQL() (string, error) {
+func (d *dumper) createTableSQL(dropTableIfExists bool) (string, error) {
 	query := fmt.Sprintf(`SHOW CREATE TABLE %s.%s`,
 		usql.EscapeName(d.TableSchema),
 		usql.EscapeName(d.TableName),
 	)
 	// Get table creation SQL
-	var table_return sql.NullString
-	var table_sql sql.NullString
-	err := d.db.QueryRow(query).Scan(&table_return, &table_sql)
+	createTable := fmt.Sprintf("USE %s", d.TableSchema)
+	var tableReturn sql.NullString
+	var tableSql sql.NullString
+	err := d.db.QueryRow(query).Scan(&tableReturn, &tableSql)
 	if err != nil {
 		return "", err
 	}
-	if table_return.String != d.TableName {
+	if tableReturn.String != d.TableName {
 		return "", fmt.Errorf("Returned table is not the same as requested table")
 	}
+	if dropTableIfExists {
+		createTable = fmt.Sprintf("%s;DROP TABLE IF EXISTS %s", createTable, d.TableSchema)
+	}
 
-	return fmt.Sprintf("USE %s;%s", d.TableSchema, table_sql.String), nil
+	return fmt.Sprintf("%s;%s", createTable, tableSql.String), nil
 }

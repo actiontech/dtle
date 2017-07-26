@@ -114,6 +114,7 @@ const (
 type MySQLDriverConfig struct {
 	//Ref:http://dev.mysql.com/doc/refman/5.7/en/replication-options-slave.html#option_mysqld_replicate-do-table
 	ReplicateDoDb                       []*DataSource
+	DropTableIfExists                   bool
 	ReplChanBufferSize                  int64
 	MsgBytesLimit                       uint64
 	ConcurrentCountTableRows            bool

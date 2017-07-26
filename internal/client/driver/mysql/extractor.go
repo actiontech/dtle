@@ -39,6 +39,7 @@ type Extractor struct {
 	db                         *gosql.DB
 	databases                  []string
 	tables                     []*config.Table
+	dumpers                    []*dumper
 	binlogChannel              chan *binlog.BinlogTx
 	dataChannel                chan *binlog.BinlogEntry
 	parser                     *sql.Parser
@@ -834,20 +835,6 @@ func (e *Extractor) mysqlDump() error {
 	setSystemVariablesStatement := e.setStatementFor()
 
 	// ------
-	// STEP 2
-	// ------
-	// Obtain read lock on all tables. This statement closes all open tables and locks all tables
-	// for all databases with a global read lock, and it prevents ALL updates while we have this lock.
-	// It also ensures that everything we do while we have this lock will be consistent.
-	/*e.logger.Printf("mysql.extractor: Step 2: flush and obtain global read lock (preventing writes to database)")
-	query = "FLUSH TABLES WITH READ LOCK"
-	_, err = sql.ExecNoPrepare(e.db, query)
-	if err != nil {
-		e.logger.Errorf("mysql.extractor: exec %+v, error: %v", query, err)
-		return err
-	}*/
-
-	// ------
 	// STEP 0
 	// ------
 	// Obtain the binlog position and update the SourceInfo in the context. This means that all source records generated
@@ -928,11 +915,7 @@ func (e *Extractor) mysqlDump() error {
 			SystemVariablesStatement: setSystemVariablesStatement,
 			DbSQL: dbSQL,
 		}
-		txMsg, err := Encode(entry)
-		if err != nil {
-			e.onError(err)
-		}
-		if err := e.requestMsg(fmt.Sprintf("%s_full", e.subject), "", txMsg); err != nil {
+		if err := e.encodeDumpEntry(entry); err != nil {
 			e.onError(err)
 		}
 	}
@@ -989,21 +972,28 @@ func (e *Extractor) mysqlDump() error {
 			e.logger.Printf("mysql.extractor: Step 3: - scanning table '%s.%s' (%d of %d tables)", t.TableSchema, t.TableName, counter, len(e.tables))
 
 			d := NewDumper(e.db, t.TableSchema, t.TableName, e.logger)
-			if err := d.Dump(1); err != nil {
+			tbSQL, err := d.createTableSQL(e.mysqlContext.DropTableIfExists)
+			if err != nil {
+				e.onError(err)
+			}
+			entry := &dumpEntry{
+				TbSQL: tbSQL,
+			}
+			if err = e.encodeDumpEntry(entry); err != nil {
 				e.onError(err)
 			}
 
+			if err := d.Dump(1); err != nil {
+				e.onError(err)
+			}
+			e.dumpers = append(e.dumpers, d)
 			// Scan the rows in the table ...
 			for i := 0; i < d.entriesCount; i++ {
 				entry := <-d.resultsChannel
 				if entry.err != nil {
 					e.onError(entry.err)
 				}
-				txMsg, err := Encode(entry)
-				if err != nil {
-					e.onError(err)
-				}
-				if err := e.requestMsg(fmt.Sprintf("%s_full", e.subject), "", txMsg); err != nil {
+				if err = e.encodeDumpEntry(entry); err != nil {
 					e.onError(err)
 				}
 				totalRowCount += int(entry.Counter)
@@ -1028,6 +1018,16 @@ func (e *Extractor) mysqlDump() error {
 	e.logger.Printf("mysql.extractor: Step 4: scanned %d rows in %d tables in %s",
 		totalRowCount, len(e.tables), time.Duration(stop-startScan))
 
+	return nil
+}
+func (e *Extractor) encodeDumpEntry(entry *dumpEntry) error {
+	txMsg, err := Encode(entry)
+	if err != nil {
+		return err
+	}
+	if err := e.requestMsg(fmt.Sprintf("%s_full", e.subject), "", txMsg); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -1179,9 +1179,13 @@ func (e *Extractor) Shutdown() error {
 		}
 	}
 
-	/*if err := sql.CloseDB(e.db); err != nil {
+	for _, d := range e.dumpers {
+		close(d.entriesChannel)
+	}
+
+	if err := sql.CloseDB(e.db); err != nil {
 		return err
-	}*/
+	}
 
 	e.logger.Printf("mysql.extractor: closed streamer connection.")
 	return nil
