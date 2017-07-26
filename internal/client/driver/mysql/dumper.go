@@ -84,7 +84,7 @@ func (j *dumpEntry) incrementCounter() {
 	j.Counter++
 }
 
-func (d *dumper) getDumpEntries(systemVariablesStatement, dbSQL, tbSQL string) ([]*dumpEntry, error) {
+func (d *dumper) getDumpEntries(tbSQL string) ([]*dumpEntry, error) {
 	total, err := d.getRowsCount()
 	if err != nil {
 		return nil, err
@@ -98,8 +98,6 @@ func (d *dumper) getDumpEntries(systemVariablesStatement, dbSQL, tbSQL string) (
 	for i := 0; i < sliceCount; i++ {
 		offset := uint64(i) * uint64(d.chunkSize)
 		entries[i] = &dumpEntry{
-			SystemVariablesStatement: systemVariablesStatement,
-			DbSQL:     dbSQL,
 			TbSQL:     tbSQL,
 			RowsCount: total,
 			Offset:    offset,
@@ -143,7 +141,7 @@ func (d *dumper) getChunkData(entry *dumpEntry) error {
 			return err
 		}
 
-		vals :=make([]string, 0)
+		vals := make([]string, 0)
 		for _, col := range values {
 			// Here we can check if the value is nil (NULL value)
 			value := "NULL"
@@ -175,7 +173,7 @@ func (d *dumper) getChunkData(entry *dumpEntry) error {
 	return nil
 }
 
-func (e *dumpEntry) escape(colValue string) string {
+/*func (e *dumpEntry) escape(colValue string) string {
 	e.colBuffer = *new(bytes.Buffer)
 	if !strings.ContainsAny(colValue, stringOfBackslashAndQuoteChars) {
 		return colValue
@@ -189,9 +187,9 @@ func (e *dumpEntry) escape(colValue string) string {
 		}
 		return e.colBuffer.String()
 	}
-}
+}*/
 
-/*func (e *dumpEntry) escape(colValue string) string {
+func (e *dumpEntry) escape(colValue string) string {
 	var esc string
 	e.colBuffer = *new(bytes.Buffer)
 	last := 0
@@ -220,7 +218,7 @@ func (e *dumpEntry) escape(colValue string) string {
 	}
 	e.colBuffer.WriteString(colValue[last:])
 	return e.colBuffer.String()
-}*/
+}
 
 func (d *dumper) worker() {
 	for e := range d.entriesChannel {
@@ -232,13 +230,12 @@ func (d *dumper) worker() {
 	}
 }
 
-func (d *dumper) Dump(systemVariablesStatement string, w int) error {
-	dbSQL := fmt.Sprintf("CREATE DATABASE %s", d.TableSchema)
+func (d *dumper) Dump(w int) error {
 	tbSQL, err := d.createTableSQL()
 	if err != nil {
 		return err
 	}
-	entries, err := d.getDumpEntries(systemVariablesStatement, dbSQL, tbSQL)
+	entries, err := d.getDumpEntries(tbSQL)
 	if err != nil {
 		return err
 	}

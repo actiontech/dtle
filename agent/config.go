@@ -540,7 +540,7 @@ func (a *ServerConfig) Merge(b *ServerConfig) *ServerConfig {
 
 	if b.BootstrapExpect > 0 {
 		result.BootstrapExpect = b.BootstrapExpect
-	}else {
+	} else {
 		result.BootstrapExpect = len(result.StartJoin)
 	}
 
