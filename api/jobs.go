@@ -199,6 +199,9 @@ func (j *Job) Canonicalize() {
 	if j.Region == nil {
 		j.Region = internal.StringToPtr("global")
 	}
+	if len(j.Datacenters) == 0 {
+		j.Datacenters = []string{"dc1"}
+	}
 	if j.Type == nil {
 		j.Type = internal.StringToPtr("synchronous")
 	}

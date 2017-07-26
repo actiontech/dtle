@@ -22,6 +22,9 @@ func (s *HTTPServer) JobsRequest(resp http.ResponseWriter, req *http.Request) (i
 
 func (s *HTTPServer) jobListRequest(resp http.ResponseWriter, req *http.Request) (interface{}, error) {
 	args := models.JobListRequest{}
+	if args.Region == "" {
+		args.Region = s.agent.config.Region
+	}
 	if s.parse(resp, req, &args.Region, &args.QueryOptions) {
 		return nil, nil
 	}
@@ -69,6 +72,9 @@ func (s *HTTPServer) jobAllocations(resp http.ResponseWriter, req *http.Request,
 		JobID:     jobName,
 		AllAllocs: allAllocs,
 	}
+	if args.Region == "" {
+		args.Region = s.agent.config.Region
+	}
 	if s.parse(resp, req, &args.Region, &args.QueryOptions) {
 		return nil, nil
 	}
@@ -92,6 +98,9 @@ func (s *HTTPServer) jobEvaluations(resp http.ResponseWriter, req *http.Request,
 	}
 	args := models.JobSpecificRequest{
 		JobID: jobName,
+	}
+	if args.Region == "" {
+		args.Region = s.agent.config.Region
 	}
 	if s.parse(resp, req, &args.Region, &args.QueryOptions) {
 		return nil, nil
@@ -128,6 +137,9 @@ func (s *HTTPServer) jobQuery(resp http.ResponseWriter, req *http.Request,
 	args := models.JobSpecificRequest{
 		JobID: jobId,
 	}
+	if args.Region == "" {
+		args.Region = s.agent.config.Region
+	}
 	if s.parse(resp, req, &args.Region, &args.QueryOptions) {
 		return nil, nil
 	}
@@ -156,6 +168,9 @@ func (s *HTTPServer) jobUpdate(resp http.ResponseWriter, req *http.Request,
 
 	if args.Name == nil {
 		return nil, CodedError(400, "Job Name hasn't been provided")
+	}
+	if args.Region == nil {
+		args.Region = &s.agent.config.Region
 	}
 	s.parseRegion(req, args.Region)
 

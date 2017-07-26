@@ -130,6 +130,7 @@ func (d *dumper) getChunkData(entry *dumpEntry) error {
 	}
 
 	values := make([]*sql.RawBytes, len(columns))
+
 	scanArgs := make([]interface{}, len(values))
 	for i := range values {
 		scanArgs[i] = &values[i]
@@ -142,19 +143,20 @@ func (d *dumper) getChunkData(entry *dumpEntry) error {
 			return err
 		}
 
-		vals := make([]string, 0)
+		vals :=make([]string, 0)
 		for _, col := range values {
 			// Here we can check if the value is nil (NULL value)
-			val := "NULL"
+			value := "NULL"
 			if col != nil {
-				val = fmt.Sprintf("'%s'", entry.escape(string(*col)))
+				value = fmt.Sprintf("'%s'", entry.escape(string(*col)))
 			}
-			vals = append(vals, val)
+			vals = append(vals, value)
 		}
 		data = append(data, fmt.Sprintf("( %s )", strings.Join(vals, ", ")))
 		entry.incrementCounter()
 	}
-	query = fmt.Sprintf(`
+	entry.Values = fmt.Sprintf(`replace into %s.%s values %s`, d.TableSchema, d.TableName, strings.Join(data, ","))
+	/*query = fmt.Sprintf(`
 			insert into %s.%s
 				(%s)
 			values
@@ -169,25 +171,31 @@ func (d *dumper) getChunkData(entry *dumpEntry) error {
 		columns[0],
 		columns[0],
 	)
-	entry.Values = query
+	entry.Values = query*/
 	return nil
 }
 
 func (e *dumpEntry) escape(colValue string) string {
+	e.colBuffer = *new(bytes.Buffer)
+	if !strings.ContainsAny(colValue, stringOfBackslashAndQuoteChars) {
+		return colValue
+	} else {
+		for _, char_c := range colValue {
+			c := fmt.Sprintf("%c", char_c)
+			if strings.ContainsAny(c, stringOfBackslashAndQuoteChars) {
+				e.colBuffer.WriteString("\\")
+			}
+			e.colBuffer.WriteString(c)
+		}
+		return e.colBuffer.String()
+	}
+}
+
+/*func (e *dumpEntry) escape(colValue string) string {
 	var esc string
 	e.colBuffer = *new(bytes.Buffer)
 	last := 0
-	for i, char_c := range colValue {
-		if strings.Contains(stringOfBackslashAndQuoteChars, fmt.Sprintf("%c", char_c)) {
-			esc = `\\`
-			e.colBuffer.WriteString(esc)
-			e.colBuffer.WriteString(fmt.Sprintf("%c", char_c))
-		} else {
-			e.colBuffer.WriteString(fmt.Sprintf("%c", char_c))
-		}
-		last = i + 1
-	}
-	/*for i, c := range colValue {
+	for i, c := range colValue {
 		switch c {
 		case 0:
 			esc = `\0`
@@ -209,10 +217,10 @@ func (e *dumpEntry) escape(colValue string) string {
 		e.colBuffer.WriteString(colValue[last:i])
 		e.colBuffer.WriteString(esc)
 		last = i + 1
-	}*/
+	}
 	e.colBuffer.WriteString(colValue[last:])
 	return e.colBuffer.String()
-}
+}*/
 
 func (d *dumper) worker() {
 	for e := range d.entriesChannel {
