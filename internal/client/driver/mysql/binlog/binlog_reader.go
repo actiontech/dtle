@@ -302,11 +302,10 @@ func (b *BinlogReader) DataStreamEvents(canStopStreaming func() bool, entriesCha
 }
 
 func (b *BinlogReader) BinlogStreamEvents(txChannel chan<- *BinlogTx) error {
-	//OUTER:
+OUTER:
 	for {
 		if atomic.LoadInt64(&b.MysqlContext.ShutdownFlag) > 0 {
-			//break OUTER
-			return nil
+			break OUTER
 		}
 		ev, err := b.binlogStreamer.GetEvent(context.Background())
 		if err != nil {

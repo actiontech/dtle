@@ -55,6 +55,7 @@ type Extractor struct {
 	sendBySizeFullCounter int
 
 	natsConn *gonats.Conn
+	quit     chan bool
 	waitCh   chan *models.WaitResult
 }
 
@@ -75,6 +76,7 @@ func NewExtractor(subject, tp string, cfg *config.MySQLDriverConfig, logger *log
 		rowCopyComplete:            make(chan bool),
 		allEventsUpToLockProcessed: make(chan string),
 		waitCh: make(chan *models.WaitResult, 1),
+		quit:   make(chan bool),
 	}
 	return extractor
 }
@@ -766,6 +768,10 @@ func (e *Extractor) StreamEvents(approveHeterogeneous bool, canStopStreaming fun
 							txArray = []*binlog.BinlogTx{}
 						}
 					}
+				case <-e.quit:
+					{
+						return
+					}
 				}
 			}
 		}()
@@ -932,6 +938,7 @@ func (e *Extractor) mysqlDump() error {
 	for _, tb := range e.tables {
 		pool.Add(1)
 		go func(t *config.Table) {
+			counter++
 			// ------
 			// Set the transaction isolation level to REPEATABLE READ. This is the default, but the default can be changed
 			// which is why we explicitly set it here.
@@ -968,7 +975,6 @@ func (e *Extractor) mysqlDump() error {
 			}
 			// Obtain a record maker for this table, which knows about the schema ...
 			// Choose how we create statements based on the # of rows ...
-			counter++
 			e.logger.Printf("mysql.extractor: Step 3: - scanning table '%s.%s' (%d of %d tables)", t.TableSchema, t.TableName, counter, len(e.tables))
 
 			d := NewDumper(e.db, t.TableSchema, t.TableName, e.logger)
@@ -1179,8 +1185,10 @@ func (e *Extractor) Shutdown() error {
 		}
 	}
 
+	e.quit <- true
+	close(e.binlogChannel)
 	for _, d := range e.dumpers {
-		close(d.entriesChannel)
+		d.Close()
 	}
 
 	if err := sql.CloseDB(e.db); err != nil {

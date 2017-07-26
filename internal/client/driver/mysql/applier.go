@@ -57,6 +57,7 @@ type Applier struct {
 	applyBinlogGroupTxQueue chan []*binlog.BinlogTx
 
 	natsConn *gonats.Conn
+	quit     chan bool
 	waitCh   chan *models.WaitResult
 }
 
@@ -78,6 +79,7 @@ func NewApplier(subject, tp string, cfg *config.MySQLDriverConfig, logger *log.L
 		applyBinlogTxQueue:         make(chan *binlog.BinlogTx, cfg.ReplChanBufferSize),
 		applyBinlogGroupTxQueue:    make(chan []*binlog.BinlogTx, cfg.ReplChanBufferSize),
 		waitCh:                     make(chan *models.WaitResult, 1),
+		quit:                       make(chan bool),
 	}
 	return a
 }
@@ -743,6 +745,8 @@ func (a *Applier) initiateStreaming() error {
 					a.applyBinlogGroupTxQueue <- groupTx
 					groupTx = nil
 				}
+			case <-a.quit:
+				return
 			}
 		}
 	}()
@@ -756,7 +760,7 @@ func (a *Applier) initDBConnections() (err error) {
 		return err
 	}
 	singletonApplierUri := fmt.Sprintf("%s&timeout=0", applierUri)
-	if a.singletonDB, _, err = sql.GetDB(singletonApplierUri); err != nil {
+	if a.singletonDB, err = sql.CreateDB(singletonApplierUri); err != nil {
 		return err
 	}
 	a.singletonDB.SetMaxOpenConns(1)
@@ -1571,12 +1575,16 @@ func (a *Applier) Shutdown() error {
 		a.natsConn.Close()
 	}
 
-	/*if err := sql.CloseDB(a.singletonDB); err != nil {
+	a.quit <- true
+	close(a.applyBinlogTxQueue)
+	close(a.applyBinlogGroupTxQueue)
+
+	if err := sql.CloseDB(a.singletonDB); err != nil {
 		return err
 	}
 	if err := sql.CloseDBs(a.dbs...); err != nil {
 		return err
-	}*/
+	}
 
 	a.logger.Printf("mysql.applier: closed applier connection.")
 	return nil
