@@ -18,6 +18,8 @@ import (
 const (
 	DefaultAddr       = "0.0.0.0"
 	DefaultMaxPayload = 100 * 1024 * 1024 // 100M
+	// How many bytes are allowed.
+	DefaultMaxBytes = 1000000 * 1024
 )
 
 // Config is the configuration for the Udup agent.
@@ -71,6 +73,9 @@ type Config struct {
 	// MAX_PAYLOAD is the maximum allowed payload size. Should be using
 	// something different if > 1MB payloads are needed.
 	MaxPayload int `mapstructure:"max_payload"`
+
+	// How many bytes are allowed.
+	MaxBytes int64 `json:"max_bytes"`
 
 	// LeaveOnInt is used to gracefully leave on the interrupt signal
 	LeaveOnInt bool `mapstructure:"leave_on_interrupt"`
@@ -240,6 +245,7 @@ func DefaultConfig() *Config {
 			collectionInterval: 1 * time.Second,
 		},
 		MaxPayload: DefaultMaxPayload,
+		MaxBytes:   DefaultMaxBytes,
 	}
 }
 
@@ -305,6 +311,10 @@ func (c *Config) Merge(b *Config) *Config {
 
 	if b.MaxPayload != 0 {
 		result.MaxPayload = b.MaxPayload
+	}
+
+	if b.MaxBytes != 0 {
+		result.MaxBytes = b.MaxBytes
 	}
 
 	// Apply the metric config

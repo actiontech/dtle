@@ -71,6 +71,9 @@ type ClientConfig struct {
 
 	MaxPayload int
 
+	// How many bytes are allowed.
+	MaxBytes int64
+
 	// StatsCollectionInterval is the interval at which the Udup client
 	// collects resource usage stats
 	StatsCollectionInterval time.Duration

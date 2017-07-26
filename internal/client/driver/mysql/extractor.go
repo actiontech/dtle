@@ -513,6 +513,7 @@ func (e *Extractor) initDBConnections() (err error) {
 	if e.db, err = sql.CreateDB(eventsStreamerUri); err != nil {
 		return err
 	}
+	e.db.SetMaxOpenConns(1)
 	if err := e.validateConnection(); err != nil {
 		return err
 	}
