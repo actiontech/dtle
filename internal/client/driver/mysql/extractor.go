@@ -50,6 +50,7 @@ type Extractor struct {
 	rowCopyComplete            chan bool
 	allEventsUpToLockProcessed chan string
 	rowCopyCompleteFlag        int64
+	totalRowCount              int
 
 	sendByTimeoutCounter  int
 	sendBySizeFullCounter int
@@ -183,6 +184,10 @@ func (e *Extractor) Run() {
 	if e.mysqlContext.Gtid == "" {
 		e.mysqlContext.RowCopyStartTime = time.Now()
 		if err := e.mysqlDump(); err != nil {
+			e.onError(err)
+			return
+		}
+		if err := e.requestMsg(fmt.Sprintf("%s_full_complete", e.subject), "", []byte(string(e.totalRowCount))); err != nil {
 			e.onError(err)
 			return
 		}
@@ -835,6 +840,49 @@ func (e *Extractor) requestMsg(subject, gtid string, txMsg []byte) (err error) {
 
 //Perform the snapshot using the same logic as the "mysqldump" utility.
 func (e *Extractor) mysqlDump() error {
+	defer func() {
+		e.logger.Printf("mysql.extractor: Step 6: committing transaction.")
+		query := "COMMIT"
+		_, err := sql.ExecNoPrepare(e.db, query)
+		if err != nil {
+			e.logger.Errorf("mysql.extractor: exec %+v, error: %v", query, err)
+		}
+	}()
+	// ------
+	// Set the transaction isolation level to REPEATABLE READ. This is the default, but the default can be changed
+	// which is why we explicitly set it here.
+	//
+	// With REPEATABLE READ, all SELECT queries within the scope of a transaction (which we don't yet have) will read
+	// from the same MVCC snapshot. Thus each plain (non-locking) SELECT statements within the same transaction are
+	// consistent also with respect to each other.
+	//
+	// See: https://dev.mysql.com/doc/refman/5.7/en/set-transaction.html
+	// See: https://dev.mysql.com/doc/refman/5.7/en/innodb-transaction-isolation-levels.html
+	// See: https://dev.mysql.com/doc/refman/5.7/en/innodb-consistent-read.html
+	e.logger.Printf("mysql.extractor: Step 0: disabling autocommit and enabling repeatable read transactions.")
+	query := "SET AUTOCOMMIT=0"
+	_, err := sql.ExecNoPrepare(e.db, query)
+	if err != nil {
+		e.logger.Errorf("mysql.extractor: exec %+v, error: %v", query, err)
+		e.onError(err)
+	}
+	query = "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ"
+	_, err = sql.ExecNoPrepare(e.db, query)
+	if err != nil {
+		e.logger.Errorf("mysql.extractor: exec %+v, error: %v", query, err)
+		e.onError(err)
+	}
+
+	// First, start a transaction and request that a consistent MVCC snapshot is obtained immediately.
+	// See http://dev.mysql.com/doc/refman/5.7/en/commit.html
+	e.logger.Printf("mysql.extractor: Step 1: start transaction with consistent snapshot.")
+	query = "START TRANSACTION WITH CONSISTENT SNAPSHOT"
+	_, err = sql.ExecNoPrepare(e.db, query)
+	if err != nil {
+		e.logger.Errorf("mysql.extractor: exec %+v, error: %v", query, err)
+		e.onError(err)
+	}
+
 	// Generate the DDL statements that set the charset-related system variables ...
 	if err := e.readMySqlCharsetSystemVariables(); err != nil {
 		return err
@@ -846,7 +894,7 @@ func (e *Extractor) mysqlDump() error {
 	// ------
 	// Obtain the binlog position and update the SourceInfo in the context. This means that all source records generated
 	// as part of the snapshot will contain the binlog position of the snapshot.
-	e.logger.Printf("mysql.extractor: Step 0: read binlog coordinates of MySQL master: %+v", *e.initialBinlogCoordinates)
+	e.logger.Printf("mysql.extractor: Step 2: read binlog coordinates of MySQL master: %+v", *e.initialBinlogCoordinates)
 	if err := e.readCurrentBinlogCoordinates(); err != nil {
 		return err
 	}
@@ -857,7 +905,7 @@ func (e *Extractor) mysqlDump() error {
 	// Get the list of table IDs for each database. We can't use a prepared statement with MySQL, so we have to
 	// build the SQL statement each time. Although in other cases this might lead to SQL injection, in our case
 	// we are reading the database names from the database and not taking them from the user ...
-	e.logger.Printf("mysql.extractor: Step 1: read list of available tables in each database")
+	e.logger.Printf("mysql.extractor: Step 3: read list of available tables in each database")
 
 	// Creates a MYSQL Dump based on the options supplied through the dumper.
 	if len(e.mysqlContext.ReplicateDoDb) > 0 {
@@ -866,7 +914,7 @@ func (e *Extractor) mysqlDump() error {
 		// ------
 		// Transform the current schema so that it reflects the *current* state of the MySQL server's contents.
 		// First, get the DROP TABLE and CREATE TABLE statement (with keys and constraint definitions) for our tables ...
-		e.logger.Printf("mysql.extractor: Step 2: generating DROP and CREATE statements to reflect current database schemas")
+		e.logger.Printf("mysql.extractor: Step 4: generating DROP and CREATE statements to reflect current database schemas")
 
 		for _, doDb := range e.mysqlContext.ReplicateDoDb {
 			if doDb.TableSchema == "" {
@@ -900,7 +948,7 @@ func (e *Extractor) mysqlDump() error {
 		// ------
 		// Transform the current schema so that it reflects the *current* state of the MySQL server's contents.
 		// First, get the DROP TABLE and CREATE TABLE statement (with keys and constraint definitions) for our tables ...
-		e.logger.Printf("mysql.extractor: Step 2: generating DROP and CREATE statements to reflect current database schemas: %v", e.databases)
+		e.logger.Printf("mysql.extractor: Step 4: generating DROP and CREATE statements to reflect current database schemas: %v", e.databases)
 		for _, dbName := range e.databases {
 			tbs, err := showTables(e.db, dbName)
 			if err != nil {
@@ -931,52 +979,18 @@ func (e *Extractor) mysqlDump() error {
 	// STEP 3
 	// ------
 	// Dump all of the tables and generate source records ...
-	e.logger.Printf("mysql.extractor: Step 3: scanning contents of %d tables", len(e.tables))
+	e.logger.Printf("mysql.extractor: Step 5: scanning contents of %d tables", len(e.tables))
 	startScan := currentTimeMillis()
-	totalRowCount := 0
 	counter := 0
 	pool := models.NewPool(10)
 	for _, tb := range e.tables {
 		pool.Add(1)
 		go func(t *config.Table) {
 			counter++
-			// ------
-			// Set the transaction isolation level to REPEATABLE READ. This is the default, but the default can be changed
-			// which is why we explicitly set it here.
-			//
-			// With REPEATABLE READ, all SELECT queries within the scope of a transaction (which we don't yet have) will read
-			// from the same MVCC snapshot. Thus each plain (non-locking) SELECT statements within the same transaction are
-			// consistent also with respect to each other.
-			//
-			// See: https://dev.mysql.com/doc/refman/5.7/en/set-transaction.html
-			// See: https://dev.mysql.com/doc/refman/5.7/en/innodb-transaction-isolation-levels.html
-			// See: https://dev.mysql.com/doc/refman/5.7/en/innodb-consistent-read.html
-			e.logger.Printf("mysql.extractor: Step 3: - disabling autocommit and enabling repeatable read transactions.table '%s.%s' (%d of %d tables)", t.TableSchema, t.TableName, counter, len(e.tables))
-			query := "SET AUTOCOMMIT=0"
-			_, err := sql.ExecNoPrepare(e.db, query)
-			if err != nil {
-				e.logger.Errorf("mysql.extractor: exec %+v, error: %v", query, err)
-				e.onError(err)
-			}
-			query = "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ"
-			_, err = sql.ExecNoPrepare(e.db, query)
-			if err != nil {
-				e.logger.Errorf("mysql.extractor: exec %+v, error: %v", query, err)
-				e.onError(err)
-			}
 
-			// First, start a transaction and request that a consistent MVCC snapshot is obtained immediately.
-			// See http://dev.mysql.com/doc/refman/5.7/en/commit.html
-			e.logger.Printf("mysql.extractor: Step 3: - start transaction with consistent snapshot.table '%s.%s' (%d of %d tables)", t.TableSchema, t.TableName, counter, len(e.tables))
-			query = "START TRANSACTION WITH CONSISTENT SNAPSHOT"
-			_, err = sql.ExecNoPrepare(e.db, query)
-			if err != nil {
-				e.logger.Errorf("mysql.extractor: exec %+v, error: %v", query, err)
-				e.onError(err)
-			}
 			// Obtain a record maker for this table, which knows about the schema ...
 			// Choose how we create statements based on the # of rows ...
-			e.logger.Printf("mysql.extractor: Step 3: - scanning table '%s.%s' (%d of %d tables)", t.TableSchema, t.TableName, counter, len(e.tables))
+			e.logger.Printf("mysql.extractor: Step 5: - scanning table '%s.%s' (%d of %d tables)", t.TableSchema, t.TableName, counter, len(e.tables))
 
 			d := NewDumper(e.db, t.TableSchema, t.TableName, e.logger)
 			tbSQL, err := d.createTableSQL(e.mysqlContext.DropTableIfExists)
@@ -1003,15 +1017,9 @@ func (e *Extractor) mysqlDump() error {
 				if err = e.encodeDumpEntry(entry); err != nil {
 					e.onError(err)
 				}
-				totalRowCount += int(entry.Counter)
+				e.totalRowCount += int(entry.Counter)
 			}
 
-			e.logger.Printf("mysql.extractor: Step 3: - committing transaction.table '%s.%s' (%d of %d tables)", t.TableSchema, t.TableName, counter, len(e.tables))
-			query = "COMMIT"
-			_, err = sql.ExecNoPrepare(e.db, query)
-			if err != nil {
-				e.logger.Errorf("mysql.extractor: exec %+v, error: %v", query, err)
-			}
 			close(d.resultsChannel)
 			pool.Done()
 		}(tb)
@@ -1022,8 +1030,8 @@ func (e *Extractor) mysqlDump() error {
 	// We've copied all of the tables, but our buffer holds onto the very last record.
 	// First mark the snapshot as complete and then apply the updated offset to the buffered record ...
 	stop := currentTimeMillis()
-	e.logger.Printf("mysql.extractor: Step 4: scanned %d rows in %d tables in %s",
-		totalRowCount, len(e.tables), time.Duration(stop-startScan))
+	e.logger.Printf("mysql.extractor: Step 5: scanned %d rows in %d tables in %s",
+		e.totalRowCount, len(e.tables), time.Duration(stop-startScan))
 
 	return nil
 }

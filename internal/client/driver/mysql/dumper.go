@@ -90,6 +90,9 @@ func (d *dumper) getDumpEntries() ([]*dumpEntry, error) {
 	if err != nil {
 		return nil, err
 	}
+	if total == 0 {
+		return []*dumpEntry{}, nil
+	}
 
 	sliceCount := int(math.Ceil(float64(total) / float64(d.chunkSize)))
 	if sliceCount == 0 {
@@ -101,16 +104,13 @@ func (d *dumper) getDumpEntries() ([]*dumpEntry, error) {
 		entries[i] = &dumpEntry{
 			RowsCount: total,
 			Offset:    offset,
-			Counter:   0}
+		}
 	}
 	return entries, nil
 }
 
 // dumps a specific chunk, reading chunk info from the channel
 func (d *dumper) getChunkData(entry *dumpEntry) error {
-	if entry.RowsCount == 0 {
-		return nil
-	}
 	query := fmt.Sprintf(`SELECT * FROM %s.%s LIMIT %d OFFSET %d`,
 		usql.EscapeName(d.TableSchema),
 		usql.EscapeName(d.TableName),
@@ -224,13 +224,16 @@ func (d *dumper) worker() {
 	for {
 		select {
 		case e := <-d.entriesChannel:
+			if e == nil {
+				return
+			}
 			err := d.getChunkData(e)
 			if err != nil {
 				e.err = err
 			}
 			d.resultsChannel <- e
 		case <-d.quit:
-			return
+			break
 		}
 	}
 }
@@ -239,6 +242,10 @@ func (d *dumper) Dump(w int) error {
 	entries, err := d.getDumpEntries()
 	if err != nil {
 		return err
+	}
+
+	if len(entries) == 0 {
+		return nil
 	}
 
 	workersCount := int(math.Min(float64(w), float64(len(entries))))

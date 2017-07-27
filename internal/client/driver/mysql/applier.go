@@ -123,6 +123,18 @@ func (a *Applier) retryOperation(operation func() error, notFatalHint ...bool) (
 // consumeRowCopyComplete blocks on the rowCopyComplete channel once, and then
 // consumes and drops any further incoming events that may be left hanging.
 func (a *Applier) consumeRowCopyComplete() {
+	_, err := a.natsConn.Subscribe(fmt.Sprintf("%s_full_complete", a.subject), func(m *gonats.Msg) {
+		if string(m.Data) == string(a.applyRowCount) {
+			a.rowCopyComplete <- true
+		}
+		if err := a.natsConn.Publish(m.Reply, nil); err != nil {
+			a.onError(err)
+		}
+	})
+	if err != nil {
+		a.onError(err)
+	}
+
 	<-a.rowCopyComplete
 	atomic.StoreInt64(&a.rowCopyCompleteFlag, 1)
 	a.mysqlContext.MarkRowCopyEndTime()
@@ -616,10 +628,6 @@ OUTER:
 				}
 				a.applyRowCount += copyRows.Counter
 
-				if a.totalRowCount == a.applyRowCount {
-					a.rowCopyComplete <- true
-				}
-
 				/*a.logger.Printf("mysql.applier: operating until row copy is complete")
 				a.consumeRowCopyComplete()
 				a.logger.Printf("mysql.applier: row copy complete")
@@ -677,7 +685,6 @@ func (a *Applier) initiateStreaming() error {
 			if err := a.natsConn.Publish(m.Reply, nil); err != nil {
 				a.onError(err)
 			}
-			a.totalRowCount += dumpData.Counter
 		})
 		if err != nil {
 			return err
