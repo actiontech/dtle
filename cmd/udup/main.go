@@ -66,7 +66,7 @@ func realMain() int {
 				Meta: meta,
 			}, nil
 		},
-		"config": func() (cli.Command, error) {
+		"client-config": func() (cli.Command, error) {
 			return &command.ConfigCommand{
 				Meta: meta,
 			}, nil

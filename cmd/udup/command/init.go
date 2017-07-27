@@ -69,7 +69,7 @@ var defaultJob = strings.TrimSpace(`
 
 # The "job" stanza is the top-most configuration option in the job
 # specification. A job is a declarative specification of tasks that Udup
-# should run. Jobs have a globally unique name, one or many task groups, which
+# should run. Jobs have a globally unique name, one or many tasks, which
 # are themselves collections of one or many tasks.
 #
 job "example" {
@@ -78,8 +78,8 @@ job "example" {
   # region = "global"
 
   # The "datacenters" parameter specifies the list of datacenters which should
-  # be considered when placing this task. This must be provided.
-  datacenters = ["dc1"]
+  # be considered when placing this task.
+  # datacenters = ["dc1"]
 
   # The "type" parameter controls the type of job, which impacts the scheduler's
   # decision on placement. This configuration is optional and defaults to
@@ -88,19 +88,11 @@ job "example" {
   #
   type = "synchronous"
 
-  # The "constraint" stanza defines additional constraints for placing this job,
-  # in addition to any resource or driver constraints. This stanza may be placed
-  # at the "job",or "task" level, and supports variable interpolation.
-  #
-  # constraint {
-  #   attribute = ""
-  #   value     = ""
-  # }
-
-  # The "task" stanza defines a task that should be co-located on
+  # The "tasks" stanza defines a task that should be co-located on
   # the same Udup client.
   #
-  task "src" {
+  task "Src" {
+    node_id = "1eda45f8-df9b-1541-9009-83952e7b672a"
     # The "driver" parameter specifies the task driver that should be used to
     # run the task.
     driver = "MySQL"
@@ -121,7 +113,38 @@ job "example" {
           table = ""
         }
       ]
-      dsn {
+      conn {
+        host = "127.0.0.1"
+        port = 3306
+        user = "repluser"
+        password = "replpwd"
+      }
+    }
+  }
+
+  task "Dest" {
+    node_id = "1eda45f8-df9b-1541-9009-83952e7b672a"
+    # The "driver" parameter specifies the task driver that should be used to
+    # run the task.
+    driver = "MySQL"
+
+    # The "config" stanza specifies the driver configuration, which is passed
+    # directly to the driver to start the task. The details of configurations
+    # are specific to each driver, so please see specific driver
+    # documentation for more information.
+    config {
+      nats_addr = "127.0.0.1:8193"
+      replicate_do_db = [
+        {
+          schema = ""
+          table = ""
+        },
+        {
+          schema = ""
+          table = ""
+        }
+      ]
+      conn {
         host = "127.0.0.1"
         port = 3306
         user = "repluser"

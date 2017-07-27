@@ -13,7 +13,7 @@ Appendix A. Udup Command Line
 
 **init**：初始化默认任务信息
 
-**-config**：指定 Udup 的配置
+**client-config**：查看或修改客户端配置信息
 
 **members**：查看所有server节点状态
 

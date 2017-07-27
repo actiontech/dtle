@@ -39,7 +39,7 @@ func (s *Server) serfEventHandler() {
 				s.localMemberEvent(e.(serf.MemberEvent))
 			case serf.EventMemberUpdate, serf.EventUser, serf.EventQuery: // Ignore
 			default:
-				s.logger.Warnf("server: unhandled serf event: %#v", e)
+				s.logger.Warnf("server: Unhandled serf event: %#v", e)
 			}
 
 		case <-s.shutdownCh:
@@ -53,10 +53,10 @@ func (s *Server) nodeJoin(me serf.MemberEvent) {
 	for _, m := range me.Members {
 		ok, parts := isUdupServer(m)
 		if !ok {
-			s.logger.Warnf("server: non-server in gossip pool: %s", m.Name)
+			s.logger.Warnf("server: Non-server in gossip pool: %s", m.Name)
 			continue
 		}
-		s.logger.Printf("server: adding server %s", parts)
+		s.logger.Printf("server: Adding server %s", parts)
 
 		// Check if this server is known
 		found := false
@@ -103,7 +103,7 @@ func (s *Server) maybeBootstrap() {
 		panic("neither raftInmem or raftStore is initialized")
 	}
 	if err != nil {
-		s.logger.Errorf("server: failed to read last raft index: %v", err)
+		s.logger.Errorf("server: Failed to read last raft index: %v", err)
 		return
 	}
 
@@ -126,11 +126,11 @@ func (s *Server) maybeBootstrap() {
 			continue
 		}
 		if p.Expect != 0 && p.Expect != int(atomic.LoadInt32(&s.config.BootstrapExpect)) {
-			s.logger.Errorf("server: peer %v has a conflicting expect value. All nodes should expect the same number.", member)
+			s.logger.Errorf("server: Peer %v has a conflicting expect value. All nodes should expect the same number.", member)
 			return
 		}
 		if p.Bootstrap {
-			s.logger.Errorf("server: peer %v has bootstrap mode. Expect disabled.", member)
+			s.logger.Errorf("server: Peer %v has bootstrap mode. Expect disabled.", member)
 			return
 		}
 		servers = append(servers, *p)
@@ -212,7 +212,7 @@ func (s *Server) nodeFailed(me serf.MemberEvent) {
 		if !ok {
 			continue
 		}
-		s.logger.Printf("server: removing server %s", parts)
+		s.logger.Printf("server: Removing server %s", parts)
 
 		// Remove the server if known
 		s.peerLock.Lock()

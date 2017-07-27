@@ -255,6 +255,9 @@ func ApiJobToStructJob(job *api.Job) *models.Job {
 
 	j.Tasks = make([]*models.Task, len(job.Tasks))
 	for i, task := range job.Tasks {
+		if task.Type == models.TaskTypeDest {
+			task.Leader = true
+		}
 		t := &models.Task{}
 		ApiTaskToStructsTask(task, t)
 		j.Tasks[i] = t

@@ -13,7 +13,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/go-sql-driver/mysql"
 	"github.com/golang/snappy"
 	gonats "github.com/nats-io/go-nats"
 	gomysql "github.com/siddontang/go-mysql/mysql"
@@ -28,7 +27,6 @@ import (
 )
 
 const (
-	applyEventsQueueBuffer        = 100
 	applyDataQueueBuffer          = 600
 	applyCopyRowsQueueQueueBuffer = 100
 )
@@ -189,9 +187,9 @@ func (a *Applier) Run() {
 
 	go a.executeWriteFuncs()
 
-	a.logger.Printf("mysql.applier: operating until row copy is complete")
+	a.logger.Printf("mysql.applier: Operating until row copy is complete")
 	a.consumeRowCopyComplete()
-	a.logger.Printf("mysql.applier: row copy complete")
+	a.logger.Printf("mysql.applier: Row copy complete")
 
 	if a.tp == models.JobTypeMig {
 		for {
@@ -786,7 +784,7 @@ func (a *Applier) initDBConnections() (err error) {
 	/*if err := a.readTableColumns(); err != nil {
 		return err
 	}*/
-	a.logger.Printf("mysql.applier: initiated on %s:%d, version %+v", a.mysqlContext.ConnectionConfig.Host, a.mysqlContext.ConnectionConfig.Port, a.mysqlContext.MySQLVersion)
+	a.logger.Printf("mysql.applier: Initiated on %s:%d, version %+v", a.mysqlContext.ConnectionConfig.Host, a.mysqlContext.ConnectionConfig.Port, a.mysqlContext.MySQLVersion)
 	return nil
 }
 
@@ -809,7 +807,7 @@ func (a *Applier) validateConnection(db *gosql.DB) error {
 	if strings.HasPrefix(a.mysqlContext.MySQLVersion, "5.6") {
 		a.mysqlContext.ParallelWorkers = 1
 	}
-	a.logger.Debugf("mysql.applier: connection validated on %s:%d", a.mysqlContext.ConnectionConfig.Host, a.mysqlContext.ConnectionConfig.Port)
+	a.logger.Debugf("mysql.applier: Connection validated on %s:%d", a.mysqlContext.ConnectionConfig.Host, a.mysqlContext.ConnectionConfig.Port)
 	return nil
 }
 
@@ -822,7 +820,7 @@ func (a *Applier) validateTableForeignKeys() error {
 	}
 
 	if !foreignKeyChecks {
-		a.logger.Printf("mysql.inspector: foreign_key_checks validated on %s:%d", a.mysqlContext.ConnectionConfig.Host, a.mysqlContext.ConnectionConfig.Port)
+		a.logger.Printf("mysql.applier: foreign_key_checks validated on %s:%d", a.mysqlContext.ConnectionConfig.Host, a.mysqlContext.ConnectionConfig.Port)
 		return nil
 	}
 
@@ -837,18 +835,18 @@ func (a *Applier) validateAndReadTimeZone() error {
 		return err
 	}
 
-	a.logger.Printf("mysql.applier: will use time_zone='%s' on applier", a.mysqlContext.TimeZone)
+	a.logger.Printf("mysql.applier: Will use time_zone='%s' on applier", a.mysqlContext.TimeZone)
 	return nil
 }
 
 // readTableColumns reads table columns on applier
 func (a *Applier) readTableColumns() (err error) {
-	a.logger.Printf("mysql.applier: examining table structure on applier")
+	a.logger.Printf("mysql.applier: Examining table structure on applier")
 	for _, doDb := range a.mysqlContext.ReplicateDoDb {
 		for _, doTb := range doDb.Tables {
 			doTb.OriginalTableColumnsOnApplier, err = base.GetTableColumns(a.singletonDB, doDb.TableSchema, doTb.TableName)
 			if err != nil {
-				a.logger.Errorf("mysql.applier: unexpected error on readTableColumns, got %v", err)
+				a.logger.Errorf("mysql.applier: Unexpected error on readTableColumns, got %v", err)
 				return err
 			}
 		}
@@ -1383,21 +1381,21 @@ func (a *Applier) ApplyBinlogEvent(db *gosql.DB, events [](binlog.DataEvent)) er
 			_, err := sql.ExecNoPrepare(db, event.Query)
 			if err != nil {
 				if !sql.IgnoreError(err) {
-					a.logger.Errorf("mysql.applier: exec sql error: %v", err)
+					a.logger.Errorf("mysql.applier: Exec sql error: %v", err)
 					return err
 				} else {
-					a.logger.Warnf("mysql.applier: ignore error: %v", err)
+					a.logger.Warnf("mysql.applier: Ignore error: %v", err)
 				}
 			}
 		default:
 			query, args, rowDelta, err := a.buildDMLEventQuery(event)
 			if err != nil {
-				a.logger.Errorf("mysql.applier: build dml query error: %v", err)
+				a.logger.Errorf("mysql.applier: Build dml query error: %v", err)
 				return err
 			}
 			_, err = sql.ExecNoPrepare(db, query, args...)
 			if err != nil {
-				a.logger.Errorf("mysql.applier: exec %+v, error: %v", query, err)
+				a.logger.Errorf("mysql.applier: Exec %+v, error: %v", query, err)
 				return err
 			}
 			totalDelta += rowDelta
@@ -1425,13 +1423,10 @@ func (a *Applier) ApplyEventQueries(entry *dumpEntry) error {
 			_, err := sql.ExecNoPrepare(a.dbs[0].Db, query)
 			if err != nil {
 				if !sql.IgnoreError(err) {
-					a.logger.Errorf("mysql.applier: exec [%s] error: %v", query, err)
+					a.logger.Errorf("mysql.applier: Exec [%s] error: %v", query, err)
 					return err
 				}
-				mysqlErr, _ := err.(*mysql.MySQLError)
-				if mysqlErr.Number != sql.ErrDatabaseExists && mysqlErr.Number != sql.ErrTableExists {
-					a.logger.Warnf("mysql.applier: ignore error: %v", err)
-				}
+				a.logger.Warnf("mysql.applier: Ignore error: %v", err)
 			}
 		}
 		return nil
@@ -1557,7 +1552,7 @@ func (a *Applier) ID() string {
 
 	data, err := json.Marshal(id)
 	if err != nil {
-		a.logger.Errorf("mysql.applier: failed to marshal ID to JSON: %s", err)
+		a.logger.Errorf("mysql.applier: Failed to marshal ID to JSON: %s", err)
 	}
 	return string(data)
 }
@@ -1566,7 +1561,7 @@ func (a *Applier) onError(err error) {
 	a.logger.Errorf("mysql.applier: %v", err)
 	if a.natsConn != nil {
 		if err := a.natsConn.Publish(fmt.Sprintf("%s_restart", a.subject), []byte(a.mysqlContext.Gtid)); err != nil {
-			a.logger.Errorf("mysql.applier: trigger restart extractor : %v", err)
+			a.logger.Errorf("mysql.applier: Trigger restart extractor : %v", err)
 		}
 	}
 	a.waitCh <- models.NewWaitResult(1, err)
@@ -1593,6 +1588,6 @@ func (a *Applier) Shutdown() error {
 		return err
 	}
 
-	a.logger.Printf("mysql.applier: closed applier connection.")
+	a.logger.Printf("mysql.applier: Closed applier connection.")
 	return nil
 }

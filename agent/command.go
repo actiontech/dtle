@@ -84,7 +84,7 @@ func (c *Command) readConfig() *Config {
 	if cmdConfig.PidFile != "" {
 		f, err := os.Create(cmdConfig.PidFile)
 		if err != nil {
-			log.Fatalf("Unable to create pidfile: %s", err)
+			c.Ui.Error(fmt.Sprintf("Unable to create pidfile: %s", err))
 		}
 
 		fmt.Fprintf(f, "%d\n", os.Getpid())
@@ -103,7 +103,7 @@ func (c *Command) readConfig() *Config {
 	for _, path := range configPath {
 		current, err := LoadConfig(path)
 		if err != nil {
-			c.logger.Errorf("Error loading configuration from %s: %s", path, err)
+			c.Ui.Error(fmt.Sprintf("Error loading configuration from %s: %s", path, err))
 			return nil
 		}
 
@@ -130,21 +130,21 @@ func (c *Command) readConfig() *Config {
 
 	// Normalize binds, ports, addresses, and advertise
 	if err := config.normalizeAddrs(); err != nil {
-		c.logger.Errorf("Error normalizes Addresses: %s", err)
+		c.Ui.Error(fmt.Sprintf("Error normalizes Addresses: %s", err))
 		return nil
 	}
 
 	// Parse the RetryInterval.
 	dur, err := time.ParseDuration(config.Server.RetryInterval)
 	if err != nil {
-		c.logger.Errorf("Error parsing retry interval: %s", err)
+		c.Ui.Error(fmt.Sprintf("Error parsing retry interval: %s", err))
 		return nil
 	}
 	config.Server.retryInterval = dur
 
 	// Check that the server is running in at least one mode.
 	if !(config.Server.Enabled || config.Client.Enabled) {
-		c.logger.Errorf("Must specify either server, client or dev mode for the agent.")
+		c.Ui.Error("Must specify either server, client or dev mode for the agent.")
 		return nil
 	}
 
@@ -159,14 +159,14 @@ func (c *Command) readConfig() *Config {
 		}
 
 		if !filepath.IsAbs(dir) {
-			c.logger.Errorf("%s must be given as an absolute path: got %v", k, dir)
+			c.Ui.Error(fmt.Sprintf("%s must be given as an absolute path: got %v", k, dir))
 			return nil
 		}
 	}
 
 	// Ensure that we have the directories we neet to run.
 	if config.Server.Enabled && config.DataDir == "" {
-		c.logger.Errorf("Must specify data directory")
+		c.Ui.Error("Must specify data directory")
 		return nil
 	}
 
@@ -499,7 +499,7 @@ func (c *Command) Synopsis() string {
 
 func (c *Command) Help() string {
 	helpText := `
-Usage: server agent [options]
+Usage: udup agent [options]
 
   Starts the Udup agent and runs until an interrupt is received.
   The agent may be a client and/or server.
@@ -555,28 +555,9 @@ Server Options:
     leader election, data replication, and scheduling work onto
     eligible client nodes.
 
-  -bootstrap-expect=<num>
-    Configures the expected number of servers nodes to wait for before
-    bootstrapping the cluster. Once <num> servers have joined eachother,
-    Udup initiates the bootstrap process.
-
   -join=<address>
     Address of an agent to join at start time. Can be specified
     multiple times.
-
-  -retry-join=<address>
-    Address of an agent to join at start time with retries enabled.
-    Can be specified multiple times.
-
-  -retry-max=<num>
-    Maximum number of join attempts. Defaults to 0, which will retry
-    indefinitely.
-
-  -retry-interval=<dur>
-    Time to wait between join attempts.
-
-  -rejoin
-    Ignore a previous leave and attempts to rejoin the cluster.
 
 Client Options:
 
@@ -584,10 +565,6 @@ Client Options:
     Enable client mode for the agent. Client mode enables a given node to be
     evaluated for allocations. If client mode is not enabled, no work will be
     scheduled to the agent.
-
-  -store-dir
-    The directory used to store store and other persistent data. If not
-    specified a subdirectory under the "-data-dir" will be used.
 
   -servers
     A list of known server addresses to connect to given as "host:port" and

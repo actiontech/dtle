@@ -212,7 +212,7 @@ func DefaultConfig() *Config {
 		PidFile:    "/var/run/udup/udup.pid",
 		Region:     "global",
 		Datacenter: "dc1",
-		BindAddr:   DefaultAddr,
+		BindAddr:   "127.0.0.1",
 		Ports: &Ports{
 			HTTP: 8190,
 			RPC:  8191,

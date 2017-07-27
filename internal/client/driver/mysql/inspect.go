@@ -39,7 +39,7 @@ func (i *Inspector) InitDBConnections() (err error) {
 		return err
 	}
 	if err := i.validateGrants(); err != nil {
-		i.logger.Errorf("mysql.inspector: unexpected error on validateGrants, got %v", err)
+		i.logger.Errorf("mysql.inspector: Unexpected error on validateGrants, got %v", err)
 		return err
 	}
 	/*for _, doDb := range i.mysqlContext.ReplicateDoDb {
@@ -59,7 +59,7 @@ func (i *Inspector) InitDBConnections() (err error) {
 	if err := i.validateBinlogs(); err != nil {
 		return err
 	}
-	i.logger.Printf("mysql.inspector: initiated on %s:%d, version %+v", i.mysqlContext.ConnectionConfig.Host, i.mysqlContext.ConnectionConfig.Port, i.mysqlContext.MySQLVersion)
+	i.logger.Printf("mysql.inspector: Initiated on %s:%d, version %+v", i.mysqlContext.ConnectionConfig.Host, i.mysqlContext.ConnectionConfig.Port, i.mysqlContext.MySQLVersion)
 	return nil
 }
 
@@ -137,7 +137,7 @@ func (i *Inspector) validateConnection() error {
 		return err
 	}
 
-	i.logger.Printf("mysql.inspector: connection validated on %s:%d", i.mysqlContext.ConnectionConfig.Host, i.mysqlContext.ConnectionConfig.Port)
+	i.logger.Printf("mysql.inspector: Connection validated on %s:%d", i.mysqlContext.ConnectionConfig.Host, i.mysqlContext.ConnectionConfig.Port)
 	return nil
 }
 
@@ -184,18 +184,18 @@ func (i *Inspector) validateGrants() error {
 	i.mysqlContext.HasSuperPrivilege = foundSuper
 
 	if foundAll {
-		i.logger.Printf("mysql.inspector: user has ALL privileges")
+		i.logger.Printf("mysql.inspector: User has ALL privileges")
 		return nil
 	}
 	if foundSuper && foundReplicationSlave && foundDBAll {
-		i.logger.Printf("mysql.inspector: user has SUPER, REPLICATION SLAVE privileges, and has ALL privileges on *.*")
+		i.logger.Printf("mysql.inspector: User has SUPER, REPLICATION SLAVE privileges, and has ALL privileges on *.*")
 		return nil
 	}
 	if foundReplicationClient && foundReplicationSlave && foundDBAll {
-		i.logger.Printf("mysql.inspector: user has REPLICATION CLIENT, REPLICATION SLAVE privileges, and has ALL privileges on *.*")
+		i.logger.Printf("mysql.inspector: User has REPLICATION CLIENT, REPLICATION SLAVE privileges, and has ALL privileges on *.*")
 		return nil
 	}
-	i.logger.Debugf("mysql.inspector: privileges: super: %t, REPLICATION CLIENT: %t, REPLICATION SLAVE: %t, ALL on *.*: %t, ALL on *.*: %t", foundSuper, foundReplicationClient, foundReplicationSlave, foundAll, foundDBAll)
+	i.logger.Debugf("mysql.inspector: Privileges: super: %t, REPLICATION CLIENT: %t, REPLICATION SLAVE: %t, ALL on *.*: %t, ALL on *.*: %t", foundSuper, foundReplicationClient, foundReplicationSlave, foundAll, foundDBAll)
 	return fmt.Errorf("user has insufficient privileges for migration. Needed: SUPER|REPLICATION CLIENT, REPLICATION SLAVE and ALL on *.*")
 }
 
@@ -231,7 +231,7 @@ func (i *Inspector) validateBinlogs() error {
 	}
 	i.mysqlContext.BinlogRowImage = strings.ToUpper(i.mysqlContext.BinlogRowImage)
 
-	i.logger.Printf("mysql.inspector: binary logs validated on %s:%d", i.mysqlContext.ConnectionConfig.Host, i.mysqlContext.ConnectionConfig.Port)
+	i.logger.Printf("mysql.inspector: Binary logs validated on %s:%d", i.mysqlContext.ConnectionConfig.Host, i.mysqlContext.ConnectionConfig.Port)
 	return nil
 }
 
@@ -467,7 +467,7 @@ func (i *Inspector) getCandidateUniqueKeys(databaseName, tableName string) (uniq
 	if err != nil {
 		return uniqueKeys, err
 	}
-	i.logger.Debugf("mysql.inspector: potential unique keys in %+v.%+v: %+v", databaseName, tableName, uniqueKeys)
+	i.logger.Debugf("mysql.inspector: Potential unique keys in %+v.%+v: %+v", databaseName, tableName, uniqueKeys)
 	return uniqueKeys, nil
 }
 

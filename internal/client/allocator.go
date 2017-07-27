@@ -295,7 +295,7 @@ func (r *Allocator) setTaskState(taskName, state string, event *models.TaskEvent
 				tr.Destroy(models.NewTaskEvent(models.TaskSiblingFailed).SetFailedSibling(taskName))
 			}
 			if len(otherWorkers) > 0 {
-				r.logger.Debugf("client: task %q failed, destroying other tasks in task: %v", taskName, otherTaskNames)
+				r.logger.Debugf("client: Task %q failed, destroying other tasks in task: %v", taskName, otherTaskNames)
 			}
 		} else if leader {
 			// If the task was a leader task we should kill all the other tasks.
@@ -303,7 +303,7 @@ func (r *Allocator) setTaskState(taskName, state string, event *models.TaskEvent
 				tr.Destroy(models.NewTaskEvent(models.TaskLeaderDead))
 			}
 			if len(otherWorkers) > 0 {
-				r.logger.Debugf("client: leader task %q is dead, destroying other tasks in task: %v", taskName, otherTaskNames)
+				r.logger.Debugf("client: Leader task %q is dead, destroying other tasks in task: %v", taskName, otherTaskNames)
 			}
 		}
 	}
@@ -343,7 +343,7 @@ func (r *Allocator) Run() {
 	alloc := r.alloc
 	t := alloc.Job.LookupTask(alloc.Task)
 	if t == nil {
-		r.logger.Errorf("client: alloc '%s' for missing task '%s'", alloc.ID, alloc.Task)
+		r.logger.Errorf("client: Alloc '%s' for missing task '%s'", alloc.ID, alloc.Task)
 		r.setStatus(models.AllocClientStatusFailed, fmt.Sprintf("missing task '%s'", alloc.Task))
 		return
 	}
@@ -352,14 +352,14 @@ func (r *Allocator) Run() {
 	// start any of the task runners and directly wait for the destroy signal to
 	// clean up the allocation.
 	if alloc.TerminalStatus() {
-		r.logger.Debugf("client: alloc %q in terminal status, waiting for destroy", r.alloc.ID)
+		r.logger.Debugf("client: Alloc %q in terminal status, waiting for destroy", r.alloc.ID)
 		r.handleDestroy()
-		r.logger.Debugf("client: terminating runner for alloc '%s'", r.alloc.ID)
+		r.logger.Debugf("client: Terminating runner for alloc '%s'", r.alloc.ID)
 		return
 	}
 
 	// Start the task runners
-	r.logger.Debugf("client: starting task runners for alloc '%s'", r.alloc.ID)
+	r.logger.Debugf("client: Starting task runners for alloc '%s'", r.alloc.ID)
 	r.taskLock.Lock()
 	if _, ok := r.restored[t.Type]; ok {
 		return
@@ -402,7 +402,7 @@ OUTER:
 
 	// Block until we should destroy the store of the alloc
 	r.handleDestroy()
-	r.logger.Debugf("client: terminating runner for alloc '%s'", r.alloc.ID)
+	r.logger.Debugf("client: Terminating runner for alloc '%s'", r.alloc.ID)
 }
 
 // destroyWorkers destroys the task runners, waits for them to terminate and
@@ -430,12 +430,12 @@ func (r *Allocator) handleDestroy() {
 		select {
 		case <-r.destroyCh:
 			if err := r.DestroyState(); err != nil {
-				r.logger.Errorf("client: failed to destroy state for alloc '%s': %v",
+				r.logger.Errorf("client: Failed to destroy state for alloc '%s': %v",
 					r.alloc.ID, err)
 			}
 			return
 		case <-r.updateCh:
-			r.logger.Errorf("client: dropping update to terminal alloc '%s'", r.alloc.ID)
+			r.logger.Errorf("client: Dropping update to terminal alloc '%s'", r.alloc.ID)
 		}
 	}
 }
@@ -445,7 +445,7 @@ func (r *Allocator) Update(update *models.Allocation) {
 	select {
 	case r.updateCh <- update:
 	default:
-		r.logger.Errorf("client: dropping update to alloc '%s'", update.ID)
+		r.logger.Errorf("client: Dropping update to alloc '%s'", update.ID)
 	}
 }
 

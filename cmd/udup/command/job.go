@@ -160,11 +160,10 @@ func parseJob(result *api.Job, list *ast.ObjectList) error {
 	if err := hcl.DecodeObject(&m, obj.Val); err != nil {
 		return err
 	}
-	delete(m, "update")
 
 	// Set the ID and name to the object key
 	result.ID = internal.StringToPtr(obj.Keys[0].Token.Value().(string))
-	result.Name = internal.StringToPtr(*result.ID)
+	//result.Name = internal.StringToPtr(*result.ID)
 
 	// Decode the rest
 	if err := mapstructure.WeakDecode(m, result); err != nil {
@@ -181,14 +180,11 @@ func parseJob(result *api.Job, list *ast.ObjectList) error {
 
 	// Check for invalid keys
 	valid := []string{
-		"datacenters",
-		"id",
-		"name",
-		"priority",
 		"region",
+		"datacenters",
+		"name",
 		"task",
 		"type",
-		"update",
 	}
 	if err := checkHCLKeys(listVal, valid); err != nil {
 		return multierror.Prefix(err, "job:")
@@ -197,7 +193,7 @@ func parseJob(result *api.Job, list *ast.ObjectList) error {
 	// If we have tasks outside, create TaskGroups for them
 	if o := listVal.Filter("task"); len(o.Items) > 0 {
 		var tasks []*api.Task
-		if err := parseTasks(*result.Name, "", &tasks, o); err != nil {
+		if err := parseTasks("", &tasks, o); err != nil {
 			return multierror.Prefix(err, "task:")
 		}
 
@@ -210,7 +206,7 @@ func parseJob(result *api.Job, list *ast.ObjectList) error {
 	return nil
 }
 
-func parseTasks(jobName string, taskGroupName string, result *[]*api.Task, list *ast.ObjectList) error {
+func parseTasks(taskName string, result *[]*api.Task, list *ast.ObjectList) error {
 	list = list.Children()
 	if len(list.Items) == 0 {
 		return nil
@@ -240,9 +236,6 @@ func parseTasks(jobName string, taskGroupName string, result *[]*api.Task, list 
 			"node_id",
 			"config",
 			"driver",
-			"leader",
-			"resources",
-			"restart",
 		}
 		if err := checkHCLKeys(listVal, valid); err != nil {
 			return multierror.Prefix(err, fmt.Sprintf("'%s' ->", n))
@@ -253,15 +246,12 @@ func parseTasks(jobName string, taskGroupName string, result *[]*api.Task, list 
 			return err
 		}
 		delete(m, "config")
-		delete(m, "resources")
-		delete(m, "service")
-		delete(m, "restart")
 
 		// Build the task
 		var t api.Task
 		t.Type = n
-		if taskGroupName == "" {
-			taskGroupName = n
+		if taskName == "" {
+			taskName = n
 		}
 		dec, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
 			DecodeHook:       mapstructure.StringToTimeDurationHookFunc(),

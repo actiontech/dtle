@@ -618,7 +618,7 @@ func (s *Server) setupWorkers() error {
 			s.workers = append(s.workers, w)
 		}
 	}
-	s.logger.Printf("server: starting %d scheduling worker(s) for %v",
+	s.logger.Printf("server: Starting %d scheduling worker(s) for %v",
 		s.config.NumSchedulers, s.config.EnabledSchedulers)
 	return nil
 }

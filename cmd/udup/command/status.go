@@ -24,7 +24,7 @@ type StatusCommand struct {
 
 func (c *StatusCommand) Help() string {
 	helpText := `
-Usage: server status [options] <job>
+Usage: udup status [options] <job>
 
   Display status information about jobs. If no job ID is given,
   a list of all known jobs will be dumped.

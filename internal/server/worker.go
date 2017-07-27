@@ -158,7 +158,7 @@ REQ:
 	metrics.MeasureSince([]string{"server", "worker", "dequeue_eval"}, start)
 	if err != nil {
 		if time.Since(w.start) > dequeueErrGrace && !w.srv.IsShutdown() {
-			w.logger.Errorf("worker: failed to dequeue evaluation: %v", err)
+			w.logger.Errorf("worker: Failed to dequeue evaluation: %v", err)
 		}
 
 		// Adjust the backoff based on the error. If it is a scheduler version
@@ -178,7 +178,7 @@ REQ:
 
 	// Check if we got a response
 	if resp.Eval != nil {
-		w.logger.Debugf("worker: dequeued evaluation %s", resp.Eval.ID)
+		w.logger.Debugf("worker: Dequeued evaluation %s", resp.Eval.ID)
 		return resp.Eval, resp.Token, false
 	}
 
@@ -214,7 +214,7 @@ func (w *Worker) sendAck(evalID, token string, ack bool) {
 	// Make the RPC call
 	err := w.srv.RPC(endpoint, &req, &resp)
 	if err != nil {
-		w.logger.Errorf("worker: failed to %s evaluation '%s': %v",
+		w.logger.Errorf("worker: Failed to %s evaluation '%s': %v",
 			verb, evalID, err)
 	} else {
 		w.logger.Debugf("worker: %s for evaluation %s", verb, evalID)
@@ -315,14 +315,14 @@ func (w *Worker) SubmitPlan(plan *models.Plan) (*models.PlanResult, scheduler.St
 SUBMIT:
 	// Make the RPC call
 	if err := w.srv.RPC("Plan.Submit", &req, &resp); err != nil {
-		w.logger.Errorf("worker: failed to submit plan for evaluation %s: %v",
+		w.logger.Errorf("worker: Failed to submit plan for evaluation %s: %v",
 			plan.EvalID, err)
 		if w.shouldResubmit(err) && !w.backoffErr(backoffBaselineSlow, backoffLimitSlow) {
 			goto SUBMIT
 		}
 		return nil, nil, err
 	} else {
-		w.logger.Debugf("worker: submitted plan for evaluation %s", plan.EvalID)
+		w.logger.Debugf("worker: Submitted plan for evaluation %s", plan.EvalID)
 		w.backoffReset()
 	}
 
@@ -339,7 +339,7 @@ SUBMIT:
 	var state scheduler.State
 	if result.RefreshIndex != 0 {
 		// Wait for the raft log to catchup to the evaluation
-		w.logger.Debugf("worker: refreshing state to index %d for %q", result.RefreshIndex, plan.EvalID)
+		w.logger.Debugf("worker: Refreshing state to index %d for %q", result.RefreshIndex, plan.EvalID)
 		if err := w.waitForIndex(result.RefreshIndex, raftSyncLimit); err != nil {
 			return nil, nil, err
 		}
@@ -381,14 +381,14 @@ func (w *Worker) UpdateEval(eval *models.Evaluation) error {
 SUBMIT:
 	// Make the RPC call
 	if err := w.srv.RPC("Eval.Update", &req, &resp); err != nil {
-		w.logger.Errorf("worker: failed to update evaluation %#v: %v",
+		w.logger.Errorf("worker: Failed to update evaluation %#v: %v",
 			eval, err)
 		if w.shouldResubmit(err) && !w.backoffErr(backoffBaselineSlow, backoffLimitSlow) {
 			goto SUBMIT
 		}
 		return err
 	} else {
-		w.logger.Debugf("worker: updated evaluation %#v", eval)
+		w.logger.Debugf("worker: Updated evaluation %#v", eval)
 		w.backoffReset()
 	}
 	return nil
@@ -419,14 +419,14 @@ func (w *Worker) CreateEval(eval *models.Evaluation) error {
 SUBMIT:
 	// Make the RPC call
 	if err := w.srv.RPC("Eval.Create", &req, &resp); err != nil {
-		w.logger.Errorf("worker: failed to create evaluation %#v: %v",
+		w.logger.Errorf("worker: Failed to create evaluation %#v: %v",
 			eval, err)
 		if w.shouldResubmit(err) && !w.backoffErr(backoffBaselineSlow, backoffLimitSlow) {
 			goto SUBMIT
 		}
 		return err
 	} else {
-		w.logger.Debugf("worker: created evaluation %#v", eval)
+		w.logger.Debugf("worker: Created evaluation %#v", eval)
 		w.backoffReset()
 	}
 	return nil
@@ -457,14 +457,14 @@ func (w *Worker) ReblockEval(eval *models.Evaluation) error {
 SUBMIT:
 	// Make the RPC call
 	if err := w.srv.RPC("Eval.Reblock", &req, &resp); err != nil {
-		w.logger.Errorf("worker: failed to reblock evaluation %#v: %v",
+		w.logger.Errorf("worker: Failed to reblock evaluation %#v: %v",
 			eval, err)
 		if w.shouldResubmit(err) && !w.backoffErr(backoffBaselineSlow, backoffLimitSlow) {
 			goto SUBMIT
 		}
 		return err
 	} else {
-		w.logger.Debugf("worker: reblocked evaluation %#v", eval)
+		w.logger.Debugf("worker: Reblocked evaluation %#v", eval)
 		w.backoffReset()
 	}
 	return nil

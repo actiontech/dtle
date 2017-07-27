@@ -147,7 +147,7 @@ func (e *Extractor) validateStatement(doTb *config.Table) (err error) {
 
 // Run executes the complete extract logic.
 func (e *Extractor) Run() {
-	e.logger.Printf("mysql.extractor: extract binlog events from %s.%d", e.mysqlContext.ConnectionConfig.Host, e.mysqlContext.ConnectionConfig.Port)
+	e.logger.Printf("mysql.extractor: Extract binlog events from %s.%d", e.mysqlContext.ConnectionConfig.Host, e.mysqlContext.ConnectionConfig.Port)
 	e.mysqlContext.StartTime = time.Now()
 	if err := e.initiateInspector(); err != nil {
 		e.onError(err)
@@ -232,7 +232,7 @@ func (e *Extractor) Run() {
 // type (on replica? atomic? safe?)
 func (e *Extractor) cutOver() (err error) {
 	e.mysqlContext.MarkPointOfInterest()
-	e.logger.Debugf("mysql.extractor: checking for cut-over postpone")
+	e.logger.Debugf("mysql.extractor: Checking for cut-over postpone")
 	e.sleepWhileTrue(
 		func() (bool, error) {
 			if e.mysqlContext.PostponeCutOverFlagFile == "" {
@@ -251,7 +251,7 @@ func (e *Extractor) cutOver() (err error) {
 	)
 	atomic.StoreInt64(&e.mysqlContext.IsPostponingCutOver, 0)
 	e.mysqlContext.MarkPointOfInterest()
-	e.logger.Printf("mysql.extractor: checking for cut-over postpone: complete")
+	e.logger.Printf("mysql.extractor: Checking for cut-over postpone: complete")
 
 	if e.mysqlContext.CutOverType == config.CutOverAtomic {
 		// Atomic solution: we use low timeout and multiple attempts. But for
@@ -481,10 +481,10 @@ func (e *Extractor) initNatsPubClient() (err error) {
 	natsAddr := fmt.Sprintf("nats://%s", e.mysqlContext.NatsAddr)
 	pc, err := gonats.Connect(natsAddr)
 	if err != nil {
-		e.logger.Errorf("mysql.extractor: can't connect nats server %v. make sure a nats streaming server is running.%v", natsAddr, err)
+		e.logger.Errorf("mysql.extractor: Can't connect nats server %v. make sure a nats streaming server is running.%v", natsAddr, err)
 		return err
 	}
-	e.logger.Debugf("mysql.extractor: connect nats server %v", natsAddr)
+	e.logger.Debugf("mysql.extractor: Connect nats server %v", natsAddr)
 	e.natsConn = pc
 
 	return nil
@@ -493,7 +493,7 @@ func (e *Extractor) initNatsPubClient() (err error) {
 // initiateStreaming begins treaming of binary log events and registers listeners for such events
 func (e *Extractor) initiateStreaming() error {
 	go func() {
-		e.logger.Debugf("mysql.extractor: beginning streaming")
+		e.logger.Debugf("mysql.extractor: Beginning streaming")
 		err := e.StreamEvents(e.mysqlContext.ApproveHeterogeneous, e.canStopStreaming)
 		if err != nil {
 			e.onError(err)
@@ -548,7 +548,7 @@ func (e *Extractor) validateConnection() error {
 	if err := e.db.QueryRow(query).Scan(&e.mysqlContext.MySQLVersion); err != nil {
 		return err
 	}
-	e.logger.Printf("mysql.extractor: connection validated on %s:%d", e.mysqlContext.ConnectionConfig.Host, e.mysqlContext.ConnectionConfig.Port)
+	e.logger.Printf("mysql.extractor: Connection validated on %s:%d", e.mysqlContext.ConnectionConfig.Host, e.mysqlContext.ConnectionConfig.Port)
 	return nil
 }
 
@@ -683,7 +683,7 @@ func (e *Extractor) StreamEvents(approveHeterogeneous bool, canStopStreaming fun
 			for binlogEntry := range e.dataChannel {
 				if binlogEntry.Events != nil {
 					/*if err := e.jsonEncodedConn.Publish(fmt.Sprintf("%s_incr_heterogeneous", e.subject), binlogEntry); err != nil {
-						e.logger.Errorf("mysql.extractor: unexpected error on publish, got %v", err)
+						e.logger.Errorf("mysql.extractor: Unexpected error on publish, got %v", err)
 						e.onError(err)
 					}*/
 				}
@@ -698,7 +698,7 @@ func (e *Extractor) StreamEvents(approveHeterogeneous bool, canStopStreaming fun
 				if atomic.LoadInt64(&e.mysqlContext.ShutdownFlag) > 0 {
 					break OUTER_DS
 				}
-				e.logger.Errorf("mysql.extractor: streamEvents encountered unexpected error: %+v", err)
+				e.logger.Errorf("mysql.extractor: StreamEvents encountered unexpected error: %+v", err)
 				e.mysqlContext.MarkPointOfInterest()
 				time.Sleep(ReconnectStreamerSleepSeconds * time.Second)
 
@@ -714,7 +714,7 @@ func (e *Extractor) StreamEvents(approveHeterogeneous bool, canStopStreaming fun
 
 				// Reposition at same binlog file.
 				lastAppliedRowsEventHint = e.binlogReader.LastAppliedRowsEventHint
-				e.logger.Printf("mysql.extractor: reconnecting... Will resume at %+v", lastAppliedRowsEventHint)
+				e.logger.Printf("mysql.extractor: Reconnecting... Will resume at %+v", lastAppliedRowsEventHint)
 				if err := e.initBinlogReader(e.GetReconnectBinlogCoordinates()); err != nil {
 					return err
 				}
@@ -736,9 +736,6 @@ func (e *Extractor) StreamEvents(approveHeterogeneous bool, canStopStreaming fun
 								e.onError(err)
 								break OUTER
 							}
-							if uint64(len(txMsg)) > 100*1024*1024 {
-								e.onError(gonats.ErrMaxPayload)
-							}
 							if err := e.requestMsg(subject,
 								fmt.Sprintf("%s:1-%d",
 									txArray[len(txArray)-1].SID,
@@ -758,10 +755,6 @@ func (e *Extractor) StreamEvents(approveHeterogeneous bool, canStopStreaming fun
 						txMsg, err := Encode(&txArray)
 						if err != nil {
 							e.onError(err)
-							break OUTER
-						}
-						if uint64(len(txMsg)) > 100*1024*1024 {
-							e.onError(gonats.ErrMaxPayload)
 							break OUTER
 						}
 						if uint64(len(txMsg)) > e.mysqlContext.MsgBytesLimit {
@@ -790,7 +783,7 @@ func (e *Extractor) StreamEvents(approveHeterogeneous bool, canStopStreaming fun
 				if atomic.LoadInt64(&e.mysqlContext.ShutdownFlag) > 0 {
 					break OUTER_BS
 				}
-				e.logger.Printf("mysql.extractor: streamEvents encountered unexpected error: %+v", err)
+				e.logger.Printf("mysql.extractor: StreamEvents encountered unexpected error: %+v", err)
 				e.mysqlContext.MarkPointOfInterest()
 				time.Sleep(ReconnectStreamerSleepSeconds * time.Second)
 
@@ -806,7 +799,7 @@ func (e *Extractor) StreamEvents(approveHeterogeneous bool, canStopStreaming fun
 
 				// Reposition at same binlog file.
 				lastAppliedRowsEventHint = e.binlogReader.LastAppliedRowsEventHint
-				e.logger.Printf("mysql.extractor: reconnecting... Will resume at %+v", lastAppliedRowsEventHint)
+				e.logger.Printf("mysql.extractor: Reconnecting... Will resume at %+v", lastAppliedRowsEventHint)
 				if err := e.initBinlogReader(e.GetReconnectBinlogCoordinates()); err != nil {
 					return err
 				}
@@ -845,7 +838,7 @@ func (e *Extractor) mysqlDump() error {
 		query := "COMMIT"
 		_, err := sql.ExecNoPrepare(e.db, query)
 		if err != nil {
-			e.logger.Errorf("mysql.extractor: exec %+v, error: %v", query, err)
+			e.logger.Errorf("mysql.extractor: Exec %+v, error: %v", query, err)
 		}
 	}()
 	// ------
@@ -863,13 +856,13 @@ func (e *Extractor) mysqlDump() error {
 	query := "SET AUTOCOMMIT=0"
 	_, err := sql.ExecNoPrepare(e.db, query)
 	if err != nil {
-		e.logger.Errorf("mysql.extractor: exec %+v, error: %v", query, err)
+		e.logger.Errorf("mysql.extractor: Exec %+v, error: %v", query, err)
 		e.onError(err)
 	}
 	query = "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ"
 	_, err = sql.ExecNoPrepare(e.db, query)
 	if err != nil {
-		e.logger.Errorf("mysql.extractor: exec %+v, error: %v", query, err)
+		e.logger.Errorf("mysql.extractor: Exec %+v, error: %v", query, err)
 		e.onError(err)
 	}
 
@@ -879,7 +872,7 @@ func (e *Extractor) mysqlDump() error {
 	query = "START TRANSACTION WITH CONSISTENT SNAPSHOT"
 	_, err = sql.ExecNoPrepare(e.db, query)
 	if err != nil {
-		e.logger.Errorf("mysql.extractor: exec %+v, error: %v", query, err)
+		e.logger.Errorf("mysql.extractor: Exec %+v, error: %v", query, err)
 		e.onError(err)
 	}
 
@@ -1163,7 +1156,7 @@ func (e *Extractor) ID() string {
 
 	data, err := json.Marshal(id)
 	if err != nil {
-		e.logger.Errorf("mysql.extractor: failed to marshal ID to JSON: %s", err)
+		e.logger.Errorf("mysql.extractor: Failed to marshal ID to JSON: %s", err)
 	}
 	return string(data)
 }
@@ -1204,6 +1197,6 @@ func (e *Extractor) Shutdown() error {
 		return err
 	}
 
-	e.logger.Printf("mysql.extractor: closed streamer connection.")
+	e.logger.Printf("mysql.extractor: Closed streamer connection.")
 	return nil
 }

@@ -438,7 +438,7 @@ func (s *GenericScheduler) findPreferredNode(allocTuple *allocTuple) (node *mode
 		ws := memdb.NewWatchSet()
 		preferredNode, err = s.state.NodeByID(ws, allocTuple.Task.NodeId)
 		if err != nil || preferredNode == nil {
-			s.logger.Debugf("sched: can't find preferred node %s", allocTuple.Task.NodeId)
+			s.logger.Debugf("sched: Can't find preferred node %s", allocTuple.Task.NodeId)
 			return
 		}
 		if preferredNode.Ready() {

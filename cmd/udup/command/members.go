@@ -17,7 +17,7 @@ type ServerMembersCommand struct {
 
 func (c *ServerMembersCommand) Help() string {
 	helpText := `
-Usage: server members [options]
+Usage: udup members [options]
 
   Display a list of the known servers and their status. Only Udup servers are
   able to service this command.

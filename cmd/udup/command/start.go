@@ -25,7 +25,7 @@ type StartCommand struct {
 
 func (c *StartCommand) Help() string {
 	helpText := `
-Usage: server start [options] <path>
+Usage: udup start [options] <path>
 
   Starts running a new job or updates an existing job using
   the specification located at <path>. This is the main command
@@ -124,6 +124,7 @@ func (c *StartCommand) Run(args []string) int {
 		c.Ui.Error(fmt.Sprintf("Error getting job struct: %s", err))
 		return 1
 	}
+	c.Ui.Info(fmt.Sprintf("job:%+v", job))
 
 	// Get the HTTP client
 	client, err := c.Meta.Client()
@@ -138,7 +139,7 @@ func (c *StartCommand) Run(args []string) int {
 	}
 
 	// Check that the job is valid
-	jr, _, err := client.Jobs().Validate(job, nil)
+	/*jr, _, err := client.Jobs().Validate(job, nil)
 	if err != nil {
 		jr, err = c.validateLocal(job)
 	}
@@ -157,7 +158,7 @@ func (c *StartCommand) Run(args []string) int {
 			c.Colorize().Color("[bold][red]Job validation errors:[reset]"))
 		c.Ui.Error(jr.Error)
 		return 1
-	}
+	}*/
 
 	if output {
 		req := api.RegisterJobRequest{Job: job}

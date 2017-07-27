@@ -11,7 +11,7 @@ type ConfigCommand struct {
 
 func (c *ConfigCommand) Help() string {
 	helpText := `
-Usage: server config [options]
+Usage: udup config [options]
 
   View or modify client configuration details. This command only
   works on client nodes, and can be used to update the running
@@ -39,7 +39,7 @@ Client Config Options:
     to configure. The set is updated atomically.
 
     Example:
-      $ server client-config -update-servers foo:8191 bar:8191
+      $ udup client-config -update-servers foo:8191 bar:8191
 `
 	return strings.TrimSpace(helpText)
 }

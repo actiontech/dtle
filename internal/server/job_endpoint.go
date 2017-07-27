@@ -197,7 +197,7 @@ func (j *Job) UpdateStatus(args *models.JobUpdateStatusRequest, reply *models.Jo
 // Validate validates a job
 func (j *Job) Validate(args *models.JobValidateRequest,
 	reply *models.JobValidateResponse) error {
-
+	defer metrics.MeasureSince([]string{"udup", "job", "validate"}, time.Now())
 	if err := validateJob(args.Job); err != nil {
 		if merr, ok := err.(*multierror.Error); ok {
 			for _, err := range merr.Errors {
@@ -590,16 +590,21 @@ func validateJob(job *models.Job) error {
 	}
 
 	// Validate the driver configurations.
-	for _, t := range job.Tasks {
+	for _, task := range job.Tasks {
 		_, err := driver.NewDriver(
-			t.Driver,
+			task.Driver,
 			driver.NewEmptyDriverContext(),
 		)
 		if err != nil {
 			msg := "failed to create driver for task %q for validation: %v"
-			multierror.Append(validationErrors, fmt.Errorf(msg, t.Type, err))
+			multierror.Append(validationErrors, fmt.Errorf(msg, task.Type, err))
 			continue
 		}
+
+		/*if err := d.Validate(task.Config); err != nil {
+			formatted := fmt.Errorf("task %q -> config: %v", task.Type, err)
+			multierror.Append(validationErrors, formatted)
+		}*/
 	}
 
 	return validationErrors.ErrorOrNil()
