@@ -33,10 +33,10 @@ type dumper struct {
 
 	// DB is safe for using in goroutines
 	// http://golang.org/src/database/sql/sql.go?s=5574:6362#L201
-	db *sql.DB
+	db *sql.Tx
 }
 
-func NewDumper(db *sql.DB, dbName, tableName string, logger *log.Entry) *dumper {
+func NewDumper(db *sql.Tx, dbName, tableName string, logger *log.Entry) *dumper {
 	dumper := &dumper{
 		logger:         logger,
 		db:             db,

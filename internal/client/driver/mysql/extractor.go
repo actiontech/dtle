@@ -38,6 +38,7 @@ type Extractor struct {
 	tp                         string
 	mysqlContext               *config.MySQLDriverConfig
 	db                         *gosql.DB
+	singletonDB                *gosql.DB
 	databases                  []string
 	tables                     []*config.Table
 	dumpers                    []*dumper
@@ -519,7 +520,11 @@ func (e *Extractor) initDBConnections() (err error) {
 	if e.db, err = sql.CreateDB(eventsStreamerUri); err != nil {
 		return err
 	}
-	e.db.SetMaxOpenConns(1)
+	//https://github.com/go-sql-driver/mysql#system-variables
+	dumpUri := fmt.Sprintf("%s&tx_isolation='REPEATABLE-READ'", eventsStreamerUri)
+	if e.singletonDB, err = sql.CreateDB(dumpUri); err != nil {
+		return err
+	}
 	if err := e.validateConnection(); err != nil {
 		return err
 	}
@@ -835,49 +840,7 @@ func (e *Extractor) requestMsg(subject, gtid string, txMsg []byte) (err error) {
 
 //Perform the snapshot using the same logic as the "mysqldump" utility.
 func (e *Extractor) mysqlDump() error {
-	defer func() {
-		e.logger.Printf("mysql.extractor: Step 6: committing transaction.")
-		query := "COMMIT"
-		_, err := sql.ExecNoPrepare(e.db, query)
-		if err != nil {
-			e.logger.Errorf("mysql.extractor: Exec %+v, error: %v", query, err)
-		}
-	}()
-	// ------
-	// Set the transaction isolation level to REPEATABLE READ. This is the default, but the default can be changed
-	// which is why we explicitly set it here.
-	//
-	// With REPEATABLE READ, all SELECT queries within the scope of a transaction (which we don't yet have) will read
-	// from the same MVCC snapshot. Thus each plain (non-locking) SELECT statements within the same transaction are
-	// consistent also with respect to each other.
-	//
-	// See: https://dev.mysql.com/doc/refman/5.7/en/set-transaction.html
-	// See: https://dev.mysql.com/doc/refman/5.7/en/innodb-transaction-isolation-levels.html
-	// See: https://dev.mysql.com/doc/refman/5.7/en/innodb-consistent-read.html
-	e.logger.Printf("mysql.extractor: Step 0: disabling autocommit and enabling repeatable read transactions.")
-	query := "SET AUTOCOMMIT=0"
-	_, err := sql.ExecNoPrepare(e.db, query)
-	if err != nil {
-		e.logger.Errorf("mysql.extractor: Exec %+v, error: %v", query, err)
-		e.onError(err)
-	}
-	query = "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ"
-	_, err = sql.ExecNoPrepare(e.db, query)
-	if err != nil {
-		e.logger.Errorf("mysql.extractor: Exec %+v, error: %v", query, err)
-		e.onError(err)
-	}
-
-	// First, start a transaction and request that a consistent MVCC snapshot is obtained immediately.
-	// See http://dev.mysql.com/doc/refman/5.7/en/commit.html
-	e.logger.Printf("mysql.extractor: Step 1: start transaction with consistent snapshot.")
-	query = "START TRANSACTION WITH CONSISTENT SNAPSHOT"
-	_, err = sql.ExecNoPrepare(e.db, query)
-	if err != nil {
-		e.logger.Errorf("mysql.extractor: Exec %+v, error: %v", query, err)
-		e.onError(err)
-	}
-
+	defer e.singletonDB.Close()
 	// Generate the DDL statements that set the charset-related system variables ...
 	if err := e.readMySqlCharsetSystemVariables(); err != nil {
 		return err
@@ -889,7 +852,7 @@ func (e *Extractor) mysqlDump() error {
 	// ------
 	// Obtain the binlog position and update the SourceInfo in the context. This means that all source records generated
 	// as part of the snapshot will contain the binlog position of the snapshot.
-	e.logger.Printf("mysql.extractor: Step 2: read binlog coordinates of MySQL master: %+v", *e.initialBinlogCoordinates)
+	e.logger.Printf("mysql.extractor: Step 0: read binlog coordinates of MySQL master: %+v", *e.initialBinlogCoordinates)
 	if err := e.readCurrentBinlogCoordinates(); err != nil {
 		return err
 	}
@@ -900,7 +863,7 @@ func (e *Extractor) mysqlDump() error {
 	// Get the list of table IDs for each database. We can't use a prepared statement with MySQL, so we have to
 	// build the SQL statement each time. Although in other cases this might lead to SQL injection, in our case
 	// we are reading the database names from the database and not taking them from the user ...
-	e.logger.Printf("mysql.extractor: Step 3: read list of available tables in each database")
+	e.logger.Printf("mysql.extractor: Step 1: read list of available tables in each database")
 
 	// Creates a MYSQL Dump based on the options supplied through the dumper.
 	if len(e.mysqlContext.ReplicateDoDb) > 0 {
@@ -909,7 +872,7 @@ func (e *Extractor) mysqlDump() error {
 		// ------
 		// Transform the current schema so that it reflects the *current* state of the MySQL server's contents.
 		// First, get the DROP TABLE and CREATE TABLE statement (with keys and constraint definitions) for our tables ...
-		e.logger.Printf("mysql.extractor: Step 4: generating DROP and CREATE statements to reflect current database schemas")
+		e.logger.Printf("mysql.extractor: Step 2: generating DROP and CREATE statements to reflect current database schemas")
 
 		for _, doDb := range e.mysqlContext.ReplicateDoDb {
 			if doDb.TableSchema == "" {
@@ -943,7 +906,7 @@ func (e *Extractor) mysqlDump() error {
 		// ------
 		// Transform the current schema so that it reflects the *current* state of the MySQL server's contents.
 		// First, get the DROP TABLE and CREATE TABLE statement (with keys and constraint definitions) for our tables ...
-		e.logger.Printf("mysql.extractor: Step 4: generating DROP and CREATE statements to reflect current database schemas: %v", e.databases)
+		e.logger.Printf("mysql.extractor: Step 2: generating DROP and CREATE statements to reflect current database schemas: %v", e.databases)
 		for _, dbName := range e.databases {
 			tbs, err := showTables(e.db, dbName)
 			if err != nil {
@@ -974,52 +937,57 @@ func (e *Extractor) mysqlDump() error {
 	// STEP 3
 	// ------
 	// Dump all of the tables and generate source records ...
-	e.logger.Printf("mysql.extractor: Step 5: scanning contents of %d tables", len(e.tables))
+	e.logger.Printf("mysql.extractor: Step 3: scanning contents of %d tables", len(e.tables))
 	startScan := currentTimeMillis()
 	counter := 0
-	//pool := models.NewPool(10)
-	for _, t := range e.tables {
-		//pool.Add(1)
-		//go func(t *config.Table) {
-		counter++
-
-		// Obtain a record maker for this table, which knows about the schema ...
-		// Choose how we create statements based on the # of rows ...
-		e.logger.Printf("mysql.extractor: Step 5: - scanning table '%s.%s' (%d of %d tables)", t.TableSchema, t.TableName, counter, len(e.tables))
-
-		d := NewDumper(e.db, t.TableSchema, t.TableName, e.logger)
-		tbSQL, err := d.createTableSQL(e.mysqlContext.DropTableIfExists)
-		if err != nil {
-			e.onError(err)
-		}
-		entry := &dumpEntry{
-			TbSQL: tbSQL,
-		}
-		if err = e.encodeDumpEntry(entry); err != nil {
-			e.onError(err)
-		}
-
-		if err := d.Dump(1); err != nil {
-			e.onError(err)
-		}
-		e.dumpers = append(e.dumpers, d)
-		// Scan the rows in the table ...
-		for i := 0; i < d.entriesCount; i++ {
-			entry := <-d.resultsChannel
-			if entry.err != nil {
-				e.onError(entry.err)
+	pool := models.NewPool(10)
+	for _, tb := range e.tables {
+		pool.Add(1)
+		go func(t *config.Table) {
+			counter++
+			// Obtain a record maker for this table, which knows about the schema ...
+			// Choose how we create statements based on the # of rows ...
+			e.logger.Printf("mysql.extractor: Step 3: - scanning table '%s.%s' (%d of %d tables)", t.TableSchema, t.TableName, counter, len(e.tables))
+			tx, err := e.singletonDB.Begin()
+			if err != nil {
+				e.onError(err)
+			}
+			d := NewDumper(tx, t.TableSchema, t.TableName, e.logger)
+			tbSQL, err := d.createTableSQL(e.mysqlContext.DropTableIfExists)
+			if err != nil {
+				e.onError(err)
+			}
+			entry := &dumpEntry{
+				TbSQL: tbSQL,
 			}
 			if err = e.encodeDumpEntry(entry); err != nil {
 				e.onError(err)
 			}
-			e.totalRowCount += int(entry.Counter)
-		}
 
-		close(d.resultsChannel)
-		//pool.Done()
-		//}(tb)
+			if err := d.Dump(1); err != nil {
+				e.onError(err)
+			}
+			e.dumpers = append(e.dumpers, d)
+			// Scan the rows in the table ...
+			for i := 0; i < d.entriesCount; i++ {
+				entry := <-d.resultsChannel
+				if entry.err != nil {
+					e.onError(entry.err)
+				}
+				if err = e.encodeDumpEntry(entry); err != nil {
+					e.onError(err)
+				}
+				e.totalRowCount += int(entry.Counter)
+			}
+
+			if err := tx.Commit(); err != nil {
+				e.onError(err)
+			}
+			close(d.resultsChannel)
+			pool.Done()
+		}(tb)
 	}
-	//pool.Wait()
+	pool.Wait()
 
 	time.Sleep(5 * time.Second)
 	// We've copied all of the tables, but our buffer holds onto the very last record.
