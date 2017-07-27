@@ -70,12 +70,7 @@ type Config struct {
 
 	Metric *Metric `mapstructure:"metric"`
 
-	// MAX_PAYLOAD is the maximum allowed payload size. Should be using
-	// something different if > 1MB payloads are needed.
-	MaxPayload int `mapstructure:"max_payload"`
-
-	// How many bytes are allowed.
-	MaxBytes int64 `json:"max_bytes"`
+	Network *Network `mapstructure:"network"`
 
 	// LeaveOnInt is used to gracefully leave on the interrupt signal
 	LeaveOnInt bool `mapstructure:"leave_on_interrupt"`
@@ -166,6 +161,15 @@ type ServerConfig struct {
 	retryInterval time.Duration `mapstructure:"-"`
 }
 
+type Network struct {
+	// MAX_PAYLOAD is the maximum allowed payload size. Should be using
+	// something different if > 1MB payloads are needed.
+	MaxPayload int `mapstructure:"max_payload"`
+
+	// How many bytes are allowed.
+	MaxBytes int64 `mapstructure:"max_bytes"`
+}
+
 type Metric struct {
 	PrometheusAddr           string        `mapstructure:"prometheus_address"`
 	DisableHostname          bool          `mapstructure:"disable_hostname"`
@@ -244,8 +248,10 @@ func DefaultConfig() *Config {
 			CollectionInterval: "1s",
 			collectionInterval: 1 * time.Second,
 		},
-		MaxPayload: DefaultMaxPayload,
-		MaxBytes:   DefaultMaxBytes,
+		Network: &Network{
+			MaxPayload: DefaultMaxPayload,
+			MaxBytes:   DefaultMaxBytes,
+		},
 	}
 }
 
@@ -309,20 +315,20 @@ func (c *Config) Merge(b *Config) *Config {
 		result.LeaveOnTerm = true
 	}
 
-	if b.MaxPayload != 0 {
-		result.MaxPayload = b.MaxPayload
-	}
-
-	if b.MaxBytes != 0 {
-		result.MaxBytes = b.MaxBytes
-	}
-
 	// Apply the metric config
 	if result.Metric == nil && b.Metric != nil {
 		metric := *b.Metric
 		result.Metric = &metric
 	} else if b.Metric != nil {
 		result.Metric = result.Metric.Merge(b.Metric)
+	}
+
+	// Apply the network config
+	if result.Network == nil && b.Network != nil {
+		network := *b.Network
+		result.Network = &network
+	} else if b.Network != nil {
+		result.Network = result.Network.Merge(b.Network)
 	}
 
 	// Apply the client config
@@ -574,6 +580,19 @@ func (a *ClientConfig) Merge(b *ClientConfig) *ClientConfig {
 	// Add the servers
 	result.Servers = append(result.Servers, b.Servers...)
 
+	return &result
+}
+
+func (a *Network) Merge(b *Network) *Network {
+	result := *a
+
+	if b.MaxPayload != 0 {
+		result.MaxPayload = b.MaxPayload
+	}
+
+	if b.MaxBytes != 0 {
+		result.MaxBytes = b.MaxBytes
+	}
 	return &result
 }
 

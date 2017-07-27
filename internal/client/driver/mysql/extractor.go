@@ -981,42 +981,42 @@ func (e *Extractor) mysqlDump() error {
 	for _, t := range e.tables {
 		//pool.Add(1)
 		//go func(t *config.Table) {
-			counter++
+		counter++
 
-			// Obtain a record maker for this table, which knows about the schema ...
-			// Choose how we create statements based on the # of rows ...
-			e.logger.Printf("mysql.extractor: Step 5: - scanning table '%s.%s' (%d of %d tables)", t.TableSchema, t.TableName, counter, len(e.tables))
+		// Obtain a record maker for this table, which knows about the schema ...
+		// Choose how we create statements based on the # of rows ...
+		e.logger.Printf("mysql.extractor: Step 5: - scanning table '%s.%s' (%d of %d tables)", t.TableSchema, t.TableName, counter, len(e.tables))
 
-			d := NewDumper(e.db, t.TableSchema, t.TableName, e.logger)
-			tbSQL, err := d.createTableSQL(e.mysqlContext.DropTableIfExists)
-			if err != nil {
-				e.onError(err)
-			}
-			entry := &dumpEntry{
-				TbSQL: tbSQL,
+		d := NewDumper(e.db, t.TableSchema, t.TableName, e.logger)
+		tbSQL, err := d.createTableSQL(e.mysqlContext.DropTableIfExists)
+		if err != nil {
+			e.onError(err)
+		}
+		entry := &dumpEntry{
+			TbSQL: tbSQL,
+		}
+		if err = e.encodeDumpEntry(entry); err != nil {
+			e.onError(err)
+		}
+
+		if err := d.Dump(1); err != nil {
+			e.onError(err)
+		}
+		e.dumpers = append(e.dumpers, d)
+		// Scan the rows in the table ...
+		for i := 0; i < d.entriesCount; i++ {
+			entry := <-d.resultsChannel
+			if entry.err != nil {
+				e.onError(entry.err)
 			}
 			if err = e.encodeDumpEntry(entry); err != nil {
 				e.onError(err)
 			}
+			e.totalRowCount += int(entry.Counter)
+		}
 
-			if err := d.Dump(1); err != nil {
-				e.onError(err)
-			}
-			e.dumpers = append(e.dumpers, d)
-			// Scan the rows in the table ...
-			for i := 0; i < d.entriesCount; i++ {
-				entry := <-d.resultsChannel
-				if entry.err != nil {
-					e.onError(entry.err)
-				}
-				if err = e.encodeDumpEntry(entry); err != nil {
-					e.onError(err)
-				}
-				e.totalRowCount += int(entry.Counter)
-			}
-
-			close(d.resultsChannel)
-			//pool.Done()
+		close(d.resultsChannel)
+		//pool.Done()
 		//}(tb)
 	}
 	//pool.Wait()

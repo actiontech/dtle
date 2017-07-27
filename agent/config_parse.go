@@ -86,8 +86,7 @@ func parseConfig(result *Config, list *ast.ObjectList) error {
 		"client",
 		"server",
 		"metric",
-		"max_payload",
-		"max_bytes",
+		"network",
 		"leave_on_interrupt",
 		"leave_on_terminate",
 		"consul",
@@ -108,6 +107,7 @@ func parseConfig(result *Config, list *ast.ObjectList) error {
 	delete(m, "client")
 	delete(m, "server")
 	delete(m, "metric")
+	delete(m, "network")
 	delete(m, "consul")
 	delete(m, "http_api_response_headers")
 
@@ -155,6 +155,12 @@ func parseConfig(result *Config, list *ast.ObjectList) error {
 	if o := list.Filter("metric"); len(o.Items) > 0 {
 		if err := parseMetric(&result.Metric, o); err != nil {
 			return multierror.Prefix(err, "metric ->")
+		}
+	}
+
+	if o := list.Filter("network"); len(o.Items) > 0 {
+		if err := parseNetwork(&result.Network, o); err != nil {
+			return multierror.Prefix(err, "network ->")
 		}
 	}
 
@@ -419,6 +425,37 @@ func parseMetric(result **Metric, list *ast.ObjectList) error {
 		}
 	}
 	*result = &metric
+	return nil
+}
+
+func parseNetwork(result **Network, list *ast.ObjectList) error {
+	list = list.Elem()
+	if len(list.Items) > 1 {
+		return fmt.Errorf("only one 'network' block allowed")
+	}
+
+	// Get our network object
+	listVal := list.Items[0].Val
+
+	// Check for invalid keys
+	valid := []string{
+		"max_payload",
+		"max_bytes",
+	}
+	if err := checkHCLKeys(listVal, valid); err != nil {
+		return err
+	}
+
+	var m map[string]interface{}
+	if err := hcl.DecodeObject(&m, listVal); err != nil {
+		return err
+	}
+
+	var network Network
+	if err := mapstructure.WeakDecode(m, &network); err != nil {
+		return err
+	}
+	*result = &network
 	return nil
 }
 

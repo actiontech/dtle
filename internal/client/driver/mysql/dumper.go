@@ -221,7 +221,7 @@ func (e *dumpEntry) escape(colValue string) string {
 }
 
 func (d *dumper) worker() {
-	for e := range d.entriesChannel{
+	for e := range d.entriesChannel {
 		select {
 		case <-d.stopCh:
 			return
