@@ -19,7 +19,7 @@ const (
 	DefaultAddr       = "0.0.0.0"
 	DefaultMaxPayload = 100 * 1024 * 1024 // 100M
 	// How many bytes are allowed.
-	DefaultMaxBytes = 1000000 * 1024
+	DefaultMaxBytes = 1000 * 1024 * 1024 // 1000M
 )
 
 // Config is the configuration for the Udup agent.

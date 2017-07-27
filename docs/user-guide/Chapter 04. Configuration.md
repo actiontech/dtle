@@ -65,3 +65,8 @@ The following config parameters are available for Client:
 - collection_interval:Prometheus client push interval in second, set \"0\" to disable prometheus push.
 - publish_allocation_metrics:PublishAllocationMetrics determines whether udup is going to publish allocation metrics to remote Telemetry sinks
 - publish_node_metrics:PublishNodeMetrics determines whether udup is going to publish node level metrics to remote Telemetry sinks
+
+##4.9 Network Configuration
+
+- max_payload(Default 100M):MAX_PAYLOAD is the maximum allowed payload size. Should be using something different if > 100MB payloads are needed.
+- max_bytes(Default 1000M):How many bytes are allowed.
