@@ -56,7 +56,7 @@ type Extractor struct {
 	sendBySizeFullCounter int
 
 	natsConn *gonats.Conn
-	quit     chan bool
+	stopCh   chan bool
 	waitCh   chan *models.WaitResult
 }
 
@@ -77,7 +77,7 @@ func NewExtractor(subject, tp string, cfg *config.MySQLDriverConfig, logger *log
 		rowCopyComplete:            make(chan bool),
 		allEventsUpToLockProcessed: make(chan string),
 		waitCh: make(chan *models.WaitResult, 1),
-		quit:   make(chan bool),
+		stopCh: make(chan bool, 1),
 	}
 	return extractor
 }
@@ -725,6 +725,7 @@ func (e *Extractor) StreamEvents(approveHeterogeneous bool, canStopStreaming fun
 		go func() {
 			txArray := []*binlog.BinlogTx{}
 			subject := fmt.Sprintf("%s_incr", e.subject)
+
 		OUTER:
 			for {
 				select {
@@ -767,9 +768,9 @@ func (e *Extractor) StreamEvents(approveHeterogeneous bool, canStopStreaming fun
 							txArray = []*binlog.BinlogTx{}
 						}
 					}
-				case <-e.quit:
+				case <-e.stopCh:
 					{
-						return
+						break OUTER
 					}
 				}
 			}
@@ -1187,12 +1188,12 @@ func (e *Extractor) Shutdown() error {
 		}
 	}
 
-	e.quit <- true
-	close(e.binlogChannel)
 	for _, d := range e.dumpers {
 		d.Close()
 	}
 
+	e.stopCh <- true
+	close(e.binlogChannel)
 	if err := sql.CloseDB(e.db); err != nil {
 		return err
 	}

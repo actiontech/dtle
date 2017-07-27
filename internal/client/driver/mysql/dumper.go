@@ -29,7 +29,7 @@ type dumper struct {
 	entriesCount   int
 	resultsChannel chan *dumpEntry
 	entriesChannel chan *dumpEntry
-	quit           chan bool
+	stopCh         chan bool
 
 	// DB is safe for using in goroutines
 	// http://golang.org/src/database/sql/sql.go?s=5574:6362#L201
@@ -45,7 +45,7 @@ func NewDumper(db *sql.DB, dbName, tableName string, logger *log.Entry) *dumper 
 		resultsChannel: make(chan *dumpEntry),
 		entriesChannel: make(chan *dumpEntry),
 		chunkSize:      defaultChunkSize,
-		quit:           make(chan bool),
+		stopCh:         make(chan bool, 1),
 	}
 	return dumper
 }
@@ -221,19 +221,19 @@ func (e *dumpEntry) escape(colValue string) string {
 }
 
 func (d *dumper) worker() {
+OUTER:
 	for {
 		select {
 		case e := <-d.entriesChannel:
-			if e == nil {
-				return
+			if e != nil {
+				err := d.getChunkData(e)
+				if err != nil {
+					e.err = err
+				}
+				d.resultsChannel <- e
 			}
-			err := d.getChunkData(e)
-			if err != nil {
-				e.err = err
-			}
-			d.resultsChannel <- e
-		case <-d.quit:
-			break
+		case <-d.stopCh:
+			break OUTER
 		}
 	}
 }
@@ -343,7 +343,6 @@ func (d *dumper) createTableSQL(dropTableIfExists bool) (string, error) {
 
 func (d *dumper) Close() error {
 	// Quit goroutine
-	d.quit <- true
-	close(d.entriesChannel)
+	d.stopCh <- true
 	return nil
 }

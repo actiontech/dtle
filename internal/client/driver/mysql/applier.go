@@ -55,7 +55,7 @@ type Applier struct {
 	applyBinlogGroupTxQueue chan []*binlog.BinlogTx
 
 	natsConn *gonats.Conn
-	quit     chan bool
+	stopCh   chan bool
 	waitCh   chan *models.WaitResult
 }
 
@@ -77,7 +77,7 @@ func NewApplier(subject, tp string, cfg *config.MySQLDriverConfig, logger *log.L
 		applyBinlogTxQueue:         make(chan *binlog.BinlogTx, cfg.ReplChanBufferSize),
 		applyBinlogGroupTxQueue:    make(chan []*binlog.BinlogTx, cfg.ReplChanBufferSize),
 		waitCh:                     make(chan *models.WaitResult, 1),
-		quit:                       make(chan bool),
+		stopCh:                     make(chan bool, 1),
 	}
 	return a
 }
@@ -599,6 +599,9 @@ OUTER:
 			}
 		case groupTx := <-a.applyBinlogGroupTxQueue:
 			{
+				if len(groupTx) == 0 {
+					return
+				}
 				barrier.Add(len(groupTx))
 				for idx, binlogTx := range groupTx {
 					dbApplier = a.dbs[idx%a.mysqlContext.ParallelWorkers]
@@ -719,9 +722,10 @@ func (a *Applier) initiateStreaming() error {
 	}
 
 	var lastCommitted int64
-	var groupTx []*binlog.BinlogTx
+	groupTx := []*binlog.BinlogTx{}
 	sid := a.validateServerUUID()
 	go func() {
+	OUTER:
 		for {
 			select {
 			case binlogTx := <-a.applyBinlogTxQueue:
@@ -736,9 +740,9 @@ func (a *Applier) initiateStreaming() error {
 					if binlogTx.LastCommitted == lastCommitted {
 						groupTx = append(groupTx, binlogTx)
 					} else {
-						if groupTx != nil {
+						if len(groupTx) != 0 {
 							a.applyBinlogGroupTxQueue <- groupTx
-							groupTx = nil
+							groupTx = []*binlog.BinlogTx{}
 						}
 						groupTx = append(groupTx, binlogTx)
 					}
@@ -746,12 +750,12 @@ func (a *Applier) initiateStreaming() error {
 				}
 
 			case <-time.After(100 * time.Millisecond):
-				if groupTx != nil {
+				if len(groupTx) != 0 {
 					a.applyBinlogGroupTxQueue <- groupTx
-					groupTx = nil
+					groupTx = []*binlog.BinlogTx{}
 				}
-			case <-a.quit:
-				return
+			case <-a.stopCh:
+				break OUTER
 			}
 		}
 	}()
@@ -1577,7 +1581,7 @@ func (a *Applier) Shutdown() error {
 		a.natsConn.Close()
 	}
 
-	a.quit <- true
+	a.stopCh <- true
 	close(a.applyBinlogTxQueue)
 	close(a.applyBinlogGroupTxQueue)
 
