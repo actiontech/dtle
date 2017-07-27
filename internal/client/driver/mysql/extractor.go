@@ -21,6 +21,7 @@ import (
 	"udup/internal/config"
 	log "udup/internal/logger"
 	"udup/internal/models"
+	//"github.com/hashicorp/consul/agent/pool"
 )
 
 const (
@@ -976,10 +977,10 @@ func (e *Extractor) mysqlDump() error {
 	e.logger.Printf("mysql.extractor: Step 5: scanning contents of %d tables", len(e.tables))
 	startScan := currentTimeMillis()
 	counter := 0
-	pool := models.NewPool(10)
-	for _, tb := range e.tables {
-		pool.Add(1)
-		go func(t *config.Table) {
+	//pool := models.NewPool(10)
+	for _, t := range e.tables {
+		//pool.Add(1)
+		//go func(t *config.Table) {
 			counter++
 
 			// Obtain a record maker for this table, which knows about the schema ...
@@ -1015,10 +1016,10 @@ func (e *Extractor) mysqlDump() error {
 			}
 
 			close(d.resultsChannel)
-			pool.Done()
-		}(tb)
+			//pool.Done()
+		//}(tb)
 	}
-	pool.Wait()
+	//pool.Wait()
 
 	time.Sleep(5 * time.Second)
 	// We've copied all of the tables, but our buffer holds onto the very last record.
@@ -1193,7 +1194,6 @@ func (e *Extractor) Shutdown() error {
 	}
 
 	e.stopCh <- true
-	close(e.binlogChannel)
 	if err := sql.CloseDB(e.db); err != nil {
 		return err
 	}

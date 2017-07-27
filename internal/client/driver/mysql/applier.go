@@ -1582,9 +1582,6 @@ func (a *Applier) Shutdown() error {
 	}
 
 	a.stopCh <- true
-	close(a.applyBinlogTxQueue)
-	close(a.applyBinlogGroupTxQueue)
-
 	if err := sql.CloseDB(a.singletonDB); err != nil {
 		return err
 	}

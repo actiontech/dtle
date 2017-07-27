@@ -39,7 +39,6 @@ type BinlogReader struct {
 	currentCoordinatesMutex  *sync.Mutex
 	LastAppliedRowsEventHint base.BinlogCoordinates
 	MysqlContext             *config.MySQLDriverConfig
-	waitGroup                *sync.WaitGroup
 
 	currentTx      *BinlogTx
 	txCount        int
@@ -59,7 +58,6 @@ func NewMySQLReader(cfg *config.MySQLDriverConfig, logger *log.Entry) (binlogRea
 		binlogStreamer:          nil,
 		MysqlContext:            cfg,
 		appendB64SqlBs:          make([]byte, 1024*1024),
-		waitGroup:               &sync.WaitGroup{},
 	}
 
 	uri := cfg.ConnectionConfig.GetDBUri()
@@ -609,9 +607,6 @@ func (b *BinlogReader) appendB64Sql(event *BinlogEvent) {
 }
 
 func (b *BinlogReader) onCommit(lastEvent *BinlogEvent, txChannel chan<- *BinlogTx) {
-	b.waitGroup.Add(1)
-	defer b.waitGroup.Done()
-
 	if nil != b.currentSqlB64 && !strings.HasSuffix(b.currentSqlB64.String(), "BINLOG '") {
 		b.currentSqlB64.WriteString("'")
 		b.appendQuery(b.currentSqlB64.String())
@@ -965,6 +960,5 @@ func (b *BinlogReader) Close() error {
 	// here. A new go-mysql version closes the binlog syncer connection independently.
 	// I will go against the sacred rules of comments and just leave this here.
 	// This is the year 2017. Let's see what year these comments get deleted.
-	b.waitGroup.Wait()
 	return nil
 }
