@@ -225,6 +225,7 @@ func (d *dumper) worker() {
 		select {
 		case <-d.stopCh:
 			return
+		default:
 		}
 		if e != nil {
 			err := d.getChunkData(e)
@@ -333,7 +334,7 @@ func (d *dumper) createTableSQL(dropTableIfExists bool) (string, error) {
 		return "", fmt.Errorf("Returned table is not the same as requested table")
 	}
 	if dropTableIfExists {
-		createTable = fmt.Sprintf("%s;DROP TABLE IF EXISTS %s", createTable, d.TableName)
+		createTable = fmt.Sprintf("%s;DROP TABLE IF EXISTS `%s`", createTable, d.TableName)
 	}
 
 	return fmt.Sprintf("%s;%s", createTable, tableSql.String), nil

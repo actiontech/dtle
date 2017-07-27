@@ -682,7 +682,7 @@ func (c *Client) retryRegisterNode() {
 		}
 
 		if err == noServersErr {
-			c.logger.Print("[DEBUG] client: Registration waiting on servers")
+			c.logger.Debugf("client: Registration waiting on servers")
 			c.triggerDiscovery()
 		} else {
 			c.logger.Errorf("client: Registration failure: %v", err)
