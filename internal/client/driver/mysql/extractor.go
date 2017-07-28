@@ -953,7 +953,7 @@ func (e *Extractor) mysqlDump() error {
 				e.onError(err)
 			}
 			d := NewDumper(tx, t.TableSchema, t.TableName, e.logger)
-			tbSQL, err := d.createTableSQL(e.mysqlContext.DropTableIfExists)
+			tbSQL, err := d.showCreateTable(e.mysqlContext.DropTableIfExists)
 			if err != nil {
 				e.onError(err)
 			}

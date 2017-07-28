@@ -227,6 +227,23 @@ func QueryRowsMap(db *gosql.DB, query string, on_row func(RowMap) error, args ..
 	return err
 }
 
+func QueryRowsMapWithTx(db *gosql.Tx, query string, on_row func(RowMap) error, args ...interface{}) error {
+	var err error
+	defer func() {
+		if derr := recover(); derr != nil {
+			err = errors.New(fmt.Sprintf("QueryRowsMap unexpected error: %+v", derr))
+		}
+	}()
+
+	rows, err := db.Query(query, args...)
+	defer rows.Close()
+	if err != nil && err != gosql.ErrNoRows {
+		return err
+	}
+	err = ScanRowsToMaps(rows, on_row)
+	return err
+}
+
 // queryResultData returns a raw array of rows for a given query, optionally reading and returning column names
 func queryResultData(db *gosql.DB, query string, retrieveColumns bool, args ...interface{}) (ResultData, []string, error) {
 	var err error

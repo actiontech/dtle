@@ -8,8 +8,10 @@ import (
 	"strconv"
 	"strings"
 
+	ubase "udup/internal/client/driver/mysql/base"
 	usql "udup/internal/client/driver/mysql/sql"
 	"udup/internal/config"
+	umconf "udup/internal/config/mysql"
 	log "udup/internal/logger"
 )
 
@@ -26,6 +28,7 @@ type dumper struct {
 	chunkSize      int
 	TableSchema    string
 	TableName      string
+	columns        []string
 	entriesCount   int
 	resultsChannel chan *dumpEntry
 	entriesChannel chan *dumpEntry
@@ -94,6 +97,26 @@ func (d *dumper) getDumpEntries() ([]*dumpEntry, error) {
 		return []*dumpEntry{}, nil
 	}
 
+	columnList, err := ubase.GetTableColumnsWithTx(d.db, d.TableSchema, d.TableName)
+	if err != nil {
+		return []*dumpEntry{}, err
+	}
+
+	if ubase.ApplyColumnTypes(d.db, d.TableSchema, d.TableName, columnList); err != nil {
+		return []*dumpEntry{}, err
+	}
+
+	for _, col := range columnList.Columns {
+		switch col.Type {
+		case umconf.FloatColumnType, umconf.DoubleColumnType,
+			umconf.MediumIntColumnType, umconf.BigIntColumnType,
+			umconf.DecimalColumnType:
+			d.columns = append(d.columns, fmt.Sprintf("%s+0", col.Name))
+		default:
+			d.columns = append(d.columns, col.Name)
+		}
+	}
+
 	sliceCount := int(math.Ceil(float64(total) / float64(d.chunkSize)))
 	if sliceCount == 0 {
 		sliceCount = 1
@@ -111,7 +134,8 @@ func (d *dumper) getDumpEntries() ([]*dumpEntry, error) {
 
 // dumps a specific chunk, reading chunk info from the channel
 func (d *dumper) getChunkData(entry *dumpEntry) error {
-	query := fmt.Sprintf(`SELECT * FROM %s.%s LIMIT %d OFFSET %d`,
+	query := fmt.Sprintf(`SELECT %s FROM %s.%s LIMIT %d OFFSET %d`,
+		strings.Join(d.columns, ", "),
 		usql.EscapeName(d.TableSchema),
 		usql.EscapeName(d.TableName),
 		d.chunkSize,
@@ -317,27 +341,15 @@ func showTables(db *sql.DB, dbName string) (tables []*config.Table, err error) {
 	return tables, rows.Err()
 }
 
-func (d *dumper) createTableSQL(dropTableIfExists bool) (string, error) {
-	query := fmt.Sprintf(`SHOW CREATE TABLE %s.%s`,
-		usql.EscapeName(d.TableSchema),
-		usql.EscapeName(d.TableName),
-	)
-	// Get table creation SQL
-	createTable := fmt.Sprintf("USE %s", d.TableSchema)
-	var tableReturn sql.NullString
-	var tableSql sql.NullString
-	err := d.db.QueryRow(query).Scan(&tableReturn, &tableSql)
-	if err != nil {
-		return "", err
-	}
-	if tableReturn.String != d.TableName {
-		return "", fmt.Errorf("Returned table is not the same as requested table")
-	}
+func (d *dumper) showCreateTable(dropTableIfExists bool) (createTableStatement string, err error) {
+	var dummy string
+	query := fmt.Sprintf(`show create table %s.%s`, usql.EscapeName(d.TableSchema), usql.EscapeName(d.TableName))
+	err = d.db.QueryRow(query).Scan(&dummy, &createTableStatement)
+	statement := fmt.Sprintf("USE %s", d.TableSchema)
 	if dropTableIfExists {
-		createTable = fmt.Sprintf("%s;DROP TABLE IF EXISTS `%s`", createTable, d.TableName)
+		statement = fmt.Sprintf("%s;DROP TABLE IF EXISTS `%s`", statement, d.TableName)
 	}
-
-	return fmt.Sprintf("%s;%s", createTable, tableSql.String), nil
+	return fmt.Sprintf("%s;%s", statement, createTableStatement), err
 }
 
 func (d *dumper) Close() error {
