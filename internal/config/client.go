@@ -23,6 +23,8 @@ const (
 	defaultNumRetries = 5
 	defaultNumWorkers = 1
 	defaultMsgBytes   = 20 * 1024
+	defaultMsgsLimit  = 65536
+	defaultBytesLimit = 65536 * 1024
 )
 
 // RPCHandler can be provided to the Client if there is a local server
@@ -71,9 +73,6 @@ type ClientConfig struct {
 	NatsAddr string
 
 	MaxPayload int
-
-	// How many bytes are allowed.
-	MaxBytes int64
 
 	// StatsCollectionInterval is the interval at which the Udup client
 	// collects resource usage stats
@@ -125,6 +124,8 @@ type MySQLDriverConfig struct {
 	DropTableIfExists                   bool
 	ReplChanBufferSize                  int64
 	MsgBytesLimit                       uint64
+	MsgsLimit                           int
+	BytesLimit                          int
 	ConcurrentCountTableRows            bool
 	SkipRenamedColumns                  bool
 	MaxRetries                          int64
@@ -189,6 +190,12 @@ func (a *MySQLDriverConfig) SetDefault() *MySQLDriverConfig {
 	}
 	if result.MsgBytesLimit <= 0 {
 		result.MsgBytesLimit = defaultMsgBytes
+	}
+	if result.MsgsLimit <= 0 {
+		result.MsgsLimit = defaultMsgsLimit
+	}
+	if result.BytesLimit <= 0 {
+		result.BytesLimit = defaultBytesLimit
 	}
 	return &result
 }

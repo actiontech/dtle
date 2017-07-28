@@ -59,6 +59,8 @@ Parameter Config is composed of the following parameters:
 | ParallelWorkers | No | Int | Parallel workers |
 | ReplChanBufferSize | No | Int | Limit message from the Buffer |
 | MsgBytesLimit | No | Int | Set the limits for sending msg bytes for this subscription |
+| MsgsLimit | No | Int | Set the limits for sending msgs for this subscription |
+| BytesLimit | No | Int | Set the limits for sending msg bytes for this subscription |
 | ReplicateDoDb | No | Array | Information on the source database table to be synchronized. If you need to synchronize the entire instance, this field can be left empty. The composition of each element is shown in the table below |
 | ConnectionConfig | Yes | Object | Mysql server information |
 

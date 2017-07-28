@@ -18,8 +18,6 @@ import (
 const (
 	DefaultAddr       = "0.0.0.0"
 	DefaultMaxPayload = 100 * 1024 * 1024 // 100M
-	// How many bytes are allowed.
-	DefaultMaxBytes = 1000 * 1024 * 1024 // 1000M
 )
 
 // Config is the configuration for the Udup agent.
@@ -165,9 +163,6 @@ type Network struct {
 	// MAX_PAYLOAD is the maximum allowed payload size. Should be using
 	// something different if > 1MB payloads are needed.
 	MaxPayload int `mapstructure:"max_payload"`
-
-	// How many bytes are allowed.
-	MaxBytes int64 `mapstructure:"max_bytes"`
 }
 
 type Metric struct {
@@ -250,7 +245,6 @@ func DefaultConfig() *Config {
 		},
 		Network: &Network{
 			MaxPayload: DefaultMaxPayload,
-			MaxBytes:   DefaultMaxBytes,
 		},
 	}
 }
@@ -588,10 +582,6 @@ func (a *Network) Merge(b *Network) *Network {
 
 	if b.MaxPayload != 0 {
 		result.MaxPayload = b.MaxPayload
-	}
-
-	if b.MaxBytes != 0 {
-		result.MaxBytes = b.MaxBytes
 	}
 	return &result
 }

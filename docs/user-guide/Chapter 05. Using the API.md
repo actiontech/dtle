@@ -55,7 +55,9 @@ Config 为该任务中数据相关的配置，字段描述为：
 | Gtid | 否 | String | MySQL Gtid位置 |
 | ParallelWorkers | 否 | Int | 并行回放数 |
 | ReplChanBufferSize | 否 | Int | 复制任务缓存限制 |
-| MsgBytesLimit | 否 | Int | 传输消息大小限制 |
+| MsgBytesLimit | 否 | Int | 单个消息大小限制 |
+| MsgsLimit | 否 | Int | 消息数量限制 |
+| BytesLimit | 否 | Int | 消息大小限制 |
 | ReplicateDoDb | 否 | Array | 需要同步的源数据库表信息，如果您需要同步的是整个实例，该字段可不填写，每个元素具体构成见下表 |
 | ConnectionConfig | 是 | Object | 数据源连接信息 |
 

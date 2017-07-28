@@ -692,7 +692,7 @@ func (a *Applier) initiateStreaming() error {
 		if err != nil {
 			return err
 		}
-		/*if err := sub.SetPendingLimits(10, 80); err != nil {
+		/*if err := sub.SetPendingLimits(a.mysqlContext.MsgsLimit, a.mysqlContext.BytesLimit); err != nil {
 			return err
 		}*/
 	} else {
@@ -724,6 +724,9 @@ func (a *Applier) initiateStreaming() error {
 		if err != nil {
 			return err
 		}
+		/*if err := sub.SetPendingLimits(a.mysqlContext.MsgsLimit, a.mysqlContext.BytesLimit); err != nil {
+			return err
+		}*/
 	}
 
 	var lastCommitted int64

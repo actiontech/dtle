@@ -440,7 +440,6 @@ func parseNetwork(result **Network, list *ast.ObjectList) error {
 	// Check for invalid keys
 	valid := []string{
 		"max_payload",
-		"max_bytes",
 	}
 	if err := checkHCLKeys(listVal, valid); err != nil {
 		return err
