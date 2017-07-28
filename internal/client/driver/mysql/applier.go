@@ -187,9 +187,11 @@ func (a *Applier) Run() {
 
 	go a.executeWriteFuncs()
 
-	a.logger.Printf("mysql.applier: Operating until row copy is complete")
-	a.consumeRowCopyComplete()
-	a.logger.Printf("mysql.applier: Row copy complete")
+	if a.mysqlContext.Gtid == "" {
+		a.logger.Printf("mysql.applier: Operating until row copy is complete")
+		a.consumeRowCopyComplete()
+		a.logger.Printf("mysql.applier: Row copy complete")
+	}
 
 	if a.tp == models.JobTypeMig {
 		for {

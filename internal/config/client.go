@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"io"
 	"os"
 	"sync"
@@ -113,6 +114,10 @@ const (
 	CutOverAtomic  CutOver = iota
 	CutOverTwoStep         = iota
 )
+
+func (d *DataSource) String() string {
+	return fmt.Sprintf(d.TableSchema)
+}
 
 type MySQLDriverConfig struct {
 	//Ref:http://dev.mysql.com/doc/refman/5.7/en/replication-options-slave.html#option_mysqld_replicate-do-table

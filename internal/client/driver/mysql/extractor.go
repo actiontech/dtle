@@ -720,7 +720,7 @@ func (e *Extractor) StreamEvents(approveHeterogeneous bool, canStopStreaming fun
 
 				// Reposition at same binlog file.
 				lastAppliedRowsEventHint = e.binlogReader.LastAppliedRowsEventHint
-				e.logger.Printf("mysql.extractor: Reconnecting... Will resume at %+v", lastAppliedRowsEventHint)
+				e.logger.Warnf("mysql.extractor: Reconnecting... Will resume at %+v", lastAppliedRowsEventHint)
 				if err := e.initBinlogReader(e.GetReconnectBinlogCoordinates()); err != nil {
 					return err
 				}
@@ -872,7 +872,7 @@ func (e *Extractor) mysqlDump() error {
 		// ------
 		// Transform the current schema so that it reflects the *current* state of the MySQL server's contents.
 		// First, get the DROP TABLE and CREATE TABLE statement (with keys and constraint definitions) for our tables ...
-		e.logger.Printf("mysql.extractor: Step 2: generating DROP and CREATE statements to reflect current database schemas")
+		e.logger.Printf("mysql.extractor: Step 2: generating DROP and CREATE statements to reflect current database schemas: %s", e.mysqlContext.ReplicateDoDb)
 
 		for _, doDb := range e.mysqlContext.ReplicateDoDb {
 			if doDb.TableSchema == "" {
