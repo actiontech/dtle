@@ -6,12 +6,13 @@ import (
 
 // Task is a single process in a task.
 type Task struct {
-	Type   string
-	NodeId string
-	Driver string
-	Config map[string]interface{}
-	Leader bool
-	Status string
+	Type     string
+	NodeId   string
+	NodeName string
+	Driver   string
+	Config   map[string]interface{}
+	Leader   bool
+	Status   string
 }
 
 // Configure is used to configure a single k/v pair on

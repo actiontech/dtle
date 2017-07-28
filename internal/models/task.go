@@ -26,6 +26,8 @@ type Task struct {
 
 	NodeId string
 
+	NodeName string
+
 	// Driver is used to control which driver is used
 	Driver string
 

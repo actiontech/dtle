@@ -280,6 +280,7 @@ func ApiJobToStructJob(job *api.Job) *models.Job {
 func ApiTaskToStructsTask(apiTask *api.Task, structsTask *models.Task) {
 	structsTask.Type = apiTask.Type
 	structsTask.NodeId = apiTask.NodeId
+	structsTask.NodeName = apiTask.NodeName
 	structsTask.Driver = apiTask.Driver
 	structsTask.Leader = apiTask.Leader
 	structsTask.Config = apiTask.Config
