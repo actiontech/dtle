@@ -2,7 +2,7 @@ package scheduler
 
 import (
 	"fmt"
-	"math/rand"
+	//"math/rand"
 
 	memdb "github.com/hashicorp/go-memdb"
 	"github.com/hashicorp/go-multierror"
@@ -374,14 +374,17 @@ func (s *GenericScheduler) computePlacements(place []allocTuple) error {
 			return err
 		}
 
-		if preferredNode == nil {
-			preferredNode = nodes[rand.Intn(len(nodes))]
-		}
+		var nodeId string
+		if preferredNode != nil {
+			nodeId = preferredNode.ID
+		} /*else {
+			nodeId = nodes[rand.Intn(len(nodes))].ID
+		}*/
 
 		// Store the available nodes by datacenter
 		s.ctx.Metrics().NodesAvailable = byDC
 
-		if preferredNode != nil {
+		if nodeId != "" {
 			// Create an allocation for this
 			alloc := &models.Allocation{
 				ID:            models.GenerateUUID(),
@@ -440,8 +443,7 @@ func (s *GenericScheduler) findPreferredNode(allocTuple *allocTuple) (node *mode
 		ws := memdb.NewWatchSet()
 		preferredNode, err = s.state.NodeByID(ws, allocTuple.Task.NodeId)
 		if err != nil || preferredNode == nil {
-			s.logger.Debugf("sched: Can't find preferred node %s", allocTuple.Task.NodeId)
-			return
+			return nil,fmt.Errorf("sched: Can't find preferred node %s", allocTuple.Task.NodeId)
 		}
 		if preferredNode.Ready() {
 			node = preferredNode
