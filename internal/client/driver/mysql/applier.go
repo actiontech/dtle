@@ -690,10 +690,9 @@ func (a *Applier) initiateStreaming() error {
 		if err != nil {
 			return err
 		}
-		if err := sub.SetPendingLimits(100, 1024); err != nil {
+		if err := sub.SetPendingLimits(10, 80); err != nil {
 			return err
 		}
-
 	} else {
 		a.rowCopyComplete <- true
 	}

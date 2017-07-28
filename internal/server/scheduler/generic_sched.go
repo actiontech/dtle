@@ -374,17 +374,14 @@ func (s *GenericScheduler) computePlacements(place []allocTuple) error {
 			return err
 		}
 
-		var nodeId string
-		if preferredNode != nil {
-			nodeId = preferredNode.ID
-		} else {
-			nodeId = nodes[rand.Intn(len(nodes))].ID
+		if preferredNode == nil {
+			preferredNode = nodes[rand.Intn(len(nodes))]
 		}
 
 		// Store the available nodes by datacenter
 		s.ctx.Metrics().NodesAvailable = byDC
 
-		if nodeId != "" {
+		if preferredNode != nil {
 			// Create an allocation for this
 			alloc := &models.Allocation{
 				ID:            models.GenerateUUID(),
@@ -393,7 +390,7 @@ func (s *GenericScheduler) computePlacements(place []allocTuple) error {
 				JobID:         s.job.ID,
 				Task:          missing.Task.Type,
 				Metrics:       s.ctx.Metrics(),
-				NodeID:        nodeId,
+				NodeID:        preferredNode.ID,
 				DesiredStatus: models.AllocDesiredStatusRun,
 				ClientStatus:  models.AllocClientStatusPending,
 			}
@@ -404,6 +401,11 @@ func (s *GenericScheduler) computePlacements(place []allocTuple) error {
 				alloc.PreviousAllocation = missing.Alloc.ID
 			}
 
+			if missing.Task.Type == models.TaskTypeDest {
+				for _, task := range s.plan.Job.Tasks {
+					task.Config["NatsAddr"] = preferredNode.NatsAddr
+				}
+			}
 			s.plan.AppendAlloc(alloc)
 		} else {
 			// Lazy initialize the failed map

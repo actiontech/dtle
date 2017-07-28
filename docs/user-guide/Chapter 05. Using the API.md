@@ -36,7 +36,7 @@ Udup 通过 http 实现一个 rest 风格的 json api 来与软件客户端进�
 |---------|---------|---------|---------|
 | ID | 否 | Int | 数据复制任务ID，请使用查询数据复制任务列表接口查询任务ID |
 | Name | 是 | String | 数据复制任务名称 |
-| Type | 是 | String | 数据复制作业类型（同步/迁移/消息订阅） |
+| Type | 否 | String | 数据复制作业类型（同步/迁移/消息订阅），默认同步（synchronous） |
 | Tasks | 是 | Array | 数据复制作业的任务集合 |
 
 其中， Tasks 中每一个元素为Object，其构成如下：
@@ -44,7 +44,7 @@ Udup 通过 http 实现一个 rest 风格的 json api 来与软件客户端进�
 | 参数名称 | 是否必选  | 类型 | 描述 |
 |---------|---------|---------|---------|
 | Type | 是 | String | 数据复制任务类型（抽取/回放）,可取值包括：<br>Src-源MySQL实例（主实例）<br>Dest-目的MySQL实例（灾备实例） |
-| Driver | 是 | String | 数据复制对象类型,可取值包括：<br>MySQL<br>Oracle |
+| Driver | 否 | String | 数据复制对象类型,可取值包括：<br>MySQL<br>Oracle |
 | NodeId | 否 | String | 指定任务节点ID，可使用[查询节点列表](#Node) 接口获取，其值为输出参数中字段 id 的值。 |
 | Config | 是 | Object | 配置信息 |
 
@@ -53,7 +53,6 @@ Config 为该任务中数据相关的配置，字段描述为：
 | 参数名称 | 是否必选  | 类型 | 描述 |
 |---------|---------|---------|---------|
 | Gtid | 否 | String | MySQL Gtid位置 |
-| NatsAddr | 是 | String | 数据传输地址 |
 | ParallelWorkers | 否 | Int | 并行回放数 |
 | ReplChanBufferSize | 否 | Int | 复制任务缓存限制 |
 | MsgBytesLimit | 否 | Int | 传输消息大小限制 |
@@ -100,7 +99,6 @@ Config 为该任务中数据相关的配置，字段描述为：
              "Driver": "MySQL", 
              "Config": {
                  "Gtid": "", 
-                 "NatsAddr": "127.0.0.1:8193", 
                  "ParallelWorkers": 4,
                  "ReplChanBufferSize": 600, 
                  "MsgBytesLimit": 20480,
@@ -122,8 +120,7 @@ Config 为该任务中数据相关的配置，字段描述为：
              "NodeId": "a5e9ad80-8e77-03fd-7fa3-31e007ecdcbe", 
              "Driver": "MySQL", 
              "Config": {
-                 "Gtid": "", 
-                 "NatsAddr": "127.0.0.1:8193",  
+                 "Gtid": "",  
                  "ParallelWorkers": 4, 
                  "ConnectionConfig": {
                      "Host": "192.168.99.100", 

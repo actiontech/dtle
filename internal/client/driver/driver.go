@@ -13,8 +13,8 @@ var (
 	// BuiltinDrivers contains the built in registered drivers
 	// which are available for allocation handling
 	BuiltinDrivers = map[string]Factory{
-		"MySQL": NewMySQLDriver,
-		//"Oracle":     NewOracleDriver,
+		models.TaskDriverMySQL: NewMySQLDriver,
+		//"models.TaskDriverOracle:     NewOracleDriver,
 	}
 
 	// DriverStatsNotImplemented is the error to be returned if a driver doesn't

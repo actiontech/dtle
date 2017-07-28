@@ -255,6 +255,9 @@ func ApiJobToStructJob(job *api.Job) *models.Job {
 
 	j.Tasks = make([]*models.Task, len(job.Tasks))
 	for i, task := range job.Tasks {
+		if task.Driver == "" {
+			task.Driver = models.TaskDriverMySQL
+		}
 		if task.Type == models.TaskTypeDest {
 			task.Leader = true
 		}

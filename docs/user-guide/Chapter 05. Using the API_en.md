@@ -39,7 +39,7 @@ The following request parameter list only provides API request parameters.
 |---------|---------|---------|---------|
 | ID | No | Int | ID of data synchronization/migration job. Please use API "Query Data Synchronization Task List" to query the task ID |
 | Name | Yes | String | Name of job |
-| Type | Yes | String | Type of job. Possible values include: < br> synchronous <br> migration <br> subscribe |
+| Type | No | String | Type of job. Possible values include: < br>synchronous <br>migration <br>subscribe default:synchronous|
 | Tasks | Yes | Array | A group of tasks |
 
 Each element in the Tasks is an Object, which is composed of the following parameters:
@@ -47,7 +47,7 @@ Each element in the Tasks is an Object, which is composed of the following param
 | Parameter Name | Required | Type | Description |
 |---------|---------|---------|---------|
 | Type | Yes | String | Type of task（extract/apply）,Possible values include: <br>Src-Source MySQL instance (master instance)<br>Dest-Destination MySQL instance (disaster recovery instance) |
-| Driver | Yes | String | Specifies the task driver that should be used to run the task. Possible values include: <br>MySQL<br>Oracle |
+| Driver | No | String | Specifies the task driver that should be used to run the task. Possible values include: <br>MySQL<br>Oracle |
 | NodeId | No | String | The node in which to execute the job. |
 | Config | Yes | Object | Information on the datasource |
 
@@ -56,7 +56,6 @@ Parameter Config is composed of the following parameters:
 | Parameter Name | Required | Type | Description |
 |---------|---------|---------|---------|
 | Gtid | No | String | MySQL Binlog Coordinates |
-| NatsAddr | Yes | String | Nats server address |
 | ParallelWorkers | No | Int | Parallel workers |
 | ReplChanBufferSize | No | Int | Limit message from the Buffer |
 | MsgBytesLimit | No | Int | Set the limits for sending msg bytes for this subscription |
@@ -103,7 +102,6 @@ Input
              "Driver": "MySQL", 
              "Config": {
                  "Gtid": "", 
-                 "NatsAddr": "127.0.0.1:8193", 
                  "ParallelWorkers": 4,
                  "ReplChanBufferSize": 600, 
                  "MsgBytesLimit": 20480,
@@ -126,7 +124,6 @@ Input
              "Driver": "MySQL", 
              "Config": {
                  "Gtid": "", 
-                 "NatsAddr": "127.0.0.1:8193",  
                  "ParallelWorkers": 4, 
                  "ConnectionConfig": {
                      "Host": "192.168.99.100", 

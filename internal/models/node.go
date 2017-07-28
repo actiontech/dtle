@@ -145,6 +145,8 @@ type Node struct {
 	// requests
 	HTTPAddr string
 
+	NatsAddr string
+
 	// Attributes is an arbitrary set of key/value
 	// data that can be used for constraints. Examples
 	// include "kernel.name=linux", "arch=386", "driver.docker=1",

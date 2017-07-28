@@ -14,6 +14,9 @@ import (
 const (
 	TaskTypeSrc  = "Src"
 	TaskTypeDest = "Dest"
+
+	TaskDriverMySQL  = "MySQL"
+	TaskDriverOracle = "Oracle"
 )
 
 // Task is a single process typically that is executed as part of a task.
