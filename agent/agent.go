@@ -263,7 +263,7 @@ func (a *Agent) Shutdown() error {
 		return nil
 	}
 
-	a.logger.Println("[INFO] agent: requesting shutdown")
+	a.logger.Println("agent: requesting shutdown")
 	if a.client != nil {
 		if err := a.client.Shutdown(); err != nil {
 			a.logger.Errorf("agent: client shutdown failed: %v", err)
@@ -275,7 +275,7 @@ func (a *Agent) Shutdown() error {
 		}
 	}
 
-	a.logger.Println("[INFO] agent: shutdown complete")
+	a.logger.Println("agent: shutdown complete")
 	a.shutdown = true
 	close(a.shutdownCh)
 	return nil

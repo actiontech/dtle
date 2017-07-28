@@ -677,7 +677,7 @@ func Decode(data []byte, vPtr interface{}) (err error) {
 // initiateStreaming begins treaming of binary log events and registers listeners for such events
 func (a *Applier) initiateStreaming() error {
 	if a.mysqlContext.Gtid == "" {
-		sub, err := a.natsConn.Subscribe(fmt.Sprintf("%s_full", a.subject), func(m *gonats.Msg) {
+		_, err := a.natsConn.Subscribe(fmt.Sprintf("%s_full", a.subject), func(m *gonats.Msg) {
 			dumpData := &dumpEntry{}
 			if err := Decode(m.Data, dumpData); err != nil {
 				a.onError(err)
@@ -690,9 +690,9 @@ func (a *Applier) initiateStreaming() error {
 		if err != nil {
 			return err
 		}
-		if err := sub.SetPendingLimits(10, 80); err != nil {
+		/*if err := sub.SetPendingLimits(10, 80); err != nil {
 			return err
-		}
+		}*/
 	} else {
 		a.rowCopyComplete <- true
 	}

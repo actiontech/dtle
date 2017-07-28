@@ -532,9 +532,9 @@ func (c *Client) setupNatsServer() error {
 	sOpts := stand.GetDefaultOptions()
 	sOpts.ID = config.DefaultClusterID
 	sOpts.MaxBytes = c.config.MaxBytes
-	/*if c.config.LogLevel == "DEBUG" {
+	if c.config.LogLevel == "DEBUG" {
 		stand.ConfigureLogger(sOpts, &nOpts)
-	}*/
+	}
 	s, err := stand.RunServerWithOpts(sOpts, &nOpts)
 	if err != nil {
 		return err

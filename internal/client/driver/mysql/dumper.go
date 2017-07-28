@@ -28,7 +28,7 @@ type dumper struct {
 	chunkSize      int
 	TableSchema    string
 	TableName      string
-	columns        []string
+	columns        string
 	entriesCount   int
 	resultsChannel chan *dumpEntry
 	entriesChannel chan *dumpEntry
@@ -106,15 +106,23 @@ func (d *dumper) getDumpEntries() ([]*dumpEntry, error) {
 		return []*dumpEntry{}, err
 	}
 
+	needPm := false
+	columns := make([]string, 0)
 	for _, col := range columnList.Columns {
 		switch col.Type {
 		case umconf.FloatColumnType, umconf.DoubleColumnType,
 			umconf.MediumIntColumnType, umconf.BigIntColumnType,
 			umconf.DecimalColumnType:
-			d.columns = append(d.columns, fmt.Sprintf("%s+0", col.Name))
+			columns = append(columns, fmt.Sprintf("%s+0", col.Name))
+			needPm = true
 		default:
-			d.columns = append(d.columns, col.Name)
+			columns = append(columns, col.Name)
 		}
+	}
+	if needPm {
+		d.columns = strings.Join(columns, ", ")
+	} else {
+		d.columns = "*"
 	}
 
 	sliceCount := int(math.Ceil(float64(total) / float64(d.chunkSize)))
@@ -135,7 +143,7 @@ func (d *dumper) getDumpEntries() ([]*dumpEntry, error) {
 // dumps a specific chunk, reading chunk info from the channel
 func (d *dumper) getChunkData(entry *dumpEntry) error {
 	query := fmt.Sprintf(`SELECT %s FROM %s.%s LIMIT %d OFFSET %d`,
-		strings.Join(d.columns, ", "),
+		d.columns,
 		usql.EscapeName(d.TableSchema),
 		usql.EscapeName(d.TableName),
 		d.chunkSize,
@@ -143,7 +151,7 @@ func (d *dumper) getChunkData(entry *dumpEntry) error {
 	)
 	rows, err := d.db.Query(query)
 	if err != nil {
-		return err
+		return fmt.Errorf("exec [%s] error: %v", query, err)
 	}
 
 	columns, err := rows.Columns()
