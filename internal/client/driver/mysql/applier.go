@@ -1585,13 +1585,13 @@ func (a *Applier) WaitCh() chan *models.WaitResult {
 }
 
 func (a *Applier) Shutdown() error {
-	a.logger.Printf("mysql.applier: Shutting down")
 	a.shutdownLock.Lock()
 	defer a.shutdownLock.Unlock()
 
 	if a.shutdown {
 		return nil
 	}
+	a.logger.Printf("mysql.applier: Shutting down")
 
 	if a.natsConn != nil {
 		a.natsConn.Close()

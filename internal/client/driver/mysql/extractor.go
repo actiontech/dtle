@@ -696,6 +696,9 @@ func (e *Extractor) StreamEvents(canStopStreaming func() bool) error {
 			select {
 			case binlogTx := <-e.binlogChannel:
 				{
+					if binlogTx == nil {
+						continue
+					}
 					txArray = append(txArray, binlogTx)
 					txMsg, err := Encode(&txArray)
 					if err != nil {
@@ -740,43 +743,17 @@ func (e *Extractor) StreamEvents(canStopStreaming func() bool) error {
 					}
 				}
 			case <-e.shutdownCh:
-				//break OUTER
-				return
+				break OUTER
+				//return
 			}
 		}
 	}()
 	// The next should block and execute forever, unless there's a serious error
-	var successiveFailures int64
-	var lastAppliedRowsEventHint base.BinlogCoordinates
-OUTER_BS:
-	for {
-		if err := e.binlogReader.BinlogStreamEvents(e.binlogChannel); err != nil {
-			if e.shutdown {
-				break OUTER_BS
-			}
-
-			e.logger.Printf("mysql.extractor: StreamEvents encountered unexpected error: %+v", err)
-			e.mysqlContext.MarkPointOfInterest()
-			time.Sleep(ReconnectStreamerSleepSeconds * time.Second)
-
-			// See if there's retry overflow
-			if e.binlogReader.LastAppliedRowsEventHint.Equals(&lastAppliedRowsEventHint) {
-				successiveFailures += 1
-			} else {
-				successiveFailures = 0
-			}
-			if successiveFailures > e.mysqlContext.MaxRetries {
-				return fmt.Errorf("%d successive failures in streamer reconnect at coordinates %+v", successiveFailures, e.GetReconnectBinlogCoordinates())
-			}
-
-			// Reposition at same binlog file.
-			lastAppliedRowsEventHint = e.binlogReader.LastAppliedRowsEventHint
-			e.logger.Printf("mysql.extractor: Reconnecting... Will resume at %+v", lastAppliedRowsEventHint)
-			if err := e.initBinlogReader(e.GetReconnectBinlogCoordinates()); err != nil {
-				return err
-			}
-			e.binlogReader.LastAppliedRowsEventHint = lastAppliedRowsEventHint
+	if err := e.binlogReader.BinlogStreamEvents(e.binlogChannel); err != nil {
+		if e.shutdown {
+			return nil
 		}
+		return fmt.Errorf("mysql.extractor: StreamEvents encountered unexpected error: %+v", err)
 	}
 	return nil
 }
@@ -1111,13 +1088,13 @@ func (e *Extractor) WaitCh() chan *models.WaitResult {
 
 // Shutdown is used to tear down the extractor
 func (e *Extractor) Shutdown() error {
-	e.logger.Printf("mysql.extractor: Shutting down")
 	e.shutdownLock.Lock()
 	defer e.shutdownLock.Unlock()
 
 	if e.shutdown {
 		return nil
 	}
+	e.logger.Printf("mysql.extractor: Shutting down")
 
 	if e.natsConn != nil {
 		e.natsConn.Close()
