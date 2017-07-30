@@ -9,7 +9,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"sync/atomic"
 
 	"github.com/issuj/gofaster/base64"
 	"github.com/pingcap/tidb/ast"
@@ -47,6 +46,10 @@ type BinlogReader struct {
 	currentSqlB64  *bytes.Buffer
 	appendB64SqlBs []byte
 	ReMap          map[string]*regexp.Regexp
+
+	shutdown     bool
+	shutdownCh   chan struct{}
+	shutdownLock sync.Mutex
 }
 
 func NewMySQLReader(cfg *config.MySQLDriverConfig, logger *log.Entry) (binlogReader *BinlogReader, err error) {
@@ -54,10 +57,9 @@ func NewMySQLReader(cfg *config.MySQLDriverConfig, logger *log.Entry) (binlogRea
 		logger:                  logger,
 		currentCoordinates:      base.BinlogCoordinates{},
 		currentCoordinatesMutex: &sync.Mutex{},
-		binlogSyncer:            nil,
-		binlogStreamer:          nil,
 		MysqlContext:            cfg,
 		appendB64SqlBs:          make([]byte, 1024*1024),
+		shutdownCh:              make(chan struct{}),
 	}
 
 	uri := cfg.ConnectionConfig.GetDBUri()
@@ -120,190 +122,10 @@ func (b *BinlogReader) GetCurrentBinlogCoordinates() *base.BinlogCoordinates {
 	return &returnCoordinates
 }
 
-// StreamEvents
-func (b *BinlogReader) handleRowsEvent(ev *replication.BinlogEvent, be *BinlogEntry, entriesChannel chan<- *BinlogEntry) error {
-	if b.currentCoordinates.SmallerThanOrEquals(&b.LastAppliedRowsEventHint) {
-		//b.logger.Debugf("mysql.reader: Skipping handled query at %+v", b.currentCoordinates)
-		return nil
-	}
-
-	switch ev.Header.EventType {
-	case replication.QUERY_EVENT:
-		evt := ev.Event.(*replication.QueryEvent)
-		query := string(evt.Query)
-
-		if skipQueryEvent(query) {
-			//b.logger.Warnf("skip query %s", query)
-			return nil
-		}
-
-		sqls, ok, err := resolveDDLSQL(query)
-		if err != nil {
-			return fmt.Errorf("parse query event failed: %v", err)
-		}
-		if !ok {
-			return nil
-		}
-
-		for _, sql := range sqls {
-			if b.skipQueryDDL(sql, string(evt.Schema)) {
-				//b.logger.Debugf("mysql.reader: skip query-ddl-sql,schema:%s,sql:%s", evt.Schema, sql)
-				continue
-			}
-
-			sql, err = GenDDLSQL(sql, string(evt.Schema))
-			if err != nil {
-				return err
-			}
-			event := NewDataEvent(
-				sql,
-				"",
-				"",
-				NotDML,
-				nil,
-				nil,
-			)
-			be.Events = append(be.Events, event)
-		}
-		entriesChannel <- be
-	case replication.WRITE_ROWS_EVENTv2:
-		rowsEvent := ev.Event.(*replication.RowsEvent)
-		if b.skipRowEvent(string(rowsEvent.Table.Schema), string(rowsEvent.Table.Table)) {
-			//b.logger.Debugf("mysql.reader: skip WRITE_ROWS_EVENTv2[%s-%s]", rowsEvent.Table.Schema, rowsEvent.Table.Table)
-			return nil
-		}
-		originalTableColumns, originalTableUniqueKeys, err := b.InspectTableColumnsAndUniqueKeys(string(rowsEvent.Table.Schema), string(rowsEvent.Table.Table))
-		if err != nil {
-			return err
-		}
-		dmlEvent := NewDataEvent(
-			"",
-			string(rowsEvent.Table.Schema),
-			string(rowsEvent.Table.Table),
-			InsertDML,
-			originalTableColumns,
-			originalTableUniqueKeys,
-		)
-		for _, row := range rowsEvent.Rows {
-			//dmlEvent.NewColumnValues = mysql.ToColumnValues(row)
-			dmlEvent.NewColumnValues = append(dmlEvent.NewColumnValues, mysql.ToColumnValues(row))
-		}
-		be.Events = append(be.Events, dmlEvent)
-	case replication.UPDATE_ROWS_EVENTv2:
-		rowsEvent := ev.Event.(*replication.RowsEvent)
-		if b.skipRowEvent(string(rowsEvent.Table.Schema), string(rowsEvent.Table.Table)) {
-			//b.logger.Debugf("mysql.reader: skip WRITE_ROWS_EVENTv2[%s-%s]", rowsEvent.Table.Schema, rowsEvent.Table.Table)
-			return nil
-		}
-		originalTableColumns, originalTableUniqueKeys, err := b.InspectTableColumnsAndUniqueKeys(string(rowsEvent.Table.Schema), string(rowsEvent.Table.Table))
-		if err != nil {
-			return err
-		}
-		dmlEvent := NewDataEvent(
-			"",
-			string(rowsEvent.Table.Schema),
-			string(rowsEvent.Table.Table),
-			UpdateDML,
-			originalTableColumns,
-			originalTableUniqueKeys,
-		)
-		for i, row := range rowsEvent.Rows {
-			if i%2 == 1 {
-				// An update has two rows (WHERE+SET)
-				// We do both at the same time
-				continue
-			}
-
-			dmlEvent.WhereColumnValues = mysql.ToColumnValues(row)
-			dmlEvent.NewColumnValues = append(dmlEvent.NewColumnValues, mysql.ToColumnValues(rowsEvent.Rows[i+1]))
-		}
-		be.Events = append(be.Events, dmlEvent)
-	case replication.DELETE_ROWS_EVENTv2:
-		rowsEvent := ev.Event.(*replication.RowsEvent)
-		if b.skipRowEvent(string(rowsEvent.Table.Schema), string(rowsEvent.Table.Table)) {
-			//b.logger.Debugf("mysql.reader: skip WRITE_ROWS_EVENTv2[%s-%s]", rowsEvent.Table.Schema, rowsEvent.Table.Table)
-			return nil
-		}
-		originalTableColumns, originalTableUniqueKeys, err := b.InspectTableColumnsAndUniqueKeys(string(rowsEvent.Table.Schema), string(rowsEvent.Table.Table))
-		if err != nil {
-			return err
-		}
-		dmlEvent := NewDataEvent(
-			"",
-			string(rowsEvent.Table.Schema),
-			string(rowsEvent.Table.Table),
-			DeleteDML,
-			originalTableColumns,
-			originalTableUniqueKeys,
-		)
-		for _, row := range rowsEvent.Rows {
-			dmlEvent.WhereColumnValues = mysql.ToColumnValues(row)
-			be.Events = append(be.Events, dmlEvent)
-		}
-	case replication.XID_EVENT:
-		entriesChannel <- be
-	default:
-		//ignore
-	}
-
-	b.LastAppliedRowsEventHint = b.currentCoordinates
-	return nil
-}
-
-// StreamEvents
-func (b *BinlogReader) DataStreamEvents(canStopStreaming func() bool, entriesChannel chan<- *BinlogEntry) error {
-	if canStopStreaming() {
-		return nil
-	}
-	//var be *BinlogEntry
-	for {
-		if canStopStreaming() {
-			break
-		}
-		ev, err := b.binlogStreamer.GetEvent(context.Background())
-		if err != nil {
-			return err
-		}
-
-		func() {
-			b.currentCoordinatesMutex.Lock()
-			defer b.currentCoordinatesMutex.Unlock()
-			b.currentCoordinates.LogPos = int64(ev.Header.LogPos)
-		}()
-		/*if rotateEvent, ok := ev.Event.(*replication.RotateEvent); ok {
-			func() {
-				b.currentCoordinatesMutex.Lock()
-				defer b.currentCoordinatesMutex.Unlock()
-				b.currentCoordinates.LogFile = string(rotateEvent.NextLogName)
-			}()
-			b.logger.Debugf("mysql.reader: rotate to next log name: %s", rotateEvent.NextLogName)
-		} else if gtidEvent, ok := ev.Event.(*replication.GTIDEvent); ok {
-			func() {
-				b.currentCoordinatesMutex.Lock()
-				defer b.currentCoordinatesMutex.Unlock()
-				u, _ := uuid.FromBytes(gtidEvent.GTID.SID)
-				gtidSet, err := gomysql.ParseMysqlGTIDSet(fmt.Sprintf("%s:%d", u.String(), gtidEvent.GTID.GNO))
-				if err != nil {
-					b.logger.Errorf("mysql.reader: err: %v", err)
-				}
-				b.currentCoordinates.GtidSet = gtidSet.String()
-				be = NewBinlogEntryAt(b.currentCoordinates)
-			}()
-		} else {
-			if err := b.handleRowsEvent(ev, be, entriesChannel); err != nil {
-				return err
-			}
-		}*/
-	}
-
-	return nil
-}
-
 func (b *BinlogReader) BinlogStreamEvents(txChannel chan<- *BinlogTx) error {
-OUTER:
 	for {
-		if atomic.LoadInt64(&b.MysqlContext.ShutdownFlag) > 0 {
-			break OUTER
+		if b.shutdown {
+			break
 		}
 		ev, err := b.binlogStreamer.GetEvent(context.Background())
 		if err != nil {
@@ -357,6 +179,7 @@ OUTER:
 			evt := ev.Event.(*replication.XIDEvent)
 			b.logger.Debugf("mysql.reader: XID: %d", evt.XID)
 		}*/
+		//--------------------------------
 
 		func() {
 			b.currentCoordinatesMutex.Lock()
@@ -623,101 +446,6 @@ func (b *BinlogReader) onCommit(lastEvent *BinlogEvent, txChannel chan<- *Binlog
 	b.currentTx = nil
 }
 
-func (b *BinlogReader) InspectTableColumnsAndUniqueKeys(databaseName, tableName string) (columns *mysql.ColumnList, uniqueKeys [](*mysql.UniqueKey), err error) {
-	uniqueKeys, err = b.getCandidateUniqueKeys(databaseName, tableName)
-	if err != nil {
-		return columns, uniqueKeys, err
-	}
-	/*if len(uniqueKeys) == 0 {
-		return columns, uniqueKeys, fmt.Errorf("No PRIMARY nor UNIQUE key found in table! Bailing out")
-	}*/
-	columns, err = base.GetTableColumns(b.db, databaseName, tableName)
-	if err != nil {
-		return columns, uniqueKeys, err
-	}
-
-	return columns, uniqueKeys, nil
-}
-
-// getCandidateUniqueKeys investigates a table and returns the list of unique keys
-// candidate for chunking
-func (b *BinlogReader) getCandidateUniqueKeys(databaseName, tableName string) (uniqueKeys [](*mysql.UniqueKey), err error) {
-	query := `
-    SELECT
-      COLUMNS.TABLE_SCHEMA,
-      COLUMNS.TABLE_NAME,
-      COLUMNS.COLUMN_NAME,
-      UNIQUES.INDEX_NAME,
-      UNIQUES.COLUMN_NAMES,
-      UNIQUES.COUNT_COLUMN_IN_INDEX,
-      COLUMNS.DATA_TYPE,
-      COLUMNS.CHARACTER_SET_NAME,
-			LOCATE('auto_increment', EXTRA) > 0 as is_auto_increment,
-      has_nullable
-    FROM INFORMATION_SCHEMA.COLUMNS INNER JOIN (
-      SELECT
-        TABLE_SCHEMA,
-        TABLE_NAME,
-        INDEX_NAME,
-        COUNT(*) AS COUNT_COLUMN_IN_INDEX,
-        GROUP_CONCAT(COLUMN_NAME ORDER BY SEQ_IN_INDEX ASC) AS COLUMN_NAMES,
-        SUBSTRING_INDEX(GROUP_CONCAT(COLUMN_NAME ORDER BY SEQ_IN_INDEX ASC), ',', 1) AS FIRST_COLUMN_NAME,
-        SUM(NULLABLE='YES') > 0 AS has_nullable
-      FROM INFORMATION_SCHEMA.STATISTICS
-      WHERE
-				NON_UNIQUE=0
-				AND TABLE_SCHEMA = ?
-      	AND TABLE_NAME = ?
-      GROUP BY TABLE_SCHEMA, TABLE_NAME, INDEX_NAME
-    ) AS UNIQUES
-    ON (
-      COLUMNS.TABLE_SCHEMA = UNIQUES.TABLE_SCHEMA AND
-      COLUMNS.TABLE_NAME = UNIQUES.TABLE_NAME AND
-      COLUMNS.COLUMN_NAME = UNIQUES.FIRST_COLUMN_NAME
-    )
-    WHERE
-      COLUMNS.TABLE_SCHEMA = ?
-      AND COLUMNS.TABLE_NAME = ?
-    ORDER BY
-      COLUMNS.TABLE_SCHEMA, COLUMNS.TABLE_NAME,
-      CASE UNIQUES.INDEX_NAME
-        WHEN 'PRIMARY' THEN 0
-        ELSE 1
-      END,
-      CASE has_nullable
-        WHEN 0 THEN 0
-        ELSE 1
-      END,
-      CASE IFNULL(CHARACTER_SET_NAME, '')
-          WHEN '' THEN 0
-          ELSE 1
-      END,
-      CASE DATA_TYPE
-        WHEN 'tinyint' THEN 0
-        WHEN 'smallint' THEN 1
-        WHEN 'int' THEN 2
-        WHEN 'bigint' THEN 3
-        ELSE 100
-      END,
-      COUNT_COLUMN_IN_INDEX
-  `
-	err = sql.QueryRowsMap(b.db, query, func(m sql.RowMap) error {
-		uniqueKey := &mysql.UniqueKey{
-			Name:            m.GetString("INDEX_NAME"),
-			Columns:         *mysql.ParseColumnList(m.GetString("COLUMN_NAMES")),
-			HasNullable:     m.GetBool("has_nullable"),
-			IsAutoIncrement: m.GetBool("is_auto_increment"),
-		}
-		uniqueKeys = append(uniqueKeys, uniqueKey)
-		return nil
-	}, databaseName, tableName, databaseName, tableName)
-	if err != nil {
-		return uniqueKeys, err
-	}
-	//b.logger.Debugf("mysql.reader: potential unique keys in %+v.%+v: %+v", databaseName, tableName, uniqueKeys)
-	return uniqueKeys, nil
-}
-
 func GenDDLSQL(sql string, schema string) (string, error) {
 	stmt, err := parser.New().ParseOneStmt(sql, "", "")
 	if err != nil {
@@ -954,11 +682,17 @@ func (b *BinlogReader) matchTable(patternTBS []*config.DataSource, t config.Tabl
 }
 
 func (b *BinlogReader) Close() error {
-	atomic.StoreInt64(&b.MysqlContext.ShutdownFlag, 1)
+	b.shutdownLock.Lock()
+	defer b.shutdownLock.Unlock()
+
+	if b.shutdown {
+		return nil
+	}
 	// Historically there was a:
 	b.binlogSyncer.Close()
 	// here. A new go-mysql version closes the binlog syncer connection independently.
 	// I will go against the sacred rules of comments and just leave this here.
 	// This is the year 2017. Let's see what year these comments get deleted.
+	b.shutdown = true
 	return nil
 }

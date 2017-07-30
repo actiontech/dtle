@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"encoding/gob"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -21,7 +22,6 @@ import (
 	"udup/internal/config"
 	log "udup/internal/logger"
 	"udup/internal/models"
-	//"github.com/hashicorp/consul/agent/pool"
 )
 
 const (
@@ -58,8 +58,11 @@ type Extractor struct {
 	sendBySizeFullCounter int
 
 	natsConn *gonats.Conn
-	stopCh   chan bool
 	waitCh   chan *models.WaitResult
+
+	shutdown     bool
+	shutdownCh   chan struct{}
+	shutdownLock sync.Mutex
 }
 
 func NewExtractor(subject, tp string, cfg *config.MySQLDriverConfig, logger *log.Logger) *Extractor {
@@ -67,7 +70,7 @@ func NewExtractor(subject, tp string, cfg *config.MySQLDriverConfig, logger *log
 	entry := log.NewEntry(logger).WithFields(log.Fields{
 		"job": subject,
 	})
-	extractor := &Extractor{
+	e := &Extractor{
 		logger:                     entry,
 		subject:                    subject,
 		tp:                         tp,
@@ -78,10 +81,10 @@ func NewExtractor(subject, tp string, cfg *config.MySQLDriverConfig, logger *log
 		parser:                     sql.NewParser(),
 		rowCopyComplete:            make(chan bool),
 		allEventsUpToLockProcessed: make(chan string),
-		waitCh: make(chan *models.WaitResult, 1),
-		stopCh: make(chan bool, 1),
+		waitCh:     make(chan *models.WaitResult, 1),
+		shutdownCh: make(chan struct{}),
 	}
-	return extractor
+	return e
 }
 
 // sleepWhileTrue sleeps indefinitely until the given function returns 'false'
@@ -496,7 +499,7 @@ func (e *Extractor) initNatsPubClient() (err error) {
 func (e *Extractor) initiateStreaming() error {
 	go func() {
 		e.logger.Debugf("mysql.extractor: Beginning streaming")
-		err := e.StreamEvents(e.mysqlContext.ApproveHeterogeneous, e.canStopStreaming)
+		err := e.StreamEvents(e.canStopStreaming)
 		if err != nil {
 			e.onError(err)
 		}
@@ -683,135 +686,96 @@ func Encode(v interface{}) ([]byte, error) {
 
 // StreamEvents will begin streaming events. It will be blocking, so should be
 // executed by a goroutine
-func (e *Extractor) StreamEvents(approveHeterogeneous bool, canStopStreaming func() bool) error {
-	if approveHeterogeneous {
-		go func() {
-			for binlogEntry := range e.dataChannel {
-				if binlogEntry.Events != nil {
-					/*if err := e.jsonEncodedConn.Publish(fmt.Sprintf("%s_incr_heterogeneous", e.subject), binlogEntry); err != nil {
-						e.logger.Errorf("mysql.extractor: Unexpected error on publish, got %v", err)
-						e.onError(err)
-					}*/
-				}
-			}
-		}()
-		// The next should block and execute forever, unless there's a serious error
-		var successiveFailures int64
-		var lastAppliedRowsEventHint base.BinlogCoordinates
-	OUTER_DS:
+func (e *Extractor) StreamEvents(canStopStreaming func() bool) error {
+	go func() {
+		txArray := []*binlog.BinlogTx{}
+		subject := fmt.Sprintf("%s_incr", e.subject)
+
+	OUTER:
 		for {
-			if err := e.binlogReader.DataStreamEvents(canStopStreaming, e.dataChannel); err != nil {
-				if atomic.LoadInt64(&e.mysqlContext.ShutdownFlag) > 0 {
-					break OUTER_DS
-				}
-				e.logger.Errorf("mysql.extractor: StreamEvents encountered unexpected error: %+v", err)
-				e.mysqlContext.MarkPointOfInterest()
-				time.Sleep(ReconnectStreamerSleepSeconds * time.Second)
-
-				// See if there's retry overflow
-				if e.binlogReader.LastAppliedRowsEventHint.Equals(&lastAppliedRowsEventHint) {
-					successiveFailures += 1
-				} else {
-					successiveFailures = 0
-				}
-				if successiveFailures > e.mysqlContext.MaxRetries {
-					return fmt.Errorf("%d successive failures in streamer reconnect at coordinates %+v", successiveFailures, e.GetReconnectBinlogCoordinates())
-				}
-
-				// Reposition at same binlog file.
-				lastAppliedRowsEventHint = e.binlogReader.LastAppliedRowsEventHint
-				e.logger.Warnf("mysql.extractor: Reconnecting... Will resume at %+v", lastAppliedRowsEventHint)
-				if err := e.initBinlogReader(e.GetReconnectBinlogCoordinates()); err != nil {
-					return err
-				}
-				e.binlogReader.LastAppliedRowsEventHint = lastAppliedRowsEventHint
-			}
-		}
-	} else {
-		go func() {
-			txArray := []*binlog.BinlogTx{}
-			subject := fmt.Sprintf("%s_incr", e.subject)
-
-		OUTER:
-			for {
-				select {
-				case <-time.After(100 * time.Millisecond):
-					{
-						if len(txArray) != 0 {
-							txMsg, err := Encode(&txArray)
-							if err != nil {
-								e.onError(err)
-								break OUTER
-							}
-							if err := e.requestMsg(subject,
-								fmt.Sprintf("%s:1-%d",
-									txArray[len(txArray)-1].SID,
-									txArray[len(txArray)-1].GNO),
-								txMsg); err != nil {
-								e.onError(err)
-								break OUTER
-							}
-							//send_by_timeout
-							e.sendByTimeoutCounter += len(txArray)
-							txArray = []*binlog.BinlogTx{}
-						}
+			select {
+			case binlogTx := <-e.binlogChannel:
+				{
+					txArray = append(txArray, binlogTx)
+					txMsg, err := Encode(&txArray)
+					if err != nil {
+						e.onError(err)
+						break OUTER
 					}
-				case binlogTx := <-e.binlogChannel:
-					{
-						txArray = append(txArray, binlogTx)
+					if uint64(len(txMsg)) > 100*1024*1024 {
+						e.onError(gonats.ErrMaxPayload)
+					}
+					if uint64(len(txMsg)) > e.mysqlContext.MsgBytesLimit {
+						if err := e.requestMsg(subject, fmt.Sprintf("%s:1-%d", binlogTx.SID, binlogTx.GNO), txMsg); err != nil {
+							e.onError(err)
+							break OUTER
+						}
+						//send_by_size_full
+						e.sendBySizeFullCounter += len(txArray)
+						txArray = []*binlog.BinlogTx{}
+					}
+				}
+			case <-time.After(100 * time.Millisecond):
+				{
+					if len(txArray) != 0 {
 						txMsg, err := Encode(&txArray)
 						if err != nil {
 							e.onError(err)
 							break OUTER
 						}
-						if uint64(len(txMsg)) > e.mysqlContext.MsgBytesLimit {
-							if err := e.requestMsg(subject, fmt.Sprintf("%s:1-%d", binlogTx.SID, binlogTx.GNO), txMsg); err != nil {
-								e.onError(err)
-								break OUTER
-							}
-							//send_by_size_full
-							e.sendBySizeFullCounter += len(txArray)
-							txArray = []*binlog.BinlogTx{}
+						if uint64(len(txMsg)) > 100*1024*1024 {
+							e.onError(gonats.ErrMaxPayload)
 						}
+						if err := e.requestMsg(subject,
+							fmt.Sprintf("%s:1-%d",
+								txArray[len(txArray)-1].SID,
+								txArray[len(txArray)-1].GNO),
+							txMsg); err != nil {
+							e.onError(err)
+							break OUTER
+						}
+						//send_by_timeout
+						e.sendByTimeoutCounter += len(txArray)
+						txArray = []*binlog.BinlogTx{}
 					}
-				case <-e.stopCh:
-					{
-						break OUTER
-					}
 				}
+			case <-e.shutdownCh:
+				//break OUTER
+				return
 			}
-		}()
-		// The next should block and execute forever, unless there's a serious error
-		var successiveFailures int64
-		var lastAppliedRowsEventHint base.BinlogCoordinates
-	OUTER_BS:
-		for {
-			if err := e.binlogReader.BinlogStreamEvents(e.binlogChannel); err != nil {
-				if atomic.LoadInt64(&e.mysqlContext.ShutdownFlag) > 0 {
-					break OUTER_BS
-				}
-				e.logger.Printf("mysql.extractor: StreamEvents encountered unexpected error: %+v", err)
-				e.mysqlContext.MarkPointOfInterest()
-				time.Sleep(ReconnectStreamerSleepSeconds * time.Second)
-
-				// See if there's retry overflow
-				if e.binlogReader.LastAppliedRowsEventHint.Equals(&lastAppliedRowsEventHint) {
-					successiveFailures += 1
-				} else {
-					successiveFailures = 0
-				}
-				if successiveFailures > e.mysqlContext.MaxRetries {
-					return fmt.Errorf("%d successive failures in streamer reconnect at coordinates %+v", successiveFailures, e.GetReconnectBinlogCoordinates())
-				}
-
-				// Reposition at same binlog file.
-				lastAppliedRowsEventHint = e.binlogReader.LastAppliedRowsEventHint
-				e.logger.Printf("mysql.extractor: Reconnecting... Will resume at %+v", lastAppliedRowsEventHint)
-				if err := e.initBinlogReader(e.GetReconnectBinlogCoordinates()); err != nil {
-					return err
-				}
-				e.binlogReader.LastAppliedRowsEventHint = lastAppliedRowsEventHint
+		}
+	}()
+	// The next should block and execute forever, unless there's a serious error
+	var successiveFailures int64
+	var lastAppliedRowsEventHint base.BinlogCoordinates
+OUTER_BS:
+	for {
+		if err := e.binlogReader.BinlogStreamEvents(e.binlogChannel); err != nil {
+			if e.shutdown {
+				break OUTER_BS
 			}
+
+			e.logger.Printf("mysql.extractor: StreamEvents encountered unexpected error: %+v", err)
+			e.mysqlContext.MarkPointOfInterest()
+			time.Sleep(ReconnectStreamerSleepSeconds * time.Second)
+
+			// See if there's retry overflow
+			if e.binlogReader.LastAppliedRowsEventHint.Equals(&lastAppliedRowsEventHint) {
+				successiveFailures += 1
+			} else {
+				successiveFailures = 0
+			}
+			if successiveFailures > e.mysqlContext.MaxRetries {
+				return fmt.Errorf("%d successive failures in streamer reconnect at coordinates %+v", successiveFailures, e.GetReconnectBinlogCoordinates())
+			}
+
+			// Reposition at same binlog file.
+			lastAppliedRowsEventHint = e.binlogReader.LastAppliedRowsEventHint
+			e.logger.Printf("mysql.extractor: Reconnecting... Will resume at %+v", lastAppliedRowsEventHint)
+			if err := e.initBinlogReader(e.GetReconnectBinlogCoordinates()); err != nil {
+				return err
+			}
+			e.binlogReader.LastAppliedRowsEventHint = lastAppliedRowsEventHint
 		}
 	}
 	return nil
@@ -993,7 +957,7 @@ func (e *Extractor) mysqlDump() error {
 	// We've copied all of the tables, but our buffer holds onto the very last record.
 	// First mark the snapshot as complete and then apply the updated offset to the buffered record ...
 	stop := currentTimeMillis()
-	e.logger.Printf("mysql.extractor: Step 5: scanned %d rows in %d tables in %s",
+	e.logger.Printf("mysql.extractor: Step 4: scanned %d rows in %d tables in %s",
 		e.totalRowCount, len(e.tables), time.Duration(stop-startScan))
 
 	return nil
@@ -1026,6 +990,7 @@ func (e *Extractor) Stats() (*models.TaskStatistics, error) {
 	if e.natsConn != nil {
 		taskResUsage.MsgStat = e.natsConn.Statistics
 	}
+	//e.logger.Printf("mysql.extractor: Tracks various stats received on this connection:MsgStat[%+v],BufferStat[%+v]",taskResUsage.MsgStat,taskResUsage.BufferStat)
 	/*elapsedTime := e.mysqlContext.ElapsedTime()
 	elapsedSeconds := int64(elapsedTime.Seconds())
 	totalRowsCopied := e.mysqlContext.GetTotalRowsCopied()
@@ -1133,11 +1098,10 @@ func (e *Extractor) ID() string {
 
 func (e *Extractor) onError(err error) {
 	e.logger.Errorf("mysql.extractor: %v", err)
-	if atomic.LoadInt64(&e.mysqlContext.ShutdownFlag) > 0 {
+	if e.shutdown {
 		return
 	}
 	e.waitCh <- models.NewWaitResult(1, err)
-	//close(e.waitCh)
 	e.Shutdown()
 }
 
@@ -1145,8 +1109,16 @@ func (e *Extractor) WaitCh() chan *models.WaitResult {
 	return e.waitCh
 }
 
+// Shutdown is used to tear down the extractor
 func (e *Extractor) Shutdown() error {
-	atomic.StoreInt64(&e.mysqlContext.ShutdownFlag, 1)
+	e.logger.Printf("mysql.extractor: Shutting down")
+	e.shutdownLock.Lock()
+	defer e.shutdownLock.Unlock()
+
+	if e.shutdown {
+		return nil
+	}
+
 	if e.natsConn != nil {
 		e.natsConn.Close()
 	}
@@ -1161,11 +1133,12 @@ func (e *Extractor) Shutdown() error {
 		d.Close()
 	}
 
-	e.stopCh <- true
 	if err := sql.CloseDB(e.db); err != nil {
 		return err
 	}
 
-	e.logger.Printf("mysql.extractor: Closed streamer connection.")
+	e.shutdown = true
+	close(e.shutdownCh)
+	close(e.binlogChannel)
 	return nil
 }

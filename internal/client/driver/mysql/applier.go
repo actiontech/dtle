@@ -55,8 +55,11 @@ type Applier struct {
 	applyBinlogGroupTxQueue chan []*binlog.BinlogTx
 
 	natsConn *gonats.Conn
-	stopCh   chan bool
 	waitCh   chan *models.WaitResult
+
+	shutdown     bool
+	shutdownCh   chan struct{}
+	shutdownLock sync.Mutex
 }
 
 func NewApplier(subject, tp string, cfg *config.MySQLDriverConfig, logger *log.Logger) *Applier {
@@ -77,7 +80,7 @@ func NewApplier(subject, tp string, cfg *config.MySQLDriverConfig, logger *log.L
 		applyBinlogTxQueue:         make(chan *binlog.BinlogTx, cfg.ReplChanBufferSize),
 		applyBinlogGroupTxQueue:    make(chan []*binlog.BinlogTx, cfg.ReplChanBufferSize),
 		waitCh:                     make(chan *models.WaitResult, 1),
-		stopCh:                     make(chan bool, 1),
+		shutdownCh:                 make(chan struct{}),
 	}
 	return a
 }
@@ -695,8 +698,6 @@ func (a *Applier) initiateStreaming() error {
 		/*if err := sub.SetPendingLimits(a.mysqlContext.MsgsLimit, a.mysqlContext.BytesLimit); err != nil {
 			return err
 		}*/
-	} else {
-		a.rowCopyComplete <- true
 	}
 
 	if a.mysqlContext.ApproveHeterogeneous {
@@ -733,7 +734,6 @@ func (a *Applier) initiateStreaming() error {
 	groupTx := []*binlog.BinlogTx{}
 	sid := a.validateServerUUID()
 	go func() {
-	OUTER:
 		for {
 			select {
 			case binlogTx := <-a.applyBinlogTxQueue:
@@ -762,8 +762,8 @@ func (a *Applier) initiateStreaming() error {
 					a.applyBinlogGroupTxQueue <- groupTx
 					groupTx = []*binlog.BinlogTx{}
 				}
-			case <-a.stopCh:
-				break OUTER
+			case <-a.shutdownCh:
+				return
 			}
 		}
 	}()
@@ -1462,7 +1462,7 @@ func (a *Applier) Stats() (*models.TaskStatistics, error) {
 	if a.natsConn != nil {
 		taskResUsage.MsgStat = a.natsConn.Statistics
 	}
-	//a.logger.Printf("Tracks various stats received on this connection:%v",a.subConn.Statistics)
+	//a.logger.Printf("mysql.applier: Tracks various stats received on this connection:MsgStat[%+v],BufferStat[%+v]",taskResUsage.MsgStat,taskResUsage.BufferStat)
 	/*elapsedTime := a.mysqlContext.ElapsedTime()
 	elapsedSeconds := int64(elapsedTime.Seconds())
 	totalRowsCopied := a.mysqlContext.GetTotalRowsCopied()
@@ -1585,11 +1585,19 @@ func (a *Applier) WaitCh() chan *models.WaitResult {
 }
 
 func (a *Applier) Shutdown() error {
+	a.logger.Printf("mysql.applier: Shutting down")
+	a.shutdownLock.Lock()
+	defer a.shutdownLock.Unlock()
+
+	if a.shutdown {
+		return nil
+	}
+
 	if a.natsConn != nil {
 		a.natsConn.Close()
 	}
 
-	a.stopCh <- true
+	//a.stopCh <- true
 	if err := sql.CloseDB(a.singletonDB); err != nil {
 		return err
 	}
@@ -1597,6 +1605,7 @@ func (a *Applier) Shutdown() error {
 		return err
 	}
 
-	a.logger.Printf("mysql.applier: Closed applier connection.")
+	a.shutdown = true
+	close(a.shutdownCh)
 	return nil
 }

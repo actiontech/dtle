@@ -273,7 +273,8 @@ func (s *StateStore) UpsertJob(index uint64, job *models.Job) error {
 
 	// Setup the indexes correctly
 	if existing != nil {
-		job.CreateIndex = existing.(*models.Job).CreateIndex
+		return nil
+		/*job.CreateIndex = existing.(*models.Job).CreateIndex
 		job.ModifyIndex = index
 		job.JobModifyIndex = index
 
@@ -282,7 +283,7 @@ func (s *StateStore) UpsertJob(index uint64, job *models.Job) error {
 		job.Status, err = s.getJobStatus(txn, job, false)
 		if err != nil {
 			return fmt.Errorf("setting job status for %q failed: %v", job.ID, err)
-		}
+		}*/
 	} else {
 		job.CreateIndex = index
 		job.ModifyIndex = index

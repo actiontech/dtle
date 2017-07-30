@@ -166,7 +166,6 @@ type MySQLDriverConfig struct {
 	IsPostponingCutOver                    int64
 	CountingRowsFlag                       int64
 	AllEventsUpToLockProcessedInjectedFlag int64
-	ShutdownFlag                           int64
 	UserCommandedUnpostponeFlag            int64
 	CutOverCompleteFlag                    int64
 	InCutOverCriticalSectionFlag           int64
@@ -179,10 +178,10 @@ type MySQLDriverConfig struct {
 func (a *MySQLDriverConfig) SetDefault() *MySQLDriverConfig {
 	result := *a
 
-	if result.MaxRetries == 0 {
+	if result.MaxRetries <= 0 {
 		result.MaxRetries = defaultNumRetries
 	}
-	if result.ReplChanBufferSize == 0 {
+	if result.ReplChanBufferSize <= 0 {
 		result.ReplChanBufferSize = channelBufferSize
 	}
 	if result.ParallelWorkers <= 0 {
