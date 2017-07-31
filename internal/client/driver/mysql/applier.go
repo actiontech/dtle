@@ -1570,7 +1570,9 @@ func (a *Applier) ID() string {
 }
 
 func (a *Applier) onError(err error) {
-	a.logger.Errorf("mysql.applier: %v", err)
+	if a.shutdown {
+		return
+	}
 	if a.natsConn != nil {
 		if err := a.natsConn.Publish(fmt.Sprintf("%s_restart", a.subject), []byte(a.mysqlContext.Gtid)); err != nil {
 			a.logger.Errorf("mysql.applier: Trigger restart extractor : %v", err)
