@@ -26,7 +26,7 @@ import (
 
 const (
 	// DefaultConnectWait is the default timeout used for the connect operation
-	DefaultConnectWait            = 30 * time.Minute
+	DefaultConnectWait            = 10 * time.Second
 	AllEventsUpToLockProcessed    = "AllEventsUpToLockProcessed"
 	ReconnectStreamerSleepSeconds = 5
 )
@@ -767,7 +767,7 @@ func (e *Extractor) requestMsg(subject, gtid string, txMsg []byte) (err error) {
 			time.Sleep(1 * time.Second)
 		}
 
-		_, err := e.natsConn.Request(subject, txMsg, DefaultConnectWait)
+		_, err = e.natsConn.Request(subject, txMsg, DefaultConnectWait)
 		if err == nil {
 			if gtid != "" {
 				e.mysqlContext.Gtid = gtid
@@ -870,7 +870,7 @@ func (e *Extractor) mysqlDump() error {
 			DbSQL: dbSQL,
 		}
 		if err := e.encodeDumpEntry(entry); err != nil {
-			e.onError(err)
+			return err
 		}
 	}
 

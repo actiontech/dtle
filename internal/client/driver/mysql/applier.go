@@ -494,7 +494,7 @@ func (a *Applier) onApplyTxStruct(dbApplier *sql.DB, binlogTx *binlog.BinlogTx) 
 		dbApplier.Fde = binlogTx.Fde // IMO it would comare the internal pointer first
 		_, err := sql.ExecNoPrepare(dbApplier.Db, binlogTx.Fde)
 		if err != nil {
-			a.onError(err)
+			return err
 		}
 	}
 
