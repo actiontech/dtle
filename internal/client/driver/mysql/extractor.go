@@ -1115,6 +1115,5 @@ func (e *Extractor) Shutdown() error {
 
 	e.shutdown = true
 	close(e.shutdownCh)
-	close(e.binlogChannel)
 	return nil
 }

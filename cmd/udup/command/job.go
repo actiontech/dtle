@@ -120,6 +120,7 @@ func Parse(r io.Reader) (*api.Job, error) {
 	if len(matches.Items) == 0 {
 		return nil, fmt.Errorf("'job' stanza not found")
 	}
+
 	if err := parseJob(&job, matches); err != nil {
 		return nil, fmt.Errorf("error parsing 'job': %s", err)
 	}
@@ -163,7 +164,7 @@ func parseJob(result *api.Job, list *ast.ObjectList) error {
 
 	// Set the ID and name to the object key
 	result.ID = internal.StringToPtr(obj.Keys[0].Token.Value().(string))
-	//result.Name = internal.StringToPtr(*result.ID)
+	result.Name = internal.StringToPtr(*result.ID)
 
 	// Decode the rest
 	if err := mapstructure.WeakDecode(m, result); err != nil {
@@ -190,29 +191,24 @@ func parseJob(result *api.Job, list *ast.ObjectList) error {
 		return multierror.Prefix(err, "job:")
 	}
 
-	// If we have tasks outside, create TaskGroups for them
+	// Parse the task groups
 	if o := listVal.Filter("task"); len(o.Items) > 0 {
-		var tasks []*api.Task
-		if err := parseTasks("", &tasks, o); err != nil {
+		if err := parseTasks(result, o); err != nil {
 			return multierror.Prefix(err, "task:")
-		}
-
-		result.Tasks = make([]*api.Task, len(tasks), len(tasks)*2)
-		for i, t := range tasks {
-			result.Tasks[i] = t
 		}
 	}
 
 	return nil
 }
 
-func parseTasks(taskName string, result *[]*api.Task, list *ast.ObjectList) error {
+func parseTasks(result *api.Job, list *ast.ObjectList) error {
 	list = list.Children()
 	if len(list.Items) == 0 {
 		return nil
 	}
 
 	// Go through each object and turn it into an actual result.
+	collection := make([]*api.Task, 0, len(list.Items))
 	seen := make(map[string]struct{})
 	for _, item := range list.Items {
 		n := item.Keys[0].Token.Value().(string)
@@ -247,21 +243,10 @@ func parseTasks(taskName string, result *[]*api.Task, list *ast.ObjectList) erro
 		}
 		delete(m, "config")
 
-		// Build the task
+		// Build the group with the basic decode
 		var t api.Task
-		t.Type = n
-		if taskName == "" {
-			taskName = n
-		}
-		dec, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
-			DecodeHook:       mapstructure.StringToTimeDurationHookFunc(),
-			WeaklyTypedInput: true,
-			Result:           &t,
-		})
-		if err != nil {
-			return err
-		}
-		if err := dec.Decode(m); err != nil {
+		t.Type = *internal.StringToPtr(n)
+		if err := mapstructure.WeakDecode(m, &t); err != nil {
 			return err
 		}
 
@@ -278,9 +263,11 @@ func parseTasks(taskName string, result *[]*api.Task, list *ast.ObjectList) erro
 				}
 			}
 		}
-		*result = append(*result, &t)
+
+		collection = append(collection, &t)
 	}
 
+	result.Tasks = append(result.Tasks, collection...)
 	return nil
 }
 

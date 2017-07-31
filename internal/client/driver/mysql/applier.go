@@ -484,7 +484,6 @@ func (a *Applier) onApplyTxStruct(dbApplier *sql.DB, binlogTx *binlog.BinlogTx) 
 	defer func() {
 		_, err := sql.ExecNoPrepare(dbApplier.Db, `commit;set gtid_next='automatic'`)
 		if err != nil {
-			a.logger.Errorf("mysql.applier: exec set gtid_next automatic err:%v", err)
 			a.onError(err)
 		}
 		dbApplier.DbMutex.Unlock()
