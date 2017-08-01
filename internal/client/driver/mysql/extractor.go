@@ -561,6 +561,14 @@ func (e *Extractor) validateConnection() error {
 	return nil
 }
 
+func (e *Extractor) SelectSqlMode() error {
+	query := `select @@global.sql_mode`
+	if err := e.db.QueryRow(query).Scan(&e.mysqlContext.SqlMode); err != nil {
+		return err
+	}
+	return nil
+}
+
 func (e *Extractor) GetCurrentBinlogCoordinates() *base.BinlogCoordinates {
 	return e.binlogReader.GetCurrentBinlogCoordinates()
 }
@@ -606,7 +614,7 @@ func (e *Extractor) readCurrentBinlogCoordinates() error {
 
 // Read the MySQL charset-related system variables.
 func (e *Extractor) readMySqlCharsetSystemVariables() error {
-	query := `SHOW VARIABLES WHERE Variable_name IN ('character_set_server','collation_server')`
+	query := `show variables where Variable_name IN ('character_set_server','collation_server')`
 	rows, err := e.db.Query(query)
 	if err != nil {
 		return err
@@ -787,6 +795,7 @@ func (e *Extractor) mysqlDump() error {
 		return err
 	}
 	setSystemVariablesStatement := e.setStatementFor()
+	setSqlMode := fmt.Sprintf("SET @@session.sql_mode = '%s'", e.mysqlContext.SqlMode)
 
 	// ------
 	// STEP 0
@@ -865,12 +874,31 @@ func (e *Extractor) mysqlDump() error {
 
 	for _, db := range e.databases {
 		dbSQL := fmt.Sprintf("CREATE DATABASE %s", db)
-		entry := &dumpEntry{
-			SystemVariablesStatement: setSystemVariablesStatement,
-			DbSQL: dbSQL,
-		}
-		if err := e.encodeDumpEntry(entry); err != nil {
-			return err
+		if len(e.tables) > 0 {
+			for _, tb := range e.tables {
+				tbSQL, err := base.ShowCreateTable(e.db, tb.TableSchema, tb.TableName, e.mysqlContext.DropTableIfExists)
+				if err != nil {
+					return err
+				}
+				entry := &dumpEntry{
+					SystemVariablesStatement: setSystemVariablesStatement,
+					SqlMode:                  setSqlMode,
+					DbSQL:                    dbSQL,
+					TbSQL:                    tbSQL,
+				}
+				if err := e.encodeDumpEntry(entry); err != nil {
+					return err
+				}
+			}
+		} else {
+			entry := &dumpEntry{
+				SystemVariablesStatement: setSystemVariablesStatement,
+				SqlMode:                  setSqlMode,
+				DbSQL:                    dbSQL,
+			}
+			if err := e.encodeDumpEntry(entry); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -894,17 +922,6 @@ func (e *Extractor) mysqlDump() error {
 				e.onError(err)
 			}
 			d := NewDumper(tx, t.TableSchema, t.TableName, e.logger)
-			tbSQL, err := d.showCreateTable(e.mysqlContext.DropTableIfExists)
-			if err != nil {
-				e.onError(err)
-			}
-			entry := &dumpEntry{
-				TbSQL: tbSQL,
-			}
-			if err = e.encodeDumpEntry(entry); err != nil {
-				e.onError(err)
-			}
-
 			if err := d.Dump(1); err != nil {
 				e.onError(err)
 			}
@@ -915,6 +932,8 @@ func (e *Extractor) mysqlDump() error {
 				if entry.err != nil {
 					e.onError(entry.err)
 				}
+				entry.SystemVariablesStatement = setSystemVariablesStatement
+				entry.SqlMode = setSqlMode
 				if err = e.encodeDumpEntry(entry); err != nil {
 					e.onError(err)
 				}

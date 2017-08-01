@@ -463,7 +463,7 @@ func (c *Client) nodeID() (id string, err error) {
 	}
 
 	// Attempt to read existing ID
-	idPath := filepath.Join(c.config.StateDir, "client-id")
+	idPath := filepath.Join(c.config.StateDir, "node-id")
 	idBuf, err := ioutil.ReadFile(idPath)
 	if err != nil && !os.IsNotExist(err) {
 		return "", err

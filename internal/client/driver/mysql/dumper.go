@@ -74,6 +74,7 @@ func (d *dumper) getRowsCount() (uint64, error) {
 
 type dumpEntry struct {
 	SystemVariablesStatement string
+	SqlMode                  string
 	DbSQL                    string
 	TbSQL                    string
 	Values                   string
@@ -347,17 +348,6 @@ func showTables(db *sql.DB, dbName string) (tables []*config.Table, err error) {
 		tables = append(tables, tb)
 	}
 	return tables, rows.Err()
-}
-
-func (d *dumper) showCreateTable(dropTableIfExists bool) (createTableStatement string, err error) {
-	var dummy string
-	query := fmt.Sprintf(`show create table %s.%s`, usql.EscapeName(d.TableSchema), usql.EscapeName(d.TableName))
-	err = d.db.QueryRow(query).Scan(&dummy, &createTableStatement)
-	statement := fmt.Sprintf("USE %s", d.TableSchema)
-	if dropTableIfExists {
-		statement = fmt.Sprintf("%s;DROP TABLE IF EXISTS `%s`", statement, d.TableName)
-	}
-	return fmt.Sprintf("%s;%s", statement, createTableStatement), err
 }
 
 func (d *dumper) Close() error {

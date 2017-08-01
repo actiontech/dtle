@@ -27,8 +27,7 @@ import (
 )
 
 const (
-	applyDataQueueBuffer          = 600
-	applyCopyRowsQueueQueueBuffer = 100
+	applyDataQueueBuffer = 600
 )
 
 // Applier connects and writes the the applier-server, which is the server where
@@ -47,6 +46,7 @@ type Applier struct {
 	rowCopyComplete            chan bool
 	allEventsUpToLockProcessed chan string
 	rowCopyCompleteFlag        int64
+	pool                       *models.Pool
 	// copyRowsQueue should not be buffered; if buffered some non-damaging but
 	//  excessive work happens at the end of the iteration as new copy-jobs arrive befroe realizing the copy is complete
 	copyRowsQueue           chan *dumpEntry
@@ -75,12 +75,13 @@ func NewApplier(subject, tp string, cfg *config.MySQLDriverConfig, logger *log.L
 		parser:                     sql.NewParser(),
 		rowCopyComplete:            make(chan bool),
 		allEventsUpToLockProcessed: make(chan string),
-		copyRowsQueue:              make(chan *dumpEntry, applyCopyRowsQueueQueueBuffer),
-		applyDataEntryQueue:        make(chan *binlog.BinlogEntry, applyDataQueueBuffer),
-		applyBinlogTxQueue:         make(chan *binlog.BinlogTx, cfg.ReplChanBufferSize),
-		applyBinlogGroupTxQueue:    make(chan []*binlog.BinlogTx, cfg.ReplChanBufferSize),
-		waitCh:                     make(chan *models.WaitResult, 1),
-		shutdownCh:                 make(chan struct{}),
+		pool:                    models.NewPool(10),
+		copyRowsQueue:           make(chan *dumpEntry, applyDataQueueBuffer),
+		applyDataEntryQueue:     make(chan *binlog.BinlogEntry, applyDataQueueBuffer),
+		applyBinlogTxQueue:      make(chan *binlog.BinlogTx, cfg.ReplChanBufferSize),
+		applyBinlogGroupTxQueue: make(chan []*binlog.BinlogTx, cfg.ReplChanBufferSize),
+		waitCh:                  make(chan *models.WaitResult, 1),
+		shutdownCh:              make(chan struct{}),
 	}
 	return a
 }
@@ -125,6 +126,7 @@ func (a *Applier) retryOperation(operation func() error, notFatalHint ...bool) (
 // consumes and drops any further incoming events that may be left hanging.
 func (a *Applier) consumeRowCopyComplete() {
 	_, err := a.natsConn.Subscribe(fmt.Sprintf("%s_full_complete", a.subject), func(m *gonats.Msg) {
+		a.pool.Wait()
 		if string(m.Data) == string(a.applyRowCount) {
 			a.rowCopyComplete <- true
 		}
@@ -627,10 +629,15 @@ OUTER:
 				/*if err := copyRowsFunc(); err != nil {
 					return err
 				}*/
-				if err := a.ApplyEventQueries(copyRows); err != nil {
-					a.onError(err)
-					break OUTER
-				}
+
+				go func() {
+					a.pool.Add(1)
+					if err := a.ApplyEventQueries(a.dbs[0].Db, copyRows); err != nil {
+						a.onError(err)
+					}
+					a.pool.Done()
+				}()
+
 				a.applyRowCount += copyRows.Counter
 
 				/*a.logger.Printf("mysql.applier: operating until row copy is complete")
@@ -1419,25 +1426,32 @@ func (a *Applier) ApplyBinlogEvent(db *gosql.DB, events [](binlog.DataEvent)) er
 	return nil
 }
 
-func (a *Applier) ApplyEventQueries(entry *dumpEntry) error {
+func (a *Applier) ApplyEventQueries(db *gosql.DB, entry *dumpEntry) error {
 	queries := []string{}
 	queries = append(queries, entry.SystemVariablesStatement)
+	queries = append(queries, entry.SqlMode)
 	queries = append(queries, entry.DbSQL, entry.TbSQL)
 	if entry.Values != "" {
 		queries = append(queries, entry.Values)
 	}
-	err := func() error {
+	tx, err := db.Begin()
+	if err != nil {
+		a.onError(err)
+	}
+	err = func() error {
 		for _, query := range queries {
 			if query == "" {
 				continue
 			}
-			_, err := sql.ExecNoPrepare(a.dbs[0].Db, query)
+			_, err := tx.Exec(query)
 			if err != nil {
 				if !sql.IgnoreError(err) {
 					a.logger.Errorf("mysql.applier: Exec [%s] error: %v", query, err)
 					return err
 				}
-				a.logger.Warnf("mysql.applier: Ignore error: %v", err)
+				if !sql.IgnoreExistsError(err) {
+					a.logger.Warnf("mysql.applier: Ignore error: %v", err)
+				}
 			}
 		}
 		return nil
@@ -1445,6 +1459,9 @@ func (a *Applier) ApplyEventQueries(entry *dumpEntry) error {
 
 	if err != nil {
 		return err
+	}
+	if err := tx.Commit(); err != nil {
+		a.onError(err)
 	}
 	return nil
 }

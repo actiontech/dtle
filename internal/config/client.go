@@ -147,6 +147,7 @@ type MySQLDriverConfig struct {
 	HasSuperPrivilege        bool
 	BinlogFormat             string
 	BinlogRowImage           string
+	SqlMode                  string
 	MySQLVersion             string
 	StartTime                time.Time
 	RowCopyStartTime         time.Time

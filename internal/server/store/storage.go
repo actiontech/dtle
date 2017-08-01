@@ -279,9 +279,9 @@ func (s *StateStore) UpsertJob(index uint64, job *models.Job) error {
 		job.CreateIndex = existing.(*models.Job).CreateIndex
 		job.ModifyIndex = index
 		job.JobModifyIndex = index
-		for _,t1 :=range existing.(*models.Job).Tasks{
-			for i,t2 :=range job.Tasks{
-				if t1.Type == t2.Type && t2.Config["NatsAddr"] == nil{
+		for _, t1 := range existing.(*models.Job).Tasks {
+			for i, t2 := range job.Tasks {
+				if t1.Type == t2.Type && t2.Config["NatsAddr"] == nil {
 					t2.Config["NatsAddr"] = t1.Config["NatsAddr"]
 					job.Tasks[i] = t2
 				}
@@ -756,7 +756,7 @@ func (s *StateStore) nestedUpdateAllocFromClient(txn *memdb.Txn, index uint64, a
 		default:
 			forceStatus = models.JobStatusRunning
 		}
-	}else {
+	} else {
 		forceStatus = models.JobStatusDead
 	}
 	jobs := map[string]string{exist.JobID: forceStatus}
@@ -1069,7 +1069,7 @@ func (s *StateStore) setJobStatuses(index uint64, txn *memdb.Txn,
 		}
 
 		exist := existing.(*models.Job)
-		if exist.Status == models.JobStatusPause || exist.Status == models.JobStatusDead{
+		if exist.Status == models.JobStatusPause || exist.Status == models.JobStatusDead {
 			continue
 		}
 
