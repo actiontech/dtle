@@ -513,7 +513,7 @@ func (r *Worker) startTask() error {
 	}
 
 	// Run prestart
-	ctx := driver.NewExecContext(r.alloc.Job.Name, r.alloc.Job.Type)
+	ctx := driver.NewExecContext(r.alloc.Job.Name, r.alloc.Job.Type, r.config.MaxPayload)
 
 	// Start the job
 	handle, err := drv.Start(ctx, r.task)

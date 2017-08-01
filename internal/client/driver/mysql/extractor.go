@@ -36,6 +36,7 @@ type Extractor struct {
 	logger                     *log.Entry
 	subject                    string
 	tp                         string
+	maxPayload                 int
 	mysqlContext               *config.MySQLDriverConfig
 	db                         *gosql.DB
 	singletonDB                *gosql.DB
@@ -65,7 +66,7 @@ type Extractor struct {
 	shutdownLock sync.Mutex
 }
 
-func NewExtractor(subject, tp string, cfg *config.MySQLDriverConfig, logger *log.Logger) *Extractor {
+func NewExtractor(subject, tp string, maxPayload int, cfg *config.MySQLDriverConfig, logger *log.Logger) *Extractor {
 	cfg = cfg.SetDefault()
 	entry := log.NewEntry(logger).WithFields(log.Fields{
 		"job": subject,
@@ -74,6 +75,7 @@ func NewExtractor(subject, tp string, cfg *config.MySQLDriverConfig, logger *log
 		logger:                     entry,
 		subject:                    subject,
 		tp:                         tp,
+		maxPayload:                 maxPayload,
 		mysqlContext:               cfg,
 		tables:                     make([]*config.Table, 0),
 		binlogChannel:              make(chan *binlog.BinlogTx, cfg.ReplChanBufferSize),
@@ -713,7 +715,7 @@ func (e *Extractor) StreamEvents(canStopStreaming func() bool) error {
 						e.onError(err)
 						break OUTER
 					}
-					if uint64(len(txMsg)) > 100*1024*1024 {
+					if len(txMsg) > e.maxPayload {
 						e.onError(gonats.ErrMaxPayload)
 					}
 					if uint64(len(txMsg)) > e.mysqlContext.MsgBytesLimit {
@@ -734,7 +736,7 @@ func (e *Extractor) StreamEvents(canStopStreaming func() bool) error {
 							e.onError(err)
 							break OUTER
 						}
-						if uint64(len(txMsg)) > 100*1024*1024 {
+						if len(txMsg) > e.maxPayload {
 							e.onError(gonats.ErrMaxPayload)
 						}
 						if err := e.requestMsg(subject,
