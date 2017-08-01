@@ -85,8 +85,8 @@ type dumpEntry struct {
 	err                      error
 }
 
-func (j *dumpEntry) incrementCounter() {
-	j.Counter++
+func (e *dumpEntry) incrementCounter() {
+	e.Counter++
 }
 
 func (d *dumper) getDumpEntries() ([]*dumpEntry, error) {
@@ -142,7 +142,11 @@ func (d *dumper) getDumpEntries() ([]*dumpEntry, error) {
 }
 
 // dumps a specific chunk, reading chunk info from the channel
-func (d *dumper) getChunkData(entry *dumpEntry) error {
+func (d *dumper) getChunkData(e *dumpEntry) error {
+	entry := &dumpEntry{
+		RowsCount: e.RowsCount,
+		Offset:    e.Offset,
+	}
 	query := fmt.Sprintf(`SELECT %s FROM %s.%s LIMIT %d OFFSET %d`,
 		d.columns,
 		usql.EscapeName(d.TableSchema),
@@ -177,16 +181,17 @@ func (d *dumper) getChunkData(entry *dumpEntry) error {
 		vals := make([]string, 0)
 		for _, col := range values {
 			// Here we can check if the value is nil (NULL value)
-			value := "NULL"
 			if col != nil {
-				value = fmt.Sprintf("'%s'", entry.escape(string(*col)))
+				vals = append(vals, fmt.Sprintf("'%s'", entry.escape(string(*col))))
+			} else {
+				vals = append(vals, "NULL")
 			}
-			vals = append(vals, value)
 		}
 		data = append(data, fmt.Sprintf("( %s )", strings.Join(vals, ", ")))
 		entry.incrementCounter()
 	}
 	entry.Values = fmt.Sprintf(`replace into %s.%s values %s`, d.TableSchema, d.TableName, strings.Join(data, ","))
+	d.resultsChannel <- entry
 	/*query = fmt.Sprintf(`
 			insert into %s.%s
 				(%s)
@@ -265,7 +270,7 @@ func (d *dumper) worker() {
 			if err != nil {
 				e.err = err
 			}
-			d.resultsChannel <- e
+			//d.resultsChannel <- e
 		}
 	}
 }
@@ -285,11 +290,11 @@ func (d *dumper) Dump(w int) error {
 		return nil
 	}
 
+	d.entriesCount = len(entries)
 	for i := 0; i < workersCount; i++ {
 		go d.worker()
 	}
 
-	d.entriesCount = len(entries)
 	go func() {
 		for _, e := range entries {
 			d.entriesChannel <- e

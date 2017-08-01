@@ -139,6 +139,7 @@ func (a *Applier) consumeRowCopyComplete() {
 	}
 
 	<-a.rowCopyComplete
+	close(a.copyRowsQueue)
 	atomic.StoreInt64(&a.rowCopyCompleteFlag, 1)
 	a.mysqlContext.MarkRowCopyEndTime()
 
@@ -629,7 +630,9 @@ OUTER:
 				/*if err := copyRowsFunc(); err != nil {
 					return err
 				}*/
-
+				if copyRows == nil {
+					continue
+				}
 				go func() {
 					a.pool.Add(1)
 					if err := a.ApplyEventQueries(a.dbs[0].Db, copyRows); err != nil {
@@ -637,7 +640,6 @@ OUTER:
 					}
 					a.pool.Done()
 				}()
-
 				a.applyRowCount += copyRows.Counter
 
 				/*a.logger.Printf("mysql.applier: operating until row copy is complete")
@@ -1428,9 +1430,7 @@ func (a *Applier) ApplyBinlogEvent(db *gosql.DB, events [](binlog.DataEvent)) er
 
 func (a *Applier) ApplyEventQueries(db *gosql.DB, entry *dumpEntry) error {
 	queries := []string{}
-	queries = append(queries, entry.SystemVariablesStatement)
-	queries = append(queries, entry.SqlMode)
-	queries = append(queries, entry.DbSQL, entry.TbSQL)
+	queries = append(queries, entry.SystemVariablesStatement, entry.SqlMode, entry.DbSQL, entry.TbSQL)
 	if entry.Values != "" {
 		queries = append(queries, entry.Values)
 	}
