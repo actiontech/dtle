@@ -119,13 +119,13 @@ func (s *HTTPServer) registerHandlers() {
 	s.mux.HandleFunc("/v1/evaluations", s.wrap(s.EvalsRequest))
 	s.mux.HandleFunc("/v1/evaluation/", s.wrap(s.EvalSpecificRequest))
 
-	s.mux.HandleFunc("/v1/client/allocation/", s.wrap(s.ClientAllocRequest))
+	s.mux.HandleFunc("/v1/agent/allocation/", s.wrap(s.ClientAllocRequest))
 
 	s.mux.HandleFunc("/v1/self", s.wrap(s.AgentSelfRequest))
 	s.mux.HandleFunc("/v1/join", s.wrap(s.AgentJoinRequest))
 	s.mux.HandleFunc("/v1/leave", s.wrap(s.AgentForceLeaveRequest))
 	s.mux.HandleFunc("/v1/members", s.wrap(s.AgentMembersRequest))
-	s.mux.HandleFunc("/v1/servers", s.wrap(s.AgentServersRequest))
+	s.mux.HandleFunc("/v1/managers", s.wrap(s.AgentServersRequest))
 
 	s.mux.HandleFunc("/v1/leader", s.wrap(s.StatusLeaderRequest))
 	s.mux.HandleFunc("/v1/peers", s.wrap(s.StatusPeersRequest))

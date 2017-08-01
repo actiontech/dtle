@@ -19,7 +19,7 @@ func (c *ServerMembersCommand) Help() string {
 	helpText := `
 Usage: udup members [options]
 
-  Display a list of the known servers and their status. Only Udup servers are
+  Display a list of the known managers and their status. Only Udup managers are
   able to service this command.
 
 General Options:
@@ -37,7 +37,7 @@ Members Options:
 }
 
 func (c *ServerMembersCommand) Synopsis() string {
-	return "Display a list of known servers and their status"
+	return "Display a list of known managers and their status"
 }
 
 func (c *ServerMembersCommand) Run(args []string) int {

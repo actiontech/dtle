@@ -81,7 +81,7 @@ func convertServerConfig(agentConfig *Config, logOutput io.Writer) (*uconf.Serve
 		}
 	}
 	if agentConfig.DataDir != "" {
-		conf.DataDir = filepath.Join(agentConfig.DataDir, "server")
+		conf.DataDir = filepath.Join(agentConfig.DataDir, "manager")
 	}
 	if agentConfig.Server.DataDir != "" {
 		conf.DataDir = agentConfig.Server.DataDir
@@ -162,7 +162,7 @@ func (a *Agent) clientConfig() (*uconf.ClientConfig, error) {
 		conf.Region = a.config.Region
 	}
 	if a.config.DataDir != "" {
-		conf.StateDir = filepath.Join(a.config.DataDir, "client")
+		conf.StateDir = filepath.Join(a.config.DataDir, "agent")
 	}
 	conf.Servers = a.config.Client.Servers
 
@@ -242,12 +242,12 @@ func (a *Agent) setupClient() error {
 func (a *Agent) Leave() error {
 	if a.client != nil {
 		if err := a.client.Leave(); err != nil {
-			a.logger.Errorf("agent: client leave failed: %v", err)
+			a.logger.Errorf("server: agent leave failed: %v", err)
 		}
 	}
 	if a.server != nil {
 		if err := a.server.Leave(); err != nil {
-			a.logger.Errorf("agent: server leave failed: %v", err)
+			a.logger.Errorf("server: manager leave failed: %v", err)
 		}
 	}
 	return nil
@@ -262,19 +262,19 @@ func (a *Agent) Shutdown() error {
 		return nil
 	}
 
-	a.logger.Println("agent: requesting shutdown")
+	a.logger.Println("server: requesting shutdown")
 	if a.client != nil {
 		if err := a.client.Shutdown(); err != nil {
-			a.logger.Errorf("agent: client shutdown failed: %v", err)
+			a.logger.Errorf("server: agent shutdown failed: %v", err)
 		}
 	}
 	if a.server != nil {
 		if err := a.server.Shutdown(); err != nil {
-			a.logger.Errorf("agent: server shutdown failed: %v", err)
+			a.logger.Errorf("server: manager shutdown failed: %v", err)
 		}
 	}
 
-	a.logger.Println("agent: shutdown complete")
+	a.logger.Println("server: shutdown complete")
 	a.shutdown = true
 	close(a.shutdownCh)
 	return nil

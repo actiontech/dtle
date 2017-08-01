@@ -61,10 +61,10 @@ type Config struct {
 	AdvertiseAddrs *AdvertiseAddrs `mapstructure:"advertise"`
 
 	// Client has our client related settings
-	Client *ClientConfig `mapstructure:"client"`
+	Client *ClientConfig `mapstructure:"agent"`
 
 	// Server has our server related settings
-	Server *ServerConfig `mapstructure:"server"`
+	Server *ServerConfig `mapstructure:"manager"`
 
 	Metric *Metric `mapstructure:"metric"`
 
@@ -109,7 +109,7 @@ type ClientConfig struct {
 	StateDir string `mapstructure:"state_dir"`
 
 	// Servers is a list of known server addresses. These are as "host:port"
-	Servers []string `mapstructure:"servers"`
+	Servers []string `mapstructure:"managers"`
 
 	// NoHostUUID disables using the host's UUID and will force generation of a
 	// random UUID.

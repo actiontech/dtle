@@ -83,8 +83,8 @@ func parseConfig(result *Config, list *ast.ObjectList) error {
 		"ports",
 		"addresses",
 		"advertise",
-		"client",
-		"server",
+		"agent",
+		"manager",
 		"metric",
 		"network",
 		"leave_on_interrupt",
@@ -104,8 +104,8 @@ func parseConfig(result *Config, list *ast.ObjectList) error {
 	delete(m, "ports")
 	delete(m, "addresses")
 	delete(m, "advertise")
-	delete(m, "client")
-	delete(m, "server")
+	delete(m, "agent")
+	delete(m, "manager")
 	delete(m, "metric")
 	delete(m, "network")
 	delete(m, "consul")
@@ -138,16 +138,16 @@ func parseConfig(result *Config, list *ast.ObjectList) error {
 	}
 
 	// Parse client config
-	if o := list.Filter("client"); len(o.Items) > 0 {
+	if o := list.Filter("agent"); len(o.Items) > 0 {
 		if err := parseClient(&result.Client, o); err != nil {
-			return multierror.Prefix(err, "client ->")
+			return multierror.Prefix(err, "agent ->")
 		}
 	}
 
 	// Parse server config
-	if o := list.Filter("server"); len(o.Items) > 0 {
+	if o := list.Filter("manager"); len(o.Items) > 0 {
 		if err := parseServer(&result.Server, o); err != nil {
-			return multierror.Prefix(err, "server ->")
+			return multierror.Prefix(err, "manager ->")
 		}
 	}
 
@@ -290,7 +290,7 @@ func parseAdvertise(result **AdvertiseAddrs, list *ast.ObjectList) error {
 func parseClient(result **ClientConfig, list *ast.ObjectList) error {
 	list = list.Elem()
 	if len(list.Items) > 1 {
-		return fmt.Errorf("only one 'client' block allowed")
+		return fmt.Errorf("only one 'agent' block allowed")
 	}
 
 	// Get our client object
@@ -301,13 +301,13 @@ func parseClient(result **ClientConfig, list *ast.ObjectList) error {
 	if ot, ok := obj.Val.(*ast.ObjectType); ok {
 		listVal = ot.List
 	} else {
-		return fmt.Errorf("client value: should be an object")
+		return fmt.Errorf("agent value: should be an object")
 	}
 
 	// Check for invalid keys
 	valid := []string{
 		"enabled",
-		"servers",
+		"managers",
 		"stats",
 		"no_host_uuid",
 	}
@@ -342,7 +342,7 @@ func parseClient(result **ClientConfig, list *ast.ObjectList) error {
 func parseServer(result **ServerConfig, list *ast.ObjectList) error {
 	list = list.Elem()
 	if len(list.Items) > 1 {
-		return fmt.Errorf("only one 'server' block allowed")
+		return fmt.Errorf("only one 'manager' block allowed")
 	}
 
 	// Get our server object
@@ -353,7 +353,7 @@ func parseServer(result **ServerConfig, list *ast.ObjectList) error {
 	if ot, ok := obj.Val.(*ast.ObjectType); ok {
 		listVal = ot.List
 	} else {
-		return fmt.Errorf("client value: should be an object")
+		return fmt.Errorf("manager value: should be an object")
 	}
 
 	// Check for invalid keys

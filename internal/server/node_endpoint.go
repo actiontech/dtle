@@ -89,7 +89,7 @@ func (n *Node) Register(args *models.NodeRegisterRequest, reply *models.NodeUpda
 	// Commit this update via Raft
 	_, index, err := n.srv.raftApply(models.NodeRegisterRequestType, args)
 	if err != nil {
-		n.srv.logger.Errorf("server.client: Register failed: %v", err)
+		n.srv.logger.Errorf("server.agent: Register failed: %v", err)
 		return err
 	}
 	reply.NodeModifyIndex = index
@@ -103,7 +103,7 @@ func (n *Node) Register(args *models.NodeRegisterRequest, reply *models.NodeUpda
 	if transitionToReady {
 		evalIDs, evalIndex, err := n.createNodeEvals(args.Node.ID, index)
 		if err != nil {
-			n.srv.logger.Errorf("server.client: eval creation failed: %v", err)
+			n.srv.logger.Errorf("server.agent: eval creation failed: %v", err)
 			return err
 		}
 		reply.EvalIDs = evalIDs
@@ -114,7 +114,7 @@ func (n *Node) Register(args *models.NodeRegisterRequest, reply *models.NodeUpda
 	if !args.Node.TerminalStatus() {
 		ttl, err := n.srv.resetHeartbeatTimer(args.Node.ID)
 		if err != nil {
-			n.srv.logger.Errorf("server.client: heartbeat reset failed: %v", err)
+			n.srv.logger.Errorf("server.agent: heartbeat reset failed: %v", err)
 			return err
 		}
 		reply.HeartbeatTTL = ttl
@@ -130,7 +130,7 @@ func (n *Node) Register(args *models.NodeRegisterRequest, reply *models.NodeUpda
 	n.srv.peerLock.RLock()
 	defer n.srv.peerLock.RUnlock()
 	if err := n.constructNodeServerInfoResponse(snap, reply); err != nil {
-		n.srv.logger.Errorf("server.client: failed to populate NodeUpdateResponse: %v", err)
+		n.srv.logger.Errorf("server.agent: failed to populate NodeUpdateResponse: %v", err)
 		return err
 	}
 
@@ -187,7 +187,7 @@ func (n *Node) Deregister(args *models.NodeDeregisterRequest, reply *models.Node
 	// Commit this update via Raft
 	_, index, err := n.srv.raftApply(models.NodeDeregisterRequestType, args)
 	if err != nil {
-		n.srv.logger.Errorf("server.client: Deregister failed: %v", err)
+		n.srv.logger.Errorf("server.agent: Deregister failed: %v", err)
 		return err
 	}
 
@@ -197,7 +197,7 @@ func (n *Node) Deregister(args *models.NodeDeregisterRequest, reply *models.Node
 	// Create the evaluations for this node
 	evalIDs, evalIndex, err := n.createNodeEvals(args.NodeID, index)
 	if err != nil {
-		n.srv.logger.Errorf("server.client: eval creation failed: %v", err)
+		n.srv.logger.Errorf("server.agent: eval creation failed: %v", err)
 		return err
 	}
 
@@ -247,7 +247,7 @@ func (n *Node) UpdateStatus(args *models.NodeUpdateStatusRequest, reply *models.
 	if node.Status != args.Status {
 		_, index, err = n.srv.raftApply(models.NodeUpdateStatusRequestType, args)
 		if err != nil {
-			n.srv.logger.Errorf("server.client: status update failed: %v", err)
+			n.srv.logger.Errorf("server.agent: status update failed: %v", err)
 			return err
 		}
 		reply.NodeModifyIndex = index
@@ -258,7 +258,7 @@ func (n *Node) UpdateStatus(args *models.NodeUpdateStatusRequest, reply *models.
 	if transitionToReady {
 		evalIDs, evalIndex, err := n.createNodeEvals(args.NodeID, index)
 		if err != nil {
-			n.srv.logger.Errorf("server.client: eval creation failed: %v", err)
+			n.srv.logger.Errorf("server.agent: eval creation failed: %v", err)
 			return err
 		}
 		reply.EvalIDs = evalIDs
@@ -272,7 +272,7 @@ func (n *Node) UpdateStatus(args *models.NodeUpdateStatusRequest, reply *models.
 	default:
 		ttl, err := n.srv.resetHeartbeatTimer(args.NodeID)
 		if err != nil {
-			n.srv.logger.Errorf("server.client: heartbeat reset failed: %v", err)
+			n.srv.logger.Errorf("server.agent: heartbeat reset failed: %v", err)
 			return err
 		}
 		reply.HeartbeatTTL = ttl
@@ -283,7 +283,7 @@ func (n *Node) UpdateStatus(args *models.NodeUpdateStatusRequest, reply *models.
 	n.srv.peerLock.RLock()
 	defer n.srv.peerLock.RUnlock()
 	if err := n.constructNodeServerInfoResponse(snap, reply); err != nil {
-		n.srv.logger.Errorf("server.client: failed to populate NodeUpdateResponse: %v", err)
+		n.srv.logger.Errorf("server.agent: failed to populate NodeUpdateResponse: %v", err)
 		return err
 	}
 
@@ -327,7 +327,7 @@ func (n *Node) Evaluate(args *models.NodeEvaluateRequest, reply *models.NodeUpda
 	// Create the evaluation
 	evalIDs, evalIndex, err := n.createNodeEvals(args.NodeID, node.ModifyIndex)
 	if err != nil {
-		n.srv.logger.Errorf("server.client: eval creation failed: %v", err)
+		n.srv.logger.Errorf("server.agent: eval creation failed: %v", err)
 		return err
 	}
 	reply.EvalIDs = evalIDs
@@ -339,7 +339,7 @@ func (n *Node) Evaluate(args *models.NodeEvaluateRequest, reply *models.NodeUpda
 	n.srv.peerLock.RLock()
 	defer n.srv.peerLock.RUnlock()
 	if err := n.constructNodeServerInfoResponse(snap, reply); err != nil {
-		n.srv.logger.Errorf("server.client: failed to populate NodeUpdateResponse: %v", err)
+		n.srv.logger.Errorf("server.agent: failed to populate NodeUpdateResponse: %v", err)
 		return err
 	}
 	return nil
@@ -584,7 +584,7 @@ func (n *Node) batchUpdate(future *batchFuture, updates []*models.Allocation) {
 	var mErr multierror.Error
 	_, index, err := n.srv.raftApply(models.AllocClientUpdateRequestType, batch)
 	if err != nil {
-		n.srv.logger.Errorf("server.client: alloc update failed: %v", err)
+		n.srv.logger.Errorf("server.agent: alloc update failed: %v", err)
 		mErr.Errors = append(mErr.Errors, err)
 	}
 

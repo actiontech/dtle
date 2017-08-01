@@ -275,7 +275,7 @@ func (s *Server) raftApplyFuture(t models.MessageType, msg interface{}) (raft.Ap
 
 	// Warn if the command is very large
 	if n := len(buf); n > raftWarnSize {
-		s.logger.Warnf("server: Attempting to apply large raft entry (type %d) (%d bytes)", t, n)
+		s.logger.Warnf("manager: Attempting to apply large raft entry (type %d) (%d bytes)", t, n)
 	}
 
 	future := s.raft.Apply(buf, enqueueLimit)
