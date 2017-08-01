@@ -273,17 +273,27 @@ func (s *StateStore) UpsertJob(index uint64, job *models.Job) error {
 
 	// Setup the indexes correctly
 	if existing != nil {
-		return nil
-		/*job.CreateIndex = existing.(*models.Job).CreateIndex
+		if existing.(*models.Job).Status == models.JobStatusRunning {
+			return nil
+		}
+		job.CreateIndex = existing.(*models.Job).CreateIndex
 		job.ModifyIndex = index
 		job.JobModifyIndex = index
+		for _,t1 :=range existing.(*models.Job).Tasks{
+			for i,t2 :=range job.Tasks{
+				if t1.Type == t2.Type && t2.Config["NatsAddr"] == nil{
+					t2.Config["NatsAddr"] = t1.Config["NatsAddr"]
+					job.Tasks[i] = t2
+				}
+			}
+		}
 
 		// Compute the job status
 		var err error
 		job.Status, err = s.getJobStatus(txn, job, false)
 		if err != nil {
 			return fmt.Errorf("setting job status for %q failed: %v", job.ID, err)
-		}*/
+		}
 	} else {
 		job.CreateIndex = index
 		job.ModifyIndex = index
@@ -740,7 +750,14 @@ func (s *StateStore) nestedUpdateAllocFromClient(txn *memdb.Txn, index uint64, a
 	// Set the job's status
 	forceStatus := ""
 	if !copyAlloc.ClientTerminalStatus() {
-		forceStatus = models.JobStatusRunning
+		switch copyAlloc.ClientStatus {
+		case models.AllocClientStatusPending:
+			forceStatus = models.JobStatusPending
+		default:
+			forceStatus = models.JobStatusRunning
+		}
+	}else {
+		forceStatus = models.JobStatusDead
 	}
 	jobs := map[string]string{exist.JobID: forceStatus}
 	if err := s.setJobStatuses(index, txn, jobs, false); err != nil {
@@ -1052,7 +1069,7 @@ func (s *StateStore) setJobStatuses(index uint64, txn *memdb.Txn,
 		}
 
 		exist := existing.(*models.Job)
-		if exist.Status == models.JobStatusPause {
+		if exist.Status == models.JobStatusPause || exist.Status == models.JobStatusDead{
 			continue
 		}
 

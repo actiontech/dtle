@@ -429,7 +429,7 @@ func (r *Worker) shouldRestart() bool {
 	case models.TaskNotRestarting, models.TaskTerminated:
 		r.logger.Printf("client: Not restarting task: %v for alloc: %v ", r.task.Type, r.alloc.ID)
 		if state == models.TaskNotRestarting {
-			r.setState(models.TaskStateDead,
+			r.setState(models.TaskStateFailed,
 				models.NewTaskEvent(models.TaskNotRestarting).
 					SetRestartReason(reason).SetFailsTask())
 		}
