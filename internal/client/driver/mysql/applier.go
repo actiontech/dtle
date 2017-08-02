@@ -126,11 +126,17 @@ func (a *Applier) retryOperation(operation func() error, notFatalHint ...bool) (
 // consumes and drops any further incoming events that may be left hanging.
 func (a *Applier) consumeRowCopyComplete() {
 	_, err := a.natsConn.Subscribe(fmt.Sprintf("%s_full_complete", a.subject), func(m *gonats.Msg) {
-		if string(m.Data) == string(a.applyRowCount) {
-			a.rowCopyComplete <- true
-		}
 		if err := a.natsConn.Publish(m.Reply, nil); err != nil {
 			a.onError(err)
+		}
+
+		for {
+			if fmt.Sprintf("%s", m.Data) == string(a.applyRowCount) {
+				a.rowCopyComplete <- true
+			} /*else {
+				a.onError(fmt.Errorf("we might get an inconsistent data during the dump process"))
+			}*/
+			time.Sleep(1 * time.Second)
 		}
 	})
 	if err != nil {
@@ -195,32 +201,49 @@ func (a *Applier) Run() {
 	if a.mysqlContext.Gtid == "" {
 		a.logger.Printf("mysql.applier: Operating until row copy is complete")
 		a.consumeRowCopyComplete()
+		a.pool.Wait()
 		a.logger.Printf("mysql.applier: Row copy complete")
 	}
 
 	if a.tp == models.JobTypeMig {
-		for {
-			binlogCoordinates, err := base.GetSelfBinlogCoordinates(a.dbs[0].Db)
-			if err != nil {
+		var completeFlag string
+		_, err := a.natsConn.Subscribe(fmt.Sprintf("%s_incr_complete", a.subject), func(m *gonats.Msg) {
+			completeFlag = string(m.Data)
+			if err := a.natsConn.Publish(m.Reply, nil); err != nil {
 				a.onError(err)
-				break
 			}
-
-			if a.mysqlContext.Gtid == "" {
-				a.waitCh <- models.NewWaitResult(0, nil)
-				break
-			}
-			equals, err := base.ContrastGtidSet(a.mysqlContext.Gtid, binlogCoordinates.DisplayString())
-			if err != nil {
-				a.onError(err)
-				break
-			}
-			if equals {
-				a.waitCh <- models.NewWaitResult(0, nil)
-				break
-			}
+		})
+		if err != nil {
+			a.onError(err)
 		}
-		a.logger.Printf("mysql.applier: Done migrating")
+		for {
+			if completeFlag != "" {
+				switch completeFlag {
+				case "0":
+					a.onDone()
+					break
+				default:
+					binlogCoordinates, err := base.GetSelfBinlogCoordinates(a.singletonDB)
+					if err != nil {
+						a.onError(err)
+						break
+					}
+					if a.mysqlContext.Gtid != "" && binlogCoordinates.DisplayString() != "" {
+						equals, err := base.ContrastGtidSet(a.mysqlContext.Gtid, binlogCoordinates.DisplayString())
+						if err != nil {
+							a.onError(err)
+							break
+						}
+						if equals {
+							a.onDone()
+							break
+						}
+					}
+
+				}
+			}
+			time.Sleep(1 * time.Second)
+		}
 	}
 }
 
@@ -527,7 +550,6 @@ func (a *Applier) onApplyTxStruct(dbApplier *sql.DB, binlogTx *binlog.BinlogTx) 
 			a.logger.Warnf("mysql.applier: exec gtid:[%s:%d],ignore error: %v", binlogTx.SID, binlogTx.GNO, err)
 			ignoreError = err
 		}
-		//a.addCount(binlog.Ddl)
 	}
 
 	if ignoreError != nil {
@@ -585,13 +607,13 @@ func (a *Applier) executeWriteFuncs() {
 					continue
 				}
 				if copyRows.DbSQL != "" || copyRows.TbSQL != "" {
-					if err := a.ApplyEventQueries(a.dbs[0].Db, copyRows); err != nil {
+					if err := a.ApplyEventQueries(a.singletonDB, copyRows); err != nil {
 						a.onError(err)
 					}
 				} else {
 					go func() {
 						a.pool.Add(1)
-						if err := a.ApplyEventQueries(a.dbs[0].Db, copyRows); err != nil {
+						if err := a.ApplyEventQueries(a.singletonDB, copyRows); err != nil {
 							a.onError(err)
 						}
 						a.pool.Done()
@@ -1555,6 +1577,15 @@ func (a *Applier) onError(err error) {
 	a.Shutdown()
 }
 
+func (a *Applier) onDone() {
+	a.logger.Printf("mysql.applier: Done migrating")
+	if a.shutdown {
+		return
+	}
+	a.waitCh <- models.NewWaitResult(0, nil)
+	a.Shutdown()
+}
+
 func (a *Applier) WaitCh() chan *models.WaitResult {
 	return a.waitCh
 }
@@ -1571,6 +1602,7 @@ func (a *Applier) Shutdown() error {
 	if a.natsConn != nil {
 		a.natsConn.Close()
 	}
+	a.pool.Wait()
 
 	//a.stopCh <- true
 	if err := sql.CloseDB(a.singletonDB); err != nil {

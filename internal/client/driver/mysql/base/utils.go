@@ -318,7 +318,7 @@ func ContrastGtidSet(contrastGtid, currentGtid string) (bool, error) {
 			}
 		}
 	}
-	return true,nil
+	return true, nil
 }
 
 // Interval is [start, stop), but the GTID string's format is [n] or [n1-n2], closed interval

@@ -313,10 +313,10 @@ func TestContrastGtidSet(t *testing.T) {
 		want    bool
 		wantErr bool
 	}{
-	// TODO: Add test cases.
-		{"T1", args{"0ebdc0a2-7439-11e7-b49b-0242ac110004:1-206","0ebdc0a2-7439-11e7-b49b-0242ac110004:1-206"},true, false},
-		{"T2", args{"0ebdc0a2-7439-11e7-b49b-0242ac110004:1-206,134c2318-7439-11e7-b57f-0242ac110003:1-3120","0ebdc0a2-7439-11e7-b49b-0242ac110004:1-206"},true, false},
-		{"T3", args{"0ebdc0a2-7439-11e7-b49b-0242ac110004:1-206,134c2318-7439-11e7-b57f-0242ac110003:1-3120","0ebdc0a2-7439-11e7-b49b-0242ac110004:1-206,134c2318-7439-11e7-b57f-0242ac110003:1-3120:454591-459264:459266:459270"},false, false},
+		// TODO: Add test cases.
+		{"T1", args{"0ebdc0a2-7439-11e7-b49b-0242ac110004:1-206", "0ebdc0a2-7439-11e7-b49b-0242ac110004:1-206"}, true, false},
+		{"T2", args{"0ebdc0a2-7439-11e7-b49b-0242ac110004:1-206,134c2318-7439-11e7-b57f-0242ac110003:1-3120", "0ebdc0a2-7439-11e7-b49b-0242ac110004:1-206"}, true, false},
+		{"T3", args{"0ebdc0a2-7439-11e7-b49b-0242ac110004:1-206,134c2318-7439-11e7-b57f-0242ac110003:1-3120", "0ebdc0a2-7439-11e7-b49b-0242ac110004:1-206,134c2318-7439-11e7-b57f-0242ac110003:1-3120:454591-459264:459266:459270"}, false, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

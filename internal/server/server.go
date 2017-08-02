@@ -745,7 +745,7 @@ func (s *Server) Stats() map[string]map[string]string {
 	}
 	stats := map[string]map[string]string{
 		"server": {
-			"server":        "true",
+			"manager":       "true",
 			"leader":        fmt.Sprintf("%v", s.IsLeader()),
 			"leader_addr":   string(s.raft.Leader()),
 			"bootstrap":     fmt.Sprintf("%v", s.config.Bootstrap),

@@ -26,7 +26,7 @@ import (
 
 const (
 	// DefaultConnectWait is the default timeout used for the connect operation
-	DefaultConnectWait            = 10 * time.Second
+	DefaultConnectWait            = 30 * time.Minute
 	AllEventsUpToLockProcessed    = "AllEventsUpToLockProcessed"
 	ReconnectStreamerSleepSeconds = 5
 )
@@ -198,7 +198,6 @@ func (e *Extractor) Run() {
 			e.onError(err)
 			return
 		}
-		e.logger.Printf("mysql.extractor: Row copy complete")
 	} else {
 		if err := e.readCurrentBinlogCoordinates(); err != nil {
 			e.onError(err)
@@ -225,20 +224,33 @@ func (e *Extractor) Run() {
 			}
 
 			if e.initialBinlogCoordinates.DisplayString() == binlogCoordinates.DisplayString() {
-				e.waitCh <- models.NewWaitResult(0, nil)
+				if err := e.requestMsg(fmt.Sprintf("%s_incr_complete", e.subject), "", []byte("0")); err != nil {
+					e.onError(err)
+					return
+				}
+				e.onDone()
 				break
 			}
 
-			equals, err := base.ContrastGtidSet(e.mysqlContext.Gtid, binlogCoordinates.DisplayString())
-			if err != nil {
-				e.onError(err)
-				break
+			if e.mysqlContext.Gtid != "" && binlogCoordinates.DisplayString() != "" {
+				equals, err := base.ContrastGtidSet(e.mysqlContext.Gtid, binlogCoordinates.DisplayString())
+				if err != nil {
+					e.onError(err)
+					break
+				}
+
+				if equals {
+					if err := e.requestMsg(fmt.Sprintf("%s_incr_complete", e.subject), "", []byte("1")); err != nil {
+						e.onError(err)
+						return
+					}
+					e.onDone()
+					break
+				}
 			}
-			if equals {
-				e.waitCh <- models.NewWaitResult(0, nil)
-				break
-			}
+			time.Sleep(1 * time.Second)
 		}
+		e.logger.Printf("mysql.extractor: Row copy complete")
 	}
 }
 
@@ -1095,6 +1107,14 @@ func (e *Extractor) onError(err error) {
 		return
 	}
 	e.waitCh <- models.NewWaitResult(1, err)
+	e.Shutdown()
+}
+
+func (e *Extractor) onDone() {
+	if e.shutdown {
+		return
+	}
+	e.waitCh <- models.NewWaitResult(0, nil)
 	e.Shutdown()
 }
 

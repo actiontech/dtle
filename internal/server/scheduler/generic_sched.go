@@ -165,9 +165,12 @@ func (s *GenericScheduler) process() (bool, error) {
 	}
 
 	numTaskGroups := 0
-	if s.job != nil {
+	if s.job != nil && s.job.Status != models.JobStatusDead {
 		numTaskGroups = len(s.job.Tasks)
+	} else {
+		return true, nil
 	}
+
 	s.queuedAllocs = make(map[string]int, numTaskGroups)
 
 	// Create a plan
@@ -405,8 +408,9 @@ func (s *GenericScheduler) computePlacements(place []allocTuple) error {
 			}
 
 			if missing.Task.Type == models.TaskTypeDest {
-				for _, task := range s.plan.Job.Tasks {
+				for i, task := range s.job.Tasks {
 					task.Config["NatsAddr"] = preferredNode.NatsAddr
+					s.job.Tasks[i] = task
 				}
 			}
 			s.plan.AppendAlloc(alloc)
