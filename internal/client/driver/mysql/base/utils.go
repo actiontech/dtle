@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
+	"github.com/satori/go.uuid"
 	gomysql "github.com/siddontang/go-mysql/mysql"
 
 	usql "udup/internal/client/driver/mysql/sql"
@@ -111,10 +113,36 @@ func GetSelfBinlogCoordinates(db *gosql.DB) (selfBinlogCoordinates *BinlogCoordi
 		if err != nil {
 			return err
 		}
+		ms := new(gomysql.MysqlGTIDSet)
+		ms.Sets = make(map[string]*gomysql.UUIDSet)
+		for _, gset := range strings.Split(gtidSet.String(), ",") {
+			gset = strings.TrimSpace(gset)
+			sep := strings.Split(gset, ":")
+			if len(sep) < 2 {
+				return fmt.Errorf("invalid GTID format, must UUID:interval[:interval]")
+			}
+
+			s := new(gomysql.UUIDSet)
+			if s.SID, err = uuid.FromString(sep[0]); err != nil {
+				return err
+			}
+			// Handle interval
+			for i := 1; i < len(sep); i++ {
+				if in, err := parseInterval(sep[i]); err != nil {
+					return err
+				} else {
+					in.Start = 1
+					s.Intervals = append(s.Intervals, in)
+				}
+			}
+			s.Intervals = s.Intervals.Normalize()
+			ms.AddSet(s)
+		}
+
 		selfBinlogCoordinates = &BinlogCoordinates{
 			LogFile: m.GetString("File"),
 			LogPos:  m.GetInt64("Position"),
-			GtidSet: gtidSet.String(),
+			GtidSet: ms.String(),
 		}
 		return nil
 	})
@@ -247,4 +275,72 @@ func ShowCreateTable(db *gosql.DB, databaseName, tableName string, dropTableIfEx
 		statement = fmt.Sprintf("%s;DROP TABLE IF EXISTS `%s`", statement, tableName)
 	}
 	return fmt.Sprintf("%s;%s", statement, createTableStatement), err
+}
+
+func ContrastGtidSet(contrastGtid, currentGtid string) (bool, error) {
+	for _, gset := range strings.Split(contrastGtid, ",") {
+		gset = strings.TrimSpace(gset)
+		sep := strings.Split(gset, ":")
+		if len(sep) < 2 {
+			return false, fmt.Errorf("invalid GTID format, must UUID:interval[:interval]")
+		}
+		sid, err := uuid.FromString(sep[0])
+		if err != nil {
+			return false, err
+		}
+		// Handle interval
+		for i := 1; i < len(sep); i++ {
+			if ein, err := parseInterval(sep[i]); err != nil {
+				return false, err
+			} else {
+				for _, bgset := range strings.Split(currentGtid, ",") {
+					bgset = strings.TrimSpace(bgset)
+					bsep := strings.Split(bgset, ":")
+					if len(bsep) < 2 {
+						return false, fmt.Errorf("invalid GTID format, must UUID:interval[:interval]")
+					}
+					bsid, err := uuid.FromString(bsep[0])
+					if err != nil {
+						return false, err
+					}
+					if sid == bsid {
+						for i := 1; i < len(bsep); i++ {
+							if bin, err := parseInterval(bsep[i]); err != nil {
+								return false, err
+							} else {
+								if bin.Stop != ein.Stop {
+									return false, nil
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+	return true,nil
+}
+
+// Interval is [start, stop), but the GTID string's format is [n] or [n1-n2], closed interval
+func parseInterval(str string) (i gomysql.Interval, err error) {
+	p := strings.Split(str, "-")
+	switch len(p) {
+	case 1:
+		i.Start, err = strconv.ParseInt(p[0], 10, 64)
+		i.Stop = i.Start + 1
+	default:
+		i.Start, err = strconv.ParseInt(p[0], 10, 64)
+		i.Stop, err = strconv.ParseInt(p[len(p)-1], 10, 64)
+		i.Stop = i.Stop + 1
+	}
+
+	if err != nil {
+		return
+	}
+
+	if i.Stop <= i.Start {
+		err = fmt.Errorf("invalid interval format, must n[-n] and the end must >= start")
+	}
+
+	return
 }

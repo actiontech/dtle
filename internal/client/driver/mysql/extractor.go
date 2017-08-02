@@ -221,18 +221,25 @@ func (e *Extractor) Run() {
 			binlogCoordinates, err := base.GetSelfBinlogCoordinates(e.db)
 			if err != nil {
 				e.onError(err)
-				return
+				break
 			}
-			if e.mysqlContext.Gtid == binlogCoordinates.DisplayString() {
+
+			if e.initialBinlogCoordinates.DisplayString() == binlogCoordinates.DisplayString() {
 				e.waitCh <- models.NewWaitResult(0, nil)
+				break
+			}
+
+			equals, err := base.ContrastGtidSet(e.mysqlContext.Gtid, binlogCoordinates.DisplayString())
+			if err != nil {
+				e.onError(err)
+				break
+			}
+			if equals {
+				e.waitCh <- models.NewWaitResult(0, nil)
+				break
 			}
 		}
 	}
-
-	/*if err := e.retryOperation(e.cutOver); err != nil {
-		e.onError(err)
-		return
-	}*/
 }
 
 // cutOver performs the final step of migration, based on migration
@@ -582,26 +589,12 @@ func (e *Extractor) GetReconnectBinlogCoordinates() *base.BinlogCoordinates {
 // readCurrentBinlogCoordinates reads master status from hooked server
 func (e *Extractor) readCurrentBinlogCoordinates() error {
 	if e.mysqlContext.Gtid != "" {
-		sid := e.validateServerUUID()
-		for _, gtid := range strings.Split(e.mysqlContext.Gtid, ",") {
-			id := strings.Split(gtid, ":")[0]
-			if id == sid {
-				gtidSet, err := gomysql.ParseMysqlGTIDSet(gtid)
-				if err != nil {
-					return err
-				}
-				e.initialBinlogCoordinates = &base.BinlogCoordinates{
-					GtidSet: gtidSet.String(),
-				}
-			} else {
-				gtidSet, err := gomysql.ParseMysqlGTIDSet(e.mysqlContext.Gtid)
-				if err != nil {
-					return err
-				}
-				e.initialBinlogCoordinates = &base.BinlogCoordinates{
-					GtidSet: gtidSet.String(),
-				}
-			}
+		gtidSet, err := gomysql.ParseMysqlGTIDSet(e.mysqlContext.Gtid)
+		if err != nil {
+			return err
+		}
+		e.initialBinlogCoordinates = &base.BinlogCoordinates{
+			GtidSet: gtidSet.String(),
 		}
 	} else {
 		binlogCoordinates, err := base.GetSelfBinlogCoordinates(e.db)
@@ -699,6 +692,7 @@ func Encode(v interface{}) ([]byte, error) {
 func (e *Extractor) StreamEvents(canStopStreaming func() bool) error {
 	go func() {
 		txArray := []*binlog.BinlogTx{}
+		txBytes := 0
 		subject := fmt.Sprintf("%s_incr", e.subject)
 
 	OUTER:
@@ -710,15 +704,16 @@ func (e *Extractor) StreamEvents(canStopStreaming func() bool) error {
 						continue
 					}
 					txArray = append(txArray, binlogTx)
-					txMsg, err := Encode(&txArray)
-					if err != nil {
-						e.onError(err)
-						break OUTER
-					}
-					if len(txMsg) > e.maxPayload {
-						e.onError(gonats.ErrMaxPayload)
-					}
-					if uint64(len(txMsg)) > e.mysqlContext.MsgBytesLimit {
+					txBytes += len([]byte(binlogTx.Query))
+					if txBytes > e.mysqlContext.MsgBytesLimit {
+						txMsg, err := Encode(&txArray)
+						if err != nil {
+							e.onError(err)
+							break OUTER
+						}
+						if len(txMsg) > e.maxPayload {
+							e.onError(gonats.ErrMaxPayload)
+						}
 						if err := e.requestMsg(subject, fmt.Sprintf("%s:1-%d", binlogTx.SID, binlogTx.GNO), txMsg); err != nil {
 							e.onError(err)
 							break OUTER
@@ -726,6 +721,7 @@ func (e *Extractor) StreamEvents(canStopStreaming func() bool) error {
 						//send_by_size_full
 						e.sendBySizeFullCounter += len(txArray)
 						txArray = []*binlog.BinlogTx{}
+						txBytes = 0
 					}
 				}
 			case <-time.After(100 * time.Millisecond):
@@ -750,6 +746,7 @@ func (e *Extractor) StreamEvents(canStopStreaming func() bool) error {
 						//send_by_timeout
 						e.sendByTimeoutCounter += len(txArray)
 						txArray = []*binlog.BinlogTx{}
+						txBytes = 0
 					}
 				}
 			case <-e.shutdownCh:
@@ -951,7 +948,6 @@ func (e *Extractor) mysqlDump() error {
 	}
 	pool.Wait()
 
-	time.Sleep(5 * time.Second)
 	// We've copied all of the tables, but our buffer holds onto the very last record.
 	// First mark the snapshot as complete and then apply the updated offset to the buffered record ...
 	stop := currentTimeMillis()

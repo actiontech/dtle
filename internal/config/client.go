@@ -123,7 +123,7 @@ type MySQLDriverConfig struct {
 	ReplicateDoDb                       []*DataSource
 	DropTableIfExists                   bool
 	ReplChanBufferSize                  int64
-	MsgBytesLimit                       uint64
+	MsgBytesLimit                       int
 	MsgsLimit                           int
 	BytesLimit                          int
 	ConcurrentCountTableRows            bool

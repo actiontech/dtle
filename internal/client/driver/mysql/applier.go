@@ -126,7 +126,6 @@ func (a *Applier) retryOperation(operation func() error, notFatalHint ...bool) (
 // consumes and drops any further incoming events that may be left hanging.
 func (a *Applier) consumeRowCopyComplete() {
 	_, err := a.natsConn.Subscribe(fmt.Sprintf("%s_full_complete", a.subject), func(m *gonats.Msg) {
-		a.pool.Wait()
 		if string(m.Data) == string(a.applyRowCount) {
 			a.rowCopyComplete <- true
 		}
@@ -204,18 +203,25 @@ func (a *Applier) Run() {
 			binlogCoordinates, err := base.GetSelfBinlogCoordinates(a.dbs[0].Db)
 			if err != nil {
 				a.onError(err)
-				return
+				break
 			}
-			if a.mysqlContext.Gtid == binlogCoordinates.DisplayString() {
+
+			if a.mysqlContext.Gtid == "" {
 				a.waitCh <- models.NewWaitResult(0, nil)
+				break
+			}
+			equals, err := base.ContrastGtidSet(a.mysqlContext.Gtid, binlogCoordinates.DisplayString())
+			if err != nil {
+				a.onError(err)
+				break
+			}
+			if equals {
+				a.waitCh <- models.NewWaitResult(0, nil)
+				break
 			}
 		}
+		a.logger.Printf("mysql.applier: Done migrating")
 	}
-
-	/*if err := a.retryOperation(a.cutOver); err != nil {
-		a.onError(err)
-		return
-	}*/
 }
 
 // readCurrentBinlogCoordinates reads master status from hooked server
@@ -537,50 +543,6 @@ func (a *Applier) onApplyTxStruct(dbApplier *sql.DB, binlogTx *binlog.BinlogTx) 
 	return nil
 }
 
-func (a *Applier) onApplyEventStruct(db *gosql.DB, binlogEntry *binlog.BinlogEntry) error {
-	defer func() {
-		_, err := sql.ExecNoPrepare(db, `set gtid_next='automatic'`)
-		if err != nil {
-			a.logger.Errorf("mysql.applier: exec set gtid_next err:%v", err)
-			a.onError(err)
-		}
-	}()
-
-	_, err := sql.ExecNoPrepare(db, fmt.Sprintf(`set gtid_next='%s';`, binlogEntry.Coordinates.GtidSet))
-	if err != nil {
-		return err
-	}
-	var notDml bool
-	for _, event := range binlogEntry.Events {
-		if event.DML != binlog.NotDML {
-			notDml = false
-			break
-		}
-		notDml = true
-		break
-	}
-	if !notDml {
-		_, err = sql.ExecNoPrepare(db, `begin`)
-		if err != nil {
-			a.logger.Errorf("mysql.applier: exec begin err:%v", err)
-			return err
-		}
-	}
-	if err := a.ApplyBinlogEvent(a.dbs[0].Db, binlogEntry.Events); err != nil {
-		return err
-	}
-	if !notDml {
-		_, err = sql.ExecNoPrepare(db, `commit`)
-		if err != nil {
-			a.logger.Errorf("mysql.applier: exec commit err:%v", err)
-			return err
-		}
-	}
-
-	a.mysqlContext.Gtid = fmt.Sprintf("%s:1-%s", strings.Split(binlogEntry.Coordinates.GtidSet, ":")[0], strings.Split(binlogEntry.Coordinates.GtidSet, ":")[1])
-	return nil
-}
-
 // executeWriteFuncs writes data via applier: both the rowcopy and the events backlog.
 // This is where the ghost table gets the data. The function fills the data single-threaded.
 // Both event backlog and rowcopy events are polled; the backlog events have precedence.
@@ -588,26 +550,15 @@ func (a *Applier) executeWriteFuncs() {
 	var barrier sync.WaitGroup
 	var dbApplier *sql.DB
 
-OUTER:
 	for {
 		// We give higher priority to event processing, then secondary priority to
 		// rowcopy
 		select {
-		case binlogEntry := <-a.applyDataEntryQueue:
-			{
-				/*if sid == strings.Split(binlogEntry.Coordinates.GtidSet, ":")[0] {
-					continue
-				}*/
-				//if err := a.onApplyTxStruct(binlogEntry); err != nil {
-				if err := a.onApplyEventStruct(a.dbs[0].Db, binlogEntry); err != nil {
-					a.onError(err)
-					break OUTER
-				}
-			}
 		case groupTx := <-a.applyBinlogGroupTxQueue:
 			{
+				a.pool.Wait()
 				if len(groupTx) == 0 {
-					return
+					continue
 				}
 				barrier.Add(len(groupTx))
 				for idx, binlogTx := range groupTx {
@@ -633,13 +584,19 @@ OUTER:
 				if copyRows == nil {
 					continue
 				}
-				go func() {
-					a.pool.Add(1)
+				if copyRows.DbSQL != "" || copyRows.TbSQL != "" {
 					if err := a.ApplyEventQueries(a.dbs[0].Db, copyRows); err != nil {
 						a.onError(err)
 					}
-					a.pool.Done()
-				}()
+				} else {
+					go func() {
+						a.pool.Add(1)
+						if err := a.ApplyEventQueries(a.dbs[0].Db, copyRows); err != nil {
+							a.onError(err)
+						}
+						a.pool.Done()
+					}()
+				}
 				a.applyRowCount += copyRows.Counter
 
 				/*a.logger.Printf("mysql.applier: operating until row copy is complete")
@@ -1450,7 +1407,7 @@ func (a *Applier) ApplyEventQueries(db *gosql.DB, entry *dumpEntry) error {
 					return err
 				}
 				if !sql.IgnoreExistsError(err) {
-					a.logger.Warnf("mysql.applier: Ignore error: %v", err)
+					a.logger.Warnf("mysql.applier: Ignore exec [%s] error: %v", query, err)
 				}
 			}
 		}
