@@ -9,6 +9,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/hashicorp/memberlist"
+
 	ucli "udup/internal/client"
 	uconf "udup/internal/config"
 	ulog "udup/internal/logger"
@@ -91,6 +93,15 @@ func convertServerConfig(agentConfig *Config, logOutput io.Writer) (*uconf.Serve
 	}
 	if len(agentConfig.Server.EnabledSchedulers) != 0 {
 		conf.EnabledSchedulers = agentConfig.Server.EnabledSchedulers
+	}
+
+	switch agentConfig.Profile {
+	case "wan":
+		conf.SerfConfig.MemberlistConfig = memberlist.DefaultWANConfig()
+	case "local":
+		conf.SerfConfig.MemberlistConfig = memberlist.DefaultLocalConfig()
+	default:
+		conf.SerfConfig.MemberlistConfig = memberlist.DefaultLANConfig()
 	}
 
 	// Set up the bind addresses

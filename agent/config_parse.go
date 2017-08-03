@@ -80,6 +80,7 @@ func parseConfig(result *Config, list *ast.ObjectList) error {
 		"log_file",
 		"pid_file",
 		"bind_addr",
+		"profile",
 		"ports",
 		"addresses",
 		"advertise",

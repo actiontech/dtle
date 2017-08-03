@@ -70,6 +70,10 @@ type Config struct {
 
 	Network *Network `mapstructure:"network"`
 
+	// Profile is used to select a timing profile for Serf. The supported choices
+	// are "wan", "lan", and "local". The default is "lan"
+	Profile string `mapstructure:"profile"`
+
 	// LeaveOnInt is used to gracefully leave on the interrupt signal
 	LeaveOnInt bool `mapstructure:"leave_on_interrupt"`
 
@@ -301,6 +305,9 @@ func (c *Config) Merge(b *Config) *Config {
 	}
 	if b.BindAddr != "" {
 		result.BindAddr = b.BindAddr
+	}
+	if b.Profile != "" {
+		result.Profile = b.Profile
 	}
 	if b.LeaveOnInt {
 		result.LeaveOnInt = true
