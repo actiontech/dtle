@@ -12,6 +12,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	//"sort"
 
 	"github.com/golang/snappy"
 	gonats "github.com/nats-io/go-nats"
@@ -54,6 +55,7 @@ type Applier struct {
 	applyDataEntryQueue     chan *binlog.BinlogEntry
 	applyBinlogTxQueue      chan *binlog.BinlogTx
 	applyBinlogGroupTxQueue chan []*binlog.BinlogTx
+	lastAppliedBinlogTx *binlog.BinlogTx
 
 	natsConn *gonats.Conn
 	waitCh   chan *models.WaitResult
@@ -217,27 +219,28 @@ func (a *Applier) Run() {
 		if err != nil {
 			a.onError(err)
 		}
+	OUTER:
 		for {
 			if completeFlag != "" {
 				switch completeFlag {
 				case "0":
 					a.onDone()
-					break
+					break OUTER
 				default:
 					binlogCoordinates, err := base.GetSelfBinlogCoordinates(a.singletonDB)
 					if err != nil {
 						a.onError(err)
-						break
+						break OUTER
 					}
 					if a.mysqlContext.Gtid != "" && binlogCoordinates.DisplayString() != "" {
 						equals, err := base.ContrastGtidSet(a.mysqlContext.Gtid, binlogCoordinates.DisplayString())
 						if err != nil {
 							a.onError(err)
-							break
+							break OUTER
 						}
 						if equals {
 							a.onDone()
-							break
+							break OUTER
 						}
 					}
 
@@ -582,6 +585,9 @@ OUTER:
 				if len(groupTx) == 0 {
 					continue
 				}
+				/*sort.Slice(groupTx, func(i, j int) bool {
+					return groupTx[i].GNO < groupTx[j].GNO
+				})*/
 				a.wg.Add(len(groupTx))
 				for idx, binlogTx := range groupTx {
 					dbApplier = a.dbs[idx%a.mysqlContext.ParallelWorkers]
@@ -593,7 +599,11 @@ OUTER:
 					}(binlogTx)
 				}
 				a.wg.Wait() // Waiting for all goroutines to finish
-				a.mysqlContext.Gtid = fmt.Sprintf("%s:1-%d", groupTx[len(groupTx)-1].SID, groupTx[len(groupTx)-1].GNO)
+
+				if !a.shutdown {
+					a.lastAppliedBinlogTx = groupTx[len(groupTx)-1]
+					a.mysqlContext.Gtid = fmt.Sprintf("%s:1-%d", a.lastAppliedBinlogTx.SID, a.lastAppliedBinlogTx.GNO)
+				}
 			}
 
 		case copyRows := <-a.copyRowsQueue:
