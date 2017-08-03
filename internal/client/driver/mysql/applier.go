@@ -47,6 +47,7 @@ type Applier struct {
 	allEventsUpToLockProcessed chan string
 	rowCopyCompleteFlag        int64
 	pool                       *models.Pool
+	wg                         sync.WaitGroup
 	// copyRowsQueue should not be buffered; if buffered some non-damaging but
 	//  excessive work happens at the end of the iteration as new copy-jobs arrive befroe realizing the copy is complete
 	copyRowsQueue           chan *dumpEntry
@@ -569,9 +570,8 @@ func (a *Applier) onApplyTxStruct(dbApplier *sql.DB, binlogTx *binlog.BinlogTx) 
 // This is where the ghost table gets the data. The function fills the data single-threaded.
 // Both event backlog and rowcopy events are polled; the backlog events have precedence.
 func (a *Applier) executeWriteFuncs() {
-	var barrier sync.WaitGroup
 	var dbApplier *sql.DB
-
+OUTER:
 	for {
 		// We give higher priority to event processing, then secondary priority to
 		// rowcopy
@@ -582,17 +582,17 @@ func (a *Applier) executeWriteFuncs() {
 				if len(groupTx) == 0 {
 					continue
 				}
-				barrier.Add(len(groupTx))
+				a.wg.Add(len(groupTx))
 				for idx, binlogTx := range groupTx {
 					dbApplier = a.dbs[idx%a.mysqlContext.ParallelWorkers]
 					go func(tx *binlog.BinlogTx) {
 						if err := a.onApplyTxStruct(dbApplier, tx); err != nil {
 							a.onError(err)
 						}
-						barrier.Done()
+						a.wg.Done()
 					}(binlogTx)
 				}
-				barrier.Wait() // Waiting for all goroutines to finish
+				a.wg.Wait() // Waiting for all goroutines to finish
 				a.mysqlContext.Gtid = fmt.Sprintf("%s:1-%d", groupTx[len(groupTx)-1].SID, groupTx[len(groupTx)-1].GNO)
 			}
 
@@ -631,7 +631,8 @@ func (a *Applier) executeWriteFuncs() {
 					time.Sleep(sleepTime)
 				}*/
 			}
-
+		case <-a.shutdownCh:
+			break OUTER
 		default:
 			{
 				// Hmmmmm... nothing in the queue; no events, but also no row copy.
@@ -1415,32 +1416,25 @@ func (a *Applier) ApplyEventQueries(db *gosql.DB, entry *dumpEntry) error {
 	}
 	tx, err := db.Begin()
 	if err != nil {
-		a.onError(err)
-	}
-	err = func() error {
-		for _, query := range queries {
-			if query == "" {
-				continue
-			}
-			_, err := tx.Exec(query)
-			if err != nil {
-				if !sql.IgnoreError(err) {
-					a.logger.Errorf("mysql.applier: Exec [%s] error: %v", query, err)
-					return err
-				}
-				if !sql.IgnoreExistsError(err) {
-					a.logger.Warnf("mysql.applier: Ignore exec [%s] error: %v", query, err)
-				}
-			}
-		}
-		return nil
-	}()
-
-	if err != nil {
 		return err
 	}
+	for _, query := range queries {
+		if query == "" {
+			continue
+		}
+		_, err := tx.Exec(query)
+		if err != nil {
+			if !sql.IgnoreError(err) {
+				a.logger.Errorf("mysql.applier: Exec [%s] error: %v", query, err)
+				return err
+			}
+			if !sql.IgnoreExistsError(err) {
+				a.logger.Warnf("mysql.applier: Ignore exec [%s] error: %v", query, err)
+			}
+		}
+	}
 	if err := tx.Commit(); err != nil {
-		a.onError(err)
+		return err
 	}
 	return nil
 }
@@ -1603,6 +1597,7 @@ func (a *Applier) Shutdown() error {
 		a.natsConn.Close()
 	}
 	a.pool.Wait()
+	a.wg.Wait()
 
 	//a.stopCh <- true
 	if err := sql.CloseDB(a.singletonDB); err != nil {

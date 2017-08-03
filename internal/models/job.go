@@ -19,15 +19,16 @@ const (
 )
 
 const (
-	JobStatusPause   = "pause"   // Pause means the job is pause
-	JobStatusPending = "pending" // Pending means the job is waiting on scheduling
-	JobStatusRunning = "running" // Running means the job has non-terminal allocations
-	JobStatusDead    = "dead"    // Dead means all evaluation's and allocations are terminal
+	JobStatusPause    = "pause"    // Pause means the job is pause
+	JobStatusPending  = "pending"  // Pending means the job is waiting on scheduling
+	JobStatusRunning  = "running"  // Running means the job has non-terminal allocations
+	JobStatusDead     = "dead"     // Dead means all evaluation's and allocations are terminal
+	JobStatusComplete = "complete" // Complete means all evaluation's and allocations are terminal
 )
 
 func ValidJobStatus(status string) bool {
 	switch status {
-	case JobStatusPending, JobStatusRunning, JobStatusPause, JobStatusDead:
+	case JobStatusPending, JobStatusRunning, JobStatusPause, JobStatusDead, JobStatusComplete:
 		return true
 	default:
 		return false

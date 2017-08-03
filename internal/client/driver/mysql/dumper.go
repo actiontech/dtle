@@ -7,6 +7,7 @@ import (
 	"math"
 	"strconv"
 	"strings"
+	"sync"
 
 	ubase "udup/internal/client/driver/mysql/base"
 	usql "udup/internal/client/driver/mysql/sql"
@@ -32,7 +33,9 @@ type dumper struct {
 	entriesCount   int
 	resultsChannel chan *dumpEntry
 	entriesChannel chan *dumpEntry
-	stopCh         chan bool
+	shutdown       bool
+	shutdownCh     chan struct{}
+	shutdownLock   sync.Mutex
 
 	// DB is safe for using in goroutines
 	// http://golang.org/src/database/sql/sql.go?s=5574:6362#L201
@@ -48,7 +51,7 @@ func NewDumper(db *sql.Tx, dbName, tableName string, logger *log.Entry) *dumper 
 		resultsChannel: make(chan *dumpEntry),
 		entriesChannel: make(chan *dumpEntry),
 		chunkSize:      defaultChunkSize,
-		stopCh:         make(chan bool, 1),
+		shutdownCh:     make(chan struct{}),
 	}
 	return dumper
 }
@@ -261,7 +264,7 @@ func (e *dumpEntry) escape(colValue string) string {
 func (d *dumper) worker() {
 	for e := range d.entriesChannel {
 		select {
-		case <-d.stopCh:
+		case <-d.shutdownCh:
 			return
 		default:
 		}
@@ -357,6 +360,13 @@ func showTables(db *sql.DB, dbName string) (tables []*config.Table, err error) {
 
 func (d *dumper) Close() error {
 	// Quit goroutine
-	d.stopCh <- true
+	d.shutdownLock.Lock()
+	defer d.shutdownLock.Unlock()
+
+	if d.shutdown {
+		return nil
+	}
+	d.shutdown = true
+	close(d.shutdownCh)
 	return nil
 }

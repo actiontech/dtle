@@ -1164,7 +1164,7 @@ func (s *StateStore) getJobStatus(txn *memdb.Txn, job *models.Job, evalDelete bo
 	// The job is dead if all the allocations and evals are terminal or if there
 	// are no evals because of garbage collection.
 	if evalDelete || hasEval || hasAlloc {
-		return models.JobStatusDead, nil
+		return models.JobStatusComplete, nil
 	}
 
 	return models.JobStatusPending, nil

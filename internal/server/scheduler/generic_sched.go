@@ -165,10 +165,11 @@ func (s *GenericScheduler) process() (bool, error) {
 	}
 
 	numTaskGroups := 0
-	if s.job != nil && s.job.Status != models.JobStatusDead {
+	if s.job != nil {
 		numTaskGroups = len(s.job.Tasks)
-	} else {
-		return true, nil
+		if s.job.Status == models.JobStatusDead || s.job.Status == models.JobStatusComplete {
+			return true, nil
+		}
 	}
 
 	s.queuedAllocs = make(map[string]int, numTaskGroups)
