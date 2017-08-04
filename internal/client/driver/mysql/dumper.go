@@ -48,7 +48,7 @@ func NewDumper(db *sql.Tx, dbName, tableName string, logger *log.Entry) *dumper 
 		db:             db,
 		TableSchema:    dbName,
 		TableName:      tableName,
-		resultsChannel: make(chan *dumpEntry),
+		resultsChannel: make(chan *dumpEntry, 50),
 		entriesChannel: make(chan *dumpEntry),
 		chunkSize:      defaultChunkSize,
 		shutdownCh:     make(chan struct{}),

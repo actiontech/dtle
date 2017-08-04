@@ -47,6 +47,7 @@ type BinlogReader struct {
 	appendB64SqlBs []byte
 	ReMap          map[string]*regexp.Regexp
 
+	wg           sync.WaitGroup
 	shutdown     bool
 	shutdownCh   chan struct{}
 	shutdownLock sync.Mutex
@@ -124,9 +125,11 @@ func (b *BinlogReader) GetCurrentBinlogCoordinates() *base.BinlogCoordinates {
 
 func (b *BinlogReader) BinlogStreamEvents(txChannel chan<- *BinlogTx) error {
 	for {
+		// Check for shutdown
 		if b.shutdown {
 			break
 		}
+
 		ev, err := b.binlogStreamer.GetEvent(context.Background())
 		if err != nil {
 			return err
@@ -430,6 +433,8 @@ func (b *BinlogReader) appendB64Sql(event *BinlogEvent) {
 }
 
 func (b *BinlogReader) onCommit(lastEvent *BinlogEvent, txChannel chan<- *BinlogTx) {
+	b.wg.Add(1)
+	defer b.wg.Done()
 	if nil != b.currentSqlB64 && !strings.HasSuffix(b.currentSqlB64.String(), "BINLOG '") {
 		b.currentSqlB64.WriteString("'")
 		b.appendQuery(b.currentSqlB64.String())
@@ -440,7 +445,9 @@ func (b *BinlogReader) onCommit(lastEvent *BinlogEvent, txChannel chan<- *Binlog
 		b.currentTx.Query = b.currentQuery.String()
 	}
 
-	txChannel <- b.currentTx
+	if !b.shutdown {
+		txChannel <- b.currentTx
+	}
 
 	b.currentQuery = nil
 	b.currentTx = nil
@@ -688,11 +695,13 @@ func (b *BinlogReader) Close() error {
 	if b.shutdown {
 		return nil
 	}
+	b.shutdown = true
+	close(b.shutdownCh)
+	b.wg.Wait()
 	// Historically there was a:
 	b.binlogSyncer.Close()
 	// here. A new go-mysql version closes the binlog syncer connection independently.
 	// I will go against the sacred rules of comments and just leave this here.
 	// This is the year 2017. Let's see what year these comments get deleted.
-	b.shutdown = true
 	return nil
 }

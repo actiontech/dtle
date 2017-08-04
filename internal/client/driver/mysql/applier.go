@@ -55,7 +55,7 @@ type Applier struct {
 	applyDataEntryQueue     chan *binlog.BinlogEntry
 	applyBinlogTxQueue      chan *binlog.BinlogTx
 	applyBinlogGroupTxQueue chan []*binlog.BinlogTx
-	lastAppliedBinlogTx *binlog.BinlogTx
+	lastAppliedBinlogTx     *binlog.BinlogTx
 
 	natsConn *gonats.Conn
 	waitCh   chan *models.WaitResult
@@ -735,12 +735,19 @@ func (a *Applier) initiateStreaming() error {
 		for {
 			select {
 			case binlogTx := <-a.applyBinlogTxQueue:
+				if binlogTx == nil {
+					continue
+				}
 				if sid == binlogTx.SID {
 					return
 				}
 				if a.mysqlContext.ParallelWorkers <= 1 {
 					if err := a.onApplyTxStruct(a.dbs[0], binlogTx); err != nil {
 						a.onError(err)
+					}
+					if !a.shutdown {
+						a.lastAppliedBinlogTx = binlogTx
+						a.mysqlContext.Gtid = fmt.Sprintf("%s:1-%d", a.lastAppliedBinlogTx.SID, a.lastAppliedBinlogTx.GNO)
 					}
 				} else {
 					if binlogTx.LastCommitted == lastCommitted {
@@ -1597,7 +1604,6 @@ func (a *Applier) WaitCh() chan *models.WaitResult {
 func (a *Applier) Shutdown() error {
 	a.shutdownLock.Lock()
 	defer a.shutdownLock.Unlock()
-
 	if a.shutdown {
 		return nil
 	}
@@ -1606,10 +1612,13 @@ func (a *Applier) Shutdown() error {
 	if a.natsConn != nil {
 		a.natsConn.Close()
 	}
+
+	a.shutdown = true
+	close(a.shutdownCh)
+
 	a.pool.Wait()
 	a.wg.Wait()
 
-	//a.stopCh <- true
 	if err := sql.CloseDB(a.singletonDB); err != nil {
 		return err
 	}
@@ -1617,7 +1626,7 @@ func (a *Applier) Shutdown() error {
 		return err
 	}
 
-	a.shutdown = true
-	close(a.shutdownCh)
+	//close(a.applyBinlogTxQueue)
+	//close(a.applyBinlogGroupTxQueue)
 	return nil
 }

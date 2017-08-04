@@ -520,7 +520,7 @@ func (e *Extractor) initNatsPubClient() (err error) {
 func (e *Extractor) initiateStreaming() error {
 	go func() {
 		e.logger.Debugf("mysql.extractor: Beginning streaming")
-		err := e.StreamEvents(e.canStopStreaming)
+		err := e.StreamEvents()
 		if err != nil {
 			e.onError(err)
 		}
@@ -701,7 +701,7 @@ func Encode(v interface{}) ([]byte, error) {
 
 // StreamEvents will begin streaming events. It will be blocking, so should be
 // executed by a goroutine
-func (e *Extractor) StreamEvents(canStopStreaming func() bool) error {
+func (e *Extractor) StreamEvents() error {
 	go func() {
 		txArray := []*binlog.BinlogTx{}
 		txBytes := 0
@@ -1130,6 +1130,8 @@ func (e *Extractor) Shutdown() error {
 	if e.shutdown {
 		return nil
 	}
+	e.shutdown = true
+	close(e.shutdownCh)
 	e.logger.Printf("mysql.extractor: Shutting down")
 
 	if e.natsConn != nil {
@@ -1150,7 +1152,6 @@ func (e *Extractor) Shutdown() error {
 		return err
 	}
 
-	e.shutdown = true
-	close(e.shutdownCh)
+	close(e.binlogChannel)
 	return nil
 }
