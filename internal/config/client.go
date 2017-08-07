@@ -323,6 +323,6 @@ func DefaultClientConfig() *ClientConfig {
 		LogOutput:               os.Stderr,
 		Region:                  "global",
 		StatsCollectionInterval: 1 * time.Second,
-		LogLevel:                "DEBUG",
+		LogLevel:                "INFO",
 	}
 }

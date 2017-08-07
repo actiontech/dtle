@@ -166,12 +166,19 @@ func (r *Worker) SaveState() error {
 		if id.DriverConfig.Gtid != "" {
 			if r.task.Type == models.TaskTypeDest {
 				r.workUpdates <- &models.TaskUpdate{
-					JobID: r.alloc.JobID,
-					Gtid:  id.DriverConfig.Gtid,
+					JobID:    r.alloc.JobID,
+					Gtid:     id.DriverConfig.Gtid,
+					NatsAddr: id.DriverConfig.NatsAddr,
 				}
 			}
-			r.task.Config["Gtid"] = id.DriverConfig.Gtid
+		} else {
+			r.workUpdates <- &models.TaskUpdate{
+				JobID:    r.alloc.JobID,
+				NatsAddr: id.DriverConfig.NatsAddr,
+			}
 		}
+		r.task.Config["Gtid"] = id.DriverConfig.Gtid
+		r.task.Config["NatsAddr"] = id.DriverConfig.NatsAddr
 	}
 	r.handleLock.Unlock()
 	return nil

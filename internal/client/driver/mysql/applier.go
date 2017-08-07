@@ -658,10 +658,10 @@ func (a *Applier) initNatSubClient() (err error) {
 	natsAddr := fmt.Sprintf("nats://%s", a.mysqlContext.NatsAddr)
 	sc, err := gonats.Connect(natsAddr)
 	if err != nil {
-		a.logger.Errorf("mysql.applier: can't connect nats server %v. make sure a nats streaming server is running.%v", natsAddr, err)
+		a.logger.Errorf("mysql.applier: Can't connect nats server %v. make sure a nats streaming server is running.%v", natsAddr, err)
 		return err
 	}
-	a.logger.Debugf("mysql.applier: connect nats server %v", natsAddr)
+	a.logger.Debugf("mysql.applier: Connect nats server %v", natsAddr)
 	a.natsConn = sc
 	return nil
 }
@@ -789,9 +789,9 @@ func (a *Applier) initDBConnections() (err error) {
 	if err := a.validateConnection(a.singletonDB); err != nil {
 		return err
 	}
-	if err := a.validateTableForeignKeys(); err != nil {
+	/*if err := a.validateTableForeignKeys(); err != nil {
 		return err
-	}
+	}*/
 	if err := a.validateAndReadTimeZone(); err != nil {
 		return err
 	}
@@ -1435,6 +1435,10 @@ func (a *Applier) ApplyEventQueries(db *gosql.DB, entry *dumpEntry) error {
 	if err != nil {
 		return err
 	}
+	sessionQuery := `SET @@session.foreign_key_checks = 0`
+	if _, err := tx.Exec(sessionQuery); err != nil {
+		return err
+	}
 	for _, query := range queries {
 		if query == "" {
 			continue
@@ -1446,7 +1450,7 @@ func (a *Applier) ApplyEventQueries(db *gosql.DB, entry *dumpEntry) error {
 				return err
 			}
 			if !sql.IgnoreExistsError(err) {
-				a.logger.Warnf("mysql.applier: Ignore exec [%s] error: %v", query, err)
+				a.logger.Warnf("mysql.applier: Ignore error: %v", err)
 			}
 		}
 	}
@@ -1589,10 +1593,10 @@ func (a *Applier) onError(err error) {
 }
 
 func (a *Applier) onDone() {
-	a.logger.Printf("mysql.applier: Done migrating")
 	if a.shutdown {
 		return
 	}
+	a.logger.Printf("mysql.applier: Done migrating")
 	a.waitCh <- models.NewWaitResult(0, nil)
 	a.Shutdown()
 }
@@ -1607,7 +1611,6 @@ func (a *Applier) Shutdown() error {
 	if a.shutdown {
 		return nil
 	}
-	a.logger.Printf("mysql.applier: Shutting down")
 
 	if a.natsConn != nil {
 		a.natsConn.Close()
@@ -1628,5 +1631,6 @@ func (a *Applier) Shutdown() error {
 
 	//close(a.applyBinlogTxQueue)
 	//close(a.applyBinlogGroupTxQueue)
+	a.logger.Printf("mysql.applier: Shutting down")
 	return nil
 }

@@ -250,7 +250,6 @@ func (e *Extractor) Run() {
 			}
 			time.Sleep(1 * time.Second)
 		}
-		e.logger.Printf("mysql.extractor: Row copy complete")
 	}
 }
 
@@ -582,7 +581,7 @@ func (e *Extractor) validateConnection() error {
 	return nil
 }
 
-func (e *Extractor) SelectSqlMode() error {
+func (e *Extractor) selectSqlMode() error {
 	query := `select @@global.sql_mode`
 	if err := e.db.QueryRow(query).Scan(&e.mysqlContext.SqlMode); err != nil {
 		return err
@@ -806,6 +805,9 @@ func (e *Extractor) mysqlDump() error {
 		return err
 	}
 	setSystemVariablesStatement := e.setStatementFor()
+	if err := e.selectSqlMode(); err != nil {
+		return err
+	}
 	setSqlMode := fmt.Sprintf("SET @@session.sql_mode = '%s'", e.mysqlContext.SqlMode)
 
 	// ------
@@ -884,9 +886,12 @@ func (e *Extractor) mysqlDump() error {
 	}
 
 	for _, db := range e.databases {
-		dbSQL := fmt.Sprintf("CREATE DATABASE %s", db)
 		if len(e.tables) > 0 {
 			for _, tb := range e.tables {
+				if tb.TableSchema != db {
+					continue
+				}
+				dbSQL := fmt.Sprintf("CREATE DATABASE %s", tb.TableSchema)
 				tbSQL, err := base.ShowCreateTable(e.db, tb.TableSchema, tb.TableName, e.mysqlContext.DropTableIfExists)
 				if err != nil {
 					return err
@@ -902,6 +907,7 @@ func (e *Extractor) mysqlDump() error {
 				}
 			}
 		} else {
+			dbSQL := fmt.Sprintf("CREATE DATABASE %s", db)
 			entry := &dumpEntry{
 				SystemVariablesStatement: setSystemVariablesStatement,
 				SqlMode:                  setSqlMode,
@@ -1114,6 +1120,7 @@ func (e *Extractor) onDone() {
 	if e.shutdown {
 		return
 	}
+	e.logger.Printf("mysql.extractor: Row copy complete")
 	e.waitCh <- models.NewWaitResult(0, nil)
 	e.Shutdown()
 }
@@ -1132,7 +1139,6 @@ func (e *Extractor) Shutdown() error {
 	}
 	e.shutdown = true
 	close(e.shutdownCh)
-	e.logger.Printf("mysql.extractor: Shutting down")
 
 	if e.natsConn != nil {
 		e.natsConn.Close()
@@ -1148,10 +1154,15 @@ func (e *Extractor) Shutdown() error {
 		d.Close()
 	}
 
+	if err := sql.CloseDB(e.singletonDB); err != nil {
+		return err
+	}
+
 	if err := sql.CloseDB(e.db); err != nil {
 		return err
 	}
 
-	close(e.binlogChannel)
+	//close(e.binlogChannel)
+	e.logger.Printf("mysql.extractor: Shutting down")
 	return nil
 }

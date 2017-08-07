@@ -731,7 +731,7 @@ func (m *Memberlist) sendAndReceiveState(addr string, join bool) ([]pushNodeStat
 		return nil, nil, err
 	}
 	defer conn.Close()
-	m.logger.Printf("[DEBUG] memberlist: Initiating push/pull sync with: %s", conn.RemoteAddr())
+	//m.logger.Printf("[DEBUG] memberlist: Initiating push/pull sync with: %s", conn.RemoteAddr())
 	metrics.IncrCounter([]string{"memberlist", "tcp", "connect"}, 1)
 
 	// Send our state

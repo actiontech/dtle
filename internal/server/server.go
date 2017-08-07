@@ -782,7 +782,7 @@ As of Udup 0.1.0, the peers.json file is only used for recovery
 after an outage. It should be formatted as a JSON array containing the address
 and port of each Consul server in the cluster, like this:
 
-["10.1.0.1:8191","10.1.0.2:8191","10.1.0.3:8191"]
+["127.0.0.1:8191","127.0.0.1:8191","127.0.0.1:8191"]
 
 Under normal operation, the peers.json file will not be present.
 

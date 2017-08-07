@@ -349,7 +349,7 @@ func TestExtractor_SelectSqlMode(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if err := tt.e.SelectSqlMode(); (err != nil) != tt.wantErr {
+			if err := tt.e.selectSqlMode(); (err != nil) != tt.wantErr {
 				t.Errorf("Extractor.SelectSqlMode() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
@@ -486,7 +486,6 @@ func TestEncode(t *testing.T) {
 
 func TestExtractor_StreamEvents(t *testing.T) {
 	type args struct {
-		canStopStreaming func() bool
 	}
 	tests := []struct {
 		name    string
@@ -498,7 +497,7 @@ func TestExtractor_StreamEvents(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if err := tt.e.StreamEvents(tt.args.canStopStreaming); (err != nil) != tt.wantErr {
+			if err := tt.e.StreamEvents(); (err != nil) != tt.wantErr {
 				t.Errorf("Extractor.StreamEvents() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})

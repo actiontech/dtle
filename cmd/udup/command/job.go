@@ -230,6 +230,7 @@ func parseTasks(result *api.Job, list *ast.ObjectList) error {
 		// Check for invalid keys
 		valid := []string{
 			"node_id",
+			"node_name",
 			"config",
 			"driver",
 		}

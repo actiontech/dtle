@@ -361,8 +361,9 @@ func (e *TaskEvent) SetDriverMessage(m string) *TaskEvent {
 }
 
 type TaskUpdate struct {
-	JobID string
-	Gtid  string
+	JobID    string
+	Gtid     string
+	NatsAddr string
 }
 
 const (

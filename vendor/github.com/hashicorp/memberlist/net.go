@@ -215,7 +215,7 @@ func (m *Memberlist) tcpListen() {
 
 // handleConn handles a single incoming TCP connection
 func (m *Memberlist) handleConn(conn *net.TCPConn) {
-	m.logger.Printf("[DEBUG] memberlist: TCP connection %s", LogConn(conn))
+	//m.logger.Printf("[DEBUG] memberlist: TCP connection %s", LogConn(conn))
 
 	defer conn.Close()
 	metrics.IncrCounter([]string{"memberlist", "tcp", "accept"}, 1)
@@ -287,12 +287,12 @@ func (m *Memberlist) udpListen() {
 	var lastPacket time.Time
 	for {
 		// Do a check for potentially blocking operations
-		if !lastPacket.IsZero() && time.Now().Sub(lastPacket) > blockingWarning {
+		/*if !lastPacket.IsZero() && time.Now().Sub(lastPacket) > blockingWarning {
 			diff := time.Now().Sub(lastPacket)
 			m.logger.Printf(
 				"[DEBUG] memberlist: Potential blocking operation. Last command took %v",
 				diff)
-		}
+		}*/
 
 		// Create a new buffer
 		// TODO: Use Sync.Pool eventually
@@ -760,7 +760,7 @@ func (m *Memberlist) sendAndReceiveState(addr []byte, port uint16, join bool) ([
 		return nil, nil, err
 	}
 	defer conn.Close()
-	m.logger.Printf("[DEBUG] memberlist: Initiating push/pull sync with: %s", conn.RemoteAddr())
+	//m.logger.Printf("[DEBUG] memberlist: Initiating push/pull sync with: %s", conn.RemoteAddr())
 	metrics.IncrCounter([]string{"memberlist", "tcp", "connect"}, 1)
 
 	// Send our state
