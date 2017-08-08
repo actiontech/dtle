@@ -1,12 +1,55 @@
-Chapter 1. Introduction
+Chapter 1. 简介
 ===================
 
-Udup is an replication engine supporting a variety of different extractor and applier modules.Data can be extracted from MySQL and applied to another MySQL instance.
+##1.1 概述
 
-During replication, information can be filtered and modified, and deployment can be between on-premise or cloud-based databases. For performance, Udup provides support for parallel replication, and advanced topologies such as fan-in, star and multi-master, and can be used efficiently in cross-site deployments.
+**Udup**是一个低延迟的数据容灾复制组件，它可以在不同的源数据库和目标数据库之间提供高性能和强大复制功能的解决方案，支持对 multi-master, star, fan-in 几种模式的高级拓补的支持。
+除了提供强大的复制功能，Udup 也能够异构数据复制，在数据库中读取数据之后通过对数据进行转换，从而匹配目标数据库的数据结构。
 
-Features in Udup 1.0：
+##1.2 工作原理&架构
+Udup一个基本的要求是进行可靠地捕获、流转和处理数据的变化。Udup提供了以下几个特性：
+ 
+- **隔离性** ：隔离数据源和消费者 
+- **高可用性** ：保证顺序并保证至少一次交付
+- **数据完整性** ：任意时间点的消费有完整的数据引导能力 
+- **一致性** ：源一致性保护，消费不成功会一直消费直到消费成功 
 
-* Includes support for replicating into
+在 Udup中，有以下几个主要组件提供核心的复制功能：
+- **Reader** ：
+主要负责从类似 Mysql,Oracle这样的数据库中解析源库中变化的数据，如 sql 执行语句或者 row-based 信息。
+例如，在 Mysql 中，本地复制就会直接读取mysql产生的二进制日志文件（binlog）；在 Oracle 中，则会抓取 Oracle 的 Change Data Capture (CDC) 作为信息来源。
+- **Extractor** ：
+负责过滤解析的数据，然后格式化成自己的格式，并且写入对应的传输通道。
+- **Applier** ：
+主要负责读取到复制数据，转换数据格式，并且把它写入目标数据库中。 
+Applier 在几个不同的目标数据库上运行，负责把数据写到目标数据中。Applier 需要灵活地重新格式化源库的这些日志信息来匹配目标数据库数据格式。Row-based 的数据被转换成不同的数据库所能支持的数据格式，例如，把 Row-based 的数据转换成 Oracle-specific 数据行，或者转换成 MongoDB document。
+- **Scheduler** ：
+负责协调发布复制任务，将提交的任务评估、分派给相应节点
 
-In [Chapter 2. Overview](./docs/user-guide/Chapter02.Overview.md) you will find a detailed overview of Udup. 
+##1.3 功能
+- 单个主从复制拓扑 ：
+	- 支持单数据库实例到单数据库实例的复制（单复制通道） 
+- 多主从复制拓扑 ：
+	- 支持多数据库实例到单数据库实例的汇聚（多复制通道）
+	- 支持多数据库实例到多数据库实例的复制（多复制通道） 
+- 支持基于行格式binlog的数据复制 
+- 数据复制的压缩支持，GZIP或其它高效压缩算法 
+- 库级别数据复制的并行回放，提高入库效率 
+- 表级别数据复制的并行回放，提高入库效率
+- 数据复制组件对异地低带宽高延迟网络的优化算法支持
+- 监控：
+	- 主备延迟时间监控 
+ 	- Binlog解析速率监控 
+	- 数据传输速率监控 
+	- 数据回放速率监控 
+- 异构库同步：
+	- a. mysql -> mysql/oracle. 
+- 跨数据中心：
+	- 满足灾难恢复目标的数据复制实现  
+- 双向同步：
+	- a. 避免回环
+ 	- b. 数据一致性
+
+##1.4 部署
+- 单机部署：
+- 集群部署： 

@@ -56,6 +56,7 @@ type Applier struct {
 
 	natsConn *gonats.Conn
 	waitCh   chan *models.WaitResult
+	wg       sync.WaitGroup
 
 	shutdown     bool
 	shutdownCh   chan struct{}
@@ -570,8 +571,6 @@ func (a *Applier) onApplyTxStruct(dbApplier *sql.DB, binlogTx *binlog.BinlogTx) 
 // Both event backlog and rowcopy events are polled; the backlog events have precedence.
 func (a *Applier) executeWriteFuncs() {
 	var dbApplier *sql.DB
-	var wg sync.WaitGroup
-	var err error
 OUTER:
 	for {
 		select {
@@ -580,17 +579,17 @@ OUTER:
 				if len(groupTx) == 0 {
 					continue
 				}
+				a.wg.Add(len(groupTx))
 				for idx, binlogTx := range groupTx {
 					dbApplier = a.dbs[idx%a.mysqlContext.ParallelWorkers]
-					go func() {
-						wg.Add(1)
-						if err = a.onApplyTxStruct(dbApplier, binlogTx); err != nil {
+					go func(tx *binlog.BinlogTx) {
+						if err := a.onApplyTxStruct(dbApplier, tx); err != nil {
 							a.onError(err)
 						}
-						wg.Done()
-					}()
+						a.wg.Done()
+					}(binlogTx)
 				}
-				wg.Wait() // Waiting for all goroutines to finish
+				a.wg.Wait() // Waiting for all goroutines to finish
 
 				if !a.shutdown {
 					a.lastAppliedBinlogTx = groupTx[len(groupTx)-1]
@@ -604,11 +603,11 @@ OUTER:
 				/*if err := copyRowsFunc(); err != nil {
 					return err
 				}*/
-				if copyRows == nil {
+				if nil == copyRows {
 					continue
 				}
 				if copyRows.DbSQL != "" || copyRows.TbSQL != "" {
-					if err = a.ApplyEventQueries(a.singletonDB, copyRows); err != nil {
+					if err := a.ApplyEventQueries(a.singletonDB, copyRows); err != nil {
 						a.onError(err)
 					}
 				} else {
@@ -662,9 +661,8 @@ func Decode(data []byte, vPtr interface{}) (err error) {
 // initiateStreaming begins treaming of binary log events and registers listeners for such events
 func (a *Applier) initiateStreaming() error {
 	if a.mysqlContext.Gtid == "" {
-		var dumpData *dumpEntry
 		_, err := a.natsConn.Subscribe(fmt.Sprintf("%s_full", a.subject), func(m *gonats.Msg) {
-			dumpData = &dumpEntry{}
+			dumpData := &dumpEntry{}
 			if err := Decode(m.Data, dumpData); err != nil {
 				a.onError(err)
 			}
@@ -692,9 +690,8 @@ func (a *Applier) initiateStreaming() error {
 		}
 		a.jsonSub = sub*/
 	} else {
-		var binlogTx []*binlog.BinlogTx
 		_, err := a.natsConn.Subscribe(fmt.Sprintf("%s_incr", a.subject), func(m *gonats.Msg) {
-			binlogTx = make([]*binlog.BinlogTx, 0)
+			var binlogTx []*binlog.BinlogTx
 			if err := Decode(m.Data, &binlogTx); err != nil {
 				a.onError(err)
 			}
@@ -714,10 +711,9 @@ func (a *Applier) initiateStreaming() error {
 	}
 
 	var lastCommitted int64
-	var binlogTx *binlog.BinlogTx
 	var err error
-	timeout := time.NewTimer(100 * time.Millisecond)
-	groupTx := make([]*binlog.BinlogTx, 0)
+	//timeout := time.After(100 * time.Millisecond)
+	groupTx := []*binlog.BinlogTx{}
 	sid := a.validateServerUUID()
 	go func() {
 		if a.mysqlContext.Gtid == "" {
@@ -733,8 +729,8 @@ func (a *Applier) initiateStreaming() error {
 	OUTER:
 		for {
 			select {
-			case binlogTx = <-a.applyBinlogTxQueue:
-				if binlogTx == nil {
+			case binlogTx := <-a.applyBinlogTxQueue:
+				if nil == binlogTx {
 					continue
 				}
 				if sid == binlogTx.SID {
@@ -760,15 +756,13 @@ func (a *Applier) initiateStreaming() error {
 					}
 					lastCommitted = binlogTx.LastCommitted
 				}
-			case <-timeout.C:
+			case <-time.After(100 * time.Millisecond):
 				if len(groupTx) != 0 {
 					a.applyBinlogGroupTxQueue <- groupTx
 					groupTx = []*binlog.BinlogTx{}
 				}
 			case <-a.shutdownCh:
 				break OUTER
-			default:
-				time.Sleep(time.Second)
 			}
 		}
 	}()

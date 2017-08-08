@@ -701,17 +701,18 @@ func Encode(v interface{}) ([]byte, error) {
 // StreamEvents will begin streaming events. It will be blocking, so should be
 // executed by a goroutine
 func (e *Extractor) StreamEvents() error {
-	timeout := time.NewTimer(100 * time.Millisecond)
-	txArray := []*binlog.BinlogTx{}
+	//timeout := time.NewTimer(100 * time.Millisecond)
+	txArray := make([]*binlog.BinlogTx, 0)
 	txBytes := 0
 	subject := fmt.Sprintf("%s_incr", e.subject)
+
 	go func() {
 	OUTER:
 		for {
 			select {
 			case binlogTx := <-e.binlogChannel:
 				{
-					if binlogTx == nil {
+					if nil == binlogTx {
 						continue
 					}
 					txArray = append(txArray, binlogTx)
@@ -732,11 +733,10 @@ func (e *Extractor) StreamEvents() error {
 						//send_by_size_full
 						e.sendBySizeFullCounter += len(txArray)
 						txArray = []*binlog.BinlogTx{}
-						txMsg = []byte{}
 						txBytes = 0
 					}
 				}
-			case <-timeout.C:
+			case <-time.After(100 * time.Millisecond):
 				{
 					if len(txArray) != 0 {
 						txMsg, err := Encode(&txArray)
@@ -758,14 +758,11 @@ func (e *Extractor) StreamEvents() error {
 						//send_by_timeout
 						e.sendByTimeoutCounter += len(txArray)
 						txArray = []*binlog.BinlogTx{}
-						txMsg = []byte{}
 						txBytes = 0
 					}
 				}
 			case <-e.shutdownCh:
 				break OUTER
-			default:
-				time.Sleep(time.Second)
 			}
 		}
 	}()
