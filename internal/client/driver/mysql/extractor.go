@@ -26,7 +26,7 @@ import (
 
 const (
 	// DefaultConnectWait is the default timeout used for the connect operation
-	DefaultConnectWait            = 15 * time.Second
+	DefaultConnectWait            = 60 * time.Second
 	AllEventsUpToLockProcessed    = "AllEventsUpToLockProcessed"
 	ReconnectStreamerSleepSeconds = 5
 )
@@ -194,10 +194,10 @@ func (e *Extractor) Run() {
 			e.onError(err)
 			return
 		}
-		if err := e.requestMsg(fmt.Sprintf("%s_full_complete", e.subject), "", []byte(string(e.totalRowCount))); err != nil {
+		/*if err := e.requestMsg(fmt.Sprintf("%s_full_complete", e.subject), "", []byte(string(e.totalRowCount))); err != nil {
 			e.onError(err)
 			return
-		}
+		}*/
 	} else {
 		if err := e.readCurrentBinlogCoordinates(); err != nil {
 			e.onError(err)
@@ -248,7 +248,7 @@ func (e *Extractor) Run() {
 					break
 				}
 			}
-			time.Sleep(1 * time.Second)
+			time.Sleep(time.Second)
 		}
 	}
 }
@@ -701,11 +701,11 @@ func Encode(v interface{}) ([]byte, error) {
 // StreamEvents will begin streaming events. It will be blocking, so should be
 // executed by a goroutine
 func (e *Extractor) StreamEvents() error {
+	timeout := time.NewTimer(100 * time.Millisecond)
+	txArray := []*binlog.BinlogTx{}
+	txBytes := 0
+	subject := fmt.Sprintf("%s_incr", e.subject)
 	go func() {
-		txArray := []*binlog.BinlogTx{}
-		txBytes := 0
-		subject := fmt.Sprintf("%s_incr", e.subject)
-
 	OUTER:
 		for {
 			select {
@@ -725,17 +725,18 @@ func (e *Extractor) StreamEvents() error {
 						if len(txMsg) > e.maxPayload {
 							e.onError(gonats.ErrMaxPayload)
 						}
-						if err := e.requestMsg(subject, fmt.Sprintf("%s:1-%d", binlogTx.SID, binlogTx.GNO), txMsg); err != nil {
+						if err = e.requestMsg(subject, fmt.Sprintf("%s:1-%d", binlogTx.SID, binlogTx.GNO), txMsg); err != nil {
 							e.onError(err)
 							break OUTER
 						}
 						//send_by_size_full
 						e.sendBySizeFullCounter += len(txArray)
 						txArray = []*binlog.BinlogTx{}
+						txMsg = []byte{}
 						txBytes = 0
 					}
 				}
-			case <-time.After(100 * time.Millisecond):
+			case <-timeout.C:
 				{
 					if len(txArray) != 0 {
 						txMsg, err := Encode(&txArray)
@@ -746,7 +747,7 @@ func (e *Extractor) StreamEvents() error {
 						if len(txMsg) > e.maxPayload {
 							e.onError(gonats.ErrMaxPayload)
 						}
-						if err := e.requestMsg(subject,
+						if err = e.requestMsg(subject,
 							fmt.Sprintf("%s:1-%d",
 								txArray[len(txArray)-1].SID,
 								txArray[len(txArray)-1].GNO),
@@ -757,12 +758,14 @@ func (e *Extractor) StreamEvents() error {
 						//send_by_timeout
 						e.sendByTimeoutCounter += len(txArray)
 						txArray = []*binlog.BinlogTx{}
+						txMsg = []byte{}
 						txBytes = 0
 					}
 				}
 			case <-e.shutdownCh:
 				break OUTER
-				//return
+			default:
+				time.Sleep(time.Second)
 			}
 		}
 	}()
@@ -992,7 +995,7 @@ func currentTimeMillis() int64 {
 func (e *Extractor) Stats() (*models.TaskStatistics, error) {
 	taskResUsage := models.TaskStatistics{
 		Status: "",
-		BufferStat: &models.BufferStat{
+		BufferStat: models.BufferStat{
 			ExtractorTxQueueSize: len(e.binlogChannel),
 			SendByTimeout:        e.sendByTimeoutCounter,
 			SendBySizeFull:       e.sendBySizeFullCounter,
@@ -1002,7 +1005,7 @@ func (e *Extractor) Stats() (*models.TaskStatistics, error) {
 	if e.natsConn != nil {
 		taskResUsage.MsgStat = e.natsConn.Statistics
 	}
-	//e.logger.Printf("mysql.extractor: Tracks various stats received on this connection:MsgStat[%+v],BufferStat[%+v]",taskResUsage.MsgStat,taskResUsage.BufferStat)
+	//e.logger.Printf("mysql.extractor: Tracks various stats received on this connection:MsgStat[%+v],BufferStat[%v]",taskResUsage.MsgStat,taskResUsage.BufferStat)
 	/*elapsedTime := e.mysqlContext.ElapsedTime()
 	elapsedSeconds := int64(elapsedTime.Seconds())
 	totalRowsCopied := e.mysqlContext.GetTotalRowsCopied()

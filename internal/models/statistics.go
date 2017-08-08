@@ -38,7 +38,7 @@ type TaskStatistics struct {
 	DelayCount     *DelayCount
 	ThroughputStat *ThroughputStat
 	MsgStat        gonats.Statistics
-	BufferStat     *BufferStat
+	BufferStat     BufferStat
 	Status         string
 	Timestamp      int64
 }

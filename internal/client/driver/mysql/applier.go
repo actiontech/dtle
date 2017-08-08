@@ -12,7 +12,6 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-	//"sort"
 
 	"github.com/golang/snappy"
 	gonats "github.com/nats-io/go-nats"
@@ -47,8 +46,6 @@ type Applier struct {
 	rowCopyComplete            chan bool
 	allEventsUpToLockProcessed chan string
 	rowCopyCompleteFlag        int64
-	pool                       *models.Pool
-	wg                         sync.WaitGroup
 	// copyRowsQueue should not be buffered; if buffered some non-damaging but
 	//  excessive work happens at the end of the iteration as new copy-jobs arrive befroe realizing the copy is complete
 	copyRowsQueue           chan *dumpEntry
@@ -78,13 +75,12 @@ func NewApplier(subject, tp string, cfg *config.MySQLDriverConfig, logger *log.L
 		parser:                     sql.NewParser(),
 		rowCopyComplete:            make(chan bool),
 		allEventsUpToLockProcessed: make(chan string),
-		pool:                    models.NewPool(10),
-		copyRowsQueue:           make(chan *dumpEntry, applyDataQueueBuffer),
-		applyDataEntryQueue:     make(chan *binlog.BinlogEntry, applyDataQueueBuffer),
-		applyBinlogTxQueue:      make(chan *binlog.BinlogTx, cfg.ReplChanBufferSize),
-		applyBinlogGroupTxQueue: make(chan []*binlog.BinlogTx, cfg.ReplChanBufferSize),
-		waitCh:                  make(chan *models.WaitResult, 1),
-		shutdownCh:              make(chan struct{}),
+		copyRowsQueue:              make(chan *dumpEntry, applyDataQueueBuffer),
+		applyDataEntryQueue:        make(chan *binlog.BinlogEntry, applyDataQueueBuffer),
+		applyBinlogTxQueue:         make(chan *binlog.BinlogTx, cfg.ReplChanBufferSize),
+		applyBinlogGroupTxQueue:    make(chan []*binlog.BinlogTx, cfg.ReplChanBufferSize),
+		waitCh:                     make(chan *models.WaitResult, 1),
+		shutdownCh:                 make(chan struct{}),
 	}
 	return a
 }
@@ -128,22 +124,25 @@ func (a *Applier) retryOperation(operation func() error, notFatalHint ...bool) (
 // consumeRowCopyComplete blocks on the rowCopyComplete channel once, and then
 // consumes and drops any further incoming events that may be left hanging.
 func (a *Applier) consumeRowCopyComplete() {
+	var rowCount string
 	_, err := a.natsConn.Subscribe(fmt.Sprintf("%s_full_complete", a.subject), func(m *gonats.Msg) {
+		rowCount = fmt.Sprintf("%s", m.Data)
 		if err := a.natsConn.Publish(m.Reply, nil); err != nil {
 			a.onError(err)
-		}
-
-		for {
-			if fmt.Sprintf("%s", m.Data) == string(a.applyRowCount) {
-				a.rowCopyComplete <- true
-			} /*else {
-				a.onError(fmt.Errorf("we might get an inconsistent data during the dump process"))
-			}*/
-			time.Sleep(1 * time.Second)
 		}
 	})
 	if err != nil {
 		a.onError(err)
+	}
+
+	for {
+		if rowCount == string(a.applyRowCount) {
+			a.rowCopyComplete <- true
+			break
+		} /*else {
+			a.onError(fmt.Errorf("we might get an inconsistent data during the dump process"))
+		}*/
+		time.Sleep(time.Second)
 	}
 
 	<-a.rowCopyComplete
@@ -201,12 +200,11 @@ func (a *Applier) Run() {
 
 	go a.executeWriteFuncs()
 
-	if a.mysqlContext.Gtid == "" {
+	/*if a.mysqlContext.Gtid == "" {
 		a.logger.Printf("mysql.applier: Operating until row copy is complete")
 		a.consumeRowCopyComplete()
-		a.pool.Wait()
 		a.logger.Printf("mysql.applier: Row copy complete")
-	}
+	}*/
 
 	if a.tp == models.JobTypeMig {
 		var completeFlag string
@@ -219,34 +217,32 @@ func (a *Applier) Run() {
 		if err != nil {
 			a.onError(err)
 		}
-	OUTER:
 		for {
 			if completeFlag != "" {
 				switch completeFlag {
 				case "0":
 					a.onDone()
-					break OUTER
+					break
 				default:
 					binlogCoordinates, err := base.GetSelfBinlogCoordinates(a.singletonDB)
 					if err != nil {
 						a.onError(err)
-						break OUTER
+						break
 					}
 					if a.mysqlContext.Gtid != "" && binlogCoordinates.DisplayString() != "" {
 						equals, err := base.ContrastGtidSet(a.mysqlContext.Gtid, binlogCoordinates.DisplayString())
 						if err != nil {
 							a.onError(err)
-							break OUTER
+							break
 						}
 						if equals {
 							a.onDone()
-							break OUTER
+							break
 						}
 					}
-
 				}
 			}
-			time.Sleep(1 * time.Second)
+			time.Sleep(time.Second)
 		}
 	}
 }
@@ -574,38 +570,33 @@ func (a *Applier) onApplyTxStruct(dbApplier *sql.DB, binlogTx *binlog.BinlogTx) 
 // Both event backlog and rowcopy events are polled; the backlog events have precedence.
 func (a *Applier) executeWriteFuncs() {
 	var dbApplier *sql.DB
+	var wg sync.WaitGroup
+	var err error
 OUTER:
 	for {
-		// We give higher priority to event processing, then secondary priority to
-		// rowcopy
 		select {
 		case groupTx := <-a.applyBinlogGroupTxQueue:
 			{
-				a.pool.Wait()
 				if len(groupTx) == 0 {
 					continue
 				}
-				/*sort.Slice(groupTx, func(i, j int) bool {
-					return groupTx[i].GNO < groupTx[j].GNO
-				})*/
-				a.wg.Add(len(groupTx))
 				for idx, binlogTx := range groupTx {
 					dbApplier = a.dbs[idx%a.mysqlContext.ParallelWorkers]
-					go func(tx *binlog.BinlogTx) {
-						if err := a.onApplyTxStruct(dbApplier, tx); err != nil {
+					go func() {
+						wg.Add(1)
+						if err = a.onApplyTxStruct(dbApplier, binlogTx); err != nil {
 							a.onError(err)
 						}
-						a.wg.Done()
-					}(binlogTx)
+						wg.Done()
+					}()
 				}
-				a.wg.Wait() // Waiting for all goroutines to finish
+				wg.Wait() // Waiting for all goroutines to finish
 
 				if !a.shutdown {
 					a.lastAppliedBinlogTx = groupTx[len(groupTx)-1]
 					a.mysqlContext.Gtid = fmt.Sprintf("%s:1-%d", a.lastAppliedBinlogTx.SID, a.lastAppliedBinlogTx.GNO)
 				}
 			}
-
 		case copyRows := <-a.copyRowsQueue:
 			{
 				//copyRowsStartTime := time.Now()
@@ -617,19 +608,16 @@ OUTER:
 					continue
 				}
 				if copyRows.DbSQL != "" || copyRows.TbSQL != "" {
-					if err := a.ApplyEventQueries(a.singletonDB, copyRows); err != nil {
+					if err = a.ApplyEventQueries(a.singletonDB, copyRows); err != nil {
 						a.onError(err)
 					}
 				} else {
 					go func() {
-						a.pool.Add(1)
 						if err := a.ApplyEventQueries(a.singletonDB, copyRows); err != nil {
 							a.onError(err)
 						}
-						a.pool.Done()
 					}()
 				}
-				a.applyRowCount += copyRows.Counter
 
 				/*a.logger.Printf("mysql.applier: operating until row copy is complete")
 				a.consumeRowCopyComplete()
@@ -644,12 +632,7 @@ OUTER:
 		case <-a.shutdownCh:
 			break OUTER
 		default:
-			{
-				// Hmmmmm... nothing in the queue; no events, but also no row copy.
-				// This is possible upon load. Let's just sleep it over.
-				//a.logger.Debugf("mysql.applier: Getting nothing in the write queue. Sleeping...")
-				time.Sleep(time.Second)
-			}
+			time.Sleep(time.Second)
 		}
 	}
 }
@@ -673,19 +656,20 @@ func Decode(data []byte, vPtr interface{}) (err error) {
 		return err
 	}
 
-	dec := gob.NewDecoder(bytes.NewBuffer(msg))
-	return dec.Decode(vPtr)
+	return gob.NewDecoder(bytes.NewBuffer(msg)).Decode(vPtr)
 }
 
 // initiateStreaming begins treaming of binary log events and registers listeners for such events
 func (a *Applier) initiateStreaming() error {
 	if a.mysqlContext.Gtid == "" {
+		var dumpData *dumpEntry
 		_, err := a.natsConn.Subscribe(fmt.Sprintf("%s_full", a.subject), func(m *gonats.Msg) {
-			dumpData := &dumpEntry{}
+			dumpData = &dumpEntry{}
 			if err := Decode(m.Data, dumpData); err != nil {
 				a.onError(err)
 			}
 			a.copyRowsQueue <- dumpData
+			a.totalRowCount += dumpData.Counter
 			if err := a.natsConn.Publish(m.Reply, nil); err != nil {
 				a.onError(err)
 			}
@@ -708,8 +692,9 @@ func (a *Applier) initiateStreaming() error {
 		}
 		a.jsonSub = sub*/
 	} else {
+		var binlogTx []*binlog.BinlogTx
 		_, err := a.natsConn.Subscribe(fmt.Sprintf("%s_incr", a.subject), func(m *gonats.Msg) {
-			var binlogTx []*binlog.BinlogTx
+			binlogTx = make([]*binlog.BinlogTx, 0)
 			if err := Decode(m.Data, &binlogTx); err != nil {
 				a.onError(err)
 			}
@@ -729,12 +714,26 @@ func (a *Applier) initiateStreaming() error {
 	}
 
 	var lastCommitted int64
-	groupTx := []*binlog.BinlogTx{}
+	var binlogTx *binlog.BinlogTx
+	var err error
+	timeout := time.NewTimer(100 * time.Millisecond)
+	groupTx := make([]*binlog.BinlogTx, 0)
 	sid := a.validateServerUUID()
 	go func() {
+		if a.mysqlContext.Gtid == "" {
+			a.logger.Printf("mysql.applier: Operating until row copy is complete")
+			for {
+				if a.totalRowCount != 0 && a.totalRowCount == a.applyRowCount {
+					break
+				}
+				time.Sleep(2 * time.Second)
+			}
+			a.logger.Printf("mysql.applier: Row copy complete")
+		}
+	OUTER:
 		for {
 			select {
-			case binlogTx := <-a.applyBinlogTxQueue:
+			case binlogTx = <-a.applyBinlogTxQueue:
 				if binlogTx == nil {
 					continue
 				}
@@ -742,7 +741,7 @@ func (a *Applier) initiateStreaming() error {
 					return
 				}
 				if a.mysqlContext.ParallelWorkers <= 1 {
-					if err := a.onApplyTxStruct(a.dbs[0], binlogTx); err != nil {
+					if err = a.onApplyTxStruct(a.dbs[0], binlogTx); err != nil {
 						a.onError(err)
 					}
 					if !a.shutdown {
@@ -761,14 +760,15 @@ func (a *Applier) initiateStreaming() error {
 					}
 					lastCommitted = binlogTx.LastCommitted
 				}
-
-			case <-time.After(100 * time.Millisecond):
+			case <-timeout.C:
 				if len(groupTx) != 0 {
 					a.applyBinlogGroupTxQueue <- groupTx
 					groupTx = []*binlog.BinlogTx{}
 				}
 			case <-a.shutdownCh:
-				return
+				break OUTER
+			default:
+				time.Sleep(time.Second)
 			}
 		}
 	}()
@@ -781,11 +781,11 @@ func (a *Applier) initDBConnections() (err error) {
 	if a.dbs, err = sql.CreateDBs(applierUri, a.mysqlContext.ParallelWorkers); err != nil {
 		return err
 	}
-	singletonApplierUri := fmt.Sprintf("%s&timeout=0", applierUri)
-	if a.singletonDB, err = sql.CreateDB(singletonApplierUri); err != nil {
+	//singletonApplierUri := fmt.Sprintf("%s&timeout=0", applierUri)
+	if a.singletonDB, err = sql.CreateDB(applierUri); err != nil {
 		return err
 	}
-	a.singletonDB.SetMaxOpenConns(1)
+	a.singletonDB.SetMaxOpenConns(10)
 	if err := a.validateConnection(a.singletonDB); err != nil {
 		return err
 	}
@@ -1457,13 +1457,14 @@ func (a *Applier) ApplyEventQueries(db *gosql.DB, entry *dumpEntry) error {
 	if err := tx.Commit(); err != nil {
 		return err
 	}
+	a.applyRowCount += entry.Counter
 	return nil
 }
 
 func (a *Applier) Stats() (*models.TaskStatistics, error) {
 	taskResUsage := models.TaskStatistics{
 		Status: "",
-		BufferStat: &models.BufferStat{
+		BufferStat: models.BufferStat{
 			ApplierTxQueueSize:      len(a.applyBinlogTxQueue),
 			ApplierGroupTxQueueSize: len(a.applyBinlogGroupTxQueue),
 		},
@@ -1618,9 +1619,6 @@ func (a *Applier) Shutdown() error {
 
 	a.shutdown = true
 	close(a.shutdownCh)
-
-	a.pool.Wait()
-	a.wg.Wait()
 
 	if err := sql.CloseDB(a.singletonDB); err != nil {
 		return err
