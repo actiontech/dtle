@@ -149,7 +149,6 @@ func CreateDBs(mysql_uri string, count int) ([]*DB, error) {
 			return nil, err
 		}
 		dbApplier := &DB{
-			DbMutex: &sync.Mutex{},
 			Db:      db,
 		}
 		dbs = append(dbs, dbApplier)

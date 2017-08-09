@@ -535,6 +535,19 @@ func (a *Applier) onApplyTxStruct(dbApplier *sql.DB, binlogTx *binlog.BinlogTx) 
 			}
 		}
 	}
+
+	/*query := fmt.Sprintf(`
+			replace into udup.gtid_executed
+  				(source_uuid,interval_end)
+  			values
+  				(%s,%s)
+		`,
+		binlogTx.SID,
+		binlogTx.GNO,
+	)
+	if _, err := tx.Exec(query); err != nil {
+		return err
+	}*/
 	if err := tx.Commit(); err != nil {
 		return err
 	}
@@ -761,11 +774,14 @@ func (a *Applier) initDBConnections() (err error) {
 	/*if err := a.validateTableForeignKeys(); err != nil {
 		return err
 	}*/
-	if err := a.validateGrants(); err != nil {
+	/*if err := a.validateGrants(); err != nil {
 		a.logger.Errorf("mysql.applier: Unexpected error on validateGrants, got %v", err)
 		return err
-	}
+	}*/
 	if err := a.validateAndReadTimeZone(); err != nil {
+		return err
+	}
+	if err := a.createTableGtidExecuted(); err != nil {
 		return err
 	}
 	/*if err := a.readCurrentBinlogCoordinates(); err != nil {
@@ -862,6 +878,22 @@ func (a *Applier) validateAndReadTimeZone() error {
 	}
 
 	a.logger.Printf("mysql.applier: Will use time_zone='%s' on applier", a.mysqlContext.TimeZone)
+	return nil
+}
+
+func (a *Applier) createTableGtidExecuted() error {
+	query := fmt.Sprintf(`
+			CREATE DATABASE IF NOT EXISTS udup;
+			CREATE TABLE IF NOT EXISTS udup.gtid_executed (
+  				source_uuid char(36) NOT NULL COMMENT 'uuid of the source where the transaction was originally executed.',
+  				interval_start bigint(20) NOT NULL COMMENT 'First number of interval.',
+  				interval_end bigint(20) NOT NULL COMMENT 'Last number of interval.',
+  				PRIMARY KEY (source_uuid,interval_start)
+			)
+		`)
+	if _, err := sql.ExecNoPrepare(a.singletonDB, query); err != nil {
+		return err
+	}
 	return nil
 }
 
