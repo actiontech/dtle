@@ -786,6 +786,10 @@ func (a *Applier) initDBConnections() (err error) {
 	/*if err := a.validateTableForeignKeys(); err != nil {
 		return err
 	}*/
+	if err := a.validateGrants(); err != nil {
+		a.logger.Errorf("mysql.applier: Unexpected error on validateGrants, got %v", err)
+		return err
+	}
 	if err := a.validateAndReadTimeZone(); err != nil {
 		return err
 	}
@@ -820,6 +824,42 @@ func (a *Applier) validateConnection(db *gosql.DB) error {
 	}
 	a.logger.Debugf("mysql.applier: Connection validated on %s:%d", a.mysqlContext.ConnectionConfig.Host, a.mysqlContext.ConnectionConfig.Port)
 	return nil
+}
+
+// validateGrants verifies the user by which we're executing has necessary grants
+// to do its thang.
+func (a *Applier) validateGrants() error {
+	query := `show grants for current_user()`
+	foundAll := false
+	foundSuper := false
+
+	err := sql.QueryRowsMap(a.singletonDB, query, func(rowMap sql.RowMap) error {
+		for _, grantData := range rowMap {
+			grant := grantData.String
+			if strings.Contains(grant, `GRANT ALL PRIVILEGES ON *.*`) {
+				foundAll = true
+			}
+			if strings.Contains(grant, `SUPER`) && strings.Contains(grant, ` ON *.*`) {
+				foundSuper = true
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	a.mysqlContext.HasSuperPrivilege = foundSuper
+
+	if foundAll {
+		a.logger.Printf("mysql.applier: User has ALL privileges")
+		return nil
+	}
+	if foundSuper {
+		a.logger.Printf("mysql.applier: User has SUPER privileges")
+		return nil
+	}
+	a.logger.Debugf("mysql.applier: Privileges: super: %t, ALL on *.*: %t, ALL on *.*: %t", foundSuper, foundAll)
+	return fmt.Errorf("user has insufficient privileges for applier. Needed: SUPER|ALL on *.*")
 }
 
 // validateTableForeignKeys checks that binary log foreign_key_checks is set.

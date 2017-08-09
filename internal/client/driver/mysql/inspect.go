@@ -154,7 +154,7 @@ func (i *Inspector) validateGrants() error {
 	err := usql.QueryRowsMap(i.db, query, func(rowMap usql.RowMap) error {
 		for _, grantData := range rowMap {
 			grant := grantData.String
-			if strings.Contains(grant, `GRANT ALL PRIVILEGES ON *.*`) {
+			if strings.Contains(grant, `GRANT ALL PRIVILEGES ON`) {
 				foundAll = true
 			}
 			if strings.Contains(grant, `SUPER`) && strings.Contains(grant, ` ON *.*`) {
@@ -165,9 +165,6 @@ func (i *Inspector) validateGrants() error {
 			}
 			if strings.Contains(grant, `REPLICATION SLAVE`) && strings.Contains(grant, ` ON *.*`) {
 				foundReplicationSlave = true
-			}
-			if strings.Contains(grant, "GRANT ALL PRIVILEGES ON *.*") {
-				foundDBAll = true
 			}
 			if ubase.StringContainsAll(grant, `ALTER`, `CREATE`, `DELETE`, `DROP`, `INDEX`, `INSERT`, `LOCK TABLES`, `SELECT`, `TRIGGER`, `UPDATE`, ` ON *.*`) {
 				foundDBAll = true
@@ -196,7 +193,7 @@ func (i *Inspector) validateGrants() error {
 		return nil
 	}
 	i.logger.Debugf("mysql.inspector: Privileges: super: %t, REPLICATION CLIENT: %t, REPLICATION SLAVE: %t, ALL on *.*: %t, ALL on *.*: %t", foundSuper, foundReplicationClient, foundReplicationSlave, foundAll, foundDBAll)
-	return fmt.Errorf("user has insufficient privileges for migration. Needed: SUPER|REPLICATION CLIENT, REPLICATION SLAVE and ALL on *.*")
+	return fmt.Errorf("user has insufficient privileges for extractor. Needed: SUPER|REPLICATION CLIENT, REPLICATION SLAVE and ALL on *.*")
 }
 
 func (i *Inspector) validateGTIDMode() error {
