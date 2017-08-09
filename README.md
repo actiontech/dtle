@@ -60,4 +60,17 @@ configuration options.
 * only supports the InnoDB storage engine for MySQL (not MyISAM)
 * MySQL character set that supports only latin1、latin2、gbk、utf8、utf8mb4、binary
 
+## MySQL privileges
+* select @@global.log_bin, @@global.binlog_format;
+<br>1 ROW
+* select @@global.binlog_row_image;
+<br>FULL
+* select @@global.log_slave_updates;
+<br>1
+* SELECT @@GTID_MODE;
+<br>ON
+* show grants for current_user();
+<br>SRC:REPLICATION CLIENT,REPLICATION SLAVE,ALL PRIVILEGES|SUPER
+<br>DEST:ALL PRIVILEGES|SUPER
+
 ## Todo
