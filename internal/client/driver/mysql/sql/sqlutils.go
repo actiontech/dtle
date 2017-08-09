@@ -128,7 +128,6 @@ func GetDB(mysql_uri string) (*gosql.DB, bool, error) {
 }
 
 type DB struct {
-	DbMutex *sync.Mutex
 	Db      *gosql.DB
 	Fde     string
 }

@@ -513,55 +513,30 @@ func (a *Applier) printMigrationStatusHint(databaseName, tableName string) {
 }
 
 func (a *Applier) onApplyTxStruct(dbApplier *sql.DB, binlogTx *binlog.BinlogTx) error {
-	dbApplier.DbMutex.Lock()
-	defer func() {
-		_, err := sql.ExecNoPrepare(dbApplier.Db, `commit;set gtid_next='automatic'`)
-		if err != nil {
-			a.onError(err)
-		}
-		dbApplier.DbMutex.Unlock()
-	}()
-
-	if binlogTx.Fde != "" && dbApplier.Fde != binlogTx.Fde {
-		dbApplier.Fde = binlogTx.Fde // IMO it would comare the internal pointer first
-		_, err := sql.ExecNoPrepare(dbApplier.Db, binlogTx.Fde)
-		if err != nil {
-			return err
-		}
-	}
-
-	_, err := sql.ExecNoPrepare(dbApplier.Db, fmt.Sprintf(`set gtid_next='%s:%d'`, binlogTx.SID, binlogTx.GNO))
+	tx, err := dbApplier.Db.Begin()
 	if err != nil {
 		return err
 	}
-	var ignoreError error
-	if binlogTx.Query == "" {
-		_, err = sql.ExecNoPrepare(dbApplier.Db, `begin;commit`)
-		if err != nil {
+	if binlogTx.Fde != "" && dbApplier.Fde != binlogTx.Fde {
+		dbApplier.Fde = binlogTx.Fde // IMO it would comare the internal pointer first
+		if _, err := tx.Exec(binlogTx.Fde); err != nil {
 			return err
-		}
-	} else {
-		_, err := sql.ExecNoPrepare(dbApplier.Db, binlogTx.Query)
-		if err != nil {
-			if !sql.IgnoreError(err) {
-				//SELECT FROM_BASE64('')
-				a.logger.Errorf("mysql.applier: exec gtid:[%s:%d] error: %v", binlogTx.SID, binlogTx.GNO, err)
-				return err
-			}
-			a.logger.Warnf("mysql.applier: exec gtid:[%s:%d],ignore error: %v", binlogTx.SID, binlogTx.GNO, err)
-			ignoreError = err
 		}
 	}
-
-	if ignoreError != nil {
-		_, err := sql.ExecNoPrepare(dbApplier.Db, fmt.Sprintf(`commit;set gtid_next='%s:%d'`, binlogTx.SID, binlogTx.GNO))
+	if binlogTx.Query != "" {
+		_, err := tx.Exec(binlogTx.Query)
 		if err != nil {
-			return err
+			if !sql.IgnoreError(err) {
+				a.logger.Errorf("mysql.applier: Exec [%s] error: %v", binlogTx.Query, err)
+				return err
+			}
+			if !sql.IgnoreExistsError(err) {
+				a.logger.Warnf("mysql.applier: Ignore error: %v", err)
+			}
 		}
-		_, err = sql.ExecNoPrepare(dbApplier.Db, `begin;commit`)
-		if err != nil {
-			return err
-		}
+	}
+	if err := tx.Commit(); err != nil {
+		return err
 	}
 	return nil
 }
