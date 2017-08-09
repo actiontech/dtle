@@ -157,19 +157,19 @@ func (i *Inspector) validateGrants() error {
 			if strings.Contains(grant, `GRANT ALL PRIVILEGES ON`) {
 				foundAll = true
 			}
-			if strings.Contains(grant, `SUPER`) && strings.Contains(grant, ` ON *.*`) {
+			if strings.Contains(grant, `SUPER`){
 				foundSuper = true
 			}
-			if strings.Contains(grant, `REPLICATION CLIENT`) && strings.Contains(grant, ` ON *.*`) {
+			if strings.Contains(grant, `REPLICATION CLIENT`) {
 				foundReplicationClient = true
 			}
-			if strings.Contains(grant, `REPLICATION SLAVE`) && strings.Contains(grant, ` ON *.*`) {
+			if strings.Contains(grant, `REPLICATION SLAVE`){
 				foundReplicationSlave = true
 			}
-			if ubase.StringContainsAll(grant, `ALTER`, `CREATE`, `DELETE`, `DROP`, `INDEX`, `INSERT`, `LOCK TABLES`, `SELECT`, `TRIGGER`, `UPDATE`, ` ON *.*`) {
+			if ubase.StringContainsAll(grant, `SELECT`) {
 				foundDBAll = true
 			}
-			if ubase.StringContainsAll(grant, `ALTER`, `CREATE`, `DELETE`, `DROP`, `INDEX`, `INSERT`, `LOCK TABLES`, `SELECT`, `TRIGGER`, `UPDATE`, " ON *.*") {
+			if ubase.StringContainsAll(grant, `SELECT`) {
 				foundDBAll = true
 			}
 		}
@@ -185,11 +185,11 @@ func (i *Inspector) validateGrants() error {
 		return nil
 	}
 	if foundSuper && foundReplicationSlave && foundDBAll {
-		i.logger.Printf("mysql.inspector: User has SUPER, REPLICATION SLAVE privileges, and has ALL privileges on *.*")
+		i.logger.Printf("mysql.inspector: User has SUPER, REPLICATION SLAVE privileges, and has SELECT privileges")
 		return nil
 	}
 	if foundReplicationClient && foundReplicationSlave && foundDBAll {
-		i.logger.Printf("mysql.inspector: User has REPLICATION CLIENT, REPLICATION SLAVE privileges, and has ALL privileges on *.*")
+		i.logger.Printf("mysql.inspector: User has REPLICATION CLIENT, REPLICATION SLAVE privileges, and has SELECT privileges")
 		return nil
 	}
 	i.logger.Debugf("mysql.inspector: Privileges: super: %t, REPLICATION CLIENT: %t, REPLICATION SLAVE: %t, ALL on *.*: %t, ALL on *.*: %t", foundSuper, foundReplicationClient, foundReplicationSlave, foundAll, foundDBAll)
