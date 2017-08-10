@@ -344,7 +344,8 @@ func Test_parseInterval(t *testing.T) {
 		wantI   gomysql.Interval
 		wantErr bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
+		{"t1", args{"36671-36677"}, gomysql.Interval{}, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -380,7 +381,7 @@ func TestSelectGtidExecuted(t *testing.T) {
 		// TODO: Add test cases.
 		{"t1", args{db, "96fda9dc-7cbf-11e7-9340-0242ac110002", 1}, "", false}, //96fda9dc-7cbf-11e7-9340-0242ac110002:10116-10120:10126
 		{"t2", args{db, "96fda9dc-7cbf-11e7-9340-0242ac110002", 10}, "", false},
-		{"t3", args{db, "96fda9dc-7cbf-11e7-9340-0242ac110002", 11}, "", false},
+		{"t3", args{db, "96fda9dc-7cbf-11e7-9340-0242ac110002", 36678}, "", false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -38,6 +38,7 @@ type Applier struct {
 	tp           string
 	mysqlContext *config.MySQLDriverConfig
 	dbs          []*sql.DB
+	db           *gosql.DB
 	singletonDB  *gosql.DB
 	parser       *sql.Parser
 
@@ -566,11 +567,9 @@ func (a *Applier) onApplyTxStructWithSetGtid(dbApplier *sql.DB, binlogTx *binlog
 	return nil
 }
 
-func (a *Applier) onApplyTxStruct(dbApplier *sql.DB, binlogTx *binlog.BinlogTx) error {
-	tx, err := dbApplier.Db.Begin()
-	if err != nil {
-		return err
-	}
+func (a *Applier) onApplyTxStruct(dbApplier *sql.DB, binlogTx *binlog.BinlogTx, isParallel bool) error {
+	dbApplier.DbMutex.Lock()
+	defer dbApplier.DbMutex.Unlock()
 
 	interval, err := base.SelectGtidExecuted(dbApplier.Db, binlogTx.SID, binlogTx.GNO)
 	if err != nil {
@@ -578,6 +577,11 @@ func (a *Applier) onApplyTxStruct(dbApplier *sql.DB, binlogTx *binlog.BinlogTx) 
 	}
 	if interval == "" {
 		return nil
+	}
+
+	tx, err := dbApplier.Db.Begin()
+	if err != nil {
+		return err
 	}
 
 	if binlogTx.Fde != "" {
@@ -589,42 +593,50 @@ func (a *Applier) onApplyTxStruct(dbApplier *sql.DB, binlogTx *binlog.BinlogTx) 
 		_, err := tx.Exec(binlogTx.Query)
 		if err != nil {
 			if !sql.IgnoreError(err) {
-				a.logger.Errorf("mysql.applier: Exec [%s] error: %v", binlogTx.Query, err)
+				a.logger.Errorf("mysql.applier: Exec gtid [%s:%d] error: %v", binlogTx.SID, binlogTx.GNO, err)
 				return err
 			}
 			if !sql.IgnoreExistsError(err) {
-				a.logger.Warnf("mysql.applier: Ignore error: %v", err)
+				a.logger.Warnf("mysql.applier: Exec gtid [%s:%d] Ignore error: %v", binlogTx.SID, binlogTx.GNO, err)
 			}
 		}
 	}
 
-	query := fmt.Sprintf(`
-		insert into udup.gtid_executed
+	query := ""
+	if isParallel {
+		query = fmt.Sprintf(`
+		insert into actiontech_udup.gtid_executed
 	  		(source_uuid,interval_gtid)
 	 	values
 	  		('%s','%d')
 		`,
-		binlogTx.SID,
-		binlogTx.GNO,
-	)
-	/*query := fmt.Sprintf(`
-			update udup.gtid_executed
-				set interval_gtid = '%s'
-			where
-				source_uuid ='%s'
+			binlogTx.SID,
+			binlogTx.GNO,
+		)
+	} else {
+		query = fmt.Sprintf(`
+		delete from
+			actiontech_udup.gtid_executed
+	 	where
+	 		source_uuid = '%s'
 		`,
-		interval,
-		binlogTx.SID,
-	)*/
-	/*query := fmt.Sprintf(`
-			replace into udup.gtid_executed
+			binlogTx.SID,
+		)
+		if _, err := tx.Exec(query); err != nil {
+			return err
+		}
+		query = fmt.Sprintf(`
+			insert into actiontech_udup.gtid_executed
   				(source_uuid,interval_gtid)
   			values
   				('%s','%s')
 		`,
-		binlogTx.SID,
-		interval,
-	)*/
+			binlogTx.SID,
+			interval,
+		)
+
+	}
+
 	if _, err := tx.Exec(query); err != nil {
 		return err
 	}
@@ -648,23 +660,38 @@ OUTER:
 				if len(groupTx) == 0 {
 					continue
 				}
-				a.wg.Add(len(groupTx))
-				for idx, binlogTx := range groupTx {
-					dbApplier = a.dbs[idx%a.mysqlContext.ParallelWorkers]
-					go func(tx *binlog.BinlogTx) {
-						if a.mysqlContext.SetGtidNext {
+				if a.mysqlContext.SetGtidNext {
+					for idx, binlogTx := range groupTx {
+						dbApplier = a.dbs[idx%a.mysqlContext.ParallelWorkers]
+						go func(tx *binlog.BinlogTx) {
+							a.wg.Add(1)
 							if err := a.onApplyTxStructWithSetGtid(dbApplier, tx); err != nil {
 								a.onError(err)
 							}
-						} else {
-							if err := a.onApplyTxStruct(dbApplier, tx); err != nil {
+							a.wg.Done()
+						}(binlogTx)
+					}
+					a.wg.Wait() // Waiting for all goroutines to finish
+				} else {
+					a.wg.Add(len(groupTx) - 1)
+					for idx, binlogTx := range groupTx {
+						if idx == (len(groupTx) - 1) {
+							continue
+						}
+						dbApplier = a.dbs[idx%a.mysqlContext.ParallelWorkers]
+						go func(tx *binlog.BinlogTx) {
+							if err := a.onApplyTxStruct(dbApplier, tx, true); err != nil {
 								a.onError(err)
 							}
-						}
-						a.wg.Done()
-					}(binlogTx)
+							a.wg.Done()
+						}(binlogTx)
+					}
+					a.wg.Wait() // Waiting for all goroutines to finish
+
+					if err := a.onApplyTxStruct(a.dbs[(len(groupTx)-1)%a.mysqlContext.ParallelWorkers], groupTx[len(groupTx)-1], false); err != nil {
+						a.onError(err)
+					}
 				}
-				a.wg.Wait() // Waiting for all goroutines to finish
 
 				if !a.shutdown {
 					a.lastAppliedBinlogTx = groupTx[len(groupTx)-1]
@@ -682,12 +709,12 @@ OUTER:
 					continue
 				}
 				if copyRows.DbSQL != "" || copyRows.TbSQL != "" {
-					if err := a.ApplyEventQueries(a.singletonDB, copyRows); err != nil {
+					if err := a.ApplyEventQueries(a.db, copyRows); err != nil {
 						a.onError(err)
 					}
 				} else {
 					go func() {
-						if err := a.ApplyEventQueries(a.singletonDB, copyRows); err != nil {
+						if err := a.ApplyEventQueries(a.db, copyRows); err != nil {
 							a.onError(err)
 						}
 					}()
@@ -817,7 +844,7 @@ func (a *Applier) initiateStreaming() error {
 							a.onError(err)
 						}
 					} else {
-						if err = a.onApplyTxStruct(a.dbs[0], binlogTx); err != nil {
+						if err = a.onApplyTxStruct(a.dbs[0], binlogTx, false); err != nil {
 							a.onError(err)
 						}
 					}
@@ -857,12 +884,11 @@ func (a *Applier) initDBConnections() (err error) {
 	if a.dbs, err = sql.CreateDBs(applierUri, a.mysqlContext.ParallelWorkers); err != nil {
 		return err
 	}
-	//singletonApplierUri := fmt.Sprintf("%s&timeout=0", applierUri)
-	if a.singletonDB, err = sql.CreateDB(applierUri); err != nil {
+	if a.db, err = sql.CreateDB(applierUri); err != nil {
 		return err
 	}
-	a.singletonDB.SetMaxOpenConns(10)
-	if err := a.validateConnection(a.singletonDB); err != nil {
+	a.db.SetMaxOpenConns(10)
+	if err := a.validateConnection(a.db); err != nil {
 		return err
 	}
 	/*if err := a.validateTableForeignKeys(); err != nil {
@@ -893,7 +919,7 @@ func (a *Applier) initDBConnections() (err error) {
 func (a *Applier) validateServerUUID() string {
 	query := `SELECT @@SERVER_UUID`
 	var server_uuid string
-	if err := a.singletonDB.QueryRow(query).Scan(&server_uuid); err != nil {
+	if err := a.db.QueryRow(query).Scan(&server_uuid); err != nil {
 		return ""
 	}
 	return server_uuid
@@ -920,7 +946,7 @@ func (a *Applier) validateGrants() error {
 	foundAll := false
 	foundSuper := false
 
-	err := sql.QueryRowsMap(a.singletonDB, query, func(rowMap sql.RowMap) error {
+	err := sql.QueryRowsMap(a.db, query, func(rowMap sql.RowMap) error {
 		for _, grantData := range rowMap {
 			grant := grantData.String
 			if strings.Contains(grant, `GRANT ALL PRIVILEGES ON *.*`) {
@@ -953,7 +979,7 @@ func (a *Applier) validateGrants() error {
 func (a *Applier) validateTableForeignKeys() error {
 	query := `select @@global.foreign_key_checks`
 	var foreignKeyChecks bool
-	if err := a.singletonDB.QueryRow(query).Scan(&foreignKeyChecks); err != nil {
+	if err := a.db.QueryRow(query).Scan(&foreignKeyChecks); err != nil {
 		return err
 	}
 
@@ -969,7 +995,7 @@ func (a *Applier) validateTableForeignKeys() error {
 // validateAndReadTimeZone potentially reads server time-zone
 func (a *Applier) validateAndReadTimeZone() error {
 	query := `select @@global.time_zone`
-	if err := a.singletonDB.QueryRow(query).Scan(&a.mysqlContext.TimeZone); err != nil {
+	if err := a.db.QueryRow(query).Scan(&a.mysqlContext.TimeZone); err != nil {
 		return err
 	}
 
@@ -979,14 +1005,13 @@ func (a *Applier) validateAndReadTimeZone() error {
 
 func (a *Applier) createTableGtidExecuted() error {
 	query := fmt.Sprintf(`
-			CREATE DATABASE IF NOT EXISTS udup;
-			CREATE TABLE IF NOT EXISTS udup.gtid_executed (
+			CREATE DATABASE IF NOT EXISTS actiontech_udup;
+			CREATE TABLE IF NOT EXISTS actiontech_udup.gtid_executed (
   				source_uuid char(36) NOT NULL COMMENT 'uuid of the source where the transaction was originally executed.',
-  				interval_gtid varchar(255) NOT NULL COMMENT 'number of interval.',
-  				PRIMARY KEY (source_uuid,interval_gtid)
+  				interval_gtid text NOT NULL COMMENT 'number of interval.'
 			)
 		`)
-	if _, err := sql.ExecNoPrepare(a.singletonDB, query); err != nil {
+	if _, err := sql.ExecNoPrepare(a.db, query); err != nil {
 		return err
 	}
 	return nil
@@ -997,7 +1022,7 @@ func (a *Applier) readTableColumns() (err error) {
 	a.logger.Printf("mysql.applier: Examining table structure on applier")
 	for _, doDb := range a.mysqlContext.ReplicateDoDb {
 		for _, doTb := range doDb.Tables {
-			doTb.OriginalTableColumnsOnApplier, err = base.GetTableColumns(a.singletonDB, doDb.TableSchema, doTb.TableName)
+			doTb.OriginalTableColumnsOnApplier, err = base.GetTableColumns(a.db, doDb.TableSchema, doTb.TableName)
 			if err != nil {
 				a.logger.Errorf("mysql.applier: Unexpected error on readTableColumns, got %v", err)
 				return err
@@ -1131,7 +1156,7 @@ func (a *Applier) LockOriginalTable() error {
 				sql.EscapeName(doTb.TableName),
 			)
 			a.mysqlContext.LockTablesStartTime = time.Now()
-			if _, err := sql.ExecNoPrepare(a.singletonDB, query); err != nil {
+			if _, err := sql.ExecNoPrepare(a.db, query); err != nil {
 				return err
 			}
 		}
@@ -1145,7 +1170,7 @@ func (a *Applier) LockOriginalTable() error {
 func (a *Applier) UnlockTables() error {
 	query := `unlock tables`
 	a.logger.Printf("Unlocking tables")
-	if _, err := sql.ExecNoPrepare(a.singletonDB, query); err != nil {
+	if _, err := sql.ExecNoPrepare(a.db, query); err != nil {
 		return err
 	}
 	a.logger.Printf("Tables unlocked")
@@ -1163,7 +1188,7 @@ func (a *Applier) ExpectUsedLock(sessionId int64) error {
 	query := `select is_used_lock(?)`
 	lockName := a.GetSessionLockName(sessionId)
 	a.logger.Printf("mysql.applier: Checking session lock: %s", lockName)
-	if err := a.singletonDB.QueryRow(query, lockName).Scan(&result); err != nil || result != sessionId {
+	if err := a.db.QueryRow(query, lockName).Scan(&result); err != nil || result != sessionId {
 		return fmt.Errorf("Session lock %s expected to be found but wasn't", lockName)
 	}
 	return nil
@@ -1181,7 +1206,7 @@ func (a *Applier) ExpectProcess(sessionId int64, stateHint, infoHint string) err
 				and state like concat('%', ?, '%')
 				and info  like concat('%', ?, '%')
 	`
-	err := sql.QueryRowsMap(a.singletonDB, query, func(m sql.RowMap) error {
+	err := sql.QueryRowsMap(a.db, query, func(m sql.RowMap) error {
 		found = true
 		return nil
 	}, sessionId, stateHint, infoHint)
@@ -1348,7 +1373,7 @@ sql.EscapeName(a.mysqlContext.GetGhostTableName()),*/ /*
 
 func (a *Applier) ShowStatusVariable(variableName string) (result int64, err error) {
 	query := fmt.Sprintf(`show global status like '%s'`, variableName)
-	if err := a.singletonDB.QueryRow(query).Scan(&variableName, &result); err != nil {
+	if err := a.db.QueryRow(query).Scan(&variableName, &result); err != nil {
 		return 0, err
 	}
 	return result, nil
@@ -1416,7 +1441,7 @@ func (a *Applier) getCandidateUniqueKeys(databaseName, tableName string) (unique
       END,
       COUNT_COLUMN_IN_INDEX
   `
-	err = sql.QueryRowsMap(a.singletonDB, query, func(m sql.RowMap) error {
+	err = sql.QueryRowsMap(a.db, query, func(m sql.RowMap) error {
 		uniqueKey := &umconf.UniqueKey{
 			Name:            m.GetString("INDEX_NAME"),
 			Columns:         *umconf.ParseColumnList(m.GetString("COLUMN_NAMES")),
@@ -1441,7 +1466,7 @@ func (a *Applier) InspectTableColumnsAndUniqueKeys(databaseName, tableName strin
 	/*if len(uniqueKeys) == 0 {
 		return columns, uniqueKeys, fmt.Errorf("No PRIMARY nor UNIQUE key found in table! Bailing out")
 	}*/
-	columns, err = base.GetTableColumns(a.singletonDB, databaseName, tableName)
+	columns, err = base.GetTableColumns(a.db, databaseName, tableName)
 	if err != nil {
 		return columns, uniqueKeys, err
 	}
@@ -1756,7 +1781,7 @@ func (a *Applier) Shutdown() error {
 	a.shutdown = true
 	close(a.shutdownCh)
 
-	if err := sql.CloseDB(a.singletonDB); err != nil {
+	if err := sql.CloseDB(a.db); err != nil {
 		return err
 	}
 	if err := sql.CloseDBs(a.dbs...); err != nil {

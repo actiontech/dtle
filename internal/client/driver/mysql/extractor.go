@@ -26,7 +26,7 @@ import (
 
 const (
 	// DefaultConnectWait is the default timeout used for the connect operation
-	DefaultConnectWait            = 60 * time.Second
+	DefaultConnectWait            = 5 * time.Second
 	AllEventsUpToLockProcessed    = "AllEventsUpToLockProcessed"
 	ReconnectStreamerSleepSeconds = 5
 )
@@ -791,6 +791,9 @@ func (e *Extractor) requestMsg(subject, gtid string, txMsg []byte) (err error) {
 				e.mysqlContext.Gtid = gtid
 			}
 			return nil
+		}
+		if err == gonats.ErrTimeout {
+			continue
 		}
 		// there's an error. Let's try again.
 	}

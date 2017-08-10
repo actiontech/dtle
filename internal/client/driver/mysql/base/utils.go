@@ -350,9 +350,10 @@ func parseInterval(str string) (i gomysql.Interval, err error) {
 }
 
 func SelectGtidExecuted(db *gosql.DB, sid string, gno int64) (gtidset string, err error) {
-	query := fmt.Sprintf(`SELECT interval_gtid FROM udup.gtid_executed where source_uuid='%s'`,
+	query := fmt.Sprintf(`SELECT interval_gtid FROM actiontech_udup.gtid_executed where source_uuid='%s'`,
 		sid,
 	)
+
 	rows, err := db.Query(query)
 	if err != nil {
 		return "", err
@@ -388,10 +389,14 @@ func SelectGtidExecuted(db *gosql.DB, sid string, gno int64) (gtidset string, er
 	if len(intervals) == 0 {
 		return fmt.Sprintf("%d", gno), nil
 	} else {
-		if intervals.Contain([]gomysql.Interval{{gno, gno + 1}}) {
+		in, err := parseInterval(fmt.Sprintf("%d", gno))
+		if err != nil {
+			return "", err
+		}
+		if intervals.Contain([]gomysql.Interval{in}) {
 			return "", nil
 		}
-		intervals = append(intervals, gomysql.Interval{gno, gno + 1})
+		intervals = append(intervals, in)
 	}
 
 	intervals = intervals.Normalize()
@@ -400,7 +405,7 @@ func SelectGtidExecuted(db *gosql.DB, sid string, gno int64) (gtidset string, er
 }
 
 func stringInterval(intervals gomysql.IntervalSlice) string {
-	var buf bytes.Buffer
+	buf := new(bytes.Buffer)
 
 	for idx, i := range intervals {
 		if idx != 0 {
