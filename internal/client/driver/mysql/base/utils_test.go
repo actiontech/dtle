@@ -7,8 +7,10 @@ import (
 	"time"
 	umconf "udup/internal/config/mysql"
 
+	"fmt"
 	test "github.com/outbrain/golib/tests"
 	gomysql "github.com/siddontang/go-mysql/mysql"
+	"udup/internal/client/driver/mysql/sql"
 )
 
 func TestStringContainsAll(t *testing.T) {
@@ -353,6 +355,62 @@ func Test_parseInterval(t *testing.T) {
 			}
 			if !reflect.DeepEqual(gotI, tt.wantI) {
 				t.Errorf("parseInterval() = %v, want %v", gotI, tt.wantI)
+			}
+		})
+	}
+}
+
+func TestSelectGtidExecuted(t *testing.T) {
+	uri := "root:rootroot@tcp(192.168.99.100:13309)/?timeout=5s&tls=false&autocommit=true&charset=utf8mb4,utf8,latin1&multiStatements=true"
+	db, err := sql.CreateDB(uri)
+	if err != nil {
+		fmt.Errorf(err.Error())
+	}
+	type args struct {
+		db  *gosql.DB
+		sid string
+		gno int64
+	}
+	tests := []struct {
+		name        string
+		args        args
+		wantGtidset string
+		wantErr     bool
+	}{
+		// TODO: Add test cases.
+		{"t1", args{db, "96fda9dc-7cbf-11e7-9340-0242ac110002", 1}, "", false}, //96fda9dc-7cbf-11e7-9340-0242ac110002:10116-10120:10126
+		{"t2", args{db, "96fda9dc-7cbf-11e7-9340-0242ac110002", 10}, "", false},
+		{"t3", args{db, "96fda9dc-7cbf-11e7-9340-0242ac110002", 11}, "", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotGtidset, err := SelectGtidExecuted(tt.args.db, tt.args.sid, tt.args.gno)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("SelectGtidExecuted() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if gotGtidset != tt.wantGtidset {
+				t.Errorf("SelectGtidExecuted() = %v, want %v", gotGtidset, tt.wantGtidset)
+			}
+		})
+	}
+}
+
+func Test_stringInterval(t *testing.T) {
+	type args struct {
+		intervals gomysql.IntervalSlice
+	}
+	tests := []struct {
+		name string
+		args args
+		want string
+	}{
+	// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := stringInterval(tt.args.intervals); got != tt.want {
+				t.Errorf("stringInterval() = %v, want %v", got, tt.want)
 			}
 		})
 	}

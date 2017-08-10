@@ -157,13 +157,13 @@ func (i *Inspector) validateGrants() error {
 			if strings.Contains(grant, `GRANT ALL PRIVILEGES ON`) {
 				foundAll = true
 			}
-			if strings.Contains(grant, `SUPER`){
+			if strings.Contains(grant, `SUPER`) {
 				foundSuper = true
 			}
 			if strings.Contains(grant, `REPLICATION CLIENT`) {
 				foundReplicationClient = true
 			}
-			if strings.Contains(grant, `REPLICATION SLAVE`){
+			if strings.Contains(grant, `REPLICATION SLAVE`) {
 				foundReplicationSlave = true
 			}
 			if ubase.StringContainsAll(grant, `SELECT`) {

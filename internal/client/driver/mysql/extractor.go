@@ -891,7 +891,7 @@ func (e *Extractor) mysqlDump() error {
 				if tb.TableSchema != db {
 					continue
 				}
-				dbSQL := fmt.Sprintf("CREATE DATABASE %s", tb.TableSchema)
+				dbSQL := fmt.Sprintf("CREATE DATABASE IF NOT EXISTS %s", tb.TableSchema)
 				tbSQL, err := base.ShowCreateTable(e.db, tb.TableSchema, tb.TableName, e.mysqlContext.DropTableIfExists)
 				if err != nil {
 					return err
@@ -907,7 +907,7 @@ func (e *Extractor) mysqlDump() error {
 				}
 			}
 		} else {
-			dbSQL := fmt.Sprintf("CREATE DATABASE %s", db)
+			dbSQL := fmt.Sprintf("CREATE DATABASE IF NOT EXISTS %s", db)
 			entry := &dumpEntry{
 				SystemVariablesStatement: setSystemVariablesStatement,
 				SqlMode:                  setSqlMode,

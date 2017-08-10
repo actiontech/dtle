@@ -1,6 +1,7 @@
 package base
 
 import (
+	"bytes"
 	gosql "database/sql"
 	"fmt"
 	"os"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/satori/go.uuid"
 	gomysql "github.com/siddontang/go-mysql/mysql"
+	"github.com/siddontang/go/hack"
 
 	usql "udup/internal/client/driver/mysql/sql"
 	umconf "udup/internal/config/mysql"
@@ -328,10 +330,12 @@ func parseInterval(str string) (i gomysql.Interval, err error) {
 	case 1:
 		i.Start, err = strconv.ParseInt(p[0], 10, 64)
 		i.Stop = i.Start + 1
-	default:
+	case 2:
 		i.Start, err = strconv.ParseInt(p[0], 10, 64)
-		i.Stop, err = strconv.ParseInt(p[len(p)-1], 10, 64)
+		i.Stop, err = strconv.ParseInt(p[1], 10, 64)
 		i.Stop = i.Stop + 1
+	default:
+		err = fmt.Errorf("invalid interval format, must n[-n]")
 	}
 
 	if err != nil {
@@ -343,4 +347,67 @@ func parseInterval(str string) (i gomysql.Interval, err error) {
 	}
 
 	return
+}
+
+func SelectGtidExecuted(db *gosql.DB, sid string, gno int64) (gtidset string, err error) {
+	query := fmt.Sprintf(`SELECT interval_gtid FROM udup.gtid_executed where source_uuid='%s'`,
+		sid,
+	)
+	rows, err := db.Query(query)
+	if err != nil {
+		return "", err
+	}
+	defer rows.Close()
+
+	var intervals gomysql.IntervalSlice
+	for rows.Next() {
+		var (
+			interval string
+		)
+
+		err = rows.Scan(&interval)
+
+		if err != nil {
+			return "", err
+		}
+		sep := strings.Split(interval, ":")
+		// Handle interval
+		for i := 0; i < len(sep); i++ {
+			if in, err := parseInterval(sep[i]); err != nil {
+				return "", err
+			} else {
+				intervals = append(intervals, in)
+			}
+		}
+	}
+
+	if rows.Err() != nil {
+		return "", rows.Err()
+	}
+
+	if len(intervals) == 0 {
+		return fmt.Sprintf("%d", gno), nil
+	} else {
+		if intervals.Contain([]gomysql.Interval{{gno, gno + 1}}) {
+			return "", nil
+		}
+		intervals = append(intervals, gomysql.Interval{gno, gno + 1})
+	}
+
+	intervals = intervals.Normalize()
+
+	return stringInterval(intervals), nil
+}
+
+func stringInterval(intervals gomysql.IntervalSlice) string {
+	var buf bytes.Buffer
+
+	for idx, i := range intervals {
+		if idx != 0 {
+			buf.WriteString(":")
+		}
+		buf.WriteString(i.String())
+	}
+
+	return hack.String(buf.Bytes())
 }

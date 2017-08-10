@@ -512,13 +512,75 @@ func (a *Applier) printMigrationStatusHint(databaseName, tableName string) {
 	}
 }
 
+func (a *Applier) onApplyTxStructWithSetGtid(dbApplier *sql.DB, binlogTx *binlog.BinlogTx) error {
+	dbApplier.DbMutex.Lock()
+	defer func() {
+		_, err := sql.ExecNoPrepare(dbApplier.Db, `commit;set gtid_next='automatic'`)
+		if err != nil {
+			a.onError(err)
+		}
+		dbApplier.DbMutex.Unlock()
+	}()
+
+	if binlogTx.Fde != "" && dbApplier.Fde != binlogTx.Fde {
+		dbApplier.Fde = binlogTx.Fde // IMO it would comare the internal pointer first
+		_, err := sql.ExecNoPrepare(dbApplier.Db, binlogTx.Fde)
+		if err != nil {
+			return err
+		}
+	}
+
+	_, err := sql.ExecNoPrepare(dbApplier.Db, fmt.Sprintf(`set gtid_next='%s:%d'`, binlogTx.SID, binlogTx.GNO))
+	if err != nil {
+		return err
+	}
+	var ignoreError error
+	if binlogTx.Query == "" {
+		_, err = sql.ExecNoPrepare(dbApplier.Db, `begin;commit`)
+		if err != nil {
+			return err
+		}
+	} else {
+		_, err := sql.ExecNoPrepare(dbApplier.Db, binlogTx.Query)
+		if err != nil {
+			if !sql.IgnoreError(err) {
+				//SELECT FROM_BASE64('')
+				a.logger.Errorf("mysql.applier: exec gtid:[%s:%d] error: %v", binlogTx.SID, binlogTx.GNO, err)
+				return err
+			}
+			a.logger.Warnf("mysql.applier: exec gtid:[%s:%d],ignore error: %v", binlogTx.SID, binlogTx.GNO, err)
+			ignoreError = err
+		}
+	}
+
+	if ignoreError != nil {
+		_, err := sql.ExecNoPrepare(dbApplier.Db, fmt.Sprintf(`commit;set gtid_next='%s:%d'`, binlogTx.SID, binlogTx.GNO))
+		if err != nil {
+			return err
+		}
+		_, err = sql.ExecNoPrepare(dbApplier.Db, `begin;commit`)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (a *Applier) onApplyTxStruct(dbApplier *sql.DB, binlogTx *binlog.BinlogTx) error {
 	tx, err := dbApplier.Db.Begin()
 	if err != nil {
 		return err
 	}
-	if binlogTx.Fde != "" && dbApplier.Fde != binlogTx.Fde {
-		dbApplier.Fde = binlogTx.Fde // IMO it would comare the internal pointer first
+
+	interval, err := base.SelectGtidExecuted(dbApplier.Db, binlogTx.SID, binlogTx.GNO)
+	if err != nil {
+		return err
+	}
+	if interval == "" {
+		return nil
+	}
+
+	if binlogTx.Fde != "" {
 		if _, err := tx.Exec(binlogTx.Fde); err != nil {
 			return err
 		}
@@ -536,18 +598,37 @@ func (a *Applier) onApplyTxStruct(dbApplier *sql.DB, binlogTx *binlog.BinlogTx) 
 		}
 	}
 
-	/*query := fmt.Sprintf(`
-			replace into udup.gtid_executed
-  				(source_uuid,interval_end)
-  			values
-  				(%s,%s)
+	query := fmt.Sprintf(`
+		insert into udup.gtid_executed
+	  		(source_uuid,interval_gtid)
+	 	values
+	  		('%s','%d')
 		`,
 		binlogTx.SID,
 		binlogTx.GNO,
 	)
+	/*query := fmt.Sprintf(`
+			update udup.gtid_executed
+				set interval_gtid = '%s'
+			where
+				source_uuid ='%s'
+		`,
+		interval,
+		binlogTx.SID,
+	)*/
+	/*query := fmt.Sprintf(`
+			replace into udup.gtid_executed
+  				(source_uuid,interval_gtid)
+  			values
+  				('%s','%s')
+		`,
+		binlogTx.SID,
+		interval,
+	)*/
 	if _, err := tx.Exec(query); err != nil {
 		return err
-	}*/
+	}
+
 	if err := tx.Commit(); err != nil {
 		return err
 	}
@@ -571,8 +652,14 @@ OUTER:
 				for idx, binlogTx := range groupTx {
 					dbApplier = a.dbs[idx%a.mysqlContext.ParallelWorkers]
 					go func(tx *binlog.BinlogTx) {
-						if err := a.onApplyTxStruct(dbApplier, tx); err != nil {
-							a.onError(err)
+						if a.mysqlContext.SetGtidNext {
+							if err := a.onApplyTxStructWithSetGtid(dbApplier, tx); err != nil {
+								a.onError(err)
+							}
+						} else {
+							if err := a.onApplyTxStruct(dbApplier, tx); err != nil {
+								a.onError(err)
+							}
 						}
 						a.wg.Done()
 					}(binlogTx)
@@ -725,9 +812,16 @@ func (a *Applier) initiateStreaming() error {
 					return
 				}
 				if a.mysqlContext.ParallelWorkers <= 1 {
-					if err = a.onApplyTxStruct(a.dbs[0], binlogTx); err != nil {
-						a.onError(err)
+					if a.mysqlContext.SetGtidNext {
+						if err = a.onApplyTxStructWithSetGtid(a.dbs[0], binlogTx); err != nil {
+							a.onError(err)
+						}
+					} else {
+						if err = a.onApplyTxStruct(a.dbs[0], binlogTx); err != nil {
+							a.onError(err)
+						}
 					}
+
 					if !a.shutdown {
 						a.lastAppliedBinlogTx = binlogTx
 						a.mysqlContext.Gtid = fmt.Sprintf("%s:1-%d", a.lastAppliedBinlogTx.SID, a.lastAppliedBinlogTx.GNO)
@@ -781,8 +875,10 @@ func (a *Applier) initDBConnections() (err error) {
 	if err := a.validateAndReadTimeZone(); err != nil {
 		return err
 	}
-	if err := a.createTableGtidExecuted(); err != nil {
-		return err
+	if !a.mysqlContext.SetGtidNext {
+		if err := a.createTableGtidExecuted(); err != nil {
+			return err
+		}
 	}
 	/*if err := a.readCurrentBinlogCoordinates(); err != nil {
 		return err
@@ -886,9 +982,8 @@ func (a *Applier) createTableGtidExecuted() error {
 			CREATE DATABASE IF NOT EXISTS udup;
 			CREATE TABLE IF NOT EXISTS udup.gtid_executed (
   				source_uuid char(36) NOT NULL COMMENT 'uuid of the source where the transaction was originally executed.',
-  				interval_start bigint(20) NOT NULL COMMENT 'First number of interval.',
-  				interval_end bigint(20) NOT NULL COMMENT 'Last number of interval.',
-  				PRIMARY KEY (source_uuid,interval_start)
+  				interval_gtid varchar(255) NOT NULL COMMENT 'number of interval.',
+  				PRIMARY KEY (source_uuid,interval_gtid)
 			)
 		`)
 	if _, err := sql.ExecNoPrepare(a.singletonDB, query); err != nil {
