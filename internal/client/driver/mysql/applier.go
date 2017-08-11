@@ -513,7 +513,7 @@ func (a *Applier) printMigrationStatusHint(databaseName, tableName string) {
 	}
 }
 
-func (a *Applier) onApplyTxStructWithSetGtid(dbApplier *sql.DB, binlogTx *binlog.BinlogTx) error {
+func (a *Applier) onApplyTxStructWithSuper(dbApplier *sql.DB, binlogTx *binlog.BinlogTx) error {
 	dbApplier.DbMutex.Lock()
 	defer func() {
 		_, err := sql.ExecNoPrepare(dbApplier.Db, `commit;set gtid_next='automatic'`)
@@ -586,6 +586,7 @@ func (a *Applier) onApplyTxStruct(dbApplier *sql.DB, binlogTx *binlog.BinlogTx, 
 
 	if binlogTx.Fde != "" {
 		if _, err := tx.Exec(binlogTx.Fde); err != nil {
+			a.logger.Errorf("mysql.applier: Exec binlogTx.Fde [%v] error: %v", binlogTx.Fde, err)
 			return err
 		}
 	}
@@ -660,12 +661,12 @@ OUTER:
 				if len(groupTx) == 0 {
 					continue
 				}
-				if a.mysqlContext.SetGtidNext {
+				if a.mysqlContext.HasSuperPrivilege {
 					for idx, binlogTx := range groupTx {
 						dbApplier = a.dbs[idx%a.mysqlContext.ParallelWorkers]
 						go func(tx *binlog.BinlogTx) {
 							a.wg.Add(1)
-							if err := a.onApplyTxStructWithSetGtid(dbApplier, tx); err != nil {
+							if err := a.onApplyTxStructWithSuper(dbApplier, tx); err != nil {
 								a.onError(err)
 							}
 							a.wg.Done()
@@ -839,8 +840,8 @@ func (a *Applier) initiateStreaming() error {
 					return
 				}
 				if a.mysqlContext.ParallelWorkers <= 1 {
-					if a.mysqlContext.SetGtidNext {
-						if err = a.onApplyTxStructWithSetGtid(a.dbs[0], binlogTx); err != nil {
+					if a.mysqlContext.HasSuperPrivilege {
+						if err = a.onApplyTxStructWithSuper(a.dbs[0], binlogTx); err != nil {
 							a.onError(err)
 						}
 					} else {
@@ -894,14 +895,14 @@ func (a *Applier) initDBConnections() (err error) {
 	/*if err := a.validateTableForeignKeys(); err != nil {
 		return err
 	}*/
-	/*if err := a.validateGrants(); err != nil {
+	if err := a.validateGrants(); err != nil {
 		a.logger.Errorf("mysql.applier: Unexpected error on validateGrants, got %v", err)
 		return err
-	}*/
+	}
 	if err := a.validateAndReadTimeZone(); err != nil {
 		return err
 	}
-	if !a.mysqlContext.SetGtidNext {
+	if !a.mysqlContext.HasSuperPrivilege {
 		if err := a.createTableGtidExecuted(); err != nil {
 			return err
 		}
@@ -945,15 +946,22 @@ func (a *Applier) validateGrants() error {
 	query := `show grants for current_user()`
 	foundAll := false
 	foundSuper := false
+	foundDBAll := false
 
 	err := sql.QueryRowsMap(a.db, query, func(rowMap sql.RowMap) error {
 		for _, grantData := range rowMap {
 			grant := grantData.String
-			if strings.Contains(grant, `GRANT ALL PRIVILEGES ON *.*`) {
+			if strings.Contains(grant, `GRANT ALL PRIVILEGES ON`) {
 				foundAll = true
 			}
 			if strings.Contains(grant, `SUPER`) && strings.Contains(grant, ` ON *.*`) {
 				foundSuper = true
+			}
+			if strings.Contains(grant, "GRANT ALL PRIVILEGES ON `actiontech_udup`.`gtid_executed`") {
+				foundDBAll = true
+			}
+			if base.StringContainsAll(grant, `ALTER`, `CREATE`, `DELETE`, `DROP`, `INDEX`, `INSERT`, `LOCK TABLES`, `SELECT`, `TRIGGER`, `UPDATE`,` ON`) {
+				foundDBAll = true
 			}
 		}
 		return nil
@@ -971,8 +979,13 @@ func (a *Applier) validateGrants() error {
 		a.logger.Printf("mysql.applier: User has SUPER privileges")
 		return nil
 	}
-	a.logger.Debugf("mysql.applier: Privileges: super: %t, ALL on *.*: %t, ALL on *.*: %t", foundSuper, foundAll)
-	return fmt.Errorf("user has insufficient privileges for applier. Needed: SUPER|ALL on *.*")
+	if foundDBAll {
+		a.logger.Printf("User has ALL privileges on *.*")
+		return nil
+	}
+	a.logger.Debugf("mysql.applier: Privileges: super: %t, ALL on *.*: %t", foundSuper, foundAll)
+	//return fmt.Errorf("user has insufficient privileges for applier. Needed: SUPER|ALL on *.*")
+	return nil
 }
 
 // validateTableForeignKeys checks that binary log foreign_key_checks is set.

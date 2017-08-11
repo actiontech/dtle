@@ -71,6 +71,6 @@ configuration options.
 <br>ON
 * show grants for current_user();
 <br>SRC:SELECT,REPLICATION CLIENT,REPLICATION SLAVE
-<br>DEST:ALL PRIVILEGES|SUPER
+<br>DEST:ALTER,CREATE,DELETE,DROP,INDEX,INSERT,LOCK TABLES,SELECT,TRIGGER,UPDATE,ALL PRIVILEGES ON `actiontech_udup`.`gtid_executed`|SUPER
 
 ## Todo

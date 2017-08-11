@@ -128,7 +128,6 @@ type MySQLDriverConfig struct {
 	BytesLimit                          int
 	ConcurrentCountTableRows            bool
 	SkipRenamedColumns                  bool
-	SetGtidNext                         bool
 	MaxRetries                          int64
 	ChunkSize                           int64
 	niceRatio                           float64
