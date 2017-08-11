@@ -149,6 +149,7 @@ type MySQLDriverConfig struct {
 	BinlogRowImage           string
 	SqlMode                  string
 	MySQLVersion             string
+	MySQLServerUuid          string
 	StartTime                time.Time
 	RowCopyStartTime         time.Time
 	RowCopyEndTime           time.Time

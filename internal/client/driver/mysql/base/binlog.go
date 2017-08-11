@@ -56,6 +56,8 @@ type StreamEvent struct {
 type BinlogCoordinates struct {
 	LogFile string
 	LogPos  int64
+	SID     string
+	GNO     int64
 	GtidSet string
 	Type    BinlogType
 }

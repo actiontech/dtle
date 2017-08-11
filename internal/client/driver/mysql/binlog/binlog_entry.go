@@ -26,6 +26,7 @@ func NewBinlogEntry(logFile string, logPos uint64) *BinlogEntry {
 func NewBinlogEntryAt(coordinates base.BinlogCoordinates) *BinlogEntry {
 	binlogEntry := &BinlogEntry{
 		Coordinates: coordinates,
+		Events:      make([]DataEvent, 0),
 	}
 	return binlogEntry
 }

@@ -55,9 +55,10 @@ type Applier struct {
 	applyBinlogGroupTxQueue chan []*binlog.BinlogTx
 	lastAppliedBinlogTx     *binlog.BinlogTx
 
-	natsConn *gonats.Conn
-	waitCh   chan *models.WaitResult
-	wg       sync.WaitGroup
+	natsConn        *gonats.Conn
+	jsonEncodedConn *gonats.EncodedConn
+	waitCh          chan *models.WaitResult
+	wg              sync.WaitGroup
 
 	shutdown     bool
 	shutdownCh   chan struct{}
@@ -567,87 +568,6 @@ func (a *Applier) onApplyTxStructWithSuper(dbApplier *sql.DB, binlogTx *binlog.B
 	return nil
 }
 
-func (a *Applier) onApplyTxStruct(dbApplier *sql.DB, binlogTx *binlog.BinlogTx, isParallel bool) error {
-	dbApplier.DbMutex.Lock()
-	defer dbApplier.DbMutex.Unlock()
-
-	interval, err := base.SelectGtidExecuted(dbApplier.Db, binlogTx.SID, binlogTx.GNO)
-	if err != nil {
-		return err
-	}
-	if interval == "" {
-		return nil
-	}
-
-	tx, err := dbApplier.Db.Begin()
-	if err != nil {
-		return err
-	}
-
-	if binlogTx.Fde != "" {
-		if _, err := tx.Exec(binlogTx.Fde); err != nil {
-			a.logger.Errorf("mysql.applier: Exec binlogTx.Fde [%v] error: %v", binlogTx.Fde, err)
-			return err
-		}
-	}
-	if binlogTx.Query != "" {
-		_, err := tx.Exec(binlogTx.Query)
-		if err != nil {
-			if !sql.IgnoreError(err) {
-				a.logger.Errorf("mysql.applier: Exec gtid [%s:%d] error: %v", binlogTx.SID, binlogTx.GNO, err)
-				return err
-			}
-			if !sql.IgnoreExistsError(err) {
-				a.logger.Warnf("mysql.applier: Exec gtid [%s:%d] Ignore error: %v", binlogTx.SID, binlogTx.GNO, err)
-			}
-		}
-	}
-
-	query := ""
-	if isParallel {
-		query = fmt.Sprintf(`
-		insert into actiontech_udup.gtid_executed
-	  		(source_uuid,interval_gtid)
-	 	values
-	  		('%s','%d')
-		`,
-			binlogTx.SID,
-			binlogTx.GNO,
-		)
-	} else {
-		query = fmt.Sprintf(`
-		delete from
-			actiontech_udup.gtid_executed
-	 	where
-	 		source_uuid = '%s'
-		`,
-			binlogTx.SID,
-		)
-		if _, err := tx.Exec(query); err != nil {
-			return err
-		}
-		query = fmt.Sprintf(`
-			insert into actiontech_udup.gtid_executed
-  				(source_uuid,interval_gtid)
-  			values
-  				('%s','%s')
-		`,
-			binlogTx.SID,
-			interval,
-		)
-
-	}
-
-	if _, err := tx.Exec(query); err != nil {
-		return err
-	}
-
-	if err := tx.Commit(); err != nil {
-		return err
-	}
-	return nil
-}
-
 // executeWriteFuncs writes data via applier: both the rowcopy and the events backlog.
 // This is where the ghost table gets the data. The function fills the data single-threaded.
 // Both event backlog and rowcopy events are polled; the backlog events have precedence.
@@ -656,24 +576,37 @@ func (a *Applier) executeWriteFuncs() {
 OUTER:
 	for {
 		select {
+		case binlogEntry := <-a.applyDataEntryQueue:
+			{
+				if nil == binlogEntry {
+					continue
+				}
+				if a.mysqlContext.MySQLServerUuid == binlogEntry.Coordinates.SID {
+					continue
+				}
+				if err := a.ApplyBinlogEvent(a.db, binlogEntry); err != nil {
+					a.onError(err)
+					break OUTER
+				}
+			}
 		case groupTx := <-a.applyBinlogGroupTxQueue:
 			{
 				if len(groupTx) == 0 {
 					continue
 				}
-				if a.mysqlContext.HasSuperPrivilege {
-					for idx, binlogTx := range groupTx {
-						dbApplier = a.dbs[idx%a.mysqlContext.ParallelWorkers]
-						go func(tx *binlog.BinlogTx) {
-							a.wg.Add(1)
-							if err := a.onApplyTxStructWithSuper(dbApplier, tx); err != nil {
-								a.onError(err)
-							}
-							a.wg.Done()
-						}(binlogTx)
-					}
-					a.wg.Wait() // Waiting for all goroutines to finish
-				} else {
+				for idx, binlogTx := range groupTx {
+					dbApplier = a.dbs[idx%a.mysqlContext.ParallelWorkers]
+					go func(tx *binlog.BinlogTx) {
+						a.wg.Add(1)
+						if err := a.onApplyTxStructWithSuper(dbApplier, tx); err != nil {
+							a.onError(err)
+						}
+						a.wg.Done()
+					}(binlogTx)
+				}
+				a.wg.Wait() // Waiting for all goroutines to finish
+
+				/*else {
 					a.wg.Add(len(groupTx) - 1)
 					for idx, binlogTx := range groupTx {
 						if idx == (len(groupTx) - 1) {
@@ -692,7 +625,7 @@ OUTER:
 					if err := a.onApplyTxStruct(a.dbs[(len(groupTx)-1)%a.mysqlContext.ParallelWorkers], groupTx[len(groupTx)-1], false); err != nil {
 						a.onError(err)
 					}
-				}
+				}*/
 
 				if !a.shutdown {
 					a.lastAppliedBinlogTx = groupTx[len(groupTx)-1]
@@ -746,6 +679,13 @@ func (a *Applier) initNatSubClient() (err error) {
 		a.logger.Errorf("mysql.applier: Can't connect nats server %v. make sure a nats streaming server is running.%v", natsAddr, err)
 		return err
 	}
+	jsonEncodedConn, err := gonats.NewEncodedConn(sc, gonats.JSON_ENCODER)
+	if err != nil {
+		a.logger.Printf("[ERR] mysql.applier: Unable to create encoded connection: %v", err)
+		return err
+	}
+	a.jsonEncodedConn = jsonEncodedConn
+
 	a.logger.Debugf("mysql.applier: Connect nats server %v", natsAddr)
 	a.natsConn = sc
 	return nil
@@ -783,15 +723,14 @@ func (a *Applier) initiateStreaming() error {
 		}*/
 	}
 
-	if a.mysqlContext.ApproveHeterogeneous {
-		/*sub, err := a.jsonEncodedConn.Subscribe(fmt.Sprintf("%s_incr_heterogeneous", a.subject), func(binlogEntry *binlog.BinlogEntry) {
+	if !a.mysqlContext.HasSuperPrivilege {
+		_, err := a.jsonEncodedConn.Subscribe(fmt.Sprintf("%s_incr_heterogeneous", a.subject), func(binlogEntry *binlog.BinlogEntry) {
 			//a.logger.Debugf("mysql.applier: received binlogEntry: %+v", binlogEntry)
 			a.applyDataEntryQueue <- binlogEntry
 		})
 		if err != nil {
 			return err
 		}
-		a.jsonSub = sub*/
 	} else {
 		_, err := a.natsConn.Subscribe(fmt.Sprintf("%s_incr", a.subject), func(m *gonats.Msg) {
 			var binlogTx []*binlog.BinlogTx
@@ -813,11 +752,6 @@ func (a *Applier) initiateStreaming() error {
 		}*/
 	}
 
-	var lastCommitted int64
-	var err error
-	//timeout := time.After(100 * time.Millisecond)
-	groupTx := []*binlog.BinlogTx{}
-	sid := a.validateServerUUID()
 	go func() {
 		if a.mysqlContext.Gtid == "" {
 			a.logger.Printf("mysql.applier: Operating until row copy is complete")
@@ -829,6 +763,15 @@ func (a *Applier) initiateStreaming() error {
 			}
 			a.logger.Printf("mysql.applier: Row copy complete")
 		}
+
+		if !a.mysqlContext.HasSuperPrivilege {
+			return
+		}
+
+		var lastCommitted int64
+		var err error
+		//timeout := time.After(100 * time.Millisecond)
+		groupTx := []*binlog.BinlogTx{}
 	OUTER:
 		for {
 			select {
@@ -836,18 +779,13 @@ func (a *Applier) initiateStreaming() error {
 				if nil == binlogTx {
 					continue
 				}
-				if sid == binlogTx.SID {
-					return
+				if a.mysqlContext.MySQLServerUuid == binlogTx.SID {
+					continue
 				}
 				if a.mysqlContext.ParallelWorkers <= 1 {
-					if a.mysqlContext.HasSuperPrivilege {
-						if err = a.onApplyTxStructWithSuper(a.dbs[0], binlogTx); err != nil {
-							a.onError(err)
-						}
-					} else {
-						if err = a.onApplyTxStruct(a.dbs[0], binlogTx, false); err != nil {
-							a.onError(err)
-						}
+					if err = a.onApplyTxStructWithSuper(a.dbs[0], binlogTx); err != nil {
+						a.onError(err)
+						break OUTER
 					}
 
 					if !a.shutdown {
@@ -892,6 +830,9 @@ func (a *Applier) initDBConnections() (err error) {
 	if err := a.validateConnection(a.db); err != nil {
 		return err
 	}
+	if err := a.validateServerUUID(); err != nil {
+		return err
+	}
 	/*if err := a.validateTableForeignKeys(); err != nil {
 		return err
 	}*/
@@ -917,13 +858,12 @@ func (a *Applier) initDBConnections() (err error) {
 	return nil
 }
 
-func (a *Applier) validateServerUUID() string {
+func (a *Applier) validateServerUUID() error {
 	query := `SELECT @@SERVER_UUID`
-	var server_uuid string
-	if err := a.db.QueryRow(query).Scan(&server_uuid); err != nil {
-		return ""
+	if err := a.db.QueryRow(query).Scan(&a.mysqlContext.MySQLServerUuid); err != nil {
+		return err
 	}
-	return server_uuid
+	return nil
 }
 
 // validateConnection issues a simple can-connect to MySQL
@@ -960,7 +900,7 @@ func (a *Applier) validateGrants() error {
 			if strings.Contains(grant, "GRANT ALL PRIVILEGES ON `actiontech_udup`.`gtid_executed`") {
 				foundDBAll = true
 			}
-			if base.StringContainsAll(grant, `ALTER`, `CREATE`, `DELETE`, `DROP`, `INDEX`, `INSERT`, `LOCK TABLES`, `SELECT`, `TRIGGER`, `UPDATE`,` ON`) {
+			if base.StringContainsAll(grant, `ALTER`, `CREATE`, `DELETE`, `DROP`, `INDEX`, `INSERT`, `LOCK TABLES`, `SELECT`, `TRIGGER`, `UPDATE`, ` ON`) {
 				foundDBAll = true
 			}
 		}
@@ -1556,20 +1496,29 @@ func (a *Applier) buildDMLEventQuery(dmlEvent binlog.DataEvent) (query string, a
 }
 
 // ApplyEventQueries applies multiple DML queries onto the dest table
-func (a *Applier) ApplyBinlogEvent(db *gosql.DB, events [](binlog.DataEvent)) error {
+func (a *Applier) ApplyBinlogEvent(db *gosql.DB, binlogEntry *binlog.BinlogEntry) error {
 	var totalDelta int64
 
-	/*sessionQuery := `SET
-			SESSION time_zone = '+00:00',
-			sql_mode = CONCAT(@@session.sql_mode, ',STRICT_ALL_TABLES')
-			`
-	if _, err := sql.ExecNoPrepare(a.db,sessionQuery); err != nil {
+	interval, err := base.SelectGtidExecuted(db, binlogEntry.Coordinates.SID, binlogEntry.Coordinates.GNO)
+	if err != nil {
 		return err
-	}*/
-	for _, event := range events {
+	}
+	if interval == "" {
+		return nil
+	}
+
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	sessionQuery := `SET @@session.foreign_key_checks = 0`
+	if _, err := tx.Exec(sessionQuery); err != nil {
+		return err
+	}
+	for _, event := range binlogEntry.Events {
 		switch event.DML {
 		case binlog.NotDML:
-			_, err := sql.ExecNoPrepare(db, event.Query)
+			_, err := tx.Exec(event.Query)
 			if err != nil {
 				if !sql.IgnoreError(err) {
 					a.logger.Errorf("mysql.applier: Exec sql error: %v", err)
@@ -1584,7 +1533,7 @@ func (a *Applier) ApplyBinlogEvent(db *gosql.DB, events [](binlog.DataEvent)) er
 				a.logger.Errorf("mysql.applier: Build dml query error: %v", err)
 				return err
 			}
-			_, err = sql.ExecNoPrepare(db, query, args...)
+			_, err = tx.Exec(query, args...)
 			if err != nil {
 				a.logger.Errorf("mysql.applier: Exec %+v, error: %v", query, err)
 				return err
@@ -1592,10 +1541,36 @@ func (a *Applier) ApplyBinlogEvent(db *gosql.DB, events [](binlog.DataEvent)) er
 			totalDelta += rowDelta
 		}
 	}
+	query := fmt.Sprintf(`
+		delete from
+			actiontech_udup.gtid_executed
+	 	where
+	 		source_uuid = '%s'
+		`,
+		binlogEntry.Coordinates.SID,
+	)
+	if _, err := tx.Exec(query); err != nil {
+		return err
+	}
+	query = fmt.Sprintf(`
+			insert into actiontech_udup.gtid_executed
+  				(source_uuid,interval_gtid)
+  			values
+  				('%s','%s')
+		`,
+		binlogEntry.Coordinates.SID,
+		interval,
+	)
+	if _, err := tx.Exec(query); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return err
+	}
 
 	// no error
-	atomic.AddInt64(&a.mysqlContext.TotalDMLEventsApplied, int64(len(events)))
-	a.logger.Printf("mysql.applier: ApplyDMLEventQueries() applied %d events in one transaction", len(events))
+	atomic.AddInt64(&a.mysqlContext.TotalDMLEventsApplied, int64(len(binlogEntry.Events)))
+	//a.logger.Printf("mysql.applier: ApplyDMLEventQueries() applied %d events in one transaction", len(binlogEntry.Events))
 	return nil
 }
 

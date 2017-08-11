@@ -58,8 +58,9 @@ type Extractor struct {
 	sendByTimeoutCounter  int
 	sendBySizeFullCounter int
 
-	natsConn *gonats.Conn
-	waitCh   chan *models.WaitResult
+	jsonEncodedConn *gonats.EncodedConn
+	natsConn        *gonats.Conn
+	waitCh          chan *models.WaitResult
 
 	shutdown     bool
 	shutdownCh   chan struct{}
@@ -504,13 +505,20 @@ func (e *Extractor) printMigrationStatusHint(databaseName, tableName string) {
 
 func (e *Extractor) initNatsPubClient() (err error) {
 	natsAddr := fmt.Sprintf("nats://%s", e.mysqlContext.NatsAddr)
-	pc, err := gonats.Connect(natsAddr)
+	sc, err := gonats.Connect(natsAddr)
 	if err != nil {
 		e.logger.Errorf("mysql.extractor: Can't connect nats server %v. make sure a nats streaming server is running.%v", natsAddr, err)
 		return err
 	}
+	jsonEncodedConn, err := gonats.NewEncodedConn(sc, gonats.JSON_ENCODER)
+	if err != nil {
+		e.logger.Printf("[ERR] mysql.extractor: Unable to create encoded connection: %v", err)
+		return err
+	}
+	e.jsonEncodedConn = jsonEncodedConn
+
 	e.logger.Debugf("mysql.extractor: Connect nats server %v", natsAddr)
-	e.natsConn = pc
+	e.natsConn = sc
 
 	return nil
 }
@@ -701,78 +709,100 @@ func Encode(v interface{}) ([]byte, error) {
 // StreamEvents will begin streaming events. It will be blocking, so should be
 // executed by a goroutine
 func (e *Extractor) StreamEvents() error {
-	//timeout := time.NewTimer(100 * time.Millisecond)
-	txArray := make([]*binlog.BinlogTx, 0)
-	txBytes := 0
-	subject := fmt.Sprintf("%s_incr", e.subject)
-
-	go func() {
-	OUTER:
-		for {
-			select {
-			case binlogTx := <-e.binlogChannel:
-				{
-					if nil == binlogTx {
-						continue
-					}
-					txArray = append(txArray, binlogTx)
-					txBytes += len([]byte(binlogTx.Query))
-					if txBytes > e.mysqlContext.MsgBytesLimit {
-						txMsg, err := Encode(&txArray)
-						if err != nil {
-							e.onError(err)
-							break OUTER
-						}
-						if len(txMsg) > e.maxPayload {
-							e.onError(gonats.ErrMaxPayload)
-						}
-						if err = e.requestMsg(subject, fmt.Sprintf("%s:1-%d", binlogTx.SID, binlogTx.GNO), txMsg); err != nil {
-							e.onError(err)
-							break OUTER
-						}
-						//send_by_size_full
-						e.sendBySizeFullCounter += len(txArray)
-						txArray = []*binlog.BinlogTx{}
-						txBytes = 0
+	if e.mysqlContext.ApproveHeterogeneous {
+		go func() {
+			for binlogEntry := range e.dataChannel {
+				if nil != binlogEntry {
+					if err := e.jsonEncodedConn.Publish(fmt.Sprintf("%s_incr_heterogeneous", e.subject), binlogEntry); err != nil {
+						e.logger.Printf("[ERR] mysql.extractor: unexpected error on publish, got %v", err)
+						e.onError(err)
+						break
 					}
 				}
-			case <-time.After(100 * time.Millisecond):
-				{
-					if len(txArray) != 0 {
-						txMsg, err := Encode(&txArray)
-						if err != nil {
-							e.onError(err)
-							break OUTER
-						}
-						if len(txMsg) > e.maxPayload {
-							e.onError(gonats.ErrMaxPayload)
-						}
-						if err = e.requestMsg(subject,
-							fmt.Sprintf("%s:1-%d",
-								txArray[len(txArray)-1].SID,
-								txArray[len(txArray)-1].GNO),
-							txMsg); err != nil {
-							e.onError(err)
-							break OUTER
-						}
-						//send_by_timeout
-						e.sendByTimeoutCounter += len(txArray)
-						txArray = []*binlog.BinlogTx{}
-						txBytes = 0
-					}
-				}
-			case <-e.shutdownCh:
-				break OUTER
 			}
+		}()
+		// The next should block and execute forever, unless there's a serious error
+		if err := e.binlogReader.DataStreamEvents(e.dataChannel); err != nil {
+			if e.shutdown {
+				return nil
+			}
+			return fmt.Errorf("mysql.extractor: StreamEvents encountered unexpected error: %+v", err)
 		}
-	}()
-	// The next should block and execute forever, unless there's a serious error
-	if err := e.binlogReader.BinlogStreamEvents(e.binlogChannel); err != nil {
-		if e.shutdown {
-			return nil
+	} else {
+		//timeout := time.NewTimer(100 * time.Millisecond)
+		txArray := make([]*binlog.BinlogTx, 0)
+		txBytes := 0
+		subject := fmt.Sprintf("%s_incr", e.subject)
+
+		go func() {
+		OUTER:
+			for {
+				select {
+				case binlogTx := <-e.binlogChannel:
+					{
+						if nil == binlogTx {
+							continue
+						}
+						txArray = append(txArray, binlogTx)
+						txBytes += len([]byte(binlogTx.Query))
+						if txBytes > e.mysqlContext.MsgBytesLimit {
+							txMsg, err := Encode(&txArray)
+							if err != nil {
+								e.onError(err)
+								break OUTER
+							}
+							if len(txMsg) > e.maxPayload {
+								e.onError(gonats.ErrMaxPayload)
+							}
+							if err = e.requestMsg(subject, fmt.Sprintf("%s:1-%d", binlogTx.SID, binlogTx.GNO), txMsg); err != nil {
+								e.onError(err)
+								break OUTER
+							}
+							//send_by_size_full
+							e.sendBySizeFullCounter += len(txArray)
+							txArray = []*binlog.BinlogTx{}
+							txBytes = 0
+						}
+					}
+				case <-time.After(100 * time.Millisecond):
+					{
+						if len(txArray) != 0 {
+							txMsg, err := Encode(&txArray)
+							if err != nil {
+								e.onError(err)
+								break OUTER
+							}
+							if len(txMsg) > e.maxPayload {
+								e.onError(gonats.ErrMaxPayload)
+							}
+							if err = e.requestMsg(subject,
+								fmt.Sprintf("%s:1-%d",
+									txArray[len(txArray)-1].SID,
+									txArray[len(txArray)-1].GNO),
+								txMsg); err != nil {
+								e.onError(err)
+								break OUTER
+							}
+							//send_by_timeout
+							e.sendByTimeoutCounter += len(txArray)
+							txArray = []*binlog.BinlogTx{}
+							txBytes = 0
+						}
+					}
+				case <-e.shutdownCh:
+					break OUTER
+				}
+			}
+		}()
+		// The next should block and execute forever, unless there's a serious error
+		if err := e.binlogReader.BinlogStreamEvents(e.binlogChannel); err != nil {
+			if e.shutdown {
+				return nil
+			}
+			return fmt.Errorf("mysql.extractor: StreamEvents encountered unexpected error: %+v", err)
 		}
-		return fmt.Errorf("mysql.extractor: StreamEvents encountered unexpected error: %+v", err)
 	}
+
 	return nil
 }
 
