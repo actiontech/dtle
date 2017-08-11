@@ -53,6 +53,7 @@ Config 为该任务中数据相关的配置，字段描述为：
 | 参数名称 | 是否必选  | 类型 | 描述 |
 |---------|---------|---------|---------|
 | Gtid | 否 | String | MySQL Gtid位置 |
+| ApproveHeterogeneous | 否 | Bool | 是否支持异构回放（默认false） |
 | ParallelWorkers | 否 | Int | 并行回放数 |
 | ReplChanBufferSize | 否 | Int | 复制任务缓存限制 |
 | MsgBytesLimit | 否 | Int | 单个消息大小限制 |

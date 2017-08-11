@@ -774,7 +774,7 @@ func resolveDDLSQL(sql string) (sqls []string, ok bool, err error) {
 			if t.Schema.O != "" {
 				db = fmt.Sprintf("%s.", t.Schema.O)
 			}
-			s := fmt.Sprintf("drop table %s %s%s", ex, db, t.Name.L)
+			s := fmt.Sprintf("drop table %s %s`%s`", ex, db, t.Name.L)
 			sqls = append(sqls, s)
 		}
 
