@@ -158,17 +158,17 @@ func (e *Extractor) Run() {
 	e.logger.Printf("mysql.extractor: Extract binlog events from %s.%d", e.mysqlContext.ConnectionConfig.Host, e.mysqlContext.ConnectionConfig.Port)
 	e.mysqlContext.StartTime = time.Now()
 	if err := e.initiateInspector(); err != nil {
-		e.onError(err)
+		e.onError(TaskStateDead,err)
 		return
 	}
 	for _, doDb := range e.mysqlContext.ReplicateDoDb {
 		for _, doTb := range doDb.Tables {
 			if err := e.parser.ParseAlterStatement(doTb.AlterStatement); err != nil {
-				e.onError(err)
+				e.onError(TaskStateDead,err)
 				return
 			}
 			if err := e.validateStatement(doTb); err != nil {
-				e.onError(err)
+				e.onError(TaskStateDead,err)
 				return
 			}
 			/*if err := e.inspector.inspectTables(doDb.Database, doTb); err != nil {
@@ -182,37 +182,37 @@ func (e *Extractor) Run() {
 		}
 	}
 	if err := e.initNatsPubClient(); err != nil {
-		e.onError(err)
+		e.onError(TaskStateDead,err)
 		return
 	}
 	if err := e.initDBConnections(); err != nil {
-		e.onError(err)
+		e.onError(TaskStateDead,err)
 		return
 	}
 	if e.mysqlContext.Gtid == "" {
 		e.mysqlContext.RowCopyStartTime = time.Now()
 		if err := e.mysqlDump(); err != nil {
-			e.onError(err)
+			e.onError(TaskStateDead,err)
 			return
 		}
 		/*if err := e.requestMsg(fmt.Sprintf("%s_full_complete", e.subject), "", []byte(string(e.totalRowCount))); err != nil {
-			e.onError(err)
+			e.onError(TaskStateDead,err)
 			return
 		}*/
 	} else {
 		if err := e.readCurrentBinlogCoordinates(); err != nil {
-			e.onError(err)
+			e.onError(TaskStateDead,err)
 			return
 		}
 	}
 
 	if err := e.initBinlogReader(e.initialBinlogCoordinates); err != nil {
-		e.onError(err)
+		e.onError(TaskStateDead,err)
 		return
 	}
 
 	if err := e.initiateStreaming(); err != nil {
-		e.onError(err)
+		e.onError(TaskStateDead,err)
 		return
 	}
 
@@ -220,13 +220,13 @@ func (e *Extractor) Run() {
 		for {
 			binlogCoordinates, err := base.GetSelfBinlogCoordinates(e.db)
 			if err != nil {
-				e.onError(err)
+				e.onError(TaskStateDead,err)
 				break
 			}
 
 			if e.initialBinlogCoordinates.DisplayString() == binlogCoordinates.DisplayString() {
 				if err := e.requestMsg(fmt.Sprintf("%s_incr_complete", e.subject), "", []byte("0")); err != nil {
-					e.onError(err)
+					e.onError(TaskStateDead,err)
 					return
 				}
 				e.onDone()
@@ -236,13 +236,13 @@ func (e *Extractor) Run() {
 			if e.mysqlContext.Gtid != "" && binlogCoordinates.DisplayString() != "" {
 				equals, err := base.ContrastGtidSet(e.mysqlContext.Gtid, binlogCoordinates.DisplayString())
 				if err != nil {
-					e.onError(err)
+					e.onError(TaskStateDead,err)
 					break
 				}
 
 				if equals {
 					if err := e.requestMsg(fmt.Sprintf("%s_incr_complete", e.subject), "", []byte("1")); err != nil {
-						e.onError(err)
+						e.onError(TaskStateDead,err)
 						return
 					}
 					e.onDone()
@@ -529,17 +529,17 @@ func (e *Extractor) initiateStreaming() error {
 		e.logger.Debugf("mysql.extractor: Beginning streaming")
 		err := e.StreamEvents()
 		if err != nil {
-			e.onError(err)
+			e.onError(TaskStateDead,err)
 		}
 	}()
 
 	go func() {
 		_, err := e.natsConn.Subscribe(fmt.Sprintf("%s_restart", e.subject), func(m *gonats.Msg) {
 			e.mysqlContext.Gtid = string(m.Data)
-			e.onError(fmt.Errorf("restart"))
+			e.onError(TaskStateDead,fmt.Errorf("restart"))
 		})
 		if err != nil {
-			e.onError(err)
+			e.onError(TaskStateDead,err)
 		}
 	}()
 	return nil
@@ -715,7 +715,7 @@ func (e *Extractor) StreamEvents() error {
 				if nil != binlogEntry {
 					if err := e.jsonEncodedConn.Publish(fmt.Sprintf("%s_incr_heterogeneous", e.subject), binlogEntry); err != nil {
 						e.logger.Printf("[ERR] mysql.extractor: unexpected error on publish, got %v", err)
-						e.onError(err)
+						e.onError(TaskStateDead,err)
 						break
 					}
 				}
@@ -748,14 +748,14 @@ func (e *Extractor) StreamEvents() error {
 						if txBytes > e.mysqlContext.MsgBytesLimit {
 							txMsg, err := Encode(&txArray)
 							if err != nil {
-								e.onError(err)
+								e.onError(TaskStateDead,err)
 								break OUTER
 							}
 							if len(txMsg) > e.maxPayload {
-								e.onError(gonats.ErrMaxPayload)
+								e.onError(TaskStateDead,gonats.ErrMaxPayload)
 							}
 							if err = e.requestMsg(subject, fmt.Sprintf("%s:1-%d", binlogTx.SID, binlogTx.GNO), txMsg); err != nil {
-								e.onError(err)
+								e.onError(TaskStateDead,err)
 								break OUTER
 							}
 							//send_by_size_full
@@ -769,18 +769,18 @@ func (e *Extractor) StreamEvents() error {
 						if len(txArray) != 0 {
 							txMsg, err := Encode(&txArray)
 							if err != nil {
-								e.onError(err)
+								e.onError(TaskStateDead,err)
 								break OUTER
 							}
 							if len(txMsg) > e.maxPayload {
-								e.onError(gonats.ErrMaxPayload)
+								e.onError(TaskStateDead,gonats.ErrMaxPayload)
 							}
 							if err = e.requestMsg(subject,
 								fmt.Sprintf("%s:1-%d",
 									txArray[len(txArray)-1].SID,
 									txArray[len(txArray)-1].GNO),
 								txMsg); err != nil {
-								e.onError(err)
+								e.onError(TaskStateDead,err)
 								break OUTER
 							}
 							//send_by_timeout
@@ -969,29 +969,29 @@ func (e *Extractor) mysqlDump() error {
 			e.logger.Printf("mysql.extractor: Step 3: - scanning table '%s.%s' (%d of %d tables)", t.TableSchema, t.TableName, counter, len(e.tables))
 			tx, err := e.singletonDB.Begin()
 			if err != nil {
-				e.onError(err)
+				e.onError(TaskStateDead,err)
 			}
 			d := NewDumper(tx, t.TableSchema, t.TableName, e.logger)
 			if err := d.Dump(1); err != nil {
-				e.onError(err)
+				e.onError(TaskStateDead,err)
 			}
 			e.dumpers = append(e.dumpers, d)
 			// Scan the rows in the table ...
 			for i := 0; i < d.entriesCount; i++ {
 				entry := <-d.resultsChannel
 				if entry.err != nil {
-					e.onError(entry.err)
+					e.onError(TaskStateDead,entry.err)
 				}
 				entry.SystemVariablesStatement = setSystemVariablesStatement
 				entry.SqlMode = setSqlMode
 				if err = e.encodeDumpEntry(entry); err != nil {
-					e.onError(err)
+					e.onError(TaskStateDead,err)
 				}
 				e.totalRowCount += int(entry.Counter)
 			}
 
 			if err := tx.Commit(); err != nil {
-				e.onError(err)
+				e.onError(TaskStateDead,err)
 			}
 			close(d.resultsChannel)
 			pool.Done()
@@ -1141,11 +1141,11 @@ func (e *Extractor) ID() string {
 	return string(data)
 }
 
-func (e *Extractor) onError(err error) {
+func (e *Extractor) onError(state int,err error) {
 	if e.shutdown {
 		return
 	}
-	e.waitCh <- models.NewWaitResult(1, err)
+	e.waitCh <- models.NewWaitResult(state, err)
 	e.Shutdown()
 }
 

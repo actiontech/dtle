@@ -389,6 +389,10 @@ func (r *WaitResult) Successful() bool {
 	return r.ExitCode == 0 && r.Err == nil
 }
 
+func (r *WaitResult) ShouldRestart() bool {
+	return r.ExitCode == 1 && r.Err != nil
+}
+
 func (r *WaitResult) String() string {
 	return fmt.Sprintf("Wait returned exit code %v, and error %v",
 		r.ExitCode, r.Err)

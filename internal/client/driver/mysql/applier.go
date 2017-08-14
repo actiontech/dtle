@@ -27,6 +27,12 @@ import (
 )
 
 const (
+	TaskStateComplete int = iota
+	TaskStateRestart
+	TaskStateDead
+)
+
+const (
 	applyDataQueueBuffer = 600
 )
 
@@ -131,11 +137,11 @@ func (a *Applier) consumeRowCopyComplete() {
 	_, err := a.natsConn.Subscribe(fmt.Sprintf("%s_full_complete", a.subject), func(m *gonats.Msg) {
 		rowCount = fmt.Sprintf("%s", m.Data)
 		if err := a.natsConn.Publish(m.Reply, nil); err != nil {
-			a.onError(err)
+			a.onError(TaskStateDead,err)
 		}
 	})
 	if err != nil {
-		a.onError(err)
+		a.onError(TaskStateDead,err)
 	}
 
 	for {
@@ -178,26 +184,26 @@ func (a *Applier) Run() {
 	for _, doDb := range a.mysqlContext.ReplicateDoDb {
 		for _, doTb := range doDb.Tables {
 			if err := a.parser.ParseAlterStatement(doTb.AlterStatement); err != nil {
-				a.onError(err)
+				a.onError(TaskStateDead,err)
 				return
 			}
 			if err := a.validateStatement(doTb); err != nil {
-				a.onError(err)
+				a.onError(TaskStateDead,err)
 				return
 			}
 		}
 	}
 	if err := a.initDBConnections(); err != nil {
-		a.onError(err)
+		a.onError(TaskStateDead,err)
 		return
 	}
 	if err := a.initNatSubClient(); err != nil {
-		a.onError(err)
+		a.onError(TaskStateDead,err)
 		return
 	}
 
 	if err := a.initiateStreaming(); err != nil {
-		a.onError(err)
+		a.onError(TaskStateDead,err)
 		return
 	}
 
@@ -214,32 +220,32 @@ func (a *Applier) Run() {
 		_, err := a.natsConn.Subscribe(fmt.Sprintf("%s_incr_complete", a.subject), func(m *gonats.Msg) {
 			completeFlag = string(m.Data)
 			if err := a.natsConn.Publish(m.Reply, nil); err != nil {
-				a.onError(err)
+				a.onError(TaskStateDead,err)
 			}
 		})
 		if err != nil {
-			a.onError(err)
+			a.onError(TaskStateDead,err)
 		}
 		for {
 			if completeFlag != "" {
 				switch completeFlag {
 				case "0":
-					a.onDone()
+					a.onError(TaskStateComplete,nil)
 					break
 				default:
 					binlogCoordinates, err := base.GetSelfBinlogCoordinates(a.singletonDB)
 					if err != nil {
-						a.onError(err)
+						a.onError(TaskStateDead,err)
 						break
 					}
 					if a.mysqlContext.Gtid != "" && binlogCoordinates.DisplayString() != "" {
 						equals, err := base.ContrastGtidSet(a.mysqlContext.Gtid, binlogCoordinates.DisplayString())
 						if err != nil {
-							a.onError(err)
+							a.onError(TaskStateDead,err)
 							break
 						}
 						if equals {
-							a.onDone()
+							a.onError(TaskStateComplete,nil)
 							break
 						}
 					}
@@ -519,7 +525,7 @@ func (a *Applier) onApplyTxStructWithSuper(dbApplier *sql.DB, binlogTx *binlog.B
 	defer func() {
 		_, err := sql.ExecNoPrepare(dbApplier.Db, `commit;set gtid_next='automatic'`)
 		if err != nil {
-			a.onError(err)
+			a.onError(TaskStateDead,err)
 		}
 		dbApplier.DbMutex.Unlock()
 	}()
@@ -585,7 +591,7 @@ OUTER:
 					continue
 				}*/
 				if err := a.ApplyBinlogEvent(a.db, binlogEntry); err != nil {
-					a.onError(err)
+					a.onError(TaskStateDead,err)
 					break OUTER
 				}
 				if !a.shutdown {
@@ -602,7 +608,7 @@ OUTER:
 					go func(tx *binlog.BinlogTx) {
 						a.wg.Add(1)
 						if err := a.onApplyTxStructWithSuper(dbApplier, tx); err != nil {
-							a.onError(err)
+							a.onError(TaskStateDead,err)
 						}
 						a.wg.Done()
 					}(binlogTx)
@@ -618,7 +624,7 @@ OUTER:
 						dbApplier = a.dbs[idx%a.mysqlContext.ParallelWorkers]
 						go func(tx *binlog.BinlogTx) {
 							if err := a.onApplyTxStruct(dbApplier, tx, true); err != nil {
-								a.onError(err)
+								a.onError(TaskStateDead,err)
 							}
 							a.wg.Done()
 						}(binlogTx)
@@ -626,7 +632,7 @@ OUTER:
 					a.wg.Wait() // Waiting for all goroutines to finish
 
 					if err := a.onApplyTxStruct(a.dbs[(len(groupTx)-1)%a.mysqlContext.ParallelWorkers], groupTx[len(groupTx)-1], false); err != nil {
-						a.onError(err)
+						a.onError(TaskStateDead,err)
 					}
 				}*/
 
@@ -647,12 +653,12 @@ OUTER:
 				}
 				if copyRows.DbSQL != "" || copyRows.TbSQL != "" {
 					if err := a.ApplyEventQueries(a.db, copyRows); err != nil {
-						a.onError(err)
+						a.onError(TaskStateDead,err)
 					}
 				} else {
 					go func() {
 						if err := a.ApplyEventQueries(a.db, copyRows); err != nil {
-							a.onError(err)
+							a.onError(TaskStateDead,err)
 						}
 					}()
 				}
@@ -710,12 +716,12 @@ func (a *Applier) initiateStreaming() error {
 		_, err := a.natsConn.Subscribe(fmt.Sprintf("%s_full", a.subject), func(m *gonats.Msg) {
 			dumpData := &dumpEntry{}
 			if err := Decode(m.Data, dumpData); err != nil {
-				a.onError(err)
+				a.onError(TaskStateDead,err)
 			}
 			a.copyRowsQueue <- dumpData
 			a.totalRowCount += dumpData.Counter
 			if err := a.natsConn.Publish(m.Reply, nil); err != nil {
-				a.onError(err)
+				a.onError(TaskStateDead,err)
 			}
 		})
 		if err != nil {
@@ -738,13 +744,13 @@ func (a *Applier) initiateStreaming() error {
 		_, err := a.natsConn.Subscribe(fmt.Sprintf("%s_incr", a.subject), func(m *gonats.Msg) {
 			var binlogTx []*binlog.BinlogTx
 			if err := Decode(m.Data, &binlogTx); err != nil {
-				a.onError(err)
+				a.onError(TaskStateDead,err)
 			}
 			for _, tx := range binlogTx {
 				a.applyBinlogTxQueue <- tx
 			}
 			if err := a.natsConn.Publish(m.Reply, nil); err != nil {
-				a.onError(err)
+				a.onError(TaskStateDead,err)
 			}
 		})
 		if err != nil {
@@ -787,7 +793,7 @@ func (a *Applier) initiateStreaming() error {
 				}
 				if a.mysqlContext.ParallelWorkers <= 1 {
 					if err = a.onApplyTxStructWithSuper(a.dbs[0], binlogTx); err != nil {
-						a.onError(err)
+						a.onError(TaskStateDead,err)
 						break OUTER
 					}
 
@@ -1732,25 +1738,23 @@ func (a *Applier) ID() string {
 	return string(data)
 }
 
-func (a *Applier) onError(err error) {
+func (a *Applier) onError(state int,err error) {
 	if a.shutdown {
 		return
 	}
-	if a.natsConn != nil {
-		if err := a.natsConn.Publish(fmt.Sprintf("%s_restart", a.subject), []byte(a.mysqlContext.Gtid)); err != nil {
-			a.logger.Errorf("mysql.applier: Trigger restart extractor : %v", err)
+	switch state {
+	case TaskStateComplete:
+		a.logger.Printf("mysql.applier: Done migrating")
+	case TaskStateRestart:
+		if a.natsConn != nil {
+			if err := a.natsConn.Publish(fmt.Sprintf("%s_restart", a.subject), []byte(a.mysqlContext.Gtid)); err != nil {
+				a.logger.Errorf("mysql.applier: Trigger restart extractor : %v", err)
+			}
 		}
+	default:
 	}
-	a.waitCh <- models.NewWaitResult(1, err)
-	a.Shutdown()
-}
 
-func (a *Applier) onDone() {
-	if a.shutdown {
-		return
-	}
-	a.logger.Printf("mysql.applier: Done migrating")
-	a.waitCh <- models.NewWaitResult(0, nil)
+	a.waitCh <- models.NewWaitResult(state, err)
 	a.Shutdown()
 }
 
