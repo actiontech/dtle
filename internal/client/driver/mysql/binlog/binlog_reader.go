@@ -155,31 +155,10 @@ func (b *BinlogReader) handleRowsEvent(ev *replication.BinlogEvent, entriesChann
 		evt := ev.Event.(*replication.QueryEvent)
 		query := string(evt.Query)
 
-		if skipQueryEvent(query) {
-			//b.logger.Warnf("skip query %s", query)
-			return nil
-		}
-
-		sqls, ok, err := resolveDDLSQL(query)
-		if err != nil {
-			return fmt.Errorf("parse query event failed: %v", err)
-		}
-		if !ok {
-			return nil
-		}
-
-		for _, sql := range sqls {
-			if b.skipQueryDDL(sql, string(evt.Schema)) {
-				//b.logger.Debugf("mysql.reader: skip query-ddl-sql,schema:%s,sql:%s", evt.Schema, sql)
-				continue
-			}
-
-			sql, err = GenDDLSQL(sql, string(evt.Schema))
-			if err != nil {
-				return err
-			}
+		if strings.ToUpper(query) == "BEGIN" {
+			b.currentBinlogEntry.hasBeginQuery = true
 			event := NewDataEvent(
-				sql,
+				query,
 				"",
 				"",
 				NotDML,
@@ -187,11 +166,57 @@ func (b *BinlogReader) handleRowsEvent(ev *replication.BinlogEvent, entriesChann
 				nil,
 			)
 			b.currentBinlogEntry.Events = append(b.currentBinlogEntry.Events, event)
+		} else {
+			if strings.ToUpper(query) == "COMMIT" || !b.currentBinlogEntry.hasBeginQuery {
+				if skipQueryEvent(query) {
+					b.logger.Warnf("skip query %s", query)
+					return nil
+				}
+
+				sqls, ok, err := resolveDDLSQL(query)
+				if err != nil {
+					return fmt.Errorf("parse query [%v] event failed: %v", query, err)
+				}
+				if !ok {
+					event := NewDataEvent(
+						query,
+						"",
+						"",
+						NotDML,
+						nil,
+						nil,
+					)
+					b.currentBinlogEntry.Events = append(b.currentBinlogEntry.Events, event)
+					entriesChannel <- b.currentBinlogEntry
+					return nil
+				}
+
+				for _, sql := range sqls {
+					if b.skipQueryDDL(sql, string(evt.Schema)) {
+						//b.logger.Debugf("mysql.reader: skip QueryEvent at schema: %s,sql: %s", fmt.Sprintf("%s", evt.Schema), sql)
+						continue
+					}
+
+					sql, err = GenDDLSQL(sql, string(evt.Schema))
+					if err != nil {
+						return err
+					}
+					event := NewDataEvent(
+						sql,
+						"",
+						"",
+						NotDML,
+						nil,
+						nil,
+					)
+					b.currentBinlogEntry.Events = append(b.currentBinlogEntry.Events, event)
+				}
+				entriesChannel <- b.currentBinlogEntry
+			}
 		}
-		entriesChannel <- b.currentBinlogEntry
 	case replication.WRITE_ROWS_EVENTv0, replication.WRITE_ROWS_EVENTv1, replication.WRITE_ROWS_EVENTv2:
 		rowsEvent := ev.Event.(*replication.RowsEvent)
-		if b.skipRowEvent(string(rowsEvent.Table.Schema), string(rowsEvent.Table.Table)) {
+		if b.skipRowEvent(rowsEvent) {
 			//b.logger.Debugf("mysql.reader: skip WRITE_ROWS_EVENTv2[%s-%s]", rowsEvent.Table.Schema, rowsEvent.Table.Table)
 			return nil
 		}
@@ -208,13 +233,12 @@ func (b *BinlogReader) handleRowsEvent(ev *replication.BinlogEvent, entriesChann
 			originalTableUniqueKeys,
 		)
 		for _, row := range rowsEvent.Rows {
-			//dmlEvent.NewColumnValues = mysql.ToColumnValues(row)
 			dmlEvent.NewColumnValues = append(dmlEvent.NewColumnValues, mysql.ToColumnValues(row))
 		}
 		b.currentBinlogEntry.Events = append(b.currentBinlogEntry.Events, dmlEvent)
 	case replication.UPDATE_ROWS_EVENTv0, replication.UPDATE_ROWS_EVENTv1, replication.UPDATE_ROWS_EVENTv2:
 		rowsEvent := ev.Event.(*replication.RowsEvent)
-		if b.skipRowEvent(string(rowsEvent.Table.Schema), string(rowsEvent.Table.Table)) {
+		if b.skipRowEvent(rowsEvent) {
 			//b.logger.Debugf("mysql.reader: skip WRITE_ROWS_EVENTv2[%s-%s]", rowsEvent.Table.Schema, rowsEvent.Table.Table)
 			return nil
 		}
@@ -243,7 +267,7 @@ func (b *BinlogReader) handleRowsEvent(ev *replication.BinlogEvent, entriesChann
 		b.currentBinlogEntry.Events = append(b.currentBinlogEntry.Events, dmlEvent)
 	case replication.DELETE_ROWS_EVENTv0, replication.DELETE_ROWS_EVENTv1, replication.DELETE_ROWS_EVENTv2:
 		rowsEvent := ev.Event.(*replication.RowsEvent)
-		if b.skipRowEvent(string(rowsEvent.Table.Schema), string(rowsEvent.Table.Table)) {
+		if b.skipRowEvent(rowsEvent) {
 			//b.logger.Debugf("mysql.reader: skip WRITE_ROWS_EVENTv2[%s-%s]", rowsEvent.Table.Schema, rowsEvent.Table.Table)
 			return nil
 		}
@@ -508,7 +532,7 @@ func (b *BinlogReader) handleBinlogRowsEvent(ev *replication.BinlogEvent, txChan
 	case replication.TABLE_MAP_EVENT:
 		evt := ev.Event.(*replication.TableMapEvent)
 
-		if b.skipRowEvent(string(evt.Schema), string(evt.Table)) {
+		if b.skipEvent(string(evt.Schema), string(evt.Table)) {
 			//b.logger.Debugf("mysql.reader: skip TableMapEvent at schema: %s,table: %s", fmt.Sprintf("%s", evt.Schema), fmt.Sprintf("%s", evt.Table))
 			return nil
 		}
@@ -523,7 +547,7 @@ func (b *BinlogReader) handleBinlogRowsEvent(ev *replication.BinlogEvent, txChan
 
 	case replication.WRITE_ROWS_EVENTv0, replication.WRITE_ROWS_EVENTv1, replication.WRITE_ROWS_EVENTv2:
 		evt := ev.Event.(*replication.RowsEvent)
-		if b.skipRowEvent(string(evt.Table.Schema), string(evt.Table.Table)) {
+		if b.skipEvent(string(evt.Table.Schema), string(evt.Table.Table)) {
 			//b.logger.Debugf("mysql.reader: skip RowsEvent at schema: %s,table: %s", fmt.Sprintf("%s", evt.Table.Schema), fmt.Sprintf("%s", evt.Table.Table))
 			return nil
 		}
@@ -539,7 +563,7 @@ func (b *BinlogReader) handleBinlogRowsEvent(ev *replication.BinlogEvent, txChan
 
 	case replication.UPDATE_ROWS_EVENTv0, replication.UPDATE_ROWS_EVENTv1, replication.UPDATE_ROWS_EVENTv2:
 		evt := ev.Event.(*replication.RowsEvent)
-		if b.skipRowEvent(string(evt.Table.Schema), string(evt.Table.Table)) {
+		if b.skipEvent(string(evt.Table.Schema), string(evt.Table.Table)) {
 			//b.logger.Debugf("mysql.reader: skip RowsEvent at schema: %s,table: %s", fmt.Sprintf("%s", evt.Table.Schema), fmt.Sprintf("%s", evt.Table.Table))
 			return nil
 		}
@@ -555,7 +579,7 @@ func (b *BinlogReader) handleBinlogRowsEvent(ev *replication.BinlogEvent, txChan
 
 	case replication.DELETE_ROWS_EVENTv0, replication.DELETE_ROWS_EVENTv1, replication.DELETE_ROWS_EVENTv2:
 		evt := ev.Event.(*replication.RowsEvent)
-		if b.skipRowEvent(string(evt.Table.Schema), string(evt.Table.Table)) {
+		if b.skipEvent(string(evt.Table.Schema), string(evt.Table.Table)) {
 			//b.logger.Debugf("mysql.reader: skip RowsEvent at schema: %s,table: %s", fmt.Sprintf("%s", evt.Table.Schema), fmt.Sprintf("%s", evt.Table.Table))
 			return nil
 		}
@@ -888,7 +912,7 @@ func skipQueryEvent(sql string) bool {
 	return false
 }
 
-func (b *BinlogReader) skipRowEvent(schema string, table string) bool {
+func (b *BinlogReader) skipEvent(schema string, table string) bool {
 	switch strings.ToLower(schema) {
 	case "sys", "mysql", "information_schema", "performance_schema":
 		return true
@@ -898,6 +922,35 @@ func (b *BinlogReader) skipRowEvent(schema string, table string) bool {
 			//if table in tartget Table, do this event
 			for _, d := range b.MysqlContext.ReplicateDoDb {
 				if b.matchString(d.TableSchema, schema) || d.TableSchema == "" {
+					if len(d.Tables) == 0 {
+						return false
+					}
+					for _, dt := range d.Tables {
+						if b.matchString(dt.TableName, table) {
+							return false
+						}
+					}
+				}
+			}
+			return true
+		}
+	}
+	return false
+}
+
+func (b *BinlogReader) skipRowEvent(rowsEvent *replication.RowsEvent) bool {
+	switch strings.ToLower(string(rowsEvent.Table.Schema)) {
+	case "actiontech_udup":
+		b.currentBinlogEntry.Coordinates.OSID = mysql.ToColumnValues(rowsEvent.Rows[0]).StringColumn(0)
+		return true
+	case "sys", "mysql", "information_schema", "performance_schema":
+		return true
+	default:
+		if len(b.MysqlContext.ReplicateDoDb) > 0 {
+			table := strings.ToLower(string(rowsEvent.Table.Table))
+			//if table in tartget Table, do this event
+			for _, d := range b.MysqlContext.ReplicateDoDb {
+				if b.matchString(d.TableSchema, string(rowsEvent.Table.Schema)) || d.TableSchema == "" {
 					if len(d.Tables) == 0 {
 						return false
 					}

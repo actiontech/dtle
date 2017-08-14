@@ -581,12 +581,15 @@ OUTER:
 				if nil == binlogEntry {
 					continue
 				}
-				if a.mysqlContext.MySQLServerUuid == binlogEntry.Coordinates.SID {
+				/*if a.mysqlContext.MySQLServerUuid == binlogEntry.Coordinates.OSID {
 					continue
-				}
+				}*/
 				if err := a.ApplyBinlogEvent(a.db, binlogEntry); err != nil {
 					a.onError(err)
 					break OUTER
+				}
+				if !a.shutdown {
+					a.mysqlContext.Gtid = fmt.Sprintf("%s:1-%d", binlogEntry.Coordinates.SID,binlogEntry.Coordinates.GNO)
 				}
 			}
 		case groupTx := <-a.applyBinlogGroupTxQueue:
@@ -723,7 +726,7 @@ func (a *Applier) initiateStreaming() error {
 		}*/
 	}
 
-	if !a.mysqlContext.HasSuperPrivilege {
+	if a.mysqlContext.ApproveHeterogeneous {
 		_, err := a.jsonEncodedConn.Subscribe(fmt.Sprintf("%s_incr_heterogeneous", a.subject), func(binlogEntry *binlog.BinlogEntry) {
 			//a.logger.Debugf("mysql.applier: received binlogEntry: %+v", binlogEntry)
 			a.applyDataEntryQueue <- binlogEntry
@@ -764,7 +767,7 @@ func (a *Applier) initiateStreaming() error {
 			a.logger.Printf("mysql.applier: Row copy complete")
 		}
 
-		if !a.mysqlContext.HasSuperPrivilege {
+		if a.mysqlContext.ApproveHeterogeneous {
 			return
 		}
 
@@ -843,7 +846,7 @@ func (a *Applier) initDBConnections() (err error) {
 	if err := a.validateAndReadTimeZone(); err != nil {
 		return err
 	}
-	if !a.mysqlContext.HasSuperPrivilege {
+	if a.mysqlContext.ApproveHeterogeneous {
 		if err := a.createTableGtidExecuted(); err != nil {
 			return err
 		}
@@ -1428,10 +1431,10 @@ func (a *Applier) InspectTableColumnsAndUniqueKeys(databaseName, tableName strin
 }
 
 // getSharedColumns returns the intersection of two lists of columns in same order as the first list
-func (a *Applier) getSharedColumns(originalColumns, ghostColumns *umconf.ColumnList, columnRenameMap map[string]string) (*umconf.ColumnList, *umconf.ColumnList) {
+func (a *Applier) getSharedColumns(originalColumns, columns *umconf.ColumnList, columnRenameMap map[string]string) (*umconf.ColumnList, *umconf.ColumnList) {
 	columnsInGhost := make(map[string]bool)
-	for _, ghostColumn := range ghostColumns.Names() {
-		columnsInGhost[ghostColumn] = true
+	for _, column := range columns.Names() {
+		columnsInGhost[column] = true
 	}
 	sharedColumnNames := []string{}
 	for _, originalColumn := range originalColumns.Names() {
@@ -1535,7 +1538,7 @@ func (a *Applier) ApplyBinlogEvent(db *gosql.DB, binlogEntry *binlog.BinlogEntry
 			}
 			_, err = tx.Exec(query, args...)
 			if err != nil {
-				a.logger.Errorf("mysql.applier: Exec %+v, error: %v", query, err)
+				a.logger.Errorf("mysql.applier: Exec %+v,args: %v,gtid: %s:%d, error: %v", query,args,binlogEntry.Coordinates.SID,binlogEntry.Coordinates.GNO, err)
 				return err
 			}
 			totalDelta += rowDelta
