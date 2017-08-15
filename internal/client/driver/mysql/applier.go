@@ -137,11 +137,11 @@ func (a *Applier) consumeRowCopyComplete() {
 	_, err := a.natsConn.Subscribe(fmt.Sprintf("%s_full_complete", a.subject), func(m *gonats.Msg) {
 		rowCount = fmt.Sprintf("%s", m.Data)
 		if err := a.natsConn.Publish(m.Reply, nil); err != nil {
-			a.onError(TaskStateDead,err)
+			a.onError(TaskStateDead, err)
 		}
 	})
 	if err != nil {
-		a.onError(TaskStateDead,err)
+		a.onError(TaskStateDead, err)
 	}
 
 	for {
@@ -184,26 +184,26 @@ func (a *Applier) Run() {
 	for _, doDb := range a.mysqlContext.ReplicateDoDb {
 		for _, doTb := range doDb.Tables {
 			if err := a.parser.ParseAlterStatement(doTb.AlterStatement); err != nil {
-				a.onError(TaskStateDead,err)
+				a.onError(TaskStateDead, err)
 				return
 			}
 			if err := a.validateStatement(doTb); err != nil {
-				a.onError(TaskStateDead,err)
+				a.onError(TaskStateDead, err)
 				return
 			}
 		}
 	}
 	if err := a.initDBConnections(); err != nil {
-		a.onError(TaskStateDead,err)
+		a.onError(TaskStateDead, err)
 		return
 	}
 	if err := a.initNatSubClient(); err != nil {
-		a.onError(TaskStateDead,err)
+		a.onError(TaskStateDead, err)
 		return
 	}
 
 	if err := a.initiateStreaming(); err != nil {
-		a.onError(TaskStateDead,err)
+		a.onError(TaskStateDead, err)
 		return
 	}
 
@@ -220,32 +220,32 @@ func (a *Applier) Run() {
 		_, err := a.natsConn.Subscribe(fmt.Sprintf("%s_incr_complete", a.subject), func(m *gonats.Msg) {
 			completeFlag = string(m.Data)
 			if err := a.natsConn.Publish(m.Reply, nil); err != nil {
-				a.onError(TaskStateDead,err)
+				a.onError(TaskStateDead, err)
 			}
 		})
 		if err != nil {
-			a.onError(TaskStateDead,err)
+			a.onError(TaskStateDead, err)
 		}
 		for {
 			if completeFlag != "" {
 				switch completeFlag {
 				case "0":
-					a.onError(TaskStateComplete,nil)
+					a.onError(TaskStateComplete, nil)
 					break
 				default:
 					binlogCoordinates, err := base.GetSelfBinlogCoordinates(a.singletonDB)
 					if err != nil {
-						a.onError(TaskStateDead,err)
+						a.onError(TaskStateDead, err)
 						break
 					}
 					if a.mysqlContext.Gtid != "" && binlogCoordinates.DisplayString() != "" {
 						equals, err := base.ContrastGtidSet(a.mysqlContext.Gtid, binlogCoordinates.DisplayString())
 						if err != nil {
-							a.onError(TaskStateDead,err)
+							a.onError(TaskStateDead, err)
 							break
 						}
 						if equals {
-							a.onError(TaskStateComplete,nil)
+							a.onError(TaskStateComplete, nil)
 							break
 						}
 					}
@@ -525,7 +525,7 @@ func (a *Applier) onApplyTxStructWithSuper(dbApplier *sql.DB, binlogTx *binlog.B
 	defer func() {
 		_, err := sql.ExecNoPrepare(dbApplier.Db, `commit;set gtid_next='automatic'`)
 		if err != nil {
-			a.onError(TaskStateDead,err)
+			a.onError(TaskStateDead, err)
 		}
 		dbApplier.DbMutex.Unlock()
 	}()
@@ -591,11 +591,11 @@ OUTER:
 					continue
 				}*/
 				if err := a.ApplyBinlogEvent(a.db, binlogEntry); err != nil {
-					a.onError(TaskStateDead,err)
+					a.onError(TaskStateDead, err)
 					break OUTER
 				}
 				if !a.shutdown {
-					a.mysqlContext.Gtid = fmt.Sprintf("%s:1-%d", binlogEntry.Coordinates.SID,binlogEntry.Coordinates.GNO)
+					a.mysqlContext.Gtid = fmt.Sprintf("%s:1-%d", binlogEntry.Coordinates.SID, binlogEntry.Coordinates.GNO)
 				}
 			}
 		case groupTx := <-a.applyBinlogGroupTxQueue:
@@ -608,7 +608,7 @@ OUTER:
 					go func(tx *binlog.BinlogTx) {
 						a.wg.Add(1)
 						if err := a.onApplyTxStructWithSuper(dbApplier, tx); err != nil {
-							a.onError(TaskStateDead,err)
+							a.onError(TaskStateDead, err)
 						}
 						a.wg.Done()
 					}(binlogTx)
@@ -653,12 +653,12 @@ OUTER:
 				}
 				if copyRows.DbSQL != "" || copyRows.TbSQL != "" {
 					if err := a.ApplyEventQueries(a.db, copyRows); err != nil {
-						a.onError(TaskStateDead,err)
+						a.onError(TaskStateDead, err)
 					}
 				} else {
 					go func() {
 						if err := a.ApplyEventQueries(a.db, copyRows); err != nil {
-							a.onError(TaskStateDead,err)
+							a.onError(TaskStateDead, err)
 						}
 					}()
 				}
@@ -716,12 +716,12 @@ func (a *Applier) initiateStreaming() error {
 		_, err := a.natsConn.Subscribe(fmt.Sprintf("%s_full", a.subject), func(m *gonats.Msg) {
 			dumpData := &dumpEntry{}
 			if err := Decode(m.Data, dumpData); err != nil {
-				a.onError(TaskStateDead,err)
+				a.onError(TaskStateDead, err)
 			}
 			a.copyRowsQueue <- dumpData
 			a.totalRowCount += dumpData.Counter
 			if err := a.natsConn.Publish(m.Reply, nil); err != nil {
-				a.onError(TaskStateDead,err)
+				a.onError(TaskStateDead, err)
 			}
 		})
 		if err != nil {
@@ -744,13 +744,13 @@ func (a *Applier) initiateStreaming() error {
 		_, err := a.natsConn.Subscribe(fmt.Sprintf("%s_incr", a.subject), func(m *gonats.Msg) {
 			var binlogTx []*binlog.BinlogTx
 			if err := Decode(m.Data, &binlogTx); err != nil {
-				a.onError(TaskStateDead,err)
+				a.onError(TaskStateDead, err)
 			}
 			for _, tx := range binlogTx {
 				a.applyBinlogTxQueue <- tx
 			}
 			if err := a.natsConn.Publish(m.Reply, nil); err != nil {
-				a.onError(TaskStateDead,err)
+				a.onError(TaskStateDead, err)
 			}
 		})
 		if err != nil {
@@ -793,7 +793,7 @@ func (a *Applier) initiateStreaming() error {
 				}
 				if a.mysqlContext.ParallelWorkers <= 1 {
 					if err = a.onApplyTxStructWithSuper(a.dbs[0], binlogTx); err != nil {
-						a.onError(TaskStateDead,err)
+						a.onError(TaskStateDead, err)
 						break OUTER
 					}
 
@@ -1485,7 +1485,7 @@ func (a *Applier) buildDMLEventQuery(dmlEvent binlog.DataEvent) (query string, a
 	switch dmlEvent.DML {
 	case binlog.DeleteDML:
 		{
-			query, uniqueKeyArgs, err := sql.BuildDMLDeleteQuery(dmlEvent.DatabaseName, dmlEvent.TableName, destTableColumns, dmlEvent.WhereColumnValues.GetAbstractValues())
+			query, uniqueKeyArgs, err := sql.BuildDMLDeleteQuery(dmlEvent.DatabaseName, dmlEvent.TableName, destTableColumns, dmlEvent.WhereColumnValues)
 			return query, uniqueKeyArgs, -1, err
 		}
 	case binlog.InsertDML:
@@ -1495,7 +1495,7 @@ func (a *Applier) buildDMLEventQuery(dmlEvent binlog.DataEvent) (query string, a
 		}
 	case binlog.UpdateDML:
 		{
-			query, sharedArgs, uniqueKeyArgs, err := sql.BuildDMLUpdateQuery(dmlEvent.DatabaseName, dmlEvent.TableName, destTableColumns, sharedColumns, mappedSharedColumns, dmlEvent.NewColumnValues, dmlEvent.WhereColumnValues.GetAbstractValues())
+			query, sharedArgs, uniqueKeyArgs, err := sql.BuildDMLUpdateQuery(dmlEvent.DatabaseName, dmlEvent.TableName, destTableColumns, sharedColumns, mappedSharedColumns, dmlEvent.NewColumnValues, dmlEvent.WhereColumnValues)
 			args = append(args, sharedArgs...)
 			args = append(args, uniqueKeyArgs...)
 			return query, args, 0, err
@@ -1544,7 +1544,7 @@ func (a *Applier) ApplyBinlogEvent(db *gosql.DB, binlogEntry *binlog.BinlogEntry
 			}
 			_, err = tx.Exec(query, args...)
 			if err != nil {
-				a.logger.Errorf("mysql.applier: Exec %+v,args: %v,gtid: %s:%d, error: %v", query,args,binlogEntry.Coordinates.SID,binlogEntry.Coordinates.GNO, err)
+				a.logger.Errorf("mysql.applier: Exec %+v,args: %v,gtid: %s:%d, error: %v", query, args, binlogEntry.Coordinates.SID, binlogEntry.Coordinates.GNO, err)
 				return err
 			}
 			totalDelta += rowDelta
@@ -1738,7 +1738,7 @@ func (a *Applier) ID() string {
 	return string(data)
 }
 
-func (a *Applier) onError(state int,err error) {
+func (a *Applier) onError(state int, err error) {
 	if a.shutdown {
 		return
 	}

@@ -9,8 +9,8 @@ import (
 // BinlogEntry describes an entry in the binary log
 type BinlogEntry struct {
 	hasBeginQuery bool
-	Coordinates base.BinlogCoordinates
-	EndLogPos   uint64
+	Coordinates   base.BinlogCoordinates
+	EndLogPos     uint64
 
 	Events []DataEvent
 }

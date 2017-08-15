@@ -125,7 +125,7 @@ func (b *BinlogReader) GetCurrentBinlogCoordinates() *base.BinlogCoordinates {
 }
 
 // StreamEvents
-func (b *BinlogReader) handleRowsEvent(ev *replication.BinlogEvent, entriesChannel chan<- *BinlogEntry) error {
+func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel chan<- *BinlogEntry) error {
 	if b.currentCoordinates.SmallerThanOrEquals(&b.LastAppliedRowsEventHint) {
 		//b.logger.Debugf("mysql.reader: Skipping handled query at %+v", b.currentCoordinates)
 		return nil
@@ -214,83 +214,60 @@ func (b *BinlogReader) handleRowsEvent(ev *replication.BinlogEvent, entriesChann
 				entriesChannel <- b.currentBinlogEntry
 			}
 		}
-	case replication.WRITE_ROWS_EVENTv0, replication.WRITE_ROWS_EVENTv1, replication.WRITE_ROWS_EVENTv2:
-		rowsEvent := ev.Event.(*replication.RowsEvent)
-		if b.skipRowEvent(rowsEvent) {
-			//b.logger.Debugf("mysql.reader: skip WRITE_ROWS_EVENTv2[%s-%s]", rowsEvent.Table.Schema, rowsEvent.Table.Table)
-			return nil
-		}
-		originalTableColumns, originalTableUniqueKeys, err := b.InspectTableColumnsAndUniqueKeys(string(rowsEvent.Table.Schema), string(rowsEvent.Table.Table))
-		if err != nil {
-			return err
-		}
-		dmlEvent := NewDataEvent(
-			"",
-			string(rowsEvent.Table.Schema),
-			string(rowsEvent.Table.Table),
-			InsertDML,
-			originalTableColumns,
-			originalTableUniqueKeys,
-		)
-		for _, row := range rowsEvent.Rows {
-			dmlEvent.NewColumnValues = append(dmlEvent.NewColumnValues, mysql.ToColumnValues(row))
-		}
-		b.currentBinlogEntry.Events = append(b.currentBinlogEntry.Events, dmlEvent)
-	case replication.UPDATE_ROWS_EVENTv0, replication.UPDATE_ROWS_EVENTv1, replication.UPDATE_ROWS_EVENTv2:
-		rowsEvent := ev.Event.(*replication.RowsEvent)
-		if b.skipRowEvent(rowsEvent) {
-			//b.logger.Debugf("mysql.reader: skip WRITE_ROWS_EVENTv2[%s-%s]", rowsEvent.Table.Schema, rowsEvent.Table.Table)
-			return nil
-		}
-		originalTableColumns, originalTableUniqueKeys, err := b.InspectTableColumnsAndUniqueKeys(string(rowsEvent.Table.Schema), string(rowsEvent.Table.Table))
-		if err != nil {
-			return err
-		}
-		dmlEvent := NewDataEvent(
-			"",
-			string(rowsEvent.Table.Schema),
-			string(rowsEvent.Table.Table),
-			UpdateDML,
-			originalTableColumns,
-			originalTableUniqueKeys,
-		)
-		for i, row := range rowsEvent.Rows {
-			if i%2 == 1 {
-				// An update has two rows (WHERE+SET)
-				// We do both at the same time
-				continue
-			}
-
-			dmlEvent.WhereColumnValues = mysql.ToColumnValues(row)
-			dmlEvent.NewColumnValues = append(dmlEvent.NewColumnValues, mysql.ToColumnValues(rowsEvent.Rows[i+1]))
-		}
-		b.currentBinlogEntry.Events = append(b.currentBinlogEntry.Events, dmlEvent)
-	case replication.DELETE_ROWS_EVENTv0, replication.DELETE_ROWS_EVENTv1, replication.DELETE_ROWS_EVENTv2:
-		rowsEvent := ev.Event.(*replication.RowsEvent)
-		if b.skipRowEvent(rowsEvent) {
-			//b.logger.Debugf("mysql.reader: skip WRITE_ROWS_EVENTv2[%s-%s]", rowsEvent.Table.Schema, rowsEvent.Table.Table)
-			return nil
-		}
-		originalTableColumns, originalTableUniqueKeys, err := b.InspectTableColumnsAndUniqueKeys(string(rowsEvent.Table.Schema), string(rowsEvent.Table.Table))
-		if err != nil {
-			return err
-		}
-		dmlEvent := NewDataEvent(
-			"",
-			string(rowsEvent.Table.Schema),
-			string(rowsEvent.Table.Table),
-			DeleteDML,
-			originalTableColumns,
-			originalTableUniqueKeys,
-		)
-		for _, row := range rowsEvent.Rows {
-			dmlEvent.WhereColumnValues = mysql.ToColumnValues(row)
-			b.currentBinlogEntry.Events = append(b.currentBinlogEntry.Events, dmlEvent)
-		}
 	case replication.XID_EVENT:
 		entriesChannel <- b.currentBinlogEntry
 	default:
-		//ignore
+		if rowsEvent, ok := ev.Event.(*replication.RowsEvent); ok {
+			if b.skipRowEvent(rowsEvent) {
+				//b.logger.Debugf("mysql.reader: skip WRITE_ROWS_EVENTv2[%s-%s]", rowsEvent.Table.Schema, rowsEvent.Table.Table)
+				return nil
+			}
+			originalTableColumns, originalTableUniqueKeys, err := b.InspectTableColumnsAndUniqueKeys(string(rowsEvent.Table.Schema), string(rowsEvent.Table.Table))
+			if err != nil {
+				return err
+			}
+
+			dml := ToEventDML(ev.Header.EventType.String())
+			if dml == NotDML {
+				return fmt.Errorf("Unknown DML type: %s", ev.Header.EventType.String())
+			}
+			dmlEvent := NewDataEvent(
+				"",
+				string(rowsEvent.Table.Schema),
+				string(rowsEvent.Table.Table),
+				dml,
+				originalTableColumns,
+				originalTableUniqueKeys,
+			)
+			for i, row := range rowsEvent.Rows {
+				if dml == UpdateDML && i%2 == 1 {
+					// An update has two rows (WHERE+SET)
+					// We do both at the same time
+					continue
+				}
+				switch dml {
+				case InsertDML:
+					{
+						dmlEvent.NewColumnValues = append(dmlEvent.NewColumnValues, mysql.ToColumnValues(row))
+					}
+				case UpdateDML:
+					{
+						dmlEvent.WhereColumnValues = append(dmlEvent.NewColumnValues, mysql.ToColumnValues(row))
+						dmlEvent.NewColumnValues = append(dmlEvent.NewColumnValues, mysql.ToColumnValues(rowsEvent.Rows[i+1]))
+					}
+				case DeleteDML:
+					{
+						dmlEvent.WhereColumnValues = append(dmlEvent.NewColumnValues, mysql.ToColumnValues(row))
+					}
+				}
+				b.currentBinlogEntry.Events = append(b.currentBinlogEntry.Events, dmlEvent)
+				// The channel will do the throttling. Whoever is reding from the channel
+				// decides whether action is taken sycnhronously (meaning we wait before
+				// next iteration) or asynchronously (we keep pushing more events)
+				// In reality, reads will be synchronous
+			}
+			return nil
+		}
 	}
 
 	b.LastAppliedRowsEventHint = b.currentCoordinates
@@ -315,6 +292,7 @@ func (b *BinlogReader) DataStreamEvents(entriesChannel chan<- *BinlogEntry) erro
 			defer b.currentCoordinatesMutex.Unlock()
 			b.currentCoordinates.LogPos = int64(ev.Header.LogPos)
 		}()
+
 		if rotateEvent, ok := ev.Event.(*replication.RotateEvent); ok {
 			func() {
 				b.currentCoordinatesMutex.Lock()
@@ -323,7 +301,7 @@ func (b *BinlogReader) DataStreamEvents(entriesChannel chan<- *BinlogEntry) erro
 			}()
 			b.logger.Debugf("mysql.reader: rotate to next log name: %s", rotateEvent.NextLogName)
 		} else {
-			if err := b.handleRowsEvent(ev, entriesChannel); err != nil {
+			if err := b.handleEvent(ev, entriesChannel); err != nil {
 				return err
 			}
 		}

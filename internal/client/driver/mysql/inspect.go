@@ -103,32 +103,32 @@ func (i *Inspector) InspectOriginalTable(databaseName string, doTb *uconf.Table)
 }
 
 //It extracts the list of shared columns and the chosen extract unique key
-/*func (i *Inspector) inspectTables(databaseName string,doTb *uconf.Table) (err error) {
- */ /*originalNamesOnApplier := doTb.OriginalTableColumnsOnApplier.Names()
-originalNames := doTb.OriginalTableColumns.Names()
-if !reflect.DeepEqual(originalNames, originalNamesOnApplier) {
-	return fmt.Errorf("It seems like table structure is not identical between master and replica. This scenario is not supported.")
-}*/ /*
+func (i *Inspector) inspectTables(databaseName string, doTb *uconf.Table) (err error) {
+	/*originalNamesOnApplier := doTb.OriginalTableColumnsOnApplier.Names()
+	originalNames := doTb.OriginalTableColumns.Names()
+	if !reflect.DeepEqual(originalNames, originalNamesOnApplier) {
+		return fmt.Errorf("It seems like table structure is not identical between master and replica. This scenario is not supported.")
+	}*/
 
 	doTb.SharedColumns, doTb.MappedSharedColumns = i.getSharedColumns(*doTb)
-	i.logger.Printf("mysql.inspector: Shared columns are %s", doTb.SharedColumns)
+	//i.logger.Debugf("mysql.inspector: Shared columns are %s", doTb.SharedColumns)
 	// By fact that a non-empty unique key exists we also know the shared columns are non-empty
 
 	// This additional step looks at which columns are unsigned. We could have merged this within
 	// the `getTableColumns()` function, but it's a later patch and introduces some complexity; I feel
 	// comfortable in doing this as a separate step.
-	i.applyColumnTypes(databaseName, doTb.Name, doTb.OriginalTableColumns, doTb.SharedColumns)
+	i.applyColumnTypes(databaseName, doTb.TableName, doTb.OriginalTableColumns, doTb.SharedColumns)
 
-	for i := range doTb.SharedColumns.ColumnList() {
-		column := doTb.SharedColumns.ColumnList()[i]
-		mappedColumn := doTb.MappedSharedColumns.ColumnList()[i]
+	for c := range doTb.SharedColumns.ColumnList() {
+		column := doTb.SharedColumns.ColumnList()[c]
+		mappedColumn := doTb.MappedSharedColumns.ColumnList()[c]
 		if column.Name == mappedColumn.Name && column.Type == umconf.DateTimeColumnType && mappedColumn.Type == umconf.TimestampColumnType {
-			doTb.MappedSharedColumns.SetConvertDatetimeToTimestamp(column.Name, i.mysqlContext.ApplierTimeZone)
+			doTb.MappedSharedColumns.SetConvertDatetimeToTimestamp(column.Name, i.mysqlContext.TimeZone)
 		}
 	}
 
 	return nil
-}*/
+}
 
 // validateConnection issues a simple can-connect to MySQL
 func (i *Inspector) validateConnection() error {
@@ -484,9 +484,9 @@ func getSharedUniqueKeys(originalUniqueKeys, ghostUniqueKeys [](*umconf.UniqueKe
 }
 
 // getSharedColumns returns the intersection of two lists of columns in same order as the first list
-/*func (i *Inspector) getSharedColumns(doTb uconf.Table) (*umconf.ColumnList, *umconf.ColumnList) {
+func (i *Inspector) getSharedColumns(doTb uconf.Table) (*umconf.ColumnList, *umconf.ColumnList) {
 	columnsInGhost := make(map[string]bool)
-	for _, ghostColumn := range doTb.DestTableColumns.Names() {
+	for _, ghostColumn := range doTb.OriginalTableColumns.Names() {
 		columnsInGhost[ghostColumn] = true
 	}
 	sharedColumnNames := []string{}
@@ -511,7 +511,7 @@ func getSharedUniqueKeys(originalUniqueKeys, ghostUniqueKeys [](*umconf.UniqueKe
 		}
 	}
 	return umconf.NewColumnList(sharedColumnNames), umconf.NewColumnList(mappedSharedColumnNames)
-}*/
+}
 
 // showCreateTable returns the `show create table` statement for given table
 func (i *Inspector) showCreateTable(databaseName, tableName string) (createTableStatement string, err error) {

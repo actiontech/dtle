@@ -31,6 +31,7 @@ type TimezoneConvertion struct {
 }
 
 type Column struct {
+	Idx                int
 	Name               string
 	IsUnsigned         bool
 	Charset            string
@@ -43,6 +44,7 @@ func (c *Column) ConvertArg(arg interface{}) interface{} {
 		// string, charset conversion
 		if encoding, ok := charsetEncodingMap[c.Charset]; ok {
 			arg, _, _ = transform.String(encoding.NewDecoder(), s)
+			fmt.Println(s)
 		}
 		return arg
 	}
@@ -283,6 +285,7 @@ func ToColumnValues(abstractValues []interface{}) *ColumnValues {
 		ValuesPointers: make([]interface{}, len(abstractValues)),
 	}
 	for i := 0; i < len(abstractValues); i++ {
+		result.AbstractValues[i] = result.StringColumn(i)
 		result.ValuesPointers[i] = &result.AbstractValues[i]
 	}
 
