@@ -344,9 +344,7 @@ func (r *Worker) run() {
 				close(stopCollection)
 
 				// Log whether the task was successful or not.
-				if waitRes.ShouldRestart() {
-					r.restartTracker.SetWaitResult(waitRes)
-				}
+				r.restartTracker.SetWaitResult(waitRes)
 				r.setState("", r.waitErrorToEvent(waitRes))
 				if !waitRes.Successful() {
 					r.logger.Printf("agent: Task %q for alloc %q failed: %v", r.task.Type, r.alloc.ID, waitRes)

@@ -1,7 +1,6 @@
 package sql
 
 import (
-	"bytes"
 	"fmt"
 	"strconv"
 	"strings"
@@ -498,7 +497,7 @@ func BuildDMLInsertQuery(databaseName, tableName string, tableColumns, sharedCol
 	tableName = EscapeName(tableName)
 
 	for _, args := range columnValues {
-		for _, column := range sharedColumns.ColumnList() {
+		for _, column := range tableColumns.ColumnList() {
 			tableOrdinal := tableColumns.Ordinals[column.Name]
 			arg := column.ConvertArg(args.GetAbstractValues()[tableOrdinal])
 			sharedArgs = append(sharedArgs, arg)
@@ -511,24 +510,24 @@ func BuildDMLInsertQuery(databaseName, tableName string, tableColumns, sharedCol
 	}
 	preparedValues := buildColumnsPreparedValues(mappedSharedColumns)
 
-	var buffer bytes.Buffer
+	/*var buffer bytes.Buffer
 	for i := 0; i < len(columnValues); i++ {
 		if i == len(columnValues)-1 {
 			buffer.WriteString(fmt.Sprintf("(%v)", strings.Join(preparedValues, ", ")))
 		} else {
 			buffer.WriteString(fmt.Sprintf("(%v),", strings.Join(preparedValues, ", ")))
 		}
-	}
+	}*/
 
 	result = fmt.Sprintf(`
 			replace into
 				%s.%s
 					(%s)
 				values
-					%s
+					(%s)
 		`, databaseName, tableName,
 		strings.Join(mappedSharedColumnNames, ", "),
-		buffer.String(),
+		strings.Join(preparedValues, ", "),
 	)
 	return result, sharedArgs, nil
 }
@@ -553,7 +552,7 @@ func BuildDMLUpdateQuery(databaseName, tableName string, tableColumns, sharedCol
 	tableName = EscapeName(tableName)
 
 	for _, valueArgs := range columnValues {
-		for _, column := range sharedColumns.ColumnList() {
+		for _, column := range tableColumns.ColumnList() {
 			tableOrdinal := tableColumns.Ordinals[column.Name]
 			arg := column.ConvertArg(valueArgs.GetAbstractValues()[tableOrdinal])
 			sharedArgs = append(sharedArgs, arg)

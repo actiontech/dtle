@@ -1469,33 +1469,33 @@ func (a *Applier) getSharedColumns(originalColumns, columns *umconf.ColumnList, 
 // buildDMLEventQuery creates a query to operate on the ghost table, based on an intercepted binlog
 // event entry on the original table.
 func (a *Applier) buildDMLEventQuery(dmlEvent binlog.DataEvent) (query string, args []interface{}, rowsDelta int64, err error) {
-	destTableColumns, destTableUniqueKeys, err := a.InspectTableColumnsAndUniqueKeys(dmlEvent.DatabaseName, dmlEvent.TableName)
+	/*destTableColumns, destTableUniqueKeys, err := a.InspectTableColumnsAndUniqueKeys(dmlEvent.DatabaseName, dmlEvent.TableName)
 	if err != nil {
 		return "", args, 0, err
 	}
 	_, err = getSharedUniqueKeys(destTableUniqueKeys, destTableUniqueKeys)
 	if err != nil {
 		return "", args, 0, err
-	}
+	}*/
 	/*if len(sharedUniqueKeys) == 0 {
 		return "", args, 0, fmt.Errorf("No shared unique key can be found after ALTER! Bailing out")
 	}*/
-	sharedColumns, mappedSharedColumns := a.getSharedColumns( /*dmlEvent.OriginalTableColumns*/ destTableColumns, destTableColumns, a.parser.GetNonTrivialRenames())
+	sharedColumns, mappedSharedColumns := a.getSharedColumns(dmlEvent.OriginalTableColumns, dmlEvent.OriginalTableColumns, a.parser.GetNonTrivialRenames())
 	//a.logger.Printf("mysql.applier: shared columns are %s", sharedColumns)
 	switch dmlEvent.DML {
 	case binlog.DeleteDML:
 		{
-			query, uniqueKeyArgs, err := sql.BuildDMLDeleteQuery(dmlEvent.DatabaseName, dmlEvent.TableName, destTableColumns, dmlEvent.WhereColumnValues)
+			query, uniqueKeyArgs, err := sql.BuildDMLDeleteQuery(dmlEvent.DatabaseName, dmlEvent.TableName, dmlEvent.OriginalTableColumns, dmlEvent.WhereColumnValues)
 			return query, uniqueKeyArgs, -1, err
 		}
 	case binlog.InsertDML:
 		{
-			query, sharedArgs, err := sql.BuildDMLInsertQuery(dmlEvent.DatabaseName, dmlEvent.TableName, destTableColumns, sharedColumns, mappedSharedColumns, dmlEvent.NewColumnValues)
+			query, sharedArgs, err := sql.BuildDMLInsertQuery(dmlEvent.DatabaseName, dmlEvent.TableName, dmlEvent.OriginalTableColumns, sharedColumns, mappedSharedColumns, dmlEvent.NewColumnValues)
 			return query, sharedArgs, 1, err
 		}
 	case binlog.UpdateDML:
 		{
-			query, sharedArgs, uniqueKeyArgs, err := sql.BuildDMLUpdateQuery(dmlEvent.DatabaseName, dmlEvent.TableName, destTableColumns, sharedColumns, mappedSharedColumns, dmlEvent.NewColumnValues, dmlEvent.WhereColumnValues)
+			query, sharedArgs, uniqueKeyArgs, err := sql.BuildDMLUpdateQuery(dmlEvent.DatabaseName, dmlEvent.TableName, dmlEvent.OriginalTableColumns, sharedColumns, mappedSharedColumns, dmlEvent.NewColumnValues, dmlEvent.WhereColumnValues)
 			args = append(args, sharedArgs...)
 			args = append(args, uniqueKeyArgs...)
 			return query, args, 0, err
@@ -1506,6 +1506,12 @@ func (a *Applier) buildDMLEventQuery(dmlEvent binlog.DataEvent) (query string, a
 
 // ApplyEventQueries applies multiple DML queries onto the dest table
 func (a *Applier) ApplyBinlogEvent(db *gosql.DB, binlogEntry *binlog.BinlogEntry) error {
+	var tx *gosql.Tx
+	defer func() {
+		if err := tx.Commit(); err != nil {
+			a.onError(TaskStateDead, err)
+		}
+	}()
 	var totalDelta int64
 
 	interval, err := base.SelectGtidExecuted(db, binlogEntry.Coordinates.SID, binlogEntry.Coordinates.GNO)
@@ -1516,7 +1522,7 @@ func (a *Applier) ApplyBinlogEvent(db *gosql.DB, binlogEntry *binlog.BinlogEntry
 		return nil
 	}
 
-	tx, err := db.Begin()
+	tx, err = db.Begin()
 	if err != nil {
 		return err
 	}
@@ -1571,9 +1577,6 @@ func (a *Applier) ApplyBinlogEvent(db *gosql.DB, binlogEntry *binlog.BinlogEntry
 		interval,
 	)
 	if _, err := tx.Exec(query); err != nil {
-		return err
-	}
-	if err := tx.Commit(); err != nil {
 		return err
 	}
 
@@ -1752,6 +1755,11 @@ func (a *Applier) onError(state int, err error) {
 			}
 		}
 	default:
+		if a.natsConn != nil {
+			if err := a.natsConn.Publish(fmt.Sprintf("%s_error", a.subject), []byte(a.mysqlContext.Gtid)); err != nil {
+				a.logger.Errorf("mysql.applier: Trigger extractor shutdown: %v", err)
+			}
+		}
 	}
 
 	a.waitCh <- models.NewWaitResult(state, err)

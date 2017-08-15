@@ -74,6 +74,7 @@ type BinlogEvent struct {
 
 // BinlogDMLEvent is a binary log rows (DML) event entry, with data
 type DataEvent struct {
+	isExist                 bool
 	Query                   string
 	DatabaseName            string
 	TableName               string

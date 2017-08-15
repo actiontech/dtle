@@ -32,6 +32,7 @@ type BinlogReader struct {
 	logger                   *log.Entry
 	connectionConfig         *mysql.ConnectionConfig
 	db                       *gosql.DB
+	tables                   []*config.Table
 	binlogSyncer             *replication.BinlogSyncer
 	binlogStreamer           *replication.BinlogStreamer
 	currentCoordinates       base.BinlogCoordinates
@@ -54,9 +55,10 @@ type BinlogReader struct {
 	shutdownLock sync.Mutex
 }
 
-func NewMySQLReader(cfg *config.MySQLDriverConfig, logger *log.Entry) (binlogReader *BinlogReader, err error) {
+func NewMySQLReader(cfg *config.MySQLDriverConfig, tables []*config.Table, logger *log.Entry) (binlogReader *BinlogReader, err error) {
 	binlogReader = &BinlogReader{
 		logger:                  logger,
+		tables:                  tables,
 		currentCoordinates:      base.BinlogCoordinates{},
 		currentCoordinatesMutex: &sync.Mutex{},
 		MysqlContext:            cfg,
@@ -239,6 +241,27 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 				originalTableColumns,
 				originalTableUniqueKeys,
 			)
+			for _, t := range b.tables {
+				if t.TableSchema == string(rowsEvent.Table.Schema) && t.TableName == string(rowsEvent.Table.Table) {
+					dmlEvent.OriginalTableColumns = t.OriginalTableColumns
+					dmlEvent.isExist = true
+				}
+			}
+
+			if !dmlEvent.isExist {
+				tableColumns, err := base.GetTableColumns(b.db, string(rowsEvent.Table.Schema), string(rowsEvent.Table.Table))
+				if err != nil {
+					b.logger.Errorf("mysql.reader: Unexpected error on readTableColumns, got %v", err)
+					return err
+				}
+				dmlEvent.OriginalTableColumns = tableColumns
+				t := &config.Table{
+					TableSchema:          string(rowsEvent.Table.Schema),
+					TableName:            string(rowsEvent.Table.Table),
+					OriginalTableColumns: tableColumns,
+				}
+				b.tables = append(b.tables, t)
+			}
 			for i, row := range rowsEvent.Rows {
 				if dml == UpdateDML && i%2 == 1 {
 					// An update has two rows (WHERE+SET)

@@ -597,7 +597,15 @@ func (e *Extractor) initiateStreaming() error {
 	go func() {
 		_, err := e.natsConn.Subscribe(fmt.Sprintf("%s_restart", e.subject), func(m *gonats.Msg) {
 			e.mysqlContext.Gtid = string(m.Data)
-			e.onError(TaskStateDead, fmt.Errorf("restart"))
+			e.onError(TaskStateRestart, fmt.Errorf("restart"))
+		})
+		if err != nil {
+			e.onError(TaskStateRestart, err)
+		}
+
+		_, err = e.natsConn.Subscribe(fmt.Sprintf("%s_error", e.subject), func(m *gonats.Msg) {
+			e.mysqlContext.Gtid = string(m.Data)
+			e.onError(TaskStateDead, fmt.Errorf("applier"))
 		})
 		if err != nil {
 			e.onError(TaskStateDead, err)
@@ -635,7 +643,7 @@ func (e *Extractor) initDBConnections() (err error) {
 
 // initBinlogReader creates and connects the reader: we hook up to a MySQL server as a replica
 func (e *Extractor) initBinlogReader(binlogCoordinates *base.BinlogCoordinates) error {
-	binlogReader, err := binlog.NewMySQLReader(e.mysqlContext, e.logger)
+	binlogReader, err := binlog.NewMySQLReader(e.mysqlContext, e.tables, e.logger)
 	if err != nil {
 		return err
 	}
@@ -1190,18 +1198,18 @@ func (e *Extractor) Shutdown() error {
 		e.natsConn.Close()
 	}
 
-	if e.binlogReader != nil {
-		if err := e.binlogReader.Close(); err != nil {
-			return err
-		}
-	}
-
 	for _, d := range e.dumpers {
 		d.Close()
 	}
 
 	if err := sql.CloseDB(e.singletonDB); err != nil {
 		return err
+	}
+
+	if e.binlogReader != nil {
+		if err := e.binlogReader.Close(); err != nil {
+			return err
+		}
 	}
 
 	if err := sql.CloseDB(e.db); err != nil {
