@@ -32,7 +32,6 @@ type BinlogReader struct {
 	logger                   *log.Entry
 	connectionConfig         *mysql.ConnectionConfig
 	db                       *gosql.DB
-	tables                   []*config.Table
 	binlogSyncer             *replication.BinlogSyncer
 	binlogStreamer           *replication.BinlogStreamer
 	currentCoordinates       base.BinlogCoordinates
@@ -55,10 +54,9 @@ type BinlogReader struct {
 	shutdownLock sync.Mutex
 }
 
-func NewMySQLReader(cfg *config.MySQLDriverConfig, tables []*config.Table, logger *log.Entry) (binlogReader *BinlogReader, err error) {
+func NewMySQLReader(cfg *config.MySQLDriverConfig, logger *log.Entry) (binlogReader *BinlogReader, err error) {
 	binlogReader = &BinlogReader{
 		logger:                  logger,
-		tables:                  tables,
 		currentCoordinates:      base.BinlogCoordinates{},
 		currentCoordinatesMutex: &sync.Mutex{},
 		MysqlContext:            cfg,
@@ -106,7 +104,7 @@ func (b *BinlogReader) ConnectBinlogStreamer(coordinates base.BinlogCoordinates)
 	}*/
 
 	b.currentCoordinates = coordinates
-	b.logger.Debugf("mysql.reader: connecting binlog streamer at %+v", b.currentCoordinates)
+	b.logger.Debugf("mysql.reader: Connecting binlog streamer at %+v", b.currentCoordinates)
 
 	// Start sync with sepcified binlog file and position
 	//b.binlogStreamer, err = b.binlogSyncer.StartSync(gomysql.Position{b.currentCoordinates.LogFile, uint32(b.currentCoordinates.LogPos)})
@@ -241,10 +239,12 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 				originalTableColumns,
 				originalTableUniqueKeys,
 			)
-			for _, t := range b.tables {
-				if t.TableSchema == string(rowsEvent.Table.Schema) && t.TableName == string(rowsEvent.Table.Table) {
-					dmlEvent.OriginalTableColumns = t.OriginalTableColumns
-					dmlEvent.isExist = true
+			for _, d := range b.MysqlContext.ReplicateDoDb {
+				for _, t := range d.Tables {
+					if t.TableSchema == string(rowsEvent.Table.Schema) && t.TableName == string(rowsEvent.Table.Table) {
+						dmlEvent.OriginalTableColumns = t.OriginalTableColumns
+						dmlEvent.isExist = true
+					}
 				}
 			}
 
@@ -265,7 +265,11 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 					b.logger.Errorf("mysql.reader: unexpected error on inspectTables, got %v", err)
 					return err
 				}
-				b.tables = append(b.tables, t)
+				for _, b := range b.MysqlContext.ReplicateDoDb {
+					if b.TableSchema == t.TableSchema {
+						b.Tables = append(b.Tables, t)
+					}
+				}
 			}
 			for i, row := range rowsEvent.Rows {
 				if dml == UpdateDML && i%2 == 1 {

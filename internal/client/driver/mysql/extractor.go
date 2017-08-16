@@ -40,8 +40,6 @@ type Extractor struct {
 	mysqlContext               *config.MySQLDriverConfig
 	db                         *gosql.DB
 	singletonDB                *gosql.DB
-	databases                  []string
-	tables                     []*config.Table
 	dumpers                    []*dumper
 	binlogChannel              chan *binlog.BinlogTx
 	dataChannel                chan *binlog.BinlogEntry
@@ -54,6 +52,7 @@ type Extractor struct {
 	allEventsUpToLockProcessed chan string
 	rowCopyCompleteFlag        int64
 	totalRowCount              int
+	tableCount                 int
 
 	sendByTimeoutCounter  int
 	sendBySizeFullCounter int
@@ -78,7 +77,6 @@ func NewExtractor(subject, tp string, maxPayload int, cfg *config.MySQLDriverCon
 		tp:                         tp,
 		maxPayload:                 maxPayload,
 		mysqlContext:               cfg,
-		tables:                     make([]*config.Table, 0),
 		binlogChannel:              make(chan *binlog.BinlogTx, cfg.ReplChanBufferSize),
 		dataChannel:                make(chan *binlog.BinlogEntry, cfg.ReplChanBufferSize),
 		parser:                     sql.NewParser(),
@@ -473,7 +471,7 @@ func (e *Extractor) inspectTables() (err error) {
 			if doDb.TableSchema == "" {
 				continue
 			}
-			e.databases = append(e.databases, doDb.TableSchema)
+
 			if len(doDb.Tables) == 0 {
 				tbs, err := showTables(e.db, doDb.TableSchema)
 				if err != nil {
@@ -487,7 +485,6 @@ func (e *Extractor) inspectTables() (err error) {
 					e.logger.Warnf("mysql.extractor: %v", err)
 					continue
 				}
-				e.tables = append(e.tables, doTb)
 			}
 		}
 	} else {
@@ -495,8 +492,10 @@ func (e *Extractor) inspectTables() (err error) {
 		if err != nil {
 			return err
 		}
-		e.databases = dbs
-		for _, dbName := range e.databases {
+		for _, dbName := range dbs {
+			ds := &config.DataSource{
+				TableSchema: dbName,
+			}
 			tbs, err := showTables(e.db, dbName)
 			if err != nil {
 				return err
@@ -506,8 +505,9 @@ func (e *Extractor) inspectTables() (err error) {
 					e.logger.Warnf("mysql.extractor: %v", err)
 					continue
 				}
-				e.tables = append(e.tables, tb)
+				ds.Tables = append(ds.Tables, tb)
 			}
+			e.mysqlContext.ReplicateDoDb = append(e.mysqlContext.ReplicateDoDb, ds)
 		}
 	}
 
@@ -517,15 +517,17 @@ func (e *Extractor) inspectTables() (err error) {
 // readTableColumns reads table columns on applier
 func (e *Extractor) readTableColumns() (err error) {
 	e.logger.Printf("mysql.extractor: Examining table structure on extractor")
-	for _, doTb := range e.tables {
-		doTb.OriginalTableColumns, err = base.GetTableColumns(e.db, doTb.TableSchema, doTb.TableName)
-		if err != nil {
-			e.logger.Errorf("mysql.extractor: Unexpected error on readTableColumns, got %v", err)
-			return err
-		}
-		if err := base.InspectTables(e.db, doTb.TableSchema, doTb, e.mysqlContext.TimeZone); err != nil {
-			e.logger.Errorf("mysql.extractor: unexpected error on inspectTables, got %v", err)
-			return err
+	for _, doDb := range e.mysqlContext.ReplicateDoDb {
+		for _, doTb := range doDb.Tables {
+			doTb.OriginalTableColumns, err = base.GetTableColumns(e.db, doTb.TableSchema, doTb.TableName)
+			if err != nil {
+				e.logger.Errorf("mysql.extractor: Unexpected error on readTableColumns, got %v", err)
+				return err
+			}
+			if err := base.InspectTables(e.db, doTb.TableSchema, doTb, e.mysqlContext.TimeZone); err != nil {
+				e.logger.Errorf("mysql.extractor: unexpected error on inspectTables, got %v", err)
+				return err
+			}
 		}
 	}
 	return nil
@@ -643,7 +645,7 @@ func (e *Extractor) initDBConnections() (err error) {
 
 // initBinlogReader creates and connects the reader: we hook up to a MySQL server as a replica
 func (e *Extractor) initBinlogReader(binlogCoordinates *base.BinlogCoordinates) error {
-	binlogReader, err := binlog.NewMySQLReader(e.mysqlContext, e.tables, e.logger)
+	binlogReader, err := binlog.NewMySQLReader(e.mysqlContext, e.logger)
 	if err != nil {
 		return err
 	}
@@ -938,11 +940,11 @@ func (e *Extractor) mysqlDump() error {
 
 	// Transform the current schema so that it reflects the *current* state of the MySQL server's contents.
 	// First, get the DROP TABLE and CREATE TABLE statement (with keys and constraint definitions) for our tables ...
-	e.logger.Printf("mysql.extractor: Step 1: - generating DROP and CREATE statements to reflect current database schemas: %v", e.databases)
-	for _, db := range e.databases {
-		if len(e.tables) > 0 {
-			for _, tb := range e.tables {
-				if tb.TableSchema != db {
+	e.logger.Printf("mysql.extractor: Step 1: - generating DROP and CREATE statements to reflect current database schemas: %v", e.mysqlContext.ReplicateDoDb)
+	for _, db := range e.mysqlContext.ReplicateDoDb {
+		if len(db.Tables) > 0 {
+			for _, tb := range db.Tables {
+				if tb.TableSchema != db.TableSchema {
 					continue
 				}
 				dbSQL := fmt.Sprintf("CREATE DATABASE IF NOT EXISTS %s", tb.TableSchema)
@@ -959,6 +961,7 @@ func (e *Extractor) mysqlDump() error {
 				if err := e.encodeDumpEntry(entry); err != nil {
 					return err
 				}
+				e.tableCount += len(db.Tables)
 			}
 		} else {
 			dbSQL := fmt.Sprintf("CREATE DATABASE IF NOT EXISTS %s", db)
@@ -977,54 +980,57 @@ func (e *Extractor) mysqlDump() error {
 	// STEP 3
 	// ------
 	// Dump all of the tables and generate source records ...
-	e.logger.Printf("mysql.extractor: Step 2: scanning contents of %d tables", len(e.tables))
+	e.logger.Printf("mysql.extractor: Step 2: scanning contents of %d tables", e.tableCount)
 	startScan := currentTimeMillis()
 	counter := 0
 	pool := models.NewPool(10)
-	for _, tb := range e.tables {
-		pool.Add(1)
-		go func(t *config.Table) {
-			counter++
-			// Obtain a record maker for this table, which knows about the schema ...
-			// Choose how we create statements based on the # of rows ...
-			e.logger.Printf("mysql.extractor: Step 2: - scanning table '%s.%s' (%d of %d tables)", t.TableSchema, t.TableName, counter, len(e.tables))
-			tx, err := e.singletonDB.Begin()
-			if err != nil {
-				e.onError(TaskStateDead, err)
-			}
-			d := NewDumper(tx, t.TableSchema, t.TableName, e.logger)
-			if err := d.Dump(1); err != nil {
-				e.onError(TaskStateDead, err)
-			}
-			e.dumpers = append(e.dumpers, d)
-			// Scan the rows in the table ...
-			for i := 0; i < d.entriesCount; i++ {
-				entry := <-d.resultsChannel
-				if entry.err != nil {
-					e.onError(TaskStateDead, entry.err)
-				}
-				entry.SystemVariablesStatement = setSystemVariablesStatement
-				entry.SqlMode = setSqlMode
-				if err = e.encodeDumpEntry(entry); err != nil {
+	for _, db := range e.mysqlContext.ReplicateDoDb {
+		for _, tb := range db.Tables {
+			pool.Add(1)
+			go func(t *config.Table) {
+				counter++
+				// Obtain a record maker for this table, which knows about the schema ...
+				// Choose how we create statements based on the # of rows ...
+				e.logger.Printf("mysql.extractor: Step 2: - scanning table '%s.%s' (%d of %d tables)", t.TableSchema, t.TableName, counter, e.tableCount)
+				tx, err := e.singletonDB.Begin()
+				if err != nil {
 					e.onError(TaskStateDead, err)
 				}
-				e.totalRowCount += int(entry.Counter)
-			}
+				d := NewDumper(tx, t.TableSchema, t.TableName, e.logger)
+				if err := d.Dump(1); err != nil {
+					e.onError(TaskStateDead, err)
+				}
+				e.dumpers = append(e.dumpers, d)
+				// Scan the rows in the table ...
+				for i := 0; i < d.entriesCount; i++ {
+					entry := <-d.resultsChannel
+					if entry.err != nil {
+						e.onError(TaskStateDead, entry.err)
+					}
+					entry.SystemVariablesStatement = setSystemVariablesStatement
+					entry.SqlMode = setSqlMode
+					if err = e.encodeDumpEntry(entry); err != nil {
+						e.onError(TaskStateDead, err)
+					}
+					e.totalRowCount += int(entry.Counter)
+				}
 
-			if err := tx.Commit(); err != nil {
-				e.onError(TaskStateDead, err)
-			}
-			close(d.resultsChannel)
-			pool.Done()
-		}(tb)
+				if err := tx.Commit(); err != nil {
+					e.onError(TaskStateDead, err)
+				}
+				close(d.resultsChannel)
+				pool.Done()
+			}(tb)
+		}
 	}
+
 	pool.Wait()
 
 	// We've copied all of the tables, but our buffer holds onto the very last record.
 	// First mark the snapshot as complete and then apply the updated offset to the buffered record ...
 	stop := currentTimeMillis()
 	e.logger.Printf("mysql.extractor: Step 3: scanned %d rows in %d tables in %s",
-		e.totalRowCount, len(e.tables), time.Duration(stop-startScan))
+		e.totalRowCount, e.tableCount, time.Duration(stop-startScan))
 
 	return nil
 }
@@ -1148,7 +1154,7 @@ func (e *Extractor) Stats() (*models.TaskStatistics, error) {
 func (e *Extractor) ID() string {
 	id := config.DriverCtx{
 		DriverConfig: &config.MySQLDriverConfig{
-			ReplicateDoDb:    e.mysqlContext.ReplicateDoDb,
+			//ReplicateDoDb:    e.mysqlContext.ReplicateDoDb,
 			Gtid:             e.mysqlContext.Gtid,
 			NatsAddr:         e.mysqlContext.NatsAddr,
 			ConnectionConfig: e.mysqlContext.ConnectionConfig,
