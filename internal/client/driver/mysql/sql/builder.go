@@ -1,6 +1,7 @@
 package sql
 
 import (
+	"bytes"
 	"fmt"
 	"strconv"
 	"strings"
@@ -510,24 +511,24 @@ func BuildDMLInsertQuery(databaseName, tableName string, tableColumns, sharedCol
 	}
 	preparedValues := buildColumnsPreparedValues(mappedSharedColumns)
 
-	/*var buffer bytes.Buffer
+	buffer := new(bytes.Buffer)
 	for i := 0; i < len(columnValues); i++ {
 		if i == len(columnValues)-1 {
 			buffer.WriteString(fmt.Sprintf("(%v)", strings.Join(preparedValues, ", ")))
 		} else {
 			buffer.WriteString(fmt.Sprintf("(%v),", strings.Join(preparedValues, ", ")))
 		}
-	}*/
+	}
 
 	result = fmt.Sprintf(`
 			replace into
 				%s.%s
 					(%s)
 				values
-					(%s)
+					%s
 		`, databaseName, tableName,
 		strings.Join(mappedSharedColumnNames, ", "),
-		strings.Join(preparedValues, ", "),
+		buffer.String(),
 	)
 	return result, sharedArgs, nil
 }

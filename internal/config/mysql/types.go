@@ -286,9 +286,14 @@ func ToColumnValues(abstractValues []interface{}) *ColumnValues {
 	for i := 0; i < len(abstractValues); i++ {
 		if result.AbstractValues[i] != nil {
 			val := result.AbstractValues[i]
-			if _, ok := val.(string); ok {
-				result.AbstractValues[i] = result.StringColumn(i)
+			if ints, ok := val.([]uint8); ok {
+				result.AbstractValues[i] = string(ints)
+			} else {
+				result.AbstractValues[i] = fmt.Sprintf("%+v", val)
 			}
+			result.ValuesPointers[i] = &result.AbstractValues[i]
+		} else {
+			result.AbstractValues[i] = fmt.Sprintf(`%s`, result.AbstractValues[i])
 			result.ValuesPointers[i] = &result.AbstractValues[i]
 		}
 	}

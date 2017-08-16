@@ -523,7 +523,7 @@ func (e *Extractor) readTableColumns() (err error) {
 			e.logger.Errorf("mysql.extractor: Unexpected error on readTableColumns, got %v", err)
 			return err
 		}
-		if err := e.inspector.inspectTables(doTb.TableSchema, doTb); err != nil {
+		if err := base.InspectTables(e.db, doTb.TableSchema, doTb, e.mysqlContext.TimeZone); err != nil {
 			e.logger.Errorf("mysql.extractor: unexpected error on inspectTables, got %v", err)
 			return err
 		}

@@ -106,7 +106,7 @@ func (d *dumper) getDumpEntries() ([]*dumpEntry, error) {
 		return []*dumpEntry{}, err
 	}
 
-	if ubase.ApplyColumnTypes(d.db, d.TableSchema, d.TableName, columnList); err != nil {
+	if ubase.ApplyColumnTypesWithTx(d.db, d.TableSchema, d.TableName, columnList); err != nil {
 		return []*dumpEntry{}, err
 	}
 

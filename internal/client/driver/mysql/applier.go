@@ -1506,12 +1506,6 @@ func (a *Applier) buildDMLEventQuery(dmlEvent binlog.DataEvent) (query string, a
 
 // ApplyEventQueries applies multiple DML queries onto the dest table
 func (a *Applier) ApplyBinlogEvent(db *gosql.DB, binlogEntry *binlog.BinlogEntry) error {
-	var tx *gosql.Tx
-	defer func() {
-		if err := tx.Commit(); err != nil {
-			a.onError(TaskStateDead, err)
-		}
-	}()
 	var totalDelta int64
 
 	interval, err := base.SelectGtidExecuted(db, binlogEntry.Coordinates.SID, binlogEntry.Coordinates.GNO)
@@ -1522,10 +1516,15 @@ func (a *Applier) ApplyBinlogEvent(db *gosql.DB, binlogEntry *binlog.BinlogEntry
 		return nil
 	}
 
-	tx, err = db.Begin()
+	tx, err := db.Begin()
 	if err != nil {
 		return err
 	}
+	defer func() {
+		if err := tx.Commit(); err != nil {
+			a.onError(TaskStateDead, err)
+		}
+	}()
 	sessionQuery := `SET @@session.foreign_key_checks = 0`
 	if _, err := tx.Exec(sessionQuery); err != nil {
 		return err

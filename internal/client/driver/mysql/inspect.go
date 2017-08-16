@@ -102,34 +102,6 @@ func (i *Inspector) InspectOriginalTable(databaseName string, doTb *uconf.Table)
 	return nil
 }
 
-//It extracts the list of shared columns and the chosen extract unique key
-func (i *Inspector) inspectTables(databaseName string, doTb *uconf.Table) (err error) {
-	/*originalNamesOnApplier := doTb.OriginalTableColumnsOnApplier.Names()
-	originalNames := doTb.OriginalTableColumns.Names()
-	if !reflect.DeepEqual(originalNames, originalNamesOnApplier) {
-		return fmt.Errorf("It seems like table structure is not identical between master and replica. This scenario is not supported.")
-	}*/
-
-	doTb.SharedColumns, doTb.MappedSharedColumns = i.getSharedColumns(*doTb)
-	//i.logger.Debugf("mysql.inspector: Shared columns are %s", doTb.SharedColumns)
-	// By fact that a non-empty unique key exists we also know the shared columns are non-empty
-
-	// This additional step looks at which columns are unsigned. We could have merged this within
-	// the `getTableColumns()` function, but it's a later patch and introduces some complexity; I feel
-	// comfortable in doing this as a separate step.
-	i.applyColumnTypes(databaseName, doTb.TableName, doTb.OriginalTableColumns, doTb.SharedColumns)
-
-	for c := range doTb.SharedColumns.ColumnList() {
-		column := doTb.SharedColumns.ColumnList()[c]
-		mappedColumn := doTb.MappedSharedColumns.ColumnList()[c]
-		if column.Name == mappedColumn.Name && column.Type == umconf.DateTimeColumnType && mappedColumn.Type == umconf.TimestampColumnType {
-			doTb.MappedSharedColumns.SetConvertDatetimeToTimestamp(column.Name, i.mysqlContext.TimeZone)
-		}
-	}
-
-	return nil
-}
-
 // validateConnection issues a simple can-connect to MySQL
 func (i *Inspector) validateConnection() error {
 	query := `select @@global.version`
@@ -340,55 +312,6 @@ func (i *Inspector) validateTableTriggers(databaseName, tableName string) error 
 	return nil
 }
 
-// applyColumnTypes
-func (i *Inspector) applyColumnTypes(databaseName, tableName string, columnsLists ...*umconf.ColumnList) error {
-	query := `
-		select
-				*
-			from
-				information_schema.columns
-			where
-				table_schema=?
-				and table_name=?
-		`
-	err := usql.QueryRowsMap(i.db, query, func(m usql.RowMap) error {
-		columnName := m.GetString("COLUMN_NAME")
-		columnType := m.GetString("COLUMN_TYPE")
-		if strings.Contains(columnType, "unsigned") {
-			for _, columnsList := range columnsLists {
-				columnsList.SetUnsigned(columnName)
-			}
-		}
-		if strings.Contains(columnType, "mediumint") {
-			for _, columnsList := range columnsLists {
-				columnsList.GetColumn(columnName).Type = umconf.MediumIntColumnType
-			}
-		}
-		if strings.Contains(columnType, "timestamp") {
-			for _, columnsList := range columnsLists {
-				columnsList.GetColumn(columnName).Type = umconf.TimestampColumnType
-			}
-		}
-		if strings.Contains(columnType, "datetime") {
-			for _, columnsList := range columnsLists {
-				columnsList.GetColumn(columnName).Type = umconf.DateTimeColumnType
-			}
-		}
-		if strings.HasPrefix(columnType, "enum") {
-			for _, columnsList := range columnsLists {
-				columnsList.GetColumn(columnName).Type = umconf.EnumColumnType
-			}
-		}
-		if charset := m.GetString("CHARACTER_SET_NAME"); charset != "" {
-			for _, columnsList := range columnsLists {
-				columnsList.SetCharset(columnName, charset)
-			}
-		}
-		return nil
-	}, databaseName, tableName)
-	return err
-}
-
 // getCandidateUniqueKeys investigates a table and returns the list of unique keys
 // candidate for chunking
 func (i *Inspector) getCandidateUniqueKeys(databaseName, tableName string) (uniqueKeys [](*umconf.UniqueKey), err error) {
@@ -481,36 +404,6 @@ func getSharedUniqueKeys(originalUniqueKeys, ghostUniqueKeys [](*umconf.UniqueKe
 		}
 	}
 	return uniqueKeys, nil
-}
-
-// getSharedColumns returns the intersection of two lists of columns in same order as the first list
-func (i *Inspector) getSharedColumns(doTb uconf.Table) (*umconf.ColumnList, *umconf.ColumnList) {
-	columnsInGhost := make(map[string]bool)
-	for _, ghostColumn := range doTb.OriginalTableColumns.Names() {
-		columnsInGhost[ghostColumn] = true
-	}
-	sharedColumnNames := []string{}
-	for _, originalColumn := range doTb.OriginalTableColumns.Names() {
-		isSharedColumn := false
-		if columnsInGhost[originalColumn] || columnsInGhost[doTb.ColumnRenameMap[originalColumn]] {
-			isSharedColumn = true
-		}
-		if doTb.DroppedColumnsMap[originalColumn] {
-			isSharedColumn = false
-		}
-		if isSharedColumn {
-			sharedColumnNames = append(sharedColumnNames, originalColumn)
-		}
-	}
-	mappedSharedColumnNames := []string{}
-	for _, columnName := range sharedColumnNames {
-		if mapped, ok := doTb.ColumnRenameMap[columnName]; ok {
-			mappedSharedColumnNames = append(mappedSharedColumnNames, mapped)
-		} else {
-			mappedSharedColumnNames = append(mappedSharedColumnNames, columnName)
-		}
-	}
-	return umconf.NewColumnList(sharedColumnNames), umconf.NewColumnList(mappedSharedColumnNames)
 }
 
 // showCreateTable returns the `show create table` statement for given table

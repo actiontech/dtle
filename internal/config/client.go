@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"udup/internal"
-	ubase "udup/internal/client/driver/mysql/base"
 	umconf "udup/internal/config/mysql"
 	"udup/internal/models"
 )
@@ -173,8 +172,6 @@ type MySQLDriverConfig struct {
 	InCutOverCriticalSectionFlag           int64
 
 	Iteration int64
-
-	recentBinlogCoordinates ubase.BinlogCoordinates
 }
 
 func (a *MySQLDriverConfig) SetDefault() *MySQLDriverConfig {
@@ -214,10 +211,6 @@ func (m *MySQLDriverConfig) MarkRowCopyEndTime() {
 // MarkRowCopyStartTime
 func (m *MySQLDriverConfig) MarkRowCopyStartTime() {
 	m.RowCopyStartTime = time.Now()
-}
-
-func (m *MySQLDriverConfig) SetRecentBinlogCoordinates(coordinates ubase.BinlogCoordinates) {
-	m.recentBinlogCoordinates = coordinates
 }
 
 func (m *MySQLDriverConfig) GetIteration() int64 {

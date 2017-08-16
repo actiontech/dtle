@@ -254,11 +254,16 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 					b.logger.Errorf("mysql.reader: Unexpected error on readTableColumns, got %v", err)
 					return err
 				}
+
 				dmlEvent.OriginalTableColumns = tableColumns
 				t := &config.Table{
 					TableSchema:          string(rowsEvent.Table.Schema),
 					TableName:            string(rowsEvent.Table.Table),
 					OriginalTableColumns: tableColumns,
+				}
+				if err := base.InspectTables(b.db, t.TableSchema, t, b.MysqlContext.TimeZone); err != nil {
+					b.logger.Errorf("mysql.reader: unexpected error on inspectTables, got %v", err)
+					return err
 				}
 				b.tables = append(b.tables, t)
 			}
@@ -1031,6 +1036,10 @@ func (b *BinlogReader) Close() error {
 	}
 	b.shutdown = true
 	close(b.shutdownCh)
+
+	if err := sql.CloseDB(b.db); err != nil {
+		return err
+	}
 	b.wg.Wait()
 	// Historically there was a:
 	b.binlogSyncer.Close()
