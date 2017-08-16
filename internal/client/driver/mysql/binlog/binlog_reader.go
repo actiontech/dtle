@@ -38,6 +38,7 @@ type BinlogReader struct {
 	currentCoordinatesMutex  *sync.Mutex
 	LastAppliedRowsEventHint base.BinlogCoordinates
 	MysqlContext             *config.MySQLDriverConfig
+	replicateDoDb            []*config.DataSource
 
 	currentTx          *BinlogTx
 	currentBinlogEntry *BinlogEntry
@@ -54,12 +55,13 @@ type BinlogReader struct {
 	shutdownLock sync.Mutex
 }
 
-func NewMySQLReader(cfg *config.MySQLDriverConfig, logger *log.Entry) (binlogReader *BinlogReader, err error) {
+func NewMySQLReader(cfg *config.MySQLDriverConfig, replicateDoDb []*config.DataSource, logger *log.Entry) (binlogReader *BinlogReader, err error) {
 	binlogReader = &BinlogReader{
 		logger:                  logger,
 		currentCoordinates:      base.BinlogCoordinates{},
 		currentCoordinatesMutex: &sync.Mutex{},
 		MysqlContext:            cfg,
+		replicateDoDb:           replicateDoDb,
 		appendB64SqlBs:          make([]byte, 1024*1024),
 		shutdownCh:              make(chan struct{}),
 	}
@@ -127,7 +129,7 @@ func (b *BinlogReader) GetCurrentBinlogCoordinates() *base.BinlogCoordinates {
 // StreamEvents
 func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel chan<- *BinlogEntry) error {
 	if b.currentCoordinates.SmallerThanOrEquals(&b.LastAppliedRowsEventHint) {
-		//b.logger.Debugf("mysql.reader: Skipping handled query at %+v", b.currentCoordinates)
+		b.logger.Debugf("mysql.reader: Skipping handled query at %+v", b.currentCoordinates)
 		return nil
 	}
 
@@ -157,15 +159,6 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 
 		if strings.ToUpper(query) == "BEGIN" {
 			b.currentBinlogEntry.hasBeginQuery = true
-			event := NewDataEvent(
-				query,
-				"",
-				"",
-				NotDML,
-				nil,
-				nil,
-			)
-			b.currentBinlogEntry.Events = append(b.currentBinlogEntry.Events, event)
 		} else {
 			if strings.ToUpper(query) == "COMMIT" || !b.currentBinlogEntry.hasBeginQuery {
 				if skipQueryEvent(query) {
@@ -178,16 +171,13 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 					return fmt.Errorf("parse query [%v] event failed: %v", query, err)
 				}
 				if !ok {
-					event := NewDataEvent(
+					event := NewQueryEvent(
 						query,
-						"",
-						"",
 						NotDML,
-						nil,
-						nil,
 					)
 					b.currentBinlogEntry.Events = append(b.currentBinlogEntry.Events, event)
 					entriesChannel <- b.currentBinlogEntry
+					b.LastAppliedRowsEventHint = b.currentCoordinates
 					return nil
 				}
 
@@ -201,30 +191,24 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 					if err != nil {
 						return err
 					}
-					event := NewDataEvent(
+					event := NewQueryEvent(
 						sql,
-						"",
-						"",
 						NotDML,
-						nil,
-						nil,
 					)
 					b.currentBinlogEntry.Events = append(b.currentBinlogEntry.Events, event)
 				}
 				entriesChannel <- b.currentBinlogEntry
+				b.LastAppliedRowsEventHint = b.currentCoordinates
 			}
 		}
 	case replication.XID_EVENT:
 		entriesChannel <- b.currentBinlogEntry
+		b.LastAppliedRowsEventHint = b.currentCoordinates
 	default:
 		if rowsEvent, ok := ev.Event.(*replication.RowsEvent); ok {
 			if b.skipRowEvent(rowsEvent) {
-				//b.logger.Debugf("mysql.reader: skip WRITE_ROWS_EVENTv2[%s-%s]", rowsEvent.Table.Schema, rowsEvent.Table.Table)
+				//b.logger.Debugf("mysql.reader: skip rowsEvent [%s-%s]", rowsEvent.Table.Schema, rowsEvent.Table.Table)
 				return nil
-			}
-			originalTableColumns, originalTableUniqueKeys, err := b.InspectTableColumnsAndUniqueKeys(string(rowsEvent.Table.Schema), string(rowsEvent.Table.Table))
-			if err != nil {
-				return err
 			}
 
 			dml := ToEventDML(ev.Header.EventType.String())
@@ -232,45 +216,42 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 				return fmt.Errorf("Unknown DML type: %s", ev.Header.EventType.String())
 			}
 			dmlEvent := NewDataEvent(
-				"",
 				string(rowsEvent.Table.Schema),
 				string(rowsEvent.Table.Table),
 				dml,
-				originalTableColumns,
-				originalTableUniqueKeys,
 			)
-			for _, d := range b.MysqlContext.ReplicateDoDb {
+			for _, d := range b.replicateDoDb {
 				for _, t := range d.Tables {
 					if t.TableSchema == string(rowsEvent.Table.Schema) && t.TableName == string(rowsEvent.Table.Table) {
 						dmlEvent.OriginalTableColumns = t.OriginalTableColumns
-						dmlEvent.isExist = true
+						dmlEvent.OriginalTableUniqueKeys = t.OriginalTableUniqueKeys
+						dmlEvent.isDbExist = true
+						break
 					}
 				}
 			}
 
-			if !dmlEvent.isExist {
-				tableColumns, err := base.GetTableColumns(b.db, string(rowsEvent.Table.Schema), string(rowsEvent.Table.Table))
+			if !dmlEvent.isDbExist {
+				originalTableColumns, originalTableUniqueKeys, err := b.InspectTableColumnsAndUniqueKeys(string(rowsEvent.Table.Schema), string(rowsEvent.Table.Table))
 				if err != nil {
-					b.logger.Errorf("mysql.reader: Unexpected error on readTableColumns, got %v", err)
 					return err
 				}
-
-				dmlEvent.OriginalTableColumns = tableColumns
 				t := &config.Table{
-					TableSchema:          string(rowsEvent.Table.Schema),
-					TableName:            string(rowsEvent.Table.Table),
-					OriginalTableColumns: tableColumns,
+					TableSchema:             string(rowsEvent.Table.Schema),
+					TableName:               string(rowsEvent.Table.Table),
+					OriginalTableColumns:    originalTableColumns,
+					OriginalTableUniqueKeys: originalTableUniqueKeys,
 				}
-				if err := base.InspectTables(b.db, t.TableSchema, t, b.MysqlContext.TimeZone); err != nil {
-					b.logger.Errorf("mysql.reader: unexpected error on inspectTables, got %v", err)
-					return err
-				}
-				for _, b := range b.MysqlContext.ReplicateDoDb {
+				dmlEvent.OriginalTableColumns = t.OriginalTableColumns
+				dmlEvent.OriginalTableUniqueKeys = t.OriginalTableUniqueKeys
+				for _, b := range b.replicateDoDb {
 					if b.TableSchema == t.TableSchema {
 						b.Tables = append(b.Tables, t)
+						break
 					}
 				}
 			}
+
 			for i, row := range rowsEvent.Rows {
 				if dml == UpdateDML && i%2 == 1 {
 					// An update has two rows (WHERE+SET)
@@ -280,16 +261,16 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 				switch dml {
 				case InsertDML:
 					{
-						dmlEvent.NewColumnValues = append(dmlEvent.NewColumnValues, mysql.ToColumnValues(row))
+						dmlEvent.NewColumnValues = mysql.ToColumnValues(row)
 					}
 				case UpdateDML:
 					{
-						dmlEvent.WhereColumnValues = append(dmlEvent.NewColumnValues, mysql.ToColumnValues(row))
-						dmlEvent.NewColumnValues = append(dmlEvent.NewColumnValues, mysql.ToColumnValues(rowsEvent.Rows[i+1]))
+						dmlEvent.WhereColumnValues = mysql.ToColumnValues(row)
+						dmlEvent.NewColumnValues = mysql.ToColumnValues(rowsEvent.Rows[i+1])
 					}
 				case DeleteDML:
 					{
-						dmlEvent.WhereColumnValues = append(dmlEvent.NewColumnValues, mysql.ToColumnValues(row))
+						dmlEvent.WhereColumnValues = mysql.ToColumnValues(row)
 					}
 				}
 				b.currentBinlogEntry.Events = append(b.currentBinlogEntry.Events, dmlEvent)
@@ -301,8 +282,6 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 			return nil
 		}
 	}
-
-	b.LastAppliedRowsEventHint = b.currentCoordinates
 	return nil
 }
 
@@ -684,6 +663,15 @@ func (b *BinlogReader) InspectTableColumnsAndUniqueKeys(databaseName, tableName 
 	if err != nil {
 		return columns, uniqueKeys, err
 	}
+	t := &config.Table{
+		TableName:            tableName,
+		OriginalTableColumns: columns,
+	}
+	if err := base.InspectTables(b.db, databaseName, t, b.MysqlContext.TimeZone); err != nil {
+		return columns, uniqueKeys, err
+	}
+	columns = t.OriginalTableColumns
+	uniqueKeys = t.OriginalTableUniqueKeys
 
 	return columns, uniqueKeys, nil
 }
@@ -1041,10 +1029,10 @@ func (b *BinlogReader) Close() error {
 	b.shutdown = true
 	close(b.shutdownCh)
 
+	b.wg.Wait()
 	if err := sql.CloseDB(b.db); err != nil {
 		return err
 	}
-	b.wg.Wait()
 	// Historically there was a:
 	b.binlogSyncer.Close()
 	// here. A new go-mysql version closes the binlog syncer connection independently.

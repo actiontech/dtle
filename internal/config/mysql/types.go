@@ -262,47 +262,30 @@ func (c *UniqueKey) String() string {
 }
 
 type ColumnValues struct {
-	AbstractValues []interface{}
-	ValuesPointers []interface{}
-}
-
-func NewColumnValues(length int) *ColumnValues {
-	result := &ColumnValues{
-		AbstractValues: make([]interface{}, length),
-		ValuesPointers: make([]interface{}, length),
-	}
-	for i := 0; i < length; i++ {
-		result.ValuesPointers[i] = &result.AbstractValues[i]
-	}
-
-	return result
+	AbstractValues []*interface{}
+	ValuesPointers []*interface{}
 }
 
 func ToColumnValues(abstractValues []interface{}) *ColumnValues {
 	result := &ColumnValues{
-		AbstractValues: abstractValues,
-		ValuesPointers: make([]interface{}, len(abstractValues)),
+		AbstractValues: make([]*interface{}, len(abstractValues)),
+		ValuesPointers: make([]*interface{}, len(abstractValues)),
 	}
+
 	for i := 0; i < len(abstractValues); i++ {
-		if result.AbstractValues[i] != nil {
-			val := result.AbstractValues[i]
-			if ints, ok := val.([]uint8); ok {
-				result.AbstractValues[i] = string(ints)
-			} else {
-				result.AbstractValues[i] = fmt.Sprintf("%+v", val)
-			}
-			result.ValuesPointers[i] = &result.AbstractValues[i]
-		} else {
-			result.AbstractValues[i] = fmt.Sprintf(`%s`, result.AbstractValues[i])
-			result.ValuesPointers[i] = &result.AbstractValues[i]
-		}
+		result.AbstractValues[i] = &abstractValues[i]
+		result.ValuesPointers[i] = result.AbstractValues[i]
 	}
 
 	return result
 }
 
 func (c *ColumnValues) GetAbstractValues() []interface{} {
-	return c.AbstractValues
+	var abstractValues []interface{}
+	for _, a := range c.AbstractValues {
+		abstractValues = append(abstractValues, *a)
+	}
+	return abstractValues
 }
 
 func (c *ColumnValues) StringColumn(index int) string {

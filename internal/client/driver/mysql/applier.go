@@ -61,10 +61,9 @@ type Applier struct {
 	applyBinlogGroupTxQueue chan []*binlog.BinlogTx
 	lastAppliedBinlogTx     *binlog.BinlogTx
 
-	natsConn        *gonats.Conn
-	jsonEncodedConn *gonats.EncodedConn
-	waitCh          chan *models.WaitResult
-	wg              sync.WaitGroup
+	natsConn *gonats.Conn
+	waitCh   chan *models.WaitResult
+	wg       sync.WaitGroup
 
 	shutdown     bool
 	shutdownCh   chan struct{}
@@ -688,13 +687,6 @@ func (a *Applier) initNatSubClient() (err error) {
 		a.logger.Errorf("mysql.applier: Can't connect nats server %v. make sure a nats streaming server is running.%v", natsAddr, err)
 		return err
 	}
-	jsonEncodedConn, err := gonats.NewEncodedConn(sc, gonats.JSON_ENCODER)
-	if err != nil {
-		a.logger.Printf("[ERR] mysql.applier: Unable to create encoded connection: %v", err)
-		return err
-	}
-	a.jsonEncodedConn = jsonEncodedConn
-
 	a.logger.Debugf("mysql.applier: Connect nats server %v", natsAddr)
 	a.natsConn = sc
 	return nil
@@ -733,9 +725,17 @@ func (a *Applier) initiateStreaming() error {
 	}
 
 	if a.mysqlContext.ApproveHeterogeneous {
-		_, err := a.jsonEncodedConn.Subscribe(fmt.Sprintf("%s_incr_heterogeneous", a.subject), func(binlogEntry *binlog.BinlogEntry) {
-			//a.logger.Debugf("mysql.applier: received binlogEntry: %+v", binlogEntry)
+		_, err := a.natsConn.Subscribe(fmt.Sprintf("%s_incr_hete", a.subject), func(m *gonats.Msg) {
+			var binlogEntry *binlog.BinlogEntry
+			if err := Decode(m.Data, &binlogEntry); err != nil {
+				a.onError(TaskStateDead, err)
+			}
+			//a.logger.Debugf("mysql.applier: received binlogEntry: %+v", binlogEntry.Coordinates.GNO)
 			a.applyDataEntryQueue <- binlogEntry
+
+			if err := a.natsConn.Publish(m.Reply, nil); err != nil {
+				a.onError(TaskStateDead, err)
+			}
 		})
 		if err != nil {
 			return err
@@ -1485,17 +1485,17 @@ func (a *Applier) buildDMLEventQuery(dmlEvent binlog.DataEvent) (query string, a
 	switch dmlEvent.DML {
 	case binlog.DeleteDML:
 		{
-			query, uniqueKeyArgs, err := sql.BuildDMLDeleteQuery(dmlEvent.DatabaseName, dmlEvent.TableName, dmlEvent.OriginalTableColumns, dmlEvent.WhereColumnValues)
+			query, uniqueKeyArgs, err := sql.BuildDMLDeleteQuery(dmlEvent.DatabaseName, dmlEvent.TableName, dmlEvent.OriginalTableColumns, dmlEvent.OriginalTableColumns, dmlEvent.WhereColumnValues.GetAbstractValues())
 			return query, uniqueKeyArgs, -1, err
 		}
 	case binlog.InsertDML:
 		{
-			query, sharedArgs, err := sql.BuildDMLInsertQuery(dmlEvent.DatabaseName, dmlEvent.TableName, dmlEvent.OriginalTableColumns, sharedColumns, mappedSharedColumns, dmlEvent.NewColumnValues)
+			query, sharedArgs, err := sql.BuildDMLInsertQuery(dmlEvent.DatabaseName, dmlEvent.TableName, dmlEvent.OriginalTableColumns, sharedColumns, mappedSharedColumns, dmlEvent.NewColumnValues.GetAbstractValues())
 			return query, sharedArgs, 1, err
 		}
 	case binlog.UpdateDML:
 		{
-			query, sharedArgs, uniqueKeyArgs, err := sql.BuildDMLUpdateQuery(dmlEvent.DatabaseName, dmlEvent.TableName, dmlEvent.OriginalTableColumns, sharedColumns, mappedSharedColumns, dmlEvent.NewColumnValues, dmlEvent.WhereColumnValues)
+			query, sharedArgs, uniqueKeyArgs, err := sql.BuildDMLUpdateQuery(dmlEvent.DatabaseName, dmlEvent.TableName, dmlEvent.OriginalTableColumns, sharedColumns, mappedSharedColumns, dmlEvent.OriginalTableColumns, dmlEvent.NewColumnValues.GetAbstractValues(), dmlEvent.WhereColumnValues.GetAbstractValues())
 			args = append(args, sharedArgs...)
 			args = append(args, uniqueKeyArgs...)
 			return query, args, 0, err
@@ -1580,7 +1580,7 @@ func (a *Applier) ApplyBinlogEvent(db *gosql.DB, binlogEntry *binlog.BinlogEntry
 	}
 
 	// no error
-	atomic.AddInt64(&a.mysqlContext.TotalDMLEventsApplied, int64(len(binlogEntry.Events)))
+	//atomic.AddInt64(&a.mysqlContext.TotalDMLEventsApplied, int64(len(binlogEntry.Events)))
 	//a.logger.Printf("mysql.applier: ApplyDMLEventQueries() applied %d events in one transaction", len(binlogEntry.Events))
 	return nil
 }

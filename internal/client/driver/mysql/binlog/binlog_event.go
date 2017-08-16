@@ -74,25 +74,30 @@ type BinlogEvent struct {
 
 // BinlogDMLEvent is a binary log rows (DML) event entry, with data
 type DataEvent struct {
-	isExist                 bool
+	isDbExist               bool
 	Query                   string
 	DatabaseName            string
 	TableName               string
 	DML                     EventDML
 	OriginalTableColumns    *mysql.ColumnList
 	OriginalTableUniqueKeys [](*mysql.UniqueKey)
-	WhereColumnValues       []*mysql.ColumnValues
-	NewColumnValues         []*mysql.ColumnValues
+	WhereColumnValues       *mysql.ColumnValues
+	NewColumnValues         *mysql.ColumnValues
 }
 
-func NewDataEvent(query, databaseName, tableName string, dml EventDML, tableColumns *mysql.ColumnList, tableUniqueKey [](*mysql.UniqueKey)) DataEvent {
+func NewDataEvent(databaseName, tableName string, dml EventDML) DataEvent {
 	event := DataEvent{
-		Query:                   query,
-		DatabaseName:            databaseName,
-		TableName:               tableName,
-		DML:                     dml,
-		OriginalTableColumns:    tableColumns,
-		OriginalTableUniqueKeys: tableUniqueKey,
+		DatabaseName: databaseName,
+		TableName:    tableName,
+		DML:          dml,
+	}
+	return event
+}
+
+func NewQueryEvent(query string, dml EventDML) DataEvent {
+	event := DataEvent{
+		Query: query,
+		DML:   dml,
 	}
 	return event
 }

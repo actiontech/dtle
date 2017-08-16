@@ -41,6 +41,7 @@ type Extractor struct {
 	db                         *gosql.DB
 	singletonDB                *gosql.DB
 	dumpers                    []*dumper
+	replicateDoDb              []*config.DataSource
 	binlogChannel              chan *binlog.BinlogTx
 	dataChannel                chan *binlog.BinlogEntry
 	parser                     *sql.Parser
@@ -57,9 +58,8 @@ type Extractor struct {
 	sendByTimeoutCounter  int
 	sendBySizeFullCounter int
 
-	jsonEncodedConn *gonats.EncodedConn
-	natsConn        *gonats.Conn
-	waitCh          chan *models.WaitResult
+	natsConn *gonats.Conn
+	waitCh   chan *models.WaitResult
 
 	shutdown     bool
 	shutdownCh   chan struct{}
@@ -471,14 +471,20 @@ func (e *Extractor) inspectTables() (err error) {
 			if doDb.TableSchema == "" {
 				continue
 			}
+			db := &config.DataSource{
+				TableSchema: doDb.TableSchema,
+			}
 
 			if len(doDb.Tables) == 0 {
 				tbs, err := showTables(e.db, doDb.TableSchema)
 				if err != nil {
 					return err
 				}
-				doDb.Tables = tbs
+				db.Tables = tbs
+			} else {
+				db.Tables = doDb.Tables
 			}
+			e.replicateDoDb = append(e.replicateDoDb, db)
 			for _, doTb := range doDb.Tables {
 				doTb.TableSchema = doDb.TableSchema
 				if err := e.inspector.ValidateOriginalTable(doDb.TableSchema, doTb.TableName); err != nil {
@@ -507,7 +513,7 @@ func (e *Extractor) inspectTables() (err error) {
 				}
 				ds.Tables = append(ds.Tables, tb)
 			}
-			e.mysqlContext.ReplicateDoDb = append(e.mysqlContext.ReplicateDoDb, ds)
+			e.replicateDoDb = append(e.replicateDoDb, ds)
 		}
 	}
 
@@ -517,7 +523,7 @@ func (e *Extractor) inspectTables() (err error) {
 // readTableColumns reads table columns on applier
 func (e *Extractor) readTableColumns() (err error) {
 	e.logger.Printf("mysql.extractor: Examining table structure on extractor")
-	for _, doDb := range e.mysqlContext.ReplicateDoDb {
+	for _, doDb := range e.replicateDoDb {
 		for _, doTb := range doDb.Tables {
 			doTb.OriginalTableColumns, err = base.GetTableColumns(e.db, doTb.TableSchema, doTb.TableName)
 			if err != nil {
@@ -573,13 +579,6 @@ func (e *Extractor) initNatsPubClient() (err error) {
 		e.logger.Errorf("mysql.extractor: Can't connect nats server %v. make sure a nats streaming server is running.%v", natsAddr, err)
 		return err
 	}
-	jsonEncodedConn, err := gonats.NewEncodedConn(sc, gonats.JSON_ENCODER)
-	if err != nil {
-		e.logger.Printf("[ERR] mysql.extractor: Unable to create encoded connection: %v", err)
-		return err
-	}
-	e.jsonEncodedConn = jsonEncodedConn
-
 	e.logger.Debugf("mysql.extractor: Connect nats server %v", natsAddr)
 	e.natsConn = sc
 
@@ -645,7 +644,7 @@ func (e *Extractor) initDBConnections() (err error) {
 
 // initBinlogReader creates and connects the reader: we hook up to a MySQL server as a replica
 func (e *Extractor) initBinlogReader(binlogCoordinates *base.BinlogCoordinates) error {
-	binlogReader, err := binlog.NewMySQLReader(e.mysqlContext, e.logger)
+	binlogReader, err := binlog.NewMySQLReader(e.mysqlContext, e.replicateDoDb, e.logger)
 	if err != nil {
 		return err
 	}
@@ -790,7 +789,13 @@ func (e *Extractor) StreamEvents() error {
 		go func() {
 			for binlogEntry := range e.dataChannel {
 				if nil != binlogEntry {
-					if err := e.jsonEncodedConn.Publish(fmt.Sprintf("%s_incr_heterogeneous", e.subject), binlogEntry); err != nil {
+					txMsg, err := Encode(&binlogEntry)
+					if err != nil {
+						e.onError(TaskStateDead, err)
+						break
+					}
+
+					if _, err := e.natsConn.Request(fmt.Sprintf("%s_incr_hete", e.subject), txMsg, DefaultConnectWait); err != nil {
 						e.logger.Printf("[ERR] mysql.extractor: unexpected error on publish, got %v", err)
 						e.onError(TaskStateDead, err)
 						break
@@ -940,8 +945,8 @@ func (e *Extractor) mysqlDump() error {
 
 	// Transform the current schema so that it reflects the *current* state of the MySQL server's contents.
 	// First, get the DROP TABLE and CREATE TABLE statement (with keys and constraint definitions) for our tables ...
-	e.logger.Printf("mysql.extractor: Step 1: - generating DROP and CREATE statements to reflect current database schemas: %v", e.mysqlContext.ReplicateDoDb)
-	for _, db := range e.mysqlContext.ReplicateDoDb {
+	e.logger.Printf("mysql.extractor: Step 1: - generating DROP and CREATE statements to reflect current database schemas: %v", e.replicateDoDb)
+	for _, db := range e.replicateDoDb {
 		if len(db.Tables) > 0 {
 			for _, tb := range db.Tables {
 				if tb.TableSchema != db.TableSchema {
@@ -984,7 +989,7 @@ func (e *Extractor) mysqlDump() error {
 	startScan := currentTimeMillis()
 	counter := 0
 	pool := models.NewPool(10)
-	for _, db := range e.mysqlContext.ReplicateDoDb {
+	for _, db := range e.replicateDoDb {
 		for _, tb := range db.Tables {
 			pool.Add(1)
 			go func(t *config.Table) {
