@@ -494,7 +494,7 @@ func BuildDMLUpdateQuery(databaseName, tableName string, tableColumns, sharedCol
 	databaseName = EscapeName(databaseName)
 	tableName = EscapeName(tableName)
 
-	for _, column := range sharedColumns.ColumnList() {
+	for _, column := range tableColumns.ColumnList() {
 		tableOrdinal := tableColumns.Ordinals[column.Name]
 		arg := column.ConvertArg(valueArgs[tableOrdinal])
 		sharedArgs = append(sharedArgs, arg)
@@ -516,6 +516,7 @@ func BuildDMLUpdateQuery(databaseName, tableName string, tableColumns, sharedCol
 					%s
 				where
  					%s
+ 				limit 1
  		`, databaseName, tableName,
 		setClause,
 		equalsComparison,
