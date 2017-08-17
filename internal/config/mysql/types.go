@@ -40,6 +40,11 @@ type Column struct {
 }
 
 func (c *Column) ConvertArg(arg interface{}) interface{} {
+	if arg == nil{
+		return "NULL"
+	}else if fmt.Sprintf("%s",arg) =="" {
+		return ""
+	}
 	if s, ok := arg.(string); ok {
 		// string, charset conversion
 		if encoding, ok := charsetEncodingMap[c.Charset]; ok {

@@ -417,7 +417,7 @@ func BuildDMLDeleteQuery(databaseName, tableName string, tableColumns, uniqueKey
 	if uniqueKeyColumns.Len() == 0 {
 		return result, uniqueKeyArgs, fmt.Errorf("No unique key columns found in BuildDMLDeleteQuery")
 	}
-	for _, column := range uniqueKeyColumns.ColumnList() {
+	for _, column := range tableColumns.ColumnList() {
 		tableOrdinal := tableColumns.Ordinals[column.Name]
 		arg := column.ConvertArg(args[tableOrdinal])
 		uniqueKeyArgs = append(uniqueKeyArgs, arg)
@@ -437,6 +437,8 @@ func BuildDMLDeleteQuery(databaseName, tableName string, tableColumns, uniqueKey
 		`, databaseName, tableName,
 		equalsComparison,
 	)
+
+	fmt.Println(fmt.Sprintf("result:%v,equalsComparison:%v,args:%v",result,equalsComparison,uniqueKeyArgs))
 	return result, uniqueKeyArgs, nil
 }
 
@@ -475,6 +477,7 @@ func BuildDMLInsertQuery(databaseName, tableName string, tableColumns, sharedCol
 		strings.Join(mappedSharedColumnNames, ", "),
 		strings.Join(preparedValues, ", "),
 	)
+	fmt.Println(fmt.Sprintf("%+v",sharedArgs))
 	return result, sharedArgs, nil
 }
 
