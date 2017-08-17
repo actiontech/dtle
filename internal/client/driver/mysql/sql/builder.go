@@ -14,6 +14,7 @@ const (
 	LessThanComparisonSign            ValueComparisonSign = "<"
 	LessThanOrEqualsComparisonSign                        = "<="
 	EqualsComparisonSign                                  = "="
+	IsEqualsComparisonSign                                = "is"
 	GreaterThanOrEqualsComparisonSign                     = ">="
 	GreaterThanComparisonSign                             = ">"
 	NotEqualsComparisonSign                               = "!="
@@ -417,14 +418,27 @@ func BuildDMLDeleteQuery(databaseName, tableName string, tableColumns, uniqueKey
 	if uniqueKeyColumns.Len() == 0 {
 		return result, uniqueKeyArgs, fmt.Errorf("No unique key columns found in BuildDMLDeleteQuery")
 	}
+	comparisons := []string{}
 	for _, column := range tableColumns.ColumnList() {
 		tableOrdinal := tableColumns.Ordinals[column.Name]
-		arg := column.ConvertArg(args[tableOrdinal])
-		uniqueKeyArgs = append(uniqueKeyArgs, arg)
+		if args[tableOrdinal] == nil {
+			comparison, err := BuildValueComparison(column.Name, "NULL", IsEqualsComparisonSign)
+			if err != nil {
+				return result, uniqueKeyArgs, err
+			}
+			comparisons = append(comparisons, comparison)
+		} else {
+			arg := column.ConvertArg(args[tableOrdinal])
+			uniqueKeyArgs = append(uniqueKeyArgs, arg)
+			comparison, err := BuildValueComparison(column.Name, "?", EqualsComparisonSign)
+			if err != nil {
+				return result, uniqueKeyArgs, err
+			}
+			comparisons = append(comparisons, comparison)
+		}
 	}
 	databaseName = EscapeName(databaseName)
 	tableName = EscapeName(tableName)
-	equalsComparison, err := BuildEqualsPreparedComparison(uniqueKeyColumns.Names())
 	if err != nil {
 		return result, uniqueKeyArgs, err
 	}
@@ -435,10 +449,9 @@ func BuildDMLDeleteQuery(databaseName, tableName string, tableColumns, uniqueKey
 				where
 					%s
 		`, databaseName, tableName,
-		equalsComparison,
+		fmt.Sprintf("(%s)", strings.Join(comparisons, " and ")),
 	)
 
-	fmt.Println(fmt.Sprintf("result:%v,equalsComparison:%v,args:%v",result,equalsComparison,uniqueKeyArgs))
 	return result, uniqueKeyArgs, nil
 }
 
@@ -457,8 +470,12 @@ func BuildDMLInsertQuery(databaseName, tableName string, tableColumns, sharedCol
 
 	for _, column := range tableColumns.ColumnList() {
 		tableOrdinal := tableColumns.Ordinals[column.Name]
-		arg := column.ConvertArg(args[tableOrdinal])
-		sharedArgs = append(sharedArgs, arg)
+		if args[tableOrdinal] == nil {
+			sharedArgs = append(sharedArgs, args[tableOrdinal])
+		} else {
+			arg := column.ConvertArg(args[tableOrdinal])
+			sharedArgs = append(sharedArgs, arg)
+		}
 	}
 
 	mappedSharedColumnNames := duplicateNames(mappedSharedColumns.Names())
@@ -477,7 +494,6 @@ func BuildDMLInsertQuery(databaseName, tableName string, tableColumns, sharedCol
 		strings.Join(mappedSharedColumnNames, ", "),
 		strings.Join(preparedValues, ", "),
 	)
-	fmt.Println(fmt.Sprintf("%+v",sharedArgs))
 	return result, sharedArgs, nil
 }
 
@@ -499,19 +515,36 @@ func BuildDMLUpdateQuery(databaseName, tableName string, tableColumns, sharedCol
 
 	for _, column := range tableColumns.ColumnList() {
 		tableOrdinal := tableColumns.Ordinals[column.Name]
-		arg := column.ConvertArg(valueArgs[tableOrdinal])
-		sharedArgs = append(sharedArgs, arg)
+		if valueArgs[tableOrdinal] == nil {
+			sharedArgs = append(sharedArgs, nil)
+		} else {
+			arg := column.ConvertArg(valueArgs[tableOrdinal])
+			sharedArgs = append(sharedArgs, arg)
+		}
 	}
 
+	comparisons := []string{}
 	for _, column := range uniqueKeyColumns.ColumnList() {
 		tableOrdinal := tableColumns.Ordinals[column.Name]
-		arg := column.ConvertArg(whereArgs[tableOrdinal])
-		uniqueKeyArgs = append(uniqueKeyArgs, arg)
+		if whereArgs[tableOrdinal] == nil {
+			comparison, err := BuildValueComparison(column.Name, "NULL", IsEqualsComparisonSign)
+			if err != nil {
+				return result, sharedArgs, uniqueKeyArgs, err
+			}
+			comparisons = append(comparisons, comparison)
+		} else {
+			arg := column.ConvertArg(whereArgs[tableOrdinal])
+			uniqueKeyArgs = append(uniqueKeyArgs, arg)
+			comparison, err := BuildValueComparison(column.Name, "?", EqualsComparisonSign)
+			if err != nil {
+				return result, sharedArgs, uniqueKeyArgs, err
+			}
+			comparisons = append(comparisons, comparison)
+		}
 	}
 
 	setClause, err := BuildSetPreparedClause(mappedSharedColumns)
 
-	equalsComparison, err := BuildEqualsPreparedComparison(uniqueKeyColumns.Names())
 	result = fmt.Sprintf(`
  			update
  					%s.%s
@@ -522,7 +555,7 @@ func BuildDMLUpdateQuery(databaseName, tableName string, tableColumns, sharedCol
  				limit 1
  		`, databaseName, tableName,
 		setClause,
-		equalsComparison,
+		fmt.Sprintf("(%s)", strings.Join(comparisons, " and ")),
 	)
 	return result, sharedArgs, uniqueKeyArgs, nil
 }
