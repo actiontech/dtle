@@ -3,11 +3,11 @@ package mysql
 import (
 	"fmt"
 	"reflect"
+	"sort"
 	"strconv"
 	"strings"
 
 	"golang.org/x/text/transform"
-	"sort"
 )
 
 type ColumnType int

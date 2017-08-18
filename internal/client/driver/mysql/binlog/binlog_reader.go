@@ -87,12 +87,13 @@ func NewMySQLReader(cfg *config.MySQLDriverConfig, replicateDoDb []*config.DataS
 	}
 
 	binlogSyncerConfig := &replication.BinlogSyncerConfig{
-		ServerID: uint32(serverId),
-		Flavor:   "mysql",
-		Host:     cfg.ConnectionConfig.Host,
-		Port:     uint16(cfg.ConnectionConfig.Port),
-		User:     cfg.ConnectionConfig.User,
-		Password: cfg.ConnectionConfig.Password,
+		ServerID:       uint32(serverId),
+		Flavor:         "mysql",
+		Host:           cfg.ConnectionConfig.Host,
+		Port:           uint16(cfg.ConnectionConfig.Port),
+		User:           cfg.ConnectionConfig.User,
+		Password:       cfg.ConnectionConfig.Password,
+		RawModeEnabled: false,
 	}
 	binlogReader.binlogSyncer = replication.NewBinlogSyncer(binlogSyncerConfig)
 

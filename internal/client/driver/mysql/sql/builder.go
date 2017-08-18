@@ -519,11 +519,11 @@ func BuildDMLInsertQuery(databaseName, tableName string, tableColumns, sharedCol
 		}
 	}
 
-	mappedSharedColumnNames := duplicateNames(mappedSharedColumns.Names())
+	mappedSharedColumnNames := duplicateNames(tableColumns.Names())
 	for i := range mappedSharedColumnNames {
 		mappedSharedColumnNames[i] = EscapeName(mappedSharedColumnNames[i])
 	}
-	preparedValues := buildColumnsPreparedValues(mappedSharedColumns)
+	preparedValues := buildColumnsPreparedValues(tableColumns)
 
 	result = fmt.Sprintf(`
 			replace into

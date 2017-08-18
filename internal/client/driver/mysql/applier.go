@@ -45,7 +45,6 @@ type Applier struct {
 	mysqlContext *config.MySQLDriverConfig
 	dbs          []*sql.DB
 	db           *gosql.DB
-	singletonDB  *gosql.DB
 	parser       *sql.Parser
 
 	totalRowCount              int
@@ -232,7 +231,7 @@ func (a *Applier) Run() {
 					a.onError(TaskStateComplete, nil)
 					break
 				default:
-					binlogCoordinates, err := base.GetSelfBinlogCoordinates(a.singletonDB)
+					binlogCoordinates, err := base.GetSelfBinlogCoordinates(a.db)
 					if err != nil {
 						a.onError(TaskStateDead, err)
 						break
@@ -259,7 +258,7 @@ func (a *Applier) Run() {
 func (a *Applier) readCurrentBinlogCoordinates() error {
 	query := `show master status`
 	foundMasterStatus := false
-	err := sql.QueryRowsMap(a.singletonDB, query, func(m sql.RowMap) error {
+	err := sql.QueryRowsMap(a.db, query, func(m sql.RowMap) error {
 		if m.GetString("Executed_Gtid_Set") != "" {
 			gtidSet, err := gomysql.ParseMysqlGTIDSet(m.GetString("Executed_Gtid_Set"))
 			if err != nil {
@@ -1529,6 +1528,13 @@ func (a *Applier) ApplyBinlogEvent(db *gosql.DB, binlogEntry *binlog.BinlogEntry
 	if _, err := tx.Exec(sessionQuery); err != nil {
 		return err
 	}
+	/*sessionQuery = `SET
+			SESSION time_zone = '+00:00',
+			sql_mode = CONCAT(@@session.sql_mode, ',STRICT_ALL_TABLES')
+			`
+	if _, err := tx.Exec(sessionQuery); err != nil {
+		return err
+	}*/
 	for _, event := range binlogEntry.Events {
 		if event.DatabaseName != "" {
 			_, err := tx.Exec(fmt.Sprintf("USE %s", event.DatabaseName))

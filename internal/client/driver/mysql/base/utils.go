@@ -465,11 +465,10 @@ func InspectTables(db *gosql.DB, databaseName string, doTb *uconf.Table, timeZon
 	// comfortable in doing this as a separate step.
 	applyColumnTypes(db, databaseName, doTb.TableName, doTb.OriginalTableColumns, doTb.SharedColumns)
 
-	/*for c := range doTb.SharedColumns.ColumnList() {
-		column := doTb.SharedColumns.ColumnList()[c]
-		mappedColumn := doTb.MappedSharedColumns.ColumnList()[c]
-		if column.Name == mappedColumn.Name && column.Type == umconf.DateTimeColumnType && mappedColumn.Type == umconf.TimestampColumnType {
-			doTb.MappedSharedColumns.SetConvertDatetimeToTimestamp(column.Name, timeZone)
+	/*for c := range doTb.OriginalTableColumns.ColumnList() {
+		column := doTb.OriginalTableColumns.ColumnList()[c]
+		if column.Type == umconf.DateTimeColumnType || column.Type == umconf.TimestampColumnType {
+			doTb.OriginalTableColumns.SetConvertDatetimeToTimestamp(column.Name, timeZone)
 		}
 	}*/
 
@@ -515,7 +514,7 @@ func applyColumnTypes(db *gosql.DB, databaseName, tableName string, columnsLists
 				columnsList.GetColumn(columnName).Type = umconf.EnumColumnType
 			}
 		}
-		if strings.Contains(columnType, "binary") {
+		if strings.HasPrefix(columnType, "binary") {
 			for _, columnsList := range columnsLists {
 				columnsList.GetColumn(columnName).Type = umconf.BinaryColumnType
 				columnsList.GetColumn(columnName).ColumnType = columnType

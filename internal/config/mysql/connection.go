@@ -19,3 +19,7 @@ func (c *ConnectionConfig) GetDBUriByDbName(databaseName string) string {
 func (c *ConnectionConfig) GetDBUri() string {
 	return fmt.Sprintf("%s:%s@tcp(%s:%d)/?timeout=5s&tls=false&autocommit=true&charset=utf8mb4,utf8,latin1&multiStatements=true", c.User, c.Password, c.Host, c.Port)
 }
+
+func (c *ConnectionConfig) GetSingletonDBUri() string {
+	return fmt.Sprintf("%s:%s@tcp(%s:%d)/?timeout=5s&tls=false&autocommit=false&charset=utf8mb4,utf8,latin1&multiStatements=true", c.User, c.Password, c.Host, c.Port)
+}
