@@ -1,6 +1,7 @@
 package sql
 
 import (
+	"bytes"
 	"fmt"
 	"strconv"
 	"strings"
@@ -28,6 +29,37 @@ func EscapeName(name string) string {
 		name = unquoted
 	}
 	return fmt.Sprintf("`%s`", name)
+}
+
+func EscapeValue(colValue string) string {
+	var esc string
+	colBuffer := *new(bytes.Buffer)
+	last := 0
+	for i, c := range colValue {
+		switch c {
+		case 0:
+			esc = `\0`
+		case '\n':
+			esc = `\n`
+		case '\r':
+			esc = `\r`
+		case '\\':
+			esc = `\\`
+		case '\'':
+			esc = `\'`
+		case '"':
+			esc = `\"`
+		case '\032':
+			esc = `\Z`
+		default:
+			continue
+		}
+		colBuffer.WriteString(colValue[last:i])
+		colBuffer.WriteString(esc)
+		last = i + 1
+	}
+	colBuffer.WriteString(colValue[last:])
+	return colBuffer.String()
 }
 
 func buildColumnsPreparedValues(columns *umconf.ColumnList) []string {
@@ -428,13 +460,22 @@ func BuildDMLDeleteQuery(databaseName, tableName string, tableColumns, uniqueKey
 			}
 			comparisons = append(comparisons, comparison)
 		} else {
-			arg := column.ConvertArg(args[tableOrdinal])
-			uniqueKeyArgs = append(uniqueKeyArgs, arg)
-			comparison, err := BuildValueComparison(column.Name, "?", EqualsComparisonSign)
-			if err != nil {
-				return result, uniqueKeyArgs, err
+			if column.Type == umconf.BinaryColumnType {
+				arg := column.ConvertArg(args[tableOrdinal])
+				comparison, err := BuildValueComparison(column.Name, fmt.Sprintf("cast('%v' as %s)", EscapeValue(fmt.Sprintf("%v", arg)), column.ColumnType), EqualsComparisonSign)
+				if err != nil {
+					return result, uniqueKeyArgs, err
+				}
+				comparisons = append(comparisons, comparison)
+			} else {
+				arg := column.ConvertArg(args[tableOrdinal])
+				uniqueKeyArgs = append(uniqueKeyArgs, arg)
+				comparison, err := BuildValueComparison(column.Name, "?", EqualsComparisonSign)
+				if err != nil {
+					return result, uniqueKeyArgs, err
+				}
+				comparisons = append(comparisons, comparison)
 			}
-			comparisons = append(comparisons, comparison)
 		}
 	}
 	databaseName = EscapeName(databaseName)
@@ -515,8 +556,8 @@ func BuildDMLUpdateQuery(databaseName, tableName string, tableColumns, sharedCol
 
 	for _, column := range tableColumns.ColumnList() {
 		tableOrdinal := tableColumns.Ordinals[column.Name]
-		if valueArgs[tableOrdinal] == nil {
-			sharedArgs = append(sharedArgs, nil)
+		if valueArgs[tableOrdinal] == nil || valueArgs[tableOrdinal] == "NULL" {
+			sharedArgs = append(sharedArgs, valueArgs[tableOrdinal])
 		} else {
 			arg := column.ConvertArg(valueArgs[tableOrdinal])
 			sharedArgs = append(sharedArgs, arg)
@@ -524,7 +565,7 @@ func BuildDMLUpdateQuery(databaseName, tableName string, tableColumns, sharedCol
 	}
 
 	comparisons := []string{}
-	for _, column := range uniqueKeyColumns.ColumnList() {
+	for _, column := range tableColumns.ColumnList() {
 		tableOrdinal := tableColumns.Ordinals[column.Name]
 		if whereArgs[tableOrdinal] == nil {
 			comparison, err := BuildValueComparison(column.Name, "NULL", IsEqualsComparisonSign)
@@ -533,13 +574,22 @@ func BuildDMLUpdateQuery(databaseName, tableName string, tableColumns, sharedCol
 			}
 			comparisons = append(comparisons, comparison)
 		} else {
-			arg := column.ConvertArg(whereArgs[tableOrdinal])
-			uniqueKeyArgs = append(uniqueKeyArgs, arg)
-			comparison, err := BuildValueComparison(column.Name, "?", EqualsComparisonSign)
-			if err != nil {
-				return result, sharedArgs, uniqueKeyArgs, err
+			if column.Type == umconf.BinaryColumnType {
+				arg := column.ConvertArg(whereArgs[tableOrdinal])
+				comparison, err := BuildValueComparison(column.Name, fmt.Sprintf("cast('%v' as %s)", EscapeValue(fmt.Sprintf("%v", arg)), column.ColumnType), EqualsComparisonSign)
+				if err != nil {
+					return result, sharedArgs, uniqueKeyArgs, err
+				}
+				comparisons = append(comparisons, comparison)
+			} else {
+				arg := column.ConvertArg(whereArgs[tableOrdinal])
+				uniqueKeyArgs = append(uniqueKeyArgs, arg)
+				comparison, err := BuildValueComparison(column.Name, "?", EqualsComparisonSign)
+				if err != nil {
+					return result, sharedArgs, uniqueKeyArgs, err
+				}
+				comparisons = append(comparisons, comparison)
 			}
-			comparisons = append(comparisons, comparison)
 		}
 	}
 

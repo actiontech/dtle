@@ -22,6 +22,7 @@ const (
 	FloatColumnType                = iota
 	DoubleColumnType               = iota
 	DecimalColumnType              = iota
+	BinaryColumnType               = iota
 )
 
 const maxMediumintUnsigned int32 = 16777215
@@ -36,6 +37,7 @@ type Column struct {
 	IsUnsigned         bool
 	Charset            string
 	Type               ColumnType
+	ColumnType         string
 	TimezoneConversion *TimezoneConvertion
 }
 

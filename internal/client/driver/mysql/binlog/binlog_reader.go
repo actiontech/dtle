@@ -152,7 +152,6 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 			b.currentCoordinates.GNO = evt.GNO
 			b.currentBinlogEntry = NewBinlogEntryAt(b.currentCoordinates)
 		}
-
 	case replication.QUERY_EVENT:
 		evt := ev.Event.(*replication.QueryEvent)
 		query := string(evt.Query)
@@ -172,6 +171,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 				}
 				if !ok {
 					event := NewQueryEvent(
+						string(evt.Schema),
 						query,
 						NotDML,
 					)
@@ -187,11 +187,8 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 						continue
 					}
 
-					sql, err = GenDDLSQL(sql, string(evt.Schema))
-					if err != nil {
-						return err
-					}
 					event := NewQueryEvent(
+						string(evt.Schema),
 						sql,
 						NotDML,
 					)

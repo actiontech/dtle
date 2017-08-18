@@ -465,13 +465,13 @@ func InspectTables(db *gosql.DB, databaseName string, doTb *uconf.Table, timeZon
 	// comfortable in doing this as a separate step.
 	applyColumnTypes(db, databaseName, doTb.TableName, doTb.OriginalTableColumns, doTb.SharedColumns)
 
-	for c := range doTb.SharedColumns.ColumnList() {
+	/*for c := range doTb.SharedColumns.ColumnList() {
 		column := doTb.SharedColumns.ColumnList()[c]
 		mappedColumn := doTb.MappedSharedColumns.ColumnList()[c]
 		if column.Name == mappedColumn.Name && column.Type == umconf.DateTimeColumnType && mappedColumn.Type == umconf.TimestampColumnType {
 			doTb.MappedSharedColumns.SetConvertDatetimeToTimestamp(column.Name, timeZone)
 		}
-	}
+	}*/
 
 	return nil
 }
@@ -513,6 +513,12 @@ func applyColumnTypes(db *gosql.DB, databaseName, tableName string, columnsLists
 		if strings.HasPrefix(columnType, "enum") {
 			for _, columnsList := range columnsLists {
 				columnsList.GetColumn(columnName).Type = umconf.EnumColumnType
+			}
+		}
+		if strings.Contains(columnType, "binary") {
+			for _, columnsList := range columnsLists {
+				columnsList.GetColumn(columnName).Type = umconf.BinaryColumnType
+				columnsList.GetColumn(columnName).ColumnType = columnType
 			}
 		}
 		if charset := m.GetString("CHARACTER_SET_NAME"); charset != "" {

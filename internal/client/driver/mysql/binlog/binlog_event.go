@@ -94,10 +94,11 @@ func NewDataEvent(databaseName, tableName string, dml EventDML) DataEvent {
 	return event
 }
 
-func NewQueryEvent(query string, dml EventDML) DataEvent {
+func NewQueryEvent(dbName, query string, dml EventDML) DataEvent {
 	event := DataEvent{
-		Query: query,
-		DML:   dml,
+		DatabaseName: dbName,
+		Query:        query,
+		DML:          dml,
 	}
 	return event
 }

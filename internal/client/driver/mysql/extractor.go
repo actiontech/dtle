@@ -930,10 +930,10 @@ func (e *Extractor) mysqlDump() error {
 	// ------
 	// Obtain the binlog position and update the SourceInfo in the context. This means that all source records generated
 	// as part of the snapshot will contain the binlog position of the snapshot.
-	e.logger.Printf("mysql.extractor: Step 0: read binlog coordinates of MySQL master: %+v", *e.initialBinlogCoordinates)
 	if err := e.readCurrentBinlogCoordinates(); err != nil {
 		return err
 	}
+	e.logger.Printf("mysql.extractor: Step 0: read binlog coordinates of MySQL master: %+v", *e.initialBinlogCoordinates)
 
 	// ------
 	// STEP 1

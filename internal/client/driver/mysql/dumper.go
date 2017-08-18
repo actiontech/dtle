@@ -185,7 +185,7 @@ func (d *dumper) getChunkData(e *dumpEntry) error {
 		for _, col := range values {
 			// Here we can check if the value is nil (NULL value)
 			if col != nil {
-				vals = append(vals, fmt.Sprintf("'%s'", entry.escape(string(*col))))
+				vals = append(vals, fmt.Sprintf("'%s'", usql.EscapeValue(string(*col))))
 			} else {
 				vals = append(vals, "NULL")
 			}
@@ -229,37 +229,6 @@ func (d *dumper) getChunkData(e *dumpEntry) error {
 		return e.colBuffer.String()
 	}
 }*/
-
-func (e *dumpEntry) escape(colValue string) string {
-	var esc string
-	e.colBuffer = *new(bytes.Buffer)
-	last := 0
-	for i, c := range colValue {
-		switch c {
-		case 0:
-			esc = `\0`
-		case '\n':
-			esc = `\n`
-		case '\r':
-			esc = `\r`
-		case '\\':
-			esc = `\\`
-		case '\'':
-			esc = `\'`
-		case '"':
-			esc = `\"`
-		case '\032':
-			esc = `\Z`
-		default:
-			continue
-		}
-		e.colBuffer.WriteString(colValue[last:i])
-		e.colBuffer.WriteString(esc)
-		last = i + 1
-	}
-	e.colBuffer.WriteString(colValue[last:])
-	return e.colBuffer.String()
-}
 
 func (d *dumper) worker() {
 	for e := range d.entriesChannel {
