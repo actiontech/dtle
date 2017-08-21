@@ -749,7 +749,9 @@ func decodeTime2(data []byte, dec uint16) (string, int, error) {
 
 	//case 5:
 	case 5, 6:
-		tmp = int64(BFixedLengthInt(data[0:6])) - TIMEF_OFS
+		intPart = int64(BFixedLengthInt(data[0:3])) - TIMEF_INT_OFS
+		frac = (int64(BFixedLengthInt(data[0:6])) - TIMEF_OFS) % (1 << 24)
+		tmp = intPart<<24 + frac
 	default:
 		intPart = int64(BFixedLengthInt(data[0:3])) - TIMEF_INT_OFS
 		tmp = intPart << 24
