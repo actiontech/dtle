@@ -629,6 +629,9 @@ func (e *Extractor) initDBConnections() (err error) {
 	if err := e.validateConnection(); err != nil {
 		return err
 	}
+	if err := e.validateAndReadTimeZone(); err != nil {
+		return err
+	}
 	if err := e.inspectTables(); err != nil {
 		return err
 	}
@@ -696,6 +699,16 @@ func (e *Extractor) readCurrentBinlogCoordinates() error {
 		e.initialBinlogCoordinates = binlogCoordinates
 	}
 
+	return nil
+}
+
+func (e *Extractor) validateAndReadTimeZone() error {
+	query := `select @@global.time_zone`
+	if err := e.db.QueryRow(query).Scan(&e.mysqlContext.TimeZone); err != nil {
+		return err
+	}
+
+	e.logger.Printf("mysql.applier: Will use time_zone='%s' on extractor", e.mysqlContext.TimeZone)
 	return nil
 }
 
@@ -792,8 +805,7 @@ func (e *Extractor) StreamEvents() error {
 						break
 					}
 
-					if _, err := e.natsConn.Request(fmt.Sprintf("%s_incr_hete", e.subject), txMsg, DefaultConnectWait); err != nil {
-						e.logger.Printf("[ERR] mysql.extractor: unexpected error on publish, got %v", err)
+					if err = e.requestMsg(fmt.Sprintf("%s_incr_hete", e.subject), "", txMsg); err != nil {
 						e.onError(TaskStateDead, err)
 						break
 					}

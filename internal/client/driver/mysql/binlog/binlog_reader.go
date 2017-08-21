@@ -251,6 +251,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 			}
 
 			for i, row := range rowsEvent.Rows {
+				b.logger.Printf("%v", row)
 				if dml == UpdateDML && i%2 == 1 {
 					// An update has two rows (WHERE+SET)
 					// We do both at the same time
@@ -308,7 +309,7 @@ func (b *BinlogReader) DataStreamEvents(entriesChannel chan<- *BinlogEntry) erro
 				defer b.currentCoordinatesMutex.Unlock()
 				b.currentCoordinates.LogFile = string(rotateEvent.NextLogName)
 			}()
-			b.logger.Debugf("mysql.reader: rotate to next log name: %s", rotateEvent.NextLogName)
+			b.logger.Debugf("mysql.reader: Rotate to next log name: %s", rotateEvent.NextLogName)
 		} else {
 			if err := b.handleEvent(ev, entriesChannel); err != nil {
 				return err
@@ -391,7 +392,7 @@ func (b *BinlogReader) BinlogStreamEvents(txChannel chan<- *BinlogTx) error {
 				defer b.currentCoordinatesMutex.Unlock()
 				b.currentCoordinates.LogFile = string(rotateEvent.NextLogName)
 			}()
-			b.logger.Debugf("mysql.reader: rotate to next log name: %s", rotateEvent.NextLogName)
+			b.logger.Debugf("mysql.reader: Rotate to next log name: %s", rotateEvent.NextLogName)
 		} else {
 			if err := b.handleBinlogRowsEvent(ev, txChannel); err != nil {
 				return err

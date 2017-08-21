@@ -177,7 +177,7 @@ func (a *Applier) validateStatement(doTb *config.Table) (err error) {
 
 // Run executes the complete apply logic.
 func (a *Applier) Run() {
-	a.logger.Printf("mysql.applier: apply binlog events to %s.%d", a.mysqlContext.ConnectionConfig.Host, a.mysqlContext.ConnectionConfig.Port)
+	a.logger.Printf("mysql.applier: Apply binlog events to %s.%d", a.mysqlContext.ConnectionConfig.Host, a.mysqlContext.ConnectionConfig.Port)
 	a.mysqlContext.StartTime = time.Now()
 	for _, doDb := range a.mysqlContext.ReplicateDoDb {
 		for _, doTb := range doDb.Tables {
