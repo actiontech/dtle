@@ -251,7 +251,6 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 			}
 
 			for i, row := range rowsEvent.Rows {
-				b.logger.Printf("%v", row)
 				if dml == UpdateDML && i%2 == 1 {
 					// An update has two rows (WHERE+SET)
 					// We do both at the same time
