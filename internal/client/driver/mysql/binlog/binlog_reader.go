@@ -38,7 +38,6 @@ type BinlogReader struct {
 	currentCoordinatesMutex  *sync.Mutex
 	LastAppliedRowsEventHint base.BinlogCoordinates
 	MysqlContext             *config.MySQLDriverConfig
-	replicateDoDb            []*config.DataSource
 
 	currentTx          *BinlogTx
 	currentBinlogEntry *BinlogEntry
@@ -55,13 +54,12 @@ type BinlogReader struct {
 	shutdownLock sync.Mutex
 }
 
-func NewMySQLReader(cfg *config.MySQLDriverConfig, replicateDoDb []*config.DataSource, logger *log.Entry) (binlogReader *BinlogReader, err error) {
+func NewMySQLReader(cfg *config.MySQLDriverConfig, logger *log.Entry) (binlogReader *BinlogReader, err error) {
 	binlogReader = &BinlogReader{
 		logger:                  logger,
 		currentCoordinates:      base.BinlogCoordinates{},
 		currentCoordinatesMutex: &sync.Mutex{},
 		MysqlContext:            cfg,
-		replicateDoDb:           replicateDoDb,
 		appendB64SqlBs:          make([]byte, 1024*1024),
 		shutdownCh:              make(chan struct{}),
 	}
@@ -218,37 +216,19 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 				string(rowsEvent.Table.Table),
 				dml,
 			)
-			for _, d := range b.replicateDoDb {
-				for _, t := range d.Tables {
-					if t.TableSchema == string(rowsEvent.Table.Schema) && t.TableName == string(rowsEvent.Table.Table) {
-						dmlEvent.OriginalTableColumns = t.OriginalTableColumns
-						dmlEvent.OriginalTableUniqueKeys = t.OriginalTableUniqueKeys
-						dmlEvent.isDbExist = true
-						break
-					}
-				}
-			}
 
-			if !dmlEvent.isDbExist {
-				originalTableColumns, originalTableUniqueKeys, err := b.InspectTableColumnsAndUniqueKeys(string(rowsEvent.Table.Schema), string(rowsEvent.Table.Table))
-				if err != nil {
-					return err
-				}
-				t := &config.Table{
-					TableSchema:             string(rowsEvent.Table.Schema),
-					TableName:               string(rowsEvent.Table.Table),
-					OriginalTableColumns:    originalTableColumns,
-					OriginalTableUniqueKeys: originalTableUniqueKeys,
-				}
-				dmlEvent.OriginalTableColumns = t.OriginalTableColumns
-				dmlEvent.OriginalTableUniqueKeys = t.OriginalTableUniqueKeys
-				for _, b := range b.replicateDoDb {
-					if b.TableSchema == t.TableSchema {
-						b.Tables = append(b.Tables, t)
-						break
-					}
-				}
+			originalTableColumns, originalTableUniqueKeys, err := b.InspectTableColumnsAndUniqueKeys(string(rowsEvent.Table.Schema), string(rowsEvent.Table.Table))
+			if err != nil {
+				return err
 			}
+			t := &config.Table{
+				TableSchema:             string(rowsEvent.Table.Schema),
+				TableName:               string(rowsEvent.Table.Table),
+				OriginalTableColumns:    originalTableColumns,
+				OriginalTableUniqueKeys: originalTableUniqueKeys,
+			}
+			dmlEvent.OriginalTableColumns = t.OriginalTableColumns
+			dmlEvent.OriginalTableUniqueKeys = t.OriginalTableUniqueKeys
 
 			for i, row := range rowsEvent.Rows {
 				if dml == UpdateDML && i%2 == 1 {
