@@ -43,7 +43,6 @@ type Applier struct {
 	db           *gosql.DB
 	parser       *sql.Parser
 
-	totalRowCount              int
 	applyRowCount              int
 	rowCopyComplete            chan bool
 	allEventsUpToLockProcessed chan string
@@ -76,7 +75,7 @@ func NewApplier(subject, tp string, cfg *config.MySQLDriverConfig, logger *log.L
 		tp:                         tp,
 		mysqlContext:               cfg,
 		parser:                     sql.NewParser(),
-		rowCopyComplete:            make(chan bool),
+		rowCopyComplete:            make(chan bool,1),
 		allEventsUpToLockProcessed: make(chan string),
 		copyRowsQueue:              make(chan *dumpEntry, cfg.ReplChanBufferSize),
 		applyDataEntryQueue:        make(chan *binlog.BinlogEntry, cfg.ReplChanBufferSize),
@@ -573,6 +572,7 @@ func (a *Applier) onApplyTxStructWithSuper(dbApplier *sql.DB, binlogTx *binlog.B
 // Both event backlog and rowcopy events are polled; the backlog events have precedence.
 func (a *Applier) executeWriteFuncs() {
 	go func() {
+	OUTER:
 		for {
 			select {
 			case copyRows := <-a.copyRowsQueue:
@@ -607,8 +607,10 @@ func (a *Applier) executeWriteFuncs() {
 						time.Sleep(sleepTime)
 					}*/
 				}
+			case <- a.rowCopyComplete:
+				break OUTER
 			case <-a.shutdownCh:
-				break
+				break OUTER
 			default:
 				time.Sleep(time.Second)
 			}
@@ -616,9 +618,23 @@ func (a *Applier) executeWriteFuncs() {
 	}()
 	if a.mysqlContext.Gtid == "" {
 		a.logger.Printf("mysql.applier: Operating until row copy is complete")
+		var rowCount string
+		_, err := a.natsConn.Subscribe(fmt.Sprintf("%s_full_complete", a.subject), func(m *gonats.Msg) {
+			rowCount = fmt.Sprintf("%s", m.Data)
+			if err := a.natsConn.Publish(m.Reply, nil); err != nil {
+				a.onError(TaskStateDead, err)
+			}
+		})
+		if err != nil {
+			a.onError(TaskStateDead, err)
+		}
 		for {
-			if a.totalRowCount != 0 && a.totalRowCount == a.applyRowCount {
+			if rowCount == string(a.applyRowCount) {
 				a.logger.Printf("mysql.applier: Rows copy complete.number of rows:%d", a.applyRowCount)
+				a.rowCopyComplete <- true
+				break
+			}
+			if a.shutdown {
 				break
 			}
 			time.Sleep(1 * time.Second)
@@ -706,7 +722,6 @@ func (a *Applier) initiateStreaming() error {
 				a.onError(TaskStateDead, err)
 			}
 			a.copyRowsQueue <- dumpData
-			a.totalRowCount += dumpData.Counter
 			if err := a.natsConn.Publish(m.Reply, nil); err != nil {
 				a.onError(TaskStateDead, err)
 			}
@@ -1597,7 +1612,6 @@ func (a *Applier) ApplyEventQueries(db *gosql.DB, entry *dumpEntry) error {
 		if err := tx.Commit(); err != nil {
 			a.onError(TaskStateDead, err)
 		}
-		a.applyRowCount += entry.Counter
 	}()
 	sessionQuery := `SET @@session.foreign_key_checks = 0`
 	if _, err := tx.Exec(sessionQuery); err != nil {
@@ -1618,6 +1632,7 @@ func (a *Applier) ApplyEventQueries(db *gosql.DB, entry *dumpEntry) error {
 			}
 		}
 	}
+	a.applyRowCount += entry.Counter
 	return nil
 }
 

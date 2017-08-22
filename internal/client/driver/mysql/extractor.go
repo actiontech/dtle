@@ -189,10 +189,10 @@ func (e *Extractor) Run() {
 			e.onError(TaskStateDead, err)
 			return
 		}
-		/*if err := e.requestMsg(fmt.Sprintf("%s_full_complete", e.subject), "", []byte(string(e.totalRowCount))); err != nil {
+		if err := e.requestMsg(fmt.Sprintf("%s_full_complete", e.subject), "", []byte(string(e.totalRowCount))); err != nil {
 			e.onError(TaskStateDead,err)
 			return
-		}*/
+		}
 	} else {
 		if err := e.readCurrentBinlogCoordinates(); err != nil {
 			e.onError(TaskStateDead, err)
