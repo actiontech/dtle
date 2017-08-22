@@ -492,7 +492,6 @@ func BuildDMLDeleteQuery(databaseName, tableName string, tableColumns, uniqueKey
 		`, databaseName, tableName,
 		fmt.Sprintf("(%s)", strings.Join(comparisons, " and ")),
 	)
-
 	return result, uniqueKeyArgs, nil
 }
 

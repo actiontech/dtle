@@ -152,6 +152,48 @@ func GetSelfBinlogCoordinates(db *gosql.DB) (selfBinlogCoordinates *BinlogCoordi
 	return selfBinlogCoordinates, err
 }
 
+func GetSelfBinlogCoordinatesWithTx(db *gosql.Tx) (selfBinlogCoordinates *BinlogCoordinates, err error) {
+	err = usql.QueryRowsMapWithTx(db, `show master status`, func(m usql.RowMap) error {
+		gtidSet, err := gomysql.ParseMysqlGTIDSet(m.GetString("Executed_Gtid_Set"))
+		if err != nil {
+			return err
+		}
+		ms := new(gomysql.MysqlGTIDSet)
+		ms.Sets = make(map[string]*gomysql.UUIDSet)
+		for _, gset := range strings.Split(gtidSet.String(), ",") {
+			gset = strings.TrimSpace(gset)
+			sep := strings.Split(gset, ":")
+			if len(sep) < 2 {
+				return fmt.Errorf("invalid GTID format, must UUID:interval[:interval]")
+			}
+
+			s := new(gomysql.UUIDSet)
+			if s.SID, err = uuid.FromString(sep[0]); err != nil {
+				return err
+			}
+			// Handle interval
+			for i := 1; i < len(sep); i++ {
+				if in, err := parseInterval(sep[i]); err != nil {
+					return err
+				} else {
+					in.Start = 1
+					s.Intervals = append(s.Intervals, in)
+				}
+			}
+			s.Intervals = s.Intervals.Normalize()
+			ms.AddSet(s)
+		}
+
+		selfBinlogCoordinates = &BinlogCoordinates{
+			LogFile: m.GetString("File"),
+			LogPos:  m.GetInt64("Position"),
+			GtidSet: ms.String(),
+		}
+		return nil
+	})
+	return selfBinlogCoordinates, err
+}
+
 // GetTableColumns reads column list from given table
 func GetTableColumns(db *gosql.DB, databaseName, tableName string) (*umconf.ColumnList, error) {
 	query := fmt.Sprintf(`

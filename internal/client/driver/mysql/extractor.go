@@ -644,7 +644,7 @@ func (e *Extractor) initDBConnections() (err error) {
 
 // initBinlogReader creates and connects the reader: we hook up to a MySQL server as a replica
 func (e *Extractor) initBinlogReader(binlogCoordinates *base.BinlogCoordinates) error {
-	binlogReader, err := binlog.NewMySQLReader(e.mysqlContext, e.replicateDoDb, e.logger)
+	binlogReader, err := binlog.NewMySQLReader(e.mysqlContext, e.logger)
 	if err != nil {
 		return err
 	}
@@ -799,7 +799,7 @@ func (e *Extractor) StreamEvents() error {
 		go func() {
 			for binlogEntry := range e.dataChannel {
 				if nil != binlogEntry {
-					txMsg, err := Encode(&binlogEntry)
+					txMsg, err := Encode(binlogEntry)
 					if err != nil {
 						e.onError(TaskStateDead, err)
 						break
@@ -923,21 +923,9 @@ func (e *Extractor) requestMsg(subject, gtid string, txMsg []byte) (err error) {
 
 //Perform the snapshot using the same logic as the "mysqldump" utility.
 func (e *Extractor) mysqlDump() error {
+	defer e.singletonDB.Close()
 	var tx *gosql.Tx
 	step := 0
-	defer func() {
-		e.logger.Printf("mysql.extractor: Step %d: committing transaction", step)
-		query := "COMMIT"
-		_, err := sql.ExecNoPrepare(e.db, query)
-		if err != nil {
-			e.logger.Printf("[ERR] mysql.extractor: exec %+v, error: %v", query, err)
-		}
-		if err := tx.Commit(); err != nil {
-			e.onError(TaskStateDead, err)
-		}
-
-		e.singletonDB.Close()
-	}()
 	// ------
 	// STEP 0
 	// ------
@@ -972,18 +960,54 @@ func (e *Extractor) mysqlDump() error {
 	e.logger.Printf("mysql.extractor: Step %d: start transaction with consistent snapshot", step)
 	tx, err := e.singletonDB.Begin()
 	if err != nil {
-		e.onError(TaskStateDead, err)
+		return err
+	}
+	query := "START TRANSACTION WITH CONSISTENT SNAPSHOT"
+	_, err = tx.Exec(query)
+	if err != nil {
+		e.logger.Printf("[ERR] mysql.extractor: exec %+v, error: %v", query, err)
+		return err
 	}
 	step++
+	defer func() {
+		/*e.logger.Printf("mysql.extractor: Step %d: releasing global read lock to enable MySQL writes", step)
+		query := "UNLOCK TABLES"
+		_, err := tx.Exec(query)
+		if err != nil {
+			e.logger.Printf("[ERR] mysql.extractor: exec %+v, error: %v", query, err)
+		}
+		step++*/
+		e.logger.Printf("mysql.extractor: Step %d: committing transaction", step)
+		if err := tx.Commit(); err != nil {
+			e.onError(TaskStateDead, err)
+		}
+	}()
+
+	// ------
+	// STEP 2
+	// ------
+	// Obtain read lock on all tables. This statement closes all open tables and locks all tables
+	// for all databases with a global read lock, and it prevents ALL updates while we have this lock.
+	// It also ensures that everything we do while we have this lock will be consistent.
+	/*e.logger.Printf("mysql.extractor: Step %d: flush and obtain global read lock (preventing writes to database)", step)
+	query := "FLUSH TABLES WITH READ LOCK"
+	_, err = tx.Exec(query)
+	if err != nil {
+		e.logger.Printf("[ERR] mysql.extractor: exec %+v, error: %v", query, err)
+		return err
+	}
+	step++*/
 
 	// ------
 	// STEP 3
 	// ------
 	// Obtain the binlog position and update the SourceInfo in the context. This means that all source records generated
 	// as part of the snapshot will contain the binlog position of the snapshot.
-	if err := e.readCurrentBinlogCoordinates(); err != nil {
+	binlogCoordinates, err := base.GetSelfBinlogCoordinatesWithTx(tx)
+	if err != nil {
 		return err
 	}
+	e.initialBinlogCoordinates = binlogCoordinates
 	e.logger.Printf("mysql.extractor: Step %d: read binlog coordinates of MySQL master: %+v", step, *e.initialBinlogCoordinates)
 	step++
 
@@ -997,7 +1021,7 @@ func (e *Extractor) mysqlDump() error {
 
 	// Transform the current schema so that it reflects the *current* state of the MySQL server's contents.
 	// First, get the DROP TABLE and CREATE TABLE statement (with keys and constraint definitions) for our tables ...
-	e.logger.Printf("mysql.extractor: Step %d: - generating DROP and CREATE statements to reflect current database schemas: %v", step, e.replicateDoDb)
+	e.logger.Printf("mysql.extractor: Step %d: - generating DROP and CREATE statements to reflect current database schemas:%v", step, e.replicateDoDb)
 	for _, db := range e.replicateDoDb {
 		if len(db.Tables) > 0 {
 			for _, tb := range db.Tables {

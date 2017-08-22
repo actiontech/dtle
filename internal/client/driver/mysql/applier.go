@@ -32,10 +32,6 @@ const (
 	TaskStateDead
 )
 
-const (
-	applyDataQueueBuffer = 600
-)
-
 // Applier connects and writes the the applier-server, which is the server where
 // write row data and apply binlog events onto the dest table.
 type Applier struct {
@@ -82,8 +78,8 @@ func NewApplier(subject, tp string, cfg *config.MySQLDriverConfig, logger *log.L
 		parser:                     sql.NewParser(),
 		rowCopyComplete:            make(chan bool),
 		allEventsUpToLockProcessed: make(chan string),
-		copyRowsQueue:              make(chan *dumpEntry, applyDataQueueBuffer),
-		applyDataEntryQueue:        make(chan *binlog.BinlogEntry, applyDataQueueBuffer),
+		copyRowsQueue:              make(chan *dumpEntry, cfg.ReplChanBufferSize),
+		applyDataEntryQueue:        make(chan *binlog.BinlogEntry, cfg.ReplChanBufferSize),
 		applyBinlogTxQueue:         make(chan *binlog.BinlogTx, cfg.ReplChanBufferSize),
 		applyBinlogGroupTxQueue:    make(chan []*binlog.BinlogTx, cfg.ReplChanBufferSize),
 		waitCh:                     make(chan *models.WaitResult, 1),
@@ -576,6 +572,59 @@ func (a *Applier) onApplyTxStructWithSuper(dbApplier *sql.DB, binlogTx *binlog.B
 // This is where the ghost table gets the data. The function fills the data single-threaded.
 // Both event backlog and rowcopy events are polled; the backlog events have precedence.
 func (a *Applier) executeWriteFuncs() {
+	go func() {
+		for {
+			select {
+			case copyRows := <-a.copyRowsQueue:
+				{
+					//copyRowsStartTime := time.Now()
+					// Retries are handled within the copyRowsFunc
+					/*if err := copyRowsFunc(); err != nil {
+						return err
+					}*/
+					if nil == copyRows {
+						continue
+					}
+					if copyRows.DbSQL != "" || copyRows.TbSQL != "" {
+						if err := a.ApplyEventQueries(a.db, copyRows); err != nil {
+							a.onError(TaskStateDead, err)
+						}
+					} else {
+						go func() {
+							if err := a.ApplyEventQueries(a.db, copyRows); err != nil {
+								a.onError(TaskStateDead, err)
+							}
+						}()
+					}
+
+					/*a.logger.Printf("mysql.applier: operating until row copy is complete")
+					a.consumeRowCopyComplete()
+					a.logger.Printf("mysql.applier: row copy complete")
+					if niceRatio := a.mysqlContext.GetNiceRatio(); niceRatio > 0 {
+						copyRowsDuration := time.Since(copyRowsStartTime)
+						sleepTimeNanosecondFloat64 := niceRatio * float64(copyRowsDuration.Nanoseconds())
+						sleepTime := time.Duration(time.Duration(int64(sleepTimeNanosecondFloat64)) * time.Nanosecond)
+						time.Sleep(sleepTime)
+					}*/
+				}
+			case <-a.shutdownCh:
+				break
+			default:
+				time.Sleep(time.Second)
+			}
+		}
+	}()
+	if a.mysqlContext.Gtid == "" {
+		a.logger.Printf("mysql.applier: Operating until row copy is complete")
+		for {
+			if a.totalRowCount != 0 && a.totalRowCount == a.applyRowCount {
+				a.logger.Printf("mysql.applier: Rows copy complete.number of rows:%d", a.applyRowCount)
+				break
+			}
+			time.Sleep(1 * time.Second)
+		}
+	}
+
 	var dbApplier *sql.DB
 OUTER:
 	for {
@@ -613,63 +662,10 @@ OUTER:
 				}
 				a.wg.Wait() // Waiting for all goroutines to finish
 
-				/*else {
-					a.wg.Add(len(groupTx) - 1)
-					for idx, binlogTx := range groupTx {
-						if idx == (len(groupTx) - 1) {
-							continue
-						}
-						dbApplier = a.dbs[idx%a.mysqlContext.ParallelWorkers]
-						go func(tx *binlog.BinlogTx) {
-							if err := a.onApplyTxStruct(dbApplier, tx, true); err != nil {
-								a.onError(TaskStateDead,err)
-							}
-							a.wg.Done()
-						}(binlogTx)
-					}
-					a.wg.Wait() // Waiting for all goroutines to finish
-
-					if err := a.onApplyTxStruct(a.dbs[(len(groupTx)-1)%a.mysqlContext.ParallelWorkers], groupTx[len(groupTx)-1], false); err != nil {
-						a.onError(TaskStateDead,err)
-					}
-				}*/
-
 				if !a.shutdown {
 					a.lastAppliedBinlogTx = groupTx[len(groupTx)-1]
 					a.mysqlContext.Gtid = fmt.Sprintf("%s:1-%d", a.lastAppliedBinlogTx.SID, a.lastAppliedBinlogTx.GNO)
 				}
-			}
-		case copyRows := <-a.copyRowsQueue:
-			{
-				//copyRowsStartTime := time.Now()
-				// Retries are handled within the copyRowsFunc
-				/*if err := copyRowsFunc(); err != nil {
-					return err
-				}*/
-				if nil == copyRows {
-					continue
-				}
-				if copyRows.DbSQL != "" || copyRows.TbSQL != "" {
-					if err := a.ApplyEventQueries(a.db, copyRows); err != nil {
-						a.onError(TaskStateDead, err)
-					}
-				} else {
-					go func() {
-						if err := a.ApplyEventQueries(a.db, copyRows); err != nil {
-							a.onError(TaskStateDead, err)
-						}
-					}()
-				}
-
-				/*a.logger.Printf("mysql.applier: operating until row copy is complete")
-				a.consumeRowCopyComplete()
-				a.logger.Printf("mysql.applier: row copy complete")
-				if niceRatio := a.mysqlContext.GetNiceRatio(); niceRatio > 0 {
-					copyRowsDuration := time.Since(copyRowsStartTime)
-					sleepTimeNanosecondFloat64 := niceRatio * float64(copyRowsDuration.Nanoseconds())
-					sleepTime := time.Duration(time.Duration(int64(sleepTimeNanosecondFloat64)) * time.Nanosecond)
-					time.Sleep(sleepTime)
-				}*/
 			}
 		case <-a.shutdownCh:
 			break OUTER
@@ -761,21 +757,6 @@ func (a *Applier) initiateStreaming() error {
 	}
 
 	go func() {
-		if a.mysqlContext.Gtid == "" {
-			a.logger.Printf("mysql.applier: Operating until row copy is complete")
-			for {
-				if a.totalRowCount != 0 && a.totalRowCount == a.applyRowCount {
-					break
-				}
-				time.Sleep(2 * time.Second)
-			}
-			a.logger.Printf("mysql.applier: Row copy complete")
-		}
-
-		if a.mysqlContext.ApproveHeterogeneous {
-			return
-		}
-
 		var lastCommitted int64
 		var err error
 		//timeout := time.After(100 * time.Millisecond)
@@ -1612,6 +1593,12 @@ func (a *Applier) ApplyEventQueries(db *gosql.DB, entry *dumpEntry) error {
 	if err != nil {
 		return err
 	}
+	defer func() {
+		if err := tx.Commit(); err != nil {
+			a.onError(TaskStateDead, err)
+		}
+		a.applyRowCount += entry.Counter
+	}()
 	sessionQuery := `SET @@session.foreign_key_checks = 0`
 	if _, err := tx.Exec(sessionQuery); err != nil {
 		return err
@@ -1631,10 +1618,6 @@ func (a *Applier) ApplyEventQueries(db *gosql.DB, entry *dumpEntry) error {
 			}
 		}
 	}
-	if err := tx.Commit(); err != nil {
-		return err
-	}
-	a.applyRowCount += entry.Counter
 	return nil
 }
 
