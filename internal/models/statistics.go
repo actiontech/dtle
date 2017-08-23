@@ -1,6 +1,8 @@
 package models
 
-import gonats "github.com/nats-io/go-nats"
+import (
+	gonats "github.com/nats-io/go-nats"
+)
 
 type TableStats struct {
 	InsertCount int64
@@ -33,14 +35,27 @@ type BufferStat struct {
 	SendBySizeFull          int
 }
 
+type CurrentCoordinates struct {
+	File     string
+	Position int64
+	GtidSet  string
+
+	RelayMasterLogFile string
+	ReadMasterLogPos   int64
+	RetrievedGtidSet   string
+	ExecutedGtidSet    string
+}
+
 type TaskStatistics struct {
-	TableStats     *TableStats
-	DelayCount     *DelayCount
-	ThroughputStat *ThroughputStat
-	MsgStat        gonats.Statistics
-	BufferStat     BufferStat
-	Status         string
-	Timestamp      int64
+	CurrentCoordinates *CurrentCoordinates
+	TableStats         *TableStats
+	DelayCount         *DelayCount
+	RowsCount          int
+	ThroughputStat     *ThroughputStat
+	MsgStat            gonats.Statistics
+	BufferStat         BufferStat
+	Status             string
+	Timestamp          int64
 }
 
 type AllocStatistics struct {

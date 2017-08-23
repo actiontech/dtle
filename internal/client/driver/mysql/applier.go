@@ -35,13 +35,15 @@ const (
 // Applier connects and writes the the applier-server, which is the server where
 // write row data and apply binlog events onto the dest table.
 type Applier struct {
-	logger       *log.Entry
-	subject      string
-	tp           string
-	mysqlContext *config.MySQLDriverConfig
-	dbs          []*sql.DB
-	db           *gosql.DB
-	parser       *sql.Parser
+	logger             *log.Entry
+	subject            string
+	tp                 string
+	mysqlContext       *config.MySQLDriverConfig
+	dbs                []*sql.DB
+	db                 *gosql.DB
+	parser             *sql.Parser
+	retrievedGtidSet   string
+	currentCoordinates *models.CurrentCoordinates
 
 	applyRowCount              int
 	rowCopyComplete            chan bool
@@ -75,7 +77,8 @@ func NewApplier(subject, tp string, cfg *config.MySQLDriverConfig, logger *log.L
 		tp:                         tp,
 		mysqlContext:               cfg,
 		parser:                     sql.NewParser(),
-		rowCopyComplete:            make(chan bool,1),
+		currentCoordinates:         &models.CurrentCoordinates{},
+		rowCopyComplete:            make(chan bool, 1),
 		allEventsUpToLockProcessed: make(chan string),
 		copyRowsQueue:              make(chan *dumpEntry, cfg.ReplChanBufferSize),
 		applyDataEntryQueue:        make(chan *binlog.BinlogEntry, cfg.ReplChanBufferSize),
@@ -607,15 +610,16 @@ func (a *Applier) executeWriteFuncs() {
 						time.Sleep(sleepTime)
 					}*/
 				}
-			case <- a.rowCopyComplete:
+			case <-a.rowCopyComplete:
 				break OUTER
 			case <-a.shutdownCh:
 				break OUTER
 			default:
-				time.Sleep(time.Second)
 			}
+			time.Sleep(100 * time.Millisecond)
 		}
 	}()
+
 	if a.mysqlContext.Gtid == "" {
 		a.logger.Printf("mysql.applier: Operating until row copy is complete")
 		var rowCount string
@@ -637,7 +641,7 @@ func (a *Applier) executeWriteFuncs() {
 			if a.shutdown {
 				break
 			}
-			time.Sleep(1 * time.Second)
+			time.Sleep(time.Second)
 		}
 	}
 
@@ -658,6 +662,9 @@ OUTER:
 					break OUTER
 				}
 				if !a.shutdown {
+					a.currentCoordinates.RelayMasterLogFile = binlogEntry.Coordinates.LogFile
+					a.currentCoordinates.ReadMasterLogPos = binlogEntry.Coordinates.LogPos
+					a.currentCoordinates.ExecutedGtidSet = fmt.Sprintf("%s:%d", binlogEntry.Coordinates.SID, binlogEntry.Coordinates.GNO)
 					a.mysqlContext.Gtid = fmt.Sprintf("%s:1-%d", binlogEntry.Coordinates.SID, binlogEntry.Coordinates.GNO)
 				}
 			}
@@ -742,6 +749,7 @@ func (a *Applier) initiateStreaming() error {
 			}
 			//a.logger.Debugf("mysql.applier: received binlogEntry: %+v", binlogEntry.Coordinates.GNO)
 			a.applyDataEntryQueue <- binlogEntry
+			a.currentCoordinates.RetrievedGtidSet = fmt.Sprintf("%s:%d", binlogEntry.Coordinates.SID, binlogEntry.Coordinates.GNO)
 
 			if err := a.natsConn.Publish(m.Reply, nil); err != nil {
 				a.onError(TaskStateDead, err)
@@ -1416,10 +1424,10 @@ func (a *Applier) getCandidateUniqueKeys(databaseName, tableName string) (unique
 }
 
 func (a *Applier) InspectTableColumnsAndUniqueKeys(databaseName, tableName string) (columns *umconf.ColumnList, uniqueKeys [](*umconf.UniqueKey), err error) {
-	uniqueKeys, err = a.getCandidateUniqueKeys(databaseName, tableName)
+	/*uniqueKeys, err = a.getCandidateUniqueKeys(databaseName, tableName)
 	if err != nil {
 		return columns, uniqueKeys, err
-	}
+	}*/
 	/*if len(uniqueKeys) == 0 {
 		return columns, uniqueKeys, fmt.Errorf("No PRIMARY nor UNIQUE key found in table! Bailing out")
 	}*/
@@ -1464,33 +1472,33 @@ func (a *Applier) getSharedColumns(originalColumns, columns *umconf.ColumnList, 
 // buildDMLEventQuery creates a query to operate on the ghost table, based on an intercepted binlog
 // event entry on the original table.
 func (a *Applier) buildDMLEventQuery(dmlEvent binlog.DataEvent) (query string, args []interface{}, rowsDelta int64, err error) {
-	/*destTableColumns, destTableUniqueKeys, err := a.InspectTableColumnsAndUniqueKeys(dmlEvent.DatabaseName, dmlEvent.TableName)
+	destTableColumns, _, err := a.InspectTableColumnsAndUniqueKeys(dmlEvent.DatabaseName, dmlEvent.TableName)
 	if err != nil {
 		return "", args, 0, err
 	}
-	_, err = getSharedUniqueKeys(destTableUniqueKeys, destTableUniqueKeys)
+	/*_, err = getSharedUniqueKeys(destTableUniqueKeys, destTableUniqueKeys)
 	if err != nil {
 		return "", args, 0, err
 	}*/
 	/*if len(sharedUniqueKeys) == 0 {
 		return "", args, 0, fmt.Errorf("No shared unique key can be found after ALTER! Bailing out")
 	}*/
-	sharedColumns, mappedSharedColumns := a.getSharedColumns(dmlEvent.OriginalTableColumns, dmlEvent.OriginalTableColumns, a.parser.GetNonTrivialRenames())
+	sharedColumns, mappedSharedColumns := a.getSharedColumns(destTableColumns, destTableColumns, a.parser.GetNonTrivialRenames())
 	//a.logger.Printf("mysql.applier: shared columns are %s", sharedColumns)
 	switch dmlEvent.DML {
 	case binlog.DeleteDML:
 		{
-			query, uniqueKeyArgs, err := sql.BuildDMLDeleteQuery(dmlEvent.DatabaseName, dmlEvent.TableName, dmlEvent.OriginalTableColumns, dmlEvent.OriginalTableColumns, dmlEvent.WhereColumnValues.GetAbstractValues())
+			query, uniqueKeyArgs, err := sql.BuildDMLDeleteQuery(dmlEvent.DatabaseName, dmlEvent.TableName, destTableColumns, destTableColumns, dmlEvent.WhereColumnValues.GetAbstractValues())
 			return query, uniqueKeyArgs, -1, err
 		}
 	case binlog.InsertDML:
 		{
-			query, sharedArgs, err := sql.BuildDMLInsertQuery(dmlEvent.DatabaseName, dmlEvent.TableName, dmlEvent.OriginalTableColumns, sharedColumns, mappedSharedColumns, dmlEvent.NewColumnValues.GetAbstractValues())
+			query, sharedArgs, err := sql.BuildDMLInsertQuery(dmlEvent.DatabaseName, dmlEvent.TableName, destTableColumns, sharedColumns, mappedSharedColumns, dmlEvent.NewColumnValues.GetAbstractValues())
 			return query, sharedArgs, 1, err
 		}
 	case binlog.UpdateDML:
 		{
-			query, sharedArgs, uniqueKeyArgs, err := sql.BuildDMLUpdateQuery(dmlEvent.DatabaseName, dmlEvent.TableName, dmlEvent.OriginalTableColumns, sharedColumns, mappedSharedColumns, dmlEvent.OriginalTableColumns, dmlEvent.NewColumnValues.GetAbstractValues(), dmlEvent.WhereColumnValues.GetAbstractValues())
+			query, sharedArgs, uniqueKeyArgs, err := sql.BuildDMLUpdateQuery(dmlEvent.DatabaseName, dmlEvent.TableName, destTableColumns, sharedColumns, mappedSharedColumns, destTableColumns, dmlEvent.NewColumnValues.GetAbstractValues(), dmlEvent.WhereColumnValues.GetAbstractValues())
 			args = append(args, sharedArgs...)
 			args = append(args, uniqueKeyArgs...)
 			return query, args, 0, err
@@ -1638,11 +1646,13 @@ func (a *Applier) ApplyEventQueries(db *gosql.DB, entry *dumpEntry) error {
 
 func (a *Applier) Stats() (*models.TaskStatistics, error) {
 	taskResUsage := models.TaskStatistics{
-		Status: "",
+		Status:             "",
+		CurrentCoordinates: a.currentCoordinates,
 		BufferStat: models.BufferStat{
 			ApplierTxQueueSize:      len(a.applyBinlogTxQueue),
 			ApplierGroupTxQueueSize: len(a.applyBinlogGroupTxQueue),
 		},
+		RowsCount: a.applyRowCount,
 		Timestamp: time.Now().UTC().UnixNano(),
 	}
 	if a.natsConn != nil {

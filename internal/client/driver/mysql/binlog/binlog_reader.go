@@ -217,18 +217,12 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 				dml,
 			)
 
-			originalTableColumns, originalTableUniqueKeys, err := b.InspectTableColumnsAndUniqueKeys(string(rowsEvent.Table.Schema), string(rowsEvent.Table.Table))
+			/*originalTableColumns, originalTableUniqueKeys, err := b.InspectTableColumnsAndUniqueKeys(string(rowsEvent.Table.Schema), string(rowsEvent.Table.Table))
 			if err != nil {
 				return err
 			}
-			t := &config.Table{
-				TableSchema:             string(rowsEvent.Table.Schema),
-				TableName:               string(rowsEvent.Table.Table),
-				OriginalTableColumns:    originalTableColumns,
-				OriginalTableUniqueKeys: originalTableUniqueKeys,
-			}
-			dmlEvent.OriginalTableColumns = t.OriginalTableColumns
-			dmlEvent.OriginalTableUniqueKeys = t.OriginalTableUniqueKeys
+			dmlEvent.OriginalTableColumns = originalTableColumns
+			dmlEvent.OriginalTableUniqueKeys = originalTableUniqueKeys*/
 
 			for i, row := range rowsEvent.Rows {
 				if dml == UpdateDML && i%2 == 1 {

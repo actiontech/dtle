@@ -190,7 +190,7 @@ func (e *Extractor) Run() {
 			return
 		}
 		if err := e.requestMsg(fmt.Sprintf("%s_full_complete", e.subject), "", []byte(string(e.totalRowCount))); err != nil {
-			e.onError(TaskStateDead,err)
+			e.onError(TaskStateDead, err)
 			return
 		}
 	} else {
@@ -1140,10 +1140,19 @@ func (e *Extractor) Stats() (*models.TaskStatistics, error) {
 			SendByTimeout:        e.sendByTimeoutCounter,
 			SendBySizeFull:       e.sendBySizeFullCounter,
 		},
+		RowsCount: e.totalRowCount,
 		Timestamp: time.Now().UTC().UnixNano(),
 	}
 	if e.natsConn != nil {
 		taskResUsage.MsgStat = e.natsConn.Statistics
+	}
+	if e.binlogReader != nil {
+		currentBinlogCoordinates := e.binlogReader.GetCurrentBinlogCoordinates()
+		taskResUsage.CurrentCoordinates = &models.CurrentCoordinates{
+			File:     currentBinlogCoordinates.LogFile,
+			Position: currentBinlogCoordinates.LogPos,
+			GtidSet:  fmt.Sprintf("%s:%d", currentBinlogCoordinates.SID, currentBinlogCoordinates.GNO),
+		}
 	}
 	//e.logger.Printf("mysql.extractor: Tracks various stats received on this connection:MsgStat[%+v],BufferStat[%v]",taskResUsage.MsgStat,taskResUsage.BufferStat)
 	/*elapsedTime := e.mysqlContext.ElapsedTime()

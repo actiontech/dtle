@@ -59,9 +59,9 @@ type BinlogCoordinates struct {
 	OSID          string
 	SID           string
 	GNO           int64
-	GtidSet       string
 	LastCommitted int64
 	Type          BinlogType
+	GtidSet       string
 }
 
 // ParseInstanceKey will parse an InstanceKey from a string representation such as 127.0.0.1:3306
