@@ -661,12 +661,6 @@ OUTER:
 					a.onError(TaskStateDead, err)
 					break OUTER
 				}
-				if !a.shutdown {
-					a.currentCoordinates.RelayMasterLogFile = binlogEntry.Coordinates.LogFile
-					a.currentCoordinates.ReadMasterLogPos = binlogEntry.Coordinates.LogPos
-					a.currentCoordinates.ExecutedGtidSet = fmt.Sprintf("%s:%d", binlogEntry.Coordinates.SID, binlogEntry.Coordinates.GNO)
-					a.mysqlContext.Gtid = fmt.Sprintf("%s:1-%d", binlogEntry.Coordinates.SID, binlogEntry.Coordinates.GNO)
-				}
 			}
 		case groupTx := <-a.applyBinlogGroupTxQueue:
 			{
@@ -1424,10 +1418,10 @@ func (a *Applier) getCandidateUniqueKeys(databaseName, tableName string) (unique
 }
 
 func (a *Applier) InspectTableColumnsAndUniqueKeys(databaseName, tableName string) (columns *umconf.ColumnList, uniqueKeys [](*umconf.UniqueKey), err error) {
-	/*uniqueKeys, err = a.getCandidateUniqueKeys(databaseName, tableName)
+	uniqueKeys, err = a.getCandidateUniqueKeys(databaseName, tableName)
 	if err != nil {
 		return columns, uniqueKeys, err
-	}*/
+	}
 	/*if len(uniqueKeys) == 0 {
 		return columns, uniqueKeys, fmt.Errorf("No PRIMARY nor UNIQUE key found in table! Bailing out")
 	}*/
@@ -1435,6 +1429,15 @@ func (a *Applier) InspectTableColumnsAndUniqueKeys(databaseName, tableName strin
 	if err != nil {
 		return columns, uniqueKeys, err
 	}
+	t := &config.Table{
+		TableName:            tableName,
+		OriginalTableColumns: columns,
+	}
+	if err := base.InspectTables(a.db, databaseName, t, a.mysqlContext.TimeZone); err != nil {
+		return columns, uniqueKeys, err
+	}
+	columns = t.OriginalTableColumns
+	uniqueKeys = t.OriginalTableUniqueKeys
 
 	return columns, uniqueKeys, nil
 }
@@ -1526,6 +1529,12 @@ func (a *Applier) ApplyBinlogEvent(db *gosql.DB, binlogEntry *binlog.BinlogEntry
 	defer func() {
 		if err := tx.Commit(); err != nil {
 			a.onError(TaskStateDead, err)
+		}
+		if !a.shutdown {
+			a.currentCoordinates.RelayMasterLogFile = binlogEntry.Coordinates.LogFile
+			a.currentCoordinates.ReadMasterLogPos = binlogEntry.Coordinates.LogPos
+			a.currentCoordinates.ExecutedGtidSet = fmt.Sprintf("%s:%d", binlogEntry.Coordinates.SID, binlogEntry.Coordinates.GNO)
+			a.mysqlContext.Gtid = fmt.Sprintf("%s:1-%d", binlogEntry.Coordinates.SID, binlogEntry.Coordinates.GNO)
 		}
 	}()
 	sessionQuery := `SET @@session.foreign_key_checks = 0`
