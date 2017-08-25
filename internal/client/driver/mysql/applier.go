@@ -46,6 +46,7 @@ type Applier struct {
 	currentCoordinates *models.CurrentCoordinates
 
 	applyRowCount              int
+	countMutex                 *sync.Mutex
 	rowCopyComplete            chan bool
 	allEventsUpToLockProcessed chan string
 	rowCopyCompleteFlag        int64
@@ -79,6 +80,7 @@ func NewApplier(subject, tp string, cfg *config.MySQLDriverConfig, logger *log.L
 		parser:                     sql.NewParser(),
 		currentCoordinates:         &models.CurrentCoordinates{},
 		rowCopyComplete:            make(chan bool, 1),
+		countMutex:                 &sync.Mutex{},
 		allEventsUpToLockProcessed: make(chan string),
 		copyRowsQueue:              make(chan *dumpEntry, cfg.ReplChanBufferSize),
 		applyDataEntryQueue:        make(chan *binlog.BinlogEntry, cfg.ReplChanBufferSize),
@@ -1475,10 +1477,10 @@ func (a *Applier) getSharedColumns(originalColumns, columns *umconf.ColumnList, 
 // buildDMLEventQuery creates a query to operate on the ghost table, based on an intercepted binlog
 // event entry on the original table.
 func (a *Applier) buildDMLEventQuery(dmlEvent binlog.DataEvent) (query string, args []interface{}, rowsDelta int64, err error) {
-	destTableColumns, _, err := a.InspectTableColumnsAndUniqueKeys(dmlEvent.DatabaseName, dmlEvent.TableName)
+	/*destTableColumns, _, err := a.InspectTableColumnsAndUniqueKeys(dmlEvent.DatabaseName, dmlEvent.TableName)
 	if err != nil {
 		return "", args, 0, err
-	}
+	}*/
 	/*_, err = getSharedUniqueKeys(destTableUniqueKeys, destTableUniqueKeys)
 	if err != nil {
 		return "", args, 0, err
@@ -1486,22 +1488,22 @@ func (a *Applier) buildDMLEventQuery(dmlEvent binlog.DataEvent) (query string, a
 	/*if len(sharedUniqueKeys) == 0 {
 		return "", args, 0, fmt.Errorf("No shared unique key can be found after ALTER! Bailing out")
 	}*/
-	sharedColumns, mappedSharedColumns := a.getSharedColumns(destTableColumns, destTableColumns, a.parser.GetNonTrivialRenames())
+	sharedColumns, mappedSharedColumns := a.getSharedColumns(dmlEvent.OriginalTableColumns, dmlEvent.OriginalTableColumns, a.parser.GetNonTrivialRenames())
 	//a.logger.Printf("mysql.applier: shared columns are %s", sharedColumns)
 	switch dmlEvent.DML {
 	case binlog.DeleteDML:
 		{
-			query, uniqueKeyArgs, err := sql.BuildDMLDeleteQuery(dmlEvent.DatabaseName, dmlEvent.TableName, destTableColumns, destTableColumns, dmlEvent.WhereColumnValues.GetAbstractValues())
+			query, uniqueKeyArgs, err := sql.BuildDMLDeleteQuery(dmlEvent.DatabaseName, dmlEvent.TableName, dmlEvent.OriginalTableColumns, dmlEvent.OriginalTableColumns, dmlEvent.WhereColumnValues.GetAbstractValues())
 			return query, uniqueKeyArgs, -1, err
 		}
 	case binlog.InsertDML:
 		{
-			query, sharedArgs, err := sql.BuildDMLInsertQuery(dmlEvent.DatabaseName, dmlEvent.TableName, destTableColumns, sharedColumns, mappedSharedColumns, dmlEvent.NewColumnValues.GetAbstractValues())
+			query, sharedArgs, err := sql.BuildDMLInsertQuery(dmlEvent.DatabaseName, dmlEvent.TableName, dmlEvent.OriginalTableColumns, sharedColumns, mappedSharedColumns, dmlEvent.NewColumnValues.GetAbstractValues())
 			return query, sharedArgs, 1, err
 		}
 	case binlog.UpdateDML:
 		{
-			query, sharedArgs, uniqueKeyArgs, err := sql.BuildDMLUpdateQuery(dmlEvent.DatabaseName, dmlEvent.TableName, destTableColumns, sharedColumns, mappedSharedColumns, destTableColumns, dmlEvent.NewColumnValues.GetAbstractValues(), dmlEvent.WhereColumnValues.GetAbstractValues())
+			query, sharedArgs, uniqueKeyArgs, err := sql.BuildDMLUpdateQuery(dmlEvent.DatabaseName, dmlEvent.TableName, dmlEvent.OriginalTableColumns, sharedColumns, mappedSharedColumns, dmlEvent.OriginalTableColumns, dmlEvent.NewColumnValues.GetAbstractValues(), dmlEvent.WhereColumnValues.GetAbstractValues())
 			args = append(args, sharedArgs...)
 			args = append(args, uniqueKeyArgs...)
 			return query, args, 0, err
@@ -1626,6 +1628,7 @@ func (a *Applier) ApplyEventQueries(db *gosql.DB, entry *dumpEntry) error {
 		return err
 	}
 	defer func() {
+		a.countMutex.Unlock()
 		if err := tx.Commit(); err != nil {
 			a.onError(TaskStateDead, err)
 		}
@@ -1649,6 +1652,7 @@ func (a *Applier) ApplyEventQueries(db *gosql.DB, entry *dumpEntry) error {
 			}
 		}
 	}
+	a.countMutex.Lock()
 	a.applyRowCount += entry.Counter
 	return nil
 }

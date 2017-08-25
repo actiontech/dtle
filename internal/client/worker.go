@@ -347,7 +347,7 @@ func (r *Worker) run() {
 				r.restartTracker.SetWaitResult(waitRes)
 				r.setState("", r.waitErrorToEvent(waitRes))
 				if !waitRes.Successful() {
-					r.logger.Printf("agent: Task %q for alloc %q failed: %v", r.task.Type, r.alloc.ID, waitRes)
+					r.logger.Errorf("agent: Task %q for alloc %q failed: %v", r.task.Type, r.alloc.ID, waitRes)
 				} else {
 					r.logger.Printf("agent: Task %q for alloc %q completed successfully", r.task.Type, r.alloc.ID)
 				}

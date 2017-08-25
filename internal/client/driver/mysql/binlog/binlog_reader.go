@@ -166,7 +166,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 
 				sqls, ok, err := resolveDDLSQL(query)
 				if err != nil {
-					return fmt.Errorf("parse query [%v] event failed: %v", query, err)
+					b.logger.Debugf("mysql.reader: Parse query [%v] event failed: %v", query, err)
 				}
 				if !ok {
 					event := NewQueryEvent(
@@ -217,12 +217,12 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 				dml,
 			)
 
-			/*originalTableColumns, originalTableUniqueKeys, err := b.InspectTableColumnsAndUniqueKeys(string(rowsEvent.Table.Schema), string(rowsEvent.Table.Table))
+			originalTableColumns, originalTableUniqueKeys, err := b.InspectTableColumnsAndUniqueKeys(string(rowsEvent.Table.Schema), string(rowsEvent.Table.Table))
 			if err != nil {
 				return err
 			}
 			dmlEvent.OriginalTableColumns = originalTableColumns
-			dmlEvent.OriginalTableUniqueKeys = originalTableUniqueKeys*/
+			dmlEvent.OriginalTableUniqueKeys = originalTableUniqueKeys
 
 			for i, row := range rowsEvent.Rows {
 				if dml == UpdateDML && i%2 == 1 {
@@ -465,7 +465,7 @@ func (b *BinlogReader) handleBinlogRowsEvent(ev *replication.BinlogEvent, txChan
 
 				sqls, ok, err := resolveDDLSQL(query)
 				if err != nil {
-					return fmt.Errorf("parse query [%v] event failed: %v", query, err)
+					b.logger.Debugf("mysql.reader: Parse query [%v] event failed: %v", query, err)
 				}
 				if !ok {
 					b.appendQuery(query)
@@ -748,7 +748,8 @@ func GenDDLSQL(sql string, schema string) (string, error) {
 func resolveDDLSQL(sql string) (sqls []string, ok bool, err error) {
 	stmt, err := parser.New().ParseOneStmt(sql, "", "")
 	if err != nil {
-		return nil, false, err
+		sqls = append(sqls, sql)
+		return sqls, false, err
 	}
 
 	_, isDDL := stmt.(ast.DDLNode)
@@ -824,7 +825,6 @@ func parserDDLTableName(sql string) (config.Table, error) {
 func (b *BinlogReader) skipQueryDDL(sql string, schema string) bool {
 	t, err := parserDDLTableName(sql)
 	if err != nil {
-		b.logger.Debugf("mysql.tx_builder: get table failure")
 		return false
 	}
 

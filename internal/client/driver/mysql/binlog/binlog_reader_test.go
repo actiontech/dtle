@@ -266,7 +266,7 @@ func TestBinlogReader_handleRowsEvent(t *testing.T) {
 				shutdownCh:               tt.fields.shutdownCh,
 				shutdownLock:             tt.fields.shutdownLock,
 			}
-			if err := b.handleRowsEvent(tt.args.ev, tt.args.entriesChannel); (err != nil) != tt.wantErr {
+			if err := b.handleEvent(tt.args.ev, tt.args.entriesChannel); (err != nil) != tt.wantErr {
 				t.Errorf("BinlogReader.handleRowsEvent() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
@@ -938,7 +938,8 @@ func Test_resolveDDLSQL(t *testing.T) {
 		wantOk   bool
 		wantErr  bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
+		{"t1", args{"alter TABLE aly_test ADD COLUMN (name5 CHAR(5) ,name6 char(6));"}, []string{}, true, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -1134,7 +1135,7 @@ func TestBinlogReader_skipRowEvent(t *testing.T) {
 				shutdownCh:               tt.fields.shutdownCh,
 				shutdownLock:             tt.fields.shutdownLock,
 			}
-			if got := b.skipRowEvent(tt.args.schema, tt.args.table); got != tt.want {
+			if got := b.skipEvent(tt.args.schema, tt.args.table); got != tt.want {
 				t.Errorf("BinlogReader.skipRowEvent() = %v, want %v", got, tt.want)
 			}
 		})
@@ -1343,7 +1344,7 @@ func TestBinlogReader_Close(t *testing.T) {
 func Test_genTableName(t *testing.T) {
 	type args struct {
 		schema string
-		table  []*config.Table
+		table  string
 	}
 	tests := []struct {
 		name string
@@ -1422,7 +1423,7 @@ func TestBinlogReader_matchTable(t *testing.T) {
 				shutdownCh:               tt.fields.shutdownCh,
 				shutdownLock:             tt.fields.shutdownLock,
 			}
-			if got := b.matchTable(tt.args.patternTBS, tt.args.t); got != tt.want {
+			if got := b.matchTable(tt.args.patternTBS, config.Table{}); got != tt.want {
 				t.Errorf("BinlogReader.matchTable() = %v, want %v", got, tt.want)
 			}
 		})
