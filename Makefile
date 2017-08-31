@@ -3,6 +3,10 @@ BRANCH := $(shell sh -c 'git rev-parse --abbrev-ref HEAD')
 COMMIT := $(shell sh -c 'git rev-parse --short HEAD')
 DOCKER        := $(shell which docker)
 DOCKER_IMAGE  := docker-registry:5000/actiontech/universe-compiler
+
+PROJECT_NAME  = udup
+VERSION       = 9.9.9.9
+
 ifdef GOBIN
 PATH := $(GOBIN):$(PATH)
 else
@@ -64,5 +68,8 @@ fmt:
 
 docker_rpm:
 	$(DOCKER) run -v $(shell pwd)/:/universe/src/udup --rm $(DOCKER_IMAGE) -c "cd /universe/src/udup; GOPATH=/universe make prepare package"
+
+upload:
+	curl -T $(shell pwd)/dist/*.rpm -u admin:ftpadmin ftp://release-ftpd/actiontech-${PROJECT_NAME}/qa/${VERSION}/${PROJECT_NAME}-${VERSION}-qa.x86_64.rpm
 
 .PHONY: test-short vet fmt build default
