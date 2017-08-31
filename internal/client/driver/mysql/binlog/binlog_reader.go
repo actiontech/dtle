@@ -217,12 +217,11 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 				dml,
 			)
 
-			originalTableColumns, originalTableUniqueKeys, err := b.InspectTableColumnsAndUniqueKeys(string(rowsEvent.Table.Schema), string(rowsEvent.Table.Table))
+			/*originalTableColumns, _, err := b.InspectTableColumnsAndUniqueKeys(string(rowsEvent.Table.Schema), string(rowsEvent.Table.Table))
 			if err != nil {
 				return err
 			}
-			dmlEvent.OriginalTableColumns = originalTableColumns
-			dmlEvent.OriginalTableUniqueKeys = originalTableUniqueKeys
+			dmlEvent.OriginalTableColumns = originalTableColumns*/
 
 			for i, row := range rowsEvent.Rows {
 				if dml == UpdateDML && i%2 == 1 {
@@ -624,10 +623,10 @@ func (b *BinlogReader) onCommit(lastEvent *BinlogEvent, txChannel chan<- *Binlog
 }
 
 func (b *BinlogReader) InspectTableColumnsAndUniqueKeys(databaseName, tableName string) (columns *mysql.ColumnList, uniqueKeys [](*mysql.UniqueKey), err error) {
-	uniqueKeys, err = b.getCandidateUniqueKeys(databaseName, tableName)
+	/*uniqueKeys, err = b.getCandidateUniqueKeys(databaseName, tableName)
 	if err != nil {
 		return columns, uniqueKeys, err
-	}
+	}*/
 	/*if len(uniqueKeys) == 0 {
 		return columns, uniqueKeys, fmt.Errorf("No PRIMARY nor UNIQUE key found in table! Bailing out")
 	}*/

@@ -562,6 +562,12 @@ func applyColumnTypes(db *gosql.DB, databaseName, tableName string, columnsLists
 				columnsList.GetColumn(columnName).ColumnType = columnType
 			}
 		}
+		if strings.Contains(columnType, "text") {
+			for _, columnsList := range columnsLists {
+				columnsList.GetColumn(columnName).Type = umconf.TextColumnType
+				columnsList.GetColumn(columnName).ColumnType = columnType
+			}
+		}
 		if charset := m.GetString("CHARACTER_SET_NAME"); charset != "" {
 			for _, columnsList := range columnsLists {
 				columnsList.SetCharset(columnName, charset)

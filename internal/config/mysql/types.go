@@ -23,6 +23,7 @@ const (
 	DoubleColumnType               = iota
 	DecimalColumnType              = iota
 	BinaryColumnType               = iota
+	TextColumnType                 = iota
 )
 
 const maxMediumintUnsigned int32 = 16777215
@@ -44,6 +45,12 @@ type Column struct {
 func (c *Column) ConvertArg(arg interface{}) interface{} {
 	if fmt.Sprintf("%s", arg) == "" {
 		return ""
+	}
+	if c.Type == TextColumnType {
+		if encoding, ok := charsetEncodingMap[c.Charset]; ok {
+			arg, _, _ = transform.String(encoding.NewDecoder(), fmt.Sprintf("%s", arg))
+		}
+		return arg
 	}
 	if s, ok := arg.(string); ok {
 		// string, charset conversion

@@ -74,14 +74,13 @@ type BinlogEvent struct {
 
 // BinlogDMLEvent is a binary log rows (DML) event entry, with data
 type DataEvent struct {
-	Query                   string
-	DatabaseName            string
-	TableName               string
-	DML                     EventDML
-	OriginalTableColumns    *mysql.ColumnList
-	OriginalTableUniqueKeys [](*mysql.UniqueKey)
-	WhereColumnValues       *mysql.ColumnValues
-	NewColumnValues         *mysql.ColumnValues
+	Query                string
+	DatabaseName         string
+	TableName            string
+	DML                  EventDML
+	OriginalTableColumns *mysql.ColumnList
+	WhereColumnValues    *mysql.ColumnValues
+	NewColumnValues      *mysql.ColumnValues
 }
 
 func NewDataEvent(databaseName, tableName string, dml EventDML) DataEvent {
