@@ -1,6 +1,8 @@
 VERSION := $(shell sh -c 'git describe --always --tags')
 BRANCH := $(shell sh -c 'git rev-parse --abbrev-ref HEAD')
 COMMIT := $(shell sh -c 'git rev-parse --short HEAD')
+DOCKER        := $(shell which docker)
+DOCKER_IMAGE  := docker-registry:5000/actiontech/universe-compiler
 ifdef GOBIN
 PATH := $(GOBIN):$(PATH)
 else
@@ -58,5 +60,9 @@ vet:
 
 fmt:
 	gofmt -s -w .
+
+
+docker_rpm:
+	$(DOCKER) run -v $(shell pwd)/:/universe/src/udup --rm $(DOCKER_IMAGE) -c "cd /universe/src/udup; GOPATH=/universe make prepare package"
 
 .PHONY: test-short vet fmt build default
