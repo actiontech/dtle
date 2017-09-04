@@ -100,15 +100,14 @@ func NewMySQLReader(cfg *config.MySQLDriverConfig, logger *log.Entry) (binlogRea
 
 // ConnectBinlogStreamer
 func (b *BinlogReader) ConnectBinlogStreamer(coordinates base.BinlogCoordinates) (err error) {
-	/*if coordinates.IsEmpty() {
-		b.logger.Warnf("mysql.reader: Emptry coordinates at ConnectBinlogStreamer()")
-	}*/
+	if coordinates.IsEmpty() {
+		b.logger.Warnf("mysql.reader: Emptry coordinates at ConnectBinlogStreamer")
+	}
 
 	b.currentCoordinates = coordinates
 	b.logger.Debugf("mysql.reader: Connecting binlog streamer at %+v", b.currentCoordinates)
 
-	// Start sync with sepcified binlog file and position
-	//b.binlogStreamer, err = b.binlogSyncer.StartSync(gomysql.Position{b.currentCoordinates.LogFile, uint32(b.currentCoordinates.LogPos)})
+	// Start sync with sepcified binlog gtid
 	gtidSet, err := gomysql.ParseMysqlGTIDSet(b.currentCoordinates.GtidSet)
 	if err != nil {
 		b.logger.Errorf("mysql.reader: err: %v", err)
