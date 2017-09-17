@@ -6,6 +6,16 @@
 
 ### Bugfixes
 
+## v2.17.08.0 [2017-09-04]
+
+### Release Notes
+
+该版本是一个更新版本，包含一些性能上的优化，以及完善功能细节
+
+### Features
+
+### Bugfixes
+
 ## v2.17.07.0 [2017-08-03]
 
 ### Release Notes

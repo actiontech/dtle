@@ -118,6 +118,8 @@ func (d *DataSource) String() string {
 }
 
 type MySQLDriverConfig struct {
+	DataDir     string
+	MaxFileSize int64
 	//Ref:http://dev.mysql.com/doc/refman/5.7/en/replication-options-slave.html#option_mysqld_replicate-do-table
 	ReplicateDoDb                       []*DataSource
 	DropTableIfExists                   bool

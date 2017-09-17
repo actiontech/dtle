@@ -708,7 +708,7 @@ func (e *Extractor) validateAndReadTimeZone() error {
 		return err
 	}
 
-	e.logger.Printf("mysql.applier: Will use time_zone='%s' on extractor", e.mysqlContext.TimeZone)
+	e.logger.Printf("mysql.extractor: Will use time_zone='%s' on extractor", e.mysqlContext.TimeZone)
 	return nil
 }
 

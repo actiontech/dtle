@@ -78,16 +78,18 @@ type DataEvent struct {
 	DatabaseName         string
 	TableName            string
 	DML                  EventDML
+	ColumnCount          int
 	OriginalTableColumns *mysql.ColumnList
 	WhereColumnValues    *mysql.ColumnValues
-	NewColumnValues      *mysql.ColumnValues
+	NewColumnValues      []*mysql.ColumnValues
 }
 
-func NewDataEvent(databaseName, tableName string, dml EventDML) DataEvent {
+func NewDataEvent(databaseName, tableName string, dml EventDML, columnCount int) DataEvent {
 	event := DataEvent{
 		DatabaseName: databaseName,
 		TableName:    tableName,
 		DML:          dml,
+		ColumnCount:  columnCount,
 	}
 	return event
 }

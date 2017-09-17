@@ -140,6 +140,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 			u, _ := uuid.FromBytes(evt.GTID.SID)
 			b.currentCoordinates.SID = u.String()
 			b.currentCoordinates.GNO = evt.GTID.GNO
+			b.currentCoordinates.LastCommitted = evt.GTID.LastCommitted
 			b.currentBinlogEntry = NewBinlogEntryAt(b.currentCoordinates)
 		} else {
 			evt := ev.Event.(*replication.GTIDEvent)
@@ -214,6 +215,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 				string(rowsEvent.Table.Schema),
 				string(rowsEvent.Table.Table),
 				dml,
+				int(rowsEvent.ColumnCount),
 			)
 
 			/*originalTableColumns, _, err := b.InspectTableColumnsAndUniqueKeys(string(rowsEvent.Table.Schema), string(rowsEvent.Table.Table))
@@ -231,24 +233,26 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 				switch dml {
 				case InsertDML:
 					{
-						dmlEvent.NewColumnValues = mysql.ToColumnValues(row)
+						//dmlEvent.NewColumnValues = mysql.ToColumnValues(row)
+						dmlEvent.NewColumnValues = append(dmlEvent.NewColumnValues, mysql.ToColumnValues(row))
 					}
 				case UpdateDML:
 					{
 						dmlEvent.WhereColumnValues = mysql.ToColumnValues(row)
-						dmlEvent.NewColumnValues = mysql.ToColumnValues(rowsEvent.Rows[i+1])
+						//dmlEvent.NewColumnValues = mysql.ToColumnValues(rowsEvent.Rows[i+1])
+						dmlEvent.NewColumnValues = append(dmlEvent.NewColumnValues, mysql.ToColumnValues(rowsEvent.Rows[i+1]))
 					}
 				case DeleteDML:
 					{
 						dmlEvent.WhereColumnValues = mysql.ToColumnValues(row)
 					}
 				}
-				b.currentBinlogEntry.Events = append(b.currentBinlogEntry.Events, dmlEvent)
 				// The channel will do the throttling. Whoever is reding from the channel
 				// decides whether action is taken sycnhronously (meaning we wait before
 				// next iteration) or asynchronously (we keep pushing more events)
 				// In reality, reads will be synchronous
 			}
+			b.currentBinlogEntry.Events = append(b.currentBinlogEntry.Events, dmlEvent)
 			return nil
 		}
 	}
