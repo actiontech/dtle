@@ -137,7 +137,8 @@ type MySQLDriverConfig struct {
 	criticalLoad                        umconf.LoadMap
 	PostponeCutOverFlagFile             string
 	CutOverLockTimeoutSeconds           int64
-	RowsDeltaEstimate                   int64
+	RowsEstimate                        int64
+	DeltaEstimate                       int64
 	TimeZone                            string
 
 	Gtid                     string
@@ -159,9 +160,10 @@ type MySQLDriverConfig struct {
 	RenameTablesEndTime      time.Time
 	PointOfInterestTime      time.Time
 	pointOfInterestTimeMutex *sync.Mutex
-	TotalDMLEventsApplied    int64
+	TotalDeltaCopied         int64
 	TotalRowsCopied          int64
 
+	Stage                string
 	CutOverType          CutOver
 	ApproveHeterogeneous bool
 
@@ -172,8 +174,6 @@ type MySQLDriverConfig struct {
 	UserCommandedUnpostponeFlag            int64
 	CutOverCompleteFlag                    int64
 	InCutOverCriticalSectionFlag           int64
-
-	Iteration int64
 }
 
 func (a *MySQLDriverConfig) SetDefault() *MySQLDriverConfig {
@@ -215,10 +215,6 @@ func (m *MySQLDriverConfig) MarkRowCopyStartTime() {
 	m.RowCopyStartTime = time.Now()
 }
 
-func (m *MySQLDriverConfig) GetIteration() int64 {
-	return atomic.LoadInt64(&m.Iteration)
-}
-
 func (m *MySQLDriverConfig) TimeSincePointOfInterest() time.Duration {
 	m.pointOfInterestTimeMutex.Lock()
 	defer m.pointOfInterestTimeMutex.Unlock()
@@ -228,9 +224,6 @@ func (m *MySQLDriverConfig) TimeSincePointOfInterest() time.Duration {
 
 // ElapsedRowCopyTime returns time since starting to copy chunks of rows
 func (m *MySQLDriverConfig) ElapsedRowCopyTime() time.Duration {
-	//m.throttleMutex.Lock()
-	//defer m.throttleMutex.Unlock()
-
 	if m.RowCopyStartTime.IsZero() {
 		// Row copy hasn't started yet
 		return 0
@@ -246,6 +239,10 @@ func (m *MySQLDriverConfig) ElapsedRowCopyTime() time.Duration {
 // This is not exactly the same as the rows being iterated via chunks, but potentially close enough
 func (m *MySQLDriverConfig) GetTotalRowsCopied() int64 {
 	return atomic.LoadInt64(&m.TotalRowsCopied)
+}
+
+func (m *MySQLDriverConfig) GetTotalDeltaCopied() int64 {
+	return atomic.LoadInt64(&m.TotalDeltaCopied)
 }
 
 // ElapsedTime returns time since very beginning of the process
@@ -274,14 +271,6 @@ func (m *MySQLDriverConfig) GetCriticalLoad() umconf.LoadMap {
 	return m.criticalLoad.Duplicate()
 }
 
-func (m *MySQLDriverConfig) MarkPointOfInterest() int64 {
-	//m.pointOfInterestTimeMutex.Lock()
-	//defer m.pointOfInterestTimeMutex.Unlock()
-
-	m.PointOfInterestTime = time.Now()
-	return atomic.LoadInt64(&m.Iteration)
-}
-
 // TableName is the table configuration
 // slave restrict replication to a given table
 type DataSource struct {
@@ -292,6 +281,7 @@ type DataSource struct {
 type Table struct {
 	TableName   string
 	TableSchema string
+	Counter     int64
 
 	AlterStatement                   string
 	OriginalTableColumnsOnApplier    *umconf.ColumnList

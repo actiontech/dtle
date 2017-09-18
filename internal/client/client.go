@@ -531,6 +531,7 @@ func (c *Client) setupNatsServer() error {
 	c.logger.Debugf("agent: Starting nats streaming server [%v]", natsAddr)
 	sOpts := stand.GetDefaultOptions()
 	sOpts.ID = config.DefaultClusterID
+	//sOpts.MaxBytes = 10 * 1024
 	/*if c.config.LogLevel == "DEBUG" {
 		stand.ConfigureLogger(sOpts, &nOpts)
 	}*/

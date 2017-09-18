@@ -24,6 +24,7 @@ import (
 	"udup/internal/config"
 	"udup/internal/config/mysql"
 	log "udup/internal/logger"
+	"udup/internal/models"
 )
 
 // BinlogReader is a general interface whose implementations can choose their methods of reading
@@ -37,7 +38,7 @@ type BinlogReader struct {
 	currentCoordinates       base.BinlogCoordinates
 	currentCoordinatesMutex  *sync.Mutex
 	LastAppliedRowsEventHint base.BinlogCoordinates
-	MysqlContext             *config.MySQLDriverConfig
+	mysqlContext             *config.MySQLDriverConfig
 
 	currentTx          *BinlogTx
 	currentBinlogEntry *BinlogEntry
@@ -59,8 +60,9 @@ func NewMySQLReader(cfg *config.MySQLDriverConfig, logger *log.Entry) (binlogRea
 		logger:                  logger,
 		currentCoordinates:      base.BinlogCoordinates{},
 		currentCoordinatesMutex: &sync.Mutex{},
-		MysqlContext:            cfg,
+		mysqlContext:            cfg,
 		appendB64SqlBs:          make([]byte, 1024*1024),
+		ReMap:                   make(map[string]*regexp.Regexp),
 		shutdownCh:              make(chan struct{}),
 	}
 
@@ -84,6 +86,9 @@ func NewMySQLReader(cfg *config.MySQLDriverConfig, logger *log.Entry) (binlogRea
 		return nil, err
 	}
 
+	// support regex
+	binlogReader.genRegexMap()
+
 	binlogSyncerConfig := &replication.BinlogSyncerConfig{
 		ServerID:       uint32(serverId),
 		Flavor:         "mysql",
@@ -94,6 +99,7 @@ func NewMySQLReader(cfg *config.MySQLDriverConfig, logger *log.Entry) (binlogRea
 		RawModeEnabled: false,
 	}
 	binlogReader.binlogSyncer = replication.NewBinlogSyncer(binlogSyncerConfig)
+	binlogReader.mysqlContext.Stage = models.StageRegisteringSlaveOnMaster
 
 	return binlogReader, err
 }
@@ -113,6 +119,7 @@ func (b *BinlogReader) ConnectBinlogStreamer(coordinates base.BinlogCoordinates)
 		b.logger.Errorf("mysql.reader: err: %v", err)
 	}
 	b.binlogStreamer, err = b.binlogSyncer.StartSyncGTID(gtidSet)
+	b.mysqlContext.Stage = models.StageRequestingBinlogDump
 
 	return err
 }
@@ -133,7 +140,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 
 	switch ev.Header.EventType {
 	case replication.GTID_EVENT:
-		if strings.HasPrefix(b.MysqlContext.MySQLVersion, "5.7") {
+		if strings.HasPrefix(b.mysqlContext.MySQLVersion, "5.7") {
 			evt := ev.Event.(*replication.GTIDEventV57)
 			b.currentCoordinatesMutex.Lock()
 			defer b.currentCoordinatesMutex.Unlock()
@@ -182,7 +189,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 
 				for _, sql := range sqls {
 					if b.skipQueryDDL(sql, string(evt.Schema)) {
-						//b.logger.Debugf("mysql.reader: skip QueryEvent at schema: %s,sql: %s", fmt.Sprintf("%s", evt.Schema), sql)
+						//b.logger.Debugf("mysql.reader: Skip QueryEvent at schema: %s,sql: %s", fmt.Sprintf("%s", evt.Schema), sql)
 						continue
 					}
 
@@ -284,6 +291,7 @@ func (b *BinlogReader) DataStreamEvents(entriesChannel chan<- *BinlogEntry) erro
 				defer b.currentCoordinatesMutex.Unlock()
 				b.currentCoordinates.LogFile = string(rotateEvent.NextLogName)
 			}()
+			b.mysqlContext.Stage = models.StageFinishedReadingOneBinlogSwitchingToNextBinlog
 			b.logger.Debugf("mysql.reader: Rotate to next log name: %s", rotateEvent.NextLogName)
 		} else {
 			if err := b.handleEvent(ev, entriesChannel); err != nil {
@@ -400,7 +408,7 @@ func (b *BinlogReader) handleBinlogRowsEvent(ev *replication.BinlogEvent, txChan
 		}
 
 		// Match the version string (from SELECT VERSION()).
-		if strings.HasPrefix(b.MysqlContext.MySQLVersion, "5.7") {
+		if strings.HasPrefix(b.mysqlContext.MySQLVersion, "5.7") {
 			evt := ev.Event.(*replication.GTIDEventV57)
 			u, _ := uuid.FromBytes(evt.GTID.SID)
 
@@ -641,7 +649,7 @@ func (b *BinlogReader) InspectTableColumnsAndUniqueKeys(databaseName, tableName 
 		TableName:            tableName,
 		OriginalTableColumns: columns,
 	}
-	if err := base.InspectTables(b.db, databaseName, t, b.MysqlContext.TimeZone); err != nil {
+	if err := base.InspectTables(b.db, databaseName, t, b.mysqlContext.TimeZone); err != nil {
 		return columns, uniqueKeys, err
 	}
 	columns = t.OriginalTableColumns
@@ -834,22 +842,16 @@ func (b *BinlogReader) skipQueryDDL(sql string, schema string) bool {
 	case "sys", "mysql", "information_schema", "performance_schema":
 		return true
 	default:
-		if len(b.MysqlContext.ReplicateDoDb) > 0 {
+		if len(b.mysqlContext.ReplicateDoDb) > 0 {
 			//if table in target Table, do this sql
 			if t.TableSchema == "" {
 				t.TableSchema = schema
 			}
-			/*if tb.matchTable(tb.cfg.ReplicateDoDb, t.Database) {
-				return false
-			}*/
-			if b.matchTable(b.MysqlContext.ReplicateDoDb, t) {
+
+			if b.matchTable(b.mysqlContext.ReplicateDoDb, t) {
 				return false
 			}
 
-			// if  schema in target DB, do this sql
-			if b.matchDB(b.MysqlContext.ReplicateDoDb, t.TableSchema) {
-				return false
-			}
 			return true
 		}
 	}
@@ -889,10 +891,10 @@ func (b *BinlogReader) skipEvent(schema string, table string) bool {
 	case "sys", "mysql", "information_schema", "performance_schema":
 		return true
 	default:
-		if len(b.MysqlContext.ReplicateDoDb) > 0 {
+		if len(b.mysqlContext.ReplicateDoDb) > 0 {
 			table = strings.ToLower(table)
 			//if table in tartget Table, do this event
-			for _, d := range b.MysqlContext.ReplicateDoDb {
+			for _, d := range b.mysqlContext.ReplicateDoDb {
 				if b.matchString(d.TableSchema, schema) || d.TableSchema == "" {
 					if len(d.Tables) == 0 {
 						return false
@@ -918,10 +920,10 @@ func (b *BinlogReader) skipRowEvent(rowsEvent *replication.RowsEvent) bool {
 	case "sys", "mysql", "information_schema", "performance_schema":
 		return true
 	default:
-		if len(b.MysqlContext.ReplicateDoDb) > 0 {
+		if len(b.mysqlContext.ReplicateDoDb) > 0 {
 			table := strings.ToLower(string(rowsEvent.Table.Table))
 			//if table in tartget Table, do this event
-			for _, d := range b.MysqlContext.ReplicateDoDb {
+			for _, d := range b.mysqlContext.ReplicateDoDb {
 				if b.matchString(d.TableSchema, string(rowsEvent.Table.Schema)) || d.TableSchema == "" {
 					if len(d.Tables) == 0 {
 						return false
@@ -957,10 +959,12 @@ func (b *BinlogReader) matchDB(patternDBS []*config.DataSource, a string) bool {
 
 func (b *BinlogReader) matchTable(patternTBS []*config.DataSource, t config.Table) bool {
 	for _, pdb := range patternTBS {
+		if len(pdb.Tables) == 0 && t.TableSchema == pdb.TableSchema {
+			return true
+		}
 		redb, okdb := b.ReMap[pdb.TableSchema]
 		for _, ptb := range pdb.Tables {
 			retb, oktb := b.ReMap[ptb.TableName]
-
 			if oktb && okdb {
 				if redb.MatchString(t.TableSchema) && retb.MatchString(t.TableName) {
 					return true
@@ -984,13 +988,37 @@ func (b *BinlogReader) matchTable(patternTBS []*config.DataSource, t config.Tabl
 				}
 			}
 
-			/*if ptb == t {
+			if ptb.TableName == t.TableName {
 				return true
-			}*/
+			}
 		}
 	}
 
 	return false
+}
+
+func (b *BinlogReader) genRegexMap() {
+	for _, db := range b.mysqlContext.ReplicateDoDb {
+		if db.TableSchema[0] != '~' {
+			continue
+		}
+		if _, ok := b.ReMap[db.TableSchema]; !ok {
+			b.ReMap[db.TableSchema] = regexp.MustCompile(db.TableSchema[1:])
+		}
+
+		for _, tb := range db.Tables {
+			if tb.TableName[0] == '~' {
+				if _, ok := b.ReMap[tb.TableName]; !ok {
+					b.ReMap[tb.TableName] = regexp.MustCompile(tb.TableName[1:])
+				}
+			}
+			if tb.TableSchema[0] == '~' {
+				if _, ok := b.ReMap[tb.TableSchema]; !ok {
+					b.ReMap[tb.TableSchema] = regexp.MustCompile(tb.TableSchema[1:])
+				}
+			}
+		}
+	}
 }
 
 func (b *BinlogReader) Close() error {

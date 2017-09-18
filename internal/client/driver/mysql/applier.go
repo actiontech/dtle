@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"encoding/gob"
 	//"encoding/base64"
+	"math"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -45,8 +46,6 @@ type Applier struct {
 	retrievedGtidSet   string
 	currentCoordinates *models.CurrentCoordinates
 
-	applyRowCount              int
-	countMutex                 *sync.Mutex
 	rowCopyComplete            chan bool
 	allEventsUpToLockProcessed chan string
 	rowCopyCompleteFlag        int64
@@ -81,7 +80,6 @@ func NewApplier(subject, tp string, cfg *config.MySQLDriverConfig, logger *log.L
 		parser:                     sql.NewParser(),
 		currentCoordinates:         &models.CurrentCoordinates{},
 		rowCopyComplete:            make(chan bool, 1),
-		countMutex:                 &sync.Mutex{},
 		allEventsUpToLockProcessed: make(chan string),
 		copyRowsQueue:              make(chan *dumpEntry, cfg.ReplChanBufferSize),
 		applyDataEntryQueue:        make(chan *binlog.BinlogEntry, cfg.ReplChanBufferSize),
@@ -145,7 +143,7 @@ func (a *Applier) consumeRowCopyComplete() {
 	}
 
 	for {
-		if rowCount == string(a.applyRowCount) {
+		if rowCount == fmt.Sprintf("%v", a.mysqlContext.TotalRowsCopied) {
 			a.rowCopyComplete <- true
 			break
 		} /*else {
@@ -317,7 +315,6 @@ func (a *Applier) cutOver() (err error) {
 		},
 	)
 	atomic.StoreInt64(&a.mysqlContext.IsPostponingCutOver, 0)
-	a.mysqlContext.MarkPointOfInterest()
 	a.logger.Printf("mysql.applier: checking for cut-over postpone: complete")
 
 	if a.mysqlContext.CutOverType == config.CutOverAtomic {
@@ -338,7 +335,6 @@ func (a *Applier) cutOver() (err error) {
 func (a *Applier) waitForEventsUpToLock() (err error) {
 	timeout := time.NewTimer(time.Second * time.Duration(a.mysqlContext.CutOverLockTimeoutSeconds))
 
-	a.mysqlContext.MarkPointOfInterest()
 	waitForEventsUpToLockStartTime := time.Now()
 
 	allEventsUpToLockProcessedChallenge := fmt.Sprintf("%s:%d", string(AllEventsUpToLockProcessed), waitForEventsUpToLockStartTime.UnixNano())
@@ -580,7 +576,7 @@ func (a *Applier) onApplyTxStructWithSuper(dbApplier *sql.DB, binlogTx *binlog.B
 // Both event backlog and rowcopy events are polled; the backlog events have precedence.
 func (a *Applier) executeWriteFuncs() {
 	go func() {
-	OUTER:
+	L:
 		for {
 			select {
 			case copyRows := <-a.copyRowsQueue:
@@ -597,6 +593,7 @@ func (a *Applier) executeWriteFuncs() {
 						if err := a.ApplyEventQueries(a.db, copyRows); err != nil {
 							a.onError(TaskStateDead, err)
 						}
+						atomic.AddInt64(&a.mysqlContext.RowsEstimate, copyRows.TotalCount)
 					} else {
 						go func() {
 							if err := a.ApplyEventQueries(a.db, copyRows); err != nil {
@@ -616,9 +613,9 @@ func (a *Applier) executeWriteFuncs() {
 					}*/
 				}
 			case <-a.rowCopyComplete:
-				break OUTER
+				break L
 			case <-a.shutdownCh:
-				break OUTER
+				break L
 			default:
 			}
 			time.Sleep(100 * time.Millisecond)
@@ -627,21 +624,10 @@ func (a *Applier) executeWriteFuncs() {
 
 	if a.mysqlContext.Gtid == "" {
 		a.logger.Printf("mysql.applier: Operating until row copy is complete")
-		var rowCount string
-		_, err := a.natsConn.Subscribe(fmt.Sprintf("%s_full_complete", a.subject), func(m *gonats.Msg) {
-			rowCount = fmt.Sprintf("%s", m.Data)
-			if err := a.natsConn.Publish(m.Reply, nil); err != nil {
-				a.onError(TaskStateDead, err)
-			}
-		})
-		if err != nil {
-			a.onError(TaskStateDead, err)
-		}
+		a.mysqlContext.Stage = models.StageSlaveWaitingForWorkersToProcessQueue
 		for {
-			if rowCount == string(a.applyRowCount) {
-				a.logger.Printf("mysql.applier: Rows copy complete.number of rows:%d", a.applyRowCount)
-				a.rowCopyComplete <- true
-				atomic.StoreInt64(&a.rowCopyCompleteFlag, 1)
+			if a.mysqlContext.RowsEstimate != 0 && a.mysqlContext.TotalRowsCopied == a.mysqlContext.RowsEstimate {
+				a.logger.Printf("mysql.applier: Rows copy complete.number of rows:%d", a.mysqlContext.RowsEstimate)
 				break
 			}
 			if a.shutdown {
@@ -650,6 +636,9 @@ func (a *Applier) executeWriteFuncs() {
 			time.Sleep(time.Second)
 		}
 	}
+	a.rowCopyComplete <- true
+	atomic.StoreInt64(&a.rowCopyCompleteFlag, 1)
+	a.mysqlContext.MarkRowCopyStartTime()
 
 	var dbApplier *sql.DB
 OUTER:
@@ -737,12 +726,14 @@ func Decode(data []byte, vPtr interface{}) (err error) {
 // initiateStreaming begins treaming of binary log events and registers listeners for such events
 func (a *Applier) initiateStreaming() error {
 	if a.mysqlContext.Gtid == "" {
+		a.mysqlContext.MarkRowCopyStartTime()
 		_, err := a.natsConn.Subscribe(fmt.Sprintf("%s_full", a.subject), func(m *gonats.Msg) {
 			dumpData := &dumpEntry{}
 			if err := Decode(m.Data, dumpData); err != nil {
 				a.onError(TaskStateDead, err)
 			}
 			a.copyRowsQueue <- dumpData
+			a.mysqlContext.Stage = models.StageSlaveWaitingForWorkersToProcessQueue
 			if err := a.natsConn.Publish(m.Reply, nil); err != nil {
 				a.onError(TaskStateDead, err)
 			}
@@ -762,8 +753,12 @@ func (a *Applier) initiateStreaming() error {
 				a.onError(TaskStateDead, err)
 			}
 			//a.logger.Debugf("mysql.applier: received binlogEntry GNO: %+v,LastCommitted:%+v", binlogEntry.Coordinates.GNO,binlogEntry.Coordinates.LastCommitted)
+			//for _, entry := range binlogEntry {
 			a.applyDataEntryQueue <- binlogEntry
 			a.currentCoordinates.RetrievedGtidSet = fmt.Sprintf("%s:%d", binlogEntry.Coordinates.SID, binlogEntry.Coordinates.GNO)
+			//}
+			a.mysqlContext.Stage = models.StageWaitingForMasterToSendEvent
+			atomic.AddInt64(&a.mysqlContext.DeltaEstimate, 1)
 
 			if err := a.natsConn.Publish(m.Reply, nil); err != nil {
 				a.onError(TaskStateDead, err)
@@ -1592,23 +1587,21 @@ func (a *Applier) buildDMLEventQuery(dmlEvent binlog.DataEvent) (query string, a
 		}
 	}*/
 
+	tableColumns, err := base.GetTableColumns(a.db, dmlEvent.DatabaseName, dmlEvent.TableName)
 	switch dmlEvent.DML {
 	case binlog.DeleteDML:
 		{
-			tableColumns, err := base.GetTableColumns(a.db, dmlEvent.DatabaseName, dmlEvent.TableName)
 			query, uniqueKeyArgs, err := sql.BuildDMLDeleteQuery(dmlEvent.DatabaseName, dmlEvent.TableName, tableColumns, dmlEvent.WhereColumnValues.GetAbstractValues())
 			return query, uniqueKeyArgs, -1, err
 		}
 	case binlog.InsertDML:
 		{
 			//query, sharedArgs,err := sql.BuildDMLInsertQuery(dmlEvent.DatabaseName, dmlEvent.TableName,dmlEvent.ColumnCount,dmlEvent.NewColumnValues)
-			tableColumns, err := base.GetTableColumns(a.db, dmlEvent.DatabaseName, dmlEvent.TableName)
 			query, sharedArgs, err := sql.BuildDMLInsertQuery(dmlEvent.DatabaseName, dmlEvent.TableName, tableColumns, tableColumns, tableColumns, dmlEvent.NewColumnValues)
 			return query, sharedArgs, 1, err
 		}
 	case binlog.UpdateDML:
 		{
-			tableColumns, err := base.GetTableColumns(a.db, dmlEvent.DatabaseName, dmlEvent.TableName)
 			query, sharedArgs, uniqueKeyArgs, err := sql.BuildDMLUpdateQuery(dmlEvent.DatabaseName, dmlEvent.TableName, tableColumns, tableColumns, tableColumns, tableColumns, dmlEvent.NewColumnValues[0].GetAbstractValues(), dmlEvent.WhereColumnValues.GetAbstractValues())
 			args = append(args, sharedArgs...)
 			args = append(args, uniqueKeyArgs...)
@@ -1729,8 +1722,8 @@ func (a *Applier) ApplyBinlogEvent(dbApplier *sql.DB, binlogEntry *binlog.Binlog
 	}
 
 	// no error
-	//atomic.AddInt64(&a.mysqlContext.TotalDMLEventsApplied, int64(len(binlogEntry.Events)))
-	//a.logger.Printf("mysql.applier: ApplyDMLEventQueries() applied %d events in one transaction", len(binlogEntry.Events))
+	a.mysqlContext.Stage = models.StageWaitingForGtidToBeCommitted
+	atomic.AddInt64(&a.mysqlContext.TotalDeltaCopied, 1)
 	return nil
 }
 
@@ -1745,7 +1738,6 @@ func (a *Applier) ApplyEventQueries(db *gosql.DB, entry *dumpEntry) error {
 		return err
 	}
 	defer func() {
-		a.countMutex.Unlock()
 		if err := tx.Commit(); err != nil {
 			a.onError(TaskStateDead, err)
 		}
@@ -1769,111 +1761,71 @@ func (a *Applier) ApplyEventQueries(db *gosql.DB, entry *dumpEntry) error {
 			}
 		}
 	}
-	a.countMutex.Lock()
-	a.applyRowCount += entry.Counter
+	atomic.AddInt64(&a.mysqlContext.TotalRowsCopied, entry.RowsCount)
 	return nil
 }
 
 func (a *Applier) Stats() (*models.TaskStatistics, error) {
-	taskResUsage := models.TaskStatistics{
-		Status:             "",
-		CurrentCoordinates: a.currentCoordinates,
-		BufferStat: models.BufferStat{
-			ApplierTxQueueSize:      len(a.applyBinlogTxQueue),
-			ApplierGroupTxQueueSize: len(a.applyBinlogGroupTxQueue),
-		},
-		RowsCount: a.applyRowCount,
-		Timestamp: time.Now().UTC().UnixNano(),
-	}
-	if a.natsConn != nil {
-		taskResUsage.MsgStat = a.natsConn.Statistics
-	}
-	//a.logger.Printf("mysql.applier: Tracks various stats received on this connection:MsgStat[%+v],BufferStat[%+v]",taskResUsage.MsgStat,taskResUsage.BufferStat)
-	/*elapsedTime := a.mysqlContext.ElapsedTime()
-	elapsedSeconds := int64(elapsedTime.Seconds())
 	totalRowsCopied := a.mysqlContext.GetTotalRowsCopied()
-	rowsEstimate := atomic.LoadInt64(&a.mysqlContext.RowsDeltaEstimate */ /*RowsEstimate*/ /*) + atomic.LoadInt64(&a.mysqlContext.RowsDeltaEstimate)
-	if atomic.LoadInt64(&a.rowCopyCompleteFlag) == 1 {
-		// Done copying rows. The totalRowsCopied value is the de-facto number of rows,
-		// and there is no further need to keep updating the value.
-		rowsEstimate = totalRowsCopied
-	}
+	rowsEstimate := atomic.LoadInt64(&a.mysqlContext.RowsEstimate)
+	totalDeltaCopied := a.mysqlContext.GetTotalDeltaCopied()
+	deltaEstimate := atomic.LoadInt64(&a.mysqlContext.DeltaEstimate)
+
 	var progressPct float64
-	if rowsEstimate == 0 {
+	var backlog, eta string
+	if rowsEstimate == 0 && deltaEstimate == 0 {
 		progressPct = 100.0
 	} else {
-		progressPct = 100.0 * float64(totalRowsCopied) / float64(rowsEstimate)
-	}
-	// Before status, let's see if we should print a nice reminder for what exactly we're doing here.
-	shouldPrintMigrationStatusHint := (elapsedSeconds%600 == 0)
-
-	if shouldPrintMigrationStatusHint {
-		//e.printMigrationStatusHint(writers...)
+		progressPct = 100.0 * float64(totalDeltaCopied+totalRowsCopied) / float64(deltaEstimate+rowsEstimate)
+		if atomic.LoadInt64(&a.rowCopyCompleteFlag) == 1 {
+			// Done copying rows. The totalRowsCopied value is the de-facto number of rows,
+			// and there is no further need to keep updating the value.
+			backlog = fmt.Sprintf("%d/%d", len(a.applyDataEntryQueue), cap(a.applyDataEntryQueue))
+		} else {
+			backlog = fmt.Sprintf("%d/%d", len(a.copyRowsQueue), cap(a.copyRowsQueue))
+		}
 	}
 
 	var etaSeconds float64 = math.MaxFloat64
-	eta := "N/A"
+	eta = "N/A"
 	if progressPct >= 100.0 {
-		eta = "due"
+		eta = "0s"
+		a.mysqlContext.Stage = models.StageSlaveHasReadAllRelayLog
 	} else if progressPct >= 1.0 {
 		elapsedRowCopySeconds := a.mysqlContext.ElapsedRowCopyTime().Seconds()
 		totalExpectedSeconds := elapsedRowCopySeconds * float64(rowsEstimate) / float64(totalRowsCopied)
+		if atomic.LoadInt64(&a.rowCopyCompleteFlag) == 1 {
+			totalExpectedSeconds = elapsedRowCopySeconds * float64(deltaEstimate) / float64(totalDeltaCopied)
+		}
 		etaSeconds = totalExpectedSeconds - elapsedRowCopySeconds
 		if etaSeconds >= 0 {
 			etaDuration := time.Duration(etaSeconds) * time.Second
 			eta = base.PrettifyDurationOutput(etaDuration)
 		} else {
-			eta = "due"
+			eta = "0s"
 		}
 	}
 
-	state := "migrating"
-	if atomic.LoadInt64(&a.mysqlContext.CountingRowsFlag) > 0 && !a.mysqlContext.ConcurrentCountTableRows {
-		state = "counting rows"
-	} else if atomic.LoadInt64(&a.mysqlContext.IsPostponingCutOver) > 0 {
-		eta = "due"
-		state = "postponing cut-over"
-	} */ /*else if isThrottled, throttleReason, _ := e.mysqlContext.IsThrottled(); isThrottled {
-		state = fmt.Sprintf("throttled, %s", throttleReason)
-	}*/ /*
+	taskResUsage := models.TaskStatistics{
+		ExecMasterRowCount: totalRowsCopied,
+		ExecMasterTxCount:  totalDeltaCopied,
+		ReadMasterRowCount: rowsEstimate,
+		ReadMasterTxCount:  deltaEstimate,
+		ProgressPct:        progressPct,
+		ETA:                eta,
+		Backlog:            backlog,
+		Stage:              a.mysqlContext.Stage,
+		CurrentCoordinates: a.currentCoordinates,
+		BufferStat: models.BufferStat{
+			ApplierTxQueueSize:      len(a.applyBinlogTxQueue),
+			ApplierGroupTxQueueSize: len(a.applyBinlogGroupTxQueue),
+		},
+		Timestamp: time.Now().UTC().UnixNano(),
+	}
+	if a.natsConn != nil {
+		taskResUsage.MsgStat = a.natsConn.Statistics
+	}
 
-		shouldPrintStatus := false
-		if elapsedSeconds <= 60 {
-			shouldPrintStatus = true
-		} else if etaSeconds <= 60 {
-			shouldPrintStatus = true
-		} else if etaSeconds <= 180 {
-			shouldPrintStatus = (elapsedSeconds%5 == 0)
-		} else if elapsedSeconds <= 180 {
-			shouldPrintStatus = (elapsedSeconds%5 == 0)
-		} else if a.mysqlContext.TimeSincePointOfInterest().Seconds() <= 60 {
-			shouldPrintStatus = (elapsedSeconds%5 == 0)
-		} else {
-			shouldPrintStatus = (elapsedSeconds%30 == 0)
-		}
-		if !shouldPrintStatus {
-			return nil, nil
-		}
-
-		status := fmt.Sprintf("Copy: %d/%d %.1f%%; Applied: %d; Time: %+v(total), %+v(copy); State: %s; ETA: %s",
-			totalRowsCopied, rowsEstimate, progressPct,
-			atomic.LoadInt64(&a.mysqlContext.TotalDMLEventsApplied),
-			base.PrettifyDurationOutput(elapsedTime), base.PrettifyDurationOutput(a.mysqlContext.ElapsedRowCopyTime()),
-			//currentBinlogCoordinates,
-			state,
-			eta,
-		)
-		//a.logger.Printf("mysql.applier: copy iteration %d at %d,status:%v", a.mysqlContext.GetIteration(), time.Now().Unix(), status)
-
-		if elapsedSeconds%60 == 0 {
-			//e.hooksExecutor.onStatus(status)
-		}
-		taskResUsage := umodels.TaskStatistics{
-			Stats: &umodels.Stats{
-				Status: status,
-			},
-			Timestamp: time.Now().UTC().UnixNano(),
-		}*/
 	return &taskResUsage, nil
 }
 

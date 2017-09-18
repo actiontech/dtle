@@ -112,6 +112,18 @@ func GetReplicationBinlogCoordinates(db *gosql.DB) (readBinlogCoordinates *Binlo
 
 func GetSelfBinlogCoordinates(db *gosql.DB) (selfBinlogCoordinates *BinlogCoordinates, err error) {
 	err = usql.QueryRowsMap(db, `show master status`, func(m usql.RowMap) error {
+		selfBinlogCoordinates = &BinlogCoordinates{
+			LogFile: m.GetString("File"),
+			LogPos:  m.GetInt64("Position"),
+			GtidSet: m.GetString("Executed_Gtid_Set"),
+		}
+		return nil
+	})
+	return selfBinlogCoordinates, err
+}
+
+func GetSelfBinlogCoordinates2(db *gosql.DB) (selfBinlogCoordinates *BinlogCoordinates, err error) {
+	err = usql.QueryRowsMap(db, `show master status`, func(m usql.RowMap) error {
 		gtidSet, err := gomysql.ParseMysqlGTIDSet(m.GetString("Executed_Gtid_Set"))
 		if err != nil {
 			return err

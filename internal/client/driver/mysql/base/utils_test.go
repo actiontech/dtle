@@ -168,13 +168,18 @@ func TestGetSelfBinlogCoordinates(t *testing.T) {
 	type args struct {
 		db *gosql.DB
 	}
+	db, err := sql.CreateDB(fmt.Sprintf("root:rootroot@tcp(192.168.99.100:13307)/?timeout=5s&tls=false&autocommit=true&charset=utf8mb4,utf8,latin1&multiStatements=true"))
+	if err != nil {
+		return
+	}
 	tests := []struct {
 		name                      string
 		args                      args
 		wantSelfBinlogCoordinates *BinlogCoordinates
 		wantErr                   bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
+		{"T1", args{db}, nil, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -263,7 +268,7 @@ func TestApplyColumnTypes(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := ApplyColumnTypes(tt.args.db, tt.args.database, tt.args.tablename, tt.args.columnsLists...)
+			got, err := ApplyColumnTypesWithTx(tt.args.db, tt.args.database, tt.args.tablename, tt.args.columnsLists...)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("ApplyColumnTypes() error = %v, wantErr %v", err, tt.wantErr)
 				return

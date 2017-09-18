@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"fmt"
 	"math"
-	"strconv"
 	"strings"
 	"sync"
 
@@ -17,7 +16,7 @@ import (
 )
 
 const (
-	defaultChunkSize = 1000
+	defaultChunkSize = 10000
 )
 
 var (
@@ -26,7 +25,8 @@ var (
 
 type dumper struct {
 	logger         *log.Entry
-	chunkSize      int
+	chunkSize      int64
+	total          int64
 	TableSchema    string
 	TableName      string
 	columns        string
@@ -42,12 +42,13 @@ type dumper struct {
 	db *sql.Tx
 }
 
-func NewDumper(db *sql.Tx, dbName, tableName string, logger *log.Entry) *dumper {
+func NewDumper(db *sql.Tx, dbName, tableName string, total int64, logger *log.Entry) *dumper {
 	dumper := &dumper{
 		logger:         logger,
 		db:             db,
 		TableSchema:    dbName,
 		TableName:      tableName,
+		total:          total,
 		resultsChannel: make(chan *dumpEntry, 50),
 		entriesChannel: make(chan *dumpEntry),
 		chunkSize:      defaultChunkSize,
@@ -56,48 +57,25 @@ func NewDumper(db *sql.Tx, dbName, tableName string, logger *log.Entry) *dumper 
 	return dumper
 }
 
-func (d *dumper) getRowsCount() (uint64, error) {
-	var res sql.NullString
-	query := fmt.Sprintf(`SELECT COUNT(*) FROM %s.%s`,
-		usql.EscapeName(d.TableSchema),
-		usql.EscapeName(d.TableName),
-	)
-	err := d.db.QueryRow(query).Scan(&res)
-	if err != nil {
-		return 0, err
-	}
-
-	val, err := res.Value()
-	if err != nil {
-		return 0, err
-	}
-
-	return strconv.ParseUint(val.(string), 0, 64)
-}
-
 type dumpEntry struct {
 	SystemVariablesStatement string
 	SqlMode                  string
 	DbSQL                    string
 	TbSQL                    string
 	Values                   string
-	RowsCount                uint64
+	TotalCount               int64
+	RowsCount                int64
 	Offset                   uint64
-	Counter                  int
 	colBuffer                bytes.Buffer
 	err                      error
 }
 
 func (e *dumpEntry) incrementCounter() {
-	e.Counter++
+	e.RowsCount++
 }
 
 func (d *dumper) getDumpEntries() ([]*dumpEntry, error) {
-	total, err := d.getRowsCount()
-	if err != nil {
-		return nil, err
-	}
-	if total == 0 {
+	if d.total == 0 {
 		return []*dumpEntry{}, nil
 	}
 
@@ -129,7 +107,7 @@ func (d *dumper) getDumpEntries() ([]*dumpEntry, error) {
 		d.columns = "*"
 	}
 
-	sliceCount := int(math.Ceil(float64(total) / float64(d.chunkSize)))
+	sliceCount := int(math.Ceil(float64(d.total) / float64(d.chunkSize)))
 	if sliceCount == 0 {
 		sliceCount = 1
 	}
@@ -137,8 +115,7 @@ func (d *dumper) getDumpEntries() ([]*dumpEntry, error) {
 	for i := 0; i < sliceCount; i++ {
 		offset := uint64(i) * uint64(d.chunkSize)
 		entries[i] = &dumpEntry{
-			RowsCount: total,
-			Offset:    offset,
+			Offset: offset,
 		}
 	}
 	return entries, nil
@@ -194,6 +171,7 @@ func (d *dumper) getChunkData(e *dumpEntry) error {
 		entry.incrementCounter()
 	}
 	entry.Values = fmt.Sprintf(`replace into %s.%s values %s`, d.TableSchema, d.TableName, strings.Join(data, ","))
+	//4194304
 	d.resultsChannel <- entry
 	/*query = fmt.Sprintf(`
 			insert into %s.%s

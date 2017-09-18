@@ -7,6 +7,7 @@ import (
 	//"math"
 	"bytes"
 	"encoding/gob"
+	"math"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -52,7 +53,6 @@ type Extractor struct {
 	rowCopyComplete            chan bool
 	allEventsUpToLockProcessed chan string
 	rowCopyCompleteFlag        int64
-	totalRowCount              int
 	tableCount                 int
 
 	sendByTimeoutCounter  int
@@ -184,12 +184,8 @@ func (e *Extractor) Run() {
 		return
 	}
 	if e.mysqlContext.Gtid == "" {
-		e.mysqlContext.RowCopyStartTime = time.Now()
+		e.mysqlContext.MarkRowCopyStartTime()
 		if err := e.mysqlDump(); err != nil {
-			e.onError(TaskStateDead, err)
-			return
-		}
-		if err := e.requestMsg(fmt.Sprintf("%s_full_complete", e.subject), "", []byte(string(e.totalRowCount))); err != nil {
 			e.onError(TaskStateDead, err)
 			return
 		}
@@ -210,7 +206,7 @@ func (e *Extractor) Run() {
 		return
 	}
 
-	if e.tp == models.JobTypeMig {
+	/*if e.tp == models.JobTypeMig {
 		for {
 			binlogCoordinates, err := base.GetSelfBinlogCoordinates(e.db)
 			if err != nil {
@@ -245,13 +241,12 @@ func (e *Extractor) Run() {
 			}
 			time.Sleep(time.Second)
 		}
-	}
+	}*/
 }
 
 // cutOver performs the final step of migration, based on migration
 // type (on replica? atomic? safe?)
 func (e *Extractor) cutOver() (err error) {
-	e.mysqlContext.MarkPointOfInterest()
 	e.logger.Debugf("mysql.extractor: Checking for cut-over postpone")
 	e.sleepWhileTrue(
 		func() (bool, error) {
@@ -270,7 +265,6 @@ func (e *Extractor) cutOver() (err error) {
 		},
 	)
 	atomic.StoreInt64(&e.mysqlContext.IsPostponingCutOver, 0)
-	e.mysqlContext.MarkPointOfInterest()
 	e.logger.Printf("mysql.extractor: Checking for cut-over postpone: complete")
 
 	if e.mysqlContext.CutOverType == config.CutOverAtomic {
@@ -296,7 +290,6 @@ func (e *Extractor) cutOver() (err error) {
 func (e *Extractor) waitForEventsUpToLock() (err error) {
 	timeout := time.NewTimer(time.Second * time.Duration(e.mysqlContext.CutOverLockTimeoutSeconds))
 
-	e.mysqlContext.MarkPointOfInterest()
 	waitForEventsUpToLockStartTime := time.Now()
 
 	allEventsUpToLockProcessedChallenge := fmt.Sprintf("%s:%d", string(AllEventsUpToLockProcessed), waitForEventsUpToLockStartTime.UnixNano())
@@ -712,6 +705,26 @@ func (e *Extractor) validateAndReadTimeZone() error {
 	return nil
 }
 
+// CountTableRows counts exact number of rows on the original table
+func (e *Extractor) CountTableRows(tableSchema, tableName string) (int64, error) {
+	atomic.StoreInt64(&e.mysqlContext.CountingRowsFlag, 1)
+	defer atomic.StoreInt64(&e.mysqlContext.CountingRowsFlag, 0)
+
+	e.logger.Printf("mysql.extractor: As instructed, I'm issuing a SELECT COUNT(*) on the table. This may take a while")
+
+	query := fmt.Sprintf(`select count(*) as rows from %s.%s`, sql.EscapeName(tableSchema), sql.EscapeName(tableName))
+	var rowsEstimate int64
+	if err := e.db.QueryRow(query).Scan(&rowsEstimate); err != nil {
+		return 0, err
+	}
+	atomic.AddInt64(&e.mysqlContext.RowsEstimate, rowsEstimate)
+	//e.mysqlContext.UsedRowsEstimateMethod = base.CountRowsEstimate
+
+	e.mysqlContext.Stage = models.StageSearchingRowsForUpdate
+	e.logger.Printf("mysql.extractor: Exact number of rows via COUNT: %d", rowsEstimate)
+	return rowsEstimate, nil
+}
+
 // Read the MySQL charset-related system variables.
 func (e *Extractor) readMySqlCharsetSystemVariables() error {
 	query := `show variables where Variable_name IN ('character_set_server','collation_server')`
@@ -809,9 +822,71 @@ func (e *Extractor) StreamEvents() error {
 						e.onError(TaskStateDead, err)
 						break
 					}
+					e.mysqlContext.Stage = models.StageSendingBinlogEventToSlave
+					atomic.AddInt64(&e.mysqlContext.DeltaEstimate, 1)
 				}
 			}
 		}()
+		/*entryArray := make([]*binlog.BinlogEntry, 0)
+		subject := fmt.Sprintf("%s_incr_hete", e.subject)
+
+		go func() {
+		L:
+			for {
+				select {
+				case binlogEntry := <-e.dataChannel:
+					{
+						if nil == binlogEntry {
+							continue
+						}
+						entryArray = append(entryArray, binlogEntry)
+						txMsg, err := Encode(&entryArray)
+						if err != nil {
+							e.onError(TaskStateDead, err)
+							break L
+						}
+						if len(txMsg) > e.mysqlContext.MsgBytesLimit {
+							if len(txMsg) > e.maxPayload {
+								e.onError(TaskStateDead, gonats.ErrMaxPayload)
+							}
+							if err = e.requestMsg(subject, fmt.Sprintf("%s:1-%d", binlogEntry.Coordinates.SID, binlogEntry.Coordinates.GNO), txMsg); err != nil {
+								e.onError(TaskStateDead, err)
+								break L
+							}
+							//send_by_size_full
+							e.sendBySizeFullCounter += len(entryArray)
+							entryArray = []*binlog.BinlogEntry{}
+						}
+					}
+				case <-time.After(100 * time.Millisecond):
+					{
+						if len(entryArray) != 0 {
+							txMsg, err := Encode(&entryArray)
+							if err != nil {
+								e.onError(TaskStateDead, err)
+								break L
+							}
+							if len(txMsg) > e.maxPayload {
+								e.onError(TaskStateDead, gonats.ErrMaxPayload)
+							}
+							if err = e.requestMsg(subject,
+								fmt.Sprintf("%s:1-%d",
+									entryArray[len(entryArray)-1].Coordinates.SID,
+									entryArray[len(entryArray)-1].Coordinates.GNO),
+								txMsg); err != nil {
+								e.onError(TaskStateDead, err)
+								break L
+							}
+							//send_by_timeout
+							e.sendByTimeoutCounter += len(entryArray)
+							entryArray = []*binlog.BinlogEntry{}
+						}
+					}
+				case <-e.shutdownCh:
+					break L
+				}
+			}
+		}()*/
 		// The next should block and execute forever, unless there's a serious error
 		if err := e.binlogReader.DataStreamEvents(e.dataChannel); err != nil {
 			if e.shutdown {
@@ -826,7 +901,7 @@ func (e *Extractor) StreamEvents() error {
 		subject := fmt.Sprintf("%s_incr", e.subject)
 
 		go func() {
-		OUTER:
+		L:
 			for {
 				select {
 				case binlogTx := <-e.binlogChannel:
@@ -840,14 +915,14 @@ func (e *Extractor) StreamEvents() error {
 							txMsg, err := Encode(&txArray)
 							if err != nil {
 								e.onError(TaskStateDead, err)
-								break OUTER
+								break L
 							}
 							if len(txMsg) > e.maxPayload {
 								e.onError(TaskStateDead, gonats.ErrMaxPayload)
 							}
 							if err = e.requestMsg(subject, fmt.Sprintf("%s:1-%d", binlogTx.SID, binlogTx.GNO), txMsg); err != nil {
 								e.onError(TaskStateDead, err)
-								break OUTER
+								break L
 							}
 							//send_by_size_full
 							e.sendBySizeFullCounter += len(txArray)
@@ -861,7 +936,7 @@ func (e *Extractor) StreamEvents() error {
 							txMsg, err := Encode(&txArray)
 							if err != nil {
 								e.onError(TaskStateDead, err)
-								break OUTER
+								break L
 							}
 							if len(txMsg) > e.maxPayload {
 								e.onError(TaskStateDead, gonats.ErrMaxPayload)
@@ -872,7 +947,7 @@ func (e *Extractor) StreamEvents() error {
 									txArray[len(txArray)-1].GNO),
 								txMsg); err != nil {
 								e.onError(TaskStateDead, err)
-								break OUTER
+								break L
 							}
 							//send_by_timeout
 							e.sendByTimeoutCounter += len(txArray)
@@ -881,7 +956,7 @@ func (e *Extractor) StreamEvents() error {
 						}
 					}
 				case <-e.shutdownCh:
-					break OUTER
+					break L
 				}
 			}
 		}()
@@ -1028,6 +1103,11 @@ func (e *Extractor) mysqlDump() error {
 				if tb.TableSchema != db.TableSchema {
 					continue
 				}
+				total, err := e.CountTableRows(tb.TableSchema, tb.TableName)
+				if err != nil {
+					return err
+				}
+				tb.Counter = total
 				dbSQL := fmt.Sprintf("CREATE DATABASE IF NOT EXISTS %s", tb.TableSchema)
 				tbSQL, err := base.ShowCreateTable(e.singletonDB, tb.TableSchema, tb.TableName, e.mysqlContext.DropTableIfExists)
 				if err != nil {
@@ -1038,6 +1118,7 @@ func (e *Extractor) mysqlDump() error {
 					SqlMode:                  setSqlMode,
 					DbSQL:                    dbSQL,
 					TbSQL:                    tbSQL,
+					TotalCount:               e.mysqlContext.RowsEstimate,
 				}
 				if err := e.encodeDumpEntry(entry); err != nil {
 					return err
@@ -1074,11 +1155,8 @@ func (e *Extractor) mysqlDump() error {
 			// Obtain a record maker for this table, which knows about the schema ...
 			// Choose how we create statements based on the # of rows ...
 			e.logger.Printf("mysql.extractor: Step %d: - scanning table '%s.%s' (%d of %d tables)", step, t.TableSchema, t.TableName, counter, e.tableCount)
-			/*tx, err := e.singletonDB.Begin()
-			if err != nil {
-				e.onError(TaskStateDead, err)
-			}*/
-			d := NewDumper(tx, t.TableSchema, t.TableName, e.logger)
+
+			d := NewDumper(tx, t.TableSchema, t.TableName, t.Counter, e.logger)
 			if err := d.Dump(1); err != nil {
 				e.onError(TaskStateDead, err)
 			}
@@ -1094,12 +1172,9 @@ func (e *Extractor) mysqlDump() error {
 				if err = e.encodeDumpEntry(entry); err != nil {
 					e.onError(TaskStateDead, err)
 				}
-				e.totalRowCount += int(entry.Counter)
+				atomic.AddInt64(&e.mysqlContext.TotalRowsCopied, entry.RowsCount)
 			}
 
-			/*if err := tx.Commit(); err != nil {
-				e.onError(TaskStateDead, err)
-			}*/
 			close(d.resultsChannel)
 			//pool.Done()
 			//}(tb)
@@ -1112,12 +1187,13 @@ func (e *Extractor) mysqlDump() error {
 	// First mark the snapshot as complete and then apply the updated offset to the buffered record ...
 	stop := currentTimeMillis()
 	e.logger.Printf("mysql.extractor: Step %d: scanned %d rows in %d tables in %s",
-		step, e.totalRowCount, e.tableCount, time.Duration(stop-startScan))
+		step, e.mysqlContext.TotalRowsCopied, e.tableCount, time.Duration(stop-startScan))
 	step++
 
 	return nil
 }
 func (e *Extractor) encodeDumpEntry(entry *dumpEntry) error {
+	e.logger.Printf("%v", len(entry.Values))
 	txMsg, err := Encode(entry)
 	if err != nil {
 		return err
@@ -1125,6 +1201,7 @@ func (e *Extractor) encodeDumpEntry(entry *dumpEntry) error {
 	if err := e.requestMsg(fmt.Sprintf("%s_full", e.subject), "", txMsg); err != nil {
 		return err
 	}
+	e.mysqlContext.Stage = models.StageSendingData
 	return nil
 }
 
@@ -1133,32 +1210,9 @@ func currentTimeMillis() int64 {
 }
 
 func (e *Extractor) Stats() (*models.TaskStatistics, error) {
-	taskResUsage := models.TaskStatistics{
-		Status: "",
-		BufferStat: models.BufferStat{
-			ExtractorTxQueueSize: len(e.binlogChannel),
-			SendByTimeout:        e.sendByTimeoutCounter,
-			SendBySizeFull:       e.sendBySizeFullCounter,
-		},
-		RowsCount: e.totalRowCount,
-		Timestamp: time.Now().UTC().UnixNano(),
-	}
-	if e.natsConn != nil {
-		taskResUsage.MsgStat = e.natsConn.Statistics
-	}
-	if e.binlogReader != nil {
-		currentBinlogCoordinates := e.binlogReader.GetCurrentBinlogCoordinates()
-		taskResUsage.CurrentCoordinates = &models.CurrentCoordinates{
-			File:     currentBinlogCoordinates.LogFile,
-			Position: currentBinlogCoordinates.LogPos,
-			GtidSet:  fmt.Sprintf("%s:%d", currentBinlogCoordinates.SID, currentBinlogCoordinates.GNO),
-		}
-	}
-	//e.logger.Printf("mysql.extractor: Tracks various stats received on this connection:MsgStat[%+v],BufferStat[%v]",taskResUsage.MsgStat,taskResUsage.BufferStat)
-	/*elapsedTime := e.mysqlContext.ElapsedTime()
-	elapsedSeconds := int64(elapsedTime.Seconds())
 	totalRowsCopied := e.mysqlContext.GetTotalRowsCopied()
-	rowsEstimate := atomic.LoadInt64(&e.mysqlContext.RowsDeltaEstimate */ /*RowsEstimate*/ /*) + atomic.LoadInt64(&e.mysqlContext.RowsDeltaEstimate)
+	rowsEstimate := atomic.LoadInt64(&e.mysqlContext.RowsEstimate)
+	deltaEstimate := atomic.LoadInt64(&e.mysqlContext.DeltaEstimate)
 	if atomic.LoadInt64(&e.rowCopyCompleteFlag) == 1 {
 		// Done copying rows. The totalRowsCopied value is the de-facto number of rows,
 		// and there is no further need to keep updating the value.
@@ -1170,17 +1224,13 @@ func (e *Extractor) Stats() (*models.TaskStatistics, error) {
 	} else {
 		progressPct = 100.0 * float64(totalRowsCopied) / float64(rowsEstimate)
 	}
-	// Before status, let's see if we should print a nice reminder for what exactly we're doing here.
-	shouldPrintMigrationStatusHint := (elapsedSeconds%600 == 0)
-
-	if shouldPrintMigrationStatusHint {
-		//e.printMigrationStatusHint(writers...)
-	}
 
 	var etaSeconds float64 = math.MaxFloat64
-	eta := "N/A"
+	var eta string
+	eta = "N/A"
 	if progressPct >= 100.0 {
-		eta = "due"
+		eta = "0s"
+		e.mysqlContext.Stage = models.StageMasterHasSentAllBinlogToSlave
 	} else if progressPct >= 1.0 {
 		elapsedRowCopySeconds := e.mysqlContext.ElapsedRowCopyTime().Seconds()
 		totalExpectedSeconds := elapsedRowCopySeconds * float64(rowsEstimate) / float64(totalRowsCopied)
@@ -1189,57 +1239,40 @@ func (e *Extractor) Stats() (*models.TaskStatistics, error) {
 			etaDuration := time.Duration(etaSeconds) * time.Second
 			eta = base.PrettifyDurationOutput(etaDuration)
 		} else {
-			eta = "due"
+			eta = "0s"
 		}
 	}
 
-	state := "migrating"
-	if atomic.LoadInt64(&e.mysqlContext.CountingRowsFlag) > 0 && !e.mysqlContext.ConcurrentCountTableRows {
-		state = "counting rows"
-	} else if atomic.LoadInt64(&e.mysqlContext.IsPostponingCutOver) > 0 {
-		eta = "due"
-		state = "postponing cut-over"
-	} */ /*else if isThrottled, throttleReason, _ := e.mysqlContext.IsThrottled(); isThrottled {
-		state = fmt.Sprintf("throttled, %s", throttleReason)
-	}*/ /*
+	taskResUsage := models.TaskStatistics{
+		ExecMasterRowCount: totalRowsCopied,
+		ExecMasterTxCount:  deltaEstimate,
+		ReadMasterRowCount: rowsEstimate,
+		ReadMasterTxCount:  deltaEstimate,
+		ProgressPct:        progressPct,
+		ETA:                eta,
+		Backlog:            fmt.Sprintf("%d/%d", len(e.dataChannel), cap(e.dataChannel)),
+		Stage:              e.mysqlContext.Stage,
+		BufferStat: models.BufferStat{
+			ExtractorTxQueueSize: len(e.binlogChannel),
+			SendByTimeout:        e.sendByTimeoutCounter,
+			SendBySizeFull:       e.sendBySizeFullCounter,
+		},
+		Timestamp: time.Now().UTC().UnixNano(),
+	}
+	if e.natsConn != nil {
+		taskResUsage.MsgStat = e.natsConn.Statistics
+	}
 
-		shouldPrintStatus := false
-		if elapsedSeconds <= 60 {
-			shouldPrintStatus = true
-		} else if etaSeconds <= 60 {
-			shouldPrintStatus = true
-		} else if etaSeconds <= 180 {
-			shouldPrintStatus = (elapsedSeconds%5 == 0)
-		} else if elapsedSeconds <= 180 {
-			shouldPrintStatus = (elapsedSeconds%5 == 0)
-		} else if e.mysqlContext.TimeSincePointOfInterest().Seconds() <= 60 {
-			shouldPrintStatus = (elapsedSeconds%5 == 0)
-		} else {
-			shouldPrintStatus = (elapsedSeconds%30 == 0)
+	currentBinlogCoordinates := &base.BinlogCoordinates{}
+	if e.binlogReader != nil {
+		currentBinlogCoordinates = e.binlogReader.GetCurrentBinlogCoordinates()
+		taskResUsage.CurrentCoordinates = &models.CurrentCoordinates{
+			File:     currentBinlogCoordinates.LogFile,
+			Position: currentBinlogCoordinates.LogPos,
+			GtidSet:  fmt.Sprintf("%s:%d", currentBinlogCoordinates.SID, currentBinlogCoordinates.GNO),
 		}
-		if !shouldPrintStatus {
-			return nil, nil
-		}
+	}
 
-		status := fmt.Sprintf("Copy: %d/%d %.1f%%; Applied: %d; Time: %+v(total), %+v(copy); streamer: %+v; State: %s; ETA: %s",
-			totalRowsCopied, rowsEstimate, progressPct,
-			atomic.LoadInt64(&e.mysqlContext.TotalDMLEventsApplied),
-			base.PrettifyDurationOutput(elapsedTime), base.PrettifyDurationOutput(e.mysqlContext.ElapsedRowCopyTime()),
-			e.currentBinlogCoordinates,
-			state,
-			eta,
-		)
-		//e.logger.Printf("mysql.extractor: copy iteration %d at %d,status:%v", e.mysqlContext.GetIteration(), time.Now().Unix(), status)
-
-		if elapsedSeconds%60 == 0 {
-			//e.hooksExecutor.onStatus(status)
-		}
-		taskResUsage := models.TaskStatistics{
-			Stats: &models.Stats{
-				Status: status,
-			},
-			Timestamp: time.Now().UTC().UnixNano(),
-		}*/
 	return &taskResUsage, nil
 }
 
