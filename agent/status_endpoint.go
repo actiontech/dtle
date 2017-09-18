@@ -42,3 +42,22 @@ func (s *HTTPServer) StatusPeersRequest(resp http.ResponseWriter, req *http.Requ
 	}
 	return peers, nil
 }
+
+func (s *HTTPServer) RegionListRequest(resp http.ResponseWriter, req *http.Request) (interface{}, error) {
+	if req.Method != "GET" {
+		return nil, CodedError(405, ErrInvalidMethod)
+	}
+	args := &models.GenericRequest{}
+	if s.parse(resp, req, &args.Region, &args.QueryOptions) {
+		return nil, nil
+	}
+
+	var regions []string
+	if err := s.agent.RPC("Status.RegionList", &args, &regions); err != nil {
+		return nil, err
+	}
+	if len(regions) == 0 {
+		regions = make([]string, 0)
+	}
+	return regions, nil
+}

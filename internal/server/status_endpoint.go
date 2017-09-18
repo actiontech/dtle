@@ -64,6 +64,14 @@ func (s *Status) Peers(args *models.GenericRequest, reply *[]string) error {
 	return nil
 }
 
+// List is used to list all of the known regions. No leader forwarding is
+// required for this endpoint because memberlist is used to populate the
+// peers list we read from.
+func (s *Status) RegionList(args *models.GenericRequest, reply *[]string) error {
+	*reply = s.srv.Regions()
+	return nil
+}
+
 // Members return the list of servers in a cluster that a particular server is
 // aware of
 func (s *Status) Members(args *models.GenericRequest, reply *models.ServerMembersResponse) error {

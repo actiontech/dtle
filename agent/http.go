@@ -127,6 +127,8 @@ func (s *HTTPServer) registerHandlers() {
 	s.mux.HandleFunc("/v1/members", s.wrap(s.AgentMembersRequest))
 	s.mux.HandleFunc("/v1/managers", s.wrap(s.AgentServersRequest))
 
+	s.mux.HandleFunc("/v1/regions", s.wrap(s.RegionListRequest))
+
 	s.mux.HandleFunc("/v1/leader", s.wrap(s.StatusLeaderRequest))
 	s.mux.HandleFunc("/v1/peers", s.wrap(s.StatusPeersRequest))
 }
