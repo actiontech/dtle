@@ -1730,8 +1730,10 @@ func (a *Applier) ApplyBinlogEvent(dbApplier *sql.DB, binlogEntry *binlog.Binlog
 func (a *Applier) ApplyEventQueries(db *gosql.DB, entry *dumpEntry) error {
 	queries := []string{}
 	queries = append(queries, entry.SystemVariablesStatement, entry.SqlMode, entry.DbSQL, entry.TbSQL)
-	if entry.Values != "" {
-		queries = append(queries, entry.Values)
+	if len(entry.Values) > 0 {
+		for _, e := range entry.Values {
+			queries = append(queries, fmt.Sprintf(`replace into %s.%s values %s`, entry.TableSchema, entry.TableName, strings.Join(e, ",")))
+		}
 	}
 	tx, err := db.Begin()
 	if err != nil {

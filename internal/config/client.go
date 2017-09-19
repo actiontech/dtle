@@ -20,6 +20,7 @@ const (
 
 	channelBufferSize = 600
 	defaultNumRetries = 5
+	defaultChunkSize  = 10000
 	defaultNumWorkers = 1
 	defaultMsgBytes   = 20 * 1024
 	defaultMsgsLimit  = 65536
@@ -181,6 +182,9 @@ func (a *MySQLDriverConfig) SetDefault() *MySQLDriverConfig {
 
 	if result.MaxRetries <= 0 {
 		result.MaxRetries = defaultNumRetries
+	}
+	if result.ChunkSize <= 0 {
+		result.ChunkSize = defaultChunkSize
 	}
 	if result.ReplChanBufferSize <= 0 {
 		result.ReplChanBufferSize = channelBufferSize

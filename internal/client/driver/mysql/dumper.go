@@ -15,10 +15,6 @@ import (
 	log "udup/internal/logger"
 )
 
-const (
-	defaultChunkSize = 10000
-)
-
 var (
 	stringOfBackslashAndQuoteChars = "\u005c\u00a5\u0160\u20a9\u2216\ufe68uff3c\u0022\u0027\u0060\u00b4\u02b9\u02ba\u02bb\u02bc\u02c8\u02ca\u02cb\u02d9\u0300\u0301\u2018\u2019\u201a\u2032\u2035\u275b\u275c\uff07"
 )
@@ -42,7 +38,7 @@ type dumper struct {
 	db *sql.Tx
 }
 
-func NewDumper(db *sql.Tx, dbName, tableName string, total int64, logger *log.Entry) *dumper {
+func NewDumper(db *sql.Tx, dbName, tableName string, total, chunkSize int64, logger *log.Entry) *dumper {
 	dumper := &dumper{
 		logger:         logger,
 		db:             db,
@@ -51,7 +47,7 @@ func NewDumper(db *sql.Tx, dbName, tableName string, total int64, logger *log.En
 		total:          total,
 		resultsChannel: make(chan *dumpEntry, 50),
 		entriesChannel: make(chan *dumpEntry),
-		chunkSize:      defaultChunkSize,
+		chunkSize:      chunkSize,
 		shutdownCh:     make(chan struct{}),
 	}
 	return dumper
@@ -61,8 +57,10 @@ type dumpEntry struct {
 	SystemVariablesStatement string
 	SqlMode                  string
 	DbSQL                    string
+	TableName                string
+	TableSchema              string
 	TbSQL                    string
-	Values                   string
+	Values                   [][]string
 	TotalCount               int64
 	RowsCount                int64
 	Offset                   uint64
@@ -124,8 +122,10 @@ func (d *dumper) getDumpEntries() ([]*dumpEntry, error) {
 // dumps a specific chunk, reading chunk info from the channel
 func (d *dumper) getChunkData(e *dumpEntry) error {
 	entry := &dumpEntry{
-		RowsCount: e.RowsCount,
-		Offset:    e.Offset,
+		TableSchema: d.TableSchema,
+		TableName:   d.TableName,
+		RowsCount:   e.RowsCount,
+		Offset:      e.Offset,
 	}
 	query := fmt.Sprintf(`SELECT %s FROM %s.%s LIMIT %d OFFSET %d`,
 		d.columns,
@@ -152,6 +152,7 @@ func (d *dumper) getChunkData(e *dumpEntry) error {
 	}
 
 	data := make([]string, 0)
+	packetLen := 0
 	for rows.Next() {
 		err = rows.Scan(scanArgs...)
 		if err != nil {
@@ -163,6 +164,12 @@ func (d *dumper) getChunkData(e *dumpEntry) error {
 			// Here we can check if the value is nil (NULL value)
 			if col != nil {
 				vals = append(vals, fmt.Sprintf("'%s'", usql.EscapeValue(string(*col))))
+				packetLen += len(usql.EscapeValue(string(*col)))
+				if packetLen > 3000000 {
+					entry.Values = append(entry.Values, data)
+					packetLen = 0
+					data = []string{}
+				}
 			} else {
 				vals = append(vals, "NULL")
 			}
@@ -170,8 +177,7 @@ func (d *dumper) getChunkData(e *dumpEntry) error {
 		data = append(data, fmt.Sprintf("( %s )", strings.Join(vals, ", ")))
 		entry.incrementCounter()
 	}
-	entry.Values = fmt.Sprintf(`replace into %s.%s values %s`, d.TableSchema, d.TableName, strings.Join(data, ","))
-	//4194304
+	entry.Values = append(entry.Values, data)
 	d.resultsChannel <- entry
 	/*query = fmt.Sprintf(`
 			insert into %s.%s
