@@ -251,7 +251,7 @@ func (c *StatusCommand) outputJobSummary(client *api.Client, job *api.Job) error
 		return nil
 	}
 
-	c.Ui.Output(fmt.Sprintf("---summary：%v", summary))
+	c.Ui.Output(fmt.Sprintf("summary：%v", summary))
 	c.Ui.Output(c.Colorize().Color("\n[bold]Summary[reset]"))
 	summaries := make([]string, len(summary.Tasks)+1)
 	summaries[0] = "Task|Status"

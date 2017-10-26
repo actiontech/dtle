@@ -14,6 +14,9 @@ import (
 const (
 	TaskTypeSrc  = "Src"
 	TaskTypeDest = "Dest"
+
+	TaskDriverMySQL  = "MySQL"
+	TaskDriverOracle = "Oracle"
 )
 
 // Task is a single process typically that is executed as part of a task.
@@ -22,6 +25,8 @@ type Task struct {
 	Type string
 
 	NodeId string
+
+	NodeName string
 
 	// Driver is used to control which driver is used
 	Driver string
@@ -356,8 +361,9 @@ func (e *TaskEvent) SetDriverMessage(m string) *TaskEvent {
 }
 
 type TaskUpdate struct {
-	JobID string
-	Gtid  string
+	JobID    string
+	Gtid     string
+	NatsAddr string
 }
 
 const (
@@ -381,6 +387,10 @@ func NewWaitResult(code int, err error) *WaitResult {
 
 func (r *WaitResult) Successful() bool {
 	return r.ExitCode == 0 && r.Err == nil
+}
+
+func (r *WaitResult) ShouldRestart() bool {
+	return r.ExitCode == 1 && r.Err != nil
 }
 
 func (r *WaitResult) String() string {

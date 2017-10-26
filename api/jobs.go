@@ -203,7 +203,7 @@ func (j *Job) Canonicalize() {
 		j.Datacenters = []string{"dc1"}
 	}
 	if j.Type == nil {
-		j.Type = internal.StringToPtr("synchronous")
+		j.Type = internal.StringToPtr(models.JobTypeSync)
 	}
 	if j.Status == nil {
 		j.Status = internal.StringToPtr("")

@@ -2,7 +2,7 @@ package scheduler
 
 import (
 	"fmt"
-	"math/rand"
+	//"math/rand"
 
 	memdb "github.com/hashicorp/go-memdb"
 	"github.com/hashicorp/go-multierror"
@@ -167,7 +167,11 @@ func (s *GenericScheduler) process() (bool, error) {
 	numTaskGroups := 0
 	if s.job != nil {
 		numTaskGroups = len(s.job.Tasks)
+		if s.job.Status == models.JobStatusDead || s.job.Status == models.JobStatusComplete {
+			return true, nil
+		}
 	}
+
 	s.queuedAllocs = make(map[string]int, numTaskGroups)
 
 	// Create a plan
@@ -377,9 +381,9 @@ func (s *GenericScheduler) computePlacements(place []allocTuple) error {
 		var nodeId string
 		if preferredNode != nil {
 			nodeId = preferredNode.ID
-		} else {
+		} /*else {
 			nodeId = nodes[rand.Intn(len(nodes))].ID
-		}
+		}*/
 
 		// Store the available nodes by datacenter
 		s.ctx.Metrics().NodesAvailable = byDC
@@ -393,7 +397,7 @@ func (s *GenericScheduler) computePlacements(place []allocTuple) error {
 				JobID:         s.job.ID,
 				Task:          missing.Task.Type,
 				Metrics:       s.ctx.Metrics(),
-				NodeID:        nodeId,
+				NodeID:        preferredNode.ID,
 				DesiredStatus: models.AllocDesiredStatusRun,
 				ClientStatus:  models.AllocClientStatusPending,
 			}
@@ -404,6 +408,12 @@ func (s *GenericScheduler) computePlacements(place []allocTuple) error {
 				alloc.PreviousAllocation = missing.Alloc.ID
 			}
 
+			if missing.Task.Type == models.TaskTypeDest {
+				for i, task := range s.job.Tasks {
+					task.Config["NatsAddr"] = preferredNode.NatsAddr
+					s.job.Tasks[i] = task
+				}
+			}
 			s.plan.AppendAlloc(alloc)
 		} else {
 			// Lazy initialize the failed map
@@ -433,16 +443,35 @@ func (s *GenericScheduler) findPreferredNode(allocTuple *allocTuple) (node *mode
 			node = preferredNode
 		}
 	}
+
 	if allocTuple.Task.NodeId != "" {
 		var preferredNode *models.Node
 		ws := memdb.NewWatchSet()
 		preferredNode, err = s.state.NodeByID(ws, allocTuple.Task.NodeId)
 		if err != nil || preferredNode == nil {
-			s.logger.Debugf("sched: Can't find preferred node %s", allocTuple.Task.NodeId)
-			return
+			return nil, fmt.Errorf("sched: Can't find preferred node %s", allocTuple.Task.NodeId)
 		}
 		if preferredNode.Ready() {
 			node = preferredNode
+			return
+		}
+	}
+
+	if allocTuple.Task.NodeName != "" {
+		findNode := false
+		nodes, _, err := readyNodesInDCs(s.state, s.job.Datacenters)
+		if err != nil {
+			return nil, err
+		}
+
+		for _, preferredNode := range nodes {
+			if preferredNode.Name == allocTuple.Task.NodeName && preferredNode.Ready() {
+				node = preferredNode
+				findNode = true
+			}
+		}
+		if !findNode {
+			return nil, fmt.Errorf("sched: Can't find preferred node %s", allocTuple.Task.NodeId)
 		}
 	}
 	return

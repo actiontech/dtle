@@ -184,3 +184,17 @@ func IgnoreError(err error) bool {
 		return false
 	}
 }
+
+func IgnoreExistsError(err error) bool {
+	mysqlErr, ok := err.(*mysql.MySQLError)
+	if !ok {
+		return false
+	}
+
+	switch mysqlErr.Number {
+	case ErrDatabaseExists, ErrTableExists:
+		return true
+	default:
+		return false
+	}
+}

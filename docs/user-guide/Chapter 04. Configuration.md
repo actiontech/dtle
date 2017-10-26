@@ -69,4 +69,3 @@ The following config parameters are available for Client:
 ##4.9 Network Configuration
 
 - max_payload(Default 100M):MAX_PAYLOAD is the maximum allowed payload size. Should be using something different if > 100MB payloads are needed.
-- max_bytes(Default 1000M):How many bytes are allowed.

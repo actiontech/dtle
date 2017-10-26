@@ -99,6 +99,10 @@ func (r *RestartTracker) GetState() (string, time.Duration) {
 		return models.TaskRestarting, 0
 	}
 
+	if r.waitRes != nil && !r.waitRes.ShouldRestart() {
+		return models.TaskNotRestarting, 0
+	}
+
 	if r.waitRes != nil && r.waitRes.Successful() {
 		return models.TaskTerminated, 0
 	}

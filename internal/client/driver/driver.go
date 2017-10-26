@@ -13,8 +13,8 @@ var (
 	// BuiltinDrivers contains the built in registered drivers
 	// which are available for allocation handling
 	BuiltinDrivers = map[string]Factory{
-		"MySQL": NewMySQLDriver,
-		//"Oracle":     NewOracleDriver,
+		models.TaskDriverMySQL: NewMySQLDriver,
+		//"models.TaskDriverOracle:     NewOracleDriver,
 	}
 
 	// DriverStatsNotImplemented is the error to be returned if a driver doesn't
@@ -95,14 +95,16 @@ type DriverHandle interface {
 }
 
 type ExecContext struct {
-	Subject string
-	Tp      string
+	Subject    string
+	Tp         string
+	MaxPayload int
 }
 
 // NewExecContext is used to create a new execution context
-func NewExecContext(subject, tp string) *ExecContext {
+func NewExecContext(subject, tp string, mp int) *ExecContext {
 	return &ExecContext{
-		Subject: subject,
-		Tp:      tp,
+		Subject:    subject,
+		Tp:         tp,
+		MaxPayload: mp,
 	}
 }

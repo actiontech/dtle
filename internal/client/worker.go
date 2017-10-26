@@ -103,7 +103,7 @@ func NewWorker(logger *log.Logger, config *config.ClientConfig,
 	// Build the restart tracker.
 	t := alloc.Job.LookupTask(alloc.Task)
 	if t == nil {
-		logger.Errorf("client: Alloc '%s' for missing task '%s'", alloc.ID, alloc.Task)
+		logger.Errorf("agent: Alloc '%s' for missing task '%s'", alloc.ID, alloc.Task)
 		return nil
 	}
 
@@ -160,18 +160,25 @@ func (r *Worker) SaveState() error {
 		id := &config.DriverCtx{}
 		handleID := r.handle.ID()
 		if err := json.Unmarshal([]byte(handleID), id); err != nil {
-			r.logger.Errorf("client: Failed to parse handle '%s': %v",
+			r.logger.Errorf("agent: Failed to parse handle '%s': %v",
 				handleID, err)
 		}
 		if id.DriverConfig.Gtid != "" {
 			if r.task.Type == models.TaskTypeDest {
 				r.workUpdates <- &models.TaskUpdate{
-					JobID: r.alloc.JobID,
-					Gtid:  id.DriverConfig.Gtid,
+					JobID:    r.alloc.JobID,
+					Gtid:     id.DriverConfig.Gtid,
+					NatsAddr: id.DriverConfig.NatsAddr,
 				}
 			}
-			r.task.Config["Gtid"] = id.DriverConfig.Gtid
+		} else {
+			r.workUpdates <- &models.TaskUpdate{
+				JobID:    r.alloc.JobID,
+				NatsAddr: id.DriverConfig.NatsAddr,
+			}
 		}
+		r.task.Config["Gtid"] = id.DriverConfig.Gtid
+		r.task.Config["NatsAddr"] = id.DriverConfig.NatsAddr
 	}
 	r.handleLock.Unlock()
 	return nil
@@ -189,7 +196,7 @@ func (r *Worker) DestroyState() error {
 func (r *Worker) setState(state string, event *models.TaskEvent) {
 	// Persist our store to disk.
 	if err := r.SaveState(); err != nil {
-		r.logger.Errorf("client: Failed to save store of Task Runner for task %q: %v", r.task.Type, err)
+		r.logger.Errorf("agent: Failed to save store of Task Runner for task %q: %v", r.task.Type, err)
 	}
 
 	// Indicate the task has been updated.
@@ -210,7 +217,7 @@ func (r *Worker) createDriver() (driver.Driver, error) {
 // Run is a long running routine used to manage the task
 func (r *Worker) Run() {
 	defer close(r.waitCh)
-	r.logger.Debugf("client: Starting task context for '%s' (alloc '%s')",
+	r.logger.Debugf("agent: Starting task context for '%s' (alloc '%s')",
 		r.task.Type, r.alloc.ID)
 
 	// Create a driver so that we can determine the FSIsolation required
@@ -340,9 +347,9 @@ func (r *Worker) run() {
 				r.restartTracker.SetWaitResult(waitRes)
 				r.setState("", r.waitErrorToEvent(waitRes))
 				if !waitRes.Successful() {
-					r.logger.Printf("client: Task %q for alloc %q failed: %v", r.task.Type, r.alloc.ID, waitRes)
+					r.logger.Errorf("agent: Task %q for alloc %q failed: %v", r.task.Type, r.alloc.ID, waitRes)
 				} else {
-					r.logger.Printf("client: Task %q for alloc %q completed successfully", r.task.Type, r.alloc.ID)
+					r.logger.Printf("agent: Task %q for alloc %q completed successfully", r.task.Type, r.alloc.ID)
 				}
 
 				break WAIT
@@ -353,11 +360,11 @@ func (r *Worker) run() {
 				r.runningLock.Unlock()
 				common := fmt.Sprintf("task %v for alloc %q", r.task.Type, r.alloc.ID)
 				if !running {
-					r.logger.Debugf("client: Skipping restart of %v: task isn't running", common)
+					r.logger.Debugf("agent: Skipping restart of %v: task isn't running", common)
 					continue
 				}
 
-				r.logger.Debugf("client: Restarting %s: %v", common, event.RestartReason)
+				r.logger.Debugf("agent: Restarting %s: %v", common, event.RestartReason)
 				r.setState(models.TaskStateRunning, event)
 				r.killTask(nil)
 
@@ -427,21 +434,21 @@ func (r *Worker) shouldRestart() bool {
 	reason := r.restartTracker.GetReason()
 	switch state {
 	case models.TaskNotRestarting, models.TaskTerminated:
-		r.logger.Printf("client: Not restarting task: %v for alloc: %v ", r.task.Type, r.alloc.ID)
+		r.logger.Printf("agent: Not restarting task: %v for alloc: %v ", r.task.Type, r.alloc.ID)
 		if state == models.TaskNotRestarting {
-			r.setState(models.TaskStateDead,
+			r.setState(models.TaskStateFailed,
 				models.NewTaskEvent(models.TaskNotRestarting).
 					SetRestartReason(reason).SetFailsTask())
 		}
 		return false
 	case models.TaskRestarting:
-		r.logger.Printf("client: Restarting task %q for alloc %q in %v", r.task.Type, r.alloc.ID, when)
+		r.logger.Printf("agent: Restarting task %q for alloc %q in %v", r.task.Type, r.alloc.ID, when)
 		r.setState(models.TaskStatePending,
 			models.NewTaskEvent(models.TaskRestarting).
 				SetRestartDelay(when).
 				SetRestartReason(reason))
 	default:
-		r.logger.Errorf("client: Restart tracker returned unknown store: %q", state)
+		r.logger.Errorf("agent: Restart tracker returned unknown store: %q", state)
 		return false
 	}
 
@@ -456,7 +463,7 @@ func (r *Worker) shouldRestart() bool {
 	destroyed := r.destroy
 	r.destroyLock.Unlock()
 	if destroyed {
-		r.logger.Debugf("client: Not restarting task: %v because it has been destroyed", r.task.Type)
+		r.logger.Debugf("agent: Not restarting task: %v because it has been destroyed", r.task.Type)
 		r.setState(models.TaskStateDead, r.destroyEvent)
 		return false
 	}
@@ -492,7 +499,7 @@ func (r *Worker) killTask(killingEvent *models.TaskEvent) {
 	destroySuccess, err := r.handleDestroy()
 	if !destroySuccess {
 		// We couldn't successfully destroy the resource created.
-		r.logger.Errorf("client: Failed to kill task %q. Resources may have been leaked: %v", r.task.Type, err)
+		r.logger.Errorf("agent: Failed to kill task %q. Resources may have been leaked: %v", r.task.Type, err)
 	}
 
 	r.runningLock.Lock()
@@ -513,14 +520,14 @@ func (r *Worker) startTask() error {
 	}
 
 	// Run prestart
-	ctx := driver.NewExecContext(r.alloc.Job.Name, r.alloc.Job.Type)
+	ctx := driver.NewExecContext(r.alloc.Job.Name, r.alloc.Job.Type, r.config.MaxPayload)
 
 	// Start the job
 	handle, err := drv.Start(ctx, r.task)
 	if err != nil {
 		wrapped := fmt.Sprintf("Failed to start task %q for alloc %q: %v",
 			r.task.Type, r.alloc.ID, err)
-		r.logger.Warnf("client: %s", wrapped)
+		r.logger.Warnf("agent: %s", wrapped)
 		return models.WrapRecoverable(wrapped, err)
 
 	}
@@ -550,7 +557,7 @@ func (r *Worker) collectResourceUsageStats(stopCollection <-chan struct{}) {
 			if err != nil {
 				// Check if the driver doesn't implement stats
 				if err.Error() == driver.DriverStatsNotImplemented.Error() {
-					r.logger.Debugf("client: Driver for task %q in allocation %q doesn't support stats", r.task.Type, r.alloc.ID)
+					r.logger.Debugf("agent: Driver for task %q in allocation %q doesn't support stats", r.task.Type, r.alloc.ID)
 					return
 				}
 
@@ -558,7 +565,7 @@ func (r *Worker) collectResourceUsageStats(stopCollection <-chan struct{}) {
 				// race between the stopCollection channel being closed and calling
 				// Stats on the handle.
 				if !strings.Contains(err.Error(), "connection is shut down") {
-					r.logger.Warnf("client: Error fetching stats of task %v: %v", r.task.Type, err)
+					r.logger.Warnf("agent: Error fetching stats of task %v: %v", r.task.Type, err)
 				}
 				continue
 			}
@@ -604,7 +611,7 @@ func (r *Worker) handleDestroy() (destroyed bool, err error) {
 				backoff = killBackoffLimit
 			}
 
-			r.logger.Errorf("client: Failed to kill task '%s' for alloc %q. Retrying in %v: %v",
+			r.logger.Errorf("agent: Failed to kill task '%s' for alloc %q. Retrying in %v: %v",
 				r.task.Type, r.alloc.ID, backoff, err)
 			time.Sleep(time.Duration(backoff))
 		} else {
@@ -635,7 +642,7 @@ func (r *Worker) Kill(source, reason string, fail bool) {
 		event.SetFailsTask()
 	}
 
-	r.logger.Debugf("client: Killing task %v for alloc %q: %v", r.task.Type, r.alloc.ID, reasonStr)
+	r.logger.Debugf("agent: Killing task %v for alloc %q: %v", r.task.Type, r.alloc.ID, reasonStr)
 	r.Destroy(event)
 }
 
@@ -648,7 +655,7 @@ func (r *Worker) UnblockStart(source string) {
 		return
 	}
 
-	r.logger.Debugf("client: Unblocking task %v for alloc %q: %v", r.task.Type, r.alloc.ID, source)
+	r.logger.Debugf("agent: Unblocking task %v for alloc %q: %v", r.task.Type, r.alloc.ID, source)
 	r.unblocked = true
 	close(r.unblockCh)
 }

@@ -380,24 +380,46 @@ func (e *RowsEvent) decodeValue(data []byte, tp byte, meta uint16) (v interface{
 		}
 	}
 
+	isUnsigned := e.Flags&UNSIGNED_FLAG != 0
+
 	switch tp {
 	case MYSQL_TYPE_NULL:
 		return nil, 0, nil
 	case MYSQL_TYPE_LONG:
 		n = 4
-		v = ParseBinaryInt32(data)
+		if isUnsigned {
+			v = ParseBinaryUint32(data)
+		} else {
+			v = ParseBinaryInt32(data)
+		}
 	case MYSQL_TYPE_TINY:
 		n = 1
-		v = ParseBinaryInt8(data)
+		if isUnsigned {
+			v = ParseBinaryUint8(data)
+		} else {
+			v = ParseBinaryInt8(data)
+		}
 	case MYSQL_TYPE_SHORT:
 		n = 2
-		v = ParseBinaryInt16(data)
+		if isUnsigned {
+			v = ParseBinaryUint16(data)
+		} else {
+			v = ParseBinaryInt16(data)
+		}
 	case MYSQL_TYPE_INT24:
 		n = 3
-		v = ParseBinaryInt24(data)
+		if isUnsigned {
+			v = ParseBinaryUint24(data)
+		} else {
+			v = ParseBinaryInt24(data)
+		}
 	case MYSQL_TYPE_LONGLONG:
 		n = 8
-		v = ParseBinaryInt64(data)
+		if isUnsigned {
+			v = ParseBinaryUint64(data)
+		} else {
+			v = ParseBinaryInt64(data)
+		}
 	case MYSQL_TYPE_NEWDECIMAL:
 		prec := uint8(meta >> 8)
 		scale := uint8(meta & 0xFF)
@@ -462,7 +484,11 @@ func (e *RowsEvent) decodeValue(data []byte, tp byte, meta uint16) (v interface{
 
 	case MYSQL_TYPE_YEAR:
 		n = 1
-		v = int(data[0]) + 1900
+		if int(data[0]) == 0 {
+			v = int(data[0])
+		} else {
+			v = int(data[0]) + 1900
+		}
 	case MYSQL_TYPE_ENUM:
 		l := meta & 0xFF
 		switch l {
@@ -703,8 +729,8 @@ func decodeTime2(data []byte, dec uint16) (string, int, error) {
 	intPart := int64(0)
 	frac := int64(0)
 	switch dec {
-	case 1:
-	case 2:
+	//case 1:
+	case 1, 2:
 		intPart = int64(BFixedLengthInt(data[0:3])) - TIMEF_INT_OFS
 		frac = int64(data[3])
 		if intPart < 0 && frac > 0 {
@@ -729,8 +755,8 @@ func decodeTime2(data []byte, dec uint16) (string, int, error) {
 			frac -= 0x100 /* -(0x100 - frac) */
 		}
 		tmp = intPart<<24 + frac*10000
-	case 3:
-	case 4:
+	//case 3:
+	case 3, 4:
 		intPart = int64(BFixedLengthInt(data[0:3])) - TIMEF_INT_OFS
 		frac = int64(binary.BigEndian.Uint16(data[3:5]))
 		if intPart < 0 && frac > 0 {
@@ -743,9 +769,11 @@ func decodeTime2(data []byte, dec uint16) (string, int, error) {
 		}
 		tmp = intPart<<24 + frac*100
 
-	case 5:
-	case 6:
-		tmp = int64(BFixedLengthInt(data[0:6])) - TIMEF_OFS
+	//case 5:
+	case 5, 6:
+		intPart = int64(BFixedLengthInt(data[0:3])) - TIMEF_INT_OFS
+		frac = (int64(BFixedLengthInt(data[0:6])) - TIMEF_OFS) % (1 << 24)
+		tmp = intPart<<24 + frac
 	default:
 		intPart = int64(BFixedLengthInt(data[0:3])) - TIMEF_INT_OFS
 		tmp = intPart << 24

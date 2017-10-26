@@ -1,4 +1,4 @@
-Appendix A. Udup Command Line
+Appendix A. 命令行
 ===================
 
 **udup** 命令行用法如下:
@@ -9,13 +9,13 @@ Appendix A. Udup Command Line
 
 **-?, -h, --help**：用于显示帮助信息
 
-**agent**：启动udup进程
+**server**：启动udup进程
 
 **init**：初始化默认任务信息
 
 **client-config**：查看或修改客户端配置信息
 
-**members**：查看所有server节点状态
+**members**：查看所有manager节点状态
 
 **node-status**：查看节点状态
 
@@ -29,19 +29,19 @@ Appendix A. Udup Command Line
 
 当你执行 udup -h 上述信息将会打印到控制台
 
-###A.1. agent 命令行选项 
+###A.1. server 命令行选项 
 
 **-config**：指定 Udup 的配置
 
 **-bind**：本机服务地址
 
-**-server**：是否开启server模式（true/false）
+**-manager**：是否开启manager模式（true/false）
 
-**-client**：是否开启client模式（true/false）
+**-agent**：是否开启agent模式（true/false）
 
-**-join**：agent启动时尝试加入的地址(仅限server模式下)
+**-join**：agent启动时尝试加入的地址(仅限manager模式下)
 
-**-servers**：agent启动时尝试加入的地址(仅限client模式下)
+**-managers**：server启动时尝试加入的地址(仅限agent模式下)
 
 ###A.2. start 命令行选项
 

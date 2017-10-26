@@ -5,6 +5,7 @@ import (
 
 	"github.com/siddontang/go-mysql/replication"
 
+	"strings"
 	"udup/internal/config/mysql"
 )
 
@@ -16,6 +17,29 @@ const (
 	UpdateDML          = "Update"
 	DeleteDML          = "Delete"
 )
+
+func ToEventDML(description string) EventDML {
+	// description can be a statement (`UPDATE my_table ...`) or a RBR event name (`UpdateRowsEventV2`)
+	description = strings.TrimSpace(strings.Split(description, " ")[0])
+	switch strings.ToLower(description) {
+	case "insert":
+		return InsertDML
+	case "update":
+		return UpdateDML
+	case "delete":
+		return DeleteDML
+	}
+	if strings.HasPrefix(description, "WriteRows") {
+		return InsertDML
+	}
+	if strings.HasPrefix(description, "UpdateRows") {
+		return UpdateDML
+	}
+	if strings.HasPrefix(description, "DeleteRows") {
+		return DeleteDML
+	}
+	return NotDML
+}
 
 type BinlogTx struct {
 	SID           string
@@ -50,24 +74,31 @@ type BinlogEvent struct {
 
 // BinlogDMLEvent is a binary log rows (DML) event entry, with data
 type DataEvent struct {
-	Query                   string
-	DatabaseName            string
-	TableName               string
-	DML                     EventDML
-	OriginalTableColumns    *mysql.ColumnList
-	OriginalTableUniqueKeys [](*mysql.UniqueKey)
-	WhereColumnValues       *mysql.ColumnValues
-	NewColumnValues         []*mysql.ColumnValues
+	Query                string
+	DatabaseName         string
+	TableName            string
+	DML                  EventDML
+	ColumnCount          int
+	OriginalTableColumns *mysql.ColumnList
+	WhereColumnValues    *mysql.ColumnValues
+	NewColumnValues      []*mysql.ColumnValues
 }
 
-func NewDataEvent(query, databaseName, tableName string, dml EventDML, tableColumns *mysql.ColumnList, tableUniqueKey [](*mysql.UniqueKey)) DataEvent {
+func NewDataEvent(databaseName, tableName string, dml EventDML, columnCount int) DataEvent {
 	event := DataEvent{
-		Query:                   query,
-		DatabaseName:            databaseName,
-		TableName:               tableName,
-		DML:                     dml,
-		OriginalTableColumns:    tableColumns,
-		OriginalTableUniqueKeys: tableUniqueKey,
+		DatabaseName: databaseName,
+		TableName:    tableName,
+		DML:          dml,
+		ColumnCount:  columnCount,
+	}
+	return event
+}
+
+func NewQueryEvent(dbName, query string, dml EventDML) DataEvent {
+	event := DataEvent{
+		DatabaseName: dbName,
+		Query:        query,
+		DML:          dml,
 	}
 	return event
 }

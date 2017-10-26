@@ -48,7 +48,7 @@ func (s *Server) planApply() {
 		if waitCh == nil || snap == nil {
 			snap, err = s.fsm.State().Snapshot()
 			if err != nil {
-				s.logger.Errorf("server: failed to snapshot store: %v", err)
+				s.logger.Errorf("manager: failed to snapshot store: %v", err)
 				pending.respond(nil, err)
 				continue
 			}
@@ -57,7 +57,7 @@ func (s *Server) planApply() {
 		// Evaluate the plan
 		result, err := evaluatePlan(pool, snap, pending.plan)
 		if err != nil {
-			s.logger.Errorf("server: failed to evaluate plan: %v", err)
+			s.logger.Errorf("manager: failed to evaluate plan: %v", err)
 			pending.respond(nil, err)
 			continue
 		}
@@ -74,7 +74,7 @@ func (s *Server) planApply() {
 			<-waitCh
 			snap, err = s.fsm.State().Snapshot()
 			if err != nil {
-				s.logger.Errorf("server: failed to snapshot store: %v", err)
+				s.logger.Errorf("manager: failed to snapshot store: %v", err)
 				pending.respond(nil, err)
 				continue
 			}
@@ -83,7 +83,7 @@ func (s *Server) planApply() {
 		// Dispatch the Raft transaction for the plan
 		future, err := s.applyPlan(pending.plan.Job, result, snap)
 		if err != nil {
-			s.logger.Errorf("server: failed to submit plan: %v", err)
+			s.logger.Errorf("manager: failed to submit plan: %v", err)
 			pending.respond(nil, err)
 			continue
 		}
@@ -146,7 +146,7 @@ func (s *Server) asyncPlanWait(waitCh chan struct{}, future raft.ApplyFuture,
 
 	// Wait for the plan to apply
 	if err := future.Error(); err != nil {
-		s.logger.Errorf("server: failed to apply plan: %v", err)
+		s.logger.Errorf("manager: failed to apply plan: %v", err)
 		pending.respond(nil, err)
 		return
 	}

@@ -170,7 +170,7 @@ func NewServer(config *uconf.ServerConfig, logger *ulog.Logger) (*Server, error)
 	// Initialize the RPC layer
 	if err := s.setupRPC(); err != nil {
 		s.Shutdown()
-		s.logger.Errorf("server: failed to start RPC layer: %s", err)
+		s.logger.Errorf("manager: failed to start RPC layer: %s", err)
 		return nil, fmt.Errorf("Failed to start RPC layer: %v", err)
 	}
 
@@ -179,7 +179,7 @@ func NewServer(config *uconf.ServerConfig, logger *ulog.Logger) (*Server, error)
 		s.store, err = store.NewConsulStore([]string{s.config.ConsulConfig.Addr}, s.logger)
 		if err != nil {
 			s.Shutdown()
-			s.logger.Errorf("server: failed to setup Store: %s", err)
+			s.logger.Errorf("manager: failed to setup Store: %s", err)
 			return nil, fmt.Errorf("Failed to start Store: %v", err)
 		}
 
@@ -191,7 +191,7 @@ func NewServer(config *uconf.ServerConfig, logger *ulog.Logger) (*Server, error)
 		// Initialize the Raft server
 		if err := s.setupRaft(); err != nil {
 			s.Shutdown()
-			s.logger.Errorf("server: failed to start Raft: %s", err)
+			s.logger.Errorf("manager: failed to start Raft: %s", err)
 			return nil, fmt.Errorf("Failed to start Raft: %v", err)
 		}
 	}
@@ -200,14 +200,14 @@ func NewServer(config *uconf.ServerConfig, logger *ulog.Logger) (*Server, error)
 	s.serf, err = s.setupSerf(config.SerfConfig, s.eventCh, serfSnapshot)
 	if err != nil {
 		s.Shutdown()
-		s.logger.Errorf("server: failed to start serf WAN: %s", err)
+		s.logger.Errorf("manager: failed to start serf WAN: %s", err)
 		return nil, fmt.Errorf("Failed to start serf: %v", err)
 	}
 
 	// Initialize the scheduling workers
 	if err := s.setupWorkers(); err != nil {
 		s.Shutdown()
-		s.logger.Errorf("server: failed to start workers: %s", err)
+		s.logger.Errorf("manager: failed to start workers: %s", err)
 		return nil, fmt.Errorf("Failed to start workers: %v", err)
 	}
 
@@ -238,7 +238,7 @@ func NewServer(config *uconf.ServerConfig, logger *ulog.Logger) (*Server, error)
 
 // Shutdown is used to shutdown the server
 func (s *Server) Shutdown() error {
-	s.logger.Printf("server: shutting down server")
+	s.logger.Printf("manager: shutting down server")
 	s.shutdownLock.Lock()
 	defer s.shutdownLock.Unlock()
 
@@ -258,7 +258,7 @@ func (s *Server) Shutdown() error {
 		s.raftLayer.Close()
 		future := s.raft.Shutdown()
 		if err := future.Error(); err != nil {
-			s.logger.Warnf("server: Error shutting down raft: %s", err)
+			s.logger.Warnf("manager: Error shutting down raft: %s", err)
 		}
 		if s.raftStore != nil {
 			s.raftStore.Close()
@@ -293,13 +293,13 @@ func (s *Server) IsShutdown() bool {
 
 // Leave is used to prepare for a graceful shutdown of the server
 func (s *Server) Leave() error {
-	s.logger.Printf("server: server starting leave")
+	s.logger.Printf("manager: server starting leave")
 	s.left = true
 
 	// Check the number of known peers
 	numPeers, err := s.numPeers()
 	if err != nil {
-		s.logger.Errorf("server: failed to check raft peers: %v", err)
+		s.logger.Errorf("manager: failed to check raft peers: %v", err)
 		return err
 	}
 
@@ -315,14 +315,14 @@ func (s *Server) Leave() error {
 	if isLeader && numPeers > 1 {
 		future := s.raft.RemovePeer(addr)
 		if err := future.Error(); err != nil {
-			s.logger.Errorf("server: failed to remove ourself as raft peer: %v", err)
+			s.logger.Errorf("manager: failed to remove ourself as raft peer: %v", err)
 		}
 	}
 
 	// Leave the gossip pool
 	if s.serf != nil {
 		if err := s.serf.Leave(); err != nil {
-			s.logger.Errorf("server: failed to leave Serf cluster: %v", err)
+			s.logger.Errorf("manager: failed to leave Serf cluster: %v", err)
 		}
 	}
 
@@ -339,7 +339,7 @@ func (s *Server) Leave() error {
 			// Get the latest configuration.
 			future := s.raft.GetConfiguration()
 			if err := future.Error(); err != nil {
-				s.logger.Errorf("server: failed to get raft configuration: %v", err)
+				s.logger.Errorf("manager: failed to get raft configuration: %v", err)
 				break
 			}
 
@@ -369,7 +369,7 @@ func (s *Server) Leave() error {
 		// may not realize that it has been removed. Need to revisit this
 		// and the warning here.
 		if !left {
-			s.logger.Warnf("server: failed to leave raft configuration gracefully, timeout")
+			s.logger.Warnf("manager: failed to leave raft configuration gracefully, timeout")
 		}
 	}
 	return nil
@@ -426,7 +426,7 @@ func (s *Server) setupRaft() error {
 	defer func() {
 		if s.raft == nil && s.raftStore != nil {
 			if err := s.raftStore.Close(); err != nil {
-				s.logger.Errorf("server: failed to close Raft store: %v", err)
+				s.logger.Errorf("manager: failed to close Raft store: %v", err)
 			}
 		}
 	}()
@@ -508,10 +508,10 @@ func (s *Server) setupRaft() error {
 			if err := os.Remove(peersFile); err != nil {
 				return fmt.Errorf("failed to delete peers.json, please delete manually (see peers.info for details): %v", err)
 			}
-			s.logger.Printf("server: deleted peers.json file (see peers.info for details)")
+			s.logger.Printf("manager: deleted peers.json file (see peers.info for details)")
 		}
 	} else if _, err := os.Stat(peersFile); err == nil {
-		s.logger.Printf("server: found peers.json file, recovering Raft configuration...")
+		s.logger.Printf("manager: found peers.json file, recovering Raft configuration...")
 		configuration, err := raft.ReadPeersJSON(peersFile)
 		if err != nil {
 			return fmt.Errorf("recovery failed to parse peers.json: %v", err)
@@ -527,7 +527,7 @@ func (s *Server) setupRaft() error {
 		if err := os.Remove(peersFile); err != nil {
 			return fmt.Errorf("recovery failed to delete peers.json, please delete manually (see peers.info for details): %v", err)
 		}
-		s.logger.Printf("server: deleted peers.json file after successful recovery")
+		s.logger.Printf("manager: deleted peers.json file after successful recovery")
 	}
 
 	// If we are in bootstrap or dev mode and the store is clean then we can
@@ -606,7 +606,7 @@ func (s *Server) setupSerf(conf *serf.Config, ch chan serf.Event, path string) (
 func (s *Server) setupWorkers() error {
 	// Check if all the schedulers are disabled
 	if len(s.config.EnabledSchedulers) == 0 || s.config.NumSchedulers == 0 {
-		s.logger.Warnf("server: no enabled schedulers")
+		s.logger.Warnf("manager: no enabled schedulers")
 		return nil
 	}
 
@@ -618,7 +618,7 @@ func (s *Server) setupWorkers() error {
 			s.workers = append(s.workers, w)
 		}
 	}
-	s.logger.Printf("server: Starting %d scheduling worker(s) for %v",
+	s.logger.Printf("manager: Starting %d scheduling worker(s) for %v",
 		s.config.NumSchedulers, s.config.EnabledSchedulers)
 	return nil
 }
@@ -745,7 +745,7 @@ func (s *Server) Stats() map[string]map[string]string {
 	}
 	stats := map[string]map[string]string{
 		"server": {
-			"server":        "true",
+			"manager":       "true",
 			"leader":        fmt.Sprintf("%v", s.IsLeader()),
 			"leader_addr":   string(s.raft.Leader()),
 			"bootstrap":     fmt.Sprintf("%v", s.config.Bootstrap),
@@ -782,7 +782,7 @@ As of Udup 0.1.0, the peers.json file is only used for recovery
 after an outage. It should be formatted as a JSON array containing the address
 and port of each Consul server in the cluster, like this:
 
-["10.1.0.1:8191","10.1.0.2:8191","10.1.0.3:8191"]
+["127.0.0.1:8191","127.0.0.1:8191","127.0.0.1:8191"]
 
 Under normal operation, the peers.json file will not be present.
 

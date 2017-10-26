@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -254,9 +255,19 @@ func ApiJobToStructJob(job *api.Job) *models.Job {
 	}
 
 	j.Tasks = make([]*models.Task, len(job.Tasks))
+	cfg := ""
+	for _, task := range job.Tasks {
+		if task.Type == models.TaskTypeSrc {
+			cfg = fmt.Sprintf("%s", task.Config["Gtid"])
+		}
+	}
 	for i, task := range job.Tasks {
+		if task.Driver == "" {
+			task.Driver = models.TaskDriverMySQL
+		}
 		if task.Type == models.TaskTypeDest {
 			task.Leader = true
+			task.Config["Gtid"] = cfg
 		}
 		t := &models.Task{}
 		ApiTaskToStructsTask(task, t)
@@ -269,6 +280,7 @@ func ApiJobToStructJob(job *api.Job) *models.Job {
 func ApiTaskToStructsTask(apiTask *api.Task, structsTask *models.Task) {
 	structsTask.Type = apiTask.Type
 	structsTask.NodeId = apiTask.NodeId
+	structsTask.NodeName = apiTask.NodeName
 	structsTask.Driver = apiTask.Driver
 	structsTask.Leader = apiTask.Leader
 	structsTask.Config = apiTask.Config

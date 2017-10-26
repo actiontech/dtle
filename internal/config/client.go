@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"io"
 	"os"
 	"sync"
@@ -8,7 +9,6 @@ import (
 	"time"
 
 	"udup/internal"
-	ubase "udup/internal/client/driver/mysql/base"
 	umconf "udup/internal/config/mysql"
 	"udup/internal/models"
 )
@@ -20,8 +20,11 @@ const (
 
 	channelBufferSize = 600
 	defaultNumRetries = 5
+	defaultChunkSize  = 10000
 	defaultNumWorkers = 1
 	defaultMsgBytes   = 20 * 1024
+	defaultMsgsLimit  = 65536
+	defaultBytesLimit = 65536 * 1024
 )
 
 // RPCHandler can be provided to the Client if there is a local server
@@ -71,9 +74,6 @@ type ClientConfig struct {
 
 	MaxPayload int
 
-	// How many bytes are allowed.
-	MaxBytes int64
-
 	// StatsCollectionInterval is the interval at which the Udup client
 	// collects resource usage stats
 	StatsCollectionInterval time.Duration
@@ -114,12 +114,20 @@ const (
 	CutOverTwoStep         = iota
 )
 
+func (d *DataSource) String() string {
+	return fmt.Sprintf(d.TableSchema)
+}
+
 type MySQLDriverConfig struct {
+	DataDir     string
+	MaxFileSize int64
 	//Ref:http://dev.mysql.com/doc/refman/5.7/en/replication-options-slave.html#option_mysqld_replicate-do-table
 	ReplicateDoDb                       []*DataSource
 	DropTableIfExists                   bool
 	ReplChanBufferSize                  int64
-	MsgBytesLimit                       uint64
+	MsgBytesLimit                       int
+	MsgsLimit                           int
+	BytesLimit                          int
 	ConcurrentCountTableRows            bool
 	SkipRenamedColumns                  bool
 	MaxRetries                          int64
@@ -130,7 +138,8 @@ type MySQLDriverConfig struct {
 	criticalLoad                        umconf.LoadMap
 	PostponeCutOverFlagFile             string
 	CutOverLockTimeoutSeconds           int64
-	RowsDeltaEstimate                   int64
+	RowsEstimate                        int64
+	DeltaEstimate                       int64
 	TimeZone                            string
 
 	Gtid                     string
@@ -141,7 +150,9 @@ type MySQLDriverConfig struct {
 	HasSuperPrivilege        bool
 	BinlogFormat             string
 	BinlogRowImage           string
+	SqlMode                  string
 	MySQLVersion             string
+	MySQLServerUuid          string
 	StartTime                time.Time
 	RowCopyStartTime         time.Time
 	RowCopyEndTime           time.Time
@@ -150,9 +161,10 @@ type MySQLDriverConfig struct {
 	RenameTablesEndTime      time.Time
 	PointOfInterestTime      time.Time
 	pointOfInterestTimeMutex *sync.Mutex
-	TotalDMLEventsApplied    int64
+	TotalDeltaCopied         int64
 	TotalRowsCopied          int64
 
+	Stage                string
 	CutOverType          CutOver
 	ApproveHeterogeneous bool
 
@@ -160,23 +172,21 @@ type MySQLDriverConfig struct {
 	IsPostponingCutOver                    int64
 	CountingRowsFlag                       int64
 	AllEventsUpToLockProcessedInjectedFlag int64
-	ShutdownFlag                           int64
 	UserCommandedUnpostponeFlag            int64
 	CutOverCompleteFlag                    int64
 	InCutOverCriticalSectionFlag           int64
-
-	Iteration int64
-
-	recentBinlogCoordinates ubase.BinlogCoordinates
 }
 
 func (a *MySQLDriverConfig) SetDefault() *MySQLDriverConfig {
 	result := *a
 
-	if result.MaxRetries == 0 {
+	if result.MaxRetries <= 0 {
 		result.MaxRetries = defaultNumRetries
 	}
-	if result.ReplChanBufferSize == 0 {
+	if result.ChunkSize <= 0 {
+		result.ChunkSize = defaultChunkSize
+	}
+	if result.ReplChanBufferSize <= 0 {
 		result.ReplChanBufferSize = channelBufferSize
 	}
 	if result.ParallelWorkers <= 0 {
@@ -184,6 +194,12 @@ func (a *MySQLDriverConfig) SetDefault() *MySQLDriverConfig {
 	}
 	if result.MsgBytesLimit <= 0 {
 		result.MsgBytesLimit = defaultMsgBytes
+	}
+	if result.MsgsLimit <= 0 {
+		result.MsgsLimit = defaultMsgsLimit
+	}
+	if result.BytesLimit <= 0 {
+		result.BytesLimit = defaultBytesLimit
 	}
 	return &result
 }
@@ -203,14 +219,6 @@ func (m *MySQLDriverConfig) MarkRowCopyStartTime() {
 	m.RowCopyStartTime = time.Now()
 }
 
-func (m *MySQLDriverConfig) SetRecentBinlogCoordinates(coordinates ubase.BinlogCoordinates) {
-	m.recentBinlogCoordinates = coordinates
-}
-
-func (m *MySQLDriverConfig) GetIteration() int64 {
-	return atomic.LoadInt64(&m.Iteration)
-}
-
 func (m *MySQLDriverConfig) TimeSincePointOfInterest() time.Duration {
 	m.pointOfInterestTimeMutex.Lock()
 	defer m.pointOfInterestTimeMutex.Unlock()
@@ -220,9 +228,6 @@ func (m *MySQLDriverConfig) TimeSincePointOfInterest() time.Duration {
 
 // ElapsedRowCopyTime returns time since starting to copy chunks of rows
 func (m *MySQLDriverConfig) ElapsedRowCopyTime() time.Duration {
-	//m.throttleMutex.Lock()
-	//defer m.throttleMutex.Unlock()
-
 	if m.RowCopyStartTime.IsZero() {
 		// Row copy hasn't started yet
 		return 0
@@ -238,6 +243,10 @@ func (m *MySQLDriverConfig) ElapsedRowCopyTime() time.Duration {
 // This is not exactly the same as the rows being iterated via chunks, but potentially close enough
 func (m *MySQLDriverConfig) GetTotalRowsCopied() int64 {
 	return atomic.LoadInt64(&m.TotalRowsCopied)
+}
+
+func (m *MySQLDriverConfig) GetTotalDeltaCopied() int64 {
+	return atomic.LoadInt64(&m.TotalDeltaCopied)
 }
 
 // ElapsedTime returns time since very beginning of the process
@@ -266,14 +275,6 @@ func (m *MySQLDriverConfig) GetCriticalLoad() umconf.LoadMap {
 	return m.criticalLoad.Duplicate()
 }
 
-func (m *MySQLDriverConfig) MarkPointOfInterest() int64 {
-	//m.pointOfInterestTimeMutex.Lock()
-	//defer m.pointOfInterestTimeMutex.Unlock()
-
-	m.PointOfInterestTime = time.Now()
-	return atomic.LoadInt64(&m.Iteration)
-}
-
 // TableName is the table configuration
 // slave restrict replication to a given table
 type DataSource struct {
@@ -284,6 +285,7 @@ type DataSource struct {
 type Table struct {
 	TableName   string
 	TableSchema string
+	Counter     int64
 
 	AlterStatement                   string
 	OriginalTableColumnsOnApplier    *umconf.ColumnList
@@ -311,6 +313,6 @@ func DefaultClientConfig() *ClientConfig {
 		LogOutput:               os.Stderr,
 		Region:                  "global",
 		StatsCollectionInterval: 1 * time.Second,
-		LogLevel:                "DEBUG",
+		LogLevel:                "INFO",
 	}
 }

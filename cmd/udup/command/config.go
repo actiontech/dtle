@@ -11,7 +11,7 @@ type ConfigCommand struct {
 
 func (c *ConfigCommand) Help() string {
 	helpText := `
-Usage: udup config [options]
+Usage: udup agent-config [options]
 
   View or modify client configuration details. This command only
   works on client nodes, and can be used to update the running
@@ -24,7 +24,7 @@ General Options:
 
   ` + generalOptionsUsage() + `
 
-Client Config Options:
+Agent Config Options:
 
   -servers
     List the known server addresses of the client node. Client
@@ -32,20 +32,20 @@ Client Config Options:
     register with these servers periodically over the network.
 
   -update-servers
-    Updates the client's server list using the provided
+    Updates the agent's server list using the provided
     arguments. Multiple server addresses may be passed using
     multiple arguments. IMPORTANT: When updating the servers
     list, you must specify ALL of the server nodes you wish
     to configure. The set is updated atomically.
 
     Example:
-      $ udup client-config -update-servers foo:8191 bar:8191
+      $ udup agent-config -update-servers foo:8191 bar:8191
 `
 	return strings.TrimSpace(helpText)
 }
 
 func (c *ConfigCommand) Synopsis() string {
-	return "View or modify client configuration details"
+	return "View or modify agent configuration details"
 }
 
 func (c *ConfigCommand) Run(args []string) int {

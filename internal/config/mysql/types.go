@@ -3,11 +3,11 @@ package mysql
 import (
 	"fmt"
 	"reflect"
+	"sort"
 	"strconv"
 	"strings"
 
 	"golang.org/x/text/transform"
-	"sort"
 )
 
 type ColumnType int
@@ -18,6 +18,12 @@ const (
 	DateTimeColumnType             = iota
 	EnumColumnType                 = iota
 	MediumIntColumnType            = iota
+	BigIntColumnType               = iota
+	FloatColumnType                = iota
+	DoubleColumnType               = iota
+	DecimalColumnType              = iota
+	BinaryColumnType               = iota
+	TextColumnType                 = iota
 )
 
 const maxMediumintUnsigned int32 = 16777215
@@ -27,14 +33,25 @@ type TimezoneConvertion struct {
 }
 
 type Column struct {
+	Idx                int
 	Name               string
 	IsUnsigned         bool
 	Charset            string
 	Type               ColumnType
+	ColumnType         string
 	TimezoneConversion *TimezoneConvertion
 }
 
 func (c *Column) ConvertArg(arg interface{}) interface{} {
+	if fmt.Sprintf("%s", arg) == "" {
+		return ""
+	}
+	if c.Type == TextColumnType {
+		if encoding, ok := charsetEncodingMap[c.Charset]; ok {
+			arg, _, _ = transform.String(encoding.NewDecoder(), fmt.Sprintf("%s", arg))
+		}
+		return arg
+	}
 	if s, ok := arg.(string); ok {
 		// string, charset conversion
 		if encoding, ok := charsetEncodingMap[c.Charset]; ok {
@@ -257,36 +274,30 @@ func (c *UniqueKey) String() string {
 }
 
 type ColumnValues struct {
-	AbstractValues []interface{}
-	ValuesPointers []interface{}
-}
-
-func NewColumnValues(length int) *ColumnValues {
-	result := &ColumnValues{
-		AbstractValues: make([]interface{}, length),
-		ValuesPointers: make([]interface{}, length),
-	}
-	for i := 0; i < length; i++ {
-		result.ValuesPointers[i] = &result.AbstractValues[i]
-	}
-
-	return result
+	AbstractValues []*interface{}
+	ValuesPointers []*interface{}
 }
 
 func ToColumnValues(abstractValues []interface{}) *ColumnValues {
 	result := &ColumnValues{
-		AbstractValues: abstractValues,
-		ValuesPointers: make([]interface{}, len(abstractValues)),
+		AbstractValues: make([]*interface{}, len(abstractValues)),
+		ValuesPointers: make([]*interface{}, len(abstractValues)),
 	}
+
 	for i := 0; i < len(abstractValues); i++ {
-		result.ValuesPointers[i] = &result.AbstractValues[i]
+		result.AbstractValues[i] = &abstractValues[i]
+		result.ValuesPointers[i] = result.AbstractValues[i]
 	}
 
 	return result
 }
 
 func (c *ColumnValues) GetAbstractValues() []interface{} {
-	return c.AbstractValues
+	var abstractValues []interface{}
+	for _, a := range c.AbstractValues {
+		abstractValues = append(abstractValues, *a)
+	}
+	return abstractValues
 }
 
 func (c *ColumnValues) StringColumn(index int) string {

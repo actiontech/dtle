@@ -9,7 +9,7 @@ import (
 )
 
 var (
-	clientNotRunning = fmt.Errorf("node is not running a Udup Client")
+	clientNotRunning = fmt.Errorf("node is not running a Udup Agent")
 )
 
 const (
@@ -74,7 +74,7 @@ func (s *HTTPServer) ClientAllocRequest(resp http.ResponseWriter, req *http.Requ
 		return nil, clientNotRunning
 	}
 
-	reqSuffix := strings.TrimPrefix(req.URL.Path, "/v1/client/allocation/")
+	reqSuffix := strings.TrimPrefix(req.URL.Path, "/v1/agent/allocation/")
 
 	// tokenize the suffix of the path to get the alloc id and find the action
 	// invoked on the alloc id

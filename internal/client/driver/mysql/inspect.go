@@ -102,34 +102,6 @@ func (i *Inspector) InspectOriginalTable(databaseName string, doTb *uconf.Table)
 	return nil
 }
 
-//It extracts the list of shared columns and the chosen extract unique key
-/*func (i *Inspector) inspectTables(databaseName string,doTb *uconf.Table) (err error) {
- */ /*originalNamesOnApplier := doTb.OriginalTableColumnsOnApplier.Names()
-originalNames := doTb.OriginalTableColumns.Names()
-if !reflect.DeepEqual(originalNames, originalNamesOnApplier) {
-	return fmt.Errorf("It seems like table structure is not identical between master and replica. This scenario is not supported.")
-}*/ /*
-
-	doTb.SharedColumns, doTb.MappedSharedColumns = i.getSharedColumns(*doTb)
-	i.logger.Printf("mysql.inspector: Shared columns are %s", doTb.SharedColumns)
-	// By fact that a non-empty unique key exists we also know the shared columns are non-empty
-
-	// This additional step looks at which columns are unsigned. We could have merged this within
-	// the `getTableColumns()` function, but it's a later patch and introduces some complexity; I feel
-	// comfortable in doing this as a separate step.
-	i.applyColumnTypes(databaseName, doTb.Name, doTb.OriginalTableColumns, doTb.SharedColumns)
-
-	for i := range doTb.SharedColumns.ColumnList() {
-		column := doTb.SharedColumns.ColumnList()[i]
-		mappedColumn := doTb.MappedSharedColumns.ColumnList()[i]
-		if column.Name == mappedColumn.Name && column.Type == umconf.DateTimeColumnType && mappedColumn.Type == umconf.TimestampColumnType {
-			doTb.MappedSharedColumns.SetConvertDatetimeToTimestamp(column.Name, i.mysqlContext.ApplierTimeZone)
-		}
-	}
-
-	return nil
-}*/
-
 // validateConnection issues a simple can-connect to MySQL
 func (i *Inspector) validateConnection() error {
 	query := `select @@global.version`
@@ -154,25 +126,22 @@ func (i *Inspector) validateGrants() error {
 	err := usql.QueryRowsMap(i.db, query, func(rowMap usql.RowMap) error {
 		for _, grantData := range rowMap {
 			grant := grantData.String
-			if strings.Contains(grant, `GRANT ALL PRIVILEGES ON *.*`) {
+			if strings.Contains(grant, `GRANT ALL PRIVILEGES ON`) {
 				foundAll = true
 			}
-			if strings.Contains(grant, `SUPER`) && strings.Contains(grant, ` ON *.*`) {
+			if strings.Contains(grant, `SUPER`) {
 				foundSuper = true
 			}
-			if strings.Contains(grant, `REPLICATION CLIENT`) && strings.Contains(grant, ` ON *.*`) {
+			if strings.Contains(grant, `REPLICATION CLIENT`) {
 				foundReplicationClient = true
 			}
-			if strings.Contains(grant, `REPLICATION SLAVE`) && strings.Contains(grant, ` ON *.*`) {
+			if strings.Contains(grant, `REPLICATION SLAVE`) {
 				foundReplicationSlave = true
 			}
-			if strings.Contains(grant, "GRANT ALL PRIVILEGES ON *.*") {
+			if ubase.StringContainsAll(grant, `SELECT`) {
 				foundDBAll = true
 			}
-			if ubase.StringContainsAll(grant, `ALTER`, `CREATE`, `DELETE`, `DROP`, `INDEX`, `INSERT`, `LOCK TABLES`, `SELECT`, `TRIGGER`, `UPDATE`, ` ON *.*`) {
-				foundDBAll = true
-			}
-			if ubase.StringContainsAll(grant, `ALTER`, `CREATE`, `DELETE`, `DROP`, `INDEX`, `INSERT`, `LOCK TABLES`, `SELECT`, `TRIGGER`, `UPDATE`, " ON *.*") {
+			if ubase.StringContainsAll(grant, `SELECT`) {
 				foundDBAll = true
 			}
 		}
@@ -188,15 +157,15 @@ func (i *Inspector) validateGrants() error {
 		return nil
 	}
 	if foundSuper && foundReplicationSlave && foundDBAll {
-		i.logger.Printf("mysql.inspector: User has SUPER, REPLICATION SLAVE privileges, and has ALL privileges on *.*")
+		i.logger.Printf("mysql.inspector: User has SUPER, REPLICATION SLAVE privileges, and has SELECT privileges")
 		return nil
 	}
 	if foundReplicationClient && foundReplicationSlave && foundDBAll {
-		i.logger.Printf("mysql.inspector: User has REPLICATION CLIENT, REPLICATION SLAVE privileges, and has ALL privileges on *.*")
+		i.logger.Printf("mysql.inspector: User has REPLICATION CLIENT, REPLICATION SLAVE privileges, and has SELECT privileges")
 		return nil
 	}
 	i.logger.Debugf("mysql.inspector: Privileges: super: %t, REPLICATION CLIENT: %t, REPLICATION SLAVE: %t, ALL on *.*: %t, ALL on *.*: %t", foundSuper, foundReplicationClient, foundReplicationSlave, foundAll, foundDBAll)
-	return fmt.Errorf("user has insufficient privileges for migration. Needed: SUPER|REPLICATION CLIENT, REPLICATION SLAVE and ALL on *.*")
+	return fmt.Errorf("user has insufficient privileges for extractor. Needed: SUPER|REPLICATION CLIENT, REPLICATION SLAVE and ALL on *.*")
 }
 
 func (i *Inspector) validateGTIDMode() error {
@@ -343,55 +312,6 @@ func (i *Inspector) validateTableTriggers(databaseName, tableName string) error 
 	return nil
 }
 
-// applyColumnTypes
-func (i *Inspector) applyColumnTypes(databaseName, tableName string, columnsLists ...*umconf.ColumnList) error {
-	query := `
-		select
-				*
-			from
-				information_schema.columns
-			where
-				table_schema=?
-				and table_name=?
-		`
-	err := usql.QueryRowsMap(i.db, query, func(m usql.RowMap) error {
-		columnName := m.GetString("COLUMN_NAME")
-		columnType := m.GetString("COLUMN_TYPE")
-		if strings.Contains(columnType, "unsigned") {
-			for _, columnsList := range columnsLists {
-				columnsList.SetUnsigned(columnName)
-			}
-		}
-		if strings.Contains(columnType, "mediumint") {
-			for _, columnsList := range columnsLists {
-				columnsList.GetColumn(columnName).Type = umconf.MediumIntColumnType
-			}
-		}
-		if strings.Contains(columnType, "timestamp") {
-			for _, columnsList := range columnsLists {
-				columnsList.GetColumn(columnName).Type = umconf.TimestampColumnType
-			}
-		}
-		if strings.Contains(columnType, "datetime") {
-			for _, columnsList := range columnsLists {
-				columnsList.GetColumn(columnName).Type = umconf.DateTimeColumnType
-			}
-		}
-		if strings.HasPrefix(columnType, "enum") {
-			for _, columnsList := range columnsLists {
-				columnsList.GetColumn(columnName).Type = umconf.EnumColumnType
-			}
-		}
-		if charset := m.GetString("CHARACTER_SET_NAME"); charset != "" {
-			for _, columnsList := range columnsLists {
-				columnsList.SetCharset(columnName, charset)
-			}
-		}
-		return nil
-	}, databaseName, tableName)
-	return err
-}
-
 // getCandidateUniqueKeys investigates a table and returns the list of unique keys
 // candidate for chunking
 func (i *Inspector) getCandidateUniqueKeys(databaseName, tableName string) (uniqueKeys [](*umconf.UniqueKey), err error) {
@@ -485,36 +405,6 @@ func getSharedUniqueKeys(originalUniqueKeys, ghostUniqueKeys [](*umconf.UniqueKe
 	}
 	return uniqueKeys, nil
 }
-
-// getSharedColumns returns the intersection of two lists of columns in same order as the first list
-/*func (i *Inspector) getSharedColumns(doTb uconf.Table) (*umconf.ColumnList, *umconf.ColumnList) {
-	columnsInGhost := make(map[string]bool)
-	for _, ghostColumn := range doTb.DestTableColumns.Names() {
-		columnsInGhost[ghostColumn] = true
-	}
-	sharedColumnNames := []string{}
-	for _, originalColumn := range doTb.OriginalTableColumns.Names() {
-		isSharedColumn := false
-		if columnsInGhost[originalColumn] || columnsInGhost[doTb.ColumnRenameMap[originalColumn]] {
-			isSharedColumn = true
-		}
-		if doTb.DroppedColumnsMap[originalColumn] {
-			isSharedColumn = false
-		}
-		if isSharedColumn {
-			sharedColumnNames = append(sharedColumnNames, originalColumn)
-		}
-	}
-	mappedSharedColumnNames := []string{}
-	for _, columnName := range sharedColumnNames {
-		if mapped, ok := doTb.ColumnRenameMap[columnName]; ok {
-			mappedSharedColumnNames = append(mappedSharedColumnNames, mapped)
-		} else {
-			mappedSharedColumnNames = append(mappedSharedColumnNames, columnName)
-		}
-	}
-	return umconf.NewColumnList(sharedColumnNames), umconf.NewColumnList(mappedSharedColumnNames)
-}*/
 
 // showCreateTable returns the `show create table` statement for given table
 func (i *Inspector) showCreateTable(databaseName, tableName string) (createTableStatement string, err error) {

@@ -54,10 +54,14 @@ type StreamEvent struct {
 
 // BinlogCoordinates described binary log coordinates in the form of log file & log position.
 type BinlogCoordinates struct {
-	LogFile string
-	LogPos  int64
-	GtidSet string
-	Type    BinlogType
+	LogFile       string
+	LogPos        int64
+	OSID          string
+	SID           string
+	GNO           int64
+	LastCommitted int64
+	Type          BinlogType
+	GtidSet       string
 }
 
 // ParseInstanceKey will parse an InstanceKey from a string representation such as 127.0.0.1:3306

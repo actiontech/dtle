@@ -6,7 +6,7 @@ After=network.target
 [Service]
 EnvironmentFile=-/etc/default/udup
 User=udup
-ExecStart=/usr/bin/udup agent -config /etc/udup/udup.conf ${UDUP_OPTS}
+ExecStart=/usr/bin/udup server -config /etc/udup/udup.conf ${UDUP_OPTS}
 ExecReload=/bin/kill -HUP $MAINPID
 Restart=on-failure
 KillMode=control-group

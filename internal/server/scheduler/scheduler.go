@@ -20,9 +20,9 @@ const (
 // BuiltinSchedulers contains the built in registered schedulers
 // which are available
 var BuiltinSchedulers = map[string]Factory{
-	"synchronous": NewGenericScheduler,
-	"migration":   NewGenericScheduler,
-	//"subscribe":   NewGenericScheduler,
+	models.JobTypeSync: NewGenericScheduler,
+	models.JobTypeMig:  NewGenericScheduler,
+	//models.JobTypeSub:   NewGenericScheduler,
 }
 
 // NewScheduler is used to instantiate and return a new scheduler

@@ -5,16 +5,14 @@ import (
 	"database/sql"
 	"fmt"
 	"math"
-	"strconv"
 	"strings"
+	"sync"
 
+	ubase "udup/internal/client/driver/mysql/base"
 	usql "udup/internal/client/driver/mysql/sql"
 	"udup/internal/config"
+	umconf "udup/internal/config/mysql"
 	log "udup/internal/logger"
-)
-
-const (
-	defaultChunkSize = 1000
 )
 
 var (
@@ -23,78 +21,91 @@ var (
 
 type dumper struct {
 	logger         *log.Entry
-	chunkSize      int
+	chunkSize      int64
+	total          int64
 	TableSchema    string
 	TableName      string
+	columns        string
 	entriesCount   int
 	resultsChannel chan *dumpEntry
 	entriesChannel chan *dumpEntry
-	stopCh         chan bool
+	shutdown       bool
+	shutdownCh     chan struct{}
+	shutdownLock   sync.Mutex
 
 	// DB is safe for using in goroutines
 	// http://golang.org/src/database/sql/sql.go?s=5574:6362#L201
-	db *sql.DB
+	db *sql.Tx
 }
 
-func NewDumper(db *sql.DB, dbName, tableName string, logger *log.Entry) *dumper {
+func NewDumper(db *sql.Tx, dbName, tableName string, total, chunkSize int64, logger *log.Entry) *dumper {
 	dumper := &dumper{
 		logger:         logger,
 		db:             db,
 		TableSchema:    dbName,
 		TableName:      tableName,
-		resultsChannel: make(chan *dumpEntry),
+		total:          total,
+		resultsChannel: make(chan *dumpEntry, 50),
 		entriesChannel: make(chan *dumpEntry),
-		chunkSize:      defaultChunkSize,
-		stopCh:         make(chan bool, 1),
+		chunkSize:      chunkSize,
+		shutdownCh:     make(chan struct{}),
 	}
 	return dumper
 }
 
-func (d *dumper) getRowsCount() (uint64, error) {
-	var res sql.NullString
-	query := fmt.Sprintf(`SELECT COUNT(*) FROM %s.%s`,
-		usql.EscapeName(d.TableSchema),
-		usql.EscapeName(d.TableName),
-	)
-	err := d.db.QueryRow(query).Scan(&res)
-	if err != nil {
-		return 0, err
-	}
-
-	val, err := res.Value()
-	if err != nil {
-		return 0, err
-	}
-
-	return strconv.ParseUint(val.(string), 0, 64)
-}
-
 type dumpEntry struct {
 	SystemVariablesStatement string
+	SqlMode                  string
 	DbSQL                    string
+	TableName                string
+	TableSchema              string
 	TbSQL                    string
-	Values                   string
-	RowsCount                uint64
+	Values                   [][]string
+	TotalCount               int64
+	RowsCount                int64
 	Offset                   uint64
-	Counter                  int
 	colBuffer                bytes.Buffer
 	err                      error
 }
 
-func (j *dumpEntry) incrementCounter() {
-	j.Counter++
+func (e *dumpEntry) incrementCounter() {
+	e.RowsCount++
 }
 
 func (d *dumper) getDumpEntries() ([]*dumpEntry, error) {
-	total, err := d.getRowsCount()
-	if err != nil {
-		return nil, err
-	}
-	if total == 0 {
+	if d.total == 0 {
 		return []*dumpEntry{}, nil
 	}
 
-	sliceCount := int(math.Ceil(float64(total) / float64(d.chunkSize)))
+	columnList, err := ubase.GetTableColumnsWithTx(d.db, d.TableSchema, d.TableName)
+	if err != nil {
+		return []*dumpEntry{}, err
+	}
+
+	if ubase.ApplyColumnTypesWithTx(d.db, d.TableSchema, d.TableName, columnList); err != nil {
+		return []*dumpEntry{}, err
+	}
+
+	needPm := false
+	columns := make([]string, 0)
+	for _, col := range columnList.Columns {
+		switch col.Type {
+		case umconf.FloatColumnType, umconf.DoubleColumnType,
+			umconf.MediumIntColumnType, umconf.BigIntColumnType,
+			umconf.DecimalColumnType:
+			columns = append(columns, fmt.Sprintf("%s+0", col.Name))
+			needPm = true
+		default:
+			columns = append(columns, col.Name)
+		}
+	}
+	if needPm {
+		d.columns = strings.Join(columns, ", ")
+	} else {
+		d.columns = "*"
+	}
+
+	sliceCount := int(math.Ceil(float64(d.total) / float64(d.chunkSize)))
 	if sliceCount == 0 {
 		sliceCount = 1
 	}
@@ -102,16 +113,22 @@ func (d *dumper) getDumpEntries() ([]*dumpEntry, error) {
 	for i := 0; i < sliceCount; i++ {
 		offset := uint64(i) * uint64(d.chunkSize)
 		entries[i] = &dumpEntry{
-			RowsCount: total,
-			Offset:    offset,
+			Offset: offset,
 		}
 	}
 	return entries, nil
 }
 
 // dumps a specific chunk, reading chunk info from the channel
-func (d *dumper) getChunkData(entry *dumpEntry) error {
-	query := fmt.Sprintf(`SELECT * FROM %s.%s LIMIT %d OFFSET %d`,
+func (d *dumper) getChunkData(e *dumpEntry) error {
+	entry := &dumpEntry{
+		TableSchema: d.TableSchema,
+		TableName:   d.TableName,
+		RowsCount:   e.RowsCount,
+		Offset:      e.Offset,
+	}
+	query := fmt.Sprintf(`SELECT %s FROM %s.%s LIMIT %d OFFSET %d`,
+		d.columns,
 		usql.EscapeName(d.TableSchema),
 		usql.EscapeName(d.TableName),
 		d.chunkSize,
@@ -119,7 +136,7 @@ func (d *dumper) getChunkData(entry *dumpEntry) error {
 	)
 	rows, err := d.db.Query(query)
 	if err != nil {
-		return err
+		return fmt.Errorf("exec [%s] error: %v", query, err)
 	}
 
 	columns, err := rows.Columns()
@@ -135,6 +152,7 @@ func (d *dumper) getChunkData(entry *dumpEntry) error {
 	}
 
 	data := make([]string, 0)
+	packetLen := 0
 	for rows.Next() {
 		err = rows.Scan(scanArgs...)
 		if err != nil {
@@ -144,16 +162,23 @@ func (d *dumper) getChunkData(entry *dumpEntry) error {
 		vals := make([]string, 0)
 		for _, col := range values {
 			// Here we can check if the value is nil (NULL value)
-			value := "NULL"
 			if col != nil {
-				value = fmt.Sprintf("'%s'", entry.escape(string(*col)))
+				vals = append(vals, fmt.Sprintf("'%s'", usql.EscapeValue(string(*col))))
+				packetLen += len(usql.EscapeValue(string(*col)))
+				if packetLen > 3000000 {
+					entry.Values = append(entry.Values, data)
+					packetLen = 0
+					data = []string{}
+				}
+			} else {
+				vals = append(vals, "NULL")
 			}
-			vals = append(vals, value)
 		}
 		data = append(data, fmt.Sprintf("( %s )", strings.Join(vals, ", ")))
 		entry.incrementCounter()
 	}
-	entry.Values = fmt.Sprintf(`replace into %s.%s values %s`, d.TableSchema, d.TableName, strings.Join(data, ","))
+	entry.Values = append(entry.Values, data)
+	d.resultsChannel <- entry
 	/*query = fmt.Sprintf(`
 			insert into %s.%s
 				(%s)
@@ -189,41 +214,10 @@ func (d *dumper) getChunkData(entry *dumpEntry) error {
 	}
 }*/
 
-func (e *dumpEntry) escape(colValue string) string {
-	var esc string
-	e.colBuffer = *new(bytes.Buffer)
-	last := 0
-	for i, c := range colValue {
-		switch c {
-		case 0:
-			esc = `\0`
-		case '\n':
-			esc = `\n`
-		case '\r':
-			esc = `\r`
-		case '\\':
-			esc = `\\`
-		case '\'':
-			esc = `\'`
-		case '"':
-			esc = `\"`
-		case '\032':
-			esc = `\Z`
-		default:
-			continue
-		}
-		e.colBuffer.WriteString(colValue[last:i])
-		e.colBuffer.WriteString(esc)
-		last = i + 1
-	}
-	e.colBuffer.WriteString(colValue[last:])
-	return e.colBuffer.String()
-}
-
 func (d *dumper) worker() {
 	for e := range d.entriesChannel {
 		select {
-		case <-d.stopCh:
+		case <-d.shutdownCh:
 			return
 		default:
 		}
@@ -232,7 +226,7 @@ func (d *dumper) worker() {
 			if err != nil {
 				e.err = err
 			}
-			d.resultsChannel <- e
+			//d.resultsChannel <- e
 		}
 	}
 }
@@ -252,11 +246,11 @@ func (d *dumper) Dump(w int) error {
 		return nil
 	}
 
+	d.entriesCount = len(entries)
 	for i := 0; i < workersCount; i++ {
 		go d.worker()
 	}
 
-	d.entriesCount = len(entries)
 	go func() {
 		for _, e := range entries {
 			d.entriesChannel <- e
@@ -317,31 +311,15 @@ func showTables(db *sql.DB, dbName string) (tables []*config.Table, err error) {
 	return tables, rows.Err()
 }
 
-func (d *dumper) createTableSQL(dropTableIfExists bool) (string, error) {
-	query := fmt.Sprintf(`SHOW CREATE TABLE %s.%s`,
-		usql.EscapeName(d.TableSchema),
-		usql.EscapeName(d.TableName),
-	)
-	// Get table creation SQL
-	createTable := fmt.Sprintf("USE %s", d.TableSchema)
-	var tableReturn sql.NullString
-	var tableSql sql.NullString
-	err := d.db.QueryRow(query).Scan(&tableReturn, &tableSql)
-	if err != nil {
-		return "", err
-	}
-	if tableReturn.String != d.TableName {
-		return "", fmt.Errorf("Returned table is not the same as requested table")
-	}
-	if dropTableIfExists {
-		createTable = fmt.Sprintf("%s;DROP TABLE IF EXISTS `%s`", createTable, d.TableName)
-	}
-
-	return fmt.Sprintf("%s;%s", createTable, tableSql.String), nil
-}
-
 func (d *dumper) Close() error {
 	// Quit goroutine
-	d.stopCh <- true
+	d.shutdownLock.Lock()
+	defer d.shutdownLock.Unlock()
+
+	if d.shutdown {
+		return nil
+	}
+	d.shutdown = true
+	close(d.shutdownCh)
 	return nil
 }

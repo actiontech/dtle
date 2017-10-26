@@ -29,7 +29,7 @@ func (m *MySQLDriver) Start(ctx *ExecContext, task *models.Task) (DriverHandle, 
 	case models.TaskTypeSrc:
 		{
 			// Create the extractor
-			e := mysql.NewExtractor(ctx.Subject, ctx.Tp, &driverConfig, m.logger)
+			e := mysql.NewExtractor(ctx.Subject, ctx.Tp, ctx.MaxPayload, &driverConfig, m.logger)
 			go e.Run()
 			return e, nil
 		}

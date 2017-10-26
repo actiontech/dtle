@@ -124,7 +124,6 @@ func (c *StartCommand) Run(args []string) int {
 		c.Ui.Error(fmt.Sprintf("Error getting job struct: %s", err))
 		return 1
 	}
-	c.Ui.Info(fmt.Sprintf("job:%+v", job))
 
 	// Get the HTTP client
 	client, err := c.Meta.Client()

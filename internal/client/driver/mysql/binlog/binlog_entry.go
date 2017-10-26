@@ -8,8 +8,9 @@ import (
 
 // BinlogEntry describes an entry in the binary log
 type BinlogEntry struct {
-	Coordinates base.BinlogCoordinates
-	EndLogPos   uint64
+	hasBeginQuery bool
+	Coordinates   base.BinlogCoordinates
+	EndLogPos     uint64
 
 	Events []DataEvent
 }
@@ -26,6 +27,7 @@ func NewBinlogEntry(logFile string, logPos uint64) *BinlogEntry {
 func NewBinlogEntryAt(coordinates base.BinlogCoordinates) *BinlogEntry {
 	binlogEntry := &BinlogEntry{
 		Coordinates: coordinates,
+		Events:      make([]DataEvent, 0),
 	}
 	return binlogEntry
 }

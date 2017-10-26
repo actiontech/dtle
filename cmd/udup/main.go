@@ -54,7 +54,7 @@ func realMain() int {
 	}
 
 	c.Commands = map[string]cli.CommandFactory{
-		"agent": func() (cli.Command, error) {
+		"server": func() (cli.Command, error) {
 			return &agent.Command{
 				Version:    Version,
 				Ui:         meta.Ui,
@@ -66,7 +66,7 @@ func realMain() int {
 				Meta: meta,
 			}, nil
 		},
-		"client-config": func() (cli.Command, error) {
+		"agent-config": func() (cli.Command, error) {
 			return &command.ConfigCommand{
 				Meta: meta,
 			}, nil

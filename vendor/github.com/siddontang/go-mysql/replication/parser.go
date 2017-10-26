@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	"github.com/juju/errors"
-	"strings"
 )
 
 type BinlogParser struct {

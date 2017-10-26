@@ -9,6 +9,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/hashicorp/memberlist"
+
 	ucli "udup/internal/client"
 	uconf "udup/internal/config"
 	ulog "udup/internal/logger"
@@ -81,7 +83,7 @@ func convertServerConfig(agentConfig *Config, logOutput io.Writer) (*uconf.Serve
 		}
 	}
 	if agentConfig.DataDir != "" {
-		conf.DataDir = filepath.Join(agentConfig.DataDir, "server")
+		conf.DataDir = filepath.Join(agentConfig.DataDir, "manager")
 	}
 	if agentConfig.Server.DataDir != "" {
 		conf.DataDir = agentConfig.Server.DataDir
@@ -91,6 +93,15 @@ func convertServerConfig(agentConfig *Config, logOutput io.Writer) (*uconf.Serve
 	}
 	if len(agentConfig.Server.EnabledSchedulers) != 0 {
 		conf.EnabledSchedulers = agentConfig.Server.EnabledSchedulers
+	}
+
+	switch agentConfig.Profile {
+	case "wan":
+		conf.SerfConfig.MemberlistConfig = memberlist.DefaultWANConfig()
+	case "local":
+		conf.SerfConfig.MemberlistConfig = memberlist.DefaultLocalConfig()
+	default:
+		conf.SerfConfig.MemberlistConfig = memberlist.DefaultLANConfig()
 	}
 
 	// Set up the bind addresses
@@ -162,7 +173,7 @@ func (a *Agent) clientConfig() (*uconf.ClientConfig, error) {
 		conf.Region = a.config.Region
 	}
 	if a.config.DataDir != "" {
-		conf.StateDir = filepath.Join(a.config.DataDir, "client")
+		conf.StateDir = filepath.Join(a.config.DataDir, "agent")
 	}
 	conf.Servers = a.config.Client.Servers
 
@@ -173,6 +184,8 @@ func (a *Agent) clientConfig() (*uconf.ClientConfig, error) {
 
 	// Set up the HTTP advertise address
 	conf.Node.HTTPAddr = a.config.AdvertiseAddrs.HTTP
+	conf.Node.NatsAddr = fmt.Sprintf("%s:%d", a.config.BindAddr, a.config.Ports.Nats)
+
 	conf.Version = a.config.Version
 
 	if *a.config.Consul.AutoAdvertise && a.config.Consul.ClientServiceName == "" {
@@ -182,7 +195,6 @@ func (a *Agent) clientConfig() (*uconf.ClientConfig, error) {
 	conf.ConsulConfig = a.config.Consul
 	conf.NatsAddr = a.config.AdvertiseAddrs.Nats
 	conf.MaxPayload = a.config.Network.MaxPayload
-	conf.MaxBytes = a.config.Network.MaxBytes
 	conf.StatsCollectionInterval = a.config.Metric.collectionInterval
 	conf.PublishNodeMetrics = a.config.Metric.PublishNodeMetrics
 	conf.PublishAllocationMetrics = a.config.Metric.PublishAllocationMetrics
@@ -241,12 +253,12 @@ func (a *Agent) setupClient() error {
 func (a *Agent) Leave() error {
 	if a.client != nil {
 		if err := a.client.Leave(); err != nil {
-			a.logger.Errorf("agent: client leave failed: %v", err)
+			a.logger.Errorf("server: agent leave failed: %v", err)
 		}
 	}
 	if a.server != nil {
 		if err := a.server.Leave(); err != nil {
-			a.logger.Errorf("agent: server leave failed: %v", err)
+			a.logger.Errorf("server: manager leave failed: %v", err)
 		}
 	}
 	return nil
@@ -261,19 +273,19 @@ func (a *Agent) Shutdown() error {
 		return nil
 	}
 
-	a.logger.Println("[INFO] agent: requesting shutdown")
+	a.logger.Println("server: requesting shutdown")
 	if a.client != nil {
 		if err := a.client.Shutdown(); err != nil {
-			a.logger.Errorf("agent: client shutdown failed: %v", err)
+			a.logger.Errorf("server: agent shutdown failed: %v", err)
 		}
 	}
 	if a.server != nil {
 		if err := a.server.Shutdown(); err != nil {
-			a.logger.Errorf("agent: server shutdown failed: %v", err)
+			a.logger.Errorf("server: manager shutdown failed: %v", err)
 		}
 	}
 
-	a.logger.Println("[INFO] agent: shutdown complete")
+	a.logger.Println("server: shutdown complete")
 	a.shutdown = true
 	close(a.shutdownCh)
 	return nil

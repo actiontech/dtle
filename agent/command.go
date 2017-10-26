@@ -51,12 +51,12 @@ func (c *Command) readConfig() *Config {
 		Server: &ServerConfig{},
 	}
 
-	flags := flag.NewFlagSet("agent", flag.ContinueOnError)
+	flags := flag.NewFlagSet("server", flag.ContinueOnError)
 	flags.Usage = func() { c.Ui.Error(c.Help()) }
 
 	// Role options
-	flags.BoolVar(&cmdConfig.Server.Enabled, "server", false, "")
-	flags.BoolVar(&cmdConfig.Client.Enabled, "client", false, "")
+	flags.BoolVar(&cmdConfig.Server.Enabled, "manager", false, "")
+	flags.BoolVar(&cmdConfig.Client.Enabled, "agent", false, "")
 
 	// Server-only options
 	flags.IntVar(&cmdConfig.Server.BootstrapExpect, "bootstrap-expect", 0, "")
@@ -65,7 +65,7 @@ func (c *Command) readConfig() *Config {
 	flags.StringVar(&cmdConfig.Server.RetryInterval, "retry-interval", "", "")
 
 	// Client-only options
-	flags.StringVar(&servers, "servers", "", "")
+	flags.StringVar(&servers, "managers", "", "")
 
 	// General options
 	flags.Var((*StringFlag)(&configPath), "config", "config")
@@ -144,7 +144,7 @@ func (c *Command) readConfig() *Config {
 
 	// Check that the server is running in at least one mode.
 	if !(config.Server.Enabled || config.Client.Enabled) {
-		c.Ui.Error("Must specify either server, client or dev mode for the agent.")
+		c.Ui.Error("Must specify either manager or agent mode for the server.")
 		return nil
 	}
 
@@ -217,10 +217,10 @@ func (c *Command) setupLoggers(config *Config) (io.Writer, error) {
 
 // setupAgent is used to start the agent and various interfaces
 func (c *Command) setupAgent(config *Config, logOutput io.Writer) error {
-	c.logger.Printf("Starting Udup agent...")
+	c.logger.Printf("Starting Udup server...")
 	agent, err := NewAgent(config, logOutput, c.logger)
 	if err != nil {
-		c.logger.Errorf("Error starting agent: %s", err)
+		c.logger.Errorf("Error starting server: %s", err)
 		return err
 	}
 	c.agent = agent
@@ -286,9 +286,9 @@ func (c *Command) Run(args []string) int {
 	// Compile agent information for output later
 	info := make(map[string]string)
 	info["version"] = config.Version
-	info["client"] = strconv.FormatBool(config.Client.Enabled)
+	info["agent"] = strconv.FormatBool(config.Client.Enabled)
 	info["log level"] = config.LogLevel
-	info["server"] = strconv.FormatBool(config.Server.Enabled)
+	info["manager"] = strconv.FormatBool(config.Server.Enabled)
 	info["region"] = fmt.Sprintf("%s (DC: %s)", config.Region, config.Datacenter)
 
 	// Sort the keys for output
@@ -300,7 +300,7 @@ func (c *Command) Run(args []string) int {
 
 	// Agent configuration output
 	padding := 18
-	c.logger.Printf("Udup agent configuration:\n")
+	c.logger.Printf("Udup server configuration:\n")
 	for _, k := range infoKeys {
 		c.logger.Printf(fmt.Sprintf(
 			" %s%s: %s",
@@ -309,7 +309,7 @@ func (c *Command) Run(args []string) int {
 			info[k]))
 	}
 	// Output the header that the server has started
-	c.logger.Printf("Udup agent started! Log data will stream in below:\n")
+	c.logger.Printf("Udup server started! Log data will stream in below:\n")
 
 	// Start retry join process
 	c.retryJoinErrCh = make(chan struct{})
@@ -397,7 +397,7 @@ func (c *Command) handleReload(config *Config) *Config {
 	if s := c.agent.Server(); s != nil {
 		_, err := convertServerConfig(newConf, c.logOutput)
 		if err != nil {
-			c.logger.Errorf("agent: failed to convert server config: %v", err)
+			c.logger.Errorf("server: failed to convert server config: %v", err)
 		}
 	}
 
@@ -470,54 +470,54 @@ func (c *Command) retryJoin(config *Config) {
 		return
 	}
 
-	c.logger.Printf("agent: Joining cluster...")
+	c.logger.Printf("server: Joining cluster...")
 
 	attempt := 0
 	for {
 		n, err := c.agent.server.Join(config.Server.StartJoin)
 		if err == nil {
-			c.logger.Printf("agent: Join completed. Synced with %d initial agents", n)
+			c.logger.Printf("server: Join completed. Synced with %d initial agents", n)
 			return
 		}
 
 		attempt++
 		if config.Server.RetryMaxAttempts > 0 && attempt > config.Server.RetryMaxAttempts {
-			c.logger.Errorf("agent: max join retry exhausted, exiting")
+			c.logger.Errorf("server: max join retry exhausted, exiting")
 			close(c.retryJoinErrCh)
 			return
 		}
 
-		c.logger.Warnf("agent: Join failed: %v, retrying in %v", err,
+		c.logger.Warnf("server: Join failed: %v, retrying in %v", err,
 			config.Server.RetryInterval)
 		time.Sleep(config.Server.retryInterval)
 	}
 }
 
 func (c *Command) Synopsis() string {
-	return "Runs a Udup agent"
+	return "Runs a Udup server"
 }
 
 func (c *Command) Help() string {
 	helpText := `
-Usage: udup agent [options]
+Usage: udup server [options]
 
-  Starts the Udup agent and runs until an interrupt is received.
-  The agent may be a client and/or server.
+  Starts the Udup server and runs until an interrupt is received.
+  The server may be a agent and/or manager.
 
-  The Udup agent's configuration primarily comes from the config
+  The Udup server's configuration primarily comes from the config
   files used, but a subset of the options may also be passed directly
   as CLI arguments, listed below.
 
-General Options (clients and servers):
+General Options (agents and managers):
 
   -bind=<addr>
-    The address the agent will bind to for all of its various network
+    The address the server will bind to for all of its various network
     services. The individual services that run bind to individual
     ports on this address. Defaults to the loopback 127.0.0.1.
 
   -config=<path>
     The path to either a single config file or a directory of config
-    files to use for configuring the Udup agent. This option may be
+    files to use for configuring the Udup server. This option may be
     specified multiple times. If multiple config files are used, the
     values from each will be merged together. During merging, values
     from files found later in the list are merged over values from
@@ -525,12 +525,12 @@ General Options (clients and servers):
 
   -data-dir=<path>
     The data directory used to store store and other persistent data.
-    On client machines this is used to house allocation data such as
-    downloaded artifacts used by drivers. On server nodes, the data
+    On agent machines this is used to house allocation data such as
+    downloaded artifacts used by drivers. On manager nodes, the data
     dir is also used to store the replicated log.
 
   -dc=<datacenter>
-    The name of the datacenter this Udup agent is a member of. By
+    The name of the datacenter this Udup server is a member of. By
     default this is set to "dc1".
 
   -log-level=<level>
@@ -539,34 +539,34 @@ General Options (clients and servers):
     default is INFO.
 
   -node=<name>
-    The name of the local agent. This name is used to identify the node
+    The name of the local server. This name is used to identify the node
     in the cluster. The name must be unique per region. The default is
     the current hostname of the machine.
 
   -region=<region>
-    Name of the region the Udup agent will be a member of. By default
+    Name of the region the Udup server will be a member of. By default
     this value is set to "global".
 
-Server Options:
+Manager Options:
 
-  -server
-    Enable server mode for the agent. Agents in server mode are
+  -manager
+    Enable manager mode for the udup. Servers in manager mode are
     clustered together and handle the additional responsibility of
     leader election, data replication, and scheduling work onto
-    eligible client nodes.
+    eligible agent nodes.
 
   -join=<address>
-    Address of an agent to join at start time. Can be specified
+    Address of an server to join at start time. Can be specified
     multiple times.
 
-Client Options:
+Agent Options:
 
-  -client
-    Enable client mode for the agent. Client mode enables a given node to be
-    evaluated for allocations. If client mode is not enabled, no work will be
-    scheduled to the agent.
+  -agent
+    Enable agent mode for the server. Agent mode enables a given node to be
+    evaluated for allocations. If agent mode is not enabled, no work will be
+    scheduled to the server.
 
-  -servers
+  -managers
     A list of known server addresses to connect to given as "host:port" and
     delimited by commas.
  `

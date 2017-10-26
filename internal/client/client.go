@@ -189,7 +189,7 @@ func NewClient(cfg *config.ClientConfig, logger *ulog.Logger) (*Client, error) {
 
 	// Initialize the client
 	if err := c.init(); err != nil {
-		return nil, fmt.Errorf("failed to initialize client: %v", err)
+		return nil, fmt.Errorf("failed to initialize agent: %v", err)
 	}
 
 	// Setup the node
@@ -216,7 +216,7 @@ func NewClient(cfg *config.ClientConfig, logger *ulog.Logger) (*Client, error) {
 	c.configLock.RLock()
 	if len(c.configCopy.Servers) > 0 {
 		if err := c.SetServers(c.configCopy.Servers); err != nil {
-			logger.Warnf("client: None of the configured servers are valid: %v", err)
+			logger.Warnf("agent: None of the configured servers are valid: %v", err)
 		}
 	}
 	c.configLock.RUnlock()
@@ -233,7 +233,7 @@ func NewClient(cfg *config.ClientConfig, logger *ulog.Logger) (*Client, error) {
 	// Start the client!
 	go c.run()
 
-	c.logger.Printf("client: Node ID %q", c.Node().ID)
+	c.logger.Printf("agent: Node ID %q", c.Node().ID)
 	return c, nil
 }
 
@@ -248,7 +248,7 @@ func (c *Client) init() error {
 
 	} else {
 		// Othewise make a temp directory to use.
-		p, err := ioutil.TempDir("", "UdupClient")
+		p, err := ioutil.TempDir("", "UdupAgent")
 		if err != nil {
 			return fmt.Errorf("failed creating temporary directory for the StateDir: %v", err)
 		}
@@ -260,7 +260,7 @@ func (c *Client) init() error {
 
 		c.config.StateDir = p
 	}
-	c.logger.Printf("client: Using state directory %v", c.config.StateDir)
+	c.logger.Printf("agent: Using state directory %v", c.config.StateDir)
 
 	return nil
 }
@@ -286,7 +286,7 @@ func (c *Client) Region() string {
 
 // Shutdown is used to tear down the client
 func (c *Client) Shutdown() error {
-	c.logger.Printf("client: Shutting down")
+	c.logger.Printf("agent: Shutting down")
 	c.shutdownLock.Lock()
 	defer c.shutdownLock.Unlock()
 
@@ -319,7 +319,7 @@ func (c *Client) RPC(method string, args interface{}, reply interface{}) error {
 		if err := c.connPool.RPC(c.Region(), s.addr, method, args, reply); err != nil {
 			errmsg := fmt.Errorf("RPC failed to server %s: %v", s.addr, err)
 			mErr.Errors = append(mErr.Errors, errmsg)
-			c.logger.Debugf("client: %v", errmsg)
+			c.logger.Debugf("agent: %v", errmsg)
 			c.servers.failed(s)
 			continue
 		}
@@ -403,7 +403,7 @@ func (c *Client) SetServers(servers []string) error {
 	for _, s := range servers {
 		addr, err := resolveServer(s)
 		if err != nil {
-			c.logger.Debugf("client: Ignoring server %s due to resolution error: %v", s, err)
+			c.logger.Debugf("agent: Ignoring server %s due to resolution error: %v", s, err)
 			merr.Errors = append(merr.Errors, err)
 			continue
 		}
@@ -430,7 +430,7 @@ func (c *Client) saveState() error {
 	var mErr multierror.Error
 	for id, ar := range c.getAllocRunners() {
 		if err := ar.SaveState(); err != nil {
-			c.logger.Errorf("client: Failed to save state for alloc %s: %v",
+			c.logger.Errorf("agent: Failed to save state for alloc %s: %v",
 				id, err)
 			mErr.Errors = append(mErr.Errors, err)
 		}
@@ -463,7 +463,7 @@ func (c *Client) nodeID() (id string, err error) {
 	}
 
 	// Attempt to read existing ID
-	idPath := filepath.Join(c.config.StateDir, "client-id")
+	idPath := filepath.Join(c.config.StateDir, "node-id")
 	idBuf, err := ioutil.ReadFile(idPath)
 	if err != nil && !os.IsNotExist(err) {
 		return "", err
@@ -528,10 +528,10 @@ func (c *Client) setupNatsServer() error {
 		Trace:   true,
 		Debug:   true,
 	}
-	c.logger.Debugf("client: Starting nats streaming server [%v]", natsAddr)
+	c.logger.Debugf("agent: Starting nats streaming server [%v]", natsAddr)
 	sOpts := stand.GetDefaultOptions()
 	sOpts.ID = config.DefaultClusterID
-	sOpts.MaxBytes = c.config.MaxBytes
+	//sOpts.MaxBytes = 10 * 1024
 	/*if c.config.LogLevel == "DEBUG" {
 		stand.ConfigureLogger(sOpts, &nOpts)
 	}*/
@@ -557,7 +557,7 @@ func (c *Client) setupDrivers() error {
 		c.config.Node.Attributes[fmt.Sprintf("driver.%s", name)] = "1"
 	}
 
-	c.logger.Debugf("client: Available drivers %v", avail)
+	c.logger.Debugf("agent: Available drivers %v", avail)
 
 	return nil
 }
@@ -595,12 +595,12 @@ func (c *Client) registerAndHeartbeat() {
 			// registered before
 			if strings.Contains(err.Error(), "node not found") {
 				// Re-register the node
-				c.logger.Printf("client: Re-registering node")
+				c.logger.Printf("agent: Re-registering node")
 				c.retryRegisterNode()
 				heartbeat = time.After(lib.RandomStagger(initialHeartbeatStagger))
 			} else {
 				intv := c.retryIntv(registerRetryIntv)
-				c.logger.Errorf("client: Heartbeating failed. Retrying in %v: %v", intv, err)
+				c.logger.Errorf("agent: Heartbeating failed. Retrying in %v: %v", intv, err)
 				heartbeat = time.After(intv)
 
 				// if heartbeating fails, trigger Consul discovery
@@ -625,7 +625,7 @@ func (c *Client) periodicSnapshot() {
 		case <-snapshot:
 			snapshot = time.After(stateSnapshotIntv)
 			if err := c.saveState(); err != nil {
-				c.logger.Errorf("client: Failed to save state: %v", err)
+				c.logger.Errorf("agent: Failed to save state: %v", err)
 			}
 
 		case <-c.shutdownCh:
@@ -662,7 +662,7 @@ func (c *Client) hasNodeChanged(oldAttrHash uint64, oldMetaHash uint64) (bool, u
 	defer c.configLock.RUnlock()
 	newAttrHash, err := hashstructure.Hash(c.config.Node.Attributes, nil)
 	if err != nil {
-		c.logger.Debugf("client: Unable to calculate node attributes hash: %v", err)
+		c.logger.Debugf("agent: Unable to calculate node attributes hash: %v", err)
 	}
 
 	if newAttrHash != oldAttrHash {
@@ -682,10 +682,10 @@ func (c *Client) retryRegisterNode() {
 		}
 
 		if err == noServersErr {
-			c.logger.Debugf("client: Registration waiting on servers")
+			c.logger.Debugf("agent: Registration waiting on servers")
 			c.triggerDiscovery()
 		} else {
-			c.logger.Errorf("client: Registration failure: %v", err)
+			c.logger.Errorf("agent: Registration failure: %v", err)
 		}
 		select {
 		case <-c.serversDiscoveredCh:
@@ -713,9 +713,9 @@ func (c *Client) registerNode() error {
 	node.Status = models.NodeStatusReady
 	c.configLock.Unlock()
 
-	c.logger.Printf("client: Node registration complete")
+	c.logger.Printf("agent: Node registration complete")
 	if len(resp.EvalIDs) != 0 {
-		c.logger.Debugf("client: %d evaluations triggered by node registration", len(resp.EvalIDs))
+		c.logger.Debugf("agent: %d evaluations triggered by node registration", len(resp.EvalIDs))
 	}
 
 	c.heartbeatLock.Lock()
@@ -742,10 +742,10 @@ func (c *Client) updateNodeStatus() error {
 		return fmt.Errorf("failed to update status: %v", err)
 	}
 	if len(resp.EvalIDs) != 0 {
-		c.logger.Debugf("client: %d evaluations triggered by node update", len(resp.EvalIDs))
+		c.logger.Debugf("agent: %d evaluations triggered by node update", len(resp.EvalIDs))
 	}
 	if resp.Index != 0 {
-		c.logger.Debugf("client: State updated to %s", req.Status)
+		c.logger.Printf("agent: State updated to %s", req.Status)
 	}
 
 	// Update heartbeat time and ttl
@@ -791,7 +791,7 @@ func (c *Client) updateAllocStatus(alloc *models.Allocation) {
 	c.blockedAllocsLock.Lock()
 	if blockedAlloc, ok := c.blockedAllocations[alloc.ID]; ok && alloc.Terminated() {
 		if err := c.addAlloc(blockedAlloc); err != nil {
-			c.logger.Errorf("client: Failed to add alloc which was previously blocked %q: %v",
+			c.logger.Errorf("agent: Failed to add alloc which was previously blocked %q: %v",
 				blockedAlloc.ID, err)
 		}
 		delete(c.blockedAllocations, blockedAlloc.PreviousAllocation)
@@ -848,7 +848,7 @@ func (c *Client) allocSync() {
 
 				var resp models.GenericResponse
 				if err := c.RPC("Node.UpdateAlloc", &args, &resp); err != nil {
-					c.logger.Errorf("client: Failed to update allocations: %v", err)
+					c.logger.Errorf("agent: Failed to update allocations: %v", err)
 					syncTicker.Stop()
 					syncTicker = time.NewTicker(c.retryIntv(allocSyncRetryIntv))
 					staggered = true
@@ -875,7 +875,7 @@ func (c *Client) allocSync() {
 
 				var resp models.GenericResponse
 				if err := c.RPC("Node.UpdateJob", &args, &resp); err != nil {
-					c.logger.Errorf("client: Failed to update allocations: %v", err)
+					c.logger.Errorf("agent: Failed to update allocations: %v", err)
 					syncTicker.Stop()
 					syncTicker = time.NewTicker(c.retryIntv(allocSyncRetryIntv))
 					staggered = true
@@ -951,7 +951,7 @@ func (c *Client) watchAllocations(updates chan *allocUpdates, jUpdates chan *job
 			}
 
 			if err != noServersErr {
-				c.logger.Errorf("client: Failed to query for node allocations: %v", err)
+				c.logger.Errorf("agent: Failed to query for node allocations: %v", err)
 			}
 			retry := c.retryIntv(getAllocRetryIntv)
 			select {
@@ -1006,7 +1006,7 @@ func (c *Client) watchAllocations(updates chan *allocUpdates, jUpdates chan *job
 			allocsReq.MinQueryIndex = pullIndex - 1
 			allocsResp = models.AllocsGetResponse{}
 			if err := c.RPC("Alloc.GetAllocs", &allocsReq, &allocsResp); err != nil {
-				c.logger.Errorf("client: Failed to query updated allocations: %v", err)
+				c.logger.Errorf("agent: Failed to query updated allocations: %v", err)
 				retry := c.retryIntv(getAllocRetryIntv)
 				select {
 				case <-c.serversDiscoveredCh:
@@ -1048,7 +1048,7 @@ func (c *Client) watchAllocations(updates chan *allocUpdates, jUpdates chan *job
 			}
 		}
 
-		c.logger.Debugf("client: Updated allocations at index %d (total %d) (pulled %d) (filtered %d)",
+		c.logger.Debugf("agent: Updated allocations at index %d (total %d) (pulled %d) (filtered %d)",
 			resp.Index, len(resp.Allocs), len(allocsResp.Allocs), len(filtered))
 
 		// Update the query index.
@@ -1071,7 +1071,7 @@ func (c *Client) watchAllocations(updates chan *allocUpdates, jUpdates chan *job
 
 // watchNodeUpdates periodically checks for changes to the node attributes or meta map
 func (c *Client) watchNodeUpdates() {
-	c.logger.Debugf("client: Periodically checking for node changes at duration %v", nodeUpdateRetryIntv)
+	c.logger.Debugf("agent: Periodically checking for node changes at duration %v", nodeUpdateRetryIntv)
 
 	// Initialize the hashes
 	_, attrHash, metaHash := c.hasNodeChanged(0, 0)
@@ -1081,7 +1081,7 @@ func (c *Client) watchNodeUpdates() {
 		case <-time.After(c.retryIntv(nodeUpdateRetryIntv)):
 			changed, attrHash, metaHash = c.hasNodeChanged(attrHash, metaHash)
 			if changed {
-				c.logger.Debugf("client: State changed, updating node.")
+				c.logger.Debugf("agent: State changed, updating node.")
 
 				// Update the config copy.
 				c.configLock.Lock()
@@ -1109,12 +1109,12 @@ func (c *Client) runAllocs(update *allocUpdates) {
 
 	// Diff the existing and updated allocations
 	diff := diffAllocs(exist, update)
-	c.logger.Debugf("client: Diff %#v", diff)
+	c.logger.Debugf("agent: Diff %#v", diff)
 
 	// Remove the old allocations
 	for _, remove := range diff.removed {
 		if err := c.removeAlloc(remove); err != nil {
-			c.logger.Errorf("client: Failed to remove alloc '%s': %v",
+			c.logger.Errorf("agent: Failed to remove alloc '%s': %v",
 				remove.ID, err)
 		}
 	}
@@ -1128,7 +1128,7 @@ func (c *Client) runAllocs(update *allocUpdates) {
 				// Check if the alloc is already present in the blocked allocations
 				// map
 				if _, ok := c.blockedAllocations[update.updated.PreviousAllocation]; !ok {
-					c.logger.Debugf("client: Updated alloc %q to blocked queue for previous allocation %q", update.updated.ID,
+					c.logger.Debugf("agent: Updated alloc %q to blocked queue for previous allocation %q", update.updated.ID,
 						update.updated.PreviousAllocation)
 					c.blockedAllocations[update.updated.PreviousAllocation] = update.updated
 				}
@@ -1157,12 +1157,12 @@ func (c *Client) runAllocs(update *allocUpdates) {
 			}
 
 			if err := c.resumeAlloc(update.updated); err != nil {
-				c.logger.Errorf("client: Failed to resume alloc '%s': %v",
+				c.logger.Errorf("agent: Failed to resume alloc '%s': %v",
 					update.updated.ID, err)
 			}
 		} else {
 			if err := c.updateAlloc(update.exist, update.updated); err != nil {
-				c.logger.Errorf("client: Failed to update alloc '%s': %v",
+				c.logger.Errorf("agent: Failed to update alloc '%s': %v",
 					update.exist.ID, err)
 			}
 
@@ -1190,7 +1190,7 @@ func (c *Client) runAllocs(update *allocUpdates) {
 			// Check if the alloc is already present in the blocked allocations
 			// map
 			if _, ok := c.blockedAllocations[add.PreviousAllocation]; !ok {
-				c.logger.Debugf("client: Added alloc %q to blocked queue for previous allocation %q", add.ID,
+				c.logger.Debugf("agent: Added alloc %q to blocked queue for previous allocation %q", add.ID,
 					add.PreviousAllocation)
 				c.blockedAllocations[add.PreviousAllocation] = add
 			}
@@ -1219,14 +1219,14 @@ func (c *Client) runAllocs(update *allocUpdates) {
 		}
 
 		if err := c.addAlloc(add); err != nil {
-			c.logger.Errorf("client: Failed to add alloc '%s': %v",
+			c.logger.Errorf("agent: Failed to add alloc '%s': %v",
 				add.ID, err)
 		}
 	}
 
 	// Persist our state
 	if err := c.saveState(); err != nil {
-		c.logger.Errorf("client: Failed to save state: %v", err)
+		c.logger.Errorf("agent: Failed to save state: %v", err)
 	}
 }
 
@@ -1245,24 +1245,24 @@ func (c *Client) blockForRemoteAlloc(alloc *models.Allocation) {
 	// allocation to be terminal
 	t := alloc.Job.LookupTask(alloc.Task)
 	if t == nil {
-		c.logger.Errorf("client: Task %q not found in job %q", t.Type, alloc.Job.ID)
+		c.logger.Errorf("agent: Task %q not found in job %q", t.Type, alloc.Job.ID)
 		goto ADDALLOC
 	}
 
 	/*if alloc.Task == models.TaskTypeSrc {
-	c.logger.Debugf("client: blocking alloc %q for previous allocation %q", alloc.ID, alloc.PreviousAllocation)
+	c.logger.Debugf("agent: blocking alloc %q for previous allocation %q", alloc.ID, alloc.PreviousAllocation)
 	// Block until the previous allocation migrates to terminal state
 	stopCh := c.migratingAllocs[alloc.ID]
 	prevAlloc, err := c.waitForAllocTerminal(alloc.PreviousAllocation, stopCh)
 	if err != nil {
-		c.logger.Errorf("client: error waiting for allocation %q: %v",
+		c.logger.Errorf("agent: error waiting for allocation %q: %v",
 			alloc.PreviousAllocation, err)
 	}
-	c.logger.Printf("client: prevAlloc:%v",prevAlloc)
+	c.logger.Printf("agent: prevAlloc:%v",prevAlloc)
 	// Migrate the data from the remote node
 	*/ /*prevAllocDir, err = c.migrateRemoteAllocDir(prevAlloc, alloc.ID)
 	if err != nil {
-		c.logger.Errorf("client: error migrating data from remote alloc %q: %v",
+		c.logger.Errorf("agent: error migrating data from remote alloc %q: %v",
 			alloc.PreviousAllocation, err)
 	}*/ /*
 		}*/
@@ -1270,7 +1270,7 @@ func (c *Client) blockForRemoteAlloc(alloc *models.Allocation) {
 ADDALLOC:
 	// Add the allocation
 	if err := c.addAlloc(alloc); err != nil {
-		c.logger.Errorf("client: Error adding alloc: %v", err)
+		c.logger.Errorf("agent: Error adding alloc: %v", err)
 	}
 }
 
@@ -1289,7 +1289,7 @@ func (c *Client) waitForAllocTerminal(allocID string, stopCh *migrateAllocCtrl) 
 		resp := models.SingleAllocResponse{}
 		err := c.RPC("Alloc.GetAlloc", &req, &resp)
 		if err != nil {
-			c.logger.Errorf("client: Failed to query allocation %q: %v", allocID, err)
+			c.logger.Errorf("agent: Failed to query allocation %q: %v", allocID, err)
 			retry := c.retryIntv(getAllocRetryIntv)
 			select {
 			case <-time.After(retry):
@@ -1329,7 +1329,7 @@ func (c *Client) getNode(nodeID string) (*models.Node, error) {
 	for {
 		err := c.RPC("Node.GetNode", &req, &resp)
 		if err != nil {
-			c.logger.Errorf("client: Failed to query node info %q: %v", nodeID, err)
+			c.logger.Errorf("agent: Failed to query node info %q: %v", nodeID, err)
 			retry := c.retryIntv(getAllocRetryIntv)
 			select {
 			case <-time.After(retry):
@@ -1350,7 +1350,7 @@ func (c *Client) removeAlloc(alloc *models.Allocation) error {
 	ar, ok := c.allocs[alloc.ID]
 	if !ok {
 		c.allocLock.Unlock()
-		c.logger.Warnf("client: Missing context for alloc '%s'", alloc.ID)
+		c.logger.Warnf("agent: Missing context for alloc '%s'", alloc.ID)
 		return nil
 	}
 
@@ -1368,7 +1368,7 @@ func (c *Client) updateAlloc(exist, update *models.Allocation) error {
 	ar, ok := c.allocs[exist.ID]
 	c.allocLock.RUnlock()
 	if !ok {
-		c.logger.Warnf("client: Missing context for alloc '%s'", exist.ID)
+		c.logger.Warnf("agent: Missing context for alloc '%s'", exist.ID)
 		return nil
 	}
 
@@ -1382,7 +1382,7 @@ func (c *Client) resumeAlloc(alloc *models.Allocation) error {
 	ar.alloc = alloc
 	c.allocLock.Unlock()
 	if !ok {
-		c.logger.Warnf("client: Missing context for alloc '%s'", alloc.ID)
+		c.logger.Warnf("agent: Missing context for alloc '%s'", alloc.ID)
 		c.allocLock.Unlock()
 		return nil
 	}
@@ -1399,7 +1399,7 @@ func (c *Client) addAlloc(alloc *models.Allocation) error {
 	// Check if we already have an alloc runner
 	c.allocLock.Lock()
 	if _, ok := c.allocs[alloc.ID]; ok {
-		c.logger.Printf("[DEBUG]: client: Dropping duplicate add allocation request: %q", alloc.ID)
+		c.logger.Printf("[DEBUG]: agent: Dropping duplicate add allocation request: %q", alloc.ID)
 		c.allocLock.Unlock()
 		return nil
 	}
