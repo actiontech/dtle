@@ -1,6 +1,12 @@
 VERSION := $(shell sh -c 'git describe --always --tags')
 BRANCH := $(shell sh -c 'git rev-parse --abbrev-ref HEAD')
 COMMIT := $(shell sh -c 'git rev-parse --short HEAD')
+DOCKER        := $(shell which docker)
+DOCKER_IMAGE  := docker-registry:5000/actiontech/universe-compiler
+
+PROJECT_NAME  = udup
+VERSION       = 9.9.9.9
+
 ifdef GOBIN
 PATH := $(GOBIN):$(PATH)
 else
@@ -23,6 +29,12 @@ build-windows:
 	GOOS=windows GOARCH=amd64 go build -o dist/udup.exe -ldflags \
 		"-X main.Version=$(VERSION) -X main.GitCommit=$(COMMIT) -X main.GitBranch=$(BRANCH)" \
 		./cmd/udup/main.go
+
+# generates the static web ui that's compiled into the binary
+static-assets:
+	@go-bindata-assetfs -pkg agent -prefix pkg ./frontend/...
+	@mv bindata_assetfs.go agent/
+	$(MAKE) format
 
 TEMP_FILE = temp_parser_file
 goyacc:
@@ -58,5 +70,12 @@ vet:
 
 fmt:
 	gofmt -s -w .
+
+
+docker_rpm:
+	$(DOCKER) run -v $(shell pwd)/:/universe/src/udup --rm $(DOCKER_IMAGE) -c "cd /universe/src/udup; GOPATH=/universe make prepare package"
+
+upload:
+	curl -T $(shell pwd)/dist/*.rpm -u admin:ftpadmin ftp://release-ftpd/actiontech-${PROJECT_NAME}/qa/${VERSION}/${PROJECT_NAME}-${VERSION}-qa.x86_64.rpm
 
 .PHONY: test-short vet fmt build default
