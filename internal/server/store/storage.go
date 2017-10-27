@@ -250,15 +250,15 @@ func (s *StateStore) NodesByIDPrefix(ws memdb.WatchSet, nodeID string) (memdb.Re
 // parseNodes takes an iterator over a set of nodes and returns a struct
 // containing the nodes along with all of their associated services
 // and/or health checks.
-func (s *StateStore) parseNodes(tx *memdb.Txn,iter memdb.ResultIterator) (models.NodeDump, error) {
+func (s *StateStore) parseNodes(tx *memdb.Txn, iter memdb.ResultIterator) (models.NodeDump, error) {
 	var results models.NodeDump
 	for n := iter.Next(); n != nil; n = iter.Next() {
 		node := n.(*models.Node)
 
 		// Create the wrapped node
 		dump := &models.NodeInfo{
-			Node:            node.Name,
-			Address:         node.HTTPAddr,
+			Node:    node.Name,
+			Address: node.HTTPAddr,
 		}
 
 		// Query the node services
@@ -315,7 +315,7 @@ func (s *StateStore) NodeInfo(node string) (models.NodeDump, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed node lookup: %s", err)
 	}
-	return s.parseNodes(txn,iter)
+	return s.parseNodes(txn, iter)
 }
 
 // NodeDump is used to generate a dump of all nodes. This call is expensive
@@ -330,7 +330,7 @@ func (s *StateStore) NodeDump() (models.NodeDump, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed node lookup: %s", err)
 	}
-	return s.parseNodes(tx,nodes)
+	return s.parseNodes(tx, nodes)
 }
 
 // Nodes returns an iterator over all the nodes

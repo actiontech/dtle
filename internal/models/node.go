@@ -4,8 +4,8 @@ import (
 	"net"
 	"time"
 
-	"udup/internal"
 	"github.com/hashicorp/serf/coordinate"
+	"udup/internal"
 )
 
 const (
@@ -83,7 +83,7 @@ type NodeEvaluateRequest struct {
 // NodeSpecificRequest is used when we just need to specify a target node
 type NodeSpecificRequest struct {
 	Datacenter string
-	NodeID string
+	NodeID     string
 	QueryOptions
 }
 
@@ -227,7 +227,7 @@ func (n *Node) Stub() *NodeListStub {
 		Datacenter:        n.Datacenter,
 		Name:              n.Name,
 		Status:            n.Status,
-		HTTPAddr:n.HTTPAddr,
+		HTTPAddr:          n.HTTPAddr,
 		StatusDescription: n.StatusDescription,
 		CreateIndex:       n.CreateIndex,
 		ModifyIndex:       n.ModifyIndex,
@@ -240,7 +240,7 @@ type NodeListStub struct {
 	ID                string
 	Datacenter        string
 	Name              string
-	HTTPAddr string
+	HTTPAddr          string
 	Status            string
 	StatusDescription string
 	CreateIndex       uint64
@@ -318,7 +318,6 @@ type NodeInfo struct {
 	Checks          []*HealthCheck
 }
 
-
 // ToNodeService converts the given service node to a node service.
 func (s *ServiceNode) ToNodeService() *NodeService {
 	return &NodeService{
@@ -343,12 +342,12 @@ type CheckID string
 type HealthCheck struct {
 	Node        string
 	CheckID     CheckID // Unique per-node ID
-	Name        string        // Check name
-	Status      string        // The current check status
-	Notes       string        // Additional notes with the status
-	Output      string        // Holds output of script runs
-	ServiceID   string        // optional associated service
-	ServiceName string        // optional service name
+	Name        string  // Check name
+	Status      string  // The current check status
+	Notes       string  // Additional notes with the status
+	Output      string  // Holds output of script runs
+	ServiceID   string  // optional associated service
+	ServiceName string  // optional service name
 
 	RaftIndex
 }
@@ -412,7 +411,6 @@ type CheckServiceNode struct {
 
 type CheckServiceNodes []CheckServiceNode
 
-
 // RegisterRequest is used for the Catalog.Register endpoint
 // to register a node as providing a service. If no service
 // is provided, the node is registered.
@@ -464,7 +462,6 @@ type DCSpecificRequest struct {
 func (r *DCSpecificRequest) RequestDatacenter() string {
 	return r.Datacenter
 }
-
 
 // Coordinate stores a node name with its associated network coordinate.
 type Coordinate struct {
