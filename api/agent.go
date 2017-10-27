@@ -16,6 +16,28 @@ type Agent struct {
 	region     string
 }
 
+// AgentCheck represents a check known to the agent
+type AgentCheck struct {
+	Node        string
+	CheckID     string
+	Name        string
+	Status      string
+	Notes       string
+	Output      string
+	ServiceID   string
+	ServiceName string
+}
+
+// AgentService represents a service known to the agent
+type AgentService struct {
+	ID                string
+	Service           string
+	Tags              []string
+	Port              int
+	Address           string
+	EnableTagOverride bool
+}
+
 // Agent returns a new agent which can be used to query
 // the agent-specific endpoints.
 func (c *Client) Agent() *Agent {

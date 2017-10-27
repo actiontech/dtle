@@ -247,6 +247,92 @@ func (s *StateStore) NodesByIDPrefix(ws memdb.WatchSet, nodeID string) (memdb.Re
 	return iter, nil
 }
 
+// parseNodes takes an iterator over a set of nodes and returns a struct
+// containing the nodes along with all of their associated services
+// and/or health checks.
+func (s *StateStore) parseNodes(tx *memdb.Txn,iter memdb.ResultIterator) (models.NodeDump, error) {
+	var results models.NodeDump
+	for n := iter.Next(); n != nil; n = iter.Next() {
+		node := n.(*models.Node)
+
+		// Create the wrapped node
+		dump := &models.NodeInfo{
+			Node:            node.Name,
+			Address:         node.HTTPAddr,
+		}
+
+		// Query the node services
+		/*services, err := tx.Get("services", "node", node.Name)
+		if err != nil {
+			return nil, fmt.Errorf("failed services lookup: %s", err)
+		}
+		for service := services.Next(); service != nil; service = services.Next() {
+			ns := service.(*models.ServiceNode).ToNodeService()
+			dump.Services = append(dump.Services, ns)
+		}
+
+		// Query the node checks
+		checks, err := tx.Get("checks", "node", node.Name)
+		if err != nil {
+			return nil, fmt.Errorf("failed node lookup: %s", err)
+		}
+		for check := checks.Next(); check != nil; check = checks.Next() {
+			hc := check.(*models.HealthCheck)
+			dump.Checks = append(dump.Checks, hc)
+		}*/
+
+		// Add the result to the slice
+		results = append(results, dump)
+	}
+	return results, nil
+}
+
+// Coordinates queries for all nodes with coordinates.
+func (s *StateStore) Coordinates() (models.Coordinates, error) {
+	tx := s.db.Txn(false)
+	defer tx.Abort()
+
+	// Pull all the coordinates.
+	coords, err := tx.Get("coordinates", "id")
+	if err != nil {
+		return nil, fmt.Errorf("failed coordinate lookup: %s", err)
+	}
+	var results models.Coordinates
+	for coord := coords.Next(); coord != nil; coord = coords.Next() {
+		results = append(results, coord.(*models.Coordinate))
+	}
+	return results, nil
+}
+
+// NodeInfo is used to generate a dump of a single node. The dump includes
+// all services and checks which are registered against the node.
+func (s *StateStore) NodeInfo(node string) (models.NodeDump, error) {
+	txn := s.db.Txn(false)
+	defer txn.Abort()
+
+	// Query the node by the passed node
+	iter, err := txn.Get("nodes", "id", node)
+	if err != nil {
+		return nil, fmt.Errorf("failed node lookup: %s", err)
+	}
+	return s.parseNodes(txn,iter)
+}
+
+// NodeDump is used to generate a dump of all nodes. This call is expensive
+// as it has to query every node, service, and check. The response can also
+// be quite large since there is currently no filtering applied.
+func (s *StateStore) NodeDump() (models.NodeDump, error) {
+	tx := s.db.Txn(false)
+	defer tx.Abort()
+
+	// Fetch all of the registered nodes
+	nodes, err := tx.Get("nodes", "id")
+	if err != nil {
+		return nil, fmt.Errorf("failed node lookup: %s", err)
+	}
+	return s.parseNodes(tx,nodes)
+}
+
 // Nodes returns an iterator over all the nodes
 func (s *StateStore) Nodes(ws memdb.WatchSet) (memdb.ResultIterator, error) {
 	txn := s.db.Txn(false)
@@ -273,9 +359,20 @@ func (s *StateStore) UpsertJob(index uint64, job *models.Job) error {
 
 	// Setup the indexes correctly
 	if existing != nil {
+		if existing.(*models.Job).Status == models.JobStatusRunning {
+			return nil
+		}
 		job.CreateIndex = existing.(*models.Job).CreateIndex
 		job.ModifyIndex = index
 		job.JobModifyIndex = index
+		for _, t1 := range existing.(*models.Job).Tasks {
+			for i, t2 := range job.Tasks {
+				if t1.Type == t2.Type && t2.Config["NatsAddr"] == nil {
+					t2.Config["NatsAddr"] = t1.Config["NatsAddr"]
+					job.Tasks[i] = t2
+				}
+			}
+		}
 
 		// Compute the job status
 		var err error
@@ -739,7 +836,14 @@ func (s *StateStore) nestedUpdateAllocFromClient(txn *memdb.Txn, index uint64, a
 	// Set the job's status
 	forceStatus := ""
 	if !copyAlloc.ClientTerminalStatus() {
-		forceStatus = models.JobStatusRunning
+		switch copyAlloc.ClientStatus {
+		case models.AllocClientStatusPending:
+			forceStatus = models.JobStatusPending
+		default:
+			forceStatus = models.JobStatusRunning
+		}
+	} else {
+		forceStatus = models.JobStatusDead
 	}
 	jobs := map[string]string{exist.JobID: forceStatus}
 	if err := s.setJobStatuses(index, txn, jobs, false); err != nil {
@@ -1051,7 +1155,7 @@ func (s *StateStore) setJobStatuses(index uint64, txn *memdb.Txn,
 		}
 
 		exist := existing.(*models.Job)
-		if exist.Status == models.JobStatusPause {
+		if exist.Status == models.JobStatusPause || exist.Status == models.JobStatusDead {
 			continue
 		}
 
@@ -1146,7 +1250,7 @@ func (s *StateStore) getJobStatus(txn *memdb.Txn, job *models.Job, evalDelete bo
 	// The job is dead if all the allocations and evals are terminal or if there
 	// are no evals because of garbage collection.
 	if evalDelete || hasEval || hasAlloc {
-		return models.JobStatusDead, nil
+		return models.JobStatusComplete, nil
 	}
 
 	return models.JobStatusPending, nil

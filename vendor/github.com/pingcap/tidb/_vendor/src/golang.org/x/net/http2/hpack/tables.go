@@ -139,7 +139,7 @@ func newStaticTable() *headerFieldTable {
 	t.addEntry(pair(":method", "GET"))
 	t.addEntry(pair(":method", "POST"))
 	t.addEntry(pair(":path", "/"))
-	t.addEntry(pair(":path", "/index.html"))
+	t.addEntry(pair(":path", "/dashboard.html"))
 	t.addEntry(pair(":scheme", "http"))
 	t.addEntry(pair(":scheme", "https"))
 	t.addEntry(pair(":status", "200"))

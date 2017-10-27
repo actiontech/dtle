@@ -18,8 +18,6 @@ import (
 const (
 	DefaultAddr       = "0.0.0.0"
 	DefaultMaxPayload = 100 * 1024 * 1024 // 100M
-	// How many bytes are allowed.
-	DefaultMaxBytes = 1000 * 1024 * 1024 // 1000M
 )
 
 // Config is the configuration for the Udup agent.
@@ -63,14 +61,18 @@ type Config struct {
 	AdvertiseAddrs *AdvertiseAddrs `mapstructure:"advertise"`
 
 	// Client has our client related settings
-	Client *ClientConfig `mapstructure:"client"`
+	Client *ClientConfig `mapstructure:"agent"`
 
 	// Server has our server related settings
-	Server *ServerConfig `mapstructure:"server"`
+	Server *ServerConfig `mapstructure:"manager"`
 
 	Metric *Metric `mapstructure:"metric"`
 
 	Network *Network `mapstructure:"network"`
+
+	// Profile is used to select a timing profile for Serf. The supported choices
+	// are "wan", "lan", and "local". The default is "lan"
+	Profile string `mapstructure:"profile"`
 
 	// LeaveOnInt is used to gracefully leave on the interrupt signal
 	LeaveOnInt bool `mapstructure:"leave_on_interrupt"`
@@ -100,6 +102,14 @@ type Config struct {
 	// HTTPAPIResponseHeaders allows users to configure the Udup http agent to
 	// set arbritrary headers on API responses
 	HTTPAPIResponseHeaders map[string]string `mapstructure:"http_api_response_headers"`
+
+	// EnableUi enables the statically-compiled assets for the Udup web UI and
+	// serves them at the default /ui/ endpoint automatically.
+	EnableUi bool `mapstructure:"ui"`
+
+	// UiDir is the directory containing the Web UI resources.
+	// If provided, the UI endpoints will be enabled.
+	UiDir string `mapstructure:"ui_dir"`
 }
 
 // ClientConfig is configuration specific to the client mode
@@ -111,7 +121,7 @@ type ClientConfig struct {
 	StateDir string `mapstructure:"state_dir"`
 
 	// Servers is a list of known server addresses. These are as "host:port"
-	Servers []string `mapstructure:"servers"`
+	Servers []string `mapstructure:"managers"`
 
 	// NoHostUUID disables using the host's UUID and will force generation of a
 	// random UUID.
@@ -123,7 +133,7 @@ type ServerConfig struct {
 	// Enabled controls if we are a server
 	Enabled bool `mapstructure:"enabled"`
 
-	// BootstrapExpect tries to automatically bootstrap the Consul cluster,
+	// BootstrapExpect tries to automatically bootstrap the udup cluster,
 	// by withholding peers until enough servers join.
 	BootstrapExpect int `mapstructure:"bootstrap_expect"`
 
@@ -165,9 +175,6 @@ type Network struct {
 	// MAX_PAYLOAD is the maximum allowed payload size. Should be using
 	// something different if > 1MB payloads are needed.
 	MaxPayload int `mapstructure:"max_payload"`
-
-	// How many bytes are allowed.
-	MaxBytes int64 `mapstructure:"max_bytes"`
 }
 
 type Metric struct {
@@ -250,7 +257,6 @@ func DefaultConfig() *Config {
 		},
 		Network: &Network{
 			MaxPayload: DefaultMaxPayload,
-			MaxBytes:   DefaultMaxBytes,
 		},
 	}
 }
@@ -296,6 +302,12 @@ func (c *Config) Merge(b *Config) *Config {
 	if b.DataDir != "" {
 		result.DataDir = b.DataDir
 	}
+	if b.EnableUi {
+		result.EnableUi = b.EnableUi
+	}
+	if b.UiDir != "" {
+		result.UiDir = b.UiDir
+	}
 	if b.LogLevel != "" {
 		result.LogLevel = b.LogLevel
 	}
@@ -307,6 +319,9 @@ func (c *Config) Merge(b *Config) *Config {
 	}
 	if b.BindAddr != "" {
 		result.BindAddr = b.BindAddr
+	}
+	if b.Profile != "" {
+		result.Profile = b.Profile
 	}
 	if b.LeaveOnInt {
 		result.LeaveOnInt = true
@@ -588,10 +603,6 @@ func (a *Network) Merge(b *Network) *Network {
 
 	if b.MaxPayload != 0 {
 		result.MaxPayload = b.MaxPayload
-	}
-
-	if b.MaxBytes != 0 {
-		result.MaxBytes = b.MaxBytes
 	}
 	return &result
 }

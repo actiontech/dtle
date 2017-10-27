@@ -5,7 +5,28 @@ import (
 	"time"
 
 	"udup/internal"
+	"github.com/hashicorp/serf/coordinate"
 )
+
+const (
+	// HealthAny is special, and is used as a wild card,
+	// not as a specific state.
+	HealthPassing  = "passing"
+	HealthWarning  = "warning"
+	HealthCritical = "critical"
+)
+
+const (
+	RegisterRequestType MessageType = iota
+	DeregisterRequestType
+)
+
+// RaftIndex is used to track the index used while creating
+// or modifying a given struct type.
+type RaftIndex struct {
+	CreateIndex uint64
+	ModifyIndex uint64
+}
 
 // NodeListRequest is used to parameterize a list request
 type NodeListRequest struct {
@@ -61,6 +82,7 @@ type NodeEvaluateRequest struct {
 
 // NodeSpecificRequest is used when we just need to specify a target node
 type NodeSpecificRequest struct {
+	Datacenter string
 	NodeID string
 	QueryOptions
 }
@@ -145,6 +167,8 @@ type Node struct {
 	// requests
 	HTTPAddr string
 
+	NatsAddr string
+
 	// Attributes is an arbitrary set of key/value
 	// data that can be used for constraints. Examples
 	// include "kernel.name=linux", "arch=386", "driver.docker=1",
@@ -203,6 +227,7 @@ func (n *Node) Stub() *NodeListStub {
 		Datacenter:        n.Datacenter,
 		Name:              n.Name,
 		Status:            n.Status,
+		HTTPAddr:n.HTTPAddr,
 		StatusDescription: n.StatusDescription,
 		CreateIndex:       n.CreateIndex,
 		ModifyIndex:       n.ModifyIndex,
@@ -215,6 +240,7 @@ type NodeListStub struct {
 	ID                string
 	Datacenter        string
 	Name              string
+	HTTPAddr string
 	Status            string
 	StatusDescription string
 	CreateIndex       uint64
@@ -242,4 +268,236 @@ type ServerMember struct {
 	DelegateMin uint8
 	DelegateMax uint8
 	DelegateCur uint8
+}
+
+type Nodes []*Node
+
+// Used to return information about a provided services.
+// Maps service name to available tags
+type Services map[string][]string
+
+// ServiceNode represents a node that is part of a service. Address and
+// TaggedAddresses are node-related fields that are always empty in the state
+// store and are filled in on the way out by parseServiceNodes(). This is also
+// why PartialClone() skips them, because we know they are blank already so it
+// would be a waste of time to copy them.
+type ServiceNode struct {
+	Node                     string
+	Address                  string
+	TaggedAddresses          map[string]string
+	ServiceID                string
+	ServiceName              string
+	ServiceTags              []string
+	ServiceAddress           string
+	ServicePort              int
+	ServiceEnableTagOverride bool
+
+	RaftIndex
+}
+
+// NodeService is a service provided by a node
+type NodeService struct {
+	ID                string
+	Service           string
+	Tags              []string
+	Address           string
+	Port              int
+	EnableTagOverride bool
+
+	RaftIndex
+}
+
+// NodeInfo is used to dump all associated information about
+// a node. This is currently used for the UI only, as it is
+// rather expensive to generate.
+type NodeInfo struct {
+	Node            string
+	Address         string
+	TaggedAddresses map[string]string
+	Services        []*NodeService
+	Checks          []*HealthCheck
+}
+
+
+// ToNodeService converts the given service node to a node service.
+func (s *ServiceNode) ToNodeService() *NodeService {
+	return &NodeService{
+		ID:                s.ServiceID,
+		Service:           s.ServiceName,
+		Tags:              s.ServiceTags,
+		Address:           s.ServiceAddress,
+		Port:              s.ServicePort,
+		EnableTagOverride: s.ServiceEnableTagOverride,
+		RaftIndex: RaftIndex{
+			CreateIndex: s.CreateIndex,
+			ModifyIndex: s.ModifyIndex,
+		},
+	}
+}
+
+// CheckID is a strongly typed string used to uniquely represent a Consul
+// Check on an Agent (a CheckID is not globally unique).
+type CheckID string
+
+// HealthCheck represents a single check on a given node
+type HealthCheck struct {
+	Node        string
+	CheckID     CheckID // Unique per-node ID
+	Name        string        // Check name
+	Status      string        // The current check status
+	Notes       string        // Additional notes with the status
+	Output      string        // Holds output of script runs
+	ServiceID   string        // optional associated service
+	ServiceName string        // optional service name
+
+	RaftIndex
+}
+
+// NodeDump is used to dump all the nodes with all their
+// associated data. This is currently used for the UI only,
+// as it is rather expensive to generate.
+type NodeDump []*NodeInfo
+
+type IndexedNodes struct {
+	Nodes Nodes
+	QueryMeta
+}
+
+type IndexedServices struct {
+	Services Services
+	QueryMeta
+}
+
+type NodeServices struct {
+	Node     *Node
+	Services map[string]*NodeService
+}
+
+type ServiceNodes []*ServiceNode
+
+type HealthChecks []*HealthCheck
+
+type IndexedServiceNodes struct {
+	ServiceNodes ServiceNodes
+	QueryMeta
+}
+
+type IndexedNodeServices struct {
+	NodeServices *NodeServices
+	QueryMeta
+}
+
+type IndexedHealthChecks struct {
+	HealthChecks HealthChecks
+	QueryMeta
+}
+
+type IndexedCheckServiceNodes struct {
+	Nodes CheckServiceNodes
+	QueryMeta
+}
+
+type IndexedNodeDump struct {
+	Dump NodeDump
+	QueryMeta
+}
+
+// CheckServiceNode is used to provide the node, its service
+// definition, as well as a HealthCheck that is associated.
+type CheckServiceNode struct {
+	Node    *Node
+	Service *NodeService
+	Checks  HealthChecks
+}
+
+type CheckServiceNodes []CheckServiceNode
+
+
+// RegisterRequest is used for the Catalog.Register endpoint
+// to register a node as providing a service. If no service
+// is provided, the node is registered.
+type RegisterRequest struct {
+	Datacenter      string
+	Node            string
+	Address         string
+	TaggedAddresses map[string]string
+	Service         *NodeService
+	Check           *HealthCheck
+	Checks          HealthChecks
+	WriteRequest
+}
+
+func (r *RegisterRequest) RequestDatacenter() string {
+	return r.Datacenter
+}
+
+// DeregisterRequest is used for the Catalog.Deregister endpoint
+// to deregister a node as providing a service. If no service is
+// provided the entire node is deregistered.
+type DeregisterRequest struct {
+	Datacenter string
+	Node       string
+	ServiceID  string
+	CheckID    CheckID
+	WriteRequest
+}
+
+func (r *DeregisterRequest) RequestDatacenter() string {
+	return r.Datacenter
+}
+
+// QuerySource is used to pass along information about the source node
+// in queries so that we can adjust the response based on its network
+// coordinates.
+type QuerySource struct {
+	Datacenter string
+	Node       string
+}
+
+// DCSpecificRequest is used to query about a specific DC
+type DCSpecificRequest struct {
+	Datacenter string
+	Source     QuerySource
+	QueryOptions
+}
+
+func (r *DCSpecificRequest) RequestDatacenter() string {
+	return r.Datacenter
+}
+
+
+// Coordinate stores a node name with its associated network coordinate.
+type Coordinate struct {
+	Node  string
+	Coord *coordinate.Coordinate
+}
+
+type Coordinates []*Coordinate
+
+// IndexedCoordinates is used to represent a list of nodes and their
+// corresponding raw coordinates.
+type IndexedCoordinates struct {
+	Coordinates Coordinates
+	QueryMeta
+}
+
+// DatacenterMap is used to represent a list of nodes with their raw coordinates,
+// associated with a datacenter.
+type DatacenterMap struct {
+	Datacenter  string
+	Coordinates Coordinates
+}
+
+// CoordinateUpdateRequest is used to update the network coordinate of a given
+// node.
+type CoordinateUpdateRequest struct {
+	Datacenter string
+	Node       string
+	Coord      *coordinate.Coordinate
+	WriteRequest
+}
+
+// RequestDatacenter returns the datacenter for a given update request.
+func (c *CoordinateUpdateRequest) RequestDatacenter() string {
+	return c.Datacenter
 }

@@ -12,10 +12,11 @@ import (
 
 	"github.com/NYTimes/gziphandler"
 	"github.com/ugorji/go/codec"
-	_ "net/http/pprof"
+	"net/http/pprof"
 
 	log "udup/internal/logger"
 	umodel "udup/internal/models"
+	"strings"
 )
 
 const (
@@ -41,6 +42,7 @@ type HTTPServer struct {
 	mux      *http.ServeMux
 	listener net.Listener
 	logger   *log.Logger
+	uiDir    string
 	addr     string
 }
 
@@ -65,15 +67,10 @@ func NewHTTPServer(agent *Agent, config *Config, logOutput io.Writer) (*HTTPServ
 		mux:      mux,
 		listener: ln,
 		logger:   agent.logger,
+		uiDir:    config.UiDir,
 		addr:     ln.Addr().String(),
 	}
 	srv.registerHandlers()
-
-	if config.LogLevel == "DEBUG" {
-		go func() {
-			http.ListenAndServe("0.0.0.0:8119", nil)
-		}()
-	}
 
 	// Start the server
 	go http.Serve(ln, gziphandler.GzipHandler(mux))
@@ -105,8 +102,37 @@ func (s *HTTPServer) Shutdown() {
 	}
 }
 
+// handleFuncMetrics takes the given pattern and handler and wraps to produce
+// metrics based on the pattern and request.
+func (s *HTTPServer) handleFuncMetrics(pattern string, handler func(http.ResponseWriter, *http.Request)) {
+	// Get the parts of the pattern. We omit any initial empty for the
+	// leading slash, and put an underscore as a "thing" placeholder if we
+	// see a trailing slash, which means the part after is parsed. This lets
+	// us distinguish from things like /v1/query and /v1/query/<query id>.
+	var parts []string
+	for i, part := range strings.Split(pattern, "/") {
+		if part == "" {
+			if i == 0 {
+				continue
+			} else {
+				part = "_"
+			}
+		}
+		parts = append(parts, part)
+	}
+
+	// Register the wrapper, which will close over the expensive-to-compute
+	// parts from above.
+	wrapper := func(resp http.ResponseWriter, req *http.Request) {
+		handler(resp, req)
+	}
+	s.mux.HandleFunc(pattern, wrapper)
+}
+
 // registerHandlers is used to attach our handlers to the mux
 func (s *HTTPServer) registerHandlers() {
+	//s.mux.HandleFunc("/", s.Index)
+
 	s.mux.HandleFunc("/v1/jobs", s.wrap(s.JobsRequest))
 	s.mux.HandleFunc("/v1/job/", s.wrap(s.JobSpecificRequest))
 
@@ -119,16 +145,32 @@ func (s *HTTPServer) registerHandlers() {
 	s.mux.HandleFunc("/v1/evaluations", s.wrap(s.EvalsRequest))
 	s.mux.HandleFunc("/v1/evaluation/", s.wrap(s.EvalSpecificRequest))
 
-	s.mux.HandleFunc("/v1/client/allocation/", s.wrap(s.ClientAllocRequest))
+	s.mux.HandleFunc("/v1/agent/allocation/", s.wrap(s.ClientAllocRequest))
 
 	s.mux.HandleFunc("/v1/self", s.wrap(s.AgentSelfRequest))
 	s.mux.HandleFunc("/v1/join", s.wrap(s.AgentJoinRequest))
 	s.mux.HandleFunc("/v1/leave", s.wrap(s.AgentForceLeaveRequest))
 	s.mux.HandleFunc("/v1/members", s.wrap(s.AgentMembersRequest))
-	s.mux.HandleFunc("/v1/servers", s.wrap(s.AgentServersRequest))
+	s.mux.HandleFunc("/v1/managers", s.wrap(s.AgentServersRequest))
+
+	s.mux.HandleFunc("/v1/regions", s.wrap(s.RegionListRequest))
 
 	s.mux.HandleFunc("/v1/leader", s.wrap(s.StatusLeaderRequest))
 	s.mux.HandleFunc("/v1/peers", s.wrap(s.StatusPeersRequest))
+
+	if s.agent.config.LogLevel == "DEBUG" {
+		s.mux.HandleFunc("/debug/pprof/", pprof.Index)
+		s.mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
+		s.mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
+		s.mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
+	}
+
+	// Use the custom UI dir if provided.
+	if s.uiDir != "" {
+		s.mux.Handle("/", http.StripPrefix("/", http.FileServer(http.Dir(s.uiDir))))
+	} else if s.agent.config.EnableUi {
+		s.mux.Handle("/", http.StripPrefix("/", http.FileServer(assetFS())))
+	}
 }
 
 // HTTPCodedError is used to provide the HTTP error code
@@ -207,6 +249,11 @@ func (s *HTTPServer) wrap(handler func(resp http.ResponseWriter, req *http.Reque
 		}
 	}
 	return f
+}
+
+// Returns true if the UI is enabled.
+func (s *HTTPServer) IsUIEnabled() bool {
+	return s.uiDir != "" || s.agent.config.EnableUi
 }
 
 // decodeBody is used to decode a JSON request body
