@@ -20,7 +20,7 @@ const (
 
 	channelBufferSize = 600
 	defaultNumRetries = 5
-	defaultChunkSize  = 10000
+	defaultChunkSize  = 5000
 	defaultNumWorkers = 1
 	defaultMsgBytes   = 20 * 1024
 	defaultMsgsLimit  = 65536
