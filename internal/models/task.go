@@ -24,7 +24,7 @@ type Task struct {
 	// Type of the task
 	Type string
 
-	NodeId string
+	NodeID string
 
 	NodeName string
 

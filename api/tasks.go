@@ -7,7 +7,7 @@ import (
 // Task is a single process in a task.
 type Task struct {
 	Type     string
-	NodeId   string
+	NodeID   string
 	NodeName string
 	Driver   string
 	Config   map[string]interface{}
