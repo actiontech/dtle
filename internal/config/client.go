@@ -139,6 +139,8 @@ type MySQLDriverConfig struct {
 	PostponeCutOverFlagFile             string
 	CutOverLockTimeoutSeconds           int64
 	RowsEstimate                        int64
+	ExecQueries                         int64
+	ReceQueries                         int64
 	DeltaEstimate                       int64
 	TimeZone                            string
 

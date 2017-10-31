@@ -709,8 +709,7 @@ func (e *Extractor) validateAndReadTimeZone() error {
 func (e *Extractor) CountTableRows(tableSchema, tableName string) (int64, error) {
 	atomic.StoreInt64(&e.mysqlContext.CountingRowsFlag, 1)
 	defer atomic.StoreInt64(&e.mysqlContext.CountingRowsFlag, 0)
-
-	e.logger.Printf("mysql.extractor: As instructed, I'm issuing a SELECT COUNT(*) on the table. This may take a while")
+	//e.logger.Debugf("mysql.extractor: As instructed, I'm issuing a SELECT COUNT(*) on the table. This may take a while")
 
 	query := fmt.Sprintf(`select count(*) as rows from %s.%s`, sql.EscapeName(tableSchema), sql.EscapeName(tableName))
 	var rowsEstimate int64
@@ -721,7 +720,7 @@ func (e *Extractor) CountTableRows(tableSchema, tableName string) (int64, error)
 	//e.mysqlContext.UsedRowsEstimateMethod = base.CountRowsEstimate
 
 	e.mysqlContext.Stage = models.StageSearchingRowsForUpdate
-	e.logger.Printf("mysql.extractor: Exact number of rows via COUNT: %d", rowsEstimate)
+	e.logger.Printf("mysql.extractor: Exact number of rows(%s.%s) via COUNT: %d", tableSchema, tableName, rowsEstimate)
 	return rowsEstimate, nil
 }
 

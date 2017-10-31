@@ -174,6 +174,10 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 				sqls, ok, err := resolveDDLSQL(query)
 				if err != nil {
 					b.logger.Debugf("mysql.reader: Parse query [%v] event failed: %v", query, err)
+					if b.skipQueryDDL(query, string(evt.Schema)) {
+						b.logger.Debugf("mysql.reader: skip QueryEvent at schema: %s,sql: %s", evt.Schema, query)
+						return nil
+					}
 				}
 				if !ok {
 					event := NewQueryEvent(
@@ -190,7 +194,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 				for _, sql := range sqls {
 					if b.skipQueryDDL(sql, string(evt.Schema)) {
 						//b.logger.Debugf("mysql.reader: Skip QueryEvent at schema: %s,sql: %s", fmt.Sprintf("%s", evt.Schema), sql)
-						continue
+						return nil
 					}
 
 					event := NewQueryEvent(
@@ -485,7 +489,7 @@ func (b *BinlogReader) handleBinlogRowsEvent(ev *replication.BinlogEvent, txChan
 
 				for _, sql := range sqls {
 					if b.skipQueryDDL(sql, string(evt.Schema)) {
-						//b.logger.Debugf("mysql.reader: skip QueryEvent at schema: %s,sql: %s", fmt.Sprintf("%s", evt.Schema), sql)
+						b.logger.Debugf("mysql.reader: skip QueryEvent at schema: %s,sql: %s", fmt.Sprintf("%s", evt.Schema), sql)
 						continue
 					}
 
@@ -835,9 +839,9 @@ func parserDDLTableName(sql string) (config.Table, error) {
 func (b *BinlogReader) skipQueryDDL(sql string, schema string) bool {
 	t, err := parserDDLTableName(sql)
 	if err != nil {
+		b.logger.Errorf("mysql.reader: parser ddl err:%v", err)
 		return false
 	}
-
 	switch strings.ToLower(schema) {
 	case "sys", "mysql", "information_schema", "performance_schema":
 		return true
@@ -851,7 +855,6 @@ func (b *BinlogReader) skipQueryDDL(sql string, schema string) bool {
 			if b.matchTable(b.mysqlContext.ReplicateDoDb, t) {
 				return false
 			}
-
 			return true
 		}
 	}

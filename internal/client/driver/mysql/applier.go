@@ -601,6 +601,7 @@ func (a *Applier) executeWriteFuncs() {
 							}
 						}()
 					}
+					atomic.AddInt64(&a.mysqlContext.ExecQueries, 1)
 
 					/*a.logger.Printf("mysql.applier: operating until row copy is complete")
 					a.consumeRowCopyComplete()
@@ -626,7 +627,7 @@ func (a *Applier) executeWriteFuncs() {
 		a.logger.Printf("mysql.applier: Operating until row copy is complete")
 		a.mysqlContext.Stage = models.StageSlaveWaitingForWorkersToProcessQueue
 		for {
-			if a.mysqlContext.RowsEstimate != 0 && a.mysqlContext.TotalRowsCopied == a.mysqlContext.RowsEstimate {
+			if a.mysqlContext.ReceQueries != 0 && a.mysqlContext.ReceQueries == a.mysqlContext.ExecQueries && a.mysqlContext.TotalRowsCopied == a.mysqlContext.RowsEstimate {
 				a.logger.Printf("mysql.applier: Rows copy complete.number of rows:%d", a.mysqlContext.RowsEstimate)
 				break
 			}
@@ -737,6 +738,7 @@ func (a *Applier) initiateStreaming() error {
 			if err := a.natsConn.Publish(m.Reply, nil); err != nil {
 				a.onError(TaskStateDead, err)
 			}
+			atomic.AddInt64(&a.mysqlContext.ReceQueries, 1)
 		})
 		if err != nil {
 			return err
@@ -752,7 +754,7 @@ func (a *Applier) initiateStreaming() error {
 			if err := Decode(m.Data, &binlogEntry); err != nil {
 				a.onError(TaskStateDead, err)
 			}
-			//a.logger.Debugf("mysql.applier: received binlogEntry GNO: %+v,LastCommitted:%+v", binlogEntry.Coordinates.GNO,binlogEntry.Coordinates.LastCommitted)
+			a.logger.Debugf("mysql.applier: received binlogEntry GNO: %+v,LastCommitted:%+v", binlogEntry.Coordinates.GNO, binlogEntry.Coordinates.LastCommitted)
 			//for _, entry := range binlogEntry {
 			a.applyDataEntryQueue <- binlogEntry
 			a.currentCoordinates.RetrievedGtidSet = fmt.Sprintf("%s:%d", binlogEntry.Coordinates.SID, binlogEntry.Coordinates.GNO)

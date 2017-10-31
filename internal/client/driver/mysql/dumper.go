@@ -93,10 +93,10 @@ func (d *dumper) getDumpEntries() ([]*dumpEntry, error) {
 		case umconf.FloatColumnType, umconf.DoubleColumnType,
 			umconf.MediumIntColumnType, umconf.BigIntColumnType,
 			umconf.DecimalColumnType:
-			columns = append(columns, fmt.Sprintf("%s+0", col.Name))
+			columns = append(columns, fmt.Sprintf("`%s`+0", col.Name))
 			needPm = true
 		default:
-			columns = append(columns, col.Name)
+			columns = append(columns, fmt.Sprintf("`%s`", col.Name))
 		}
 	}
 	if needPm {
@@ -152,7 +152,7 @@ func (d *dumper) getChunkData(e *dumpEntry) error {
 	}
 
 	data := make([]string, 0)
-	packetLen := 0
+	//packetLen := 0
 	for rows.Next() {
 		err = rows.Scan(scanArgs...)
 		if err != nil {
@@ -164,12 +164,12 @@ func (d *dumper) getChunkData(e *dumpEntry) error {
 			// Here we can check if the value is nil (NULL value)
 			if col != nil {
 				vals = append(vals, fmt.Sprintf("'%s'", usql.EscapeValue(string(*col))))
-				packetLen += len(usql.EscapeValue(string(*col)))
+				/*packetLen += len(usql.EscapeValue(string(*col)))
 				if packetLen > 3000000 {
 					entry.Values = append(entry.Values, data)
 					packetLen = 0
 					data = []string{}
-				}
+				}*/
 			} else {
 				vals = append(vals, "NULL")
 			}
