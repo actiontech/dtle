@@ -857,6 +857,16 @@ func (b *BinlogReader) skipQueryDDL(sql string, schema string) bool {
 			}
 			return true
 		}
+		if len(b.mysqlContext.ReplicateIgnoreDb) > 0 {
+			if t.TableSchema == "" {
+				t.TableSchema = schema
+			}
+
+			if b.matchTable(b.mysqlContext.ReplicateIgnoreDb, t) {
+				return true
+			}
+			return false
+		}
 	}
 	return false
 }
@@ -911,6 +921,23 @@ func (b *BinlogReader) skipEvent(schema string, table string) bool {
 			}
 			return true
 		}
+		if len(b.mysqlContext.ReplicateIgnoreDb) > 0 {
+			table = strings.ToLower(table)
+			//if table in tartget Table, do this event
+			for _, d := range b.mysqlContext.ReplicateIgnoreDb {
+				if b.matchString(d.TableSchema, schema) || d.TableSchema == "" {
+					if len(d.Tables) == 0 {
+						return true
+					}
+					for _, dt := range d.Tables {
+						if b.matchString(dt.TableName, table) {
+							return true
+						}
+					}
+				}
+			}
+			return false
+		}
 	}
 	return false
 }
@@ -939,6 +966,23 @@ func (b *BinlogReader) skipRowEvent(rowsEvent *replication.RowsEvent) bool {
 				}
 			}
 			return true
+		}
+		if len(b.mysqlContext.ReplicateIgnoreDb) > 0 {
+			table := strings.ToLower(string(rowsEvent.Table.Table))
+			//if table in tartget Table, do this event
+			for _, d := range b.mysqlContext.ReplicateIgnoreDb {
+				if b.matchString(d.TableSchema, string(rowsEvent.Table.Schema)) || d.TableSchema == "" {
+					if len(d.Tables) == 0 {
+						return true
+					}
+					for _, dt := range d.Tables {
+						if b.matchString(dt.TableName, table) {
+							return true
+						}
+					}
+				}
+			}
+			return false
 		}
 	}
 	return false

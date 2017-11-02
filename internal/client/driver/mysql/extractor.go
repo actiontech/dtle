@@ -495,11 +495,19 @@ func (e *Extractor) inspectTables() (err error) {
 			ds := &config.DataSource{
 				TableSchema: dbName,
 			}
+			if len(e.mysqlContext.ReplicateIgnoreDb) > 0 && e.ignoreDb(dbName) {
+				continue
+			}
+
 			tbs, err := showTables(e.db, dbName)
 			if err != nil {
 				return err
 			}
+
 			for _, tb := range tbs {
+				if len(e.mysqlContext.ReplicateIgnoreDb) > 0 && e.ignoreTb(dbName, tb.TableName) {
+					continue
+				}
 				if err := e.inspector.ValidateOriginalTable(dbName, tb.TableName); err != nil {
 					e.logger.Warnf("mysql.extractor: %v", err)
 					continue
@@ -511,6 +519,27 @@ func (e *Extractor) inspectTables() (err error) {
 	}
 
 	return nil
+}
+func (e *Extractor) ignoreDb(dbName string) bool {
+	for _, ignoreDb := range e.mysqlContext.ReplicateIgnoreDb {
+		if ignoreDb.TableSchema == dbName && len(ignoreDb.Tables) == 0 {
+			return true
+		}
+	}
+	return false
+}
+
+func (e *Extractor) ignoreTb(dbName, tbName string) bool {
+	for _, ignoreDb := range e.mysqlContext.ReplicateIgnoreDb {
+		if ignoreDb.TableSchema == dbName {
+			for _, ignoreTb := range ignoreDb.Tables {
+				if ignoreTb.TableName == tbName {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }
 
 // readTableColumns reads table columns on applier
@@ -1283,10 +1312,11 @@ func (e *Extractor) Stats() (*models.TaskStatistics, error) {
 func (e *Extractor) ID() string {
 	id := config.DriverCtx{
 		DriverConfig: &config.MySQLDriverConfig{
-			//ReplicateDoDb:    e.mysqlContext.ReplicateDoDb,
-			Gtid:             e.mysqlContext.Gtid,
-			NatsAddr:         e.mysqlContext.NatsAddr,
-			ConnectionConfig: e.mysqlContext.ConnectionConfig,
+			ReplicateDoDb:     e.mysqlContext.ReplicateDoDb,
+			ReplicateIgnoreDb: e.mysqlContext.ReplicateIgnoreDb,
+			Gtid:              e.mysqlContext.Gtid,
+			NatsAddr:          e.mysqlContext.NatsAddr,
+			ConnectionConfig:  e.mysqlContext.ConnectionConfig,
 		},
 	}
 

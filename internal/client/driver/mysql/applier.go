@@ -179,7 +179,7 @@ func (a *Applier) validateStatement(doTb *config.Table) (err error) {
 func (a *Applier) Run() {
 	a.logger.Printf("mysql.applier: Apply binlog events to %s.%d", a.mysqlContext.ConnectionConfig.Host, a.mysqlContext.ConnectionConfig.Port)
 	a.mysqlContext.StartTime = time.Now()
-	for _, doDb := range a.mysqlContext.ReplicateDoDb {
+	/*for _, doDb := range a.mysqlContext.ReplicateDoDb {
 		for _, doTb := range doDb.Tables {
 			if err := a.parser.ParseAlterStatement(doTb.AlterStatement); err != nil {
 				a.onError(TaskStateDead, err)
@@ -190,7 +190,7 @@ func (a *Applier) Run() {
 				return
 			}
 		}
-	}
+	}*/
 	if err := a.initDBConnections(); err != nil {
 		a.onError(TaskStateDead, err)
 		return
@@ -1836,11 +1836,12 @@ func (a *Applier) Stats() (*models.TaskStatistics, error) {
 func (a *Applier) ID() string {
 	id := config.DriverCtx{
 		DriverConfig: &config.MySQLDriverConfig{
-			ReplicateDoDb:    a.mysqlContext.ReplicateDoDb,
-			Gtid:             a.mysqlContext.Gtid,
-			NatsAddr:         a.mysqlContext.NatsAddr,
-			ParallelWorkers:  a.mysqlContext.ParallelWorkers,
-			ConnectionConfig: a.mysqlContext.ConnectionConfig,
+			ReplicateDoDb:     a.mysqlContext.ReplicateDoDb,
+			ReplicateIgnoreDb: a.mysqlContext.ReplicateIgnoreDb,
+			Gtid:              a.mysqlContext.Gtid,
+			NatsAddr:          a.mysqlContext.NatsAddr,
+			ParallelWorkers:   a.mysqlContext.ParallelWorkers,
+			ConnectionConfig:  a.mysqlContext.ConnectionConfig,
 		},
 	}
 
