@@ -165,7 +165,7 @@ func (d *dumper) getChunkData(e *dumpEntry) error {
 			if col != nil {
 				vals = append(vals, fmt.Sprintf("'%s'", usql.EscapeValue(string(*col))))
 				/*packetLen += len(usql.EscapeValue(string(*col)))
-				if packetLen > 3000000 {
+				if packetLen > 2000000 {
 					entry.Values = append(entry.Values, data)
 					packetLen = 0
 					data = []string{}

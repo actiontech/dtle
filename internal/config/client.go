@@ -20,7 +20,8 @@ const (
 
 	channelBufferSize = 600
 	defaultNumRetries = 5
-	defaultChunkSize  = 5000
+	defaultConcurrency  = 10
+	defaultChunkSize  = 2000
 	defaultNumWorkers = 1
 	defaultMsgBytes   = 20 * 1024
 	defaultMsgsLimit  = 65536
@@ -133,6 +134,7 @@ type MySQLDriverConfig struct {
 	SkipRenamedColumns                  bool
 	MaxRetries                          int64
 	ChunkSize                           int64
+	Concurrency                         int
 	niceRatio                           float64
 	MaxLagMillisecondsThrottleThreshold int64
 	maxLoad                             umconf.LoadMap
@@ -188,6 +190,9 @@ func (a *MySQLDriverConfig) SetDefault() *MySQLDriverConfig {
 	}
 	if result.ChunkSize <= 0 {
 		result.ChunkSize = defaultChunkSize
+	}
+	if result.Concurrency <= 0 {
+		result.Concurrency = defaultConcurrency
 	}
 	if result.ReplChanBufferSize <= 0 {
 		result.ReplChanBufferSize = channelBufferSize

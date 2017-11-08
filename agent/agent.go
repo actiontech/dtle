@@ -183,7 +183,7 @@ func (a *Agent) clientConfig() (*uconf.ClientConfig, error) {
 	conf.Node.Name = a.config.NodeName
 
 	// Set up the HTTP advertise address
-	conf.Node.HTTPAddr = a.config.AdvertiseAddrs.HTTP
+	conf.Node.HTTPAddr = fmt.Sprintf("%s:%d", a.config.BindAddr, a.config.Ports.HTTP)//a.config.AdvertiseAddrs.HTTP
 	conf.Node.NatsAddr = fmt.Sprintf("%s:%d", a.config.BindAddr, a.config.Ports.Nats)
 
 	conf.Version = a.config.Version

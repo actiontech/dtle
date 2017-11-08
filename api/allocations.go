@@ -63,7 +63,7 @@ func (a *Allocations) Stats(alloc *Allocation, q *QueryOptions) (*AllocStatistic
 		return nil, err
 	}
 	var resp AllocStatistics
-	_, err = client.query("/v1/client/allocation/"+alloc.ID+"/stats", &resp, nil)
+	_, err = client.query("/v1/agent/allocation/"+alloc.ID+"/stats", &resp, nil)
 	return &resp, err
 }
 
@@ -84,7 +84,7 @@ func (a *Allocations) GC(alloc *Allocation, q *QueryOptions) error {
 	}
 
 	var resp struct{}
-	_, err = client.query("/v1/client/allocation"+alloc.ID+"/gc", &resp, nil)
+	_, err = client.query("/v1/agent/allocation"+alloc.ID+"/gc", &resp, nil)
 	return err
 }
 

@@ -12,6 +12,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"strconv"
 
 	"github.com/golang/snappy"
 	gonats "github.com/nats-io/go-nats"
@@ -749,7 +750,7 @@ func (e *Extractor) CountTableRows(tableSchema, tableName string) (int64, error)
 	//e.mysqlContext.UsedRowsEstimateMethod = base.CountRowsEstimate
 
 	e.mysqlContext.Stage = models.StageSearchingRowsForUpdate
-	e.logger.Printf("mysql.extractor: Exact number of rows(%s.%s) via COUNT: %d", tableSchema, tableName, rowsEstimate)
+	e.logger.Debugf("mysql.extractor: Exact number of rows(%s.%s) via COUNT: %d", tableSchema, tableName, rowsEstimate)
 	return rowsEstimate, nil
 }
 
@@ -1275,7 +1276,7 @@ func (e *Extractor) Stats() (*models.TaskStatistics, error) {
 		ExecMasterTxCount:  deltaEstimate,
 		ReadMasterRowCount: rowsEstimate,
 		ReadMasterTxCount:  deltaEstimate,
-		ProgressPct:        progressPct,
+		ProgressPct:        strconv.FormatFloat(progressPct,'f',1,64),
 		ETA:                eta,
 		Backlog:            fmt.Sprintf("%d/%d", len(e.dataChannel), cap(e.dataChannel)),
 		Stage:              e.mysqlContext.Stage,
