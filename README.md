@@ -62,15 +62,15 @@ configuration options.
 
 ## MySQL privileges
 * select @@global.log_bin, @@global.binlog_format;
-<br>1 ROW
+<br>1 row
 * select @@global.binlog_row_image;
-<br>FULL
+<br>full
 * select @@global.log_slave_updates;
 <br>1
-* SELECT @@GTID_MODE;
-<br>ON
+* select @@gtid_mode;
+<br>on
 * show grants for current_user();
-<br>SRC:SELECT,REPLICATION CLIENT,REPLICATION SLAVE
-<br>DEST:ALTER,CREATE,DELETE,DROP,INDEX,INSERT,LOCK TABLES,SELECT,TRIGGER,UPDATE,ALL PRIVILEGES ON `actiontech_udup`.`gtid_executed`|SUPER
+<br>Src:select,replication client,replication slave
+<br>Dest:alter,create,delete,drop,index,insert,lock tables,select,trigger,update,all privileges on `actiontech_udup`.`gtid_executed`|super
 
 ## Todo

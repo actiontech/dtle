@@ -257,7 +257,7 @@ func ApiJobToStructJob(job *api.Job) *models.Job {
 	j.Tasks = make([]*models.Task, len(job.Tasks))
 	cfg := ""
 	for _, task := range job.Tasks {
-		if task.Type == models.TaskTypeSrc {
+		if task.Type == models.TaskTypeSrc && task.Config["Gtid"] != nil {
 			cfg = fmt.Sprintf("%s", task.Config["Gtid"])
 		}
 	}
@@ -279,7 +279,7 @@ func ApiJobToStructJob(job *api.Job) *models.Job {
 
 func ApiTaskToStructsTask(apiTask *api.Task, structsTask *models.Task) {
 	structsTask.Type = apiTask.Type
-	structsTask.NodeId = apiTask.NodeId
+	structsTask.NodeID = apiTask.NodeID
 	structsTask.NodeName = apiTask.NodeName
 	structsTask.Driver = apiTask.Driver
 	structsTask.Leader = apiTask.Leader

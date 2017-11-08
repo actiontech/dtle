@@ -1085,3 +1085,39 @@ func TestApplier_onDone(t *testing.T) {
 		})
 	}
 }
+
+func TestApplier_onApplyTxStructWithSuper(t *testing.T) {
+	type args struct {
+		dbApplier *sql.DB
+		binlogTx  *binlog.BinlogTx
+	}
+	tests := []struct {
+		name    string
+		a       *Applier
+		args    args
+		wantErr bool
+	}{
+	// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if err := tt.a.onApplyTxStructWithSuper(tt.args.dbApplier, tt.args.binlogTx); (err != nil) != tt.wantErr {
+				t.Errorf("Applier.onApplyTxStructWithSuper() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestApplier_Test008ProvidesFlowControlToThrottleOverSending(t *testing.T) {
+	tests := []struct {
+		name string
+		a    *Applier
+	}{
+	// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.a.Test008ProvidesFlowControlToThrottleOverSending()
+		})
+	}
+}

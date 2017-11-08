@@ -64,7 +64,7 @@ type TaskStatistics struct {
 	CurrentCoordinates *CurrentCoordinates
 	TableStats         *TableStats
 	DelayCount         *DelayCount
-	ProgressPct        float64
+	ProgressPct        string
 	ExecMasterRowCount int64
 	ExecMasterTxCount  int64
 	ReadMasterRowCount int64

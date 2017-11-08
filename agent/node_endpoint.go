@@ -29,6 +29,10 @@ func (s *HTTPServer) NodesRequest(resp http.ResponseWriter, req *http.Request) (
 	return out.Nodes, nil
 }
 
+func (s *HTTPServer) DcsRequest(resp http.ResponseWriter, req *http.Request) (interface{}, error) {
+	return s.agent.config.Datacenter, nil
+}
+
 func (s *HTTPServer) NodeSpecificRequest(resp http.ResponseWriter, req *http.Request) (interface{}, error) {
 	path := strings.TrimPrefix(req.URL.Path, "/v1/node/")
 	switch {

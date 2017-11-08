@@ -13,6 +13,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"strconv"
 
 	"github.com/golang/snappy"
 	gonats "github.com/nats-io/go-nats"
@@ -179,7 +180,7 @@ func (a *Applier) validateStatement(doTb *config.Table) (err error) {
 func (a *Applier) Run() {
 	a.logger.Printf("mysql.applier: Apply binlog events to %s.%d", a.mysqlContext.ConnectionConfig.Host, a.mysqlContext.ConnectionConfig.Port)
 	a.mysqlContext.StartTime = time.Now()
-	for _, doDb := range a.mysqlContext.ReplicateDoDb {
+	/*for _, doDb := range a.mysqlContext.ReplicateDoDb {
 		for _, doTb := range doDb.Tables {
 			if err := a.parser.ParseAlterStatement(doTb.AlterStatement); err != nil {
 				a.onError(TaskStateDead, err)
@@ -190,7 +191,7 @@ func (a *Applier) Run() {
 				return
 			}
 		}
-	}
+	}*/
 	if err := a.initDBConnections(); err != nil {
 		a.onError(TaskStateDead, err)
 		return
@@ -601,6 +602,7 @@ func (a *Applier) executeWriteFuncs() {
 							}
 						}()
 					}
+					atomic.AddInt64(&a.mysqlContext.ExecQueries, 1)
 
 					/*a.logger.Printf("mysql.applier: operating until row copy is complete")
 					a.consumeRowCopyComplete()
@@ -626,7 +628,7 @@ func (a *Applier) executeWriteFuncs() {
 		a.logger.Printf("mysql.applier: Operating until row copy is complete")
 		a.mysqlContext.Stage = models.StageSlaveWaitingForWorkersToProcessQueue
 		for {
-			if a.mysqlContext.RowsEstimate != 0 && a.mysqlContext.TotalRowsCopied == a.mysqlContext.RowsEstimate {
+			if a.mysqlContext.ReceQueries != 0 && a.mysqlContext.ReceQueries == a.mysqlContext.ExecQueries && a.mysqlContext.TotalRowsCopied == a.mysqlContext.RowsEstimate {
 				a.logger.Printf("mysql.applier: Rows copy complete.number of rows:%d", a.mysqlContext.RowsEstimate)
 				break
 			}
@@ -737,6 +739,7 @@ func (a *Applier) initiateStreaming() error {
 			if err := a.natsConn.Publish(m.Reply, nil); err != nil {
 				a.onError(TaskStateDead, err)
 			}
+			atomic.AddInt64(&a.mysqlContext.ReceQueries, 1)
 		})
 		if err != nil {
 			return err
@@ -752,7 +755,7 @@ func (a *Applier) initiateStreaming() error {
 			if err := Decode(m.Data, &binlogEntry); err != nil {
 				a.onError(TaskStateDead, err)
 			}
-			//a.logger.Debugf("mysql.applier: received binlogEntry GNO: %+v,LastCommitted:%+v", binlogEntry.Coordinates.GNO,binlogEntry.Coordinates.LastCommitted)
+			a.logger.Debugf("mysql.applier: received binlogEntry GNO: %+v,LastCommitted:%+v", binlogEntry.Coordinates.GNO, binlogEntry.Coordinates.LastCommitted)
 			//for _, entry := range binlogEntry {
 			a.applyDataEntryQueue <- binlogEntry
 			a.currentCoordinates.RetrievedGtidSet = fmt.Sprintf("%s:%d", binlogEntry.Coordinates.SID, binlogEntry.Coordinates.GNO)
@@ -1813,7 +1816,7 @@ func (a *Applier) Stats() (*models.TaskStatistics, error) {
 		ExecMasterTxCount:  totalDeltaCopied,
 		ReadMasterRowCount: rowsEstimate,
 		ReadMasterTxCount:  deltaEstimate,
-		ProgressPct:        progressPct,
+		ProgressPct:        strconv.FormatFloat(progressPct,'f',1,64),
 		ETA:                eta,
 		Backlog:            backlog,
 		Stage:              a.mysqlContext.Stage,
@@ -1834,11 +1837,12 @@ func (a *Applier) Stats() (*models.TaskStatistics, error) {
 func (a *Applier) ID() string {
 	id := config.DriverCtx{
 		DriverConfig: &config.MySQLDriverConfig{
-			ReplicateDoDb:    a.mysqlContext.ReplicateDoDb,
-			Gtid:             a.mysqlContext.Gtid,
-			NatsAddr:         a.mysqlContext.NatsAddr,
-			ParallelWorkers:  a.mysqlContext.ParallelWorkers,
-			ConnectionConfig: a.mysqlContext.ConnectionConfig,
+			ReplicateDoDb:     a.mysqlContext.ReplicateDoDb,
+			ReplicateIgnoreDb: a.mysqlContext.ReplicateIgnoreDb,
+			Gtid:              a.mysqlContext.Gtid,
+			NatsAddr:          a.mysqlContext.NatsAddr,
+			ParallelWorkers:   a.mysqlContext.ParallelWorkers,
+			ConnectionConfig:  a.mysqlContext.ConnectionConfig,
 		},
 	}
 

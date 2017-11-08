@@ -21,6 +21,7 @@ PACKAGE_NAME = "udup"
 INSTALL_ROOT_DIR = "/usr/bin"
 LOG_DIR = "/var/log/udup"
 SCRIPT_DIR = "/usr/lib/udup/scripts"
+FRONTEND_DIR = "/usr/lib/udup/frontend"
 CONFIG_DIR = "/etc/udup"
 LOGROTATE_DIR = "/etc/logrotate.d"
 
@@ -123,6 +124,10 @@ def package_scripts(build_root, config_only=False, windows=False):
         os.chmod(os.path.join(build_root, LOGROTATE_DIR[1:], "udup"), 0o644)
         shutil.copyfile(DEFAULT_CONFIG, os.path.join(build_root, CONFIG_DIR[1:], "udup.conf"))
         os.chmod(os.path.join(build_root, CONFIG_DIR[1:], "udup.conf"), 0o644)
+
+        shutil.copytree("frontend/", os.path.join(build_root, FRONTEND_DIR[1:]),symlinks=False, ignore=None)
+        os.chmod(os.path.join(build_root, FRONTEND_DIR[1:]), 0o644)
+
 
 def run_generate():
     # NOOP for Udup
@@ -729,7 +734,7 @@ if __name__ == '__main__':
     logging.basicConfig(level=LOG_LEVEL,
                         format=log_format)
 
-    parser = argparse.ArgumentParser(description='InfluxDB build and packaging script.')
+    parser = argparse.ArgumentParser(description='Udup build and packaging script.')
     parser.add_argument('--verbose','-v','--debug',
                         action='store_true',
                         help='Use debug output')
@@ -775,15 +780,15 @@ if __name__ == '__main__':
                         help='Package iteration to apply to build output (defaults to 1)')
     parser.add_argument('--stats',
                         action='store_true',
-                        help='Emit build metrics (requires InfluxDB Python client)')
+                        help='Emit build metrics (requires Udup Python client)')
     parser.add_argument('--stats-server',
                         metavar='<hostname:port>',
                         type=str,
-                        help='Send build stats to InfluxDB using provided hostname and port')
+                        help='Send build stats to Udup using provided hostname and port')
     parser.add_argument('--stats-db',
                         metavar='<database name>',
                         type=str,
-                        help='Send build stats to InfluxDB using provided database name')
+                        help='Send build stats to Udup using provided database name')
     parser.add_argument('--nightly',
                         action='store_true',
                         help='Mark build output as nightly build (will incremement the minor version)')

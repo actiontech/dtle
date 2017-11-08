@@ -30,6 +30,12 @@ build-windows:
 		"-X main.Version=$(VERSION) -X main.GitCommit=$(COMMIT) -X main.GitBranch=$(BRANCH)" \
 		./cmd/udup/main.go
 
+# generates the static web ui that's compiled into the binary
+static-assets:
+	@go-bindata-assetfs -pkg agent -prefix pkg ./frontend/...
+	@mv bindata_assetfs.go agent/
+	$(MAKE) format
+
 TEMP_FILE = temp_parser_file
 goyacc:
 	go build -o $(GOROOT)/bin/goyacc vendor/github.com/pingcap/tidb/parser/goyacc/main.go

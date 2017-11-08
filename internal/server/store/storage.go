@@ -247,6 +247,92 @@ func (s *StateStore) NodesByIDPrefix(ws memdb.WatchSet, nodeID string) (memdb.Re
 	return iter, nil
 }
 
+// parseNodes takes an iterator over a set of nodes and returns a struct
+// containing the nodes along with all of their associated services
+// and/or health checks.
+func (s *StateStore) parseNodes(tx *memdb.Txn, iter memdb.ResultIterator) (models.NodeDump, error) {
+	var results models.NodeDump
+	for n := iter.Next(); n != nil; n = iter.Next() {
+		node := n.(*models.Node)
+
+		// Create the wrapped node
+		dump := &models.NodeInfo{
+			Node:    node.Name,
+			Address: node.HTTPAddr,
+		}
+
+		// Query the node services
+		/*services, err := tx.Get("services", "node", node.Name)
+		if err != nil {
+			return nil, fmt.Errorf("failed services lookup: %s", err)
+		}
+		for service := services.Next(); service != nil; service = services.Next() {
+			ns := service.(*models.ServiceNode).ToNodeService()
+			dump.Services = append(dump.Services, ns)
+		}
+
+		// Query the node checks
+		checks, err := tx.Get("checks", "node", node.Name)
+		if err != nil {
+			return nil, fmt.Errorf("failed node lookup: %s", err)
+		}
+		for check := checks.Next(); check != nil; check = checks.Next() {
+			hc := check.(*models.HealthCheck)
+			dump.Checks = append(dump.Checks, hc)
+		}*/
+
+		// Add the result to the slice
+		results = append(results, dump)
+	}
+	return results, nil
+}
+
+// Coordinates queries for all nodes with coordinates.
+func (s *StateStore) Coordinates() (models.Coordinates, error) {
+	tx := s.db.Txn(false)
+	defer tx.Abort()
+
+	// Pull all the coordinates.
+	coords, err := tx.Get("coordinates", "id")
+	if err != nil {
+		return nil, fmt.Errorf("failed coordinate lookup: %s", err)
+	}
+	var results models.Coordinates
+	for coord := coords.Next(); coord != nil; coord = coords.Next() {
+		results = append(results, coord.(*models.Coordinate))
+	}
+	return results, nil
+}
+
+// NodeInfo is used to generate a dump of a single node. The dump includes
+// all services and checks which are registered against the node.
+func (s *StateStore) NodeInfo(node string) (models.NodeDump, error) {
+	txn := s.db.Txn(false)
+	defer txn.Abort()
+
+	// Query the node by the passed node
+	iter, err := txn.Get("nodes", "id", node)
+	if err != nil {
+		return nil, fmt.Errorf("failed node lookup: %s", err)
+	}
+	return s.parseNodes(txn, iter)
+}
+
+// NodeDump is used to generate a dump of all nodes. This call is expensive
+// as it has to query every node, service, and check. The response can also
+// be quite large since there is currently no filtering applied.
+func (s *StateStore) NodeDump() (models.NodeDump, error) {
+	tx := s.db.Txn(false)
+	defer tx.Abort()
+
+	// Fetch all of the registered nodes
+	nodes, err := tx.Get("nodes", "id")
+	if err != nil {
+		return nil, fmt.Errorf("failed node lookup: %s", err)
+	}
+	return s.parseNodes(tx, nodes)
+}
+
 // Nodes returns an iterator over all the nodes
 func (s *StateStore) Nodes(ws memdb.WatchSet) (memdb.ResultIterator, error) {
 	txn := s.db.Txn(false)

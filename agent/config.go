@@ -102,6 +102,14 @@ type Config struct {
 	// HTTPAPIResponseHeaders allows users to configure the Udup http agent to
 	// set arbritrary headers on API responses
 	HTTPAPIResponseHeaders map[string]string `mapstructure:"http_api_response_headers"`
+
+	// EnableUi enables the statically-compiled assets for the Udup web UI and
+	// serves them at the default /ui/ endpoint automatically.
+	EnableUi bool `mapstructure:"ui"`
+
+	// UiDir is the directory containing the Web UI resources.
+	// If provided, the UI endpoints will be enabled.
+	UiDir string `mapstructure:"ui_dir"`
 }
 
 // ClientConfig is configuration specific to the client mode
@@ -125,7 +133,7 @@ type ServerConfig struct {
 	// Enabled controls if we are a server
 	Enabled bool `mapstructure:"enabled"`
 
-	// BootstrapExpect tries to automatically bootstrap the Consul cluster,
+	// BootstrapExpect tries to automatically bootstrap the udup cluster,
 	// by withholding peers until enough servers join.
 	BootstrapExpect int `mapstructure:"bootstrap_expect"`
 
@@ -293,6 +301,12 @@ func (c *Config) Merge(b *Config) *Config {
 	}
 	if b.DataDir != "" {
 		result.DataDir = b.DataDir
+	}
+	if b.EnableUi {
+		result.EnableUi = b.EnableUi
+	}
+	if b.UiDir != "" {
+		result.UiDir = b.UiDir
 	}
 	if b.LogLevel != "" {
 		result.LogLevel = b.LogLevel

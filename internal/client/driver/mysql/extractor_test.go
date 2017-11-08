@@ -672,3 +672,113 @@ func TestExtractor_Shutdown(t *testing.T) {
 		})
 	}
 }
+
+func TestExtractor_inspectTables(t *testing.T) {
+	tests := []struct {
+		name    string
+		e       *Extractor
+		wantErr bool
+	}{
+	// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if err := tt.e.inspectTables(); (err != nil) != tt.wantErr {
+				t.Errorf("Extractor.inspectTables() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestExtractor_readTableColumns(t *testing.T) {
+	tests := []struct {
+		name    string
+		e       *Extractor
+		wantErr bool
+	}{
+	// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if err := tt.e.readTableColumns(); (err != nil) != tt.wantErr {
+				t.Errorf("Extractor.readTableColumns() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestExtractor_selectSqlMode(t *testing.T) {
+	tests := []struct {
+		name    string
+		e       *Extractor
+		wantErr bool
+	}{
+	// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if err := tt.e.selectSqlMode(); (err != nil) != tt.wantErr {
+				t.Errorf("Extractor.selectSqlMode() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestExtractor_validateAndReadTimeZone(t *testing.T) {
+	tests := []struct {
+		name    string
+		e       *Extractor
+		wantErr bool
+	}{
+	// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if err := tt.e.validateAndReadTimeZone(); (err != nil) != tt.wantErr {
+				t.Errorf("Extractor.validateAndReadTimeZone() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestExtractor_CountTableRows(t *testing.T) {
+	type args struct {
+		tableSchema string
+		tableName   string
+	}
+	tests := []struct {
+		name    string
+		e       *Extractor
+		args    args
+		want    int64
+		wantErr bool
+	}{
+	// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := tt.e.CountTableRows(tt.args.tableSchema, tt.args.tableName)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("Extractor.CountTableRows() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if got != tt.want {
+				t.Errorf("Extractor.CountTableRows() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestExtractor_onDone(t *testing.T) {
+	tests := []struct {
+		name string
+		e    *Extractor
+	}{
+	// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.e.onDone()
+		})
+	}
+}

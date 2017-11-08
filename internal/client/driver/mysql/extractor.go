@@ -12,6 +12,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"strconv"
 
 	"github.com/golang/snappy"
 	gonats "github.com/nats-io/go-nats"
@@ -495,11 +496,19 @@ func (e *Extractor) inspectTables() (err error) {
 			ds := &config.DataSource{
 				TableSchema: dbName,
 			}
+			if len(e.mysqlContext.ReplicateIgnoreDb) > 0 && e.ignoreDb(dbName) {
+				continue
+			}
+
 			tbs, err := showTables(e.db, dbName)
 			if err != nil {
 				return err
 			}
+
 			for _, tb := range tbs {
+				if len(e.mysqlContext.ReplicateIgnoreDb) > 0 && e.ignoreTb(dbName, tb.TableName) {
+					continue
+				}
 				if err := e.inspector.ValidateOriginalTable(dbName, tb.TableName); err != nil {
 					e.logger.Warnf("mysql.extractor: %v", err)
 					continue
@@ -511,6 +520,27 @@ func (e *Extractor) inspectTables() (err error) {
 	}
 
 	return nil
+}
+func (e *Extractor) ignoreDb(dbName string) bool {
+	for _, ignoreDb := range e.mysqlContext.ReplicateIgnoreDb {
+		if ignoreDb.TableSchema == dbName && len(ignoreDb.Tables) == 0 {
+			return true
+		}
+	}
+	return false
+}
+
+func (e *Extractor) ignoreTb(dbName, tbName string) bool {
+	for _, ignoreDb := range e.mysqlContext.ReplicateIgnoreDb {
+		if ignoreDb.TableSchema == dbName {
+			for _, ignoreTb := range ignoreDb.Tables {
+				if ignoreTb.TableName == tbName {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }
 
 // readTableColumns reads table columns on applier
@@ -709,8 +739,7 @@ func (e *Extractor) validateAndReadTimeZone() error {
 func (e *Extractor) CountTableRows(tableSchema, tableName string) (int64, error) {
 	atomic.StoreInt64(&e.mysqlContext.CountingRowsFlag, 1)
 	defer atomic.StoreInt64(&e.mysqlContext.CountingRowsFlag, 0)
-
-	e.logger.Printf("mysql.extractor: As instructed, I'm issuing a SELECT COUNT(*) on the table. This may take a while")
+	//e.logger.Debugf("mysql.extractor: As instructed, I'm issuing a SELECT COUNT(*) on the table. This may take a while")
 
 	query := fmt.Sprintf(`select count(*) as rows from %s.%s`, sql.EscapeName(tableSchema), sql.EscapeName(tableName))
 	var rowsEstimate int64
@@ -721,7 +750,7 @@ func (e *Extractor) CountTableRows(tableSchema, tableName string) (int64, error)
 	//e.mysqlContext.UsedRowsEstimateMethod = base.CountRowsEstimate
 
 	e.mysqlContext.Stage = models.StageSearchingRowsForUpdate
-	e.logger.Printf("mysql.extractor: Exact number of rows via COUNT: %d", rowsEstimate)
+	e.logger.Debugf("mysql.extractor: Exact number of rows(%s.%s) via COUNT: %d", tableSchema, tableName, rowsEstimate)
 	return rowsEstimate, nil
 }
 
@@ -1247,7 +1276,7 @@ func (e *Extractor) Stats() (*models.TaskStatistics, error) {
 		ExecMasterTxCount:  deltaEstimate,
 		ReadMasterRowCount: rowsEstimate,
 		ReadMasterTxCount:  deltaEstimate,
-		ProgressPct:        progressPct,
+		ProgressPct:        strconv.FormatFloat(progressPct,'f',1,64),
 		ETA:                eta,
 		Backlog:            fmt.Sprintf("%d/%d", len(e.dataChannel), cap(e.dataChannel)),
 		Stage:              e.mysqlContext.Stage,
@@ -1270,6 +1299,12 @@ func (e *Extractor) Stats() (*models.TaskStatistics, error) {
 			Position: currentBinlogCoordinates.LogPos,
 			GtidSet:  fmt.Sprintf("%s:%d", currentBinlogCoordinates.SID, currentBinlogCoordinates.GNO),
 		}
+	} else {
+		taskResUsage.CurrentCoordinates = &models.CurrentCoordinates{
+			File:     "",
+			Position: 0,
+			GtidSet:  "",
+		}
 	}
 
 	return &taskResUsage, nil
@@ -1278,10 +1313,11 @@ func (e *Extractor) Stats() (*models.TaskStatistics, error) {
 func (e *Extractor) ID() string {
 	id := config.DriverCtx{
 		DriverConfig: &config.MySQLDriverConfig{
-			//ReplicateDoDb:    e.mysqlContext.ReplicateDoDb,
-			Gtid:             e.mysqlContext.Gtid,
-			NatsAddr:         e.mysqlContext.NatsAddr,
-			ConnectionConfig: e.mysqlContext.ConnectionConfig,
+			ReplicateDoDb:     e.mysqlContext.ReplicateDoDb,
+			ReplicateIgnoreDb: e.mysqlContext.ReplicateIgnoreDb,
+			Gtid:              e.mysqlContext.Gtid,
+			NatsAddr:          e.mysqlContext.NatsAddr,
+			ConnectionConfig:  e.mysqlContext.ConnectionConfig,
 		},
 	}
 

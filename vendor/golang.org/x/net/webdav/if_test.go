@@ -134,11 +134,11 @@ func TestParseIfHeader(t *testing.T) {
 		},
 	}, {
 		"section 7.5.1",
-		`<http://www.example.com/users/f/fielding/index.html> 
+		`<http://www.example.com/users/f/fielding/dashboard.html>
 			(<urn:uuid:f81d4fae-7dec-11d0-a765-00a0c91e6bf6>)`,
 		ifHeader{
 			lists: []ifList{{
-				resourceTag: `http://www.example.com/users/f/fielding/index.html`,
+				resourceTag: `http://www.example.com/users/f/fielding/dashboard.html`,
 				conditions: []Condition{{
 					Token: `urn:uuid:f81d4fae-7dec-11d0-a765-00a0c91e6bf6`,
 				}},

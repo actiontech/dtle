@@ -20,7 +20,8 @@ const (
 
 	channelBufferSize = 600
 	defaultNumRetries = 5
-	defaultChunkSize  = 10000
+	defaultConcurrency  = 10
+	defaultChunkSize  = 2000
 	defaultNumWorkers = 1
 	defaultMsgBytes   = 20 * 1024
 	defaultMsgsLimit  = 65536
@@ -123,6 +124,7 @@ type MySQLDriverConfig struct {
 	MaxFileSize int64
 	//Ref:http://dev.mysql.com/doc/refman/5.7/en/replication-options-slave.html#option_mysqld_replicate-do-table
 	ReplicateDoDb                       []*DataSource
+	ReplicateIgnoreDb                   []*DataSource
 	DropTableIfExists                   bool
 	ReplChanBufferSize                  int64
 	MsgBytesLimit                       int
@@ -132,6 +134,7 @@ type MySQLDriverConfig struct {
 	SkipRenamedColumns                  bool
 	MaxRetries                          int64
 	ChunkSize                           int64
+	Concurrency                         int
 	niceRatio                           float64
 	MaxLagMillisecondsThrottleThreshold int64
 	maxLoad                             umconf.LoadMap
@@ -139,6 +142,8 @@ type MySQLDriverConfig struct {
 	PostponeCutOverFlagFile             string
 	CutOverLockTimeoutSeconds           int64
 	RowsEstimate                        int64
+	ExecQueries                         int64
+	ReceQueries                         int64
 	DeltaEstimate                       int64
 	TimeZone                            string
 
@@ -185,6 +190,9 @@ func (a *MySQLDriverConfig) SetDefault() *MySQLDriverConfig {
 	}
 	if result.ChunkSize <= 0 {
 		result.ChunkSize = defaultChunkSize
+	}
+	if result.Concurrency <= 0 {
+		result.Concurrency = defaultConcurrency
 	}
 	if result.ReplChanBufferSize <= 0 {
 		result.ReplChanBufferSize = channelBufferSize

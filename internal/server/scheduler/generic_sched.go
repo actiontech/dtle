@@ -444,12 +444,12 @@ func (s *GenericScheduler) findPreferredNode(allocTuple *allocTuple) (node *mode
 		}
 	}
 
-	if allocTuple.Task.NodeId != "" {
+	if allocTuple.Task.NodeID != "" {
 		var preferredNode *models.Node
 		ws := memdb.NewWatchSet()
-		preferredNode, err = s.state.NodeByID(ws, allocTuple.Task.NodeId)
+		preferredNode, err = s.state.NodeByID(ws, allocTuple.Task.NodeID)
 		if err != nil || preferredNode == nil {
-			return nil, fmt.Errorf("sched: Can't find preferred node %s", allocTuple.Task.NodeId)
+			return nil, fmt.Errorf("sched: Can't find preferred node %s", allocTuple.Task.NodeID)
 		}
 		if preferredNode.Ready() {
 			node = preferredNode
@@ -471,7 +471,7 @@ func (s *GenericScheduler) findPreferredNode(allocTuple *allocTuple) (node *mode
 			}
 		}
 		if !findNode {
-			return nil, fmt.Errorf("sched: Can't find preferred node %s", allocTuple.Task.NodeId)
+			return nil, fmt.Errorf("sched: Can't find preferred node %s", allocTuple.Task.NodeID)
 		}
 	}
 	return

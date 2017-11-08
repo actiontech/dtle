@@ -37,6 +37,10 @@ type QueryOptions struct {
 	// If set, used as prefix for resource list searches
 	Prefix string
 
+	// Token is used to provide a per-request ACL token
+	// which overrides the agent's default token.
+	Token string
+
 	// Set HTTP parameters on the query.
 	Params map[string]string
 }
@@ -208,6 +212,9 @@ func (r *request) setQueryOptions(q *QueryOptions) {
 	}
 	if q.Prefix != "" {
 		r.params.Set("prefix", q.Prefix)
+	}
+	if q.Token != "" {
+		r.params.Set("X-Udup-Token", q.Token)
 	}
 	for k, v := range q.Params {
 		r.params.Set(k, v)

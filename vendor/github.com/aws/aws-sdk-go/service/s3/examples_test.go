@@ -1767,7 +1767,7 @@ func ExampleS3_PutBucketWebsite_shared00() {
 				Key: aws.String("error.html"),
 			},
 			IndexDocument: &s3.IndexDocument{
-				Suffix: aws.String("index.html"),
+				Suffix: aws.String("dashboard.html"),
 			},
 		},
 	}
