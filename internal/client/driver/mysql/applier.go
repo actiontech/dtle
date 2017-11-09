@@ -1024,6 +1024,9 @@ func (a *Applier) validateAndReadTimeZone() error {
 }
 
 func (a *Applier) createTableGtidExecuted() error {
+	if _, err := sql.ExecNoPrepare(a.db, "SELECT 1 FROM actiontech_udup.gtid_executed"); err == nil {
+		return nil
+	}
 	query := fmt.Sprintf(`
 			CREATE DATABASE IF NOT EXISTS actiontech_udup;
 			CREATE TABLE IF NOT EXISTS actiontech_udup.gtid_executed (

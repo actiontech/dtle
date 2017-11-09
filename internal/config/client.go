@@ -172,6 +172,7 @@ type MySQLDriverConfig struct {
 	Stage                string
 	CutOverType          CutOver
 	ApproveHeterogeneous bool
+	SkipCreateDbTable    bool
 
 	throttleMutex                          *sync.Mutex
 	IsPostponingCutOver                    int64
