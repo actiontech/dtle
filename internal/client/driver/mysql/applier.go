@@ -600,6 +600,7 @@ func (a *Applier) executeWriteFuncs() {
 							if err := a.ApplyEventQueries(a.db, copyRows); err != nil {
 								a.onError(TaskStateDead, err)
 							}
+							atomic.AddInt64(&a.mysqlContext.RowsEstimate, copyRows.TotalCount)
 						}()
 					}
 					atomic.AddInt64(&a.mysqlContext.ExecQueries, 1)
