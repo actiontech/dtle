@@ -53,6 +53,10 @@ func NewDumper(db *sql.Tx, dbName, tableName string, total, chunkSize int64, log
 	return dumper
 }
 
+type dumpStatResult struct {
+	TotalCount int64
+}
+
 type dumpEntry struct {
 	SystemVariablesStatement string
 	SqlMode                  string

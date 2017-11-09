@@ -8,11 +8,11 @@ import (
 	"bytes"
 	"encoding/gob"
 	"math"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
-	"strconv"
 
 	"github.com/golang/snappy"
 	gonats "github.com/nats-io/go-nats"
@@ -28,7 +28,7 @@ import (
 
 const (
 	// DefaultConnectWait is the default timeout used for the connect operation
-	DefaultConnectWait            = 5 * time.Second
+	DefaultConnectWait            = 10 * time.Second
 	AllEventsUpToLockProcessed    = "AllEventsUpToLockProcessed"
 	ReconnectStreamerSleepSeconds = 5
 )
@@ -160,22 +160,6 @@ func (e *Extractor) Run() {
 		e.onError(TaskStateDead, err)
 		return
 	}
-	/*for _, doDb := range e.mysqlContext.ReplicateDoDb {
-	for _, doTb := range doDb.Tables {
-		if err := e.parser.ParseAlterStatement(doTb.AlterStatement); err != nil {
-			e.onError(TaskStateDead,err)
-			return
-		}
-		if err := e.validateStatement(doTb); err != nil {
-			e.onError(TaskStateDead,err)
-			return
-		}
-	*/ /*if err := e.ReadMigrationRangeValues(doDb.Database, doTb); err != nil {
-		e.logger.Errorf("mysql.extractor: unexpected error on ReadMigrationRangeValues, got %v", err)
-		return err
-	}*/ /*
-		}
-	}*/
 	if err := e.initNatsPubClient(); err != nil {
 		e.onError(TaskStateDead, err)
 		return
@@ -189,6 +173,13 @@ func (e *Extractor) Run() {
 		if err := e.mysqlDump(); err != nil {
 			e.onError(TaskStateDead, err)
 			return
+		}
+		dumpMsg, err := Encode(&dumpStatResult{TotalCount: e.mysqlContext.RowsEstimate})
+		if err != nil {
+			e.onError(TaskStateDead, err)
+		}
+		if err := e.requestMsg(fmt.Sprintf("%s_full_complete", e.subject), "", dumpMsg); err != nil {
+			e.onError(TaskStateDead, err)
 		}
 	} else {
 		if err := e.readCurrentBinlogCoordinates(); err != nil {
@@ -747,7 +738,6 @@ func (e *Extractor) CountTableRows(tableSchema, tableName string) (int64, error)
 		return 0, err
 	}
 	atomic.AddInt64(&e.mysqlContext.RowsEstimate, rowsEstimate)
-	//e.mysqlContext.UsedRowsEstimateMethod = base.CountRowsEstimate
 
 	e.mysqlContext.Stage = models.StageSearchingRowsForUpdate
 	e.logger.Debugf("mysql.extractor: Exact number of rows(%s.%s) via COUNT: %d", tableSchema, tableName, rowsEstimate)
@@ -1147,7 +1137,7 @@ func (e *Extractor) mysqlDump() error {
 					SqlMode:                  setSqlMode,
 					DbSQL:                    dbSQL,
 					TbSQL:                    tbSQL,
-					TotalCount:               e.mysqlContext.RowsEstimate,
+					TotalCount:               total,
 				}
 				if err := e.encodeDumpEntry(entry); err != nil {
 					return err
@@ -1276,7 +1266,7 @@ func (e *Extractor) Stats() (*models.TaskStatistics, error) {
 		ExecMasterTxCount:  deltaEstimate,
 		ReadMasterRowCount: rowsEstimate,
 		ReadMasterTxCount:  deltaEstimate,
-		ProgressPct:        strconv.FormatFloat(progressPct,'f',1,64),
+		ProgressPct:        strconv.FormatFloat(progressPct, 'f', 1, 64),
 		ETA:                eta,
 		Backlog:            fmt.Sprintf("%d/%d", len(e.dataChannel), cap(e.dataChannel)),
 		Stage:              e.mysqlContext.Stage,

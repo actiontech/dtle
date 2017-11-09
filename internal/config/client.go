@@ -18,14 +18,14 @@ const (
 	DefaultBindPort  int = 8191
 	DefaultClusterID     = "udup-cluster"
 
-	channelBufferSize = 600
-	defaultNumRetries = 5
-	defaultConcurrency  = 10
-	defaultChunkSize  = 2000
-	defaultNumWorkers = 1
-	defaultMsgBytes   = 20 * 1024
-	defaultMsgsLimit  = 65536
-	defaultBytesLimit = 65536 * 1024
+	channelBufferSize  = 600
+	defaultNumRetries  = 5
+	defaultConcurrency = 10
+	defaultChunkSize   = 2000
+	defaultNumWorkers  = 1
+	defaultMsgBytes    = 20 * 1024
+	defaultMsgsLimit   = 65536
+	defaultBytesLimit  = 65536 * 1024
 )
 
 // RPCHandler can be provided to the Client if there is a local server
@@ -142,8 +142,6 @@ type MySQLDriverConfig struct {
 	PostponeCutOverFlagFile             string
 	CutOverLockTimeoutSeconds           int64
 	RowsEstimate                        int64
-	ExecQueries                         int64
-	ReceQueries                         int64
 	DeltaEstimate                       int64
 	TimeZone                            string
 
@@ -168,6 +166,7 @@ type MySQLDriverConfig struct {
 	pointOfInterestTimeMutex *sync.Mutex
 	TotalDeltaCopied         int64
 	TotalRowsCopied          int64
+	TotalRowsReplay          int64
 
 	Stage                string
 	CutOverType          CutOver
@@ -251,6 +250,10 @@ func (m *MySQLDriverConfig) ElapsedRowCopyTime() time.Duration {
 // This is not exactly the same as the rows being iterated via chunks, but potentially close enough
 func (m *MySQLDriverConfig) GetTotalRowsCopied() int64 {
 	return atomic.LoadInt64(&m.TotalRowsCopied)
+}
+
+func (m *MySQLDriverConfig) GetTotalRowsReplay() int64 {
+	return atomic.LoadInt64(&m.TotalRowsReplay)
 }
 
 func (m *MySQLDriverConfig) GetTotalDeltaCopied() int64 {

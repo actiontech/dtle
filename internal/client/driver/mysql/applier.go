@@ -9,11 +9,11 @@ import (
 	"encoding/gob"
 	//"encoding/base64"
 	"math"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
-	"strconv"
 
 	"github.com/golang/snappy"
 	gonats "github.com/nats-io/go-nats"
@@ -594,7 +594,6 @@ func (a *Applier) executeWriteFuncs() {
 						if err := a.ApplyEventQueries(a.db, copyRows); err != nil {
 							a.onError(TaskStateDead, err)
 						}
-						atomic.AddInt64(&a.mysqlContext.RowsEstimate, copyRows.TotalCount)
 					} else {
 						go func() {
 							if err := a.ApplyEventQueries(a.db, copyRows); err != nil {
@@ -602,7 +601,6 @@ func (a *Applier) executeWriteFuncs() {
 							}
 						}()
 					}
-					atomic.AddInt64(&a.mysqlContext.ExecQueries, 1)
 
 					/*a.logger.Printf("mysql.applier: operating until row copy is complete")
 					a.consumeRowCopyComplete()
@@ -628,7 +626,7 @@ func (a *Applier) executeWriteFuncs() {
 		a.logger.Printf("mysql.applier: Operating until row copy is complete")
 		a.mysqlContext.Stage = models.StageSlaveWaitingForWorkersToProcessQueue
 		for {
-			if a.mysqlContext.ReceQueries != 0 && a.mysqlContext.ReceQueries == a.mysqlContext.ExecQueries && a.mysqlContext.TotalRowsCopied == a.mysqlContext.RowsEstimate {
+			if atomic.LoadInt64(&a.rowCopyCompleteFlag) == 1 && a.mysqlContext.TotalRowsCopied == a.mysqlContext.RowsEstimate {
 				a.logger.Printf("mysql.applier: Rows copy complete.number of rows:%d", a.mysqlContext.RowsEstimate)
 				break
 			}
@@ -638,9 +636,6 @@ func (a *Applier) executeWriteFuncs() {
 			time.Sleep(time.Second)
 		}
 	}
-	a.rowCopyComplete <- true
-	atomic.StoreInt64(&a.rowCopyCompleteFlag, 1)
-	a.mysqlContext.MarkRowCopyStartTime()
 
 	var dbApplier *sql.DB
 OUTER:
@@ -739,14 +734,28 @@ func (a *Applier) initiateStreaming() error {
 			if err := a.natsConn.Publish(m.Reply, nil); err != nil {
 				a.onError(TaskStateDead, err)
 			}
-			atomic.AddInt64(&a.mysqlContext.ReceQueries, 1)
+			atomic.AddInt64(&a.mysqlContext.RowsEstimate, dumpData.TotalCount)
+		})
+		/*if err := sub.SetPendingLimits(a.mysqlContext.MsgsLimit, a.mysqlContext.BytesLimit); err != nil {
+			return err
+		}*/
+
+		_, err = a.natsConn.Subscribe(fmt.Sprintf("%s_full_complete", a.subject), func(m *gonats.Msg) {
+			dumpData := &dumpStatResult{}
+			if err := Decode(m.Data, dumpData); err != nil {
+				a.onError(TaskStateDead, err)
+			}
+			a.mysqlContext.Stage = models.StageSlaveWaitingForWorkersToProcessQueue
+			if err := a.natsConn.Publish(m.Reply, nil); err != nil {
+				a.onError(TaskStateDead, err)
+			}
+			atomic.AddInt64(&a.mysqlContext.TotalRowsCopied, dumpData.TotalCount)
+			a.rowCopyComplete <- true
+			atomic.StoreInt64(&a.rowCopyCompleteFlag, 1)
 		})
 		if err != nil {
 			return err
 		}
-		/*if err := sub.SetPendingLimits(a.mysqlContext.MsgsLimit, a.mysqlContext.BytesLimit); err != nil {
-			return err
-		}*/
 	}
 
 	if a.mysqlContext.ApproveHeterogeneous {
@@ -1766,12 +1775,12 @@ func (a *Applier) ApplyEventQueries(db *gosql.DB, entry *dumpEntry) error {
 			}
 		}
 	}
-	atomic.AddInt64(&a.mysqlContext.TotalRowsCopied, entry.RowsCount)
+	atomic.AddInt64(&a.mysqlContext.TotalRowsReplay, entry.RowsCount)
 	return nil
 }
 
 func (a *Applier) Stats() (*models.TaskStatistics, error) {
-	totalRowsCopied := a.mysqlContext.GetTotalRowsCopied()
+	totalRowsReplay := a.mysqlContext.GetTotalRowsCopied()
 	rowsEstimate := atomic.LoadInt64(&a.mysqlContext.RowsEstimate)
 	totalDeltaCopied := a.mysqlContext.GetTotalDeltaCopied()
 	deltaEstimate := atomic.LoadInt64(&a.mysqlContext.DeltaEstimate)
@@ -1781,7 +1790,7 @@ func (a *Applier) Stats() (*models.TaskStatistics, error) {
 	if rowsEstimate == 0 && deltaEstimate == 0 {
 		progressPct = 100.0
 	} else {
-		progressPct = 100.0 * float64(totalDeltaCopied+totalRowsCopied) / float64(deltaEstimate+rowsEstimate)
+		progressPct = 100.0 * float64(totalDeltaCopied+totalRowsReplay) / float64(deltaEstimate+rowsEstimate)
 		if atomic.LoadInt64(&a.rowCopyCompleteFlag) == 1 {
 			// Done copying rows. The totalRowsCopied value is the de-facto number of rows,
 			// and there is no further need to keep updating the value.
@@ -1798,7 +1807,7 @@ func (a *Applier) Stats() (*models.TaskStatistics, error) {
 		a.mysqlContext.Stage = models.StageSlaveHasReadAllRelayLog
 	} else if progressPct >= 1.0 {
 		elapsedRowCopySeconds := a.mysqlContext.ElapsedRowCopyTime().Seconds()
-		totalExpectedSeconds := elapsedRowCopySeconds * float64(rowsEstimate) / float64(totalRowsCopied)
+		totalExpectedSeconds := elapsedRowCopySeconds * float64(rowsEstimate) / float64(totalRowsReplay)
 		if atomic.LoadInt64(&a.rowCopyCompleteFlag) == 1 {
 			totalExpectedSeconds = elapsedRowCopySeconds * float64(deltaEstimate) / float64(totalDeltaCopied)
 		}
@@ -1812,11 +1821,11 @@ func (a *Applier) Stats() (*models.TaskStatistics, error) {
 	}
 
 	taskResUsage := models.TaskStatistics{
-		ExecMasterRowCount: totalRowsCopied,
+		ExecMasterRowCount: totalRowsReplay,
 		ExecMasterTxCount:  totalDeltaCopied,
 		ReadMasterRowCount: rowsEstimate,
 		ReadMasterTxCount:  deltaEstimate,
-		ProgressPct:        strconv.FormatFloat(progressPct,'f',1,64),
+		ProgressPct:        strconv.FormatFloat(progressPct, 'f', 1, 64),
 		ETA:                eta,
 		Backlog:            backlog,
 		Stage:              a.mysqlContext.Stage,
