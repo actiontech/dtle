@@ -600,6 +600,7 @@ func (a *Applier) executeWriteFuncs() {
 							if err := a.ApplyEventQueries(a.db, copyRows); err != nil {
 								a.onError(TaskStateDead, err)
 							}
+							atomic.AddInt64(&a.mysqlContext.RowsEstimate, copyRows.TotalCount)
 						}()
 					}
 					atomic.AddInt64(&a.mysqlContext.ExecQueries, 1)
@@ -1023,6 +1024,9 @@ func (a *Applier) validateAndReadTimeZone() error {
 }
 
 func (a *Applier) createTableGtidExecuted() error {
+	if result, err := sql.QueryResultData(a.db, "SHOW TABLES FROM actiontech_udup LIKE 'gtid_executed'"); nil == err && len(result) > 0 {
+		return nil
+	}
 	query := fmt.Sprintf(`
 			CREATE DATABASE IF NOT EXISTS actiontech_udup;
 			CREATE TABLE IF NOT EXISTS actiontech_udup.gtid_executed (

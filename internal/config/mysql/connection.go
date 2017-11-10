@@ -10,16 +10,17 @@ type ConnectionConfig struct {
 	Port     int
 	User     string
 	Password string
+	Charset  string
 }
 
 func (c *ConnectionConfig) GetDBUriByDbName(databaseName string) string {
-	return fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?charset=utf8mb4,utf8,latin1", c.User, c.Password, c.Host, c.Port, databaseName)
+	return fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?charset=%v", c.User, c.Password, c.Host, c.Port, databaseName, c.Charset)
 }
 
 func (c *ConnectionConfig) GetDBUri() string {
-	return fmt.Sprintf("%s:%s@tcp(%s:%d)/?timeout=5s&tls=false&autocommit=true&charset=utf8mb4,utf8,latin1&multiStatements=true", c.User, c.Password, c.Host, c.Port)
+	return fmt.Sprintf("%s:%s@tcp(%s:%d)/?timeout=5s&tls=false&autocommit=true&charset=%v&multiStatements=true", c.User, c.Password, c.Host, c.Port, c.Charset)
 }
 
 func (c *ConnectionConfig) GetSingletonDBUri() string {
-	return fmt.Sprintf("%s:%s@tcp(%s:%d)/?timeout=5s&tls=false&autocommit=false&charset=utf8mb4,utf8,latin1&multiStatements=true", c.User, c.Password, c.Host, c.Port)
+	return fmt.Sprintf("%s:%s@tcp(%s:%d)/?timeout=5s&tls=false&autocommit=false&charset=%v&multiStatements=true", c.User, c.Password, c.Host, c.Port, c.Charset)
 }
