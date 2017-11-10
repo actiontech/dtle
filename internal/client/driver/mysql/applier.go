@@ -1024,7 +1024,7 @@ func (a *Applier) validateAndReadTimeZone() error {
 }
 
 func (a *Applier) createTableGtidExecuted() error {
-	if _, err := sql.ExecNoPrepare(a.db, "SELECT 1 FROM actiontech_udup.gtid_executed"); err == nil {
+	if result, err := sql.QueryResultData(a.db, "SHOW TABLES FROM actiontech_udup LIKE 'gtid_executed'"); nil == err && len(result) > 0 {
 		return nil
 	}
 	query := fmt.Sprintf(`
