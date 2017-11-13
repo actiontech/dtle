@@ -1140,28 +1140,32 @@ func (e *Extractor) mysqlDump() error {
 				}
 				tb.Counter = total
 
+				var dbSQL, tbSQL string
 				if !e.mysqlContext.SkipCreateDbTable {
-					dbSQL := fmt.Sprintf("CREATE DATABASE IF NOT EXISTS %s", tb.TableSchema)
-					tbSQL, err := base.ShowCreateTable(e.singletonDB, tb.TableSchema, tb.TableName, e.mysqlContext.DropTableIfExists)
+					var err error
+					dbSQL = fmt.Sprintf("CREATE DATABASE IF NOT EXISTS %s", tb.TableSchema)
+					tbSQL, err = base.ShowCreateTable(e.singletonDB, tb.TableSchema, tb.TableName, e.mysqlContext.DropTableIfExists)
 					if err != nil {
 						return err
 					}
-
-					entry := &dumpEntry{
-						SystemVariablesStatement: setSystemVariablesStatement,
-						SqlMode:                  setSqlMode,
-						DbSQL:                    dbSQL,
-						TbSQL:                    tbSQL,
-						TotalCount:               e.mysqlContext.RowsEstimate,
-					}
-					if err := e.encodeDumpEntry(entry); err != nil {
-						return err
-					}
+				}
+				entry := &dumpEntry{
+					SystemVariablesStatement: setSystemVariablesStatement,
+					SqlMode:                  setSqlMode,
+					DbSQL:                    dbSQL,
+					TbSQL:                    tbSQL,
+					TotalCount:               e.mysqlContext.RowsEstimate,
+				}
+				if err := e.encodeDumpEntry(entry); err != nil {
+					return err
 				}
 			}
 			e.tableCount += len(db.Tables)
-		} else if !e.mysqlContext.SkipCreateDbTable {
-			dbSQL := fmt.Sprintf("CREATE DATABASE IF NOT EXISTS %s", db)
+		} else {
+			var dbSQL string
+			if !e.mysqlContext.SkipCreateDbTable {
+				dbSQL = fmt.Sprintf("CREATE DATABASE IF NOT EXISTS %s", db)
+			}
 			entry := &dumpEntry{
 				SystemVariablesStatement: setSystemVariablesStatement,
 				SqlMode:                  setSqlMode,
