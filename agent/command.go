@@ -198,8 +198,6 @@ func (c *Command) setupLoggers(config *Config) (io.Writer, error) {
 			}
 		} else {
 			if oFile, err = os.OpenFile(config.LogFile, os.O_APPEND|os.O_WRONLY, os.ModeAppend); err != nil {
-				c.logger.Errorf("Unable to append to %s (%s), using stderr",
-					config.LogFile, err)
 				oFile = os.Stderr
 				return nil, fmt.Errorf("Unable to append to %s (%s), using stderr",
 					config.LogFile, err)
@@ -248,7 +246,7 @@ func (c *Command) Run(args []string) int {
 	// Setup the log outputs
 	logOutput, err := c.setupLoggers(config)
 	if err != nil {
-		c.logger.Errorf("Error setup logger: %s", err)
+		c.Ui.Error("Error setup logger: "+ err.Error())
 		return 1
 	}
 
