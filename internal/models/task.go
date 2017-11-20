@@ -202,7 +202,7 @@ const (
 // appropriate to the events type.
 type TaskEvent struct {
 	Type string
-	Time int64 // Unix Nanosecond timestamp
+	Time time.Time // Unix timestamp
 
 	// FailsTask marks whether this event fails the task
 	FailsTask bool
@@ -271,7 +271,7 @@ func (te *TaskEvent) Copy() *TaskEvent {
 func NewTaskEvent(event string) *TaskEvent {
 	return &TaskEvent{
 		Type: event,
-		Time: time.Now().UnixNano(),
+		Time: time.Now(),
 	}
 }
 

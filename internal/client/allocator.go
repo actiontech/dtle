@@ -266,13 +266,13 @@ func (r *Allocator) setTaskState(taskName, state string, event *models.TaskEvent
 	case models.TaskStateRunning:
 		// Capture the start time if it is just starting
 		if taskState.State != models.TaskStateRunning {
-			taskState.StartedAt = time.Now().UTC()
+			taskState.StartedAt = time.Now()
 		}
 	case models.TaskStateDead:
 		// Capture the finished time. If it has never started there is no finish
 		// time
 		if !taskState.StartedAt.IsZero() {
-			taskState.FinishedAt = time.Now().UTC()
+			taskState.FinishedAt = time.Now()
 		}
 
 		// Find all tasks that are not the one that is dead and check if the one
