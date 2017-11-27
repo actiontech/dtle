@@ -469,7 +469,7 @@ func (e *Extractor) inspectTables() (err error) {
 			e.replicateDoDb = append(e.replicateDoDb, db)
 			for _, doTb := range doDb.Tables {
 				doTb.TableSchema = doDb.TableSchema
-				if err := e.inspector.ValidateOriginalTable(doDb.TableSchema, doTb.TableName); err != nil {
+				if err := e.inspector.ValidateOriginalTable(doDb.TableSchema, doTb.TableName, doTb); err != nil {
 					e.logger.Warnf("mysql.extractor: %v", err)
 					continue
 				}
@@ -497,13 +497,23 @@ func (e *Extractor) inspectTables() (err error) {
 				if len(e.mysqlContext.ReplicateIgnoreDb) > 0 && e.ignoreTb(dbName, tb.TableName) {
 					continue
 				}
-				if err := e.inspector.ValidateOriginalTable(dbName, tb.TableName); err != nil {
+				if err := e.inspector.ValidateOriginalTable(dbName, tb.TableName, tb); err != nil {
 					e.logger.Warnf("mysql.extractor: %v", err)
 					continue
 				}
+
 				ds.Tables = append(ds.Tables, tb)
 			}
 			e.replicateDoDb = append(e.replicateDoDb, ds)
+		}
+	}
+
+	for _, db := range e.replicateDoDb {
+		for _, tbl := range db.Tables {
+			e.logger.Infof("Do table: %s.%s. n_unique_keys: %d", tbl.TableSchema, tbl.TableName, len(tbl.OriginalTableUniqueKeys))
+			for _, uk := range tbl.OriginalTableUniqueKeys {
+				e.logger.Infof("A unique key: %s", uk.String())
+			}
 		}
 	}
 

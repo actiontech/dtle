@@ -63,7 +63,7 @@ func (i *Inspector) InitDBConnections() (err error) {
 	return nil
 }
 
-func (i *Inspector) ValidateOriginalTable(databaseName, tableName string) (err error) {
+func (i *Inspector) ValidateOriginalTable(databaseName, tableName string, table *uconf.Table) (err error) {
 	if err := i.validateTable(databaseName, tableName); err != nil {
 		return err
 	}
@@ -71,6 +71,42 @@ func (i *Inspector) ValidateOriginalTable(databaseName, tableName string) (err e
 	/*if err := i.validateTableForeignKeys(databaseName, tableName, true */ /*this.migrationContext.DiscardForeignKeys*/ /*); err != nil {
 		return err
 	}*/
+
+	// region UniqueKey
+	if table.OriginalTableColumns, table.OriginalTableUniqueKeys,
+		err = i.InspectTableColumnsAndUniqueKeys(databaseName, tableName); err != nil {
+		return err
+	}
+
+	if len(table.OriginalTableUniqueKeys) == 0 {
+		return fmt.Errorf("No PRIMARY nor UNIQUE key found in table! Bailing out")
+	}
+
+	for _, uk := range table.OriginalTableUniqueKeys {
+		uniqueKeyIsValid := true
+		for _, column := range uk.Columns.Columns {
+			switch column.Type {
+			case umconf.FloatColumnType:
+				i.logger.Warning("Will not use %+v as shared key due to FLOAT data type", uk.Name)
+				uniqueKeyIsValid = false
+				// TODO JSONType
+			default:
+				// do nothing
+			}
+		}
+		if uniqueKeyIsValid {
+			table.UseUniqueKey = uk
+			break
+		}
+	}
+	if table.UseUniqueKey == nil {
+		return fmt.Errorf("No unique key can be found! Bailing out")
+	}
+
+	i.logger.Infof("Chosen shared unique key is %s", table.UseUniqueKey.Name)
+
+	// TODO other validation, e.g. nullable
+	// endregion
 
 	if err := i.validateTableTriggers(databaseName, tableName); err != nil {
 		return err
@@ -233,6 +269,7 @@ func (i *Inspector) validateTable(databaseName, tableName string) error {
 	if !tableFound {
 		return fmt.Errorf("Cannot find table %s.%s!", usql.EscapeName(databaseName), usql.EscapeName(tableName))
 	}
+
 	return nil
 }
 

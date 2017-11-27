@@ -303,6 +303,7 @@ type Table struct {
 	OriginalTableColumnsOnApplier    *umconf.ColumnList
 	OriginalTableColumns             *umconf.ColumnList
 	OriginalTableUniqueKeys          [](*umconf.UniqueKey)
+	UseUniqueKey                     *umconf.UniqueKey
 	SharedColumns                    *umconf.ColumnList
 	ColumnRenameMap                  map[string]string
 	DroppedColumnsMap                map[string]bool

@@ -61,7 +61,8 @@ func TestInspector_ValidateOriginalTable(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if err := tt.i.ValidateOriginalTable(tt.args.databaseName, tt.args.tableName); (err != nil) != tt.wantErr {
+			var table uconf.Table
+			if err := tt.i.ValidateOriginalTable(tt.args.databaseName, tt.args.tableName, &table); (err != nil) != tt.wantErr {
 				t.Errorf("Inspector.ValidateOriginalTable() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
