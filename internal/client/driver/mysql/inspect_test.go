@@ -100,28 +100,6 @@ func TestInspector_InspectTableColumnsAndUniqueKeys(t *testing.T) {
 	}
 }
 
-func TestInspector_InspectOriginalTable(t *testing.T) {
-	type args struct {
-		databaseName string
-		doTb         *uconf.Table
-	}
-	tests := []struct {
-		name    string
-		i       *Inspector
-		args    args
-		wantErr bool
-	}{
-	// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if err := tt.i.InspectOriginalTable(tt.args.databaseName, tt.args.doTb); (err != nil) != tt.wantErr {
-				t.Errorf("Inspector.InspectOriginalTable() error = %v, wantErr %v", err, tt.wantErr)
-			}
-		})
-	}
-}
-
 func TestInspector_validateConnection(t *testing.T) {
 	tests := []struct {
 		name    string

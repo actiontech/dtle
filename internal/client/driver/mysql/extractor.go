@@ -140,18 +140,6 @@ func (e *Extractor) canStopStreaming() bool {
 	return atomic.LoadInt64(&e.mysqlContext.CutOverCompleteFlag) != 0
 }
 
-// validateStatement validates the `alter` statement meets criteria.
-// At this time this means:
-// - column renames are approved
-func (e *Extractor) validateStatement(doTb *config.Table) (err error) {
-	if e.parser.HasNonTrivialRenames() && !e.mysqlContext.SkipRenamedColumns {
-		doTb.ColumnRenameMap = e.parser.GetNonTrivialRenames()
-		e.logger.Printf("mysql.extractor: Alter statement has column(s) renamed. udup finds the following renames: %v.", e.parser.GetNonTrivialRenames())
-	}
-	doTb.DroppedColumnsMap = e.parser.DroppedColumnsMap()
-	return nil
-}
-
 // Run executes the complete extract logic.
 func (e *Extractor) Run() {
 	e.logger.Printf("mysql.extractor: Extract binlog events from %s.%d", e.mysqlContext.ConnectionConfig.Host, e.mysqlContext.ConnectionConfig.Port)

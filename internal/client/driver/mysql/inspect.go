@@ -94,14 +94,6 @@ func (i *Inspector) InspectTableColumnsAndUniqueKeys(databaseName, tableName str
 	return columns, uniqueKeys, nil
 }
 
-func (i *Inspector) InspectOriginalTable(databaseName string, doTb *uconf.Table) (err error) {
-	doTb.OriginalTableColumns, doTb.OriginalTableUniqueKeys, err = i.InspectTableColumnsAndUniqueKeys(databaseName, doTb.TableName)
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
 // validateConnection issues a simple can-connect to MySQL
 func (i *Inspector) validateConnection() error {
 	query := `select @@global.version`

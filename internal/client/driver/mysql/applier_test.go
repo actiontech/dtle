@@ -95,27 +95,6 @@ func TestApplier_consumeRowCopyComplete(t *testing.T) {
 	}
 }
 
-func TestApplier_validateStatement(t *testing.T) {
-	type args struct {
-		doTb *config.Table
-	}
-	tests := []struct {
-		name    string
-		a       *Applier
-		args    args
-		wantErr bool
-	}{
-	// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if err := tt.a.validateStatement(tt.args.doTb); (err != nil) != tt.wantErr {
-				t.Errorf("Applier.validateStatement() error = %v, wantErr %v", err, tt.wantErr)
-			}
-		})
-	}
-}
-
 func TestApplier_Run(t *testing.T) {
 	tests := []struct {
 		name string
@@ -580,38 +559,6 @@ func TestApplier_getCandidateUniqueKeys(t *testing.T) {
 			}
 			if !reflect.DeepEqual(gotUniqueKeys, tt.wantUniqueKeys) {
 				t.Errorf("Applier.getCandidateUniqueKeys() = %v, want %v", gotUniqueKeys, tt.wantUniqueKeys)
-			}
-		})
-	}
-}
-
-func TestApplier_InspectTableColumnsAndUniqueKeys(t *testing.T) {
-	type args struct {
-		databaseName string
-		tableName    string
-	}
-	tests := []struct {
-		name           string
-		a              *Applier
-		args           args
-		wantColumns    *umconf.ColumnList
-		wantUniqueKeys [](*umconf.UniqueKey)
-		wantErr        bool
-	}{
-	// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			gotColumns, gotUniqueKeys, err := tt.a.InspectTableColumnsAndUniqueKeys(tt.args.databaseName, tt.args.tableName)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("Applier.InspectTableColumnsAndUniqueKeys() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
-			if !reflect.DeepEqual(gotColumns, tt.wantColumns) {
-				t.Errorf("Applier.InspectTableColumnsAndUniqueKeys() gotColumns = %v, want %v", gotColumns, tt.wantColumns)
-			}
-			if !reflect.DeepEqual(gotUniqueKeys, tt.wantUniqueKeys) {
-				t.Errorf("Applier.InspectTableColumnsAndUniqueKeys() gotUniqueKeys = %v, want %v", gotUniqueKeys, tt.wantUniqueKeys)
 			}
 		})
 	}
