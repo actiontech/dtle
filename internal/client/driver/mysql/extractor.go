@@ -1193,7 +1193,7 @@ func (e *Extractor) mysqlDump() error {
 			// Choose how we create statements based on the # of rows ...
 			e.logger.Printf("mysql.extractor: Step %d: - scanning table '%s.%s' (%d of %d tables)", step, t.TableSchema, t.TableName, counter, e.tableCount)
 
-			d := NewDumper(tx, t.TableSchema, t.TableName, t.Counter, e.mysqlContext.ChunkSize, e.logger)
+			d := NewDumper(tx, t, t.Counter, e.mysqlContext.ChunkSize, e.logger)
 			if err := d.Dump(1); err != nil {
 				e.onError(TaskStateDead, err)
 			}

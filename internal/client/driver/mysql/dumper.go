@@ -25,6 +25,7 @@ type dumper struct {
 	total          int64
 	TableSchema    string
 	TableName      string
+	table          *config.Table
 	columns        string
 	entriesCount   int
 	resultsChannel chan *dumpEntry
@@ -38,12 +39,14 @@ type dumper struct {
 	db *sql.Tx
 }
 
-func NewDumper(db *sql.Tx, dbName, tableName string, total, chunkSize int64, logger *log.Entry) *dumper {
+func NewDumper(db *sql.Tx, table *config.Table, total, chunkSize int64,
+	logger *log.Entry) *dumper {
 	dumper := &dumper{
 		logger:         logger,
 		db:             db,
-		TableSchema:    dbName,
-		TableName:      tableName,
+		TableSchema:    table.TableSchema,
+		TableName:      table.TableName,
+		table:          table,
 		total:          total,
 		resultsChannel: make(chan *dumpEntry, 50),
 		entriesChannel: make(chan *dumpEntry),
@@ -127,11 +130,33 @@ func (d *dumper) getChunkData(e *dumpEntry) error {
 		RowsCount:   e.RowsCount,
 		Offset:      e.Offset,
 	}
-	query := fmt.Sprintf(`SELECT %s FROM %s.%s LIMIT %d OFFSET %d`,
+	// TODO use PS
+	// TODO escape once and save
+
+	nCol := len(d.table.UseUniqueKey.Columns.Columns)
+	uniqueKeyColumnAscending := make([]string, nCol, nCol)
+	for i, col := range d.table.UseUniqueKey.Columns.Columns {
+		colName := usql.EscapeName(col.Name)
+		switch col.Type {
+		case umconf.EnumColumnType:
+			// TODO try mysql enum type
+			uniqueKeyColumnAscending[i] = fmt.Sprintf("concat(%s) asc", colName)
+		default:
+			uniqueKeyColumnAscending[i] = fmt.Sprintf("%s asc", colName)
+		}
+	}
+
+	query := fmt.Sprintf(`SELECT %s FROM %s.%s where %s order by %s LIMIT %d OFFSET %d`,
 		d.columns,
 		usql.EscapeName(d.TableSchema),
 		usql.EscapeName(d.TableName),
+		// where
+		"true",
+		// order by
+		strings.Join(uniqueKeyColumnAscending, ", "),
+		// limit
 		d.chunkSize,
+		// offset
 		entry.Offset,
 	)
 
