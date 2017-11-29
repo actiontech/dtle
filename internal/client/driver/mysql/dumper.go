@@ -66,7 +66,7 @@ type dumpEntry struct {
 	Values                   [][]string
 	TotalCount               int64
 	RowsCount                int64
-	Offset                   uint64
+	Offset                   uint64 // only for 'no PK' table
 	colBuffer                bytes.Buffer
 	err                      error
 }
@@ -146,18 +146,33 @@ func (d *dumper) getChunkData(e *dumpEntry) error {
 		}
 	}
 
-	query := fmt.Sprintf(`SELECT %s FROM %s.%s where %s order by %s LIMIT %d OFFSET %d`,
+	var rangeStr string
+
+	if d.table.Iteration == 0 {
+		rangeStr = "true"
+	} else {
+		rangeItems := make([]string, nCol, nCol)
+		for i, col := range d.table.UseUniqueKey.Columns.Columns {
+			colName := usql.EscapeName(col.Name)
+			switch col.Type {
+			default:
+				rangeItems[i] = fmt.Sprintf("(%s > %s)", colName, d.table.LastMaxVals[i])
+			}
+		}
+		rangeStr = strings.Join(rangeItems, " and ")
+	}
+	d.table.Iteration += 1
+
+	query := fmt.Sprintf(`SELECT %s FROM %s.%s where %s order by %s LIMIT %d`,
 		d.columns,
 		usql.EscapeName(d.TableSchema),
 		usql.EscapeName(d.TableName),
 		// where
-		"true",
+		rangeStr,
 		// order by
 		strings.Join(uniqueKeyColumnAscending, ", "),
 		// limit
 		d.chunkSize,
-		// offset
-		entry.Offset,
 	)
 
 	d.logger.Debugf("getChunkData. query: %s", query)
@@ -181,6 +196,8 @@ func (d *dumper) getChunkData(e *dumpEntry) error {
 
 	data := make([]string, 0)
 	//packetLen := 0
+	var lastVals *[]string
+
 	for rows.Next() {
 		err = rows.Scan(scanArgs...)
 		if err != nil {
@@ -202,9 +219,25 @@ func (d *dumper) getChunkData(e *dumpEntry) error {
 				vals = append(vals, "NULL")
 			}
 		}
+		lastVals = &vals
 		data = append(data, fmt.Sprintf("( %s )", strings.Join(vals, ", ")))
 		entry.incrementCounter()
 	}
+
+	if lastVals == nil {
+		d.logger.Errorf("GetLastMaxVal: no rows found")
+		panic(0)
+	} else {
+		for i, col := range d.table.UseUniqueKey.Columns.Columns {
+			if col.Idx > len(*lastVals) {
+				d.logger.Errorf("GetLastMaxVal: bad column number")
+				panic(0)
+			} else {
+				d.table.LastMaxVals[i] = (*lastVals)[col.Idx]
+			}
+		}
+	}
+
 	entry.Values = append(entry.Values, data)
 	d.resultsChannel <- entry
 	/*query = fmt.Sprintf(`

@@ -96,6 +96,7 @@ func (i *Inspector) ValidateOriginalTable(databaseName, tableName string, table 
 		}
 		if uniqueKeyIsValid {
 			table.UseUniqueKey = uk
+			table.LastMaxVals = make([]string, len(uk.Columns.Columns))
 			break
 		}
 	}
