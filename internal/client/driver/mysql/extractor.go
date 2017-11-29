@@ -467,7 +467,7 @@ func (e *Extractor) inspectTables() (err error) {
 				db.Tables = doDb.Tables
 			}
 			e.replicateDoDb = append(e.replicateDoDb, db)
-			for _, doTb := range doDb.Tables {
+			for _, doTb := range db.Tables {
 				doTb.TableSchema = doDb.TableSchema
 				if err := e.inspector.ValidateOriginalTable(doDb.TableSchema, doTb.TableName, doTb); err != nil {
 					e.logger.Warnf("mysql.extractor: %v", err)
