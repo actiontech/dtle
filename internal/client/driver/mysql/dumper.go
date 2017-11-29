@@ -134,6 +134,9 @@ func (d *dumper) getChunkData(e *dumpEntry) error {
 		d.chunkSize,
 		entry.Offset,
 	)
+
+	d.logger.Debugf("getChunkData. query: %s", query)
+
 	rows, err := d.db.Query(query)
 	if err != nil {
 		return fmt.Errorf("exec [%s] error: %v", query, err)
