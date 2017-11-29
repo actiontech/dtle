@@ -690,14 +690,13 @@ func resolveDDLSQL(sql string) (sqls []string, ok bool, err error) {
 }
 
 func genTableName(schema string, table string) config.Table {
-	return config.Table{TableSchema: schema, TableName: table}
-
+	return *config.NewTable(schema, table)
 }
 
 func parserDDLTableName(sql string) (config.Table, error) {
 	stmt, err := parser.New().ParseOneStmt(sql, "", "")
 	if err != nil {
-		return config.Table{}, err
+		return *config.NewTable("", ""), err
 	}
 
 	var res config.Table

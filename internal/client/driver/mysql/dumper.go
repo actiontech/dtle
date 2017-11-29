@@ -333,7 +333,7 @@ func showTables(db *sql.DB, dbName string) (tables []*config.Table, err error) {
 		if err := rows.Scan(&table); err != nil {
 			return tables, err
 		}
-		tb := &config.Table{TableSchema: dbName, TableName: table.String}
+		tb := config.NewTable(dbName, table.String)
 		tables = append(tables, tb)
 	}
 	return tables, rows.Err()
