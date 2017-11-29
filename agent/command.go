@@ -189,7 +189,9 @@ func (s *StringFlag) Set(value string) error {
 // setupLoggers is used to setup the logGate, logWriter, and our logOutput
 func (c *Command) setupLoggers(config *Config) (io.Writer, error) {
 	var oFile *os.File
-	if config.LogFile != "" {
+	if config.LogToStdout {
+		oFile = os.Stdout
+	} else if config.LogFile != "" {
 		if _, err := os.Stat(config.LogFile); os.IsNotExist(err) {
 			if oFile, err = os.Create(config.LogFile); err != nil {
 				oFile = os.Stderr

@@ -37,6 +37,8 @@ type Config struct {
 	// LogLevel is the level of the logs to putout
 	LogLevel string `mapstructure:"log_level"`
 
+	LogToStdout bool `mapstructure:"log_to_stdout"`
+
 	// file to write our pid to
 	PidFile string `mapstructure:"pid_file"`
 
@@ -220,6 +222,7 @@ func DefaultConfig() *Config {
 	return &Config{
 		LogLevel:   "INFO",
 		LogFile:    "/var/log/udup/udup.log",
+		LogToStdout: false,
 		PidFile:    "/var/run/udup/udup.pid",
 		Region:     "global",
 		Datacenter: "dc1",
@@ -313,6 +316,9 @@ func (c *Config) Merge(b *Config) *Config {
 	}
 	if b.LogFile != "" {
 		result.LogFile = b.LogFile
+	}
+	if b.LogToStdout {
+		result.LogToStdout = b.LogToStdout
 	}
 	if b.PidFile != "" {
 		result.PidFile = b.PidFile
