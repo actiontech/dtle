@@ -101,6 +101,17 @@ func (i *Inspector) ValidateOriginalTable(databaseName, tableName string, table 
 				// do nothing
 			}
 		}
+
+		if uk.HasNullable {
+			i.logger.Warnf("Will not use %+v as unique key due to having nullable", uk.Name)
+			uniqueKeyIsValid = false
+		}
+
+		if !uk.IsPrimary() && "FULL" != i.mysqlContext.BinlogRowImage {
+			i.logger.Warnf("Will not use %+v as unique key due to not primary when binlog row image is FULL", uk.Name)
+			uniqueKeyIsValid = false
+		}
+
 		if uniqueKeyIsValid {
 			table.UseUniqueKey = uk
 			table.LastMaxVals = make([]string, len(uk.Columns.Columns))
@@ -108,12 +119,10 @@ func (i *Inspector) ValidateOriginalTable(databaseName, tableName string, table 
 		}
 	}
 	if table.UseUniqueKey == nil {
-		return fmt.Errorf("No unique key can be found! Bailing out")
+		i.logger.Warnf("No valid unique key found for table %s.%s. It will be slow on large table.", table.TableSchema, table.TableName)
+	} else {
+		i.logger.Infof("Chosen shared unique key is %s", table.UseUniqueKey.Name)
 	}
-
-	i.logger.Infof("Chosen shared unique key is %s", table.UseUniqueKey.Name)
-
-	// TODO other validation, e.g. nullable
 	// endregion
 
 	if err := i.validateTableTriggers(databaseName, tableName); err != nil {
