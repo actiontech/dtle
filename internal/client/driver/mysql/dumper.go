@@ -151,15 +151,24 @@ func (d *dumper) getChunkData(e *dumpEntry) error {
 	if d.table.Iteration == 0 {
 		rangeStr = "true"
 	} else {
-		rangeItems := make([]string, nCol, nCol)
-		for i, col := range d.table.UseUniqueKey.Columns.Columns {
-			colName := usql.EscapeName(col.Name)
-			switch col.Type {
-			default:
-				rangeItems[i] = fmt.Sprintf("(%s > %s)", colName, d.table.LastMaxVals[i])
+		rangeItems := make([]string, nCol)
+
+		// The form like: (A > a) or (A = a and B > b) or (A = a and B = b and C > c) or ...
+		for x := 0; x < nCol; x++ {
+			innerItems := make([]string, x + 1)
+
+			for y := 0; y < x; y++ {
+				colName := usql.EscapeName(d.table.UseUniqueKey.Columns.Columns[y].Name)
+				innerItems[y] = fmt.Sprintf("(%s = %s)", colName, d.table.LastMaxVals[y])
 			}
+
+			colName := usql.EscapeName(d.table.UseUniqueKey.Columns.Columns[x].Name)
+			innerItems[x] = fmt.Sprintf("(%s > %s)", colName, d.table.LastMaxVals[x])
+
+			rangeItems[x] = fmt.Sprintf("(%s)", strings.Join(innerItems, " and "))
 		}
-		rangeStr = strings.Join(rangeItems, " and ")
+
+		rangeStr = strings.Join(rangeItems, " or ")
 	}
 	d.table.Iteration += 1
 
@@ -224,18 +233,20 @@ func (d *dumper) getChunkData(e *dumpEntry) error {
 		entry.incrementCounter()
 	}
 
+	d.logger.Debugf("getChunkData. n_row: %d", len(data))
+	// TODO getChunkData could get 0 rows. Esp after removing 'start transaction'.
 	if lastVals == nil {
-		d.logger.Errorf("GetLastMaxVal: no rows found")
-		panic(0)
+		return fmt.Errorf("getChunkData. GetLastMaxVal: no rows found")
 	} else {
 		for i, col := range d.table.UseUniqueKey.Columns.Columns {
-			if col.Idx > len(*lastVals) {
-				d.logger.Errorf("GetLastMaxVal: bad column number")
-				panic(0)
+			idx := col.Idx
+			if idx > len(*lastVals) {
+				return fmt.Errorf("getChunkData. GetLastMaxVal: column index %d > n_column", idx, len(*lastVals))
 			} else {
-				d.table.LastMaxVals[i] = (*lastVals)[col.Idx]
+				d.table.LastMaxVals[i] = (*lastVals)[idx]
 			}
 		}
+		d.logger.Debugf("GetLastMaxVal: got %v", d.table.LastMaxVals)
 	}
 
 	entry.Values = append(entry.Values, data)

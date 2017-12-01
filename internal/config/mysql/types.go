@@ -114,6 +114,7 @@ func NewColumnsMap(orderedColumns []Column) ColumnsMap {
 	columnsMap := NewEmptyColumnsMap()
 	for i, column := range orderedColumns {
 		columnsMap[column.Name] = i
+		orderedColumns[i].Idx = i
 	}
 	return columnsMap
 }
