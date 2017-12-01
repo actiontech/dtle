@@ -261,7 +261,8 @@ func (d *dumper) getChunkData(e *dumpEntry) error {
 	if d.table.UseUniqueKey != nil {
 		// lastVals must not be nil if len(data) > 0
 		for i, col := range d.table.UseUniqueKey.Columns.Columns {
-			idx := col.Idx
+			// TODO save the idx
+			idx := d.table.OriginalTableColumns.Ordinals[col.Name]
 			if idx > len(*lastVals) {
 				return fmt.Errorf("getChunkData. GetLastMaxVal: column index %d > n_column", idx, len(*lastVals))
 			} else {
