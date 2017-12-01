@@ -303,6 +303,7 @@ type Table struct {
 	OriginalTableColumnsOnApplier    *umconf.ColumnList
 	OriginalTableColumns             *umconf.ColumnList
 	OriginalTableUniqueKeys          [](*umconf.UniqueKey)
+	UseUniqueKey                     *umconf.UniqueKey
 	SharedColumns                    *umconf.ColumnList
 	ColumnRenameMap                  map[string]string
 	DroppedColumnsMap                map[string]bool
@@ -315,6 +316,14 @@ type Table struct {
 
 	TableEngine  string
 	RowsEstimate int64
+}
+
+func NewTable(schemaName string, tableName string) *Table {
+	return &Table{
+		TableSchema: schemaName,
+		TableName: tableName,
+		Iteration: 0,
+	}
 }
 
 // DefaultConfig returns the default configuration

@@ -140,18 +140,6 @@ func (e *Extractor) canStopStreaming() bool {
 	return atomic.LoadInt64(&e.mysqlContext.CutOverCompleteFlag) != 0
 }
 
-// validateStatement validates the `alter` statement meets criteria.
-// At this time this means:
-// - column renames are approved
-func (e *Extractor) validateStatement(doTb *config.Table) (err error) {
-	if e.parser.HasNonTrivialRenames() && !e.mysqlContext.SkipRenamedColumns {
-		doTb.ColumnRenameMap = e.parser.GetNonTrivialRenames()
-		e.logger.Printf("mysql.extractor: Alter statement has column(s) renamed. udup finds the following renames: %v.", e.parser.GetNonTrivialRenames())
-	}
-	doTb.DroppedColumnsMap = e.parser.DroppedColumnsMap()
-	return nil
-}
-
 // Run executes the complete extract logic.
 func (e *Extractor) Run() {
 	e.logger.Printf("mysql.extractor: Extract binlog events from %s.%d", e.mysqlContext.ConnectionConfig.Host, e.mysqlContext.ConnectionConfig.Port)
@@ -479,9 +467,9 @@ func (e *Extractor) inspectTables() (err error) {
 				db.Tables = doDb.Tables
 			}
 			e.replicateDoDb = append(e.replicateDoDb, db)
-			for _, doTb := range doDb.Tables {
+			for _, doTb := range db.Tables {
 				doTb.TableSchema = doDb.TableSchema
-				if err := e.inspector.ValidateOriginalTable(doDb.TableSchema, doTb.TableName); err != nil {
+				if err := e.inspector.ValidateOriginalTable(doDb.TableSchema, doTb.TableName, doTb); err != nil {
 					e.logger.Warnf("mysql.extractor: %v", err)
 					continue
 				}
@@ -509,13 +497,23 @@ func (e *Extractor) inspectTables() (err error) {
 				if len(e.mysqlContext.ReplicateIgnoreDb) > 0 && e.ignoreTb(dbName, tb.TableName) {
 					continue
 				}
-				if err := e.inspector.ValidateOriginalTable(dbName, tb.TableName); err != nil {
+				if err := e.inspector.ValidateOriginalTable(dbName, tb.TableName, tb); err != nil {
 					e.logger.Warnf("mysql.extractor: %v", err)
 					continue
 				}
+
 				ds.Tables = append(ds.Tables, tb)
 			}
 			e.replicateDoDb = append(e.replicateDoDb, ds)
+		}
+	}
+
+	for _, db := range e.replicateDoDb {
+		for _, tbl := range db.Tables {
+			e.logger.Infof("Do table: %s.%s. n_unique_keys: %d", tbl.TableSchema, tbl.TableName, len(tbl.OriginalTableUniqueKeys))
+			for _, uk := range tbl.OriginalTableUniqueKeys {
+				e.logger.Infof("A unique key: %s", uk.String())
+			}
 		}
 	}
 
@@ -1195,7 +1193,7 @@ func (e *Extractor) mysqlDump() error {
 			// Choose how we create statements based on the # of rows ...
 			e.logger.Printf("mysql.extractor: Step %d: - scanning table '%s.%s' (%d of %d tables)", step, t.TableSchema, t.TableName, counter, e.tableCount)
 
-			d := NewDumper(tx, t.TableSchema, t.TableName, t.Counter, e.mysqlContext.ChunkSize, e.logger)
+			d := NewDumper(tx, t, t.Counter, e.mysqlContext.ChunkSize, e.logger)
 			if err := d.Dump(1); err != nil {
 				e.onError(TaskStateDead, err)
 			}

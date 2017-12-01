@@ -471,7 +471,7 @@ func (s *GenericScheduler) findPreferredNode(allocTuple *allocTuple) (node *mode
 			}
 		}
 		if !findNode {
-			return nil, fmt.Errorf("sched: Can't find preferred node %s", allocTuple.Task.NodeID)
+			return nil, fmt.Errorf("sched: Can't find preferred node %s", allocTuple.Task.NodeName)
 		}
 	}
 	return

@@ -23,7 +23,6 @@ import (
 	"udup/internal/client/driver/mysql/binlog"
 	"udup/internal/client/driver/mysql/sql"
 	"udup/internal/config"
-	umconf "udup/internal/config/mysql"
 	log "udup/internal/logger"
 	"udup/internal/models"
 )
@@ -162,18 +161,6 @@ func (a *Applier) consumeRowCopyComplete() {
 		for <-a.rowCopyComplete {
 		}
 	}()
-}
-
-// validateStatement validates the `alter` statement meets criteria.
-// At this time this means:
-// - column renames are approved
-func (a *Applier) validateStatement(doTb *config.Table) (err error) {
-	if a.parser.HasNonTrivialRenames() && !a.mysqlContext.SkipRenamedColumns {
-		doTb.ColumnRenameMap = a.parser.GetNonTrivialRenames()
-		a.logger.Printf("mysql.applier: Alter statement has column(s) renamed. udup finds the following renames: %v.", a.parser.GetNonTrivialRenames())
-	}
-	doTb.DroppedColumnsMap = a.parser.DroppedColumnsMap()
-	return nil
 }
 
 // Run executes the complete apply logic.
@@ -1400,140 +1387,6 @@ func (a *Applier) ShowStatusVariable(variableName string) (result int64, err err
 		return 0, err
 	}
 	return result, nil
-}
-
-// getCandidateUniqueKeys investigates a table and returns the list of unique keys
-// candidate for chunking
-func (a *Applier) getCandidateUniqueKeys(databaseName, tableName string) (uniqueKeys [](*umconf.UniqueKey), err error) {
-	query := `
-    SELECT
-      COLUMNS.TABLE_SCHEMA,
-      COLUMNS.TABLE_NAME,
-      COLUMNS.COLUMN_NAME,
-      UNIQUES.INDEX_NAME,
-      UNIQUES.COLUMN_NAMES,
-      UNIQUES.COUNT_COLUMN_IN_INDEX,
-      COLUMNS.DATA_TYPE,
-      COLUMNS.CHARACTER_SET_NAME,
-			LOCATE('auto_increment', EXTRA) > 0 as is_auto_increment,
-      has_nullable
-    FROM INFORMATION_SCHEMA.COLUMNS INNER JOIN (
-      SELECT
-        TABLE_SCHEMA,
-        TABLE_NAME,
-        INDEX_NAME,
-        COUNT(*) AS COUNT_COLUMN_IN_INDEX,
-        GROUP_CONCAT(COLUMN_NAME ORDER BY SEQ_IN_INDEX ASC) AS COLUMN_NAMES,
-        SUBSTRING_INDEX(GROUP_CONCAT(COLUMN_NAME ORDER BY SEQ_IN_INDEX ASC), ',', 1) AS FIRST_COLUMN_NAME,
-        SUM(NULLABLE='YES') > 0 AS has_nullable
-      FROM INFORMATION_SCHEMA.STATISTICS
-      WHERE
-				NON_UNIQUE=0
-				AND TABLE_SCHEMA = ?
-      	AND TABLE_NAME = ?
-      GROUP BY TABLE_SCHEMA, TABLE_NAME, INDEX_NAME
-    ) AS UNIQUES
-    ON (
-      COLUMNS.TABLE_SCHEMA = UNIQUES.TABLE_SCHEMA AND
-      COLUMNS.TABLE_NAME = UNIQUES.TABLE_NAME AND
-      COLUMNS.COLUMN_NAME = UNIQUES.FIRST_COLUMN_NAME
-    )
-    WHERE
-      COLUMNS.TABLE_SCHEMA = ?
-      AND COLUMNS.TABLE_NAME = ?
-    ORDER BY
-      COLUMNS.TABLE_SCHEMA, COLUMNS.TABLE_NAME,
-      CASE UNIQUES.INDEX_NAME
-        WHEN 'PRIMARY' THEN 0
-        ELSE 1
-      END,
-      CASE has_nullable
-        WHEN 0 THEN 0
-        ELSE 1
-      END,
-      CASE IFNULL(CHARACTER_SET_NAME, '')
-          WHEN '' THEN 0
-          ELSE 1
-      END,
-      CASE DATA_TYPE
-        WHEN 'tinyint' THEN 0
-        WHEN 'smallint' THEN 1
-        WHEN 'int' THEN 2
-        WHEN 'bigint' THEN 3
-        ELSE 100
-      END,
-      COUNT_COLUMN_IN_INDEX
-  `
-	err = sql.QueryRowsMap(a.db, query, func(m sql.RowMap) error {
-		uniqueKey := &umconf.UniqueKey{
-			Name:            m.GetString("INDEX_NAME"),
-			Columns:         *umconf.ParseColumnList(m.GetString("COLUMN_NAMES")),
-			HasNullable:     m.GetBool("has_nullable"),
-			IsAutoIncrement: m.GetBool("is_auto_increment"),
-		}
-		uniqueKeys = append(uniqueKeys, uniqueKey)
-		return nil
-	}, databaseName, tableName, databaseName, tableName)
-	if err != nil {
-		return uniqueKeys, err
-	}
-	//a.logger.Debugf("mysql.applier: potential unique keys in %+v.%+v: %+v", databaseName, tableName, uniqueKeys)
-	return uniqueKeys, nil
-}
-
-func (a *Applier) InspectTableColumnsAndUniqueKeys(databaseName, tableName string) (columns *umconf.ColumnList, uniqueKeys [](*umconf.UniqueKey), err error) {
-	uniqueKeys, err = a.getCandidateUniqueKeys(databaseName, tableName)
-	if err != nil {
-		return columns, uniqueKeys, err
-	}
-	/*if len(uniqueKeys) == 0 {
-		return columns, uniqueKeys, fmt.Errorf("No PRIMARY nor UNIQUE key found in table! Bailing out")
-	}*/
-	columns, err = base.GetTableColumns(a.db, databaseName, tableName)
-	if err != nil {
-		return columns, uniqueKeys, err
-	}
-	t := &config.Table{
-		TableName:            tableName,
-		OriginalTableColumns: columns,
-	}
-	if err := base.InspectTables(a.db, databaseName, t, a.mysqlContext.TimeZone); err != nil {
-		return columns, uniqueKeys, err
-	}
-	columns = t.OriginalTableColumns
-	uniqueKeys = t.OriginalTableUniqueKeys
-
-	return columns, uniqueKeys, nil
-}
-
-// getSharedColumns returns the intersection of two lists of columns in same order as the first list
-func (a *Applier) getSharedColumns(originalColumns, columns *umconf.ColumnList, columnRenameMap map[string]string) (*umconf.ColumnList, *umconf.ColumnList) {
-	columnsInGhost := make(map[string]bool)
-	for _, column := range columns.Names() {
-		columnsInGhost[column] = true
-	}
-	sharedColumnNames := []string{}
-	for _, originalColumn := range originalColumns.Names() {
-		isSharedColumn := false
-		if columnsInGhost[originalColumn] || columnsInGhost[columnRenameMap[originalColumn]] {
-			isSharedColumn = true
-		}
-		/*if a.mysqlContext.DroppedColumnsMap[originalColumn] {
-			isSharedColumn = false
-		}*/
-		if isSharedColumn {
-			sharedColumnNames = append(sharedColumnNames, originalColumn)
-		}
-	}
-	mappedSharedColumnNames := []string{}
-	for _, columnName := range sharedColumnNames {
-		if mapped, ok := columnRenameMap[columnName]; ok {
-			mappedSharedColumnNames = append(mappedSharedColumnNames, mapped)
-		} else {
-			mappedSharedColumnNames = append(mappedSharedColumnNames, columnName)
-		}
-	}
-	return umconf.NewColumnList(sharedColumnNames), umconf.NewColumnList(mappedSharedColumnNames)
 }
 
 // buildDMLEventQuery creates a query to operate on the ghost table, based on an intercepted binlog

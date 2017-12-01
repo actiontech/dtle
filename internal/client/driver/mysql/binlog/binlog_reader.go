@@ -637,110 +637,6 @@ func (b *BinlogReader) onCommit(lastEvent *BinlogEvent, txChannel chan<- *Binlog
 	b.currentTx = nil
 }
 
-func (b *BinlogReader) InspectTableColumnsAndUniqueKeys(databaseName, tableName string) (columns *mysql.ColumnList, uniqueKeys [](*mysql.UniqueKey), err error) {
-	/*uniqueKeys, err = b.getCandidateUniqueKeys(databaseName, tableName)
-	if err != nil {
-		return columns, uniqueKeys, err
-	}*/
-	/*if len(uniqueKeys) == 0 {
-		return columns, uniqueKeys, fmt.Errorf("No PRIMARY nor UNIQUE key found in table! Bailing out")
-	}*/
-	columns, err = base.GetTableColumns(b.db, databaseName, tableName)
-	if err != nil {
-		return columns, uniqueKeys, err
-	}
-	t := &config.Table{
-		TableName:            tableName,
-		OriginalTableColumns: columns,
-	}
-	if err := base.InspectTables(b.db, databaseName, t, b.mysqlContext.TimeZone); err != nil {
-		return columns, uniqueKeys, err
-	}
-	columns = t.OriginalTableColumns
-	uniqueKeys = t.OriginalTableUniqueKeys
-
-	return columns, uniqueKeys, nil
-}
-
-// getCandidateUniqueKeys investigates a table and returns the list of unique keys
-// candidate for chunking
-func (b *BinlogReader) getCandidateUniqueKeys(databaseName, tableName string) (uniqueKeys [](*mysql.UniqueKey), err error) {
-	query := `
-    SELECT
-      COLUMNS.TABLE_SCHEMA,
-      COLUMNS.TABLE_NAME,
-      COLUMNS.COLUMN_NAME,
-      UNIQUES.INDEX_NAME,
-      UNIQUES.COLUMN_NAMES,
-      UNIQUES.COUNT_COLUMN_IN_INDEX,
-      COLUMNS.DATA_TYPE,
-      COLUMNS.CHARACTER_SET_NAME,
-			LOCATE('auto_increment', EXTRA) > 0 as is_auto_increment,
-      has_nullable
-    FROM INFORMATION_SCHEMA.COLUMNS INNER JOIN (
-      SELECT
-        TABLE_SCHEMA,
-        TABLE_NAME,
-        INDEX_NAME,
-        COUNT(*) AS COUNT_COLUMN_IN_INDEX,
-        GROUP_CONCAT(COLUMN_NAME ORDER BY SEQ_IN_INDEX ASC) AS COLUMN_NAMES,
-        SUBSTRING_INDEX(GROUP_CONCAT(COLUMN_NAME ORDER BY SEQ_IN_INDEX ASC), ',', 1) AS FIRST_COLUMN_NAME,
-        SUM(NULLABLE='YES') > 0 AS has_nullable
-      FROM INFORMATION_SCHEMA.STATISTICS
-      WHERE
-				NON_UNIQUE=0
-				AND TABLE_SCHEMA = ?
-      	AND TABLE_NAME = ?
-      GROUP BY TABLE_SCHEMA, TABLE_NAME, INDEX_NAME
-    ) AS UNIQUES
-    ON (
-      COLUMNS.TABLE_SCHEMA = UNIQUES.TABLE_SCHEMA AND
-      COLUMNS.TABLE_NAME = UNIQUES.TABLE_NAME AND
-      COLUMNS.COLUMN_NAME = UNIQUES.FIRST_COLUMN_NAME
-    )
-    WHERE
-      COLUMNS.TABLE_SCHEMA = ?
-      AND COLUMNS.TABLE_NAME = ?
-    ORDER BY
-      COLUMNS.TABLE_SCHEMA, COLUMNS.TABLE_NAME,
-      CASE UNIQUES.INDEX_NAME
-        WHEN 'PRIMARY' THEN 0
-        ELSE 1
-      END,
-      CASE has_nullable
-        WHEN 0 THEN 0
-        ELSE 1
-      END,
-      CASE IFNULL(CHARACTER_SET_NAME, '')
-          WHEN '' THEN 0
-          ELSE 1
-      END,
-      CASE DATA_TYPE
-        WHEN 'tinyint' THEN 0
-        WHEN 'smallint' THEN 1
-        WHEN 'int' THEN 2
-        WHEN 'bigint' THEN 3
-        ELSE 100
-      END,
-      COUNT_COLUMN_IN_INDEX
-  `
-	err = sql.QueryRowsMap(b.db, query, func(m sql.RowMap) error {
-		uniqueKey := &mysql.UniqueKey{
-			Name:            m.GetString("INDEX_NAME"),
-			Columns:         *mysql.ParseColumnList(m.GetString("COLUMN_NAMES")),
-			HasNullable:     m.GetBool("has_nullable"),
-			IsAutoIncrement: m.GetBool("is_auto_increment"),
-		}
-		uniqueKeys = append(uniqueKeys, uniqueKey)
-		return nil
-	}, databaseName, tableName, databaseName, tableName)
-	if err != nil {
-		return uniqueKeys, err
-	}
-	//b.logger.Debugf("mysql.reader: potential unique keys in %+v.%+v: %+v", databaseName, tableName, uniqueKeys)
-	return uniqueKeys, nil
-}
-
 func GenDDLSQL(sql string, schema string) (string, error) {
 	stmt, err := parser.New().ParseOneStmt(sql, "", "")
 	if err != nil {
@@ -794,14 +690,13 @@ func resolveDDLSQL(sql string) (sqls []string, ok bool, err error) {
 }
 
 func genTableName(schema string, table string) config.Table {
-	return config.Table{TableSchema: schema, TableName: table}
-
+	return *config.NewTable(schema, table)
 }
 
 func parserDDLTableName(sql string) (config.Table, error) {
 	stmt, err := parser.New().ParseOneStmt(sql, "", "")
 	if err != nil {
-		return config.Table{}, err
+		return *config.NewTable("", ""), err
 	}
 
 	var res config.Table

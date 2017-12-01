@@ -24,6 +24,7 @@ const (
 	DecimalColumnType              = iota
 	BinaryColumnType               = iota
 	TextColumnType                 = iota
+	JSONColumnType                 = iota
 )
 
 const maxMediumintUnsigned int32 = 16777215
@@ -113,6 +114,7 @@ func NewColumnsMap(orderedColumns []Column) ColumnsMap {
 	columnsMap := NewEmptyColumnsMap()
 	for i, column := range orderedColumns {
 		columnsMap[column.Name] = i
+		orderedColumns[i].Idx = i
 	}
 	return columnsMap
 }
@@ -254,6 +256,7 @@ type UniqueKey struct {
 	Columns         ColumnList
 	HasNullable     bool
 	IsAutoIncrement bool
+	LastMaxVals     []string
 }
 
 // IsPrimary checks if this unique key is primary

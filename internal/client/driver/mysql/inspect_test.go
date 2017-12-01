@@ -61,7 +61,8 @@ func TestInspector_ValidateOriginalTable(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if err := tt.i.ValidateOriginalTable(tt.args.databaseName, tt.args.tableName); (err != nil) != tt.wantErr {
+			var table uconf.Table
+			if err := tt.i.ValidateOriginalTable(tt.args.databaseName, tt.args.tableName, &table); (err != nil) != tt.wantErr {
 				t.Errorf("Inspector.ValidateOriginalTable() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
@@ -95,28 +96,6 @@ func TestInspector_InspectTableColumnsAndUniqueKeys(t *testing.T) {
 			}
 			if !reflect.DeepEqual(gotUniqueKeys, tt.wantUniqueKeys) {
 				t.Errorf("Inspector.InspectTableColumnsAndUniqueKeys() gotUniqueKeys = %v, want %v", gotUniqueKeys, tt.wantUniqueKeys)
-			}
-		})
-	}
-}
-
-func TestInspector_InspectOriginalTable(t *testing.T) {
-	type args struct {
-		databaseName string
-		doTb         *uconf.Table
-	}
-	tests := []struct {
-		name    string
-		i       *Inspector
-		args    args
-		wantErr bool
-	}{
-	// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if err := tt.i.InspectOriginalTable(tt.args.databaseName, tt.args.doTb); (err != nil) != tt.wantErr {
-				t.Errorf("Inspector.InspectOriginalTable() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
 	}
