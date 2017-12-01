@@ -114,7 +114,6 @@ func (i *Inspector) ValidateOriginalTable(databaseName, tableName string, table 
 
 		if uniqueKeyIsValid {
 			table.UseUniqueKey = uk
-			table.LastMaxVals = make([]string, len(uk.Columns.Columns))
 			break
 		}
 	}
@@ -421,11 +420,13 @@ func (i *Inspector) getCandidateUniqueKeys(databaseName, tableName string) (uniq
       COUNT_COLUMN_IN_INDEX
   `
 	err = usql.QueryRowsMap(i.db, query, func(m usql.RowMap) error {
+		columns := umconf.ParseColumnList(m.GetString("COLUMN_NAMES"))
 		uniqueKey := &umconf.UniqueKey{
 			Name:            m.GetString("INDEX_NAME"),
-			Columns:         *umconf.ParseColumnList(m.GetString("COLUMN_NAMES")),
+			Columns:         *columns,
 			HasNullable:     m.GetBool("has_nullable"),
 			IsAutoIncrement: m.GetBool("is_auto_increment"),
+			LastMaxVals:     make([]string, len(columns.Columns)),
 		}
 		uniqueKeys = append(uniqueKeys, uniqueKey)
 		return nil

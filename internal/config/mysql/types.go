@@ -256,6 +256,7 @@ type UniqueKey struct {
 	Columns         ColumnList
 	HasNullable     bool
 	IsAutoIncrement bool
+	LastMaxVals     []string
 }
 
 // IsPrimary checks if this unique key is primary

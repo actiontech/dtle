@@ -304,7 +304,6 @@ type Table struct {
 	OriginalTableColumns             *umconf.ColumnList
 	OriginalTableUniqueKeys          [](*umconf.UniqueKey)
 	UseUniqueKey                     *umconf.UniqueKey
-	LastMaxVals                      []string
 	SharedColumns                    *umconf.ColumnList
 	ColumnRenameMap                  map[string]string
 	DroppedColumnsMap                map[string]bool

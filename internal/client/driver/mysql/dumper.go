@@ -159,11 +159,11 @@ func (d *dumper) buildQueryOnUniqueKey(e *dumpEntry) string {
 
 			for y := 0; y < x; y++ {
 				colName := usql.EscapeName(d.table.UseUniqueKey.Columns.Columns[y].Name)
-				innerItems[y] = fmt.Sprintf("(%s = %s)", colName, d.table.LastMaxVals[y])
+				innerItems[y] = fmt.Sprintf("(%s = %s)", colName, d.table.UseUniqueKey.LastMaxVals[y])
 			}
 
 			colName := usql.EscapeName(d.table.UseUniqueKey.Columns.Columns[x].Name)
-			innerItems[x] = fmt.Sprintf("(%s > %s)", colName, d.table.LastMaxVals[x])
+			innerItems[x] = fmt.Sprintf("(%s > %s)", colName, d.table.UseUniqueKey.LastMaxVals[x])
 
 			rangeItems[x] = fmt.Sprintf("(%s)", strings.Join(innerItems, " and "))
 		}
@@ -265,10 +265,10 @@ func (d *dumper) getChunkData(e *dumpEntry) error {
 			if idx > len(*lastVals) {
 				return fmt.Errorf("getChunkData. GetLastMaxVal: column index %d > n_column", idx, len(*lastVals))
 			} else {
-				d.table.LastMaxVals[i] = (*lastVals)[idx]
+				d.table.UseUniqueKey.LastMaxVals[i] = (*lastVals)[idx]
 			}
 		}
-		d.logger.Debugf("GetLastMaxVal: got %v", d.table.LastMaxVals)
+		d.logger.Debugf("GetLastMaxVal: got %v", d.table.UseUniqueKey.LastMaxVals)
 	}
 
 	entry.Values = append(entry.Values, data)
