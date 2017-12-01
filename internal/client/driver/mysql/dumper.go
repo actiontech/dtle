@@ -122,17 +122,17 @@ func (d *dumper) getDumpEntries() ([]*dumpEntry, error) {
 	return entries, nil
 }
 
-// dumps a specific chunk, reading chunk info from the channel
-func (d *dumper) getChunkData(e *dumpEntry) error {
-	entry := &dumpEntry{
-		TableSchema: d.TableSchema,
-		TableName:   d.TableName,
-		RowsCount:   e.RowsCount,
-		Offset:      e.Offset,
-	}
-	// TODO use PS
-	// TODO escape once and save
+func (d *dumper) buildQueryOldWay(e *dumpEntry) string {
+	return fmt.Sprintf(`SELECT %s FROM %s.%s LIMIT %d OFFSET %d`,
+		d.columns,
+		usql.EscapeName(d.TableSchema),
+		usql.EscapeName(d.TableName),
+		d.chunkSize,
+		e.Offset,
+	)
+}
 
+func (d *dumper) buildQueryOnUniqueKey(e *dumpEntry) string {
 	nCol := len(d.table.UseUniqueKey.Columns.Columns)
 	uniqueKeyColumnAscending := make([]string, nCol, nCol)
 	for i, col := range d.table.UseUniqueKey.Columns.Columns {
@@ -170,9 +170,8 @@ func (d *dumper) getChunkData(e *dumpEntry) error {
 
 		rangeStr = strings.Join(rangeItems, " or ")
 	}
-	d.table.Iteration += 1
 
-	query := fmt.Sprintf(`SELECT %s FROM %s.%s where %s order by %s LIMIT %d`,
+	return fmt.Sprintf(`SELECT %s FROM %s.%s where %s order by %s LIMIT %d`,
 		d.columns,
 		usql.EscapeName(d.TableSchema),
 		usql.EscapeName(d.TableName),
@@ -183,9 +182,28 @@ func (d *dumper) getChunkData(e *dumpEntry) error {
 		// limit
 		d.chunkSize,
 	)
+}
 
+// dumps a specific chunk, reading chunk info from the channel
+func (d *dumper) getChunkData(e *dumpEntry) error {
+	entry := &dumpEntry{
+		TableSchema: d.TableSchema,
+		TableName:   d.TableName,
+		RowsCount:   e.RowsCount,
+		Offset:      e.Offset,
+	}
+	// TODO use PS
+	// TODO escape schema/table/column name once and save
+
+	query := ""
+	if d.table.UseUniqueKey == nil {
+		query = d.buildQueryOldWay(e)
+	} else {
+		query = d.buildQueryOnUniqueKey(e)
+	}
 	d.logger.Debugf("getChunkData. query: %s", query)
 
+	d.table.Iteration += 1
 	rows, err := d.db.Query(query)
 	if err != nil {
 		return fmt.Errorf("exec [%s] error: %v", query, err)
@@ -234,10 +252,14 @@ func (d *dumper) getChunkData(e *dumpEntry) error {
 	}
 
 	d.logger.Debugf("getChunkData. n_row: %d", len(data))
+
 	// TODO getChunkData could get 0 rows. Esp after removing 'start transaction'.
-	if lastVals == nil {
+	if len(data) == 0 {
 		return fmt.Errorf("getChunkData. GetLastMaxVal: no rows found")
-	} else {
+	}
+
+	if d.table.UseUniqueKey != nil {
+		// lastVals must not be nil if len(data) > 0
 		for i, col := range d.table.UseUniqueKey.Columns.Columns {
 			idx := col.Idx
 			if idx > len(*lastVals) {
