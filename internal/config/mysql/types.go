@@ -24,6 +24,7 @@ const (
 	DecimalColumnType              = iota
 	BinaryColumnType               = iota
 	TextColumnType                 = iota
+	JSONColumnType                 = iota
 )
 
 const maxMediumintUnsigned int32 = 16777215

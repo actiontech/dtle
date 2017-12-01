@@ -83,13 +83,20 @@ func (i *Inspector) ValidateOriginalTable(databaseName, tableName string, table 
 	}
 
 	for _, uk := range table.OriginalTableUniqueKeys {
+		ubase.ApplyColumnTypes(i.db, table.TableSchema, table.TableName, &uk.Columns)
+
 		uniqueKeyIsValid := true
+
 		for _, column := range uk.Columns.Columns {
 			switch column.Type {
 			case umconf.FloatColumnType:
 				i.logger.Warning("Will not use %+v as shared key due to FLOAT data type", uk.Name)
 				uniqueKeyIsValid = false
-				// TODO JSONType
+			case umconf.JSONColumnType:
+				// Noteworthy that at this time MySQL does not allow JSON indexing anyhow, but this code
+				// will remain in place to potentially handle the future case where JSON is supported in indexes.
+				i.logger.Warnf("Will not use %+v as unique key due to JSON data type", uk.Name)
+				uniqueKeyIsValid = false
 			default:
 				// do nothing
 			}
