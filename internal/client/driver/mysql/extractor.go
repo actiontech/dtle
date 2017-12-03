@@ -1137,7 +1137,8 @@ func (e *Extractor) mysqlDump() error {
 					return err
 				}
 				tb.Counter = total
-
+			}
+			for _, tb := range db.Tables {
 				var dbSQL, tbSQL string
 				if !e.mysqlContext.SkipCreateDbTable {
 					var err error
