@@ -281,7 +281,7 @@ func (d *dumper) getChunkData(e *dumpEntry) (err error) {
 	}
 
 	entry.Values = append(entry.Values, data)
-	d.resultsChannel <- entry
+	//d.resultsChannel <- entry
 	/*query = fmt.Sprintf(`
 			insert into %s.%s
 				(%s)
