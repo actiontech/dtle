@@ -133,6 +133,10 @@ func (n *udupFSM) Apply(log *raft.Log) interface{} {
 		return n.applyUpsertJob(buf[1:], log.Index)
 	case models.JobDeregisterRequestType:
 		return n.applyDeregisterJob(buf[1:], log.Index)
+	case models.OrderRegisterRequestType:
+		return n.applyUpsertOrder(buf[1:], log.Index)
+	case models.OrderDeregisterRequestType:
+		return n.applyDeregisterOrder(buf[1:], log.Index)
 	case models.JobClientUpdateRequestType:
 		return n.applyJobClientUpdate(buf[1:], log.Index)
 	case models.EvalUpdateRequestType:
@@ -257,6 +261,36 @@ func (n *udupFSM) applyDeregisterJob(buf []byte, index uint64) interface{} {
 
 	if err := n.state.DeleteJob(index, req.JobID); err != nil {
 		n.logger.Errorf("server.fsm: DeleteJob failed: %v", err)
+		return err
+	}
+
+	return nil
+}
+
+func (n *udupFSM) applyUpsertOrder(buf []byte, index uint64) interface{} {
+	defer metrics.MeasureSince([]string{"server", "fsm", "register_order"}, time.Now())
+	var req models.OrderRegisterRequest
+	if err := models.Decode(buf, &req); err != nil {
+		panic(fmt.Errorf("failed to decode request: %v", err))
+	}
+
+	if err := n.state.UpsertOrder(index, req.Order); err != nil {
+		n.logger.Errorf("server.fsm: UpsertOrder failed: %v", err)
+		return err
+	}
+
+	return nil
+}
+
+func (n *udupFSM) applyDeregisterOrder(buf []byte, index uint64) interface{} {
+	defer metrics.MeasureSince([]string{"server", "fsm", "deregister_order"}, time.Now())
+	var req models.OrderDeregisterRequest
+	if err := models.Decode(buf, &req); err != nil {
+		panic(fmt.Errorf("failed to decode request: %v", err))
+	}
+
+	if err := n.state.DeleteOrder(index, req.OrderID); err != nil {
+		n.logger.Errorf("server.fsm: DeleteOrder failed: %v", err)
 		return err
 	}
 

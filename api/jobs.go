@@ -177,6 +177,7 @@ func (j *Jobs) Summary(jobID string, q *QueryOptions) (*Job, *QueryMeta, error) 
 type Job struct {
 	Region            *string
 	ID                *string
+	OrderID           *string
 	Name              *string
 	Type              *string
 	Datacenters       []string

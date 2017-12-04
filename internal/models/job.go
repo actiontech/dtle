@@ -47,6 +47,8 @@ type Job struct {
 	// specified hierarchically like LineOfBiz/OrgName/Team/Project
 	ID string
 
+	OrderID string
+
 	// Name is the logical name of the job used to refer to it. This is unique
 	// per region, but not unique globally.
 	Name string

@@ -25,6 +25,8 @@ const (
 	JobRegisterRequestType
 	JobDeregisterRequestType
 	JobClientUpdateRequestType
+	OrderRegisterRequestType
+	OrderDeregisterRequestType
 	EvalUpdateRequestType
 	EvalDeleteRequestType
 	AllocUpdateRequestType

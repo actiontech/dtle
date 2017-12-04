@@ -133,7 +133,11 @@ func (s *HTTPServer) handleFuncMetrics(pattern string, handler func(http.Respons
 func (s *HTTPServer) registerHandlers() {
 	//s.mux.HandleFunc("/", s.Index)
 
+	s.mux.HandleFunc("/v1/orders", s.wrap(s.OrdersRequest))
+	s.mux.HandleFunc("/v1/order/", s.wrap(s.OrderSpecificRequest))
+
 	s.mux.HandleFunc("/v1/jobs", s.wrap(s.JobsRequest))
+	s.mux.HandleFunc("/v1/job/info", s.wrap(s.JobsInfoRequest))
 	s.mux.HandleFunc("/v1/job/", s.wrap(s.JobSpecificRequest))
 
 	s.mux.HandleFunc("/v1/nodes", s.wrap(s.NodesRequest))

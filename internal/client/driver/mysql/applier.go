@@ -54,7 +54,7 @@ type Applier struct {
 	//  excessive work happens at the end of the iteration as new copy-jobs arrive befroe realizing the copy is complete
 	copyRowsQueue            chan *dumpEntry
 	applyDataEntryQueue      chan *binlog.BinlogEntry
-	applyGrouDataEntrypQueue chan []*binlog.BinlogEntry
+	applyGroupDataEntryQueue chan []*binlog.BinlogEntry
 	applyBinlogTxQueue       chan *binlog.BinlogTx
 	applyBinlogGroupTxQueue  chan []*binlog.BinlogTx
 	lastAppliedBinlogTx      *binlog.BinlogTx
@@ -84,7 +84,7 @@ func NewApplier(subject, tp string, cfg *config.MySQLDriverConfig, logger *log.L
 		allEventsUpToLockProcessed: make(chan string),
 		copyRowsQueue:              make(chan *dumpEntry, cfg.ReplChanBufferSize),
 		applyDataEntryQueue:        make(chan *binlog.BinlogEntry, cfg.ReplChanBufferSize),
-		applyGrouDataEntrypQueue:   make(chan []*binlog.BinlogEntry, cfg.ReplChanBufferSize),
+		applyGroupDataEntryQueue:   make(chan []*binlog.BinlogEntry, cfg.ReplChanBufferSize),
 		applyBinlogTxQueue:         make(chan *binlog.BinlogTx, cfg.ReplChanBufferSize),
 		applyBinlogGroupTxQueue:    make(chan []*binlog.BinlogTx, cfg.ReplChanBufferSize),
 		waitCh:                     make(chan *models.WaitResult, 1),
@@ -129,41 +129,6 @@ func (a *Applier) retryOperation(operation func() error, notFatalHint ...bool) (
 	return err
 }
 
-// consumeRowCopyComplete blocks on the rowCopyComplete channel once, and then
-// consumes and drops any further incoming events that may be left hanging.
-func (a *Applier) consumeRowCopyComplete() {
-	var rowCount string
-	_, err := a.natsConn.Subscribe(fmt.Sprintf("%s_full_complete", a.subject), func(m *gonats.Msg) {
-		rowCount = fmt.Sprintf("%s", m.Data)
-		if err := a.natsConn.Publish(m.Reply, nil); err != nil {
-			a.onError(TaskStateDead, err)
-		}
-	})
-	if err != nil {
-		a.onError(TaskStateDead, err)
-	}
-
-	for {
-		if rowCount == fmt.Sprintf("%v", a.mysqlContext.TotalRowsCopied) {
-			a.rowCopyComplete <- true
-			break
-		} /*else {
-			a.onError(fmt.Errorf("we might get an inconsistent data during the dump process"))
-		}*/
-		time.Sleep(time.Second)
-	}
-
-	<-a.rowCopyComplete
-	close(a.copyRowsQueue)
-	atomic.StoreInt64(&a.rowCopyCompleteFlag, 1)
-	a.mysqlContext.MarkRowCopyEndTime()
-
-	go func() {
-		for <-a.rowCopyComplete {
-		}
-	}()
-}
-
 // validateStatement validates the `alter` statement meets criteria.
 // At this time this means:
 // - column renames are approved
@@ -180,18 +145,6 @@ func (a *Applier) validateStatement(doTb *config.Table) (err error) {
 func (a *Applier) Run() {
 	a.logger.Printf("mysql.applier: Apply binlog events to %s.%d", a.mysqlContext.ConnectionConfig.Host, a.mysqlContext.ConnectionConfig.Port)
 	a.mysqlContext.StartTime = time.Now()
-	/*for _, doDb := range a.mysqlContext.ReplicateDoDb {
-		for _, doTb := range doDb.Tables {
-			if err := a.parser.ParseAlterStatement(doTb.AlterStatement); err != nil {
-				a.onError(TaskStateDead, err)
-				return
-			}
-			if err := a.validateStatement(doTb); err != nil {
-				a.onError(TaskStateDead, err)
-				return
-			}
-		}
-	}*/
 	if err := a.initDBConnections(); err != nil {
 		a.onError(TaskStateDead, err)
 		return
@@ -207,12 +160,6 @@ func (a *Applier) Run() {
 	}
 
 	go a.executeWriteFuncs()
-
-	/*if a.mysqlContext.Gtid == "" {
-		a.logger.Printf("mysql.applier: Operating until row copy is complete")
-		a.consumeRowCopyComplete()
-		a.logger.Printf("mysql.applier: Row copy complete")
-	}*/
 
 	if a.tp == models.JobTypeMig {
 		var completeFlag string
@@ -582,11 +529,6 @@ func (a *Applier) executeWriteFuncs() {
 			select {
 			case copyRows := <-a.copyRowsQueue:
 				{
-					//copyRowsStartTime := time.Now()
-					// Retries are handled within the copyRowsFunc
-					/*if err := copyRowsFunc(); err != nil {
-						return err
-					}*/
 					if nil == copyRows {
 						continue
 					}
@@ -601,16 +543,6 @@ func (a *Applier) executeWriteFuncs() {
 							}
 						}()
 					}
-
-					/*a.logger.Printf("mysql.applier: operating until row copy is complete")
-					a.consumeRowCopyComplete()
-					a.logger.Printf("mysql.applier: row copy complete")
-					if niceRatio := a.mysqlContext.GetNiceRatio(); niceRatio > 0 {
-						copyRowsDuration := time.Since(copyRowsStartTime)
-						sleepTimeNanosecondFloat64 := niceRatio * float64(copyRowsDuration.Nanoseconds())
-						sleepTime := time.Duration(time.Duration(int64(sleepTimeNanosecondFloat64)) * time.Nanosecond)
-						time.Sleep(sleepTime)
-					}*/
 				}
 			case <-a.rowCopyComplete:
 				break L
@@ -627,6 +559,7 @@ func (a *Applier) executeWriteFuncs() {
 		a.mysqlContext.Stage = models.StageSlaveWaitingForWorkersToProcessQueue
 		for {
 			if atomic.LoadInt64(&a.rowCopyCompleteFlag) == 1 && a.mysqlContext.TotalRowsCopied == a.mysqlContext.RowsEstimate {
+				a.rowCopyComplete <- true
 				a.logger.Printf("mysql.applier: Rows copy complete.number of rows:%d", a.mysqlContext.RowsEstimate)
 				break
 			}
@@ -641,7 +574,7 @@ func (a *Applier) executeWriteFuncs() {
 OUTER:
 	for {
 		select {
-		case groupEntry := <-a.applyGrouDataEntrypQueue:
+		case groupEntry := <-a.applyGroupDataEntryQueue:
 			{
 				if len(groupEntry) == 0 {
 					continue
@@ -750,7 +683,6 @@ func (a *Applier) initiateStreaming() error {
 				a.onError(TaskStateDead, err)
 			}
 			atomic.AddInt64(&a.mysqlContext.TotalRowsCopied, dumpData.TotalCount)
-			a.rowCopyComplete <- true
 			atomic.StoreInt64(&a.rowCopyCompleteFlag, 1)
 		})
 		if err != nil {
@@ -764,7 +696,6 @@ func (a *Applier) initiateStreaming() error {
 			if err := Decode(m.Data, &binlogEntry); err != nil {
 				a.onError(TaskStateDead, err)
 			}
-			a.logger.Debugf("mysql.applier: received binlogEntry GNO: %+v,LastCommitted:%+v", binlogEntry.Coordinates.GNO, binlogEntry.Coordinates.LastCommitted)
 			//for _, entry := range binlogEntry {
 			a.applyDataEntryQueue <- binlogEntry
 			a.currentCoordinates.RetrievedGtidSet = fmt.Sprintf("%s:%d", binlogEntry.Coordinates.SID, binlogEntry.Coordinates.GNO)
@@ -804,7 +735,7 @@ func (a *Applier) initiateStreaming() error {
 							groupEntry = append(groupEntry, binlogEntry)
 						} else {
 							if len(groupEntry) != 0 {
-								a.applyGrouDataEntrypQueue <- groupEntry
+								a.applyGroupDataEntryQueue <- groupEntry
 								groupEntry = []*binlog.BinlogEntry{}
 							}
 							groupEntry = append(groupEntry, binlogEntry)
@@ -813,7 +744,7 @@ func (a *Applier) initiateStreaming() error {
 					}
 				case <-time.After(100 * time.Millisecond):
 					if len(groupEntry) != 0 {
-						a.applyGrouDataEntrypQueue <- groupEntry
+						a.applyGroupDataEntryQueue <- groupEntry
 						groupEntry = []*binlog.BinlogEntry{}
 					}
 				case <-a.shutdownCh:
@@ -1069,106 +1000,6 @@ func (a *Applier) readTableColumns() (err error) {
 		return nil
 	})
 	return rowMap
-}*/
-
-// CalculateNextIterationRangeEndValues reads the next-iteration-range-end unique key values,
-// which will be used for copying the next chunk of rows. Ir returns "false" if there is
-// no further chunk to work through, i.e. we're past the last chunk and are done with
-// itrating the range (and this done with copying row chunks)
-/*func (a *Applier) CalculateNextIterationRangeEndValues() (hasFurtherRange bool, err error) {
-	a.mysqlContext.MigrationIterationRangeMinValues = a.mysqlContext.MigrationIterationRangeMaxValues
-	if a.mysqlContext.MigrationIterationRangeMinValues == nil {
-		a.mysqlContext.MigrationIterationRangeMinValues = a.mysqlContext.MigrationRangeMinValues
-	}
-	query, explodedArgs, err := sql.BuildUniqueKeyRangeEndPreparedQuery(
-		a.mysqlContext.DatabaseName,
-		a.mysqlContext.OriginalTableName,
-		&a.mysqlContext.UniqueKey.Columns,
-		a.mysqlContext.MigrationIterationRangeMinValues.AbstractValues(),
-		a.mysqlContext.MigrationRangeMaxValues.AbstractValues(),
-		atomic.LoadInt64(&a.mysqlContext.ChunkSize),
-		a.mysqlContext.GetIteration() == 0,
-		fmt.Sprintf("iteration:%d", a.mysqlContext.GetIteration()),
-	)
-	if err != nil {
-		return hasFurtherRange, err
-	}
-	rows, err := a.db.Query(query, explodedArgs...)
-	if err != nil {
-		return hasFurtherRange, err
-	}
-	iterationRangeMaxValues := sql.NewColumnValues(a.mysqlContext.UniqueKey.Len())
-	for rows.Next() {
-		if err = rows.Scan(iterationRangeMaxValues.ValuesPointers...); err != nil {
-			return hasFurtherRange, err
-		}
-		hasFurtherRange = true
-	}
-	if !hasFurtherRange {
-		a.logger.Debugf("mysql.applier: Iteration complete: no further range to iterate")
-		return hasFurtherRange, nil
-	}
-	a.mysqlContext.MigrationIterationRangeMaxValues = iterationRangeMaxValues
-	return hasFurtherRange, nil
-}
-
-// ApplyIterationInsertQuery issues a chunk-INSERT query on the ghost table. It is where
-// data actually gets copied from original table.
-func (a *Applier) ApplyIterationInsertQuery() (chunkSize int64, rowsAffected int64, duration time.Duration, err error) {
-	startTime := time.Now()
-	chunkSize = atomic.LoadInt64(&a.mysqlContext.ChunkSize)
-
-	query, explodedArgs, err := sql.BuildRangeInsertPreparedQuery(
-		a.mysqlContext.DatabaseName,
-		a.mysqlContext.OriginalTableName,
-		a.mysqlContext.OriginalTableName, //GetGhostTableName()
-		a.mysqlContext.SharedColumns.Names(),
-		a.mysqlContext.MappedSharedColumns.Names(),
-		a.mysqlContext.UniqueKey.Name,
-		&a.mysqlContext.UniqueKey.Columns,
-		a.mysqlContext.MigrationIterationRangeMinValues.AbstractValues(),
-		a.mysqlContext.MigrationIterationRangeMaxValues.AbstractValues(),
-		a.mysqlContext.GetIteration() == 0,
-		a.mysqlContext.IsTransactionalTable(),
-	)
-	if err != nil {
-		return chunkSize, rowsAffected, duration, err
-	}
-
-	sqlResult, err := func() (gosql.Result, error) {
-		tx, err := a.db.Begin()
-		if err != nil {
-			return nil, err
-		}
-		sessionQuery := fmt.Sprintf(`SET
-			SESSION time_zone = '%s',
-			sql_mode = CONCAT(@@session.sql_mode, ',STRICT_ALL_TABLES')
-			`, a.mysqlContext.ApplierTimeZone)
-		if _, err := tx.Exec(sessionQuery); err != nil {
-			return nil, err
-		}
-		result, err := tx.Exec(query, explodedArgs...)
-		if err != nil {
-			return nil, err
-		}
-		if err := tx.Commit(); err != nil {
-			return nil, err
-		}
-		return result, nil
-	}()
-
-	if err != nil {
-		return chunkSize, rowsAffected, duration, err
-	}
-	rowsAffected, _ = sqlResult.RowsAffected()
-	duration = time.Since(startTime)
-	a.logger.Printf(
-		"[DEBUG] mysql.applier: Issued INSERT on range: [%s]..[%s]; iteration: %d; chunk-size: %d",
-		a.mysqlContext.MigrationIterationRangeMinValues,
-		a.mysqlContext.MigrationIterationRangeMaxValues,
-		a.mysqlContext.GetIteration(),
-		chunkSize)
-	return chunkSize, rowsAffected, duration, nil
 }*/
 
 // LockOriginalTable places a write lock on the original table
@@ -1656,13 +1487,6 @@ func (a *Applier) ApplyBinlogEvent(dbApplier *sql.DB, binlogEntry *binlog.Binlog
 	if _, err := tx.Exec(sessionQuery); err != nil {
 		return err
 	}
-	/*sessionQuery = `SET
-			SESSION time_zone = '+00:00',
-			sql_mode = CONCAT(@@session.sql_mode, ',STRICT_ALL_TABLES')
-			`
-	if _, err := tx.Exec(sessionQuery); err != nil {
-		return err
-	}*/
 	for _, event := range binlogEntry.Events {
 		if event.DatabaseName != "" {
 			_, err := tx.Exec(fmt.Sprintf("USE %s", event.DatabaseName))
@@ -1686,15 +1510,6 @@ func (a *Applier) ApplyBinlogEvent(dbApplier *sql.DB, binlogEntry *binlog.Binlog
 					a.logger.Warnf("mysql.applier: Ignore error: %v", err)
 				}
 			}
-			/*for _,db:=range a.mysqlContext.ReplicateDoDb{
-				for _,tb:=range db.Tables {
-					tableColumns, _, err := a.InspectTableColumnsAndUniqueKeys(tb.TableSchema, tb.TableName)
-					if err != nil {
-						return err
-					}
-					tb.OriginalTableColumns = tableColumns
-				}
-			}*/
 		default:
 			query, args, rowDelta, err := a.buildDMLEventQuery(event)
 			if err != nil {
@@ -1755,6 +1570,7 @@ func (a *Applier) ApplyEventQueries(db *gosql.DB, entry *dumpEntry) error {
 		if err := tx.Commit(); err != nil {
 			a.onError(TaskStateDead, err)
 		}
+		atomic.AddInt64(&a.mysqlContext.TotalRowsReplay, entry.RowsCount)
 	}()
 	sessionQuery := `SET @@session.foreign_key_checks = 0`
 	if _, err := tx.Exec(sessionQuery); err != nil {
@@ -1775,12 +1591,11 @@ func (a *Applier) ApplyEventQueries(db *gosql.DB, entry *dumpEntry) error {
 			}
 		}
 	}
-	atomic.AddInt64(&a.mysqlContext.TotalRowsReplay, entry.RowsCount)
 	return nil
 }
 
 func (a *Applier) Stats() (*models.TaskStatistics, error) {
-	totalRowsReplay := a.mysqlContext.GetTotalRowsCopied()
+	totalRowsReplay := a.mysqlContext.GetTotalRowsReplay()
 	rowsEstimate := atomic.LoadInt64(&a.mysqlContext.RowsEstimate)
 	totalDeltaCopied := a.mysqlContext.GetTotalDeltaCopied()
 	deltaEstimate := atomic.LoadInt64(&a.mysqlContext.DeltaEstimate)

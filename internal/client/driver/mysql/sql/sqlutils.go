@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"udup/internal/config"
 )
 
 // RowMap represents one row in a result set. Its objective is to allow
@@ -356,6 +357,56 @@ func InClauseStringValues(terms []string) string {
 // Convert variable length arguments into arguments array
 func Args(args ...interface{}) []interface{} {
 	return args
+}
+
+//LOCK TABLES {{ .Name }} WRITE;
+//INSERT INTO {{ .Name }} VALUES {{ .Values }};
+//UNLOCK TABLES;
+
+func ShowDatabases(db *gosql.DB) ([]string, error) {
+	dbs := make([]string, 0)
+
+	// Get table list
+	rows, err := db.Query("SHOW DATABASES")
+	if err != nil {
+		return dbs, err
+	}
+	defer rows.Close()
+
+	// Read result
+	for rows.Next() {
+		var database gosql.NullString
+		if err := rows.Scan(&database); err != nil {
+			return dbs, err
+		}
+		switch strings.ToLower(database.String) {
+		case "sys", "mysql", "information_schema", "performance_schema", "actiontech_udup":
+			continue
+		default:
+			dbs = append(dbs, database.String)
+		}
+	}
+	return dbs, rows.Err()
+}
+
+func ShowTables(db *gosql.DB, dbName string) (tables []*config.Table, err error) {
+	// Get table list
+	rows, err := db.Query(fmt.Sprintf("SHOW TABLES IN %s", dbName))
+	if err != nil {
+		return tables, err
+	}
+	defer rows.Close()
+
+	// Read result
+	for rows.Next() {
+		var table gosql.NullString
+		if err := rows.Scan(&table); err != nil {
+			return tables, err
+		}
+		tb := &config.Table{TableSchema: dbName, TableName: table.String}
+		tables = append(tables, tb)
+	}
+	return tables, rows.Err()
 }
 
 func CloseDB(db *gosql.DB) error {

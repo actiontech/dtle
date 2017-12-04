@@ -2,11 +2,14 @@ package agent
 
 import (
 	"fmt"
+	"github.com/mitchellh/mapstructure"
 	"net/http"
 	"strconv"
 	"strings"
 
 	"udup/api"
+	"udup/internal/client/driver/mysql/sql"
+	"udup/internal/config"
 	"udup/internal/models"
 )
 
@@ -19,6 +22,68 @@ func (s *HTTPServer) JobsRequest(resp http.ResponseWriter, req *http.Request) (i
 	default:
 		return nil, CodedError(405, ErrInvalidMethod)
 	}
+}
+
+func (s *HTTPServer) JobsInfoRequest(resp http.ResponseWriter, req *http.Request) (interface{}, error) {
+	switch req.Method {
+	case "POST":
+		return s.jobInfoRequest(resp, req)
+	default:
+		return nil, CodedError(405, ErrInvalidMethod)
+	}
+}
+
+func (s *HTTPServer) jobInfoRequest(resp http.ResponseWriter, req *http.Request) (interface{}, error) {
+	var args *api.Job
+	var replicateDoDb []*config.DataSource
+	if err := decodeBody(req, &args); err != nil {
+		return nil, CodedError(400, err.Error())
+	}
+
+	if args.Name == nil {
+		return nil, CodedError(400, "Job Name hasn't been provided")
+	}
+	if args.Region == nil {
+		args.Region = &s.agent.config.Region
+	}
+	s.parseRegion(req, args.Region)
+
+	sJob := ApiJobToStructJob(args)
+
+	for _, task := range sJob.Tasks {
+		if task.Driver == models.TaskDriverMySQL && task.Type == models.TaskTypeSrc {
+			var driverConfig config.MySQLDriverConfig
+			if err := mapstructure.WeakDecode(task.Config, &driverConfig); err != nil {
+				return nil, err
+			}
+			uri := driverConfig.ConnectionConfig.GetDBUri()
+			db, err := sql.CreateDB(uri)
+			if err != nil {
+				return nil, err
+			}
+			dbs, err := sql.ShowDatabases(db)
+			if err != nil {
+				return nil, err
+			}
+			for _, dbName := range dbs {
+				ds := &config.DataSource{
+					TableSchema: dbName,
+				}
+
+				tbs, err := sql.ShowTables(db, dbName)
+				if err != nil {
+					return nil, err
+				}
+
+				for _, tb := range tbs {
+					ds.Tables = append(ds.Tables, tb)
+				}
+				replicateDoDb = append(replicateDoDb, ds)
+			}
+		}
+	}
+
+	return replicateDoDb, nil
 }
 
 func (s *HTTPServer) jobListRequest(resp http.ResponseWriter, req *http.Request) (interface{}, error) {
@@ -177,6 +242,15 @@ func (s *HTTPServer) jobUpdate(resp http.ResponseWriter, req *http.Request,
 
 	sJob := ApiJobToStructJob(args)
 
+	/*for _,task :=range sJob.Tasks {
+		if task.Driver == models.TaskDriverMySQL && task.Type == models.TaskTypeSrc{
+			var driverConfig config.MySQLDriverConfig
+			if err := mapstructure.WeakDecode(task.Config, &driverConfig); err != nil {
+				return nil, err
+			}
+		}
+	}*/
+
 	regReq := models.JobRegisterRequest{
 		Job:            sJob,
 		EnforceIndex:   args.EnforceIndex,
@@ -186,6 +260,7 @@ func (s *HTTPServer) jobUpdate(resp http.ResponseWriter, req *http.Request,
 		},
 	}
 	var out models.JobResponse
+
 	if err := s.agent.RPC("Job.Register", &regReq, &out); err != nil {
 		return nil, err
 	}
@@ -244,6 +319,7 @@ func ApiJobToStructJob(job *api.Job) *models.Job {
 	j := &models.Job{
 		Region:            *job.Region,
 		ID:                *job.ID,
+		OrderID:           *job.OrderID,
 		Name:              *job.Name,
 		Type:              *job.Type,
 		Datacenters:       job.Datacenters,
@@ -260,11 +336,11 @@ func ApiJobToStructJob(job *api.Job) *models.Job {
 		if task.Type == models.TaskTypeSrc && task.Config["Gtid"] != nil {
 			cfg = fmt.Sprintf("%s", task.Config["Gtid"])
 		}
-	}
-	for i, task := range job.Tasks {
 		if task.Driver == "" {
 			task.Driver = models.TaskDriverMySQL
 		}
+	}
+	for i, task := range job.Tasks {
 		if task.Type == models.TaskTypeDest {
 			task.Leader = true
 			task.Config["Gtid"] = cfg

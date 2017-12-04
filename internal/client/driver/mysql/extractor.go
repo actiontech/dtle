@@ -461,7 +461,7 @@ func (e *Extractor) inspectTables() (err error) {
 			}
 
 			if len(doDb.Tables) == 0 {
-				tbs, err := showTables(e.db, doDb.TableSchema)
+				tbs, err := sql.ShowTables(e.db, doDb.TableSchema)
 				if err != nil {
 					return err
 				}
@@ -479,7 +479,7 @@ func (e *Extractor) inspectTables() (err error) {
 			}
 		}
 	} else {
-		dbs, err := showDatabases(e.db)
+		dbs, err := sql.ShowDatabases(e.db)
 		if err != nil {
 			return err
 		}
@@ -491,7 +491,7 @@ func (e *Extractor) inspectTables() (err error) {
 				continue
 			}
 
-			tbs, err := showTables(e.db, dbName)
+			tbs, err := sql.ShowTables(e.db, dbName)
 			if err != nil {
 				return err
 			}

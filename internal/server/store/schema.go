@@ -20,6 +20,7 @@ func stateStoreSchema() *memdb.DBSchema {
 		indexTableSchema,
 		nodeTableSchema,
 		jobTableSchema,
+		orderTableSchema,
 		evalTableSchema,
 		allocTableSchema,
 	}
@@ -99,6 +100,26 @@ func jobTableSchema() *memdb.TableSchema {
 				Indexer: &memdb.StringFieldIndex{
 					Field:     "Type",
 					Lowercase: false,
+				},
+			},
+		},
+	}
+}
+
+func orderTableSchema() *memdb.TableSchema {
+	return &memdb.TableSchema{
+		Name: "orders",
+		Indexes: map[string]*memdb.IndexSchema{
+			// Primary index is used for order management
+			// and simple direct lookup. ID is required to be
+			// unique.
+			"id": {
+				Name:         "id",
+				AllowMissing: false,
+				Unique:       true,
+				Indexer: &memdb.StringFieldIndex{
+					Field:     "ID",
+					Lowercase: true,
 				},
 			},
 		},

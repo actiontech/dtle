@@ -128,6 +128,7 @@ type endpoints struct {
 	Status *Status
 	Node   *Node
 	Job    *Job
+	Order  *Order
 	Eval   *Eval
 	Plan   *Plan
 	Alloc  *Alloc
@@ -381,6 +382,7 @@ func (s *Server) setupRPC() error {
 	s.endpoints.Alloc = &Alloc{s}
 	s.endpoints.Eval = &Eval{s}
 	s.endpoints.Job = &Job{s}
+	s.endpoints.Order = &Order{s}
 	s.endpoints.Node = &Node{srv: s}
 	s.endpoints.Plan = &Plan{s}
 	s.endpoints.Status = &Status{s}
@@ -389,6 +391,7 @@ func (s *Server) setupRPC() error {
 	s.rpcServer.Register(s.endpoints.Alloc)
 	s.rpcServer.Register(s.endpoints.Eval)
 	s.rpcServer.Register(s.endpoints.Job)
+	s.rpcServer.Register(s.endpoints.Order)
 	s.rpcServer.Register(s.endpoints.Node)
 	s.rpcServer.Register(s.endpoints.Plan)
 	s.rpcServer.Register(s.endpoints.Status)

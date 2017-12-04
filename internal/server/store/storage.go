@@ -480,6 +480,20 @@ func (s *StateStore) DeleteJob(index uint64, jobID string) error {
 	// Delete the job
 	job := existing.(*models.Job)
 
+	order, err := txn.First("orders", "id", job.OrderID)
+	if err != nil {
+		return fmt.Errorf("failed to get blocked order for job %q: %v", job.OrderID, err)
+	}
+	if existing != nil {
+		o := order.(*models.Order)
+		if err := txn.Delete("orders", o); err != nil {
+			return fmt.Errorf("order delete failed: %v", err)
+		}
+		if err := txn.Insert("index", &IndexEntry{"orders", index}); err != nil {
+			return fmt.Errorf("index update failed: %v", err)
+		}
+	}
+
 	if err := txn.Delete("jobs", job); err != nil {
 		return fmt.Errorf("job delete failed: %v", err)
 	}
@@ -551,6 +565,114 @@ func (s *StateStore) JobsByScheduler(ws memdb.WatchSet, schedulerType string) (m
 
 	return iter, nil
 }
+
+//order start
+func (s *StateStore) UpsertOrder(index uint64, order *models.Order) error {
+	txn := s.db.Txn(true)
+	defer txn.Abort()
+
+	// Insert the job
+	if err := txn.Insert("orders", order); err != nil {
+		return fmt.Errorf("order insert failed: %v", err)
+	}
+	if err := txn.Insert("index", &IndexEntry{"orders", index}); err != nil {
+		return fmt.Errorf("index update failed: %v", err)
+	}
+
+	txn.Commit()
+	return nil
+}
+
+// DeleteJob is used to deregister a job
+func (s *StateStore) DeleteOrder(index uint64, orderID string) error {
+	txn := s.db.Txn(true)
+	defer txn.Abort()
+
+	// Lookup the node
+	existing, err := txn.First("orders", "id", orderID)
+	if err != nil {
+		return fmt.Errorf("order lookup failed: %v", err)
+	}
+	if existing == nil {
+		return fmt.Errorf("order not found")
+	}
+
+	// Delete the order
+	order := existing.(*models.Order)
+
+	if err := txn.Delete("orders", order); err != nil {
+		return fmt.Errorf("order delete failed: %v", err)
+	}
+	if err := txn.Insert("index", &IndexEntry{"orders", index}); err != nil {
+		return fmt.Errorf("index update failed: %v", err)
+	}
+
+	txn.Commit()
+	return nil
+}
+
+// JobByID is used to lookup a job by its ID
+func (s *StateStore) OrderByID(ws memdb.WatchSet, id string) (*models.Job, error) {
+	txn := s.db.Txn(false)
+
+	watchCh, existing, err := txn.FirstWatch("orders", "id", id)
+	if err != nil {
+		return nil, fmt.Errorf("Order lookup failed: %v", err)
+	}
+	ws.Add(watchCh)
+
+	if existing != nil {
+		return existing.(*models.Job), nil
+	}
+	return nil, nil
+}
+
+// JobsByIDPrefix is used to lookup a job by prefix
+func (s *StateStore) OrdersByIDPrefix(ws memdb.WatchSet, id string) (memdb.ResultIterator, error) {
+	txn := s.db.Txn(false)
+
+	iter, err := txn.Get("orders", "id_prefix", id)
+	if err != nil {
+		return nil, fmt.Errorf("job lookup failed: %v", err)
+	}
+
+	ws.Add(iter.WatchCh())
+
+	return iter, nil
+}
+
+// Jobs returns an iterator over all the jobs
+func (s *StateStore) Orders(ws memdb.WatchSet) (memdb.ResultIterator, error) {
+	txn := s.db.Txn(false)
+
+	// Walk the entire jobs table
+	iter, err := txn.Get("orders", "id")
+	if err != nil {
+		return nil, err
+	}
+
+	ws.Add(iter.WatchCh())
+
+	return iter, nil
+}
+
+// JobsByScheduler returns an iterator over all the jobs with the specific
+// scheduler type.
+func (s *StateStore) OrdersByScheduler(ws memdb.WatchSet, schedulerType string) (memdb.ResultIterator, error) {
+	txn := s.db.Txn(false)
+
+	// Return an iterator for jobs with the specific type.
+	iter, err := txn.Get("orders", "type", schedulerType)
+	if err != nil {
+		return nil, err
+	}
+
+	ws.Add(iter.WatchCh())
+
+	return iter, nil
+}
+
+//order end
 
 // UpsertEvals is used to upsert a set of evaluations
 func (s *StateStore) UpsertEvals(index uint64, evals []*models.Evaluation) error {
