@@ -24,6 +24,7 @@ const (
 	DecimalColumnType              = iota
 	BinaryColumnType               = iota
 	TextColumnType                 = iota
+	JSONColumnType                 = iota
 )
 
 const maxMediumintUnsigned int32 = 16777215
@@ -33,7 +34,6 @@ type TimezoneConvertion struct {
 }
 
 type Column struct {
-	Idx                int
 	Name               string
 	IsUnsigned         bool
 	Charset            string
@@ -254,6 +254,7 @@ type UniqueKey struct {
 	Columns         ColumnList
 	HasNullable     bool
 	IsAutoIncrement bool
+	LastMaxVals     []string
 }
 
 // IsPrimary checks if this unique key is primary

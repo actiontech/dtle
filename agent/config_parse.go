@@ -79,6 +79,7 @@ func parseConfig(result *Config, list *ast.ObjectList) error {
 		"ui",
 		"ui_dir",
 		"log_level",
+		"log_to_stdout",
 		"log_file",
 		"pid_file",
 		"bind_addr",

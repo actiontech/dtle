@@ -278,6 +278,11 @@ func ApplyColumnTypesWithTx(db *gosql.Tx, database, tablename string, columnsLis
 				columnsList.GetColumn(columnName).Type = umconf.DecimalColumnType
 			}
 		}
+		if strings.Contains(columnType, "json") {
+			for _, columnsList := range columnsLists {
+				columnsList.GetColumn(columnName).Type = umconf.JSONColumnType
+			}
+		}
 		if strings.Contains(columnType, "float") {
 			for _, columnsList := range columnsLists {
 				columnsList.GetColumn(columnName).Type = umconf.FloatColumnType
@@ -517,7 +522,7 @@ func InspectTables(db *gosql.DB, databaseName string, doTb *uconf.Table, timeZon
 	// This additional step looks at which columns are unsigned. We could have merged this within
 	// the `getTableColumns()` function, but it's a later patch and introduces some complexity; I feel
 	// comfortable in doing this as a separate step.
-	applyColumnTypes(db, databaseName, doTb.TableName, doTb.OriginalTableColumns, doTb.SharedColumns)
+	ApplyColumnTypes(db, databaseName, doTb.TableName, doTb.OriginalTableColumns, doTb.SharedColumns)
 
 	/*for c := range doTb.OriginalTableColumns.ColumnList() {
 		column := doTb.OriginalTableColumns.ColumnList()[c]
@@ -530,7 +535,7 @@ func InspectTables(db *gosql.DB, databaseName string, doTb *uconf.Table, timeZon
 }
 
 // applyColumnTypes
-func applyColumnTypes(db *gosql.DB, databaseName, tableName string, columnsLists ...*umconf.ColumnList) error {
+func ApplyColumnTypes(db *gosql.DB, databaseName, tableName string, columnsLists ...*umconf.ColumnList) error {
 	query := `
 		select
 				*
@@ -578,6 +583,16 @@ func applyColumnTypes(db *gosql.DB, databaseName, tableName string, columnsLists
 			for _, columnsList := range columnsLists {
 				columnsList.GetColumn(columnName).Type = umconf.TextColumnType
 				columnsList.GetColumn(columnName).ColumnType = columnType
+			}
+		}
+		if strings.Contains(columnType, "json") {
+			for _, columnsList := range columnsLists {
+				columnsList.GetColumn(columnName).Type = umconf.JSONColumnType
+			}
+		}
+		if strings.Contains(columnType, "float") {
+			for _, columnsList := range columnsLists {
+				columnsList.GetColumn(columnName).Type = umconf.FloatColumnType
 			}
 		}
 		if charset := m.GetString("CHARACTER_SET_NAME"); charset != "" {

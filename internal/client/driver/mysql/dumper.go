@@ -10,6 +10,7 @@ import (
 
 	ubase "udup/internal/client/driver/mysql/base"
 	usql "udup/internal/client/driver/mysql/sql"
+	"udup/internal/config"
 	umconf "udup/internal/config/mysql"
 	log "udup/internal/logger"
 )
@@ -24,6 +25,7 @@ type dumper struct {
 	total          int64
 	TableSchema    string
 	TableName      string
+	table          *config.Table
 	columns        string
 	entriesCount   int
 	resultsChannel chan *dumpEntry
@@ -37,12 +39,14 @@ type dumper struct {
 	db *sql.Tx
 }
 
-func NewDumper(db *sql.Tx, dbName, tableName string, total, chunkSize int64, logger *log.Entry) *dumper {
+func NewDumper(db *sql.Tx, table *config.Table, total, chunkSize int64,
+	logger *log.Entry) *dumper {
 	dumper := &dumper{
 		logger:         logger,
 		db:             db,
-		TableSchema:    dbName,
-		TableName:      tableName,
+		TableSchema:    table.TableSchema,
+		TableName:      table.TableName,
+		table:          table,
 		total:          total,
 		resultsChannel: make(chan *dumpEntry, 50),
 		entriesChannel: make(chan *dumpEntry),
@@ -50,10 +54,6 @@ func NewDumper(db *sql.Tx, dbName, tableName string, total, chunkSize int64, log
 		shutdownCh:     make(chan struct{}),
 	}
 	return dumper
-}
-
-type dumpStatResult struct {
-	TotalCount int64
 }
 
 type dumpEntry struct {
@@ -66,7 +66,7 @@ type dumpEntry struct {
 	Values                   [][]string
 	TotalCount               int64
 	RowsCount                int64
-	Offset                   uint64
+	Offset                   uint64 // only for 'no PK' table
 	colBuffer                bytes.Buffer
 	err                      error
 }
@@ -122,6 +122,68 @@ func (d *dumper) getDumpEntries() ([]*dumpEntry, error) {
 	return entries, nil
 }
 
+func (d *dumper) buildQueryOldWay(e *dumpEntry) string {
+	return fmt.Sprintf(`SELECT %s FROM %s.%s LIMIT %d OFFSET %d`,
+		d.columns,
+		usql.EscapeName(d.TableSchema),
+		usql.EscapeName(d.TableName),
+		d.chunkSize,
+		e.Offset,
+	)
+}
+
+func (d *dumper) buildQueryOnUniqueKey(e *dumpEntry) string {
+	nCol := len(d.table.UseUniqueKey.Columns.Columns)
+	uniqueKeyColumnAscending := make([]string, nCol, nCol)
+	for i, col := range d.table.UseUniqueKey.Columns.Columns {
+		colName := usql.EscapeName(col.Name)
+		switch col.Type {
+		case umconf.EnumColumnType:
+			// TODO try mysql enum type
+			uniqueKeyColumnAscending[i] = fmt.Sprintf("concat(%s) asc", colName)
+		default:
+			uniqueKeyColumnAscending[i] = fmt.Sprintf("%s asc", colName)
+		}
+	}
+
+	var rangeStr string
+
+	if d.table.Iteration == 0 {
+		rangeStr = "true"
+	} else {
+		rangeItems := make([]string, nCol)
+
+		// The form like: (A > a) or (A = a and B > b) or (A = a and B = b and C > c) or ...
+		for x := 0; x < nCol; x++ {
+			innerItems := make([]string, x + 1)
+
+			for y := 0; y < x; y++ {
+				colName := usql.EscapeName(d.table.UseUniqueKey.Columns.Columns[y].Name)
+				innerItems[y] = fmt.Sprintf("(%s = %s)", colName, d.table.UseUniqueKey.LastMaxVals[y])
+			}
+
+			colName := usql.EscapeName(d.table.UseUniqueKey.Columns.Columns[x].Name)
+			innerItems[x] = fmt.Sprintf("(%s > %s)", colName, d.table.UseUniqueKey.LastMaxVals[x])
+
+			rangeItems[x] = fmt.Sprintf("(%s)", strings.Join(innerItems, " and "))
+		}
+
+		rangeStr = strings.Join(rangeItems, " or ")
+	}
+
+	return fmt.Sprintf(`SELECT %s FROM %s.%s where %s order by %s LIMIT %d`,
+		d.columns,
+		usql.EscapeName(d.TableSchema),
+		usql.EscapeName(d.TableName),
+		// where
+		rangeStr,
+		// order by
+		strings.Join(uniqueKeyColumnAscending, ", "),
+		// limit
+		d.chunkSize,
+	)
+}
+
 // dumps a specific chunk, reading chunk info from the channel
 func (d *dumper) getChunkData(e *dumpEntry) error {
 	entry := &dumpEntry{
@@ -130,13 +192,18 @@ func (d *dumper) getChunkData(e *dumpEntry) error {
 		RowsCount:   e.RowsCount,
 		Offset:      e.Offset,
 	}
-	query := fmt.Sprintf(`SELECT %s FROM %s.%s LIMIT %d OFFSET %d`,
-		d.columns,
-		usql.EscapeName(d.TableSchema),
-		usql.EscapeName(d.TableName),
-		d.chunkSize,
-		entry.Offset,
-	)
+	// TODO use PS
+	// TODO escape schema/table/column name once and save
+
+	query := ""
+	if d.table.UseUniqueKey == nil {
+		query = d.buildQueryOldWay(e)
+	} else {
+		query = d.buildQueryOnUniqueKey(e)
+	}
+	d.logger.Debugf("getChunkData. query: %s", query)
+
+	d.table.Iteration += 1
 	rows, err := d.db.Query(query)
 	if err != nil {
 		return fmt.Errorf("exec [%s] error: %v", query, err)
@@ -156,6 +223,8 @@ func (d *dumper) getChunkData(e *dumpEntry) error {
 
 	data := make([]string, 0)
 	//packetLen := 0
+	var lastVals *[]string
+
 	for rows.Next() {
 		err = rows.Scan(scanArgs...)
 		if err != nil {
@@ -177,9 +246,32 @@ func (d *dumper) getChunkData(e *dumpEntry) error {
 				vals = append(vals, "NULL")
 			}
 		}
+		lastVals = &vals
 		data = append(data, fmt.Sprintf("( %s )", strings.Join(vals, ", ")))
 		entry.incrementCounter()
 	}
+
+	d.logger.Debugf("getChunkData. n_row: %d", len(data))
+
+	// TODO getChunkData could get 0 rows. Esp after removing 'start transaction'.
+	if len(data) == 0 {
+		return fmt.Errorf("getChunkData. GetLastMaxVal: no rows found")
+	}
+
+	if d.table.UseUniqueKey != nil {
+		// lastVals must not be nil if len(data) > 0
+		for i, col := range d.table.UseUniqueKey.Columns.Columns {
+			// TODO save the idx
+			idx := d.table.OriginalTableColumns.Ordinals[col.Name]
+			if idx > len(*lastVals) {
+				return fmt.Errorf("getChunkData. GetLastMaxVal: column index %d > n_column", idx, len(*lastVals))
+			} else {
+				d.table.UseUniqueKey.LastMaxVals[i] = (*lastVals)[idx]
+			}
+		}
+		d.logger.Debugf("GetLastMaxVal: got %v", d.table.UseUniqueKey.LastMaxVals)
+	}
+
 	entry.Values = append(entry.Values, data)
 	d.resultsChannel <- entry
 	/*query = fmt.Sprintf(`
@@ -262,6 +354,56 @@ func (d *dumper) Dump(w int) error {
 	}()
 
 	return nil
+}
+
+//LOCK TABLES {{ .Name }} WRITE;
+//INSERT INTO {{ .Name }} VALUES {{ .Values }};
+//UNLOCK TABLES;
+
+func showDatabases(db *sql.DB) ([]string, error) {
+	dbs := make([]string, 0)
+
+	// Get table list
+	rows, err := db.Query("SHOW DATABASES")
+	if err != nil {
+		return dbs, err
+	}
+	defer rows.Close()
+
+	// Read result
+	for rows.Next() {
+		var database sql.NullString
+		if err := rows.Scan(&database); err != nil {
+			return dbs, err
+		}
+		switch strings.ToLower(database.String) {
+		case "sys", "mysql", "information_schema", "performance_schema":
+			continue
+		default:
+			dbs = append(dbs, database.String)
+		}
+	}
+	return dbs, rows.Err()
+}
+
+func showTables(db *sql.DB, dbName string) (tables []*config.Table, err error) {
+	// Get table list
+	rows, err := db.Query(fmt.Sprintf("SHOW TABLES IN %s", dbName))
+	if err != nil {
+		return tables, err
+	}
+	defer rows.Close()
+
+	// Read result
+	for rows.Next() {
+		var table sql.NullString
+		if err := rows.Scan(&table); err != nil {
+			return tables, err
+		}
+		tb := config.NewTable(dbName, table.String)
+		tables = append(tables, tb)
+	}
+	return tables, rows.Err()
 }
 
 func (d *dumper) Close() error {

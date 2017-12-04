@@ -63,7 +63,7 @@ func (i *Inspector) InitDBConnections() (err error) {
 	return nil
 }
 
-func (i *Inspector) ValidateOriginalTable(databaseName, tableName string) (err error) {
+func (i *Inspector) ValidateOriginalTable(databaseName, tableName string, table *uconf.Table) (err error) {
 	if err := i.validateTable(databaseName, tableName); err != nil {
 		return err
 	}
@@ -71,6 +71,58 @@ func (i *Inspector) ValidateOriginalTable(databaseName, tableName string) (err e
 	/*if err := i.validateTableForeignKeys(databaseName, tableName, true */ /*this.migrationContext.DiscardForeignKeys*/ /*); err != nil {
 		return err
 	}*/
+
+	// region UniqueKey
+	if table.OriginalTableColumns, table.OriginalTableUniqueKeys,
+		err = i.InspectTableColumnsAndUniqueKeys(databaseName, tableName); err != nil {
+		return err
+	}
+
+	if len(table.OriginalTableUniqueKeys) == 0 {
+		return fmt.Errorf("No PRIMARY nor UNIQUE key found in table! Bailing out")
+	}
+
+	for _, uk := range table.OriginalTableUniqueKeys {
+		ubase.ApplyColumnTypes(i.db, table.TableSchema, table.TableName, &uk.Columns)
+
+		uniqueKeyIsValid := true
+
+		for _, column := range uk.Columns.Columns {
+			switch column.Type {
+			case umconf.FloatColumnType:
+				i.logger.Warning("Will not use %+v as shared key due to FLOAT data type", uk.Name)
+				uniqueKeyIsValid = false
+			case umconf.JSONColumnType:
+				// Noteworthy that at this time MySQL does not allow JSON indexing anyhow, but this code
+				// will remain in place to potentially handle the future case where JSON is supported in indexes.
+				i.logger.Warnf("Will not use %+v as unique key due to JSON data type", uk.Name)
+				uniqueKeyIsValid = false
+			default:
+				// do nothing
+			}
+		}
+
+		if uk.HasNullable {
+			i.logger.Warnf("Will not use %+v as unique key due to having nullable", uk.Name)
+			uniqueKeyIsValid = false
+		}
+
+		if !uk.IsPrimary() && "FULL" != i.mysqlContext.BinlogRowImage {
+			i.logger.Warnf("Will not use %+v as unique key due to not primary when binlog row image is FULL", uk.Name)
+			uniqueKeyIsValid = false
+		}
+
+		if uniqueKeyIsValid {
+			table.UseUniqueKey = uk
+			break
+		}
+	}
+	if table.UseUniqueKey == nil {
+		i.logger.Warnf("No valid unique key found for table %s.%s. It will be slow on large table.", table.TableSchema, table.TableName)
+	} else {
+		i.logger.Infof("Chosen shared unique key is %s", table.UseUniqueKey.Name)
+	}
+	// endregion
 
 	if err := i.validateTableTriggers(databaseName, tableName); err != nil {
 		return err
@@ -92,14 +144,6 @@ func (i *Inspector) InspectTableColumnsAndUniqueKeys(databaseName, tableName str
 	}
 
 	return columns, uniqueKeys, nil
-}
-
-func (i *Inspector) InspectOriginalTable(databaseName string, doTb *uconf.Table) (err error) {
-	doTb.OriginalTableColumns, doTb.OriginalTableUniqueKeys, err = i.InspectTableColumnsAndUniqueKeys(databaseName, doTb.TableName)
-	if err != nil {
-		return err
-	}
-	return nil
 }
 
 // validateConnection issues a simple can-connect to MySQL
@@ -241,6 +285,7 @@ func (i *Inspector) validateTable(databaseName, tableName string) error {
 	if !tableFound {
 		return fmt.Errorf("Cannot find table %s.%s!", usql.EscapeName(databaseName), usql.EscapeName(tableName))
 	}
+
 	return nil
 }
 
@@ -375,11 +420,13 @@ func (i *Inspector) getCandidateUniqueKeys(databaseName, tableName string) (uniq
       COUNT_COLUMN_IN_INDEX
   `
 	err = usql.QueryRowsMap(i.db, query, func(m usql.RowMap) error {
+		columns := umconf.ParseColumnList(m.GetString("COLUMN_NAMES"))
 		uniqueKey := &umconf.UniqueKey{
 			Name:            m.GetString("INDEX_NAME"),
-			Columns:         *umconf.ParseColumnList(m.GetString("COLUMN_NAMES")),
+			Columns:         *columns,
 			HasNullable:     m.GetBool("has_nullable"),
 			IsAutoIncrement: m.GetBool("is_auto_increment"),
+			LastMaxVals:     make([]string, len(columns.Columns)),
 		}
 		uniqueKeys = append(uniqueKeys, uniqueKey)
 		return nil

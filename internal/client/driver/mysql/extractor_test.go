@@ -107,27 +107,6 @@ func TestExtractor_canStopStreaming(t *testing.T) {
 	}
 }
 
-func TestExtractor_validateStatement(t *testing.T) {
-	type args struct {
-		doTb *config.Table
-	}
-	tests := []struct {
-		name    string
-		e       *Extractor
-		args    args
-		wantErr bool
-	}{
-	// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if err := tt.e.validateStatement(tt.args.doTb); (err != nil) != tt.wantErr {
-				t.Errorf("Extractor.validateStatement() error = %v, wantErr %v", err, tt.wantErr)
-			}
-		})
-	}
-}
-
 func TestExtractor_Run(t *testing.T) {
 	tests := []struct {
 		name string

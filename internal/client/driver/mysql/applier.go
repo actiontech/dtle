@@ -9,11 +9,11 @@ import (
 	"encoding/gob"
 	//"encoding/base64"
 	"math"
-	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
+	"strconv"
 
 	"github.com/golang/snappy"
 	gonats "github.com/nats-io/go-nats"
@@ -23,7 +23,6 @@ import (
 	"udup/internal/client/driver/mysql/binlog"
 	"udup/internal/client/driver/mysql/sql"
 	"udup/internal/config"
-	umconf "udup/internal/config/mysql"
 	log "udup/internal/logger"
 	"udup/internal/models"
 )
@@ -54,7 +53,7 @@ type Applier struct {
 	//  excessive work happens at the end of the iteration as new copy-jobs arrive befroe realizing the copy is complete
 	copyRowsQueue            chan *dumpEntry
 	applyDataEntryQueue      chan *binlog.BinlogEntry
-	applyGroupDataEntryQueue chan []*binlog.BinlogEntry
+	applyGrouDataEntrypQueue chan []*binlog.BinlogEntry
 	applyBinlogTxQueue       chan *binlog.BinlogTx
 	applyBinlogGroupTxQueue  chan []*binlog.BinlogTx
 	lastAppliedBinlogTx      *binlog.BinlogTx
@@ -84,7 +83,7 @@ func NewApplier(subject, tp string, cfg *config.MySQLDriverConfig, logger *log.L
 		allEventsUpToLockProcessed: make(chan string),
 		copyRowsQueue:              make(chan *dumpEntry, cfg.ReplChanBufferSize),
 		applyDataEntryQueue:        make(chan *binlog.BinlogEntry, cfg.ReplChanBufferSize),
-		applyGroupDataEntryQueue:   make(chan []*binlog.BinlogEntry, cfg.ReplChanBufferSize),
+		applyGrouDataEntrypQueue:   make(chan []*binlog.BinlogEntry, cfg.ReplChanBufferSize),
 		applyBinlogTxQueue:         make(chan *binlog.BinlogTx, cfg.ReplChanBufferSize),
 		applyBinlogGroupTxQueue:    make(chan []*binlog.BinlogTx, cfg.ReplChanBufferSize),
 		waitCh:                     make(chan *models.WaitResult, 1),
@@ -129,22 +128,57 @@ func (a *Applier) retryOperation(operation func() error, notFatalHint ...bool) (
 	return err
 }
 
-// validateStatement validates the `alter` statement meets criteria.
-// At this time this means:
-// - column renames are approved
-func (a *Applier) validateStatement(doTb *config.Table) (err error) {
-	if a.parser.HasNonTrivialRenames() && !a.mysqlContext.SkipRenamedColumns {
-		doTb.ColumnRenameMap = a.parser.GetNonTrivialRenames()
-		a.logger.Printf("mysql.applier: Alter statement has column(s) renamed. udup finds the following renames: %v.", a.parser.GetNonTrivialRenames())
+// consumeRowCopyComplete blocks on the rowCopyComplete channel once, and then
+// consumes and drops any further incoming events that may be left hanging.
+func (a *Applier) consumeRowCopyComplete() {
+	var rowCount string
+	_, err := a.natsConn.Subscribe(fmt.Sprintf("%s_full_complete", a.subject), func(m *gonats.Msg) {
+		rowCount = fmt.Sprintf("%s", m.Data)
+		if err := a.natsConn.Publish(m.Reply, nil); err != nil {
+			a.onError(TaskStateDead, err)
+		}
+	})
+	if err != nil {
+		a.onError(TaskStateDead, err)
 	}
-	doTb.DroppedColumnsMap = a.parser.DroppedColumnsMap()
-	return nil
+
+	for {
+		if rowCount == fmt.Sprintf("%v", a.mysqlContext.TotalRowsCopied) {
+			a.rowCopyComplete <- true
+			break
+		} /*else {
+			a.onError(fmt.Errorf("we might get an inconsistent data during the dump process"))
+		}*/
+		time.Sleep(time.Second)
+	}
+
+	<-a.rowCopyComplete
+	close(a.copyRowsQueue)
+	atomic.StoreInt64(&a.rowCopyCompleteFlag, 1)
+	a.mysqlContext.MarkRowCopyEndTime()
+
+	go func() {
+		for <-a.rowCopyComplete {
+		}
+	}()
 }
 
 // Run executes the complete apply logic.
 func (a *Applier) Run() {
 	a.logger.Printf("mysql.applier: Apply binlog events to %s.%d", a.mysqlContext.ConnectionConfig.Host, a.mysqlContext.ConnectionConfig.Port)
 	a.mysqlContext.StartTime = time.Now()
+	/*for _, doDb := range a.mysqlContext.ReplicateDoDb {
+		for _, doTb := range doDb.Tables {
+			if err := a.parser.ParseAlterStatement(doTb.AlterStatement); err != nil {
+				a.onError(TaskStateDead, err)
+				return
+			}
+			if err := a.validateStatement(doTb); err != nil {
+				a.onError(TaskStateDead, err)
+				return
+			}
+		}
+	}*/
 	if err := a.initDBConnections(); err != nil {
 		a.onError(TaskStateDead, err)
 		return
@@ -160,6 +194,12 @@ func (a *Applier) Run() {
 	}
 
 	go a.executeWriteFuncs()
+
+	/*if a.mysqlContext.Gtid == "" {
+		a.logger.Printf("mysql.applier: Operating until row copy is complete")
+		a.consumeRowCopyComplete()
+		a.logger.Printf("mysql.applier: Row copy complete")
+	}*/
 
 	if a.tp == models.JobTypeMig {
 		var completeFlag string
@@ -529,6 +569,11 @@ func (a *Applier) executeWriteFuncs() {
 			select {
 			case copyRows := <-a.copyRowsQueue:
 				{
+					//copyRowsStartTime := time.Now()
+					// Retries are handled within the copyRowsFunc
+					/*if err := copyRowsFunc(); err != nil {
+						return err
+					}*/
 					if nil == copyRows {
 						continue
 					}
@@ -536,13 +581,26 @@ func (a *Applier) executeWriteFuncs() {
 						if err := a.ApplyEventQueries(a.db, copyRows); err != nil {
 							a.onError(TaskStateDead, err)
 						}
+						atomic.AddInt64(&a.mysqlContext.RowsEstimate, copyRows.TotalCount)
 					} else {
 						go func() {
 							if err := a.ApplyEventQueries(a.db, copyRows); err != nil {
 								a.onError(TaskStateDead, err)
 							}
+							atomic.AddInt64(&a.mysqlContext.RowsEstimate, copyRows.TotalCount)
 						}()
 					}
+					atomic.AddInt64(&a.mysqlContext.ExecQueries, 1)
+
+					/*a.logger.Printf("mysql.applier: operating until row copy is complete")
+					a.consumeRowCopyComplete()
+					a.logger.Printf("mysql.applier: row copy complete")
+					if niceRatio := a.mysqlContext.GetNiceRatio(); niceRatio > 0 {
+						copyRowsDuration := time.Since(copyRowsStartTime)
+						sleepTimeNanosecondFloat64 := niceRatio * float64(copyRowsDuration.Nanoseconds())
+						sleepTime := time.Duration(time.Duration(int64(sleepTimeNanosecondFloat64)) * time.Nanosecond)
+						time.Sleep(sleepTime)
+					}*/
 				}
 			case <-a.rowCopyComplete:
 				break L
@@ -558,8 +616,7 @@ func (a *Applier) executeWriteFuncs() {
 		a.logger.Printf("mysql.applier: Operating until row copy is complete")
 		a.mysqlContext.Stage = models.StageSlaveWaitingForWorkersToProcessQueue
 		for {
-			if atomic.LoadInt64(&a.rowCopyCompleteFlag) == 1 && a.mysqlContext.TotalRowsCopied == a.mysqlContext.RowsEstimate {
-				a.rowCopyComplete <- true
+			if a.mysqlContext.ReceQueries != 0 && a.mysqlContext.ReceQueries == a.mysqlContext.ExecQueries && a.mysqlContext.TotalRowsCopied == a.mysqlContext.RowsEstimate {
 				a.logger.Printf("mysql.applier: Rows copy complete.number of rows:%d", a.mysqlContext.RowsEstimate)
 				break
 			}
@@ -569,12 +626,15 @@ func (a *Applier) executeWriteFuncs() {
 			time.Sleep(time.Second)
 		}
 	}
+	a.rowCopyComplete <- true
+	atomic.StoreInt64(&a.rowCopyCompleteFlag, 1)
+	a.mysqlContext.MarkRowCopyStartTime()
 
 	var dbApplier *sql.DB
 OUTER:
 	for {
 		select {
-		case groupEntry := <-a.applyGroupDataEntryQueue:
+		case groupEntry := <-a.applyGrouDataEntrypQueue:
 			{
 				if len(groupEntry) == 0 {
 					continue
@@ -667,27 +727,14 @@ func (a *Applier) initiateStreaming() error {
 			if err := a.natsConn.Publish(m.Reply, nil); err != nil {
 				a.onError(TaskStateDead, err)
 			}
-			atomic.AddInt64(&a.mysqlContext.RowsEstimate, dumpData.TotalCount)
-		})
-		/*if err := sub.SetPendingLimits(a.mysqlContext.MsgsLimit, a.mysqlContext.BytesLimit); err != nil {
-			return err
-		}*/
-
-		_, err = a.natsConn.Subscribe(fmt.Sprintf("%s_full_complete", a.subject), func(m *gonats.Msg) {
-			dumpData := &dumpStatResult{}
-			if err := Decode(m.Data, dumpData); err != nil {
-				a.onError(TaskStateDead, err)
-			}
-			a.mysqlContext.Stage = models.StageSlaveWaitingForWorkersToProcessQueue
-			if err := a.natsConn.Publish(m.Reply, nil); err != nil {
-				a.onError(TaskStateDead, err)
-			}
-			atomic.AddInt64(&a.mysqlContext.TotalRowsCopied, dumpData.TotalCount)
-			atomic.StoreInt64(&a.rowCopyCompleteFlag, 1)
+			atomic.AddInt64(&a.mysqlContext.ReceQueries, 1)
 		})
 		if err != nil {
 			return err
 		}
+		/*if err := sub.SetPendingLimits(a.mysqlContext.MsgsLimit, a.mysqlContext.BytesLimit); err != nil {
+			return err
+		}*/
 	}
 
 	if a.mysqlContext.ApproveHeterogeneous {
@@ -696,6 +743,7 @@ func (a *Applier) initiateStreaming() error {
 			if err := Decode(m.Data, &binlogEntry); err != nil {
 				a.onError(TaskStateDead, err)
 			}
+			a.logger.Debugf("mysql.applier: received binlogEntry GNO: %+v,LastCommitted:%+v", binlogEntry.Coordinates.GNO, binlogEntry.Coordinates.LastCommitted)
 			//for _, entry := range binlogEntry {
 			a.applyDataEntryQueue <- binlogEntry
 			a.currentCoordinates.RetrievedGtidSet = fmt.Sprintf("%s:%d", binlogEntry.Coordinates.SID, binlogEntry.Coordinates.GNO)
@@ -735,7 +783,7 @@ func (a *Applier) initiateStreaming() error {
 							groupEntry = append(groupEntry, binlogEntry)
 						} else {
 							if len(groupEntry) != 0 {
-								a.applyGroupDataEntryQueue <- groupEntry
+								a.applyGrouDataEntrypQueue <- groupEntry
 								groupEntry = []*binlog.BinlogEntry{}
 							}
 							groupEntry = append(groupEntry, binlogEntry)
@@ -744,7 +792,7 @@ func (a *Applier) initiateStreaming() error {
 					}
 				case <-time.After(100 * time.Millisecond):
 					if len(groupEntry) != 0 {
-						a.applyGroupDataEntryQueue <- groupEntry
+						a.applyGrouDataEntrypQueue <- groupEntry
 						groupEntry = []*binlog.BinlogEntry{}
 					}
 				case <-a.shutdownCh:
@@ -963,6 +1011,9 @@ func (a *Applier) validateAndReadTimeZone() error {
 }
 
 func (a *Applier) createTableGtidExecuted() error {
+	if result, err := sql.QueryResultData(a.db, "SHOW TABLES FROM actiontech_udup LIKE 'gtid_executed'"); nil == err && len(result) > 0 {
+		return nil
+	}
 	query := fmt.Sprintf(`
 			CREATE DATABASE IF NOT EXISTS actiontech_udup;
 			CREATE TABLE IF NOT EXISTS actiontech_udup.gtid_executed (
@@ -1000,6 +1051,106 @@ func (a *Applier) readTableColumns() (err error) {
 		return nil
 	})
 	return rowMap
+}*/
+
+// CalculateNextIterationRangeEndValues reads the next-iteration-range-end unique key values,
+// which will be used for copying the next chunk of rows. Ir returns "false" if there is
+// no further chunk to work through, i.e. we're past the last chunk and are done with
+// itrating the range (and this done with copying row chunks)
+/*func (a *Applier) CalculateNextIterationRangeEndValues() (hasFurtherRange bool, err error) {
+	a.mysqlContext.MigrationIterationRangeMinValues = a.mysqlContext.MigrationIterationRangeMaxValues
+	if a.mysqlContext.MigrationIterationRangeMinValues == nil {
+		a.mysqlContext.MigrationIterationRangeMinValues = a.mysqlContext.MigrationRangeMinValues
+	}
+	query, explodedArgs, err := sql.BuildUniqueKeyRangeEndPreparedQuery(
+		a.mysqlContext.DatabaseName,
+		a.mysqlContext.OriginalTableName,
+		&a.mysqlContext.UniqueKey.Columns,
+		a.mysqlContext.MigrationIterationRangeMinValues.AbstractValues(),
+		a.mysqlContext.MigrationRangeMaxValues.AbstractValues(),
+		atomic.LoadInt64(&a.mysqlContext.ChunkSize),
+		a.mysqlContext.GetIteration() == 0,
+		fmt.Sprintf("iteration:%d", a.mysqlContext.GetIteration()),
+	)
+	if err != nil {
+		return hasFurtherRange, err
+	}
+	rows, err := a.db.Query(query, explodedArgs...)
+	if err != nil {
+		return hasFurtherRange, err
+	}
+	iterationRangeMaxValues := sql.NewColumnValues(a.mysqlContext.UniqueKey.Len())
+	for rows.Next() {
+		if err = rows.Scan(iterationRangeMaxValues.ValuesPointers...); err != nil {
+			return hasFurtherRange, err
+		}
+		hasFurtherRange = true
+	}
+	if !hasFurtherRange {
+		a.logger.Debugf("mysql.applier: Iteration complete: no further range to iterate")
+		return hasFurtherRange, nil
+	}
+	a.mysqlContext.MigrationIterationRangeMaxValues = iterationRangeMaxValues
+	return hasFurtherRange, nil
+}
+
+// ApplyIterationInsertQuery issues a chunk-INSERT query on the ghost table. It is where
+// data actually gets copied from original table.
+func (a *Applier) ApplyIterationInsertQuery() (chunkSize int64, rowsAffected int64, duration time.Duration, err error) {
+	startTime := time.Now()
+	chunkSize = atomic.LoadInt64(&a.mysqlContext.ChunkSize)
+
+	query, explodedArgs, err := sql.BuildRangeInsertPreparedQuery(
+		a.mysqlContext.DatabaseName,
+		a.mysqlContext.OriginalTableName,
+		a.mysqlContext.OriginalTableName, //GetGhostTableName()
+		a.mysqlContext.SharedColumns.Names(),
+		a.mysqlContext.MappedSharedColumns.Names(),
+		a.mysqlContext.UniqueKey.Name,
+		&a.mysqlContext.UniqueKey.Columns,
+		a.mysqlContext.MigrationIterationRangeMinValues.AbstractValues(),
+		a.mysqlContext.MigrationIterationRangeMaxValues.AbstractValues(),
+		a.mysqlContext.GetIteration() == 0,
+		a.mysqlContext.IsTransactionalTable(),
+	)
+	if err != nil {
+		return chunkSize, rowsAffected, duration, err
+	}
+
+	sqlResult, err := func() (gosql.Result, error) {
+		tx, err := a.db.Begin()
+		if err != nil {
+			return nil, err
+		}
+		sessionQuery := fmt.Sprintf(`SET
+			SESSION time_zone = '%s',
+			sql_mode = CONCAT(@@session.sql_mode, ',STRICT_ALL_TABLES')
+			`, a.mysqlContext.ApplierTimeZone)
+		if _, err := tx.Exec(sessionQuery); err != nil {
+			return nil, err
+		}
+		result, err := tx.Exec(query, explodedArgs...)
+		if err != nil {
+			return nil, err
+		}
+		if err := tx.Commit(); err != nil {
+			return nil, err
+		}
+		return result, nil
+	}()
+
+	if err != nil {
+		return chunkSize, rowsAffected, duration, err
+	}
+	rowsAffected, _ = sqlResult.RowsAffected()
+	duration = time.Since(startTime)
+	a.logger.Printf(
+		"[DEBUG] mysql.applier: Issued INSERT on range: [%s]..[%s]; iteration: %d; chunk-size: %d",
+		a.mysqlContext.MigrationIterationRangeMinValues,
+		a.mysqlContext.MigrationIterationRangeMaxValues,
+		a.mysqlContext.GetIteration(),
+		chunkSize)
+	return chunkSize, rowsAffected, duration, nil
 }*/
 
 // LockOriginalTable places a write lock on the original table
@@ -1238,140 +1389,6 @@ func (a *Applier) ShowStatusVariable(variableName string) (result int64, err err
 	return result, nil
 }
 
-// getCandidateUniqueKeys investigates a table and returns the list of unique keys
-// candidate for chunking
-func (a *Applier) getCandidateUniqueKeys(databaseName, tableName string) (uniqueKeys [](*umconf.UniqueKey), err error) {
-	query := `
-    SELECT
-      COLUMNS.TABLE_SCHEMA,
-      COLUMNS.TABLE_NAME,
-      COLUMNS.COLUMN_NAME,
-      UNIQUES.INDEX_NAME,
-      UNIQUES.COLUMN_NAMES,
-      UNIQUES.COUNT_COLUMN_IN_INDEX,
-      COLUMNS.DATA_TYPE,
-      COLUMNS.CHARACTER_SET_NAME,
-			LOCATE('auto_increment', EXTRA) > 0 as is_auto_increment,
-      has_nullable
-    FROM INFORMATION_SCHEMA.COLUMNS INNER JOIN (
-      SELECT
-        TABLE_SCHEMA,
-        TABLE_NAME,
-        INDEX_NAME,
-        COUNT(*) AS COUNT_COLUMN_IN_INDEX,
-        GROUP_CONCAT(COLUMN_NAME ORDER BY SEQ_IN_INDEX ASC) AS COLUMN_NAMES,
-        SUBSTRING_INDEX(GROUP_CONCAT(COLUMN_NAME ORDER BY SEQ_IN_INDEX ASC), ',', 1) AS FIRST_COLUMN_NAME,
-        SUM(NULLABLE='YES') > 0 AS has_nullable
-      FROM INFORMATION_SCHEMA.STATISTICS
-      WHERE
-				NON_UNIQUE=0
-				AND TABLE_SCHEMA = ?
-      	AND TABLE_NAME = ?
-      GROUP BY TABLE_SCHEMA, TABLE_NAME, INDEX_NAME
-    ) AS UNIQUES
-    ON (
-      COLUMNS.TABLE_SCHEMA = UNIQUES.TABLE_SCHEMA AND
-      COLUMNS.TABLE_NAME = UNIQUES.TABLE_NAME AND
-      COLUMNS.COLUMN_NAME = UNIQUES.FIRST_COLUMN_NAME
-    )
-    WHERE
-      COLUMNS.TABLE_SCHEMA = ?
-      AND COLUMNS.TABLE_NAME = ?
-    ORDER BY
-      COLUMNS.TABLE_SCHEMA, COLUMNS.TABLE_NAME,
-      CASE UNIQUES.INDEX_NAME
-        WHEN 'PRIMARY' THEN 0
-        ELSE 1
-      END,
-      CASE has_nullable
-        WHEN 0 THEN 0
-        ELSE 1
-      END,
-      CASE IFNULL(CHARACTER_SET_NAME, '')
-          WHEN '' THEN 0
-          ELSE 1
-      END,
-      CASE DATA_TYPE
-        WHEN 'tinyint' THEN 0
-        WHEN 'smallint' THEN 1
-        WHEN 'int' THEN 2
-        WHEN 'bigint' THEN 3
-        ELSE 100
-      END,
-      COUNT_COLUMN_IN_INDEX
-  `
-	err = sql.QueryRowsMap(a.db, query, func(m sql.RowMap) error {
-		uniqueKey := &umconf.UniqueKey{
-			Name:            m.GetString("INDEX_NAME"),
-			Columns:         *umconf.ParseColumnList(m.GetString("COLUMN_NAMES")),
-			HasNullable:     m.GetBool("has_nullable"),
-			IsAutoIncrement: m.GetBool("is_auto_increment"),
-		}
-		uniqueKeys = append(uniqueKeys, uniqueKey)
-		return nil
-	}, databaseName, tableName, databaseName, tableName)
-	if err != nil {
-		return uniqueKeys, err
-	}
-	//a.logger.Debugf("mysql.applier: potential unique keys in %+v.%+v: %+v", databaseName, tableName, uniqueKeys)
-	return uniqueKeys, nil
-}
-
-func (a *Applier) InspectTableColumnsAndUniqueKeys(databaseName, tableName string) (columns *umconf.ColumnList, uniqueKeys [](*umconf.UniqueKey), err error) {
-	uniqueKeys, err = a.getCandidateUniqueKeys(databaseName, tableName)
-	if err != nil {
-		return columns, uniqueKeys, err
-	}
-	/*if len(uniqueKeys) == 0 {
-		return columns, uniqueKeys, fmt.Errorf("No PRIMARY nor UNIQUE key found in table! Bailing out")
-	}*/
-	columns, err = base.GetTableColumns(a.db, databaseName, tableName)
-	if err != nil {
-		return columns, uniqueKeys, err
-	}
-	t := &config.Table{
-		TableName:            tableName,
-		OriginalTableColumns: columns,
-	}
-	if err := base.InspectTables(a.db, databaseName, t, a.mysqlContext.TimeZone); err != nil {
-		return columns, uniqueKeys, err
-	}
-	columns = t.OriginalTableColumns
-	uniqueKeys = t.OriginalTableUniqueKeys
-
-	return columns, uniqueKeys, nil
-}
-
-// getSharedColumns returns the intersection of two lists of columns in same order as the first list
-func (a *Applier) getSharedColumns(originalColumns, columns *umconf.ColumnList, columnRenameMap map[string]string) (*umconf.ColumnList, *umconf.ColumnList) {
-	columnsInGhost := make(map[string]bool)
-	for _, column := range columns.Names() {
-		columnsInGhost[column] = true
-	}
-	sharedColumnNames := []string{}
-	for _, originalColumn := range originalColumns.Names() {
-		isSharedColumn := false
-		if columnsInGhost[originalColumn] || columnsInGhost[columnRenameMap[originalColumn]] {
-			isSharedColumn = true
-		}
-		/*if a.mysqlContext.DroppedColumnsMap[originalColumn] {
-			isSharedColumn = false
-		}*/
-		if isSharedColumn {
-			sharedColumnNames = append(sharedColumnNames, originalColumn)
-		}
-	}
-	mappedSharedColumnNames := []string{}
-	for _, columnName := range sharedColumnNames {
-		if mapped, ok := columnRenameMap[columnName]; ok {
-			mappedSharedColumnNames = append(mappedSharedColumnNames, mapped)
-		} else {
-			mappedSharedColumnNames = append(mappedSharedColumnNames, columnName)
-		}
-	}
-	return umconf.NewColumnList(sharedColumnNames), umconf.NewColumnList(mappedSharedColumnNames)
-}
-
 // buildDMLEventQuery creates a query to operate on the ghost table, based on an intercepted binlog
 // event entry on the original table.
 func (a *Applier) buildDMLEventQuery(dmlEvent binlog.DataEvent) (query string, args []interface{}, rowsDelta int64, err error) {
@@ -1487,6 +1504,13 @@ func (a *Applier) ApplyBinlogEvent(dbApplier *sql.DB, binlogEntry *binlog.Binlog
 	if _, err := tx.Exec(sessionQuery); err != nil {
 		return err
 	}
+	/*sessionQuery = `SET
+			SESSION time_zone = '+00:00',
+			sql_mode = CONCAT(@@session.sql_mode, ',STRICT_ALL_TABLES')
+			`
+	if _, err := tx.Exec(sessionQuery); err != nil {
+		return err
+	}*/
 	for _, event := range binlogEntry.Events {
 		if event.DatabaseName != "" {
 			_, err := tx.Exec(fmt.Sprintf("USE %s", event.DatabaseName))
@@ -1510,6 +1534,15 @@ func (a *Applier) ApplyBinlogEvent(dbApplier *sql.DB, binlogEntry *binlog.Binlog
 					a.logger.Warnf("mysql.applier: Ignore error: %v", err)
 				}
 			}
+			/*for _,db:=range a.mysqlContext.ReplicateDoDb{
+				for _,tb:=range db.Tables {
+					tableColumns, _, err := a.InspectTableColumnsAndUniqueKeys(tb.TableSchema, tb.TableName)
+					if err != nil {
+						return err
+					}
+					tb.OriginalTableColumns = tableColumns
+				}
+			}*/
 		default:
 			query, args, rowDelta, err := a.buildDMLEventQuery(event)
 			if err != nil {
@@ -1570,7 +1603,6 @@ func (a *Applier) ApplyEventQueries(db *gosql.DB, entry *dumpEntry) error {
 		if err := tx.Commit(); err != nil {
 			a.onError(TaskStateDead, err)
 		}
-		atomic.AddInt64(&a.mysqlContext.TotalRowsReplay, entry.RowsCount)
 	}()
 	sessionQuery := `SET @@session.foreign_key_checks = 0`
 	if _, err := tx.Exec(sessionQuery); err != nil {
@@ -1591,11 +1623,12 @@ func (a *Applier) ApplyEventQueries(db *gosql.DB, entry *dumpEntry) error {
 			}
 		}
 	}
+	atomic.AddInt64(&a.mysqlContext.TotalRowsCopied, entry.RowsCount)
 	return nil
 }
 
 func (a *Applier) Stats() (*models.TaskStatistics, error) {
-	totalRowsReplay := a.mysqlContext.GetTotalRowsReplay()
+	totalRowsCopied := a.mysqlContext.GetTotalRowsCopied()
 	rowsEstimate := atomic.LoadInt64(&a.mysqlContext.RowsEstimate)
 	totalDeltaCopied := a.mysqlContext.GetTotalDeltaCopied()
 	deltaEstimate := atomic.LoadInt64(&a.mysqlContext.DeltaEstimate)
@@ -1605,7 +1638,7 @@ func (a *Applier) Stats() (*models.TaskStatistics, error) {
 	if rowsEstimate == 0 && deltaEstimate == 0 {
 		progressPct = 100.0
 	} else {
-		progressPct = 100.0 * float64(totalDeltaCopied+totalRowsReplay) / float64(deltaEstimate+rowsEstimate)
+		progressPct = 100.0 * float64(totalDeltaCopied+totalRowsCopied) / float64(deltaEstimate+rowsEstimate)
 		if atomic.LoadInt64(&a.rowCopyCompleteFlag) == 1 {
 			// Done copying rows. The totalRowsCopied value is the de-facto number of rows,
 			// and there is no further need to keep updating the value.
@@ -1622,7 +1655,7 @@ func (a *Applier) Stats() (*models.TaskStatistics, error) {
 		a.mysqlContext.Stage = models.StageSlaveHasReadAllRelayLog
 	} else if progressPct >= 1.0 {
 		elapsedRowCopySeconds := a.mysqlContext.ElapsedRowCopyTime().Seconds()
-		totalExpectedSeconds := elapsedRowCopySeconds * float64(rowsEstimate) / float64(totalRowsReplay)
+		totalExpectedSeconds := elapsedRowCopySeconds * float64(rowsEstimate) / float64(totalRowsCopied)
 		if atomic.LoadInt64(&a.rowCopyCompleteFlag) == 1 {
 			totalExpectedSeconds = elapsedRowCopySeconds * float64(deltaEstimate) / float64(totalDeltaCopied)
 		}
@@ -1636,11 +1669,11 @@ func (a *Applier) Stats() (*models.TaskStatistics, error) {
 	}
 
 	taskResUsage := models.TaskStatistics{
-		ExecMasterRowCount: totalRowsReplay,
+		ExecMasterRowCount: totalRowsCopied,
 		ExecMasterTxCount:  totalDeltaCopied,
 		ReadMasterRowCount: rowsEstimate,
 		ReadMasterTxCount:  deltaEstimate,
-		ProgressPct:        strconv.FormatFloat(progressPct, 'f', 1, 64),
+		ProgressPct:        strconv.FormatFloat(progressPct,'f',1,64),
 		ETA:                eta,
 		Backlog:            backlog,
 		Stage:              a.mysqlContext.Stage,
