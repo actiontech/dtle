@@ -1143,7 +1143,7 @@ func (e *Extractor) mysqlDump() error {
 					SqlMode:                  setSqlMode,
 					DbSQL:                    dbSQL,
 					TbSQL:                    tbSQL,
-					TotalCount:               total,
+					TotalCount:               tb.Counter,
 				}
 				if err := e.encodeDumpEntry(entry); err != nil {
 					return err
