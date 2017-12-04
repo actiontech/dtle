@@ -192,12 +192,12 @@ func (d *dumper) getChunkData(e *dumpEntry) (err error) {
 		RowsCount:   e.RowsCount,
 		Offset:      e.Offset,
 	}
+	// TODO use PS
+	// TODO escape schema/table/column name once and save
 	defer func() {
 		entry.err = err
 		d.resultsChannel <- entry
 	}()
-	// TODO use PS
-	// TODO escape schema/table/column name once and save
 
 	query := ""
 	if d.table.UseUniqueKey == nil {

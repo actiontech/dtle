@@ -616,6 +616,7 @@ func (a *Applier) executeWriteFuncs() {
 		a.logger.Printf("mysql.applier: Operating until row copy is complete")
 		a.mysqlContext.Stage = models.StageSlaveWaitingForWorkersToProcessQueue
 		for {
+			// TODO: expression is invalid after removing 'start transaction' since RowsEstimate is inaccurate
 			if a.mysqlContext.ReceQueries != 0 && a.mysqlContext.ReceQueries == a.mysqlContext.ExecQueries && a.mysqlContext.TotalRowsCopied == a.mysqlContext.RowsEstimate {
 				a.logger.Printf("mysql.applier: Rows copy complete.number of rows:%d", a.mysqlContext.RowsEstimate)
 				break

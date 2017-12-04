@@ -1195,6 +1195,7 @@ func (e *Extractor) mysqlDump() error {
 				if entry.err != nil {
 					e.onError(TaskStateDead, entry.err)
 				}
+				// TODO: entry values may be empty. skip the entry after removing 'start transaction'.
 				entry.SystemVariablesStatement = setSystemVariablesStatement
 				entry.SqlMode = setSqlMode
 				if err = e.encodeDumpEntry(entry); err != nil {
