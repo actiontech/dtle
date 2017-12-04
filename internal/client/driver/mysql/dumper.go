@@ -185,13 +185,17 @@ func (d *dumper) buildQueryOnUniqueKey(e *dumpEntry) string {
 }
 
 // dumps a specific chunk, reading chunk info from the channel
-func (d *dumper) getChunkData(e *dumpEntry) error {
+func (d *dumper) getChunkData(e *dumpEntry) (err error) {
 	entry := &dumpEntry{
 		TableSchema: d.TableSchema,
 		TableName:   d.TableName,
 		RowsCount:   e.RowsCount,
 		Offset:      e.Offset,
 	}
+	defer func() {
+		entry.err = err
+		d.resultsChannel <- entry
+	}()
 	// TODO use PS
 	// TODO escape schema/table/column name once and save
 
@@ -273,7 +277,6 @@ func (d *dumper) getChunkData(e *dumpEntry) error {
 	}
 
 	entry.Values = append(entry.Values, data)
-	d.resultsChannel <- entry
 	/*query = fmt.Sprintf(`
 			insert into %s.%s
 				(%s)
@@ -318,6 +321,7 @@ func (d *dumper) worker() {
 		}
 		if e != nil {
 			err := d.getChunkData(e)
+			//FIXME: useless err
 			if err != nil {
 				e.err = err
 			}
