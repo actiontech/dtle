@@ -56,6 +56,10 @@ func NewDumper(db *sql.Tx, table *config.Table, total, chunkSize int64,
 	return dumper
 }
 
+type dumpStatResult struct {
+	TotalCount int64
+}
+
 type dumpEntry struct {
 	SystemVariablesStatement string
 	SqlMode                  string
@@ -277,6 +281,7 @@ func (d *dumper) getChunkData(e *dumpEntry) (err error) {
 	}
 
 	entry.Values = append(entry.Values, data)
+	d.resultsChannel <- entry
 	/*query = fmt.Sprintf(`
 			insert into %s.%s
 				(%s)
