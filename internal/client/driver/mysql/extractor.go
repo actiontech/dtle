@@ -499,15 +499,6 @@ func (e *Extractor) inspectTables() (err error) {
 		}
 	}
 
-	for _, db := range e.replicateDoDb {
-		for _, tbl := range db.Tables {
-			e.logger.Infof("Do table: %s.%s. n_unique_keys: %d", tbl.TableSchema, tbl.TableName, len(tbl.OriginalTableUniqueKeys))
-			for _, uk := range tbl.OriginalTableUniqueKeys {
-				e.logger.Infof("A unique key: %s", uk.String())
-			}
-		}
-	}
-
 	return nil
 }
 func (e *Extractor) ignoreDb(dbName string) bool {

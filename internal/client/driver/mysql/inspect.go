@@ -78,11 +78,11 @@ func (i *Inspector) ValidateOriginalTable(databaseName, tableName string, table 
 		return err
 	}
 
-	if len(table.OriginalTableUniqueKeys) == 0 {
-		return fmt.Errorf("No PRIMARY nor UNIQUE key found in table! Bailing out")
-	}
+	i.logger.Debug("table: %s.%s. n_unique_keys: %d", table.TableSchema, table.TableName, len(table.OriginalTableUniqueKeys))
 
 	for _, uk := range table.OriginalTableUniqueKeys {
+		i.logger.Debug("A unique key: %s", uk.String())
+
 		ubase.ApplyColumnTypes(i.db, table.TableSchema, table.TableName, &uk.Columns)
 
 		uniqueKeyIsValid := true
@@ -120,7 +120,8 @@ func (i *Inspector) ValidateOriginalTable(databaseName, tableName string, table 
 	if table.UseUniqueKey == nil {
 		i.logger.Warnf("No valid unique key found for table %s.%s. It will be slow on large table.", table.TableSchema, table.TableName)
 	} else {
-		i.logger.Infof("Chosen shared unique key is %s", table.UseUniqueKey.Name)
+		i.logger.Infof("Chosen shared unique key for %s.%s is %s: %s",
+			table.TableSchema, table.TableName, table.UseUniqueKey.Name, table.UseUniqueKey.String())
 	}
 	// endregion
 
