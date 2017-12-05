@@ -35,7 +35,7 @@ func (s *HTTPServer) JobsInfoRequest(resp http.ResponseWriter, req *http.Request
 
 func (s *HTTPServer) jobInfoRequest(resp http.ResponseWriter, req *http.Request) (interface{}, error) {
 	var args *api.Job
-	var replicateDoDb []*config.DataSource
+	var replicateDoDb []*ZTreeData
 	if err := decodeBody(req, &args); err != nil {
 		return nil, CodedError(400, err.Error())
 	}
@@ -56,6 +56,9 @@ func (s *HTTPServer) jobInfoRequest(resp http.ResponseWriter, req *http.Request)
 			if err := mapstructure.WeakDecode(task.Config, &driverConfig); err != nil {
 				return nil, err
 			}
+			if "" == driverConfig.ConnectionConfig.Charset {
+				driverConfig.ConnectionConfig.Charset = "utf8"
+			}
 			uri := driverConfig.ConnectionConfig.GetDBUri()
 			db, err := sql.CreateDB(uri)
 			if err != nil {
@@ -65,9 +68,10 @@ func (s *HTTPServer) jobInfoRequest(resp http.ResponseWriter, req *http.Request)
 			if err != nil {
 				return nil, err
 			}
-			for _, dbName := range dbs {
-				ds := &config.DataSource{
-					TableSchema: dbName,
+			for dbIdx, dbName := range dbs {
+				ds := &ZTreeData{
+					Code:fmt.Sprintf("%d",dbIdx),
+					Name: dbName,
 				}
 
 				tbs, err := sql.ShowTables(db, dbName)
@@ -75,8 +79,12 @@ func (s *HTTPServer) jobInfoRequest(resp http.ResponseWriter, req *http.Request)
 					return nil, err
 				}
 
-				for _, tb := range tbs {
-					ds.Tables = append(ds.Tables, tb)
+				for tbIdx, t := range tbs {
+					tb := &Node{
+						Code:fmt.Sprintf("%d-%d",dbIdx,tbIdx),
+						Name: t.TableName,
+					}
+					ds.Nodes = append(ds.Nodes, tb)
 				}
 				replicateDoDb = append(replicateDoDb, ds)
 			}

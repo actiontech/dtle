@@ -217,6 +217,17 @@ type AdvertiseAddrs struct {
 	Nats string `mapstructure:"nats"`
 }
 
+type ZTreeData struct {
+	Code string
+	Name string
+	Nodes []*Node
+}
+
+type Node struct {
+	Code string
+	Name string
+}
+
 // DefaultConfig is a the baseline configuration for Udup
 func DefaultConfig() *Config {
 	return &Config{
