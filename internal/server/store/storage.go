@@ -484,7 +484,7 @@ func (s *StateStore) DeleteJob(index uint64, jobID string) error {
 	if err != nil {
 		return fmt.Errorf("failed to get blocked order for job %q: %v", job.OrderID, err)
 	}
-	if existing != nil {
+	if order != nil {
 		o := order.(*models.Order)
 		if err := txn.Delete("orders", o); err != nil {
 			return fmt.Errorf("order delete failed: %v", err)

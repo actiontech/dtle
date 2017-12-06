@@ -43,6 +43,9 @@ func (s *HTTPServer) jobInfoRequest(resp http.ResponseWriter, req *http.Request)
 	if args.Name == nil {
 		return nil, CodedError(400, "Job Name hasn't been provided")
 	}
+	if args.OrderID == nil {
+		return nil, CodedError(400, "Order ID hasn't been provided")
+	}
 	if args.Region == nil {
 		args.Region = &s.agent.config.Region
 	}
@@ -242,6 +245,9 @@ func (s *HTTPServer) jobUpdate(resp http.ResponseWriter, req *http.Request,
 
 	if args.Name == nil {
 		return nil, CodedError(400, "Job Name hasn't been provided")
+	}
+	if args.OrderID == nil {
+		return nil, CodedError(400, "Order ID hasn't been provided")
 	}
 	if args.Region == nil {
 		args.Region = &s.agent.config.Region
