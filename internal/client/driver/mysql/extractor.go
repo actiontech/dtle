@@ -24,6 +24,7 @@ import (
 	"udup/internal/config"
 	log "udup/internal/logger"
 	"udup/internal/models"
+	"os"
 )
 
 const (
@@ -65,6 +66,8 @@ type Extractor struct {
 	shutdown     bool
 	shutdownCh   chan struct{}
 	shutdownLock sync.Mutex
+
+	teststub1_delay int64
 }
 
 func NewExtractor(subject, tp string, maxPayload int, cfg *config.MySQLDriverConfig, logger *log.Logger) *Extractor {
@@ -85,7 +88,14 @@ func NewExtractor(subject, tp string, maxPayload int, cfg *config.MySQLDriverCon
 		allEventsUpToLockProcessed: make(chan string),
 		waitCh:     make(chan *models.WaitResult, 1),
 		shutdownCh: make(chan struct{}),
+		teststub1_delay:            0,
 	}
+
+	if delay, err := strconv.ParseInt(os.Getenv("UDUP_TESTSTUB1_DELAY"), 10, 64); err == nil {
+		e.logger.Infof("UDUP_TESTSTUB1_DELAY = %v", delay)
+		e.teststub1_delay = delay
+	}
+
 	return e
 }
 
@@ -1066,6 +1076,11 @@ func (e *Extractor) mysqlDump() error {
 		}
 	}()
 
+	if e.teststub1_delay > 0 {
+		e.logger.Info("teststub1 delay start")
+		time.Sleep(time.Duration(e.teststub1_delay) * time.Millisecond)
+		e.logger.Info("teststub1 delay end")
+	}
 	// ------
 	// STEP 2
 	// ------
