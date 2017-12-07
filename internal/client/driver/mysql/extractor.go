@@ -457,7 +457,6 @@ func (e *Extractor) inspectTables() (err error) {
 			} else {
 				db.Tables = doDb.Tables
 			}
-			e.replicateDoDb = append(e.replicateDoDb, db)
 			for _, doTb := range db.Tables {
 				doTb.TableSchema = doDb.TableSchema
 				if err := e.inspector.ValidateOriginalTable(doDb.TableSchema, doTb.TableName, doTb); err != nil {
@@ -465,6 +464,7 @@ func (e *Extractor) inspectTables() (err error) {
 					continue
 				}
 			}
+			e.replicateDoDb = append(e.replicateDoDb, db)
 		}
 	} else {
 		dbs, err := sql.ShowDatabases(e.db)
@@ -1118,8 +1118,6 @@ func (e *Extractor) mysqlDump() error {
 					return err
 				}
 				tb.Counter = total
-			}
-			for _, tb := range db.Tables {
 				var dbSQL, tbSQL string
 				if !e.mysqlContext.SkipCreateDbTable {
 					var err error

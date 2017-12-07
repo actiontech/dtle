@@ -78,10 +78,10 @@ func (i *Inspector) ValidateOriginalTable(databaseName, tableName string, table 
 		return err
 	}
 
-	i.logger.Debug("table: %s.%s. n_unique_keys: %d", table.TableSchema, table.TableName, len(table.OriginalTableUniqueKeys))
+	i.logger.Debugf("table: %s.%s. n_unique_keys: %d", table.TableSchema, table.TableName, len(table.OriginalTableUniqueKeys))
 
 	for _, uk := range table.OriginalTableUniqueKeys {
-		i.logger.Debug("A unique key: %s", uk.String())
+		i.logger.Debugf("A unique key: %s", uk.String())
 
 		ubase.ApplyColumnTypes(i.db, table.TableSchema, table.TableName, &uk.Columns)
 
