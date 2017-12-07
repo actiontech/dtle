@@ -67,7 +67,7 @@ type Extractor struct {
 	shutdownCh   chan struct{}
 	shutdownLock sync.Mutex
 
-	teststub1_delay int64
+	testStub1Delay int64
 }
 
 func NewExtractor(subject, tp string, maxPayload int, cfg *config.MySQLDriverConfig, logger *log.Logger) *Extractor {
@@ -86,14 +86,14 @@ func NewExtractor(subject, tp string, maxPayload int, cfg *config.MySQLDriverCon
 		parser:                     sql.NewParser(),
 		rowCopyComplete:            make(chan bool),
 		allEventsUpToLockProcessed: make(chan string),
-		waitCh:     make(chan *models.WaitResult, 1),
-		shutdownCh: make(chan struct{}),
-		teststub1_delay:            0,
+		waitCh:                     make(chan *models.WaitResult, 1),
+		shutdownCh:                 make(chan struct{}),
+		testStub1Delay:             0,
 	}
 
 	if delay, err := strconv.ParseInt(os.Getenv("UDUP_TESTSTUB1_DELAY"), 10, 64); err == nil {
 		e.logger.Infof("UDUP_TESTSTUB1_DELAY = %v", delay)
-		e.teststub1_delay = delay
+		e.testStub1Delay = delay
 	}
 
 	return e
@@ -1014,10 +1014,19 @@ func (e *Extractor) requestMsg(subject, gtid string, txMsg []byte) (err error) {
 	return err
 }
 
+func (e *Extractor) testStub1() {
+	if e.testStub1Delay > 0 {
+		e.logger.Info("teststub1 delay start")
+		time.Sleep(time.Duration(e.testStub1Delay) * time.Millisecond)
+		e.logger.Info("teststub1 delay end")
+	}
+}
+
 //Perform the snapshot using the same logic as the "mysqldump" utility.
 func (e *Extractor) mysqlDump() error {
 	defer e.singletonDB.Close()
 	var tx *gosql.Tx
+	var err error
 	step := 0
 	// ------
 	// STEP 0
@@ -1046,43 +1055,7 @@ func (e *Extractor) mysqlDump() error {
 	step++
 
 	// ------
-	// STEP 1
-	// ------
-	// First, start a transaction and request that a consistent MVCC snapshot is obtained immediately.
-	// See http://dev.mysql.com/doc/refman/5.7/en/commit.html
-	e.logger.Printf("mysql.extractor: Step %d: start transaction with consistent snapshot", step)
-	tx, err := e.singletonDB.Begin()
-	if err != nil {
-		return err
-	}
-	query := "START TRANSACTION WITH CONSISTENT SNAPSHOT"
-	_, err = tx.Exec(query)
-	if err != nil {
-		e.logger.Printf("[ERR] mysql.extractor: exec %+v, error: %v", query, err)
-		return err
-	}
-	step++
-	defer func() {
-		/*e.logger.Printf("mysql.extractor: Step %d: releasing global read lock to enable MySQL writes", step)
-		query := "UNLOCK TABLES"
-		_, err := tx.Exec(query)
-		if err != nil {
-			e.logger.Printf("[ERR] mysql.extractor: exec %+v, error: %v", query, err)
-		}
-		step++*/
-		e.logger.Printf("mysql.extractor: Step %d: committing transaction", step)
-		if err := tx.Commit(); err != nil {
-			e.onError(TaskStateDead, err)
-		}
-	}()
-
-	if e.teststub1_delay > 0 {
-		e.logger.Info("teststub1 delay start")
-		time.Sleep(time.Duration(e.teststub1_delay) * time.Millisecond)
-		e.logger.Info("teststub1 delay end")
-	}
-	// ------
-	// STEP 2
+	// STEP ?
 	// ------
 	// Obtain read lock on all tables. This statement closes all open tables and locks all tables
 	// for all databases with a global read lock, and it prevents ALL updates while we have this lock.
@@ -1097,17 +1070,93 @@ func (e *Extractor) mysqlDump() error {
 	step++*/
 
 	// ------
-	// STEP 3
+	// STEP 1
 	// ------
-	// Obtain the binlog position and update the SourceInfo in the context. This means that all source records generated
-	// as part of the snapshot will contain the binlog position of the snapshot.
-	binlogCoordinates, err := base.GetSelfBinlogCoordinatesWithTx(tx)
-	if err != nil {
-		return err
+	// First, start a transaction and request that a consistent MVCC snapshot is obtained immediately.
+	// See http://dev.mysql.com/doc/refman/5.7/en/commit.html
+
+	e.logger.Printf("mysql.extractor: Step %d: start transaction with consistent snapshot", step)
+
+	gtidMatch := false
+	gtidMatchRound := 0
+	delayBetweenRetries := 200 * time.Millisecond
+	for !gtidMatch {
+		gtidMatchRound += 1
+
+		// 1
+		rows1, err := e.singletonDB.Query("show master status")
+		if err != nil {
+			e.logger.Errorf("mysql.extractor: get gtid, round: %v, phase 1, err: %v", gtidMatchRound, err)
+			return err
+		};
+
+		e.testStub1()
+
+		// 2
+		// TODO it seems that two 'start transaction' will be sent.
+		// https://github.com/golang/go/issues/19981
+		tx, err = e.singletonDB.Begin()
+		if err != nil {
+			return err
+		}
+		query := "START TRANSACTION WITH CONSISTENT SNAPSHOT"
+		_, err = tx.Exec(query)
+		if err != nil {
+			e.logger.Printf("[ERR] mysql.extractor: exec %+v, error: %v", query, err)
+			return err
+		}
+
+		e.testStub1()
+
+		// 3
+		rows2, err := tx.Query("show master status")
+
+		// 4
+		binlogCoordinates1, err := base.ParseBinlogCoordinatesFromRows(rows1)
+		if err != nil {
+			return err
+		}
+		binlogCoordinates2, err := base.ParseBinlogCoordinatesFromRows(rows2)
+		if err != nil {
+			return err
+		}
+		e.logger.Debugf("mysql.extractor: binlog coordinates 1: %+v", binlogCoordinates1)
+		e.logger.Debugf("mysql.extractor: binlog coordinates 2: %+v", binlogCoordinates2)
+
+		if binlogCoordinates1.GtidSet == binlogCoordinates2.GtidSet {
+			gtidMatch = true
+			e.logger.Infof("Got gtid after %v rounds", gtidMatchRound)
+
+			// Obtain the binlog position and update the SourceInfo in the context. This means that all source records generated
+			// as part of the snapshot will contain the binlog position of the snapshot.
+			//binlogCoordinates, err := base.GetSelfBinlogCoordinatesWithTx(tx)
+
+			e.initialBinlogCoordinates = binlogCoordinates2
+			e.logger.Printf("mysql.extractor: Step %d: read binlog coordinates of MySQL master: %+v", step, *e.initialBinlogCoordinates)
+		} else {
+			e.logger.Warningf("Failed got a consistenct TX with GTID in %v rounds. Will retry.", gtidMatchRound)
+			err = tx.Rollback()
+			if err != nil {
+				return err
+			}
+			time.Sleep(delayBetweenRetries)
+		}
 	}
-	e.initialBinlogCoordinates = binlogCoordinates
-	e.logger.Printf("mysql.extractor: Step %d: read binlog coordinates of MySQL master: %+v", step, *e.initialBinlogCoordinates)
 	step++
+
+	defer func() {
+		/*e.logger.Printf("mysql.extractor: Step %d: releasing global read lock to enable MySQL writes", step)
+		query := "UNLOCK TABLES"
+		_, err := tx.Exec(query)
+		if err != nil {
+			e.logger.Printf("[ERR] mysql.extractor: exec %+v, error: %v", query, err)
+		}
+		step++*/
+		e.logger.Printf("mysql.extractor: Step %d: committing transaction", step)
+		if err := tx.Commit(); err != nil {
+			e.onError(TaskStateDead, err)
+		}
+	}()
 
 	// ------
 	// STEP 4

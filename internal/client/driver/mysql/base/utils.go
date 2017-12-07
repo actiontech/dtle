@@ -13,6 +13,7 @@ import (
 	"github.com/satori/go.uuid"
 	gomysql "github.com/siddontang/go-mysql/mysql"
 	"github.com/siddontang/go/hack"
+	"database/sql"
 
 	usql "udup/internal/client/driver/mysql/sql"
 	uconf "udup/internal/config"
@@ -164,8 +165,8 @@ func GetSelfBinlogCoordinates2(db *gosql.DB) (selfBinlogCoordinates *BinlogCoord
 	return selfBinlogCoordinates, err
 }
 
-func GetSelfBinlogCoordinatesWithTx(db *gosql.Tx) (selfBinlogCoordinates *BinlogCoordinates, err error) {
-	err = usql.QueryRowsMapWithTx(db, `show master status`, func(m usql.RowMap) error {
+func ParseBinlogCoordinatesFromRows(rows *sql.Rows) (selfBinlogCoordinates *BinlogCoordinates, err error) {
+	err = usql.ScanRowsToMaps(rows, func(m usql.RowMap) error {
 		gtidSet, err := gomysql.ParseMysqlGTIDSet(m.GetString("Executed_Gtid_Set"))
 		if err != nil {
 			return err
