@@ -118,3 +118,41 @@ func (o *Order) List(args *models.OrderListRequest,
 		}}
 	return o.srv.blockingRPC(&opts)
 }
+
+func (j *Order) GetOrder(args *models.OrderSpecificRequest,
+	reply *models.SingleOrderResponse) error {
+	if done, err := j.srv.forward("Order.GetOrder", args, args, reply); done {
+		return err
+	}
+	defer metrics.MeasureSince([]string{"server", "order", "get_order"}, time.Now())
+
+	// Setup the blocking query
+	opts := blockingOptions{
+		queryOpts: &args.QueryOptions,
+		queryMeta: &reply.QueryMeta,
+		run: func(ws memdb.WatchSet, state *store.StateStore) error {
+			// Look for the job
+			out, err := state.OrderByID(ws, args.OrderID)
+			if err != nil {
+				return err
+			}
+
+			// Setup the output
+			reply.Order = out
+			if out != nil {
+				reply.Index = out.ModifyIndex
+			} else {
+				// Use the last index that affected the nodes table
+				index, err := state.Index("orders")
+				if err != nil {
+					return err
+				}
+				reply.Index = index
+			}
+
+			// Set the query response
+			j.srv.setQueryMeta(&reply.QueryMeta)
+			return nil
+		}}
+	return j.srv.blockingRPC(&opts)
+}

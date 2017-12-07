@@ -48,6 +48,8 @@ func (s *HTTPServer) OrderSpecificRequest(resp http.ResponseWriter, req *http.Re
 func (s *HTTPServer) orderCRUD(resp http.ResponseWriter, req *http.Request,
 	orderName string) (interface{}, error) {
 	switch req.Method {
+	case "GET":
+		return s.orderQuery(resp, req, orderName)
 	case "PUT", "POST":
 		return s.orderUpdate(resp, req, orderName)
 	case "DELETE":
@@ -55,6 +57,30 @@ func (s *HTTPServer) orderCRUD(resp http.ResponseWriter, req *http.Request,
 	default:
 		return nil, CodedError(405, ErrInvalidMethod)
 	}
+}
+
+func (s *HTTPServer) orderQuery(resp http.ResponseWriter, req *http.Request,
+	orderID string) (interface{}, error) {
+	if req.Method != "GET" {
+		return nil, CodedError(405, ErrInvalidMethod)
+	}
+	args := models.OrderSpecificRequest{
+		OrderID: orderID,
+	}
+	if s.parse(resp, req, &args.Region, &args.QueryOptions) {
+		return nil, nil
+	}
+
+	var out models.SingleOrderResponse
+	if err := s.agent.RPC("Order.GetOrder", &args, &out); err != nil {
+		return nil, err
+	}
+
+	setMeta(resp, &out.QueryMeta)
+	if out.Order == nil {
+		return nil, CodedError(404, "order not found")
+	}
+	return out.Order, nil
 }
 
 func (s *HTTPServer) orderUpdate(resp http.ResponseWriter, req *http.Request,
@@ -113,7 +139,7 @@ func ApiOrderToStructOrder(order *api.Order) *models.Order {
 		Region:           *order.Region,
 		ID:               *order.ID,
 		Name:             *order.Name,
-		NetworkTraffic:   *order.NetworkTraffic,
+		TrafficLimit:     *order.TrafficLimit,
 		CreateIndex:      *order.CreateIndex,
 		ModifyIndex:      *order.ModifyIndex,
 		OrderModifyIndex: *order.OrderModifyIndex,

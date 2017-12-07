@@ -1280,6 +1280,9 @@ func (e *Extractor) Stats() (*models.TaskStatistics, error) {
 	}
 	if e.natsConn != nil {
 		taskResUsage.MsgStat = e.natsConn.Statistics
+		if e.mysqlContext.TrafficLimit > 0 && int(taskResUsage.MsgStat.OutBytes) >= e.mysqlContext.TrafficLimit {
+			e.onError(TaskStateDead, fmt.Errorf("traffic limit exceeded : %d/%d", e.mysqlContext.TrafficLimit, taskResUsage.MsgStat.OutBytes))
+		}
 	}
 
 	currentBinlogCoordinates := &base.BinlogCoordinates{}

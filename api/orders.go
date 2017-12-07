@@ -1,10 +1,7 @@
 package api
 
 import (
-	"fmt"
-	"net/url"
 	"sort"
-	"strconv"
 
 	"udup/internal"
 	"udup/internal/models"
@@ -66,38 +63,6 @@ func (j *Orders) PrefixList(prefix string) ([]*JobListStub, *QueryMeta, error) {
 	return j.List(&QueryOptions{Prefix: prefix})
 }
 
-// Allocations is used to return the allocs for a given job ID.
-func (j *Orders) Allocations(jobID string, allAllocs bool, q *QueryOptions) ([]*AllocationListStub, *QueryMeta, error) {
-	var resp []*AllocationListStub
-	u, err := url.Parse("/v1/order/" + jobID + "/allocations")
-	if err != nil {
-		return nil, nil, err
-	}
-
-	v := u.Query()
-	v.Add("all", strconv.FormatBool(allAllocs))
-	u.RawQuery = v.Encode()
-
-	qm, err := j.client.query(u.String(), &resp, q)
-	if err != nil {
-		return nil, nil, err
-	}
-	sort.Sort(AllocIndexSort(resp))
-	return resp, qm, nil
-}
-
-// Evaluations is used to query the evaluations associated with
-// the given job ID.
-func (j *Orders) Evaluations(jobID string, q *QueryOptions) ([]*Evaluation, *QueryMeta, error) {
-	var resp []*Evaluation
-	qm, err := j.client.query("/v1/order/"+jobID+"/evaluations", &resp, q)
-	if err != nil {
-		return nil, nil, err
-	}
-	sort.Sort(EvalIndexSort(resp))
-	return resp, qm, nil
-}
-
 // Deregister is used to remove an existing job.
 func (j *Orders) Deregister(jobID string, q *WriteOptions) (string, *WriteMeta, error) {
 	var resp deregisterJobResponse
@@ -108,48 +73,11 @@ func (j *Orders) Deregister(jobID string, q *WriteOptions) (string, *WriteMeta, 
 	return resp.EvalID, wm, nil
 }
 
-// ForceEvaluate is used to force-evaluate an existing job.
-func (j *Orders) ForceEvaluate(jobID string, q *WriteOptions) (string, *WriteMeta, error) {
-	var resp registerJobResponse
-	wm, err := j.client.write("/v1/order/"+jobID+"/evaluate", nil, &resp, q)
-	if err != nil {
-		return "", nil, err
-	}
-	return resp.EvalID, wm, nil
-}
-
-func (j *Orders) Plan(job *Job, diff bool, q *WriteOptions) (*JobPlanResponse, *WriteMeta, error) {
-	if job == nil {
-		return nil, nil, fmt.Errorf("must pass non-nil job")
-	}
-
-	var resp JobPlanResponse
-	req := &JobPlanRequest{
-		Job:  job,
-		Diff: diff,
-	}
-	wm, err := j.client.write("/v1/order/"+*job.ID+"/plan", req, &resp, q)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	return &resp, wm, nil
-}
-
-func (j *Orders) Summary(jobID string, q *QueryOptions) (*Job, *QueryMeta, error) {
-	var resp Job
-	qm, err := j.client.query("/v1/order/"+jobID, &resp, q)
-	if err != nil {
-		return nil, nil, err
-	}
-	return &resp, qm, nil
-}
-
 type Order struct {
 	Region           *string
 	ID               *string
 	Name             *string
-	NetworkTraffic   *uint64
+	TrafficLimit     *uint64
 	EnforceIndex     bool
 	CreateIndex      *uint64
 	ModifyIndex      *uint64

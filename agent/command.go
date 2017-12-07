@@ -248,7 +248,7 @@ func (c *Command) Run(args []string) int {
 	// Setup the log outputs
 	logOutput, err := c.setupLoggers(config)
 	if err != nil {
-		c.Ui.Error("Error setup logger: "+ err.Error())
+		c.Ui.Error("Error setup logger: " + err.Error())
 		return 1
 	}
 

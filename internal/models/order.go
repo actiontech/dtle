@@ -16,7 +16,7 @@ type Order struct {
 	// per region, but not unique globally.
 	Name string
 
-	NetworkTraffic uint64
+	TrafficLimit uint64
 
 	EnforceIndex bool
 

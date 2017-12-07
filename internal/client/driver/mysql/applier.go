@@ -9,11 +9,11 @@ import (
 	"encoding/gob"
 	//"encoding/base64"
 	"math"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
-	"strconv"
 
 	"github.com/golang/snappy"
 	gonats "github.com/nats-io/go-nats"

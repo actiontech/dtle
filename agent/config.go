@@ -218,8 +218,8 @@ type AdvertiseAddrs struct {
 }
 
 type ZTreeData struct {
-	Code string
-	Name string
+	Code  string
+	Name  string
 	Nodes []*Node
 }
 
@@ -231,13 +231,13 @@ type Node struct {
 // DefaultConfig is a the baseline configuration for Udup
 func DefaultConfig() *Config {
 	return &Config{
-		LogLevel:   "INFO",
-		LogFile:    "/var/log/udup/udup.log",
+		LogLevel:    "INFO",
+		LogFile:     "/var/log/udup/udup.log",
 		LogToStdout: false,
-		PidFile:    "/var/run/udup/udup.pid",
-		Region:     "global",
-		Datacenter: "dc1",
-		BindAddr:   "127.0.0.1",
+		PidFile:     "/var/run/udup/udup.pid",
+		Region:      "global",
+		Datacenter:  "dc1",
+		BindAddr:    "127.0.0.1",
 		Ports: &Ports{
 			HTTP: 8190,
 			RPC:  8191,

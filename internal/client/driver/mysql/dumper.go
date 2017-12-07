@@ -159,7 +159,7 @@ func (d *dumper) buildQueryOnUniqueKey(e *dumpEntry) string {
 
 		// The form like: (A > a) or (A = a and B > b) or (A = a and B = b and C > c) or ...
 		for x := 0; x < nCol; x++ {
-			innerItems := make([]string, x + 1)
+			innerItems := make([]string, x+1)
 
 			for y := 0; y < x; y++ {
 				colName := usql.EscapeName(d.table.UseUniqueKey.Columns.Columns[y].Name)

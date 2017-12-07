@@ -51,7 +51,7 @@ func (s *HTTPServer) jobInfoRequest(resp http.ResponseWriter, req *http.Request)
 	}
 	s.parseRegion(req, args.Region)
 
-	sJob := ApiJobToStructJob(args)
+	sJob := ApiJobToStructJob(args, 0)
 
 	for _, task := range sJob.Tasks {
 		if task.Driver == models.TaskDriverMySQL && task.Type == models.TaskTypeSrc {
@@ -73,7 +73,7 @@ func (s *HTTPServer) jobInfoRequest(resp http.ResponseWriter, req *http.Request)
 			}
 			for dbIdx, dbName := range dbs {
 				ds := &ZTreeData{
-					Code:fmt.Sprintf("%d",dbIdx),
+					Code: fmt.Sprintf("%d", dbIdx),
 					Name: dbName,
 				}
 
@@ -84,7 +84,7 @@ func (s *HTTPServer) jobInfoRequest(resp http.ResponseWriter, req *http.Request)
 
 				for tbIdx, t := range tbs {
 					tb := &Node{
-						Code:fmt.Sprintf("%d-%d",dbIdx,tbIdx),
+						Code: fmt.Sprintf("%d-%d", dbIdx, tbIdx),
 						Name: t.TableName,
 					}
 					ds.Nodes = append(ds.Nodes, tb)
@@ -254,16 +254,23 @@ func (s *HTTPServer) jobUpdate(resp http.ResponseWriter, req *http.Request,
 	}
 	s.parseRegion(req, args.Region)
 
-	sJob := ApiJobToStructJob(args)
+	argsOrder := models.OrderSpecificRequest{
+		OrderID: *args.OrderID,
+	}
+	if s.parse(resp, req, &argsOrder.Region, &argsOrder.QueryOptions) {
+		return nil, nil
+	}
+	var outOrder models.SingleOrderResponse
+	if err := s.agent.RPC("Order.GetOrder", &argsOrder, &outOrder); err != nil {
+		return nil, err
+	}
 
-	/*for _,task :=range sJob.Tasks {
-		if task.Driver == models.TaskDriverMySQL && task.Type == models.TaskTypeSrc{
-			var driverConfig config.MySQLDriverConfig
-			if err := mapstructure.WeakDecode(task.Config, &driverConfig); err != nil {
-				return nil, err
-			}
-		}
-	}*/
+	setMeta(resp, &outOrder.QueryMeta)
+	if outOrder.Order == nil {
+		return nil, CodedError(404, "order not found")
+	}
+
+	sJob := ApiJobToStructJob(args, outOrder.Order.TrafficLimit)
 
 	regReq := models.JobRegisterRequest{
 		Job:            sJob,
@@ -327,7 +334,7 @@ func (s *HTTPServer) jobPauseRequest(resp http.ResponseWriter, req *http.Request
 	return out, nil
 }
 
-func ApiJobToStructJob(job *api.Job) *models.Job {
+func ApiJobToStructJob(job *api.Job, trafficLimit uint64) *models.Job {
 	job.Canonicalize()
 
 	j := &models.Job{
@@ -347,9 +354,13 @@ func ApiJobToStructJob(job *api.Job) *models.Job {
 	j.Tasks = make([]*models.Task, len(job.Tasks))
 	cfg := ""
 	for _, task := range job.Tasks {
-		if task.Type == models.TaskTypeSrc && task.Config["Gtid"] != nil {
-			cfg = fmt.Sprintf("%s", task.Config["Gtid"])
+		if task.Type == models.TaskTypeSrc {
+			task.Config["TrafficLimit"] = trafficLimit
+			if task.Config["Gtid"] != nil {
+				cfg = fmt.Sprintf("%s", task.Config["Gtid"])
+			}
 		}
+
 		if task.Driver == "" {
 			task.Driver = models.TaskDriverMySQL
 		}

@@ -128,6 +128,7 @@ type MySQLDriverConfig struct {
 	DropTableIfExists                   bool
 	ReplChanBufferSize                  int64
 	MsgBytesLimit                       int
+	TrafficLimit                        int
 	MsgsLimit                           int
 	BytesLimit                          int
 	ConcurrentCountTableRows            bool
@@ -324,8 +325,8 @@ type Table struct {
 func NewTable(schemaName string, tableName string) *Table {
 	return &Table{
 		TableSchema: schemaName,
-		TableName: tableName,
-		Iteration: 0,
+		TableName:   tableName,
+		Iteration:   0,
 	}
 }
 

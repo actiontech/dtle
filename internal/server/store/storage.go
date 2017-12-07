@@ -612,7 +612,7 @@ func (s *StateStore) DeleteOrder(index uint64, orderID string) error {
 }
 
 // JobByID is used to lookup a job by its ID
-func (s *StateStore) OrderByID(ws memdb.WatchSet, id string) (*models.Job, error) {
+func (s *StateStore) OrderByID(ws memdb.WatchSet, id string) (*models.Order, error) {
 	txn := s.db.Txn(false)
 
 	watchCh, existing, err := txn.FirstWatch("orders", "id", id)
@@ -622,7 +622,7 @@ func (s *StateStore) OrderByID(ws memdb.WatchSet, id string) (*models.Job, error
 	ws.Add(watchCh)
 
 	if existing != nil {
-		return existing.(*models.Job), nil
+		return existing.(*models.Order), nil
 	}
 	return nil, nil
 }

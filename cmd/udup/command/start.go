@@ -230,7 +230,7 @@ func parseCheckIndex(input string) (uint64, bool, error) {
 func (c *StartCommand) validateLocal(aj *api.Job) (*api.JobValidateResponse, error) {
 	var out api.JobValidateResponse
 
-	job := agent.ApiJobToStructJob(aj)
+	job := agent.ApiJobToStructJob(aj, 0)
 	job.Canonicalize()
 
 	if vErr := job.Validate(); vErr != nil {
