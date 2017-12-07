@@ -90,7 +90,7 @@ func (i *Inspector) ValidateOriginalTable(databaseName, tableName string, table 
 		for _, column := range uk.Columns.Columns {
 			switch column.Type {
 			case umconf.FloatColumnType:
-				i.logger.Warning("Will not use %+v as shared key due to FLOAT data type", uk.Name)
+				i.logger.Warning("Will not use %+v as unique key due to FLOAT data type", uk.Name)
 				uniqueKeyIsValid = false
 			case umconf.JSONColumnType:
 				// Noteworthy that at this time MySQL does not allow JSON indexing anyhow, but this code
@@ -120,8 +120,8 @@ func (i *Inspector) ValidateOriginalTable(databaseName, tableName string, table 
 	if table.UseUniqueKey == nil {
 		i.logger.Warnf("No valid unique key found for table %s.%s. It will be slow on large table.", table.TableSchema, table.TableName)
 	} else {
-		i.logger.Infof("Chosen shared unique key for %s.%s is %s: %s",
-			table.TableSchema, table.TableName, table.UseUniqueKey.Name, table.UseUniqueKey.String())
+		i.logger.Infof("Chosen unique key for %s.%s is %s",
+			table.TableSchema, table.TableName, table.UseUniqueKey.String())
 	}
 	// endregion
 
