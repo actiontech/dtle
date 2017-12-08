@@ -993,23 +993,22 @@ func (e *Extractor) StreamEvents() error {
 // retryOperation attempts up to `count` attempts at running given function,
 // exiting as soon as it returns with non-error.
 func (e *Extractor) requestMsg(subject, gtid string, txMsg []byte) (err error) {
-	for i := 0; i < int(e.mysqlContext.MaxRetries); i++ {
-		if i != 0 {
-			// sleep after previous iteration
-			time.Sleep(1 * time.Second)
-		}
-
+	for {
 		_, err = e.natsConn.Request(subject, txMsg, DefaultConnectWait)
 		if err == nil {
 			if gtid != "" {
 				e.mysqlContext.Gtid = gtid
 			}
-			return nil
-		}
-		if err == gonats.ErrTimeout {
+			break
+		}else if err == gonats.ErrTimeout {
+			e.logger.Debugf(fmt.Sprintf("%v",err))
 			continue
+		}else{
+			e.logger.Debugf(fmt.Sprintf("%v",err))
+			break
 		}
 		// there's an error. Let's try again.
+		time.Sleep(1 * time.Second)
 	}
 	return err
 }
