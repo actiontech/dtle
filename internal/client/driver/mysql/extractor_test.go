@@ -90,23 +90,6 @@ func TestExtractor_consumeRowCopyComplete(t *testing.T) {
 	}
 }
 
-func TestExtractor_canStopStreaming(t *testing.T) {
-	tests := []struct {
-		name string
-		e    *Extractor
-		want bool
-	}{
-	// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := tt.e.canStopStreaming(); got != tt.want {
-				t.Errorf("Extractor.canStopStreaming() = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}
-
 func TestExtractor_Run(t *testing.T) {
 	tests := []struct {
 		name string
@@ -117,78 +100,6 @@ func TestExtractor_Run(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			tt.e.Run()
-		})
-	}
-}
-
-func TestExtractor_cutOver(t *testing.T) {
-	tests := []struct {
-		name    string
-		e       *Extractor
-		wantErr bool
-	}{
-	// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if err := tt.e.cutOver(); (err != nil) != tt.wantErr {
-				t.Errorf("Extractor.cutOver() error = %v, wantErr %v", err, tt.wantErr)
-			}
-		})
-	}
-}
-
-func TestExtractor_waitForEventsUpToLock(t *testing.T) {
-	tests := []struct {
-		name    string
-		e       *Extractor
-		wantErr bool
-	}{
-	// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if err := tt.e.waitForEventsUpToLock(); (err != nil) != tt.wantErr {
-				t.Errorf("Extractor.waitForEventsUpToLock() error = %v, wantErr %v", err, tt.wantErr)
-			}
-		})
-	}
-}
-
-func TestExtractor_cutOverTwoStep(t *testing.T) {
-	tests := []struct {
-		name    string
-		e       *Extractor
-		wantErr bool
-	}{
-	// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if err := tt.e.cutOverTwoStep(); (err != nil) != tt.wantErr {
-				t.Errorf("Extractor.cutOverTwoStep() error = %v, wantErr %v", err, tt.wantErr)
-			}
-		})
-	}
-}
-
-func TestExtractor_atomicCutOver(t *testing.T) {
-	type args struct {
-		tableName string
-	}
-	tests := []struct {
-		name    string
-		e       *Extractor
-		args    args
-		wantErr bool
-	}{
-	// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if err := tt.e.atomicCutOver(tt.args.tableName); (err != nil) != tt.wantErr {
-				t.Errorf("Extractor.atomicCutOver() error = %v, wantErr %v", err, tt.wantErr)
-			}
 		})
 	}
 }
@@ -206,25 +117,6 @@ func TestExtractor_initiateInspector(t *testing.T) {
 			if err := tt.e.initiateInspector(); (err != nil) != tt.wantErr {
 				t.Errorf("Extractor.initiateInspector() error = %v, wantErr %v", err, tt.wantErr)
 			}
-		})
-	}
-}
-
-func TestExtractor_printMigrationStatusHint(t *testing.T) {
-	type args struct {
-		databaseName string
-		tableName    string
-	}
-	tests := []struct {
-		name string
-		e    *Extractor
-		args args
-	}{
-	// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tt.e.printMigrationStatusHint(tt.args.databaseName, tt.args.tableName)
 		})
 	}
 }
@@ -415,23 +307,6 @@ func TestExtractor_setStatementFor(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := tt.e.setStatementFor(); got != tt.want {
 				t.Errorf("Extractor.setStatementFor() = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}
-
-func TestExtractor_validateServerUUID(t *testing.T) {
-	tests := []struct {
-		name string
-		e    *Extractor
-		want string
-	}{
-	// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := tt.e.validateServerUUID(); got != tt.want {
-				t.Errorf("Extractor.validateServerUUID() = %v, want %v", got, tt.want)
 			}
 		})
 	}

@@ -8,7 +8,6 @@ import (
 	"udup/internal/client/driver/mysql/binlog"
 	"udup/internal/client/driver/mysql/sql"
 	"udup/internal/config"
-	umconf "udup/internal/config/mysql"
 	log "udup/internal/logger"
 	"udup/internal/models"
 
@@ -81,20 +80,6 @@ func TestApplier_retryOperation(t *testing.T) {
 	}
 }
 
-func TestApplier_consumeRowCopyComplete(t *testing.T) {
-	tests := []struct {
-		name string
-		a    *Applier
-	}{
-	// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tt.a.consumeRowCopyComplete()
-		})
-	}
-}
-
 func TestApplier_Run(t *testing.T) {
 	tests := []struct {
 		name string
@@ -122,93 +107,6 @@ func TestApplier_readCurrentBinlogCoordinates(t *testing.T) {
 			if err := tt.a.readCurrentBinlogCoordinates(); (err != nil) != tt.wantErr {
 				t.Errorf("Applier.readCurrentBinlogCoordinates() error = %v, wantErr %v", err, tt.wantErr)
 			}
-		})
-	}
-}
-
-func TestApplier_cutOver(t *testing.T) {
-	tests := []struct {
-		name    string
-		a       *Applier
-		wantErr bool
-	}{
-	// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if err := tt.a.cutOver(); (err != nil) != tt.wantErr {
-				t.Errorf("Applier.cutOver() error = %v, wantErr %v", err, tt.wantErr)
-			}
-		})
-	}
-}
-
-func TestApplier_waitForEventsUpToLock(t *testing.T) {
-	tests := []struct {
-		name    string
-		a       *Applier
-		wantErr bool
-	}{
-	// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if err := tt.a.waitForEventsUpToLock(); (err != nil) != tt.wantErr {
-				t.Errorf("Applier.waitForEventsUpToLock() error = %v, wantErr %v", err, tt.wantErr)
-			}
-		})
-	}
-}
-
-func TestApplier_cutOverTwoStep(t *testing.T) {
-	tests := []struct {
-		name    string
-		a       *Applier
-		wantErr bool
-	}{
-	// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if err := tt.a.cutOverTwoStep(); (err != nil) != tt.wantErr {
-				t.Errorf("Applier.cutOverTwoStep() error = %v, wantErr %v", err, tt.wantErr)
-			}
-		})
-	}
-}
-
-func TestApplier_atomicCutOver(t *testing.T) {
-	tests := []struct {
-		name    string
-		a       *Applier
-		wantErr bool
-	}{
-	// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if err := tt.a.atomicCutOver(); (err != nil) != tt.wantErr {
-				t.Errorf("Applier.atomicCutOver() error = %v, wantErr %v", err, tt.wantErr)
-			}
-		})
-	}
-}
-
-func TestApplier_printMigrationStatusHint(t *testing.T) {
-	type args struct {
-		databaseName string
-		tableName    string
-	}
-	tests := []struct {
-		name string
-		a    *Applier
-		args args
-	}{
-	// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tt.a.printMigrationStatusHint(tt.args.databaseName, tt.args.tableName)
 		})
 	}
 }
@@ -359,23 +257,6 @@ func TestApplier_validateConnection(t *testing.T) {
 	}
 }
 
-func TestApplier_validateTableForeignKeys(t *testing.T) {
-	tests := []struct {
-		name    string
-		a       *Applier
-		wantErr bool
-	}{
-	// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if err := tt.a.validateTableForeignKeys(); (err != nil) != tt.wantErr {
-				t.Errorf("Applier.validateTableForeignKeys() error = %v, wantErr %v", err, tt.wantErr)
-			}
-		})
-	}
-}
-
 func TestApplier_validateAndReadTimeZone(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -388,99 +269,6 @@ func TestApplier_validateAndReadTimeZone(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if err := tt.a.validateAndReadTimeZone(); (err != nil) != tt.wantErr {
 				t.Errorf("Applier.validateAndReadTimeZone() error = %v, wantErr %v", err, tt.wantErr)
-			}
-		})
-	}
-}
-
-func TestApplier_readTableColumns(t *testing.T) {
-	tests := []struct {
-		name    string
-		a       *Applier
-		wantErr bool
-	}{
-	// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if err := tt.a.readTableColumns(); (err != nil) != tt.wantErr {
-				t.Errorf("Applier.readTableColumns() error = %v, wantErr %v", err, tt.wantErr)
-			}
-		})
-	}
-}
-
-func TestApplier_LockOriginalTable(t *testing.T) {
-	tests := []struct {
-		name    string
-		a       *Applier
-		wantErr bool
-	}{
-	// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if err := tt.a.LockOriginalTable(); (err != nil) != tt.wantErr {
-				t.Errorf("Applier.LockOriginalTable() error = %v, wantErr %v", err, tt.wantErr)
-			}
-		})
-	}
-}
-
-func TestApplier_UnlockTables(t *testing.T) {
-	tests := []struct {
-		name    string
-		a       *Applier
-		wantErr bool
-	}{
-	// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if err := tt.a.UnlockTables(); (err != nil) != tt.wantErr {
-				t.Errorf("Applier.UnlockTables() error = %v, wantErr %v", err, tt.wantErr)
-			}
-		})
-	}
-}
-
-func TestApplier_GetSessionLockName(t *testing.T) {
-	type args struct {
-		sessionId int64
-	}
-	tests := []struct {
-		name string
-		a    *Applier
-		args args
-		want string
-	}{
-	// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := tt.a.GetSessionLockName(tt.args.sessionId); got != tt.want {
-				t.Errorf("Applier.GetSessionLockName() = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}
-
-func TestApplier_ExpectUsedLock(t *testing.T) {
-	type args struct {
-		sessionId int64
-	}
-	tests := []struct {
-		name    string
-		a       *Applier
-		args    args
-		wantErr bool
-	}{
-	// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if err := tt.a.ExpectUsedLock(tt.args.sessionId); (err != nil) != tt.wantErr {
-				t.Errorf("Applier.ExpectUsedLock() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
 	}
@@ -531,62 +319,6 @@ func TestApplier_ShowStatusVariable(t *testing.T) {
 			}
 			if gotResult != tt.wantResult {
 				t.Errorf("Applier.ShowStatusVariable() = %v, want %v", gotResult, tt.wantResult)
-			}
-		})
-	}
-}
-
-func TestApplier_getCandidateUniqueKeys(t *testing.T) {
-	type args struct {
-		databaseName string
-		tableName    string
-	}
-	tests := []struct {
-		name           string
-		a              *Applier
-		args           args
-		wantUniqueKeys [](*umconf.UniqueKey)
-		wantErr        bool
-	}{
-	// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			gotUniqueKeys, err := tt.a.getCandidateUniqueKeys(tt.args.databaseName, tt.args.tableName)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("Applier.getCandidateUniqueKeys() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
-			if !reflect.DeepEqual(gotUniqueKeys, tt.wantUniqueKeys) {
-				t.Errorf("Applier.getCandidateUniqueKeys() = %v, want %v", gotUniqueKeys, tt.wantUniqueKeys)
-			}
-		})
-	}
-}
-
-func TestApplier_getSharedColumns(t *testing.T) {
-	type args struct {
-		originalColumns *umconf.ColumnList
-		ghostColumns    *umconf.ColumnList
-		columnRenameMap map[string]string
-	}
-	tests := []struct {
-		name  string
-		a     *Applier
-		args  args
-		want  *umconf.ColumnList
-		want1 *umconf.ColumnList
-	}{
-	// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, got1 := tt.a.getSharedColumns(tt.args.originalColumns, tt.args.ghostColumns, tt.args.columnRenameMap)
-			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("Applier.getSharedColumns() got = %v, want %v", got, tt.want)
-			}
-			if !reflect.DeepEqual(got1, tt.want1) {
-				t.Errorf("Applier.getSharedColumns() got1 = %v, want %v", got1, tt.want1)
 			}
 		})
 	}
@@ -775,7 +507,6 @@ func TestApplier_onApplyTxStructWithSetGtid(t *testing.T) {
 		totalRowCount              int
 		applyRowCount              int
 		rowCopyComplete            chan bool
-		allEventsUpToLockProcessed chan string
 		rowCopyCompleteFlag        int64
 		copyRowsQueue              chan *dumpEntry
 		applyDataEntryQueue        chan *binlog.BinlogEntry
@@ -814,7 +545,6 @@ func TestApplier_onApplyTxStructWithSetGtid(t *testing.T) {
 				totalRowCount:              tt.fields.totalRowCount,
 				applyRowCount:              tt.fields.applyRowCount,
 				rowCopyComplete:            tt.fields.rowCopyComplete,
-				allEventsUpToLockProcessed: tt.fields.allEventsUpToLockProcessed,
 				rowCopyCompleteFlag:        tt.fields.rowCopyCompleteFlag,
 				copyRowsQueue:              tt.fields.copyRowsQueue,
 				applyDataEntryQueue:        tt.fields.applyDataEntryQueue,
@@ -847,7 +577,6 @@ func TestApplier_validateGrants(t *testing.T) {
 		totalRowCount              int
 		applyRowCount              int
 		rowCopyComplete            chan bool
-		allEventsUpToLockProcessed chan string
 		rowCopyCompleteFlag        int64
 		copyRowsQueue              chan *dumpEntry
 		applyDataEntryQueue        chan *binlog.BinlogEntry
@@ -881,7 +610,6 @@ func TestApplier_validateGrants(t *testing.T) {
 				totalRowCount:              tt.fields.totalRowCount,
 				applyRowCount:              tt.fields.applyRowCount,
 				rowCopyComplete:            tt.fields.rowCopyComplete,
-				allEventsUpToLockProcessed: tt.fields.allEventsUpToLockProcessed,
 				rowCopyCompleteFlag:        tt.fields.rowCopyCompleteFlag,
 				copyRowsQueue:              tt.fields.copyRowsQueue,
 				applyDataEntryQueue:        tt.fields.applyDataEntryQueue,
@@ -914,7 +642,6 @@ func TestApplier_createTableGtidExecuted(t *testing.T) {
 		totalRowCount              int
 		applyRowCount              int
 		rowCopyComplete            chan bool
-		allEventsUpToLockProcessed chan string
 		rowCopyCompleteFlag        int64
 		copyRowsQueue              chan *dumpEntry
 		applyDataEntryQueue        chan *binlog.BinlogEntry
@@ -948,7 +675,6 @@ func TestApplier_createTableGtidExecuted(t *testing.T) {
 				totalRowCount:              tt.fields.totalRowCount,
 				applyRowCount:              tt.fields.applyRowCount,
 				rowCopyComplete:            tt.fields.rowCopyComplete,
-				allEventsUpToLockProcessed: tt.fields.allEventsUpToLockProcessed,
 				rowCopyCompleteFlag:        tt.fields.rowCopyCompleteFlag,
 				copyRowsQueue:              tt.fields.copyRowsQueue,
 				applyDataEntryQueue:        tt.fields.applyDataEntryQueue,
@@ -981,7 +707,6 @@ func TestApplier_onDone(t *testing.T) {
 		totalRowCount              int
 		applyRowCount              int
 		rowCopyComplete            chan bool
-		allEventsUpToLockProcessed chan string
 		rowCopyCompleteFlag        int64
 		copyRowsQueue              chan *dumpEntry
 		applyDataEntryQueue        chan *binlog.BinlogEntry
@@ -1014,7 +739,6 @@ func TestApplier_onDone(t *testing.T) {
 				totalRowCount:              tt.fields.totalRowCount,
 				applyRowCount:              tt.fields.applyRowCount,
 				rowCopyComplete:            tt.fields.rowCopyComplete,
-				allEventsUpToLockProcessed: tt.fields.allEventsUpToLockProcessed,
 				rowCopyCompleteFlag:        tt.fields.rowCopyCompleteFlag,
 				copyRowsQueue:              tt.fields.copyRowsQueue,
 				applyDataEntryQueue:        tt.fields.applyDataEntryQueue,

@@ -186,9 +186,6 @@ func (i *Inspector) validateGrants() error {
 			if ubase.StringContainsAll(grant, `SELECT`) {
 				foundDBAll = true
 			}
-			if ubase.StringContainsAll(grant, `SELECT`) {
-				foundDBAll = true
-			}
 		}
 		return nil
 	})
