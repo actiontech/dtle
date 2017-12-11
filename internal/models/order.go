@@ -1,5 +1,12 @@
 package models
 
+const (
+	OrderStatusExpired = "expired"
+	OrderStatusPending = "pending"
+	OrderStatusDone    = "done"
+	OrderStatusRunning = "running"
+)
+
 // Order is the scope of a scheduling request to Udup. It is the largest
 // scoped object, and is a named collection of tasks. Each task
 // is further composed of tasks. A task (T) is the unit of scheduling
@@ -17,6 +24,9 @@ type Order struct {
 	Name string
 
 	TrafficLimit uint64
+
+	// Order status
+	Status string
 
 	EnforceIndex bool
 

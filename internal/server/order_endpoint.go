@@ -119,6 +119,57 @@ func (o *Order) List(args *models.OrderListRequest,
 	return o.srv.blockingRPC(&opts)
 }
 
+func (o *Order) ListPending(args *models.OrderListRequest,
+	reply *models.OrderListResponse) error {
+	if done, err := o.srv.forward("Order.ListPending", args, args, reply); done {
+		return err
+	}
+	defer metrics.MeasureSince([]string{"server", "order", "listPending"}, time.Now())
+
+	// Setup the blocking query
+	opts := blockingOptions{
+		queryOpts: &args.QueryOptions,
+		queryMeta: &reply.QueryMeta,
+		run: func(ws memdb.WatchSet, state *store.StateStore) error {
+			// Capture all the orders
+			var err error
+			var iter memdb.ResultIterator
+			if prefix := args.QueryOptions.Prefix; prefix != "" {
+				iter, err = state.OrdersByIDPrefix(ws, prefix)
+			} else {
+				iter, err = state.Orders(ws)
+			}
+			if err != nil {
+				return err
+			}
+
+			var orders []*models.Order
+			for {
+				raw := iter.Next()
+				if raw == nil {
+					break
+				}
+				order := raw.(*models.Order)
+				if order.Status == models.OrderStatusPending {
+					orders = append(orders, order)
+				}
+			}
+			reply.Orders = orders
+
+			// Use the last index that affected the orders table
+			index, err := state.Index("orders")
+			if err != nil {
+				return err
+			}
+			reply.Index = index
+
+			// Set the query response
+			o.srv.setQueryMeta(&reply.QueryMeta)
+			return nil
+		}}
+	return o.srv.blockingRPC(&opts)
+}
+
 func (j *Order) GetOrder(args *models.OrderSpecificRequest,
 	reply *models.SingleOrderResponse) error {
 	if done, err := j.srv.forward("Order.GetOrder", args, args, reply); done {

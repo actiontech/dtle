@@ -19,6 +19,15 @@ func (s *HTTPServer) OrdersRequest(resp http.ResponseWriter, req *http.Request) 
 	}
 }
 
+func (s *HTTPServer) PendingOrdersRequest(resp http.ResponseWriter, req *http.Request) (interface{}, error) {
+	switch req.Method {
+	case "GET":
+		return s.orderListPendingRequest(resp, req)
+	default:
+		return nil, CodedError(405, ErrInvalidMethod)
+	}
+}
+
 func (s *HTTPServer) orderListRequest(resp http.ResponseWriter, req *http.Request) (interface{}, error) {
 	args := models.OrderListRequest{}
 	if args.Region == "" {
@@ -30,6 +39,27 @@ func (s *HTTPServer) orderListRequest(resp http.ResponseWriter, req *http.Reques
 
 	var out models.OrderListResponse
 	if err := s.agent.RPC("Order.List", &args, &out); err != nil {
+		return nil, err
+	}
+
+	setMeta(resp, &out.QueryMeta)
+	if out.Orders == nil {
+		out.Orders = make([]*models.Order, 0)
+	}
+	return out.Orders, nil
+}
+
+func (s *HTTPServer) orderListPendingRequest(resp http.ResponseWriter, req *http.Request) (interface{}, error) {
+	args := models.OrderListRequest{}
+	if args.Region == "" {
+		args.Region = s.agent.config.Region
+	}
+	if s.parse(resp, req, &args.Region, &args.QueryOptions) {
+		return nil, nil
+	}
+
+	var out models.OrderListResponse
+	if err := s.agent.RPC("Order.ListPending", &args, &out); err != nil {
 		return nil, err
 	}
 
@@ -140,6 +170,7 @@ func ApiOrderToStructOrder(order *api.Order) *models.Order {
 		ID:               *order.ID,
 		Name:             *order.Name,
 		TrafficLimit:     *order.TrafficLimit,
+		Status:           *order.Status,
 		CreateIndex:      *order.CreateIndex,
 		ModifyIndex:      *order.ModifyIndex,
 		OrderModifyIndex: *order.OrderModifyIndex,

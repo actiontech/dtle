@@ -10,10 +10,10 @@ import (
 	"strings"
 	"time"
 
+	"database/sql"
 	"github.com/satori/go.uuid"
 	gomysql "github.com/siddontang/go-mysql/mysql"
 	"github.com/siddontang/go/hack"
-	"database/sql"
 
 	usql "udup/internal/client/driver/mysql/sql"
 	uconf "udup/internal/config"

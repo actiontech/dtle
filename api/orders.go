@@ -78,58 +78,50 @@ type Order struct {
 	ID               *string
 	Name             *string
 	TrafficLimit     *uint64
+	Status           *string
 	EnforceIndex     bool
 	CreateIndex      *uint64
 	ModifyIndex      *uint64
 	OrderModifyIndex *uint64
 }
 
-func (j *Order) Canonicalize() {
-	if j.ID == nil {
-		j.ID = internal.StringToPtr(models.GenerateUUID())
+func (o *Order) Canonicalize() {
+	if o.ID == nil {
+		o.ID = internal.StringToPtr(models.GenerateUUID())
 	}
-	if j.Name == nil {
-		j.Name = internal.StringToPtr(*j.ID)
+	if o.Name == nil {
+		o.Name = internal.StringToPtr(*o.ID)
 	}
-	if j.Region == nil {
-		j.Region = internal.StringToPtr("global")
+	if o.Region == nil {
+		o.Region = internal.StringToPtr("global")
 	}
-	if j.CreateIndex == nil {
-		j.CreateIndex = internal.Uint64ToPtr(0)
+	if o.Status == nil {
+		o.Status = internal.StringToPtr(models.OrderStatusPending)
 	}
-	if j.ModifyIndex == nil {
-		j.ModifyIndex = internal.Uint64ToPtr(0)
+	if o.CreateIndex == nil {
+		o.CreateIndex = internal.Uint64ToPtr(0)
 	}
-	if j.OrderModifyIndex == nil {
-		j.OrderModifyIndex = internal.Uint64ToPtr(0)
+	if o.ModifyIndex == nil {
+		o.ModifyIndex = internal.Uint64ToPtr(0)
+	}
+	if o.OrderModifyIndex == nil {
+		o.OrderModifyIndex = internal.Uint64ToPtr(0)
 	}
 }
 
 // JobIDSort is used to sort jobs by their job ID's.
 type OrderIDSort []*JobListStub
 
-func (j OrderIDSort) Len() int {
-	return len(j)
+func (o OrderIDSort) Len() int {
+	return len(o)
 }
 
-func (j OrderIDSort) Less(a, b int) bool {
-	return j[a].ID < j[b].ID
+func (o OrderIDSort) Less(a, b int) bool {
+	return o[a].ID < o[b].ID
 }
 
-func (j OrderIDSort) Swap(a, b int) {
-	j[a], j[b] = j[b], j[a]
-}
-
-// JobUpdateRequest is used to update a job
-type OrderRegisterRequest struct {
-	Order *Order
-	// If EnforceIndex is set then the job will only be registered if the passed
-	// JobModifyIndex matches the current Jobs index. If the index is zero, the
-	// register only occurs if the job is new.
-	EnforceIndex   bool
-	JobModifyIndex uint64
-
-	WriteRequest
+func (o OrderIDSort) Swap(a, b int) {
+	o[a], o[b] = o[b], o[a]
 }
 
 // RegisterJobRequest is used to serialize a job registration
@@ -137,36 +129,4 @@ type RegisterOrderRequest struct {
 	Order          *Order
 	EnforceIndex   bool   `json:",omitempty"`
 	JobModifyIndex uint64 `json:",omitempty"`
-}
-
-// registerJobResponse is used to deserialize a job response
-type registerOrderResponse struct {
-	EvalID string
-}
-
-// deregisterJobResponse is used to decode a deregister response
-type deregisterOrderResponse struct {
-	EvalID string
-}
-
-type OrderPlanRequest struct {
-	Order *Order
-	Diff  bool
-	WriteRequest
-}
-
-type OrderPlanResponse struct {
-	JobModifyIndex uint64
-	CreatedEvals   []*Evaluation
-	Diff           *JobDiff
-	Annotations    *PlanAnnotations
-	FailedTGAllocs map[string]*AllocationMetric
-}
-
-type OrderDiff struct {
-	Type    string
-	ID      string
-	Fields  []*FieldDiff
-	Objects []*ObjectDiff
-	Tasks   []*TaskDiff
 }

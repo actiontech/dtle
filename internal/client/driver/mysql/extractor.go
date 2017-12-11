@@ -18,13 +18,13 @@ import (
 	gonats "github.com/nats-io/go-nats"
 	gomysql "github.com/siddontang/go-mysql/mysql"
 
+	"os"
 	"udup/internal/client/driver/mysql/base"
 	"udup/internal/client/driver/mysql/binlog"
 	"udup/internal/client/driver/mysql/sql"
 	"udup/internal/config"
 	log "udup/internal/logger"
 	"udup/internal/models"
-	"os"
 )
 
 const (
@@ -86,9 +86,9 @@ func NewExtractor(subject, tp string, maxPayload int, cfg *config.MySQLDriverCon
 		parser:                     sql.NewParser(),
 		rowCopyComplete:            make(chan bool),
 		allEventsUpToLockProcessed: make(chan string),
-		waitCh:                     make(chan *models.WaitResult, 1),
-		shutdownCh:                 make(chan struct{}),
-		testStub1Delay:             0,
+		waitCh:         make(chan *models.WaitResult, 1),
+		shutdownCh:     make(chan struct{}),
+		testStub1Delay: 0,
 	}
 
 	if delay, err := strconv.ParseInt(os.Getenv("UDUP_TESTSTUB1_DELAY"), 10, 64); err == nil {
@@ -1000,11 +1000,11 @@ func (e *Extractor) requestMsg(subject, gtid string, txMsg []byte) (err error) {
 				e.mysqlContext.Gtid = gtid
 			}
 			break
-		}else if err == gonats.ErrTimeout {
-			e.logger.Debugf(fmt.Sprintf("%v",err))
+		} else if err == gonats.ErrTimeout {
+			e.logger.Debugf(fmt.Sprintf("%v", err))
 			continue
-		}else{
-			e.logger.Debugf(fmt.Sprintf("%v",err))
+		} else {
+			e.logger.Debugf(fmt.Sprintf("%v", err))
 			break
 		}
 		// there's an error. Let's try again.
@@ -1087,7 +1087,7 @@ func (e *Extractor) mysqlDump() error {
 		if err != nil {
 			e.logger.Errorf("mysql.extractor: get gtid, round: %v, phase 1, err: %v", gtidMatchRound, err)
 			return err
-		};
+		}
 
 		e.testStub1()
 

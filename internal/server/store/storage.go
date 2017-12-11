@@ -399,6 +399,21 @@ func (s *StateStore) UpsertJob(index uint64, job *models.Job) error {
 		}
 	}
 
+	order, err := txn.First("orders", "id", job.OrderID)
+	if err != nil {
+		return fmt.Errorf("failed to get blocked order for job %q: %v", job.OrderID, err)
+	}
+	if order != nil {
+		o := order.(*models.Order)
+		o.Status = models.OrderStatusRunning
+		if err := txn.Insert("orders", o); err != nil {
+			return fmt.Errorf("order insert failed: %v", err)
+		}
+		if err := txn.Insert("index", &IndexEntry{"orders", index}); err != nil {
+			return fmt.Errorf("index update failed: %v", err)
+		}
+	}
+
 	// Insert the job
 	if err := txn.Insert("jobs", job); err != nil {
 		return fmt.Errorf("job insert failed: %v", err)
@@ -486,11 +501,21 @@ func (s *StateStore) DeleteJob(index uint64, jobID string) error {
 	}
 	if order != nil {
 		o := order.(*models.Order)
-		if err := txn.Delete("orders", o); err != nil {
-			return fmt.Errorf("order delete failed: %v", err)
-		}
-		if err := txn.Insert("index", &IndexEntry{"orders", index}); err != nil {
-			return fmt.Errorf("index update failed: %v", err)
+		if o.Status == models.OrderStatusDone {
+			if err := txn.Delete("orders", o); err != nil {
+				return fmt.Errorf("order delete failed: %v", err)
+			}
+			if err := txn.Insert("index", &IndexEntry{"orders", index}); err != nil {
+				return fmt.Errorf("index update failed: %v", err)
+			}
+		} else {
+			o.Status = models.OrderStatusPending
+			if err := txn.Insert("orders", o); err != nil {
+				return fmt.Errorf("order insert failed: %v", err)
+			}
+			if err := txn.Insert("index", &IndexEntry{"orders", index}); err != nil {
+				return fmt.Errorf("index update failed: %v", err)
+			}
 		}
 	}
 
@@ -647,22 +672,6 @@ func (s *StateStore) Orders(ws memdb.WatchSet) (memdb.ResultIterator, error) {
 
 	// Walk the entire jobs table
 	iter, err := txn.Get("orders", "id")
-	if err != nil {
-		return nil, err
-	}
-
-	ws.Add(iter.WatchCh())
-
-	return iter, nil
-}
-
-// JobsByScheduler returns an iterator over all the jobs with the specific
-// scheduler type.
-func (s *StateStore) OrdersByScheduler(ws memdb.WatchSet, schedulerType string) (memdb.ResultIterator, error) {
-	txn := s.db.Txn(false)
-
-	// Return an iterator for jobs with the specific type.
-	iter, err := txn.Get("orders", "type", schedulerType)
 	if err != nil {
 		return nil, err
 	}
