@@ -44,6 +44,9 @@ type Factory func(*DriverContext) Driver
 type Driver interface {
 	// Start is used to being task execution
 	Start(ctx *ExecContext, task *models.Task) (DriverHandle, error)
+
+	// Drivers must validate their configuration
+	Validate(task *models.Task) error
 }
 
 // DriverContext is a means to inject dependencies such as loggers, configs, and

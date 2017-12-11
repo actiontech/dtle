@@ -42,10 +42,10 @@ func (j *Job) Register(args *models.JobRegisterRequest, reply *models.JobRespons
 	args.Job.Canonicalize()
 
 	// Validate the job.
-	if err := validateJob(args.Job); err != nil {
+	/*if err := validateJob(args.Job); err != nil {
 		reply.Success = false
 		return err
-	}
+	}*/
 
 	if args.EnforceIndex {
 		// Lookup the job
@@ -197,6 +197,9 @@ func (j *Job) UpdateStatus(args *models.JobUpdateStatusRequest, reply *models.Jo
 // Validate validates a job
 func (j *Job) Validate(args *models.JobValidateRequest,
 	reply *models.JobValidateResponse) error {
+	if done, err := j.srv.forward("Job.Validate", args, args, reply); done {
+		return err
+	}
 	defer metrics.MeasureSince([]string{"udup", "job", "validate"}, time.Now())
 	if err := validateJob(args.Job); err != nil {
 		if merr, ok := err.(*multierror.Error); ok {
@@ -591,7 +594,7 @@ func validateJob(job *models.Job) error {
 
 	// Validate the driver configurations.
 	for _, task := range job.Tasks {
-		_, err := driver.NewDriver(
+		d, err := driver.NewDriver(
 			task.Driver,
 			driver.NewEmptyDriverContext(),
 		)
@@ -601,10 +604,10 @@ func validateJob(job *models.Job) error {
 			continue
 		}
 
-		/*if err := d.Validate(task.Config); err != nil {
+		if err := d.Validate(task); err != nil {
 			formatted := fmt.Errorf("task %q -> config: %v", task.Type, err)
 			multierror.Append(validationErrors, formatted)
-		}*/
+		}
 	}
 
 	return validationErrors.ErrorOrNil()

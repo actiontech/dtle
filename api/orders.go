@@ -98,6 +98,9 @@ func (o *Order) Canonicalize() {
 	if o.Status == nil {
 		o.Status = internal.StringToPtr(models.OrderStatusPending)
 	}
+	if o.TrafficLimit == nil {
+		o.TrafficLimit = internal.Uint64ToPtr(0)
+	}
 	if o.CreateIndex == nil {
 		o.CreateIndex = internal.Uint64ToPtr(0)
 	}

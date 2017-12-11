@@ -139,6 +139,7 @@ func (s *HTTPServer) registerHandlers() {
 
 	s.mux.HandleFunc("/v1/jobs", s.wrap(s.JobsRequest))
 	s.mux.HandleFunc("/v1/job/info", s.wrap(s.JobsInfoRequest))
+	s.mux.HandleFunc("/v1/validate/job", s.wrap(s.ValidateJobRequest))
 	s.mux.HandleFunc("/v1/job/", s.wrap(s.JobSpecificRequest))
 
 	s.mux.HandleFunc("/v1/nodes", s.wrap(s.NodesRequest))

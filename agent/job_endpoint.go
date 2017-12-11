@@ -334,6 +334,34 @@ func (s *HTTPServer) jobPauseRequest(resp http.ResponseWriter, req *http.Request
 	return out, nil
 }
 
+func (s *HTTPServer) ValidateJobRequest(resp http.ResponseWriter, req *http.Request) (interface{}, error) {
+	// Ensure request method is POST or PUT
+	if !(req.Method == "POST" || req.Method == "PUT") {
+		return nil, CodedError(405, ErrInvalidMethod)
+	}
+
+	var validateRequest api.JobValidateRequest
+	if err := decodeBody(req, &validateRequest.Job); err != nil {
+		return nil, CodedError(400, err.Error())
+	}
+
+	job := ApiJobToStructJob(validateRequest.Job, 0)
+	args := models.JobValidateRequest{
+		Job: job,
+		WriteRequest: models.WriteRequest{
+			Region: validateRequest.Region,
+		},
+	}
+	s.parseRegion(req, &args.Region)
+
+	var out models.JobValidateResponse
+	if err := s.agent.RPC("Job.Validate", &args, &out); err != nil {
+		return nil, err
+	}
+
+	return out, nil
+}
+
 func ApiJobToStructJob(job *api.Job, trafficLimit uint64) *models.Job {
 	job.Canonicalize()
 
