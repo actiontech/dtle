@@ -356,6 +356,7 @@ func (s *HTTPServer) ValidateJobRequest(resp http.ResponseWriter, req *http.Requ
 
 	var out models.JobValidateResponse
 	if err := s.agent.RPC("Job.Validate", &args, &out); err != nil {
+		out.Error = err.Error()
 		return nil, err
 	}
 

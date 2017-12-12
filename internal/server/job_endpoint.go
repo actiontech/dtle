@@ -6,7 +6,6 @@ import (
 
 	"github.com/armon/go-metrics"
 	"github.com/hashicorp/go-memdb"
-	"github.com/hashicorp/go-multierror"
 
 	"udup/internal/client/driver"
 	"udup/internal/models"
@@ -201,16 +200,31 @@ func (j *Job) Validate(args *models.JobValidateRequest,
 		return err
 	}
 	defer metrics.MeasureSince([]string{"udup", "job", "validate"}, time.Now())
-	if err := validateJob(args.Job); err != nil {
-		if merr, ok := err.(*multierror.Error); ok {
-			for _, err := range merr.Errors {
-				reply.ValidationErrors = append(reply.ValidationErrors, err.Error())
-			}
-			reply.Error = merr.Error()
-		} else {
-			reply.ValidationErrors = append(reply.ValidationErrors, err.Error())
-			reply.Error = err.Error()
+
+	// validateJob validates a Job and task drivers and returns an error if there is
+	// a validation problem or if the Job is of a type a user is not allowed to
+	// submit.
+	if err := args.Job.Validate(); err != nil {
+		return err
+	}
+
+	// Validate the driver configurations.
+	for _, task := range args.Job.Tasks {
+		d, err := driver.NewDriver(
+			task.Driver,
+			driver.NewEmptyDriverContext(),
+		)
+		if err != nil {
+			msg := "failed to create driver for task %q for validation: %v"
+			return fmt.Errorf(msg, task.Type, err)
 		}
+
+		rep, err := d.Validate(task)
+		if err != nil {
+			return fmt.Errorf("task %q -> config: %v", task.Type, err)
+		}
+		rep.Type = task.Type
+		reply.ValidationTasks = append(reply.ValidationTasks, rep)
 	}
 	reply.DriverConfigValidated = true
 	return nil
@@ -509,9 +523,9 @@ func (j *Job) Plan(args *models.JobPlanRequest, reply *models.JobPlanResponse) e
 	args.Job.Canonicalize()
 
 	// Validate the job.
-	if err := validateJob(args.Job); err != nil {
+	/*if err := validateJob(args.Job); err != nil {
 		return err
-	}
+	}*/
 
 	// Acquire a snapshot of the store
 	snap, err := j.srv.fsm.State().Snapshot()
@@ -581,34 +595,4 @@ func (j *Job) Plan(args *models.JobPlanRequest, reply *models.JobPlanResponse) e
 	reply.CreatedEvals = planner.CreateEvals
 	reply.Index = index
 	return nil
-}
-
-// validateJob validates a Job and task drivers and returns an error if there is
-// a validation problem or if the Job is of a type a user is not allowed to
-// submit.
-func validateJob(job *models.Job) error {
-	validationErrors := new(multierror.Error)
-	if err := job.Validate(); err != nil {
-		multierror.Append(validationErrors, err)
-	}
-
-	// Validate the driver configurations.
-	for _, task := range job.Tasks {
-		d, err := driver.NewDriver(
-			task.Driver,
-			driver.NewEmptyDriverContext(),
-		)
-		if err != nil {
-			msg := "failed to create driver for task %q for validation: %v"
-			multierror.Append(validationErrors, fmt.Errorf(msg, task.Type, err))
-			continue
-		}
-
-		if err := d.Validate(task); err != nil {
-			formatted := fmt.Errorf("task %q -> config: %v", task.Type, err)
-			multierror.Append(validationErrors, formatted)
-		}
-	}
-
-	return validationErrors.ErrorOrNil()
 }

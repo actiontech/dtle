@@ -22,31 +22,68 @@ func NewMySQLDriver(ctx *DriverContext) Driver {
 }
 
 // Validate is used to validate the driver configuration
-func (d *MySQLDriver) Validate(task *models.Task) error {
+func (m *MySQLDriver) Validate(task *models.Task) (*models.TaskValidateResponse, error) {
 	var driverConfig config.MySQLDriverConfig
+	reply := &models.TaskValidateResponse{}
 	if err := mapstructure.WeakDecode(task.Config, &driverConfig); err != nil {
-		return err
+		return reply, err
 	}
 	uri := driverConfig.ConnectionConfig.GetDBUri()
 	db, err := usql.CreateDB(uri)
 	if err != nil {
-		return err
+		return reply, err
 	}
 
-	validateConnection := `select @@global.version`
-	if _, err := db.Query(validateConnection); err != nil {
-		return err
+	query := `select @@global.version`
+	var mysqlVersion string
+	if err := db.QueryRow(query).Scan(&mysqlVersion); err != nil {
+		reply.Connection.Success = false
+		reply.Connection.Error = err.Error()
+	} else {
+		reply.Connection.Success = true
 	}
 
-	if d.taskName == models.TaskTypeSrc {
+	if task.Type == models.TaskTypeSrc {
 		query := `select @@global.log_slave_updates`
 		var logSlaveUpdates bool
 		if err := db.QueryRow(query).Scan(&logSlaveUpdates); err != nil {
-			return err
+			reply.LogSlaveUpdates.Success = false
+			reply.LogSlaveUpdates.Error = err.Error()
+		}
+		if !logSlaveUpdates {
+			reply.LogSlaveUpdates.Success = false
+			reply.LogSlaveUpdates.Error = fmt.Sprintf("%s:%d must have log_slave_updates enabled", driverConfig.ConnectionConfig.Host, driverConfig.ConnectionConfig.Port)
+		} else {
+			reply.LogSlaveUpdates.Success = true
 		}
 
-		if logSlaveUpdates {
-			return fmt.Errorf("log_slave_updates validated on %s:%d", driverConfig.ConnectionConfig.Host, driverConfig.ConnectionConfig.Port)
+		query = `SELECT @@GTID_MODE`
+		var gtidMode string
+		if err := db.QueryRow(query).Scan(&gtidMode); err != nil {
+			reply.GtidMode.Success = false
+			reply.GtidMode.Error = err.Error()
+		}
+		if gtidMode != "ON" {
+			reply.GtidMode.Success = false
+			reply.GtidMode.Error = fmt.Sprintf("Must have GTID enabled: %+v", gtidMode)
+		} else {
+			reply.GtidMode.Success = true
+		}
+
+		query = `select @@global.log_bin, @@global.binlog_format`
+		var hasBinaryLogs bool
+		if err := db.QueryRow(query).Scan(&hasBinaryLogs, &driverConfig.BinlogFormat); err != nil {
+			reply.Binlog.Success = false
+			reply.Binlog.Error = err.Error()
+		}
+		if !hasBinaryLogs {
+			reply.Binlog.Success = false
+			reply.Binlog.Error = fmt.Sprintf("%s:%d must have binary logs enabled", driverConfig.ConnectionConfig.Host, driverConfig.ConnectionConfig.Port)
+		} else if driverConfig.RequiresBinlogFormatChange() {
+			reply.Binlog.Success = false
+			reply.Binlog.Error = fmt.Sprintf("You must be using ROW binlog format. I can switch it for you, provided --switch-to-rbr and that %s:%d doesn't have replicas", driverConfig.ConnectionConfig.Host, driverConfig.ConnectionConfig.Port)
+		} else {
+			reply.Binlog.Success = true
 		}
 
 		query = `show grants for current_user()`
@@ -81,41 +118,20 @@ func (d *MySQLDriver) Validate(task *models.Task) error {
 			return nil
 		})
 		if err != nil {
-			return err
+			reply.Privileges.Success = false
+			reply.Privileges.Error = err.Error()
 		}
 		driverConfig.HasSuperPrivilege = foundSuper
 
 		if foundAll {
-			return nil
-		}
-		if foundSuper && foundReplicationSlave && foundDBAll {
-			return nil
-		}
-		if foundReplicationClient && foundReplicationSlave && foundDBAll {
-			return nil
-		}
-		d.logger.Debugf("Privileges: super: %t, REPLICATION CLIENT: %t, REPLICATION SLAVE: %t, ALL on *.*: %t, ALL on *.*: %t", foundSuper, foundReplicationClient, foundReplicationSlave, foundAll, foundDBAll)
-		return fmt.Errorf("User has insufficient privileges for extractor. Needed: SUPER|REPLICATION CLIENT, REPLICATION SLAVE and ALL on *.*")
-
-		query = `SELECT @@GTID_MODE`
-		var gtidMode string
-		if err := db.QueryRow(query).Scan(&gtidMode); err != nil {
-			return err
-		}
-		if gtidMode != "ON" {
-			return fmt.Errorf("must have GTID enabled: %+v", gtidMode)
-		}
-
-		query = `select @@global.log_bin, @@global.binlog_format`
-		var hasBinaryLogs bool
-		if err := db.QueryRow(query).Scan(&hasBinaryLogs, &driverConfig.BinlogFormat); err != nil {
-			return err
-		}
-		if !hasBinaryLogs {
-			return fmt.Errorf("%s:%d must have binary logs enabled", driverConfig.ConnectionConfig.Host, driverConfig.ConnectionConfig.Port)
-		}
-		if driverConfig.RequiresBinlogFormatChange() {
-			return fmt.Errorf("You must be using ROW binlog format. I can switch it for you, provided --switch-to-rbr and that %s:%d doesn't have replicas", driverConfig.ConnectionConfig.Host, driverConfig.ConnectionConfig.Port)
+			reply.Privileges.Success = true
+		} else if foundSuper && foundReplicationSlave && foundDBAll {
+			reply.Privileges.Success = true
+		} else if foundReplicationClient && foundReplicationSlave && foundDBAll {
+			reply.Privileges.Success = true
+		} else {
+			reply.Privileges.Success = false
+			reply.Privileges.Error = fmt.Sprintf("User has insufficient privileges for extractor. Needed: SUPER|REPLICATION CLIENT, REPLICATION SLAVE and ALL on *.*")
 		}
 	} else {
 		query := `show grants for current_user()`
@@ -142,22 +158,23 @@ func (d *MySQLDriver) Validate(task *models.Task) error {
 			return nil
 		})
 		if err != nil {
-			return err
+			reply.Privileges.Success = false
+			reply.Privileges.Error = err.Error()
 		}
 		driverConfig.HasSuperPrivilege = foundSuper
 
 		if foundAll {
-			return nil
+			reply.Privileges.Success = true
+		} else if foundSuper {
+			reply.Privileges.Success = true
+		} else if foundDBAll {
+			reply.Privileges.Success = true
+		} else {
+			reply.Privileges.Success = false
+			reply.Privileges.Error = fmt.Sprintf("user has insufficient privileges for applier. Needed: SUPER|ALL on *.*")
 		}
-		if foundSuper {
-			return nil
-		}
-		if foundDBAll {
-			return nil
-		}
-		return fmt.Errorf("user has insufficient privileges for applier. Needed: SUPER|ALL on *.*")
 	}
-	return nil
+	return reply, nil
 }
 
 func (m *MySQLDriver) Start(ctx *ExecContext, task *models.Task) (DriverHandle, error) {

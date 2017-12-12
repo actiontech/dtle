@@ -46,7 +46,7 @@ type Driver interface {
 	Start(ctx *ExecContext, task *models.Task) (DriverHandle, error)
 
 	// Drivers must validate their configuration
-	Validate(task *models.Task) error
+	Validate(task *models.Task) (*models.TaskValidateResponse, error)
 }
 
 // DriverContext is a means to inject dependencies such as loggers, configs, and

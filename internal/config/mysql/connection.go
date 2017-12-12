@@ -18,6 +18,9 @@ func (c *ConnectionConfig) GetDBUriByDbName(databaseName string) string {
 }
 
 func (c *ConnectionConfig) GetDBUri() string {
+	if "" == c.Charset {
+		c.Charset = "utf8"
+	}
 	return fmt.Sprintf("%s:%s@tcp(%s:%d)/?timeout=5s&tls=false&autocommit=true&charset=%v&multiStatements=true", c.User, c.Password, c.Host, c.Port, c.Charset)
 }
 

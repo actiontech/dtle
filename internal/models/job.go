@@ -323,8 +323,51 @@ type JobValidateResponse struct {
 	DriverConfigValidated bool
 
 	// ValidationErrors is a list of validation errors
-	ValidationErrors []string
+	ValidationTasks []*TaskValidateResponse
 
+	Error string
+}
+
+type TaskValidateResponse struct {
+	Type string
+
+	Connection ConnectionValidate
+
+	LogSlaveUpdates LogSlaveUpdatesValidate
+
+	Privileges PrivilegesValidate
+
+	GtidMode GtidModeValidate
+
+	Binlog BinlogValidate
+}
+
+type BinlogValidate struct {
+	Success bool
+	// Error is a string version of any error that may have occured
+	Error string
+}
+
+type GtidModeValidate struct {
+	Success bool
+	// Error is a string version of any error that may have occured
+	Error string
+}
+
+type PrivilegesValidate struct {
+	Success bool
+	// Error is a string version of any error that may have occured
+	Error string
+}
+
+type ConnectionValidate struct {
+	Success bool
+	// Error is a string version of any error that may have occured
+	Error string
+}
+
+type LogSlaveUpdatesValidate struct {
+	Success bool
 	// Error is a string version of any error that may have occured
 	Error string
 }
