@@ -289,14 +289,8 @@ type Table struct {
 	TableSchema string
 	Counter     int64
 
-	OriginalTableColumnsOnApplier    *umconf.ColumnList
 	OriginalTableColumns             *umconf.ColumnList
-	OriginalTableUniqueKeys          [](*umconf.UniqueKey)
 	UseUniqueKey                     *umconf.UniqueKey
-	SharedColumns                    *umconf.ColumnList
-	ColumnRenameMap                  map[string]string
-	DroppedColumnsMap                map[string]bool
-	MappedSharedColumns              *umconf.ColumnList
 	Iteration                        int64
 
 	TableEngine  string

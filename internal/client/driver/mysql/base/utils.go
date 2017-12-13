@@ -478,52 +478,14 @@ func stringInterval(intervals gomysql.IntervalSlice) string {
 	return hack.String(buf.Bytes())
 }
 
-// getSharedColumns returns the intersection of two lists of columns in same order as the first list
-func getSharedColumns(doTb uconf.Table) (*umconf.ColumnList, *umconf.ColumnList) {
-	columnsInGhost := make(map[string]bool)
-	for _, ghostColumn := range doTb.OriginalTableColumns.Names() {
-		columnsInGhost[ghostColumn] = true
-	}
-	sharedColumnNames := []string{}
-	for _, originalColumn := range doTb.OriginalTableColumns.Names() {
-		isSharedColumn := false
-		if columnsInGhost[originalColumn] || columnsInGhost[doTb.ColumnRenameMap[originalColumn]] {
-			isSharedColumn = true
-		}
-		if doTb.DroppedColumnsMap[originalColumn] {
-			isSharedColumn = false
-		}
-		if isSharedColumn {
-			sharedColumnNames = append(sharedColumnNames, originalColumn)
-		}
-	}
-	mappedSharedColumnNames := []string{}
-	for _, columnName := range sharedColumnNames {
-		if mapped, ok := doTb.ColumnRenameMap[columnName]; ok {
-			mappedSharedColumnNames = append(mappedSharedColumnNames, mapped)
-		} else {
-			mappedSharedColumnNames = append(mappedSharedColumnNames, columnName)
-		}
-	}
-	return umconf.NewColumnList(sharedColumnNames), umconf.NewColumnList(mappedSharedColumnNames)
-}
-
 //It extracts the list of shared columns and the chosen extract unique key
 func InspectTables(db *gosql.DB, databaseName string, doTb *uconf.Table, timeZone string) (err error) {
-	/*originalNamesOnApplier := doTb.OriginalTableColumnsOnApplier.Names()
-	originalNames := doTb.OriginalTableColumns.Names()
-	if !reflect.DeepEqual(originalNames, originalNamesOnApplier) {
-		return fmt.Errorf("It seems like table structure is not identical between master and replica. This scenario is not supported.")
-	}*/
-
-	doTb.SharedColumns, doTb.MappedSharedColumns = getSharedColumns(*doTb)
-	//i.logger.Debugf("mysql.inspector: Shared columns are %s", doTb.SharedColumns)
 	// By fact that a non-empty unique key exists we also know the shared columns are non-empty
 
 	// This additional step looks at which columns are unsigned. We could have merged this within
 	// the `getTableColumns()` function, but it's a later patch and introduces some complexity; I feel
 	// comfortable in doing this as a separate step.
-	ApplyColumnTypes(db, databaseName, doTb.TableName, doTb.OriginalTableColumns, doTb.SharedColumns)
+	ApplyColumnTypes(db, databaseName, doTb.TableName, doTb.OriginalTableColumns)
 
 	/*for c := range doTb.OriginalTableColumns.ColumnList() {
 		column := doTb.OriginalTableColumns.ColumnList()[c]

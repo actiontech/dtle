@@ -73,14 +73,15 @@ func (i *Inspector) ValidateOriginalTable(databaseName, tableName string, table 
 	}*/
 
 	// region UniqueKey
-	if table.OriginalTableColumns, table.OriginalTableUniqueKeys,
-		err = i.InspectTableColumnsAndUniqueKeys(databaseName, tableName); err != nil {
+	var uniqueKeys [](*umconf.UniqueKey)
+	table.OriginalTableColumns, uniqueKeys, err = i.InspectTableColumnsAndUniqueKeys(databaseName, tableName)
+	if err != nil {
 		return err
 	}
 
-	i.logger.Debugf("table: %s.%s. n_unique_keys: %d", table.TableSchema, table.TableName, len(table.OriginalTableUniqueKeys))
+	i.logger.Debugf("table: %s.%s. n_unique_keys: %d", table.TableSchema, table.TableName, len(uniqueKeys))
 
-	for _, uk := range table.OriginalTableUniqueKeys {
+	for _, uk := range uniqueKeys {
 		i.logger.Debugf("A unique key: %s", uk.String())
 
 		ubase.ApplyColumnTypes(i.db, table.TableSchema, table.TableName, &uk.Columns)
