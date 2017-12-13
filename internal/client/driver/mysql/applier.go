@@ -442,6 +442,7 @@ func (a *Applier) initiateStreaming() error {
 
 	if a.mysqlContext.ApproveHeterogeneous {
 		_, err := a.natsConn.Subscribe(fmt.Sprintf("%s_incr_hete", a.subject), func(m *gonats.Msg) {
+			a.logger.Debugf("applier: event: heterogeneous")
 			var binlogEntry *binlog.BinlogEntry
 			if err := Decode(m.Data, &binlogEntry); err != nil {
 				a.onError(TaskStateDead, err)
@@ -504,6 +505,7 @@ func (a *Applier) initiateStreaming() error {
 		}()
 	} else {
 		_, err := a.natsConn.Subscribe(fmt.Sprintf("%s_incr", a.subject), func(m *gonats.Msg) {
+			a.logger.Debugf("applier: event: homogeneous")
 			var binlogTx []*binlog.BinlogTx
 			if err := Decode(m.Data, &binlogTx); err != nil {
 				a.onError(TaskStateDead, err)
