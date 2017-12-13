@@ -273,7 +273,7 @@ func (d *dumper) getChunkData(e *dumpEntry) (err error) {
 			// TODO save the idx
 			idx := d.table.OriginalTableColumns.Ordinals[col.Name]
 			if idx > len(*lastVals) {
-				return fmt.Errorf("getChunkData. GetLastMaxVal: column index %d > n_column", idx, len(*lastVals))
+				return fmt.Errorf("getChunkData. GetLastMaxVal: column index %v > n_column %v", idx, len(*lastVals))
 			} else {
 				d.table.UseUniqueKey.LastMaxVals[i] = (*lastVals)[idx]
 			}

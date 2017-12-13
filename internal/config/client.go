@@ -15,6 +15,7 @@ import (
 	qlvm "github.com/araddon/qlbridge/vm"
 	qlexpr "github.com/araddon/qlbridge/expr"
 	qldatasource "github.com/araddon/qlbridge/datasource"
+	"strings"
 )
 
 // This is the default port that we use for Serf communication
@@ -302,7 +303,11 @@ type Table struct {
 	RowsEstimate int64
 
 	Where    string // TODO load from job description
-	WhereCtx *WhereContext `json:"WhereCtx,omitempty"`
+}
+
+type TableContext struct {
+	Table *Table
+	WhereCtx *WhereContext
 }
 
 func NewTable(schemaName string, tableName string) *Table {
@@ -313,20 +318,33 @@ func NewTable(schemaName string, tableName string) *Table {
 	}
 }
 
-func (t *Table)WhereTrue(values []*umconf.ColumnValues) bool {
-	ctx := qldatasource.NewContextSimpleNative(map[string]interface{}{
+func (t *TableContext) WhereTrue(values *umconf.ColumnValues) (bool, error) {
+	var m = make(map[string]interface{})
+	for field, idx := range t.WhereCtx.FieldsMap {
+		nCols := len(values.ValuesPointers)
+		if idx >= nCols {
+			return false, fmt.Errorf("cannot eval 'where' predicate: no enough columns (%v < %v)", nCols, idx)
+		}
+		m[field] = *(values.ValuesPointers[idx])
+	}
+	ctx := qldatasource.NewContextSimpleNative(m)
+	val, ok := qlvm.Eval(ctx, t.WhereCtx.Ast)
+	if !ok {
+		return false, fmt.Errorf("cannot eval 'where' predicate with the row value")
+	}
+	r, ok := val.Value().(bool)
+	if !ok {
+		return false, fmt.Errorf("'where' predicate does not eval to bool")
+	}
 
-	})
-
-	val, _ :=  qlvm.Eval(ctx, t.WhereCtx.Ast)
-	r, _ := val.Value().(bool)
-	return r
+	return r, nil
 }
 
 type WhereContext struct {
 	Where string
 	Ast   qlexpr.Node
 	FieldsMap map[string]int
+	IsDefault bool // is 'true'
 }
 
 func NewWhereCtx(where string, table *Table) (*WhereContext, error) {
@@ -337,7 +355,10 @@ func NewWhereCtx(where string, table *Table) (*WhereContext, error) {
 		fields := qlexpr.FindAllIdentityField(ast)
 		fieldsMap := make(map[string]int)
 		for _, field := range fields {
-			if _, ok := fieldsMap[field]; !ok {
+			escapedFieldName := strings.ToLower(field) // TODO thorough escape
+			if escapedFieldName == "true" || escapedFieldName == "false" {
+				// qlbridge limitation
+			} else if _, ok := fieldsMap[field]; !ok {
 				if _, ok := table.OriginalTableColumns.Ordinals[field]; !ok {
 					return nil, fmt.Errorf("bad 'where' for table %v.%v: field %v does not exist",
 						table.TableSchema, table.TableName, field)
@@ -348,10 +369,13 @@ func NewWhereCtx(where string, table *Table) (*WhereContext, error) {
 				// already mapped
 			}
 		}
+
+		// We parse it even it is just 'true', but use the 'IsDefault' flag to optimize.
 		return &WhereContext{
 			Where: where,
 			Ast: ast,
 			FieldsMap: fieldsMap,
+			IsDefault: strings.ToLower(where) == "true",
 		}, nil
 	}
 }
