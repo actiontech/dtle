@@ -223,34 +223,6 @@ func TestGetTableColumns(t *testing.T) {
 	}
 }
 
-func TestGetTableColumnsWithTx(t *testing.T) {
-	type args struct {
-		db           *gosql.Tx
-		databaseName string
-		tableName    string
-	}
-	tests := []struct {
-		name    string
-		args    args
-		want    *umconf.ColumnList
-		wantErr bool
-	}{
-	// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, err := GetTableColumnsWithTx(tt.args.db, tt.args.databaseName, tt.args.tableName)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("GetTableColumnsWithTx() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
-			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("GetTableColumnsWithTx() = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}
-
 func TestApplyColumnTypes(t *testing.T) {
 	type args struct {
 		db           *gosql.Tx
@@ -268,13 +240,13 @@ func TestApplyColumnTypes(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := ApplyColumnTypesWithTx(tt.args.db, tt.args.database, tt.args.tablename, tt.args.columnsLists...)
+			err := ApplyColumnTypes(tt.args.db, tt.args.database, tt.args.tablename, tt.args.columnsLists...)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("ApplyColumnTypes() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
-			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("ApplyColumnTypes() = %v, want %v", got, tt.want)
+			if !reflect.DeepEqual(tt.args.columnsLists, tt.want) {
+				t.Errorf("ApplyColumnTypes() = %v, want %v", tt.args.columnsLists, tt.want)
 			}
 		})
 	}

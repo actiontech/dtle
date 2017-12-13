@@ -208,7 +208,7 @@ func ParseBinlogCoordinatesFromRows(rows *sql.Rows) (selfBinlogCoordinates *Binl
 }
 
 // GetTableColumns reads column list from given table
-func GetTableColumns(db *gosql.DB, databaseName, tableName string) (*umconf.ColumnList, error) {
+func GetTableColumns(db usql.QueryAble, databaseName, tableName string) (*umconf.ColumnList, error) {
 	query := fmt.Sprintf(`
 		show columns from %s.%s
 		`,
@@ -230,103 +230,6 @@ func GetTableColumns(db *gosql.DB, databaseName, tableName string) (*umconf.Colu
 		)
 	}
 	return umconf.NewColumnList(columnNames), nil
-}
-
-func GetTableColumnsWithTx(db *gosql.Tx, databaseName, tableName string) (*umconf.ColumnList, error) {
-	query := fmt.Sprintf(`
-		show columns from %s.%s
-		`,
-		usql.EscapeName(databaseName),
-		usql.EscapeName(tableName),
-	)
-	columnNames := []string{}
-	err := usql.QueryRowsMapWithTx(db, query, func(rowMap usql.RowMap) error {
-		columnNames = append(columnNames, rowMap.GetString("Field"))
-		return nil
-	})
-	if err != nil {
-		return nil, err
-	}
-	if len(columnNames) == 0 {
-		return nil, fmt.Errorf("Found 0 columns on %s.%s. Bailing out",
-			usql.EscapeName(databaseName),
-			usql.EscapeName(tableName),
-		)
-	}
-	return umconf.NewColumnList(columnNames), nil
-}
-
-func ApplyColumnTypesWithTx(db *gosql.Tx, database, tablename string, columnsLists ...*umconf.ColumnList) ([]*umconf.ColumnList, error) {
-	query := `
-		select
-				*
-			from
-				information_schema.columns
-			where
-				table_schema=?
-				and table_name=?
-		`
-	err := usql.QueryRowsMapWithTx(db, query, func(m usql.RowMap) error {
-		columnName := m.GetString("COLUMN_NAME")
-		columnType := m.GetString("COLUMN_TYPE")
-		if strings.Contains(columnType, "unsigned") {
-			for _, columnsList := range columnsLists {
-				columnsList.SetUnsigned(columnName)
-			}
-		}
-		if strings.Contains(columnType, "decimal") {
-			for _, columnsList := range columnsLists {
-				columnsList.GetColumn(columnName).Type = umconf.DecimalColumnType
-			}
-		}
-		if strings.Contains(columnType, "json") {
-			for _, columnsList := range columnsLists {
-				columnsList.GetColumn(columnName).Type = umconf.JSONColumnType
-			}
-		}
-		if strings.Contains(columnType, "float") {
-			for _, columnsList := range columnsLists {
-				columnsList.GetColumn(columnName).Type = umconf.FloatColumnType
-			}
-		}
-		if strings.Contains(columnType, "double") {
-			for _, columnsList := range columnsLists {
-				columnsList.GetColumn(columnName).Type = umconf.DoubleColumnType
-			}
-		}
-		if strings.Contains(columnType, "bigint") {
-			for _, columnsList := range columnsLists {
-				columnsList.GetColumn(columnName).Type = umconf.BigIntColumnType
-			}
-		}
-		if strings.Contains(columnType, "mediumint") {
-			for _, columnsList := range columnsLists {
-				columnsList.GetColumn(columnName).Type = umconf.MediumIntColumnType
-			}
-		}
-		if strings.Contains(columnType, "timestamp") {
-			for _, columnsList := range columnsLists {
-				columnsList.GetColumn(columnName).Type = umconf.TimestampColumnType
-			}
-		}
-		if strings.Contains(columnType, "datetime") {
-			for _, columnsList := range columnsLists {
-				columnsList.GetColumn(columnName).Type = umconf.DateTimeColumnType
-			}
-		}
-		if strings.HasPrefix(columnType, "enum") {
-			for _, columnsList := range columnsLists {
-				columnsList.GetColumn(columnName).Type = umconf.EnumColumnType
-			}
-		}
-		if charset := m.GetString("CHARACTER_SET_NAME"); charset != "" {
-			for _, columnsList := range columnsLists {
-				columnsList.SetCharset(columnName, charset)
-			}
-		}
-		return nil
-	}, database, tablename)
-	return columnsLists, err
 }
 
 func ShowCreateTable(db *gosql.DB, databaseName, tableName string, dropTableIfExists bool) (createTableStatement string, err error) {
@@ -498,7 +401,7 @@ func InspectTables(db *gosql.DB, databaseName string, doTb *uconf.Table, timeZon
 }
 
 // applyColumnTypes
-func ApplyColumnTypes(db *gosql.DB, databaseName, tableName string, columnsLists ...*umconf.ColumnList) error {
+func ApplyColumnTypes(db usql.QueryAble, databaseName, tableName string, columnsLists ...*umconf.ColumnList) error {
 	query := `
 		select
 				*
@@ -558,6 +461,7 @@ func ApplyColumnTypes(db *gosql.DB, databaseName, tableName string, columnsLists
 				columnsList.GetColumn(columnName).Type = umconf.FloatColumnType
 			}
 		}
+		// TODO return err on unknown type?
 		if charset := m.GetString("CHARACTER_SET_NAME"); charset != "" {
 			for _, columnsList := range columnsLists {
 				columnsList.SetCharset(columnName, charset)
