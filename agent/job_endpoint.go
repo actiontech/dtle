@@ -384,7 +384,7 @@ func ApiJobToStructJob(job *api.Job, trafficLimit uint64) *models.Job {
 	cfg := ""
 	for _, task := range job.Tasks {
 		if task.Type == models.TaskTypeSrc {
-			task.Config["TrafficLimit"] = trafficLimit
+			task.Config["TrafficAgainstLimits"] = trafficLimit
 			if task.Config["Gtid"] != nil {
 				cfg = fmt.Sprintf("%s", task.Config["Gtid"])
 			}
