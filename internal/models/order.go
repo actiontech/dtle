@@ -23,7 +23,9 @@ type Order struct {
 	// per region, but not unique globally.
 	Name string
 
-	TrafficLimit uint64
+	TrafficAgainstLimits uint64
+
+	TotalTransferredBytes uint64
 
 	// Order status
 	Status string

@@ -128,7 +128,8 @@ type MySQLDriverConfig struct {
 	DropTableIfExists                   bool
 	ReplChanBufferSize                  int64
 	MsgBytesLimit                       int
-	TrafficLimit                        int
+	TrafficAgainstLimits                int
+	TotalTransferredBytes               int
 	MsgsLimit                           int
 	BytesLimit                          int
 	ConcurrentCountTableRows            bool

@@ -74,15 +74,16 @@ func (j *Orders) Deregister(jobID string, q *WriteOptions) (string, *WriteMeta, 
 }
 
 type Order struct {
-	Region           *string
-	ID               *string
-	Name             *string
-	TrafficLimit     *uint64
-	Status           *string
-	EnforceIndex     bool
-	CreateIndex      *uint64
-	ModifyIndex      *uint64
-	OrderModifyIndex *uint64
+	Region                *string
+	ID                    *string
+	Name                  *string
+	TrafficAgainstLimits  *uint64
+	TotalTransferredBytes *uint64
+	Status                *string
+	EnforceIndex          bool
+	CreateIndex           *uint64
+	ModifyIndex           *uint64
+	OrderModifyIndex      *uint64
 }
 
 func (o *Order) Canonicalize() {
@@ -98,8 +99,11 @@ func (o *Order) Canonicalize() {
 	if o.Status == nil {
 		o.Status = internal.StringToPtr(models.OrderStatusPending)
 	}
-	if o.TrafficLimit == nil {
-		o.TrafficLimit = internal.Uint64ToPtr(0)
+	if o.TrafficAgainstLimits == nil {
+		o.TrafficAgainstLimits = internal.Uint64ToPtr(0)
+	}
+	if o.TotalTransferredBytes == nil {
+		o.TotalTransferredBytes = internal.Uint64ToPtr(0)
 	}
 	if o.CreateIndex == nil {
 		o.CreateIndex = internal.Uint64ToPtr(0)

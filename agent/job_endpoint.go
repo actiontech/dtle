@@ -270,7 +270,7 @@ func (s *HTTPServer) jobUpdate(resp http.ResponseWriter, req *http.Request,
 		return nil, CodedError(404, "order not found")
 	}
 
-	sJob := ApiJobToStructJob(args, outOrder.Order.TrafficLimit)
+	sJob := ApiJobToStructJob(args, outOrder.Order.TrafficAgainstLimits)
 
 	regReq := models.JobRegisterRequest{
 		Job:            sJob,

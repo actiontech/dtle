@@ -166,14 +166,15 @@ func ApiOrderToStructOrder(order *api.Order) *models.Order {
 	order.Canonicalize()
 
 	o := &models.Order{
-		Region:           *order.Region,
-		ID:               *order.ID,
-		Name:             *order.Name,
-		TrafficLimit:     *order.TrafficLimit,
-		Status:           *order.Status,
-		CreateIndex:      *order.CreateIndex,
-		ModifyIndex:      *order.ModifyIndex,
-		OrderModifyIndex: *order.OrderModifyIndex,
+		Region:                *order.Region,
+		ID:                    *order.ID,
+		Name:                  *order.Name,
+		TrafficAgainstLimits:  *order.TrafficAgainstLimits,
+		TotalTransferredBytes: *order.TotalTransferredBytes,
+		Status:                *order.Status,
+		CreateIndex:           *order.CreateIndex,
+		ModifyIndex:           *order.ModifyIndex,
+		OrderModifyIndex:      *order.OrderModifyIndex,
 	}
 
 	return o
