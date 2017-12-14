@@ -108,13 +108,6 @@ type DriverCtx struct {
 	DriverConfig *MySQLDriverConfig
 }
 
-type CutOver int
-
-const (
-	CutOverAtomic  CutOver = iota
-	CutOverTwoStep         = iota
-)
-
 func (d *DataSource) String() string {
 	return fmt.Sprintf(d.TableSchema)
 }
@@ -141,8 +134,6 @@ type MySQLDriverConfig struct {
 	MaxLagMillisecondsThrottleThreshold int64
 	maxLoad                             umconf.LoadMap
 	criticalLoad                        umconf.LoadMap
-	PostponeCutOverFlagFile             string
-	CutOverLockTimeoutSeconds           int64
 	RowsEstimate                        int64
 	DeltaEstimate                       int64
 	TimeZone                            string
@@ -171,17 +162,12 @@ type MySQLDriverConfig struct {
 	TotalRowsReplay          int64
 
 	Stage                string
-	CutOverType          CutOver
 	ApproveHeterogeneous bool
 	SkipCreateDbTable    bool
 
 	throttleMutex                          *sync.Mutex
-	IsPostponingCutOver                    int64
 	CountingRowsFlag                       int64
-	AllEventsUpToLockProcessedInjectedFlag int64
 	UserCommandedUnpostponeFlag            int64
-	CutOverCompleteFlag                    int64
-	InCutOverCriticalSectionFlag           int64
 }
 
 func (a *MySQLDriverConfig) SetDefault() *MySQLDriverConfig {
@@ -304,20 +290,9 @@ type Table struct {
 	TableSchema string
 	Counter     int64
 
-	AlterStatement                   string
-	OriginalTableColumnsOnApplier    *umconf.ColumnList
 	OriginalTableColumns             *umconf.ColumnList
-	OriginalTableUniqueKeys          [](*umconf.UniqueKey)
 	UseUniqueKey                     *umconf.UniqueKey
-	SharedColumns                    *umconf.ColumnList
-	ColumnRenameMap                  map[string]string
-	DroppedColumnsMap                map[string]bool
-	MappedSharedColumns              *umconf.ColumnList
-	MigrationRangeMinValues          *umconf.ColumnValues
-	MigrationRangeMaxValues          *umconf.ColumnValues
 	Iteration                        int64
-	MigrationIterationRangeMinValues *umconf.ColumnValues
-	MigrationIterationRangeMaxValues *umconf.ColumnValues
 
 	TableEngine  string
 	RowsEstimate int64

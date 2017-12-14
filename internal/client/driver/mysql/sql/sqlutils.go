@@ -211,7 +211,7 @@ func ScanRowsToMaps(rows *gosql.Rows, on_row func(RowMap) error) error {
 
 // QueryRowsMap is a convenience function allowing querying a result set while poviding a callback
 // function activated per read row.
-func QueryRowsMap(db *gosql.DB, query string, on_row func(RowMap) error, args ...interface{}) error {
+func QueryRowsMap(db QueryAble, query string, on_row func(RowMap) error, args ...interface{}) error {
 	var err error
 	defer func() {
 		if derr := recover(); derr != nil {
@@ -228,21 +228,12 @@ func QueryRowsMap(db *gosql.DB, query string, on_row func(RowMap) error, args ..
 	return err
 }
 
-func QueryRowsMapWithTx(db *gosql.Tx, query string, on_row func(RowMap) error, args ...interface{}) error {
-	var err error
-	defer func() {
-		if derr := recover(); derr != nil {
-			err = errors.New(fmt.Sprintf("QueryRowsMap unexpected error: %+v", derr))
-		}
-	}()
-
-	rows, err := db.Query(query, args...)
-	defer rows.Close()
-	if err != nil && err != gosql.ErrNoRows {
-		return err
-	}
-	err = ScanRowsToMaps(rows, on_row)
-	return err
+// from https://github.com/golang/go/issues/14468
+type QueryAble interface {
+	Exec(query string, args ...interface{}) (gosql.Result, error)
+	Prepare(query string) (*gosql.Stmt, error)
+	Query(query string, args ...interface{}) (*gosql.Rows, error)
+	QueryRow(query string, args ...interface{}) *gosql.Row
 }
 
 // queryResultData returns a raw array of rows for a given query, optionally reading and returning column names

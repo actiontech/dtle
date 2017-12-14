@@ -208,7 +208,7 @@ func ParseBinlogCoordinatesFromRows(rows *sql.Rows) (selfBinlogCoordinates *Binl
 }
 
 // GetTableColumns reads column list from given table
-func GetTableColumns(db *gosql.DB, databaseName, tableName string) (*umconf.ColumnList, error) {
+func GetTableColumns(db usql.QueryAble, databaseName, tableName string) (*umconf.ColumnList, error) {
 	query := fmt.Sprintf(`
 		show columns from %s.%s
 		`,
@@ -230,103 +230,6 @@ func GetTableColumns(db *gosql.DB, databaseName, tableName string) (*umconf.Colu
 		)
 	}
 	return umconf.NewColumnList(columnNames), nil
-}
-
-func GetTableColumnsWithTx(db *gosql.Tx, databaseName, tableName string) (*umconf.ColumnList, error) {
-	query := fmt.Sprintf(`
-		show columns from %s.%s
-		`,
-		usql.EscapeName(databaseName),
-		usql.EscapeName(tableName),
-	)
-	columnNames := []string{}
-	err := usql.QueryRowsMapWithTx(db, query, func(rowMap usql.RowMap) error {
-		columnNames = append(columnNames, rowMap.GetString("Field"))
-		return nil
-	})
-	if err != nil {
-		return nil, err
-	}
-	if len(columnNames) == 0 {
-		return nil, fmt.Errorf("Found 0 columns on %s.%s. Bailing out",
-			usql.EscapeName(databaseName),
-			usql.EscapeName(tableName),
-		)
-	}
-	return umconf.NewColumnList(columnNames), nil
-}
-
-func ApplyColumnTypesWithTx(db *gosql.Tx, database, tablename string, columnsLists ...*umconf.ColumnList) ([]*umconf.ColumnList, error) {
-	query := `
-		select
-				*
-			from
-				information_schema.columns
-			where
-				table_schema=?
-				and table_name=?
-		`
-	err := usql.QueryRowsMapWithTx(db, query, func(m usql.RowMap) error {
-		columnName := m.GetString("COLUMN_NAME")
-		columnType := m.GetString("COLUMN_TYPE")
-		if strings.Contains(columnType, "unsigned") {
-			for _, columnsList := range columnsLists {
-				columnsList.SetUnsigned(columnName)
-			}
-		}
-		if strings.Contains(columnType, "decimal") {
-			for _, columnsList := range columnsLists {
-				columnsList.GetColumn(columnName).Type = umconf.DecimalColumnType
-			}
-		}
-		if strings.Contains(columnType, "json") {
-			for _, columnsList := range columnsLists {
-				columnsList.GetColumn(columnName).Type = umconf.JSONColumnType
-			}
-		}
-		if strings.Contains(columnType, "float") {
-			for _, columnsList := range columnsLists {
-				columnsList.GetColumn(columnName).Type = umconf.FloatColumnType
-			}
-		}
-		if strings.Contains(columnType, "double") {
-			for _, columnsList := range columnsLists {
-				columnsList.GetColumn(columnName).Type = umconf.DoubleColumnType
-			}
-		}
-		if strings.Contains(columnType, "bigint") {
-			for _, columnsList := range columnsLists {
-				columnsList.GetColumn(columnName).Type = umconf.BigIntColumnType
-			}
-		}
-		if strings.Contains(columnType, "mediumint") {
-			for _, columnsList := range columnsLists {
-				columnsList.GetColumn(columnName).Type = umconf.MediumIntColumnType
-			}
-		}
-		if strings.Contains(columnType, "timestamp") {
-			for _, columnsList := range columnsLists {
-				columnsList.GetColumn(columnName).Type = umconf.TimestampColumnType
-			}
-		}
-		if strings.Contains(columnType, "datetime") {
-			for _, columnsList := range columnsLists {
-				columnsList.GetColumn(columnName).Type = umconf.DateTimeColumnType
-			}
-		}
-		if strings.HasPrefix(columnType, "enum") {
-			for _, columnsList := range columnsLists {
-				columnsList.GetColumn(columnName).Type = umconf.EnumColumnType
-			}
-		}
-		if charset := m.GetString("CHARACTER_SET_NAME"); charset != "" {
-			for _, columnsList := range columnsLists {
-				columnsList.SetCharset(columnName, charset)
-			}
-		}
-		return nil
-	}, database, tablename)
-	return columnsLists, err
 }
 
 func ShowCreateTable(db *gosql.DB, databaseName, tableName string, dropTableIfExists bool) (createTableStatement string, err error) {
@@ -478,52 +381,14 @@ func stringInterval(intervals gomysql.IntervalSlice) string {
 	return hack.String(buf.Bytes())
 }
 
-// getSharedColumns returns the intersection of two lists of columns in same order as the first list
-func getSharedColumns(doTb uconf.Table) (*umconf.ColumnList, *umconf.ColumnList) {
-	columnsInGhost := make(map[string]bool)
-	for _, ghostColumn := range doTb.OriginalTableColumns.Names() {
-		columnsInGhost[ghostColumn] = true
-	}
-	sharedColumnNames := []string{}
-	for _, originalColumn := range doTb.OriginalTableColumns.Names() {
-		isSharedColumn := false
-		if columnsInGhost[originalColumn] || columnsInGhost[doTb.ColumnRenameMap[originalColumn]] {
-			isSharedColumn = true
-		}
-		if doTb.DroppedColumnsMap[originalColumn] {
-			isSharedColumn = false
-		}
-		if isSharedColumn {
-			sharedColumnNames = append(sharedColumnNames, originalColumn)
-		}
-	}
-	mappedSharedColumnNames := []string{}
-	for _, columnName := range sharedColumnNames {
-		if mapped, ok := doTb.ColumnRenameMap[columnName]; ok {
-			mappedSharedColumnNames = append(mappedSharedColumnNames, mapped)
-		} else {
-			mappedSharedColumnNames = append(mappedSharedColumnNames, columnName)
-		}
-	}
-	return umconf.NewColumnList(sharedColumnNames), umconf.NewColumnList(mappedSharedColumnNames)
-}
-
 //It extracts the list of shared columns and the chosen extract unique key
 func InspectTables(db *gosql.DB, databaseName string, doTb *uconf.Table, timeZone string) (err error) {
-	/*originalNamesOnApplier := doTb.OriginalTableColumnsOnApplier.Names()
-	originalNames := doTb.OriginalTableColumns.Names()
-	if !reflect.DeepEqual(originalNames, originalNamesOnApplier) {
-		return fmt.Errorf("It seems like table structure is not identical between master and replica. This scenario is not supported.")
-	}*/
-
-	doTb.SharedColumns, doTb.MappedSharedColumns = getSharedColumns(*doTb)
-	//i.logger.Debugf("mysql.inspector: Shared columns are %s", doTb.SharedColumns)
 	// By fact that a non-empty unique key exists we also know the shared columns are non-empty
 
 	// This additional step looks at which columns are unsigned. We could have merged this within
 	// the `getTableColumns()` function, but it's a later patch and introduces some complexity; I feel
 	// comfortable in doing this as a separate step.
-	ApplyColumnTypes(db, databaseName, doTb.TableName, doTb.OriginalTableColumns, doTb.SharedColumns)
+	ApplyColumnTypes(db, databaseName, doTb.TableName, doTb.OriginalTableColumns)
 
 	/*for c := range doTb.OriginalTableColumns.ColumnList() {
 		column := doTb.OriginalTableColumns.ColumnList()[c]
@@ -536,7 +401,7 @@ func InspectTables(db *gosql.DB, databaseName string, doTb *uconf.Table, timeZon
 }
 
 // applyColumnTypes
-func ApplyColumnTypes(db *gosql.DB, databaseName, tableName string, columnsLists ...*umconf.ColumnList) error {
+func ApplyColumnTypes(db usql.QueryAble, databaseName, tableName string, columnsLists ...*umconf.ColumnList) error {
 	query := `
 		select
 				*
@@ -596,6 +461,7 @@ func ApplyColumnTypes(db *gosql.DB, databaseName, tableName string, columnsLists
 				columnsList.GetColumn(columnName).Type = umconf.FloatColumnType
 			}
 		}
+		// TODO return err on unknown type?
 		if charset := m.GetString("CHARACTER_SET_NAME"); charset != "" {
 			for _, columnsList := range columnsLists {
 				columnsList.SetCharset(columnName, charset)

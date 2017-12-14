@@ -30,7 +30,6 @@ import (
 const (
 	// DefaultConnectWait is the default timeout used for the connect operation
 	DefaultConnectWait            = 10 * time.Second
-	AllEventsUpToLockProcessed    = "AllEventsUpToLockProcessed"
 	ReconnectStreamerSleepSeconds = 5
 )
 
@@ -53,7 +52,6 @@ type Extractor struct {
 	initialBinlogCoordinates   *base.BinlogCoordinates
 	currentBinlogCoordinates   *base.BinlogCoordinates
 	rowCopyComplete            chan bool
-	allEventsUpToLockProcessed chan string
 	rowCopyCompleteFlag        int64
 	tableCount                 int
 
@@ -85,7 +83,6 @@ func NewExtractor(subject, tp string, maxPayload int, cfg *config.MySQLDriverCon
 		dataChannel:                make(chan *binlog.BinlogEntry, cfg.ReplChanBufferSize),
 		parser:                     sql.NewParser(),
 		rowCopyComplete:            make(chan bool),
-		allEventsUpToLockProcessed: make(chan string),
 		waitCh:         make(chan *models.WaitResult, 1),
 		shutdownCh:     make(chan struct{}),
 		testStub1Delay: 0,
@@ -144,10 +141,6 @@ func (e *Extractor) consumeRowCopyComplete() {
 		for <-e.rowCopyComplete {
 		}
 	}()*/
-}
-
-func (e *Extractor) canStopStreaming() bool {
-	return atomic.LoadInt64(&e.mysqlContext.CutOverCompleteFlag) != 0
 }
 
 // Run executes the complete extract logic.
@@ -232,201 +225,6 @@ func (e *Extractor) Run() {
 			time.Sleep(time.Second)
 		}
 	}*/
-}
-
-// cutOver performs the final step of migration, based on migration
-// type (on replica? atomic? safe?)
-func (e *Extractor) cutOver() (err error) {
-	e.logger.Debugf("mysql.extractor: Checking for cut-over postpone")
-	e.sleepWhileTrue(
-		func() (bool, error) {
-			if e.mysqlContext.PostponeCutOverFlagFile == "" {
-				return false, nil
-			}
-			if atomic.LoadInt64(&e.mysqlContext.UserCommandedUnpostponeFlag) > 0 {
-				atomic.StoreInt64(&e.mysqlContext.UserCommandedUnpostponeFlag, 0)
-				return false, nil
-			}
-			if base.FileExists(e.mysqlContext.PostponeCutOverFlagFile) {
-				atomic.StoreInt64(&e.mysqlContext.IsPostponingCutOver, 1)
-				return true, nil
-			}
-			return false, nil
-		},
-	)
-	atomic.StoreInt64(&e.mysqlContext.IsPostponingCutOver, 0)
-	e.logger.Printf("mysql.extractor: Checking for cut-over postpone: complete")
-
-	if e.mysqlContext.CutOverType == config.CutOverAtomic {
-		// Atomic solution: we use low timeout and multiple attempts. But for
-		// each failed attempt, we throttle until replication lag is back to normal
-		for _, doDb := range e.mysqlContext.ReplicateDoDb {
-			for _, doTb := range doDb.Tables {
-				err := e.atomicCutOver(doTb.TableName)
-				return err
-			}
-		}
-		return nil
-	}
-	if e.mysqlContext.CutOverType == config.CutOverTwoStep {
-		err := e.cutOverTwoStep()
-		return err
-	}
-	return fmt.Errorf("Unknown cut-over type: %d; should never get here!", e.mysqlContext.CutOverType)
-}
-
-// Inject the "AllEventsUpToLockProcessed" state hint, wait for it to appear in the binary logs,
-// make sure the queue is drained.
-func (e *Extractor) waitForEventsUpToLock() (err error) {
-	timeout := time.NewTimer(time.Second * time.Duration(e.mysqlContext.CutOverLockTimeoutSeconds))
-
-	waitForEventsUpToLockStartTime := time.Now()
-
-	allEventsUpToLockProcessedChallenge := fmt.Sprintf("%s:%d", string(AllEventsUpToLockProcessed), waitForEventsUpToLockStartTime.UnixNano())
-	e.logger.Printf("mysql.extractor: Writing changelog state: %+v", allEventsUpToLockProcessedChallenge)
-
-	e.logger.Printf("Waiting for events up to lock")
-	atomic.StoreInt64(&e.mysqlContext.AllEventsUpToLockProcessedInjectedFlag, 1)
-	for found := false; !found; {
-		select {
-		case <-timeout.C:
-			{
-				return fmt.Errorf("Timeout while waiting for events up to lock")
-			}
-		case state := <-e.allEventsUpToLockProcessed:
-			{
-				if state == allEventsUpToLockProcessedChallenge {
-					e.logger.Printf("mysql.extractor: Waiting for events up to lock: got %s", state)
-					found = true
-				} else {
-					e.logger.Printf("mysql.extractor: Waiting for events up to lock: skipping %s", state)
-				}
-			}
-		}
-	}
-	waitForEventsUpToLockDuration := time.Since(waitForEventsUpToLockStartTime)
-
-	e.logger.Printf("mysql.extractor: Done waiting for events up to lock; duration=%+v", waitForEventsUpToLockDuration)
-
-	return nil
-}
-
-// cutOverTwoStep will lock down the original table, execute
-// what's left of last DML entries, and **non-atomically** swap original->old, then new->original.
-// There is a point in time where the "original" table does not exist and queries are non-blocked
-// and failing.
-func (e *Extractor) cutOverTwoStep() (err error) {
-	atomic.StoreInt64(&e.mysqlContext.InCutOverCriticalSectionFlag, 1)
-	defer atomic.StoreInt64(&e.mysqlContext.InCutOverCriticalSectionFlag, 0)
-	atomic.StoreInt64(&e.mysqlContext.AllEventsUpToLockProcessedInjectedFlag, 0)
-
-	/*if err := e.retryOperation(e.applier.LockOriginalTable); err != nil {
-		return err
-	}*/
-
-	if err := e.retryOperation(e.waitForEventsUpToLock); err != nil {
-		return err
-	}
-	/*if err := e.retryOperation(e.applier.UnlockTables); err != nil {
-		return err
-	}*/
-
-	//lockAndRenameDuration := e.mysqlContext.RenameTablesEndTime.Sub(e.mysqlContext.LockTablesStartTime)
-	//renameDuration := e.mysqlContext.RenameTablesEndTime.Sub(e.mysqlContext.RenameTablesStartTime)
-	//e.logger.Debugf("mysql.extractor: Lock & rename duration: %s (rename only: %s). During this time, queries on %s were locked or failing", lockAndRenameDuration, renameDuration, sql.EscapeName(e.mysqlContext.OriginalTableName))
-	return nil
-}
-
-// atomicCutOver
-func (e *Extractor) atomicCutOver(tableName string) (err error) {
-	atomic.StoreInt64(&e.mysqlContext.InCutOverCriticalSectionFlag, 1)
-	defer atomic.StoreInt64(&e.mysqlContext.InCutOverCriticalSectionFlag, 0)
-
-	okToUnlockTable := make(chan bool, 4)
-	defer func() {
-		okToUnlockTable <- true
-		//e.applier.DropAtomicCutOverSentryTableIfExists()
-	}()
-
-	atomic.StoreInt64(&e.mysqlContext.AllEventsUpToLockProcessedInjectedFlag, 0)
-
-	lockOriginalSessionIdChan := make(chan int64, 2)
-	tableLocked := make(chan error, 2)
-	tableUnlocked := make(chan error, 2)
-	/*go func() {
-		if err := e.applier.AtomicCutOverMagicLock(lockOriginalSessionIdChan, tableLocked, okToUnlockTable, tableUnlocked); err != nil {
-			e.logger.Errorf("%v",err)
-		}
-	}()*/
-	if err := <-tableLocked; err != nil {
-		return err
-	}
-	lockOriginalSessionId := <-lockOriginalSessionIdChan
-	e.logger.Printf("mysql.extractor: Session locking original & magic tables is %+v", lockOriginalSessionId)
-	// At this point we know the original table is locked.
-	// We know any newly incoming DML on original table is blocked.
-	if err := e.waitForEventsUpToLock(); err != nil {
-		return err
-	}
-
-	// Step 2
-	// We now attempt an atomic RENAME on original & ghost tables, and expect it to block.
-	e.mysqlContext.RenameTablesStartTime = time.Now()
-
-	var tableRenameKnownToHaveFailed int64
-	renameSessionIdChan := make(chan int64, 2)
-	tablesRenamed := make(chan error, 2)
-	/*go func() {
-		if err := e.applier.AtomicCutoverRename(renameSessionIdChan, tablesRenamed); err != nil {
-			// Abort! Release the lock
-			atomic.StoreInt64(&tableRenameKnownToHaveFailed, 1)
-			okToUnlockTable <- true
-		}
-	}()*/
-	renameSessionId := <-renameSessionIdChan
-	e.logger.Printf("mysql.extractor: Session renaming tables is %+v", renameSessionId)
-
-	waitForRename := func() error {
-		if atomic.LoadInt64(&tableRenameKnownToHaveFailed) == 1 {
-			// We return `nil` here so as to avoid the `retry`. The RENAME has failed,
-			// it won't show up in PROCESSLIST, no point in waiting
-			return nil
-		}
-		//return e.applier.ExpectProcess(renameSessionId, "metadata lock", "rename")
-		return nil
-	}
-	// Wait for the RENAME to appear in PROCESSLIST
-	if err := e.retryOperation(waitForRename, true); err != nil {
-		// Abort! Release the lock
-		okToUnlockTable <- true
-		return err
-	}
-	if atomic.LoadInt64(&tableRenameKnownToHaveFailed) == 0 {
-		e.logger.Printf("mysql.extractor: Found atomic RENAME to be blocking, as expected. Double checking the lock is still in place (though I don't strictly have to)")
-	}
-	/*if err := e.applier.ExpectUsedLock(lockOriginalSessionId); err != nil {
-		// Abort operation. Just make sure to drop the magic table.
-		return err
-	}*/
-	e.logger.Printf("mysql.extractor: Connection holding lock on original table still exists")
-
-	// Now that we've found the RENAME blocking, AND the locking connection still alive,
-	// we know it is safe to proceed to release the lock
-
-	okToUnlockTable <- true
-	// BAM! magic table dropped, original table lock is released
-	// -> RENAME released -> queries on original are unblocked.
-	if err := <-tableUnlocked; err != nil {
-		return err
-	}
-	if err := <-tablesRenamed; err != nil {
-		return err
-	}
-	e.mysqlContext.RenameTablesEndTime = time.Now()
-
-	lockAndRenameDuration := e.mysqlContext.RenameTablesEndTime.Sub(e.mysqlContext.LockTablesStartTime)
-	e.logger.Printf("mysql.extractor: Lock & rename duration: %s. During this time, queries on %s were blocked", lockAndRenameDuration, sql.EscapeName(tableName))
-	return nil
 }
 
 // initiateInspector connects, validates and inspects the "inspector" server.
@@ -550,39 +348,6 @@ func (e *Extractor) readTableColumns() (err error) {
 		}
 	}
 	return nil
-}
-
-// printMigrationStatusHint prints a detailed configuration dump, that is useful
-// to keep in mind; such as the name of migrated table, throttle params etc.
-// This gets printed at beginning and end of migration, every 10 minutes throughout
-// migration, and as reponse to the "status" interactive command.
-func (e *Extractor) printMigrationStatusHint(databaseName, tableName string) {
-	e.logger.Printf("mysql.extractor # Migrating %s.%s",
-		sql.EscapeName(databaseName),
-		sql.EscapeName(tableName),
-	)
-	e.logger.Printf("mysql.extractor # Migration started at %+v",
-		e.mysqlContext.StartTime.Format(time.RubyDate),
-	)
-	maxLoad := e.mysqlContext.GetMaxLoad()
-	criticalLoad := e.mysqlContext.GetCriticalLoad()
-	e.logger.Printf("mysql.extractor # chunk-size: %+v; max-lag-millis: %+vms; max-load: %s; critical-load: %s; nice-ratio: %f",
-		atomic.LoadInt64(&e.mysqlContext.ChunkSize),
-		atomic.LoadInt64(&e.mysqlContext.MaxLagMillisecondsThrottleThreshold),
-		maxLoad.String(),
-		criticalLoad.String(),
-		e.mysqlContext.GetNiceRatio(),
-	)
-
-	if e.mysqlContext.PostponeCutOverFlagFile != "" {
-		setIndicator := ""
-		if base.FileExists(e.mysqlContext.PostponeCutOverFlagFile) {
-			setIndicator = "[set]"
-		}
-		e.logger.Printf("mysql.extractor # postpone-cut-over-flag-file: %+v %+v",
-			e.mysqlContext.PostponeCutOverFlagFile, setIndicator,
-		)
-	}
 }
 
 func (e *Extractor) initNatsPubClient() (err error) {
@@ -802,15 +567,6 @@ func (e *Extractor) setStatementFor() string {
 		buffer.WriteString(value)
 	}
 	return buffer.String()
-}
-
-func (e *Extractor) validateServerUUID() string {
-	query := `SELECT @@SERVER_UUID`
-	var server_uuid string
-	if err := e.db.QueryRow(query).Scan(&server_uuid); err != nil {
-		return ""
-	}
-	return server_uuid
 }
 
 // Encode

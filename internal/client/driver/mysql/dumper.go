@@ -84,12 +84,12 @@ func (d *dumper) getDumpEntries() ([]*dumpEntry, error) {
 		return []*dumpEntry{}, nil
 	}
 
-	columnList, err := ubase.GetTableColumnsWithTx(d.db, d.TableSchema, d.TableName)
+	columnList, err := ubase.GetTableColumns(d.db, d.TableSchema, d.TableName)
 	if err != nil {
 		return []*dumpEntry{}, err
 	}
 
-	if ubase.ApplyColumnTypesWithTx(d.db, d.TableSchema, d.TableName, columnList); err != nil {
+	if err := ubase.ApplyColumnTypes(d.db, d.TableSchema, d.TableName, columnList); err != nil {
 		return []*dumpEntry{}, err
 	}
 
