@@ -244,14 +244,12 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 				switch dml {
 				case InsertDML:
 					{
-						//dmlEvent.NewColumnValues = mysql.ToColumnValues(row)
-						dmlEvent.NewColumnValues = append(dmlEvent.NewColumnValues, mysql.ToColumnValues(row))
+						dmlEvent.NewColumnValues = mysql.ToColumnValues(row)
 					}
 				case UpdateDML:
 					{
 						dmlEvent.WhereColumnValues = mysql.ToColumnValues(row)
-						//dmlEvent.NewColumnValues = mysql.ToColumnValues(rowsEvent.Rows[i+1])
-						dmlEvent.NewColumnValues = append(dmlEvent.NewColumnValues, mysql.ToColumnValues(rowsEvent.Rows[i+1]))
+						dmlEvent.NewColumnValues = mysql.ToColumnValues(rowsEvent.Rows[i+1])
 					}
 				case DeleteDML:
 					{
@@ -262,8 +260,8 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 				// decides whether action is taken sycnhronously (meaning we wait before
 				// next iteration) or asynchronously (we keep pushing more events)
 				// In reality, reads will be synchronous
+				b.currentBinlogEntry.Events = append(b.currentBinlogEntry.Events, dmlEvent)
 			}
-			b.currentBinlogEntry.Events = append(b.currentBinlogEntry.Events, dmlEvent)
 			return nil
 		}
 	}

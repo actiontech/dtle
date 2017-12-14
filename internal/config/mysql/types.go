@@ -279,6 +279,10 @@ type ColumnValues struct {
 	ValuesPointers []*interface{}
 }
 
+func (this *ColumnValues) GetAbstractValues() []*interface{} {
+	return this.AbstractValues
+}
+
 func ToColumnValues(abstractValues []interface{}) *ColumnValues {
 	result := &ColumnValues{
 		AbstractValues: make([]*interface{}, len(abstractValues)),
@@ -293,16 +297,8 @@ func ToColumnValues(abstractValues []interface{}) *ColumnValues {
 	return result
 }
 
-func (c *ColumnValues) GetAbstractValues() []interface{} {
-	var abstractValues []interface{}
-	for _, a := range c.AbstractValues {
-		abstractValues = append(abstractValues, *a)
-	}
-	return abstractValues
-}
-
 func (c *ColumnValues) StringColumn(index int) string {
-	val := c.GetAbstractValues()[index]
+	val := *c.GetAbstractValues()[index]
 	if ints, ok := val.([]uint8); ok {
 		return string(ints)
 	}

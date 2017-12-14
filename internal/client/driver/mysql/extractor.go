@@ -1341,8 +1341,9 @@ func (e *Extractor) Stats() (*models.TaskStatistics, error) {
 	}
 	if e.natsConn != nil {
 		taskResUsage.MsgStat = e.natsConn.Statistics
-		if e.mysqlContext.TrafficLimit > 0 && int(taskResUsage.MsgStat.OutBytes) >= e.mysqlContext.TrafficLimit {
-			e.onError(TaskStateDead, fmt.Errorf("traffic limit exceeded : %d/%d", e.mysqlContext.TrafficLimit, taskResUsage.MsgStat.OutBytes))
+		e.mysqlContext.TotalTransferredBytes = int(taskResUsage.MsgStat.OutBytes)
+		if e.mysqlContext.TrafficAgainstLimits > 0 && int(taskResUsage.MsgStat.OutBytes) >= e.mysqlContext.TrafficAgainstLimits {
+			e.onError(TaskStateDead, fmt.Errorf("traffic limit exceeded : %d/%d", e.mysqlContext.TrafficAgainstLimits, taskResUsage.MsgStat.OutBytes))
 		}
 	}
 
@@ -1368,11 +1369,12 @@ func (e *Extractor) Stats() (*models.TaskStatistics, error) {
 func (e *Extractor) ID() string {
 	id := config.DriverCtx{
 		DriverConfig: &config.MySQLDriverConfig{
-			ReplicateDoDb:     e.mysqlContext.ReplicateDoDb,
-			ReplicateIgnoreDb: e.mysqlContext.ReplicateIgnoreDb,
-			Gtid:              e.mysqlContext.Gtid,
-			NatsAddr:          e.mysqlContext.NatsAddr,
-			ConnectionConfig:  e.mysqlContext.ConnectionConfig,
+			TotalTransferredBytes: e.mysqlContext.TotalTransferredBytes,
+			ReplicateDoDb:         e.mysqlContext.ReplicateDoDb,
+			ReplicateIgnoreDb:     e.mysqlContext.ReplicateIgnoreDb,
+			Gtid:                  e.mysqlContext.Gtid,
+			NatsAddr:              e.mysqlContext.NatsAddr,
+			ConnectionConfig:      e.mysqlContext.ConnectionConfig,
 		},
 	}
 

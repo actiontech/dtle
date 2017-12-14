@@ -81,7 +81,7 @@ type DataEvent struct {
 	ColumnCount          int
 	OriginalTableColumns *mysql.ColumnList
 	WhereColumnValues    *mysql.ColumnValues
-	NewColumnValues      []*mysql.ColumnValues
+	NewColumnValues      *mysql.ColumnValues
 }
 
 func NewDataEvent(databaseName, tableName string, dml EventDML, columnCount int) DataEvent {
