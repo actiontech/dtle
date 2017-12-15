@@ -35,25 +35,25 @@ const (
 
 // Extractor is the main schema extract flow manager.
 type Extractor struct {
-	logger                     *log.Entry
-	subject                    string
-	tp                         string
-	maxPayload                 int
-	mysqlContext               *config.MySQLDriverConfig
-	db                         *gosql.DB
-	singletonDB                *gosql.DB
-	dumpers                    []*dumper
-	replicateDoDb              []*config.DataSource
-	binlogChannel              chan *binlog.BinlogTx
-	dataChannel                chan *binlog.BinlogEntry
-	parser                     *sql.Parser
-	inspector                  *Inspector
-	binlogReader               *binlog.BinlogReader
-	initialBinlogCoordinates   *base.BinlogCoordinates
-	currentBinlogCoordinates   *base.BinlogCoordinates
-	rowCopyComplete            chan bool
-	rowCopyCompleteFlag        int64
-	tableCount                 int
+	logger                   *log.Entry
+	subject                  string
+	tp                       string
+	maxPayload               int
+	mysqlContext             *config.MySQLDriverConfig
+	db                       *gosql.DB
+	singletonDB              *gosql.DB
+	dumpers                  []*dumper
+	replicateDoDb            []*config.DataSource
+	binlogChannel            chan *binlog.BinlogTx
+	dataChannel              chan *binlog.BinlogEntry
+	parser                   *sql.Parser
+	inspector                *Inspector
+	binlogReader             *binlog.BinlogReader
+	initialBinlogCoordinates *base.BinlogCoordinates
+	currentBinlogCoordinates *base.BinlogCoordinates
+	rowCopyComplete          chan bool
+	rowCopyCompleteFlag      int64
+	tableCount               int
 
 	sendByTimeoutCounter  int
 	sendBySizeFullCounter int
@@ -74,18 +74,18 @@ func NewExtractor(subject, tp string, maxPayload int, cfg *config.MySQLDriverCon
 		"job": subject,
 	})
 	e := &Extractor{
-		logger:                     entry,
-		subject:                    subject,
-		tp:                         tp,
-		maxPayload:                 maxPayload,
-		mysqlContext:               cfg,
-		binlogChannel:              make(chan *binlog.BinlogTx, cfg.ReplChanBufferSize),
-		dataChannel:                make(chan *binlog.BinlogEntry, cfg.ReplChanBufferSize),
-		parser:                     sql.NewParser(),
-		rowCopyComplete:            make(chan bool),
-		waitCh:         make(chan *models.WaitResult, 1),
-		shutdownCh:     make(chan struct{}),
-		testStub1Delay: 0,
+		logger:          entry,
+		subject:         subject,
+		tp:              tp,
+		maxPayload:      maxPayload,
+		mysqlContext:    cfg,
+		binlogChannel:   make(chan *binlog.BinlogTx, cfg.ReplChanBufferSize),
+		dataChannel:     make(chan *binlog.BinlogEntry, cfg.ReplChanBufferSize),
+		parser:          sql.NewParser(),
+		rowCopyComplete: make(chan bool),
+		waitCh:          make(chan *models.WaitResult, 1),
+		shutdownCh:      make(chan struct{}),
+		testStub1Delay:  0,
 	}
 
 	if delay, err := strconv.ParseInt(os.Getenv("UDUP_TESTSTUB1_DELAY"), 10, 64); err == nil {

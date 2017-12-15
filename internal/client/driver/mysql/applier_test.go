@@ -497,28 +497,28 @@ func TestApplier_Shutdown(t *testing.T) {
 
 func TestApplier_onApplyTxStructWithSetGtid(t *testing.T) {
 	type fields struct {
-		logger                     *log.Entry
-		subject                    string
-		tp                         string
-		mysqlContext               *config.MySQLDriverConfig
-		dbs                        []*sql.DB
-		singletonDB                *gosql.DB
-		parser                     *sql.Parser
-		totalRowCount              int
-		applyRowCount              int
-		rowCopyComplete            chan bool
-		rowCopyCompleteFlag        int64
-		copyRowsQueue              chan *dumpEntry
-		applyDataEntryQueue        chan *binlog.BinlogEntry
-		applyBinlogTxQueue         chan *binlog.BinlogTx
-		applyBinlogGroupTxQueue    chan []*binlog.BinlogTx
-		lastAppliedBinlogTx        *binlog.BinlogTx
-		natsConn                   *gonats.Conn
-		waitCh                     chan *models.WaitResult
-		wg                         sync.WaitGroup
-		shutdown                   bool
-		shutdownCh                 chan struct{}
-		shutdownLock               sync.Mutex
+		logger                  *log.Entry
+		subject                 string
+		tp                      string
+		mysqlContext            *config.MySQLDriverConfig
+		dbs                     []*sql.DB
+		singletonDB             *gosql.DB
+		parser                  *sql.Parser
+		totalRowCount           int
+		applyRowCount           int
+		rowCopyComplete         chan bool
+		rowCopyCompleteFlag     int64
+		copyRowsQueue           chan *dumpEntry
+		applyDataEntryQueue     chan *binlog.BinlogEntry
+		applyBinlogTxQueue      chan *binlog.BinlogTx
+		applyBinlogGroupTxQueue chan []*binlog.BinlogTx
+		lastAppliedBinlogTx     *binlog.BinlogTx
+		natsConn                *gonats.Conn
+		waitCh                  chan *models.WaitResult
+		wg                      sync.WaitGroup
+		shutdown                bool
+		shutdownCh              chan struct{}
+		shutdownLock            sync.Mutex
 	}
 	type args struct {
 		dbApplier *sql.DB
@@ -535,28 +535,28 @@ func TestApplier_onApplyTxStructWithSetGtid(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			a := &Applier{
-				logger:                     tt.fields.logger,
-				subject:                    tt.fields.subject,
-				tp:                         tt.fields.tp,
-				mysqlContext:               tt.fields.mysqlContext,
-				dbs:                        tt.fields.dbs,
-				singletonDB:                tt.fields.singletonDB,
-				parser:                     tt.fields.parser,
-				totalRowCount:              tt.fields.totalRowCount,
-				applyRowCount:              tt.fields.applyRowCount,
-				rowCopyComplete:            tt.fields.rowCopyComplete,
-				rowCopyCompleteFlag:        tt.fields.rowCopyCompleteFlag,
-				copyRowsQueue:              tt.fields.copyRowsQueue,
-				applyDataEntryQueue:        tt.fields.applyDataEntryQueue,
-				applyBinlogTxQueue:         tt.fields.applyBinlogTxQueue,
-				applyBinlogGroupTxQueue:    tt.fields.applyBinlogGroupTxQueue,
-				lastAppliedBinlogTx:        tt.fields.lastAppliedBinlogTx,
-				natsConn:                   tt.fields.natsConn,
-				waitCh:                     tt.fields.waitCh,
-				wg:                         tt.fields.wg,
-				shutdown:                   tt.fields.shutdown,
-				shutdownCh:                 tt.fields.shutdownCh,
-				shutdownLock:               tt.fields.shutdownLock,
+				logger:                  tt.fields.logger,
+				subject:                 tt.fields.subject,
+				tp:                      tt.fields.tp,
+				mysqlContext:            tt.fields.mysqlContext,
+				dbs:                     tt.fields.dbs,
+				singletonDB:             tt.fields.singletonDB,
+				parser:                  tt.fields.parser,
+				totalRowCount:           tt.fields.totalRowCount,
+				applyRowCount:           tt.fields.applyRowCount,
+				rowCopyComplete:         tt.fields.rowCopyComplete,
+				rowCopyCompleteFlag:     tt.fields.rowCopyCompleteFlag,
+				copyRowsQueue:           tt.fields.copyRowsQueue,
+				applyDataEntryQueue:     tt.fields.applyDataEntryQueue,
+				applyBinlogTxQueue:      tt.fields.applyBinlogTxQueue,
+				applyBinlogGroupTxQueue: tt.fields.applyBinlogGroupTxQueue,
+				lastAppliedBinlogTx:     tt.fields.lastAppliedBinlogTx,
+				natsConn:                tt.fields.natsConn,
+				waitCh:                  tt.fields.waitCh,
+				wg:                      tt.fields.wg,
+				shutdown:                tt.fields.shutdown,
+				shutdownCh:              tt.fields.shutdownCh,
+				shutdownLock:            tt.fields.shutdownLock,
 			}
 			if err := a.onApplyTxStructWithSetGtid(tt.args.dbApplier, tt.args.binlogTx); (err != nil) != tt.wantErr {
 				t.Errorf("Applier.onApplyTxStructWithSetGtid() error = %v, wantErr %v", err, tt.wantErr)
@@ -567,28 +567,28 @@ func TestApplier_onApplyTxStructWithSetGtid(t *testing.T) {
 
 func TestApplier_validateGrants(t *testing.T) {
 	type fields struct {
-		logger                     *log.Entry
-		subject                    string
-		tp                         string
-		mysqlContext               *config.MySQLDriverConfig
-		dbs                        []*sql.DB
-		singletonDB                *gosql.DB
-		parser                     *sql.Parser
-		totalRowCount              int
-		applyRowCount              int
-		rowCopyComplete            chan bool
-		rowCopyCompleteFlag        int64
-		copyRowsQueue              chan *dumpEntry
-		applyDataEntryQueue        chan *binlog.BinlogEntry
-		applyBinlogTxQueue         chan *binlog.BinlogTx
-		applyBinlogGroupTxQueue    chan []*binlog.BinlogTx
-		lastAppliedBinlogTx        *binlog.BinlogTx
-		natsConn                   *gonats.Conn
-		waitCh                     chan *models.WaitResult
-		wg                         sync.WaitGroup
-		shutdown                   bool
-		shutdownCh                 chan struct{}
-		shutdownLock               sync.Mutex
+		logger                  *log.Entry
+		subject                 string
+		tp                      string
+		mysqlContext            *config.MySQLDriverConfig
+		dbs                     []*sql.DB
+		singletonDB             *gosql.DB
+		parser                  *sql.Parser
+		totalRowCount           int
+		applyRowCount           int
+		rowCopyComplete         chan bool
+		rowCopyCompleteFlag     int64
+		copyRowsQueue           chan *dumpEntry
+		applyDataEntryQueue     chan *binlog.BinlogEntry
+		applyBinlogTxQueue      chan *binlog.BinlogTx
+		applyBinlogGroupTxQueue chan []*binlog.BinlogTx
+		lastAppliedBinlogTx     *binlog.BinlogTx
+		natsConn                *gonats.Conn
+		waitCh                  chan *models.WaitResult
+		wg                      sync.WaitGroup
+		shutdown                bool
+		shutdownCh              chan struct{}
+		shutdownLock            sync.Mutex
 	}
 	tests := []struct {
 		name    string
@@ -600,28 +600,28 @@ func TestApplier_validateGrants(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			a := &Applier{
-				logger:                     tt.fields.logger,
-				subject:                    tt.fields.subject,
-				tp:                         tt.fields.tp,
-				mysqlContext:               tt.fields.mysqlContext,
-				dbs:                        tt.fields.dbs,
-				singletonDB:                tt.fields.singletonDB,
-				parser:                     tt.fields.parser,
-				totalRowCount:              tt.fields.totalRowCount,
-				applyRowCount:              tt.fields.applyRowCount,
-				rowCopyComplete:            tt.fields.rowCopyComplete,
-				rowCopyCompleteFlag:        tt.fields.rowCopyCompleteFlag,
-				copyRowsQueue:              tt.fields.copyRowsQueue,
-				applyDataEntryQueue:        tt.fields.applyDataEntryQueue,
-				applyBinlogTxQueue:         tt.fields.applyBinlogTxQueue,
-				applyBinlogGroupTxQueue:    tt.fields.applyBinlogGroupTxQueue,
-				lastAppliedBinlogTx:        tt.fields.lastAppliedBinlogTx,
-				natsConn:                   tt.fields.natsConn,
-				waitCh:                     tt.fields.waitCh,
-				wg:                         tt.fields.wg,
-				shutdown:                   tt.fields.shutdown,
-				shutdownCh:                 tt.fields.shutdownCh,
-				shutdownLock:               tt.fields.shutdownLock,
+				logger:                  tt.fields.logger,
+				subject:                 tt.fields.subject,
+				tp:                      tt.fields.tp,
+				mysqlContext:            tt.fields.mysqlContext,
+				dbs:                     tt.fields.dbs,
+				singletonDB:             tt.fields.singletonDB,
+				parser:                  tt.fields.parser,
+				totalRowCount:           tt.fields.totalRowCount,
+				applyRowCount:           tt.fields.applyRowCount,
+				rowCopyComplete:         tt.fields.rowCopyComplete,
+				rowCopyCompleteFlag:     tt.fields.rowCopyCompleteFlag,
+				copyRowsQueue:           tt.fields.copyRowsQueue,
+				applyDataEntryQueue:     tt.fields.applyDataEntryQueue,
+				applyBinlogTxQueue:      tt.fields.applyBinlogTxQueue,
+				applyBinlogGroupTxQueue: tt.fields.applyBinlogGroupTxQueue,
+				lastAppliedBinlogTx:     tt.fields.lastAppliedBinlogTx,
+				natsConn:                tt.fields.natsConn,
+				waitCh:                  tt.fields.waitCh,
+				wg:                      tt.fields.wg,
+				shutdown:                tt.fields.shutdown,
+				shutdownCh:              tt.fields.shutdownCh,
+				shutdownLock:            tt.fields.shutdownLock,
 			}
 			if err := a.validateGrants(); (err != nil) != tt.wantErr {
 				t.Errorf("Applier.validateGrants() error = %v, wantErr %v", err, tt.wantErr)
@@ -632,28 +632,28 @@ func TestApplier_validateGrants(t *testing.T) {
 
 func TestApplier_createTableGtidExecuted(t *testing.T) {
 	type fields struct {
-		logger                     *log.Entry
-		subject                    string
-		tp                         string
-		mysqlContext               *config.MySQLDriverConfig
-		dbs                        []*sql.DB
-		singletonDB                *gosql.DB
-		parser                     *sql.Parser
-		totalRowCount              int
-		applyRowCount              int
-		rowCopyComplete            chan bool
-		rowCopyCompleteFlag        int64
-		copyRowsQueue              chan *dumpEntry
-		applyDataEntryQueue        chan *binlog.BinlogEntry
-		applyBinlogTxQueue         chan *binlog.BinlogTx
-		applyBinlogGroupTxQueue    chan []*binlog.BinlogTx
-		lastAppliedBinlogTx        *binlog.BinlogTx
-		natsConn                   *gonats.Conn
-		waitCh                     chan *models.WaitResult
-		wg                         sync.WaitGroup
-		shutdown                   bool
-		shutdownCh                 chan struct{}
-		shutdownLock               sync.Mutex
+		logger                  *log.Entry
+		subject                 string
+		tp                      string
+		mysqlContext            *config.MySQLDriverConfig
+		dbs                     []*sql.DB
+		singletonDB             *gosql.DB
+		parser                  *sql.Parser
+		totalRowCount           int
+		applyRowCount           int
+		rowCopyComplete         chan bool
+		rowCopyCompleteFlag     int64
+		copyRowsQueue           chan *dumpEntry
+		applyDataEntryQueue     chan *binlog.BinlogEntry
+		applyBinlogTxQueue      chan *binlog.BinlogTx
+		applyBinlogGroupTxQueue chan []*binlog.BinlogTx
+		lastAppliedBinlogTx     *binlog.BinlogTx
+		natsConn                *gonats.Conn
+		waitCh                  chan *models.WaitResult
+		wg                      sync.WaitGroup
+		shutdown                bool
+		shutdownCh              chan struct{}
+		shutdownLock            sync.Mutex
 	}
 	tests := []struct {
 		name    string
@@ -665,28 +665,28 @@ func TestApplier_createTableGtidExecuted(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			a := &Applier{
-				logger:                     tt.fields.logger,
-				subject:                    tt.fields.subject,
-				tp:                         tt.fields.tp,
-				mysqlContext:               tt.fields.mysqlContext,
-				dbs:                        tt.fields.dbs,
-				singletonDB:                tt.fields.singletonDB,
-				parser:                     tt.fields.parser,
-				totalRowCount:              tt.fields.totalRowCount,
-				applyRowCount:              tt.fields.applyRowCount,
-				rowCopyComplete:            tt.fields.rowCopyComplete,
-				rowCopyCompleteFlag:        tt.fields.rowCopyCompleteFlag,
-				copyRowsQueue:              tt.fields.copyRowsQueue,
-				applyDataEntryQueue:        tt.fields.applyDataEntryQueue,
-				applyBinlogTxQueue:         tt.fields.applyBinlogTxQueue,
-				applyBinlogGroupTxQueue:    tt.fields.applyBinlogGroupTxQueue,
-				lastAppliedBinlogTx:        tt.fields.lastAppliedBinlogTx,
-				natsConn:                   tt.fields.natsConn,
-				waitCh:                     tt.fields.waitCh,
-				wg:                         tt.fields.wg,
-				shutdown:                   tt.fields.shutdown,
-				shutdownCh:                 tt.fields.shutdownCh,
-				shutdownLock:               tt.fields.shutdownLock,
+				logger:                  tt.fields.logger,
+				subject:                 tt.fields.subject,
+				tp:                      tt.fields.tp,
+				mysqlContext:            tt.fields.mysqlContext,
+				dbs:                     tt.fields.dbs,
+				singletonDB:             tt.fields.singletonDB,
+				parser:                  tt.fields.parser,
+				totalRowCount:           tt.fields.totalRowCount,
+				applyRowCount:           tt.fields.applyRowCount,
+				rowCopyComplete:         tt.fields.rowCopyComplete,
+				rowCopyCompleteFlag:     tt.fields.rowCopyCompleteFlag,
+				copyRowsQueue:           tt.fields.copyRowsQueue,
+				applyDataEntryQueue:     tt.fields.applyDataEntryQueue,
+				applyBinlogTxQueue:      tt.fields.applyBinlogTxQueue,
+				applyBinlogGroupTxQueue: tt.fields.applyBinlogGroupTxQueue,
+				lastAppliedBinlogTx:     tt.fields.lastAppliedBinlogTx,
+				natsConn:                tt.fields.natsConn,
+				waitCh:                  tt.fields.waitCh,
+				wg:                      tt.fields.wg,
+				shutdown:                tt.fields.shutdown,
+				shutdownCh:              tt.fields.shutdownCh,
+				shutdownLock:            tt.fields.shutdownLock,
 			}
 			if err := a.createTableGtidExecuted(); (err != nil) != tt.wantErr {
 				t.Errorf("Applier.createTableGtidExecuted() error = %v, wantErr %v", err, tt.wantErr)
@@ -697,28 +697,28 @@ func TestApplier_createTableGtidExecuted(t *testing.T) {
 
 func TestApplier_onDone(t *testing.T) {
 	type fields struct {
-		logger                     *log.Entry
-		subject                    string
-		tp                         string
-		mysqlContext               *config.MySQLDriverConfig
-		dbs                        []*sql.DB
-		singletonDB                *gosql.DB
-		parser                     *sql.Parser
-		totalRowCount              int
-		applyRowCount              int
-		rowCopyComplete            chan bool
-		rowCopyCompleteFlag        int64
-		copyRowsQueue              chan *dumpEntry
-		applyDataEntryQueue        chan *binlog.BinlogEntry
-		applyBinlogTxQueue         chan *binlog.BinlogTx
-		applyBinlogGroupTxQueue    chan []*binlog.BinlogTx
-		lastAppliedBinlogTx        *binlog.BinlogTx
-		natsConn                   *gonats.Conn
-		waitCh                     chan *models.WaitResult
-		wg                         sync.WaitGroup
-		shutdown                   bool
-		shutdownCh                 chan struct{}
-		shutdownLock               sync.Mutex
+		logger                  *log.Entry
+		subject                 string
+		tp                      string
+		mysqlContext            *config.MySQLDriverConfig
+		dbs                     []*sql.DB
+		singletonDB             *gosql.DB
+		parser                  *sql.Parser
+		totalRowCount           int
+		applyRowCount           int
+		rowCopyComplete         chan bool
+		rowCopyCompleteFlag     int64
+		copyRowsQueue           chan *dumpEntry
+		applyDataEntryQueue     chan *binlog.BinlogEntry
+		applyBinlogTxQueue      chan *binlog.BinlogTx
+		applyBinlogGroupTxQueue chan []*binlog.BinlogTx
+		lastAppliedBinlogTx     *binlog.BinlogTx
+		natsConn                *gonats.Conn
+		waitCh                  chan *models.WaitResult
+		wg                      sync.WaitGroup
+		shutdown                bool
+		shutdownCh              chan struct{}
+		shutdownLock            sync.Mutex
 	}
 	tests := []struct {
 		name   string
@@ -729,28 +729,28 @@ func TestApplier_onDone(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			a := &Applier{
-				logger:                     tt.fields.logger,
-				subject:                    tt.fields.subject,
-				tp:                         tt.fields.tp,
-				mysqlContext:               tt.fields.mysqlContext,
-				dbs:                        tt.fields.dbs,
-				singletonDB:                tt.fields.singletonDB,
-				parser:                     tt.fields.parser,
-				totalRowCount:              tt.fields.totalRowCount,
-				applyRowCount:              tt.fields.applyRowCount,
-				rowCopyComplete:            tt.fields.rowCopyComplete,
-				rowCopyCompleteFlag:        tt.fields.rowCopyCompleteFlag,
-				copyRowsQueue:              tt.fields.copyRowsQueue,
-				applyDataEntryQueue:        tt.fields.applyDataEntryQueue,
-				applyBinlogTxQueue:         tt.fields.applyBinlogTxQueue,
-				applyBinlogGroupTxQueue:    tt.fields.applyBinlogGroupTxQueue,
-				lastAppliedBinlogTx:        tt.fields.lastAppliedBinlogTx,
-				natsConn:                   tt.fields.natsConn,
-				waitCh:                     tt.fields.waitCh,
-				wg:                         tt.fields.wg,
-				shutdown:                   tt.fields.shutdown,
-				shutdownCh:                 tt.fields.shutdownCh,
-				shutdownLock:               tt.fields.shutdownLock,
+				logger:                  tt.fields.logger,
+				subject:                 tt.fields.subject,
+				tp:                      tt.fields.tp,
+				mysqlContext:            tt.fields.mysqlContext,
+				dbs:                     tt.fields.dbs,
+				singletonDB:             tt.fields.singletonDB,
+				parser:                  tt.fields.parser,
+				totalRowCount:           tt.fields.totalRowCount,
+				applyRowCount:           tt.fields.applyRowCount,
+				rowCopyComplete:         tt.fields.rowCopyComplete,
+				rowCopyCompleteFlag:     tt.fields.rowCopyCompleteFlag,
+				copyRowsQueue:           tt.fields.copyRowsQueue,
+				applyDataEntryQueue:     tt.fields.applyDataEntryQueue,
+				applyBinlogTxQueue:      tt.fields.applyBinlogTxQueue,
+				applyBinlogGroupTxQueue: tt.fields.applyBinlogGroupTxQueue,
+				lastAppliedBinlogTx:     tt.fields.lastAppliedBinlogTx,
+				natsConn:                tt.fields.natsConn,
+				waitCh:                  tt.fields.waitCh,
+				wg:                      tt.fields.wg,
+				shutdown:                tt.fields.shutdown,
+				shutdownCh:              tt.fields.shutdownCh,
+				shutdownLock:            tt.fields.shutdownLock,
 			}
 			a.onDone()
 		})

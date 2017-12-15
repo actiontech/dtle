@@ -25,7 +25,7 @@ import (
 	"udup/internal/config"
 	log "udup/internal/logger"
 	"udup/internal/models"
-	)
+)
 
 const (
 	TaskStateComplete int = iota
@@ -46,8 +46,8 @@ type Applier struct {
 	retrievedGtidSet   string
 	currentCoordinates *models.CurrentCoordinates
 
-	rowCopyComplete            chan bool
-	rowCopyCompleteFlag        int64
+	rowCopyComplete     chan bool
+	rowCopyCompleteFlag int64
 	// copyRowsQueue should not be buffered; if buffered some non-damaging but
 	//  excessive work happens at the end of the iteration as new copy-jobs arrive befroe realizing the copy is complete
 	copyRowsQueue            chan *dumpEntry
@@ -72,20 +72,20 @@ func NewApplier(subject, tp string, cfg *config.MySQLDriverConfig, logger *log.L
 		"job": subject,
 	})
 	a := &Applier{
-		logger:                     entry,
-		subject:                    subject,
-		tp:                         tp,
-		mysqlContext:               cfg,
-		parser:                     sql.NewParser(),
-		currentCoordinates:         &models.CurrentCoordinates{},
-		rowCopyComplete:            make(chan bool, 1),
-		copyRowsQueue:              make(chan *dumpEntry, cfg.ReplChanBufferSize),
-		applyDataEntryQueue:        make(chan *binlog.BinlogEntry, cfg.ReplChanBufferSize),
-		applyGroupDataEntryQueue:   make(chan []*binlog.BinlogEntry, cfg.ReplChanBufferSize),
-		applyBinlogTxQueue:         make(chan *binlog.BinlogTx, cfg.ReplChanBufferSize),
-		applyBinlogGroupTxQueue:    make(chan []*binlog.BinlogTx, cfg.ReplChanBufferSize),
-		waitCh:                     make(chan *models.WaitResult, 1),
-		shutdownCh:                 make(chan struct{}),
+		logger:                   entry,
+		subject:                  subject,
+		tp:                       tp,
+		mysqlContext:             cfg,
+		parser:                   sql.NewParser(),
+		currentCoordinates:       &models.CurrentCoordinates{},
+		rowCopyComplete:          make(chan bool, 1),
+		copyRowsQueue:            make(chan *dumpEntry, cfg.ReplChanBufferSize),
+		applyDataEntryQueue:      make(chan *binlog.BinlogEntry, cfg.ReplChanBufferSize),
+		applyGroupDataEntryQueue: make(chan []*binlog.BinlogEntry, cfg.ReplChanBufferSize),
+		applyBinlogTxQueue:       make(chan *binlog.BinlogTx, cfg.ReplChanBufferSize),
+		applyBinlogGroupTxQueue:  make(chan []*binlog.BinlogTx, cfg.ReplChanBufferSize),
+		waitCh:                   make(chan *models.WaitResult, 1),
+		shutdownCh:               make(chan struct{}),
 	}
 	return a
 }

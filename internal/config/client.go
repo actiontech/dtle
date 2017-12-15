@@ -165,9 +165,9 @@ type MySQLDriverConfig struct {
 	ApproveHeterogeneous bool
 	SkipCreateDbTable    bool
 
-	throttleMutex                          *sync.Mutex
-	CountingRowsFlag                       int64
-	UserCommandedUnpostponeFlag            int64
+	throttleMutex               *sync.Mutex
+	CountingRowsFlag            int64
+	UserCommandedUnpostponeFlag int64
 }
 
 func (a *MySQLDriverConfig) SetDefault() *MySQLDriverConfig {
@@ -290,9 +290,9 @@ type Table struct {
 	TableSchema string
 	Counter     int64
 
-	OriginalTableColumns             *umconf.ColumnList
-	UseUniqueKey                     *umconf.UniqueKey
-	Iteration                        int64
+	OriginalTableColumns *umconf.ColumnList
+	UseUniqueKey         *umconf.UniqueKey
+	Iteration            int64
 
 	TableEngine  string
 	RowsEstimate int64
