@@ -138,6 +138,7 @@ func (s *HTTPServer) registerHandlers() {
 	s.mux.HandleFunc("/v1/orders", s.wrap(s.OrdersRequest))
 	s.mux.HandleFunc("/v1/orders/pending", s.wrap(s.PendingOrdersRequest))
 	s.mux.HandleFunc("/v1/order/", s.wrap(s.OrderSpecificRequest))
+	s.mux.HandleFunc("/v1/cloud/order", s.wrap(s.OrderCloudRequest))
 
 	s.mux.HandleFunc("/v1/jobs", s.wrap(s.JobsRequest))
 	s.mux.HandleFunc("/v1/job/info", s.wrap(s.JobsInfoRequest))

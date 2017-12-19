@@ -19,9 +19,7 @@ type Order struct {
 	// specified hierarchically like LineOfBiz/OrgName/Team/Project
 	ID string
 
-	// Name is the logical name of the Order used to refer to it. This is unique
-	// per region, but not unique globally.
-	Name string
+	SkuId string
 
 	TrafficAgainstLimits uint64
 
