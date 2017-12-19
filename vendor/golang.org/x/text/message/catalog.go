@@ -63,7 +63,7 @@ func (c *Catalog) Languages() []language.Tag {
 	defer c.mutex.Unlock()
 
 	tags := []language.Tag{}
-	for t := range c.index {
+	for t, _ := range c.index {
 		tags = append(tags, t)
 	}
 	internal.SortTags(tags)

@@ -5465,11 +5465,11 @@ type DistributionConfig struct {
 	DefaultCacheBehavior *DefaultCacheBehavior `type:"structure" required:"true"`
 
 	// The object that you want CloudFront to request from your origin (for example,
-	// dashboard.html) when a viewer requests the root URL for your distribution (http://www.example.com)
+	// index.html) when a viewer requests the root URL for your distribution (http://www.example.com)
 	// instead of an object in your distribution (http://www.example.com/product-description.html).
 	// Specifying a default root object avoids exposing the contents of your distribution.
 	//
-	// Specify only the object name, for example, dashboard.html. Do not add a / before
+	// Specify only the object name, for example, index.html. Do not add a / before
 	// the object name.
 	//
 	// If you don't want to specify a default root object when you create a distribution,
@@ -7986,11 +7986,11 @@ type Origin struct {
 	//
 	//    * CNAME: example.com
 	//
-	// When a user enters example.com/dashboard.html in a browser, CloudFront sends
-	// a request to Amazon S3 for myawsbucket/production/dashboard.html.
+	// When a user enters example.com/index.html in a browser, CloudFront sends
+	// a request to Amazon S3 for myawsbucket/production/index.html.
 	//
-	// When a user enters example.com/acme/dashboard.html in a browser, CloudFront sends
-	// a request to Amazon S3 for myawsbucket/production/acme/dashboard.html.
+	// When a user enters example.com/acme/index.html in a browser, CloudFront sends
+	// a request to Amazon S3 for myawsbucket/production/acme/index.html.
 	OriginPath *string `type:"string"`
 
 	// A complex type that contains information about the Amazon S3 origin. If the

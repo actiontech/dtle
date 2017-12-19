@@ -136,19 +136,19 @@ func TestTransmitLimited_Prune(t *testing.T) {
 
 func TestLimitedBroadcastSort(t *testing.T) {
 	bc := limitedBroadcasts([]*limitedBroadcast{
-		{
+		&limitedBroadcast{
 			transmits: 0,
 		},
-		{
+		&limitedBroadcast{
 			transmits: 10,
 		},
-		{
+		&limitedBroadcast{
 			transmits: 3,
 		},
-		{
+		&limitedBroadcast{
 			transmits: 4,
 		},
-		{
+		&limitedBroadcast{
 			transmits: 7,
 		},
 	})

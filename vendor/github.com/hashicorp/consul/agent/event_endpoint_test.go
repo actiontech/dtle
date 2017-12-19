@@ -292,11 +292,11 @@ func TestEventList_EventBufOrder(t *testing.T) {
 	expected := &UserEvent{Name: "foo"}
 
 	for _, e := range []*UserEvent{
-		{Name: "foo"},
-		{Name: "bar"},
-		{Name: "foo"},
+		&UserEvent{Name: "foo"},
+		&UserEvent{Name: "bar"},
+		&UserEvent{Name: "foo"},
 		expected,
-		{Name: "bar"},
+		&UserEvent{Name: "bar"},
 	} {
 		if err := a.UserEvent("dc1", "root", e); err != nil {
 			t.Fatalf("err: %v", err)

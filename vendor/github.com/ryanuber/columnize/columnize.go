@@ -100,7 +100,7 @@ func elementsFromLine(config *Config, line string) []interface{} {
 // runeLen calculates the number of visible "characters" in a string
 func runeLen(s string) int {
 	l := 0
-	for range s {
+	for _ = range s {
 		l++
 	}
 	return l

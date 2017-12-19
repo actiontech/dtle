@@ -5,19 +5,19 @@ import "testing"
 func testValidSchema() *DBSchema {
 	return &DBSchema{
 		Tables: map[string]*TableSchema{
-			"main": {
+			"main": &TableSchema{
 				Name: "main",
 				Indexes: map[string]*IndexSchema{
-					"id": {
+					"id": &IndexSchema{
 						Name:    "id",
 						Unique:  true,
 						Indexer: &StringFieldIndex{Field: "ID"},
 					},
-					"foo": {
+					"foo": &IndexSchema{
 						Name:    "foo",
 						Indexer: &StringFieldIndex{Field: "Foo"},
 					},
-					"qux": {
+					"qux": &IndexSchema{
 						Name:    "qux",
 						Indexer: &StringSliceFieldIndex{Field: "Qux"},
 					},
@@ -35,7 +35,7 @@ func TestDBSchema_Validate(t *testing.T) {
 	}
 
 	s.Tables = map[string]*TableSchema{
-		"foo": {Name: "foo"},
+		"foo": &TableSchema{Name: "foo"},
 	}
 	err = s.Validate()
 	if err == nil {
@@ -57,7 +57,7 @@ func TestTableSchema_Validate(t *testing.T) {
 	}
 
 	s.Indexes = map[string]*IndexSchema{
-		"foo": {Name: "foo"},
+		"foo": &IndexSchema{Name: "foo"},
 	}
 	err = s.Validate()
 	if err == nil {
@@ -67,7 +67,7 @@ func TestTableSchema_Validate(t *testing.T) {
 	valid := &TableSchema{
 		Name: "main",
 		Indexes: map[string]*IndexSchema{
-			"id": {
+			"id": &IndexSchema{
 				Name:    "id",
 				Unique:  true,
 				Indexer: &StringFieldIndex{Field: "ID", Lowercase: true},

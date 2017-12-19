@@ -51,7 +51,7 @@ func indexTableSchema() *memdb.TableSchema {
 	return &memdb.TableSchema{
 		Name: "index",
 		Indexes: map[string]*memdb.IndexSchema{
-			"id": {
+			"id": &memdb.IndexSchema{
 				Name:         "id",
 				AllowMissing: false,
 				Unique:       true,
@@ -70,7 +70,7 @@ func nodesTableSchema() *memdb.TableSchema {
 	return &memdb.TableSchema{
 		Name: "nodes",
 		Indexes: map[string]*memdb.IndexSchema{
-			"id": {
+			"id": &memdb.IndexSchema{
 				Name:         "id",
 				AllowMissing: false,
 				Unique:       true,
@@ -79,7 +79,7 @@ func nodesTableSchema() *memdb.TableSchema {
 					Lowercase: true,
 				},
 			},
-			"uuid": {
+			"uuid": &memdb.IndexSchema{
 				Name:         "uuid",
 				AllowMissing: true,
 				Unique:       true,
@@ -87,7 +87,7 @@ func nodesTableSchema() *memdb.TableSchema {
 					Field: "ID",
 				},
 			},
-			"meta": {
+			"meta": &memdb.IndexSchema{
 				Name:         "meta",
 				AllowMissing: true,
 				Unique:       false,
@@ -106,7 +106,7 @@ func servicesTableSchema() *memdb.TableSchema {
 	return &memdb.TableSchema{
 		Name: "services",
 		Indexes: map[string]*memdb.IndexSchema{
-			"id": {
+			"id": &memdb.IndexSchema{
 				Name:         "id",
 				AllowMissing: false,
 				Unique:       true,
@@ -123,7 +123,7 @@ func servicesTableSchema() *memdb.TableSchema {
 					},
 				},
 			},
-			"node": {
+			"node": &memdb.IndexSchema{
 				Name:         "node",
 				AllowMissing: false,
 				Unique:       false,
@@ -132,7 +132,7 @@ func servicesTableSchema() *memdb.TableSchema {
 					Lowercase: true,
 				},
 			},
-			"service": {
+			"service": &memdb.IndexSchema{
 				Name:         "service",
 				AllowMissing: true,
 				Unique:       false,
@@ -153,7 +153,7 @@ func checksTableSchema() *memdb.TableSchema {
 	return &memdb.TableSchema{
 		Name: "checks",
 		Indexes: map[string]*memdb.IndexSchema{
-			"id": {
+			"id": &memdb.IndexSchema{
 				Name:         "id",
 				AllowMissing: false,
 				Unique:       true,
@@ -170,7 +170,7 @@ func checksTableSchema() *memdb.TableSchema {
 					},
 				},
 			},
-			"status": {
+			"status": &memdb.IndexSchema{
 				Name:         "status",
 				AllowMissing: false,
 				Unique:       false,
@@ -179,7 +179,7 @@ func checksTableSchema() *memdb.TableSchema {
 					Lowercase: false,
 				},
 			},
-			"service": {
+			"service": &memdb.IndexSchema{
 				Name:         "service",
 				AllowMissing: true,
 				Unique:       false,
@@ -188,7 +188,7 @@ func checksTableSchema() *memdb.TableSchema {
 					Lowercase: true,
 				},
 			},
-			"node": {
+			"node": &memdb.IndexSchema{
 				Name:         "node",
 				AllowMissing: true,
 				Unique:       false,
@@ -197,7 +197,7 @@ func checksTableSchema() *memdb.TableSchema {
 					Lowercase: true,
 				},
 			},
-			"node_service_check": {
+			"node_service_check": &memdb.IndexSchema{
 				Name:         "node_service_check",
 				AllowMissing: true,
 				Unique:       false,
@@ -213,7 +213,7 @@ func checksTableSchema() *memdb.TableSchema {
 					},
 				},
 			},
-			"node_service": {
+			"node_service": &memdb.IndexSchema{
 				Name:         "node_service",
 				AllowMissing: true,
 				Unique:       false,
@@ -240,7 +240,7 @@ func kvsTableSchema() *memdb.TableSchema {
 	return &memdb.TableSchema{
 		Name: "kvs",
 		Indexes: map[string]*memdb.IndexSchema{
-			"id": {
+			"id": &memdb.IndexSchema{
 				Name:         "id",
 				AllowMissing: false,
 				Unique:       true,
@@ -249,7 +249,7 @@ func kvsTableSchema() *memdb.TableSchema {
 					Lowercase: false,
 				},
 			},
-			"session": {
+			"session": &memdb.IndexSchema{
 				Name:         "session",
 				AllowMissing: true,
 				Unique:       false,
@@ -268,7 +268,7 @@ func tombstonesTableSchema() *memdb.TableSchema {
 	return &memdb.TableSchema{
 		Name: "tombstones",
 		Indexes: map[string]*memdb.IndexSchema{
-			"id": {
+			"id": &memdb.IndexSchema{
 				Name:         "id",
 				AllowMissing: false,
 				Unique:       true,
@@ -287,7 +287,7 @@ func sessionsTableSchema() *memdb.TableSchema {
 	return &memdb.TableSchema{
 		Name: "sessions",
 		Indexes: map[string]*memdb.IndexSchema{
-			"id": {
+			"id": &memdb.IndexSchema{
 				Name:         "id",
 				AllowMissing: false,
 				Unique:       true,
@@ -295,7 +295,7 @@ func sessionsTableSchema() *memdb.TableSchema {
 					Field: "ID",
 				},
 			},
-			"node": {
+			"node": &memdb.IndexSchema{
 				Name:         "node",
 				AllowMissing: false,
 				Unique:       false,
@@ -314,7 +314,7 @@ func sessionChecksTableSchema() *memdb.TableSchema {
 	return &memdb.TableSchema{
 		Name: "session_checks",
 		Indexes: map[string]*memdb.IndexSchema{
-			"id": {
+			"id": &memdb.IndexSchema{
 				Name:         "id",
 				AllowMissing: false,
 				Unique:       true,
@@ -334,7 +334,7 @@ func sessionChecksTableSchema() *memdb.TableSchema {
 					},
 				},
 			},
-			"node_check": {
+			"node_check": &memdb.IndexSchema{
 				Name:         "node_check",
 				AllowMissing: false,
 				Unique:       false,
@@ -351,7 +351,7 @@ func sessionChecksTableSchema() *memdb.TableSchema {
 					},
 				},
 			},
-			"session": {
+			"session": &memdb.IndexSchema{
 				Name:         "session",
 				AllowMissing: false,
 				Unique:       false,
@@ -369,7 +369,7 @@ func aclsTableSchema() *memdb.TableSchema {
 	return &memdb.TableSchema{
 		Name: "acls",
 		Indexes: map[string]*memdb.IndexSchema{
-			"id": {
+			"id": &memdb.IndexSchema{
 				Name:         "id",
 				AllowMissing: false,
 				Unique:       true,
@@ -388,7 +388,7 @@ func coordinatesTableSchema() *memdb.TableSchema {
 	return &memdb.TableSchema{
 		Name: "coordinates",
 		Indexes: map[string]*memdb.IndexSchema{
-			"id": {
+			"id": &memdb.IndexSchema{
 				Name:         "id",
 				AllowMissing: false,
 				Unique:       true,
@@ -407,7 +407,7 @@ func preparedQueriesTableSchema() *memdb.TableSchema {
 	return &memdb.TableSchema{
 		Name: "prepared-queries",
 		Indexes: map[string]*memdb.IndexSchema{
-			"id": {
+			"id": &memdb.IndexSchema{
 				Name:         "id",
 				AllowMissing: false,
 				Unique:       true,
@@ -415,7 +415,7 @@ func preparedQueriesTableSchema() *memdb.TableSchema {
 					Field: "ID",
 				},
 			},
-			"name": {
+			"name": &memdb.IndexSchema{
 				Name:         "name",
 				AllowMissing: true,
 				Unique:       true,
@@ -424,13 +424,13 @@ func preparedQueriesTableSchema() *memdb.TableSchema {
 					Lowercase: true,
 				},
 			},
-			"template": {
+			"template": &memdb.IndexSchema{
 				Name:         "template",
 				AllowMissing: true,
 				Unique:       true,
 				Indexer:      &PreparedQueryIndex{},
 			},
-			"session": {
+			"session": &memdb.IndexSchema{
 				Name:         "session",
 				AllowMissing: true,
 				Unique:       false,
@@ -448,7 +448,7 @@ func autopilotConfigTableSchema() *memdb.TableSchema {
 	return &memdb.TableSchema{
 		Name: "autopilot-config",
 		Indexes: map[string]*memdb.IndexSchema{
-			"id": {
+			"id": &memdb.IndexSchema{
 				Name:         "id",
 				AllowMissing: true,
 				Unique:       true,

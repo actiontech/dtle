@@ -1,10 +1,23 @@
-hash: c15d74eca808bedc3defe9d80b4c537185d201025417c2d443249e62b918866b
-updated: 2017-06-29T16:06:21.1973604+08:00
+hash: 9d5aeeee0098af23cfb9655f46150bd860f345d788d5bed2f677af1b0daff010
+updated: 2017-12-19T11:22:34.315309188+08:00
 imports:
+- name: github.com/araddon/dateparse
+  version: 626fadf64d2a5b300fe00da84d09e25e7f19424e
+- name: github.com/araddon/gou
+  version: 33600153ea8fd3ed2d60e2e27e34d809cd0a1533
+- name: github.com/araddon/qlbridge
+  version: 854f1ee0a3e5b7f5c0d70c793595ce966361a828
+  subpackages:
+  - datasource
+  - expr
+  - lex
+  - plan
+  - rel
+  - schema
+  - value
+  - vm
 - name: github.com/armon/go-metrics
   version: f036747b9d0e8590f175a5d654a2194a7d9df4b5
-  subpackages:
-  - prometheus
 - name: github.com/armon/go-radix
   version: 4239b77079c7b5d1243b7b4736304ce8ddb6f0f2
 - name: github.com/aws/aws-sdk-go
@@ -54,6 +67,8 @@ imports:
   subpackages:
   - store
   - store/consul
+- name: github.com/elazarl/go-bindata-assetfs
+  version: 30f82fa23fd844bd5bb1e5f216db87fd77b5eb43
 - name: github.com/go-ini/ini
   version: 3d73f4b845efdf9989fffd4b4e562727744a34ba
 - name: github.com/go-ole/go-ole
@@ -71,10 +86,8 @@ imports:
   - protoc-gen-gogo/descriptor
 - name: github.com/golang/protobuf
   version: df1d3ca07d2d07bba352d5b73c4313b4e2a6203e
-  repo: https://github.com/golang/protobuf
   subpackages:
   - proto
-  - ptypes/any
 - name: github.com/golang/snappy
   version: 553a641470496b2327abcac10b36396bd98e45c9
 - name: github.com/hashicorp/consul
@@ -146,12 +159,18 @@ imports:
   version: bd40a432e4c76585ef6b72d3fd96fb9b6dc7b68d
 - name: github.com/juju/errors
   version: 6f54ff6318409d31ff16261533ce2c8381a4fd5d
+- name: github.com/lytics/datemath
+  version: 2c793e7cfff97be9feb3bfe3c249cb5a83842ebb
+- name: github.com/lytics/logrus
+  version: 4389a17ed024d8d196b5541116151f378705b0cc
 - name: github.com/mattn/go-isatty
   version: fc9e8d8ef48496124e79ae0df75490096eccf6fe
 - name: github.com/matttproud/golang_protobuf_extensions
   version: c12348ce28de40eed0136aa2b644d0ee0650e56c
   subpackages:
   - pbutil
+- name: github.com/mb0/glob
+  version: 1eb79d2de6c448664e7272f8b9fe1938239e3aaa
 - name: github.com/miekg/dns
   version: e78414ef75607394ad7d917824f07f381df2eafa
 - name: github.com/mitchellh/cli
@@ -239,6 +258,7 @@ imports:
   version: c5b7fccd204277076155f10851dad72b76a49317
   subpackages:
   - prometheus
+  - prometheus/push
 - name: github.com/prometheus/client_model
   version: fa8ad6fec33561be4280a8f0514318c79d7f6cb6
   subpackages:
@@ -274,22 +294,6 @@ imports:
   - hack
   - ioutil2
   - sync2
-- name: github.com/cznic/golex
-  version: d7f6f2b7a35fa282b3d64161aefe00efb3d56d14
-  subpackages:
-  - lex
-- name: github.com/cznic/mathutil
-  version: 6baf61e0317058e3207936f50e310bd500fbbdb0
-- name: github.com/cznic/parser
-  version: 31edd927e5b19d1c4a260c41a397e7f81d6694d9
-  subpackages:
-  - yacc
-- name: github.com/cznic/sortutil
-  version: 4c7342852e65c2088c981288f2c5610d10b9f7f4
-- name: github.com/cznic/strutil
-  version: 43a89592ed56c227c7fdb1fcaf7d1d08be02ec54
-- name: github.com/cznic/y
-  version: 938f8e85fcdf318917f03ea45c1f69f16037cd0d
 - name: github.com/siddontang/go-mysql
   version: 5492eeb1c28c0a3f3a8703412a43e90f4cb04660
   subpackages:

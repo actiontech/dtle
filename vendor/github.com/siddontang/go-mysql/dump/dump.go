@@ -2,12 +2,12 @@ package dump
 
 import (
 	"fmt"
-	"github.com/juju/errors"
-	. "github.com/siddontang/go-mysql/mysql"
 	"io"
 	"os"
 	"os/exec"
 	"strings"
+	. "github.com/siddontang/go-mysql/mysql"
+	"github.com/juju/errors"
 )
 
 // Unlick mysqldump, Dumper is designed for parsing and syning data easily.

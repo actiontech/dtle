@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"strings"
 
 	"github.com/juju/errors"
 )
@@ -173,13 +172,7 @@ func (p *BinlogParser) parseEvent(h *EventHeader, data []byte) (Event, error) {
 			case ROWS_QUERY_EVENT:
 				e = &RowsQueryEvent{}
 			case GTID_EVENT:
-				// Match the version string (from SELECT VERSION()).
-				serverVerion := string(p.format.ServerVersion)
-				if strings.HasPrefix(serverVerion, "5.7") {
-					e = &GTIDEventV57{}
-				} else {
-					e = &GTIDEvent{}
-				}
+				e = &GTIDEvent{}
 			case BEGIN_LOAD_QUERY_EVENT:
 				e = &BeginLoadQueryEvent{}
 			case EXECUTE_LOAD_QUERY_EVENT:

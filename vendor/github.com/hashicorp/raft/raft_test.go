@@ -438,7 +438,7 @@ OUTER:
 				t.Disconnect(a)
 			}
 		} else {
-			for a := range near {
+			for a, _ := range near {
 				t.Disconnect(a)
 			}
 		}
@@ -750,7 +750,7 @@ func TestRaft_RecoverCluster_NoState(t *testing.T) {
 	r := c.rafts[0]
 	configuration := Configuration{
 		Servers: []Server{
-			{
+			Server{
 				ID:      r.localID,
 				Address: r.localAddr,
 			},

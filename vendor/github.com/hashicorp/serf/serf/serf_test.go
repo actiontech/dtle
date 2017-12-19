@@ -863,9 +863,9 @@ func TestSerf_ReapHandler(t *testing.T) {
 
 	m := Member{}
 	s.leftMembers = []*memberState{
-		{m, 0, time.Now()},
-		{m, 0, time.Now().Add(-5 * time.Second)},
-		{m, 0, time.Now().Add(-10 * time.Second)},
+		&memberState{m, 0, time.Now()},
+		&memberState{m, 0, time.Now().Add(-5 * time.Second)},
+		&memberState{m, 0, time.Now().Add(-10 * time.Second)},
 	}
 
 	upsertIntent(s.recentIntents, "alice", messageJoinType, 1, time.Now)
@@ -910,9 +910,9 @@ func TestSerf_Reap(t *testing.T) {
 
 	m := Member{}
 	old := []*memberState{
-		{m, 0, time.Now()},
-		{m, 0, time.Now().Add(-5 * time.Second)},
-		{m, 0, time.Now().Add(-10 * time.Second)},
+		&memberState{m, 0, time.Now()},
+		&memberState{m, 0, time.Now().Add(-5 * time.Second)},
+		&memberState{m, 0, time.Now().Add(-10 * time.Second)},
 	}
 
 	old = s.reap(old, time.Now(), time.Second*6)
@@ -923,9 +923,9 @@ func TestSerf_Reap(t *testing.T) {
 
 func TestRemoveOldMember(t *testing.T) {
 	old := []*memberState{
-		{Member: Member{Name: "foo"}},
-		{Member: Member{Name: "bar"}},
-		{Member: Member{Name: "baz"}},
+		&memberState{Member: Member{Name: "foo"}},
+		&memberState{Member: Member{Name: "bar"}},
+		&memberState{Member: Member{Name: "baz"}},
 	}
 
 	old = removeOldMember(old, "bar")

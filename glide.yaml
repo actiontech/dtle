@@ -71,6 +71,11 @@ import:
   - encoding
   - encoding/charmap
   - transform
+- package: github.com/araddon/qlbridge
+  subpackages:
+  - vm
+  - expr
+  - datasource
 testImport:
 - package: github.com/outbrain/golib
   subpackages:

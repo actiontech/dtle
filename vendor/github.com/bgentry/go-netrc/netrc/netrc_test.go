@@ -15,10 +15,10 @@ import (
 )
 
 var expectedMachines = []*Machine{
-	{Name: "mail.google.com", Login: "joe@gmail.com", Password: "somethingSecret", Account: "justagmail"},
-	{Name: "ray", Login: "demo", Password: "mypassword", Account: ""},
-	{Name: "weirdlogin", Login: "uname", Password: "pass#pass", Account: ""},
-	{Name: "", Login: "anonymous", Password: "joe@example.com", Account: ""},
+	&Machine{Name: "mail.google.com", Login: "joe@gmail.com", Password: "somethingSecret", Account: "justagmail"},
+	&Machine{Name: "ray", Login: "demo", Password: "mypassword", Account: ""},
+	&Machine{Name: "weirdlogin", Login: "uname", Password: "pass#pass", Account: ""},
+	&Machine{Name: "", Login: "anonymous", Password: "joe@example.com", Account: ""},
 }
 var expectedMacros = Macros{
 	"allput":  "put src/*",
