@@ -1,12 +1,12 @@
 package canal
 
 import (
+	"github.com/BurntSushi/toml"
+	"github.com/juju/errors"
+	"github.com/siddontang/go-mysql/mysql"
 	"io/ioutil"
 	"math/rand"
 	"time"
-	"github.com/siddontang/go-mysql/mysql"
-	"github.com/BurntSushi/toml"
-	"github.com/juju/errors"
 )
 
 type DumpConfig struct {
@@ -19,7 +19,7 @@ type DumpConfig struct {
 	TableDB string   `toml:"table_db"`
 
 	Databases []string `toml:"dbs"`
- 
+
 	// Ignore table format is db.table
 	IgnoreTables []string `toml:"ignore_tables"`
 

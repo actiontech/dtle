@@ -1,0 +1,12 @@
+ignore:
+  # - "**/*.pb.go" # ignore protobuf files
+  - "expr/node.pb.go"
+  - "plan/plan.pb.go"
+  - "rel/sql.pb.go"
+  - "schema/schema.pb.go"
+  - "examples/**/*"
+  - "datasource/mockcsvtestdata/*"
+  - "dialects/**/*"
+  - "generators/**/*"
+  - "generators/*"
+  - "testutil/*"
