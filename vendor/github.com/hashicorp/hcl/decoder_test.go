@@ -39,9 +39,9 @@ func TestDecode_interface(t *testing.T) {
 			false,
 			map[string]interface{}{
 				"resource": []map[string]interface{}{
-					{
+					map[string]interface{}{
 						"foo": []map[string]interface{}{
-							{},
+							map[string]interface{}{},
 						},
 					},
 				},
@@ -125,9 +125,9 @@ func TestDecode_interface(t *testing.T) {
 			false,
 			map[string]interface{}{
 				"module": []map[string]interface{}{
-					{
+					map[string]interface{}{
 						"app": []map[string]interface{}{
-							{"foo": ""},
+							map[string]interface{}{"foo": ""},
 						},
 					},
 				},
@@ -163,7 +163,7 @@ func TestDecode_interface(t *testing.T) {
 			map[string]interface{}{
 				"name": "terraform-test-app",
 				"config_vars": []map[string]interface{}{
-					{
+					map[string]interface{}{
 						"FOO": "bar",
 					},
 				},
@@ -174,14 +174,14 @@ func TestDecode_interface(t *testing.T) {
 			false,
 			map[string]interface{}{
 				"foo": []map[string]interface{}{
-					{
+					map[string]interface{}{
 						"baz": []map[string]interface{}{
-							{"key": 7},
+							map[string]interface{}{"key": 7},
 						},
 					},
-					{
+					map[string]interface{}{
 						"bar": []map[string]interface{}{
-							{"key": 12},
+							map[string]interface{}{"key": 12},
 						},
 					},
 				},
@@ -192,14 +192,14 @@ func TestDecode_interface(t *testing.T) {
 			false,
 			map[string]interface{}{
 				"foo": []map[string]interface{}{
-					{
+					map[string]interface{}{
 						"baz": []map[string]interface{}{
-							{"key": 7},
+							map[string]interface{}{"key": 7},
 						},
 					},
-					{
+					map[string]interface{}{
 						"bar": []map[string]interface{}{
-							{"key": 12},
+							map[string]interface{}{"key": 12},
 						},
 					},
 				},
@@ -234,17 +234,17 @@ func TestDecode_interface(t *testing.T) {
 						"foo": []interface{}{
 							map[string]interface{}{
 								"bar": []map[string]interface{}{
-									{}}}}}}},
+									map[string]interface{}{}}}}}}},
 		},
 		{
 			"structure_list.hcl",
 			false,
 			map[string]interface{}{
 				"foo": []map[string]interface{}{
-					{
+					map[string]interface{}{
 						"key": 7,
 					},
-					{
+					map[string]interface{}{
 						"key": 12,
 					},
 				},
@@ -255,10 +255,10 @@ func TestDecode_interface(t *testing.T) {
 			false,
 			map[string]interface{}{
 				"foo": []map[string]interface{}{
-					{
+					map[string]interface{}{
 						"key": 7,
 					},
-					{
+					map[string]interface{}{
 						"key": 12,
 					},
 				},
@@ -269,15 +269,15 @@ func TestDecode_interface(t *testing.T) {
 			false,
 			map[string]interface{}{
 				"bar": []map[string]interface{}{
-					{
+					map[string]interface{}{
 						"foo": []map[string]interface{}{
-							{
+							map[string]interface{}{
 								"name": "terraform_example",
 								"ingress": []map[string]interface{}{
-									{
+									map[string]interface{}{
 										"from_port": 22,
 									},
-									{
+									map[string]interface{}{
 										"from_port": 80,
 									},
 								},
@@ -327,16 +327,16 @@ func TestDecode_interface(t *testing.T) {
 			false,
 			map[string]interface{}{
 				"resource": []map[string]interface{}{
-					{
+					map[string]interface{}{
 						"aws_instance": []map[string]interface{}{
-							{
+							map[string]interface{}{
 								"db": []map[string]interface{}{
-									{
+									map[string]interface{}{
 										"vpc": "foo",
 										"provisioner": []map[string]interface{}{
-											{
+											map[string]interface{}{
 												"file": []map[string]interface{}{
-													{
+													map[string]interface{}{
 														"source":      "foo",
 														"destination": "bar",
 													},
@@ -359,7 +359,7 @@ func TestDecode_interface(t *testing.T) {
 			false,
 			map[string]interface{}{
 				"variable": []map[string]interface{}{
-					{
+					map[string]interface{}{
 						"whatever": "abc123",
 					},
 				},
@@ -385,7 +385,7 @@ func TestDecode_interface(t *testing.T) {
 			false,
 			map[string]interface{}{
 				"output": []map[string]interface{}{
-					{
+					map[string]interface{}{
 						"one":  `${replace(var.sub_domain, ".", "\\.")}`,
 						"two":  `${replace(var.sub_domain, ".", "\\\\.")}`,
 						"many": `${replace(var.sub_domain, ".", "\\\\\\\\.")}`,
@@ -405,10 +405,10 @@ func TestDecode_interface(t *testing.T) {
 			false,
 			map[string]interface{}{
 				"path": []map[string]interface{}{
-					{
+					map[string]interface{}{
 						"policy": "write",
 						"permissions": []map[string]interface{}{
-							{
+							map[string]interface{}{
 								"bool": []interface{}{false},
 							},
 						},
@@ -555,7 +555,7 @@ func TestDecode_flatMap(t *testing.T) {
 	}
 
 	expected := map[string]map[string]string{
-		"foo": {
+		"foo": map[string]string{
 			"foo": "bar",
 			"key": "7",
 		},
@@ -632,19 +632,19 @@ func TestDecode_structureArray(t *testing.T) {
 
 	expected := Policy{
 		Keys: []KeyPolicy{
-			{
+			KeyPolicy{
 				Prefix: "",
 				Policy: "read",
 			},
-			{
+			KeyPolicy{
 				Prefix: "foo/",
 				Policy: "write",
 			},
-			{
+			KeyPolicy{
 				Prefix: "foo/bar/",
 				Policy: "read",
 			},
-			{
+			KeyPolicy{
 				Prefix: "foo/bar/baz",
 				Policy: "deny",
 			},
@@ -682,11 +682,11 @@ func TestDecode_sliceExpand(t *testing.T) {
 
 	expected := testStruct{
 		Services: []testInner{
-			{
+			testInner{
 				Name: "my-service-0",
 				Key:  "value",
 			},
-			{
+			testInner{
 				Name: "my-service-1",
 				Key:  "value",
 			},
@@ -728,15 +728,15 @@ func TestDecode_structureMap(t *testing.T) {
 
 	expected := rawConfig{
 		Variable: map[string]hclVariable{
-			"foo": {
+			"foo": hclVariable{
 				Default:     "bar",
 				Description: "bar",
 				Fields:      []string{"Default", "Description"},
 			},
 
-			"amis": {
+			"amis": hclVariable{
 				Default: []map[string]interface{}{
-					{
+					map[string]interface{}{
 						"east": "foo",
 					},
 				},
@@ -987,7 +987,7 @@ func TestDecode_flattenedJSON(t *testing.T) {
 			`,
 			Out: &[]*V{},
 			Expected: &[]*V{
-				{
+				&V{
 					Name:    "var_name",
 					Default: map[string]string{"key1": "a", "key2": "b"},
 				},
@@ -1008,7 +1008,7 @@ func TestDecode_flattenedJSON(t *testing.T) {
 			`,
 			Out: &[]*V{},
 			Expected: &[]*V{
-				{
+				&V{
 					Name:        "var_name",
 					Description: "Described",
 					Default:     map[string]string{"key1": "a", "key2": "b"},
@@ -1039,11 +1039,11 @@ func TestDecode_flattenedJSON(t *testing.T) {
 			Out: &Vars{},
 			Expected: &Vars{
 				Variable: []*V{
-					{
+					&V{
 						Name:    "var_1",
 						Default: map[string]string{"key1": "a", "key2": "b"},
 					},
-					{
+					&V{
 						Name:        "var_2",
 						Description: "Described",
 						Default:     map[string]string{"key1": "a", "key2": "b"},

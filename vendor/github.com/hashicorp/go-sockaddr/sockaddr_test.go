@@ -412,9 +412,9 @@ func TestSockAddrMultiMarshaler(t *testing.T) {
 	myD := &d{
 		Addr: &sockaddr.SockAddrMarshaler{SockAddr: sa},
 		Addrs: []*sockaddr.SockAddrMarshaler{
-			{SockAddr: sa},
-			{SockAddr: sa},
-			{SockAddr: sa},
+			&sockaddr.SockAddrMarshaler{SockAddr: sa},
+			&sockaddr.SockAddrMarshaler{SockAddr: sa},
+			&sockaddr.SockAddrMarshaler{SockAddr: sa},
 		},
 	}
 	marshaled, err := json.Marshal(myD)

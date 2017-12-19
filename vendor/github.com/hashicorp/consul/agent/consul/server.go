@@ -587,7 +587,7 @@ func (s *Server) setupRaft() error {
 			// we add support for node IDs.
 			configuration := raft.Configuration{
 				Servers: []raft.Server{
-					{
+					raft.Server{
 						ID:      s.config.RaftConfig.LocalID,
 						Address: trans.LocalAddr(),
 					},
@@ -991,7 +991,7 @@ func (s *Server) Stats() map[string]map[string]string {
 	}
 	numKnownDCs := len(s.router.GetDatacenters())
 	stats := map[string]map[string]string{
-		"consul": {
+		"consul": map[string]string{
 			"server":            "true",
 			"leader":            fmt.Sprintf("%v", s.IsLeader()),
 			"leader_addr":       string(s.raft.Leader()),

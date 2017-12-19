@@ -11,8 +11,8 @@ package codec
 
 import (
 	"errors"
-	"flag"
 	"reflect"
+	"flag"
 	"testing"
 )
 

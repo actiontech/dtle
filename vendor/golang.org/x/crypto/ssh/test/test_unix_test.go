@@ -251,7 +251,7 @@ func newServer(t *testing.T) *server {
 	}
 
 	var authkeys bytes.Buffer
-	for k := range testdata.PEMBytes {
+	for k, _ := range testdata.PEMBytes {
 		authkeys.Write(ssh.MarshalAuthorizedKey(testPublicKeys[k]))
 	}
 	writeFile(filepath.Join(dir, "authorized_keys"), authkeys.Bytes())

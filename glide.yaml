@@ -71,6 +71,19 @@ import:
   - encoding
   - encoding/charmap
   - transform
+- package: github.com/araddon/qlbridge
+  subpackages:
+  - vm
+  - expr
+  - datasource
+- package: github.com/cznic/mathutil
+- package: github.com/cznic/parser
+  subpackages:
+  - yacc
+- package: github.com/cznic/sortutil
+- package: github.com/cznic/strutil
+- package: github.com/cznic/y
+- package: github.com/cznic/golex
 testImport:
 - package: github.com/outbrain/golib
   subpackages:

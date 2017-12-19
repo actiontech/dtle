@@ -23,27 +23,27 @@ func TestMemberEventCoalesce_Basic(t *testing.T) {
 	send := []Event{
 		MemberEvent{
 			Type:    EventMemberJoin,
-			Members: []Member{{Name: "foo"}},
+			Members: []Member{Member{Name: "foo"}},
 		},
 		MemberEvent{
 			Type:    EventMemberLeave,
-			Members: []Member{{Name: "foo"}},
+			Members: []Member{Member{Name: "foo"}},
 		},
 		MemberEvent{
 			Type:    EventMemberLeave,
-			Members: []Member{{Name: "bar"}},
+			Members: []Member{Member{Name: "bar"}},
 		},
 		MemberEvent{
 			Type:    EventMemberUpdate,
-			Members: []Member{{Name: "zip", Tags: map[string]string{"role": "foo"}}},
+			Members: []Member{Member{Name: "zip", Tags: map[string]string{"role": "foo"}}},
 		},
 		MemberEvent{
 			Type:    EventMemberUpdate,
-			Members: []Member{{Name: "zip", Tags: map[string]string{"role": "bar"}}},
+			Members: []Member{Member{Name: "zip", Tags: map[string]string{"role": "bar"}}},
 		},
 		MemberEvent{
 			Type:    EventMemberReap,
-			Members: []Member{{Name: "dead"}},
+			Members: []Member{Member{Name: "dead"}},
 		},
 	}
 
@@ -131,7 +131,7 @@ func TestMemberEventCoalesce_TagUpdate(t *testing.T) {
 
 	inCh <- MemberEvent{
 		Type:    EventMemberUpdate,
-		Members: []Member{{Name: "foo", Tags: map[string]string{"role": "foo"}}},
+		Members: []Member{Member{Name: "foo", Tags: map[string]string{"role": "foo"}}},
 	}
 
 	time.Sleep(10 * time.Millisecond)
@@ -149,7 +149,7 @@ func TestMemberEventCoalesce_TagUpdate(t *testing.T) {
 	// last event was an update
 	inCh <- MemberEvent{
 		Type:    EventMemberUpdate,
-		Members: []Member{{Name: "foo", Tags: map[string]string{"role": "bar"}}},
+		Members: []Member{Member{Name: "foo", Tags: map[string]string{"role": "bar"}}},
 	}
 	time.Sleep(10 * time.Millisecond)
 

@@ -25,7 +25,7 @@ func TestStaticTable(t *testing.T) {
           | 2     | :method                     | GET           |
           | 3     | :method                     | POST          |
           | 4     | :path                       | /             |
-          | 5     | :path                       | /dashboard.html   |
+          | 5     | :path                       | /index.html   |
           | 6     | :scheme                     | http          |
           | 7     | :scheme                     | https         |
           | 8     | :status                     | 200           |
@@ -303,7 +303,7 @@ func TestDecodeC3_NoHuffman(t *testing.T) {
 			[]HeaderField{
 				pair(":method", "GET"),
 				pair(":scheme", "https"),
-				pair(":path", "/dashboard.html"),
+				pair(":path", "/index.html"),
 				pair(":authority", "www.example.com"),
 				pair("custom-key", "custom-value"),
 			},
@@ -351,7 +351,7 @@ func TestDecodeC4_Huffman(t *testing.T) {
 			[]HeaderField{
 				pair(":method", "GET"),
 				pair(":scheme", "https"),
-				pair(":path", "/dashboard.html"),
+				pair(":path", "/index.html"),
 				pair(":authority", "www.example.com"),
 				pair("custom-key", "custom-value"),
 			},

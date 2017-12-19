@@ -11,6 +11,10 @@ import (
 	"udup/internal"
 	umconf "udup/internal/config/mysql"
 	"udup/internal/models"
+
+	qlvm "github.com/araddon/qlbridge/vm"
+	qlexpr "github.com/araddon/qlbridge/expr"
+	qldatasource "github.com/araddon/qlbridge/datasource"
 )
 
 // This is the default port that we use for Serf communication
@@ -296,6 +300,13 @@ type Table struct {
 
 	TableEngine  string
 	RowsEstimate int64
+
+	Where    string // TODO load from job description
+}
+
+type TableContext struct {
+	Table *Table
+	WhereCtx *WhereContext
 }
 
 func NewTable(schemaName string, tableName string) *Table {
@@ -303,6 +314,51 @@ func NewTable(schemaName string, tableName string) *Table {
 		TableSchema: schemaName,
 		TableName:   tableName,
 		Iteration:   0,
+	}
+}
+
+func (t *TableContext)WhereTrue(values *umconf.ColumnValues) bool {
+	var m = make(map[string]interface{})
+	for field, idx := range t.WhereCtx.FieldsMap {
+		m[field] = *(values.ValuesPointers[idx])
+	}
+	ctx := qldatasource.NewContextSimpleNative(m)
+	val, _ :=  qlvm.Eval(ctx, t.WhereCtx.Ast) // TODO what is second bool ret used for?
+	r, _ := val.Value().(bool) // TODO ckeck ok
+
+	return r
+}
+
+type WhereContext struct {
+	Where string
+	Ast   qlexpr.Node
+	FieldsMap map[string]int
+}
+
+func NewWhereCtx(where string, table *Table) (*WhereContext, error) {
+	ast, err := qlexpr.ParseExpression(where)
+	if err != nil {
+		return nil, err
+	} else {
+		fields := qlexpr.FindAllIdentityField(ast)
+		fieldsMap := make(map[string]int)
+		for _, field := range fields {
+			if _, ok := fieldsMap[field]; !ok {
+				if _, ok := table.OriginalTableColumns.Ordinals[field]; !ok {
+					return nil, fmt.Errorf("bad 'where' for table %v.%v: field %v does not exist",
+						table.TableSchema, table.TableName, field)
+				} else {
+					fieldsMap[field] = table.OriginalTableColumns.Ordinals[field]
+				}
+			} else {
+				// already mapped
+			}
+		}
+		return &WhereContext{
+			Where: where,
+			Ast: ast,
+			FieldsMap: fieldsMap,
+		}, nil
 	}
 }
 

@@ -1581,25 +1581,25 @@ func TestMemberList_MergeState(t *testing.T) {
 	m.suspectNode(&s)
 
 	remote := []pushNodeState{
-		{
+		pushNodeState{
 			Name:        "test1",
 			Addr:        []byte{127, 0, 0, 1},
 			Incarnation: 2,
 			State:       stateAlive,
 		},
-		{
+		pushNodeState{
 			Name:        "test2",
 			Addr:        []byte{127, 0, 0, 2},
 			Incarnation: 1,
 			State:       stateSuspect,
 		},
-		{
+		pushNodeState{
 			Name:        "test3",
 			Addr:        []byte{127, 0, 0, 3},
 			Incarnation: 1,
 			State:       stateDead,
 		},
-		{
+		pushNodeState{
 			Name:        "test4",
 			Addr:        []byte{127, 0, 0, 4},
 			Incarnation: 2,

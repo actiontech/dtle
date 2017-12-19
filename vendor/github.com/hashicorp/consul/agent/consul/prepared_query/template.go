@@ -139,15 +139,15 @@ func (ct *CompiledTemplate) Render(name string) (*structs.PreparedQuery, error) 
 	config := &hil.EvalConfig{
 		GlobalScope: &ast.BasicScope{
 			VarMap: map[string]ast.Variable{
-				"name.full": {
+				"name.full": ast.Variable{
 					Type:  ast.TypeString,
 					Value: name,
 				},
-				"name.prefix": {
+				"name.prefix": ast.Variable{
 					Type:  ast.TypeString,
 					Value: query.Name,
 				},
-				"name.suffix": {
+				"name.suffix": ast.Variable{
 					Type:  ast.TypeString,
 					Value: strings.TrimPrefix(name, query.Name),
 				},

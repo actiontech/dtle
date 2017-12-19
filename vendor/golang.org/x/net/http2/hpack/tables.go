@@ -14,7 +14,7 @@ var staticTable = [...]HeaderField{
 	pair(":method", "GET"),
 	pair(":method", "POST"),
 	pair(":path", "/"),
-	pair(":path", "/dashboard.html"),
+	pair(":path", "/index.html"),
 	pair(":scheme", "http"),
 	pair(":scheme", "https"),
 	pair(":status", "200"),

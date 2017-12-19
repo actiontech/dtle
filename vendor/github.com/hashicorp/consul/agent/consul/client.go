@@ -401,7 +401,7 @@ func (c *Client) Stats() map[string]map[string]string {
 		return strconv.FormatUint(v, 10)
 	}
 	stats := map[string]map[string]string{
-		"consul": {
+		"consul": map[string]string{
 			"server":        "false",
 			"known_servers": toString(uint64(numServers)),
 		},

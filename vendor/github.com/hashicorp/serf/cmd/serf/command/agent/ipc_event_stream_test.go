@@ -47,7 +47,7 @@ func TestIPCEventStream(t *testing.T) {
 	es.HandleEvent(serf.MemberEvent{
 		Type: serf.EventMemberJoin,
 		Members: []serf.Member{
-			{
+			serf.Member{
 				Name:        "TestNode",
 				Addr:        net.IP([]byte{127, 0, 0, 1}),
 				Port:        12345,

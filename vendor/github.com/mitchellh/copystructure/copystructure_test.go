@@ -983,7 +983,7 @@ func TestCopy_unexportedFieldFirst(t *testing.T) {
 
 	v := &T{
 		M: map[string]*P{
-			"a": {Old: "", New: "2"},
+			"a": &P{Old: "", New: "2"},
 		},
 	}
 
