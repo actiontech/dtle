@@ -199,7 +199,7 @@ func (s *HTTPServer) orderCloudRegister(resp http.ResponseWriter, req *http.Requ
 	}
 	s.parseRegion(req, args.Region)
 
-	args.ID = queryValues.Get("orderId")
+	args.ID = queryValues.Get("orderBizId")
 	args.SkuId = queryValues.Get("skuId")
 
 	sOrder := ApiOrderToStructOrder(args)
@@ -212,12 +212,23 @@ func (s *HTTPServer) orderCloudRegister(resp http.ResponseWriter, req *http.Requ
 			Region: *args.Region,
 		},
 	}
-	var out models.OrderResponse
+	var rsp models.OrderResponse
+	var out CloudOrderResponse
 
-	if err := s.agent.RPC("Order.Register", &regReq, &out); err != nil {
+	if err := s.agent.RPC("Order.Register", &regReq, &rsp); err != nil {
 		return nil, err
 	}
-	setIndex(resp, out.Index)
+
+	if rsp.Success {
+		out = CloudOrderResponse{
+			InstanceId: args.ID,
+			AppInfo: AppInfo{
+				AuthUrl:  s.agent.client.Node().HTTPAddr,
+				AuthCode: args.ID,
+			},
+		}
+	}
+
 	return out, nil
 }
 
@@ -282,6 +293,20 @@ func ApiOrderToStructOrder(order *api.Order) *models.Order {
 		OrderModifyIndex:      *order.OrderModifyIndex,
 	}
 	return o
+}
+
+type CloudOrderResponse struct {
+	InstanceId string
+	AppInfo    AppInfo
+}
+
+type AppInfo struct {
+	FrontEndUrl string
+	AdminUrl    string
+	Username    string
+	Password    string
+	AuthUrl     string
+	AuthCode    string
 }
 
 //将map以字母a到z的顺序排序,按照“参数=参数值”的模式用“&”字符拼接成字符串
