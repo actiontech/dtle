@@ -75,8 +75,8 @@ func (j *Orders) Deregister(jobID string, q *WriteOptions) (string, *WriteMeta, 
 
 type Order struct {
 	Region                *string
-	ID                    *string
-	Name                  *string
+	ID                    string
+	SkuId                 string
 	TrafficAgainstLimits  *uint64
 	TotalTransferredBytes *uint64
 	Status                *string
@@ -87,11 +87,8 @@ type Order struct {
 }
 
 func (o *Order) Canonicalize() {
-	if o.ID == nil {
-		o.ID = internal.StringToPtr(models.GenerateUUID())
-	}
-	if o.Name == nil {
-		o.Name = internal.StringToPtr(*o.ID)
+	if o.ID == "" {
+		o.ID = *internal.StringToPtr(models.GenerateUUID())
 	}
 	if o.Region == nil {
 		o.Region = internal.StringToPtr("global")

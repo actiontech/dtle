@@ -58,7 +58,7 @@ func TestSnapshotter(t *testing.T) {
 	meJoin := MemberEvent{
 		Type: EventMemberJoin,
 		Members: []Member{
-			Member{
+			{
 				Name: "foo",
 				Addr: []byte{127, 0, 0, 1},
 				Port: 5000,
@@ -68,7 +68,7 @@ func TestSnapshotter(t *testing.T) {
 	meFail := MemberEvent{
 		Type: EventMemberFailed,
 		Members: []Member{
-			Member{
+			{
 				Name: "foo",
 				Addr: []byte{127, 0, 0, 1},
 				Port: 5000,
@@ -312,7 +312,7 @@ func TestSnapshotter_leave(t *testing.T) {
 	meJoin := MemberEvent{
 		Type: EventMemberJoin,
 		Members: []Member{
-			Member{
+			{
 				Name: "foo",
 				Addr: []byte{127, 0, 0, 1},
 				Port: 5000,
@@ -393,7 +393,7 @@ func TestSnapshotter_leave_rejoin(t *testing.T) {
 	meJoin := MemberEvent{
 		Type: EventMemberJoin,
 		Members: []Member{
-			Member{
+			{
 				Name: "foo",
 				Addr: []byte{127, 0, 0, 1},
 				Port: 5000,

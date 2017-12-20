@@ -47,17 +47,17 @@ func Test_PeersJSON(t *testing.T) {
 
 	expected := Configuration{
 		Servers: []Server{
-			Server{
+			{
 				Suffrage: Voter,
 				ID:       ServerID("127.0.0.1:123"),
 				Address:  ServerAddress("127.0.0.1:123"),
 			},
-			Server{
+			{
 				Suffrage: Voter,
 				ID:       ServerID("127.0.0.2:123"),
 				Address:  ServerAddress("127.0.0.2:123"),
 			},
-			Server{
+			{
 				Suffrage: Voter,
 				ID:       ServerID("127.0.0.3:123"),
 				Address:  ServerAddress("127.0.0.3:123"),

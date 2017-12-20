@@ -9,17 +9,17 @@ import (
 
 var sampleConfiguration Configuration = Configuration{
 	Servers: []Server{
-		Server{
+		{
 			Suffrage: Nonvoter,
 			ID:       ServerID("id0"),
 			Address:  ServerAddress("addr0"),
 		},
-		Server{
+		{
 			Suffrage: Voter,
 			ID:       ServerID("id1"),
 			Address:  ServerAddress("addr1"),
 		},
-		Server{
+		{
 			Suffrage: Staging,
 			ID:       ServerID("id2"),
 			Address:  ServerAddress("addr2"),
@@ -118,7 +118,7 @@ func TestConfiguration_checkConfiguration(t *testing.T) {
 
 var singleServer = Configuration{
 	Servers: []Server{
-		Server{
+		{
 			Suffrage: Voter,
 			ID:       ServerID("id1"),
 			Address:  ServerAddress("addr1x"),
@@ -128,17 +128,17 @@ var singleServer = Configuration{
 
 var oneOfEach = Configuration{
 	Servers: []Server{
-		Server{
+		{
 			Suffrage: Voter,
 			ID:       ServerID("id1"),
 			Address:  ServerAddress("addr1x"),
 		},
-		Server{
+		{
 			Suffrage: Staging,
 			ID:       ServerID("id2"),
 			Address:  ServerAddress("addr2x"),
 		},
-		Server{
+		{
 			Suffrage: Nonvoter,
 			ID:       ServerID("id3"),
 			Address:  ServerAddress("addr3x"),
@@ -148,12 +148,12 @@ var oneOfEach = Configuration{
 
 var voterPair = Configuration{
 	Servers: []Server{
-		Server{
+		{
 			Suffrage: Voter,
 			ID:       ServerID("id1"),
 			Address:  ServerAddress("addr1x"),
 		},
-		Server{
+		{
 			Suffrage: Voter,
 			ID:       ServerID("id2"),
 			Address:  ServerAddress("addr2x"),

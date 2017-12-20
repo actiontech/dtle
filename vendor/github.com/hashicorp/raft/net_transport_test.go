@@ -87,7 +87,7 @@ func TestNetworkTransport_AppendEntries(t *testing.T) {
 		PrevLogEntry: 100,
 		PrevLogTerm:  4,
 		Entries: []*Log{
-			&Log{
+			{
 				Index: 101,
 				Term:  4,
 				Type:  LogNoop,
@@ -152,7 +152,7 @@ func TestNetworkTransport_AppendEntriesPipeline(t *testing.T) {
 		PrevLogEntry: 100,
 		PrevLogTerm:  4,
 		Entries: []*Log{
-			&Log{
+			{
 				Index: 101,
 				Term:  4,
 				Type:  LogNoop,
@@ -376,7 +376,7 @@ func TestNetworkTransport_PooledConn(t *testing.T) {
 		PrevLogEntry: 100,
 		PrevLogTerm:  4,
 		Entries: []*Log{
-			&Log{
+			{
 				Index: 101,
 				Term:  4,
 				Type:  LogNoop,

@@ -207,10 +207,10 @@ func TestAgent_UnmarshalTags(t *testing.T) {
 
 func TestAgent_UnmarshalTagsError(t *testing.T) {
 	tagSets := [][]string{
-		[]string{"="},
-		[]string{"=x"},
-		[]string{""},
-		[]string{"x"},
+		{"="},
+		{"=x"},
+		{""},
+		{"x"},
 	}
 	for _, tagPairs := range tagSets {
 		if _, err := UnmarshalTags(tagPairs); err == nil {

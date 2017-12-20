@@ -99,7 +99,7 @@ func newACLManager(config *Config) (*aclManager, error) {
 	if len(config.ACLAgentMasterToken) > 0 {
 		policy := &acl.Policy{
 			Agents: []*acl.AgentPolicy{
-				&acl.AgentPolicy{
+				{
 					Node:   config.NodeName,
 					Policy: acl.PolicyWrite,
 				},
