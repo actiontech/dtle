@@ -70,7 +70,7 @@ func NewMySQLReader(cfg *config.MySQLDriverConfig, logger *log.Entry) (binlogRea
 				return nil, err
 			}
 			dbMap[table.TableName] = &config.TableContext{
-				Table: table,
+				Table:    table,
 				WhereCtx: whereCtx,
 			}
 		}

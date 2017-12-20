@@ -43,8 +43,8 @@ func (s *HTTPServer) jobInfoRequest(resp http.ResponseWriter, req *http.Request)
 	if args.Name == nil {
 		return nil, CodedError(400, "Job Name hasn't been provided")
 	}
-	if args.OrderID == nil {
-		return nil, CodedError(400, "Order ID hasn't been provided")
+	if len(args.Orders) == 0 {
+		return nil, CodedError(400, "Order hasn't been provided")
 	}
 	if args.Region == nil {
 		args.Region = &s.agent.config.Region
@@ -246,31 +246,33 @@ func (s *HTTPServer) jobUpdate(resp http.ResponseWriter, req *http.Request,
 	if args.Name == nil {
 		return nil, CodedError(400, "Job Name hasn't been provided")
 	}
-	if args.OrderID == nil {
-		return nil, CodedError(400, "Order ID hasn't been provided")
+	if len(args.Orders) == 0 {
+		return nil, CodedError(400, "Order hasn't been provided")
 	}
 	if args.Region == nil {
 		args.Region = &s.agent.config.Region
 	}
 	s.parseRegion(req, args.Region)
 
-	argsOrder := models.OrderSpecificRequest{
-		OrderID: *args.OrderID,
-	}
-	if s.parse(resp, req, &argsOrder.Region, &argsOrder.QueryOptions) {
-		return nil, nil
-	}
-	var outOrder models.SingleOrderResponse
-	if err := s.agent.RPC("Order.GetOrder", &argsOrder, &outOrder); err != nil {
-		return nil, err
+	for _, order := range args.Orders {
+		argsOrder := models.OrderSpecificRequest{
+			OrderID: order,
+		}
+		if s.parse(resp, req, &argsOrder.Region, &argsOrder.QueryOptions) {
+			return nil, nil
+		}
+		var outOrder models.SingleOrderResponse
+		if err := s.agent.RPC("Order.GetOrder", &argsOrder, &outOrder); err != nil {
+			return nil, err
+		}
+
+		setMeta(resp, &outOrder.QueryMeta)
+		if outOrder.Order == nil {
+			return nil, CodedError(404, "order not found")
+		}
 	}
 
-	setMeta(resp, &outOrder.QueryMeta)
-	if outOrder.Order == nil {
-		return nil, CodedError(404, "order not found")
-	}
-
-	sJob := ApiJobToStructJob(args, outOrder.Order.TrafficAgainstLimits)
+	sJob := ApiJobToStructJob(args, 0)
 
 	regReq := models.JobRegisterRequest{
 		Job:            sJob,
@@ -369,7 +371,7 @@ func ApiJobToStructJob(job *api.Job, trafficLimit uint64) *models.Job {
 	j := &models.Job{
 		Region:            *job.Region,
 		ID:                *job.ID,
-		OrderID:           *job.OrderID,
+		Orders:            job.Orders,
 		Name:              *job.Name,
 		Type:              *job.Type,
 		Datacenters:       job.Datacenters,

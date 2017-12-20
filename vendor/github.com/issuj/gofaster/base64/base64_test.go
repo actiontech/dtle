@@ -8,7 +8,7 @@ import "testing"
 
 func fillRand(seed uint64, slice []byte) {
 	rand.Seed(0)
-	for i, _ := range slice {
+	for i := range slice {
 		slice[i] = uint8(rand.Uint32())
 	}
 }

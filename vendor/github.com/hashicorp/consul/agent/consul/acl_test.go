@@ -964,7 +964,7 @@ func TestACL_filterNodeServices(t *testing.T) {
 				Node: "node1",
 			},
 			Services: map[string]*structs.NodeService{
-				"foo": &structs.NodeService{
+				"foo": {
 					ID:      "foo",
 					Service: "foo",
 				},
@@ -1251,13 +1251,13 @@ func TestACL_filterNodeDump(t *testing.T) {
 			&structs.NodeInfo{
 				Node: "node1",
 				Services: []*structs.NodeService{
-					&structs.NodeService{
+					{
 						ID:      "foo",
 						Service: "foo",
 					},
 				},
 				Checks: []*structs.HealthCheck{
-					&structs.HealthCheck{
+					{
 						Node:        "node1",
 						CheckID:     "check1",
 						ServiceName: "foo",

@@ -100,6 +100,6 @@ type OrderListRequest struct {
 
 // OrderSummaryRequest is used when we just need to get a specific Order summary
 type OrderSummaryRequest struct {
-	OrderID string
+	Orders []string
 	QueryOptions
 }

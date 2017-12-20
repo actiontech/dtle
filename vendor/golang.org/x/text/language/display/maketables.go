@@ -360,7 +360,7 @@ func (b *builder) filter() {
 func (b *builder) makeSupported() {
 	// tags across groups
 	for _, g := range b.group {
-		for t, _ := range g.lang {
+		for t := range g.lang {
 			b.supported = append(b.supported, t)
 		}
 	}
@@ -378,7 +378,7 @@ func (b *builder) writeGroup(name string) {
 	g := b.group[name]
 
 	for _, kv := range g.lang {
-		for t, _ := range kv {
+		for t := range kv {
 			g.toTags = append(g.toTags, t)
 		}
 	}

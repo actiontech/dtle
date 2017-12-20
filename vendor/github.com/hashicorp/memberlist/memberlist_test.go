@@ -418,8 +418,8 @@ func TestMemberList_ResolveAddr_TCP_First(t *testing.T) {
 		}
 		port := uint16(m.config.BindPort)
 		expected := []ipPort{
-			ipPort{net.ParseIP("127.0.0.1"), port},
-			ipPort{net.ParseIP("2001:db8:a0b:12f0::1"), port},
+			{net.ParseIP("127.0.0.1"), port},
+			{net.ParseIP("2001:db8:a0b:12f0::1"), port},
 		}
 		if !reflect.DeepEqual(ips, expected) {
 			t.Fatalf("bad: %#v", ips)
@@ -434,9 +434,9 @@ func TestMemberList_Members(t *testing.T) {
 
 	m := &Memberlist{}
 	nodes := []*nodeState{
-		&nodeState{Node: *n1, State: stateAlive},
-		&nodeState{Node: *n2, State: stateDead},
-		&nodeState{Node: *n3, State: stateSuspect},
+		{Node: *n1, State: stateAlive},
+		{Node: *n2, State: stateDead},
+		{Node: *n3, State: stateSuspect},
 	}
 	m.nodes = nodes
 

@@ -399,18 +399,20 @@ func (s *StateStore) UpsertJob(index uint64, job *models.Job) error {
 		}
 	}
 
-	order, err := txn.First("orders", "id", job.OrderID)
-	if err != nil {
-		return fmt.Errorf("failed to get blocked order for job %q: %v", job.OrderID, err)
-	}
-	if order != nil {
-		o := order.(*models.Order)
-		o.Status = models.OrderStatusRunning
-		if err := txn.Insert("orders", o); err != nil {
-			return fmt.Errorf("order insert failed: %v", err)
+	for _, orderId := range job.Orders {
+		order, err := txn.First("orders", "id", orderId)
+		if err != nil {
+			return fmt.Errorf("failed to get blocked order for job %q: %v", orderId, err)
 		}
-		if err := txn.Insert("index", &IndexEntry{"orders", index}); err != nil {
-			return fmt.Errorf("index update failed: %v", err)
+		if order != nil {
+			o := order.(*models.Order)
+			o.Status = models.OrderStatusRunning
+			if err := txn.Insert("orders", o); err != nil {
+				return fmt.Errorf("order insert failed: %v", err)
+			}
+			if err := txn.Insert("index", &IndexEntry{"orders", index}); err != nil {
+				return fmt.Errorf("index update failed: %v", err)
+			}
 		}
 	}
 
@@ -495,26 +497,28 @@ func (s *StateStore) DeleteJob(index uint64, jobID string) error {
 	// Delete the job
 	job := existing.(*models.Job)
 
-	order, err := txn.First("orders", "id", job.OrderID)
-	if err != nil {
-		return fmt.Errorf("failed to get blocked order for job %q: %v", job.OrderID, err)
-	}
-	if order != nil {
-		o := order.(*models.Order)
-		if o.Status == models.OrderStatusDone {
-			if err := txn.Delete("orders", o); err != nil {
-				return fmt.Errorf("order delete failed: %v", err)
-			}
-			if err := txn.Insert("index", &IndexEntry{"orders", index}); err != nil {
-				return fmt.Errorf("index update failed: %v", err)
-			}
-		} else {
-			o.Status = models.OrderStatusPending
-			if err := txn.Insert("orders", o); err != nil {
-				return fmt.Errorf("order insert failed: %v", err)
-			}
-			if err := txn.Insert("index", &IndexEntry{"orders", index}); err != nil {
-				return fmt.Errorf("index update failed: %v", err)
+	for _, orderId := range job.Orders {
+		order, err := txn.First("orders", "id", orderId)
+		if err != nil {
+			return fmt.Errorf("failed to get blocked order for job %q: %v", orderId, err)
+		}
+		if order != nil {
+			o := order.(*models.Order)
+			if o.Status == models.OrderStatusDone {
+				if err := txn.Delete("orders", o); err != nil {
+					return fmt.Errorf("order delete failed: %v", err)
+				}
+				if err := txn.Insert("index", &IndexEntry{"orders", index}); err != nil {
+					return fmt.Errorf("index update failed: %v", err)
+				}
+			} else {
+				o.Status = models.OrderStatusPending
+				if err := txn.Insert("orders", o); err != nil {
+					return fmt.Errorf("order insert failed: %v", err)
+				}
+				if err := txn.Insert("index", &IndexEntry{"orders", index}); err != nil {
+					return fmt.Errorf("index update failed: %v", err)
+				}
 			}
 		}
 	}
