@@ -127,11 +127,10 @@ func (d *dumper) getDumpEntries() ([]*dumpEntry, error) {
 }
 
 func (d *dumper) buildQueryOldWay(e *dumpEntry) string {
-	return fmt.Sprintf(`SELECT %s FROM %s.%s where (%s) LIMIT %d OFFSET %d`,
+	return fmt.Sprintf(`SELECT %s FROM %s.%s LIMIT %d OFFSET %d`,
 		d.columns,
 		usql.EscapeName(d.TableSchema),
 		usql.EscapeName(d.TableName),
-		d.table.Where,
 		d.chunkSize,
 		e.Offset,
 	)
@@ -176,12 +175,12 @@ func (d *dumper) buildQueryOnUniqueKey(e *dumpEntry) string {
 		rangeStr = strings.Join(rangeItems, " or ")
 	}
 
-	return fmt.Sprintf(`SELECT %s FROM %s.%s where %s and (%s) order by %s LIMIT %d`,
+	return fmt.Sprintf(`SELECT %s FROM %s.%s where %s order by %s LIMIT %d`,
 		d.columns,
 		usql.EscapeName(d.TableSchema),
 		usql.EscapeName(d.TableName),
 		// where
-		rangeStr, d.table.Where,
+		rangeStr,
 		// order by
 		strings.Join(uniqueKeyColumnAscending, ", "),
 		// limit
