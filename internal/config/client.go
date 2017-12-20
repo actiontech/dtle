@@ -302,11 +302,7 @@ type Table struct {
 	RowsEstimate int64
 
 	Where    string // TODO load from job description
-}
-
-type TableContext struct {
-	Table *Table
-	WhereCtx *WhereContext
+	WhereCtx *WhereContext `json:"WhereCtx,omitempty"`
 }
 
 func NewTable(schemaName string, tableName string) *Table {
@@ -317,15 +313,13 @@ func NewTable(schemaName string, tableName string) *Table {
 	}
 }
 
-func (t *TableContext)WhereTrue(values *umconf.ColumnValues) bool {
-	var m = make(map[string]interface{})
-	for field, idx := range t.WhereCtx.FieldsMap {
-		m[field] = *(values.ValuesPointers[idx])
-	}
-	ctx := qldatasource.NewContextSimpleNative(m)
-	val, _ :=  qlvm.Eval(ctx, t.WhereCtx.Ast) // TODO what is second bool ret used for?
-	r, _ := val.Value().(bool) // TODO ckeck ok
+func (t *Table)WhereTrue(values []*umconf.ColumnValues) bool {
+	ctx := qldatasource.NewContextSimpleNative(map[string]interface{}{
 
+	})
+
+	val, _ :=  qlvm.Eval(ctx, t.WhereCtx.Ast)
+	r, _ := val.Value().(bool)
 	return r
 }
 

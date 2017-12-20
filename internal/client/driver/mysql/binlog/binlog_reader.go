@@ -39,7 +39,6 @@ type BinlogReader struct {
 	currentCoordinatesMutex  *sync.Mutex
 	LastAppliedRowsEventHint base.BinlogCoordinates
 	mysqlContext             *config.MySQLDriverConfig
-	tables                   map[string](map[string]*config.TableContext)
 
 	currentTx          *BinlogTx
 	currentBinlogEntry *BinlogEntry
@@ -57,25 +56,6 @@ type BinlogReader struct {
 }
 
 func NewMySQLReader(cfg *config.MySQLDriverConfig, logger *log.Entry) (binlogReader *BinlogReader, err error) {
-	var tables = make(map[string](map[string]*config.TableContext))
-	for _, db := range cfg.ReplicateDoDb {
-		dbMap, ok := tables[db.TableSchema]
-		if !ok {
-			dbMap = make(map[string]*config.TableContext)
-			tables[db.TableSchema] = dbMap
-		}
-		for _, table := range db.Tables {
-			whereCtx, err := config.NewWhereCtx(table.Where, table)
-			if err != nil {
-				return nil, err
-			}
-			dbMap[table.TableName] = &config.TableContext{
-				Table: table,
-				WhereCtx: whereCtx,
-			}
-		}
-	}
-
 	binlogReader = &BinlogReader{
 		logger:                  logger,
 		currentCoordinates:      base.BinlogCoordinates{},
@@ -84,7 +64,6 @@ func NewMySQLReader(cfg *config.MySQLDriverConfig, logger *log.Entry) (binlogRea
 		appendB64SqlBs:          make([]byte, 1024*1024),
 		ReMap:                   make(map[string]*regexp.Regexp),
 		shutdownCh:              make(chan struct{}),
-		tables:                  tables,
 	}
 
 	uri := cfg.ConnectionConfig.GetDBUri()
@@ -234,8 +213,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 		b.LastAppliedRowsEventHint = b.currentCoordinates
 	default:
 		if rowsEvent, ok := ev.Event.(*replication.RowsEvent); ok {
-			skip, table := b.skipRowEvent(rowsEvent)
-			if skip {
+			if b.skipRowEvent(rowsEvent) {
 				//b.logger.Debugf("mysql.reader: skip rowsEvent [%s-%s]", rowsEvent.Table.Schema, rowsEvent.Table.Table)
 				return nil
 			}
@@ -278,34 +256,6 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 						dmlEvent.WhereColumnValues = mysql.ToColumnValues(row)
 					}
 				}
-
-				b.logger.Debugf("event before row: %v", dmlEvent.WhereColumnValues)
-				b.logger.Debugf("event after row: %v", dmlEvent.NewColumnValues)
-				var whereTrue bool
-				if table != nil {
-					switch dml {
-					case InsertDML:
-						whereTrue = table.WhereTrue(dmlEvent.NewColumnValues)
-					case UpdateDML:
-						before := table.WhereTrue(dmlEvent.WhereColumnValues)
-						after := table.WhereTrue(dmlEvent.NewColumnValues)
-						if before != after {
-							b.logger.Errorf("update on 'where columns' cause inconsistency")
-							// TODO split it to delete + insert to allow such update
-							whereTrue = false
-						} else {
-							whereTrue = before
-						}
-					case DeleteDML:
-						whereTrue = table.WhereTrue(dmlEvent.WhereColumnValues)
-					}
-				}
-
-				if !whereTrue {
-					b.logger.Debugf("event has not passed 'where'")
-					return nil
-				}
-
 				// The channel will do the throttling. Whoever is reding from the channel
 				// decides whether action is taken sycnhronously (meaning we wait before
 				// next iteration) or asynchronously (we keep pushing more events)
@@ -885,30 +835,30 @@ func (b *BinlogReader) skipEvent(schema string, table string) bool {
 	return false
 }
 
-func (b *BinlogReader) skipRowEvent(rowsEvent *replication.RowsEvent) (bool, *config.TableContext) {
+func (b *BinlogReader) skipRowEvent(rowsEvent *replication.RowsEvent) bool {
 	switch strings.ToLower(string(rowsEvent.Table.Schema)) {
 	case "actiontech_udup":
 		b.currentBinlogEntry.Coordinates.OSID = mysql.ToColumnValues(rowsEvent.Rows[0]).StringColumn(0)
-		return true, nil
+		return true
 	case "sys", "mysql", "information_schema", "performance_schema":
-		return true, nil
+		return true
 	default:
 		if len(b.mysqlContext.ReplicateDoDb) > 0 {
 			table := strings.ToLower(string(rowsEvent.Table.Table))
 			//if table in tartget Table, do this event
-			for schemaName, tableMap := range b.tables {
-				if b.matchString(schemaName, string(rowsEvent.Table.Schema)) || schemaName == "" {
-					if len(tableMap) == 0 {
-						return false, nil // TODO not skipping but TableContext
+			for _, d := range b.mysqlContext.ReplicateDoDb {
+				if b.matchString(d.TableSchema, string(rowsEvent.Table.Schema)) || d.TableSchema == "" {
+					if len(d.Tables) == 0 {
+						return false
 					}
-					for tableName, tableCtx := range tableMap {
-						if b.matchString(tableName, table) {
-							return false, tableCtx
+					for _, dt := range d.Tables {
+						if b.matchString(dt.TableName, table) {
+							return false
 						}
 					}
 				}
 			}
-			return true, nil
+			return true
 		}
 		if len(b.mysqlContext.ReplicateIgnoreDb) > 0 {
 			table := strings.ToLower(string(rowsEvent.Table.Table))
@@ -916,19 +866,19 @@ func (b *BinlogReader) skipRowEvent(rowsEvent *replication.RowsEvent) (bool, *co
 			for _, d := range b.mysqlContext.ReplicateIgnoreDb {
 				if b.matchString(d.TableSchema, string(rowsEvent.Table.Schema)) || d.TableSchema == "" {
 					if len(d.Tables) == 0 {
-						return true, nil
+						return true
 					}
 					for _, dt := range d.Tables {
 						if b.matchString(dt.TableName, table) {
-							return true, nil
+							return true
 						}
 					}
 				}
 			}
-			return false, nil
+			return false
 		}
 	}
-	return false, nil
+	return false
 }
 
 func (b *BinlogReader) matchString(pattern string, t string) bool {
