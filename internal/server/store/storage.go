@@ -406,6 +406,7 @@ func (s *StateStore) UpsertJob(index uint64, job *models.Job) error {
 		}
 		if order != nil {
 			o := order.(*models.Order)
+			o.JobID = job.ID
 			o.Status = models.OrderStatusRunning
 			if err := txn.Insert("orders", o); err != nil {
 				return fmt.Errorf("order insert failed: %v", err)
@@ -512,6 +513,7 @@ func (s *StateStore) DeleteJob(index uint64, jobID string) error {
 					return fmt.Errorf("index update failed: %v", err)
 				}
 			} else {
+				o.JobID = ""
 				o.Status = models.OrderStatusPending
 				if err := txn.Insert("orders", o); err != nil {
 					return fmt.Errorf("order insert failed: %v", err)

@@ -15,6 +15,8 @@ type Order struct {
 	// Region is the Udup region that handles scheduling this Order
 	Region string
 
+	JobID string
+
 	// ID is a unique identifier for the Order per region. It can be
 	// specified hierarchically like LineOfBiz/OrgName/Team/Project
 	ID string
@@ -68,6 +70,18 @@ type OrderListResponse struct {
 // OrderRegisterRequest is used for Order.Register endpoint
 // to register a Order as being a schedulable entity.
 type OrderRegisterRequest struct {
+	Order *Order
+
+	// If EnforceIndex is set then the Order will only be registered if the passed
+	// OrderModifyIndex matches the current Orders index. If the index is zero, the
+	// register only occurs if the Order is new.
+	EnforceIndex     bool
+	OrderModifyIndex uint64
+
+	WriteRequest
+}
+
+type OrderRenewalRequest struct {
 	Order *Order
 
 	// If EnforceIndex is set then the Order will only be registered if the passed

@@ -133,6 +133,8 @@ func (n *udupFSM) Apply(log *raft.Log) interface{} {
 		return n.applyUpsertJob(buf[1:], log.Index)
 	case models.JobDeregisterRequestType:
 		return n.applyDeregisterJob(buf[1:], log.Index)
+	case models.JobRenewalRequestType:
+		return n.applyUpsertJob(buf[1:], log.Index)
 	case models.OrderRegisterRequestType:
 		return n.applyUpsertOrder(buf[1:], log.Index)
 	case models.OrderDeregisterRequestType:

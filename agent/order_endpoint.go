@@ -41,6 +41,45 @@ func (s *HTTPServer) PendingOrdersRequest(resp http.ResponseWriter, req *http.Re
 	}
 }
 
+func (s *HTTPServer) RenewalOrdersRequest(resp http.ResponseWriter, req *http.Request) (interface{}, error) {
+	switch req.Method {
+	case "PUT":
+		return s.renewalOrderRequest(resp, req)
+	default:
+		return nil, CodedError(405, ErrInvalidMethod)
+	}
+}
+
+func (s *HTTPServer) renewalOrderRequest(resp http.ResponseWriter, req *http.Request) (interface{}, error) {
+	var args *api.Order
+	if err := decodeBody(req, &args); err != nil {
+		return nil, CodedError(400, err.Error())
+	}
+
+	if args.Region == nil {
+		args.Region = &s.agent.config.Region
+	}
+	s.parseRegion(req, args.Region)
+
+	sOrder := ApiOrderToStructOrder(args)
+
+	regReq := models.OrderRenewalRequest{
+		Order:            sOrder,
+		EnforceIndex:     args.EnforceIndex,
+		OrderModifyIndex: *args.OrderModifyIndex,
+		WriteRequest: models.WriteRequest{
+			Region: *args.Region,
+		},
+	}
+	var out models.OrderResponse
+
+	if err := s.agent.RPC("Order.Renewal", &regReq, &out); err != nil {
+		return nil, err
+	}
+	setIndex(resp, out.Index)
+	return out, nil
+}
+
 func (s *HTTPServer) orderListRequest(resp http.ResponseWriter, req *http.Request) (interface{}, error) {
 	args := models.OrderListRequest{}
 	if args.Region == "" {
@@ -283,6 +322,7 @@ func ApiOrderToStructOrder(order *api.Order) *models.Order {
 
 	o := &models.Order{
 		Region:                *order.Region,
+		JobID:                 order.JobID,
 		ID:                    order.ID,
 		SkuId:                 order.SkuId,
 		TrafficAgainstLimits:  *order.TrafficAgainstLimits,

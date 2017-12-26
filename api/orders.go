@@ -64,9 +64,9 @@ func (j *Orders) PrefixList(prefix string) ([]*JobListStub, *QueryMeta, error) {
 }
 
 // Deregister is used to remove an existing job.
-func (j *Orders) Deregister(jobID string, q *WriteOptions) (string, *WriteMeta, error) {
+func (j *Orders) Deregister(orderID string, q *WriteOptions) (string, *WriteMeta, error) {
 	var resp deregisterJobResponse
-	wm, err := j.client.delete("/v1/order/"+jobID, &resp, q)
+	wm, err := j.client.delete("/v1/order/"+orderID, &resp, q)
 	if err != nil {
 		return "", nil, err
 	}
@@ -75,6 +75,7 @@ func (j *Orders) Deregister(jobID string, q *WriteOptions) (string, *WriteMeta, 
 
 type Order struct {
 	Region                *string
+	JobID                 string
 	ID                    string
 	SkuId                 string
 	TrafficAgainstLimits  *uint64

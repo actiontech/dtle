@@ -24,6 +24,7 @@ const (
 	JobUpdateStatusRequestType
 	JobRegisterRequestType
 	JobDeregisterRequestType
+	JobRenewalRequestType
 	JobClientUpdateRequestType
 	OrderRegisterRequestType
 	OrderDeregisterRequestType
