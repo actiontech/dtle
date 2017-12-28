@@ -758,10 +758,10 @@ func (e *Extractor) requestMsg(subject, gtid string, txMsg []byte) (err error) {
 			}
 			break
 		} else if err == gonats.ErrTimeout {
-			e.logger.Debugf(fmt.Sprintf("%v", err))
+			e.logger.Debugf(fmt.Sprintf("mysql.extractor: %v", err))
 			continue
 		} else {
-			e.logger.Debugf(fmt.Sprintf("%v", err))
+			e.logger.Debugf(fmt.Sprintf("mysql.extractor: %v,msg len: %d", err, len(txMsg)))
 			break
 		}
 		// there's an error. Let's try again.

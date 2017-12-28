@@ -264,6 +264,13 @@ type JobRegisterRequest struct {
 	WriteRequest
 }
 
+type JobRenewalRequest struct {
+	JobID   string
+	OrderID string
+
+	WriteRequest
+}
+
 type JobUpdateRequest struct {
 	// Alloc is the list of new allocations to assign
 	JobUpdates []*TaskUpdate

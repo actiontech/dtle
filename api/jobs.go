@@ -321,6 +321,12 @@ type RegisterJobRequest struct {
 	JobModifyIndex uint64 `json:",omitempty"`
 }
 
+type RenewalJobRequest struct {
+	Region  *string
+	JobID   string
+	OrderID string
+}
+
 // registerJobResponse is used to deserialize a job response
 type registerJobResponse struct {
 	EvalID string

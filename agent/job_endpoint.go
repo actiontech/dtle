@@ -24,6 +24,15 @@ func (s *HTTPServer) JobsRequest(resp http.ResponseWriter, req *http.Request) (i
 	}
 }
 
+func (s *HTTPServer) JobsRenewalRequest(resp http.ResponseWriter, req *http.Request) (interface{}, error) {
+	switch req.Method {
+	case "PUT":
+		return s.jobRenewalRequest(resp, req)
+	default:
+		return nil, CodedError(405, ErrInvalidMethod)
+	}
+}
+
 func (s *HTTPServer) JobsInfoRequest(resp http.ResponseWriter, req *http.Request) (interface{}, error) {
 	switch req.Method {
 	case "POST":
@@ -43,9 +52,9 @@ func (s *HTTPServer) jobInfoRequest(resp http.ResponseWriter, req *http.Request)
 	if args.Name == nil {
 		return nil, CodedError(400, "Job Name hasn't been provided")
 	}
-	if len(args.Orders) == 0 {
+	/*if len(args.Orders) == 0 {
 		return nil, CodedError(400, "Order hasn't been provided")
-	}
+	}*/
 	if args.Region == nil {
 		args.Region = &s.agent.config.Region
 	}
@@ -246,9 +255,9 @@ func (s *HTTPServer) jobUpdate(resp http.ResponseWriter, req *http.Request,
 	if args.Name == nil {
 		return nil, CodedError(400, "Job Name hasn't been provided")
 	}
-	if len(args.Orders) == 0 {
+	/*if len(args.Orders) == 0 {
 		return nil, CodedError(400, "Order hasn't been provided")
-	}
+	}*/
 	if args.Region == nil {
 		args.Region = &s.agent.config.Region
 	}
@@ -285,6 +294,49 @@ func (s *HTTPServer) jobUpdate(resp http.ResponseWriter, req *http.Request,
 	var out models.JobResponse
 
 	if err := s.agent.RPC("Job.Register", &regReq, &out); err != nil {
+		return nil, err
+	}
+	setIndex(resp, out.Index)
+	return out, nil
+}
+
+func (s *HTTPServer) jobRenewalRequest(resp http.ResponseWriter, req *http.Request) (interface{}, error) {
+	var args *api.RenewalJobRequest
+	if err := decodeBody(req, &args); err != nil {
+		return nil, CodedError(400, err.Error())
+	}
+
+	if args.Region == nil {
+		args.Region = &s.agent.config.Region
+	}
+	s.parseRegion(req, args.Region)
+
+	argsOrder := models.OrderSpecificRequest{
+		OrderID: args.OrderID,
+	}
+	if s.parse(resp, req, &argsOrder.Region, &argsOrder.QueryOptions) {
+		return nil, nil
+	}
+	var outOrder models.SingleOrderResponse
+	if err := s.agent.RPC("Order.GetOrder", &argsOrder, &outOrder); err != nil {
+		return nil, err
+	}
+
+	setMeta(resp, &outOrder.QueryMeta)
+	if outOrder.Order == nil {
+		return nil, CodedError(404, "order not found")
+	}
+
+	regReq := models.JobRenewalRequest{
+		JobID:   args.JobID,
+		OrderID: args.OrderID,
+		WriteRequest: models.WriteRequest{
+			Region: *args.Region,
+		},
+	}
+	var out models.JobResponse
+
+	if err := s.agent.RPC("Job.Renewal", &regReq, &out); err != nil {
 		return nil, err
 	}
 	setIndex(resp, out.Index)
