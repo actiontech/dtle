@@ -134,7 +134,7 @@ func (n *udupFSM) Apply(log *raft.Log) interface{} {
 	case models.JobDeregisterRequestType:
 		return n.applyDeregisterJob(buf[1:], log.Index)
 	case models.JobRenewalRequestType:
-		return n.applyUpsertJob(buf[1:], log.Index)
+		return n.applyRenewalJob(buf[1:], log.Index)
 	case models.OrderRegisterRequestType:
 		return n.applyUpsertOrder(buf[1:], log.Index)
 	case models.OrderDeregisterRequestType:
@@ -248,6 +248,21 @@ func (n *udupFSM) applyUpsertJob(buf []byte, index uint64) interface{} {
 
 	if err := n.state.UpsertJob(index, req.Job); err != nil {
 		n.logger.Errorf("server.fsm: UpsertJob failed: %v", err)
+		return err
+	}
+
+	return nil
+}
+
+func (n *udupFSM) applyRenewalJob(buf []byte, index uint64) interface{} {
+	defer metrics.MeasureSince([]string{"server", "fsm", "renewal_job"}, time.Now())
+	var req models.JobRenewalRequest
+	if err := models.Decode(buf, &req); err != nil {
+		panic(fmt.Errorf("failed to decode request: %v", err))
+	}
+
+	if err := n.state.RenewalJob(index, req.JobID, req.OrderID); err != nil {
+		n.logger.Errorf("server.fsm: RenewalJob failed: %v", err)
 		return err
 	}
 

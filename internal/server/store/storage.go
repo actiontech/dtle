@@ -429,6 +429,50 @@ func (s *StateStore) UpsertJob(index uint64, job *models.Job) error {
 	return nil
 }
 
+func (s *StateStore) RenewalJob(index uint64, jobId, orderId string) error {
+	txn := s.db.Txn(true)
+	defer txn.Abort()
+
+	// Check if the job already exists
+	existing, err := txn.First("jobs", "id", jobId)
+	if err != nil {
+		return fmt.Errorf("job lookup failed: %v", err)
+	}
+
+	// Setup the indexes correctly
+	if existing == nil {
+		return fmt.Errorf("job %s does not exist", existing.(*models.Job).Name)
+	}
+
+	order, err := txn.First("orders", "id", orderId)
+	if err != nil {
+		return fmt.Errorf("failed to get blocked order for job %q: %v", orderId, err)
+	}
+	if order != nil {
+		o := order.(*models.Order)
+		o.JobID = existing.(*models.Job).ID
+		o.Status = models.OrderStatusRunning
+		if err := txn.Insert("orders", o); err != nil {
+			return fmt.Errorf("order insert failed: %v", err)
+		}
+		if err := txn.Insert("index", &IndexEntry{"orders", index}); err != nil {
+			return fmt.Errorf("index update failed: %v", err)
+		}
+	}
+	existing.(*models.Job).Orders = append(existing.(*models.Job).Orders, orderId)
+
+	// Insert the job
+	if err := txn.Insert("jobs", existing.(*models.Job)); err != nil {
+		return fmt.Errorf("job insert failed: %v", err)
+	}
+	if err := txn.Insert("index", &IndexEntry{"jobs", index}); err != nil {
+		return fmt.Errorf("index update failed: %v", err)
+	}
+
+	txn.Commit()
+	return nil
+}
+
 // DeleteJob is used to deregister a job
 func (s *StateStore) DeleteJob(index uint64, jobID string) error {
 	txn := s.db.Txn(true)

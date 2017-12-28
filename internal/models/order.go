@@ -81,18 +81,6 @@ type OrderRegisterRequest struct {
 	WriteRequest
 }
 
-type OrderRenewalRequest struct {
-	Order *Order
-
-	// If EnforceIndex is set then the Order will only be registered if the passed
-	// OrderModifyIndex matches the current Orders index. If the index is zero, the
-	// register only occurs if the Order is new.
-	EnforceIndex     bool
-	OrderModifyIndex uint64
-
-	WriteRequest
-}
-
 // OrderDeregisterRequest is used for Order.Deregister endpoint
 // to deregister a Order as being a schedulable entity.
 type OrderDeregisterRequest struct {
