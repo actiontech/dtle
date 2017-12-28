@@ -70,6 +70,20 @@ func (m *MySQLDriver) Validate(task *models.Task) (*models.TaskValidateResponse,
 			reply.GtidMode.Success = true
 		}
 
+		query = `SELECT @@SERVER_ID`
+		var serverID string
+		if err := db.QueryRow(query).Scan(&serverID); err != nil {
+			reply.ServerID.Success = false
+			reply.ServerID.Error = err.Error()
+		}
+
+		if serverID == "0" {
+			reply.ServerID.Success = false
+			reply.ServerID.Error = fmt.Sprintf("Master - server_id was not set")
+		} else {
+			reply.ServerID.Success = true
+		}
+
 		query = `select @@global.log_bin, @@global.binlog_format`
 		var hasBinaryLogs bool
 		if err := db.QueryRow(query).Scan(&hasBinaryLogs, &driverConfig.BinlogFormat); err != nil {
