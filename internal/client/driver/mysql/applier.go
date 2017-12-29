@@ -832,6 +832,7 @@ func (a *Applier) ApplyBinlogEvent(dbApplier *sql.DB, binlogEntry *binlog.Binlog
 					a.logger.Warnf("mysql.applier: Ignore error: %v", err)
 				}
 			}
+			a.logger.Debugf("mysql.applier: Exec sql: %v", event.Query)
 		default:
 			query, args, rowDelta, err := a.buildDMLEventQuery(event)
 			if err != nil {
@@ -845,6 +846,7 @@ func (a *Applier) ApplyBinlogEvent(dbApplier *sql.DB, binlogEntry *binlog.Binlog
 				a.logger.Errorf("mysql.applier: Exec %+v,args: %v,gtid: %s:%d, error: %v", query, args, binlogEntry.Coordinates.SID, binlogEntry.Coordinates.GNO, err)
 				return err
 			}
+			a.logger.Debugf("mysql.applier: Exec %+v,args: %v,gtid: %s:%d", query, args, binlogEntry.Coordinates.SID, binlogEntry.Coordinates.GNO)
 			totalDelta += rowDelta
 		}
 	}
