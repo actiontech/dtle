@@ -86,12 +86,15 @@ func (s *HTTPServer) jobInfoRequest(resp http.ResponseWriter, req *http.Request)
 					Name: dbName,
 				}
 
-				tbs, err := sql.ShowTables(db, dbName)
+				tbs, err := sql.ShowTables(db, dbName, true)
 				if err != nil {
 					return nil, err
 				}
 
 				for tbIdx, t := range tbs {
+					if strings.ToLower(t.TableType) == "view" {
+						continue
+					}
 					tb := &Node{
 						Code: fmt.Sprintf("%d-%d", dbIdx, tbIdx),
 						Name: t.TableName,

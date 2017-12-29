@@ -119,6 +119,7 @@ type MySQLDriverConfig struct {
 	ReplicateDoDb                       []*DataSource
 	ReplicateIgnoreDb                   []*DataSource
 	DropTableIfExists                   bool
+	ExpandSyntaxSupport                 bool
 	ReplChanBufferSize                  int64
 	MsgBytesLimit                       int
 	TrafficAgainstLimits                int
@@ -294,6 +295,7 @@ type Table struct {
 	UseUniqueKey         *umconf.UniqueKey
 	Iteration            int64
 
+	TableType    string
 	TableEngine  string
 	RowsEstimate int64
 }
