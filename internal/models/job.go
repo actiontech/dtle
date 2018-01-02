@@ -346,6 +346,8 @@ type TaskValidateResponse struct {
 
 	GtidMode GtidModeValidate
 
+	ServerID ServerIDValidate
+
 	Binlog BinlogValidate
 }
 
@@ -356,6 +358,12 @@ type BinlogValidate struct {
 }
 
 type GtidModeValidate struct {
+	Success bool
+	// Error is a string version of any error that may have occured
+	Error string
+}
+
+type ServerIDValidate struct {
 	Success bool
 	// Error is a string version of any error that may have occured
 	Error string
