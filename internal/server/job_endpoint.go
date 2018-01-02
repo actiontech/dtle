@@ -113,6 +113,43 @@ func (j *Job) Register(args *models.JobRegisterRequest, reply *models.JobRespons
 	return nil
 }
 
+func (j *Job) Renewal(args *models.JobRenewalRequest, reply *models.JobResponse) error {
+	if done, err := j.srv.forward("Job.Renewal", args, args, reply); done {
+		return err
+	}
+	defer metrics.MeasureSince([]string{"server", "job", "renewal"}, time.Now())
+
+	// Lookup the job
+	snap, err := j.srv.fsm.State().Snapshot()
+	if err != nil {
+		reply.Success = false
+		return err
+	}
+	ws := memdb.NewWatchSet()
+	job, err := snap.JobByID(ws, args.JobID)
+	if err != nil {
+		reply.Success = false
+		return err
+	}
+	if job == nil {
+		reply.Success = false
+		return fmt.Errorf("%s : job does not exist", RegisterEnforceIndexErrPrefix)
+	}
+
+	// Commit this update via Raft
+	_, index, err := j.srv.raftApply(models.JobRenewalRequestType, args)
+	if err != nil {
+		j.srv.logger.Errorf("server.job: Renewal failed: %v", err)
+		reply.Success = false
+		return err
+	}
+
+	// Populate the reply with eval information
+	reply.Success = true
+	reply.Index = index
+	return nil
+}
+
 // UpdateStatus is used to update the status of a client node
 func (j *Job) UpdateStatus(args *models.JobUpdateStatusRequest, reply *models.JobResponse) error {
 	if done, err := j.srv.forward("Job.UpdateStatus", args, args, reply); done {
