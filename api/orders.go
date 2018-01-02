@@ -78,7 +78,7 @@ type Order struct {
 	JobID                 string
 	ID                    string
 	SkuId                 string
-	TrafficAgainstLimits  *uint64
+	TrafficAgainstLimits  *int
 	TotalTransferredBytes *uint64
 	Status                *string
 	EnforceIndex          bool
@@ -98,7 +98,7 @@ func (o *Order) Canonicalize() {
 		o.Status = internal.StringToPtr(models.OrderStatusPending)
 	}
 	if o.TrafficAgainstLimits == nil {
-		o.TrafficAgainstLimits = internal.Uint64ToPtr(0)
+		o.TrafficAgainstLimits = internal.IntToPtr(0)
 	}
 	if o.TotalTransferredBytes == nil {
 		o.TotalTransferredBytes = internal.Uint64ToPtr(0)

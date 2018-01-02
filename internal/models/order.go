@@ -23,7 +23,7 @@ type Order struct {
 
 	SkuId string
 
-	TrafficAgainstLimits uint64
+	TrafficAgainstLimits int
 
 	TotalTransferredBytes uint64
 

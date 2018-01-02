@@ -832,7 +832,7 @@ func (a *Applier) ApplyBinlogEvent(dbApplier *sql.DB, binlogEntry *binlog.Binlog
 					a.logger.Warnf("mysql.applier: Ignore error: %v", err)
 				}
 			}
-			a.logger.Debugf("mysql.applier: Exec sql: %v", event.Query)
+			a.logger.Debugf("mysql.applier: Exec [%s]", event.Query)
 		default:
 			query, args, rowDelta, err := a.buildDMLEventQuery(event)
 			if err != nil {
@@ -917,6 +917,7 @@ func (a *Applier) ApplyEventQueries(db *gosql.DB, entry *dumpEntry) error {
 				a.logger.Warnf("mysql.applier: Ignore error: %v", err)
 			}
 		}
+		a.logger.Debugf("mysql.applier: Exec [%s]", query)
 	}
 	return nil
 }

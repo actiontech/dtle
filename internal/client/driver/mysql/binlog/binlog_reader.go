@@ -187,10 +187,10 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 			b.currentBinlogEntry.hasBeginQuery = true
 		} else {
 			if strings.ToUpper(query) == "COMMIT" || !b.currentBinlogEntry.hasBeginQuery {
-				if skipQueryEvent(query) {
-					b.logger.Warnf("skip query %s", query)
+				/*if skipQueryEvent(query) {
+					b.logger.Warnf("mysql.reader: skip query %s", query)
 					return nil
-				}
+				}*/
 
 				sqls, ok, err := resolveDDLSQL(query)
 				if err != nil {
@@ -532,10 +532,10 @@ func (b *BinlogReader) handleBinlogRowsEvent(ev *replication.BinlogEvent, txChan
 			// DDL or statement/mixed binlog format
 			b.clearB64Sql()
 			if strings.ToUpper(query) == "COMMIT" || !b.currentTx.hasBeginQuery {
-				if skipQueryEvent(query) {
+				/*if skipQueryEvent(query) {
 					b.logger.Warnf("skip query %s", query)
 					return nil
-				}
+				}*/
 
 				sqls, ok, err := resolveDDLSQL(query)
 				if err != nil {
@@ -794,11 +794,13 @@ func parserDDLTableName(sql string) (config.Table, error) {
 func (b *BinlogReader) skipQueryDDL(sql string, schema string) bool {
 	t, err := parserDDLTableName(sql)
 	if err != nil {
-		b.logger.Errorf("mysql.reader: parser ddl err:%v", err)
+		b.logger.Warnf("mysql.reader: parser ddl err:%v", err)
 		return false
 	}
 	switch strings.ToLower(schema) {
-	case "sys", "mysql", "information_schema", "performance_schema":
+	case "mysql":
+		return false
+	case "sys", "information_schema", "performance_schema", "actiontech_udup":
 		return true
 	default:
 		if len(b.mysqlContext.ReplicateDoDb) > 0 {
@@ -826,7 +828,7 @@ func (b *BinlogReader) skipQueryDDL(sql string, schema string) bool {
 	return false
 }
 
-func skipQueryEvent(sql string) bool {
+/*func skipQueryEvent(sql string) bool {
 	sql = strings.ToLower(sql)
 
 	if strings.HasPrefix(sql, "alter user") {
@@ -852,11 +854,13 @@ func skipQueryEvent(sql string) bool {
 	}
 
 	return false
-}
+}*/
 
 func (b *BinlogReader) skipEvent(schema string, table string) bool {
 	switch strings.ToLower(schema) {
-	case "sys", "mysql", "information_schema", "performance_schema":
+	case "mysql":
+		return false
+	case "sys", "information_schema", "performance_schema", "actiontech_udup":
 		return true
 	default:
 		if len(b.mysqlContext.ReplicateDoDb) > 0 {
@@ -901,9 +905,11 @@ func (b *BinlogReader) skipRowEvent(rowsEvent *replication.RowsEvent) (bool, *co
 	switch strings.ToLower(string(rowsEvent.Table.Schema)) {
 	case "actiontech_udup":
 		b.currentBinlogEntry.Coordinates.OSID = mysql.ToColumnValues(rowsEvent.Rows[0]).StringColumn(0)
-		return true, nil
-	case "sys", "mysql", "information_schema", "performance_schema":
-		return true, nil
+		return true
+	case "mysql":
+		return false
+	case "sys", "information_schema", "performance_schema":
+		return true
 	default:
 		if len(b.mysqlContext.ReplicateDoDb) > 0 {
 			table := strings.ToLower(string(rowsEvent.Table.Table))

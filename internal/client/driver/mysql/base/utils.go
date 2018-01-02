@@ -243,6 +243,17 @@ func ShowCreateTable(db *gosql.DB, databaseName, tableName string, dropTableIfEx
 	return fmt.Sprintf("%s;%s", statement, createTableStatement), err
 }
 
+func ShowCreateView(db *gosql.DB, databaseName, tableName string, dropTableIfExists bool) (createTableStatement string, err error) {
+	var dummy, character_set_client, collation_connection string
+	query := fmt.Sprintf(`show create table %s.%s`, usql.EscapeName(databaseName), usql.EscapeName(tableName))
+	err = db.QueryRow(query).Scan(&dummy, &createTableStatement, &character_set_client, &collation_connection)
+	statement := fmt.Sprintf("USE %s", databaseName)
+	if dropTableIfExists {
+		statement = fmt.Sprintf("%s;DROP TABLE IF EXISTS `%s`", statement, tableName)
+	}
+	return fmt.Sprintf("%s;%s", statement, createTableStatement), err
+}
+
 func ContrastGtidSet(contrastGtid, currentGtid string) (bool, error) {
 	for _, gset := range strings.Split(contrastGtid, ",") {
 		gset = strings.TrimSpace(gset)

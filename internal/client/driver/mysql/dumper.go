@@ -366,56 +366,6 @@ func (d *dumper) Dump(w int) error {
 	return nil
 }
 
-//LOCK TABLES {{ .Name }} WRITE;
-//INSERT INTO {{ .Name }} VALUES {{ .Values }};
-//UNLOCK TABLES;
-
-func showDatabases(db *sql.DB) ([]string, error) {
-	dbs := make([]string, 0)
-
-	// Get table list
-	rows, err := db.Query("SHOW DATABASES")
-	if err != nil {
-		return dbs, err
-	}
-	defer rows.Close()
-
-	// Read result
-	for rows.Next() {
-		var database sql.NullString
-		if err := rows.Scan(&database); err != nil {
-			return dbs, err
-		}
-		switch strings.ToLower(database.String) {
-		case "sys", "mysql", "information_schema", "performance_schema":
-			continue
-		default:
-			dbs = append(dbs, database.String)
-		}
-	}
-	return dbs, rows.Err()
-}
-
-func showTables(db *sql.DB, dbName string) (tables []*config.Table, err error) {
-	// Get table list
-	rows, err := db.Query(fmt.Sprintf("SHOW TABLES IN %s", dbName))
-	if err != nil {
-		return tables, err
-	}
-	defer rows.Close()
-
-	// Read result
-	for rows.Next() {
-		var table sql.NullString
-		if err := rows.Scan(&table); err != nil {
-			return tables, err
-		}
-		tb := config.NewTable(dbName, table.String)
-		tables = append(tables, tb)
-	}
-	return tables, rows.Err()
-}
-
 func (d *dumper) Close() error {
 	// Quit goroutine
 	d.shutdownLock.Lock()

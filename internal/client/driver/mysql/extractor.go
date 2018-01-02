@@ -257,21 +257,29 @@ func (e *Extractor) inspectTables() (err error) {
 			}
 
 			if len(doDb.Tables) == 0 {
-				tbs, err := sql.ShowTables(e.db, doDb.TableSchema)
+				tbs, err := sql.ShowTables(e.db, doDb.TableSchema, e.mysqlContext.ExpandSyntaxSupport)
 				if err != nil {
 					return err
 				}
-				db.Tables = tbs
+				for _, doTb := range tbs {
+					doTb.TableSchema = doDb.TableSchema
+					if err := e.inspector.ValidateOriginalTable(doDb.TableSchema, doTb.TableName, doTb); err != nil {
+						e.logger.Warnf("mysql.extractor: %v", err)
+						continue
+					}
+					db.Tables = append(db.Tables, doTb)
+				}
 			} else {
-				db.Tables = doDb.Tables
-			}
-			for _, doTb := range db.Tables {
-				doTb.TableSchema = doDb.TableSchema
-				if err := e.inspector.ValidateOriginalTable(doDb.TableSchema, doTb.TableName, doTb); err != nil {
-					e.logger.Warnf("mysql.extractor: %v", err)
-					continue
+				for _, doTb := range doDb.Tables {
+					doTb.TableSchema = doDb.TableSchema
+					if err := e.inspector.ValidateOriginalTable(doDb.TableSchema, doTb.TableName, doTb); err != nil {
+						e.logger.Warnf("mysql.extractor: %v", err)
+						continue
+					}
+					db.Tables = append(db.Tables, doTb)
 				}
 			}
+
 			e.replicateDoDb = append(e.replicateDoDb, db)
 		}
 	} else {
@@ -287,7 +295,7 @@ func (e *Extractor) inspectTables() (err error) {
 				continue
 			}
 
-			tbs, err := sql.ShowTables(e.db, dbName)
+			tbs, err := sql.ShowTables(e.db, dbName, e.mysqlContext.ExpandSyntaxSupport)
 			if err != nil {
 				return err
 			}
@@ -305,6 +313,26 @@ func (e *Extractor) inspectTables() (err error) {
 			}
 			e.replicateDoDb = append(e.replicateDoDb, ds)
 		}
+	}
+	if e.mysqlContext.ExpandSyntaxSupport {
+		db_mysql := &config.DataSource{
+			TableSchema: "mysql",
+		}
+		db_mysql.Tables = append(db_mysql.Tables,
+			&config.Table{
+				TableSchema: "mysql",
+				TableName:   "user",
+			},
+			&config.Table{
+				TableSchema: "mysql",
+				TableName:   "proc",
+			},
+			&config.Table{
+				TableSchema: "mysql",
+				TableName:   "func",
+			},
+		)
+		e.replicateDoDb = append(e.replicateDoDb, db_mysql)
 	}
 
 	return nil
@@ -941,10 +969,20 @@ func (e *Extractor) mysqlDump() error {
 				var dbSQL, tbSQL string
 				if !e.mysqlContext.SkipCreateDbTable {
 					var err error
-					dbSQL = fmt.Sprintf("CREATE DATABASE IF NOT EXISTS %s", tb.TableSchema)
-					tbSQL, err = base.ShowCreateTable(e.singletonDB, tb.TableSchema, tb.TableName, e.mysqlContext.DropTableIfExists)
-					if err != nil {
-						return err
+					if strings.ToLower(tb.TableSchema) != "mysql" {
+						dbSQL = fmt.Sprintf("CREATE DATABASE IF NOT EXISTS %s", tb.TableSchema)
+					}
+
+					if strings.ToLower(tb.TableType) == "view" {
+						/*tbSQL, err = base.ShowCreateView(e.singletonDB, tb.TableSchema, tb.TableName, e.mysqlContext.DropTableIfExists)
+						if err != nil {
+							return err
+						}*/
+					} else if strings.ToLower(tb.TableSchema) != "mysql" {
+						tbSQL, err = base.ShowCreateTable(e.singletonDB, tb.TableSchema, tb.TableName, e.mysqlContext.DropTableIfExists)
+						if err != nil {
+							return err
+						}
 					}
 				}
 				entry := &dumpEntry{
@@ -962,7 +1000,9 @@ func (e *Extractor) mysqlDump() error {
 		} else {
 			var dbSQL string
 			if !e.mysqlContext.SkipCreateDbTable {
-				dbSQL = fmt.Sprintf("CREATE DATABASE IF NOT EXISTS %s", db)
+				if strings.ToLower(db.TableSchema) != "mysql" {
+					dbSQL = fmt.Sprintf("CREATE DATABASE IF NOT EXISTS %s", db.TableSchema)
+				}
 			}
 			entry := &dumpEntry{
 				SystemVariablesStatement: setSystemVariablesStatement,
@@ -1099,8 +1139,8 @@ func (e *Extractor) Stats() (*models.TaskStatistics, error) {
 	if e.natsConn != nil {
 		taskResUsage.MsgStat = e.natsConn.Statistics
 		e.mysqlContext.TotalTransferredBytes = int(taskResUsage.MsgStat.OutBytes)
-		if e.mysqlContext.TrafficAgainstLimits > 0 && int(taskResUsage.MsgStat.OutBytes) >= e.mysqlContext.TrafficAgainstLimits {
-			e.onError(TaskStateDead, fmt.Errorf("traffic limit exceeded : %d/%d", e.mysqlContext.TrafficAgainstLimits, taskResUsage.MsgStat.OutBytes))
+		if e.mysqlContext.TrafficAgainstLimits > 0 && int(taskResUsage.MsgStat.OutBytes)/1024/1024/1024 >= e.mysqlContext.TrafficAgainstLimits {
+			e.onError(TaskStateDead, fmt.Errorf("traffic limit exceeded : %d/%d", e.mysqlContext.TrafficAgainstLimits, int(taskResUsage.MsgStat.OutBytes)/1024/1024/1024))
 		}
 	}
 

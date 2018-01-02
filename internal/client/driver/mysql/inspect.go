@@ -126,24 +126,9 @@ func (i *Inspector) ValidateOriginalTable(databaseName, tableName string, table 
 	}
 	// endregion
 
-	if err := i.validateTableTriggers(databaseName, tableName); err != nil {
+	/*if err := i.validateTableTriggers(databaseName, tableName); err != nil {
 		return err
-	}
-
-	// region validate 'where'
-	i.logger.Infof("Found 'where' on this table: %v", table.Where)
-	if table.Where == "" {
-		table.Where = "true"
-	}
-
-	_, err = uconf.NewWhereCtx(table.Where, table)
-	if err != nil {
-		return err
-	}
-	// TODO the err cause only a WARN
-	// TODO name escaping
-	// endregion
-
+	}*/
 	return nil
 }
 
@@ -286,9 +271,9 @@ func (i *Inspector) validateTable(databaseName, tableName string) error {
 	tableEngine := ""
 	err := usql.QueryRowsMap(i.db, query, func(rowMap usql.RowMap) error {
 		tableEngine = rowMap.GetString("Engine")
-		if rowMap.GetString("Comment") == "VIEW" {
+		/*if rowMap.GetString("Comment") == "VIEW" {
 			return fmt.Errorf("%s.%s is a VIEW, not a real table. Bailing out", usql.EscapeName(databaseName), usql.EscapeName(tableName))
-		}
+		}*/
 		tableFound = true
 
 		return nil

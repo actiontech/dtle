@@ -380,7 +380,7 @@ func ShowDatabases(db *gosql.DB) ([]string, error) {
 	return dbs, rows.Err()
 }
 
-func ShowTables(db *gosql.DB, dbName string) (tables []*config.Table, err error) {
+func ShowTables(db *gosql.DB, dbName string, showType bool) (tables []*config.Table, err error) {
 	// Get table list
 	rows, err := db.Query(fmt.Sprintf("SHOW TABLES IN %s", dbName))
 	if err != nil {
@@ -395,6 +395,12 @@ func ShowTables(db *gosql.DB, dbName string) (tables []*config.Table, err error)
 			return tables, err
 		}
 		tb := &config.Table{TableSchema: dbName, TableName: table.String}
+		if showType {
+			query := fmt.Sprintf(`select table_type from information_schema.tables where table_schema = '%s' and table_name='%s'`, dbName, table.String)
+			if err := db.QueryRow(query).Scan(&tb.TableType); err != nil {
+				return tables, err
+			}
+		}
 		tables = append(tables, tb)
 	}
 	return tables, rows.Err()
