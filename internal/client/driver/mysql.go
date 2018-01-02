@@ -200,6 +200,7 @@ func (m *MySQLDriver) Start(ctx *ExecContext, task *models.Task) (DriverHandle, 
 	switch task.Type {
 	case models.TaskTypeSrc:
 		{
+			m.logger.Debugf("NewExtractor ReplicateDoDb: %v", driverConfig.ReplicateDoDb)
 			// Create the extractor
 			e := mysql.NewExtractor(ctx.Subject, ctx.Tp, ctx.MaxPayload, &driverConfig, m.logger)
 			go e.Run()
@@ -207,6 +208,7 @@ func (m *MySQLDriver) Start(ctx *ExecContext, task *models.Task) (DriverHandle, 
 		}
 	case models.TaskTypeDest:
 		{
+			m.logger.Debugf("NewApplier ReplicateDoDb: %v", driverConfig.ReplicateDoDb)
 			a := mysql.NewApplier(ctx.Subject, ctx.Tp, &driverConfig, m.logger)
 			go a.Run()
 			return a, nil

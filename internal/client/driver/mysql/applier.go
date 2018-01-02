@@ -25,6 +25,7 @@ import (
 	"udup/internal/config"
 	log "udup/internal/logger"
 	"udup/internal/models"
+	"udup/utils"
 )
 
 const (
@@ -442,6 +443,7 @@ func (a *Applier) initiateStreaming() error {
 
 	if a.mysqlContext.ApproveHeterogeneous {
 		_, err := a.natsConn.Subscribe(fmt.Sprintf("%s_incr_hete", a.subject), func(m *gonats.Msg) {
+			a.logger.Debugf("applier: event: heterogeneous")
 			var binlogEntry *binlog.BinlogEntry
 			if err := Decode(m.Data, &binlogEntry); err != nil {
 				a.onError(TaskStateDead, err)
@@ -504,6 +506,7 @@ func (a *Applier) initiateStreaming() error {
 		}()
 	} else {
 		_, err := a.natsConn.Subscribe(fmt.Sprintf("%s_incr", a.subject), func(m *gonats.Msg) {
+			a.logger.Debugf("applier: event: homogeneous")
 			var binlogTx []*binlog.BinlogTx
 			if err := Decode(m.Data, &binlogTx); err != nil {
 				a.onError(TaskStateDead, err)
@@ -836,6 +839,8 @@ func (a *Applier) ApplyBinlogEvent(dbApplier *sql.DB, binlogEntry *binlog.Binlog
 				a.logger.Errorf("mysql.applier: Build dml query error: %v", err)
 				return err
 			}
+			a.logger.Debugf("ApplyBinlogEvent. query: %v", utils.StrLim(query, 256))
+			a.logger.Debugf("ApplyBinlogEvent. args: %v", args)
 			_, err = tx.Exec(query, args...)
 			if err != nil {
 				a.logger.Errorf("mysql.applier: Exec %+v,args: %v,gtid: %s:%d, error: %v", query, args, binlogEntry.Coordinates.SID, binlogEntry.Coordinates.GNO, err)
@@ -901,6 +906,7 @@ func (a *Applier) ApplyEventQueries(db *gosql.DB, entry *dumpEntry) error {
 		if query == "" {
 			continue
 		}
+		a.logger.Debugf("ApplyEventQueries. query: %v", utils.StrLim(query, 256))
 		_, err := tx.Exec(query)
 		if err != nil {
 			if !sql.IgnoreError(err) {
