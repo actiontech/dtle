@@ -251,6 +251,7 @@ func (s *HTTPServer) jobQuery(resp http.ResponseWriter, req *http.Request,
 func (s *HTTPServer) jobUpdate(resp http.ResponseWriter, req *http.Request,
 	jobName string) (interface{}, error) {
 	var args *api.Job
+	var trafficLimit int
 	if err := decodeBody(req, &args); err != nil {
 		return nil, CodedError(400, err.Error())
 	}
@@ -282,9 +283,10 @@ func (s *HTTPServer) jobUpdate(resp http.ResponseWriter, req *http.Request,
 		if outOrder.Order == nil {
 			return nil, CodedError(404, "order not found")
 		}
+		trafficLimit += outOrder.Order.TrafficAgainstLimits
 	}
 
-	sJob := ApiJobToStructJob(args, 0)
+	sJob := ApiJobToStructJob(args, trafficLimit)
 
 	regReq := models.JobRegisterRequest{
 		Job:            sJob,
@@ -420,7 +422,7 @@ func (s *HTTPServer) ValidateJobRequest(resp http.ResponseWriter, req *http.Requ
 	return out, nil
 }
 
-func ApiJobToStructJob(job *api.Job, trafficLimit uint64) *models.Job {
+func ApiJobToStructJob(job *api.Job, trafficLimit int) *models.Job {
 	job.Canonicalize()
 
 	j := &models.Job{

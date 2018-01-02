@@ -1138,8 +1138,8 @@ func (e *Extractor) Stats() (*models.TaskStatistics, error) {
 	if e.natsConn != nil {
 		taskResUsage.MsgStat = e.natsConn.Statistics
 		e.mysqlContext.TotalTransferredBytes = int(taskResUsage.MsgStat.OutBytes)
-		if e.mysqlContext.TrafficAgainstLimits > 0 && int(taskResUsage.MsgStat.OutBytes) >= e.mysqlContext.TrafficAgainstLimits {
-			e.onError(TaskStateDead, fmt.Errorf("traffic limit exceeded : %d/%d", e.mysqlContext.TrafficAgainstLimits, taskResUsage.MsgStat.OutBytes))
+		if e.mysqlContext.TrafficAgainstLimits > 0 && int(taskResUsage.MsgStat.OutBytes)/1024/1024/1024 >= e.mysqlContext.TrafficAgainstLimits {
+			e.onError(TaskStateDead, fmt.Errorf("traffic limit exceeded : %d/%d", e.mysqlContext.TrafficAgainstLimits, int(taskResUsage.MsgStat.OutBytes)/1024/1024/1024))
 		}
 	}
 

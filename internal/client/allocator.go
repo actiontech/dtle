@@ -258,6 +258,10 @@ func (r *Allocator) setTaskState(taskName, state string, event *models.TaskEvent
 		r.appendTaskEvent(taskState, event)
 	}
 
+	if event.Type == models.TaskKilled {
+		state = models.TaskStateStop
+	}
+
 	if state == "" {
 		return
 	}
@@ -269,6 +273,44 @@ func (r *Allocator) setTaskState(taskName, state string, event *models.TaskEvent
 			taskState.StartedAt = time.Now()
 		}
 	case models.TaskStateDead:
+		// Capture the finished time. If it has never started there is no finish
+		// time
+		if !taskState.StartedAt.IsZero() {
+			taskState.FinishedAt = time.Now()
+		}
+
+		// Find all tasks that are not the one that is dead and check if the one
+		// that is dead is a leader
+		var otherWorkers []*Worker
+		var otherTaskNames []string
+		leader := false
+		for task, tr := range r.tasks {
+			if task != taskName {
+				otherWorkers = append(otherWorkers, tr)
+				otherTaskNames = append(otherTaskNames, task)
+			} else if tr.task.Leader {
+				leader = true
+			}
+		}
+
+		// If the task failed, we should kill all the other tasks in the task.
+		if taskState.Failed {
+			for _, tr := range otherWorkers {
+				tr.Destroy(models.NewTaskEvent(models.TaskSiblingFailed).SetFailedSibling(taskName))
+			}
+			if len(otherWorkers) > 0 {
+				r.logger.Debugf("agent: Task %q failed, destroying other tasks in task: %v", taskName, otherTaskNames)
+			}
+		} else if leader {
+			// If the task was a leader task we should kill all the other tasks.
+			for _, tr := range otherWorkers {
+				tr.Destroy(models.NewTaskEvent(models.TaskLeaderDead))
+			}
+			if len(otherWorkers) > 0 {
+				r.logger.Debugf("agent: Leader task %q is dead, destroying other tasks in task: %v", taskName, otherTaskNames)
+			}
+		}
+	case models.TaskStateStop:
 		// Capture the finished time. If it has never started there is no finish
 		// time
 		if !taskState.StartedAt.IsZero() {

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"strconv"
 
 	"github.com/hashicorp/go-memdb"
 
@@ -458,8 +459,17 @@ func (s *StateStore) RenewalJob(index uint64, jobId, orderId string) error {
 		if err := txn.Insert("index", &IndexEntry{"orders", index}); err != nil {
 			return fmt.Errorf("index update failed: %v", err)
 		}
+
+		existing.(*models.Job).Orders = append(existing.(*models.Job).Orders, orderId)
+
+		for _, task := range existing.(*models.Job).Tasks {
+			if task.Type == models.TaskTypeSrc {
+				if i, err := strconv.Atoi(fmt.Sprintf("%v", task.Config["TrafficAgainstLimits"])); err == nil {
+					task.Config["TrafficAgainstLimits"] = i + int(order.(*models.Order).TrafficAgainstLimits)
+				}
+			}
+		}
 	}
-	existing.(*models.Job).Orders = append(existing.(*models.Job).Orders, orderId)
 
 	// Insert the job
 	if err := txn.Insert("jobs", existing.(*models.Job)); err != nil {

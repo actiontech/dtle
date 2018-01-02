@@ -91,6 +91,7 @@ const (
 	TaskStatePending  = "pending" // The task is waiting to be run.
 	TaskStateRunning  = "running" // The task is currently running.
 	TaskStateDead     = "dead"    // Terminal state of task.
+	TaskStateStop     = "stop"
 	TaskStateQueued   = "queued"
 	TaskStateComplete = "complete"
 	TaskStateFailed   = "failed"
