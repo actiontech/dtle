@@ -256,10 +256,10 @@ func (r *Allocator) setTaskState(taskName, state string, event *models.TaskEvent
 			taskState.Failed = true
 		}
 		r.appendTaskEvent(taskState, event)
-	}
 
-	if event.Type == models.TaskKilled {
-		state = models.TaskStateStop
+		if event.Type == models.TaskKilled {
+			state = models.TaskStateStop
+		}
 	}
 
 	if state == "" {

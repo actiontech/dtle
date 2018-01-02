@@ -905,11 +905,11 @@ func (b *BinlogReader) skipRowEvent(rowsEvent *replication.RowsEvent) (bool, *co
 	switch strings.ToLower(string(rowsEvent.Table.Schema)) {
 	case "actiontech_udup":
 		b.currentBinlogEntry.Coordinates.OSID = mysql.ToColumnValues(rowsEvent.Rows[0]).StringColumn(0)
-		return true
+		return true, nil
 	case "mysql":
-		return false
+		return false, nil
 	case "sys", "information_schema", "performance_schema":
-		return true
+		return true, nil
 	default:
 		if len(b.mysqlContext.ReplicateDoDb) > 0 {
 			table := strings.ToLower(string(rowsEvent.Table.Table))
