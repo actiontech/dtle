@@ -314,7 +314,7 @@ func (e *Extractor) inspectTables() (err error) {
 			e.replicateDoDb = append(e.replicateDoDb, ds)
 		}
 	}
-	if e.mysqlContext.ExpandSyntaxSupport {
+	/*if e.mysqlContext.ExpandSyntaxSupport {
 		db_mysql := &config.DataSource{
 			TableSchema: "mysql",
 		}
@@ -333,7 +333,7 @@ func (e *Extractor) inspectTables() (err error) {
 			},
 		)
 		e.replicateDoDb = append(e.replicateDoDb, db_mysql)
-	}
+	}*/
 
 	return nil
 }
