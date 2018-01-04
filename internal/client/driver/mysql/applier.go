@@ -698,19 +698,27 @@ func (a *Applier) validateAndReadTimeZone() error {
 }
 
 func (a *Applier) createTableGtidExecuted() error {
-	if result, err := sql.QueryResultData(a.db, "SHOW TABLES FROM actiontech_udup LIKE 'gtid_executed'"); nil == err && len(result) > 0 {
+	if _, err := sql.QueryResultData(a.db, "SHOW TABLES FROM actiontech_udup LIKE 'gtid_executed'");err == nil {
 		return nil
 	}
 	query := fmt.Sprintf(`
 			CREATE DATABASE IF NOT EXISTS actiontech_udup;
-			CREATE TABLE IF NOT EXISTS actiontech_udup.gtid_executed (
-  				source_uuid char(36) NOT NULL COMMENT 'uuid of the source where the transaction was originally executed.',
-  				interval_gtid text NOT NULL COMMENT 'number of interval.'
-			)
 		`)
-	if _, err := sql.ExecNoPrepare(a.db, query); err != nil {
+	if _, err := sql.Exec(a.db, query); err != nil {
 		return err
 	}
+
+	query = fmt.Sprintf(`
+			CREATE TABLE IF NOT EXISTS actiontech_udup.gtid_executed (
+				source_uuid char(36) NOT NULL COMMENT 'uuid of the source where the transaction was originally executed.',
+				interval_gtid text NOT NULL COMMENT 'number of interval.'
+			);
+		`)
+	if _, err := sql.Exec(a.db, query); err != nil {
+		return err
+	}
+
+
 	return nil
 }
 
