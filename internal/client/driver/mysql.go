@@ -188,6 +188,12 @@ func (m *MySQLDriver) Validate(task *models.Task) (*models.TaskValidateResponse,
 			reply.Privileges.Error = fmt.Sprintf("user has insufficient privileges for applier. Needed: SUPER|ALL on *.*")
 		}
 	}
+	if task.Config["ExpandSyntaxSupport"] == true {
+		if _,err := db.Query("use mysql"); err != nil {
+			reply.Privileges.Success = false
+			reply.Privileges.Error = err.Error()
+		}
+	}
 	return reply, nil
 }
 
