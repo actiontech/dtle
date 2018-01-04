@@ -57,6 +57,20 @@ func (m *MySQLDriver) Validate(task *models.Task) (*models.TaskValidateResponse,
 			reply.LogSlaveUpdates.Success = true
 		}
 
+		// Get max allowed packet size
+		query = `select @@global.max_allowed_packet;`
+		var maxAllowedPacket int
+		if err := db.QueryRow(query).Scan(&maxAllowedPacket); err != nil {
+			reply.MaxAllowedPacket.Success = false
+			reply.MaxAllowedPacket.Error = err.Error()
+		}
+		if maxAllowedPacket < 2048 {
+			reply.MaxAllowedPacket.Success = false
+			reply.MaxAllowedPacket.Error = fmt.Sprintf("%s:%d must set global max_allowed_packet >= 2048", driverConfig.ConnectionConfig.Host, driverConfig.ConnectionConfig.Port)
+		} else {
+			reply.MaxAllowedPacket.Success = true
+		}
+
 		query = `SELECT @@GTID_MODE`
 		var gtidMode string
 		if err := db.QueryRow(query).Scan(&gtidMode); err != nil {
@@ -189,7 +203,7 @@ func (m *MySQLDriver) Validate(task *models.Task) (*models.TaskValidateResponse,
 		}
 	}
 	if task.Config["ExpandSyntaxSupport"] == true {
-		if _,err := db.Query("use mysql"); err != nil {
+		if _, err := db.Query("use mysql"); err != nil {
 			reply.Privileges.Success = false
 			reply.Privileges.Error = err.Error()
 		}

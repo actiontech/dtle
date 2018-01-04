@@ -70,7 +70,7 @@ func NewMySQLReader(cfg *config.MySQLDriverConfig, logger *log.Entry) (binlogRea
 				return nil, err
 			}
 			dbMap[table.TableName] = &config.TableContext{
-				Table: table,
+				Table:    table,
 				WhereCtx: whereCtx,
 			}
 		}
@@ -800,7 +800,7 @@ func (b *BinlogReader) skipQueryDDL(sql string, schema string) bool {
 	case "mysql":
 		if b.mysqlContext.ExpandSyntaxSupport {
 			return false
-		}else {
+		} else {
 			return true
 		}
 	case "sys", "information_schema", "performance_schema", "actiontech_udup":
@@ -869,7 +869,7 @@ func (b *BinlogReader) skipEvent(schema string, table string) bool {
 	case "mysql":
 		if b.mysqlContext.ExpandSyntaxSupport {
 			return false
-		}else {
+		} else {
 			return true
 		}
 	case "sys", "information_schema", "performance_schema", "actiontech_udup":
@@ -921,7 +921,7 @@ func (b *BinlogReader) skipRowEvent(rowsEvent *replication.RowsEvent) (bool, *co
 	case "mysql":
 		if b.mysqlContext.ExpandSyntaxSupport {
 			return false, nil
-		}else {
+		} else {
 			return true, nil
 		}
 	case "sys", "information_schema", "performance_schema":

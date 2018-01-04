@@ -129,6 +129,7 @@ func (i *Inspector) ValidateOriginalTable(databaseName, tableName string, table 
 	if err := i.validateTableTriggers(databaseName, tableName); err != nil {
 		return err
 	}
+
 	// region validate 'where'
 	i.logger.Infof("Found 'where' on this table: %v", table.Where)
 	if table.Where == "" {

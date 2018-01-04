@@ -793,6 +793,7 @@ func (e *Extractor) requestMsg(subject, gtid string, txMsg []byte) (err error) {
 			break
 		}
 		// there's an error. Let's try again.
+		e.logger.Debugf(fmt.Sprintf("mysql.extractor: there's an error [%v]. Let's try again", err))
 		time.Sleep(1 * time.Second)
 	}
 	return err

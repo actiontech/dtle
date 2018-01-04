@@ -342,6 +342,8 @@ type TaskValidateResponse struct {
 
 	LogSlaveUpdates LogSlaveUpdatesValidate
 
+	MaxAllowedPacket MaxAllowedPacket
+
 	Privileges PrivilegesValidate
 
 	GtidMode GtidModeValidate
@@ -382,6 +384,12 @@ type ConnectionValidate struct {
 }
 
 type LogSlaveUpdatesValidate struct {
+	Success bool
+	// Error is a string version of any error that may have occured
+	Error string
+}
+
+type MaxAllowedPacket struct {
 	Success bool
 	// Error is a string version of any error that may have occured
 	Error string
