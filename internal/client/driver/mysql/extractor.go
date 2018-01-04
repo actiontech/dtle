@@ -967,7 +967,8 @@ func (e *Extractor) mysqlDump() error {
 					return err
 				}
 				tb.Counter = total
-				var dbSQL, tbSQL string
+				var dbSQL string
+				var tbSQL []string
 				if !e.mysqlContext.SkipCreateDbTable {
 					var err error
 					if strings.ToLower(tb.TableSchema) != "mysql" {

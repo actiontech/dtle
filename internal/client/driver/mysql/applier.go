@@ -283,7 +283,7 @@ func (a *Applier) executeWriteFuncs() {
 					if nil == copyRows {
 						continue
 					}
-					if copyRows.DbSQL != "" || copyRows.TbSQL != "" {
+					if copyRows.DbSQL != "" || len(copyRows.TbSQL) > 0 {
 						if err := a.ApplyEventQueries(a.db, copyRows); err != nil {
 							a.onError(TaskStateDead, err)
 						}
@@ -698,7 +698,7 @@ func (a *Applier) validateAndReadTimeZone() error {
 }
 
 func (a *Applier) createTableGtidExecuted() error {
-	if _, err := sql.QueryResultData(a.db, "SHOW TABLES FROM actiontech_udup LIKE 'gtid_executed'");err == nil {
+	if _, err := sql.QueryResultData(a.db, "SHOW TABLES FROM actiontech_udup LIKE 'gtid_executed'"); err == nil {
 		return nil
 	}
 	query := fmt.Sprintf(`
@@ -717,7 +717,6 @@ func (a *Applier) createTableGtidExecuted() error {
 	if _, err := sql.Exec(a.db, query); err != nil {
 		return err
 	}
-
 
 	return nil
 }
@@ -889,7 +888,8 @@ func (a *Applier) ApplyBinlogEvent(dbApplier *sql.DB, binlogEntry *binlog.Binlog
 
 func (a *Applier) ApplyEventQueries(db *gosql.DB, entry *dumpEntry) error {
 	queries := []string{}
-	queries = append(queries, entry.SystemVariablesStatement, entry.SqlMode, entry.DbSQL, entry.TbSQL)
+	queries = append(queries, entry.SystemVariablesStatement, entry.SqlMode, entry.DbSQL)
+	queries = append(queries, entry.TbSQL...)
 	if len(entry.Values) > 0 {
 		for _, e := range entry.Values {
 			queries = append(queries, fmt.Sprintf(`replace into %s.%s values %s`, entry.TableSchema, entry.TableName, strings.Join(e, ",")))
@@ -924,7 +924,7 @@ func (a *Applier) ApplyEventQueries(db *gosql.DB, entry *dumpEntry) error {
 				a.logger.Warnf("mysql.applier: Ignore error: %v", err)
 			}
 		}
-		a.logger.Debugf("mysql.applier: Exec [%s]", query)
+		a.logger.Debugf("mysql.applier: Exec [%s]", utils.StrLim(query, 256))
 	}
 	return nil
 }
