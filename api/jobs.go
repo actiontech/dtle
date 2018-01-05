@@ -179,6 +179,7 @@ type Job struct {
 	ID                *string
 	Orders            []string
 	Name              *string
+	Failover          bool
 	Type              *string
 	Datacenters       []string
 	Tasks             []*Task

@@ -53,6 +53,8 @@ type Job struct {
 	// per region, but not unique globally.
 	Name string
 
+	Failover bool
+
 	// Type is used to control various behaviors about the job. Most jobs
 	// are service jobs, meaning they are expected to be long lived.
 	// Some jobs are batch oriented meaning they run and then terminate.

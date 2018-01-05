@@ -430,6 +430,7 @@ func ApiJobToStructJob(job *api.Job, trafficLimit int) *models.Job {
 		ID:                *job.ID,
 		Orders:            job.Orders,
 		Name:              *job.Name,
+		Failover:          job.Failover,
 		Type:              *job.Type,
 		Datacenters:       job.Datacenters,
 		Status:            *job.Status,
