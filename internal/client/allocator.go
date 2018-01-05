@@ -94,9 +94,9 @@ func (r *Allocator) stateFilePath() string {
 // is snapshotted. If fullSync is marked as true, we snapshot
 // all the Task Runners associated with the Alloc
 func (r *Allocator) SaveState() error {
-	/*if err := r.saveAllocatorState(); err != nil {
+	if err := r.saveAllocatorState(); err != nil {
 		return err
-	}*/
+	}
 
 	// Save store for each task
 	runners := r.getWorkers()
@@ -223,8 +223,8 @@ func (r *Allocator) syncStatus() error {
 	// Get a copy of our alloc, update status server side and sync to disk
 	alloc := r.Alloc()
 	r.updater(alloc)
-	//return r.saveAllocatorState()
-	return nil
+	return r.saveAllocatorState()
+	//return nil
 }
 
 // setStatus is used to update the allocation status
