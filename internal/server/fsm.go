@@ -261,12 +261,36 @@ func (n *udupFSM) applyStatusUpdate(buf []byte, index uint64) interface{} {
 					if len(out) > 0 {
 						task.NodeID = out[0].ID
 						if task.Type == models.TaskTypeDest {
-							for _, t := range job.Tasks {
+							for i, t := range job.Tasks {
 								t.Config["NatsAddr"] = out[0].NatsAddr
+								job.Tasks[i] = t
 							}
 						}
+
 						if err := n.state.UpsertJob(index, job); err != nil {
 							n.logger.Errorf("server.fsm: UpsertJob failed: %v", err)
+							return err
+						}
+						allocs, err := n.state.AllocsByJob(ws, job.ID,true)
+						if err != nil {
+							return fmt.Errorf("failed to find allocs for '%s': %v", req.NodeID, err)
+						}
+						for _, alloc := range allocs {
+							alloc.Job = job
+							nodeID := alloc.NodeID
+							node, err := n.state.NodeByID(ws, nodeID)
+							if err != nil || node == nil {
+								n.logger.Errorf("server.fsm: looking up node %q failed: %v", nodeID, err)
+								return err
+
+							}
+							if node.Status == models.NodeStatusDown {
+								alloc.TaskStates[alloc.Task].State = models.TaskStateDead
+								alloc.NodeID = out[0].ID
+							}
+						}
+						if err := n.state.UpsertAllocs(index, allocs); err != nil {
+							n.logger.Errorf("server.fsm: UpsertAllocs failed: %v", err)
 							return err
 						}
 					}
@@ -459,7 +483,7 @@ func (n *udupFSM) applyJobClientUpdate(buf []byte, index uint64) interface{} {
 				existing.JobModifyIndex = index
 				for _, t := range existing.Tasks {
 					t.Config["Gtid"] = ju.Gtid
-					t.Config["NatsAddr"] = ju.NatsAddr
+					//t.Config["NatsAddr"] = ju.NatsAddr
 				}
 				// Update all the client allocations
 				if err := n.state.UpdateJobFromClient(index, existing); err != nil {
@@ -470,9 +494,9 @@ func (n *udupFSM) applyJobClientUpdate(buf []byte, index uint64) interface{} {
 				existing.CreateIndex = existing.CreateIndex
 				existing.ModifyIndex = index
 				existing.JobModifyIndex = index
-				for _, t := range existing.Tasks {
+				/*for _, t := range existing.Tasks {
 					t.Config["NatsAddr"] = ju.NatsAddr
-				}
+				}*/
 				// Update all the client allocations
 				if err := n.state.UpdateJobFromClient(index, existing); err != nil {
 					n.logger.Errorf("server.fsm: UpdateJobFromClient failed: %v", err)
