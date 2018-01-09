@@ -325,9 +325,9 @@ func parseInterval(str string) (i gomysql.Interval, err error) {
 	return
 }
 
-func SelectGtidExecuted(db *gosql.DB, sid string, gno int64) (gtidset string, err error) {
-	query := fmt.Sprintf(`SELECT interval_gtid FROM actiontech_udup.gtid_executed where source_uuid='%s'`,
-		sid,
+func SelectGtidExecuted(db *gosql.DB, sid, jid string, gno int64) (gtidset string, err error) {
+	query := fmt.Sprintf(`SELECT interval_gtid FROM actiontech_udup.gtid_executed where source_uuid='%s' and job_uuid='%s'`,
+		sid, jid,
 	)
 
 	rows, err := db.Query(query)

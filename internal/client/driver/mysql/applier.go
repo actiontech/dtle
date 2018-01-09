@@ -505,7 +505,6 @@ func (a *Applier) initiateStreaming() error {
 		}()
 	} else {
 		_, err := a.natsConn.Subscribe(fmt.Sprintf("%s_incr", a.subject), func(m *gonats.Msg) {
-			a.logger.Debugf("applier: event: homogeneous")
 			var binlogTx []*binlog.BinlogTx
 			if err := Decode(m.Data, &binlogTx); err != nil {
 				a.onError(TaskStateDead, err)
@@ -710,6 +709,7 @@ func (a *Applier) createTableGtidExecuted() error {
 
 	query = fmt.Sprintf(`
 			CREATE TABLE IF NOT EXISTS actiontech_udup.gtid_executed (
+				job_uuid char(36) NOT NULL COMMENT 'unique identifier of job',
 				source_uuid char(36) NOT NULL COMMENT 'uuid of the source where the transaction was originally executed.',
 				interval_gtid text NOT NULL COMMENT 'number of interval.'
 			);
@@ -786,7 +786,7 @@ func (a *Applier) buildDMLEventQuery(dmlEvent binlog.DataEvent) (query string, a
 func (a *Applier) ApplyBinlogEvent(dbApplier *sql.DB, binlogEntry *binlog.BinlogEntry) error {
 	var totalDelta int64
 
-	interval, err := base.SelectGtidExecuted(dbApplier.Db, binlogEntry.Coordinates.SID, binlogEntry.Coordinates.GNO)
+	interval, err := base.SelectGtidExecuted(dbApplier.Db, binlogEntry.Coordinates.SID, a.subject, binlogEntry.Coordinates.GNO)
 	if err != nil {
 		return err
 	}
@@ -861,7 +861,10 @@ func (a *Applier) ApplyBinlogEvent(dbApplier *sql.DB, binlogEntry *binlog.Binlog
 			actiontech_udup.gtid_executed
 	 	where
 	 		source_uuid = '%s'
+		and
+			job_uuid = '%s'
 		`,
+		a.subject,
 		binlogEntry.Coordinates.SID,
 	)
 	if _, err := tx.Exec(query); err != nil {
@@ -869,11 +872,10 @@ func (a *Applier) ApplyBinlogEvent(dbApplier *sql.DB, binlogEntry *binlog.Binlog
 	}
 	query = fmt.Sprintf(`
 			insert into actiontech_udup.gtid_executed
-  				(source_uuid,interval_gtid)
+  				(job_uuid,source_uuid,interval_gtid)
   			values
-  				('%s','%s')
-		`,
-		binlogEntry.Coordinates.SID,
+  				('%s','%s','%s')
+		`, a.subject, binlogEntry.Coordinates.SID,
 		interval,
 	)
 	if _, err := tx.Exec(query); err != nil {
