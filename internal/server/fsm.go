@@ -236,7 +236,10 @@ func (n *udupFSM) applyStatusUpdate(buf []byte, index uint64) interface{} {
 
 			// Prepare the request struct
 			job := raw.(*models.Job)
-			for _,task :=range job.Tasks {
+			if !job.Failover {
+				continue
+			}
+			for _, task := range job.Tasks {
 				if task.NodeID == req.NodeID {
 					// Scan the nodes
 					ws := memdb.NewWatchSet()
@@ -271,7 +274,7 @@ func (n *udupFSM) applyStatusUpdate(buf []byte, index uint64) interface{} {
 							n.logger.Errorf("server.fsm: UpsertJob failed: %v", err)
 							return err
 						}
-						allocs, err := n.state.AllocsByJob(ws, job.ID,true)
+						allocs, err := n.state.AllocsByJob(ws, job.ID, true)
 						if err != nil {
 							return fmt.Errorf("failed to find allocs for '%s': %v", req.NodeID, err)
 						}

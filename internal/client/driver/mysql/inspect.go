@@ -392,64 +392,64 @@ func (i *Inspector) getCandidateUniqueKeys(databaseName, tableName string) (uniq
     WHERE
       COLUMNS.TABLE_SCHEMA = ? AND COLUMNS.TABLE_NAME = ?`
 	/*query := `
-    SELECT
-      COLUMNS.TABLE_SCHEMA,
-      COLUMNS.TABLE_NAME,
-      COLUMNS.COLUMN_NAME,
-      UNIQUES.INDEX_NAME,
-      UNIQUES.COLUMN_NAMES,
-      UNIQUES.COUNT_COLUMN_IN_INDEX,
-      COLUMNS.DATA_TYPE,
-      COLUMNS.CHARACTER_SET_NAME,
-			LOCATE('auto_increment', EXTRA) > 0 as is_auto_increment,
-      has_nullable
-    FROM INFORMATION_SCHEMA.COLUMNS INNER JOIN (
-      SELECT
-        TABLE_SCHEMA,
-        TABLE_NAME,
-        INDEX_NAME,
-        COUNT(*) AS COUNT_COLUMN_IN_INDEX,
-        GROUP_CONCAT(COLUMN_NAME ORDER BY SEQ_IN_INDEX ASC) AS COLUMN_NAMES,
-        SUBSTRING_INDEX(GROUP_CONCAT(COLUMN_NAME ORDER BY SEQ_IN_INDEX ASC), ',', 1) AS FIRST_COLUMN_NAME,
-        SUM(NULLABLE='YES') > 0 AS has_nullable
-      FROM INFORMATION_SCHEMA.STATISTICS
-      WHERE
-				NON_UNIQUE=0
-				AND TABLE_SCHEMA = ?
-      	AND TABLE_NAME = ?
-      GROUP BY TABLE_SCHEMA, TABLE_NAME, INDEX_NAME
-    ) AS UNIQUES
-    ON (
-      COLUMNS.TABLE_SCHEMA = UNIQUES.TABLE_SCHEMA AND
-      COLUMNS.TABLE_NAME = UNIQUES.TABLE_NAME AND
-      COLUMNS.COLUMN_NAME = UNIQUES.FIRST_COLUMN_NAME
-    )
-    WHERE
-      COLUMNS.TABLE_SCHEMA = ?
-      AND COLUMNS.TABLE_NAME = ?
-    ORDER BY
-      COLUMNS.TABLE_SCHEMA, COLUMNS.TABLE_NAME,
-      CASE UNIQUES.INDEX_NAME
-        WHEN 'PRIMARY' THEN 0
-        ELSE 1
-      END,
-      CASE has_nullable
-        WHEN 0 THEN 0
-        ELSE 1
-      END,
-      CASE IFNULL(CHARACTER_SET_NAME, '')
-          WHEN '' THEN 0
-          ELSE 1
-      END,
-      CASE DATA_TYPE
-        WHEN 'tinyint' THEN 0
-        WHEN 'smallint' THEN 1
-        WHEN 'int' THEN 2
-        WHEN 'bigint' THEN 3
-        ELSE 100
-      END,
-      COUNT_COLUMN_IN_INDEX
-  `*/
+	    SELECT
+	      COLUMNS.TABLE_SCHEMA,
+	      COLUMNS.TABLE_NAME,
+	      COLUMNS.COLUMN_NAME,
+	      UNIQUES.INDEX_NAME,
+	      UNIQUES.COLUMN_NAMES,
+	      UNIQUES.COUNT_COLUMN_IN_INDEX,
+	      COLUMNS.DATA_TYPE,
+	      COLUMNS.CHARACTER_SET_NAME,
+				LOCATE('auto_increment', EXTRA) > 0 as is_auto_increment,
+	      has_nullable
+	    FROM INFORMATION_SCHEMA.COLUMNS INNER JOIN (
+	      SELECT
+	        TABLE_SCHEMA,
+	        TABLE_NAME,
+	        INDEX_NAME,
+	        COUNT(*) AS COUNT_COLUMN_IN_INDEX,
+	        GROUP_CONCAT(COLUMN_NAME ORDER BY SEQ_IN_INDEX ASC) AS COLUMN_NAMES,
+	        SUBSTRING_INDEX(GROUP_CONCAT(COLUMN_NAME ORDER BY SEQ_IN_INDEX ASC), ',', 1) AS FIRST_COLUMN_NAME,
+	        SUM(NULLABLE='YES') > 0 AS has_nullable
+	      FROM INFORMATION_SCHEMA.STATISTICS
+	      WHERE
+					NON_UNIQUE=0
+					AND TABLE_SCHEMA = ?
+	      	AND TABLE_NAME = ?
+	      GROUP BY TABLE_SCHEMA, TABLE_NAME, INDEX_NAME
+	    ) AS UNIQUES
+	    ON (
+	      COLUMNS.TABLE_SCHEMA = UNIQUES.TABLE_SCHEMA AND
+	      COLUMNS.TABLE_NAME = UNIQUES.TABLE_NAME AND
+	      COLUMNS.COLUMN_NAME = UNIQUES.FIRST_COLUMN_NAME
+	    )
+	    WHERE
+	      COLUMNS.TABLE_SCHEMA = ?
+	      AND COLUMNS.TABLE_NAME = ?
+	    ORDER BY
+	      COLUMNS.TABLE_SCHEMA, COLUMNS.TABLE_NAME,
+	      CASE UNIQUES.INDEX_NAME
+	        WHEN 'PRIMARY' THEN 0
+	        ELSE 1
+	      END,
+	      CASE has_nullable
+	        WHEN 0 THEN 0
+	        ELSE 1
+	      END,
+	      CASE IFNULL(CHARACTER_SET_NAME, '')
+	          WHEN '' THEN 0
+	          ELSE 1
+	      END,
+	      CASE DATA_TYPE
+	        WHEN 'tinyint' THEN 0
+	        WHEN 'smallint' THEN 1
+	        WHEN 'int' THEN 2
+	        WHEN 'bigint' THEN 3
+	        ELSE 100
+	      END,
+	      COUNT_COLUMN_IN_INDEX
+	  `*/
 	err = usql.QueryRowsMap(i.db, query, func(m usql.RowMap) error {
 		columns := umconf.ParseColumnList(m.GetString("COLUMN_NAMES"))
 		uniqueKey := &umconf.UniqueKey{

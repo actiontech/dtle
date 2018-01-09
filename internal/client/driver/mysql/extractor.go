@@ -385,7 +385,7 @@ func (e *Extractor) initNatsPubClient() (err error) {
 		e.logger.Errorf("mysql.extractor: Can't connect nats server %v. make sure a nats streaming server is running.%v", natsAddr, err)
 		return err
 	}
-	e.logger.Debugf("mysql.extractor: Connect nats server %v", natsAddr)
+	e.logger.Infof("mysql.extractor: Connect nats server %v", natsAddr)
 	e.natsConn = sc
 
 	return nil
