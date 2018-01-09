@@ -860,9 +860,9 @@ func (a *Applier) ApplyBinlogEvent(dbApplier *sql.DB, binlogEntry *binlog.Binlog
 		delete from
 			actiontech_udup.gtid_executed
 	 	where
-	 		source_uuid = '%s'
+	 		job_uuid = '%s'
 		and
-			job_uuid = '%s'
+			source_uuid = '%s'
 		`,
 		a.subject,
 		binlogEntry.Coordinates.SID,
