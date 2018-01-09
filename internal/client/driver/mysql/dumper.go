@@ -66,7 +66,7 @@ type dumpEntry struct {
 	DbSQL                    string
 	TableName                string
 	TableSchema              string
-	TbSQL                    string
+	TbSQL                    []string
 	Values                   [][]string
 	TotalCount               int64
 	RowsCount                int64

@@ -283,7 +283,7 @@ func (a *Applier) executeWriteFuncs() {
 					if nil == copyRows {
 						continue
 					}
-					if copyRows.DbSQL != "" || copyRows.TbSQL != "" {
+					if copyRows.DbSQL != "" || len(copyRows.TbSQL) > 0 {
 						if err := a.ApplyEventQueries(a.db, copyRows); err != nil {
 							a.onError(TaskStateDead, err)
 						}
@@ -703,14 +703,21 @@ func (a *Applier) createTableGtidExecuted() error {
 	}
 	query := fmt.Sprintf(`
 			CREATE DATABASE IF NOT EXISTS actiontech_udup;
-			CREATE TABLE IF NOT EXISTS actiontech_udup.gtid_executed (
-  				source_uuid char(36) NOT NULL COMMENT 'uuid of the source where the transaction was originally executed.',
-  				interval_gtid text NOT NULL COMMENT 'number of interval.'
-			)
 		`)
-	if _, err := sql.ExecNoPrepare(a.db, query); err != nil {
+	if _, err := sql.Exec(a.db, query); err != nil {
 		return err
 	}
+
+	query = fmt.Sprintf(`
+			CREATE TABLE IF NOT EXISTS actiontech_udup.gtid_executed (
+				source_uuid char(36) NOT NULL COMMENT 'uuid of the source where the transaction was originally executed.',
+				interval_gtid text NOT NULL COMMENT 'number of interval.'
+			);
+		`)
+	if _, err := sql.Exec(a.db, query); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -881,7 +888,8 @@ func (a *Applier) ApplyBinlogEvent(dbApplier *sql.DB, binlogEntry *binlog.Binlog
 
 func (a *Applier) ApplyEventQueries(db *gosql.DB, entry *dumpEntry) error {
 	queries := []string{}
-	queries = append(queries, entry.SystemVariablesStatement, entry.SqlMode, entry.DbSQL, entry.TbSQL)
+	queries = append(queries, entry.SystemVariablesStatement, entry.SqlMode, entry.DbSQL)
+	queries = append(queries, entry.TbSQL...)
 	if len(entry.Values) > 0 {
 		for _, e := range entry.Values {
 			queries = append(queries, fmt.Sprintf(`replace into %s.%s values %s`, entry.TableSchema, entry.TableName, strings.Join(e, ",")))
@@ -916,7 +924,7 @@ func (a *Applier) ApplyEventQueries(db *gosql.DB, entry *dumpEntry) error {
 				a.logger.Warnf("mysql.applier: Ignore error: %v", err)
 			}
 		}
-		a.logger.Debugf("mysql.applier: Exec [%s]", query)
+		a.logger.Debugf("mysql.applier: Exec [%s]", utils.StrLim(query, 256))
 	}
 	return nil
 }

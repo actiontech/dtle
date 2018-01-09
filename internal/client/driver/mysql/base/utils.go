@@ -232,15 +232,16 @@ func GetTableColumns(db usql.QueryAble, databaseName, tableName string) (*umconf
 	return umconf.NewColumnList(columnNames), nil
 }
 
-func ShowCreateTable(db *gosql.DB, databaseName, tableName string, dropTableIfExists bool) (createTableStatement string, err error) {
-	var dummy string
+func ShowCreateTable(db *gosql.DB, databaseName, tableName string, dropTableIfExists bool) (statement []string, err error) {
+	var dummy, createTableStatement string
 	query := fmt.Sprintf(`show create table %s.%s`, usql.EscapeName(databaseName), usql.EscapeName(tableName))
 	err = db.QueryRow(query).Scan(&dummy, &createTableStatement)
-	statement := fmt.Sprintf("USE %s", databaseName)
+	statement = append(statement, fmt.Sprintf("USE %s", databaseName))
 	if dropTableIfExists {
-		statement = fmt.Sprintf("%s;DROP TABLE IF EXISTS `%s`", statement, tableName)
+		statement = append(statement, fmt.Sprintf("DROP TABLE IF EXISTS `%s`", tableName))
 	}
-	return fmt.Sprintf("%s;%s", statement, createTableStatement), err
+	statement = append(statement, createTableStatement)
+	return statement, err
 }
 
 func ShowCreateView(db *gosql.DB, databaseName, tableName string, dropTableIfExists bool) (createTableStatement string, err error) {

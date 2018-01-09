@@ -12,9 +12,9 @@ import (
 	umconf "udup/internal/config/mysql"
 	"udup/internal/models"
 
-	qlvm "github.com/araddon/qlbridge/vm"
-	qlexpr "github.com/araddon/qlbridge/expr"
 	qldatasource "github.com/araddon/qlbridge/datasource"
+	qlexpr "github.com/araddon/qlbridge/expr"
+	qlvm "github.com/araddon/qlbridge/vm"
 	"strings"
 )
 
@@ -304,11 +304,11 @@ type Table struct {
 	TableEngine  string
 	RowsEstimate int64
 
-	Where    string // TODO load from job description
+	Where string // TODO load from job description
 }
 
 type TableContext struct {
-	Table *Table
+	Table    *Table
 	WhereCtx *WhereContext
 }
 
@@ -343,8 +343,8 @@ func (t *TableContext) WhereTrue(values *umconf.ColumnValues) (bool, error) {
 }
 
 type WhereContext struct {
-	Where string
-	Ast   qlexpr.Node
+	Where     string
+	Ast       qlexpr.Node
 	FieldsMap map[string]int
 	IsDefault bool // is 'true'
 }
@@ -374,8 +374,8 @@ func NewWhereCtx(where string, table *Table) (*WhereContext, error) {
 
 		// We parse it even it is just 'true', but use the 'IsDefault' flag to optimize.
 		return &WhereContext{
-			Where: where,
-			Ast: ast,
+			Where:     where,
+			Ast:       ast,
 			FieldsMap: fieldsMap,
 			IsDefault: strings.ToLower(where) == "true",
 		}, nil

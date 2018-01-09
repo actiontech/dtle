@@ -385,7 +385,7 @@ func (e *Extractor) initNatsPubClient() (err error) {
 		e.logger.Errorf("mysql.extractor: Can't connect nats server %v. make sure a nats streaming server is running.%v", natsAddr, err)
 		return err
 	}
-	e.logger.Debugf("mysql.extractor: Connect nats server %v", natsAddr)
+	e.logger.Infof("mysql.extractor: Connect nats server %v", natsAddr)
 	e.natsConn = sc
 
 	return nil
@@ -793,6 +793,7 @@ func (e *Extractor) requestMsg(subject, gtid string, txMsg []byte) (err error) {
 			break
 		}
 		// there's an error. Let's try again.
+		e.logger.Debugf(fmt.Sprintf("mysql.extractor: there's an error [%v]. Let's try again", err))
 		time.Sleep(1 * time.Second)
 	}
 	return err
@@ -966,7 +967,8 @@ func (e *Extractor) mysqlDump() error {
 					return err
 				}
 				tb.Counter = total
-				var dbSQL, tbSQL string
+				var dbSQL string
+				var tbSQL []string
 				if !e.mysqlContext.SkipCreateDbTable {
 					var err error
 					if strings.ToLower(tb.TableSchema) != "mysql" {
