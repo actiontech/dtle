@@ -58,7 +58,7 @@ func (m *MySQLDriver) Validate(task *models.Task) (*models.TaskValidateResponse,
 		}
 
 		// Get max allowed packet size
-		query = `select @@global.max_allowed_packet;`
+		/*query = `select @@global.max_allowed_packet;`
 		var maxAllowedPacket int
 		if err := db.QueryRow(query).Scan(&maxAllowedPacket); err != nil {
 			reply.MaxAllowedPacket.Success = false
@@ -69,7 +69,7 @@ func (m *MySQLDriver) Validate(task *models.Task) (*models.TaskValidateResponse,
 			reply.MaxAllowedPacket.Error = fmt.Sprintf("%s:%d must set global max_allowed_packet >= 2048", driverConfig.ConnectionConfig.Host, driverConfig.ConnectionConfig.Port)
 		} else {
 			reply.MaxAllowedPacket.Success = true
-		}
+		}*/
 
 		query = `SELECT @@GTID_MODE`
 		var gtidMode string

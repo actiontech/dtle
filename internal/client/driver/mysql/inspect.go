@@ -374,7 +374,24 @@ func (i *Inspector) validateTableTriggers(databaseName, tableName string) error 
 // getCandidateUniqueKeys investigates a table and returns the list of unique keys
 // candidate for chunking
 func (i *Inspector) getCandidateUniqueKeys(databaseName, tableName string) (uniqueKeys [](*umconf.UniqueKey), err error) {
-	query := `
+	query := `SELECT
+      UNIQUES.INDEX_NAME,UNIQUES.COLUMN_NAMES,LOCATE('auto_increment', EXTRA) > 0 as is_auto_increment,has_nullable
+    FROM INFORMATION_SCHEMA.COLUMNS INNER JOIN (
+      SELECT
+        TABLE_SCHEMA,TABLE_NAME,INDEX_NAME,GROUP_CONCAT(COLUMN_NAME ORDER BY SEQ_IN_INDEX ASC) AS COLUMN_NAMES,
+        SUBSTRING_INDEX(GROUP_CONCAT(COLUMN_NAME ORDER BY SEQ_IN_INDEX ASC), ',', 1) AS FIRST_COLUMN_NAME,
+        SUM(NULLABLE='YES') > 0 AS has_nullable
+      FROM INFORMATION_SCHEMA.STATISTICS
+      WHERE
+			NON_UNIQUE=0 AND TABLE_SCHEMA = ? AND TABLE_NAME = ?
+      GROUP BY TABLE_SCHEMA,TABLE_NAME,INDEX_NAME
+    ) AS UNIQUES
+    ON (
+      COLUMNS.TABLE_SCHEMA = UNIQUES.TABLE_SCHEMA AND COLUMNS.TABLE_NAME = UNIQUES.TABLE_NAME AND COLUMNS.COLUMN_NAME = UNIQUES.FIRST_COLUMN_NAME
+    )
+    WHERE
+      COLUMNS.TABLE_SCHEMA = ? AND COLUMNS.TABLE_NAME = ?`
+	/*query := `
     SELECT
       COLUMNS.TABLE_SCHEMA,
       COLUMNS.TABLE_NAME,
@@ -432,7 +449,7 @@ func (i *Inspector) getCandidateUniqueKeys(databaseName, tableName string) (uniq
         ELSE 100
       END,
       COUNT_COLUMN_IN_INDEX
-  `
+  `*/
 	err = usql.QueryRowsMap(i.db, query, func(m usql.RowMap) error {
 		columns := umconf.ParseColumnList(m.GetString("COLUMN_NAMES"))
 		uniqueKey := &umconf.UniqueKey{
