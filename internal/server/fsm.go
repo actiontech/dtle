@@ -219,6 +219,62 @@ func (n *udupFSM) applyStatusUpdate(buf []byte, index uint64) interface{} {
 		n.blockedEvals.Unblock(node.ComputedClass, index)
 	}
 
+	if req.Status == models.NodeStatusDown {
+		// Get all the jobs
+		ws := memdb.NewWatchSet()
+		jobs, err := n.state.Jobs(ws)
+		if err != nil {
+			return err
+		}
+
+		for {
+			// Get the next item
+			raw := jobs.Next()
+			if raw == nil {
+				break
+			}
+
+			// Prepare the request struct
+			job := raw.(*models.Job)
+			for _,task :=range job.Tasks {
+				if task.NodeID == req.NodeID {
+					// Scan the nodes
+					ws := memdb.NewWatchSet()
+					var out []*models.Node
+					iter, err := n.state.Nodes(ws)
+					if err != nil {
+						return err
+					}
+					for {
+						raw := iter.Next()
+						if raw == nil {
+							break
+						}
+
+						// Filter on datacenter and status
+						node := raw.(*models.Node)
+						if node.Status != models.NodeStatusReady {
+							continue
+						}
+						out = append(out, node)
+					}
+					if len(out) > 0 {
+						task.NodeID = out[0].ID
+						if task.Type == models.TaskTypeDest {
+							for _, t := range job.Tasks {
+								t.Config["NatsAddr"] = out[0].NatsAddr
+							}
+						}
+						if err := n.state.UpsertJob(index, job); err != nil {
+							n.logger.Errorf("server.fsm: UpsertJob failed: %v", err)
+							return err
+						}
+					}
+				}
+			}
+		}
+	}
+
 	return nil
 }
 
