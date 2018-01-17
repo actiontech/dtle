@@ -312,6 +312,7 @@ func (a *Applier) executeWriteFuncs() {
 			if atomic.LoadInt64(&a.rowCopyCompleteFlag) == 1 && a.mysqlContext.TotalRowsCopied == a.mysqlContext.TotalRowsReplay {
 				a.rowCopyComplete <- true
 				a.logger.Printf("mysql.applier: Rows copy complete.number of rows:%d", a.mysqlContext.TotalRowsReplay)
+				a.mysqlContext.Gtid = a.currentCoordinates.RetrievedGtidSet
 				break
 			}
 			if a.shutdown {
@@ -429,6 +430,7 @@ func (a *Applier) initiateStreaming() error {
 			if err := Decode(m.Data, dumpData); err != nil {
 				a.onError(TaskStateDead, err)
 			}
+			a.currentCoordinates.RetrievedGtidSet = dumpData.Gtid
 			a.mysqlContext.Stage = models.StageSlaveWaitingForWorkersToProcessQueue
 			if err := a.natsConn.Publish(m.Reply, nil); err != nil {
 				a.onError(TaskStateDead, err)

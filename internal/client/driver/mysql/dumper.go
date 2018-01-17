@@ -57,6 +57,7 @@ func NewDumper(db *sql.Tx, table *config.Table, total, chunkSize int64,
 }
 
 type dumpStatResult struct {
+	Gtid       string
 	TotalCount int64
 }
 
