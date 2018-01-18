@@ -236,44 +236,44 @@ func (n *udupFSM) applyStatusUpdate(buf []byte, index uint64) interface{} {
 
 			// Prepare the request struct
 			job := raw.(*models.Job)
-			if !job.Failover {
-				continue
-			}
 			for _, task := range job.Tasks {
 				if task.NodeID == req.NodeID {
-					// Scan the nodes
-					ws := memdb.NewWatchSet()
-					var out []*models.Node
-					iter, err := n.state.Nodes(ws)
-					if err != nil {
-						return err
-					}
-					for {
-						raw := iter.Next()
-						if raw == nil {
-							break
+					if job.Failover {
+						// Scan the nodes
+						ws := memdb.NewWatchSet()
+						var out []*models.Node
+						iter, err := n.state.Nodes(ws)
+						if err != nil {
+							return err
 						}
+						for {
+							raw := iter.Next()
+							if raw == nil {
+								break
+							}
 
-						// Filter on datacenter and status
-						node := raw.(*models.Node)
-						if node.Status != models.NodeStatusReady {
-							continue
+							// Filter on datacenter and status
+							node := raw.(*models.Node)
+							if node.Status != models.NodeStatusReady {
+								continue
+							}
+							out = append(out, node)
 						}
-						out = append(out, node)
-					}
-					if len(out) > 0 {
-						task.NodeID = out[0].ID
-						if task.Type == models.TaskTypeDest {
-							for i, t := range job.Tasks {
-								t.Config["NatsAddr"] = out[0].NatsAddr
-								job.Tasks[i] = t
+						if len(out) > 0 {
+							task.NodeID = out[0].ID
+							if task.Type == models.TaskTypeDest {
+								for i, t := range job.Tasks {
+									t.Config["NatsAddr"] = out[0].NatsAddr
+									job.Tasks[i] = t
+								}
+							}
+
+							if err := n.state.UpsertJob(index, job); err != nil {
+								n.logger.Errorf("server.fsm: UpsertJob failed: %v", err)
+								return err
 							}
 						}
 
-						if err := n.state.UpsertJob(index, job); err != nil {
-							n.logger.Errorf("server.fsm: UpsertJob failed: %v", err)
-							return err
-						}
 						allocs, err := n.state.AllocsByJob(ws, job.ID, true)
 						if err != nil {
 							return fmt.Errorf("failed to find allocs for '%s': %v", req.NodeID, err)
@@ -289,12 +289,36 @@ func (n *udupFSM) applyStatusUpdate(buf []byte, index uint64) interface{} {
 							}
 							if node.Status == models.NodeStatusDown {
 								alloc.TaskStates[alloc.Task].State = models.TaskStateDead
-								alloc.NodeID = out[0].ID
+								if len(out) > 0 {
+									alloc.NodeID = out[0].ID
+								}
+								if err := n.state.UpsertAlloc(index, alloc); err != nil {
+									n.logger.Errorf("server.fsm: UpsertAlloc failed: %v", err)
+									return err
+								}
 							}
 						}
-						if err := n.state.UpsertAllocs(index, allocs); err != nil {
-							n.logger.Errorf("server.fsm: UpsertAllocs failed: %v", err)
-							return err
+					} else {
+						allocs, err := n.state.AllocsByJob(ws, job.ID, true)
+						if err != nil {
+							return fmt.Errorf("failed to find allocs for '%s': %v", req.NodeID, err)
+						}
+						for _, alloc := range allocs {
+							alloc.Job = job
+							nodeID := alloc.NodeID
+							node, err := n.state.NodeByID(ws, nodeID)
+							if err != nil || node == nil {
+								n.logger.Errorf("server.fsm: looking up node %q failed: %v", nodeID, err)
+								return err
+
+							}
+							if node.Status == models.NodeStatusDown {
+								alloc.TaskStates[alloc.Task].State = models.TaskStateDead
+								if err := n.state.UpsertAlloc(index, alloc); err != nil {
+									n.logger.Errorf("server.fsm: UpsertAlloc failed: %v", err)
+									return err
+								}
+							}
 						}
 					}
 				}

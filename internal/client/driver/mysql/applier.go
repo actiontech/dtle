@@ -339,7 +339,7 @@ OUTER:
 					dbApplier = a.dbs[idx%a.mysqlContext.ParallelWorkers]
 					//go func(entry *binlog.BinlogEntry) {
 					//a.wg.Add(1)
-					if err := a.ApplyBinlogEvent(dbApplier, binlogEntry); err != nil {
+					if err := a.ApplyBinlogEvent(a.dbs[0], binlogEntry); err != nil {
 						a.onError(TaskStateDead, err)
 					}
 					//a.wg.Done()

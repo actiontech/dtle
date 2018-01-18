@@ -1106,6 +1106,65 @@ func (s *StateStore) UpsertAllocs(index uint64, allocs []*models.Allocation) err
 	return nil
 }
 
+func (s *StateStore) UpsertAlloc(index uint64, alloc *models.Allocation) error {
+	txn := s.db.Txn(true)
+	defer txn.Abort()
+
+	// Handle the allocations
+	jobs := make(map[string]string, 1)
+	existing, err := txn.First("allocs", "id", alloc.ID)
+	if err != nil {
+		return fmt.Errorf("alloc lookup failed: %v", err)
+	}
+	exist, _ := existing.(*models.Allocation)
+
+	if exist == nil {
+		alloc.CreateIndex = index
+		alloc.ModifyIndex = index
+		alloc.AllocModifyIndex = index
+	} else {
+		alloc.CreateIndex = exist.CreateIndex
+		alloc.ModifyIndex = index
+		alloc.AllocModifyIndex = index
+
+		// If the scheduler is marking this allocation as lost we do not
+		// want to reuse the status of the existing allocation.
+		if alloc.ClientStatus != models.AllocClientStatusLost {
+			alloc.ClientStatus = exist.ClientStatus
+			alloc.ClientDescription = exist.ClientDescription
+		}
+
+		// The job has been denormalized so re-attach the original job
+		if alloc.Job == nil {
+			alloc.Job = exist.Job
+		}
+	}
+
+	if err := txn.Insert("allocs", alloc); err != nil {
+		return fmt.Errorf("alloc insert failed: %v", err)
+	}
+
+	// If the allocation is running, force the job to running status.
+	forceStatus := ""
+	if !alloc.ClientTerminalStatus() {
+		forceStatus = models.JobStatusRunning
+	}
+	jobs[alloc.JobID] = forceStatus
+
+	// Update the indexes
+	if err := txn.Insert("index", &IndexEntry{"allocs", index}); err != nil {
+		return fmt.Errorf("index update failed: %v", err)
+	}
+
+	// Set the job's status
+	if err := s.setJobStatuses(index, txn, jobs, false); err != nil {
+		return fmt.Errorf("setting job status failed: %v", err)
+	}
+
+	txn.Commit()
+	return nil
+}
+
 // AllocByID is used to lookup an allocation by its ID
 func (s *StateStore) AllocByID(ws memdb.WatchSet, id string) (*models.Allocation, error) {
 	txn := s.db.Txn(false)
