@@ -81,7 +81,18 @@ func (m *MySQLDriver) Validate(task *models.Task) (*models.TaskValidateResponse,
 			reply.GtidMode.Success = false
 			reply.GtidMode.Error = fmt.Sprintf("Must have GTID enabled: %+v", gtidMode)
 		} else {
-			reply.GtidMode.Success = true
+			rows, err := db.Query("show master status")
+			if err != nil {
+				reply.GtidMode.Success = false
+				reply.GtidMode.Error =  err.Error()
+			}
+			_, err = ubase.ParseBinlogCoordinatesFromRows(rows)
+			if err != nil {
+				reply.GtidMode.Success = false
+				reply.GtidMode.Error =  err.Error()
+			}else {
+				reply.GtidMode.Success = true
+			}
 		}
 
 		query = `SELECT @@SERVER_ID`
