@@ -168,9 +168,11 @@ func (e *Extractor) Run() {
 		dumpMsg, err := Encode(&dumpStatResult{Gtid: e.initialBinlogCoordinates.GtidSet, TotalCount: e.mysqlContext.RowsEstimate})
 		if err != nil {
 			e.onError(TaskStateDead, err)
+			return
 		}
 		if err := e.requestMsg(fmt.Sprintf("%s_full_complete", e.subject), "", dumpMsg); err != nil {
-			e.onError(TaskStateDead, err)
+			e.onError(TaskStateRestart, err)
+			return
 		}
 	} else {
 		if err := e.readCurrentBinlogCoordinates(); err != nil {
@@ -622,7 +624,7 @@ func (e *Extractor) StreamEvents() error {
 					}
 
 					if err = e.requestMsg(fmt.Sprintf("%s_incr_hete", e.subject), "", txMsg); err != nil {
-						e.onError(TaskStateDead, err)
+						e.onError(TaskStateRestart, err)
 						break
 					}
 					e.mysqlContext.Stage = models.StageSendingBinlogEventToSlave
@@ -724,7 +726,7 @@ func (e *Extractor) StreamEvents() error {
 								e.onError(TaskStateDead, gonats.ErrMaxPayload)
 							}
 							if err = e.requestMsg(subject, fmt.Sprintf("%s:1-%d", binlogTx.SID, binlogTx.GNO), txMsg); err != nil {
-								e.onError(TaskStateDead, err)
+								e.onError(TaskStateRestart, err)
 								break L
 							}
 							//send_by_size_full
@@ -749,7 +751,7 @@ func (e *Extractor) StreamEvents() error {
 									txArray[len(txArray)-1].SID,
 									txArray[len(txArray)-1].GNO),
 								txMsg); err != nil {
-								e.onError(TaskStateDead, err)
+								e.onError(TaskStateRestart, err)
 								break L
 							}
 							//send_by_timeout
@@ -995,7 +997,7 @@ func (e *Extractor) mysqlDump() error {
 					TotalCount:               tb.Counter,
 				}
 				if err := e.encodeDumpEntry(entry); err != nil {
-					return err
+					e.onError(TaskStateRestart, err)
 				}
 			}
 			e.tableCount += len(db.Tables)
@@ -1012,7 +1014,7 @@ func (e *Extractor) mysqlDump() error {
 				DbSQL:                    dbSQL,
 			}
 			if err := e.encodeDumpEntry(entry); err != nil {
-				return err
+				e.onError(TaskStateRestart, err)
 			}
 		}
 	}
@@ -1050,7 +1052,7 @@ func (e *Extractor) mysqlDump() error {
 				entry.SystemVariablesStatement = setSystemVariablesStatement
 				entry.SqlMode = setSqlMode
 				if err = e.encodeDumpEntry(entry); err != nil {
-					e.onError(TaskStateDead, err)
+					e.onError(TaskStateRestart, err)
 				}
 				atomic.AddInt64(&e.mysqlContext.TotalRowsCopied, entry.RowsCount)
 			}

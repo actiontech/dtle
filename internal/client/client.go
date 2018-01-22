@@ -1379,6 +1379,9 @@ func (c *Client) updateAlloc(exist, update *models.Allocation) error {
 func (c *Client) resumeAlloc(alloc *models.Allocation) error {
 	c.allocLock.Lock()
 	ar, ok := c.allocs[alloc.ID]
+	for _, tr := range ar.tasks {
+		tr.killTask(nil)
+	}
 	ar.alloc = alloc
 	c.allocLock.Unlock()
 	if !ok {

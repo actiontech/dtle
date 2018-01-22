@@ -287,7 +287,7 @@ func (n *udupFSM) applyStatusUpdate(buf []byte, index uint64) interface{} {
 								return err
 
 							}
-							if node.Status == models.NodeStatusDown {
+							if node.Status == models.NodeStatusDown || alloc.Task == models.TaskTypeSrc {
 								alloc.TaskStates[alloc.Task].State = models.TaskStateDead
 								if len(out) > 0 {
 									alloc.NodeID = out[0].ID
