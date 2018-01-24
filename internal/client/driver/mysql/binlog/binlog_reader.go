@@ -845,6 +845,12 @@ func skipQueryEvent(sql string) bool {
 	if strings.HasPrefix(sql, "create user") {
 		return true
 	}
+	if strings.HasPrefix(sql, "create function") {
+		return true
+	}
+	if strings.HasPrefix(sql, "create procedure") {
+		return true
+	}
 	if strings.HasPrefix(sql, "drop user") {
 		return true
 	}
