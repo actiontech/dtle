@@ -187,6 +187,13 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 			b.currentBinlogEntry.hasBeginQuery = true
 		} else {
 			if strings.ToUpper(query) == "COMMIT" || !b.currentBinlogEntry.hasBeginQuery {
+				if b.mysqlContext.SkipCreateDbTable {
+					if skipCreateDbTable(query) {
+						b.logger.Warnf("mysql.reader: skip create db/table %s", query)
+						return nil
+					}
+				}
+
 				if !b.mysqlContext.ExpandSyntaxSupport {
 					if skipQueryEvent(query) {
 						b.logger.Warnf("mysql.reader: skip query %s", query)
@@ -534,6 +541,13 @@ func (b *BinlogReader) handleBinlogRowsEvent(ev *replication.BinlogEvent, txChan
 			// DDL or statement/mixed binlog format
 			b.clearB64Sql()
 			if strings.ToUpper(query) == "COMMIT" || !b.currentTx.hasBeginQuery {
+				if b.mysqlContext.SkipCreateDbTable {
+					if skipCreateDbTable(query) {
+						b.logger.Warnf("mysql.reader: skip create db/table %s", query)
+						return nil
+					}
+				}
+
 				if !b.mysqlContext.ExpandSyntaxSupport {
 					if skipQueryEvent(query) {
 						b.logger.Warnf("skip query %s", query)
@@ -833,6 +847,19 @@ func (b *BinlogReader) skipQueryDDL(sql string, schema string) bool {
 			return false
 		}
 	}
+	return false
+}
+
+func skipCreateDbTable(sql string) bool {
+	sql = strings.ToLower(sql)
+
+	if strings.HasPrefix(sql, "create database") {
+		return true
+	}
+	if strings.HasPrefix(sql, "create table") {
+		return true
+	}
+
 	return false
 }
 
