@@ -839,6 +839,9 @@ func (b *BinlogReader) skipQueryDDL(sql string, schema string) bool {
 func skipQueryEvent(sql string) bool {
 	sql = strings.ToLower(sql)
 
+	if strings.HasPrefix(sql, "flush privileges") {
+		return true
+	}
 	if strings.HasPrefix(sql, "alter user") {
 		return true
 	}
