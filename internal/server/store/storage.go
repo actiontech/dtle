@@ -1216,7 +1216,9 @@ func (s *StateStore) AllocsByNode(ws memdb.WatchSet, node string) ([]*models.All
 		if raw == nil {
 			break
 		}
-		out = append(out, raw.(*models.Allocation))
+		if node == raw.(*models.Allocation).NodeID {
+			out = append(out, raw.(*models.Allocation))
+		}
 	}
 	return out, nil
 }
