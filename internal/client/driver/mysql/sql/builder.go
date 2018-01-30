@@ -207,7 +207,7 @@ func BuildDMLDeleteQuery(databaseName, tableName string, tableColumns *umconf.Co
 	comparisons := []string{}
 	for _, column := range tableColumns.ColumnList() {
 		tableOrdinal := tableColumns.Ordinals[column.Name]
-		if args[tableOrdinal] == nil {
+		if *args[tableOrdinal] == nil {
 			comparison, err := BuildValueComparison(column.Name, "NULL", IsEqualsComparisonSign)
 			if err != nil {
 				return result, uniqueKeyArgs, err
@@ -310,7 +310,7 @@ func BuildDMLUpdateQuery(databaseName, tableName string, tableColumns, sharedCol
 
 	for _, column := range tableColumns.ColumnList() {
 		tableOrdinal := tableColumns.Ordinals[column.Name]
-		if valueArgs[tableOrdinal] == nil || *valueArgs[tableOrdinal] == "NULL" {
+		if *valueArgs[tableOrdinal] == nil || *valueArgs[tableOrdinal] == "NULL" {
 			sharedArgs = append(sharedArgs, valueArgs[tableOrdinal])
 		} else {
 			arg := column.ConvertArg(valueArgs[tableOrdinal])
@@ -321,7 +321,7 @@ func BuildDMLUpdateQuery(databaseName, tableName string, tableColumns, sharedCol
 	comparisons := []string{}
 	for _, column := range tableColumns.ColumnList() {
 		tableOrdinal := tableColumns.Ordinals[column.Name]
-		if whereArgs[tableOrdinal] == nil {
+		if *whereArgs[tableOrdinal] == nil {
 			comparison, err := BuildValueComparison(column.Name, "NULL", IsEqualsComparisonSign)
 			if err != nil {
 				return result, sharedArgs, uniqueKeyArgs, err
