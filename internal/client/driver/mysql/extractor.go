@@ -1101,7 +1101,7 @@ func (e *Extractor) Stats() (*models.TaskStatistics, error) {
 	}
 	var progressPct float64
 	if rowsEstimate == 0 {
-		progressPct = 100.0
+		progressPct = 0.0
 	} else {
 		progressPct = 100.0 * float64(totalRowsCopied) / float64(rowsEstimate)
 	}

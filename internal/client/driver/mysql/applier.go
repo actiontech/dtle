@@ -942,7 +942,7 @@ func (a *Applier) Stats() (*models.TaskStatistics, error) {
 	var progressPct float64
 	var backlog, eta string
 	if rowsEstimate == 0 && deltaEstimate == 0 {
-		progressPct = 100.0
+		progressPct = 0.0
 	} else {
 		progressPct = 100.0 * float64(totalDeltaCopied+totalRowsReplay) / float64(deltaEstimate+rowsEstimate)
 		if atomic.LoadInt64(&a.rowCopyCompleteFlag) == 1 {
