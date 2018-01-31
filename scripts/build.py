@@ -718,6 +718,8 @@ def main(args):
                     return 1
             packages += sigs
         for p in packages:
+            with open("{}.md5".format(p), 'w') as f:
+                f.write(generate_md5_from_file(p))
             logging.info("{} (MD5={})".format(p.split('/')[-1:][0],
                                               generate_md5_from_file(p)))
     if orig_branch != get_current_branch():
