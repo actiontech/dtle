@@ -129,6 +129,12 @@ func (a *Agent) Members() (*ServerMembers, error) {
 	return resp, nil
 }
 
+// ForceLeave is used to eject an existing node from the cluster.
+func (a *Agent) ForceLeave(node string) error {
+	_, err := a.client.write("/v1/agent/force-leave?node="+node, nil, nil, nil)
+	return err
+}
+
 // Servers is used to query the list of servers on a client node.
 func (a *Agent) Servers() ([]string, error) {
 	var resp []string

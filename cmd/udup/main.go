@@ -61,16 +61,16 @@ func realMain() int {
 				ShutdownCh: make(chan struct{}),
 			}, nil
 		},
-		"init": func() (cli.Command, error) {
+		/*"init": func() (cli.Command, error) {
 			return &command.InitCommand{
 				Meta: meta,
 			}, nil
-		},
-		"agent-config": func() (cli.Command, error) {
+		},*/
+		/*"agent-config": func() (cli.Command, error) {
 			return &command.ConfigCommand{
 				Meta: meta,
 			}, nil
-		},
+		},*/
 		"node-status": func() (cli.Command, error) {
 			return &command.NodeStatusCommand{
 				Meta: meta,
@@ -81,6 +81,16 @@ func realMain() int {
 				Meta: meta,
 			}, nil
 		},
+		/*"server-force-leave": func() (cli.Command, error) {
+			return &command.ServerForceLeaveCommand{
+				Meta: meta,
+			}, nil
+		},
+		"remove-peer": func() (cli.Command, error) {
+			return &command.OperatorRaftRemoveCommand{
+				Meta: meta,
+			}, nil
+		},*/
 		"start": func() (cli.Command, error) {
 			return &command.StartCommand{
 				Meta: meta,

@@ -139,7 +139,7 @@ def go_get(branch, update=False, no_uncommitted=False):
     if local_changes() and no_uncommitted:
         logging.error("There are uncommitted changes in the current directory.")
         return False
-    
+
     return True
 
 def run_tests(race, parallel, timeout, no_vet):
