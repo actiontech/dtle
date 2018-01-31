@@ -7,8 +7,8 @@ import (
 	"time"
 
 	hcodec "github.com/hashicorp/go-msgpack/codec"
-	"github.com/ugorji/go/codec"
 	"github.com/hashicorp/raft"
+	"github.com/ugorji/go/codec"
 )
 
 var (
@@ -228,7 +228,6 @@ func IsRecoverable(e error) bool {
 	}
 	return false
 }
-
 
 // RaftServer has information about a server in the Raft configuration.
 type RaftServer struct {

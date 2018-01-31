@@ -296,7 +296,7 @@ func (n *udupFSM) applyStatusUpdate(buf []byte, index uint64) interface{} {
 									n.logger.Errorf("server.fsm: UpsertAlloc failed: %v", err)
 									return err
 								}
-							}else {
+							} else {
 								if alloc.Task == models.TaskTypeSrc {
 									alloc.TaskStates[alloc.Task].State = models.TaskStateDead
 									if err := n.state.UpsertAlloc(index, alloc); err != nil {

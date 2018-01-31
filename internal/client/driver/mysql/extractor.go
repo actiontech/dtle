@@ -994,8 +994,11 @@ func (e *Extractor) mysqlDump() error {
 					SqlMode:                  setSqlMode,
 					DbSQL:                    dbSQL,
 					TbSQL:                    tbSQL,
-					TotalCount:               tb.Counter,
+					TotalCount:               tb.Counter + 1,
+					RowsCount:                1,
 				}
+				atomic.AddInt64(&e.mysqlContext.RowsEstimate, 1)
+				atomic.AddInt64(&e.mysqlContext.TotalRowsCopied, 1)
 				if err := e.encodeDumpEntry(entry); err != nil {
 					e.onError(TaskStateRestart, err)
 				}
@@ -1012,7 +1015,11 @@ func (e *Extractor) mysqlDump() error {
 				SystemVariablesStatement: setSystemVariablesStatement,
 				SqlMode:                  setSqlMode,
 				DbSQL:                    dbSQL,
+				TotalCount:               1,
+				RowsCount:                1,
 			}
+			atomic.AddInt64(&e.mysqlContext.RowsEstimate, 1)
+			atomic.AddInt64(&e.mysqlContext.TotalRowsCopied, 1)
 			if err := e.encodeDumpEntry(entry); err != nil {
 				e.onError(TaskStateRestart, err)
 			}

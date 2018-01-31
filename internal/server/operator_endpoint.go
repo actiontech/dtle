@@ -135,14 +135,14 @@ func (op *Operator) RaftRemovePeerByID(args *models.RaftRemovePeerRequest, reply
 	}
 
 REMOVE:
-// The Raft library itself will prevent various forms of foot-shooting,
-// like making a configuration with no voters. Some consideration was
-// given here to adding more checks, but it was decided to make this as
-// low-level and direct as possible. We've got ACL coverage to lock this
-// down, and if you are an operator, it's assumed you know what you are
-// doing if you are calling this. If you remove a peer that's known to
-// Serf, for example, it will come back when the leader does a reconcile
-// pass.
+	// The Raft library itself will prevent various forms of foot-shooting,
+	// like making a configuration with no voters. Some consideration was
+	// given here to adding more checks, but it was decided to make this as
+	// low-level and direct as possible. We've got ACL coverage to lock this
+	// down, and if you are an operator, it's assumed you know what you are
+	// doing if you are calling this. If you remove a peer that's known to
+	// Serf, for example, it will come back when the leader does a reconcile
+	// pass.
 	var future raft.Future
 	future = op.srv.raft.RemoveServer(args.ID, 0, 0)
 	if err := future.Error(); err != nil {
