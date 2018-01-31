@@ -103,7 +103,7 @@ func (c *ServerMembersCommand) Run(args []string) int {
 func standardOutput(mem []*api.AgentMember, leaders map[string]string) []string {
 	// Format the members list
 	members := make([]string, len(mem)+1)
-	members[0] = "Name|Address|Port|Status|Leader|Protocol|Build"
+	members[0] = "Name|Address|Port|Status|Leader|Build"
 	for i, member := range mem {
 		reg := member.Tags["region"]
 		regLeader, ok := leaders[reg]
@@ -121,7 +121,6 @@ func standardOutput(mem []*api.AgentMember, leaders map[string]string) []string 
 			member.Port,
 			member.Status,
 			isLeader,
-			member.ProtocolCur,
 			member.Tags["build"])
 	}
 	return members
