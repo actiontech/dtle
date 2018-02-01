@@ -71,13 +71,13 @@ func realMain() int {
 				Meta: meta,
 			}, nil
 		},*/
-		"members": func() (cli.Command, error) {
-			return &command.ServerMembersCommand{
+		"node-status": func() (cli.Command, error) {
+			return &command.NodeStatusCommand{
 				Meta: meta,
 			}, nil
 		},
-		"node-status": func() (cli.Command, error) {
-			return &command.NodeStatusCommand{
+		"members": func() (cli.Command, error) {
+			return &command.ServerMembersCommand{
 				Meta: meta,
 			}, nil
 		},
@@ -90,7 +90,7 @@ func realMain() int {
 			return &command.OperatorRaftRemoveCommand{
 				Meta: meta,
 			}, nil
-		},
+		},*/
 		"start": func() (cli.Command, error) {
 			return &command.StartCommand{
 				Meta: meta,
@@ -100,8 +100,8 @@ func realMain() int {
 			return &command.StopCommand{
 				Meta: meta,
 			}, nil
-		},*/
-		"job-status": func() (cli.Command, error) {
+		},
+		"status": func() (cli.Command, error) {
 			return &command.StatusCommand{
 				Meta: meta,
 			}, nil

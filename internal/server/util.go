@@ -31,20 +31,20 @@ type serverParts struct {
 }
 
 func (s *serverParts) String() string {
-	return fmt.Sprintf("%s (Addr: %s)",
-		s.Name, s.Addr)
+	return fmt.Sprintf("%s (Addr: %s) (DC: %s)",
+		s.Name, s.Addr, s.Datacenter)
 }
 
 // Returns if a member is a Udup server. Returns a boolean,
 // and a struct with the various important components
 func isUdupServer(m serf.Member) (bool, *serverParts) {
-	if m.Tags["role"] != "manager" {
+	if m.Tags["role"] != "server" {
 		return false, nil
 	}
 
-	/*region := m.Tags["region"]
+	region := m.Tags["region"]
 	datacenter := m.Tags["dc"]
-	_, bootstrap := m.Tags["bootstrap"]*/
+	_, bootstrap := m.Tags["bootstrap"]
 
 	expect := 0
 	expect_str, ok := m.Tags["expect"]
@@ -65,10 +65,10 @@ func isUdupServer(m serf.Member) (bool, *serverParts) {
 	addr := &net.TCPAddr{IP: m.Addr, Port: port}
 	parts := &serverParts{
 		Name:       m.Name,
-		//Region:     region,
-		//Datacenter: datacenter,
+		Region:     region,
+		Datacenter: datacenter,
 		Port:       port,
-		//Bootstrap:  bootstrap,
+		Bootstrap:  bootstrap,
 		Expect:     expect,
 		Addr:       addr,
 	}

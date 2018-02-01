@@ -24,7 +24,7 @@ type StatusCommand struct {
 
 func (c *StatusCommand) Help() string {
 	helpText := `
-Usage: udup job-status [options] <job>
+Usage: udup status [options] <job>
 
   Display status information about jobs. If no job ID is given,
   a list of all known jobs will be dumped.
@@ -34,6 +34,10 @@ General Options:
   ` + generalOptionsUsage() + `
 
 Status Options:
+
+  -short
+    Display short output. Used only when a single job is being
+    queried, and drops verbose information about allocations.
 
   -evals
     Display the evaluations associated with the job.
@@ -130,7 +134,7 @@ func (c *StatusCommand) Run(args []string) int {
 		fmt.Sprintf("ID|%s", *job.ID),
 		fmt.Sprintf("Name|%s", *job.Name),
 		fmt.Sprintf("Type|%s", *job.Type),
-		//fmt.Sprintf("Datacenters|%s", strings.Join(job.Datacenters, ",")),
+		fmt.Sprintf("Datacenters|%s", strings.Join(job.Datacenters, ",")),
 		fmt.Sprintf("Status|%s", *job.Status),
 	}
 

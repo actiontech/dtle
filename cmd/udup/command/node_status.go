@@ -60,6 +60,12 @@ Node Status Options:
 
   -verbose
     Display full information.
+
+  -json
+    Output the node in its JSON format.
+
+  -t
+    Format and display node using a Go template.
 `
 	return strings.TrimSpace(helpText)
 }
@@ -118,9 +124,9 @@ func (c *NodeStatusCommand) Run(args []string) int {
 		// Format the nodes list
 		out := make([]string, len(nodes)+1)
 		if c.list_allocs {
-			out[0] = "ID|Name|Status|Running Allocs"
+			out[0] = "ID|DC|Name|Status|Running Allocs"
 		} else {
-			out[0] = "ID|Name|Status"
+			out[0] = "ID|DC|Name|Status"
 		}
 
 		for i, node := range nodes {
@@ -130,16 +136,16 @@ func (c *NodeStatusCommand) Run(args []string) int {
 					c.Ui.Error(fmt.Sprintf("Error querying node allocations: %s", err))
 					return 1
 				}
-				out[i+1] = fmt.Sprintf("%s|%s|%s|%v",
+				out[i+1] = fmt.Sprintf("%s|%s|%s|%s|%v",
 					limit(node.ID, c.length),
-					//node.Datacenter,
+					node.Datacenter,
 					node.Name,
 					node.Status,
 					len(numAllocs))
 			} else {
-				out[i+1] = fmt.Sprintf("%s|%s|%s",
+				out[i+1] = fmt.Sprintf("%s|%s|%s|%s",
 					limit(node.ID, c.length),
-					//node.Datacenter,
+					node.Datacenter,
 					node.Name,
 					node.Status)
 			}
@@ -185,9 +191,9 @@ func (c *NodeStatusCommand) Run(args []string) int {
 		// Format the nodes list that matches the prefix so that the user
 		// can create a more specific request
 		out := make([]string, len(nodes)+1)
-		out[0] = "ID|Name|Status"
+		out[0] = "ID|DC|Name|Status"
 		for i, node := range nodes {
-			out[i+1] = fmt.Sprintf("%s|%s|%s",
+			out[i+1] = fmt.Sprintf("%s|%s|%s|%s",
 				limit(node.ID, c.length),
 				node.Datacenter,
 				node.Name,
@@ -232,7 +238,7 @@ func (c *NodeStatusCommand) formatNode(client *api.Client, node *api.Node) int {
 	basic := []string{
 		fmt.Sprintf("ID|%s", limit(node.ID, c.length)),
 		fmt.Sprintf("Name|%s", node.Name),
-		//fmt.Sprintf("DC|%s", node.Datacenter),
+		fmt.Sprintf("DC|%s", node.Datacenter),
 		fmt.Sprintf("Status|%s", node.Status),
 		fmt.Sprintf("Drivers|%s", strings.Join(nodeDrivers(node), ",")),
 	}

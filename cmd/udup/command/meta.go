@@ -116,13 +116,14 @@ func generalOptionsUsage() string {
     The address of the Udup server.
     Overrides the UDUP_ADDR environment variable if set.
     Default = http://127.0.0.1:8190
-`
-	/*-region=<region>
-		The region of the Udup servers to forward commands to.
-		Overrides the UDUP_REGION environment variable if set.
-		Defaults to the Agent's local region.
 
-		-no-color
-	Disables colored command output.*/
+  -region=<region>
+    The region of the Udup servers to forward commands to.
+    Overrides the UDUP_REGION environment variable if set.
+    Defaults to the Agent's local region.
+  
+  -no-color
+    Disables colored command output.
+`
 	return strings.TrimSpace(helpText)
 }

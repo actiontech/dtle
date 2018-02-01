@@ -11,11 +11,19 @@ Appendix A. 命令行
 
 **server**：启动udup进程
 
+**init**：初始化默认任务信息
+
+**client-config**：查看或修改客户端配置信息
+
 **members**：查看所有manager节点状态
 
 **node-status**：查看节点状态
 
-**job-status**：查看任务状态
+**start**：启动任务
+
+**status**：查看任务状态
+
+**stop**：停止运行的任务
 
 **-v, version**：打印版本信息
 
@@ -35,36 +43,15 @@ Appendix A. 命令行
 
 **-managers**：server启动时尝试加入的地址(仅限agent模式下)
 
-###A.2. members 命令行选项
+###A.2. start 命令行选项
 
-**members** 命令行用法如下:
+**start** 命令行用法如下:
 
-	Usage: udup members [options]
+	Usage: udup <start [options] <path>
 
-**-detailed**：显示详细信息
 
-###A.3. node-status 命令行选项
+###A.3. stop 命令行选项
 
-**node-status** 命令行用法如下:
+**stop** 命令行用法如下:
 
-	Usage: udup node-status [options] <node>
-
-**-self**：显示本机节点信息
-
-**-stats**：显示详细的资源使用情况统计信息
-
-**-allocs**：显示每个节点的运行分配计数
-
-**-verbose**：显示完整信息
-
-###A.4. job-status 命令行选项
-
-**job-status** 命令行用法如下:
-
-	Usage: udup job-status [options] <job>
-
-**-evals**：显示与Job关联的评估
-
-**-all-allocs**：显示与Job ID匹配的所有任务分配
-
-**-verbose**：显示完整信息
+	Usage: udup <stop [options] <job>
