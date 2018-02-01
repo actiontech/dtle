@@ -24,7 +24,7 @@ type StatusCommand struct {
 
 func (c *StatusCommand) Help() string {
 	helpText := `
-Usage: udup status [options] <job>
+Usage: udup job-status [options] <job>
 
   Display status information about jobs. If no job ID is given,
   a list of all known jobs will be dumped.
@@ -34,10 +34,6 @@ General Options:
   ` + generalOptionsUsage() + `
 
 Status Options:
-
-  -short
-    Display short output. Used only when a single job is being
-    queried, and drops verbose information about allocations.
 
   -evals
     Display the evaluations associated with the job.

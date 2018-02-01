@@ -289,7 +289,7 @@ func (c *Command) Run(args []string) int {
 	info["agent"] = strconv.FormatBool(config.Client.Enabled)
 	info["log level"] = config.LogLevel
 	info["manager"] = strconv.FormatBool(config.Server.Enabled)
-	info["region"] = fmt.Sprintf("%s (DC: %s)", config.Region, config.Datacenter)
+	//info["region"] = fmt.Sprintf("%s (DC: %s)", config.Region, config.Datacenter)
 
 	// Sort the keys for output
 	infoKeys := make([]string, 0, len(info))

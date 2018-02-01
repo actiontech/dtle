@@ -90,7 +90,7 @@ func realMain() int {
 			return &command.OperatorRaftRemoveCommand{
 				Meta: meta,
 			}, nil
-		},*/
+		},
 		"start": func() (cli.Command, error) {
 			return &command.StartCommand{
 				Meta: meta,
@@ -100,8 +100,8 @@ func realMain() int {
 			return &command.StopCommand{
 				Meta: meta,
 			}, nil
-		},
-		"status": func() (cli.Command, error) {
+		},*/
+		"job-status": func() (cli.Command, error) {
 			return &command.StatusCommand{
 				Meta: meta,
 			}, nil
