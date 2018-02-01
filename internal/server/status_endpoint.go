@@ -84,18 +84,18 @@ func (s *Status) Members(args *models.GenericRequest, reply *models.ServerMember
 			Port:        mem.Port,
 			Tags:        mem.Tags,
 			Status:      mem.Status.String(),
-			ProtocolMin: mem.ProtocolMin,
+			/*ProtocolMin: mem.ProtocolMin,
 			ProtocolMax: mem.ProtocolMax,
 			ProtocolCur: mem.ProtocolCur,
 			DelegateMin: mem.DelegateMin,
 			DelegateMax: mem.DelegateMax,
-			DelegateCur: mem.DelegateCur,
+			DelegateCur: mem.DelegateCur,*/
 		}
 	}
 	*reply = models.ServerMembersResponse{
 		ServerName:   s.srv.config.NodeName,
-		ServerRegion: s.srv.config.Region,
-		ServerDC:     s.srv.config.Datacenter,
+		//ServerRegion: s.srv.config.Region,
+		//ServerDC:     s.srv.config.Datacenter,
 		Members:      members,
 	}
 	return nil

@@ -115,7 +115,7 @@ func standardOutput(mem []*api.AgentMember, leaders map[string]string) []string 
 			}
 		}
 
-		members[i+1] = fmt.Sprintf("%s|%s|%d|%s|%t|%d|%s",
+		members[i+1] = fmt.Sprintf("%s|%s|%d|%s|%t|%s",
 			member.Name,
 			member.Addr,
 			member.Port,
