@@ -857,7 +857,7 @@ func (a *Applier) ApplyBinlogEvent(dbApplier *sql.DB, binlogEntry *binlog.Binlog
 				a.logger.Errorf("mysql.applier: Exec %+v,args: %v,gtid: %s:%d, error: %v", query, event.NewColumnValues, binlogEntry.Coordinates.SID, binlogEntry.Coordinates.GNO, err)
 				return err
 			}
-			a.logger.Debugf("mysql.applier: Exec %+v,WhereColumnValues: %v,NewColumnValues: %v,gtid: %s:%d", query, event.WhereColumnValues, event.NewColumnValues, binlogEntry.Coordinates.SID, binlogEntry.Coordinates.GNO)
+			a.logger.Debugf("mysql.applier: Exec %+v,NewColumnValues: %v,WhereColumnValues: %v,gtid: %s:%d", query, event.NewColumnValues, event.WhereColumnValues, binlogEntry.Coordinates.SID, binlogEntry.Coordinates.GNO)
 			totalDelta += rowDelta
 		}
 	}

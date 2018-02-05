@@ -215,21 +215,21 @@ func GetTableColumns(db usql.QueryAble, databaseName, tableName string) (*umconf
 		usql.EscapeName(databaseName),
 		usql.EscapeName(tableName),
 	)
-	columnNames := []string{}
+	columns := []umconf.Column{}
 	err := usql.QueryRowsMap(db, query, func(rowMap usql.RowMap) error {
-		columnNames = append(columnNames, rowMap.GetString("Field"))
+		columns = append(columns, umconf.Column{Name:rowMap.GetString("Field"),ColumnType:rowMap.GetString("Type")})
 		return nil
 	})
 	if err != nil {
 		return nil, err
 	}
-	if len(columnNames) == 0 {
+	if len(columns) == 0 {
 		return nil, fmt.Errorf("Found 0 columns on %s.%s. Bailing out",
 			usql.EscapeName(databaseName),
 			usql.EscapeName(tableName),
 		)
 	}
-	return umconf.NewColumnList(columnNames), nil
+	return umconf.NewColumnList(columns), nil
 }
 
 func ShowCreateTable(db *gosql.DB, databaseName, tableName string, dropTableIfExists bool) (statement []string, err error) {

@@ -14,17 +14,17 @@ type ColumnType int
 
 const (
 	UnknownColumnType   ColumnType = iota
-	TimestampColumnType            = iota
-	DateTimeColumnType             = iota
-	EnumColumnType                 = iota
-	MediumIntColumnType            = iota
-	BigIntColumnType               = iota
-	FloatColumnType                = iota
-	DoubleColumnType               = iota
-	DecimalColumnType              = iota
-	BinaryColumnType               = iota
-	TextColumnType                 = iota
-	JSONColumnType                 = iota
+	TimestampColumnType
+	DateTimeColumnType
+	EnumColumnType
+	MediumIntColumnType
+	BigIntColumnType
+	FloatColumnType
+	DoubleColumnType
+	DecimalColumnType
+	BinaryColumnType
+	TextColumnType
+	JSONColumnType
 )
 
 const maxMediumintUnsigned int32 = 16777215
@@ -43,10 +43,11 @@ type Column struct {
 }
 
 func (c *Column) ConvertArg(arg interface{}) interface{} {
-	if fmt.Sprintf("%s", arg) == "" {
+	if fmt.Sprintf("%v", arg) == "" {
 		return ""
 	}
-	if c.Type == TextColumnType {
+
+	if strings.Contains(c.ColumnType, "text") {
 		if encoding, ok := charsetEncodingMap[c.Charset]; ok {
 			arg, _, _ = transform.String(encoding.NewDecoder(), fmt.Sprintf("%s", arg))
 		}
@@ -124,9 +125,18 @@ type ColumnList struct {
 }
 
 // NewColumnList creates an object given ordered list of column names
-func NewColumnList(names []string) *ColumnList {
+/*func NewColumnList(names []string) *ColumnList {
 	result := &ColumnList{
 		Columns: NewColumns(names),
+	}
+	result.Ordinals = NewColumnsMap(result.Columns)
+	return result
+}*/
+
+// NewColumnList creates an object given ordered list of column names
+func NewColumnList(columns []Column) *ColumnList {
+	result := &ColumnList{
+		Columns: columns,
 	}
 	result.Ordinals = NewColumnsMap(result.Columns)
 	return result

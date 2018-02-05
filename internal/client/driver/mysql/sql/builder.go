@@ -214,15 +214,15 @@ func BuildDMLDeleteQuery(databaseName, tableName string, tableColumns *umconf.Co
 			}
 			comparisons = append(comparisons, comparison)
 		} else {
-			if column.Type == umconf.BinaryColumnType {
-				arg := column.ConvertArg(args[tableOrdinal])
-				comparison, err := BuildValueComparison(column.Name, fmt.Sprintf("cast('%v' as %s)", EscapeValue(fmt.Sprintf("%v", arg)), column.ColumnType), EqualsComparisonSign)
+			if strings.HasPrefix(column.ColumnType, "binary"){
+				arg := column.ConvertArg(*args[tableOrdinal])
+				comparison, err := BuildValueComparison(column.Name, fmt.Sprintf("cast('%v' as %s)", arg, column.ColumnType), EqualsComparisonSign)
 				if err != nil {
 					return result, uniqueKeyArgs, err
 				}
 				comparisons = append(comparisons, comparison)
 			} else {
-				arg := column.ConvertArg(args[tableOrdinal])
+				arg := column.ConvertArg(*args[tableOrdinal])
 				uniqueKeyArgs = append(uniqueKeyArgs, arg)
 				comparison, err := BuildValueComparison(column.Name, "?", EqualsComparisonSign)
 				if err != nil {
@@ -265,10 +265,10 @@ func BuildDMLInsertQuery(databaseName, tableName string, tableColumns, sharedCol
 
 	for _, column := range tableColumns.ColumnList() {
 		tableOrdinal := tableColumns.Ordinals[column.Name]
-		if args[tableOrdinal] == nil {
-			sharedArgs = append(sharedArgs, args[tableOrdinal])
+		if *args[tableOrdinal] == nil {
+			sharedArgs = append(sharedArgs, *args[tableOrdinal])
 		} else {
-			arg := column.ConvertArg(args[tableOrdinal])
+			arg := column.ConvertArg(*args[tableOrdinal])
 			sharedArgs = append(sharedArgs, arg)
 		}
 	}
@@ -328,15 +328,15 @@ func BuildDMLUpdateQuery(databaseName, tableName string, tableColumns, sharedCol
 			}
 			comparisons = append(comparisons, comparison)
 		} else {
-			if column.Type == umconf.BinaryColumnType {
-				arg := column.ConvertArg(whereArgs[tableOrdinal])
-				comparison, err := BuildValueComparison(column.Name, fmt.Sprintf("cast('%v' as %s)", EscapeValue(fmt.Sprintf("%v", arg)), column.ColumnType), EqualsComparisonSign)
+			if strings.HasPrefix(column.ColumnType, "binary"){
+				arg := column.ConvertArg(*whereArgs[tableOrdinal])
+				comparison, err := BuildValueComparison(column.Name, fmt.Sprintf("cast('%v' as %s)", arg, column.ColumnType), EqualsComparisonSign)
 				if err != nil {
 					return result, sharedArgs, uniqueKeyArgs, err
 				}
 				comparisons = append(comparisons, comparison)
 			} else {
-				arg := column.ConvertArg(whereArgs[tableOrdinal])
+				arg := column.ConvertArg(*whereArgs[tableOrdinal])
 				uniqueKeyArgs = append(uniqueKeyArgs, arg)
 				comparison, err := BuildValueComparison(column.Name, "?", EqualsComparisonSign)
 				if err != nil {
