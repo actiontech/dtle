@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	//"os"
 
 	"github.com/issuj/gofaster/base64"
 	"github.com/pingcap/tidb/ast"
@@ -132,7 +133,7 @@ func (b *BinlogReader) ConnectBinlogStreamer(coordinates base.BinlogCoordinates)
 	}
 
 	b.currentCoordinates = coordinates
-	b.logger.Debugf("mysql.reader: Connecting binlog streamer at %+v", b.currentCoordinates)
+	b.logger.Printf("mysql.reader: Connecting binlog streamer at %+v", b.currentCoordinates)
 
 	// Start sync with sepcified binlog gtid
 	gtidSet, err := gomysql.ParseMysqlGTIDSet(b.currentCoordinates.GtidSet)
@@ -288,8 +289,8 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 					}
 				}
 
-				b.logger.Debugf("event before row: %v", dmlEvent.WhereColumnValues)
-				b.logger.Debugf("event after row: %v", dmlEvent.NewColumnValues)
+				//b.logger.Debugf("event before row: %v", dmlEvent.WhereColumnValues)
+				//b.logger.Debugf("event after row: %v", dmlEvent.NewColumnValues)
 				whereTrue := true
 				var err error
 				if table != nil && !table.WhereCtx.IsDefault {
@@ -351,6 +352,10 @@ func (b *BinlogReader) DataStreamEvents(entriesChannel chan<- *BinlogEntry) erro
 		if err != nil {
 			return err
 		}
+		if ev.Header.EventType == replication.HEARTBEAT_EVENT {
+			continue
+		}
+		//ev.Dump(os.Stdout)
 
 		func() {
 			b.currentCoordinatesMutex.Lock()
@@ -365,7 +370,7 @@ func (b *BinlogReader) DataStreamEvents(entriesChannel chan<- *BinlogEntry) erro
 				b.currentCoordinates.LogFile = string(rotateEvent.NextLogName)
 			}()
 			b.mysqlContext.Stage = models.StageFinishedReadingOneBinlogSwitchingToNextBinlog
-			b.logger.Debugf("mysql.reader: Rotate to next log name: %s", rotateEvent.NextLogName)
+			b.logger.Printf("mysql.reader: Rotate to next log name: %s", rotateEvent.NextLogName)
 		} else {
 			if err := b.handleEvent(ev, entriesChannel); err != nil {
 				return err
@@ -448,7 +453,7 @@ func (b *BinlogReader) BinlogStreamEvents(txChannel chan<- *BinlogTx) error {
 				defer b.currentCoordinatesMutex.Unlock()
 				b.currentCoordinates.LogFile = string(rotateEvent.NextLogName)
 			}()
-			b.logger.Debugf("mysql.reader: Rotate to next log name: %s", rotateEvent.NextLogName)
+			b.logger.Printf("mysql.reader: Rotate to next log name: %s", rotateEvent.NextLogName)
 		} else {
 			if err := b.handleBinlogRowsEvent(ev, txChannel); err != nil {
 				return err

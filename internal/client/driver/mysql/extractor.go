@@ -168,11 +168,9 @@ func (e *Extractor) Run() {
 		dumpMsg, err := Encode(&dumpStatResult{Gtid: e.initialBinlogCoordinates.GtidSet, TotalCount: e.mysqlContext.RowsEstimate})
 		if err != nil {
 			e.onError(TaskStateDead, err)
-			return
 		}
-		if err := e.requestMsg(fmt.Sprintf("%s_full_complete", e.subject), "", dumpMsg); err != nil {
-			e.onError(TaskStateRestart, err)
-			return
+		if err := e.publish(fmt.Sprintf("%s_full_complete", e.subject), "", dumpMsg); err != nil {
+			e.onError(TaskStateDead, err)
 		}
 	} else {
 		if err := e.readCurrentBinlogCoordinates(); err != nil {
@@ -200,7 +198,7 @@ func (e *Extractor) Run() {
 			}
 
 			if e.initialBinlogCoordinates.DisplayString() == binlogCoordinates.DisplayString() {
-				if err := e.requestMsg(fmt.Sprintf("%s_incr_complete", e.subject), "", []byte("0")); err != nil {
+				if err := e.publish(fmt.Sprintf("%s_incr_complete", e.subject), "", []byte("0")); err != nil {
 					e.onError(TaskStateDead, err)
 					return
 				}
@@ -216,7 +214,7 @@ func (e *Extractor) Run() {
 				}
 
 				if equals {
-					if err := e.requestMsg(fmt.Sprintf("%s_incr_complete", e.subject), "", []byte("1")); err != nil {
+					if err := e.publish(fmt.Sprintf("%s_incr_complete", e.subject), "", []byte("1")); err != nil {
 						e.onError(TaskStateDead, err)
 						return
 					}
@@ -387,7 +385,7 @@ func (e *Extractor) initNatsPubClient() (err error) {
 		e.logger.Errorf("mysql.extractor: Can't connect nats server %v. make sure a nats streaming server is running.%v", natsAddr, err)
 		return err
 	}
-	e.logger.Infof("mysql.extractor: Connect nats server %v", natsAddr)
+	e.logger.Debugf("mysql.extractor: Connect nats server %v", natsAddr)
 	e.natsConn = sc
 
 	return nil
@@ -396,7 +394,7 @@ func (e *Extractor) initNatsPubClient() (err error) {
 // initiateStreaming begins treaming of binary log events and registers listeners for such events
 func (e *Extractor) initiateStreaming() error {
 	go func() {
-		e.logger.Debugf("mysql.extractor: Beginning streaming")
+		e.logger.Printf("mysql.extractor: Beginning streaming")
 		err := e.StreamEvents()
 		if err != nil {
 			e.onError(TaskStateDead, err)
@@ -623,8 +621,8 @@ func (e *Extractor) StreamEvents() error {
 						break
 					}
 
-					if err = e.requestMsg(fmt.Sprintf("%s_incr_hete", e.subject), "", txMsg); err != nil {
-						e.onError(TaskStateRestart, err)
+					if err = e.publish(fmt.Sprintf("%s_incr_hete", e.subject), "", txMsg); err != nil {
+						e.onError(TaskStateDead, err)
 						break
 					}
 					e.mysqlContext.Stage = models.StageSendingBinlogEventToSlave
@@ -654,7 +652,7 @@ func (e *Extractor) StreamEvents() error {
 							if len(txMsg) > e.maxPayload {
 								e.onError(TaskStateDead, gonats.ErrMaxPayload)
 							}
-							if err = e.requestMsg(subject, fmt.Sprintf("%s:1-%d", binlogEntry.Coordinates.SID, binlogEntry.Coordinates.GNO), txMsg); err != nil {
+							if err = e.publish(subject, fmt.Sprintf("%s:1-%d", binlogEntry.Coordinates.SID, binlogEntry.Coordinates.GNO), txMsg); err != nil {
 								e.onError(TaskStateDead, err)
 								break L
 							}
@@ -674,7 +672,7 @@ func (e *Extractor) StreamEvents() error {
 							if len(txMsg) > e.maxPayload {
 								e.onError(TaskStateDead, gonats.ErrMaxPayload)
 							}
-							if err = e.requestMsg(subject,
+							if err = e.publish(subject,
 								fmt.Sprintf("%s:1-%d",
 									entryArray[len(entryArray)-1].Coordinates.SID,
 									entryArray[len(entryArray)-1].Coordinates.GNO),
@@ -725,8 +723,8 @@ func (e *Extractor) StreamEvents() error {
 							if len(txMsg) > e.maxPayload {
 								e.onError(TaskStateDead, gonats.ErrMaxPayload)
 							}
-							if err = e.requestMsg(subject, fmt.Sprintf("%s:1-%d", binlogTx.SID, binlogTx.GNO), txMsg); err != nil {
-								e.onError(TaskStateRestart, err)
+							if err = e.publish(subject, fmt.Sprintf("%s:1-%d", binlogTx.SID, binlogTx.GNO), txMsg); err != nil {
+								e.onError(TaskStateDead, err)
 								break L
 							}
 							//send_by_size_full
@@ -746,12 +744,12 @@ func (e *Extractor) StreamEvents() error {
 							if len(txMsg) > e.maxPayload {
 								e.onError(TaskStateDead, gonats.ErrMaxPayload)
 							}
-							if err = e.requestMsg(subject,
+							if err = e.publish(subject,
 								fmt.Sprintf("%s:1-%d",
 									txArray[len(txArray)-1].SID,
 									txArray[len(txArray)-1].GNO),
 								txMsg); err != nil {
-								e.onError(TaskStateRestart, err)
+								e.onError(TaskStateDead, err)
 								break L
 							}
 							//send_by_timeout
@@ -779,7 +777,7 @@ func (e *Extractor) StreamEvents() error {
 
 // retryOperation attempts up to `count` attempts at running given function,
 // exiting as soon as it returns with non-error.
-func (e *Extractor) requestMsg(subject, gtid string, txMsg []byte) (err error) {
+func (e *Extractor) publish(subject, gtid string, txMsg []byte) (err error) {
 	for {
 		_, err = e.natsConn.Request(subject, txMsg, DefaultConnectWait)
 		if err == nil {
@@ -788,10 +786,10 @@ func (e *Extractor) requestMsg(subject, gtid string, txMsg []byte) (err error) {
 			}
 			break
 		} else if err == gonats.ErrTimeout {
-			e.logger.Debugf(fmt.Sprintf("mysql.extractor: %v", err))
+			e.logger.Errorf("mysql.extractor: unexpected error on publish, got %v", err)
 			continue
 		} else {
-			e.logger.Debugf(fmt.Sprintf("mysql.extractor: %v,msg len: %d", err, len(txMsg)))
+			e.logger.Errorf("mysql.extractor: unexpected error on publish, got %v", err)
 			break
 		}
 		// there's an error. Let's try again.
@@ -1086,7 +1084,7 @@ func (e *Extractor) encodeDumpEntry(entry *dumpEntry) error {
 	if err != nil {
 		return err
 	}
-	if err := e.requestMsg(fmt.Sprintf("%s_full", e.subject), "", txMsg); err != nil {
+	if err := e.publish(fmt.Sprintf("%s_full", e.subject), "", txMsg); err != nil {
 		return err
 	}
 	e.mysqlContext.Stage = models.StageSendingData

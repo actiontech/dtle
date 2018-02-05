@@ -81,10 +81,10 @@ func NewApplier(subject, tp string, cfg *config.MySQLDriverConfig, logger *log.L
 		currentCoordinates:       &models.CurrentCoordinates{},
 		rowCopyComplete:          make(chan bool, 1),
 		copyRowsQueue:            make(chan *dumpEntry, cfg.ReplChanBufferSize),
-		applyDataEntryQueue:      make(chan *binlog.BinlogEntry, cfg.ReplChanBufferSize),
-		applyGroupDataEntryQueue: make(chan []*binlog.BinlogEntry, cfg.ReplChanBufferSize),
-		applyBinlogTxQueue:       make(chan *binlog.BinlogTx, cfg.ReplChanBufferSize),
-		applyBinlogGroupTxQueue:  make(chan []*binlog.BinlogTx, cfg.ReplChanBufferSize),
+		applyDataEntryQueue:      make(chan *binlog.BinlogEntry, cfg.ReplChanBufferSize * 2),
+		applyGroupDataEntryQueue: make(chan []*binlog.BinlogEntry, cfg.ReplChanBufferSize * 2),
+		applyBinlogTxQueue:       make(chan *binlog.BinlogTx, cfg.ReplChanBufferSize * 2),
+		applyBinlogGroupTxQueue:  make(chan []*binlog.BinlogTx, cfg.ReplChanBufferSize * 2),
 		waitCh:                   make(chan *models.WaitResult, 1),
 		shutdownCh:               make(chan struct{}),
 	}
@@ -762,6 +762,9 @@ func (a *Applier) buildDMLEventQuery(dmlEvent binlog.DataEvent) (query string, a
 	// Large piece of code deleted here. See git annotate.
 
 	tableColumns, err := base.GetTableColumns(a.db, dmlEvent.DatabaseName, dmlEvent.TableName)
+	if err != nil {
+		return query, args, -1, err
+	}
 	switch dmlEvent.DML {
 	case binlog.DeleteDML:
 		{
@@ -847,14 +850,14 @@ func (a *Applier) ApplyBinlogEvent(dbApplier *sql.DB, binlogEntry *binlog.Binlog
 				a.logger.Errorf("mysql.applier: Build dml query error: %v", err)
 				return err
 			}
-			a.logger.Debugf("ApplyBinlogEvent. query: %v", utils.StrLim(query, 256))
-			a.logger.Debugf("ApplyBinlogEvent. args: %v", args)
+			//a.logger.Debugf("ApplyBinlogEvent. query: %v", utils.StrLim(query, 256))
+			//a.logger.Debugf("ApplyBinlogEvent. args: %v", args)
 			_, err = tx.Exec(query, args...)
 			if err != nil {
-				a.logger.Errorf("mysql.applier: Exec %+v,args: %v,gtid: %s:%d, error: %v", query, args, binlogEntry.Coordinates.SID, binlogEntry.Coordinates.GNO, err)
+				a.logger.Errorf("mysql.applier: Exec %+v,args: %v,gtid: %s:%d, error: %v", query, event.NewColumnValues, binlogEntry.Coordinates.SID, binlogEntry.Coordinates.GNO, err)
 				return err
 			}
-			a.logger.Debugf("mysql.applier: Exec %+v,args: %v,gtid: %s:%d", query, args, binlogEntry.Coordinates.SID, binlogEntry.Coordinates.GNO)
+			a.logger.Debugf("mysql.applier: Exec %+v,WhereColumnValues: %v,NewColumnValues: %v,gtid: %s:%d", query, event.WhereColumnValues, event.NewColumnValues, binlogEntry.Coordinates.SID, binlogEntry.Coordinates.GNO)
 			totalDelta += rowDelta
 		}
 	}
@@ -945,7 +948,7 @@ func (a *Applier) Stats() (*models.TaskStatistics, error) {
 		progressPct = 0.0
 	} else {
 		progressPct = 100.0 * float64(totalDeltaCopied+totalRowsReplay) / float64(deltaEstimate+rowsEstimate)
-		if atomic.LoadInt64(&a.rowCopyCompleteFlag) == 1 {
+		if a.mysqlContext.Gtid != "" {
 			// Done copying rows. The totalRowsCopied value is the de-facto number of rows,
 			// and there is no further need to keep updating the value.
 			backlog = fmt.Sprintf("%d/%d", len(a.applyDataEntryQueue), cap(a.applyDataEntryQueue))
