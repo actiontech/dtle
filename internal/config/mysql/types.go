@@ -39,11 +39,12 @@ type Column struct {
 	Charset            string
 	Type               ColumnType
 	ColumnType         string
+	Key				   string
 	TimezoneConversion *TimezoneConvertion
 }
 
 func (c *Column) ConvertArg(arg interface{}) interface{} {
-	if fmt.Sprintf("%v", arg) == "" {
+	if fmt.Sprintf("%s", arg) == "" {
 		return ""
 	}
 

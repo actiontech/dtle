@@ -889,6 +889,9 @@ func skipQueryEvent(sql string) bool {
 	if strings.HasPrefix(sql, "drop user") {
 		return true
 	}
+	if strings.HasPrefix(sql, "delete from mysql.user") {
+		return true
+	}
 	if strings.HasPrefix(sql, "grant") {
 		return true
 	}

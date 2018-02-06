@@ -217,7 +217,10 @@ func GetTableColumns(db usql.QueryAble, databaseName, tableName string) (*umconf
 	)
 	columns := []umconf.Column{}
 	err := usql.QueryRowsMap(db, query, func(rowMap usql.RowMap) error {
-		columns = append(columns, umconf.Column{Name:rowMap.GetString("Field"),ColumnType:rowMap.GetString("Type")})
+		columns = append(columns, umconf.Column{
+			Name:rowMap.GetString("Field"),
+			ColumnType:rowMap.GetString("Type"),
+			Key:rowMap.GetString("Key")})
 		return nil
 	})
 	if err != nil {
