@@ -26,6 +26,7 @@ import (
 	log "udup/internal/logger"
 	"udup/internal/models"
 	"udup/utils"
+	umconf "udup/internal/config/mysql"
 )
 
 const (
@@ -33,6 +34,15 @@ const (
 	TaskStateRestart
 	TaskStateDead
 )
+
+type applierTableItem struct {
+	columns *umconf.ColumnList
+	psInsert int
+	psDelete int
+	psUpdate int
+}
+
+type mapSchemaTableItems map[string](map[string](*applierTableItem))
 
 // Applier connects and writes the the applier-server, which is the server where
 // write row data and apply binlog events onto the dest table.
@@ -45,7 +55,9 @@ type Applier struct {
 	db                 *gosql.DB
 	parser             *sql.Parser
 	retrievedGtidSet   string
+	executedIntervals  gomysql.IntervalSlice
 	currentCoordinates *models.CurrentCoordinates
+	tableItems         mapSchemaTableItems
 
 	rowCopyComplete     chan bool
 	rowCopyCompleteFlag int64
@@ -79,6 +91,7 @@ func NewApplier(subject, tp string, cfg *config.MySQLDriverConfig, logger *log.L
 		mysqlContext:             cfg,
 		parser:                   sql.NewParser(),
 		currentCoordinates:       &models.CurrentCoordinates{},
+		tableItems:               make(mapSchemaTableItems),
 		rowCopyComplete:          make(chan bool, 1),
 		copyRowsQueue:            make(chan *dumpEntry, cfg.ReplChanBufferSize),
 		applyDataEntryQueue:      make(chan *binlog.BinlogEntry, cfg.ReplChanBufferSize * 2),
@@ -756,15 +769,40 @@ func (a *Applier) ShowStatusVariable(variableName string) (result int64, err err
 	return result, nil
 }
 
+func (a *Applier) getTableItem(schema string, table string) *applierTableItem {
+	schemaItem, ok := a.tableItems[schema]
+	if !ok {
+		schemaItem = make(map[string]*applierTableItem)
+		a.tableItems[schema] = schemaItem
+	}
+
+	tableItem, ok := schemaItem[table]
+	if !ok {
+		tableItem = &applierTableItem{}
+		schemaItem[table] = tableItem
+	}
+
+	return tableItem
+}
+
 // buildDMLEventQuery creates a query to operate on the ghost table, based on an intercepted binlog
 // event entry on the original table.
 func (a *Applier) buildDMLEventQuery(dmlEvent binlog.DataEvent) (query string, args []interface{}, rowsDelta int64, err error) {
 	// Large piece of code deleted here. See git annotate.
 
-	tableColumns, err := base.GetTableColumns(a.db, dmlEvent.DatabaseName, dmlEvent.TableName)
-	if err != nil {
-		return query, args, -1, err
+	tableItem := a.getTableItem(dmlEvent.DatabaseName, dmlEvent.TableName)
+	if tableItem.columns == nil {
+		a.logger.Debugf("get tableColumns")
+		tableItem.columns, err = base.GetTableColumns(a.db, dmlEvent.DatabaseName, dmlEvent.TableName)
+		if err != nil {
+			return query, args, -1, err
+		}
+	} else {
+		a.logger.Debugf("reuse tableColumns")
 	}
+
+	var tableColumns = tableItem.columns
+
 	switch dmlEvent.DML {
 	case binlog.DeleteDML:
 		{
@@ -790,14 +828,24 @@ func (a *Applier) buildDMLEventQuery(dmlEvent binlog.DataEvent) (query string, a
 // ApplyEventQueries applies multiple DML queries onto the dest table
 func (a *Applier) ApplyBinlogEvent(dbApplier *sql.DB, binlogEntry *binlog.BinlogEntry) error {
 	var totalDelta int64
+	var err error
 
-	interval, err := base.SelectGtidExecuted(dbApplier.Db, binlogEntry.Coordinates.SID, a.subject, binlogEntry.Coordinates.GNO)
-	if err != nil {
-		return err
+	thisInterval := gomysql.Interval{Start: binlogEntry.Coordinates.GNO, Stop: binlogEntry.Coordinates.GNO + 1}
+	if len(a.executedIntervals) == 0 {
+		// udup crash recovery or never executed
+		a.executedIntervals, err = base.SelectGtidExecuted(dbApplier.Db, binlogEntry.Coordinates.SID, a.subject)
+		if err != nil {
+			return err
+		}
 	}
-	if interval == "" {
+
+	if a.executedIntervals.Contain([]gomysql.Interval{thisInterval}) {
+		// entry executed
 		return nil
 	}
+
+	// TODO normalize may affect oringinal intervals
+	newInterval := append(a.executedIntervals, thisInterval).Normalize()
 
 	dbApplier.DbMutex.Lock()
 	tx, err := dbApplier.Db.Begin()
@@ -808,6 +856,7 @@ func (a *Applier) ApplyBinlogEvent(dbApplier *sql.DB, binlogEntry *binlog.Binlog
 		if err := tx.Commit(); err != nil {
 			a.onError(TaskStateDead, err)
 		}
+		a.executedIntervals = newInterval
 		if !a.shutdown {
 			a.currentCoordinates.RelayMasterLogFile = binlogEntry.Coordinates.LogFile
 			a.currentCoordinates.ReadMasterLogPos = binlogEntry.Coordinates.LogPos
@@ -816,10 +865,13 @@ func (a *Applier) ApplyBinlogEvent(dbApplier *sql.DB, binlogEntry *binlog.Binlog
 		}
 		dbApplier.DbMutex.Unlock()
 	}()
+	// TODO once a connection (instead of once a trx)
+	/*
 	sessionQuery := `SET @@session.foreign_key_checks = 0`
 	if _, err := tx.Exec(sessionQuery); err != nil {
 		return err
 	}
+	*/
 	for _, event := range binlogEntry.Events {
 		if event.DatabaseName != "" {
 			_, err := tx.Exec(fmt.Sprintf("USE %s", event.DatabaseName))
@@ -834,7 +886,9 @@ func (a *Applier) ApplyBinlogEvent(dbApplier *sql.DB, binlogEntry *binlog.Binlog
 		}
 		switch event.DML {
 		case binlog.NotDML:
+			a.logger.Debugf("ApplyBinlogEvent: not dml: %v", event.Query)
 			_, err := tx.Exec(event.Query)
+			//a.getTableItem(event.DatabaseName)
 			if err != nil {
 				if !sql.IgnoreError(err) {
 					a.logger.Errorf("mysql.applier: Exec sql error: %v", err)
@@ -875,13 +929,14 @@ func (a *Applier) ApplyBinlogEvent(dbApplier *sql.DB, binlogEntry *binlog.Binlog
 	if _, err := tx.Exec(query); err != nil {
 		return err
 	}
+
 	query = fmt.Sprintf(`
 			insert into actiontech_udup.gtid_executed
   				(job_uuid,source_uuid,interval_gtid)
   			values
   				('%s','%s','%s')
 		`, a.subject, binlogEntry.Coordinates.SID,
-		interval,
+		base.StringInterval(newInterval),
 	)
 	if _, err := tx.Exec(query); err != nil {
 		return err
