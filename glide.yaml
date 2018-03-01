@@ -8,6 +8,7 @@ import:
   - store
   - store/consul
 - package: github.com/go-sql-driver/mysql
+  version: master
 - package: github.com/hashicorp/consul
   subpackages:
   - api

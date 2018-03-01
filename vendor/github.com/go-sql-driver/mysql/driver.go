@@ -64,12 +64,6 @@ func (d MySQLDriver) Open(dsn string) (driver.Conn, error) {
 		return nil, err
 	}
 	mc.parseTime = mc.cfg.ParseTime
-	mc.strict = mc.cfg.Strict
-
-	// Call startWatcher for context support (From Go 1.8)
-	if s, ok := interface{}(mc).(watcher); ok {
-		s.startWatcher()
-	}
 
 	// Connect to Server
 	if dial, ok := dials[mc.cfg.Net]; ok {
@@ -90,6 +84,11 @@ func (d MySQLDriver) Open(dsn string) (driver.Conn, error) {
 			mc.netConn = nil
 			return nil, err
 		}
+	}
+
+	// Call startWatcher for context support (From Go 1.8)
+	if s, ok := interface{}(mc).(watcher); ok {
+		s.startWatcher()
 	}
 
 	mc.buf = newBuffer(mc.netConn)

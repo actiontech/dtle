@@ -90,7 +90,7 @@ imports:
   subpackages:
   - oleutil
 - name: github.com/go-sql-driver/mysql
-  version: 8fefef06da7707b5a3cda42195a6b409c9c9ab5c
+      version: 8fefef06da7707b5a3cda42195a6b409c9c9ab5c
 - name: github.com/gogo/protobuf
   version: 99cb9b23110011cc45571c901ecae6f6f5e65cd3
   repo: https://github.com/gogo/protobuf
