@@ -27,6 +27,7 @@ import (
 	"udup/internal/models"
 	"udup/utils"
 	umconf "udup/internal/config/mysql"
+	"context"
 )
 
 const (
@@ -51,7 +52,7 @@ type Applier struct {
 	subject            string
 	tp                 string
 	mysqlContext       *config.MySQLDriverConfig
-	dbs                []*sql.DB
+	dbs                []*sql.Conn
 	db                 *gosql.DB
 	parser             *sql.Parser
 	retrievedGtidSet   string
@@ -229,7 +230,7 @@ func (a *Applier) readCurrentBinlogCoordinates() error {
 	return nil
 }
 
-func (a *Applier) onApplyTxStructWithSuper(dbApplier *sql.DB, binlogTx *binlog.BinlogTx) error {
+func (a *Applier) onApplyTxStructWithSuper(dbApplier *sql.Conn, binlogTx *binlog.BinlogTx) error {
 	dbApplier.DbMutex.Lock()
 	defer func() {
 		_, err := sql.ExecNoPrepare(dbApplier.Db, `commit;set gtid_next='automatic'`)
@@ -335,11 +336,12 @@ func (a *Applier) executeWriteFuncs() {
 		}
 	}
 
-	var dbApplier *sql.DB
+	var dbApplier *sql.Conn
 OUTER:
 	for {
 		select {
 		case groupEntry := <-a.applyGroupDataEntryQueue:
+			// this chan is used for single worker
 			{
 				if len(groupEntry) == 0 {
 					continue
@@ -367,6 +369,7 @@ OUTER:
 				}
 			}
 		case groupTx := <-a.applyBinlogGroupTxQueue:
+			// this chan is used for parallel workers
 			{
 				if len(groupTx) == 0 {
 					continue
@@ -592,13 +595,15 @@ func (a *Applier) initiateStreaming() error {
 
 func (a *Applier) initDBConnections() (err error) {
 	applierUri := a.mysqlContext.ConnectionConfig.GetDBUri()
-	if a.dbs, err = sql.CreateDBs(applierUri, a.mysqlContext.ParallelWorkers); err != nil {
-		return err
-	}
 	if a.db, err = sql.CreateDB(applierUri); err != nil {
 		return err
 	}
-	a.db.SetMaxOpenConns(10)
+	a.db.SetMaxOpenConns(10 + a.mysqlContext.ParallelWorkers)
+
+	if a.dbs, err = sql.CreateConns(a.db, a.mysqlContext.ParallelWorkers); err != nil {
+		return err
+	}
+
 	if err := a.validateConnection(a.db); err != nil {
 		return err
 	}
@@ -826,7 +831,7 @@ func (a *Applier) buildDMLEventQuery(dmlEvent binlog.DataEvent) (query string, a
 }
 
 // ApplyEventQueries applies multiple DML queries onto the dest table
-func (a *Applier) ApplyBinlogEvent(dbApplier *sql.DB, binlogEntry *binlog.BinlogEntry) error {
+func (a *Applier) ApplyBinlogEvent(dbApplier *sql.Conn, binlogEntry *binlog.BinlogEntry) error {
 	var totalDelta int64
 	var err error
 
@@ -848,7 +853,7 @@ func (a *Applier) ApplyBinlogEvent(dbApplier *sql.DB, binlogEntry *binlog.Binlog
 	newInterval := append(a.executedIntervals, thisInterval).Normalize()
 
 	dbApplier.DbMutex.Lock()
-	tx, err := dbApplier.Db.Begin()
+	tx, err := dbApplier.Db.BeginTx(context.Background(), &gosql.TxOptions{})
 	if err != nil {
 		return err
 	}
@@ -865,13 +870,7 @@ func (a *Applier) ApplyBinlogEvent(dbApplier *sql.DB, binlogEntry *binlog.Binlog
 		}
 		dbApplier.DbMutex.Unlock()
 	}()
-	// TODO once a connection (instead of once a trx)
-	/*
-	sessionQuery := `SET @@session.foreign_key_checks = 0`
-	if _, err := tx.Exec(sessionQuery); err != nil {
-		return err
-	}
-	*/
+
 	for _, event := range binlogEntry.Events {
 		if event.DatabaseName != "" {
 			_, err := tx.Exec(fmt.Sprintf("USE %s", event.DatabaseName))
@@ -1120,7 +1119,7 @@ func (a *Applier) Shutdown() error {
 	if err := sql.CloseDB(a.db); err != nil {
 		return err
 	}
-	if err := sql.CloseDBs(a.dbs...); err != nil {
+	if err := sql.CloseConns(a.dbs...); err != nil {
 		return err
 	}
 
