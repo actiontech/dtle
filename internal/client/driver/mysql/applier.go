@@ -872,20 +872,23 @@ func (a *Applier) ApplyBinlogEvent(dbApplier *sql.Conn, binlogEntry *binlog.Binl
 	}()
 
 	for _, event := range binlogEntry.Events {
-		if event.DatabaseName != "" {
-			_, err := tx.Exec(fmt.Sprintf("USE %s", event.DatabaseName))
-			if err != nil {
-				if !sql.IgnoreError(err) {
-					a.logger.Errorf("mysql.applier: Exec sql error: %v", err)
-					return err
-				} else {
-					a.logger.Warnf("mysql.applier: Ignore error: %v", err)
-				}
-			}
-		}
 		switch event.DML {
 		case binlog.NotDML:
 			a.logger.Debugf("ApplyBinlogEvent: not dml: %v", event.Query)
+
+			// TODO can we completely remove this?
+			if event.DatabaseName != "" {
+				_, err := tx.Exec(fmt.Sprintf("USE %s", event.DatabaseName))
+				if err != nil {
+					if !sql.IgnoreError(err) {
+						a.logger.Errorf("mysql.applier: Exec sql error: %v", err)
+						return err
+					} else {
+						a.logger.Warnf("mysql.applier: Ignore error: %v", err)
+					}
+				}
+			}
+
 			_, err := tx.Exec(event.Query)
 			//a.getTableItem(event.DatabaseName)
 			if err != nil {
