@@ -915,9 +915,10 @@ func (a *Applier) ApplyBinlogEvent(dbApplier *sql.Conn, binlogEntry *binlog.Binl
 		case binlog.NotDML:
 			a.logger.Debugf("ApplyBinlogEvent: not dml: %v", event.Query)
 
-			// TODO can we completely remove this?
-			if event.DatabaseName != "" {
-				_, err := tx.Exec(fmt.Sprintf("USE %s", event.DatabaseName))
+			if event.DatabaseName != "" && event.DatabaseName != dbApplier.CurrentSchema {
+				query := fmt.Sprintf("USE %s", event.DatabaseName)
+				a.logger.Debugf("mysql.applier: query: %v", query)
+				_, err := tx.Exec(query)
 				if err != nil {
 					if !sql.IgnoreError(err) {
 						a.logger.Errorf("mysql.applier: Exec sql error: %v", err)
@@ -925,6 +926,8 @@ func (a *Applier) ApplyBinlogEvent(dbApplier *sql.Conn, binlogEntry *binlog.Binl
 					} else {
 						a.logger.Warnf("mysql.applier: Ignore error: %v", err)
 					}
+				} else {
+					dbApplier.CurrentSchema = event.DatabaseName
 				}
 			}
 

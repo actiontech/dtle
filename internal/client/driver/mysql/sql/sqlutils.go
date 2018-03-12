@@ -134,6 +134,7 @@ type Conn struct {
 	Db *gosql.Conn
 	Fde string
 
+	CurrentSchema string
 	PsDeleteExecutedGtid *gosql.Stmt
 	PsInsertExecutedGtid *gosql.Stmt
 }
