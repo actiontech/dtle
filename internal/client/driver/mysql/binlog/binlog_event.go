@@ -11,6 +11,7 @@ import (
 
 type EventDML string
 
+// TODO string vs int in serialized struct?
 const (
 	NotDML    EventDML = "NoDML"
 	InsertDML          = "Insert"
@@ -75,6 +76,7 @@ type BinlogEvent struct {
 // BinlogDMLEvent is a binary log rows (DML) event entry, with data
 type DataEvent struct {
 	Query                string
+	CurrentSchema        string
 	DatabaseName         string
 	TableName            string
 	DML                  EventDML
@@ -94,11 +96,11 @@ func NewDataEvent(databaseName, tableName string, dml EventDML, columnCount int)
 	return event
 }
 
-func NewQueryEvent(dbName, query string, dml EventDML) DataEvent {
+func NewQueryEvent(currentSchema, query string, dml EventDML) DataEvent {
 	event := DataEvent{
-		DatabaseName: dbName,
-		Query:        query,
-		DML:          dml,
+		CurrentSchema: currentSchema,
+		Query:         query,
+		DML:           dml,
 	}
 	return event
 }

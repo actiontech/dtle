@@ -188,6 +188,8 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 		evt := ev.Event.(*replication.QueryEvent)
 		query := string(evt.Query)
 
+		b.logger.Debugf("query event: schema: %s, query: %s", evt.Schema, query)
+
 		if strings.ToUpper(query) == "BEGIN" {
 			b.currentBinlogEntry.hasBeginQuery = true
 		} else {
@@ -206,7 +208,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 					}
 				}
 
-				sqls, ok, err := resolveDDLSQL(query)
+				sqls, isDDL, err := resolveDDLSQL(query)
 				if err != nil {
 					b.logger.Debugf("mysql.reader: Parse query [%v] event failed: %v", query, err)
 					if b.skipQueryDDL(query, string(evt.Schema)) {
@@ -214,7 +216,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 						return nil
 					}
 				}
-				if !ok {
+				if !isDDL {
 					event := NewQueryEvent(
 						string(evt.Schema),
 						query,
@@ -564,11 +566,11 @@ func (b *BinlogReader) handleBinlogRowsEvent(ev *replication.BinlogEvent, txChan
 					}
 				}
 
-				sqls, ok, err := resolveDDLSQL(query)
+				sqls, isDDL, err := resolveDDLSQL(query)
 				if err != nil {
 					b.logger.Debugf("mysql.reader: Parse query [%v] event failed: %v", query, err)
 				}
-				if !ok {
+				if !isDDL {
 					b.appendQuery(query)
 					b.onCommit(event, txChannel)
 					return nil
@@ -742,14 +744,14 @@ func GenDDLSQL(sql string, schema string) (string, error) {
 
 // resolveDDLSQL resolve to one ddl sql
 // example: drop table test.a,test2.b -> drop table test.a; drop table test2.b;
-func resolveDDLSQL(sql string) (sqls []string, ok bool, err error) {
+func resolveDDLSQL(sql string) (sqls []string, isDDL bool, err error) {
 	stmt, err := parser.New().ParseOneStmt(sql, "", "")
 	if err != nil {
 		sqls = append(sqls, sql)
 		return sqls, false, err
 	}
 
-	_, isDDL := stmt.(ast.DDLNode)
+	_, isDDL = stmt.(ast.DDLNode)
 	if !isDDL {
 		sqls = append(sqls, sql)
 		return

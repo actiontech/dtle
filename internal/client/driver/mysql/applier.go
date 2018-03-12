@@ -915,8 +915,8 @@ func (a *Applier) ApplyBinlogEvent(dbApplier *sql.Conn, binlogEntry *binlog.Binl
 		case binlog.NotDML:
 			a.logger.Debugf("ApplyBinlogEvent: not dml: %v", event.Query)
 
-			if event.DatabaseName != "" && event.DatabaseName != dbApplier.CurrentSchema {
-				query := fmt.Sprintf("USE %s", event.DatabaseName)
+			if event.CurrentSchema != "" && event.CurrentSchema != dbApplier.CurrentSchema {
+				query := fmt.Sprintf("USE %s", event.CurrentSchema)
 				a.logger.Debugf("mysql.applier: query: %v", query)
 				_, err := tx.Exec(query)
 				if err != nil {
@@ -927,7 +927,7 @@ func (a *Applier) ApplyBinlogEvent(dbApplier *sql.Conn, binlogEntry *binlog.Binl
 						a.logger.Warnf("mysql.applier: Ignore error: %v", err)
 					}
 				} else {
-					dbApplier.CurrentSchema = event.DatabaseName
+					dbApplier.CurrentSchema = event.CurrentSchema
 				}
 			}
 
