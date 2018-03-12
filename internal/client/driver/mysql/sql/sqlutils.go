@@ -133,6 +133,9 @@ type Conn struct {
 	DbMutex *sync.Mutex
 	Db *gosql.Conn
 	Fde string
+
+	PsDeleteExecutedGtid *gosql.Stmt
+	PsInsertExecutedGtid *gosql.Stmt
 }
 
 type DB struct {

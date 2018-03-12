@@ -624,6 +624,19 @@ func (a *Applier) initDBConnections() (err error) {
 		if err := a.createTableGtidExecuted(); err != nil {
 			return err
 		}
+
+		a.dbs[0].PsDeleteExecutedGtid, err = a.dbs[0].Db.PrepareContext(context.Background(), fmt.Sprintf("delete from actiontech_udup.gtid_executed where job_uuid = '%s' and source_uuid = ?",
+			a.subject))
+		if err != nil {
+			return err
+		}
+		a.dbs[0].PsInsertExecutedGtid, err = a.dbs[0].Db.PrepareContext(context.Background(), fmt.Sprintf("replace into actiontech_udup.gtid_executed " +
+			"(job_uuid,source_uuid,interval_gtid) " +
+			"values ('%s', ?, ?)",
+			a.subject))
+		if err != nil {
+			return err
+		}
 	}
 	/*if err := a.readCurrentBinlogCoordinates(); err != nil {
 		return err
@@ -944,33 +957,17 @@ func (a *Applier) ApplyBinlogEvent(dbApplier *sql.Conn, binlogEntry *binlog.Binl
 			totalDelta += rowDelta
 		}
 	}
-	query := fmt.Sprintf(`
-		delete from
-			actiontech_udup.gtid_executed
-	 	where
-	 		job_uuid = '%s'
-		and
-			source_uuid = '%s'
-		`,
-		a.subject,
-		binlogEntry.Coordinates.SID,
-	)
-	if _, err := tx.Exec(query); err != nil {
+
+	_, err = dbApplier.PsDeleteExecutedGtid.Exec(binlogEntry.Coordinates.SID)
+	if err != nil {
 		return err
 	}
 
-	query = fmt.Sprintf(`
-			insert into actiontech_udup.gtid_executed
-  				(job_uuid,source_uuid,interval_gtid)
-  			values
-  				('%s','%s','%s')
-		`, a.subject, binlogEntry.Coordinates.SID,
-		base.StringInterval(newInterval),
-	)
-	if _, err := tx.Exec(query); err != nil {
+	_, err = dbApplier.PsInsertExecutedGtid.Exec(binlogEntry.Coordinates.SID, base.StringInterval(newInterval))
+	if err != nil {
 		return err
 	}
-
+	
 	// no error
 	a.mysqlContext.Stage = models.StageWaitingForGtidToBeCommitted
 	atomic.AddInt64(&a.mysqlContext.TotalDeltaCopied, 1)
