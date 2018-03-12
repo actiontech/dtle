@@ -38,9 +38,9 @@ const (
 
 type applierTableItem struct {
 	columns *umconf.ColumnList
-	psInsert int
-	psDelete int
-	psUpdate int
+	psInsert *gosql.Stmt
+	psDelete *gosql.Stmt
+	psUpdate *gosql.Stmt
 }
 
 type mapSchemaTableItems map[string](map[string](*applierTableItem))
@@ -792,7 +792,7 @@ func (a *Applier) getTableItem(schema string, table string) *applierTableItem {
 
 // buildDMLEventQuery creates a query to operate on the ghost table, based on an intercepted binlog
 // event entry on the original table.
-func (a *Applier) buildDMLEventQuery(dmlEvent binlog.DataEvent) (query string, args []interface{}, rowsDelta int64, err error) {
+func (a *Applier) buildDMLEventQuery(dmlEvent binlog.DataEvent) (query *gosql.Stmt, args []interface{}, rowsDelta int64, err error) {
 	// Large piece of code deleted here. See git annotate.
 
 	tableItem := a.getTableItem(dmlEvent.DatabaseName, dmlEvent.TableName)
@@ -812,22 +812,48 @@ func (a *Applier) buildDMLEventQuery(dmlEvent binlog.DataEvent) (query string, a
 	case binlog.DeleteDML:
 		{
 			query, uniqueKeyArgs, err := sql.BuildDMLDeleteQuery(dmlEvent.DatabaseName, dmlEvent.TableName, tableColumns, dmlEvent.WhereColumnValues.GetAbstractValues())
-			return query, uniqueKeyArgs, -1, err
+			if tableItem.psDelete == nil {
+				// TODO multi-threaded apply
+				tableItem.psDelete, err = a.dbs[0].Db.PrepareContext(context.Background(), query)
+				if err != nil {
+					return nil, nil, -1, err
+				}
+			}
+			return tableItem.psDelete, uniqueKeyArgs, -1, err
 		}
 	case binlog.InsertDML:
 		{
+			// TODO no need to generate query string every time
 			query, sharedArgs, err := sql.BuildDMLInsertQuery(dmlEvent.DatabaseName, dmlEvent.TableName, tableColumns, tableColumns, tableColumns, dmlEvent.NewColumnValues.GetAbstractValues())
-			return query, sharedArgs, 1, err
+			if tableItem.psInsert == nil {
+				a.logger.Debugf("new stmt")
+				// TODO multi-threaded apply
+				tableItem.psInsert, err = a.dbs[0].Db.PrepareContext(context.Background(), query)
+				if err != nil {
+					return nil, nil, -1, err
+				}
+			} else {
+				a.logger.Debugf("reuse stmt")
+			}
+			return tableItem.psInsert, sharedArgs, 1, err
 		}
 	case binlog.UpdateDML:
 		{
 			query, sharedArgs, uniqueKeyArgs, err := sql.BuildDMLUpdateQuery(dmlEvent.DatabaseName, dmlEvent.TableName, tableColumns, tableColumns, tableColumns, tableColumns, dmlEvent.NewColumnValues.GetAbstractValues(), dmlEvent.WhereColumnValues.GetAbstractValues())
 			args = append(args, sharedArgs...)
 			args = append(args, uniqueKeyArgs...)
-			return query, args, 0, err
+			if tableItem.psUpdate == nil {
+				// TODO multi-threaded apply
+				tableItem.psUpdate, err = a.dbs[0].Db.PrepareContext(context.Background(), query)
+				if err != nil {
+					return nil, nil, -1, err
+				}
+			}
+
+			return tableItem.psUpdate, args, 0, err
 		}
 	}
-	return "", args, 0, fmt.Errorf("Unknown dml event type: %+v", dmlEvent.DML)
+	return nil, args, 0, fmt.Errorf("Unknown dml event type: %+v", dmlEvent.DML)
 }
 
 // ApplyEventQueries applies multiple DML queries onto the dest table
@@ -901,19 +927,20 @@ func (a *Applier) ApplyBinlogEvent(dbApplier *sql.Conn, binlogEntry *binlog.Binl
 			}
 			a.logger.Debugf("mysql.applier: Exec [%s]", event.Query)
 		default:
-			query, args, rowDelta, err := a.buildDMLEventQuery(event)
+			stmt, args, rowDelta, err := a.buildDMLEventQuery(event)
 			if err != nil {
 				a.logger.Errorf("mysql.applier: Build dml query error: %v", err)
 				return err
 			}
 			//a.logger.Debugf("ApplyBinlogEvent. query: %v", utils.StrLim(query, 256))
 			//a.logger.Debugf("ApplyBinlogEvent. args: %v", args)
-			_, err = tx.Exec(query, args...)
+
+			_, err = stmt.Exec(args...)
 			if err != nil {
-				a.logger.Errorf("mysql.applier: Exec %+v,args: %v,gtid: %s:%d, error: %v", query, event.NewColumnValues, binlogEntry.Coordinates.SID, binlogEntry.Coordinates.GNO, err)
+				//a.logger.Errorf("mysql.applier: Exec %+v,args: %v,gtid: %s:%d, error: %v", stmt, event.NewColumnValues, binlogEntry.Coordinates.SID, binlogEntry.Coordinates.GNO, err)
 				return err
 			}
-			a.logger.Debugf("mysql.applier: Exec %+v,NewColumnValues: %v,WhereColumnValues: %v,gtid: %s:%d", query, event.NewColumnValues, event.WhereColumnValues, binlogEntry.Coordinates.SID, binlogEntry.Coordinates.GNO)
+			//a.logger.Debugf("mysql.applier: Exec %+v,NewColumnValues: %v,WhereColumnValues: %v,gtid: %s:%d", stmt, event.NewColumnValues, event.WhereColumnValues, binlogEntry.Coordinates.SID, binlogEntry.Coordinates.GNO)
 			totalDelta += rowDelta
 		}
 	}
