@@ -66,8 +66,12 @@ func NewMySQLReader(cfg *config.MySQLDriverConfig, logger *log.Entry) (binlogRea
 			tables[db.TableSchema] = dbMap
 		}
 		for _, table := range db.Tables {
+			if table.Where == "" {
+				table.Where = "true" // TODO temp fix
+			}
 			whereCtx, err := config.NewWhereCtx(table.Where, table)
 			if err != nil {
+				logger.Errorf("mysql.reader: Error parse where '%v'", table.Where)
 				return nil, err
 			}
 			dbMap[table.TableName] = &config.TableContext{

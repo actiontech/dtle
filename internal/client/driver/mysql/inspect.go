@@ -131,13 +131,14 @@ func (i *Inspector) ValidateOriginalTable(databaseName, tableName string, table 
 	}
 
 	// region validate 'where'
-	i.logger.Infof("Found 'where' on this table: %v", table.Where)
+	i.logger.Infof("Found 'where' on this table: '%v'", table.Where)
 	if table.Where == "" {
 		table.Where = "true"
 	}
 
 	_, err = uconf.NewWhereCtx(table.Where, table)
 	if err != nil {
+		i.logger.Errorf("mysql.inspector: Error parse where '%v'", table.Where)
 		return err
 	}
 	// TODO the err cause only a WARN
