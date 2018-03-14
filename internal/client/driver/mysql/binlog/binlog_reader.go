@@ -916,25 +916,7 @@ func (b *BinlogReader) skipEvent(schema string, table string) bool {
 	switch strings.ToLower(schema) {
 	case "mysql":
 		if b.mysqlContext.ExpandSyntaxSupport {
-			switch strings.ToLower(table) {
-			case "event":
-				fallthrough
-			case "func":
-				fallthrough
-			case "proc":
-				fallthrough
-			case "tables_priv":
-				fallthrough
-			case "columns_priv":
-				fallthrough
-			case "procs_priv":
-				return false
-			case "user":
-				return false
-			default:
-				return true
-			}
-			return false
+			return skipMysqlSchemaEvent(strings.ToLower(table));
 		} else {
 			return true
 		}
@@ -979,14 +961,37 @@ func (b *BinlogReader) skipEvent(schema string, table string) bool {
 	return false
 }
 
+func skipMysqlSchemaEvent(tableLower string) bool {
+	switch tableLower {
+	case "event":
+		return false
+	case "func":
+		return false
+	case "proc":
+		return false
+	case "tables_priv":
+		return false
+	case "columns_priv":
+		return false
+	case "procs_priv":
+		return false
+	case "user":
+		return false
+
+	default:
+		return true
+	}
+}
+
 func (b *BinlogReader) skipRowEvent(rowsEvent *replication.RowsEvent) (bool, *config.TableContext) {
+	tableLower := strings.ToLower(string(rowsEvent.Table.Table))
 	switch strings.ToLower(string(rowsEvent.Table.Schema)) {
 	case "actiontech_udup":
 		b.currentBinlogEntry.Coordinates.OSID = mysql.ToColumnValues(rowsEvent.Rows[0]).StringColumn(0)
 		return true, nil
 	case "mysql":
 		if b.mysqlContext.ExpandSyntaxSupport {
-			return false, nil
+			return skipMysqlSchemaEvent(tableLower), nil
 		} else {
 			return true, nil
 		}
@@ -994,7 +999,6 @@ func (b *BinlogReader) skipRowEvent(rowsEvent *replication.RowsEvent) (bool, *co
 		return true, nil
 	default:
 		if len(b.mysqlContext.ReplicateDoDb) > 0 {
-			table := strings.ToLower(string(rowsEvent.Table.Table))
 			//if table in tartget Table, do this event
 			for schemaName, tableMap := range b.tables {
 				if b.matchString(schemaName, string(rowsEvent.Table.Schema)) || schemaName == "" {
@@ -1002,7 +1006,7 @@ func (b *BinlogReader) skipRowEvent(rowsEvent *replication.RowsEvent) (bool, *co
 						return false, nil // TODO not skipping but TableContext
 					}
 					for tableName, tableCtx := range tableMap {
-						if b.matchString(tableName, table) {
+						if b.matchString(tableName, tableLower) {
 							return false, tableCtx
 						}
 					}
