@@ -916,6 +916,24 @@ func (b *BinlogReader) skipEvent(schema string, table string) bool {
 	switch strings.ToLower(schema) {
 	case "mysql":
 		if b.mysqlContext.ExpandSyntaxSupport {
+			switch strings.ToLower(table) {
+			case "event":
+				fallthrough
+			case "func":
+				fallthrough
+			case "proc":
+				fallthrough
+			case "tables_priv":
+				fallthrough
+			case "columns_priv":
+				fallthrough
+			case "procs_priv":
+				return false
+			case "user":
+				return false
+			default:
+				return true
+			}
 			return false
 		} else {
 			return true
