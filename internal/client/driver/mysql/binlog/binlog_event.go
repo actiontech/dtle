@@ -73,6 +73,11 @@ type BinlogEvent struct {
 	Err error
 }
 
+type SchemaTable struct {
+	Schema string
+	Table string
+}
+
 // BinlogDMLEvent is a binary log rows (DML) event entry, with data
 type DataEvent struct {
 	Query                string
@@ -99,6 +104,16 @@ func NewDataEvent(databaseName, tableName string, dml EventDML, columnCount int)
 func NewQueryEvent(currentSchema, query string, dml EventDML) DataEvent {
 	event := DataEvent{
 		CurrentSchema: currentSchema,
+		Query:         query,
+		DML:           dml,
+	}
+	return event
+}
+func NewQueryEventAffectTable(currentSchema, query string, dml EventDML, affectedTable SchemaTable) DataEvent {
+	event := DataEvent{
+		CurrentSchema: currentSchema,
+		DatabaseName:  affectedTable.Schema,
+		TableName:     affectedTable.Table,
 		Query:         query,
 		DML:           dml,
 	}

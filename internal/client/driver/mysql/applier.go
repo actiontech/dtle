@@ -42,6 +42,22 @@ type applierTableItem struct {
 	psDelete *gosql.Stmt
 	psUpdate *gosql.Stmt
 }
+func (ait *applierTableItem) Reset() {
+	// TODO handle err of `.Close()`?
+	if ait.psInsert != nil {
+		ait.psInsert.Close()
+		ait.psInsert = nil
+	}
+	if ait.psDelete != nil {
+		ait.psDelete.Close()
+		ait.psDelete = nil
+	}
+	if ait.psUpdate != nil {
+		ait.psUpdate.Close()
+		ait.psUpdate = nil
+	}
+	ait.columns = nil
+}
 
 type mapSchemaTableItems map[string](map[string](*applierTableItem))
 
@@ -931,8 +947,24 @@ func (a *Applier) ApplyBinlogEvent(dbApplier *sql.Conn, binlogEntry *binlog.Binl
 				}
 			}
 
+			if event.TableName != "" {
+				var schema string
+				if event.DatabaseName != "" {
+					schema = event.DatabaseName
+				} else {
+					schema = event.CurrentSchema
+				}
+				a.getTableItem(schema, event.TableName).Reset()
+			} else if event.DatabaseName == "" {
+				if schemaItem, ok := a.tableItems[event.DatabaseName]; ok {
+					for _, v := range schemaItem {
+						v.Reset()
+					}
+				}
+				delete(a.tableItems, event.DatabaseName)
+			}
+
 			_, err := tx.Exec(event.Query)
-			//a.getTableItem(event.DatabaseName)
 			if err != nil {
 				if !sql.IgnoreError(err) {
 					a.logger.Errorf("mysql.applier: Exec sql error: %v", err)
