@@ -630,6 +630,7 @@ func (e *Extractor) StreamEvents() error {
 				}
 			}
 		}()
+		// region commented out
 		/*entryArray := make([]*binlog.BinlogEntry, 0)
 		subject := fmt.Sprintf("%s_incr_hete", e.subject)
 
@@ -690,6 +691,7 @@ func (e *Extractor) StreamEvents() error {
 				}
 			}
 		}()*/
+		// endregion
 		// The next should block and execute forever, unless there's a serious error
 		if err := e.binlogReader.DataStreamEvents(e.dataChannel); err != nil {
 			if e.shutdown {
@@ -698,6 +700,7 @@ func (e *Extractor) StreamEvents() error {
 			return fmt.Errorf("mysql.extractor: StreamEvents encountered unexpected error: %+v", err)
 		}
 	} else {
+		// region homogeneous
 		//timeout := time.NewTimer(100 * time.Millisecond)
 		txArray := make([]*binlog.BinlogTx, 0)
 		txBytes := 0
@@ -770,6 +773,7 @@ func (e *Extractor) StreamEvents() error {
 			}
 			return fmt.Errorf("mysql.extractor: StreamEvents encountered unexpected error: %+v", err)
 		}
+		// endregion
 	}
 
 	return nil

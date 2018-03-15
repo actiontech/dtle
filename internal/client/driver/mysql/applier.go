@@ -26,6 +26,8 @@ import (
 	log "udup/internal/logger"
 	"udup/internal/models"
 	"udup/utils"
+	umconf "udup/internal/config/mysql"
+	"context"
 )
 
 const (
@@ -34,6 +36,31 @@ const (
 	TaskStateDead
 )
 
+type applierTableItem struct {
+	columns *umconf.ColumnList
+	psInsert *gosql.Stmt
+	psDelete *gosql.Stmt
+	psUpdate *gosql.Stmt
+}
+func (ait *applierTableItem) Reset() {
+	// TODO handle err of `.Close()`?
+	if ait.psInsert != nil {
+		ait.psInsert.Close()
+		ait.psInsert = nil
+	}
+	if ait.psDelete != nil {
+		ait.psDelete.Close()
+		ait.psDelete = nil
+	}
+	if ait.psUpdate != nil {
+		ait.psUpdate.Close()
+		ait.psUpdate = nil
+	}
+	ait.columns = nil
+}
+
+type mapSchemaTableItems map[string](map[string](*applierTableItem))
+
 // Applier connects and writes the the applier-server, which is the server where
 // write row data and apply binlog events onto the dest table.
 type Applier struct {
@@ -41,11 +68,13 @@ type Applier struct {
 	subject            string
 	tp                 string
 	mysqlContext       *config.MySQLDriverConfig
-	dbs                []*sql.DB
+	dbs                []*sql.Conn
 	db                 *gosql.DB
 	parser             *sql.Parser
 	retrievedGtidSet   string
+	executedIntervals  gomysql.IntervalSlice
 	currentCoordinates *models.CurrentCoordinates
+	tableItems         mapSchemaTableItems
 
 	rowCopyComplete     chan bool
 	rowCopyCompleteFlag int64
@@ -79,6 +108,7 @@ func NewApplier(subject, tp string, cfg *config.MySQLDriverConfig, logger *log.L
 		mysqlContext:             cfg,
 		parser:                   sql.NewParser(),
 		currentCoordinates:       &models.CurrentCoordinates{},
+		tableItems:               make(mapSchemaTableItems),
 		rowCopyComplete:          make(chan bool, 1),
 		copyRowsQueue:            make(chan *dumpEntry, cfg.ReplChanBufferSize),
 		applyDataEntryQueue:      make(chan *binlog.BinlogEntry, cfg.ReplChanBufferSize * 2),
@@ -216,7 +246,7 @@ func (a *Applier) readCurrentBinlogCoordinates() error {
 	return nil
 }
 
-func (a *Applier) onApplyTxStructWithSuper(dbApplier *sql.DB, binlogTx *binlog.BinlogTx) error {
+func (a *Applier) onApplyTxStructWithSuper(dbApplier *sql.Conn, binlogTx *binlog.BinlogTx) error {
 	dbApplier.DbMutex.Lock()
 	defer func() {
 		_, err := sql.ExecNoPrepare(dbApplier.Db, `commit;set gtid_next='automatic'`)
@@ -322,11 +352,12 @@ func (a *Applier) executeWriteFuncs() {
 		}
 	}
 
-	var dbApplier *sql.DB
+	var dbApplier *sql.Conn
 OUTER:
 	for {
 		select {
 		case groupEntry := <-a.applyGroupDataEntryQueue:
+			// this chan is used for single worker
 			{
 				if len(groupEntry) == 0 {
 					continue
@@ -354,6 +385,7 @@ OUTER:
 				}
 			}
 		case groupTx := <-a.applyBinlogGroupTxQueue:
+			// this chan is used for parallel workers
 			{
 				if len(groupTx) == 0 {
 					continue
@@ -579,13 +611,15 @@ func (a *Applier) initiateStreaming() error {
 
 func (a *Applier) initDBConnections() (err error) {
 	applierUri := a.mysqlContext.ConnectionConfig.GetDBUri()
-	if a.dbs, err = sql.CreateDBs(applierUri, a.mysqlContext.ParallelWorkers); err != nil {
-		return err
-	}
 	if a.db, err = sql.CreateDB(applierUri); err != nil {
 		return err
 	}
-	a.db.SetMaxOpenConns(10)
+	a.db.SetMaxOpenConns(10 + a.mysqlContext.ParallelWorkers)
+
+	if a.dbs, err = sql.CreateConns(a.db, a.mysqlContext.ParallelWorkers); err != nil {
+		return err
+	}
+
 	if err := a.validateConnection(a.db); err != nil {
 		return err
 	}
@@ -604,6 +638,19 @@ func (a *Applier) initDBConnections() (err error) {
 	}
 	if a.mysqlContext.ApproveHeterogeneous {
 		if err := a.createTableGtidExecuted(); err != nil {
+			return err
+		}
+
+		a.dbs[0].PsDeleteExecutedGtid, err = a.dbs[0].Db.PrepareContext(context.Background(), fmt.Sprintf("delete from actiontech_udup.gtid_executed where job_uuid = '%s' and source_uuid = ?",
+			a.subject))
+		if err != nil {
+			return err
+		}
+		a.dbs[0].PsInsertExecutedGtid, err = a.dbs[0].Db.PrepareContext(context.Background(), fmt.Sprintf("replace into actiontech_udup.gtid_executed " +
+			"(job_uuid,source_uuid,interval_gtid) " +
+			"values ('%s', ?, ?)",
+			a.subject))
+		if err != nil {
 			return err
 		}
 	}
@@ -756,51 +803,112 @@ func (a *Applier) ShowStatusVariable(variableName string) (result int64, err err
 	return result, nil
 }
 
+func (a *Applier) getTableItem(schema string, table string) *applierTableItem {
+	schemaItem, ok := a.tableItems[schema]
+	if !ok {
+		schemaItem = make(map[string]*applierTableItem)
+		a.tableItems[schema] = schemaItem
+	}
+
+	tableItem, ok := schemaItem[table]
+	if !ok {
+		tableItem = &applierTableItem{}
+		schemaItem[table] = tableItem
+	}
+
+	return tableItem
+}
+
 // buildDMLEventQuery creates a query to operate on the ghost table, based on an intercepted binlog
 // event entry on the original table.
-func (a *Applier) buildDMLEventQuery(dmlEvent binlog.DataEvent) (query string, args []interface{}, rowsDelta int64, err error) {
+func (a *Applier) buildDMLEventQuery(dmlEvent binlog.DataEvent) (query *gosql.Stmt, args []interface{}, rowsDelta int64, err error) {
 	// Large piece of code deleted here. See git annotate.
 
-	tableColumns, err := base.GetTableColumns(a.db, dmlEvent.DatabaseName, dmlEvent.TableName)
-	if err != nil {
-		return query, args, -1, err
+	tableItem := a.getTableItem(dmlEvent.DatabaseName, dmlEvent.TableName)
+	if tableItem.columns == nil {
+		a.logger.Debugf("get tableColumns")
+		tableItem.columns, err = base.GetTableColumns(a.db, dmlEvent.DatabaseName, dmlEvent.TableName)
+		if err != nil {
+			return query, args, -1, err
+		}
+	} else {
+		a.logger.Debugf("reuse tableColumns")
 	}
+
+	var tableColumns = tableItem.columns
+
 	switch dmlEvent.DML {
 	case binlog.DeleteDML:
 		{
 			query, uniqueKeyArgs, err := sql.BuildDMLDeleteQuery(dmlEvent.DatabaseName, dmlEvent.TableName, tableColumns, dmlEvent.WhereColumnValues.GetAbstractValues())
-			return query, uniqueKeyArgs, -1, err
+			if tableItem.psDelete == nil {
+				// TODO multi-threaded apply
+				tableItem.psDelete, err = a.dbs[0].Db.PrepareContext(context.Background(), query)
+				if err != nil {
+					return nil, nil, -1, err
+				}
+			}
+			return tableItem.psDelete, uniqueKeyArgs, -1, err
 		}
 	case binlog.InsertDML:
 		{
+			// TODO no need to generate query string every time
 			query, sharedArgs, err := sql.BuildDMLInsertQuery(dmlEvent.DatabaseName, dmlEvent.TableName, tableColumns, tableColumns, tableColumns, dmlEvent.NewColumnValues.GetAbstractValues())
-			return query, sharedArgs, 1, err
+			if tableItem.psInsert == nil {
+				a.logger.Debugf("new stmt")
+				// TODO multi-threaded apply
+				tableItem.psInsert, err = a.dbs[0].Db.PrepareContext(context.Background(), query)
+				if err != nil {
+					return nil, nil, -1, err
+				}
+			} else {
+				a.logger.Debugf("reuse stmt")
+			}
+			return tableItem.psInsert, sharedArgs, 1, err
 		}
 	case binlog.UpdateDML:
 		{
 			query, sharedArgs, uniqueKeyArgs, err := sql.BuildDMLUpdateQuery(dmlEvent.DatabaseName, dmlEvent.TableName, tableColumns, tableColumns, tableColumns, tableColumns, dmlEvent.NewColumnValues.GetAbstractValues(), dmlEvent.WhereColumnValues.GetAbstractValues())
 			args = append(args, sharedArgs...)
 			args = append(args, uniqueKeyArgs...)
-			return query, args, 0, err
+			if tableItem.psUpdate == nil {
+				// TODO multi-threaded apply
+				tableItem.psUpdate, err = a.dbs[0].Db.PrepareContext(context.Background(), query)
+				if err != nil {
+					return nil, nil, -1, err
+				}
+			}
+
+			return tableItem.psUpdate, args, 0, err
 		}
 	}
-	return "", args, 0, fmt.Errorf("Unknown dml event type: %+v", dmlEvent.DML)
+	return nil, args, 0, fmt.Errorf("Unknown dml event type: %+v", dmlEvent.DML)
 }
 
 // ApplyEventQueries applies multiple DML queries onto the dest table
-func (a *Applier) ApplyBinlogEvent(dbApplier *sql.DB, binlogEntry *binlog.BinlogEntry) error {
+func (a *Applier) ApplyBinlogEvent(dbApplier *sql.Conn, binlogEntry *binlog.BinlogEntry) error {
 	var totalDelta int64
+	var err error
 
-	interval, err := base.SelectGtidExecuted(dbApplier.Db, binlogEntry.Coordinates.SID, a.subject, binlogEntry.Coordinates.GNO)
-	if err != nil {
-		return err
+	thisInterval := gomysql.Interval{Start: binlogEntry.Coordinates.GNO, Stop: binlogEntry.Coordinates.GNO + 1}
+	if len(a.executedIntervals) == 0 {
+		// udup crash recovery or never executed
+		a.executedIntervals, err = base.SelectGtidExecuted(dbApplier.Db, binlogEntry.Coordinates.SID, a.subject)
+		if err != nil {
+			return err
+		}
 	}
-	if interval == "" {
+
+	if a.executedIntervals.Contain([]gomysql.Interval{thisInterval}) {
+		// entry executed
 		return nil
 	}
 
+	// TODO normalize may affect oringinal intervals
+	newInterval := append(a.executedIntervals, thisInterval).Normalize()
+
 	dbApplier.DbMutex.Lock()
-	tx, err := dbApplier.Db.Begin()
+	tx, err := dbApplier.Db.BeginTx(context.Background(), &gosql.TxOptions{})
 	if err != nil {
 		return err
 	}
@@ -808,6 +916,7 @@ func (a *Applier) ApplyBinlogEvent(dbApplier *sql.DB, binlogEntry *binlog.Binlog
 		if err := tx.Commit(); err != nil {
 			a.onError(TaskStateDead, err)
 		}
+		a.executedIntervals = newInterval
 		if !a.shutdown {
 			a.currentCoordinates.RelayMasterLogFile = binlogEntry.Coordinates.LogFile
 			a.currentCoordinates.ReadMasterLogPos = binlogEntry.Coordinates.LogPos
@@ -816,24 +925,45 @@ func (a *Applier) ApplyBinlogEvent(dbApplier *sql.DB, binlogEntry *binlog.Binlog
 		}
 		dbApplier.DbMutex.Unlock()
 	}()
-	sessionQuery := `SET @@session.foreign_key_checks = 0`
-	if _, err := tx.Exec(sessionQuery); err != nil {
-		return err
-	}
+
 	for _, event := range binlogEntry.Events {
-		if event.DatabaseName != "" {
-			_, err := tx.Exec(fmt.Sprintf("USE %s", event.DatabaseName))
-			if err != nil {
-				if !sql.IgnoreError(err) {
-					a.logger.Errorf("mysql.applier: Exec sql error: %v", err)
-					return err
-				} else {
-					a.logger.Warnf("mysql.applier: Ignore error: %v", err)
-				}
-			}
-		}
 		switch event.DML {
 		case binlog.NotDML:
+			a.logger.Debugf("ApplyBinlogEvent: not dml: %v", event.Query)
+
+			if event.CurrentSchema != "" && event.CurrentSchema != dbApplier.CurrentSchema {
+				query := fmt.Sprintf("USE %s", event.CurrentSchema)
+				a.logger.Debugf("mysql.applier: query: %v", query)
+				_, err := tx.Exec(query)
+				if err != nil {
+					if !sql.IgnoreError(err) {
+						a.logger.Errorf("mysql.applier: Exec sql error: %v", err)
+						return err
+					} else {
+						a.logger.Warnf("mysql.applier: Ignore error: %v", err)
+					}
+				} else {
+					dbApplier.CurrentSchema = event.CurrentSchema
+				}
+			}
+
+			if event.TableName != "" {
+				var schema string
+				if event.DatabaseName != "" {
+					schema = event.DatabaseName
+				} else {
+					schema = event.CurrentSchema
+				}
+				a.getTableItem(schema, event.TableName).Reset()
+			} else if event.DatabaseName == "" {
+				if schemaItem, ok := a.tableItems[event.DatabaseName]; ok {
+					for _, v := range schemaItem {
+						v.Reset()
+					}
+				}
+				delete(a.tableItems, event.DatabaseName)
+			}
+
 			_, err := tx.Exec(event.Query)
 			if err != nil {
 				if !sql.IgnoreError(err) {
@@ -845,48 +975,34 @@ func (a *Applier) ApplyBinlogEvent(dbApplier *sql.DB, binlogEntry *binlog.Binlog
 			}
 			a.logger.Debugf("mysql.applier: Exec [%s]", event.Query)
 		default:
-			query, args, rowDelta, err := a.buildDMLEventQuery(event)
+			stmt, args, rowDelta, err := a.buildDMLEventQuery(event)
 			if err != nil {
 				a.logger.Errorf("mysql.applier: Build dml query error: %v", err)
 				return err
 			}
 			//a.logger.Debugf("ApplyBinlogEvent. query: %v", utils.StrLim(query, 256))
 			//a.logger.Debugf("ApplyBinlogEvent. args: %v", args)
-			_, err = tx.Exec(query, args...)
+
+			_, err = stmt.Exec(args...)
 			if err != nil {
-				a.logger.Errorf("mysql.applier: Exec %+v,args: %v,gtid: %s:%d, error: %v", query, event.NewColumnValues, binlogEntry.Coordinates.SID, binlogEntry.Coordinates.GNO, err)
+				//a.logger.Errorf("mysql.applier: Exec %+v,args: %v,gtid: %s:%d, error: %v", stmt, event.NewColumnValues, binlogEntry.Coordinates.SID, binlogEntry.Coordinates.GNO, err)
 				return err
 			}
-			a.logger.Debugf("mysql.applier: Exec %+v,NewColumnValues: %v,WhereColumnValues: %v,gtid: %s:%d", query, event.NewColumnValues, event.WhereColumnValues, binlogEntry.Coordinates.SID, binlogEntry.Coordinates.GNO)
+			//a.logger.Debugf("mysql.applier: Exec %+v,NewColumnValues: %v,WhereColumnValues: %v,gtid: %s:%d", stmt, event.NewColumnValues, event.WhereColumnValues, binlogEntry.Coordinates.SID, binlogEntry.Coordinates.GNO)
 			totalDelta += rowDelta
 		}
 	}
-	query := fmt.Sprintf(`
-		delete from
-			actiontech_udup.gtid_executed
-	 	where
-	 		job_uuid = '%s'
-		and
-			source_uuid = '%s'
-		`,
-		a.subject,
-		binlogEntry.Coordinates.SID,
-	)
-	if _, err := tx.Exec(query); err != nil {
-		return err
-	}
-	query = fmt.Sprintf(`
-			insert into actiontech_udup.gtid_executed
-  				(job_uuid,source_uuid,interval_gtid)
-  			values
-  				('%s','%s','%s')
-		`, a.subject, binlogEntry.Coordinates.SID,
-		interval,
-	)
-	if _, err := tx.Exec(query); err != nil {
+
+	_, err = dbApplier.PsDeleteExecutedGtid.Exec(binlogEntry.Coordinates.SID)
+	if err != nil {
 		return err
 	}
 
+	_, err = dbApplier.PsInsertExecutedGtid.Exec(binlogEntry.Coordinates.SID, base.StringInterval(newInterval))
+	if err != nil {
+		return err
+	}
+	
 	// no error
 	a.mysqlContext.Stage = models.StageWaitingForGtidToBeCommitted
 	atomic.AddInt64(&a.mysqlContext.TotalDeltaCopied, 1)
@@ -1065,7 +1181,7 @@ func (a *Applier) Shutdown() error {
 	if err := sql.CloseDB(a.db); err != nil {
 		return err
 	}
-	if err := sql.CloseDBs(a.dbs...); err != nil {
+	if err := sql.CloseConns(a.dbs...); err != nil {
 		return err
 	}
 

@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"udup/internal/config"
+	"context"
 )
 
 // RowMap represents one row in a result set. Its objective is to allow
@@ -128,6 +129,16 @@ func GetDB(mysql_uri string) (*gosql.DB, bool, error) {
 	return knownDBs[mysql_uri], exists, nil
 }
 
+type Conn struct {
+	DbMutex *sync.Mutex
+	Db *gosql.Conn
+	Fde string
+
+	CurrentSchema string
+	PsDeleteExecutedGtid *gosql.Stmt
+	PsInsertExecutedGtid *gosql.Stmt
+}
+
 type DB struct {
 	DbMutex *sync.Mutex
 	Db      *gosql.DB
@@ -143,21 +154,25 @@ func CreateDB(mysql_uri string) (*gosql.DB, error) {
 	return db, nil
 }
 
-func CreateDBs(mysql_uri string, count int) ([]*DB, error) {
-	dbs := make([]*DB, 0, count)
+func CreateConns(db *gosql.DB, count int) ([]*Conn, error) {
+	conns := make([]*Conn, count)
 	for i := 0; i < count; i++ {
-		db, err := CreateDB(mysql_uri)
+		conn, err := db.Conn(context.Background())
 		if err != nil {
 			return nil, err
 		}
-		dbApplier := &DB{
-			DbMutex: &sync.Mutex{},
-			Db:      db,
-		}
-		dbs = append(dbs, dbApplier)
-	}
 
-	return dbs, nil
+		_, err = conn.ExecContext(context.Background(), "SET @@session.foreign_key_checks = 0")
+		if err != nil {
+			return nil, err
+		}
+
+		conns[i] = &Conn{
+			DbMutex: &sync.Mutex{},
+			Db:      conn,
+		}
+	}
+	return conns, nil
 }
 
 // RowToArray is a convenience function, typically not called directly, which maps a
@@ -293,7 +308,7 @@ func QueryRowsMapBuffered(db *gosql.DB, query string, on_row func(RowMap) error,
 }
 
 // ExecNoPrepare executes given query using given args on given DB, without using prepared statements.
-func ExecNoPrepare(db *gosql.DB, query string, args ...interface{}) (gosql.Result, error) {
+func ExecNoPrepare(db *gosql.Conn, query string, args ...interface{}) (gosql.Result, error) {
 	var err error
 	defer func() {
 		if derr := recover(); derr != nil {
@@ -302,7 +317,7 @@ func ExecNoPrepare(db *gosql.DB, query string, args ...interface{}) (gosql.Resul
 	}()
 
 	var res gosql.Result
-	res, err = db.Exec(query, args...)
+	res, err = db.ExecContext(context.Background(), query, args...)
 	return res, err
 }
 
@@ -419,11 +434,13 @@ func CloseDB(db *gosql.DB) error {
 	return nil
 }
 
-func CloseDBs(dbs ...*DB) error {
+func CloseConns(dbs ...*Conn) error {
 	for _, db := range dbs {
-		err := CloseDB(db.Db)
-		if err != nil {
-			return fmt.Errorf("close db failed - %v", err)
+		if db.Db != nil {
+			err := db.Db.Close()
+			if err != nil {
+				return fmt.Errorf("close db failed - %v", err)
+			}
 		}
 	}
 	return nil

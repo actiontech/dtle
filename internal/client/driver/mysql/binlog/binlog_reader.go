@@ -188,6 +188,8 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 		evt := ev.Event.(*replication.QueryEvent)
 		query := string(evt.Query)
 
+		b.logger.Debugf("query event: schema: %s, query: %s", evt.Schema, query)
+
 		if strings.ToUpper(query) == "BEGIN" {
 			b.currentBinlogEntry.hasBeginQuery = true
 		} else {
@@ -206,7 +208,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 					}
 				}
 
-				sqls, ok, err := resolveDDLSQL(query)
+				sqls, schemaTables, isDDL, err := resolveDDLSQL(query)
 				if err != nil {
 					b.logger.Debugf("mysql.reader: Parse query [%v] event failed: %v", query, err)
 					if b.skipQueryDDL(query, string(evt.Schema)) {
@@ -214,7 +216,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 						return nil
 					}
 				}
-				if !ok {
+				if !isDDL {
 					event := NewQueryEvent(
 						string(evt.Schema),
 						query,
@@ -226,16 +228,17 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 					return nil
 				}
 
-				for _, sql := range sqls {
+				for i, sql := range sqls {
 					if b.skipQueryDDL(sql, string(evt.Schema)) {
 						//b.logger.Debugf("mysql.reader: Skip QueryEvent at schema: %s,sql: %s", fmt.Sprintf("%s", evt.Schema), sql)
 						return nil
 					}
 
-					event := NewQueryEvent(
+					event := NewQueryEventAffectTable(
 						string(evt.Schema),
 						sql,
 						NotDML,
+						schemaTables[i],
 					)
 					b.currentBinlogEntry.Events = append(b.currentBinlogEntry.Events, event)
 				}
@@ -564,11 +567,11 @@ func (b *BinlogReader) handleBinlogRowsEvent(ev *replication.BinlogEvent, txChan
 					}
 				}
 
-				sqls, ok, err := resolveDDLSQL(query)
+				sqls, _, isDDL, err := resolveDDLSQL(query)
 				if err != nil {
 					b.logger.Debugf("mysql.reader: Parse query [%v] event failed: %v", query, err)
 				}
-				if !ok {
+				if !isDDL {
 					b.appendQuery(query)
 					b.onCommit(event, txChannel)
 					return nil
@@ -742,20 +745,26 @@ func GenDDLSQL(sql string, schema string) (string, error) {
 
 // resolveDDLSQL resolve to one ddl sql
 // example: drop table test.a,test2.b -> drop table test.a; drop table test2.b;
-func resolveDDLSQL(sql string) (sqls []string, ok bool, err error) {
+func resolveDDLSQL(sql string) (sqls []string, schemaTables []SchemaTable, isDDL bool, err error) {
 	stmt, err := parser.New().ParseOneStmt(sql, "", "")
 	if err != nil {
 		sqls = append(sqls, sql)
-		return sqls, false, err
+		return sqls, nil, false, err
 	}
 
-	_, isDDL := stmt.(ast.DDLNode)
+	_, isDDL = stmt.(ast.DDLNode)
 	if !isDDL {
 		sqls = append(sqls, sql)
 		return
 	}
 
+	var appended = false
+
 	switch v := stmt.(type) {
+	case *ast.AlterTableStmt:
+		schemaTables = append(schemaTables, SchemaTable{ Schema:v.Table.Schema.L, Table:v.Table.Name.L })
+	case *ast.DropDatabaseStmt:
+		schemaTables = append(schemaTables, SchemaTable{ Schema:strings.ToLower(v.Name), Table:"" })
 	case *ast.DropTableStmt:
 		var ex string
 		if v.IfExists {
@@ -769,11 +778,13 @@ func resolveDDLSQL(sql string) (sqls []string, ok bool, err error) {
 			s := fmt.Sprintf("drop table %s %s`%s`", ex, db, t.Name.L)
 			sqls = append(sqls, s)
 		}
-
 	default:
+		// do nothing
+	}
+	if !appended {
 		sqls = append(sqls, sql)
 	}
-	return sqls, true, nil
+	return sqls, schemaTables, true, nil
 }
 
 func genTableName(schema string, table string) config.Table {
