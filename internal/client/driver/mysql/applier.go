@@ -33,6 +33,7 @@ import (
 	"udup/utils"
 	"github.com/satori/go.uuid"
 	"encoding/hex"
+	"os"
 )
 
 const (
@@ -224,6 +225,8 @@ type Applier struct {
 	shutdownLock sync.Mutex
 
 	mtsManager *MtsManager
+	printTps   bool
+	txLastNSeconds uint32
 }
 
 func NewApplier(subject, tp string, cfg *config.MySQLDriverConfig, logger *log.Logger) (*Applier, error) {
@@ -236,6 +239,7 @@ func NewApplier(subject, tp string, cfg *config.MySQLDriverConfig, logger *log.L
 		logger.Errorf("job id is not a valid UUID: %v", err.Error());
 		return nil, err
 	}
+
 	a := &Applier{
 		logger:                  entry,
 		subject:                 subject,
@@ -252,6 +256,7 @@ func NewApplier(subject, tp string, cfg *config.MySQLDriverConfig, logger *log.L
 		applyBinlogGroupTxQueue: make(chan []*binlog.BinlogTx, cfg.ReplChanBufferSize*2),
 		waitCh:                  make(chan *models.WaitResult, 1),
 		shutdownCh:              make(chan struct{}),
+		printTps:                os.Getenv("UDUP_PRINT_TPS") != "",
 	}
 	a.mtsManager = NewMtsManager(a.shutdownCh)
 	go a.mtsManager.LcUpdater()
@@ -279,6 +284,16 @@ func (a *Applier) MtsWorker(workerIndex int) {
 
 // Run executes the complete apply logic.
 func (a *Applier) Run() {
+	if a.printTps {
+		go func() {
+			for {
+				time.Sleep(5 * time.Second)
+				n := atomic.SwapUint32(&a.txLastNSeconds, 0)
+				a.logger.Infof("mysql.applier: txLastNSeconds: %v", n)
+			}
+		}()
+	}
+
 	a.logger.Printf("mysql.applier: Apply binlog events to %s.%d", a.mysqlContext.ConnectionConfig.Host, a.mysqlContext.ConnectionConfig.Port)
 	a.mysqlContext.StartTime = time.Now()
 	if err := a.initDBConnections(); err != nil {
@@ -1064,6 +1079,7 @@ func (a *Applier) ApplyBinlogEvent(workerIdx int, binlogEntry *binlog.BinlogEntr
 		} else {
 			a.mtsManager.Executed(binlogEntry)
 		}
+		atomic.AddUint32(&a.txLastNSeconds, 1)
 
 		dbApplier.DbMutex.Unlock()
 	}()
