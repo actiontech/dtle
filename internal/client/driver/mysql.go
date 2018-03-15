@@ -85,13 +85,14 @@ func (m *MySQLDriver) Validate(task *models.Task) (*models.TaskValidateResponse,
 			if err != nil {
 				reply.GtidMode.Success = false
 				reply.GtidMode.Error = err.Error()
-			}
-			_, err = ubase.ParseBinlogCoordinatesFromRows(rows)
-			if err != nil {
-				reply.GtidMode.Success = false
-				reply.GtidMode.Error = err.Error()
 			} else {
-				reply.GtidMode.Success = true
+				_, err = ubase.ParseBinlogCoordinatesFromRows(rows)
+				if err != nil {
+					reply.GtidMode.Success = false
+					reply.GtidMode.Error = err.Error()
+				} else {
+					reply.GtidMode.Success = true
+				}
 			}
 		}
 
