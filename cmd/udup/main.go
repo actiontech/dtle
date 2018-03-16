@@ -10,6 +10,8 @@ import (
 
 	"udup/agent"
 	"udup/cmd/udup/command"
+
+	_ "net/http/pprof"
 )
 
 // The git commit that was compiled. This will be filled in by the compiler.
