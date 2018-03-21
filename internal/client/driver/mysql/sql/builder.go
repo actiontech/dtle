@@ -202,7 +202,8 @@ func BuildRangeComparison(columns []string, values []string, args []interface{},
 
 func BuildDMLDeleteQuery(databaseName, tableName string, tableColumns *umconf.ColumnList, args []*interface{}) (result string, columnArgs []interface{}, err error) {
 	if len(args) != tableColumns.Len() {
-		return result, columnArgs, fmt.Errorf("args count differs from table column count in BuildDMLDeleteQuery")
+		return result, columnArgs, fmt.Errorf("args count differs from table column count in BuildDMLDeleteQuery %v, %v",
+			len(args), tableColumns.Len())
 	}
 	comparisons := []string{}
 	uniqueKeyComparisons := []string{}
@@ -268,7 +269,8 @@ func BuildDMLDeleteQuery(databaseName, tableName string, tableColumns *umconf.Co
 
 func BuildDMLInsertQuery(databaseName, tableName string, tableColumns, sharedColumns, mappedSharedColumns *umconf.ColumnList, args []*interface{}) (result string, sharedArgs []interface{}, err error) {
 	if len(args) != tableColumns.Len() {
-		return result, sharedArgs, fmt.Errorf("args count differs from table column count in BuildDMLInsertQuery")
+		return result, sharedArgs, fmt.Errorf("args count differs from table column count in BuildDMLInsertQuery %v, %v",
+			len(args), tableColumns.Len())
 	}
 
 	if !sharedColumns.IsSubsetOf(tableColumns) {
@@ -311,10 +313,12 @@ func BuildDMLInsertQuery(databaseName, tableName string, tableColumns, sharedCol
 
 func BuildDMLUpdateQuery(databaseName, tableName string, tableColumns, sharedColumns, mappedSharedColumns, uniqueKeyColumns *umconf.ColumnList, valueArgs, whereArgs []*interface{}) (result string, sharedArgs, columnArgs []interface{}, err error) {
 	if len(valueArgs) != tableColumns.Len() {
-		return result, sharedArgs, columnArgs, fmt.Errorf("value args count differs from table column count in BuildDMLUpdateQuery")
+		return result, sharedArgs, columnArgs, fmt.Errorf("value args count differs from table column count in BuildDMLUpdateQuery %v, %v",
+			len(valueArgs), tableColumns.Len())
 	}
 	if len(whereArgs) != tableColumns.Len() {
-		return result, sharedArgs, columnArgs, fmt.Errorf("where args count differs from table column count in BuildDMLUpdateQuery")
+		return result, sharedArgs, columnArgs, fmt.Errorf("where args count differs from table column count in BuildDMLUpdateQuery %v, %v",
+			len(whereArgs), tableColumns.Len())
 	}
 	if !sharedColumns.IsSubsetOf(tableColumns) {
 		return result, sharedArgs, columnArgs, fmt.Errorf("shared columns is not a subset of table columns in BuildDMLUpdateQuery")
