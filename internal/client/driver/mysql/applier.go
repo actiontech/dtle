@@ -110,7 +110,7 @@ func NewApplier(subject, tp string, cfg *config.MySQLDriverConfig, logger *log.L
 		currentCoordinates:       &models.CurrentCoordinates{},
 		tableItems:               make(mapSchemaTableItems),
 		rowCopyComplete:          make(chan bool, 1),
-		copyRowsQueue:            make(chan *dumpEntry, cfg.ReplChanBufferSize),
+		copyRowsQueue:            make(chan *dumpEntry, 24),
 		applyDataEntryQueue:      make(chan *binlog.BinlogEntry, cfg.ReplChanBufferSize * 2),
 		applyGroupDataEntryQueue: make(chan []*binlog.BinlogEntry, cfg.ReplChanBufferSize * 2),
 		applyBinlogTxQueue:       make(chan *binlog.BinlogTx, cfg.ReplChanBufferSize * 2),
@@ -318,11 +318,9 @@ func (a *Applier) executeWriteFuncs() {
 							a.onError(TaskStateDead, err)
 						}
 					} else {
-						go func() {
-							if err := a.ApplyEventQueries(a.db, copyRows); err != nil {
-								a.onError(TaskStateDead, err)
-							}
-						}()
+						if err := a.ApplyEventQueries(a.db, copyRows); err != nil {
+							a.onError(TaskStateDead, err)
+						}
 					}
 				}
 			case <-a.rowCopyComplete:
@@ -331,7 +329,6 @@ func (a *Applier) executeWriteFuncs() {
 				break L
 			default:
 			}
-			time.Sleep(100 * time.Millisecond)
 		}
 	}()
 
@@ -447,6 +444,7 @@ func (a *Applier) initiateStreaming() error {
 				a.onError(TaskStateDead, err)
 			}
 			a.copyRowsQueue <- dumpData
+			a.logger.Debugf("mysql.applier: copyRowsQueue: %v", len(a.copyRowsQueue))
 			a.mysqlContext.Stage = models.StageSlaveWaitingForWorkersToProcessQueue
 			if err := a.natsConn.Publish(m.Reply, nil); err != nil {
 				a.onError(TaskStateDead, err)
@@ -1013,11 +1011,6 @@ func (a *Applier) ApplyEventQueries(db *gosql.DB, entry *dumpEntry) error {
 	queries := []string{}
 	queries = append(queries, entry.SystemVariablesStatement, entry.SqlMode, entry.DbSQL)
 	queries = append(queries, entry.TbSQL...)
-	if len(entry.Values) > 0 {
-		for _, e := range entry.Values {
-			queries = append(queries, fmt.Sprintf(`replace into %s.%s values %s`, entry.TableSchema, entry.TableName, strings.Join(e, ",")))
-		}
-	}
 	tx, err := db.Begin()
 	if err != nil {
 		return err
@@ -1032,15 +1025,12 @@ func (a *Applier) ApplyEventQueries(db *gosql.DB, entry *dumpEntry) error {
 	if _, err := tx.Exec(sessionQuery); err != nil {
 		return err
 	}
-	for _, query := range queries {
-		if query == "" {
-			continue
-		}
+	execQuery := func(query string) error {
 		a.logger.Debugf("ApplyEventQueries. query: %v", utils.StrLim(query, 256))
 		_, err := tx.Exec(query)
 		if err != nil {
 			if !sql.IgnoreError(err) {
-				a.logger.Errorf("mysql.applier: Exec [%s] error: %v", query, err)
+				a.logger.Errorf("mysql.applier: Exec [%s] error: %v", utils.StrLim(query, 10), err)
 				return err
 			}
 			if !sql.IgnoreExistsError(err) {
@@ -1048,7 +1038,39 @@ func (a *Applier) ApplyEventQueries(db *gosql.DB, entry *dumpEntry) error {
 			}
 		}
 		a.logger.Debugf("mysql.applier: Exec [%s]", utils.StrLim(query, 256))
+		return nil
 	}
+
+	for _, query := range queries {
+		if query == "" {
+			continue
+		}
+		err := execQuery(query)
+		if err != nil {
+			return err
+		}
+	}
+	for i, _ := range entry.Values {
+		fmt.Sprintf("%v", i)
+		var buf bytes.Buffer
+		buf.WriteString(fmt.Sprintf(`replace into %s.%s values `, entry.TableSchema, entry.TableName))
+		var first = false
+		for j, _ := range entry.Values[i] {
+			if !first {
+				first = true
+			} else {
+				buf.WriteString(",")
+			}
+			buf.WriteString(entry.Values[i][j])
+		}
+		query := buf.String()
+
+		err = execQuery(query)
+		if err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 

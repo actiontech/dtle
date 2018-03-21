@@ -48,7 +48,7 @@ func NewDumper(db *sql.Tx, table *config.Table, total, chunkSize int64,
 		TableName:      table.TableName,
 		table:          table,
 		total:          total,
-		resultsChannel: make(chan *dumpEntry, 50),
+		resultsChannel: make(chan *dumpEntry, 24),
 		entriesChannel: make(chan *dumpEntry),
 		chunkSize:      chunkSize,
 		shutdownCh:     make(chan struct{}),
@@ -203,6 +203,7 @@ func (d *dumper) getChunkData(e *dumpEntry) (err error) {
 	defer func() {
 		entry.err = err
 		d.resultsChannel <- entry
+		d.logger.Debugf("mysql.dumper: resultsChannel: %v", len(d.resultsChannel))
 	}()
 
 	query := ""
