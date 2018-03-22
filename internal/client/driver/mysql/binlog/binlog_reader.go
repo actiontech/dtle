@@ -234,15 +234,12 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 						return nil
 					}
 
-					var event DataEvent
-					if len(schemaTables) > i {
-						event = NewQueryEventAffectTable(
-							string(evt.Schema), sql, NotDML,
-							schemaTables[i],
-						)
-					} else {
-						event = NewQueryEvent(string(evt.Schema), sql, NotDML)
-					}
+					event := NewQueryEventAffectTable(
+						string(evt.Schema),
+						sql,
+						NotDML,
+						schemaTables[i],
+					)
 					b.currentBinlogEntry.Events = append(b.currentBinlogEntry.Events, event)
 				}
 				entriesChannel <- b.currentBinlogEntry
@@ -748,6 +745,9 @@ func GenDDLSQL(sql string, schema string) (string, error) {
 
 // resolveDDLSQL resolve to one ddl sql
 // example: drop table test.a,test2.b -> drop table test.a; drop table test2.b;
+//
+// schemaTables is the schema.table that the query has invalidated. For err or non-DDL, it is nil.
+// For DDL, it size equals len(sqls).
 func resolveDDLSQL(sql string) (sqls []string, schemaTables []SchemaTable, isDDL bool, err error) {
 	stmt, err := parser.New().ParseOneStmt(sql, "", "")
 	if err != nil {
@@ -761,13 +761,16 @@ func resolveDDLSQL(sql string) (sqls []string, schemaTables []SchemaTable, isDDL
 		return
 	}
 
-	var appended = false
+	appendSql := func(sql string, schema string, table string) {
+		schemaTables = append(schemaTables, SchemaTable{Schema:schema, Table:table})
+		sqls = append(sqls, sql)
+	}
 
 	switch v := stmt.(type) {
 	case *ast.AlterTableStmt:
-		schemaTables = append(schemaTables, SchemaTable{ Schema:v.Table.Schema.L, Table:v.Table.Name.L })
+		appendSql(sql, v.Table.Schema.L, v.Table.Name.L)
 	case *ast.DropDatabaseStmt:
-		schemaTables = append(schemaTables, SchemaTable{ Schema:strings.ToLower(v.Name), Table:"" })
+		appendSql(sql, strings.ToLower(v.Name), "")
 	case *ast.DropTableStmt:
 		var ex string
 		if v.IfExists {
@@ -779,13 +782,10 @@ func resolveDDLSQL(sql string) (sqls []string, schemaTables []SchemaTable, isDDL
 				db = fmt.Sprintf("%s.", t.Schema.O)
 			}
 			s := fmt.Sprintf("drop table %s %s`%s`", ex, db, t.Name.L)
-			sqls = append(sqls, s)
+			appendSql(s, t.Schema.L, t.Name.L)
 		}
 	default:
-		// do nothing
-	}
-	if !appended {
-		sqls = append(sqls, sql)
+		appendSql(sql, "", "")
 	}
 	return sqls, schemaTables, true, nil
 }
