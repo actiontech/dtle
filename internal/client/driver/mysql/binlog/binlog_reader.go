@@ -234,12 +234,15 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 						return nil
 					}
 
-					event := NewQueryEventAffectTable(
-						string(evt.Schema),
-						sql,
-						NotDML,
-						schemaTables[i],
-					)
+					var event DataEvent
+					if len(schemaTables) > i {
+						event = NewQueryEventAffectTable(
+							string(evt.Schema), sql, NotDML,
+							schemaTables[i],
+						)
+					} else {
+						event = NewQueryEvent(string(evt.Schema), sql, NotDML)
+					}
 					b.currentBinlogEntry.Events = append(b.currentBinlogEntry.Events, event)
 				}
 				entriesChannel <- b.currentBinlogEntry
