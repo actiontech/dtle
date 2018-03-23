@@ -29,7 +29,7 @@ import (
 
 const (
 	// DefaultConnectWait is the default timeout used for the connect operation
-	DefaultConnectWait            = 10 * time.Second
+	DefaultConnectWait            = 128 * time.Second
 	ReconnectStreamerSleepSeconds = 5
 )
 
@@ -790,7 +790,7 @@ func (e *Extractor) publish(subject, gtid string, txMsg []byte) (err error) {
 			}
 			break
 		} else if err == gonats.ErrTimeout {
-			e.logger.Errorf("mysql.extractor: unexpected error on publish, got %v", err)
+			e.logger.Debugf("mysql.extractor: publish timeout, got %v", err)
 			continue
 		} else {
 			e.logger.Errorf("mysql.extractor: unexpected error on publish, got %v", err)
