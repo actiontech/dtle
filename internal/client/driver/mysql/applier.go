@@ -305,14 +305,11 @@ func (a *Applier) onApplyTxStructWithSuper(dbApplier *sql.Conn, binlogTx *binlog
 // Both event backlog and rowcopy events are polled; the backlog events have precedence.
 func (a *Applier) executeWriteFuncs() {
 	go func() {
-	L:
-		for {
+		var stopLoop = false
+		for !stopLoop {
 			select {
 			case copyRows := <-a.copyRowsQueue:
-				{
-					if nil == copyRows {
-						continue
-					}
+				if nil != copyRows {
 					if copyRows.DbSQL != "" || len(copyRows.TbSQL) > 0 {
 						if err := a.ApplyEventQueries(a.db, copyRows); err != nil {
 							a.onError(TaskStateDead, err)
@@ -324,10 +321,11 @@ func (a *Applier) executeWriteFuncs() {
 					}
 				}
 			case <-a.rowCopyComplete:
-				break L
+				stopLoop = true
 			case <-a.shutdownCh:
-				break L
-			default:
+				stopLoop = true
+			case <-time.After(10 * time.Second):
+				a.logger.Debugf("mysql.applier: no copyRows for 10s.")
 			}
 		}
 	}()
@@ -438,7 +436,9 @@ func Decode(data []byte, vPtr interface{}) (err error) {
 func (a *Applier) initiateStreaming() error {
 	if a.mysqlContext.Gtid == "" {
 		a.mysqlContext.MarkRowCopyStartTime()
+		a.logger.Debugf("mysql.applier: nats subscribe")
 		_, err := a.natsConn.Subscribe(fmt.Sprintf("%s_full", a.subject), func(m *gonats.Msg) {
+			a.logger.Debugf("mysql.applier: recv a msg")
 			dumpData := &dumpEntry{}
 			if err := Decode(m.Data, dumpData); err != nil {
 				a.onError(TaskStateDead, err)
@@ -449,6 +449,7 @@ func (a *Applier) initiateStreaming() error {
 			if err := a.natsConn.Publish(m.Reply, nil); err != nil {
 				a.onError(TaskStateDead, err)
 			}
+			a.logger.Debugf("mysql.applier: after publish nats reply")
 			atomic.AddInt64(&a.mysqlContext.RowsEstimate, dumpData.TotalCount)
 		})
 		/*if err := sub.SetPendingLimits(a.mysqlContext.MsgsLimit, a.mysqlContext.BytesLimit); err != nil {
@@ -1026,7 +1027,7 @@ func (a *Applier) ApplyEventQueries(db *gosql.DB, entry *dumpEntry) error {
 		return err
 	}
 	execQuery := func(query string) error {
-		a.logger.Debugf("ApplyEventQueries. query: %v", utils.StrLim(query, 256))
+		a.logger.Debugf("mysql.applier: Exec [%s]", utils.StrLim(query, 256))
 		_, err := tx.Exec(query)
 		if err != nil {
 			if !sql.IgnoreError(err) {
@@ -1037,7 +1038,6 @@ func (a *Applier) ApplyEventQueries(db *gosql.DB, entry *dumpEntry) error {
 				a.logger.Warnf("mysql.applier: Ignore error: %v", err)
 			}
 		}
-		a.logger.Debugf("mysql.applier: Exec [%s]", utils.StrLim(query, 256))
 		return nil
 	}
 
