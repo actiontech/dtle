@@ -108,7 +108,9 @@ func (j *Job) Copy() *Job {
 	if j.Tasks != nil {
 		ts := make([]*Task, len(nj.Tasks))
 		for i, t := range nj.Tasks {
+			t.ConfigLock.RLock()
 			ts[i] = t.Copy()
+			t.ConfigLock.RUnlock()
 		}
 		nj.Tasks = ts
 	}

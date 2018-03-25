@@ -177,8 +177,10 @@ func (r *Worker) SaveState() error {
 				NatsAddr: id.DriverConfig.NatsAddr,
 			}
 		}
+		r.task.ConfigLock.Lock()
 		r.task.Config["Gtid"] = id.DriverConfig.Gtid
 		r.task.Config["NatsAddr"] = id.DriverConfig.NatsAddr
+		r.task.ConfigLock.Unlock()
 	}
 	r.handleLock.Unlock()
 	return nil
