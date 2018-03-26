@@ -17,6 +17,7 @@ const (
 )
 
 func (s *HTTPServer) AllocsRequest(resp http.ResponseWriter, req *http.Request) (interface{}, error) {
+	s.logger.Debugf("HTTPServer.AllocsRequest")
 	if req.Method != "GET" {
 		return nil, CodedError(405, ErrInvalidMethod)
 	}
@@ -27,6 +28,7 @@ func (s *HTTPServer) AllocsRequest(resp http.ResponseWriter, req *http.Request) 
 	}
 
 	var out umodel.AllocListResponse
+	s.logger.Debugf("HTTPServer.AllocsRequest: call rpc")
 	if err := s.agent.RPC("Alloc.List", &args, &out); err != nil {
 		return nil, err
 	}

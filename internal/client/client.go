@@ -807,6 +807,7 @@ func (c *Client) updateAllocStatus(alloc *models.Allocation) {
 	stripped.ClientStatus = alloc.ClientStatus
 	stripped.ClientDescription = alloc.ClientDescription
 
+	c.logger.Debugf("Client.updateAllocStatus: TaskStates: %v", stripped.TaskStates)
 	select {
 	case c.allocUpdates <- stripped:
 	case <-c.shutdownCh:
@@ -827,6 +828,7 @@ func (c *Client) allocSync() {
 			return
 		case alloc := <-c.allocUpdates:
 			// Batch the allocation updates until the timer triggers.
+			c.logger.Debugf("Client.allocSync: <-allocUpdates")
 			aUpdates[alloc.ID] = alloc
 
 		case update := <-c.workUpdates:
@@ -835,6 +837,8 @@ func (c *Client) allocSync() {
 		case <-syncTicker.C:
 			// Fast path if there are no updates
 			if len(aUpdates) != 0 {
+				c.logger.Debugf("Client.allocSync: len(aUpdates) != 0")
+
 				sync := make([]*models.Allocation, 0, len(aUpdates))
 				for _, alloc := range aUpdates {
 					sync = append(sync, alloc)
@@ -1063,6 +1067,7 @@ func (c *Client) watchAllocations(updates chan *allocUpdates, jUpdates chan *job
 		}
 		select {
 		case updates <- update:
+			c.logger.Debugf("watchAllocations: update")
 		case <-c.shutdownCh:
 			return
 		}

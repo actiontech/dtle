@@ -221,7 +221,9 @@ func (r *Allocator) dirtySyncState() {
 // syncStatus is used to run and sync the status when it changes
 func (r *Allocator) syncStatus() error {
 	// Get a copy of our alloc, update status server side and sync to disk
+	r.logger.Debugf("syncStatus: Alloc")
 	alloc := r.Alloc()
+	r.logger.Debugf("syncStatus: updater")
 	r.updater(alloc)
 	//return r.saveAllocatorState()
 	return nil
@@ -235,6 +237,7 @@ func (r *Allocator) setStatus(status, desc string) {
 	r.allocLock.Unlock()
 	select {
 	case r.dirtyCh <- struct{}{}:
+		r.logger.Debugf("setStatus")
 	default:
 	}
 }
@@ -355,6 +358,7 @@ func (r *Allocator) setTaskState(taskName, state string, event *models.TaskEvent
 
 	select {
 	case r.dirtyCh <- struct{}{}:
+		r.logger.Debugf("setTaskState: dirtyCh<-")
 	default:
 	}
 }

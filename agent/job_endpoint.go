@@ -459,7 +459,7 @@ func ApiJobToStructJob(job *api.Job, trafficLimit int) *models.Job {
 			task.Leader = true
 			task.Config["Gtid"] = cfg
 		}
-		t := &models.Task{}
+		t := models.NewTask()
 		ApiTaskToStructsTask(task, t)
 		j.Tasks[i] = t
 	}

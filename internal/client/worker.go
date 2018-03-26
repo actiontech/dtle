@@ -129,6 +129,7 @@ func NewWorker(logger *log.Logger, config *config.ClientConfig,
 
 // MarkReceived marks the task as received.
 func (r *Worker) MarkReceived() {
+	r.logger.Debugf("MarkReceived")
 	r.updater(r.task.Type, models.TaskStatePending, models.NewTaskEvent(models.TaskReceived))
 }
 
@@ -177,8 +178,13 @@ func (r *Worker) SaveState() error {
 				NatsAddr: id.DriverConfig.NatsAddr,
 			}
 		}
+		r.logger.Debugf("Worker.SaveState: lock: %p, %p", r.task, r.task.ConfigLock)
+		r.task.ConfigLock.Lock()
+		r.logger.Debugf("Worker.SaveState: after lock: %p", r.task)
 		r.task.Config["Gtid"] = id.DriverConfig.Gtid
 		r.task.Config["NatsAddr"] = id.DriverConfig.NatsAddr
+		r.task.ConfigLock.Unlock()
+		r.logger.Debugf("Worker.SaveState: after unlock: %p", r.task)
 	}
 	r.handleLock.Unlock()
 	return nil
@@ -195,11 +201,13 @@ func (r *Worker) DestroyState() error {
 // setState is used to update the store of the task runner
 func (r *Worker) setState(state string, event *models.TaskEvent) {
 	// Persist our store to disk.
+	r.logger.Debugf("setState.SaveState")
 	if err := r.SaveState(); err != nil {
 		r.logger.Errorf("agent: Failed to save store of Task Runner for task %q: %v", r.task.Type, err)
 	}
 
 	// Indicate the task has been updated.
+	r.logger.Debugf("updater")
 	r.updater(r.task.Type, state, event)
 }
 
@@ -224,6 +232,7 @@ func (r *Worker) Run() {
 	_, err := r.createDriver()
 	if err != nil {
 		e := fmt.Errorf("failed to create driver of task %q for alloc %q: %v", r.task.Type, r.alloc.ID, err)
+		r.logger.Debugf("setState Run")
 		r.setState(
 			models.TaskStateDead,
 			models.NewTaskEvent(models.TaskSetupFailure).SetSetupError(e).SetFailsTask())
@@ -298,6 +307,7 @@ func (r *Worker) run() {
 			select {
 			case success := <-prestartResultCh:
 				if !success {
+					r.logger.Debugf("setState 1")
 					r.setState(models.TaskStateDead, nil)
 					return
 				}
@@ -313,11 +323,13 @@ func (r *Worker) run() {
 					startErr := r.startTask()
 					r.restartTracker.SetStartError(startErr)
 					if startErr != nil {
+						r.logger.Debugf("setState 2")
 						r.setState("", models.NewTaskEvent(models.TaskDriverFailure).SetDriverError(startErr))
 						goto RESTART
 					}
 
 					// Mark the task as started
+					r.logger.Debugf("setState 3")
 					r.setState(models.TaskStateRunning, models.NewTaskEvent(models.TaskStarted))
 					r.runningLock.Lock()
 					r.running = true
@@ -345,6 +357,7 @@ func (r *Worker) run() {
 
 				// Log whether the task was successful or not.
 				r.restartTracker.SetWaitResult(waitRes)
+				r.logger.Debugf("setState 4")
 				r.setState("", r.waitErrorToEvent(waitRes))
 				if !waitRes.Successful() {
 					r.logger.Errorf("agent: Task %q for alloc %q failed: %v", r.task.Type, r.alloc.ID, waitRes)
@@ -365,6 +378,7 @@ func (r *Worker) run() {
 				}
 
 				r.logger.Debugf("agent: Restarting %s: %v", common, event.RestartReason)
+				r.logger.Debugf("setState 5")
 				r.setState(models.TaskStateRunning, event)
 				r.killTask(nil)
 
@@ -384,6 +398,7 @@ func (r *Worker) run() {
 				running := r.running
 				r.runningLock.Unlock()
 				if !running {
+					r.logger.Debugf("setState 6")
 					r.setState(models.TaskStateDead, r.destroyEvent)
 					return
 				}
@@ -396,6 +411,7 @@ func (r *Worker) run() {
 					if r.destroyEvent.Type == models.TaskKilling {
 						killEvent = r.destroyEvent
 					} else {
+						r.logger.Debugf("setState 7")
 						r.setState(models.TaskStateRunning, r.destroyEvent)
 					}
 				}
@@ -405,6 +421,7 @@ func (r *Worker) run() {
 				// Wait for handler to exit before calling cleanup
 				<-handleWaitCh
 
+				r.logger.Debugf("setState 8")
 				r.setState(models.TaskStateDead, nil)
 				return
 			}
@@ -413,6 +430,7 @@ func (r *Worker) run() {
 	RESTART:
 		restart := r.shouldRestart()
 		if !restart {
+			r.logger.Debugf("setState 9")
 			r.setState(models.TaskStateDead, nil)
 			return
 		}
@@ -436,6 +454,7 @@ func (r *Worker) shouldRestart() bool {
 	case models.TaskNotRestarting, models.TaskTerminated:
 		r.logger.Printf("agent: Not restarting task: %v for alloc: %v ", r.task.Type, r.alloc.ID)
 		if state == models.TaskNotRestarting {
+			r.logger.Debugf("setState restart 1")
 			r.setState(models.TaskStateFailed,
 				models.NewTaskEvent(models.TaskNotRestarting).
 					SetRestartReason(reason).SetFailsTask())
@@ -443,6 +462,7 @@ func (r *Worker) shouldRestart() bool {
 		return false
 	case models.TaskRestarting:
 		r.logger.Printf("agent: Restarting task %q for alloc %q in %v", r.task.Type, r.alloc.ID, when)
+		r.logger.Debugf("setState restart 2")
 		r.setState(models.TaskStatePending,
 			models.NewTaskEvent(models.TaskRestarting).
 				SetRestartDelay(when).
@@ -464,6 +484,7 @@ func (r *Worker) shouldRestart() bool {
 	r.destroyLock.Unlock()
 	if destroyed {
 		r.logger.Debugf("agent: Not restarting task: %v because it has been destroyed", r.task.Type)
+		r.logger.Debugf("setState restart 3")
 		r.setState(models.TaskStateDead, r.destroyEvent)
 		return false
 	}
@@ -493,6 +514,7 @@ func (r *Worker) killTask(killingEvent *models.TaskEvent) {
 	event.SetKillTimeout(models.DefaultKillTimeout)
 
 	// Mark that we received the kill event
+	r.logger.Debugf("setState killTask 1")
 	r.setState(models.TaskStateRunning, event)
 
 	// Kill the task using an exponential backoff in-case of failures.
@@ -507,6 +529,7 @@ func (r *Worker) killTask(killingEvent *models.TaskEvent) {
 	r.runningLock.Unlock()
 
 	// Store that the task has been destroyed and any associated error.
+	r.logger.Debugf("setState killTask 2")
 	r.setState("", models.NewTaskEvent(models.TaskKilled).SetKillError(err))
 }
 
