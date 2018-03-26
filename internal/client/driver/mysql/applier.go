@@ -840,6 +840,9 @@ func (a *Applier) buildDMLEventQuery(dmlEvent binlog.DataEvent) (query *gosql.St
 	case binlog.DeleteDML:
 		{
 			query, uniqueKeyArgs, err := sql.BuildDMLDeleteQuery(dmlEvent.DatabaseName, dmlEvent.TableName, tableColumns, dmlEvent.WhereColumnValues.GetAbstractValues())
+			if err != nil {
+				return nil, nil, -1, err
+			}
 			if tableItem.psDelete == nil {
 				// TODO multi-threaded apply
 				tableItem.psDelete, err = a.dbs[0].Db.PrepareContext(context.Background(), query)
@@ -853,6 +856,9 @@ func (a *Applier) buildDMLEventQuery(dmlEvent binlog.DataEvent) (query *gosql.St
 		{
 			// TODO no need to generate query string every time
 			query, sharedArgs, err := sql.BuildDMLInsertQuery(dmlEvent.DatabaseName, dmlEvent.TableName, tableColumns, tableColumns, tableColumns, dmlEvent.NewColumnValues.GetAbstractValues())
+			if err != nil {
+				return nil, nil, -1, err
+			}
 			if tableItem.psInsert == nil {
 				a.logger.Debugf("new stmt")
 				// TODO multi-threaded apply
@@ -868,6 +874,9 @@ func (a *Applier) buildDMLEventQuery(dmlEvent binlog.DataEvent) (query *gosql.St
 	case binlog.UpdateDML:
 		{
 			query, sharedArgs, uniqueKeyArgs, err := sql.BuildDMLUpdateQuery(dmlEvent.DatabaseName, dmlEvent.TableName, tableColumns, tableColumns, tableColumns, tableColumns, dmlEvent.NewColumnValues.GetAbstractValues(), dmlEvent.WhereColumnValues.GetAbstractValues())
+			if err != nil {
+				return nil, nil, -1, err
+			}
 			args = append(args, sharedArgs...)
 			args = append(args, uniqueKeyArgs...)
 			if tableItem.psUpdate == nil {
