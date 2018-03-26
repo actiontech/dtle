@@ -9,7 +9,6 @@ import (
 
 	"github.com/hashicorp/go-multierror"
 	"github.com/mitchellh/copystructure"
-	"sync"
 )
 
 const (
@@ -34,7 +33,6 @@ type Task struct {
 
 	// Config is provided to the driver to initialize
 	Config map[string]interface{}
-	ConfigLock sync.RWMutex
 
 	// Leader marks the task as the leader within the group. When the leader
 	// task exits, other tasks will be gracefully terminated.
