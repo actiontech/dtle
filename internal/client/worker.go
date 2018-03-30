@@ -177,8 +177,9 @@ func (r *Worker) SaveState() error {
 				NatsAddr: id.DriverConfig.NatsAddr,
 			}
 		}
-		r.task.Config["Gtid"] = id.DriverConfig.Gtid
-		r.task.Config["NatsAddr"] = id.DriverConfig.NatsAddr
+		// Commented out to fix #188. Is there any consequence?
+		//r.task.Config["Gtid"] = id.DriverConfig.Gtid
+		//r.task.Config["NatsAddr"] = id.DriverConfig.NatsAddr
 	}
 	r.handleLock.Unlock()
 	return nil
