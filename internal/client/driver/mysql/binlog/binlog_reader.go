@@ -140,11 +140,15 @@ func (b *BinlogReader) ConnectBinlogStreamer(coordinates base.BinlogCoordinates)
 	b.logger.Printf("mysql.reader: Connecting binlog streamer at %+v", b.currentCoordinates)
 
 	// Start sync with sepcified binlog gtid
+	b.logger.Debugf("mysql.reader: GtidSet: %v", b.currentCoordinates.GtidSet)
 	gtidSet, err := gomysql.ParseMysqlGTIDSet(b.currentCoordinates.GtidSet)
 	if err != nil {
 		b.logger.Errorf("mysql.reader: err: %v", err)
 	}
 	b.binlogStreamer, err = b.binlogSyncer.StartSyncGTID(gtidSet)
+	if err != nil {
+		b.logger.Debugf("mysql.reader: err at StartSyncGTID: %v", err)
+	}
 	b.mysqlContext.Stage = models.StageRequestingBinlogDump
 
 	return err

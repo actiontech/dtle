@@ -72,7 +72,7 @@ func (c *Conn) readInitialHandshake() error {
 func (c *Conn) writeAuthHandshake() error {
 	// Adjust client capability flags based on server support
 	capability := CLIENT_PROTOCOL_41 | CLIENT_SECURE_CONNECTION |
-		CLIENT_LONG_PASSWORD | CLIENT_TRANSACTIONS | CLIENT_LONG_FLAG
+		CLIENT_LONG_PASSWORD | CLIENT_TRANSACTIONS | CLIENT_LONG_FLAG | CLIENT_PLUGIN_AUTH
 
 	// To enable TLS / SSL
 	if c.TLSConfig != nil {

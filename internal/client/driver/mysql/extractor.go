@@ -180,11 +180,13 @@ func (e *Extractor) Run() {
 	}
 
 	if err := e.initBinlogReader(e.initialBinlogCoordinates); err != nil {
+		e.logger.Debugf("mysql.extractor error at initBinlogReader: %v", err.Error())
 		e.onError(TaskStateDead, err)
 		return
 	}
 
 	if err := e.initiateStreaming(); err != nil {
+		e.logger.Debugf("mysql.extractor error at initiateStreaming: %v", err.Error())
 		e.onError(TaskStateDead, err)
 		return
 	}
@@ -452,9 +454,11 @@ func (e *Extractor) initDBConnections() (err error) {
 func (e *Extractor) initBinlogReader(binlogCoordinates *base.BinlogCoordinates) error {
 	binlogReader, err := binlog.NewMySQLReader(e.mysqlContext, e.logger)
 	if err != nil {
+		e.logger.Debugf("mysql.extractor: err at initBinlogReader: NewMySQLReader: %v", err.Error())
 		return err
 	}
 	if err := binlogReader.ConnectBinlogStreamer(*binlogCoordinates); err != nil {
+		e.logger.Debugf("mysql.extractor: err at initBinlogReader: ConnectBinlogStreamer: %v", err.Error())
 		return err
 	}
 	e.binlogReader = binlogReader
