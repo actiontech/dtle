@@ -53,6 +53,11 @@ func (t *Task) Copy() *Task {
 	if t == nil {
 		return nil
 	}
+
+	if t.ConfigLock == nil { // migrating old data
+		t.ConfigLock = &sync.RWMutex{}
+	}
+
 	nt := new(Task)
 	*nt = *t
 
@@ -60,6 +65,7 @@ func (t *Task) Copy() *Task {
 	defer nt.ConfigLock.RUnlock()
 	if i, err := copystructure.Copy(nt.Config); err != nil {
 		nt.Config = i.(map[string]interface{})
+		nt.ConfigLock = &sync.RWMutex{} // a lock per map, and a new map created.
 	}
 
 	return nt
