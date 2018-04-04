@@ -204,7 +204,7 @@ func (a *MySQLDriverConfig) SetDefault() *MySQLDriverConfig {
 		result.BytesLimit = defaultBytesLimit
 	}
 	if "" == result.ConnectionConfig.Charset {
-		result.ConnectionConfig.Charset = "utf8"
+		result.ConnectionConfig.Charset = "utf8mb4"
 	}
 	return &result
 }
