@@ -161,6 +161,39 @@ func (b *BinlogReader) GetCurrentBinlogCoordinates() *base.BinlogCoordinates {
 	return &returnCoordinates
 }
 
+func ToColumnValuesV2(abstractValues []interface{}, table *config.TableContext) *mysql.ColumnValues {
+	result := &mysql.ColumnValues{
+		AbstractValues: make([]*interface{}, len(abstractValues)),
+		ValuesPointers: make([]*interface{}, len(abstractValues)),
+	}
+
+	for i := 0; i < len(abstractValues); i++ {
+		if table != nil {
+			columns := table.Table.OriginalTableColumns.Columns
+			if columns[i].IsUnsigned {
+				switch v := abstractValues[i].(type) {
+				case int8:
+					abstractValues[i] = uint8(v)
+				case int16:
+					abstractValues[i] = uint16(v)
+				case int32:
+					if columns[i].Type == mysql.MediumIntColumnType {
+						abstractValues[i] = uint32(v) & 0x00FFFFFF
+					} else {
+						abstractValues[i] = uint32(v)
+					}
+				case int64:
+					abstractValues[i] = uint64(v)
+				}
+			}
+		}
+		result.AbstractValues[i] = &abstractValues[i]
+		result.ValuesPointers[i] = result.AbstractValues[i]
+	}
+
+	return result
+}
+
 // StreamEvents
 func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel chan<- *BinlogEntry) error {
 	if b.currentCoordinates.SmallerThanOrEquals(&b.LastAppliedRowsEventHint) {
@@ -279,6 +312,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 			dmlEvent.OriginalTableColumns = originalTableColumns*/
 
 			for i, row := range rowsEvent.Rows {
+				b.logger.Debugf("mysql.reader: row values: %v", row)
 				if dml == UpdateDML && i%2 == 1 {
 					// An update has two rows (WHERE+SET)
 					// We do both at the same time
@@ -287,16 +321,16 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 				switch dml {
 				case InsertDML:
 					{
-						dmlEvent.NewColumnValues = mysql.ToColumnValues(row)
+						dmlEvent.NewColumnValues = ToColumnValuesV2(row, table)
 					}
 				case UpdateDML:
 					{
-						dmlEvent.WhereColumnValues = mysql.ToColumnValues(row)
-						dmlEvent.NewColumnValues = mysql.ToColumnValues(rowsEvent.Rows[i+1])
+						dmlEvent.WhereColumnValues = ToColumnValuesV2(row, table)
+						dmlEvent.NewColumnValues = ToColumnValuesV2(rowsEvent.Rows[i+1], table)
 					}
 				case DeleteDML:
 					{
-						dmlEvent.WhereColumnValues = mysql.ToColumnValues(row)
+						dmlEvent.WhereColumnValues = ToColumnValuesV2(row, table)
 					}
 				}
 

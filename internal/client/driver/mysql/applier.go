@@ -988,15 +988,14 @@ func (a *Applier) ApplyBinlogEvent(dbApplier *sql.Conn, binlogEntry *binlog.Binl
 				a.logger.Errorf("mysql.applier: Build dml query error: %v", err)
 				return err
 			}
-			//a.logger.Debugf("ApplyBinlogEvent. query: %v", utils.StrLim(query, 256))
-			//a.logger.Debugf("ApplyBinlogEvent. args: %v", args)
+
+			a.logger.Debugf("ApplyBinlogEvent. args: %v", args)
 
 			_, err = stmt.Exec(args...)
 			if err != nil {
-				//a.logger.Errorf("mysql.applier: Exec %+v,args: %v,gtid: %s:%d, error: %v", stmt, event.NewColumnValues, binlogEntry.Coordinates.SID, binlogEntry.Coordinates.GNO, err)
+				a.logger.Errorf("mysql.applier: gtid: %s:%d, error: %v", binlogEntry.Coordinates.SID, binlogEntry.Coordinates.GNO, err)
 				return err
 			}
-			//a.logger.Debugf("mysql.applier: Exec %+v,NewColumnValues: %v,WhereColumnValues: %v,gtid: %s:%d", stmt, event.NewColumnValues, event.WhereColumnValues, binlogEntry.Coordinates.SID, binlogEntry.Coordinates.GNO)
 			totalDelta += rowDelta
 		}
 	}
