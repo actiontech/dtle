@@ -73,11 +73,14 @@ func (s *HTTPServer) jobInfoRequest(resp http.ResponseWriter, req *http.Request)
 			}
 			uri := driverConfig.ConnectionConfig.GetDBUri()
 			db, err := sql.CreateDB(uri)
+			defer db.Close()
+
 			if err != nil {
 				return nil, err
 			}
 			dbs, err := sql.ShowDatabases(db)
 			if err != nil {
+				s.logger.Error("jobInfoRequest err at connect/showdatabases: %v", err.Error())
 				return nil, err
 			}
 			for dbIdx, dbName := range dbs {
