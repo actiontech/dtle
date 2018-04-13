@@ -397,7 +397,14 @@ func ShowDatabases(db *gosql.DB) ([]string, error) {
 
 func ShowTables(db *gosql.DB, dbName string, showType bool) (tables []*config.Table, err error) {
 	// Get table list
-	rows, err := db.Query(fmt.Sprintf("SHOW TABLES IN %s", dbName))
+	var query string
+	if showType {
+		// TODO escape with backquote?
+		query = fmt.Sprintf("SHOW FULL TABLES IN %s", dbName)
+	} else {
+		query = fmt.Sprintf("SHOW TABLES IN %s", dbName)
+	}
+	rows, err := db.Query(query)
 	if err != nil {
 		return tables, err
 	}
@@ -406,15 +413,20 @@ func ShowTables(db *gosql.DB, dbName string, showType bool) (tables []*config.Ta
 	// Read result
 	for rows.Next() {
 		var table gosql.NullString
-		if err := rows.Scan(&table); err != nil {
+		var tableType gosql.NullString
+
+		var err error
+		if showType {
+			err = rows.Scan(&table, &tableType)
+		} else {
+			err = rows.Scan(&table)
+		}
+		if err != nil {
 			return tables, err
 		}
 		tb := &config.Table{TableSchema: dbName, TableName: table.String}
 		if showType {
-			query := fmt.Sprintf(`select table_type from information_schema.tables where table_schema = '%s' and table_name='%s'`, dbName, table.String)
-			if err := db.QueryRow(query).Scan(&tb.TableType); err != nil {
-				return tables, err
-			}
+			tb.TableType = tableType.String
 		}
 		tables = append(tables, tb)
 	}
