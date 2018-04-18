@@ -80,7 +80,7 @@ func (s *HTTPServer) jobInfoRequest(resp http.ResponseWriter, req *http.Request)
 			}
 			dbs, err := sql.ShowDatabases(db)
 			if err != nil {
-				s.logger.Error("jobInfoRequest err at connect/showdatabases: %v", err.Error())
+				s.logger.Errorf("jobInfoRequest err at connect/showdatabases: %v", err.Error())
 				return nil, err
 			}
 			for dbIdx, dbName := range dbs {

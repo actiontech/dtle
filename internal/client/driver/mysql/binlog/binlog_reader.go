@@ -1035,21 +1035,8 @@ func (b *BinlogReader) skipEvent(schema string, table string) bool {
 
 func skipMysqlSchemaEvent(tableLower string) bool {
 	switch tableLower {
-	case "event":
+	case "event", "func", "proc", "tables_priv", "columns_priv", "procs_priv", "user":
 		return false
-	case "func":
-		return false
-	case "proc":
-		return false
-	case "tables_priv":
-		return false
-	case "columns_priv":
-		return false
-	case "procs_priv":
-		return false
-	case "user":
-		return false
-
 	default:
 		return true
 	}
