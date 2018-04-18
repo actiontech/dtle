@@ -170,7 +170,8 @@ func ToColumnValuesV2(abstractValues []interface{}, table *config.TableContext) 
 	for i := 0; i < len(abstractValues); i++ {
 		if table != nil {
 			columns := table.Table.OriginalTableColumns.Columns
-			if columns[i].IsUnsigned {
+			if i < len(columns) && columns[i].IsUnsigned {
+				// len(columns) might less than len(abstractValues), esp on AliRDS. See #192.
 				switch v := abstractValues[i].(type) {
 				case int8:
 					abstractValues[i] = uint8(v)
