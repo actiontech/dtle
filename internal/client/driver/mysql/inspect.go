@@ -64,6 +64,12 @@ func (i *Inspector) InitDBConnections() (err error) {
 }
 
 func (i *Inspector) ValidateOriginalTable(databaseName, tableName string, table *uconf.Table) (err error) {
+	// this should be set event if there is an error (#177)
+	i.logger.Infof("Found 'where' on this table: '%v'", table.Where)
+	if table.Where == "" {
+		table.Where = "true"
+	}
+
 	if err := i.validateTable(databaseName, tableName); err != nil {
 		return err
 	}
@@ -131,11 +137,6 @@ func (i *Inspector) ValidateOriginalTable(databaseName, tableName string, table 
 	}
 
 	// region validate 'where'
-	i.logger.Infof("Found 'where' on this table: '%v'", table.Where)
-	if table.Where == "" {
-		table.Where = "true"
-	}
-
 	_, err = uconf.NewWhereCtx(table.Where, table)
 	if err != nil {
 		i.logger.Errorf("mysql.inspector: Error parse where '%v'", table.Where)

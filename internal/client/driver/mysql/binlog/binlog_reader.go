@@ -67,7 +67,8 @@ func NewMySQLReader(cfg *config.MySQLDriverConfig, logger *log.Entry) (binlogRea
 		}
 		for _, table := range db.Tables {
 			if table.Where == "" {
-				table.Where = "true" // TODO temp fix
+				logger.Warnf("UDUP_BUG: NewMySQLReader: table.Where is empty (#177 like)")
+				table.Where = "true"
 			}
 			whereCtx, err := config.NewWhereCtx(table.Where, table)
 			if err != nil {
