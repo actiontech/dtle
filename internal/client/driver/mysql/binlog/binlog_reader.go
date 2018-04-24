@@ -26,6 +26,7 @@ import (
 	"udup/internal/config/mysql"
 	log "udup/internal/logger"
 	"udup/internal/models"
+	"udup/utils"
 )
 
 // BinlogReader is a general interface whose implementations can choose their methods of reading
@@ -57,31 +58,7 @@ type BinlogReader struct {
 	shutdownLock sync.Mutex
 }
 
-func NewMySQLReader(cfg *config.MySQLDriverConfig, logger *log.Entry) (binlogReader *BinlogReader, err error) {
-	var tables = make(map[string](map[string]*config.TableContext))
-	for _, db := range cfg.ReplicateDoDb {
-		dbMap, ok := tables[db.TableSchema]
-		if !ok {
-			dbMap = make(map[string]*config.TableContext)
-			tables[db.TableSchema] = dbMap
-		}
-		for _, table := range db.Tables {
-			if table.Where == "" {
-				logger.Warnf("UDUP_BUG: NewMySQLReader: table.Where is empty (#177 like)")
-				table.Where = "true"
-			}
-			whereCtx, err := config.NewWhereCtx(table.Where, table)
-			if err != nil {
-				logger.Errorf("mysql.reader: Error parse where '%v'", table.Where)
-				return nil, err
-			}
-			dbMap[table.TableName] = &config.TableContext{
-				Table:    table,
-				WhereCtx: whereCtx,
-			}
-		}
-	}
-
+func NewMySQLReader(cfg *config.MySQLDriverConfig, logger *log.Entry, replicateDoDb []*config.DataSource) (binlogReader *BinlogReader, err error) {
 	binlogReader = &BinlogReader{
 		logger:                  logger,
 		currentCoordinates:      base.BinlogCoordinates{},
@@ -90,7 +67,16 @@ func NewMySQLReader(cfg *config.MySQLDriverConfig, logger *log.Entry) (binlogRea
 		appendB64SqlBs:          make([]byte, 1024*1024),
 		ReMap:                   make(map[string]*regexp.Regexp),
 		shutdownCh:              make(chan struct{}),
-		tables:                  tables,
+		tables:                  make(map[string](map[string]*config.TableContext)),
+	}
+
+	for _, db := range replicateDoDb {
+		tableMap := binlogReader.getDbTableMap(db.TableSchema)
+		for _, table := range db.Tables {
+			if err := binlogReader.addTableToTableMap(tableMap, table); err != nil {
+				return nil, err
+			}
+		}
 	}
 
 	uri := cfg.ConnectionConfig.GetDBUri()
@@ -131,6 +117,30 @@ func NewMySQLReader(cfg *config.MySQLDriverConfig, logger *log.Entry) (binlogRea
 	return binlogReader, err
 }
 
+func (b *BinlogReader) getDbTableMap(schemaName string) map[string]*config.TableContext {
+	tableMap, ok := b.tables[schemaName]
+	if !ok {
+		tableMap = make(map[string]*config.TableContext)
+		b.tables[schemaName] = tableMap
+	}
+	return tableMap
+}
+func (b *BinlogReader) addTableToTableMap(dbMap map[string]*config.TableContext, table *config.Table) error {
+	if table.Where == "" {
+		b.logger.Warnf("UDUP_BUG: NewMySQLReader: table.Where is empty (#177 like)")
+		table.Where = "true"
+	}
+	whereCtx, err := config.NewWhereCtx(table.Where, table)
+	if err != nil {
+		b.logger.Errorf("mysql.reader: Error parse where '%v'", table.Where)
+		return err
+	}
+	dbMap[table.TableName] = &config.TableContext{
+		Table:    table,
+		WhereCtx: whereCtx,
+	}
+	return nil
+}
 // ConnectBinlogStreamer
 func (b *BinlogReader) ConnectBinlogStreamer(coordinates base.BinlogCoordinates) (err error) {
 	if coordinates.IsEmpty() {
@@ -196,6 +206,19 @@ func ToColumnValuesV2(abstractValues []interface{}, table *config.TableContext) 
 	return result
 }
 
+type DDLType int
+const (
+	DDLOther DDLType = iota
+	DDLAlterTable
+	DDLCreateTable
+)
+type parseDDLResult struct {
+	isDDL   bool
+	ddlType DDLType
+	tables  []SchemaTable
+	sqls    []string
+}
+
 // StreamEvents
 func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel chan<- *BinlogEntry) error {
 	if b.currentCoordinates.SmallerThanOrEquals(&b.LastAppliedRowsEventHint) {
@@ -227,12 +250,13 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 		evt := ev.Event.(*replication.QueryEvent)
 		query := string(evt.Query)
 
-		b.logger.Debugf("query event: schema: %s, query: %s", evt.Schema, query)
+		b.logger.Debugf("mysql.reader: query event: schema: %s, query: %s", evt.Schema, query)
 
 		if strings.ToUpper(query) == "BEGIN" {
 			b.currentBinlogEntry.hasBeginQuery = true
 		} else {
 			if strings.ToUpper(query) == "COMMIT" || !b.currentBinlogEntry.hasBeginQuery {
+				currentSchema := string(evt.Schema)
 				if b.mysqlContext.SkipCreateDbTable {
 					if skipCreateDbTable(query) {
 						b.logger.Warnf("mysql.reader: skip create db/table %s", query)
@@ -247,17 +271,17 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 					}
 				}
 
-				sqls, schemaTables, isDDL, err := resolveDDLSQL(query)
+				ddlInfo, err := resolveDDLSQL(query)
 				if err != nil {
 					b.logger.Debugf("mysql.reader: Parse query [%v] event failed: %v", query, err)
-					if b.skipQueryDDL(query, string(evt.Schema)) {
-						b.logger.Debugf("mysql.reader: skip QueryEvent at schema: %s,sql: %s", evt.Schema, query)
+					if b.skipQueryDDL(query, currentSchema) {
+						b.logger.Debugf("mysql.reader: skip QueryEvent at schema: %s,sql: %s", currentSchema, query)
 						return nil
 					}
 				}
-				if !isDDL {
+				if !ddlInfo.isDDL {
 					event := NewQueryEvent(
-						string(evt.Schema),
+						currentSchema,
 						query,
 						NotDML,
 					)
@@ -267,17 +291,47 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 					return nil
 				}
 
-				for i, sql := range sqls {
-					if b.skipQueryDDL(sql, string(evt.Schema)) {
+				for i, sql := range ddlInfo.sqls {
+					if b.skipQueryDDL(sql, currentSchema) {
 						//b.logger.Debugf("mysql.reader: Skip QueryEvent at schema: %s,sql: %s", fmt.Sprintf("%s", evt.Schema), sql)
 						return nil
 					}
 
+					if ddlInfo.ddlType == DDLCreateTable {
+						// create table is not ignored
+						b.logger.Debugf("mysql.reader: ddl is create table")
+						if len(ddlInfo.tables) >= 1 {
+							schemaName := utils.StringElse(ddlInfo.tables[0].Schema, currentSchema)
+							tableName := ddlInfo.tables[0].Table
+							columns, err := base.GetTableColumns(b.db, schemaName, tableName)
+							if err != nil {
+								b.logger.Warnf("error handle create table in binlog: GetTableColumns: %v", err.Error())
+							}
+							err = base.ApplyColumnTypes(b.db, schemaName, tableName, columns)
+							if err != nil {
+								b.logger.Warnf("error handle create table in binlog: ApplyColumnTypes: %v", err.Error())
+							}
+							var table = &config.Table{
+								TableSchema: schemaName,
+								TableName: tableName,
+								Where: "true",
+								UseUniqueKey: nil,
+								TableType: "BASE TABLE",
+								OriginalTableColumns: columns,
+							}
+
+							tableMap := b.getDbTableMap(schemaName)
+							b.addTableToTableMap(tableMap, table)
+						} else {
+							b.logger.Warnf("error handle create table in binlog: parser found no tables")
+						}
+					}
+
 					event := NewQueryEventAffectTable(
-						string(evt.Schema),
+						currentSchema,
 						sql,
 						NotDML,
-						schemaTables[i],
+						ddlInfo.tables[i],
 					)
 					b.currentBinlogEntry.Events = append(b.currentBinlogEntry.Events, event)
 				}
@@ -607,17 +661,17 @@ func (b *BinlogReader) handleBinlogRowsEvent(ev *replication.BinlogEvent, txChan
 					}
 				}
 
-				sqls, _, isDDL, err := resolveDDLSQL(query)
+				ddlInfo, err := resolveDDLSQL(query)
 				if err != nil {
 					b.logger.Debugf("mysql.reader: Parse query [%v] event failed: %v", query, err)
 				}
-				if !isDDL {
+				if !ddlInfo.isDDL {
 					b.appendQuery(query)
 					b.onCommit(event, txChannel)
 					return nil
 				}
 
-				for _, sql := range sqls {
+				for _, sql := range ddlInfo.sqls {
 					if b.skipQueryDDL(sql, string(evt.Schema)) {
 						b.logger.Debugf("mysql.reader: skip QueryEvent at schema: %s,sql: %s", fmt.Sprintf("%s", evt.Schema), sql)
 						continue
@@ -788,29 +842,35 @@ func GenDDLSQL(sql string, schema string) (string, error) {
 //
 // schemaTables is the schema.table that the query has invalidated. For err or non-DDL, it is nil.
 // For DDL, it size equals len(sqls).
-func resolveDDLSQL(sql string) (sqls []string, schemaTables []SchemaTable, isDDL bool, err error) {
+func resolveDDLSQL(sql string) (result parseDDLResult, err error) {
+	result.ddlType = DDLOther
+
 	stmt, err := parser.New().ParseOneStmt(sql, "", "")
 	if err != nil {
-		sqls = append(sqls, sql)
-		return sqls, nil, false, err
+		result.sqls = append(result.sqls, sql)
+		return result, err
 	}
 
-	_, isDDL = stmt.(ast.DDLNode)
-	if !isDDL {
-		sqls = append(sqls, sql)
-		return
+	_, result.isDDL = stmt.(ast.DDLNode)
+	if !result.isDDL {
+		result.sqls = append(result.sqls, sql)
+		return result, nil
 	}
 
 	appendSql := func(sql string, schema string, table string) {
-		schemaTables = append(schemaTables, SchemaTable{Schema:schema, Table:table})
-		sqls = append(sqls, sql)
+		result.tables = append(result.tables, SchemaTable{Schema:schema, Table:table})
+		result.sqls = append(result.sqls, sql)
 	}
 
 	switch v := stmt.(type) {
 	case *ast.AlterTableStmt:
 		appendSql(sql, v.Table.Schema.L, v.Table.Name.L)
+		result.ddlType = DDLAlterTable
 	case *ast.DropDatabaseStmt:
 		appendSql(sql, strings.ToLower(v.Name), "")
+	case *ast.CreateTableStmt:
+		result.ddlType = DDLCreateTable
+		appendSql(sql, v.Table.Schema.L, v.Table.Name.L)
 	case *ast.DropTableStmt:
 		var ex string
 		if v.IfExists {
@@ -827,7 +887,7 @@ func resolveDDLSQL(sql string) (sqls []string, schemaTables []SchemaTable, isDDL
 	default:
 		appendSql(sql, "", "")
 	}
-	return sqls, schemaTables, true, nil
+	return result, nil
 }
 
 func genTableName(schema string, table string) config.Table {
@@ -1052,7 +1112,7 @@ func (b *BinlogReader) skipRowEvent(rowsEvent *replication.RowsEvent) (bool, *co
 	case "sys", "information_schema", "performance_schema":
 		return true, nil
 	default:
-		if len(b.mysqlContext.ReplicateDoDb) > 0 {
+		if len(b.tables) > 0 {
 			//if table in tartget Table, do this event
 			for schemaName, tableMap := range b.tables {
 				if b.matchString(schemaName, string(rowsEvent.Table.Schema)) || schemaName == "" {
