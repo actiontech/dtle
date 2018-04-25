@@ -317,6 +317,7 @@ func NewTable(schemaName string, tableName string) *Table {
 		TableSchema: schemaName,
 		TableName:   tableName,
 		Iteration:   0,
+		Where:       "true",
 	}
 }
 

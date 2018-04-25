@@ -40,7 +40,9 @@ type BinlogReader struct {
 	currentCoordinates       base.BinlogCoordinates
 	currentCoordinatesMutex  *sync.Mutex
 	LastAppliedRowsEventHint base.BinlogCoordinates
+	// raw config, whose ReplicateDoDB is same as config file (empty-is-all & no dynamically created tables)
 	mysqlContext             *config.MySQLDriverConfig
+	// dynamic config, include all tables (implicitly assigned or dynamically created)
 	tables                   map[string](map[string]*config.TableContext)
 
 	currentTx          *BinlogTx
@@ -211,7 +213,10 @@ const (
 	DDLOther DDLType = iota
 	DDLAlterTable
 	DDLCreateTable
+	DDLCreateSchema
+	DDLDropSchema
 )
+// If isDDL, a sql correspond to a table item, aka len(tables) == len(sqls).
 type parseDDLResult struct {
 	isDDL   bool
 	ddlType DDLType
@@ -274,7 +279,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 				ddlInfo, err := resolveDDLSQL(query)
 				if err != nil {
 					b.logger.Debugf("mysql.reader: Parse query [%v] event failed: %v", query, err)
-					if b.skipQueryDDL(query, currentSchema) {
+					if b.skipQueryDDL(query, currentSchema, "") {
 						b.logger.Debugf("mysql.reader: skip QueryEvent at schema: %s,sql: %s", currentSchema, query)
 						return nil
 					}
@@ -292,39 +297,35 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 				}
 
 				for i, sql := range ddlInfo.sqls {
-					if b.skipQueryDDL(sql, currentSchema) {
+					realSchema := utils.StringElse(ddlInfo.tables[i].Schema, currentSchema)
+					tableName := ddlInfo.tables[i].Table
+
+					if b.skipQueryDDL(sql, realSchema, tableName) {
 						//b.logger.Debugf("mysql.reader: Skip QueryEvent at schema: %s,sql: %s", fmt.Sprintf("%s", evt.Schema), sql)
 						return nil
 					}
 
-					if ddlInfo.ddlType == DDLCreateTable {
+					switch ddlInfo.ddlType {
+					case DDLCreateTable:
 						// create table is not ignored
 						b.logger.Debugf("mysql.reader: ddl is create table")
-						if len(ddlInfo.tables) >= 1 {
-							schemaName := utils.StringElse(ddlInfo.tables[0].Schema, currentSchema)
-							tableName := ddlInfo.tables[0].Table
-							columns, err := base.GetTableColumns(b.db, schemaName, tableName)
-							if err != nil {
-								b.logger.Warnf("error handle create table in binlog: GetTableColumns: %v", err.Error())
-							}
-							err = base.ApplyColumnTypes(b.db, schemaName, tableName, columns)
-							if err != nil {
-								b.logger.Warnf("error handle create table in binlog: ApplyColumnTypes: %v", err.Error())
-							}
-							var table = &config.Table{
-								TableSchema: schemaName,
-								TableName: tableName,
-								Where: "true",
-								UseUniqueKey: nil,
-								TableType: "BASE TABLE",
-								OriginalTableColumns: columns,
-							}
-
-							tableMap := b.getDbTableMap(schemaName)
-							b.addTableToTableMap(tableMap, table)
-						} else {
-							b.logger.Warnf("error handle create table in binlog: parser found no tables")
+						columns, err := base.GetTableColumns(b.db, realSchema, tableName)
+						if err != nil {
+							b.logger.Warnf("error handle create table in binlog: GetTableColumns: %v", err.Error())
 						}
+						err = base.ApplyColumnTypes(b.db, realSchema, tableName, columns)
+						if err != nil {
+							b.logger.Warnf("error handle create table in binlog: ApplyColumnTypes: %v", err.Error())
+						}
+						table := config.NewTable(realSchema, tableName)
+						table.TableType = "BASE TABLE"
+						table.OriginalTableColumns = columns
+
+						tableMap := b.getDbTableMap(realSchema)
+						b.addTableToTableMap(tableMap, table)
+
+					case DDLAlterTable:
+						// TODO table definition might be changed
 					}
 
 					event := NewQueryEventAffectTable(
@@ -647,6 +648,8 @@ func (b *BinlogReader) handleBinlogRowsEvent(ev *replication.BinlogEvent, txChan
 			// DDL or statement/mixed binlog format
 			b.clearB64Sql()
 			if strings.ToUpper(query) == "COMMIT" || !b.currentTx.hasBeginQuery {
+				currentSchema := string(evt.Schema)
+
 				if b.mysqlContext.SkipCreateDbTable {
 					if skipCreateDbTable(query) {
 						b.logger.Warnf("mysql.reader: skip create db/table %s", query)
@@ -671,13 +674,17 @@ func (b *BinlogReader) handleBinlogRowsEvent(ev *replication.BinlogEvent, txChan
 					return nil
 				}
 
-				for _, sql := range ddlInfo.sqls {
-					if b.skipQueryDDL(sql, string(evt.Schema)) {
+
+				for i, sql := range ddlInfo.sqls {
+					realSchema := utils.StringElse(ddlInfo.tables[i].Schema, currentSchema)
+					tableName := ddlInfo.tables[i].Table
+
+					if b.skipQueryDDL(sql, realSchema, tableName) {
 						b.logger.Debugf("mysql.reader: skip QueryEvent at schema: %s,sql: %s", fmt.Sprintf("%s", evt.Schema), sql)
 						continue
 					}
 
-					sql, err = GenDDLSQL(sql, string(evt.Schema))
+					sql, err = GenDDLSQL(sql, realSchema)
 					if err != nil {
 						return err
 					}
@@ -863,14 +870,24 @@ func resolveDDLSQL(sql string) (result parseDDLResult, err error) {
 	}
 
 	switch v := stmt.(type) {
-	case *ast.AlterTableStmt:
-		appendSql(sql, v.Table.Schema.L, v.Table.Name.L)
-		result.ddlType = DDLAlterTable
-	case *ast.DropDatabaseStmt:
+	case *ast.CreateDatabaseStmt:
+		result.ddlType = DDLCreateSchema
 		appendSql(sql, strings.ToLower(v.Name), "")
+	case *ast.DropDatabaseStmt:
+		result.ddlType = DDLDropSchema
+		appendSql(sql, strings.ToLower(v.Name), "")
+	case *ast.CreateIndexStmt:
+		appendSql(sql, v.Table.Schema.L, v.Table.Name.L)
+	case *ast.DropIndexStmt:
+		appendSql(sql, v.Table.Schema.L, v.Table.Name.L)
+	case *ast.TruncateTableStmt:
+		appendSql(sql, v.Table.Schema.L, v.Table.Name.L)
 	case *ast.CreateTableStmt:
 		result.ddlType = DDLCreateTable
 		appendSql(sql, v.Table.Schema.L, v.Table.Name.L)
+	case *ast.AlterTableStmt:
+		appendSql(sql, v.Table.Schema.L, v.Table.Name.L)
+		result.ddlType = DDLAlterTable
 	case *ast.DropTableStmt:
 		var ex string
 		if v.IfExists {
@@ -884,55 +901,16 @@ func resolveDDLSQL(sql string) (result parseDDLResult, err error) {
 			s := fmt.Sprintf("drop table %s %s`%s`", ex, db, t.Name.L)
 			appendSql(s, t.Schema.L, t.Name.L)
 		}
+	case *ast.CreateUserStmt, *ast.GrantStmt:
+		appendSql(sql, "mysql", "user")
 	default:
-		appendSql(sql, "", "")
+		return result, fmt.Errorf("unknown DDL type")
 	}
+
 	return result, nil
 }
 
-func genTableName(schema string, table string) config.Table {
-	return *config.NewTable(schema, table)
-}
-
-func parserDDLTableName(sql string) (config.Table, error) {
-	stmt, err := parser.New().ParseOneStmt(sql, "", "")
-	if err != nil {
-		return *config.NewTable("", ""), err
-	}
-
-	var res config.Table
-	switch v := stmt.(type) {
-	case *ast.CreateDatabaseStmt:
-		res = genTableName(v.Name, "")
-	case *ast.DropDatabaseStmt:
-		res = genTableName(v.Name, "")
-	case *ast.CreateIndexStmt:
-		res = genTableName(v.Table.Schema.O, v.Table.Name.L)
-	case *ast.CreateTableStmt:
-		res = genTableName(v.Table.Schema.O, v.Table.Name.L)
-	case *ast.DropIndexStmt:
-		res = genTableName(v.Table.Schema.O, v.Table.Name.L)
-	case *ast.TruncateTableStmt:
-		res = genTableName(v.Table.Schema.O, v.Table.Name.L)
-	case *ast.AlterTableStmt:
-		res = genTableName(v.Table.Schema.O, v.Table.Name.L)
-	case *ast.CreateUserStmt:
-		res = genTableName("mysql", "user")
-	case *ast.GrantStmt:
-		res = genTableName("mysql", "user")
-	case *ast.DropTableStmt:
-		if len(v.Tables) != 1 {
-			return res, fmt.Errorf("may resovle DDL sql failed")
-		}
-		res = genTableName(v.Tables[0].Schema.O, v.Tables[0].Name.L)
-	default:
-		return res, fmt.Errorf("unkown DDL type")
-	}
-
-	return res, nil
-}
-
-func (b *BinlogReader) skipQueryDDL(sql string, schema string) bool {
+func (b *BinlogReader) skipQueryDDL(sql string, schema string, tableName string) bool {
 	switch strings.ToLower(schema) {
 	case "mysql":
 		if b.mysqlContext.ExpandSyntaxSupport {
@@ -943,34 +921,14 @@ func (b *BinlogReader) skipQueryDDL(sql string, schema string) bool {
 	case "sys", "information_schema", "performance_schema", "actiontech_udup":
 		return true
 	default:
-		t, err := parserDDLTableName(sql)
-		if err != nil {
-			b.logger.Warnf("mysql.reader: parser ddl err:%v", err)
-			return false
-		}
 		if len(b.mysqlContext.ReplicateDoDb) > 0 {
-			//if table in target Table, do this sql
-			if t.TableSchema == "" {
-				t.TableSchema = schema
-			}
-
-			if b.matchTable(b.mysqlContext.ReplicateDoDb, t) {
-				return false
-			}
-			return true
+			return !b.matchTable(b.mysqlContext.ReplicateDoDb, schema, tableName)
 		}
 		if len(b.mysqlContext.ReplicateIgnoreDb) > 0 {
-			if t.TableSchema == "" {
-				t.TableSchema = schema
-			}
-
-			if b.matchTable(b.mysqlContext.ReplicateIgnoreDb, t) {
-				return true
-			}
-			return false
+			return b.matchTable(b.mysqlContext.ReplicateIgnoreDb, schema, tableName)
 		}
+		return false
 	}
-	return false
 }
 
 func skipCreateDbTable(sql string) bool {
@@ -1165,38 +1123,38 @@ func (b *BinlogReader) matchDB(patternDBS []*config.DataSource, a string) bool {
 	return false
 }
 
-func (b *BinlogReader) matchTable(patternTBS []*config.DataSource, t config.Table) bool {
+func (b *BinlogReader) matchTable(patternTBS []*config.DataSource, schemaName string, tableName string) bool {
 	for _, pdb := range patternTBS {
-		if len(pdb.Tables) == 0 && t.TableSchema == pdb.TableSchema {
+		if len(pdb.Tables) == 0 && schemaName == pdb.TableSchema {
 			return true
 		}
 		redb, okdb := b.ReMap[pdb.TableSchema]
 		for _, ptb := range pdb.Tables {
 			retb, oktb := b.ReMap[ptb.TableName]
 			if oktb && okdb {
-				if redb.MatchString(t.TableSchema) && retb.MatchString(t.TableName) {
+				if redb.MatchString(schemaName) && retb.MatchString(tableName) {
 					return true
 				}
 			}
 			if oktb {
-				if retb.MatchString(t.TableName) && t.TableSchema == pdb.TableSchema {
+				if retb.MatchString(tableName) && schemaName == pdb.TableSchema {
 					return true
 				}
 			}
 			if okdb {
-				if redb.MatchString(t.TableSchema) && t.TableName == ptb.TableName {
+				if redb.MatchString(schemaName) && tableName == ptb.TableName {
 					return true
 				}
 			}
 
 			//create database or drop database
-			if t.TableName == "" {
-				if t.TableSchema == pdb.TableSchema {
+			if tableName == "" {
+				if schemaName == pdb.TableSchema {
 					return true
 				}
 			}
 
-			if ptb.TableName == t.TableName {
+			if ptb.TableName == tableName {
 				return true
 			}
 		}
