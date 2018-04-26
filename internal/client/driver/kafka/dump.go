@@ -197,10 +197,14 @@ func (d *dumper) getChunkData(e *dumpEntry) {
 		return
 	}
 
-	columns, err := rows.Columns()
+	columnNames, err := rows.Columns()
 	if err != nil {
 		e.err = err
 		return
+	}
+	var columns []umconf.Column
+	for i, _ := range columnNames {
+		columns = append(columns, umconf.Column{Name: columnNames[i]})
 	}
 	e.Columns = umconf.NewColumnList(columns)
 

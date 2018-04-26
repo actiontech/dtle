@@ -538,7 +538,7 @@ func (e *Connector) CountTableRows(table *config.Table) (int64, error) {
 
 // initBinlogReader creates and connects the reader: we hook up to a MySQL server as a replica
 func (e *Connector) initBinlogReader(binlogCoordinates *base.BinlogCoordinates) error {
-	binlogReader, err := binlog.NewMySQLReader(e.mysqlContext, e.logger)
+	binlogReader, err := binlog.NewMySQLReader(e.mysqlContext, e.logger, e.replicateDoDb)
 	if err != nil {
 		return err
 	}
