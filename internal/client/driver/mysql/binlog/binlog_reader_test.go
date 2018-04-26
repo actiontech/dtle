@@ -806,34 +806,6 @@ func Test_resolveDDLSQL(t *testing.T) {
 	}
 }
 
-func Test_parserDDLTableName(t *testing.T) {
-	type args struct {
-		sql string
-	}
-	tests := []struct {
-		name    string
-		args    args
-		want    config.Table
-		wantErr bool
-	}{
-		// TODO: Add test cases.
-		{"t1", args{"drop table if exists `regexp`"}, config.Table{}, false},
-		{"t2", args{"drop table if exists UFregexp,regexp_test001,regexp_test002,regexp_test003,`regexp`;"}, config.Table{}, false},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, err := parserDDLTableName(tt.args.sql)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("parserDDLTableName() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
-			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("parserDDLTableName() = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}
-
 func TestBinlogReader_skipQueryDDL(t *testing.T) {
 	type fields struct {
 		logger                   *log.Entry
@@ -1184,27 +1156,6 @@ func TestBinlogReader_Close(t *testing.T) {
 			}
 			if err := b.Close(); (err != nil) != tt.wantErr {
 				t.Errorf("BinlogReader.Close() error = %v, wantErr %v", err, tt.wantErr)
-			}
-		})
-	}
-}
-
-func Test_genTableName(t *testing.T) {
-	type args struct {
-		schema string
-		table  string
-	}
-	tests := []struct {
-		name string
-		args args
-		want config.DataSource
-	}{
-	// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := genTableName(tt.args.schema, tt.args.table); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("genTableName() = %v, want %v", got, tt.want)
 			}
 		})
 	}
