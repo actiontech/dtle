@@ -3,7 +3,7 @@ VERSION := $(shell sh -c 'git describe --always --tags')
 BRANCH := $(shell sh -c 'git rev-parse --abbrev-ref HEAD')
 COMMIT := $(shell sh -c 'git rev-parse --short HEAD')
 DOCKER        := $(shell which docker)
-DOCKER_IMAGE  := docker-registry:5000/actiontech/universe-compiler-udup
+DOCKER_IMAGE  := docker-registry:5000/actiontech/universe-compiler-udup:v2
 
 PROJECT_NAME  = udup
 VERSION       = 9.9.9.9

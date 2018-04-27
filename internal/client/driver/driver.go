@@ -15,6 +15,7 @@ var (
 	BuiltinDrivers = map[string]Factory{
 		models.TaskDriverMySQL: NewMySQLDriver,
 		//"models.TaskDriverOracle:     NewOracleDriver,
+		models.TaskDriverKafka: NewKafkaDriver,
 	}
 
 	// DriverStatsNotImplemented is the error to be returned if a driver doesn't

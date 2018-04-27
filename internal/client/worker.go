@@ -165,7 +165,7 @@ func (r *Worker) SaveState() error {
 				handleID, err)
 		}
 		if id.DriverConfig.Gtid != "" {
-			if r.task.Type == models.TaskTypeDest {
+			if r.task.Type == models.TaskTypeDest || models.TaskDriverKafka == r.task.Driver{
 				r.workUpdates <- &models.TaskUpdate{
 					JobID:    r.alloc.JobID,
 					Gtid:     id.DriverConfig.Gtid,
