@@ -37,49 +37,6 @@ func TestNewApplier(t *testing.T) {
 	}
 }
 
-func TestApplier_sleepWhileTrue(t *testing.T) {
-	type args struct {
-		operation func() (bool, error)
-	}
-	tests := []struct {
-		name    string
-		a       *Applier
-		args    args
-		wantErr bool
-	}{
-	// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if err := tt.a.sleepWhileTrue(tt.args.operation); (err != nil) != tt.wantErr {
-				t.Errorf("Applier.sleepWhileTrue() error = %v, wantErr %v", err, tt.wantErr)
-			}
-		})
-	}
-}
-
-func TestApplier_retryOperation(t *testing.T) {
-	type args struct {
-		operation    func() error
-		notFatalHint []bool
-	}
-	tests := []struct {
-		name    string
-		a       *Applier
-		args    args
-		wantErr bool
-	}{
-	// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if err := tt.a.retryOperation(tt.args.operation, tt.args.notFatalHint...); (err != nil) != tt.wantErr {
-				t.Errorf("Applier.retryOperation() error = %v, wantErr %v", err, tt.wantErr)
-			}
-		})
-	}
-}
-
 func TestApplier_Run(t *testing.T) {
 	tests := []struct {
 		name string
@@ -90,23 +47,6 @@ func TestApplier_Run(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			tt.a.Run()
-		})
-	}
-}
-
-func TestApplier_readCurrentBinlogCoordinates(t *testing.T) {
-	tests := []struct {
-		name    string
-		a       *Applier
-		wantErr bool
-	}{
-	// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if err := tt.a.readCurrentBinlogCoordinates(); (err != nil) != tt.wantErr {
-				t.Errorf("Applier.readCurrentBinlogCoordinates() error = %v, wantErr %v", err, tt.wantErr)
-			}
 		})
 	}
 }
@@ -269,56 +209,6 @@ func TestApplier_validateAndReadTimeZone(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if err := tt.a.validateAndReadTimeZone(); (err != nil) != tt.wantErr {
 				t.Errorf("Applier.validateAndReadTimeZone() error = %v, wantErr %v", err, tt.wantErr)
-			}
-		})
-	}
-}
-
-func TestApplier_ExpectProcess(t *testing.T) {
-	type args struct {
-		sessionId int64
-		stateHint string
-		infoHint  string
-	}
-	tests := []struct {
-		name    string
-		a       *Applier
-		args    args
-		wantErr bool
-	}{
-	// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if err := tt.a.ExpectProcess(tt.args.sessionId, tt.args.stateHint, tt.args.infoHint); (err != nil) != tt.wantErr {
-				t.Errorf("Applier.ExpectProcess() error = %v, wantErr %v", err, tt.wantErr)
-			}
-		})
-	}
-}
-
-func TestApplier_ShowStatusVariable(t *testing.T) {
-	type args struct {
-		variableName string
-	}
-	tests := []struct {
-		name       string
-		a          *Applier
-		args       args
-		wantResult int64
-		wantErr    bool
-	}{
-	// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			gotResult, err := tt.a.ShowStatusVariable(tt.args.variableName)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("Applier.ShowStatusVariable() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
-			if gotResult != tt.wantResult {
-				t.Errorf("Applier.ShowStatusVariable() = %v, want %v", gotResult, tt.wantResult)
 			}
 		})
 	}

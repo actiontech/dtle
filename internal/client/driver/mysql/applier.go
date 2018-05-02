@@ -118,42 +118,6 @@ func NewApplier(subject, tp string, cfg *config.MySQLDriverConfig, logger *log.L
 	return a
 }
 
-// sleepWhileTrue sleeps indefinitely until the given function returns 'false'
-// (or fails with error)
-func (a *Applier) sleepWhileTrue(operation func() (bool, error)) error {
-	for {
-		shouldSleep, err := operation()
-		if err != nil {
-			return err
-		}
-		if !shouldSleep {
-			return nil
-		}
-		time.Sleep(time.Second)
-	}
-}
-
-// retryOperation attempts up to `count` attempts at running given function,
-// exiting as soon as it returns with non-error.
-func (a *Applier) retryOperation(operation func() error, notFatalHint ...bool) (err error) {
-	maxRetries := int(a.mysqlContext.MaxRetries)
-	for i := 0; i < maxRetries; i++ {
-		if i != 0 {
-			// sleep after previous iteration
-			time.Sleep(1 * time.Second)
-		}
-		err = operation()
-		if err == nil {
-			return nil
-		}
-		// there's an error. Let's try again.
-	}
-	if len(notFatalHint) == 0 {
-		return err
-	}
-	return err
-}
-
 // Run executes the complete apply logic.
 func (a *Applier) Run() {
 	a.logger.Printf("mysql.applier: Apply binlog events to %s.%d", a.mysqlContext.ConnectionConfig.Host, a.mysqlContext.ConnectionConfig.Port)
@@ -214,33 +178,6 @@ func (a *Applier) Run() {
 			time.Sleep(time.Second)
 		}
 	}
-}
-
-// readCurrentBinlogCoordinates reads master status from hooked server
-func (a *Applier) readCurrentBinlogCoordinates() error {
-	query := `show master status`
-	foundMasterStatus := false
-	err := sql.QueryRowsMap(a.db, query, func(m sql.RowMap) error {
-		if m.GetString("Executed_Gtid_Set") != "" {
-			gtidSet, err := gomysql.ParseMysqlGTIDSet(m.GetString("Executed_Gtid_Set"))
-			if err != nil {
-				return err
-			}
-
-			a.mysqlContext.Gtid = gtidSet.String()
-		}
-		foundMasterStatus = true
-
-		return nil
-	})
-	if err != nil {
-		return err
-	}
-	if !foundMasterStatus {
-		return fmt.Errorf("Got no results from SHOW MASTER STATUS. Bailing out")
-	}
-
-	return nil
 }
 
 func (a *Applier) onApplyTxStructWithSuper(dbApplier *sql.Conn, binlogTx *binlog.BinlogTx) error {
@@ -339,64 +276,51 @@ func (a *Applier) executeWriteFuncs() {
 	}
 
 	var dbApplier *sql.Conn
-OUTER:
-	for {
+
+	stopMTSIncrLoop := false
+	for !stopMTSIncrLoop {
 		select {
+		case <-a.shutdownCh:
+			stopMTSIncrLoop = true
 		case groupEntry := <-a.applyGroupDataEntryQueue:
-			// this chan is used for single worker
-			{
-				if len(groupEntry) == 0 {
-					continue
-				}
-				/*if a.mysqlContext.MySQLServerUuid == binlogEntry.Coordinates.OSID {
-					continue
-				}*/
+			// this chan is used for heterogeneous
+			if len(groupEntry) == 0 {
+				continue
+			}
 
-				for idx, binlogEntry := range groupEntry {
-					dbApplier = a.dbs[idx%a.mysqlContext.ParallelWorkers]
-					//go func(entry *binlog.BinlogEntry) {
-					//a.wg.Add(1)
-					if err := a.ApplyBinlogEvent(a.dbs[0], binlogEntry); err != nil {
-						a.onError(TaskStateDead, err)
-					}
-					//a.wg.Done()
-					//}(binlogEntry)
+			for idx, binlogEntry := range groupEntry {
+				dbApplier = a.dbs[idx%a.mysqlContext.ParallelWorkers]
+				if err := a.ApplyBinlogEvent(a.dbs[0], binlogEntry); err != nil {
+					a.onError(TaskStateDead, err)
 				}
-				//a.wg.Wait() // Waiting for all goroutines to finish
+			}
 
-				//a.logger.Debugf("mysql.applier: apply binlogEntry: %+v", groupEntry[len(groupEntry)-1].Coordinates.GNO)
-
-				if !a.shutdown {
-					a.mysqlContext.Gtid = fmt.Sprintf("%s:1-%d", groupEntry[len(groupEntry)-1].Coordinates.GetSid(), groupEntry[len(groupEntry)-1].Coordinates.GNO)
-				}
+			if !a.shutdown {
+				a.mysqlContext.Gtid = fmt.Sprintf("%s:1-%d", groupEntry[len(groupEntry)-1].Coordinates.GetSid(), groupEntry[len(groupEntry)-1].Coordinates.GNO)
 			}
 		case groupTx := <-a.applyBinlogGroupTxQueue:
-			// this chan is used for parallel workers
-			{
-				if len(groupTx) == 0 {
-					continue
-				}
-				for idx, binlogTx := range groupTx {
-					dbApplier = a.dbs[idx%a.mysqlContext.ParallelWorkers]
-					go func(tx *binlog.BinlogTx) {
-						a.wg.Add(1)
-						if err := a.onApplyTxStructWithSuper(dbApplier, tx); err != nil {
-							a.onError(TaskStateDead, err)
-						}
-						a.wg.Done()
-					}(binlogTx)
-				}
-				a.wg.Wait() // Waiting for all goroutines to finish
-
-				if !a.shutdown {
-					a.lastAppliedBinlogTx = groupTx[len(groupTx)-1]
-					a.mysqlContext.Gtid = fmt.Sprintf("%s:1-%d", a.lastAppliedBinlogTx.SID, a.lastAppliedBinlogTx.GNO)
-				}
+			// this chan is used for homogeneous
+			if len(groupTx) == 0 {
+				continue
 			}
-		case <-a.shutdownCh:
-			break OUTER
-		default:
-			time.Sleep(time.Second)
+			for idx, binlogTx := range groupTx {
+				dbApplier = a.dbs[idx%a.mysqlContext.ParallelWorkers]
+				go func(tx *binlog.BinlogTx) {
+					a.wg.Add(1)
+					if err := a.onApplyTxStructWithSuper(dbApplier, tx); err != nil {
+						a.onError(TaskStateDead, err)
+					}
+					a.wg.Done()
+				}(binlogTx)
+			}
+			a.wg.Wait() // Waiting for all goroutines to finish
+
+			if !a.shutdown {
+				a.lastAppliedBinlogTx = groupTx[len(groupTx)-1]
+				a.mysqlContext.Gtid = fmt.Sprintf("%s:1-%d", a.lastAppliedBinlogTx.SID, a.lastAppliedBinlogTx.GNO)
+			}
+		case <-time.After(1 * time.Second):
+			// do nothing
 		}
 	}
 }
@@ -767,39 +691,6 @@ func (a *Applier) createTableGtidExecuted() error {
 	}
 
 	return nil
-}
-
-// ExpectProcess expects a process to show up in `SHOW PROCESSLIST` that has given characteristics
-func (a *Applier) ExpectProcess(sessionId int64, stateHint, infoHint string) error {
-	found := false
-	query := `
-		select id
-			from information_schema.processlist
-			where
-				id != connection_id()
-				and ? in (0, id)
-				and state like concat('%', ?, '%')
-				and info  like concat('%', ?, '%')
-	`
-	err := sql.QueryRowsMap(a.db, query, func(m sql.RowMap) error {
-		found = true
-		return nil
-	}, sessionId, stateHint, infoHint)
-	if err != nil {
-		return err
-	}
-	if !found {
-		return fmt.Errorf("Cannot find process. Hints: %s, %s", stateHint, infoHint)
-	}
-	return nil
-}
-
-func (a *Applier) ShowStatusVariable(variableName string) (result int64, err error) {
-	query := fmt.Sprintf(`show global status like '%s'`, variableName)
-	if err := a.db.QueryRow(query).Scan(&variableName, &result); err != nil {
-		return 0, err
-	}
-	return result, nil
 }
 
 func (a *Applier) getTableItem(schema string, table string) *applierTableItem {
