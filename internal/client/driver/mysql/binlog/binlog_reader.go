@@ -251,6 +251,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 			b.currentCoordinates.SID = u
 			b.currentCoordinates.GNO = evt.GTID.GNO
 			b.currentCoordinates.LastCommitted = evt.GTID.LastCommitted
+			b.currentCoordinates.SeqenceNumber = evt.GTID.SequenceNumber
 			b.currentBinlogEntry = NewBinlogEntryAt(b.currentCoordinates)
 		} else {
 			evt := ev.Event.(*replication.GTIDEvent)

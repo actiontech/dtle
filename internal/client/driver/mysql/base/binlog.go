@@ -25,6 +25,7 @@ type BinlogCoordinateTx struct {
 	SID           uuid.UUID
 	GNO           int64
 	LastCommitted int64
+	SeqenceNumber int64
 }
 
 // Do not call this frequently. Cache your result.
