@@ -63,6 +63,67 @@ type mapSchemaTableItems map[string](map[string](*applierTableItem))
 
 // Applier connects and writes the the applier-server, which is the server where
 // write row data and apply binlog events onto the dest table.
+
+type MtsManager struct {
+	lastCommitted int64
+	updated chan struct{}
+	shutdownCh chan struct{}
+}
+//  shutdownCh: close to indicate a shutdown
+func NewMtsManager(shutdownCh chan struct{}) *MtsManager {
+	return &MtsManager{
+		lastCommitted: 0,
+		updated: make(chan struct{}),
+		shutdownCh: shutdownCh,
+	}
+}
+// block for waiting. return true for can_execute, false for abortion
+func (mm *MtsManager) WaitForExecution(binlogEntry *binlog.BinlogEntry) bool {
+	if mm.lastCommitted == 0 {
+		atomic.CompareAndSwapInt64(&mm.lastCommitted, 0, binlogEntry.Coordinates.LastCommitted)
+	}
+	for {
+		if atomic.LoadInt64(&mm.lastCommitted) >= binlogEntry.Coordinates.LastCommitted {
+			return true
+		}
+
+		// block until lastCommitted updated
+		select {
+		case <-mm.updated:
+			// continue
+		case <-mm.shutdownCh:
+			return false
+		}
+	}
+}
+func (mm *MtsManager) Executed(binlogEntry *binlog.BinlogEntry) {
+	seqNum := binlogEntry.Coordinates.SeqenceNumber
+
+	for true {
+		lc := atomic.LoadInt64(&mm.lastCommitted)
+		if lc > seqNum {
+			break
+		} else if lc == seqNum {
+			// TODO something goes wrong
+			break
+		} else {
+			swapped := atomic.CompareAndSwapInt64(&mm.lastCommitted, lc, seqNum)
+			if swapped {
+				select {
+				case mm.updated <- struct{}{}:
+					// notified
+				default:
+					// non-blocking write
+				}
+				break
+			} else {
+				// Other goroutine has updated the value.
+				// continue
+			}
+		}
+	}
+}
+
 type Applier struct {
 	logger             *log.Entry
 	subject            string
@@ -80,9 +141,10 @@ type Applier struct {
 	//  excessive work happens at the end of the iteration as new copy-jobs arrive befroe realizing the copy is complete
 	copyRowsQueue            chan *dumpEntry
 	applyDataEntryQueue      chan *binlog.BinlogEntry
-	applyGroupDataEntryQueue chan []*binlog.BinlogEntry
 	applyBinlogTxQueue       chan *binlog.BinlogTx
 	applyBinlogGroupTxQueue  chan []*binlog.BinlogTx
+	// only TX can be executed should be put into this chan
+	applyBinlogMtsTxQueue  chan *binlog.BinlogEntry
 	lastAppliedBinlogTx      *binlog.BinlogTx
 
 	natsConn *gonats.Conn
@@ -92,6 +154,8 @@ type Applier struct {
 	shutdown     bool
 	shutdownCh   chan struct{}
 	shutdownLock sync.Mutex
+
+	mtsManager *MtsManager
 }
 
 func NewApplier(subject, tp string, cfg *config.MySQLDriverConfig, logger *log.Logger) *Applier {
@@ -109,13 +173,32 @@ func NewApplier(subject, tp string, cfg *config.MySQLDriverConfig, logger *log.L
 		rowCopyComplete:          make(chan bool, 1),
 		copyRowsQueue:            make(chan *dumpEntry, 24),
 		applyDataEntryQueue:      make(chan *binlog.BinlogEntry, cfg.ReplChanBufferSize * 2),
-		applyGroupDataEntryQueue: make(chan []*binlog.BinlogEntry, cfg.ReplChanBufferSize * 2),
+		applyBinlogMtsTxQueue:    make(chan *binlog.BinlogEntry, cfg.ReplChanBufferSize * 2),
 		applyBinlogTxQueue:       make(chan *binlog.BinlogTx, cfg.ReplChanBufferSize * 2),
 		applyBinlogGroupTxQueue:  make(chan []*binlog.BinlogTx, cfg.ReplChanBufferSize * 2),
 		waitCh:                   make(chan *models.WaitResult, 1),
 		shutdownCh:               make(chan struct{}),
 	}
+	a.mtsManager = NewMtsManager(a.shutdownCh)
 	return a
+}
+
+func (a *Applier) MtsWorker(workerIndex int) {
+	keepLoop := true
+	for keepLoop {
+		select {
+		case tx := <-a.applyBinlogMtsTxQueue:
+			a.logger.Debugf("mysql.applier: a binlogEntry MTS dequeue, worker: %v", workerIndex)
+			if err := a.ApplyBinlogEvent(a.dbs[workerIndex], tx); err != nil {
+				a.onError(TaskStateDead, err) // TODO coordinate with other goroutine
+				keepLoop = false
+			} else {
+				// do nothing
+			}
+		case <-a.shutdownCh:
+			keepLoop = false
+		}
+	}
 }
 
 // Run executes the complete apply logic.
@@ -134,6 +217,10 @@ func (a *Applier) Run() {
 	if err := a.initiateStreaming(); err != nil {
 		a.onError(TaskStateDead, err)
 		return
+	}
+
+	for i := 0; i < a.mysqlContext.ParallelWorkers; i++ {
+		go a.MtsWorker(i)
 	}
 
 	go a.executeWriteFuncs()
@@ -282,22 +369,6 @@ func (a *Applier) executeWriteFuncs() {
 		select {
 		case <-a.shutdownCh:
 			stopMTSIncrLoop = true
-		case groupEntry := <-a.applyGroupDataEntryQueue:
-			// this chan is used for heterogeneous
-			if len(groupEntry) == 0 {
-				continue
-			}
-
-			for idx, binlogEntry := range groupEntry {
-				dbApplier = a.dbs[idx%a.mysqlContext.ParallelWorkers]
-				if err := a.ApplyBinlogEvent(a.dbs[0], binlogEntry); err != nil {
-					a.onError(TaskStateDead, err)
-				}
-			}
-
-			if !a.shutdown {
-				a.mysqlContext.Gtid = fmt.Sprintf("%s:1-%d", groupEntry[len(groupEntry)-1].Coordinates.GetSid(), groupEntry[len(groupEntry)-1].Coordinates.GNO)
-			}
 		case groupTx := <-a.applyBinlogGroupTxQueue:
 			// this chan is used for homogeneous
 			if len(groupTx) == 0 {
@@ -420,43 +491,26 @@ func (a *Applier) initiateStreaming() error {
 		}
 
 		go func() {
-			var lastCommitted int64
-			//timeout := time.After(100 * time.Millisecond)
-			groupEntry := []*binlog.BinlogEntry{}
-		OUTER:
-			for {
+			stopSomeLoop := false
+			for !stopSomeLoop {
 				select {
 				case binlogEntry := <-a.applyDataEntryQueue:
 					if nil == binlogEntry {
 						continue
 					}
-					/*if a.mysqlContext.MySQLServerUuid == binlogTx.SID {
-						continue
-					}*/
 					if a.mysqlContext.ParallelWorkers <= 1 {
-						if err := a.ApplyBinlogEvent(a.dbs[0], binlogEntry); err != nil {
-							a.onError(TaskStateDead, err)
-							break OUTER
-						}
+						a.applyBinlogMtsTxQueue <- binlogEntry
 					} else {
-						if binlogEntry.Coordinates.LastCommitted == lastCommitted {
-							groupEntry = append(groupEntry, binlogEntry)
-						} else {
-							if len(groupEntry) != 0 {
-								a.applyGroupDataEntryQueue <- groupEntry
-								groupEntry = []*binlog.BinlogEntry{}
-							}
-							groupEntry = append(groupEntry, binlogEntry)
+						if a.mtsManager.WaitForExecution(binlogEntry) {
+							a.applyBinlogMtsTxQueue <- binlogEntry
 						}
-						lastCommitted = binlogEntry.Coordinates.LastCommitted
-					}
-				case <-time.After(100 * time.Millisecond):
-					if len(groupEntry) != 0 {
-						a.applyGroupDataEntryQueue <- groupEntry
-						groupEntry = []*binlog.BinlogEntry{}
+						if !a.shutdown {
+							// TODO what is this used for?
+							a.mysqlContext.Gtid = fmt.Sprintf("%s:1-%d", binlogEntry.Coordinates.GetSid(), binlogEntry.Coordinates.GNO)
+						}
 					}
 				case <-a.shutdownCh:
-					break OUTER
+					stopSomeLoop = true
 				}
 			}
 		}()
@@ -817,6 +871,8 @@ func (a *Applier) ApplyBinlogEvent(dbApplier *sql.Conn, binlogEntry *binlog.Binl
 			a.onError(TaskStateDead, err)
 		}
 		a.executedIntervals = newInterval
+		a.mtsManager.Executed(binlogEntry)
+
 		if !a.shutdown {
 			a.currentCoordinates.RelayMasterLogFile = binlogEntry.Coordinates.LogFile
 			a.currentCoordinates.ReadMasterLogPos = binlogEntry.Coordinates.LogPos
