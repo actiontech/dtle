@@ -38,24 +38,31 @@ const (
 
 type applierTableItem struct {
 	columns *umconf.ColumnList
-	psInsert *gosql.Stmt
-	psDelete *gosql.Stmt
-	psUpdate *gosql.Stmt
+	psInsert []*gosql.Stmt
+	psDelete []*gosql.Stmt
+	psUpdate []*gosql.Stmt
+}
+func newApplierTableItem(parallelWorkers int) *applierTableItem {
+	return &applierTableItem{
+		columns: nil,
+		psInsert: make([]*gosql.Stmt, parallelWorkers),
+		psDelete: make([]*gosql.Stmt, parallelWorkers),
+		psUpdate: make([]*gosql.Stmt, parallelWorkers),
+	}
 }
 func (ait *applierTableItem) Reset() {
 	// TODO handle err of `.Close()`?
-	if ait.psInsert != nil {
-		ait.psInsert.Close()
-		ait.psInsert = nil
+	closeStmts := func(stmts []*gosql.Stmt) {
+		for i := range stmts {
+			if stmts[i] != nil {
+				stmts[i].Close()
+			}
+		}
 	}
-	if ait.psDelete != nil {
-		ait.psDelete.Close()
-		ait.psDelete = nil
-	}
-	if ait.psUpdate != nil {
-		ait.psUpdate.Close()
-		ait.psUpdate = nil
-	}
+	closeStmts(ait.psInsert)
+	closeStmts(ait.psDelete)
+	closeStmts(ait.psUpdate)
+
 	ait.columns = nil
 }
 
@@ -189,7 +196,7 @@ func (a *Applier) MtsWorker(workerIndex int) {
 		select {
 		case tx := <-a.applyBinlogMtsTxQueue:
 			a.logger.Debugf("mysql.applier: a binlogEntry MTS dequeue, worker: %v", workerIndex)
-			if err := a.ApplyBinlogEvent(a.dbs[workerIndex], tx); err != nil {
+			if err := a.ApplyBinlogEvent(workerIndex, tx); err != nil {
 				a.onError(TaskStateDead, err) // TODO coordinate with other goroutine
 				keepLoop = false
 			} else {
@@ -495,6 +502,7 @@ func (a *Applier) initiateStreaming() error {
 			for !stopSomeLoop {
 				select {
 				case binlogEntry := <-a.applyDataEntryQueue:
+					a.logger.Debugf("mysql.applier: a binlogEntry")
 					if nil == binlogEntry {
 						continue
 					}
@@ -502,6 +510,7 @@ func (a *Applier) initiateStreaming() error {
 						a.applyBinlogMtsTxQueue <- binlogEntry
 					} else {
 						if a.mtsManager.WaitForExecution(binlogEntry) {
+							a.logger.Debugf("mysql.applier: a binlogEntry MTS enqueue")
 							a.applyBinlogMtsTxQueue <- binlogEntry
 						}
 						if !a.shutdown {
@@ -618,17 +627,20 @@ func (a *Applier) initDBConnections() (err error) {
 			return err
 		}
 
-		a.dbs[0].PsDeleteExecutedGtid, err = a.dbs[0].Db.PrepareContext(context.Background(), fmt.Sprintf("delete from actiontech_udup.gtid_executed where job_uuid = '%s' and source_uuid = ?",
-			a.subject))
-		if err != nil {
-			return err
-		}
-		a.dbs[0].PsInsertExecutedGtid, err = a.dbs[0].Db.PrepareContext(context.Background(), fmt.Sprintf("replace into actiontech_udup.gtid_executed " +
-			"(job_uuid,source_uuid,interval_gtid) " +
-			"values ('%s', ?, ?)",
-			a.subject))
-		if err != nil {
-			return err
+		for i := range a.dbs {
+			a.dbs[i].PsDeleteExecutedGtid, err = a.dbs[i].Db.PrepareContext(context.Background(), fmt.Sprintf("delete from actiontech_udup.gtid_executed where job_uuid = '%s' and source_uuid = ?",
+				a.subject))
+			if err != nil {
+				return err
+			}
+			a.dbs[i].PsInsertExecutedGtid, err = a.dbs[i].Db.PrepareContext(context.Background(), fmt.Sprintf("replace into actiontech_udup.gtid_executed " +
+				"(job_uuid,source_uuid,interval_gtid) " +
+				"values ('%s', ?, ?)",
+				a.subject))
+			if err != nil {
+				return err
+			}
+
 		}
 	}
 	/*if err := a.readCurrentBinlogCoordinates(); err != nil {
@@ -756,7 +768,7 @@ func (a *Applier) getTableItem(schema string, table string) *applierTableItem {
 
 	tableItem, ok := schemaItem[table]
 	if !ok {
-		tableItem = &applierTableItem{}
+		tableItem = newApplierTableItem(a.mysqlContext.ParallelWorkers)
 		schemaItem[table] = tableItem
 	}
 
@@ -765,7 +777,7 @@ func (a *Applier) getTableItem(schema string, table string) *applierTableItem {
 
 // buildDMLEventQuery creates a query to operate on the ghost table, based on an intercepted binlog
 // event entry on the original table.
-func (a *Applier) buildDMLEventQuery(dmlEvent binlog.DataEvent) (query *gosql.Stmt, args []interface{}, rowsDelta int64, err error) {
+func (a *Applier) buildDMLEventQuery(dmlEvent binlog.DataEvent, workerIdx int) (query *gosql.Stmt, args []interface{}, rowsDelta int64, err error) {
 	// Large piece of code deleted here. See git annotate.
 
 	tableItem := a.getTableItem(dmlEvent.DatabaseName, dmlEvent.TableName)
@@ -781,6 +793,14 @@ func (a *Applier) buildDMLEventQuery(dmlEvent binlog.DataEvent) (query *gosql.St
 
 	var tableColumns = tableItem.columns
 
+	doPrepareIfNil := func(stmts []*gosql.Stmt, query string) (*gosql.Stmt, error) {
+		var err error
+		if stmts[workerIdx] == nil {
+			stmts[workerIdx], err = a.dbs[workerIdx].Db.PrepareContext(context.Background(), query)
+		}
+		return stmts[workerIdx], err
+	}
+
 	switch dmlEvent.DML {
 	case binlog.DeleteDML:
 		{
@@ -788,14 +808,11 @@ func (a *Applier) buildDMLEventQuery(dmlEvent binlog.DataEvent) (query *gosql.St
 			if err != nil {
 				return nil, nil, -1, err
 			}
-			if tableItem.psDelete == nil {
-				// TODO multi-threaded apply
-				tableItem.psDelete, err = a.dbs[0].Db.PrepareContext(context.Background(), query)
-				if err != nil {
-					return nil, nil, -1, err
-				}
+			stmt, err := doPrepareIfNil(tableItem.psDelete, query)
+			if err != nil {
+				return nil, nil, -1, err
 			}
-			return tableItem.psDelete, uniqueKeyArgs, -1, err
+			return stmt, uniqueKeyArgs, -1, err
 		}
 	case binlog.InsertDML:
 		{
@@ -804,17 +821,11 @@ func (a *Applier) buildDMLEventQuery(dmlEvent binlog.DataEvent) (query *gosql.St
 			if err != nil {
 				return nil, nil, -1, err
 			}
-			if tableItem.psInsert == nil {
-				a.logger.Debugf("new stmt")
-				// TODO multi-threaded apply
-				tableItem.psInsert, err = a.dbs[0].Db.PrepareContext(context.Background(), query)
-				if err != nil {
-					return nil, nil, -1, err
-				}
-			} else {
-				a.logger.Debugf("reuse stmt")
+			stmt, err := doPrepareIfNil(tableItem.psInsert, query)
+			if err != nil {
+				return nil, nil, -1, err
 			}
-			return tableItem.psInsert, sharedArgs, 1, err
+			return stmt, sharedArgs, 1, err
 		}
 	case binlog.UpdateDML:
 		{
@@ -824,22 +835,22 @@ func (a *Applier) buildDMLEventQuery(dmlEvent binlog.DataEvent) (query *gosql.St
 			}
 			args = append(args, sharedArgs...)
 			args = append(args, uniqueKeyArgs...)
-			if tableItem.psUpdate == nil {
-				// TODO multi-threaded apply
-				tableItem.psUpdate, err = a.dbs[0].Db.PrepareContext(context.Background(), query)
-				if err != nil {
-					return nil, nil, -1, err
-				}
+
+			stmt, err := doPrepareIfNil(tableItem.psUpdate, query)
+			if err != nil {
+				return nil, nil, -1, err
 			}
 
-			return tableItem.psUpdate, args, 0, err
+			return stmt, args, 0, err
 		}
 	}
 	return nil, args, 0, fmt.Errorf("Unknown dml event type: %+v", dmlEvent.DML)
 }
 
 // ApplyEventQueries applies multiple DML queries onto the dest table
-func (a *Applier) ApplyBinlogEvent(dbApplier *sql.Conn, binlogEntry *binlog.BinlogEntry) error {
+func (a *Applier) ApplyBinlogEvent(workerIdx int, binlogEntry *binlog.BinlogEntry) error {
+	dbApplier := a.dbs[workerIdx]
+
 	var totalDelta int64
 	var err error
 
@@ -931,7 +942,7 @@ func (a *Applier) ApplyBinlogEvent(dbApplier *sql.Conn, binlogEntry *binlog.Binl
 			}
 			a.logger.Debugf("mysql.applier: Exec [%s]", event.Query)
 		default:
-			stmt, args, rowDelta, err := a.buildDMLEventQuery(event)
+			stmt, args, rowDelta, err := a.buildDMLEventQuery(event, workerIdx)
 			if err != nil {
 				a.logger.Errorf("mysql.applier: Build dml query error: %v", err)
 				return err
