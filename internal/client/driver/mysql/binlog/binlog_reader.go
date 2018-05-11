@@ -306,7 +306,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 					}
 
 					switch ddlInfo.ddlType {
-					case DDLCreateTable:
+					case DDLCreateTable, DDLAlterTable:
 						// create table is not ignored
 						b.logger.Debugf("mysql.reader: ddl is create table")
 						columns, err := base.GetTableColumns(b.db, realSchema, tableName)
@@ -323,9 +323,6 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 
 						tableMap := b.getDbTableMap(realSchema)
 						b.addTableToTableMap(tableMap, table)
-
-					case DDLAlterTable:
-						// TODO table definition might be changed
 					}
 
 					event := NewQueryEventAffectTable(
