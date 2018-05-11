@@ -18,7 +18,6 @@ const (
 
 	TaskDriverMySQL  = "MySQL"
 	TaskDriverOracle = "Oracle"
-	TaskDriverKafka = "Kafka"
 )
 
 // Task is a single process typically that is executed as part of a task.

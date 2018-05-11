@@ -111,7 +111,6 @@ func (c *ClientConfig) Copy() *ClientConfig {
 
 type DriverCtx struct {
 	DriverConfig *MySQLDriverConfig
-	KafkaConfig  *KafkaDriverConfig
 }
 
 func (d *DataSource) String() string {
@@ -283,10 +282,6 @@ func (m *MySQLDriverConfig) GetCriticalLoad() umconf.LoadMap {
 	//defer m.throttleMutex.Unlock()
 
 	return m.criticalLoad.Duplicate()
-}
-
-type KafkaDriverConfig struct {
-	Broker               string
 }
 
 // TableName is the table configuration

@@ -25,23 +25,6 @@ const (
 	BinaryColumnType
 	TextColumnType
 	JSONColumnType
-
-	DateColumnType
-	TimeColumnType
-	YearColumnType
-
-	VarbinaryColumnType
-
-	BitColumnType
-
-	TinyintColumnType
-	SmallintColumnType
-	IntColumnType
-
-	CharColumnType
-	VarcharColumnType
-	BlobColumnType
-	// TODO: more type
 )
 
 const maxMediumintUnsigned int32 = 16777215
