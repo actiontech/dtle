@@ -234,7 +234,7 @@ func (m *MySQLDriver) Start(ctx *ExecContext, task *models.Task) (DriverHandle, 
 		{
 			m.logger.Debugf("NewExtractor ReplicateDoDb: %v", driverConfig.ReplicateDoDb)
 			// Create the extractor
-			e := mysql.NewExtractor(ctx.Subject, ctx.Tp, ctx.MaxPayload, &driverConfig, m.logger)
+			e := mysql.NewExtractor(ctx.Subject, ctx.Tp, ctx.MaxPayload, &driverConfig, m.logger, task.Kafka)
 			go e.Run()
 			return e, nil
 		}
