@@ -818,7 +818,7 @@ func (e *Extractor) testStub1() {
 //Perform the snapshot using the same logic as the "mysqldump" utility.
 func (e *Extractor) mysqlDump() error {
 	defer e.singletonDB.Close()
-	var tx *gosql.Tx
+	var tx sql.QueryAble
 	var err error
 	step := 0
 	// ------
@@ -868,88 +868,103 @@ func (e *Extractor) mysqlDump() error {
 	// First, start a transaction and request that a consistent MVCC snapshot is obtained immediately.
 	// See http://dev.mysql.com/doc/refman/5.7/en/commit.html
 
-	e.logger.Printf("mysql.extractor: Step %d: start transaction with consistent snapshot", step)
+	var needConsistentSnapshot = true // TODO determine by table characteristic (has-PK or not)
+	if needConsistentSnapshot {
+		e.logger.Printf("mysql.extractor: Step %d: start transaction with consistent snapshot", step)
+		gtidMatch := false
+		gtidMatchRound := 0
+		delayBetweenRetries := 200 * time.Millisecond
+		for !gtidMatch {
+			gtidMatchRound += 1
 
-	gtidMatch := false
-	gtidMatchRound := 0
-	delayBetweenRetries := 200 * time.Millisecond
-	for !gtidMatch {
-		gtidMatchRound += 1
+			// 1
+			rows1, err := e.singletonDB.Query("show master status")
+			if err != nil {
+				e.logger.Errorf("mysql.extractor: get gtid, round: %v, phase 1, err: %v", gtidMatchRound, err)
+				return err
+			}
 
-		// 1
-		rows1, err := e.singletonDB.Query("show master status")
-		if err != nil {
-			e.logger.Errorf("mysql.extractor: get gtid, round: %v, phase 1, err: %v", gtidMatchRound, err)
-			return err
-		}
+			e.testStub1()
 
-		e.testStub1()
-
-		// 2
-		// TODO it seems that two 'start transaction' will be sent.
-		// https://github.com/golang/go/issues/19981
-		tx, err = e.singletonDB.Begin()
-		if err != nil {
-			return err
-		}
-		query := "START TRANSACTION WITH CONSISTENT SNAPSHOT"
-		_, err = tx.Exec(query)
-		if err != nil {
-			e.logger.Printf("[ERR] mysql.extractor: exec %+v, error: %v", query, err)
-			return err
-		}
-
-		e.testStub1()
-
-		// 3
-		rows2, err := tx.Query("show master status")
-
-		// 4
-		binlogCoordinates1, err := base.ParseBinlogCoordinatesFromRows(rows1)
-		if err != nil {
-			return err
-		}
-		binlogCoordinates2, err := base.ParseBinlogCoordinatesFromRows(rows2)
-		if err != nil {
-			return err
-		}
-		e.logger.Debugf("mysql.extractor: binlog coordinates 1: %+v", binlogCoordinates1)
-		e.logger.Debugf("mysql.extractor: binlog coordinates 2: %+v", binlogCoordinates2)
-
-		if binlogCoordinates1.GtidSet == binlogCoordinates2.GtidSet {
-			gtidMatch = true
-			e.logger.Infof("Got gtid after %v rounds", gtidMatchRound)
-
-			// Obtain the binlog position and update the SourceInfo in the context. This means that all source records generated
-			// as part of the snapshot will contain the binlog position of the snapshot.
-			//binlogCoordinates, err := base.GetSelfBinlogCoordinatesWithTx(tx)
-
-			e.initialBinlogCoordinates = binlogCoordinates2
-			e.logger.Printf("mysql.extractor: Step %d: read binlog coordinates of MySQL master: %+v", step, *e.initialBinlogCoordinates)
-		} else {
-			e.logger.Warningf("Failed got a consistenct TX with GTID in %v rounds. Will retry.", gtidMatchRound)
-			err = tx.Rollback()
+			// 2
+			// TODO it seems that two 'start transaction' will be sent.
+			// https://github.com/golang/go/issues/19981
+			realTx, err := e.singletonDB.Begin()
+			tx = realTx
 			if err != nil {
 				return err
 			}
-			time.Sleep(delayBetweenRetries)
+			query := "START TRANSACTION WITH CONSISTENT SNAPSHOT"
+			_, err = realTx.Exec(query)
+			if err != nil {
+				e.logger.Printf("[ERR] mysql.extractor: exec %+v, error: %v", query, err)
+				return err
+			}
+
+			e.testStub1()
+
+			// 3
+			rows2, err := realTx.Query("show master status")
+
+			// 4
+			binlogCoordinates1, err := base.ParseBinlogCoordinatesFromRows(rows1)
+			if err != nil {
+				return err
+			}
+			binlogCoordinates2, err := base.ParseBinlogCoordinatesFromRows(rows2)
+			if err != nil {
+				return err
+			}
+			e.logger.Debugf("mysql.extractor: binlog coordinates 1: %+v", binlogCoordinates1)
+			e.logger.Debugf("mysql.extractor: binlog coordinates 2: %+v", binlogCoordinates2)
+
+			if binlogCoordinates1.GtidSet == binlogCoordinates2.GtidSet {
+				gtidMatch = true
+				e.logger.Infof("Got gtid after %v rounds", gtidMatchRound)
+
+				// Obtain the binlog position and update the SourceInfo in the context. This means that all source records generated
+				// as part of the snapshot will contain the binlog position of the snapshot.
+				//binlogCoordinates, err := base.GetSelfBinlogCoordinatesWithTx(tx)
+
+				e.initialBinlogCoordinates = binlogCoordinates2
+				e.logger.Printf("mysql.extractor: Step %d: read binlog coordinates of MySQL master: %+v", step, *e.initialBinlogCoordinates)
+
+				defer func() {
+					/*e.logger.Printf("mysql.extractor: Step %d: releasing global read lock to enable MySQL writes", step)
+					query := "UNLOCK TABLES"
+					_, err := tx.Exec(query)
+					if err != nil {
+						e.logger.Printf("[ERR] mysql.extractor: exec %+v, error: %v", query, err)
+					}
+					step++*/
+					e.logger.Printf("mysql.extractor: Step %d: committing transaction", step)
+					if err := realTx.Commit(); err != nil {
+						e.onError(TaskStateDead, err)
+					}
+				}()
+			} else {
+				e.logger.Warningf("Failed got a consistenct TX with GTID in %v rounds. Will retry.", gtidMatchRound)
+				err = realTx.Rollback()
+				if err != nil {
+					return err
+				}
+				time.Sleep(delayBetweenRetries)
+			}
 		}
+	} else {
+		e.logger.Debugf("mysql.extractor: no need to get consistent snapshot")
+		tx = e.singletonDB
+		rows1, err := tx.Query("show master status")
+		if err != nil {
+			return err
+		}
+		e.initialBinlogCoordinates, err = base.ParseBinlogCoordinatesFromRows(rows1)
+		if err != nil {
+			return err
+		}
+		e.logger.Debugf("mysql.extractor: got gtid")
 	}
 	step++
-
-	defer func() {
-		/*e.logger.Printf("mysql.extractor: Step %d: releasing global read lock to enable MySQL writes", step)
-		query := "UNLOCK TABLES"
-		_, err := tx.Exec(query)
-		if err != nil {
-			e.logger.Printf("[ERR] mysql.extractor: exec %+v, error: %v", query, err)
-		}
-		step++*/
-		e.logger.Printf("mysql.extractor: Step %d: committing transaction", step)
-		if err := tx.Commit(); err != nil {
-			e.onError(TaskStateDead, err)
-		}
-	}()
 
 	// ------
 	// STEP 4

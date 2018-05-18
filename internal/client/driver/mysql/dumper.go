@@ -36,10 +36,10 @@ type dumper struct {
 
 	// DB is safe for using in goroutines
 	// http://golang.org/src/database/sql/sql.go?s=5574:6362#L201
-	db *sql.Tx
+	db usql.QueryAble
 }
 
-func NewDumper(db *sql.Tx, table *config.Table, total, chunkSize int64,
+func NewDumper(db usql.QueryAble, table *config.Table, total, chunkSize int64,
 	logger *log.Entry) *dumper {
 	dumper := &dumper{
 		logger:         logger,
