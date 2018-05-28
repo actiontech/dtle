@@ -69,6 +69,7 @@ type dumpEntry struct {
 	TableSchema              string
 	TbSQL                    []string
 	Values                   [][]string
+	ValuesX					 [][]string
 	TotalCount               int64
 	RowsCount                int64
 	Offset                   uint64 // only for 'no PK' table
@@ -242,6 +243,11 @@ func (d *dumper) getChunkData(e *dumpEntry) (err error) {
 			return err
 		}
 
+		//copyRow := make([]interface{}, len(scanArgs))
+		//for i, _ := range scanArgs {
+		//	copyRow[i] = scanArgs[i]
+		//}
+
 		vals := make([]string, 0)
 		for _, col := range values {
 			// Here we can check if the value is nil (NULL value)
@@ -257,6 +263,8 @@ func (d *dumper) getChunkData(e *dumpEntry) (err error) {
 				vals = append(vals, "NULL")
 			}
 		}
+		entry.ValuesX = append(entry.ValuesX, vals)
+
 		lastVals = &vals
 		data = append(data, fmt.Sprintf("( %s )", strings.Join(vals, ", ")))
 		entry.incrementCounter()

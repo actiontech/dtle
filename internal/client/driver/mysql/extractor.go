@@ -26,6 +26,7 @@ import (
 	log "udup/internal/logger"
 	"udup/internal/models"
 	"udup/internal/client/driver/kafka2"
+	"udup/internal/config/mysql"
 )
 
 const (
@@ -97,9 +98,13 @@ func NewExtractor(subject, tp string, maxPayload int, cfg *config.MySQLDriverCon
 		var err error
 		e.kafkaMgr, err = kafka2.NewKafkaManager(kafkaCfg)
 		if err != nil {
+			e.logger.Errorf("failed to initialize kafka: %v", err.Error())
 			// TODO
 		}
 	}
+
+	e.logger.Debugf("**** e.kafkaCfg == nil: %v", kafkaCfg == nil)
+	e.logger.Debugf("**** e.kafkaMgr == nil: %v", e.kafkaMgr == nil)
 
 	if delay, err := strconv.ParseInt(os.Getenv("UDUP_TESTSTUB1_DELAY"), 10, 64); err == nil {
 		e.logger.Infof("UDUP_TESTSTUB1_DELAY = %v", delay)
@@ -183,8 +188,10 @@ func (e *Extractor) Run() {
 		if err != nil {
 			e.onError(TaskStateDead, err)
 		}
-		if err := e.publish(fmt.Sprintf("%s_full_complete", e.subject), "", dumpMsg); err != nil {
-			e.onError(TaskStateDead, err)
+		if e.kafkaMgr == nil {
+			if err := e.publish(fmt.Sprintf("%s_full_complete", e.subject), "", dumpMsg); err != nil {
+				e.onError(TaskStateDead, err)
+			}
 		}
 	} else {
 		if err := e.readCurrentBinlogCoordinates(); err != nil {
@@ -634,8 +641,9 @@ func (e *Extractor) StreamEvents() error {
 			for binlogEntry := range e.dataChannel {
 				if nil != binlogEntry {
 					if e.kafkaMgr != nil {
-						e.kafkaTransformDMLEventQuery(binlogEntry)
-						e.kafkaMgr.Send()
+						// TODO table
+						// TODO err
+						e.kafkaTransformDMLEventQuery(nil, binlogEntry)
 					} else {
 						txMsg, err := Encode(binlogEntry)
 						if err != nil {
@@ -1039,8 +1047,10 @@ func (e *Extractor) mysqlDump() error {
 				}
 				atomic.AddInt64(&e.mysqlContext.RowsEstimate, 1)
 				atomic.AddInt64(&e.mysqlContext.TotalRowsCopied, 1)
-				if err := e.encodeDumpEntry(entry); err != nil {
-					e.onError(TaskStateRestart, err)
+				if e.kafkaMgr == nil {
+					if err := e.encodeDumpEntry(entry); err != nil {
+						e.onError(TaskStateRestart, err)
+					}
 				}
 			}
 			e.tableCount += len(db.Tables)
@@ -1060,8 +1070,10 @@ func (e *Extractor) mysqlDump() error {
 			}
 			atomic.AddInt64(&e.mysqlContext.RowsEstimate, 1)
 			atomic.AddInt64(&e.mysqlContext.TotalRowsCopied, 1)
-			if err := e.encodeDumpEntry(entry); err != nil {
-				e.onError(TaskStateRestart, err)
+			if e.kafkaMgr == nil {
+				if err := e.encodeDumpEntry(entry); err != nil {
+					e.onError(TaskStateRestart, err)
+				}
 			}
 		}
 	}
@@ -1099,8 +1111,8 @@ func (e *Extractor) mysqlDump() error {
 				entry.SystemVariablesStatement = setSystemVariablesStatement
 				entry.SqlMode = setSqlMode
 				if e.kafkaMgr != nil {
-					e.kafkaTransformSnapshotData(entry)
-					if err := e.kafkaMgr.Send(); err != nil {
+					err := e.kafkaTransformSnapshotData(d.table, entry)
+					if err != nil {
 						e.onError(TaskStateRestart, err)
 					}
 				} else {
@@ -1299,107 +1311,74 @@ func (e *Extractor) Shutdown() error {
 	return nil
 }
 
-func (e *Extractor) kafkaTransformSnapshotData(table *config.Table, value *dumpEntry) ([]byte, error) {
-	for _, rowValues := range value.Values {
-		after, err := kafka2.TableColumnsSchemaFill(table.columnSchema, rowValues)
-		for i, col := range table.OriginalTableColumns.ColumnList() {
-			rowValues
-			col.Name
+func (e *Extractor) kafkaTransformSnapshotData(table *config.Table, value *dumpEntry) error {
+	tableIdent := fmt.Sprintf("%v.%v.%v", e.kafkaMgr.Cfg.Topic, table.TableSchema, table.TableName)
+	e.logger.Debugf("**** value: %v", value.ValuesX)
+	for _, rowValues := range value.ValuesX {
+		keySchema := kafka2.NewKeySchema(tableIdent)
+		keyPayload := kafka2.NewRow()
+		var keyColDef []*kafka2.Schema
+		keySchema.Fields = keyColDef
+
+		var valueColDef []*kafka2.Schema
+
+		valuePayload := kafka2.NewValuePayload(kafka2.RECORD_OP_INSERT)
+		valuePayload.Before = nil
+		valuePayload.After = kafka2.NewRow()
+
+		columnList := table.OriginalTableColumns.ColumnList()
+		for i, _ := range columnList {
+			var theType kafka2.SchemaType
+			switch columnList[i].Type {
+			case mysql.TextColumnType:
+				theType = kafka2.SCHEMA_TYPE_STRING
+			case mysql.MediumIntColumnType, mysql.BigIntColumnType:
+				theType = kafka2.SCHEMA_TYPE_INT64
+			}
+			optional := false // TODO nullable column?
+
+			field := kafka2.NewSimpleSchemaField(theType, optional, columnList[i].Name)
+
+			isPk := false
+			if isPk {
+				keyColDef = append(keyColDef, field)
+				keyPayload.AddField(columnList[i].Name, rowValues[i])
+			}
+
+			valueColDef = append(valueColDef, field)
+			e.logger.Debugf("**** rowvalue: %v", rowValues[i])
+			valuePayload.After.AddField(columnList[i].Name, rowValues[i])
 		}
 
-		e.logger.Debugf("kafka.connector: snapshot row value: %v", value)
-		if nil != err {
-			return fmt.Errorf("connector.tableColumnsSchemaFill error: %v", err)
+		valueSchema := kafka2.NewEnvelopeSchema(tableIdent, valueColDef)
+
+		k := kafka2.DbzOutput{
+			Schema:keySchema,
+			Payload:keyPayload,
 		}
-		table.GenerateKey(value)
-		table.GenerateValue(nil, after, kafka2.RECORD_OP_INSERT)
-		topic := table.name.topicStr()
-		e.logger.Debugf("kafka.connector: ready to transform snapshot data to topic %v table %v.%v key fields(%v) value fields(%v)",
-			topic, table.table.TableSchema, table.table.TableName, table.Key.printFields(), table.columnSchema.printFields())
-		k, v, err := table.serialization()
-		if nil != err {
-			return fmt.Errorf("connector.serialization error: %v", err)
+		v := kafka2.DbzOutput{
+			Schema:valueSchema,
+			Payload:valuePayload,
 		}
 
-		if err := e.kafkaMgr.Send(k, v); nil != err {
+		kBs, err := json.Marshal(k)
+		if err != nil {
+			return fmt.Errorf("mysql.extractor.kafka.serialization error: %v", err)
+		}
+		vBs, err := json.Marshal(v)
+		if err != nil {
+			return fmt.Errorf("mysql.extractor.kafka.serialization error: %v", err)
+		}
+
+		e.logger.Debugf("mysql.extractor.kafka sent one msg")
+		err = e.kafkaMgr.Send(kBs, vBs)
+		if err != nil {
 			return err
 		}
-		return nil
 	}
+	return nil
 }
 
-func (e *Extractor) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry, table *config.Table) (err error) {
-	// get source info
-	source := kafka2.NewSourceInfoRecord(e.subject, e.dbServerId, 0 /*todo*/ , e.currentBinlogCoordinates.GtidSet, e.currentBinlogCoordinates.LogFile,
-		e.currentBinlogCoordinates.LogPos, 0                 /*todo*/ , false, "", dmlEvent.DatabaseName, dmlEvent.TableName)
-
-	tableSchema := kafka2.NewTableDMLRecord(fmt.Sprintf("%v", e.dbServerId), table, source)
-	columnMap := make(columnValue)
-	var before, after *kafka2.Schema
-	{ // generate table schema
-		if nil == dmlEvent.WhereColumnValues {
-			before = nil
-		} else if colLen := len(dmlEvent.WhereColumnValues.GetAbstractValues()); len(table.OriginalTableColumns.ColumnList()) != colLen {
-			return fmt.Errorf("[ERR] table column list(len:%v) in memory is not same as table column list in binlog(len:%v)",
-				len(table.OriginalTableColumns.ColumnList()), colLen)
-		} else {
-			for i := 0; i < colLen; i++ {
-				columnMap[table.OriginalTableColumns.ColumnList()[i].Name] = dmlEvent.WhereColumnValues.StringColumn(i)
-			}
-
-			before, err = tableColumnsSchemaFill(tableSchema.columnSchema, columnMap)
-			if nil != err {
-				return fmt.Errorf("[ERR] transformDMLEventQuery.tableColumnsSchemaFill.before error: %v", err)
-			}
-		}
-
-		if nil == dmlEvent.NewColumnValues {
-			after = nil
-		} else if colLen := len(dmlEvent.NewColumnValues.GetAbstractValues()); len(table.OriginalTableColumns.ColumnList()) != colLen {
-			return fmt.Errorf("[ERR] table column list(len:%v) in memory is not same as table column list in binlog(len:%v)",
-				len(table.OriginalTableColumns.ColumnList()), colLen)
-		} else {
-			for i := 0; i < colLen; i++ {
-				columnMap[table.OriginalTableColumns.ColumnList()[i].Name] = dmlEvent.NewColumnValues.StringColumn(i)
-			}
-
-			after, err = tableColumnsSchemaFill(tableSchema.columnSchema, columnMap)
-			if nil != err {
-				return fmt.Errorf("[ERR] transformDMLEventQuery.tableColumnsSchemaFill.after error: %v", err)
-			}
-		}
-	}
-
-	switch dmlEvent.DML {
-	case binlog.DeleteDML:
-		{
-			tableSchema.GenerateKey(columnMap)
-			tableSchema.GenerateValue(before, nil, kafka2.RECORD_OP_DELETE)
-		}
-	case binlog.InsertDML:
-		{
-			tableSchema.GenerateKey(columnMap)
-			tableSchema.GenerateValue(nil, after, kafka2.RECORD_OP_INSERT)
-		}
-	case binlog.UpdateDML:
-		{
-			tableSchema.GenerateKey(columnMap)
-			tableSchema.GenerateValue(before, after, kafka2.RECORD_OP_UPDATE)
-		}
-	default:
-		return fmt.Errorf("Unknown dml event type: %v ", dmlEvent.DML)
-	}
-
-	topic := tableSchema.name.topicStr()
-	key, value, err := tableSchema.serialization()
-	if nil != err {
-		return fmt.Errorf("kafka.connector: tableSchema.serialization error: %v", err)
-	}
-	e.logger.Debugf("kafka.connector: ready to transform dml to topic %v table %v.%v key fields(%v) value fields(%v)",
-		topic, tableSchema.table.TableSchema, tableSchema.table.TableName, tableSchema.Key.printFields(), tableSchema.columnSchema.printFields())
-
-	if err := e.kafkaMgr.Send(key, value); nil != err {
-		return err
-	}
+func (e *Extractor) kafkaTransformDMLEventQuery(table *config.Table, dmlEvent *binlog.BinlogEntry) (err error) {
 	return nil
 }
