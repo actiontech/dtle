@@ -448,6 +448,13 @@ func (j *Job) List(args *models.JobListRequest,
 					break
 				}
 				job := raw.(*models.Job)
+				for _, t := range job.Tasks {
+					if connCfg, ok := t.Config["ConnectionConfig"]; ok {
+						if connCfgMap, ok := connCfg.(map[string]interface{}); ok {
+							connCfgMap["Password"] = "*"
+						}
+					}
+				}
 				jobs = append(jobs, job.Stub(job))
 			}
 			reply.Jobs = jobs
