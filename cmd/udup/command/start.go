@@ -98,11 +98,7 @@ func (c *StartCommand) Run(args []string) int {
 		return 1
 	}
 
-	// Truncate the id unless full length is requested
-	length := shortId
-	if verbose {
-		length = fullId
-	}
+	length := fullId
 
 	// Check that we got exactly one argument
 	args = flags.Args()

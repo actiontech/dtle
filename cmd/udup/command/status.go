@@ -74,10 +74,7 @@ func (c *StatusCommand) Run(args []string) int {
 	}
 
 	// Truncate the id unless full length is requested
-	c.length = shortId
-	if c.verbose {
-		c.length = fullId
-	}
+	c.length = fullId
 
 	// Get the HTTP client
 	client, err := c.Meta.Client()

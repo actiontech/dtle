@@ -19,8 +19,6 @@ const (
 	EnvUdupAddress = "UDUP_ADDR"
 	EnvUdupRegion  = "UDUP_REGION"
 
-	// Constants for CLI identifier length
-	shortId = 8
 	fullId  = 36
 )
 
