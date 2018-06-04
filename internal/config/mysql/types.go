@@ -59,8 +59,11 @@ type Column struct {
 	ColumnType         string
 	Key				   string
 	TimezoneConversion *TimezoneConvertion
+	Nullable           bool
 }
-
+func (c *Column) IsPk() bool {
+	return c.Key == "PRI"
+}
 func (c *Column) ConvertArg(arg interface{}) interface{} {
 	if fmt.Sprintf("%s", arg) == "" {
 		return ""

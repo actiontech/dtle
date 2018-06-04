@@ -10,7 +10,6 @@ import (
 type BinlogEntry struct {
 	hasBeginQuery bool
 	Coordinates   base.BinlogCoordinates
-	EndLogPos     uint64
 
 	Events []DataEvent
 }
@@ -35,7 +34,6 @@ func NewBinlogEntryAt(coordinates base.BinlogCoordinates) *BinlogEntry {
 // Duplicate creates and returns a new binlog entry, with some of the attributes pre-assigned
 func (b *BinlogEntry) Duplicate() *BinlogEntry {
 	binlogEntry := NewBinlogEntry(b.Coordinates.LogFile, uint64(b.Coordinates.LogPos))
-	binlogEntry.EndLogPos = b.EndLogPos
 	return binlogEntry
 }
 

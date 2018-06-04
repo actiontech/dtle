@@ -14,6 +14,13 @@ const (
 	SCHEMA_TYPE_STRUCT = "struct"
 	SCHEMA_TYPE_STRING = "string"
 	SCHEMA_TYPE_INT64 = "int64"
+	SCHEMA_TYPE_INT32 = "int32"
+	SCHEMA_TYPE_INT16 = "int16"
+	SCHEMA_TYPE_INT8 = "int8"
+	SCHEMA_TYPE_BYTES = "bytes"
+	SCHEMA_TYPE_FLOAT64 = "float64"
+	SCHEMA_TYPE_FLOAT32 = "float32"
+	SCHEMA_TYPE_BOOLEAN = "boolean"
 
 	RECORD_OP_INSERT = "c"
 	RECORD_OP_UPDATE = "u"
@@ -75,20 +82,28 @@ var (
 			NewSimpleSchemaField(SCHEMA_TYPE_STRING, false, "name"),
 			NewSimpleSchemaField(SCHEMA_TYPE_INT64, false, "server_id"),
 			NewSimpleSchemaField(SCHEMA_TYPE_INT64, false, "ts_sec"),
-			// TODO
+			NewSimpleSchemaField(SCHEMA_TYPE_STRING, true, "gtid"),
+			NewSimpleSchemaField(SCHEMA_TYPE_STRING, false, "file"),
+			NewSimpleSchemaField(SCHEMA_TYPE_INT64, false, "pos"),
+			NewSimpleSchemaField(SCHEMA_TYPE_INT32, false, "row"),
+			NewSimpleSchemaField(SCHEMA_TYPE_BOOLEAN, true, "snapshot"),
+			NewSimpleSchemaField(SCHEMA_TYPE_INT64, true, "thread"),
+			NewSimpleSchemaField(SCHEMA_TYPE_STRING, true, "db"),
+			NewSimpleSchemaField(SCHEMA_TYPE_STRING, true, "table"),
 		},
 		Optional: false,
 		Name: "io.debezium.connector.mysql.Source",
 		Field: "source",
+		Type: SCHEMA_TYPE_STRUCT,
 	}
 )
 
-func NewKeySchema(tableIdent string, ) *Schema {
+func NewKeySchema(tableIdent string, fields ColDefs) *Schema {
 	return &Schema{
 		Type:SCHEMA_TYPE_STRUCT,
 		Name: fmt.Sprintf("%v.Key", tableIdent),
-		Optional:false,
-		Fields:nil,
+		Optional: false,
+		Fields: fields,
 	}
 }
 
@@ -117,7 +132,7 @@ func NewEnvelopeSchema(tableIdent string, colDefs ColDefs) *Schema {
 			after,
 			SourceSchema,
 			NewSimpleSchemaField(SCHEMA_TYPE_STRING, false, "op"),
-			NewSimpleSchemaField(SCHEMA_TYPE_INT64, false, "ts_ms"),
+			NewSimpleSchemaField(SCHEMA_TYPE_INT64, true, "ts_ms"),
 		},
 		Optional: false,
 		Name: fmt.Sprintf("%v.Envelope", tableIdent),
@@ -138,9 +153,9 @@ type ValuePayload struct {
 	Op string             `json:"op"`
 	TsMs int64            `json:"ts_ms"`
 }
-func NewValuePayload(op string) *ValuePayload {
+func NewValuePayload() *ValuePayload { // TODO source
 	return &ValuePayload{
-		Op: op,
+		Source: &SourcePayload{},
 	}
 }
 type SourcePayload struct {

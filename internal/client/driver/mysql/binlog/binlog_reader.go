@@ -358,7 +358,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 				dml,
 				int(rowsEvent.ColumnCount),
 			)
-
+			dmlEvent.Table = table.Table
 			/*originalTableColumns, _, err := b.InspectTableColumnsAndUniqueKeys(string(rowsEvent.Table.Schema), string(rowsEvent.Table.Table))
 			if err != nil {
 				return err

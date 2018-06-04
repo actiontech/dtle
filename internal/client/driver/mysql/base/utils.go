@@ -221,7 +221,9 @@ func GetTableColumns(db usql.QueryAble, databaseName, tableName string) (*umconf
 		columns = append(columns, umconf.Column{
 			Name:rowMap.GetString("Field"),
 			ColumnType:rowMap.GetString("Type"),
-			Key:rowMap.GetString("Key")})
+			Key:strings.ToUpper(rowMap.GetString("Key")),
+			Nullable:strings.ToUpper(rowMap.GetString("Null")) == "YES",
+		})
 		return nil
 	})
 	if err != nil {
