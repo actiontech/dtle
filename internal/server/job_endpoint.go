@@ -11,6 +11,7 @@ import (
 	"udup/internal/models"
 	"udup/internal/server/scheduler"
 	"udup/internal/server/store"
+	"github.com/mitchellh/copystructure"
 )
 
 const (
@@ -448,14 +449,23 @@ func (j *Job) List(args *models.JobListRequest,
 					break
 				}
 				job := raw.(*models.Job)
-				for _, t := range job.Tasks {
+				jobCopy0, err := copystructure.Copy(job)
+				if err != nil {
+					return err
+				}
+				jobCopy, ok := jobCopy0.(*models.Job)
+				if !ok {
+					return fmt.Errorf("failed to deep copy job")
+				}
+				//fmt.Printf("**** mask password\n")
+				for _, t := range jobCopy.Tasks {
 					if connCfg, ok := t.Config["ConnectionConfig"]; ok {
 						if connCfgMap, ok := connCfg.(map[string]interface{}); ok {
 							connCfgMap["Password"] = "*"
 						}
 					}
 				}
-				jobs = append(jobs, job.Stub(job))
+				jobs = append(jobs, job.Stub(jobCopy))
 			}
 			reply.Jobs = jobs
 
