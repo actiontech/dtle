@@ -25,6 +25,24 @@ const (
 	BinaryColumnType
 	TextColumnType
 	JSONColumnType
+
+
+	DateColumnType
+	TimeColumnType
+	YearColumnType
+
+	VarbinaryColumnType
+
+	BitColumnType
+
+	TinyintColumnType
+	SmallintColumnType
+	IntColumnType
+
+	CharColumnType
+	VarcharColumnType
+	BlobColumnType
+	// TODO: more type
 )
 
 const maxMediumintUnsigned int32 = 16777215
@@ -41,8 +59,11 @@ type Column struct {
 	ColumnType         string
 	Key				   string
 	TimezoneConversion *TimezoneConvertion
+	Nullable           bool
 }
-
+func (c *Column) IsPk() bool {
+	return c.Key == "PRI"
+}
 func (c *Column) ConvertArg(arg interface{}) interface{} {
 	if fmt.Sprintf("%s", arg) == "" {
 		return ""

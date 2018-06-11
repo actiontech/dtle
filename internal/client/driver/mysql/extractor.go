@@ -25,6 +25,8 @@ import (
 	"udup/internal/config"
 	log "udup/internal/logger"
 	"udup/internal/models"
+	"udup/internal/client/driver/kafka2"
+	"udup/internal/config/mysql"
 )
 
 const (
@@ -66,9 +68,13 @@ type Extractor struct {
 	shutdownLock sync.Mutex
 
 	testStub1Delay int64
+
+	kafkaMgr       *kafka2.KafkaManager
 }
 
-func NewExtractor(subject, tp string, maxPayload int, cfg *config.MySQLDriverConfig, logger *log.Logger) *Extractor {
+func NewExtractor(subject, tp string, maxPayload int, cfg *config.MySQLDriverConfig, logger *log.Logger,
+	kafkaCfg *kafka2.KafkaConfig) *Extractor {
+
 	cfg = cfg.SetDefault()
 	entry := log.NewEntry(logger).WithFields(log.Fields{
 		"job": subject,
@@ -87,6 +93,18 @@ func NewExtractor(subject, tp string, maxPayload int, cfg *config.MySQLDriverCon
 		shutdownCh:      make(chan struct{}),
 		testStub1Delay:  0,
 	}
+
+	if kafkaCfg != nil {
+		var err error
+		e.kafkaMgr, err = kafka2.NewKafkaManager(kafkaCfg)
+		if err != nil {
+			e.logger.Errorf("failed to initialize kafka: %v", err.Error())
+			// TODO
+		}
+	}
+
+	e.logger.Debugf("**** e.kafkaCfg == nil: %v", kafkaCfg == nil)
+	e.logger.Debugf("**** e.kafkaMgr == nil: %v", e.kafkaMgr == nil)
 
 	if delay, err := strconv.ParseInt(os.Getenv("UDUP_TESTSTUB1_DELAY"), 10, 64); err == nil {
 		e.logger.Infof("UDUP_TESTSTUB1_DELAY = %v", delay)
@@ -159,6 +177,7 @@ func (e *Extractor) Run() {
 		e.onError(TaskStateDead, err)
 		return
 	}
+
 	if e.mysqlContext.Gtid == "" {
 		e.mysqlContext.MarkRowCopyStartTime()
 		if err := e.mysqlDump(); err != nil {
@@ -169,8 +188,10 @@ func (e *Extractor) Run() {
 		if err != nil {
 			e.onError(TaskStateDead, err)
 		}
-		if err := e.publish(fmt.Sprintf("%s_full_complete", e.subject), "", dumpMsg); err != nil {
-			e.onError(TaskStateDead, err)
+		if e.kafkaMgr == nil {
+			if err := e.publish(fmt.Sprintf("%s_full_complete", e.subject), "", dumpMsg); err != nil {
+				e.onError(TaskStateDead, err)
+			}
 		}
 	} else {
 		if err := e.readCurrentBinlogCoordinates(); err != nil {
@@ -619,15 +640,26 @@ func (e *Extractor) StreamEvents() error {
 		go func() {
 			for binlogEntry := range e.dataChannel {
 				if nil != binlogEntry {
-					txMsg, err := Encode(binlogEntry)
-					if err != nil {
-						e.onError(TaskStateDead, err)
-						break
-					}
+					if e.kafkaMgr != nil {
+						err := e.kafkaTransformDMLEventQuery(binlogEntry)
+						if err != nil {
+							e.onError(TaskStateDead, err)
+							break
+						}
+					} else {
+						for i := range binlogEntry.Events {
+							binlogEntry.Events[i].Table = nil // TODO tmp solution
+						}
+						txMsg, err := Encode(binlogEntry)
+						if err != nil {
+							e.onError(TaskStateDead, err)
+							break
+						}
 
-					if err = e.publish(fmt.Sprintf("%s_incr_hete", e.subject), "", txMsg); err != nil {
-						e.onError(TaskStateDead, err)
-						break
+						if err = e.publish(fmt.Sprintf("%s_incr_hete", e.subject), "", txMsg); err != nil {
+							e.onError(TaskStateDead, err)
+							break
+						}
 					}
 					e.mysqlContext.Stage = models.StageSendingBinlogEventToSlave
 					atomic.AddInt64(&e.mysqlContext.DeltaEstimate, 1)
@@ -1020,8 +1052,10 @@ func (e *Extractor) mysqlDump() error {
 				}
 				atomic.AddInt64(&e.mysqlContext.RowsEstimate, 1)
 				atomic.AddInt64(&e.mysqlContext.TotalRowsCopied, 1)
-				if err := e.encodeDumpEntry(entry); err != nil {
-					e.onError(TaskStateRestart, err)
+				if e.kafkaMgr == nil {
+					if err := e.encodeDumpEntry(entry); err != nil {
+						e.onError(TaskStateRestart, err)
+					}
 				}
 			}
 			e.tableCount += len(db.Tables)
@@ -1041,8 +1075,10 @@ func (e *Extractor) mysqlDump() error {
 			}
 			atomic.AddInt64(&e.mysqlContext.RowsEstimate, 1)
 			atomic.AddInt64(&e.mysqlContext.TotalRowsCopied, 1)
-			if err := e.encodeDumpEntry(entry); err != nil {
-				e.onError(TaskStateRestart, err)
+			if e.kafkaMgr == nil {
+				if err := e.encodeDumpEntry(entry); err != nil {
+					e.onError(TaskStateRestart, err)
+				}
 			}
 		}
 	}
@@ -1079,8 +1115,15 @@ func (e *Extractor) mysqlDump() error {
 				// TODO: entry values may be empty. skip the entry after removing 'start transaction'.
 				entry.SystemVariablesStatement = setSystemVariablesStatement
 				entry.SqlMode = setSqlMode
-				if err = e.encodeDumpEntry(entry); err != nil {
-					e.onError(TaskStateRestart, err)
+				if e.kafkaMgr != nil {
+					err := e.kafkaTransformSnapshotData(d.table, entry)
+					if err != nil {
+						e.onError(TaskStateRestart, err)
+					}
+				} else {
+					if err = e.encodeDumpEntry(entry); err != nil {
+						e.onError(TaskStateRestart, err)
+					}
 				}
 				atomic.AddInt64(&e.mysqlContext.TotalRowsCopied, entry.RowsCount)
 			}
@@ -1271,4 +1314,258 @@ func (e *Extractor) Shutdown() error {
 	//close(e.binlogChannel)
 	e.logger.Printf("mysql.extractor: Shutting down")
 	return nil
+}
+
+func (e *Extractor) kafkaTransformSnapshotData(table *config.Table, value *dumpEntry) error {
+	tableIdent := fmt.Sprintf("%v.%v.%v", e.kafkaMgr.Cfg.Topic, table.TableSchema, table.TableName)
+	e.logger.Debugf("**** value: %v", value.ValuesX)
+	for _, rowValues := range value.ValuesX {
+		keyPayload := kafka2.NewRow()
+
+		valuePayload := kafka2.NewValuePayload()
+		valuePayload.Source.Version = "0.0.1"
+		valuePayload.Source.Name = e.kafkaMgr.Cfg.Topic
+		valuePayload.Source.ServerID = 0 // TODO
+		valuePayload.Source.TsSec = 0 // TODO the timestamp in seconds
+		valuePayload.Source.Gtid = nil
+		valuePayload.Source.File = ""
+		valuePayload.Source.Pos = 0
+		valuePayload.Source.Row = 1 // TODO "the row within the event (if there is more than one)".
+		valuePayload.Source.Snapshot = true
+		valuePayload.Source.Thread = nil // TODO
+		valuePayload.Source.Db = table.TableSchema
+		valuePayload.Source.Table = table.TableName
+		valuePayload.Op = kafka2.RECORD_OP_INSERT
+		valuePayload.TsMs = currentTimeMillis()
+
+		valuePayload.Before = nil
+		valuePayload.After = kafka2.NewRow()
+
+		columnList := table.OriginalTableColumns.ColumnList()
+		valueColDef, keyColDef := kafkaColumnListToColDefs(table.OriginalTableColumns)
+		keySchema := kafka2.NewKeySchema(tableIdent, keyColDef)
+
+		for i, _ := range columnList {
+			if columnList[i].IsPk() {
+				keyPayload.AddField(columnList[i].Name, rowValues[i])
+			}
+
+			e.logger.Debugf("**** rowvalue: %v", rowValues[i])
+			valuePayload.After.AddField(columnList[i].Name, rowValues[i])
+		}
+
+		valueSchema := kafka2.NewEnvelopeSchema(tableIdent, valueColDef)
+
+		k := kafka2.DbzOutput{
+			Schema:keySchema,
+			Payload:keyPayload,
+		}
+		v := kafka2.DbzOutput{
+			Schema:valueSchema,
+			Payload:valuePayload,
+		}
+
+		kBs, err := json.Marshal(k)
+		if err != nil {
+			return fmt.Errorf("mysql.extractor.kafka.serialization error: %v", err)
+		}
+		vBs, err := json.Marshal(v)
+		if err != nil {
+			return fmt.Errorf("mysql.extractor.kafka.serialization error: %v", err)
+		}
+
+		e.logger.Debugf("mysql.extractor.kafka sent one msg")
+		err = e.kafkaMgr.Send(kBs, vBs)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (e *Extractor) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry) (err error) {
+	for i, _ := range dmlEvent.Events {
+		dataEvent := &dmlEvent.Events[i]
+
+		if dataEvent.DML == binlog.NotDML {
+			continue
+		}
+
+		var op string
+		var before *kafka2.Row
+		var after *kafka2.Row
+
+		switch dataEvent.DML {
+		case binlog.InsertDML:
+			op = kafka2.RECORD_OP_INSERT
+			before = nil
+			after = kafka2.NewRow()
+		case binlog.DeleteDML:
+			op = kafka2.RECORD_OP_DELETE
+			before = kafka2.NewRow()
+			after = nil
+		case binlog.UpdateDML:
+			op = kafka2.RECORD_OP_UPDATE
+			before = kafka2.NewRow()
+			after = kafka2.NewRow()
+		}
+
+		table := dataEvent.Table
+		tableIdent := fmt.Sprintf("%v.%v.%v", e.kafkaMgr.Cfg.Topic, table.TableSchema, table.TableName)
+
+		keyPayload := kafka2.NewRow()
+		colList := table.OriginalTableColumns.ColumnList()
+		colDefs, keyColDefs := kafkaColumnListToColDefs(table.OriginalTableColumns)
+		for i, _ := range colList {
+			colName := colList[i].Name
+			if colList[i].IsPk() {
+				if before != nil {
+					// update/delete: use before
+					keyPayload.AddField(colName, dataEvent.WhereColumnValues.AbstractValues[i])
+				} else {
+					// insert: use after
+					keyPayload.AddField(colName, dataEvent.NewColumnValues.AbstractValues[i])
+				}
+			}
+
+			if before != nil {
+				before.AddField(colName, dataEvent.WhereColumnValues.AbstractValues[i])
+			}
+			if after != nil {
+				after.AddField(colName, dataEvent.NewColumnValues.AbstractValues[i])
+			}
+		}
+
+		valuePayload := kafka2.NewValuePayload()
+		valuePayload.Before = before
+		valuePayload.After = after
+
+		valuePayload.Source.Version = "0.0.1"
+		valuePayload.Source.Name = e.kafkaMgr.Cfg.Topic
+		valuePayload.Source.ServerID = 0 // TODO
+		valuePayload.Source.TsSec = 0 // TODO the timestamp in seconds
+		valuePayload.Source.Gtid = dmlEvent.Coordinates.GtidSet
+		valuePayload.Source.File = dmlEvent.Coordinates.LogFile
+		valuePayload.Source.Pos = dmlEvent.Coordinates.LogPos
+		valuePayload.Source.Row = 1 // TODO "the row within the event (if there is more than one)".
+		valuePayload.Source.Snapshot = false // TODO "whether this event was part of a snapshot"
+		// My guess: for full range, snapshot=true, else false
+		valuePayload.Source.Thread = nil // TODO
+		valuePayload.Source.Db = dataEvent.DatabaseName
+		valuePayload.Source.Table = dataEvent.TableName
+		valuePayload.Op = op
+		valuePayload.TsMs = currentTimeMillis()
+
+		valueSchema := kafka2.NewEnvelopeSchema(tableIdent, colDefs)
+
+		keySchema := kafka2.NewKeySchema(tableIdent, keyColDefs)
+		k := kafka2.DbzOutput{
+			Schema: keySchema,
+			Payload: keyPayload,
+		}
+		v := kafka2.DbzOutput{
+			Schema: valueSchema,
+			Payload: valuePayload,
+		}
+		kBs, err := json.Marshal(k)
+		if err != nil {
+			return err
+		}
+		vBs, err := json.Marshal(v)
+		if err != nil {
+			return err
+		}
+
+		err = e.kafkaMgr.Send(kBs, vBs)
+		if err != nil {
+			return err
+		}
+
+		// tombstone event for DELETE
+		if dataEvent.DML == kafka2.RECORD_OP_DELETE {
+			v2 := kafka2.DbzOutput{
+				Schema: nil,
+				Payload: nil,
+			}
+			v2Bs, err := json.Marshal(v2)
+			if err != nil {
+				return err
+			}
+			err = e.kafkaMgr.Send(kBs, v2Bs)
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+func kafkaColumnListToColDefs(colList *mysql.ColumnList) (valColDefs kafka2.ColDefs, keyColDefs kafka2.ColDefs) {
+	// TODO generate key coldef
+	cols := colList.ColumnList()
+	for i, _ := range cols {
+		var theType kafka2.SchemaType
+		var optName *string
+
+		addToKey := cols[i].IsPk()
+
+		switch cols[i].Type {
+		case mysql.UnknownColumnType:
+			// TODO
+		case mysql.BitColumnType:
+			theType = kafka2.SCHEMA_TYPE_BYTES
+		case mysql.BlobColumnType:
+			theType = kafka2.SCHEMA_TYPE_BYTES
+		case mysql.BinaryColumnType:
+			theType = kafka2.SCHEMA_TYPE_BYTES
+		case mysql.VarbinaryColumnType:
+			theType = kafka2.SCHEMA_TYPE_BYTES
+
+		case mysql.TextColumnType, mysql.CharColumnType, mysql.VarcharColumnType:
+			theType = kafka2.SCHEMA_TYPE_STRING
+		case mysql.TinyintColumnType:
+			theType = kafka2.SCHEMA_TYPE_INT8
+		case mysql.SmallintColumnType:
+			theType = kafka2.SCHEMA_TYPE_INT16
+		case mysql.MediumIntColumnType:
+			theType = kafka2.SCHEMA_TYPE_INT32
+		case mysql.IntColumnType:
+			theType = kafka2.SCHEMA_TYPE_INT32
+		case mysql.BigIntColumnType:
+			theType = kafka2.SCHEMA_TYPE_INT64
+
+		case mysql.FloatColumnType:
+			theType = kafka2.SCHEMA_TYPE_FLOAT64
+		case mysql.DoubleColumnType:
+			theType = kafka2.SCHEMA_TYPE_FLOAT64
+		case mysql.DecimalColumnType:
+			// TODO
+		case mysql.TimestampColumnType:
+			theType = kafka2.SCHEMA_TYPE_INT64
+		case mysql.DateTimeColumnType:
+			// TODO
+		case mysql.EnumColumnType:
+			theType = kafka2.SCHEMA_TYPE_STRING
+		case mysql.JSONColumnType:
+			theType = kafka2.SCHEMA_TYPE_STRING
+			optName = new(string)
+			*optName = "io.debezium.data.Json"
+		case mysql.DateColumnType:
+			theType = kafka2.SCHEMA_TYPE_INT32
+		case mysql.TimeColumnType:
+
+		case mysql.YearColumnType:
+			theType = kafka2.SCHEMA_TYPE_INT32
+		default:
+			// report a BUG
+		}
+		optional := false
+
+		field := kafka2.NewSimpleSchemaField(theType, optional, cols[i].Name)
+		valColDefs = append(valColDefs, field)
+		if addToKey {
+			keyColDefs = append(keyColDefs, field)
+		}
+	}
+	return valColDefs, keyColDefs
 }

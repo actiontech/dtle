@@ -7,6 +7,7 @@ import (
 
 	"strings"
 	"udup/internal/config/mysql"
+	"udup/internal/config"
 )
 
 type EventDML string
@@ -86,9 +87,9 @@ type DataEvent struct {
 	TableName            string
 	DML                  EventDML
 	ColumnCount          int
-	OriginalTableColumns *mysql.ColumnList
 	WhereColumnValues    *mysql.ColumnValues
 	NewColumnValues      *mysql.ColumnValues
+	Table                *config.Table // TODO tmp solution
 }
 
 func NewDataEvent(databaseName, tableName string, dml EventDML, columnCount int) DataEvent {

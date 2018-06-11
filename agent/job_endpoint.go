@@ -477,4 +477,5 @@ func ApiTaskToStructsTask(apiTask *api.Task, structsTask *models.Task) {
 	structsTask.Driver = apiTask.Driver
 	structsTask.Leader = apiTask.Leader
 	structsTask.Config = apiTask.Config
+	structsTask.Kafka = apiTask.Kafka
 }

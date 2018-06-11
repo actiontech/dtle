@@ -2,6 +2,7 @@ package api
 
 import (
 	"time"
+	"udup/internal/client/driver/kafka2"
 )
 
 // Task is a single process in a task.
@@ -13,6 +14,7 @@ type Task struct {
 	Config   map[string]interface{}
 	Leader   bool
 	Status   string
+	Kafka    *kafka2.KafkaConfig
 }
 
 // Configure is used to configure a single k/v pair on

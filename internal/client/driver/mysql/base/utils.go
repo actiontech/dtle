@@ -221,7 +221,9 @@ func GetTableColumns(db usql.QueryAble, databaseName, tableName string) (*umconf
 		columns = append(columns, umconf.Column{
 			Name:rowMap.GetString("Field"),
 			ColumnType:rowMap.GetString("Type"),
-			Key:rowMap.GetString("Key")})
+			Key:strings.ToUpper(rowMap.GetString("Key")),
+			Nullable:strings.ToUpper(rowMap.GetString("Null")) == "YES",
+		})
 		return nil
 	})
 	if err != nil {
@@ -460,6 +462,85 @@ func ApplyColumnTypes(db usql.QueryAble, databaseName, tableName string, columns
 		if strings.Contains(columnType, "float") {
 			for _, columnsList := range columnsLists {
 				columnsList.GetColumn(columnName).Type = umconf.FloatColumnType
+			}
+		}
+		if strings.HasPrefix(columnType, "varbinary") {
+			for _, columnsList := range columnsLists {
+				columnsList.GetColumn(columnName).Type = umconf.VarbinaryColumnType
+				columnsList.GetColumn(columnName).ColumnType = columnType
+			}
+		}
+		if strings.HasPrefix(columnType, "char") {
+			for _, columnsList := range columnsLists {
+				columnsList.GetColumn(columnName).Type = umconf.CharColumnType
+				columnsList.GetColumn(columnName).ColumnType = columnType
+			}
+		}
+		if strings.HasPrefix(columnType, "varchar") {
+			for _, columnsList := range columnsLists {
+				columnsList.GetColumn(columnName).Type = umconf.VarcharColumnType
+				columnsList.GetColumn(columnName).ColumnType = columnType
+			}
+		}
+		if strings.HasPrefix(columnType, "date") {
+			for _, columnsList := range columnsLists {
+				columnsList.GetColumn(columnName).Type = umconf.DateColumnType
+			}
+		}
+		if strings.HasPrefix(columnType, "year") {
+			for _, columnsList := range columnsLists {
+				columnsList.GetColumn(columnName).Type = umconf.YearColumnType
+			}
+		}
+		if strings.HasPrefix(columnType, "time") {
+			for _, columnsList := range columnsLists {
+				columnsList.GetColumn(columnName).Type = umconf.TimeColumnType
+			}
+		}
+		if strings.Contains(columnType, "blob") {
+			for _, columnsList := range columnsLists {
+				columnsList.GetColumn(columnName).Type = umconf.BlobColumnType
+			}
+		}
+		if strings.HasPrefix(columnType, "bit") {
+			for _, columnsList := range columnsLists {
+				columnsList.GetColumn(columnName).Type = umconf.BitColumnType
+			}
+		}
+		if strings.HasPrefix(columnType, "int") {
+			for _, columnsList := range columnsLists {
+				columnsList.GetColumn(columnName).Type = umconf.IntColumnType
+				columnsList.GetColumn(columnName).ColumnType = columnType
+			}
+		}
+		if strings.HasPrefix(columnType, "tinyint") {
+			for _, columnsList := range columnsLists {
+				columnsList.GetColumn(columnName).Type = umconf.TinyintColumnType
+				columnsList.GetColumn(columnName).ColumnType = columnType
+			}
+		}
+		if strings.HasPrefix(columnType, "smallint") {
+			for _, columnsList := range columnsLists {
+				columnsList.GetColumn(columnName).Type = umconf.SmallintColumnType
+				columnsList.GetColumn(columnName).ColumnType = columnType
+			}
+		}
+		if strings.HasPrefix(columnType, "bigint") {
+			for _, columnsList := range columnsLists {
+				columnsList.GetColumn(columnName).Type = umconf.BigIntColumnType
+				columnsList.GetColumn(columnName).ColumnType = columnType
+			}
+		}
+		if strings.HasPrefix(columnType, "decimal") {
+			for _, columnsList := range columnsLists {
+				columnsList.GetColumn(columnName).Type = umconf.DecimalColumnType
+				columnsList.GetColumn(columnName).ColumnType = columnType
+			}
+		}
+		if strings.HasPrefix(columnType, "double") {
+			for _, columnsList := range columnsLists {
+				columnsList.GetColumn(columnName).Type = umconf.DoubleColumnType
+				columnsList.GetColumn(columnName).ColumnType = columnType
 			}
 		}
 		// TODO return err on unknown type?
