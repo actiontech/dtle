@@ -25,12 +25,9 @@ const (
 
 	channelBufferSize  = 600
 	defaultNumRetries  = 5
-	defaultConcurrency = 10
 	defaultChunkSize   = 2000
 	defaultNumWorkers  = 1
 	defaultMsgBytes    = 20 * 1024
-	defaultMsgsLimit   = 65536
-	defaultBytesLimit  = 65536 * 1024
 )
 
 // RPCHandler can be provided to the Client if there is a local server
@@ -129,13 +126,9 @@ type MySQLDriverConfig struct {
 	MsgBytesLimit                       int
 	TrafficAgainstLimits                int
 	TotalTransferredBytes               int
-	MsgsLimit                           int
-	BytesLimit                          int
-	ConcurrentCountTableRows            bool
 	SkipRenamedColumns                  bool
 	MaxRetries                          int64
 	ChunkSize                           int64
-	Concurrency                         int
 	niceRatio                           float64
 	MaxLagMillisecondsThrottleThreshold int64
 	maxLoad                             umconf.LoadMap
@@ -187,9 +180,6 @@ func (a *MySQLDriverConfig) SetDefault() *MySQLDriverConfig {
 	if result.ChunkSize <= 0 {
 		result.ChunkSize = defaultChunkSize
 	}
-	if result.Concurrency <= 0 {
-		result.Concurrency = defaultConcurrency
-	}
 	if result.ReplChanBufferSize <= 0 {
 		result.ReplChanBufferSize = channelBufferSize
 	}
@@ -198,12 +188,6 @@ func (a *MySQLDriverConfig) SetDefault() *MySQLDriverConfig {
 	}
 	if result.MsgBytesLimit <= 0 {
 		result.MsgBytesLimit = defaultMsgBytes
-	}
-	if result.MsgsLimit <= 0 {
-		result.MsgsLimit = defaultMsgsLimit
-	}
-	if result.BytesLimit <= 0 {
-		result.BytesLimit = defaultBytesLimit
 	}
 	if result.GroupCount == 0 {
 		result.GroupCount = 1
