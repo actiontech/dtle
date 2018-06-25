@@ -143,6 +143,8 @@ type MySQLDriverConfig struct {
 	RowsEstimate                        int64
 	DeltaEstimate                       int64
 	TimeZone                            string
+	GroupCount                          int
+	GroupTimeout                        int // millisecond
 
 	Gtid                     string
 	NatsAddr                 string
@@ -202,6 +204,12 @@ func (a *MySQLDriverConfig) SetDefault() *MySQLDriverConfig {
 	}
 	if result.BytesLimit <= 0 {
 		result.BytesLimit = defaultBytesLimit
+	}
+	if result.GroupCount == 0 {
+		result.GroupCount = 1
+	}
+	if result.GroupTimeout == 0 {
+		result.GroupTimeout = 100
 	}
 	if "" == result.ConnectionConfig.Charset {
 		result.ConnectionConfig.Charset = "utf8mb4"

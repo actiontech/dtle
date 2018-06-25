@@ -638,31 +638,65 @@ func Encode(v interface{}) ([]byte, error) {
 func (e *Extractor) StreamEvents() error {
 	if e.mysqlContext.ApproveHeterogeneous {
 		go func() {
-			for binlogEntry := range e.dataChannel {
-				if nil != binlogEntry {
-					if e.kafkaMgr != nil {
+			defer e.logger.Debugf("extractor. StreamEvents goroutine exited")
+
+			if e.kafkaMgr != nil {
+				for binlogEntry := range e.dataChannel {
+					if nil != binlogEntry {
 						err := e.kafkaTransformDMLEventQuery(binlogEntry)
 						if err != nil {
 							e.onError(TaskStateDead, err)
 							break
 						}
-					} else {
+						e.mysqlContext.Stage = models.StageSendingBinlogEventToSlave
+						atomic.AddInt64(&e.mysqlContext.DeltaEstimate, 1)
+					}
+				}
+			} else {
+				entries := binlog.BinlogEntries{}
+
+				sendEntries := func() error {
+					txMsg, err := Encode(entries)
+					if err != nil {
+						return err
+					}
+
+					if err = e.publish(fmt.Sprintf("%s_incr_hete", e.subject), "", txMsg); err != nil {
+						return err
+					}
+
+					entries.Entries = nil
+
+					return nil
+				}
+
+				keepGoing := true
+				for keepGoing && !e.shutdown {
+					var err error
+					select {
+					case binlogEntry := <-e.dataChannel:
 						for i := range binlogEntry.Events {
 							binlogEntry.Events[i].Table = nil // TODO tmp solution
 						}
-						txMsg, err := Encode(binlogEntry)
-						if err != nil {
-							e.onError(TaskStateDead, err)
-							break
+						entries.Entries = append(entries.Entries, binlogEntry)
+						if len(entries.Entries) >= e.mysqlContext.GroupCount {
+							e.logger.Debugf("extractor. incr. send by GroupLimit: %v", e.mysqlContext.GroupCount)
+							err = sendEntries()
 						}
-
-						if err = e.publish(fmt.Sprintf("%s_incr_hete", e.subject), "", txMsg); err != nil {
-							e.onError(TaskStateDead, err)
-							break
+					case <-time.After(time.Duration(e.mysqlContext.GroupTimeout) * time.Millisecond):
+						nEntries := len(entries.Entries)
+						if nEntries > 0 {
+							e.logger.Debugf("extractor. incr. send by timeout. nEntries: %v", nEntries)
+							err = sendEntries()
 						}
 					}
-					e.mysqlContext.Stage = models.StageSendingBinlogEventToSlave
-					atomic.AddInt64(&e.mysqlContext.DeltaEstimate, 1)
+					if err != nil {
+						e.onError(TaskStateDead, err)
+						keepGoing = false
+					} else {
+						e.mysqlContext.Stage = models.StageSendingBinlogEventToSlave
+						atomic.AddInt64(&e.mysqlContext.DeltaEstimate, 1)
+					}
 				}
 			}
 		}()

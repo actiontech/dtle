@@ -476,14 +476,16 @@ func (a *Applier) initiateStreaming() error {
 
 	if a.mysqlContext.ApproveHeterogeneous {
 		_, err := a.natsConn.Subscribe(fmt.Sprintf("%s_incr_hete", a.subject), func(m *gonats.Msg) {
-			var binlogEntry *binlog.BinlogEntry
-			if err := Decode(m.Data, &binlogEntry); err != nil {
+			var binlogEntries binlog.BinlogEntries
+			if err := Decode(m.Data, &binlogEntries); err != nil {
 				a.onError(TaskStateDead, err)
 			}
-			//for _, entry := range binlogEntry {
-			a.applyDataEntryQueue <- binlogEntry
-			a.currentCoordinates.RetrievedGtidSet = fmt.Sprintf("%s:%d", binlogEntry.Coordinates.SID, binlogEntry.Coordinates.GNO)
-			//}
+
+			a.logger.Debugf("applier. incr. recv. nEntries: %v", len(binlogEntries.Entries))
+			for _, binlogEntry := range binlogEntries.Entries {
+				a.applyDataEntryQueue <- binlogEntry
+				a.currentCoordinates.RetrievedGtidSet = fmt.Sprintf("%s:%d", binlogEntry.Coordinates.SID, binlogEntry.Coordinates.GNO)
+			}
 			a.mysqlContext.Stage = models.StageWaitingForMasterToSendEvent
 			atomic.AddInt64(&a.mysqlContext.DeltaEstimate, 1)
 

@@ -6,6 +6,10 @@ import (
 	"udup/internal/client/driver/mysql/base"
 )
 
+type BinlogEntries struct {
+	Entries []*BinlogEntry
+}
+
 // BinlogEntry describes an entry in the binary log
 type BinlogEntry struct {
 	hasBeginQuery bool
