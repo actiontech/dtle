@@ -485,9 +485,9 @@ func (a *Applier) initiateStreaming() error {
 			for _, binlogEntry := range binlogEntries.Entries {
 				a.applyDataEntryQueue <- binlogEntry
 				a.currentCoordinates.RetrievedGtidSet = fmt.Sprintf("%s:%d", binlogEntry.Coordinates.SID, binlogEntry.Coordinates.GNO)
+				atomic.AddInt64(&a.mysqlContext.DeltaEstimate, 1)
 			}
 			a.mysqlContext.Stage = models.StageWaitingForMasterToSendEvent
-			atomic.AddInt64(&a.mysqlContext.DeltaEstimate, 1)
 
 			if err := a.natsConn.Publish(m.Reply, nil); err != nil {
 				a.onError(TaskStateDead, err)
