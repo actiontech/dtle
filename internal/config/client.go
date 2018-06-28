@@ -140,6 +140,7 @@ type MySQLDriverConfig struct {
 	GroupTimeout                        int // millisecond
 
 	Gtid                     string
+	GtidStart                string
 	NatsAddr                 string
 	ParallelWorkers          int
 	ConnectionConfig         *umconf.ConnectionConfig

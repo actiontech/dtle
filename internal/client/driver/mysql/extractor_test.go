@@ -9,6 +9,14 @@ import (
 	"udup/internal/models"
 )
 
+func TestGtidSetDiff(t *testing.T) {
+	// TODO
+	g, err := GtidSetDiff(
+		"113fa2ce-c8e6-11e7-b894-67ad30e6f107:1-100:200:300-400,f2a4aa16-c8e6-11e7-9ff0-e19f7778f563:100-200:300-400,8888aa16-c8e6-11e7-9ff0-e19f7778f563:1-1000",
+		"113fa2ce-c8e6-11e7-b894-67ad30e6f107:330,f2a4aa16-c8e6-11e7-9ff0-e19f7778f563:301",
+	)
+}
+
 func TestNewExtractor(t *testing.T) {
 	type args struct {
 		subject    string

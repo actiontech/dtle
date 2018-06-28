@@ -511,3 +511,59 @@ func ApplyColumnTypes(db usql.QueryAble, databaseName, tableName string, columns
 	}, databaseName, tableName)
 	return err
 }
+
+func GtidSetDiff(set1 string, set2 string) (string, error) {
+	gStartHelper, err := gomysql.ParseMysqlGTIDSet(set2)
+	if err != nil {
+		return "", err
+	}
+
+	gStart, ok := gStartHelper.(*gomysql.MysqlGTIDSet)
+	if !ok {
+		return "", fmt.Errorf("internal error: cannot cast MysqlGTIDSet")
+	}
+
+	gExecutedHelper, err := gomysql.ParseMysqlGTIDSet(set1)
+	if err != nil {
+		return "", err
+	}
+
+	gExecuted, ok := gExecutedHelper.(*gomysql.MysqlGTIDSet)
+	if !ok {
+		return "", fmt.Errorf("internal error: cannot cast MysqlGTIDSet")
+	}
+
+	for uuid, startSet := range gStart.Sets {
+		// one for each UUID
+		if startSet.Intervals.Len() != 1 {
+			return "", fmt.Errorf("bad format for GtidStart")
+		}
+		// only start
+		if startSet.Intervals[0].Start + 1 != startSet.Intervals[0].Stop {
+			return "", fmt.Errorf("bad format for GtidStart")
+		}
+
+		startPoint := startSet.Intervals[0].Start
+		execSets, ok := gExecuted.Sets[uuid]
+		if !ok {
+			// do nothing
+		} else {
+			newIntervals := gomysql.IntervalSlice{}
+			for i, _ := range execSets.Intervals {
+				if execSets.Intervals[i].Start >= startPoint {
+					continue
+				} else if execSets.Intervals[i].Stop>= startPoint {
+					newIntervals = append(newIntervals, gomysql.Interval{
+						Start:execSets.Intervals[i].Start,
+						Stop:startPoint,
+					})
+				} else {
+					newIntervals = append(newIntervals, execSets.Intervals[i])
+				}
+			}
+			execSets.Intervals = newIntervals
+		}
+	}
+
+	return gExecuted.String(), nil
+}
