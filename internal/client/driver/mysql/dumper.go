@@ -68,7 +68,6 @@ type dumpEntry struct {
 	TableName                string
 	TableSchema              string
 	TbSQL                    []string
-	Values                   [][]string
 	ValuesX					 [][]string
 	TotalCount               int64
 	RowsCount                int64
@@ -226,16 +225,17 @@ func (d *dumper) getChunkData(e *dumpEntry) (err error) {
 		return err
 	}
 
-	values := make([]*sql.RawBytes, len(columns))
+	rowValuesRaw := make([]*sql.RawBytes, len(columns))
 
-	scanArgs := make([]interface{}, len(values))
-	for i := range values {
-		scanArgs[i] = &values[i]
+	scanArgs := make([]interface{}, len(rowValuesRaw)) // tmp use, for cast `values` to `[]interface{}`
+	for i := range rowValuesRaw {
+		scanArgs[i] = &rowValuesRaw[i]
 	}
 
-	data := make([]string, 0)
 	//packetLen := 0
 	var lastVals *[]string
+
+	nRows := 0
 
 	for rows.Next() {
 		err = rows.Scan(scanArgs...)
@@ -248,11 +248,11 @@ func (d *dumper) getChunkData(e *dumpEntry) (err error) {
 		//	copyRow[i] = scanArgs[i]
 		//}
 
-		vals := make([]string, 0)
-		for _, col := range values {
+		rowValuesStr := make([]string, 0, len(columns))
+		for _, col := range rowValuesRaw {
 			// Here we can check if the value is nil (NULL value)
 			if col != nil {
-				vals = append(vals, fmt.Sprintf("'%s'", usql.EscapeValue(string(*col))))
+				rowValuesStr = append(rowValuesStr, fmt.Sprintf("'%s'", usql.EscapeValue(string(*col))))
 				/*packetLen += len(usql.EscapeValue(string(*col)))
 				if packetLen > 2000000 {
 					entry.Values = append(entry.Values, data)
@@ -260,20 +260,20 @@ func (d *dumper) getChunkData(e *dumpEntry) (err error) {
 					data = []string{}
 				}*/
 			} else {
-				vals = append(vals, "NULL")
+				rowValuesStr = append(rowValuesStr, "NULL")
 			}
 		}
-		entry.ValuesX = append(entry.ValuesX, vals)
+		entry.ValuesX = append(entry.ValuesX, rowValuesStr)
 
-		lastVals = &vals
-		data = append(data, fmt.Sprintf("( %s )", strings.Join(vals, ", ")))
+		lastVals = &rowValuesStr
+		nRows += 1
 		entry.incrementCounter()
 	}
 
-	d.logger.Debugf("getChunkData. n_row: %d", len(data))
+	d.logger.Debugf("getChunkData. n_row: %d", nRows)
 
 	// TODO getChunkData could get 0 rows. Esp after removing 'start transaction'.
-	if len(data) == 0 {
+	if nRows == 0 {
 		return fmt.Errorf("getChunkData. GetLastMaxVal: no rows found")
 	}
 
@@ -291,24 +291,11 @@ func (d *dumper) getChunkData(e *dumpEntry) (err error) {
 		d.logger.Debugf("GetLastMaxVal: got %v", d.table.UseUniqueKey.LastMaxVals)
 	}
 
-	entry.Values = append(entry.Values, data)
-	//d.resultsChannel <- entry
-	/*query = fmt.Sprintf(`
-			insert into %s.%s
-				(%s)
-			values
-				%s
-			on duplicate key update
-				%s=VALUES(%s)
-		`,
-		usql.EscapeName(d.TableSchema),
-		usql.EscapeName(d.TableName),
-		strings.Join(columns, ","),
-		strings.Join(data, ","),
-		columns[0],
-		columns[0],
-	)
-	entry.Values = query*/
+	// ValuesX[i]: n-th row
+	// ValuesX[i][j]: j-th col of n-th row
+	// Values[i]: i-th chunk of rows
+	// Values[i][j]: j-th row (in paren-wrapped string)
+
 	return nil
 }
 

@@ -1060,24 +1060,36 @@ func (a *Applier) ApplyEventQueries(db *gosql.DB, entry *dumpEntry) error {
 			return err
 		}
 	}
-	for i, _ := range entry.Values {
-		fmt.Sprintf("%v", i)
-		var buf bytes.Buffer
-		buf.WriteString(fmt.Sprintf(`replace into %s.%s values `, entry.TableSchema, entry.TableName))
-		var first = false
-		for j, _ := range entry.Values[i] {
-			if !first {
-				first = true
-			} else {
-				buf.WriteString(",")
-			}
-			buf.WriteString(entry.Values[i][j])
-		}
-		query := buf.String()
 
-		err = execQuery(query)
-		if err != nil {
-			return err
+	var buf bytes.Buffer
+	for i, _ := range entry.ValuesX {
+		if buf.Len() == 0 {
+			buf.WriteString(fmt.Sprintf(`replace into %s.%s values (`, entry.TableSchema, entry.TableName))
+		} else {
+			buf.WriteString(",(")
+		}
+
+		firstCol := true
+		for j := range entry.ValuesX[i] {
+			if firstCol {
+				firstCol = false
+			} else {
+				buf.WriteByte(',')
+			}
+			buf.WriteString(entry.ValuesX[i][j])
+		}
+		buf.WriteByte(')')
+
+		needInsert := (int64(i + 1) % a.mysqlContext.ChunkSize == 0) || (i + 1 == len(entry.ValuesX))
+		// row number or last rows
+		// TODO based on sql size
+
+		if needInsert {
+			err := execQuery(buf.String())
+			buf.Reset()
+			if err != nil {
+				return err
+			}
 		}
 	}
 
