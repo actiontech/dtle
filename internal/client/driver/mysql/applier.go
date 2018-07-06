@@ -1062,6 +1062,7 @@ func (a *Applier) ApplyEventQueries(db *gosql.DB, entry *dumpEntry) error {
 	}
 
 	var buf bytes.Buffer
+	buf.Grow(1 * 1024 * 1024) // 1MB. TODO parameterize it
 	for i, _ := range entry.ValuesX {
 		if buf.Len() == 0 {
 			buf.WriteString(fmt.Sprintf(`replace into %s.%s values (`, entry.TableSchema, entry.TableName))
@@ -1076,7 +1077,15 @@ func (a *Applier) ApplyEventQueries(db *gosql.DB, entry *dumpEntry) error {
 			} else {
 				buf.WriteByte(',')
 			}
-			buf.WriteString(entry.ValuesX[i][j])
+
+			colData := entry.ValuesX[i][j]
+			if colData != nil {
+				buf.WriteByte('\'')
+				buf.WriteString(sql.EscapeValue(string(*colData)))
+				buf.WriteByte('\'')
+			} else {
+				buf.WriteString("NULL")
+			}
 		}
 		buf.WriteByte(')')
 

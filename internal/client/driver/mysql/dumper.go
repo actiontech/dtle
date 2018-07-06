@@ -2,7 +2,6 @@ package mysql
 
 import (
 	"bytes"
-	"database/sql"
 	"fmt"
 	"math"
 	"strings"
@@ -13,6 +12,7 @@ import (
 	"udup/internal/config"
 	umconf "udup/internal/config/mysql"
 	log "udup/internal/logger"
+	"time"
 )
 
 var (
@@ -68,7 +68,7 @@ type dumpEntry struct {
 	TableName                string
 	TableSchema              string
 	TbSQL                    []string
-	ValuesX					 [][]string
+	ValuesX					 [][]*[]byte
 	TotalCount               int64
 	RowsCount                int64
 	Offset                   uint64 // only for 'no PK' table
@@ -202,7 +202,15 @@ func (d *dumper) getChunkData(e *dumpEntry) (err error) {
 	// TODO escape schema/table/column name once and save
 	defer func() {
 		entry.err = err
-		d.resultsChannel <- entry
+		keepGoing := true
+		for keepGoing {
+			select {
+			case d.resultsChannel <- entry:
+				keepGoing = false
+			case <-time.After(5 * time.Second):
+				d.logger.Debugf("mysql.dumper: resultsChannel full. waiting")
+			}
+		}
 		d.logger.Debugf("mysql.dumper: resultsChannel: %v", len(d.resultsChannel))
 	}()
 
@@ -225,47 +233,25 @@ func (d *dumper) getChunkData(e *dumpEntry) (err error) {
 		return err
 	}
 
-	rowValuesRaw := make([]*sql.RawBytes, len(columns))
-
-	scanArgs := make([]interface{}, len(rowValuesRaw)) // tmp use, for cast `values` to `[]interface{}`
-	for i := range rowValuesRaw {
-		scanArgs[i] = &rowValuesRaw[i]
-	}
-
 	//packetLen := 0
-	var lastVals *[]string
 
 	nRows := 0
 
+	scanArgs := make([]interface{}, len(columns)) // tmp use, for casting `values` to `[]interface{}`
+
 	for rows.Next() {
+		rowValuesRaw := make([]*[]byte, len(columns))
+		for i := range rowValuesRaw {
+			scanArgs[i] = &rowValuesRaw[i]
+		}
+
 		err = rows.Scan(scanArgs...)
 		if err != nil {
 			return err
 		}
 
-		//copyRow := make([]interface{}, len(scanArgs))
-		//for i, _ := range scanArgs {
-		//	copyRow[i] = scanArgs[i]
-		//}
+		entry.ValuesX = append(entry.ValuesX, rowValuesRaw)
 
-		rowValuesStr := make([]string, 0, len(columns))
-		for _, col := range rowValuesRaw {
-			// Here we can check if the value is nil (NULL value)
-			if col != nil {
-				rowValuesStr = append(rowValuesStr, fmt.Sprintf("'%s'", usql.EscapeValue(string(*col))))
-				/*packetLen += len(usql.EscapeValue(string(*col)))
-				if packetLen > 2000000 {
-					entry.Values = append(entry.Values, data)
-					packetLen = 0
-					data = []string{}
-				}*/
-			} else {
-				rowValuesStr = append(rowValuesStr, "NULL")
-			}
-		}
-		entry.ValuesX = append(entry.ValuesX, rowValuesStr)
-
-		lastVals = &rowValuesStr
 		nRows += 1
 		entry.incrementCounter()
 	}
@@ -277,18 +263,26 @@ func (d *dumper) getChunkData(e *dumpEntry) (err error) {
 		return fmt.Errorf("getChunkData. GetLastMaxVal: no rows found")
 	}
 
-	if d.table.UseUniqueKey != nil {
-		// lastVals must not be nil if len(data) > 0
-		for i, col := range d.table.UseUniqueKey.Columns.Columns {
-			// TODO save the idx
-			idx := d.table.OriginalTableColumns.Ordinals[col.Name]
-			if idx > len(*lastVals) {
-				return fmt.Errorf("getChunkData. GetLastMaxVal: column index %v > n_column %v", idx, len(*lastVals))
-			} else {
-				d.table.UseUniqueKey.LastMaxVals[i] = (*lastVals)[idx]
-			}
+	if nRows > 0 {
+		var lastVals []string
+
+		for _, col := range entry.ValuesX[len(entry.ValuesX)-1] {
+			lastVals = append(lastVals, usql.EscapeColRawToString(col))
 		}
-		d.logger.Debugf("GetLastMaxVal: got %v", d.table.UseUniqueKey.LastMaxVals)
+
+		if d.table.UseUniqueKey != nil {
+			// lastVals must not be nil if len(data) > 0
+			for i, col := range d.table.UseUniqueKey.Columns.Columns {
+				// TODO save the idx
+				idx := d.table.OriginalTableColumns.Ordinals[col.Name]
+				if idx > len(lastVals) {
+					return fmt.Errorf("getChunkData. GetLastMaxVal: column index %v > n_column %v", idx, len(lastVals))
+				} else {
+					d.table.UseUniqueKey.LastMaxVals[i] = lastVals[idx]
+				}
+			}
+			d.logger.Debugf("GetLastMaxVal: got %v", d.table.UseUniqueKey.LastMaxVals)
+		}
 	}
 
 	// ValuesX[i]: n-th row
