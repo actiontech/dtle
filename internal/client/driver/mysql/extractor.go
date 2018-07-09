@@ -687,6 +687,9 @@ func (e *Extractor) StreamEvents() error {
 				}
 
 				keepGoing := true
+				tick := time.NewTicker(time.Duration(e.mysqlContext.GroupTimeout) * time.Millisecond)
+				defer tick.Stop()
+
 				for keepGoing && !e.shutdown {
 					var err error
 					select {
@@ -699,7 +702,7 @@ func (e *Extractor) StreamEvents() error {
 							e.logger.Debugf("extractor. incr. send by GroupLimit: %v", e.mysqlContext.GroupCount)
 							err = sendEntries()
 						}
-					case <-time.After(time.Duration(e.mysqlContext.GroupTimeout) * time.Millisecond):
+					case <-tick.C:
 						nEntries := len(entries.Entries)
 						if nEntries > 0 {
 							e.logger.Debugf("extractor. incr. send by timeout. nEntries: %v", nEntries)
