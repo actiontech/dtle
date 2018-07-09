@@ -7,6 +7,8 @@ import (
 	"fmt"
 )
 
+type SchemaType string
+
 const (
 	CONVERTER_JSON = "json"
 	CONVERTER_AVRO = "avro"
@@ -72,8 +74,6 @@ func (k *KafkaManager) Send(key []byte, value []byte) error {
 	// TODO partition? offset?
 	return nil
 }
-
-type SchemaType string
 
 var (
 	SourceSchema = &Schema{
