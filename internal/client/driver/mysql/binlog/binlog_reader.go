@@ -231,6 +231,12 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 		return nil
 	}
 
+	// b.currentBinlogEntry is created on GtidEvent
+	// Size of GtidEvent is ignored.
+	if b.currentBinlogEntry != nil {
+		b.currentBinlogEntry.OriginalSize += len(ev.RawData)
+	}
+
 	switch ev.Header.EventType {
 	case replication.GTID_EVENT:
 		if strings.HasPrefix(b.mysqlContext.MySQLVersion, "5.7") {

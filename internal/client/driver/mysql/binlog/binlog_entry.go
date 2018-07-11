@@ -16,6 +16,7 @@ type BinlogEntry struct {
 	Coordinates   base.BinlogCoordinates
 
 	Events []DataEvent
+	OriginalSize         int // size of binlog entry
 }
 
 // NewBinlogEntry creates an empty, ready to go BinlogEntry object
@@ -31,6 +32,7 @@ func NewBinlogEntryAt(coordinates base.BinlogCoordinates) *BinlogEntry {
 	binlogEntry := &BinlogEntry{
 		Coordinates: coordinates,
 		Events:      make([]DataEvent, 0),
+		OriginalSize: 0,
 	}
 	return binlogEntry
 }

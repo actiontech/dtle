@@ -670,6 +670,7 @@ func (e *Extractor) StreamEvents() error {
 				}
 			} else {
 				entries := binlog.BinlogEntries{}
+				entriesSize := 0
 
 				sendEntries := func() error {
 					txMsg, err := Encode(entries)
@@ -682,6 +683,7 @@ func (e *Extractor) StreamEvents() error {
 					}
 
 					entries.Entries = nil
+					entriesSize = 0
 
 					return nil
 				}
@@ -698,14 +700,16 @@ func (e *Extractor) StreamEvents() error {
 							binlogEntry.Events[i].Table = nil // TODO tmp solution
 						}
 						entries.Entries = append(entries.Entries, binlogEntry)
-						if len(entries.Entries) >= e.mysqlContext.GroupCount {
-							e.logger.Debugf("extractor. incr. send by GroupLimit: %v", e.mysqlContext.GroupCount)
+						entriesSize += binlogEntry.OriginalSize
+
+						if entriesSize >= e.mysqlContext.GroupMaxSize {
+							e.logger.Debugf("extractor. incr. send by GroupLimit: %v", e.mysqlContext.GroupMaxSize)
 							err = sendEntries()
 						}
 					case <-tick.C:
 						nEntries := len(entries.Entries)
 						if nEntries > 0 {
-							e.logger.Debugf("extractor. incr. send by timeout. nEntries: %v", nEntries)
+							e.logger.Debugf("extractor. incr. send by timeout. entriesSize: %v", entriesSize)
 							err = sendEntries()
 						}
 					}
