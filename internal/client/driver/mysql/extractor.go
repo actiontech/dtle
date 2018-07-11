@@ -1450,11 +1450,11 @@ func (e *Extractor) kafkaTransformSnapshotData(table *config.Table, value *dumpE
 			return fmt.Errorf("mysql.extractor.kafka.serialization error: %v", err)
 		}
 
-		e.logger.Debugf("mysql.extractor.kafka sent one msg")
 		err = e.kafkaMgr.Send(kBs, vBs)
 		if err != nil {
 			return err
 		}
+		e.logger.Debugf("mysql.extractor.kafka: sent one msg")
 	}
 	return nil
 }
@@ -1556,9 +1556,10 @@ func (e *Extractor) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry) (e
 		if err != nil {
 			return err
 		}
+		e.logger.Debugf("mysql.extractor.kafka: sent one msg")
 
 		// tombstone event for DELETE
-		if dataEvent.DML == kafka2.RECORD_OP_DELETE {
+		if dataEvent.DML == binlog.DeleteDML {
 			v2 := kafka2.DbzOutput{
 				Schema: nil,
 				Payload: nil,
@@ -1571,6 +1572,7 @@ func (e *Extractor) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry) (e
 			if err != nil {
 				return err
 			}
+			e.logger.Debugf("mysql.extractor.kafka: sent one msg")
 		}
 	}
 
