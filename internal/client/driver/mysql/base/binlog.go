@@ -191,3 +191,6 @@ func (b *BinlogCoordinates) DetachedCoordinates() (isDetached bool, detachedLogF
 	}
 	return true, detachedCoordinatesSubmatch[1], detachedCoordinatesSubmatch[2]
 }
+func (b *BinlogCoordinates) GetGtidForThisTx() string {
+	return fmt.Sprintf("%s:%d", b.SID, b.GNO)
+}

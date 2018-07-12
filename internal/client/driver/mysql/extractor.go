@@ -1520,9 +1520,9 @@ func (e *Extractor) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry) (e
 		valuePayload.Source.Name = e.kafkaMgr.Cfg.Topic
 		valuePayload.Source.ServerID = 0 // TODO
 		valuePayload.Source.TsSec = 0 // TODO the timestamp in seconds
-		valuePayload.Source.Gtid = dmlEvent.Coordinates.GtidSet
+		valuePayload.Source.Gtid = dmlEvent.Coordinates.GetGtidForThisTx()
 		valuePayload.Source.File = dmlEvent.Coordinates.LogFile
-		valuePayload.Source.Pos = dmlEvent.Coordinates.LogPos
+		valuePayload.Source.Pos = dataEvent.LogPos
 		valuePayload.Source.Row = 1 // TODO "the row within the event (if there is more than one)".
 		valuePayload.Source.Snapshot = false // TODO "whether this event was part of a snapshot"
 		// My guess: for full range, snapshot=true, else false

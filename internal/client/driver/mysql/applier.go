@@ -484,7 +484,7 @@ func (a *Applier) initiateStreaming() error {
 			a.logger.Debugf("applier. incr. recv. nEntries: %v", len(binlogEntries.Entries))
 			for _, binlogEntry := range binlogEntries.Entries {
 				a.applyDataEntryQueue <- binlogEntry
-				a.currentCoordinates.RetrievedGtidSet = fmt.Sprintf("%s:%d", binlogEntry.Coordinates.SID, binlogEntry.Coordinates.GNO)
+				a.currentCoordinates.RetrievedGtidSet = binlogEntry.Coordinates.GetGtidForThisTx()
 				atomic.AddInt64(&a.mysqlContext.DeltaEstimate, 1)
 			}
 			a.mysqlContext.Stage = models.StageWaitingForMasterToSendEvent

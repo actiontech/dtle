@@ -90,6 +90,7 @@ type DataEvent struct {
 	WhereColumnValues    *mysql.ColumnValues
 	NewColumnValues      *mysql.ColumnValues
 	Table                *config.Table // TODO tmp solution
+	LogPos               int64 // for kafka
 }
 
 func NewDataEvent(databaseName, tableName string, dml EventDML, columnCount int) DataEvent {
