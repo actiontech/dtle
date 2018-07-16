@@ -307,14 +307,8 @@ func (a *Applier) executeWriteFuncs() {
 			select {
 			case copyRows := <-a.copyRowsQueue:
 				if nil != copyRows {
-					if copyRows.DbSQL != "" || len(copyRows.TbSQL) > 0 {
-						if err := a.ApplyEventQueries(a.db, copyRows); err != nil {
-							a.onError(TaskStateDead, err)
-						}
-					} else {
-						if err := a.ApplyEventQueries(a.db, copyRows); err != nil {
-							a.onError(TaskStateDead, err)
-						}
+					if err := a.ApplyEventQueries(a.db, copyRows); err != nil {
+						a.onError(TaskStateDead, err)
 					}
 				}
 			case <-a.rowCopyComplete:

@@ -154,7 +154,7 @@ func (b *BinlogReader) ConnectBinlogStreamer(coordinates base.BinlogCoordinatesX
 		LogPos: coordinates.LogPos,
 	}
 
-	b.logger.Printf("mysql.reader: Connecting binlog streamer at %+v", b.currentCoordinates)
+	b.logger.Printf("mysql.reader: Connecting binlog streamer at %+v", coordinates)
 
 	// Start sync with sepcified binlog gtid
 	b.logger.Debugf("mysql.reader: GtidSet: %v", coordinates.GtidSet)
