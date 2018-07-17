@@ -1062,7 +1062,9 @@ func (a *Applier) ApplyEventQueries(db *gosql.DB, entry *dumpEntry) error {
 	}
 
 	var buf bytes.Buffer
-	buf.Grow(1 * 1024 * 1024) // 1MB. TODO parameterize it
+	BufSizeLimit := 1 * 1024 * 1024 // 1MB. TODO parameterize it
+	BufSizeLimitDelta := 1024
+	buf.Grow(BufSizeLimit + BufSizeLimitDelta)
 	for i, _ := range entry.ValuesX {
 		if buf.Len() == 0 {
 			buf.WriteString(fmt.Sprintf(`replace into %s.%s values (`, entry.TableSchema, entry.TableName))
@@ -1089,9 +1091,8 @@ func (a *Applier) ApplyEventQueries(db *gosql.DB, entry *dumpEntry) error {
 		}
 		buf.WriteByte(')')
 
-		needInsert := (int64(i + 1) % a.mysqlContext.ChunkSize == 0) || (i + 1 == len(entry.ValuesX))
-		// row number or last rows
-		// TODO based on sql size
+		needInsert := (i == len(entry.ValuesX) - 1) || (buf.Len() >= BufSizeLimit)
+		// last rows or sql too large
 
 		if needInsert {
 			err := execQuery(buf.String())
