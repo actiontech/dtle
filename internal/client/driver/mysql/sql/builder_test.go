@@ -29,44 +29,6 @@ func TestEscapeName(t *testing.T) {
 	}
 }
 
-func TestBuildEqualsComparison(t *testing.T) {
-	{
-		columns := []string{"c1"}
-		values := []string{"@v1"}
-		comparison, err := BuildEqualsComparison(columns, values)
-		test.S(t).ExpectNil(err)
-		test.S(t).ExpectEquals(comparison, "((`c1` = @v1))")
-	}
-	{
-		columns := []string{"c1", "c2"}
-		values := []string{"@v1", "@v2"}
-		comparison, err := BuildEqualsComparison(columns, values)
-		test.S(t).ExpectNil(err)
-		test.S(t).ExpectEquals(comparison, "((`c1` = @v1) and (`c2` = @v2))")
-	}
-	{
-		columns := []string{"c1"}
-		values := []string{"@v1", "@v2"}
-		_, err := BuildEqualsComparison(columns, values)
-		test.S(t).ExpectNotNil(err)
-	}
-	{
-		columns := []string{}
-		values := []string{}
-		_, err := BuildEqualsComparison(columns, values)
-		test.S(t).ExpectNotNil(err)
-	}
-}
-
-func TestBuildEqualsPreparedComparison(t *testing.T) {
-	{
-		columns := []string{"c1", "c2"}
-		comparison, err := BuildEqualsPreparedComparison(columns)
-		test.S(t).ExpectNil(err)
-		test.S(t).ExpectEquals(comparison, "((`c1` = ?) and (`c2` = ?))")
-	}
-}
-
 func TestBuildSetPreparedClause(t *testing.T) {
 	{
 		columns := NewColumnList([]string{"c1"})
@@ -83,68 +45,6 @@ func TestBuildSetPreparedClause(t *testing.T) {
 	{
 		columns := NewColumnList([]string{})
 		_, err := BuildSetPreparedClause(columns)
-		test.S(t).ExpectNotNil(err)
-	}
-}
-
-func TestBuildRangeComparison(t *testing.T) {
-	{
-		columns := []string{"c1"}
-		values := []string{"@v1"}
-		args := []interface{}{3}
-		comparison, explodedArgs, err := BuildRangeComparison(columns, values, args, LessThanComparisonSign)
-		test.S(t).ExpectNil(err)
-		test.S(t).ExpectEquals(comparison, "((`c1` < @v1))")
-		test.S(t).ExpectTrue(reflect.DeepEqual(explodedArgs, []interface{}{3}))
-	}
-	{
-		columns := []string{"c1"}
-		values := []string{"@v1"}
-		args := []interface{}{3}
-		comparison, explodedArgs, err := BuildRangeComparison(columns, values, args, LessThanOrEqualsComparisonSign)
-		test.S(t).ExpectNil(err)
-		test.S(t).ExpectEquals(comparison, "((`c1` < @v1) or ((`c1` = @v1)))")
-		test.S(t).ExpectTrue(reflect.DeepEqual(explodedArgs, []interface{}{3, 3}))
-	}
-	{
-		columns := []string{"c1", "c2"}
-		values := []string{"@v1", "@v2"}
-		args := []interface{}{3, 17}
-		comparison, explodedArgs, err := BuildRangeComparison(columns, values, args, LessThanComparisonSign)
-		test.S(t).ExpectNil(err)
-		test.S(t).ExpectEquals(comparison, "((`c1` < @v1) or (((`c1` = @v1)) AND (`c2` < @v2)))")
-		test.S(t).ExpectTrue(reflect.DeepEqual(explodedArgs, []interface{}{3, 3, 17}))
-	}
-	{
-		columns := []string{"c1", "c2"}
-		values := []string{"@v1", "@v2"}
-		args := []interface{}{3, 17}
-		comparison, explodedArgs, err := BuildRangeComparison(columns, values, args, LessThanOrEqualsComparisonSign)
-		test.S(t).ExpectNil(err)
-		test.S(t).ExpectEquals(comparison, "((`c1` < @v1) or (((`c1` = @v1)) AND (`c2` < @v2)) or ((`c1` = @v1) and (`c2` = @v2)))")
-		test.S(t).ExpectTrue(reflect.DeepEqual(explodedArgs, []interface{}{3, 3, 17, 3, 17}))
-	}
-	{
-		columns := []string{"c1", "c2", "c3"}
-		values := []string{"@v1", "@v2", "@v3"}
-		args := []interface{}{3, 17, 22}
-		comparison, explodedArgs, err := BuildRangeComparison(columns, values, args, LessThanOrEqualsComparisonSign)
-		test.S(t).ExpectNil(err)
-		test.S(t).ExpectEquals(comparison, "((`c1` < @v1) or (((`c1` = @v1)) AND (`c2` < @v2)) or (((`c1` = @v1) and (`c2` = @v2)) AND (`c3` < @v3)) or ((`c1` = @v1) and (`c2` = @v2) and (`c3` = @v3)))")
-		test.S(t).ExpectTrue(reflect.DeepEqual(explodedArgs, []interface{}{3, 3, 17, 3, 17, 22, 3, 17, 22}))
-	}
-	{
-		columns := []string{"c1"}
-		values := []string{"@v1", "@v2"}
-		args := []interface{}{3, 17}
-		_, _, err := BuildRangeComparison(columns, values, args, LessThanOrEqualsComparisonSign)
-		test.S(t).ExpectNotNil(err)
-	}
-	{
-		columns := []string{}
-		values := []string{}
-		args := []interface{}{}
-		_, _, err := BuildRangeComparison(columns, values, args, LessThanOrEqualsComparisonSign)
 		test.S(t).ExpectNotNil(err)
 	}
 }

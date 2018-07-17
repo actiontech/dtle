@@ -48,7 +48,6 @@ type Extractor struct {
 	replicateDoDb            []*config.DataSource
 	binlogChannel            chan *binlog.BinlogTx
 	dataChannel              chan *binlog.BinlogEntry
-	parser                   *sql.Parser
 	inspector                *Inspector
 	binlogReader             *binlog.BinlogReader
 	initialBinlogCoordinates *base.BinlogCoordinates
@@ -87,7 +86,6 @@ func NewExtractor(subject, tp string, maxPayload int, cfg *config.MySQLDriverCon
 		mysqlContext:    cfg,
 		binlogChannel:   make(chan *binlog.BinlogTx, cfg.ReplChanBufferSize),
 		dataChannel:     make(chan *binlog.BinlogEntry, cfg.ReplChanBufferSize),
-		parser:          sql.NewParser(),
 		rowCopyComplete: make(chan bool),
 		waitCh:          make(chan *models.WaitResult, 1),
 		shutdownCh:      make(chan struct{}),

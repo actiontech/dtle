@@ -503,7 +503,6 @@ func TestApplier_onApplyTxStructWithSetGtid(t *testing.T) {
 		mysqlContext            *config.MySQLDriverConfig
 		dbs                     []*sql.DB
 		singletonDB             *gosql.DB
-		parser                  *sql.Parser
 		totalRowCount           int
 		applyRowCount           int
 		rowCopyComplete         chan bool
@@ -541,7 +540,6 @@ func TestApplier_onApplyTxStructWithSetGtid(t *testing.T) {
 				mysqlContext:            tt.fields.mysqlContext,
 				dbs:                     tt.fields.dbs,
 				singletonDB:             tt.fields.singletonDB,
-				parser:                  tt.fields.parser,
 				totalRowCount:           tt.fields.totalRowCount,
 				applyRowCount:           tt.fields.applyRowCount,
 				rowCopyComplete:         tt.fields.rowCopyComplete,
@@ -573,7 +571,6 @@ func TestApplier_validateGrants(t *testing.T) {
 		mysqlContext            *config.MySQLDriverConfig
 		dbs                     []*sql.DB
 		singletonDB             *gosql.DB
-		parser                  *sql.Parser
 		totalRowCount           int
 		applyRowCount           int
 		rowCopyComplete         chan bool
@@ -606,7 +603,6 @@ func TestApplier_validateGrants(t *testing.T) {
 				mysqlContext:            tt.fields.mysqlContext,
 				dbs:                     tt.fields.dbs,
 				singletonDB:             tt.fields.singletonDB,
-				parser:                  tt.fields.parser,
 				totalRowCount:           tt.fields.totalRowCount,
 				applyRowCount:           tt.fields.applyRowCount,
 				rowCopyComplete:         tt.fields.rowCopyComplete,
@@ -638,7 +634,6 @@ func TestApplier_createTableGtidExecuted(t *testing.T) {
 		mysqlContext            *config.MySQLDriverConfig
 		dbs                     []*sql.DB
 		singletonDB             *gosql.DB
-		parser                  *sql.Parser
 		totalRowCount           int
 		applyRowCount           int
 		rowCopyComplete         chan bool
@@ -671,7 +666,6 @@ func TestApplier_createTableGtidExecuted(t *testing.T) {
 				mysqlContext:            tt.fields.mysqlContext,
 				dbs:                     tt.fields.dbs,
 				singletonDB:             tt.fields.singletonDB,
-				parser:                  tt.fields.parser,
 				totalRowCount:           tt.fields.totalRowCount,
 				applyRowCount:           tt.fields.applyRowCount,
 				rowCopyComplete:         tt.fields.rowCopyComplete,
@@ -703,7 +697,6 @@ func TestApplier_onDone(t *testing.T) {
 		mysqlContext            *config.MySQLDriverConfig
 		dbs                     []*sql.DB
 		singletonDB             *gosql.DB
-		parser                  *sql.Parser
 		totalRowCount           int
 		applyRowCount           int
 		rowCopyComplete         chan bool
@@ -735,7 +728,6 @@ func TestApplier_onDone(t *testing.T) {
 				mysqlContext:            tt.fields.mysqlContext,
 				dbs:                     tt.fields.dbs,
 				singletonDB:             tt.fields.singletonDB,
-				parser:                  tt.fields.parser,
 				totalRowCount:           tt.fields.totalRowCount,
 				applyRowCount:           tt.fields.applyRowCount,
 				rowCopyComplete:         tt.fields.rowCopyComplete,

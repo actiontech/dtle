@@ -70,7 +70,6 @@ type Applier struct {
 	mysqlContext       *config.MySQLDriverConfig
 	dbs                []*sql.Conn
 	db                 *gosql.DB
-	parser             *sql.Parser
 	retrievedGtidSet   string
 	executedIntervals  gomysql.IntervalSlice
 	currentCoordinates *models.CurrentCoordinates
@@ -106,7 +105,6 @@ func NewApplier(subject, tp string, cfg *config.MySQLDriverConfig, logger *log.L
 		subject:                  subject,
 		tp:                       tp,
 		mysqlContext:             cfg,
-		parser:                   sql.NewParser(),
 		currentCoordinates:       &models.CurrentCoordinates{},
 		tableItems:               make(mapSchemaTableItems),
 		rowCopyComplete:          make(chan bool, 1),

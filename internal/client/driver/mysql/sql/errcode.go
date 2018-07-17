@@ -1,5 +1,9 @@
 package sql
 
+import (
+	"github.com/go-sql-driver/mysql"
+)
+
 // Schema error codes.
 const (
 	ErrDatabaseDropExists uint16 = 1008
@@ -883,3 +887,35 @@ const (
 	ErrRowInWrongPartition                                          = 1863
 	ErrErrorLast                                                    = 1863
 )
+
+func IgnoreError(err error) bool {
+	mysqlErr, ok := err.(*mysql.MySQLError)
+	if !ok {
+		return false
+	}
+
+	switch mysqlErr.Number {
+	case ErrDatabaseExists, ErrDatabaseNotExists, ErrDatabaseDropExists,
+		ErrTableExists, ErrTableNotExists, ErrTableDropExists,
+		ErrColumnExists, ErrColumnNotExists, ErrDupKeyName,
+		ErrIndexExists, ErrCantDropFieldOrKey, ErrDupKey,
+		ErrDupEntry, ErrKeyNotFound:
+		return true
+	default:
+		return false
+	}
+}
+
+func IgnoreExistsError(err error) bool {
+	mysqlErr, ok := err.(*mysql.MySQLError)
+	if !ok {
+		return false
+	}
+
+	switch mysqlErr.Number {
+	case ErrDatabaseExists, ErrTableExists:
+		return true
+	default:
+		return false
+	}
+}

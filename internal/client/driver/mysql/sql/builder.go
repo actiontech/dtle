@@ -84,14 +84,6 @@ func buildColumnsPreparedValues(columns *umconf.ColumnList) []string {
 	return values
 }
 
-func buildPreparedValues(length int) []string {
-	values := make([]string, length, length)
-	for i := 0; i < length; i++ {
-		values[i] = "?"
-	}
-	return values
-}
-
 func duplicateNames(names []string) []string {
 	duplicate := make([]string, len(names), len(names))
 	copy(duplicate, names)
@@ -109,32 +101,6 @@ func BuildValueComparison(column string, value string, comparisonSign ValueCompa
 	return comparison, err
 }
 
-func BuildEqualsComparison(columns []string, values []string) (result string, err error) {
-	if len(columns) == 0 {
-		return "", fmt.Errorf("Got 0 columns in GetEqualsComparison")
-	}
-	if len(columns) != len(values) {
-		return "", fmt.Errorf("Got %d columns but %d values in GetEqualsComparison", len(columns), len(values))
-	}
-	comparisons := []string{}
-	for i, column := range columns {
-		value := values[i]
-		comparison, err := BuildValueComparison(column, value, EqualsComparisonSign)
-		if err != nil {
-			return "", err
-		}
-		comparisons = append(comparisons, comparison)
-	}
-	result = strings.Join(comparisons, " and ")
-	result = fmt.Sprintf("(%s)", result)
-	return result, nil
-}
-
-func BuildEqualsPreparedComparison(columns []string) (result string, err error) {
-	values := buildPreparedValues(len(columns))
-	return BuildEqualsComparison(columns, values)
-}
-
 func BuildSetPreparedClause(columns *umconf.ColumnList) (result string, err error) {
 	if columns.Len() == 0 {
 		return "", fmt.Errorf("Got 0 columns in BuildSetPreparedClause")
@@ -150,62 +116,6 @@ func BuildSetPreparedClause(columns *umconf.ColumnList) (result string, err erro
 		setTokens = append(setTokens, setToken)
 	}
 	return strings.Join(setTokens, ", "), nil
-}
-
-func BuildRangeComparison(columns []string, values []string, args []interface{}, comparisonSign ValueComparisonSign) (result string, explodedArgs []interface{}, err error) {
-	if len(columns) == 0 {
-		return "", explodedArgs, fmt.Errorf("Got 0 columns in GetRangeComparison")
-	}
-	if len(columns) != len(values) {
-		return "", explodedArgs, fmt.Errorf("Got %d columns but %d values in GetEqualsComparison", len(columns), len(values))
-	}
-	if len(columns) != len(args) {
-		return "", explodedArgs, fmt.Errorf("Got %d columns but %d args in GetEqualsComparison", len(columns), len(args))
-	}
-	includeEquals := false
-	if comparisonSign == LessThanOrEqualsComparisonSign {
-		comparisonSign = LessThanComparisonSign
-		includeEquals = true
-	}
-	if comparisonSign == GreaterThanOrEqualsComparisonSign {
-		comparisonSign = GreaterThanComparisonSign
-		includeEquals = true
-	}
-	comparisons := []string{}
-
-	for i, column := range columns {
-		//
-		value := values[i]
-		rangeComparison, err := BuildValueComparison(column, value, comparisonSign)
-		if err != nil {
-			return "", explodedArgs, err
-		}
-		if len(columns[0:i]) > 0 {
-			equalitiesComparison, err := BuildEqualsComparison(columns[0:i], values[0:i])
-			if err != nil {
-				return "", explodedArgs, err
-			}
-			comparison := fmt.Sprintf("(%s AND %s)", equalitiesComparison, rangeComparison)
-			comparisons = append(comparisons, comparison)
-			explodedArgs = append(explodedArgs, args[0:i]...)
-			explodedArgs = append(explodedArgs, args[i])
-		} else {
-			comparisons = append(comparisons, rangeComparison)
-			explodedArgs = append(explodedArgs, args[i])
-		}
-	}
-
-	if includeEquals {
-		comparison, err := BuildEqualsComparison(columns, values)
-		if err != nil {
-			return "", explodedArgs, nil
-		}
-		comparisons = append(comparisons, comparison)
-		explodedArgs = append(explodedArgs, args...)
-	}
-	result = strings.Join(comparisons, " or ")
-	result = fmt.Sprintf("(%s)", result)
-	return result, explodedArgs, nil
 }
 
 func BuildDMLDeleteQuery(databaseName, tableName string, tableColumns *umconf.ColumnList, args []*interface{}) (result string, columnArgs []interface{}, err error) {
