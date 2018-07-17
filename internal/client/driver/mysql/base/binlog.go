@@ -40,8 +40,7 @@ type BinlogEvent struct {
 	Err error
 }
 
-// BinlogCoordinates described binary log coordinates in the form of log file & log position.
-type BinlogCoordinates struct {
+type BinlogCoordinateTx struct {
 	LogFile       string
 	LogPos        int64
 	OSID          string
@@ -49,21 +48,22 @@ type BinlogCoordinates struct {
 	GNO           int64
 	LastCommitted int64
 	Type          BinlogType
+}
+
+// BinlogCoordinates described binary log coordinates in the form of log file & log position.
+type BinlogCoordinatesX struct {
+	LogFile       string
+	LogPos        int64
 	GtidSet       string
 }
 
-// DisplayString returns a user-friendly string representation of these coordinates
-func (b *BinlogCoordinates) DisplayString() string {
+// String returns a user-friendly string representation of these coordinates
+func (b BinlogCoordinatesX) String() string {
 	return fmt.Sprintf("%v", b.GtidSet)
 }
 
-// String returns a user-friendly string representation of these coordinates
-func (b BinlogCoordinates) String() string {
-	return b.DisplayString()
-}
-
 // Equals tests equality of this corrdinate and another one.
-func (b *BinlogCoordinates) Equals(other *BinlogCoordinates) bool {
+func (b *BinlogCoordinateTx) Equals(other *BinlogCoordinateTx) bool {
 	if other == nil {
 		return false
 	}
@@ -71,12 +71,12 @@ func (b *BinlogCoordinates) Equals(other *BinlogCoordinates) bool {
 }
 
 // IsEmpty returns true if the log file is empty, unnamed
-func (b *BinlogCoordinates) IsEmpty() bool {
+func (b *BinlogCoordinatesX) IsEmpty() bool {
 	return b.GtidSet == ""
 }
 
 // SmallerThan returns true if this coordinate is strictly smaller than the other.
-func (b *BinlogCoordinates) SmallerThan(other *BinlogCoordinates) bool {
+func (b *BinlogCoordinateTx) SmallerThan(other *BinlogCoordinateTx) bool {
 	if b.LogFile < other.LogFile {
 		return true
 	}
@@ -88,13 +88,13 @@ func (b *BinlogCoordinates) SmallerThan(other *BinlogCoordinates) bool {
 
 // SmallerThanOrEquals returns true if this coordinate is the same or equal to the other one.
 // We do NOT compare the type so we can not use b.Equals()
-func (b *BinlogCoordinates) SmallerThanOrEquals(other *BinlogCoordinates) bool {
+func (b *BinlogCoordinateTx) SmallerThanOrEquals(other *BinlogCoordinateTx) bool {
 	if b.SmallerThan(other) {
 		return true
 	}
 	return b.LogFile == other.LogFile && b.LogPos == other.LogPos // No Type comparison
 }
 
-func (b *BinlogCoordinates) GetGtidForThisTx() string {
+func (b *BinlogCoordinateTx) GetGtidForThisTx() string {
 	return fmt.Sprintf("%s:%d", b.SID, b.GNO)
 }

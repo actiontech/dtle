@@ -199,8 +199,8 @@ func (a *Applier) Run() {
 						a.onError(TaskStateDead, err)
 						break
 					}
-					if a.mysqlContext.Gtid != "" && binlogCoordinates.DisplayString() != "" {
-						equals, err := base.ContrastGtidSet(a.mysqlContext.Gtid, binlogCoordinates.DisplayString())
+					if a.mysqlContext.Gtid != "" && binlogCoordinates.GtidSet != "" {
+						equals, err := base.ContrastGtidSet(a.mysqlContext.Gtid, binlogCoordinates.GtidSet)
 						if err != nil {
 							a.onError(TaskStateDead, err)
 							break

@@ -50,8 +50,8 @@ type Extractor struct {
 	dataChannel              chan *binlog.BinlogEntry
 	inspector                *Inspector
 	binlogReader             *binlog.BinlogReader
-	initialBinlogCoordinates *base.BinlogCoordinates
-	currentBinlogCoordinates *base.BinlogCoordinates
+	initialBinlogCoordinates *base.BinlogCoordinatesX
+	currentBinlogCoordinates *base.BinlogCoordinateTx
 	rowCopyComplete          chan bool
 	rowCopyCompleteFlag      int64
 	tableCount               int
@@ -486,7 +486,7 @@ func (e *Extractor) initDBConnections() (err error) {
 }
 
 // initBinlogReader creates and connects the reader: we hook up to a MySQL server as a replica
-func (e *Extractor) initBinlogReader(binlogCoordinates *base.BinlogCoordinates) error {
+func (e *Extractor) initBinlogReader(binlogCoordinates *base.BinlogCoordinatesX) error {
 	binlogReader, err := binlog.NewMySQLReader(e.mysqlContext, e.logger, e.replicateDoDb)
 	if err != nil {
 		e.logger.Debugf("mysql.extractor: err at initBinlogReader: NewMySQLReader: %v", err.Error())
@@ -518,12 +518,12 @@ func (e *Extractor) selectSqlMode() error {
 	return nil
 }
 
-func (e *Extractor) GetCurrentBinlogCoordinates() *base.BinlogCoordinates {
+func (e *Extractor) GetCurrentBinlogCoordinates() *base.BinlogCoordinateTx {
 	return e.binlogReader.GetCurrentBinlogCoordinates()
 }
 
-func (e *Extractor) GetReconnectBinlogCoordinates() *base.BinlogCoordinates {
-	return &base.BinlogCoordinates{LogFile: e.GetCurrentBinlogCoordinates().LogFile, LogPos: 4}
+func (e *Extractor) GetReconnectBinlogCoordinates() *base.BinlogCoordinateTx {
+	return &base.BinlogCoordinateTx{LogFile: e.GetCurrentBinlogCoordinates().LogFile, LogPos: 4}
 }
 
 // readCurrentBinlogCoordinates reads master status from hooked server
@@ -533,7 +533,7 @@ func (e *Extractor) readCurrentBinlogCoordinates() error {
 		if err != nil {
 			return err
 		}
-		e.initialBinlogCoordinates = &base.BinlogCoordinates{
+		e.initialBinlogCoordinates = &base.BinlogCoordinatesX{
 			GtidSet: gtidSet.String(),
 		}
 	} else {
@@ -1274,7 +1274,7 @@ func (e *Extractor) Stats() (*models.TaskStatistics, error) {
 		}
 	}
 
-	currentBinlogCoordinates := &base.BinlogCoordinates{}
+	currentBinlogCoordinates := &base.BinlogCoordinateTx{}
 	if e.binlogReader != nil {
 		currentBinlogCoordinates = e.binlogReader.GetCurrentBinlogCoordinates()
 		taskResUsage.CurrentCoordinates = &models.CurrentCoordinates{

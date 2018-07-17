@@ -82,9 +82,9 @@ func TestBinlogReader_ConnectBinlogStreamer(t *testing.T) {
 		db                       *gosql.DB
 		binlogSyncer             *replication.BinlogSyncer
 		binlogStreamer           *replication.BinlogStreamer
-		currentCoordinates       base.BinlogCoordinates
+		currentCoordinates       base.BinlogCoordinateTx
 		currentCoordinatesMutex  *sync.Mutex
-		LastAppliedRowsEventHint base.BinlogCoordinates
+		LastAppliedRowsEventHint base.BinlogCoordinateTx
 		MysqlContext             *config.MySQLDriverConfig
 		currentTx                *BinlogTx
 		currentBinlogEntry       *BinlogEntry
@@ -100,7 +100,7 @@ func TestBinlogReader_ConnectBinlogStreamer(t *testing.T) {
 		shutdownLock             sync.Mutex
 	}
 	type args struct {
-		coordinates base.BinlogCoordinates
+		coordinates base.BinlogCoordinateTx
 	}
 	tests := []struct {
 		name    string
@@ -149,9 +149,9 @@ func TestBinlogReader_GetCurrentBinlogCoordinates(t *testing.T) {
 		db                       *gosql.DB
 		binlogSyncer             *replication.BinlogSyncer
 		binlogStreamer           *replication.BinlogStreamer
-		currentCoordinates       base.BinlogCoordinates
+		currentCoordinates       base.BinlogCoordinateTx
 		currentCoordinatesMutex  *sync.Mutex
-		LastAppliedRowsEventHint base.BinlogCoordinates
+		LastAppliedRowsEventHint base.BinlogCoordinateTx
 		MysqlContext             *config.MySQLDriverConfig
 		currentTx                *BinlogTx
 		currentBinlogEntry       *BinlogEntry
@@ -169,7 +169,7 @@ func TestBinlogReader_GetCurrentBinlogCoordinates(t *testing.T) {
 	tests := []struct {
 		name   string
 		fields fields
-		want   *base.BinlogCoordinates
+		want   *base.BinlogCoordinateTx
 	}{
 	// TODO: Add test cases.
 	}
@@ -212,9 +212,9 @@ func TestBinlogReader_handleRowsEvent(t *testing.T) {
 		db                       *gosql.DB
 		binlogSyncer             *replication.BinlogSyncer
 		binlogStreamer           *replication.BinlogStreamer
-		currentCoordinates       base.BinlogCoordinates
+		currentCoordinates       base.BinlogCoordinateTx
 		currentCoordinatesMutex  *sync.Mutex
-		LastAppliedRowsEventHint base.BinlogCoordinates
+		LastAppliedRowsEventHint base.BinlogCoordinateTx
 		MysqlContext             *config.MySQLDriverConfig
 		currentTx                *BinlogTx
 		currentBinlogEntry       *BinlogEntry
@@ -280,9 +280,9 @@ func TestBinlogReader_DataStreamEvents(t *testing.T) {
 		db                       *gosql.DB
 		binlogSyncer             *replication.BinlogSyncer
 		binlogStreamer           *replication.BinlogStreamer
-		currentCoordinates       base.BinlogCoordinates
+		currentCoordinates       base.BinlogCoordinateTx
 		currentCoordinatesMutex  *sync.Mutex
-		LastAppliedRowsEventHint base.BinlogCoordinates
+		LastAppliedRowsEventHint base.BinlogCoordinateTx
 		MysqlContext             *config.MySQLDriverConfig
 		currentTx                *BinlogTx
 		currentBinlogEntry       *BinlogEntry
@@ -347,9 +347,9 @@ func TestBinlogReader_BinlogStreamEvents(t *testing.T) {
 		db                       *gosql.DB
 		binlogSyncer             *replication.BinlogSyncer
 		binlogStreamer           *replication.BinlogStreamer
-		currentCoordinates       base.BinlogCoordinates
+		currentCoordinates       base.BinlogCoordinateTx
 		currentCoordinatesMutex  *sync.Mutex
-		LastAppliedRowsEventHint base.BinlogCoordinates
+		LastAppliedRowsEventHint base.BinlogCoordinateTx
 		MysqlContext             *config.MySQLDriverConfig
 		currentTx                *BinlogTx
 		currentBinlogEntry       *BinlogEntry
@@ -414,9 +414,9 @@ func TestBinlogReader_handleBinlogRowsEvent(t *testing.T) {
 		db                       *gosql.DB
 		binlogSyncer             *replication.BinlogSyncer
 		binlogStreamer           *replication.BinlogStreamer
-		currentCoordinates       base.BinlogCoordinates
+		currentCoordinates       base.BinlogCoordinateTx
 		currentCoordinatesMutex  *sync.Mutex
-		LastAppliedRowsEventHint base.BinlogCoordinates
+		LastAppliedRowsEventHint base.BinlogCoordinateTx
 		MysqlContext             *config.MySQLDriverConfig
 		currentTx                *BinlogTx
 		currentBinlogEntry       *BinlogEntry
@@ -482,9 +482,9 @@ func TestBinlogReader_appendQuery(t *testing.T) {
 		db                       *gosql.DB
 		binlogSyncer             *replication.BinlogSyncer
 		binlogStreamer           *replication.BinlogStreamer
-		currentCoordinates       base.BinlogCoordinates
+		currentCoordinates       base.BinlogCoordinateTx
 		currentCoordinatesMutex  *sync.Mutex
-		LastAppliedRowsEventHint base.BinlogCoordinates
+		LastAppliedRowsEventHint base.BinlogCoordinateTx
 		MysqlContext             *config.MySQLDriverConfig
 		currentTx                *BinlogTx
 		currentBinlogEntry       *BinlogEntry
@@ -566,9 +566,9 @@ func TestBinlogReader_clearB64Sql(t *testing.T) {
 		db                       *gosql.DB
 		binlogSyncer             *replication.BinlogSyncer
 		binlogStreamer           *replication.BinlogStreamer
-		currentCoordinates       base.BinlogCoordinates
+		currentCoordinates       base.BinlogCoordinateTx
 		currentCoordinatesMutex  *sync.Mutex
-		LastAppliedRowsEventHint base.BinlogCoordinates
+		LastAppliedRowsEventHint base.BinlogCoordinateTx
 		MysqlContext             *config.MySQLDriverConfig
 		currentTx                *BinlogTx
 		currentBinlogEntry       *BinlogEntry
@@ -626,9 +626,9 @@ func TestBinlogReader_appendB64Sql(t *testing.T) {
 		db                       *gosql.DB
 		binlogSyncer             *replication.BinlogSyncer
 		binlogStreamer           *replication.BinlogStreamer
-		currentCoordinates       base.BinlogCoordinates
+		currentCoordinates       base.BinlogCoordinateTx
 		currentCoordinatesMutex  *sync.Mutex
-		LastAppliedRowsEventHint base.BinlogCoordinates
+		LastAppliedRowsEventHint base.BinlogCoordinateTx
 		MysqlContext             *config.MySQLDriverConfig
 		currentTx                *BinlogTx
 		currentBinlogEntry       *BinlogEntry
@@ -690,9 +690,9 @@ func TestBinlogReader_onCommit(t *testing.T) {
 		db                       *gosql.DB
 		binlogSyncer             *replication.BinlogSyncer
 		binlogStreamer           *replication.BinlogStreamer
-		currentCoordinates       base.BinlogCoordinates
+		currentCoordinates       base.BinlogCoordinateTx
 		currentCoordinatesMutex  *sync.Mutex
-		LastAppliedRowsEventHint base.BinlogCoordinates
+		LastAppliedRowsEventHint base.BinlogCoordinateTx
 		MysqlContext             *config.MySQLDriverConfig
 		currentTx                *BinlogTx
 		currentBinlogEntry       *BinlogEntry
@@ -813,9 +813,9 @@ func TestBinlogReader_skipQueryDDL(t *testing.T) {
 		db                       *gosql.DB
 		binlogSyncer             *replication.BinlogSyncer
 		binlogStreamer           *replication.BinlogStreamer
-		currentCoordinates       base.BinlogCoordinates
+		currentCoordinates       base.BinlogCoordinateTx
 		currentCoordinatesMutex  *sync.Mutex
-		LastAppliedRowsEventHint base.BinlogCoordinates
+		LastAppliedRowsEventHint base.BinlogCoordinateTx
 		MysqlContext             *config.MySQLDriverConfig
 		currentTx                *BinlogTx
 		currentBinlogEntry       *BinlogEntry
@@ -901,9 +901,9 @@ func TestBinlogReader_skipRowEvent(t *testing.T) {
 		db                       *gosql.DB
 		binlogSyncer             *replication.BinlogSyncer
 		binlogStreamer           *replication.BinlogStreamer
-		currentCoordinates       base.BinlogCoordinates
+		currentCoordinates       base.BinlogCoordinateTx
 		currentCoordinatesMutex  *sync.Mutex
-		LastAppliedRowsEventHint base.BinlogCoordinates
+		LastAppliedRowsEventHint base.BinlogCoordinateTx
 		MysqlContext             *config.MySQLDriverConfig
 		currentTx                *BinlogTx
 		currentBinlogEntry       *BinlogEntry
@@ -969,9 +969,9 @@ func TestBinlogReader_matchString(t *testing.T) {
 		db                       *gosql.DB
 		binlogSyncer             *replication.BinlogSyncer
 		binlogStreamer           *replication.BinlogStreamer
-		currentCoordinates       base.BinlogCoordinates
+		currentCoordinates       base.BinlogCoordinateTx
 		currentCoordinatesMutex  *sync.Mutex
-		LastAppliedRowsEventHint base.BinlogCoordinates
+		LastAppliedRowsEventHint base.BinlogCoordinateTx
 		MysqlContext             *config.MySQLDriverConfig
 		currentTx                *BinlogTx
 		currentBinlogEntry       *BinlogEntry
@@ -1037,9 +1037,9 @@ func TestBinlogReader_matchDB(t *testing.T) {
 		db                       *gosql.DB
 		binlogSyncer             *replication.BinlogSyncer
 		binlogStreamer           *replication.BinlogStreamer
-		currentCoordinates       base.BinlogCoordinates
+		currentCoordinates       base.BinlogCoordinateTx
 		currentCoordinatesMutex  *sync.Mutex
-		LastAppliedRowsEventHint base.BinlogCoordinates
+		LastAppliedRowsEventHint base.BinlogCoordinateTx
 		MysqlContext             *config.MySQLDriverConfig
 		currentTx                *BinlogTx
 		currentBinlogEntry       *BinlogEntry
@@ -1105,9 +1105,9 @@ func TestBinlogReader_Close(t *testing.T) {
 		db                       *gosql.DB
 		binlogSyncer             *replication.BinlogSyncer
 		binlogStreamer           *replication.BinlogStreamer
-		currentCoordinates       base.BinlogCoordinates
+		currentCoordinates       base.BinlogCoordinateTx
 		currentCoordinatesMutex  *sync.Mutex
-		LastAppliedRowsEventHint base.BinlogCoordinates
+		LastAppliedRowsEventHint base.BinlogCoordinateTx
 		MysqlContext             *config.MySQLDriverConfig
 		currentTx                *BinlogTx
 		currentBinlogEntry       *BinlogEntry
@@ -1168,9 +1168,9 @@ func TestBinlogReader_matchTable(t *testing.T) {
 		db                       *gosql.DB
 		binlogSyncer             *replication.BinlogSyncer
 		binlogStreamer           *replication.BinlogStreamer
-		currentCoordinates       base.BinlogCoordinates
+		currentCoordinates       base.BinlogCoordinateTx
 		currentCoordinatesMutex  *sync.Mutex
-		LastAppliedRowsEventHint base.BinlogCoordinates
+		LastAppliedRowsEventHint base.BinlogCoordinateTx
 		MysqlContext             *config.MySQLDriverConfig
 		currentTx                *BinlogTx
 		currentBinlogEntry       *BinlogEntry

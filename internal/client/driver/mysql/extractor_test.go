@@ -182,7 +182,7 @@ func TestExtractor_initDBConnections(t *testing.T) {
 
 func TestExtractor_initBinlogReader(t *testing.T) {
 	type args struct {
-		binlogCoordinates *base.BinlogCoordinates
+		binlogCoordinates *base.BinlogCoordinateTx
 	}
 	tests := []struct {
 		name    string
@@ -239,7 +239,7 @@ func TestExtractor_GetCurrentBinlogCoordinates(t *testing.T) {
 	tests := []struct {
 		name string
 		e    *Extractor
-		want *base.BinlogCoordinates
+		want *base.BinlogCoordinateTx
 	}{
 	// TODO: Add test cases.
 	}
@@ -256,7 +256,7 @@ func TestExtractor_GetReconnectBinlogCoordinates(t *testing.T) {
 	tests := []struct {
 		name string
 		e    *Extractor
-		want *base.BinlogCoordinates
+		want *base.BinlogCoordinateTx
 	}{
 	// TODO: Add test cases.
 	}

@@ -141,8 +141,8 @@ func TestGetReplicationBinlogCoordinates(t *testing.T) {
 	tests := []struct {
 		name                         string
 		args                         args
-		wantReadBinlogCoordinates    *BinlogCoordinates
-		wantExecuteBinlogCoordinates *BinlogCoordinates
+		wantReadBinlogCoordinates    *BinlogCoordinateTx
+		wantExecuteBinlogCoordinates *BinlogCoordinateTx
 		wantErr                      bool
 	}{
 	// TODO: Add test cases.
@@ -175,7 +175,7 @@ func TestGetSelfBinlogCoordinates(t *testing.T) {
 	tests := []struct {
 		name                      string
 		args                      args
-		wantSelfBinlogCoordinates *BinlogCoordinates
+		wantSelfBinlogCoordinates *BinlogCoordinateTx
 		wantErr                   bool
 	}{
 		// TODO: Add test cases.

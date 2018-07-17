@@ -97,13 +97,13 @@ func GetReplicationLag(connectionConfig *umconf.ConnectionConfig) (replicationLa
 	return replicationLag, err
 }
 
-func GetReplicationBinlogCoordinates(db *gosql.DB) (readBinlogCoordinates *BinlogCoordinates, executeBinlogCoordinates *BinlogCoordinates, err error) {
+func GetReplicationBinlogCoordinates(db *gosql.DB) (readBinlogCoordinates *BinlogCoordinateTx, executeBinlogCoordinates *BinlogCoordinateTx, err error) {
 	err = usql.QueryRowsMap(db, `show slave status`, func(m usql.RowMap) error {
-		readBinlogCoordinates = &BinlogCoordinates{
+		readBinlogCoordinates = &BinlogCoordinateTx{
 			LogFile: m.GetString("Master_Log_File"),
 			LogPos:  m.GetInt64("Read_Master_Log_Pos"),
 		}
-		executeBinlogCoordinates = &BinlogCoordinates{
+		executeBinlogCoordinates = &BinlogCoordinateTx{
 			LogFile: m.GetString("Relay_Master_Log_File"),
 			LogPos:  m.GetInt64("Exec_Master_Log_Pos"),
 		}
@@ -112,9 +112,9 @@ func GetReplicationBinlogCoordinates(db *gosql.DB) (readBinlogCoordinates *Binlo
 	return readBinlogCoordinates, executeBinlogCoordinates, err
 }
 
-func GetSelfBinlogCoordinates(db *gosql.DB) (selfBinlogCoordinates *BinlogCoordinates, err error) {
+func GetSelfBinlogCoordinates(db *gosql.DB) (selfBinlogCoordinates *BinlogCoordinatesX, err error) {
 	err = usql.QueryRowsMap(db, `show master status`, func(m usql.RowMap) error {
-		selfBinlogCoordinates = &BinlogCoordinates{
+		selfBinlogCoordinates = &BinlogCoordinatesX{
 			LogFile: m.GetString("File"),
 			LogPos:  m.GetInt64("Position"),
 			GtidSet: m.GetString("Executed_Gtid_Set"),
@@ -124,7 +124,7 @@ func GetSelfBinlogCoordinates(db *gosql.DB) (selfBinlogCoordinates *BinlogCoordi
 	return selfBinlogCoordinates, err
 }
 
-func ParseBinlogCoordinatesFromRows(rows *sql.Rows) (selfBinlogCoordinates *BinlogCoordinates, err error) {
+func ParseBinlogCoordinatesFromRows(rows *sql.Rows) (selfBinlogCoordinates *BinlogCoordinatesX, err error) {
 	err = usql.ScanRowsToMaps(rows, func(m usql.RowMap) error {
 		gtidSet, err := gomysql.ParseMysqlGTIDSet(m.GetString("Executed_Gtid_Set"))
 		if err != nil {
@@ -156,7 +156,7 @@ func ParseBinlogCoordinatesFromRows(rows *sql.Rows) (selfBinlogCoordinates *Binl
 			ms.AddSet(s)
 		}
 
-		selfBinlogCoordinates = &BinlogCoordinates{
+		selfBinlogCoordinates = &BinlogCoordinatesX{
 			LogFile: m.GetString("File"),
 			LogPos:  m.GetInt64("Position"),
 			GtidSet: ms.String(),

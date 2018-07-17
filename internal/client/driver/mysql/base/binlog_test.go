@@ -8,10 +8,10 @@ import (
 )
 
 func TestBinlogCoordinates(t *testing.T) {
-	c1 := BinlogCoordinates{LogFile: "mysql-bin.00017", LogPos: 104}
-	c2 := BinlogCoordinates{LogFile: "mysql-bin.00017", LogPos: 104}
-	c3 := BinlogCoordinates{LogFile: "mysql-bin.00017", LogPos: 5000}
-	c4 := BinlogCoordinates{LogFile: "mysql-bin.00112", LogPos: 104}
+	c1 := BinlogCoordinateTx{LogFile: "mysql-bin.00017", LogPos: 104}
+	c2 := BinlogCoordinateTx{LogFile: "mysql-bin.00017", LogPos: 104}
+	c3 := BinlogCoordinateTx{LogFile: "mysql-bin.00017", LogPos: 5000}
+	c4 := BinlogCoordinateTx{LogFile: "mysql-bin.00112", LogPos: 104}
 
 	test.S(t).ExpectTrue(c1.Equals(&c2))
 	test.S(t).ExpectFalse(c1.Equals(&c3))
@@ -29,12 +29,12 @@ func TestBinlogCoordinates(t *testing.T) {
 }
 
 func TestBinlogCoordinatesAsKey(t *testing.T) {
-	m := make(map[BinlogCoordinates]bool)
+	m := make(map[BinlogCoordinateTx]bool)
 
-	c1 := BinlogCoordinates{LogFile: "mysql-bin.00017", LogPos: 104}
-	c2 := BinlogCoordinates{LogFile: "mysql-bin.00022", LogPos: 104}
-	c3 := BinlogCoordinates{LogFile: "mysql-bin.00017", LogPos: 104}
-	c4 := BinlogCoordinates{LogFile: "mysql-bin.00017", LogPos: 222}
+	c1 := BinlogCoordinateTx{LogFile: "mysql-bin.00017", LogPos: 104}
+	c2 := BinlogCoordinateTx{LogFile: "mysql-bin.00022", LogPos: 104}
+	c3 := BinlogCoordinateTx{LogFile: "mysql-bin.00017", LogPos: 104}
+	c4 := BinlogCoordinateTx{LogFile: "mysql-bin.00017", LogPos: 222}
 
 	m[c1] = true
 	m[c2] = true
@@ -60,7 +60,7 @@ func TestBinlogCoordinates_DisplayString(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			b := &BinlogCoordinates{
+			b := &BinlogCoordinateTx{
 				LogFile: tt.fields.LogFile,
 				LogPos:  tt.fields.LogPos,
 				GtidSet: tt.fields.GtidSet,
@@ -89,7 +89,7 @@ func TestBinlogCoordinates_String(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			b := BinlogCoordinates{
+			b := BinlogCoordinateTx{
 				LogFile: tt.fields.LogFile,
 				LogPos:  tt.fields.LogPos,
 				GtidSet: tt.fields.GtidSet,
@@ -110,7 +110,7 @@ func TestBinlogCoordinates_Equals(t *testing.T) {
 		Type    BinlogType
 	}
 	type args struct {
-		other *BinlogCoordinates
+		other *BinlogCoordinateTx
 	}
 	tests := []struct {
 		name   string
@@ -122,7 +122,7 @@ func TestBinlogCoordinates_Equals(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			b := &BinlogCoordinates{
+			b := &BinlogCoordinateTx{
 				LogFile: tt.fields.LogFile,
 				LogPos:  tt.fields.LogPos,
 				GtidSet: tt.fields.GtidSet,
@@ -151,7 +151,7 @@ func TestBinlogCoordinates_IsEmpty(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			b := &BinlogCoordinates{
+			b := &BinlogCoordinateTx{
 				LogFile: tt.fields.LogFile,
 				LogPos:  tt.fields.LogPos,
 				GtidSet: tt.fields.GtidSet,
@@ -172,7 +172,7 @@ func TestBinlogCoordinates_SmallerThan(t *testing.T) {
 		Type    BinlogType
 	}
 	type args struct {
-		other *BinlogCoordinates
+		other *BinlogCoordinateTx
 	}
 	tests := []struct {
 		name   string
@@ -184,7 +184,7 @@ func TestBinlogCoordinates_SmallerThan(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			b := &BinlogCoordinates{
+			b := &BinlogCoordinateTx{
 				LogFile: tt.fields.LogFile,
 				LogPos:  tt.fields.LogPos,
 				GtidSet: tt.fields.GtidSet,
@@ -205,7 +205,7 @@ func TestBinlogCoordinates_SmallerThanOrEquals(t *testing.T) {
 		Type    BinlogType
 	}
 	type args struct {
-		other *BinlogCoordinates
+		other *BinlogCoordinateTx
 	}
 	tests := []struct {
 		name   string
@@ -217,7 +217,7 @@ func TestBinlogCoordinates_SmallerThanOrEquals(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			b := &BinlogCoordinates{
+			b := &BinlogCoordinateTx{
 				LogFile: tt.fields.LogFile,
 				LogPos:  tt.fields.LogPos,
 				GtidSet: tt.fields.GtidSet,

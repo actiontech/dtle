@@ -37,9 +37,9 @@ type BinlogReader struct {
 	db                       *gosql.DB
 	binlogSyncer             *replication.BinlogSyncer
 	binlogStreamer           *replication.BinlogStreamer
-	currentCoordinates       base.BinlogCoordinates
+	currentCoordinates       base.BinlogCoordinateTx
 	currentCoordinatesMutex  *sync.Mutex
-	LastAppliedRowsEventHint base.BinlogCoordinates
+	LastAppliedRowsEventHint base.BinlogCoordinateTx
 	// raw config, whose ReplicateDoDB is same as config file (empty-is-all & no dynamically created tables)
 	mysqlContext             *config.MySQLDriverConfig
 	// dynamic config, include all tables (implicitly assigned or dynamically created)
@@ -63,7 +63,7 @@ type BinlogReader struct {
 func NewMySQLReader(cfg *config.MySQLDriverConfig, logger *log.Entry, replicateDoDb []*config.DataSource) (binlogReader *BinlogReader, err error) {
 	binlogReader = &BinlogReader{
 		logger:                  logger,
-		currentCoordinates:      base.BinlogCoordinates{},
+		currentCoordinates:      base.BinlogCoordinateTx{},
 		currentCoordinatesMutex: &sync.Mutex{},
 		mysqlContext:            cfg,
 		appendB64SqlBs:          make([]byte, 1024*1024),
@@ -144,17 +144,21 @@ func (b *BinlogReader) addTableToTableMap(dbMap map[string]*config.TableContext,
 	return nil
 }
 // ConnectBinlogStreamer
-func (b *BinlogReader) ConnectBinlogStreamer(coordinates base.BinlogCoordinates) (err error) {
+func (b *BinlogReader) ConnectBinlogStreamer(coordinates base.BinlogCoordinatesX) (err error) {
 	if coordinates.IsEmpty() {
 		b.logger.Warnf("mysql.reader: Emptry coordinates at ConnectBinlogStreamer")
 	}
 
-	b.currentCoordinates = coordinates
+	b.currentCoordinates = 	base.BinlogCoordinateTx{
+		LogFile: coordinates.LogFile,
+		LogPos: coordinates.LogPos,
+	}
+
 	b.logger.Printf("mysql.reader: Connecting binlog streamer at %+v", b.currentCoordinates)
 
 	// Start sync with sepcified binlog gtid
-	b.logger.Debugf("mysql.reader: GtidSet: %v", b.currentCoordinates.GtidSet)
-	gtidSet, err := gomysql.ParseMysqlGTIDSet(b.currentCoordinates.GtidSet)
+	b.logger.Debugf("mysql.reader: GtidSet: %v", coordinates.GtidSet)
+	gtidSet, err := gomysql.ParseMysqlGTIDSet(coordinates.GtidSet)
 	if err != nil {
 		b.logger.Errorf("mysql.reader: err: %v", err)
 	}
@@ -167,7 +171,7 @@ func (b *BinlogReader) ConnectBinlogStreamer(coordinates base.BinlogCoordinates)
 	return err
 }
 
-func (b *BinlogReader) GetCurrentBinlogCoordinates() *base.BinlogCoordinates {
+func (b *BinlogReader) GetCurrentBinlogCoordinates() *base.BinlogCoordinateTx {
 	b.currentCoordinatesMutex.Lock()
 	defer b.currentCoordinatesMutex.Unlock()
 	returnCoordinates := b.currentCoordinates
