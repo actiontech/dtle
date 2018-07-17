@@ -16,7 +16,6 @@ import (
 
 	usql "udup/internal/client/driver/mysql/sql"
 	umconf "udup/internal/config/mysql"
-	"context"
 )
 
 var (
@@ -227,12 +226,12 @@ func parseInterval(str string) (i gomysql.Interval, err error) {
 	return
 }
 
-func SelectGtidExecuted(db *gosql.Conn, sid, jid string) (gtidset gomysql.IntervalSlice, err error) {
+func SelectGtidExecuted(db usql.QueryAble, sid, jid string) (gtidset gomysql.IntervalSlice, err error) {
 	query := fmt.Sprintf(`SELECT interval_gtid FROM actiontech_udup.gtid_executed where source_uuid='%s' and job_uuid='%s'`,
 		sid, jid,
 	)
 
-	rows, err := db.QueryContext(context.Background(), query)
+	rows, err := db.Query(query)
 	if err != nil {
 		return nil, err
 	}

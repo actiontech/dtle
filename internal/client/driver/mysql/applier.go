@@ -506,6 +506,26 @@ func (a *Applier) initiateStreaming() error {
 					if nil == binlogEntry {
 						continue
 					}
+
+					thisInterval := gomysql.Interval{Start: binlogEntry.Coordinates.GNO, Stop: binlogEntry.Coordinates.GNO + 1}
+					txSid := binlogEntry.Coordinates.GetSid()
+					if len(a.executedIntervals) == 0 {
+						// udup crash recovery or never executed
+						a.executedIntervals, err = base.SelectGtidExecuted(a.db, txSid, a.subject)
+						if err != nil {
+							a.onError(TaskStateDead, err)
+						}
+					}
+
+					if a.executedIntervals.Contain([]gomysql.Interval{thisInterval}) {
+						// entry executed
+						continue
+					}
+					// TODO normalize may affect oringinal intervals
+					newInterval := append(a.executedIntervals, thisInterval).Normalize()
+					// TODO this is assigned before real execution
+					a.executedIntervals = newInterval
+
 					if a.mysqlContext.ParallelWorkers <= 1 {
 						a.applyBinlogMtsTxQueue <- binlogEntry
 					} else {
@@ -515,9 +535,11 @@ func (a *Applier) initiateStreaming() error {
 						}
 						if !a.shutdown {
 							// TODO what is this used for?
-							a.mysqlContext.Gtid = fmt.Sprintf("%s:1-%d", binlogEntry.Coordinates.GetSid(), binlogEntry.Coordinates.GNO)
+							a.mysqlContext.Gtid = fmt.Sprintf("%s:1-%d", txSid, binlogEntry.Coordinates.GNO)
 						}
 					}
+				case <-time.After(10 * time.Second):
+					a.logger.Debugf("mysql.applier: no binlogEntry for 10s")
 				case <-a.shutdownCh:
 					stopSomeLoop = true
 				}
@@ -854,23 +876,7 @@ func (a *Applier) ApplyBinlogEvent(workerIdx int, binlogEntry *binlog.BinlogEntr
 	var totalDelta int64
 	var err error
 
-	thisInterval := gomysql.Interval{Start: binlogEntry.Coordinates.GNO, Stop: binlogEntry.Coordinates.GNO + 1}
 	txSid := binlogEntry.Coordinates.GetSid()
-	if len(a.executedIntervals) == 0 {
-		// udup crash recovery or never executed
-		a.executedIntervals, err = base.SelectGtidExecuted(dbApplier.Db, txSid, a.subject)
-		if err != nil {
-			return err
-		}
-	}
-
-	if a.executedIntervals.Contain([]gomysql.Interval{thisInterval}) {
-		// entry executed
-		return nil
-	}
-
-	// TODO normalize may affect oringinal intervals
-	newInterval := append(a.executedIntervals, thisInterval).Normalize()
 
 	dbApplier.DbMutex.Lock()
 	tx, err := dbApplier.Db.BeginTx(context.Background(), &gosql.TxOptions{})
@@ -881,15 +887,8 @@ func (a *Applier) ApplyBinlogEvent(workerIdx int, binlogEntry *binlog.BinlogEntr
 		if err := tx.Commit(); err != nil {
 			a.onError(TaskStateDead, err)
 		}
-		a.executedIntervals = newInterval
 		a.mtsManager.Executed(binlogEntry)
 
-		if !a.shutdown {
-			a.currentCoordinates.RelayMasterLogFile = binlogEntry.Coordinates.LogFile
-			a.currentCoordinates.ReadMasterLogPos = binlogEntry.Coordinates.LogPos
-			a.currentCoordinates.ExecutedGtidSet = fmt.Sprintf("%s:%d", txSid, binlogEntry.Coordinates.GNO)
-			a.mysqlContext.Gtid = fmt.Sprintf("%s:1-%d", txSid, binlogEntry.Coordinates.GNO)
-		}
 		dbApplier.DbMutex.Unlock()
 	}()
 
@@ -959,12 +958,7 @@ func (a *Applier) ApplyBinlogEvent(workerIdx int, binlogEntry *binlog.BinlogEntr
 		}
 	}
 
-	_, err = dbApplier.PsDeleteExecutedGtid.Exec(txSid)
-	if err != nil {
-		return err
-	}
-
-	_, err = dbApplier.PsInsertExecutedGtid.Exec(txSid, base.StringInterval(newInterval))
+	_, err = dbApplier.PsInsertExecutedGtid.Exec(txSid, binlogEntry.Coordinates.GNO)
 	if err != nil {
 		return err
 	}
