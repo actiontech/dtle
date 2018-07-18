@@ -1280,7 +1280,7 @@ func (e *Extractor) Stats() (*models.TaskStatistics, error) {
 		taskResUsage.CurrentCoordinates = &models.CurrentCoordinates{
 			File:     currentBinlogCoordinates.LogFile,
 			Position: currentBinlogCoordinates.LogPos,
-			GtidSet:  fmt.Sprintf("%s:%d", currentBinlogCoordinates.SID, currentBinlogCoordinates.GNO),
+			GtidSet:  fmt.Sprintf("%s:%d", currentBinlogCoordinates.GetSid(), currentBinlogCoordinates.GNO),
 		}
 	} else {
 		taskResUsage.CurrentCoordinates = &models.CurrentCoordinates{

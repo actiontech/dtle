@@ -5,7 +5,6 @@ import (
 
 	"github.com/siddontang/go-mysql/replication"
 
-	"strings"
 	"udup/internal/config/mysql"
 	"udup/internal/config"
 )
@@ -20,27 +19,17 @@ const (
 	DeleteDML          = "Delete"
 )
 
-func ToEventDML(description string) EventDML {
-	// description can be a statement (`UPDATE my_table ...`) or a RBR event name (`UpdateRowsEventV2`)
-	description = strings.TrimSpace(strings.Split(description, " ")[0])
-	switch strings.ToLower(description) {
-	case "insert":
+func ToEventDML(eventType replication.EventType) EventDML {
+	switch eventType {
+	case replication.WRITE_ROWS_EVENTv0, replication.WRITE_ROWS_EVENTv1, replication.WRITE_ROWS_EVENTv2:
 		return InsertDML
-	case "update":
+	case replication.UPDATE_ROWS_EVENTv0, replication.UPDATE_ROWS_EVENTv1, replication.UPDATE_ROWS_EVENTv2:
 		return UpdateDML
-	case "delete":
+	case replication.DELETE_ROWS_EVENTv0, replication.DELETE_ROWS_EVENTv1, replication.DELETE_ROWS_EVENTv2:
 		return DeleteDML
+	default:
+		return NotDML
 	}
-	if strings.HasPrefix(description, "WriteRows") {
-		return InsertDML
-	}
-	if strings.HasPrefix(description, "UpdateRows") {
-		return UpdateDML
-	}
-	if strings.HasPrefix(description, "DeleteRows") {
-		return DeleteDML
-	}
-	return NotDML
 }
 
 type BinlogTx struct {

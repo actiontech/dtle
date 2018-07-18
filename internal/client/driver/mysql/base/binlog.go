@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"regexp"
 	"github.com/siddontang/go-mysql/replication"
+	"github.com/satori/go.uuid"
 )
 
 var detachPattern *regexp.Regexp
@@ -43,11 +44,16 @@ type BinlogEvent struct {
 type BinlogCoordinateTx struct {
 	LogFile       string
 	LogPos        int64
+	// Looks like a mechanism to prevent loop (unfinished)
 	OSID          string
-	SID           string
+	SID           uuid.UUID
 	GNO           int64
 	LastCommitted int64
-	Type          BinlogType
+}
+
+// Do not call this frequently. Cache your result.
+func (b *BinlogCoordinateTx) GetSid() string {
+	return b.SID.String()
 }
 
 // BinlogCoordinates described binary log coordinates in the form of log file & log position.
@@ -67,7 +73,7 @@ func (b *BinlogCoordinateTx) Equals(other *BinlogCoordinateTx) bool {
 	if other == nil {
 		return false
 	}
-	return b.LogFile == other.LogFile && b.LogPos == other.LogPos && b.Type == other.Type
+	return b.LogFile == other.LogFile && b.LogPos == other.LogPos
 }
 
 // IsEmpty returns true if the log file is empty, unnamed
@@ -96,5 +102,5 @@ func (b *BinlogCoordinateTx) SmallerThanOrEquals(other *BinlogCoordinateTx) bool
 }
 
 func (b *BinlogCoordinateTx) GetGtidForThisTx() string {
-	return fmt.Sprintf("%s:%d", b.SID, b.GNO)
+	return fmt.Sprintf("%s:%d", b.GetSid(), b.GNO)
 }

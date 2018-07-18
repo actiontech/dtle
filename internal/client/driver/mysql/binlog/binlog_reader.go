@@ -248,7 +248,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 			b.currentCoordinatesMutex.Lock()
 			defer b.currentCoordinatesMutex.Unlock()
 			u, _ := uuid.FromBytes(evt.GTID.SID)
-			b.currentCoordinates.SID = u.String()
+			b.currentCoordinates.SID = u
 			b.currentCoordinates.GNO = evt.GTID.GNO
 			b.currentCoordinates.LastCommitted = evt.GTID.LastCommitted
 			b.currentBinlogEntry = NewBinlogEntryAt(b.currentCoordinates)
@@ -257,7 +257,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 			b.currentCoordinatesMutex.Lock()
 			defer b.currentCoordinatesMutex.Unlock()
 			u, _ := uuid.FromBytes(evt.SID)
-			b.currentCoordinates.SID = u.String()
+			b.currentCoordinates.SID = u
 			b.currentCoordinates.GNO = evt.GNO
 			b.currentBinlogEntry = NewBinlogEntryAt(b.currentCoordinates)
 		}
@@ -358,7 +358,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 				return nil
 			}
 
-			dml := ToEventDML(ev.Header.EventType.String())
+			dml := ToEventDML(ev.Header.EventType)
 			if dml == NotDML {
 				return fmt.Errorf("Unknown DML type: %s", ev.Header.EventType.String())
 			}
@@ -1054,7 +1054,11 @@ func (b *BinlogReader) skipRowEvent(rowsEvent *replication.RowsEvent) (bool, *co
 	tableLower := strings.ToLower(string(rowsEvent.Table.Table))
 	switch strings.ToLower(string(rowsEvent.Table.Schema)) {
 	case "actiontech_udup":
-		b.currentBinlogEntry.Coordinates.OSID = mysql.ToColumnValues(rowsEvent.Rows[0]).StringColumn(0)
+		if strings.ToLower(string(rowsEvent.Table.Table)) == "gtid_executed" {
+			// TODO only for insertion
+			// TODO make sure the column exists
+			//b.currentBinlogEntry.Coordinates.OSID = mysql.ToColumnValues(rowsEvent.Rows[0]).StringColumn(0)
+		}
 		return true, nil
 	case "mysql":
 		if b.mysqlContext.ExpandSyntaxSupport {

@@ -64,7 +64,6 @@ func TestBinlogCoordinates_DisplayString(t *testing.T) {
 				LogFile: tt.fields.LogFile,
 				LogPos:  tt.fields.LogPos,
 				GtidSet: tt.fields.GtidSet,
-				Type:    tt.fields.Type,
 			}
 			if got := b.DisplayString(); got != tt.want {
 				t.Errorf("BinlogCoordinates.DisplayString() = %v, want %v", got, tt.want)
@@ -93,7 +92,6 @@ func TestBinlogCoordinates_String(t *testing.T) {
 				LogFile: tt.fields.LogFile,
 				LogPos:  tt.fields.LogPos,
 				GtidSet: tt.fields.GtidSet,
-				Type:    tt.fields.Type,
 			}
 			if got := b.String(); got != tt.want {
 				t.Errorf("BinlogCoordinates.String() = %v, want %v", got, tt.want)
@@ -126,7 +124,6 @@ func TestBinlogCoordinates_Equals(t *testing.T) {
 				LogFile: tt.fields.LogFile,
 				LogPos:  tt.fields.LogPos,
 				GtidSet: tt.fields.GtidSet,
-				Type:    tt.fields.Type,
 			}
 			if got := b.Equals(tt.args.other); got != tt.want {
 				t.Errorf("BinlogCoordinates.Equals() = %v, want %v", got, tt.want)
@@ -155,7 +152,6 @@ func TestBinlogCoordinates_IsEmpty(t *testing.T) {
 				LogFile: tt.fields.LogFile,
 				LogPos:  tt.fields.LogPos,
 				GtidSet: tt.fields.GtidSet,
-				Type:    tt.fields.Type,
 			}
 			if got := b.IsEmpty(); got != tt.want {
 				t.Errorf("BinlogCoordinates.IsEmpty() = %v, want %v", got, tt.want)
@@ -188,7 +184,6 @@ func TestBinlogCoordinates_SmallerThan(t *testing.T) {
 				LogFile: tt.fields.LogFile,
 				LogPos:  tt.fields.LogPos,
 				GtidSet: tt.fields.GtidSet,
-				Type:    tt.fields.Type,
 			}
 			if got := b.SmallerThan(tt.args.other); got != tt.want {
 				t.Errorf("BinlogCoordinates.SmallerThan() = %v, want %v", got, tt.want)
@@ -221,7 +216,6 @@ func TestBinlogCoordinates_SmallerThanOrEquals(t *testing.T) {
 				LogFile: tt.fields.LogFile,
 				LogPos:  tt.fields.LogPos,
 				GtidSet: tt.fields.GtidSet,
-				Type:    tt.fields.Type,
 			}
 			if got := b.SmallerThanOrEquals(tt.args.other); got != tt.want {
 				t.Errorf("BinlogCoordinates.SmallerThanOrEquals() = %v, want %v", got, tt.want)

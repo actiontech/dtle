@@ -374,7 +374,7 @@ OUTER:
 				//a.logger.Debugf("mysql.applier: apply binlogEntry: %+v", groupEntry[len(groupEntry)-1].Coordinates.GNO)
 
 				if !a.shutdown {
-					a.mysqlContext.Gtid = fmt.Sprintf("%s:1-%d", groupEntry[len(groupEntry)-1].Coordinates.SID, groupEntry[len(groupEntry)-1].Coordinates.GNO)
+					a.mysqlContext.Gtid = fmt.Sprintf("%s:1-%d", groupEntry[len(groupEntry)-1].Coordinates.GetSid(), groupEntry[len(groupEntry)-1].Coordinates.GNO)
 				}
 			}
 		case groupTx := <-a.applyBinlogGroupTxQueue:
@@ -899,9 +899,10 @@ func (a *Applier) ApplyBinlogEvent(dbApplier *sql.Conn, binlogEntry *binlog.Binl
 	var err error
 
 	thisInterval := gomysql.Interval{Start: binlogEntry.Coordinates.GNO, Stop: binlogEntry.Coordinates.GNO + 1}
+	txSid := binlogEntry.Coordinates.GetSid()
 	if len(a.executedIntervals) == 0 {
 		// udup crash recovery or never executed
-		a.executedIntervals, err = base.SelectGtidExecuted(dbApplier.Db, binlogEntry.Coordinates.SID, a.subject)
+		a.executedIntervals, err = base.SelectGtidExecuted(dbApplier.Db, txSid, a.subject)
 		if err != nil {
 			return err
 		}
@@ -928,8 +929,8 @@ func (a *Applier) ApplyBinlogEvent(dbApplier *sql.Conn, binlogEntry *binlog.Binl
 		if !a.shutdown {
 			a.currentCoordinates.RelayMasterLogFile = binlogEntry.Coordinates.LogFile
 			a.currentCoordinates.ReadMasterLogPos = binlogEntry.Coordinates.LogPos
-			a.currentCoordinates.ExecutedGtidSet = fmt.Sprintf("%s:%d", binlogEntry.Coordinates.SID, binlogEntry.Coordinates.GNO)
-			a.mysqlContext.Gtid = fmt.Sprintf("%s:1-%d", binlogEntry.Coordinates.SID, binlogEntry.Coordinates.GNO)
+			a.currentCoordinates.ExecutedGtidSet = fmt.Sprintf("%s:%d", txSid, binlogEntry.Coordinates.GNO)
+			a.mysqlContext.Gtid = fmt.Sprintf("%s:1-%d", txSid, binlogEntry.Coordinates.GNO)
 		}
 		dbApplier.DbMutex.Unlock()
 	}()
@@ -993,19 +994,19 @@ func (a *Applier) ApplyBinlogEvent(dbApplier *sql.Conn, binlogEntry *binlog.Binl
 
 			_, err = stmt.Exec(args...)
 			if err != nil {
-				a.logger.Errorf("mysql.applier: gtid: %s:%d, error: %v", binlogEntry.Coordinates.SID, binlogEntry.Coordinates.GNO, err)
+				a.logger.Errorf("mysql.applier: gtid: %s:%d, error: %v", txSid, binlogEntry.Coordinates.GNO, err)
 				return err
 			}
 			totalDelta += rowDelta
 		}
 	}
 
-	_, err = dbApplier.PsDeleteExecutedGtid.Exec(binlogEntry.Coordinates.SID)
+	_, err = dbApplier.PsDeleteExecutedGtid.Exec(txSid)
 	if err != nil {
 		return err
 	}
 
-	_, err = dbApplier.PsInsertExecutedGtid.Exec(binlogEntry.Coordinates.SID, base.StringInterval(newInterval))
+	_, err = dbApplier.PsInsertExecutedGtid.Exec(txSid, base.StringInterval(newInterval))
 	if err != nil {
 		return err
 	}
