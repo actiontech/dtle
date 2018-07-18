@@ -470,26 +470,3 @@ func (i *Inspector) getCandidateUniqueKeys(databaseName, tableName string) (uniq
 	i.logger.Debugf("mysql.inspector: Potential unique keys in %+v.%+v: %+v", databaseName, tableName, uniqueKeys)
 	return uniqueKeys, nil
 }
-
-// getSharedUniqueKeys returns the intersection of two given unique keys,
-// testing by list of columns
-func getSharedUniqueKeys(originalUniqueKeys, ghostUniqueKeys [](*umconf.UniqueKey)) (uniqueKeys [](*umconf.UniqueKey), err error) {
-	// We actually do NOT rely on key name, just on the set of columns. This is because maybe
-	// the ALTER is on the name itself...
-	for _, originalUniqueKey := range originalUniqueKeys {
-		for _, ghostUniqueKey := range ghostUniqueKeys {
-			if originalUniqueKey.Columns.EqualsByNames(&ghostUniqueKey.Columns) {
-				uniqueKeys = append(uniqueKeys, originalUniqueKey)
-			}
-		}
-	}
-	return uniqueKeys, nil
-}
-
-// showCreateTable returns the `show create table` statement for given table
-func (i *Inspector) showCreateTable(databaseName, tableName string) (createTableStatement string, err error) {
-	var dummy string
-	query := fmt.Sprintf(`show create table %s.%s`, usql.EscapeName(databaseName), usql.EscapeName(tableName))
-	err = i.db.QueryRow(query).Scan(&dummy, &createTableStatement)
-	return createTableStatement, err
-}

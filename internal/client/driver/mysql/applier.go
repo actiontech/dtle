@@ -70,7 +70,6 @@ type Applier struct {
 	mysqlContext       *config.MySQLDriverConfig
 	dbs                []*sql.Conn
 	db                 *gosql.DB
-	retrievedGtidSet   string
 	executedIntervals  gomysql.IntervalSlice
 	currentCoordinates *models.CurrentCoordinates
 	tableItems         mapSchemaTableItems

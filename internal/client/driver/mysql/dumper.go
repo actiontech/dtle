@@ -15,10 +15,6 @@ import (
 	"time"
 )
 
-var (
-	stringOfBackslashAndQuoteChars = "\u005c\u00a5\u0160\u20a9\u2216\ufe68uff3c\u0022\u0027\u0060\u00b4\u02b9\u02ba\u02bb\u02bc\u02c8\u02ca\u02cb\u02d9\u0300\u0301\u2018\u2019\u201a\u2032\u2035\u275b\u275c\uff07"
-)
-
 type dumper struct {
 	logger         *log.Entry
 	chunkSize      int64

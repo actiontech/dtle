@@ -2,32 +2,8 @@ package base
 
 import (
 	"fmt"
-	"regexp"
 	"github.com/siddontang/go-mysql/replication"
 	"github.com/satori/go.uuid"
-)
-
-var detachPattern *regexp.Regexp
-
-func init() {
-	detachPattern, _ = regexp.Compile(`//([^/:]+):([\d]+)`) // e.g. `//binlog.01234:567890`
-}
-
-type BinlogType int
-
-const (
-	BinaryLog BinlogType = iota
-	RelayLog
-)
-
-type OpType byte
-
-const (
-	insert = iota + 1
-	update
-	del
-	ddl
-	xid
 )
 
 type BinlogEvent struct {

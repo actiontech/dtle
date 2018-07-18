@@ -253,29 +253,6 @@ func TestInspector_validateTableTriggers(t *testing.T) {
 	}
 }
 
-func TestInspector_applyColumnTypes(t *testing.T) {
-	type args struct {
-		databaseName string
-		tableName    string
-		columnsLists []*umconf.ColumnList
-	}
-	tests := []struct {
-		name    string
-		i       *Inspector
-		args    args
-		wantErr bool
-	}{
-	// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if err := tt.i.applyColumnTypes(tt.args.databaseName, tt.args.tableName, tt.args.columnsLists...); (err != nil) != tt.wantErr {
-				t.Errorf("Inspector.applyColumnTypes() error = %v, wantErr %v", err, tt.wantErr)
-			}
-		})
-	}
-}
-
 func TestInspector_getCandidateUniqueKeys(t *testing.T) {
 	type args struct {
 		databaseName string
@@ -299,61 +276,6 @@ func TestInspector_getCandidateUniqueKeys(t *testing.T) {
 			}
 			if !reflect.DeepEqual(gotUniqueKeys, tt.wantUniqueKeys) {
 				t.Errorf("Inspector.getCandidateUniqueKeys() = %v, want %v", gotUniqueKeys, tt.wantUniqueKeys)
-			}
-		})
-	}
-}
-
-func Test_getSharedUniqueKeys(t *testing.T) {
-	type args struct {
-		originalUniqueKeys [](*umconf.UniqueKey)
-		ghostUniqueKeys    [](*umconf.UniqueKey)
-	}
-	tests := []struct {
-		name           string
-		args           args
-		wantUniqueKeys [](*umconf.UniqueKey)
-		wantErr        bool
-	}{
-	// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			gotUniqueKeys, err := getSharedUniqueKeys(tt.args.originalUniqueKeys, tt.args.ghostUniqueKeys)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("getSharedUniqueKeys() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
-			if !reflect.DeepEqual(gotUniqueKeys, tt.wantUniqueKeys) {
-				t.Errorf("getSharedUniqueKeys() = %v, want %v", gotUniqueKeys, tt.wantUniqueKeys)
-			}
-		})
-	}
-}
-
-func TestInspector_showCreateTable(t *testing.T) {
-	type args struct {
-		databaseName string
-		tableName    string
-	}
-	tests := []struct {
-		name                     string
-		i                        *Inspector
-		args                     args
-		wantCreateTableStatement string
-		wantErr                  bool
-	}{
-	// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			gotCreateTableStatement, err := tt.i.showCreateTable(tt.args.databaseName, tt.args.tableName)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("Inspector.showCreateTable() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
-			if gotCreateTableStatement != tt.wantCreateTableStatement {
-				t.Errorf("Inspector.showCreateTable() = %v, want %v", gotCreateTableStatement, tt.wantCreateTableStatement)
 			}
 		})
 	}

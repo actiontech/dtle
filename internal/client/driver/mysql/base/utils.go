@@ -34,13 +34,6 @@ func PrettifyDurationOutput(d time.Duration) string {
 	return result
 }
 
-func FileExists(fileName string) bool {
-	if _, err := os.Stat(fileName); err == nil {
-		return true
-	}
-	return false
-}
-
 // StringContainsAll returns true if `s` contains all non empty given `substrings`
 // The function returns `false` if no non-empty arguments are given.
 func StringContainsAll(s string, substrings ...string) bool {
@@ -57,59 +50,6 @@ func StringContainsAll(s string, substrings ...string) bool {
 		}
 	}
 	return nonEmptyStringsFound
-}
-
-const MaxTableNameLength = 64
-
-type ReplicationLagResult struct {
-	Key umconf.InstanceKey
-	Lag time.Duration
-	Err error
-}
-
-func NewNoReplicationLagResult() *ReplicationLagResult {
-	return &ReplicationLagResult{Lag: 0, Err: nil}
-}
-
-func (r *ReplicationLagResult) HasLag() bool {
-	return r.Lag > 0
-}
-
-// GetReplicationLag returns replication lag for a given connection config; either by explicit query
-// or via SHOW SLAVE STATUS
-func GetReplicationLag(connectionConfig *umconf.ConnectionConfig) (replicationLag time.Duration, err error) {
-	dbUri := connectionConfig.GetDBUri()
-	var db *gosql.DB
-	if db, _, err = usql.GetDB(dbUri); err != nil {
-		return replicationLag, err
-	}
-
-	err = usql.QueryRowsMap(db, `show slave status`, func(m usql.RowMap) error {
-		slaveIORunning := m.GetString("Slave_IO_Running")
-		slaveSQLRunning := m.GetString("Slave_SQL_Running")
-		secondsBehindMaster := m.GetNullInt64("Seconds_Behind_Master")
-		if !secondsBehindMaster.Valid {
-			return fmt.Errorf("replication not running; Slave_IO_Running=%+v, Slave_SQL_Running=%+v", slaveIORunning, slaveSQLRunning)
-		}
-		replicationLag = time.Duration(secondsBehindMaster.Int64) * time.Second
-		return nil
-	})
-	return replicationLag, err
-}
-
-func GetReplicationBinlogCoordinates(db *gosql.DB) (readBinlogCoordinates *BinlogCoordinateTx, executeBinlogCoordinates *BinlogCoordinateTx, err error) {
-	err = usql.QueryRowsMap(db, `show slave status`, func(m usql.RowMap) error {
-		readBinlogCoordinates = &BinlogCoordinateTx{
-			LogFile: m.GetString("Master_Log_File"),
-			LogPos:  m.GetInt64("Read_Master_Log_Pos"),
-		}
-		executeBinlogCoordinates = &BinlogCoordinateTx{
-			LogFile: m.GetString("Relay_Master_Log_File"),
-			LogPos:  m.GetInt64("Exec_Master_Log_Pos"),
-		}
-		return nil
-	})
-	return readBinlogCoordinates, executeBinlogCoordinates, err
 }
 
 func GetSelfBinlogCoordinates(db *gosql.DB) (selfBinlogCoordinates *BinlogCoordinatesX, err error) {
@@ -342,25 +282,6 @@ func StringInterval(intervals gomysql.IntervalSlice) string {
 	return hack.String(buf.Bytes())
 }
 
-//It extracts the list of shared columns and the chosen extract unique key
-func InspectTables(db *gosql.DB, databaseName string, doTb *uconf.Table, timeZone string) (err error) {
-	// By fact that a non-empty unique key exists we also know the shared columns are non-empty
-
-	// This additional step looks at which columns are unsigned. We could have merged this within
-	// the `getTableColumns()` function, but it's a later patch and introduces some complexity; I feel
-	// comfortable in doing this as a separate step.
-	ApplyColumnTypes(db, databaseName, doTb.TableName, doTb.OriginalTableColumns)
-
-	/*for c := range doTb.OriginalTableColumns.ColumnList() {
-		column := doTb.OriginalTableColumns.ColumnList()[c]
-		if column.Type == umconf.DateTimeColumnType || column.Type == umconf.TimestampColumnType {
-			doTb.OriginalTableColumns.SetConvertDatetimeToTimestamp(column.Name, timeZone)
-		}
-	}*/
-
-	return nil
-}
-
 // applyColumnTypes
 func ApplyColumnTypes(db usql.QueryAble, databaseName, tableName string, columnsLists ...*umconf.ColumnList) error {
 	query := `
@@ -533,7 +454,7 @@ func GtidSetDiff(set1 string, set2 string) (string, error) {
 		return "", fmt.Errorf("internal error: cannot cast MysqlGTIDSet")
 	}
 
-	for uuid, startSet := range gStart.Sets {
+	for sid, startSet := range gStart.Sets {
 		// one for each UUID
 		if startSet.Intervals.Len() != 1 {
 			return "", fmt.Errorf("bad format for GtidStart")
@@ -544,7 +465,7 @@ func GtidSetDiff(set1 string, set2 string) (string, error) {
 		}
 
 		startPoint := startSet.Intervals[0].Start
-		execSets, ok := gExecuted.Sets[uuid]
+		execSets, ok := gExecuted.Sets[sid]
 		if !ok {
 			// do nothing
 		} else {
