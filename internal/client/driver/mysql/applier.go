@@ -138,7 +138,8 @@ type Applier struct {
 	mysqlContext       *config.MySQLDriverConfig
 	dbs                []*sql.Conn
 	db                 *gosql.DB
-	executedIntervals  gomysql.IntervalSlice
+	gtidExecuted       base.GtidSet
+	gtidExecutedMutex  sync.Mutex
 	currentCoordinates *models.CurrentCoordinates
 	tableItems         mapSchemaTableItems
 
@@ -509,22 +510,28 @@ func (a *Applier) initiateStreaming() error {
 
 					thisInterval := gomysql.Interval{Start: binlogEntry.Coordinates.GNO, Stop: binlogEntry.Coordinates.GNO + 1}
 					txSid := binlogEntry.Coordinates.GetSid()
-					if len(a.executedIntervals) == 0 {
+
+					if a.gtidExecuted == nil {
 						// udup crash recovery or never executed
-						a.executedIntervals, err = base.SelectGtidExecuted(a.db, txSid, a.subject)
+						a.gtidExecuted, err = base.SelectAllGtidExecuted(a.db, a.subject)
 						if err != nil {
 							a.onError(TaskStateDead, err)
 						}
 					}
 
-					if a.executedIntervals.Contain([]gomysql.Interval{thisInterval}) {
-						// entry executed
-						continue
+					executedIntervals, hasSid := a.gtidExecuted[binlogEntry.Coordinates.SID]
+					if hasSid {
+						if base.IntervalSlicesContainOne(executedIntervals, binlogEntry.Coordinates.GNO) {
+							// entry executed
+							a.logger.Debugf("mysql.applier: skip an executed tx: %v:%v", txSid, binlogEntry.Coordinates.GNO)
+							continue
+						}
 					}
+
 					// TODO normalize may affect oringinal intervals
-					newInterval := append(a.executedIntervals, thisInterval).Normalize()
+					newInterval := append(executedIntervals, thisInterval).Normalize()
 					// TODO this is assigned before real execution
-					a.executedIntervals = newInterval
+					a.gtidExecuted[binlogEntry.Coordinates.SID] = newInterval
 
 					if a.mysqlContext.ParallelWorkers <= 1 {
 						a.applyBinlogMtsTxQueue <- binlogEntry

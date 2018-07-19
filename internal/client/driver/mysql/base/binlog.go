@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/siddontang/go-mysql/replication"
 	"github.com/satori/go.uuid"
+	gomysql "github.com/siddontang/go-mysql/mysql"
 )
 
 type BinlogEvent struct {
@@ -80,4 +81,15 @@ func (b *BinlogCoordinateTx) SmallerThanOrEquals(other *BinlogCoordinateTx) bool
 
 func (b *BinlogCoordinateTx) GetGtidForThisTx() string {
 	return fmt.Sprintf("%s:%d", b.GetSid(), b.GNO)
+}
+
+type GtidSet map[uuid.UUID]gomysql.IntervalSlice
+
+func IntervalSlicesContainOne(intervals gomysql.IntervalSlice, gno int64) bool {
+	for i := range intervals {
+		if gno >= intervals[i].Start && gno < intervals[i].Stop {
+			return true
+		}
+	}
+	return false
 }
