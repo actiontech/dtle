@@ -1577,8 +1577,8 @@ func (e *Extractor) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry) (e
 	return nil
 }
 
-func kafkaColType(colType mysql.ColumnType) kafka2.SchemaType {
-	switch colType {
+func kafkaColType(col *mysql.Column) kafka2.SchemaType {
+	switch col.Type {
 	case mysql.UnknownColumnType:
 		return ""
 	case mysql.BitColumnType:
@@ -1593,15 +1593,32 @@ func kafkaColType(colType mysql.ColumnType) kafka2.SchemaType {
 	case mysql.TextColumnType, mysql.CharColumnType, mysql.VarcharColumnType:
 		return kafka2.SCHEMA_TYPE_STRING
 	case mysql.TinyintColumnType:
-		return kafka2.SCHEMA_TYPE_INT8
+		if col.IsUnsigned {
+			return kafka2.SCHEMA_TYPE_INT16
+		} else {
+			return kafka2.SCHEMA_TYPE_INT8
+		}
 	case mysql.SmallintColumnType:
-		return kafka2.SCHEMA_TYPE_INT16
-	case mysql.MediumIntColumnType:
+		if col.IsUnsigned {
+			return kafka2.SCHEMA_TYPE_INT32
+		} else {
+			return kafka2.SCHEMA_TYPE_INT16
+		}
+	case mysql.MediumIntColumnType: // 24 bit in mysql
 		return kafka2.SCHEMA_TYPE_INT32
 	case mysql.IntColumnType:
-		return kafka2.SCHEMA_TYPE_INT32
+		if col.IsUnsigned {
+			return kafka2.SCHEMA_TYPE_INT64
+		} else {
+			return kafka2.SCHEMA_TYPE_INT32
+		}
 	case mysql.BigIntColumnType:
-		return kafka2.SCHEMA_TYPE_INT64
+		if col.IsUnsigned {
+			// TODO Use DECIMAL (bytes). See #230-1.
+			return kafka2.SCHEMA_TYPE_INT64
+		} else {
+			return kafka2.SCHEMA_TYPE_INT64
+		}
 
 	case mysql.FloatColumnType:
 		return kafka2.SCHEMA_TYPE_FLOAT64
@@ -1637,7 +1654,7 @@ func kafkaColumnListToColDefs(colList *mysql.ColumnList) (valColDefs kafka2.ColD
 
 		addToKey := cols[i].IsPk()
 
-		theType = kafkaColType(cols[i].Type)
+		theType = kafkaColType(&cols[i])
 		switch cols[i].Type {
 		case mysql.JSONColumnType:
 			optName = new(string)
