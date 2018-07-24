@@ -4,7 +4,6 @@ import (
 	"bytes"
 	gosql "database/sql"
 	"fmt"
-	"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -16,7 +15,6 @@ import (
 	"github.com/siddontang/go/hack"
 
 	usql "udup/internal/client/driver/mysql/sql"
-	uconf "udup/internal/config"
 	umconf "udup/internal/config/mysql"
 	"context"
 )
