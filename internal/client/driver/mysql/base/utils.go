@@ -252,19 +252,28 @@ func SelectAllGtidExecuted(db usql.QueryAble, jid string) (gtidSet GtidSet, err 
 			return nil, err
 		}
 
+		item, ok := gtidSet[sidUUID]
+		if !ok {
+			item = &GtidExecutedItem{
+				NRow: 0,
+				Intervals: nil,
+			}
+			gtidSet[sidUUID] = item
+		}
+		item.NRow += 1
 		sep := strings.Split(interval, ":")
 		// Handle interval
 		for i := 0; i < len(sep); i++ {
 			if in, err := parseInterval(sep[i]); err != nil {
 				return nil, err
 			} else {
-				gtidSet[sidUUID] = append(gtidSet[sidUUID], in)
+				item.Intervals = append(item.Intervals, in)
 			}
 		}
 	}
 
-	for sid, intervals := range gtidSet {
-		gtidSet[sid] = intervals.Normalize()
+	for sid, item := range gtidSet {
+		gtidSet[sid].Intervals = item.Intervals.Normalize()
 	}
 
 	return gtidSet, err

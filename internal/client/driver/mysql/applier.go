@@ -19,17 +19,21 @@ import (
 	gonats "github.com/nats-io/go-nats"
 	gomysql "github.com/siddontang/go-mysql/mysql"
 
+	"context"
 	"udup/internal/client/driver/mysql/base"
 	"udup/internal/client/driver/mysql/binlog"
 	"udup/internal/client/driver/mysql/sql"
 	"udup/internal/config"
+	umconf "udup/internal/config/mysql"
 	log "udup/internal/logger"
 	"udup/internal/models"
 	"udup/utils"
-	umconf "udup/internal/config/mysql"
-	"context"
+	"sort"
 )
 
+const (
+	cleanupGtidExecutedLimit = 4096
+)
 const (
 	TaskStateComplete int = iota
 	TaskStateRestart
@@ -37,14 +41,15 @@ const (
 )
 
 type applierTableItem struct {
-	columns *umconf.ColumnList
+	columns  *umconf.ColumnList
 	psInsert []*gosql.Stmt
 	psDelete []*gosql.Stmt
 	psUpdate []*gosql.Stmt
 }
+
 func newApplierTableItem(parallelWorkers int) *applierTableItem {
 	return &applierTableItem{
-		columns: nil,
+		columns:  nil,
 		psInsert: make([]*gosql.Stmt, parallelWorkers),
 		psDelete: make([]*gosql.Stmt, parallelWorkers),
 		psUpdate: make([]*gosql.Stmt, parallelWorkers),
@@ -56,6 +61,7 @@ func (ait *applierTableItem) Reset() {
 		for i := range stmts {
 			if stmts[i] != nil {
 				stmts[i].Close()
+				stmts[i] = nil
 			}
 		}
 	}
@@ -72,63 +78,103 @@ type mapSchemaTableItems map[string](map[string](*applierTableItem))
 // write row data and apply binlog events onto the dest table.
 
 type MtsManager struct {
+	// If you set lastCommit = N, all tx with seqNum <= N must have been executed
 	lastCommitted int64
-	updated chan struct{}
-	shutdownCh chan struct{}
+	updated       chan struct{}
+	shutdownCh    chan struct{}
+	// SeqNum executed but not added to LC
+	m          []int64
+	chExecuted chan int64
 }
+
 //  shutdownCh: close to indicate a shutdown
 func NewMtsManager(shutdownCh chan struct{}) *MtsManager {
 	return &MtsManager{
 		lastCommitted: 0,
-		updated: make(chan struct{}),
-		shutdownCh: shutdownCh,
+		updated:       make(chan struct{}),
+		shutdownCh:    shutdownCh,
+		m:             nil,
+		chExecuted:    make(chan int64),
 	}
 }
-// block for waiting. return true for can_execute, false for abortion
-func (mm *MtsManager) WaitForExecution(binlogEntry *binlog.BinlogEntry) bool {
+
+// block for waiting. return true for can_execute, false for abortion.
+//  This function must be called sequentially.
+func (mm *MtsManager) WaitForExecution(binlogEntry *binlog.BinlogEntry, bySeq bool) bool {
 	if mm.lastCommitted == 0 {
-		atomic.CompareAndSwapInt64(&mm.lastCommitted, 0, binlogEntry.Coordinates.LastCommitted)
+		atomic.CompareAndSwapInt64(&mm.lastCommitted, 0, binlogEntry.Coordinates.SeqenceNumber - 1)
 	}
+
 	for {
-		if atomic.LoadInt64(&mm.lastCommitted) >= binlogEntry.Coordinates.LastCommitted {
-			return true
+		currentLC := atomic.LoadInt64(&mm.lastCommitted)
+		if bySeq {
+			if currentLC + 1 == binlogEntry.Coordinates.SeqenceNumber {
+				fmt.Printf("**** WaitForExecution: bySeq, currentLC: %v, tx.lc: %v, tx.seq: %v. passed\n",
+					currentLC, binlogEntry.Coordinates.LastCommitted, binlogEntry.Coordinates.SeqenceNumber)
+				return true
+			}
+			fmt.Printf("**** WaitForExecution: bySeq, currentLC: %v, tx.lc: %v, tx.seq: %v. blocked\n",
+				currentLC, binlogEntry.Coordinates.LastCommitted, binlogEntry.Coordinates.SeqenceNumber)
+		} else {
+			if currentLC >= binlogEntry.Coordinates.LastCommitted {
+				fmt.Printf("**** WaitForExecution: currentLC: %v, tx.lc: %v, tx.seq: %v. passed\n",
+					currentLC, binlogEntry.Coordinates.LastCommitted, binlogEntry.Coordinates.SeqenceNumber)
+				return true
+			}
+			fmt.Printf("**** WaitForExecution: currentLC: %v, tx.lc: %v, tx.seq: %v. blocked\n",
+				currentLC, binlogEntry.Coordinates.LastCommitted, binlogEntry.Coordinates.SeqenceNumber)
 		}
 
 		// block until lastCommitted updated
 		select {
 		case <-mm.updated:
 			// continue
+		case <-time.After(1 * time.Millisecond):
+			// continue
 		case <-mm.shutdownCh:
 			return false
 		}
 	}
 }
-func (mm *MtsManager) Executed(binlogEntry *binlog.BinlogEntry) {
-	seqNum := binlogEntry.Coordinates.SeqenceNumber
 
-	for true {
-		lc := atomic.LoadInt64(&mm.lastCommitted)
-		if lc > seqNum {
-			break
-		} else if lc == seqNum {
-			// TODO something goes wrong
-			break
-		} else {
-			swapped := atomic.CompareAndSwapInt64(&mm.lastCommitted, lc, seqNum)
-			if swapped {
-				select {
-				case mm.updated <- struct{}{}:
-					// notified
-				default:
-					// non-blocking write
-				}
-				break
+func (mm *MtsManager) LcUpdater() {
+	for {
+		select {
+		case seqNum := <-mm.chExecuted:
+			if seqNum <= mm.lastCommitted {
+				fmt.Printf("**** LcUpdater: ignored seqNum: %v\n", seqNum)
 			} else {
-				// Other goroutine has updated the value.
-				// continue
+				fmt.Printf("**** LcUpdater: accepted seqNum: %v\n", seqNum)
+				mm.m = append(mm.m, seqNum)
+
+				sort.Slice(mm.m, func(i, j int) bool {
+					return mm.m[i] < mm.m[j]
+				})
+
+				for _, k := range mm.m {
+					if k == mm.lastCommitted + 1 {
+						mm.m = mm.m[1:]
+						atomic.AddInt64(&mm.lastCommitted, 1)
+						fmt.Printf("**** LcUpdater: update lc: %v\n", mm.lastCommitted)
+						select {
+						case mm.updated <- struct{}{}:
+						default:
+						}
+					} else {
+						fmt.Printf("**** LcUpdater: stuck at lc: %v, expect: %v\n", k, mm.lastCommitted + 1)
+						break
+					}
+				}
 			}
+
+		case <-mm.shutdownCh:
+			return
 		}
 	}
+}
+
+func (mm *MtsManager) Executed(binlogEntry *binlog.BinlogEntry) {
+	mm.chExecuted <- binlogEntry.Coordinates.SeqenceNumber
 }
 
 type Applier struct {
@@ -139,7 +185,6 @@ type Applier struct {
 	dbs                []*sql.Conn
 	db                 *gosql.DB
 	gtidExecuted       base.GtidSet
-	gtidExecutedMutex  sync.Mutex
 	currentCoordinates *models.CurrentCoordinates
 	tableItems         mapSchemaTableItems
 
@@ -147,13 +192,13 @@ type Applier struct {
 	rowCopyCompleteFlag int64
 	// copyRowsQueue should not be buffered; if buffered some non-damaging but
 	//  excessive work happens at the end of the iteration as new copy-jobs arrive befroe realizing the copy is complete
-	copyRowsQueue            chan *dumpEntry
-	applyDataEntryQueue      chan *binlog.BinlogEntry
-	applyBinlogTxQueue       chan *binlog.BinlogTx
-	applyBinlogGroupTxQueue  chan []*binlog.BinlogTx
+	copyRowsQueue           chan *dumpEntry
+	applyDataEntryQueue     chan *binlog.BinlogEntry
+	applyBinlogTxQueue      chan *binlog.BinlogTx
+	applyBinlogGroupTxQueue chan []*binlog.BinlogTx
 	// only TX can be executed should be put into this chan
-	applyBinlogMtsTxQueue  chan *binlog.BinlogEntry
-	lastAppliedBinlogTx      *binlog.BinlogTx
+	applyBinlogMtsTxQueue chan *binlog.BinlogEntry
+	lastAppliedBinlogTx   *binlog.BinlogTx
 
 	natsConn *gonats.Conn
 	waitCh   chan *models.WaitResult
@@ -172,22 +217,23 @@ func NewApplier(subject, tp string, cfg *config.MySQLDriverConfig, logger *log.L
 		"job": subject,
 	})
 	a := &Applier{
-		logger:                   entry,
-		subject:                  subject,
-		tp:                       tp,
-		mysqlContext:             cfg,
-		currentCoordinates:       &models.CurrentCoordinates{},
-		tableItems:               make(mapSchemaTableItems),
-		rowCopyComplete:          make(chan bool, 1),
-		copyRowsQueue:            make(chan *dumpEntry, 24),
-		applyDataEntryQueue:      make(chan *binlog.BinlogEntry, cfg.ReplChanBufferSize * 2),
-		applyBinlogMtsTxQueue:    make(chan *binlog.BinlogEntry, cfg.ReplChanBufferSize * 2),
-		applyBinlogTxQueue:       make(chan *binlog.BinlogTx, cfg.ReplChanBufferSize * 2),
-		applyBinlogGroupTxQueue:  make(chan []*binlog.BinlogTx, cfg.ReplChanBufferSize * 2),
-		waitCh:                   make(chan *models.WaitResult, 1),
-		shutdownCh:               make(chan struct{}),
+		logger:                  entry,
+		subject:                 subject,
+		tp:                      tp,
+		mysqlContext:            cfg,
+		currentCoordinates:      &models.CurrentCoordinates{},
+		tableItems:              make(mapSchemaTableItems),
+		rowCopyComplete:         make(chan bool, 1),
+		copyRowsQueue:           make(chan *dumpEntry, 24),
+		applyDataEntryQueue:     make(chan *binlog.BinlogEntry, cfg.ReplChanBufferSize*2),
+		applyBinlogMtsTxQueue:   make(chan *binlog.BinlogEntry, cfg.ReplChanBufferSize*2),
+		applyBinlogTxQueue:      make(chan *binlog.BinlogTx, cfg.ReplChanBufferSize*2),
+		applyBinlogGroupTxQueue: make(chan []*binlog.BinlogTx, cfg.ReplChanBufferSize*2),
+		waitCh:                  make(chan *models.WaitResult, 1),
+		shutdownCh:              make(chan struct{}),
 	}
 	a.mtsManager = NewMtsManager(a.shutdownCh)
+	go a.mtsManager.LcUpdater()
 	return a
 }
 
@@ -203,6 +249,7 @@ func (a *Applier) MtsWorker(workerIndex int) {
 			} else {
 				// do nothing
 			}
+			a.logger.Debugf("mysql.applier: worker: %v. after ApplyBinlogEvent", workerIndex)
 		case <-a.shutdownCh:
 			keepLoop = false
 		}
@@ -333,25 +380,27 @@ func (a *Applier) onApplyTxStructWithSuper(dbApplier *sql.Conn, binlogTx *binlog
 // This is where the ghost table gets the data. The function fills the data single-threaded.
 // Both event backlog and rowcopy events are polled; the backlog events have precedence.
 func (a *Applier) executeWriteFuncs() {
-	go func() {
-		var stopLoop = false
-		for !stopLoop {
-			select {
-			case copyRows := <-a.copyRowsQueue:
-				if nil != copyRows {
-					if err := a.ApplyEventQueries(a.db, copyRows); err != nil {
-						a.onError(TaskStateDead, err)
+	if a.mysqlContext.Gtid == "" {
+		go func() {
+			var stopLoop= false
+			for !stopLoop {
+				select {
+				case copyRows := <-a.copyRowsQueue:
+					if nil != copyRows {
+						if err := a.ApplyEventQueries(a.db, copyRows); err != nil {
+							a.onError(TaskStateDead, err)
+						}
 					}
+				case <-a.rowCopyComplete:
+					stopLoop = true
+				case <-a.shutdownCh:
+					stopLoop = true
+				case <-time.After(10 * time.Second):
+					a.logger.Debugf("mysql.applier: no copyRows for 10s.")
 				}
-			case <-a.rowCopyComplete:
-				stopLoop = true
-			case <-a.shutdownCh:
-				stopLoop = true
-			case <-time.After(10 * time.Second):
-				a.logger.Debugf("mysql.applier: no copyRows for 10s.")
 			}
-		}
-	}()
+		}()
+	}
 
 	if a.mysqlContext.Gtid == "" {
 		a.logger.Printf("mysql.applier: Operating until row copy is complete")
@@ -492,6 +541,7 @@ func (a *Applier) initiateStreaming() error {
 				if err := a.natsConn.Publish(m.Reply, nil); err != nil {
 					a.onError(TaskStateDead, err)
 				}
+				a.logger.Debugf("applier. incr. ack-recv. nEntries: %v", len(binlogEntries.Entries))
 			}
 		})
 		if err != nil {
@@ -503,47 +553,90 @@ func (a *Applier) initiateStreaming() error {
 			for !stopSomeLoop {
 				select {
 				case binlogEntry := <-a.applyDataEntryQueue:
-					a.logger.Debugf("mysql.applier: a binlogEntry")
 					if nil == binlogEntry {
 						continue
 					}
 
-					thisInterval := gomysql.Interval{Start: binlogEntry.Coordinates.GNO, Stop: binlogEntry.Coordinates.GNO + 1}
-					txSid := binlogEntry.Coordinates.GetSid()
+					a.logger.Debugf("mysql.applier: a binlogEntry. remaining: %v. gno: %v, lc: %v, seq: %v",
+						len(a.applyDataEntryQueue), binlogEntry.Coordinates.GNO,
+						binlogEntry.Coordinates.LastCommitted, binlogEntry.Coordinates.SeqenceNumber)
 
 					if a.gtidExecuted == nil {
 						// udup crash recovery or never executed
 						a.gtidExecuted, err = base.SelectAllGtidExecuted(a.db, a.subject)
 						if err != nil {
 							a.onError(TaskStateDead, err)
+							return
 						}
 					}
 
-					executedIntervals, hasSid := a.gtidExecuted[binlogEntry.Coordinates.SID]
-					if hasSid {
-						if base.IntervalSlicesContainOne(executedIntervals, binlogEntry.Coordinates.GNO) {
-							// entry executed
-							a.logger.Debugf("mysql.applier: skip an executed tx: %v:%v", txSid, binlogEntry.Coordinates.GNO)
-							continue
+					txSid := binlogEntry.Coordinates.GetSid()
+
+					gtidSetItem, hasSid := a.gtidExecuted[binlogEntry.Coordinates.SID]
+					if !hasSid {
+						gtidSetItem = &base.GtidExecutedItem{}
+						a.gtidExecuted[binlogEntry.Coordinates.SID] = gtidSetItem
+					}
+					if base.IntervalSlicesContainOne(gtidSetItem.Intervals, binlogEntry.Coordinates.GNO) {
+						// entry executed
+						a.logger.Debugf("mysql.applier: skip an executed tx: %v:%v", txSid, binlogEntry.Coordinates.GNO)
+						continue
+					}
+
+					cleanupGtidExecuted := gtidSetItem.NRow >= cleanupGtidExecutedLimit
+					if cleanupGtidExecuted {
+						a.logger.Debugf("mysql.applier. incr. cleanup before WaitForExecution")
+						a.mtsManager.WaitForExecution(binlogEntry, true)
+						a.logger.Debugf("mysql.applier. incr. cleanup after WaitForExecution")
+
+						err = func() (err error) {
+							dbApplier := a.dbs[0]
+							tx, err := dbApplier.Db.BeginTx(context.Background(), &gosql.TxOptions{})
+							if err != nil {
+								return err
+							}
+
+							defer func() {
+								if err != nil {
+									tx.Rollback()
+								} else {
+									err = tx.Commit()
+								}
+							}()
+
+							_, err = dbApplier.PsDeleteExecutedGtid.Exec(txSid)
+							if err != nil {
+								return err
+							}
+							_, err = dbApplier.PsInsertExecutedGtid.Exec(txSid, base.StringInterval(gtidSetItem.Intervals))
+							if err != nil {
+								return err
+							}
+							gtidSetItem.NRow = 1
+							return nil
+						}()
+
+						if err != nil {
+							a.onError(TaskStateDead, err)
+							return
 						}
 					}
 
+					thisInterval := gomysql.Interval{Start: binlogEntry.Coordinates.GNO, Stop: binlogEntry.Coordinates.GNO + 1}
+
+					gtidSetItem.NRow += 1
 					// TODO normalize may affect oringinal intervals
-					newInterval := append(executedIntervals, thisInterval).Normalize()
+					newInterval := append(gtidSetItem.Intervals, thisInterval).Normalize()
 					// TODO this is assigned before real execution
-					a.gtidExecuted[binlogEntry.Coordinates.SID] = newInterval
+					gtidSetItem.Intervals = newInterval
 
-					if a.mysqlContext.ParallelWorkers <= 1 {
+					if a.mtsManager.WaitForExecution(binlogEntry, false) {
+						a.logger.Debugf("mysql.applier: a binlogEntry MTS enqueue. gno: %v", binlogEntry.Coordinates.GNO)
 						a.applyBinlogMtsTxQueue <- binlogEntry
-					} else {
-						if a.mtsManager.WaitForExecution(binlogEntry) {
-							a.logger.Debugf("mysql.applier: a binlogEntry MTS enqueue")
-							a.applyBinlogMtsTxQueue <- binlogEntry
-						}
-						if !a.shutdown {
-							// TODO what is this used for?
-							a.mysqlContext.Gtid = fmt.Sprintf("%s:1-%d", txSid, binlogEntry.Coordinates.GNO)
-						}
+					}
+					if !a.shutdown {
+						// TODO what is this used for?
+						a.mysqlContext.Gtid = fmt.Sprintf("%s:1-%d", txSid, binlogEntry.Coordinates.GNO)
 					}
 				case <-time.After(10 * time.Second):
 					a.logger.Debugf("mysql.applier: no binlogEntry for 10s")
@@ -662,8 +755,8 @@ func (a *Applier) initDBConnections() (err error) {
 			if err != nil {
 				return err
 			}
-			a.dbs[i].PsInsertExecutedGtid, err = a.dbs[i].Db.PrepareContext(context.Background(), fmt.Sprintf("replace into actiontech_udup.gtid_executed " +
-				"(job_uuid,source_uuid,interval_gtid) " +
+			a.dbs[i].PsInsertExecutedGtid, err = a.dbs[i].Db.PrepareContext(context.Background(), fmt.Sprintf("replace into actiontech_udup.gtid_executed "+
+				"(job_uuid,source_uuid,interval_gtid) "+
 				"values ('%s', ?, ?)",
 				a.subject))
 			if err != nil {
@@ -893,8 +986,9 @@ func (a *Applier) ApplyBinlogEvent(workerIdx int, binlogEntry *binlog.BinlogEntr
 	defer func() {
 		if err := tx.Commit(); err != nil {
 			a.onError(TaskStateDead, err)
+		} else {
+			a.mtsManager.Executed(binlogEntry)
 		}
-		a.mtsManager.Executed(binlogEntry)
 
 		dbApplier.DbMutex.Unlock()
 	}()
@@ -927,10 +1021,12 @@ func (a *Applier) ApplyBinlogEvent(workerIdx int, binlogEntry *binlog.BinlogEntr
 				} else {
 					schema = event.CurrentSchema
 				}
+				a.logger.Debugf("mysql.applier: reset tableItem")
 				a.getTableItem(schema, event.TableName).Reset()
 			} else if event.DatabaseName == "" {
 				if schemaItem, ok := a.tableItems[event.DatabaseName]; ok {
 					for _, v := range schemaItem {
+						a.logger.Debugf("mysql.applier: reset tableItem")
 						v.Reset()
 					}
 				}
@@ -965,6 +1061,7 @@ func (a *Applier) ApplyBinlogEvent(workerIdx int, binlogEntry *binlog.BinlogEntr
 		}
 	}
 
+	a.logger.Debugf("ApplyBinlogEvent. insert gno: %v", binlogEntry.Coordinates.GNO)
 	_, err = dbApplier.PsInsertExecutedGtid.Exec(txSid, binlogEntry.Coordinates.GNO)
 	if err != nil {
 		return err
@@ -1049,7 +1146,7 @@ func (a *Applier) ApplyEventQueries(db *gosql.DB, entry *dumpEntry) error {
 		}
 		buf.WriteByte(')')
 
-		needInsert := (i == len(entry.ValuesX) - 1) || (buf.Len() >= BufSizeLimit)
+		needInsert := (i == len(entry.ValuesX)-1) || (buf.Len() >= BufSizeLimit)
 		// last rows or sql too large
 
 		if needInsert {
