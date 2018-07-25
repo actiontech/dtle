@@ -1403,20 +1403,26 @@ func (e *Extractor) kafkaTransformSnapshotData(table *config.Table, value *dumpE
 		keySchema := kafka2.NewKeySchema(tableIdent, keyColDef)
 
 		for i, _ := range columnList {
-			valueStr := string(*rowValues[i])
+			var value interface{}
 
-			var value interface{} = valueStr
+			if rowValues[i] == nil {
+				value = nil
+			} else {
+				valueStr := string(*rowValues[i])
 
-			switch columnList[i].Type {
-			case mysql.TinyintColumnType, mysql.SmallintColumnType, mysql.MediumIntColumnType, mysql.IntColumnType, mysql.BigIntColumnType:
-				value, err = strconv.ParseInt(valueStr, 10, 64)
-				if err != nil {
-					return err
-				}
-			case mysql.FloatColumnType, mysql.DoubleColumnType:
-				value, err = strconv.ParseFloat(valueStr, 64)
-				if err != nil {
-					return err
+				switch columnList[i].Type {
+				case mysql.TinyintColumnType, mysql.SmallintColumnType, mysql.MediumIntColumnType, mysql.IntColumnType, mysql.BigIntColumnType:
+					value, err = strconv.ParseInt(valueStr, 10, 64)
+					if err != nil {
+						return err
+					}
+				case mysql.FloatColumnType, mysql.DoubleColumnType:
+					value, err = strconv.ParseFloat(valueStr, 64)
+					if err != nil {
+						return err
+					}
+				default:
+					value = valueStr
 				}
 			}
 
