@@ -58,9 +58,9 @@ func NewKafkaManager(kcfg *KafkaConfig) (*KafkaManager, error) {
 	return k, nil
 }
 
-func (k *KafkaManager) Send(key []byte, value []byte) error {
+func (k *KafkaManager) Send(topic string, key []byte, value []byte) error {
 	msg := &sarama.ProducerMessage{
-		Topic:     k.Cfg.Topic,
+		Topic:     topic,
 		Partition: int32(-1),
 		Key:       sarama.ByteEncoder(key),
 		Value:     sarama.ByteEncoder(value),

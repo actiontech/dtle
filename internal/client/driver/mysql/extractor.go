@@ -1454,7 +1454,7 @@ func (e *Extractor) kafkaTransformSnapshotData(table *config.Table, value *dumpE
 			return fmt.Errorf("mysql.extractor.kafka.serialization error: %v", err)
 		}
 
-		err = e.kafkaMgr.Send(kBs, vBs)
+		err = e.kafkaMgr.Send(tableIdent, kBs, vBs)
 		if err != nil {
 			return err
 		}
@@ -1556,7 +1556,7 @@ func (e *Extractor) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry) (e
 			return err
 		}
 
-		err = e.kafkaMgr.Send(kBs, vBs)
+		err = e.kafkaMgr.Send(tableIdent, kBs, vBs)
 		if err != nil {
 			return err
 		}
@@ -1572,7 +1572,7 @@ func (e *Extractor) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry) (e
 			if err != nil {
 				return err
 			}
-			err = e.kafkaMgr.Send(kBs, v2Bs)
+			err = e.kafkaMgr.Send(tableIdent, kBs, v2Bs)
 			if err != nil {
 				return err
 			}
