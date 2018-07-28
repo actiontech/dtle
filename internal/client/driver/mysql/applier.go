@@ -472,16 +472,23 @@ func (a *Applier) initiateStreaming() error {
 				a.onError(TaskStateDead, err)
 			}
 
-			a.logger.Debugf("applier. incr. recv. nEntries: %v", len(binlogEntries.Entries))
-			for _, binlogEntry := range binlogEntries.Entries {
-				a.applyDataEntryQueue <- binlogEntry
-				a.currentCoordinates.RetrievedGtidSet = binlogEntry.Coordinates.GetGtidForThisTx()
-				atomic.AddInt64(&a.mysqlContext.DeltaEstimate, 1)
-			}
-			a.mysqlContext.Stage = models.StageWaitingForMasterToSendEvent
+			a.logger.Debugf("applier. incr. recv. nEntries: %v, len(applyDataEntryQueue): %v",
+				len(binlogEntries.Entries), len(a.applyDataEntryQueue))
+			if cap(a.applyDataEntryQueue) - len(a.applyDataEntryQueue) < len(binlogEntries.Entries) {
+				// discard these entries
+				a.logger.Debugf("applier. incr. discarding entries")
+				a.mysqlContext.Stage = models.StageWaitingForMasterToSendEvent
+			} else {
+				for _, binlogEntry := range binlogEntries.Entries {
+					a.applyDataEntryQueue <- binlogEntry
+					a.currentCoordinates.RetrievedGtidSet = binlogEntry.Coordinates.GetGtidForThisTx()
+					atomic.AddInt64(&a.mysqlContext.DeltaEstimate, 1)
+				}
+				a.mysqlContext.Stage = models.StageWaitingForMasterToSendEvent
 
-			if err := a.natsConn.Publish(m.Reply, nil); err != nil {
-				a.onError(TaskStateDead, err)
+				if err := a.natsConn.Publish(m.Reply, nil); err != nil {
+					a.onError(TaskStateDead, err)
+				}
 			}
 		})
 		if err != nil {
@@ -1003,7 +1010,7 @@ func (a *Applier) ApplyBinlogEvent(dbApplier *sql.Conn, binlogEntry *binlog.Binl
 	if err != nil {
 		return err
 	}
-	
+
 	// no error
 	a.mysqlContext.Stage = models.StageWaitingForGtidToBeCommitted
 	atomic.AddInt64(&a.mysqlContext.TotalDeltaCopied, 1)
