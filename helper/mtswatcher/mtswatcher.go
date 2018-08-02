@@ -1,7 +1,7 @@
 /*
  * Copyright (C) 2016-2018. ActionTech.
- * based on github.com/hashicorp/nomad, github.com/github/gh-ost
- * License: http://www.gnu.org/licenses/gpl.html GPL version 2 or higher.
+ * Based on: github.com/hashicorp/nomad, github.com/github/gh-ost .
+ * License: MPL version 2: https://www.mozilla.org/en-US/MPL/2.0 .
  */
 
 package main
