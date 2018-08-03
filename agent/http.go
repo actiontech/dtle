@@ -263,11 +263,6 @@ func (s *HTTPServer) wrap(handler func(resp http.ResponseWriter, req *http.Reque
 	return f
 }
 
-// Returns true if the UI is enabled.
-func (s *HTTPServer) IsUIEnabled() bool {
-	return s.uiDir != "" || s.agent.config.EnableUi
-}
-
 // decodeBody is used to decode a JSON request body
 func decodeBody(req *http.Request, out interface{}) error {
 	dec := json.NewDecoder(req.Body)
