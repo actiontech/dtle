@@ -125,20 +125,12 @@ func (mm *MtsManager) WaitForExecution(binlogEntry *binlog.BinlogEntry, bySeq bo
 		currentLC := atomic.LoadInt64(&mm.lastCommitted)
 		if bySeq {
 			if currentLC + 1 == binlogEntry.Coordinates.SeqenceNumber {
-				fmt.Printf("**** WaitForExecution: bySeq, currentLC: %v, tx.lc: %v, tx.seq: %v. passed\n",
-					currentLC, binlogEntry.Coordinates.LastCommitted, binlogEntry.Coordinates.SeqenceNumber)
 				return true
 			}
-			fmt.Printf("**** WaitForExecution: bySeq, currentLC: %v, tx.lc: %v, tx.seq: %v. blocked\n",
-				currentLC, binlogEntry.Coordinates.LastCommitted, binlogEntry.Coordinates.SeqenceNumber)
 		} else {
 			if currentLC >= binlogEntry.Coordinates.LastCommitted {
-				fmt.Printf("**** WaitForExecution: currentLC: %v, tx.lc: %v, tx.seq: %v. passed\n",
-					currentLC, binlogEntry.Coordinates.LastCommitted, binlogEntry.Coordinates.SeqenceNumber)
 				return true
 			}
-			fmt.Printf("**** WaitForExecution: currentLC: %v, tx.lc: %v, tx.seq: %v. blocked\n",
-				currentLC, binlogEntry.Coordinates.LastCommitted, binlogEntry.Coordinates.SeqenceNumber)
 		}
 
 		// block until lastCommitted updated
@@ -156,9 +148,8 @@ func (mm *MtsManager) LcUpdater() {
 		select {
 		case seqNum := <-mm.chExecuted:
 			if seqNum <= mm.lastCommitted {
-				fmt.Printf("**** LcUpdater: ignored seqNum: %v\n", seqNum)
+				// ignore it
 			} else {
-				fmt.Printf("**** LcUpdater: accepted seqNum: %v\n", seqNum)
 				heap.Push(&mm.m, seqNum)
 
 				for mm.m.Len() > 0 {
@@ -166,13 +157,11 @@ func (mm *MtsManager) LcUpdater() {
 					if least == mm.lastCommitted + 1 {
 						heap.Pop(&mm.m)
 						atomic.AddInt64(&mm.lastCommitted, 1)
-						fmt.Printf("**** LcUpdater: update lc: %v\n", mm.lastCommitted)
 						select {
 						case mm.updated <- struct{}{}:
 						default: // non-blocking
 						}
 					} else {
-						fmt.Printf("**** LcUpdater: stuck at lc: %v, expect: %v\n", least, mm.lastCommitted + 1)
 						break
 					}
 				}
