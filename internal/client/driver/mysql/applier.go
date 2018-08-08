@@ -28,7 +28,7 @@ import (
 	log "udup/internal/logger"
 	"udup/internal/models"
 	"udup/utils"
-	"sort"
+	"container/heap"
 )
 
 const (
@@ -39,6 +39,22 @@ const (
 	TaskStateRestart
 	TaskStateDead
 )
+
+// from container/heap/example_intheap_test.go
+type Int64PriQueue []int64
+func (q Int64PriQueue) Len() int               { return len(q) }
+func (q Int64PriQueue) Less(i, j int) bool { return q[i] < q[j] }
+func (q Int64PriQueue) Swap(i, j int) { q[i], q[j] = q[j], q[i] }
+func (q *Int64PriQueue) Push(x interface{}) {
+	*q = append(*q, x.(int64))
+}
+func (q *Int64PriQueue) Pop() interface{} {
+	old := *q
+	n := len(old)
+	x := old[n-1]
+	*q = old[0 : n-1]
+	return x
+}
 
 type applierTableItem struct {
 	columns  *umconf.ColumnList
@@ -83,7 +99,7 @@ type MtsManager struct {
 	updated       chan struct{}
 	shutdownCh    chan struct{}
 	// SeqNum executed but not added to LC
-	m          []int64
+	m          Int64PriQueue
 	chExecuted chan int64
 }
 
@@ -91,7 +107,7 @@ type MtsManager struct {
 func NewMtsManager(shutdownCh chan struct{}) *MtsManager {
 	return &MtsManager{
 		lastCommitted: 0,
-		updated:       make(chan struct{}),
+		updated:       make(chan struct{}, 1), // 1-buffered, see #211-7.1
 		shutdownCh:    shutdownCh,
 		m:             nil,
 		chExecuted:    make(chan int64),
@@ -129,8 +145,6 @@ func (mm *MtsManager) WaitForExecution(binlogEntry *binlog.BinlogEntry, bySeq bo
 		select {
 		case <-mm.updated:
 			// continue
-		case <-time.After(1 * time.Millisecond):
-			// continue
 		case <-mm.shutdownCh:
 			return false
 		}
@@ -145,23 +159,20 @@ func (mm *MtsManager) LcUpdater() {
 				fmt.Printf("**** LcUpdater: ignored seqNum: %v\n", seqNum)
 			} else {
 				fmt.Printf("**** LcUpdater: accepted seqNum: %v\n", seqNum)
-				mm.m = append(mm.m, seqNum)
+				heap.Push(&mm.m, seqNum)
 
-				sort.Slice(mm.m, func(i, j int) bool {
-					return mm.m[i] < mm.m[j]
-				})
-
-				for _, k := range mm.m {
-					if k == mm.lastCommitted + 1 {
-						mm.m = mm.m[1:]
+				for mm.m.Len() > 0 {
+					least := mm.m[0]
+					if least == mm.lastCommitted + 1 {
+						heap.Pop(&mm.m)
 						atomic.AddInt64(&mm.lastCommitted, 1)
 						fmt.Printf("**** LcUpdater: update lc: %v\n", mm.lastCommitted)
 						select {
 						case mm.updated <- struct{}{}:
-						default:
+						default: // non-blocking
 						}
 					} else {
-						fmt.Printf("**** LcUpdater: stuck at lc: %v, expect: %v\n", k, mm.lastCommitted + 1)
+						fmt.Printf("**** LcUpdater: stuck at lc: %v, expect: %v\n", least, mm.lastCommitted + 1)
 						break
 					}
 				}
@@ -590,6 +601,9 @@ func (a *Applier) initiateStreaming() error {
 						a.logger.Debugf("mysql.applier. incr. cleanup after WaitForExecution")
 
 						err = func() (err error) {
+							// The TX is unnecessary if we first insert and then delete.
+							// However, consider `binlog_group_commit_sync_delay > 0`,
+							// `begin; delete; insert; commit;` (1 TX) is faster than `insert; delete;` (2 TX)
 							dbApplier := a.dbs[0]
 							tx, err := dbApplier.Db.BeginTx(context.Background(), &gosql.TxOptions{})
 							if err != nil {
