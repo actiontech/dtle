@@ -96,6 +96,7 @@ type mapSchemaTableItems map[string](map[string](*applierTableItem))
 type MtsManager struct {
 	// If you set lastCommit = N, all tx with seqNum <= N must have been executed
 	lastCommitted int64
+	lastEnqueue   int64
 	updated       chan struct{}
 	shutdownCh    chan struct{}
 	// SeqNum executed but not added to LC
@@ -114,23 +115,38 @@ func NewMtsManager(shutdownCh chan struct{}) *MtsManager {
 	}
 }
 
+//  This function must be called sequentially.
+func (mm *MtsManager) WaitForAllCommitted() bool {
+	for {
+		if mm.lastCommitted == mm.lastEnqueue {
+			return true
+		}
+
+		select {
+		case <-mm.updated:
+			// continue
+		case <-mm.shutdownCh:
+			return false
+		}
+	}
+}
+
 // block for waiting. return true for can_execute, false for abortion.
 //  This function must be called sequentially.
-func (mm *MtsManager) WaitForExecution(binlogEntry *binlog.BinlogEntry, bySeq bool) bool {
+func (mm *MtsManager) WaitForExecution(binlogEntry *binlog.BinlogEntry) bool {
+	txSeq := binlogEntry.Coordinates.SeqenceNumber
+	txLc := binlogEntry.Coordinates.LastCommitted
+
 	if mm.lastCommitted == 0 {
 		atomic.CompareAndSwapInt64(&mm.lastCommitted, 0, binlogEntry.Coordinates.SeqenceNumber - 1)
 	}
 
+	mm.lastEnqueue = txSeq
+
 	for {
 		currentLC := atomic.LoadInt64(&mm.lastCommitted)
-		if bySeq {
-			if currentLC + 1 == binlogEntry.Coordinates.SeqenceNumber {
-				return true
-			}
-		} else {
-			if currentLC >= binlogEntry.Coordinates.LastCommitted {
-				return true
-			}
+		if currentLC >= txLc {
+			return true
 		}
 
 		// block until lastCommitted updated
@@ -586,7 +602,9 @@ func (a *Applier) initiateStreaming() error {
 					cleanupGtidExecuted := gtidSetItem.NRow >= cleanupGtidExecutedLimit
 					if cleanupGtidExecuted {
 						a.logger.Debugf("mysql.applier. incr. cleanup before WaitForExecution")
-						a.mtsManager.WaitForExecution(binlogEntry, true)
+						if !a.mtsManager.WaitForAllCommitted() {
+							return // shutdown
+						}
 						a.logger.Debugf("mysql.applier. incr. cleanup after WaitForExecution")
 
 						err = func() (err error) {
@@ -633,10 +651,11 @@ func (a *Applier) initiateStreaming() error {
 					// TODO this is assigned before real execution
 					gtidSetItem.Intervals = newInterval
 
-					if a.mtsManager.WaitForExecution(binlogEntry, false) {
-						a.logger.Debugf("mysql.applier: a binlogEntry MTS enqueue. gno: %v", binlogEntry.Coordinates.GNO)
-						a.applyBinlogMtsTxQueue <- binlogEntry
+					if !a.mtsManager.WaitForExecution(binlogEntry) {
+						return // shutdown
 					}
+					a.logger.Debugf("mysql.applier: a binlogEntry MTS enqueue. gno: %v", binlogEntry.Coordinates.GNO)
+					a.applyBinlogMtsTxQueue <- binlogEntry
 					if !a.shutdown {
 						// TODO what is this used for?
 						a.mysqlContext.Gtid = fmt.Sprintf("%s:1-%d", txSid, binlogEntry.Coordinates.GNO)
