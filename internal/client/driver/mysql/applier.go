@@ -134,18 +134,11 @@ func (mm *MtsManager) WaitForAllCommitted() bool {
 // block for waiting. return true for can_execute, false for abortion.
 //  This function must be called sequentially.
 func (mm *MtsManager) WaitForExecution(binlogEntry *binlog.BinlogEntry) bool {
-	txSeq := binlogEntry.Coordinates.SeqenceNumber
-	txLc := binlogEntry.Coordinates.LastCommitted
-
-	if mm.lastCommitted == 0 {
-		atomic.CompareAndSwapInt64(&mm.lastCommitted, 0, binlogEntry.Coordinates.SeqenceNumber - 1)
-	}
-
-	mm.lastEnqueue = txSeq
+	mm.lastEnqueue = binlogEntry.Coordinates.SeqenceNumber
 
 	for {
 		currentLC := atomic.LoadInt64(&mm.lastCommitted)
-		if currentLC >= txLc {
+		if currentLC >= binlogEntry.Coordinates.LastCommitted {
 			return true
 		}
 
@@ -577,6 +570,7 @@ func (a *Applier) initiateStreaming() error {
 						len(a.applyDataEntryQueue), binlogEntry.Coordinates.GNO,
 						binlogEntry.Coordinates.LastCommitted, binlogEntry.Coordinates.SeqenceNumber)
 
+					// region TestIfExecuted
 					if a.gtidExecuted == nil {
 						// udup crash recovery or never executed
 						a.gtidExecuted, err = base.SelectAllGtidExecuted(a.db, a.subject)
@@ -598,7 +592,18 @@ func (a *Applier) initiateStreaming() error {
 						a.logger.Debugf("mysql.applier: skip an executed tx: %v:%v", txSid, binlogEntry.Coordinates.GNO)
 						continue
 					}
+					// endregion
 
+					// this must be after duplication check
+					var rotated bool
+					if a.currentCoordinates.File == binlogEntry.Coordinates.LogFile {
+						rotated = false
+					} else {
+						rotated = true
+						a.currentCoordinates.File = binlogEntry.Coordinates.LogFile
+					}
+
+					// region cleanupGtidExecuted
 					cleanupGtidExecuted := gtidSetItem.NRow >= cleanupGtidExecutedLimit
 					if cleanupGtidExecuted {
 						a.logger.Debugf("mysql.applier. incr. cleanup before WaitForExecution")
@@ -642,6 +647,7 @@ func (a *Applier) initiateStreaming() error {
 							return
 						}
 					}
+					// endregion
 
 					thisInterval := gomysql.Interval{Start: binlogEntry.Coordinates.GNO, Stop: binlogEntry.Coordinates.GNO + 1}
 
@@ -651,11 +657,36 @@ func (a *Applier) initiateStreaming() error {
 					// TODO this is assigned before real execution
 					gtidSetItem.Intervals = newInterval
 
-					if !a.mtsManager.WaitForExecution(binlogEntry) {
-						return // shutdown
+					if binlogEntry.Coordinates.SeqenceNumber == 0 {
+						if err := a.ApplyBinlogEvent(0, binlogEntry); err != nil {
+							a.onError(TaskStateDead, err)
+							return
+						}
+					} else {
+						if rotated {
+							a.logger.Debugf("mysql.applier: binlog rotated to %v", a.currentCoordinates.File)
+							if !a.mtsManager.WaitForAllCommitted() {
+								return // shutdown
+							}
+							a.mtsManager.lastCommitted = 0
+							a.mtsManager.lastEnqueue = 0
+							if len(a.mtsManager.m) != 0 {
+								a.logger.Warnf("UDUP_BUG: len(a.mtsManager.m) should be 0")
+							}
+						}
+
+						// If there are TXs skipped by udup source-side
+						for a.mtsManager.lastEnqueue + 1 < binlogEntry.Coordinates.SeqenceNumber {
+							a.mtsManager.lastEnqueue += 1
+							a.mtsManager.chExecuted <- a.mtsManager.lastEnqueue
+						}
+
+						if !a.mtsManager.WaitForExecution(binlogEntry) {
+							return // shutdown
+						}
+						a.logger.Debugf("mysql.applier: a binlogEntry MTS enqueue. gno: %v", binlogEntry.Coordinates.GNO)
+						a.applyBinlogMtsTxQueue <- binlogEntry
 					}
-					a.logger.Debugf("mysql.applier: a binlogEntry MTS enqueue. gno: %v", binlogEntry.Coordinates.GNO)
-					a.applyBinlogMtsTxQueue <- binlogEntry
 					if !a.shutdown {
 						// TODO what is this used for?
 						a.mysqlContext.Gtid = fmt.Sprintf("%s:1-%d", txSid, binlogEntry.Coordinates.GNO)

@@ -474,14 +474,18 @@ func (b *BinlogReader) DataStreamEvents(entriesChannel chan<- *BinlogEntry) erro
 			b.currentCoordinates.LogPos = int64(ev.Header.LogPos)
 		}()
 
-		if rotateEvent, ok := ev.Event.(*replication.RotateEvent); ok {
-			func() {
-				b.currentCoordinatesMutex.Lock()
-				defer b.currentCoordinatesMutex.Unlock()
-				b.currentCoordinates.LogFile = string(rotateEvent.NextLogName)
-			}()
-			b.mysqlContext.Stage = models.StageFinishedReadingOneBinlogSwitchingToNextBinlog
-			b.logger.Printf("mysql.reader: Rotate to next log name: %s", rotateEvent.NextLogName)
+		if ev.Header.EventType == replication.ROTATE_EVENT {
+			if rotateEvent, ok := ev.Event.(*replication.RotateEvent); ok {
+				func() {
+					b.currentCoordinatesMutex.Lock()
+					defer b.currentCoordinatesMutex.Unlock()
+					b.currentCoordinates.LogFile = string(rotateEvent.NextLogName)
+				}()
+				b.mysqlContext.Stage = models.StageFinishedReadingOneBinlogSwitchingToNextBinlog
+				b.logger.Printf("mysql.reader: Rotate to next log name: %s", rotateEvent.NextLogName)
+			} else {
+				b.logger.Warnf("mysql.reader: fake rotate_event.")
+			}
 		} else {
 			if err := b.handleEvent(ev, entriesChannel); err != nil {
 				return err
@@ -558,13 +562,17 @@ func (b *BinlogReader) BinlogStreamEvents(txChannel chan<- *BinlogTx) error {
 			defer b.currentCoordinatesMutex.Unlock()
 			b.currentCoordinates.LogPos = int64(ev.Header.LogPos)
 		}()
-		if rotateEvent, ok := ev.Event.(*replication.RotateEvent); ok {
-			func() {
-				b.currentCoordinatesMutex.Lock()
-				defer b.currentCoordinatesMutex.Unlock()
-				b.currentCoordinates.LogFile = string(rotateEvent.NextLogName)
-			}()
-			b.logger.Printf("mysql.reader: Rotate to next log name: %s", rotateEvent.NextLogName)
+		if ev.Header.EventType == replication.ROTATE_EVENT {
+			if rotateEvent, ok := ev.Event.(*replication.RotateEvent); ok {
+				func() {
+					b.currentCoordinatesMutex.Lock()
+					defer b.currentCoordinatesMutex.Unlock()
+					b.currentCoordinates.LogFile = string(rotateEvent.NextLogName)
+				}()
+				b.logger.Printf("mysql.reader: Rotate to next log name: %s", rotateEvent.NextLogName)
+			} else {
+				b.logger.Warnf("mysql.reader: fake rotate_event.")
+			}
 		} else {
 			if err := b.handleBinlogRowsEvent(ev, txChannel); err != nil {
 				return err
