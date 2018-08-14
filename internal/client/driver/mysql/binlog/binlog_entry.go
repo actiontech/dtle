@@ -15,15 +15,15 @@ type BinlogEntry struct {
 	hasBeginQuery bool
 	Coordinates   base.BinlogCoordinateTx
 
-	Events []DataEvent
-	OriginalSize         int // size of binlog entry
+	Events       []DataEvent
+	OriginalSize int // size of binlog entry
 }
 
 // NewBinlogEntry creates an empty, ready to go BinlogEntry object
 func NewBinlogEntryAt(coordinates base.BinlogCoordinateTx) *BinlogEntry {
 	binlogEntry := &BinlogEntry{
-		Coordinates: coordinates,
-		Events:      make([]DataEvent, 0),
+		Coordinates:  coordinates,
+		Events:       make([]DataEvent, 0),
 		OriginalSize: 0,
 	}
 	return binlogEntry

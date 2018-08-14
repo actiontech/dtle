@@ -1,16 +1,17 @@
 package sql
 
 import (
+	"context"
 	gosql "database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
-	_ "github.com/go-sql-driver/mysql"
 	"strconv"
 	"strings"
 	"sync"
 	"udup/internal/config"
-	"context"
+
+	_ "github.com/go-sql-driver/mysql"
 )
 
 // RowMap represents one row in a result set. Its objective is to allow
@@ -131,10 +132,10 @@ func GetDB(mysql_uri string) (*gosql.DB, bool, error) {
 
 type Conn struct {
 	DbMutex *sync.Mutex
-	Db *gosql.Conn
-	Fde string
+	Db      *gosql.Conn
+	Fde     string
 
-	CurrentSchema string
+	CurrentSchema        string
 	PsDeleteExecutedGtid *gosql.Stmt
 	PsInsertExecutedGtid *gosql.Stmt
 }

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"database/sql"
+
 	"github.com/satori/go.uuid"
 	gomysql "github.com/siddontang/go-mysql/mysql"
 	"github.com/siddontang/go/hack"
@@ -114,10 +115,10 @@ func GetTableColumns(db usql.QueryAble, databaseName, tableName string) (*umconf
 	columns := []umconf.Column{}
 	err := usql.QueryRowsMap(db, query, func(rowMap usql.RowMap) error {
 		columns = append(columns, umconf.Column{
-			Name:rowMap.GetString("Field"),
-			ColumnType:rowMap.GetString("Type"),
-			Key:strings.ToUpper(rowMap.GetString("Key")),
-			Nullable:strings.ToUpper(rowMap.GetString("Null")) == "YES",
+			Name:       rowMap.GetString("Field"),
+			ColumnType: rowMap.GetString("Type"),
+			Key:        strings.ToUpper(rowMap.GetString("Key")),
+			Nullable:   strings.ToUpper(rowMap.GetString("Null")) == "YES",
 		})
 		return nil
 	})
@@ -255,7 +256,7 @@ func SelectAllGtidExecuted(db usql.QueryAble, jid string) (gtidSet GtidSet, err 
 		item, ok := gtidSet[sidUUID]
 		if !ok {
 			item = &GtidExecutedItem{
-				NRow: 0,
+				NRow:      0,
 				Intervals: nil,
 			}
 			gtidSet[sidUUID] = item
@@ -470,7 +471,7 @@ func GtidSetDiff(set1 string, set2 string) (string, error) {
 			return "", fmt.Errorf("bad format for GtidStart")
 		}
 		// only start
-		if startSet.Intervals[0].Start + 1 != startSet.Intervals[0].Stop {
+		if startSet.Intervals[0].Start+1 != startSet.Intervals[0].Stop {
 			return "", fmt.Errorf("bad format for GtidStart")
 		}
 
@@ -483,10 +484,10 @@ func GtidSetDiff(set1 string, set2 string) (string, error) {
 			for i, _ := range execSets.Intervals {
 				if execSets.Intervals[i].Start >= startPoint {
 					continue
-				} else if execSets.Intervals[i].Stop>= startPoint {
+				} else if execSets.Intervals[i].Stop >= startPoint {
 					newIntervals = append(newIntervals, gomysql.Interval{
-						Start:execSets.Intervals[i].Start,
-						Stop:startPoint,
+						Start: execSets.Intervals[i].Start,
+						Stop:  startPoint,
 					})
 				} else {
 					newIntervals = append(newIntervals, execSets.Intervals[i])

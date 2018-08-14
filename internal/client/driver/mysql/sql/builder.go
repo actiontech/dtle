@@ -135,7 +135,7 @@ func BuildDMLDeleteQuery(databaseName, tableName string, tableColumns *umconf.Co
 			}
 			comparisons = append(comparisons, comparison)
 		} else {
-			if strings.HasPrefix(column.ColumnType, "binary"){
+			if strings.HasPrefix(column.ColumnType, "binary") {
 				arg := column.ConvertArg(*args[tableOrdinal])
 				comparison, err := BuildValueComparison(column.Name, fmt.Sprintf("cast('%v' as %s)", arg, column.ColumnType), EqualsComparisonSign)
 				if err != nil {
@@ -143,7 +143,7 @@ func BuildDMLDeleteQuery(databaseName, tableName string, tableColumns *umconf.Co
 				}
 				if strings.ToUpper(column.Key) == "PRI" {
 					uniqueKeyComparisons = append(uniqueKeyComparisons, comparison)
-				}else {
+				} else {
 					comparisons = append(comparisons, comparison)
 				}
 			} else {
@@ -155,7 +155,7 @@ func BuildDMLDeleteQuery(databaseName, tableName string, tableColumns *umconf.Co
 				if strings.ToUpper(column.Key) == "PRI" {
 					uniqueKeyArgs = append(uniqueKeyArgs, arg)
 					uniqueKeyComparisons = append(uniqueKeyComparisons, comparison)
-				}else {
+				} else {
 					columnArgs = append(columnArgs, arg)
 					comparisons = append(comparisons, comparison)
 				}
@@ -250,7 +250,7 @@ func BuildDMLUpdateQuery(databaseName, tableName string, tableColumns, sharedCol
 	for _, column := range tableColumns.ColumnList() {
 		tableOrdinal := tableColumns.Ordinals[column.Name]
 		if *valueArgs[tableOrdinal] == nil || *valueArgs[tableOrdinal] == "NULL" ||
-			fmt.Sprintf("%v", *valueArgs[tableOrdinal]) == ""{
+			fmt.Sprintf("%v", *valueArgs[tableOrdinal]) == "" {
 			sharedArgs = append(sharedArgs, *valueArgs[tableOrdinal])
 		} else {
 			arg := column.ConvertArg(*valueArgs[tableOrdinal])
@@ -270,7 +270,7 @@ func BuildDMLUpdateQuery(databaseName, tableName string, tableColumns, sharedCol
 			}
 			comparisons = append(comparisons, comparison)
 		} else {
-			if strings.HasPrefix(column.ColumnType, "binary"){
+			if strings.HasPrefix(column.ColumnType, "binary") {
 				arg := column.ConvertArg(*whereArgs[tableOrdinal])
 				comparison, err := BuildValueComparison(column.Name, fmt.Sprintf("cast('%v' as %s)", arg, column.ColumnType), EqualsComparisonSign)
 				if err != nil {
@@ -278,7 +278,7 @@ func BuildDMLUpdateQuery(databaseName, tableName string, tableColumns, sharedCol
 				}
 				if strings.ToUpper(column.Key) == "PRI" {
 					uniqueKeyComparisons = append(uniqueKeyComparisons, comparison)
-				}else {
+				} else {
 					comparisons = append(comparisons, comparison)
 				}
 			} else {
@@ -290,7 +290,7 @@ func BuildDMLUpdateQuery(databaseName, tableName string, tableColumns, sharedCol
 				if strings.ToUpper(column.Key) == "PRI" {
 					uniqueKeyArgs = append(uniqueKeyArgs, arg)
 					uniqueKeyComparisons = append(uniqueKeyComparisons, comparison)
-				}else {
+				} else {
 					columnArgs = append(columnArgs, arg)
 					comparisons = append(comparisons, comparison)
 				}

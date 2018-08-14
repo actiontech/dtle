@@ -1,10 +1,11 @@
 package kafka2
 
 import (
-	"github.com/Shopify/sarama"
 	"bytes"
 	"encoding/json"
 	"fmt"
+
+	"github.com/Shopify/sarama"
 )
 
 type SchemaType string
@@ -13,13 +14,13 @@ const (
 	CONVERTER_JSON = "json"
 	CONVERTER_AVRO = "avro"
 
-	SCHEMA_TYPE_STRUCT = "struct"
-	SCHEMA_TYPE_STRING = "string"
-	SCHEMA_TYPE_INT64 = "int64"
-	SCHEMA_TYPE_INT32 = "int32"
-	SCHEMA_TYPE_INT16 = "int16"
-	SCHEMA_TYPE_INT8 = "int8"
-	SCHEMA_TYPE_BYTES = "bytes"
+	SCHEMA_TYPE_STRUCT  = "struct"
+	SCHEMA_TYPE_STRING  = "string"
+	SCHEMA_TYPE_INT64   = "int64"
+	SCHEMA_TYPE_INT32   = "int32"
+	SCHEMA_TYPE_INT16   = "int16"
+	SCHEMA_TYPE_INT8    = "int8"
+	SCHEMA_TYPE_BYTES   = "bytes"
 	SCHEMA_TYPE_FLOAT64 = "float64"
 	SCHEMA_TYPE_FLOAT32 = "float32"
 	SCHEMA_TYPE_BOOLEAN = "boolean"
@@ -33,8 +34,8 @@ const (
 type ColDefs []*Schema
 
 type KafkaConfig struct {
-	Broker string
-	Topic  string
+	Broker    string
+	Topic     string
 	Converter string
 }
 
@@ -92,28 +93,28 @@ var (
 			NewSimpleSchemaField(SCHEMA_TYPE_STRING, true, "table"),
 		},
 		Optional: false,
-		Name: "io.debezium.connector.mysql.Source",
-		Field: "source",
-		Type: SCHEMA_TYPE_STRUCT,
+		Name:     "io.debezium.connector.mysql.Source",
+		Field:    "source",
+		Type:     SCHEMA_TYPE_STRUCT,
 	}
 )
 
 func NewKeySchema(tableIdent string, fields ColDefs) *Schema {
 	return &Schema{
-		Type:SCHEMA_TYPE_STRUCT,
-		Name: fmt.Sprintf("%v.Key", tableIdent),
+		Type:     SCHEMA_TYPE_STRUCT,
+		Name:     fmt.Sprintf("%v.Key", tableIdent),
 		Optional: false,
-		Fields: fields,
+		Fields:   fields,
 	}
 }
 
 func NewColDefSchema(tableIdent string, field string) *Schema {
 	return &Schema{
-		Type:SCHEMA_TYPE_STRUCT,
-		Fields: nil, // TODO
+		Type:     SCHEMA_TYPE_STRUCT,
+		Fields:   nil, // TODO
 		Optional: true,
-		Name: fmt.Sprintf("%v.Value", tableIdent),
-		Field: field,
+		Name:     fmt.Sprintf("%v.Value", tableIdent),
+		Field:    field,
 	}
 }
 func NewBeforeAfter(tableIdent string, fields []*Schema) (*Schema, *Schema) {
@@ -135,57 +136,60 @@ func NewEnvelopeSchema(tableIdent string, colDefs ColDefs) *Schema {
 			NewSimpleSchemaField(SCHEMA_TYPE_INT64, true, "ts_ms"),
 		},
 		Optional: false,
-		Name: fmt.Sprintf("%v.Envelope", tableIdent),
-		Version: 1,
+		Name:     fmt.Sprintf("%v.Envelope", tableIdent),
+		Version:  1,
 	}
 }
 
 type DbzOutput struct {
-	Schema  *Schema       `json:"schema"`
+	Schema *Schema `json:"schema"`
 	// ValuePayload or Row
 	Payload interface{} `json:"payload"`
 }
 
 type ValuePayload struct {
 	Before *Row           `json:"before"`
-	After *Row            `json:"after"`
+	After  *Row           `json:"after"`
 	Source *SourcePayload `json:"source"`
-	Op string             `json:"op"`
-	TsMs int64            `json:"ts_ms"`
+	Op     string         `json:"op"`
+	TsMs   int64          `json:"ts_ms"`
 }
+
 func NewValuePayload() *ValuePayload { // TODO source
 	return &ValuePayload{
 		Source: &SourcePayload{},
 	}
 }
+
 type SourcePayload struct {
 	// we use 'interface{}' to represent an optional field
-	Version string `json:"version"`
-	Name string `json:"name"`
-	ServerID int `json:"server_id"`
-	TsSec int64 `json:"ts_sec"`
-	Gtid interface{} `json:"gtid"` // real type: optional<string>
-	File string `json:"file"`
-	Pos int64 `json:"pos"`
-	Row int `json:"row"`
-	Snapshot bool `json:"snapshot"`
-	Thread interface{} `json:"thread"` // real type: optional<int64>
-	Db string `json:"db"`
-	Table string `json:"table"`
+	Version  string      `json:"version"`
+	Name     string      `json:"name"`
+	ServerID int         `json:"server_id"`
+	TsSec    int64       `json:"ts_sec"`
+	Gtid     interface{} `json:"gtid"` // real type: optional<string>
+	File     string      `json:"file"`
+	Pos      int64       `json:"pos"`
+	Row      int         `json:"row"`
+	Snapshot bool        `json:"snapshot"`
+	Thread   interface{} `json:"thread"` // real type: optional<int64>
+	Db       string      `json:"db"`
+	Table    string      `json:"table"`
 }
 
 type Schema struct {
-	Type SchemaType `json:"type"`
-	Optional bool `json:"optional"`
-	Field string `json:"field,omitempty"` // field name in outer struct
-	Fields []*Schema `json:"fields,omitempty"`
-	Name string `json:"name,omitempty"`
-	Version int `json:"version,omitempty"`
+	Type     SchemaType `json:"type"`
+	Optional bool       `json:"optional"`
+	Field    string     `json:"field,omitempty"` // field name in outer struct
+	Fields   []*Schema  `json:"fields,omitempty"`
+	Name     string     `json:"name,omitempty"`
+	Version  int        `json:"version,omitempty"`
 }
 type Row struct {
 	ColNames []string
-	Values []interface{}
+	Values   []interface{}
 }
+
 func NewRow() *Row {
 	return &Row{}
 }
@@ -221,8 +225,8 @@ func (r *Row) MarshalJSON() ([]byte, error) {
 
 func NewSimpleSchemaField(theType SchemaType, optional bool, field string) *Schema {
 	return &Schema{
-		Type: theType,
+		Type:     theType,
 		Optional: optional,
-		Field: field,
+		Field:    field,
 	}
 }
