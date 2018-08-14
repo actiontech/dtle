@@ -671,14 +671,21 @@ func (e *Extractor) StreamEvents() error {
 				entriesSize := 0
 
 				sendEntries := func() error {
+					var gno int64 = 0
+					if len(entries.Entries) > 0 {
+						gno = entries.Entries[0].Coordinates.GNO
+					}
+
 					txMsg, err := Encode(entries)
 					if err != nil {
 						return err
 					}
 
+					e.logger.Debugf("mysql.extractor: sending gno: %v, n: %v", gno, len(entries.Entries))
 					if err = e.publish(fmt.Sprintf("%s_incr_hete", e.subject), "", txMsg); err != nil {
 						return err
 					}
+					e.logger.Debugf("mysql.extractor: send acked gno: %v, n: %v", gno, len(entries.Entries))
 
 					entries.Entries = nil
 					entriesSize = 0

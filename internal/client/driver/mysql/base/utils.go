@@ -16,7 +16,6 @@ import (
 
 	usql "udup/internal/client/driver/mysql/sql"
 	umconf "udup/internal/config/mysql"
-	"context"
 )
 
 var (
@@ -227,44 +226,57 @@ func parseInterval(str string) (i gomysql.Interval, err error) {
 	return
 }
 
-func SelectGtidExecuted(db *gosql.Conn, sid, jid string) (gtidset gomysql.IntervalSlice, err error) {
-	query := fmt.Sprintf(`SELECT interval_gtid FROM actiontech_udup.gtid_executed where source_uuid='%s' and job_uuid='%s'`,
-		sid, jid,
-	)
+// return: normalized GtidSet
+func SelectAllGtidExecuted(db usql.QueryAble, jid string) (gtidSet GtidSet, err error) {
+	query := fmt.Sprintf(`SELECT source_uuid,interval_gtid FROM actiontech_udup.gtid_executed where job_uuid='%s'`, jid)
 
-	rows, err := db.QueryContext(context.Background(), query)
+	rows, err := db.Query(query)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	var intervals gomysql.IntervalSlice
-	for rows.Next() {
-		var (
-			interval string
-		)
+	gtidSet = make(GtidSet)
 
-		err = rows.Scan(&interval)
+	for rows.Next() {
+		var sidStr string
+		var interval string
+		err = rows.Scan(&sidStr, &interval)
 
 		if err != nil {
 			return nil, err
 		}
+
+		sidUUID, err := uuid.FromString(sidStr)
+		if err != nil {
+			return nil, err
+		}
+
+		item, ok := gtidSet[sidUUID]
+		if !ok {
+			item = &GtidExecutedItem{
+				NRow: 0,
+				Intervals: nil,
+			}
+			gtidSet[sidUUID] = item
+		}
+		item.NRow += 1
 		sep := strings.Split(interval, ":")
 		// Handle interval
 		for i := 0; i < len(sep); i++ {
 			if in, err := parseInterval(sep[i]); err != nil {
 				return nil, err
 			} else {
-				intervals = append(intervals, in)
+				item.Intervals = append(item.Intervals, in)
 			}
 		}
 	}
 
-	if rows.Err() != nil {
-		return nil, rows.Err()
+	for sid, item := range gtidSet {
+		gtidSet[sid].Intervals = item.Intervals.Normalize()
 	}
 
-	return intervals, nil
+	return gtidSet, err
 }
 
 func StringInterval(intervals gomysql.IntervalSlice) string {
