@@ -7,10 +7,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/hashicorp/go-multierror"
-	"github.com/mitchellh/copystructure"
 	"sync"
 	"udup/internal/client/driver/kafka2"
+
+	"github.com/hashicorp/go-multierror"
+	"github.com/mitchellh/copystructure"
 )
 
 const (
@@ -34,7 +35,7 @@ type Task struct {
 	Driver string
 
 	// Config is provided to the driver to initialize
-	Config map[string]interface{}
+	Config     map[string]interface{}
 	ConfigLock *sync.RWMutex
 
 	// Leader marks the task as the leader within the group. When the leader
@@ -44,8 +45,9 @@ type Task struct {
 	// Constraints can be specified at a task group level and apply to
 	// all the tasks contained.
 	Constraints []*Constraint
-	Kafka    *kafka2.KafkaConfig
+	Kafka       *kafka2.KafkaConfig
 }
+
 func NewTask() *Task {
 	return &Task{
 		ConfigLock: &sync.RWMutex{},

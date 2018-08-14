@@ -4,8 +4,9 @@ import (
 	"net"
 	"time"
 
-	"github.com/hashicorp/serf/coordinate"
 	"udup/internal"
+
+	"github.com/hashicorp/serf/coordinate"
 )
 
 const (

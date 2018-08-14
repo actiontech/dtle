@@ -2,10 +2,11 @@ package agent
 
 import (
 	"fmt"
-	"github.com/mitchellh/mapstructure"
 	"net/http"
 	"strconv"
 	"strings"
+
+	"github.com/mitchellh/mapstructure"
 
 	"udup/api"
 	"udup/internal/client/driver/mysql/sql"

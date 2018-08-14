@@ -3,9 +3,10 @@ package models
 import (
 	"errors"
 	"fmt"
+	"regexp"
+
 	"github.com/hashicorp/go-multierror"
 	"github.com/hashicorp/go-version"
-	"regexp"
 )
 
 const (
