@@ -21,7 +21,6 @@ PACKAGE_NAME = "udup"
 INSTALL_ROOT_DIR = "/usr/bin"
 LOG_DIR = "/var/log/udup"
 SCRIPT_DIR = "/usr/lib/udup/scripts"
-FRONTEND_DIR = "/usr/lib/udup/frontend"
 CONFIG_DIR = "/etc/udup"
 LOGROTATE_DIR = "/etc/logrotate.d"
 
@@ -124,10 +123,6 @@ def package_scripts(build_root, config_only=False, windows=False):
         os.chmod(os.path.join(build_root, LOGROTATE_DIR[1:], "udup"), 0o644)
         shutil.copyfile(DEFAULT_CONFIG, os.path.join(build_root, CONFIG_DIR[1:], "udup.conf"))
         os.chmod(os.path.join(build_root, CONFIG_DIR[1:], "udup.conf"), 0o644)
-
-        shutil.copytree("frontend/", os.path.join(build_root, FRONTEND_DIR[1:]),symlinks=False, ignore=None)
-        os.chmod(os.path.join(build_root, FRONTEND_DIR[1:]), 0o644)
-
 
 def run_generate():
     # NOOP for Udup
