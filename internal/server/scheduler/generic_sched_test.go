@@ -17,7 +17,7 @@ func TestSetStatusError_Error(t *testing.T) {
 		fields fields
 		want   string
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -43,7 +43,7 @@ func TestNewGenericScheduler(t *testing.T) {
 		args args
 		want Scheduler
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -78,7 +78,7 @@ func TestGenericScheduler_Process(t *testing.T) {
 		args    args
 		wantErr bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -127,7 +127,7 @@ func TestGenericScheduler_createBlockedEval(t *testing.T) {
 		args    args
 		wantErr bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -173,7 +173,7 @@ func TestGenericScheduler_process(t *testing.T) {
 		want    bool
 		wantErr bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -228,7 +228,7 @@ func TestGenericScheduler_filterCompleteAllocs(t *testing.T) {
 		want   []*models.Allocation
 		want1  map[string]*models.Allocation
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -277,7 +277,7 @@ func TestGenericScheduler_computeJobAllocs(t *testing.T) {
 		fields  fields
 		wantErr bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -326,7 +326,7 @@ func TestGenericScheduler_computePlacements(t *testing.T) {
 		args    args
 		wantErr bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -376,7 +376,7 @@ func TestGenericScheduler_findPreferredNode(t *testing.T) {
 		wantNode *models.Node
 		wantErr  bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

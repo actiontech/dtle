@@ -8,9 +8,10 @@ import (
 	umconf "udup/internal/config/mysql"
 
 	"fmt"
+	"udup/internal/client/driver/mysql/sql"
+
 	test "github.com/outbrain/golib/tests"
 	gomysql "github.com/siddontang/go-mysql/mysql"
-	"udup/internal/client/driver/mysql/sql"
 )
 
 func TestStringContainsAll(t *testing.T) {
@@ -34,7 +35,7 @@ func TestPrettifyDurationOutput(t *testing.T) {
 		args args
 		want string
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -88,7 +89,7 @@ func TestGetTableColumns(t *testing.T) {
 		want    *umconf.ColumnList
 		wantErr bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -117,7 +118,7 @@ func TestApplyColumnTypes(t *testing.T) {
 		want    []*umconf.ColumnList
 		wantErr bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -146,7 +147,7 @@ func TestShowCreateTable(t *testing.T) {
 		wantCreateTableStatement string
 		wantErr                  bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -266,7 +267,7 @@ func Test_stringInterval(t *testing.T) {
 		args args
 		want string
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

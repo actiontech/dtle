@@ -7,12 +7,12 @@ import (
 	"strings"
 	"sync"
 
+	"time"
 	ubase "udup/internal/client/driver/mysql/base"
 	usql "udup/internal/client/driver/mysql/sql"
 	"udup/internal/config"
 	umconf "udup/internal/config/mysql"
 	log "udup/internal/logger"
-	"time"
 )
 
 type dumper struct {
@@ -64,7 +64,7 @@ type dumpEntry struct {
 	TableName                string
 	TableSchema              string
 	TbSQL                    []string
-	ValuesX					 [][]*[]byte
+	ValuesX                  [][]*[]byte
 	TotalCount               int64
 	RowsCount                int64
 	Offset                   uint64 // only for 'no PK' table

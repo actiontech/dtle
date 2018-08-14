@@ -1,7 +1,6 @@
 package base
 
 import (
-	"reflect"
 	"testing"
 
 	test "github.com/outbrain/golib/tests"
@@ -56,7 +55,7 @@ func TestBinlogCoordinates_DisplayString(t *testing.T) {
 		fields fields
 		want   string
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -84,7 +83,7 @@ func TestBinlogCoordinates_String(t *testing.T) {
 		fields fields
 		want   string
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -116,7 +115,7 @@ func TestBinlogCoordinates_Equals(t *testing.T) {
 		args   args
 		want   bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -144,7 +143,7 @@ func TestBinlogCoordinates_IsEmpty(t *testing.T) {
 		fields fields
 		want   bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -176,7 +175,7 @@ func TestBinlogCoordinates_SmallerThan(t *testing.T) {
 		args   args
 		want   bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -208,7 +207,7 @@ func TestBinlogCoordinates_SmallerThanOrEquals(t *testing.T) {
 		args   args
 		want   bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

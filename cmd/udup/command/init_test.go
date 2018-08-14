@@ -11,7 +11,7 @@ func TestInitCommand_Help(t *testing.T) {
 		fields fields
 		want   string
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -34,7 +34,7 @@ func TestInitCommand_Synopsis(t *testing.T) {
 		fields fields
 		want   string
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -61,7 +61,7 @@ func TestInitCommand_Run(t *testing.T) {
 		args   args
 		want   int
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

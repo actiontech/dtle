@@ -29,7 +29,7 @@ func TestHTTPServer_JobsRequest(t *testing.T) {
 		want    interface{}
 		wantErr bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -71,7 +71,7 @@ func TestHTTPServer_jobListRequest(t *testing.T) {
 		want    interface{}
 		wantErr bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -113,7 +113,7 @@ func TestHTTPServer_JobSpecificRequest(t *testing.T) {
 		want    interface{}
 		wantErr bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -156,7 +156,7 @@ func TestHTTPServer_jobAllocations(t *testing.T) {
 		want    interface{}
 		wantErr bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -199,7 +199,7 @@ func TestHTTPServer_jobEvaluations(t *testing.T) {
 		want    interface{}
 		wantErr bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -242,7 +242,7 @@ func TestHTTPServer_jobCRUD(t *testing.T) {
 		want    interface{}
 		wantErr bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -285,7 +285,7 @@ func TestHTTPServer_jobQuery(t *testing.T) {
 		want    interface{}
 		wantErr bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -328,7 +328,7 @@ func TestHTTPServer_jobUpdate(t *testing.T) {
 		want    interface{}
 		wantErr bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -371,7 +371,7 @@ func TestHTTPServer_jobDelete(t *testing.T) {
 		want    interface{}
 		wantErr bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -414,7 +414,7 @@ func TestHTTPServer_jobResumeRequest(t *testing.T) {
 		want    interface{}
 		wantErr bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -457,7 +457,7 @@ func TestHTTPServer_jobPauseRequest(t *testing.T) {
 		want    interface{}
 		wantErr bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -489,7 +489,7 @@ func TestApiJobToStructJob(t *testing.T) {
 		args args
 		want *models.Job
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -509,7 +509,7 @@ func TestApiTaskToStructsTask(t *testing.T) {
 		name string
 		args args
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

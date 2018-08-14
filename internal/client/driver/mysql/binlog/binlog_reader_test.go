@@ -59,7 +59,7 @@ func TestNewMySQLReader(t *testing.T) {
 		wantBinlogReader *BinlogReader
 		wantErr          bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -108,7 +108,7 @@ func TestBinlogReader_ConnectBinlogStreamer(t *testing.T) {
 		args    args
 		wantErr bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -171,7 +171,7 @@ func TestBinlogReader_GetCurrentBinlogCoordinates(t *testing.T) {
 		fields fields
 		want   *base.BinlogCoordinateTx
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -239,7 +239,7 @@ func TestBinlogReader_handleRowsEvent(t *testing.T) {
 		args    args
 		wantErr bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -306,7 +306,7 @@ func TestBinlogReader_DataStreamEvents(t *testing.T) {
 		args    args
 		wantErr bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -373,7 +373,7 @@ func TestBinlogReader_BinlogStreamEvents(t *testing.T) {
 		args    args
 		wantErr bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -441,7 +441,7 @@ func TestBinlogReader_handleBinlogRowsEvent(t *testing.T) {
 		args    args
 		wantErr bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -507,7 +507,7 @@ func TestBinlogReader_appendQuery(t *testing.T) {
 		fields fields
 		args   args
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -548,7 +548,7 @@ func Test_newTxWithoutGTIDError(t *testing.T) {
 		args    args
 		wantErr bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -587,7 +587,7 @@ func TestBinlogReader_clearB64Sql(t *testing.T) {
 		name   string
 		fields fields
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -651,7 +651,7 @@ func TestBinlogReader_appendB64Sql(t *testing.T) {
 		fields fields
 		args   args
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -716,7 +716,7 @@ func TestBinlogReader_onCommit(t *testing.T) {
 		fields fields
 		args   args
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -759,7 +759,7 @@ func TestGenDDLSQL(t *testing.T) {
 		want    string
 		wantErr bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -840,7 +840,7 @@ func TestBinlogReader_skipQueryDDL(t *testing.T) {
 		args   args
 		want   bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -883,7 +883,7 @@ func Test_skipQueryEvent(t *testing.T) {
 		args args
 		want bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -928,7 +928,7 @@ func TestBinlogReader_skipRowEvent(t *testing.T) {
 		args   args
 		want   bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -996,7 +996,7 @@ func TestBinlogReader_matchString(t *testing.T) {
 		args   args
 		want   bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -1064,7 +1064,7 @@ func TestBinlogReader_matchDB(t *testing.T) {
 		args   args
 		want   bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -1127,7 +1127,7 @@ func TestBinlogReader_Close(t *testing.T) {
 		fields  fields
 		wantErr bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -1195,7 +1195,7 @@ func TestBinlogReader_matchTable(t *testing.T) {
 		args   args
 		want   bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

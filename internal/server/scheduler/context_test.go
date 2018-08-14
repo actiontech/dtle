@@ -6,6 +6,8 @@ import (
 	"testing"
 	log "udup/internal/logger"
 	"udup/internal/models"
+
+	version "github.com/hashicorp/go-version"
 )
 
 func TestEvalCache_RegexpCache(t *testing.T) {
@@ -18,7 +20,7 @@ func TestEvalCache_RegexpCache(t *testing.T) {
 		fields fields
 		want   map[string]*regexp.Regexp
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -43,7 +45,7 @@ func TestEvalCache_ConstraintCache(t *testing.T) {
 		fields fields
 		want   map[string]version.Constraints
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -69,7 +71,7 @@ func TestNewEvalContext(t *testing.T) {
 		args args
 		want *EvalContext
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -94,7 +96,7 @@ func TestEvalContext_State(t *testing.T) {
 		fields fields
 		want   State
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -127,7 +129,7 @@ func TestEvalContext_Plan(t *testing.T) {
 		fields fields
 		want   *models.Plan
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -160,7 +162,7 @@ func TestEvalContext_Logger(t *testing.T) {
 		fields fields
 		want   *log.Logger
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -193,7 +195,7 @@ func TestEvalContext_Metrics(t *testing.T) {
 		fields fields
 		want   *models.AllocMetric
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -229,7 +231,7 @@ func TestEvalContext_SetState(t *testing.T) {
 		fields fields
 		args   args
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -259,7 +261,7 @@ func TestEvalContext_Reset(t *testing.T) {
 		name   string
 		fields fields
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -295,7 +297,7 @@ func TestEvalContext_ProposedAllocs(t *testing.T) {
 		want    []*models.Allocation
 		wantErr bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -333,7 +335,7 @@ func TestEvalContext_Eligibility(t *testing.T) {
 		fields fields
 		want   *EvalEligibility
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -357,7 +359,7 @@ func TestNewEvalEligibility(t *testing.T) {
 		name string
 		want *EvalEligibility
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -383,7 +385,7 @@ func TestEvalEligibility_SetJob(t *testing.T) {
 		fields fields
 		args   args
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -410,7 +412,7 @@ func TestEvalEligibility_HasEscaped(t *testing.T) {
 		fields fields
 		want   bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -439,7 +441,7 @@ func TestEvalEligibility_GetClasses(t *testing.T) {
 		fields fields
 		want   map[string]bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -472,7 +474,7 @@ func TestEvalEligibility_JobStatus(t *testing.T) {
 		args   args
 		want   ComputedClassFeasibility
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -505,7 +507,7 @@ func TestEvalEligibility_SetJobEligibility(t *testing.T) {
 		fields fields
 		args   args
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -537,7 +539,7 @@ func TestEvalEligibility_TaskStatus(t *testing.T) {
 		args   args
 		want   ComputedClassFeasibility
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -571,7 +573,7 @@ func TestEvalEligibility_SetTaskEligibility(t *testing.T) {
 		fields fields
 		args   args
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

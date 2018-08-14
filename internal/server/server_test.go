@@ -13,6 +13,7 @@ import (
 
 	"github.com/docker/leadership"
 	"github.com/hashicorp/raft"
+	raftboltdb "github.com/hashicorp/raft-boltdb"
 	"github.com/hashicorp/serf/serf"
 )
 
@@ -27,7 +28,7 @@ func TestNewServer(t *testing.T) {
 		want    *Server
 		wantErr bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -83,7 +84,7 @@ func TestServer_Shutdown(t *testing.T) {
 		fields  fields
 		wantErr bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -168,7 +169,7 @@ func TestServer_IsShutdown(t *testing.T) {
 		fields fields
 		want   bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -253,7 +254,7 @@ func TestServer_Leave(t *testing.T) {
 		fields  fields
 		wantErr bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -338,7 +339,7 @@ func TestServer_setupRPC(t *testing.T) {
 		fields  fields
 		wantErr bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -423,7 +424,7 @@ func TestServer_setupRaft(t *testing.T) {
 		fields  fields
 		wantErr bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -515,7 +516,7 @@ func TestServer_setupSerf(t *testing.T) {
 		want    *serf.Serf
 		wantErr bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -605,7 +606,7 @@ func TestServer_setupWorkers(t *testing.T) {
 		fields  fields
 		wantErr bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -691,7 +692,7 @@ func TestServer_numPeers(t *testing.T) {
 		want    int
 		wantErr bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -781,7 +782,7 @@ func TestServer_IsLeader(t *testing.T) {
 		fields fields
 		want   bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -871,7 +872,7 @@ func TestServer_Join(t *testing.T) {
 		want    int
 		wantErr bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -961,7 +962,7 @@ func TestServer_LocalMember(t *testing.T) {
 		fields fields
 		want   serf.Member
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -1046,7 +1047,7 @@ func TestServer_Members(t *testing.T) {
 		fields fields
 		want   []serf.Member
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -1135,7 +1136,7 @@ func TestServer_RemoveFailedNode(t *testing.T) {
 		args    args
 		wantErr bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -1220,7 +1221,7 @@ func TestServer_Encrypted(t *testing.T) {
 		fields fields
 		want   bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -1305,7 +1306,7 @@ func TestServer_State(t *testing.T) {
 		fields fields
 		want   *store.StateStore
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -1390,7 +1391,7 @@ func TestServer_Regions(t *testing.T) {
 		fields fields
 		want   []string
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -1451,7 +1452,7 @@ func Test_inmemCodec_ReadRequestHeader(t *testing.T) {
 		args    args
 		wantErr bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -1484,7 +1485,7 @@ func Test_inmemCodec_ReadRequestBody(t *testing.T) {
 		args    args
 		wantErr bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -1518,7 +1519,7 @@ func Test_inmemCodec_WriteResponse(t *testing.T) {
 		args    args
 		wantErr bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -1547,7 +1548,7 @@ func Test_inmemCodec_Close(t *testing.T) {
 		fields  fields
 		wantErr bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -1610,7 +1611,7 @@ func TestServer_RPC(t *testing.T) {
 		args    args
 		wantErr bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -1695,7 +1696,7 @@ func TestServer_Stats(t *testing.T) {
 		fields fields
 		want   map[string]map[string]string
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -1780,7 +1781,7 @@ func TestServer_Region(t *testing.T) {
 		fields fields
 		want   string
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -1865,7 +1866,7 @@ func TestServer_Datacenter(t *testing.T) {
 		fields fields
 		want   string
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -1950,7 +1951,7 @@ func TestServer_GetConfig(t *testing.T) {
 		fields fields
 		want   *uconf.ServerConfig
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

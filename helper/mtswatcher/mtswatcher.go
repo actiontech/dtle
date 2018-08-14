@@ -7,14 +7,15 @@
 package main
 
 import (
-	"fmt"
-	"github.com/siddontang/go-mysql/replication"
-	"github.com/siddontang/go-mysql/mysql"
 	"context"
 	"database/sql"
-	_ "github.com/go-sql-driver/mysql"
+	"fmt"
 	"os"
 	"os/signal"
+
+	_ "github.com/go-sql-driver/mysql"
+	"github.com/siddontang/go-mysql/mysql"
+	"github.com/siddontang/go-mysql/replication"
 )
 
 func main() {
@@ -62,7 +63,7 @@ func main() {
 
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt)
-	go func(){
+	go func() {
 		for range c {
 			syncer.Close()
 			printAndClear()
@@ -101,5 +102,3 @@ func panicIfErr(err interface{}) {
 		panic(err)
 	}
 }
-
-

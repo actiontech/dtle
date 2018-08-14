@@ -27,7 +27,7 @@ func TestMeta_FlagSet(t *testing.T) {
 		args   args
 		want   *flag.FlagSet
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -57,7 +57,7 @@ func TestMeta_Client(t *testing.T) {
 		want    *api.Client
 		wantErr bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -91,7 +91,7 @@ func TestMeta_Colorize(t *testing.T) {
 		fields fields
 		want   *colorstring.Colorize
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -113,7 +113,7 @@ func Test_generalOptionsUsage(t *testing.T) {
 		name string
 		want string
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

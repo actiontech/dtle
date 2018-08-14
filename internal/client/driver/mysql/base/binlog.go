@@ -2,9 +2,10 @@ package base
 
 import (
 	"fmt"
-	"github.com/siddontang/go-mysql/replication"
+
 	"github.com/satori/go.uuid"
 	gomysql "github.com/siddontang/go-mysql/mysql"
+	"github.com/siddontang/go-mysql/replication"
 )
 
 type BinlogEvent struct {
@@ -19,8 +20,8 @@ type BinlogEvent struct {
 }
 
 type BinlogCoordinateTx struct {
-	LogFile       string
-	LogPos        int64
+	LogFile string
+	LogPos  int64
 	// Looks like a mechanism to prevent loop (unfinished)
 	OSID          string
 	SID           uuid.UUID
@@ -36,9 +37,9 @@ func (b *BinlogCoordinateTx) GetSid() string {
 
 // BinlogCoordinates described binary log coordinates in the form of log file & log position.
 type BinlogCoordinatesX struct {
-	LogFile       string
-	LogPos        int64
-	GtidSet       string
+	LogFile string
+	LogPos  int64
+	GtidSet string
 }
 
 // String returns a user-friendly string representation of these coordinates

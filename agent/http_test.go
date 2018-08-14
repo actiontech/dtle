@@ -24,7 +24,7 @@ func TestNewHTTPServer(t *testing.T) {
 		wantLogOutput string
 		wantErr       bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -54,7 +54,7 @@ func Test_tcpKeepAliveListener_Accept(t *testing.T) {
 		wantC   net.Conn
 		wantErr bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -85,7 +85,7 @@ func TestHTTPServer_Shutdown(t *testing.T) {
 		name   string
 		fields fields
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -113,7 +113,7 @@ func TestHTTPServer_registerHandlers(t *testing.T) {
 		name   string
 		fields fields
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -139,7 +139,7 @@ func TestCodedError(t *testing.T) {
 		args args
 		want HTTPCodedError
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -160,7 +160,7 @@ func Test_codedError_Error(t *testing.T) {
 		fields fields
 		want   string
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -185,7 +185,7 @@ func Test_codedError_Code(t *testing.T) {
 		fields fields
 		want   int
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -217,7 +217,7 @@ func TestHTTPServer_wrap(t *testing.T) {
 		args   args
 		want   func(resp http.ResponseWriter, req *http.Request)
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -245,7 +245,7 @@ func Test_decodeBody(t *testing.T) {
 		args    args
 		wantErr bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -265,7 +265,7 @@ func Test_setIndex(t *testing.T) {
 		name string
 		args args
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -283,7 +283,7 @@ func Test_setKnownLeader(t *testing.T) {
 		name string
 		args args
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -301,7 +301,7 @@ func Test_setLastContact(t *testing.T) {
 		name string
 		args args
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -319,7 +319,7 @@ func Test_setMeta(t *testing.T) {
 		name string
 		args args
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -337,7 +337,7 @@ func Test_setHeaders(t *testing.T) {
 		name string
 		args args
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -357,7 +357,7 @@ func Test_parseWait(t *testing.T) {
 		args args
 		want bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -377,7 +377,7 @@ func Test_parseConsistency(t *testing.T) {
 		name string
 		args args
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -395,7 +395,7 @@ func Test_parsePrefix(t *testing.T) {
 		name string
 		args args
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -421,7 +421,7 @@ func TestHTTPServer_parseRegion(t *testing.T) {
 		fields fields
 		args   args
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -457,7 +457,7 @@ func TestHTTPServer_parse(t *testing.T) {
 		args   args
 		want   bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

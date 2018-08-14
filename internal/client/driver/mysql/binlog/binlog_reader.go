@@ -3,12 +3,14 @@ package binlog
 import (
 	"bytes"
 	gosql "database/sql"
+
 	//"encoding/hex"
 	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
 	"sync"
+
 	//"os"
 
 	"github.com/issuj/gofaster/base64"
@@ -41,9 +43,9 @@ type BinlogReader struct {
 	currentCoordinatesMutex  *sync.Mutex
 	LastAppliedRowsEventHint base.BinlogCoordinateTx
 	// raw config, whose ReplicateDoDB is same as config file (empty-is-all & no dynamically created tables)
-	mysqlContext             *config.MySQLDriverConfig
+	mysqlContext *config.MySQLDriverConfig
 	// dynamic config, include all tables (implicitly assigned or dynamically created)
-	tables                   map[string](map[string]*config.TableContext)
+	tables map[string](map[string]*config.TableContext)
 
 	currentTx          *BinlogTx
 	currentBinlogEntry *BinlogEntry
@@ -143,15 +145,16 @@ func (b *BinlogReader) addTableToTableMap(dbMap map[string]*config.TableContext,
 	}
 	return nil
 }
+
 // ConnectBinlogStreamer
 func (b *BinlogReader) ConnectBinlogStreamer(coordinates base.BinlogCoordinatesX) (err error) {
 	if coordinates.IsEmpty() {
 		b.logger.Warnf("mysql.reader: Emptry coordinates at ConnectBinlogStreamer")
 	}
 
-	b.currentCoordinates = 	base.BinlogCoordinateTx{
+	b.currentCoordinates = base.BinlogCoordinateTx{
 		LogFile: coordinates.LogFile,
-		LogPos: coordinates.LogPos,
+		LogPos:  coordinates.LogPos,
 	}
 
 	b.logger.Printf("mysql.reader: Connecting binlog streamer at %+v", coordinates)
@@ -213,6 +216,7 @@ func ToColumnValuesV2(abstractValues []interface{}, table *config.TableContext) 
 }
 
 type DDLType int
+
 const (
 	DDLOther DDLType = iota
 	DDLAlterTable
@@ -220,6 +224,7 @@ const (
 	DDLCreateSchema
 	DDLDropSchema
 )
+
 // If isDDL, a sql correspond to a table item, aka len(tables) == len(sqls).
 type parseDDLResult struct {
 	isDDL   bool
@@ -691,7 +696,6 @@ func (b *BinlogReader) handleBinlogRowsEvent(ev *replication.BinlogEvent, txChan
 					return nil
 				}
 
-
 				for i, sql := range ddlInfo.sqls {
 					realSchema := utils.StringElse(ddlInfo.tables[i].Schema, currentSchema)
 					tableName := ddlInfo.tables[i].Table
@@ -882,7 +886,7 @@ func resolveDDLSQL(sql string) (result parseDDLResult, err error) {
 	}
 
 	appendSql := func(sql string, schema string, table string) {
-		result.tables = append(result.tables, SchemaTable{Schema:schema, Table:table})
+		result.tables = append(result.tables, SchemaTable{Schema: schema, Table: table})
 		result.sqls = append(result.sqls, sql)
 	}
 
@@ -1005,7 +1009,7 @@ func (b *BinlogReader) skipEvent(schema string, table string) bool {
 	switch strings.ToLower(schema) {
 	case "mysql":
 		if b.mysqlContext.ExpandSyntaxSupport {
-			return skipMysqlSchemaEvent(strings.ToLower(table));
+			return skipMysqlSchemaEvent(strings.ToLower(table))
 		} else {
 			return true
 		}

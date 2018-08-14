@@ -30,7 +30,7 @@ func TestNewExtractor(t *testing.T) {
 		args args
 		want *Extractor
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -51,7 +51,7 @@ func TestExtractor_sleepWhileTrue(t *testing.T) {
 		args    args
 		wantErr bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -73,7 +73,7 @@ func TestExtractor_retryOperation(t *testing.T) {
 		args    args
 		wantErr bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -89,7 +89,7 @@ func TestExtractor_consumeRowCopyComplete(t *testing.T) {
 		name string
 		e    *Extractor
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -103,7 +103,7 @@ func TestExtractor_Run(t *testing.T) {
 		name string
 		e    *Extractor
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -118,7 +118,7 @@ func TestExtractor_initiateInspector(t *testing.T) {
 		e       *Extractor
 		wantErr bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -135,7 +135,7 @@ func TestExtractor_initNatsPubClient(t *testing.T) {
 		e       *Extractor
 		wantErr bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -152,7 +152,7 @@ func TestExtractor_initiateStreaming(t *testing.T) {
 		e       *Extractor
 		wantErr bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -169,7 +169,7 @@ func TestExtractor_initDBConnections(t *testing.T) {
 		e       *Extractor
 		wantErr bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -190,7 +190,7 @@ func TestExtractor_initBinlogReader(t *testing.T) {
 		args    args
 		wantErr bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -207,7 +207,7 @@ func TestExtractor_validateConnection(t *testing.T) {
 		e       *Extractor
 		wantErr bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -224,7 +224,7 @@ func TestExtractor_SelectSqlMode(t *testing.T) {
 		e       *Extractor
 		wantErr bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -241,7 +241,7 @@ func TestExtractor_GetCurrentBinlogCoordinates(t *testing.T) {
 		e    *Extractor
 		want *base.BinlogCoordinateTx
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -258,7 +258,7 @@ func TestExtractor_GetReconnectBinlogCoordinates(t *testing.T) {
 		e    *Extractor
 		want *base.BinlogCoordinateTx
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -275,7 +275,7 @@ func TestExtractor_readCurrentBinlogCoordinates(t *testing.T) {
 		e       *Extractor
 		wantErr bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -292,7 +292,7 @@ func TestExtractor_readMySqlCharsetSystemVariables(t *testing.T) {
 		e       *Extractor
 		wantErr bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -309,7 +309,7 @@ func TestExtractor_setStatementFor(t *testing.T) {
 		e    *Extractor
 		want string
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -330,7 +330,7 @@ func TestEncode(t *testing.T) {
 		want    []byte
 		wantErr bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -355,7 +355,7 @@ func TestExtractor_StreamEvents(t *testing.T) {
 		args    args
 		wantErr bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -378,7 +378,7 @@ func TestExtractor_requestMsg(t *testing.T) {
 		args    args
 		wantErr bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -395,7 +395,7 @@ func TestExtractor_mysqlDump(t *testing.T) {
 		e       *Extractor
 		wantErr bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -416,7 +416,7 @@ func TestExtractor_encodeDumpEntry(t *testing.T) {
 		args    args
 		wantErr bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -432,7 +432,7 @@ func Test_currentTimeMillis(t *testing.T) {
 		name string
 		want int64
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -450,7 +450,7 @@ func TestExtractor_Stats(t *testing.T) {
 		want    *models.TaskStatistics
 		wantErr bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -472,7 +472,7 @@ func TestExtractor_ID(t *testing.T) {
 		e    *Extractor
 		want string
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -492,7 +492,7 @@ func TestExtractor_onError(t *testing.T) {
 		e    *Extractor
 		args args
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -507,7 +507,7 @@ func TestExtractor_WaitCh(t *testing.T) {
 		e    *Extractor
 		want chan *models.WaitResult
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -524,7 +524,7 @@ func TestExtractor_Shutdown(t *testing.T) {
 		e       *Extractor
 		wantErr bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -541,7 +541,7 @@ func TestExtractor_inspectTables(t *testing.T) {
 		e       *Extractor
 		wantErr bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -558,7 +558,7 @@ func TestExtractor_readTableColumns(t *testing.T) {
 		e       *Extractor
 		wantErr bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -575,7 +575,7 @@ func TestExtractor_selectSqlMode(t *testing.T) {
 		e       *Extractor
 		wantErr bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -592,7 +592,7 @@ func TestExtractor_validateAndReadTimeZone(t *testing.T) {
 		e       *Extractor
 		wantErr bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -615,7 +615,7 @@ func TestExtractor_CountTableRows(t *testing.T) {
 		want    int64
 		wantErr bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -636,7 +636,7 @@ func TestExtractor_onDone(t *testing.T) {
 		name string
 		e    *Extractor
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

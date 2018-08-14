@@ -27,7 +27,7 @@ func TestHTTPServer_StatusLeaderRequest(t *testing.T) {
 		want    interface{}
 		wantErr bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -69,7 +69,7 @@ func TestHTTPServer_StatusPeersRequest(t *testing.T) {
 		want    interface{}
 		wantErr bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -4,6 +4,7 @@ import (
 	gosql "database/sql"
 	"encoding/json"
 	"fmt"
+
 	//"math"
 	"bytes"
 	"encoding/gob"
@@ -19,14 +20,14 @@ import (
 	gomysql "github.com/siddontang/go-mysql/mysql"
 
 	"os"
+	"udup/internal/client/driver/kafka2"
 	"udup/internal/client/driver/mysql/base"
 	"udup/internal/client/driver/mysql/binlog"
 	"udup/internal/client/driver/mysql/sql"
 	"udup/internal/config"
+	"udup/internal/config/mysql"
 	log "udup/internal/logger"
 	"udup/internal/models"
-	"udup/internal/client/driver/kafka2"
-	"udup/internal/config/mysql"
 )
 
 const (
@@ -68,7 +69,7 @@ type Extractor struct {
 
 	testStub1Delay int64
 
-	kafkaMgr       *kafka2.KafkaManager
+	kafkaMgr *kafka2.KafkaManager
 }
 
 func NewExtractor(subject, tp string, maxPayload int, cfg *config.MySQLDriverConfig, logger *log.Logger,
@@ -1390,7 +1391,7 @@ func (e *Extractor) kafkaTransformSnapshotData(table *config.Table, value *dumpE
 		valuePayload.Source.Version = "0.0.1"
 		valuePayload.Source.Name = e.kafkaMgr.Cfg.Topic
 		valuePayload.Source.ServerID = 0 // TODO
-		valuePayload.Source.TsSec = 0 // TODO the timestamp in seconds
+		valuePayload.Source.TsSec = 0    // TODO the timestamp in seconds
 		valuePayload.Source.Gtid = nil
 		valuePayload.Source.File = ""
 		valuePayload.Source.Pos = 0
@@ -1444,12 +1445,12 @@ func (e *Extractor) kafkaTransformSnapshotData(table *config.Table, value *dumpE
 		valueSchema := kafka2.NewEnvelopeSchema(tableIdent, valueColDef)
 
 		k := kafka2.DbzOutput{
-			Schema:keySchema,
-			Payload:keyPayload,
+			Schema:  keySchema,
+			Payload: keyPayload,
 		}
 		v := kafka2.DbzOutput{
-			Schema:valueSchema,
-			Payload:valuePayload,
+			Schema:  valueSchema,
+			Payload: valuePayload,
 		}
 
 		kBs, err := json.Marshal(k)
@@ -1530,11 +1531,11 @@ func (e *Extractor) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry) (e
 		valuePayload.Source.Version = "0.0.1"
 		valuePayload.Source.Name = e.kafkaMgr.Cfg.Topic
 		valuePayload.Source.ServerID = 0 // TODO
-		valuePayload.Source.TsSec = 0 // TODO the timestamp in seconds
+		valuePayload.Source.TsSec = 0    // TODO the timestamp in seconds
 		valuePayload.Source.Gtid = dmlEvent.Coordinates.GetGtidForThisTx()
 		valuePayload.Source.File = dmlEvent.Coordinates.LogFile
 		valuePayload.Source.Pos = dataEvent.LogPos
-		valuePayload.Source.Row = 1 // TODO "the row within the event (if there is more than one)".
+		valuePayload.Source.Row = 1          // TODO "the row within the event (if there is more than one)".
 		valuePayload.Source.Snapshot = false // TODO "whether this event was part of a snapshot"
 		// My guess: for full range, snapshot=true, else false
 		valuePayload.Source.Thread = nil // TODO
@@ -1547,11 +1548,11 @@ func (e *Extractor) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry) (e
 
 		keySchema := kafka2.NewKeySchema(tableIdent, keyColDefs)
 		k := kafka2.DbzOutput{
-			Schema: keySchema,
+			Schema:  keySchema,
 			Payload: keyPayload,
 		}
 		v := kafka2.DbzOutput{
-			Schema: valueSchema,
+			Schema:  valueSchema,
 			Payload: valuePayload,
 		}
 		kBs, err := json.Marshal(k)
@@ -1572,7 +1573,7 @@ func (e *Extractor) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry) (e
 		// tombstone event for DELETE
 		if dataEvent.DML == binlog.DeleteDML {
 			v2 := kafka2.DbzOutput{
-				Schema: nil,
+				Schema:  nil,
 				Payload: nil,
 			}
 			v2Bs, err := json.Marshal(v2)

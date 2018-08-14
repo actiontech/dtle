@@ -10,9 +10,10 @@ import (
 	"strconv"
 	"time"
 
+	"net/http/pprof"
+
 	"github.com/NYTimes/gziphandler"
 	"github.com/ugorji/go/codec"
-	"net/http/pprof"
 
 	"strings"
 	log "udup/internal/logger"

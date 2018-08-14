@@ -12,10 +12,11 @@ import (
 	umconf "udup/internal/config/mysql"
 	"udup/internal/models"
 
+	"strings"
+
 	qldatasource "github.com/araddon/qlbridge/datasource"
 	qlexpr "github.com/araddon/qlbridge/expr"
 	qlvm "github.com/araddon/qlbridge/vm"
-	"strings"
 )
 
 // This is the default port that we use for Serf communication
@@ -23,11 +24,11 @@ const (
 	DefaultBindPort  int = 8191
 	DefaultClusterID     = "udup-cluster"
 
-	channelBufferSize  = 600
-	defaultNumRetries  = 5
-	defaultChunkSize   = 2000
-	defaultNumWorkers  = 1
-	defaultMsgBytes    = 20 * 1024
+	channelBufferSize = 600
+	defaultNumRetries = 5
+	defaultChunkSize  = 2000
+	defaultNumWorkers = 1
+	defaultMsgBytes   = 20 * 1024
 )
 
 // RPCHandler can be provided to the Client if there is a local server

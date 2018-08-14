@@ -4,9 +4,11 @@ import (
 	gosql "database/sql"
 	"encoding/json"
 	"fmt"
+
 	//"math"
 	"bytes"
 	"encoding/gob"
+
 	//"encoding/base64"
 	"math"
 	"strconv"
@@ -19,6 +21,7 @@ import (
 	gonats "github.com/nats-io/go-nats"
 	gomysql "github.com/siddontang/go-mysql/mysql"
 
+	"container/heap"
 	"context"
 	"udup/internal/client/driver/mysql/base"
 	"udup/internal/client/driver/mysql/binlog"
@@ -28,7 +31,6 @@ import (
 	log "udup/internal/logger"
 	"udup/internal/models"
 	"udup/utils"
-	"container/heap"
 )
 
 const (
@@ -42,9 +44,10 @@ const (
 
 // from container/heap/example_intheap_test.go
 type Int64PriQueue []int64
-func (q Int64PriQueue) Len() int               { return len(q) }
+
+func (q Int64PriQueue) Len() int           { return len(q) }
 func (q Int64PriQueue) Less(i, j int) bool { return q[i] < q[j] }
-func (q Int64PriQueue) Swap(i, j int) { q[i], q[j] = q[j], q[i] }
+func (q Int64PriQueue) Swap(i, j int)      { q[i], q[j] = q[j], q[i] }
 func (q *Int64PriQueue) Push(x interface{}) {
 	*q = append(*q, x.(int64))
 }
@@ -163,7 +166,7 @@ func (mm *MtsManager) LcUpdater() {
 
 				for mm.m.Len() > 0 {
 					least := mm.m[0]
-					if least == mm.lastCommitted + 1 {
+					if least == mm.lastCommitted+1 {
 						heap.Pop(&mm.m)
 						atomic.AddInt64(&mm.lastCommitted, 1)
 						select {
@@ -391,7 +394,7 @@ func (a *Applier) onApplyTxStructWithSuper(dbApplier *sql.Conn, binlogTx *binlog
 func (a *Applier) executeWriteFuncs() {
 	if a.mysqlContext.Gtid == "" {
 		go func() {
-			var stopLoop= false
+			var stopLoop = false
 			for !stopLoop {
 				select {
 				case copyRows := <-a.copyRowsQueue:
@@ -535,7 +538,7 @@ func (a *Applier) initiateStreaming() error {
 
 			a.logger.Debugf("applier. incr. recv. nEntries: %v, len(applyDataEntryQueue): %v",
 				len(binlogEntries.Entries), len(a.applyDataEntryQueue))
-			if cap(a.applyDataEntryQueue) - len(a.applyDataEntryQueue) < len(binlogEntries.Entries) {
+			if cap(a.applyDataEntryQueue)-len(a.applyDataEntryQueue) < len(binlogEntries.Entries) {
 				// discard these entries
 				a.logger.Debugf("applier. incr. discarding entries")
 				a.mysqlContext.Stage = models.StageWaitingForMasterToSendEvent
@@ -676,7 +679,7 @@ func (a *Applier) initiateStreaming() error {
 						}
 
 						// If there are TXs skipped by udup source-side
-						for a.mtsManager.lastEnqueue + 1 < binlogEntry.Coordinates.SeqenceNumber {
+						for a.mtsManager.lastEnqueue+1 < binlogEntry.Coordinates.SeqenceNumber {
 							a.mtsManager.lastEnqueue += 1
 							a.mtsManager.chExecuted <- a.mtsManager.lastEnqueue
 						}

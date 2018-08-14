@@ -19,7 +19,7 @@ const (
 	EnvUdupAddress = "UDUP_ADDR"
 	EnvUdupRegion  = "UDUP_REGION"
 
-	fullId  = 36
+	fullId = 36
 )
 
 // FlagSetFlags is an enum to define what flags are present in the

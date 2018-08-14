@@ -7,10 +7,15 @@ import (
 	"sync"
 	"testing"
 	"time"
+	uconf "udup/internal/config"
+	ulog "udup/internal/logger"
 	"udup/internal/models"
 	"udup/internal/server/store"
 
+	"github.com/docker/leadership"
 	"github.com/hashicorp/raft"
+	raftboltdb "github.com/hashicorp/raft-boltdb"
+	"github.com/hashicorp/serf/serf"
 )
 
 func TestServer_planApply(t *testing.T) {
@@ -52,7 +57,7 @@ func TestServer_planApply(t *testing.T) {
 		name   string
 		fields fields
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -142,7 +147,7 @@ func TestServer_applyPlan(t *testing.T) {
 		want    raft.ApplyFuture
 		wantErr bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -238,7 +243,7 @@ func TestServer_asyncPlanWait(t *testing.T) {
 		fields fields
 		args   args
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -293,7 +298,7 @@ func Test_evaluatePlan(t *testing.T) {
 		want    *models.PlanResult
 		wantErr bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -321,7 +326,7 @@ func Test_evaluateNodePlan(t *testing.T) {
 		want    bool
 		wantErr bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -13,7 +13,7 @@ func TestDefaultConfig(t *testing.T) {
 		name string
 		want *Config
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -63,7 +63,7 @@ func TestConfig_Listener(t *testing.T) {
 		want    net.Listener
 		wantErr bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -141,7 +141,7 @@ func TestConfig_Merge(t *testing.T) {
 		args   args
 		want   *Config
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -210,7 +210,7 @@ func TestConfig_normalizeAddrs(t *testing.T) {
 		fields  fields
 		wantErr bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -257,7 +257,7 @@ func Test_normalizeBind(t *testing.T) {
 		args args
 		want string
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -280,7 +280,7 @@ func Test_normalizeAdvertise(t *testing.T) {
 		want    string
 		wantErr bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -305,7 +305,7 @@ func Test_isMissingPort(t *testing.T) {
 		args args
 		want bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -338,7 +338,7 @@ func TestServerConfig_Merge(t *testing.T) {
 		args   args
 		want   *ServerConfig
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -377,7 +377,7 @@ func TestClientConfig_Merge(t *testing.T) {
 		args   args
 		want   *ClientConfig
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -407,7 +407,7 @@ func TestNetwork_Merge(t *testing.T) {
 		args   args
 		want   *Network
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -440,7 +440,7 @@ func TestMetric_Merge(t *testing.T) {
 		args   args
 		want   *Metric
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -476,7 +476,7 @@ func TestPorts_Merge(t *testing.T) {
 		args   args
 		want   *Ports
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -509,7 +509,7 @@ func TestAddresses_Merge(t *testing.T) {
 		args   args
 		want   *Addresses
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -542,7 +542,7 @@ func TestAdvertiseAddrs_Merge(t *testing.T) {
 		args   args
 		want   *AdvertiseAddrs
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -569,7 +569,7 @@ func TestLoadConfig(t *testing.T) {
 		want    *Config
 		wantErr bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -595,7 +595,7 @@ func TestLoadConfigDir(t *testing.T) {
 		want    *Config
 		wantErr bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -620,7 +620,7 @@ func Test_isTemporaryFile(t *testing.T) {
 		args args
 		want bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -2,8 +2,9 @@ package driver
 
 import (
 	"fmt"
-	"github.com/mitchellh/mapstructure"
 	"strings"
+
+	"github.com/mitchellh/mapstructure"
 
 	"udup/internal/client/driver/mysql"
 	ubase "udup/internal/client/driver/mysql/base"

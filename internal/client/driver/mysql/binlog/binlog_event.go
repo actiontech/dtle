@@ -5,8 +5,8 @@ import (
 
 	"github.com/siddontang/go-mysql/replication"
 
-	"udup/internal/config/mysql"
 	"udup/internal/config"
+	"udup/internal/config/mysql"
 )
 
 type EventDML string
@@ -65,21 +65,21 @@ type BinlogEvent struct {
 
 type SchemaTable struct {
 	Schema string
-	Table string
+	Table  string
 }
 
 // BinlogDMLEvent is a binary log rows (DML) event entry, with data
 type DataEvent struct {
-	Query                string
-	CurrentSchema        string
-	DatabaseName         string
-	TableName            string
-	DML                  EventDML
-	ColumnCount          int
-	WhereColumnValues    *mysql.ColumnValues
-	NewColumnValues      *mysql.ColumnValues
-	Table                *config.Table // TODO tmp solution
-	LogPos               int64 // for kafka. The pos of WRITE_ROW_EVENT
+	Query             string
+	CurrentSchema     string
+	DatabaseName      string
+	TableName         string
+	DML               EventDML
+	ColumnCount       int
+	WhereColumnValues *mysql.ColumnValues
+	NewColumnValues   *mysql.ColumnValues
+	Table             *config.Table // TODO tmp solution
+	LogPos            int64         // for kafka. The pos of WRITE_ROW_EVENT
 }
 
 func NewDataEvent(databaseName, tableName string, dml EventDML, columnCount int) DataEvent {

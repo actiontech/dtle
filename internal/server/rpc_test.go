@@ -8,10 +8,15 @@ import (
 	"sync"
 	"testing"
 	"time"
+	uconf "udup/internal/config"
+	ulog "udup/internal/logger"
 	"udup/internal/models"
 	"udup/internal/server/store"
 
+	"github.com/docker/leadership"
 	"github.com/hashicorp/raft"
+	raftboltdb "github.com/hashicorp/raft-boltdb"
+	"github.com/hashicorp/serf/serf"
 )
 
 func TestNewClientCodec(t *testing.T) {
@@ -23,7 +28,7 @@ func TestNewClientCodec(t *testing.T) {
 		args args
 		want rpc.ClientCodec
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -43,7 +48,7 @@ func TestNewServerCodec(t *testing.T) {
 		args args
 		want rpc.ServerCodec
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -93,7 +98,7 @@ func TestServer_listen(t *testing.T) {
 		name   string
 		fields fields
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -179,7 +184,7 @@ func TestServer_handleConn(t *testing.T) {
 		fields fields
 		args   args
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -265,7 +270,7 @@ func TestServer_handleMultiplex(t *testing.T) {
 		fields fields
 		args   args
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -351,7 +356,7 @@ func TestServer_handleUdupConn(t *testing.T) {
 		fields fields
 		args   args
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -442,7 +447,7 @@ func TestServer_forward(t *testing.T) {
 		want    bool
 		wantErr bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -533,7 +538,7 @@ func TestServer_getLeader(t *testing.T) {
 		want   bool
 		want1  *serverParts
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -629,7 +634,7 @@ func TestServer_forwardLeader(t *testing.T) {
 		args    args
 		wantErr bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -721,7 +726,7 @@ func TestServer_forwardRegion(t *testing.T) {
 		args    args
 		wantErr bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -812,7 +817,7 @@ func TestServer_raftApplyFuture(t *testing.T) {
 		want    raft.ApplyFuture
 		wantErr bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -909,7 +914,7 @@ func TestServer_raftApply(t *testing.T) {
 		want1   uint64
 		wantErr bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -1005,7 +1010,7 @@ func TestServer_setQueryMeta(t *testing.T) {
 		fields fields
 		args   args
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -1092,7 +1097,7 @@ func TestServer_blockingRPC(t *testing.T) {
 		args    args
 		wantErr bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

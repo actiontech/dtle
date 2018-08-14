@@ -13,7 +13,7 @@ import (
 type ColumnType int
 
 const (
-	UnknownColumnType   ColumnType = iota
+	UnknownColumnType ColumnType = iota
 	TimestampColumnType
 	DateTimeColumnType
 	EnumColumnType
@@ -25,7 +25,6 @@ const (
 	BinaryColumnType
 	TextColumnType
 	JSONColumnType
-
 
 	DateColumnType
 	TimeColumnType
@@ -57,10 +56,11 @@ type Column struct {
 	Charset            string
 	Type               ColumnType
 	ColumnType         string
-	Key				   string
+	Key                string
 	TimezoneConversion *TimezoneConvertion
 	Nullable           bool
 }
+
 func (c *Column) IsPk() bool {
 	return c.Key == "PRI"
 }
