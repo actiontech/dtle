@@ -14,7 +14,7 @@ func Test_newRestartTracker(t *testing.T) {
 		name string
 		want *RestartTracker
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -46,7 +46,7 @@ func TestRestartTracker_SetStartError(t *testing.T) {
 		args   args
 		want   *RestartTracker
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -89,7 +89,7 @@ func TestRestartTracker_SetWaitResult(t *testing.T) {
 		args   args
 		want   *RestartTracker
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -128,7 +128,7 @@ func TestRestartTracker_SetRestartTriggered(t *testing.T) {
 		fields fields
 		want   *RestartTracker
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -167,7 +167,7 @@ func TestRestartTracker_GetReason(t *testing.T) {
 		fields fields
 		want   string
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -207,7 +207,7 @@ func TestRestartTracker_GetState(t *testing.T) {
 		want   string
 		want1  time.Duration
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -251,7 +251,7 @@ func TestRestartTracker_handleStartError(t *testing.T) {
 		want   string
 		want1  time.Duration
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -295,7 +295,7 @@ func TestRestartTracker_handleWaitResult(t *testing.T) {
 		want   string
 		want1  time.Duration
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -338,7 +338,7 @@ func TestRestartTracker_getDelay(t *testing.T) {
 		fields fields
 		want   time.Duration
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -377,7 +377,7 @@ func TestRestartTracker_jitter(t *testing.T) {
 		fields fields
 		want   time.Duration
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
