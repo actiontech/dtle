@@ -12,40 +12,48 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"flag"
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/siddontang/go-mysql/mysql"
 	"github.com/siddontang/go-mysql/replication"
+	"math/rand"
+	"time"
 )
 
 func main() {
-	host := "127.0.0.1"
-	port := 3308
-	user := "root"
-	password := "password"
+	host := flag.String("host", "127.0.0.1", "Hostname of mysqld")
+	port := flag.Int("port", 3306, "Port")
+	user := flag.String("user", "root", "User")
+	password := flag.String("password", "password", "Password")
+	gtidSet := flag.String("gtid", "", "GtidSet")
+
+	flag.Parse()
 
 	var err error
 
+	rand.Seed(time.Now().Unix())
 	syncerConf := replication.BinlogSyncerConfig{
-		ServerID: 1,
+		ServerID: rand.Uint32(),
 		Flavor:   "mysql",
-		Host:     host,
-		Port:     uint16(port),
-		User:     user,
-		Password: password,
+		Host:     *host,
+		Port:     uint16(*port),
+		User:     *user,
+		Password: *password,
 	}
 
-	db, err := sql.Open("mysql", fmt.Sprintf("%v:%v@tcp(%v:%v)/", user, password, host, port))
+	db, err := sql.Open("mysql", fmt.Sprintf("%v:%v@tcp(%v:%v)/", *user, *password, *host, *port))
 	panicIfErr(err)
 
-	var dummy interface{}
-	var gtidSet string
-	err = db.QueryRow("show master status").Scan(&dummy, &dummy, &dummy, &dummy, &gtidSet)
-	panicIfErr(err)
+	if *gtidSet == "" {
+		var dummy interface{}
+		err = db.QueryRow("show master status").Scan(&dummy, &dummy, &dummy, &dummy, gtidSet)
+		panicIfErr(err)
+	}
 
-	fmt.Printf("ExecutedGtidSet: %v\n", gtidSet)
+	fmt.Printf("ExecutedGtidSet: %v\n", *gtidSet)
 
-	gtid, err := mysql.ParseMysqlGTIDSet(gtidSet)
+	gtid, err := mysql.ParseMysqlGTIDSet(*gtidSet)
 	panicIfErr(err)
 
 	syncer := replication.NewBinlogSyncer(&syncerConf)
