@@ -688,6 +688,26 @@ func (a *Applier) initiateStreaming() error {
 							return // shutdown
 						}
 						a.logger.Debugf("mysql.applier: a binlogEntry MTS enqueue. gno: %v", binlogEntry.Coordinates.GNO)
+						for i := range binlogEntry.Events {
+							dmlEvent := &binlogEntry.Events[i]
+							switch dmlEvent.DML {
+							case binlog.NotDML:
+								// do nothing
+							default:
+								tableItem := a.getTableItem(binlogEntry.Events[0].DatabaseName, binlogEntry.Events[0].TableName)
+								if tableItem.columns == nil {
+									a.logger.Debugf("get tableColumns")
+									tableItem.columns, err = base.GetTableColumns(a.db, dmlEvent.DatabaseName, dmlEvent.TableName)
+									if err != nil {
+										a.onError(TaskStateDead, err)
+										return
+									}
+								} else {
+									a.logger.Debugf("reuse tableColumns")
+								}
+								dmlEvent.TableItem = tableItem
+							}
+						}
 						a.applyBinlogMtsTxQueue <- binlogEntry
 					}
 					if !a.shutdown {
@@ -957,18 +977,7 @@ func (a *Applier) getTableItem(schema string, table string) *applierTableItem {
 // event entry on the original table.
 func (a *Applier) buildDMLEventQuery(dmlEvent binlog.DataEvent, workerIdx int) (query *gosql.Stmt, args []interface{}, rowsDelta int64, err error) {
 	// Large piece of code deleted here. See git annotate.
-
-	tableItem := a.getTableItem(dmlEvent.DatabaseName, dmlEvent.TableName)
-	if tableItem.columns == nil {
-		a.logger.Debugf("get tableColumns")
-		tableItem.columns, err = base.GetTableColumns(a.db, dmlEvent.DatabaseName, dmlEvent.TableName)
-		if err != nil {
-			return query, args, -1, err
-		}
-	} else {
-		a.logger.Debugf("reuse tableColumns")
-	}
-
+	tableItem := dmlEvent.TableItem.(*applierTableItem)
 	var tableColumns = tableItem.columns
 
 	doPrepareIfNil := func(stmts []*gosql.Stmt, query string) (*gosql.Stmt, error) {

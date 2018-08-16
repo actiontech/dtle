@@ -80,6 +80,7 @@ type DataEvent struct {
 	NewColumnValues   *mysql.ColumnValues
 	Table             *config.Table // TODO tmp solution
 	LogPos            int64         // for kafka. The pos of WRITE_ROW_EVENT
+	TableItem         interface{}
 }
 
 func NewDataEvent(databaseName, tableName string, dml EventDML, columnCount int) DataEvent {
