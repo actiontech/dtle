@@ -14,6 +14,8 @@ else
 PATH := $(subst :,/bin:,$(GOPATH))/bin:$(PATH)
 endif
 
+GOFLAGS ?= $(GOFLAGS:)
+
 # Standard Udup build
 default: build
 
@@ -22,12 +24,12 @@ windows: build-windows
 
 # Only run the build (no dependency grabbing)
 build:
-	go build -o dist/udup -ldflags \
+	go build $(GOFLAGS) -o dist/udup -ldflags \
 		"-X main.Version=$(VERSION) -X main.GitCommit=$(COMMIT) -X main.GitBranch=$(BRANCH)" \
 		./cmd/udup/main.go
 
 build-windows:
-	GOOS=windows GOARCH=amd64 go build -o dist/udup.exe -ldflags \
+	GOOS=windows GOARCH=amd64 go build $(GOFLAGS) -o dist/udup.exe -ldflags \
 		"-X main.Version=$(VERSION) -X main.GitCommit=$(COMMIT) -X main.GitBranch=$(BRANCH)" \
 		./cmd/udup/main.go
 
