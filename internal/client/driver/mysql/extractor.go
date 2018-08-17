@@ -882,6 +882,7 @@ func (e *Extractor) StreamEvents() error {
 // exiting as soon as it returns with non-error.
 func (e *Extractor) publish(subject, gtid string, txMsg []byte) (err error) {
 	for {
+		e.logger.Debugf("mysql.extractor: publish. gtid: %v, msg_len: %v", gtid, len(txMsg))
 		_, err = e.natsConn.Request(subject, txMsg, DefaultConnectWait)
 		if err == nil {
 			if gtid != "" {
@@ -1321,6 +1322,7 @@ func (e *Extractor) ID() string {
 }
 
 func (e *Extractor) onError(state int, err error) {
+	e.logger.Error("mysql.extractor. error: %v", err.Error())
 	if e.shutdown {
 		return
 	}
