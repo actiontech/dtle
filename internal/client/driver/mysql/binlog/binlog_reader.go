@@ -355,13 +355,13 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 		b.LastAppliedRowsEventHint = b.currentCoordinates
 	default:
 		if rowsEvent, ok := ev.Event.(*replication.RowsEvent); ok {
-			skip, table := b.skipRowEvent(rowsEvent)
+			dml := ToEventDML(ev.Header.EventType)
+			skip, table := b.skipRowEvent(rowsEvent, dml)
 			if skip {
 				//b.logger.Debugf("mysql.reader: skip rowsEvent [%s-%s]", rowsEvent.Table.Schema, rowsEvent.Table.Table)
 				return nil
 			}
 
-			dml := ToEventDML(ev.Header.EventType)
 			if dml == NotDML {
 				return fmt.Errorf("Unknown DML type: %s", ev.Header.EventType.String())
 			}
@@ -1049,14 +1049,33 @@ func skipMysqlSchemaEvent(tableLower string) bool {
 	}
 }
 
-func (b *BinlogReader) skipRowEvent(rowsEvent *replication.RowsEvent) (bool, *config.TableContext) {
+func (b *BinlogReader) skipRowEvent(rowsEvent *replication.RowsEvent, dml EventDML) (bool, *config.TableContext) {
 	tableLower := strings.ToLower(string(rowsEvent.Table.Table))
 	switch strings.ToLower(string(rowsEvent.Table.Schema)) {
 	case g.DtleSchemaName:
 		if strings.ToLower(string(rowsEvent.Table.Table)) == g.GtidExecutedTableV2 {
-			// TODO only for insertion
-			// TODO make sure the column exists
-			//b.currentBinlogEntry.Coordinates.OSID = mysql.ToColumnValues(rowsEvent.Rows[0]).StringColumn(0)
+			// cases: 1. delete for compaction; 2. insert for compaction (gtid interval); 3. normal insert for tx (single gtid)
+			// We make no special treat for case 2. That tx has only one insert, which should be ignored.
+			if dml == InsertDML {
+				if len(rowsEvent.Rows) == 1 {
+					sidValue := *mysql.ToColumnValues(rowsEvent.Rows[0]).AbstractValues[1]
+					sidByte, ok := sidValue.(string)
+					if !ok {
+						b.logger.Errorf("cycle-prevention: unrecognized gtid_executed table sid type: %T", sidValue)
+					} else {
+						sid, err := uuid.FromBytes([]byte(sidByte))
+						if err != nil {
+							b.logger.Errorf("cycle-prevention: cannot convert sid to uuid: %v", err.Error())
+						} else {
+							b.currentBinlogEntry.Coordinates.OSID = sid.String()
+							b.logger.Debugf("mysql.reader: found an osid: %v", b.currentBinlogEntry.Coordinates.OSID)
+						}
+					}
+				}
+				// If OSID is target mysql SID, skip applying the binlogEntry.
+				// - Plan B: skip sending at applier: unnecessary sending
+				// - Plan A: skip sending at extractor: currently extractor does not know target mysql SID
+			}
 		}
 		return true, nil
 	case "mysql":

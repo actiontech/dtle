@@ -28,7 +28,7 @@ type BinlogEvent struct {
 type BinlogCoordinateTx struct {
 	LogFile string
 	LogPos  int64
-	// Looks like a mechanism to prevent loop (unfinished)
+	// Original SID -- a cycle prevention mechanism
 	OSID          string
 	SID           uuid.UUID
 	GNO           int64

@@ -591,6 +591,11 @@ func (a *Applier) initiateStreaming() error {
 						len(a.applyDataEntryQueue), binlogEntry.Coordinates.GNO,
 						binlogEntry.Coordinates.LastCommitted, binlogEntry.Coordinates.SeqenceNumber)
 
+					if binlogEntry.Coordinates.OSID == a.mysqlContext.MySQLServerUuid {
+						a.logger.Debugf("mysql.applier: skipping a dtle tx. osid: %v", binlogEntry.Coordinates.OSID)
+						continue
+					}
+
 					// region TestIfExecuted
 					if a.gtidExecuted == nil {
 						// udup crash recovery or never executed
