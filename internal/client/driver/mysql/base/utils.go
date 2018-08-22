@@ -319,7 +319,9 @@ func ApplyColumnTypes(db usql.QueryAble, databaseName, tableName string, columns
 		}
 		if strings.Contains(columnType, "datetime") {
 			for _, columnsList := range columnsLists {
-				columnsList.GetColumn(columnName).Type = umconf.DateTimeColumnType
+				col := columnsList.GetColumn(columnName)
+				col.Type = umconf.DateTimeColumnType
+				col.Precision = m.GetInt("DATETIME_PRECISION")
 			}
 		}
 		if strings.HasPrefix(columnType, "enum") {
@@ -379,7 +381,9 @@ func ApplyColumnTypes(db usql.QueryAble, databaseName, tableName string, columns
 		}
 		if strings.HasPrefix(columnType, "time") {
 			for _, columnsList := range columnsLists {
-				columnsList.GetColumn(columnName).Type = umconf.TimeColumnType
+				col := columnsList.GetColumn(columnName)
+				col.Type = umconf.TimeColumnType
+				col.Precision = m.GetInt("DATETIME_PRECISION")
 			}
 		}
 		if strings.Contains(columnType, "blob") {
@@ -418,8 +422,11 @@ func ApplyColumnTypes(db usql.QueryAble, databaseName, tableName string, columns
 		}
 		if strings.HasPrefix(columnType, "decimal") {
 			for _, columnsList := range columnsLists {
-				columnsList.GetColumn(columnName).Type = umconf.DecimalColumnType
-				columnsList.GetColumn(columnName).ColumnType = columnType
+				col := columnsList.GetColumn(columnName)
+				col.Type = umconf.DecimalColumnType
+				col.ColumnType = columnType
+				col.Precision = m.GetInt("NUMERIC_PRECISION")
+				col.Scale = m.GetInt("NUMERIC_SCALE")
 			}
 		}
 		if strings.HasPrefix(columnType, "double") {

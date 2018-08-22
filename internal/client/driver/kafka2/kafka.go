@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"strconv"
+
 	"github.com/Shopify/sarama"
 )
 
@@ -178,12 +180,13 @@ type SourcePayload struct {
 }
 
 type Schema struct {
-	Type     SchemaType `json:"type"`
-	Optional bool       `json:"optional"`
-	Field    string     `json:"field,omitempty"` // field name in outer struct
-	Fields   []*Schema  `json:"fields,omitempty"`
-	Name     string     `json:"name,omitempty"`
-	Version  int        `json:"version,omitempty"`
+	Type       SchemaType             `json:"type"`
+	Optional   bool                   `json:"optional"`
+	Field      string                 `json:"field,omitempty"` // field name in outer struct
+	Fields     []*Schema              `json:"fields,omitempty"`
+	Name       string                 `json:"name,omitempty"`
+	Version    int                    `json:"version,omitempty"`
+	Parameters map[string]interface{} `json:"parameters,omitempty"`
 }
 type Row struct {
 	ColNames []string
@@ -228,5 +231,56 @@ func NewSimpleSchemaField(theType SchemaType, optional bool, field string) *Sche
 		Type:     theType,
 		Optional: optional,
 		Field:    field,
+	}
+}
+func NewDecimalField(precision int, scale int, optional bool, field string) *Schema {
+	return &Schema{
+		Field:    field,
+		Optional: optional,
+		Name:     "org.apache.kafka.connect.data.Decimal",
+		Parameters: map[string]interface{}{
+			"connect.decimal.precision": strconv.Itoa(precision),
+			"scale":                     strconv.Itoa(scale),
+		},
+		Type:    SCHEMA_TYPE_BYTES,
+		Version: 1,
+	}
+}
+func NewTimeField(optional bool, field string) *Schema {
+	return &Schema{
+		Field:    field,
+		Optional: optional,
+		Type:     SCHEMA_TYPE_INT64,
+		Name:     "io.debezium.time.MicroTime",
+		Version:  1,
+	}
+}
+
+// precision make no difference
+func TimeValue(timestamp int64) int64 {
+	// TODO
+	return 0
+}
+func NewDateTimeField(optional bool, field string) *Schema {
+	return &Schema{
+		Field:    field,
+		Optional: optional,
+		Type:     SCHEMA_TYPE_INT64,
+		Name:     "io.debezium.time.MicroTimestamp",
+		Version:  1,
+	}
+}
+func DateTimeValue(timestamp int64) int64 {
+	// TODO
+	return 0
+	// precision <= 3: 1534932206000
+	// precision >  3: 1534931868000000
+}
+func NewJsonField(optional bool, field string) *Schema {
+	return &Schema{
+		Field:    field,
+		Optional: optional,
+		Type:     SCHEMA_TYPE_STRING,
+		Name:     "io.debezium.data.Json",
 	}
 }
