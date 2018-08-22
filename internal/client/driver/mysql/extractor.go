@@ -1607,11 +1607,7 @@ func kafkaColType(col *mysql.Column) kafka2.SchemaType {
 	case mysql.TextColumnType, mysql.CharColumnType, mysql.VarcharColumnType:
 		return kafka2.SCHEMA_TYPE_STRING
 	case mysql.TinyintColumnType:
-		if col.IsUnsigned {
-			return kafka2.SCHEMA_TYPE_INT16
-		} else {
-			return kafka2.SCHEMA_TYPE_INT8
-		}
+		return kafka2.SCHEMA_TYPE_INT16
 	case mysql.SmallintColumnType:
 		if col.IsUnsigned {
 			return kafka2.SCHEMA_TYPE_INT32
@@ -1627,12 +1623,7 @@ func kafkaColType(col *mysql.Column) kafka2.SchemaType {
 			return kafka2.SCHEMA_TYPE_INT32
 		}
 	case mysql.BigIntColumnType:
-		if col.IsUnsigned {
-			// TODO Use DECIMAL (bytes). See #230-1.
-			return kafka2.SCHEMA_TYPE_INT64
-		} else {
-			return kafka2.SCHEMA_TYPE_INT64
-		}
+		return kafka2.SCHEMA_TYPE_INT64
 
 	case mysql.FloatColumnType:
 		return kafka2.SCHEMA_TYPE_FLOAT64
