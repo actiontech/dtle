@@ -31,6 +31,8 @@ import (
 	log "udup/internal/logger"
 	"udup/internal/models"
 	"udup/utils"
+	"github.com/satori/go.uuid"
+	"encoding/hex"
 )
 
 const (
@@ -192,6 +194,7 @@ func (mm *MtsManager) Executed(binlogEntry *binlog.BinlogEntry) {
 type Applier struct {
 	logger             *log.Entry
 	subject            string
+	subjectUUID        uuid.UUID
 	tp                 string
 	mysqlContext       *config.MySQLDriverConfig
 	dbs                []*sql.Conn
@@ -223,14 +226,20 @@ type Applier struct {
 	mtsManager *MtsManager
 }
 
-func NewApplier(subject, tp string, cfg *config.MySQLDriverConfig, logger *log.Logger) *Applier {
+func NewApplier(subject, tp string, cfg *config.MySQLDriverConfig, logger *log.Logger) (*Applier, error) {
 	cfg = cfg.SetDefault()
 	entry := log.NewEntry(logger).WithFields(log.Fields{
 		"job": subject,
 	})
+	subjectUUID, err := uuid.FromString(subject)
+	if err != nil {
+		logger.Errorf("job id is not a valid UUID: %v", err.Error());
+		return nil, err
+	}
 	a := &Applier{
 		logger:                  entry,
 		subject:                 subject,
+		subjectUUID:             subjectUUID,
 		tp:                      tp,
 		mysqlContext:            cfg,
 		currentCoordinates:      &models.CurrentCoordinates{},
@@ -246,7 +255,7 @@ func NewApplier(subject, tp string, cfg *config.MySQLDriverConfig, logger *log.L
 	}
 	a.mtsManager = NewMtsManager(a.shutdownCh)
 	go a.mtsManager.LcUpdater()
-	return a
+	return a, nil
 }
 
 func (a *Applier) MtsWorker(workerIndex int) {
@@ -576,7 +585,7 @@ func (a *Applier) initiateStreaming() error {
 					// region TestIfExecuted
 					if a.gtidExecuted == nil {
 						// udup crash recovery or never executed
-						a.gtidExecuted, err = base.SelectAllGtidExecuted(a.db, a.subject)
+						a.gtidExecuted, err = base.SelectAllGtidExecuted(a.db, a.subjectUUID)
 						if err != nil {
 							a.onError(TaskStateDead, err)
 							return
@@ -633,11 +642,11 @@ func (a *Applier) initiateStreaming() error {
 								}
 							}()
 
-							_, err = dbApplier.PsDeleteExecutedGtid.Exec(txSid)
+							_, err = dbApplier.PsDeleteExecutedGtid.Exec(binlogEntry.Coordinates.SID.Bytes())
 							if err != nil {
 								return err
 							}
-							_, err = dbApplier.PsInsertExecutedGtid.Exec(txSid, base.StringInterval(gtidSetItem.Intervals))
+							_, err = dbApplier.PsInsertExecutedGtid.Exec(binlogEntry.Coordinates.SID.Bytes(), base.StringInterval(gtidSetItem.Intervals))
 							if err != nil {
 								return err
 							}
@@ -820,21 +829,22 @@ func (a *Applier) initDBConnections() (err error) {
 	if err := a.validateAndReadTimeZone(); err != nil {
 		return err
 	}
+
 	if a.mysqlContext.ApproveHeterogeneous {
-		if err := a.createTableGtidExecuted(); err != nil {
+		if err := a.createTableGtidExecutedV2(); err != nil {
 			return err
 		}
 
 		for i := range a.dbs {
-			a.dbs[i].PsDeleteExecutedGtid, err = a.dbs[i].Db.PrepareContext(context.Background(), fmt.Sprintf("delete from actiontech_udup.gtid_executed where job_uuid = '%s' and source_uuid = ?",
-				a.subject))
+			a.dbs[i].PsDeleteExecutedGtid, err = a.dbs[i].Db.PrepareContext(context.Background(), fmt.Sprintf("delete from actiontech_udup.gtid_executed_v2 where job_uuid = unhex('%s') and source_uuid = ?",
+				hex.EncodeToString(a.subjectUUID.Bytes())))
 			if err != nil {
 				return err
 			}
-			a.dbs[i].PsInsertExecutedGtid, err = a.dbs[i].Db.PrepareContext(context.Background(), fmt.Sprintf("replace into actiontech_udup.gtid_executed "+
+			a.dbs[i].PsInsertExecutedGtid, err = a.dbs[i].Db.PrepareContext(context.Background(), fmt.Sprintf("replace into actiontech_udup.gtid_executed_v2 "+
 				"(job_uuid,source_uuid,interval_gtid) "+
-				"values ('%s', ?, ?)",
-				a.subject))
+				"values (unhex('%s'), ?, ?)",
+				hex.EncodeToString(a.subjectUUID.Bytes())))
 			if err != nil {
 				return err
 			}
@@ -932,8 +942,8 @@ func (a *Applier) validateAndReadTimeZone() error {
 	return nil
 }
 
-func (a *Applier) createTableGtidExecuted() error {
-	if result, err := sql.QueryResultData(a.db, "SHOW TABLES FROM actiontech_udup LIKE 'gtid_executed'"); nil == err && len(result) > 0 {
+func (a *Applier) createTableGtidExecutedV2() error {
+	if result, err := sql.QueryResultData(a.db, "SHOW TABLES FROM actiontech_udup LIKE 'gtid_executed_v2'"); nil == err && len(result) > 0 {
 		return nil
 	}
 	query := fmt.Sprintf(`
@@ -944,9 +954,9 @@ func (a *Applier) createTableGtidExecuted() error {
 	}
 
 	query = fmt.Sprintf(`
-			CREATE TABLE IF NOT EXISTS actiontech_udup.gtid_executed (
-				job_uuid char(36) NOT NULL COMMENT 'unique identifier of job',
-				source_uuid char(36) NOT NULL COMMENT 'uuid of the source where the transaction was originally executed.',
+			CREATE TABLE IF NOT EXISTS actiontech_udup.gtid_executed_v2 (
+				job_uuid binary(16) NOT NULL COMMENT 'unique identifier of job',
+				source_uuid binary(16) NOT NULL COMMENT 'uuid of the source where the transaction was originally executed.',
 				interval_gtid text NOT NULL COMMENT 'number of interval.'
 			);
 		`)
@@ -1127,7 +1137,7 @@ func (a *Applier) ApplyBinlogEvent(workerIdx int, binlogEntry *binlog.BinlogEntr
 	}
 
 	a.logger.Debugf("ApplyBinlogEvent. insert gno: %v", binlogEntry.Coordinates.GNO)
-	_, err = dbApplier.PsInsertExecutedGtid.Exec(txSid, binlogEntry.Coordinates.GNO)
+	_, err = dbApplier.PsInsertExecutedGtid.Exec(binlogEntry.Coordinates.SID.Bytes(), binlogEntry.Coordinates.GNO)
 	if err != nil {
 		return err
 	}

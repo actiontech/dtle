@@ -228,10 +228,10 @@ func parseInterval(str string) (i gomysql.Interval, err error) {
 }
 
 // return: normalized GtidSet
-func SelectAllGtidExecuted(db usql.QueryAble, jid string) (gtidSet GtidSet, err error) {
-	query := fmt.Sprintf(`SELECT source_uuid,interval_gtid FROM actiontech_udup.gtid_executed where job_uuid='%s'`, jid)
+func SelectAllGtidExecuted(db usql.QueryAble, jid uuid.UUID) (gtidSet GtidSet, err error) {
+	query := `SELECT source_uuid,interval_gtid FROM actiontech_udup.gtid_executed_v2 where job_uuid=?`
 
-	rows, err := db.Query(query)
+	rows, err := db.Query(query, jid.Bytes())
 	if err != nil {
 		return nil, err
 	}
@@ -240,15 +240,10 @@ func SelectAllGtidExecuted(db usql.QueryAble, jid string) (gtidSet GtidSet, err 
 	gtidSet = make(GtidSet)
 
 	for rows.Next() {
-		var sidStr string
+		var sidUUID uuid.UUID
 		var interval string
-		err = rows.Scan(&sidStr, &interval)
+		err = rows.Scan(&sidUUID, &interval)
 
-		if err != nil {
-			return nil, err
-		}
-
-		sidUUID, err := uuid.FromString(sidStr)
 		if err != nil {
 			return nil, err
 		}

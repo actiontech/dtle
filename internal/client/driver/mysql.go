@@ -242,7 +242,10 @@ func (m *MySQLDriver) Start(ctx *ExecContext, task *models.Task) (DriverHandle, 
 	case models.TaskTypeDest:
 		{
 			m.logger.Debugf("NewApplier ReplicateDoDb: %v", driverConfig.ReplicateDoDb)
-			a := mysql.NewApplier(ctx.Subject, ctx.Tp, &driverConfig, m.logger)
+			a, err := mysql.NewApplier(ctx.Subject, ctx.Tp, &driverConfig, m.logger)
+			if err != nil {
+				return nil, err
+			}
 			go a.Run()
 			return a, nil
 		}
