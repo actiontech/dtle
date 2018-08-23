@@ -9,16 +9,17 @@ package main
 import (
 	"context"
 	"database/sql"
+	"flag"
 	"fmt"
 	"os"
 	"os/signal"
-	"flag"
+
+	"math/rand"
+	"time"
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/siddontang/go-mysql/mysql"
 	"github.com/siddontang/go-mysql/replication"
-	"math/rand"
-	"time"
 )
 
 func main() {

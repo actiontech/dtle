@@ -1322,7 +1322,7 @@ func (e *Extractor) ID() string {
 }
 
 func (e *Extractor) onError(state int, err error) {
-	e.logger.Error("mysql.extractor. error: %v", err.Error())
+	e.logger.Errorf("mysql.extractor. error: %v", err.Error())
 	if e.shutdown {
 		return
 	}

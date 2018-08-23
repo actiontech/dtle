@@ -23,6 +23,8 @@ import (
 
 	"container/heap"
 	"context"
+	"encoding/hex"
+	"os"
 	"udup/internal/client/driver/mysql/base"
 	"udup/internal/client/driver/mysql/binlog"
 	"udup/internal/client/driver/mysql/sql"
@@ -31,9 +33,8 @@ import (
 	log "udup/internal/logger"
 	"udup/internal/models"
 	"udup/utils"
+
 	"github.com/satori/go.uuid"
-	"encoding/hex"
-	"os"
 )
 
 const (
@@ -224,8 +225,8 @@ type Applier struct {
 	shutdownCh   chan struct{}
 	shutdownLock sync.Mutex
 
-	mtsManager *MtsManager
-	printTps   bool
+	mtsManager     *MtsManager
+	printTps       bool
 	txLastNSeconds uint32
 }
 
@@ -236,7 +237,7 @@ func NewApplier(subject, tp string, cfg *config.MySQLDriverConfig, logger *log.L
 	})
 	subjectUUID, err := uuid.FromString(subject)
 	if err != nil {
-		logger.Errorf("job id is not a valid UUID: %v", err.Error());
+		logger.Errorf("job id is not a valid UUID: %v", err.Error())
 		return nil, err
 	}
 
@@ -1079,7 +1080,9 @@ func (a *Applier) ApplyBinlogEvent(workerIdx int, binlogEntry *binlog.BinlogEntr
 		} else {
 			a.mtsManager.Executed(binlogEntry)
 		}
-		atomic.AddUint32(&a.txLastNSeconds, 1)
+		if a.printTps {
+			atomic.AddUint32(&a.txLastNSeconds, 1)
+		}
 
 		dbApplier.DbMutex.Unlock()
 	}()
