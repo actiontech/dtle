@@ -1508,23 +1508,47 @@ func (e *Extractor) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry) (e
 		keyPayload := kafka2.NewRow()
 		colList := table.OriginalTableColumns.ColumnList()
 		colDefs, keyColDefs := kafkaColumnListToColDefs(table.OriginalTableColumns)
+
 		for i, _ := range colList {
 			colName := colList[i].Name
+
+			var beforeValue interface{}
+			var afterValue interface{}
+
+			if before != nil {
+				beforeValue = *dataEvent.WhereColumnValues.AbstractValues[i]
+			}
+			if after != nil {
+				afterValue = *dataEvent.NewColumnValues.AbstractValues[i]
+			}
+
+			switch colList[i].Type {
+			case mysql.DecimalColumnType:
+				if before != nil {
+					beforeValue = kafka2.DecimalValueFromStringMysql(beforeValue.(string))
+				}
+				if after != nil {
+					afterValue = kafka2.DecimalValueFromStringMysql(afterValue.(string))
+				}
+			default:
+				// do nothing
+			}
+
 			if colList[i].IsPk() {
 				if before != nil {
 					// update/delete: use before
-					keyPayload.AddField(colName, dataEvent.WhereColumnValues.AbstractValues[i])
+					keyPayload.AddField(colName, beforeValue)
 				} else {
 					// insert: use after
-					keyPayload.AddField(colName, dataEvent.NewColumnValues.AbstractValues[i])
+					keyPayload.AddField(colName, afterValue)
 				}
 			}
 
 			if before != nil {
-				before.AddField(colName, dataEvent.WhereColumnValues.AbstractValues[i])
+				before.AddField(colName, beforeValue)
 			}
 			if after != nil {
-				after.AddField(colName, dataEvent.NewColumnValues.AbstractValues[i])
+				after.AddField(colName, afterValue)
 			}
 		}
 
