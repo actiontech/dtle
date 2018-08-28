@@ -1,0 +1,201 @@
+# Gopkg.toml example
+#
+# Refer to https://golang.github.io/dep/docs/Gopkg.toml.html
+# for detailed Gopkg.toml documentation.
+#
+# required = ["github.com/user/thing/cmd/thing"]
+# ignored = ["github.com/user/project/pkgX", "bitbucket.org/user/project/pkgA/pkgY"]
+#
+# [[constraint]]
+#   name = "github.com/user/project"
+#   version = "1.0.0"
+#
+# [[constraint]]
+#   name = "github.com/user/project2"
+#   branch = "dev"
+#   source = "github.com/myfork/project2"
+#
+# [[override]]
+#   name = "github.com/x/y"
+#   version = "2.4.0"
+#
+# [prune]
+#   non-go = false
+#   go-tests = true
+#   unused-packages = true
+
+required = ["github.com/pingcap/tidb/parser/goyacc"]
+
+[[constraint]]
+  name = "github.com/NYTimes/gziphandler"
+  version = "1.0.1"
+
+[[constraint]]
+  name = "github.com/Shopify/sarama"
+  version = "1.17.0"
+
+[[constraint]]
+  branch = "master"
+  name = "github.com/araddon/qlbridge"
+
+[[constraint]]
+  branch = "master"
+  name = "github.com/armon/go-metrics"
+
+[[constraint]]
+  name = "github.com/docker/leadership"
+  version = "0.1.0"
+
+[[constraint]]
+  name = "github.com/docker/libkv"
+  version = "0.2.1"
+
+[[constraint]]
+  name = "github.com/elazarl/go-bindata-assetfs"
+  version = "1.0.0"
+
+[[constraint]]
+  name = "github.com/go-sql-driver/mysql"
+  version = "1.4.0"
+
+[[constraint]]
+  branch = "master"
+  name = "github.com/golang/snappy"
+
+[[constraint]]
+  name = "github.com/hashicorp/consul"
+  version = "1.2.2"
+
+[[constraint]]
+  branch = "master"
+  name = "github.com/hashicorp/go-cleanhttp"
+
+[[constraint]]
+  branch = "master"
+  name = "github.com/hashicorp/go-getter"
+
+[[constraint]]
+  branch = "master"
+  name = "github.com/hashicorp/go-memdb"
+
+[[constraint]]
+  branch = "master"
+  name = "github.com/hashicorp/go-msgpack"
+
+[[constraint]]
+  name = "github.com/hashicorp/go-multierror"
+  version = "1.0.0"
+
+[[constraint]]
+  name = "github.com/hashicorp/go-version"
+  version = "1.0.0"
+
+[[constraint]]
+  name = "github.com/hashicorp/hcl"
+  version = "1.0.0"
+
+[[constraint]]
+  name = "github.com/hashicorp/memberlist"
+  version = "0.1.0"
+
+[[constraint]]
+  branch = "master"
+  name = "github.com/hashicorp/net-rpc-msgpackrpc"
+
+[[constraint]]
+  name = "github.com/hashicorp/raft"
+  version = "1.0.0"
+
+[[constraint]]
+  branch = "master"
+  name = "github.com/hashicorp/raft-boltdb"
+
+[[constraint]]
+  name = "github.com/hashicorp/serf"
+#  branch = "master"
+  revision = "4b67f2c2b2bb5b748d934a6d48221062e43d2274"
+
+[[constraint]]
+  branch = "master"
+  name = "github.com/hashicorp/yamux"
+
+[[constraint]]
+  branch = "master"
+  name = "github.com/issuj/gofaster"
+
+[[constraint]]
+  name = "github.com/mitchellh/cli"
+  version = "1.0.0"
+
+[[constraint]]
+  branch = "master"
+  name = "github.com/mitchellh/colorstring"
+
+[[constraint]]
+  name = "github.com/mitchellh/copystructure"
+  version = "1.0.0"
+
+[[constraint]]
+  branch = "master"
+  name = "github.com/mitchellh/hashstructure"
+
+[[constraint]]
+  name = "github.com/mitchellh/mapstructure"
+  version = "1.0.0"
+
+[[constraint]]
+  name = "github.com/nats-io/gnatsd"
+  version = "1.2.0"
+
+[[constraint]]
+  name = "github.com/nats-io/nats-streaming-server"
+  version = "0.10.2"
+
+[[constraint]]
+  branch = "master"
+  name = "github.com/outbrain/golib"
+
+[[constraint]]
+  name = "github.com/pingcap/tidb"
+  version = "2.0.6"
+
+[[constraint]]
+  name = "github.com/prometheus/client_golang"
+  version = "0.8.0"
+
+[[constraint]]
+  name = "github.com/ryanuber/columnize"
+  version = "2.1.0"
+
+[[constraint]]
+  name = "github.com/satori/go.uuid"
+  version = "1.2.0"
+
+[[constraint]]
+  name = "github.com/shirou/gopsutil"
+  version = "2.18.7"
+
+[[constraint]]
+  branch = "master"
+  name = "github.com/siddontang/go"
+
+[[constraint]]
+  name = "github.com/siddontang/go-mysql"
+  source = "github.com/ffffwh/go-mysql"
+  branch = "udup-mod"
+
+[[constraint]]
+  name = "github.com/ugorji/go"
+  version = "1.1.1"
+
+[[constraint]]
+  branch = "master"
+  name = "golang.org/x/net"
+
+[[constraint]]
+  name = "golang.org/x/text"
+  version = "0.3.0"
+
+[prune]
+  go-tests = true
+  unused-packages = true
