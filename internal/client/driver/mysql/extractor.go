@@ -1431,6 +1431,8 @@ func (e *Extractor) kafkaTransformSnapshotData(table *config.Table, value *dumpE
 					if err != nil {
 						return err
 					}
+				case mysql.DecimalColumnType:
+					value = kafka2.DecimalValueFromStringMysql(valueStr)
 				default:
 					value = valueStr
 				}

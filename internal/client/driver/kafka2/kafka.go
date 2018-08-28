@@ -2,8 +2,10 @@ package kafka2
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"math/big"
 
 	"strconv"
 
@@ -246,6 +248,59 @@ func NewDecimalField(precision int, scale int, optional bool, field string) *Sch
 		Version: 1,
 	}
 }
+
+var (
+	decimalNums [11]*big.Int
+)
+
+func init() {
+	for i := 0; i <= 10; i++ {
+		decimalNums[i] = big.NewInt(int64(i))
+	}
+}
+
+// value: e.g. decimal(11,5), 123.45 will be 123.45000
+func DecimalValueFromStringMysql(value string) string {
+	sum := big.NewInt(0)
+
+	isNeg := false
+	if value[0] == '-' {
+		value = value[1:]
+		isNeg = true
+	}
+
+	for i := range value {
+		if '0' <= value[i] && value[i] <= '9' {
+			sum.Mul(sum, decimalNums[10])
+			offset := value[i] - '0'
+			if offset != 0 { // add 0 = do nothing
+				sum.Add(sum, decimalNums[offset])
+			}
+		}
+	}
+
+	bs := sum.Bytes()
+
+	if isNeg {
+		for i := len(bs) - 1; i >= 0; i-- {
+			bs[i] = ^bs[i]
+		}
+		for i := len(bs) - 1; i >= 0; i-- {
+			bs[i] += 1
+			if bs[i] != 0x00 {
+				break
+			}
+		}
+	} else if bs[0] > 0x7f {
+		bs2 := make([]byte, len(bs)+1)
+		bs2[0] = 0x00
+		copy(bs2[1:], bs)
+		bs = bs2
+	}
+
+	return base64.StdEncoding.EncodeToString(bs)
+}
+
 func NewTimeField(optional bool, field string) *Schema {
 	return &Schema{
 		Field:    field,
