@@ -15,7 +15,7 @@ package ast
 
 import (
 	"github.com/pingcap/tidb/model"
-	"github.com/pingcap/tidb/util/types"
+	"github.com/pingcap/tidb/types"
 )
 
 var (
@@ -23,6 +23,7 @@ var (
 	_ DDLNode = &CreateDatabaseStmt{}
 	_ DDLNode = &CreateIndexStmt{}
 	_ DDLNode = &CreateTableStmt{}
+	_ DDLNode = &CreateViewStmt{}
 	_ DDLNode = &DropDatabaseStmt{}
 	_ DDLNode = &DropIndexStmt{}
 	_ DDLNode = &DropTableStmt{}
@@ -234,16 +235,13 @@ const (
 	ColumnOptionNotNull
 	ColumnOptionAutoIncrement
 	ColumnOptionDefaultValue
-	ColumnOptionUniq
-	ColumnOptionIndex
-	ColumnOptionUniqIndex
-	ColumnOptionKey
 	ColumnOptionUniqKey
 	ColumnOptionNull
 	ColumnOptionOnUpdate // For Timestamp and Datetime only.
 	ColumnOptionFulltext
 	ColumnOptionComment
 	ColumnOptionGenerated
+	ColumnOptionReference
 )
 
 // ColumnOption is used for parsing column constraint info from SQL.
@@ -251,11 +249,14 @@ type ColumnOption struct {
 	node
 
 	Tp ColumnOptionType
+	// Expr is used for ColumnOptionDefaultValue/ColumnOptionOnUpdateColumnOptionGenerated.
 	// For ColumnOptionDefaultValue or ColumnOptionOnUpdate, it's the target value.
 	// For ColumnOptionGenerated, it's the target expression.
 	Expr ExprNode
 	// Stored is only for ColumnOptionGenerated, default is false.
 	Stored bool
+	// Refer is used for foreign key.
+	Refer *ReferenceDef
 }
 
 // Accept implements Node Accept interface.
@@ -402,6 +403,7 @@ type CreateTableStmt struct {
 	Cols        []*ColumnDef
 	Constraints []*Constraint
 	Options     []*TableOption
+	Partition   *PartitionOptions
 }
 
 // Accept implements Node Accept interface.
@@ -473,6 +475,10 @@ type RenameTableStmt struct {
 
 	OldTable *TableName
 	NewTable *TableName
+
+	// TableToTables is only useful for syncer which depends heavily on tidb parser to do some dirty work for now.
+	// TODO: Refactor this when you are going to add full support for multiple schema changes.
+	TableToTables []*TableToTable
 }
 
 // Accept implements Node Accept interface.
@@ -492,7 +498,60 @@ func (n *RenameTableStmt) Accept(v Visitor) (Node, bool) {
 		return n, false
 	}
 	n.NewTable = node.(*TableName)
+
+	for i, t := range n.TableToTables {
+		node, ok := t.Accept(v)
+		if !ok {
+			return n, false
+		}
+		n.TableToTables[i] = node.(*TableToTable)
+	}
+
 	return v.Leave(n)
+}
+
+// TableToTable represents renaming old table to new table used in RenameTableStmt.
+type TableToTable struct {
+	node
+	OldTable *TableName
+	NewTable *TableName
+}
+
+// Accept implements Node Accept interface.
+func (n *TableToTable) Accept(v Visitor) (Node, bool) {
+	newNode, skipChildren := v.Enter(n)
+	if skipChildren {
+		return v.Leave(newNode)
+	}
+	n = newNode.(*TableToTable)
+	node, ok := n.OldTable.Accept(v)
+	if !ok {
+		return n, false
+	}
+	n.OldTable = node.(*TableName)
+	node, ok = n.NewTable.Accept(v)
+	if !ok {
+		return n, false
+	}
+	n.NewTable = node.(*TableName)
+	return v.Leave(n)
+}
+
+// CreateViewStmt is a statement to create a View.
+// See https://dev.mysql.com/doc/refman/5.7/en/create-view.html
+type CreateViewStmt struct {
+	ddlNode
+
+	OrReplace bool
+	ViewName  *TableName
+	Cols      []model.CIStr
+	Select    StmtNode
+}
+
+// Accept implements Node Accept interface.
+func (n *CreateViewStmt) Accept(v Visitor) (Node, bool) {
+	// TODO: implement the details.
+	return n, true
 }
 
 // CreateIndexStmt is a statement to create an index.
@@ -504,6 +563,7 @@ type CreateIndexStmt struct {
 	Table         *TableName
 	Unique        bool
 	IndexColNames []*IndexColName
+	IndexOption   *IndexOption
 }
 
 // Accept implements Node Accept interface.
@@ -524,6 +584,13 @@ func (n *CreateIndexStmt) Accept(v Visitor) (Node, bool) {
 			return n, false
 		}
 		n.IndexColNames[i] = node.(*IndexColName)
+	}
+	if n.IndexOption != nil {
+		node, ok := n.IndexOption.Accept(v)
+		if !ok {
+			return n, false
+		}
+		n.IndexOption = node.(*IndexOption)
 	}
 	return v.Leave(n)
 }
@@ -575,6 +642,8 @@ const (
 	TableOptionDelayKeyWrite
 	TableOptionRowFormat
 	TableOptionStatsPersistent
+	TableOptionShardRowID
+	TableOptionPackKeys
 )
 
 // RowFormat types
@@ -636,7 +705,7 @@ type AlterTableType int
 // AlterTable types.
 const (
 	AlterTableOption AlterTableType = iota + 1
-	AlterTableAddColumn
+	AlterTableAddColumns
 	AlterTableAddConstraint
 	AlterTableDropColumn
 	AlterTableDropPrimaryKey
@@ -647,6 +716,7 @@ const (
 	AlterTableRenameTable
 	AlterTableAlterColumn
 	AlterTableLock
+	AlterTableAlgorithm
 
 // TODO: Add more actions
 )
@@ -672,10 +742,11 @@ type AlterTableSpec struct {
 	Constraint    *Constraint
 	Options       []*TableOption
 	NewTable      *TableName
-	NewColumn     *ColumnDef
+	NewColumns    []*ColumnDef
 	OldColumnName *ColumnName
 	Position      *ColumnPosition
 	LockType      LockType
+	Comment       string
 }
 
 // Accept implements Node Accept interface.
@@ -699,12 +770,12 @@ func (n *AlterTableSpec) Accept(v Visitor) (Node, bool) {
 		}
 		n.NewTable = node.(*TableName)
 	}
-	if n.NewColumn != nil {
-		node, ok := n.NewColumn.Accept(v)
+	for _, col := range n.NewColumns {
+		node, ok := col.Accept(v)
 		if !ok {
 			return n, false
 		}
-		n.NewColumn = node.(*ColumnDef)
+		col = node.(*ColumnDef)
 	}
 	if n.OldColumnName != nil {
 		node, ok := n.OldColumnName.Accept(v)
@@ -775,4 +846,20 @@ func (n *TruncateTableStmt) Accept(v Visitor) (Node, bool) {
 	}
 	n.Table = node.(*TableName)
 	return v.Leave(n)
+}
+
+// PartitionDefinition defines a single partition.
+type PartitionDefinition struct {
+	Name     string
+	LessThan []ExprNode
+	MaxValue bool
+	Comment  string
+}
+
+// PartitionOptions specifies the partition options.
+type PartitionOptions struct {
+	Tp          model.PartitionType
+	Expr        ExprNode
+	ColumnNames []*ColumnName
+	Definitions []*PartitionDefinition
 }

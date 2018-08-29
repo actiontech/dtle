@@ -1,4 +1,15 @@
-// Copyright 2016-2017 Apcera Inc. All rights reserved.
+// Copyright 2016-2018 The NATS Authors
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 package stores
 
@@ -8,6 +19,7 @@ import (
 	"time"
 
 	"github.com/nats-io/go-nats-streaming/pb"
+	"github.com/nats-io/nats-streaming-server/logger"
 	"github.com/nats-io/nats-streaming-server/util"
 )
 
@@ -36,45 +48,39 @@ type MemoryMsgStore struct {
 // NewMemoryStore returns a factory for stores held in memory.
 // If not limits are provided, the store will be created with
 // DefaultStoreLimits.
-func NewMemoryStore(limits *StoreLimits) (*MemoryStore, error) {
+func NewMemoryStore(log logger.Logger, limits *StoreLimits) (*MemoryStore, error) {
 	ms := &MemoryStore{}
-	if err := ms.init(TypeMemory, limits); err != nil {
+	if err := ms.init(TypeMemory, log, limits); err != nil {
 		return nil, err
 	}
 	return ms, nil
 }
 
-// CreateChannel creates a ChannelStore for the given channel, and returns
-// `true` to indicate that the channel is new, false if it already exists.
-func (ms *MemoryStore) CreateChannel(channel string, userData interface{}) (*ChannelStore, bool, error) {
+// CreateChannel implements the Store interface
+func (ms *MemoryStore) CreateChannel(channel string) (*Channel, error) {
 	ms.Lock()
 	defer ms.Unlock()
-	channelStore := ms.channels[channel]
-	if channelStore != nil {
-		return channelStore, false, nil
-	}
 
-	if err := ms.canAddChannel(); err != nil {
-		return nil, false, err
+	// Verify that it does not already exist or that we did not hit the limits
+	if err := ms.canAddChannel(channel); err != nil {
+		return nil, err
 	}
 
 	channelLimits := ms.genericStore.getChannelLimits(channel)
 
 	msgStore := &MemoryMsgStore{msgs: make(map[uint64]*pb.MsgProto, 64)}
-	msgStore.init(channel, &channelLimits.MsgStoreLimits)
+	msgStore.init(channel, ms.log, &channelLimits.MsgStoreLimits)
 
 	subStore := &MemorySubStore{}
-	subStore.init(channel, &channelLimits.SubStoreLimits)
+	subStore.init(ms.log, &channelLimits.SubStoreLimits)
 
-	channelStore = &ChannelStore{
-		Subs:     subStore,
-		Msgs:     msgStore,
-		UserData: userData,
+	c := &Channel{
+		Subs: subStore,
+		Msgs: msgStore,
 	}
+	ms.channels[channel] = c
 
-	ms.channels[channel] = channelStore
-
-	return channelStore, true, nil
+	return c, nil
 }
 
 ////////////////////////////////////////////////////////////////////////////
@@ -82,15 +88,19 @@ func (ms *MemoryStore) CreateChannel(channel string, userData interface{}) (*Cha
 ////////////////////////////////////////////////////////////////////////////
 
 // Store a given message.
-func (ms *MemoryMsgStore) Store(data []byte) (uint64, error) {
+func (ms *MemoryMsgStore) Store(m *pb.MsgProto) (uint64, error) {
 	ms.Lock()
 	defer ms.Unlock()
 
-	if ms.first == 0 {
-		ms.first = 1
+	if m.Sequence <= ms.last {
+		// We've already seen this message.
+		return m.Sequence, nil
 	}
-	ms.last++
-	m := ms.genericMsgStore.createMsg(ms.last, data)
+
+	if ms.first == 0 {
+		ms.first = m.Sequence
+	}
+	ms.last = m.Sequence
 	ms.msgs[ms.last] = m
 	ms.totalCount++
 	ms.totalBytes += uint64(m.Size())
@@ -110,7 +120,7 @@ func (ms *MemoryMsgStore) Store(data []byte) (uint64, error) {
 			ms.removeFirstMsg()
 			if !ms.hitLimit {
 				ms.hitLimit = true
-				Noticef(droppingMsgsFmt, ms.subject, ms.totalCount, ms.limits.MaxMsgs,
+				ms.log.Noticef(droppingMsgsFmt, ms.subject, ms.totalCount, ms.limits.MaxMsgs,
 					util.FriendlyBytes(int64(ms.totalBytes)), util.FriendlyBytes(ms.limits.MaxBytes))
 			}
 		}
@@ -120,69 +130,76 @@ func (ms *MemoryMsgStore) Store(data []byte) (uint64, error) {
 }
 
 // Lookup returns the stored message with given sequence number.
-func (ms *MemoryMsgStore) Lookup(seq uint64) *pb.MsgProto {
+func (ms *MemoryMsgStore) Lookup(seq uint64) (*pb.MsgProto, error) {
 	ms.RLock()
 	m := ms.msgs[seq]
 	ms.RUnlock()
-	return m
+	return m, nil
 }
 
 // FirstMsg returns the first message stored.
-func (ms *MemoryMsgStore) FirstMsg() *pb.MsgProto {
+func (ms *MemoryMsgStore) FirstMsg() (*pb.MsgProto, error) {
 	ms.RLock()
 	m := ms.msgs[ms.first]
 	ms.RUnlock()
-	return m
+	return m, nil
 }
 
 // LastMsg returns the last message stored.
-func (ms *MemoryMsgStore) LastMsg() *pb.MsgProto {
+func (ms *MemoryMsgStore) LastMsg() (*pb.MsgProto, error) {
 	ms.RLock()
 	m := ms.msgs[ms.last]
 	ms.RUnlock()
-	return m
+	return m, nil
 }
 
 // GetSequenceFromTimestamp returns the sequence of the first message whose
 // timestamp is greater or equal to given timestamp.
-func (ms *MemoryMsgStore) GetSequenceFromTimestamp(timestamp int64) uint64 {
+func (ms *MemoryMsgStore) GetSequenceFromTimestamp(timestamp int64) (uint64, error) {
 	ms.RLock()
 	defer ms.RUnlock()
 
-	// Quick checks first
-	if len(ms.msgs) == 0 {
-		return 0
+	// No message ever stored
+	if ms.first == 0 {
+		return 0, nil
+	}
+	// All messages have expired
+	if ms.first > ms.last {
+		return ms.last + 1, nil
 	}
 	if ms.msgs[ms.first].Timestamp >= timestamp {
-		return ms.first
+		return ms.first, nil
 	}
 	if timestamp >= ms.msgs[ms.last].Timestamp {
-		return ms.last + 1
+		return ms.last + 1, nil
 	}
 
 	index := sort.Search(len(ms.msgs), func(i int) bool {
 		return ms.msgs[uint64(i)+ms.first].Timestamp >= timestamp
 	})
 
-	return uint64(index) + ms.first
+	return uint64(index) + ms.first, nil
 }
 
 // expireMsgs ensures that messages don't stay in the log longer than the
 // limit's MaxAge.
 func (ms *MemoryMsgStore) expireMsgs() {
 	ms.Lock()
+	defer ms.Unlock()
 	if ms.closed {
-		ms.Unlock()
 		ms.wg.Done()
 		return
 	}
-	defer ms.Unlock()
 
 	now := time.Now().UnixNano()
 	maxAge := int64(ms.limits.MaxAge)
 	for {
 		m, ok := ms.msgs[ms.first]
 		if !ok {
+			if ms.first < ms.last {
+				ms.first++
+				continue
+			}
 			ms.ageTimer = nil
 			ms.wg.Done()
 			return
@@ -208,6 +225,21 @@ func (ms *MemoryMsgStore) removeFirstMsg() {
 	ms.totalCount--
 	delete(ms.msgs, ms.first)
 	ms.first++
+}
+
+// Empty implements the MsgStore interface
+func (ms *MemoryMsgStore) Empty() error {
+	ms.Lock()
+	if ms.ageTimer != nil {
+		if ms.ageTimer.Stop() {
+			ms.wg.Done()
+		}
+		ms.ageTimer = nil
+	}
+	ms.empty()
+	ms.msgs = make(map[uint64]*pb.MsgProto)
+	ms.Unlock()
+	return nil
 }
 
 // Close implements the MsgStore interface

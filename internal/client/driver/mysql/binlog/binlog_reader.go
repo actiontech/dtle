@@ -106,7 +106,7 @@ func NewMySQLReader(cfg *config.MySQLDriverConfig, logger *log.Entry, replicateD
 	// support regex
 	binlogReader.genRegexMap()
 
-	binlogSyncerConfig := &replication.BinlogSyncerConfig{
+	binlogSyncerConfig := replication.BinlogSyncerConfig{
 		ServerID:       uint32(serverId),
 		Flavor:         "mysql",
 		Host:           cfg.ConnectionConfig.Host,
@@ -248,25 +248,16 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 
 	switch ev.Header.EventType {
 	case replication.GTID_EVENT:
-		if strings.HasPrefix(b.mysqlContext.MySQLVersion, "5.7") {
-			evt := ev.Event.(*replication.GTIDEventV57)
-			b.currentCoordinatesMutex.Lock()
-			defer b.currentCoordinatesMutex.Unlock()
-			u, _ := uuid.FromBytes(evt.GTID.SID)
-			b.currentCoordinates.SID = u
-			b.currentCoordinates.GNO = evt.GTID.GNO
-			b.currentCoordinates.LastCommitted = evt.GTID.LastCommitted
-			b.currentCoordinates.SeqenceNumber = evt.GTID.SequenceNumber
-			b.currentBinlogEntry = NewBinlogEntryAt(b.currentCoordinates)
-		} else {
-			evt := ev.Event.(*replication.GTIDEvent)
-			b.currentCoordinatesMutex.Lock()
-			defer b.currentCoordinatesMutex.Unlock()
-			u, _ := uuid.FromBytes(evt.SID)
-			b.currentCoordinates.SID = u
-			b.currentCoordinates.GNO = evt.GNO
-			b.currentBinlogEntry = NewBinlogEntryAt(b.currentCoordinates)
-		}
+		evt := ev.Event.(*replication.GTIDEvent)
+		b.currentCoordinatesMutex.Lock()
+		// TODO this does not unlock until function return. wrap with func() if needed
+		defer b.currentCoordinatesMutex.Unlock()
+		u, _ := uuid.FromBytes(evt.SID)
+		b.currentCoordinates.SID = u
+		b.currentCoordinates.GNO = evt.GNO
+		b.currentCoordinates.LastCommitted = evt.LastCommitted
+		b.currentCoordinates.SeqenceNumber = evt.SequenceNumber
+		b.currentBinlogEntry = NewBinlogEntryAt(b.currentCoordinates)
 	case replication.QUERY_EVENT:
 		evt := ev.Event.(*replication.QueryEvent)
 		query := string(evt.Query)
@@ -609,36 +600,20 @@ func (b *BinlogReader) handleBinlogRowsEvent(ev *replication.BinlogEvent, txChan
 			return fmt.Errorf("unfinished transaction %v@%v", b.currentCoordinates.LogFile, uint32(ev.Header.LogPos)-ev.Header.EventSize)
 		}
 
-		// Match the version string (from SELECT VERSION()).
-		if strings.HasPrefix(b.mysqlContext.MySQLVersion, "5.7") {
-			evt := ev.Event.(*replication.GTIDEventV57)
-			u, _ := uuid.FromBytes(evt.GTID.SID)
+		evt := ev.Event.(*replication.GTIDEvent)
+		u, _ := uuid.FromBytes(evt.SID)
 
-			b.currentTx = &BinlogTx{
-				SID:           u.String(),
-				GNO:           evt.GTID.GNO,
-				LastCommitted: evt.GTID.LastCommitted,
-				//Gtid:           fmt.Sprintf("%s:%d", u.String(), evt.GNO),
-				Impacting: map[uint64]([]string){},
-				EventSize: uint64(ev.Header.EventSize),
-			}
-
-			b.currentSqlB64 = new(bytes.Buffer)
-			b.currentSqlB64.WriteString("BINLOG '\n")
-		} else {
-			evt := ev.Event.(*replication.GTIDEvent)
-			u, _ := uuid.FromBytes(evt.SID)
-
-			b.currentTx = &BinlogTx{
-				SID:       u.String(),
-				GNO:       evt.GNO,
-				Impacting: map[uint64]([]string){},
-				EventSize: uint64(ev.Header.EventSize),
-			}
-
-			b.currentSqlB64 = new(bytes.Buffer)
-			b.currentSqlB64.WriteString("BINLOG '\n")
+		b.currentTx = &BinlogTx{
+			SID:           u.String(),
+			GNO:           evt.GNO,
+			LastCommitted: evt.LastCommitted,
+			//Gtid:           fmt.Sprintf("%s:%d", u.String(), evt.GNO),
+			Impacting: map[uint64]([]string){},
+			EventSize: uint64(ev.Header.EventSize),
 		}
+
+		b.currentSqlB64 = new(bytes.Buffer)
+		b.currentSqlB64.WriteString("BINLOG '\n")
 
 	case replication.QUERY_EVENT:
 		event := &BinlogEvent{

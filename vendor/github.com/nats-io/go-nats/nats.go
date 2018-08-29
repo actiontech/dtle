@@ -1,4 +1,15 @@
-// Copyright 2012-2017 Apcera Inc. All rights reserved.
+// Copyright 2012-2018 The NATS Authors
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 // A Go client for the NATS messaging system (https://nats.io).
 package nats
@@ -11,15 +22,16 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"math/rand"
 	"net"
 	"net/url"
-	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/nats-io/go-nats/util"
@@ -28,7 +40,7 @@ import (
 
 // Default Constants
 const (
-	Version                 = "1.3.0"
+	Version                 = "1.5.0"
 	DefaultURL              = "nats://localhost:4222"
 	DefaultPort             = 4222
 	DefaultMaxReconnect     = 60
@@ -47,6 +59,9 @@ const STALE_CONNECTION = "stale connection"
 
 // PERMISSIONS_ERR is for when nats server subject authorization has failed.
 const PERMISSIONS_ERR = "permissions violation"
+
+// AUTHORIZATION_ERR is for when nats server user authorization has failed.
+const AUTHORIZATION_ERR = "authorization violation"
 
 // Errors
 var (
@@ -76,19 +91,24 @@ var (
 	ErrStaleConnection      = errors.New("nats: " + STALE_CONNECTION)
 )
 
-var DefaultOptions = Options{
-	AllowReconnect:   true,
-	MaxReconnect:     DefaultMaxReconnect,
-	ReconnectWait:    DefaultReconnectWait,
-	Timeout:          DefaultTimeout,
-	PingInterval:     DefaultPingInterval,
-	MaxPingsOut:      DefaultMaxPingOut,
-	SubChanLen:       DefaultMaxChanLen,
-	ReconnectBufSize: DefaultReconnectBufSize,
-	Dialer: &net.Dialer{
-		Timeout: DefaultTimeout,
-	},
+// GetDefaultOptions returns default configuration options for the client.
+func GetDefaultOptions() Options {
+	return Options{
+		AllowReconnect:   true,
+		MaxReconnect:     DefaultMaxReconnect,
+		ReconnectWait:    DefaultReconnectWait,
+		Timeout:          DefaultTimeout,
+		PingInterval:     DefaultPingInterval,
+		MaxPingsOut:      DefaultMaxPingOut,
+		SubChanLen:       DefaultMaxChanLen,
+		ReconnectBufSize: DefaultReconnectBufSize,
+	}
 }
+
+// DEPRECATED: Use GetDefaultOptions() instead.
+// DefaultOptions is not safe for use by multiple clients.
+// For details see #308.
+var DefaultOptions = GetDefaultOptions()
 
 // Status represents the state of the connection.
 type Status int
@@ -114,6 +134,12 @@ type asyncCB func()
 
 // Option is a function on the options for a connection.
 type Option func(*Options) error
+
+// CustomDialer can be used to specify any dialer, not necessarily
+// a *net.Dialer.
+type CustomDialer interface {
+	Dial(network, address string) (net.Conn, error)
+}
 
 // Options can be used to create a customized connection.
 type Options struct {
@@ -217,8 +243,13 @@ type Options struct {
 	// Token sets the token to be used when connecting to a server.
 	Token string
 
-	// Dialer allows a custom Dialer when forming connections.
+	// Dialer allows a custom net.Dialer when forming connections.
+	// DEPRECATED: should use CustomDialer instead.
 	Dialer *net.Dialer
+
+	// CustomDialer allows to specify a custom dialer (not necessarily
+	// a *net.Dialer).
+	CustomDialer CustomDialer
 
 	// UseOldRequestStyle forces the old method of Requests that utilize
 	// a new Inbox and a new Subscription for each request.
@@ -262,14 +293,13 @@ type Conn struct {
 	urls    map[string]struct{} // Keep track of all known URLs (used by processInfo)
 	bw      *bufio.Writer
 	pending *bytes.Buffer
-	fch     chan bool
+	fch     chan struct{}
 	info    serverInfo
 	ssid    int64
 	subsMu  sync.RWMutex
 	subs    map[int64]*Subscription
-	mch     chan *Msg
 	ach     chan asyncCB
-	pongs   []chan bool
+	pongs   []chan struct{}
 	scratch [scratchSize]byte
 	status  Status
 	initc   bool // true if the connection is performing the initial connect
@@ -279,9 +309,10 @@ type Conn struct {
 	pout    int
 
 	// New style response handler
-	respSub string               // The wildcard subject
-	respMux *Subscription        // A single response subscription
-	respMap map[string]chan *Msg // Request map for the response msg channels
+	respSub   string               // The wildcard subject
+	respMux   *Subscription        // A single response subscription
+	respMap   map[string]chan *Msg // Request map for the response msg channels
+	respSetup sync.Once            // Ensures response subscription occurs once
 }
 
 // A Subscription represents interest in a given subject.
@@ -332,6 +363,12 @@ type Msg struct {
 	Data    []byte
 	Sub     *Subscription
 	next    *Msg
+	barrier *barrierInfo
+}
+
+type barrierInfo struct {
+	refs int64
+	f    func()
 }
 
 // Tracks various stats received and sent on this connection,
@@ -367,7 +404,7 @@ type serverInfo struct {
 const (
 	// clientProtoZero is the original client protocol from 2009.
 	// http://nats.io/documentation/internals/nats-protocol/
-	clientProtoZero = iota
+	/* clientProtoZero */ _ = iota
 	// clientProtoInfo signals a client can receive more then the original INFO block.
 	// This can be used to update clients on other cluster members, etc.
 	clientProtoInfo
@@ -395,7 +432,7 @@ type MsgHandler func(msg *Msg)
 // Comma separated arrays are also supported, e.g. urlA, urlB.
 // Options start with the defaults but can be overridden.
 func Connect(url string, options ...Option) (*Conn, error) {
-	opts := DefaultOptions
+	opts := GetDefaultOptions()
 	opts.Servers = processUrlString(url)
 	for _, opt := range options {
 		if err := opt(&opts); err != nil {
@@ -442,7 +479,7 @@ func RootCAs(file ...string) Option {
 			if err != nil || rootPEM == nil {
 				return fmt.Errorf("nats: error loading or parsing rootCA file: %v", err)
 			}
-			ok := pool.AppendCertsFromPEM([]byte(rootPEM))
+			ok := pool.AppendCertsFromPEM(rootPEM)
 			if !ok {
 				return fmt.Errorf("nats: failed to parse root certificate from %q", f)
 			}
@@ -509,6 +546,14 @@ func MaxReconnects(max int) Option {
 	}
 }
 
+// ReconnectBufSize sets the buffer size of messages kept while busy reconnecting
+func ReconnectBufSize(size int) Option {
+	return func(o *Options) error {
+		o.ReconnectBufSize = size
+		return nil
+	}
+}
+
 // Timeout is an Option to set the timeout for Dial on a connection.
 func Timeout(t time.Duration) Option {
 	return func(o *Options) error {
@@ -549,7 +594,7 @@ func DiscoveredServersHandler(cb ConnHandler) Option {
 	}
 }
 
-// ErrHandler is an Option to set the async error  handler.
+// ErrorHandler is an Option to set the async error  handler.
 func ErrorHandler(cb ErrHandler) Option {
 	return func(o *Options) error {
 		o.AsyncErrorCB = cb
@@ -578,6 +623,7 @@ func Token(token string) Option {
 
 // Dialer is an Option to set the dialer which will be used when
 // attempting to establish a connection.
+// DEPRECATED: Should use CustomDialer instead.
 func Dialer(dialer *net.Dialer) Option {
 	return func(o *Options) error {
 		o.Dialer = dialer
@@ -585,7 +631,17 @@ func Dialer(dialer *net.Dialer) Option {
 	}
 }
 
-// UseOldRequestyStyle is an Option to force usage of the old Request style.
+// SetCustomDialer is an Option to set a custom dialer which will be
+// used when attempting to establish a connection. If both Dialer
+// and CustomDialer are specified, CustomDialer takes precedence.
+func SetCustomDialer(dialer CustomDialer) Option {
+	return func(o *Options) error {
+		o.CustomDialer = dialer
+		return nil
+	}
+}
+
+// UseOldRequestStyle is an Option to force usage of the old Request style.
 func UseOldRequestStyle() Option {
 	return func(o *Options) error {
 		o.UseOldRequestStyle = true
@@ -635,7 +691,7 @@ func (nc *Conn) SetClosedHandler(cb ConnHandler) {
 	nc.Opts.ClosedCB = cb
 }
 
-// SetErrHandler will set the async error handler.
+// SetErrorHandler will set the async error handler.
 func (nc *Conn) SetErrorHandler(cb ErrHandler) {
 	if nc == nil {
 		return
@@ -710,8 +766,6 @@ const (
 const (
 	_OK_OP_   = "+OK"
 	_ERR_OP_  = "-ERR"
-	_MSG_OP_  = "MSG"
-	_PING_OP_ = "PING"
 	_PONG_OP_ = "PONG"
 	_INFO_OP_ = "INFO"
 )
@@ -720,7 +774,6 @@ const (
 	conProto   = "CONNECT %s" + _CRLF_
 	pingProto  = "PING" + _CRLF_
 	pongProto  = "PONG" + _CRLF_
-	pubProto   = "PUB %s %s %d" + _CRLF_
 	subProto   = "SUB %s %s %d" + _CRLF_
 	unsubProto = "UNSUB %d %s" + _CRLF_
 	okProto    = _OK_OP_ + _CRLF_
@@ -782,7 +835,7 @@ const tlsScheme = "tls"
 
 // Create the server pool using the options given.
 // We will place a Url option first, followed by any
-// Server Options. We will randomize the server pool unlesss
+// Server Options. We will randomize the server pool unless
 // the NoRandomize flag is set.
 func (nc *Conn) setupServerPool() error {
 	nc.srvPool = make([]*srv, 0, srvPoolSize)
@@ -872,7 +925,13 @@ func (nc *Conn) createConn() (err error) {
 		cur.lastAttempt = time.Now()
 	}
 
-	dialer := nc.Opts.Dialer
+	// CustomDialer takes precedence. If not set, use Opts.Dialer which
+	// is set to a default *net.Dialer (in Connect()) if not explicitly
+	// set by the user.
+	dialer := nc.Opts.CustomDialer
+	if dialer == nil {
+		dialer = nc.Opts.Dialer
+	}
 	nc.conn, err = dialer.Dial("tcp", nc.url.Host)
 	if err != nil {
 		return err
@@ -918,7 +977,7 @@ func (nc *Conn) makeTLSConn() {
 func (nc *Conn) waitForExits(wg *sync.WaitGroup) {
 	// Kick old flusher forcefully.
 	select {
-	case nc.fch <- true:
+	case nc.fch <- struct{}{}:
 	default:
 	}
 
@@ -986,9 +1045,9 @@ func (nc *Conn) ConnectedServerId() string {
 // Low level setup for structs, etc
 func (nc *Conn) setup() {
 	nc.subs = make(map[int64]*Subscription)
-	nc.pongs = make([]chan bool, 0, 8)
+	nc.pongs = make([]chan struct{}, 0, 8)
 
-	nc.fch = make(chan bool, flushChanSize)
+	nc.fch = make(chan struct{}, flushChanSize)
 
 	// Setup scratch outbound buffer for PUB
 	pub := nc.scratch[:len(_PUB_P_)]
@@ -1035,7 +1094,7 @@ func (nc *Conn) connect() error {
 	// to connect immediately.
 	nc.mu.Lock()
 	nc.initc = true
-	// The pool may change inside theloop iteration due to INFO protocol.
+	// The pool may change inside the loop iteration due to INFO protocol.
 	for i := 0; i < len(nc.srvPool); i++ {
 		nc.url = nc.srvPool[i].url
 
@@ -1061,7 +1120,7 @@ func (nc *Conn) connect() error {
 		} else {
 			// Cancel out default connection refused, will trigger the
 			// No servers error conditional
-			if matched, _ := regexp.Match(`connection refused`, []byte(err.Error())); matched {
+			if strings.Contains(err.Error(), "connection refused") {
 				returnedErr = nil
 			}
 		}
@@ -1196,44 +1255,69 @@ func (nc *Conn) sendConnect() error {
 		return err
 	}
 
-	// Now read the response from the server.
-	br := bufio.NewReaderSize(nc.conn, defaultBufSize)
-	line, err := br.ReadString('\n')
+	// We don't want to read more than we need here, otherwise
+	// we would need to transfer the excess read data to the readLoop.
+	// Since in normal situations we just are looking for a PONG\r\n,
+	// reading byte-by-byte here is ok.
+	proto, err := nc.readProto()
 	if err != nil {
 		return err
 	}
 
 	// If opts.Verbose is set, handle +OK
-	if nc.Opts.Verbose && line == okProto {
+	if nc.Opts.Verbose && proto == okProto {
 		// Read the rest now...
-		line, err = br.ReadString('\n')
+		proto, err = nc.readProto()
 		if err != nil {
 			return err
 		}
 	}
 
 	// We expect a PONG
-	if line != pongProto {
+	if proto != pongProto {
 		// But it could be something else, like -ERR
 
 		// Since we no longer use ReadLine(), trim the trailing "\r\n"
-		line = strings.TrimRight(line, "\r\n")
+		proto = strings.TrimRight(proto, "\r\n")
 
 		// If it's a server error...
-		if strings.HasPrefix(line, _ERR_OP_) {
+		if strings.HasPrefix(proto, _ERR_OP_) {
 			// Remove -ERR, trim spaces and quotes, and convert to lower case.
-			line = normalizeErr(line)
-			return errors.New("nats: " + line)
+			proto = normalizeErr(proto)
+			return errors.New("nats: " + proto)
 		}
 
 		// Notify that we got an unexpected protocol.
-		return fmt.Errorf("nats: expected '%s', got '%s'", _PONG_OP_, line)
+		return fmt.Errorf("nats: expected '%s', got '%s'", _PONG_OP_, proto)
 	}
 
 	// This is where we are truly connected.
 	nc.status = CONNECTED
 
 	return nil
+}
+
+// reads a protocol one byte at a time.
+func (nc *Conn) readProto() (string, error) {
+	var (
+		_buf     = [10]byte{}
+		buf      = _buf[:0]
+		b        = [1]byte{}
+		protoEnd = byte('\n')
+	)
+	for {
+		if _, err := nc.conn.Read(b[:1]); err != nil {
+			// Do not report EOF error
+			if err == io.EOF {
+				return string(buf), nil
+			}
+			return "", err
+		}
+		buf = append(buf, b[0])
+		if b[0] == protoEnd {
+			return string(buf), nil
+		}
+	}
 }
 
 // A control protocol line.
@@ -1427,10 +1511,12 @@ func (nc *Conn) processOpErr(err error) {
 			nc.conn = nil
 		}
 
-		// Create a new pending buffer to underpin the bufio Writer while
-		// we are reconnecting.
-		nc.pending = &bytes.Buffer{}
-		nc.bw = bufio.NewWriterSize(nc.pending, nc.Opts.ReconnectBufSize)
+		// Reset pending buffers before reconnecting.
+		if nc.pending == nil {
+			nc.pending = new(bytes.Buffer)
+		}
+		nc.pending.Reset()
+		nc.bw.Reset(nc.pending)
 
 		go nc.doReconnect()
 		nc.mu.Unlock()
@@ -1538,6 +1624,13 @@ func (nc *Conn) waitForMsgs(s *Subscription) {
 			if s.pHead == nil {
 				s.pTail = nil
 			}
+			if m.barrier != nil {
+				s.mu.Unlock()
+				if atomic.AddInt64(&m.barrier.refs, -1) == 0 {
+					m.barrier.f()
+				}
+				continue
+			}
 			s.pMsgs--
 			s.pBytes -= len(m.Data)
 		}
@@ -1566,6 +1659,19 @@ func (nc *Conn) waitForMsgs(s *Subscription) {
 			break
 		}
 	}
+	// Check for barrier messages
+	s.mu.Lock()
+	for m := s.pHead; m != nil; m = s.pHead {
+		if m.barrier != nil {
+			s.mu.Unlock()
+			if atomic.AddInt64(&m.barrier.refs, -1) == 0 {
+				m.barrier.f()
+			}
+			s.mu.Lock()
+		}
+		s.pHead = m.next
+	}
+	s.mu.Unlock()
 }
 
 // processMsg is called by parse and will place the msg on the
@@ -1677,9 +1783,22 @@ slowConsumer:
 // permissions violation on either publish or subscribe.
 func (nc *Conn) processPermissionsViolation(err string) {
 	nc.mu.Lock()
-	nc.err = errors.New("nats: " + err)
+	// create error here so we can pass it as a closure to the async cb dispatcher.
+	e := errors.New("nats: " + err)
+	nc.err = e
 	if nc.Opts.AsyncErrorCB != nil {
-		nc.ach <- func() { nc.Opts.AsyncErrorCB(nc, nil, nc.err) }
+		nc.ach <- func() { nc.Opts.AsyncErrorCB(nc, nil, e) }
+	}
+	nc.mu.Unlock()
+}
+
+// processAuthorizationViolation is called when the server signals a user
+// authorization violation.
+func (nc *Conn) processAuthorizationViolation(err string) {
+	nc.mu.Lock()
+	nc.err = ErrAuthorization
+	if nc.Opts.AsyncErrorCB != nil {
+		nc.ach <- func() { nc.Opts.AsyncErrorCB(nc, nil, ErrAuthorization) }
 	}
 	nc.mu.Unlock()
 }
@@ -1740,7 +1859,7 @@ func (nc *Conn) processPing() {
 // processPong is used to process responses to the client's ping
 // messages. We use pings for the flush mechanism as well.
 func (nc *Conn) processPong() {
-	var ch chan bool
+	var ch chan struct{}
 
 	nc.mu.Lock()
 	if len(nc.pongs) > 0 {
@@ -1750,7 +1869,7 @@ func (nc *Conn) processPong() {
 	nc.pout = 0
 	nc.mu.Unlock()
 	if ch != nil {
-		ch <- true
+		ch <- struct{}{}
 	}
 }
 
@@ -1766,32 +1885,67 @@ func (nc *Conn) processInfo(info string) error {
 	if info == _EMPTY_ {
 		return nil
 	}
-	if err := json.Unmarshal([]byte(info), &nc.info); err != nil {
+	ncInfo := serverInfo{}
+	if err := json.Unmarshal([]byte(info), &ncInfo); err != nil {
 		return err
 	}
+	// Copy content into connection's info structure.
+	nc.info = ncInfo
+	// The array could be empty/not present on initial connect,
+	// if advertise is disabled on that server, or servers that
+	// did not include themselves in the async INFO protocol.
+	// If empty, do not remove the implicit servers from the pool.
+	if len(ncInfo.ConnectURLs) == 0 {
+		return nil
+	}
+	// Note about pool randomization: when the pool was first created,
+	// it was randomized (if allowed). We keep the order the same (removing
+	// implicit servers that are no longer sent to us). New URLs are sent
+	// to us in no specific order so don't need extra randomization.
+	hasNew := false
+	// This is what we got from the server we are connected to.
 	urls := nc.info.ConnectURLs
-	if len(urls) > 0 {
-		added := false
-		// If randomization is allowed, shuffle the received array, not the
-		// entire pool. We want to preserve the pool's order up to this point
-		// (this would otherwise be problematic for the (re)connect loop).
-		if !nc.Opts.NoRandomize {
-			for i := range urls {
-				j := rand.Intn(i + 1)
-				urls[i], urls[j] = urls[j], urls[i]
-			}
+	// Transform that to a map for easy lookups
+	tmp := make(map[string]struct{}, len(urls))
+	for _, curl := range urls {
+		tmp[curl] = struct{}{}
+	}
+	// Walk the pool and removed the implicit servers that are no longer in the
+	// given array/map
+	sp := nc.srvPool
+	for i := 0; i < len(sp); i++ {
+		srv := sp[i]
+		curl := srv.url.Host
+		// Check if this URL is in the INFO protocol
+		_, inInfo := tmp[curl]
+		// Remove from the temp map so that at the end we are left with only
+		// new (or restarted) servers that need to be added to the pool.
+		delete(tmp, curl)
+		// Keep servers that were set through Options, but also the one that
+		// we are currently connected to (even if it is a discovered server).
+		if !srv.isImplicit || srv.url == nc.url {
+			continue
 		}
-		for _, curl := range urls {
-			if _, present := nc.urls[curl]; !present {
-				if err := nc.addURLToPool(fmt.Sprintf("nats://%s", curl), true); err != nil {
-					continue
-				}
-				added = true
-			}
+		if !inInfo {
+			// Remove from server pool. Keep current order.
+			copy(sp[i:], sp[i+1:])
+			nc.srvPool = sp[:len(sp)-1]
+			sp = nc.srvPool
+			i--
 		}
-		if added && !nc.initc && nc.Opts.DiscoveredServersCB != nil {
-			nc.ach <- func() { nc.Opts.DiscoveredServersCB(nc) }
+	}
+	// If there are any left in the tmp map, these are new (or restarted) servers
+	// and need to be added to the pool.
+	for curl := range tmp {
+		// Before adding, check if this is a new (as in never seen) URL.
+		// This is used to figure out if we invoke the DiscoveredServersCB
+		if _, present := nc.urls[curl]; !present {
+			hasNew = true
 		}
+		nc.addURLToPool(fmt.Sprintf("nats://%s", curl), true)
+	}
+	if hasNew && !nc.initc && nc.Opts.DiscoveredServersCB != nil {
+		nc.ach <- func() { nc.Opts.DiscoveredServersCB(nc) }
 	}
 	return nil
 }
@@ -1830,6 +1984,8 @@ func (nc *Conn) processErr(e string) {
 		nc.processOpErr(ErrStaleConnection)
 	} else if strings.HasPrefix(e, PERMISSIONS_ERR) {
 		nc.processPermissionsViolation(e)
+	} else if strings.HasPrefix(e, AUTHORIZATION_ERR) {
+		nc.processAuthorizationViolation(e)
 	} else {
 		nc.mu.Lock()
 		nc.err = errors.New("nats: " + e)
@@ -1843,7 +1999,7 @@ func (nc *Conn) processErr(e string) {
 func (nc *Conn) kickFlusher() {
 	if nc.bw != nil {
 		select {
-		case nc.fch <- true:
+		case nc.fch <- struct{}{}:
 		default:
 		}
 	}
@@ -1995,25 +2151,15 @@ func (nc *Conn) respHandler(m *Msg) {
 // Create the response subscription we will use for all
 // new style responses. This will be on an _INBOX with an
 // additional terminal token. The subscription will be on
-// a wildcard.
-func (nc *Conn) createRespMux() error {
-	// _INBOX wildcard
-	ginbox := fmt.Sprintf("%s.*", NewInbox())
-	s, err := nc.Subscribe(ginbox, nc.respHandler)
+// a wildcard. Caller is responsible for ensuring this is
+// only called once.
+func (nc *Conn) createRespMux(respSub string) error {
+	s, err := nc.Subscribe(respSub, nc.respHandler)
 	if err != nil {
 		return err
 	}
-	// We could be racing here. So will we double check
-	// respMux here and discard the new one if set.
 	nc.mu.Lock()
-	if nc.respMux == nil {
-		nc.respSub = ginbox
-		nc.respMux = s
-		nc.respMap = make(map[string]chan *Msg)
-	} else {
-		// Discard duplicate, don't set others.
-		defer s.Unsubscribe()
-	}
+	nc.respMux = s
 	nc.mu.Unlock()
 	return nil
 }
@@ -2025,39 +2171,43 @@ func (nc *Conn) Request(subj string, data []byte, timeout time.Duration) (*Msg, 
 		return nil, ErrInvalidConnection
 	}
 
-	// snapshot
-	var doSetup, useOldRequestStyle bool
 	nc.mu.Lock()
-	useOldRequestStyle = nc.Opts.UseOldRequestStyle
-	doSetup = (nc.respMux == nil)
-	nc.mu.Unlock()
-
 	// If user wants the old style.
-	if useOldRequestStyle {
+	if nc.Opts.UseOldRequestStyle {
+		nc.mu.Unlock()
 		return nc.oldRequest(subj, data, timeout)
 	}
 
-	// Make sure scoped subscription is setup at least once on first
-	// call to Request(). Will handle duplicates in createRespMux.
-	if doSetup {
-		if err := nc.createRespMux(); err != nil {
-			return nil, err
-		}
+	// Do setup for the new style.
+	if nc.respMap == nil {
+		// _INBOX wildcard
+		nc.respSub = fmt.Sprintf("%s.*", NewInbox())
+		nc.respMap = make(map[string]chan *Msg)
 	}
 	// Create literal Inbox and map to a chan msg.
 	mch := make(chan *Msg, RequestChanLen)
-	nc.mu.Lock()
 	respInbox := nc.newRespInbox()
-	nc.respMap[respToken(respInbox)] = mch
+	token := respToken(respInbox)
+	nc.respMap[token] = mch
+	createSub := nc.respMux == nil
+	ginbox := nc.respSub
 	nc.mu.Unlock()
 
-	err := nc.PublishRequest(subj, respInbox, data)
-	if err != nil {
+	if createSub {
+		// Make sure scoped subscription is setup only once.
+		var err error
+		nc.respSetup.Do(func() { err = nc.createRespMux(ginbox) })
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if err := nc.PublishRequest(subj, respInbox, data); err != nil {
 		return nil, err
 	}
 
-	t := time.NewTimer(timeout)
-	defer t.Stop()
+	t := globalTimerPool.Get(timeout)
+	defer globalTimerPool.Put(t)
 
 	var ok bool
 	var msg *Msg
@@ -2068,6 +2218,9 @@ func (nc *Conn) Request(subj string, data []byte, timeout time.Duration) (*Msg, 
 			return nil, ErrConnectionClosed
 		}
 	case <-t.C:
+		nc.mu.Lock()
+		delete(nc.respMap, token)
+		nc.mu.Unlock()
 		return nil, ErrTimeout
 	}
 
@@ -2233,7 +2386,7 @@ func (nc *Conn) subscribe(subj, queue string, cb MsgHandler, ch chan *Msg) (*Sub
 	// We will send these for all subs when we reconnect
 	// so that we can suppress here.
 	if !nc.isReconnecting() {
-		nc.bw.WriteString(fmt.Sprintf(subProto, subj, queue, sub.sid))
+		fmt.Fprintf(nc.bw, subProto, subj, queue, sub.sid)
 	}
 	return sub, nil
 }
@@ -2353,7 +2506,7 @@ func (nc *Conn) unsubscribe(sub *Subscription, max int) error {
 	// We will send these for all subs when we reconnect
 	// so that we can suppress here.
 	if !nc.isReconnecting() {
-		nc.bw.WriteString(fmt.Sprintf(unsubProto, s.sid, maxStr))
+		fmt.Fprintf(nc.bw, unsubProto, s.sid, maxStr)
 	}
 	return nil
 }
@@ -2380,8 +2533,8 @@ func (s *Subscription) NextMsg(timeout time.Duration) (*Msg, error) {
 	var ok bool
 	var msg *Msg
 
-	t := time.NewTimer(timeout)
-	defer t.Stop()
+	t := globalTimerPool.Get(timeout)
+	defer globalTimerPool.Put(t)
 
 	select {
 	case msg, ok = <-mch:
@@ -2591,7 +2744,7 @@ func (s *Subscription) Dropped() (int, error) {
 // removeFlushEntry is needed when we need to discard queued up responses
 // for our pings as part of a flush call. This happens when we have a flush
 // call outstanding and we call close.
-func (nc *Conn) removeFlushEntry(ch chan bool) bool {
+func (nc *Conn) removeFlushEntry(ch chan struct{}) bool {
 	nc.mu.Lock()
 	defer nc.mu.Unlock()
 	if nc.pongs == nil {
@@ -2607,7 +2760,7 @@ func (nc *Conn) removeFlushEntry(ch chan bool) bool {
 }
 
 // The lock must be held entering this function.
-func (nc *Conn) sendPing(ch chan bool) {
+func (nc *Conn) sendPing(ch chan struct{}) {
 	nc.pongs = append(nc.pongs, ch)
 	nc.bw.WriteString(pingProto)
 	// Flush in place.
@@ -2652,10 +2805,13 @@ func (nc *Conn) FlushTimeout(timeout time.Duration) (err error) {
 		nc.mu.Unlock()
 		return ErrConnectionClosed
 	}
-	t := time.NewTimer(timeout)
-	defer t.Stop()
+	t := globalTimerPool.Get(timeout)
+	defer globalTimerPool.Put(t)
 
-	ch := make(chan bool) // FIXME: Inefficient?
+	// Create a buffered channel to prevent chan send to block
+	// in processPong() if this code here times out just when
+	// PONG was received.
+	ch := make(chan struct{}, 1)
 	nc.sendPing(ch)
 	nc.mu.Unlock()
 
@@ -2717,16 +2873,16 @@ func (nc *Conn) resendSubscriptions() {
 			// reached the max, if so unsubscribe.
 			if adjustedMax == 0 {
 				s.mu.Unlock()
-				nc.bw.WriteString(fmt.Sprintf(unsubProto, s.sid, _EMPTY_))
+				fmt.Fprintf(nc.bw, unsubProto, s.sid, _EMPTY_)
 				continue
 			}
 		}
 		s.mu.Unlock()
 
-		nc.bw.WriteString(fmt.Sprintf(subProto, s.Subject, s.Queue, s.sid))
+		fmt.Fprintf(nc.bw, subProto, s.Subject, s.Queue, s.sid)
 		if adjustedMax > 0 {
 			maxStr := strconv.Itoa(int(adjustedMax))
-			nc.bw.WriteString(fmt.Sprintf(unsubProto, s.sid, maxStr))
+			fmt.Fprintf(nc.bw, unsubProto, s.sid, maxStr)
 		}
 	}
 }
@@ -2957,4 +3113,52 @@ func (nc *Conn) TLSRequired() bool {
 	nc.mu.Lock()
 	defer nc.mu.Unlock()
 	return nc.info.TLSRequired
+}
+
+// Barrier schedules the given function `f` to all registered asynchronous
+// subscriptions.
+// Only the last subscription to see this barrier will invoke the function.
+// If no subscription is registered at the time of this call, `f()` is invoked
+// right away.
+// ErrConnectionClosed is returned if the connection is closed prior to
+// the call.
+func (nc *Conn) Barrier(f func()) error {
+	nc.mu.Lock()
+	if nc.isClosed() {
+		nc.mu.Unlock()
+		return ErrConnectionClosed
+	}
+	nc.subsMu.Lock()
+	// Need to figure out how many non chan subscriptions there are
+	numSubs := 0
+	for _, sub := range nc.subs {
+		if sub.typ == AsyncSubscription {
+			numSubs++
+		}
+	}
+	if numSubs == 0 {
+		nc.subsMu.Unlock()
+		nc.mu.Unlock()
+		f()
+		return nil
+	}
+	barrier := &barrierInfo{refs: int64(numSubs), f: f}
+	for _, sub := range nc.subs {
+		sub.mu.Lock()
+		if sub.mch == nil {
+			msg := &Msg{barrier: barrier}
+			// Push onto the async pList
+			if sub.pTail != nil {
+				sub.pTail.next = msg
+			} else {
+				sub.pHead = msg
+				sub.pCond.Signal()
+			}
+			sub.pTail = msg
+		}
+		sub.mu.Unlock()
+	}
+	nc.subsMu.Unlock()
+	nc.mu.Unlock()
+	return nil
 }

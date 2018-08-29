@@ -30,6 +30,10 @@ func EvalAnchor(anchor time.Time, expression string) (time.Time, error) {
 		expression = expression[3:]
 	}
 
+	if expression == "" {
+		return time.Now(), nil
+	}
+
 	numStr, unit := expression[:len(expression)-1], expression[len(expression)-1]
 
 	num, err := strconv.Atoi(numStr)

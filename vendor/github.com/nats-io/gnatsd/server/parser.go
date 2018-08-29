@@ -1,4 +1,15 @@
-// Copyright 2012-2014 Apcera Inc. All rights reserved.
+// Copyright 2012-2018 The NATS Authors
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 package server
 
@@ -86,8 +97,8 @@ func (c *client) parse(buf []byte) error {
 	var b byte
 
 	mcl := MAX_CONTROL_LINE_SIZE
-	if c.srv != nil && c.srv.opts != nil {
-		mcl = c.srv.opts.MaxControlLine
+	if c.srv != nil && c.srv.getOpts() != nil {
+		mcl = c.srv.getOpts().MaxControlLine
 	}
 
 	// snapshot this, and reset when we receive a
@@ -656,7 +667,7 @@ func (c *client) parse(buf []byte) error {
 		// catching here should prevent memory exhaustion attacks.
 		if len(c.argBuf) > mcl {
 			c.sendErr("Maximum Control Line Exceeded")
-			c.closeConnection()
+			c.closeConnection(MaxControlLineExceeded)
 			return ErrMaxControlLine
 		}
 	}
@@ -698,7 +709,7 @@ authErr:
 parseErr:
 	c.sendErr("Unknown Protocol Operation")
 	snip := protoSnippet(i, buf)
-	err := fmt.Errorf("%s Parser ERROR, state=%d, i=%d: proto='%s...'",
+	err := fmt.Errorf("%s parser ERROR, state=%d, i=%d: proto='%s...'",
 		c.typeString(), c.state, i, snip)
 	return err
 }

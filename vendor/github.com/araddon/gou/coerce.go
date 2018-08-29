@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"strconv"
+	"strings"
 )
 
 // Coerce types (string,int,int64, float, []byte) into String type
@@ -29,6 +30,11 @@ func CoerceString(v interface{}) (string, error) {
 		return strconv.FormatFloat(float64(val), 'f', -1, 32), nil
 	case float64:
 		return strconv.FormatFloat(val, 'f', -1, 64), nil
+	case bool:
+		if val {
+			return "true", nil
+		}
+		return "false", nil
 	case []byte:
 		if string(val) == "null" || string(val) == "NULL" {
 			return "", nil
@@ -47,6 +53,69 @@ func CoerceString(v interface{}) (string, error) {
 func CoerceStringShort(v interface{}) string {
 	val, _ := CoerceString(v)
 	return val
+}
+
+// CoerceStrings Coerce type to strings, will split on comma by default.
+func CoerceStrings(v interface{}) []string {
+	switch val := v.(type) {
+	case string:
+		if val == "" {
+			return nil
+		}
+		return strings.Split(val, ",")
+	case []string:
+		return val
+	case []interface{}:
+		sva := make([]string, 0)
+		for _, av := range val {
+			switch aval := av.(type) {
+			case string:
+				sva = append(sva, aval)
+			default:
+				sv, err := CoerceString(av)
+				if err == nil && sv != "" {
+					sva = append(sva, sv)
+				}
+			}
+		}
+		return sva
+	}
+	return []string{CoerceStringShort(v)}
+}
+
+func CoerceFloats(v interface{}) []float64 {
+	switch val := v.(type) {
+	case float64:
+		return []float64{val}
+	case []string:
+		fa := make([]float64, 0)
+		for _, av := range val {
+			f, err := CoerceFloat(av)
+			if err == nil && !math.IsNaN(f) {
+				fa = append(fa, f)
+			}
+		}
+		return fa
+	case []interface{}:
+		fa := make([]float64, 0)
+		for _, av := range val {
+			switch aval := av.(type) {
+			case float64:
+				fa = append(fa, aval)
+			default:
+				f, err := CoerceFloat(av)
+				if err == nil && !math.IsNaN(f) {
+					fa = append(fa, f)
+				}
+			}
+		}
+		return fa
+	}
+	fv, err := CoerceFloat(v)
+	if err == nil {
+		return []float64{fv}
+	}
+	return nil
 }
 
 func CoerceFloat(v interface{}) (float64, error) {
@@ -119,6 +188,30 @@ func CoerceIntShort(v interface{}) int {
 		return val
 	}
 	return 0
+}
+
+func CoerceInts(v interface{}) []int {
+	switch val := v.(type) {
+	case []string:
+		iva := make([]int, 0)
+		for _, av := range val {
+			avAsInt, ok := valToInt(av)
+			if ok {
+				iva = append(iva, avAsInt)
+			}
+		}
+		return iva
+	case []interface{}:
+		iva := make([]int, 0)
+		for _, av := range val {
+			avAsInt, ok := valToInt(av)
+			if ok {
+				iva = append(iva, avAsInt)
+			}
+		}
+		return iva
+	}
+	return []int{CoerceIntShort(v)}
 }
 
 // Coerce a val(interface{}) into a Uint64

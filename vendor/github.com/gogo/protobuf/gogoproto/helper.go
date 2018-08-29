@@ -90,6 +90,14 @@ func IsCastValue(field *google_protobuf.FieldDescriptorProto) bool {
 	return false
 }
 
+func HasEnumDecl(file *google_protobuf.FileDescriptorProto, enum *google_protobuf.EnumDescriptorProto) bool {
+	return proto.GetBoolExtension(enum.Options, E_Enumdecl, proto.GetBoolExtension(file.Options, E_EnumdeclAll, true))
+}
+
+func HasTypeDecl(file *google_protobuf.FileDescriptorProto, message *google_protobuf.DescriptorProto) bool {
+	return proto.GetBoolExtension(message.Options, E_Typedecl, proto.GetBoolExtension(file.Options, E_TypedeclAll, true))
+}
+
 func GetCustomType(field *google_protobuf.FieldDescriptorProto) string {
 	if field == nil {
 		return ""
@@ -326,9 +334,6 @@ func HasExtensionsMap(file *google_protobuf.FileDescriptorProto, message *google
 }
 
 func HasUnrecognized(file *google_protobuf.FileDescriptorProto, message *google_protobuf.DescriptorProto) bool {
-	if IsProto3(file) {
-		return false
-	}
 	return proto.GetBoolExtension(message.Options, E_GoprotoUnrecognized, proto.GetBoolExtension(file.Options, E_GoprotoUnrecognizedAll, true))
 }
 
@@ -342,4 +347,12 @@ func ImportsGoGoProto(file *google_protobuf.FileDescriptorProto) bool {
 
 func HasCompare(file *google_protobuf.FileDescriptorProto, message *google_protobuf.DescriptorProto) bool {
 	return proto.GetBoolExtension(message.Options, E_Compare, proto.GetBoolExtension(file.Options, E_CompareAll, false))
+}
+
+func RegistersGolangProto(file *google_protobuf.FileDescriptorProto) bool {
+	return proto.GetBoolExtension(file.Options, E_GoprotoRegistration, false)
+}
+
+func HasMessageName(file *google_protobuf.FileDescriptorProto, message *google_protobuf.DescriptorProto) bool {
+	return proto.GetBoolExtension(message.Options, E_Messagename, proto.GetBoolExtension(file.Options, E_MessagenameAll, false))
 }

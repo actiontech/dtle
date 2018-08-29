@@ -2,7 +2,6 @@ package replication
 
 import (
 	"encoding/binary"
-	//"encoding/hex"
 	"fmt"
 	"io"
 	"strconv"
@@ -16,11 +15,15 @@ import (
 )
 
 const (
-	EventHeaderSize = 19
+	EventHeaderSize            = 19
+	SidLength                  = 16
+	LogicalTimestampTypeCode   = 2
+	PartLogicalTimestampLength = 8
+	BinlogChecksumLength       = 4
 )
 
 type BinlogEvent struct {
-	// raw binlog data, including crc32 checksum if exists
+	// raw binlog data which contains all data, including binlog header and event body, and including crc32 checksum if exists
 	RawData []byte
 
 	Header *EventHeader
@@ -50,7 +53,7 @@ type EventError struct {
 }
 
 func (e *EventError) Error() string {
-	return e.Err
+	return fmt.Sprintf("Header %#v, Data %q, Err: %v", e.Header, e.Data, e.Err)
 }
 
 type EventHeader struct {
@@ -216,6 +219,9 @@ func (e *RotateEvent) Dump(w io.Writer) {
 
 type XIDEvent struct {
 	XID uint64
+
+	// in fact XIDEvent dosen't have the GTIDSet information, just for beneficial to use
+	GSet GTIDSet
 }
 
 func (e *XIDEvent) Decode(data []byte) error {
@@ -225,6 +231,9 @@ func (e *XIDEvent) Decode(data []byte) error {
 
 func (e *XIDEvent) Dump(w io.Writer) {
 	fmt.Fprintf(w, "XID: %d\n", e.XID)
+	if e.GSet != nil {
+		fmt.Fprintf(w, "GTIDSet: %s\n", e.GSet.String())
+	}
 	fmt.Fprintln(w)
 }
 
@@ -235,6 +244,9 @@ type QueryEvent struct {
 	StatusVars    []byte
 	Schema        []byte
 	Query         []byte
+
+	// in fact QueryEvent dosen't have the GTIDSet information, just for beneficial to use
+	GSet GTIDSet
 }
 
 func (e *QueryEvent) Decode(data []byte) error {
@@ -275,59 +287,36 @@ func (e *QueryEvent) Dump(w io.Writer) {
 	//fmt.Fprintf(w, "Status vars: \n%s", hex.Dump(e.StatusVars))
 	fmt.Fprintf(w, "Schema: %s\n", e.Schema)
 	fmt.Fprintf(w, "Query: %s\n", e.Query)
-	fmt.Fprintln(w)
-}
-
-type GTIDEventV57 struct {
-	GTID MysqlGTID
-}
-
-/*
-   The layout of the buffer is as follows:
-   +------+--------+-------+-------+--------------+---------------+
-   |unused|SID     |GNO    |lt_type|last_committed|sequence_number|
-   |1 byte|16 bytes|8 bytes|1 byte |8 bytes       |8 bytes        |
-   +------+--------+-------+-------+--------------+---------------+
-
-   The 'unused' field is not used.
-
-   lt_type (for logical timestamp typecode) is always equal to the
-   constant LOGICAL_TIMESTAMP_TYPECODE.
-
-   5.6 did not have TS_TYPE and the following fields. 5.7.4 and
-   earlier had a different value for TS_TYPE and a shorter length for
-   the following fields. Both these cases are accepted and ignored.
-
-   The buffer is advanced in Binary_log_event constructor to point to
-   beginning of post-header
-*/
-func (e *GTIDEventV57) Decode(data []byte) error {
-	e.GTID.CommitFlag = uint8(data[0])
-	e.GTID.SID = data[1:17]
-	e.GTID.GNO = int64(binary.LittleEndian.Uint64(data[17:25]))
-	e.GTID.LtType = data[25]
-	e.GTID.LastCommitted = int64(binary.LittleEndian.Uint64(data[26:34]))
-	e.GTID.SequenceNumber = int64(binary.LittleEndian.Uint64(data[34:]))
-	return nil
-}
-
-func (e *GTIDEventV57) Dump(w io.Writer) {
-	fmt.Fprintf(w, "GTID: %s\n", e.GTID)
+	if e.GSet != nil {
+		fmt.Fprintf(w, "GTIDSet: %s\n", e.GSet.String())
+	}
 	fmt.Fprintln(w)
 }
 
 type GTIDEvent struct {
-	CommitFlag uint8
-	SID        []byte
-	GNO        int64
+	CommitFlag     uint8
+	SID            []byte
+	GNO            int64
+	LastCommitted  int64
+	SequenceNumber int64
 }
 
 func (e *GTIDEvent) Decode(data []byte) error {
-	e.CommitFlag = uint8(data[0])
-
-	e.SID = data[1:17]
-
-	e.GNO = int64(binary.LittleEndian.Uint64(data[17:]))
+	pos := 0
+	e.CommitFlag = uint8(data[pos])
+	pos++
+	e.SID = data[pos : pos+SidLength]
+	pos += SidLength
+	e.GNO = int64(binary.LittleEndian.Uint64(data[pos:]))
+	pos += 8
+	if len(data) >= 42 {
+		if uint8(data[pos]) == LogicalTimestampTypeCode {
+			pos++
+			e.LastCommitted = int64(binary.LittleEndian.Uint64(data[pos:]))
+			pos += PartLogicalTimestampLength
+			e.SequenceNumber = int64(binary.LittleEndian.Uint64(data[pos:]))
+		}
+	}
 	return nil
 }
 
@@ -335,6 +324,8 @@ func (e *GTIDEvent) Dump(w io.Writer) {
 	fmt.Fprintf(w, "Commit flag: %d\n", e.CommitFlag)
 	u, _ := uuid.FromBytes(e.SID)
 	fmt.Fprintf(w, "GTID_NEXT: %s:%d\n", u.String(), e.GNO)
+	fmt.Fprintf(w, "LAST_COMMITTED: %d\n", e.LastCommitted)
+	fmt.Fprintf(w, "SEQUENCE_NUMBER: %d\n", e.SequenceNumber)
 	fmt.Fprintln(w)
 }
 
@@ -420,16 +411,16 @@ func (e *ExecuteLoadQueryEvent) Dump(w io.Writer) {
 // case MARIADB_ANNOTATE_ROWS_EVENT:
 // 	return "MariadbAnnotateRowsEvent"
 
-type MariadbAnnotaeRowsEvent struct {
+type MariadbAnnotateRowsEvent struct {
 	Query []byte
 }
 
-func (e *MariadbAnnotaeRowsEvent) Decode(data []byte) error {
+func (e *MariadbAnnotateRowsEvent) Decode(data []byte) error {
 	e.Query = data
 	return nil
 }
 
-func (e *MariadbAnnotaeRowsEvent) Dump(w io.Writer) {
+func (e *MariadbAnnotateRowsEvent) Dump(w io.Writer) {
 	fmt.Fprintf(w, "Query: %s\n", e.Query)
 	fmt.Fprintln(w)
 }
@@ -462,7 +453,7 @@ func (e *MariadbGTIDEvent) Decode(data []byte) error {
 }
 
 func (e *MariadbGTIDEvent) Dump(w io.Writer) {
-	fmt.Fprintf(w, "GTID: %s\n", e.GTID)
+	fmt.Fprintf(w, "GTID: %v\n", e.GTID)
 	fmt.Fprintln(w)
 }
 

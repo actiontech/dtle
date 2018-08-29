@@ -17,6 +17,30 @@ func wrap(err error, format, suffix string, args ...interface{}) Err {
 	return newErr
 }
 
+// timeout represents an error on timeout.
+type timeout struct {
+	Err
+}
+
+// Timeoutf returns an error which satisfies IsTimeout().
+func Timeoutf(format string, args ...interface{}) error {
+	return &timeout{wrap(nil, format, " timeout", args...)}
+}
+
+// NewTimeout returns an error which wraps err that satisfies
+// IsTimeout().
+func NewTimeout(err error, msg string) error {
+	return &timeout{wrap(err, msg, "")}
+}
+
+// IsTimeout reports whether err was created with Timeoutf() or
+// NewTimeout().
+func IsTimeout(err error) bool {
+	err = Cause(err)
+	_, ok := err.(*timeout)
+	return ok
+}
+
 // notFound represents an error when something has not been found.
 type notFound struct {
 	Err
@@ -280,5 +304,30 @@ func NewMethodNotAllowed(err error, msg string) error {
 func IsMethodNotAllowed(err error) bool {
 	err = Cause(err)
 	_, ok := err.(*methodNotAllowed)
+	return ok
+}
+
+// forbidden represents an error when a request cannot be completed because of
+// missing privileges
+type forbidden struct {
+	Err
+}
+
+// Forbiddenf returns an error which satistifes IsForbidden()
+func Forbiddenf(format string, args ...interface{}) error {
+	return &forbidden{wrap(nil, format, "", args...)}
+}
+
+// NewForbidden returns an error which wraps err that satisfies
+// IsForbidden().
+func NewForbidden(err error, msg string) error {
+	return &forbidden{wrap(err, msg, "")}
+}
+
+// IsForbidden reports whether err was created with Forbiddenf() or
+// NewForbidden().
+func IsForbidden(err error) bool {
+	err = Cause(err)
+	_, ok := err.(*forbidden)
 	return ok
 }

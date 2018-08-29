@@ -16,6 +16,7 @@ package ast
 import (
 	"github.com/pingcap/tidb/model"
 	"github.com/pingcap/tidb/mysql"
+	"github.com/pingcap/tidb/util/auth"
 )
 
 var (
@@ -71,6 +72,10 @@ type Join struct {
 	On *OnCondition
 	// Using represents join using clause.
 	Using []*ColumnName
+	// NaturalJoin represents join is natural join.
+	NaturalJoin bool
+	// StraightJoin represents a straight join.
+	StraightJoin bool
 }
 
 // Accept implements Node Accept interface.
@@ -179,7 +184,7 @@ func (n *DeleteTableList) Accept(v Visitor) (Node, bool) {
 	return v.Leave(n)
 }
 
-// OnCondition represetns JOIN on condition.
+// OnCondition represents JOIN on condition.
 type OnCondition struct {
 	node
 
@@ -228,16 +233,6 @@ func (n *TableSource) Accept(v Visitor) (Node, bool) {
 	return v.Leave(n)
 }
 
-// SetResultFields implements ResultSetNode interface.
-func (n *TableSource) SetResultFields(rfs []*ResultField) {
-	n.Source.SetResultFields(rfs)
-}
-
-// GetResultFields implements ResultSetNode interface.
-func (n *TableSource) GetResultFields() []*ResultField {
-	return n.Source.GetResultFields()
-}
-
 // SelectLockType is the lock type for SelectStmt.
 type SelectLockType int
 
@@ -247,6 +242,19 @@ const (
 	SelectLockForUpdate
 	SelectLockInShareMode
 )
+
+// String implements fmt.Stringer.
+func (slt SelectLockType) String() string {
+	switch slt {
+	case SelectLockNone:
+		return "none"
+	case SelectLockForUpdate:
+		return "for update"
+	case SelectLockInShareMode:
+		return "in share mode"
+	}
+	return "unsupported select lock type"
+}
 
 // WildCardField is a special type of select field content.
 type WildCardField struct {
@@ -466,8 +474,12 @@ type SelectStmt struct {
 	Limit *Limit
 	// LockTp is the lock type
 	LockTp SelectLockType
-	// TableHints represents the level Optimizer Hint
+	// TableHints represents the table level Optimizer Hint for join type
 	TableHints []*TableOptimizerHint
+	// IsAfterUnionDistinct indicates whether it's a stmt after "union distinct".
+	IsAfterUnionDistinct bool
+	// IsInBraces indicates whether it's a stmt in brace.
+	IsInBraces bool
 }
 
 // Accept implements Node Accept interface.
@@ -579,7 +591,6 @@ type UnionStmt struct {
 	dmlNode
 	resultSetNode
 
-	Distinct   bool
 	SelectList *UnionSelectList
 	OrderBy    *OrderByClause
 	Limit      *Limit
@@ -701,7 +712,7 @@ type InsertStmt struct {
 	dmlNode
 
 	IsReplace   bool
-	Ignore      bool
+	IgnoreErr   bool
 	Table       *TableRefsClause
 	Columns     []*ColumnName
 	Lists       [][]ExprNode
@@ -778,11 +789,13 @@ type DeleteStmt struct {
 	Where        ExprNode
 	Order        *OrderByClause
 	Limit        *Limit
-	LowPriority  bool
-	Ignore       bool
+	Priority     mysql.PriorityEnum
+	IgnoreErr    bool
 	Quick        bool
 	IsMultiTable bool
 	BeforeFrom   bool
+	// TableHints represents the table level Optimizer Hint for join type.
+	TableHints []*TableOptimizerHint
 }
 
 // Accept implements Node Accept interface.
@@ -839,9 +852,10 @@ type UpdateStmt struct {
 	Where         ExprNode
 	Order         *OrderByClause
 	Limit         *Limit
-	LowPriority   bool
-	Ignore        bool
+	Priority      mysql.PriorityEnum
+	IgnoreErr     bool
 	MultipleTable bool
+	TableHints    []*TableOptimizerHint
 }
 
 // Accept implements Node Accept interface.
@@ -944,6 +958,13 @@ const (
 	ShowProcessList
 	ShowCreateDatabase
 	ShowEvents
+	ShowStatsMeta
+	ShowStatsHistograms
+	ShowStatsBuckets
+	ShowStatsHealthy
+	ShowPlugins
+	ShowProfiles
+	ShowMasterStatus
 )
 
 // ShowStmt is a statement to provide information about databases, tables, columns and so on.
@@ -958,7 +979,7 @@ type ShowStmt struct {
 	Column *ColumnName // Used for `desc table column`.
 	Flag   int         // Some flag parsed from sql, such as FULL.
 	Full   bool
-	User   string // Used for show grants.
+	User   *auth.UserIdentity // Used for show grants.
 
 	// GlobalScope is used by show variables
 	GlobalScope bool

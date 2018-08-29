@@ -1,4 +1,16 @@
-// Copyright 2017 Apcera Inc. All rights reserved.
+// Copyright 2017-2018 The NATS Authors
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 // +build !windows
 
 package util
@@ -19,7 +31,7 @@ type lockFile struct {
 // if necessary. On success, the file is returned, otherwise
 // an error is returned.
 // The file returned should be closed to release the lock
-// quicker than if left to the operating systen.
+// quicker than if left to the operating system.
 func CreateLockFile(file string) (LockFile, error) {
 	f, err := os.Create(file)
 	if err != nil {

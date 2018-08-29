@@ -1,4 +1,15 @@
-// Copyright 2012-2017 Apcera Inc. All rights reserved.
+// Copyright 2016-2018 The NATS Authors
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 // +build go1.7
 
@@ -7,6 +18,7 @@ package nats
 
 import (
 	"context"
+	"fmt"
 	"reflect"
 )
 
@@ -20,31 +32,36 @@ func (nc *Conn) RequestWithContext(ctx context.Context, subj string, data []byte
 		return nil, ErrInvalidConnection
 	}
 
-	// snapshot
-	var doSetup, useOldRequestStyle bool
 	nc.mu.Lock()
-	useOldRequestStyle = nc.Opts.UseOldRequestStyle
-	doSetup = (nc.respMux == nil)
-	nc.mu.Unlock()
-
 	// If user wants the old style.
-	if useOldRequestStyle {
+	if nc.Opts.UseOldRequestStyle {
+		nc.mu.Unlock()
 		return nc.oldRequestWithContext(ctx, subj, data)
 	}
 
-	// Make sure scoped subscription is setup at least once on first
-	// call to Request(). Will handle duplicates in createRespMux.
-	if doSetup {
-		if err := nc.createRespMux(); err != nil {
-			return nil, err
-		}
+	// Do setup for the new style.
+	if nc.respMap == nil {
+		// _INBOX wildcard
+		nc.respSub = fmt.Sprintf("%s.*", NewInbox())
+		nc.respMap = make(map[string]chan *Msg)
 	}
 	// Create literal Inbox and map to a chan msg.
 	mch := make(chan *Msg, RequestChanLen)
-	nc.mu.Lock()
 	respInbox := nc.newRespInbox()
-	nc.respMap[respToken(respInbox)] = mch
+	token := respToken(respInbox)
+	nc.respMap[token] = mch
+	createSub := nc.respMux == nil
+	ginbox := nc.respSub
 	nc.mu.Unlock()
+
+	if createSub {
+		// Make sure scoped subscription is setup only once.
+		var err error
+		nc.respSetup.Do(func() { err = nc.createRespMux(ginbox) })
+		if err != nil {
+			return nil, err
+		}
+	}
 
 	err := nc.PublishRequest(subj, respInbox, data)
 	if err != nil {
@@ -60,6 +77,9 @@ func (nc *Conn) RequestWithContext(ctx context.Context, subj string, data []byte
 			return nil, ErrConnectionClosed
 		}
 	case <-ctx.Done():
+		nc.mu.Lock()
+		delete(nc.respMap, token)
+		nc.mu.Unlock()
 		return nil, ctx.Err()
 	}
 

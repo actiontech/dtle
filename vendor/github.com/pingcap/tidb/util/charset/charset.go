@@ -17,6 +17,7 @@ import (
 	"strings"
 
 	"github.com/juju/errors"
+	"github.com/pingcap/tidb/mysql"
 )
 
 // Charset is a charset.
@@ -47,19 +48,6 @@ var charsetInfos = []*Charset{
 	{CharsetASCII, CollationASCII, make(map[string]*Collation), "US ASCII", 1},
 	{CharsetLatin1, CollationLatin1, make(map[string]*Collation), "Latin1", 1},
 	{CharsetBin, CollationBin, make(map[string]*Collation), "binary", 1},
-}
-
-func init() {
-	for _, c := range charsetInfos {
-		charsets[c.Name] = c
-	}
-	for _, c := range collations {
-		charset, ok := charsets[c.CharsetName]
-		if !ok {
-			continue
-		}
-		charset.Collations[c.Name] = c
-	}
 }
 
 // Desc is a charset description.
@@ -134,6 +122,34 @@ func GetCharsetInfo(cs string) (string, string, error) {
 		return "", "", errors.Errorf("Unknown charset %s", cs)
 	}
 	return c.Name, c.DefaultCollation, nil
+}
+
+// GetCharsetDesc gets charset descriptions in the local charsets.
+func GetCharsetDesc(cs string) (*Desc, error) {
+	c, ok := charsets[strings.ToLower(cs)]
+	if !ok {
+		return nil, errors.Errorf("Unknown charset %s", cs)
+	}
+	desc := &Desc{
+		Name:             c.Name,
+		DefaultCollation: c.DefaultCollation,
+		Desc:             c.Desc,
+		Maxlen:           c.Maxlen,
+	}
+	return desc, nil
+}
+
+// GetCharsetInfoByID returns charset and collation for id as cs_number.
+func GetCharsetInfoByID(coID int) (string, string, error) {
+	if coID == mysql.DefaultCollationID {
+		return mysql.DefaultCharset, mysql.DefaultCollationName, nil
+	}
+	for _, collation := range collations {
+		if coID == collation.ID {
+			return collation.CharsetName, collation.Name, nil
+		}
+	}
+	return "", "", errors.Errorf("Unknown charset id %d", coID)
 }
 
 // GetCollations returns a list for all collations.
@@ -384,4 +400,18 @@ var collations = []*Collation{
 	{245, "utf8mb4", "utf8mb4_croatian_ci", false},
 	{246, "utf8mb4", "utf8mb4_unicode_520_ci", false},
 	{247, "utf8mb4", "utf8mb4_vietnamese_ci", false},
+}
+
+// init method always puts to the end of file.
+func init() {
+	for _, c := range charsetInfos {
+		charsets[c.Name] = c
+	}
+	for _, c := range collations {
+		charset, ok := charsets[c.CharsetName]
+		if !ok {
+			continue
+		}
+		charset.Collations[c.Name] = c
+	}
 }

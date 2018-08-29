@@ -11,7 +11,7 @@
 [Org]
 	[Org."Core maintainers"]
 		people = [
-			"aluzzardi",
+			"abronan",
 		]
 
 [people]
@@ -21,7 +21,7 @@
 # in the people section.
 
 	# ADD YOURSELF HERE IN ALPHABETICAL ORDER
-	[people.aluzzardi]
-	Name = "Andrea Luzzardi"
-	Email = "al@docker.com"
-	GitHub = "aluzzardi"
+	[people.abronan]
+	Name = "Alexandre Beslic"
+	Email = "alexandre.beslic@gmail.com"
+	GitHub = "abronan"

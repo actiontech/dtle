@@ -1,4 +1,15 @@
-// Copyright 2013-2016 Apcera Inc. All rights reserved.
+// Copyright 2013-2018 The NATS Authors
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 // Customized heavily from
 // https://github.com/BurntSushi/toml/blob/master/lex.go, which is based on
@@ -62,6 +73,9 @@ const (
 	sqStringStart     = '\''
 	sqStringEnd       = '\''
 	optValTerm        = ';'
+	topOptStart       = '{'
+	topOptValTerm     = ','
+	topOptTerm        = '}'
 	blockStart        = '('
 	blockEnd          = ')'
 )
@@ -223,6 +237,8 @@ func lexTop(lx *lexer) stateFn {
 	}
 
 	switch r {
+	case topOptStart:
+		return lexSkip(lx, lexTop)
 	case commentHashStart:
 		lx.push(lexTop)
 		return lexCommentStart
@@ -269,7 +285,7 @@ func lexTopValueEnd(lx *lexer) stateFn {
 		fallthrough
 	case isWhitespace(r):
 		return lexTopValueEnd
-	case isNL(r) || r == eof || r == optValTerm:
+	case isNL(r) || r == eof || r == optValTerm || r == topOptValTerm || r == topOptTerm:
 		lx.ignore()
 		return lexTop
 	}
@@ -1015,7 +1031,7 @@ func lexFloat(lx *lexer) stateFn {
 // lexIPAddr consumes IP addrs, like 127.0.0.1:4222
 func lexIPAddr(lx *lexer) stateFn {
 	r := lx.next()
-	if unicode.IsDigit(r) || r == '.' || r == ':' {
+	if unicode.IsDigit(r) || r == '.' || r == ':' || r == '-' {
 		return lexIPAddr
 	}
 	lx.backup()

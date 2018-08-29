@@ -32,15 +32,19 @@ var (
 
 type Invoker interface {
 	Command(string, ...string) ([]byte, error)
+	CommandWithContext(context.Context, string, ...string) ([]byte, error)
 }
 
 type Invoke struct{}
 
 func (i Invoke) Command(name string, arg ...string) ([]byte, error) {
-	ctxt, cancel := context.WithTimeout(context.Background(), Timeout)
+	ctx, cancel := context.WithTimeout(context.Background(), Timeout)
 	defer cancel()
+	return i.CommandWithContext(ctx, name, arg...)
+}
 
-	cmd := exec.CommandContext(ctxt, name, arg...)
+func (i Invoke) CommandWithContext(ctx context.Context, name string, arg ...string) ([]byte, error) {
+	cmd := exec.CommandContext(ctx, name, arg...)
 
 	var buf bytes.Buffer
 	cmd.Stdout = &buf
@@ -82,6 +86,10 @@ func (i FakeInvoke) Command(name string, arg ...string) ([]byte, error) {
 		return ioutil.ReadFile(fpath)
 	}
 	return []byte{}, fmt.Errorf("could not find testdata: %s", fpath)
+}
+
+func (i FakeInvoke) CommandWithContext(ctx context.Context, name string, arg ...string) ([]byte, error) {
+	return i.Command(name, arg...)
 }
 
 var ErrNotImplementedError = errors.New("not implemented yet")
@@ -316,6 +324,14 @@ func HostEtc(combineWith ...string) string {
 	return GetEnv("HOST_ETC", "/etc", combineWith...)
 }
 
+func HostVar(combineWith ...string) string {
+	return GetEnv("HOST_VAR", "/var", combineWith...)
+}
+
+func HostRun(combineWith ...string) string {
+	return GetEnv("HOST_RUN", "/run", combineWith...)
+}
+
 // https://gist.github.com/kylelemons/1525278
 func Pipeline(cmds ...*exec.Cmd) ([]byte, []byte, error) {
 	// Require at least one command
@@ -357,4 +373,20 @@ func Pipeline(cmds ...*exec.Cmd) ([]byte, []byte, error) {
 
 	// Return the pipeline output and the collected standard error
 	return output.Bytes(), stderr.Bytes(), nil
+}
+
+// getSysctrlEnv sets LC_ALL=C in a list of env vars for use when running
+// sysctl commands (see DoSysctrl).
+func getSysctrlEnv(env []string) []string {
+	foundLC := false
+	for i, line := range env {
+		if strings.HasPrefix(line, "LC_ALL") {
+			env[i] = "LC_ALL=C"
+			foundLC = true
+		}
+	}
+	if !foundLC {
+		env = append(env, "LC_ALL=C")
+	}
+	return env
 }

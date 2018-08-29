@@ -10,12 +10,13 @@ import (
 	"time"
 
 	"github.com/juju/errors"
-	"github.com/ngaut/log"
+	"github.com/shopspring/decimal"
+	"github.com/siddontang/go-log/log"
 	. "github.com/siddontang/go-mysql/mysql"
 	"github.com/siddontang/go/hack"
 )
 
-type errMissingTableMapEvent error
+var errMissingTableMapEvent = errors.New("invalid table id, no corresponding table map event")
 
 type TableMapEvent struct {
 	tableIDSize int
@@ -226,7 +227,9 @@ type RowsEvent struct {
 	//rows: invalid: int64, float64, bool, []byte, string
 	Rows [][]interface{}
 
-	parseTime bool
+	parseTime               bool
+	timestampStringLocation *time.Location
+	useDecimal              bool
 }
 
 func (e *RowsEvent) Decode(data []byte) error {
@@ -264,7 +267,7 @@ func (e *RowsEvent) Decode(data []byte) error {
 		if len(e.tables) > 0 {
 			return errors.Errorf("invalid table id %d, no corresponding table map event", e.TableID)
 		} else {
-			return errMissingTableMapEvent(errors.Errorf("invalid table id %d, no corresponding table map event", e.TableID))
+			return errors.Annotatef(errMissingTableMapEvent, "table id %d", e.TableID)
 		}
 	}
 
@@ -401,7 +404,7 @@ func (e *RowsEvent) decodeValue(data []byte, tp byte, meta uint16) (v interface{
 	case MYSQL_TYPE_NEWDECIMAL:
 		prec := uint8(meta >> 8)
 		scale := uint8(meta & 0xFF)
-		v, n, err = decodeDecimal(data, int(prec), int(scale))
+		v, n, err = decodeDecimal(data, int(prec), int(scale), e.useDecimal)
 	case MYSQL_TYPE_FLOAT:
 		n = 4
 		v = ParseBinaryFloat32(data)
@@ -417,23 +420,40 @@ func (e *RowsEvent) decodeValue(data []byte, tp byte, meta uint16) (v interface{
 	case MYSQL_TYPE_TIMESTAMP:
 		n = 4
 		t := binary.LittleEndian.Uint32(data)
-		v = e.parseFracTime(fracTime{time.Unix(int64(t), 0), 0})
+		if t == 0 {
+			v = formatZeroTime(0, 0)
+		} else {
+			v = e.parseFracTime(fracTime{
+				Time: time.Unix(int64(t), 0),
+				Dec:  0,
+				timestampStringLocation: e.timestampStringLocation,
+			})
+		}
 	case MYSQL_TYPE_TIMESTAMP2:
-		v, n, err = decodeTimestamp2(data, meta)
+		v, n, err = decodeTimestamp2(data, meta, e.timestampStringLocation)
 		v = e.parseFracTime(v)
 	case MYSQL_TYPE_DATETIME:
 		n = 8
 		i64 := binary.LittleEndian.Uint64(data)
-		d := i64 / 1000000
-		t := i64 % 1000000
-		v = e.parseFracTime(fracTime{time.Date(int(d/10000),
-			time.Month((d%10000)/100),
-			int(d%100),
-			int(t/10000),
-			int((t%10000)/100),
-			int(t%100),
-			0,
-			time.UTC), 0})
+		if i64 == 0 {
+			v = formatZeroTime(0, 0)
+		} else {
+			d := i64 / 1000000
+			t := i64 % 1000000
+			v = e.parseFracTime(fracTime{
+				Time: time.Date(
+					int(d/10000),
+					time.Month((d%10000)/100),
+					int(d%100),
+					int(t/10000),
+					int((t%10000)/100),
+					int(t%100),
+					0,
+					time.UTC,
+				),
+				Dec: 0,
+			})
+		}
 	case MYSQL_TYPE_DATETIME2:
 		v, n, err = decodeDatetime2(data, meta)
 		v = e.parseFracTime(v)
@@ -462,11 +482,7 @@ func (e *RowsEvent) decodeValue(data []byte, tp byte, meta uint16) (v interface{
 
 	case MYSQL_TYPE_YEAR:
 		n = 1
-		if int(data[0]) == 0 {
-			v = int(data[0])
-		} else {
-			v = int(data[0]) + 1900
-		}
+		v = int(data[0]) + 1900
 	case MYSQL_TYPE_ENUM:
 		l := meta & 0xFF
 		switch l {
@@ -496,7 +512,7 @@ func (e *RowsEvent) decodeValue(data []byte, tp byte, meta uint16) (v interface{
 		// Refer: https://github.com/shyiko/mysql-binlog-connector-java/blob/master/src/main/java/com/github/shyiko/mysql/binlog/event/deserialization/AbstractRowsEventDataDeserializer.java#L404
 		length = int(FixedLengthInt(data[0:meta]))
 		n = length + int(meta)
-		v, err = decodeJsonBinary(data[meta:n])
+		v, err = e.decodeJsonBinary(data[meta:n])
 	case MYSQL_TYPE_GEOMETRY:
 		// MySQL saves Geometry as Blob in binlog
 		// Seem that the binary format is SRID (4 bytes) + WKB, outer can use
@@ -540,7 +556,7 @@ func decodeDecimalDecompressValue(compIndx int, data []byte, mask uint8) (size i
 	return
 }
 
-func decodeDecimal(data []byte, precision int, decimals int) (float64, int, error) {
+func decodeDecimal(data []byte, precision int, decimals int, useDecimal bool) (interface{}, int, error) {
 	//see python mysql replication and https://github.com/jeremycole/mysql_binlog
 	integral := (precision - decimals)
 	uncompIntegral := int(integral / digitsPerInteger)
@@ -593,6 +609,11 @@ func decodeDecimal(data []byte, precision int, decimals int) (float64, int, erro
 		pos += size
 	}
 
+	if useDecimal {
+		f, err := decimal.NewFromString(hack.String(res.Bytes()))
+		return f, pos, err
+	}
+
 	f, err := strconv.ParseFloat(hack.String(res.Bytes()), 64)
 	return f, pos, err
 }
@@ -629,7 +650,7 @@ func decodeBit(data []byte, nbits int, length int) (value int64, err error) {
 	return
 }
 
-func decodeTimestamp2(data []byte, dec uint16) (interface{}, int, error) {
+func decodeTimestamp2(data []byte, dec uint16, timestampStringLocation *time.Location) (interface{}, int, error) {
 	//get timestamp binary length
 	n := int(4 + (dec+1)/2)
 	sec := int64(binary.BigEndian.Uint32(data[0:4]))
@@ -647,7 +668,11 @@ func decodeTimestamp2(data []byte, dec uint16) (interface{}, int, error) {
 		return formatZeroTime(int(usec), int(dec)), n, nil
 	}
 
-	return fracTime{time.Unix(sec, usec*1000), int(dec)}, n, nil
+	return fracTime{
+		Time: time.Unix(sec, usec*1000),
+		Dec:  int(dec),
+		timestampStringLocation: timestampStringLocation,
+	}, n, nil
 }
 
 const DATETIMEF_INT_OFS int64 = 0x8000000000
@@ -693,7 +718,10 @@ func decodeDatetime2(data []byte, dec uint16) (interface{}, int, error) {
 	minute := int((hms >> 6) % (1 << 6))
 	hour := int((hms >> 12))
 
-	return fracTime{time.Date(year, time.Month(month), day, hour, minute, second, int(frac*1000), time.UTC), int(dec)}, n, nil
+	return fracTime{
+		Time: time.Date(year, time.Month(month), day, hour, minute, second, int(frac*1000), time.UTC),
+		Dec:  int(dec),
+	}, n, nil
 }
 
 const TIMEF_OFS int64 = 0x800000000000
@@ -707,8 +735,8 @@ func decodeTime2(data []byte, dec uint16) (string, int, error) {
 	intPart := int64(0)
 	frac := int64(0)
 	switch dec {
-	//case 1:
-	case 1, 2:
+	case 1:
+	case 2:
 		intPart = int64(BFixedLengthInt(data[0:3])) - TIMEF_INT_OFS
 		frac = int64(data[3])
 		if intPart < 0 && frac > 0 {
@@ -733,8 +761,8 @@ func decodeTime2(data []byte, dec uint16) (string, int, error) {
 			frac -= 0x100 /* -(0x100 - frac) */
 		}
 		tmp = intPart<<24 + frac*10000
-	//case 3:
-	case 3, 4:
+	case 3:
+	case 4:
 		intPart = int64(BFixedLengthInt(data[0:3])) - TIMEF_INT_OFS
 		frac = int64(binary.BigEndian.Uint16(data[3:5]))
 		if intPart < 0 && frac > 0 {
@@ -747,11 +775,9 @@ func decodeTime2(data []byte, dec uint16) (string, int, error) {
 		}
 		tmp = intPart<<24 + frac*100
 
-	//case 5:
-	case 5, 6:
-		intPart = int64(BFixedLengthInt(data[0:3])) - TIMEF_INT_OFS
-		frac = (int64(BFixedLengthInt(data[0:6])) - TIMEF_OFS) % (1 << 24)
-		tmp = intPart<<24 + frac
+	case 5:
+	case 6:
+		tmp = int64(BFixedLengthInt(data[0:6])) - TIMEF_OFS
 	default:
 		intPart = int64(BFixedLengthInt(data[0:3])) - TIMEF_INT_OFS
 		tmp = intPart << 24

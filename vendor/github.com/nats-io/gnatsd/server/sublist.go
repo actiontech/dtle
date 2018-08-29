@@ -1,4 +1,15 @@
-// Copyright 2016-2017 Apcera Inc. All rights reserved.
+// Copyright 2016-2018 The NATS Authors
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 // Package sublist is a routing mechanism to handle subject distribution
 // and provides a facility to match subjects from published messages to
@@ -28,8 +39,12 @@ var (
 	ErrNotFound       = errors.New("sublist: No Matches Found")
 )
 
-// cacheMax is used to bound limit the frontend cache
-const slCacheMax = 1024
+const (
+	// cacheMax is used to bound limit the frontend cache
+	slCacheMax = 1024
+	// plistMin is our lower bounds to create a fast plist for Match.
+	plistMin = 256
+)
 
 // A result structure better optimized for queue subs.
 type SublistResult struct {
@@ -53,8 +68,9 @@ type Sublist struct {
 // A node contains subscriptions and a pointer to the next level.
 type node struct {
 	next  *level
-	psubs []*subscription
-	qsubs [][]*subscription
+	psubs map[*subscription]*subscription
+	qsubs map[string](map[*subscription]*subscription)
+	plist []*subscription
 }
 
 // A level represents a group of nodes and special pointers to
@@ -66,11 +82,10 @@ type level struct {
 
 // Create a new default node.
 func newNode() *node {
-	return &node{psubs: make([]*subscription, 0, 4)}
+	return &node{psubs: make(map[*subscription]*subscription)}
 }
 
-// Create a new default level. We use FNV1A as the hash
-// algorithm for the tokens, which should be short.
+// Create a new default level.
 func newLevel() *level {
 	return &level{nodes: make(map[string]*node)}
 }
@@ -102,29 +117,38 @@ func (s *Sublist) Insert(sub *subscription) error {
 	var n *node
 
 	for _, t := range tokens {
-		if len(t) == 0 || sfwc {
+		lt := len(t)
+		if lt == 0 || sfwc {
 			s.Unlock()
 			return ErrInvalidSubject
 		}
 
-		switch t[0] {
-		case pwc:
-			n = l.pwc
-		case fwc:
-			n = l.fwc
-			sfwc = true
-		default:
+		if lt > 1 {
 			n = l.nodes[t]
+		} else {
+			switch t[0] {
+			case pwc:
+				n = l.pwc
+			case fwc:
+				n = l.fwc
+				sfwc = true
+			default:
+				n = l.nodes[t]
+			}
 		}
 		if n == nil {
 			n = newNode()
-			switch t[0] {
-			case pwc:
-				l.pwc = n
-			case fwc:
-				l.fwc = n
-			default:
+			if lt > 1 {
 				l.nodes[t] = n
+			} else {
+				switch t[0] {
+				case pwc:
+					l.pwc = n
+				case fwc:
+					l.fwc = n
+				default:
+					l.nodes[t] = n
+				}
 			}
 		}
 		if n.next == nil {
@@ -133,14 +157,28 @@ func (s *Sublist) Insert(sub *subscription) error {
 		l = n.next
 	}
 	if sub.queue == nil {
-		n.psubs = append(n.psubs, sub)
-	} else {
-		// This is a queue subscription
-		if i := findQSliceForSub(sub, n.qsubs); i >= 0 {
-			n.qsubs[i] = append(n.qsubs[i], sub)
-		} else {
-			n.qsubs = append(n.qsubs, []*subscription{sub})
+		n.psubs[sub] = sub
+		if n.plist != nil {
+			n.plist = append(n.plist, sub)
+		} else if len(n.psubs) > plistMin {
+			n.plist = make([]*subscription, 0, len(n.psubs))
+			// Populate
+			for _, psub := range n.psubs {
+				n.plist = append(n.plist, psub)
+			}
 		}
+	} else {
+		if n.qsubs == nil {
+			n.qsubs = make(map[string]map[*subscription]*subscription)
+		}
+		qname := string(sub.queue)
+		// This is a queue subscription
+		subs, ok := n.qsubs[qname]
+		if !ok {
+			subs = make(map[*subscription]*subscription)
+			n.qsubs[qname] = subs
+		}
+		subs[sub] = sub
 	}
 
 	s.count++
@@ -243,16 +281,31 @@ func (s *Sublist) Match(subject string) *SublistResult {
 
 // This will add in a node's results to the total results.
 func addNodeToResults(n *node, results *SublistResult) {
-	results.psubs = append(results.psubs, n.psubs...)
-	for _, qr := range n.qsubs {
+	// Normal subscriptions
+	if n.plist != nil {
+		results.psubs = append(results.psubs, n.plist...)
+	} else {
+		for _, psub := range n.psubs {
+			results.psubs = append(results.psubs, psub)
+		}
+	}
+	// Queue subscriptions
+	for qname, qr := range n.qsubs {
 		if len(qr) == 0 {
 			continue
 		}
+		tsub := &subscription{subject: nil, queue: []byte(qname)}
 		// Need to find matching list in results
-		if i := findQSliceForSub(qr[0], results.qsubs); i >= 0 {
-			results.qsubs[i] = append(results.qsubs[i], qr...)
+		if i := findQSliceForSub(tsub, results.qsubs); i >= 0 {
+			for _, sub := range qr {
+				results.qsubs[i] = append(results.qsubs[i], sub)
+			}
 		} else {
-			results.qsubs = append(results.qsubs, qr)
+			var nqsub []*subscription
+			for _, sub := range qr {
+				nqsub = append(nqsub, sub)
+			}
+			results.qsubs = append(results.qsubs, nqsub)
 		}
 	}
 }
@@ -308,8 +361,8 @@ type lnt struct {
 	t string
 }
 
-// Remove will remove a subscription.
-func (s *Sublist) Remove(sub *subscription) error {
+// Raw low level remove, can do batches with lock held outside.
+func (s *Sublist) remove(sub *subscription, shouldLock bool) error {
 	subject := string(sub.subject)
 	tsa := [32]string{}
 	tokens := tsa[:0]
@@ -322,8 +375,10 @@ func (s *Sublist) Remove(sub *subscription) error {
 	}
 	tokens = append(tokens, subject[start:])
 
-	s.Lock()
-	defer s.Unlock()
+	if shouldLock {
+		s.Lock()
+		defer s.Unlock()
+	}
 
 	sfwc := false
 	l := s.root
@@ -334,20 +389,25 @@ func (s *Sublist) Remove(sub *subscription) error {
 	levels := lnts[:0]
 
 	for _, t := range tokens {
-		if len(t) == 0 || sfwc {
+		lt := len(t)
+		if lt == 0 || sfwc {
 			return ErrInvalidSubject
 		}
 		if l == nil {
 			return ErrNotFound
 		}
-		switch t[0] {
-		case pwc:
-			n = l.pwc
-		case fwc:
-			n = l.fwc
-			sfwc = true
-		default:
+		if lt > 1 {
 			n = l.nodes[t]
+		} else {
+			switch t[0] {
+			case pwc:
+				n = l.pwc
+			case fwc:
+				n = l.fwc
+				sfwc = true
+			default:
+				n = l.nodes[t]
+			}
 		}
 		if n != nil {
 			levels = append(levels, lnt{l, n, t})
@@ -372,6 +432,24 @@ func (s *Sublist) Remove(sub *subscription) error {
 	s.removeFromCache(subject, sub)
 	atomic.AddUint64(&s.genid, 1)
 
+	return nil
+}
+
+// Remove will remove a subscription.
+func (s *Sublist) Remove(sub *subscription) error {
+	return s.remove(sub, true)
+}
+
+// RemoveBatch will remove a list of subscriptions.
+func (s *Sublist) RemoveBatch(subs []*subscription) error {
+	s.Lock()
+	defer s.Unlock()
+
+	for _, sub := range subs {
+		if err := s.remove(sub, false); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -412,61 +490,32 @@ func (l *level) numNodes() int {
 	return num
 }
 
-// Removes a sub from a list.
-func removeSubFromList(sub *subscription, sl []*subscription) ([]*subscription, bool) {
-	for i := 0; i < len(sl); i++ {
-		if sl[i] == sub {
-			last := len(sl) - 1
-			sl[i] = sl[last]
-			sl[last] = nil
-			sl = sl[:last]
-			return shrinkAsNeeded(sl), true
-		}
-	}
-	return sl, false
-}
-
 // Remove the sub for the given node.
 func (s *Sublist) removeFromNode(n *node, sub *subscription) (found bool) {
 	if n == nil {
 		return false
 	}
 	if sub.queue == nil {
-		n.psubs, found = removeSubFromList(sub, n.psubs)
+		_, found = n.psubs[sub]
+		delete(n.psubs, sub)
+		if found && n.plist != nil {
+			// This will brute force remove the plist to perform
+			// correct behavior. Will get repopulated on a call
+			//to Match as needed.
+			n.plist = nil
+		}
 		return found
 	}
 
 	// We have a queue group subscription here
-	if i := findQSliceForSub(sub, n.qsubs); i >= 0 {
-		n.qsubs[i], found = removeSubFromList(sub, n.qsubs[i])
-		if len(n.qsubs[i]) == 0 {
-			last := len(n.qsubs) - 1
-			n.qsubs[i] = n.qsubs[last]
-			n.qsubs[last] = nil
-			n.qsubs = n.qsubs[:last]
-			if len(n.qsubs) == 0 {
-				n.qsubs = nil
-			}
-		}
-		return found
+	qname := string(sub.queue)
+	qsub := n.qsubs[qname]
+	_, found = qsub[sub]
+	delete(qsub, sub)
+	if len(qsub) == 0 {
+		delete(n.qsubs, qname)
 	}
-	return false
-}
-
-// Checks if we need to do a resize. This is for very large growth then
-// subsequent return to a more normal size from unsubscribe.
-func shrinkAsNeeded(sl []*subscription) []*subscription {
-	lsl := len(sl)
-	csl := cap(sl)
-	// Don't bother if list not too big
-	if csl <= 8 {
-		return sl
-	}
-	pFree := float32(csl-lsl) / float32(csl)
-	if pFree > 0.50 {
-		return append([]*subscription(nil), sl...)
-	}
-	return sl
+	return found
 }
 
 // Count returns the number of subscriptions.
@@ -610,31 +659,117 @@ func IsValidLiteralSubject(subject string) bool {
 func matchLiteral(literal, subject string) bool {
 	li := 0
 	ll := len(literal)
-	for i := 0; i < len(subject); i++ {
+	ls := len(subject)
+	for i := 0; i < ls; i++ {
 		if li >= ll {
 			return false
 		}
-		b := subject[i]
-		switch b {
+		// This function has been optimized for speed.
+		// For instance, do not set b:=subject[i] here since
+		// we may bump `i` in this loop to avoid `continue` or
+		// skiping common test in a particular test.
+		// Run Benchmark_SublistMatchLiteral before making any change.
+		switch subject[i] {
 		case pwc:
-			// Skip token in literal
-			ll := len(literal)
-			for {
-				if li >= ll || literal[li] == btsep {
-					li--
-					break
+			// NOTE: This is not testing validity of a subject, instead ensures
+			// that wildcards are treated as such if they follow some basic rules,
+			// namely that they are a token on their own.
+			if i == 0 || subject[i-1] == btsep {
+				if i == ls-1 {
+					// There is no more token in the subject after this wildcard.
+					// Skip token in literal and expect to not find a separator.
+					for {
+						// End of literal, this is a match.
+						if li >= ll {
+							return true
+						}
+						// Presence of separator, this can't be a match.
+						if literal[li] == btsep {
+							return false
+						}
+						li++
+					}
+				} else if subject[i+1] == btsep {
+					// There is another token in the subject after this wildcard.
+					// Skip token in literal and expect to get a separator.
+					for {
+						// We found the end of the literal before finding a separator,
+						// this can't be a match.
+						if li >= ll {
+							return false
+						}
+						if literal[li] == btsep {
+							break
+						}
+						li++
+					}
+					// Bump `i` since we know there is a `.` following, we are
+					// safe. The common test below is going to check `.` with `.`
+					// which is good. A `continue` here is too costly.
+					i++
 				}
-				li++
 			}
 		case fwc:
-			return true
-		default:
-			if b != literal[li] {
-				return false
+			// For `>` to be a wildcard, it means being the only or last character
+			// in the string preceded by a `.`
+			if (i == 0 || subject[i-1] == btsep) && i == ls-1 {
+				return true
 			}
+		}
+		if subject[i] != literal[li] {
+			return false
 		}
 		li++
 	}
 	// Make sure we have processed all of the literal's chars..
 	return li >= ll
+}
+
+func addLocalSub(sub *subscription, subs *[]*subscription) {
+	if sub != nil && sub.client != nil && sub.client.typ == CLIENT {
+		*subs = append(*subs, sub)
+	}
+}
+
+func (s *Sublist) addNodeToSubs(n *node, subs *[]*subscription) {
+	// Normal subscriptions
+	if n.plist != nil {
+		for _, sub := range n.plist {
+			addLocalSub(sub, subs)
+		}
+	} else {
+		for _, sub := range n.psubs {
+			addLocalSub(sub, subs)
+		}
+	}
+	// Queue subscriptions
+	for _, qr := range n.qsubs {
+		for _, sub := range qr {
+			addLocalSub(sub, subs)
+		}
+	}
+}
+
+func (s *Sublist) collectLocalSubs(l *level, subs *[]*subscription) {
+	if len(l.nodes) > 0 {
+		for _, n := range l.nodes {
+			s.addNodeToSubs(n, subs)
+			s.collectLocalSubs(n.next, subs)
+		}
+	}
+	if l.pwc != nil {
+		s.addNodeToSubs(l.pwc, subs)
+		s.collectLocalSubs(l.pwc.next, subs)
+	}
+	if l.fwc != nil {
+		s.addNodeToSubs(l.fwc, subs)
+		s.collectLocalSubs(l.fwc.next, subs)
+	}
+}
+
+// Return all local client subscriptions. Use the supplied slice.
+func (s *Sublist) localSubs(subs *[]*subscription) {
+	s.RLock()
+	s.collectLocalSubs(s.root, subs)
+	s.RUnlock()
 }

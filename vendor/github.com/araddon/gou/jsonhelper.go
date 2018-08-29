@@ -98,61 +98,6 @@ func (m *JsonRawWriter) Raw() json.RawMessage {
 	return json.RawMessage(m.Bytes())
 }
 
-// A simple wrapper to help json data be consumed when not
-// using Strongly typed structs.
-type JsonInterface struct {
-	data interface{}
-}
-
-// Encode returns its marshaled data as `[]byte`
-func (j *JsonInterface) Encode() ([]byte, error) {
-	return j.MarshalJSON()
-}
-
-// Implements the json.Marshaler interface.
-func (j *JsonInterface) MarshalJSON() ([]byte, error) {
-	return json.Marshal(&j.data)
-}
-
-// Implements the json.Unmarshal interface.
-func (j *JsonInterface) UnmarshalJSON(raw []byte) error {
-	return json.Unmarshal(raw, &j.data)
-}
-
-// Coerce to a String
-func (j *JsonInterface) String() (string, error) {
-	return CoerceString(j.data)
-}
-
-// Coerce to a string, may be zero length if missing, or zero length
-func (j JsonInterface) StringSh() string {
-	val, _ := CoerceString(j.data)
-	return val
-}
-
-// Coerce to Int
-func (j *JsonInterface) Int() (int, error) {
-	return CoerceInt(j.data)
-}
-
-// Coerce to Int, 0 returned if missing or zero
-func (j JsonInterface) IntSh() int {
-	val, _ := CoerceInt(j.data)
-	return val
-}
-
-// Coerce to Float, return err if needed
-func (j *JsonInterface) Float() (float32, error) {
-	val, err := CoerceFloat(j.data)
-	return float32(val), err
-}
-
-// Coerce to Float, 0 returned if 0 or missing
-func (j JsonInterface) FloatSh() float32 {
-	val, _ := CoerceFloat(j.data)
-	return float32(val)
-}
-
 // A wrapper around a map[string]interface{} to facilitate coercion
 // of json data to what you want
 //
@@ -201,6 +146,14 @@ func NewJsonHelpers(b []byte) []JsonHelper {
 	var jhl []JsonHelper
 	json.Unmarshal(MakeJsonList(b), &jhl)
 	return jhl
+}
+
+func NewJsonHelperMapString(m map[string]string) JsonHelper {
+	jh := make(JsonHelper)
+	for k, v := range m {
+		jh[k] = v
+	}
+	return jh
 }
 
 // Make a JsonHelper from http response.   This will automatically
@@ -395,28 +348,7 @@ func (j JsonHelper) String(n string) string {
 }
 func (j JsonHelper) Strings(n string) []string {
 	if v := j.Get(n); v != nil {
-		//Debugf("Strings(%s) =>  %T %#v", n, v, v)
-		switch val := v.(type) {
-		case string:
-			return strings.Split(val, ",")
-		case []string:
-			//Debug("type []string")
-			return val
-		case []interface{}:
-			//Debug("Kind = []interface{} n=", n, "  v=", v)
-			sva := make([]string, 0)
-			for _, av := range val {
-				switch aval := av.(type) {
-				case string:
-					sva = append(sva, aval)
-				default:
-					//Warnf("Kind ? %T v=%v", aval, aval)
-				}
-			}
-			return sva
-		default:
-			return []string{j.String(n)}
-		}
+		return CoerceStrings(v)
 	}
 	return nil
 }
@@ -425,17 +357,7 @@ func (j JsonHelper) Ints(n string) []int {
 	if v == nil {
 		return nil
 	}
-	if sl, isSlice := v.([]interface{}); isSlice {
-		iva := make([]int, 0)
-		for _, av := range sl {
-			avAsInt, ok := valToInt(av)
-			if ok {
-				iva = append(iva, avAsInt)
-			}
-		}
-		return iva
-	}
-	return nil
+	return CoerceInts(v)
 }
 func (j JsonHelper) StringSafe(n string) (string, bool) {
 	v := j.Get(n)

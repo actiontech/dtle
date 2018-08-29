@@ -13,7 +13,7 @@
 
 package mysql
 
-// MySQL type informations.
+// MySQL type information.
 const (
 	TypeDecimal   byte = 0
 	TypeTiny      byte = 1
@@ -50,28 +50,30 @@ const (
 // TypeUnspecified is an uninitialized type. TypeDecimal is not used in MySQL.
 const TypeUnspecified = TypeDecimal
 
-// Flag informations.
+// Flag information.
 const (
-	NotNullFlag     = 1   /* Field can't be NULL */
-	PriKeyFlag      = 2   /* Field is part of a primary key */
-	UniqueKeyFlag   = 4   /* Field is part of a unique key */
-	MultipleKeyFlag = 8   /* Field is part of a key */
-	BlobFlag        = 16  /* Field is a blob */
-	UnsignedFlag    = 32  /* Field is unsigned */
-	ZerofillFlag    = 64  /* Field is zerofill */
-	BinaryFlag      = 128 /* Field is binary   */
+	NotNullFlag        uint = 1 << 0  /* Field can't be NULL */
+	PriKeyFlag         uint = 1 << 1  /* Field is part of a primary key */
+	UniqueKeyFlag      uint = 1 << 2  /* Field is part of a unique key */
+	MultipleKeyFlag    uint = 1 << 3  /* Field is part of a key */
+	BlobFlag           uint = 1 << 4  /* Field is a blob */
+	UnsignedFlag       uint = 1 << 5  /* Field is unsigned */
+	ZerofillFlag       uint = 1 << 6  /* Field is zerofill */
+	BinaryFlag         uint = 1 << 7  /* Field is binary   */
+	EnumFlag           uint = 1 << 8  /* Field is an enum */
+	AutoIncrementFlag  uint = 1 << 9  /* Field is an auto increment field */
+	TimestampFlag      uint = 1 << 10 /* Field is a timestamp */
+	SetFlag            uint = 1 << 11 /* Field is a set */
+	NoDefaultValueFlag uint = 1 << 12 /* Field doesn't have a default value */
+	OnUpdateNowFlag    uint = 1 << 13 /* Field is set to NOW on UPDATE */
+	PartKeyFlag        uint = 1 << 14 /* Intern: Part of some keys */
+	NumFlag            uint = 1 << 15 /* Field is a num (for clients) */
 
-	EnumFlag           = 256    /* Field is an enum */
-	AutoIncrementFlag  = 512    /* Field is an auto increment field */
-	TimestampFlag      = 1024   /* Field is a timestamp */
-	SetFlag            = 2048   /* Field is a set */
-	NoDefaultValueFlag = 4096   /* Field doesn't have a default value */
-	OnUpdateNowFlag    = 8192   /* Field is set to NOW on UPDATE */
-	NumFlag            = 32768  /* Field is a num (for clients) */
-	PartKeyFlag        = 16384  /* Intern: Part of some keys */
-	GroupFlag          = 32768  /* Intern: Group field */
-	UniqueFlag         = 65536  /* Intern: Used by sql_yacc */
-	BinCmpFlag         = 131072 /* Intern: Used by sql_yacc */
+	GroupFlag       uint = 1 << 15 /* Internal: Group field */
+	UniqueFlag      uint = 1 << 16 /* Internal: Used by sql_yacc */
+	BinCmpFlag      uint = 1 << 17 /* Internal: Used by sql_yacc */
+	ParseToJSONFlag uint = 1 << 18 /* Internal: Used when we want to parse string to JSON in CAST */
+	IsBooleanFlag   uint = 1 << 19 /* Internal: Used for telling boolean literal from integer */
 )
 
 // TypeInt24 bounds.
@@ -134,4 +136,14 @@ func HasTimestampFlag(flag uint) bool {
 // HasOnUpdateNowFlag checks if OnUpdateNowFlag is set.
 func HasOnUpdateNowFlag(flag uint) bool {
 	return (flag & OnUpdateNowFlag) > 0
+}
+
+// HasParseToJSONFlag checks if ParseToJSONFlag is set.
+func HasParseToJSONFlag(flag uint) bool {
+	return (flag & ParseToJSONFlag) > 0
+}
+
+// HasIsBooleanFlag checks if IsBooleanFlag is set.
+func HasIsBooleanFlag(flag uint) bool {
+	return (flag & IsBooleanFlag) > 0
 }

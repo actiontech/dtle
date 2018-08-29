@@ -118,7 +118,7 @@ func (c *Conn) handleLoginResponse() error {
 		pluginName = string(data[1:nameEnd])
 
 		if pluginName != "mysql_native_password" {
-			return fmt.Errorf("unsupported auth plugin in Auth_Switch_Request: %v. only 'mysql_native_password' is supported.", pluginName)
+			return fmt.Errorf("unsupported auth plugin in Auth_Switch_Request: %v. only 'mysql_native_password' is supported", pluginName)
 		}
 		c.salt = data[nameEnd + 1:nameEnd + 21]
 

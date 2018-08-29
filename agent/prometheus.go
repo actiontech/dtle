@@ -9,6 +9,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus/push"
 
 	log "udup/internal/logger"
+
+	"github.com/armon/go-metrics"
 )
 
 type PrometheusSink struct {
@@ -28,6 +30,16 @@ func NewPrometheusSink(metricsAddr string, metricsInterval time.Duration, logger
 	}
 	s.pushMetric(metricsAddr, metricsInterval)
 	return s, nil
+}
+
+func (p *PrometheusSink) AddSampleWithLabels(key []string, val float32, labels []metrics.Label) {
+
+}
+func (p *PrometheusSink) IncrCounterWithLabels(key []string, val float32, labels []metrics.Label) {
+
+}
+func (p *PrometheusSink) SetGaugeWithLabels(key []string, val float32, labels []metrics.Label) {
+
 }
 
 func (p *PrometheusSink) flattenKey(parts []string) string {
