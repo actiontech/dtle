@@ -998,7 +998,7 @@
 
 [[projects]]
   branch = "udup-mod"
-  digest = "1:e4a789bee12d6e3c6fdfa11a0d3802c65479934ca7c43c5148084a1c82815f96"
+  digest = "1:106148cdecbd47fd27e1fb5b45ba6fe6bde55b39090105b43a7ffb7a742074d8"
   name = "github.com/siddontang/go-mysql"
   packages = [
     "client",
@@ -1007,7 +1007,7 @@
     "replication",
   ]
   pruneopts = "UT"
-  revision = "555d0d9bd19444fdc4a4ee4b8b4808948a43eba7"
+  revision = "0926de726847c1a381173f954040aa0984b7998d"
   source = "github.com/ffffwh/go-mysql"
 
 [[projects]]
@@ -1282,7 +1282,10 @@
     "github.com/prometheus/client_golang/prometheus/push",
     "github.com/ryanuber/columnize",
     "github.com/satori/go.uuid",
+    "github.com/shirou/gopsutil/cpu",
     "github.com/shirou/gopsutil/host",
+    "github.com/shirou/gopsutil/internal/common",
+    "github.com/shirou/gopsutil/mem",
     "github.com/siddontang/go-mysql/mysql",
     "github.com/siddontang/go-mysql/replication",
     "github.com/siddontang/go/hack",

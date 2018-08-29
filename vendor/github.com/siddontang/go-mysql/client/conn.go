@@ -85,12 +85,64 @@ func (c *Conn) handshake() error {
 		return errors.Trace(err)
 	}
 
-	if _, err := c.readOK(); err != nil {
+	if err := c.handleLoginResponse(); err != nil {
 		c.Close()
 		return errors.Trace(err)
 	}
 
 	return nil
+}
+
+func (c *Conn) handleLoginResponse() error {
+	var err error
+
+	data, err := c.ReadPacket()
+	if err != nil {
+		return errors.Trace(err)
+	}
+
+	if data[0] == EOF_HEADER {
+		// AuthSwitchRequest
+		var pluginName string
+
+		var nameEnd = 1
+		for ; nameEnd < len(data); nameEnd++ {
+			if data[nameEnd] == byte(0) {
+				break;
+			}
+		}
+		if nameEnd == len(data) {
+			return fmt.Errorf("bad format for Auth_Switch_Request packet")
+		}
+
+		pluginName = string(data[1:nameEnd])
+
+		if pluginName != "mysql_native_password" {
+			return fmt.Errorf("unsupported auth plugin in Auth_Switch_Request: %v. only 'mysql_native_password' is supported", pluginName)
+		}
+		c.salt = data[nameEnd + 1:nameEnd + 21]
+
+		err = c.writeAuthSwitchResponse()
+		if err != nil {
+			return err
+		}
+		_, err = c.readOK()
+		return err
+	} else if data[0] == OK_HEADER {
+		_, err = c.handleOKPacket(data)
+		return err
+	} else if data[0] == ERR_HEADER {
+		return c.handleErrorPacket(data)
+	} else {
+		return errors.New("invalid ok packet")
+	}
+}
+
+func (c *Conn) writeAuthSwitchResponse() error {
+	auth := CalcPassword(c.salt, []byte(c.password))
+	data := make([]byte, len(auth) + 4)
+	copy(data[4:], auth)
+	return c.WritePacket(data)
 }
 
 func (c *Conn) Close() error {

@@ -24,7 +24,16 @@
 #   go-tests = true
 #   unused-packages = true
 
-required = ["github.com/pingcap/tidb/parser/goyacc"]
+required = [
+    "github.com/pingcap/tidb/parser/goyacc",
+    # arch-dependent
+    #  shirou/gopsutil/host
+    #   -> shirou/process unless arch is linux
+    "github.com/shirou/gopsutil/cpu",
+    "github.com/shirou/gopsutil/internal/common",
+    "github.com/shirou/gopsutil/mem",
+    ]
+
 
 [[constraint]]
   name = "github.com/NYTimes/gziphandler"
