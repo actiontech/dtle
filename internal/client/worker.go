@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/armon/go-metrics"
-	"github.com/prometheus/client_golang/prometheus"
 
 	"udup/internal/client/driver"
 	"udup/internal/config"
@@ -707,31 +706,32 @@ func (r *Worker) Destroy(event *models.TaskEvent) {
 // emitStats emits resource usage stats of tasks to remote metrics collector
 // sinks
 func (r *Worker) emitStats(ru *models.TaskStatistics) {
-	labels := prometheus.Labels{"task_name": fmt.Sprintf("%s_%s", r.alloc.Job.Name, r.alloc.Task)}
+	labels := []metrics.Label{{"task_name", fmt.Sprintf("%s_%s", r.alloc.Job.Name, r.alloc.Task)}}
 	if r.config.PublishAllocationMetrics {
-		metrics.SetGaugeOpts(labels, []string{"network", "in_msgs"}, float32(ru.MsgStat.InMsgs))
-		metrics.SetGaugeOpts(labels, []string{"network", "out_msgs"}, float32(ru.MsgStat.OutMsgs))
-		metrics.SetGaugeOpts(labels, []string{"network", "in_bytes"}, float32(ru.MsgStat.InBytes))
-		metrics.SetGaugeOpts(labels, []string{"network", "out_bytes"}, float32(ru.MsgStat.OutBytes))
-		metrics.SetGaugeOpts(labels, []string{"buffer", "src_queue_size"}, float32(ru.BufferStat.ExtractorTxQueueSize))
-		metrics.SetGaugeOpts(labels, []string{"buffer", "dest_group_queue_size"}, float32(ru.BufferStat.ApplierGroupTxQueueSize))
-		metrics.SetGaugeOpts(labels, []string{"buffer", "dest_queue_size"}, float32(ru.BufferStat.ApplierTxQueueSize))
-		metrics.SetGaugeOpts(labels, []string{"buffer", "send_by_timeout"}, float32(ru.BufferStat.SendByTimeout))
-		metrics.SetGaugeOpts(labels, []string{"buffer", "send_by_size_full"}, float32(ru.BufferStat.SendBySizeFull))
+		metrics.SetGaugeWithLabels([]string{"network", "in_msgs"}, float32(ru.MsgStat.InMsgs), labels)
+		metrics.SetGaugeWithLabels([]string{"network", "in_msgs"}, float32(ru.MsgStat.InMsgs), labels)
+		metrics.SetGaugeWithLabels([]string{"network", "out_msgs"}, float32(ru.MsgStat.OutMsgs), labels)
+		metrics.SetGaugeWithLabels([]string{"network", "in_bytes"}, float32(ru.MsgStat.InBytes), labels)
+		metrics.SetGaugeWithLabels([]string{"network", "out_bytes"}, float32(ru.MsgStat.OutBytes), labels)
+		metrics.SetGaugeWithLabels([]string{"buffer", "src_queue_size"}, float32(ru.BufferStat.ExtractorTxQueueSize), labels)
+		metrics.SetGaugeWithLabels([]string{"buffer", "dest_group_queue_size"}, float32(ru.BufferStat.ApplierGroupTxQueueSize), labels)
+		metrics.SetGaugeWithLabels([]string{"buffer", "dest_queue_size"}, float32(ru.BufferStat.ApplierTxQueueSize), labels)
+		metrics.SetGaugeWithLabels([]string{"buffer", "send_by_timeout"}, float32(ru.BufferStat.SendByTimeout), labels)
+		metrics.SetGaugeWithLabels([]string{"buffer", "send_by_size_full"}, float32(ru.BufferStat.SendBySizeFull), labels)
 	}
 	if ru.TableStats != nil && r.config.PublishAllocationMetrics {
-		metrics.SetGaugeOpts(labels, []string{"table", "insert"}, float32(ru.TableStats.InsertCount))
-		metrics.SetGaugeOpts(labels, []string{"table", "update"}, float32(ru.TableStats.UpdateCount))
-		metrics.SetGaugeOpts(labels, []string{"table", "delete"}, float32(ru.TableStats.DelCount))
+		metrics.SetGaugeWithLabels([]string{"table", "insert"}, float32(ru.TableStats.InsertCount), labels)
+		metrics.SetGaugeWithLabels([]string{"table", "update"}, float32(ru.TableStats.UpdateCount), labels)
+		metrics.SetGaugeWithLabels([]string{"table", "delete"}, float32(ru.TableStats.DelCount), labels)
 	}
 
 	if ru.DelayCount != nil && r.config.PublishAllocationMetrics {
-		metrics.SetGaugeOpts(labels, []string{"delay", "num"}, float32(ru.DelayCount.Num))
-		metrics.SetGaugeOpts(labels, []string{"delay", "time"}, float32(ru.DelayCount.Time))
+		metrics.SetGaugeWithLabels([]string{"delay", "num"}, float32(ru.DelayCount.Num), labels)
+		metrics.SetGaugeWithLabels([]string{"delay", "time"}, float32(ru.DelayCount.Time), labels)
 	}
 
 	if ru.ThroughputStat != nil && r.config.PublishAllocationMetrics {
-		metrics.SetGaugeOpts(labels, []string{"throughput", "num"}, float32(ru.ThroughputStat.Num))
-		metrics.SetGaugeOpts(labels, []string{"throughput", "time"}, float32(ru.ThroughputStat.Time))
+		metrics.SetGaugeWithLabels([]string{"throughput", "num"}, float32(ru.ThroughputStat.Num), labels)
+		metrics.SetGaugeWithLabels([]string{"throughput", "time"}, float32(ru.ThroughputStat.Time), labels)
 	}
 }

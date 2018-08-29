@@ -429,6 +429,7 @@ func (c *Command) setupMetric(config *Config) error {
 
 	// Configure the prometheus sink
 	var fanout metrics.FanoutSink
+
 	if telConfig.PrometheusAddr != "" {
 		sink, err := NewPrometheusSink(telConfig.PrometheusAddr, telConfig.collectionInterval, c.logger)
 		if err != nil {
