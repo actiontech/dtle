@@ -171,9 +171,11 @@ func (e *Extractor) Run() {
 		e.onError(TaskStateDead, err)
 		return
 	}
-	if err := e.initNatsPubClient(); err != nil {
-		e.onError(TaskStateDead, err)
-		return
+	if !e.useKafka() {
+		if err := e.initNatsPubClient(); err != nil {
+			e.onError(TaskStateDead, err)
+			return
+		}
 	}
 	if err := e.initDBConnections(); err != nil {
 		e.onError(TaskStateDead, err)
@@ -442,23 +444,25 @@ func (e *Extractor) initiateStreaming() error {
 		}
 	}()
 
-	go func() {
-		_, err := e.natsConn.Subscribe(fmt.Sprintf("%s_restart", e.subject), func(m *gonats.Msg) {
-			e.mysqlContext.Gtid = string(m.Data)
-			e.onError(TaskStateRestart, fmt.Errorf("restart"))
-		})
-		if err != nil {
-			e.onError(TaskStateRestart, err)
-		}
+	if !e.useKafka() {
+		go func() {
+			_, err := e.natsConn.Subscribe(fmt.Sprintf("%s_restart", e.subject), func(m *gonats.Msg) {
+				e.mysqlContext.Gtid = string(m.Data)
+				e.onError(TaskStateRestart, fmt.Errorf("restart"))
+			})
+			if err != nil {
+				e.onError(TaskStateRestart, err)
+			}
 
-		_, err = e.natsConn.Subscribe(fmt.Sprintf("%s_error", e.subject), func(m *gonats.Msg) {
-			e.mysqlContext.Gtid = string(m.Data)
-			e.onError(TaskStateDead, fmt.Errorf("applier"))
-		})
-		if err != nil {
-			e.onError(TaskStateDead, err)
-		}
-	}()
+			_, err = e.natsConn.Subscribe(fmt.Sprintf("%s_error", e.subject), func(m *gonats.Msg) {
+				e.mysqlContext.Gtid = string(m.Data)
+				e.onError(TaskStateDead, fmt.Errorf("applier"))
+			})
+			if err != nil {
+				e.onError(TaskStateDead, err)
+			}
+		}()
+	}
 	return nil
 }
 
