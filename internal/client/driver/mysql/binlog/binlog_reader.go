@@ -115,7 +115,6 @@ func NewMySQLReader(cfg *config.MySQLDriverConfig, logger *log.Entry, replicateD
 		Password:       cfg.ConnectionConfig.Password,
 		RawModeEnabled: false,
 		UseDecimal:     true,
-
 	}
 	binlogReader.binlogSyncer = replication.NewBinlogSyncer(binlogSyncerConfig)
 	binlogReader.mysqlContext.Stage = models.StageRegisteringSlaveOnMaster

@@ -1431,6 +1431,8 @@ func (e *Extractor) kafkaTransformSnapshotData(table *config.Table, value *dumpE
 					if err != nil {
 						return err
 					}
+				case mysql.DecimalColumnType:
+					value = kafka2.DecimalValueFromStringMysql(valueStr)
 				default:
 					value = valueStr
 				}
@@ -1506,23 +1508,47 @@ func (e *Extractor) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry) (e
 		keyPayload := kafka2.NewRow()
 		colList := table.OriginalTableColumns.ColumnList()
 		colDefs, keyColDefs := kafkaColumnListToColDefs(table.OriginalTableColumns)
+
 		for i, _ := range colList {
 			colName := colList[i].Name
+
+			var beforeValue interface{}
+			var afterValue interface{}
+
+			if before != nil {
+				beforeValue = *dataEvent.WhereColumnValues.AbstractValues[i]
+			}
+			if after != nil {
+				afterValue = *dataEvent.NewColumnValues.AbstractValues[i]
+			}
+
+			switch colList[i].Type {
+			case mysql.DecimalColumnType:
+				if before != nil {
+					beforeValue = kafka2.DecimalValueFromStringMysql(beforeValue.(string))
+				}
+				if after != nil {
+					afterValue = kafka2.DecimalValueFromStringMysql(afterValue.(string))
+				}
+			default:
+				// do nothing
+			}
+
 			if colList[i].IsPk() {
 				if before != nil {
 					// update/delete: use before
-					keyPayload.AddField(colName, dataEvent.WhereColumnValues.AbstractValues[i])
+					keyPayload.AddField(colName, beforeValue)
 				} else {
 					// insert: use after
-					keyPayload.AddField(colName, dataEvent.NewColumnValues.AbstractValues[i])
+					keyPayload.AddField(colName, afterValue)
 				}
 			}
 
 			if before != nil {
-				before.AddField(colName, dataEvent.WhereColumnValues.AbstractValues[i])
+				before.AddField(colName, beforeValue)
 			}
 			if after != nil {
-				after.AddField(colName, dataEvent.NewColumnValues.AbstractValues[i])
+				after.AddField(colName, afterValue)
 			}
 		}
 
@@ -1593,88 +1619,87 @@ func (e *Extractor) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry) (e
 	return nil
 }
 
-func kafkaColType(col *mysql.Column) kafka2.SchemaType {
-	switch col.Type {
-	case mysql.UnknownColumnType:
-		return ""
-	case mysql.BitColumnType:
-		return kafka2.SCHEMA_TYPE_BYTES
-	case mysql.BlobColumnType:
-		return kafka2.SCHEMA_TYPE_BYTES
-	case mysql.BinaryColumnType:
-		return kafka2.SCHEMA_TYPE_BYTES
-	case mysql.VarbinaryColumnType:
-		return kafka2.SCHEMA_TYPE_BYTES
-
-	case mysql.TextColumnType, mysql.CharColumnType, mysql.VarcharColumnType:
-		return kafka2.SCHEMA_TYPE_STRING
-	case mysql.TinyintColumnType:
-		return kafka2.SCHEMA_TYPE_INT16
-	case mysql.SmallintColumnType:
-		if col.IsUnsigned {
-			return kafka2.SCHEMA_TYPE_INT32
-		} else {
-			return kafka2.SCHEMA_TYPE_INT16
-		}
-	case mysql.MediumIntColumnType: // 24 bit in mysql
-		return kafka2.SCHEMA_TYPE_INT32
-	case mysql.IntColumnType:
-		if col.IsUnsigned {
-			return kafka2.SCHEMA_TYPE_INT64
-		} else {
-			return kafka2.SCHEMA_TYPE_INT32
-		}
-	case mysql.BigIntColumnType:
-		return kafka2.SCHEMA_TYPE_INT64
-
-	case mysql.FloatColumnType:
-		return kafka2.SCHEMA_TYPE_FLOAT64
-	case mysql.DoubleColumnType:
-		return kafka2.SCHEMA_TYPE_FLOAT64
-	case mysql.DecimalColumnType:
-		return "TODO"
-	case mysql.TimestampColumnType:
-		return kafka2.SCHEMA_TYPE_INT64
-	case mysql.DateTimeColumnType:
-		return "TODO"
-	case mysql.EnumColumnType:
-		return kafka2.SCHEMA_TYPE_STRING
-	case mysql.JSONColumnType:
-		return kafka2.SCHEMA_TYPE_STRING
-	case mysql.DateColumnType:
-		return kafka2.SCHEMA_TYPE_INT32
-	case mysql.TimeColumnType:
-		return "TODO"
-	case mysql.YearColumnType:
-		return kafka2.SCHEMA_TYPE_INT32
-	default:
-		// TODO report a BUG
-		return ""
-	}
-}
 func kafkaColumnListToColDefs(colList *mysql.ColumnList) (valColDefs kafka2.ColDefs, keyColDefs kafka2.ColDefs) {
-	// TODO generate key coldef
 	cols := colList.ColumnList()
 	for i, _ := range cols {
-		var theType kafka2.SchemaType
-		var optName *string
+		var field *kafka2.Schema
 
-		addToKey := cols[i].IsPk()
+		optional := cols[i].Nullable
+		fieldName := cols[i].Name
 
-		theType = kafkaColType(&cols[i])
 		switch cols[i].Type {
+		case mysql.UnknownColumnType:
+			// TODO warning
+			field = kafka2.NewSimpleSchemaField("", optional, fieldName)
+
+		case mysql.BitColumnType:
+			fallthrough
+		case mysql.BlobColumnType:
+			fallthrough
+		case mysql.BinaryColumnType:
+			fallthrough
+		case mysql.VarbinaryColumnType:
+			field = kafka2.NewSimpleSchemaField(kafka2.SCHEMA_TYPE_BYTES, optional, fieldName)
+
+		case mysql.TextColumnType:
+			fallthrough
+		case mysql.CharColumnType:
+			fallthrough
+		case mysql.VarcharColumnType:
+			fallthrough
+		case mysql.EnumColumnType:
+			field = kafka2.NewSimpleSchemaField(kafka2.SCHEMA_TYPE_STRING, optional, fieldName)
+
+		case mysql.TinyintColumnType:
+			field = kafka2.NewSimpleSchemaField(kafka2.SCHEMA_TYPE_INT16, optional, fieldName)
+		case mysql.SmallintColumnType:
+			if cols[i].IsUnsigned {
+				field = kafka2.NewSimpleSchemaField(kafka2.SCHEMA_TYPE_INT32, optional, fieldName)
+			} else {
+				field = kafka2.NewSimpleSchemaField(kafka2.SCHEMA_TYPE_INT16, optional, fieldName)
+			}
+		case mysql.MediumIntColumnType: // 24 bit in mysql
+			field = kafka2.NewSimpleSchemaField(kafka2.SCHEMA_TYPE_INT32, optional, fieldName)
+		case mysql.IntColumnType:
+			if cols[i].IsUnsigned {
+				field = kafka2.NewSimpleSchemaField(kafka2.SCHEMA_TYPE_INT64, optional, fieldName)
+			} else {
+				field = kafka2.NewSimpleSchemaField(kafka2.SCHEMA_TYPE_INT32, optional, fieldName)
+			}
+		case mysql.BigIntColumnType:
+			field = kafka2.NewSimpleSchemaField(kafka2.SCHEMA_TYPE_INT64, optional, fieldName)
+
+		case mysql.FloatColumnType:
+			fallthrough
+		case mysql.DoubleColumnType:
+			field = kafka2.NewSimpleSchemaField(kafka2.SCHEMA_TYPE_FLOAT64, optional, fieldName)
+
+		case mysql.DecimalColumnType:
+			field = kafka2.NewDecimalField(cols[i].Precision, cols[i].Scale, optional, fieldName)
+
+		case mysql.TimestampColumnType:
+			field = kafka2.NewSimpleSchemaField(kafka2.SCHEMA_TYPE_INT64, optional, fieldName)
+		case mysql.DateColumnType:
+			field = kafka2.NewSimpleSchemaField(kafka2.SCHEMA_TYPE_INT32, optional, fieldName)
+		case mysql.YearColumnType:
+			field = kafka2.NewSimpleSchemaField(kafka2.SCHEMA_TYPE_INT32, optional, fieldName)
+		case mysql.DateTimeColumnType:
+			field = kafka2.NewDateTimeField(optional, fieldName)
+		case mysql.TimeColumnType:
+			field = kafka2.NewTimeField(optional, fieldName)
 		case mysql.JSONColumnType:
-			optName = new(string)
-			*optName = "io.debezium.data.Json"
+			field = kafka2.NewJsonField(optional, fieldName)
+		default:
+			// TODO report a BUG
+			field = kafka2.NewSimpleSchemaField("", optional, fieldName)
 		}
 
-		optional := false
-
-		field := kafka2.NewSimpleSchemaField(theType, optional, cols[i].Name)
-		valColDefs = append(valColDefs, field)
+		addToKey := cols[i].IsPk()
 		if addToKey {
 			keyColDefs = append(keyColDefs, field)
 		}
+
+		valColDefs = append(valColDefs, field)
 	}
 	return valColDefs, keyColDefs
 }

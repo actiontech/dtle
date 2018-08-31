@@ -59,6 +59,9 @@ type Column struct {
 	Key                string
 	TimezoneConversion *TimezoneConvertion
 	Nullable           bool
+	Precision          int // for decimal, time or datetime
+	Scale              int // for decimal
+	// somehow ugly. A better solution might be MetaInfo with subtypes
 }
 
 func (c *Column) IsPk() bool {
@@ -185,6 +188,7 @@ func (c *ColumnList) Names() []string {
 	return names
 }
 
+// TODO caller doesn't handle nil.
 func (c *ColumnList) GetColumn(columnName string) *Column {
 	if ordinal, ok := c.Ordinals[columnName]; ok {
 		return &c.Columns[ordinal]
