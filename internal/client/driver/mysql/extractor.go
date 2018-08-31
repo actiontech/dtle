@@ -73,7 +73,7 @@ type Extractor struct {
 }
 
 func NewExtractor(subject, tp string, maxPayload int, cfg *config.MySQLDriverConfig, logger *log.Logger,
-	kafkaCfg *kafka2.KafkaConfig) *Extractor {
+	kafkaCfg *kafka2.KafkaConfig) (*Extractor, error) {
 
 	cfg = cfg.SetDefault()
 	entry := log.NewEntry(logger).WithFields(log.Fields{
@@ -98,19 +98,22 @@ func NewExtractor(subject, tp string, maxPayload int, cfg *config.MySQLDriverCon
 		e.kafkaMgr, err = kafka2.NewKafkaManager(kafkaCfg)
 		if err != nil {
 			e.logger.Errorf("failed to initialize kafka: %v", err.Error())
-			// TODO
+			return nil, err
 		}
 	}
 
-	e.logger.Debugf("**** e.kafkaCfg == nil: %v", kafkaCfg == nil)
-	e.logger.Debugf("**** e.kafkaMgr == nil: %v", e.kafkaMgr == nil)
+	e.logger.Debugf("mysql.extractor: use kafka")
 
 	if delay, err := strconv.ParseInt(os.Getenv("UDUP_TESTSTUB1_DELAY"), 10, 64); err == nil {
 		e.logger.Infof("UDUP_TESTSTUB1_DELAY = %v", delay)
 		e.testStub1Delay = delay
 	}
 
-	return e
+	return e, nil
+}
+
+func (e *Extractor) useKafka() bool {
+	return e.kafkaMgr != nil
 }
 
 // sleepWhileTrue sleeps indefinitely until the given function returns 'false'
@@ -203,7 +206,7 @@ func (e *Extractor) Run() {
 		if err != nil {
 			e.onError(TaskStateDead, err)
 		}
-		if e.kafkaMgr == nil {
+		if !e.useKafka() {
 			if err := e.publish(fmt.Sprintf("%s_full_complete", e.subject), "", dumpMsg); err != nil {
 				e.onError(TaskStateDead, err)
 			}
@@ -655,7 +658,7 @@ func (e *Extractor) StreamEvents() error {
 		go func() {
 			defer e.logger.Debugf("extractor. StreamEvents goroutine exited")
 
-			if e.kafkaMgr != nil {
+			if e.useKafka() {
 				for binlogEntry := range e.dataChannel {
 					if nil != binlogEntry {
 						err := e.kafkaTransformDMLEventQuery(binlogEntry)
@@ -1116,7 +1119,7 @@ func (e *Extractor) mysqlDump() error {
 				}
 				atomic.AddInt64(&e.mysqlContext.RowsEstimate, 1)
 				atomic.AddInt64(&e.mysqlContext.TotalRowsCopied, 1)
-				if e.kafkaMgr == nil {
+				if !e.useKafka() {
 					if err := e.encodeDumpEntry(entry); err != nil {
 						e.onError(TaskStateRestart, err)
 					}
@@ -1139,7 +1142,7 @@ func (e *Extractor) mysqlDump() error {
 			}
 			atomic.AddInt64(&e.mysqlContext.RowsEstimate, 1)
 			atomic.AddInt64(&e.mysqlContext.TotalRowsCopied, 1)
-			if e.kafkaMgr == nil {
+			if !e.useKafka() {
 				if err := e.encodeDumpEntry(entry); err != nil {
 					e.onError(TaskStateRestart, err)
 				}
@@ -1179,7 +1182,7 @@ func (e *Extractor) mysqlDump() error {
 				// TODO: entry values may be empty. skip the entry after removing 'start transaction'.
 				entry.SystemVariablesStatement = setSystemVariablesStatement
 				entry.SqlMode = setSqlMode
-				if e.kafkaMgr != nil {
+				if e.useKafka() {
 					err := e.kafkaTransformSnapshotData(d.table, entry)
 					if err != nil {
 						e.onError(TaskStateRestart, err)
