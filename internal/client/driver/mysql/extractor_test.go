@@ -414,7 +414,7 @@ func TestExtractor_mysqlDump(t *testing.T) {
 
 func TestExtractor_encodeDumpEntry(t *testing.T) {
 	type args struct {
-		entry *dumpEntry
+		entry *DumpEntry
 	}
 	tests := []struct {
 		name    string

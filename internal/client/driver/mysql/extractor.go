@@ -34,6 +34,7 @@ import (
 	"udup/internal/config/mysql"
 	log "udup/internal/logger"
 	"udup/internal/models"
+	"udup/utils"
 )
 
 const (
@@ -1119,7 +1120,7 @@ func (e *Extractor) mysqlDump() error {
 						}
 					}
 				}
-				entry := &dumpEntry{
+				entry := &DumpEntry{
 					SystemVariablesStatement: setSystemVariablesStatement,
 					SqlMode:                  setSqlMode,
 					DbSQL:                    dbSQL,
@@ -1143,7 +1144,7 @@ func (e *Extractor) mysqlDump() error {
 					dbSQL = fmt.Sprintf("CREATE DATABASE IF NOT EXISTS %s", db.TableSchema)
 				}
 			}
-			entry := &dumpEntry{
+			entry := &DumpEntry{
 				SystemVariablesStatement: setSystemVariablesStatement,
 				SqlMode:                  setSqlMode,
 				DbSQL:                    dbSQL,
@@ -1166,7 +1167,7 @@ func (e *Extractor) mysqlDump() error {
 	// ------
 	// Dump all of the tables and generate source records ...
 	e.logger.Printf("mysql.extractor: Step %d: scanning contents of %d tables", step, e.tableCount)
-	startScan := currentTimeMillis()
+	startScan := utils.CurrentTimeMillis()
 	counter := 0
 	//pool := models.NewPool(10)
 	for _, db := range e.replicateDoDb {
@@ -1215,14 +1216,14 @@ func (e *Extractor) mysqlDump() error {
 
 	// We've copied all of the tables, but our buffer holds onto the very last record.
 	// First mark the snapshot as complete and then apply the updated offset to the buffered record ...
-	stop := currentTimeMillis()
+	stop := utils.CurrentTimeMillis()
 	e.logger.Printf("mysql.extractor: Step %d: scanned %d rows in %d tables in %s",
 		step, e.mysqlContext.TotalRowsCopied, e.tableCount, time.Duration(stop-startScan))
 	step++
 
 	return nil
 }
-func (e *Extractor) encodeDumpEntry(entry *dumpEntry) error {
+func (e *Extractor) encodeDumpEntry(entry *DumpEntry) error {
 	txMsg, err := Encode(entry)
 	if err != nil {
 		return err
@@ -1232,10 +1233,6 @@ func (e *Extractor) encodeDumpEntry(entry *dumpEntry) error {
 	}
 	e.mysqlContext.Stage = models.StageSendingData
 	return nil
-}
-
-func currentTimeMillis() int64 {
-	return time.Now().UnixNano() / 1000000
 }
 
 func (e *Extractor) Stats() (*models.TaskStatistics, error) {
@@ -1394,7 +1391,7 @@ func (e *Extractor) Shutdown() error {
 	return nil
 }
 
-func (e *Extractor) kafkaTransformSnapshotData(table *config.Table, value *dumpEntry) error {
+func (e *Extractor) kafkaTransformSnapshotData(table *config.Table, value *DumpEntry) error {
 	var err error
 
 	tableIdent := fmt.Sprintf("%v.%v.%v", e.kafkaMgr.Cfg.Topic, table.TableSchema, table.TableName)
@@ -1416,7 +1413,7 @@ func (e *Extractor) kafkaTransformSnapshotData(table *config.Table, value *dumpE
 		valuePayload.Source.Db = table.TableSchema
 		valuePayload.Source.Table = table.TableName
 		valuePayload.Op = kafka2.RECORD_OP_INSERT
-		valuePayload.TsMs = currentTimeMillis()
+		valuePayload.TsMs = utils.CurrentTimeMillis()
 
 		valuePayload.Before = nil
 		valuePayload.After = kafka2.NewRow()
@@ -1583,7 +1580,7 @@ func (e *Extractor) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry) (e
 		valuePayload.Source.Db = dataEvent.DatabaseName
 		valuePayload.Source.Table = dataEvent.TableName
 		valuePayload.Op = op
-		valuePayload.TsMs = currentTimeMillis()
+		valuePayload.TsMs = utils.CurrentTimeMillis()
 
 		valueSchema := kafka2.NewEnvelopeSchema(tableIdent, colDefs)
 

@@ -30,8 +30,8 @@ type dumper struct {
 	table          *config.Table
 	columns        string
 	entriesCount   int
-	resultsChannel chan *dumpEntry
-	entriesChannel chan *dumpEntry
+	resultsChannel chan *DumpEntry
+	entriesChannel chan *DumpEntry
 	shutdown       bool
 	shutdownCh     chan struct{}
 	shutdownLock   sync.Mutex
@@ -50,8 +50,8 @@ func NewDumper(db usql.QueryAble, table *config.Table, total, chunkSize int64,
 		TableName:      table.TableName,
 		table:          table,
 		total:          total,
-		resultsChannel: make(chan *dumpEntry, 24),
-		entriesChannel: make(chan *dumpEntry),
+		resultsChannel: make(chan *DumpEntry, 24),
+		entriesChannel: make(chan *DumpEntry),
 		chunkSize:      chunkSize,
 		shutdownCh:     make(chan struct{}),
 	}
@@ -63,7 +63,7 @@ type dumpStatResult struct {
 	TotalCount int64
 }
 
-type dumpEntry struct {
+type DumpEntry struct {
 	SystemVariablesStatement string
 	SqlMode                  string
 	DbSQL                    string
@@ -78,22 +78,22 @@ type dumpEntry struct {
 	err                      error
 }
 
-func (e *dumpEntry) incrementCounter() {
+func (e *DumpEntry) incrementCounter() {
 	e.RowsCount++
 }
 
-func (d *dumper) getDumpEntries() ([]*dumpEntry, error) {
+func (d *dumper) getDumpEntries() ([]*DumpEntry, error) {
 	if d.total == 0 {
-		return []*dumpEntry{}, nil
+		return []*DumpEntry{}, nil
 	}
 
 	columnList, err := ubase.GetTableColumns(d.db, d.TableSchema, d.TableName)
 	if err != nil {
-		return []*dumpEntry{}, err
+		return []*DumpEntry{}, err
 	}
 
 	if err := ubase.ApplyColumnTypes(d.db, d.TableSchema, d.TableName, columnList); err != nil {
-		return []*dumpEntry{}, err
+		return []*DumpEntry{}, err
 	}
 
 	needPm := false
@@ -119,17 +119,17 @@ func (d *dumper) getDumpEntries() ([]*dumpEntry, error) {
 	if sliceCount == 0 {
 		sliceCount = 1
 	}
-	entries := make([]*dumpEntry, sliceCount)
+	entries := make([]*DumpEntry, sliceCount)
 	for i := 0; i < sliceCount; i++ {
 		offset := uint64(i) * uint64(d.chunkSize)
-		entries[i] = &dumpEntry{
+		entries[i] = &DumpEntry{
 			Offset: offset,
 		}
 	}
 	return entries, nil
 }
 
-func (d *dumper) buildQueryOldWay(e *dumpEntry) string {
+func (d *dumper) buildQueryOldWay(e *DumpEntry) string {
 	return fmt.Sprintf(`SELECT %s FROM %s.%s where (%s) LIMIT %d OFFSET %d`,
 		d.columns,
 		usql.EscapeName(d.TableSchema),
@@ -140,7 +140,7 @@ func (d *dumper) buildQueryOldWay(e *dumpEntry) string {
 	)
 }
 
-func (d *dumper) buildQueryOnUniqueKey(e *dumpEntry) string {
+func (d *dumper) buildQueryOnUniqueKey(e *DumpEntry) string {
 	nCol := len(d.table.UseUniqueKey.Columns.Columns)
 	uniqueKeyColumnAscending := make([]string, nCol, nCol)
 	for i, col := range d.table.UseUniqueKey.Columns.Columns {
@@ -193,8 +193,8 @@ func (d *dumper) buildQueryOnUniqueKey(e *dumpEntry) string {
 }
 
 // dumps a specific chunk, reading chunk info from the channel
-func (d *dumper) getChunkData(e *dumpEntry) (err error) {
-	entry := &dumpEntry{
+func (d *dumper) getChunkData(e *DumpEntry) (err error) {
+	entry := &DumpEntry{
 		TableSchema: d.TableSchema,
 		TableName:   d.TableName,
 		RowsCount:   e.RowsCount,
@@ -294,22 +294,6 @@ func (d *dumper) getChunkData(e *dumpEntry) (err error) {
 
 	return nil
 }
-
-/*func (e *dumpEntry) escape(colValue string) string {
-	e.colBuffer = *new(bytes.Buffer)
-	if !strings.ContainsAny(colValue, stringOfBackslashAndQuoteChars) {
-		return colValue
-	} else {
-		for _, char_c := range colValue {
-			c := fmt.Sprintf("%c", char_c)
-			if strings.ContainsAny(c, stringOfBackslashAndQuoteChars) {
-				e.colBuffer.WriteString("\\")
-			}
-			e.colBuffer.WriteString(c)
-		}
-		return e.colBuffer.String()
-	}
-}*/
 
 func (d *dumper) worker() {
 	for e := range d.entriesChannel {
