@@ -47,6 +47,8 @@ type KafkaConfig struct {
 	Broker    string
 	Topic     string
 	Converter string
+	NatsAddr  string
+	Gtid      string // TODO remove?
 }
 
 type KafkaManager struct {

@@ -20,6 +20,7 @@ var (
 	// which are available for allocation handling
 	BuiltinDrivers = map[string]Factory{
 		models.TaskDriverMySQL: NewMySQLDriver,
+		models.TaskDriverKafka: NewKafkaDriver,
 		//"models.TaskDriverOracle:     NewOracleDriver,
 	}
 

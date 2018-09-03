@@ -23,6 +23,7 @@ const (
 	TaskTypeDest = "Dest"
 
 	TaskDriverMySQL  = "MySQL"
+	TaskDriverKafka  = "Kafka"
 	TaskDriverOracle = "Oracle"
 )
 
