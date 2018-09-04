@@ -14,16 +14,16 @@ If you suspect your issue is a bug, please edit your issue description to
 include the BUG REPORT INFORMATION shown below. 
 
 For more information about reporting issues, see
-https://github.com/actiontech/udup/blob/master/CONTRIBUTING.md#reporting-other-issues
+https://github.com/actiontech/dtle/blob/master/CONTRIBUTING.md#reporting-other-issues
 
 ---------------------------------------------------
 GENERAL SUPPORT INFORMATION
 ---------------------------------------------------
 
 The GitHub issue tracker is for bug reports and feature requests.
-General support for **Udup** can be found at the following locations:
+General support for **Dtle** can be found at the following locations:
 
-- Udup Support QQ Group - 852990221
+- Dtle Support QQ Group - 852990221
 
 ---------------------------------------------------
 BUG REPORT INFORMATION
@@ -48,7 +48,7 @@ Briefly describe the problem you are having in a few paragraphs.
 
 **Describe the results you expected:**
 
-**Output of `./udup version`:**
+**Output of `./dtle version`:**
 
 ```
 (paste your output here)
@@ -59,8 +59,8 @@ Briefly describe the problem you are having in a few paragraphs.
 
 **Additional details (log, config, job config etc):**
 <!-- 
-1. default config path: /etc/udup/udup.conf
+1. default config path: /etc/dtle/dtle.conf
 3. job config:   curl -XGET "http://127.0.0.1:8190/v1/job/<job_uuid>"
-2. default log path: /var/log/udup.log
+2. default log path: /var/log/dtle.log
 3. mask sensitive infomation (e.g. IP, username and password)"
 -->
