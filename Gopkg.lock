@@ -871,11 +871,11 @@
   version = "v1.1.2"
 
 [[projects]]
-  digest = "1:925dac484c3a7f05fd4f99bf3d51e426c240193c6edccfc960bca817a5caa5ba"
+  digest = "1:d14a5f4bfecf017cb780bdde1b6483e5deb87e12c332544d2c430eda58734bcb"
   name = "github.com/prometheus/client_golang"
   packages = [
     "prometheus",
-    "prometheus/push",
+    "prometheus/promhttp",
   ]
   pruneopts = "UT"
   revision = "c5b7fccd204277076155f10851dad72b76a49317"
@@ -960,6 +960,14 @@
   pruneopts = "UT"
   revision = "8048a2e9c5773235122027dd585cf821b2af1249"
   version = "v2.18.07"
+
+[[projects]]
+  branch = "master"
+  digest = "1:99c6a6dab47067c9b898e8c8b13d130c6ab4ffbcc4b7cc6236c2cd0b1e344f5b"
+  name = "github.com/shirou/w32"
+  packages = ["."]
+  pruneopts = "UT"
+  revision = "bb4de0191aa41b5507caa14b0650cdbddcd9280b"
 
 [[projects]]
   branch = "master"
@@ -1225,6 +1233,7 @@
     "github.com/araddon/qlbridge/expr",
     "github.com/araddon/qlbridge/vm",
     "github.com/armon/go-metrics",
+    "github.com/armon/go-metrics/prometheus",
     "github.com/docker/leadership",
     "github.com/docker/libkv",
     "github.com/docker/libkv/store",
@@ -1262,8 +1271,7 @@
     "github.com/pingcap/tidb/ast",
     "github.com/pingcap/tidb/parser",
     "github.com/pingcap/tidb/parser/goyacc",
-    "github.com/prometheus/client_golang/prometheus",
-    "github.com/prometheus/client_golang/prometheus/push",
+    "github.com/prometheus/client_golang/prometheus/promhttp",
     "github.com/ryanuber/columnize",
     "github.com/satori/go.uuid",
     "github.com/shirou/gopsutil/cpu",

@@ -186,7 +186,6 @@ type Network struct {
 }
 
 type Metric struct {
-	PrometheusAddr           string        `mapstructure:"prometheus_address"`
 	DisableHostname          bool          `mapstructure:"disable_hostname"`
 	UseNodeName              bool          `mapstructure:"use_node_name"`
 	CollectionInterval       string        `mapstructure:"collection_interval"`
@@ -634,9 +633,6 @@ func (a *Network) Merge(b *Network) *Network {
 func (a *Metric) Merge(b *Metric) *Metric {
 	result := *a
 
-	if b.PrometheusAddr != "" {
-		result.PrometheusAddr = b.PrometheusAddr
-	}
 	if b.DisableHostname {
 		result.DisableHostname = true
 	}

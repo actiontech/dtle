@@ -429,7 +429,6 @@ func TestNetwork_Merge(t *testing.T) {
 
 func TestMetric_Merge(t *testing.T) {
 	type fields struct {
-		PrometheusAddr           string
 		DisableHostname          bool
 		UseNodeName              bool
 		CollectionInterval       string
@@ -451,7 +450,6 @@ func TestMetric_Merge(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			a := &Metric{
-				PrometheusAddr:           tt.fields.PrometheusAddr,
 				DisableHostname:          tt.fields.DisableHostname,
 				UseNodeName:              tt.fields.UseNodeName,
 				CollectionInterval:       tt.fields.CollectionInterval,

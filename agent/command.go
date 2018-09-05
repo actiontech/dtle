@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/armon/go-metrics"
+	"github.com/armon/go-metrics/prometheus"
 	"github.com/mitchellh/cli"
 
 	ulog "udup/internal/logger"
@@ -436,22 +437,16 @@ func (c *Command) setupMetric(config *Config) error {
 	// Configure the prometheus sink
 	var fanout metrics.FanoutSink
 
-	if telConfig.PrometheusAddr != "" {
-		sink, err := NewPrometheusSink(telConfig.PrometheusAddr, telConfig.collectionInterval, c.logger)
-		if err != nil {
-			return err
-		}
-		fanout = append(fanout, sink)
+	sink, err := prometheus.NewPrometheusSink()
+	if err != nil {
+		return err
 	}
+	fanout = append(fanout, sink)
 
 	// Initialize the global sink
-	if len(fanout) > 0 {
-		fanout = append(fanout, inm)
-		metrics.NewGlobal(metricsConf, fanout)
-	} else {
-		metricsConf.EnableHostname = false
-		metrics.NewGlobal(metricsConf, inm)
-	}
+	fanout = append(fanout, inm)
+	metrics.NewGlobal(metricsConf, fanout)
+
 	return nil
 }
 

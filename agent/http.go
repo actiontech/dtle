@@ -20,6 +20,7 @@ import (
 
 	"github.com/NYTimes/gziphandler"
 	"github.com/ugorji/go/codec"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"strings"
 	log "udup/internal/logger"
@@ -190,6 +191,8 @@ func (s *HTTPServer) registerHandlers() {
 	} else if s.agent.config.EnableUi {
 		s.mux.Handle("/", http.StripPrefix("/", http.FileServer(assetFS())))
 	}
+
+	s.mux.Handle("/metrics", promhttp.Handler())
 }
 
 // HTTPCodedError is used to provide the HTTP error code
