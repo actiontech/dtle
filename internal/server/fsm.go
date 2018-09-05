@@ -519,7 +519,6 @@ func (n *udupFSM) applyJobClientUpdate(buf []byte, index uint64) interface{} {
 		// Check if the job already exists
 		if existing, _ := n.state.JobByID(ws, ju.JobID); existing != nil {
 			if ju.Gtid != "" {
-				existing.CreateIndex = existing.CreateIndex
 				existing.ModifyIndex = index
 				existing.JobModifyIndex = index
 				for _, t := range existing.Tasks {
@@ -532,7 +531,6 @@ func (n *udupFSM) applyJobClientUpdate(buf []byte, index uint64) interface{} {
 					return err
 				}
 			} else {
-				existing.CreateIndex = existing.CreateIndex
 				existing.ModifyIndex = index
 				existing.JobModifyIndex = index
 				/*for _, t := range existing.Tasks {

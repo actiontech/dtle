@@ -40,7 +40,7 @@ CONFIGURATION_FILES = [
 ]
 
 # META-PACKAGE VARIABLES
-PACKAGE_URL = "git@10.186.18.21:universe/udup.git"
+PACKAGE_URL = "git@github.com:actiontech/dtle.git"
 MAINTAINER = "support@actionsky.com"
 VENDOR = "Udup"
 DESCRIPTION = "Udup desc"

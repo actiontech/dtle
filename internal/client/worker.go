@@ -252,35 +252,13 @@ func (r *Worker) Run() {
 
 // prestart handles life-cycle tasks that occur before the task has started.
 func (r *Worker) prestart(resultCh chan bool) {
-	for {
-		// Send the start signal
-		select {
-		case r.startCh <- struct{}{}:
-		default:
-		}
-
-		resultCh <- true
-		return
-
-		// Block for consul-template
-		// TODO Hooks should register themselves as blocking and then we can
-		// perioidcally enumerate what we are still blocked on
-		select {
-		case <-r.unblockCh:
-			// Send the start signal
-			select {
-			case r.startCh <- struct{}{}:
-			default:
-			}
-
-			resultCh <- true
-			return
-		case <-r.waitCh:
-			// The run loop has exited so exit too
-			resultCh <- false
-			return
-		}
+	// Send the start signal
+	select {
+	case r.startCh <- struct{}{}:
+	default:
 	}
+
+	resultCh <- true
 }
 
 // run is the main run loop that handles starting the application, destroying
