@@ -13,11 +13,9 @@ import (
 	"strings"
 	"time"
 
-	"sync"
-	"udup/internal/client/driver/kafka2"
-
 	"github.com/hashicorp/go-multierror"
 	"github.com/mitchellh/copystructure"
+	"sync"
 )
 
 const (
@@ -51,7 +49,6 @@ type Task struct {
 	// Constraints can be specified at a task group level and apply to
 	// all the tasks contained.
 	Constraints []*Constraint
-	Kafka       *kafka2.KafkaConfig
 }
 
 func NewTask() *Task {
