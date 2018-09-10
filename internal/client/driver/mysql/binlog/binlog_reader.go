@@ -146,10 +146,8 @@ func (b *BinlogReader) addTableToTableMap(dbMap map[string]*config.TableContext,
 		b.logger.Errorf("mysql.reader: Error parse where '%v'", table.Where)
 		return err
 	}
-	dbMap[table.TableName] = &config.TableContext{
-		Table:    table,
-		WhereCtx: whereCtx,
-	}
+
+	dbMap[table.TableName] = config.NewTableContext(table, whereCtx)
 	return nil
 }
 
@@ -373,7 +371,10 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 				int(rowsEvent.ColumnCount),
 			)
 			dmlEvent.LogPos = int64(ev.Header.LogPos - ev.Header.EventSize)
-			dmlEvent.Table = table.Table
+			if !table.DefChangedSent {
+				dmlEvent.Table = table.Table
+				table.DefChangedSent = true
+			}
 			/*originalTableColumns, _, err := b.InspectTableColumnsAndUniqueKeys(string(rowsEvent.Table.Schema), string(rowsEvent.Table.Table))
 			if err != nil {
 				return err

@@ -677,9 +677,6 @@ func (e *Extractor) StreamEvents() error {
 				var err error
 				select {
 				case binlogEntry := <-e.dataChannel:
-					for i := range binlogEntry.Events {
-						binlogEntry.Events[i].Table = nil // TODO tmp solution
-					}
 					entries.Entries = append(entries.Entries, binlogEntry)
 					entriesSize += binlogEntry.OriginalSize
 
@@ -1149,6 +1146,10 @@ func (e *Extractor) mysqlDump() error {
 				// TODO: entry values may be empty. skip the entry after removing 'start transaction'.
 				entry.SystemVariablesStatement = setSystemVariablesStatement
 				entry.SqlMode = setSqlMode
+
+				if e.needToSendTabelDef() {
+					entry.Table = d.table
+				}
 				if err = e.encodeDumpEntry(entry); err != nil {
 					e.onError(TaskStateRestart, err)
 				}
@@ -1338,4 +1339,8 @@ func (e *Extractor) Shutdown() error {
 	//close(e.binlogChannel)
 	e.logger.Printf("mysql.extractor: Shutting down")
 	return nil
+}
+
+func (e *Extractor) needToSendTabelDef() bool {
+	return true
 }

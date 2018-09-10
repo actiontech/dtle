@@ -76,6 +76,7 @@ type DumpEntry struct {
 	Offset                   uint64 // only for 'no PK' table
 	colBuffer                bytes.Buffer
 	err                      error
+	Table                    *config.Table
 }
 
 func (e *DumpEntry) incrementCounter() {
