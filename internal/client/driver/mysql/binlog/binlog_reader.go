@@ -315,7 +315,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 					tableName := ddlInfo.tables[i].Table
 
 					if b.skipQueryDDL(sql, realSchema, tableName) {
-						//b.logger.Debugf("mysql.reader: Skip QueryEvent at schema: %s,sql: %s", fmt.Sprintf("%s", evt.Schema), sql)
+						b.logger.Debugf("mysql.reader: Skip QueryEvent currentSchema: %s, sql: %s, realSchema: %v, tableName: %v", currentSchema, sql, realSchema, tableName)
 						return nil
 					}
 
@@ -1148,7 +1148,7 @@ func (b *BinlogReader) matchTable(patternTBS []*config.DataSource, schemaName st
 				}
 			}
 
-			if ptb.TableName == tableName {
+			if ptb.TableSchema == schemaName && ptb.TableName == tableName {
 				return true
 			}
 		}
