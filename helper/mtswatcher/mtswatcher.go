@@ -57,7 +57,7 @@ func main() {
 	gtid, err := mysql.ParseMysqlGTIDSet(*gtidSet)
 	panicIfErr(err)
 
-	syncer := replication.NewBinlogSyncer(&syncerConf)
+	syncer := replication.NewBinlogSyncer(syncerConf)
 	streamer, err := syncer.StartSyncGTID(gtid)
 	panicIfErr(err)
 
@@ -89,14 +89,14 @@ func main() {
 
 		switch event.Header.EventType {
 		case replication.GTID_EVENT:
-			evt, ok := event.Event.(*replication.GTIDEventV57)
+			evt, ok := event.Event.(*replication.GTIDEvent)
 			if !ok {
 				panic("not GTIDEventV57")
 			}
 			nTxTotal += 1
-			if evt.GTID.LastCommitted > lc {
+			if evt.LastCommitted > lc {
 				printAndClear()
-				lc = evt.GTID.LastCommitted
+				lc = evt.LastCommitted
 			}
 
 			nTx += 1
