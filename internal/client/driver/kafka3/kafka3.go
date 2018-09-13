@@ -59,6 +59,7 @@ func NewKafkaRunner(subject, tp string, maxPayload int, cfg *kafka2.KafkaConfig,
 		logger:      entry,
 		waitCh:      make(chan *models.WaitResult, 1),
 		shutdownCh:  make(chan struct{}),
+		tables:      make(map[string](map[string]*config.Table)),
 	}
 }
 func (kr *KafkaRunner) ID() string {
@@ -139,6 +140,28 @@ func (kr *KafkaRunner) Run() {
 	}
 }
 
+func (kr *KafkaRunner) getOrSetTable(schemaName string, tableName string, table *config.Table) (*config.Table, error) {
+	a, ok := kr.tables[schemaName]
+	if !ok {
+		a = make(map[string]*config.Table)
+		kr.tables[schemaName] = a
+	}
+
+	if table == nil {
+		b, ok := a[tableName]
+		if ok {
+			kr.logger.Debugf("kafka: reuse table info %v.%v", schemaName, tableName)
+			return b, nil
+		} else {
+			return nil, fmt.Errorf("UDUP_BUG kafka: unknown table structure")
+		}
+	} else {
+		kr.logger.Debugf("kafka: new table info %v.%v", schemaName, tableName)
+		a[tableName] = table
+		return table, nil
+	}
+}
+
 func (kr *KafkaRunner) initiateStreaming() error {
 	var err error
 
@@ -154,7 +177,13 @@ func (kr *KafkaRunner) initiateStreaming() error {
 			kr.logger.Debugf("kafka. a sql dumpEntry")
 		} else {
 			// TODO cache table
-			err = kr.kafkaTransformSnapshotData(dumpData.Table, dumpData)
+			table, err := kr.getOrSetTable(dumpData.TableSchema, dumpData.TableName, dumpData.Table)
+			if err != nil {
+				kr.onError(TaskStateDead, fmt.Errorf("UDUP_BUG kafka: unknown table structure"))
+				return
+			}
+
+			err = kr.kafkaTransformSnapshotData(table, dumpData)
 			if err != nil {
 				kr.onError(TaskStateDead, err)
 				return
@@ -332,6 +361,13 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry)
 	for i, _ := range dmlEvent.Events {
 		dataEvent := &dmlEvent.Events[i]
 
+		// this must be executed before skipping DDL
+		table, err := kr.getOrSetTable(dataEvent.DatabaseName, dataEvent.TableName, dataEvent.Table)
+		if err != nil {
+			return err
+		}
+
+		// skipping DDL
 		if dataEvent.DML == binlog.NotDML {
 			continue
 		}
@@ -355,11 +391,6 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry)
 			after = kafka2.NewRow()
 		}
 
-		table := dataEvent.Table
-		//dataEvent.TableName
-		//if table == nil {
-		//	kr.tables[dataEvent.DatabaseName]
-		//}
 		tableIdent := fmt.Sprintf("%v.%v.%v", kr.kafkaMgr.Cfg.Topic, table.TableSchema, table.TableName)
 
 		keyPayload := kafka2.NewRow()
