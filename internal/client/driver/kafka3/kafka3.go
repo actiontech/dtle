@@ -19,7 +19,6 @@ import (
 	gonats "github.com/nats-io/go-nats"
 	"github.com/satori/go.uuid"
 
-	"udup/internal/client/driver/kafka2"
 	"udup/internal/client/driver/mysql/binlog"
 	"udup/internal/config"
 	log "udup/internal/logger"
@@ -43,13 +42,13 @@ type KafkaRunner struct {
 	shutdown   bool
 	shutdownCh chan struct{}
 
-	kafkaConfig *kafka2.KafkaConfig
-	kafkaMgr    *kafka2.KafkaManager
+	kafkaConfig *KafkaConfig
+	kafkaMgr    *KafkaManager
 
 	tables map[string](map[string]*config.Table)
 }
 
-func NewKafkaRunner(subject, tp string, maxPayload int, cfg *kafka2.KafkaConfig, logger *log.Logger) *KafkaRunner {
+func NewKafkaRunner(subject, tp string, maxPayload int, cfg *KafkaConfig, logger *log.Logger) *KafkaRunner {
 	entry := log.NewEntry(logger).WithFields(log.Fields{
 		"job": subject,
 	})
@@ -119,7 +118,7 @@ func (kr *KafkaRunner) Run() {
 	kr.logger.Debugf("**** kafka. broker: %v", kr.kafkaConfig.Broker)
 
 	var err error
-	kr.kafkaMgr, err = kafka2.NewKafkaManager(kr.kafkaConfig)
+	kr.kafkaMgr, err = NewKafkaManager(kr.kafkaConfig)
 	if err != nil {
 		kr.logger.Errorf("failed to initialize kafka: %v", err.Error())
 		kr.onError(TaskStateDead, err)
@@ -269,9 +268,9 @@ func (kr *KafkaRunner) kafkaTransformSnapshotData(table *config.Table, value *my
 	tableIdent := fmt.Sprintf("%v.%v.%v", kr.kafkaMgr.Cfg.Topic, table.TableSchema, table.TableName)
 	kr.logger.Debugf("**** value: %v", value.ValuesX)
 	for _, rowValues := range value.ValuesX {
-		keyPayload := kafka2.NewRow()
+		keyPayload := NewRow()
 
-		valuePayload := kafka2.NewValuePayload()
+		valuePayload := NewValuePayload()
 		valuePayload.Source.Version = "0.0.1"
 		valuePayload.Source.Name = kr.kafkaMgr.Cfg.Topic
 		valuePayload.Source.ServerID = 0 // TODO
@@ -284,15 +283,15 @@ func (kr *KafkaRunner) kafkaTransformSnapshotData(table *config.Table, value *my
 		valuePayload.Source.Thread = nil // TODO
 		valuePayload.Source.Db = table.TableSchema
 		valuePayload.Source.Table = table.TableName
-		valuePayload.Op = kafka2.RECORD_OP_INSERT
+		valuePayload.Op = RECORD_OP_INSERT
 		valuePayload.TsMs = utils.CurrentTimeMillis()
 
 		valuePayload.Before = nil
-		valuePayload.After = kafka2.NewRow()
+		valuePayload.After = NewRow()
 
 		columnList := table.OriginalTableColumns.ColumnList()
 		valueColDef, keyColDef := kafkaColumnListToColDefs(table.OriginalTableColumns)
-		keySchema := kafka2.NewKeySchema(tableIdent, keyColDef)
+		keySchema := NewKeySchema(tableIdent, keyColDef)
 
 		for i, _ := range columnList {
 			var value interface{}
@@ -314,7 +313,7 @@ func (kr *KafkaRunner) kafkaTransformSnapshotData(table *config.Table, value *my
 						return err
 					}
 				case mysql.DecimalColumnType:
-					value = kafka2.DecimalValueFromStringMysql(valueStr)
+					value = DecimalValueFromStringMysql(valueStr)
 				default:
 					value = valueStr
 				}
@@ -328,13 +327,13 @@ func (kr *KafkaRunner) kafkaTransformSnapshotData(table *config.Table, value *my
 			valuePayload.After.AddField(columnList[i].Name, value)
 		}
 
-		valueSchema := kafka2.NewEnvelopeSchema(tableIdent, valueColDef)
+		valueSchema := NewEnvelopeSchema(tableIdent, valueColDef)
 
-		k := kafka2.DbzOutput{
+		k := DbzOutput{
 			Schema:  keySchema,
 			Payload: keyPayload,
 		}
-		v := kafka2.DbzOutput{
+		v := DbzOutput{
 			Schema:  valueSchema,
 			Payload: valuePayload,
 		}
@@ -373,27 +372,27 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry)
 		}
 
 		var op string
-		var before *kafka2.Row
-		var after *kafka2.Row
+		var before *Row
+		var after *Row
 
 		switch dataEvent.DML {
 		case binlog.InsertDML:
-			op = kafka2.RECORD_OP_INSERT
+			op = RECORD_OP_INSERT
 			before = nil
-			after = kafka2.NewRow()
+			after = NewRow()
 		case binlog.DeleteDML:
-			op = kafka2.RECORD_OP_DELETE
-			before = kafka2.NewRow()
+			op = RECORD_OP_DELETE
+			before = NewRow()
 			after = nil
 		case binlog.UpdateDML:
-			op = kafka2.RECORD_OP_UPDATE
-			before = kafka2.NewRow()
-			after = kafka2.NewRow()
+			op = RECORD_OP_UPDATE
+			before = NewRow()
+			after = NewRow()
 		}
 
 		tableIdent := fmt.Sprintf("%v.%v.%v", kr.kafkaMgr.Cfg.Topic, table.TableSchema, table.TableName)
 
-		keyPayload := kafka2.NewRow()
+		keyPayload := NewRow()
 		colList := table.OriginalTableColumns.ColumnList()
 		colDefs, keyColDefs := kafkaColumnListToColDefs(table.OriginalTableColumns)
 
@@ -413,10 +412,10 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry)
 			switch colList[i].Type {
 			case mysql.DecimalColumnType:
 				if before != nil {
-					beforeValue = kafka2.DecimalValueFromStringMysql(beforeValue.(string))
+					beforeValue = DecimalValueFromStringMysql(beforeValue.(string))
 				}
 				if after != nil {
-					afterValue = kafka2.DecimalValueFromStringMysql(afterValue.(string))
+					afterValue = DecimalValueFromStringMysql(afterValue.(string))
 				}
 			default:
 				// do nothing
@@ -440,7 +439,7 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry)
 			}
 		}
 
-		valuePayload := kafka2.NewValuePayload()
+		valuePayload := NewValuePayload()
 		valuePayload.Before = before
 		valuePayload.After = after
 
@@ -460,14 +459,14 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry)
 		valuePayload.Op = op
 		valuePayload.TsMs = utils.CurrentTimeMillis()
 
-		valueSchema := kafka2.NewEnvelopeSchema(tableIdent, colDefs)
+		valueSchema := NewEnvelopeSchema(tableIdent, colDefs)
 
-		keySchema := kafka2.NewKeySchema(tableIdent, keyColDefs)
-		k := kafka2.DbzOutput{
+		keySchema := NewKeySchema(tableIdent, keyColDefs)
+		k := DbzOutput{
 			Schema:  keySchema,
 			Payload: keyPayload,
 		}
-		v := kafka2.DbzOutput{
+		v := DbzOutput{
 			Schema:  valueSchema,
 			Payload: valuePayload,
 		}
@@ -488,7 +487,7 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry)
 
 		// tombstone event for DELETE
 		if dataEvent.DML == binlog.DeleteDML {
-			v2 := kafka2.DbzOutput{
+			v2 := DbzOutput{
 				Schema:  nil,
 				Payload: nil,
 			}
@@ -507,10 +506,10 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry)
 	return nil
 }
 
-func kafkaColumnListToColDefs(colList *mysql.ColumnList) (valColDefs kafka2.ColDefs, keyColDefs kafka2.ColDefs) {
+func kafkaColumnListToColDefs(colList *mysql.ColumnList) (valColDefs ColDefs, keyColDefs ColDefs) {
 	cols := colList.ColumnList()
 	for i, _ := range cols {
-		var field *kafka2.Schema
+		var field *Schema
 
 		optional := cols[i].Nullable
 		fieldName := cols[i].Name
@@ -518,7 +517,7 @@ func kafkaColumnListToColDefs(colList *mysql.ColumnList) (valColDefs kafka2.ColD
 		switch cols[i].Type {
 		case mysql.UnknownColumnType:
 			// TODO warning
-			field = kafka2.NewSimpleSchemaField("", optional, fieldName)
+			field = NewSimpleSchemaField("", optional, fieldName)
 
 		case mysql.BitColumnType:
 			fallthrough
@@ -527,7 +526,7 @@ func kafkaColumnListToColDefs(colList *mysql.ColumnList) (valColDefs kafka2.ColD
 		case mysql.BinaryColumnType:
 			fallthrough
 		case mysql.VarbinaryColumnType:
-			field = kafka2.NewSimpleSchemaField(kafka2.SCHEMA_TYPE_BYTES, optional, fieldName)
+			field = NewSimpleSchemaField(SCHEMA_TYPE_BYTES, optional, fieldName)
 
 		case mysql.TextColumnType:
 			fallthrough
@@ -536,50 +535,50 @@ func kafkaColumnListToColDefs(colList *mysql.ColumnList) (valColDefs kafka2.ColD
 		case mysql.VarcharColumnType:
 			fallthrough
 		case mysql.EnumColumnType:
-			field = kafka2.NewSimpleSchemaField(kafka2.SCHEMA_TYPE_STRING, optional, fieldName)
+			field = NewSimpleSchemaField(SCHEMA_TYPE_STRING, optional, fieldName)
 
 		case mysql.TinyintColumnType:
-			field = kafka2.NewSimpleSchemaField(kafka2.SCHEMA_TYPE_INT16, optional, fieldName)
+			field = NewSimpleSchemaField(SCHEMA_TYPE_INT16, optional, fieldName)
 		case mysql.SmallintColumnType:
 			if cols[i].IsUnsigned {
-				field = kafka2.NewSimpleSchemaField(kafka2.SCHEMA_TYPE_INT32, optional, fieldName)
+				field = NewSimpleSchemaField(SCHEMA_TYPE_INT32, optional, fieldName)
 			} else {
-				field = kafka2.NewSimpleSchemaField(kafka2.SCHEMA_TYPE_INT16, optional, fieldName)
+				field = NewSimpleSchemaField(SCHEMA_TYPE_INT16, optional, fieldName)
 			}
 		case mysql.MediumIntColumnType: // 24 bit in mysql
-			field = kafka2.NewSimpleSchemaField(kafka2.SCHEMA_TYPE_INT32, optional, fieldName)
+			field = NewSimpleSchemaField(SCHEMA_TYPE_INT32, optional, fieldName)
 		case mysql.IntColumnType:
 			if cols[i].IsUnsigned {
-				field = kafka2.NewSimpleSchemaField(kafka2.SCHEMA_TYPE_INT64, optional, fieldName)
+				field = NewSimpleSchemaField(SCHEMA_TYPE_INT64, optional, fieldName)
 			} else {
-				field = kafka2.NewSimpleSchemaField(kafka2.SCHEMA_TYPE_INT32, optional, fieldName)
+				field = NewSimpleSchemaField(SCHEMA_TYPE_INT32, optional, fieldName)
 			}
 		case mysql.BigIntColumnType:
-			field = kafka2.NewSimpleSchemaField(kafka2.SCHEMA_TYPE_INT64, optional, fieldName)
+			field = NewSimpleSchemaField(SCHEMA_TYPE_INT64, optional, fieldName)
 
 		case mysql.FloatColumnType:
 			fallthrough
 		case mysql.DoubleColumnType:
-			field = kafka2.NewSimpleSchemaField(kafka2.SCHEMA_TYPE_FLOAT64, optional, fieldName)
+			field = NewSimpleSchemaField(SCHEMA_TYPE_FLOAT64, optional, fieldName)
 
 		case mysql.DecimalColumnType:
-			field = kafka2.NewDecimalField(cols[i].Precision, cols[i].Scale, optional, fieldName)
+			field = NewDecimalField(cols[i].Precision, cols[i].Scale, optional, fieldName)
 
 		case mysql.TimestampColumnType:
-			field = kafka2.NewSimpleSchemaField(kafka2.SCHEMA_TYPE_INT64, optional, fieldName)
+			field = NewSimpleSchemaField(SCHEMA_TYPE_INT64, optional, fieldName)
 		case mysql.DateColumnType:
-			field = kafka2.NewSimpleSchemaField(kafka2.SCHEMA_TYPE_INT32, optional, fieldName)
+			field = NewSimpleSchemaField(SCHEMA_TYPE_INT32, optional, fieldName)
 		case mysql.YearColumnType:
-			field = kafka2.NewSimpleSchemaField(kafka2.SCHEMA_TYPE_INT32, optional, fieldName)
+			field = NewSimpleSchemaField(SCHEMA_TYPE_INT32, optional, fieldName)
 		case mysql.DateTimeColumnType:
-			field = kafka2.NewDateTimeField(optional, fieldName)
+			field = NewDateTimeField(optional, fieldName)
 		case mysql.TimeColumnType:
-			field = kafka2.NewTimeField(optional, fieldName)
+			field = NewTimeField(optional, fieldName)
 		case mysql.JSONColumnType:
-			field = kafka2.NewJsonField(optional, fieldName)
+			field = NewJsonField(optional, fieldName)
 		default:
 			// TODO report a BUG
-			field = kafka2.NewSimpleSchemaField("", optional, fieldName)
+			field = NewSimpleSchemaField("", optional, fieldName)
 		}
 
 		addToKey := cols[i].IsPk()

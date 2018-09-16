@@ -9,7 +9,6 @@ package driver
 import (
 	"fmt"
 	"github.com/mitchellh/mapstructure"
-	"udup/internal/client/driver/kafka2"
 	"udup/internal/client/driver/kafka3"
 	"udup/internal/models"
 )
@@ -19,7 +18,7 @@ type KafkaDriver struct {
 }
 
 func (kd *KafkaDriver) Start(ctx *ExecContext, task *models.Task) (DriverHandle, error) {
-	var driverConfig kafka2.KafkaConfig
+	var driverConfig kafka3.KafkaConfig
 	if err := mapstructure.WeakDecode(task.Config, &driverConfig); err != nil {
 		return nil, err
 	}
