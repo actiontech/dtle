@@ -725,7 +725,7 @@ func (a *Applier) initiateStreaming() error {
 							case binlog.NotDML:
 								// do nothing
 							default:
-								tableItem := a.getTableItem(binlogEntry.Events[0].DatabaseName, binlogEntry.Events[0].TableName)
+								tableItem := a.getTableItem(dmlEvent.DatabaseName, dmlEvent.TableName)
 								if tableItem.columns == nil {
 									a.logger.Debugf("get tableColumns")
 									tableItem.columns, err = base.GetTableColumns(a.db, dmlEvent.DatabaseName, dmlEvent.TableName)
