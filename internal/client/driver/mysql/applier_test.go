@@ -280,7 +280,7 @@ func TestApplier_ApplyBinlogEvent(t *testing.T) {
 func TestApplier_ApplyEventQueries(t *testing.T) {
 	type args struct {
 		db    *gosql.DB
-		entry *dumpEntry
+		entry *DumpEntry
 	}
 	tests := []struct {
 		name    string
@@ -403,7 +403,7 @@ func TestApplier_onApplyTxStructWithSetGtid(t *testing.T) {
 		applyRowCount           int
 		rowCopyComplete         chan bool
 		rowCopyCompleteFlag     int64
-		copyRowsQueue           chan *dumpEntry
+		copyRowsQueue           chan *DumpEntry
 		applyDataEntryQueue     chan *binlog.BinlogEntry
 		applyBinlogTxQueue      chan *binlog.BinlogTx
 		applyBinlogGroupTxQueue chan []*binlog.BinlogTx
@@ -471,7 +471,7 @@ func TestApplier_validateGrants(t *testing.T) {
 		applyRowCount           int
 		rowCopyComplete         chan bool
 		rowCopyCompleteFlag     int64
-		copyRowsQueue           chan *dumpEntry
+		copyRowsQueue           chan *DumpEntry
 		applyDataEntryQueue     chan *binlog.BinlogEntry
 		applyBinlogTxQueue      chan *binlog.BinlogTx
 		applyBinlogGroupTxQueue chan []*binlog.BinlogTx
@@ -534,7 +534,7 @@ func TestApplier_createTableGtidExecuted(t *testing.T) {
 		applyRowCount           int
 		rowCopyComplete         chan bool
 		rowCopyCompleteFlag     int64
-		copyRowsQueue           chan *dumpEntry
+		copyRowsQueue           chan *DumpEntry
 		applyDataEntryQueue     chan *binlog.BinlogEntry
 		applyBinlogTxQueue      chan *binlog.BinlogTx
 		applyBinlogGroupTxQueue chan []*binlog.BinlogTx
@@ -597,7 +597,7 @@ func TestApplier_onDone(t *testing.T) {
 		applyRowCount           int
 		rowCopyComplete         chan bool
 		rowCopyCompleteFlag     int64
-		copyRowsQueue           chan *dumpEntry
+		copyRowsQueue           chan *DumpEntry
 		applyDataEntryQueue     chan *binlog.BinlogEntry
 		applyBinlogTxQueue      chan *binlog.BinlogTx
 		applyBinlogGroupTxQueue chan []*binlog.BinlogTx

@@ -312,8 +312,16 @@ type Table struct {
 }
 
 type TableContext struct {
-	Table    *Table
-	WhereCtx *WhereContext
+	Table          *Table
+	WhereCtx       *WhereContext
+	DefChangedSent bool
+}
+func NewTableContext(table *Table, whereCtx *WhereContext) *TableContext {
+	return &TableContext{
+		Table:          table,
+		WhereCtx:       whereCtx,
+		DefChangedSent: false,
+	}
 }
 
 func NewTable(schemaName string, tableName string) *Table {

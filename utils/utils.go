@@ -6,6 +6,8 @@
 
 package utils
 
+import "time"
+
 // Return a substring of limited lenth.
 func StrLim(s string, lim int) string {
 	if lim < len(s) {
@@ -22,4 +24,8 @@ func StringElse(s1 string, s2 string) string {
 	} else {
 		return s2
 	}
+}
+
+func CurrentTimeMillis() int64 {
+	return time.Now().UnixNano() / 1000000
 }

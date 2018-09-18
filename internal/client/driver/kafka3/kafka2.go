@@ -4,7 +4,7 @@
  * License: MPL version 2: https://www.mozilla.org/en-US/MPL/2.0 .
  */
 
-package kafka2
+package kafka3
 
 import (
 	"bytes"
@@ -47,6 +47,8 @@ type KafkaConfig struct {
 	Broker    string
 	Topic     string
 	Converter string
+	NatsAddr  string
+	Gtid      string // TODO remove?
 }
 
 type KafkaManager struct {

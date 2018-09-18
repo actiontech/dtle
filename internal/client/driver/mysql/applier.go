@@ -215,7 +215,7 @@ type Applier struct {
 	rowCopyCompleteFlag int64
 	// copyRowsQueue should not be buffered; if buffered some non-damaging but
 	//  excessive work happens at the end of the iteration as new copy-jobs arrive befroe realizing the copy is complete
-	copyRowsQueue           chan *dumpEntry
+	copyRowsQueue           chan *DumpEntry
 	applyDataEntryQueue     chan *binlog.BinlogEntry
 	applyBinlogTxQueue      chan *binlog.BinlogTx
 	applyBinlogGroupTxQueue chan []*binlog.BinlogTx
@@ -256,7 +256,7 @@ func NewApplier(subject, tp string, cfg *config.MySQLDriverConfig, logger *log.L
 		currentCoordinates:      &models.CurrentCoordinates{},
 		tableItems:              make(mapSchemaTableItems),
 		rowCopyComplete:         make(chan bool, 1),
-		copyRowsQueue:           make(chan *dumpEntry, 24),
+		copyRowsQueue:           make(chan *DumpEntry, 24),
 		applyDataEntryQueue:     make(chan *binlog.BinlogEntry, cfg.ReplChanBufferSize*2),
 		applyBinlogMtsTxQueue:   make(chan *binlog.BinlogEntry, cfg.ReplChanBufferSize*2),
 		applyBinlogTxQueue:      make(chan *binlog.BinlogTx, cfg.ReplChanBufferSize*2),
@@ -525,7 +525,7 @@ func (a *Applier) initiateStreaming() error {
 		a.logger.Debugf("mysql.applier: nats subscribe")
 		_, err := a.natsConn.Subscribe(fmt.Sprintf("%s_full", a.subject), func(m *gonats.Msg) {
 			a.logger.Debugf("mysql.applier: recv a msg")
-			dumpData := &dumpEntry{}
+			dumpData := &DumpEntry{}
 			if err := Decode(m.Data, dumpData); err != nil {
 				a.onError(TaskStateDead, err)
 			}
@@ -1173,7 +1173,7 @@ func (a *Applier) ApplyBinlogEvent(workerIdx int, binlogEntry *binlog.BinlogEntr
 	return nil
 }
 
-func (a *Applier) ApplyEventQueries(db *gosql.DB, entry *dumpEntry) error {
+func (a *Applier) ApplyEventQueries(db *gosql.DB, entry *DumpEntry) error {
 	queries := []string{}
 	queries = append(queries, entry.SystemVariablesStatement, entry.SqlMode, entry.DbSQL)
 	queries = append(queries, entry.TbSQL...)

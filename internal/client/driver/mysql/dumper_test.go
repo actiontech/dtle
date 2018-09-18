@@ -63,7 +63,7 @@ func Test_dumper_getRowsCount(t *testing.T) {
 func Test_dumpEntry_incrementCounter(t *testing.T) {
 	tests := []struct {
 		name string
-		e    *dumpEntry
+		e    *DumpEntry
 	}{
 		// TODO: Add test cases.
 	}
@@ -78,7 +78,7 @@ func Test_dumper_getDumpEntries(t *testing.T) {
 	tests := []struct {
 		name    string
 		d       *dumper
-		want    []*dumpEntry
+		want    []*DumpEntry
 		wantErr bool
 	}{
 		// TODO: Add test cases.
@@ -99,7 +99,7 @@ func Test_dumper_getDumpEntries(t *testing.T) {
 
 func Test_dumper_getChunkData(t *testing.T) {
 	type args struct {
-		e *dumpEntry
+		e *DumpEntry
 	}
 	tests := []struct {
 		name    string
@@ -113,27 +113,6 @@ func Test_dumper_getChunkData(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if err := tt.d.getChunkData(tt.args.e); (err != nil) != tt.wantErr {
 				t.Errorf("dumper.getChunkData() error = %v, wantErr %v", err, tt.wantErr)
-			}
-		})
-	}
-}
-
-func Test_dumpEntry_escape(t *testing.T) {
-	type args struct {
-		colValue string
-	}
-	tests := []struct {
-		name string
-		e    *dumpEntry
-		args args
-		want string
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := tt.e.escape(tt.args.colValue); got != tt.want {
-				t.Errorf("dumpEntry.escape() = %v, want %v", got, tt.want)
 			}
 		})
 	}
