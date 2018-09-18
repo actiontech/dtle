@@ -65,6 +65,7 @@ func realMain() int {
 		"server": func() (cli.Command, error) {
 			return &agent.Command{
 				Version:    Version,
+				Revision:   GitCommit,
 				Ui:         meta.Ui,
 				ShutdownCh: make(chan struct{}),
 			}, nil

@@ -60,7 +60,8 @@ Briefly describe the problem you are having in a few paragraphs.
 **Additional details (log, config, job config etc):**
 <!-- 
 1. default config path: /etc/dtle/dtle.conf
-3. job config:   curl -XGET "http://127.0.0.1:8190/v1/job/<job_uuid>"
-2. default log path: /var/log/dtle.log
-3. mask sensitive infomation (e.g. IP, username and password)"
+2. job config:   curl -XGET "http://127.0.0.1:8190/v1/job/<job_uuid>"
+3. default log path: /var/log/dtle.log
+4. mask sensitive infomation (e.g. IP, username and password)"
+5. try to be complete and compress if needed
 -->

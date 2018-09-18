@@ -102,7 +102,8 @@ type Config struct {
 	ClientConfig *uconf.ClientConfig `mapstructure:"-" json:"-"`
 
 	// Version information is set at compilation time
-	Version string
+	Version  string
+	Revision string
 
 	// List of config files that have been loaded (in order)
 	Files []string `mapstructure:"-"`

@@ -36,6 +36,7 @@ const gracefulTimeout = 5 * time.Second
 // exit.
 type Command struct {
 	Version    string
+	Revision   string
 	Ui         cli.Ui
 	ShutdownCh <-chan struct{}
 
@@ -134,6 +135,7 @@ func (c *Command) readConfig() *Config {
 
 	// Set the version info
 	config.Version = c.Version
+	config.Revision = c.Revision
 
 	// Normalize binds, ports, addresses, and advertise
 	if err := config.normalizeAddrs(); err != nil {
@@ -293,6 +295,7 @@ func (c *Command) Run(args []string) int {
 	// Compile agent information for output later
 	info := make(map[string]string)
 	info["version"] = config.Version
+	info["revision"] = config.Revision
 	info["agent"] = strconv.FormatBool(config.Client.Enabled)
 	info["log level"] = config.LogLevel
 	info["manager"] = strconv.FormatBool(config.Server.Enabled)
