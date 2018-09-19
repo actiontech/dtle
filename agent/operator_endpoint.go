@@ -13,7 +13,7 @@ import (
 
 	"github.com/hashicorp/raft"
 
-	"udup/internal/models"
+	"github.com/actiontech/udup/internal/models"
 )
 
 func (s *HTTPServer) OperatorRequest(resp http.ResponseWriter, req *http.Request) (interface{}, error) {

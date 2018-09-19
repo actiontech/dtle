@@ -9,7 +9,7 @@ package scheduler
 import (
 	"reflect"
 	"testing"
-	ulog "udup/internal/logger"
+	ulog "github.com/actiontech/udup/internal/logger"
 )
 
 func TestNewScheduler(t *testing.T) {

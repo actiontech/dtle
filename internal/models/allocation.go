@@ -12,7 +12,7 @@ import (
 	"strconv"
 	"time"
 
-	"udup/internal"
+	"github.com/actiontech/udup/internal"
 )
 
 const (

@@ -11,9 +11,9 @@ import (
 	"sync"
 	"testing"
 	"time"
-	log "udup/internal/logger"
-	"udup/internal/models"
-	"udup/internal/server/scheduler"
+	log "github.com/actiontech/udup/internal/logger"
+	"github.com/actiontech/udup/internal/models"
+	"github.com/actiontech/udup/internal/server/scheduler"
 )
 
 func TestNewWorker(t *testing.T) {

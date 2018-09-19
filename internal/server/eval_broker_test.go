@@ -11,7 +11,7 @@ import (
 	"sync"
 	"testing"
 	"time"
-	"udup/internal/models"
+	"github.com/actiontech/udup/internal/models"
 )
 
 func TestNewEvalBroker(t *testing.T) {

@@ -10,10 +10,10 @@ import (
 	"reflect"
 	"sync"
 	"testing"
-	"udup/internal/client/driver"
-	"udup/internal/config"
-	log "udup/internal/logger"
-	"udup/internal/models"
+	"github.com/actiontech/udup/internal/client/driver"
+	"github.com/actiontech/udup/internal/config"
+	log "github.com/actiontech/udup/internal/logger"
+	"github.com/actiontech/udup/internal/models"
 )
 
 func TestNewWorker(t *testing.T) {

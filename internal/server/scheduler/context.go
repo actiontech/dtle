@@ -12,8 +12,8 @@ import (
 	memdb "github.com/hashicorp/go-memdb"
 	"github.com/hashicorp/go-version"
 
-	log "udup/internal/logger"
-	"udup/internal/models"
+	log "github.com/actiontech/udup/internal/logger"
+	"github.com/actiontech/udup/internal/models"
 )
 
 // Context is used to track contextual information used for placement

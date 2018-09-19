@@ -14,8 +14,8 @@ import (
 
 	"github.com/mitchellh/cli"
 
-	"udup/api"
-	"udup/internal/models"
+	"github.com/actiontech/udup/api"
+	"github.com/actiontech/udup/internal/models"
 )
 
 const (

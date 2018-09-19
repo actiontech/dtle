@@ -13,7 +13,7 @@ import (
 	"github.com/hashicorp/raft"
 	"github.com/hashicorp/serf/serf"
 
-	"udup/internal/models"
+	"github.com/actiontech/udup/internal/models"
 )
 
 // Operator endpoint is used to perform low-level operator tasks for Udup.

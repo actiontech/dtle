@@ -11,7 +11,7 @@ import (
 
 	"github.com/hashicorp/go-memdb"
 
-	"udup/internal/models"
+	"github.com/actiontech/udup/internal/models"
 )
 
 // stateStoreSchema is used to return the schema for the state store

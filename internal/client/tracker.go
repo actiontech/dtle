@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"udup/internal/models"
+	"github.com/actiontech/udup/internal/models"
 )
 
 const (

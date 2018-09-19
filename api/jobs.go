@@ -12,8 +12,8 @@ import (
 	"sort"
 	"strconv"
 
-	"udup/internal"
-	"udup/internal/models"
+	"github.com/actiontech/udup/internal"
+	"github.com/actiontech/udup/internal/models"
 )
 
 const (

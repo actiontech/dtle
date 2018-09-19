@@ -11,7 +11,7 @@ import (
 	"fmt"
 	"strings"
 
-	"udup/api"
+	"github.com/actiontech/udup/api"
 )
 
 type OperatorRaftRemoveCommand struct {

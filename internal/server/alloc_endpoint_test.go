@@ -8,7 +8,7 @@ package server
 
 import (
 	"testing"
-	"udup/internal/models"
+	"github.com/actiontech/udup/internal/models"
 )
 
 func TestAlloc_List(t *testing.T) {

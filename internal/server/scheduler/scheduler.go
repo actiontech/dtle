@@ -11,8 +11,8 @@ import (
 
 	"github.com/hashicorp/go-memdb"
 
-	ulog "udup/internal/logger"
-	"udup/internal/models"
+	ulog "github.com/actiontech/udup/internal/logger"
+	"github.com/actiontech/udup/internal/models"
 )
 
 const (

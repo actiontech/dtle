@@ -8,7 +8,7 @@ package server
 
 import (
 	"testing"
-	"udup/internal/models"
+	"github.com/actiontech/udup/internal/models"
 )
 
 func TestPlan_Submit(t *testing.T) {

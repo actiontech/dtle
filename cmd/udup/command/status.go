@@ -11,7 +11,7 @@ import (
 	"sort"
 	"strings"
 
-	"udup/api"
+	"github.com/actiontech/udup/api"
 )
 
 const (

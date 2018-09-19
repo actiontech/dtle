@@ -12,8 +12,8 @@ import (
 	"reflect"
 	"sync"
 	"testing"
-	log "udup/internal/logger"
-	"udup/internal/server/store"
+	log "github.com/actiontech/udup/internal/logger"
+	"github.com/actiontech/udup/internal/server/store"
 
 	"github.com/hashicorp/raft"
 	"github.com/ugorji/go/codec"

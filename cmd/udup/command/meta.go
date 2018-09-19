@@ -16,7 +16,7 @@ import (
 	"github.com/mitchellh/cli"
 	"github.com/mitchellh/colorstring"
 
-	"udup/api"
+	"github.com/actiontech/udup/api"
 )
 
 const (

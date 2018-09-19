@@ -10,7 +10,7 @@ import (
 	"flag"
 	"reflect"
 	"testing"
-	"udup/api"
+	"github.com/actiontech/udup/api"
 
 	"github.com/mitchellh/cli"
 	"github.com/mitchellh/colorstring"

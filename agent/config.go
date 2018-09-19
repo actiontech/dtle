@@ -17,7 +17,7 @@ import (
 	"strings"
 	"time"
 
-	uconf "udup/internal/config"
+	uconf "github.com/actiontech/udup/internal/config"
 )
 
 // This is the default addr to all interfaces.

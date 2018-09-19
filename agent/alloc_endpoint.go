@@ -11,7 +11,7 @@ import (
 	"net/http"
 	"strings"
 
-	umodel "udup/internal/models"
+	umodel "github.com/actiontech/udup/internal/models"
 )
 
 var (

@@ -17,11 +17,11 @@ import (
 
 	"github.com/hashicorp/memberlist"
 
-	ucli "udup/internal/client"
-	uconf "udup/internal/config"
-	ulog "udup/internal/logger"
-	umodel "udup/internal/models"
-	usrv "udup/internal/server"
+	ucli "github.com/actiontech/udup/internal/client"
+	uconf "github.com/actiontech/udup/internal/config"
+	ulog "github.com/actiontech/udup/internal/logger"
+	umodel "github.com/actiontech/udup/internal/models"
+	usrv "github.com/actiontech/udup/internal/server"
 )
 
 // Agent is a long running daemon that is used to run both

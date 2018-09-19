@@ -9,7 +9,7 @@ package agent
 import (
 	"net/http"
 
-	"udup/internal/models"
+	"github.com/actiontech/udup/internal/models"
 )
 
 func (s *HTTPServer) StatusLeaderRequest(resp http.ResponseWriter, req *http.Request) (interface{}, error) {

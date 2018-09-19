@@ -11,7 +11,7 @@ import (
 	"reflect"
 	"testing"
 	"time"
-	uconf "udup/internal/config"
+	uconf "github.com/actiontech/udup/internal/config"
 )
 
 func TestDefaultConfig(t *testing.T) {

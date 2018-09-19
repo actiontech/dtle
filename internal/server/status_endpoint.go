@@ -7,7 +7,7 @@
 package server
 
 import (
-	"udup/internal/models"
+	"github.com/actiontech/udup/internal/models"
 )
 
 // Status endpoint is used to check on server status

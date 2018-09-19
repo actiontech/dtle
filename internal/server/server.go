@@ -27,10 +27,10 @@ import (
 	"github.com/hashicorp/raft-boltdb"
 	"github.com/hashicorp/serf/serf"
 
-	"udup/internal"
-	uconf "udup/internal/config"
-	ulog "udup/internal/logger"
-	"udup/internal/server/store"
+	"github.com/actiontech/udup/internal"
+	uconf "github.com/actiontech/udup/internal/config"
+	ulog "github.com/actiontech/udup/internal/logger"
+	"github.com/actiontech/udup/internal/server/store"
 )
 
 const (

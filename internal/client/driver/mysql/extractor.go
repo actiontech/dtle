@@ -26,13 +26,13 @@ import (
 	gomysql "github.com/siddontang/go-mysql/mysql"
 
 	"os"
-	"udup/internal/client/driver/mysql/base"
-	"udup/internal/client/driver/mysql/binlog"
-	"udup/internal/client/driver/mysql/sql"
-	"udup/internal/config"
-	log "udup/internal/logger"
-	"udup/internal/models"
-	"udup/utils"
+	"github.com/actiontech/udup/internal/client/driver/mysql/base"
+	"github.com/actiontech/udup/internal/client/driver/mysql/binlog"
+	"github.com/actiontech/udup/internal/client/driver/mysql/sql"
+	"github.com/actiontech/udup/internal/config"
+	log "github.com/actiontech/udup/internal/logger"
+	"github.com/actiontech/udup/internal/models"
+	"github.com/actiontech/udup/utils"
 )
 
 const (

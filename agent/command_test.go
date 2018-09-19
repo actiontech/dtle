@@ -11,7 +11,7 @@ import (
 	"io"
 	"reflect"
 	"testing"
-	ulog "udup/internal/logger"
+	ulog "github.com/actiontech/udup/internal/logger"
 
 	"github.com/mitchellh/cli"
 )

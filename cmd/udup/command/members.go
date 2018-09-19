@@ -14,7 +14,7 @@ import (
 
 	"github.com/ryanuber/columnize"
 
-	"udup/api"
+	"github.com/actiontech/udup/api"
 )
 
 type ServerMembersCommand struct {

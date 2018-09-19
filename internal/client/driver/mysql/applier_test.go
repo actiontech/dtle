@@ -11,11 +11,11 @@ import (
 	"reflect"
 	"sync"
 	"testing"
-	"udup/internal/client/driver/mysql/binlog"
-	"udup/internal/client/driver/mysql/sql"
-	"udup/internal/config"
-	log "udup/internal/logger"
-	"udup/internal/models"
+	"github.com/actiontech/udup/internal/client/driver/mysql/binlog"
+	"github.com/actiontech/udup/internal/client/driver/mysql/sql"
+	"github.com/actiontech/udup/internal/config"
+	log "github.com/actiontech/udup/internal/logger"
+	"github.com/actiontech/udup/internal/models"
 
 	gonats "github.com/nats-io/go-nats"
 )

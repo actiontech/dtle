@@ -9,10 +9,10 @@ package mysql
 import (
 	"reflect"
 	"testing"
-	"udup/internal/client/driver/mysql/base"
-	"udup/internal/config"
-	log "udup/internal/logger"
-	"udup/internal/models"
+	"github.com/actiontech/udup/internal/client/driver/mysql/base"
+	"github.com/actiontech/udup/internal/config"
+	log "github.com/actiontech/udup/internal/logger"
+	"github.com/actiontech/udup/internal/models"
 )
 
 func TestGtidSetDiff(t *testing.T) {

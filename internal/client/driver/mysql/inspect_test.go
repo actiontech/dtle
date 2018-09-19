@@ -9,9 +9,9 @@ package mysql
 import (
 	"reflect"
 	"testing"
-	uconf "udup/internal/config"
-	umconf "udup/internal/config/mysql"
-	log "udup/internal/logger"
+	uconf "github.com/actiontech/udup/internal/config"
+	umconf "github.com/actiontech/udup/internal/config/mysql"
+	log "github.com/actiontech/udup/internal/logger"
 )
 
 func TestNewInspector(t *testing.T) {

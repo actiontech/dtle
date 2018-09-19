@@ -19,7 +19,7 @@ import (
 	"github.com/hashicorp/hcl/hcl/ast"
 	"github.com/mitchellh/mapstructure"
 
-	"udup/internal/config"
+	"github.com/actiontech/udup/internal/config"
 )
 
 // ParseConfigFile parses the given path as a config file.

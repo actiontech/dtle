@@ -14,9 +14,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	"udup/internal"
-	umconf "udup/internal/config/mysql"
-	"udup/internal/models"
+	"github.com/actiontech/udup/internal"
+	umconf "github.com/actiontech/udup/internal/config/mysql"
+	"github.com/actiontech/udup/internal/models"
 
 	"strings"
 

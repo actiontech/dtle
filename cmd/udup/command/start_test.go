@@ -9,7 +9,7 @@ package command
 import (
 	"reflect"
 	"testing"
-	"udup/api"
+	"github.com/actiontech/udup/api"
 )
 
 func TestStartCommand_Help(t *testing.T) {

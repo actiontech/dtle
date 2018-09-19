@@ -10,9 +10,9 @@ import (
 	"reflect"
 	"sync"
 	"testing"
-	"udup/internal/config"
-	log "udup/internal/logger"
-	"udup/internal/models"
+	"github.com/actiontech/udup/internal/config"
+	log "github.com/actiontech/udup/internal/logger"
+	"github.com/actiontech/udup/internal/models"
 )
 
 func TestNewAllocator(t *testing.T) {

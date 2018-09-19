@@ -14,11 +14,11 @@ import (
 	"sync"
 
 	"time"
-	ubase "udup/internal/client/driver/mysql/base"
-	usql "udup/internal/client/driver/mysql/sql"
-	"udup/internal/config"
-	umconf "udup/internal/config/mysql"
-	log "udup/internal/logger"
+	ubase "github.com/actiontech/udup/internal/client/driver/mysql/base"
+	usql "github.com/actiontech/udup/internal/client/driver/mysql/sql"
+	"github.com/actiontech/udup/internal/config"
+	umconf "github.com/actiontech/udup/internal/config/mysql"
+	log "github.com/actiontech/udup/internal/logger"
 )
 
 type dumper struct {

@@ -14,7 +14,7 @@ import (
 
 	"github.com/armon/go-metrics"
 
-	"udup/internal/models"
+	"github.com/actiontech/udup/internal/models"
 )
 
 var (
