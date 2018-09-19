@@ -17,9 +17,9 @@ import (
 	"github.com/hashicorp/raft"
 	"github.com/ugorji/go/codec"
 
-	log "udup/internal/logger"
-	"udup/internal/models"
-	"udup/internal/server/store"
+	log "github.com/actiontech/dtle/internal/logger"
+	"github.com/actiontech/dtle/internal/models"
+	"github.com/actiontech/dtle/internal/server/store"
 )
 
 const (

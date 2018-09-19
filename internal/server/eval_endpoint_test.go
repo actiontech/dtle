@@ -8,7 +8,7 @@ package server
 
 import (
 	"testing"
-	"udup/internal/models"
+	"github.com/actiontech/dtle/internal/models"
 )
 
 func TestEval_GetEval(t *testing.T) {

@@ -15,7 +15,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"udup/internal/config"
+	"github.com/actiontech/dtle/internal/config"
 
 	_ "github.com/go-sql-driver/mysql"
 )

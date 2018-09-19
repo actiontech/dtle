@@ -14,7 +14,7 @@ import (
 
 	consul "github.com/hashicorp/consul/api"
 
-	"udup/internal"
+	"github.com/actiontech/dtle/internal"
 )
 
 // ConsulConfig contains the configuration information necessary to

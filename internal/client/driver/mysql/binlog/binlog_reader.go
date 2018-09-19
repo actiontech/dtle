@@ -27,14 +27,14 @@ import (
 	"github.com/siddontang/go-mysql/replication"
 	"golang.org/x/net/context"
 
-	"udup/internal/client/driver/mysql/base"
-	"udup/internal/client/driver/mysql/sql"
-	"udup/internal/client/driver/mysql/util"
-	"udup/internal/config"
-	"udup/internal/config/mysql"
-	log "udup/internal/logger"
-	"udup/internal/models"
-	"udup/utils"
+	"github.com/actiontech/dtle/internal/client/driver/mysql/base"
+	"github.com/actiontech/dtle/internal/client/driver/mysql/sql"
+	"github.com/actiontech/dtle/internal/client/driver/mysql/util"
+	"github.com/actiontech/dtle/internal/config"
+	"github.com/actiontech/dtle/internal/config/mysql"
+	log "github.com/actiontech/dtle/internal/logger"
+	"github.com/actiontech/dtle/internal/models"
+	"github.com/actiontech/dtle/utils"
 )
 
 // BinlogReader is a general interface whose implementations can choose their methods of reading

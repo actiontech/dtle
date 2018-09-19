@@ -12,8 +12,8 @@ import (
 	"github.com/armon/go-metrics"
 	"github.com/hashicorp/go-memdb"
 
-	"udup/internal/models"
-	"udup/internal/server/store"
+	"github.com/actiontech/dtle/internal/models"
+	"github.com/actiontech/dtle/internal/server/store"
 )
 
 // Alloc endpoint is used for manipulating allocations

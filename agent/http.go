@@ -23,8 +23,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"strings"
-	log "udup/internal/logger"
-	umodel "udup/internal/models"
+	log "github.com/actiontech/dtle/internal/logger"
+	umodel "github.com/actiontech/dtle/internal/models"
 )
 
 const (

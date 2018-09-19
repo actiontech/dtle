@@ -10,9 +10,9 @@ import (
 	"errors"
 	"fmt"
 
-	uconf "udup/internal/config"
-	log "udup/internal/logger"
-	"udup/internal/models"
+	uconf "github.com/actiontech/dtle/internal/config"
+	log "github.com/actiontech/dtle/internal/logger"
+	"github.com/actiontech/dtle/internal/models"
 )
 
 var (

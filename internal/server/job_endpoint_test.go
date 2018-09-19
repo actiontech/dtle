@@ -8,7 +8,7 @@ package server
 
 import (
 	"testing"
-	"udup/internal/models"
+	"github.com/actiontech/dtle/internal/models"
 )
 
 func TestJob_Register(t *testing.T) {

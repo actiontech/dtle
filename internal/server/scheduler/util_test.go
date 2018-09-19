@@ -9,8 +9,8 @@ package scheduler
 import (
 	"reflect"
 	"testing"
-	log "udup/internal/logger"
-	"udup/internal/models"
+	log "github.com/actiontech/dtle/internal/logger"
+	"github.com/actiontech/dtle/internal/models"
 )
 
 func Test_materializeTasks(t *testing.T) {

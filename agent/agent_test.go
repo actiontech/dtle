@@ -12,10 +12,10 @@ import (
 	"reflect"
 	"sync"
 	"testing"
-	ucli "udup/internal/client"
-	uconf "udup/internal/config"
-	ulog "udup/internal/logger"
-	usrv "udup/internal/server"
+	ucli "github.com/actiontech/dtle/internal/client"
+	uconf "github.com/actiontech/dtle/internal/config"
+	ulog "github.com/actiontech/dtle/internal/logger"
+	usrv "github.com/actiontech/dtle/internal/server"
 )
 
 func TestNewAgent(t *testing.T) {

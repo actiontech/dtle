@@ -16,7 +16,7 @@ import (
 	"github.com/hashicorp/raft"
 	"github.com/hashicorp/serf/serf"
 
-	"udup/internal/models"
+	"github.com/actiontech/dtle/internal/models"
 )
 
 const (

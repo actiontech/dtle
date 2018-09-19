@@ -14,9 +14,9 @@ import (
 
 	memdb "github.com/hashicorp/go-memdb"
 
-	log "udup/internal/logger"
-	"udup/internal/models"
-	"udup/internal/server/store"
+	log "github.com/actiontech/dtle/internal/logger"
+	"github.com/actiontech/dtle/internal/models"
+	"github.com/actiontech/dtle/internal/server/store"
 )
 
 type Harness struct {

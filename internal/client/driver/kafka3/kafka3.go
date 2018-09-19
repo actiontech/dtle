@@ -12,18 +12,18 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
-	mysqlDriver "udup/internal/client/driver/mysql"
-	"udup/internal/config/mysql"
+	mysqlDriver "github.com/actiontech/dtle/internal/client/driver/mysql"
+	"github.com/actiontech/dtle/internal/config/mysql"
 
 	"github.com/golang/snappy"
 	gonats "github.com/nats-io/go-nats"
 	"github.com/satori/go.uuid"
 
-	"udup/internal/client/driver/mysql/binlog"
-	"udup/internal/config"
-	log "udup/internal/logger"
-	"udup/internal/models"
-	"udup/utils"
+	"github.com/actiontech/dtle/internal/client/driver/mysql/binlog"
+	"github.com/actiontech/dtle/internal/config"
+	log "github.com/actiontech/dtle/internal/logger"
+	"github.com/actiontech/dtle/internal/models"
+	"github.com/actiontech/dtle/utils"
 )
 
 const (

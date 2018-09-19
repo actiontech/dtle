@@ -15,9 +15,9 @@ import (
 
 	"github.com/hashicorp/go-multierror"
 
-	"udup/internal/config"
-	log "udup/internal/logger"
-	"udup/internal/models"
+	"github.com/actiontech/dtle/internal/config"
+	log "github.com/actiontech/dtle/internal/logger"
+	"github.com/actiontech/dtle/internal/models"
 )
 
 // AllocStateUpdater is used to update the status of an allocation

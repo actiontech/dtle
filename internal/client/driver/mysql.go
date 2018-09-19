@@ -12,11 +12,11 @@ import (
 
 	"github.com/mitchellh/mapstructure"
 
-	"udup/internal/client/driver/mysql"
-	ubase "udup/internal/client/driver/mysql/base"
-	usql "udup/internal/client/driver/mysql/sql"
-	"udup/internal/config"
-	"udup/internal/models"
+	"github.com/actiontech/dtle/internal/client/driver/mysql"
+	ubase "github.com/actiontech/dtle/internal/client/driver/mysql/base"
+	usql "github.com/actiontech/dtle/internal/client/driver/mysql/sql"
+	"github.com/actiontech/dtle/internal/config"
+	"github.com/actiontech/dtle/internal/models"
 )
 
 type MySQLDriver struct {

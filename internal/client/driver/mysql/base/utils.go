@@ -21,8 +21,8 @@ import (
 	gomysql "github.com/siddontang/go-mysql/mysql"
 	"github.com/siddontang/go/hack"
 
-	usql "udup/internal/client/driver/mysql/sql"
-	umconf "udup/internal/config/mysql"
+	usql "github.com/actiontech/dtle/internal/client/driver/mysql/sql"
+	umconf "github.com/actiontech/dtle/internal/config/mysql"
 )
 
 var (

@@ -17,7 +17,7 @@ import (
 	"github.com/hashicorp/raft"
 	"github.com/hashicorp/serf/serf"
 
-	"udup/internal/server/scheduler"
+	"github.com/actiontech/dtle/internal/server/scheduler"
 )
 
 const (

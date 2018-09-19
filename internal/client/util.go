@@ -13,7 +13,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"udup/internal/models"
+	"github.com/actiontech/dtle/internal/models"
 )
 
 type allocTuple struct {

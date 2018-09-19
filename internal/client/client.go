@@ -28,12 +28,12 @@ import (
 	stand "github.com/nats-io/nats-streaming-server/server"
 	"github.com/shirou/gopsutil/host"
 
-	"udup/internal"
-	"udup/internal/client/driver"
-	"udup/internal/config"
-	ulog "udup/internal/logger"
-	"udup/internal/models"
-	"udup/internal/server"
+	"github.com/actiontech/dtle/internal"
+	"github.com/actiontech/dtle/internal/client/driver"
+	"github.com/actiontech/dtle/internal/config"
+	ulog "github.com/actiontech/dtle/internal/logger"
+	"github.com/actiontech/dtle/internal/models"
+	"github.com/actiontech/dtle/internal/server"
 )
 
 const (

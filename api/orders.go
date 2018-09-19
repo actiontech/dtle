@@ -9,8 +9,8 @@ package api
 import (
 	"sort"
 
-	"udup/internal"
-	"udup/internal/models"
+	"github.com/actiontech/dtle/internal"
+	"github.com/actiontech/dtle/internal/models"
 )
 
 type Orders struct {

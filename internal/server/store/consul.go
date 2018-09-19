@@ -13,7 +13,7 @@ import (
 	"github.com/docker/libkv/store"
 	"github.com/docker/libkv/store/consul"
 
-	ulog "udup/internal/logger"
+	ulog "github.com/actiontech/dtle/internal/logger"
 )
 
 const (

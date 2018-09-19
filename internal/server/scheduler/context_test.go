@@ -10,8 +10,8 @@ import (
 	"reflect"
 	"regexp"
 	"testing"
-	log "udup/internal/logger"
-	"udup/internal/models"
+	log "github.com/actiontech/dtle/internal/logger"
+	"github.com/actiontech/dtle/internal/models"
 
 	version "github.com/hashicorp/go-version"
 )

@@ -11,7 +11,7 @@ import (
 
 	"github.com/armon/go-metrics"
 
-	"udup/internal/models"
+	"github.com/actiontech/dtle/internal/models"
 )
 
 // Plan endpoint is used for plan interactions

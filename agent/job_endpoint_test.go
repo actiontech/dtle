@@ -12,8 +12,8 @@ import (
 	"net/http"
 	"reflect"
 	"testing"
-	"udup/api"
-	"udup/internal/models"
+	"github.com/actiontech/dtle/api"
+	"github.com/actiontech/dtle/internal/models"
 )
 
 func TestHTTPServer_JobsRequest(t *testing.T) {

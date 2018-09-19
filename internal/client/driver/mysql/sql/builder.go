@@ -12,7 +12,7 @@ import (
 	"strconv"
 	"strings"
 
-	umconf "udup/internal/config/mysql"
+	umconf "github.com/actiontech/dtle/internal/config/mysql"
 )
 
 type ValueComparisonSign string
