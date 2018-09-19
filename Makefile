@@ -70,7 +70,7 @@ mtswatcher: helper/mtswatcher/mtswatcher.go
 	go build -o dist/mtswatcher ./helper/mtswatcher/mtswatcher.go
 
 docker_rpm:
-	$(DOCKER) run -v $(shell pwd)/:/universe/src/udup --rm $(DOCKER_IMAGE) -c "cd /universe/src/udup; GOPATH=/universe make prepare package"
+	$(DOCKER) run -v $(shell pwd)/:/universe/src/github.com/actiontech/dtle --rm $(DOCKER_IMAGE) -c "cd /universe/src/github.com/actiontech/dtle; GOPATH=/universe make prepare package"
 
 upload:
 	curl -T $(shell pwd)/dist/*.rpm -u admin:ftpadmin ftp://release-ftpd/actiontech-${PROJECT_NAME}/qa/${VERSION}/${PROJECT_NAME}-${VERSION}-qa.x86_64.rpm
