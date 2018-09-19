@@ -13,8 +13,8 @@ import (
 	memdb "github.com/hashicorp/go-memdb"
 	"github.com/hashicorp/go-multierror"
 
-	log "github.com/actiontech/udup/internal/logger"
-	"github.com/actiontech/udup/internal/models"
+	log "github.com/actiontech/dtle/internal/logger"
+	"github.com/actiontech/dtle/internal/models"
 )
 
 const (

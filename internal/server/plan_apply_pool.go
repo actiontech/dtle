@@ -7,8 +7,8 @@
 package server
 
 import (
-	"github.com/actiontech/udup/internal/models"
-	"github.com/actiontech/udup/internal/server/store"
+	"github.com/actiontech/dtle/internal/models"
+	"github.com/actiontech/dtle/internal/server/store"
 )
 
 const (

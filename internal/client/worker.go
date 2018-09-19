@@ -19,10 +19,10 @@ import (
 
 	"github.com/armon/go-metrics"
 
-	"github.com/actiontech/udup/internal/client/driver"
-	"github.com/actiontech/udup/internal/config"
-	log "github.com/actiontech/udup/internal/logger"
-	"github.com/actiontech/udup/internal/models"
+	"github.com/actiontech/dtle/internal/client/driver"
+	"github.com/actiontech/dtle/internal/config"
+	log "github.com/actiontech/dtle/internal/logger"
+	"github.com/actiontech/dtle/internal/models"
 )
 
 const (

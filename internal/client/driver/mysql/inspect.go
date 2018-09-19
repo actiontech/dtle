@@ -12,11 +12,11 @@ import (
 	"strings"
 	"time"
 
-	ubase "github.com/actiontech/udup/internal/client/driver/mysql/base"
-	usql "github.com/actiontech/udup/internal/client/driver/mysql/sql"
-	uconf "github.com/actiontech/udup/internal/config"
-	umconf "github.com/actiontech/udup/internal/config/mysql"
-	log "github.com/actiontech/udup/internal/logger"
+	ubase "github.com/actiontech/dtle/internal/client/driver/mysql/base"
+	usql "github.com/actiontech/dtle/internal/client/driver/mysql/sql"
+	uconf "github.com/actiontech/dtle/internal/config"
+	umconf "github.com/actiontech/dtle/internal/config/mysql"
+	log "github.com/actiontech/dtle/internal/logger"
 )
 
 const startSlavePostWaitMilliseconds = 500 * time.Millisecond

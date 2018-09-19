@@ -14,8 +14,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/actiontech/udup/api"
-	"github.com/actiontech/udup/internal/models"
+	"github.com/actiontech/dtle/api"
+	"github.com/actiontech/dtle/internal/models"
 )
 
 func (s *HTTPServer) LoginRequest(resp http.ResponseWriter, req *http.Request) (interface{}, error) {

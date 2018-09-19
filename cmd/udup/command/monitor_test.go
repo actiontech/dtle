@@ -10,7 +10,7 @@ import (
 	"reflect"
 	"sync"
 	"testing"
-	"github.com/actiontech/udup/api"
+	"github.com/actiontech/dtle/api"
 
 	"github.com/mitchellh/cli"
 )

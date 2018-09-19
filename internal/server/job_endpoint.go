@@ -13,10 +13,10 @@ import (
 	"github.com/armon/go-metrics"
 	"github.com/hashicorp/go-memdb"
 
-	"github.com/actiontech/udup/internal/client/driver"
-	"github.com/actiontech/udup/internal/models"
-	"github.com/actiontech/udup/internal/server/scheduler"
-	"github.com/actiontech/udup/internal/server/store"
+	"github.com/actiontech/dtle/internal/client/driver"
+	"github.com/actiontech/dtle/internal/models"
+	"github.com/actiontech/dtle/internal/server/scheduler"
+	"github.com/actiontech/dtle/internal/server/store"
 
 	"github.com/mitchellh/copystructure"
 )

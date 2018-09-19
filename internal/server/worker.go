@@ -14,9 +14,9 @@ import (
 
 	"github.com/armon/go-metrics"
 
-	log "github.com/actiontech/udup/internal/logger"
-	"github.com/actiontech/udup/internal/models"
-	"github.com/actiontech/udup/internal/server/scheduler"
+	log "github.com/actiontech/dtle/internal/logger"
+	"github.com/actiontech/dtle/internal/models"
+	"github.com/actiontech/dtle/internal/server/scheduler"
 )
 
 const (

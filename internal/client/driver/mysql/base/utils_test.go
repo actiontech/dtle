@@ -11,10 +11,10 @@ import (
 	"reflect"
 	"testing"
 	"time"
-	umconf "github.com/actiontech/udup/internal/config/mysql"
+	umconf "github.com/actiontech/dtle/internal/config/mysql"
 
 	"fmt"
-	"github.com/actiontech/udup/internal/client/driver/mysql/sql"
+	"github.com/actiontech/dtle/internal/client/driver/mysql/sql"
 
 	test "github.com/outbrain/golib/tests"
 	gomysql "github.com/siddontang/go-mysql/mysql"

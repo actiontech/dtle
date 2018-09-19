@@ -10,7 +10,7 @@ import (
 	"net"
 	"time"
 
-	"github.com/actiontech/udup/internal"
+	"github.com/actiontech/dtle/internal"
 
 	"github.com/hashicorp/serf/coordinate"
 )

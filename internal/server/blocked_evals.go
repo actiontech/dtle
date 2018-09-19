@@ -13,7 +13,7 @@ import (
 	"github.com/armon/go-metrics"
 	"github.com/hashicorp/consul/lib"
 
-	"github.com/actiontech/udup/internal/models"
+	"github.com/actiontech/dtle/internal/models"
 )
 
 const (

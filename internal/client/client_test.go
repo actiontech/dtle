@@ -12,10 +12,10 @@ import (
 	"sync"
 	"testing"
 	"time"
-	"github.com/actiontech/udup/internal/config"
-	ulog "github.com/actiontech/udup/internal/logger"
-	"github.com/actiontech/udup/internal/models"
-	"github.com/actiontech/udup/internal/server"
+	"github.com/actiontech/dtle/internal/config"
+	ulog "github.com/actiontech/dtle/internal/logger"
+	"github.com/actiontech/dtle/internal/models"
+	"github.com/actiontech/dtle/internal/server"
 
 	stand "github.com/nats-io/nats-streaming-server/server"
 )

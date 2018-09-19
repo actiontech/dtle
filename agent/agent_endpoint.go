@@ -12,7 +12,7 @@ import (
 
 	"github.com/hashicorp/serf/serf"
 
-	umodel "github.com/actiontech/udup/internal/models"
+	umodel "github.com/actiontech/dtle/internal/models"
 )
 
 type Member struct {

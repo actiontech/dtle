@@ -9,7 +9,7 @@ package binlog
 import (
 	"fmt"
 
-	"github.com/actiontech/udup/internal/client/driver/mysql/base"
+	"github.com/actiontech/dtle/internal/client/driver/mysql/base"
 )
 
 type BinlogEntries struct {

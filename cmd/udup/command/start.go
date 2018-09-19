@@ -15,8 +15,8 @@ import (
 
 	"github.com/hashicorp/go-multierror"
 
-	"github.com/actiontech/udup/agent"
-	"github.com/actiontech/udup/api"
+	"github.com/actiontech/dtle/agent"
+	"github.com/actiontech/dtle/api"
 )
 
 var (

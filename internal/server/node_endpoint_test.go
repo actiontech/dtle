@@ -11,8 +11,8 @@ import (
 	"sync"
 	"testing"
 	"time"
-	"github.com/actiontech/udup/internal/models"
-	"github.com/actiontech/udup/internal/server/store"
+	"github.com/actiontech/dtle/internal/models"
+	"github.com/actiontech/dtle/internal/server/store"
 )
 
 func TestNode_Register(t *testing.T) {

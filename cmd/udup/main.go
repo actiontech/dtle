@@ -14,8 +14,8 @@ import (
 
 	"github.com/mitchellh/cli"
 
-	"github.com/actiontech/udup/agent"
-	"github.com/actiontech/udup/cmd/udup/command"
+	"github.com/actiontech/dtle/agent"
+	"github.com/actiontech/dtle/cmd/udup/command"
 
 	_ "net/http/pprof"
 )

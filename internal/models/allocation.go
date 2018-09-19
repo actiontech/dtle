@@ -12,7 +12,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/actiontech/udup/internal"
+	"github.com/actiontech/dtle/internal"
 )
 
 const (

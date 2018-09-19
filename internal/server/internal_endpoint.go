@@ -9,8 +9,8 @@ package server
 import (
 	"github.com/hashicorp/go-memdb"
 
-	"github.com/actiontech/udup/internal/models"
-	"github.com/actiontech/udup/internal/server/store"
+	"github.com/actiontech/dtle/internal/models"
+	"github.com/actiontech/dtle/internal/server/store"
 )
 
 // Internal endpoint is used to query the miscellaneous info that

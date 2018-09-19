@@ -14,8 +14,8 @@ import (
 	"reflect"
 	"testing"
 	"time"
-	log "github.com/actiontech/udup/internal/logger"
-	umodel "github.com/actiontech/udup/internal/models"
+	log "github.com/actiontech/dtle/internal/logger"
+	umodel "github.com/actiontech/dtle/internal/models"
 )
 
 func TestNewHTTPServer(t *testing.T) {

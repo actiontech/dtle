@@ -9,7 +9,7 @@ package command
 import (
 	"reflect"
 	"testing"
-	"github.com/actiontech/udup/api"
+	"github.com/actiontech/dtle/api"
 
 	"github.com/mitchellh/colorstring"
 )

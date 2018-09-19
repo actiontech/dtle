@@ -20,8 +20,8 @@ import (
 	"github.com/hashicorp/hcl/hcl/ast"
 	"github.com/mitchellh/mapstructure"
 
-	"github.com/actiontech/udup/api"
-	"github.com/actiontech/udup/internal"
+	"github.com/actiontech/dtle/api"
+	"github.com/actiontech/dtle/internal"
 )
 
 type JobGetter struct {

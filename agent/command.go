@@ -24,7 +24,7 @@ import (
 	"github.com/armon/go-metrics/prometheus"
 	"github.com/mitchellh/cli"
 
-	ulog "github.com/actiontech/udup/internal/logger"
+	ulog "github.com/actiontech/dtle/internal/logger"
 )
 
 // gracefulTimeout controls how long we wait before forcefully terminating

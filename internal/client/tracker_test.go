@@ -12,7 +12,7 @@ import (
 	"sync"
 	"testing"
 	"time"
-	"github.com/actiontech/udup/internal/models"
+	"github.com/actiontech/dtle/internal/models"
 )
 
 func Test_newRestartTracker(t *testing.T) {

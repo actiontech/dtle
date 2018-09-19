@@ -14,7 +14,7 @@ import (
 
 	"github.com/hashicorp/go-memdb"
 
-	"github.com/actiontech/udup/internal/models"
+	"github.com/actiontech/dtle/internal/models"
 )
 
 // IndexEntry is used with the "index" table

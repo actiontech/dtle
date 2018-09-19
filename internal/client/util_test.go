@@ -9,7 +9,7 @@ package client
 import (
 	"reflect"
 	"testing"
-	"github.com/actiontech/udup/internal/models"
+	"github.com/actiontech/dtle/internal/models"
 )
 
 func Test_diffResult_GoString(t *testing.T) {

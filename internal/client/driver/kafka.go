@@ -9,8 +9,8 @@ package driver
 import (
 	"fmt"
 	"github.com/mitchellh/mapstructure"
-	"github.com/actiontech/udup/internal/client/driver/kafka3"
-	"github.com/actiontech/udup/internal/models"
+	"github.com/actiontech/dtle/internal/client/driver/kafka3"
+	"github.com/actiontech/dtle/internal/models"
 )
 
 type KafkaDriver struct {

@@ -13,7 +13,7 @@ import (
 
 	"github.com/mitchellh/colorstring"
 
-	"github.com/actiontech/udup/api"
+	"github.com/actiontech/dtle/api"
 )
 
 const (

@@ -10,7 +10,7 @@ import (
 	"net/http"
 	"strings"
 
-	umodel "github.com/actiontech/udup/internal/models"
+	umodel "github.com/actiontech/dtle/internal/models"
 )
 
 func (s *HTTPServer) EvalsRequest(resp http.ResponseWriter, req *http.Request) (interface{}, error) {

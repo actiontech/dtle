@@ -8,7 +8,7 @@ package server
 
 import (
 	"testing"
-	"github.com/actiontech/udup/internal/models"
+	"github.com/actiontech/dtle/internal/models"
 )
 
 func TestStatus_Version(t *testing.T) {
