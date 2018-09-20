@@ -149,6 +149,7 @@ type MySQLDriverConfig struct {
 
 	Gtid                     string
 	GtidStart                string
+	AutoGtid                 bool // For internal use. Might be changed without notification.
 	NatsAddr                 string
 	ParallelWorkers          int
 	ConnectionConfig         *umconf.ConnectionConfig

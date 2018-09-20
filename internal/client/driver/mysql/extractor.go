@@ -167,23 +167,30 @@ func (e *Extractor) Run() {
 		return
 	}
 
-	if e.mysqlContext.GtidStart != "" {
-		if e.mysqlContext.Gtid != "" {
-			e.onError(TaskStateDead, fmt.Errorf("bad job conf: GtidStart and Gtid should not be set simultaneously"))
+	if e.mysqlContext.Gtid == "" {
+		if e.mysqlContext.AutoGtid {
+			coord, err := base.GetSelfBinlogCoordinates(e.db)
+			if err != nil {
+				e.onError(TaskStateDead, err)
+			}
+			e.mysqlContext.Gtid = coord.GtidSet
+			e.logger.Debugf("mysql.extractor: use auto gtid: %v", coord.GtidSet)
 		}
 
-		coord, err := base.GetSelfBinlogCoordinates(e.db)
-		if err != nil {
-			e.onError(TaskStateDead, err)
-		}
+		if e.mysqlContext.GtidStart != "" {
+			coord, err := base.GetSelfBinlogCoordinates(e.db)
+			if err != nil {
+				e.onError(TaskStateDead, err)
+			}
 
-		e.mysqlContext.Gtid, err = base.GtidSetDiff(coord.GtidSet, e.mysqlContext.GtidStart)
-		if err != nil {
-			e.onError(TaskStateDead, err)
+			e.mysqlContext.Gtid, err = base.GtidSetDiff(coord.GtidSet, e.mysqlContext.GtidStart)
+			if err != nil {
+				e.onError(TaskStateDead, err)
+			}
 		}
 	}
 
-	if e.mysqlContext.Gtid == "" {
+	if e.mysqlContext.Gtid == "" { // still empty: full copy
 		e.mysqlContext.MarkRowCopyStartTime()
 		if err := e.mysqlDump(); err != nil {
 			e.onError(TaskStateDead, err)
