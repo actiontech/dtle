@@ -98,6 +98,7 @@ func (ait *applierTableItem) Reset() {
 	closeStmts(ait.psDelete)
 	closeStmts(ait.psUpdate)
 
+	fmt.Printf("**** applierTableItem.Reset: set columns to nil\n")
 	ait.columns = nil
 }
 
@@ -275,14 +276,16 @@ func (a *Applier) MtsWorker(workerIndex int) {
 	for keepLoop {
 		select {
 		case tx := <-a.applyBinlogMtsTxQueue:
-			a.logger.Debugf("mysql.applier: a binlogEntry MTS dequeue, worker: %v", workerIndex)
+			a.logger.Debugf("mysql.applier: a binlogEntry MTS dequeue, worker: %v. GNO: %v",
+				workerIndex, tx.Coordinates.GNO)
 			if err := a.ApplyBinlogEvent(workerIndex, tx); err != nil {
 				a.onError(TaskStateDead, err) // TODO coordinate with other goroutine
 				keepLoop = false
 			} else {
 				// do nothing
 			}
-			a.logger.Debugf("mysql.applier: worker: %v. after ApplyBinlogEvent", workerIndex)
+			a.logger.Debugf("mysql.applier: worker: %v. after ApplyBinlogEvent. GNO: %v",
+				workerIndex, tx.Coordinates.GNO)
 		case <-a.shutdownCh:
 			keepLoop = false
 		}
@@ -677,6 +680,7 @@ func (a *Applier) initiateStreaming() error {
 						if !a.mtsManager.WaitForExecution(binlogEntry) {
 							return // shutdown
 						}
+
 						a.logger.Debugf("mysql.applier: a binlogEntry MTS enqueue. gno: %v", binlogEntry.Coordinates.GNO)
 						for i := range binlogEntry.Events {
 							dmlEvent := &binlogEntry.Events[i]
@@ -686,14 +690,14 @@ func (a *Applier) initiateStreaming() error {
 							default:
 								tableItem := a.getTableItem(dmlEvent.DatabaseName, dmlEvent.TableName)
 								if tableItem.columns == nil {
-									a.logger.Debugf("get tableColumns")
+									a.logger.Debugf("mysql.applier: get tableColumns %v.%v", dmlEvent.DatabaseName, dmlEvent.TableName)
 									tableItem.columns, err = base.GetTableColumns(a.db, dmlEvent.DatabaseName, dmlEvent.TableName)
 									if err != nil {
 										a.onError(TaskStateDead, err)
 										return
 									}
 								} else {
-									a.logger.Debugf("reuse tableColumns")
+									a.logger.Debugf("mysql.applier: reuse tableColumns %v.%v", dmlEvent.DatabaseName, dmlEvent.TableName)
 								}
 								dmlEvent.TableItem = tableItem
 							}
@@ -1052,10 +1056,12 @@ func (a *Applier) ApplyBinlogEvent(workerIdx int, binlogEntry *binlog.BinlogEntr
 		dbApplier.DbMutex.Unlock()
 	}()
 
-	for _, event := range binlogEntry.Events {
+	for i, event := range binlogEntry.Events {
+		a.logger.Debugf("mysql.applier: ApplyBinlogEvent. gno: %v, event: %v",
+			binlogEntry.Coordinates.GNO, i)
 		switch event.DML {
 		case binlog.NotDML:
-			a.logger.Debugf("ApplyBinlogEvent: not dml: %v", event.Query)
+			a.logger.Debugf("mysql.applier: ApplyBinlogEvent: not dml: %v", event.Query)
 
 			if event.CurrentSchema != "" && event.CurrentSchema != dbApplier.CurrentSchema {
 				query := fmt.Sprintf("USE %s", event.CurrentSchema)
@@ -1080,16 +1086,18 @@ func (a *Applier) ApplyBinlogEvent(workerIdx int, binlogEntry *binlog.BinlogEntr
 				} else {
 					schema = event.CurrentSchema
 				}
-				a.logger.Debugf("mysql.applier: reset tableItem")
+				a.logger.Debugf("mysql.applier: reset tableItem %v.%v", schema, event.TableName)
 				a.getTableItem(schema, event.TableName).Reset()
-			} else if event.DatabaseName == "" {
-				if schemaItem, ok := a.tableItems[event.DatabaseName]; ok {
-					for _, v := range schemaItem {
-						a.logger.Debugf("mysql.applier: reset tableItem")
-						v.Reset()
+			} else { // TableName == ""
+				if event.DatabaseName != "" {
+					if schemaItem, ok := a.tableItems[event.DatabaseName]; ok {
+						for tableName, v := range schemaItem {
+							a.logger.Debugf("mysql.applier: reset tableItem %v.%v", event.DatabaseName, tableName)
+							v.Reset()
+						}
 					}
+					delete(a.tableItems, event.DatabaseName)
 				}
-				delete(a.tableItems, event.DatabaseName)
 			}
 
 			_, err := tx.Exec(event.Query)
@@ -1103,6 +1111,7 @@ func (a *Applier) ApplyBinlogEvent(workerIdx int, binlogEntry *binlog.BinlogEntr
 			}
 			a.logger.Debugf("mysql.applier: Exec [%s]", event.Query)
 		default:
+			a.logger.Debugf("mysql.applier: ApplyBinlogEvent: a dml event")
 			stmt, args, rowDelta, err := a.buildDMLEventQuery(event, workerIdx)
 			if err != nil {
 				a.logger.Errorf("mysql.applier: Build dml query error: %v", err)
