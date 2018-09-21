@@ -98,7 +98,6 @@ func (ait *applierTableItem) Reset() {
 	closeStmts(ait.psDelete)
 	closeStmts(ait.psUpdate)
 
-	fmt.Printf("**** applierTableItem.Reset: set columns to nil\n")
 	ait.columns = nil
 }
 
@@ -555,6 +554,7 @@ func (a *Applier) initiateStreaming() error {
 
 		go func() {
 			stopSomeLoop := false
+			prevDDL := false
 			for !stopSomeLoop {
 				select {
 				case binlogEntry := <-a.applyDataEntryQueue:
@@ -675,6 +675,33 @@ func (a *Applier) initiateStreaming() error {
 						for a.mtsManager.lastEnqueue+1 < binlogEntry.Coordinates.SeqenceNumber {
 							a.mtsManager.lastEnqueue += 1
 							a.mtsManager.chExecuted <- a.mtsManager.lastEnqueue
+						}
+
+						hasDDL := func() bool {
+							for i := range binlogEntry.Events {
+								dmlEvent := &binlogEntry.Events[i]
+								switch dmlEvent.DML {
+								case binlog.NotDML:
+									return true
+								default:
+								}
+							}
+							return false
+						}()
+
+						// DDL must be executed separatedly
+						if hasDDL || prevDDL {
+							a.logger.Debugf("mysql.applier: gno: %v MTS found DDL(%v,%v). WaitForAllCommitted",
+								binlogEntry.Coordinates.GNO, hasDDL, prevDDL)
+							if !a.mtsManager.WaitForAllCommitted() {
+								return // shutdown
+							}
+						}
+
+						if hasDDL {
+							prevDDL = true
+						} else {
+							prevDDL = false
 						}
 
 						if !a.mtsManager.WaitForExecution(binlogEntry) {
