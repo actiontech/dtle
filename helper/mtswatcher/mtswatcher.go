@@ -23,6 +23,8 @@ import (
 )
 
 func main() {
+	shutdown := make(chan struct{})
+
 	host := flag.String("host", "127.0.0.1", "Hostname of mysqld")
 	port := flag.Int("port", 3306, "Port")
 	user := flag.String("user", "root", "User")
@@ -75,33 +77,55 @@ func main() {
 	go func() {
 		for range c {
 			syncer.Close()
-			printAndClear()
+			close(shutdown)
 			break
 		}
 	}()
 
-	for {
-		event, err := streamer.GetEvent(context.Background())
-		if err == replication.ErrSyncClosed {
-			break
+	eventCh := make(chan *replication.BinlogEvent)
+
+	go func() {
+		for {
+			event, err := streamer.GetEvent(context.Background())
+			if err == replication.ErrSyncClosed {
+				break
+			}
+			panicIfErr(err)
+			eventCh <- event
 		}
-		panicIfErr(err)
+	}()
 
-		switch event.Header.EventType {
-		case replication.GTID_EVENT:
-			evt, ok := event.Event.(*replication.GTIDEvent)
-			if !ok {
-				panic("not GTIDEventV57")
+	t := time.NewTimer(time.Second)
+	keepLoop := true
+	for keepLoop {
+		t.Reset(2 * time.Second)
+		select {
+		case event := <-eventCh:
+			t.Stop()
+			switch event.Header.EventType {
+			case replication.GTID_EVENT:
+				evt, ok := event.Event.(*replication.GTIDEvent)
+				if !ok {
+					panic("not GTIDEventV57")
+				}
+				if evt.LastCommitted > lc {
+					if nTx > 0 {
+						printAndClear()
+					}
+					lc = evt.LastCommitted
+				}
+				nTxTotal += 1
+				nTx += 1
+			default:
+				// do nothing
 			}
-			nTxTotal += 1
-			if evt.LastCommitted > lc {
+		case <-t.C:
+			if nTx > 0 {
 				printAndClear()
-				lc = evt.LastCommitted
 			}
-
-			nTx += 1
-		default:
-			// do nothing
+		case <-shutdown:
+			printAndClear()
+			keepLoop = false
 		}
 	}
 }
