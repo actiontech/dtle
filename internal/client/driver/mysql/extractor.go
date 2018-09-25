@@ -221,43 +221,6 @@ func (e *Extractor) Run() {
 		e.onError(TaskStateDead, err)
 		return
 	}
-
-	/*if e.tp == models.JobTypeMig {
-		for {
-			binlogCoordinates, err := base.GetSelfBinlogCoordinates(e.db)
-			if err != nil {
-				e.onError(TaskStateDead, err)
-				break
-			}
-
-			if e.initialBinlogCoordinates.DisplayString() == binlogCoordinates.DisplayString() {
-				if err := e.publish(fmt.Sprintf("%s_incr_complete", e.subject), "", []byte("0")); err != nil {
-					e.onError(TaskStateDead, err)
-					return
-				}
-				e.onDone()
-				break
-			}
-
-			if e.mysqlContext.Gtid != "" && binlogCoordinates.DisplayString() != "" {
-				equals, err := base.ContrastGtidSet(e.mysqlContext.Gtid, binlogCoordinates.DisplayString())
-				if err != nil {
-					e.onError(TaskStateDead, err)
-					break
-				}
-
-				if equals {
-					if err := e.publish(fmt.Sprintf("%s_incr_complete", e.subject), "", []byte("1")); err != nil {
-						e.onError(TaskStateDead, err)
-						return
-					}
-					e.onDone()
-					break
-				}
-			}
-			time.Sleep(time.Second)
-		}
-	}*/
 }
 
 // initiateInspector connects, validates and inspects the "inspector" server.

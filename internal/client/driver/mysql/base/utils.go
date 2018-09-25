@@ -133,50 +133,6 @@ func ShowCreateView(db *gosql.DB, databaseName, tableName string, dropTableIfExi
 	return fmt.Sprintf("%s;%s", statement, createTableStatement), err
 }
 
-func ContrastGtidSet(contrastGtid, currentGtid string) (bool, error) {
-	for _, gset := range strings.Split(contrastGtid, ",") {
-		gset = strings.TrimSpace(gset)
-		sep := strings.Split(gset, ":")
-		if len(sep) < 2 {
-			return false, fmt.Errorf("invalid GTID format, must UUID:interval[:interval]")
-		}
-		sid, err := uuid.FromString(sep[0])
-		if err != nil {
-			return false, err
-		}
-		// Handle interval
-		for i := 1; i < len(sep); i++ {
-			if ein, err := parseInterval(sep[i]); err != nil {
-				return false, err
-			} else {
-				for _, bgset := range strings.Split(currentGtid, ",") {
-					bgset = strings.TrimSpace(bgset)
-					bsep := strings.Split(bgset, ":")
-					if len(bsep) < 2 {
-						return false, fmt.Errorf("invalid GTID format, must UUID:interval[:interval]")
-					}
-					bsid, err := uuid.FromString(bsep[0])
-					if err != nil {
-						return false, err
-					}
-					if sid == bsid {
-						for i := 1; i < len(bsep); i++ {
-							if bin, err := parseInterval(bsep[i]); err != nil {
-								return false, err
-							} else {
-								if bin.Stop != ein.Stop {
-									return false, nil
-								}
-							}
-						}
-					}
-				}
-			}
-		}
-	}
-	return true, nil
-}
-
 // Interval is [start, stop), but the GTID string's format is [n] or [n1-n2], closed interval
 func parseInterval(str string) (i gomysql.Interval, err error) {
 	p := strings.Split(str, "-")

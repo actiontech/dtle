@@ -17,11 +17,7 @@ import (
 )
 
 const (
-	// JobTypeUdup is reserved for internal system tasks and is
-	// always handled by the CoreScheduler.
 	JobTypeSync = "synchronous"
-	JobTypeSub  = "subscribe"
-	JobTypeMig  = "migration"
 )
 
 const (

@@ -322,47 +322,6 @@ func (a *Applier) Run() {
 	}
 
 	go a.executeWriteFuncs()
-
-	if a.tp == models.JobTypeMig {
-		var completeFlag string
-		_, err := a.natsConn.Subscribe(fmt.Sprintf("%s_incr_complete", a.subject), func(m *gonats.Msg) {
-			completeFlag = string(m.Data)
-			if err := a.natsConn.Publish(m.Reply, nil); err != nil {
-				a.onError(TaskStateDead, err)
-			}
-		})
-		if err != nil {
-			a.onError(TaskStateDead, err)
-		}
-
-		for {
-			if completeFlag != "" && a.rowCopyCompleteFlag == 1 {
-				switch completeFlag {
-				case "0":
-					a.onError(TaskStateComplete, nil)
-					break
-				default:
-					binlogCoordinates, err := base.GetSelfBinlogCoordinates(a.db)
-					if err != nil {
-						a.onError(TaskStateDead, err)
-						break
-					}
-					if a.mysqlContext.Gtid != "" && binlogCoordinates.GtidSet != "" {
-						equals, err := base.ContrastGtidSet(a.mysqlContext.Gtid, binlogCoordinates.GtidSet)
-						if err != nil {
-							a.onError(TaskStateDead, err)
-							break
-						}
-						if equals {
-							a.onError(TaskStateComplete, nil)
-							break
-						}
-					}
-				}
-			}
-			time.Sleep(time.Second)
-		}
-	}
 }
 
 func (a *Applier) onApplyTxStructWithSuper(dbApplier *sql.Conn, binlogTx *binlog.BinlogTx) error {

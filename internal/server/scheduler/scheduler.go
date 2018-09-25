@@ -27,8 +27,6 @@ const (
 // which are available
 var BuiltinSchedulers = map[string]Factory{
 	models.JobTypeSync: NewGenericScheduler,
-	models.JobTypeMig:  NewGenericScheduler,
-	//models.JobTypeSub:   NewGenericScheduler,
 }
 
 // NewScheduler is used to instantiate and return a new scheduler
