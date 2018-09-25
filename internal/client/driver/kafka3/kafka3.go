@@ -115,7 +115,7 @@ func (kr *KafkaRunner) initNatSubClient() (err error) {
 	return nil
 }
 func (kr *KafkaRunner) Run() {
-	kr.logger.Debugf("**** kafka. broker: %v", kr.kafkaConfig.Broker)
+	kr.logger.Debugf("kafka. broker: %v", kr.kafkaConfig.Brokers)
 
 	var err error
 	kr.kafkaMgr, err = NewKafkaManager(kr.kafkaConfig)
@@ -247,13 +247,13 @@ func (kr *KafkaRunner) onError(state int, err error) {
 	case TaskStateRestart:
 		if kr.natsConn != nil {
 			if err := kr.natsConn.Publish(fmt.Sprintf("%s_restart", kr.subject), []byte(kr.kafkaConfig.Gtid)); err != nil {
-				kr.logger.Errorf("kafka: Trigger restart extractor : %v", err)
+				kr.logger.Errorf("kafka: Trigger restart: %v", err)
 			}
 		}
 	default:
 		if kr.natsConn != nil {
 			if err := kr.natsConn.Publish(fmt.Sprintf("%s_error", kr.subject), []byte(kr.kafkaConfig.Gtid)); err != nil {
-				kr.logger.Errorf("kafka: Trigger extractor shutdown: %v", err)
+				kr.logger.Errorf("kafka: Trigger shutdown: %v", err)
 			}
 		}
 	}
@@ -266,7 +266,7 @@ func (kr *KafkaRunner) kafkaTransformSnapshotData(table *config.Table, value *my
 	var err error
 
 	tableIdent := fmt.Sprintf("%v.%v.%v", kr.kafkaMgr.Cfg.Topic, table.TableSchema, table.TableName)
-	kr.logger.Debugf("**** value: %v", value.ValuesX)
+	kr.logger.Debugf("kafka: kafkaTransformSnapshotData value: %v", value.ValuesX)
 	for _, rowValues := range value.ValuesX {
 		keyPayload := NewRow()
 
@@ -323,7 +323,7 @@ func (kr *KafkaRunner) kafkaTransformSnapshotData(table *config.Table, value *my
 				keyPayload.AddField(columnList[i].Name, value)
 			}
 
-			kr.logger.Debugf("**** rowvalue: %v", value)
+			kr.logger.Debugf("kafka: kafkaTransformSnapshotData rowvalue: %v", value)
 			valuePayload.After.AddField(columnList[i].Name, value)
 		}
 
@@ -340,18 +340,18 @@ func (kr *KafkaRunner) kafkaTransformSnapshotData(table *config.Table, value *my
 
 		kBs, err := json.Marshal(k)
 		if err != nil {
-			return fmt.Errorf("mysql.extractor.kafka.serialization error: %v", err)
+			return fmt.Errorf("kafka: serialization error: %v", err)
 		}
 		vBs, err := json.Marshal(v)
 		if err != nil {
-			return fmt.Errorf("mysql.extractor.kafka.serialization error: %v", err)
+			return fmt.Errorf("kafka: serialization error: %v", err)
 		}
 
 		err = kr.kafkaMgr.Send(tableIdent, kBs, vBs)
 		if err != nil {
 			return err
 		}
-		kr.logger.Debugf("mysql.extractor.kafka: sent one msg")
+		kr.logger.Debugf("kafka: sent one msg")
 	}
 	return nil
 }
@@ -483,7 +483,7 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry)
 		if err != nil {
 			return err
 		}
-		kr.logger.Debugf("mysql.extractor.kafka: sent one msg")
+		kr.logger.Debugf("kafka: sent one msg")
 
 		// tombstone event for DELETE
 		if dataEvent.DML == binlog.DeleteDML {
@@ -499,7 +499,7 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry)
 			if err != nil {
 				return err
 			}
-			kr.logger.Debugf("mysql.extractor.kafka: sent one msg")
+			kr.logger.Debugf("kafka: sent one msg")
 		}
 	}
 

@@ -44,7 +44,7 @@ const (
 type ColDefs []*Schema
 
 type KafkaConfig struct {
-	Broker    string
+	Brokers   []string
 	Topic     string
 	Converter string
 	NatsAddr  string
@@ -64,7 +64,7 @@ func NewKafkaManager(kcfg *KafkaConfig) (*KafkaManager, error) {
 	config := sarama.NewConfig()
 	config.Producer.Return.Successes = true
 
-	k.producer, err = sarama.NewSyncProducer([]string{kcfg.Broker}, config)
+	k.producer, err = sarama.NewSyncProducer(kcfg.Brokers, config)
 	if err != nil {
 		return nil, err
 	}
