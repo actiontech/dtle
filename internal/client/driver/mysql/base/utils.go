@@ -70,40 +70,10 @@ func GetSelfBinlogCoordinates(db *gosql.DB) (selfBinlogCoordinates *BinlogCoordi
 
 func ParseBinlogCoordinatesFromRows(rows *sql.Rows) (selfBinlogCoordinates *BinlogCoordinatesX, err error) {
 	err = usql.ScanRowsToMaps(rows, func(m usql.RowMap) error {
-		gtidSet, err := gomysql.ParseMysqlGTIDSet(m.GetString("Executed_Gtid_Set"))
-		if err != nil {
-			return err
-		}
-		ms := new(gomysql.MysqlGTIDSet)
-		ms.Sets = make(map[string]*gomysql.UUIDSet)
-		for _, gset := range strings.Split(gtidSet.String(), ",") {
-			gset = strings.TrimSpace(gset)
-			sep := strings.Split(gset, ":")
-			if len(sep) < 2 {
-				return fmt.Errorf("invalid GTID format, must UUID:interval[:interval]")
-			}
-
-			s := new(gomysql.UUIDSet)
-			if s.SID, err = uuid.FromString(sep[0]); err != nil {
-				return err
-			}
-			// Handle interval
-			for i := 1; i < len(sep); i++ {
-				if in, err := parseInterval(sep[i]); err != nil {
-					return err
-				} else {
-					in.Start = 1
-					s.Intervals = append(s.Intervals, in)
-				}
-			}
-			s.Intervals = s.Intervals.Normalize()
-			ms.AddSet(s)
-		}
-
 		selfBinlogCoordinates = &BinlogCoordinatesX{
 			LogFile: m.GetString("File"),
 			LogPos:  m.GetInt64("Position"),
-			GtidSet: ms.String(),
+			GtidSet: m.GetString("Executed_Gtid_Set"),
 		}
 		return nil
 	})
