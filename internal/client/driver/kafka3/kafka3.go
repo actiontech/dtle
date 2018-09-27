@@ -411,10 +411,11 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry)
 
 			switch colList[i].Type {
 			case mysql.DecimalColumnType:
-				if before != nil {
+				// nil: either entire row does not exist or this field is NULL
+				if beforeValue != nil {
 					beforeValue = DecimalValueFromStringMysql(beforeValue.(string))
 				}
-				if after != nil {
+				if afterValue != nil {
 					afterValue = DecimalValueFromStringMysql(afterValue.(string))
 				}
 			default:
