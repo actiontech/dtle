@@ -70,7 +70,10 @@ type DumpEntry struct {
 	TableName                string
 	TableSchema              string
 	TbSQL                    []string
-	ValuesX                  [][]*[]byte
+	// For each `*interface{}` item, it is ensured to be not nil.
+	// If field is sql-NULL, *item is nil. Else, *item is a `[]byte`.
+	// TODO can we just use interface{}? Make sure it is not copied again and again.
+	ValuesX                  [][]*interface{}
 	TotalCount               int64
 	RowsCount                int64
 	Offset                   uint64 // only for 'no PK' table
@@ -242,8 +245,10 @@ func (d *dumper) getChunkData(e *DumpEntry) (err error) {
 
 	scanArgs := make([]interface{}, len(columns)) // tmp use, for casting `values` to `[]interface{}`
 
+	interfacePtrWithNil := new(interface{})
+
 	for rows.Next() {
-		rowValuesRaw := make([]*[]byte, len(columns))
+		rowValuesRaw := make([]*interface{}, len(columns))
 		for i := range rowValuesRaw {
 			scanArgs[i] = &rowValuesRaw[i]
 		}
@@ -253,6 +258,11 @@ func (d *dumper) getChunkData(e *DumpEntry) (err error) {
 			return err
 		}
 
+		for i := range rowValuesRaw {
+			if rowValuesRaw[i] == nil {
+				rowValuesRaw[i] = interfacePtrWithNil
+			}
+		}
 		entry.ValuesX = append(entry.ValuesX, rowValuesRaw)
 
 		nRows += 1

@@ -1231,9 +1231,9 @@ func (a *Applier) ApplyEventQueries(db *gosql.DB, entry *DumpEntry) error {
 			}
 
 			colData := entry.ValuesX[i][j]
-			if colData != nil {
+			if *colData != nil {
 				buf.WriteByte('\'')
-				buf.WriteString(sql.EscapeValue(string(*colData)))
+				buf.WriteString(sql.EscapeValue(string((*colData).([]byte))))
 				buf.WriteByte('\'')
 			} else {
 				buf.WriteString("NULL")

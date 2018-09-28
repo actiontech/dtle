@@ -296,10 +296,8 @@ func (kr *KafkaRunner) kafkaTransformSnapshotData(table *config.Table, value *my
 		for i, _ := range columnList {
 			var value interface{}
 
-			if rowValues[i] == nil {
-				value = nil
-			} else {
-				valueStr := string(*rowValues[i])
+			if *rowValues[i] != nil {
+				valueStr := string((*rowValues[i]).([]byte))
 
 				switch columnList[i].Type {
 				case mysql.TinyintColumnType, mysql.SmallintColumnType, mysql.MediumIntColumnType, mysql.IntColumnType, mysql.BigIntColumnType:
@@ -317,6 +315,8 @@ func (kr *KafkaRunner) kafkaTransformSnapshotData(table *config.Table, value *my
 				default:
 					value = valueStr
 				}
+			} else {
+				value = nil
 			}
 
 			if columnList[i].IsPk() {
