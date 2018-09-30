@@ -915,6 +915,10 @@ func (a *Applier) validateConnection(db *gosql.DB) error {
 // validateGrants verifies the user by which we're executing has necessary grants
 // to do its thang.
 func (a *Applier) validateGrants() error {
+	if a.mysqlContext.SkipPrivilegeCheck {
+		a.logger.Debugf("mysql.applier: skipping priv check")
+		return nil
+	}
 	query := `show grants for current_user()`
 	foundAll := false
 	foundSuper := false
@@ -932,7 +936,7 @@ func (a *Applier) validateGrants() error {
 			if strings.Contains(grant, fmt.Sprintf("GRANT ALL PRIVILEGES ON `%v`.`gtid_executed`", g.DtleSchemaName)) {
 				foundDBAll = true
 			}
-			if base.StringContainsAll(grant, `ALTER`, `CREATE`, `DELETE`, `DROP`, `INDEX`, `INSERT`, `LOCK TABLES`, `SELECT`, `TRIGGER`, `UPDATE`, ` ON`) {
+			if base.StringContainsAll(grant, `ALTER`, `CREATE`, `DELETE`, `DROP`, `INDEX`, `INSERT`, `SELECT`, `TRIGGER`, `UPDATE`, ` ON`) {
 				foundDBAll = true
 			}
 		}

@@ -179,6 +179,8 @@ type MySQLDriverConfig struct {
 	throttleMutex               *sync.Mutex
 	CountingRowsFlag            int64
 	UserCommandedUnpostponeFlag int64
+
+	SkipPrivilegeCheck bool
 }
 
 func (a *MySQLDriverConfig) SetDefault() *MySQLDriverConfig {

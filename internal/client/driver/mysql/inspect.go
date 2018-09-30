@@ -185,6 +185,11 @@ func (i *Inspector) validateConnection() error {
 // validateGrants verifies the user by which we're executing has necessary grants
 // to do its thang.
 func (i *Inspector) validateGrants() error {
+	if i.mysqlContext.SkipPrivilegeCheck {
+		i.logger.Debugf("mysql.inspector: skipping priv check")
+		return nil
+	}
+
 	query := `show grants for current_user()`
 	foundAll := false
 	foundSuper := false
