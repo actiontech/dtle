@@ -479,6 +479,30 @@ func Decode(data []byte, vPtr interface{}) (err error) {
 	return gob.NewDecoder(bytes.NewBuffer(msg)).Decode(vPtr)
 }
 
+func (a *Applier) setTableItemForBinlogEntry(binlogEntry *binlog.BinlogEntry) error {
+	var err error
+	for i := range binlogEntry.Events {
+		dmlEvent := &binlogEntry.Events[i]
+		switch dmlEvent.DML {
+		case binlog.NotDML:
+			// do nothing
+		default:
+			tableItem := a.getTableItem(dmlEvent.DatabaseName, dmlEvent.TableName)
+			if tableItem.columns == nil {
+				a.logger.Debugf("mysql.applier: get tableColumns %v.%v", dmlEvent.DatabaseName, dmlEvent.TableName)
+				tableItem.columns, err = base.GetTableColumns(a.db, dmlEvent.DatabaseName, dmlEvent.TableName)
+				if err != nil {
+					return err
+				}
+			} else {
+				a.logger.Debugf("mysql.applier: reuse tableColumns %v.%v", dmlEvent.DatabaseName, dmlEvent.TableName)
+			}
+			dmlEvent.TableItem = tableItem
+		}
+	}
+	return  nil
+}
+
 // initiateStreaming begins treaming of binary log events and registers listeners for such events
 func (a *Applier) initiateStreaming() error {
 	if a.mysqlContext.Gtid == "" {
@@ -654,6 +678,12 @@ func (a *Applier) initiateStreaming() error {
 					gtidSetItem.Intervals = newInterval
 
 					if binlogEntry.Coordinates.SeqenceNumber == 0 {
+						// MySQL 5.6: non mts
+						err := a.setTableItemForBinlogEntry(binlogEntry)
+						if err != nil {
+							a.onError(TaskStateDead, err)
+							return
+						}
 						if err := a.ApplyBinlogEvent(0, binlogEntry); err != nil {
 							a.onError(TaskStateDead, err)
 							return
@@ -709,25 +739,10 @@ func (a *Applier) initiateStreaming() error {
 						}
 
 						a.logger.Debugf("mysql.applier: a binlogEntry MTS enqueue. gno: %v", binlogEntry.Coordinates.GNO)
-						for i := range binlogEntry.Events {
-							dmlEvent := &binlogEntry.Events[i]
-							switch dmlEvent.DML {
-							case binlog.NotDML:
-								// do nothing
-							default:
-								tableItem := a.getTableItem(dmlEvent.DatabaseName, dmlEvent.TableName)
-								if tableItem.columns == nil {
-									a.logger.Debugf("mysql.applier: get tableColumns %v.%v", dmlEvent.DatabaseName, dmlEvent.TableName)
-									tableItem.columns, err = base.GetTableColumns(a.db, dmlEvent.DatabaseName, dmlEvent.TableName)
-									if err != nil {
-										a.onError(TaskStateDead, err)
-										return
-									}
-								} else {
-									a.logger.Debugf("mysql.applier: reuse tableColumns %v.%v", dmlEvent.DatabaseName, dmlEvent.TableName)
-								}
-								dmlEvent.TableItem = tableItem
-							}
+						err = a.setTableItemForBinlogEntry(binlogEntry)
+						if err != nil {
+							a.onError(TaskStateDead, err)
+							return
 						}
 						a.applyBinlogMtsTxQueue <- binlogEntry
 					}
