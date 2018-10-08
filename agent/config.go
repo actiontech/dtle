@@ -52,7 +52,7 @@ type Config struct {
 	LogFile string `mapstructure:"log_file"`
 
 	// BindAddr is the address on which all of server's services will
-	// be bound. If not specified, this defaults to 127.0.0.1.
+	// be bound. If not specified, this defaults to 0.0.0.0 .
 	BindAddr string `mapstructure:"bind_addr"`
 
 	// Ports is used to control the network ports we bind to.
@@ -243,7 +243,7 @@ func DefaultConfig() *Config {
 		PidFile:     "/var/run/udup/udup.pid",
 		Region:      "global",
 		Datacenter:  "dc1",
-		BindAddr:    "127.0.0.1",
+		BindAddr:    "0.0.0.0",
 		Ports: &Ports{
 			HTTP: 8190,
 			RPC:  8191,
