@@ -175,23 +175,6 @@ func TestInspector_validateBinlogs(t *testing.T) {
 	}
 }
 
-func TestInspector_validateLogSlaveUpdates(t *testing.T) {
-	tests := []struct {
-		name    string
-		i       *Inspector
-		wantErr bool
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if err := tt.i.validateLogSlaveUpdates(); (err != nil) != tt.wantErr {
-				t.Errorf("Inspector.validateLogSlaveUpdates() error = %v, wantErr %v", err, tt.wantErr)
-			}
-		})
-	}
-}
-
 func TestInspector_validateTable(t *testing.T) {
 	type args struct {
 		databaseName string

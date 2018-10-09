@@ -51,18 +51,7 @@ func (m *MySQLDriver) Validate(task *models.Task) (*models.TaskValidateResponse,
 	}
 
 	if task.Type == models.TaskTypeSrc {
-		query := `select @@global.log_slave_updates`
-		var logSlaveUpdates bool
-		if err := db.QueryRow(query).Scan(&logSlaveUpdates); err != nil {
-			reply.LogSlaveUpdates.Success = false
-			reply.LogSlaveUpdates.Error = err.Error()
-		}
-		if !logSlaveUpdates {
-			reply.LogSlaveUpdates.Success = false
-			reply.LogSlaveUpdates.Error = fmt.Sprintf("%s:%d must have log_slave_updates enabled", driverConfig.ConnectionConfig.Host, driverConfig.ConnectionConfig.Port)
-		} else {
-			reply.LogSlaveUpdates.Success = true
-		}
+		var query string
 
 		// Get max allowed packet size
 		/*query = `select @@global.max_allowed_packet;`

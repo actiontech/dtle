@@ -234,10 +234,6 @@ func (e *Extractor) initiateInspector() (err error) {
 		return err
 	}
 
-	if err := e.inspector.validateLogSlaveUpdates(); err != nil {
-		return err
-	}
-
 	return nil
 }
 

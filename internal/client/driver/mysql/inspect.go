@@ -270,22 +270,6 @@ func (i *Inspector) validateBinlogs() error {
 	return nil
 }
 
-// validateLogSlaveUpdates checks that binary log log_slave_updates is set. This test is not required when migrating on replica or when migrating directly on master
-func (i *Inspector) validateLogSlaveUpdates() error {
-	query := `select @@global.log_slave_updates`
-	var logSlaveUpdates bool
-	if err := i.db.QueryRow(query).Scan(&logSlaveUpdates); err != nil {
-		return err
-	}
-
-	if logSlaveUpdates {
-		i.logger.Printf("mysql.inspector: log_slave_updates validated on %s:%d", i.mysqlContext.ConnectionConfig.Host, i.mysqlContext.ConnectionConfig.Port)
-		return nil
-	}
-
-	return fmt.Errorf("%s:%d must have log_slave_updates enabled for executing migration", i.mysqlContext.ConnectionConfig.Host, i.mysqlContext.ConnectionConfig.Port)
-}
-
 // validateTable makes sure the table we need to operate on actually exists
 func (i *Inspector) validateTable(databaseName, tableName string) error {
 	query := fmt.Sprintf(`show table status from %s like '%s'`, usql.EscapeName(databaseName), tableName)
