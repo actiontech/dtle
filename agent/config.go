@@ -119,6 +119,10 @@ type Config struct {
 	// UiDir is the directory containing the Web UI resources.
 	// If provided, the UI endpoints will be enabled.
 	UiDir string `mapstructure:"ui_dir"`
+
+	// Schema name for dtle meta info (e.g. gtid_executed).
+	// Do not use special characters (which need to be quoted) in schema name.
+	DtleSchemaName string `mapstructure:"dtle_schema_name"`
 }
 
 // ClientConfig is configuration specific to the client mode
@@ -278,6 +282,7 @@ func DefaultConfig() *Config {
 		Network: &Network{
 			MaxPayload: DefaultMaxPayload,
 		},
+		DtleSchemaName: "dtle",
 	}
 }
 
@@ -425,6 +430,10 @@ func (c *Config) Merge(b *Config) *Config {
 	}
 	for k, v := range b.HTTPAPIResponseHeaders {
 		result.HTTPAPIResponseHeaders[k] = v
+	}
+
+	if b.DtleSchemaName != "" {
+		result.DtleSchemaName = b.DtleSchemaName
 	}
 
 	return &result

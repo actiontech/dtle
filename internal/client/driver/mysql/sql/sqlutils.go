@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/actiontech/dtle/internal/g"
 	"strconv"
 	"strings"
 	"sync"
@@ -393,7 +394,7 @@ func ShowDatabases(db *gosql.DB) ([]string, error) {
 			return dbs, err
 		}
 		switch strings.ToLower(database.String) {
-		case "sys", "mysql", "information_schema", "performance_schema", "actiontech_udup":
+		case "sys", "mysql", "information_schema", "performance_schema", g.DtleSchemaName:
 			continue
 		default:
 			dbs = append(dbs, database.String)

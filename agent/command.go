@@ -9,6 +9,7 @@ package agent
 import (
 	"flag"
 	"fmt"
+	"github.com/actiontech/dtle/internal/g"
 	"io"
 	"log"
 	"os"
@@ -267,6 +268,9 @@ func (c *Command) Run(args []string) int {
 	} else {
 		c.logger.Printf("No configuration files loaded")
 	}
+
+	// set global value
+	g.DtleSchemaName = config.DtleSchemaName
 
 	// Initialize the metric
 	if err := c.setupMetric(config); err != nil {

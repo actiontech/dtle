@@ -10,6 +10,7 @@ import (
 	gosql "database/sql"
 	"encoding/json"
 	"fmt"
+	"github.com/actiontech/dtle/internal/g"
 
 	//"math"
 	"bytes"
@@ -863,14 +864,15 @@ func (a *Applier) initDBConnections() (err error) {
 		}
 
 		for i := range a.dbs {
-			a.dbs[i].PsDeleteExecutedGtid, err = a.dbs[i].Db.PrepareContext(context.Background(), fmt.Sprintf("delete from actiontech_udup.gtid_executed_v2 where job_uuid = unhex('%s') and source_uuid = ?",
-				hex.EncodeToString(a.subjectUUID.Bytes())))
+			a.dbs[i].PsDeleteExecutedGtid, err = a.dbs[i].Db.PrepareContext(context.Background(), fmt.Sprintf("delete from %v.gtid_executed_v2 where job_uuid = unhex('%s') and source_uuid = ?",
+				g.DtleSchemaName, hex.EncodeToString(a.subjectUUID.Bytes())))
 			if err != nil {
 				return err
 			}
-			a.dbs[i].PsInsertExecutedGtid, err = a.dbs[i].Db.PrepareContext(context.Background(), fmt.Sprintf("replace into actiontech_udup.gtid_executed_v2 "+
+			a.dbs[i].PsInsertExecutedGtid, err = a.dbs[i].Db.PrepareContext(context.Background(), fmt.Sprintf("replace into %v.gtid_executed_v2 "+
 				"(job_uuid,source_uuid,interval_gtid) "+
 				"values (unhex('%s'), ?, ?)",
+				g.DtleSchemaName,
 				hex.EncodeToString(a.subjectUUID.Bytes())))
 			if err != nil {
 				return err
@@ -927,7 +929,7 @@ func (a *Applier) validateGrants() error {
 			if strings.Contains(grant, `SUPER`) && strings.Contains(grant, ` ON *.*`) {
 				foundSuper = true
 			}
-			if strings.Contains(grant, "GRANT ALL PRIVILEGES ON `actiontech_udup`.`gtid_executed`") {
+			if strings.Contains(grant, fmt.Sprintf("GRANT ALL PRIVILEGES ON `%v`.`gtid_executed`", g.DtleSchemaName)) {
 				foundDBAll = true
 			}
 			if base.StringContainsAll(grant, `ALTER`, `CREATE`, `DELETE`, `DROP`, `INDEX`, `INSERT`, `LOCK TABLES`, `SELECT`, `TRIGGER`, `UPDATE`, ` ON`) {
@@ -970,23 +972,23 @@ func (a *Applier) validateAndReadTimeZone() error {
 }
 
 func (a *Applier) createTableGtidExecutedV2() error {
-	if result, err := sql.QueryResultData(a.db, "SHOW TABLES FROM actiontech_udup LIKE 'gtid_executed_v2'"); nil == err && len(result) > 0 {
+	if result, err := sql.QueryResultData(a.db, fmt.Sprintf("SHOW TABLES FROM %v LIKE 'gtid_executed_v2'", g.DtleSchemaName)); nil == err && len(result) > 0 {
 		return nil
 	}
 	query := fmt.Sprintf(`
-			CREATE DATABASE IF NOT EXISTS actiontech_udup;
-		`)
+			CREATE DATABASE IF NOT EXISTS %v;
+		`, g.DtleSchemaName)
 	if _, err := sql.Exec(a.db, query); err != nil {
 		return err
 	}
 
 	query = fmt.Sprintf(`
-			CREATE TABLE IF NOT EXISTS actiontech_udup.gtid_executed_v2 (
+			CREATE TABLE IF NOT EXISTS %v.gtid_executed_v2 (
 				job_uuid binary(16) NOT NULL COMMENT 'unique identifier of job',
 				source_uuid binary(16) NOT NULL COMMENT 'uuid of the source where the transaction was originally executed.',
 				interval_gtid text NOT NULL COMMENT 'number of interval.'
 			);
-		`)
+		`, g.DtleSchemaName)
 	if _, err := sql.Exec(a.db, query); err != nil {
 		return err
 	}

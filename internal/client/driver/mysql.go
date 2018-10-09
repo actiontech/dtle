@@ -17,6 +17,8 @@ import (
 	usql "github.com/actiontech/dtle/internal/client/driver/mysql/sql"
 	"github.com/actiontech/dtle/internal/config"
 	"github.com/actiontech/dtle/internal/models"
+
+	"github.com/actiontech/dtle/internal/g"
 )
 
 type MySQLDriver struct {
@@ -184,7 +186,7 @@ func (m *MySQLDriver) Validate(task *models.Task) (*models.TaskValidateResponse,
 				if strings.Contains(grant, `SUPER`) && strings.Contains(grant, ` ON *.*`) {
 					foundSuper = true
 				}
-				if strings.Contains(grant, "GRANT ALL PRIVILEGES ON `actiontech_udup`.`gtid_executed`") {
+				if strings.Contains(grant, fmt.Sprintf("GRANT ALL PRIVILEGES ON `%v`.`gtid_executed`", g.DtleSchemaName)) {
 					foundDBAll = true
 				}
 				if ubase.StringContainsAll(grant, `ALTER`, `CREATE`, `DELETE`, `DROP`, `INDEX`, `INSERT`, `LOCK TABLES`, `SELECT`, `TRIGGER`, `UPDATE`, ` ON`) {

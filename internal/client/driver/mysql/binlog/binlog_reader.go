@@ -9,6 +9,7 @@ package binlog
 import (
 	"bytes"
 	gosql "database/sql"
+	"github.com/actiontech/dtle/internal/g"
 
 	//"encoding/hex"
 	"fmt"
@@ -924,7 +925,7 @@ func (b *BinlogReader) skipQueryDDL(sql string, schema string, tableName string)
 		} else {
 			return true
 		}
-	case "sys", "information_schema", "performance_schema", "actiontech_udup":
+	case "sys", "information_schema", "performance_schema", g.DtleSchemaName:
 		return true
 	default:
 		if len(b.mysqlContext.ReplicateDoDb) > 0 {
@@ -998,7 +999,7 @@ func (b *BinlogReader) skipEvent(schema string, table string) bool {
 		} else {
 			return true
 		}
-	case "sys", "information_schema", "performance_schema", "actiontech_udup":
+	case "sys", "information_schema", "performance_schema", g.DtleSchemaName:
 		return true
 	default:
 		if len(b.mysqlContext.ReplicateDoDb) > 0 {
@@ -1051,7 +1052,7 @@ func skipMysqlSchemaEvent(tableLower string) bool {
 func (b *BinlogReader) skipRowEvent(rowsEvent *replication.RowsEvent) (bool, *config.TableContext) {
 	tableLower := strings.ToLower(string(rowsEvent.Table.Table))
 	switch strings.ToLower(string(rowsEvent.Table.Schema)) {
-	case "actiontech_udup":
+	case g.DtleSchemaName:
 		if strings.ToLower(string(rowsEvent.Table.Table)) == "gtid_executed" {
 			// TODO only for insertion
 			// TODO make sure the column exists

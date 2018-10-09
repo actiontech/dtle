@@ -10,6 +10,7 @@ import (
 	"bytes"
 	gosql "database/sql"
 	"fmt"
+	"github.com/actiontech/dtle/internal/g"
 	"regexp"
 	"strconv"
 	"strings"
@@ -161,7 +162,7 @@ func parseInterval(str string) (i gomysql.Interval, err error) {
 
 // return: normalized GtidSet
 func SelectAllGtidExecuted(db usql.QueryAble, jid uuid.UUID) (gtidSet GtidSet, err error) {
-	query := `SELECT source_uuid,interval_gtid FROM actiontech_udup.gtid_executed_v2 where job_uuid=?`
+	query := fmt.Sprintf(`SELECT source_uuid,interval_gtid FROM %v.gtid_executed_v2 where job_uuid=?`, g.DtleSchemaName)
 
 	rows, err := db.Query(query, jid.Bytes())
 	if err != nil {
