@@ -8,6 +8,8 @@ package scheduler
 
 import (
 	"fmt"
+	"math/rand"
+
 	//"math/rand"
 
 	memdb "github.com/hashicorp/go-memdb"
@@ -384,17 +386,23 @@ func (s *GenericScheduler) computePlacements(place []allocTuple) error {
 			return err
 		}
 
-		var nodeId string
 		if preferredNode != nil {
-			nodeId = preferredNode.ID
-		} /*else {
-			nodeId = nodes[rand.Intn(len(nodes))].ID
-		}*/
+			// do nothing
+		} else {
+			nodeId := nodes[rand.Intn(len(nodes))].ID
+			s.logger.Debugf("sched: no preferred node. Auto selected node %v for task %v", nodeId, missing.Name)
+
+			ws := memdb.NewWatchSet() // TODO what is ws used for?
+			preferredNode, err = s.state.NodeByID(ws, nodeId)
+			if err != nil {
+				return err
+			}
+		}
 
 		// Store the available nodes by datacenter
 		s.ctx.Metrics().NodesAvailable = byDC
 
-		if nodeId != "" {
+		if preferredNode != nil {
 			// Create an allocation for this
 			alloc := &models.Allocation{
 				ID:            models.GenerateUUID(),
