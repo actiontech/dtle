@@ -154,6 +154,16 @@ func (e *Extractor) consumeRowCopyComplete() {
 func (e *Extractor) Run() {
 	e.logger.Printf("mysql.extractor: Extract binlog events from %s.%d", e.mysqlContext.ConnectionConfig.Host, e.mysqlContext.ConnectionConfig.Port)
 	e.mysqlContext.StartTime = time.Now()
+
+	// Validate job arguments
+	{
+		if e.mysqlContext.SkipCreateDbTable && e.mysqlContext.DropTableIfExists {
+			e.onError(TaskStateDead,
+				fmt.Errorf("conflicting job argument: SkipCreateDbTable=true and DropTableIfExists=true"))
+			return
+		}
+	}
+
 	if err := e.initiateInspector(); err != nil {
 		e.onError(TaskStateDead, err)
 		return
