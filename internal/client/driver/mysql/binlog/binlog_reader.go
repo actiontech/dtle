@@ -1053,7 +1053,7 @@ func (b *BinlogReader) skipRowEvent(rowsEvent *replication.RowsEvent) (bool, *co
 	tableLower := strings.ToLower(string(rowsEvent.Table.Table))
 	switch strings.ToLower(string(rowsEvent.Table.Schema)) {
 	case g.DtleSchemaName:
-		if strings.ToLower(string(rowsEvent.Table.Table)) == "gtid_executed" {
+		if strings.ToLower(string(rowsEvent.Table.Table)) == g.GtidExecutedTableV2 {
 			// TODO only for insertion
 			// TODO make sure the column exists
 			//b.currentBinlogEntry.Coordinates.OSID = mysql.ToColumnValues(rowsEvent.Rows[0]).StringColumn(0)
