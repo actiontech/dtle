@@ -300,10 +300,23 @@ func (kr *KafkaRunner) kafkaTransformSnapshotData(table *config.Table, value *my
 				valueStr := string((*rowValues[i]).([]byte))
 
 				switch columnList[i].Type {
-				case mysql.TinyintColumnType, mysql.SmallintColumnType, mysql.MediumIntColumnType, mysql.IntColumnType, mysql.BigIntColumnType:
+				case mysql.TinyintColumnType, mysql.SmallintColumnType, mysql.MediumIntColumnType, mysql.IntColumnType:
 					value, err = strconv.ParseInt(valueStr, 10, 64)
 					if err != nil {
 						return err
+					}
+				case mysql.BigIntColumnType:
+					if columnList[i].IsUnsigned {
+						valueUint64, err := strconv.ParseUint(valueStr, 10, 64)
+						if err != nil {
+							return err
+						}
+						value = int64(valueUint64)
+					} else {
+						value, err = strconv.ParseInt(valueStr, 10, 64)
+						if err != nil {
+							return err
+						}
 					}
 				case mysql.FloatColumnType, mysql.DoubleColumnType:
 					value, err = strconv.ParseFloat(valueStr, 64)
@@ -418,6 +431,15 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry)
 				if afterValue != nil {
 					afterValue = DecimalValueFromStringMysql(afterValue.(string))
 				}
+			case mysql.BigIntColumnType:
+				if colList[i].IsUnsigned {
+					if beforeValue != nil {
+						beforeValue = int64(beforeValue.(uint64))
+					}
+					if afterValue != nil {
+						afterValue = int64(afterValue.(uint64))
+					}
+				}
 			default:
 				// do nothing
 			}
@@ -433,9 +455,11 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry)
 			}
 
 			if before != nil {
+				kr.logger.Debugf("kafka. type of beforeValue %T", beforeValue)
 				before.AddField(colName, beforeValue)
 			}
 			if after != nil {
+				kr.logger.Debugf("kafka. type of afterValue %T", afterValue)
 				after.AddField(colName, afterValue)
 			}
 		}
