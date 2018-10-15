@@ -280,9 +280,9 @@ func (i *Inspector) validateTable(databaseName, tableName string) error {
 	query := fmt.Sprintf(`show table status from %s like '%s'`, usql.EscapeName(databaseName), tableName)
 
 	tableFound := false
-	tableEngine := ""
+	//tableEngine := ""
 	err := usql.QueryRowsMap(i.db, query, func(rowMap usql.RowMap) error {
-		tableEngine = rowMap.GetString("Engine")
+		//tableEngine = rowMap.GetString("Engine")
 		if rowMap.GetString("Comment") == "VIEW" {
 			return fmt.Errorf("%s.%s is a VIEW, not a real table. Bailing out", usql.EscapeName(databaseName), usql.EscapeName(tableName))
 		}

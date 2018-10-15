@@ -288,6 +288,9 @@ func DecimalValueFromStringMysql(value string) string {
 	}
 
 	bs := sum.Bytes()
+	if len(bs) == 0 {
+		bs = []byte{0}
+	}
 
 	if isNeg {
 		for i := len(bs) - 1; i >= 0; i-- {
