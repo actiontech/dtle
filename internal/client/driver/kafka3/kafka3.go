@@ -300,10 +300,23 @@ func (kr *KafkaRunner) kafkaTransformSnapshotData(table *config.Table, value *my
 				valueStr := string((*rowValues[i]).([]byte))
 
 				switch columnList[i].Type {
-				case mysql.TinyintColumnType, mysql.SmallintColumnType, mysql.MediumIntColumnType, mysql.IntColumnType, mysql.BigIntColumnType:
+				case mysql.TinyintColumnType, mysql.SmallintColumnType, mysql.MediumIntColumnType, mysql.IntColumnType:
 					value, err = strconv.ParseInt(valueStr, 10, 64)
 					if err != nil {
 						return err
+					}
+				case mysql.BigIntColumnType:
+					if columnList[i].IsUnsigned {
+						valueUint64, err := strconv.ParseUint(valueStr, 10, 64)
+						if err != nil {
+							return err
+						}
+						value = int64(valueUint64)
+					} else {
+						value, err = strconv.ParseInt(valueStr, 10, 64)
+						if err != nil {
+							return err
+						}
 					}
 				case mysql.FloatColumnType, mysql.DoubleColumnType:
 					value, err = strconv.ParseFloat(valueStr, 64)
