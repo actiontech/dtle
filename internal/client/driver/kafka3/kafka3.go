@@ -431,6 +431,15 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry)
 				if afterValue != nil {
 					afterValue = DecimalValueFromStringMysql(afterValue.(string))
 				}
+			case mysql.BigIntColumnType:
+				if colList[i].IsUnsigned {
+					if beforeValue != nil {
+						beforeValue = int64(beforeValue.(uint64))
+					}
+					if afterValue != nil {
+						afterValue = int64(afterValue.(uint64))
+					}
+				}
 			default:
 				// do nothing
 			}
@@ -446,9 +455,11 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry)
 			}
 
 			if before != nil {
+				kr.logger.Debugf("kafka. type of beforeValue %T", beforeValue)
 				before.AddField(colName, beforeValue)
 			}
 			if after != nil {
+				kr.logger.Debugf("kafka. type of afterValue %T", afterValue)
 				after.AddField(colName, afterValue)
 			}
 		}
