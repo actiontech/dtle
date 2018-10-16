@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/big"
+	"strings"
 
 	"strconv"
 
@@ -322,10 +323,63 @@ func NewTimeField(optional bool, field string) *Schema {
 	}
 }
 
+func timeValueHelper(h, m, s, microsec int64, isNeg bool) int64 {
+	r := (h * 3600 + m * 60 + s) * 1000000 + microsec
+	if isNeg {
+		return -r
+	} else {
+		return r
+	}
+}
 // precision make no difference
-func TimeValue(timestamp int64) int64 {
-	// TODO
-	return 0
+func TimeValue(value string) int64 {
+	var err error
+
+	if len(value) == 0 {
+		return 0
+	}
+	isNeg := false
+	if value[0] == '-' {
+		isNeg = true
+		value = value[1:]
+	}
+
+	ss := strings.Split(value, ":")
+	if len(ss) != 3 {
+		// TODO report err, as well the followings.
+		return 0
+	}
+	var h,m,s,microsec int64
+	h, err = strconv.ParseInt(ss[0], 10, 64)
+	if err != nil {
+		return 0
+	}
+	m, err = strconv.ParseInt(ss[1], 10, 64)
+	if err != nil {
+		return 0
+	}
+	ssms := strings.Split(ss[2], ".")
+	switch len(ssms) {
+	case 1:
+		s, err = strconv.ParseInt(ss[2], 10, 64)
+		if err != nil {
+			return 0
+		}
+		microsec = 0
+	case 2:
+		s, err = strconv.ParseInt(ssms[0], 10, 64)
+		if err != nil {
+			return 0
+		}
+		microsec, err = strconv.ParseInt(ssms[1], 10, 64)
+		if err != nil {
+			return 0
+		}
+	default:
+		return 0
+	}
+
+	return timeValueHelper(h,m,s,microsec, isNeg)
 }
 func NewDateTimeField(optional bool, field string) *Schema {
 	return &Schema{

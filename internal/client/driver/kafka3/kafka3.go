@@ -325,6 +325,8 @@ func (kr *KafkaRunner) kafkaTransformSnapshotData(table *config.Table, value *my
 					}
 				case mysql.DecimalColumnType:
 					value = DecimalValueFromStringMysql(valueStr)
+				case mysql.TimeColumnType:
+					value = TimeValue(valueStr)
 				default:
 					value = valueStr
 				}
@@ -440,6 +442,13 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry)
 						afterValue = int64(afterValue.(uint64))
 					}
 				}
+			case mysql.TimeColumnType:
+				//if beforeValue != nil {
+				//	beforeValue = int64(beforeValue.(uint64))
+				//}
+				//if afterValue != nil {
+				//	afterValue = int64(afterValue.(uint64))
+				//}
 			default:
 				// do nothing
 			}
@@ -455,11 +464,11 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry)
 			}
 
 			if before != nil {
-				kr.logger.Debugf("kafka. type of beforeValue %T", beforeValue)
+				kr.logger.Debugf("kafka. beforeValue: type: %T, value: %v", beforeValue, beforeValue)
 				before.AddField(colName, beforeValue)
 			}
 			if after != nil {
-				kr.logger.Debugf("kafka. type of afterValue %T", afterValue)
+				kr.logger.Debugf("kafka. afterValue: type: %T, value: %v", afterValue, afterValue)
 				after.AddField(colName, afterValue)
 			}
 		}
