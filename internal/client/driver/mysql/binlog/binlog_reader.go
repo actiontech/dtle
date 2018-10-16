@@ -441,16 +441,15 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 					}
 				}
 
-				if !whereTrue {
+				if whereTrue {
+					// The channel will do the throttling. Whoever is reding from the channel
+					// decides whether action is taken sycnhronously (meaning we wait before
+					// next iteration) or asynchronously (we keep pushing more events)
+					// In reality, reads will be synchronous
+					b.currentBinlogEntry.Events = append(b.currentBinlogEntry.Events, dmlEvent)
+				} else {
 					b.logger.Debugf("event has not passed 'where'")
-					return nil
 				}
-
-				// The channel will do the throttling. Whoever is reding from the channel
-				// decides whether action is taken sycnhronously (meaning we wait before
-				// next iteration) or asynchronously (we keep pushing more events)
-				// In reality, reads will be synchronous
-				b.currentBinlogEntry.Events = append(b.currentBinlogEntry.Events, dmlEvent)
 			}
 			return nil
 		}
