@@ -1,12 +1,12 @@
 [Unit]
-Description=Udup desc
+Description=Dtle desc
 Documentation=http://www.actionsky.com/docs
 After=network.target
 
 [Service]
-EnvironmentFile=-/etc/default/udup
-User=udup
-ExecStart=/usr/bin/udup server -config /etc/udup/udup.conf ${UDUP_OPTS}
+EnvironmentFile=-/etc/default/dtle
+User=dtle
+ExecStart=/usr/bin/dtle server -config /etc/dtle/dtle.conf ${DTLE_OPTS}
 ExecReload=/bin/kill -HUP $MAINPID
 Restart=on-failure
 KillMode=control-group

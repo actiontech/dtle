@@ -1,24 +1,24 @@
 #!/bin/bash
 
 function disable_systemd {
-    systemctl disable udup
-    rm -f /lib/systemd/system/udup.service
+    systemctl disable dtle
+    rm -f /lib/systemd/system/dtle.service
 }
 
 function disable_update_rcd {
-    update-rc.d -f udup remove
-    rm -f /etc/init.d/udup
+    update-rc.d -f dtle remove
+    rm -f /etc/init.d/dtle
 }
 
 function disable_chkconfig {
-    chkconfig --del udup
-    rm -f /etc/init.d/udup
+    chkconfig --del dtle
+    rm -f /etc/init.d/dtle
 }
 
 if [[ "$1" == "0" ]]; then
     # RHEL and any distribution that follow RHEL, Amazon Linux covered
-    # udup is no longer installed, remove from init system
-    rm -f /etc/default/udup
+    # dtle is no longer installed, remove from init system
+    rm -f /etc/default/dtle
 
     which systemctl &>/dev/null
     if [[ $? -eq 0 ]]; then
@@ -30,7 +30,7 @@ if [[ "$1" == "0" ]]; then
 elif [ "$1" == "remove" -o "$1" == "purge" ]; then
     # Debian/Ubuntu logic
     # Remove/purge
-    rm -f /etc/default/udup
+    rm -f /etc/default/dtle
 
     which systemctl &>/dev/null
     if [[ $? -eq 0 ]]; then

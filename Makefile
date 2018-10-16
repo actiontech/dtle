@@ -5,7 +5,7 @@ COMMIT := $(shell sh -c 'git rev-parse --short HEAD')
 DOCKER        := $(shell which docker)
 DOCKER_IMAGE  := docker-registry:5000/actiontech/universe-compiler-udup:v2
 
-PROJECT_NAME  = udup
+PROJECT_NAME  = dtle
 VERSION       = 9.9.9.9
 
 ifdef GOBIN
@@ -16,7 +16,7 @@ endif
 
 GOFLAGS ?= $(GOFLAGS:)
 
-# Standard Udup build
+# Standard Dtle build
 default: build
 
 # Windows build
@@ -24,12 +24,12 @@ windows: build-windows
 
 # Only run the build (no dependency grabbing)
 build:
-	go build $(GOFLAGS) -o dist/udup -ldflags \
+	go build $(GOFLAGS) -o dist/dtle -ldflags \
 		"-X main.Version=$(VERSION) -X main.GitCommit=$(COMMIT) -X main.GitBranch=$(BRANCH)" \
 		./cmd/udup/main.go
 
 build-windows:
-	GOOS=windows GOARCH=amd64 go build $(GOFLAGS) -o dist/udup.exe -ldflags \
+	GOOS=windows GOARCH=amd64 go build $(GOFLAGS) -o dist/dtle.exe -ldflags \
 		"-X main.Version=$(VERSION) -X main.GitCommit=$(COMMIT) -X main.GitBranch=$(BRANCH)" \
 		./cmd/udup/main.go
 

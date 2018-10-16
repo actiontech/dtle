@@ -1,15 +1,15 @@
 #! /usr/bin/env bash
 
 # chkconfig: 2345 99 01
-# description: Udup daemon
+# description: Dtle daemon
 
 ### BEGIN INIT INFO
-# Provides:          udup
+# Provides:          dtle
 # Required-Start:    $all
 # Required-Stop:     $remote_fs $syslog
 # Default-Start:     2 3 4 5
 # Default-Stop:      0 1 6
-# Short-Description: Start udup at boot time
+# Short-Description: Start dtle at boot time
 ### END INIT INFO
 
 # this init script supports three different variations:
@@ -20,18 +20,18 @@
 # In the third case we have to define our own functions which are very dumb
 # and expect the args to be positioned correctly.
 
-# Command-line options that can be set in /etc/default/udup.  These will override
+# Command-line options that can be set in /etc/default/dtle.  These will override
 # any config file values.
-UDUP_OPTS=
+DTLE_OPTS=
 
-USER=udup
-GROUP=udup
+USER=dtle
+GROUP=dtle
 
 if [ -r /lib/lsb/init-functions ]; then
     source /lib/lsb/init-functions
 fi
 
-DEFAULT=/etc/default/udup
+DEFAULT=/etc/default/dtle
 
 if [ -r $DEFAULT ]; then
     source $DEFAULT
@@ -94,10 +94,10 @@ function log_success_msg() {
 }
 
 # Process name ( For display )
-name=udup
+name=dtle
 
 # Daemon name, where is the actual executable
-daemon=/usr/bin/udup
+daemon=/usr/bin/dtle
 
 # pid file for the daemon
 pidfile=/var/run/udup/udup.pid
@@ -109,7 +109,7 @@ if [ ! -d "$piddir" ]; then
 fi
 
 # Configuration file
-config=/etc/udup/udup.conf
+config=/etc/dtle/dtle.conf
 
 # If the daemon is not there, then exit.
 [ -x $daemon ] || exit 5
@@ -135,9 +135,9 @@ case $1 in
 
         log_success_msg "Starting the process" "$name"
         if which start-stop-daemon > /dev/null 2>&1; then
-            start-stop-daemon --chuid $USER:$GROUP --start --quiet --pid-file $pidfile --exec $daemon -- -pid-file $pidfile -config $config $UDUP_OPTS >>$STDOUT 2>>$STDERR &
+            start-stop-daemon --chuid $USER:$GROUP --start --quiet --pid-file $pidfile --exec $daemon -- -pid-file $pidfile -config $config $DTLE_OPTS >>$STDOUT 2>>$STDERR &
         else
-            su -s /bin/sh -c "nohup $daemon server -pid-file $pidfile -config $config $UDUP_OPTS >>$STDOUT 2>>$STDERR &" $USER
+            su -s /bin/sh -c "nohup $daemon server -pid-file $pidfile -config $config $DTLE_OPTS >>$STDOUT 2>>$STDERR &" $USER
         fi
         log_success_msg "$name process was started"
         ;;

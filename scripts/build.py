@@ -13,37 +13,37 @@ import logging
 import argparse
 
 ################
-#### Udup Variables
+#### Dtle Variables
 ################
 
 # Packaging variables
-PACKAGE_NAME = "udup"
+PACKAGE_NAME = "dtle"
 INSTALL_ROOT_DIR = "/usr/bin"
 LOG_DIR = "/var/log/udup"
-SCRIPT_DIR = "/usr/lib/udup/scripts"
-CONFIG_DIR = "/etc/udup"
+SCRIPT_DIR = "/usr/lib/dtle/scripts"
+CONFIG_DIR = "/etc/dtle"
 LOGROTATE_DIR = "/etc/logrotate.d"
 
 INIT_SCRIPT = "scripts/init.sh"
-SYSTEMD_SCRIPT = "scripts/udup.service"
+SYSTEMD_SCRIPT = "scripts/dtle.service"
 LOGROTATE_SCRIPT = "etc/logrotate.d/udup"
-DEFAULT_CONFIG = "etc/udup.conf"
-DEFAULT_WINDOWS_CONFIG = "etc/udup.conf"
+DEFAULT_CONFIG = "etc/dtle.conf"
+DEFAULT_WINDOWS_CONFIG = "etc/dtle.conf"
 POSTINST_SCRIPT = "scripts/post-install.sh"
 PREINST_SCRIPT = "scripts/pre-install.sh"
 POSTREMOVE_SCRIPT = "scripts/post-remove.sh"
 PREREMOVE_SCRIPT = "scripts/pre-remove.sh"
 
 CONFIGURATION_FILES = [
-    CONFIG_DIR + '/udup.conf',
+    CONFIG_DIR + '/dtle.conf',
     LOGROTATE_DIR + '/udup',
 ]
 
 # META-PACKAGE VARIABLES
 PACKAGE_URL = "git@github.com:actiontech/dtle.git"
 MAINTAINER = "support@actionsky.com"
-VENDOR = "Udup"
-DESCRIPTION = "Udup desc"
+VENDOR = "Actiontech"
+DESCRIPTION = "Dtle is a database data transmission tool."
 
 # SCRIPT START
 prereqs = [ 'git', 'go' ]
@@ -64,7 +64,7 @@ fpm_common_args = "-f -s dir --log error \
     VENDOR,
     PACKAGE_URL,
     MAINTAINER,
-    CONFIG_DIR + '/udup.conf',
+    CONFIG_DIR + '/dtle.conf',
     LOGROTATE_DIR + '/udup',
     POSTINST_SCRIPT,
     PREINST_SCRIPT,
@@ -73,7 +73,7 @@ fpm_common_args = "-f -s dir --log error \
     DESCRIPTION)
 
 targets = {
-    'udup' : './cmd/udup',
+    'dtle' : './cmd/udup',
 }
 
 supported_builds = {
@@ -89,7 +89,7 @@ supported_packages = {
 }
 
 ################
-#### Udup Functions
+#### Dtle Functions
 ################
 def create_package_fs(build_root):
     """Create a filesystem structure to mimic the package filesystem.
@@ -109,10 +109,10 @@ def package_scripts(build_root, config_only=False, windows=False):
     if config_only or windows:
         logging.info("Copying configuration to build directory")
         if windows:
-            shutil.copyfile(DEFAULT_WINDOWS_CONFIG, os.path.join(build_root, "udup.conf"))
+            shutil.copyfile(DEFAULT_WINDOWS_CONFIG, os.path.join(build_root, "dtle.conf"))
         else:
-            shutil.copyfile(DEFAULT_CONFIG, os.path.join(build_root, "udup.conf"))
-        os.chmod(os.path.join(build_root, "udup.conf"), 0o644)
+            shutil.copyfile(DEFAULT_CONFIG, os.path.join(build_root, "dtle.conf"))
+        os.chmod(os.path.join(build_root, "dtle.conf"), 0o644)
     else:
         logging.info("Copying scripts and configuration to build directory")
         shutil.copyfile(INIT_SCRIPT, os.path.join(build_root, SCRIPT_DIR[1:], INIT_SCRIPT.split('/')[1]))
@@ -121,11 +121,11 @@ def package_scripts(build_root, config_only=False, windows=False):
         os.chmod(os.path.join(build_root, SCRIPT_DIR[1:], SYSTEMD_SCRIPT.split('/')[1]), 0o644)
         shutil.copyfile(LOGROTATE_SCRIPT, os.path.join(build_root, LOGROTATE_DIR[1:], "udup"))
         os.chmod(os.path.join(build_root, LOGROTATE_DIR[1:], "udup"), 0o644)
-        shutil.copyfile(DEFAULT_CONFIG, os.path.join(build_root, CONFIG_DIR[1:], "udup.conf"))
-        os.chmod(os.path.join(build_root, CONFIG_DIR[1:], "udup.conf"), 0o644)
+        shutil.copyfile(DEFAULT_CONFIG, os.path.join(build_root, CONFIG_DIR[1:], "dtle.conf"))
+        os.chmod(os.path.join(build_root, CONFIG_DIR[1:], "dtle.conf"), 0o644)
 
 def run_generate():
-    # NOOP for Udup
+    # NOOP for Dtle
     return True
 
 def go_get(branch, update=False, no_uncommitted=False):
@@ -138,11 +138,11 @@ def go_get(branch, update=False, no_uncommitted=False):
     return True
 
 def run_tests(race, parallel, timeout, no_vet):
-    # Currently a NOOP for Udup
+    # Currently a NOOP for Dtle
     return True
 
 ################
-#### All Udup-specific content above this line
+#### All Dtle-specific content above this line
 ################
 
 def run(command, allow_failure=False, shell=False):
@@ -731,7 +731,7 @@ if __name__ == '__main__':
     logging.basicConfig(level=LOG_LEVEL,
                         format=log_format)
 
-    parser = argparse.ArgumentParser(description='Udup build and packaging script.')
+    parser = argparse.ArgumentParser(description='Dtle build and packaging script.')
     parser.add_argument('--verbose','-v','--debug',
                         action='store_true',
                         help='Use debug output')
@@ -777,15 +777,15 @@ if __name__ == '__main__':
                         help='Package iteration to apply to build output (defaults to 1)')
     parser.add_argument('--stats',
                         action='store_true',
-                        help='Emit build metrics (requires Udup Python client)')
+                        help='Emit build metrics (requires Dtle Python client)')
     parser.add_argument('--stats-server',
                         metavar='<hostname:port>',
                         type=str,
-                        help='Send build stats to Udup using provided hostname and port')
+                        help='Send build stats to Dtle using provided hostname and port')
     parser.add_argument('--stats-db',
                         metavar='<database name>',
                         type=str,
-                        help='Send build stats to Udup using provided database name')
+                        help='Send build stats to Dtle using provided database name')
     parser.add_argument('--nightly',
                         action='store_true',
                         help='Mark build output as nightly build (will incremement the minor version)')
