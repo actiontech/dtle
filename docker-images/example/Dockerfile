@@ -3,42 +3,43 @@ From docker-registry:5000/centos:centos7
 #
 # Set the version, home directory.
 #
-ENV UDUP_VERSION=1.0.0 \
-    UDUP_HOME=/udup
+ENV DTLE_BRANCH=master \
+    DTLE_VERSION=9.9.9.9 \
+    DTLE_HOME=/dtle
 
 #
-# Create a user and home directory for Udup
+# Create a user and home directory for Dtle
 #
 USER root
-RUN groupadd -r udup -g 1001 && useradd -u 1001 -r -g udup -m -d $UDUP_HOME -s /sbin/nologin -c "Udup user" udup && \
-    chmod 755 $UDUP_HOME
+RUN groupadd -r dtle -g 1001 && useradd -u 1001 -r -g dtle -m -d $DTLE_HOME -s /sbin/nologin -c "Dtle user" dtle && \
+    chmod 755 $DTLE_HOME
 
 #
-# Download Udup
+# Download Dtle
 #
-RUN curl -fSL -o udup-$UDUP_VERSION-qa.x86_64.rpm -u ftp:ftp ftp://10.186.18.25/actiontech-udup/qa/$UDUP_VERSION/udup-$UDUP_VERSION-qa.x86_64.rpm
+RUN curl -fSL -O -u ftp:ftp ftp://10.186.18.20/actiontech-udup/qa/$DTLE_VERSION/udup-$DTLE_VERSION-qa.x86_64.rpm
 
 #
 # Install ...
 #
-RUN rpm -ivh udup-$UDUP_VERSION-qa.x86_64.rpm
+RUN rpm -ivh udup-$DTLE_VERSION-qa.x86_64.rpm
 
 #
-# Change ownership and switch user
+# Change ownership and switch use\
 #
-RUN chown -R udup $UDUP_HOME && \
-    chgrp -R udup $UDUP_HOME
-USER udup
+RUN chown -R dtle $DTLE_HOME && \
+    chgrp -R dtle $DTLE_HOME
+USER dtle
 
-# Set the working directory to the Udup home directory
-WORKDIR $UDUP_HOME
+# Set the working directory to the Dtle home directory
+WORKDIR $DTLE_HOME
 
 #
 # Expose the ports and set up volumes for the data and logs directories
 #
-EXPOSE 9092
-VOLUME ["/udup"]
+EXPOSE 8190
+VOLUME ["/dtle"]
 
-COPY ./docker-entrypoint.sh /
-ENTRYPOINT ["/docker-entrypoint.sh"]
-CMD ["start"]
+COPY ./dtle.conf /etc/dtle/
+
+CMD ["/usr/bin/udup", "server", "--config", "/etc/dtle/dtle.conf"]
