@@ -45,7 +45,7 @@ if [ ! -f "$STDOUT" ]; then
 fi
 
 if [ -z "$STDERR" ]; then
-    STDERR=/var/log/udup/udup.log
+    STDERR=/var/log/dtle/dtle.log
 fi
 if [ ! -f "$STDERR" ]; then
     mkdir -p `dirname $STDERR`
@@ -100,7 +100,7 @@ name=dtle
 daemon=/usr/bin/dtle
 
 # pid file for the daemon
-pidfile=/var/run/udup/udup.pid
+pidfile=/var/run/dtle/dtle.pid
 piddir=`dirname $pidfile`
 
 if [ ! -d "$piddir" ]; then

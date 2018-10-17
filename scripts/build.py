@@ -19,14 +19,14 @@ import argparse
 # Packaging variables
 PACKAGE_NAME = "dtle"
 INSTALL_ROOT_DIR = "/usr/bin"
-LOG_DIR = "/var/log/udup"
+LOG_DIR = "/var/log/dtle"
 SCRIPT_DIR = "/usr/lib/dtle/scripts"
 CONFIG_DIR = "/etc/dtle"
 LOGROTATE_DIR = "/etc/logrotate.d"
 
 INIT_SCRIPT = "scripts/init.sh"
 SYSTEMD_SCRIPT = "scripts/dtle.service"
-LOGROTATE_SCRIPT = "etc/logrotate.d/udup"
+LOGROTATE_SCRIPT = "etc/logrotate.d/dtle"
 DEFAULT_CONFIG = "etc/dtle.conf"
 DEFAULT_WINDOWS_CONFIG = "etc/dtle.conf"
 POSTINST_SCRIPT = "scripts/post-install.sh"
@@ -36,7 +36,7 @@ PREREMOVE_SCRIPT = "scripts/pre-remove.sh"
 
 CONFIGURATION_FILES = [
     CONFIG_DIR + '/dtle.conf',
-    LOGROTATE_DIR + '/udup',
+    LOGROTATE_DIR + '/dtle',
 ]
 
 # META-PACKAGE VARIABLES
@@ -65,7 +65,7 @@ fpm_common_args = "-f -s dir --log error \
     PACKAGE_URL,
     MAINTAINER,
     CONFIG_DIR + '/dtle.conf',
-    LOGROTATE_DIR + '/udup',
+    LOGROTATE_DIR + '/dtle',
     POSTINST_SCRIPT,
     PREINST_SCRIPT,
     POSTREMOVE_SCRIPT,
@@ -119,8 +119,8 @@ def package_scripts(build_root, config_only=False, windows=False):
         os.chmod(os.path.join(build_root, SCRIPT_DIR[1:], INIT_SCRIPT.split('/')[1]), 0o644)
         shutil.copyfile(SYSTEMD_SCRIPT, os.path.join(build_root, SCRIPT_DIR[1:], SYSTEMD_SCRIPT.split('/')[1]))
         os.chmod(os.path.join(build_root, SCRIPT_DIR[1:], SYSTEMD_SCRIPT.split('/')[1]), 0o644)
-        shutil.copyfile(LOGROTATE_SCRIPT, os.path.join(build_root, LOGROTATE_DIR[1:], "udup"))
-        os.chmod(os.path.join(build_root, LOGROTATE_DIR[1:], "udup"), 0o644)
+        shutil.copyfile(LOGROTATE_SCRIPT, os.path.join(build_root, LOGROTATE_DIR[1:], "dtle"))
+        os.chmod(os.path.join(build_root, LOGROTATE_DIR[1:], "dtle"), 0o644)
         shutil.copyfile(DEFAULT_CONFIG, os.path.join(build_root, CONFIG_DIR[1:], "dtle.conf"))
         os.chmod(os.path.join(build_root, CONFIG_DIR[1:], "dtle.conf"), 0o644)
 

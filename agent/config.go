@@ -242,9 +242,9 @@ type Node struct {
 func DefaultConfig() *Config {
 	return &Config{
 		LogLevel:    "INFO",
-		LogFile:     "/var/log/udup/udup.log",
+		LogFile:     "/var/log/dtle/dtle.log",
 		LogToStdout: false,
-		PidFile:     "/var/run/udup/udup.pid",
+		PidFile:     "/var/run/dtle/dtle.pid",
 		Region:      "global",
 		Datacenter:  "dc1",
 		BindAddr:    "0.0.0.0",

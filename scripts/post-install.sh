@@ -1,7 +1,7 @@
 #!/bin/bash
 
 BIN_DIR=/usr/bin
-LOG_DIR=/var/log/udup
+LOG_DIR=/var/log/dtle
 SCRIPT_DIR=/usr/lib/dtle/scripts
 CONFIG_DIR=/etc/dtle
 LOGROTATE_DIR=/etc/logrotate.d
