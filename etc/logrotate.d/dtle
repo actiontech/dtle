@@ -1,4 +1,4 @@
-/var/log/udup/udup.log 
+/var/log/dtle/dtle.log
 {
     rotate 6
     daily
