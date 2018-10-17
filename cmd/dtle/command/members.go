@@ -23,9 +23,9 @@ type ServerMembersCommand struct {
 
 func (c *ServerMembersCommand) Help() string {
 	helpText := `
-Usage: udup members [options]
+Usage: dtle members [options]
 
-  Display a list of the known managers and their status. Only Udup managers are
+  Display a list of the known managers and their status. Only Dtle managers are
   able to service this command.
 
 General Options:

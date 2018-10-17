@@ -227,7 +227,7 @@ func (c *Command) setupLoggers(config *Config) (io.Writer, error) {
 
 // setupAgent is used to start the agent and various interfaces
 func (c *Command) setupAgent(config *Config, logOutput io.Writer) error {
-	c.logger.Printf("Starting Udup server...")
+	c.logger.Printf("Starting Dtle server...")
 	agent, err := NewAgent(config, logOutput, c.logger)
 	if err != nil {
 		c.logger.Errorf("Error starting server: %s", err)
@@ -314,7 +314,7 @@ func (c *Command) Run(args []string) int {
 
 	// Agent configuration output
 	padding := 18
-	c.logger.Printf("Udup server configuration:\n")
+	c.logger.Printf("Dtle server configuration:\n")
 	for _, k := range infoKeys {
 		c.logger.Printf(fmt.Sprintf(
 			" %s%s: %s",
@@ -323,7 +323,7 @@ func (c *Command) Run(args []string) int {
 			info[k]))
 	}
 	// Output the header that the server has started
-	c.logger.Printf("Udup server started! Log data will stream in below:\n")
+	c.logger.Printf("Dtle server started! Log data will stream in below:\n")
 
 	// Start retry join process
 	c.retryJoinErrCh = make(chan struct{})
@@ -503,17 +503,17 @@ func (c *Command) retryJoin(config *Config) {
 }
 
 func (c *Command) Synopsis() string {
-	return "Runs a Udup server"
+	return "Runs a Dtle server"
 }
 
 func (c *Command) Help() string {
 	helpText := `
-Usage: udup server [options]
+Usage: dtle server [options]
 
-  Starts the Udup server and runs until an interrupt is received.
+  Starts the Dtle server and runs until an interrupt is received.
   The server may be a agent and/or manager.
 
-  The Udup server's configuration primarily comes from the config
+  The Dtle server's configuration primarily comes from the config
   files used, but a subset of the options may also be passed directly
   as CLI arguments, listed below.
 
@@ -526,7 +526,7 @@ General Options (agents and managers):
 
   -config=<path>
     The path to either a single config file or a directory of config
-    files to use for configuring the Udup server. This option may be
+    files to use for configuring the Dtle server. This option may be
     specified multiple times. If multiple config files are used, the
     values from each will be merged together. During merging, values
     from files found later in the list are merged over values from
@@ -539,11 +539,11 @@ General Options (agents and managers):
     dir is also used to store the replicated log.
 
   -dc=<datacenter>
-    The name of the datacenter this Udup server is a member of. By
+    The name of the datacenter this Dtle server is a member of. By
     default this is set to "dc1".
 
   -log-level=<level>
-    Specify the verbosity level of Udup's logs. Valid values include
+    Specify the verbosity level of Dtle's logs. Valid values include
     DEBUG, INFO, and WARN, in decreasing order of verbosity. The
     default is INFO.
 
@@ -553,13 +553,13 @@ General Options (agents and managers):
     the current hostname of the machine.
 
   -region=<region>
-    Name of the region the Udup server will be a member of. By default
+    Name of the region the Dtle server will be a member of. By default
     this value is set to "global".
 
 Manager Options:
 
   -manager
-    Enable manager mode for the udup. Servers in manager mode are
+    Enable manager mode for the dtle. Servers in manager mode are
     clustered together and handle the additional responsibility of
     leader election, data replication, and scheduling work onto
     eligible agent nodes.

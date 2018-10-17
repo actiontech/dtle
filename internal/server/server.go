@@ -787,7 +787,7 @@ func (s *Server) GetConfig() *uconf.ServerConfig {
 // peers.json file. This is written to a file called peers.info in the same
 // location.
 const peersInfoContent = `
-As of Udup 0.1.0, the peers.json file is only used for recovery
+As of Dtle 0.1.0, the peers.json file is only used for recovery
 after an outage. It should be formatted as a JSON array containing the address
 and port of each Consul server in the cluster, like this:
 
@@ -795,7 +795,7 @@ and port of each Consul server in the cluster, like this:
 
 Under normal operation, the peers.json file will not be present.
 
-When Udup starts for the first time, it will create this peers.info file and
+When Dtle starts for the first time, it will create this peers.info file and
 delete any existing peers.json file so that recovery doesn't occur on the first
 startup.
 

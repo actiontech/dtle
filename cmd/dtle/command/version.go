@@ -28,11 +28,11 @@ func (c *VersionCommand) Help() string {
 func (c *VersionCommand) Run(_ []string) int {
 	var versionString bytes.Buffer
 
-	fmt.Fprintf(&versionString, "Udup %s (git: %s %s)", c.Version, c.Branch, c.Commit)
+	fmt.Fprintf(&versionString, "Dtle %s (git: %s %s)", c.Version, c.Branch, c.Commit)
 	c.Ui.Output(versionString.String())
 	return 0
 }
 
 func (c *VersionCommand) Synopsis() string {
-	return "Prints the Udup version"
+	return "Prints the Dtle version"
 }

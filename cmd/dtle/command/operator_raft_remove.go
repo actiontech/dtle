@@ -20,15 +20,15 @@ type OperatorRaftRemoveCommand struct {
 
 func (c *OperatorRaftRemoveCommand) Help() string {
 	helpText := `
-Usage: udup remove-peer [options]
+Usage: dtle remove-peer [options]
 
-Remove the Udup server with given -peer-address from the Raft configuration.
+Remove the Dtle server with given -peer-address from the Raft configuration.
 
 There are rare cases where a peer may be left behind in the Raft quorum even
 though the server is no longer present and known to the cluster. This command
 can be used to remove the failed server so that it is no longer affects the Raft
-quorum. If the server still shows in the output of the "udup members"
-command, it is preferable to clean up by simply running "udup
+quorum. If the server still shows in the output of the "dtle members"
+command, it is preferable to clean up by simply running "dtle
 server-force-leave" instead of this command.
 
 General Options:
@@ -38,15 +38,15 @@ General Options:
 Remove Peer Options:
 
   -address="IP:port"
-    Remove a Udup server with given address from the Raft configuration.
+    Remove a Dtle server with given address from the Raft configuration.
   -id=""
-    Remove a Udup server with given ID from the Raft configuration.
+    Remove a Dtle server with given ID from the Raft configuration.
 `
 	return strings.TrimSpace(helpText)
 }
 
 func (c *OperatorRaftRemoveCommand) Synopsis() string {
-	return "Remove a Udup server from the Raft configuration"
+	return "Remove a Dtle server from the Raft configuration"
 }
 
 func (c *OperatorRaftRemoveCommand) Run(args []string) int {

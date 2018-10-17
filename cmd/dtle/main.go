@@ -49,7 +49,7 @@ func realMain() int {
 
 	c := &cli.CLI{
 		Args:     args,
-		HelpFunc: cli.BasicHelpFunc("Udup"),
+		HelpFunc: cli.BasicHelpFunc("Dtle"),
 	}
 
 	meta := command.Meta{}

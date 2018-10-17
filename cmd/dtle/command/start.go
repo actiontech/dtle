@@ -31,18 +31,18 @@ type StartCommand struct {
 
 func (c *StartCommand) Help() string {
 	helpText := `
-Usage: udup start [options] <path>
+Usage: dtle start [options] <path>
 
   Starts running a new job or updates an existing job using
   the specification located at <path>. This is the main command
-  used to interact with Udup.
+  used to interact with Dtle.
 
   If the supplied path is "-", the jobfile is read from stdin. Otherwise
   it is read from the file at the supplied path or downloaded and
   read from URL specified.
 
   Upon successful job submission, this command will immediately
-  enter an interactive monitor. This is useful to watch Udup's
+  enter an interactive monitor. This is useful to watch Dtle's
   internals make scheduling decisions and place the submitted work
   onto nodes. The monitor will end once job placement is done. It
   is safe to exit the monitor early using ctrl+c.

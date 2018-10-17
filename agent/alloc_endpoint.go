@@ -15,7 +15,7 @@ import (
 )
 
 var (
-	clientNotRunning = fmt.Errorf("node is not running a Udup Agent")
+	clientNotRunning = fmt.Errorf("node is not running a Dtle Agent")
 )
 
 const (

@@ -27,7 +27,7 @@ type InitCommand struct {
 
 func (c *InitCommand) Help() string {
 	helpText := `
-Usage: udup init
+Usage: dtle init
 
   Creates an example job file that can be used as a starting
   point to customize further.
@@ -74,7 +74,7 @@ var defaultJob = strings.TrimSpace(`
 # "example" so it will create a job with the ID and Name "example".
 
 # The "job" stanza is the top-most configuration option in the job
-# specification. A job is a declarative specification of tasks that Udup
+# specification. A job is a declarative specification of tasks that Dtle
 # should run. Jobs have a globally unique name, one or many tasks, which
 # are themselves collections of one or many tasks.
 #
@@ -95,7 +95,7 @@ job "example" {
   type = "synchronous"
 
   # The "tasks" stanza defines a task that should be co-located on
-  # the same Udup client.
+  # the same Dtle client.
   #
   task "Src" {
     node_id = "1eda45f8-df9b-1541-9009-83952e7b672a"

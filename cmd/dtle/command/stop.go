@@ -17,7 +17,7 @@ type StopCommand struct {
 
 func (c *StopCommand) Help() string {
 	helpText := `
-Usage: udup stop [options] <job>
+Usage: dtle stop [options] <job>
 
   Stop an existing job. This command is used to signal allocations
   to shut down for the given job ID. Upon successful deregistraion,
