@@ -26,12 +26,12 @@ windows: build-windows
 build:
 	go build $(GOFLAGS) -o dist/dtle -ldflags \
 		"-X main.Version=$(VERSION) -X main.GitCommit=$(COMMIT) -X main.GitBranch=$(BRANCH)" \
-		./cmd/udup/main.go
+		./cmd/dtle/main.go
 
 build-windows:
 	GOOS=windows GOARCH=amd64 go build $(GOFLAGS) -o dist/dtle.exe -ldflags \
 		"-X main.Version=$(VERSION) -X main.GitCommit=$(COMMIT) -X main.GitBranch=$(BRANCH)" \
-		./cmd/udup/main.go
+		./cmd/dtle/main.go
 
 TEMP_FILE = temp_parser_file
 goyacc:
