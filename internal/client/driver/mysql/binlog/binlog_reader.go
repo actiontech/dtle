@@ -137,7 +137,7 @@ func (b *BinlogReader) getDbTableMap(schemaName string) map[string]*config.Table
 	}
 	return tableMap
 }
-func (b *BinlogReader) addTableToTableMap(dbMap map[string]*config.TableContext, table *config.Table) error {
+func (b *BinlogReader) addTableToTableMap(tableMap map[string]*config.TableContext, table *config.Table) error {
 	if table.Where == "" {
 		b.logger.Warnf("UDUP_BUG: NewMySQLReader: table.Where is empty (#177 like)")
 		table.Where = "true"
@@ -148,7 +148,7 @@ func (b *BinlogReader) addTableToTableMap(dbMap map[string]*config.TableContext,
 		return err
 	}
 
-	dbMap[table.TableName] = config.NewTableContext(table, whereCtx)
+	tableMap[table.TableName] = config.NewTableContext(table, whereCtx)
 	return nil
 }
 
@@ -330,12 +330,31 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 						if err != nil {
 							b.logger.Warnf("error handle create table in binlog: ApplyColumnTypes: %v", err.Error())
 						}
-						table := config.NewTable(realSchema, tableName)
-						table.TableType = "BASE TABLE"
-						table.OriginalTableColumns = columns
 
+						var table *config.Table
+						for i := range b.mysqlContext.ReplicateDoDb {
+							// TODO escape name before comparing?
+							if b.mysqlContext.ReplicateDoDb[i].TableSchema == realSchema {
+								for j := range b.mysqlContext.ReplicateDoDb[i].Tables {
+									if b.mysqlContext.ReplicateDoDb[i].Tables[j].TableName == tableName {
+										table = b.mysqlContext.ReplicateDoDb[i].Tables[j]
+									}
+								}
+							}
+						}
+						if table == nil {
+							// all db copy
+							table = config.NewTable(realSchema, tableName)
+							table.TableType = "BASE TABLE"
+							table.Where = "true"
+						}
+						table.OriginalTableColumns = columns
 						tableMap := b.getDbTableMap(realSchema)
-						b.addTableToTableMap(tableMap, table)
+						err = b.addTableToTableMap(tableMap, table)
+						if err != nil {
+							b.logger.Error("failed to make table context: %v", err)
+							return err
+						}
 					}
 
 					event := NewQueryEventAffectTable(

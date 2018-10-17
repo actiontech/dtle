@@ -51,6 +51,8 @@ type Extractor struct {
 	db                       *gosql.DB
 	singletonDB              *gosql.DB
 	dumpers                  []*dumper
+	// db.tb exists when creating the job, for full-copy.
+	// vs e.mysqlContext.ReplicateDoDb: all user assigned db.tb
 	replicateDoDb            []*config.DataSource
 	binlogChannel            chan *binlog.BinlogTx
 	dataChannel              chan *binlog.BinlogEntry
