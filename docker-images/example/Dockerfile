@@ -17,12 +17,12 @@ RUN groupadd -r dtle -g 1001 && useradd -u 1001 -r -g dtle -m -d $DTLE_HOME -s /
 #
 # Download Dtle
 #
-RUN curl -fSL -O -u ftp:ftp ftp://10.186.18.20/actiontech-udup/qa/$DTLE_VERSION/udup-$DTLE_VERSION-qa.x86_64.rpm
+RUN curl -fSL -O -u ftp:ftp ftp://10.186.18.20/actiontech-dtle/qa/$DTLE_VERSION/dtle-$DTLE_VERSION-qa.x86_64.rpm
 
 #
 # Install ...
 #
-RUN rpm -ivh udup-$DTLE_VERSION-qa.x86_64.rpm
+RUN rpm -ivh dtle-$DTLE_VERSION-qa.x86_64.rpm
 
 #
 # Change ownership and switch use\
@@ -42,4 +42,4 @@ VOLUME ["/dtle"]
 
 COPY ./dtle.conf /etc/dtle/
 
-CMD ["/usr/bin/udup", "server", "--config", "/etc/dtle/dtle.conf"]
+CMD ["/usr/bin/dtle", "server", "--config", "/etc/dtle/dtle.conf"]
