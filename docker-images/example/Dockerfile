@@ -1,4 +1,4 @@
-From docker-registry:5000/centos:centos7
+From centos:centos7
 
 #
 # Set the version, home directory.
@@ -15,14 +15,11 @@ RUN groupadd -r dtle -g 1001 && useradd -u 1001 -r -g dtle -m -d $DTLE_HOME -s /
     chmod 755 $DTLE_HOME
 
 #
-# Download Dtle
+# Download Dtle and Install
 #
-RUN curl -fSL -O -u ftp:ftp ftp://10.186.18.20/actiontech-dtle/qa/$DTLE_VERSION/dtle-$DTLE_VERSION-qa.x86_64.rpm
-
-#
-# Install ...
-#
-RUN rpm -ivh dtle-$DTLE_VERSION-qa.x86_64.rpm
+RUN curl -fSL -O -u ftp:ftp ftp://10.186.18.20/actiontech-dtle/qa/$DTLE_VERSION/dtle-$DTLE_VERSION-qa.x86_64.rpm && \
+    rpm -ivh dtle-$DTLE_VERSION-qa.x86_64.rpm && \
+    rm dtle-$DTLE_VERSION-qa.x86_64.rpm
 
 #
 # Change ownership and switch use\

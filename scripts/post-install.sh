@@ -7,15 +7,15 @@ CONFIG_DIR=/etc/dtle
 LOGROTATE_DIR=/etc/logrotate.d
 
 function install_init {
-    sudo sed -i 's|'daemon=$BIN_DIR'|'daemon=$RPM_INSTALL_PREFIX$BIN_DIR'|g' $RPM_INSTALL_PREFIX$SCRIPT_DIR/init.sh
-    sudo sed -i 's|'config=$CONFIG_DIR'|'config=$RPM_INSTALL_PREFIX$CONFIG_DIR'|g' $RPM_INSTALL_PREFIX$SCRIPT_DIR/init.sh
+    sed -i 's|'daemon=$BIN_DIR'|'daemon=$RPM_INSTALL_PREFIX$BIN_DIR'|g' $RPM_INSTALL_PREFIX$SCRIPT_DIR/init.sh
+    sed -i 's|'config=$CONFIG_DIR'|'config=$RPM_INSTALL_PREFIX$CONFIG_DIR'|g' $RPM_INSTALL_PREFIX$SCRIPT_DIR/init.sh
     cp -f $RPM_INSTALL_PREFIX$SCRIPT_DIR/init.sh /etc/init.d/dtle
     chmod +x /etc/init.d/dtle
 }
 
 function install_systemd {
-    sudo sed -i 's|'ExecStart=$BIN_DIR'|'ExecStart=$RPM_INSTALL_PREFIX$BIN_DIR'|g' $RPM_INSTALL_PREFIX$SCRIPT_DIR/dtle.service
-    sudo sed -i 's|'-config\ $CONFIG_DIR'|'-config\ $RPM_INSTALL_PREFIX$CONFIG_DIR'|g' $RPM_INSTALL_PREFIX$SCRIPT_DIR/dtle.service
+    sed -i 's|'ExecStart=$BIN_DIR'|'ExecStart=$RPM_INSTALL_PREFIX$BIN_DIR'|g' $RPM_INSTALL_PREFIX$SCRIPT_DIR/dtle.service
+    sed -i 's|'-config\ $CONFIG_DIR'|'-config\ $RPM_INSTALL_PREFIX$CONFIG_DIR'|g' $RPM_INSTALL_PREFIX$SCRIPT_DIR/dtle.service
     cp -f $RPM_INSTALL_PREFIX$SCRIPT_DIR/dtle.service /lib/systemd/system/dtle.service
     systemctl enable dtle || true
     systemctl daemon-reload || true
