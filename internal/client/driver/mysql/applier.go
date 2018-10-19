@@ -1116,21 +1116,19 @@ func (a *Applier) ApplyBinlogEvent(workerIdx int, binlogEntry *binlog.BinlogEntr
 			binlogEntry.Coordinates.GNO, i)
 		switch event.DML {
 		case binlog.NotDML:
+			var err error
 			a.logger.Debugf("mysql.applier: ApplyBinlogEvent: not dml: %v", event.Query)
 
-			if event.CurrentSchema != "" && event.CurrentSchema != dbApplier.CurrentSchema {
-				query := fmt.Sprintf("USE %s", event.CurrentSchema)
-				a.logger.Debugf("mysql.applier: query: %v", query)
-				_, err := tx.Exec(query)
-				if err != nil {
-					if !sql.IgnoreError(err) {
-						a.logger.Errorf("mysql.applier: Exec sql error: %v", err)
-						return err
-					} else {
-						a.logger.Warnf("mysql.applier: Ignore error: %v", err)
-					}
+			// TODO escape schema name?
+			query := fmt.Sprintf("USE %s", event.CurrentSchema)
+			a.logger.Debugf("mysql.applier: query: %v", query)
+			_, err = tx.Exec(query)
+			if err != nil {
+				if !sql.IgnoreError(err) {
+					a.logger.Errorf("mysql.applier: Exec sql error: %v", err)
+					return err
 				} else {
-					dbApplier.CurrentSchema = event.CurrentSchema
+					a.logger.Warnf("mysql.applier: Ignore error: %v", err)
 				}
 			}
 
@@ -1155,7 +1153,7 @@ func (a *Applier) ApplyBinlogEvent(workerIdx int, binlogEntry *binlog.BinlogEntr
 				}
 			}
 
-			_, err := tx.Exec(event.Query)
+			_, err = tx.Exec(event.Query)
 			if err != nil {
 				if !sql.IgnoreError(err) {
 					a.logger.Errorf("mysql.applier: Exec sql error: %v", err)
