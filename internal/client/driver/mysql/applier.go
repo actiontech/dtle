@@ -630,6 +630,7 @@ func (a *Applier) initiateStreaming() error {
 					}
 
 					// region cleanupGtidExecuted
+					a.logger.Debugf("mysql.applier. gtidSetItem.NRow: %v", gtidSetItem.NRow)
 					cleanupGtidExecuted := gtidSetItem.NRow >= cleanupGtidExecutedLimit
 					if cleanupGtidExecuted {
 						a.logger.Debugf("mysql.applier. incr. cleanup before WaitForExecution")
@@ -660,7 +661,10 @@ func (a *Applier) initiateStreaming() error {
 							if err != nil {
 								return err
 							}
-							_, err = dbApplier.PsInsertExecutedGtid.Exec(binlogEntry.Coordinates.SID.Bytes(), base.StringInterval(gtidSetItem.Intervals))
+
+							intervalStr := base.StringInterval(gtidSetItem.Intervals)
+							a.logger.Debugf("mysql.applier: compactation gtid. new interval: %v", intervalStr)
+							_, err = dbApplier.PsInsertExecutedGtid.Exec(binlogEntry.Coordinates.SID.Bytes(), intervalStr)
 							if err != nil {
 								return err
 							}
@@ -866,21 +870,21 @@ func (a *Applier) initDBConnections() (err error) {
 	a.logger.Debugf("mysql.applier. after validateAndReadTimeZone")
 
 	if a.mysqlContext.ApproveHeterogeneous {
-		if err := a.createTableGtidExecutedV2(); err != nil {
+		if err := a.createTableGtidExecutedV3(); err != nil {
 			return err
 		}
 		a.logger.Debugf("mysql.applier. after createTableGtidExecutedV2")
 
 		for i := range a.dbs {
 			a.dbs[i].PsDeleteExecutedGtid, err = a.dbs[i].Db.PrepareContext(context.Background(), fmt.Sprintf("delete from %v.%v where job_uuid = unhex('%s') and source_uuid = ?",
-				g.DtleSchemaName, g.GtidExecutedTableV2, hex.EncodeToString(a.subjectUUID.Bytes())))
+				g.DtleSchemaName, g.GtidExecutedTableV3, hex.EncodeToString(a.subjectUUID.Bytes())))
 			if err != nil {
 				return err
 			}
 			a.dbs[i].PsInsertExecutedGtid, err = a.dbs[i].Db.PrepareContext(context.Background(), fmt.Sprintf("replace into %v.%v "+
 				"(job_uuid,source_uuid,interval_gtid) "+
 				"values (unhex('%s'), ?, ?)",
-				g.DtleSchemaName, g.GtidExecutedTableV2,
+				g.DtleSchemaName, g.GtidExecutedTableV3,
 				hex.EncodeToString(a.subjectUUID.Bytes())))
 			if err != nil {
 				return err
@@ -943,7 +947,7 @@ func (a *Applier) validateGrants() error {
 				foundSuper = true
 			}
 			if strings.Contains(grant, fmt.Sprintf("GRANT ALL PRIVILEGES ON `%v`.`%v`",
-				g.DtleSchemaName, g.GtidExecutedTableV2)) {
+				g.DtleSchemaName, g.GtidExecutedTableV3)) {
 				foundDBAll = true
 			}
 			if base.StringContainsAll(grant, `ALTER`, `CREATE`, `DELETE`, `DROP`, `INDEX`, `INSERT`, `SELECT`, `TRIGGER`, `UPDATE`, ` ON`) {
@@ -984,12 +988,73 @@ func (a *Applier) validateAndReadTimeZone() error {
 	a.logger.Printf("mysql.applier: Will use time_zone='%s' on applier", a.mysqlContext.TimeZone)
 	return nil
 }
+func (a *Applier) migrateGtidExecutedV2toV3() error {
+	a.logger.Infof(`migrateGtidExecutedV2toV3 starting`)
 
-func (a *Applier) createTableGtidExecutedV2() error {
-	if result, err := sql.QueryResultData(a.db, fmt.Sprintf("SHOW TABLES FROM %v LIKE '%v'",
-		g.DtleSchemaName, g.GtidExecutedTableV2)); nil == err && len(result) > 0 {
-		return nil
+	var err error
+	var query string
+
+	logErr := func (query string, err error) {
+		a.logger.Errorf(`migrateGtidExecutedV2toV3 failed. manual intervention might be required. query: %v. err: %v`,
+			query, err)
 	}
+
+	query = fmt.Sprintf("alter table %v.%v rename to %v.%v",
+		g.DtleSchemaName, g.GtidExecutedTableV2, g.DtleSchemaName, g.GtidExecutedTempTable2To3)
+	_, err = a.db.Exec(query)
+	if err != nil {
+		logErr(query, err)
+		return err
+	}
+
+	query = fmt.Sprintf("alter table %v.%v modify column interval_gtid longtext",
+		g.DtleSchemaName, g.GtidExecutedTempTable2To3)
+	_, err = a.db.Exec(query)
+	if err != nil {
+		logErr(query, err)
+		return err
+	}
+
+	query = fmt.Sprintf("alter table %v.%v rename to %v.%v",
+		g.DtleSchemaName, g.GtidExecutedTempTable2To3, g.DtleSchemaName, g.GtidExecutedTableV3)
+	_, err = a.db.Exec(query)
+	if err != nil {
+		logErr(query, err)
+		return err
+	}
+
+	a.logger.Infof(`migrateGtidExecutedV2toV3 done`)
+
+	return nil
+}
+func (a *Applier) createTableGtidExecutedV3() error {
+	if result, err := sql.QueryResultData(a.db, fmt.Sprintf("SHOW TABLES FROM %v LIKE '%v%%'",
+		g.DtleSchemaName, g.GtidExecutedTempTablePrefix)); nil == err && len(result) > 0 {
+		return fmt.Errorf("GtidExecutedTempTable exists. require manual intervention")
+	}
+
+	if result, err := sql.QueryResultData(a.db, fmt.Sprintf("SHOW TABLES FROM %v LIKE '%v%%'",
+		g.DtleSchemaName, g.GtidExecutedTablePrefix)); nil == err && len(result) > 0 {
+			if len(result) > 1 {
+				return fmt.Errorf("multiple GtidExecutedTable exists, while at most one is allowed. require manual intervention")
+			} else {
+				if len(result[0]) < 1 {
+					return fmt.Errorf("mysql error: expect 1 column for 'SHOW TABLES' query")
+				}
+				switch result[0][0].String {
+				case g.GtidExecutedTableV2:
+					err = a.migrateGtidExecutedV2toV3()
+					if err != nil {
+						return err
+					}
+				case g.GtidExecutedTableV3:
+					return nil
+				default:
+					return fmt.Errorf("newer GtidExecutedTable exists, which is unrecognized by this verion. require manual intervention")
+				}
+			}
+	}
+
 	a.logger.Debugf("mysql.applier. after show gtid_executed table")
 
 	query := fmt.Sprintf(`
@@ -1004,9 +1069,9 @@ func (a *Applier) createTableGtidExecutedV2() error {
 			CREATE TABLE IF NOT EXISTS %v.%v (
 				job_uuid binary(16) NOT NULL COMMENT 'unique identifier of job',
 				source_uuid binary(16) NOT NULL COMMENT 'uuid of the source where the transaction was originally executed.',
-				interval_gtid text NOT NULL COMMENT 'number of interval.'
+				interval_gtid longtext NOT NULL COMMENT 'number of interval.'
 			);
-		`, g.DtleSchemaName, g.GtidExecutedTableV2)
+		`, g.DtleSchemaName, g.GtidExecutedTableV3)
 	if _, err := a.db.Exec(query); err != nil {
 		return err
 	}
