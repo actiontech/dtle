@@ -328,37 +328,6 @@ func ExecNoPrepare(db *gosql.Conn, query string, args ...interface{}) (gosql.Res
 	return res, err
 }
 
-// ExecQuery executes given query using given args on given DB. It will safele prepare, execute and close
-// the statement.
-func execInternal(silent bool, db *gosql.DB, query string, args ...interface{}) (gosql.Result, error) {
-	var err error
-	defer func() {
-		if derr := recover(); derr != nil {
-			err = errors.New(fmt.Sprintf("execInternal unexpected error: %+v", derr))
-		}
-	}()
-
-	stmt, err := db.Prepare(query)
-	if err != nil {
-		return nil, err
-	}
-	defer stmt.Close()
-	var res gosql.Result
-	res, err = stmt.Exec(args...)
-	return res, err
-}
-
-// Exec executes given query using given args on given DB. It will safele prepare, execute and close
-// the statement.
-func Exec(db *gosql.DB, query string, args ...interface{}) (gosql.Result, error) {
-	return execInternal(false, db, query, args...)
-}
-
-// ExecSilently acts like Exec but does not report any error
-func ExecSilently(db *gosql.DB, query string, args ...interface{}) (gosql.Result, error) {
-	return execInternal(true, db, query, args...)
-}
-
 func InClauseStringValues(terms []string) string {
 	quoted := []string{}
 	for _, s := range terms {

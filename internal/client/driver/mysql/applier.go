@@ -859,14 +859,17 @@ func (a *Applier) initDBConnections() (err error) {
 		a.logger.Errorf("mysql.applier: Unexpected error on validateGrants, got %v", err)
 		return err
 	}
+	a.logger.Debugf("mysql.applier. after validateGrants")
 	if err := a.validateAndReadTimeZone(); err != nil {
 		return err
 	}
+	a.logger.Debugf("mysql.applier. after validateAndReadTimeZone")
 
 	if a.mysqlContext.ApproveHeterogeneous {
 		if err := a.createTableGtidExecutedV2(); err != nil {
 			return err
 		}
+		a.logger.Debugf("mysql.applier. after createTableGtidExecutedV2")
 
 		for i := range a.dbs {
 			a.dbs[i].PsDeleteExecutedGtid, err = a.dbs[i].Db.PrepareContext(context.Background(), fmt.Sprintf("delete from %v.%v where job_uuid = unhex('%s') and source_uuid = ?",
@@ -884,6 +887,7 @@ func (a *Applier) initDBConnections() (err error) {
 			}
 
 		}
+		a.logger.Debugf("mysql.applier. after prepare stmt for gtid_executed table")
 	}
 	/*if err := a.readCurrentBinlogCoordinates(); err != nil {
 		return err
@@ -986,12 +990,15 @@ func (a *Applier) createTableGtidExecutedV2() error {
 		g.DtleSchemaName, g.GtidExecutedTableV2)); nil == err && len(result) > 0 {
 		return nil
 	}
+	a.logger.Debugf("mysql.applier. after show gtid_executed table")
+
 	query := fmt.Sprintf(`
 			CREATE DATABASE IF NOT EXISTS %v;
 		`, g.DtleSchemaName)
-	if _, err := sql.Exec(a.db, query); err != nil {
+	if _, err := a.db.Exec(query); err != nil {
 		return err
 	}
+	a.logger.Debugf("mysql.applier. after create dtle schema")
 
 	query = fmt.Sprintf(`
 			CREATE TABLE IF NOT EXISTS %v.%v (
@@ -1000,9 +1007,10 @@ func (a *Applier) createTableGtidExecutedV2() error {
 				interval_gtid text NOT NULL COMMENT 'number of interval.'
 			);
 		`, g.DtleSchemaName, g.GtidExecutedTableV2)
-	if _, err := sql.Exec(a.db, query); err != nil {
+	if _, err := a.db.Exec(query); err != nil {
 		return err
 	}
+	a.logger.Debugf("mysql.applier. after create gtid_executed table")
 
 	return nil
 }
