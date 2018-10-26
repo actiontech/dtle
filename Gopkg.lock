@@ -58,8 +58,8 @@
   revision = "d7d8174cb8b3780a5ca20b99de05665dd17f208b"
 
 [[projects]]
-  branch = "master"
-  digest = "1:224072aed0d2933961db491876f9d704f03ec1a90dedf7df3749839b74a27646"
+  branch = "dtle-mod"
+  digest = "1:430d4fe39440e8c190de70f2fcd7753b986aafeeb011677a068e4c2b49c8fc10"
   name = "github.com/araddon/qlbridge"
   packages = [
     "datasource",
@@ -72,7 +72,8 @@
     "vm",
   ]
   pruneopts = "UT"
-  revision = "d481b2a632551156ca12121cf744d887e5cafcfa"
+  revision = "fc2d5205dad35313ced2219431d8813be9ca2cbd"
+  source = "github.com/ffffwh/qlbridge"
 
 [[projects]]
   branch = "master"

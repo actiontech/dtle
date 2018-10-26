@@ -919,7 +919,7 @@ func walkTernary(ctx expr.EvalContext, node *expr.TriNode, depth int) (value.Val
 			if !ok {
 				return nil, false
 			}
-			if av > bv && av < cv {
+			if av >= bv && av <= cv {
 				return value.NewBoolValue(true), true
 			}
 
@@ -935,7 +935,7 @@ func walkTernary(ctx expr.EvalContext, node *expr.TriNode, depth int) (value.Val
 			if !ok {
 				return nil, false
 			}
-			if av > bv && av < cv {
+			if av >= bv && av <= cv {
 				return value.NewBoolValue(true), true
 			}
 
@@ -952,7 +952,7 @@ func walkTernary(ctx expr.EvalContext, node *expr.TriNode, depth int) (value.Val
 			if !ok {
 				return nil, false
 			}
-			if av.Unix() > bv.Unix() && av.Unix() < cv.Unix() {
+			if av.Unix() >= bv.Unix() && av.Unix() <= cv.Unix() {
 				return value.NewBoolValue(true), true
 			}
 

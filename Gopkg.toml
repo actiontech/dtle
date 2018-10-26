@@ -45,8 +45,9 @@ required = [
   version = "1.17.0"
 
 [[constraint]]
-  branch = "master"
   name = "github.com/araddon/qlbridge"
+  source = "github.com/ffffwh/qlbridge"
+  branch = "dtle-mod"
 
 [[constraint]]
   branch = "master"
