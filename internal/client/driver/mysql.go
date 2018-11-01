@@ -187,7 +187,7 @@ func (m *MySQLDriver) Validate(task *models.Task) (*models.TaskValidateResponse,
 					foundSuper = true
 				}
 				if strings.Contains(grant, fmt.Sprintf("GRANT ALL PRIVILEGES ON `%v`.`%v`",
-					g.DtleSchemaName, g.GtidExecutedTableV2)) {
+					g.DtleSchemaName, g.GtidExecutedTableV3)) {
 					foundDBAll = true
 				}
 				if ubase.StringContainsAll(grant, `ALTER`, `CREATE`, `DELETE`, `DROP`, `INDEX`, `INSERT`, `LOCK TABLES`, `SELECT`, `TRIGGER`, `UPDATE`, ` ON`) {
