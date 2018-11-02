@@ -140,18 +140,6 @@ func (e *Extractor) retryOperation(operation func() error, notFatalHint ...bool)
 	return err
 }
 
-// consumeRowCopyComplete blocks on the rowCopyComplete channel once, and then
-// consumes and drops any further incoming events that may be left hanging.
-func (e *Extractor) consumeRowCopyComplete() {
-	<-e.rowCopyComplete
-	atomic.StoreInt64(&e.rowCopyCompleteFlag, 1)
-	e.mysqlContext.MarkRowCopyEndTime()
-	/*go func() {
-		for <-e.rowCopyComplete {
-		}
-	}()*/
-}
-
 // Run executes the complete extract logic.
 func (e *Extractor) Run() {
 	e.logger.Printf("mysql.extractor: Extract binlog events from %s.%d", e.mysqlContext.ConnectionConfig.Host, e.mysqlContext.ConnectionConfig.Port)
@@ -483,14 +471,6 @@ func (e *Extractor) selectSqlMode() error {
 		return err
 	}
 	return nil
-}
-
-func (e *Extractor) GetCurrentBinlogCoordinates() *base.BinlogCoordinateTx {
-	return e.binlogReader.GetCurrentBinlogCoordinates()
-}
-
-func (e *Extractor) GetReconnectBinlogCoordinates() *base.BinlogCoordinateTx {
-	return &base.BinlogCoordinateTx{LogFile: e.GetCurrentBinlogCoordinates().LogFile, LogPos: 4}
 }
 
 // readCurrentBinlogCoordinates reads master status from hooked server
@@ -1265,15 +1245,6 @@ func (e *Extractor) onError(state int, err error) {
 		return
 	}
 	e.waitCh <- models.NewWaitResult(state, err)
-	e.Shutdown()
-}
-
-func (e *Extractor) onDone() {
-	if e.shutdown {
-		return
-	}
-	e.logger.Printf("mysql.extractor: Row copy complete")
-	e.waitCh <- models.NewWaitResult(0, nil)
 	e.Shutdown()
 }
 

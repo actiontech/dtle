@@ -197,29 +197,6 @@ func TestInspector_validateTable(t *testing.T) {
 	}
 }
 
-func TestInspector_validateTableForeignKeys(t *testing.T) {
-	type args struct {
-		databaseName          string
-		tableName             string
-		allowChildForeignKeys bool
-	}
-	tests := []struct {
-		name    string
-		i       *Inspector
-		args    args
-		wantErr bool
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if err := tt.i.validateTableForeignKeys(tt.args.databaseName, tt.args.tableName, tt.args.allowChildForeignKeys); (err != nil) != tt.wantErr {
-				t.Errorf("Inspector.validateTableForeignKeys() error = %v, wantErr %v", err, tt.wantErr)
-			}
-		})
-	}
-}
-
 func TestInspector_validateTableTriggers(t *testing.T) {
 	type args struct {
 		databaseName string

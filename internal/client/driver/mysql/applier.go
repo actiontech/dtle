@@ -856,9 +856,6 @@ func (a *Applier) initDBConnections() (err error) {
 	if err := a.validateServerUUID(); err != nil {
 		return err
 	}
-	/*if err := a.validateTableForeignKeys(); err != nil {
-		return err
-	}*/
 	if err := a.validateGrants(); err != nil {
 		a.logger.Errorf("mysql.applier: Unexpected error on validateGrants, got %v", err)
 		return err

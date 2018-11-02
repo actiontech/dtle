@@ -80,10 +80,6 @@ func (i *Inspector) ValidateOriginalTable(databaseName, tableName string, table 
 		return err
 	}
 
-	/*if err := i.validateTableForeignKeys(databaseName, tableName, true */ /*this.migrationContext.DiscardForeignKeys*/ /*); err != nil {
-		return err
-	}*/
-
 	// region UniqueKey
 	var uniqueKeys [](*umconf.UniqueKey)
 	table.OriginalTableColumns, uniqueKeys, err = i.InspectTableColumnsAndUniqueKeys(databaseName, tableName)
@@ -297,47 +293,6 @@ func (i *Inspector) validateTable(databaseName, tableName string) error {
 		return fmt.Errorf("Cannot find table %s.%s!", usql.EscapeName(databaseName), usql.EscapeName(tableName))
 	}
 
-	return nil
-}
-
-// validateTableForeignKeys makes sure no foreign keys exist on the migrated table
-func (i *Inspector) validateTableForeignKeys(databaseName, tableName string, allowChildForeignKeys bool) error {
-	/*if i.mysqlContext.SkipForeignKeyChecks {
-		i.logger.Warnf("--skip-foreign-key-checks provided: will not check for foreign keys")
-		return nil
-	}*/
-	query := `
-		SELECT
-			SUM(REFERENCED_TABLE_NAME IS NOT NULL AND TABLE_SCHEMA=? AND TABLE_NAME=?) as num_child_side_fk,
-			SUM(REFERENCED_TABLE_NAME IS NOT NULL AND REFERENCED_TABLE_SCHEMA=? AND REFERENCED_TABLE_NAME=?) as num_parent_side_fk
-		FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE
-		WHERE
-				REFERENCED_TABLE_NAME IS NOT NULL
-				AND ((TABLE_SCHEMA=? AND TABLE_NAME=?)
-					OR (REFERENCED_TABLE_SCHEMA=? AND REFERENCED_TABLE_NAME=?)
-				)
-	`
-	numParentForeignKeys := 0
-	numChildForeignKeys := 0
-	err := usql.QueryRowsMap(i.db, query, func(m usql.RowMap) error {
-		numChildForeignKeys = m.GetInt("num_child_side_fk")
-		numParentForeignKeys = m.GetInt("num_parent_side_fk")
-		return nil
-	}, databaseName, tableName, databaseName, tableName, databaseName, tableName, databaseName, tableName,
-	)
-	if err != nil {
-		return err
-	}
-	if numParentForeignKeys > 0 {
-		return fmt.Errorf("Found %d parent-side foreign keys on %s.%s. Parent-side foreign keys are not supported. Bailing out", numParentForeignKeys, usql.EscapeName(databaseName), usql.EscapeName(tableName))
-	}
-	if numChildForeignKeys > 0 {
-		if allowChildForeignKeys {
-			i.logger.Debugf("Foreign keys found and will be dropped, as per given --discard-foreign-keys flag")
-			return nil
-		}
-		return fmt.Errorf("Found %d child-side foreign keys on %s.%s. Child-side foreign keys are not supported. Bailing out", numChildForeignKeys, usql.EscapeName(databaseName), usql.EscapeName(tableName))
-	}
 	return nil
 }
 

@@ -90,20 +90,6 @@ func TestExtractor_retryOperation(t *testing.T) {
 	}
 }
 
-func TestExtractor_consumeRowCopyComplete(t *testing.T) {
-	tests := []struct {
-		name string
-		e    *Extractor
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tt.e.consumeRowCopyComplete()
-		})
-	}
-}
-
 func TestExtractor_Run(t *testing.T) {
 	tests := []struct {
 		name string
@@ -236,40 +222,6 @@ func TestExtractor_SelectSqlMode(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if err := tt.e.selectSqlMode(); (err != nil) != tt.wantErr {
 				t.Errorf("Extractor.SelectSqlMode() error = %v, wantErr %v", err, tt.wantErr)
-			}
-		})
-	}
-}
-
-func TestExtractor_GetCurrentBinlogCoordinates(t *testing.T) {
-	tests := []struct {
-		name string
-		e    *Extractor
-		want *base.BinlogCoordinateTx
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := tt.e.GetCurrentBinlogCoordinates(); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("Extractor.GetCurrentBinlogCoordinates() = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}
-
-func TestExtractor_GetReconnectBinlogCoordinates(t *testing.T) {
-	tests := []struct {
-		name string
-		e    *Extractor
-		want *base.BinlogCoordinateTx
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := tt.e.GetReconnectBinlogCoordinates(); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("Extractor.GetReconnectBinlogCoordinates() = %v, want %v", got, tt.want)
 			}
 		})
 	}
@@ -633,20 +585,6 @@ func TestExtractor_CountTableRows(t *testing.T) {
 			if got != tt.want {
 				t.Errorf("Extractor.CountTableRows() = %v, want %v", got, tt.want)
 			}
-		})
-	}
-}
-
-func TestExtractor_onDone(t *testing.T) {
-	tests := []struct {
-		name string
-		e    *Extractor
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tt.e.onDone()
 		})
 	}
 }
