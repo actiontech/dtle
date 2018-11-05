@@ -210,16 +210,20 @@ func (e *Extractor) Run() {
 		}
 	}
 
-	if err := e.initBinlogReader(e.initialBinlogCoordinates); err != nil {
-		e.logger.Debugf("mysql.extractor error at initBinlogReader: %v", err.Error())
-		e.onError(TaskStateDead, err)
-		return
-	}
+	if e.mysqlContext.SkipIncrementalCopy {
+		e.logger.Infof("mysql.extractor. SkipIncrementalCopy")
+	} else {
+		if err := e.initBinlogReader(e.initialBinlogCoordinates); err != nil {
+			e.logger.Debugf("mysql.extractor error at initBinlogReader: %v", err.Error())
+			e.onError(TaskStateDead, err)
+			return
+		}
 
-	if err := e.initiateStreaming(); err != nil {
-		e.logger.Debugf("mysql.extractor error at initiateStreaming: %v", err.Error())
-		e.onError(TaskStateDead, err)
-		return
+		if err := e.initiateStreaming(); err != nil {
+			e.logger.Debugf("mysql.extractor error at initiateStreaming: %v", err.Error())
+			e.onError(TaskStateDead, err)
+			return
+		}
 	}
 }
 

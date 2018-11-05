@@ -180,7 +180,8 @@ type MySQLDriverConfig struct {
 	CountingRowsFlag            int64
 	UserCommandedUnpostponeFlag int64
 
-	SkipPrivilegeCheck bool
+	SkipPrivilegeCheck  bool
+	SkipIncrementalCopy bool
 }
 
 func (a *MySQLDriverConfig) SetDefault() *MySQLDriverConfig {
