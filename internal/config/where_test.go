@@ -74,3 +74,25 @@ func TestWhereTrue(t *testing.T) {
 		}
 	}
 }
+
+func TestWhereTrueText(t *testing.T) {
+	var tbCtx *TableContext
+
+	tbCtx = newTableContextWithWhere(t, "db1", "tb1", "a = 'hello'", "id", "a")
+	r, err := tbCtx.WhereTrue(buildColumnValues(1, []byte("hello")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r != true {
+		t.Fatalf("it is hello")
+	}
+
+	tbCtx = newTableContextWithWhere(t, "db1", "tb1", "a = 'hello'", "id", "a")
+	r, err = tbCtx.WhereTrue(buildColumnValues(2, "hello2"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r != false {
+		t.Fatalf("it is not hello")
+	}
+}

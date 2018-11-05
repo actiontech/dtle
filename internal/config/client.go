@@ -348,7 +348,27 @@ func (t *TableContext) WhereTrue(values *umconf.ColumnValues) (bool, error) {
 		if idx >= nCols {
 			return false, fmt.Errorf("cannot eval 'where' predicate: no enough columns (%v < %v)", nCols, idx)
 		}
-		m[field] = *(values.ValuesPointers[idx])
+
+		//fmt.Printf("**** type of %v %T\n", field, *values.ValuesPointers[idx])
+		rawValue := *(values.ValuesPointers[idx])
+		var value interface{}
+		if rawValue == nil {
+			value = rawValue
+		} else {
+			switch t.Table.OriginalTableColumns.ColumnList()[idx].Type {
+			case umconf.TextColumnType:
+				bs, ok := rawValue.([]byte)
+				if !ok {
+					return false,
+						fmt.Errorf("where_predicate. expect []byte for TextColumnType, but got %T", rawValue)
+				}
+				value = string(bs)
+			default:
+				value = rawValue
+			}
+		}
+
+		m[field] = value
 	}
 	ctx := qldatasource.NewContextSimpleNative(m)
 	val, ok := qlvm.Eval(ctx, t.WhereCtx.Ast)
