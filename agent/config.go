@@ -22,7 +22,6 @@ import (
 
 // This is the default addr to all interfaces.
 const (
-	DefaultAddr       = "0.0.0.0"
 	DefaultMaxPayload = 100 * 1024 * 1024 // 100M
 )
 
@@ -255,13 +254,13 @@ func DefaultConfig() *Config {
 			Nats: 8193,
 		},
 		Addresses: &Addresses{
-			HTTP: DefaultAddr,
-			RPC:  DefaultAddr,
-			Serf: DefaultAddr,
-			Nats: DefaultAddr,
+			HTTP: "",
+			RPC:  "",
+			Serf: "",
+			Nats: "",
 		},
 		AdvertiseAddrs: &AdvertiseAddrs{
-			Nats: DefaultAddr,
+			Nats: "",
 		},
 		Consul: uconf.DefaultConsulConfig(),
 		Client: &ClientConfig{
