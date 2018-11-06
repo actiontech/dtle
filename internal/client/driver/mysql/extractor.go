@@ -509,7 +509,7 @@ func (e *Extractor) validateAndReadTimeZone() error {
 }
 
 // CountTableRows counts exact number of rows on the original table
-func (e *Extractor) CountTableRows(table *config.Table) (int64, error) {
+func (e *Extractor) CountTableRows(table *config.Table, tx sql.QueryAble) (int64, error) {
 	atomic.StoreInt64(&e.mysqlContext.CountingRowsFlag, 1)
 	defer atomic.StoreInt64(&e.mysqlContext.CountingRowsFlag, 0)
 	//e.logger.Debugf("mysql.extractor: As instructed, I'm issuing a SELECT COUNT(*) on the table. This may take a while")
@@ -517,7 +517,7 @@ func (e *Extractor) CountTableRows(table *config.Table) (int64, error) {
 	query := fmt.Sprintf(`select count(*) as rows from %s.%s where (%s)`,
 		sql.EscapeName(table.TableSchema), sql.EscapeName(table.TableName), table.Where)
 	var rowsEstimate int64
-	if err := e.db.QueryRow(query).Scan(&rowsEstimate); err != nil {
+	if err := tx.QueryRow(query).Scan(&rowsEstimate); err != nil {
 		return 0, err
 	}
 	atomic.AddInt64(&e.mysqlContext.RowsEstimate, rowsEstimate)
@@ -1014,7 +1014,7 @@ func (e *Extractor) mysqlDump() error {
 				if tb.TableSchema != db.TableSchema {
 					continue
 				}
-				total, err := e.CountTableRows(tb)
+				total, err := e.CountTableRows(tb, tx)
 				if err != nil {
 					return err
 				}
