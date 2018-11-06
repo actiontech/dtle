@@ -1095,13 +1095,12 @@ func (e *Extractor) mysqlDump() error {
 			e.logger.Printf("mysql.extractor: Step %d: - scanning table '%s.%s' (%d of %d tables)", step, t.TableSchema, t.TableName, counter, e.tableCount)
 
 			d := NewDumper(tx, t, t.Counter, e.mysqlContext.ChunkSize, e.logger)
-			if err := d.Dump(1); err != nil {
+			if err := d.Dump(); err != nil {
 				e.onError(TaskStateDead, err)
 			}
 			e.dumpers = append(e.dumpers, d)
 			// Scan the rows in the table ...
-			for i := 0; i < d.entriesCount; i++ {
-				entry := <-d.resultsChannel
+			for entry := range d.resultsChannel {
 				if entry.err != nil {
 					e.onError(TaskStateDead, entry.err)
 				}
@@ -1118,7 +1117,6 @@ func (e *Extractor) mysqlDump() error {
 				atomic.AddInt64(&e.mysqlContext.TotalRowsCopied, entry.RowsCount)
 			}
 
-			close(d.resultsChannel)
 			//pool.Done()
 			//}(tb)
 		}

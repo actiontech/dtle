@@ -29,9 +29,7 @@ type dumper struct {
 	TableName      string
 	table          *config.Table
 	columns        string
-	entriesCount   int
 	resultsChannel chan *DumpEntry
-	entriesChannel chan *DumpEntry
 	shutdown       bool
 	shutdownCh     chan struct{}
 	shutdownLock   sync.Mutex
@@ -51,7 +49,6 @@ func NewDumper(db usql.QueryAble, table *config.Table, total, chunkSize int64,
 		table:          table,
 		total:          total,
 		resultsChannel: make(chan *DumpEntry, 24),
-		entriesChannel: make(chan *DumpEntry),
 		chunkSize:      chunkSize,
 		shutdownCh:     make(chan struct{}),
 	}
@@ -306,14 +303,20 @@ func (d *dumper) getChunkData(e *DumpEntry) (err error) {
 	return nil
 }
 
-func (d *dumper) worker() {
-	for e := range d.entriesChannel {
-		select {
-		case <-d.shutdownCh:
-			return
-		default:
-		}
-		if e != nil {
+func (d *dumper) Dump() error {
+	entries, err := d.getDumpEntries()
+	if err != nil {
+		return err
+	}
+
+	go func() {
+		for _, e := range entries {
+			select {
+			case <-d.shutdownCh:
+				return
+			default:
+			}
+
 			err := d.getChunkData(e)
 			//FIXME: useless err
 			if err != nil {
@@ -321,34 +324,7 @@ func (d *dumper) worker() {
 			}
 			//d.resultsChannel <- e
 		}
-	}
-}
-
-func (d *dumper) Dump(w int) error {
-	entries, err := d.getDumpEntries()
-	if err != nil {
-		return err
-	}
-
-	if len(entries) == 0 {
-		return nil
-	}
-
-	workersCount := int(math.Min(float64(w), float64(len(entries))))
-	if workersCount < 1 {
-		return nil
-	}
-
-	d.entriesCount = len(entries)
-	for i := 0; i < workersCount; i++ {
-		go d.worker()
-	}
-
-	go func() {
-		for _, e := range entries {
-			d.entriesChannel <- e
-		}
-		close(d.entriesChannel)
+		close(d.resultsChannel)
 	}()
 
 	return nil
