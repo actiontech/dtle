@@ -500,11 +500,6 @@ func normalizeBind(addr, bind string) string {
 //
 // If addr is not set and bind is a valid address, the returned string is the
 // bind+port.
-//
-// If addr is not set and bind is not a valid advertise address, the hostname
-// is resolved and returned with the port.
-//
-// Loopback is only considered a valid advertise address in dev mode.
 func normalizeAdvertise(addr string, bind string, defport int) (string, error) {
 	if addr != "" {
 		// Default to using manually configured address
@@ -520,46 +515,11 @@ func normalizeAdvertise(addr string, bind string, defport int) (string, error) {
 		return addr, nil
 	}
 
-	// Fallback to bind address first, and then try resolving the local hostname
-	ips, err := net.LookupIP(bind)
-	if err != nil {
-		return "", fmt.Errorf("Error resolving bind address %q: %v", bind, err)
+	if bind == "0.0.0.0" {
+		return "", fmt.Errorf("advertise addr is empty and bind addr is not suitable for advertise")
 	}
 
-	// Return the first unicast address
-	for _, ip := range ips {
-		if ip.IsLinkLocalUnicast() || ip.IsGlobalUnicast() {
-			return net.JoinHostPort(ip.String(), strconv.Itoa(defport)), nil
-		}
-		if ip.IsLoopback() {
-			// loopback is fine for dev mode
-			return net.JoinHostPort(ip.String(), strconv.Itoa(defport)), nil
-		}
-	}
-
-	// As a last resort resolve the hostname and use it if it's not
-	// localhost (as localhost is never a sensible default)
-	host, err := os.Hostname()
-	if err != nil {
-		return "", fmt.Errorf("Unable to get hostname to set advertise address: %v", err)
-	}
-
-	ips, err = net.LookupIP(host)
-	if err != nil {
-		return "", fmt.Errorf("Error resolving hostname %q for advertise address: %v", host, err)
-	}
-
-	// Return the first unicast address
-	for _, ip := range ips {
-		if ip.IsLinkLocalUnicast() || ip.IsGlobalUnicast() {
-			return net.JoinHostPort(ip.String(), strconv.Itoa(defport)), nil
-		}
-		if ip.IsLoopback() {
-			// loopback is fine for dev mode
-			return net.JoinHostPort(ip.String(), strconv.Itoa(defport)), nil
-		}
-	}
-	return "", fmt.Errorf("No valid advertise addresses, please set `advertise` manually")
+	return net.JoinHostPort(bind, strconv.Itoa(defport)), nil
 }
 
 // isMissingPort returns true if an error is a "missing port" error from
