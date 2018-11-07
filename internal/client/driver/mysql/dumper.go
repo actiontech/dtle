@@ -9,22 +9,20 @@ package mysql
 import (
 	"bytes"
 	"fmt"
-	"math"
 	"strings"
 	"sync"
 
-	"time"
 	ubase "github.com/actiontech/dtle/internal/client/driver/mysql/base"
 	usql "github.com/actiontech/dtle/internal/client/driver/mysql/sql"
 	"github.com/actiontech/dtle/internal/config"
 	umconf "github.com/actiontech/dtle/internal/config/mysql"
 	log "github.com/actiontech/dtle/internal/logger"
+	"time"
 )
 
 type dumper struct {
 	logger         *log.Entry
 	chunkSize      int64
-	total          int64
 	TableSchema    string
 	TableName      string
 	table          *config.Table
@@ -39,7 +37,7 @@ type dumper struct {
 	db usql.QueryAble
 }
 
-func NewDumper(db usql.QueryAble, table *config.Table, total, chunkSize int64,
+func NewDumper(db usql.QueryAble, table *config.Table, chunkSize int64,
 	logger *log.Entry) *dumper {
 	dumper := &dumper{
 		logger:         logger,
@@ -47,7 +45,6 @@ func NewDumper(db usql.QueryAble, table *config.Table, total, chunkSize int64,
 		TableSchema:    table.TableSchema,
 		TableName:      table.TableName,
 		table:          table,
-		total:          total,
 		resultsChannel: make(chan *DumpEntry, 24),
 		chunkSize:      chunkSize,
 		shutdownCh:     make(chan struct{}),
@@ -73,7 +70,6 @@ type DumpEntry struct {
 	ValuesX                  [][]*interface{}
 	TotalCount               int64
 	RowsCount                int64
-	Offset                   uint64 // only for 'no PK' table
 	colBuffer                bytes.Buffer
 	err                      error
 	Table                    *config.Table
@@ -83,18 +79,14 @@ func (e *DumpEntry) incrementCounter() {
 	e.RowsCount++
 }
 
-func (d *dumper) getDumpEntries() ([]*DumpEntry, error) {
-	if d.total == 0 {
-		return []*DumpEntry{}, nil
-	}
-
+func (d *dumper) prepareForDumping() (error) {
 	columnList, err := ubase.GetTableColumns(d.db, d.TableSchema, d.TableName)
 	if err != nil {
-		return []*DumpEntry{}, err
+		return err
 	}
 
 	if err := ubase.ApplyColumnTypes(d.db, d.TableSchema, d.TableName, columnList); err != nil {
-		return []*DumpEntry{}, err
+		return err
 	}
 
 	needPm := false
@@ -116,32 +108,21 @@ func (d *dumper) getDumpEntries() ([]*DumpEntry, error) {
 		d.columns = "*"
 	}
 
-	sliceCount := int(math.Ceil(float64(d.total) / float64(d.chunkSize)))
-	if sliceCount == 0 {
-		sliceCount = 1
-	}
-	entries := make([]*DumpEntry, sliceCount)
-	for i := 0; i < sliceCount; i++ {
-		offset := uint64(i) * uint64(d.chunkSize)
-		entries[i] = &DumpEntry{
-			Offset: offset,
-		}
-	}
-	return entries, nil
+	return nil
 }
 
-func (d *dumper) buildQueryOldWay(e *DumpEntry) string {
+func (d *dumper) buildQueryOldWay() string {
 	return fmt.Sprintf(`SELECT %s FROM %s.%s where (%s) LIMIT %d OFFSET %d`,
 		d.columns,
 		usql.EscapeName(d.TableSchema),
 		usql.EscapeName(d.TableName),
 		d.table.Where,
 		d.chunkSize,
-		e.Offset,
+		d.table.Iteration * d.chunkSize,
 	)
 }
 
-func (d *dumper) buildQueryOnUniqueKey(e *DumpEntry) string {
+func (d *dumper) buildQueryOnUniqueKey() string {
 	nCol := len(d.table.UseUniqueKey.Columns.Columns)
 	uniqueKeyColumnAscending := make([]string, nCol, nCol)
 	for i, col := range d.table.UseUniqueKey.Columns.Columns {
@@ -194,23 +175,29 @@ func (d *dumper) buildQueryOnUniqueKey(e *DumpEntry) string {
 }
 
 // dumps a specific chunk, reading chunk info from the channel
-func (d *dumper) getChunkData(e *DumpEntry) (err error) {
+func (d *dumper) getChunkData() (nRows int64, err error) {
 	entry := &DumpEntry{
 		TableSchema: d.TableSchema,
 		TableName:   d.TableName,
-		RowsCount:   e.RowsCount,
-		Offset:      e.Offset,
+		RowsCount:   0,
 	}
 	// TODO use PS
 	// TODO escape schema/table/column name once and save
 	defer func() {
 		entry.err = err
+		if err == nil && entry.RowsCount == 0 {
+			return
+		}
+
 		keepGoing := true
+		timer := time.NewTimer(5 * time.Second)
 		for keepGoing {
 			select {
 			case d.resultsChannel <- entry:
+				timer.Stop()
 				keepGoing = false
-			case <-time.After(5 * time.Second):
+			case <-timer.C:
+				timer.Reset(5 * time.Second)
 				d.logger.Debugf("mysql.dumper: resultsChannel full. waiting")
 			}
 		}
@@ -219,26 +206,23 @@ func (d *dumper) getChunkData(e *DumpEntry) (err error) {
 
 	query := ""
 	if d.table.UseUniqueKey == nil {
-		query = d.buildQueryOldWay(e)
+		query = d.buildQueryOldWay()
 	} else {
-		query = d.buildQueryOnUniqueKey(e)
+		query = d.buildQueryOnUniqueKey()
 	}
 	d.logger.Debugf("getChunkData. query: %s", query)
 
+	// this must be increased after building query
 	d.table.Iteration += 1
 	rows, err := d.db.Query(query)
 	if err != nil {
-		return fmt.Errorf("exec [%s] error: %v", query, err)
+		return 0, fmt.Errorf("exec [%s] error: %v", query, err)
 	}
 
 	columns, err := rows.Columns()
 	if err != nil {
-		return err
+		return 0, err
 	}
-
-	//packetLen := 0
-
-	nRows := 0
 
 	scanArgs := make([]interface{}, len(columns)) // tmp use, for casting `values` to `[]interface{}`
 
@@ -252,7 +236,7 @@ func (d *dumper) getChunkData(e *DumpEntry) (err error) {
 
 		err = rows.Scan(scanArgs...)
 		if err != nil {
-			return err
+			return 0, err
 		}
 
 		for i := range rowValuesRaw {
@@ -262,18 +246,12 @@ func (d *dumper) getChunkData(e *DumpEntry) (err error) {
 		}
 		entry.ValuesX = append(entry.ValuesX, rowValuesRaw)
 
-		nRows += 1
 		entry.incrementCounter()
 	}
 
-	d.logger.Debugf("getChunkData. n_row: %d", nRows)
+	d.logger.Debugf("getChunkData. n_row: %d", entry.RowsCount)
 
-	// TODO getChunkData could get 0 rows. Esp after removing 'start transaction'.
-	if nRows == 0 {
-		return fmt.Errorf("getChunkData. GetLastMaxVal: no rows found")
-	}
-
-	if nRows > 0 {
+	if entry.RowsCount > 0 {
 		var lastVals []string
 
 		for _, col := range entry.ValuesX[len(entry.ValuesX)-1] {
@@ -286,7 +264,7 @@ func (d *dumper) getChunkData(e *DumpEntry) (err error) {
 				// TODO save the idx
 				idx := d.table.OriginalTableColumns.Ordinals[col.Name]
 				if idx > len(lastVals) {
-					return fmt.Errorf("getChunkData. GetLastMaxVal: column index %v > n_column %v", idx, len(lastVals))
+					return entry.RowsCount, fmt.Errorf("getChunkData. GetLastMaxVal: column index %v > n_column %v", idx, len(lastVals))
 				} else {
 					d.table.UseUniqueKey.LastMaxVals[i] = lastVals[idx]
 				}
@@ -300,29 +278,33 @@ func (d *dumper) getChunkData(e *DumpEntry) (err error) {
 	// Values[i]: i-th chunk of rows
 	// Values[i][j]: j-th row (in paren-wrapped string)
 
-	return nil
+	return entry.RowsCount, nil
 }
 
 func (d *dumper) Dump() error {
-	entries, err := d.getDumpEntries()
+	err := d.prepareForDumping()
 	if err != nil {
 		return err
 	}
 
 	go func() {
-		for _, e := range entries {
+		for {
 			select {
 			case <-d.shutdownCh:
 				return
 			default:
 			}
 
-			err := d.getChunkData(e)
-			//FIXME: useless err
+			nRows, err := d.getChunkData()
 			if err != nil {
-				e.err = err
+				d.logger.Errorf("mysql.dumper: error at dump %v", err)
+				break
 			}
-			//d.resultsChannel <- e
+
+			if nRows < d.chunkSize {
+				d.logger.Debugf("mysql.dumper: nRows < d.chunkSize. dump finished. %v %v", nRows, d.chunkSize)
+				break
+			}
 		}
 		close(d.resultsChannel)
 	}()

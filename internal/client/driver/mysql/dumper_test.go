@@ -37,29 +37,6 @@ func TestNewDumper(t *testing.T) {
 	}
 }
 
-func Test_dumper_getRowsCount(t *testing.T) {
-	tests := []struct {
-		name    string
-		d       *dumper
-		want    uint64
-		wantErr bool
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, err := tt.d.getRowsCount()
-			if (err != nil) != tt.wantErr {
-				t.Errorf("dumper.getRowsCount() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
-			if got != tt.want {
-				t.Errorf("dumper.getRowsCount() = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}
-
 func Test_dumpEntry_incrementCounter(t *testing.T) {
 	tests := []struct {
 		name string
@@ -70,64 +47,6 @@ func Test_dumpEntry_incrementCounter(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			tt.e.incrementCounter()
-		})
-	}
-}
-
-func Test_dumper_getDumpEntries(t *testing.T) {
-	tests := []struct {
-		name    string
-		d       *dumper
-		want    []*DumpEntry
-		wantErr bool
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, err := tt.d.getDumpEntries()
-			if (err != nil) != tt.wantErr {
-				t.Errorf("dumper.getDumpEntries() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
-			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("dumper.getDumpEntries() = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}
-
-func Test_dumper_getChunkData(t *testing.T) {
-	type args struct {
-		e *DumpEntry
-	}
-	tests := []struct {
-		name    string
-		d       *dumper
-		args    args
-		wantErr bool
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if err := tt.d.getChunkData(tt.args.e); (err != nil) != tt.wantErr {
-				t.Errorf("dumper.getChunkData() error = %v, wantErr %v", err, tt.wantErr)
-			}
-		})
-	}
-}
-
-func Test_dumper_worker(t *testing.T) {
-	tests := []struct {
-		name string
-		d    *dumper
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tt.d.worker()
 		})
 	}
 }
