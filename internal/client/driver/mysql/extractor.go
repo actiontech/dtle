@@ -1094,31 +1094,29 @@ func (e *Extractor) mysqlDump() error {
 			// Choose how we create statements based on the # of rows ...
 			e.logger.Printf("mysql.extractor: Step %d: - scanning table '%s.%s' (%d of %d tables)", step, t.TableSchema, t.TableName, counter, e.tableCount)
 
-			d := NewDumper(tx, t, t.Counter, e.mysqlContext.ChunkSize, e.logger)
-			if err := d.Dump(1); err != nil {
+			d := NewDumper(tx, t, e.mysqlContext.ChunkSize, e.logger)
+			if err := d.Dump(); err != nil {
 				e.onError(TaskStateDead, err)
 			}
 			e.dumpers = append(e.dumpers, d)
 			// Scan the rows in the table ...
-			for i := 0; i < d.entriesCount; i++ {
-				entry := <-d.resultsChannel
+			for entry := range d.resultsChannel {
 				if entry.err != nil {
 					e.onError(TaskStateDead, entry.err)
-				}
-				// TODO: entry values may be empty. skip the entry after removing 'start transaction'.
-				entry.SystemVariablesStatement = setSystemVariablesStatement
-				entry.SqlMode = setSqlMode
+				} else {
+					entry.SystemVariablesStatement = setSystemVariablesStatement
+					entry.SqlMode = setSqlMode
 
-				if e.needToSendTabelDef() {
-					entry.Table = d.table
+					if e.needToSendTabelDef() {
+						entry.Table = d.table
+					}
+					if err = e.encodeDumpEntry(entry); err != nil {
+						e.onError(TaskStateRestart, err)
+					}
+					atomic.AddInt64(&e.mysqlContext.TotalRowsCopied, entry.RowsCount)
 				}
-				if err = e.encodeDumpEntry(entry); err != nil {
-					e.onError(TaskStateRestart, err)
-				}
-				atomic.AddInt64(&e.mysqlContext.TotalRowsCopied, entry.RowsCount)
 			}
 
-			close(d.resultsChannel)
 			//pool.Done()
 			//}(tb)
 		}
