@@ -780,7 +780,7 @@ func (a *Applier) initiateStreaming() error {
 			a.currentCoordinates.RetrievedGtidSet = dumpData.Gtid
 			a.mysqlContext.Stage = models.StageSlaveWaitingForWorkersToProcessQueue
 
-			for a.nDumpEntry != 0 {
+			for atomic.LoadInt64(&a.nDumpEntry) != 0 {
 				a.logger.Debugf("mysql.applier. nDumpEntry is not zero, waiting. %v", a.nDumpEntry)
 				time.Sleep(1 * time.Second)
 				if a.shutdown {
