@@ -235,6 +235,7 @@ type Applier struct {
 	mtsManager     *MtsManager
 	printTps       bool
 	txLastNSeconds uint32
+	nDumpEntry     int64
 }
 
 func NewApplier(subject, tp string, cfg *config.MySQLDriverConfig, logger *log.Logger) (*Applier, error) {
@@ -392,12 +393,15 @@ func (a *Applier) executeWriteFuncs() {
 				select {
 				case copyRows := <-a.copyRowsQueue:
 					if nil != copyRows {
-						//a.logger.Debugf("**** applier sleep")
-						//time.Sleep(20 * time.Second)
-						//a.logger.Debugf("**** applier after sleep")
+						//time.Sleep(20 * time.Second) // #348 stub
 						if err := a.ApplyEventQueries(a.db, copyRows); err != nil {
 							a.onError(TaskStateDead, err)
 						}
+					}
+					if atomic.LoadInt64(&a.nDumpEntry) < 0 {
+						a.onError(TaskStateDead, fmt.Errorf("DTLE_BUG"))
+					} else {
+						atomic.AddInt64(&a.nDumpEntry, -1)
 					}
 				case <-a.rowCopyComplete:
 					stopLoop = true
@@ -754,6 +758,7 @@ func (a *Applier) initiateStreaming() error {
 			if err := Decode(m.Data, dumpData); err != nil {
 				a.onError(TaskStateDead, err)
 			}
+			atomic.AddInt64(&a.nDumpEntry, 1)
 			a.copyRowsQueue <- dumpData
 			a.logger.Debugf("mysql.applier: copyRowsQueue: %v", len(a.copyRowsQueue))
 			a.mysqlContext.Stage = models.StageSlaveWaitingForWorkersToProcessQueue
@@ -774,6 +779,15 @@ func (a *Applier) initiateStreaming() error {
 			}
 			a.currentCoordinates.RetrievedGtidSet = dumpData.Gtid
 			a.mysqlContext.Stage = models.StageSlaveWaitingForWorkersToProcessQueue
+
+			for a.nDumpEntry != 0 {
+				a.logger.Debugf("mysql.applier. nDumpEntry is not zero, waiting. %v", a.nDumpEntry)
+				time.Sleep(1 * time.Second)
+				if a.shutdown {
+					return
+				}
+			}
+
 			if err := a.natsConn.Publish(m.Reply, nil); err != nil {
 				a.onError(TaskStateDead, err)
 			}
