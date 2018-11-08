@@ -139,7 +139,7 @@ func (b *BinlogReader) getDbTableMap(schemaName string) map[string]*config.Table
 }
 func (b *BinlogReader) addTableToTableMap(tableMap map[string]*config.TableContext, table *config.Table) error {
 	if table.Where == "" {
-		b.logger.Warnf("UDUP_BUG: NewMySQLReader: table.Where is empty (#177 like)")
+		b.logger.Warnf("DTLE_BUG: NewMySQLReader: table.Where is empty (#177 like)")
 		table.Where = "true"
 	}
 	whereCtx, err := config.NewWhereCtx(table.Where, table)

@@ -152,7 +152,7 @@ func (kr *KafkaRunner) getOrSetTable(schemaName string, tableName string, table 
 			kr.logger.Debugf("kafka: reuse table info %v.%v", schemaName, tableName)
 			return b, nil
 		} else {
-			return nil, fmt.Errorf("UDUP_BUG kafka: unknown table structure")
+			return nil, fmt.Errorf("DTLE_BUG kafka: unknown table structure")
 		}
 	} else {
 		kr.logger.Debugf("kafka: new table info %v.%v", schemaName, tableName)
@@ -178,7 +178,7 @@ func (kr *KafkaRunner) initiateStreaming() error {
 			// TODO cache table
 			table, err := kr.getOrSetTable(dumpData.TableSchema, dumpData.TableName, dumpData.Table)
 			if err != nil {
-				kr.onError(TaskStateDead, fmt.Errorf("UDUP_BUG kafka: unknown table structure"))
+				kr.onError(TaskStateDead, fmt.Errorf("DTLE_BUG kafka: unknown table structure"))
 				return
 			}
 
