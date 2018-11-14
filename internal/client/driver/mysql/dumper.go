@@ -9,6 +9,7 @@ package mysql
 import (
 	"bytes"
 	"fmt"
+	"os"
 	"strings"
 	"sync"
 
@@ -35,10 +36,15 @@ type dumper struct {
 	// DB is safe for using in goroutines
 	// http://golang.org/src/database/sql/sql.go?s=5574:6362#L201
 	db usql.QueryAble
+
+	// 0: don't checksum; 1: checksum once; 2: checksum every time
+	doChecksum int
+	oldWayDump bool
 }
 
 func NewDumper(db usql.QueryAble, table *config.Table, chunkSize int64,
 	logger *log.Entry) *dumper {
+
 	dumper := &dumper{
 		logger:         logger,
 		db:             db,
@@ -49,6 +55,18 @@ func NewDumper(db usql.QueryAble, table *config.Table, chunkSize int64,
 		chunkSize:      chunkSize,
 		shutdownCh:     make(chan struct{}),
 	}
+	switch os.Getenv("DTLE_DUMP_CHECKSUM") {
+	case "1":
+		dumper.doChecksum = 1
+	case "2":
+		dumper.doChecksum = 2
+	default:
+		dumper.doChecksum = 0
+	}
+	if os.Getenv("DTLE_DUMP_OLDWAY") != "" {
+		dumper.oldWayDump = true
+	}
+
 	return dumper
 }
 
@@ -205,12 +223,26 @@ func (d *dumper) getChunkData() (nRows int64, err error) {
 	}()
 
 	query := ""
-	if d.table.UseUniqueKey == nil {
+	if d.oldWayDump || d.table.UseUniqueKey == nil {
 		query = d.buildQueryOldWay()
 	} else {
 		query = d.buildQueryOnUniqueKey()
 	}
 	d.logger.Debugf("getChunkData. query: %s", query)
+
+	if d.doChecksum != 0 {
+		if d.doChecksum == 2 || (d.doChecksum == 1 && d.table.Iteration == 0) {
+			row := d.db.QueryRow(fmt.Sprintf("checksum table %v.%v", d.TableSchema, d.TableName))
+			var table string
+			var cs int64
+			err := row.Scan(&table, &cs)
+			if err != nil {
+				d.logger.Debugf("getChunkData checksum_table_err %v %v", table, err)
+			} else {
+				d.logger.Debugf("getChunkData checksum_table %v %v", table, cs)
+			}
+		}
+	}
 
 	// this must be increased after building query
 	d.table.Iteration += 1

@@ -377,7 +377,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 			dml := ToEventDML(ev.Header.EventType)
 			skip, table := b.skipRowEvent(rowsEvent, dml)
 			if skip {
-				//b.logger.Debugf("mysql.reader: skip rowsEvent [%s-%s]", rowsEvent.Table.Schema, rowsEvent.Table.Table)
+				//b.logger.Debugf("mysql.reader: skip rowsEvent %s.%s %v", rowsEvent.Table.Schema, rowsEvent.Table.Table, b.currentCoordinates.GNO)
 				return nil
 			}
 

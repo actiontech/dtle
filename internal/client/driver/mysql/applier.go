@@ -788,6 +788,7 @@ func (a *Applier) initiateStreaming() error {
 				}
 			}
 
+			a.logger.Debugf("mysql.applier. ack full_complete")
 			if err := a.natsConn.Publish(m.Reply, nil); err != nil {
 				a.onError(TaskStateDead, err)
 			}
@@ -1120,7 +1121,11 @@ func (a *Applier) buildDMLEventQuery(dmlEvent binlog.DataEvent, workerIdx int) (
 	doPrepareIfNil := func(stmts []*gosql.Stmt, query string) (*gosql.Stmt, error) {
 		var err error
 		if stmts[workerIdx] == nil {
+			a.logger.Debugf("mysql.applier buildDMLEventQuery prepare query %v", query)
 			stmts[workerIdx], err = a.dbs[workerIdx].Db.PrepareContext(context.Background(), query)
+			if err != nil {
+				a.logger.Errorf("mysql.applier buildDMLEventQuery prepare query %v err %v", query, err)
+			}
 		}
 		return stmts[workerIdx], err
 	}
@@ -1262,10 +1267,17 @@ func (a *Applier) ApplyBinlogEvent(workerIdx int, binlogEntry *binlog.BinlogEntr
 
 			a.logger.Debugf("ApplyBinlogEvent. args: %v", args)
 
-			_, err = stmt.Exec(args...)
+			var r gosql.Result
+			r, err = stmt.Exec(args...)
 			if err != nil {
 				a.logger.Errorf("mysql.applier: gtid: %s:%d, error: %v", txSid, binlogEntry.Coordinates.GNO, err)
 				return err
+			}
+			nr, err := r.RowsAffected()
+			if err != nil {
+				a.logger.Debugf("ApplyBinlogEvent executed gno %v event %v rows_affected_err %v schema", binlogEntry.Coordinates.GNO, i, err)
+			} else {
+				a.logger.Debugf("ApplyBinlogEvent executed gno %v event %v rows_affected %v", binlogEntry.Coordinates.GNO, i, nr)
 			}
 			totalDelta += rowDelta
 		}
