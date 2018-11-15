@@ -693,7 +693,6 @@ func (r *Worker) emitStats(ru *models.TaskStatistics) {
 	labels := []metrics.Label{{"task_name", fmt.Sprintf("%s_%s", r.alloc.Job.Name, r.alloc.Task)}}
 	if r.config.PublishAllocationMetrics {
 		metrics.SetGaugeWithLabels([]string{"network", "in_msgs"}, float32(ru.MsgStat.InMsgs), labels)
-		metrics.SetGaugeWithLabels([]string{"network", "in_msgs"}, float32(ru.MsgStat.InMsgs), labels)
 		metrics.SetGaugeWithLabels([]string{"network", "out_msgs"}, float32(ru.MsgStat.OutMsgs), labels)
 		metrics.SetGaugeWithLabels([]string{"network", "in_bytes"}, float32(ru.MsgStat.InBytes), labels)
 		metrics.SetGaugeWithLabels([]string{"network", "out_bytes"}, float32(ru.MsgStat.OutBytes), labels)

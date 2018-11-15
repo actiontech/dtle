@@ -99,7 +99,7 @@ func (i *Inspector) ValidateOriginalTable(databaseName, tableName string, table 
 		for _, column := range uk.Columns.Columns {
 			switch column.Type {
 			case umconf.FloatColumnType:
-				i.logger.Warning("Will not use %+v as unique key due to FLOAT data type", uk.Name)
+				i.logger.Warnf("Will not use %+v as unique key due to FLOAT data type", uk.Name)
 				uniqueKeyIsValid = false
 			case umconf.JSONColumnType:
 				// Noteworthy that at this time MySQL does not allow JSON indexing anyhow, but this code

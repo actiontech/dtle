@@ -18,4 +18,4 @@ sonar-scanner \
   -Dsonar.sources="$PWD" \
   -Dsonar.host.url="$SONAR_HOST" \
   -Dsonar.login="$SONAR_TOKEN" \
-  '-Dsonar.exclusions=vendor/**,dist/**'
+  '-Dsonar.exclusions=vendor/**,dist/**,helper/**'
