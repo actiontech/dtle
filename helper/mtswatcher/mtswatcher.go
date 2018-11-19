@@ -11,6 +11,7 @@ import (
 	"database/sql"
 	"flag"
 	"fmt"
+	"github.com/actiontech/dtle/helper/u"
 	"os"
 	"os/signal"
 
@@ -46,22 +47,22 @@ func main() {
 	}
 
 	db, err := sql.Open("mysql", fmt.Sprintf("%v:%v@tcp(%v:%v)/", *user, *password, *host, *port))
-	panicIfErr(err)
+	u.PanicIfErr(err)
 
 	if *gtidSet == "" {
 		var dummy interface{}
 		err = db.QueryRow("show master status").Scan(&dummy, &dummy, &dummy, &dummy, gtidSet)
-		panicIfErr(err)
+		u.PanicIfErr(err)
 	}
 
 	fmt.Printf("ExecutedGtidSet: %v\n", *gtidSet)
 
 	gtid, err := mysql.ParseMysqlGTIDSet(*gtidSet)
-	panicIfErr(err)
+	u.PanicIfErr(err)
 
 	syncer := replication.NewBinlogSyncer(syncerConf)
 	streamer, err := syncer.StartSyncGTID(gtid)
-	panicIfErr(err)
+	u.PanicIfErr(err)
 
 	var lc int64 = 0
 	nTx := 0
@@ -90,7 +91,7 @@ func main() {
 			if err == replication.ErrSyncClosed {
 				break
 			}
-			panicIfErr(err)
+			u.PanicIfErr(err)
 			eventCh <- event
 		}
 	}()
@@ -127,11 +128,5 @@ func main() {
 			printAndClear()
 			keepLoop = false
 		}
-	}
-}
-
-func panicIfErr(err interface{}) {
-	if err != nil {
-		panic(err)
 	}
 }

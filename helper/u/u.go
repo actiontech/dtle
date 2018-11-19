@@ -1,16 +1,16 @@
-package main
+package u
 
 import (
 	"fmt"
 )
 
-func panicIfErr(err interface{}) {
+func PanicIfErr(err interface{}) {
 	if err != nil {
 		panic(err)
 	}
 }
 
-func bytesToString(bs interface{}) string {
+func BytesToString(bs interface{}) string {
 	return string(bs.([]byte))
 }
 
@@ -19,7 +19,8 @@ func Use(vals ...interface{}) {
 
 }
 
-func printlnf(format string, a ...interface{}) {
+func Printlnf(format string, a ...interface{}) {
 	fmt.Printf(format, a...)
 	println()
 }
+

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"github.com/actiontech/dtle/helper/u"
 	"github.com/actiontech/dtle/utils"
 	"github.com/siddontang/go-mysql/mysql"
 	rep "github.com/siddontang/go-mysql/replication"
@@ -70,7 +71,7 @@ func main() {
 			switch event.Header.EventType {
 			case rep.GTID_EVENT:
 				gno1 = parseGtidEvent(event)
-				printlnf("1 GTID_EVENT %v", gno1)
+				u.Printlnf("1 GTID_EVENT %v", gno1)
 				state = READ_TX1
 			case rep.HEARTBEAT_EVENT, rep.FORMAT_DESCRIPTION_EVENT, rep.PREVIOUS_GTIDS_EVENT, rep.ROTATE_EVENT:
 				// skip
@@ -83,7 +84,7 @@ func main() {
 			switch event.Header.EventType {
 			case rep.XID_EVENT:
 				//evt := event.Event.(*rep.XIDEvent)
-				printlnf("xid %v", gno1)
+				u.Printlnf("xid %v", gno1)
 				state = WAIT_TX2
 			case rep.QUERY_EVENT:
 				query := parseQueryEvent(event)
@@ -106,7 +107,7 @@ func main() {
 			case rep.GTID_EVENT:
 				gno2 = parseGtidEvent(event)
 				state = READ_TX2
-				printlnf("2 %v GTID_EVENT gno %v", n2, gno2)
+				u.Printlnf("2 %v GTID_EVENT gno %v", n2, gno2)
 			case rep.HEARTBEAT_EVENT, rep.FORMAT_DESCRIPTION_EVENT, rep.PREVIOUS_GTIDS_EVENT, rep.ROTATE_EVENT:
 				// skip
 			default:
@@ -125,7 +126,7 @@ func main() {
 				switch eventType {
 				case rep.XID_EVENT:
 					if gnoMatch {
-						printlnf("2 xid_match %v", gno1)
+						u.Printlnf("2 xid_match %v", gno1)
 						state = WAIT_TX1
 						gnoMatch = false
 
@@ -133,7 +134,7 @@ func main() {
 						events1 = nil
 						events2 = nil
 					} else {
-						printlnf("2 xid_no_match %v", gno2)
+						u.Printlnf("2 xid_no_match %v", gno2)
 						state = WAIT_TX2
 						events2 = nil
 					}
@@ -142,7 +143,7 @@ func main() {
 					if query == "BEGIN" {
 						// normal TX
 					} else {
-						printlnf("2 QUERY_EVENT_not_begin %v", utils.StrLim(query, 20))
+						u.Printlnf("2 QUERY_EVENT_not_begin %v", utils.StrLim(query, 20))
 						state = WAIT_TX2
 					}
 				case rep.TABLE_MAP_EVENT:
@@ -152,15 +153,15 @@ func main() {
 					tableName := string(evt.Table.Table)
 					if schemaName == "dtle" && tableName == "gtid_executed_v3" {
 						if eventType == rep.DELETE_ROWS_EVENTv2 {
-							printlnf("2 cleanup_meta")
+							u.Printlnf("2 cleanup_meta")
 							cleanupMeta = true
 						} else {
-							gnoStr := bytesToString(evt.Rows[0][2])
+							gnoStr := u.BytesToString(evt.Rows[0][2])
 							origGno, err := strconv.ParseInt(gnoStr, 10, 64)
-							panicIfErr(err)
+							u.PanicIfErr(err)
 							if origGno == gno1 {
 								gnoMatch = true
-								printlnf("2 found_gno_match %v", gno1)
+								u.Printlnf("2 found_gno_match %v", gno1)
 							} else {
 								panic(fmt.Errorf("2 gno_not_match gno %v gno %v", gno1, origGno))
 							}
@@ -191,16 +192,16 @@ func compare(events1 []*rep.BinlogEvent, events2 []*rep.BinlogEvent, gno int64) 
 	}
 
 	if nRow1 != nRow2 {
-		printlnf(">>>> %v", gno)
-		printlnf("\nevents 1\n")
+		u.Printlnf(">>>> %v", gno)
+		u.Printlnf("\nevents 1\n")
 		for i, event := range events1 {
 			walkRowsEvent(event, i)
 		}
-		printlnf("\nevents 2\n")
+		u.Printlnf("\nevents 2\n")
 		for i, event := range events2 {
 			walkRowsEvent(event, i)
 		}
-		printlnf("<<<< %v", gno)
+		u.Printlnf("<<<< %v", gno)
 
 		//panic(fmt.Errorf("compare total_len_not_match %v %v", nRow1, nRow2))
 	}
@@ -209,12 +210,12 @@ func compare(events1 []*rep.BinlogEvent, events2 []*rep.BinlogEvent, gno int64) 
 	//}
 }
 func walkRowsEvent(event *rep.BinlogEvent, i int) {
-	printlnf("walk_event %v", i)
-	printlnf("type %v", event.Header.EventType)
+	u.Printlnf("walk_event %v", i)
+	u.Printlnf("type %v", event.Header.EventType)
 	evt := parseRowsEvent(event)
-	printlnf("schema_table %v %v", string(evt.Table.Schema), string(evt.Table.Table))
+	u.Printlnf("schema_table %v %v", string(evt.Table.Schema), string(evt.Table.Table))
 	for iRow, row := range evt.Rows {
-		printlnf("row %v %v", iRow, row)
+		u.Printlnf("row %v %v", iRow, row)
 	}
 }
 
@@ -229,15 +230,15 @@ func stream(host string, port uint16, gtidStr string) (*rep.BinlogSyncer, *rep.B
 		Password: MYSQL_PASSWORD,
 	}
 	g, err := mysql.ParseMysqlGTIDSet(gtidStr)
-	panicIfErr(err)
+	u.PanicIfErr(err)
 	syncer := rep.NewBinlogSyncer(syncConf)
 	streamer, err := syncer.StartSyncGTID(g)
-	panicIfErr(err)
+	u.PanicIfErr(err)
 	return syncer, streamer
 }
 func getEvent(streamer *rep.BinlogStreamer) *rep.BinlogEvent {
 	event, err := streamer.GetEvent(context.Background())
-	panicIfErr(err)
+	u.PanicIfErr(err)
 	return event
 }
 
