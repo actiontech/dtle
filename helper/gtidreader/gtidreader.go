@@ -5,6 +5,7 @@ import (
 	"compress/gzip"
 	"encoding/binary"
 	"fmt"
+	"github.com/actiontech/dtle/helper/u"
 	"github.com/actiontech/dtle/internal/client/driver/mysql/base"
 	gomysql "github.com/siddontang/go-mysql/mysql"
 )
@@ -30,37 +31,31 @@ func main() {
 	buf := bytes.NewBuffer(nil)
 	buf.WriteByte(GTID_SUMMARY)
 	err = binary.Write(buf, binary.LittleEndian, intervals)
-	panicIfErr(err)
+	u.PanicIfErr(err)
 
 	gzBuf := new(bytes.Buffer)
 	gzWriter := gzip.NewWriter(gzBuf)
 	_, err = gzWriter.Write(buf.Bytes())
-	panicIfErr(err)
+	u.PanicIfErr(err)
 	gzWriter.Close()
 	fmt.Printf("len(gzBuf) = %v\n", gzBuf.Len())
 
 	gzBuf.Reset()
 	gzWriter.Reset(gzBuf)
 	_, err = gzWriter.Write([]byte(s))
-	panicIfErr(err)
+	u.PanicIfErr(err)
 	gzWriter.Close()
 	fmt.Printf("len(gzBuf) = %v\n", gzBuf.Len())
 
 	buf.Reset()
 	for j := range i2 {
 		err = binary.Write(buf, binary.LittleEndian, i2[j])
-		panicIfErr(err)
+		u.PanicIfErr(err)
 	}
 	gzBuf.Reset()
 	gzWriter.Reset(gzBuf)
 	_, err = gzWriter.Write(buf.Bytes())
-	panicIfErr(err)
+	u.PanicIfErr(err)
 	gzWriter.Close()
 	fmt.Printf("len(gzBuf) = %v\n", gzBuf.Len())
-}
-
-func panicIfErr(err interface{}) {
-	if err != nil {
-		panic(err)
-	}
 }
