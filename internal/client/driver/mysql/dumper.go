@@ -334,7 +334,11 @@ func (d *dumper) Dump() error {
 			}
 
 			if nRows < d.chunkSize {
-				d.logger.Debugf("mysql.dumper: nRows < d.chunkSize. dump finished. %v %v", nRows, d.chunkSize)
+				// If nRows < d.chunkSize while there are still more rows, it is a possible mysql bug.
+				d.logger.Infof("mysql.dumper: nRows < d.chunkSize. %v %v", nRows, d.chunkSize)
+			}
+			if nRows == 0 {
+				d.logger.Infof("mysql.dumper: nRows == 0. dump finished. %v %v", nRows, d.chunkSize)
 				break
 			}
 		}
