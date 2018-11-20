@@ -3,8 +3,7 @@ From centos:centos7
 #
 # Set the version, home directory.
 #
-ENV DTLE_BRANCH=master \
-    DTLE_VERSION=9.9.9.9 \
+ENV DTLE_VERSION=9.9.9.9 \
     DTLE_HOME=/dtle
 
 #
