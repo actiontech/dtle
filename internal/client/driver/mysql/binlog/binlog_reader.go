@@ -68,9 +68,50 @@ type BinlogReader struct {
 	shutdown     bool
 	shutdownCh   chan struct{}
 	shutdownLock sync.Mutex
+
+	sqlFilter    *SqlFilter
+}
+
+type SqlFilter struct {
+	NoDML            bool
+	NoDMLDelete      bool
+	NoDMLInsert      bool
+	NoDMLUpdate      bool
+	NoDDL            bool
+	//NoDDLCreateTable bool
+	//NoDDLAlterTable  bool
+}
+func parseSqlFilter(strs []string) (*SqlFilter, error) {
+	s := &SqlFilter{}
+	for i := range strs {
+		switch strings.ToLower(strs[i]) {
+		case "nodml":
+			s.NoDML = true
+		case "nodmldelete":
+			s.NoDMLDelete = true
+		case "nodmlinsert":
+			s.NoDMLInsert = true
+		case "nodmlupdate":
+			s.NoDMLUpdate = true
+		case "noddl":
+			s.NoDDL = true
+		//case "noddlcreatetable":
+		//	s.NoDDLCreateTable = true
+		//case "noddlaltertable":
+		//	s.NoDDLAlterTable = true
+		default:
+			return nil, fmt.Errorf("unknown sql filter item: %v", strs[i])
+		}
+	}
+	return s, nil
 }
 
 func NewMySQLReader(cfg *config.MySQLDriverConfig, logger *log.Entry, replicateDoDb []*config.DataSource) (binlogReader *BinlogReader, err error) {
+	sqlFilter, err := parseSqlFilter(cfg.SqlFilter)
+	if err != nil {
+		return nil, err
+	}
+
 	binlogReader = &BinlogReader{
 		logger:                  logger,
 		currentCoordinates:      base.BinlogCoordinateTx{},
@@ -80,6 +121,7 @@ func NewMySQLReader(cfg *config.MySQLDriverConfig, logger *log.Entry, replicateD
 		ReMap:                   make(map[string]*regexp.Regexp),
 		shutdownCh:              make(chan struct{}),
 		tables:                  make(map[string](map[string]*config.TableContext)),
+		sqlFilter:               sqlFilter,
 	}
 
 	for _, db := range replicateDoDb {
@@ -297,6 +339,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 						return nil
 					}
 				}
+
 				if !ddlInfo.isDDL {
 					event := NewQueryEvent(
 						currentSchema,
@@ -306,6 +349,13 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 					b.currentBinlogEntry.Events = append(b.currentBinlogEntry.Events, event)
 					entriesChannel <- b.currentBinlogEntry
 					b.LastAppliedRowsEventHint = b.currentCoordinates
+					return nil
+				} else {
+					// it is a ddl
+				}
+
+				if b.sqlFilter.NoDDL {
+					b.logger.Debugf("mysql.reader. skipped_a_query_event. query: %v", query)
 					return nil
 				}
 
@@ -381,12 +431,24 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 				return nil
 			}
 
+			schemaName := string(rowsEvent.Table.Schema)
+			tableName := string(rowsEvent.Table.Table)
+
+			if b.sqlFilter.NoDML ||
+				(b.sqlFilter.NoDMLDelete && dml == DeleteDML) ||
+				(b.sqlFilter.NoDMLInsert && dml == InsertDML) ||
+				(b.sqlFilter.NoDMLUpdate && dml == UpdateDML) {
+
+				b.logger.Debugf("mysql.reader. skipped_a_dml_event. type: %v, table: %v.%v", dml, schemaName, tableName)
+				return nil
+			}
+
 			if dml == NotDML {
 				return fmt.Errorf("Unknown DML type: %s", ev.Header.EventType.String())
 			}
 			dmlEvent := NewDataEvent(
-				string(rowsEvent.Table.Schema),
-				string(rowsEvent.Table.Table),
+				schemaName,
+				tableName,
 				dml,
 				int(rowsEvent.ColumnCount),
 			)

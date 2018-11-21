@@ -136,6 +136,7 @@ type MySQLDriverConfig struct {
 	SkipRenamedColumns                  bool
 	MaxRetries                          int64
 	ChunkSize                           int64
+	SqlFilter                           []string
 	niceRatio                           float64
 	MaxLagMillisecondsThrottleThreshold int64
 	maxLoad                             umconf.LoadMap
