@@ -179,7 +179,7 @@ func (d *dumper) buildQueryOnUniqueKey() string {
 		rangeStr = strings.Join(rangeItems, " or ")
 	}
 
-	return fmt.Sprintf(`SELECT %s FROM %s.%s where %s and (%s) order by %s LIMIT %d`,
+	return fmt.Sprintf(`SELECT %s FROM %s.%s where (%s) and (%s) order by %s LIMIT %d`,
 		d.columns,
 		usql.EscapeName(d.TableSchema),
 		usql.EscapeName(d.TableName),
