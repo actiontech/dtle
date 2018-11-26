@@ -171,30 +171,37 @@ func (e *Extractor) Run() {
 		return
 	}
 
+	fullCopy := true
+
 	if e.mysqlContext.Gtid == "" {
 		if e.mysqlContext.AutoGtid {
 			coord, err := base.GetSelfBinlogCoordinates(e.db)
 			if err != nil {
 				e.onError(TaskStateDead, err)
+				return
 			}
 			e.mysqlContext.Gtid = coord.GtidSet
 			e.logger.Debugf("mysql.extractor: use auto gtid: %v", coord.GtidSet)
+			fullCopy = false
 		}
 
 		if e.mysqlContext.GtidStart != "" {
 			coord, err := base.GetSelfBinlogCoordinates(e.db)
 			if err != nil {
 				e.onError(TaskStateDead, err)
+				return
 			}
 
 			e.mysqlContext.Gtid, err = base.GtidSetDiff(coord.GtidSet, e.mysqlContext.GtidStart)
 			if err != nil {
 				e.onError(TaskStateDead, err)
+				return
 			}
+			fullCopy = false
 		}
 	}
 
-	if e.mysqlContext.Gtid == "" { // still empty: full copy
+	if fullCopy {
 		e.mysqlContext.MarkRowCopyStartTime()
 		if err := e.mysqlDump(); err != nil {
 			e.onError(TaskStateDead, err)
@@ -208,6 +215,12 @@ func (e *Extractor) Run() {
 			e.onError(TaskStateDead, err)
 		}
 	} else {
+		// Will not get consistent table meta-info for an incremental only job.
+		// https://github.com/actiontech/dtle/issues/321#issuecomment-441191534
+		if err := e.getSchemaTablesAndMeta(); err != nil {
+			e.onError(TaskStateDead, err)
+			return
+		}
 		if err := e.readCurrentBinlogCoordinates(); err != nil {
 			e.onError(TaskStateDead, err)
 			return
@@ -438,13 +451,17 @@ func (e *Extractor) initDBConnections() (err error) {
 	if err := e.validateAndReadTimeZone(); err != nil {
 		return err
 	}
+
+	return nil
+}
+
+func (e *Extractor) getSchemaTablesAndMeta() error {
 	if err := e.inspectTables(); err != nil {
 		return err
 	}
 	if err := e.readTableColumns(); err != nil {
 		return err
 	}
-
 	return nil
 }
 
@@ -1022,6 +1039,11 @@ func (e *Extractor) mysqlDump() error {
 	// build the SQL statement each time. Although in other cases this might lead to SQL injection, in our case
 	// we are reading the database names from the database and not taking them from the user ...
 	e.logger.Printf("mysql.extractor: Step %d: read list of available tables in each database", step)
+
+	err = e.getSchemaTablesAndMeta()
+	if err != nil {
+		return err
+	}
 
 	// Transform the current schema so that it reflects the *current* state of the MySQL server's contents.
 	// First, get the DROP TABLE and CREATE TABLE statement (with keys and constraint definitions) for our tables ...
