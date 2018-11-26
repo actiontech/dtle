@@ -632,8 +632,10 @@ func (e *Extractor) StreamEvents() error {
 			}
 
 			keepGoing := true
-			tick := time.NewTicker(time.Duration(e.mysqlContext.GroupTimeout) * time.Millisecond)
-			defer tick.Stop()
+
+			groupTimeoutDuration := time.Duration(e.mysqlContext.GroupTimeout) * time.Millisecond
+			timer := time.NewTimer(groupTimeoutDuration)
+			defer timer.Stop()
 
 			for keepGoing && !e.shutdown {
 				var err error
@@ -643,15 +645,17 @@ func (e *Extractor) StreamEvents() error {
 					entriesSize += binlogEntry.OriginalSize
 
 					if entriesSize >= e.mysqlContext.GroupMaxSize {
-						e.logger.Debugf("extractor. incr. send by GroupLimit: %v", e.mysqlContext.GroupMaxSize)
+						e.logger.Debugf("extractor. incr. send by GroupLimit. entriesSize: %v", entriesSize)
 						err = sendEntries()
+						timer.Reset(groupTimeoutDuration)
 					}
-				case <-tick.C:
+				case <-timer.C:
 					nEntries := len(entries.Entries)
 					if nEntries > 0 {
 						e.logger.Debugf("extractor. incr. send by timeout. entriesSize: %v", entriesSize)
 						err = sendEntries()
 					}
+					timer.Reset(groupTimeoutDuration)
 				}
 				if err != nil {
 					e.onError(TaskStateDead, err)
