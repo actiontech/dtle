@@ -753,20 +753,26 @@ func (a *Applier) initiateStreaming() error {
 		a.mysqlContext.MarkRowCopyStartTime()
 		a.logger.Debugf("mysql.applier: nats subscribe")
 		_, err := a.natsConn.Subscribe(fmt.Sprintf("%s_full", a.subject), func(m *gonats.Msg) {
-			a.logger.Debugf("mysql.applier: recv a msg")
-			dumpData := &DumpEntry{}
-			if err := Decode(m.Data, dumpData); err != nil {
-				a.onError(TaskStateDead, err)
+			a.logger.Debugf("mysql.applier: recv a msg. copyRowsQueue: %v", len(a.copyRowsQueue))
+			// TODO possible optimization: if the queue has a vacant before extractor timeout, ack
+			//  the msg to avoid extractor resending.
+			if cap(a.copyRowsQueue) - len(a.copyRowsQueue) < 1 {
+				a.logger.Debugf("applier. full. discarding entries")
+				a.mysqlContext.Stage = models.StageSlaveWaitingForWorkersToProcessQueue
+			} else {
+				dumpData := &DumpEntry{}
+				if err := Decode(m.Data, dumpData); err != nil {
+					a.onError(TaskStateDead, err)
+				}
+				atomic.AddInt64(&a.nDumpEntry, 1)
+				a.copyRowsQueue <- dumpData
+				a.mysqlContext.Stage = models.StageSlaveWaitingForWorkersToProcessQueue
+				if err := a.natsConn.Publish(m.Reply, nil); err != nil {
+					a.onError(TaskStateDead, err)
+				}
+				a.logger.Debugf("mysql.applier: after publish nats reply")
+				atomic.AddInt64(&a.mysqlContext.RowsEstimate, dumpData.TotalCount)
 			}
-			atomic.AddInt64(&a.nDumpEntry, 1)
-			a.copyRowsQueue <- dumpData
-			a.logger.Debugf("mysql.applier: copyRowsQueue: %v", len(a.copyRowsQueue))
-			a.mysqlContext.Stage = models.StageSlaveWaitingForWorkersToProcessQueue
-			if err := a.natsConn.Publish(m.Reply, nil); err != nil {
-				a.onError(TaskStateDead, err)
-			}
-			a.logger.Debugf("mysql.applier: after publish nats reply")
-			atomic.AddInt64(&a.mysqlContext.RowsEstimate, dumpData.TotalCount)
 		})
 		/*if err := sub.SetPendingLimits(a.mysqlContext.MsgsLimit, a.mysqlContext.BytesLimit); err != nil {
 			return err
