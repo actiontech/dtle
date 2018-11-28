@@ -753,25 +753,30 @@ func (a *Applier) initiateStreaming() error {
 		a.mysqlContext.MarkRowCopyStartTime()
 		a.logger.Debugf("mysql.applier: nats subscribe")
 		_, err := a.natsConn.Subscribe(fmt.Sprintf("%s_full", a.subject), func(m *gonats.Msg) {
-			a.logger.Debugf("mysql.applier: recv a msg. copyRowsQueue: %v", len(a.copyRowsQueue))
-			// TODO possible optimization: if the queue has a vacant before extractor timeout, ack
-			//  the msg to avoid extractor resending.
-			if cap(a.copyRowsQueue) - len(a.copyRowsQueue) < 1 {
-				a.logger.Debugf("applier. full. discarding entries")
-				a.mysqlContext.Stage = models.StageSlaveWaitingForWorkersToProcessQueue
-			} else {
-				dumpData := &DumpEntry{}
-				if err := Decode(m.Data, dumpData); err != nil {
-					a.onError(TaskStateDead, err)
-				}
-				atomic.AddInt64(&a.nDumpEntry, 1)
-				a.copyRowsQueue <- dumpData
+			a.logger.Debugf("mysql.applier: full. recv a msg. copyRowsQueue: %v", len(a.copyRowsQueue))
+
+			dumpData := &DumpEntry{}
+			if err := Decode(m.Data, dumpData); err != nil {
+				a.onError(TaskStateDead, err)
+			}
+
+			timer := time.NewTimer(DefaultConnectWait / 2)
+			atomic.AddInt64(&a.nDumpEntry, 1) // this must be increased before enqueuing
+			select {
+			case a.copyRowsQueue <- dumpData:
+				a.logger.Debugf("mysql.applier: full. enqueue")
+				timer.Stop()
 				a.mysqlContext.Stage = models.StageSlaveWaitingForWorkersToProcessQueue
 				if err := a.natsConn.Publish(m.Reply, nil); err != nil {
 					a.onError(TaskStateDead, err)
 				}
-				a.logger.Debugf("mysql.applier: after publish nats reply")
+				a.logger.Debugf("mysql.applier. full. after publish nats reply")
 				atomic.AddInt64(&a.mysqlContext.RowsEstimate, dumpData.TotalCount)
+			case <-timer.C:
+				atomic.AddInt64(&a.nDumpEntry, -1)
+
+				a.logger.Debugf("mysql.applier. full. discarding entries")
+				a.mysqlContext.Stage = models.StageSlaveWaitingForWorkersToProcessQueue
 			}
 		})
 		/*if err := sub.SetPendingLimits(a.mysqlContext.MsgsLimit, a.mysqlContext.BytesLimit); err != nil {
@@ -813,24 +818,36 @@ func (a *Applier) initiateStreaming() error {
 				a.onError(TaskStateDead, err)
 			}
 
-			a.logger.Debugf("applier. incr. recv. nEntries: %v, len(applyDataEntryQueue): %v",
-				len(binlogEntries.Entries), len(a.applyDataEntryQueue))
-			if cap(a.applyDataEntryQueue)-len(a.applyDataEntryQueue) < len(binlogEntries.Entries) {
+			nEntries := len(binlogEntries.Entries)
+
+			handled := false
+			for i := 0; !handled && (i < DefaultConnectWaitSecond/2); i++ {
+				vacancy := cap(a.applyDataEntryQueue)-len(a.applyDataEntryQueue)
+				a.logger.Debugf("applier. incr. nEntries: %v, vacancy: %v", nEntries, vacancy)
+				if vacancy < nEntries {
+					a.logger.Debugf("applier. incr. wait 1s for applyDataEntryQueue")
+					time.Sleep(1 * time.Second) // It will wait an second at the end, but seems no hurt.
+				} else {
+					a.logger.Debugf("applier. incr. applyDataEntryQueue enqueue")
+					for _, binlogEntry := range binlogEntries.Entries {
+						a.applyDataEntryQueue <- binlogEntry
+						a.currentCoordinates.RetrievedGtidSet = binlogEntry.Coordinates.GetGtidForThisTx()
+						atomic.AddInt64(&a.mysqlContext.DeltaEstimate, 1)
+					}
+					a.mysqlContext.Stage = models.StageWaitingForMasterToSendEvent
+
+					if err := a.natsConn.Publish(m.Reply, nil); err != nil {
+						a.onError(TaskStateDead, err)
+					}
+					a.logger.Debugf("applier. incr. ack-recv. nEntries: %v", nEntries)
+
+					handled = true
+				}
+			}
+			if !handled {
 				// discard these entries
 				a.logger.Debugf("applier. incr. discarding entries")
 				a.mysqlContext.Stage = models.StageWaitingForMasterToSendEvent
-			} else {
-				for _, binlogEntry := range binlogEntries.Entries {
-					a.applyDataEntryQueue <- binlogEntry
-					a.currentCoordinates.RetrievedGtidSet = binlogEntry.Coordinates.GetGtidForThisTx()
-					atomic.AddInt64(&a.mysqlContext.DeltaEstimate, 1)
-				}
-				a.mysqlContext.Stage = models.StageWaitingForMasterToSendEvent
-
-				if err := a.natsConn.Publish(m.Reply, nil); err != nil {
-					a.onError(TaskStateDead, err)
-				}
-				a.logger.Debugf("applier. incr. ack-recv. nEntries: %v", len(binlogEntries.Entries))
 			}
 		})
 		if err != nil {
