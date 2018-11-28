@@ -37,7 +37,8 @@ import (
 
 const (
 	// DefaultConnectWait is the default timeout used for the connect operation
-	DefaultConnectWait            = 10 * time.Second
+	DefaultConnectWaitSecond      = 10
+	DefaultConnectWait            = DefaultConnectWaitSecond * time.Second
 	ReconnectStreamerSleepSeconds = 5
 )
 
