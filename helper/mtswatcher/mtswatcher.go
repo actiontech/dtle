@@ -11,7 +11,7 @@ import (
 	"database/sql"
 	"flag"
 	"fmt"
-	"github.com/actiontech/dtle/helper/u"
+	. "github.com/actiontech/dtle/helper/u"
 	"os"
 	"os/signal"
 
@@ -47,22 +47,22 @@ func main() {
 	}
 
 	db, err := sql.Open("mysql", fmt.Sprintf("%v:%v@tcp(%v:%v)/", *user, *password, *host, *port))
-	u.PanicIfErr(err)
+	PanicIfErr(err)
 
 	if *gtidSet == "" {
 		var dummy interface{}
 		err = db.QueryRow("show master status").Scan(&dummy, &dummy, &dummy, &dummy, gtidSet)
-		u.PanicIfErr(err)
+		PanicIfErr(err)
 	}
 
 	fmt.Printf("ExecutedGtidSet: %v\n", *gtidSet)
 
 	gtid, err := mysql.ParseMysqlGTIDSet(*gtidSet)
-	u.PanicIfErr(err)
+	PanicIfErr(err)
 
 	syncer := replication.NewBinlogSyncer(syncerConf)
 	streamer, err := syncer.StartSyncGTID(gtid)
-	u.PanicIfErr(err)
+	PanicIfErr(err)
 
 	var lc int64 = 0
 	nTx := 0
@@ -91,7 +91,7 @@ func main() {
 			if err == replication.ErrSyncClosed {
 				break
 			}
-			u.PanicIfErr(err)
+			PanicIfErr(err)
 			eventCh <- event
 		}
 	}()
