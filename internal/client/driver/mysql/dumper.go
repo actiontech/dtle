@@ -213,7 +213,9 @@ func (d *dumper) getChunkData() (nRows int64, err error) {
 		for keepGoing {
 			select {
 			case d.resultsChannel <- entry:
-				timer.Stop()
+				if !timer.Stop() {
+					<-timer.C
+				}
 				keepGoing = false
 			case <-timer.C:
 				timer.Reset(5 * time.Second)
