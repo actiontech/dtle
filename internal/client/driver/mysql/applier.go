@@ -46,6 +46,7 @@ import (
 
 const (
 	cleanupGtidExecutedLimit = 4096
+	pingInterval = 10 * time.Second
 )
 const (
 	TaskStateComplete int = iota
@@ -274,7 +275,9 @@ func NewApplier(subject, tp string, cfg *config.MySQLDriverConfig, logger *log.L
 
 func (a *Applier) MtsWorker(workerIndex int) {
 	keepLoop := true
+
 	for keepLoop {
+		timer := time.NewTimer(pingInterval)
 		select {
 		case tx := <-a.applyBinlogMtsTxQueue:
 			a.logger.Debugf("mysql.applier: a binlogEntry MTS dequeue, worker: %v. GNO: %v",
@@ -289,7 +292,14 @@ func (a *Applier) MtsWorker(workerIndex int) {
 				workerIndex, tx.Coordinates.GNO)
 		case <-a.shutdownCh:
 			keepLoop = false
+		case <-timer.C:
+			err := a.dbs[workerIndex].Db.PingContext(context.Background())
+			if err != nil {
+				a.logger.Errorf("mysql.applier. bad connection for mts worker. workerIndex: %v, err: %v",
+					workerIndex, err)
+			}
 		}
+		timer.Stop()
 	}
 }
 
@@ -500,6 +510,7 @@ func (a *Applier) setTableItemForBinlogEntry(binlogEntry *binlog.BinlogEntry) er
 				a.logger.Debugf("mysql.applier: get tableColumns %v.%v", dmlEvent.DatabaseName, dmlEvent.TableName)
 				tableItem.columns, err = base.GetTableColumns(a.db, dmlEvent.DatabaseName, dmlEvent.TableName)
 				if err != nil {
+					a.logger.Errorf("mysql.applier. GetTableColumns error. err: %v", err)
 					return err
 				}
 			} else {
