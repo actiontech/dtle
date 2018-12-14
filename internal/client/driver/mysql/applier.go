@@ -233,10 +233,12 @@ type Applier struct {
 	shutdownCh   chan struct{}
 	shutdownLock sync.Mutex
 
-	mtsManager     *MtsManager
-	printTps       bool
-	txLastNSeconds uint32
-	nDumpEntry     int64
+	mtsManager         *MtsManager
+	printTps           bool
+	txLastNSeconds     uint32
+	nDumpEntry         int64
+
+	stubFullApplyDelay bool
 }
 
 func NewApplier(subject, tp string, cfg *config.MySQLDriverConfig, logger *log.Logger) (*Applier, error) {
@@ -267,6 +269,7 @@ func NewApplier(subject, tp string, cfg *config.MySQLDriverConfig, logger *log.L
 		waitCh:                  make(chan *models.WaitResult, 1),
 		shutdownCh:              make(chan struct{}),
 		printTps:                os.Getenv(g.ENV_PRINT_TPS) != "",
+		stubFullApplyDelay:      os.Getenv(g.ENV_FULL_APPLY_DELAY) != "",
 	}
 	a.mtsManager = NewMtsManager(a.shutdownCh)
 	go a.mtsManager.LcUpdater()
@@ -1330,6 +1333,12 @@ func (a *Applier) ApplyBinlogEvent(workerIdx int, binlogEntry *binlog.BinlogEntr
 }
 
 func (a *Applier) ApplyEventQueries(db *gosql.DB, entry *DumpEntry) error {
+	if a.stubFullApplyDelay {
+		a.logger.Debugf("mysql.applier: stubFullApplyDelay start sleep")
+		time.Sleep(20 * time.Second)
+		a.logger.Debugf("mysql.applier: stubFullApplyDelay end sleep")
+	}
+
 	queries := []string{}
 	queries = append(queries, entry.SystemVariablesStatement, entry.SqlMode, entry.DbSQL)
 	queries = append(queries, entry.TbSQL...)
