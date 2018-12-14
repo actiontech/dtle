@@ -9,6 +9,7 @@ package mysql
 import (
 	"bytes"
 	"fmt"
+	"github.com/actiontech/dtle/internal/g"
 	"os"
 	"strings"
 	"sync"
@@ -55,7 +56,7 @@ func NewDumper(db usql.QueryAble, table *config.Table, chunkSize int64,
 		chunkSize:      chunkSize,
 		shutdownCh:     make(chan struct{}),
 	}
-	switch os.Getenv("DTLE_DUMP_CHECKSUM") {
+	switch os.Getenv(g.ENV_DUMP_CHECKSUM) {
 	case "1":
 		dumper.doChecksum = 1
 	case "2":
@@ -63,7 +64,7 @@ func NewDumper(db usql.QueryAble, table *config.Table, chunkSize int64,
 	default:
 		dumper.doChecksum = 0
 	}
-	if os.Getenv("DTLE_DUMP_OLDWAY") != "" {
+	if os.Getenv(g.ENV_DUMP_OLDWAY) != "" {
 		dumper.oldWayDump = true
 	}
 

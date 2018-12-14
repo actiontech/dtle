@@ -265,7 +265,7 @@ func NewApplier(subject, tp string, cfg *config.MySQLDriverConfig, logger *log.L
 		applyBinlogGroupTxQueue: make(chan []*binlog.BinlogTx, cfg.ReplChanBufferSize*2),
 		waitCh:                  make(chan *models.WaitResult, 1),
 		shutdownCh:              make(chan struct{}),
-		printTps:                os.Getenv("UDUP_PRINT_TPS") != "",
+		printTps:                os.Getenv(g.ENV_PRINT_TPS) != "",
 	}
 	a.mtsManager = NewMtsManager(a.shutdownCh)
 	go a.mtsManager.LcUpdater()
