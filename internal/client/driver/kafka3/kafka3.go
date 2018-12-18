@@ -12,12 +12,17 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
+
 	mysqlDriver "github.com/actiontech/dtle/internal/client/driver/mysql"
 	"github.com/actiontech/dtle/internal/config/mysql"
 
 	"github.com/golang/snappy"
 	gonats "github.com/nats-io/go-nats"
 	"github.com/satori/go.uuid"
+
+	"encoding/base64"
+	"encoding/binary"
+	"strings"
 
 	"github.com/actiontech/dtle/internal/client/driver/mysql/binlog"
 	"github.com/actiontech/dtle/internal/config"
@@ -65,12 +70,12 @@ func (kr *KafkaRunner) ID() string {
 	id := config.DriverCtx{
 		// TODO
 		DriverConfig: &config.MySQLDriverConfig{
-			//ReplicateDoDb:     a.mysqlContext.ReplicateDoDb,
-			//ReplicateIgnoreDb: a.mysqlContext.ReplicateIgnoreDb,
-			//Gtid:              a.mysqlContext.Gtid,
-			//NatsAddr:          a.mysqlContext.NatsAddr,
-			//ParallelWorkers:   a.mysqlContext.ParallelWorkers,
-			//ConnectionConfig:  a.mysqlContext.ConnectionConfig,
+		//ReplicateDoDb:     a.mysqlContext.ReplicateDoDb,
+		//ReplicateIgnoreDb: a.mysqlContext.ReplicateIgnoreDb,
+		//Gtid:              a.mysqlContext.Gtid,
+		//NatsAddr:          a.mysqlContext.NatsAddr,
+		//ParallelWorkers:   a.mysqlContext.ParallelWorkers,
+		//ConnectionConfig:  a.mysqlContext.ConnectionConfig,
 		},
 	}
 
@@ -442,13 +447,86 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry)
 						afterValue = int64(afterValue.(uint64))
 					}
 				}
-			case mysql.TimeColumnType:
-				//if beforeValue != nil {
-				//	beforeValue = int64(beforeValue.(uint64))
-				//}
-				//if afterValue != nil {
-				//	afterValue = int64(afterValue.(uint64))
-				//}
+			case mysql.TimeColumnType, mysql.TimestampColumnType:
+				println("type: ", colList[i].ColumnType)
+				println("value is :", afterValue.(string))
+				if beforeValue != nil && colList[i].ColumnType == "timestamp" {
+					beforeValue = beforeValue.(string)[:10] + "T" + beforeValue.(string)[11:] + "Z"
+				} else {
+					beforeValue = TimeValue(beforeValue.(string))
+				}
+				if afterValue != nil && colList[i].ColumnType == "timestamp" {
+					afterValue = afterValue.(string)[:10] + "T" + afterValue.(string)[11:] + "Z"
+				} else {
+					afterValue = TimeValue(afterValue.(string))
+				}
+			case mysql.DateColumnType, mysql.DateTimeColumnType:
+				if beforeValue != nil && colList[i].ColumnType == "datetime" {
+					beforeValue = DateTimeValue(beforeValue.(string))
+				} else {
+					beforeValue = DateValue(beforeValue.(string))
+				}
+				if afterValue != nil && colList[i].ColumnType == "datetime" {
+					afterValue = DateTimeValue(afterValue.(string))
+				} else {
+					afterValue = DateValue(afterValue.(string))
+				}
+			case mysql.VarbinaryColumnType:
+				if beforeValue != nil {
+					beforeValue = beforeValue.(string)
+				}
+				if afterValue != nil {
+					afterValue = afterValue.(string)
+				}
+			case mysql.BinaryColumnType:
+
+				if beforeValue != nil {
+					beforeValue = getBinaryValue(colList[i].ColumnType, beforeValue.(string))
+				}
+				if afterValue != nil {
+					afterValue = getBinaryValue(colList[i].ColumnType, afterValue.(string))
+				}
+			case mysql.TinytextColumnType:
+				//println("beforeValue:",string(beforeValue.([]uint8)))
+				if beforeValue != nil {
+					beforeValue = string(beforeValue.([]uint8))
+				}
+				if afterValue != nil {
+					afterValue = string(afterValue.([]uint8))
+				}
+			case mysql.FloatColumnType:
+				if beforeValue != nil {
+					beforeValue = beforeValue.(float32)
+				}
+				if afterValue != nil {
+					afterValue = afterValue.(float32)
+				}
+			case mysql.EnumColumnType:
+				enums := strings.Split(colList[i].ColumnType[5:len(colList[i].ColumnType)-1], ",")
+				if beforeValue != nil {
+					beforeValue = strings.Replace(enums[beforeValue.(int64)-1], "'", "", -1)
+				}
+				if afterValue != nil {
+					afterValue = strings.Replace(enums[afterValue.(int64)-1], "'", "", -1)
+				}
+			case mysql.SetColumnType:
+				columnType := colList[i].ColumnType
+				if beforeValue != nil {
+					num := beforeValue.(int64)
+					beforeValue = getSetValue(num, columnType)
+				}
+				if afterValue != nil {
+					num := afterValue.(int64)
+					afterValue = getSetValue(num, columnType)
+				}
+
+			case mysql.BitColumnType:
+				if beforeValue != nil {
+					beforeValue = getBitValue(colList[i].ColumnType, beforeValue.(int64))
+				}
+				if afterValue != nil {
+					afterValue = getBitValue(colList[i].ColumnType, afterValue.(int64))
+				}
 			default:
 				// do nothing
 			}
@@ -540,6 +618,50 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry)
 	return nil
 }
 
+func getSetValue(num int64, set string) string {
+	value := ""
+	sets := strings.Split(set[5:len(set)-1], ",")
+	for i := 0; i < len(sets); i++ {
+		a := uint(len(sets) - 1 - i)
+		val := num / (1 << a)
+		num = num % (1 << a)
+		if val == 1 {
+			value = strings.Replace(sets[a], "'", "", -1) + "," + value
+		}
+	}
+	return value[0 : len(value)-1]
+}
+
+func getBinaryValue(binary string, value string) string {
+	binaryLen := binary[7 : len(binary)-1]
+	lens, err := strconv.Atoi(binaryLen)
+	if err != nil {
+		return ""
+	}
+	valueLen := len(value)
+	for i := 0; i < lens-valueLen; i++ {
+		value = value + "\u0000"
+	}
+	var buffer bytes.Buffer
+	buffer.Write([]byte(value))
+	if lens-valueLen > 0 {
+		buffer.Write(make([]byte, lens-valueLen))
+	}
+	return base64.StdEncoding.EncodeToString(buffer.Bytes())
+}
+func getBitValue(bit string, value int64) string {
+	bitLen := bit[4 : len(bit)-1]
+	lens, _ := strconv.Atoi(bitLen)
+	bitNumber := lens / 8
+	if lens%8 != 0 {
+		bitNumber = bitNumber + 1
+	}
+	var buf = make([]byte, 8)
+	binary.BigEndian.PutUint64(buf, uint64(value))
+
+	return base64.StdEncoding.EncodeToString(buf[0:bitNumber])
+}
+
 func kafkaColumnListToColDefs(colList *mysql.ColumnList) (valColDefs ColDefs, keyColDefs ColDefs) {
 	cols := colList.ColumnList()
 	for i, _ := range cols {
@@ -558,7 +680,7 @@ func kafkaColumnListToColDefs(colList *mysql.ColumnList) (valColDefs ColDefs, ke
 		case mysql.BlobColumnType:
 			fallthrough
 		case mysql.BinaryColumnType:
-			fallthrough
+			field = NewSimpleSchemaField(SCHEMA_TYPE_STRING, optional, fieldName)
 		case mysql.VarbinaryColumnType:
 			field = NewSimpleSchemaField(SCHEMA_TYPE_BYTES, optional, fieldName)
 

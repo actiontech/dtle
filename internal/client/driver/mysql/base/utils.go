@@ -249,6 +249,7 @@ func ApplyColumnTypes(db usql.QueryAble, databaseName, tableName string, columns
 		if strings.Contains(columnType, "timestamp") {
 			for _, columnsList := range columnsLists {
 				columnsList.GetColumn(columnName).Type = umconf.TimestampColumnType
+				columnsList.GetColumn(columnName).ColumnType = columnType
 			}
 		}
 		if strings.Contains(columnType, "datetime") {
@@ -261,6 +262,7 @@ func ApplyColumnTypes(db usql.QueryAble, databaseName, tableName string, columns
 		if strings.HasPrefix(columnType, "enum") {
 			for _, columnsList := range columnsLists {
 				columnsList.GetColumn(columnName).Type = umconf.EnumColumnType
+				columnsList.GetColumn(columnName).ColumnType = columnType
 			}
 		}
 		if strings.HasPrefix(columnType, "binary") {
@@ -366,6 +368,18 @@ func ApplyColumnTypes(db usql.QueryAble, databaseName, tableName string, columns
 		if strings.HasPrefix(columnType, "double") {
 			for _, columnsList := range columnsLists {
 				columnsList.GetColumn(columnName).Type = umconf.DoubleColumnType
+				columnsList.GetColumn(columnName).ColumnType = columnType
+			}
+		}
+		if strings.HasPrefix(columnType, "tinytext") {
+			for _, columnsList := range columnsLists {
+				columnsList.GetColumn(columnName).Type = umconf.TinytextColumnType
+				columnsList.GetColumn(columnName).ColumnType = columnType
+			}
+		}
+		if strings.HasPrefix(columnType, "set") {
+			for _, columnsList := range columnsLists {
+				columnsList.GetColumn(columnName).Type = umconf.SetColumnType
 				columnsList.GetColumn(columnName).ColumnType = columnType
 			}
 		}
