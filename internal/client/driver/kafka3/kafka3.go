@@ -448,8 +448,6 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry)
 					}
 				}
 			case mysql.TimeColumnType, mysql.TimestampColumnType:
-				println("type: ", colList[i].ColumnType)
-				println("value is :", afterValue.(string))
 				if beforeValue != nil && colList[i].ColumnType == "timestamp" {
 					beforeValue = beforeValue.(string)[:10] + "T" + beforeValue.(string)[11:] + "Z"
 				} else {
