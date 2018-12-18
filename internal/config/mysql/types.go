@@ -39,11 +39,11 @@ const (
 	VarbinaryColumnType
 
 	BitColumnType
-
+	TinytextColumnType
 	TinyintColumnType
 	SmallintColumnType
 	IntColumnType
-
+	SetColumnType
 	CharColumnType
 	VarcharColumnType
 	BlobColumnType

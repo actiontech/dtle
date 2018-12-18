@@ -17,6 +17,7 @@ import (
 	"strconv"
 
 	"github.com/Shopify/sarama"
+	"time"
 )
 
 type SchemaType string
@@ -324,13 +325,14 @@ func NewTimeField(optional bool, field string) *Schema {
 }
 
 func timeValueHelper(h, m, s, microsec int64, isNeg bool) int64 {
-	r := (h * 3600 + m * 60 + s) * 1000000 + microsec
+	r := (h*3600+m*60+s)*1000000 + microsec
 	if isNeg {
 		return -r
 	} else {
 		return r
 	}
 }
+
 // precision make no difference
 func TimeValue(value string) int64 {
 	var err error
@@ -349,7 +351,7 @@ func TimeValue(value string) int64 {
 		// TODO report err, as well the followings.
 		return 0
 	}
-	var h,m,s,microsec int64
+	var h, m, s, microsec int64
 	h, err = strconv.ParseInt(ss[0], 10, 64)
 	if err != nil {
 		return 0
@@ -379,7 +381,7 @@ func TimeValue(value string) int64 {
 		return 0
 	}
 
-	return timeValueHelper(h,m,s,microsec, isNeg)
+	return timeValueHelper(h, m, s, microsec, isNeg)
 }
 func NewDateTimeField(optional bool, field string) *Schema {
 	return &Schema{
@@ -390,11 +392,16 @@ func NewDateTimeField(optional bool, field string) *Schema {
 		Version:  1,
 	}
 }
-func DateTimeValue(timestamp int64) int64 {
-	// TODO
-	return 0
-	// precision <= 3: 1534932206000
-	// precision >  3: 1534931868000000
+func DateTimeValue(dateTime string) int64 {
+	tm2, _ := time.Parse("2006-01-02 15:04:05", dateTime)
+	return tm2.Unix()
+}
+func DateValue(date string) int64 {
+	tm2, error := time.Parse("2006-01-02 15:04:05", date+" 00:00:00")
+	if error != nil {
+		return 0
+	}
+	return tm2.Unix() / 60 / 60 / 24
 }
 func NewJsonField(optional bool, field string) *Schema {
 	return &Schema{
