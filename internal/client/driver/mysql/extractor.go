@@ -203,6 +203,8 @@ func (e *Extractor) Run() {
 			}
 			fullCopy = false
 		}
+	} else {
+		fullCopy = false
 	}
 
 	if fullCopy {

@@ -248,7 +248,10 @@ func (d *dumper) getChunkData() (nRows int64, err error) {
 	d.table.Iteration += 1
 	rows, err := d.db.Query(query)
 	if err != nil {
-		return 0, fmt.Errorf("exec [%s] error: %v", query, err)
+		d.logger.Debugf("mysql.dumper. error at select chunk. query: ", query)
+		newErr := fmt.Errorf("mysql.dumper. error at select chunk. err: %v", err)
+		d.logger.Errorf(newErr.Error())
+		return 0, err
 	}
 
 	columns, err := rows.Columns()
