@@ -17,8 +17,13 @@ import (
 	"strings"
 	"sync"
 	"github.com/actiontech/dtle/internal/config"
+	"time"
 
 	_ "github.com/go-sql-driver/mysql"
+)
+
+const (
+	ConnMaxLifetime = 300 * time.Second // #376
 )
 
 // RowMap represents one row in a result set. Its objective is to allow
@@ -129,6 +134,7 @@ func GetDB(mysql_uri string) (*gosql.DB, bool, error) {
 	var exists bool
 	if _, exists = knownDBs[mysql_uri]; !exists {
 		if db, err := gosql.Open("mysql", mysql_uri); err == nil {
+			db.SetConnMaxLifetime(ConnMaxLifetime)
 			knownDBs[mysql_uri] = db
 		} else {
 			return db, exists, err
@@ -157,6 +163,7 @@ func CreateDB(mysql_uri string) (*gosql.DB, error) {
 	if err != nil {
 		return nil, err
 	}
+	db.SetConnMaxLifetime(ConnMaxLifetime)
 
 	return db, nil
 }

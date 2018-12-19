@@ -649,6 +649,9 @@ func (e *Extractor) StreamEvents() error {
 					if entriesSize >= e.mysqlContext.GroupMaxSize {
 						e.logger.Debugf("extractor. incr. send by GroupLimit. entriesSize: %v", entriesSize)
 						err = sendEntries()
+						if !timer.Stop() {
+							<-timer.C
+						}
 						timer.Reset(groupTimeoutDuration)
 					}
 				case <-timer.C:
