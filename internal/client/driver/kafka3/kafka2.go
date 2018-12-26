@@ -16,8 +16,9 @@ import (
 
 	"strconv"
 
-	"github.com/Shopify/sarama"
 	"time"
+
+	"github.com/Shopify/sarama"
 )
 
 type SchemaType string
@@ -101,6 +102,7 @@ var (
 			NewSimpleSchemaField(SCHEMA_TYPE_STRING, false, "file"),
 			NewSimpleSchemaField(SCHEMA_TYPE_INT64, false, "pos"),
 			NewSimpleSchemaField(SCHEMA_TYPE_INT32, false, "row"),
+			NewSimpleSchemaField(SCHEMA_TYPE_STRING, true, "query"),
 			NewSimpleSchemaField(SCHEMA_TYPE_BOOLEAN, true, "snapshot"),
 			NewSimpleSchemaField(SCHEMA_TYPE_INT64, true, "thread"),
 			NewSimpleSchemaField(SCHEMA_TYPE_STRING, true, "db"),
@@ -184,6 +186,7 @@ type SourcePayload struct {
 	Gtid     interface{} `json:"gtid"` // real type: optional<string>
 	File     string      `json:"file"`
 	Pos      int64       `json:"pos"`
+	Query    interface{} `json:"query"`
 	Row      int         `json:"row"`
 	Snapshot bool        `json:"snapshot"`
 	Thread   interface{} `json:"thread"` // real type: optional<int64>
@@ -194,6 +197,7 @@ type SourcePayload struct {
 type Schema struct {
 	Type       SchemaType             `json:"type"`
 	Optional   bool                   `json:"optional"`
+	Default    bool                   `json:"default,omitempty"`
 	Field      string                 `json:"field,omitempty"` // field name in outer struct
 	Fields     []*Schema              `json:"fields,omitempty"`
 	Name       string                 `json:"name,omitempty"`
@@ -243,6 +247,14 @@ func NewSimpleSchemaField(theType SchemaType, optional bool, field string) *Sche
 		Type:     theType,
 		Optional: optional,
 		Field:    field,
+	}
+}
+func NewsNapshotSchemaField(theType SchemaType, optional bool, field string, isDefault bool) *Schema {
+	return &Schema{
+		Type:     theType,
+		Optional: optional,
+		Field:    field,
+		Default:  isDefault,
 	}
 }
 func NewDecimalField(precision int, scale int, optional bool, field string) *Schema {
