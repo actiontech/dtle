@@ -47,6 +47,7 @@ const (
 	CharColumnType
 	VarcharColumnType
 	BlobColumnType
+	BooleanColumnType
 	// TODO: more type
 )
 

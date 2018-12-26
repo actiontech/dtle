@@ -109,7 +109,7 @@ func NewMySQLReader(cfg *config.MySQLDriverConfig, logger *log.Entry, replicateD
 	if err != nil {
 		return nil, err
 	}
-
+	logger.Debugf("the server id is  %+v", serverId)
 	// support regex
 	binlogReader.genRegexMap()
 

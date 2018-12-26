@@ -281,14 +281,15 @@ func (kr *KafkaRunner) kafkaTransformSnapshotData(table *config.Table, value *my
 		valuePayload.Source.ServerID = 0 // TODO
 		valuePayload.Source.TsSec = 0    // TODO the timestamp in seconds
 		valuePayload.Source.Gtid = nil
-		valuePayload.Source.File = ""
+		valuePayload.Source.File = binlog.BinlogEvent{}.BinlogFile
 		valuePayload.Source.Pos = 0
-		valuePayload.Source.Row = 1 // TODO "the row within the event (if there is more than one)".
+		valuePayload.Source.Row = 0 // TODO "the row within the event (if there is more than one)".
 		valuePayload.Source.Snapshot = true
 		valuePayload.Source.Thread = nil // TODO
 		valuePayload.Source.Db = table.TableSchema
 		valuePayload.Source.Table = table.TableName
 		valuePayload.Op = RECORD_OP_INSERT
+		valuePayload.Source.Query = nil
 		valuePayload.TsMs = utils.CurrentTimeMillis()
 
 		valuePayload.Before = nil
@@ -560,8 +561,10 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry)
 		valuePayload.Source.Gtid = dmlEvent.Coordinates.GetGtidForThisTx()
 		valuePayload.Source.File = dmlEvent.Coordinates.LogFile
 		valuePayload.Source.Pos = dataEvent.LogPos
-		valuePayload.Source.Row = 1          // TODO "the row within the event (if there is more than one)".
+		valuePayload.Source.Row = 0          // TODO "the row within the event (if there is more than one)".
 		valuePayload.Source.Snapshot = false // TODO "whether this event was part of a snapshot"
+
+		valuePayload.Source.Query = nil
 		// My guess: for full range, snapshot=true, else false
 		valuePayload.Source.Thread = nil // TODO
 		valuePayload.Source.Db = dataEvent.DatabaseName
@@ -667,7 +670,6 @@ func kafkaColumnListToColDefs(colList *mysql.ColumnList) (valColDefs ColDefs, ke
 
 		optional := cols[i].Nullable
 		fieldName := cols[i].Name
-
 		switch cols[i].Type {
 		case mysql.UnknownColumnType:
 			// TODO warning
