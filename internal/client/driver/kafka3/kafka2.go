@@ -35,6 +35,7 @@ const (
 	SCHEMA_TYPE_INT8    = "int8"
 	SCHEMA_TYPE_BYTES   = "bytes"
 	SCHEMA_TYPE_FLOAT64 = "float64"
+	SCHEMA_TYPE_DOUBLE  = "float64"
 	SCHEMA_TYPE_FLOAT32 = "float32"
 	SCHEMA_TYPE_BOOLEAN = "boolean"
 
@@ -197,7 +198,7 @@ type SourcePayload struct {
 type Schema struct {
 	Type       SchemaType             `json:"type"`
 	Optional   bool                   `json:"optional"`
-	Default    bool                   `json:"default,omitempty"`
+	Default    string                 `json:"default,omitempty"`
 	Field      string                 `json:"field,omitempty"` // field name in outer struct
 	Fields     []*Schema              `json:"fields,omitempty"`
 	Name       string                 `json:"name,omitempty"`
@@ -247,14 +248,6 @@ func NewSimpleSchemaField(theType SchemaType, optional bool, field string) *Sche
 		Type:     theType,
 		Optional: optional,
 		Field:    field,
-	}
-}
-func NewsNapshotSchemaField(theType SchemaType, optional bool, field string, isDefault bool) *Schema {
-	return &Schema{
-		Type:     theType,
-		Optional: optional,
-		Field:    field,
-		Default:  isDefault,
 	}
 }
 func NewDecimalField(precision int, scale int, optional bool, field string) *Schema {
@@ -399,13 +392,16 @@ func NewDateTimeField(optional bool, field string) *Schema {
 	return &Schema{
 		Field:    field,
 		Optional: optional,
-		Type:     SCHEMA_TYPE_INT64,
-		Name:     "io.debezium.time.MicroTimestamp",
+		Type:     SCHEMA_TYPE_INT32,
+		Name:     "io.debezium.time.timestamp",
 		Version:  1,
 	}
 }
 func DateTimeValue(dateTime string) int64 {
-	tm2, _ := time.Parse("2006-01-02 15:04:05", dateTime)
+	tm2, error := time.Parse("2006-01-02 15:04:05", dateTime)
+	if error != nil {
+		return 0
+	}
 	return tm2.Unix()
 }
 func DateValue(date string) int64 {
@@ -421,5 +417,70 @@ func NewJsonField(optional bool, field string) *Schema {
 		Optional: optional,
 		Type:     SCHEMA_TYPE_STRING,
 		Name:     "io.debezium.data.Json",
+	}
+}
+
+func NewBitsField(optional bool, field string, length string) *Schema {
+	return &Schema{
+		Field:    field,
+		Optional: optional,
+		Parameters: map[string]interface{}{
+			"length": length,
+		},
+		Type:    SCHEMA_TYPE_BYTES,
+		Name:    "io.debezium.data.Bits",
+		Version: 1,
+	}
+}
+func NewDateField(theType SchemaType, optional bool, field string) *Schema {
+	return &Schema{
+		Field:    field,
+		Optional: optional,
+		Type:     theType,
+		Name:     "io.debezium.time.Date",
+		Version:  1,
+	}
+}
+func NewEnumField(theType SchemaType, optional bool, field string, allowed string) *Schema {
+	return &Schema{
+		Field:    field,
+		Optional: optional,
+		Parameters: map[string]interface{}{
+			"allowed": allowed,
+		},
+		Type:    theType,
+		Name:    "io.debezium.data.Enum",
+		Version: 1,
+	}
+}
+func NewSetField(theType SchemaType, optional bool, field string, allowed string) *Schema {
+	return &Schema{
+		Field:    field,
+		Optional: optional,
+		Parameters: map[string]interface{}{
+			"allowed": allowed,
+		},
+		Type:    theType,
+		Name:    "io.debezium.data.EnumSet",
+		Version: 1,
+	}
+}
+func NewTimeStampField(theType SchemaType, optional bool, field string) *Schema {
+	return &Schema{
+		Field:    field,
+		Optional: optional,
+		Default:  "1970-01-01T00:00:00Z",
+		Type:     theType,
+		Name:     "io.debezium.time.ZonedTimestamp",
+		Version:  1,
+	}
+}
+func NewYearField(theType SchemaType, optional bool, field string) *Schema {
+	return &Schema{
+		Field:    field,
+		Optional: optional,
+		Type:     theType,
+		Name:     "io.debezium.time.Year",
+		Version:  1,
 	}
 }

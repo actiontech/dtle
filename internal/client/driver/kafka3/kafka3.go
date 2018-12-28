@@ -29,6 +29,7 @@ import (
 	log "github.com/actiontech/dtle/internal/logger"
 	"github.com/actiontech/dtle/internal/models"
 	"github.com/actiontech/dtle/utils"
+	"time"
 )
 
 const (
@@ -274,14 +275,13 @@ func (kr *KafkaRunner) kafkaTransformSnapshotData(table *config.Table, value *my
 	kr.logger.Debugf("kafka: kafkaTransformSnapshotData value: %v", value.ValuesX)
 	for _, rowValues := range value.ValuesX {
 		keyPayload := NewRow()
-
 		valuePayload := NewValuePayload()
 		valuePayload.Source.Version = "0.0.1"
 		valuePayload.Source.Name = kr.kafkaMgr.Cfg.Topic
 		valuePayload.Source.ServerID = 0 // TODO
 		valuePayload.Source.TsSec = 0    // TODO the timestamp in seconds
 		valuePayload.Source.Gtid = nil
-		valuePayload.Source.File = binlog.BinlogEvent{}.BinlogFile
+		valuePayload.Source.File = ""
 		valuePayload.Source.Pos = 0
 		valuePayload.Source.Row = 0 // TODO "the row within the event (if there is more than one)".
 		valuePayload.Source.Snapshot = true
@@ -324,7 +324,12 @@ func (kr *KafkaRunner) kafkaTransformSnapshotData(table *config.Table, value *my
 							return err
 						}
 					}
-				case mysql.FloatColumnType, mysql.DoubleColumnType:
+				case mysql.DoubleColumnType:
+					value, err = strconv.ParseFloat(valueStr, 64)
+					if err != nil {
+						return err
+					}
+				case mysql.FloatColumnType:
 					value, err = strconv.ParseFloat(valueStr, 64)
 					if err != nil {
 						return err
@@ -332,7 +337,27 @@ func (kr *KafkaRunner) kafkaTransformSnapshotData(table *config.Table, value *my
 				case mysql.DecimalColumnType:
 					value = DecimalValueFromStringMysql(valueStr)
 				case mysql.TimeColumnType:
-					value = TimeValue(valueStr)
+					if valueStr != "" && columnList[i].ColumnType == "timestamp" {
+						value = valueStr[:10] + "T" + valueStr[11:] + "Z"
+					} else {
+						value = TimeValue(valueStr)
+					}
+
+				case mysql.BinaryColumnType:
+					value = base64.StdEncoding.EncodeToString([]byte(valueStr))
+				case mysql.BitColumnType:
+					value = base64.StdEncoding.EncodeToString([]byte(valueStr))
+				case mysql.BlobColumnType:
+					value = base64.StdEncoding.EncodeToString([]byte(valueStr))
+				case mysql.VarbinaryColumnType:
+					value = base64.StdEncoding.EncodeToString([]byte(valueStr))
+				case mysql.DateColumnType:
+					if valueStr != "" {
+						value = DateValue(valueStr)
+					} else {
+						value = valueStr
+					}
+
 				default:
 					value = valueStr
 				}
@@ -367,7 +392,7 @@ func (kr *KafkaRunner) kafkaTransformSnapshotData(table *config.Table, value *my
 		if err != nil {
 			return fmt.Errorf("kafka: serialization error: %v", err)
 		}
-
+		vBs = []byte(strings.Replace(string(vBs), "\"field\":\"snapshot\"", "\"default\":false,\"field\":\"snapshot\"", -1))
 		err = kr.kafkaMgr.Send(tableIdent, kBs, vBs)
 		if err != nil {
 			return err
@@ -380,7 +405,6 @@ func (kr *KafkaRunner) kafkaTransformSnapshotData(table *config.Table, value *my
 func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry) (err error) {
 	for i, _ := range dmlEvent.Events {
 		dataEvent := &dmlEvent.Events[i]
-
 		// this must be executed before skipping DDL
 		table, err := kr.getOrSetTable(dataEvent.DatabaseName, dataEvent.TableName, dataEvent.Table)
 		if err != nil {
@@ -556,8 +580,8 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry)
 
 		valuePayload.Source.Version = "0.0.1"
 		valuePayload.Source.Name = kr.kafkaMgr.Cfg.Topic
-		valuePayload.Source.ServerID = 0 // TODO
-		valuePayload.Source.TsSec = 0    // TODO the timestamp in seconds
+		valuePayload.Source.ServerID = 1 // TODO
+		valuePayload.Source.TsSec = time.Now().Unix()
 		valuePayload.Source.Gtid = dmlEvent.Coordinates.GetGtidForThisTx()
 		valuePayload.Source.File = dmlEvent.Coordinates.LogFile
 		valuePayload.Source.Pos = dataEvent.LogPos
@@ -591,7 +615,7 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry)
 		if err != nil {
 			return err
 		}
-
+		vBs = []byte(strings.Replace(string(vBs), "\"field\":\"snapshot\"", "\"default\":false,\"field\":\"snapshot\"", -1))
 		err = kr.kafkaMgr.Send(tableIdent, kBs, vBs)
 		if err != nil {
 			return err
@@ -676,11 +700,11 @@ func kafkaColumnListToColDefs(colList *mysql.ColumnList) (valColDefs ColDefs, ke
 			field = NewSimpleSchemaField("", optional, fieldName)
 
 		case mysql.BitColumnType:
-			fallthrough
+			field = NewBitsField(optional, fieldName, cols[i].ColumnType[4:len(cols[i].ColumnType)-1])
 		case mysql.BlobColumnType:
-			fallthrough
+			field = NewSimpleSchemaField(SCHEMA_TYPE_BYTES, optional, fieldName)
 		case mysql.BinaryColumnType:
-			field = NewSimpleSchemaField(SCHEMA_TYPE_STRING, optional, fieldName)
+			field = NewSimpleSchemaField(SCHEMA_TYPE_BYTES, optional, fieldName)
 		case mysql.VarbinaryColumnType:
 			field = NewSimpleSchemaField(SCHEMA_TYPE_BYTES, optional, fieldName)
 
@@ -691,10 +715,13 @@ func kafkaColumnListToColDefs(colList *mysql.ColumnList) (valColDefs ColDefs, ke
 		case mysql.VarcharColumnType:
 			fallthrough
 		case mysql.EnumColumnType:
-			field = NewSimpleSchemaField(SCHEMA_TYPE_STRING, optional, fieldName)
-
+			field = NewEnumField(SCHEMA_TYPE_STRING, optional, fieldName, strings.Replace(cols[i].ColumnType[5:len(cols[i].ColumnType)-1], "'", "", -1))
+		case mysql.SetColumnType:
+			field = NewSetField(SCHEMA_TYPE_STRING, optional, fieldName, strings.Replace(cols[i].ColumnType[4:len(cols[i].ColumnType)-1], "'", "", -1))
 		case mysql.TinyintColumnType:
 			field = NewSimpleSchemaField(SCHEMA_TYPE_INT16, optional, fieldName)
+		case mysql.TinytextColumnType:
+			field = NewSimpleSchemaField(SCHEMA_TYPE_STRING, optional, fieldName)
 		case mysql.SmallintColumnType:
 			if cols[i].IsUnsigned {
 				field = NewSimpleSchemaField(SCHEMA_TYPE_INT32, optional, fieldName)
@@ -713,23 +740,30 @@ func kafkaColumnListToColDefs(colList *mysql.ColumnList) (valColDefs ColDefs, ke
 			field = NewSimpleSchemaField(SCHEMA_TYPE_INT64, optional, fieldName)
 
 		case mysql.FloatColumnType:
-			fallthrough
+			field = NewSimpleSchemaField(SCHEMA_TYPE_FLOAT64, optional, fieldName)
 		case mysql.DoubleColumnType:
 			field = NewSimpleSchemaField(SCHEMA_TYPE_FLOAT64, optional, fieldName)
 
 		case mysql.DecimalColumnType:
 			field = NewDecimalField(cols[i].Precision, cols[i].Scale, optional, fieldName)
 
-		case mysql.TimestampColumnType:
-			field = NewSimpleSchemaField(SCHEMA_TYPE_INT64, optional, fieldName)
 		case mysql.DateColumnType:
-			field = NewSimpleSchemaField(SCHEMA_TYPE_INT32, optional, fieldName)
+			if cols[i].ColumnType == "datetime" {
+				field = NewDateTimeField(optional, fieldName)
+			} else {
+				field = NewDateField(SCHEMA_TYPE_INT32, optional, fieldName)
+			}
 		case mysql.YearColumnType:
-			field = NewSimpleSchemaField(SCHEMA_TYPE_INT32, optional, fieldName)
+			field = NewYearField(SCHEMA_TYPE_INT32, optional, fieldName)
 		case mysql.DateTimeColumnType:
 			field = NewDateTimeField(optional, fieldName)
 		case mysql.TimeColumnType:
-			field = NewTimeField(optional, fieldName)
+			if cols[i].ColumnType == "timestamp" {
+				field = NewTimeStampField(SCHEMA_TYPE_INT64, optional, fieldName)
+			} else {
+				field = NewTimeField(optional, fieldName)
+			}
+
 		case mysql.JSONColumnType:
 			field = NewJsonField(optional, fieldName)
 		default:
