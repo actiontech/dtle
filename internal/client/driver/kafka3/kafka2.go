@@ -484,3 +484,18 @@ func NewYearField(theType SchemaType, optional bool, field string) *Schema {
 		Version:  1,
 	}
 }
+
+func YearValue(year string) string {
+	int, err := strconv.Atoi(year)
+	if err != nil {
+		return ""
+	}
+	yearValue := int - 1900
+	if 0 < yearValue && yearValue <= 69 {
+		yearValue += 2000
+	} else if 70 <= yearValue && yearValue <= 99 {
+		yearValue += 1900
+	}
+	return strconv.Itoa(yearValue)
+
+}

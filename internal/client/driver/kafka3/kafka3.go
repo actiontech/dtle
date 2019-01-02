@@ -357,7 +357,12 @@ func (kr *KafkaRunner) kafkaTransformSnapshotData(table *config.Table, value *my
 					} else {
 						value = valueStr
 					}
-
+				case mysql.YearColumnType:
+					if valueStr != "" {
+						value = YearValue(valueStr)
+					} else {
+						value = valueStr
+					}
 				default:
 					value = valueStr
 				}
