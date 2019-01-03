@@ -12,11 +12,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/actiontech/dtle/internal/config"
 	"github.com/actiontech/dtle/internal/g"
 	"strconv"
 	"strings"
 	"sync"
-	"github.com/actiontech/dtle/internal/config"
 	"time"
 
 	_ "github.com/go-sql-driver/mysql"
