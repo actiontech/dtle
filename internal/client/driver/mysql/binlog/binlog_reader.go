@@ -9,6 +9,7 @@ package binlog
 import (
 	"bytes"
 	gosql "database/sql"
+
 	"github.com/actiontech/dtle/internal/g"
 
 	//"encoding/hex"
@@ -109,7 +110,6 @@ func NewMySQLReader(cfg *config.MySQLDriverConfig, logger *log.Entry, replicateD
 	if err != nil {
 		return nil, err
 	}
-	logger.Debugf("the server id is  %+v", serverId)
 	// support regex
 	binlogReader.genRegexMap()
 
