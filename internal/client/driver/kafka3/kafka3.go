@@ -351,12 +351,13 @@ func (kr *KafkaRunner) kafkaTransformSnapshotData(table *config.Table, value *my
 					value = base64.StdEncoding.EncodeToString([]byte(valueStr))
 				case mysql.VarbinaryColumnType:
 					value = base64.StdEncoding.EncodeToString([]byte(valueStr))
-				case mysql.DateColumnType:
-					if valueStr != "" {
+				case mysql.DateColumnType, mysql.DateTimeColumnType:
+					if valueStr != "" && columnList[i].ColumnType == "datetime" {
+						value = DateTimeValue(valueStr)
+					} else if valueStr != "" {
 						value = DateValue(valueStr)
-					} else {
-						value = valueStr
 					}
+
 				case mysql.YearColumnType:
 					if valueStr != "" {
 						value = YearValue(valueStr)
@@ -397,7 +398,7 @@ func (kr *KafkaRunner) kafkaTransformSnapshotData(table *config.Table, value *my
 		if err != nil {
 			return fmt.Errorf("kafka: serialization error: %v", err)
 		}
-		vBs = []byte(strings.Replace(string(vBs), "\"field\":\"snapshot\"", "\"default\":false,\"field\":\"snapshot\"", -1))
+		//vBs = []byte(strings.Replace(string(vBs), "\"field\":\"snapshot\"", "\"default\":false,\"field\":\"snapshot\"", -1))
 		err = kr.kafkaMgr.Send(tableIdent, kBs, vBs)
 		if err != nil {
 			return err
@@ -491,12 +492,12 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry)
 			case mysql.DateColumnType, mysql.DateTimeColumnType:
 				if beforeValue != nil && colList[i].ColumnType == "datetime" {
 					beforeValue = DateTimeValue(beforeValue.(string))
-				} else {
+				} else if beforeValue != nil {
 					beforeValue = DateValue(beforeValue.(string))
 				}
 				if afterValue != nil && colList[i].ColumnType == "datetime" {
 					afterValue = DateTimeValue(afterValue.(string))
-				} else {
+				} else if afterValue != nil {
 					afterValue = DateValue(afterValue.(string))
 				}
 			case mysql.VarbinaryColumnType:
@@ -620,7 +621,7 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry)
 		if err != nil {
 			return err
 		}
-		vBs = []byte(strings.Replace(string(vBs), "\"field\":\"snapshot\"", "\"default\":false,\"field\":\"snapshot\"", -1))
+		//	vBs = []byte(strings.Replace(string(vBs), "\"field\":\"snapshot\"", "\"default\":false,\"field\":\"snapshot\"", -1))
 		err = kr.kafkaMgr.Send(tableIdent, kBs, vBs)
 		if err != nil {
 			return err
@@ -696,22 +697,25 @@ func kafkaColumnListToColDefs(colList *mysql.ColumnList) (valColDefs ColDefs, ke
 	cols := colList.ColumnList()
 	for i, _ := range cols {
 		var field *Schema
-
+		defaultValue := cols[i].Default
+		if defaultValue == "" {
+			defaultValue = nil
+		}
 		optional := cols[i].Nullable
 		fieldName := cols[i].Name
 		switch cols[i].Type {
 		case mysql.UnknownColumnType:
 			// TODO warning
-			field = NewSimpleSchemaField("", optional, fieldName)
+			field = NewSimpleSchemaWithDefaultField("", optional, fieldName, defaultValue)
 
 		case mysql.BitColumnType:
-			field = NewBitsField(optional, fieldName, cols[i].ColumnType[4:len(cols[i].ColumnType)-1])
+			field = NewBitsField(optional, fieldName, cols[i].ColumnType[4:len(cols[i].ColumnType)-1], defaultValue)
 		case mysql.BlobColumnType:
-			field = NewSimpleSchemaField(SCHEMA_TYPE_BYTES, optional, fieldName)
+			field = NewSimpleSchemaWithDefaultField(SCHEMA_TYPE_BYTES, optional, fieldName, defaultValue)
 		case mysql.BinaryColumnType:
-			field = NewSimpleSchemaField(SCHEMA_TYPE_BYTES, optional, fieldName)
+			field = NewSimpleSchemaWithDefaultField(SCHEMA_TYPE_BYTES, optional, fieldName, defaultValue)
 		case mysql.VarbinaryColumnType:
-			field = NewSimpleSchemaField(SCHEMA_TYPE_BYTES, optional, fieldName)
+			field = NewSimpleSchemaWithDefaultField(SCHEMA_TYPE_BYTES, optional, fieldName, defaultValue)
 
 		case mysql.TextColumnType:
 			fallthrough
@@ -720,60 +724,61 @@ func kafkaColumnListToColDefs(colList *mysql.ColumnList) (valColDefs ColDefs, ke
 		case mysql.VarcharColumnType:
 			fallthrough
 		case mysql.EnumColumnType:
-			field = NewEnumField(SCHEMA_TYPE_STRING, optional, fieldName, strings.Replace(cols[i].ColumnType[5:len(cols[i].ColumnType)-1], "'", "", -1))
+			field = NewEnumField(SCHEMA_TYPE_STRING, optional, fieldName, strings.Replace(cols[i].ColumnType[5:len(cols[i].ColumnType)-1], "'", "", -1), defaultValue)
 		case mysql.SetColumnType:
-			field = NewSetField(SCHEMA_TYPE_STRING, optional, fieldName, strings.Replace(cols[i].ColumnType[4:len(cols[i].ColumnType)-1], "'", "", -1))
+			field = NewSetField(SCHEMA_TYPE_STRING, optional, fieldName, strings.Replace(cols[i].ColumnType[4:len(cols[i].ColumnType)-1], "'", "", -1), defaultValue)
 		case mysql.TinyintColumnType:
-			field = NewSimpleSchemaField(SCHEMA_TYPE_INT16, optional, fieldName)
+			field = NewSimpleSchemaWithDefaultField(SCHEMA_TYPE_INT16, optional, fieldName, defaultValue)
 		case mysql.TinytextColumnType:
-			field = NewSimpleSchemaField(SCHEMA_TYPE_STRING, optional, fieldName)
+			field = NewSimpleSchemaWithDefaultField(SCHEMA_TYPE_STRING, optional, fieldName, defaultValue)
 		case mysql.SmallintColumnType:
 			if cols[i].IsUnsigned {
-				field = NewSimpleSchemaField(SCHEMA_TYPE_INT32, optional, fieldName)
+				field = NewSimpleSchemaWithDefaultField(SCHEMA_TYPE_INT32, optional, fieldName, defaultValue)
 			} else {
-				field = NewSimpleSchemaField(SCHEMA_TYPE_INT16, optional, fieldName)
+				field = NewSimpleSchemaWithDefaultField(SCHEMA_TYPE_INT16, optional, fieldName, defaultValue)
 			}
 		case mysql.MediumIntColumnType: // 24 bit in mysql
-			field = NewSimpleSchemaField(SCHEMA_TYPE_INT32, optional, fieldName)
+			field = NewSimpleSchemaWithDefaultField(SCHEMA_TYPE_INT32, optional, fieldName, defaultValue)
 		case mysql.IntColumnType:
 			if cols[i].IsUnsigned {
-				field = NewSimpleSchemaField(SCHEMA_TYPE_INT64, optional, fieldName)
+				field = NewSimpleSchemaWithDefaultField(SCHEMA_TYPE_INT64, optional, fieldName, defaultValue)
 			} else {
-				field = NewSimpleSchemaField(SCHEMA_TYPE_INT32, optional, fieldName)
+				field = NewSimpleSchemaWithDefaultField(SCHEMA_TYPE_INT32, optional, fieldName, defaultValue)
 			}
 		case mysql.BigIntColumnType:
-			field = NewSimpleSchemaField(SCHEMA_TYPE_INT64, optional, fieldName)
+			field = NewSimpleSchemaWithDefaultField(SCHEMA_TYPE_INT64, optional, fieldName, defaultValue)
 
 		case mysql.FloatColumnType:
-			field = NewSimpleSchemaField(SCHEMA_TYPE_FLOAT64, optional, fieldName)
+			field = NewSimpleSchemaWithDefaultField(SCHEMA_TYPE_FLOAT64, optional, fieldName, defaultValue)
 		case mysql.DoubleColumnType:
-			field = NewSimpleSchemaField(SCHEMA_TYPE_FLOAT64, optional, fieldName)
+			field = NewSimpleSchemaWithDefaultField(SCHEMA_TYPE_FLOAT64, optional, fieldName, defaultValue)
 
 		case mysql.DecimalColumnType:
-			field = NewDecimalField(cols[i].Precision, cols[i].Scale, optional, fieldName)
+			field = NewDecimalField(cols[i].Precision, cols[i].Scale, optional, fieldName, defaultValue)
 
 		case mysql.DateColumnType:
 			if cols[i].ColumnType == "datetime" {
-				field = NewDateTimeField(optional, fieldName)
+				field = NewDateTimeField(optional, fieldName, defaultValue)
 			} else {
-				field = NewDateField(SCHEMA_TYPE_INT32, optional, fieldName)
+				field = NewDateField(SCHEMA_TYPE_INT32, optional, fieldName, defaultValue)
 			}
 		case mysql.YearColumnType:
-			field = NewYearField(SCHEMA_TYPE_INT32, optional, fieldName)
+			field = NewYearField(SCHEMA_TYPE_INT32, optional, fieldName, defaultValue)
+
 		case mysql.DateTimeColumnType:
-			field = NewDateTimeField(optional, fieldName)
+			field = NewDateTimeField(optional, fieldName, defaultValue)
 		case mysql.TimeColumnType:
 			if cols[i].ColumnType == "timestamp" {
-				field = NewTimeStampField(SCHEMA_TYPE_INT64, optional, fieldName)
+				field = NewTimeStampField(SCHEMA_TYPE_INT64, optional, fieldName, defaultValue)
 			} else {
-				field = NewTimeField(optional, fieldName)
+				field = NewTimeField(optional, fieldName, defaultValue)
 			}
 
 		case mysql.JSONColumnType:
 			field = NewJsonField(optional, fieldName)
 		default:
 			// TODO report a BUG
-			field = NewSimpleSchemaField("", optional, fieldName)
+			field = NewSimpleSchemaWithDefaultField("", optional, fieldName, cols[i].Default)
 		}
 
 		addToKey := cols[i].IsPk()
