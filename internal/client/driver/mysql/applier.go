@@ -46,7 +46,7 @@ import (
 
 const (
 	cleanupGtidExecutedLimit = 4096
-	pingInterval = 10 * time.Second
+	pingInterval             = 10 * time.Second
 )
 const (
 	TaskStateComplete int = iota
@@ -233,10 +233,10 @@ type Applier struct {
 	shutdownCh   chan struct{}
 	shutdownLock sync.Mutex
 
-	mtsManager         *MtsManager
-	printTps           bool
-	txLastNSeconds     uint32
-	nDumpEntry         int64
+	mtsManager     *MtsManager
+	printTps       bool
+	txLastNSeconds uint32
+	nDumpEntry     int64
 
 	stubFullApplyDelay bool
 }
@@ -522,7 +522,7 @@ func (a *Applier) setTableItemForBinlogEntry(binlogEntry *binlog.BinlogEntry) er
 			dmlEvent.TableItem = tableItem
 		}
 	}
-	return  nil
+	return nil
 }
 
 func (a *Applier) cleanGtidExecuted(sid uuid.UUID, intervalStr string) error {
@@ -836,7 +836,7 @@ func (a *Applier) initiateStreaming() error {
 
 			handled := false
 			for i := 0; !handled && (i < DefaultConnectWaitSecond/2); i++ {
-				vacancy := cap(a.applyDataEntryQueue)-len(a.applyDataEntryQueue)
+				vacancy := cap(a.applyDataEntryQueue) - len(a.applyDataEntryQueue)
 				a.logger.Debugf("applier. incr. nEntries: %v, vacancy: %v", nEntries, vacancy)
 				if vacancy < nEntries {
 					a.logger.Debugf("applier. incr. wait 1s for applyDataEntryQueue")
@@ -1046,7 +1046,7 @@ func (a *Applier) migrateGtidExecutedV2toV3() error {
 	var err error
 	var query string
 
-	logErr := func (query string, err error) {
+	logErr := func(query string, err error) {
 		a.logger.Errorf(`migrateGtidExecutedV2toV3 failed. manual intervention might be required. query: %v. err: %v`,
 			query, err)
 	}
@@ -1087,24 +1087,24 @@ func (a *Applier) createTableGtidExecutedV3() error {
 
 	if result, err := sql.QueryResultData(a.db, fmt.Sprintf("SHOW TABLES FROM %v LIKE '%v%%'",
 		g.DtleSchemaName, g.GtidExecutedTablePrefix)); nil == err && len(result) > 0 {
-			if len(result) > 1 {
-				return fmt.Errorf("multiple GtidExecutedTable exists, while at most one is allowed. require manual intervention")
-			} else {
-				if len(result[0]) < 1 {
-					return fmt.Errorf("mysql error: expect 1 column for 'SHOW TABLES' query")
-				}
-				switch result[0][0].String {
-				case g.GtidExecutedTableV2:
-					err = a.migrateGtidExecutedV2toV3()
-					if err != nil {
-						return err
-					}
-				case g.GtidExecutedTableV3:
-					return nil
-				default:
-					return fmt.Errorf("newer GtidExecutedTable exists, which is unrecognized by this verion. require manual intervention")
-				}
+		if len(result) > 1 {
+			return fmt.Errorf("multiple GtidExecutedTable exists, while at most one is allowed. require manual intervention")
+		} else {
+			if len(result[0]) < 1 {
+				return fmt.Errorf("mysql error: expect 1 column for 'SHOW TABLES' query")
 			}
+			switch result[0][0].String {
+			case g.GtidExecutedTableV2:
+				err = a.migrateGtidExecutedV2toV3()
+				if err != nil {
+					return err
+				}
+			case g.GtidExecutedTableV3:
+				return nil
+			default:
+				return fmt.Errorf("newer GtidExecutedTable exists, which is unrecognized by this verion. require manual intervention")
+			}
+		}
 	}
 
 	a.logger.Debugf("mysql.applier. after show gtid_executed table")

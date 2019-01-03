@@ -26,7 +26,6 @@ import (
 	gonats "github.com/nats-io/go-nats"
 	gomysql "github.com/siddontang/go-mysql/mysql"
 
-	"os"
 	"github.com/actiontech/dtle/internal/client/driver/mysql/base"
 	"github.com/actiontech/dtle/internal/client/driver/mysql/binlog"
 	"github.com/actiontech/dtle/internal/client/driver/mysql/sql"
@@ -34,6 +33,7 @@ import (
 	log "github.com/actiontech/dtle/internal/logger"
 	"github.com/actiontech/dtle/internal/models"
 	"github.com/actiontech/dtle/utils"
+	"os"
 )
 
 const (
@@ -45,14 +45,14 @@ const (
 
 // Extractor is the main schema extract flow manager.
 type Extractor struct {
-	logger                   *log.Entry
-	subject                  string
-	tp                       string
-	maxPayload               int
-	mysqlContext             *config.MySQLDriverConfig
-	db                       *gosql.DB
-	singletonDB              *gosql.DB
-	dumpers                  []*dumper
+	logger       *log.Entry
+	subject      string
+	tp           string
+	maxPayload   int
+	mysqlContext *config.MySQLDriverConfig
+	db           *gosql.DB
+	singletonDB  *gosql.DB
+	dumpers      []*dumper
 	// db.tb exists when creating the job, for full-copy.
 	// vs e.mysqlContext.ReplicateDoDb: all user assigned db.tb
 	replicateDoDb            []*config.DataSource

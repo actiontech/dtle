@@ -86,19 +86,19 @@ type DumpEntry struct {
 	// For each `*interface{}` item, it is ensured to be not nil.
 	// If field is sql-NULL, *item is nil. Else, *item is a `[]byte`.
 	// TODO can we just use interface{}? Make sure it is not copied again and again.
-	ValuesX                  [][]*interface{}
-	TotalCount               int64
-	RowsCount                int64
-	colBuffer                bytes.Buffer
-	err                      error
-	Table                    *config.Table
+	ValuesX    [][]*interface{}
+	TotalCount int64
+	RowsCount  int64
+	colBuffer  bytes.Buffer
+	err        error
+	Table      *config.Table
 }
 
 func (e *DumpEntry) incrementCounter() {
 	e.RowsCount++
 }
 
-func (d *dumper) prepareForDumping() (error) {
+func (d *dumper) prepareForDumping() error {
 	columnList, err := ubase.GetTableColumns(d.db, d.TableSchema, d.TableName)
 	if err != nil {
 		return err
@@ -137,7 +137,7 @@ func (d *dumper) buildQueryOldWay() string {
 		usql.EscapeName(d.TableName),
 		d.table.Where,
 		d.chunkSize,
-		d.table.Iteration * d.chunkSize,
+		d.table.Iteration*d.chunkSize,
 	)
 }
 
