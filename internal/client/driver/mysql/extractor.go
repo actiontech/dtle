@@ -10,6 +10,7 @@ import (
 	gosql "database/sql"
 	"encoding/json"
 	"fmt"
+	"github.com/actiontech/dtle/internal/g"
 
 	//"math"
 	"bytes"
@@ -98,8 +99,8 @@ func NewExtractor(subject, tp string, maxPayload int, cfg *config.MySQLDriverCon
 		testStub1Delay:  0,
 	}
 
-	if delay, err := strconv.ParseInt(os.Getenv("UDUP_TESTSTUB1_DELAY"), 10, 64); err == nil {
-		e.logger.Infof("UDUP_TESTSTUB1_DELAY = %v", delay)
+	if delay, err := strconv.ParseInt(os.Getenv(g.ENV_TESTSTUB1_DELAY), 10, 64); err == nil {
+		e.logger.Infof("%v = %v", g.ENV_TESTSTUB1_DELAY, delay)
 		e.testStub1Delay = delay
 	}
 
@@ -648,6 +649,9 @@ func (e *Extractor) StreamEvents() error {
 					if entriesSize >= e.mysqlContext.GroupMaxSize {
 						e.logger.Debugf("extractor. incr. send by GroupLimit. entriesSize: %v", entriesSize)
 						err = sendEntries()
+						if !timer.Stop() {
+							<-timer.C
+						}
 						timer.Reset(groupTimeoutDuration)
 					}
 				case <-timer.C:

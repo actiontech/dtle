@@ -9,6 +9,7 @@ package mysql
 import (
 	"bytes"
 	"fmt"
+	"github.com/actiontech/dtle/internal/g"
 	"os"
 	"strings"
 	"sync"
@@ -55,7 +56,7 @@ func NewDumper(db usql.QueryAble, table *config.Table, chunkSize int64,
 		chunkSize:      chunkSize,
 		shutdownCh:     make(chan struct{}),
 	}
-	switch os.Getenv("DTLE_DUMP_CHECKSUM") {
+	switch os.Getenv(g.ENV_DUMP_CHECKSUM) {
 	case "1":
 		dumper.doChecksum = 1
 	case "2":
@@ -63,7 +64,7 @@ func NewDumper(db usql.QueryAble, table *config.Table, chunkSize int64,
 	default:
 		dumper.doChecksum = 0
 	}
-	if os.Getenv("DTLE_DUMP_OLDWAY") != "" {
+	if os.Getenv(g.ENV_DUMP_OLDWAY) != "" {
 		dumper.oldWayDump = true
 	}
 
@@ -208,15 +209,22 @@ func (d *dumper) getChunkData() (nRows int64, err error) {
 		}
 
 		keepGoing := true
-		timer := time.NewTimer(5 * time.Second)
+		timer := time.NewTimer(pingInterval)
 		for keepGoing {
 			select {
 			case d.resultsChannel <- entry:
-				timer.Stop()
+				if !timer.Stop() {
+					<-timer.C
+				}
 				keepGoing = false
 			case <-timer.C:
-				timer.Reset(5 * time.Second)
-				d.logger.Debugf("mysql.dumper: resultsChannel full. waiting")
+				timer.Reset(pingInterval)
+				d.logger.Debugf("mysql.dumper: resultsChannel full. waiting and ping conn")
+				var dummy int
+				errPing := d.db.QueryRow("select 1").Scan(&dummy)
+				if errPing != nil {
+					d.logger.Debugf("mysql.dumper: ping query row got error. err: %v", errPing)
+				}
 			}
 		}
 		d.logger.Debugf("mysql.dumper: resultsChannel: %v", len(d.resultsChannel))

@@ -16,9 +16,8 @@ import (
 
 	"strconv"
 
-	"time"
-
 	"github.com/Shopify/sarama"
+	"time"
 )
 
 type SchemaType string
@@ -103,8 +102,7 @@ var (
 			NewSimpleSchemaField(SCHEMA_TYPE_STRING, false, "file"),
 			NewSimpleSchemaField(SCHEMA_TYPE_INT64, false, "pos"),
 			NewSimpleSchemaField(SCHEMA_TYPE_INT32, false, "row"),
-			NewSimpleSchemaField(SCHEMA_TYPE_STRING, true, "query"),
-			NewSimpleSchemaWithDefaultField(SCHEMA_TYPE_BOOLEAN, true, "snapshot", false),
+			NewSimpleSchemaField(SCHEMA_TYPE_BOOLEAN, true, "snapshot"),
 			NewSimpleSchemaField(SCHEMA_TYPE_INT64, true, "thread"),
 			NewSimpleSchemaField(SCHEMA_TYPE_STRING, true, "db"),
 			NewSimpleSchemaField(SCHEMA_TYPE_STRING, true, "table"),

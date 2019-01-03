@@ -46,6 +46,7 @@ import (
 
 const (
 	cleanupGtidExecutedLimit = 4096
+	pingInterval = 10 * time.Second
 )
 const (
 	TaskStateComplete int = iota
@@ -232,10 +233,12 @@ type Applier struct {
 	shutdownCh   chan struct{}
 	shutdownLock sync.Mutex
 
-	mtsManager     *MtsManager
-	printTps       bool
-	txLastNSeconds uint32
-	nDumpEntry     int64
+	mtsManager         *MtsManager
+	printTps           bool
+	txLastNSeconds     uint32
+	nDumpEntry         int64
+
+	stubFullApplyDelay bool
 }
 
 func NewApplier(subject, tp string, cfg *config.MySQLDriverConfig, logger *log.Logger) (*Applier, error) {
@@ -265,7 +268,8 @@ func NewApplier(subject, tp string, cfg *config.MySQLDriverConfig, logger *log.L
 		applyBinlogGroupTxQueue: make(chan []*binlog.BinlogTx, cfg.ReplChanBufferSize*2),
 		waitCh:                  make(chan *models.WaitResult, 1),
 		shutdownCh:              make(chan struct{}),
-		printTps:                os.Getenv("UDUP_PRINT_TPS") != "",
+		printTps:                os.Getenv(g.ENV_PRINT_TPS) != "",
+		stubFullApplyDelay:      os.Getenv(g.ENV_FULL_APPLY_DELAY) != "",
 	}
 	a.mtsManager = NewMtsManager(a.shutdownCh)
 	go a.mtsManager.LcUpdater()
@@ -274,7 +278,9 @@ func NewApplier(subject, tp string, cfg *config.MySQLDriverConfig, logger *log.L
 
 func (a *Applier) MtsWorker(workerIndex int) {
 	keepLoop := true
+
 	for keepLoop {
+		timer := time.NewTimer(pingInterval)
 		select {
 		case tx := <-a.applyBinlogMtsTxQueue:
 			a.logger.Debugf("mysql.applier: a binlogEntry MTS dequeue, worker: %v. GNO: %v",
@@ -289,7 +295,14 @@ func (a *Applier) MtsWorker(workerIndex int) {
 				workerIndex, tx.Coordinates.GNO)
 		case <-a.shutdownCh:
 			keepLoop = false
+		case <-timer.C:
+			err := a.dbs[workerIndex].Db.PingContext(context.Background())
+			if err != nil {
+				a.logger.Errorf("mysql.applier. bad connection for mts worker. workerIndex: %v, err: %v",
+					workerIndex, err)
+			}
 		}
+		timer.Stop()
 	}
 }
 
@@ -500,6 +513,7 @@ func (a *Applier) setTableItemForBinlogEntry(binlogEntry *binlog.BinlogEntry) er
 				a.logger.Debugf("mysql.applier: get tableColumns %v.%v", dmlEvent.DatabaseName, dmlEvent.TableName)
 				tableItem.columns, err = base.GetTableColumns(a.db, dmlEvent.DatabaseName, dmlEvent.TableName)
 				if err != nil {
+					a.logger.Errorf("mysql.applier. GetTableColumns error. err: %v", err)
 					return err
 				}
 			} else {
@@ -1319,6 +1333,12 @@ func (a *Applier) ApplyBinlogEvent(workerIdx int, binlogEntry *binlog.BinlogEntr
 }
 
 func (a *Applier) ApplyEventQueries(db *gosql.DB, entry *DumpEntry) error {
+	if a.stubFullApplyDelay {
+		a.logger.Debugf("mysql.applier: stubFullApplyDelay start sleep")
+		time.Sleep(20 * time.Second)
+		a.logger.Debugf("mysql.applier: stubFullApplyDelay end sleep")
+	}
+
 	queries := []string{}
 	queries = append(queries, entry.SystemVariablesStatement, entry.SqlMode, entry.DbSQL)
 	queries = append(queries, entry.TbSQL...)
