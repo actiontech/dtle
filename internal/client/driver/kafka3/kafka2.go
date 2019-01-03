@@ -16,8 +16,9 @@ import (
 
 	"strconv"
 
-	"github.com/Shopify/sarama"
 	"time"
+
+	"github.com/Shopify/sarama"
 )
 
 type SchemaType string
@@ -34,6 +35,7 @@ const (
 	SCHEMA_TYPE_INT8    = "int8"
 	SCHEMA_TYPE_BYTES   = "bytes"
 	SCHEMA_TYPE_FLOAT64 = "float64"
+	SCHEMA_TYPE_DOUBLE  = "float64"
 	SCHEMA_TYPE_FLOAT32 = "float32"
 	SCHEMA_TYPE_BOOLEAN = "boolean"
 
@@ -101,7 +103,8 @@ var (
 			NewSimpleSchemaField(SCHEMA_TYPE_STRING, false, "file"),
 			NewSimpleSchemaField(SCHEMA_TYPE_INT64, false, "pos"),
 			NewSimpleSchemaField(SCHEMA_TYPE_INT32, false, "row"),
-			NewSimpleSchemaField(SCHEMA_TYPE_BOOLEAN, true, "snapshot"),
+			NewSimpleSchemaField(SCHEMA_TYPE_STRING, true, "query"),
+			NewSimpleSchemaWithDefaultField(SCHEMA_TYPE_BOOLEAN, true, "snapshot", false),
 			NewSimpleSchemaField(SCHEMA_TYPE_INT64, true, "thread"),
 			NewSimpleSchemaField(SCHEMA_TYPE_STRING, true, "db"),
 			NewSimpleSchemaField(SCHEMA_TYPE_STRING, true, "table"),
@@ -184,6 +187,7 @@ type SourcePayload struct {
 	Gtid     interface{} `json:"gtid"` // real type: optional<string>
 	File     string      `json:"file"`
 	Pos      int64       `json:"pos"`
+	Query    interface{} `json:"query"`
 	Row      int         `json:"row"`
 	Snapshot bool        `json:"snapshot"`
 	Thread   interface{} `json:"thread"` // real type: optional<int64>
@@ -194,6 +198,7 @@ type SourcePayload struct {
 type Schema struct {
 	Type       SchemaType             `json:"type"`
 	Optional   bool                   `json:"optional"`
+	Default    interface{}            `json:"default,omitempty"`
 	Field      string                 `json:"field,omitempty"` // field name in outer struct
 	Fields     []*Schema              `json:"fields,omitempty"`
 	Name       string                 `json:"name,omitempty"`
@@ -245,9 +250,18 @@ func NewSimpleSchemaField(theType SchemaType, optional bool, field string) *Sche
 		Field:    field,
 	}
 }
-func NewDecimalField(precision int, scale int, optional bool, field string) *Schema {
+func NewSimpleSchemaWithDefaultField(theType SchemaType, optional bool, field string, defaultValue interface{}) *Schema {
+	return &Schema{
+		Default:  defaultValue,
+		Type:     theType,
+		Optional: optional,
+		Field:    field,
+	}
+}
+func NewDecimalField(precision int, scale int, optional bool, field string, defaultValue interface{}) *Schema {
 	return &Schema{
 		Field:    field,
+		Default:  defaultValue,
 		Optional: optional,
 		Name:     "org.apache.kafka.connect.data.Decimal",
 		Parameters: map[string]interface{}{
@@ -314,8 +328,9 @@ func DecimalValueFromStringMysql(value string) string {
 	return base64.StdEncoding.EncodeToString(bs)
 }
 
-func NewTimeField(optional bool, field string) *Schema {
+func NewTimeField(optional bool, field string, defaultValue interface{}) *Schema {
 	return &Schema{
+		Default:  defaultValue,
 		Field:    field,
 		Optional: optional,
 		Type:     SCHEMA_TYPE_INT64,
@@ -383,18 +398,22 @@ func TimeValue(value string) int64 {
 
 	return timeValueHelper(h, m, s, microsec, isNeg)
 }
-func NewDateTimeField(optional bool, field string) *Schema {
+func NewDateTimeField(optional bool, field string, defaultValue interface{}) *Schema {
 	return &Schema{
+		Default:  defaultValue,
 		Field:    field,
 		Optional: optional,
-		Type:     SCHEMA_TYPE_INT64,
-		Name:     "io.debezium.time.MicroTimestamp",
+		Type:     SCHEMA_TYPE_INT32,
+		Name:     "io.debezium.time.timestamp",
 		Version:  1,
 	}
 }
 func DateTimeValue(dateTime string) int64 {
-	tm2, _ := time.Parse("2006-01-02 15:04:05", dateTime)
-	return tm2.Unix()
+	tm2, error := time.Parse("2006-01-02 15:04:05", dateTime)
+	if error != nil {
+		return 0
+	}
+	return tm2.UnixNano() / 1e6
 }
 func DateValue(date string) int64 {
 	tm2, error := time.Parse("2006-01-02 15:04:05", date+" 00:00:00")
@@ -410,4 +429,89 @@ func NewJsonField(optional bool, field string) *Schema {
 		Type:     SCHEMA_TYPE_STRING,
 		Name:     "io.debezium.data.Json",
 	}
+}
+
+func NewBitsField(optional bool, field string, length string, defaultValue interface{}) *Schema {
+	return &Schema{
+		Field:    field,
+		Optional: optional,
+		Default:  defaultValue,
+		Parameters: map[string]interface{}{
+			"length": length,
+		},
+		Type:    SCHEMA_TYPE_BYTES,
+		Name:    "io.debezium.data.Bits",
+		Version: 1,
+	}
+}
+func NewDateField(theType SchemaType, optional bool, field string, defaultValue interface{}) *Schema {
+	return &Schema{
+		Field:    field,
+		Default:  defaultValue,
+		Optional: optional,
+		Type:     theType,
+		Name:     "io.debezium.time.Date",
+		Version:  1,
+	}
+}
+func NewEnumField(theType SchemaType, optional bool, field string, allowed string, defaultValue interface{}) *Schema {
+	return &Schema{
+		Default:  defaultValue,
+		Field:    field,
+		Optional: optional,
+		Parameters: map[string]interface{}{
+			"allowed": allowed,
+		},
+		Type:    theType,
+		Name:    "io.debezium.data.Enum",
+		Version: 1,
+	}
+}
+func NewSetField(theType SchemaType, optional bool, field string, allowed string, defaultValue interface{}) *Schema {
+	return &Schema{
+		Field:    field,
+		Optional: optional,
+		Default:  defaultValue,
+		Parameters: map[string]interface{}{
+			"allowed": allowed,
+		},
+		Type:    theType,
+		Name:    "io.debezium.data.EnumSet",
+		Version: 1,
+	}
+}
+func NewTimeStampField(theType SchemaType, optional bool, field string, defaultValue interface{}) *Schema {
+	return &Schema{
+		Field:    field,
+		Optional: optional,
+		Default:  defaultValue,
+		Type:     theType,
+		Name:     "io.debezium.time.ZonedTimestamp",
+		Version:  1,
+	}
+}
+func NewYearField(theType SchemaType, optional bool, field string, defaultValue interface{}) *Schema {
+	return &Schema{
+		Field:    field,
+		Default:  defaultValue,
+		Optional: optional,
+		Type:     theType,
+		Name:     "io.debezium.time.Year",
+		Version:  1,
+	}
+}
+
+func YearValue(year string) string {
+	int, err := strconv.Atoi(year)
+	if err != nil {
+		return ""
+	}
+	yearValue := int - 1900
+	if 0 < yearValue && yearValue <= 69 {
+		yearValue += 2000
+	} else if 70 <= yearValue && yearValue <= 99 {
+		yearValue += 1900
+	}
+	return strconv.Itoa(yearValue)
+
 }
