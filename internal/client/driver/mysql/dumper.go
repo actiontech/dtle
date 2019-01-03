@@ -9,17 +9,19 @@ package mysql
 import (
 	"bytes"
 	"fmt"
-	"github.com/actiontech/dtle/internal/g"
 	"os"
 	"strings"
 	"sync"
+
+	"github.com/actiontech/dtle/internal/g"
+
+	"time"
 
 	ubase "github.com/actiontech/dtle/internal/client/driver/mysql/base"
 	usql "github.com/actiontech/dtle/internal/client/driver/mysql/sql"
 	"github.com/actiontech/dtle/internal/config"
 	umconf "github.com/actiontech/dtle/internal/config/mysql"
 	log "github.com/actiontech/dtle/internal/logger"
-	"time"
 )
 
 type dumper struct {

@@ -10,6 +10,7 @@ import (
 	gosql "database/sql"
 	"encoding/json"
 	"fmt"
+
 	"github.com/actiontech/dtle/internal/g"
 
 	//"math"
@@ -26,6 +27,8 @@ import (
 	gonats "github.com/nats-io/go-nats"
 	gomysql "github.com/siddontang/go-mysql/mysql"
 
+	"os"
+
 	"github.com/actiontech/dtle/internal/client/driver/mysql/base"
 	"github.com/actiontech/dtle/internal/client/driver/mysql/binlog"
 	"github.com/actiontech/dtle/internal/client/driver/mysql/sql"
@@ -33,7 +36,6 @@ import (
 	log "github.com/actiontech/dtle/internal/logger"
 	"github.com/actiontech/dtle/internal/models"
 	"github.com/actiontech/dtle/utils"
-	"os"
 )
 
 const (
