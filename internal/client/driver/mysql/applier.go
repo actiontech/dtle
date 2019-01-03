@@ -10,6 +10,7 @@ import (
 	gosql "database/sql"
 	"encoding/json"
 	"fmt"
+
 	"github.com/actiontech/dtle/internal/g"
 
 	//"math"
@@ -31,6 +32,8 @@ import (
 	"container/heap"
 	"context"
 	"encoding/hex"
+	"os"
+
 	"github.com/actiontech/dtle/internal/client/driver/mysql/base"
 	"github.com/actiontech/dtle/internal/client/driver/mysql/binlog"
 	"github.com/actiontech/dtle/internal/client/driver/mysql/sql"
@@ -39,7 +42,6 @@ import (
 	log "github.com/actiontech/dtle/internal/logger"
 	"github.com/actiontech/dtle/internal/models"
 	"github.com/actiontech/dtle/utils"
-	"os"
 
 	"github.com/satori/go.uuid"
 )
