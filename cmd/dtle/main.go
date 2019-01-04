@@ -19,7 +19,6 @@ import (
 
 	"github.com/actiontech/dtle/agent"
 	"github.com/actiontech/dtle/cmd/dtle/command"
-
 	"src/github.com/rakyll/autopprof"
 )
 
