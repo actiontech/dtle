@@ -39,6 +39,12 @@ type Config struct {
 	// DataDir is the directory to store our store in
 	DataDir string `mapstructure:"data_dir"`
 
+	// PprofSwitch is the witch to open pprof
+	PprofSwitch string `mapstructure:"Ppro_Switch"`
+
+	// PprofDir is the cpu u to open pprof
+	PprofDir string `mapstructure:"Ppro_Switch"`
+
 	// LogLevel is the level of the logs to putout
 	LogLevel string `mapstructure:"log_level"`
 
