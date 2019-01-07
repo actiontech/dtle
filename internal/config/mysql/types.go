@@ -47,6 +47,7 @@ const (
 	CharColumnType
 	VarcharColumnType
 	BlobColumnType
+	BooleanColumnType
 	// TODO: more type
 )
 
@@ -61,6 +62,7 @@ type Column struct {
 	IsUnsigned         bool
 	Charset            string
 	Type               ColumnType
+	Default            interface{}
 	ColumnType         string
 	Key                string
 	TimezoneConversion *TimezoneConvertion
