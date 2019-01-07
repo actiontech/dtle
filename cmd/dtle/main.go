@@ -15,11 +15,9 @@ import (
 	"github.com/mitchellh/cli"
 
 	_ "net/http/pprof"
-	"time"
 
 	"github.com/actiontech/dtle/agent"
 	"github.com/actiontech/dtle/cmd/dtle/command"
-	"src/github.com/rakyll/autopprof"
 )
 
 // The git commit that was compiled. This will be filled in by the compiler.
@@ -30,9 +28,6 @@ var (
 )
 
 func main() {
-	autopprof.Capture(autopprof.CPUProfile{
-		Duration: 30 * time.Second,
-	})
 	os.Exit(realMain())
 }
 
@@ -126,6 +121,11 @@ func realMain() int {
 				Commit:  GitCommit,
 				Branch:  GitBranch,
 				Ui:      meta.Ui,
+			}, nil
+		},
+		"pprof": func() (cli.Command, error) {
+			return &command.PprofCommand{
+				Meta: meta,
 			}, nil
 		},
 	}
