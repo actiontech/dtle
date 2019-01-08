@@ -123,11 +123,6 @@ func realMain() int {
 				Ui:      meta.Ui,
 			}, nil
 		},
-		"pprof": func() (cli.Command, error) {
-			return &command.PprofCommand{
-				Meta: meta,
-			}, nil
-		},
 	}
 
 	exitCode, err := c.Run()

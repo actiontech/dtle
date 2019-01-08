@@ -87,6 +87,8 @@ func parseConfig(result *Config, list *ast.ObjectList) error {
 		"log_level",
 		"log_to_stdout",
 		"log_file",
+		"pprof_switch",
+		"pprof_time",
 		"pid_file",
 		"bind_addr",
 		"profile",

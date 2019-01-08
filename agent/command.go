@@ -9,7 +9,6 @@ package agent
 import (
 	"flag"
 	"fmt"
-	"github.com/actiontech/dtle/internal/g"
 	"io"
 	"log"
 	"os"
@@ -21,11 +20,14 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/actiontech/dtle/internal/g"
+
 	"github.com/armon/go-metrics"
 	"github.com/armon/go-metrics/prometheus"
 	"github.com/mitchellh/cli"
 
 	ulog "github.com/actiontech/dtle/internal/logger"
+	"github.com/rakyll/autopprof"
 )
 
 // gracefulTimeout controls how long we wait before forcefully terminating
@@ -84,6 +86,8 @@ func (c *Command) readConfig() *Config {
 	flags.StringVar(&cmdConfig.Datacenter, "dc", "", "")
 	flags.StringVar(&cmdConfig.LogLevel, "log-level", "", "")
 	flags.StringVar(&cmdConfig.PidFile, "pid-file", "", "")
+	flags.BoolVar(&cmdConfig.PprofSwitch, "pprof-switch", false, "")
+	flags.Int64Var(&cmdConfig.PprofTime, "pprof-time", 0, "")
 	flags.StringVar(&cmdConfig.NodeName, "node", "", "")
 
 	if err := flags.Parse(c.args); err != nil {
@@ -267,6 +271,11 @@ func (c *Command) Run(args []string) int {
 		c.logger.Printf("Loaded configuration from %s", strings.Join(config.Files, ", "))
 	} else {
 		c.logger.Printf("No configuration files loaded")
+	}
+	if config.PprofSwitch {
+		autopprof.Capture(autopprof.CPUProfile{
+			Duration: time.Duration(config.PprofTime) * time.Second,
+		})
 	}
 
 	// set global value
