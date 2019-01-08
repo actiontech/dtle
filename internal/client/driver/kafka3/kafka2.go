@@ -16,9 +16,8 @@ import (
 
 	"strconv"
 
-	"time"
-
 	"github.com/Shopify/sarama"
+	"time"
 )
 
 type SchemaType string
@@ -501,10 +500,10 @@ func NewYearField(theType SchemaType, optional bool, field string, defaultValue 
 	}
 }
 
-func YearValue(year string) int {
+func YearValue(year string) string {
 	int, err := strconv.Atoi(year)
 	if err != nil {
-		return 0
+		return ""
 	}
 	yearValue := int - 1900
 	if 0 < yearValue && yearValue <= 69 {
