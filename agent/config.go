@@ -39,6 +39,12 @@ type Config struct {
 	// DataDir is the directory to store our store in
 	DataDir string `mapstructure:"data_dir"`
 
+	// PprofSwitch is the witch to open pprof
+	PprofSwitch bool `mapstructure:"pprof_switch"`
+
+	// PprofTime is the cpu  to open pprof
+	PprofTime int64 `mapstructure:"pprof_time"`
+
 	// LogLevel is the level of the logs to putout
 	LogLevel string `mapstructure:"log_level"`
 
@@ -243,6 +249,8 @@ func DefaultConfig() *Config {
 		LogLevel:    "INFO",
 		LogFile:     "/var/log/dtle/dtle.log",
 		LogToStdout: false,
+		PprofSwitch: false,
+		PprofTime:   0,
 		PidFile:     "/var/run/dtle/dtle.pid",
 		Region:      "global",
 		Datacenter:  "dc1",
@@ -343,6 +351,12 @@ func (c *Config) Merge(b *Config) *Config {
 	}
 	if b.PidFile != "" {
 		result.PidFile = b.PidFile
+	}
+	if b.PprofSwitch != false {
+		result.PprofSwitch = b.PprofSwitch
+	}
+	if b.PprofTime != 0 {
+		result.PprofTime = b.PprofTime
 	}
 	if b.BindAddr != "" {
 		result.BindAddr = b.BindAddr

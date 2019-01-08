@@ -14,10 +14,10 @@ import (
 
 	"github.com/mitchellh/cli"
 
+	_ "net/http/pprof"
+
 	"github.com/actiontech/dtle/agent"
 	"github.com/actiontech/dtle/cmd/dtle/command"
-
-	_ "net/http/pprof"
 )
 
 // The git commit that was compiled. This will be filled in by the compiler.
