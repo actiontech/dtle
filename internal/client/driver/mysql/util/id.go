@@ -70,20 +70,20 @@ func tilNextMillis(lastTimestamp uint32) uint32 {
 
 // NextId get a snowflake id.
 func (id *IdWorker) NextId() (uint32, error) {
-	id.mutex.Lock()
-	defer id.mutex.Unlock()
+	//id.mutex.Lock()
+	//defer id.mutex.Unlock()
 	timestamp := timeGen()
-	if timestamp < id.lastTimestamp {
+	/*if timestamp < id.lastTimestamp {
 		return 0, errors.New(fmt.Sprintf("Clock moved backwards.  Refusing to generate id for %d milliseconds", id.lastTimestamp-timestamp))
-	}
-	if id.lastTimestamp == timestamp {
+	}*/
+	/*if id.lastTimestamp == timestamp {
 		id.sequence = (id.sequence + 1) & sequenceMask
 		if id.sequence == 0 {
 			timestamp = tilNextMillis(id.lastTimestamp)
 		}
 	} else {
 		id.sequence = 0
-	}
-	id.lastTimestamp = timestamp
-	return (uint32(timestamp-id.snsEpoch) << timestampLeftShift) | (id.datacenterId << datacenterIdShift) | (id.workerId << workerIdShift) | id.sequence, nil
+	}*/
+	//id.lastTimestamp = timestamp
+	return (uint32(timestamp-id.snsEpoch) << timestampLeftShift) | (id.datacenterId << datacenterIdShift) | (id.workerId << workerIdShift) | id.sequence | uint32(randNumber()), nil
 }
