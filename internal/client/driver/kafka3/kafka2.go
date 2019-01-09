@@ -16,9 +16,8 @@ import (
 
 	"strconv"
 
-	"time"
-
 	"github.com/Shopify/sarama"
+	"time"
 )
 
 type SchemaType string
@@ -512,6 +511,6 @@ func YearValue(year string) string {
 	} else if 70 <= yearValue && yearValue <= 99 {
 		yearValue += 1900
 	}
-	return strconv.Itoa(yearValue)
+	return yearValue
 
 }

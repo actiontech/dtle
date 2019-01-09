@@ -24,12 +24,13 @@ import (
 	"encoding/binary"
 	"strings"
 
+	"time"
+
 	"github.com/actiontech/dtle/internal/client/driver/mysql/binlog"
 	"github.com/actiontech/dtle/internal/config"
 	log "github.com/actiontech/dtle/internal/logger"
 	"github.com/actiontech/dtle/internal/models"
 	"github.com/actiontech/dtle/utils"
-	"time"
 )
 
 const (
@@ -722,7 +723,7 @@ func kafkaColumnListToColDefs(colList *mysql.ColumnList) (valColDefs ColDefs, ke
 		case mysql.CharColumnType:
 			fallthrough
 		case mysql.VarcharColumnType:
-			fallthrough
+			field = NewSimpleSchemaWithDefaultField(SCHEMA_TYPE_INT32, optional, fieldName, defaultValue)
 		case mysql.EnumColumnType:
 			field = NewEnumField(SCHEMA_TYPE_STRING, optional, fieldName, strings.Replace(cols[i].ColumnType[5:len(cols[i].ColumnType)-1], "'", "", -1), defaultValue)
 		case mysql.SetColumnType:
@@ -769,7 +770,7 @@ func kafkaColumnListToColDefs(colList *mysql.ColumnList) (valColDefs ColDefs, ke
 			field = NewDateTimeField(optional, fieldName, defaultValue)
 		case mysql.TimeColumnType:
 			if cols[i].ColumnType == "timestamp" {
-				field = NewTimeStampField(SCHEMA_TYPE_INT64, optional, fieldName, defaultValue)
+				field = NewTimeStampField(SCHEMA_TYPE_STRING, optional, fieldName, defaultValue)
 			} else {
 				field = NewTimeField(optional, fieldName, defaultValue)
 			}
@@ -778,7 +779,7 @@ func kafkaColumnListToColDefs(colList *mysql.ColumnList) (valColDefs ColDefs, ke
 			field = NewJsonField(optional, fieldName)
 		default:
 			// TODO report a BUG
-			field = NewSimpleSchemaWithDefaultField("", optional, fieldName, cols[i].Default)
+			field = NewSimpleSchemaWithDefaultField("", optional, fieldName, defaultValue)
 		}
 
 		addToKey := cols[i].IsPk()
