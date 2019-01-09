@@ -179,10 +179,6 @@ required = [
   version = "2.1.0"
 
 [[constraint]]
-  branch = "master"
-  name = "github.com/rakyll/autopprof"
-
-[[constraint]]
   name = "github.com/satori/go.uuid"
   version = "1.2.0"
 

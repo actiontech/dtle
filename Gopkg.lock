@@ -917,6 +917,14 @@
 
 [[projects]]
   branch = "master"
+  digest = "1:fd1a762fa7f9f1eae855913cc55fd049120943d2d313271634ab0956ad3cfa41"
+  name = "github.com/rakyll/autopprof"
+  packages = ["."]
+  pruneopts = "UT"
+  revision = "a503efc357fd3023bed11580ec8a3a38fc043835"
+
+[[projects]]
+  branch = "master"
   digest = "1:c4556a44e350b50a490544d9b06e9fba9c286c21d6c0e47f54f3a9214597298c"
   name = "github.com/rcrowley/go-metrics"
   packages = ["."]
@@ -1273,6 +1281,7 @@
     "github.com/pingcap/tidb/parser",
     "github.com/pingcap/tidb/parser/goyacc",
     "github.com/prometheus/client_golang/prometheus/promhttp",
+    "github.com/rakyll/autopprof",
     "github.com/ryanuber/columnize",
     "github.com/satori/go.uuid",
     "github.com/shirou/gopsutil/cpu",
