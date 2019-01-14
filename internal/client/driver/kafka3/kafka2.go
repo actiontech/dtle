@@ -403,8 +403,8 @@ func NewDateTimeField(optional bool, field string, defaultValue interface{}) *Sc
 		Default:  defaultValue,
 		Field:    field,
 		Optional: optional,
-		Type:     SCHEMA_TYPE_INT32,
-		Name:     "io.debezium.time.timestamp",
+		Type:     SCHEMA_TYPE_INT64,
+		Name:     "io.debezium.time.Timestamp",
 		Version:  1,
 	}
 }

@@ -305,7 +305,6 @@ func (kr *KafkaRunner) kafkaTransformSnapshotData(table *config.Table, value *my
 
 			if *rowValues[i] != nil {
 				valueStr := string((*rowValues[i]).([]byte))
-
 				switch columnList[i].Type {
 				case mysql.TinyintColumnType, mysql.SmallintColumnType, mysql.MediumIntColumnType, mysql.IntColumnType:
 					value, err = strconv.ParseInt(valueStr, 10, 64)
@@ -482,12 +481,12 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry)
 			case mysql.TimeColumnType, mysql.TimestampColumnType:
 				if beforeValue != nil && colList[i].ColumnType == "timestamp" {
 					beforeValue = beforeValue.(string)[:10] + "T" + beforeValue.(string)[11:] + "Z"
-				} else {
+				} else if beforeValue != nil {
 					beforeValue = TimeValue(beforeValue.(string))
 				}
 				if afterValue != nil && colList[i].ColumnType == "timestamp" {
 					afterValue = afterValue.(string)[:10] + "T" + afterValue.(string)[11:] + "Z"
-				} else {
+				} else if afterValue != nil {
 					afterValue = TimeValue(afterValue.(string))
 				}
 			case mysql.DateColumnType, mysql.DateTimeColumnType:
@@ -533,10 +532,10 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry)
 				}
 			case mysql.EnumColumnType:
 				enums := strings.Split(colList[i].ColumnType[5:len(colList[i].ColumnType)-1], ",")
-				if beforeValue != nil {
+				if beforeValue != nil && beforeValue != "" {
 					beforeValue = strings.Replace(enums[beforeValue.(int64)-1], "'", "", -1)
 				}
-				if afterValue != nil {
+				if afterValue != nil && beforeValue != "" {
 					afterValue = strings.Replace(enums[afterValue.(int64)-1], "'", "", -1)
 				}
 			case mysql.SetColumnType:
@@ -723,7 +722,7 @@ func kafkaColumnListToColDefs(colList *mysql.ColumnList) (valColDefs ColDefs, ke
 		case mysql.CharColumnType:
 			fallthrough
 		case mysql.VarcharColumnType:
-			field = NewSimpleSchemaWithDefaultField(SCHEMA_TYPE_INT32, optional, fieldName, defaultValue)
+			field = NewSimpleSchemaWithDefaultField(SCHEMA_TYPE_STRING, optional, fieldName, defaultValue)
 		case mysql.EnumColumnType:
 			field = NewEnumField(SCHEMA_TYPE_STRING, optional, fieldName, strings.Replace(cols[i].ColumnType[5:len(cols[i].ColumnType)-1], "'", "", -1), defaultValue)
 		case mysql.SetColumnType:
@@ -770,6 +769,9 @@ func kafkaColumnListToColDefs(colList *mysql.ColumnList) (valColDefs ColDefs, ke
 			field = NewDateTimeField(optional, fieldName, defaultValue)
 		case mysql.TimeColumnType:
 			if cols[i].ColumnType == "timestamp" {
+				if defaultValue == "CURRENT_TIMESTAMP" {
+					defaultValue = "1970-01-01T00:00:00Z"
+				}
 				field = NewTimeStampField(SCHEMA_TYPE_STRING, optional, fieldName, defaultValue)
 			} else {
 				field = NewTimeField(optional, fieldName, defaultValue)
