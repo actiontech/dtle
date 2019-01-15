@@ -22,9 +22,9 @@ import (
 	//"os"
 
 	"github.com/issuj/gofaster/base64"
-	"github.com/pingcap/tidb/ast"
+	ast "github.com/pingcap/tidb/ast"
 	"github.com/pingcap/tidb/parser"
-	"github.com/satori/go.uuid"
+	uuid "github.com/satori/go.uuid"
 	gomysql "github.com/siddontang/go-mysql/mysql"
 	"github.com/siddontang/go-mysql/replication"
 	"golang.org/x/net/context"
@@ -69,18 +69,27 @@ type BinlogReader struct {
 	shutdownCh   chan struct{}
 	shutdownLock sync.Mutex
 
-	sqlFilter    *SqlFilter
+	sqlFilter *SqlFilter
 }
 
 type SqlFilter struct {
-	NoDML            bool
-	NoDMLDelete      bool
-	NoDMLInsert      bool
-	NoDMLUpdate      bool
+	NoDML       bool
+	NoDMLDelete bool
+	NoDMLInsert bool
+	NoDMLUpdate bool
+
 	NoDDL            bool
-	//NoDDLCreateTable bool
-	//NoDDLAlterTable  bool
+	NoDDLCreateTable bool
+	NoDDLDropTable   bool
+	NoDDLAlterTable  bool
+
+	NoDDLAlterTableAddColumn    bool
+	NoDDLAlterTableDropColumn   bool
+	NoDDLAlterTableModifyColumn bool
+	NoDDLAlterTableChangeColumn bool
+	NoDDLAlterTableAlterColumn  bool
 }
+
 func parseSqlFilter(strs []string) (*SqlFilter, error) {
 	s := &SqlFilter{}
 	for i := range strs {
@@ -93,12 +102,27 @@ func parseSqlFilter(strs []string) (*SqlFilter, error) {
 			s.NoDMLInsert = true
 		case "nodmlupdate":
 			s.NoDMLUpdate = true
+
 		case "noddl":
 			s.NoDDL = true
-		//case "noddlcreatetable":
-		//	s.NoDDLCreateTable = true
-		//case "noddlaltertable":
-		//	s.NoDDLAlterTable = true
+		case "noddlcreatetable":
+			s.NoDDLCreateTable = true
+		case "noddldroptable":
+			s.NoDDLDropTable = true
+		case "noddlaltertable":
+			s.NoDDLAlterTable = true
+
+		case "noddlaltertableaddcolumn":
+			s.NoDDLAlterTableAddColumn = true
+		case "noddlaltertabledropcolumn":
+			s.NoDDLAlterTableDropColumn = true
+		case "noddlaltertablemodifycolumn":
+			s.NoDDLAlterTableModifyColumn = true
+		case "noddlaltertablechangecolumn":
+			s.NoDDLAlterTableChangeColumn = true
+		case "noddlaltertablealtercolumn":
+			s.NoDDLAlterTableAlterColumn = true
+
 		default:
 			return nil, fmt.Errorf("unknown sql filter item: %v", strs[i])
 		}
@@ -263,22 +287,12 @@ func ToColumnValuesV2(abstractValues []interface{}, table *config.TableContext) 
 	return result
 }
 
-type DDLType int
-
-const (
-	DDLOther DDLType = iota
-	DDLAlterTable
-	DDLCreateTable
-	DDLCreateSchema
-	DDLDropSchema
-)
-
 // If isDDL, a sql correspond to a table item, aka len(tables) == len(sqls).
 type parseDDLResult struct {
-	isDDL   bool
-	ddlType DDLType
-	tables  []SchemaTable
-	sqls    []string
+	isDDL  bool
+	tables []SchemaTable
+	sqls   []string
+	ast    ast.StmtNode
 }
 
 // StreamEvents
@@ -354,9 +368,10 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 					// it is a ddl
 				}
 
+				skipEvent := false
+
 				if b.sqlFilter.NoDDL {
-					b.logger.Debugf("mysql.reader. skipped_a_query_event. query: %v", query)
-					return nil
+					skipEvent = true
 				}
 
 				for i, sql := range ddlInfo.sqls {
@@ -368,10 +383,8 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 						return nil
 					}
 
-					switch ddlInfo.ddlType {
-					case DDLCreateTable, DDLAlterTable:
-						// create table is not ignored
-						b.logger.Debugf("mysql.reader: ddl is create table")
+					updateTableMeta := func() error {
+						var err error
 						columns, err := base.GetTableColumns(b.db, realSchema, tableName)
 						if err != nil {
 							b.logger.Warnf("error handle create table in binlog: GetTableColumns: %v", err.Error())
@@ -405,15 +418,76 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 							b.logger.Error("failed to make table context: %v", err)
 							return err
 						}
+
+						return nil
 					}
 
-					event := NewQueryEventAffectTable(
-						currentSchema,
-						sql,
-						NotDML,
-						ddlInfo.tables[i],
-					)
-					b.currentBinlogEntry.Events = append(b.currentBinlogEntry.Events, event)
+					switch realAst := ddlInfo.ast.(type) {
+					case *ast.CreateTableStmt:
+						b.logger.Debugf("mysql.reader: ddl is create table")
+						err := updateTableMeta()
+						if err != nil {
+							return err
+						}
+
+						if b.sqlFilter.NoDDLCreateTable {
+							skipEvent = true
+						}
+					case *ast.DropTableStmt:
+						if b.sqlFilter.NoDDLDropTable {
+							skipEvent = true
+						}
+					case *ast.AlterTableStmt:
+						b.logger.Debugf("mysql.reader: ddl is alter table. specs: %v", realAst.Specs)
+						err := updateTableMeta()
+						if err != nil {
+							return err
+						}
+
+						// TODO alter table add | drop | ...
+						if b.sqlFilter.NoDDLAlterTable {
+							skipEvent = true
+						} else {
+							for i := range realAst.Specs {
+								switch realAst.Specs[i].Tp {
+								case ast.AlterTableAddColumns:
+									if b.sqlFilter.NoDDLAlterTableAddColumn {
+										skipEvent = true
+									}
+								case ast.AlterTableDropColumn:
+									if b.sqlFilter.NoDDLAlterTableDropColumn {
+										skipEvent = true
+									}
+								case ast.AlterTableModifyColumn:
+									if b.sqlFilter.NoDDLAlterTableModifyColumn {
+										skipEvent = true
+									}
+								case ast.AlterTableChangeColumn:
+									if b.sqlFilter.NoDDLAlterTableChangeColumn {
+										skipEvent = true
+									}
+								case ast.AlterTableAlterColumn:
+									if b.sqlFilter.NoDDLAlterTableAlterColumn {
+										skipEvent = true
+									}
+								default:
+									// other case
+								}
+							}
+						}
+					}
+
+					if skipEvent {
+						b.logger.Debugf("mysql.reader. skipped a ddl event. query: %v", query)
+					} else {
+						event := NewQueryEventAffectTable(
+							currentSchema,
+							sql,
+							NotDML,
+							ddlInfo.tables[i],
+						)
+						b.currentBinlogEntry.Events = append(b.currentBinlogEntry.Events, event)
+					}
 				}
 				entriesChannel <- b.currentBinlogEntry
 				b.LastAppliedRowsEventHint = b.currentCoordinates
@@ -937,13 +1011,12 @@ func GenDDLSQL(sql string, schema string) (string, error) {
 // schemaTables is the schema.table that the query has invalidated. For err or non-DDL, it is nil.
 // For DDL, it size equals len(sqls).
 func resolveDDLSQL(sql string) (result parseDDLResult, err error) {
-	result.ddlType = DDLOther
-
 	stmt, err := parser.New().ParseOneStmt(sql, "", "")
 	if err != nil {
 		result.sqls = append(result.sqls, sql)
 		return result, err
 	}
+	result.ast = stmt
 
 	_, result.isDDL = stmt.(ast.DDLNode)
 	if !result.isDDL {
@@ -958,10 +1031,8 @@ func resolveDDLSQL(sql string) (result parseDDLResult, err error) {
 
 	switch v := stmt.(type) {
 	case *ast.CreateDatabaseStmt:
-		result.ddlType = DDLCreateSchema
 		appendSql(sql, strings.ToLower(v.Name), "")
 	case *ast.DropDatabaseStmt:
-		result.ddlType = DDLDropSchema
 		appendSql(sql, strings.ToLower(v.Name), "")
 	case *ast.CreateIndexStmt:
 		appendSql(sql, v.Table.Schema.L, v.Table.Name.L)
@@ -970,11 +1041,9 @@ func resolveDDLSQL(sql string) (result parseDDLResult, err error) {
 	case *ast.TruncateTableStmt:
 		appendSql(sql, v.Table.Schema.L, v.Table.Name.L)
 	case *ast.CreateTableStmt:
-		result.ddlType = DDLCreateTable
 		appendSql(sql, v.Table.Schema.L, v.Table.Name.L)
 	case *ast.AlterTableStmt:
 		appendSql(sql, v.Table.Schema.L, v.Table.Name.L)
-		result.ddlType = DDLAlterTable
 	case *ast.DropTableStmt:
 		var ex string
 		if v.IfExists {
