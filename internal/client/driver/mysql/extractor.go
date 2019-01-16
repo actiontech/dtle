@@ -518,8 +518,17 @@ func (e *Extractor) CountTableRows(table *config.Table) (int64, error) {
 	defer atomic.StoreInt64(&e.mysqlContext.CountingRowsFlag, 0)
 	//e.logger.Debugf("mysql.extractor: As instructed, I'm issuing a SELECT COUNT(*) on the table. This may take a while")
 
-	query := fmt.Sprintf(`select count(*) as rows from %s.%s where (%s)`,
-		sql.EscapeName(table.TableSchema), sql.EscapeName(table.TableName), table.Where)
+	var query string
+	var method string
+	if os.Getenv(g.ENV_COUNT_INFO_SCHEMA) != "" {
+		method = "information_schema"
+		query = fmt.Sprintf(`select table_rows from information_schema.tables where table_schema = '%s' and table_name = '%s'`,
+			table.TableSchema, table.TableName)
+	} else {
+		method = "COUNT"
+		query = fmt.Sprintf(`select count(*) as rows from %s.%s where (%s)`,
+			sql.EscapeName(table.TableSchema), sql.EscapeName(table.TableName), table.Where)
+	}
 	var rowsEstimate int64
 	if err := e.db.QueryRow(query).Scan(&rowsEstimate); err != nil {
 		return 0, err
@@ -527,7 +536,7 @@ func (e *Extractor) CountTableRows(table *config.Table) (int64, error) {
 	atomic.AddInt64(&e.mysqlContext.RowsEstimate, rowsEstimate)
 
 	e.mysqlContext.Stage = models.StageSearchingRowsForUpdate
-	e.logger.Debugf("mysql.extractor: Exact number of rows(%s.%s) via COUNT: %d", table.TableSchema, table.TableName, rowsEstimate)
+	e.logger.Debugf("mysql.extractor: Exact number of rows(%s.%s) via %v: %d", table.TableSchema, table.TableName, method, rowsEstimate)
 	return rowsEstimate, nil
 }
 
