@@ -532,21 +532,19 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry)
 				}
 			case mysql.EnumColumnType:
 				enums := strings.Split(colList[i].ColumnType[5:len(colList[i].ColumnType)-1], ",")
-				if beforeValue != nil && beforeValue != "" {
+				if beforeValue != nil {
 					beforeValue = strings.Replace(enums[beforeValue.(int64)-1], "'", "", -1)
 				}
-				if afterValue != nil && beforeValue != "" {
+				if afterValue != nil {
 					afterValue = strings.Replace(enums[afterValue.(int64)-1], "'", "", -1)
 				}
 			case mysql.SetColumnType:
 				columnType := colList[i].ColumnType
 				if beforeValue != nil {
-					num := beforeValue.(int64)
-					beforeValue = getSetValue(num, columnType)
+					beforeValue = getSetValue(beforeValue.(int64), columnType)
 				}
 				if afterValue != nil {
-					num := afterValue.(int64)
-					afterValue = getSetValue(num, columnType)
+					afterValue = getSetValue(afterValue.(int64), columnType)
 				}
 
 			case mysql.BitColumnType:
@@ -650,6 +648,9 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry)
 }
 
 func getSetValue(num int64, set string) string {
+	if num == 0 {
+		return ""
+	}
 	value := ""
 	sets := strings.Split(set[5:len(set)-1], ",")
 	for i := 0; i < len(sets); i++ {
@@ -670,9 +671,6 @@ func getBinaryValue(binary string, value string) string {
 		return ""
 	}
 	valueLen := len(value)
-	for i := 0; i < lens-valueLen; i++ {
-		value = value + "\u0000"
-	}
 	var buffer bytes.Buffer
 	buffer.Write([]byte(value))
 	if lens-valueLen > 0 {
@@ -690,7 +688,7 @@ func getBitValue(bit string, value int64) string {
 	var buf = make([]byte, 8)
 	binary.BigEndian.PutUint64(buf, uint64(value))
 
-	return base64.StdEncoding.EncodeToString(buf[0:bitNumber])
+	return base64.StdEncoding.EncodeToString(buf[8-bitNumber:])
 }
 
 func kafkaColumnListToColDefs(colList *mysql.ColumnList) (valColDefs ColDefs, keyColDefs ColDefs) {
@@ -716,7 +714,6 @@ func kafkaColumnListToColDefs(colList *mysql.ColumnList) (valColDefs ColDefs, ke
 			field = NewSimpleSchemaWithDefaultField(SCHEMA_TYPE_BYTES, optional, fieldName, defaultValue)
 		case mysql.VarbinaryColumnType:
 			field = NewSimpleSchemaWithDefaultField(SCHEMA_TYPE_BYTES, optional, fieldName, defaultValue)
-
 		case mysql.TextColumnType:
 			fallthrough
 		case mysql.CharColumnType:
@@ -724,9 +721,9 @@ func kafkaColumnListToColDefs(colList *mysql.ColumnList) (valColDefs ColDefs, ke
 		case mysql.VarcharColumnType:
 			field = NewSimpleSchemaWithDefaultField(SCHEMA_TYPE_STRING, optional, fieldName, defaultValue)
 		case mysql.EnumColumnType:
-			field = NewEnumField(SCHEMA_TYPE_STRING, optional, fieldName, strings.Replace(cols[i].ColumnType[5:len(cols[i].ColumnType)-1], "'", "", -1), defaultValue)
+			field = NewEnumField(SCHEMA_TYPE_STRING, optional, fieldName, cols[i].ColumnType, defaultValue)
 		case mysql.SetColumnType:
-			field = NewSetField(SCHEMA_TYPE_STRING, optional, fieldName, strings.Replace(cols[i].ColumnType[4:len(cols[i].ColumnType)-1], "'", "", -1), defaultValue)
+			field = NewSetField(SCHEMA_TYPE_STRING, optional, fieldName, cols[i].ColumnType, defaultValue)
 		case mysql.TinyintColumnType:
 			field = NewSimpleSchemaWithDefaultField(SCHEMA_TYPE_INT16, optional, fieldName, defaultValue)
 		case mysql.TinytextColumnType:
@@ -747,15 +744,12 @@ func kafkaColumnListToColDefs(colList *mysql.ColumnList) (valColDefs ColDefs, ke
 			}
 		case mysql.BigIntColumnType:
 			field = NewSimpleSchemaWithDefaultField(SCHEMA_TYPE_INT64, optional, fieldName, defaultValue)
-
 		case mysql.FloatColumnType:
 			field = NewSimpleSchemaWithDefaultField(SCHEMA_TYPE_FLOAT64, optional, fieldName, defaultValue)
 		case mysql.DoubleColumnType:
 			field = NewSimpleSchemaWithDefaultField(SCHEMA_TYPE_FLOAT64, optional, fieldName, defaultValue)
-
 		case mysql.DecimalColumnType:
 			field = NewDecimalField(cols[i].Precision, cols[i].Scale, optional, fieldName, defaultValue)
-
 		case mysql.DateColumnType:
 			if cols[i].ColumnType == "datetime" {
 				field = NewDateTimeField(optional, fieldName, defaultValue)
@@ -764,19 +758,14 @@ func kafkaColumnListToColDefs(colList *mysql.ColumnList) (valColDefs ColDefs, ke
 			}
 		case mysql.YearColumnType:
 			field = NewYearField(SCHEMA_TYPE_INT32, optional, fieldName, defaultValue)
-
 		case mysql.DateTimeColumnType:
 			field = NewDateTimeField(optional, fieldName, defaultValue)
 		case mysql.TimeColumnType:
 			if cols[i].ColumnType == "timestamp" {
-				if defaultValue == "CURRENT_TIMESTAMP" {
-					defaultValue = "1970-01-01T00:00:00Z"
-				}
 				field = NewTimeStampField(SCHEMA_TYPE_STRING, optional, fieldName, defaultValue)
 			} else {
 				field = NewTimeField(optional, fieldName, defaultValue)
 			}
-
 		case mysql.JSONColumnType:
 			field = NewJsonField(optional, fieldName)
 		default:
