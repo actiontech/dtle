@@ -251,6 +251,24 @@ func NewSimpleSchemaField(theType SchemaType, optional bool, field string) *Sche
 	}
 }
 func NewSimpleSchemaWithDefaultField(theType SchemaType, optional bool, field string, defaultValue interface{}) *Schema {
+	if defaultValue != nil {
+		switch theType {
+		case SCHEMA_TYPE_BYTES:
+			defaultValue = base64.StdEncoding.EncodeToString([]byte(defaultValue.(string)))
+		case SCHEMA_TYPE_INT16:
+			val16, _ := strconv.ParseInt(defaultValue.(string), 10, 16)
+			defaultValue = val16
+		case SCHEMA_TYPE_INT32:
+			val32, _ := strconv.ParseInt(defaultValue.(string), 10, 32)
+			defaultValue = val32
+		case SCHEMA_TYPE_INT64:
+			val64, _ := strconv.ParseInt(defaultValue.(string), 10, 64)
+			defaultValue = val64
+		case SCHEMA_TYPE_FLOAT64:
+			floatValue, _ := strconv.ParseFloat(defaultValue.(string), 64)
+			defaultValue = floatValue
+		}
+	}
 	return &Schema{
 		Default:  defaultValue,
 		Type:     theType,
@@ -259,6 +277,9 @@ func NewSimpleSchemaWithDefaultField(theType SchemaType, optional bool, field st
 	}
 }
 func NewDecimalField(precision int, scale int, optional bool, field string, defaultValue interface{}) *Schema {
+	if defaultValue != nil {
+		defaultValue = DecimalValueFromStringMysql(defaultValue.(string))
+	}
 	return &Schema{
 		Field:    field,
 		Default:  defaultValue,
@@ -329,6 +350,9 @@ func DecimalValueFromStringMysql(value string) string {
 }
 
 func NewTimeField(optional bool, field string, defaultValue interface{}) *Schema {
+	if defaultValue != nil {
+		defaultValue = TimeValue(defaultValue.(string))
+	}
 	return &Schema{
 		Default:  defaultValue,
 		Field:    field,
@@ -399,6 +423,9 @@ func TimeValue(value string) int64 {
 	return timeValueHelper(h, m, s, microsec, isNeg)
 }
 func NewDateTimeField(optional bool, field string, defaultValue interface{}) *Schema {
+	if defaultValue != nil {
+		defaultValue = DateTimeValue(defaultValue.(string))
+	}
 	return &Schema{
 		Default:  defaultValue,
 		Field:    field,
@@ -432,6 +459,11 @@ func NewJsonField(optional bool, field string) *Schema {
 }
 
 func NewBitsField(optional bool, field string, length string, defaultValue interface{}) *Schema {
+	if defaultValue != nil {
+		defaultValue = strings.Replace(defaultValue.(string)[1:], "'", "", -1)
+
+		defaultValue = base64.StdEncoding.EncodeToString(BinaryStringToBytes(defaultValue.(string)))
+	}
 	return &Schema{
 		Field:    field,
 		Optional: optional,
@@ -445,6 +477,9 @@ func NewBitsField(optional bool, field string, length string, defaultValue inter
 	}
 }
 func NewDateField(theType SchemaType, optional bool, field string, defaultValue interface{}) *Schema {
+	if defaultValue != nil {
+		defaultValue = DateValue(defaultValue.(string))
+	}
 	return &Schema{
 		Field:    field,
 		Default:  defaultValue,
@@ -455,6 +490,7 @@ func NewDateField(theType SchemaType, optional bool, field string, defaultValue 
 	}
 }
 func NewEnumField(theType SchemaType, optional bool, field string, allowed string, defaultValue interface{}) *Schema {
+	allowed = strings.Replace(allowed[5:len(allowed)-1], "'", "", -1)
 	return &Schema{
 		Default:  defaultValue,
 		Field:    field,
@@ -468,6 +504,7 @@ func NewEnumField(theType SchemaType, optional bool, field string, allowed strin
 	}
 }
 func NewSetField(theType SchemaType, optional bool, field string, allowed string, defaultValue interface{}) *Schema {
+	allowed = strings.Replace(allowed[4:len(allowed)-1], "'", "", -1)
 	return &Schema{
 		Field:    field,
 		Optional: optional,
@@ -481,6 +518,11 @@ func NewSetField(theType SchemaType, optional bool, field string, allowed string
 	}
 }
 func NewTimeStampField(theType SchemaType, optional bool, field string, defaultValue interface{}) *Schema {
+	if defaultValue == "CURRENT_TIMESTAMP" {
+		defaultValue = "1970-01-01T00:00:00Z"
+	} else if defaultValue != nil {
+		defaultValue = defaultValue.(string)[:10] + "T" + defaultValue.(string)[11:] + "Z"
+	}
 	return &Schema{
 		Field:    field,
 		Optional: optional,
@@ -514,4 +556,29 @@ func YearValue(year string) int {
 	}
 	return yearValue
 
+}
+
+func BinaryStringToBytes(s string) (bs []byte) {
+	uint8arr := [8]uint8{128, 64, 32, 16, 8, 4, 2, 1}
+	l := len(s)
+	mo := l % 8
+	l /= 8
+	if mo != 0 {
+		l++
+	}
+	bs = make([]byte, 0, l)
+	mo = 8 - mo
+	var n uint8
+	for i, b := range []byte(s) {
+		m := (i + mo) % 8
+		switch b {
+		case byte('1'):
+			n += uint8arr[m]
+		}
+		if m == 7 {
+			bs = append(bs, n)
+			n = 0
+		}
+	}
+	return bs
 }
