@@ -18,6 +18,9 @@ for details on submitting patches and the contribution workflow.
 ## Community
 
 * QQ group: 852990221
+* 微信关注「爱可生开源社区」，获取更多dtle资讯
+
+  ![QR code](./misc/action-opensource-community.png)
 
 ## Contact us
 
@@ -27,3 +30,4 @@ Dtle has enterprise support plan, you may contact our sales team:
 * South China: 86-18503063188, Mr.Cao
 * East China: 86-18930110869, Mr.Liang
 * South-West China: 86-18328335660, Mr.Lei
+
