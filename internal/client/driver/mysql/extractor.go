@@ -36,6 +36,7 @@ import (
 	log "github.com/actiontech/dtle/internal/logger"
 	"github.com/actiontech/dtle/internal/models"
 	"github.com/actiontech/dtle/utils"
+	sqle "github.com/actiontech/dtle/internal/client/driver/mysql/sqle/inspector"
 )
 
 const (
@@ -79,6 +80,8 @@ type Extractor struct {
 	shutdownLock sync.Mutex
 
 	testStub1Delay int64
+
+	context *sqle.Context
 }
 
 func NewExtractor(subject, tp string, maxPayload int, cfg *config.MySQLDriverConfig, logger *log.Logger) (*Extractor, error) {
@@ -99,7 +102,9 @@ func NewExtractor(subject, tp string, maxPayload int, cfg *config.MySQLDriverCon
 		waitCh:          make(chan *models.WaitResult, 1),
 		shutdownCh:      make(chan struct{}),
 		testStub1Delay:  0,
+		context:                 sqle.NewContext(nil),
 	}
+	e.context.LoadSchemas(nil)
 
 	if delay, err := strconv.ParseInt(os.Getenv(g.ENV_TESTSTUB1_DELAY), 10, 64); err == nil {
 		e.logger.Infof("%v = %v", g.ENV_TESTSTUB1_DELAY, delay)
@@ -459,6 +464,42 @@ func (e *Extractor) getSchemaTablesAndMeta() error {
 	if err := e.inspectTables(); err != nil {
 		return err
 	}
+
+	for _, db := range e.replicateDoDb {
+		e.context.AddSchema(db.TableSchema)
+		e.context.LoadTables(db.TableSchema, nil)
+
+		if strings.ToLower(db.TableSchema) == "mysql" {
+			continue
+		}
+		e.context.UseSchema(db.TableSchema)
+
+		for _, tb := range db.Tables {
+			if strings.ToLower(tb.TableType) == "view" {
+				// TODO what to do?
+				continue
+			}
+
+			stmts, err := base.ShowCreateTable(e.db, db.TableSchema, tb.TableName, false, false)
+			if err != nil {
+				e.logger.Errorf("error at ShowCreateTable. err: %v", err)
+				return err
+			}
+			stmt := stmts[0]
+			ast, err := sqle.ParseCreateTableStmt("mysql", stmt)
+			if err != nil {
+				e.logger.Errorf("error at ParseCreateTableStmt. err: %v", err)
+				return err
+			}
+			e.context.UpdateContext(ast, "mysql")
+			if !e.context.HasTable(tb.TableSchema, tb.TableName) {
+				err := fmt.Errorf("failed to add table to sqle context. table: %v.%v", db.TableSchema, tb.TableName)
+				e.logger.Errorf(err.Error())
+				return err
+			}
+		}
+	}
+
 	if err := e.readTableColumns(); err != nil {
 		return err
 	}
@@ -1075,7 +1116,7 @@ func (e *Extractor) mysqlDump() error {
 							return err
 						}*/
 					} else if strings.ToLower(tb.TableSchema) != "mysql" {
-						tbSQL, err = base.ShowCreateTable(e.singletonDB, tb.TableSchema, tb.TableName, e.mysqlContext.DropTableIfExists)
+						tbSQL, err = base.ShowCreateTable(e.singletonDB, tb.TableSchema, tb.TableName, e.mysqlContext.DropTableIfExists, true)
 						if err != nil {
 							return err
 						}

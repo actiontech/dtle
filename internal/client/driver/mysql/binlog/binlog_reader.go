@@ -33,9 +33,11 @@ import (
 
 	"github.com/actiontech/dtle/internal/client/driver/mysql/base"
 	"github.com/actiontech/dtle/internal/client/driver/mysql/sql"
+	sqle "github.com/actiontech/dtle/internal/client/driver/mysql/sqle/inspector"
 	"github.com/actiontech/dtle/internal/client/driver/mysql/util"
 	"github.com/actiontech/dtle/internal/config"
 	"github.com/actiontech/dtle/internal/config/mysql"
+
 	log "github.com/actiontech/dtle/internal/logger"
 	"github.com/actiontech/dtle/internal/models"
 	"github.com/actiontech/dtle/utils"
@@ -72,6 +74,8 @@ type BinlogReader struct {
 	shutdownLock sync.Mutex
 
 	sqlFilter *SqlFilter
+
+	context *sqle.Context
 }
 
 type SqlFilter struct {
@@ -148,6 +152,7 @@ func NewMySQLReader(cfg *config.MySQLDriverConfig, logger *log.Entry, replicateD
 		shutdownCh:              make(chan struct{}),
 		tables:                  make(map[string](map[string]*config.TableContext)),
 		sqlFilter:               sqlFilter,
+		//context:                 sqle.Context, // TODO
 	}
 
 	for _, db := range replicateDoDb {
