@@ -2,14 +2,6 @@
 
 
 [[projects]]
-  branch = "master"
-  digest = "1:9f3b30d9f8e0d7040f729b82dcbc8f0dead820a133b3147ce355fc451f32d761"
-  name = "github.com/BurntSushi/toml"
-  packages = ["."]
-  pruneopts = "UT"
-  revision = "3012a1dbe2e4bd1391d42b32f0577cb7bbc7f005"
-
-[[projects]]
   digest = "1:bd285ec20a7450d2272631284de698f2d76e923a458fee90e99cc1db4b97708d"
   name = "github.com/DataDog/datadog-go"
   packages = ["statsd"]
@@ -191,14 +183,6 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:4c4c33075b704791d6a7f09dfb55c66769e8a1dc6adf87026292d274fe8ad113"
-  name = "github.com/codahale/hdrhistogram"
-  packages = ["."]
-  pruneopts = "UT"
-  revision = "3a0bb77429bd3a61596f5e8a3172445844342120"
-
-[[projects]]
-  branch = "master"
   digest = "1:2a4afef2ef0e4e4ab66b4f4f6a70bf6551ae8b727184771b5547e2b90245fe58"
   name = "github.com/cznic/golex"
   packages = ["lex"]
@@ -353,15 +337,9 @@
   version = "v1.1.1"
 
 [[projects]]
-  digest = "1:4c0989ca0bcd10799064318923b9bc2db6b4d6338dd75f3f2d86c3511aaaf5cf"
+  digest = "1:97df918963298c287643883209a2c3f642e6593379f97ab400c2a2e219ab647d"
   name = "github.com/golang/protobuf"
-  packages = [
-    "proto",
-    "ptypes",
-    "ptypes/any",
-    "ptypes/duration",
-    "ptypes/timestamp",
-  ]
+  packages = ["proto"]
   pruneopts = "UT"
   revision = "aa810b61a9c79d51363740d207bb46cf8e620ed5"
   version = "v1.2.0"
@@ -753,18 +731,6 @@
   version = "v1.0.0"
 
 [[projects]]
-  digest = "1:450b7623b185031f3a456801155c8320209f75d0d4c4e633c6b1e59d44d6e392"
-  name = "github.com/opentracing/opentracing-go"
-  packages = [
-    ".",
-    "ext",
-    "log",
-  ]
-  pruneopts = "UT"
-  revision = "1949ddbfd147afd4d964a9f00b24eb291e0e7c38"
-  version = "v1.0.2"
-
-[[projects]]
   branch = "master"
   digest = "1:c0913eb78a590bf26f1fc7146c14afea296834c6a40349c48f0b442d0ff82dcb"
   name = "github.com/outbrain/golib"
@@ -784,69 +750,58 @@
   version = "v2.0.3"
 
 [[projects]]
-  branch = "master"
-  digest = "1:8fd099a567b1e9b3a7e1f66d8547a0d2b1852427e86a0dae96fa59e9583e13e6"
-  name = "github.com/pingcap/goleveldb"
-  packages = [
-    "leveldb",
-    "leveldb/cache",
-    "leveldb/comparer",
-    "leveldb/errors",
-    "leveldb/filter",
-    "leveldb/iterator",
-    "leveldb/journal",
-    "leveldb/memdb",
-    "leveldb/opt",
-    "leveldb/storage",
-    "leveldb/table",
-    "leveldb/util",
-  ]
+  digest = "1:ea261e1479d92802a6e274d33c126d54c12edec06c36bf0999d04aeca936f184"
+  name = "github.com/pingcap/errors"
+  packages = ["."]
   pruneopts = "UT"
-  revision = "b9ff6c35079e0b7925a4028005fc2dbc37aec69a"
+  revision = "1176802fff62540cc87d289bd40c52a2d6b2ea16"
+  source = "https://github.com/pingcap/errors.git"
+  version = "v0.11.0"
 
 [[projects]]
-  digest = "1:ef643baa475674be6c07f1f227b0fecc110132477e328f6611d85911441fec00"
-  name = "github.com/pingcap/tidb"
+  branch = "release-2.1"
+  digest = "1:411d853177b053f2567a6f55c06fed52decd3471ab3535216f176323988ea594"
+  name = "github.com/pingcap/parser"
   packages = [
+    ".",
     "ast",
-    "config",
-    "kv",
-    "meta",
-    "meta/autoid",
-    "metrics",
+    "auth",
+    "charset",
+    "format",
+    "goyacc",
     "model",
     "mysql",
-    "parser",
-    "parser/goyacc",
-    "parser/opcode",
-    "sessionctx",
-    "sessionctx/stmtctx",
-    "sessionctx/variable",
-    "store/tikv/oracle",
-    "structure",
+    "opcode",
     "terror",
     "types",
+  ]
+  pruneopts = "UT"
+  revision = "3d110205ce12773e8edcc5e86301145e974d6e51"
+
+[[projects]]
+  digest = "1:471c2489657c4a31837e1b11a9f17374812df6e0fade50637cc28c5b7bd162c6"
+  name = "github.com/pingcap/tidb"
+  packages = [
+    "sessionctx/stmtctx",
+    "types",
     "types/json",
-    "util",
-    "util/auth",
-    "util/charset",
-    "util/chunk",
-    "util/codec",
-    "util/format",
+    "types/parser_driver",
+    "util/execdetails",
     "util/hack",
-    "util/kvcache",
-    "util/logutil",
     "util/memory",
   ]
   pruneopts = "UT"
-  revision = "b13bc08462a584a085f377625a7bab0cc0351570"
-  version = "v2.0.6"
+  revision = "a1d10c17039ec289ef490481b25c7091dba7ac31"
+  version = "v2.1.4"
 
 [[projects]]
   branch = "master"
-  digest = "1:b91678ccb6e0de70caf35e1a9b55c3ea5eb5dad7b70a0b786b848441fd0401ef"
+  digest = "1:44093587573935823b8fc31b3ded8c30236c76da2144035cf8d031ffe55278ed"
   name = "github.com/pingcap/tipb"
-  packages = ["go-binlog"]
+  packages = [
+    "go-tipb",
+    "sharedbytes",
+  ]
   pruneopts = "UT"
   revision = "5e46e0ec647edfee8fe001c5b51609460fb655bf"
 
@@ -972,14 +927,6 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:99c6a6dab47067c9b898e8c8b13d130c6ab4ffbcc4b7cc6236c2cd0b1e344f5b"
-  name = "github.com/shirou/w32"
-  packages = ["."]
-  pruneopts = "UT"
-  revision = "bb4de0191aa41b5507caa14b0650cdbddcd9280b"
-
-[[projects]]
-  branch = "master"
   digest = "1:3f6747b566bfcdc9803b79e86b19bef07cb432878b37a06687ee9a0898fe399d"
   name = "github.com/siddontang/go"
   packages = ["hack"]
@@ -1019,53 +966,12 @@
   revision = "3bcb09397d6d88e7676a9bc8433ca11ba5304837"
 
 [[projects]]
-  digest = "1:919bb3aa6d9d0b67648c219fa4925312bc3c2872da19e818fa769e9c97a2b643"
-  name = "github.com/spaolacci/murmur3"
-  packages = ["."]
-  pruneopts = "UT"
-  revision = "9f5d223c60793748f04a9d5b4b4eacddfc1f755d"
-  version = "v1.1"
-
-[[projects]]
   branch = "master"
   digest = "1:d93d73663050e299a9c4d3c7bc542fd9e59941e999ef04b5d5b4713de44ecc07"
   name = "github.com/tv42/httpunix"
   packages = ["."]
   pruneopts = "UT"
   revision = "b75d8614f926c077e48d85f1f8f7885b758c6225"
-
-[[projects]]
-  digest = "1:104a2d7446f4628e4663d7c029b18da1aad4313735de775f37b6e7720b1d0aa7"
-  name = "github.com/uber/jaeger-client-go"
-  packages = [
-    ".",
-    "config",
-    "internal/baggage",
-    "internal/baggage/remote",
-    "internal/spanlog",
-    "internal/throttler",
-    "internal/throttler/remote",
-    "log",
-    "rpcmetrics",
-    "thrift",
-    "thrift-gen/agent",
-    "thrift-gen/baggage",
-    "thrift-gen/jaeger",
-    "thrift-gen/sampling",
-    "thrift-gen/zipkincore",
-    "utils",
-  ]
-  pruneopts = "UT"
-  revision = "b043381d944715b469fd6b37addfd30145ca1758"
-  version = "v2.14.0"
-
-[[projects]]
-  digest = "1:0f09db8429e19d57c8346ad76fbbc679341fa86073d3b8fb5ac919f0357d8f4c"
-  name = "github.com/uber/jaeger-lib"
-  packages = ["metrics"]
-  pruneopts = "UT"
-  revision = "ed3a127ec5fef7ae9ea95b01b542c47fbd999ce5"
-  version = "v1.5.0"
 
 [[projects]]
   digest = "1:03aa6e485e528acb119fb32901cf99582c380225fc7d5a02758e08b180cb56c3"
@@ -1104,21 +1010,15 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:aa39e42457d6fa0dc295af3cdf0fc0c6867bbd7bc03101b1cd89105c4920c7a4"
+  digest = "1:5a83591bcb11501a55db71952158d217ad7440826eeca278e3c5d83de973091b"
   name = "golang.org/x/net"
   packages = [
     "bpf",
     "context",
-    "http/httpguts",
-    "http2",
-    "http2/hpack",
-    "idna",
     "internal/iana",
     "internal/socket",
-    "internal/timeseries",
     "ipv4",
     "ipv6",
-    "trace",
   ]
   pruneopts = "UT"
   revision = "8a410e7b638dca158bf9e766925842f6651ff828"
@@ -1140,11 +1040,9 @@
   revision = "d99a578cf41bfccdeaf48b0845c823a4b8b0ad5e"
 
 [[projects]]
-  digest = "1:2ec697e99933960cd1fe26bb527ff691e627fe04d72f697c1abb5f815ee90463"
+  digest = "1:d862b5c2dcdb1cd2b1bfa768123550d15cb34cf4121af658c090ce50eac2d5b1"
   name = "golang.org/x/text"
   packages = [
-    "collate",
-    "collate/build",
     "encoding",
     "encoding/charmap",
     "encoding/internal",
@@ -1154,20 +1052,11 @@
     "encoding/simplifiedchinese",
     "encoding/traditionalchinese",
     "encoding/unicode",
-    "internal/colltab",
     "internal/gen",
-    "internal/tag",
-    "internal/triegen",
-    "internal/ucd",
     "internal/utf8internal",
-    "language",
     "runes",
-    "secure/bidirule",
     "transform",
-    "unicode/bidi",
     "unicode/cldr",
-    "unicode/norm",
-    "unicode/rangetable",
   ]
   pruneopts = "UT"
   revision = "f21a4dfb5e38f5895301dc265a8def02365cc3d0"
@@ -1180,57 +1069,6 @@
   pruneopts = "UT"
   revision = "b1f26356af11148e710935ed1ac8a7f5702c7612"
   version = "v1.1.0"
-
-[[projects]]
-  branch = "master"
-  digest = "1:077c1c599507b3b3e9156d17d36e1e61928ee9b53a5b420f10f28ebd4a0b275c"
-  name = "google.golang.org/genproto"
-  packages = ["googleapis/rpc/status"]
-  pruneopts = "UT"
-  revision = "c66870c02cf823ceb633bcd05be3c7cda29976f4"
-
-[[projects]]
-  digest = "1:3dd7996ce6bf52dec6a2f69fa43e7c4cefea1d4dfa3c8ab7a5f8a9f7434e239d"
-  name = "google.golang.org/grpc"
-  packages = [
-    ".",
-    "balancer",
-    "balancer/base",
-    "balancer/roundrobin",
-    "codes",
-    "connectivity",
-    "credentials",
-    "encoding",
-    "encoding/proto",
-    "grpclog",
-    "internal",
-    "internal/backoff",
-    "internal/channelz",
-    "internal/envconfig",
-    "internal/grpcrand",
-    "internal/transport",
-    "keepalive",
-    "metadata",
-    "naming",
-    "peer",
-    "resolver",
-    "resolver/dns",
-    "resolver/passthrough",
-    "stats",
-    "status",
-    "tap",
-  ]
-  pruneopts = "UT"
-  revision = "32fb0ac620c32ba40a4626ddf94d90d12cce3455"
-  version = "v1.14.0"
-
-[[projects]]
-  digest = "1:c805e517269b0ba4c21ded5836019ed7d16953d4026cb7d00041d039c7906be9"
-  name = "gopkg.in/natefinch/lumberjack.v2"
-  packages = ["."]
-  pruneopts = "UT"
-  revision = "a96e63847dc3c67d17befa69c303767e2f84e54f"
-  version = "v2.1"
 
 [solve-meta]
   analyzer-name = "dep"
@@ -1277,9 +1115,12 @@
     "github.com/nats-io/go-nats",
     "github.com/nats-io/nats-streaming-server/server",
     "github.com/outbrain/golib/tests",
-    "github.com/pingcap/tidb/ast",
-    "github.com/pingcap/tidb/parser",
-    "github.com/pingcap/tidb/parser/goyacc",
+    "github.com/pingcap/parser",
+    "github.com/pingcap/parser/ast",
+    "github.com/pingcap/parser/goyacc",
+    "github.com/pingcap/parser/model",
+    "github.com/pingcap/parser/mysql",
+    "github.com/pingcap/tidb/types/parser_driver",
     "github.com/prometheus/client_golang/prometheus/promhttp",
     "github.com/rakyll/autopprof",
     "github.com/ryanuber/columnize",

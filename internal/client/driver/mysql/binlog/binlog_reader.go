@@ -22,8 +22,10 @@ import (
 	//"os"
 
 	"github.com/issuj/gofaster/base64"
-	ast "github.com/pingcap/tidb/ast"
-	"github.com/pingcap/tidb/parser"
+	ast "github.com/pingcap/parser/ast"
+	"github.com/pingcap/parser"
+	_ "github.com/pingcap/tidb/types/parser_driver"
+
 	uuid "github.com/satori/go.uuid"
 	gomysql "github.com/siddontang/go-mysql/mysql"
 	"github.com/siddontang/go-mysql/replication"
