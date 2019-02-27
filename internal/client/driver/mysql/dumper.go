@@ -17,7 +17,6 @@ import (
 
 	"time"
 
-	ubase "github.com/actiontech/dtle/internal/client/driver/mysql/base"
 	usql "github.com/actiontech/dtle/internal/client/driver/mysql/sql"
 	"github.com/actiontech/dtle/internal/config"
 	umconf "github.com/actiontech/dtle/internal/config/mysql"
@@ -101,18 +100,9 @@ func (e *DumpEntry) incrementCounter() {
 }
 
 func (d *dumper) prepareForDumping() error {
-	columnList, err := ubase.GetTableColumns(d.db, d.TableSchema, d.TableName)
-	if err != nil {
-		return err
-	}
-
-	if err := ubase.ApplyColumnTypes(d.db, d.TableSchema, d.TableName, columnList); err != nil {
-		return err
-	}
-
 	needPm := false
 	columns := make([]string, 0)
-	for _, col := range columnList.Columns {
+	for _, col := range d.table.OriginalTableColumns.Columns {
 		switch col.Type {
 		case umconf.FloatColumnType, umconf.DoubleColumnType,
 			umconf.MediumIntColumnType, umconf.BigIntColumnType,

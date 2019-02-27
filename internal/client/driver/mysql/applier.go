@@ -518,6 +518,7 @@ func (a *Applier) setTableItemForBinlogEntry(binlogEntry *binlog.BinlogEntry) er
 					a.logger.Errorf("mysql.applier. GetTableColumns error. err: %v", err)
 					return err
 				}
+				// Review: column types is not applied or used. Only
 			} else {
 				a.logger.Debugf("mysql.applier: reuse tableColumns %v.%v", dmlEvent.DatabaseName, dmlEvent.TableName)
 			}

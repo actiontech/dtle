@@ -10,7 +10,6 @@ import (
 	gosql "database/sql"
 	"encoding/json"
 	"fmt"
-
 	"github.com/actiontech/dtle/internal/g"
 
 	//"math"
@@ -32,11 +31,11 @@ import (
 	"github.com/actiontech/dtle/internal/client/driver/mysql/base"
 	"github.com/actiontech/dtle/internal/client/driver/mysql/binlog"
 	"github.com/actiontech/dtle/internal/client/driver/mysql/sql"
+	sqle "github.com/actiontech/dtle/internal/client/driver/mysql/sqle/inspector"
 	"github.com/actiontech/dtle/internal/config"
 	log "github.com/actiontech/dtle/internal/logger"
 	"github.com/actiontech/dtle/internal/models"
 	"github.com/actiontech/dtle/utils"
-	sqle "github.com/actiontech/dtle/internal/client/driver/mysql/sqle/inspector"
 )
 
 const (
@@ -382,13 +381,8 @@ func (e *Extractor) readTableColumns() (err error) {
 	e.logger.Printf("mysql.extractor: Examining table structure on extractor")
 	for _, doDb := range e.replicateDoDb {
 		for _, doTb := range doDb.Tables {
-			doTb.OriginalTableColumns, err = base.GetTableColumns(e.db, doTb.TableSchema, doTb.TableName)
+			doTb.OriginalTableColumns, err = base.GetTableColumnsSqle(e.context, doTb.TableSchema, doTb.TableName)
 			if err != nil {
-				e.logger.Errorf("mysql.extractor: Unexpected error on readTableColumns, got %v", err)
-				return err
-			}
-			if err := base.ApplyColumnTypes(e.db, doTb.TableSchema, doTb.TableName, doTb.OriginalTableColumns); err != nil {
-				e.logger.Errorf("mysql.extractor: unexpected error on inspectTables, got %v", err)
 				return err
 			}
 		}
@@ -508,11 +502,12 @@ func (e *Extractor) getSchemaTablesAndMeta() error {
 
 // initBinlogReader creates and connects the reader: we hook up to a MySQL server as a replica
 func (e *Extractor) initBinlogReader(binlogCoordinates *base.BinlogCoordinatesX) error {
-	binlogReader, err := binlog.NewMySQLReader(e.mysqlContext, e.logger, e.replicateDoDb)
+	binlogReader, err := binlog.NewMySQLReader(e.mysqlContext, e.logger, e.replicateDoDb, e.context)
 	if err != nil {
 		e.logger.Debugf("mysql.extractor: err at initBinlogReader: NewMySQLReader: %v", err.Error())
 		return err
 	}
+
 	if err := binlogReader.ConnectBinlogStreamer(*binlogCoordinates); err != nil {
 		e.logger.Debugf("mysql.extractor: err at initBinlogReader: ConnectBinlogStreamer: %v", err.Error())
 		return err

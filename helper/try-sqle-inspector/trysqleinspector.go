@@ -1,7 +1,9 @@
 package main
 
 import (
+	"github.com/actiontech/dtle/internal/client/driver/mysql/base"
 	"github.com/pingcap/parser"
+	"github.com/pingcap/parser/ast"
 	"log"
 	"github.com/actiontech/dtle/internal/client/driver/mysql/sqle/inspector"
 )
@@ -23,25 +25,112 @@ func main() {
 	do("create schema a")
 	ctx.LoadTables("a", nil)
 	ctx.UseSchema("a")
-	do("CREATE TABLE `a` (`id` int(11) NOT NULL AUTO_INCREMENT, PRIMARY KEY (`id`)) ENGINE=InnoDB AUTO_INCREMENT=46 DEFAULT CHARSET=latin1")
 
-	log.Printf("hasTable %v", ctx.HasTable("a", "a"))
+	case1()
+	case2()
+	case3()
+}
 
-	do("alter table a.a add column value int")
+func panicIfErr(err interface{}, args ...interface{}) {
+	if err != nil {
+		log.Panicf("will panic. err %v, args: %v", err, args)
+	}
+}
+
+func case1() {
+	log.Printf("---- case 1")
+	do("create table a.a (id int primary key default 42, val1 varchar(50))")
+	do("alter table a.a add column val2 int after id;")
 
 	tableInfo, exist := ctx.GetTable("a", "a")
 	if !exist {
 		panic("shoud exist")
 	}
 
-	for _, col := range tableInfo.MergedTable.Cols {
-		log.Printf("name %v tp %v", col.Name, col.Tp)
+	cStmt := tableInfo.MergedTable
+	if cStmt == nil {
+		cStmt = tableInfo.OriginalTable
+	}
 
+	colList, err := base.GetTableColumnsSqle(ctx, "a", "a")
+	if err != nil {
+		panicIfErr(err, "at GetTableColumnsSqle")
+	}
+	for _, col := range colList.ColumnList() {
+		log.Printf("col %v %v %v %v %v", col.Name, col.Type, col.IsPk(), col.Nullable, col.Default)
+	}
+
+	for _, col := range cStmt.Cols {
+		log.Printf("name %v tp %v", col.Name, col.Tp)
+		for _, opt := range col.Options {
+			switch opt.Tp {
+			case ast.ColumnOptionNoOption:
+			case ast.ColumnOptionPrimaryKey:
+				log.Printf("  pk")
+			case ast.ColumnOptionNotNull:
+				log.Printf("  not null")
+			case ast.ColumnOptionAutoIncrement:
+				log.Printf("  auto incr")
+			case ast.ColumnOptionDefaultValue:
+				log.Printf("  default %v", opt.Expr.Text())
+			case ast.ColumnOptionUniqKey:
+				log.Printf("  unique")
+			case ast.ColumnOptionNull:
+				log.Printf("  null")
+			case ast.ColumnOptionOnUpdate:
+			case ast.ColumnOptionFulltext:
+			case ast.ColumnOptionComment:
+			case ast.ColumnOptionGenerated:
+			case ast.ColumnOptionReference:
+			}
+		}
 	}
 }
 
-func panicIfErr(err interface{}, args ...interface{}) {
+func case2() {
+	log.Printf("---- case 2")
+	// drop table if exists a.b;
+	do("create table a.b (id1 int, id2 int, val1 int, primary key (id1, id2))")
+
+	tableInfo, exist := ctx.GetTable("a", "b")
+	if !exist {
+		panic("shoud exist")
+	}
+	cStmt := tableInfo.MergedTable
+	if cStmt == nil {
+		cStmt = tableInfo.OriginalTable
+	}
+
+	colList, err := base.GetTableColumnsSqle(ctx, "a", "b")
 	if err != nil {
-		log.Panicf("will panic. err %v, args: %v", err, args)
+		panicIfErr(err, "at GetTableColumnsSqle")
+	}
+	for _, col := range colList.ColumnList() {
+		log.Printf("col %v %v %v %v", col.Name, col.Type, col.IsPk(), col.Nullable)
+	}
+
+}
+
+func case3() {
+	log.Printf("---- case 3")
+	// drop table if exists a.b;
+	//do("create table a.c (id int primary key, val1 decimal(10,2))")
+	do("create table a.c (id int primary key, val1 datetime(6))")
+
+	tableInfo, exist := ctx.GetTable("a", "c")
+	if !exist {
+		panic("shoud exist")
+	}
+	cStmt := tableInfo.MergedTable
+	if cStmt == nil {
+		cStmt = tableInfo.OriginalTable
+	}
+
+	colList, err := base.GetTableColumnsSqle(ctx, "a", "c")
+	if err != nil {
+		panicIfErr(err, "at GetTableColumnsSqle")
+	}
+	for _, col := range colList.ColumnList() {
+		log.Printf("col %v %v %v %v", col.Name, col.Type, col.IsPk(), col.Nullable)
 	}
 }
