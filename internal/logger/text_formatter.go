@@ -132,7 +132,7 @@ func (f *TextFormatter) Format(entry *Entry) ([]byte, error) {
 		}
 		f.appendKeyValue(b, "level", fmt.Sprintf("[%s]", entry.Level.String()))
 		for _, key := range keys {
-			f.appendKeyValue(b, key, fmt.Sprintf("[%s]", entry.Data[key]))
+			f.appendKeyValue(b, key, fmt.Sprintf("[%s]", key+"id:"+entry.Data[key].(string)))
 		}
 		if entry.Message != "" {
 			f.appendKeyValue(b, "msg", entry.Message)
