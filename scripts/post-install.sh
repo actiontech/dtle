@@ -33,7 +33,8 @@ id dtle &>/dev/null
 if [[ $? -ne 0 ]]; then
     useradd -r -K USERGROUPS_ENAB=yes -M dtle -s /bin/false -d /etc/dtle
 fi
-
+#CAP
+setcap CAP_DAC_OVERRIDE,CAP_SETUID,CAP_SYS_RESOURCE,CAP_SETGID=+eip $RPM_INSTALL_PREFIX$BIN_DIR/dtle
 test -d $LOG_DIR || mkdir -p $LOG_DIR
 chown -R -L dtle:dtle $LOG_DIR
 chmod 755 $LOG_DIR
