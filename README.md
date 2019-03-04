@@ -18,13 +18,13 @@ for details on submitting patches and the contribution workflow.
 ## Community
 
 * QQ group: 852990221
-* 微信关注「爱可生开源社区」，获取更多dtle资讯
+* Subscribe "Actiontech Open Source Community" on WeChat to get further information on *dtle*:
 
-  ![QR code](./misc/action-opensource-community.png)
+  ![WeChat QR code](./misc/action-opensource-community.png)
 
 ## Contact us
 
-Dtle has enterprise support plan, you may contact our sales team: 
+*dtle* has enterprise support plan, you may contact our sales team: 
 * Global Sales: 400-820-6580
 * North China: 86-13718877200, Mr.Wang
 * South China: 86-18503063188, Mr.Cao
