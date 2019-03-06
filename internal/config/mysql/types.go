@@ -29,7 +29,7 @@ const (
 	DoubleColumnType
 	DecimalColumnType
 	BinaryColumnType
-	TextColumnType
+	TextColumnType // 10
 	JSONColumnType
 
 	DateColumnType
@@ -42,7 +42,7 @@ const (
 	TinytextColumnType
 	TinyintColumnType
 	SmallintColumnType
-	IntColumnType
+	IntColumnType // 20
 	SetColumnType
 	CharColumnType
 	VarcharColumnType

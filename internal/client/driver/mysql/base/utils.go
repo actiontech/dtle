@@ -10,7 +10,10 @@ import (
 	"bytes"
 	gosql "database/sql"
 	"fmt"
+	sqle "github.com/actiontech/dtle/internal/client/driver/mysql/sqle/inspector"
 	"github.com/actiontech/dtle/internal/g"
+	"github.com/pingcap/parser/ast"
+	parsermysql "github.com/pingcap/parser/mysql"
 	"regexp"
 	"strconv"
 	"strings"
@@ -112,11 +115,13 @@ func GetTableColumns(db usql.QueryAble, databaseName, tableName string) (*umconf
 	return umconf.NewColumnList(columns), nil
 }
 
-func ShowCreateTable(db *gosql.DB, databaseName, tableName string, dropTableIfExists bool) (statement []string, err error) {
+func ShowCreateTable(db *gosql.DB, databaseName, tableName string, dropTableIfExists bool, addUse bool) (statement []string, err error) {
 	var dummy, createTableStatement string
 	query := fmt.Sprintf(`show create table %s.%s`, usql.EscapeName(databaseName), usql.EscapeName(tableName))
 	err = db.QueryRow(query).Scan(&dummy, &createTableStatement)
-	statement = append(statement, fmt.Sprintf("USE %s", databaseName))
+	if (addUse) {
+		statement = append(statement, fmt.Sprintf("USE %s", databaseName))
+	}
 	if dropTableIfExists {
 		statement = append(statement, fmt.Sprintf("DROP TABLE IF EXISTS `%s`", tableName))
 	}
@@ -450,3 +455,145 @@ func GtidSetDiff(set1 string, set2 string) (string, error) {
 
 	return gExecuted.String(), nil
 }
+
+func GetTableColumnsSqle(sqleContext *sqle.Context, schema string, table string) (*umconf.ColumnList, error) {
+	tableInfo, exists := sqleContext.GetTable(schema, table)
+	if !exists {
+		return nil, fmt.Errorf("table does not exists in sqle context. table: %v", )
+	}
+
+	cStmt := tableInfo.MergedTable
+	if cStmt == nil {
+		cStmt = tableInfo.OriginalTable
+	}
+
+	columns := []umconf.Column{}
+
+	pks, _ := sqle.GetPrimaryKey(cStmt)
+
+	for _, col := range cStmt.Cols {
+		newColumn := umconf.Column{
+			Name:     col.Name.String(),
+			Nullable: true, // by default
+		}
+		if _, inPk := pks[newColumn.Name]; inPk {
+			newColumn.Key = "PRI"
+		}
+
+		if parsermysql.HasUnsignedFlag(col.Tp.Flag) {
+			newColumn.IsUnsigned = true
+		}
+
+		newColumn.ColumnType = col.Tp.String()
+
+		switch col.Tp.Tp {
+		case parsermysql.TypeDecimal, parsermysql.TypeNewDecimal:
+			newColumn.Type = umconf.DecimalColumnType
+			newColumn.Precision = col.Tp.Flen
+			newColumn.Scale = col.Tp.Decimal
+		case parsermysql.TypeTiny:
+			newColumn.Type = umconf.TinyintColumnType
+		case parsermysql.TypeShort:
+			newColumn.Type = umconf.SmallintColumnType
+		case parsermysql.TypeLong:
+			newColumn.Type = umconf.IntColumnType
+		case parsermysql.TypeLonglong:
+			newColumn.Type = umconf.BigIntColumnType
+		case parsermysql.TypeInt24:
+			newColumn.Type = umconf.MediumIntColumnType
+		case parsermysql.TypeFloat:
+			newColumn.Type = umconf.FloatColumnType
+		case parsermysql.TypeDouble:
+			newColumn.Type = umconf.DoubleColumnType
+		case parsermysql.TypeNull:
+			newColumn.Type = umconf.UnknownColumnType
+		case parsermysql.TypeTimestamp:
+			newColumn.Type = umconf.TimestampColumnType
+		case parsermysql.TypeDate:
+			newColumn.Type = umconf.DateColumnType
+		case parsermysql.TypeDuration:
+			newColumn.Type = umconf.TimeColumnType
+			newColumn.Precision = col.Tp.Decimal
+		case parsermysql.TypeDatetime:
+			newColumn.Type = umconf.DateTimeColumnType
+			newColumn.Precision = col.Tp.Decimal
+		case parsermysql.TypeYear:
+			newColumn.Type = umconf.YearColumnType
+		case parsermysql.TypeNewDate:
+			newColumn.Type = umconf.DateColumnType
+		case parsermysql.TypeVarchar:
+			newColumn.Type = umconf.VarcharColumnType
+		case parsermysql.TypeBit:
+			newColumn.Type = umconf.BitColumnType
+		case parsermysql.TypeJSON:
+			newColumn.Type = umconf.JSONColumnType
+		case parsermysql.TypeEnum:
+			newColumn.Type = umconf.EnumColumnType
+		case parsermysql.TypeSet:
+			newColumn.Type = umconf.SetColumnType
+		case parsermysql.TypeTinyBlob:
+			newColumn.Type = umconf.BlobColumnType
+		case parsermysql.TypeMediumBlob:
+			newColumn.Type = umconf.BlobColumnType
+		case parsermysql.TypeLongBlob:
+			newColumn.Type = umconf.BlobColumnType
+		case parsermysql.TypeBlob:
+			newColumn.Type = umconf.BlobColumnType
+		case parsermysql.TypeVarString:
+			newColumn.Type = umconf.TextColumnType
+		case parsermysql.TypeString:
+			newColumn.Type = umconf.VarcharColumnType
+		case parsermysql.TypeGeometry:
+			newColumn.Type = umconf.UnknownColumnType
+		}
+
+		for _, colOpt := range col.Options {
+			switch colOpt.Tp {
+			case ast.ColumnOptionNoOption:
+			case ast.ColumnOptionPrimaryKey:
+				// TODO multiple value?
+				newColumn.Key = "PRI"
+			case ast.ColumnOptionNotNull:
+				newColumn.Nullable = false
+			case ast.ColumnOptionAutoIncrement:
+			case ast.ColumnOptionDefaultValue:
+				value, ok := colOpt.Expr.(ast.ValueExpr)
+				if !ok {
+					newColumn.Default = nil
+				} else {
+					newColumn.Default = value.GetValue()
+				}
+			case ast.ColumnOptionUniqKey:
+				newColumn.Key = "UNI"
+			case ast.ColumnOptionNull:
+				newColumn.Nullable = true
+				// `not null` and `null` can occurred multiple times and the latter wins
+			case ast.ColumnOptionOnUpdate:
+			case ast.ColumnOptionFulltext:
+			case ast.ColumnOptionComment:
+			case ast.ColumnOptionGenerated:
+			case ast.ColumnOptionReference:
+			}
+		}
+
+		columns = append(columns, newColumn)
+	}
+
+	for _, cons := range cStmt.Constraints {
+		switch cons.Tp {
+		case ast.ConstraintPrimaryKey:
+		case ast.ConstraintKey:
+		case ast.ConstraintIndex:
+		case ast.ConstraintUniq:
+		case ast.ConstraintUniqKey:
+		case ast.ConstraintUniqIndex:
+		case ast.ConstraintForeignKey:
+		case ast.ConstraintFulltext:
+		}
+	}
+
+	r := umconf.NewColumnList(columns)
+	//r.SetCharset() // TODO
+	return r, nil
+}
+

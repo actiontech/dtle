@@ -10,7 +10,6 @@ import (
 	gosql "database/sql"
 	"encoding/json"
 	"fmt"
-
 	"github.com/actiontech/dtle/internal/g"
 
 	//"math"
@@ -32,6 +31,7 @@ import (
 	"github.com/actiontech/dtle/internal/client/driver/mysql/base"
 	"github.com/actiontech/dtle/internal/client/driver/mysql/binlog"
 	"github.com/actiontech/dtle/internal/client/driver/mysql/sql"
+	sqle "github.com/actiontech/dtle/internal/client/driver/mysql/sqle/inspector"
 	"github.com/actiontech/dtle/internal/config"
 	log "github.com/actiontech/dtle/internal/logger"
 	"github.com/actiontech/dtle/internal/models"
@@ -79,6 +79,8 @@ type Extractor struct {
 	shutdownLock sync.Mutex
 
 	testStub1Delay int64
+
+	context *sqle.Context
 }
 
 func NewExtractor(subject, tp string, maxPayload int, cfg *config.MySQLDriverConfig, logger *log.Logger) (*Extractor, error) {
@@ -99,7 +101,9 @@ func NewExtractor(subject, tp string, maxPayload int, cfg *config.MySQLDriverCon
 		waitCh:          make(chan *models.WaitResult, 1),
 		shutdownCh:      make(chan struct{}),
 		testStub1Delay:  0,
+		context:                 sqle.NewContext(nil),
 	}
+	e.context.LoadSchemas(nil)
 
 	if delay, err := strconv.ParseInt(os.Getenv(g.ENV_TESTSTUB1_DELAY), 10, 64); err == nil {
 		e.logger.Infof("%v = %v", g.ENV_TESTSTUB1_DELAY, delay)
@@ -171,30 +175,37 @@ func (e *Extractor) Run() {
 		return
 	}
 
+	fullCopy := true
+
 	if e.mysqlContext.Gtid == "" {
 		if e.mysqlContext.AutoGtid {
 			coord, err := base.GetSelfBinlogCoordinates(e.db)
 			if err != nil {
 				e.onError(TaskStateDead, err)
+				return
 			}
 			e.mysqlContext.Gtid = coord.GtidSet
 			e.logger.Debugf("mysql.extractor: use auto gtid: %v", coord.GtidSet)
+			fullCopy = false
 		}
 
 		if e.mysqlContext.GtidStart != "" {
 			coord, err := base.GetSelfBinlogCoordinates(e.db)
 			if err != nil {
 				e.onError(TaskStateDead, err)
+				return
 			}
 
 			e.mysqlContext.Gtid, err = base.GtidSetDiff(coord.GtidSet, e.mysqlContext.GtidStart)
 			if err != nil {
 				e.onError(TaskStateDead, err)
+				return
 			}
+			fullCopy = false
 		}
 	}
 
-	if e.mysqlContext.Gtid == "" { // still empty: full copy
+	if fullCopy {
 		e.mysqlContext.MarkRowCopyStartTime()
 		if err := e.mysqlDump(); err != nil {
 			e.onError(TaskStateDead, err)
@@ -208,6 +219,12 @@ func (e *Extractor) Run() {
 			e.onError(TaskStateDead, err)
 		}
 	} else {
+		// Will not get consistent table meta-info for an incremental only job.
+		// https://github.com/actiontech/dtle/issues/321#issuecomment-441191534
+		if err := e.getSchemaTablesAndMeta(); err != nil {
+			e.onError(TaskStateDead, err)
+			return
+		}
 		if err := e.readCurrentBinlogCoordinates(); err != nil {
 			e.onError(TaskStateDead, err)
 			return
@@ -364,13 +381,8 @@ func (e *Extractor) readTableColumns() (err error) {
 	e.logger.Printf("mysql.extractor: Examining table structure on extractor")
 	for _, doDb := range e.replicateDoDb {
 		for _, doTb := range doDb.Tables {
-			doTb.OriginalTableColumns, err = base.GetTableColumns(e.db, doTb.TableSchema, doTb.TableName)
+			doTb.OriginalTableColumns, err = base.GetTableColumnsSqle(e.context, doTb.TableSchema, doTb.TableName)
 			if err != nil {
-				e.logger.Errorf("mysql.extractor: Unexpected error on readTableColumns, got %v", err)
-				return err
-			}
-			if err := base.ApplyColumnTypes(e.db, doTb.TableSchema, doTb.TableName, doTb.OriginalTableColumns); err != nil {
-				e.logger.Errorf("mysql.extractor: unexpected error on inspectTables, got %v", err)
 				return err
 			}
 		}
@@ -438,23 +450,64 @@ func (e *Extractor) initDBConnections() (err error) {
 	if err := e.validateAndReadTimeZone(); err != nil {
 		return err
 	}
+
+	return nil
+}
+
+func (e *Extractor) getSchemaTablesAndMeta() error {
 	if err := e.inspectTables(); err != nil {
 		return err
 	}
+
+	for _, db := range e.replicateDoDb {
+		e.context.AddSchema(db.TableSchema)
+		e.context.LoadTables(db.TableSchema, nil)
+
+		if strings.ToLower(db.TableSchema) == "mysql" {
+			continue
+		}
+		e.context.UseSchema(db.TableSchema)
+
+		for _, tb := range db.Tables {
+			if strings.ToLower(tb.TableType) == "view" {
+				// TODO what to do?
+				continue
+			}
+
+			stmts, err := base.ShowCreateTable(e.db, db.TableSchema, tb.TableName, false, false)
+			if err != nil {
+				e.logger.Errorf("error at ShowCreateTable. err: %v", err)
+				return err
+			}
+			stmt := stmts[0]
+			ast, err := sqle.ParseCreateTableStmt("mysql", stmt)
+			if err != nil {
+				e.logger.Errorf("error at ParseCreateTableStmt. err: %v", err)
+				return err
+			}
+			e.context.UpdateContext(ast, "mysql")
+			if !e.context.HasTable(tb.TableSchema, tb.TableName) {
+				err := fmt.Errorf("failed to add table to sqle context. table: %v.%v", db.TableSchema, tb.TableName)
+				e.logger.Errorf(err.Error())
+				return err
+			}
+		}
+	}
+
 	if err := e.readTableColumns(); err != nil {
 		return err
 	}
-
 	return nil
 }
 
 // initBinlogReader creates and connects the reader: we hook up to a MySQL server as a replica
 func (e *Extractor) initBinlogReader(binlogCoordinates *base.BinlogCoordinatesX) error {
-	binlogReader, err := binlog.NewMySQLReader(e.mysqlContext, e.logger, e.replicateDoDb)
+	binlogReader, err := binlog.NewMySQLReader(e.mysqlContext, e.logger, e.replicateDoDb, e.context)
 	if err != nil {
 		e.logger.Debugf("mysql.extractor: err at initBinlogReader: NewMySQLReader: %v", err.Error())
 		return err
 	}
+
 	if err := binlogReader.ConnectBinlogStreamer(*binlogCoordinates); err != nil {
 		e.logger.Debugf("mysql.extractor: err at initBinlogReader: ConnectBinlogStreamer: %v", err.Error())
 		return err
@@ -1023,6 +1076,11 @@ func (e *Extractor) mysqlDump() error {
 	// we are reading the database names from the database and not taking them from the user ...
 	e.logger.Printf("mysql.extractor: Step %d: read list of available tables in each database", step)
 
+	err = e.getSchemaTablesAndMeta()
+	if err != nil {
+		return err
+	}
+
 	// Transform the current schema so that it reflects the *current* state of the MySQL server's contents.
 	// First, get the DROP TABLE and CREATE TABLE statement (with keys and constraint definitions) for our tables ...
 	if !e.mysqlContext.SkipCreateDbTable {
@@ -1053,7 +1111,7 @@ func (e *Extractor) mysqlDump() error {
 							return err
 						}*/
 					} else if strings.ToLower(tb.TableSchema) != "mysql" {
-						tbSQL, err = base.ShowCreateTable(e.singletonDB, tb.TableSchema, tb.TableName, e.mysqlContext.DropTableIfExists)
+						tbSQL, err = base.ShowCreateTable(e.singletonDB, tb.TableSchema, tb.TableName, e.mysqlContext.DropTableIfExists, true)
 						if err != nil {
 							return err
 						}

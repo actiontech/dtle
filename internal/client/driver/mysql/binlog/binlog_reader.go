@@ -22,8 +22,10 @@ import (
 	//"os"
 
 	"github.com/issuj/gofaster/base64"
-	ast "github.com/pingcap/tidb/ast"
-	"github.com/pingcap/tidb/parser"
+	ast "github.com/pingcap/parser/ast"
+	"github.com/pingcap/parser"
+	_ "github.com/pingcap/tidb/types/parser_driver"
+
 	uuid "github.com/satori/go.uuid"
 	gomysql "github.com/siddontang/go-mysql/mysql"
 	"github.com/siddontang/go-mysql/replication"
@@ -31,9 +33,11 @@ import (
 
 	"github.com/actiontech/dtle/internal/client/driver/mysql/base"
 	"github.com/actiontech/dtle/internal/client/driver/mysql/sql"
+	sqle "github.com/actiontech/dtle/internal/client/driver/mysql/sqle/inspector"
 	"github.com/actiontech/dtle/internal/client/driver/mysql/util"
 	"github.com/actiontech/dtle/internal/config"
 	"github.com/actiontech/dtle/internal/config/mysql"
+
 	log "github.com/actiontech/dtle/internal/logger"
 	"github.com/actiontech/dtle/internal/models"
 	"github.com/actiontech/dtle/utils"
@@ -70,6 +74,8 @@ type BinlogReader struct {
 	shutdownLock sync.Mutex
 
 	sqlFilter *SqlFilter
+
+	context *sqle.Context
 }
 
 type SqlFilter struct {
@@ -130,7 +136,7 @@ func parseSqlFilter(strs []string) (*SqlFilter, error) {
 	return s, nil
 }
 
-func NewMySQLReader(cfg *config.MySQLDriverConfig, logger *log.Entry, replicateDoDb []*config.DataSource) (binlogReader *BinlogReader, err error) {
+func NewMySQLReader(cfg *config.MySQLDriverConfig, logger *log.Entry, replicateDoDb []*config.DataSource, sqleContext *sqle.Context) (binlogReader *BinlogReader, err error) {
 	sqlFilter, err := parseSqlFilter(cfg.SqlFilter)
 	if err != nil {
 		return nil, err
@@ -146,6 +152,7 @@ func NewMySQLReader(cfg *config.MySQLDriverConfig, logger *log.Entry, replicateD
 		shutdownCh:              make(chan struct{}),
 		tables:                  make(map[string](map[string]*config.TableContext)),
 		sqlFilter:               sqlFilter,
+		context:                 sqleContext,
 	}
 
 	for _, db := range replicateDoDb {
@@ -370,6 +377,8 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 
 				skipEvent := false
 
+				b.context.UpdateContext(ddlInfo.ast, "mysql")
+
 				if b.sqlFilter.NoDDL {
 					skipEvent = true
 				}
@@ -385,14 +394,13 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 
 					updateTableMeta := func() error {
 						var err error
-						columns, err := base.GetTableColumns(b.db, realSchema, tableName)
+
+						columns, err := base.GetTableColumnsSqle(b.context, realSchema, tableName)
 						if err != nil {
 							b.logger.Warnf("error handle create table in binlog: GetTableColumns: %v", err.Error())
 						}
-						err = base.ApplyColumnTypes(b.db, realSchema, tableName, columns)
-						if err != nil {
-							b.logger.Warnf("error handle create table in binlog: ApplyColumnTypes: %v", err.Error())
-						}
+						b.logger.Debugf("binlog_reader. new columns. table: %v.%v, columns: %v",
+							realSchema, tableName, columns.String())
 
 						var table *config.Table
 						for i := range b.mysqlContext.ReplicateDoDb {
@@ -406,7 +414,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 							}
 						}
 						if table == nil {
-							// all db copy
+							// a new table (it might be in all db copy since it is not ignored).
 							table = config.NewTable(realSchema, tableName)
 							table.TableType = "BASE TABLE"
 							table.Where = "true"
@@ -444,7 +452,6 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 							return err
 						}
 
-						// TODO alter table add | drop | ...
 						if b.sqlFilter.NoDDLAlterTable {
 							skipEvent = true
 						} else {
