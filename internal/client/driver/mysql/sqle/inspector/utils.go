@@ -4,71 +4,21 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
-	"sqle/model"
+	"github.com/actiontech/dtle/internal/client/driver/mysql/sqle/g"
 	"strconv"
 	"strings"
 
+	"github.com/pingcap/parser"
 	"github.com/pingcap/parser/ast"
 	_model "github.com/pingcap/parser/model"
 	"github.com/pingcap/parser/mysql"
-	"github.com/pingcap/parser"
 
 	_ "github.com/pingcap/tidb/types/parser_driver"
 )
 
-type InspectResult struct {
-	Level   string
-	Message string
-}
-
-type InspectResults struct {
-	results []*InspectResult
-}
-
-func newInspectResults() *InspectResults {
-	return &InspectResults{
-		results: []*InspectResult{},
-	}
-}
-
-// level find highest level in result
-func (rs *InspectResults) level() string {
-	level := model.RULE_LEVEL_NORMAL
-	for _, result := range rs.results {
-		if model.RuleLevelMap[level] < model.RuleLevelMap[result.Level] {
-			level = result.Level
-		}
-	}
-	return level
-}
-
-func (rs *InspectResults) message() string {
-	messages := make([]string, len(rs.results))
-	for n, result := range rs.results {
-		var message string
-		match, _ := regexp.MatchString(fmt.Sprintf(`^\[%s|%s|%s|%s|%s\]`,
-			model.RULE_LEVEL_ERROR, model.RULE_LEVEL_WARN, model.RULE_LEVEL_NOTICE, model.RULE_LEVEL_NORMAL, "osc"),
-			result.Message)
-		if match {
-			message = result.Message
-		} else {
-			message = fmt.Sprintf("[%s]%s", result.Level, result.Message)
-		}
-		messages[n] = message
-	}
-	return strings.Join(messages, "\n")
-}
-
-func (rs *InspectResults) add(level, message string, args ...interface{}) {
-	rs.results = append(rs.results, &InspectResult{
-		Level:   level,
-		Message: fmt.Sprintf(message, args...),
-	})
-}
-
 func parseSql(dbType, sql string) ([]ast.StmtNode, error) {
 	switch dbType {
-	case model.DB_TYPE_MYSQL, model.DB_TYPE_MYCAT:
+	case g.DB_TYPE_MYSQL, g.DB_TYPE_MYCAT:
 		p := parser.New()
 		stmts, _, err := p.Parse(sql, "", "")
 		if err != nil {
@@ -82,7 +32,7 @@ func parseSql(dbType, sql string) ([]ast.StmtNode, error) {
 
 func parseOneSql(dbType, sql string) (ast.StmtNode, error) {
 	switch dbType {
-	case model.DB_TYPE_MYSQL, model.DB_TYPE_MYCAT:
+	case g.DB_TYPE_MYSQL, g.DB_TYPE_MYCAT:
 		p := parser.New()
 		stmt, err := p.ParseOneStmt(sql, "", "")
 		if err != nil {

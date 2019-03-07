@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"fmt"
 	"github.com/pingcap/parser/ast"
-	"sqle/log"
 	"strings"
 )
 
@@ -75,7 +74,7 @@ func alterTableSpecFormat(stmt *ast.AlterTableSpec) string {
 		case ast.ConstraintForeignKey:
 			format = fmt.Sprintf("ADD CONSTRAINT `%s` FOREIGN KEY", constraint.Name)
 		default:
-			log.NewEntry().Errorf("constraint tp %d not support on format alterTableStmt", constraint.Tp)
+			//log.NewEntry().Errorf("constraint tp %d not support on format alterTableStmt", constraint.Tp)
 		}
 		if indexColums := indexColumnsFormat(constraint.Keys); indexColums != "" {
 			format = fmt.Sprintf("%s %s", format, indexColums)
