@@ -712,7 +712,8 @@ func (e *Extractor) StreamEvents() error {
 					entries.Entries = append(entries.Entries, binlogEntry)
 					entriesSize += binlogEntry.OriginalSize
 
-					if entriesSize >= e.mysqlContext.GroupMaxSize {
+					if entriesSize >= e.mysqlContext.GroupMaxSize ||
+						int64(len(entries.Entries)) == e.mysqlContext.ReplChanBufferSize {
 						e.logger.Debugf("extractor. incr. send by GroupLimit. entriesSize: %v", entriesSize)
 						err = sendEntries()
 						if !timer.Stop() {
