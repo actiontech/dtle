@@ -459,7 +459,7 @@ func GtidSetDiff(set1 string, set2 string) (string, error) {
 func GetTableColumnsSqle(sqleContext *sqle.Context, schema string, table string) (*umconf.ColumnList, error) {
 	tableInfo, exists := sqleContext.GetTable(schema, table)
 	if !exists {
-		return nil, fmt.Errorf("table does not exists in sqle context. table: %v", )
+		return nil, fmt.Errorf("table does not exists in sqle context. table: %v.%v", schema, table)
 	}
 
 	cStmt := tableInfo.MergedTable

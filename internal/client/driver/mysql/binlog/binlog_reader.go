@@ -377,6 +377,10 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 
 				skipEvent := false
 
+				b.context.LoadSchemas(nil)
+				if currentSchema != "" {
+					b.context.UseSchema(currentSchema)
+				}
 				b.context.UpdateContext(ddlInfo.ast, "mysql")
 
 				if b.sqlFilter.NoDDL {
@@ -431,6 +435,8 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 					}
 
 					switch realAst := ddlInfo.ast.(type) {
+					case *ast.CreateDatabaseStmt:
+						b.context.LoadTables(ddlInfo.tables[i].Schema, nil)
 					case *ast.CreateTableStmt:
 						b.logger.Debugf("mysql.reader: ddl is create table")
 						err := updateTableMeta()
