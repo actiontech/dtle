@@ -927,6 +927,14 @@
 
 [[projects]]
   branch = "master"
+  digest = "1:99c6a6dab47067c9b898e8c8b13d130c6ab4ffbcc4b7cc6236c2cd0b1e344f5b"
+  name = "github.com/shirou/w32"
+  packages = ["."]
+  pruneopts = "UT"
+  revision = "bb4de0191aa41b5507caa14b0650cdbddcd9280b"
+
+[[projects]]
+  branch = "master"
   digest = "1:3f6747b566bfcdc9803b79e86b19bef07cb432878b37a06687ee9a0898fe399d"
   name = "github.com/siddontang/go"
   packages = ["hack"]
@@ -1130,6 +1138,7 @@
     "github.com/shirou/gopsutil/internal/common",
     "github.com/shirou/gopsutil/mem",
     "github.com/shirou/gopsutil/net",
+    "github.com/shirou/w32",
     "github.com/siddontang/go-mysql/mysql",
     "github.com/siddontang/go-mysql/replication",
     "github.com/siddontang/go/hack",
