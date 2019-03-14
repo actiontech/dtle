@@ -9,6 +9,7 @@ package binlog
 import (
 	"bytes"
 	gosql "database/sql"
+	"time"
 
 	"github.com/actiontech/dtle/internal/g"
 
@@ -195,6 +196,10 @@ func NewMySQLReader(cfg *config.MySQLDriverConfig, logger *log.Entry, replicateD
 		Password:       cfg.ConnectionConfig.Password,
 		RawModeEnabled: false,
 		UseDecimal:     true,
+
+		MaxReconnectAttempts: 3,
+		HeartbeatPeriod:      3 * time.Second,
+		ReadTimeout:          6 * time.Second,
 	}
 	binlogReader.binlogSyncer = replication.NewBinlogSyncer(binlogSyncerConfig)
 	binlogReader.mysqlContext.Stage = models.StageRegisteringSlaveOnMaster
@@ -640,6 +645,7 @@ func (b *BinlogReader) DataStreamEvents(entriesChannel chan<- *BinlogEntry) erro
 
 		ev, err := b.binlogStreamer.GetEvent(context.Background())
 		if err != nil {
+			b.logger.Errorf("mysql.reader error GetEvent. err: %v", err)
 			return err
 		}
 		if ev.Header.EventType == replication.HEARTBEAT_EVENT {
