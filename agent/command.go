@@ -19,6 +19,7 @@ import (
 	"strings"
 	"syscall"
 	"time"
+	"net/http"
 
 	"github.com/actiontech/dtle/internal/g"
 
@@ -28,6 +29,8 @@ import (
 
 	ulog "github.com/actiontech/dtle/internal/logger"
 	"github.com/rakyll/autopprof"
+
+	report "github.com/ikarishinjieva/golang-live-coverage-report/pkg"
 )
 
 // gracefulTimeout controls how long we wait before forcefully terminating
@@ -88,6 +91,7 @@ func (c *Command) readConfig() *Config {
 	flags.StringVar(&cmdConfig.PidFile, "pid-file", "", "")
 	flags.BoolVar(&cmdConfig.PprofSwitch, "pprof-switch", false, "")
 	flags.Int64Var(&cmdConfig.PprofTime, "pprof-time", 0, "")
+	flags.IntVar(&cmdConfig.CoverageReportPort, "coverage-report-port", 0, "")
 	flags.StringVar(&cmdConfig.NodeName, "node", "", "")
 
 	if err := flags.Parse(c.args); err != nil {
@@ -103,6 +107,18 @@ func (c *Command) readConfig() *Config {
 		fmt.Fprintf(f, "%d\n", os.Getpid())
 
 		f.Close()
+	}
+
+	if cmdConfig.CoverageReportPort != 0 {
+		go func() {
+			http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+				err := report.GenerateHtmlReport(w)
+				if nil != err {
+					log.Fatalf("generate code coverage report error: %v", err)
+				}
+			})
+			http.ListenAndServe(fmt.Sprintf(":%v", cmdConfig.CoverageReportPort), nil)
+		}()
 	}
 
 	// Split the servers.
