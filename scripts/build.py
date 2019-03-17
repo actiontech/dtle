@@ -23,6 +23,7 @@ LOG_DIR = "/var/log/dtle"
 SCRIPT_DIR = "/usr/lib/dtle/scripts"
 CONFIG_DIR = "/etc/dtle"
 LOGROTATE_DIR = "/etc/logrotate.d"
+COVERAGE_REPORT_RAW_CODE_DIR = "/usr/lib/dtle"
 
 INIT_SCRIPT = "scripts/init.sh"
 SYSTEMD_SCRIPT = "scripts/dtle.service"
@@ -33,6 +34,8 @@ POSTINST_SCRIPT = "scripts/post-install.sh"
 PREINST_SCRIPT = "scripts/pre-install.sh"
 POSTREMOVE_SCRIPT = "scripts/post-remove.sh"
 PREREMOVE_SCRIPT = "scripts/pre-remove.sh"
+
+COVERAGE_REPORT_RAW_CODE = "coverage-report-raw-code"
 
 CONFIGURATION_FILES = [
     CONFIG_DIR + '/dtle.conf',
@@ -488,6 +491,11 @@ def package(build_output, pkg_name, version, nightly=False, iteration=1, static=
                 else:
                     create_package_fs(build_root)
                     package_scripts(build_root)
+
+                if os.path.exists(COVERAGE_REPORT_RAW_CODE):
+                    to = os.path.join(build_root, COVERAGE_REPORT_RAW_CODE_DIR[1:], COVERAGE_REPORT_RAW_CODE)
+                    logging.info("Copy coverage report code from '{}' to '{}'.".format(COVERAGE_REPORT_RAW_CODE, to))
+                    shutil.copytree(COVERAGE_REPORT_RAW_CODE, to)
 
                 for binary in targets:
                     # Copy newly-built binaries to packaging directory

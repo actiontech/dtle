@@ -92,6 +92,7 @@ func (c *Command) readConfig() *Config {
 	flags.BoolVar(&cmdConfig.PprofSwitch, "pprof-switch", false, "")
 	flags.Int64Var(&cmdConfig.PprofTime, "pprof-time", 0, "")
 	flags.IntVar(&cmdConfig.CoverageReportPort, "coverage-report-port", 0, "")
+	flags.StringVar(&cmdConfig.CoverageReportRawCodeDir, "coverage-report-raw-code-dir", "/usr/lib/dtle", "")
 	flags.StringVar(&cmdConfig.NodeName, "node", "", "")
 
 	if err := flags.Parse(c.args); err != nil {
@@ -112,7 +113,7 @@ func (c *Command) readConfig() *Config {
 	if cmdConfig.CoverageReportPort != 0 {
 		go func() {
 			http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-				err := report.GenerateHtmlReport(w)
+				err := report.GenerateHtmlReport2(w, cmdConfig.CoverageReportRawCodeDir)
 				if nil != err {
 					log.Fatalf("generate code coverage report error: %v", err)
 				}
