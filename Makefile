@@ -40,14 +40,14 @@ build-coverage-report-tool:
 
 coverage-report-pre-build:
 	PATH=${GOPATH}/bin:$$PATH golang-live-coverage-report \
-	    -pre-build -raw-code-build-dir ./raw-code -raw-code-deploy-dir ./coverage-report-raw-code \
+	    -pre-build -raw-code-build-dir ./coverage-report-raw-code -raw-code-deploy-dir ./coverage-report-raw-code \
 	    -bootstrap-outfile ./cmd/dtle/coverage_report_bootstrap.go -bootstrap-package-name main \
-	    ./agent
+	    ./agent ./api ./utils ./cmd/dtle/command
 
 coverage-report-post-build:
 	PATH=${GOPATH}/bin:$$PATH golang-live-coverage-report \
-	    -post-build -raw-code-build-dir ./raw-code -bootstrap-outfile ./cmd/dtle/coverage_report_bootstrap.go \
-	    ./agent
+	    -post-build -raw-code-build-dir ./coverage-report-raw-code -bootstrap-outfile ./cmd/dtle/coverage_report_bootstrap.go \
+	    ./agent ./api ./utils ./cmd/dtle/command
 
 TEMP_FILE = temp_parser_file
 goyacc:
