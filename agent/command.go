@@ -115,7 +115,7 @@ func (c *Command) readConfig() *Config {
 			http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 				err := report.GenerateHtmlReport2(w, cmdConfig.CoverageReportRawCodeDir)
 				if nil != err {
-					log.Fatalf("generate code coverage report error: %v", err)
+					log.Printf("generate code coverage report error: %v\n", err)
 				}
 			})
 			http.ListenAndServe(fmt.Sprintf(":%v", cmdConfig.CoverageReportPort), nil)
