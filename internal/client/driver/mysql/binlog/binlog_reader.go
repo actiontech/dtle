@@ -22,8 +22,8 @@ import (
 	//"os"
 
 	"github.com/issuj/gofaster/base64"
-	ast "github.com/pingcap/parser/ast"
 	"github.com/pingcap/parser"
+	ast "github.com/pingcap/parser/ast"
 	_ "github.com/pingcap/tidb/types/parser_driver"
 
 	uuid "github.com/satori/go.uuid"
@@ -395,7 +395,17 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 						b.logger.Debugf("mysql.reader: Skip QueryEvent currentSchema: %s, sql: %s, realSchema: %v, tableName: %v", currentSchema, sql, realSchema, tableName)
 						return nil
 					}
-
+					var table *config.Table
+					for i := range b.mysqlContext.ReplicateDoDb {
+						// TODO escape name before comparing?
+						if b.mysqlContext.ReplicateDoDb[i].TableSchema == realSchema {
+							for j := range b.mysqlContext.ReplicateDoDb[i].Tables {
+								if b.mysqlContext.ReplicateDoDb[i].Tables[j].TableName == tableName {
+									table = b.mysqlContext.ReplicateDoDb[i].Tables[j]
+								}
+							}
+						}
+					}
 					updateTableMeta := func() error {
 						var err error
 
@@ -406,17 +416,8 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 						b.logger.Debugf("binlog_reader. new columns. table: %v.%v, columns: %v",
 							realSchema, tableName, columns.String())
 
-						var table *config.Table
-						for i := range b.mysqlContext.ReplicateDoDb {
-							// TODO escape name before comparing?
-							if b.mysqlContext.ReplicateDoDb[i].TableSchema == realSchema {
-								for j := range b.mysqlContext.ReplicateDoDb[i].Tables {
-									if b.mysqlContext.ReplicateDoDb[i].Tables[j].TableName == tableName {
-										table = b.mysqlContext.ReplicateDoDb[i].Tables[j]
-									}
-								}
-							}
-						}
+						//var table *config.Table
+
 						if table == nil {
 							// a new table (it might be in all db copy since it is not ignored).
 							table = config.NewTable(realSchema, tableName)
@@ -489,7 +490,14 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 							}
 						}
 					}
-
+					if table.TableRename != "" {
+						ddlInfo.tables[i].Table = table.TableRename
+						sql = strings.Replace(sql, tableName, table.TableRename, 1)
+					}
+					if table.TableSchemaRename != "" {
+						ddlInfo.tables[i].Schema = table.TableSchemaRename
+						currentSchema = table.TableSchemaRename
+					}
 					if skipEvent {
 						b.logger.Debugf("mysql.reader. skipped a ddl event. query: %v", query)
 					} else {
@@ -608,7 +616,18 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 						}
 					}
 				}
-
+				if table.Table.TableRename != "" {
+					if dmlEvent.Table != nil {
+						dmlEvent.Table.TableName = table.Table.TableRename
+					}
+					dmlEvent.TableName = table.Table.TableRename
+				}
+				if table.Table.TableSchemaRename != "" {
+					if dmlEvent.Table != nil {
+						dmlEvent.Table.TableSchemaRename = table.Table.TableSchemaRename
+					}
+					dmlEvent.DatabaseName = table.Table.TableSchemaRename
+				}
 				if whereTrue {
 					// The channel will do the throttling. Whoever is reding from the channel
 					// decides whether action is taken sycnhronously (meaning we wait before

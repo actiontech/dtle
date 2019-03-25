@@ -10,6 +10,7 @@ import (
 	gosql "database/sql"
 	"encoding/json"
 	"fmt"
+
 	"github.com/actiontech/dtle/internal/g"
 
 	//"math"
@@ -27,6 +28,8 @@ import (
 	gomysql "github.com/siddontang/go-mysql/mysql"
 
 	"os"
+
+	"regexp"
 
 	"github.com/actiontech/dtle/internal/client/driver/mysql/base"
 	"github.com/actiontech/dtle/internal/client/driver/mysql/binlog"
@@ -101,7 +104,7 @@ func NewExtractor(subject, tp string, maxPayload int, cfg *config.MySQLDriverCon
 		waitCh:          make(chan *models.WaitResult, 1),
 		shutdownCh:      make(chan struct{}),
 		testStub1Delay:  0,
-		context:                 sqle.NewContext(nil),
+		context:         sqle.NewContext(nil),
 	}
 	e.context.LoadSchemas(nil)
 
@@ -267,12 +270,49 @@ func (e *Extractor) initiateInspector() (err error) {
 func (e *Extractor) inspectTables() (err error) {
 	// Creates a MYSQL Dump based on the options supplied through the dumper.
 	if len(e.mysqlContext.ReplicateDoDb) > 0 {
+		var doDbs []*config.DataSource
+		// Get all db from  TableSchemaRegex regex and get all tableSchemaRename
 		for _, doDb := range e.mysqlContext.ReplicateDoDb {
-			if doDb.TableSchema == "" {
+			if doDb.TableSchema == "" && doDb.TableSchemaRegex == "" {
 				continue
 			}
+			var regex string
+			if doDb.TableSchemaRegex != "" && doDb.TableSchemaRename != "" {
+				regex = doDb.TableSchemaRegex
+			} else if doDb.TableSchemaRegex == "" && doDb.TableSchemaRename != "" && doDb.TableSchema != "" {
+				regex = "^" + doDb.TableSchema + "$"
+			}
+			if regex != "" {
+				dbs, err := sql.ShowDatabases(e.db)
+				if err != nil {
+					return err
+				}
+				schemaRenameRegex := doDb.TableSchemaRename
+
+				for _, db := range dbs {
+					newdb := &config.DataSource{}
+					reg := regexp.MustCompile(regex)
+					if !reg.MatchString(db) {
+						continue
+					}
+					doDb.TableSchema = db
+					if schemaRenameRegex != "" {
+						match := reg.FindStringSubmatchIndex(db)
+						doDb.TableSchemaRename = string(reg.ExpandString(nil, schemaRenameRegex, db, match))
+					}
+					*newdb = *doDb
+					doDbs = append(doDbs, newdb)
+				}
+			} else {
+				doDbs = append(doDbs, doDb)
+			}
+
+		}
+
+		for _, doDb := range doDbs {
 			db := &config.DataSource{
-				TableSchema: doDb.TableSchema,
+				TableSchema:       doDb.TableSchema,
+				TableSchemaRename: doDb.TableSchemaRename,
 			}
 
 			if len(doDb.Tables) == 0 {
@@ -282,6 +322,7 @@ func (e *Extractor) inspectTables() (err error) {
 				}
 				for _, doTb := range tbs {
 					doTb.TableSchema = doDb.TableSchema
+					doTb.TableSchemaRename = doDb.TableSchemaRename
 					if err := e.inspector.ValidateOriginalTable(doDb.TableSchema, doTb.TableName, doTb); err != nil {
 						e.logger.Warnf("mysql.extractor: %v", err)
 						continue
@@ -291,16 +332,42 @@ func (e *Extractor) inspectTables() (err error) {
 			} else {
 				for _, doTb := range doDb.Tables {
 					doTb.TableSchema = doDb.TableSchema
-					if err := e.inspector.ValidateOriginalTable(doDb.TableSchema, doTb.TableName, doTb); err != nil {
-						e.logger.Warnf("mysql.extractor: %v", err)
-						continue
+					doTb.TableSchemaRename = doDb.TableSchemaRename
+					var regex string
+					if doTb.TableRegex != "" && doTb.TableName == "" {
+						regex = doTb.TableRegex
+					} else if doTb.TableRegex == "" && doTb.TableName != "" {
+						regex = "^" + doTb.TableName + "$"
 					}
-					db.Tables = append(db.Tables, doTb)
+					tables, err := sql.ShowTables(e.db, doDb.TableSchema, e.mysqlContext.ExpandSyntaxSupport)
+					if err != nil {
+						return err
+					}
+					tableRenameRegex := doTb.TableRename
+					for _, table := range tables {
+						reg := regexp.MustCompile(regex)
+						if !reg.MatchString(table.TableName) {
+							continue
+						}
+						doTb.TableName = table.TableName
+
+						if tableRenameRegex != "" {
+							match := reg.FindStringSubmatchIndex(table.TableName)
+							doTb.TableRename = string(reg.ExpandString(nil, tableRenameRegex, table.TableName, match))
+						}
+						if err := e.inspector.ValidateOriginalTable(doDb.TableSchema, table.TableName, doTb); err != nil {
+							e.logger.Warnf("mysql.extractor: %v", err)
+							continue
+						}
+						*table = *doTb
+						db.Tables = append(db.Tables, table)
+					}
+
 				}
 			}
-
 			e.replicateDoDb = append(e.replicateDoDb, db)
 		}
+		e.mysqlContext.ReplicateDoDb = e.replicateDoDb
 	} else {
 		dbs, err := sql.ShowDatabases(e.db)
 		if err != nil {
@@ -1105,9 +1172,12 @@ func (e *Extractor) mysqlDump() error {
 				if !e.mysqlContext.SkipCreateDbTable {
 					var err error
 					if strings.ToLower(tb.TableSchema) != "mysql" {
-						dbSQL = fmt.Sprintf("CREATE DATABASE IF NOT EXISTS %s", tb.TableSchema)
+						if db.TableSchemaRename != "" {
+							dbSQL = fmt.Sprintf("CREATE DATABASE IF NOT EXISTS %s", tb.TableSchemaRename)
+						} else {
+							dbSQL = fmt.Sprintf("CREATE DATABASE IF NOT EXISTS %s", tb.TableSchema)
+						}
 					}
-
 					if strings.ToLower(tb.TableType) == "view" {
 						/*tbSQL, err = base.ShowCreateView(e.singletonDB, tb.TableSchema, tb.TableName, e.mysqlContext.DropTableIfExists)
 						if err != nil {
@@ -1115,6 +1185,14 @@ func (e *Extractor) mysqlDump() error {
 						}*/
 					} else if strings.ToLower(tb.TableSchema) != "mysql" {
 						tbSQL, err = base.ShowCreateTable(e.singletonDB, tb.TableSchema, tb.TableName, e.mysqlContext.DropTableIfExists, true)
+						for num, sql := range tbSQL {
+							if db.TableSchemaRename != "" && strings.Contains(sql, fmt.Sprintf("USE %s", tb.TableSchema)) {
+								tbSQL[num] = strings.Replace(sql, tb.TableSchema, db.TableSchemaRename, 1)
+							}
+							if tb.TableRename != "" && (strings.Contains(sql, fmt.Sprintf("DROP TABLE IF EXISTS `%s`", tb.TableName)) || strings.Contains(sql, "CREATE TABLE")) {
+								tbSQL[num] = strings.Replace(sql, tb.TableName, tb.TableRename, 1)
+							}
+						}
 						if err != nil {
 							return err
 						}
