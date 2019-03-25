@@ -128,6 +128,12 @@ type Config struct {
 	// Schema name for dtle meta info (e.g. gtid_executed).
 	// Do not use special characters (which need to be quoted) in schema name.
 	DtleSchemaName string `mapstructure:"dtle_schema_name"`
+
+	// CoverageReportPort is the HTTP port of code coverage report, 0 is disable
+	CoverageReportPort int `mapstructure:"coverage_report_port"`
+
+	// CoverageReportRawCodeDir is the root deploy directory of coverage report raw code
+	CoverageReportRawCodeDir string `mapstructure:"coverage_report_raw_code_dir"`
 }
 
 // ClientConfig is configuration specific to the client mode
