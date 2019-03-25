@@ -300,14 +300,19 @@ func (m *MySQLDriverConfig) GetCriticalLoad() umconf.LoadMap {
 // TableName is the table configuration
 // slave restrict replication to a given table
 type DataSource struct {
-	TableSchema string
-	Tables      []*Table
+	TableSchema       string
+	TableSchemaRegex  string
+	TableSchemaRename string
+	Tables            []*Table
 }
 
 type Table struct {
-	TableName   string
-	TableSchema string
-	Counter     int64
+	TableName         string
+	TableRegex        string
+	TableRename       string
+	TableSchema       string
+	TableSchemaRename string
+	Counter           int64
 
 	OriginalTableColumns *umconf.ColumnList
 	UseUniqueKey         *umconf.UniqueKey
@@ -325,6 +330,7 @@ type TableContext struct {
 	WhereCtx       *WhereContext
 	DefChangedSent bool
 }
+
 func NewTableContext(table *Table, whereCtx *WhereContext) *TableContext {
 	return &TableContext{
 		Table:          table,

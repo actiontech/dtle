@@ -307,7 +307,12 @@ func (d *dumper) getChunkData() (nRows int64, err error) {
 			d.logger.Debugf("GetLastMaxVal: got %v", d.table.UseUniqueKey.LastMaxVals)
 		}
 	}
-
+	if d.table.TableRename != "" {
+		entry.TableName = d.table.TableRename
+	}
+	if d.table.TableSchemaRename != "" {
+		entry.TableSchema = d.table.TableSchemaRename
+	}
 	// ValuesX[i]: n-th row
 	// ValuesX[i][j]: j-th col of n-th row
 	// Values[i]: i-th chunk of rows
