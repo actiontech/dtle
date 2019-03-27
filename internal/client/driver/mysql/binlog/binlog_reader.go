@@ -490,11 +490,11 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 							}
 						}
 					}
-					if table.TableRename != "" {
+					if table != nil && table.TableRename != "" {
 						ddlInfo.tables[i].Table = table.TableRename
 						sql = strings.Replace(sql, tableName, table.TableRename, 1)
 					}
-					if table.TableSchemaRename != "" {
+					if table != nil && table.TableSchemaRename != "" {
 						ddlInfo.tables[i].Schema = table.TableSchemaRename
 						currentSchema = table.TableSchemaRename
 					}
