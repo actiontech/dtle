@@ -26,14 +26,64 @@ func main() {
 	ctx.LoadTables("a", nil)
 	ctx.UseSchema("a")
 
-	case1()
-	case2()
-	case3()
+	case4()
+	//case1()
+	//case2()
+	//case3()
 }
 
 func panicIfErr(err interface{}, args ...interface{}) {
 	if err != nil {
 		log.Panicf("will panic. err %v, args: %v", err, args)
+	}
+}
+func case4() {
+	log.Printf("---- case 4")
+	do("create table a.a (id int primary key default 42, val1 varchar(50))")
+	do("alter table a.a rename aaa")
+
+	tableInfo, exist := ctx.GetTable("a", "aaa")
+	if !exist {
+		panic("shoud exist")
+	}
+
+	cStmt := tableInfo.MergedTable
+	if cStmt == nil {
+		cStmt = tableInfo.OriginalTable
+	}
+
+	colList, err := base.GetTableColumnsSqle(ctx, "a", "aaa")
+	if err != nil {
+		panicIfErr(err, "at GetTableColumnsSqle")
+	}
+	for _, col := range colList.ColumnList() {
+		log.Printf("col %v %v %v %v %v", col.Name, col.Type, col.IsPk(), col.Nullable, col.Default)
+	}
+
+	for _, col := range cStmt.Cols {
+		log.Printf("name %v tp %v", col.Name, col.Tp)
+		for _, opt := range col.Options {
+			switch opt.Tp {
+			case ast.ColumnOptionNoOption:
+			case ast.ColumnOptionPrimaryKey:
+				log.Printf("  pk")
+			case ast.ColumnOptionNotNull:
+				log.Printf("  not null")
+			case ast.ColumnOptionAutoIncrement:
+				log.Printf("  auto incr")
+			case ast.ColumnOptionDefaultValue:
+				log.Printf("  default %v", opt.Expr.Text())
+			case ast.ColumnOptionUniqKey:
+				log.Printf("  unique")
+			case ast.ColumnOptionNull:
+				log.Printf("  null")
+			case ast.ColumnOptionOnUpdate:
+			case ast.ColumnOptionFulltext:
+			case ast.ColumnOptionComment:
+			case ast.ColumnOptionGenerated:
+			case ast.ColumnOptionReference:
+			}
+		}
 	}
 }
 

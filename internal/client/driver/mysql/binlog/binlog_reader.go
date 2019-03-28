@@ -395,6 +395,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 						b.logger.Debugf("mysql.reader: Skip QueryEvent currentSchema: %s, sql: %s, realSchema: %v, tableName: %v", currentSchema, sql, realSchema, tableName)
 						return nil
 					}
+
 					var table *config.Table
 					for i := range b.mysqlContext.ReplicateDoDb {
 						// TODO escape name before comparing?
@@ -406,41 +407,13 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 							}
 						}
 					}
-					updateTableMeta := func() error {
-						var err error
-
-						columns, err := base.GetTableColumnsSqle(b.context, realSchema, tableName)
-						if err != nil {
-							b.logger.Warnf("error handle create table in binlog: GetTableColumns: %v", err.Error())
-						}
-						b.logger.Debugf("binlog_reader. new columns. table: %v.%v, columns: %v",
-							realSchema, tableName, columns.String())
-
-						//var table *config.Table
-
-						if table == nil {
-							// a new table (it might be in all db copy since it is not ignored).
-							table = config.NewTable(realSchema, tableName)
-							table.TableType = "BASE TABLE"
-							table.Where = "true"
-						}
-						table.OriginalTableColumns = columns
-						tableMap := b.getDbTableMap(realSchema)
-						err = b.addTableToTableMap(tableMap, table)
-						if err != nil {
-							b.logger.Error("failed to make table context: %v", err)
-							return err
-						}
-
-						return nil
-					}
 
 					switch realAst := ddlInfo.ast.(type) {
 					case *ast.CreateDatabaseStmt:
 						b.context.LoadTables(ddlInfo.tables[i].Schema, nil)
 					case *ast.CreateTableStmt:
 						b.logger.Debugf("mysql.reader: ddl is create table")
-						err := updateTableMeta()
+						err := b.updateTableMeta(table, realSchema, tableName)
 						if err != nil {
 							return err
 						}
@@ -454,7 +427,20 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 						}
 					case *ast.AlterTableStmt:
 						b.logger.Debugf("mysql.reader: ddl is alter table. specs: %v", realAst.Specs)
-						err := updateTableMeta()
+
+						fromTable := table
+						tableNameX := tableName
+
+						for iSpec := range realAst.Specs {
+							switch realAst.Specs[iSpec].Tp {
+							case ast.AlterTableRenameTable:
+								fromTable = nil
+								tableNameX = realAst.Specs[iSpec].NewTable.Name.String()
+							default:
+								// do nothing
+							}
+						}
+						err := b.updateTableMeta(fromTable, realSchema, tableNameX)
 						if err != nil {
 							return err
 						}
@@ -1405,5 +1391,33 @@ func (b *BinlogReader) Close() error {
 	// here. A new go-mysql version closes the binlog syncer connection independently.
 	// I will go against the sacred rules of comments and just leave this here.
 	// This is the year 2017. Let's see what year these comments get deleted.
+	return nil
+}
+func (b *BinlogReader) updateTableMeta(table *config.Table, realSchema string, tableName string) error {
+	var err error
+
+	columns, err := base.GetTableColumnsSqle(b.context, realSchema, tableName)
+	if err != nil {
+		b.logger.Warnf("error handle create table in binlog: GetTableColumns: %v", err.Error())
+	}
+	b.logger.Debugf("binlog_reader. new columns. table: %v.%v, columns: %v",
+		realSchema, tableName, columns.String())
+
+	//var table *config.Table
+
+	if table == nil {
+		// a new table (it might be in all db copy since it is not ignored).
+		table = config.NewTable(realSchema, tableName)
+		table.TableType = "BASE TABLE"
+		table.Where = "true"
+	}
+	table.OriginalTableColumns = columns
+	tableMap := b.getDbTableMap(realSchema)
+	err = b.addTableToTableMap(tableMap, table)
+	if err != nil {
+		b.logger.Error("failed to make table context: %v", err)
+		return err
+	}
+
 	return nil
 }
