@@ -905,7 +905,7 @@ func IgnoreError(err error) bool {
 		ErrTableExists, ErrTableNotExists, ErrTableDropExists,
 		ErrColumnExists, ErrColumnNotExists, ErrDupKeyName,
 		ErrIndexExists, ErrCantDropFieldOrKey, ErrDupKey,
-		ErrDupEntry, ErrKeyNotFound:
+		ErrDupEntry, ErrKeyNotFound, ErrGtidUnsafeCreateDropTemporaryTableInTransaction:
 		return true
 	default:
 		return false
