@@ -274,13 +274,15 @@ func (e *Extractor) inspectTables() (err error) {
 		// Get all db from  TableSchemaRegex regex and get all tableSchemaRename
 		for _, doDb := range e.mysqlContext.ReplicateDoDb {
 			if doDb.TableSchema == "" && doDb.TableSchemaRegex == "" {
-				continue
+				return fmt.Errorf("TableSchema or TableSchemaRegex can not both be blank. ")
 			}
 			var regex string
-			if doDb.TableSchemaRegex != "" && doDb.TableSchemaRename != "" {
+			if doDb.TableSchemaRegex != "" && doDb.TableSchemaRename != "" && doDb.TableSchema == "" {
 				regex = doDb.TableSchemaRegex
-			} else if doDb.TableSchemaRegex == "" && doDb.TableSchemaRename != "" && doDb.TableSchema != "" {
+			} else if doDb.TableSchemaRegex == "" && doDb.TableSchema != "" {
 				regex = "^" + doDb.TableSchema + "$"
+			} else {
+				return fmt.Errorf("TableSchema  configuration error. ")
 			}
 			if regex != "" {
 				dbs, err := sql.ShowDatabases(e.db)
@@ -308,7 +310,6 @@ func (e *Extractor) inspectTables() (err error) {
 			}
 
 		}
-
 		for _, doDb := range doDbs {
 			db := &config.DataSource{
 				TableSchema:       doDb.TableSchema,
@@ -334,10 +335,12 @@ func (e *Extractor) inspectTables() (err error) {
 					doTb.TableSchema = doDb.TableSchema
 					doTb.TableSchemaRename = doDb.TableSchemaRename
 					var regex string
-					if doTb.TableRegex != "" && doTb.TableName == "" {
+					if doTb.TableRegex != "" && doTb.TableName == "" && doTb.TableRename != "" {
 						regex = doTb.TableRegex
 					} else if doTb.TableRegex == "" && doTb.TableName != "" {
 						regex = "^" + doTb.TableName + "$"
+					} else {
+						return fmt.Errorf("Table  configuration error. ")
 					}
 					tables, err := sql.ShowTables(e.db, doDb.TableSchema, e.mysqlContext.ExpandSyntaxSupport)
 					if err != nil {
