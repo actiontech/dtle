@@ -336,6 +336,11 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 		evt := ev.Event.(*replication.QueryEvent)
 		query := string(evt.Query)
 
+		if evt.ErrorCode != 0 {
+			b.logger.Errorf("DTLE_BUG: found query_event with error code, which is not handled. ec: %v, query: %v",
+				evt.ErrorCode, query)
+		}
+
 		b.logger.Debugf("mysql.reader: query event: schema: %s, query: %s", evt.Schema, query)
 
 		if strings.ToUpper(query) == "BEGIN" {
