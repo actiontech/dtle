@@ -1220,7 +1220,12 @@ func (e *Extractor) mysqlDump() error {
 			var dbSQL string
 			if !e.mysqlContext.SkipCreateDbTable {
 				if strings.ToLower(db.TableSchema) != "mysql" {
-					dbSQL = fmt.Sprintf("CREATE DATABASE IF NOT EXISTS %s", db.TableSchema)
+					if db.TableSchemaRename != "" {
+						dbSQL = fmt.Sprintf("CREATE DATABASE IF NOT EXISTS %s", db.TableSchemaRename)
+					} else {
+						dbSQL = fmt.Sprintf("CREATE DATABASE IF NOT EXISTS %s", db.TableSchema)
+					}
+
 				}
 			}
 			entry := &DumpEntry{
