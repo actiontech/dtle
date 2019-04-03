@@ -1406,7 +1406,8 @@ func (b *BinlogReader) updateTableMeta(table *config.Table, realSchema string, t
 
 	columns, err := base.GetTableColumnsSqle(b.context, realSchema, tableName)
 	if err != nil {
-		b.logger.Warnf("error handle create table in binlog: GetTableColumns: %v", err.Error())
+		b.logger.Warnf("updateTableMeta: cannot get table info after ddl. err: %v, table %v.%v", err.Error(), realSchema, tableName)
+		return err
 	}
 	b.logger.Debugf("binlog_reader. new columns. table: %v.%v, columns: %v",
 		realSchema, tableName, columns.String())
