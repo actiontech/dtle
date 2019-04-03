@@ -402,9 +402,11 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 					}
 
 					var table *config.Table
+					var schema *config.DataSource
 					for i := range b.mysqlContext.ReplicateDoDb {
 						// TODO escape name before comparing?
 						if b.mysqlContext.ReplicateDoDb[i].TableSchema == realSchema {
+							schema = b.mysqlContext.ReplicateDoDb[i]
 							for j := range b.mysqlContext.ReplicateDoDb[i].Tables {
 								if b.mysqlContext.ReplicateDoDb[i].Tables[j].TableName == tableName {
 									table = b.mysqlContext.ReplicateDoDb[i].Tables[j]
@@ -485,9 +487,9 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 						ddlInfo.tables[i].Table = table.TableRename
 						sql = strings.Replace(sql, tableName, table.TableRename, 1)
 					}
-					if table != nil && table.TableSchemaRename != "" {
-						ddlInfo.tables[i].Schema = table.TableSchemaRename
-						currentSchema = table.TableSchemaRename
+					if schema != nil && schema.TableSchemaRename != "" {
+						ddlInfo.tables[i].Schema = schema.TableSchemaRename
+						currentSchema = schema.TableSchemaRename
 					}
 					if skipEvent {
 						b.logger.Debugf("mysql.reader. skipped a ddl event. query: %v", query)
