@@ -486,9 +486,12 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 					if table != nil && table.TableRename != "" {
 						ddlInfo.tables[i].Table = table.TableRename
 						sql = strings.Replace(sql, tableName, table.TableRename, 1)
+						b.logger.Debugf("mysql.reader. ddl table mapping  :from %s to %s", tableName, table.TableRename)
 					}
 					if schema != nil && schema.TableSchemaRename != "" {
 						ddlInfo.tables[i].Schema = schema.TableSchemaRename
+						b.logger.Debugf("mysql.reader. ddl schema mapping :from  %s to %s", realSchema, schema.TableSchemaRename)
+						sql = strings.Replace(sql, realSchema, schema.TableSchemaRename, 1)
 						currentSchema = schema.TableSchemaRename
 					}
 					if skipEvent {
@@ -614,12 +617,17 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 						dmlEvent.Table.TableName = table.Table.TableRename
 					}
 					dmlEvent.TableName = table.Table.TableRename
+					b.logger.Debugf("mysql.reader. dml  table mapping : from %s to %s", dmlEvent.TableName, table.Table.TableRename)
 				}
-				if table.Table.TableSchemaRename != "" {
-					if dmlEvent.Table != nil {
-						dmlEvent.Table.TableSchemaRename = table.Table.TableSchemaRename
+				for _, schema := range b.mysqlContext.ReplicateDoDb {
+					if schema.TableSchema != schemaName {
+						continue
 					}
-					dmlEvent.DatabaseName = table.Table.TableSchemaRename
+					if dmlEvent.Table != nil {
+						dmlEvent.Table.TableSchemaRename = schema.TableSchemaRename
+					}
+					b.logger.Debugf("mysql.reader. dml  schema mapping: from  %s to %s", dmlEvent.DatabaseName, schema.TableSchemaRename)
+					dmlEvent.DatabaseName = schema.TableSchemaRename
 				}
 				if whereTrue {
 					// The channel will do the throttling. Whoever is reding from the channel
