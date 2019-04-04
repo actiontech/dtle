@@ -483,14 +483,21 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 							}
 						}
 					}
-					if table != nil && table.TableRename != "" {
-						ddlInfo.tables[i].Table = table.TableRename
-						sql = strings.Replace(sql, tableName, table.TableRename, 1)
-					}
 					if schema != nil && schema.TableSchemaRename != "" {
 						ddlInfo.tables[i].Schema = schema.TableSchemaRename
+						b.logger.Debugf("mysql.reader. ddl schema mapping :from  %s to %s", realSchema, schema.TableSchemaRename)
+						//sql = strings.Replace(sql, realSchema, schema.TableSchemaRename, 1)
+						sql = loadMapping(sql, realSchema, schema.TableSchemaRename, "schemaRename", " ")
 						currentSchema = schema.TableSchemaRename
 					}
+
+					if table != nil && table.TableRename != "" {
+						ddlInfo.tables[i].Table = table.TableRename
+						//sql = strings.Replace(sql, tableName, table.TableRename, 1)
+						sql = loadMapping(sql, tableName, table.TableRename, "", currentSchema)
+						b.logger.Debugf("mysql.reader. ddl table mapping  :from %s to %s", tableName, table.TableRename)
+					}
+
 					if skipEvent {
 						b.logger.Debugf("mysql.reader. skipped a ddl event. query: %v", query)
 					} else {
@@ -614,12 +621,20 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 						dmlEvent.Table.TableName = table.Table.TableRename
 					}
 					dmlEvent.TableName = table.Table.TableRename
+					b.logger.Debugf("mysql.reader. dml  table mapping : from %s to %s", dmlEvent.TableName, table.Table.TableRename)
 				}
-				if table.Table.TableSchemaRename != "" {
-					if dmlEvent.Table != nil {
-						dmlEvent.Table.TableSchemaRename = table.Table.TableSchemaRename
+				for _, schema := range b.mysqlContext.ReplicateDoDb {
+					if schema.TableSchema != schemaName {
+						continue
 					}
-					dmlEvent.DatabaseName = table.Table.TableSchemaRename
+					if schema.TableSchemaRename == "" {
+						continue
+					}
+					if dmlEvent.Table != nil {
+						dmlEvent.Table.TableSchemaRename = schema.TableSchemaRename
+					}
+					b.logger.Debugf("mysql.reader. dml  schema mapping: from  %s to %s", dmlEvent.DatabaseName, schema.TableSchemaRename)
+					dmlEvent.DatabaseName = schema.TableSchemaRename
 				}
 				if whereTrue {
 					// The channel will do the throttling. Whoever is reding from the channel
@@ -635,6 +650,41 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 		}
 	}
 	return nil
+}
+
+func loadMapping(sql, beforeName, afterName, mappingType, currentSchema string) string {
+	sqlType := strings.Split(sql, " ")[1]
+	newSql := ""
+	if mappingType == "schemaRename" {
+		if sqlType == "DATABASE" || sqlType == "SCHEMA" || sqlType == "database" || sqlType == "schema" {
+			newSql = strings.Replace(sql, beforeName, afterName, 1)
+			return newSql
+		} else if sqlType == "TABLE" || sqlType == "table" {
+			strings.Contains(sql, "")
+			breakStats := strings.Split(sql, beforeName+".")
+			if len(breakStats) > 1 {
+				breakStats[0] = breakStats[0] + afterName + "."
+				for i := 0; i < len(breakStats); i++ {
+					newSql += breakStats[i]
+				}
+				return newSql
+			}
+
+			return sql
+		}
+	} else {
+		breakStats := strings.Split(sql, currentSchema+"."+beforeName)
+		if len(breakStats) > 1 {
+			breakStats[0] = breakStats[0] + currentSchema + "." + afterName
+			for i := 0; i < len(breakStats); i++ {
+				newSql += breakStats[i]
+			}
+			return newSql
+		} else {
+			return strings.Replace(sql, beforeName, afterName, 1)
+		}
+	}
+	return sql
 }
 
 // StreamEvents
@@ -1346,7 +1396,6 @@ func (b *BinlogReader) matchTable(patternTBS []*config.DataSource, schemaName st
 					return true
 				}
 			}
-
 			if ptb.TableSchema == schemaName && ptb.TableName == tableName {
 				return true
 			}
