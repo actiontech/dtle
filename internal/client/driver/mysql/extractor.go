@@ -213,6 +213,11 @@ func (e *Extractor) Run() {
 		fullCopy = false
 	}
 
+	if err := e.sendSysVarAndSqlMode(); err != nil {
+		e.onError(TaskStateDead, err)
+		return
+	}
+
 	if fullCopy {
 		e.mysqlContext.MarkRowCopyStartTime()
 		if err := e.mysqlDump(); err != nil {
@@ -997,6 +1002,29 @@ func (e *Extractor) testStub1() {
 	}
 }
 
+func (e *Extractor) sendSysVarAndSqlMode() error {
+	// Generate the DDL statements that set the charset-related system variables ...
+	if err := e.readMySqlCharsetSystemVariables(); err != nil {
+		return err
+	}
+	setSystemVariablesStatement := e.setStatementFor()
+	e.logger.Debugf("mysql.extractor: set sysvar query: %v", setSystemVariablesStatement)
+	if err := e.selectSqlMode(); err != nil {
+		return err
+	}
+	setSqlMode := fmt.Sprintf("SET @@session.sql_mode = '%s'", e.mysqlContext.SqlMode)
+
+	entry := &DumpEntry{
+		SystemVariablesStatement: setSystemVariablesStatement,
+		SqlMode:                  setSqlMode,
+	}
+	if err := e.encodeDumpEntry(entry); err != nil {
+		e.onError(TaskStateRestart, err)
+	}
+
+	return nil
+}
+
 //Perform the snapshot using the same logic as the "mysqldump" utility.
 func (e *Extractor) mysqlDump() error {
 	defer e.singletonDB.Close()
@@ -1018,15 +1046,6 @@ func (e *Extractor) mysqlDump() error {
 	// See: https://dev.mysql.com/doc/refman/5.7/en/innodb-consistent-read.html
 	e.logger.Printf("mysql.extractor: Step %d: disabling autocommit and enabling repeatable read transactions", step)
 
-	// Generate the DDL statements that set the charset-related system variables ...
-	if err := e.readMySqlCharsetSystemVariables(); err != nil {
-		return err
-	}
-	setSystemVariablesStatement := e.setStatementFor()
-	if err := e.selectSqlMode(); err != nil {
-		return err
-	}
-	setSqlMode := fmt.Sprintf("SET @@session.sql_mode = '%s'", e.mysqlContext.SqlMode)
 	step++
 
 	// ------
@@ -1209,8 +1228,6 @@ func (e *Extractor) mysqlDump() error {
 					}
 				}
 				entry := &DumpEntry{
-					SystemVariablesStatement: setSystemVariablesStatement,
-					SqlMode:                  setSqlMode,
 					DbSQL:                    dbSQL,
 					TbSQL:                    tbSQL,
 					TotalCount:               tb.Counter + 1,
@@ -1236,8 +1253,6 @@ func (e *Extractor) mysqlDump() error {
 				}
 			}
 			entry := &DumpEntry{
-				SystemVariablesStatement: setSystemVariablesStatement,
-				SqlMode:                  setSqlMode,
 				DbSQL:                    dbSQL,
 				TotalCount:               1,
 				RowsCount:                1,
@@ -1278,9 +1293,6 @@ func (e *Extractor) mysqlDump() error {
 				if entry.err != nil {
 					e.onError(TaskStateDead, entry.err)
 				} else {
-					entry.SystemVariablesStatement = setSystemVariablesStatement
-					entry.SqlMode = setSqlMode
-
 					if e.needToSendTabelDef() {
 						entry.Table = d.table
 					}

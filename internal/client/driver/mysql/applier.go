@@ -241,6 +241,10 @@ type Applier struct {
 	nDumpEntry     int64
 
 	stubFullApplyDelay bool
+
+	// TODO we might need to save these from DumpEntry for reconnecting.
+	//SystemVariablesStatement string
+	//SqlMode                  string
 }
 
 func NewApplier(subject, tp string, cfg *config.MySQLDriverConfig, logger *log.Logger) (*Applier, error) {
@@ -1340,6 +1344,27 @@ func (a *Applier) ApplyEventQueries(db *gosql.DB, entry *DumpEntry) error {
 		a.logger.Debugf("mysql.applier: stubFullApplyDelay start sleep")
 		time.Sleep(20 * time.Second)
 		a.logger.Debugf("mysql.applier: stubFullApplyDelay end sleep")
+	}
+
+	if entry.SystemVariablesStatement != "" {
+		for i := range a.dbs {
+			a.logger.Debugf("mysql.applier: exec sysvar query: %v", entry.SystemVariablesStatement)
+			_, err := a.dbs[i].Db.ExecContext(context.Background(), entry.SystemVariablesStatement)
+			if err != nil {
+				a.logger.Errorf("mysql.applier: err exec sysvar query. err: %v", err)
+				return err
+			}
+		}
+	}
+	if entry.SqlMode != "" {
+		for i := range a.dbs {
+			a.logger.Debugf("mysql.applier: exec sqlmode query: %v", entry.SqlMode)
+			_, err := a.dbs[i].Db.ExecContext(context.Background(), entry.SqlMode)
+			if err != nil {
+				a.logger.Errorf("mysql.applier: err exec sysvar query. err: %v", err)
+				return err
+			}
+		}
 	}
 
 	queries := []string{}
