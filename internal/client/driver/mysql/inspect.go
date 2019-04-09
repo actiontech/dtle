@@ -121,9 +121,14 @@ func (i *Inspector) ValidateOriginalTable(databaseName, tableName string, table 
 			uniqueKeyIsValid = false
 		}
 
+		// Use the first key or PK (if valid)
 		if uniqueKeyIsValid {
-			table.UseUniqueKey = uk
-			break
+			if uk.IsPrimary() {
+				table.UseUniqueKey = uk
+				break
+			} else if table.UseUniqueKey == nil {
+				table.UseUniqueKey = uk
+			}
 		}
 	}
 	if table.UseUniqueKey == nil {
