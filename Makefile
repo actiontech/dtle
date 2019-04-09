@@ -92,11 +92,11 @@ docker_rpm_with_coverage_report:
 	$(DOCKER) run -v $(shell pwd)/:/universe/src/github.com/actiontech/dtle --rm $(DOCKER_IMAGE) -c "cd /universe/src/github.com/actiontech/dtle; GOPATH=/universe make prepare build-coverage-report-tool coverage-report-pre-build package coverage-report-post-build"
 
 upload:
-	curl -T $(shell pwd)/dist/*.rpm -u admin:ftpadmin ftp://release-ftpd/actiontech-${PROJECT_NAME}/qa/${VERSION}/${PROJECT_NAME}-${VERSION}-qa.x86_64.rpm
-	curl -T $(shell pwd)/dist/*.rpm.md5 -u admin:ftpadmin ftp://release-ftpd/actiontech-${PROJECT_NAME}/qa/${VERSION}/${PROJECT_NAME}-${VERSION}-qa.x86_64.rpm.md5
+	curl --ftp-create-dirs -T $(shell pwd)/dist/*.rpm -u admin:ftpadmin ftp://release-ftpd/actiontech-${PROJECT_NAME}/qa/${VERSION}/${PROJECT_NAME}-${VERSION}-qa.x86_64.rpm
+	curl --ftp-create-dirs -T $(shell pwd)/dist/*.rpm.md5 -u admin:ftpadmin ftp://release-ftpd/actiontech-${PROJECT_NAME}/qa/${VERSION}/${PROJECT_NAME}-${VERSION}-qa.x86_64.rpm.md5
 
 upload_with_coverage_report:
-	curl -T $(shell pwd)/dist/*.rpm -u admin:ftpadmin ftp://release-ftpd/actiontech-${PROJECT_NAME}/qa/${VERSION}/${PROJECT_NAME}-${VERSION}-qa.coverage.x86_64.rpm
-	curl -T $(shell pwd)/dist/*.rpm.md5 -u admin:ftpadmin ftp://release-ftpd/actiontech-${PROJECT_NAME}/qa/${VERSION}/${PROJECT_NAME}-${VERSION}-qa.coverage.x86_64.rpm.md5
+	curl --ftp-create-dirs -T $(shell pwd)/dist/*.rpm -u admin:ftpadmin ftp://release-ftpd/actiontech-${PROJECT_NAME}/qa/${VERSION}/${PROJECT_NAME}-${VERSION}-qa.coverage.x86_64.rpm
+	curl --ftp-create-dirs -T $(shell pwd)/dist/*.rpm.md5 -u admin:ftpadmin ftp://release-ftpd/actiontech-${PROJECT_NAME}/qa/${VERSION}/${PROJECT_NAME}-${VERSION}-qa.coverage.x86_64.rpm.md5
 
 .PHONY: test-short vet fmt build default
