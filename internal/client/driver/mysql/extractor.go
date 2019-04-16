@@ -46,6 +46,9 @@ const (
 	DefaultConnectWaitSecond      = 10
 	DefaultConnectWait            = DefaultConnectWaitSecond * time.Second
 	ReconnectStreamerSleepSeconds = 5
+	SCHEMA                        = "schema"
+	TABLES                        = "tables"
+	TABLE                         = "table"
 )
 
 // Extractor is the main schema extract flow manager.
@@ -317,6 +320,7 @@ func (e *Extractor) inspectTables() (err error) {
 			}
 
 			if len(doDb.Tables) == 0 {
+				db.TableSchemaScope = SCHEMA
 				tbs, err := sql.ShowTables(e.db, doDb.TableSchema, e.mysqlContext.ExpandSyntaxSupport)
 				if err != nil {
 					return err
@@ -337,8 +341,10 @@ func (e *Extractor) inspectTables() (err error) {
 					var regex string
 					if doTb.TableRegex != "" && doTb.TableName == "" && doTb.TableRename != "" {
 						regex = doTb.TableRegex
+						db.TableSchemaScope = TABLES
 					} else if doTb.TableRegex == "" && doTb.TableName != "" {
 						regex = "^" + doTb.TableName + "$"
+						db.TableSchemaScope = TABLE
 					} else {
 						return fmt.Errorf("Table  configuration error. ")
 					}
@@ -378,7 +384,8 @@ func (e *Extractor) inspectTables() (err error) {
 		}
 		for _, dbName := range dbs {
 			ds := &config.DataSource{
-				TableSchema: dbName,
+				TableSchema:      dbName,
+				TableSchemaScope: SCHEMA,
 			}
 			if len(e.mysqlContext.ReplicateIgnoreDb) > 0 && e.ignoreDb(dbName) {
 				continue
