@@ -303,6 +303,7 @@ type DataSource struct {
 	TableSchema       string
 	TableSchemaRegex  string
 	TableSchemaRename string
+	TableSchemaScope  string
 	Tables            []*Table
 }
 

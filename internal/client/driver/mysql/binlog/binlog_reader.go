@@ -1373,7 +1373,7 @@ func (b *BinlogReader) matchDB(patternDBS []*config.DataSource, a string) bool {
 
 func (b *BinlogReader) matchTable(patternTBS []*config.DataSource, schemaName string, tableName string) bool {
 	for _, pdb := range patternTBS {
-		if len(pdb.Tables) == 0 && schemaName == pdb.TableSchema {
+		if pdb.TableSchemaScope == "schema" && schemaName == pdb.TableSchema {
 			return true
 		}
 		redb, okdb := b.ReMap[pdb.TableSchema]
