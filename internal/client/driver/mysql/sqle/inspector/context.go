@@ -185,7 +185,7 @@ func (ctx *Context) UpdateContext(node ast.Node, dbtype string) {
 		}
 	case *ast.CreateTableStmt:
 		schemaName := ctx.getSchemaName(s.Table)
-		tableName := s.Table.Name.L
+		tableName := s.Table.Name.O
 		if ctx.HasTable(schemaName, tableName) {
 			return
 		}
@@ -204,7 +204,7 @@ func (ctx *Context) UpdateContext(node ast.Node, dbtype string) {
 		if ctx.HasLoadSchemas() {
 			for _, table := range s.Tables {
 				schemaName := ctx.getSchemaName(table)
-				tableName := table.Name.L
+				tableName := table.Name.O
 				if ctx.HasTable(schemaName, tableName) {
 					ctx.DelTable(schemaName, tableName)
 				}
@@ -227,10 +227,10 @@ func (ctx *Context) UpdateContext(node ast.Node, dbtype string) {
 			info.MergedTable, _ = mergeAlterToTable(oldTable, s)
 			info.AlterTables = append(info.AlterTables, s)
 			// rename table
-			if s.Table.Name.L != info.MergedTable.Table.Name.L {
+			if s.Table.Name.O != info.MergedTable.Table.Name.O {
 				schemaName := ctx.getSchemaName(s.Table)
-				ctx.DelTable(schemaName, s.Table.Name.L)
-				ctx.AddTable(schemaName, info.MergedTable.Table.Name.L, info)
+				ctx.DelTable(schemaName, s.Table.Name.O)
+				ctx.AddTable(schemaName, info.MergedTable.Table.Name.O, info)
 			}
 		}
 	default:
