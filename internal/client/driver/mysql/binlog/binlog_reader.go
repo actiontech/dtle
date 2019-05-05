@@ -226,7 +226,7 @@ func (b *BinlogReader) addTableToTableMap(tableMap map[string]*config.TableConte
 		return err
 	}
 
-	tableMap[table.TableName] = config.NewTableContext(table, whereCtx)
+	tableMap[strings.ToLower(table.TableName)] = config.NewTableContext(table, whereCtx)
 	return nil
 }
 
@@ -425,7 +425,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 						b.context.LoadTables(ddlInfo.tables[i].Schema, nil)
 					case *ast.CreateTableStmt:
 						b.logger.Debugf("mysql.reader: ddl is create table")
-						err := b.updateTableMeta(table, realSchema, tableName)
+						err := b.updateTableMeta(table, realSchema, realAst.Table.Name.O)
 						if err != nil {
 							return err
 						}
@@ -447,7 +447,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 							switch realAst.Specs[iSpec].Tp {
 							case ast.AlterTableRenameTable:
 								fromTable = nil
-								tableNameX = realAst.Specs[iSpec].NewTable.Name.String()
+								tableNameX = realAst.Specs[iSpec].NewTable.Name.O
 							default:
 								// do nothing
 							}
@@ -527,7 +527,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 			dml := ToEventDML(ev.Header.EventType)
 			skip, table := b.skipRowEvent(rowsEvent, dml)
 			if skip {
-				//b.logger.Debugf("mysql.reader: skip rowsEvent %s.%s %v", rowsEvent.Table.Schema, rowsEvent.Table.Table, b.currentCoordinates.GNO)
+				b.logger.Debugf("mysql.reader: skip rowsEvent %s.%s %v", rowsEvent.Table.Schema, rowsEvent.Table.Table, b.currentCoordinates.GNO)
 				return nil
 			}
 
