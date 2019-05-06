@@ -226,7 +226,7 @@ func (b *BinlogReader) addTableToTableMap(tableMap map[string]*config.TableConte
 		return err
 	}
 
-	tableMap[strings.ToLower(table.TableName)] = config.NewTableContext(table, whereCtx)
+	tableMap[table.TableName] = config.NewTableContext(table, whereCtx)
 	return nil
 }
 
@@ -425,7 +425,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 						b.context.LoadTables(ddlInfo.tables[i].Schema, nil)
 					case *ast.CreateTableStmt:
 						b.logger.Debugf("mysql.reader: ddl is create table")
-						err := b.updateTableMeta(table, realSchema, realAst.Table.Name.O)
+						err := b.updateTableMeta(table, realSchema, tableName)
 						if err != nil {
 							return err
 						}
@@ -1112,19 +1112,19 @@ func resolveDDLSQL(sql string) (result parseDDLResult, err error) {
 
 	switch v := stmt.(type) {
 	case *ast.CreateDatabaseStmt:
-		appendSql(sql, strings.ToLower(v.Name), "")
+		appendSql(sql, v.Name, "")
 	case *ast.DropDatabaseStmt:
-		appendSql(sql, strings.ToLower(v.Name), "")
+		appendSql(sql, v.Name, "")
 	case *ast.CreateIndexStmt:
-		appendSql(sql, v.Table.Schema.L, v.Table.Name.L)
+		appendSql(sql, v.Table.Schema.O, v.Table.Name.O)
 	case *ast.DropIndexStmt:
-		appendSql(sql, v.Table.Schema.L, v.Table.Name.L)
+		appendSql(sql, v.Table.Schema.O, v.Table.Name.O)
 	case *ast.TruncateTableStmt:
-		appendSql(sql, v.Table.Schema.L, v.Table.Name.L)
+		appendSql(sql, v.Table.Schema.O, v.Table.Name.O)
 	case *ast.CreateTableStmt:
-		appendSql(sql, v.Table.Schema.L, v.Table.Name.L)
+		appendSql(sql, v.Table.Schema.O, v.Table.Name.O)
 	case *ast.AlterTableStmt:
-		appendSql(sql, v.Table.Schema.L, v.Table.Name.L)
+		appendSql(sql, v.Table.Schema.O, v.Table.Name.O)
 	case *ast.DropTableStmt:
 		var ex string
 		if v.IfExists {
@@ -1135,8 +1135,8 @@ func resolveDDLSQL(sql string) (result parseDDLResult, err error) {
 			if t.Schema.O != "" {
 				db = fmt.Sprintf("%s.", t.Schema.O)
 			}
-			s := fmt.Sprintf("drop table %s %s`%s`", ex, db, t.Name.L)
-			appendSql(s, t.Schema.L, t.Name.L)
+			s := fmt.Sprintf("drop table %s %s`%s`", ex, db, t.Name.O)
+			appendSql(s, t.Schema.O, t.Name.O)
 		}
 	case *ast.CreateUserStmt, *ast.GrantStmt:
 		appendSql(sql, "mysql", "user")
@@ -1280,7 +1280,8 @@ func skipMysqlSchemaEvent(tableLower string) bool {
 }
 
 func (b *BinlogReader) skipRowEvent(rowsEvent *replication.RowsEvent, dml EventDML) (bool, *config.TableContext) {
-	tableLower := strings.ToLower(string(rowsEvent.Table.Table))
+	tableOrigin := string(rowsEvent.Table.Table)
+	tableLower := strings.ToLower(tableOrigin)
 	switch strings.ToLower(string(rowsEvent.Table.Schema)) {
 	case g.DtleSchemaName:
 		if strings.ToLower(string(rowsEvent.Table.Table)) == g.GtidExecutedTableV2 ||
@@ -1326,7 +1327,7 @@ func (b *BinlogReader) skipRowEvent(rowsEvent *replication.RowsEvent, dml EventD
 						return false, nil // TODO not skipping but TableContext
 					}
 					for tableName, tableCtx := range tableMap {
-						if b.matchString(tableName, tableLower) {
+						if b.matchString(tableName, tableOrigin) {
 							return false, tableCtx
 						}
 					}
