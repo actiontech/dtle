@@ -770,66 +770,64 @@ OUTER:
 
 // initiateStreaming begins treaming of binary log events and registers listeners for such events
 func (a *Applier) initiateStreaming() error {
-	if a.mysqlContext.Gtid == "" {
-		a.mysqlContext.MarkRowCopyStartTime()
-		a.logger.Debugf("mysql.applier: nats subscribe")
-		_, err := a.natsConn.Subscribe(fmt.Sprintf("%s_full", a.subject), func(m *gonats.Msg) {
-			a.logger.Debugf("mysql.applier: full. recv a msg. copyRowsQueue: %v", len(a.copyRowsQueue))
+	a.mysqlContext.MarkRowCopyStartTime()
+	a.logger.Debugf("mysql.applier: nats subscribe")
+	_, err := a.natsConn.Subscribe(fmt.Sprintf("%s_full", a.subject), func(m *gonats.Msg) {
+		a.logger.Debugf("mysql.applier: full. recv a msg. copyRowsQueue: %v", len(a.copyRowsQueue))
 
-			dumpData := &DumpEntry{}
-			if err := Decode(m.Data, dumpData); err != nil {
-				a.onError(TaskStateDead, err)
-			}
+		dumpData := &DumpEntry{}
+		if err := Decode(m.Data, dumpData); err != nil {
+			a.onError(TaskStateDead, err)
+		}
 
-			timer := time.NewTimer(DefaultConnectWait / 2)
-			atomic.AddInt64(&a.nDumpEntry, 1) // this must be increased before enqueuing
-			select {
-			case a.copyRowsQueue <- dumpData:
-				a.logger.Debugf("mysql.applier: full. enqueue")
-				timer.Stop()
-				a.mysqlContext.Stage = models.StageSlaveWaitingForWorkersToProcessQueue
-				if err := a.natsConn.Publish(m.Reply, nil); err != nil {
-					a.onError(TaskStateDead, err)
-				}
-				a.logger.Debugf("mysql.applier. full. after publish nats reply")
-				atomic.AddInt64(&a.mysqlContext.RowsEstimate, dumpData.TotalCount)
-			case <-timer.C:
-				atomic.AddInt64(&a.nDumpEntry, -1)
-
-				a.logger.Debugf("mysql.applier. full. discarding entries")
-				a.mysqlContext.Stage = models.StageSlaveWaitingForWorkersToProcessQueue
-			}
-		})
-		/*if err := sub.SetPendingLimits(a.mysqlContext.MsgsLimit, a.mysqlContext.BytesLimit); err != nil {
-			return err
-		}*/
-
-		_, err = a.natsConn.Subscribe(fmt.Sprintf("%s_full_complete", a.subject), func(m *gonats.Msg) {
-			dumpData := &dumpStatResult{}
-			if err := Decode(m.Data, dumpData); err != nil {
-				a.onError(TaskStateDead, err)
-			}
-			a.currentCoordinates.RetrievedGtidSet = dumpData.Gtid
+		timer := time.NewTimer(DefaultConnectWait / 2)
+		atomic.AddInt64(&a.nDumpEntry, 1) // this must be increased before enqueuing
+		select {
+		case a.copyRowsQueue <- dumpData:
+			a.logger.Debugf("mysql.applier: full. enqueue")
+			timer.Stop()
 			a.mysqlContext.Stage = models.StageSlaveWaitingForWorkersToProcessQueue
-
-			for atomic.LoadInt64(&a.nDumpEntry) != 0 {
-				a.logger.Debugf("mysql.applier. nDumpEntry is not zero, waiting. %v", a.nDumpEntry)
-				time.Sleep(1 * time.Second)
-				if a.shutdown {
-					return
-				}
-			}
-
-			a.logger.Debugf("mysql.applier. ack full_complete")
 			if err := a.natsConn.Publish(m.Reply, nil); err != nil {
 				a.onError(TaskStateDead, err)
 			}
-			atomic.AddInt64(&a.mysqlContext.TotalRowsCopied, dumpData.TotalCount)
-			atomic.StoreInt64(&a.rowCopyCompleteFlag, 1)
-		})
-		if err != nil {
-			return err
+			a.logger.Debugf("mysql.applier. full. after publish nats reply")
+			atomic.AddInt64(&a.mysqlContext.RowsEstimate, dumpData.TotalCount)
+		case <-timer.C:
+			atomic.AddInt64(&a.nDumpEntry, -1)
+
+			a.logger.Debugf("mysql.applier. full. discarding entries")
+			a.mysqlContext.Stage = models.StageSlaveWaitingForWorkersToProcessQueue
 		}
+	})
+	/*if err := sub.SetPendingLimits(a.mysqlContext.MsgsLimit, a.mysqlContext.BytesLimit); err != nil {
+		return err
+	}*/
+
+	_, err = a.natsConn.Subscribe(fmt.Sprintf("%s_full_complete", a.subject), func(m *gonats.Msg) {
+		dumpData := &dumpStatResult{}
+		if err := Decode(m.Data, dumpData); err != nil {
+			a.onError(TaskStateDead, err)
+		}
+		a.currentCoordinates.RetrievedGtidSet = dumpData.Gtid
+		a.mysqlContext.Stage = models.StageSlaveWaitingForWorkersToProcessQueue
+
+		for atomic.LoadInt64(&a.nDumpEntry) != 0 {
+			a.logger.Debugf("mysql.applier. nDumpEntry is not zero, waiting. %v", a.nDumpEntry)
+			time.Sleep(1 * time.Second)
+			if a.shutdown {
+				return
+			}
+		}
+
+		a.logger.Debugf("mysql.applier. ack full_complete")
+		if err := a.natsConn.Publish(m.Reply, nil); err != nil {
+			a.onError(TaskStateDead, err)
+		}
+		atomic.AddInt64(&a.mysqlContext.TotalRowsCopied, dumpData.TotalCount)
+		atomic.StoreInt64(&a.rowCopyCompleteFlag, 1)
+	})
+	if err != nil {
+		return err
 	}
 
 	if a.mysqlContext.ApproveHeterogeneous {
