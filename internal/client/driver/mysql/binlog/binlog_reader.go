@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/actiontech/dtle/internal/g"
-
 	//"encoding/hex"
 	"fmt"
 	"regexp"
@@ -24,10 +23,10 @@ import (
 
 	"github.com/issuj/gofaster/base64"
 	"github.com/pingcap/parser"
-	ast "github.com/pingcap/parser/ast"
+	"github.com/pingcap/parser/ast"
 	_ "github.com/pingcap/tidb/types/parser_driver"
 
-	uuid "github.com/satori/go.uuid"
+	"github.com/satori/go.uuid"
 	gomysql "github.com/siddontang/go-mysql/mysql"
 	"github.com/siddontang/go-mysql/replication"
 	"golang.org/x/net/context"
@@ -705,7 +704,6 @@ func (b *BinlogReader) DataStreamEvents(entriesChannel chan<- *BinlogEntry) erro
 		if b.shutdown {
 			break
 		}
-
 		ev, err := b.binlogStreamer.GetEvent(context.Background())
 		if err != nil {
 			b.logger.Errorf("mysql.reader error GetEvent. err: %v", err)

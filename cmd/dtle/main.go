@@ -13,8 +13,12 @@ import (
 	"os"
 
 	"github.com/mitchellh/cli"
+	"github.com/opentracing/opentracing-go"
+	"github.com/uber/jaeger-client-go/config"
 
 	_ "net/http/pprof"
+
+	"time"
 
 	"github.com/actiontech/dtle/agent"
 	"github.com/actiontech/dtle/cmd/dtle/command"
@@ -28,6 +32,26 @@ var (
 )
 
 func main() {
+	cfg := config.Configuration{
+		Sampler: &config.SamplerConfig{
+			Type:  "const",
+			Param: 1,
+		},
+		ServiceName: "dtle_server",
+		Reporter: &config.ReporterConfig{
+			LogSpans:            true,
+			BufferFlushInterval: 1 * time.Second,
+			LocalAgentHostPort:  "10.186.63.111:5775", // 数据上报地址
+		},
+	}
+
+	tracer, closer, err := cfg.NewTracer()
+	if err != nil {
+		log.Panic(err)
+	}
+	opentracing.SetGlobalTracer(tracer)
+	defer closer.Close()
+
 	os.Exit(realMain())
 }
 

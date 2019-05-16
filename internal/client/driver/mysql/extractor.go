@@ -13,6 +13,8 @@ import (
 
 	"github.com/actiontech/dtle/internal/g"
 	"github.com/pkg/errors"
+	"github.com/opentracing/opentracing-go"
+	"github.com/opentracing/opentracing-go/ext"
 
 	//"math"
 	"bytes"
@@ -26,6 +28,7 @@ import (
 
 	"github.com/golang/snappy"
 	gonats "github.com/nats-io/go-nats"
+	"github.com/not.go"
 	gomysql "github.com/siddontang/go-mysql/mysql"
 
 	"os"
@@ -33,6 +36,8 @@ import (
 	"regexp"
 
 	"net"
+
+	"context"
 
 	"github.com/actiontech/dtle/internal/client/driver/mysql/base"
 	"github.com/actiontech/dtle/internal/client/driver/mysql/binlog"
@@ -225,6 +230,10 @@ func (e *Extractor) Run() {
 	}
 
 	if fullCopy {
+		var ctx context.Context
+		span := opentracing.GlobalTracer().StartSpan("span_full_complete")
+		span.Finish()
+		ctx = opentracing.ContextWithSpan(ctx, span)
 		e.mysqlContext.MarkRowCopyStartTime()
 		if err := e.mysqlDump(); err != nil {
 			e.onError(TaskStateDead, err)
@@ -234,7 +243,7 @@ func (e *Extractor) Run() {
 		if err != nil {
 			e.onError(TaskStateDead, err)
 		}
-		if err := e.publish(fmt.Sprintf("%s_full_complete", e.subject), "", dumpMsg); err != nil {
+		if err := e.publish(ctx, fmt.Sprintf("%s_full_complete", e.subject), "", dumpMsg); err != nil {
 			e.onError(TaskStateDead, err)
 		}
 	} else {
@@ -794,6 +803,11 @@ func Encode(v interface{}) ([]byte, error) {
 // StreamEvents will begin streaming events. It will be blocking, so should be
 // executed by a goroutine
 func (e *Extractor) StreamEvents() error {
+	var ctx context.Context
+	//tracer := opentracing.GlobalTracer()
+	span := opentracing.GlobalTracer().StartSpan("span_incr_hete")
+	defer span.Finish()
+	ctx = opentracing.ContextWithSpan(ctx, span)
 	if e.mysqlContext.ApproveHeterogeneous {
 		go func() {
 			defer e.logger.Debugf("extractor. StreamEvents goroutine exited")
@@ -812,7 +826,7 @@ func (e *Extractor) StreamEvents() error {
 					return err
 				}
 				e.logger.Debugf("mysql.extractor: sending gno: %v, n: %v", gno, len(entries.Entries))
-				if err = e.publish(fmt.Sprintf("%s_incr_hete", e.subject), "", txMsg); err != nil {
+				if err = e.publish(ctx, fmt.Sprintf("%s_incr_hete", e.subject), "", txMsg); err != nil {
 					return err
 				}
 				e.logger.Debugf("mysql.extractor: send acked gno: %v, n: %v", gno, len(entries.Entries))
@@ -978,7 +992,7 @@ func (e *Extractor) StreamEvents() error {
 							if len(txMsg) > e.maxPayload {
 								e.onError(TaskStateDead, gonats.ErrMaxPayload)
 							}
-							if err = e.publish(subject, fmt.Sprintf("%s:1-%d", binlogTx.SID, binlogTx.GNO), txMsg); err != nil {
+							if err = e.publish(ctx, subject, fmt.Sprintf("%s:1-%d", binlogTx.SID, binlogTx.GNO), txMsg); err != nil {
 								e.onError(TaskStateDead, err)
 								break L
 							}
@@ -999,7 +1013,7 @@ func (e *Extractor) StreamEvents() error {
 							if len(txMsg) > e.maxPayload {
 								e.onError(TaskStateDead, gonats.ErrMaxPayload)
 							}
-							if err = e.publish(subject,
+							if err = e.publish(ctx, subject,
 								fmt.Sprintf("%s:1-%d",
 									txArray[len(txArray)-1].SID,
 									txArray[len(txArray)-1].GNO),
@@ -1033,10 +1047,32 @@ func (e *Extractor) StreamEvents() error {
 
 // retryOperation attempts up to `count` attempts at running given function,
 // exiting as soon as it returns with non-error.
-func (e *Extractor) publish(subject, gtid string, txMsg []byte) (err error) {
+func (e *Extractor) publish(ctx context.Context, subject, gtid string, txMsg []byte) (err error) {
+	tracer := opentracing.GlobalTracer()
+	var t not.TraceMsg
+	var spanctx opentracing.SpanContext
+	if ctx != nil {
+		spanctx = opentracing.SpanFromContext(ctx).Context()
+	} else {
+		parent := tracer.StartSpan("no parent ", ext.SpanKindProducer)
+		defer parent.Finish()
+		spanctx = parent.Context()
+	}
+
+	span := tracer.StartSpan("Nast  Publish  Message", ext.SpanKindProducer, opentracing.ChildOf(spanctx))
+
+	ext.MessageBusDestination.Set(span, subject)
+
+	// Inject span context into our traceMsg.
+	if err := tracer.Inject(span.Context(), opentracing.Binary, &t); err != nil {
+		e.logger.Debugf("mysql.extractor: start tracer fail, got %v", err)
+	}
+	// Add the payload.
+	t.Write(txMsg)
+	defer span.Finish()
 	for {
 		e.logger.Debugf("mysql.extractor: publish. gtid: %v, msg_len: %v", gtid, len(txMsg))
-		_, err = e.natsConn.Request(subject, txMsg, DefaultConnectWait)
+		_, err = e.natsConn.Request(subject, t.Bytes(), DefaultConnectWait)
 		if err == nil {
 			if gtid != "" {
 				e.mysqlContext.Gtid = gtid
@@ -1390,13 +1426,16 @@ func (e *Extractor) mysqlDump() error {
 	return nil
 }
 func (e *Extractor) encodeDumpEntry(entry *DumpEntry) error {
-	bs, err := entry.Marshal(nil)
+	var ctx context.Context
+	//tracer := opentracing.GlobalTracer()
+	span := opentracing.GlobalTracer().StartSpan("span_full")
+	span.Finish()
+	ctx = opentracing.ContextWithSpan(ctx, span)
+	txMsg, err := Encode(entry)
 	if err != nil {
 		return err
 	}
-	txMsg := snappy.Encode(nil, bs)
-
-	if err := e.publish(fmt.Sprintf("%s_full", e.subject), "", txMsg); err != nil {
+	if err := e.publish(ctx, fmt.Sprintf("%s_full", e.subject), "", txMsg); err != nil {
 		return err
 	}
 	e.mysqlContext.Stage = models.StageSendingData

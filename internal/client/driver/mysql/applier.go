@@ -12,6 +12,9 @@ import (
 	"fmt"
 
 	"github.com/actiontech/dtle/internal/g"
+	"github.com/not.go"
+	"github.com/opentracing/opentracing-go"
+	"github.com/opentracing/opentracing-go/ext"
 
 	//"math"
 	"bytes"
@@ -241,10 +244,6 @@ type Applier struct {
 	nDumpEntry     int64
 
 	stubFullApplyDelay bool
-
-	// TODO we might need to save these from DumpEntry for reconnecting.
-	//SystemVariablesStatement string
-	//SqlMode                  string
 }
 
 func NewApplier(subject, tp string, cfg *config.MySQLDriverConfig, logger *log.Logger) (*Applier, error) {
@@ -496,23 +495,6 @@ func (a *Applier) initNatSubClient() (err error) {
 	return nil
 }
 
-func DecodeDumpEntry(data []byte) (entry *DumpEntry, err error) {
-	msg, err := snappy.Decode(nil, data)
-	if err != nil {
-		return nil, err
-	}
-
-	entry = &DumpEntry{}
-	n, err := entry.Unmarshal(msg)
-	if err != nil {
-		return nil, err
-	}
-	if n != uint64(len(msg)) {
-		return nil, fmt.Errorf("DumpEntry.Unmarshal: not all consumed. data: %v, consumed: %v",
-			len(msg), n)
-	}
-	return entry, nil
-}
 // Decode
 func Decode(data []byte, vPtr interface{}) (err error) {
 	msg, err := snappy.Decode(nil, data)
@@ -821,13 +803,23 @@ func (a *Applier) initiateStreaming() error {
 		return err
 	}*/
 
-	_, err = a.natsConn.Subscribe(fmt.Sprintf("%s_full_complete", a.subject), func(m *gonats.Msg) {
-		dumpData := &dumpStatResult{}
-		if err := Decode(m.Data, dumpData); err != nil {
-			a.onError(TaskStateDead, err)
-		}
-		a.currentCoordinates.RetrievedGtidSet = dumpData.Gtid
-		a.mysqlContext.Stage = models.StageSlaveWaitingForWorkersToProcessQueue
+		_, err = a.natsConn.Subscribe(fmt.Sprintf("%s_full_complete", a.subject), func(m *gonats.Msg) {
+			dumpData := &dumpStatResult{}
+			t := not.NewTraceMsg(m)
+			// Extract the span context from the request message.
+			sc, err := tracer.Extract(opentracing.Binary, t)
+			if err != nil {
+				a.logger.Debugf("applier:get data")
+			}
+			// Setup a span referring to the span context of the incoming NATS message.
+			replySpan := tracer.StartSpan("Service Responder", ext.SpanKindRPCServer, ext.RPCServerOption(sc))
+			ext.MessageBusDestination.Set(replySpan, m.Subject)
+			defer replySpan.Finish()
+			if err := Decode(t.Bytes(), dumpData); err != nil {
+				a.onError(TaskStateDead, err)
+			}
+			a.currentCoordinates.RetrievedGtidSet = dumpData.Gtid
+			a.mysqlContext.Stage = models.StageSlaveWaitingForWorkersToProcessQueue
 
 		for atomic.LoadInt64(&a.nDumpEntry) != 0 {
 			a.logger.Debugf("mysql.applier. nDumpEntry is not zero, waiting. %v", a.nDumpEntry)
@@ -851,7 +843,17 @@ func (a *Applier) initiateStreaming() error {
 	if a.mysqlContext.ApproveHeterogeneous {
 		_, err := a.natsConn.Subscribe(fmt.Sprintf("%s_incr_hete", a.subject), func(m *gonats.Msg) {
 			var binlogEntries binlog.BinlogEntries
-			if err := Decode(m.Data, &binlogEntries); err != nil {
+			t := not.NewTraceMsg(m)
+			// Extract the span context from the request message.
+			spanContext, err := tracer.Extract(opentracing.Binary, t)
+			if err != nil {
+				a.logger.Debugf("applier:get data")
+			}
+			// Setup a span referring to the span context of the incoming NATS message.
+			replySpan := tracer.StartSpan("nast Subscribe ", ext.SpanKindRPCServer, ext.RPCServerOption(spanContext))
+			ext.MessageBusDestination.Set(replySpan, m.Subject)
+			defer replySpan.Finish()
+			if err := Decode(t.Bytes(), &binlogEntries); err != nil {
 				a.onError(TaskStateDead, err)
 			}
 
@@ -895,7 +897,17 @@ func (a *Applier) initiateStreaming() error {
 	} else {
 		_, err := a.natsConn.Subscribe(fmt.Sprintf("%s_incr", a.subject), func(m *gonats.Msg) {
 			var binlogTx []*binlog.BinlogTx
-			if err := Decode(m.Data, &binlogTx); err != nil {
+			t := not.NewTraceMsg(m)
+			// Extract the span context from the request message.
+			sc, err := tracer.Extract(opentracing.Binary, t)
+			if err != nil {
+				a.logger.Debugf("applier:get data")
+			}
+			// Setup a span referring to the span context of the incoming NATS message.
+			replySpan := tracer.StartSpan(a.subject, ext.SpanKindRPCServer, ext.RPCServerOption(sc))
+			ext.MessageBusDestination.Set(replySpan, m.Subject)
+			defer replySpan.Finish()
+			if err := Decode(t.Bytes(), &binlogTx); err != nil {
 				a.onError(TaskStateDead, err)
 			}
 			for _, tx := range binlogTx {
