@@ -216,6 +216,9 @@ func (a *MySQLDriverConfig) SetDefault() *MySQLDriverConfig {
 	// TODO temporarily (or permanently) disable homogeneous replication, hetero only.
 	result.ApproveHeterogeneous = true
 
+	if result.ConnectionConfig == nil {
+		result.ConnectionConfig = &umconf.ConnectionConfig{}
+	}
 	if "" == result.ConnectionConfig.Charset {
 		result.ConnectionConfig.Charset = "utf8mb4"
 	}
