@@ -231,7 +231,7 @@ func (e *Extractor) Run() {
 	if fullCopy {
 		var ctx context.Context
 		span := opentracing.GlobalTracer().StartSpan("span_full_complete")
-		span.Finish()
+		defer span.Finish()
 		ctx = opentracing.ContextWithSpan(ctx, span)
 		e.mysqlContext.MarkRowCopyStartTime()
 		if err := e.mysqlDump(); err != nil {
@@ -805,12 +805,11 @@ func (e *Extractor) StreamEvents() error {
 	var ctx context.Context
 	//tracer := opentracing.GlobalTracer()
 	span := opentracing.GlobalTracer().StartSpan("span_incr_hete")
-	defer span.Finish()
 	ctx = opentracing.ContextWithSpan(ctx, span)
+	span.Finish()
 	if e.mysqlContext.ApproveHeterogeneous {
 		go func() {
 			defer e.logger.Debugf("extractor. StreamEvents goroutine exited")
-
 			entries := binlog.BinlogEntries{}
 			entriesSize := 0
 
@@ -871,7 +870,7 @@ func (e *Extractor) StreamEvents() error {
 					e.logger.Debugf("mysql.extractor: err is  : %v", err != nil)
 					if entriesSize >= e.mysqlContext.GroupMaxSize ||
 						int64(len(entries.Entries)) == e.mysqlContext.ReplChanBufferSize {
-						e.logger.Debugf("extractor. incr. send by GroupLimit. entriesSize: %v", entriesSize)
+						e.logger.Debugf("extractor. incr. send by GroupLimit. entriesSize: %v , groupMaxSize: %v,Entries.len: %v", entriesSize, e.mysqlContext.GroupMaxSize, len(entries.Entries))
 						err = sendEntries()
 						if !timer.Stop() {
 							<-timer.C
@@ -881,7 +880,7 @@ func (e *Extractor) StreamEvents() error {
 				case <-timer.C:
 					nEntries := len(entries.Entries)
 					if nEntries > 0 {
-						e.logger.Debugf("extractor. incr. send by timeout. entriesSize: %v", entriesSize)
+						e.logger.Debugf("extractor. incr. send by timeout. entriesSize: %v,timeout time: %v", entriesSize, e.mysqlContext.GroupTimeout)
 						err = sendEntries()
 					}
 					timer.Reset(groupTimeoutDuration)
@@ -1428,7 +1427,7 @@ func (e *Extractor) encodeDumpEntry(entry *DumpEntry) error {
 	var ctx context.Context
 	//tracer := opentracing.GlobalTracer()
 	span := opentracing.GlobalTracer().StartSpan("span_full")
-	span.Finish()
+	defer span.Finish()
 	ctx = opentracing.ContextWithSpan(ctx, span)
 	bs, err := entry.Marshal(nil)
 	if err != nil {

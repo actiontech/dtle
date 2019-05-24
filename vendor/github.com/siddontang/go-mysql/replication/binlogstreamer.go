@@ -36,7 +36,7 @@ func (s *BinlogStreamer) GetEvent(ctx context.Context) (*BinlogEvent, error) {
 	}
 }
 
-// DumpEvents dumps all left events
+// DumpEvents dumps all left eventsmax_payload
 func (s *BinlogStreamer) DumpEvents() []*BinlogEvent {
 	count := len(s.ch)
 	events := make([]*BinlogEvent, 0, count)
