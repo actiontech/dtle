@@ -28,6 +28,7 @@ import (
 
 	"github.com/golang/snappy"
 	gonats "github.com/nats-io/go-nats"
+	"github.com/not.go"
 	gomysql "github.com/siddontang/go-mysql/mysql"
 
 	"os"
@@ -804,15 +805,12 @@ func Encode(v interface{}) ([]byte, error) {
 func (e *Extractor) StreamEvents() error {
 	var ctx context.Context
 	//tracer := opentracing.GlobalTracer()
-	span := opentracing.GlobalTracer().StartSpan("span_incr_hete")
-	ctx = opentracing.ContextWithSpan(ctx, span)
-	span.Finish()
+
 	if e.mysqlContext.ApproveHeterogeneous {
 		go func() {
 			defer e.logger.Debugf("extractor. StreamEvents goroutine exited")
 			entries := binlog.BinlogEntries{}
 			entriesSize := 0
-
 			sendEntries := func() error {
 				var gno int64 = 0
 				if len(entries.Entries) > 0 {
@@ -847,6 +845,12 @@ func (e *Extractor) StreamEvents() error {
 				var addrs []net.Addr
 				select {
 				case binlogEntry := <-e.dataChannel:
+					spanContext := binlogEntry.SpanContext
+					span := opentracing.GlobalTracer().StartSpan("span_incr_hete", opentracing.ChildOf(spanContext))
+					span.SetTag("time", time.Now().Unix())
+					ctx = opentracing.ContextWithSpan(ctx, span)
+					//span.SetTag("timetag", time.Now().Unix())
+					binlogEntry.SpanContext = nil
 					entries.Entries = append(entries.Entries, binlogEntry)
 					entriesSize += binlogEntry.OriginalSize
 					if int64(len(entries.Entries)) <= 1 {
@@ -877,6 +881,7 @@ func (e *Extractor) StreamEvents() error {
 						}
 						timer.Reset(groupTimeoutDuration)
 					}
+					span.Finish()
 				case <-timer.C:
 					nEntries := len(entries.Entries)
 					if nEntries > 0 {

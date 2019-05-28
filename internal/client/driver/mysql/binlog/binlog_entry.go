@@ -10,6 +10,7 @@ import (
 	"fmt"
 
 	"github.com/actiontech/dtle/internal/client/driver/mysql/base"
+	opentracing "github.com/opentracing/opentracing-go"
 )
 
 type BinlogEntries struct {
@@ -20,9 +21,9 @@ type BinlogEntries struct {
 type BinlogEntry struct {
 	hasBeginQuery bool
 	Coordinates   base.BinlogCoordinateTx
-
-	Events       []DataEvent
-	OriginalSize int // size of binlog entry
+	SpanContext   opentracing.SpanContext
+	Events        []DataEvent
+	OriginalSize  int // size of binlog entry
 }
 
 // NewBinlogEntry creates an empty, ready to go BinlogEntry object
