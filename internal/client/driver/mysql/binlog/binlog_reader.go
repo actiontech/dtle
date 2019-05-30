@@ -621,7 +621,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 						}
 					}
 				}
-				if table.Table.TableRename != "" {
+				if table != nil && table.Table.TableRename != "" {
 					if dmlEvent.Table != nil {
 						dmlEvent.Table.TableName = table.Table.TableRename
 					}
