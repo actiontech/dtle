@@ -623,7 +623,8 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 				}
 				if table != nil && table.Table.TableRename != "" {
 					if dmlEvent.Table != nil {
-						dmlEvent.Table.TableName = table.Table.TableRename
+						dmlEvent.Table.TableName = table.Table.TableName
+						dmlEvent.Table.TableRename = table.Table.TableRename
 					}
 					dmlEvent.TableName = table.Table.TableRename
 					b.logger.Debugf("mysql.reader. dml  table mapping : from %s to %s", dmlEvent.TableName, table.Table.TableRename)
