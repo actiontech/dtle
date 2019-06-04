@@ -1290,8 +1290,8 @@ func (e *Extractor) mysqlDump() error {
 			e.dumpers = append(e.dumpers, d)
 			// Scan the rows in the table ...
 			for entry := range d.resultsChannel {
-				if entry.err != nil {
-					e.onError(TaskStateDead, entry.err)
+				if entry.Err != nil {
+					e.onError(TaskStateDead, entry.Err)
 				} else {
 					if e.needToSendTabelDef() {
 						entry.Table = d.table

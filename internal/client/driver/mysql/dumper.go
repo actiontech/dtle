@@ -7,7 +7,6 @@
 package mysql
 
 import (
-	"bytes"
 	"fmt"
 	"os"
 	"strings"
@@ -90,8 +89,7 @@ type DumpEntry struct {
 	ValuesX    [][]*interface{}
 	TotalCount int64
 	RowsCount  int64
-	colBuffer  bytes.Buffer
-	err        error
+	Err        error
 	Table      *config.Table
 }
 
@@ -195,7 +193,7 @@ func (d *dumper) getChunkData() (nRows int64, err error) {
 	// TODO use PS
 	// TODO escape schema/table/column name once and save
 	defer func() {
-		entry.err = err
+		entry.Err = err
 		if err == nil && entry.RowsCount == 0 {
 			return
 		}
