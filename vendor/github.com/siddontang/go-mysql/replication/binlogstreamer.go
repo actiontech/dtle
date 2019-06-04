@@ -3,7 +3,10 @@ package replication
 import (
 	"context"
 
+	"time"
+
 	"github.com/juju/errors"
+	"github.com/opentracing/opentracing-go"
 	"github.com/siddontang/go-log/log"
 )
 
@@ -28,6 +31,10 @@ func (s *BinlogStreamer) GetEvent(ctx context.Context) (*BinlogEvent, error) {
 
 	select {
 	case c := <-s.ch:
+		span := opentracing.StartSpan("send event from go mysql", opentracing.ChildOf(c.SpanContest))
+		span.SetTag("send event from go mysql   time ", time.Now().Unix())
+		c.SpanContest = span.Context()
+		span.Finish()
 		return c, nil
 	case s.err = <-s.ech:
 		return nil, s.err
