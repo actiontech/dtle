@@ -76,7 +76,7 @@ type dumpStatResult struct {
 	TotalCount int64
 }
 
-type DumpEntry struct {
+type DumpEntryOrig struct {
 	SystemVariablesStatement string
 	SqlMode                  string
 	DbSQL                    string
@@ -193,7 +193,9 @@ func (d *dumper) getChunkData() (nRows int64, err error) {
 	// TODO use PS
 	// TODO escape schema/table/column name once and save
 	defer func() {
-		entry.Err = err
+		if err != nil {
+			entry.Err = err.Error()
+		}
 		if err == nil && entry.RowsCount == 0 {
 			return
 		}
@@ -259,10 +261,8 @@ func (d *dumper) getChunkData() (nRows int64, err error) {
 
 	scanArgs := make([]interface{}, len(columns)) // tmp use, for casting `values` to `[]interface{}`
 
-	interfacePtrWithNil := new(interface{})
-
 	for rows.Next() {
-		rowValuesRaw := make([]*interface{}, len(columns))
+		rowValuesRaw := make([]*[]byte, len(columns))
 		for i := range rowValuesRaw {
 			scanArgs[i] = &rowValuesRaw[i]
 		}
@@ -272,11 +272,6 @@ func (d *dumper) getChunkData() (nRows int64, err error) {
 			return 0, err
 		}
 
-		for i := range rowValuesRaw {
-			if rowValuesRaw[i] == nil {
-				rowValuesRaw[i] = interfacePtrWithNil
-			}
-		}
 		entry.ValuesX = append(entry.ValuesX, rowValuesRaw)
 
 		entry.incrementCounter()

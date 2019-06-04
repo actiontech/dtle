@@ -190,7 +190,11 @@ func (kr *KafkaRunner) initiateStreaming() error {
 			return
 		} else {
 			// TODO cache table
-			table, err := kr.getOrSetTable(dumpData.TableSchema, dumpData.TableName, dumpData.Table)
+			var tableFromDumpData *config.Table = nil
+			if len(dumpData.Table) > 0 {
+				// TODO debode tableFromDumpData
+			}
+			table, err := kr.getOrSetTable(dumpData.TableSchema, dumpData.TableName, tableFromDumpData)
 			if err != nil {
 				kr.onError(TaskStateDead, fmt.Errorf("DTLE_BUG kafka: unknown table structure"))
 				return
@@ -310,8 +314,8 @@ func (kr *KafkaRunner) kafkaTransformSnapshotData(table *config.Table, value *my
 		for i, _ := range columnList {
 			var value interface{}
 
-			if *rowValues[i] != nil {
-				valueStr := string((*rowValues[i]).([]byte))
+			if rowValues[i] != nil {
+				valueStr := string(*rowValues[i])
 				switch columnList[i].Type {
 				case mysql.TinyintColumnType, mysql.SmallintColumnType, mysql.MediumIntColumnType, mysql.IntColumnType:
 					value, err = strconv.ParseInt(valueStr, 10, 64)

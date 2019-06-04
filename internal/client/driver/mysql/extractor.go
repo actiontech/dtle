@@ -1290,11 +1290,12 @@ func (e *Extractor) mysqlDump() error {
 			e.dumpers = append(e.dumpers, d)
 			// Scan the rows in the table ...
 			for entry := range d.resultsChannel {
-				if entry.Err != nil {
-					e.onError(TaskStateDead, entry.Err)
+				if entry.Err != "" {
+					e.onError(TaskStateDead, fmt.Errorf(entry.Err))
 				} else {
 					if e.needToSendTabelDef() {
-						entry.Table = d.table
+						// TODO encode table
+						//entry.Table = d.table
 					}
 					if err = e.encodeDumpEntry(entry); err != nil {
 						e.onError(TaskStateRestart, err)
@@ -1320,10 +1321,12 @@ func (e *Extractor) mysqlDump() error {
 	return nil
 }
 func (e *Extractor) encodeDumpEntry(entry *DumpEntry) error {
-	txMsg, err := Encode(entry)
+	bs, err := entry.Marshal(nil)
 	if err != nil {
 		return err
 	}
+	txMsg := snappy.Encode(nil, bs)
+
 	if err := e.publish(fmt.Sprintf("%s_full", e.subject), "", txMsg); err != nil {
 		return err
 	}

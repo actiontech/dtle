@@ -776,8 +776,15 @@ func (a *Applier) initiateStreaming() error {
 		a.logger.Debugf("mysql.applier: full. recv a msg. copyRowsQueue: %v", len(a.copyRowsQueue))
 
 		dumpData := &DumpEntry{}
-		if err := Decode(m.Data, dumpData); err != nil {
+		data2, err := snappy.Decode(nil, m.Data)
+		if err != nil {
 			a.onError(TaskStateDead, err)
+			// TODO return?
+		}
+		_, err = dumpData.Unmarshal(data2)
+		if err != nil {
+			a.onError(TaskStateDead, err)
+			//return
 		}
 
 		timer := time.NewTimer(DefaultConnectWait / 2)
@@ -1427,9 +1434,9 @@ func (a *Applier) ApplyEventQueries(db *gosql.DB, entry *DumpEntry) error {
 			}
 
 			colData := entry.ValuesX[i][j]
-			if *colData != nil {
+			if colData != nil {
 				buf.WriteByte('\'')
-				buf.WriteString(sql.EscapeValue(string((*colData).([]byte))))
+				buf.WriteString(sql.EscapeValue(string(*colData)))
 				buf.WriteByte('\'')
 			} else {
 				buf.WriteString("NULL")
