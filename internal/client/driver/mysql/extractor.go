@@ -739,6 +739,13 @@ func (e *Extractor) setStatementFor() string {
 }
 
 // Encode
+func GobEncode(v interface{}) ([]byte, error) {
+	b := new(bytes.Buffer)
+	if err := gob.NewEncoder(b).Encode(v); err != nil {
+		return nil, err
+	}
+	return b.Bytes(), nil
+}
 func Encode(v interface{}) ([]byte, error) {
 	b := new(bytes.Buffer)
 	if err := gob.NewEncoder(b).Encode(v); err != nil {
@@ -1293,9 +1300,16 @@ func (e *Extractor) mysqlDump() error {
 				if entry.Err != "" {
 					e.onError(TaskStateDead, fmt.Errorf(entry.Err))
 				} else {
-					if e.needToSendTabelDef() {
-						// TODO encode table
-						//entry.Table = d.table
+					if !d.sentTableDef {
+						tableBs, err := GobEncode(d.table)
+						if err != nil {
+							realErr := fmt.Errorf(entry.Err)
+							e.onError(TaskStateDead, realErr)
+							return realErr
+						} else {
+							entry.Table = tableBs
+							d.sentTableDef = true
+						}
 					}
 					if err = e.encodeDumpEntry(entry); err != nil {
 						e.onError(TaskStateRestart, err)
@@ -1479,8 +1493,4 @@ func (e *Extractor) Shutdown() error {
 	//close(e.binlogChannel)
 	e.logger.Printf("mysql.extractor: Shutting down")
 	return nil
-}
-
-func (e *Extractor) needToSendTabelDef() bool {
-	return true
 }

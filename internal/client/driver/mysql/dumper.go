@@ -41,6 +41,8 @@ type dumper struct {
 	// 0: don't checksum; 1: checksum once; 2: checksum every time
 	doChecksum int
 	oldWayDump bool
+
+	sentTableDef bool
 }
 
 func NewDumper(db usql.QueryAble, table *config.Table, chunkSize int64,
@@ -55,6 +57,7 @@ func NewDumper(db usql.QueryAble, table *config.Table, chunkSize int64,
 		resultsChannel: make(chan *DumpEntry, 24),
 		chunkSize:      chunkSize,
 		shutdownCh:     make(chan struct{}),
+		sentTableDef: false,
 	}
 	switch os.Getenv(g.ENV_DUMP_CHECKSUM) {
 	case "1":

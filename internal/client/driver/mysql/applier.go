@@ -496,6 +496,23 @@ func (a *Applier) initNatSubClient() (err error) {
 	return nil
 }
 
+func DecodeDumpEntry(data []byte) (entry *DumpEntry, err error) {
+	msg, err := snappy.Decode(nil, data)
+	if err != nil {
+		return nil, err
+	}
+
+	entry = &DumpEntry{}
+	n, err := entry.Unmarshal(msg)
+	if err != nil {
+		return nil, err
+	}
+	if n != uint64(len(msg)) {
+		return nil, fmt.Errorf("DumpEntry.Unmarshal: not all consumed. data: %v, consumed: %v",
+			len(msg), n)
+	}
+	return entry, nil
+}
 // Decode
 func Decode(data []byte, vPtr interface{}) (err error) {
 	msg, err := snappy.Decode(nil, data)
@@ -775,16 +792,10 @@ func (a *Applier) initiateStreaming() error {
 	_, err := a.natsConn.Subscribe(fmt.Sprintf("%s_full", a.subject), func(m *gonats.Msg) {
 		a.logger.Debugf("mysql.applier: full. recv a msg. copyRowsQueue: %v", len(a.copyRowsQueue))
 
-		dumpData := &DumpEntry{}
-		data2, err := snappy.Decode(nil, m.Data)
+		dumpData, err := DecodeDumpEntry(m.Data)
 		if err != nil {
 			a.onError(TaskStateDead, err)
 			// TODO return?
-		}
-		_, err = dumpData.Unmarshal(data2)
-		if err != nil {
-			a.onError(TaskStateDead, err)
-			//return
 		}
 
 		timer := time.NewTimer(DefaultConnectWait / 2)
