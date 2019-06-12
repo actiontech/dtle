@@ -183,6 +183,10 @@ func (kr *KafkaRunner) initiateStreaming() error {
 			kr.logger.Debugf("kafka. a sql dumpEntry")
 		} else if dumpData.TableSchema == "" && dumpData.TableName == "" {
 			kr.logger.Debugf("kafka.  skip apply sqlMode and SystemVariablesStatement")
+			if err := kr.natsConn.Publish(m.Reply, nil); err != nil {
+				kr.onError(TaskStateDead, err)
+				return
+			}
 			return
 		} else {
 			// TODO cache table
