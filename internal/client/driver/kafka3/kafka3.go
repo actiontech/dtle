@@ -72,12 +72,12 @@ func (kr *KafkaRunner) ID() string {
 	id := config.DriverCtx{
 		// TODO
 		DriverConfig: &config.MySQLDriverConfig{
-		//ReplicateDoDb:     a.mysqlContext.ReplicateDoDb,
-		//ReplicateIgnoreDb: a.mysqlContext.ReplicateIgnoreDb,
-		//Gtid:              a.mysqlContext.Gtid,
-		//NatsAddr:          a.mysqlContext.NatsAddr,
-		//ParallelWorkers:   a.mysqlContext.ParallelWorkers,
-		//ConnectionConfig:  a.mysqlContext.ConnectionConfig,
+			//ReplicateDoDb:     a.mysqlContext.ReplicateDoDb,
+			//ReplicateIgnoreDb: a.mysqlContext.ReplicateIgnoreDb,
+			//Gtid:              a.mysqlContext.Gtid,
+			//NatsAddr:          a.mysqlContext.NatsAddr,
+			//ParallelWorkers:   a.mysqlContext.ParallelWorkers,
+			//ConnectionConfig:  a.mysqlContext.ConnectionConfig,
 		},
 	}
 
@@ -181,6 +181,9 @@ func (kr *KafkaRunner) initiateStreaming() error {
 
 		if dumpData.DbSQL != "" || len(dumpData.TbSQL) > 0 {
 			kr.logger.Debugf("kafka. a sql dumpEntry")
+		} else if dumpData.TableSchema == "" && dumpData.TableName == "" {
+			kr.logger.Debugf("kafka.  skip apply sqlMode and SystemVariablesStatement")
+			return
 		} else {
 			// TODO cache table
 			table, err := kr.getOrSetTable(dumpData.TableSchema, dumpData.TableName, dumpData.Table)
