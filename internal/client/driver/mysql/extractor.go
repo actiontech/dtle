@@ -739,6 +739,13 @@ func (e *Extractor) setStatementFor() string {
 }
 
 // Encode
+func GobEncode(v interface{}) ([]byte, error) {
+	b := new(bytes.Buffer)
+	if err := gob.NewEncoder(b).Encode(v); err != nil {
+		return nil, err
+	}
+	return b.Bytes(), nil
+}
 func Encode(v interface{}) ([]byte, error) {
 	b := new(bytes.Buffer)
 	if err := gob.NewEncoder(b).Encode(v); err != nil {
@@ -1290,11 +1297,19 @@ func (e *Extractor) mysqlDump() error {
 			e.dumpers = append(e.dumpers, d)
 			// Scan the rows in the table ...
 			for entry := range d.resultsChannel {
-				if entry.err != nil {
-					e.onError(TaskStateDead, entry.err)
+				if entry.Err != "" {
+					e.onError(TaskStateDead, fmt.Errorf(entry.Err))
 				} else {
-					if e.needToSendTabelDef() {
-						entry.Table = d.table
+					if !d.sentTableDef {
+						tableBs, err := GobEncode(d.table)
+						if err != nil {
+							realErr := fmt.Errorf(entry.Err)
+							e.onError(TaskStateDead, realErr)
+							return realErr
+						} else {
+							entry.Table = tableBs
+							d.sentTableDef = true
+						}
 					}
 					if err = e.encodeDumpEntry(entry); err != nil {
 						e.onError(TaskStateRestart, err)
@@ -1320,10 +1335,12 @@ func (e *Extractor) mysqlDump() error {
 	return nil
 }
 func (e *Extractor) encodeDumpEntry(entry *DumpEntry) error {
-	txMsg, err := Encode(entry)
+	bs, err := entry.Marshal(nil)
 	if err != nil {
 		return err
 	}
+	txMsg := snappy.Encode(nil, bs)
+
 	if err := e.publish(fmt.Sprintf("%s_full", e.subject), "", txMsg); err != nil {
 		return err
 	}
@@ -1476,8 +1493,4 @@ func (e *Extractor) Shutdown() error {
 	//close(e.binlogChannel)
 	e.logger.Printf("mysql.extractor: Shutting down")
 	return nil
-}
-
-func (e *Extractor) needToSendTabelDef() bool {
-	return true
 }

@@ -37,9 +37,9 @@ func EscapeName(name string) string {
 	return fmt.Sprintf("`%s`", name)
 }
 
-func EscapeColRawToString(col *interface{}) string {
-	if *col != nil {
-		return fmt.Sprintf("'%s'", EscapeValue(string((*col).([]byte))))
+func EscapeColRawToString(col *[]byte) string {
+	if col != nil {
+		return fmt.Sprintf("'%s'", EscapeValue(string(*col)))
 	} else {
 		return "NULL"
 	}
