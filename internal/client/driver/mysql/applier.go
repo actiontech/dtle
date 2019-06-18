@@ -1200,11 +1200,12 @@ func (a *Applier) getTableItem(schema string, table string) *applierTableItem {
 
 // buildDMLEventQuery creates a query to operate on the ghost table, based on an intercepted binlog
 // event entry on the original table.
-func (a *Applier) buildDMLEventQuery(dmlEvent binlog.DataEvent, workerIdx int) (query *gosql.Stmt, args []interface{}, rowsDelta int64, err error) {
+func (a *Applier) buildDMLEventQuery(dmlEvent binlog.DataEvent, workerIdx int, spanContext opentracing.SpanContext) (query *gosql.Stmt, args []interface{}, rowsDelta int64, err error) {
 	// Large piece of code deleted here. See git annotate.
 	tableItem := dmlEvent.TableItem.(*applierTableItem)
 	var tableColumns = tableItem.columns
-
+	span := opentracing.GlobalTracer().StartSpan("desc  buildDMLEventQuery ", opentracing.FollowsFrom(spanContext))
+	defer span.Finish()
 	doPrepareIfNil := func(stmts []*gosql.Stmt, query string) (*gosql.Stmt, error) {
 		var err error
 		if stmts[workerIdx] == nil {
@@ -1269,14 +1270,20 @@ func (a *Applier) ApplyBinlogEvent(ctx context.Context, workerIdx int, binlogEnt
 
 	var totalDelta int64
 	var err error
+	var spanContext opentracing.SpanContext
+	var span opentracing.Span
 	if ctx != nil {
-		spanContext := opentracing.SpanFromContext(ctx).Context()
-		span := opentracing.GlobalTracer().StartSpan("single sql replace into  desc ", opentracing.ChildOf(spanContext))
+		spanContext = opentracing.SpanFromContext(ctx).Context()
+		span = opentracing.GlobalTracer().StartSpan("single sql replace into  desc ", opentracing.ChildOf(spanContext))
+		span.SetTag("start insert sql ", time.Now().UnixNano()/1e6)
 		defer span.Finish()
+
 	} else {
-		spanContext := binlogEntry.SpanContext
-		span := opentracing.GlobalTracer().StartSpan("mts sql replace into  desc ", opentracing.ChildOf(spanContext))
+		spanContext = binlogEntry.SpanContext
+		span = opentracing.GlobalTracer().StartSpan("mts sql replace into  desc ", opentracing.ChildOf(spanContext))
+		span.SetTag("start insert sql ", time.Now().UnixNano()/1e6)
 		defer span.Finish()
+		spanContext = span.Context()
 	}
 	txSid := binlogEntry.Coordinates.GetSid()
 
@@ -1286,6 +1293,7 @@ func (a *Applier) ApplyBinlogEvent(ctx context.Context, workerIdx int, binlogEnt
 		return err
 	}
 	defer func() {
+		span.SetTag("begin commit sql ", time.Now().UnixNano()/1e6)
 		if err := tx.Commit(); err != nil {
 			a.onError(TaskStateDead, err)
 		} else {
@@ -1294,10 +1302,11 @@ func (a *Applier) ApplyBinlogEvent(ctx context.Context, workerIdx int, binlogEnt
 		if a.printTps {
 			atomic.AddUint32(&a.txLastNSeconds, 1)
 		}
+		span.SetTag("after  commit sql ", time.Now().UnixNano()/1e6)
 
 		dbApplier.DbMutex.Unlock()
 	}()
-
+	span.SetTag("begin trans events to sql  ", time.Now().UnixNano()/1e6)
 	for i, event := range binlogEntry.Events {
 		a.logger.Debugf("mysql.applier: ApplyBinlogEvent. gno: %v, event: %v",
 			binlogEntry.Coordinates.GNO, i)
@@ -1354,7 +1363,7 @@ func (a *Applier) ApplyBinlogEvent(ctx context.Context, workerIdx int, binlogEnt
 			a.logger.Debugf("mysql.applier: Exec [%s]", event.Query)
 		default:
 			a.logger.Debugf("mysql.applier: ApplyBinlogEvent: a dml event")
-			stmt, args, rowDelta, err := a.buildDMLEventQuery(event, workerIdx)
+			stmt, args, rowDelta, err := a.buildDMLEventQuery(event, workerIdx, spanContext)
 			if err != nil {
 				a.logger.Errorf("mysql.applier: Build dml query error: %v", err)
 				return err
@@ -1377,7 +1386,7 @@ func (a *Applier) ApplyBinlogEvent(ctx context.Context, workerIdx int, binlogEnt
 			totalDelta += rowDelta
 		}
 	}
-
+	span.SetTag("after  trans events to sql  ", time.Now().UnixNano()/1e6)
 	a.logger.Debugf("ApplyBinlogEvent. insert gno: %v", binlogEntry.Coordinates.GNO)
 	_, err = dbApplier.PsInsertExecutedGtid.Exec(binlogEntry.Coordinates.SID.Bytes(), binlogEntry.Coordinates.GNO)
 	if err != nil {
