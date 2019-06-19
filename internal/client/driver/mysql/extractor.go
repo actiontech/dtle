@@ -347,34 +347,35 @@ func (e *Extractor) inspectTables() (err error) {
 					if doTb.TableRegex != "" && doTb.TableName == "" && doTb.TableRename != "" {
 						regex = doTb.TableRegex
 						db.TableSchemaScope = TABLES
+						tables, err := sql.ShowTables(e.db, doDb.TableSchema, e.mysqlContext.ExpandSyntaxSupport)
+						if err != nil {
+							return err
+						}
+						tableRenameRegex := doTb.TableRename
+						for _, table := range tables {
+							reg := regexp.MustCompile(regex)
+							if !reg.MatchString(table.TableName) {
+								continue
+							}
+							doTb.TableName = table.TableName
+
+							if tableRenameRegex != "" {
+								match := reg.FindStringSubmatchIndex(table.TableName)
+								doTb.TableRename = string(reg.ExpandString(nil, tableRenameRegex, table.TableName, match))
+							}
+							if err := e.inspector.ValidateOriginalTable(doDb.TableSchema, table.TableName, doTb); err != nil {
+								e.logger.Warnf("mysql.extractor: %v", err)
+								continue
+							}
+							*table = *doTb
+							db.Tables = append(db.Tables, table)
+						}
+
 					} else if doTb.TableRegex == "" && doTb.TableName != "" {
-						regex = "^" + doTb.TableName + "$"
+						db.Tables = append(db.Tables, doTb)
 						db.TableSchemaScope = TABLE
 					} else {
 						return fmt.Errorf("Table  configuration error. ")
-					}
-					tables, err := sql.ShowTables(e.db, doDb.TableSchema, e.mysqlContext.ExpandSyntaxSupport)
-					if err != nil {
-						return err
-					}
-					tableRenameRegex := doTb.TableRename
-					for _, table := range tables {
-						reg := regexp.MustCompile(regex)
-						if !reg.MatchString(table.TableName) {
-							continue
-						}
-						doTb.TableName = table.TableName
-
-						if tableRenameRegex != "" {
-							match := reg.FindStringSubmatchIndex(table.TableName)
-							doTb.TableRename = string(reg.ExpandString(nil, tableRenameRegex, table.TableName, match))
-						}
-						if err := e.inspector.ValidateOriginalTable(doDb.TableSchema, table.TableName, doTb); err != nil {
-							e.logger.Warnf("mysql.extractor: %v", err)
-							continue
-						}
-						*table = *doTb
-						db.Tables = append(db.Tables, table)
 					}
 
 				}
@@ -1228,10 +1229,10 @@ func (e *Extractor) mysqlDump() error {
 					}
 				}
 				entry := &DumpEntry{
-					DbSQL:                    dbSQL,
-					TbSQL:                    tbSQL,
-					TotalCount:               tb.Counter + 1,
-					RowsCount:                1,
+					DbSQL:      dbSQL,
+					TbSQL:      tbSQL,
+					TotalCount: tb.Counter + 1,
+					RowsCount:  1,
 				}
 				atomic.AddInt64(&e.mysqlContext.RowsEstimate, 1)
 				atomic.AddInt64(&e.mysqlContext.TotalRowsCopied, 1)
@@ -1253,9 +1254,9 @@ func (e *Extractor) mysqlDump() error {
 				}
 			}
 			entry := &DumpEntry{
-				DbSQL:                    dbSQL,
-				TotalCount:               1,
-				RowsCount:                1,
+				DbSQL:      dbSQL,
+				TotalCount: 1,
+				RowsCount:  1,
 			}
 			atomic.AddInt64(&e.mysqlContext.RowsEstimate, 1)
 			atomic.AddInt64(&e.mysqlContext.TotalRowsCopied, 1)
