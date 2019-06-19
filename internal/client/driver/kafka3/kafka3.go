@@ -173,8 +173,8 @@ func (kr *KafkaRunner) initiateStreaming() error {
 
 	_, err = kr.natsConn.Subscribe(fmt.Sprintf("%s_full", kr.subject), func(m *gonats.Msg) {
 		kr.logger.Debugf("kafka: recv a msg")
-		dumpData := &mysqlDriver.DumpEntry{}
-		if err := Decode(m.Data, dumpData); err != nil {
+		dumpData, err := mysqlDriver.DecodeDumpEntry(m.Data)
+		if err != nil {
 			kr.onError(TaskStateDead, err)
 			return
 		}
@@ -189,8 +189,17 @@ func (kr *KafkaRunner) initiateStreaming() error {
 			}
 			return
 		} else {
+			var tableFromDumpData *config.Table = nil
+			if len(dumpData.Table) > 0 {
+				tableFromDumpData = &config.Table{}
+				err = DecodeGob(dumpData.Table, tableFromDumpData)
+				if err != nil {
+					kr.onError(TaskStateDead, err)
+					return
+				}
+			}
 			// TODO cache table
-			table, err := kr.getOrSetTable(dumpData.TableSchema, dumpData.TableName, dumpData.Table)
+			table, err := kr.getOrSetTable(dumpData.TableSchema, dumpData.TableName, tableFromDumpData)
 			if err != nil {
 				kr.onError(TaskStateDead, fmt.Errorf("DTLE_BUG kafka: unknown table structure"))
 				return
@@ -249,6 +258,9 @@ func Decode(data []byte, vPtr interface{}) (err error) {
 	}
 
 	return gob.NewDecoder(bytes.NewBuffer(msg)).Decode(vPtr)
+}
+func DecodeGob(data []byte, vPtr interface{}) (err error) {
+	return gob.NewDecoder(bytes.NewBuffer(data)).Decode(vPtr)
 }
 
 func (kr *KafkaRunner) onError(state int, err error) {
@@ -310,8 +322,8 @@ func (kr *KafkaRunner) kafkaTransformSnapshotData(table *config.Table, value *my
 		for i, _ := range columnList {
 			var value interface{}
 
-			if *rowValues[i] != nil {
-				valueStr := string((*rowValues[i]).([]byte))
+			if rowValues[i] != nil {
+				valueStr := string(*rowValues[i])
 				switch columnList[i].Type {
 				case mysql.TinyintColumnType, mysql.SmallintColumnType, mysql.MediumIntColumnType, mysql.IntColumnType:
 					value, err = strconv.ParseInt(valueStr, 10, 64)

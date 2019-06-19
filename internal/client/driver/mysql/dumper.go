@@ -7,7 +7,6 @@
 package mysql
 
 import (
-	"bytes"
 	"fmt"
 	"os"
 	"strings"
@@ -42,6 +41,8 @@ type dumper struct {
 	// 0: don't checksum; 1: checksum once; 2: checksum every time
 	doChecksum int
 	oldWayDump bool
+
+	sentTableDef bool
 }
 
 func NewDumper(db usql.QueryAble, table *config.Table, chunkSize int64,
@@ -56,6 +57,7 @@ func NewDumper(db usql.QueryAble, table *config.Table, chunkSize int64,
 		resultsChannel: make(chan *DumpEntry, 24),
 		chunkSize:      chunkSize,
 		shutdownCh:     make(chan struct{}),
+		sentTableDef: false,
 	}
 	switch os.Getenv(g.ENV_DUMP_CHECKSUM) {
 	case "1":
@@ -77,7 +79,7 @@ type dumpStatResult struct {
 	TotalCount int64
 }
 
-type DumpEntry struct {
+type DumpEntryOrig struct {
 	SystemVariablesStatement string
 	SqlMode                  string
 	DbSQL                    string
@@ -90,8 +92,7 @@ type DumpEntry struct {
 	ValuesX    [][]*interface{}
 	TotalCount int64
 	RowsCount  int64
-	colBuffer  bytes.Buffer
-	err        error
+	Err        error
 	Table      *config.Table
 }
 
@@ -195,7 +196,9 @@ func (d *dumper) getChunkData() (nRows int64, err error) {
 	// TODO use PS
 	// TODO escape schema/table/column name once and save
 	defer func() {
-		entry.err = err
+		if err != nil {
+			entry.Err = err.Error()
+		}
 		if err == nil && entry.RowsCount == 0 {
 			return
 		}
@@ -261,10 +264,8 @@ func (d *dumper) getChunkData() (nRows int64, err error) {
 
 	scanArgs := make([]interface{}, len(columns)) // tmp use, for casting `values` to `[]interface{}`
 
-	interfacePtrWithNil := new(interface{})
-
 	for rows.Next() {
-		rowValuesRaw := make([]*interface{}, len(columns))
+		rowValuesRaw := make([]*[]byte, len(columns))
 		for i := range rowValuesRaw {
 			scanArgs[i] = &rowValuesRaw[i]
 		}
@@ -274,11 +275,6 @@ func (d *dumper) getChunkData() (nRows int64, err error) {
 			return 0, err
 		}
 
-		for i := range rowValuesRaw {
-			if rowValuesRaw[i] == nil {
-				rowValuesRaw[i] = interfacePtrWithNil
-			}
-		}
 		entry.ValuesX = append(entry.ValuesX, rowValuesRaw)
 
 		entry.incrementCounter()
