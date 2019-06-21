@@ -287,12 +287,6 @@ func (e *Extractor) inspectTables() (err error) {
 			var regex string
 			if doDb.TableSchemaRegex != "" && doDb.TableSchemaRename != "" && doDb.TableSchema == "" {
 				regex = doDb.TableSchemaRegex
-			} else if doDb.TableSchemaRegex == "" && doDb.TableSchema != "" {
-				regex = "^" + doDb.TableSchema + "$"
-			} else {
-				return fmt.Errorf("TableSchema  configuration error. ")
-			}
-			if regex != "" {
 				dbs, err := sql.ShowDatabases(e.db)
 				if err != nil {
 					return err
@@ -313,8 +307,10 @@ func (e *Extractor) inspectTables() (err error) {
 					*newdb = *doDb
 					doDbs = append(doDbs, newdb)
 				}
-			} else {
+			} else if doDb.TableSchemaRegex == "" {
 				doDbs = append(doDbs, doDb)
+			} else {
+				return fmt.Errorf("TableSchema  configuration error. ")
 			}
 
 		}
