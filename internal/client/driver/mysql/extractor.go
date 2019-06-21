@@ -369,6 +369,10 @@ func (e *Extractor) inspectTables() (err error) {
 
 					} else if doTb.TableRegex == "" && doTb.TableName != "" {
 						db.Tables = append(db.Tables, doTb)
+						if err := e.inspector.ValidateOriginalTable(doDb.TableSchema, doTb.TableName, doTb); err != nil {
+							e.logger.Warnf("mysql.extractor: %v", err)
+							continue
+						}
 						db.TableSchemaScope = TABLE
 					} else {
 						return fmt.Errorf("Table  configuration error. ")
