@@ -9,6 +9,10 @@ package binlog
 import (
 	"bytes"
 	gosql "database/sql"
+	"github.com/actiontech/dtle/helper/u"
+	"github.com/pingcap/dm/dm/pb"
+	"github.com/pingcap/dm/pkg/streamer"
+	"os"
 	"time"
 
 	"github.com/actiontech/dtle/internal/g"
@@ -42,6 +46,8 @@ import (
 	"github.com/actiontech/dtle/internal/models"
 	"github.com/actiontech/dtle/utils"
 	"github.com/opentracing/opentracing-go"
+
+	dmrelay "github.com/pingcap/dm/relay"
 )
 
 // BinlogReader is a general interface whose implementations can choose their methods of reading
@@ -50,8 +56,8 @@ type BinlogReader struct {
 	logger                   *log.Entry
 	connectionConfig         *mysql.ConnectionConfig
 	db                       *gosql.DB
-	binlogSyncer             *replication.BinlogSyncer
-	binlogStreamer           *replication.BinlogStreamer
+	relay                    dmrelay.Process
+	binlogStreamer           streamer.Streamer
 	currentCoordinates       base.BinlogCoordinateTx
 	currentCoordinatesMutex  *sync.Mutex
 	LastAppliedRowsEventHint base.BinlogCoordinateTx
@@ -187,21 +193,24 @@ func NewMySQLReader(cfg *config.MySQLDriverConfig, logger *log.Entry, replicateD
 	// support regex
 	binlogReader.genRegexMap()
 
-	binlogSyncerConfig := replication.BinlogSyncerConfig{
-		ServerID:       uint32(serverId),
-		Flavor:         "mysql",
+	dbConfig := dmrelay.DBConfig{
 		Host:           cfg.ConnectionConfig.Host,
-		Port:           uint16(cfg.ConnectionConfig.Port),
+		Port:           cfg.ConnectionConfig.Port,
 		User:           cfg.ConnectionConfig.User,
 		Password:       cfg.ConnectionConfig.Password,
-		RawModeEnabled: false,
-		UseDecimal:     true,
-
-		MaxReconnectAttempts: 3,
-		HeartbeatPeriod:      3 * time.Second,
-		ReadTimeout:          6 * time.Second,
 	}
-	binlogReader.binlogSyncer = replication.NewBinlogSyncer(binlogSyncerConfig)
+	relayConfig := &dmrelay.Config{
+		ServerID:int(serverId),
+		Flavor: "mysql",
+		From: dbConfig,
+		RelayDir: getBinlogDir(),
+	}
+	binlogReader.relay = dmrelay.NewRelay(relayConfig)
+	err = binlogReader.relay.Init()
+	if err != nil {
+		return nil, err
+	}
+
 	binlogReader.mysqlContext.Stage = models.StageRegisteringSlaveOnMaster
 
 	return binlogReader, err
@@ -230,6 +239,12 @@ func (b *BinlogReader) addTableToTableMap(tableMap map[string]*config.TableConte
 	return nil
 }
 
+func getBinlogDir() string {
+	wd, err := os.Getwd() // TODO
+	u.PanicIfErr(err)
+	return wd + "/binlog"
+}
+
 // ConnectBinlogStreamer
 func (b *BinlogReader) ConnectBinlogStreamer(coordinates base.BinlogCoordinatesX) (err error) {
 	if coordinates.IsEmpty() {
@@ -241,15 +256,28 @@ func (b *BinlogReader) ConnectBinlogStreamer(coordinates base.BinlogCoordinatesX
 		LogPos:  coordinates.LogPos,
 	}
 
+	//_ = b.relay.Migrate(context.TODO(), coordinates.LogFile, uint32(coordinates.LogPos)) // TODO err
+
+	ch := make(chan pb.ProcessResult)
+	ctx, _ := context.WithCancel(context.Background())
+
+	go b.relay.Process(ctx, ch)
+
+	time.Sleep(3 * time.Second)
+
 	b.logger.Printf("mysql.reader: Connecting binlog streamer at %+v", coordinates)
+
+	loc, err := time.LoadLocation("Local")
+
+	brConfig := &streamer.BinlogReaderConfig{
+		RelayDir: getBinlogDir(),
+		Timezone: loc,
+	}
+	bReader := streamer.NewBinlogReader(brConfig)
 
 	// Start sync with sepcified binlog gtid
 	b.logger.Debugf("mysql.reader: GtidSet: %v", coordinates.GtidSet)
-	gtidSet, err := gomysql.ParseMysqlGTIDSet(coordinates.GtidSet)
-	if err != nil {
-		b.logger.Errorf("mysql.reader: err: %v", err)
-	}
-	b.binlogStreamer, err = b.binlogSyncer.StartSyncGTID(gtidSet)
+	b.binlogStreamer, err = bReader.StartSync(gomysql.Position{Pos: uint32(coordinates.LogPos),Name:coordinates.LogFile})
 	if err != nil {
 		b.logger.Debugf("mysql.reader: err at StartSyncGTID: %v", err)
 	}
@@ -1487,7 +1515,7 @@ func (b *BinlogReader) Close() error {
 		return err
 	}
 	// Historically there was a:
-	b.binlogSyncer.Close()
+	b.relay.Close()
 	// here. A new go-mysql version closes the binlog syncer connection independently.
 	// I will go against the sacred rules of comments and just leave this here.
 	// This is the year 2017. Let's see what year these comments get deleted.
