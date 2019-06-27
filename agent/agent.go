@@ -199,7 +199,8 @@ func (a *Agent) clientConfig() (*uconf.ClientConfig, error) {
 	}
 
 	conf.ConsulConfig = a.config.Consul
-	conf.NatsAddr = a.config.AdvertiseAddrs.Nats
+	// conf.NatsAddr = a.config.AdvertiseAddrs.Nats
+	conf.NatsAddr = a.config.normalizedAddrs.Nats
 	conf.MaxPayload = a.config.Network.MaxPayload
 	conf.StatsCollectionInterval = a.config.Metric.collectionInterval
 	conf.PublishNodeMetrics = a.config.Metric.PublishNodeMetrics
