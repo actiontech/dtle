@@ -400,6 +400,11 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 				for i, sql := range ddlInfo.sqls {
 					realSchema := utils.StringElse(ddlInfo.tables[i].Schema, currentSchema)
 					tableName := ddlInfo.tables[i].Table
+					err = b.checkObjectFitRegexp(b.mysqlContext.ReplicateDoDb, realSchema, tableName)
+					if err != nil {
+						b.logger.Warnf("mysql.reader: skip query %s", query)
+						return nil
+					}
 
 					if b.skipQueryDDL(sql, realSchema, tableName) {
 						b.logger.Debugf("mysql.reader: Skip QueryEvent currentSchema: %s, sql: %s, realSchema: %v, tableName: %v", currentSchema, sql, realSchema, tableName)
@@ -1375,8 +1380,12 @@ func (b *BinlogReader) matchDB(patternDBS []*config.DataSource, a string) bool {
 
 func (b *BinlogReader) matchTable(patternTBS []*config.DataSource, schemaName string, tableName string) bool {
 	for _, pdb := range patternTBS {
-		if (pdb.TableSchemaScope == "schema" || pdb.TableSchemaScope == "tables") && schemaName == pdb.TableSchema {
-			return true
+
+		if pdb.TableSchemaScope == "schema" {
+			reg := regexp.MustCompile(pdb.TableSchemaRegex)
+			if reg.MatchString(schemaName) {
+				return true
+			}
 		}
 		redb, okdb := b.ReMap[pdb.TableSchema]
 		for _, ptb := range pdb.Tables {
@@ -1385,6 +1394,7 @@ func (b *BinlogReader) matchTable(patternTBS []*config.DataSource, schemaName st
 				if redb.MatchString(schemaName) && retb.MatchString(tableName) {
 					return true
 				}
+
 			}
 			if oktb {
 				if retb.MatchString(tableName) && schemaName == pdb.TableSchema {
@@ -1405,6 +1415,12 @@ func (b *BinlogReader) matchTable(patternTBS []*config.DataSource, schemaName st
 			}
 			if ptb.TableSchema == schemaName && ptb.TableName == tableName {
 				return true
+			}
+			if pdb.TableSchemaScope == "tables" {
+				reg := regexp.MustCompile(ptb.TableRegex)
+				if reg.MatchString(tableName) && ptb.TableSchema == schemaName {
+					return true
+				}
 			}
 		}
 	}
@@ -1484,5 +1500,52 @@ func (b *BinlogReader) updateTableMeta(table *config.Table, realSchema string, t
 		return err
 	}
 
+	return nil
+}
+
+func (b *BinlogReader) checkObjectFitRegexp(patternTBS []*config.DataSource, schemaName string, tableName string) error {
+
+	for _, schema := range patternTBS {
+		if schema.TableSchema == schemaName && schema.TableSchemaScope == "schema" {
+			return nil
+		}
+	}
+
+	for i, pdb := range patternTBS {
+		table := &config.Table{}
+		schema := &config.DataSource{}
+		if pdb.TableSchemaScope == "schema" && pdb.TableSchema != schemaName {
+			reg := regexp.MustCompile(pdb.TableSchemaRegex)
+			if reg.MatchString(schemaName) {
+				match := reg.FindStringSubmatchIndex(schemaName)
+				schema.TableSchemaRegex = pdb.TableSchemaRegex
+				schema.TableSchema = schemaName
+				schema.TableSchemaScope = "schema"
+				schema.TableSchemaRename = string(reg.ExpandString(nil, pdb.TableSchemaRenameRegex, schemaName, match))
+				b.mysqlContext.ReplicateDoDb = append(b.mysqlContext.ReplicateDoDb, schema)
+			}
+			b.genRegexMap()
+			break
+		}
+		for _, table := range pdb.Tables {
+			if schema.TableSchema == schemaName && schema.TableSchemaScope == "tables" && table.TableName == tableName {
+				return nil
+			}
+		}
+		for _, ptb := range pdb.Tables {
+			if pdb.TableSchemaScope == "tables" && ptb.TableName != tableName {
+				reg := regexp.MustCompile(ptb.TableRegex)
+				if reg.MatchString(tableName) {
+					match := reg.FindStringSubmatchIndex(tableName)
+					table.TableRegex = ptb.TableRegex
+					table.TableName = tableName
+					table.TableRename = string(reg.ExpandString(nil, ptb.TableRenameRegex, tableName, match))
+					b.mysqlContext.ReplicateDoDb[i].Tables = append(b.mysqlContext.ReplicateDoDb[i].Tables, table)
+				}
+				b.genRegexMap()
+				break
+			}
+		}
+	}
 	return nil
 }

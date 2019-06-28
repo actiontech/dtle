@@ -303,17 +303,19 @@ func (m *MySQLDriverConfig) GetCriticalLoad() umconf.LoadMap {
 // TableName is the table configuration
 // slave restrict replication to a given table
 type DataSource struct {
-	TableSchema       string
-	TableSchemaRegex  string
-	TableSchemaRename string
-	TableSchemaScope  string
-	Tables            []*Table
+	TableSchema            string
+	TableSchemaRegex       string
+	TableSchemaRenameRegex string
+	TableSchemaRename      string
+	TableSchemaScope       string
+	Tables                 []*Table
 }
 
 type Table struct {
 	TableName         string
 	TableRegex        string
 	TableRename       string
+	TableRenameRegex  string
 	TableSchema       string
 	TableSchemaRename string
 	Counter           int64

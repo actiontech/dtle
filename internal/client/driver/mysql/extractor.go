@@ -301,11 +301,15 @@ func (e *Extractor) inspectTables() (err error) {
 					}
 					doDb.TableSchema = db
 					if schemaRenameRegex != "" {
+						doDb.TableSchemaRenameRegex = schemaRenameRegex
 						match := reg.FindStringSubmatchIndex(db)
 						doDb.TableSchemaRename = string(reg.ExpandString(nil, schemaRenameRegex, db, match))
 					}
 					*newdb = *doDb
 					doDbs = append(doDbs, newdb)
+				}
+				if doDbs == nil {
+					return fmt.Errorf("src schmea  was nil")
 				}
 			} else if doDb.TableSchemaRegex == "" {
 				doDbs = append(doDbs, doDb)
@@ -316,8 +320,10 @@ func (e *Extractor) inspectTables() (err error) {
 		}
 		for _, doDb := range doDbs {
 			db := &config.DataSource{
-				TableSchema:       doDb.TableSchema,
-				TableSchemaRename: doDb.TableSchemaRename,
+				TableSchema:            doDb.TableSchema,
+				TableSchemaRegex:       doDb.TableSchemaRegex,
+				TableSchemaRename:      doDb.TableSchemaRename,
+				TableSchemaRenameRegex: doDb.TableSchemaRenameRegex,
 			}
 
 			if len(doDb.Tables) == 0 {
@@ -356,6 +362,7 @@ func (e *Extractor) inspectTables() (err error) {
 							doTb.TableName = table.TableName
 
 							if tableRenameRegex != "" {
+								doTb.TableRenameRegex = tableRenameRegex
 								match := reg.FindStringSubmatchIndex(table.TableName)
 								doTb.TableRename = string(reg.ExpandString(nil, tableRenameRegex, table.TableName, match))
 							}
@@ -365,6 +372,9 @@ func (e *Extractor) inspectTables() (err error) {
 							}
 							*table = *doTb
 							db.Tables = append(db.Tables, table)
+						}
+						if db.Tables == nil {
+							return fmt.Errorf("src table  was nil")
 						}
 
 					} else if doTb.TableRegex == "" && doTb.TableName != "" {
