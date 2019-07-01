@@ -300,6 +300,7 @@ func (e *Extractor) inspectTables() (err error) {
 						continue
 					}
 					doDb.TableSchema = db
+					doDb.TableSchemaScope = SCHEMA
 					if schemaRenameRegex != "" {
 						doDb.TableSchemaRenameRegex = schemaRenameRegex
 						match := reg.FindStringSubmatchIndex(db)
@@ -327,7 +328,6 @@ func (e *Extractor) inspectTables() (err error) {
 			}
 
 			if len(doDb.Tables) == 0 {
-				db.TableSchemaScope = SCHEMA
 				tbs, err := sql.ShowTables(e.db, doDb.TableSchema, e.mysqlContext.ExpandSyntaxSupport)
 				if err != nil {
 					return err
