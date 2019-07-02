@@ -1381,13 +1381,18 @@ func (b *BinlogReader) matchDB(patternDBS []*config.DataSource, a string) bool {
 func (b *BinlogReader) matchTable(patternTBS []*config.DataSource, schemaName string, tableName string) bool {
 	for _, pdb := range patternTBS {
 
-		if pdb.TableSchemaScope == "schema" {
+		if pdb.TableSchemaScope == "schemas" {
 			reg := regexp.MustCompile(pdb.TableSchemaRegex)
 			if reg.MatchString(schemaName) {
 				return true
 			}
 		}
 		redb, okdb := b.ReMap[pdb.TableSchema]
+		if okdb {
+			if redb.MatchString(schemaName) && pdb.TableSchemaScope == "schema" {
+				return true
+			}
+		}
 		for _, ptb := range pdb.Tables {
 			retb, oktb := b.ReMap[ptb.TableName]
 			if oktb && okdb {
@@ -1430,24 +1435,24 @@ func (b *BinlogReader) matchTable(patternTBS []*config.DataSource, schemaName st
 
 func (b *BinlogReader) genRegexMap() {
 	for _, db := range b.mysqlContext.ReplicateDoDb {
-		if db.TableSchema[0] != '~' {
+		/*if db.TableSchema[0] != '~' {
 			continue
-		}
+		}*/
 		if _, ok := b.ReMap[db.TableSchema]; !ok {
 			b.ReMap[db.TableSchema] = regexp.MustCompile(db.TableSchema[1:])
 		}
 
 		for _, tb := range db.Tables {
-			if tb.TableName[0] == '~' {
-				if _, ok := b.ReMap[tb.TableName]; !ok {
-					b.ReMap[tb.TableName] = regexp.MustCompile(tb.TableName[1:])
-				}
+			/*if tb.TableName[0] == '~' {*/
+			if _, ok := b.ReMap[tb.TableName]; !ok {
+				b.ReMap[tb.TableName] = regexp.MustCompile(tb.TableName[1:])
 			}
-			if tb.TableSchema[0] == '~' {
-				if _, ok := b.ReMap[tb.TableSchema]; !ok {
-					b.ReMap[tb.TableSchema] = regexp.MustCompile(tb.TableSchema[1:])
-				}
+			/*}*/
+			/*if tb.TableSchema[0] == '~' {*/
+			if _, ok := b.ReMap[tb.TableSchema]; !ok {
+				b.ReMap[tb.TableSchema] = regexp.MustCompile(tb.TableSchema[1:])
 			}
+			/*	}*/
 		}
 	}
 }
@@ -1506,7 +1511,7 @@ func (b *BinlogReader) updateTableMeta(table *config.Table, realSchema string, t
 func (b *BinlogReader) checkObjectFitRegexp(patternTBS []*config.DataSource, schemaName string, tableName string) error {
 
 	for _, schema := range patternTBS {
-		if schema.TableSchema == schemaName && schema.TableSchemaScope == "schema" {
+		if schema.TableSchema == schemaName && schema.TableSchemaScope == "schemas" {
 			return nil
 		}
 	}
@@ -1514,17 +1519,16 @@ func (b *BinlogReader) checkObjectFitRegexp(patternTBS []*config.DataSource, sch
 	for i, pdb := range patternTBS {
 		table := &config.Table{}
 		schema := &config.DataSource{}
-		if pdb.TableSchemaScope == "schema" && pdb.TableSchema != schemaName {
+		if pdb.TableSchemaScope == "schemas" && pdb.TableSchema != schemaName {
 			reg := regexp.MustCompile(pdb.TableSchemaRegex)
 			if reg.MatchString(schemaName) {
 				match := reg.FindStringSubmatchIndex(schemaName)
 				schema.TableSchemaRegex = pdb.TableSchemaRegex
 				schema.TableSchema = schemaName
-				schema.TableSchemaScope = "schema"
+				schema.TableSchemaScope = "schemas"
 				schema.TableSchemaRename = string(reg.ExpandString(nil, pdb.TableSchemaRenameRegex, schemaName, match))
 				b.mysqlContext.ReplicateDoDb = append(b.mysqlContext.ReplicateDoDb, schema)
 			}
-			b.genRegexMap()
 			break
 		}
 		for _, table := range pdb.Tables {
@@ -1542,7 +1546,7 @@ func (b *BinlogReader) checkObjectFitRegexp(patternTBS []*config.DataSource, sch
 					table.TableRename = string(reg.ExpandString(nil, ptb.TableRenameRegex, tableName, match))
 					b.mysqlContext.ReplicateDoDb[i].Tables = append(b.mysqlContext.ReplicateDoDb[i].Tables, table)
 				}
-				b.genRegexMap()
+				//b.genRegexMap()
 				break
 			}
 		}

@@ -46,6 +46,7 @@ const (
 	DefaultConnectWaitSecond      = 10
 	DefaultConnectWait            = DefaultConnectWaitSecond * time.Second
 	ReconnectStreamerSleepSeconds = 5
+	SCHEMAS                       = "schemas"
 	SCHEMA                        = "schema"
 	TABLES                        = "tables"
 	TABLE                         = "table"
@@ -300,7 +301,7 @@ func (e *Extractor) inspectTables() (err error) {
 						continue
 					}
 					doDb.TableSchema = db
-					doDb.TableSchemaScope = SCHEMA
+					doDb.TableSchemaScope = SCHEMAS
 					if schemaRenameRegex != "" {
 						doDb.TableSchemaRenameRegex = schemaRenameRegex
 						match := reg.FindStringSubmatchIndex(db)
@@ -313,6 +314,7 @@ func (e *Extractor) inspectTables() (err error) {
 					return fmt.Errorf("src schmea  was nil")
 				}
 			} else if doDb.TableSchemaRegex == "" {
+				doDb.TableSchemaScope = SCHEMA
 				doDbs = append(doDbs, doDb)
 			} else {
 				return fmt.Errorf("TableSchema  configuration error. ")
@@ -324,6 +326,7 @@ func (e *Extractor) inspectTables() (err error) {
 				TableSchema:            doDb.TableSchema,
 				TableSchemaRegex:       doDb.TableSchemaRegex,
 				TableSchemaRename:      doDb.TableSchemaRename,
+				TableSchemaScope:       doDb.TableSchemaScope,
 				TableSchemaRenameRegex: doDb.TableSchemaRenameRegex,
 			}
 
