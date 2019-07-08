@@ -175,6 +175,7 @@ type Node struct {
 	HTTPAddr string
 
 	NatsAddr string
+	NatsAdvertiseAddr string
 
 	// Attributes is an arbitrary set of key/value
 	// data that can be used for constraints. Examples

@@ -424,7 +424,7 @@ func (s *GenericScheduler) computePlacements(place []allocTuple) error {
 
 			if missing.Task.Type == models.TaskTypeDest {
 				for i, task := range s.job.Tasks {
-					task.Config["NatsAddr"] = preferredNode.NatsAddr
+					task.Config["NatsAddr"] = preferredNode.NatsAdvertiseAddr
 					s.job.Tasks[i] = task
 				}
 			}
