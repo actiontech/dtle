@@ -1363,9 +1363,9 @@ func (b *BinlogReader) skipRowEvent(rowsEvent *replication.RowsEvent, dml EventD
 }
 
 func (b *BinlogReader) matchString(pattern string, t string) bool {
-	if re, ok := b.ReMap[pattern]; ok {
+	/*if re, ok := b.ReMap[pattern]; ok {
 		return re.MatchString(t)
-	}
+	}*/
 	return pattern == t
 }
 
