@@ -10,6 +10,7 @@ import (
 	gosql "database/sql"
 	"encoding/json"
 	"fmt"
+	"github.com/actiontech/dtle/internal/client/driver/common"
 	"github.com/actiontech/dtle/internal/config/mysql"
 
 	"github.com/actiontech/dtle/internal/g"
@@ -64,15 +65,14 @@ const (
 
 // Extractor is the main schema extract flow manager.
 type Extractor struct {
-	logger            *log.Entry
-	subject           string
-	tp                string
-	maxPayload        int
-	mysqlContext      *config.MySQLDriverConfig
+	execCtx      *common.ExecContext
+	logger       *log.Entry
+	subject      string
+	mysqlContext *config.MySQLDriverConfig
 	mysqlVersionDigit int
-	db                *gosql.DB
-	singletonDB       *gosql.DB
-	dumpers           []*dumper
+	db           *gosql.DB
+	singletonDB  *gosql.DB
+	dumpers      []*dumper
 	// db.tb exists when creating the job, for full-copy.
 	// vs e.mysqlContext.ReplicateDoDb: all user assigned db.tb
 	replicateDoDb            []*config.DataSource
@@ -101,17 +101,16 @@ type Extractor struct {
 	context *sqle.Context
 }
 
-func NewExtractor(subject, tp string, maxPayload int, cfg *config.MySQLDriverConfig, logger *log.Logger) (*Extractor, error) {
+func NewExtractor(execCtx *common.ExecContext, cfg *config.MySQLDriverConfig, logger *log.Logger) (*Extractor, error) {
 
 	cfg = cfg.SetDefault()
 	entry := log.NewEntry(logger).WithFields(log.Fields{
-		"job": subject,
+		"job": execCtx.Subject,
 	})
 	e := &Extractor{
 		logger:          entry,
-		subject:         subject,
-		tp:              tp,
-		maxPayload:      maxPayload,
+		execCtx:         execCtx,
+		subject:         execCtx.Subject,
 		mysqlContext:    cfg,
 		binlogChannel:   make(chan *binlog.BinlogTx, cfg.ReplChanBufferSize),
 		dataChannel:     make(chan *binlog.BinlogEntry, cfg.ReplChanBufferSize),
@@ -628,7 +627,7 @@ func (e *Extractor) getSchemaTablesAndMeta() error {
 
 // initBinlogReader creates and connects the reader: we hook up to a MySQL server as a replica
 func (e *Extractor) initBinlogReader(binlogCoordinates *base.BinlogCoordinatesX) error {
-	binlogReader, err := binlog.NewMySQLReader(e.mysqlContext, e.logger, e.replicateDoDb, e.context)
+	binlogReader, err := binlog.NewMySQLReader(e.execCtx, e.mysqlContext, e.logger, e.replicateDoDb, e.context)
 	if err != nil {
 		e.logger.Debugf("mysql.extractor: err at initBinlogReader: NewMySQLReader: %v", err.Error())
 		return err
@@ -993,7 +992,7 @@ func (e *Extractor) StreamEvents() error {
 								e.onError(TaskStateDead, err)
 								break L
 							}
-							if len(txMsg) > e.maxPayload {
+							if len(txMsg) > e.execCtx.MaxPayload {
 								e.onError(TaskStateDead, gonats.ErrMaxPayload)
 							}
 							if err = e.publish(ctx, subject, fmt.Sprintf("%s:1-%d", binlogTx.SID, binlogTx.GNO), txMsg); err != nil {
@@ -1014,7 +1013,7 @@ func (e *Extractor) StreamEvents() error {
 								e.onError(TaskStateDead, err)
 								break L
 							}
-							if len(txMsg) > e.maxPayload {
+							if len(txMsg) > e.execCtx.MaxPayload {
 								e.onError(TaskStateDead, gonats.ErrMaxPayload)
 							}
 							if err = e.publish(ctx, subject,

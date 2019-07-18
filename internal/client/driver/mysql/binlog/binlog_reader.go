@@ -9,10 +9,9 @@ package binlog
 import (
 	"bytes"
 	gosql "database/sql"
-	"github.com/actiontech/dtle/helper/u"
+	"github.com/actiontech/dtle/internal/client/driver/common"
 	"github.com/pingcap/dm/dm/pb"
 	"github.com/pingcap/dm/pkg/streamer"
-	"os"
 	"time"
 
 	"github.com/actiontech/dtle/internal/g"
@@ -53,6 +52,7 @@ import (
 // BinlogReader is a general interface whose implementations can choose their methods of reading
 // a binary log file and parsing it into binlog entries
 type BinlogReader struct {
+	execCtx                  *common.ExecContext
 	logger                   *log.Entry
 	connectionConfig         *mysql.ConnectionConfig
 	db                       *gosql.DB
@@ -143,13 +143,14 @@ func parseSqlFilter(strs []string) (*SqlFilter, error) {
 	return s, nil
 }
 
-func NewMySQLReader(cfg *config.MySQLDriverConfig, logger *log.Entry, replicateDoDb []*config.DataSource, sqleContext *sqle.Context) (binlogReader *BinlogReader, err error) {
+func NewMySQLReader(execCtx *common.ExecContext, cfg *config.MySQLDriverConfig, logger *log.Entry, replicateDoDb []*config.DataSource, sqleContext *sqle.Context) (binlogReader *BinlogReader, err error) {
 	sqlFilter, err := parseSqlFilter(cfg.SqlFilter)
 	if err != nil {
 		return nil, err
 	}
 
 	binlogReader = &BinlogReader{
+		execCtx:                 execCtx,
 		logger:                  logger,
 		currentCoordinates:      base.BinlogCoordinateTx{},
 		currentCoordinatesMutex: &sync.Mutex{},
@@ -203,7 +204,7 @@ func NewMySQLReader(cfg *config.MySQLDriverConfig, logger *log.Entry, replicateD
 		ServerID:int(serverId),
 		Flavor: "mysql",
 		From: dbConfig,
-		RelayDir: getBinlogDir(),
+		RelayDir: binlogReader.getBinlogDir(),
 	}
 	binlogReader.relay = dmrelay.NewRelay(relayConfig)
 	err = binlogReader.relay.Init()
@@ -239,10 +240,9 @@ func (b *BinlogReader) addTableToTableMap(tableMap map[string]*config.TableConte
 	return nil
 }
 
-func getBinlogDir() string {
-	wd, err := os.Getwd() // TODO
-	u.PanicIfErr(err)
-	return wd + "/binlog"
+func (b *BinlogReader) getBinlogDir() string {
+	dir := b.execCtx.StateDir + "/binlog/" + b.execCtx.Subject
+	return dir
 }
 
 // ConnectBinlogStreamer
@@ -267,10 +267,10 @@ func (b *BinlogReader) ConnectBinlogStreamer(coordinates base.BinlogCoordinatesX
 
 	b.logger.Printf("mysql.reader: Connecting binlog streamer at %+v", coordinates)
 
-	loc, err := time.LoadLocation("Local")
+	loc, err := time.LoadLocation("Local") // TODO
 
 	brConfig := &streamer.BinlogReaderConfig{
-		RelayDir: getBinlogDir(),
+		RelayDir: b.getBinlogDir(),
 		Timezone: loc,
 	}
 	bReader := streamer.NewBinlogReader(brConfig)

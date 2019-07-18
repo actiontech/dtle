@@ -9,6 +9,7 @@ package driver
 import (
 	"errors"
 	"fmt"
+	"github.com/actiontech/dtle/internal/client/driver/common"
 
 	uconf "github.com/actiontech/dtle/internal/config"
 	log "github.com/actiontech/dtle/internal/logger"
@@ -50,7 +51,7 @@ type Factory func(*DriverContext) Driver
 // to support many pluggable implementations of task drivers.
 type Driver interface {
 	// Start is used to being task execution
-	Start(ctx *ExecContext, task *models.Task) (DriverHandle, error)
+	Start(ctx *common.ExecContext, task *models.Task) (DriverHandle, error)
 
 	// Drivers must validate their configuration
 	Validate(task *models.Task) (*models.TaskValidateResponse, error)
@@ -102,19 +103,4 @@ type DriverHandle interface {
 
 	// Stats returns aggregated stats of the driver
 	Stats() (*models.TaskStatistics, error)
-}
-
-type ExecContext struct {
-	Subject    string
-	Tp         string
-	MaxPayload int
-}
-
-// NewExecContext is used to create a new execution context
-func NewExecContext(subject, tp string, mp int) *ExecContext {
-	return &ExecContext{
-		Subject:    subject,
-		Tp:         tp,
-		MaxPayload: mp,
-	}
 }
