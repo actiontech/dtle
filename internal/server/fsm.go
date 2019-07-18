@@ -269,7 +269,7 @@ func (n *udupFSM) applyStatusUpdate(buf []byte, index uint64) interface{} {
 							task.NodeID = out[0].ID
 							if task.Type == models.TaskTypeDest {
 								for i, t := range job.Tasks {
-									t.Config["NatsAddr"] = out[0].NatsAddr
+									t.Config["NatsAddr"] = out[0].NatsAdvertiseAddr
 									job.Tasks[i] = t
 								}
 							}
