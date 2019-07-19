@@ -430,6 +430,7 @@ def build(version=None,
         build_command += path
         start_time = datetime.utcnow()
         run(build_command, shell=True)
+        run("chmod 777 -R "+ outdir, shell=True)
         end_time = datetime.utcnow()
         logging.info("Time taken: {}s".format((end_time - start_time).total_seconds()))
     return True
