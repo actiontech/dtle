@@ -362,6 +362,7 @@ def build(version=None,
         os.makedirs(outdir)
     elif clean and outdir != '/' and outdir != ".":
         logging.info("Cleaning build directory '{}' before building.".format(outdir))
+        run("chmod 777 -R "+ outdir, shell=True)
         shutil.rmtree(outdir)
         os.makedirs(outdir)
 
