@@ -12,6 +12,7 @@ import (
 	"fmt"
 
 	"github.com/actiontech/dtle/internal/g"
+	"github.com/pkg/errors"
 
 	//"math"
 	"bytes"
@@ -31,6 +32,8 @@ import (
 
 	"regexp"
 
+	"net"
+
 	"github.com/actiontech/dtle/internal/client/driver/mysql/base"
 	"github.com/actiontech/dtle/internal/client/driver/mysql/binlog"
 	"github.com/actiontech/dtle/internal/client/driver/mysql/sql"
@@ -39,6 +42,7 @@ import (
 	log "github.com/actiontech/dtle/internal/logger"
 	"github.com/actiontech/dtle/internal/models"
 	"github.com/actiontech/dtle/utils"
+	"github.com/shirou/gopsutil/mem"
 )
 
 const (
@@ -789,7 +793,6 @@ func (e *Extractor) StreamEvents() error {
 				if err != nil {
 					return err
 				}
-
 				e.logger.Debugf("mysql.extractor: sending gno: %v, n: %v", gno, len(entries.Entries))
 				if err = e.publish(fmt.Sprintf("%s_incr_hete", e.subject), "", txMsg); err != nil {
 					return err
@@ -807,14 +810,34 @@ func (e *Extractor) StreamEvents() error {
 			groupTimeoutDuration := time.Duration(e.mysqlContext.GroupTimeout) * time.Millisecond
 			timer := time.NewTimer(groupTimeoutDuration)
 			defer timer.Stop()
+			natsips := strings.Split(e.mysqlContext.NatsAddr, ":")
 
 			for keepGoing && !e.shutdown {
 				var err error
+				var addrs []net.Addr
 				select {
 				case binlogEntry := <-e.dataChannel:
 					entries.Entries = append(entries.Entries, binlogEntry)
 					entriesSize += binlogEntry.OriginalSize
-
+					if int64(len(entries.Entries)) <= 1 {
+						v, _ := mem.VirtualMemory()
+						addrs, err = net.InterfaceAddrs()
+						if err != nil {
+							break
+						}
+						for _, ip := range addrs {
+							rip := ip.(*net.IPNet).IP.String()
+							e.logger.Debugf("mysql.extractor: self ip is  : %v,natsips is : %v", rip, natsips[0])
+							if rip == natsips[0] && entriesSize > int(v.Available/16) {
+								err = errors.Errorf("Too much entriesSize , not enough memory ")
+								break
+							}
+						}
+					}
+					if err != nil {
+						break
+					}
+					e.logger.Debugf("mysql.extractor: err is  : %v", err != nil)
 					if entriesSize >= e.mysqlContext.GroupMaxSize ||
 						int64(len(entries.Entries)) == e.mysqlContext.ReplChanBufferSize {
 						e.logger.Debugf("extractor. incr. send by GroupLimit. entriesSize: %v", entriesSize)
