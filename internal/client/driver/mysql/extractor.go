@@ -845,7 +845,7 @@ func (e *Extractor) StreamEvents() error {
 				select {
 				case binlogEntry := <-e.dataChannel:
 					spanContext := binlogEntry.SpanContext
-					span := opentracing.GlobalTracer().StartSpan("span_incr_hete", opentracing.ChildOf(spanContext))
+					span := opentracing.GlobalTracer().StartSpan("nat send :begin  send binlogEntry from src dtle to desc dtle", opentracing.ChildOf(spanContext))
 					span.SetTag("time", time.Now().Unix())
 					ctx = opentracing.ContextWithSpan(ctx, span)
 					//span.SetTag("timetag", time.Now().Unix())
@@ -1061,7 +1061,7 @@ func (e *Extractor) publish(ctx context.Context, subject, gtid string, txMsg []b
 		spanctx = parent.Context()
 	}
 
-	span := tracer.StartSpan("Nast  Publish  Message", ext.SpanKindProducer, opentracing.ChildOf(spanctx))
+	span := tracer.StartSpan("nat: src publish() to send  data ", ext.SpanKindProducer, opentracing.ChildOf(spanctx))
 
 	ext.MessageBusDestination.Set(span, subject)
 

@@ -619,10 +619,10 @@ func (b *BinlogSyncer) onStream(s *BinlogStreamer) {
 	}()
 
 	for {
-		span := opentracing.StartSpan(" get inc tx from  ReadPacket()")
-		span.SetTag("begin to get data  time ", time.Now().Unix())
+		span := opentracing.StartSpan("data source: get incremental data from  ReadPacket()")
+		span.SetTag("before get incremental data  time:", time.Now().Unix())
 		data, err := b.c.ReadPacket()
-		span.SetTag("after  get data  time ", time.Now().Unix())
+		span.SetTag("after  get incremental data time:", time.Now().Unix())
 		if err != nil {
 			log.Error(err)
 
@@ -695,7 +695,7 @@ func (b *BinlogSyncer) onStream(s *BinlogStreamer) {
 func (b *BinlogSyncer) parseEvent(spanContext opentracing.SpanContext, s *BinlogStreamer, data []byte) error {
 	//skip OK byte, 0x00
 	data = data[1:]
-	span := opentracing.GlobalTracer().StartSpan(" inc tx to BinlogEvent", opentracing.ChildOf(spanContext))
+	span := opentracing.GlobalTracer().StartSpan("  incremental data are  conversion to  BinlogEvent", opentracing.ChildOf(spanContext))
 	span.SetTag("time", time.Now().Unix())
 	defer span.Finish()
 	needACK := false

@@ -41,7 +41,7 @@ func main() {
 		Reporter: &config.ReporterConfig{
 			LogSpans:            true,
 			BufferFlushInterval: 1 * time.Second,
-			LocalAgentHostPort:  "10.186.63.111:5775", // 数据上报地址
+			LocalAgentHostPort:  "10.186.63.9:5775", // 数据上报地址
 		},
 	}
 

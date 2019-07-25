@@ -313,8 +313,8 @@ type parseDDLResult struct {
 func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel chan<- *BinlogEntry) error {
 	spanContext := ev.SpanContest
 	trace := opentracing.GlobalTracer()
-	span := trace.StartSpan("inc tx to sql", opentracing.ChildOf(spanContext))
-	span.SetTag("time", time.Now().Unix())
+	span := trace.StartSpan("incremental  binlogEvent translation to  sql", opentracing.ChildOf(spanContext))
+	span.SetTag("begin to translation", time.Now().Unix())
 	defer span.Finish()
 	if b.currentCoordinates.SmallerThanOrEquals(&b.LastAppliedRowsEventHint) {
 		b.logger.Debugf("mysql.reader: Skipping handled query at %+v", b.currentCoordinates)
@@ -717,14 +717,13 @@ func (b *BinlogReader) DataStreamEvents(entriesChannel chan<- *BinlogEntry) erro
 		}
 
 		trace := opentracing.GlobalTracer()
-
 		ev, err := b.binlogStreamer.GetEvent(context.Background())
 		if err != nil {
 			b.logger.Errorf("mysql.reader error GetEvent. err: %v", err)
 			return err
 		}
 		spanContext := ev.SpanContest
-		span := trace.StartSpan("get event  from mysql-go ", opentracing.ChildOf(spanContext))
+		span := trace.StartSpan("DataStreamEvents()  get binlogEvent  from mysql-go ", opentracing.FollowsFrom(spanContext))
 		span.SetTag("time", time.Now().Unix())
 		ev.SpanContest = span.Context()
 

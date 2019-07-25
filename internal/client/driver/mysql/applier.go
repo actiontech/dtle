@@ -579,7 +579,7 @@ func (a *Applier) heterogeneousReplay() {
 				continue
 			}
 			spanContext := binlogEntry.SpanContext
-			span := opentracing.GlobalTracer().StartSpan("desc dtle get binlogEntry", opentracing.ChildOf(spanContext))
+			span := opentracing.GlobalTracer().StartSpan("nat : dest to get data  ", opentracing.FollowsFrom(spanContext))
 			ctx = opentracing.ContextWithSpan(ctx, span)
 			a.logger.Debugf("mysql.applier: a binlogEntry. remaining: %v. gno: %v, lc: %v, seq: %v",
 				len(a.applyDataEntryQueue), binlogEntry.Coordinates.GNO,
@@ -1274,13 +1274,13 @@ func (a *Applier) ApplyBinlogEvent(ctx context.Context, workerIdx int, binlogEnt
 	var span opentracing.Span
 	if ctx != nil {
 		spanContext = opentracing.SpanFromContext(ctx).Context()
-		span = opentracing.GlobalTracer().StartSpan("single sql replace into  desc ", opentracing.ChildOf(spanContext))
+		span = opentracing.GlobalTracer().StartSpan(" desc single binlogEvent transform to sql ", opentracing.ChildOf(spanContext))
 		span.SetTag("start insert sql ", time.Now().UnixNano()/1e6)
 		defer span.Finish()
 
 	} else {
 		spanContext = binlogEntry.SpanContext
-		span = opentracing.GlobalTracer().StartSpan("mts sql replace into  desc ", opentracing.ChildOf(spanContext))
+		span = opentracing.GlobalTracer().StartSpan("desc mts binlogEvent transform to sql ", opentracing.ChildOf(spanContext))
 		span.SetTag("start insert sql ", time.Now().UnixNano()/1e6)
 		defer span.Finish()
 		spanContext = span.Context()
@@ -1306,7 +1306,7 @@ func (a *Applier) ApplyBinlogEvent(ctx context.Context, workerIdx int, binlogEnt
 
 		dbApplier.DbMutex.Unlock()
 	}()
-	span.SetTag("begin trans events to sql  ", time.Now().UnixNano()/1e6)
+	span.SetTag("begin transform binlogEvent to sql time  ", time.Now().UnixNano()/1e6)
 	for i, event := range binlogEntry.Events {
 		a.logger.Debugf("mysql.applier: ApplyBinlogEvent. gno: %v, event: %v",
 			binlogEntry.Coordinates.GNO, i)
@@ -1386,7 +1386,7 @@ func (a *Applier) ApplyBinlogEvent(ctx context.Context, workerIdx int, binlogEnt
 			totalDelta += rowDelta
 		}
 	}
-	span.SetTag("after  trans events to sql  ", time.Now().UnixNano()/1e6)
+	span.SetTag("after  transform  binlogEvent to sql  ", time.Now().UnixNano()/1e6)
 	a.logger.Debugf("ApplyBinlogEvent. insert gno: %v", binlogEntry.Coordinates.GNO)
 	_, err = dbApplier.PsInsertExecutedGtid.Exec(binlogEntry.Coordinates.SID.Bytes(), binlogEntry.Coordinates.GNO)
 	if err != nil {

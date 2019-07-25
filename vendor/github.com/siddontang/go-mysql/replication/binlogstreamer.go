@@ -31,7 +31,7 @@ func (s *BinlogStreamer) GetEvent(ctx context.Context) (*BinlogEvent, error) {
 
 	select {
 	case c := <-s.ch:
-		span := opentracing.StartSpan("send event from go mysql", opentracing.ChildOf(c.SpanContest))
+		span := opentracing.StartSpan("send binlogEvent from go-mysql", opentracing.FollowsFrom(c.SpanContest))
 		span.SetTag("send event from go mysql   time ", time.Now().Unix())
 		c.SpanContest = span.Context()
 		span.Finish()
