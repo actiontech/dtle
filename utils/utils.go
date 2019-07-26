@@ -6,7 +6,11 @@
 
 package utils
 
-import "time"
+import (
+	"regexp"
+	"strconv"
+	"time"
+)
 
 // Return a substring of limited lenth.
 func StrLim(s string, lim int) string {
@@ -28,4 +32,26 @@ func StringElse(s1 string, s2 string) string {
 
 func CurrentTimeMillis() int64 {
 	return time.Now().UnixNano() / 1000000
+}
+
+func MysqlVersionInDigit(v string) int {
+	re := regexp.MustCompile(`^((\d)\.(\d\d?)\.(\d\d?)).*`)
+	ss := re.FindStringSubmatch(v)
+	if len(ss) != 5 {
+		return 0
+	}
+	m0, err := strconv.Atoi(ss[2])
+	if err != nil {
+		return 0
+	}
+	m1, err := strconv.Atoi(ss[3])
+	if err != nil {
+		return 0
+	}
+	m2, err := strconv.Atoi(ss[4])
+	if err != nil {
+		return 0
+	}
+
+	return m0*10000 + m1*100 + m2
 }

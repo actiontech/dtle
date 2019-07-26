@@ -63,6 +63,7 @@ type Extractor struct {
 	tp           string
 	maxPayload   int
 	mysqlContext *config.MySQLDriverConfig
+	mysqlVersionDigit int
 	db           *gosql.DB
 	singletonDB  *gosql.DB
 	dumpers      []*dumper
@@ -541,14 +542,27 @@ func (e *Extractor) initDBConnections() (err error) {
 	if e.db, err = sql.CreateDB(eventsStreamerUri); err != nil {
 		return err
 	}
-	//https://github.com/go-sql-driver/mysql#system-variables
-	dumpUri := fmt.Sprintf("%s&tx_isolation='REPEATABLE-READ'", e.mysqlContext.ConnectionConfig.GetSingletonDBUri())
-	if e.singletonDB, err = sql.CreateDB(dumpUri); err != nil {
+
+	if err := e.validateConnectionAndGetVersion(); err != nil {
 		return err
 	}
-	if err := e.validateConnection(); err != nil {
-		return err
+
+	{
+		getTxIsolationVarName := func(mysqlVersionDigit int) string {
+			if mysqlVersionDigit >= 50720 {
+				return "transaction_isolation"
+			} else {
+				return "tx_isolation" // deprecated and removed in MySQL 8.0
+			}
+		}
+		// https://github.com/go-sql-driver/mysql#system-variables
+		dumpUri := fmt.Sprintf("%s&%s='REPEATABLE-READ'", e.mysqlContext.ConnectionConfig.GetSingletonDBUri(),
+			getTxIsolationVarName(e.mysqlVersionDigit))
+		if e.singletonDB, err = sql.CreateDB(dumpUri); err != nil {
+			return err
+		}
 	}
+
 	if err := e.validateAndReadTimeZone(); err != nil {
 		return err
 	}
@@ -619,10 +633,14 @@ func (e *Extractor) initBinlogReader(binlogCoordinates *base.BinlogCoordinatesX)
 }
 
 // validateConnection issues a simple can-connect to MySQL
-func (e *Extractor) validateConnection() error {
+func (e *Extractor) validateConnectionAndGetVersion() error {
 	query := `select @@global.version`
 	if err := e.db.QueryRow(query).Scan(&e.mysqlContext.MySQLVersion); err != nil {
 		return err
+	}
+	e.mysqlVersionDigit = utils.MysqlVersionInDigit(e.mysqlContext.MySQLVersion)
+	if e.mysqlVersionDigit == 0 {
+		return fmt.Errorf("cannot parse mysql version string to digit. string %v", e.mysqlContext.MySQLVersion)
 	}
 	e.logger.Printf("mysql.extractor: Connection validated on %s:%d", e.mysqlContext.ConnectionConfig.Host, e.mysqlContext.ConnectionConfig.Port)
 	return nil
