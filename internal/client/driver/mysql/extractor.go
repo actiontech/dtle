@@ -1532,17 +1532,21 @@ func (e *Extractor) Shutdown() error {
 	}
 
 	if err := sql.CloseDB(e.singletonDB); err != nil {
-		return err
+		e.logger.Errorf("Extractor.Shutdown error close singletonDB. err %v", err)
+	}
+
+	if err := sql.CloseDB(e.inspector.db); err != nil {
+		e.logger.Errorf("Extractor.Shutdown error close inspector.db. err %v", err)
 	}
 
 	if e.binlogReader != nil {
 		if err := e.binlogReader.Close(); err != nil {
-			return err
+			e.logger.Errorf("Extractor.Shutdown error close binlogReader. err %v", err)
 		}
 	}
 
 	if err := sql.CloseDB(e.db); err != nil {
-		return err
+		e.logger.Errorf("Extractor.Shutdown error close e.db. err %v", err)
 	}
 
 	//close(e.binlogChannel)
