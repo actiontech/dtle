@@ -10,18 +10,12 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
-	"os"
-
-	"github.com/mitchellh/cli"
-	"github.com/opentracing/opentracing-go"
-	"github.com/uber/jaeger-client-go/config"
-
 	_ "net/http/pprof"
-
-	"time"
+	"os"
 
 	"github.com/actiontech/dtle/agent"
 	"github.com/actiontech/dtle/cmd/dtle/command"
+	"github.com/mitchellh/cli"
 )
 
 // The git commit that was compiled. This will be filled in by the compiler.
@@ -32,34 +26,11 @@ var (
 )
 
 func main() {
-	cfg := config.Configuration{
-		Sampler: &config.SamplerConfig{
-			Type:  "const",
-			Param: 1,
-		},
-		ServiceName: "dtle_server",
-		Reporter: &config.ReporterConfig{
-			LogSpans:            true,
-			BufferFlushInterval: 1 * time.Second,
-			LocalAgentHostPort:  "10.186.63.9:5775", // 数据上报地址
-		},
-	}
-
-	tracer, closer, err := cfg.NewTracer()
-	if err != nil {
-		log.Panic(err)
-	}
-	opentracing.SetGlobalTracer(tracer)
-	defer closer.Close()
-
 	os.Exit(realMain())
 }
 
 func realMain() int {
 	log.SetOutput(ioutil.Discard)
-
-	// Get the command line args. We shortcut "--version" and "-v" to
-	// just show the version.
 	args := os.Args[1:]
 	for _, arg := range args {
 		if arg == "-v" || arg == "--version" {

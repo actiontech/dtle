@@ -104,6 +104,8 @@ func parseConfig(result *Config, list *ast.ObjectList) error {
 		"consul",
 		"http_api_response_headers",
 		"dtle_schema_name",
+		"jaeger_agent_address",
+		"jaeger_agent_port",
 	}
 	if err := checkHCLKeys(list, valid); err != nil {
 		return multierror.Prefix(err, "config:")

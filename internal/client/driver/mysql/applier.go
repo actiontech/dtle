@@ -579,7 +579,8 @@ func (a *Applier) heterogeneousReplay() {
 				continue
 			}
 			spanContext := binlogEntry.SpanContext
-			span := opentracing.GlobalTracer().StartSpan("nat : dest to get data  ", opentracing.FollowsFrom(spanContext))
+			span := opentracing.GlobalTracer().StartSpan("dest use binlogEntry  ", opentracing.FollowsFrom(spanContext))
+			span.SetTag("1 use  binlogEntry : ", time.Now().UnixNano()/1e5)
 			ctx = opentracing.ContextWithSpan(ctx, span)
 			a.logger.Debugf("mysql.applier: a binlogEntry. remaining: %v. gno: %v, lc: %v, seq: %v",
 				len(a.applyDataEntryQueue), binlogEntry.Coordinates.GNO,
@@ -589,7 +590,6 @@ func (a *Applier) heterogeneousReplay() {
 				a.logger.Debugf("mysql.applier: skipping a dtle tx. osid: %v", binlogEntry.Coordinates.OSID)
 				continue
 			}
-
 			// region TestIfExecuted
 			if a.gtidExecuted == nil {
 				// udup crash recovery or never executed
@@ -599,7 +599,6 @@ func (a *Applier) heterogeneousReplay() {
 					return
 				}
 			}
-
 			txSid := binlogEntry.Coordinates.GetSid()
 
 			gtidSetItem, hasSid := a.gtidExecuted[binlogEntry.Coordinates.SID]
@@ -613,7 +612,6 @@ func (a *Applier) heterogeneousReplay() {
 				continue
 			}
 			// endregion
-
 			// this must be after duplication check
 			var rotated bool
 			if a.currentCoordinates.File == binlogEntry.Coordinates.LogFile {
@@ -640,7 +638,6 @@ func (a *Applier) heterogeneousReplay() {
 			newInterval := append(gtidSetItem.Intervals, thisInterval).Normalize()
 			// TODO this is assigned before real execution
 			gtidSetItem.Intervals = newInterval
-
 			if binlogEntry.Coordinates.SeqenceNumber == 0 {
 				// MySQL 5.6: non mts
 				err := a.setTableItemForBinlogEntry(binlogEntry)
@@ -664,13 +661,11 @@ func (a *Applier) heterogeneousReplay() {
 						a.logger.Warnf("DTLE_BUG: len(a.mtsManager.m) should be 0")
 					}
 				}
-
 				// If there are TXs skipped by udup source-side
 				for a.mtsManager.lastEnqueue+1 < binlogEntry.Coordinates.SeqenceNumber {
 					a.mtsManager.lastEnqueue += 1
 					a.mtsManager.chExecuted <- a.mtsManager.lastEnqueue
 				}
-
 				hasDDL := func() bool {
 					for i := range binlogEntry.Events {
 						dmlEvent := &binlogEntry.Events[i]
@@ -682,7 +677,6 @@ func (a *Applier) heterogeneousReplay() {
 					}
 					return false
 				}()
-
 				// DDL must be executed separatedly
 				if hasDDL || prevDDL {
 					a.logger.Debugf("mysql.applier: gno: %v MTS found DDL(%v,%v). WaitForAllCommitted",
@@ -691,7 +685,6 @@ func (a *Applier) heterogeneousReplay() {
 						return // shutdown
 					}
 				}
-
 				if hasDDL {
 					prevDDL = true
 				} else {
@@ -701,7 +694,6 @@ func (a *Applier) heterogeneousReplay() {
 				if !a.mtsManager.WaitForExecution(binlogEntry) {
 					return // shutdown
 				}
-
 				a.logger.Debugf("mysql.applier: a binlogEntry MTS enqueue. gno: %v", binlogEntry.Coordinates.GNO)
 				err = a.setTableItemForBinlogEntry(binlogEntry)
 				if err != nil {
@@ -864,7 +856,7 @@ func (a *Applier) initiateStreaming() error {
 				a.logger.Debugf("applier:get data")
 			}
 			// Setup a span referring to the span context of the incoming NATS message.
-			replySpan := tracer.StartSpan("nast Subscribe ", ext.SpanKindRPCServer, ext.RPCServerOption(spanContext))
+			replySpan := tracer.StartSpan("nast : dest to get data  ", ext.SpanKindRPCServer, ext.RPCServerOption(spanContext))
 			ext.MessageBusDestination.Set(replySpan, m.Subject)
 			defer replySpan.Finish()
 			if err := Decode(t.Bytes(), &binlogEntries); err != nil {
