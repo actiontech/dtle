@@ -12,9 +12,9 @@ import (
 	"fmt"
 
 	"github.com/actiontech/dtle/internal/g"
-	"github.com/pkg/errors"
 	"github.com/opentracing/opentracing-go"
 	"github.com/opentracing/opentracing-go/ext"
+	"github.com/pkg/errors"
 
 	//"math"
 	"bytes"
@@ -28,7 +28,6 @@ import (
 
 	"github.com/golang/snappy"
 	gonats "github.com/nats-io/go-nats"
-	"github.com/not.go"
 	gomysql "github.com/siddontang/go-mysql/mysql"
 
 	"os"
@@ -63,15 +62,15 @@ const (
 
 // Extractor is the main schema extract flow manager.
 type Extractor struct {
-	logger       *log.Entry
-	subject      string
-	tp           string
-	maxPayload   int
-	mysqlContext *config.MySQLDriverConfig
+	logger            *log.Entry
+	subject           string
+	tp                string
+	maxPayload        int
+	mysqlContext      *config.MySQLDriverConfig
 	mysqlVersionDigit int
-	db           *gosql.DB
-	singletonDB  *gosql.DB
-	dumpers      []*dumper
+	db                *gosql.DB
+	singletonDB       *gosql.DB
+	dumpers           []*dumper
 	// db.tb exists when creating the job, for full-copy.
 	// vs e.mysqlContext.ReplicateDoDb: all user assigned db.tb
 	replicateDoDb            []*config.DataSource
@@ -1431,10 +1430,11 @@ func (e *Extractor) encodeDumpEntry(entry *DumpEntry) error {
 	span := opentracing.GlobalTracer().StartSpan("span_full")
 	span.Finish()
 	ctx = opentracing.ContextWithSpan(ctx, span)
-	txMsg, err := Encode(entry)
+	bs, err := entry.Marshal(nil)
 	if err != nil {
 		return err
 	}
+	txMsg := snappy.Encode(nil, bs)
 	if err := e.publish(ctx, fmt.Sprintf("%s_full", e.subject), "", txMsg); err != nil {
 		return err
 	}

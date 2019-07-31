@@ -12,7 +12,6 @@ import (
 	"fmt"
 
 	"github.com/actiontech/dtle/internal/g"
-	"github.com/not.go"
 	"github.com/opentracing/opentracing-go"
 	"github.com/opentracing/opentracing-go/ext"
 
@@ -771,10 +770,20 @@ OUTER:
 func (a *Applier) initiateStreaming() error {
 	a.mysqlContext.MarkRowCopyStartTime()
 	a.logger.Debugf("mysql.applier: nats subscribe")
+	tracer := opentracing.GlobalTracer()
 	_, err := a.natsConn.Subscribe(fmt.Sprintf("%s_full", a.subject), func(m *gonats.Msg) {
 		a.logger.Debugf("mysql.applier: full. recv a msg. copyRowsQueue: %v", len(a.copyRowsQueue))
-
-		dumpData, err := DecodeDumpEntry(m.Data)
+		t := not.NewTraceMsg(m)
+		// Extract the span context from the request message.
+		sc, err := tracer.Extract(opentracing.Binary, t)
+		if err != nil {
+			a.logger.Debugf("applier:get data")
+		}
+		// Setup a span referring to the span context of the incoming NATS message.
+		replySpan := tracer.StartSpan("Service Responder", ext.SpanKindRPCServer, ext.RPCServerOption(sc))
+		ext.MessageBusDestination.Set(replySpan, m.Subject)
+		defer replySpan.Finish()
+		dumpData, err := DecodeDumpEntry(t.Bytes())
 		if err != nil {
 			a.onError(TaskStateDead, err)
 			// TODO return?
@@ -803,23 +812,23 @@ func (a *Applier) initiateStreaming() error {
 		return err
 	}*/
 
-		_, err = a.natsConn.Subscribe(fmt.Sprintf("%s_full_complete", a.subject), func(m *gonats.Msg) {
-			dumpData := &dumpStatResult{}
-			t := not.NewTraceMsg(m)
-			// Extract the span context from the request message.
-			sc, err := tracer.Extract(opentracing.Binary, t)
-			if err != nil {
-				a.logger.Debugf("applier:get data")
-			}
-			// Setup a span referring to the span context of the incoming NATS message.
-			replySpan := tracer.StartSpan("Service Responder", ext.SpanKindRPCServer, ext.RPCServerOption(sc))
-			ext.MessageBusDestination.Set(replySpan, m.Subject)
-			defer replySpan.Finish()
-			if err := Decode(t.Bytes(), dumpData); err != nil {
-				a.onError(TaskStateDead, err)
-			}
-			a.currentCoordinates.RetrievedGtidSet = dumpData.Gtid
-			a.mysqlContext.Stage = models.StageSlaveWaitingForWorkersToProcessQueue
+	_, err = a.natsConn.Subscribe(fmt.Sprintf("%s_full_complete", a.subject), func(m *gonats.Msg) {
+		dumpData := &dumpStatResult{}
+		t := not.NewTraceMsg(m)
+		// Extract the span context from the request message.
+		sc, err := tracer.Extract(opentracing.Binary, t)
+		if err != nil {
+			a.logger.Debugf("applier:get data")
+		}
+		// Setup a span referring to the span context of the incoming NATS message.
+		replySpan := tracer.StartSpan("Service Responder", ext.SpanKindRPCServer, ext.RPCServerOption(sc))
+		ext.MessageBusDestination.Set(replySpan, m.Subject)
+		defer replySpan.Finish()
+		if err := Decode(t.Bytes(), dumpData); err != nil {
+			a.onError(TaskStateDead, err)
+		}
+		a.currentCoordinates.RetrievedGtidSet = dumpData.Gtid
+		a.mysqlContext.Stage = models.StageSlaveWaitingForWorkersToProcessQueue
 
 		for atomic.LoadInt64(&a.nDumpEntry) != 0 {
 			a.logger.Debugf("mysql.applier. nDumpEntry is not zero, waiting. %v", a.nDumpEntry)
