@@ -252,36 +252,6 @@ func (c *Command) setupLoggers(config *Config) (io.Writer, error) {
 
 // setupAgent is used to start the agent and various interfaces
 func (c *Command) setupAgent(config *Config, logOutput io.Writer) error {
-	/*if config.JaegerAgentAddress != "" && config.JaegerAgentPort != "" {
-		cfg := jaegercnf.Configuration{
-			Sampler: &jaegercnf.SamplerConfig{
-				Type:  "const",
-				Param: 1,
-			},
-			ServiceName: "dtle",
-			Reporter: &jaegercnf.ReporterConfig{
-				LogSpans:            true,
-				BufferFlushInterval: 1 * time.Second,
-			},
-		}
-		sender, err := jaeger.NewUDPTransport(config.JaegerAgentAddress+":"+config.JaegerAgentPort, 0)
-		if err != nil {
-			return err
-		}
-
-		reporter := jaeger.NewRemoteReporter(sender)
-		// Initialize tracer with a logger and a metrics factory
-		tracer, closer, err := cfg.NewTracer(
-			jaegercnf.Reporter(reporter),
-		)
-
-
-		if err != nil {
-			return err
-		}
-		opentracing.SetGlobalTracer(tracer)
-		defer closer.Close()
-	}*/
 
 	c.logger.Printf("Starting Dtle server...")
 	agent, err := NewAgent(config, logOutput, c.logger)

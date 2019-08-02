@@ -598,7 +598,6 @@ func (a *Applier) heterogeneousReplay() {
 			}
 			spanContext := binlogEntry.SpanContext
 			span := opentracing.GlobalTracer().StartSpan("dest use binlogEntry  ", opentracing.FollowsFrom(spanContext))
-			span.SetTag("1 use  binlogEntry : ", time.Now().UnixNano()/1e5)
 			ctx = opentracing.ContextWithSpan(ctx, span)
 			a.logger.Debugf("mysql.applier: a binlogEntry. remaining: %v. gno: %v, lc: %v, seq: %v",
 				len(a.applyDataEntryQueue), binlogEntry.Coordinates.GNO,
