@@ -10,7 +10,6 @@ import (
 	"unicode"
 
 	"github.com/juju/errors"
-	"github.com/opentracing/opentracing-go"
 	"github.com/satori/go.uuid"
 	. "github.com/siddontang/go-mysql/mysql"
 )
@@ -27,9 +26,8 @@ type BinlogEvent struct {
 	// raw binlog data which contains all data, including binlog header and event body, and including crc32 checksum if exists
 	RawData []byte
 
-	Header      *EventHeader
-	Event       Event
-	SpanContest opentracing.SpanContext
+	Header *EventHeader
+	Event  Event
 }
 
 func (e *BinlogEvent) Dump(w io.Writer) {
