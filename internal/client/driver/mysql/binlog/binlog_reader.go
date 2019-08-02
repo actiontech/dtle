@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/actiontech/dtle/internal/g"
-
 	//"encoding/hex"
 	"fmt"
 	"regexp"
@@ -24,10 +23,10 @@ import (
 
 	"github.com/issuj/gofaster/base64"
 	"github.com/pingcap/parser"
-	ast "github.com/pingcap/parser/ast"
+	"github.com/pingcap/parser/ast"
 	_ "github.com/pingcap/tidb/types/parser_driver"
 
-	uuid "github.com/satori/go.uuid"
+	"github.com/satori/go.uuid"
 	gomysql "github.com/siddontang/go-mysql/mysql"
 	"github.com/siddontang/go-mysql/replication"
 	"golang.org/x/net/context"
@@ -42,6 +41,7 @@ import (
 	log "github.com/actiontech/dtle/internal/logger"
 	"github.com/actiontech/dtle/internal/models"
 	"github.com/actiontech/dtle/utils"
+	"github.com/opentracing/opentracing-go"
 )
 
 // BinlogReader is a general interface whose implementations can choose their methods of reading
@@ -309,6 +309,11 @@ type parseDDLResult struct {
 
 // StreamEvents
 func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel chan<- *BinlogEntry) error {
+	spanContext := ev.SpanContest
+	trace := opentracing.GlobalTracer()
+	span := trace.StartSpan("incremental  binlogEvent translation to  sql", opentracing.ChildOf(spanContext))
+	span.SetTag("begin to translation", time.Now().Unix())
+	defer span.Finish()
 	if b.currentCoordinates.SmallerThanOrEquals(&b.LastAppliedRowsEventHint) {
 		b.logger.Debugf("mysql.reader: Skipping handled query at %+v", b.currentCoordinates)
 		return nil
@@ -378,6 +383,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 						NotDML,
 					)
 					b.currentBinlogEntry.Events = append(b.currentBinlogEntry.Events, event)
+					b.currentBinlogEntry.SpanContext = span.Context()
 					entriesChannel <- b.currentBinlogEntry
 					b.LastAppliedRowsEventHint = b.currentCoordinates
 					return nil
@@ -520,11 +526,13 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 						b.currentBinlogEntry.Events = append(b.currentBinlogEntry.Events, event)
 					}
 				}
+				b.currentBinlogEntry.SpanContext = span.Context()
 				entriesChannel <- b.currentBinlogEntry
 				b.LastAppliedRowsEventHint = b.currentCoordinates
 			}
 		}
 	case replication.XID_EVENT:
+		b.currentBinlogEntry.SpanContext = span.Context()
 		entriesChannel <- b.currentBinlogEntry
 		b.LastAppliedRowsEventHint = b.currentCoordinates
 	default:
@@ -706,11 +714,17 @@ func (b *BinlogReader) DataStreamEvents(entriesChannel chan<- *BinlogEntry) erro
 			break
 		}
 
+		trace := opentracing.GlobalTracer()
 		ev, err := b.binlogStreamer.GetEvent(context.Background())
 		if err != nil {
 			b.logger.Errorf("mysql.reader error GetEvent. err: %v", err)
 			return err
 		}
+		spanContext := ev.SpanContest
+		span := trace.StartSpan("DataStreamEvents()  get binlogEvent  from mysql-go ", opentracing.FollowsFrom(spanContext))
+		span.SetTag("time", time.Now().Unix())
+		ev.SpanContest = span.Context()
+
 		if ev.Header.EventType == replication.HEARTBEAT_EVENT {
 			continue
 		}
@@ -739,6 +753,7 @@ func (b *BinlogReader) DataStreamEvents(entriesChannel chan<- *BinlogEntry) erro
 				return err
 			}
 		}
+		span.Finish()
 	}
 
 	return nil

@@ -15,13 +15,12 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/hashicorp/memberlist"
-
 	ucli "github.com/actiontech/dtle/internal/client"
 	uconf "github.com/actiontech/dtle/internal/config"
 	ulog "github.com/actiontech/dtle/internal/logger"
 	umodel "github.com/actiontech/dtle/internal/models"
 	usrv "github.com/actiontech/dtle/internal/server"
+	"github.com/hashicorp/memberlist"
 )
 
 // Agent is a long running daemon that is used to run both

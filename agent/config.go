@@ -134,6 +134,11 @@ type Config struct {
 
 	// CoverageReportRawCodeDir is the root deploy directory of coverage report raw code
 	CoverageReportRawCodeDir string `mapstructure:"coverage_report_raw_code_dir"`
+
+	//jaegerAgentAddress is jaeger tracing Data reporting address
+	JaegerAgentAddress string `mapstructure:"jaeger_agent_address"`
+	//jaegerAgentPort is jaeger tracing Data reporting port
+	JaegerAgentPort string `mapstructure:"jaeger_agent_port"`
 }
 
 // ClientConfig is configuration specific to the client mode
@@ -252,15 +257,17 @@ type Node struct {
 // DefaultConfig is a the baseline configuration for Udup
 func DefaultConfig() *Config {
 	return &Config{
-		LogLevel:    "INFO",
-		LogFile:     "/var/log/dtle/dtle.log",
-		LogToStdout: false,
-		PprofSwitch: false,
-		PprofTime:   0,
-		PidFile:     "/var/run/dtle/dtle.pid",
-		Region:      "global",
-		Datacenter:  "dc1",
-		BindAddr:    "0.0.0.0",
+		LogLevel:           "INFO",
+		LogFile:            "/var/log/dtle/dtle.log",
+		LogToStdout:        false,
+		PprofSwitch:        false,
+		PprofTime:          0,
+		PidFile:            "/var/run/dtle/dtle.pid",
+		Region:             "global",
+		Datacenter:         "dc1",
+		BindAddr:           "0.0.0.0",
+		JaegerAgentAddress: "",
+		JaegerAgentPort:    "",
 		Ports: &Ports{
 			HTTP: 8190,
 			RPC:  8191,
@@ -375,6 +382,12 @@ func (c *Config) Merge(b *Config) *Config {
 	}
 	if b.LeaveOnTerm {
 		result.LeaveOnTerm = true
+	}
+	if b.JaegerAgentAddress != "" {
+		result.JaegerAgentAddress = b.JaegerAgentAddress
+	}
+	if b.JaegerAgentPort != "" {
+		result.JaegerAgentPort = b.JaegerAgentPort
 	}
 
 	// Apply the metric config

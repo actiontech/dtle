@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/juju/errors"
+	"github.com/opentracing/opentracing-go"
 	"github.com/satori/go.uuid"
 	"github.com/siddontang/go-log/log"
 	"github.com/siddontang/go-mysql/client"
@@ -618,7 +619,10 @@ func (b *BinlogSyncer) onStream(s *BinlogStreamer) {
 	}()
 
 	for {
+		span := opentracing.StartSpan("data source: get incremental data from  ReadPacket()")
+		span.SetTag("before get incremental data  time:", time.Now().Unix())
 		data, err := b.c.ReadPacket()
+		span.SetTag("after  get incremental data time:", time.Now().Unix())
 		if err != nil {
 			log.Error(err)
 
@@ -655,7 +659,6 @@ func (b *BinlogSyncer) onStream(s *BinlogStreamer) {
 			// we connect the server and begin to re-sync again.
 			continue
 		}
-
 		//set read timeout
 		if b.cfg.ReadTimeout > 0 {
 			b.c.SetReadDeadline(time.Now().Add(b.cfg.ReadTimeout))
@@ -666,7 +669,7 @@ func (b *BinlogSyncer) onStream(s *BinlogStreamer) {
 
 		switch data[0] {
 		case OK_HEADER:
-			if err = b.parseEvent(s, data); err != nil {
+			if err = b.parseEvent(span.Context(), s, data); err != nil {
 				s.closeWithError(err)
 				return
 			}
@@ -685,13 +688,16 @@ func (b *BinlogSyncer) onStream(s *BinlogStreamer) {
 			log.Errorf("invalid stream header %c", data[0])
 			continue
 		}
+		span.Finish()
 	}
 }
 
-func (b *BinlogSyncer) parseEvent(s *BinlogStreamer, data []byte) error {
+func (b *BinlogSyncer) parseEvent(spanContext opentracing.SpanContext, s *BinlogStreamer, data []byte) error {
 	//skip OK byte, 0x00
 	data = data[1:]
-
+	span := opentracing.GlobalTracer().StartSpan("  incremental data are  conversion to  BinlogEvent", opentracing.ChildOf(spanContext))
+	span.SetTag("time", time.Now().Unix())
+	defer span.Finish()
 	needACK := false
 	if b.cfg.SemiSyncEnabled && (data[0] == SemiSyncIndicator) {
 		needACK = (data[1] == 0x01)
@@ -700,6 +706,8 @@ func (b *BinlogSyncer) parseEvent(s *BinlogStreamer, data []byte) error {
 	}
 
 	e, err := b.parser.Parse(data)
+	e.SpanContest = span.Context()
+	span.SetTag("tx timestap", e.Header.Timestamp)
 	if err != nil {
 		return errors.Trace(err)
 	}

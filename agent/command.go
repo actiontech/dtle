@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -19,16 +20,17 @@ import (
 	"strings"
 	"syscall"
 	"time"
-	"net/http"
 
 	"github.com/actiontech/dtle/internal/g"
 
+	ulog "github.com/actiontech/dtle/internal/logger"
 	"github.com/armon/go-metrics"
 	"github.com/armon/go-metrics/prometheus"
 	"github.com/mitchellh/cli"
-
-	ulog "github.com/actiontech/dtle/internal/logger"
+	opentracing "github.com/opentracing/opentracing-go"
 	"github.com/rakyll/autopprof"
+	jaeger "github.com/uber/jaeger-client-go"
+	jaegercnf "github.com/uber/jaeger-client-go/config"
 
 	report "github.com/ikarishinjieva/golang-live-coverage-report/pkg"
 )
@@ -94,6 +96,8 @@ func (c *Command) readConfig() *Config {
 	flags.IntVar(&cmdConfig.CoverageReportPort, "coverage-report-port", 0, "")
 	flags.StringVar(&cmdConfig.CoverageReportRawCodeDir, "coverage-report-raw-code-dir", "/usr/lib/dtle", "")
 	flags.StringVar(&cmdConfig.NodeName, "node", "", "")
+	flags.StringVar(&cmdConfig.JaegerAgentAddress, "jaeger-agent-address", "", "")
+	flags.StringVar(&cmdConfig.JaegerAgentPort, "jaeger-agent-port", "", "")
 
 	if err := flags.Parse(c.args); err != nil {
 		return nil
@@ -248,6 +252,7 @@ func (c *Command) setupLoggers(config *Config) (io.Writer, error) {
 
 // setupAgent is used to start the agent and various interfaces
 func (c *Command) setupAgent(config *Config, logOutput io.Writer) error {
+
 	c.logger.Printf("Starting Dtle server...")
 	agent, err := NewAgent(config, logOutput, c.logger)
 	if err != nil {
@@ -274,6 +279,36 @@ func (c *Command) Run(args []string) int {
 	config := c.readConfig()
 	if config == nil {
 		return 1
+	}
+	if config.JaegerAgentAddress != "" && config.JaegerAgentPort != "" {
+		cfg := jaegercnf.Configuration{
+			Sampler: &jaegercnf.SamplerConfig{
+				Type:  "const",
+				Param: 1,
+			},
+			ServiceName: "dtle",
+			Reporter: &jaegercnf.ReporterConfig{
+				LogSpans:            true,
+				BufferFlushInterval: 1 * time.Second,
+			},
+		}
+		sender, err := jaeger.NewUDPTransport(config.JaegerAgentAddress+":"+config.JaegerAgentPort, 0)
+		if err != nil {
+			return 1
+		}
+
+		reporter := jaeger.NewRemoteReporter(sender)
+		// Initialize tracer with a logger and a metrics factory
+		tracer, closer, err := cfg.NewTracer(
+			jaegercnf.Reporter(reporter),
+		)
+
+		/*tracer, closer, err := cfg.NewTracer()*/
+		if err != nil {
+			return 1
+		}
+		opentracing.SetGlobalTracer(tracer)
+		defer closer.Close()
 	}
 
 	// Setup the log outputs

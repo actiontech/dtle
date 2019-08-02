@@ -10,14 +10,12 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
-	"os"
-
-	"github.com/mitchellh/cli"
-
 	_ "net/http/pprof"
+	"os"
 
 	"github.com/actiontech/dtle/agent"
 	"github.com/actiontech/dtle/cmd/dtle/command"
+	"github.com/mitchellh/cli"
 )
 
 // The git commit that was compiled. This will be filled in by the compiler.
@@ -33,9 +31,6 @@ func main() {
 
 func realMain() int {
 	log.SetOutput(ioutil.Discard)
-
-	// Get the command line args. We shortcut "--version" and "-v" to
-	// just show the version.
 	args := os.Args[1:]
 	for _, arg := range args {
 		if arg == "-v" || arg == "--version" {
