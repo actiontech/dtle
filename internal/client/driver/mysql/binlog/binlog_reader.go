@@ -38,8 +38,6 @@ import (
 	"github.com/actiontech/dtle/internal/config"
 	"github.com/actiontech/dtle/internal/config/mysql"
 
-	"time"
-
 	log "github.com/actiontech/dtle/internal/logger"
 	"github.com/actiontech/dtle/internal/models"
 	"github.com/actiontech/dtle/utils"

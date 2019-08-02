@@ -494,6 +494,23 @@ func (a *Applier) initNatSubClient() (err error) {
 	a.natsConn = sc
 	return nil
 }
+func DecodeDumpEntry(data []byte) (entry *DumpEntry, err error) {
+	msg, err := snappy.Decode(nil, data)
+	if err != nil {
+		return nil, err
+	}
+
+	entry = &DumpEntry{}
+	n, err := entry.Unmarshal(msg)
+	if err != nil {
+		return nil, err
+	}
+	if n != uint64(len(msg)) {
+		return nil, fmt.Errorf("DumpEntry.Unmarshal: not all consumed. data: %v, consumed: %v",
+			len(msg), n)
+	}
+	return entry, nil
+}
 
 // Decode
 func Decode(data []byte, vPtr interface{}) (err error) {
