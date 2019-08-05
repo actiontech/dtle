@@ -541,6 +541,14 @@
 
 [[projects]]
   branch = "master"
+  digest = "1:8981bbb4c068f10f960bf7853bfb1e39ea215b4602c4f97cb4012b2315470067"
+  name = "github.com/ikarishinjieva/golang-live-coverage-report"
+  packages = ["pkg"]
+  pruneopts = "UT"
+  revision = "52af5b19c76c0c43be18058e3e0e30ad68b8aa3f"
+
+[[projects]]
+  branch = "master"
   digest = "1:d5e59e5642a05d0c5e4bcf0f4d4daf854b923182f07c25e8b2b28533286be54c"
   name = "github.com/issuj/gofaster"
   packages = ["base64"]
@@ -723,12 +731,32 @@
   version = "v0.10.2"
 
 [[projects]]
+  branch = "master"
+  digest = "1:faf03cfb4625885b8068da2521d9e7f22f5c8d0add689f01d64c93389dc9e250"
+  name = "github.com/nats-io/not.go"
+  packages = ["."]
+  pruneopts = "UT"
+  revision = "f31ff89f78fd518f8d88d9bd6392ae9f8967bb82"
+
+[[projects]]
   digest = "1:c3cd663f2f30b92536b9f290ac85c6310dae36a14cb8961553ae9ccf0d85ae41"
   name = "github.com/nats-io/nuid"
   packages = ["."]
   pruneopts = "UT"
   revision = "289cccf02c178dc782430d534e3c1f5b72af807f"
   version = "v1.0.0"
+
+[[projects]]
+  digest = "1:11e62d6050198055e6cd87ed57e5d8c669e84f839c16e16f192374d913d1a70d"
+  name = "github.com/opentracing/opentracing-go"
+  packages = [
+    ".",
+    "ext",
+    "log",
+  ]
+  pruneopts = "UT"
+  revision = "659c90643e714681897ec2521c60567dd21da733"
+  version = "v1.1.0"
 
 [[projects]]
   branch = "master"
@@ -755,12 +783,20 @@
   packages = ["."]
   pruneopts = "UT"
   revision = "1176802fff62540cc87d289bd40c52a2d6b2ea16"
-  source = "https://github.com/pingcap/errors.git"
+  source = "https://github.com/pingcap/errors"
   version = "v0.11.0"
 
 [[projects]]
+  branch = "master"
+  digest = "1:4d4e952b8d7c165580d792a130ac44145699fe34aabb0f8d2303019fca0038f2"
+  name = "github.com/pingcap/log"
+  packages = ["."]
+  pruneopts = "UT"
+  revision = "479153f07ebdcbb42a14c99d9c16cefbe531071d"
+
+[[projects]]
   branch = "release-2.1"
-  digest = "1:411d853177b053f2567a6f55c06fed52decd3471ab3535216f176323988ea594"
+  digest = "1:ef455f5fe342042fff978d68e831e35457bdfa0163be1c49383882e8efe4afa9"
   name = "github.com/pingcap/parser"
   packages = [
     ".",
@@ -776,10 +812,11 @@
     "types",
   ]
   pruneopts = "UT"
-  revision = "3d110205ce12773e8edcc5e86301145e974d6e51"
+  revision = "20e37a65d7184284f67ae7927767a145ce5329a2"
 
 [[projects]]
-  digest = "1:471c2489657c4a31837e1b11a9f17374812df6e0fade50637cc28c5b7bd162c6"
+  branch = "release-2.1"
+  digest = "1:a9d3d8a2a21090b5da2fd599c993f1a6af85293af8b7d4577187f89c5bef6a51"
   name = "github.com/pingcap/tidb"
   packages = [
     "sessionctx/stmtctx",
@@ -788,11 +825,12 @@
     "types/parser_driver",
     "util/execdetails",
     "util/hack",
+    "util/logutil",
+    "util/math",
     "util/memory",
   ]
   pruneopts = "UT"
-  revision = "a1d10c17039ec289ef490481b25c7091dba7ac31"
-  version = "v2.1.4"
+  revision = "6dfa63d41df978d463fe126d00f7eb78802914a1"
 
 [[projects]]
   branch = "master"
@@ -954,7 +992,7 @@
 
 [[projects]]
   branch = "udup-mod"
-  digest = "1:766e505d564ed80c05d68fbd0c8c650d842f91cca15fb761a8a458e54b350c6e"
+  digest = "1:3b8517eb78cf1200b197af877093544d7bee3990dd5366dc7c159133ed6ae329"
   name = "github.com/siddontang/go-mysql"
   packages = [
     "client",
@@ -963,7 +1001,7 @@
     "replication",
   ]
   pruneopts = "UT"
-  revision = "126f2f6a8af308a8f3c5318be44a475405838d4a"
+  revision = "28a08cf07fa8359bf389f8c766588a86df9b19cd"
   source = "github.com/ffffwh/go-mysql"
 
 [[projects]]
@@ -980,6 +1018,40 @@
   packages = ["."]
   pruneopts = "UT"
   revision = "b75d8614f926c077e48d85f1f8f7885b758c6225"
+
+[[projects]]
+  digest = "1:3b0ac1ac6f703e6d43f4e29c97da2c9e34465c66e2e19f9828e9841d1c9279a4"
+  name = "github.com/uber/jaeger-client-go"
+  packages = [
+    ".",
+    "config",
+    "internal/baggage",
+    "internal/baggage/remote",
+    "internal/spanlog",
+    "internal/throttler",
+    "internal/throttler/remote",
+    "log",
+    "rpcmetrics",
+    "thrift",
+    "thrift-gen/agent",
+    "thrift-gen/baggage",
+    "thrift-gen/jaeger",
+    "thrift-gen/sampling",
+    "thrift-gen/zipkincore",
+    "transport",
+    "utils",
+  ]
+  pruneopts = "UT"
+  revision = "2f47546e3facd43297739439600bcf43f44cce5d"
+  version = "v2.16.0"
+
+[[projects]]
+  digest = "1:c9d69a04f7fa171f50360bbcc32196b4de8ab8837ef772f6302d0140a1e3e7f6"
+  name = "github.com/uber/jaeger-lib"
+  packages = ["metrics"]
+  pruneopts = "UT"
+  revision = "0e30338a695636fe5bcf7301e8030ce8dd2a8530"
+  version = "v2.0.0"
 
 [[projects]]
   digest = "1:03aa6e485e528acb119fb32901cf99582c380225fc7d5a02758e08b180cb56c3"
@@ -1001,6 +1073,37 @@
   pruneopts = "UT"
   revision = "0c6b41e72360850ca4f98dc341fd999726ea007f"
   version = "v0.5.4"
+
+[[projects]]
+  digest = "1:a5158647b553c61877aa9ae74f4015000294e47981e6b8b07525edcbb0747c81"
+  name = "go.uber.org/atomic"
+  packages = ["."]
+  pruneopts = "UT"
+  revision = "df976f2515e274675050de7b3f42545de80594fd"
+  version = "v1.4.0"
+
+[[projects]]
+  digest = "1:60bf2a5e347af463c42ed31a493d817f8a72f102543060ed992754e689805d1a"
+  name = "go.uber.org/multierr"
+  packages = ["."]
+  pruneopts = "UT"
+  revision = "3c4937480c32f4c13a875a1829af76c98ca3d40a"
+  version = "v1.1.0"
+
+[[projects]]
+  digest = "1:676160e6a4722b08e0e26b11521d575c2cb2b6f0c679e1ee6178c5d8dee51e5e"
+  name = "go.uber.org/zap"
+  packages = [
+    ".",
+    "buffer",
+    "internal/bufferpool",
+    "internal/color",
+    "internal/exit",
+    "zapcore",
+  ]
+  pruneopts = "UT"
+  revision = "27376062155ad36be76b0f12cf1572a221d3a48c"
+  version = "v1.10.0"
 
 [[projects]]
   branch = "master"
@@ -1078,6 +1181,14 @@
   revision = "b1f26356af11148e710935ed1ac8a7f5702c7612"
   version = "v1.1.0"
 
+[[projects]]
+  digest = "1:c805e517269b0ba4c21ded5836019ed7d16953d4026cb7d00041d039c7906be9"
+  name = "gopkg.in/natefinch/lumberjack.v2"
+  packages = ["."]
+  pruneopts = "UT"
+  revision = "a96e63847dc3c67d17befa69c303767e2f84e54f"
+  version = "v2.1"
+
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
@@ -1113,6 +1224,7 @@
     "github.com/hashicorp/serf/coordinate",
     "github.com/hashicorp/serf/serf",
     "github.com/hashicorp/yamux",
+    "github.com/ikarishinjieva/golang-live-coverage-report/pkg",
     "github.com/issuj/gofaster/base64",
     "github.com/mitchellh/cli",
     "github.com/mitchellh/colorstring",
@@ -1122,6 +1234,9 @@
     "github.com/nats-io/gnatsd/server",
     "github.com/nats-io/go-nats",
     "github.com/nats-io/nats-streaming-server/server",
+    "github.com/nats-io/not.go",
+    "github.com/opentracing/opentracing-go",
+    "github.com/opentracing/opentracing-go/ext",
     "github.com/outbrain/golib/tests",
     "github.com/pingcap/parser",
     "github.com/pingcap/parser/ast",
@@ -1129,6 +1244,7 @@
     "github.com/pingcap/parser/model",
     "github.com/pingcap/parser/mysql",
     "github.com/pingcap/tidb/types/parser_driver",
+    "github.com/pkg/errors",
     "github.com/prometheus/client_golang/prometheus/promhttp",
     "github.com/rakyll/autopprof",
     "github.com/ryanuber/columnize",
@@ -1142,6 +1258,8 @@
     "github.com/siddontang/go-mysql/mysql",
     "github.com/siddontang/go-mysql/replication",
     "github.com/siddontang/go/hack",
+    "github.com/uber/jaeger-client-go",
+    "github.com/uber/jaeger-client-go/config",
     "github.com/ugorji/go/codec",
     "golang.org/x/net/context",
     "golang.org/x/text/encoding",
