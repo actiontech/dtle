@@ -5,63 +5,48 @@ about: Create a report to help us improve
 ---
 
 <!--
-If you are reporting a new issue, make sure that we do not have any duplicates
-already open. You can ensure this by searching the issue list for this
-repository. If there is a duplicate, please close your issue and add a comment
-to the existing issue instead.
+Before reporting an issue, make a search and ensure there is no similar existing issue. If there is one, you can comment there.
 
-If you suspect your issue is a bug, please edit your issue description to
-include the BUG REPORT INFORMATION shown below. 
+The GitHub issue tracker is for bug reports and feature requests. **Do not ask for usage or error solution here.** General support for **Dtle** can be found at:
 
-For more information about reporting issues, see
-https://github.com/actiontech/dtle/blob/master/CONTRIBUTING.md#reporting-other-issues
-
----------------------------------------------------
-GENERAL SUPPORT INFORMATION
----------------------------------------------------
-
-The GitHub issue tracker is for bug reports and feature requests.
-General support for **Dtle** can be found at the following locations:
-
-- Dtle Support QQ Group - 852990221
-
----------------------------------------------------
-BUG REPORT INFORMATION
----------------------------------------------------
-Use the commands below to provide key information from your environment:
-You do NOT have to include this information if this is a FEATURE REQUEST
+- Dtle Support QQ Group: 852990221
 -->
 
-**Description**
+## Description
 
 <!--
-Briefly describe the problem you are having in a few paragraphs.
+Briefly describe the problem in a few paragraphs.
 -->
 
-**Steps to reproduce the issue:**
-1.
-2.
-3.
+## Steps to reproduce the issue
+1. 
+2. 
+3. 
 
-**Describe the results you received:**
+## Describe the results you received
 
 
-**Describe the results you expected:**
+## Describe the results you expected
 
-**Output of `./dtle version`:**
+## Output of `./dtle version`:**
 
 ```
 (paste your output here)
 ```
 
-**Additional information you deem important (e.g. issue happens only occasionally):**
+## Additional information
+
+(e.g. issue happens only occasionally)
 
 
-**Additional details (log, config, job config etc):**
-<!-- 
-1. default config path: /etc/dtle/dtle.conf
-2. job config:   curl -XGET "http://127.0.0.1:8190/v1/job/<job_uuid>"
-3. default log path: /var/log/dtle.log
+## Additional details (log, config, job config etc):
+<!--
+1. default file path 
+   - config: /etc/dtle/dtle.conf
+   - log: /var/log/dtle.log
+   - job: your local file, or get from dtle
+     - curl -XGET "http://127.0.0.1:8190/v1/job/<job_uuid>"
 4. mask sensitive infomation (e.g. IP, username and password)"
-5. try to be complete and compress if needed
+5. paste short files or the key part
+6. provide large files as attachments (compress if necessary)
 -->
