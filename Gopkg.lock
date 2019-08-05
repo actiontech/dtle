@@ -541,9 +541,12 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:8981bbb4c068f10f960bf7853bfb1e39ea215b4602c4f97cb4012b2315470067"
+  digest = "1:b83c93dc7c98041348aeb3707df137a8ef9e7158d7e61cb2e88b0d21603906cd"
   name = "github.com/ikarishinjieva/golang-live-coverage-report"
-  packages = ["pkg"]
+  packages = [
+    "cmd/golang-live-coverage-report",
+    "pkg",
+  ]
   pruneopts = "UT"
   revision = "52af5b19c76c0c43be18058e3e0e30ad68b8aa3f"
 
@@ -1224,6 +1227,7 @@
     "github.com/hashicorp/serf/coordinate",
     "github.com/hashicorp/serf/serf",
     "github.com/hashicorp/yamux",
+    "github.com/ikarishinjieva/golang-live-coverage-report/cmd/golang-live-coverage-report",
     "github.com/ikarishinjieva/golang-live-coverage-report/pkg",
     "github.com/issuj/gofaster/base64",
     "github.com/mitchellh/cli",
