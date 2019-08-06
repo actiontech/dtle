@@ -25,7 +25,7 @@ const (
 	// RegisterEnforceIndexErrPrefix is the prefix to use in errors caused by
 	// enforcing the job modify index during registers.
 	RegisterEnforceIndexErrPrefix = "Enforcing job modify index"
-	MaskedPassword = "*"
+	MaskedPassword                = "*"
 )
 
 // Job endpoint is used for job interactions
@@ -457,6 +457,9 @@ func (j *Job) List(args *models.JobListRequest,
 					break
 				}
 				job := raw.(*models.Job)
+				if job != nil && job.Status == models.JobStatusRunning {
+					job.StatusDescription = ""
+				}
 				jobCopy0, err := copystructure.Copy(job)
 				if err != nil {
 					return err
