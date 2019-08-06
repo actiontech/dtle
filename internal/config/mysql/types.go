@@ -199,6 +199,13 @@ func (c *ColumnList) Names() []string {
 	}
 	return names
 }
+func (c *ColumnList) EscapedNames() []string {
+	names := make([]string, len(c.Columns))
+	for i := range c.Columns {
+		names[i] = c.Columns[i].EscapedName
+	}
+	return names
+}
 
 // TODO caller doesn't handle nil.
 func (c *ColumnList) GetColumn(columnName string) *Column {
@@ -242,14 +249,6 @@ func (c *ColumnList) HasTimezoneConversion(columnName string) bool {
 
 func (c *ColumnList) String() string {
 	return strings.Join(c.Names(), ",")
-}
-
-func (c *ColumnList) Equals(other *ColumnList) bool {
-	return reflect.DeepEqual(c.Columns, other.Columns)
-}
-
-func (c *ColumnList) EqualsByNames(other *ColumnList) bool {
-	return reflect.DeepEqual(c.Names(), other.Names())
 }
 
 // IsSubsetOf returns 'true' when column names of this list are a subset of

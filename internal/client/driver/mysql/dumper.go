@@ -108,10 +108,10 @@ func (d *dumper) prepareForDumping() error {
 		case umconf.FloatColumnType, umconf.DoubleColumnType,
 			umconf.MediumIntColumnType, umconf.BigIntColumnType,
 			umconf.DecimalColumnType:
-			columns = append(columns, fmt.Sprintf("`%s`+0", col.RawName))
+			columns = append(columns, fmt.Sprintf("%s+0", col.EscapedName))
 			needPm = true
 		default:
-			columns = append(columns, fmt.Sprintf("`%s`", col.RawName))
+			columns = append(columns, col.EscapedName)
 		}
 	}
 	if needPm {
@@ -138,7 +138,7 @@ func (d *dumper) buildQueryOnUniqueKey() string {
 	nCol := len(d.table.UseUniqueKey.Columns.Columns)
 	uniqueKeyColumnAscending := make([]string, nCol, nCol)
 	for i, col := range d.table.UseUniqueKey.Columns.Columns {
-		colName := usql.EscapeName(col.RawName)
+		colName := col.EscapedName
 		switch col.Type {
 		case umconf.EnumColumnType:
 			// TODO try mysql enum type
@@ -160,11 +160,11 @@ func (d *dumper) buildQueryOnUniqueKey() string {
 			innerItems := make([]string, x+1)
 
 			for y := 0; y < x; y++ {
-				colName := usql.EscapeName(d.table.UseUniqueKey.Columns.Columns[y].RawName)
+				colName := d.table.UseUniqueKey.Columns.Columns[y].EscapedName
 				innerItems[y] = fmt.Sprintf("(%s = %s)", colName, d.table.UseUniqueKey.LastMaxVals[y])
 			}
 
-			colName := usql.EscapeName(d.table.UseUniqueKey.Columns.Columns[x].RawName)
+			colName := d.table.UseUniqueKey.Columns.Columns[x].EscapedName
 			innerItems[x] = fmt.Sprintf("(%s > %s)", colName, d.table.UseUniqueKey.LastMaxVals[x])
 
 			rangeItems[x] = fmt.Sprintf("(%s)", strings.Join(innerItems, " and "))
