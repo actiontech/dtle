@@ -28,7 +28,7 @@ import (
 
 	"github.com/golang/snappy"
 	gonats "github.com/nats-io/go-nats"
-	"github.com/not.go"
+	"github.com/nats-io/not.go"
 	gomysql "github.com/siddontang/go-mysql/mysql"
 
 	"os"

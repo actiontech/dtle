@@ -14,6 +14,7 @@
 package types
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"sort"
@@ -29,7 +30,8 @@ import (
 	"github.com/pingcap/tidb/sessionctx/stmtctx"
 	"github.com/pingcap/tidb/types/json"
 	"github.com/pingcap/tidb/util/hack"
-	log "github.com/sirupsen/logrus"
+	"github.com/pingcap/tidb/util/logutil"
+	"go.uber.org/zap"
 )
 
 // Kind constants.
@@ -804,7 +806,7 @@ func (d *Datum) convertToString(sc *stmtctx.StatementContext, target *FieldType)
 	default:
 		return invalidConv(d, target.Tp)
 	}
-	s, err := ProduceStrWithSpecifiedTp(s, target, sc)
+	s, err := ProduceStrWithSpecifiedTp(s, target, sc, true)
 	ret.SetString(s)
 	if target.Charset == charset.CharsetBin {
 		ret.k = KindBytes
@@ -812,8 +814,9 @@ func (d *Datum) convertToString(sc *stmtctx.StatementContext, target *FieldType)
 	return ret, errors.Trace(err)
 }
 
-// ProduceStrWithSpecifiedTp produces a new string according to `flen` and `chs`.
-func ProduceStrWithSpecifiedTp(s string, tp *FieldType, sc *stmtctx.StatementContext) (_ string, err error) {
+// ProduceStrWithSpecifiedTp produces a new string according to `flen` and `chs`. Param `padZero` indicates
+// whether we should pad `\0` for `binary(flen)` type.
+func ProduceStrWithSpecifiedTp(s string, tp *FieldType, sc *stmtctx.StatementContext, padZero bool) (_ string, err error) {
 	flen, chs := tp.Flen, tp.Charset
 	if flen >= 0 {
 		// Flen is the rune length, not binary length, for UTF8 charset, we need to calculate the
@@ -842,7 +845,7 @@ func ProduceStrWithSpecifiedTp(s string, tp *FieldType, sc *stmtctx.StatementCon
 		} else if len(s) > flen {
 			err = ErrDataTooLong.GenWithStack("Data Too Long, field len %d, data len %d", flen, len(s))
 			s = truncateStr(s, flen)
-		} else if tp.Tp == mysql.TypeString && IsBinaryStr(tp) && len(s) < flen {
+		} else if tp.Tp == mysql.TypeString && IsBinaryStr(tp) && len(s) < flen && padZero {
 			padding := make([]byte, flen-len(s))
 			s = string(append([]byte(s), padding...))
 		}
@@ -899,11 +902,7 @@ func (d *Datum) convertToUint(sc *stmtctx.StatementContext, target *FieldType) (
 			val, err = ConvertIntToUint(sc, ival, upperBound, tp)
 		}
 	case KindMysqlDecimal:
-		fval, err1 := d.GetMysqlDecimal().ToFloat64()
-		val, err = ConvertFloatToUint(sc, fval, upperBound, tp)
-		if err == nil {
-			err = err1
-		}
+		val, err = ConvertDecimalToUint(sc, d.GetMysqlDecimal(), upperBound, tp)
 	case KindMysqlEnum:
 		val, err = ConvertFloatToUint(sc, d.GetMysqlEnum().ToNumber(), upperBound, tp)
 	case KindMysqlSet:
@@ -949,6 +948,8 @@ func (d *Datum) convertToMysqlTimestamp(sc *stmtctx.StatementContext, target *Fi
 		t, err = ParseTime(sc, d.GetString(), mysql.TypeTimestamp, fsp)
 	case KindInt64:
 		t, err = ParseTimeFromNum(sc, d.GetInt64(), mysql.TypeTimestamp, fsp)
+	case KindMysqlDecimal:
+		t, err = ParseTimeFromFloatString(sc, d.GetMysqlDecimal().String(), mysql.TypeTimestamp, fsp)
 	default:
 		return invalidConv(d, mysql.TypeTimestamp)
 	}
@@ -986,6 +987,8 @@ func (d *Datum) convertToMysqlTime(sc *stmtctx.StatementContext, target *FieldTy
 			return ret, errors.Trace(err)
 		}
 		t, err = t.RoundFrac(sc, fsp)
+	case KindMysqlDecimal:
+		t, err = ParseTimeFromFloatString(sc, d.GetMysqlDecimal().String(), tp, fsp)
 	case KindString, KindBytes:
 		t, err = ParseTime(sc, d.GetString(), tp, fsp)
 	case KindInt64:
@@ -1169,11 +1172,14 @@ func (d *Datum) convertToMysqlYear(sc *stmtctx.StatementContext, target *FieldTy
 	)
 	switch d.k {
 	case KindString, KindBytes:
-		y, err = StrToInt(sc, d.GetString())
+		s := d.GetString()
+		y, err = StrToInt(sc, s)
 		if err != nil {
 			return ret, errors.Trace(err)
 		}
-		fromStr = true
+		if len(s) != 4 && len(s) > 0 && s[0:1] == "0" {
+			fromStr = true
+		}
 	case KindMysqlTime:
 		y = int64(d.GetMysqlTime().Time.Year())
 	case KindMysqlDuration:
@@ -1230,7 +1236,7 @@ func (d *Datum) convertToMysqlEnum(sc *stmtctx.StatementContext, target *FieldTy
 		e, err = ParseEnumValue(target.Elems, uintDatum.GetUint64())
 	}
 	if err != nil {
-		log.Error(err)
+		logutil.Logger(context.Background()).Error("convert to MySQL enum failed", zap.Error(err))
 		err = errors.Trace(ErrTruncated)
 	}
 	ret.SetValue(e)

@@ -26,6 +26,7 @@
 
 required = [
     "github.com/pingcap/parser/goyacc",
+    "github.com/ikarishinjieva/golang-live-coverage-report/cmd/golang-live-coverage-report",
     # arch-dependent
     #  shirou/gopsutil/host
     #   -> shirou/process unless arch is linux
@@ -203,6 +204,15 @@ required = [
 [[constraint]]
   name = "golang.org/x/text"
   version = "0.3.0"
+
+[[constraint]]
+  name = "github.com/pingcap/tidb"
+  branch = "release-2.1"
+
+[[override]]
+  name = "github.com/pingcap/errors"
+  version = "0.11.0"
+  source = "https://github.com/pingcap/errors"
 
 [prune]
   go-tests = true

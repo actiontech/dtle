@@ -27,6 +27,7 @@ var (
 	_ DMLNode = &SelectStmt{}
 	_ DMLNode = &ShowStmt{}
 	_ DMLNode = &LoadDataStmt{}
+	_ DMLNode = &SplitRegionStmt{}
 
 	_ Node = &Assignment{}
 	_ Node = &ByItem{}
@@ -982,6 +983,10 @@ const (
 	ShowMasterStatus
 	ShowPrivileges
 	ShowErrors
+	ShowPumpStatus
+	ShowDrainerStatus
+	ShowOpenTables
+	ShowRegions
 )
 
 // ShowStmt is a statement to provide information about databases, tables, columns and so on.
@@ -990,13 +995,14 @@ type ShowStmt struct {
 	dmlNode
 	resultSetNode
 
-	Tp     ShowStmtType // Databases/Tables/Columns/....
-	DBName string
-	Table  *TableName  // Used for showing columns.
-	Column *ColumnName // Used for `desc table column`.
-	Flag   int         // Some flag parsed from sql, such as FULL.
-	Full   bool
-	User   *auth.UserIdentity // Used for show grants.
+	Tp        ShowStmtType // Databases/Tables/Columns/....
+	DBName    string
+	Table     *TableName  // Used for showing columns.
+	Column    *ColumnName // Used for `desc table column`.
+	IndexName model.CIStr
+	Flag      int // Some flag parsed from sql, such as FULL.
+	Full      bool
+	User      *auth.UserIdentity // Used for show grants.
 
 	// GlobalScope is used by show variables
 	GlobalScope bool
@@ -1206,6 +1212,60 @@ func (n *FrameBound) Accept(v Visitor) (Node, bool) {
 			return n, false
 		}
 		n.Unit = node.(ExprNode)
+	}
+	return v.Leave(n)
+}
+
+type SplitRegionStmt struct {
+	dmlNode
+
+	Table     *TableName
+	IndexName model.CIStr
+
+	SplitOpt *SplitOption
+}
+
+type SplitOption struct {
+	Lower      []ExprNode
+	Upper      []ExprNode
+	Num        int64
+	ValueLists [][]ExprNode
+}
+
+func (n *SplitRegionStmt) Accept(v Visitor) (Node, bool) {
+	newNode, skipChildren := v.Enter(n)
+	if skipChildren {
+		return v.Leave(newNode)
+	}
+
+	n = newNode.(*SplitRegionStmt)
+	node, ok := n.Table.Accept(v)
+	if !ok {
+		return n, false
+	}
+	n.Table = node.(*TableName)
+	for i, val := range n.SplitOpt.Lower {
+		node, ok := val.Accept(v)
+		if !ok {
+			return n, false
+		}
+		n.SplitOpt.Lower[i] = node.(ExprNode)
+	}
+	for i, val := range n.SplitOpt.Upper {
+		node, ok := val.Accept(v)
+		if !ok {
+			return n, false
+		}
+		n.SplitOpt.Upper[i] = node.(ExprNode)
+	}
+	for i, list := range n.SplitOpt.ValueLists {
+		for j, val := range list {
+			node, ok := val.Accept(v)
+			if !ok {
+				return n, false
+			}
+			n.SplitOpt.ValueLists[i][j] = node.(ExprNode)
+		}
 	}
 	return v.Leave(n)
 }
