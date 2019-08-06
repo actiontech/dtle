@@ -65,7 +65,7 @@ func case5() {
 		panicIfErr(err, "at GetTableColumnsSqle")
 	}
 	for _, col := range colList.ColumnList() {
-		log.Printf("col %v %v %v %v %v", col.Name, col.Type, col.IsPk(), col.Nullable, col.Default)
+		log.Printf("col %v %v %v %v %v", col.RawName, col.Type, col.IsPk(), col.Nullable, col.Default)
 	}
 
 	for _, col := range cStmt.Cols {
@@ -115,7 +115,7 @@ func case4() {
 		panicIfErr(err, "at GetTableColumnsSqle")
 	}
 	for _, col := range colList.ColumnList() {
-		log.Printf("col %v %v %v %v %v", col.Name, col.Type, col.IsPk(), col.Nullable, col.Default)
+		log.Printf("col %v %v %v %v %v", col.RawName, col.Type, col.IsPk(), col.Nullable, col.Default)
 	}
 
 	for _, col := range cStmt.Cols {
@@ -165,7 +165,7 @@ func case1() {
 		panicIfErr(err, "at GetTableColumnsSqle")
 	}
 	for _, col := range colList.ColumnList() {
-		log.Printf("col %v %v %v %v %v", col.Name, col.Type, col.IsPk(), col.Nullable, col.Default)
+		log.Printf("col %v %v %v %v %v", col.RawName, col.Type, col.IsPk(), col.Nullable, col.Default)
 	}
 
 	for _, col := range cStmt.Cols {
@@ -214,7 +214,7 @@ func case2() {
 		panicIfErr(err, "at GetTableColumnsSqle")
 	}
 	for _, col := range colList.ColumnList() {
-		log.Printf("col %v %v %v %v", col.Name, col.Type, col.IsPk(), col.Nullable)
+		log.Printf("col %v %v %v %v", col.RawName, col.Type, col.IsPk(), col.Nullable)
 	}
 
 }
@@ -239,6 +239,6 @@ func case3() {
 		panicIfErr(err, "at GetTableColumnsSqle")
 	}
 	for _, col := range colList.ColumnList() {
-		log.Printf("col %v %v %v %v", col.Name, col.Type, col.IsPk(), col.Nullable)
+		log.Printf("col %v %v %v %v", col.RawName, col.Type, col.IsPk(), col.Nullable)
 	}
 }

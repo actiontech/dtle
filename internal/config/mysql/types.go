@@ -58,7 +58,7 @@ type TimezoneConvertion struct {
 }
 
 type Column struct {
-	Name               string
+	RawName            string
 	IsUnsigned         bool
 	Charset            string
 	Type               ColumnType
@@ -125,7 +125,7 @@ func (c *Column) ConvertArg(arg interface{}) interface{} {
 func NewColumns(names []string) []Column {
 	result := make([]Column, len(names))
 	for i := range names {
-		result[i].Name = names[i]
+		result[i].RawName = names[i]
 	}
 	return result
 }
@@ -146,7 +146,7 @@ func NewEmptyColumnsMap() ColumnsMap {
 func NewColumnsMap(orderedColumns []Column) ColumnsMap {
 	columnsMap := NewEmptyColumnsMap()
 	for i, column := range orderedColumns {
-		columnsMap[column.Name] = i
+		columnsMap[column.RawName] = i
 	}
 	return columnsMap
 }
@@ -191,7 +191,7 @@ func (c *ColumnList) ColumnList() []Column {
 func (c *ColumnList) Names() []string {
 	names := make([]string, len(c.Columns))
 	for i := range c.Columns {
-		names[i] = c.Columns[i].Name
+		names[i] = c.Columns[i].RawName
 	}
 	return names
 }
@@ -252,7 +252,7 @@ func (c *ColumnList) EqualsByNames(other *ColumnList) bool {
 // another list, in arbitrary order (order agnostic)
 func (c *ColumnList) IsSubsetOf(other *ColumnList) bool {
 	for _, column := range c.Columns {
-		if _, exists := other.Ordinals[column.Name]; !exists {
+		if _, exists := other.Ordinals[column.RawName]; !exists {
 			return false
 		}
 	}

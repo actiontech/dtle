@@ -31,7 +31,7 @@ func TestGetColumn(t *testing.T) {
 	{
 		column := columnList.GetColumn("category")
 		test.S(t).ExpectTrue(column != nil)
-		test.S(t).ExpectEquals(column.Name, "category")
+		test.S(t).ExpectEquals(column.RawName, "category")
 	}
 	{
 		column := columnList.GetColumn("no_such_column")

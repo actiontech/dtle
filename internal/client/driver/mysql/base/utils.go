@@ -95,7 +95,7 @@ func GetTableColumns(db usql.QueryAble, databaseName, tableName string) (*umconf
 	columns := []umconf.Column{}
 	err := usql.QueryRowsMap(db, query, func(rowMap usql.RowMap) error {
 		columns = append(columns, umconf.Column{
-			Name:       rowMap.GetString("Field"),
+			RawName:    rowMap.GetString("Field"),
 			ColumnType: rowMap.GetString("Type"),
 			Default:    rowMap.GetString("Default"),
 			Key:        strings.ToUpper(rowMap.GetString("Key")),
@@ -473,10 +473,10 @@ func GetTableColumnsSqle(sqleContext *sqle.Context, schema string, table string)
 
 	for _, col := range cStmt.Cols {
 		newColumn := umconf.Column{
-			Name:     col.Name.String(),
+			RawName:  col.Name.String(),
 			Nullable: true, // by default
 		}
-		if _, inPk := pks[newColumn.Name]; inPk {
+		if _, inPk := pks[newColumn.RawName]; inPk {
 			newColumn.Key = "PRI"
 		}
 
