@@ -9,7 +9,6 @@ package sql
 import (
 	"bytes"
 	"fmt"
-	"strconv"
 	"strings"
 
 	umconf "github.com/actiontech/dtle/internal/config/mysql"
@@ -27,14 +26,20 @@ const (
 	NotEqualsComparisonSign                               = "!="
 )
 
-// EscapeName will escape a db/table/column/... name by wrapping with backticks.
-// It is not fool proof. I'm just trying to do the right thing here, not solving
-// SQL injection issues, which should be irrelevant for this tool.
 func EscapeName(name string) string {
-	if unquoted, err := strconv.Unquote(name); err == nil {
-		name = unquoted
+	sb := strings.Builder{}
+	sb.WriteByte('`')
+	for i := range name {
+		if name[i] == '`' {
+			sb.WriteByte('`')
+			sb.WriteByte('`')
+		} else {
+			sb.WriteByte(name[i])
+		}
 	}
-	return fmt.Sprintf("`%s`", name)
+	sb.WriteByte('`')
+
+	return sb.String()
 }
 
 func EscapeColRawToString(col *[]byte) string {

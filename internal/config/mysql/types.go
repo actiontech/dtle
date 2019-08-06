@@ -8,6 +8,7 @@ package mysql
 
 import (
 	"fmt"
+	"github.com/actiontech/dtle/internal/client/driver/mysql/sql"
 	"reflect"
 	"sort"
 	"strconv"
@@ -58,7 +59,9 @@ type TimezoneConvertion struct {
 }
 
 type Column struct {
+	// Every time you set this, you must also set `EscapedName`.
 	RawName            string
+	EscapedName        string
 	IsUnsigned         bool
 	Charset            string
 	Type               ColumnType
@@ -126,6 +129,7 @@ func NewColumns(names []string) []Column {
 	result := make([]Column, len(names))
 	for i := range names {
 		result[i].RawName = names[i]
+		result[i].EscapedName = sql.EscapeName(names[i])
 	}
 	return result
 }
