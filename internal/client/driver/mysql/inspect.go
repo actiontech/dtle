@@ -278,14 +278,14 @@ func (i *Inspector) validateBinlogs() error {
 
 // validateTable makes sure the table we need to operate on actually exists
 func (i *Inspector) validateTable(databaseName, tableName string) error {
-	query := fmt.Sprintf(`show table status from %s like '%s'`, usql.EscapeName(databaseName), tableName)
+	query := fmt.Sprintf(`show table status from %s like '%s'`, umconf.EscapeName(databaseName), tableName)
 
 	tableFound := false
 	//tableEngine := ""
 	err := usql.QueryRowsMap(i.db, query, func(rowMap usql.RowMap) error {
 		//tableEngine = rowMap.GetString("Engine")
 		if rowMap.GetString("Comment") == "VIEW" {
-			return fmt.Errorf("%s.%s is a VIEW, not a real table. Bailing out", usql.EscapeName(databaseName), usql.EscapeName(tableName))
+			return fmt.Errorf("%s.%s is a VIEW, not a real table. Bailing out", umconf.EscapeName(databaseName), umconf.EscapeName(tableName))
 		}
 		tableFound = true
 
@@ -295,7 +295,7 @@ func (i *Inspector) validateTable(databaseName, tableName string) error {
 		return err
 	}
 	if !tableFound {
-		return fmt.Errorf("Cannot find table %s.%s!", usql.EscapeName(databaseName), usql.EscapeName(tableName))
+		return fmt.Errorf("Cannot find table %s.%s!", umconf.EscapeName(databaseName), umconf.EscapeName(tableName))
 	}
 
 	return nil
@@ -323,7 +323,7 @@ func (i *Inspector) validateTableTriggers(databaseName, tableName string) error 
 		return err
 	}
 	if numTriggers > 0 {
-		return fmt.Errorf("Found triggers on %s.%s. Triggers are not supported at this time. Bailing out", usql.EscapeName(databaseName), usql.EscapeName(tableName))
+		return fmt.Errorf("Found triggers on %s.%s. Triggers are not supported at this time. Bailing out", umconf.EscapeName(databaseName), umconf.EscapeName(tableName))
 	}
 	return nil
 }

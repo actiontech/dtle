@@ -7,6 +7,7 @@
 package sql
 
 import (
+	"github.com/actiontech/dtle/internal/config/mysql"
 	"testing"
 
 	"reflect"
@@ -30,7 +31,7 @@ func normalizeQuery(name string) string {
 func TestEscapeName(t *testing.T) {
 	names := []string{"my_table", `"my_table"`, "`my_table`"}
 	for _, name := range names {
-		escaped := EscapeName(name)
+		escaped := mysql.EscapeName(name)
 		test.S(t).ExpectEquals(escaped, "`my_table`")
 	}
 }

@@ -8,8 +8,6 @@ package mysql
 
 import (
 	"fmt"
-	"github.com/actiontech/dtle/internal/client/driver/mysql/sql"
-	"reflect"
 	"sort"
 	"strconv"
 	"strings"
@@ -129,7 +127,7 @@ func NewColumns(names []string) []Column {
 	result := make([]Column, len(names))
 	for i := range names {
 		result[i].RawName = names[i]
-		result[i].EscapedName = sql.EscapeName(names[i])
+		result[i].EscapedName = EscapeName(names[i])
 	}
 	return result
 }
@@ -359,3 +357,20 @@ func (c *ColumnValues) String() string {
 	}
 	return strings.Join(stringValues, ",")
 }
+
+func EscapeName(name string) string {
+	sb := strings.Builder{}
+	sb.WriteByte('`')
+	for i := range name {
+		if name[i] == '`' {
+			sb.WriteByte('`')
+			sb.WriteByte('`')
+		} else {
+			sb.WriteByte(name[i])
+		}
+	}
+	sb.WriteByte('`')
+
+	return sb.String()
+}
+

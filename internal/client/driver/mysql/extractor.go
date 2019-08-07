@@ -10,6 +10,7 @@ import (
 	gosql "database/sql"
 	"encoding/json"
 	"fmt"
+	"github.com/actiontech/dtle/internal/config/mysql"
 
 	"github.com/actiontech/dtle/internal/g"
 	"github.com/opentracing/opentracing-go"
@@ -709,7 +710,7 @@ func (e *Extractor) CountTableRows(table *config.Table) (int64, error) {
 	} else {
 		method = "COUNT"
 		query = fmt.Sprintf(`select count(*) as rows from %s.%s where (%s)`,
-			sql.EscapeName(table.TableSchema), sql.EscapeName(table.TableName), table.Where)
+			mysql.EscapeName(table.TableSchema), mysql.EscapeName(table.TableName), table.Where)
 	}
 	var rowsEstimate int64
 	if err := e.db.QueryRow(query).Scan(&rowsEstimate); err != nil {

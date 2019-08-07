@@ -126,8 +126,8 @@ func (d *dumper) prepareForDumping() error {
 func (d *dumper) buildQueryOldWay() string {
 	return fmt.Sprintf(`SELECT %s FROM %s.%s where (%s) LIMIT %d OFFSET %d`,
 		d.columns,
-		usql.EscapeName(d.TableSchema),
-		usql.EscapeName(d.TableName),
+		umconf.EscapeName(d.TableSchema),
+		umconf.EscapeName(d.TableName),
 		d.table.Where,
 		d.chunkSize,
 		d.table.Iteration*d.chunkSize,
@@ -175,8 +175,8 @@ func (d *dumper) buildQueryOnUniqueKey() string {
 
 	return fmt.Sprintf(`SELECT %s FROM %s.%s where (%s) and (%s) order by %s LIMIT %d`,
 		d.columns,
-		usql.EscapeName(d.TableSchema),
-		usql.EscapeName(d.TableName),
+		umconf.EscapeName(d.TableSchema),
+		umconf.EscapeName(d.TableName),
 		// where
 		rangeStr, d.table.Where,
 		// order by

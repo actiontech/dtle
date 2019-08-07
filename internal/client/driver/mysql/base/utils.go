@@ -89,8 +89,8 @@ func GetTableColumns(db usql.QueryAble, databaseName, tableName string) (*umconf
 	query := fmt.Sprintf(`
 		show columns from %s.%s
 		`,
-		usql.EscapeName(databaseName),
-		usql.EscapeName(tableName),
+		umconf.EscapeName(databaseName),
+		umconf.EscapeName(tableName),
 	)
 	columns := []umconf.Column{}
 	err := usql.QueryRowsMap(db, query, func(rowMap usql.RowMap) error {
@@ -101,7 +101,7 @@ func GetTableColumns(db usql.QueryAble, databaseName, tableName string) (*umconf
 			Key:        strings.ToUpper(rowMap.GetString("Key")),
 			Nullable:   strings.ToUpper(rowMap.GetString("Null")) == "YES",
 		}
-		aColumn.EscapedName = usql.EscapeName(aColumn.RawName)
+		aColumn.EscapedName = umconf.EscapeName(aColumn.RawName)
 		columns = append(columns, aColumn)
 		return nil
 	})
@@ -110,8 +110,8 @@ func GetTableColumns(db usql.QueryAble, databaseName, tableName string) (*umconf
 	}
 	if len(columns) == 0 {
 		return nil, fmt.Errorf("Found 0 columns on %s.%s. Bailing out",
-			usql.EscapeName(databaseName),
-			usql.EscapeName(tableName),
+			umconf.EscapeName(databaseName),
+			umconf.EscapeName(tableName),
 		)
 	}
 	return umconf.NewColumnList(columns), nil
@@ -119,7 +119,7 @@ func GetTableColumns(db usql.QueryAble, databaseName, tableName string) (*umconf
 
 func ShowCreateTable(db *gosql.DB, databaseName, tableName string, dropTableIfExists bool, addUse bool) (statement []string, err error) {
 	var dummy, createTableStatement string
-	query := fmt.Sprintf(`show create table %s.%s`, usql.EscapeName(databaseName), usql.EscapeName(tableName))
+	query := fmt.Sprintf(`show create table %s.%s`, umconf.EscapeName(databaseName), umconf.EscapeName(tableName))
 	err = db.QueryRow(query).Scan(&dummy, &createTableStatement)
 	if (addUse) {
 		statement = append(statement, fmt.Sprintf("USE %s", databaseName))
@@ -133,7 +133,7 @@ func ShowCreateTable(db *gosql.DB, databaseName, tableName string, dropTableIfEx
 
 func ShowCreateView(db *gosql.DB, databaseName, tableName string, dropTableIfExists bool) (createTableStatement string, err error) {
 	var dummy, character_set_client, collation_connection string
-	query := fmt.Sprintf(`show create table %s.%s`, usql.EscapeName(databaseName), usql.EscapeName(tableName))
+	query := fmt.Sprintf(`show create table %s.%s`, umconf.EscapeName(databaseName), umconf.EscapeName(tableName))
 	err = db.QueryRow(query).Scan(&dummy, &createTableStatement, &character_set_client, &collation_connection)
 	statement := fmt.Sprintf("USE %s", databaseName)
 	if dropTableIfExists {
@@ -478,7 +478,7 @@ func GetTableColumnsSqle(sqleContext *sqle.Context, schema string, table string)
 			RawName:  col.Name.String(),
 			Nullable: true, // by default
 		}
-		newColumn.EscapedName = usql.EscapeName(newColumn.RawName)
+		newColumn.EscapedName = umconf.EscapeName(newColumn.RawName)
 		if _, inPk := pks[newColumn.RawName]; inPk {
 			newColumn.Key = "PRI"
 		}

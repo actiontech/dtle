@@ -26,22 +26,6 @@ const (
 	NotEqualsComparisonSign                               = "!="
 )
 
-func EscapeName(name string) string {
-	sb := strings.Builder{}
-	sb.WriteByte('`')
-	for i := range name {
-		if name[i] == '`' {
-			sb.WriteByte('`')
-			sb.WriteByte('`')
-		} else {
-			sb.WriteByte(name[i])
-		}
-	}
-	sb.WriteByte('`')
-
-	return sb.String()
-}
-
 func EscapeColRawToString(col *[]byte) string {
 	if col != nil {
 		return fmt.Sprintf("'%s'", EscapeValue(string(*col)))
@@ -179,8 +163,8 @@ func BuildDMLDeleteQuery(databaseName, tableName string, tableColumns *umconf.Co
 	if len(uniqueKeyArgs) > 0 {
 		columnArgs = uniqueKeyArgs
 	}
-	databaseName = EscapeName(databaseName)
-	tableName = EscapeName(tableName)
+	databaseName = umconf.EscapeName(databaseName)
+	tableName = umconf.EscapeName(tableName)
 	if err != nil {
 		return result, columnArgs, err
 	}
@@ -208,8 +192,8 @@ func BuildDMLInsertQuery(databaseName, tableName string, tableColumns, sharedCol
 	if sharedColumns.Len() == 0 {
 		return result, sharedArgs, fmt.Errorf("No shared columns found in BuildDMLInsertQuery")
 	}
-	databaseName = EscapeName(databaseName)
-	tableName = EscapeName(tableName)
+	databaseName = umconf.EscapeName(databaseName)
+	tableName = umconf.EscapeName(tableName)
 
 	for _, column := range tableColumns.ColumnList() {
 		tableOrdinal := tableColumns.Ordinals[column.RawName]
@@ -252,8 +236,8 @@ func BuildDMLUpdateQuery(databaseName, tableName string, tableColumns, sharedCol
 	if sharedColumns.Len() == 0 {
 		return result, sharedArgs, columnArgs, fmt.Errorf("No shared columns found in BuildDMLUpdateQuery")
 	}
-	databaseName = EscapeName(databaseName)
-	tableName = EscapeName(tableName)
+	databaseName = umconf.EscapeName(databaseName)
+	tableName = umconf.EscapeName(tableName)
 
 	for _, column := range tableColumns.ColumnList() {
 		tableOrdinal := tableColumns.Ordinals[column.RawName]
