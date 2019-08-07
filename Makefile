@@ -14,7 +14,7 @@ else
 PATH := $(subst :,/bin:,$(GOPATH))/bin:$(PATH)
 endif
 
-GOFLAGS ?= $(GOFLAGS:)
+GOFLAGS := -mod=vendor
 
 # Standard Dtle build
 default: build
@@ -24,19 +24,19 @@ windows: build-windows
 
 # Only run the build (no dependency grabbing)
 build:
-	go build $(GOFLAGS) -o dist/dtle -ldflags \
+	GO111MODULE=on go build $(GOFLAGS) -o dist/dtle -ldflags \
 		"-X main.Version=$(VERSION) -X main.GitCommit=$(COMMIT) -X main.GitBranch=$(BRANCH)" \
 		./cmd/dtle/main.go
 
 build-windows:
-	GOOS=windows GOARCH=amd64 go build $(GOFLAGS) -o dist/dtle.exe -ldflags \
+	GO111MODULE=on GOOS=windows GOARCH=amd64 go build $(GOFLAGS) -o dist/dtle.exe -ldflags \
 		"-X main.Version=$(VERSION) -X main.GitCommit=$(COMMIT) -X main.GitBranch=$(BRANCH)" \
 		./cmd/dtle/main.go
 
 build_with_coverage_report: build-coverage-report-tool coverage-report-pre-build build coverage-report-post-build
 
 build-coverage-report-tool:
-	go install github.com/actiontech/dtle/vendor/github.com/ikarishinjieva/golang-live-coverage-report/cmd/golang-live-coverage-report
+	GO111MODULE=on go install $(GOFLAGS) github.com/actiontech/dtle/vendor/github.com/ikarishinjieva/golang-live-coverage-report/cmd/golang-live-coverage-report
 
 coverage-report-pre-build:
 	PATH=${GOPATH}/bin:$$PATH golang-live-coverage-report \
@@ -51,7 +51,7 @@ coverage-report-post-build:
 
 TEMP_FILE = temp_parser_file
 goyacc:
-	go build -o dist/goyacc vendor/github.com/pingcap/parser/goyacc/main.go
+	GO111MODULE=on go build $(GOFLAGS) -o dist/goyacc vendor/github.com/pingcap/parser/goyacc/main.go
 
 prepare: goyacc
 	dist/goyacc -o /dev/null -xegen $(TEMP_FILE) vendor/github.com/pingcap/parser/parser.y
@@ -83,7 +83,7 @@ fmt:
 	gofmt -s -w .
 
 mtswatcher: helper/mtswatcher/mtswatcher.go
-	go build -o dist/mtswatcher ./helper/mtswatcher/mtswatcher.go
+	GO111MODULE=on go build $(GOFLAGS) -o dist/mtswatcher ./helper/mtswatcher/mtswatcher.go
 
 docker_rpm:
 	$(DOCKER) run -v $(shell pwd)/:/universe/src/github.com/actiontech/dtle --rm $(DOCKER_IMAGE) -c "cd /universe/src/github.com/actiontech/dtle; GOPATH=/universe make prepare package ;chmod 777 -R dist;"

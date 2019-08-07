@@ -1,10 +1,5 @@
-y
-=
+`github.com/cznic/y` has moved to [`modernc.org/y`](https://godoc.org/modernc.org/y) ([vcs](https://gitlab.com/cznic/y)).
 
-Package y converts yacc source code to data structures suitable for a parser generator.
+Please update your import paths to `modernc.org/y`.
 
-Installation
-
-    $ go get github.com/cznic/y
-
-Documentation: [godoc.org/github.com/cznic/y](http://godoc.org/github.com/cznic/y)
+This repo is now archived.
