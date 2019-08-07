@@ -8,6 +8,7 @@ package mysql
 
 import (
 	"fmt"
+	"github.com/actiontech/dtle/internal/client/driver/mysql/sql"
 	"reflect"
 	"sort"
 	"strconv"
@@ -58,7 +59,9 @@ type TimezoneConvertion struct {
 }
 
 type Column struct {
-	Name               string
+	// Every time you set this, you must also set `EscapedName`.
+	RawName            string
+	EscapedName        string
 	IsUnsigned         bool
 	Charset            string
 	Type               ColumnType
@@ -125,7 +128,8 @@ func (c *Column) ConvertArg(arg interface{}) interface{} {
 func NewColumns(names []string) []Column {
 	result := make([]Column, len(names))
 	for i := range names {
-		result[i].Name = names[i]
+		result[i].RawName = names[i]
+		result[i].EscapedName = sql.EscapeName(names[i])
 	}
 	return result
 }
@@ -146,7 +150,7 @@ func NewEmptyColumnsMap() ColumnsMap {
 func NewColumnsMap(orderedColumns []Column) ColumnsMap {
 	columnsMap := NewEmptyColumnsMap()
 	for i, column := range orderedColumns {
-		columnsMap[column.Name] = i
+		columnsMap[column.RawName] = i
 	}
 	return columnsMap
 }
@@ -191,7 +195,14 @@ func (c *ColumnList) ColumnList() []Column {
 func (c *ColumnList) Names() []string {
 	names := make([]string, len(c.Columns))
 	for i := range c.Columns {
-		names[i] = c.Columns[i].Name
+		names[i] = c.Columns[i].RawName
+	}
+	return names
+}
+func (c *ColumnList) EscapedNames() []string {
+	names := make([]string, len(c.Columns))
+	for i := range c.Columns {
+		names[i] = c.Columns[i].EscapedName
 	}
 	return names
 }
@@ -240,19 +251,11 @@ func (c *ColumnList) String() string {
 	return strings.Join(c.Names(), ",")
 }
 
-func (c *ColumnList) Equals(other *ColumnList) bool {
-	return reflect.DeepEqual(c.Columns, other.Columns)
-}
-
-func (c *ColumnList) EqualsByNames(other *ColumnList) bool {
-	return reflect.DeepEqual(c.Names(), other.Names())
-}
-
 // IsSubsetOf returns 'true' when column names of this list are a subset of
 // another list, in arbitrary order (order agnostic)
 func (c *ColumnList) IsSubsetOf(other *ColumnList) bool {
 	for _, column := range c.Columns {
-		if _, exists := other.Ordinals[column.Name]; !exists {
+		if _, exists := other.Ordinals[column.RawName]; !exists {
 			return false
 		}
 	}

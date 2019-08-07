@@ -391,11 +391,11 @@ func (kr *KafkaRunner) kafkaTransformSnapshotData(table *config.Table, value *my
 			}
 
 			if columnList[i].IsPk() {
-				keyPayload.AddField(columnList[i].Name, value)
+				keyPayload.AddField(columnList[i].RawName, value)
 			}
 
 			kr.logger.Debugf("kafka: kafkaTransformSnapshotData rowvalue: %v", value)
-			valuePayload.After.AddField(columnList[i].Name, value)
+			valuePayload.After.AddField(columnList[i].RawName, value)
 		}
 
 		valueSchema := NewEnvelopeSchema(tableIdent, valueColDef)
@@ -467,7 +467,7 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry)
 		colDefs, keyColDefs := kafkaColumnListToColDefs(table.OriginalTableColumns)
 
 		for i, _ := range colList {
-			colName := colList[i].Name
+			colName := colList[i].RawName
 
 			var beforeValue interface{}
 			var afterValue interface{}
@@ -719,7 +719,7 @@ func kafkaColumnListToColDefs(colList *mysql.ColumnList) (valColDefs ColDefs, ke
 			defaultValue = nil
 		}
 		optional := cols[i].Nullable
-		fieldName := cols[i].Name
+		fieldName := cols[i].RawName
 		switch cols[i].Type {
 		case mysql.UnknownColumnType:
 			// TODO warning
