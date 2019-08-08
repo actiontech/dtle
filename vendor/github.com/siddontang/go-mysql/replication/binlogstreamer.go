@@ -2,12 +2,10 @@ package replication
 
 import (
 	"context"
-
-	"time"
-
-	"github.com/juju/errors"
+	"github.com/pingcap/errors"
 	"github.com/opentracing/opentracing-go"
 	"github.com/siddontang/go-log/log"
+	"time"
 )
 
 var (
@@ -36,6 +34,26 @@ func (s *BinlogStreamer) GetEvent(ctx context.Context) (*BinlogEvent, error) {
 		c.SpanContest = span.Context()
 		span.Finish()
 		return c, nil
+	case s.err = <-s.ech:
+		return nil, s.err
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+
+// GetEventWithStartTime gets the binlog event with starttime, if current binlog event timestamp smaller than specify starttime
+// return nil event
+func (s *BinlogStreamer) GetEventWithStartTime(ctx context.Context, startTime time.Time) (*BinlogEvent, error) {
+	if s.err != nil {
+		return nil, ErrNeedSyncAgain
+	}
+	startUnix := startTime.Unix()
+	select {
+	case c := <-s.ch:
+		if int64(c.Header.Timestamp) >= startUnix {
+			return c, nil
+		}
+		return nil, nil
 	case s.err = <-s.ech:
 		return nil, s.err
 	case <-ctx.Done():

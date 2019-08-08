@@ -179,8 +179,6 @@ github.com/ikarishinjieva/golang-live-coverage-report/cmd/golang-live-coverage-r
 github.com/issuj/gofaster/base64
 # github.com/jmespath/go-jmespath v0.0.0-20160202185014-0b12d6b521d8
 github.com/jmespath/go-jmespath
-# github.com/juju/errors v0.0.0-20180806074554-22422dad46e1
-github.com/juju/errors
 # github.com/konsorten/go-windows-terminal-sequences v1.0.1
 github.com/konsorten/go-windows-terminal-sequences
 # github.com/lytics/datemath v0.0.0-20180727225141-3ada1c10b5de
@@ -316,7 +314,7 @@ github.com/siddontang/go/hack
 # github.com/siddontang/go-log v0.0.0-20180807004314-8d05993dda07
 github.com/siddontang/go-log/log
 github.com/siddontang/go-log/loggers
-# github.com/siddontang/go-mysql v0.0.0-20190720022221-046188b858f9 => github.com/ffffwh/go-mysql v0.0.0-20180830075211-28a08cf0
+# github.com/siddontang/go-mysql v0.0.0-20190808080311-dd15a3c6 => github.com/ffffwh/go-mysql v0.0.0-20190808080311-dd15a3c6
 github.com/siddontang/go-mysql/mysql
 github.com/siddontang/go-mysql/replication
 github.com/siddontang/go-mysql/client

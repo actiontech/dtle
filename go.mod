@@ -59,9 +59,6 @@ require (
 	github.com/ikarishinjieva/golang-live-coverage-report v0.0.0-20190317040040-52af5b19c76c
 	github.com/issuj/gofaster v0.0.0-20170702192727-b08f1666d622
 	github.com/jmoiron/sqlx v1.2.0 // indirect
-	github.com/juju/errors v0.0.0-20180806074554-22422dad46e1 // indirect
-	github.com/juju/loggo v0.0.0-20190526231331-6e530bcce5d8 // indirect
-	github.com/juju/testing v0.0.0-20190723135506-ce30eb24acd2 // indirect
 	github.com/leekchan/timeutil v0.0.0-20150802142658-28917288c48d // indirect
 	github.com/lib/pq v1.2.0 // indirect
 	github.com/lytics/datemath v0.0.0-20180727225141-3ada1c10b5de // indirect
@@ -103,7 +100,7 @@ require (
 	github.com/shirou/gopsutil v0.0.0-20180801053943-8048a2e9c577
 	github.com/shirou/w32 v0.0.0-20160930032740-bb4de0191aa4 // indirect
 	github.com/siddontang/go v0.0.0-20180604090527-bdc77568d726
-	github.com/siddontang/go-mysql v0.0.0-20190720022221-046188b858f9
+	github.com/siddontang/go-mysql v0.0.0-20190808080311-dd15a3c6
 	github.com/simplereach/timeutils v1.2.0 // indirect
 	github.com/smartystreets/goconvey v0.0.0-20190731233626-505e41936337 // indirect
 	github.com/tv42/httpunix v0.0.0-20150427012821-b75d8614f926 // indirect
@@ -122,6 +119,6 @@ require (
 	gopkg.in/vmihailenco/msgpack.v2 v2.9.1 // indirect
 )
 
-replace github.com/siddontang/go-mysql => github.com/ffffwh/go-mysql v0.0.0-20180830075211-28a08cf0
+replace github.com/siddontang/go-mysql => github.com/ffffwh/go-mysql v0.0.0-20190808080311-dd15a3c6
 
 replace github.com/araddon/qlbridge => github.com/ffffwh/qlbridge v0.0.0-20181026023605-fc2d5205
