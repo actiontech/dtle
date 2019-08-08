@@ -1,10 +1,12 @@
+# github.com/BurntSushi/toml v0.3.1
+github.com/BurntSushi/toml
 # github.com/DataDog/datadog-go v0.0.0-20180330214955-e67964b4021a
 github.com/DataDog/datadog-go/statsd
 # github.com/NYTimes/gziphandler v1.0.1
 github.com/NYTimes/gziphandler
 # github.com/Shopify/sarama v1.17.0
 github.com/Shopify/sarama
-# github.com/StackExchange/wmi v0.0.0-20180116203802-5d049714c4a6
+# github.com/StackExchange/wmi v0.0.0-20190523213315-cbe66965904d
 github.com/StackExchange/wmi
 # github.com/araddon/dateparse v0.0.0-20180729174819-cfd92a431d0e
 github.com/araddon/dateparse
@@ -58,7 +60,7 @@ github.com/aws/aws-sdk-go/aws/credentials/endpointcreds
 github.com/aws/aws-sdk-go/private/protocol/query
 github.com/aws/aws-sdk-go/private/protocol/xml/xmlutil
 github.com/aws/aws-sdk-go/private/protocol/query/queryutil
-# github.com/beorn7/perks v0.0.0-20180321164747-3a771d992973
+# github.com/beorn7/perks v1.0.0
 github.com/beorn7/perks/quantile
 # github.com/bgentry/go-netrc v0.0.0-20140422174119-9fd32a8b3d3d
 github.com/bgentry/go-netrc/netrc
@@ -73,13 +75,21 @@ github.com/circonus-labs/circonus-gometrics/checkmgr
 github.com/circonus-labs/circonus-gometrics/api/config
 # github.com/circonus-labs/circonusllhist v0.1.0
 github.com/circonus-labs/circonusllhist
+# github.com/coreos/etcd v3.3.13+incompatible
+github.com/coreos/etcd/clientv3
+github.com/coreos/etcd/auth/authpb
+github.com/coreos/etcd/etcdserver/api/v3rpc/rpctypes
+github.com/coreos/etcd/etcdserver/etcdserverpb
+github.com/coreos/etcd/mvcc/mvccpb
+github.com/coreos/etcd/pkg/types
+github.com/coreos/etcd/clientv3/concurrency
 # github.com/cznic/golex v0.0.0-20181122101858-9c343928389c
 github.com/cznic/golex/lex
-# github.com/cznic/mathutil v0.0.0-20180504122225-ca4c9f2c1369
+# github.com/cznic/mathutil v0.0.0-20181122101859-297441e03548
 github.com/cznic/mathutil
 # github.com/cznic/parser v0.0.0-20181122101858-d773202d5b1f
 github.com/cznic/parser/yacc
-# github.com/cznic/sortutil v0.0.0-20150617083342-4c7342852e65
+# github.com/cznic/sortutil v0.0.0-20181122101858-f5f958428db8
 github.com/cznic/sortutil
 # github.com/cznic/strutil v0.0.0-20181122101858-275e90344537
 github.com/cznic/strutil
@@ -87,6 +97,8 @@ github.com/cznic/strutil
 github.com/cznic/y
 # github.com/davecgh/go-spew v1.1.1
 github.com/davecgh/go-spew/spew
+# github.com/dgryski/go-farm v0.0.0-20190423205320-6a90982ecee2
+github.com/dgryski/go-farm
 # github.com/docker/leadership v0.1.0
 github.com/docker/leadership
 # github.com/docker/libkv v0.2.1
@@ -105,19 +117,32 @@ github.com/elazarl/go-bindata-assetfs
 github.com/fatih/color
 # github.com/go-ini/ini v1.38.2
 github.com/go-ini/ini
-# github.com/go-ole/go-ole v1.2.1
+# github.com/go-ole/go-ole v1.2.4
 github.com/go-ole/go-ole
 github.com/go-ole/go-ole/oleutil
-# github.com/go-sql-driver/mysql v1.4.0
+# github.com/go-sql-driver/mysql v1.4.1
 github.com/go-sql-driver/mysql
-# github.com/gogo/protobuf v1.1.1
-github.com/gogo/protobuf/gogoproto
+# github.com/gogo/protobuf v1.2.1
 github.com/gogo/protobuf/proto
+github.com/gogo/protobuf/gogoproto
 github.com/gogo/protobuf/protoc-gen-gogo/descriptor
 # github.com/golang/protobuf v1.3.1
 github.com/golang/protobuf/proto
-# github.com/golang/snappy v0.0.0-20180518054509-2e65f85255db
+github.com/golang/protobuf/ptypes
+github.com/golang/protobuf/ptypes/any
+github.com/golang/protobuf/ptypes/duration
+github.com/golang/protobuf/ptypes/timestamp
+# github.com/golang/snappy v0.0.1
 github.com/golang/snappy
+# github.com/google/btree v1.0.0
+github.com/google/btree
+# github.com/google/uuid v1.1.1
+github.com/google/uuid
+# github.com/grpc-ecosystem/go-grpc-middleware v1.0.1-0.20190118093823-f849b5445de4
+github.com/grpc-ecosystem/go-grpc-middleware/tracing/opentracing
+github.com/grpc-ecosystem/go-grpc-middleware
+github.com/grpc-ecosystem/go-grpc-middleware/tags
+github.com/grpc-ecosystem/go-grpc-middleware/util/metautils
 # github.com/hashicorp/consul v1.2.2
 github.com/hashicorp/consul/lib
 github.com/hashicorp/consul/api
@@ -179,13 +204,15 @@ github.com/ikarishinjieva/golang-live-coverage-report/cmd/golang-live-coverage-r
 github.com/issuj/gofaster/base64
 # github.com/jmespath/go-jmespath v0.0.0-20160202185014-0b12d6b521d8
 github.com/jmespath/go-jmespath
-# github.com/konsorten/go-windows-terminal-sequences v1.0.1
+# github.com/klauspost/cpuid v1.2.1
+github.com/klauspost/cpuid
+# github.com/konsorten/go-windows-terminal-sequences v1.0.2
 github.com/konsorten/go-windows-terminal-sequences
 # github.com/lytics/datemath v0.0.0-20180727225141-3ada1c10b5de
 github.com/lytics/datemath
 # github.com/mattn/go-colorable v0.0.9
 github.com/mattn/go-colorable
-# github.com/mattn/go-isatty v0.0.3
+# github.com/mattn/go-isatty v0.0.4
 github.com/mattn/go-isatty
 # github.com/matttproud/golang_protobuf_extensions v1.0.1
 github.com/matttproud/golang_protobuf_extensions/pbutil
@@ -199,13 +226,13 @@ github.com/mitchellh/cli
 github.com/mitchellh/colorstring
 # github.com/mitchellh/copystructure v1.0.0
 github.com/mitchellh/copystructure
-# github.com/mitchellh/go-homedir v1.0.0
+# github.com/mitchellh/go-homedir v1.1.0
 github.com/mitchellh/go-homedir
 # github.com/mitchellh/go-testing-interface v1.0.0
 github.com/mitchellh/go-testing-interface
 # github.com/mitchellh/hashstructure v1.0.0
 github.com/mitchellh/hashstructure
-# github.com/mitchellh/mapstructure v1.0.0
+# github.com/mitchellh/mapstructure v1.1.2
 github.com/mitchellh/mapstructure
 # github.com/mitchellh/reflectwalk v1.0.0
 github.com/mitchellh/reflectwalk
@@ -231,6 +258,10 @@ github.com/nats-io/nats-streaming-server/util
 github.com/nats-io/not.go
 # github.com/nats-io/nuid v1.0.0
 github.com/nats-io/nuid
+# github.com/ngaut/pools v0.0.0-20180318154953-b7bc8c42aac7
+github.com/ngaut/pools
+# github.com/ngaut/sync2 v0.0.0-20141008032647-7a24ed77b2ef
+github.com/ngaut/sync2
 # github.com/opentracing/opentracing-go v1.1.0
 github.com/opentracing/opentracing-go
 github.com/opentracing/opentracing-go/ext
@@ -240,11 +271,58 @@ github.com/outbrain/golib/tests
 # github.com/pierrec/lz4 v2.0.3+incompatible
 github.com/pierrec/lz4
 github.com/pierrec/lz4/internal/xxh32
+# github.com/pingcap/dm v1.0.0-rc.1
+github.com/pingcap/dm/dm/pb
+github.com/pingcap/dm/pkg/streamer
+github.com/pingcap/dm/relay
+github.com/pingcap/dm/pkg/binlog
+github.com/pingcap/dm/pkg/log
+github.com/pingcap/dm/pkg/utils
+github.com/pingcap/dm/dm/config
+github.com/pingcap/dm/dm/unit
+github.com/pingcap/dm/pkg/func-rollback
+github.com/pingcap/dm/pkg/gtid
+github.com/pingcap/dm/relay/reader
+github.com/pingcap/dm/relay/transformer
+github.com/pingcap/dm/relay/writer
+github.com/pingcap/dm/pkg/encrypt
+github.com/pingcap/dm/pkg/binlog/common
+github.com/pingcap/dm/pkg/binlog/reader
+github.com/pingcap/dm/relay/common
+github.com/pingcap/dm/pkg/binlog/event
+github.com/pingcap/dm/pkg/binlog/writer
+github.com/pingcap/dm/pkg/parser
 # github.com/pingcap/errors v0.11.4
 github.com/pingcap/errors
+# github.com/pingcap/failpoint v0.0.0-20190614013653-30bc1b85253b
+github.com/pingcap/failpoint
+# github.com/pingcap/goleveldb v0.0.0-20171020122428-b9ff6c35079e
+github.com/pingcap/goleveldb/leveldb
+github.com/pingcap/goleveldb/leveldb/comparer
+github.com/pingcap/goleveldb/leveldb/iterator
+github.com/pingcap/goleveldb/leveldb/memdb
+github.com/pingcap/goleveldb/leveldb/util
+github.com/pingcap/goleveldb/leveldb/cache
+github.com/pingcap/goleveldb/leveldb/errors
+github.com/pingcap/goleveldb/leveldb/filter
+github.com/pingcap/goleveldb/leveldb/journal
+github.com/pingcap/goleveldb/leveldb/opt
+github.com/pingcap/goleveldb/leveldb/storage
+github.com/pingcap/goleveldb/leveldb/table
+# github.com/pingcap/kvproto v0.0.0-20190703131923-d9830856b531
+github.com/pingcap/kvproto/pkg/coprocessor
+github.com/pingcap/kvproto/pkg/debugpb
+github.com/pingcap/kvproto/pkg/errorpb
+github.com/pingcap/kvproto/pkg/kvrpcpb
+github.com/pingcap/kvproto/pkg/metapb
+github.com/pingcap/kvproto/pkg/pdpb
+github.com/pingcap/kvproto/pkg/tikvpb
+github.com/pingcap/kvproto/pkg/sharedbytes
+github.com/pingcap/kvproto/pkg/eraftpb
+github.com/pingcap/kvproto/pkg/raft_serverpb
 # github.com/pingcap/log v0.0.0-20190715063458-479153f07ebd
 github.com/pingcap/log
-# github.com/pingcap/parser v0.0.0-20190718031118-20e37a65d718
+# github.com/pingcap/parser v0.0.0-20190712081837-c3bdffe5d00e
 github.com/pingcap/parser/goyacc
 github.com/pingcap/parser
 github.com/pingcap/parser/ast
@@ -256,19 +334,78 @@ github.com/pingcap/parser/opcode
 github.com/pingcap/parser/terror
 github.com/pingcap/parser/types
 github.com/pingcap/parser/format
-# github.com/pingcap/tidb v0.0.0-20190805050533-6dfa63d41df9
+# github.com/pingcap/pd v2.1.12+incompatible
+github.com/pingcap/pd/client
+# github.com/pingcap/tidb v0.0.0-20190805102945-94498e7d06a2
 github.com/pingcap/tidb/types/parser_driver
-github.com/pingcap/tidb/util/hack
 github.com/pingcap/tidb/types
+github.com/pingcap/tidb/util/hack
 github.com/pingcap/tidb/sessionctx/stmtctx
 github.com/pingcap/tidb/types/json
 github.com/pingcap/tidb/util/logutil
 github.com/pingcap/tidb/util/math
+github.com/pingcap/tidb/ddl
+github.com/pingcap/tidb/infoschema
+github.com/pingcap/tidb/table
 github.com/pingcap/tidb/util/execdetails
 github.com/pingcap/tidb/util/memory
+github.com/pingcap/tidb/ddl/util
+github.com/pingcap/tidb/distsql
+github.com/pingcap/tidb/expression
+github.com/pingcap/tidb/kv
+github.com/pingcap/tidb/meta
+github.com/pingcap/tidb/meta/autoid
+github.com/pingcap/tidb/metrics
+github.com/pingcap/tidb/owner
+github.com/pingcap/tidb/sessionctx
+github.com/pingcap/tidb/sessionctx/binloginfo
+github.com/pingcap/tidb/sessionctx/variable
+github.com/pingcap/tidb/statistics
+github.com/pingcap/tidb/store/tikv
+github.com/pingcap/tidb/table/tables
+github.com/pingcap/tidb/tablecodec
+github.com/pingcap/tidb/util
+github.com/pingcap/tidb/util/admin
+github.com/pingcap/tidb/util/chunk
+github.com/pingcap/tidb/util/gcutil
+github.com/pingcap/tidb/util/mock
+github.com/pingcap/tidb/util/ranger
+github.com/pingcap/tidb/util/rowDecoder
+github.com/pingcap/tidb/util/set
+github.com/pingcap/tidb/util/sqlexec
+github.com/pingcap/tidb/util/timeutil
+github.com/pingcap/tidb/config
+github.com/pingcap/tidb/privilege
+github.com/pingcap/tidb/store/helper
+github.com/pingcap/tidb/util/pdapi
+github.com/pingcap/tidb/util/codec
+github.com/pingcap/tidb/store/tikv/oracle
+github.com/pingcap/tidb/util/disjointset
+github.com/pingcap/tidb/util/encrypt
+github.com/pingcap/tidb/util/printer
+github.com/pingcap/tidb/util/stringutil
+github.com/pingcap/tidb/structure
+github.com/pingcap/tidb/util/kvcache
+github.com/pingcap/tidb/store/tikv/latch
+github.com/pingcap/tidb/store/tikv/oracle/oracles
+github.com/pingcap/tidb/store/tikv/tikvrpc
+github.com/pingcap/tidb/util/israce
+# github.com/pingcap/tidb-tools v3.0.0-beta.1.0.20190626065910-16523947c844+incompatible
+github.com/pingcap/tidb-tools/pkg/watcher
+github.com/pingcap/tidb-tools/pkg/dbutil
+github.com/pingcap/tidb-tools/pkg/filter
+github.com/pingcap/tidb-tools/pkg/table-router
+github.com/pingcap/tidb-tools/pkg/binlog-filter
+github.com/pingcap/tidb-tools/pkg/column-mapping
+github.com/pingcap/tidb-tools/pkg/utils
+github.com/pingcap/tidb-tools/pkg/table-rule-selector
+github.com/pingcap/tidb-tools/tidb-binlog/pump_client
+github.com/pingcap/tidb-tools/pkg/etcd
+github.com/pingcap/tidb-tools/tidb-binlog/node
 # github.com/pingcap/tipb v0.0.0-20190428032612-535e1abaa330
 github.com/pingcap/tipb/go-tipb
 github.com/pingcap/tipb/sharedbytes
+github.com/pingcap/tipb/go-binlog
 # github.com/pkg/errors v0.8.1
 github.com/pkg/errors
 # github.com/posener/complete v1.1.2
@@ -276,31 +413,32 @@ github.com/posener/complete
 github.com/posener/complete/cmd/install
 github.com/posener/complete/cmd
 github.com/posener/complete/match
-# github.com/prometheus/client_golang v0.8.0
+# github.com/prometheus/client_golang v0.9.4
 github.com/prometheus/client_golang/prometheus/promhttp
 github.com/prometheus/client_golang/prometheus
-# github.com/prometheus/client_model v0.0.0-20180712105110-5c3871d89910
+github.com/prometheus/client_golang/prometheus/internal
+# github.com/prometheus/client_model v0.0.0-20190129233127-fd36f4220a90
 github.com/prometheus/client_model/go
-# github.com/prometheus/common v0.0.0-20180801064454-c7de2306084e
+# github.com/prometheus/common v0.4.1
 github.com/prometheus/common/expfmt
 github.com/prometheus/common/model
 github.com/prometheus/common/internal/bitbucket.org/ww/goautoneg
-# github.com/prometheus/procfs v0.0.0-20180725123919-05ee40e3a273
+# github.com/prometheus/procfs v0.0.2
 github.com/prometheus/procfs
-github.com/prometheus/procfs/nfs
-github.com/prometheus/procfs/xfs
-github.com/prometheus/procfs/internal/util
+github.com/prometheus/procfs/internal/fs
 # github.com/rakyll/autopprof v0.1.0
 github.com/rakyll/autopprof
 # github.com/rcrowley/go-metrics v0.0.0-20180503174638-e2704e165165
 github.com/rcrowley/go-metrics
+# github.com/remyoudompheng/bigfft v0.0.0-20190512091148-babf20351dd7
+github.com/remyoudompheng/bigfft
 # github.com/ryanuber/columnize v2.1.0+incompatible
 github.com/ryanuber/columnize
 # github.com/satori/go.uuid v1.2.0
 github.com/satori/go.uuid
 # github.com/sean-/seed v0.0.0-20170313163322-e2103e2c3529
 github.com/sean-/seed
-# github.com/shirou/gopsutil v0.0.0-20180801053943-8048a2e9c577
+# github.com/shirou/gopsutil v2.18.12+incompatible
 github.com/shirou/gopsutil/host
 github.com/shirou/gopsutil/mem
 github.com/shirou/gopsutil/internal/common
@@ -311,6 +449,8 @@ github.com/shirou/gopsutil/net
 github.com/shirou/w32
 # github.com/siddontang/go v0.0.0-20180604090527-bdc77568d726
 github.com/siddontang/go/hack
+github.com/siddontang/go/ioutil2
+github.com/siddontang/go/sync2
 # github.com/siddontang/go-log v0.0.0-20180807004314-8d05993dda07
 github.com/siddontang/go-log/log
 github.com/siddontang/go-log/loggers
@@ -319,10 +459,14 @@ github.com/siddontang/go-mysql/mysql
 github.com/siddontang/go-mysql/replication
 github.com/siddontang/go-mysql/client
 github.com/siddontang/go-mysql/packet
-# github.com/sirupsen/logrus v1.4.1
+# github.com/sirupsen/logrus v1.4.2
 github.com/sirupsen/logrus
+# github.com/spaolacci/murmur3 v1.1.0
+github.com/spaolacci/murmur3
 # github.com/tv42/httpunix v0.0.0-20150427012821-b75d8614f926
 github.com/tv42/httpunix
+# github.com/twinj/uuid v1.0.0
+github.com/twinj/uuid
 # github.com/uber/jaeger-client-go v2.16.0+incompatible
 github.com/uber/jaeger-client-go
 github.com/uber/jaeger-client-go/config
@@ -343,7 +487,7 @@ github.com/uber/jaeger-client-go/thrift-gen/agent
 github.com/uber/jaeger-client-go/thrift-gen/baggage
 # github.com/uber/jaeger-lib v2.0.0+incompatible
 github.com/uber/jaeger-lib/metrics
-# github.com/ugorji/go v1.1.1
+# github.com/ugorji/go/codec v0.0.0-20190204201341-e444a5086c43
 github.com/ugorji/go/codec
 # github.com/ulikunitz/xz v0.5.4
 github.com/ulikunitz/xz
@@ -366,14 +510,20 @@ golang.org/x/crypto/bcrypt
 golang.org/x/crypto/ed25519
 golang.org/x/crypto/blowfish
 golang.org/x/crypto/ed25519/internal/edwards25519
-# golang.org/x/net v0.0.0-20190311183353-d8887717615a
+# golang.org/x/net v0.0.0-20190620200207-3b0461eec859
 golang.org/x/net/context
 golang.org/x/net/ipv4
 golang.org/x/net/ipv6
+golang.org/x/net/trace
 golang.org/x/net/bpf
 golang.org/x/net/internal/iana
 golang.org/x/net/internal/socket
-# golang.org/x/sys v0.0.0-20190215142949-d0b11bdaac8a
+golang.org/x/net/internal/timeseries
+golang.org/x/net/http2
+golang.org/x/net/http2/hpack
+golang.org/x/net/http/httpguts
+golang.org/x/net/idna
+# golang.org/x/sys v0.0.0-20190624142023-c5567b49c5d0
 golang.org/x/sys/windows/svc
 golang.org/x/sys/windows/svc/debug
 golang.org/x/sys/windows/svc/mgr
@@ -394,7 +544,50 @@ golang.org/x/text/encoding/traditionalchinese
 golang.org/x/text/encoding/unicode
 golang.org/x/text/internal/utf8internal
 golang.org/x/text/runes
-# google.golang.org/appengine v1.1.0
+golang.org/x/text/secure/bidirule
+golang.org/x/text/unicode/bidi
+golang.org/x/text/unicode/norm
+# golang.org/x/tools v0.0.0-20190624222133-a101b041ded4
+golang.org/x/tools/container/intsets
+# google.golang.org/appengine v1.4.0
 google.golang.org/appengine/cloudsql
+# google.golang.org/genproto v0.0.0-20190611190212-a7e196e89fd3
+google.golang.org/genproto/googleapis/rpc/status
+# google.golang.org/grpc v1.21.1
+google.golang.org/grpc
+google.golang.org/grpc/balancer
+google.golang.org/grpc/balancer/roundrobin
+google.golang.org/grpc/codes
+google.golang.org/grpc/connectivity
+google.golang.org/grpc/credentials
+google.golang.org/grpc/encoding
+google.golang.org/grpc/encoding/proto
+google.golang.org/grpc/grpclog
+google.golang.org/grpc/internal
+google.golang.org/grpc/internal/backoff
+google.golang.org/grpc/internal/balancerload
+google.golang.org/grpc/internal/binarylog
+google.golang.org/grpc/internal/channelz
+google.golang.org/grpc/internal/envconfig
+google.golang.org/grpc/internal/grpcrand
+google.golang.org/grpc/internal/grpcsync
+google.golang.org/grpc/internal/transport
+google.golang.org/grpc/keepalive
+google.golang.org/grpc/metadata
+google.golang.org/grpc/naming
+google.golang.org/grpc/peer
+google.golang.org/grpc/resolver
+google.golang.org/grpc/resolver/dns
+google.golang.org/grpc/resolver/passthrough
+google.golang.org/grpc/stats
+google.golang.org/grpc/status
+google.golang.org/grpc/tap
+google.golang.org/grpc/balancer/base
+google.golang.org/grpc/credentials/internal
+google.golang.org/grpc/binarylog/grpc_binarylog_v1
+google.golang.org/grpc/internal/syscall
+google.golang.org/grpc/health/grpc_health_v1
 # gopkg.in/natefinch/lumberjack.v2 v2.0.0
 gopkg.in/natefinch/lumberjack.v2
+# gopkg.in/yaml.v2 v2.2.2
+gopkg.in/yaml.v2

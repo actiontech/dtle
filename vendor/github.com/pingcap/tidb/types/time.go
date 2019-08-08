@@ -639,7 +639,11 @@ func ParseDateFormat(format string) []string {
 	format = strings.TrimSpace(format)
 
 	start := 0
-	var seps = make([]string, 0)
+	// Initialize `seps` with capacity of 6. The input `format` is typically
+	// a date time of the form "2006-01-02 15:04:05", which has 6 numeric parts
+	// (the fractional second part is usually removed by `splitDateTime`).
+	// Setting `seps`'s capacity to 6 avoids reallocation in this common case.
+	seps := make([]string, 0, 6)
 	for i := 0; i < len(format); i++ {
 		// Date format must start and end with number.
 		if i == 0 || i == len(format)-1 {
@@ -769,6 +773,9 @@ func parseDatetime(sc *stmtctx.StatementContext, str string, fsp int, isFloat bo
 	case 3:
 		// YYYY-MM-DD
 		err = scanTimeArgs(seps, &year, &month, &day)
+	case 4:
+		// YYYY-MM-DD HH
+		err = scanTimeArgs(seps, &year, &month, &day, &hour)
 	case 5:
 		// YYYY-MM-DD HH-MM
 		err = scanTimeArgs(seps, &year, &month, &day, &hour, &minute)
@@ -873,8 +880,8 @@ func adjustYear(y int) int {
 }
 
 // AdjustYear is used for adjusting year and checking its validation.
-func AdjustYear(y int64, fromStr bool) (int64, error) {
-	if y == 0 && !fromStr {
+func AdjustYear(y int64, shouldAdjust bool) (int64, error) {
+	if y == 0 && !shouldAdjust {
 		return y, nil
 	}
 	y = int64(adjustYear(int(y)))
@@ -1463,7 +1470,7 @@ func checkDateRange(t MysqlTime) error {
 
 func checkMonthDay(year, month, day int, allowInvalidDate bool) error {
 	if month < 0 || month > 12 {
-		return errors.Trace(ErrInvalidTimeFormat.GenWithStackByArgs(month))
+		return errors.Trace(ErrIncorrectDatetimeValue.GenWithStackByArgs(fmt.Sprintf("%d-%d-%d", year, month, day)))
 	}
 
 	maxDay := 31
@@ -1477,7 +1484,7 @@ func checkMonthDay(year, month, day int, allowInvalidDate bool) error {
 	}
 
 	if day < 0 || day > maxDay {
-		return errors.Trace(ErrInvalidTimeFormat.GenWithStackByArgs(day))
+		return errors.Trace(ErrIncorrectDatetimeValue.GenWithStackByArgs(fmt.Sprintf("%d-%d-%d", year, month, day)))
 	}
 	return nil
 }
@@ -1643,6 +1650,7 @@ func parseSingleTimeValue(unit string, format string, strictCheck bool) (int64, 
 		if unit != "SECOND" {
 			err = ErrTruncatedWrongValue.GenWithStackByArgs(format)
 		}
+		dv *= sign
 	}
 	switch strings.ToUpper(unit) {
 	case "MICROSECOND":
@@ -2115,10 +2123,7 @@ func (t *Time) StrToDate(sc *stmtctx.StatementContext, date, format string) bool
 
 	t.Time = tm
 	t.Type = mysql.TypeDatetime
-	if t.check(sc) != nil {
-		return false
-	}
-	return true
+	return t.check(sc) == nil
 }
 
 // mysqlTimeFix fixes the MysqlTime use the values in the context.
@@ -2256,6 +2261,8 @@ var dateFormatParserTable = map[string]dateFormatParser{
 	"%S": secondsNumeric,        // Seconds (00..59)
 	"%T": time24Hour,            // Time, 24-hour (hh:mm:ss)
 	"%Y": yearNumericFourDigits, // Year, numeric, four digits
+	// Deprecated since MySQL 5.7.5
+	"%y": yearNumericTwoDigits, // Year, numeric (two digits)
 	// TODO: Add the following...
 	// "%a": abbreviatedWeekday,         // Abbreviated weekday name (Sun..Sat)
 	// "%D": dayOfMonthWithSuffix,       // Day of the month with English suffix (0th, 1st, 2nd, 3rd)
@@ -2267,49 +2274,40 @@ var dateFormatParserTable = map[string]dateFormatParser{
 	// "%w": dayOfWeek,                  // Day of the week (0=Sunday..6=Saturday)
 	// "%X": yearOfWeek,                 // Year for the week where Sunday is the first day of the week, numeric, four digits; used with %V
 	// "%x": yearOfWeek,                 // Year for the week, where Monday is the first day of the week, numeric, four digits; used with %v
-	// Deprecated since MySQL 5.7.5
-	// "%y": yearTwoDigits,         // Year, numeric (two digits)
 }
 
 // GetFormatType checks the type(Duration, Date or Datetime) of a format string.
 func GetFormatType(format string) (isDuration, isDate bool) {
-	durationTokens := map[string]struct{}{
-		"%h": {},
-		"%H": {},
-		"%i": {},
-		"%I": {},
-		"%s": {},
-		"%S": {},
-		"%k": {},
-		"%l": {},
-	}
-	dateTokens := map[string]struct{}{
-		"%y": {},
-		"%Y": {},
-		"%m": {},
-		"%M": {},
-		"%c": {},
-		"%b": {},
-		"%D": {},
-		"%d": {},
-		"%e": {},
-	}
-
 	format = skipWhiteSpace(format)
-	for token, formatRemain, succ := getFormatToken(format); len(token) != 0; format = formatRemain {
+	var token string
+	var succ bool
+	for {
+		token, format, succ = getFormatToken(format)
+		if len(token) == 0 {
+			break
+		}
 		if !succ {
 			isDuration, isDate = false, false
 			break
 		}
-		if _, ok := durationTokens[token]; ok {
+		var durationTokens bool
+		var dateTokens bool
+		if len(token) >= 2 && token[0] == '%' {
+			switch token[1] {
+			case 'h', 'H', 'i', 'I', 's', 'S', 'k', 'l':
+				durationTokens = true
+			case 'y', 'Y', 'm', 'M', 'c', 'b', 'D', 'd', 'e':
+				dateTokens = true
+			}
+		}
+		if durationTokens {
 			isDuration = true
-		} else if _, ok := dateTokens[token]; ok {
+		} else if dateTokens {
 			isDate = true
 		}
 		if isDuration && isDate {
 			break
 		}
-		token, formatRemain, succ = getFormatToken(format)
 	}
 	return
 }
@@ -2326,7 +2324,7 @@ func matchDateWithToken(t *MysqlTime, date string, token string, ctx map[string]
 }
 
 func parseDigits(input string, count int) (int, bool) {
-	if len(input) < count {
+	if count <= 0 || len(input) < count {
 		return 0, false
 	}
 
@@ -2550,12 +2548,31 @@ func microSeconds(t *MysqlTime, input string, ctx map[string]int) (string, bool)
 }
 
 func yearNumericFourDigits(t *MysqlTime, input string, ctx map[string]int) (string, bool) {
-	v, succ := parseDigits(input, 4)
-	if !succ {
+	return yearNumericNDigits(t, input, ctx, 4)
+}
+
+func yearNumericTwoDigits(t *MysqlTime, input string, ctx map[string]int) (string, bool) {
+	return yearNumericNDigits(t, input, ctx, 2)
+}
+
+func yearNumericNDigits(t *MysqlTime, input string, ctx map[string]int, n int) (string, bool) {
+	effectiveCount, effectiveValue := 0, 0
+	for effectiveCount+1 <= n {
+		value, succeed := parseDigits(input, effectiveCount+1)
+		if !succeed {
+			break
+		}
+		effectiveCount++
+		effectiveValue = value
+	}
+	if effectiveCount == 0 {
 		return input, false
 	}
-	t.year = uint16(v)
-	return input[4:], true
+	if effectiveCount <= 2 {
+		effectiveValue = adjustYear(effectiveValue)
+	}
+	t.year = uint16(effectiveValue)
+	return input[effectiveCount:], true
 }
 
 func dayOfYearThreeDigits(t *MysqlTime, input string, ctx map[string]int) (string, bool) {

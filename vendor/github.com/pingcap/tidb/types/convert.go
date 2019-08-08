@@ -37,34 +37,64 @@ func truncateStr(str string, flen int) string {
 	return str
 }
 
-// UnsignedUpperBound indicates the max uint64 values of different mysql types.
-var UnsignedUpperBound = map[byte]uint64{
-	mysql.TypeTiny:     math.MaxUint8,
-	mysql.TypeShort:    math.MaxUint16,
-	mysql.TypeInt24:    mysql.MaxUint24,
-	mysql.TypeLong:     math.MaxUint32,
-	mysql.TypeLonglong: math.MaxUint64,
-	mysql.TypeBit:      math.MaxUint64,
-	mysql.TypeEnum:     math.MaxUint64,
-	mysql.TypeSet:      math.MaxUint64,
+// IntergerUnsignedUpperBound indicates the max uint64 values of different mysql types.
+func IntergerUnsignedUpperBound(intType byte) uint64 {
+	switch intType {
+	case mysql.TypeTiny:
+		return math.MaxUint8
+	case mysql.TypeShort:
+		return math.MaxUint16
+	case mysql.TypeInt24:
+		return mysql.MaxUint24
+	case mysql.TypeLong:
+		return math.MaxUint32
+	case mysql.TypeLonglong:
+		return math.MaxUint64
+	case mysql.TypeBit:
+		return math.MaxUint64
+	case mysql.TypeEnum:
+		return math.MaxUint64
+	case mysql.TypeSet:
+		return math.MaxUint64
+	default:
+		panic("Input byte is not a mysql type")
+	}
 }
 
-// SignedUpperBound indicates the max int64 values of different mysql types.
-var SignedUpperBound = map[byte]int64{
-	mysql.TypeTiny:     math.MaxInt8,
-	mysql.TypeShort:    math.MaxInt16,
-	mysql.TypeInt24:    mysql.MaxInt24,
-	mysql.TypeLong:     math.MaxInt32,
-	mysql.TypeLonglong: math.MaxInt64,
+// IntergerSignedUpperBound indicates the max int64 values of different mysql types.
+func IntergerSignedUpperBound(intType byte) int64 {
+	switch intType {
+	case mysql.TypeTiny:
+		return math.MaxInt8
+	case mysql.TypeShort:
+		return math.MaxInt16
+	case mysql.TypeInt24:
+		return mysql.MaxInt24
+	case mysql.TypeLong:
+		return math.MaxInt32
+	case mysql.TypeLonglong:
+		return math.MaxInt64
+	default:
+		panic("Input byte is not a mysql type")
+	}
 }
 
-// SignedLowerBound indicates the min int64 values of different mysql types.
-var SignedLowerBound = map[byte]int64{
-	mysql.TypeTiny:     math.MinInt8,
-	mysql.TypeShort:    math.MinInt16,
-	mysql.TypeInt24:    mysql.MinInt24,
-	mysql.TypeLong:     math.MinInt32,
-	mysql.TypeLonglong: math.MinInt64,
+// IntergerSignedLowerBound indicates the min int64 values of different mysql types.
+func IntergerSignedLowerBound(intType byte) int64 {
+	switch intType {
+	case mysql.TypeTiny:
+		return math.MinInt8
+	case mysql.TypeShort:
+		return math.MinInt16
+	case mysql.TypeInt24:
+		return mysql.MinInt24
+	case mysql.TypeLong:
+		return math.MinInt32
+	case mysql.TypeLonglong:
+		return math.MinInt64
+	default:
+		panic("Input byte is not a mysql type")
+	}
 }
 
 // ConvertFloatToInt converts a float64 value to a int value.
@@ -209,7 +239,7 @@ func convertDecimalStrToUint(sc *stmtctx.StatementContext, str string, upperBoun
 		intStr = "0"
 	}
 	if sc.ShouldClipToZero() && intStr[0] == '-' {
-		return 0, overflow(intStr, tp)
+		return 0, overflow(str, tp)
 	}
 
 	var round uint64
@@ -332,11 +362,37 @@ func NumberToDuration(number int64, fsp int) (Duration, error) {
 
 // getValidIntPrefix gets prefix of the string which can be successfully parsed as int.
 func getValidIntPrefix(sc *stmtctx.StatementContext, str string) (string, error) {
-	floatPrefix, err := getValidFloatPrefix(sc, str)
-	if err != nil {
-		return floatPrefix, errors.Trace(err)
+	if !sc.CastStrToIntStrict {
+		floatPrefix, err := getValidFloatPrefix(sc, str)
+		if err != nil {
+			return floatPrefix, errors.Trace(err)
+		}
+		return floatStrToIntStr(sc, floatPrefix, str)
 	}
-	return floatStrToIntStr(sc, floatPrefix, str)
+
+	validLen := 0
+
+	for i := 0; i < len(str); i++ {
+		c := str[i]
+		if (c == '+' || c == '-') && i == 0 {
+			continue
+		}
+
+		if c >= '0' && c <= '9' {
+			validLen = i + 1
+			continue
+		}
+
+		break
+	}
+	valid := str[:validLen]
+	if valid == "" {
+		valid = "0"
+	}
+	if validLen == 0 || validLen != len(str) {
+		return valid, errors.Trace(handleTruncateError(sc, ErrTruncatedWrongVal.GenWithStackByArgs("INTEGER", str)))
+	}
+	return valid, nil
 }
 
 // roundIntStr is to round a **valid int string** base on the number following dot.
@@ -436,7 +492,6 @@ func floatStrToIntStr(sc *stmtctx.StatementContext, validFloat string, oriStr st
 	}
 	if intCnt == 1 && (digits[0] == '-' || digits[0] == '+') {
 		intStr = "0"
-		dotIdx = 0
 		if len(digits) > 1 {
 			intStr = roundIntStr(digits[1], intStr)
 		}
@@ -502,15 +557,20 @@ func ConvertJSONToInt(sc *stmtctx.StatementContext, j json.BinaryJSON, unsigned 
 	case json.TypeCodeFloat64:
 		f := j.GetFloat64()
 		if !unsigned {
-			lBound := SignedLowerBound[mysql.TypeLonglong]
-			uBound := SignedUpperBound[mysql.TypeLonglong]
-			return ConvertFloatToInt(f, lBound, uBound, mysql.TypeDouble)
+			lBound := IntergerSignedLowerBound(mysql.TypeLonglong)
+			uBound := IntergerSignedUpperBound(mysql.TypeLonglong)
+			return ConvertFloatToInt(f, lBound, uBound, mysql.TypeLonglong)
 		}
-		bound := UnsignedUpperBound[mysql.TypeLonglong]
-		u, err := ConvertFloatToUint(sc, f, bound, mysql.TypeDouble)
+		bound := IntergerUnsignedUpperBound(mysql.TypeLonglong)
+		u, err := ConvertFloatToUint(sc, f, bound, mysql.TypeLonglong)
 		return int64(u), errors.Trace(err)
 	case json.TypeCodeString:
-		return StrToInt(sc, hack.String(j.GetString()))
+		str := string(hack.String(j.GetString()))
+		if !unsigned {
+			return StrToInt(sc, str)
+		}
+		u, err := StrToUint(sc, str)
+		return int64(u), errors.Trace(err)
 	}
 	return 0, errors.New("Unknown type code in JSON")
 }
@@ -534,7 +594,8 @@ func ConvertJSONToFloat(sc *stmtctx.StatementContext, j json.BinaryJSON) (float6
 	case json.TypeCodeFloat64:
 		return j.GetFloat64(), nil
 	case json.TypeCodeString:
-		return StrToFloat(sc, hack.String(j.GetString()))
+		str := string(hack.String(j.GetString()))
+		return StrToFloat(sc, str)
 	}
 	return 0, errors.New("Unknown type code in JSON")
 }
@@ -556,10 +617,9 @@ func ConvertJSONToDecimal(sc *stmtctx.StatementContext, j json.BinaryJSON) (*MyD
 
 // getValidFloatPrefix gets prefix of string which can be successfully parsed as float.
 func getValidFloatPrefix(sc *stmtctx.StatementContext, s string) (valid string, err error) {
-	if sc.InDeleteStmt && s == "" {
+	if (sc.InDeleteStmt || sc.InSelectStmt || sc.InUpdateStmt) && s == "" {
 		return "0", nil
 	}
-
 	var (
 		sawDot   bool
 		sawDigit bool
@@ -600,7 +660,7 @@ func getValidFloatPrefix(sc *stmtctx.StatementContext, s string) (valid string, 
 		valid = "0"
 	}
 	if validLen == 0 || validLen != len(s) {
-		err = errors.Trace(handleTruncateError(sc))
+		err = errors.Trace(handleTruncateError(sc, ErrTruncated))
 	}
 	return valid, err
 }

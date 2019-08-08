@@ -14,6 +14,7 @@
 package parser
 
 import (
+	"fmt"
 	"math"
 	"regexp"
 	"strconv"
@@ -26,9 +27,13 @@ import (
 )
 
 const (
-	codeErrParse               = terror.ErrCode(mysql.ErrParse)
-	codeErrSyntax              = terror.ErrCode(mysql.ErrSyntax)
-	codeErrUnknownCharacterSet = terror.ErrCode(mysql.ErrUnknownCharacterSet)
+	codeErrParse                   = terror.ErrCode(mysql.ErrParse)
+	codeErrSyntax                  = terror.ErrCode(mysql.ErrSyntax)
+	codeErrUnknownCharacterSet     = terror.ErrCode(mysql.ErrUnknownCharacterSet)
+	codeErrInvalidYearColumnLength = terror.ErrCode(mysql.ErrInvalidYearColumnLength)
+	codeWrongArgument              = terror.ErrCode(mysql.ErrWrongArguments)
+	codeWrongFieldTerminators      = terror.ErrCode(mysql.ErrWrongFieldTerminators)
+	codeTooBigDisplayWidth         = terror.ErrCode(mysql.ErrTooBigDisplaywidth)
 )
 
 var (
@@ -38,6 +43,15 @@ var (
 	ErrParse = terror.ClassParser.New(codeErrParse, mysql.MySQLErrName[mysql.ErrParse])
 	// ErrUnknownCharacterSet returns for no character set found error.
 	ErrUnknownCharacterSet = terror.ClassParser.New(codeErrUnknownCharacterSet, mysql.MySQLErrName[mysql.ErrUnknownCharacterSet])
+	// ErrInvalidYearColumnLength returns for illegal column length for year type.
+	ErrInvalidYearColumnLength = terror.ClassParser.New(codeErrInvalidYearColumnLength, mysql.MySQLErrName[mysql.ErrInvalidYearColumnLength])
+	// ErrWrongArguments returns for illegal argument.
+	ErrWrongArguments = terror.ClassParser.New(codeWrongArgument, mysql.MySQLErrName[mysql.ErrWrongArguments])
+	// ErrWrongFieldTerminators returns for illegal field terminators.
+	ErrWrongFieldTerminators = terror.ClassParser.New(codeWrongFieldTerminators, mysql.MySQLErrName[mysql.ErrWrongFieldTerminators])
+	// ErrTooBigDisplayWidth returns for data display width exceed limit .
+	ErrTooBigDisplayWidth = terror.ClassParser.New(codeTooBigDisplayWidth, mysql.MySQLErrName[mysql.ErrTooBigDisplaywidth])
+
 	// SpecFieldPattern special result field pattern
 	SpecFieldPattern = regexp.MustCompile(`(\/\*!(M?[0-9]{5,6})?|\*\/)`)
 	specCodePattern  = regexp.MustCompile(`\/\*!(M?[0-9]{5,6})?([^*]|\*+[^*/])*\*+\/`)
@@ -47,9 +61,13 @@ var (
 
 func init() {
 	parserMySQLErrCodes := map[terror.ErrCode]uint16{
-		codeErrSyntax:              mysql.ErrSyntax,
-		codeErrParse:               mysql.ErrParse,
-		codeErrUnknownCharacterSet: mysql.ErrUnknownCharacterSet,
+		codeErrSyntax:                  mysql.ErrSyntax,
+		codeErrParse:                   mysql.ErrParse,
+		codeErrUnknownCharacterSet:     mysql.ErrUnknownCharacterSet,
+		codeErrInvalidYearColumnLength: mysql.ErrInvalidYearColumnLength,
+		codeWrongArgument:              mysql.ErrWrongArguments,
+		codeWrongFieldTerminators:      mysql.ErrWrongFieldTerminators,
+		codeTooBigDisplayWidth:         mysql.ErrTooBigDisplaywidth,
 	}
 	terror.ErrClassToMySQLCodes[terror.ClassParser] = parserMySQLErrCodes
 }
@@ -153,9 +171,9 @@ func (parser *Parser) SetSQLMode(mode mysql.SQLMode) {
 	parser.lexer.SetSQLMode(mode)
 }
 
-// EnableWindowFunc enables the parser to parse syntax related with window function.
-func (parser *Parser) EnableWindowFunc() {
-	parser.lexer.EnableWindowFunc()
+// EnableWindowFunc controls whether the parser to parse syntax related with window function.
+func (parser *Parser) EnableWindowFunc(val bool) {
+	parser.lexer.EnableWindowFunc(val)
 }
 
 // ParseErrorWith returns "You have a syntax error near..." error message compatible with mysql.
@@ -163,7 +181,7 @@ func ParseErrorWith(errstr string, lineno int) error {
 	if len(errstr) > mysql.ErrTextLength {
 		errstr = errstr[:mysql.ErrTextLength]
 	}
-	return ErrParse.GenWithStackByArgs(mysql.MySQLErrName[mysql.ErrSyntax], errstr, lineno)
+	return fmt.Errorf("near '%-.80s' at line %d", errstr, lineno)
 }
 
 // The select statement is not at the end of the whole statement, if the last
@@ -208,7 +226,7 @@ func toInt(l yyLexer, lval *yySymType, str string) int {
 	}
 
 	switch {
-	case n < math.MaxInt64:
+	case n <= math.MaxInt64:
 		lval.item = int64(n)
 	default:
 		lval.item = n

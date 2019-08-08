@@ -7,20 +7,17 @@ require (
 	github.com/NYTimes/gziphandler v1.0.1
 	github.com/Shopify/sarama v1.17.0
 	github.com/Shopify/toxiproxy v2.1.4+incompatible // indirect
-	github.com/StackExchange/wmi v0.0.0-20180116203802-5d049714c4a6 // indirect
 	github.com/araddon/dateparse v0.0.0-20180729174819-cfd92a431d0e // indirect
 	github.com/araddon/gou v0.0.0-20180803232539-d7d8174cb8b3 // indirect
 	github.com/araddon/qlbridge v0.0.0-20190614144613-77bcb31a8923
 	github.com/armon/go-metrics v0.0.0-20180713145231-3c58d8115a78
 	github.com/armon/go-radix v1.0.0 // indirect
 	github.com/aws/aws-sdk-go v1.15.23 // indirect
-	github.com/beorn7/perks v0.0.0-20180321164747-3a771d992973 // indirect
 	github.com/bgentry/go-netrc v0.0.0-20140422174119-9fd32a8b3d3d // indirect
 	github.com/boltdb/bolt v1.3.1 // indirect
 	github.com/circonus-labs/circonus-gometrics v2.2.1+incompatible // indirect
 	github.com/circonus-labs/circonusllhist v0.1.0 // indirect
 	github.com/cznic/golex v0.0.0-20181122101858-9c343928389c // indirect
-	github.com/cznic/mathutil v0.0.0-20180504122225-ca4c9f2c1369 // indirect
 	github.com/cznic/parser v0.0.0-20181122101858-d773202d5b1f // indirect
 	github.com/cznic/strutil v0.0.0-20181122101858-275e90344537 // indirect
 	github.com/cznic/y v0.0.0-20181122101901-b05e8c2e8d7b // indirect
@@ -32,9 +29,8 @@ require (
 	github.com/eapache/queue v1.1.0 // indirect
 	github.com/elazarl/go-bindata-assetfs v1.0.0
 	github.com/go-ini/ini v1.38.2 // indirect
-	github.com/go-ole/go-ole v1.2.1 // indirect
-	github.com/go-sql-driver/mysql v1.4.0
-	github.com/golang/snappy v0.0.0-20180518054509-2e65f85255db
+	github.com/go-sql-driver/mysql v1.4.1
+	github.com/golang/snappy v0.0.1
 	github.com/hashicorp/consul v1.2.2
 	github.com/hashicorp/go-cleanhttp v0.0.0-20171218145408-d5fe4b57a186
 	github.com/hashicorp/go-getter v0.0.0-20180809191950-4bda8fa99001
@@ -62,15 +58,15 @@ require (
 	github.com/leekchan/timeutil v0.0.0-20150802142658-28917288c48d // indirect
 	github.com/lib/pq v1.2.0 // indirect
 	github.com/lytics/datemath v0.0.0-20180727225141-3ada1c10b5de // indirect
+	github.com/mattn/go-isatty v0.0.4 // indirect
 	github.com/mb0/glob v0.0.0-20160210091149-1eb79d2de6c4 // indirect
 	github.com/miekg/dns v1.0.8 // indirect
 	github.com/mitchellh/cli v1.0.0
 	github.com/mitchellh/colorstring v0.0.0-20150917214807-8631ce90f286
 	github.com/mitchellh/copystructure v1.0.0
-	github.com/mitchellh/go-homedir v1.0.0 // indirect
 	github.com/mitchellh/go-testing-interface v1.0.0 // indirect
 	github.com/mitchellh/hashstructure v1.0.0
-	github.com/mitchellh/mapstructure v1.0.0
+	github.com/mitchellh/mapstructure v1.1.2
 	github.com/mssola/user_agent v0.5.0 // indirect
 	github.com/nats-io/gnatsd v1.2.0
 	github.com/nats-io/go-nats v1.5.0
@@ -83,37 +79,30 @@ require (
 	github.com/pascaldekloe/goe v0.1.0 // indirect
 	github.com/pborman/uuid v1.2.0 // indirect
 	github.com/pierrec/lz4 v2.0.3+incompatible // indirect
+	github.com/pingcap/dm v1.0.0-rc.1
 	github.com/pingcap/log v0.0.0-20190715063458-479153f07ebd // indirect
-	github.com/pingcap/parser v0.0.0-20190718031118-20e37a65d718
-	github.com/pingcap/tidb v0.0.0-20190805050533-6dfa63d41df9
+	github.com/pingcap/parser v0.0.0-20190712081837-c3bdffe5d00e
+	github.com/pingcap/tidb v0.0.0-20190805102945-94498e7d06a2
 	github.com/pkg/errors v0.8.1
 	github.com/posener/complete v1.1.2 // indirect
-	github.com/prometheus/client_golang v0.8.0
-	github.com/prometheus/client_model v0.0.0-20180712105110-5c3871d89910 // indirect
-	github.com/prometheus/common v0.0.0-20180801064454-c7de2306084e // indirect
-	github.com/prometheus/procfs v0.0.0-20180725123919-05ee40e3a273 // indirect
+	github.com/prometheus/client_golang v0.9.4
 	github.com/rakyll/autopprof v0.1.0
 	github.com/rcrowley/go-metrics v0.0.0-20180503174638-e2704e165165 // indirect
 	github.com/ryanuber/columnize v2.1.0+incompatible
 	github.com/satori/go.uuid v1.2.0
 	github.com/sean-/seed v0.0.0-20170313163322-e2103e2c3529 // indirect
-	github.com/shirou/gopsutil v0.0.0-20180801053943-8048a2e9c577
+	github.com/shirou/gopsutil v2.18.12+incompatible
 	github.com/shirou/w32 v0.0.0-20160930032740-bb4de0191aa4 // indirect
 	github.com/siddontang/go v0.0.0-20180604090527-bdc77568d726
 	github.com/siddontang/go-mysql v0.0.0-20190808080311-dd15a3c6
 	github.com/simplereach/timeutils v1.2.0 // indirect
 	github.com/smartystreets/goconvey v0.0.0-20190731233626-505e41936337 // indirect
 	github.com/tv42/httpunix v0.0.0-20150427012821-b75d8614f926 // indirect
-	github.com/uber-go/atomic v1.4.0 // indirect
 	github.com/uber/jaeger-client-go v2.16.0+incompatible
-	github.com/uber/jaeger-lib v2.0.0+incompatible // indirect
-	github.com/ugorji/go v1.1.1
+	github.com/ugorji/go/codec v0.0.0-20190204201341-e444a5086c43
 	github.com/ulikunitz/xz v0.5.4 // indirect
-	go.uber.org/atomic v1.4.0 // indirect
-	go.uber.org/zap v1.10.0 // indirect
-	golang.org/x/net v0.0.0-20190311183353-d8887717615a
+	golang.org/x/net v0.0.0-20190620200207-3b0461eec859
 	golang.org/x/text v0.3.2
-	google.golang.org/appengine v1.1.0 // indirect
 	gopkg.in/ini.v1 v1.46.0 // indirect
 	gopkg.in/mgo.v2 v2.0.0-20180705113604-9856a29383ce // indirect
 	gopkg.in/vmihailenco/msgpack.v2 v2.9.1 // indirect
