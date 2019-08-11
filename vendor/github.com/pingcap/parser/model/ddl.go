@@ -54,6 +54,7 @@ const (
 	ActionModifyTableCharsetAndCollate  ActionType = 22
 	ActionTruncateTablePartition        ActionType = 23
 	ActionDropView                      ActionType = 24
+	ActionRecoverTable                  ActionType = 25
 	ActionModifySchemaCharsetAndCollate ActionType = 26
 )
 
@@ -85,6 +86,7 @@ var actionMap = map[ActionType]string{
 	ActionModifyTableCharsetAndCollate:  "modify table charset and collate",
 	ActionTruncateTablePartition:        "truncate partition",
 	ActionDropView:                      "drop view",
+	ActionRecoverTable:                  "recover table",
 	ActionModifySchemaCharsetAndCollate: "modify schema charset and collate",
 }
 

@@ -11,6 +11,7 @@ import (
 	"encoding/gob"
 	"encoding/json"
 	"fmt"
+	"github.com/actiontech/dtle/internal/client/driver/common"
 	"strconv"
 
 	mysqlDriver "github.com/actiontech/dtle/internal/client/driver/mysql"
@@ -55,12 +56,12 @@ type KafkaRunner struct {
 	tables map[string](map[string]*config.Table)
 }
 
-func NewKafkaRunner(subject, tp string, maxPayload int, cfg *KafkaConfig, logger *log.Logger) *KafkaRunner {
+func NewKafkaRunner(execCtx *common.ExecContext, cfg *KafkaConfig, logger *log.Logger) *KafkaRunner {
 	entry := log.NewEntry(logger).WithFields(log.Fields{
-		"job": subject,
+		"job": execCtx.Subject,
 	})
 	return &KafkaRunner{
-		subject:     subject,
+		subject:     execCtx.Subject,
 		kafkaConfig: cfg,
 		logger:      entry,
 		waitCh:      make(chan *models.WaitResult, 1),

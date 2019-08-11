@@ -8,6 +8,7 @@ package driver
 
 import (
 	"fmt"
+	"github.com/actiontech/dtle/internal/client/driver/common"
 	"strings"
 
 	"github.com/mitchellh/mapstructure"
@@ -222,7 +223,7 @@ func (m *MySQLDriver) Validate(task *models.Task) (*models.TaskValidateResponse,
 	return reply, nil
 }
 
-func (m *MySQLDriver) Start(ctx *ExecContext, task *models.Task) (DriverHandle, error) {
+func (m *MySQLDriver) Start(ctx *common.ExecContext, task *models.Task) (DriverHandle, error) {
 	var driverConfig config.MySQLDriverConfig
 	if err := mapstructure.WeakDecode(task.Config, &driverConfig); err != nil {
 		return nil, err
@@ -233,7 +234,7 @@ func (m *MySQLDriver) Start(ctx *ExecContext, task *models.Task) (DriverHandle, 
 		{
 			m.logger.Debugf("NewExtractor ReplicateDoDb: %v", driverConfig.ReplicateDoDb)
 			// Create the extractor
-			e, err := mysql.NewExtractor(ctx.Subject, ctx.Tp, ctx.MaxPayload, &driverConfig, m.logger)
+			e, err := mysql.NewExtractor(ctx, &driverConfig, m.logger)
 			if err != nil {
 				return nil, err
 			}
@@ -243,7 +244,7 @@ func (m *MySQLDriver) Start(ctx *ExecContext, task *models.Task) (DriverHandle, 
 	case models.TaskTypeDest:
 		{
 			m.logger.Debugf("NewApplier ReplicateDoDb: %v", driverConfig.ReplicateDoDb)
-			a, err := mysql.NewApplier(ctx.Subject, ctx.Tp, &driverConfig, m.logger)
+			a, err := mysql.NewApplier(ctx, &driverConfig, m.logger)
 			if err != nil {
 				return nil, err
 			}

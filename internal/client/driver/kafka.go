@@ -8,6 +8,7 @@ package driver
 
 import (
 	"fmt"
+	"github.com/actiontech/dtle/internal/client/driver/common"
 	"github.com/mitchellh/mapstructure"
 	"github.com/actiontech/dtle/internal/client/driver/kafka3"
 	"github.com/actiontech/dtle/internal/models"
@@ -17,7 +18,7 @@ type KafkaDriver struct {
 	DriverContext
 }
 
-func (kd *KafkaDriver) Start(ctx *ExecContext, task *models.Task) (DriverHandle, error) {
+func (kd *KafkaDriver) Start(ctx *common.ExecContext, task *models.Task) (DriverHandle, error) {
 	var driverConfig kafka3.KafkaConfig
 	if err := mapstructure.WeakDecode(task.Config, &driverConfig); err != nil {
 		return nil, err
@@ -27,7 +28,7 @@ func (kd *KafkaDriver) Start(ctx *ExecContext, task *models.Task) (DriverHandle,
 	case models.TaskTypeSrc:
 		return nil, fmt.Errorf("afka can only be used on 'Dest'")
 	case models.TaskTypeDest:
-		runner := kafka3.NewKafkaRunner(ctx.Subject, ctx.Tp, ctx.MaxPayload, &driverConfig, kd.logger)
+		runner := kafka3.NewKafkaRunner(ctx, &driverConfig, kd.logger)
 		go runner.Run()
 		return runner, nil
 	default:

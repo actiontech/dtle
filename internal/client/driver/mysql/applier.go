@@ -10,6 +10,7 @@ import (
 	gosql "database/sql"
 	"encoding/json"
 	"fmt"
+	"github.com/actiontech/dtle/internal/client/driver/common"
 
 	"github.com/actiontech/dtle/internal/g"
 	"github.com/opentracing/opentracing-go"
@@ -210,7 +211,6 @@ type Applier struct {
 	logger             *log.Entry
 	subject            string
 	subjectUUID        uuid.UUID
-	tp                 string
 	mysqlContext       *config.MySQLDriverConfig
 	dbs                []*sql.Conn
 	db                 *gosql.DB
@@ -246,12 +246,12 @@ type Applier struct {
 	stubFullApplyDelay bool
 }
 
-func NewApplier(subject, tp string, cfg *config.MySQLDriverConfig, logger *log.Logger) (*Applier, error) {
+func NewApplier(ctx *common.ExecContext, cfg *config.MySQLDriverConfig, logger *log.Logger) (*Applier, error) {
 	cfg = cfg.SetDefault()
 	entry := log.NewEntry(logger).WithFields(log.Fields{
-		"job": subject,
+		"job": ctx.Subject,
 	})
-	subjectUUID, err := uuid.FromString(subject)
+	subjectUUID, err := uuid.FromString(ctx.Subject)
 	if err != nil {
 		logger.Errorf("job id is not a valid UUID: %v", err.Error())
 		return nil, err
@@ -259,9 +259,8 @@ func NewApplier(subject, tp string, cfg *config.MySQLDriverConfig, logger *log.L
 
 	a := &Applier{
 		logger:                  entry,
-		subject:                 subject,
+		subject:                 ctx.Subject,
 		subjectUUID:             subjectUUID,
-		tp:                      tp,
 		mysqlContext:            cfg,
 		currentCoordinates:      &models.CurrentCoordinates{},
 		tableItems:              make(mapSchemaTableItems),

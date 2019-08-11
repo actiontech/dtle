@@ -18,6 +18,7 @@ package ast
 import (
 	"io"
 
+	. "github.com/pingcap/parser/format"
 	"github.com/pingcap/parser/model"
 	"github.com/pingcap/parser/types"
 )
@@ -25,6 +26,8 @@ import (
 // Node is the basic element of the AST.
 // Interfaces embed Node should have 'Node' name suffix.
 type Node interface {
+	// Restore returns the sql text from ast tree
+	Restore(ctx *RestoreCtx) error
 	// Accept accepts Visitor to visit itself.
 	// The returned node should replace original node.
 	// ok returns false to stop visiting.
@@ -51,6 +54,7 @@ const (
 	FlagHasVariable
 	FlagHasDefault
 	FlagPreEvaluated
+	FlagHasWindowFunc
 )
 
 // ExprNode is a node that can be evaluated.

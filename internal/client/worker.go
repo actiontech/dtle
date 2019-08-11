@@ -11,6 +11,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/actiontech/dtle/internal/client/driver/common"
 	"os"
 	"path/filepath"
 	"strings"
@@ -526,7 +527,7 @@ func (r *Worker) startTask() error {
 	}
 
 	// Run prestart
-	ctx := driver.NewExecContext(r.alloc.Job.ID, r.alloc.Job.Type, r.config.MaxPayload)
+	ctx := &common.ExecContext{r.alloc.Job.ID, r.alloc.Job.Type, r.config.MaxPayload, r.config.StateDir}
 
 	// Start the job
 	handle, err := drv.Start(ctx, r.task)
