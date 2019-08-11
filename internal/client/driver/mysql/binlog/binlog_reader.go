@@ -57,6 +57,7 @@ type BinlogReader struct {
 	connectionConfig         *mysql.ConnectionConfig
 	db                       *gosql.DB
 	relay                    dmrelay.Process
+	binlogSyncer             *replication.BinlogSyncer
 	binlogStreamer           streamer.Streamer
 	currentCoordinates       base.BinlogCoordinateTx
 	currentCoordinatesMutex  *sync.Mutex
@@ -194,22 +195,40 @@ func NewMySQLReader(execCtx *common.ExecContext, cfg *config.MySQLDriverConfig, 
 	// support regex
 	binlogReader.genRegexMap()
 
-	dbConfig := dmrelay.DBConfig{
-		Host:           cfg.ConnectionConfig.Host,
-		Port:           cfg.ConnectionConfig.Port,
-		User:           cfg.ConnectionConfig.User,
-		Password:       cfg.ConnectionConfig.Password,
-	}
-	relayConfig := &dmrelay.Config{
-		ServerID:int(serverId),
-		Flavor: "mysql",
-		From: dbConfig,
-		RelayDir: binlogReader.getBinlogDir(),
-	}
-	binlogReader.relay = dmrelay.NewRelay(relayConfig)
-	err = binlogReader.relay.Init()
-	if err != nil {
-		return nil, err
+	if binlogReader.mysqlContext.BinlogRelay {
+		dbConfig := dmrelay.DBConfig{
+			Host:           cfg.ConnectionConfig.Host,
+			Port:           cfg.ConnectionConfig.Port,
+			User:           cfg.ConnectionConfig.User,
+			Password:       cfg.ConnectionConfig.Password,
+		}
+		relayConfig := &dmrelay.Config{
+			ServerID:int(serverId),
+			Flavor: "mysql",
+			From: dbConfig,
+			RelayDir: binlogReader.getBinlogDir(),
+		}
+		binlogReader.relay = dmrelay.NewRelay(relayConfig)
+		err = binlogReader.relay.Init()
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		binlogSyncerConfig := replication.BinlogSyncerConfig{
+			ServerID:       uint32(serverId),
+			Flavor:         "mysql",
+			Host:           cfg.ConnectionConfig.Host,
+			Port:           uint16(cfg.ConnectionConfig.Port),
+			User:           cfg.ConnectionConfig.User,
+			Password:       cfg.ConnectionConfig.Password,
+			RawModeEnabled: false,
+			UseDecimal:     true,
+
+			MaxReconnectAttempts: 3,
+			HeartbeatPeriod:      3 * time.Second,
+			ReadTimeout:          6 * time.Second,
+		}
+		binlogReader.binlogSyncer = replication.NewBinlogSyncer(binlogSyncerConfig)
 	}
 
 	binlogReader.mysqlContext.Stage = models.StageRegisteringSlaveOnMaster
@@ -255,35 +274,49 @@ func (b *BinlogReader) ConnectBinlogStreamer(coordinates base.BinlogCoordinatesX
 		LogFile: coordinates.LogFile,
 		LogPos:  coordinates.LogPos,
 	}
-
-	//_ = b.relay.Migrate(context.TODO(), coordinates.LogFile, uint32(coordinates.LogPos)) // TODO err
-
-	ch := make(chan pb.ProcessResult)
-	ctx, _ := context.WithCancel(context.Background())
-
-	go b.relay.Process(ctx, ch)
-
-	time.Sleep(3 * time.Second)
-
 	b.logger.Printf("mysql.reader: Connecting binlog streamer at %+v", coordinates)
 
-	loc, err := time.LoadLocation("Local") // TODO
+	if b.mysqlContext.BinlogRelay {
+		//_ = b.relay.Migrate(context.TODO(), coordinates.LogFile, uint32(coordinates.LogPos)) // TODO err
 
-	brConfig := &streamer.BinlogReaderConfig{
-		RelayDir: b.getBinlogDir(),
-		Timezone: loc,
-	}
-	bReader := streamer.NewBinlogReader(brConfig)
+		ch := make(chan pb.ProcessResult)
+		ctx, _ := context.WithCancel(context.Background())
 
-	// Start sync with sepcified binlog gtid
-	b.logger.Debugf("mysql.reader: GtidSet: %v", coordinates.GtidSet)
-	b.binlogStreamer, err = bReader.StartSync(gomysql.Position{Pos: uint32(coordinates.LogPos),Name:coordinates.LogFile})
-	if err != nil {
-		b.logger.Debugf("mysql.reader: err at StartSyncGTID: %v", err)
+		go b.relay.Process(ctx, ch)
+
+		time.Sleep(3 * time.Second)
+
+
+		loc, err := time.LoadLocation("Local") // TODO
+
+		brConfig := &streamer.BinlogReaderConfig{
+			RelayDir: b.getBinlogDir(),
+			Timezone: loc,
+		}
+		bReader := streamer.NewBinlogReader(brConfig)
+		b.binlogStreamer, err = bReader.StartSync(gomysql.Position{Pos: uint32(coordinates.LogPos),Name:coordinates.LogFile})
+		if err != nil {
+			b.logger.Debugf("mysql.reader: err at StartSyncGTID: %v", err)
+			return err
+		}
+	} else {
+		// Start sync with sepcified binlog gtid
+		b.logger.Debugf("mysql.reader: GtidSet: %v", coordinates.GtidSet)
+
+		gtidSet, err := gomysql.ParseMysqlGTIDSet(coordinates.GtidSet)
+		if err != nil {
+			b.logger.Errorf("mysql.reader: err: %v", err)
+			return err
+		}
+		b.binlogStreamer, err = b.binlogSyncer.StartSyncGTID(gtidSet)
+		if err != nil {
+			b.logger.Debugf("mysql.reader: err at StartSyncGTID: %v", err)
+			return err
+		}
 	}
 	b.mysqlContext.Stage = models.StageRequestingBinlogDump
 
-	return err
+	return nil
 }
 
 func (b *BinlogReader) GetCurrentBinlogCoordinates() *base.BinlogCoordinateTx {
@@ -1515,7 +1548,11 @@ func (b *BinlogReader) Close() error {
 		return err
 	}
 	// Historically there was a:
-	b.relay.Close()
+	if b.mysqlContext.BinlogRelay {
+		b.relay.Close()
+	} else {
+		b.binlogSyncer.Close()
+	}
 	// here. A new go-mysql version closes the binlog syncer connection independently.
 	// I will go against the sacred rules of comments and just leave this here.
 	// This is the year 2017. Let's see what year these comments get deleted.
