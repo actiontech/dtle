@@ -136,7 +136,7 @@ func ShowCreateView(db *gosql.DB, databaseName, tableName string, dropTableIfExi
 	var dummy, character_set_client, collation_connection string
 	query := fmt.Sprintf(`show create table %s.%s`, umconf.EscapeName(databaseName), umconf.EscapeName(tableName))
 	err = db.QueryRow(query).Scan(&dummy, &createTableStatement, &character_set_client, &collation_connection)
-	statement := fmt.Sprintf("USE %s", databaseName)
+	statement := fmt.Sprintf("USE %s", umconf.EscapeName(databaseName))
 	if dropTableIfExists {
 		statement = fmt.Sprintf("%s;DROP TABLE IF EXISTS `%s`", statement, tableName)
 	}

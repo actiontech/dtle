@@ -199,10 +199,9 @@ func (kr *KafkaRunner) initiateStreaming() error {
 					return
 				}
 			}
-			// TODO cache table
 			table, err := kr.getOrSetTable(dumpData.TableSchema, dumpData.TableName, tableFromDumpData)
 			if err != nil {
-				kr.onError(TaskStateDead, fmt.Errorf("DTLE_BUG kafka: unknown table structure"))
+				kr.onError(TaskStateDead, err)
 				return
 			}
 
@@ -228,6 +227,9 @@ func (kr *KafkaRunner) initiateStreaming() error {
 			kr.onError(TaskStateDead, err)
 		}
 	})
+	if err != nil {
+		return err
+	}
 
 	_, err = kr.natsConn.Subscribe(fmt.Sprintf("%s_incr_hete", kr.subject), func(m *gonats.Msg) {
 		var binlogEntries binlog.BinlogEntries
