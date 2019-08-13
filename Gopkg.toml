@@ -191,7 +191,7 @@ required = [
 [[constraint]]
   name = "github.com/siddontang/go-mysql"
   source = "github.com/ffffwh/go-mysql"
-  branch = "udup-mod"
+  branch = "dtle-mod/2"
 
 [[constraint]]
   name = "github.com/ugorji/go"
