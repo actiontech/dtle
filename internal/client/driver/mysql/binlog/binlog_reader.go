@@ -13,6 +13,7 @@ import (
 
 	"github.com/actiontech/dtle/internal/client/driver/common"
 	"github.com/pingcap/dm/dm/pb"
+	"github.com/pingcap/dm/pkg/gtid"
 	"github.com/pingcap/dm/pkg/streamer"
 
 	"github.com/actiontech/dtle/internal/g"
@@ -53,6 +54,7 @@ import (
 // BinlogReader is a general interface whose implementations can choose their methods of reading
 // a binary log file and parsing it into binlog entries
 type BinlogReader struct {
+	serverId                 uint64
 	execCtx                  *common.ExecContext
 	logger                   *log.Entry
 	connectionConfig         *mysql.ConnectionConfig
@@ -188,35 +190,19 @@ func NewMySQLReader(execCtx *common.ExecContext, cfg *config.MySQLDriverConfig, 
 		return nil, err
 	}
 	bid := []byte(strconv.FormatUint(uint64(sid), 10))
-	serverId, err := strconv.ParseUint(string(bid), 10, 32)
+	binlogReader.serverId, err = strconv.ParseUint(string(bid), 10, 32)
 	if err != nil {
 		return nil, err
 	}
-	logger.Debug("job.start: debug server id is :", serverId)
+	logger.Debug("job.start: debug server id is :", binlogReader.serverId)
 	// support regex
 	binlogReader.genRegexMap()
 
 	if binlogReader.mysqlContext.BinlogRelay {
-		dbConfig := dmrelay.DBConfig{
-			Host:     cfg.ConnectionConfig.Host,
-			Port:     cfg.ConnectionConfig.Port,
-			User:     cfg.ConnectionConfig.User,
-			Password: cfg.ConnectionConfig.Password,
-		}
-		relayConfig := &dmrelay.Config{
-			ServerID: int(serverId),
-			Flavor:   "mysql",
-			From:     dbConfig,
-			RelayDir: binlogReader.getBinlogDir(),
-		}
-		binlogReader.relay = dmrelay.NewRelay(relayConfig)
-		err = binlogReader.relay.Init()
-		if err != nil {
-			return nil, err
-		}
+		// init when connecting
 	} else {
 		binlogSyncerConfig := replication.BinlogSyncerConfig{
-			ServerID:       uint32(serverId),
+			ServerID:       uint32(binlogReader.serverId),
 			Flavor:         "mysql",
 			Host:           cfg.ConnectionConfig.Host,
 			Port:           uint16(cfg.ConnectionConfig.Port),
@@ -278,14 +264,40 @@ func (b *BinlogReader) ConnectBinlogStreamer(coordinates base.BinlogCoordinatesX
 	b.logger.Printf("mysql.reader: Connecting binlog streamer at %+v", coordinates)
 
 	if b.mysqlContext.BinlogRelay {
-		//_ = b.relay.Migrate(context.TODO(), coordinates.LogFile, uint32(coordinates.LogPos)) // TODO err
+		startPos := gomysql.Position{Pos: uint32(coordinates.LogPos),Name:coordinates.LogFile}
+
+		dbConfig := dmrelay.DBConfig{
+			Host:           b.mysqlContext.ConnectionConfig.Host,
+			Port:           b.mysqlContext.ConnectionConfig.Port,
+			User:           b.mysqlContext.ConnectionConfig.User,
+			Password:       b.mysqlContext.ConnectionConfig.Password,
+		}
+		relayConfig := &dmrelay.Config{
+			ServerID:int(b.serverId),
+			Flavor: "mysql",
+			From: dbConfig,
+			RelayDir: b.getBinlogDir(),
+			BinLogName: "",
+			EnableGTID: true,
+			BinlogGTID: coordinates.GtidSet,
+		}
+		b.relay = dmrelay.NewRelay(relayConfig)
+		err = b.relay.Init()
+		if err != nil {
+			return err
+		}
+
+		meta := b.relay.GetMeta()
+		changed, err := meta.AdjustWithStartPos(coordinates.LogFile, coordinates.GtidSet, true)
+		if err != nil {
+			return err
+		}
+		b.logger.Debugf("*** after AdjustWithStartPos. changed %v", changed)
 
 		ch := make(chan pb.ProcessResult)
 		ctx, _ := context.WithCancel(context.Background())
 
 		go b.relay.Process(ctx, ch)
-
-		time.Sleep(3 * time.Second)
 
 		loc, err := time.LoadLocation("Local") // TODO
 
@@ -294,7 +306,32 @@ func (b *BinlogReader) ConnectBinlogStreamer(coordinates base.BinlogCoordinatesX
 			Timezone: loc,
 		}
 		bReader := streamer.NewBinlogReader(brConfig)
-		b.binlogStreamer, err = bReader.StartSync(gomysql.Position{Pos: uint32(coordinates.LogPos), Name: coordinates.LogFile})
+
+		targetGtid, err := gtid.ParserGTID("mysql", coordinates.GtidSet)
+		if err != nil {
+			return err
+		}
+
+		waitForRelay := true
+		for waitForRelay {
+			_, p := meta.Pos()
+			_, gs := meta.GTID()
+
+			if targetGtid.Contain(gs) {
+
+			} else {
+				waitForRelay = false
+			}
+
+			if waitForRelay {
+				b.logger.Debugf("mysql.reader: Relay: keep waiting. pos %v gs %v", p, gs)
+				time.Sleep(1 * time.Second)
+			} else {
+				b.logger.Debugf("mysql.reader: Relay: stop waiting. pos %v gs %v", p, gs)
+			}
+		}
+
+		b.binlogStreamer, err = bReader.StartSync(startPos)
 		if err != nil {
 			b.logger.Debugf("mysql.reader: err at StartSyncGTID: %v", err)
 			return err
