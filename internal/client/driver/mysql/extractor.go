@@ -69,6 +69,7 @@ type Extractor struct {
 	logger       *log.Entry
 	subject      string
 	mysqlContext *config.MySQLDriverConfig
+
 	mysqlVersionDigit int
 	db           *gosql.DB
 	singletonDB  *gosql.DB
@@ -98,7 +99,9 @@ type Extractor struct {
 
 	testStub1Delay int64
 
-	context *sqle.Context
+	context         *sqle.Context
+	gotCoordinateCh chan struct{}
+	streamerReadyCh chan struct{}
 }
 
 func NewExtractor(execCtx *common.ExecContext, cfg *config.MySQLDriverConfig, logger *log.Logger) (*Extractor, error) {
@@ -119,6 +122,8 @@ func NewExtractor(execCtx *common.ExecContext, cfg *config.MySQLDriverConfig, lo
 		shutdownCh:      make(chan struct{}),
 		testStub1Delay:  0,
 		context:         sqle.NewContext(nil),
+		gotCoordinateCh: make(chan struct{}),
+		streamerReadyCh: make(chan struct{}),
 	}
 	e.context.LoadSchemas(nil)
 
@@ -229,6 +234,21 @@ func (e *Extractor) Run() {
 		return
 	}
 
+	go func() {
+		if e.mysqlContext.SkipIncrementalCopy {
+
+		} else {
+			<-e.gotCoordinateCh
+
+			if err := e.initBinlogReader(e.initialBinlogCoordinates); err != nil {
+				e.logger.Debugf("mysql.extractor error at initBinlogReader: %v", err.Error())
+				e.onError(TaskStateDead, err)
+				return
+			}
+			e.streamerReadyCh <- struct{}{}
+		}
+	}()
+
 	if fullCopy {
 		var ctx context.Context
 		span := opentracing.GlobalTracer().StartSpan("span_full_complete")
@@ -262,12 +282,7 @@ func (e *Extractor) Run() {
 	if e.mysqlContext.SkipIncrementalCopy {
 		e.logger.Infof("mysql.extractor. SkipIncrementalCopy")
 	} else {
-		if err := e.initBinlogReader(e.initialBinlogCoordinates); err != nil {
-			e.logger.Debugf("mysql.extractor error at initBinlogReader: %v", err.Error())
-			e.onError(TaskStateDead, err)
-			return
-		}
-
+		<-e.streamerReadyCh
 		if err := e.initiateStreaming(); err != nil {
 			e.logger.Debugf("mysql.extractor error at initiateStreaming: %v", err.Error())
 			e.onError(TaskStateDead, err)
@@ -673,12 +688,14 @@ func (e *Extractor) readCurrentBinlogCoordinates() error {
 		e.initialBinlogCoordinates = &base.BinlogCoordinatesX{
 			GtidSet: gtidSet.String(),
 		}
+		e.gotCoordinateCh <- struct{}{}
 	} else {
 		binlogCoordinates, err := base.GetSelfBinlogCoordinates(e.db)
 		if err != nil {
 			return err
 		}
 		e.initialBinlogCoordinates = binlogCoordinates
+		e.gotCoordinateCh <- struct{}{}
 	}
 
 	return nil
@@ -1229,6 +1246,7 @@ func (e *Extractor) mysqlDump() error {
 				//binlogCoordinates, err := base.GetSelfBinlogCoordinatesWithTx(tx)
 
 				e.initialBinlogCoordinates = binlogCoordinates2
+				e.gotCoordinateCh <- struct{}{}
 				e.logger.Printf("mysql.extractor: Step %d: read binlog coordinates of MySQL master: %+v", step, *e.initialBinlogCoordinates)
 
 				defer func() {
@@ -1264,6 +1282,7 @@ func (e *Extractor) mysqlDump() error {
 		if err != nil {
 			return err
 		}
+		e.gotCoordinateCh <- struct{}{}
 		e.logger.Debugf("mysql.extractor: got gtid")
 	}
 	step++
