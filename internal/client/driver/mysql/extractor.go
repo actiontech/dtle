@@ -100,6 +100,8 @@ type Extractor struct {
 	testStub1Delay int64
 
 	context         *sqle.Context
+
+	// This must be `<-` after `getSchemaTablesAndMeta()`.
 	gotCoordinateCh chan struct{}
 	streamerReadyCh chan struct{}
 }
@@ -239,7 +241,7 @@ func (e *Extractor) Run() {
 
 		} else {
 			<-e.gotCoordinateCh
-
+			e.logger.Infof("mysql.extractor. initBinlogReader")
 			if err := e.initBinlogReader(e.initialBinlogCoordinates); err != nil {
 				e.logger.Debugf("mysql.extractor error at initBinlogReader: %v", err.Error())
 				e.onError(TaskStateDead, err)
@@ -277,6 +279,7 @@ func (e *Extractor) Run() {
 			e.onError(TaskStateDead, err)
 			return
 		}
+		e.gotCoordinateCh <- struct{}{}
 	}
 
 	if e.mysqlContext.SkipIncrementalCopy {
@@ -688,14 +691,12 @@ func (e *Extractor) readCurrentBinlogCoordinates() error {
 		e.initialBinlogCoordinates = &base.BinlogCoordinatesX{
 			GtidSet: gtidSet.String(),
 		}
-		e.gotCoordinateCh <- struct{}{}
 	} else {
 		binlogCoordinates, err := base.GetSelfBinlogCoordinates(e.db)
 		if err != nil {
 			return err
 		}
 		e.initialBinlogCoordinates = binlogCoordinates
-		e.gotCoordinateCh <- struct{}{}
 	}
 
 	return nil
@@ -1246,7 +1247,6 @@ func (e *Extractor) mysqlDump() error {
 				//binlogCoordinates, err := base.GetSelfBinlogCoordinatesWithTx(tx)
 
 				e.initialBinlogCoordinates = binlogCoordinates2
-				e.gotCoordinateCh <- struct{}{}
 				e.logger.Printf("mysql.extractor: Step %d: read binlog coordinates of MySQL master: %+v", step, *e.initialBinlogCoordinates)
 
 				defer func() {
@@ -1282,7 +1282,6 @@ func (e *Extractor) mysqlDump() error {
 		if err != nil {
 			return err
 		}
-		e.gotCoordinateCh <- struct{}{}
 		e.logger.Debugf("mysql.extractor: got gtid")
 	}
 	step++
@@ -1299,6 +1298,8 @@ func (e *Extractor) mysqlDump() error {
 	if err != nil {
 		return err
 	}
+
+	e.gotCoordinateCh <- struct{}{}
 
 	// Transform the current schema so that it reflects the *current* state of the MySQL server's contents.
 	// First, get the DROP TABLE and CREATE TABLE statement (with keys and constraint definitions) for our tables ...
