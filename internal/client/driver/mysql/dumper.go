@@ -26,7 +26,9 @@ type dumper struct {
 	logger         *log.Entry
 	chunkSize      int64
 	TableSchema    string
+	EscapedTableSchema string
 	TableName      string
+	EscapedTableName string
 	table          *config.Table
 	columns        string
 	resultsChannel chan *DumpEntry
@@ -52,7 +54,9 @@ func NewDumper(db usql.QueryAble, table *config.Table, chunkSize int64,
 		logger:         logger,
 		db:             db,
 		TableSchema:    table.TableSchema,
+		EscapedTableSchema: umconf.EscapeName(table.TableSchema),
 		TableName:      table.TableName,
+		EscapedTableName: umconf.EscapeName(table.TableName),
 		table:          table,
 		resultsChannel: make(chan *DumpEntry, 24),
 		chunkSize:      chunkSize,
@@ -126,8 +130,8 @@ func (d *dumper) prepareForDumping() error {
 func (d *dumper) buildQueryOldWay() string {
 	return fmt.Sprintf(`SELECT %s FROM %s.%s where (%s) LIMIT %d OFFSET %d`,
 		d.columns,
-		umconf.EscapeName(d.TableSchema),
-		umconf.EscapeName(d.TableName),
+		d.EscapedTableSchema,
+		d.EscapedTableName,
 		d.table.Where,
 		d.chunkSize,
 		d.table.Iteration*d.chunkSize,
@@ -175,8 +179,8 @@ func (d *dumper) buildQueryOnUniqueKey() string {
 
 	return fmt.Sprintf(`SELECT %s FROM %s.%s where (%s) and (%s) order by %s LIMIT %d`,
 		d.columns,
-		umconf.EscapeName(d.TableSchema),
-		umconf.EscapeName(d.TableName),
+		d.EscapedTableSchema,
+		d.EscapedTableName,
 		// where
 		rangeStr, d.table.Where,
 		// order by
@@ -193,8 +197,6 @@ func (d *dumper) getChunkData() (nRows int64, err error) {
 		TableName:   d.TableName,
 		RowsCount:   0,
 	}
-	// TODO use PS
-	// TODO escape schema/table/column name once and save
 	defer func() {
 		if err != nil {
 			entry.Err = err.Error()
