@@ -481,7 +481,6 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 					var table *config.Table
 					var schema *config.DataSource
 					for i := range b.mysqlContext.ReplicateDoDb {
-						// TODO escape name before comparing?
 						if b.mysqlContext.ReplicateDoDb[i].TableSchema == realSchema {
 							schema = b.mysqlContext.ReplicateDoDb[i]
 							for j := range b.mysqlContext.ReplicateDoDb[i].Tables {

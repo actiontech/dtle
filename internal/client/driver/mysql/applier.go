@@ -1324,8 +1324,7 @@ func (a *Applier) ApplyBinlogEvent(ctx context.Context, workerIdx int, binlogEnt
 			a.logger.Debugf("mysql.applier: ApplyBinlogEvent: not dml: %v", event.Query)
 
 			if event.CurrentSchema != "" {
-				// TODO escape schema name?
-				query := fmt.Sprintf("USE %s", event.CurrentSchema)
+				query := fmt.Sprintf("USE %s", umconf.EscapeName(event.CurrentSchema))
 				a.logger.Debugf("mysql.applier: query: %v", query)
 				_, err = tx.Exec(query)
 				if err != nil {

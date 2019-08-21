@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/actiontech/dtle/internal/config"
+	"github.com/actiontech/dtle/internal/config/mysql"
 	"github.com/actiontech/dtle/internal/g"
 	"strconv"
 	"strings"
@@ -381,11 +382,11 @@ func ShowDatabases(db *gosql.DB) ([]string, error) {
 func ShowTables(db *gosql.DB, dbName string, showType bool) (tables []*config.Table, err error) {
 	// Get table list
 	var query string
+	escapedDbName := mysql.EscapeName(dbName)
 	if showType {
-		// TODO escape with backquote?
-		query = fmt.Sprintf("SHOW FULL TABLES IN %s", dbName)
+		query = fmt.Sprintf("SHOW FULL TABLES IN %s", escapedDbName)
 	} else {
-		query = fmt.Sprintf("SHOW TABLES IN %s", dbName)
+		query = fmt.Sprintf("SHOW TABLES IN %s", escapedDbName)
 	}
 	rows, err := db.Query(query)
 	if err != nil {
