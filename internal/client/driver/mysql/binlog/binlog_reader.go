@@ -60,8 +60,13 @@ type BinlogReader struct {
 	connectionConfig         *mysql.ConnectionConfig
 	db                       *gosql.DB
 	relay                    dmrelay.Process
+	relayCancelF             context.CancelFunc
+	// for direct stream
 	binlogSyncer             *replication.BinlogSyncer
+	// for relay
 	binlogStreamer           streamer.Streamer
+	// for relay
+	binlogReader             *streamer.BinlogReader
 	currentCoordinates       base.BinlogCoordinateTx
 	currentCoordinatesMutex  *sync.Mutex
 	LastAppliedRowsEventHint base.BinlogCoordinateTx
@@ -261,7 +266,8 @@ func (b *BinlogReader) ConnectBinlogStreamer(coordinates base.BinlogCoordinatesX
 		LogFile: coordinates.LogFile,
 		LogPos:  coordinates.LogPos,
 	}
-	b.logger.Printf("mysql.reader: Connecting binlog streamer at %+v", coordinates)
+	b.logger.Printf("mysql.reader: Connecting binlog streamer at file %v pos %v gtid %v",
+		coordinates.LogFile, coordinates.LogPos, coordinates.GtidSet)
 
 	if b.mysqlContext.BinlogRelay {
 		startPos := gomysql.Position{Pos: uint32(coordinates.LogPos),Name:coordinates.LogFile}
@@ -295,7 +301,8 @@ func (b *BinlogReader) ConnectBinlogStreamer(coordinates base.BinlogCoordinatesX
 		b.logger.Debugf("*** after AdjustWithStartPos. changed %v", changed)
 
 		ch := make(chan pb.ProcessResult)
-		ctx, _ := context.WithCancel(context.Background())
+		var ctx context.Context
+		ctx, b.relayCancelF = context.WithCancel(context.Background())
 
 		go b.relay.Process(ctx, ch)
 
@@ -305,7 +312,7 @@ func (b *BinlogReader) ConnectBinlogStreamer(coordinates base.BinlogCoordinatesX
 			RelayDir: b.getBinlogDir(),
 			Timezone: loc,
 		}
-		bReader := streamer.NewBinlogReader(brConfig)
+		b.binlogReader = streamer.NewBinlogReader(brConfig)
 
 		targetGtid, err := gtid.ParserGTID("mysql", coordinates.GtidSet)
 		if err != nil {
@@ -331,7 +338,7 @@ func (b *BinlogReader) ConnectBinlogStreamer(coordinates base.BinlogCoordinatesX
 			}
 		}
 
-		b.binlogStreamer, err = bReader.StartSync(startPos)
+		b.binlogStreamer, err = b.binlogReader.StartSync(startPos)
 		if err != nil {
 			b.logger.Debugf("mysql.reader: err at StartSyncGTID: %v", err)
 			return err
@@ -1585,6 +1592,8 @@ func (b *BinlogReader) Close() error {
 	}
 	// Historically there was a:
 	if b.mysqlContext.BinlogRelay {
+		b.binlogReader.Close()
+		b.relayCancelF()
 		b.relay.Close()
 	} else {
 		b.binlogSyncer.Close()
