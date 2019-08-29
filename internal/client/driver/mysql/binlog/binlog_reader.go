@@ -9,10 +9,11 @@ package binlog
 import (
 	"bytes"
 	gosql "database/sql"
+	"time"
+
 	"github.com/actiontech/dtle/internal/client/driver/common"
 	"github.com/pingcap/dm/dm/pb"
 	"github.com/pingcap/dm/pkg/streamer"
-	"time"
 
 	"github.com/actiontech/dtle/internal/g"
 	//"encoding/hex"
@@ -197,15 +198,15 @@ func NewMySQLReader(execCtx *common.ExecContext, cfg *config.MySQLDriverConfig, 
 
 	if binlogReader.mysqlContext.BinlogRelay {
 		dbConfig := dmrelay.DBConfig{
-			Host:           cfg.ConnectionConfig.Host,
-			Port:           cfg.ConnectionConfig.Port,
-			User:           cfg.ConnectionConfig.User,
-			Password:       cfg.ConnectionConfig.Password,
+			Host:     cfg.ConnectionConfig.Host,
+			Port:     cfg.ConnectionConfig.Port,
+			User:     cfg.ConnectionConfig.User,
+			Password: cfg.ConnectionConfig.Password,
 		}
 		relayConfig := &dmrelay.Config{
-			ServerID:int(serverId),
-			Flavor: "mysql",
-			From: dbConfig,
+			ServerID: int(serverId),
+			Flavor:   "mysql",
+			From:     dbConfig,
 			RelayDir: binlogReader.getBinlogDir(),
 		}
 		binlogReader.relay = dmrelay.NewRelay(relayConfig)
@@ -286,7 +287,6 @@ func (b *BinlogReader) ConnectBinlogStreamer(coordinates base.BinlogCoordinatesX
 
 		time.Sleep(3 * time.Second)
 
-
 		loc, err := time.LoadLocation("Local") // TODO
 
 		brConfig := &streamer.BinlogReaderConfig{
@@ -294,7 +294,7 @@ func (b *BinlogReader) ConnectBinlogStreamer(coordinates base.BinlogCoordinatesX
 			Timezone: loc,
 		}
 		bReader := streamer.NewBinlogReader(brConfig)
-		b.binlogStreamer, err = bReader.StartSync(gomysql.Position{Pos: uint32(coordinates.LogPos),Name:coordinates.LogFile})
+		b.binlogStreamer, err = bReader.StartSync(gomysql.Position{Pos: uint32(coordinates.LogPos), Name: coordinates.LogFile})
 		if err != nil {
 			b.logger.Debugf("mysql.reader: err at StartSyncGTID: %v", err)
 			return err
@@ -1510,9 +1510,9 @@ func (b *BinlogReader) matchTable(patternTBS []*config.DataSource, schemaName st
 
 func (b *BinlogReader) genRegexMap() {
 	for _, db := range b.mysqlContext.ReplicateDoDb {
-		/*if db.TableSchema[0] != '~' {
+		if db.TableSchemaScope != "tables" || db.TableSchemaScope != "schemas" {
 			continue
-		}*/
+		}
 		if _, ok := b.ReMap[db.TableSchema]; !ok {
 			b.ReMap[db.TableSchema] = regexp.MustCompile(db.TableSchema[1:])
 		}
