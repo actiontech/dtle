@@ -340,7 +340,7 @@ func (b *BinlogReader) ConnectBinlogStreamer(coordinates base.BinlogCoordinatesX
 
 		b.binlogStreamer, err = b.binlogReader.StartSync(startPos)
 		if err != nil {
-			b.logger.Debugf("mysql.reader: err at StartSyncGTID: %v", err)
+			b.logger.Debugf("mysql.reader: err at StartSync: %v", err)
 			return err
 		}
 	} else {
@@ -429,6 +429,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 	if b.currentBinlogEntry != nil {
 		b.currentBinlogEntry.OriginalSize += len(ev.RawData)
 	}
+
 
 	switch ev.Header.EventType {
 	case replication.GTID_EVENT:
@@ -637,6 +638,10 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 		}
 	case replication.XID_EVENT:
 		b.currentBinlogEntry.SpanContext = span.Context()
+		b.currentCoordinates.LogPos = int64(ev.Header.LogPos)
+		// TODO is the pos the start or the end of a event?
+		// pos if which event should be use? Do we need +1?
+		b.currentBinlogEntry.Coordinates.LogPos = b.currentCoordinates.LogPos
 		entriesChannel <- b.currentBinlogEntry
 		b.LastAppliedRowsEventHint = b.currentCoordinates
 	default:

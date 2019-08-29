@@ -522,7 +522,14 @@ func (n *udupFSM) applyJobClientUpdate(buf []byte, index uint64) interface{} {
 				existing.ModifyIndex = index
 				existing.JobModifyIndex = index
 				for _, t := range existing.Tasks {
+					n.logger.Debugf("*** write gtid %v", ju.Gtid)
 					t.Config["Gtid"] = ju.Gtid
+					if ju.BinlogFile != "" {
+						t.Config["BinlogFile"] = ju.BinlogFile
+					}
+					if ju.BinlogPos != 0 {
+						t.Config["BinlogPos"] = ju.BinlogPos
+					}
 					//t.Config["NatsAddr"] = ju.NatsAddr
 				}
 				// Update all the client allocations

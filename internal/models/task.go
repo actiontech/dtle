@@ -387,6 +387,8 @@ type TaskUpdate struct {
 	JobID    string
 	Gtid     string
 	NatsAddr string
+	BinlogFile string
+	BinlogPos int64
 }
 
 const (

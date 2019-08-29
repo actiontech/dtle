@@ -176,6 +176,9 @@ func (r *Worker) SaveState() error {
 					JobID:    r.alloc.JobID,
 					Gtid:     id.DriverConfig.Gtid,
 					NatsAddr: id.DriverConfig.NatsAddr,
+
+					BinlogFile: id.DriverConfig.BinlogFile,
+					BinlogPos:  id.DriverConfig.BinlogPos,
 				}
 			}
 		} else {
