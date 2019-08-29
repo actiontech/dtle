@@ -271,7 +271,7 @@ github.com/outbrain/golib/tests
 # github.com/pierrec/lz4 v2.0.3+incompatible
 github.com/pierrec/lz4
 github.com/pierrec/lz4/internal/xxh32
-# github.com/pingcap/dm v1.0.0-rc.1
+# github.com/pingcap/dm v1.0.0-rc.1 => /Users/fwh/pro1/dm
 github.com/pingcap/dm/dm/pb
 github.com/pingcap/dm/pkg/streamer
 github.com/pingcap/dm/relay

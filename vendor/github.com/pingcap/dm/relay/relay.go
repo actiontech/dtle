@@ -89,6 +89,8 @@ type Process interface {
 	Close()
 	// IsClosed returns whether relay log process unit was closed
 	IsClosed() bool
+
+	GetMeta() Meta
 }
 
 // Relay relays mysql binlog to local file.
@@ -105,6 +107,10 @@ type Relay struct {
 		sync.RWMutex
 		info *pkgstreamer.RelayLogInfo
 	}
+}
+
+func (r *Relay) GetMeta() Meta {
+	return r.meta
 }
 
 // NewRealRelay creates an instance of Relay.
