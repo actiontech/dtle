@@ -1596,6 +1596,7 @@ func (e *Extractor) WaitCh() chan *models.WaitResult {
 
 // Shutdown is used to tear down the extractor
 func (e *Extractor) Shutdown() error {
+	e.logger.Debugf("*** Extractor.Shutdown")
 	e.shutdownLock.Lock()
 	defer e.shutdownLock.Unlock()
 

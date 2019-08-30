@@ -9,6 +9,7 @@ package binlog
 import (
 	"bytes"
 	gosql "database/sql"
+	"path"
 	"time"
 
 	"github.com/actiontech/dtle/internal/client/driver/common"
@@ -252,8 +253,7 @@ func (b *BinlogReader) addTableToTableMap(tableMap map[string]*config.TableConte
 }
 
 func (b *BinlogReader) getBinlogDir() string {
-	dir := b.execCtx.StateDir + "/binlog/" + b.execCtx.Subject
-	return dir
+	return path.Join(b.execCtx.StateDir, "binlog", b.execCtx.Subject)
 }
 
 // ConnectBinlogStreamer
