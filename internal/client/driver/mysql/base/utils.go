@@ -10,14 +10,15 @@ import (
 	"bytes"
 	gosql "database/sql"
 	"fmt"
-	sqle "github.com/actiontech/dtle/internal/client/driver/mysql/sqle/inspector"
-	"github.com/actiontech/dtle/internal/g"
-	"github.com/pingcap/parser/ast"
-	parsermysql "github.com/pingcap/parser/mysql"
 	"regexp"
 	"strconv"
 	"strings"
 	"time"
+
+	sqle "github.com/actiontech/dtle/internal/client/driver/mysql/sqle/inspector"
+	"github.com/actiontech/dtle/internal/g"
+	"github.com/pingcap/parser/ast"
+	parsermysql "github.com/pingcap/parser/mysql"
 
 	"database/sql"
 
@@ -121,11 +122,11 @@ func ShowCreateTable(db *gosql.DB, databaseName, tableName string, dropTableIfEx
 	var dummy, createTableStatement string
 	query := fmt.Sprintf(`show create table %s.%s`, umconf.EscapeName(databaseName), umconf.EscapeName(tableName))
 	err = db.QueryRow(query).Scan(&dummy, &createTableStatement)
-	if (addUse) {
-		statement = append(statement, fmt.Sprintf("USE %s", databaseName))
+	if addUse {
+		statement = append(statement, fmt.Sprintf("USE %s", umconf.EscapeName(databaseName)))
 	}
 	if dropTableIfExists {
-		statement = append(statement, fmt.Sprintf("DROP TABLE IF EXISTS `%s`", tableName))
+		statement = append(statement, fmt.Sprintf("DROP TABLE IF EXISTS `%s`", umconf.EscapeName(tableName)))
 	}
 	statement = append(statement, createTableStatement)
 	return statement, err
@@ -599,4 +600,3 @@ func GetTableColumnsSqle(sqleContext *sqle.Context, schema string, table string)
 	//r.SetCharset() // TODO
 	return r, nil
 }
-

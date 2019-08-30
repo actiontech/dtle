@@ -10,8 +10,10 @@ import (
 	gosql "database/sql"
 	"encoding/json"
 	"fmt"
+
 	"github.com/actiontech/dtle/internal/client/driver/common"
 	"github.com/actiontech/dtle/internal/config/mysql"
+	umconf "github.com/actiontech/dtle/internal/config/mysql"
 
 	"github.com/actiontech/dtle/internal/g"
 	"github.com/opentracing/opentracing-go"
@@ -71,9 +73,9 @@ type Extractor struct {
 	mysqlContext *config.MySQLDriverConfig
 
 	mysqlVersionDigit int
-	db           *gosql.DB
-	singletonDB  *gosql.DB
-	dumpers      []*dumper
+	db                *gosql.DB
+	singletonDB       *gosql.DB
+	dumpers           []*dumper
 	// db.tb exists when creating the job, for full-copy.
 	// vs e.mysqlContext.ReplicateDoDb: all user assigned db.tb
 	replicateDoDb            []*config.DataSource
@@ -99,7 +101,7 @@ type Extractor struct {
 
 	testStub1Delay int64
 
-	context         *sqle.Context
+	context *sqle.Context
 
 	// This must be `<-` after `getSchemaTablesAndMeta()`.
 	gotCoordinateCh chan struct{}
@@ -1323,9 +1325,9 @@ func (e *Extractor) mysqlDump() error {
 					var err error
 					if strings.ToLower(tb.TableSchema) != "mysql" {
 						if db.TableSchemaRename != "" {
-							dbSQL = fmt.Sprintf("CREATE DATABASE IF NOT EXISTS %s", tb.TableSchemaRename)
+							dbSQL = fmt.Sprintf("CREATE DATABASE IF NOT EXISTS %s", umconf.EscapeName(tb.TableSchemaRename))
 						} else {
-							dbSQL = fmt.Sprintf("CREATE DATABASE IF NOT EXISTS %s", tb.TableSchema)
+							dbSQL = fmt.Sprintf("CREATE DATABASE IF NOT EXISTS %s", umconf.EscapeName(tb.TableSchema))
 						}
 					}
 					if strings.ToLower(tb.TableType) == "view" {
@@ -1339,8 +1341,8 @@ func (e *Extractor) mysqlDump() error {
 							if db.TableSchemaRename != "" && strings.Contains(sql, fmt.Sprintf("USE %s", tb.TableSchema)) {
 								tbSQL[num] = strings.Replace(sql, tb.TableSchema, db.TableSchemaRename, 1)
 							}
-							if tb.TableRename != "" && (strings.Contains(sql, fmt.Sprintf("DROP TABLE IF EXISTS `%s`", tb.TableName)) || strings.Contains(sql, "CREATE TABLE")) {
-								tbSQL[num] = strings.Replace(sql, tb.TableName, tb.TableRename, 1)
+							if tb.TableRename != "" && (strings.Contains(sql, fmt.Sprintf("DROP TABLE IF EXISTS `%s`", umconf.EscapeName(tb.TableName))) || strings.Contains(sql, "CREATE TABLE")) {
+								tbSQL[num] = strings.Replace(sql, umconf.EscapeName(tb.TableName), tb.TableRename, 1)
 							}
 						}
 						if err != nil {
@@ -1366,9 +1368,9 @@ func (e *Extractor) mysqlDump() error {
 			if !e.mysqlContext.SkipCreateDbTable {
 				if strings.ToLower(db.TableSchema) != "mysql" {
 					if db.TableSchemaRename != "" {
-						dbSQL = fmt.Sprintf("CREATE DATABASE IF NOT EXISTS %s", db.TableSchemaRename)
+						dbSQL = fmt.Sprintf("CREATE DATABASE IF NOT EXISTS %s", umconf.EscapeName(db.TableSchemaRename))
 					} else {
-						dbSQL = fmt.Sprintf("CREATE DATABASE IF NOT EXISTS %s", db.TableSchema)
+						dbSQL = fmt.Sprintf("CREATE DATABASE IF NOT EXISTS %s", umconf.EscapeName(db.TableSchema))
 					}
 
 				}
