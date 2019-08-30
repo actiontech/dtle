@@ -13,6 +13,7 @@ import (
 
 	"github.com/actiontech/dtle/internal/client/driver/common"
 	"github.com/pingcap/dm/dm/pb"
+	"github.com/pingcap/dm/pkg/gtid"
 	"github.com/pingcap/dm/pkg/streamer"
 
 	"github.com/actiontech/dtle/internal/g"
@@ -53,13 +54,19 @@ import (
 // BinlogReader is a general interface whose implementations can choose their methods of reading
 // a binary log file and parsing it into binlog entries
 type BinlogReader struct {
+	serverId                 uint64
 	execCtx                  *common.ExecContext
 	logger                   *log.Entry
 	connectionConfig         *mysql.ConnectionConfig
 	db                       *gosql.DB
 	relay                    dmrelay.Process
+	relayCancelF             context.CancelFunc
+	// for direct stream
 	binlogSyncer             *replication.BinlogSyncer
+	// for relay
 	binlogStreamer           streamer.Streamer
+	// for relay
+	binlogReader             *streamer.BinlogReader
 	currentCoordinates       base.BinlogCoordinateTx
 	currentCoordinatesMutex  *sync.Mutex
 	LastAppliedRowsEventHint base.BinlogCoordinateTx
@@ -188,35 +195,19 @@ func NewMySQLReader(execCtx *common.ExecContext, cfg *config.MySQLDriverConfig, 
 		return nil, err
 	}
 	bid := []byte(strconv.FormatUint(uint64(sid), 10))
-	serverId, err := strconv.ParseUint(string(bid), 10, 32)
+	binlogReader.serverId, err = strconv.ParseUint(string(bid), 10, 32)
 	if err != nil {
 		return nil, err
 	}
-	logger.Debug("job.start: debug server id is :", serverId)
+	logger.Debug("job.start: debug server id is :", binlogReader.serverId)
 	// support regex
 	binlogReader.genRegexMap()
 
 	if binlogReader.mysqlContext.BinlogRelay {
-		dbConfig := dmrelay.DBConfig{
-			Host:     cfg.ConnectionConfig.Host,
-			Port:     cfg.ConnectionConfig.Port,
-			User:     cfg.ConnectionConfig.User,
-			Password: cfg.ConnectionConfig.Password,
-		}
-		relayConfig := &dmrelay.Config{
-			ServerID: int(serverId),
-			Flavor:   "mysql",
-			From:     dbConfig,
-			RelayDir: binlogReader.getBinlogDir(),
-		}
-		binlogReader.relay = dmrelay.NewRelay(relayConfig)
-		err = binlogReader.relay.Init()
-		if err != nil {
-			return nil, err
-		}
+		// init when connecting
 	} else {
 		binlogSyncerConfig := replication.BinlogSyncerConfig{
-			ServerID:       uint32(serverId),
+			ServerID:       uint32(binlogReader.serverId),
 			Flavor:         "mysql",
 			Host:           cfg.ConnectionConfig.Host,
 			Port:           uint16(cfg.ConnectionConfig.Port),
@@ -275,17 +266,45 @@ func (b *BinlogReader) ConnectBinlogStreamer(coordinates base.BinlogCoordinatesX
 		LogFile: coordinates.LogFile,
 		LogPos:  coordinates.LogPos,
 	}
-	b.logger.Printf("mysql.reader: Connecting binlog streamer at %+v", coordinates)
+	b.logger.Printf("mysql.reader: Connecting binlog streamer at file %v pos %v gtid %v",
+		coordinates.LogFile, coordinates.LogPos, coordinates.GtidSet)
 
 	if b.mysqlContext.BinlogRelay {
-		//_ = b.relay.Migrate(context.TODO(), coordinates.LogFile, uint32(coordinates.LogPos)) // TODO err
+		startPos := gomysql.Position{Pos: uint32(coordinates.LogPos),Name:coordinates.LogFile}
+
+		dbConfig := dmrelay.DBConfig{
+			Host:           b.mysqlContext.ConnectionConfig.Host,
+			Port:           b.mysqlContext.ConnectionConfig.Port,
+			User:           b.mysqlContext.ConnectionConfig.User,
+			Password:       b.mysqlContext.ConnectionConfig.Password,
+		}
+		relayConfig := &dmrelay.Config{
+			ServerID:int(b.serverId),
+			Flavor: "mysql",
+			From: dbConfig,
+			RelayDir: b.getBinlogDir(),
+			BinLogName: "",
+			EnableGTID: true,
+			BinlogGTID: coordinates.GtidSet,
+		}
+		b.relay = dmrelay.NewRelay(relayConfig)
+		err = b.relay.Init()
+		if err != nil {
+			return err
+		}
+
+		meta := b.relay.GetMeta()
+		changed, err := meta.AdjustWithStartPos(coordinates.LogFile, coordinates.GtidSet, true)
+		if err != nil {
+			return err
+		}
+		b.logger.Debugf("*** after AdjustWithStartPos. changed %v", changed)
 
 		ch := make(chan pb.ProcessResult)
-		ctx, _ := context.WithCancel(context.Background())
+		var ctx context.Context
+		ctx, b.relayCancelF = context.WithCancel(context.Background())
 
 		go b.relay.Process(ctx, ch)
-
-		time.Sleep(3 * time.Second)
 
 		loc, err := time.LoadLocation("Local") // TODO
 
@@ -293,10 +312,35 @@ func (b *BinlogReader) ConnectBinlogStreamer(coordinates base.BinlogCoordinatesX
 			RelayDir: b.getBinlogDir(),
 			Timezone: loc,
 		}
-		bReader := streamer.NewBinlogReader(brConfig)
-		b.binlogStreamer, err = bReader.StartSync(gomysql.Position{Pos: uint32(coordinates.LogPos), Name: coordinates.LogFile})
+		b.binlogReader = streamer.NewBinlogReader(brConfig)
+
+		targetGtid, err := gtid.ParserGTID("mysql", coordinates.GtidSet)
 		if err != nil {
-			b.logger.Debugf("mysql.reader: err at StartSyncGTID: %v", err)
+			return err
+		}
+
+		waitForRelay := true
+		for waitForRelay {
+			_, p := meta.Pos()
+			_, gs := meta.GTID()
+
+			if targetGtid.Contain(gs) {
+
+			} else {
+				waitForRelay = false
+			}
+
+			if waitForRelay {
+				b.logger.Debugf("mysql.reader: Relay: keep waiting. pos %v gs %v", p, gs)
+				time.Sleep(1 * time.Second)
+			} else {
+				b.logger.Debugf("mysql.reader: Relay: stop waiting. pos %v gs %v", p, gs)
+			}
+		}
+
+		b.binlogStreamer, err = b.binlogReader.StartSync(startPos)
+		if err != nil {
+			b.logger.Debugf("mysql.reader: err at StartSync: %v", err)
 			return err
 		}
 	} else {
@@ -385,6 +429,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 	if b.currentBinlogEntry != nil {
 		b.currentBinlogEntry.OriginalSize += len(ev.RawData)
 	}
+
 
 	switch ev.Header.EventType {
 	case replication.GTID_EVENT:
@@ -593,6 +638,10 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 		}
 	case replication.XID_EVENT:
 		b.currentBinlogEntry.SpanContext = span.Context()
+		b.currentCoordinates.LogPos = int64(ev.Header.LogPos)
+		// TODO is the pos the start or the end of a event?
+		// pos if which event should be use? Do we need +1?
+		b.currentBinlogEntry.Coordinates.LogPos = b.currentCoordinates.LogPos
 		entriesChannel <- b.currentBinlogEntry
 		b.LastAppliedRowsEventHint = b.currentCoordinates
 	default:
@@ -1548,6 +1597,8 @@ func (b *BinlogReader) Close() error {
 	}
 	// Historically there was a:
 	if b.mysqlContext.BinlogRelay {
+		b.binlogReader.Close()
+		b.relayCancelF()
 		b.relay.Close()
 	} else {
 		b.binlogSyncer.Close()

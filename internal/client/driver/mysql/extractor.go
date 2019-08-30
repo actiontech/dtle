@@ -692,6 +692,8 @@ func (e *Extractor) readCurrentBinlogCoordinates() error {
 		}
 		e.initialBinlogCoordinates = &base.BinlogCoordinatesX{
 			GtidSet: gtidSet.String(),
+			LogFile: e.mysqlContext.BinlogFile,
+			LogPos: e.mysqlContext.BinlogPos,
 		}
 	} else {
 		binlogCoordinates, err := base.GetSelfBinlogCoordinates(e.db)

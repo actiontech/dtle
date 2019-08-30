@@ -439,6 +439,7 @@ func (a *Applier) executeWriteFuncs() {
 				a.rowCopyComplete <- true
 				a.logger.Printf("mysql.applier: Rows copy complete.number of rows:%d", a.mysqlContext.TotalRowsReplay)
 				a.mysqlContext.Gtid = a.currentCoordinates.RetrievedGtidSet
+				a.mysqlContext.BinlogFile = a.currentCoordinates.File
 				break
 			}
 			if a.shutdown {
@@ -475,6 +476,7 @@ func (a *Applier) executeWriteFuncs() {
 			if !a.shutdown {
 				a.lastAppliedBinlogTx = groupTx[len(groupTx)-1]
 				a.mysqlContext.Gtid = fmt.Sprintf("%s:1-%d", a.lastAppliedBinlogTx.SID, a.lastAppliedBinlogTx.GNO)
+				// a.mysqlContext.BinlogPos = // homogeneous obsolete. not implementing.
 			}
 		case <-time.After(1 * time.Second):
 			// do nothing
@@ -723,6 +725,8 @@ func (a *Applier) heterogeneousReplay() {
 			if !a.shutdown {
 				// TODO what is this used for?
 				a.mysqlContext.Gtid = fmt.Sprintf("%s:1-%d", txSid, binlogEntry.Coordinates.GNO)
+				a.mysqlContext.BinlogFile = binlogEntry.Coordinates.LogFile
+				a.mysqlContext.BinlogPos = binlogEntry.Coordinates.LogPos
 			}
 		case <-time.After(10 * time.Second):
 			a.logger.Debugf("mysql.applier: no binlogEntry for 10s")
@@ -755,6 +759,7 @@ OUTER:
 				if !a.shutdown {
 					a.lastAppliedBinlogTx = binlogTx
 					a.mysqlContext.Gtid = fmt.Sprintf("%s:1-%d", a.lastAppliedBinlogTx.SID, a.lastAppliedBinlogTx.GNO)
+					// a.mysqlContext.BinlogPos = // homogeneous obsolete. not implementing.
 				}
 			} else {
 				if binlogTx.LastCommitted == lastCommitted {
@@ -1591,6 +1596,8 @@ func (a *Applier) ID() string {
 			ReplicateDoDb:     a.mysqlContext.ReplicateDoDb,
 			ReplicateIgnoreDb: a.mysqlContext.ReplicateIgnoreDb,
 			Gtid:              a.mysqlContext.Gtid,
+			BinlogPos:         a.mysqlContext.BinlogPos,
+			BinlogFile:        a.mysqlContext.BinlogFile,
 			NatsAddr:          a.mysqlContext.NatsAddr,
 			ParallelWorkers:   a.mysqlContext.ParallelWorkers,
 			ConnectionConfig:  a.mysqlContext.ConnectionConfig,
