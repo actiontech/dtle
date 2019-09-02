@@ -1343,7 +1343,7 @@ func (e *Extractor) mysqlDump() error {
 							if db.TableSchemaRename != "" && strings.Contains(sql, fmt.Sprintf("USE %s", tb.TableSchema)) {
 								tbSQL[num] = strings.Replace(sql, tb.TableSchema, db.TableSchemaRename, 1)
 							}
-							if tb.TableRename != "" && (strings.Contains(sql, fmt.Sprintf("DROP TABLE IF EXISTS `%s`", umconf.EscapeName(tb.TableName))) || strings.Contains(sql, "CREATE TABLE")) {
+							if tb.TableRename != "" && (strings.Contains(sql, fmt.Sprintf("DROP TABLE IF EXISTS %s", umconf.EscapeName(tb.TableName))) || strings.Contains(sql, "CREATE TABLE")) {
 								tbSQL[num] = strings.Replace(sql, umconf.EscapeName(tb.TableName), tb.TableRename, 1)
 							}
 						}
