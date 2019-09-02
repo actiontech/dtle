@@ -242,7 +242,7 @@ type Applier struct {
 	txLastNSeconds uint32
 	nDumpEntry     int64
 
-	stubFullApplyDelay bool
+	stubFullApplyDelay time.Duration
 }
 
 func NewApplier(subject, tp string, cfg *config.MySQLDriverConfig, logger *log.Logger) (*Applier, error) {
@@ -273,8 +273,18 @@ func NewApplier(subject, tp string, cfg *config.MySQLDriverConfig, logger *log.L
 		waitCh:                  make(chan *models.WaitResult, 1),
 		shutdownCh:              make(chan struct{}),
 		printTps:                os.Getenv(g.ENV_PRINT_TPS) != "",
-		stubFullApplyDelay:      os.Getenv(g.ENV_FULL_APPLY_DELAY) != "",
 	}
+	stubFullApplyDelayStr := os.Getenv(g.ENV_FULL_APPLY_DELAY)
+	if stubFullApplyDelayStr == "" {
+		a.stubFullApplyDelay = 0
+	} else {
+		delay, parseIntErr := strconv.ParseInt(stubFullApplyDelayStr, 10, 0)
+		if parseIntErr != nil { // backward compatibility
+			delay = 20
+		}
+		a.stubFullApplyDelay = time.Duration(delay) * time.Second
+	}
+
 	a.mtsManager = NewMtsManager(a.shutdownCh)
 	go a.mtsManager.LcUpdater()
 	return a, nil
@@ -1407,9 +1417,9 @@ func (a *Applier) ApplyBinlogEvent(ctx context.Context, workerIdx int, binlogEnt
 }
 
 func (a *Applier) ApplyEventQueries(db *gosql.DB, entry *DumpEntry) error {
-	if a.stubFullApplyDelay {
+	if a.stubFullApplyDelay != 0 {
 		a.logger.Debugf("mysql.applier: stubFullApplyDelay start sleep")
-		time.Sleep(20 * time.Second)
+		time.Sleep(a.stubFullApplyDelay)
 		a.logger.Debugf("mysql.applier: stubFullApplyDelay end sleep")
 	}
 
