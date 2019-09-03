@@ -54,17 +54,17 @@ import (
 // BinlogReader is a general interface whose implementations can choose their methods of reading
 // a binary log file and parsing it into binlog entries
 type BinlogReader struct {
-	serverId                 uint64
-	execCtx                  *common.ExecContext
-	logger                   *log.Entry
-	connectionConfig         *mysql.ConnectionConfig
-	db                       *gosql.DB
-	relay                    dmrelay.Process
-	relayCancelF             context.CancelFunc
+	serverId         uint64
+	execCtx          *common.ExecContext
+	logger           *log.Entry
+	connectionConfig *mysql.ConnectionConfig
+	db               *gosql.DB
+	relay            dmrelay.Process
+	relayCancelF     context.CancelFunc
 	// for direct stream
-	binlogSyncer             *replication.BinlogSyncer
+	binlogSyncer *replication.BinlogSyncer
 	// for relay
-	binlogStreamer           streamer.Streamer
+	binlogStreamer streamer.Streamer
 	// for relay
 	binlogReader             *streamer.BinlogReader
 	currentCoordinates       base.BinlogCoordinateTx
@@ -270,19 +270,19 @@ func (b *BinlogReader) ConnectBinlogStreamer(coordinates base.BinlogCoordinatesX
 		coordinates.LogFile, coordinates.LogPos, coordinates.GtidSet)
 
 	if b.mysqlContext.BinlogRelay {
-		startPos := gomysql.Position{Pos: uint32(coordinates.LogPos),Name:coordinates.LogFile}
+		startPos := gomysql.Position{Pos: uint32(coordinates.LogPos), Name: coordinates.LogFile}
 
 		dbConfig := dmrelay.DBConfig{
-			Host:           b.mysqlContext.ConnectionConfig.Host,
-			Port:           b.mysqlContext.ConnectionConfig.Port,
-			User:           b.mysqlContext.ConnectionConfig.User,
-			Password:       b.mysqlContext.ConnectionConfig.Password,
+			Host:     b.mysqlContext.ConnectionConfig.Host,
+			Port:     b.mysqlContext.ConnectionConfig.Port,
+			User:     b.mysqlContext.ConnectionConfig.User,
+			Password: b.mysqlContext.ConnectionConfig.Password,
 		}
 		relayConfig := &dmrelay.Config{
-			ServerID:int(b.serverId),
-			Flavor: "mysql",
-			From: dbConfig,
-			RelayDir: b.getBinlogDir(),
+			ServerID:   int(b.serverId),
+			Flavor:     "mysql",
+			From:       dbConfig,
+			RelayDir:   b.getBinlogDir(),
 			BinLogName: "",
 			EnableGTID: true,
 			BinlogGTID: coordinates.GtidSet,
@@ -429,7 +429,6 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 	if b.currentBinlogEntry != nil {
 		b.currentBinlogEntry.OriginalSize += len(ev.RawData)
 	}
-
 
 	switch ev.Header.EventType {
 	case replication.GTID_EVENT:
@@ -1504,7 +1503,9 @@ func (b *BinlogReader) matchDB(patternDBS []*config.DataSource, a string) bool {
 
 func (b *BinlogReader) matchTable(patternTBS []*config.DataSource, schemaName string, tableName string) bool {
 	for _, pdb := range patternTBS {
-
+		if pdb.TableSchemaScope == "schema" && pdb.TableSchema == schemaName {
+			return true
+		}
 		if pdb.TableSchemaScope == "schemas" {
 			reg := regexp.MustCompile(pdb.TableSchemaRegex)
 			if reg.MatchString(schemaName) {
@@ -1512,11 +1513,6 @@ func (b *BinlogReader) matchTable(patternTBS []*config.DataSource, schemaName st
 			}
 		}
 		redb, okdb := b.ReMap[pdb.TableSchema]
-		if okdb {
-			if redb.MatchString(schemaName) && pdb.TableSchemaScope == "schema" {
-				return true
-			}
-		}
 		for _, ptb := range pdb.Tables {
 			retb, oktb := b.ReMap[ptb.TableName]
 			if oktb && okdb {
