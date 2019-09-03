@@ -126,7 +126,7 @@ func ShowCreateTable(db *gosql.DB, databaseName, tableName string, dropTableIfEx
 		statement = append(statement, fmt.Sprintf("USE %s", umconf.EscapeName(databaseName)))
 	}
 	if dropTableIfExists {
-		statement = append(statement, fmt.Sprintf("DROP TABLE IF EXISTS `%s`", umconf.EscapeName(tableName)))
+		statement = append(statement, fmt.Sprintf("DROP TABLE IF EXISTS %s", umconf.EscapeName(tableName)))
 	}
 	statement = append(statement, createTableStatement)
 	return statement, err
