@@ -1497,7 +1497,8 @@ func (a *Applier) ApplyEventQueries(db *gosql.DB, entry *DumpEntry) error {
 	buf.Grow(BufSizeLimit + BufSizeLimitDelta)
 	for i, _ := range entry.ValuesX {
 		if buf.Len() == 0 {
-			buf.WriteString(fmt.Sprintf(`replace into %s.%s values (`, entry.TableSchema, entry.TableName))
+			buf.WriteString(fmt.Sprintf(`replace into %s.%s values (`,
+				umconf.EscapeName(entry.TableSchema), umconf.EscapeName(entry.TableName)))
 		} else {
 			buf.WriteString(",(")
 		}
