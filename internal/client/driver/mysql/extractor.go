@@ -693,7 +693,7 @@ func (e *Extractor) readCurrentBinlogCoordinates() error {
 		e.initialBinlogCoordinates = &base.BinlogCoordinatesX{
 			GtidSet: gtidSet.String(),
 			LogFile: e.mysqlContext.BinlogFile,
-			LogPos: e.mysqlContext.BinlogPos,
+			LogPos:  e.mysqlContext.BinlogPos,
 		}
 	} else {
 		binlogCoordinates, err := base.GetSelfBinlogCoordinates(e.db)
@@ -1340,7 +1340,7 @@ func (e *Extractor) mysqlDump() error {
 					} else if strings.ToLower(tb.TableSchema) != "mysql" {
 						tbSQL, err = base.ShowCreateTable(e.singletonDB, tb.TableSchema, tb.TableName, e.mysqlContext.DropTableIfExists, true)
 						for num, sql := range tbSQL {
-							if db.TableSchemaRename != "" && strings.Contains(sql, fmt.Sprintf("USE %s", tb.TableSchema)) {
+							if db.TableSchemaRename != "" && strings.Contains(sql, fmt.Sprintf("USE %s", umconf.EscapeName(tb.TableSchema))) {
 								tbSQL[num] = strings.Replace(sql, tb.TableSchema, db.TableSchemaRename, 1)
 							}
 							if tb.TableRename != "" && (strings.Contains(sql, fmt.Sprintf("DROP TABLE IF EXISTS %s", umconf.EscapeName(tb.TableName))) || strings.Contains(sql, "CREATE TABLE")) {
