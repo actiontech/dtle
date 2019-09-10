@@ -273,6 +273,7 @@ github.com/pierrec/lz4
 github.com/pierrec/lz4/internal/xxh32
 # github.com/pingcap/dm v1.0.0-rc.1 => /Users/fwh/pro1/dm
 github.com/pingcap/dm/dm/pb
+github.com/pingcap/dm/pkg/gtid
 github.com/pingcap/dm/pkg/streamer
 github.com/pingcap/dm/relay
 github.com/pingcap/dm/pkg/binlog
@@ -281,7 +282,6 @@ github.com/pingcap/dm/pkg/utils
 github.com/pingcap/dm/dm/config
 github.com/pingcap/dm/dm/unit
 github.com/pingcap/dm/pkg/func-rollback
-github.com/pingcap/dm/pkg/gtid
 github.com/pingcap/dm/relay/reader
 github.com/pingcap/dm/relay/transformer
 github.com/pingcap/dm/relay/writer
@@ -322,7 +322,7 @@ github.com/pingcap/kvproto/pkg/eraftpb
 github.com/pingcap/kvproto/pkg/raft_serverpb
 # github.com/pingcap/log v0.0.0-20190715063458-479153f07ebd
 github.com/pingcap/log
-# github.com/pingcap/parser v0.0.0-20190712081837-c3bdffe5d00e
+# github.com/pingcap/parser v0.0.0-20190712081837-c3bdffe5d00e => /Users/fwh/pro0/go/src/github.com/pingcap/parser
 github.com/pingcap/parser/goyacc
 github.com/pingcap/parser
 github.com/pingcap/parser/ast
