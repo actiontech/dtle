@@ -336,7 +336,7 @@ github.com/pingcap/parser/types
 github.com/pingcap/parser/format
 # github.com/pingcap/pd v2.1.12+incompatible
 github.com/pingcap/pd/client
-# github.com/pingcap/tidb v0.0.0-20190805102945-94498e7d06a2
+# github.com/pingcap/tidb v0.0.0-20190805102945-94498e7d06a2 => /Users/fwh/pro0/go/src/github.com/pingcap/tidb
 github.com/pingcap/tidb/types/parser_driver
 github.com/pingcap/tidb/types
 github.com/pingcap/tidb/util/hack

@@ -14,6 +14,7 @@ require (
 	github.com/armon/go-radix v1.0.0 // indirect
 	github.com/aws/aws-sdk-go v1.15.23 // indirect
 	github.com/bgentry/go-netrc v0.0.0-20140422174119-9fd32a8b3d3d // indirect
+	github.com/boltdb/bolt v1.3.1 // indirect
 	github.com/circonus-labs/circonus-gometrics v2.2.1+incompatible // indirect
 	github.com/circonus-labs/circonusllhist v0.1.0 // indirect
 	github.com/cznic/parser v0.0.0-20181122101858-d773202d5b1f // indirect
@@ -56,7 +57,6 @@ require (
 	github.com/leekchan/timeutil v0.0.0-20150802142658-28917288c48d // indirect
 	github.com/lib/pq v1.2.0 // indirect
 	github.com/lytics/datemath v0.0.0-20180727225141-3ada1c10b5de // indirect
-	github.com/mattn/go-isatty v0.0.4 // indirect
 	github.com/mb0/glob v0.0.0-20160210091149-1eb79d2de6c4 // indirect
 	github.com/miekg/dns v1.0.8 // indirect
 	github.com/mitchellh/cli v1.0.0
@@ -113,3 +113,5 @@ replace github.com/araddon/qlbridge => github.com/ffffwh/qlbridge v0.0.0-2018102
 replace github.com/pingcap/dm => /Users/fwh/pro1/dm
 
 replace github.com/pingcap/parser => /Users/fwh/pro0/go/src/github.com/pingcap/parser
+
+replace github.com/pingcap/tidb => /Users/fwh/pro0/go/src/github.com/pingcap/tidb
