@@ -348,6 +348,7 @@ var Collations = map[int]string{
 	278: "utf8mb4_0900_as_cs",
 	309: "utf8mb4_0900_bin",
 	308: "utf8mb4_zh_0900_as_cs",
+	76:  "utf8_tolower_ci",
 }
 
 // CollationNames maps MySQL collation name to its ID
@@ -576,6 +577,7 @@ var CollationNames = map[string]int{
 	"utf8mb4_0900_as_cs":       278,
 	"utf8mb4_0900_bin":         309,
 	"utf8mb4_zh_0900_as_cs":    308,
+	"utf8_tolower_ci":          76,
 }
 
 // MySQL collation information.
