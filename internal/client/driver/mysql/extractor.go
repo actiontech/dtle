@@ -730,7 +730,7 @@ func (e *Extractor) CountTableRows(table *config.Table) (int64, error) {
 			table.TableSchema, table.TableName)
 	} else {
 		method = "COUNT"
-		query = fmt.Sprintf(`select count(*) as rows from %s.%s where (%s)`,
+		query = fmt.Sprintf(`select count(*) from %s.%s where (%s)`,
 			mysql.EscapeName(table.TableSchema), mysql.EscapeName(table.TableName), table.Where)
 	}
 	var rowsEstimate int64
