@@ -124,9 +124,9 @@ func BuildSetPreparedClause(columns *umconf.ColumnList) (result string, err erro
 	return strings.Join(setTokens, ", "), nil
 }
 
-func BuildDMLDeleteQuery(databaseName, tableName string, tableColumns *umconf.ColumnList, args []*interface{}) (result string, columnArgs []interface{}, err error) {
+func BuildDMLDeleteQuery(databaseName, tableName string, tableColumns *umconf.ColumnList, args []*interface{}) (result string, columnArgs []interface{}, hasUK bool, err error) {
 	if len(args) < tableColumns.Len() {
-		return result, columnArgs, fmt.Errorf("args count differs from table column count in BuildDMLDeleteQuery %v, %v",
+		return result, columnArgs, hasUK, fmt.Errorf("args count differs from table column count in BuildDMLDeleteQuery %v, %v",
 			len(args), tableColumns.Len())
 	}
 	comparisons := []string{}
@@ -137,7 +137,7 @@ func BuildDMLDeleteQuery(databaseName, tableName string, tableColumns *umconf.Co
 		if *args[tableOrdinal] == nil {
 			comparison, err := BuildValueComparison(column.Name, "NULL", IsEqualsComparisonSign)
 			if err != nil {
-				return result, columnArgs, err
+				return result, columnArgs, hasUK, err
 			}
 			comparisons = append(comparisons, comparison)
 		} else {
@@ -145,7 +145,7 @@ func BuildDMLDeleteQuery(databaseName, tableName string, tableColumns *umconf.Co
 				arg := column.ConvertArg(*args[tableOrdinal])
 				comparison, err := BuildValueComparison(column.Name, fmt.Sprintf("cast('%v' as %s)", arg, column.ColumnType), EqualsComparisonSign)
 				if err != nil {
-					return result, columnArgs, err
+					return result, columnArgs, hasUK, err
 				}
 				if strings.ToUpper(column.Key) == "PRI" {
 					uniqueKeyComparisons = append(uniqueKeyComparisons, comparison)
@@ -156,7 +156,7 @@ func BuildDMLDeleteQuery(databaseName, tableName string, tableColumns *umconf.Co
 				arg := column.ConvertArg(*args[tableOrdinal])
 				comparison, err := BuildValueComparison(column.Name, "?", EqualsComparisonSign)
 				if err != nil {
-					return result, columnArgs, err
+					return result, columnArgs, hasUK, err
 				}
 				if strings.ToUpper(column.Key) == "PRI" {
 					uniqueKeyArgs = append(uniqueKeyArgs, arg)
@@ -169,6 +169,7 @@ func BuildDMLDeleteQuery(databaseName, tableName string, tableColumns *umconf.Co
 		}
 	}
 	if len(uniqueKeyComparisons) > 0 {
+		hasUK = true
 		comparisons = uniqueKeyComparisons
 		columnArgs = uniqueKeyArgs
 	}
@@ -176,7 +177,7 @@ func BuildDMLDeleteQuery(databaseName, tableName string, tableColumns *umconf.Co
 	databaseName = EscapeName(databaseName)
 	tableName = EscapeName(tableName)
 	if err != nil {
-		return result, columnArgs, err
+		return result, columnArgs, hasUK, err
 	}
 	result = fmt.Sprintf(`
 			delete
@@ -187,7 +188,7 @@ func BuildDMLDeleteQuery(databaseName, tableName string, tableColumns *umconf.Co
 		`, databaseName, tableName,
 		fmt.Sprintf("(%s)", strings.Join(comparisons, " and ")),
 	)
-	return result, columnArgs, nil
+	return result, columnArgs, hasUK, nil
 }
 
 func BuildDMLInsertQuery(databaseName, tableName string, tableColumns, sharedColumns, mappedSharedColumns *umconf.ColumnList, args []*interface{}) (result string, sharedArgs []interface{}, err error) {
@@ -234,20 +235,20 @@ func BuildDMLInsertQuery(databaseName, tableName string, tableColumns, sharedCol
 	return result, sharedArgs, nil
 }
 
-func BuildDMLUpdateQuery(databaseName, tableName string, tableColumns, sharedColumns, mappedSharedColumns, uniqueKeyColumns *umconf.ColumnList, valueArgs, whereArgs []*interface{}) (result string, sharedArgs, columnArgs []interface{}, err error) {
+func BuildDMLUpdateQuery(databaseName, tableName string, tableColumns, sharedColumns, mappedSharedColumns, uniqueKeyColumns *umconf.ColumnList, valueArgs, whereArgs []*interface{}) (result string, sharedArgs, columnArgs []interface{}, hasUK bool, err error) {
 	if len(valueArgs) < tableColumns.Len() {
-		return result, sharedArgs, columnArgs, fmt.Errorf("value args count differs from table column count in BuildDMLUpdateQuery %v, %v",
+		return result, sharedArgs, columnArgs, hasUK, fmt.Errorf("value args count differs from table column count in BuildDMLUpdateQuery %v, %v",
 			len(valueArgs), tableColumns.Len())
 	}
 	if len(whereArgs) < tableColumns.Len() {
-		return result, sharedArgs, columnArgs, fmt.Errorf("where args count differs from table column count in BuildDMLUpdateQuery %v, %v",
+		return result, sharedArgs, columnArgs, hasUK, fmt.Errorf("where args count differs from table column count in BuildDMLUpdateQuery %v, %v",
 			len(whereArgs), tableColumns.Len())
 	}
 	if !sharedColumns.IsSubsetOf(tableColumns) {
-		return result, sharedArgs, columnArgs, fmt.Errorf("shared columns is not a subset of table columns in BuildDMLUpdateQuery")
+		return result, sharedArgs, columnArgs, hasUK, fmt.Errorf("shared columns is not a subset of table columns in BuildDMLUpdateQuery")
 	}
 	if sharedColumns.Len() == 0 {
-		return result, sharedArgs, columnArgs, fmt.Errorf("No shared columns found in BuildDMLUpdateQuery")
+		return result, sharedArgs, columnArgs, hasUK, fmt.Errorf("No shared columns found in BuildDMLUpdateQuery")
 	}
 	databaseName = EscapeName(databaseName)
 	tableName = EscapeName(tableName)
@@ -271,7 +272,7 @@ func BuildDMLUpdateQuery(databaseName, tableName string, tableColumns, sharedCol
 		if *whereArgs[tableOrdinal] == nil {
 			comparison, err := BuildValueComparison(column.Name, "NULL", IsEqualsComparisonSign)
 			if err != nil {
-				return result, sharedArgs, columnArgs, err
+				return result, sharedArgs, columnArgs, hasUK, err
 			}
 			comparisons = append(comparisons, comparison)
 		} else {
@@ -279,7 +280,7 @@ func BuildDMLUpdateQuery(databaseName, tableName string, tableColumns, sharedCol
 				arg := column.ConvertArg(*whereArgs[tableOrdinal])
 				comparison, err := BuildValueComparison(column.Name, fmt.Sprintf("cast('%v' as %s)", arg, column.ColumnType), EqualsComparisonSign)
 				if err != nil {
-					return result, sharedArgs, columnArgs, err
+					return result, sharedArgs, columnArgs, hasUK, err
 				}
 				if strings.ToUpper(column.Key) == "PRI" {
 					uniqueKeyComparisons = append(uniqueKeyComparisons, comparison)
@@ -290,7 +291,7 @@ func BuildDMLUpdateQuery(databaseName, tableName string, tableColumns, sharedCol
 				arg := column.ConvertArg(*whereArgs[tableOrdinal])
 				comparison, err := BuildValueComparison(column.Name, "?", EqualsComparisonSign)
 				if err != nil {
-					return result, sharedArgs, columnArgs, err
+					return result, sharedArgs, columnArgs, hasUK, err
 				}
 				if strings.ToUpper(column.Key) == "PRI" {
 					uniqueKeyArgs = append(uniqueKeyArgs, arg)
@@ -303,6 +304,7 @@ func BuildDMLUpdateQuery(databaseName, tableName string, tableColumns, sharedCol
 		}
 	}
 	if len(uniqueKeyComparisons) > 0 {
+		hasUK = true
 		comparisons = uniqueKeyComparisons
 		columnArgs = uniqueKeyArgs
 	}
@@ -321,5 +323,5 @@ func BuildDMLUpdateQuery(databaseName, tableName string, tableColumns, sharedCol
 		setClause,
 		fmt.Sprintf("(%s)", strings.Join(comparisons, " and ")),
 	)
-	return result, sharedArgs, columnArgs, nil
+	return result, sharedArgs, columnArgs, hasUK, nil
 }

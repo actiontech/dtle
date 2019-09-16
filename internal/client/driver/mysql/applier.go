@@ -1217,7 +1217,7 @@ func (a *Applier) getTableItem(schema string, table string) *applierTableItem {
 
 // buildDMLEventQuery creates a query to operate on the ghost table, based on an intercepted binlog
 // event entry on the original table.
-func (a *Applier) buildDMLEventQuery(dmlEvent binlog.DataEvent, workerIdx int, spanContext opentracing.SpanContext) (query *gosql.Stmt, args []interface{}, rowsDelta int64, err error) {
+func (a *Applier) buildDMLEventQuery(dmlEvent binlog.DataEvent, workerIdx int, spanContext opentracing.SpanContext) (stmt *gosql.Stmt, query string, args []interface{}, rowsDelta int64, err error) {
 	// Large piece of code deleted here. See git annotate.
 	tableItem := dmlEvent.TableItem.(*applierTableItem)
 	var tableColumns = tableItem.columns
@@ -1238,47 +1238,55 @@ func (a *Applier) buildDMLEventQuery(dmlEvent binlog.DataEvent, workerIdx int, s
 	switch dmlEvent.DML {
 	case binlog.DeleteDML:
 		{
-			query, uniqueKeyArgs, err := sql.BuildDMLDeleteQuery(dmlEvent.DatabaseName, dmlEvent.TableName, tableColumns, dmlEvent.WhereColumnValues.GetAbstractValues())
+			query, uniqueKeyArgs, hasUK, err := sql.BuildDMLDeleteQuery(dmlEvent.DatabaseName, dmlEvent.TableName, tableColumns, dmlEvent.WhereColumnValues.GetAbstractValues())
 			if err != nil {
-				return nil, nil, -1, err
+				return nil, "", nil, -1, err
 			}
-			stmt, err := doPrepareIfNil(tableItem.psDelete, query)
-			if err != nil {
-				return nil, nil, -1, err
+			if hasUK {
+				stmt, err := doPrepareIfNil(tableItem.psDelete, query)
+				if err != nil {
+					return nil, "", nil, -1, err
+				}
+				return stmt, "", uniqueKeyArgs, -1, nil
+			} else {
+				return nil, query, uniqueKeyArgs, -1, nil
 			}
-			return stmt, uniqueKeyArgs, -1, err
 		}
 	case binlog.InsertDML:
 		{
 			// TODO no need to generate query string every time
 			query, sharedArgs, err := sql.BuildDMLInsertQuery(dmlEvent.DatabaseName, dmlEvent.TableName, tableColumns, tableColumns, tableColumns, dmlEvent.NewColumnValues.GetAbstractValues())
 			if err != nil {
-				return nil, nil, -1, err
+				return nil, "", nil, -1, err
 			}
 			stmt, err := doPrepareIfNil(tableItem.psInsert, query)
 			if err != nil {
-				return nil, nil, -1, err
+				return nil, "", nil, -1, err
 			}
-			return stmt, sharedArgs, 1, err
+			return stmt, "", sharedArgs, 1, err
 		}
 	case binlog.UpdateDML:
 		{
-			query, sharedArgs, uniqueKeyArgs, err := sql.BuildDMLUpdateQuery(dmlEvent.DatabaseName, dmlEvent.TableName, tableColumns, tableColumns, tableColumns, tableColumns, dmlEvent.NewColumnValues.GetAbstractValues(), dmlEvent.WhereColumnValues.GetAbstractValues())
+			query, sharedArgs, uniqueKeyArgs, hasUK, err := sql.BuildDMLUpdateQuery(dmlEvent.DatabaseName, dmlEvent.TableName, tableColumns, tableColumns, tableColumns, tableColumns, dmlEvent.NewColumnValues.GetAbstractValues(), dmlEvent.WhereColumnValues.GetAbstractValues())
 			if err != nil {
-				return nil, nil, -1, err
+				return nil, "", nil, -1, err
 			}
 			args = append(args, sharedArgs...)
 			args = append(args, uniqueKeyArgs...)
 
-			stmt, err := doPrepareIfNil(tableItem.psUpdate, query)
-			if err != nil {
-				return nil, nil, -1, err
-			}
+			if hasUK {
+				stmt, err := doPrepareIfNil(tableItem.psUpdate, query)
+				if err != nil {
+					return nil, "", nil, -1, err
+				}
 
-			return stmt, args, 0, err
+				return stmt, "", args, 0, err
+			} else {
+				return nil, query, args, 0, err
+			}
 		}
 	}
-	return nil, args, 0, fmt.Errorf("Unknown dml event type: %+v", dmlEvent.DML)
+	return nil, "", args, 0, fmt.Errorf("Unknown dml event type: %+v", dmlEvent.DML)
 }
 
 // ApplyEventQueries applies multiple DML queries onto the dest table
@@ -1380,7 +1388,7 @@ func (a *Applier) ApplyBinlogEvent(ctx context.Context, workerIdx int, binlogEnt
 			a.logger.Debugf("mysql.applier: Exec [%s]", event.Query)
 		default:
 			a.logger.Debugf("mysql.applier: ApplyBinlogEvent: a dml event")
-			stmt, args, rowDelta, err := a.buildDMLEventQuery(event, workerIdx, spanContext)
+			stmt, query, args, rowDelta, err := a.buildDMLEventQuery(event, workerIdx, spanContext)
 			if err != nil {
 				a.logger.Errorf("mysql.applier: Build dml query error: %v", err)
 				return err
@@ -1389,7 +1397,12 @@ func (a *Applier) ApplyBinlogEvent(ctx context.Context, workerIdx int, binlogEnt
 			a.logger.Debugf("ApplyBinlogEvent. args: %v", args)
 
 			var r gosql.Result
-			r, err = stmt.Exec(args...)
+			if stmt != nil {
+				r, err = stmt.Exec(args...)
+			} else {
+				r, err = a.dbs[workerIdx].Db.ExecContext(context.Background(), query, args...)
+			}
+
 			if err != nil {
 				a.logger.Errorf("mysql.applier: gtid: %s:%d, error: %v", txSid, binlogEntry.Coordinates.GNO, err)
 				return err
