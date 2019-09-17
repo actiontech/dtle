@@ -106,6 +106,7 @@ type Extractor struct {
 	// This must be `<-` after `getSchemaTablesAndMeta()`.
 	gotCoordinateCh chan struct{}
 	streamerReadyCh chan struct{}
+	fullCopyDone    chan struct{}
 }
 
 func NewExtractor(execCtx *common.ExecContext, cfg *config.MySQLDriverConfig, logger *log.Logger) (*Extractor, error) {
@@ -128,6 +129,7 @@ func NewExtractor(execCtx *common.ExecContext, cfg *config.MySQLDriverConfig, lo
 		context:         sqle.NewContext(nil),
 		gotCoordinateCh: make(chan struct{}),
 		streamerReadyCh: make(chan struct{}),
+		fullCopyDone:    make(chan struct{}),
 	}
 	e.context.LoadSchemas(nil)
 
@@ -243,6 +245,10 @@ func (e *Extractor) Run() {
 
 		} else {
 			<-e.gotCoordinateCh
+			if !e.mysqlContext.BinlogRelay {
+				// This must be after `<-e.gotCoordinateCh` or there will be a deadlock
+				<-e.fullCopyDone
+			}
 			e.logger.Infof("mysql.extractor. initBinlogReader")
 			if err := e.initBinlogReader(e.initialBinlogCoordinates); err != nil {
 				e.logger.Debugf("mysql.extractor error at initBinlogReader: %v", err.Error())
@@ -282,6 +288,9 @@ func (e *Extractor) Run() {
 			return
 		}
 		e.gotCoordinateCh <- struct{}{}
+	}
+	if !e.mysqlContext.BinlogRelay {
+		e.fullCopyDone <- struct{}{}
 	}
 
 	if e.mysqlContext.SkipIncrementalCopy {
