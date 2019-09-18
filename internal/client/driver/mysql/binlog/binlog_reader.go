@@ -320,7 +320,7 @@ func (b *BinlogReader) ConnectBinlogStreamer(coordinates base.BinlogCoordinatesX
 		}
 
 		waitForRelay := true
-		for waitForRelay {
+		for !b.shutdown && waitForRelay {
 			_, p := meta.Pos()
 			_, gs := meta.GTID()
 
@@ -1578,6 +1578,7 @@ func (b *BinlogReader) genRegexMap() {
 }
 
 func (b *BinlogReader) Close() error {
+	b.logger.Debugf("*** BinlogReader.Close")
 	b.shutdownLock.Lock()
 	defer b.shutdownLock.Unlock()
 
