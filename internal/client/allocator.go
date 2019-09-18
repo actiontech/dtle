@@ -440,11 +440,13 @@ OUTER:
 
 			// Check if we're in a terminal status
 			if update.ClientTerminalStatus() {
+				r.logger.Debugf("*** taskDestroyEvent. update")
 				taskDestroyEvent = models.NewTaskEvent(models.TaskKilled)
 				break OUTER
 			}
 
 		case <-r.destroyCh:
+			r.logger.Debugf("*** taskDestroyEvent. destroy")
 			taskDestroyEvent = models.NewTaskEvent(models.TaskKilled)
 			break OUTER
 		}

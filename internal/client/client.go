@@ -13,6 +13,7 @@ import (
 	"math/rand"
 	"net"
 	"os"
+	"path"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -981,6 +982,7 @@ func (c *Client) watchAllocations(updates chan *allocUpdates, jUpdates chan *job
 		default:
 		}
 
+		c.logger.Debugf("*** rpc Node.GetClientAllocs returned. resp %v", resp)
 		// Filter all allocations whose AllocModifyIndex was not incremented.
 		// These are the allocations who have either not been updated, or whose
 		// updates are a result of the client sending an update for the alloc.
@@ -1369,6 +1371,16 @@ func (c *Client) removeAlloc(alloc *models.Allocation) error {
 
 	delete(c.allocs, alloc.ID)
 	c.allocLock.Unlock()
+
+	go func() {
+		time.Sleep(10 * time.Second) // wait alloc destroyed
+		err := os.RemoveAll(path.Join(c.config.StateDir, "binlog", alloc.JobID))
+		if os.IsNotExist(err) {
+			// do nothing
+		} else if err != nil {
+			c.logger.Errorf("error when deleting binlog file. job: %v, err: %v", alloc.JobID, err)
+		}
+	}()
 
 	return nil
 }
