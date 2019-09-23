@@ -170,10 +170,9 @@ func BuildDMLDeleteQuery(databaseName, tableName string, tableColumns *umconf.Co
 	}
 	if len(uniqueKeyComparisons) > 0 {
 		comparisons = uniqueKeyComparisons
-	}
-	if len(uniqueKeyArgs) > 0 {
 		columnArgs = uniqueKeyArgs
 	}
+
 	databaseName = EscapeName(databaseName)
 	tableName = EscapeName(tableName)
 	if err != nil {
@@ -305,10 +304,9 @@ func BuildDMLUpdateQuery(databaseName, tableName string, tableColumns, sharedCol
 	}
 	if len(uniqueKeyComparisons) > 0 {
 		comparisons = uniqueKeyComparisons
-	}
-	if len(uniqueKeyArgs) > 0 {
 		columnArgs = uniqueKeyArgs
 	}
+
 	setClause, err := BuildSetPreparedClause(mappedSharedColumns)
 
 	result = fmt.Sprintf(`
