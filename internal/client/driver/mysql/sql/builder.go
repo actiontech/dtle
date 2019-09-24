@@ -130,7 +130,7 @@ func BuildDMLDeleteQuery(databaseName, tableName string, tableColumns *umconf.Co
 			}
 			comparisons = append(comparisons, comparison)
 		} else {
-			if strings.HasPrefix(column.ColumnType, "binary") {
+			if column.Type == umconf.BinaryColumnType {
 				arg := column.ConvertArg(*args[tableOrdinal])
 				comparison, err := BuildValueComparison(column.EscapedName, fmt.Sprintf("cast('%v' as %s)", arg, column.ColumnType), EqualsComparisonSign)
 				if err != nil {
@@ -262,7 +262,7 @@ func BuildDMLUpdateQuery(databaseName, tableName string, tableColumns, sharedCol
 			}
 			comparisons = append(comparisons, comparison)
 		} else {
-			if strings.HasPrefix(column.ColumnType, "binary") {
+			if column.Type == umconf.BinaryColumnType {
 				arg := column.ConvertArg(*whereArgs[tableOrdinal])
 				comparison, err := BuildValueComparison(column.EscapedName, fmt.Sprintf("cast('%v' as %s)", arg, column.ColumnType), EqualsComparisonSign)
 				if err != nil {
