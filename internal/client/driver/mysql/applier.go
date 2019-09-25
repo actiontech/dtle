@@ -155,6 +155,7 @@ func (mm *MtsManager) WaitForAllCommitted() bool {
 //  This function must be called sequentially.
 func (mm *MtsManager) WaitForExecution(binlogEntry *binlog.BinlogEntry) bool {
 	mm.lastEnqueue = binlogEntry.Coordinates.SeqenceNumber
+
 	for {
 		currentLC := atomic.LoadInt64(&mm.lastCommitted)
 		if currentLC >= binlogEntry.Coordinates.LastCommitted {
@@ -626,6 +627,7 @@ func (a *Applier) heterogeneousReplay() {
 				}
 			}
 			txSid := binlogEntry.Coordinates.GetSid()
+
 			gtidSetItem, hasSid := a.gtidExecuted[binlogEntry.Coordinates.SID]
 			if !hasSid {
 				gtidSetItem = &base.GtidExecutedItem{}
@@ -716,7 +718,7 @@ func (a *Applier) heterogeneousReplay() {
 					prevDDL = false
 				}
 
-				if a.mysqlContext.ParallelWorkers > 1 && !a.mtsManager.WaitForExecution(binlogEntry) {
+				if !a.mtsManager.WaitForExecution(binlogEntry) {
 					return // shutdown
 				}
 				a.logger.Debugf("mysql.applier: a binlogEntry MTS enqueue. gno: %v", binlogEntry.Coordinates.GNO)
