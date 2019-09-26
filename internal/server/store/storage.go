@@ -9,10 +9,10 @@ package store
 import (
 	"fmt"
 	"io"
-	"log"
 	"strconv"
 
 	"github.com/hashicorp/go-memdb"
+	"github.com/sirupsen/logrus"
 
 	"github.com/actiontech/dtle/internal/models"
 )
@@ -32,7 +32,7 @@ type IndexEntry struct {
 // returned as a result of a read against the state store should be
 // considered a constant and NEVER modified in place.
 type StateStore struct {
-	logger *log.Logger
+	logger *logrus.Logger
 	db     *memdb.MemDB
 
 	// abandonCh is used to signal watchers that this state store has been
@@ -50,7 +50,7 @@ func NewStateStore(logOutput io.Writer) (*StateStore, error) {
 
 	// Create the state store
 	s := &StateStore{
-		logger:    log.New(logOutput, "", log.LstdFlags|log.Lmicroseconds),
+		logger:    logrus.New(),
 		db:        db,
 		abandonCh: make(chan struct{}),
 	}

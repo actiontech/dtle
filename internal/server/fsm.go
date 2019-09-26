@@ -17,9 +17,9 @@ import (
 	"github.com/hashicorp/raft"
 	"github.com/ugorji/go/codec"
 
-	log "github.com/actiontech/dtle/internal/logger"
 	"github.com/actiontech/dtle/internal/models"
 	"github.com/actiontech/dtle/internal/server/store"
+	"github.com/sirupsen/logrus"
 )
 
 const (
@@ -50,7 +50,7 @@ type udupFSM struct {
 	evalBroker   *EvalBroker
 	blockedEvals *BlockedEvals
 	logOutput    io.Writer
-	logger       *log.Logger
+	logger       *logrus.Logger
 	state        *store.StateStore
 	timetable    *TimeTable
 
@@ -75,7 +75,7 @@ type snapshotHeader struct {
 
 // NewFSMPath is used to construct a new FSM with a blank store
 func NewFSM(evalBroker *EvalBroker,
-	blocked *BlockedEvals, logOutput io.Writer, logger *log.Logger) (*udupFSM, error) {
+	blocked *BlockedEvals, logOutput io.Writer, logger *logrus.Logger) (*udupFSM, error) {
 	// Create a store store
 	state, err := store.NewStateStore(logOutput)
 	if err != nil {

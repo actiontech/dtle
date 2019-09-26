@@ -10,6 +10,7 @@ import (
 	gosql "database/sql"
 	"encoding/json"
 	"fmt"
+
 	"github.com/actiontech/dtle/internal/client/driver/common"
 
 	"github.com/actiontech/dtle/internal/g"
@@ -42,12 +43,12 @@ import (
 	"github.com/actiontech/dtle/internal/client/driver/mysql/sql"
 	"github.com/actiontech/dtle/internal/config"
 	umconf "github.com/actiontech/dtle/internal/config/mysql"
-	log "github.com/actiontech/dtle/internal/logger"
 	"github.com/actiontech/dtle/internal/models"
 	"github.com/actiontech/dtle/utils"
 
 	"github.com/nats-io/not.go"
 	"github.com/satori/go.uuid"
+	"github.com/sirupsen/logrus"
 )
 
 const (
@@ -208,7 +209,7 @@ func (mm *MtsManager) Executed(binlogEntry *binlog.BinlogEntry) {
 }
 
 type Applier struct {
-	logger             *log.Entry
+	logger             *logrus.Entry
 	subject            string
 	subjectUUID        uuid.UUID
 	mysqlContext       *config.MySQLDriverConfig
@@ -246,9 +247,9 @@ type Applier struct {
 	stubFullApplyDelay time.Duration
 }
 
-func NewApplier(ctx *common.ExecContext, cfg *config.MySQLDriverConfig, logger *log.Logger) (*Applier, error) {
+func NewApplier(ctx *common.ExecContext, cfg *config.MySQLDriverConfig, logger *logrus.Logger) (*Applier, error) {
 	cfg = cfg.SetDefault()
-	entry := log.NewEntry(logger).WithFields(log.Fields{
+	entry := logger.WithFields(logrus.Fields{
 		"job": ctx.Subject,
 	})
 	subjectUUID, err := uuid.FromString(ctx.Subject)
