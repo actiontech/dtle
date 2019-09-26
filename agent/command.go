@@ -23,16 +23,16 @@ import (
 
 	"github.com/actiontech/dtle/internal/g"
 
-	ulog "github.com/actiontech/dtle/internal/logger"
 	"github.com/armon/go-metrics"
 	"github.com/armon/go-metrics/prometheus"
+	report "github.com/ikarishinjieva/golang-live-coverage-report/pkg"
 	"github.com/mitchellh/cli"
+	rotate "github.com/natefinch/lumberjack"
 	opentracing "github.com/opentracing/opentracing-go"
 	"github.com/rakyll/autopprof"
+	"github.com/sirupsen/logrus"
 	jaeger "github.com/uber/jaeger-client-go"
 	jaegercnf "github.com/uber/jaeger-client-go/config"
-
-	report "github.com/ikarishinjieva/golang-live-coverage-report/pkg"
 )
 
 // gracefulTimeout controls how long we wait before forcefully terminating
@@ -51,7 +51,7 @@ type Command struct {
 	args           []string
 	agent          *Agent
 	httpServer     *HTTPServer
-	logger         *ulog.Logger
+	logger         *logrus.Logger
 	logOutput      io.Writer
 	retryJoinErrCh chan struct{}
 }
@@ -223,8 +223,8 @@ func (s *StringFlag) Set(value string) error {
 
 // setupLoggers is used to setup the logGate, logWriter, and our logOutput
 func (c *Command) setupLoggers(config *Config) (io.Writer, error) {
-	var oFile *os.File
-	if config.LogToStdout {
+	//var oFile *os.File
+	/*if config.LogToStdout {
 		oFile = os.Stdout
 	} else if config.LogFile != "" {
 		if _, err := os.Stat(config.LogFile); os.IsNotExist(err) {
@@ -243,20 +243,30 @@ func (c *Command) setupLoggers(config *Config) (io.Writer, error) {
 	} else {
 		oFile = os.Stderr
 	}
+	*/
+	c.logOutput = NewRotateFile(config.LogFile, config.LogMaxSize /*1GB*/)
+	c.logger = logrus.New()
+	c.logger.SetLevel(logrus.DebugLevel) //ulog.New(oFile, ulog.ParseLevel(config.LogLevel))
+	//log.SetOutput(c.logOutput)
+	c.logger.SetOutput(c.logOutput)
+	return c.logOutput, nil
+}
 
-	c.logOutput = oFile
-	c.logger = ulog.New(oFile, ulog.ParseLevel(config.LogLevel))
-	log.SetOutput(oFile)
-	return oFile, nil
+func NewRotateFile(filePath string, maxSize int) *rotate.Logger {
+
+	return &rotate.Logger{
+		Filename: filePath,
+		MaxSize:  maxSize,
+	}
 }
 
 // setupAgent is used to start the agent and various interfaces
 func (c *Command) setupAgent(config *Config, logOutput io.Writer) error {
 
-	c.logger.Printf("Starting Dtle server...")
+	c.logger.WithFields(logrus.Fields{"status": "server: Joining cluster..."}).Info("Starting Dtle server...")
 	agent, err := NewAgent(config, logOutput, c.logger)
 	if err != nil {
-		c.logger.Errorf("Error starting server: %s", err)
+		c.logger.WithFields(logrus.Fields{"err": err}).Errorf("Error starting server")
 		return err
 	}
 	c.agent = agent
@@ -265,7 +275,7 @@ func (c *Command) setupAgent(config *Config, logOutput io.Writer) error {
 	http, err := NewHTTPServer(agent, config, logOutput)
 	if err != nil {
 		agent.Shutdown()
-		c.logger.Errorf("Error starting http server: %s", err)
+		c.logger.WithFields(logrus.Fields{"err": err}).Errorf("Error starting http serve")
 		return err
 	}
 	c.httpServer = http
@@ -320,9 +330,9 @@ func (c *Command) Run(args []string) int {
 
 	// Log config files
 	if len(config.Files) > 0 {
-		c.logger.Printf("Loaded configuration from %s", strings.Join(config.Files, ", "))
+		c.logger.WithFields(logrus.Fields{"from": strings.Join(config.Files, ", ")}).Info("Loaded configuration ")
 	} else {
-		c.logger.Printf("No configuration files loaded")
+		c.logger.WithFields(logrus.Fields{"status": "No configuration files loaded"}).Info("Loaded configuration")
 	}
 	if config.PprofSwitch {
 		autopprof.Capture(autopprof.CPUProfile{
@@ -335,7 +345,7 @@ func (c *Command) Run(args []string) int {
 
 	// Initialize the metric
 	if err := c.setupMetric(config); err != nil {
-		c.logger.Errorf("Error initializing metric: %s", err)
+		c.logger.WithFields(logrus.Fields{"err": err}).Errorf("Error initializing metri")
 		return 1
 	}
 
@@ -353,7 +363,7 @@ func (c *Command) Run(args []string) int {
 
 	// Join startup nodes if specified
 	if err := c.startupJoin(config); err != nil {
-		c.logger.Errorf("%v", err.Error())
+		c.logger.WithFields(logrus.Fields{"err": err.Error()}).Errorf("%v", err.Error())
 		return 1
 	}
 
@@ -375,16 +385,12 @@ func (c *Command) Run(args []string) int {
 
 	// Agent configuration output
 	padding := 18
-	c.logger.Printf("Dtle server configuration:\n")
+	c.logger.WithFields(logrus.Fields{"status": "dtle server configuration"}).Info("Dtle server configuration")
 	for _, k := range infoKeys {
-		c.logger.Printf(fmt.Sprintf(
-			" %s%s: %s",
-			strings.Repeat(" ", padding-len(k)),
-			strings.Title(k),
-			info[k]))
+		c.logger.WithFields(logrus.Fields{strings.Repeat(" ", padding-len(k)) + strings.Title(k): info[k]}).Info("info keys")
 	}
 	// Output the header that the server has started
-	c.logger.Printf("Dtle server started! Log data will stream in below:\n")
+	c.logger.WithFields(logrus.Fields{"status": " Log data will stream in below"}).Info("Dtle server started!")
 
 	// Start retry join process
 	c.retryJoinErrCh = make(chan struct{})
@@ -410,7 +416,7 @@ WAIT:
 	case <-c.retryJoinErrCh:
 		return 1
 	}
-	c.logger.Printf("Caught signal: %v", sig)
+	c.logger.WithFields(logrus.Fields{"signal": sig}).Info("Caught signal")
 
 	// Skip any SIGPIPE signal (See issue #1798)
 	if sig == syscall.SIGPIPE {
@@ -440,10 +446,10 @@ WAIT:
 
 	// Attempt a graceful leave
 	gracefulCh := make(chan struct{})
-	c.logger.Printf("Gracefully shutting down agent...")
+	c.logger.WithFields(logrus.Fields{"status": "shutting down agent."}).Info("Gracefully shutting down agent")
 	go func() {
 		if err := c.agent.Leave(); err != nil {
-			c.logger.Errorf("%s", err)
+			c.logger.WithFields(logrus.Fields{"err": err}).Errorf("%s", err)
 			return
 		}
 		close(gracefulCh)
@@ -462,17 +468,17 @@ WAIT:
 
 // handleReload is invoked when we should reload our configs, e.g. SIGHUP
 func (c *Command) handleReload(config *Config) *Config {
-	c.logger.Printf("Reloading configuration...")
+	c.logger.WithFields(logrus.Fields{"status": "Reloading configuration"}).Info("Reloading configuration")
 	newConf := c.readConfig()
 	if newConf == nil {
-		c.logger.Errorf("Failed to reload configs")
+		c.logger.WithFields(logrus.Fields{"err": "Failed to reload configs"}).Errorf("eload configs")
 		return config
 	}
 
 	if s := c.agent.Server(); s != nil {
 		_, err := convertServerConfig(newConf, c.logOutput)
 		if err != nil {
-			c.logger.Errorf("server: failed to convert server config: %v", err)
+			c.logger.WithFields(logrus.Fields{"err": err}).Errorf("server: failed to convert server config")
 		}
 	}
 
@@ -483,7 +489,7 @@ func (c *Command) handleReload(config *Config) *Config {
 func (c *Command) setupMetric(config *Config) error {
 	/* Setup metric
 	Aggregate on 10 second intervals for 1 minute. Expose the
-	metrics over stderr when there is a SIGUSR1 received.
+	metrics over stderr when there is a  received.
 	*/
 	inm := metrics.NewInmemSink(10*time.Second, time.Minute)
 	metrics.DefaultInmemSignal(inm)
@@ -523,13 +529,13 @@ func (c *Command) startupJoin(config *Config) error {
 		return nil
 	}
 
-	c.logger.Printf("Joining cluster...")
+	c.logger.WithFields(logrus.Fields{"status": "Joining cluster..."}).Info("Joining cluster...")
 	n, err := c.agent.server.Join(config.Server.StartJoin)
 	if err != nil {
 		return err
 	}
 
-	c.logger.Printf("Join completed. Synced with %d initial agents", n)
+	c.logger.WithFields(logrus.Fields{"status": "server: Joining cluster..."}).Info("Join completed. Synced with %d initial agents", n)
 	return nil
 }
 
@@ -540,25 +546,24 @@ func (c *Command) retryJoin(config *Config) {
 		return
 	}
 
-	c.logger.Printf("server: Joining cluster...")
+	c.logger.WithFields(logrus.Fields{"status": "server: Joining cluster..."}).Info("server: Joining cluster...")
 
 	attempt := 0
 	for {
 		n, err := c.agent.server.Join(config.Server.StartJoin)
 		if err == nil {
-			c.logger.Printf("server: Join completed. Synced with %d initial agents", n)
+			c.logger.WithFields(logrus.Fields{"status": "server: Joining cluster..."}).Info("server: Join completed. Synced with %d initial agents", n)
 			return
 		}
 
 		attempt++
 		if config.Server.RetryMaxAttempts > 0 && attempt > config.Server.RetryMaxAttempts {
-			c.logger.Errorf("server: max join retry exhausted, exiting")
+			c.logger.WithFields(logrus.Fields{"err": " max join retry exhausted, exiting"}).Errorf("server exiting ")
 			close(c.retryJoinErrCh)
 			return
 		}
 
-		c.logger.Warnf("server: Join failed: %v, retrying in %v", err,
-			config.Server.RetryInterval)
+		c.logger.WithFields(logrus.Fields{"err": err, "retrying ": config.Server.RetryInterval}).Warnf("server: Join failed")
 		time.Sleep(config.Server.retryInterval)
 	}
 }

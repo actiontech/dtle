@@ -19,12 +19,13 @@ import (
 	"net/http/pprof"
 
 	"github.com/NYTimes/gziphandler"
-	"github.com/ugorji/go/codec"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/ugorji/go/codec"
 
 	"strings"
-	log "github.com/actiontech/dtle/internal/logger"
+
 	umodel "github.com/actiontech/dtle/internal/models"
+	"github.com/sirupsen/logrus"
 )
 
 const (
@@ -49,7 +50,7 @@ type HTTPServer struct {
 	agent    *Agent
 	mux      *http.ServeMux
 	listener net.Listener
-	logger   *log.Logger
+	logger   *logrus.Logger
 	uiDir    string
 	addr     string
 }
@@ -146,6 +147,7 @@ func (s *HTTPServer) registerHandlers() {
 	s.mux.HandleFunc("/v1/orders", s.wrap(s.OrdersRequest))
 	s.mux.HandleFunc("/v1/orders/pending", s.wrap(s.PendingOrdersRequest))
 	s.mux.HandleFunc("/v1/order/", s.wrap(s.OrderSpecificRequest))
+	s.mux.HandleFunc("/v1/orders/level/", s.wrap(s.serLogLevel))
 	s.mux.HandleFunc("/v1/cloud/order", s.wrap(s.OrderCloudRequest))
 
 	s.mux.HandleFunc("/v1/jobs", s.wrap(s.JobsRequest))

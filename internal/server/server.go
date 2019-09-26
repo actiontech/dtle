@@ -29,8 +29,8 @@ import (
 
 	"github.com/actiontech/dtle/internal"
 	uconf "github.com/actiontech/dtle/internal/config"
-	ulog "github.com/actiontech/dtle/internal/logger"
 	"github.com/actiontech/dtle/internal/server/store"
+	"github.com/sirupsen/logrus"
 )
 
 const (
@@ -57,7 +57,7 @@ const (
 // schedulers, and notification bus for agents.
 type Server struct {
 	config *uconf.ServerConfig
-	logger *ulog.Logger
+	logger *logrus.Logger
 
 	// Connection pool to other Udup servers
 	connPool *ConnPool
@@ -142,7 +142,7 @@ type endpoints struct {
 
 // NewServer is used to construct a new Udup server from the
 // configuration, potentially returning an error
-func NewServer(config *uconf.ServerConfig, logger *ulog.Logger) (*Server, error) {
+func NewServer(config *uconf.ServerConfig, logger *logrus.Logger) (*Server, error) {
 	// Create an eval broker
 	evalBroker, err := NewEvalBroker(config.EvalNackTimeout, config.EvalDeliveryLimit)
 	if err != nil {
@@ -177,7 +177,9 @@ func NewServer(config *uconf.ServerConfig, logger *ulog.Logger) (*Server, error)
 	// Initialize the RPC layer
 	if err := s.setupRPC(); err != nil {
 		s.Shutdown()
-		s.logger.Errorf("manager: failed to start RPC layer: %s", err)
+		s.logger.WithFields(logrus.Fields{
+			"err": err,
+		}).Errorf("manager: failed to start RPC layer")
 		return nil, fmt.Errorf("Failed to start RPC layer: %v", err)
 	}
 
@@ -186,7 +188,9 @@ func NewServer(config *uconf.ServerConfig, logger *ulog.Logger) (*Server, error)
 		s.store, err = store.NewConsulStore([]string{s.config.ConsulConfig.Addr}, s.logger)
 		if err != nil {
 			s.Shutdown()
-			s.logger.Errorf("manager: failed to setup Store: %s", err)
+			s.logger.WithFields(logrus.Fields{
+				"err": err,
+			}).Errorf("manager: failed to setup Store")
 			return nil, fmt.Errorf("Failed to start Store: %v", err)
 		}
 
@@ -198,7 +202,9 @@ func NewServer(config *uconf.ServerConfig, logger *ulog.Logger) (*Server, error)
 		// Initialize the Raft server
 		if err := s.setupRaft(); err != nil {
 			s.Shutdown()
-			s.logger.Errorf("manager: failed to start Raft: %s", err)
+			s.logger.WithFields(logrus.Fields{
+				"err": err,
+			}).Errorf("manager: failed to start Raft")
 			return nil, fmt.Errorf("Failed to start Raft: %v", err)
 		}
 	}
@@ -207,14 +213,18 @@ func NewServer(config *uconf.ServerConfig, logger *ulog.Logger) (*Server, error)
 	s.serf, err = s.setupSerf(config.SerfConfig, s.eventCh, serfSnapshot)
 	if err != nil {
 		s.Shutdown()
-		s.logger.Errorf("manager: failed to start serf WAN: %s", err)
+		s.logger.WithFields(logrus.Fields{
+			"err": err,
+		}).Errorf("manager: failed to start serf")
 		return nil, fmt.Errorf("Failed to start serf: %v", err)
 	}
 
 	// Initialize the scheduling workers
 	if err := s.setupWorkers(); err != nil {
 		s.Shutdown()
-		s.logger.Errorf("manager: failed to start workers: %s", err)
+		s.logger.WithFields(logrus.Fields{
+			"err": err,
+		}).Errorf("manager: failed to start workers")
 		return nil, fmt.Errorf("Failed to start workers: %v", err)
 	}
 
@@ -245,7 +255,9 @@ func NewServer(config *uconf.ServerConfig, logger *ulog.Logger) (*Server, error)
 
 // Shutdown is used to shutdown the server
 func (s *Server) Shutdown() error {
-	s.logger.Printf("manager: shutting down server")
+	s.logger.WithFields(logrus.Fields{
+		"status": "shutting down",
+	}).Printf("manager: shutting down server")
 	s.shutdownLock.Lock()
 	defer s.shutdownLock.Unlock()
 
@@ -265,7 +277,9 @@ func (s *Server) Shutdown() error {
 		s.raftLayer.Close()
 		future := s.raft.Shutdown()
 		if err := future.Error(); err != nil {
-			s.logger.Warnf("manager: Error shutting down raft: %s", err)
+			s.logger.WithFields(logrus.Fields{
+				"err": err,
+			}).Warnf("manager: Error shutting down raft")
 		}
 		if s.raftStore != nil {
 			s.raftStore.Close()
@@ -300,13 +314,17 @@ func (s *Server) IsShutdown() bool {
 
 // Leave is used to prepare for a graceful shutdown of the server
 func (s *Server) Leave() error {
-	s.logger.Printf("manager: server starting leave")
+	s.logger.WithFields(logrus.Fields{
+		"status": "starting leave",
+	}).Printf("manager: server starting leave")
 	s.left = true
 
 	// Check the number of known peers
 	numPeers, err := s.numPeers()
 	if err != nil {
-		s.logger.Errorf("manager: failed to check raft peers: %v", err)
+		s.logger.WithFields(logrus.Fields{
+			"err": err,
+		}).Errorf("manager: failed to check raft peers")
 		return err
 	}
 
@@ -322,14 +340,18 @@ func (s *Server) Leave() error {
 	if isLeader && numPeers > 1 {
 		future := s.raft.RemovePeer(addr)
 		if err := future.Error(); err != nil {
-			s.logger.Errorf("manager: failed to remove ourself as raft peer: %v", err)
+			s.logger.WithFields(logrus.Fields{
+				"err": err,
+			}).Errorf("manager: failed to remove ourself as raft peer")
 		}
 	}
 
 	// Leave the gossip pool
 	if s.serf != nil {
 		if err := s.serf.Leave(); err != nil {
-			s.logger.Errorf("manager: failed to leave Serf cluster: %v", err)
+			s.logger.WithFields(logrus.Fields{
+				"err": err,
+			}).Errorf("manager: failed to leave Serf cluster")
 		}
 	}
 
@@ -346,7 +368,9 @@ func (s *Server) Leave() error {
 			// Get the latest configuration.
 			future := s.raft.GetConfiguration()
 			if err := future.Error(); err != nil {
-				s.logger.Errorf("manager: failed to get raft configuration: %v", err)
+				s.logger.WithFields(logrus.Fields{
+					"err": err,
+				}).Errorf("manager: failed to get raft configuration")
 				break
 			}
 
@@ -376,7 +400,9 @@ func (s *Server) Leave() error {
 		// may not realize that it has been removed. Need to revisit this
 		// and the warning here.
 		if !left {
-			s.logger.Warnf("manager: failed to leave raft configuration gracefully, timeout")
+			s.logger.WithFields(logrus.Fields{
+				"err": err,
+			}).Warnf("manager: failed to leave raft configuration gracefully, timeout")
 		}
 	}
 	return nil
@@ -435,7 +461,9 @@ func (s *Server) setupRaft() error {
 	defer func() {
 		if s.raft == nil && s.raftStore != nil {
 			if err := s.raftStore.Close(); err != nil {
-				s.logger.Errorf("manager: failed to close Raft store: %v", err)
+				s.logger.WithFields(logrus.Fields{
+					"err": "failed to close Raft store",
+				}).Errorf("manager: failed to close Raft store")
 			}
 		}
 	}()
@@ -517,10 +545,14 @@ func (s *Server) setupRaft() error {
 			if err := os.Remove(peersFile); err != nil {
 				return fmt.Errorf("failed to delete peers.json, please delete manually (see peers.info for details): %v", err)
 			}
-			s.logger.Printf("manager: deleted peers.json file (see peers.info for details)")
+			s.logger.WithFields(logrus.Fields{
+				"info": "deleted peers.json file",
+			}).Printf("manager: deleted peers.json file (see peers.info for details)")
 		}
 	} else if _, err := os.Stat(peersFile); err == nil {
-		s.logger.Printf("manager: found peers.json file, recovering Raft configuration...")
+		s.logger.WithFields(logrus.Fields{
+			"info": "found peers.json file",
+		}).Printf("manager: found peers.json file, recovering Raft configuration...")
 		configuration, err := raft.ReadPeersJSON(peersFile)
 		if err != nil {
 			return fmt.Errorf("recovery failed to parse peers.json: %v", err)
@@ -536,7 +568,9 @@ func (s *Server) setupRaft() error {
 		if err := os.Remove(peersFile); err != nil {
 			return fmt.Errorf("recovery failed to delete peers.json, please delete manually (see peers.info for details): %v", err)
 		}
-		s.logger.Printf("manager: deleted peers.json file after successful recovery")
+		s.logger.WithFields(logrus.Fields{
+			"info": "deleted peers.json file",
+		}).Printf("manager: deleted peers.json file after successful recovery")
 	}
 
 	// If we are in bootstrap or dev mode and the store is clean then we can
@@ -615,7 +649,9 @@ func (s *Server) setupSerf(conf *serf.Config, ch chan serf.Event, path string) (
 func (s *Server) setupWorkers() error {
 	// Check if all the schedulers are disabled
 	if len(s.config.EnabledSchedulers) == 0 || s.config.NumSchedulers == 0 {
-		s.logger.Warnf("manager: no enabled schedulers")
+		s.logger.WithFields(logrus.Fields{
+			"Warnf": " no enabled schedulers",
+		}).Warnf("manager: no enabled schedulers")
 		return nil
 	}
 
@@ -627,8 +663,10 @@ func (s *Server) setupWorkers() error {
 			s.workers = append(s.workers, w)
 		}
 	}
-	s.logger.Printf("manager: Starting %d scheduling worker(s) for %v",
-		s.config.NumSchedulers, s.config.EnabledSchedulers)
+	s.logger.WithFields(logrus.Fields{
+		"startingScheduling": s.config.NumSchedulers,
+		"forScheduling":      s.config.EnabledSchedulers,
+	}).Printf("manager: Starting  scheduling worker(s)")
 	return nil
 }
 

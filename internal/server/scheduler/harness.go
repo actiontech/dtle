@@ -8,15 +8,14 @@ package scheduler
 
 import (
 	"fmt"
-	"os"
 	"sync"
 	"testing"
 
-	memdb "github.com/hashicorp/go-memdb"
+	"github.com/hashicorp/go-memdb"
 
-	log "github.com/actiontech/dtle/internal/logger"
 	"github.com/actiontech/dtle/internal/models"
 	"github.com/actiontech/dtle/internal/server/store"
+	"github.com/sirupsen/logrus"
 )
 
 type Harness struct {
@@ -153,7 +152,7 @@ func (h *Harness) Snapshot() State {
 // Scheduler is used to return a new scheduler from
 // a snapshot of current store using the harness for planning.
 func (h *Harness) Scheduler(factory Factory) Scheduler {
-	logger := log.New(os.Stderr, log.InfoLevel)
+	logger := logrus.New()
 	return factory(logger, h.Snapshot(), h)
 }
 

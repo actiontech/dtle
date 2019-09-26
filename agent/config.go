@@ -46,7 +46,8 @@ type Config struct {
 	PprofTime int64 `mapstructure:"pprof_time"`
 
 	// LogLevel is the level of the logs to putout
-	LogLevel string `mapstructure:"log_level"`
+	LogLevel   string `mapstructure:"log_level"`
+	LogMaxSize int    `mapstructure:"log_max_size"`
 
 	LogToStdout bool `mapstructure:"log_to_stdout"`
 
@@ -259,6 +260,7 @@ func DefaultConfig() *Config {
 	return &Config{
 		LogLevel:           "INFO",
 		LogFile:            "/var/log/dtle/dtle.log",
+		LogMaxSize:         1024,
 		LogToStdout:        false,
 		PprofSwitch:        false,
 		PprofTime:          0,
@@ -355,6 +357,9 @@ func (c *Config) Merge(b *Config) *Config {
 	}
 	if b.LogLevel != "" {
 		result.LogLevel = b.LogLevel
+	}
+	if b.LogMaxSize != 0 {
+		result.LogMaxSize = b.LogMaxSize
 	}
 	if b.LogFile != "" {
 		result.LogFile = b.LogFile

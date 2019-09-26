@@ -13,7 +13,7 @@ import (
 	"github.com/docker/libkv/store"
 	"github.com/docker/libkv/store/consul"
 
-	ulog "github.com/actiontech/dtle/internal/logger"
+	"github.com/sirupsen/logrus"
 )
 
 const (
@@ -22,7 +22,7 @@ const (
 )
 
 type Store struct {
-	logger *ulog.Logger
+	logger *logrus.Logger
 	Client store.Store
 }
 
@@ -30,7 +30,7 @@ func init() {
 	consul.Register()
 }
 
-func NewConsulStore(addrs []string, logger *ulog.Logger) (*Store, error) {
+func NewConsulStore(addrs []string, logger *logrus.Logger) (*Store, error) {
 	c, err := libkv.NewStore(store.Backend(backend), addrs, nil)
 	if err != nil {
 		return nil, fmt.Errorf("consul store setup failed: %v", err)

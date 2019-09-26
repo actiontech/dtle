@@ -11,8 +11,9 @@ import (
 	"encoding/gob"
 	"encoding/json"
 	"fmt"
-	"github.com/actiontech/dtle/internal/client/driver/common"
 	"strconv"
+
+	"github.com/actiontech/dtle/internal/client/driver/common"
 
 	mysqlDriver "github.com/actiontech/dtle/internal/client/driver/mysql"
 	"github.com/actiontech/dtle/internal/config/mysql"
@@ -29,9 +30,9 @@ import (
 
 	"github.com/actiontech/dtle/internal/client/driver/mysql/binlog"
 	"github.com/actiontech/dtle/internal/config"
-	log "github.com/actiontech/dtle/internal/logger"
 	"github.com/actiontech/dtle/internal/models"
 	"github.com/actiontech/dtle/utils"
+	"github.com/sirupsen/logrus"
 )
 
 const (
@@ -41,7 +42,7 @@ const (
 )
 
 type KafkaRunner struct {
-	logger      *log.Entry
+	logger      *logrus.Entry
 	subject     string
 	subjectUUID uuid.UUID
 	natsConn    *gonats.Conn
@@ -56,8 +57,8 @@ type KafkaRunner struct {
 	tables map[string](map[string]*config.Table)
 }
 
-func NewKafkaRunner(execCtx *common.ExecContext, cfg *KafkaConfig, logger *log.Logger) *KafkaRunner {
-	entry := log.NewEntry(logger).WithFields(log.Fields{
+func NewKafkaRunner(execCtx *common.ExecContext, cfg *KafkaConfig, logger *logrus.Logger) *KafkaRunner {
+	entry := logger.WithFields(logrus.Fields{
 		"job": execCtx.Subject,
 	})
 	return &KafkaRunner{
@@ -115,27 +116,38 @@ func (kr *KafkaRunner) initNatSubClient() (err error) {
 	natsAddr := fmt.Sprintf("nats://%s", kr.kafkaConfig.NatsAddr)
 	sc, err := gonats.Connect(natsAddr)
 	if err != nil {
-		kr.logger.Errorf("kafka: Can't connect nats server %v. make sure a nats streaming server is running.%v", natsAddr, err)
+		kr.logger.WithFields(logrus.Fields{
+			"err":        err,
+			"natsServer": natsAddr,
+		}).Errorf("kafka: Can't connect nats server. make sure a nats streaming server is running")
 		return err
 	}
-	kr.logger.Debugf("kafka: Connect nats server %v", natsAddr)
+	kr.logger.WithFields(logrus.Fields{
+		"natsServer": natsAddr,
+	}).Debugf("kafka: Connect nats server %v", natsAddr)
 	kr.natsConn = sc
 	return nil
 }
 func (kr *KafkaRunner) Run() {
-	kr.logger.Debugf("kafka. broker: %v", kr.kafkaConfig.Brokers)
+	kr.logger.WithFields(logrus.Fields{
+		"broker": kr.kafkaConfig.Brokers,
+	}).Debugf("kafka. broker: %v", kr.kafkaConfig.Brokers)
 
 	var err error
 	kr.kafkaMgr, err = NewKafkaManager(kr.kafkaConfig)
 	if err != nil {
-		kr.logger.Errorf("failed to initialize kafka: %v", err.Error())
+		kr.logger.WithFields(logrus.Fields{
+			"err": err.Error(),
+		}).Errorf("failed to initialize kafka")
 		kr.onError(TaskStateDead, err)
 		return
 	}
 
 	err = kr.initNatSubClient()
 	if err != nil {
-		kr.logger.Errorf("initNatSubClient error: %v", err.Error())
+		kr.logger.WithFields(logrus.Fields{
+			"err": err.Error(),
+		}).Errorf("initNatSubClient error")
 		kr.onError(TaskStateDead, err)
 		return
 	}
@@ -157,13 +169,19 @@ func (kr *KafkaRunner) getOrSetTable(schemaName string, tableName string, table 
 	if table == nil {
 		b, ok := a[tableName]
 		if ok {
-			kr.logger.Debugf("kafka: reuse table info %v.%v", schemaName, tableName)
+			kr.logger.WithFields(logrus.Fields{
+				"schemaName": schemaName,
+				"tableName":  tableName,
+			}).Debugf("kafka: reuse table info ")
 			return b, nil
 		} else {
 			return nil, fmt.Errorf("DTLE_BUG kafka: unknown table structure")
 		}
 	} else {
-		kr.logger.Debugf("kafka: new table info %v.%v", schemaName, tableName)
+		kr.logger.WithFields(logrus.Fields{
+			"schemaName": schemaName,
+			"tableName":  tableName,
+		}).Debugf("kafka: new table info")
 		a[tableName] = table
 		return table, nil
 	}
@@ -242,7 +260,9 @@ func (kr *KafkaRunner) initiateStreaming() error {
 		if err := kr.natsConn.Publish(m.Reply, nil); err != nil {
 			kr.onError(TaskStateDead, err)
 		}
-		kr.logger.Debugf("applier. incr. ack-recv. nEntries: %v", len(binlogEntries.Entries))
+		kr.logger.WithFields(logrus.Fields{
+			"nEntries": len(binlogEntries.Entries),
+		}).Debugf("applier. incr. ack-recv. nEntries")
 	})
 	if err != nil {
 		return err
@@ -274,13 +294,17 @@ func (kr *KafkaRunner) onError(state int, err error) {
 	case TaskStateRestart:
 		if kr.natsConn != nil {
 			if err := kr.natsConn.Publish(fmt.Sprintf("%s_restart", kr.subject), []byte(kr.kafkaConfig.Gtid)); err != nil {
-				kr.logger.Errorf("kafka: Trigger restart: %v", err)
+				kr.logger.WithFields(logrus.Fields{
+					"err": err,
+				}).Errorf("kafka: Trigger restart")
 			}
 		}
 	default:
 		if kr.natsConn != nil {
 			if err := kr.natsConn.Publish(fmt.Sprintf("%s_error", kr.subject), []byte(kr.kafkaConfig.Gtid)); err != nil {
-				kr.logger.Errorf("kafka: Trigger shutdown: %v", err)
+				kr.logger.WithFields(logrus.Fields{
+					"err": err,
+				}).Errorf("kafka: Trigger shutdown")
 			}
 		}
 	}
@@ -293,7 +317,9 @@ func (kr *KafkaRunner) kafkaTransformSnapshotData(table *config.Table, value *my
 	var err error
 
 	tableIdent := fmt.Sprintf("%v.%v.%v", kr.kafkaMgr.Cfg.Topic, table.TableSchema, table.TableName)
-	kr.logger.Debugf("kafka: kafkaTransformSnapshotData value: %v", value.ValuesX)
+	kr.logger.WithFields(logrus.Fields{
+		"value": value.ValuesX,
+	}).Debugf("kafka: kafkaTransformSnapshotData value")
 	for _, rowValues := range value.ValuesX {
 		keyPayload := NewRow()
 		valuePayload := NewValuePayload()
@@ -395,7 +421,9 @@ func (kr *KafkaRunner) kafkaTransformSnapshotData(table *config.Table, value *my
 				keyPayload.AddField(columnList[i].RawName, value)
 			}
 
-			kr.logger.Debugf("kafka: kafkaTransformSnapshotData rowvalue: %v", value)
+			kr.logger.WithFields(logrus.Fields{
+				"rowvalue": value,
+			}).Debugf("kafka: kafkaTransformSnapshotData rowvalue")
 			valuePayload.After.AddField(columnList[i].RawName, value)
 		}
 
@@ -589,11 +617,15 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry)
 			}
 
 			if before != nil {
-				kr.logger.Debugf("kafka. beforeValue: type: %T, value: %v", beforeValue, beforeValue)
+				kr.logger.WithFields(logrus.Fields{
+					"beforeValue": beforeValue,
+				}).Debugf("kafka. beforeValue")
 				before.AddField(colName, beforeValue)
 			}
 			if after != nil {
-				kr.logger.Debugf("kafka. afterValue: type: %T, value: %v", afterValue, afterValue)
+				kr.logger.WithFields(logrus.Fields{
+					"afterValue": afterValue,
+				}).Debugf("kafka. afterValue")
 				after.AddField(colName, afterValue)
 			}
 		}

@@ -48,10 +48,10 @@ import (
 	"github.com/actiontech/dtle/internal/client/driver/mysql/sql"
 	sqle "github.com/actiontech/dtle/internal/client/driver/mysql/sqle/inspector"
 	"github.com/actiontech/dtle/internal/config"
-	log "github.com/actiontech/dtle/internal/logger"
 	"github.com/actiontech/dtle/internal/models"
 	"github.com/actiontech/dtle/utils"
 	"github.com/shirou/gopsutil/mem"
+	"github.com/sirupsen/logrus"
 )
 
 const (
@@ -68,7 +68,7 @@ const (
 // Extractor is the main schema extract flow manager.
 type Extractor struct {
 	execCtx      *common.ExecContext
-	logger       *log.Entry
+	logger       *logrus.Entry
 	subject      string
 	mysqlContext *config.MySQLDriverConfig
 
@@ -108,13 +108,14 @@ type Extractor struct {
 	streamerReadyCh chan struct{}
 }
 
-func NewExtractor(execCtx *common.ExecContext, cfg *config.MySQLDriverConfig, logger *log.Logger) (*Extractor, error) {
+func NewExtractor(execCtx *common.ExecContext, cfg *config.MySQLDriverConfig, logger *logrus.Logger) (*Extractor, error) {
 
 	cfg = cfg.SetDefault()
-	entry := log.NewEntry(logger).WithFields(log.Fields{
+	entry := logger.WithFields(logrus.Fields{
 		"job": execCtx.Subject,
 	})
 	e := &Extractor{
+
 		logger:          entry,
 		execCtx:         execCtx,
 		subject:         execCtx.Subject,

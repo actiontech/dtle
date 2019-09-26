@@ -13,8 +13,8 @@ import (
 	"time"
 
 	"github.com/armon/go-metrics"
+	"github.com/sirupsen/logrus"
 
-	log "github.com/actiontech/dtle/internal/logger"
 	"github.com/actiontech/dtle/internal/models"
 	"github.com/actiontech/dtle/internal/server/scheduler"
 )
@@ -60,7 +60,7 @@ const (
 // of the scheduler with the plumbing required to make it all work.
 type Worker struct {
 	srv    *Server
-	logger *log.Logger
+	logger *logrus.Logger
 	start  time.Time
 
 	paused    bool

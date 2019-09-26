@@ -14,9 +14,9 @@ import (
 	"time"
 
 	"github.com/hashicorp/go-multierror"
+	"github.com/sirupsen/logrus"
 
 	"github.com/actiontech/dtle/internal/config"
-	log "github.com/actiontech/dtle/internal/logger"
 	"github.com/actiontech/dtle/internal/models"
 )
 
@@ -31,7 +31,7 @@ type AllocStatsReporter interface {
 type Allocator struct {
 	config  *config.ClientConfig
 	updater AllocStateUpdater
-	logger  *log.Logger
+	logger  *logrus.Logger
 
 	alloc                  *models.Allocation
 	allocClientStatus      string // Explicit status of allocation. Set when there are failures
@@ -68,7 +68,7 @@ type allocatorState struct {
 }
 
 // NewAllocator is used to create a new allocation context
-func NewAllocator(logger *log.Logger, config *config.ClientConfig, updater AllocStateUpdater,
+func NewAllocator(logger *logrus.Logger, config *config.ClientConfig, updater AllocStateUpdater,
 	alloc *models.Allocation, workUpdates chan *models.TaskUpdate) *Allocator {
 	ar := &Allocator{
 		config:      config,
