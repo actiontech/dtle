@@ -17,7 +17,6 @@ require (
 	github.com/boltdb/bolt v1.3.1 // indirect
 	github.com/circonus-labs/circonus-gometrics v2.2.1+incompatible // indirect
 	github.com/circonus-labs/circonusllhist v0.1.0 // indirect
-	github.com/cznic/golex v0.0.0-20181122101858-9c343928389c // indirect
 	github.com/cznic/parser v0.0.0-20181122101858-d773202d5b1f // indirect
 	github.com/cznic/strutil v0.0.0-20181122101858-275e90344537 // indirect
 	github.com/cznic/y v0.0.0-20181122101901-b05e8c2e8d7b // indirect
@@ -58,7 +57,6 @@ require (
 	github.com/leekchan/timeutil v0.0.0-20150802142658-28917288c48d // indirect
 	github.com/lib/pq v1.2.0 // indirect
 	github.com/lytics/datemath v0.0.0-20180727225141-3ada1c10b5de // indirect
-	github.com/mattn/go-isatty v0.0.4 // indirect
 	github.com/mb0/glob v0.0.0-20160210091149-1eb79d2de6c4 // indirect
 	github.com/miekg/dns v1.0.8 // indirect
 	github.com/mitchellh/cli v1.0.0
@@ -113,3 +111,7 @@ replace github.com/siddontang/go-mysql => github.com/ffffwh/go-mysql v0.0.0-2019
 replace github.com/araddon/qlbridge => github.com/ffffwh/qlbridge v0.0.0-20181026023605-fc2d5205
 
 replace github.com/pingcap/dm => /Users/fwh/pro1/dm
+
+replace github.com/pingcap/parser => /Users/fwh/pro0/go/src/github.com/pingcap/parser
+
+replace github.com/pingcap/tidb => /Users/fwh/pro0/go/src/github.com/pingcap/tidb

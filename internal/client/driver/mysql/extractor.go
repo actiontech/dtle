@@ -105,7 +105,8 @@ type Extractor struct {
 
 	// This must be `<-` after `getSchemaTablesAndMeta()`.
 	gotCoordinateCh chan struct{}
-	streamerReadyCh chan struct{}
+	streamerReadyCh chan error
+	fullCopyDone    chan struct{}
 }
 
 func NewExtractor(execCtx *common.ExecContext, cfg *config.MySQLDriverConfig, logger *logrus.Logger) (*Extractor, error) {
@@ -128,7 +129,8 @@ func NewExtractor(execCtx *common.ExecContext, cfg *config.MySQLDriverConfig, lo
 		testStub1Delay:  0,
 		context:         sqle.NewContext(nil),
 		gotCoordinateCh: make(chan struct{}),
-		streamerReadyCh: make(chan struct{}),
+		streamerReadyCh: make(chan error),
+		fullCopyDone:    make(chan struct{}),
 	}
 	e.context.LoadSchemas(nil)
 
@@ -244,13 +246,12 @@ func (e *Extractor) Run() {
 
 		} else {
 			<-e.gotCoordinateCh
-			e.logger.Infof("mysql.extractor. initBinlogReader")
-			if err := e.initBinlogReader(e.initialBinlogCoordinates); err != nil {
-				e.logger.Debugf("mysql.extractor error at initBinlogReader: %v", err.Error())
-				e.onError(TaskStateDead, err)
-				return
+			if !e.mysqlContext.BinlogRelay {
+				// This must be after `<-e.gotCoordinateCh` or there will be a deadlock
+				<-e.fullCopyDone
 			}
-			e.streamerReadyCh <- struct{}{}
+			e.logger.Infof("mysql.extractor. initBinlogReader")
+			e.initBinlogReader(e.initialBinlogCoordinates)
 		}
 	}()
 
@@ -284,13 +285,21 @@ func (e *Extractor) Run() {
 		}
 		e.gotCoordinateCh <- struct{}{}
 	}
+	if !e.mysqlContext.BinlogRelay {
+		e.fullCopyDone <- struct{}{}
+	}
 
 	if e.mysqlContext.SkipIncrementalCopy {
 		e.logger.Infof("mysql.extractor. SkipIncrementalCopy")
 	} else {
-		<-e.streamerReadyCh
+		err := <-e.streamerReadyCh
+		if err != nil {
+			e.logger.Errorf("mysql.extractor error after streamerReadyCh: %v", err)
+			e.onError(TaskStateDead, err)
+			return
+		}
 		if err := e.initiateStreaming(); err != nil {
-			e.logger.Debugf("mysql.extractor error at initiateStreaming: %v", err.Error())
+			e.logger.Debugf("mysql.extractor error at initiateStreaming: %v", err)
 			e.onError(TaskStateDead, err)
 			return
 		}
@@ -647,19 +656,25 @@ func (e *Extractor) getSchemaTablesAndMeta() error {
 }
 
 // initBinlogReader creates and connects the reader: we hook up to a MySQL server as a replica
-func (e *Extractor) initBinlogReader(binlogCoordinates *base.BinlogCoordinatesX) error {
+// Cooperate with `initiateStreaming()` using `e.streamerReadyCh`. Any err will be sent thru the chan.
+func (e *Extractor) initBinlogReader(binlogCoordinates *base.BinlogCoordinatesX) {
 	binlogReader, err := binlog.NewMySQLReader(e.execCtx, e.mysqlContext, e.logger, e.replicateDoDb, e.context)
 	if err != nil {
 		e.logger.Debugf("mysql.extractor: err at initBinlogReader: NewMySQLReader: %v", err.Error())
-		return err
+		e.streamerReadyCh <- err
+		return
 	}
 
-	if err := binlogReader.ConnectBinlogStreamer(*binlogCoordinates); err != nil {
-		e.logger.Debugf("mysql.extractor: err at initBinlogReader: ConnectBinlogStreamer: %v", err.Error())
-		return err
-	}
 	e.binlogReader = binlogReader
-	return nil
+
+	go func() {
+		err = binlogReader.ConnectBinlogStreamer(*binlogCoordinates)
+		if err != nil {
+			e.streamerReadyCh <- err
+			return
+		}
+		e.streamerReadyCh <- nil
+	}()
 }
 
 // validateConnection issues a simple can-connect to MySQL
@@ -731,7 +746,7 @@ func (e *Extractor) CountTableRows(table *config.Table) (int64, error) {
 			table.TableSchema, table.TableName)
 	} else {
 		method = "COUNT"
-		query = fmt.Sprintf(`select count(*) as rows from %s.%s where (%s)`,
+		query = fmt.Sprintf(`select count(*) from %s.%s where (%s)`,
 			mysql.EscapeName(table.TableSchema), mysql.EscapeName(table.TableName), table.Where)
 	}
 	var rowsEstimate int64
@@ -1582,6 +1597,7 @@ func (e *Extractor) WaitCh() chan *models.WaitResult {
 
 // Shutdown is used to tear down the extractor
 func (e *Extractor) Shutdown() error {
+	e.logger.Debugf("*** Extractor.Shutdown")
 	e.shutdownLock.Lock()
 	defer e.shutdownLock.Unlock()
 

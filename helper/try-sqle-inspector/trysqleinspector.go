@@ -26,7 +26,8 @@ func main() {
 	//ctx.LoadTables("a", nil)
 	//ctx.UseSchema("a")
 
-	case5()
+	case6()
+	//case5()
 	//case4()
 	//case1()
 	//case2()
@@ -36,6 +37,16 @@ func main() {
 func panicIfErr(err interface{}, args ...interface{}) {
 	if err != nil {
 		log.Panicf("will panic. err %v, args: %v", err, args)
+	}
+}
+func case6() {
+	do("create schema a")
+	ctx.LoadTables("a", nil)
+	ctx.UseSchema("a")
+	do("CREATE TABLE `c` ( `id` int(11) NOT NULL, PRIMARY KEY (`id`) ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs")
+	_, exist := ctx.GetTable("a", "c")
+	if !exist {
+		panic("shoud exist")
 	}
 }
 func case5() {

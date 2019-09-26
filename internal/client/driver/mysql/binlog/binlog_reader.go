@@ -9,6 +9,7 @@ package binlog
 import (
 	"bytes"
 	gosql "database/sql"
+	"path"
 	"time"
 
 	"github.com/actiontech/dtle/internal/client/driver/common"
@@ -252,8 +253,7 @@ func (b *BinlogReader) addTableToTableMap(tableMap map[string]*config.TableConte
 }
 
 func (b *BinlogReader) getBinlogDir() string {
-	dir := b.execCtx.StateDir + "/binlog/" + b.execCtx.Subject
-	return dir
+	return path.Join(b.execCtx.StateDir, "binlog", b.execCtx.Subject)
 }
 
 // ConnectBinlogStreamer
@@ -320,7 +320,7 @@ func (b *BinlogReader) ConnectBinlogStreamer(coordinates base.BinlogCoordinatesX
 		}
 
 		waitForRelay := true
-		for waitForRelay {
+		for !b.shutdown && waitForRelay {
 			_, p := meta.Pos()
 			_, gs := meta.GTID()
 
@@ -1578,6 +1578,7 @@ func (b *BinlogReader) genRegexMap() {
 }
 
 func (b *BinlogReader) Close() error {
+	b.logger.Debugf("*** BinlogReader.Close")
 	b.shutdownLock.Lock()
 	defer b.shutdownLock.Unlock()
 
