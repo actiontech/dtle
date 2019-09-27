@@ -66,6 +66,7 @@ require (
 	github.com/mitchellh/hashstructure v1.0.0
 	github.com/mitchellh/mapstructure v1.1.2
 	github.com/mssola/user_agent v0.5.0 // indirect
+	github.com/natefinch/lumberjack v2.0.0+incompatible
 	github.com/nats-io/gnatsd v1.2.0
 	github.com/nats-io/go-nats v1.5.0
 	github.com/nats-io/go-nats-streaming v0.4.0 // indirect
@@ -94,6 +95,7 @@ require (
 	github.com/siddontang/go v0.0.0-20180604090527-bdc77568d726
 	github.com/siddontang/go-mysql v0.0.0-20190808080311-dd15a3c6
 	github.com/simplereach/timeutils v1.2.0 // indirect
+	github.com/sirupsen/logrus v1.4.2
 	github.com/smartystreets/goconvey v0.0.0-20190731233626-505e41936337 // indirect
 	github.com/tv42/httpunix v0.0.0-20150427012821-b75d8614f926 // indirect
 	github.com/uber/jaeger-client-go v2.16.0+incompatible
