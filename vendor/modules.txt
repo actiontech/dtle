@@ -236,6 +236,8 @@ github.com/mitchellh/hashstructure
 github.com/mitchellh/mapstructure
 # github.com/mitchellh/reflectwalk v1.0.0
 github.com/mitchellh/reflectwalk
+# github.com/natefinch/lumberjack v2.0.0+incompatible
+github.com/natefinch/lumberjack
 # github.com/nats-io/gnatsd v1.2.0
 github.com/nats-io/gnatsd/server
 github.com/nats-io/gnatsd/conf
@@ -524,10 +526,10 @@ golang.org/x/net/http2/hpack
 golang.org/x/net/http/httpguts
 golang.org/x/net/idna
 # golang.org/x/sys v0.0.0-20190624142023-c5567b49c5d0
+golang.org/x/sys/unix
 golang.org/x/sys/windows/svc
 golang.org/x/sys/windows/svc/debug
 golang.org/x/sys/windows/svc/mgr
-golang.org/x/sys/unix
 golang.org/x/sys/windows
 golang.org/x/sys/windows/svc/eventlog
 golang.org/x/sys/windows/registry

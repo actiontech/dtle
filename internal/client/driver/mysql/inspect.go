@@ -16,7 +16,7 @@ import (
 	usql "github.com/actiontech/dtle/internal/client/driver/mysql/sql"
 	uconf "github.com/actiontech/dtle/internal/config"
 	umconf "github.com/actiontech/dtle/internal/config/mysql"
-	log "github.com/actiontech/dtle/internal/logger"
+	"github.com/sirupsen/logrus"
 )
 
 const startSlavePostWaitMilliseconds = 500 * time.Millisecond
@@ -24,12 +24,12 @@ const startSlavePostWaitMilliseconds = 500 * time.Millisecond
 // Inspector reads data from the read-MySQL-server (typically a replica, but can be the master)
 // It is used for gaining initial status and structure, and later also follow up on progress and changelog
 type Inspector struct {
-	logger       *log.Entry
+	logger       *logrus.Entry
 	db           *gosql.DB
 	mysqlContext *uconf.MySQLDriverConfig
 }
 
-func NewInspector(ctx *uconf.MySQLDriverConfig, logger *log.Entry) *Inspector {
+func NewInspector(ctx *uconf.MySQLDriverConfig, logger *logrus.Entry) *Inspector {
 	return &Inspector{
 		logger:       logger,
 		mysqlContext: ctx,

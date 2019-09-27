@@ -11,8 +11,8 @@ import (
 
 	"github.com/hashicorp/go-memdb"
 
-	ulog "github.com/actiontech/dtle/internal/logger"
 	"github.com/actiontech/dtle/internal/models"
+	"github.com/sirupsen/logrus"
 )
 
 const (
@@ -31,7 +31,7 @@ var BuiltinSchedulers = map[string]Factory{
 
 // NewScheduler is used to instantiate and return a new scheduler
 // given the scheduler name, initial store, and planner.
-func NewScheduler(name string, logger *ulog.Logger, state State, planner Planner) (Scheduler, error) {
+func NewScheduler(name string, logger *logrus.Logger, state State, planner Planner) (Scheduler, error) {
 	// Lookup the factory function
 	factory, ok := BuiltinSchedulers[name]
 	if !ok {
@@ -44,7 +44,7 @@ func NewScheduler(name string, logger *ulog.Logger, state State, planner Planner
 }
 
 // Factory is used to instantiate a new Scheduler
-type Factory func(*ulog.Logger, State, Planner) Scheduler
+type Factory func(*logrus.Logger, State, Planner) Scheduler
 
 // Scheduler is the top level instance for a scheduler. A scheduler is
 // meant to only encapsulate business logic, pushing the various plumbing

@@ -9,10 +9,11 @@ package driver
 import (
 	"errors"
 	"fmt"
+
 	"github.com/actiontech/dtle/internal/client/driver/common"
+	"github.com/sirupsen/logrus"
 
 	uconf "github.com/actiontech/dtle/internal/config"
-	log "github.com/actiontech/dtle/internal/logger"
 	"github.com/actiontech/dtle/internal/models"
 )
 
@@ -64,7 +65,7 @@ type DriverContext struct {
 	taskName string
 	allocID  string
 	config   *uconf.ClientConfig
-	logger   *log.Logger
+	logger   *logrus.Logger
 	node     *models.Node
 }
 
@@ -79,7 +80,7 @@ func NewEmptyDriverContext() *DriverContext {
 // private to the driver. If we want to change this later we can gorename all of
 // the fields in DriverContext.
 func NewDriverContext(taskName, allocID string, config *uconf.ClientConfig, node *models.Node,
-	logger *log.Logger) *DriverContext {
+	logger *logrus.Logger) *DriverContext {
 	return &DriverContext{
 		taskName: taskName,
 		allocID:  allocID,

@@ -28,11 +28,11 @@ import (
 	gnatsd "github.com/nats-io/gnatsd/server"
 	stand "github.com/nats-io/nats-streaming-server/server"
 	"github.com/shirou/gopsutil/host"
+	"github.com/sirupsen/logrus"
 
 	"github.com/actiontech/dtle/internal"
 	"github.com/actiontech/dtle/internal/client/driver"
 	"github.com/actiontech/dtle/internal/config"
-	ulog "github.com/actiontech/dtle/internal/logger"
 	"github.com/actiontech/dtle/internal/models"
 	"github.com/actiontech/dtle/internal/server"
 )
@@ -96,7 +96,7 @@ type Client struct {
 	configCopy *config.ClientConfig
 	configLock sync.RWMutex
 
-	logger *ulog.Logger
+	logger *logrus.Logger
 
 	connPool *server.ConnPool
 
@@ -176,7 +176,7 @@ var (
 )
 
 // NewClient is used to create a new client from the given configuration
-func NewClient(cfg *config.ClientConfig, logger *ulog.Logger) (*Client, error) {
+func NewClient(cfg *config.ClientConfig, logger *logrus.Logger) (*Client, error) {
 	// Create the client
 	c := &Client{
 		config:              cfg,

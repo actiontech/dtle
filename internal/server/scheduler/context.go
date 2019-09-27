@@ -12,8 +12,8 @@ import (
 	memdb "github.com/hashicorp/go-memdb"
 	"github.com/hashicorp/go-version"
 
-	log "github.com/actiontech/dtle/internal/logger"
 	"github.com/actiontech/dtle/internal/models"
+	"github.com/sirupsen/logrus"
 )
 
 // Context is used to track contextual information used for placement
@@ -25,7 +25,7 @@ type Context interface {
 	Plan() *models.Plan
 
 	// Logger provides a way to log
-	Logger() *log.Logger
+	Logger() *logrus.Logger
 
 	// Metrics returns the current metrics
 	Metrics() *models.AllocMetric
@@ -73,13 +73,13 @@ type EvalContext struct {
 	EvalCache
 	state       State
 	plan        *models.Plan
-	logger      *log.Logger
+	logger      *logrus.Logger
 	metrics     *models.AllocMetric
 	eligibility *EvalEligibility
 }
 
 // NewEvalContext constructs a new EvalContext
-func NewEvalContext(s State, p *models.Plan, log *log.Logger) *EvalContext {
+func NewEvalContext(s State, p *models.Plan, log *logrus.Logger) *EvalContext {
 	ctx := &EvalContext{
 		state:   s,
 		plan:    p,
@@ -97,7 +97,7 @@ func (e *EvalContext) Plan() *models.Plan {
 	return e.plan
 }
 
-func (e *EvalContext) Logger() *log.Logger {
+func (e *EvalContext) Logger() *logrus.Logger {
 	return e.logger
 }
 

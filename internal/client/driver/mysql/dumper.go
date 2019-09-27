@@ -19,22 +19,22 @@ import (
 	usql "github.com/actiontech/dtle/internal/client/driver/mysql/sql"
 	"github.com/actiontech/dtle/internal/config"
 	umconf "github.com/actiontech/dtle/internal/config/mysql"
-	log "github.com/actiontech/dtle/internal/logger"
+	"github.com/sirupsen/logrus"
 )
 
 type dumper struct {
-	logger         *log.Entry
-	chunkSize      int64
-	TableSchema    string
+	logger             *logrus.Entry
+	chunkSize          int64
+	TableSchema        string
 	EscapedTableSchema string
-	TableName      string
-	EscapedTableName string
-	table          *config.Table
-	columns        string
-	resultsChannel chan *DumpEntry
-	shutdown       bool
-	shutdownCh     chan struct{}
-	shutdownLock   sync.Mutex
+	TableName          string
+	EscapedTableName   string
+	table              *config.Table
+	columns            string
+	resultsChannel     chan *DumpEntry
+	shutdown           bool
+	shutdownCh         chan struct{}
+	shutdownLock       sync.Mutex
 
 	// DB is safe for using in goroutines
 	// http://golang.org/src/database/sql/sql.go?s=5574:6362#L201
@@ -48,20 +48,20 @@ type dumper struct {
 }
 
 func NewDumper(db usql.QueryAble, table *config.Table, chunkSize int64,
-	logger *log.Entry) *dumper {
+	logger *logrus.Entry) *dumper {
 
 	dumper := &dumper{
-		logger:         logger,
-		db:             db,
-		TableSchema:    table.TableSchema,
+		logger:             logger,
+		db:                 db,
+		TableSchema:        table.TableSchema,
 		EscapedTableSchema: umconf.EscapeName(table.TableSchema),
-		TableName:      table.TableName,
-		EscapedTableName: umconf.EscapeName(table.TableName),
-		table:          table,
-		resultsChannel: make(chan *DumpEntry, 24),
-		chunkSize:      chunkSize,
-		shutdownCh:     make(chan struct{}),
-		sentTableDef: false,
+		TableName:          table.TableName,
+		EscapedTableName:   umconf.EscapeName(table.TableName),
+		table:              table,
+		resultsChannel:     make(chan *DumpEntry, 24),
+		chunkSize:          chunkSize,
+		shutdownCh:         make(chan struct{}),
+		sentTableDef:       false,
 	}
 	switch os.Getenv(g.ENV_DUMP_CHECKSUM) {
 	case "1":

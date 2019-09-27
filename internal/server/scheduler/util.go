@@ -13,8 +13,8 @@ import (
 
 	memdb "github.com/hashicorp/go-memdb"
 
-	log "github.com/actiontech/dtle/internal/logger"
 	"github.com/actiontech/dtle/internal/models"
+	"github.com/sirupsen/logrus"
 )
 
 // allocTuple is a tuple of the allocation name and potential alloc ID
@@ -295,7 +295,7 @@ func tasksUpdated(jobA, jobB *models.Job, task string) bool {
 }
 
 // setStatus is used to update the status of the evaluation
-func setStatus(logger *log.Logger, planner Planner,
+func setStatus(logger *logrus.Logger, planner Planner,
 	eval, nextEval, spawnedBlocked *models.Evaluation,
 	tgMetrics map[string]*models.AllocMetric, status, desc string,
 	queuedAllocs map[string]int) error {
@@ -496,7 +496,7 @@ func desiredUpdates(diff *diffResult, inplaceUpdates,
 
 // adjustQueuedAllocations decrements the number of allocations pending per task
 // group based on the number of allocations successfully placed
-func adjustQueuedAllocations(logger *log.Logger, result *models.PlanResult, queuedAllocs map[string]int) {
+func adjustQueuedAllocations(logger *logrus.Logger, result *models.PlanResult, queuedAllocs map[string]int) {
 	if result != nil {
 		for _, allocations := range result.NodeAllocation {
 			for _, allocation := range allocations {

@@ -8,9 +8,10 @@ package logger
 
 import (
 	"io"
-	"log"
 	"strings"
 	"sync"
+
+	"github.com/sirupsen/logrus"
 )
 
 type Logger struct {
@@ -374,7 +375,7 @@ const (
 
 // Won't compile if StdLogger can't be realized by a log.Logger
 var (
-	_ StdLogger = &log.Logger{}
+	_ StdLogger = &logrus.Logger{}
 	_ StdLogger = &Entry{}
 	_ StdLogger = &Logger{}
 )

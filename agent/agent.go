@@ -17,10 +17,10 @@ import (
 
 	ucli "github.com/actiontech/dtle/internal/client"
 	uconf "github.com/actiontech/dtle/internal/config"
-	ulog "github.com/actiontech/dtle/internal/logger"
 	umodel "github.com/actiontech/dtle/internal/models"
 	usrv "github.com/actiontech/dtle/internal/server"
 	"github.com/hashicorp/memberlist"
+	"github.com/sirupsen/logrus"
 )
 
 // Agent is a long running daemon that is used to run both
@@ -30,7 +30,7 @@ import (
 // servers to run allocations.
 type Agent struct {
 	config    *Config
-	logger    *ulog.Logger
+	logger    *logrus.Logger
 	logOutput io.Writer
 
 	client *ucli.Client
@@ -43,7 +43,7 @@ type Agent struct {
 }
 
 // NewAgent is used to create a new agent with the given configuration
-func NewAgent(config *Config, logOutput io.Writer, log *ulog.Logger) (*Agent, error) {
+func NewAgent(config *Config, logOutput io.Writer, log *logrus.Logger) (*Agent, error) {
 	a := &Agent{
 		config:     config,
 		logger:     log,
@@ -259,12 +259,16 @@ func (a *Agent) setupClient() error {
 func (a *Agent) Leave() error {
 	if a.client != nil {
 		if err := a.client.Leave(); err != nil {
-			a.logger.Errorf("server: agent leave failed: %v", err)
+			a.logger.WithFields(logrus.Fields{
+				"err": err,
+			}).Errorf("server: agent leave failed")
 		}
 	}
 	if a.server != nil {
 		if err := a.server.Leave(); err != nil {
-			a.logger.Errorf("server: manager leave failed: %v", err)
+			a.logger.WithFields(logrus.Fields{
+				"err": err,
+			}).Errorf("server: manager leave failed")
 		}
 	}
 	return nil
@@ -279,19 +283,27 @@ func (a *Agent) Shutdown() error {
 		return nil
 	}
 
-	a.logger.Println("server: requesting shutdown")
+	a.logger.WithFields(logrus.Fields{
+		"status": " requesting shutdown",
+	}).Info("server: requesting shutdown")
 	if a.client != nil {
 		if err := a.client.Shutdown(); err != nil {
-			a.logger.Errorf("server: agent shutdown failed: %v", err)
+			a.logger.WithFields(logrus.Fields{
+				"err": err,
+			}).Errorf("server: agent shutdown failed")
 		}
 	}
 	if a.server != nil {
 		if err := a.server.Shutdown(); err != nil {
-			a.logger.Errorf("server: manager shutdown failed: %v", err)
+			a.logger.WithFields(logrus.Fields{
+				"err": err,
+			}).Errorf("server: manager shutdown failed")
 		}
 	}
 
-	a.logger.Println("server: shutdown complete")
+	a.logger.WithFields(logrus.Fields{
+		"status": "shutdown complete",
+	}).Println("server: shutdown complete")
 	a.shutdown = true
 	close(a.shutdownCh)
 	return nil

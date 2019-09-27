@@ -16,6 +16,7 @@ import (
 	"github.com/pingcap/dm/dm/pb"
 	"github.com/pingcap/dm/pkg/gtid"
 	"github.com/pingcap/dm/pkg/streamer"
+	"github.com/sirupsen/logrus"
 
 	"github.com/actiontech/dtle/internal/g"
 	//"encoding/hex"
@@ -44,7 +45,6 @@ import (
 	"github.com/actiontech/dtle/internal/config"
 	"github.com/actiontech/dtle/internal/config/mysql"
 
-	log "github.com/actiontech/dtle/internal/logger"
 	"github.com/actiontech/dtle/internal/models"
 	"github.com/actiontech/dtle/utils"
 	"github.com/opentracing/opentracing-go"
@@ -57,7 +57,7 @@ import (
 type BinlogReader struct {
 	serverId         uint64
 	execCtx          *common.ExecContext
-	logger           *log.Entry
+	logger           *logrus.Entry
 	connectionConfig *mysql.ConnectionConfig
 	db               *gosql.DB
 	relay            dmrelay.Process
@@ -153,7 +153,7 @@ func parseSqlFilter(strs []string) (*SqlFilter, error) {
 	return s, nil
 }
 
-func NewMySQLReader(execCtx *common.ExecContext, cfg *config.MySQLDriverConfig, logger *log.Entry, replicateDoDb []*config.DataSource, sqleContext *sqle.Context) (binlogReader *BinlogReader, err error) {
+func NewMySQLReader(execCtx *common.ExecContext, cfg *config.MySQLDriverConfig, logger *logrus.Entry, replicateDoDb []*config.DataSource, sqleContext *sqle.Context) (binlogReader *BinlogReader, err error) {
 	sqlFilter, err := parseSqlFilter(cfg.SqlFilter)
 	if err != nil {
 		return nil, err
