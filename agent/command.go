@@ -223,28 +223,11 @@ func (s *StringFlag) Set(value string) error {
 
 // setupLoggers is used to setup the logGate, logWriter, and our logOutput
 func (c *Command) setupLoggers(config *Config) (io.Writer, error) {
-	//var oFile *os.File
-	/*if config.LogToStdout {
-		oFile = os.Stdout
-	} else if config.LogFile != "" {
-		if _, err := os.Stat(config.LogFile); os.IsNotExist(err) {
-			if oFile, err = os.Create(config.LogFile); err != nil {
-				oFile = os.Stderr
-				return nil, fmt.Errorf("Unable to create %s (%s), using stderr",
-					config.LogFile, err)
-			}
-		} else {
-			if oFile, err = os.OpenFile(config.LogFile, os.O_APPEND|os.O_WRONLY, os.ModeAppend); err != nil {
-				oFile = os.Stderr
-				return nil, fmt.Errorf("Unable to append to %s (%s), using stderr",
-					config.LogFile, err)
-			}
-		}
+	if config.LogToStdout {
+		c.logOutput = os.Stdout
 	} else {
-		oFile = os.Stderr
+		c.logOutput = NewRotateFile(config.LogFile, config.LogMaxSize /*1GB*/)
 	}
-	*/
-	c.logOutput = NewRotateFile(config.LogFile, config.LogMaxSize /*1GB*/)
 	c.logger = logrus.New()
 	c.logger.SetLevel(logrus.DebugLevel) //ulog.New(oFile, ulog.ParseLevel(config.LogLevel))
 	//log.SetOutput(c.logOutput)
