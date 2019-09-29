@@ -252,6 +252,22 @@ func (e *Extractor) Run() {
 			}
 			e.logger.Infof("mysql.extractor. initBinlogReader")
 			e.initBinlogReader(e.initialBinlogCoordinates)
+
+			go func() {
+				_, err := e.natsConn.Subscribe(fmt.Sprintf("%s_progress", e.subject), func(m *gonats.Msg) {
+					binlogFile := string(m.Data)
+					e.logger.Debugf("*** progress: %v", binlogFile)
+					err := e.natsConn.Publish(m.Reply, nil)
+					if err != nil {
+						e.logger.Debugf("*** progress reply error. err %v", err)
+					}
+					e.binlogReader.OnApplierRotate(binlogFile)
+				})
+				if err != nil {
+					e.onError(TaskStateDead, err)
+					return
+				}
+			}()
 		}
 	}()
 

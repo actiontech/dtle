@@ -740,7 +740,10 @@ func (a *Applier) heterogeneousReplay() {
 			if !a.shutdown {
 				// TODO what is this used for?
 				a.mysqlContext.Gtid = fmt.Sprintf("%s:1-%d", txSid, binlogEntry.Coordinates.GNO)
-				a.mysqlContext.BinlogFile = binlogEntry.Coordinates.LogFile
+				if a.mysqlContext.BinlogFile != binlogEntry.Coordinates.LogFile {
+					a.mysqlContext.BinlogFile = binlogEntry.Coordinates.LogFile
+					a.publishProgress()
+				}
 				a.mysqlContext.BinlogPos = binlogEntry.Coordinates.LogPos
 			}
 		case <-time.After(10 * time.Second):
@@ -970,6 +973,33 @@ func (a *Applier) initiateStreaming() error {
 	}
 
 	return nil
+}
+
+func (a *Applier) publishProgress() {
+	retry := 0
+	keep := true
+	for keep {
+		a.logger.Debugf("*** applier.publishProgress. retry %v, file %v", retry, a.mysqlContext.BinlogFile)
+		_, err := a.natsConn.Request(fmt.Sprintf("%s_progress", a.subject), []byte(a.mysqlContext.BinlogFile), 10*time.Second)
+		if err == nil {
+			keep = false
+		} else {
+			if err == gonats.ErrTimeout {
+				a.logger.WithField("retry", retry).WithField("file", a.mysqlContext.BinlogFile).Debugf(
+					"applier.publishProgress. timeout")
+				break
+			} else {
+				a.logger.WithField("retry", retry).WithField("file", a.mysqlContext.BinlogFile).WithError(err).Debugf(
+					"applier.publishProgress. unknown error")
+			}
+			retry += 1
+			if retry < 5 {
+				time.Sleep(1 * time.Second)
+			} else {
+				keep = false
+			}
+		}
+	}
 }
 
 func (a *Applier) initDBConnections() (err error) {

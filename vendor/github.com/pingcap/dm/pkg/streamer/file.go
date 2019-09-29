@@ -51,7 +51,7 @@ func CollectAllBinlogFiles(dir string) ([]string, error) {
 	if dir == "" {
 		return nil, ErrEmptyRelayDir
 	}
-	files, err := readDir(dir)
+	files, err := ReadDir(dir)
 	if err != nil {
 		return nil, errors.Trace(err)
 	}
@@ -129,7 +129,7 @@ func CollectBinlogFilesCmp(dir, baseFile string, cmp FileCmp) ([]string, error) 
 // getFirstBinlogName gets the first binlog file in relay sub directory
 func getFirstBinlogName(baseDir, uuid string) (string, error) {
 	subDir := filepath.Join(baseDir, uuid)
-	files, err := readDir(subDir)
+	files, err := ReadDir(subDir)
 	if err != nil {
 		return "", errors.Annotatef(err, "get binlog file for dir %s", subDir)
 	}
@@ -149,8 +149,8 @@ func getFirstBinlogName(baseDir, uuid string) (string, error) {
 	return "", errors.NotFoundf("binlog files in dir %s", subDir)
 }
 
-// readDir reads and returns all file(sorted asc) and dir names from directory f
-func readDir(dirpath string) ([]string, error) {
+// ReadDir reads and returns all file(sorted asc) and dir names from directory f
+func ReadDir(dirpath string) ([]string, error) {
 	dir, err := os.Open(dirpath)
 	if err != nil {
 		return nil, errors.Trace(err)

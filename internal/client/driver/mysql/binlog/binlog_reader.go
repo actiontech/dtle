@@ -9,7 +9,9 @@ package binlog
 import (
 	"bytes"
 	gosql "database/sql"
+	"os"
 	"path"
+	"path/filepath"
 	"time"
 
 	"github.com/actiontech/dtle/internal/client/driver/common"
@@ -1679,4 +1681,71 @@ func (b *BinlogReader) checkObjectFitRegexp(patternTBS []*config.DataSource, sch
 		}
 	}
 	return nil
+}
+
+func (b *BinlogReader) OnApplierRotate(binlogFile string) {
+	if !b.mysqlContext.BinlogRelay {
+		// do nothing if BinlogRelay is not enabled
+		return
+	}
+
+	wrappingDir := b.getBinlogDir()
+	fs, err := streamer.ReadDir(wrappingDir)
+	if err != nil {
+		b.logger.WithError(err).WithField("dir", wrappingDir).Errorf("OnApplierRotate. err at reading dir")
+		return
+	}
+
+	dir := ""
+
+	for i := range fs {
+		// https://pingcap.com/docs-cn/v3.0/reference/tools/data-migration/relay-log/
+		// <server-uuid>.<subdir-seq-number>
+		// currently there should only be .000001, but we loop to the last one.
+		subdir := filepath.Join(wrappingDir, fs[i])
+		stat, err := os.Stat(subdir)
+		if err != nil {
+			b.logger.WithError(err).Errorf("OnApplierRotate. err at stat")
+			return
+		} else {
+			if stat.IsDir() {
+				dir = subdir
+			} else {
+				// meta-files like server-uuid.index
+			}
+		}
+	}
+
+	if dir == "" {
+		b.logger.Warnf("OnApplierRotate. empty dir")
+		return
+	}
+
+	realBinlogFile := normalizeBinlogFilename(binlogFile)
+
+	cmp, err := streamer.CollectBinlogFilesCmp(dir, realBinlogFile, streamer.FileCmpLess)
+	if err != nil {
+		b.logger.WithError(err).Debugf("OnApplierRotate. err at cmp")
+	}
+	b.logger.WithField("cmp", cmp).Debugf("OnApplierRotate.")
+
+	for i := range cmp {
+		f := filepath.Join(dir, cmp[i])
+		b.logger.WithField("file", f).Infof("OnApplierRotate will remove")
+		err := os.Remove(f)
+		if err != nil {
+			b.logger.WithField("file", f).WithError(err).Errorf("OnApplierRotate error when removing binlog file")
+		}
+	}
+}
+
+func normalizeBinlogFilename(name string) string {
+	// See `posUUIDSuffixSeparator` in pingcap/dm.
+	re := regexp.MustCompile("^(.*)\\|.+(\\..*)$")
+	sm := re.FindStringSubmatch(name)
+	if len(sm) == 3 {
+		return sm[1] + sm[2]
+	} else {
+		return name
+	}
 }
