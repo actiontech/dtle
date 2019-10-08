@@ -333,7 +333,15 @@ func (n *udupFSM) applyStatusUpdate(buf []byte, index uint64) interface{} {
 
 							}
 							if node.Status == models.NodeStatusDown {
-								alloc.TaskStates[alloc.Task].State = models.TaskStateDead
+								if alloc.TaskStates != nil { // #494
+									if alloc.TaskStates[alloc.Task] != nil {
+										alloc.TaskStates[alloc.Task].State = models.TaskStateDead
+									} else {
+										n.logger.Warnf("DTLE_BUG alloc.TaskStates[alloc.Task] == nil")
+									}
+								} else {
+									n.logger.Warnf("DTLE_BUG alloc.TaskStates == nil")
+								}
 								if err := n.state.UpsertAlloc(index, alloc); err != nil {
 									n.logger.Errorf("server.fsm: UpsertAlloc failed: %v", err)
 									return err
