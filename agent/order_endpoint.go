@@ -149,33 +149,32 @@ func (s *HTTPServer) login(resp http.ResponseWriter, req *http.Request) (interfa
 	return out, nil
 }
 
-func (s *HTTPServer) serLogLevel(resp http.ResponseWriter, req *http.Request) (interface{}, error) {
+func (s *HTTPServer) setLogLevel(resp http.ResponseWriter, req *http.Request) (interface{}, error) {
 	if req.Method != "GET" {
 		resp.WriteHeader(http.StatusMethodNotAllowed)
 		return nil, nil
 	}
 
-	path := strings.TrimPrefix(req.URL.Path, "/v1/order/level")
+	path := strings.TrimPrefix(req.URL.Path, "/v1/orders/level")
 	var reply *models.JobResponse
+	reply.Success = true
 	switch {
 	case strings.HasSuffix(path, "/info"):
 		s.logger.SetLevel(logrus.InfoLevel)
-		reply.Success = true
+		return reply, nil
 	case strings.HasSuffix(path, "/debug"):
 		s.logger.SetLevel(logrus.DebugLevel)
-		reply.Success = true
+		return reply, nil
 	case strings.HasSuffix(path, "/err"):
 		s.logger.SetLevel(logrus.ErrorLevel)
-		reply.Success = true
+		return reply, nil
 	case strings.HasSuffix(path, "/warn"):
 		s.logger.SetLevel(logrus.WarnLevel)
-		reply.Success = true
+		return reply, nil
 	default:
-		s.logger.SetLevel(logrus.ErrorLevel)
 		reply.Success = false
+		return reply, nil
 	}
-	reply.Success = false
-	return reply, nil
 }
 
 func (s *HTTPServer) orderQuery(resp http.ResponseWriter, req *http.Request,
