@@ -156,24 +156,22 @@ func (s *HTTPServer) setLogLevel(resp http.ResponseWriter, req *http.Request) (i
 	}
 
 	path := strings.TrimPrefix(req.URL.Path, "/v1/orders/level")
-	var reply *models.JobResponse
-	reply.Success = true
+
 	switch {
 	case strings.HasSuffix(path, "/info"):
 		s.logger.SetLevel(logrus.InfoLevel)
-		return reply, nil
+		return "success", nil
 	case strings.HasSuffix(path, "/debug"):
 		s.logger.SetLevel(logrus.DebugLevel)
-		return reply, nil
+		return "success", nil
 	case strings.HasSuffix(path, "/err"):
 		s.logger.SetLevel(logrus.ErrorLevel)
-		return reply, nil
+		return "success", nil
 	case strings.HasSuffix(path, "/warn"):
 		s.logger.SetLevel(logrus.WarnLevel)
-		return reply, nil
+		return "success", nil
 	default:
-		reply.Success = false
-		return reply, nil
+		return "fail", nil
 	}
 }
 
