@@ -226,7 +226,7 @@ func (c *Command) setupLoggers(config *Config) (io.Writer, error) {
 	if config.LogToStdout {
 		c.logOutput = os.Stdout
 	} else {
-		c.logOutput = NewRotateFile(config.LogFile, config.LogMaxSize /*1GB*/)
+		c.logOutput = NewRotateFile(config.LogFile, config.LogMaxSize /*1GB*/, config.LogMaxBackups)
 	}
 	c.logger = logrus.New()
 	c.logger.SetLevel(logrus.DebugLevel) //ulog.New(oFile, ulog.ParseLevel(config.LogLevel))
@@ -235,11 +235,12 @@ func (c *Command) setupLoggers(config *Config) (io.Writer, error) {
 	return c.logOutput, nil
 }
 
-func NewRotateFile(filePath string, maxSize int) *rotate.Logger {
+func NewRotateFile(filePath string, maxSize int, maxBackups int) *rotate.Logger {
 
 	return &rotate.Logger{
-		Filename: filePath,
-		MaxSize:  maxSize,
+		Filename:   filePath,
+		MaxSize:    maxSize,
+		MaxBackups: maxBackups,
 	}
 }
 

@@ -86,6 +86,7 @@ func parseConfig(result *Config, list *ast.ObjectList) error {
 		"ui_dir",
 		"log_level",
 		"log_max_size",
+		"log_max_backups",
 		"log_to_stdout",
 		"log_file",
 		"pprof_switch",
