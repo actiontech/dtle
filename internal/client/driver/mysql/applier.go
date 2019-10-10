@@ -486,7 +486,20 @@ func (a *Applier) executeWriteFuncs() {
 
 			if !a.shutdown {
 				a.lastAppliedBinlogTx = groupTx[len(groupTx)-1]
-				a.mysqlContext.Gtid = fmt.Sprintf("%s:1-%d", a.lastAppliedBinlogTx.SID, a.lastAppliedBinlogTx.GNO)
+				if a.mysqlContext.Gtid != "" {
+					sp := strings.Split(a.mysqlContext.Gtid, ",")
+
+					if strings.Split(sp[len(sp)-1], ":")[0] == a.lastAppliedBinlogTx.SID || strings.Split(sp[len(sp)-1], ":")[0] == "\n"+a.lastAppliedBinlogTx.SID {
+						sp[len(sp)-1] = fmt.Sprintf("%s:1-%d", a.lastAppliedBinlogTx.SID, a.lastAppliedBinlogTx.GNO)
+					}
+					var rgtid string
+					for _, gtid := range sp {
+						rgtid = rgtid + "," + gtid
+					}
+					a.mysqlContext.Gtid = rgtid[1:]
+				} else {
+					a.mysqlContext.Gtid = fmt.Sprintf("%s:1-%d", a.lastAppliedBinlogTx.SID, a.lastAppliedBinlogTx.GNO)
+				}
 				// a.mysqlContext.BinlogPos = // homogeneous obsolete. not implementing.
 			}
 		case <-time.After(1 * time.Second):
@@ -739,7 +752,19 @@ func (a *Applier) heterogeneousReplay() {
 			span.Finish()
 			if !a.shutdown {
 				// TODO what is this used for?
-				a.mysqlContext.Gtid = fmt.Sprintf("%s:1-%d", txSid, binlogEntry.Coordinates.GNO)
+				if a.mysqlContext.Gtid != "" {
+					sp := strings.Split(a.mysqlContext.Gtid, ",")
+					if strings.Split(sp[len(sp)-1], ":")[0] == txSid || strings.Split(sp[len(sp)-1], ":")[0] == "\n"+txSid {
+						sp[len(sp)-1] = fmt.Sprintf("%s:1-%d", txSid, binlogEntry.Coordinates.GNO)
+					}
+					var rgtid string
+					for _, gtid := range sp {
+						rgtid = rgtid + "," + gtid
+					}
+					a.mysqlContext.Gtid = rgtid[1:]
+				} else {
+					a.mysqlContext.Gtid = fmt.Sprintf("%s:1-%d", txSid, binlogEntry.Coordinates.GNO)
+				}
 				if a.mysqlContext.BinlogFile != binlogEntry.Coordinates.LogFile {
 					a.mysqlContext.BinlogFile = binlogEntry.Coordinates.LogFile
 					a.publishProgress()
@@ -776,7 +801,19 @@ OUTER:
 
 				if !a.shutdown {
 					a.lastAppliedBinlogTx = binlogTx
-					a.mysqlContext.Gtid = fmt.Sprintf("%s:1-%d", a.lastAppliedBinlogTx.SID, a.lastAppliedBinlogTx.GNO)
+					if a.mysqlContext.Gtid != "" {
+						sp := strings.Split(a.mysqlContext.Gtid, ",")
+						if strings.Split(sp[len(sp)-1], ":")[0] == a.lastAppliedBinlogTx.SID || strings.Split(sp[len(sp)-1], ":")[0] == "\n"+a.lastAppliedBinlogTx.SID {
+							sp[len(sp)-1] = fmt.Sprintf("%s:1-%d", a.lastAppliedBinlogTx.SID, a.lastAppliedBinlogTx.GNO)
+						}
+						var rgtid string
+						for _, gtid := range sp {
+							rgtid = rgtid + "," + gtid
+						}
+						a.mysqlContext.Gtid = rgtid[1:]
+					} else {
+						a.mysqlContext.Gtid = fmt.Sprintf("%s:1-%d", a.lastAppliedBinlogTx.SID, a.lastAppliedBinlogTx.GNO)
+					}
 					// a.mysqlContext.BinlogPos = // homogeneous obsolete. not implementing.
 				}
 			} else {
