@@ -57,7 +57,7 @@ const (
 	getJobRetryIntv = 5 * time.Second
 
 	// stateSnapshotIntv is how often the client snapshots state
-	stateSnapshotIntv = 60 * time.Second
+	stateSnapshotIntv = 30 * time.Second
 
 	// initialHeartbeatStagger is used to stagger the interval between
 	// starting and the intial heartbeat. After the intial heartbeat,
@@ -839,7 +839,7 @@ func (c *Client) allocSync() {
 			aUpdates[alloc.ID] = alloc
 
 		case update := <-c.workUpdates:
-			jUpdates[update.JobID] = update
+			jUpdates[update.JobID + update.TaskType] = update
 
 		case <-syncTicker.C:
 			// Fast path if there are no updates

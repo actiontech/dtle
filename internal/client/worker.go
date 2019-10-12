@@ -177,16 +177,16 @@ func (r *Worker) SaveState() error {
 		{
 			tu := &models.TaskUpdate{
 				JobID:    r.alloc.JobID,
+				TaskType: r.task.Type,
 				NatsAddr: id.DriverConfig.NatsAddr,
 			}
 			if r.task.Type == models.TaskTypeDest {
 				if id.DriverConfig.Gtid != "" {
 					tu.Gtid = id.DriverConfig.Gtid
 				}
+			} else { // TaskTypeSrc
 				tu.BinlogFile = id.DriverConfig.BinlogFile
 				tu.BinlogPos = id.DriverConfig.BinlogPos
-			} else { // TaskTypeSrc
-
 			}
 			r.workUpdates <- tu
 		}

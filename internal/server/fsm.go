@@ -528,17 +528,24 @@ func (n *udupFSM) applyJobClientUpdate(buf []byte, index uint64) interface{} {
 			existing.JobModifyIndex = index
 
 			for _, t := range existing.Tasks {
+				// GTID is updated regardless of task type
 				if ju.Gtid != "" {
 					n.logger.Debugf("*** write gtid %v", ju.Gtid)
 					t.Config["Gtid"] = ju.Gtid
 				}
-				if ju.BinlogFile != "" {
-					t.Config["BinlogFile"] = ju.BinlogFile
+
+				if t.Type == ju.TaskType {
+					t.Config["NatsAddr"] = ju.NatsAddr
+
+					if ju.BinlogFile != "" {
+						n.logger.Debugf("*** udupFSM.applyJobClientUpdate. update BinlogFile %v", ju.BinlogFile)
+						t.Config["BinlogFile"] = ju.BinlogFile
+					}
+					if ju.BinlogPos != 0 {
+						n.logger.Debugf("*** udupFSM.applyJobClientUpdate. update BinlogPos %v", ju.BinlogPos)
+						t.Config["BinlogPos"] = ju.BinlogPos
+					}
 				}
-				if ju.BinlogPos != 0 {
-					t.Config["BinlogPos"] = ju.BinlogPos
-				}
-				t.Config["NatsAddr"] = ju.NatsAddr
 			}
 			// Update all the client allocations
 			if err := n.state.UpdateJobFromClient(index, existing); err != nil {

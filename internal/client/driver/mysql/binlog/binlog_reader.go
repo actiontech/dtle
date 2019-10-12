@@ -321,25 +321,33 @@ func (b *BinlogReader) ConnectBinlogStreamer(coordinates base.BinlogCoordinatesX
 			return err
 		}
 
-		waitForRelay := true
-		for !b.shutdown && waitForRelay {
-			_, p := meta.Pos()
-			_, gs := meta.GTID()
+		chWait := make(chan struct{})
+		go func() {
+			waitForRelay := true
+			for !b.shutdown {
+				_, p := meta.Pos()
+				_, gs := meta.GTID()
 
-			if targetGtid.Contain(gs) {
+				// Since mysqlContext is passed into BinlogReader as a pointer, it will also
+				// modify extractor.mysqlContext.
+				b.mysqlContext.BinlogFile = p.Name
+				b.mysqlContext.BinlogPos = int64(p.Pos)
 
-			} else {
-				waitForRelay = false
-			}
+				if waitForRelay {
+					if targetGtid.Contain(gs) {
+						b.logger.Debugf("mysql.reader: Relay: keep waiting. pos %v gs %v", p, gs)
+					} else {
+						b.logger.Debugf("mysql.reader: Relay: stop waiting. pos %v gs %v", p, gs)
+						chWait <- struct{}{}
+						waitForRelay = false
+					}
+				}
 
-			if waitForRelay {
-				b.logger.Debugf("mysql.reader: Relay: keep waiting. pos %v gs %v", p, gs)
 				time.Sleep(1 * time.Second)
-			} else {
-				b.logger.Debugf("mysql.reader: Relay: stop waiting. pos %v gs %v", p, gs)
 			}
-		}
+		}()
 
+		<-chWait
 		b.binlogStreamer, err = b.binlogReader.StartSync(startPos)
 		if err != nil {
 			b.logger.Debugf("mysql.reader: err at StartSync: %v", err)
