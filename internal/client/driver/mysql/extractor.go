@@ -389,7 +389,6 @@ func (e *Extractor) inspectTables() (err error) {
 				TableSchemaScope:       doDb.TableSchemaScope,
 				TableSchemaRenameRegex: doDb.TableSchemaRenameRegex,
 			}
-
 			if len(doDb.Tables) == 0 {
 				tbs, err := sql.ShowTables(e.db, doDb.TableSchema, e.mysqlContext.ExpandSyntaxSupport)
 				if err != nil {
@@ -416,7 +415,13 @@ func (e *Extractor) inspectTables() (err error) {
 						if err != nil {
 							return err
 						}
-						tableRenameRegex := doTb.TableRename
+						var tableRenameRegex string
+						if doTb.TableRenameRegex == "" {
+							tableRenameRegex = doTb.TableRename
+						} else {
+							tableRenameRegex = doTb.TableRenameRegex
+						}
+
 						for _, table := range tables {
 							reg := regexp.MustCompile(regex)
 							if !reg.MatchString(table.TableName) {
@@ -435,6 +440,7 @@ func (e *Extractor) inspectTables() (err error) {
 							}
 							*table = *doTb
 							db.Tables = append(db.Tables, table)
+							doTb.TableName = ""
 						}
 						if db.Tables == nil {
 							return fmt.Errorf("src table  was nil")
