@@ -247,10 +247,10 @@ func NewRotateFile(filePath string, maxSize int, maxBackups int) *rotate.Logger 
 // setupAgent is used to start the agent and various interfaces
 func (c *Command) setupAgent(config *Config, logOutput io.Writer) error {
 
-	c.logger.WithFields(logrus.Fields{"status": "server: Joining cluster..."}).Info("Starting Dtle server...")
+	c.logger.WithField("status", "server: Joining cluster...").Infof("Starting Dtle server...")
 	agent, err := NewAgent(config, logOutput, c.logger)
 	if err != nil {
-		c.logger.WithFields(logrus.Fields{"err": err}).Errorf("Error starting server")
+		c.logger.WithError(err).Errorf("Error starting server")
 		return err
 	}
 	c.agent = agent
@@ -259,7 +259,7 @@ func (c *Command) setupAgent(config *Config, logOutput io.Writer) error {
 	http, err := NewHTTPServer(agent, config, logOutput)
 	if err != nil {
 		agent.Shutdown()
-		c.logger.WithFields(logrus.Fields{"err": err}).Errorf("Error starting http serve")
+		c.logger.WithError(err).Errorf("Error starting http serve")
 		return err
 	}
 	c.httpServer = http
@@ -347,7 +347,7 @@ func (c *Command) Run(args []string) int {
 
 	// Join startup nodes if specified
 	if err := c.startupJoin(config); err != nil {
-		c.logger.WithFields(logrus.Fields{"err": err.Error()}).Errorf("%v", err.Error())
+		c.logger.WithFields(logrus.Fields{"err": err.Error()}).Errorf("error in c.startupJoin")
 		return 1
 	}
 
@@ -369,12 +369,12 @@ func (c *Command) Run(args []string) int {
 
 	// Agent configuration output
 	padding := 18
-	c.logger.WithFields(logrus.Fields{"status": "dtle server configuration"}).Info("Dtle server configuration")
+	c.logger.WithFields(logrus.Fields{"status": "dtle server configuration"}).Infof("Dtle server configuration")
 	for _, k := range infoKeys {
-		c.logger.WithFields(logrus.Fields{strings.Repeat(" ", padding-len(k)) + strings.Title(k): info[k]}).Info("info keys")
+		c.logger.WithFields(logrus.Fields{strings.Repeat(" ", padding-len(k)) + strings.Title(k): info[k]}).Infof("info keys")
 	}
 	// Output the header that the server has started
-	c.logger.WithFields(logrus.Fields{"status": " Log data will stream in below"}).Info("Dtle server started!")
+	c.logger.WithFields(logrus.Fields{"status": " Log data will stream in below"}).Infof("Dtle server started!")
 
 	// Start retry join process
 	c.retryJoinErrCh = make(chan struct{})
@@ -400,7 +400,7 @@ WAIT:
 	case <-c.retryJoinErrCh:
 		return 1
 	}
-	c.logger.WithFields(logrus.Fields{"signal": sig}).Info("Caught signal")
+	c.logger.WithFields(logrus.Fields{"signal": sig}).Infof("Caught signal")
 
 	// Skip any SIGPIPE signal (See issue #1798)
 	if sig == syscall.SIGPIPE {
@@ -430,10 +430,10 @@ WAIT:
 
 	// Attempt a graceful leave
 	gracefulCh := make(chan struct{})
-	c.logger.WithFields(logrus.Fields{"status": "shutting down agent."}).Info("Gracefully shutting down agent")
+	c.logger.WithField("status", "shutting down agent.").Infof("Gracefully shutting down agent")
 	go func() {
 		if err := c.agent.Leave(); err != nil {
-			c.logger.WithFields(logrus.Fields{"err": err}).Errorf("%s", err)
+			c.logger.WithError(err).Errorf("error in agent.Leave")
 			return
 		}
 		close(gracefulCh)
@@ -513,13 +513,13 @@ func (c *Command) startupJoin(config *Config) error {
 		return nil
 	}
 
-	c.logger.WithFields(logrus.Fields{"status": "Joining cluster..."}).Info("Joining cluster...")
+	c.logger.WithField("status", "Joining cluster...").Infof("Joining cluster...")
 	n, err := c.agent.server.Join(config.Server.StartJoin)
 	if err != nil {
 		return err
 	}
 
-	c.logger.WithFields(logrus.Fields{"status": "server: Joining cluster..."}).Info("Join completed. Synced with %d initial agents", n)
+	c.logger.WithField("status", "server: Joining cluster...").Infof("Join completed. Synced with %d initial agents", n)
 	return nil
 }
 
@@ -530,24 +530,24 @@ func (c *Command) retryJoin(config *Config) {
 		return
 	}
 
-	c.logger.WithFields(logrus.Fields{"status": "server: Joining cluster..."}).Info("server: Joining cluster...")
+	c.logger.WithField("status", "server: Joining cluster...").Infof("server: Joining cluster...")
 
 	attempt := 0
 	for {
 		n, err := c.agent.server.Join(config.Server.StartJoin)
 		if err == nil {
-			c.logger.WithFields(logrus.Fields{"status": "server: Joining cluster..."}).Info("server: Join completed. Synced with %d initial agents", n)
+			c.logger.WithField("status", "server: Joining cluster...").Infof("server: Join completed. Synced with %d initial agents", n)
 			return
 		}
 
 		attempt++
 		if config.Server.RetryMaxAttempts > 0 && attempt > config.Server.RetryMaxAttempts {
-			c.logger.WithFields(logrus.Fields{"err": " max join retry exhausted, exiting"}).Errorf("server exiting ")
+			c.logger.WithField("err", " max join retry exhausted, exiting").Errorf("server exiting ")
 			close(c.retryJoinErrCh)
 			return
 		}
 
-		c.logger.WithFields(logrus.Fields{"err": err, "retrying ": config.Server.RetryInterval}).Warnf("server: Join failed")
+		c.logger.WithError(err).WithField("retrying ", config.Server.RetryInterval).Warnf("server: Join failed")
 		time.Sleep(config.Server.retryInterval)
 	}
 }
