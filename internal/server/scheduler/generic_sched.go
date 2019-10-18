@@ -327,6 +327,8 @@ func (s *GenericScheduler) computeJobAllocs() error {
 	}
 
 	for _, e := range diff.resume {
+		s.logger.WithField("taskConfig", e.Task.Config).WithField("alloc", e.Alloc).Debugf(
+			"*** computeJobAllocs. diff.resume")
 		s.plan.AppendUpdate(e.Alloc, models.AllocDesiredStatusRun, "", "")
 	}
 

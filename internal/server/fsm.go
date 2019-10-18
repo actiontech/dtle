@@ -268,6 +268,12 @@ func (n *udupFSM) applyStatusUpdate(buf []byte, index uint64) interface{} {
 						if len(out) > 0 {
 							task.NodeID = out[0].ID
 							if task.Type == models.TaskTypeDest {
+								// TODO call-path:
+								// udupFSM.applyStatusUpdate
+								//<- NodeUpdateStatusRequestType
+								//   <- server.Node.UpdateStatus(): UpdateStatus is used to update the status of a client node
+								//      <- (rpc) Client.updateNodeStatus <- Client.registerAndHeartbeat
+								// Why it should be updated and only updated for dest task?
 								for i, t := range job.Tasks {
 									t.Config["NatsAddr"] = out[0].NatsAdvertiseAddr
 									job.Tasks[i] = t
@@ -518,36 +524,26 @@ func (n *udupFSM) applyJobClientUpdate(buf []byte, index uint64) interface{} {
 	for _, ju := range req.JobUpdates {
 		// Check if the job already exists
 		if existing, _ := n.state.JobByID(ws, ju.JobID); existing != nil {
-			if ju.Gtid != "" {
-				existing.ModifyIndex = index
-				existing.JobModifyIndex = index
-				for _, t := range existing.Tasks {
+			existing.ModifyIndex = index
+			existing.JobModifyIndex = index
+
+			for _, t := range existing.Tasks {
+				if ju.Gtid != "" {
 					n.logger.Debugf("*** write gtid %v", ju.Gtid)
 					t.Config["Gtid"] = ju.Gtid
-					if ju.BinlogFile != "" {
-						t.Config["BinlogFile"] = ju.BinlogFile
-					}
-					if ju.BinlogPos != 0 {
-						t.Config["BinlogPos"] = ju.BinlogPos
-					}
-					//t.Config["NatsAddr"] = ju.NatsAddr
 				}
-				// Update all the client allocations
-				if err := n.state.UpdateJobFromClient(index, existing); err != nil {
-					n.logger.Errorf("server.fsm: UpdateJobFromClient failed: %v", err)
-					return err
+				if ju.BinlogFile != "" {
+					t.Config["BinlogFile"] = ju.BinlogFile
 				}
-			} else {
-				existing.ModifyIndex = index
-				existing.JobModifyIndex = index
-				/*for _, t := range existing.Tasks {
-					t.Config["NatsAddr"] = ju.NatsAddr
-				}*/
-				// Update all the client allocations
-				if err := n.state.UpdateJobFromClient(index, existing); err != nil {
-					n.logger.Errorf("server.fsm: UpdateJobFromClient failed: %v", err)
-					return err
+				if ju.BinlogPos != 0 {
+					t.Config["BinlogPos"] = ju.BinlogPos
 				}
+				t.Config["NatsAddr"] = ju.NatsAddr
+			}
+			// Update all the client allocations
+			if err := n.state.UpdateJobFromClient(index, existing); err != nil {
+				n.logger.Errorf("server.fsm: UpdateJobFromClient failed: %v", err)
+				return err
 			}
 		}
 	}

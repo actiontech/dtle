@@ -253,6 +253,7 @@ func (r *Worker) Run() {
 	r.logger.WithFields(logrus.Fields{
 		"taskType": r.task.Type,
 		"allocId":  r.alloc.ID,
+		"taskConfig": r.task.Config,
 	}).Debugf("agent: Starting task context from alloc")
 
 	// Create a driver so that we can determine the FSIsolation required
