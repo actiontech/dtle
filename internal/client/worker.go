@@ -184,9 +184,9 @@ func (r *Worker) SaveState() error {
 				if id.DriverConfig.Gtid != "" {
 					tu.Gtid = id.DriverConfig.Gtid
 				}
-			} else { // TaskTypeSrc
 				tu.BinlogFile = id.DriverConfig.BinlogFile
 				tu.BinlogPos = id.DriverConfig.BinlogPos
+			} else { // TaskTypeSrc
 			}
 			r.workUpdates <- tu
 		}

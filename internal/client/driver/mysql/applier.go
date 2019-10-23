@@ -245,7 +245,6 @@ type Applier struct {
 	nDumpEntry     int64
 
 	stubFullApplyDelay time.Duration
-	lastBinlogFile string
 }
 
 func NewApplier(ctx *common.ExecContext, cfg *config.MySQLDriverConfig, logger *logrus.Logger) (*Applier, error) {
@@ -451,7 +450,7 @@ func (a *Applier) executeWriteFuncs() {
 				a.rowCopyComplete <- true
 				a.logger.Printf("mysql.applier: Rows copy complete.number of rows:%d", a.mysqlContext.TotalRowsReplay)
 				a.mysqlContext.Gtid = a.currentCoordinates.RetrievedGtidSet
-				a.lastBinlogFile = a.currentCoordinates.File
+				a.mysqlContext.BinlogFile = a.currentCoordinates.File
 				break
 			}
 			if a.shutdown {
@@ -501,6 +500,7 @@ func (a *Applier) executeWriteFuncs() {
 				} else {
 					a.mysqlContext.Gtid = fmt.Sprintf("%s:1-%d", a.lastAppliedBinlogTx.SID, a.lastAppliedBinlogTx.GNO)
 				}
+				// a.mysqlContext.BinlogPos = // homogeneous obsolete. not implementing.
 			}
 		case <-time.After(1 * time.Second):
 			// do nothing
@@ -765,10 +765,11 @@ func (a *Applier) heterogeneousReplay() {
 				} else {
 					a.mysqlContext.Gtid = fmt.Sprintf("%s:1-%d", txSid, binlogEntry.Coordinates.GNO)
 				}
-				if a.lastBinlogFile != binlogEntry.Coordinates.LogFile {
-					a.lastBinlogFile = binlogEntry.Coordinates.LogFile
+				if a.mysqlContext.BinlogFile != binlogEntry.Coordinates.LogFile {
+					a.mysqlContext.BinlogFile = binlogEntry.Coordinates.LogFile
 					a.publishProgress()
 				}
+				a.mysqlContext.BinlogPos = binlogEntry.Coordinates.LogPos
 			}
 		case <-time.After(10 * time.Second):
 			a.logger.Debugf("mysql.applier: no binlogEntry for 10s")
@@ -813,6 +814,7 @@ OUTER:
 					} else {
 						a.mysqlContext.Gtid = fmt.Sprintf("%s:1-%d", a.lastAppliedBinlogTx.SID, a.lastAppliedBinlogTx.GNO)
 					}
+					// a.mysqlContext.BinlogPos = // homogeneous obsolete. not implementing.
 				}
 			} else {
 				if binlogTx.LastCommitted == lastCommitted {
@@ -1014,17 +1016,17 @@ func (a *Applier) publishProgress() {
 	retry := 0
 	keep := true
 	for keep {
-		a.logger.Debugf("*** applier.publishProgress. retry %v, file %v", retry, a.lastBinlogFile)
-		_, err := a.natsConn.Request(fmt.Sprintf("%s_progress", a.subject), []byte(a.lastBinlogFile), 10*time.Second)
+		a.logger.Debugf("*** applier.publishProgress. retry %v, file %v", retry, a.mysqlContext.BinlogFile)
+		_, err := a.natsConn.Request(fmt.Sprintf("%s_progress", a.subject), []byte(a.mysqlContext.BinlogFile), 10*time.Second)
 		if err == nil {
 			keep = false
 		} else {
 			if err == gonats.ErrTimeout {
-				a.logger.WithField("retry", retry).WithField("file", a.lastBinlogFile).Debugf(
+				a.logger.WithField("retry", retry).WithField("file", a.mysqlContext.BinlogFile).Debugf(
 					"applier.publishProgress. timeout")
 				break
 			} else {
-				a.logger.WithField("retry", retry).WithField("file", a.lastBinlogFile).WithError(err).Debugf(
+				a.logger.WithField("retry", retry).WithField("file", a.mysqlContext.BinlogFile).WithError(err).Debugf(
 					"applier.publishProgress. unknown error")
 			}
 			retry += 1
@@ -1690,6 +1692,8 @@ func (a *Applier) ID() string {
 			ReplicateDoDb:     a.mysqlContext.ReplicateDoDb,
 			ReplicateIgnoreDb: a.mysqlContext.ReplicateIgnoreDb,
 			Gtid:              a.mysqlContext.Gtid,
+			BinlogPos:         a.mysqlContext.BinlogPos,
+			BinlogFile:        a.mysqlContext.BinlogFile,
 			NatsAddr:          a.mysqlContext.NatsAddr,
 			ParallelWorkers:   a.mysqlContext.ParallelWorkers,
 			ConnectionConfig:  a.mysqlContext.ConnectionConfig,
