@@ -415,12 +415,12 @@ func (e *Extractor) inspectTables() (err error) {
 						if err != nil {
 							return err
 						}
-						var tableRenameRegex string
-						if doTb.TableRenameRegex == "" {
-							tableRenameRegex = doTb.TableRename
-						} else {
+						/*	var tableRenameRegex string
+							if doTb.TableRenameRegex == "" {*/
+						tableRenameRegex := doTb.TableRename
+						/*} else {
 							tableRenameRegex = doTb.TableRenameRegex
-						}
+						}*/
 
 						for _, table := range tables {
 							reg := regexp.MustCompile(regex)
