@@ -141,6 +141,7 @@ type MySQLDriverConfig struct {
 	GroupTimeout                        int // millisecond
 
 	Gtid                     string
+	RelayGtid                string
 	BinlogFile               string
 	BinlogPos                int64
 	GtidStart                string

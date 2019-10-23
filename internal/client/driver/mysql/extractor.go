@@ -1594,6 +1594,7 @@ func (e *Extractor) ID() string {
 			Gtid:                  e.mysqlContext.Gtid,
 			NatsAddr:              e.mysqlContext.NatsAddr,
 			ConnectionConfig:      e.mysqlContext.ConnectionConfig,
+			RelayGtid:             e.mysqlContext.RelayGtid,
 		},
 	}
 
