@@ -390,6 +390,7 @@ type TaskUpdate struct {
 	NatsAddr string
 	BinlogFile string
 	BinlogPos int64
+	RelayGtid string
 }
 
 const (

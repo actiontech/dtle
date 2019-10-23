@@ -528,14 +528,11 @@ func (n *udupFSM) applyJobClientUpdate(buf []byte, index uint64) interface{} {
 			existing.JobModifyIndex = index
 
 			for _, t := range existing.Tasks {
-				// GTID is updated regardless of task type
-				if ju.Gtid != "" {
-					n.logger.Debugf("*** write gtid %v", ju.Gtid)
-					t.Config["Gtid"] = ju.Gtid
-				}
-
-				if t.Type == ju.TaskType {
-					t.Config["NatsAddr"] = ju.NatsAddr
+				{ // these should be updated regardless of task type
+					if ju.Gtid != "" {
+						n.logger.Debugf("*** write gtid %v", ju.Gtid)
+						t.Config["Gtid"] = ju.Gtid
+					}
 
 					if ju.BinlogFile != "" {
 						n.logger.Debugf("*** udupFSM.applyJobClientUpdate. update BinlogFile %v", ju.BinlogFile)
@@ -544,6 +541,14 @@ func (n *udupFSM) applyJobClientUpdate(buf []byte, index uint64) interface{} {
 					if ju.BinlogPos != 0 {
 						n.logger.Debugf("*** udupFSM.applyJobClientUpdate. update BinlogPos %v", ju.BinlogPos)
 						t.Config["BinlogPos"] = ju.BinlogPos
+					}
+				}
+
+				if t.Type == ju.TaskType {
+					t.Config["NatsAddr"] = ju.NatsAddr
+
+					if ju.RelayGtid != "" {
+						t.Config["RelayGtid"] = ju.RelayGtid
 					}
 				}
 			}

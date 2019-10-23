@@ -280,6 +280,17 @@ func (b *BinlogReader) ConnectBinlogStreamer(coordinates base.BinlogCoordinatesX
 			User:     b.mysqlContext.ConnectionConfig.User,
 			Password: b.mysqlContext.ConnectionConfig.Password,
 		}
+
+		var relayGtid string
+		if b.mysqlContext.RelayGtid == "" {
+			b.logger.WithField("gtid", coordinates.GtidSet).Debugf(
+				"ConnectBinlogStreamer. RelayGtid empty, use input gtid.")
+			relayGtid = coordinates.GtidSet
+		} else {
+			b.logger.WithField("gtid", b.mysqlContext.RelayGtid).Debugf(
+				"ConnectBinlogStreamer. use RelayGtid.")
+			relayGtid = b.mysqlContext.RelayGtid
+		}
 		relayConfig := &dmrelay.Config{
 			ServerID:   int(b.serverId),
 			Flavor:     "mysql",
@@ -287,7 +298,7 @@ func (b *BinlogReader) ConnectBinlogStreamer(coordinates base.BinlogCoordinatesX
 			RelayDir:   b.getBinlogDir(),
 			BinLogName: "",
 			EnableGTID: true,
-			BinlogGTID: coordinates.GtidSet,
+			BinlogGTID: relayGtid,
 		}
 		b.relay = dmrelay.NewRelay(relayConfig)
 		err = b.relay.Init()
@@ -296,7 +307,7 @@ func (b *BinlogReader) ConnectBinlogStreamer(coordinates base.BinlogCoordinatesX
 		}
 
 		meta := b.relay.GetMeta()
-		changed, err := meta.AdjustWithStartPos(coordinates.LogFile, coordinates.GtidSet, true)
+		changed, err := meta.AdjustWithStartPos(coordinates.LogFile, relayGtid, true)
 		if err != nil {
 			return err
 		}
@@ -316,7 +327,7 @@ func (b *BinlogReader) ConnectBinlogStreamer(coordinates base.BinlogCoordinatesX
 		}
 		b.binlogReader = streamer.NewBinlogReader(brConfig)
 
-		targetGtid, err := gtid.ParserGTID("mysql", coordinates.GtidSet)
+		targetGtid, err := gtid.ParserGTID("mysql", relayGtid)
 		if err != nil {
 			return err
 		}
@@ -330,8 +341,7 @@ func (b *BinlogReader) ConnectBinlogStreamer(coordinates base.BinlogCoordinatesX
 
 				// Since mysqlContext is passed into BinlogReader as a pointer, it will also
 				// modify extractor.mysqlContext.
-				b.mysqlContext.BinlogFile = p.Name
-				b.mysqlContext.BinlogPos = int64(p.Pos)
+				b.mysqlContext.RelayGtid = gs.String()
 
 				if waitForRelay {
 					if targetGtid.Contain(gs) {
