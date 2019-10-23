@@ -385,6 +385,7 @@ func (e *TaskEvent) SetDriverMessage(m string) *TaskEvent {
 
 type TaskUpdate struct {
 	JobID    string
+	TaskType string
 	Gtid     string
 	NatsAddr string
 	BinlogFile string

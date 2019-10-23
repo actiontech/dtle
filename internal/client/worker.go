@@ -173,31 +173,34 @@ func (r *Worker) SaveState() error {
 				"err":      err,
 			}).Errorf("agent: Failed to parse handle")
 		}
-		if id.DriverConfig.Gtid != "" {
-			if r.task.Type == models.TaskTypeDest {
-				r.workUpdates <- &models.TaskUpdate{
-					JobID:    r.alloc.JobID,
-					Gtid:     id.DriverConfig.Gtid,
-					NatsAddr: id.DriverConfig.NatsAddr,
 
-					BinlogFile: id.DriverConfig.BinlogFile,
-					BinlogPos:  id.DriverConfig.BinlogPos,
-				}
-			}
-		} else {
-			r.workUpdates <- &models.TaskUpdate{
+		{
+			tu := &models.TaskUpdate{
 				JobID:    r.alloc.JobID,
+				TaskType: r.task.Type,
 				NatsAddr: id.DriverConfig.NatsAddr,
 			}
+			if r.task.Type == models.TaskTypeDest {
+				if id.DriverConfig.Gtid != "" {
+					tu.Gtid = id.DriverConfig.Gtid
+				}
+			} else { // TaskTypeSrc
+				tu.BinlogFile = id.DriverConfig.BinlogFile
+				tu.BinlogPos = id.DriverConfig.BinlogPos
+			}
+			r.workUpdates <- tu
 		}
+
 		r.logger.WithFields(logrus.Fields{
 			"task":       r.task,
 			"configLock": r.task.ConfigLock,
 		}).Debugf("Worker.SaveState: lock")
+
+		if id.DriverConfig.NatsAddr == "" {
+			r.logger.WithField("current_nats", r.task.Config["NatsAddr"]).Infof(
+				"DTLE_BUG_MAYBE. Worker.SaveState(): id.DriverConfig.NatsAddr is empty")
+		}
 		r.task.ConfigLock.Lock()
-		r.logger.WithFields(logrus.Fields{
-			"task": r.task,
-		}).Debugf("Worker.SaveState: after lock")
 		r.task.Config["Gtid"] = id.DriverConfig.Gtid
 		r.task.Config["NatsAddr"] = id.DriverConfig.NatsAddr
 		r.task.ConfigLock.Unlock()
@@ -250,6 +253,7 @@ func (r *Worker) Run() {
 	r.logger.WithFields(logrus.Fields{
 		"taskType": r.task.Type,
 		"allocId":  r.alloc.ID,
+		"taskConfig": r.task.Config,
 	}).Debugf("agent: Starting task context from alloc")
 
 	// Create a driver so that we can determine the FSIsolation required
