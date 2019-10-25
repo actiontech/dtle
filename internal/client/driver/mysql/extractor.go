@@ -232,6 +232,10 @@ func (e *Extractor) Run() {
 			}
 			fullCopy = false
 		}
+
+		if e.mysqlContext.BinlogFile != "" {
+			fullCopy = false
+		}
 	} else {
 		fullCopy = false
 		if e.mysqlContext.BinlogRelay {
@@ -297,14 +301,14 @@ func (e *Extractor) Run() {
 		if err := e.publish(ctx, fmt.Sprintf("%s_full_complete", e.subject), "", dumpMsg); err != nil {
 			e.onError(TaskStateDead, err)
 		}
-	} else {
+	} else { // no full copy
 		// Will not get consistent table meta-info for an incremental only job.
 		// https://github.com/actiontech/dtle/issues/321#issuecomment-441191534
 		if err := e.getSchemaTablesAndMeta(); err != nil {
 			e.onError(TaskStateDead, err)
 			return
 		}
-		if err := e.readCurrentBinlogCoordinates(); err != nil {
+		if err := e.setInitialBinlogCoordinates(); err != nil {
 			e.onError(TaskStateDead, err)
 			return
 		}
@@ -730,8 +734,7 @@ func (e *Extractor) selectSqlMode() error {
 	return nil
 }
 
-// readCurrentBinlogCoordinates reads master status from hooked server
-func (e *Extractor) readCurrentBinlogCoordinates() error {
+func (e *Extractor) setInitialBinlogCoordinates() error {
 	if e.mysqlContext.Gtid != "" {
 		gtidSet, err := gomysql.ParseMysqlGTIDSet(e.mysqlContext.Gtid)
 		if err != nil {
@@ -742,12 +745,13 @@ func (e *Extractor) readCurrentBinlogCoordinates() error {
 			LogFile: e.mysqlContext.BinlogFile,
 			LogPos:  e.mysqlContext.BinlogPos,
 		}
-	} else {
-		binlogCoordinates, err := base.GetSelfBinlogCoordinates(e.db)
-		if err != nil {
-			return err
+	} else if e.mysqlContext.BinlogFile != "" {
+		e.initialBinlogCoordinates = &base.BinlogCoordinatesX{
+			LogFile: e.mysqlContext.BinlogFile,
+			LogPos:  e.mysqlContext.BinlogPos,
 		}
-		e.initialBinlogCoordinates = binlogCoordinates
+	} else {
+		return fmt.Errorf("neither Gtid nor BinlogFile is assigned")
 	}
 
 	return nil

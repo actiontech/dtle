@@ -1090,12 +1090,7 @@ func (a *Applier) initDBConnections() (err error) {
 		}
 		a.logger.Debugf("mysql.applier. after prepare stmt for gtid_executed table")
 	}
-	/*if err := a.readCurrentBinlogCoordinates(); err != nil {
-		return err
-	}*/
-	/*if err := a.readTableColumns(); err != nil {
-		return err
-	}*/
+
 	a.logger.Printf("mysql.applier: Initiated on %s:%d, version %+v", a.mysqlContext.ConnectionConfig.Host, a.mysqlContext.ConnectionConfig.Port, a.mysqlContext.MySQLVersion)
 	return nil
 }

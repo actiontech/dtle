@@ -365,14 +365,20 @@ func (b *BinlogReader) ConnectBinlogStreamer(coordinates base.BinlogCoordinatesX
 		}
 	} else {
 		// Start sync with sepcified binlog gtid
-		b.logger.Debugf("mysql.reader: GtidSet: %v", coordinates.GtidSet)
+		b.logger.WithField("coordinate", coordinates).Debugf("mysql.reader: will start sync")
 
-		gtidSet, err := gomysql.ParseMysqlGTIDSet(coordinates.GtidSet)
-		if err != nil {
-			b.logger.Errorf("mysql.reader: err: %v", err)
-			return err
+		if coordinates.GtidSet == "" {
+			b.binlogStreamer, err = b.binlogSyncer.StartSync(
+				gomysql.Position{Name:coordinates.LogFile,Pos:uint32(coordinates.LogPos)})
+		} else {
+			gtidSet, err := gomysql.ParseMysqlGTIDSet(coordinates.GtidSet)
+			if err != nil {
+				b.logger.Errorf("mysql.reader: err: %v", err)
+				return err
+			}
+
+			b.binlogStreamer, err = b.binlogSyncer.StartSyncGTID(gtidSet)
 		}
-		b.binlogStreamer, err = b.binlogSyncer.StartSyncGTID(gtidSet)
 		if err != nil {
 			b.logger.Debugf("mysql.reader: err at StartSyncGTID: %v", err)
 			return err

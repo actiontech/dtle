@@ -63,7 +63,7 @@ func (b *BinlogCoordinateTx) Equals(other *BinlogCoordinateTx) bool {
 
 // IsEmpty returns true if the log file is empty, unnamed
 func (b *BinlogCoordinatesX) IsEmpty() bool {
-	return b.GtidSet == ""
+	return b.GtidSet == "" && b.LogFile == ""
 }
 
 // SmallerThan returns true if this coordinate is strictly smaller than the other.
