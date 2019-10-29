@@ -9,6 +9,7 @@ package binlog
 import (
 	"bytes"
 	gosql "database/sql"
+	"github.com/cznic/mathutil"
 	"os"
 	"path"
 	"path/filepath"
@@ -713,7 +714,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 			dmlEvent.OriginalTableColumns = originalTableColumns*/
 
 			for i, row := range rowsEvent.Rows {
-				b.logger.Debugf("mysql.reader: row values: %v", row)
+				b.logger.Debugf("mysql.reader: row values: %v", row[:mathutil.Min(len(row), g.LONG_LOG_LIMIT)])
 				if dml == UpdateDML && i%2 == 1 {
 					// An update has two rows (WHERE+SET)
 					// We do both at the same time
