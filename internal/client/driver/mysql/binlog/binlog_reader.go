@@ -328,7 +328,7 @@ func (b *BinlogReader) ConnectBinlogStreamer(coordinates base.BinlogCoordinatesX
 		}
 		b.binlogReader = streamer.NewBinlogReader(brConfig)
 
-		targetGtid, err := gtid.ParserGTID("mysql", relayGtid)
+		targetGtid, err := gtid.ParserGTID("mysql", coordinates.GtidSet)
 		if err != nil {
 			return err
 		}
