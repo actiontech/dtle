@@ -23,7 +23,57 @@ import (
 func (s *HTTPServer) JobsRequest(resp http.ResponseWriter, req *http.Request) (interface{}, error) {
 	switch req.Method {
 	case "GET":
-		return s.jobListRequest(resp, req)
+		path := strings.TrimPrefix(req.URL.Path, "/v1/jobs/")
+
+		list, err := s.jobListRequest(resp, req)
+		if list != nil {
+			jobs := list.([]*models.JobListStub)
+			if path == "migrant" {
+				var usejobs []*models.JobListStub
+				for _, job := range jobs {
+					if job.WorkType == "migrant" {
+						usejobs = append(usejobs, job)
+					}
+				}
+				return usejobs, err
+			} else if path == "synchronous" {
+				var usejobs []*models.JobListStub
+				for _, job := range jobs {
+					if job.WorkType == "synchronous" {
+						usejobs = append(usejobs, job)
+					}
+				}
+				return usejobs, err
+			} else if path == "kafka" {
+				var usejobs []*models.JobListStub
+				for _, job := range jobs {
+					if job.WorkType == "kafka" {
+						usejobs = append(usejobs, job)
+					}
+				}
+				return usejobs, err
+			} else {
+				return list, err
+			}
+			/*switch path {
+			case "migrant":
+
+			case "synchronous":
+				var usejobs []models.JobListStub
+				for _, job := range jobs {
+					if job.WorkType == "synchronous" {
+						usejobs = append(usejobs, job)
+					}
+				}
+				return usejobs, err
+			case "kafka":
+
+			default:
+				return list, err
+			}*/
+		}
+		return list, err
+
 	case "PUT", "POST":
 		return s.jobUpdate(resp, req, "")
 	default:
@@ -442,6 +492,7 @@ func ApiJobToStructJob(job *api.Job, trafficLimit int) *models.Job {
 		Name:              *job.Name,
 		Failover:          job.Failover,
 		Type:              *job.Type,
+		WorkType:          *job.WorkType,
 		Datacenters:       job.Datacenters,
 		Status:            *job.Status,
 		StatusDescription: *job.StatusDescription,

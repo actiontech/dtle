@@ -187,6 +187,7 @@ type Job struct {
 	Name              *string
 	Failover          bool
 	Type              *string
+	WorkType          *string
 	Datacenters       []string
 	Tasks             []*Task
 	Status            *string

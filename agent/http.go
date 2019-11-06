@@ -150,7 +150,7 @@ func (s *HTTPServer) registerHandlers() {
 	s.mux.HandleFunc("/v1/orders/level/", s.wrap(s.setLogLevel))
 	s.mux.HandleFunc("/v1/cloud/order", s.wrap(s.OrderCloudRequest))
 
-	s.mux.HandleFunc("/v1/jobs", s.wrap(s.JobsRequest))
+	s.mux.HandleFunc("/v1/jobs/", s.wrap(s.JobsRequest))
 	s.mux.HandleFunc("/v1/job/renewal", s.wrap(s.JobsRenewalRequest))
 	s.mux.HandleFunc("/v1/job/info", s.wrap(s.JobsInfoRequest))
 	s.mux.HandleFunc("/v1/validate/job", s.wrap(s.ValidateJobRequest))

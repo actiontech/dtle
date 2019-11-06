@@ -76,7 +76,8 @@ type Job struct {
 
 	// Job status
 	Status string
-
+	// job typs
+	WorkType string
 	// StatusDescription is meant to provide more human useful information
 	StatusDescription string
 
@@ -188,6 +189,7 @@ func (j *Job) Stub(job *Job) *JobListStub {
 		ID:                j.ID,
 		Name:              j.Name,
 		Type:              j.Type,
+		WorkType:          j.WorkType,
 		Status:            j.Status,
 		StatusDescription: j.StatusDescription,
 		CreateIndex:       j.CreateIndex,
@@ -203,6 +205,7 @@ type JobListStub struct {
 	ID                string
 	Name              string
 	Type              string
+	WorkType          string
 	Status            string
 	StatusDescription string
 	JobSummary        *Job
