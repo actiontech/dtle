@@ -187,7 +187,7 @@ func (r *Worker) SaveState() error {
 				tu.BinlogFile = id.DriverConfig.BinlogFile
 				tu.BinlogPos = id.DriverConfig.BinlogPos
 			} else { // TaskTypeSrc
-				tu.RelayGtid = id.DriverConfig.RelayGtid
+				// nothing yet
 			}
 			r.workUpdates <- tu
 		}
