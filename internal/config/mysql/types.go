@@ -321,25 +321,10 @@ func (c *UniqueKey) String() string {
 
 type ColumnValues struct {
 	AbstractValues []*interface{}
-	ValuesPointers []*interface{}
 }
 
 func (this *ColumnValues) GetAbstractValues() []*interface{} {
 	return this.AbstractValues
-}
-
-func ToColumnValues(abstractValues []interface{}) *ColumnValues {
-	result := &ColumnValues{
-		AbstractValues: make([]*interface{}, len(abstractValues)),
-		ValuesPointers: make([]*interface{}, len(abstractValues)),
-	}
-
-	for i := 0; i < len(abstractValues); i++ {
-		result.AbstractValues[i] = &abstractValues[i]
-		result.ValuesPointers[i] = result.AbstractValues[i]
-	}
-
-	return result
 }
 
 func (c *ColumnValues) StringColumn(index int) string {

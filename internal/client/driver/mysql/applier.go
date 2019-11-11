@@ -246,6 +246,8 @@ type Applier struct {
 	nDumpEntry     int64
 
 	stubFullApplyDelay time.Duration
+
+	gtidSet *gomysql.MysqlGTIDSet
 }
 
 func NewApplier(ctx *common.ExecContext, cfg *config.MySQLDriverConfig, logger *logrus.Logger) (*Applier, error) {
@@ -275,6 +277,10 @@ func NewApplier(ctx *common.ExecContext, cfg *config.MySQLDriverConfig, logger *
 		waitCh:                  make(chan *models.WaitResult, 1),
 		shutdownCh:              make(chan struct{}),
 		printTps:                os.Getenv(g.ENV_PRINT_TPS) != "",
+	}
+	a.gtidSet, err = DtleParseMysqlGTIDSet(a.mysqlContext.Gtid)
+	if err != nil {
+		return nil, err
 	}
 	stubFullApplyDelayStr := os.Getenv(g.ENV_FULL_APPLY_DELAY)
 	if stubFullApplyDelayStr == "" {
@@ -443,7 +449,7 @@ func (a *Applier) executeWriteFuncs() {
 		}()
 	}
 
-	if a.mysqlContext.Gtid == "" {
+	if a.mysqlContext.Gtid == "" { // full copy
 		a.logger.Printf("mysql.applier: Operating until row copy is complete")
 		a.mysqlContext.Stage = models.StageSlaveWaitingForWorkersToProcessQueue
 		for {
@@ -451,7 +457,13 @@ func (a *Applier) executeWriteFuncs() {
 				a.rowCopyComplete <- true
 				a.logger.Printf("mysql.applier: Rows copy complete.number of rows:%d", a.mysqlContext.TotalRowsReplay)
 				a.mysqlContext.Gtid = a.currentCoordinates.RetrievedGtidSet
+				var err error
+				a.gtidSet, err = DtleParseMysqlGTIDSet(a.mysqlContext.Gtid)
+				if err != nil {
+					a.onError(TaskStateDead, err)
+				}
 				a.mysqlContext.BinlogFile = a.currentCoordinates.File
+				a.mysqlContext.BinlogPos = a.currentCoordinates.Position
 				break
 			}
 			if a.shutdown {
@@ -487,20 +499,8 @@ func (a *Applier) executeWriteFuncs() {
 
 			if !a.shutdown {
 				a.lastAppliedBinlogTx = groupTx[len(groupTx)-1]
-				if a.mysqlContext.Gtid != "" {
-					sp := strings.Split(a.mysqlContext.Gtid, ",")
-
-					if strings.Split(sp[len(sp)-1], ":")[0] == a.lastAppliedBinlogTx.SID || strings.Split(sp[len(sp)-1], ":")[0] == "\n"+a.lastAppliedBinlogTx.SID {
-						sp[len(sp)-1] = fmt.Sprintf("%s:1-%d", a.lastAppliedBinlogTx.SID, a.lastAppliedBinlogTx.GNO)
-					}
-					var rgtid string
-					for _, gtid := range sp {
-						rgtid = rgtid + "," + gtid
-					}
-					a.mysqlContext.Gtid = rgtid[1:]
-				} else {
-					a.mysqlContext.Gtid = fmt.Sprintf("%s:1-%d", a.lastAppliedBinlogTx.SID, a.lastAppliedBinlogTx.GNO)
-				}
+				//a.updateGtidSet(a.lastAppliedBinlogTx.SID, TODO, ) // homogeneous obsolete. not implementing
+				a.updateGtidString()
 				// a.mysqlContext.BinlogPos = // homogeneous obsolete. not implementing.
 			}
 		case <-time.After(1 * time.Second):
@@ -614,6 +614,33 @@ func (a *Applier) cleanGtidExecuted(sid uuid.UUID, intervalStr string) error {
 		return err
 	}
 	return nil
+}
+
+func DtleParseMysqlGTIDSet(gtidSetStr string) (*gomysql.MysqlGTIDSet, error) {
+	set0, err := gomysql.ParseMysqlGTIDSet(gtidSetStr)
+	if err != nil {
+		return nil, err
+	}
+
+	return set0.(*gomysql.MysqlGTIDSet), nil
+}
+
+func (a *Applier) updateGtidSet(sidStr string, sid uuid.UUID, txGno int64) {
+	slice := gomysql.IntervalSlice{gomysql.Interval{
+		Start: txGno,
+		Stop:  txGno + 1,
+	}}
+
+	// It seems they all use lower case for uuid.
+	uuidSet, ok := a.gtidSet.Sets[sidStr]
+	if !ok {
+		a.gtidSet.AddSet(&gomysql.UUIDSet{
+			SID:       sid,
+			Intervals: slice,
+		})
+	} else {
+		uuidSet.AddInterval(slice)
+	}
 }
 
 func (a *Applier) heterogeneousReplay() {
@@ -753,20 +780,8 @@ func (a *Applier) heterogeneousReplay() {
 			}
 			span.Finish()
 			if !a.shutdown {
-				// TODO what is this used for?
-				if a.mysqlContext.Gtid != "" {
-					sp := strings.Split(a.mysqlContext.Gtid, ",")
-					if strings.Split(sp[len(sp)-1], ":")[0] == txSid || strings.Split(sp[len(sp)-1], ":")[0] == "\n"+txSid {
-						sp[len(sp)-1] = fmt.Sprintf("%s:1-%d", txSid, binlogEntry.Coordinates.GNO)
-					}
-					var rgtid string
-					for _, gtid := range sp {
-						rgtid = rgtid + "," + gtid
-					}
-					a.mysqlContext.Gtid = rgtid[1:]
-				} else {
-					a.mysqlContext.Gtid = fmt.Sprintf("%s:1-%d", txSid, binlogEntry.Coordinates.GNO)
-				}
+				a.updateGtidSet(txSid, binlogEntry.Coordinates.SID, binlogEntry.Coordinates.GNO)
+				a.updateGtidString()
 				if a.mysqlContext.BinlogFile != binlogEntry.Coordinates.LogFile {
 					a.mysqlContext.BinlogFile = binlogEntry.Coordinates.LogFile
 					a.publishProgress()
@@ -803,19 +818,8 @@ OUTER:
 
 				if !a.shutdown {
 					a.lastAppliedBinlogTx = binlogTx
-					if a.mysqlContext.Gtid != "" {
-						sp := strings.Split(a.mysqlContext.Gtid, ",")
-						if strings.Split(sp[len(sp)-1], ":")[0] == a.lastAppliedBinlogTx.SID || strings.Split(sp[len(sp)-1], ":")[0] == "\n"+a.lastAppliedBinlogTx.SID {
-							sp[len(sp)-1] = fmt.Sprintf("%s:1-%d", a.lastAppliedBinlogTx.SID, a.lastAppliedBinlogTx.GNO)
-						}
-						var rgtid string
-						for _, gtid := range sp {
-							rgtid = rgtid + "," + gtid
-						}
-						a.mysqlContext.Gtid = rgtid[1:]
-					} else {
-						a.mysqlContext.Gtid = fmt.Sprintf("%s:1-%d", a.lastAppliedBinlogTx.SID, a.lastAppliedBinlogTx.GNO)
-					}
+					//a.updateGtidSet(a.lastAppliedBinlogTx.SID, TODO, a.lastAppliedBinlogTx.GNO)
+					a.updateGtidString()
 					// a.mysqlContext.BinlogPos = // homogeneous obsolete. not implementing.
 				}
 			} else {
@@ -903,6 +907,9 @@ func (a *Applier) initiateStreaming() error {
 			a.onError(TaskStateDead, err)
 		}
 		a.currentCoordinates.RetrievedGtidSet = dumpData.Gtid
+		a.currentCoordinates.File = dumpData.LogFile
+		a.currentCoordinates.Position = dumpData.LogPos
+
 		a.mysqlContext.Stage = models.StageSlaveWaitingForWorkersToProcessQueue
 
 		for atomic.LoadInt64(&a.nDumpEntry) != 0 {
@@ -1731,6 +1738,11 @@ func (a *Applier) ID() string {
 		a.logger.Errorf("mysql.applier: Failed to marshal ID to JSON: %s", err)
 	}
 	return string(data)
+}
+
+func (a *Applier) updateGtidString() {
+	a.mysqlContext.Gtid = a.gtidSet.String()
+	a.logger.Debugf("applier updateGtidString %v", a.mysqlContext.Gtid)
 }
 
 func (a *Applier) onError(state int, err error) {

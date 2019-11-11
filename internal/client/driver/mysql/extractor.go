@@ -411,7 +411,7 @@ func (e *Extractor) inspectTables() (err error) {
 				TableSchemaScope:       doDb.TableSchemaScope,
 				TableSchemaRenameRegex: doDb.TableSchemaRenameRegex,
 			}
-			if len(doDb.Tables) == 0 {
+			if len(doDb.Tables) == 0 { // replicate all tables
 				tbs, err := sql.ShowTables(e.db, doDb.TableSchema, e.mysqlContext.ExpandSyntaxSupport)
 				if err != nil {
 					return err
@@ -425,13 +425,14 @@ func (e *Extractor) inspectTables() (err error) {
 					}
 					db.Tables = append(db.Tables, doTb)
 				}
-			} else {
+			} else { // replicate selected tables
 				for _, doTb := range doDb.Tables {
 					doTb.TableSchema = doDb.TableSchema
 					doTb.TableSchemaRename = doDb.TableSchemaRename
 					if doTb.Where == "" {
 						doTb.Where = "true"
 					}
+
 					var regex string
 					if doTb.TableRegex != "" && doTb.TableName == "" && doTb.TableRename != "" {
 						regex = doTb.TableRegex
@@ -488,7 +489,7 @@ func (e *Extractor) inspectTables() (err error) {
 			e.replicateDoDb = append(e.replicateDoDb, db)
 		}
 		e.mysqlContext.ReplicateDoDb = e.replicateDoDb
-	} else {
+	} else { // empty DoDB. replicate all db/tb
 		dbs, err := sql.ShowDatabases(e.db)
 		if err != nil {
 			return err
@@ -544,6 +545,7 @@ func (e *Extractor) inspectTables() (err error) {
 
 	return nil
 }
+
 func (e *Extractor) ignoreDb(dbName string) bool {
 	for _, ignoreDb := range e.mysqlContext.ReplicateIgnoreDb {
 		if ignoreDb.TableSchema == dbName && len(ignoreDb.Tables) == 0 {
@@ -575,6 +577,8 @@ func (e *Extractor) readTableColumns() (err error) {
 			if err != nil {
 				return err
 			}
+			doTb.ColumnMap = config.BuildColumnMapIndex(doTb.ColumnMapFrom, doTb.OriginalTableColumns.Ordinals)
+
 		}
 	}
 	return nil

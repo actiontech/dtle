@@ -398,7 +398,6 @@ func (b *BinlogReader) GetCurrentBinlogCoordinates() *base.BinlogCoordinateTx {
 func ToColumnValuesV2(abstractValues []interface{}, table *config.TableContext) *mysql.ColumnValues {
 	result := &mysql.ColumnValues{
 		AbstractValues: make([]*interface{}, len(abstractValues)),
-		ValuesPointers: make([]*interface{}, len(abstractValues)),
 	}
 
 	for i := 0; i < len(abstractValues); i++ {
@@ -423,7 +422,6 @@ func ToColumnValuesV2(abstractValues []interface{}, table *config.TableContext) 
 			}
 		}
 		result.AbstractValues[i] = &abstractValues[i]
-		result.ValuesPointers[i] = result.AbstractValues[i]
 	}
 
 	return result
@@ -447,12 +445,6 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 	if b.currentCoordinates.SmallerThanOrEquals(&b.LastAppliedRowsEventHint) {
 		b.logger.Debugf("mysql.reader: Skipping handled query at %+v", b.currentCoordinates)
 		return nil
-	}
-
-	// b.currentBinlogEntry is created on GtidEvent
-	// Size of GtidEvent is ignored.
-	if b.currentBinlogEntry != nil {
-		b.currentBinlogEntry.OriginalSize += len(ev.RawData)
 	}
 
 	switch ev.Header.EventType {
@@ -516,6 +508,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 					b.mysqlContext.SrcBinlogTimestamp = evt.ExecutionTime
 					b.currentBinlogEntry.Events = append(b.currentBinlogEntry.Events, event)
 					b.currentBinlogEntry.SpanContext = span.Context()
+					b.currentBinlogEntry.OriginalSize += len(ev.RawData)
 					entriesChannel <- b.currentBinlogEntry
 					b.LastAppliedRowsEventHint = b.currentCoordinates
 					return nil
@@ -660,6 +653,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 					}
 				}
 				b.currentBinlogEntry.SpanContext = span.Context()
+				b.currentBinlogEntry.OriginalSize += len(ev.RawData)
 				entriesChannel <- b.currentBinlogEntry
 				b.LastAppliedRowsEventHint = b.currentCoordinates
 			}
@@ -716,6 +710,9 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 				return err
 			}
 			dmlEvent.OriginalTableColumns = originalTableColumns*/
+
+			// It is hard to calculate exact row size. We use estimation.
+			avgRowSize := len(ev.RawData) / len(rowsEvent.Rows)
 
 			for i, row := range rowsEvent.Rows {
 				b.logger.Debugf("mysql.reader: row values: %v", row[:mathutil.Min(len(row), g.LONG_LOG_LIMIT)])
@@ -795,10 +792,35 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 					dmlEvent.DatabaseName = schema.TableSchemaRename
 				}
 				if whereTrue {
+					if dmlEvent.WhereColumnValues != nil {
+						b.currentBinlogEntry.OriginalSize += avgRowSize
+					}
+					if dmlEvent.NewColumnValues != nil {
+						b.currentBinlogEntry.OriginalSize += avgRowSize
+					}
 					// The channel will do the throttling. Whoever is reding from the channel
 					// decides whether action is taken sycnhronously (meaning we wait before
 					// next iteration) or asynchronously (we keep pushing more events)
 					// In reality, reads will be synchronous
+					if table != nil && len(table.Table.ColumnMap) > 0 {
+						if dmlEvent.NewColumnValues != nil {
+							newRow := make([]*interface{}, len(table.Table.ColumnMap))
+							for i := range table.Table.ColumnMap {
+								idx := table.Table.ColumnMap[i]
+								newRow[i] = dmlEvent.NewColumnValues.AbstractValues[idx]
+							}
+							dmlEvent.NewColumnValues.AbstractValues = newRow
+						}
+
+						if dmlEvent.WhereColumnValues != nil {
+							newRow := make([]*interface{}, len(table.Table.ColumnMap))
+							for i := range table.Table.ColumnMap {
+								idx := table.Table.ColumnMap[i]
+								newRow[i] = dmlEvent.WhereColumnValues.AbstractValues[idx]
+							}
+							dmlEvent.WhereColumnValues.AbstractValues = newRow
+						}
+					}
 					b.currentBinlogEntry.Events = append(b.currentBinlogEntry.Events, dmlEvent)
 				} else {
 					b.logger.Debugf("event has not passed 'where'")
@@ -1450,7 +1472,7 @@ func (b *BinlogReader) skipRowEvent(rowsEvent *replication.RowsEvent, dml EventD
 			// We make no special treat for case 2. That tx has only one insert, which should be ignored.
 			if dml == InsertDML {
 				if len(rowsEvent.Rows) == 1 {
-					sidValue := *mysql.ToColumnValues(rowsEvent.Rows[0]).AbstractValues[1]
+					sidValue := rowsEvent.Rows[0][1]
 					sidByte, ok := sidValue.(string)
 					if !ok {
 						b.logger.Errorf("cycle-prevention: unrecognized gtid_executed table sid type: %T", sidValue)
@@ -1656,6 +1678,7 @@ func (b *BinlogReader) updateTableMeta(table *config.Table, realSchema string, t
 		table.Where = "true"
 	}
 	table.OriginalTableColumns = columns
+	table.ColumnMap = config.BuildColumnMapIndex(table.ColumnMapFrom, table.OriginalTableColumns.Ordinals)
 	tableMap := b.getDbTableMap(realSchema)
 	err = b.addTableToTableMap(tableMap, table)
 	if err != nil {

@@ -222,6 +222,7 @@ func BuildDMLInsertQuery(databaseName, tableName string, tableColumns, sharedCol
 }
 
 func BuildDMLUpdateQuery(databaseName, tableName string, tableColumns, sharedColumns, mappedSharedColumns, uniqueKeyColumns *umconf.ColumnList, valueArgs, whereArgs []*interface{}) (result string, sharedArgs, columnArgs []interface{}, hasUK bool, err error) {
+
 	if len(valueArgs) < tableColumns.Len() {
 		return result, sharedArgs, columnArgs, hasUK, fmt.Errorf("value args count differs from table column count in BuildDMLUpdateQuery %v, %v",
 			len(valueArgs), tableColumns.Len())

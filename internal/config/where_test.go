@@ -1,6 +1,7 @@
 package config
 
 import (
+	"github.com/actiontech/dts/internal/client/driver/mysql/binlog"
 	"github.com/actiontech/dts/internal/config/mysql"
 	"testing"
 )
@@ -18,7 +19,7 @@ func newTableContextWithWhere(t *testing.T,
 	return tbCtx
 }
 func buildColumnValues(vals ...interface{}) *mysql.ColumnValues {
-	return mysql.ToColumnValues(vals)
+	return binlog.ToColumnValuesV2(vals, nil)
 }
 
 func TestWhereTrue(t *testing.T) {
