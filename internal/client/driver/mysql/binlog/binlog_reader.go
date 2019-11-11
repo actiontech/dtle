@@ -282,16 +282,9 @@ func (b *BinlogReader) ConnectBinlogStreamer(coordinates base.BinlogCoordinatesX
 			Password: b.mysqlContext.ConnectionConfig.Password,
 		}
 
-		var relayGtid string
-		if b.mysqlContext.RelayGtid == "" {
-			b.logger.WithField("gtid", coordinates.GtidSet).Debugf(
-				"ConnectBinlogStreamer. RelayGtid empty, use input gtid.")
-			relayGtid = coordinates.GtidSet
-		} else {
-			b.logger.WithField("gtid", b.mysqlContext.RelayGtid).Debugf(
-				"ConnectBinlogStreamer. use RelayGtid.")
-			relayGtid = b.mysqlContext.RelayGtid
-		}
+		// Default to replay position. Change to local relay position if the relay log exists.
+		var relayGtid string = coordinates.GtidSet
+
 		relayConfig := &dmrelay.Config{
 			ServerID:   int(b.serverId),
 			Flavor:     "mysql",
@@ -308,6 +301,15 @@ func (b *BinlogReader) ConnectBinlogStreamer(coordinates base.BinlogCoordinatesX
 		}
 
 		meta := b.relay.GetMeta()
+
+		{ // Update relayGtid if metaGtid is not empty, aka if there is local relaylog.
+			_, metaGtid := meta.GTID()
+			metaGtidStr := metaGtid.String()
+			if metaGtidStr != "" {
+				relayGtid = metaGtidStr
+			}
+		}
+
 		changed, err := meta.AdjustWithStartPos(coordinates.LogFile, relayGtid, true)
 		if err != nil {
 			return err
@@ -339,10 +341,6 @@ func (b *BinlogReader) ConnectBinlogStreamer(coordinates base.BinlogCoordinatesX
 			for !b.shutdown {
 				_, p := meta.Pos()
 				_, gs := meta.GTID()
-
-				// Since mysqlContext is passed into BinlogReader as a pointer, it will also
-				// modify extractor.mysqlContext.
-				b.mysqlContext.RelayGtid = gs.String()
 
 				if waitForRelay {
 					if targetGtid.Contain(gs) {

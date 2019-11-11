@@ -547,9 +547,6 @@ func (n *udupFSM) applyJobClientUpdate(buf []byte, index uint64) interface{} {
 				if t.Type == ju.TaskType {
 					t.Config["NatsAddr"] = ju.NatsAddr
 
-					if ju.RelayGtid != "" {
-						t.Config["RelayGtid"] = ju.RelayGtid
-					}
 				}
 			}
 			// Update all the client allocations
