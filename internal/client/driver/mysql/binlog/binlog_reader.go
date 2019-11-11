@@ -449,12 +449,6 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 		return nil
 	}
 
-	// b.currentBinlogEntry is created on GtidEvent
-	// Size of GtidEvent is ignored.
-	if b.currentBinlogEntry != nil {
-		b.currentBinlogEntry.OriginalSize += len(ev.RawData)
-	}
-
 	switch ev.Header.EventType {
 	case replication.GTID_EVENT:
 		evt := ev.Event.(*replication.GTIDEvent)
@@ -514,6 +508,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 					)
 					b.currentBinlogEntry.Events = append(b.currentBinlogEntry.Events, event)
 					b.currentBinlogEntry.SpanContext = span.Context()
+					b.currentBinlogEntry.OriginalSize += len(ev.RawData)
 					entriesChannel <- b.currentBinlogEntry
 					b.LastAppliedRowsEventHint = b.currentCoordinates
 					return nil
@@ -656,6 +651,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 					}
 				}
 				b.currentBinlogEntry.SpanContext = span.Context()
+				b.currentBinlogEntry.OriginalSize += len(ev.RawData)
 				entriesChannel <- b.currentBinlogEntry
 				b.LastAppliedRowsEventHint = b.currentCoordinates
 			}
@@ -710,6 +706,9 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 				return err
 			}
 			dmlEvent.OriginalTableColumns = originalTableColumns*/
+
+			// It is hard to calculate exact row size. We use estimation.
+			avgRowSize := len(ev.RawData) / len(rowsEvent.Rows)
 
 			for i, row := range rowsEvent.Rows {
 				b.logger.Debugf("mysql.reader: row values: %v", row[:mathutil.Min(len(row), g.LONG_LOG_LIMIT)])
@@ -789,6 +788,12 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 					dmlEvent.DatabaseName = schema.TableSchemaRename
 				}
 				if whereTrue {
+					if dmlEvent.WhereColumnValues != nil {
+						b.currentBinlogEntry.OriginalSize += avgRowSize
+					}
+					if dmlEvent.NewColumnValues != nil {
+						b.currentBinlogEntry.OriginalSize += avgRowSize
+					}
 					// The channel will do the throttling. Whoever is reding from the channel
 					// decides whether action is taken sycnhronously (meaning we wait before
 					// next iteration) or asynchronously (we keep pushing more events)

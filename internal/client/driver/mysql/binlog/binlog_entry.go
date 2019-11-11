@@ -31,7 +31,7 @@ func NewBinlogEntryAt(coordinates base.BinlogCoordinateTx) *BinlogEntry {
 	binlogEntry := &BinlogEntry{
 		Coordinates:  coordinates,
 		Events:       make([]DataEvent, 0),
-		OriginalSize: 0,
+		OriginalSize: 1, // GroupMaxSize is default to 1 and we send on EntriesSize >= GroupMaxSize
 	}
 	return binlogEntry
 }
