@@ -461,6 +461,9 @@ func (e *Extractor) inspectTables() (err error) {
 					} else if doTb.TableRegex == "" && doTb.TableName != "" {
 						newTable := &config.Table{}
 						*newTable = *doTb
+						if newTable.Where == "" {
+							newTable.Where = "0"
+						}
 						db.Tables = append(db.Tables, newTable)
 						if err := e.inspector.ValidateOriginalTable(doDb.TableSchema, doTb.TableName, doTb); err != nil {
 							e.logger.Warnf("mysql.extractor: %v", err)
