@@ -420,6 +420,9 @@ func (e *Extractor) inspectTables() (err error) {
 				for _, doTb := range doDb.Tables {
 					doTb.TableSchema = doDb.TableSchema
 					doTb.TableSchemaRename = doDb.TableSchemaRename
+					if doTb.Where == "" {
+						doTb.Where = "0"
+					}
 					var regex string
 					if doTb.TableRegex != "" && doTb.TableName == "" && doTb.TableRename != "" {
 						regex = doTb.TableRegex
