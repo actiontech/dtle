@@ -421,7 +421,7 @@ func (e *Extractor) inspectTables() (err error) {
 					doTb.TableSchema = doDb.TableSchema
 					doTb.TableSchemaRename = doDb.TableSchemaRename
 					if doTb.Where == "" {
-						doTb.Where = "0"
+						doTb.Where = "true"
 					}
 					var regex string
 					if doTb.TableRegex != "" && doTb.TableName == "" && doTb.TableRename != "" {
