@@ -17,6 +17,7 @@ require (
 	github.com/boltdb/bolt v1.3.1 // indirect
 	github.com/circonus-labs/circonus-gometrics v2.2.1+incompatible // indirect
 	github.com/circonus-labs/circonusllhist v0.1.0 // indirect
+	github.com/cznic/mathutil v0.0.0-20181122101859-297441e03548
 	github.com/cznic/parser v0.0.0-20181122101858-d773202d5b1f // indirect
 	github.com/cznic/strutil v0.0.0-20181122101858-275e90344537 // indirect
 	github.com/cznic/y v0.0.0-20181122101901-b05e8c2e8d7b // indirect
