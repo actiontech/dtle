@@ -101,6 +101,7 @@ type Relay struct {
 
 	meta   Meta
 	closed sync2.AtomicBool
+	shutdown chan struct{}
 	sync.RWMutex
 
 	activeRelayLog struct {
@@ -145,6 +146,7 @@ func NewRealRelay(cfg *Config) Process {
 		cfg:       cfg,
 		syncerCfg: syncerCfg,
 		meta:      NewLocalMeta(cfg.Flavor, cfg.RelayDir),
+		shutdown:  make(chan struct{}),
 	}
 }
 
@@ -175,7 +177,7 @@ func (r *Relay) Init() (err error) {
 		return errors.Trace(err)
 	}
 
-	if err := reportRelayLogSpaceInBackground(r.cfg.RelayDir); err != nil {
+	if err := reportRelayLogSpaceInBackground(r.cfg.RelayDir, r.shutdown); err != nil {
 		return errors.Trace(err)
 	}
 
@@ -602,6 +604,8 @@ func (r *Relay) Close() {
 		return
 	}
 	log.Info("[relay] relay unit is closing")
+
+	close(r.shutdown)
 
 	r.stopSync()
 

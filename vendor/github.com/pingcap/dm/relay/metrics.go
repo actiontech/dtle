@@ -138,7 +138,7 @@ func RegisterMetrics(registry *prometheus.Registry) {
 	registry.MustRegister(relayExitWithErrorCounter)
 }
 
-func reportRelayLogSpaceInBackground(dirpath string) error {
+func reportRelayLogSpaceInBackground(dirpath string, shutdown chan struct{}) error {
 	if len(dirpath) == 0 {
 		return errors.New("dirpath is empty")
 	}
@@ -148,9 +148,16 @@ func reportRelayLogSpaceInBackground(dirpath string) error {
 		defer ticker.Stop()
 
 		for range ticker.C {
+			select {
+			case <-shutdown:
+				log.Infof("reportRelayLogSpaceInBackground: shutdown")
+				return
+			default:
+			}
+
 			size, err := utils.GetStorageSize(dirpath)
 			if err != nil {
-				log.Error("update sotrage size err: ", err)
+				log.Error("update storage size err: ", err)
 			} else {
 				relayLogSpaceGauge.WithLabelValues("capacity").Set(float64(size.Capacity))
 				relayLogSpaceGauge.WithLabelValues("available").Set(float64(size.Available))
