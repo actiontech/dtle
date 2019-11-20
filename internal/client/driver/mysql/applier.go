@@ -451,6 +451,7 @@ func (a *Applier) executeWriteFuncs() {
 				a.logger.Printf("mysql.applier: Rows copy complete.number of rows:%d", a.mysqlContext.TotalRowsReplay)
 				a.mysqlContext.Gtid = a.currentCoordinates.RetrievedGtidSet
 				a.mysqlContext.BinlogFile = a.currentCoordinates.File
+				a.mysqlContext.BinlogPos = a.currentCoordinates.Position
 				break
 			}
 			if a.shutdown {
@@ -901,6 +902,9 @@ func (a *Applier) initiateStreaming() error {
 			a.onError(TaskStateDead, err)
 		}
 		a.currentCoordinates.RetrievedGtidSet = dumpData.Gtid
+		a.currentCoordinates.File = dumpData.LogFile
+		a.currentCoordinates.Position = dumpData.LogPos
+
 		a.mysqlContext.Stage = models.StageSlaveWaitingForWorkersToProcessQueue
 
 		for atomic.LoadInt64(&a.nDumpEntry) != 0 {
