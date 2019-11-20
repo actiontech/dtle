@@ -294,7 +294,12 @@ func (e *Extractor) Run() {
 			e.onError(TaskStateDead, err)
 			return
 		}
-		dumpMsg, err := Encode(&dumpStatResult{Gtid: e.initialBinlogCoordinates.GtidSet, TotalCount: e.mysqlContext.RowsEstimate})
+		dumpMsg, err := Encode(&dumpStatResult{
+			Gtid: e.initialBinlogCoordinates.GtidSet,
+			LogFile: e.initialBinlogCoordinates.LogFile,
+			LogPos: e.initialBinlogCoordinates.LogPos,
+			TotalCount: e.mysqlContext.RowsEstimate,
+		})
 		if err != nil {
 			e.onError(TaskStateDead, err)
 		}
