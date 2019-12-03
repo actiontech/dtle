@@ -19,15 +19,6 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-func (s *HTTPServer) LoginRequest(resp http.ResponseWriter, req *http.Request) (interface{}, error) {
-	switch req.Method {
-	case "PUT":
-		return s.login(resp, req)
-	default:
-		return nil, CodedError(405, ErrInvalidMethod)
-	}
-}
-
 func (s *HTTPServer) OrdersRequest(resp http.ResponseWriter, req *http.Request) (interface{}, error) {
 	switch req.Method {
 	case "GET":
@@ -116,37 +107,6 @@ func (s *HTTPServer) orderCRUD(resp http.ResponseWriter, req *http.Request,
 	default:
 		return nil, CodedError(405, ErrInvalidMethod)
 	}
-}
-
-func (s *HTTPServer) login(resp http.ResponseWriter, req *http.Request) (interface{}, error) {
-	var order *api.Order
-	if err := decodeBody(req, &order); err != nil {
-		return nil, CodedError(400, err.Error())
-	}
-
-	if order.ID == "" {
-		return nil, CodedError(400, "Order Id hasn't been provided")
-	}
-	if order.Region == nil {
-		order.Region = &s.agent.config.Region
-	}
-	args := models.OrderSpecificRequest{
-		OrderID: order.ID,
-	}
-	if s.parse(resp, req, &args.Region, &args.QueryOptions) {
-		return nil, nil
-	}
-
-	var out models.SingleOrderResponse
-	if err := s.agent.RPC("Order.GetOrder", &args, &out); err != nil {
-		return nil, err
-	}
-
-	setMeta(resp, &out.QueryMeta)
-	if out.Order == nil && args.OrderID != "udup" {
-		return nil, CodedError(404, "order not found")
-	}
-	return out, nil
 }
 
 func (s *HTTPServer) setLogLevel(resp http.ResponseWriter, req *http.Request) (interface{}, error) {

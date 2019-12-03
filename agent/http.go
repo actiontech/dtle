@@ -25,6 +25,7 @@ import (
 	"strings"
 
 	umodel "github.com/actiontech/dtle/internal/models"
+	"github.com/dgrijalva/jwt-go"
 	"github.com/sirupsen/logrus"
 )
 
@@ -220,12 +221,45 @@ func (e *codedError) Code() int {
 	return e.code
 }
 
+var _HMAC_SECRET = []byte("yizhifu Secret")
+
 // wrap is used to wrap functions to make them more convenient
 func (s *HTTPServer) wrap(handler func(resp http.ResponseWriter, req *http.Request) (interface{}, error)) func(resp http.ResponseWriter, req *http.Request) {
 	f := func(resp http.ResponseWriter, req *http.Request) {
 		setHeaders(resp, s.agent.config.HTTPAPIResponseHeaders)
 		// Invoke the handler
 		reqURL := req.URL.String()
+		if !strings.Contains(reqURL, "login") {
+			if "" != req.Header.Get("authorization") {
+				tokenString := req.Header.Get("authorization")
+				token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+					if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+						return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+					}
+					return _HMAC_SECRET, nil
+				})
+				if nil != err {
+
+					resp.WriteHeader(500)
+					resp.Write([]byte(err.Error()))
+					return
+				}
+
+				if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid && claims["user"] == "superuser" {
+
+				} else {
+					resp.WriteHeader(500)
+					resp.Write([]byte("no user"))
+					return
+				}
+
+			} else {
+				resp.WriteHeader(500)
+				resp.Write([]byte("no user"))
+				return
+			}
+		}
+
 		start := time.Now()
 		defer func() {
 			s.logger.Debugf("http: Request %v (%v)", reqURL, time.Now().Sub(start))
