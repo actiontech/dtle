@@ -1,8 +1,13 @@
 package agent
 
 import (
+	"encoding/base64"
 	"net/http"
 	"time"
+
+	"strings"
+
+	"strconv"
 
 	"github.com/actiontech/dtle/api"
 	"github.com/actiontech/dtle/internal/models"
@@ -53,10 +58,27 @@ func (s *HTTPServer) login(resp http.ResponseWriter, req *http.Request) (interfa
 	if user.UserName == "" && user.UserName != "superuser" {
 		return nil, CodedError(400, "user not exist")
 	}
+
 	if user.Passwd == "" {
 		return nil, CodedError(400, "password  err ")
 	}
 
+	decodedPwd, err := base64.StdEncoding.DecodeString(user.Passwd)
+	if err != nil {
+		return nil, CodedError(400, "password  err ")
+	}
+	decodestr := string(decodedPwd)
+
+	strs := strings.Split(decodestr, "|")
+	int, err := strconv.Atoi(strs[1])
+	if err != nil {
+		return nil, CodedError(400, "password  err ")
+	}
+	realPasswd := strs[0][0:int] + strs[0][int+5:]
+
+	if realPasswd != "A12c8Tio$i567onx8@w" {
+		return nil, CodedError(400, "password  err ")
+	}
 	token, err := CreateToken([]byte(SecretKey), user.UserName)
 
 	var out models.Login

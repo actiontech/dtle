@@ -8,8 +8,9 @@ package driver
 
 import (
 	"fmt"
-	"github.com/actiontech/dtle/internal/client/driver/common"
 	"strings"
+
+	"github.com/actiontech/dtle/internal/client/driver/common"
 
 	"github.com/mitchellh/mapstructure"
 
