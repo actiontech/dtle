@@ -144,6 +144,7 @@ func (s *HTTPServer) registerHandlers() {
 	//s.mux.HandleFunc("/", s.Index)
 
 	s.mux.HandleFunc("/v1/login", s.wrap(s.LoginRequest))
+	s.mux.HandleFunc("/v1/login/getVerifyCode", s.wrap(s.VerifyCodeRequest))
 
 	s.mux.HandleFunc("/v1/orders", s.wrap(s.OrdersRequest))
 	s.mux.HandleFunc("/v1/orders/pending", s.wrap(s.PendingOrdersRequest))

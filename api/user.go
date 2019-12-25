@@ -6,6 +6,7 @@
 package api
 
 type User struct {
-	UserName string
-	Passwd   string
+	UserName   string
+	Passwd     string
+	VarifyCode string
 }
