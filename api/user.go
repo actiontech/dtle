@@ -9,4 +9,5 @@ type User struct {
 	UserName   string
 	Passwd     string
 	VarifyCode string
+	VerifyId   string
 }

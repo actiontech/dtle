@@ -22,7 +22,7 @@ import (
 
 func (s *HTTPServer) LoginRequest(resp http.ResponseWriter, req *http.Request) (interface{}, error) {
 	switch req.Method {
-	case "post":
+	case "POST":
 		return s.login(resp, req)
 	default:
 		return nil, CodedError(405, ErrInvalidMethod)
@@ -30,7 +30,7 @@ func (s *HTTPServer) LoginRequest(resp http.ResponseWriter, req *http.Request) (
 }
 func (s *HTTPServer) VerifyCodeRequest(resp http.ResponseWriter, req *http.Request) (interface{}, error) {
 	switch req.Method {
-	case "get":
+	case "POST":
 		return s.generateCaptchaHandler(resp, req)
 	default:
 		return nil, CodedError(405, ErrInvalidMethod)
@@ -62,56 +62,89 @@ func CreateToken(SecretKey []byte, userName string) (tokenString string, err err
 }
 
 //configJsonBody json request body.
-type configJsonBody struct {
-	Id            string
-	CaptchaType   string
-	VerifyValue   string
-	DriverAudio   *base64Captcha.DriverAudio
-	DriverString  *base64Captcha.DriverString
-	DriverChinese *base64Captcha.DriverChinese
-	DriverMath    *base64Captcha.DriverMath
-	DriverDigit   *base64Captcha.DriverDigit
+//ConfigJsonBody json request body.
+type ConfigJsonBody struct {
+	Id              string
+	CaptchaType     string
+	VerifyValue     string
+	ConfigAudio     base64Captcha.ConfigAudio
+	ConfigCharacter base64Captcha.ConfigCharacter
+	ConfigDigit     base64Captcha.ConfigDigit
 }
 
-var store = base64Captcha.DefaultMemStore
+var configC = base64Captcha.ConfigCharacter{
+	Height:             60,
+	Width:              240,
+	Mode:               0,
+	ComplexOfNoiseText: 0,
+	ComplexOfNoiseDot:  0,
+	IsShowHollowLine:   false,
+	IsShowNoiseDot:     false,
+	IsShowNoiseText:    false,
+	IsShowSlimeLine:    false,
+	IsShowSineLine:     false,
+	CaptchaLen:         6,
+}
 
 func (s *HTTPServer) generateCaptchaHandler(w http.ResponseWriter, r *http.Request) (interface{}, error) {
 	//parse request parameters
 	decoder := json.NewDecoder(r.Body)
-	var param configJsonBody
-	err := decoder.Decode(&param)
+	var postParameters ConfigJsonBody
+	err := decoder.Decode(&postParameters)
 	if err != nil {
 		log.Println(err)
 	}
 	defer r.Body.Close()
-	var driver base64Captcha.Driver
 
 	//create base64 encoding captcha
-	switch param.CaptchaType {
+	//创建base64图像验证码
+
+	var config interface{}
+	switch postParameters.CaptchaType {
 	case "audio":
-		driver = param.DriverAudio
-	case "string":
-		driver = param.DriverString.ConvertFonts()
-	case "math":
-		driver = param.DriverMath.ConvertFonts()
-	case "chinese":
-		driver = param.DriverChinese.ConvertFonts()
+		config = postParameters.ConfigAudio
+	case "character":
+		config = postParameters.ConfigCharacter
 	default:
-		driver = param.DriverDigit
+		config = postParameters.ConfigDigit
 	}
-	c := base64Captcha.NewCaptcha(driver, store)
-	id, b64s, err := c.Generate()
-	body := map[string]interface{}{"code": 1, "data": b64s, "captchaId": id, "msg": "success"}
-	if err != nil {
-		body = map[string]interface{}{"code": 0, "msg": err.Error()}
-	}
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	json.NewEncoder(w).Encode(body)
-	return body, nil
+	config = configC
+	//GenerateCaptcha 第一个参数为空字符串,包会自动在服务器一个随机种子给你产生随机uiid.
+	captchaId, digitCap := base64Captcha.GenerateCaptcha(postParameters.Id, config)
+	base64Png := base64Captcha.CaptchaWriteToBase64Encoding(digitCap)
+
+	//or you can do this
+	//你也可以是用默认参数 生成图像验证码
+	//base64Png := captcha.GenerateCaptchaPngBase64StringDefault(captchaId)
+
+	//set json response
+	//设置json响应
+	var out models.Verify
+
+	out.Message = "success"
+	out.Code = "200"
+	out.CaptchaId = captchaId
+	out.Image = base64Png
+	return out, nil
+
 }
 
 func RsaDecrypt(ciphertext []byte) ([]byte, error) {
-	privateKey := ""
+	privateKey := `-----BEGIN RSA PRIVATE KEY-----
+MIICXQIBAAKBgQDbJ3VgUDDWy9eQjj7AMS2ShqS03N2GLidAzLUeNhyiXEUVvG/b
+0FN/ovYNfOE2ElmNlQybRcamfzmJDnEh/NYnLzCiLn4kYVVUD6/fATJrJrvyIU1l
+LTYlHboQSPeGkzQAZbb26WLXYsvVsBJVseFsej8tzyK/ONpOMqIgl+xneQIDAQAB
+AoGBALUwonLG2ho83jS95lOwVSVX/MUr9lsBvaJtnTElO/dgoh2edj0euGpGqXft
+T6YM9c2A9bNKtTri5QbT0eVvzP2AhqEpZixtDVTA3m/PYzobIdUiJiWV40/WrAtO
+hBpygtatUUV7EhqtoQiqSqvhpeO0MmhEVA6LrJZm6lrH7cWhAkEA+DA2nBU6qY9i
+fmMzpcKcrDdhVvRLiF5/S3z2tdJeBUzmwQBIweHHLsrC3Pp7ThMImlOjoF2bmW6i
+ql5FHtFYOwJBAOINTRHKD9cF7Pb/Gz85yZKdIemg6n3oNrAz8ZLFHIDp0OIYrM+X
+CLh3MpiknkWivzhzLC/r3h11kCaOT0XP99sCQQCjdE1i+nBKH87EYl0vfD5nBYos
+FHRyeZnog4KQON4HK6CF18QTPLlLzeoMU0NGJi7yRMds5HmH0V98SN3I8CLlAkBu
+0RZ3Iheh0cXZUDaLSEkJFv8JCVnrX2tv9gb3bKoMiJNeQ7p0Cha8V7L2Ib11ZdNY
+WR3QYFEDIB8Kx7kVAF8BAkAYzk6RZGiGdvp9LeK427qT7hNxhf9zcvEg/0a4fM7M
+tMw7KTdfaFIorhu4yOyBNtdfP12JPbWIk5bKHOtZp4+d
+-----END RSA PRIVATE KEY-----`
 	block, _ := pem.Decode([]byte(privateKey))
 	if block == nil {
 		return nil, CodedError(400, "private key error!")
@@ -129,46 +162,34 @@ func (s *HTTPServer) login(resp http.ResponseWriter, req *http.Request) (interfa
 	if err := decodeBody(req, &user); err != nil {
 		return nil, CodedError(400, err.Error())
 	}
-
+	if user.VarifyCode == "" {
+		return nil, CodedError(400, "VarifyCode  err ")
+	}
+	verifyResult := base64Captcha.VerifyCaptcha(user.VerifyId, user.VarifyCode)
+	if !verifyResult {
+		return nil, CodedError(400, "verify code   err")
+	}
 	if user.UserName == "" && user.UserName != "superuser" {
 		return nil, CodedError(400, "user not exist")
 	}
-
 	if user.Passwd == "" {
 		return nil, CodedError(400, "password  err ")
-	}
-	if user.VarifyCode == "" {
-		return nil, CodedError(400, "VarifyCode  err ")
 	}
 
 	encryptPwd := user.Passwd
 	b, err := base64.StdEncoding.DecodeString(encryptPwd)
 	if err != nil {
-		//....
+		return nil, CodedError(400, "password  err ")
 	}
 	realPasswd, err := RsaDecrypt(b)
 	if err != nil {
-		//.....
+		return nil, CodedError(400, err.Error())
 	}
 
-	/*	decodedPwd, err := base64.StdEncoding.DecodeString(user.Passwd)
-		if err != nil {
-			return nil, CodedError(400, "password  err ")
-		}
-		decodestr := string(decodedPwd)
-
-		strs := strings.Split(decodestr, "|")
-		int, err := strconv.Atoi(strs[1])
-		if err != nil {
-			return nil, CodedError(400, "password  err ")
-		}
-		realPasswd := strs[0][0:int] + strs[0][int+5:]*/
-
-	if realPasswd != nil {
-		return nil, CodedError(400, "password  err A12c8Tio$i567onx8@w ")
+	if string(realPasswd) != "A12c8Tio$i567onx8@w" {
+		return nil, CodedError(400, "password  err ")
 	}
 	token, err := CreateToken([]byte(SecretKey), user.UserName)
-
 	var out models.Login
 	if err != nil {
 		out.Token = token

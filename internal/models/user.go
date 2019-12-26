@@ -5,3 +5,9 @@ type Login struct {
 	Code    string
 	Message string
 }
+type Verify struct {
+	Image     string
+	Code      string
+	CaptchaId string
+	Message   string
+}
