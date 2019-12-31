@@ -163,23 +163,23 @@ func (s *HTTPServer) login(resp http.ResponseWriter, req *http.Request) (interfa
 		return nil, CodedError(400, err.Error())
 	}
 	if user.VarifyCode == "" {
-		return nil, CodedError(400, "VarifyCode  err ")
+		return nil, CodedError(400, " {\"code\": \"001\",\"message\": \" VarifyCode  error \"}")
 	}
 	verifyResult := base64Captcha.VerifyCaptcha(user.VerifyId, user.VarifyCode)
 	if !verifyResult {
-		return nil, CodedError(400, "verify code   err")
+		return nil, CodedError(400, " {\"code\": \"001\",\"message\": \" VarifyCode  error \"}")
 	}
-	if user.UserName == "" && user.UserName != "superuser" {
-		return nil, CodedError(400, "user not exist")
+	if user.UserName == "" || user.UserName != "superuser" {
+		return nil, CodedError(400, " {\"code\": \"002\",\"message\": \"passwd or username error\"}")
 	}
 	if user.Passwd == "" {
-		return nil, CodedError(400, "password  err ")
+		return nil, CodedError(400, " {\"code\": \"002\",\"message\": \"passwd or username error\"}")
 	}
 
 	encryptPwd := user.Passwd
 	b, err := base64.StdEncoding.DecodeString(encryptPwd)
 	if err != nil {
-		return nil, CodedError(400, "password  err ")
+		return nil, CodedError(400, " {\"code\": \"002\",\"message\": \"passwd or username error\"}")
 	}
 	realPasswd, err := RsaDecrypt(b)
 	if err != nil {
@@ -187,7 +187,7 @@ func (s *HTTPServer) login(resp http.ResponseWriter, req *http.Request) (interfa
 	}
 
 	if string(realPasswd) != "A12c8Tio$i567onx8@w" {
-		return nil, CodedError(400, "password  err ")
+		return nil, CodedError(400, " {\"code\": \"002\",\"message\": \"passwd or username error\"}")
 	}
 	token, err := CreateToken([]byte(SecretKey), user.UserName)
 	var out models.Login

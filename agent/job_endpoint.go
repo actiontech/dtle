@@ -130,27 +130,15 @@ func (s *HTTPServer) jobInfoRequest(resp http.ResponseWriter, req *http.Request)
 				driverConfig.ConnectionConfig.Charset = "utf8"
 			}
 			if "" != driverConfig.ConnectionConfig.Password {
-				decodedPwd, err := base64.StdEncoding.DecodeString(driverConfig.ConnectionConfig.Password)
+				b, err := base64.StdEncoding.DecodeString(driverConfig.ConnectionConfig.Password)
 				if err != nil {
 					return nil, CodedError(400, err.Error())
 				}
-				strs := strings.Split(string(decodedPwd), "|")
-				num, err := strconv.Atoi(strs[len(strs)-1])
+				realPasswd, err := RsaDecrypt(b)
 				if err != nil {
-					return nil, err
+					return nil, CodedError(400, err.Error())
 				}
-				var realPasswd string
-				if len(strs) > 2 {
-					for i := 0; i < len(strs)-1; i++ {
-						realPasswd += strs[i] + "|"
-					}
-					realPasswd = realPasswd[0:num] + realPasswd[num+5:]
-					realPasswd = realPasswd[0 : len(realPasswd)-1]
-				} else {
-					realPasswd = strs[0][0:num] + strs[0][num+5:]
-				}
-
-				driverConfig.ConnectionConfig.Password = realPasswd
+				driverConfig.ConnectionConfig.Password = string(realPasswd)
 			}
 			uri := driverConfig.ConnectionConfig.GetDBUri()
 			db, err := sql.CreateDB(uri)
@@ -342,26 +330,13 @@ func (s *HTTPServer) jobUpdate(resp http.ResponseWriter, req *http.Request,
 	for _, task := range args.Tasks {
 		if task.Config["ConnectionConfig"] != nil {
 			pwd := task.Config["ConnectionConfig"].(map[string]interface{})["Password"]
-			decodedPwd, err := base64.StdEncoding.DecodeString(pwd.(string))
+			b, err := base64.StdEncoding.DecodeString(pwd.(string))
 			if err != nil {
 				return nil, CodedError(400, err.Error())
 			}
-			//decodestr := string(decodedPwd)
-
-			strs := strings.Split(string(decodedPwd), "|")
-			num, err := strconv.Atoi(strs[len(strs)-1])
+			realPasswd, err := RsaDecrypt(b)
 			if err != nil {
-				return nil, err
-			}
-			var realPasswd string
-			if len(strs) > 2 {
-				for i := 0; i < len(strs)-1; i++ {
-					realPasswd += strs[i] + "|"
-				}
-				realPasswd = realPasswd[0:num] + realPasswd[num+5:]
-				realPasswd = realPasswd[0 : len(realPasswd)-1]
-			} else {
-				realPasswd = strs[0][0:num] + strs[0][num+5:]
+				return nil, CodedError(400, err.Error())
 			}
 
 			task.Config["ConnectionConfig"].(map[string]interface{})["Password"] = realPasswd
@@ -518,28 +493,14 @@ func (s *HTTPServer) ValidateJobRequest(resp http.ResponseWriter, req *http.Requ
 	for _, task := range validateRequest.Job.Tasks {
 		if task.Config["ConnectionConfig"] != nil {
 			pwd := task.Config["ConnectionConfig"].(map[string]interface{})["Password"]
-			decodedPwd, err := base64.StdEncoding.DecodeString(pwd.(string))
+			b, err := base64.StdEncoding.DecodeString(pwd.(string))
 			if err != nil {
 				return nil, CodedError(400, err.Error())
 			}
-			//decodestr := string(decodedPwd)
-
-			strs := strings.Split(string(decodedPwd), "|")
-			num, err := strconv.Atoi(strs[len(strs)-1])
+			realPasswd, err := RsaDecrypt(b)
 			if err != nil {
-				return nil, err
+				return nil, CodedError(400, err.Error())
 			}
-			var realPasswd string
-			if len(strs) > 2 {
-				for i := 0; i < len(strs)-1; i++ {
-					realPasswd += strs[i] + "|"
-				}
-				realPasswd = realPasswd[0:num] + realPasswd[num+5:]
-				realPasswd = realPasswd[0 : len(realPasswd)-1]
-			} else {
-				realPasswd = strs[0][0:num] + strs[0][num+5:]
-			}
-
 			task.Config["ConnectionConfig"].(map[string]interface{})["Password"] = realPasswd
 		}
 	}
