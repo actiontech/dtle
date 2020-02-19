@@ -274,16 +274,29 @@ type Table struct {
 	TableSchema       string
 	TableSchemaRename string
 	Counter           int64
+	ColumnMapFrom     []string
+	//ColumnMapTo       []string
+	//ColumnMapUseRe    bool
 
 	OriginalTableColumns *umconf.ColumnList
 	UseUniqueKey         *umconf.UniqueKey
 	Iteration            int64
+	ColumnMap            []int
 
 	TableType    string
 	TableEngine  string
 	RowsEstimate int64
 
 	Where string // TODO load from job description
+}
+
+func BuildColumnMapIndex(from []string, ordinals umconf.ColumnsMap) (mapIndex []int) {
+	mapIndex = make([]int, len(from))
+	for i, colName := range from {
+		idxFrom := ordinals[colName]
+		mapIndex[i] = idxFrom
+	}
+	return mapIndex
 }
 
 type TableContext struct {
