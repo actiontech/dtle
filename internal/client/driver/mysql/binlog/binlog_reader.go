@@ -398,7 +398,6 @@ func (b *BinlogReader) GetCurrentBinlogCoordinates() *base.BinlogCoordinateTx {
 func ToColumnValuesV2(abstractValues []interface{}, table *config.TableContext) *mysql.ColumnValues {
 	result := &mysql.ColumnValues{
 		AbstractValues: make([]*interface{}, len(abstractValues)),
-		ValuesPointers: make([]*interface{}, len(abstractValues)),
 	}
 
 	for i := 0; i < len(abstractValues); i++ {
@@ -423,7 +422,6 @@ func ToColumnValuesV2(abstractValues []interface{}, table *config.TableContext) 
 			}
 		}
 		result.AbstractValues[i] = &abstractValues[i]
-		result.ValuesPointers[i] = result.AbstractValues[i]
 	}
 
 	return result
@@ -1449,7 +1447,7 @@ func (b *BinlogReader) skipRowEvent(rowsEvent *replication.RowsEvent, dml EventD
 			// We make no special treat for case 2. That tx has only one insert, which should be ignored.
 			if dml == InsertDML {
 				if len(rowsEvent.Rows) == 1 {
-					sidValue := *mysql.ToColumnValues(rowsEvent.Rows[0]).AbstractValues[1]
+					sidValue := rowsEvent.Rows[0][1]
 					sidByte, ok := sidValue.(string)
 					if !ok {
 						b.logger.Errorf("cycle-prevention: unrecognized gtid_executed table sid type: %T", sidValue)
