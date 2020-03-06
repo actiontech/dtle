@@ -5,9 +5,32 @@
  */
 package api
 
+import "time"
+
 type User struct {
 	UserName   string
 	Passwd     string
 	VarifyCode string
 	VerifyId   string
+}
+type ListUser struct {
+	UserName   string
+	UserId     string
+	UpdateDate string
+	Phone      string
+	CreateDate string
+}
+
+type EditUser struct {
+	UserName   string
+	IserId     string
+	Phone      string
+	Passwd     string
+	CreateDate time.Time
+}
+
+type AddUser struct {
+	UserName string
+	Passwd   string
+	Phone    string
 }

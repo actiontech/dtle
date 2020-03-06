@@ -34,6 +34,8 @@ const (
 	JobRenewalRequestType
 	JobClientUpdateRequestType
 	OrderRegisterRequestType
+	UserRegisterRequestType
+	UserDeregisterRequestType
 	OrderDeregisterRequestType
 	EvalUpdateRequestType
 	EvalDeleteRequestType

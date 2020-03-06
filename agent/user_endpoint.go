@@ -14,6 +14,8 @@ import (
 
 	"encoding/json"
 
+	"strings"
+
 	"github.com/actiontech/dtle/api"
 	"github.com/actiontech/dtle/internal/models"
 	"github.com/dgrijalva/jwt-go"
@@ -199,4 +201,201 @@ func (s *HTTPServer) login(resp http.ResponseWriter, req *http.Request) (interfa
 	out.Token = token
 	out.Code = "200"
 	return out, nil
+}
+
+func (s *HTTPServer) UserAddRequest(resp http.ResponseWriter, req *http.Request) (interface{}, error) {
+	switch req.Method {
+	case "POST":
+		return s.userAdd(resp, req)
+	default:
+		return nil, CodedError(405, ErrInvalidMethod)
+	}
+}
+func (s *HTTPServer) UserEditRequest(resp http.ResponseWriter, req *http.Request) (interface{}, error) {
+	switch req.Method {
+	case "POST":
+		return s.userEdit(resp, req)
+	default:
+		return nil, CodedError(405, ErrInvalidMethod)
+	}
+}
+
+func (s *HTTPServer) UserListRequest(resp http.ResponseWriter, req *http.Request) (interface{}, error) {
+	switch req.Method {
+	case "GET":
+		return s.userList(resp, req)
+	default:
+		return nil, CodedError(405, ErrInvalidMethod)
+	}
+}
+
+func (s *HTTPServer) UserDeleteRequest(resp http.ResponseWriter, req *http.Request) (interface{}, error) {
+	switch req.Method {
+	case "DELETE":
+		path := strings.TrimPrefix(req.URL.Path, "/v1/user/")
+		return s.UserDelete(resp, req, path)
+	default:
+		return nil, CodedError(405, ErrInvalidMethod)
+	}
+}
+
+type CloudUserResponse struct {
+	success bool
+	code    string
+	err     string
+}
+
+func (s *HTTPServer) userAdd(resp http.ResponseWriter, req *http.Request) (interface{}, error) {
+	var user *api.AddUser
+	if err := decodeBody(req, &user); err != nil {
+		return nil, CodedError(400, err.Error())
+	}
+	args := user
+	if args.UserName == "" {
+		return nil, CodedError(400, " {\"code\": \"002\",\"success\": \" false  \",\"err\": \" user not null \"}")
+	}
+	if args.Passwd == "" {
+		return nil, CodedError(400, " {\"code\": \"003\",\"success\": \" false  \",\"err\": \" passwd not null \"}")
+	}
+	if args.Phone == "" {
+		return nil, CodedError(400, " {\"code\": \"003\",\"success\": \" false  \",\"err\": \" phone not null \"}")
+	}
+
+	encryptPwd := args.Passwd
+	pwd, err := base64.StdEncoding.DecodeString(encryptPwd)
+	if err != nil {
+		return nil, CodedError(400, " {\"code\": \"003\",\"success\": \" false  \",\"err\": \" decode pwd  err \"}")
+	}
+	realPasswd, err := RsaDecrypt(pwd)
+	if err != nil {
+		return nil, CodedError(400, err.Error())
+	}
+	args.Passwd = string(realPasswd)
+	sUser := ApiUserToStructUser(args)
+
+	regReq := models.UserRegisterRequest{
+		User: sUser,
+	}
+	var rsp models.UserResponse
+	var out CloudUserResponse
+
+	if err := s.agent.RPC("User.Register", &regReq, &rsp); err != nil {
+		return nil, err
+	}
+
+	if rsp.Success {
+		out = CloudUserResponse{
+			success: true,
+			code:    "200",
+		}
+	}
+	return out, nil
+
+}
+
+func ApiUserToStructUser(user *api.AddUser) *models.User {
+
+	usr := &models.User{
+		UserName:   user.UserName,
+		Passwd:     user.Passwd,
+		Phone:      user.Phone,
+		UserId:     user.Phone,
+		CreateDate: time.Now(),
+		UpdateDate: time.Now(),
+	}
+	return usr
+}
+
+func (s *HTTPServer) userEdit(resp http.ResponseWriter, req *http.Request) (interface{}, error) {
+	var user *api.EditUser
+	if err := decodeBody(req, &user); err != nil {
+		return nil, CodedError(400, err.Error())
+	}
+	args := user
+	if args.UserName == "" {
+		return nil, CodedError(400, " {\"code\": \"002\",\"success\": \" false  \",\"err\": \" user not null \"}")
+	}
+	if args.Passwd == "" {
+		return nil, CodedError(400, " {\"code\": \"003\",\"success\": \" false  \",\"err\": \" passwd not null \"}")
+	}
+	if args.Phone == "" {
+		return nil, CodedError(400, " {\"code\": \"003\",\"success\": \" false  \",\"err\": \" phone not null \"}")
+	}
+
+	encryptPwd := args.Passwd
+	pwd, err := base64.StdEncoding.DecodeString(encryptPwd)
+	if err != nil {
+		return nil, CodedError(400, " {\"code\": \"003\",\"success\": \" false  \",\"err\": \" decode pwd  err \"}")
+	}
+	realPasswd, err := RsaDecrypt(pwd)
+	if err != nil {
+		return nil, CodedError(400, err.Error())
+	}
+	args.Passwd = string(realPasswd)
+	sUser := ApiUserToStructEditUser(args)
+
+	regReq := models.UserRegisterRequest{
+		User: sUser,
+	}
+	var rsp models.UserResponse
+	var out CloudUserResponse
+
+	if err := s.agent.RPC("User.Register", &regReq, &rsp); err != nil {
+		return nil, err
+	}
+
+	if rsp.Success {
+		out = CloudUserResponse{
+			success: true,
+			code:    "200",
+		}
+	}
+	return out, nil
+
+}
+
+func ApiUserToStructEditUser(user *api.EditUser) *models.User {
+
+	usr := &models.User{
+		UserName:   user.UserName,
+		Passwd:     user.Passwd,
+		Phone:      user.Phone,
+		UserId:     user.Phone,
+		CreateDate: user.CreateDate,
+		UpdateDate: time.Now(),
+	}
+	return usr
+}
+
+func (s *HTTPServer) UserDelete(resp http.ResponseWriter, req *http.Request,
+	userId string) (interface{}, error) {
+	args := models.UserDeregisterRequest{
+		UserID: userId,
+	}
+	s.parseRegion(req, &args.Region)
+
+	var out models.UserResponse
+	if err := s.agent.RPC("User.Deregister", &args, &out); err != nil {
+		return nil, err
+	}
+	setIndex(resp, out.Index)
+	return out, nil
+}
+func (s *HTTPServer) userList(resp http.ResponseWriter, req *http.Request) (interface{}, error) {
+
+	args := models.UserListRequest{}
+	if s.parse(resp, req, &args.Region, &args.QueryOptions) {
+		return nil, nil
+	}
+
+	var out models.UserListResponse
+	if err := s.agent.RPC("User.List", &args, &out); err != nil {
+		return nil, err
+	}
+
+	setMeta(resp, &out.QueryMeta)
+	if out.Users == nil {
+		return nil, CodedError(404, "user not found")
+	}
+	return out.Users, nil
 }

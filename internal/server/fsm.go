@@ -12,13 +12,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/armon/go-metrics"
 	memdb "github.com/hashicorp/go-memdb"
 	"github.com/hashicorp/raft"
 	"github.com/ugorji/go/codec"
 
 	"github.com/actiontech/dtle/internal/models"
 	"github.com/actiontech/dtle/internal/server/store"
+	metrics "github.com/armon/go-metrics"
 	"github.com/sirupsen/logrus"
 )
 
@@ -144,6 +144,10 @@ func (n *udupFSM) Apply(log *raft.Log) interface{} {
 	case models.OrderRegisterRequestType:
 		return n.applyUpsertOrder(buf[1:], log.Index)
 	case models.OrderDeregisterRequestType:
+		return n.applyDeregisterUser(buf[1:], log.Index)
+	case models.UserRegisterRequestType:
+		return n.applyUpsertOrder(buf[1:], log.Index)
+	case models.UserDeregisterRequestType:
 		return n.applyDeregisterOrder(buf[1:], log.Index)
 	case models.JobClientUpdateRequestType:
 		return n.applyJobClientUpdate(buf[1:], log.Index)
@@ -435,6 +439,21 @@ func (n *udupFSM) applyDeregisterOrder(buf []byte, index uint64) interface{} {
 
 	if err := n.state.DeleteOrder(index, req.OrderID); err != nil {
 		n.logger.Errorf("server.fsm: DeleteOrder failed: %v", err)
+		return err
+	}
+
+	return nil
+}
+
+func (n *udupFSM) applyDeregisterUser(buf []byte, index uint64) interface{} {
+	defer metrics.MeasureSince([]string{"server", "fsm", "register_user"}, time.Now())
+	var req models.UserRegisterRequest
+	if err := models.Decode(buf, &req); err != nil {
+		panic(fmt.Errorf("failed to decode request: %v", err))
+	}
+
+	if err := n.state.UpsertUser(index, req.User); err != nil {
+		n.logger.Errorf("server.fsm: UpsertOrder failed: %v", err)
 		return err
 	}
 

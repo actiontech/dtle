@@ -11,7 +11,6 @@ import (
 	"io"
 	"strconv"
 
-	"github.com/hashicorp/go-memdb"
 	"github.com/sirupsen/logrus"
 
 	"github.com/actiontech/dtle/internal/models"
@@ -749,6 +748,81 @@ func (s *StateStore) Orders(ws memdb.WatchSet) (memdb.ResultIterator, error) {
 
 //order end
 
+//user start
+
+func (s *StateStore) UpsertUser(index uint64, user *models.User) error {
+	txn := s.db.Txn(true)
+	defer txn.Abort()
+
+	// Insert the job
+	if err := txn.Insert("Users", user); err != nil {
+		return fmt.Errorf("user insert failed: %v", err)
+	}
+	if err := txn.Insert("index", &IndexEntry{"users", index}); err != nil {
+		return fmt.Errorf("index update failed: %v", err)
+	}
+
+	txn.Commit()
+	return nil
+}
+
+// DeleteJob is used to deregister a job
+func (s *StateStore) DeleteUser(index uint64, UserID string) error {
+	txn := s.db.Txn(true)
+	defer txn.Abort()
+
+	// Lookup the node
+	existing, err := txn.First("users", "id", UserID)
+	if err != nil {
+		return fmt.Errorf("user lookup failed: %v", err)
+	}
+	if existing == nil {
+		return fmt.Errorf("user not found")
+	}
+
+	// Delete the order
+	user := existing.(*models.User)
+
+	if err := txn.Delete("users", user); err != nil {
+		return fmt.Errorf("user delete failed: %v", err)
+	}
+	if err := txn.Insert("index", &IndexEntry{"users", index}); err != nil {
+		return fmt.Errorf("index update failed: %v", err)
+	}
+
+	txn.Commit()
+	return nil
+}
+func (s *StateStore) UserByID(ws memdb.WatchSet, id string) (*models.User, error) {
+	txn := s.db.Txn(false)
+
+	watchCh, existing, err := txn.FirstWatch("users", "id", id)
+	if err != nil {
+		return nil, fmt.Errorf("user lookup failed: %v", err)
+	}
+	ws.Add(watchCh)
+
+	if existing != nil {
+		return existing.(*models.User), nil
+	}
+	return nil, nil
+}
+
+func (s *StateStore) Users(ws memdb.WatchSet) (memdb.ResultIterator, error) {
+	txn := s.db.Txn(false)
+
+	// Walk the entire jobs table
+	iter, err := txn.Get("users", "id")
+	if err != nil {
+		return nil, err
+	}
+
+	ws.Add(iter.WatchCh())
+
+	return iter, nil
+}
+
+//user end
 // UpsertEvals is used to upsert a set of evaluations
 func (s *StateStore) UpsertEvals(index uint64, evals []*models.Evaluation) error {
 	txn := s.db.Txn(true)
