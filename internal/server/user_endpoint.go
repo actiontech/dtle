@@ -10,13 +10,13 @@ import (
 	memdb "github.com/hashicorp/go-memdb"
 )
 
-type Ser struct {
+type User struct {
 	srv *Server
 }
 
-// Register is used to upsert a user for scheduling
-func (o *Ser) Register(args *models.UserRegisterRequest, reply *models.UserResponse) error {
-	if done, err := o.srv.forward("User.Register", args, args, reply); done {
+// Register is used to upsert a user
+func (u *User) Register(args *models.UserRegisterRequest, reply *models.UserResponse) error {
+	if done, err := u.srv.forward("User.Register", args, args, reply); done {
 		return err
 	}
 	defer metrics.MeasureSince([]string{"server", "user", "register"}, time.Now())
@@ -27,9 +27,9 @@ func (o *Ser) Register(args *models.UserRegisterRequest, reply *models.UserRespo
 	}
 
 	// Commit this update via Raft
-	_, index, err := o.srv.raftApply(models.UserRegisterRequestType, args)
+	_, index, err := u.srv.raftApply(models.UserRegisterRequestType, args)
 	if err != nil {
-		o.srv.logger.Errorf("server.User: Register failed: %v", err)
+		u.srv.logger.Errorf("server.User: Register failed: %v", err)
 		reply.Success = false
 		return err
 	}
@@ -41,8 +41,8 @@ func (o *Ser) Register(args *models.UserRegisterRequest, reply *models.UserRespo
 }
 
 // Deregister is used to remove a user the cluster.
-func (o *Ser) Deregister(args *models.UserDeregisterRequest, reply *models.UserResponse) error {
-	if done, err := o.srv.forward("User.Deregister", args, args, reply); done {
+func (u *User) Deregister(args *models.UserDeregisterRequest, reply *models.UserResponse) error {
+	if done, err := u.srv.forward("User.Deregister", args, args, reply); done {
 		return err
 	}
 	defer metrics.MeasureSince([]string{"server", "User", "deregister"}, time.Now())
@@ -54,9 +54,9 @@ func (o *Ser) Deregister(args *models.UserDeregisterRequest, reply *models.UserR
 	}
 
 	// Commit this update via Raft
-	_, index, err := o.srv.raftApply(models.UserDeregisterRequestType, args)
+	_, index, err := u.srv.raftApply(models.UserDeregisterRequestType, args)
 	if err != nil {
-		o.srv.logger.Errorf("server.User: Deregister failed: %v", err)
+		u.srv.logger.Errorf("server.User: Deregister failed: %v", err)
 		reply.Success = false
 		return err
 	}
@@ -68,9 +68,9 @@ func (o *Ser) Deregister(args *models.UserDeregisterRequest, reply *models.UserR
 }
 
 // List is used to list the users registered in the system
-func (o *Ser) List(args *models.UserListRequest,
+func (u *User) List(args *models.UserListRequest,
 	reply *models.UserListResponse) error {
-	if done, err := o.srv.forward("User.List", args, args, reply); done {
+	if done, err := u.srv.forward("User.List", args, args, reply); done {
 		return err
 	}
 	defer metrics.MeasureSince([]string{"server", "User", "list"}, time.Now())
@@ -109,14 +109,14 @@ func (o *Ser) List(args *models.UserListRequest,
 			reply.Index = index
 
 			// Set the query response
-			o.srv.setQueryMeta(&reply.QueryMeta)
+			u.srv.setQueryMeta(&reply.QueryMeta)
 			return nil
 		}}
-	return o.srv.blockingRPC(&opts)
+	return u.srv.blockingRPC(&opts)
 }
-func (j *Ser) GetUser(args *models.UserSpecificRequest,
+func (u *User) GetUser(args *models.UserSpecificRequest,
 	reply *models.SingleUserResponse) error {
-	if done, err := j.srv.forward("User.GetUser", args, args, reply); done {
+	if done, err := u.srv.forward("User.GetUser", args, args, reply); done {
 		return err
 	}
 	defer metrics.MeasureSince([]string{"server", "User", "get_User"}, time.Now())
@@ -134,20 +134,18 @@ func (j *Ser) GetUser(args *models.UserSpecificRequest,
 
 			// Setup the output
 			reply.User = out
-			if out != nil {
-				//reply.Index = out.ModifyIndex
-			} else {
-				// Use the last index that affected the nodes table
-				index, err := state.Index("users")
-				if err != nil {
-					return err
-				}
-				reply.Index = index
+			// Use the last index that affected the users table
+			index, err := state.Index("users")
+			if err != nil {
+				return err
 			}
+			reply.Index = index
 
 			// Set the query response
-			j.srv.setQueryMeta(&reply.QueryMeta)
+			u.srv.setQueryMeta(&reply.QueryMeta)
+			// Set the query response
+
 			return nil
 		}}
-	return j.srv.blockingRPC(&opts)
+	return u.srv.blockingRPC(&opts)
 }

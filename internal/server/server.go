@@ -24,12 +24,12 @@ import (
 
 	"github.com/docker/leadership"
 	"github.com/hashicorp/raft"
-	"github.com/hashicorp/raft-boltdb"
 	"github.com/hashicorp/serf/serf"
 
 	"github.com/actiontech/dtle/internal"
 	uconf "github.com/actiontech/dtle/internal/config"
 	"github.com/actiontech/dtle/internal/server/store"
+	raftboltdb "github.com/hashicorp/raft-boltdb"
 	"github.com/sirupsen/logrus"
 )
 
@@ -138,6 +138,7 @@ type endpoints struct {
 	Eval   *Eval
 	Plan   *Plan
 	Alloc  *Alloc
+	User   *User
 }
 
 // NewServer is used to construct a new Udup server from the
@@ -418,6 +419,7 @@ func (s *Server) setupRPC() error {
 	s.endpoints.Node = &Node{srv: s}
 	s.endpoints.Plan = &Plan{s}
 	s.endpoints.Status = &Status{s}
+	s.endpoints.User = &User{s}
 
 	// Register the handlers
 	s.rpcServer.Register(s.endpoints.Alloc)
@@ -427,6 +429,7 @@ func (s *Server) setupRPC() error {
 	s.rpcServer.Register(s.endpoints.Node)
 	s.rpcServer.Register(s.endpoints.Plan)
 	s.rpcServer.Register(s.endpoints.Status)
+	s.rpcServer.Register(s.endpoints.User)
 
 	list, err := net.ListenTCP("tcp", s.config.RPCAddr)
 	if err != nil {

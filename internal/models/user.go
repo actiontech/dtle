@@ -15,9 +15,14 @@ type Verify struct {
 	CaptchaId string
 	Message   string
 }
+type CloudUserResponse struct {
+	Success bool
+	Code    string
+	Err     string
+}
 type User struct {
 	UserName   string
-	UserId     string
+	ID         string
 	Phone      string
 	UpdateDate time.Time
 	CreateDate time.Time
@@ -29,8 +34,8 @@ type User struct {
 type UserRegisterRequest struct {
 	User *User
 
-	// If EnforceIndex is set then the Order will only be registered if the passed
-	// OrderModifyIndex matches the current Orders index. If the index is zero, the
+	// If EnforceIndex is set then the User will only be registered if the passed
+	// OrderModifyIndex matches the currentUser index. If the index is zero, the
 	// register only occurs if the Order is new.
 	EnforceIndex     bool
 	OrderModifyIndex uint64

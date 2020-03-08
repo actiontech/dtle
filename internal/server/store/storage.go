@@ -14,6 +14,7 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"github.com/actiontech/dtle/internal/models"
+	memdb "github.com/hashicorp/go-memdb"
 )
 
 // IndexEntry is used with the "index" table
@@ -753,8 +754,7 @@ func (s *StateStore) Orders(ws memdb.WatchSet) (memdb.ResultIterator, error) {
 func (s *StateStore) UpsertUser(index uint64, user *models.User) error {
 	txn := s.db.Txn(true)
 	defer txn.Abort()
-
-	// Insert the job
+	// Insert the user
 	if err := txn.Insert("Users", user); err != nil {
 		return fmt.Errorf("user insert failed: %v", err)
 	}

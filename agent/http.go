@@ -148,7 +148,7 @@ func (s *HTTPServer) registerHandlers() {
 	s.mux.HandleFunc("/v1/user/list", s.wrap(s.UserListRequest))
 	s.mux.HandleFunc("/v1/user/add", s.wrap(s.UserAddRequest))
 	s.mux.HandleFunc("/v1/user/edit", s.wrap(s.UserEditRequest))
-	s.mux.HandleFunc("/v1/user/delete", s.wrap(s.UserDeleteRequest))
+	s.mux.HandleFunc("/v1/user/delete/", s.wrap(s.UserDeleteRequest))
 	s.mux.HandleFunc("/v1/orders", s.wrap(s.OrdersRequest))
 	s.mux.HandleFunc("/v1/orders/pending", s.wrap(s.PendingOrdersRequest))
 	s.mux.HandleFunc("/v1/order/", s.wrap(s.OrderSpecificRequest))
@@ -249,7 +249,7 @@ func (s *HTTPServer) wrap(handler func(resp http.ResponseWriter, req *http.Reque
 					return
 				}
 
-				if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid && claims["user"] == "superuser" {
+				if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid && claims["user"] != "" {
 
 				} else {
 					resp.WriteHeader(500)

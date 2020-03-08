@@ -9,9 +9,8 @@ package store
 import (
 	"fmt"
 
-	"github.com/hashicorp/go-memdb"
-
 	"github.com/actiontech/dtle/internal/models"
+	memdb "github.com/hashicorp/go-memdb"
 )
 
 // stateStoreSchema is used to return the schema for the state store
@@ -27,6 +26,7 @@ func stateStoreSchema() *memdb.DBSchema {
 		nodeTableSchema,
 		jobTableSchema,
 		orderTableSchema,
+		userTableSchema,
 		evalTableSchema,
 		allocTableSchema,
 	}
@@ -117,6 +117,26 @@ func orderTableSchema() *memdb.TableSchema {
 		Name: "orders",
 		Indexes: map[string]*memdb.IndexSchema{
 			// Primary index is used for order management
+			// and simple direct lookup. ID is required to be
+			// unique.
+			"id": {
+				Name:         "id",
+				AllowMissing: false,
+				Unique:       true,
+				Indexer: &memdb.StringFieldIndex{
+					Field:     "ID",
+					Lowercase: true,
+				},
+			},
+		},
+	}
+}
+
+func userTableSchema() *memdb.TableSchema {
+	return &memdb.TableSchema{
+		Name: "users",
+		Indexes: map[string]*memdb.IndexSchema{
+			// Primary index is used for user management
 			// and simple direct lookup. ID is required to be
 			// unique.
 			"id": {

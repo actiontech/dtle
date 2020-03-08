@@ -171,7 +171,7 @@ func (s *HTTPServer) login(resp http.ResponseWriter, req *http.Request) (interfa
 	if !verifyResult {
 		return nil, CodedError(400, " {\"code\": \"001\",\"message\": \" VarifyCode  error \"}")
 	}
-	if user.UserName == "" || user.UserName != "superuser" {
+	if user.UserName == "" {
 		return nil, CodedError(400, " {\"code\": \"002\",\"message\": \"passwd or username error\"}")
 	}
 	if user.Passwd == "" {
@@ -187,10 +187,28 @@ func (s *HTTPServer) login(resp http.ResponseWriter, req *http.Request) (interfa
 	if err != nil {
 		return nil, CodedError(400, err.Error())
 	}
+	if user.UserName == "superuser" {
+		if string(realPasswd) != "A12c8Tio$i567onx8@w" {
+			return nil, CodedError(400, " {\"code\": \"002\",\"message\": \"passwd or username error\"}")
+		}
+	} else {
+		args := models.UserSpecificRequest{
+			UserID: user.UserName,
+		}
+		s.parseRegion(req, &args.Region)
 
-	if string(realPasswd) != "A12c8Tio$i567onx8@w" {
-		return nil, CodedError(400, " {\"code\": \"002\",\"message\": \"passwd or username error\"}")
+		var out models.SingleUserResponse
+		if err := s.agent.RPC("User.GetUser", &args, &out); err != nil {
+			return nil, err
+		}
+		if out.User == nil {
+			return nil, CodedError(400, " {\"code\": \"002\",\"message\": \"passwd or username error\"}")
+		}
+		if out.User.Passwd != string(realPasswd) {
+			return nil, CodedError(400, " {\"code\": \"002\",\"message\": \"passwd or username error\"}")
+		}
 	}
+
 	token, err := CreateToken([]byte(SecretKey), user.UserName)
 	var out models.Login
 	if err != nil {
@@ -232,7 +250,7 @@ func (s *HTTPServer) UserListRequest(resp http.ResponseWriter, req *http.Request
 func (s *HTTPServer) UserDeleteRequest(resp http.ResponseWriter, req *http.Request) (interface{}, error) {
 	switch req.Method {
 	case "DELETE":
-		path := strings.TrimPrefix(req.URL.Path, "/v1/user/")
+		path := strings.TrimPrefix(req.URL.Path, "/v1/user/delete/")
 		return s.UserDelete(resp, req, path)
 	default:
 		return nil, CodedError(405, ErrInvalidMethod)
@@ -261,33 +279,50 @@ func (s *HTTPServer) userAdd(resp http.ResponseWriter, req *http.Request) (inter
 		return nil, CodedError(400, " {\"code\": \"003\",\"success\": \" false  \",\"err\": \" phone not null \"}")
 	}
 
-	encryptPwd := args.Passwd
-	pwd, err := base64.StdEncoding.DecodeString(encryptPwd)
-	if err != nil {
-		return nil, CodedError(400, " {\"code\": \"003\",\"success\": \" false  \",\"err\": \" decode pwd  err \"}")
+	/*	encryptPwd := args.Passwd
+		*	pwd, err := base64.StdEncoding.DecodeString(encryptPwd)
+				if err != nil {
+					return nil, CodedError(400, " {\"code\": \"003\",\"success\": \" false  \",\"err\": \" decode pwd  err \"}")
+				}
+				realPasswd, err := RsaDecrypt(pwd)
+				if err != nil {
+					return nil, CodedError(400, err.Error())
+				}
+				args.Passwd = string(realPasswd)*/
+
+	verifyArgs := models.UserSpecificRequest{
+		UserID: user.Phone,
 	}
-	realPasswd, err := RsaDecrypt(pwd)
-	if err != nil {
-		return nil, CodedError(400, err.Error())
+	s.parseRegion(req, &verifyArgs.Region)
+
+	var verify models.SingleUserResponse
+	if err := s.agent.RPC("User.GetUser", &verifyArgs, &verify); err != nil {
+		return nil, err
 	}
-	args.Passwd = string(realPasswd)
+	if verify.User != nil {
+		return nil, CodedError(400, " {\"code\": \"005\",\"success\": \" false  \",\"err\": \" user exist \"}")
+
+	}
+
 	sUser := ApiUserToStructUser(args)
 
 	regReq := models.UserRegisterRequest{
 		User: sUser,
+		WriteRequest: models.WriteRequest{
+			Region: "global",
+		},
 	}
 	var rsp models.UserResponse
-	var out CloudUserResponse
-
-	if err := s.agent.RPC("User.Register", &regReq, &rsp); err != nil {
+	var out models.CloudUserResponse
+	err := s.agent.RPC("User.Register", &regReq, &rsp)
+	if err != nil {
 		return nil, err
 	}
 
 	if rsp.Success {
-		out = CloudUserResponse{
-			success: true,
-			code:    "200",
-		}
+		out.Success = true
+		out.Code = "200"
+
 	}
 	return out, nil
 
@@ -299,7 +334,7 @@ func ApiUserToStructUser(user *api.AddUser) *models.User {
 		UserName:   user.UserName,
 		Passwd:     user.Passwd,
 		Phone:      user.Phone,
-		UserId:     user.Phone,
+		ID:         user.Phone,
 		CreateDate: time.Now(),
 		UpdateDate: time.Now(),
 	}
@@ -322,7 +357,7 @@ func (s *HTTPServer) userEdit(resp http.ResponseWriter, req *http.Request) (inte
 		return nil, CodedError(400, " {\"code\": \"003\",\"success\": \" false  \",\"err\": \" phone not null \"}")
 	}
 
-	encryptPwd := args.Passwd
+	/*encryptPwd := args.Passwd
 	pwd, err := base64.StdEncoding.DecodeString(encryptPwd)
 	if err != nil {
 		return nil, CodedError(400, " {\"code\": \"003\",\"success\": \" false  \",\"err\": \" decode pwd  err \"}")
@@ -331,24 +366,38 @@ func (s *HTTPServer) userEdit(resp http.ResponseWriter, req *http.Request) (inte
 	if err != nil {
 		return nil, CodedError(400, err.Error())
 	}
-	args.Passwd = string(realPasswd)
+	args.Passwd = string(realPasswd)*/
+	verifyArgs := models.UserSpecificRequest{
+		UserID: user.Phone,
+	}
+	s.parseRegion(req, &verifyArgs.Region)
+
+	var verify models.SingleUserResponse
+	if err := s.agent.RPC("User.GetUser", &verifyArgs, &verify); err != nil {
+		return nil, err
+	}
+	if verify.User == nil {
+		return nil, CodedError(400, " {\"code\": \"005\",\"success\": \" false  \",\"err\": \" user not exist \"}")
+
+	}
+
 	sUser := ApiUserToStructEditUser(args)
 
 	regReq := models.UserRegisterRequest{
 		User: sUser,
+		WriteRequest: models.WriteRequest{
+			Region: "global",
+		},
 	}
 	var rsp models.UserResponse
-	var out CloudUserResponse
+	var out models.CloudUserResponse
 
 	if err := s.agent.RPC("User.Register", &regReq, &rsp); err != nil {
 		return nil, err
 	}
-
 	if rsp.Success {
-		out = CloudUserResponse{
-			success: true,
-			code:    "200",
-		}
+		out.Success = true
+		out.Code = "200"
 	}
 	return out, nil
 
@@ -360,7 +409,7 @@ func ApiUserToStructEditUser(user *api.EditUser) *models.User {
 		UserName:   user.UserName,
 		Passwd:     user.Passwd,
 		Phone:      user.Phone,
-		UserId:     user.Phone,
+		ID:         user.ID,
 		CreateDate: user.CreateDate,
 		UpdateDate: time.Now(),
 	}
@@ -374,11 +423,17 @@ func (s *HTTPServer) UserDelete(resp http.ResponseWriter, req *http.Request,
 	}
 	s.parseRegion(req, &args.Region)
 
-	var out models.UserResponse
-	if err := s.agent.RPC("User.Deregister", &args, &out); err != nil {
+	var value models.UserResponse
+	if err := s.agent.RPC("User.Deregister", &args, &value); err != nil {
 		return nil, err
 	}
-	setIndex(resp, out.Index)
+	setIndex(resp, value.Index)
+	var out models.CloudUserResponse
+
+	if value.Success {
+		out.Success = true
+		out.Code = "200"
+	}
 	return out, nil
 }
 func (s *HTTPServer) userList(resp http.ResponseWriter, req *http.Request) (interface{}, error) {
@@ -396,6 +451,9 @@ func (s *HTTPServer) userList(resp http.ResponseWriter, req *http.Request) (inte
 	setMeta(resp, &out.QueryMeta)
 	if out.Users == nil {
 		return nil, CodedError(404, "user not found")
+	}
+	for i := 0; i < len(out.Users); i++ {
+		out.Users[i].Passwd = "******"
 	}
 	return out.Users, nil
 }
