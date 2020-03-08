@@ -279,17 +279,16 @@ func (s *HTTPServer) userAdd(resp http.ResponseWriter, req *http.Request) (inter
 		return nil, CodedError(400, " {\"code\": \"003\",\"success\": \" false  \",\"err\": \" phone not null \"}")
 	}
 
-	/*	encryptPwd := args.Passwd
-		*	pwd, err := base64.StdEncoding.DecodeString(encryptPwd)
-				if err != nil {
-					return nil, CodedError(400, " {\"code\": \"003\",\"success\": \" false  \",\"err\": \" decode pwd  err \"}")
-				}
-				realPasswd, err := RsaDecrypt(pwd)
-				if err != nil {
-					return nil, CodedError(400, err.Error())
-				}
-				args.Passwd = string(realPasswd)*/
-
+	encryptPwd := args.Passwd
+	pwd, err := base64.StdEncoding.DecodeString(encryptPwd)
+	if err != nil {
+		return nil, CodedError(400, " {\"code\": \"003\",\"success\": \" false  \",\"err\": \" decode pwd  err \"}")
+	}
+	realPasswd, err := RsaDecrypt(pwd)
+	if err != nil {
+		return nil, CodedError(400, err.Error())
+	}
+	args.Passwd = string(realPasswd)
 	verifyArgs := models.UserSpecificRequest{
 		UserID: user.Phone,
 	}
@@ -314,7 +313,7 @@ func (s *HTTPServer) userAdd(resp http.ResponseWriter, req *http.Request) (inter
 	}
 	var rsp models.UserResponse
 	var out models.CloudUserResponse
-	err := s.agent.RPC("User.Register", &regReq, &rsp)
+	err = s.agent.RPC("User.Register", &regReq, &rsp)
 	if err != nil {
 		return nil, err
 	}
@@ -357,7 +356,7 @@ func (s *HTTPServer) userEdit(resp http.ResponseWriter, req *http.Request) (inte
 		return nil, CodedError(400, " {\"code\": \"003\",\"success\": \" false  \",\"err\": \" phone not null \"}")
 	}
 
-	/*encryptPwd := args.Passwd
+	encryptPwd := args.Passwd
 	pwd, err := base64.StdEncoding.DecodeString(encryptPwd)
 	if err != nil {
 		return nil, CodedError(400, " {\"code\": \"003\",\"success\": \" false  \",\"err\": \" decode pwd  err \"}")
@@ -366,7 +365,7 @@ func (s *HTTPServer) userEdit(resp http.ResponseWriter, req *http.Request) (inte
 	if err != nil {
 		return nil, CodedError(400, err.Error())
 	}
-	args.Passwd = string(realPasswd)*/
+	args.Passwd = string(realPasswd)
 	verifyArgs := models.UserSpecificRequest{
 		UserID: user.Phone,
 	}
