@@ -145,7 +145,7 @@ func (s *HTTPServer) registerHandlers() {
 
 	s.mux.HandleFunc("/v1/login", s.wrap(s.LoginRequest))
 	s.mux.HandleFunc("/v1/login/getVerifyCode", s.wrap(s.VerifyCodeRequest))
-	s.mux.HandleFunc("/v1/user/list", s.wrap(s.UserListRequest))
+	s.mux.HandleFunc("/v1/user/list/", s.wrap(s.UserListRequest))
 	s.mux.HandleFunc("/v1/user/add", s.wrap(s.UserAddRequest))
 	s.mux.HandleFunc("/v1/user/edit", s.wrap(s.UserEditRequest))
 	s.mux.HandleFunc("/v1/user/delete/", s.wrap(s.UserDeleteRequest))
