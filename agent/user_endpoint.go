@@ -18,8 +18,8 @@ import (
 
 	"github.com/actiontech/dtle/api"
 	"github.com/actiontech/dtle/internal/models"
-	"github.com/dgrijalva/jwt-go"
-	"github.com/mojocn/base64Captcha"
+		"github.com/mojocn/base64Captcha"
+		"github.com/dgrijalva/jwt-go"
 )
 
 func (s *HTTPServer) LoginRequest(resp http.ResponseWriter, req *http.Request) (interface{}, error) {
@@ -379,7 +379,13 @@ func (s *HTTPServer) userEdit(resp http.ResponseWriter, req *http.Request) (inte
 		return nil, CodedError(400, " {\"code\": \"005\",\"success\": \" false  \",\"err\": \" user not exist \"}")
 
 	}
-
+	if verify.User.UserName!=args.UserName{
+		return nil, CodedError(400, " {\"code\": \"005\",\"success\": \" false  \",\"err\": \" username not change \"}")
+	}
+	if verify.User.Phone!=args.Phone{
+		return nil, CodedError(400, " {\"code\": \"005\",\"success\": \" false  \",\"err\": \" Phone not change \"}")
+	}
+    args.CreateDate = verify.User.CreateDate
 	sUser := ApiUserToStructEditUser(args)
 
 	regReq := models.UserRegisterRequest{
@@ -451,8 +457,8 @@ func (s *HTTPServer) userList(resp http.ResponseWriter, req *http.Request) (inte
 	if out.Users == nil {
 		return nil, CodedError(404, "user not found")
 	}
-	for i := 0; i < len(out.Users); i++ {
+	/*for i := 0; i < len(out.Users); i++ {
 		out.Users[i].Passwd = "******"
-	}
+	}*/
 	return out.Users, nil
 }
