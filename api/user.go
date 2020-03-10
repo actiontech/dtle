@@ -24,6 +24,7 @@ type ListUser struct {
 type EditUser struct {
 	UserName   string
 	ID         string
+	UserID         string
 	Phone      string
 	Passwd     string
 	CreateDate time.Time

@@ -19,7 +19,7 @@ import (
 	"github.com/actiontech/dtle/api"
 	"github.com/actiontech/dtle/internal/models"
 		"github.com/mojocn/base64Captcha"
-		"github.com/dgrijalva/jwt-go"
+			"src/github.com/dgrijalva/jwt-go"
 )
 
 func (s *HTTPServer) LoginRequest(resp http.ResponseWriter, req *http.Request) (interface{}, error) {
@@ -241,7 +241,8 @@ func (s *HTTPServer) UserEditRequest(resp http.ResponseWriter, req *http.Request
 func (s *HTTPServer) UserListRequest(resp http.ResponseWriter, req *http.Request) (interface{}, error) {
 	switch req.Method {
 	case "GET":
-		return s.userList(resp, req)
+		path := strings.TrimPrefix(req.URL.Path, "/v1/user/list/")
+		return s.userList(resp, req, path)
 	default:
 		return nil, CodedError(405, ErrInvalidMethod)
 	}
@@ -379,6 +380,11 @@ func (s *HTTPServer) userEdit(resp http.ResponseWriter, req *http.Request) (inte
 		return nil, CodedError(400, " {\"code\": \"005\",\"success\": \" false  \",\"err\": \" user not exist \"}")
 
 	}
+	if args.UserID!="superuser" {
+		if verify.User.ID!=args.UserID{
+			return nil, CodedError(400, " {\"code\": \"007\",\"success\": \" false  \",\"err\": \" user only change himself\"}")
+		}
+	}
 	if verify.User.UserName!=args.UserName{
 		return nil, CodedError(400, " {\"code\": \"005\",\"success\": \" false  \",\"err\": \" username not change \"}")
 	}
@@ -441,7 +447,7 @@ func (s *HTTPServer) UserDelete(resp http.ResponseWriter, req *http.Request,
 	}
 	return out, nil
 }
-func (s *HTTPServer) userList(resp http.ResponseWriter, req *http.Request) (interface{}, error) {
+func (s *HTTPServer) userList(resp http.ResponseWriter, req *http.Request,userId string) (interface{}, error) {
 
 	args := models.UserListRequest{}
 	if s.parse(resp, req, &args.Region, &args.QueryOptions) {
@@ -457,8 +463,15 @@ func (s *HTTPServer) userList(resp http.ResponseWriter, req *http.Request) (inte
 	if out.Users == nil {
 		return nil, CodedError(404, "user not found")
 	}
-	/*for i := 0; i < len(out.Users); i++ {
-		out.Users[i].Passwd = "******"
-	}*/
+	for i := 0; i < len(out.Users); i++ {
+		if userId=="supersuer"{
+			out.Users[i].Passwd="*****"
+		}else if out.Users[i].ID==userId{
+			user:=out.Users[i]
+			user.Passwd = "******"
+			out.Users=nil
+			out.Users = append(out.Users, user)
+		}
+	}
 	return out.Users, nil
 }
