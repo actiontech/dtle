@@ -18,8 +18,9 @@ import (
 
 	"github.com/actiontech/dtle/api"
 	"github.com/actiontech/dtle/internal/models"
-		"github.com/mojocn/base64Captcha"
-			"src/github.com/dgrijalva/jwt-go"
+	"github.com/mojocn/base64Captcha"
+	"github.com/dgrijalva/jwt-go"
+
 )
 
 func (s *HTTPServer) LoginRequest(resp http.ResponseWriter, req *http.Request) (interface{}, error) {
