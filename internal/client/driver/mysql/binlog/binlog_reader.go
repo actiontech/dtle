@@ -496,7 +496,9 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 						currentSchema,
 						query,
 						NotDML,
+						evt.ExecutionTime,
 					)
+					b.mysqlContext.SrcBinlogTimestamp = evt.ExecutionTime
 					b.currentBinlogEntry.Events = append(b.currentBinlogEntry.Events, event)
 					b.currentBinlogEntry.SpanContext = span.Context()
 					b.currentBinlogEntry.OriginalSize += len(ev.RawData)
@@ -647,8 +649,10 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 							sql,
 							NotDML,
 							ddlTable,
+							evt.ExecutionTime,
 						)
 						event.Table = table
+						b.mysqlContext.SrcBinlogTimestamp = evt.ExecutionTime
 						b.currentBinlogEntry.Events = append(b.currentBinlogEntry.Events, event)
 					}
 				}
@@ -695,7 +699,9 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 				tableName,
 				dml,
 				int(rowsEvent.ColumnCount),
+				rowsEvent.Timestamp,
 			)
+			b.mysqlContext.SrcBinlogTimestamp = rowsEvent.Timestamp
 			dmlEvent.LogPos = int64(ev.Header.LogPos - ev.Header.EventSize)
 
 			if table != nil && !table.DefChangedSent {

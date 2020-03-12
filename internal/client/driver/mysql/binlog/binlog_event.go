@@ -13,7 +13,7 @@ import (
 
 	"github.com/actiontech/dtle/internal/config"
 	"github.com/actiontech/dtle/internal/config/mysql"
-)
+	)
 
 type EventDML string
 
@@ -72,33 +72,38 @@ type DataEvent struct {
 	Table             *config.Table // TODO tmp solution
 	LogPos            int64         // for kafka. The pos of WRITE_ROW_EVENT
 	TableItem         interface{}
+	Timestamp uint32
 }
 
-func NewDataEvent(databaseName, tableName string, dml EventDML, columnCount int) DataEvent {
+func NewDataEvent(databaseName, tableName string, dml EventDML, columnCount int,timestamp uint32) DataEvent {
 	event := DataEvent{
 		DatabaseName: databaseName,
 		TableName:    tableName,
 		DML:          dml,
 		ColumnCount:  columnCount,
+		Timestamp:timestamp,
 	}
 	return event
 }
 
-func NewQueryEvent(currentSchema, query string, dml EventDML) DataEvent {
+func NewQueryEvent(currentSchema, query string, dml EventDML,ExecutionTime uint32) DataEvent {
 	event := DataEvent{
 		CurrentSchema: currentSchema,
 		Query:         query,
 		DML:           dml,
+		Timestamp:ExecutionTime,
 	}
 	return event
 }
-func NewQueryEventAffectTable(currentSchema, query string, dml EventDML, affectedTable SchemaTable) DataEvent {
+func NewQueryEventAffectTable(currentSchema, query string, dml EventDML, affectedTable SchemaTable,	ExecutionTime uint32) DataEvent {
+
 	event := DataEvent{
 		CurrentSchema: currentSchema,
 		DatabaseName:  affectedTable.Schema,
 		TableName:     affectedTable.Table,
 		Query:         query,
 		DML:           dml,
+		Timestamp:ExecutionTime,
 	}
 	return event
 }

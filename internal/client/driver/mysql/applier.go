@@ -1039,6 +1039,7 @@ func (a *Applier) ApplyBinlogEvent(ctx context.Context, workerIdx int, binlogEnt
 	var err error
 	var spanContext opentracing.SpanContext
 	var span opentracing.Span
+	var Timestamp uint32
 	if ctx != nil {
 		spanContext = opentracing.SpanFromContext(ctx).Context()
 		span = opentracing.GlobalTracer().StartSpan(" desc single binlogEvent transform to sql ", opentracing.ChildOf(spanContext))
@@ -1156,6 +1157,7 @@ func (a *Applier) ApplyBinlogEvent(ctx context.Context, workerIdx int, binlogEnt
 			}
 			totalDelta += rowDelta
 		}
+		Timestamp = event.Timestamp
 	}
 	span.SetTag("after  transform  binlogEvent to sql  ", time.Now().UnixNano()/1e6)
 	a.logger.Debugf("ApplyBinlogEvent. insert gno: %v", binlogEntry.Coordinates.GNO)
@@ -1167,6 +1169,7 @@ func (a *Applier) ApplyBinlogEvent(ctx context.Context, workerIdx int, binlogEnt
 	// no error
 	a.mysqlContext.Stage = models.StageWaitingForGtidToBeCommitted
 	atomic.AddInt64(&a.mysqlContext.TotalDeltaCopied, 1)
+	a.mysqlContext.DescBinlogTimestamp =Timestamp
 	return nil
 }
 
@@ -1327,6 +1330,7 @@ func (a *Applier) Stats() (*models.TaskStatistics, error) {
 		}
 	}
 
+	delayTime :=int64(a.mysqlContext.SrcBinlogTimestamp -a.mysqlContext.DescBinlogTimestamp)
 	taskResUsage := models.TaskStatistics{
 		ExecMasterRowCount: totalRowsReplay,
 		ExecMasterTxCount:  totalDeltaCopied,
@@ -1342,6 +1346,7 @@ func (a *Applier) Stats() (*models.TaskStatistics, error) {
 			ApplierGroupTxQueueSize: 0,
 		},
 		Timestamp: time.Now().UTC().UnixNano(),
+		DelayTime :delayTime,
 	}
 	if a.natsConn != nil {
 		taskResUsage.MsgStat = a.natsConn.Statistics
