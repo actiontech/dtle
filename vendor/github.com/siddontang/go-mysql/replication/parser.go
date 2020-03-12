@@ -359,6 +359,7 @@ func (p *BinlogParser) newRowsEvent(h *EventHeader) *RowsEvent {
 	e.tables = p.tables
 	e.parseTime = p.parseTime
 	e.timestampStringLocation = p.timestampStringLocation
+	e.Timestamp= h.Timestamp
 	e.useDecimal = p.useDecimal
 	e.ignoreJSONDecodeErr = p.ignoreJSONDecodeErr
 
