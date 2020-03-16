@@ -34,7 +34,6 @@ type IndexEntry struct {
 type StateStore struct {
 	logger *logrus.Logger
 	db     *memdb.MemDB
-
 	// abandonCh is used to signal watchers that this state store has been
 	// abandoned (usually during a restore). This is only ever closed.
 	abandonCh chan struct{}
@@ -755,7 +754,7 @@ func (s *StateStore) UpsertUser(index uint64, user *models.User) error {
 	txn := s.db.Txn(true)
 	defer txn.Abort()
 	// Insert the user
-	if err := txn.Insert("Users", user); err != nil {
+	if err := txn.Insert("users", user); err != nil {
 		return fmt.Errorf("user insert failed: %v", err)
 	}
 	if err := txn.Insert("index", &IndexEntry{"users", index}); err != nil {
@@ -1544,7 +1543,6 @@ func (s *StateStore) setJobStatus(index uint64, txn *memdb.Txn,
 	if oldStatus == newStatus {
 		return nil
 	}
-
 	// Copy and update the existing job
 	updated := job.Copy()
 	updated.Status = newStatus

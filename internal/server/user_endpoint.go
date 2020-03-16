@@ -19,7 +19,7 @@ func (u *User) Register(args *models.UserRegisterRequest, reply *models.UserResp
 	if done, err := u.srv.forward("User.Register", args, args, reply); done {
 		return err
 	}
-	defer metrics.MeasureSince([]string{"server", "user", "register"}, time.Now())
+	defer metrics.MeasureSince([]string{"server", "User", "register"}, time.Now())
 	// Validate the arguments
 	if args.User == nil {
 		reply.Success = false

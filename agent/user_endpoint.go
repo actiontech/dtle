@@ -20,7 +20,6 @@ import (
 	"github.com/actiontech/dtle/internal/models"
 	"github.com/mojocn/base64Captcha"
 	"github.com/dgrijalva/jwt-go"
-
 )
 
 func (s *HTTPServer) LoginRequest(resp http.ResponseWriter, req *http.Request) (interface{}, error) {
@@ -461,7 +460,7 @@ func (s *HTTPServer) userList(resp http.ResponseWriter, req *http.Request,userId
 	}
 
 	setMeta(resp, &out.QueryMeta)
-	if out.Users == nil {
+	if out.Users == nil&& userId!="superuser" {
 		return nil, CodedError(404, "user not found")
 	}
 	for i := 0; i < len(out.Users); i++ {
@@ -473,6 +472,15 @@ func (s *HTTPServer) userList(resp http.ResponseWriter, req *http.Request,userId
 			out.Users=nil
 			out.Users = append(out.Users, user)
 		}
+	}
+	if  userId=="superuser" {
+	user:=models.User{
+		ID:"superuser",
+		Passwd : "******",
+		UserName:"superuser",
+		UpdateDate:time.Unix(1584337360, 0),
+	}
+	out.Users = append(out.Users, &user)
 	}
 	return out.Users, nil
 }
