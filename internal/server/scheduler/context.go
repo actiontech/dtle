@@ -12,7 +12,7 @@ import (
 	memdb "github.com/hashicorp/go-memdb"
 	"github.com/hashicorp/go-version"
 
-	"github.com/actiontech/dtle/internal/models"
+	"github.com/actiontech/dts/internal/models"
 	"github.com/sirupsen/logrus"
 )
 

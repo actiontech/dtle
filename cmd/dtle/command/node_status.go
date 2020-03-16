@@ -13,7 +13,7 @@ import (
 
 	"github.com/mitchellh/colorstring"
 
-	"github.com/actiontech/dtle/api"
+	"github.com/actiontech/dts/api"
 )
 
 const (
@@ -38,7 +38,7 @@ type NodeStatusCommand struct {
 
 func (c *NodeStatusCommand) Help() string {
 	helpText := `
-Usage: dtle node-status [options] <node>
+Usage: dts node-status [options] <node>
 
   Display status information about a given node. The list of nodes
   returned includes only nodes which jobs may be scheduled to, and

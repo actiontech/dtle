@@ -10,7 +10,7 @@ import (
 	"flag"
 	"reflect"
 	"testing"
-	"github.com/actiontech/dtle/api"
+	"github.com/actiontech/dts/api"
 
 	"github.com/mitchellh/cli"
 	"github.com/mitchellh/colorstring"

@@ -11,7 +11,7 @@ import (
 	"reflect"
 	"testing"
 	"time"
-	uconf "github.com/actiontech/dtle/internal/config"
+	uconf "github.com/actiontech/dts/internal/config"
 )
 
 func TestDefaultConfig(t *testing.T) {

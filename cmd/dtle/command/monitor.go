@@ -14,8 +14,8 @@ import (
 
 	"github.com/mitchellh/cli"
 
-	"github.com/actiontech/dtle/api"
-	"github.com/actiontech/dtle/internal/models"
+	"github.com/actiontech/dts/api"
+	"github.com/actiontech/dts/internal/models"
 )
 
 const (

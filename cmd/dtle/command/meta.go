@@ -16,7 +16,7 @@ import (
 	"github.com/mitchellh/cli"
 	"github.com/mitchellh/colorstring"
 
-	"github.com/actiontech/dtle/api"
+	"github.com/actiontech/dts/api"
 )
 
 const (

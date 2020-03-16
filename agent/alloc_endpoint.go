@@ -11,7 +11,7 @@ import (
 	"net/http"
 	"strings"
 
-	umodel "github.com/actiontech/dtle/internal/models"
+	umodel "github.com/actiontech/dts/internal/models"
 )
 
 var (

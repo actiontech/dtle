@@ -26,9 +26,9 @@ import (
 	"github.com/hashicorp/raft"
 	"github.com/hashicorp/serf/serf"
 
-	"github.com/actiontech/dtle/internal"
-	uconf "github.com/actiontech/dtle/internal/config"
-	"github.com/actiontech/dtle/internal/server/store"
+	"github.com/actiontech/dts/internal"
+	uconf "github.com/actiontech/dts/internal/config"
+	"github.com/actiontech/dts/internal/server/store"
 	raftboltdb "github.com/hashicorp/raft-boltdb"
 	"github.com/sirupsen/logrus"
 )

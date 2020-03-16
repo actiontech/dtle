@@ -21,7 +21,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/actiontech/dtle/internal/g"
+	"github.com/actiontech/dts/internal/g"
 
 	"github.com/armon/go-metrics"
 	"github.com/armon/go-metrics/prometheus"
@@ -94,7 +94,7 @@ func (c *Command) readConfig() *Config {
 	flags.BoolVar(&cmdConfig.PprofSwitch, "pprof-switch", false, "")
 	flags.Int64Var(&cmdConfig.PprofTime, "pprof-time", 0, "")
 	flags.IntVar(&cmdConfig.CoverageReportPort, "coverage-report-port", 0, "")
-	flags.StringVar(&cmdConfig.CoverageReportRawCodeDir, "coverage-report-raw-code-dir", "/usr/lib/dtle", "")
+	flags.StringVar(&cmdConfig.CoverageReportRawCodeDir, "coverage-report-raw-code-dir", "/usr/lib/dts", "")
 	flags.StringVar(&cmdConfig.NodeName, "node", "", "")
 	flags.StringVar(&cmdConfig.JaegerAgentAddress, "jaeger-agent-address", "", "")
 	flags.StringVar(&cmdConfig.JaegerAgentPort, "jaeger-agent-port", "", "")
@@ -280,7 +280,7 @@ func (c *Command) Run(args []string) int {
 				Type:  "const",
 				Param: 1,
 			},
-			ServiceName: "dtle",
+			ServiceName: "dts",
 			Reporter: &jaegercnf.ReporterConfig{
 				LogSpans:            true,
 				BufferFlushInterval: 1 * time.Second,
@@ -369,7 +369,7 @@ func (c *Command) Run(args []string) int {
 
 	// Agent configuration output
 	padding := 18
-	c.logger.WithFields(logrus.Fields{"status": "dtle server configuration"}).Infof("Dtle server configuration")
+	c.logger.WithFields(logrus.Fields{"status": "dts server configuration"}).Infof("Dtle server configuration")
 	for _, k := range infoKeys {
 		c.logger.WithFields(logrus.Fields{strings.Repeat(" ", padding-len(k)) + strings.Title(k): info[k]}).Infof("info keys")
 	}
@@ -558,7 +558,7 @@ func (c *Command) Synopsis() string {
 
 func (c *Command) Help() string {
 	helpText := `
-Usage: dtle server [options]
+Usage: dts server [options]
 
   Starts the Dtle server and runs until an interrupt is received.
   The server may be a agent and/or manager.
@@ -609,7 +609,7 @@ General Options (agents and managers):
 Manager Options:
 
   -manager
-    Enable manager mode for the dtle. Servers in manager mode are
+    Enable manager mode for the dts. Servers in manager mode are
     clustered together and handle the additional responsibility of
     leader election, data replication, and scheduling work onto
     eligible agent nodes.

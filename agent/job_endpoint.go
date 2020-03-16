@@ -15,10 +15,10 @@ import (
 
 	"github.com/mitchellh/mapstructure"
 
-	"github.com/actiontech/dtle/api"
-	"github.com/actiontech/dtle/internal/client/driver/mysql/sql"
-	"github.com/actiontech/dtle/internal/config"
-	"github.com/actiontech/dtle/internal/models"
+	"github.com/actiontech/dts/api"
+	"github.com/actiontech/dts/internal/client/driver/mysql/sql"
+	"github.com/actiontech/dts/internal/config"
+	"github.com/actiontech/dts/internal/models"
 )
 
 func (s *HTTPServer) JobsRequest(resp http.ResponseWriter, req *http.Request) (interface{}, error) {

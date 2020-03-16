@@ -12,13 +12,13 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/actiontech/dtle/internal/g"
+	"github.com/actiontech/dts/internal/g"
 
 	"time"
 
-	usql "github.com/actiontech/dtle/internal/client/driver/mysql/sql"
-	"github.com/actiontech/dtle/internal/config"
-	umconf "github.com/actiontech/dtle/internal/config/mysql"
+	usql "github.com/actiontech/dts/internal/client/driver/mysql/sql"
+	"github.com/actiontech/dts/internal/config"
+	umconf "github.com/actiontech/dts/internal/config/mysql"
 	"github.com/sirupsen/logrus"
 )
 

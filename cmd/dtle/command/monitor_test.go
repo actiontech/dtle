@@ -10,7 +10,7 @@ import (
 	"reflect"
 	"sync"
 	"testing"
-	"github.com/actiontech/dtle/api"
+	"github.com/actiontech/dts/api"
 
 	"github.com/mitchellh/cli"
 )

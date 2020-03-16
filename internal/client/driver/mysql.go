@@ -10,17 +10,17 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/actiontech/dtle/internal/client/driver/common"
+	"github.com/actiontech/dts/internal/client/driver/common"
 
 	"github.com/mitchellh/mapstructure"
 
-	"github.com/actiontech/dtle/internal/client/driver/mysql"
-	ubase "github.com/actiontech/dtle/internal/client/driver/mysql/base"
-	usql "github.com/actiontech/dtle/internal/client/driver/mysql/sql"
-	"github.com/actiontech/dtle/internal/config"
-	"github.com/actiontech/dtle/internal/models"
+	"github.com/actiontech/dts/internal/client/driver/mysql"
+	ubase "github.com/actiontech/dts/internal/client/driver/mysql/base"
+	usql "github.com/actiontech/dts/internal/client/driver/mysql/sql"
+	"github.com/actiontech/dts/internal/config"
+	"github.com/actiontech/dts/internal/models"
 
-	"github.com/actiontech/dtle/internal/g"
+	"github.com/actiontech/dts/internal/g"
 )
 
 type MySQLDriver struct {

@@ -11,8 +11,8 @@ import (
 
 	"github.com/siddontang/go-mysql/replication"
 
-	"github.com/actiontech/dtle/internal/config"
-	"github.com/actiontech/dtle/internal/config/mysql"
+	"github.com/actiontech/dts/internal/config"
+	"github.com/actiontech/dts/internal/config/mysql"
 	)
 
 type EventDML string

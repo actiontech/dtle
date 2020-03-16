@@ -13,7 +13,7 @@ import (
 	"github.com/hashicorp/consul/lib"
 	memdb "github.com/hashicorp/go-memdb"
 
-	"github.com/actiontech/dtle/internal/models"
+	"github.com/actiontech/dts/internal/models"
 )
 
 // initializeHeartbeatTimers is used when a leader is newly elected to create

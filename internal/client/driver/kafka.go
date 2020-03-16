@@ -8,10 +8,10 @@ package driver
 
 import (
 	"fmt"
-	"github.com/actiontech/dtle/internal/client/driver/common"
+	"github.com/actiontech/dts/internal/client/driver/common"
 	"github.com/mitchellh/mapstructure"
-	"github.com/actiontech/dtle/internal/client/driver/kafka3"
-	"github.com/actiontech/dtle/internal/models"
+	"github.com/actiontech/dts/internal/client/driver/kafka3"
+	"github.com/actiontech/dts/internal/models"
 )
 
 type KafkaDriver struct {

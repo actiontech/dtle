@@ -11,9 +11,9 @@ import (
 	"sync"
 	"testing"
 	"time"
-	log "github.com/actiontech/dtle/internal/logger"
-	"github.com/actiontech/dtle/internal/models"
-	"github.com/actiontech/dtle/internal/server/scheduler"
+	log "github.com/actiontech/dts/internal/logger"
+	"github.com/actiontech/dts/internal/models"
+	"github.com/actiontech/dts/internal/server/scheduler"
 )
 
 func TestNewWorker(t *testing.T) {

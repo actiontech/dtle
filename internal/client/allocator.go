@@ -16,8 +16,8 @@ import (
 	"github.com/hashicorp/go-multierror"
 	"github.com/sirupsen/logrus"
 
-	"github.com/actiontech/dtle/internal/config"
-	"github.com/actiontech/dtle/internal/models"
+	"github.com/actiontech/dts/internal/config"
+	"github.com/actiontech/dts/internal/models"
 )
 
 // AllocStateUpdater is used to update the status of an allocation

@@ -17,7 +17,7 @@ import (
 	"strings"
 	"time"
 
-	uconf "github.com/actiontech/dtle/internal/config"
+	uconf "github.com/actiontech/dts/internal/config"
 )
 
 // This is the default addr to all interfaces.
@@ -127,9 +127,9 @@ type Config struct {
 	// If provided, the UI endpoints will be enabled.
 	UiDir string `mapstructure:"ui_dir"`
 
-	// Schema name for dtle meta info (e.g. gtid_executed).
+	// Schema name for dts meta info (e.g. gtid_executed).
 	// Do not use special characters (which need to be quoted) in schema name.
-	DtleSchemaName string `mapstructure:"dtle_schema_name"`
+	DtleSchemaName string `mapstructure:"dts_schema_name"`
 
 	// CoverageReportPort is the HTTP port of code coverage report, 0 is disable
 	CoverageReportPort int `mapstructure:"coverage_report_port"`
@@ -260,13 +260,13 @@ type Node struct {
 func DefaultConfig() *Config {
 	return &Config{
 		LogLevel:           "INFO",
-		LogFile:            "/var/log/dtle/dtle.log",
+		LogFile:            "/var/log/dts/dts.log",
 		LogMaxSize:         1024,
 		LogMaxBackups:      100,
 		LogToStdout:        false,
 		PprofSwitch:        false,
 		PprofTime:          0,
-		PidFile:            "/var/run/dtle/dtle.pid",
+		PidFile:            "/var/run/dts/dts.pid",
 		Region:             "global",
 		Datacenter:         "dc1",
 		BindAddr:           "0.0.0.0",
@@ -306,7 +306,7 @@ func DefaultConfig() *Config {
 		Network: &Network{
 			MaxPayload: DefaultMaxPayload,
 		},
-		DtleSchemaName: "dtle",
+		DtleSchemaName: "dts",
 	}
 }
 

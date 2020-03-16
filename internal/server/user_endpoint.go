@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/actiontech/dtle/internal/models"
-	"github.com/actiontech/dtle/internal/server/store"
+	"github.com/actiontech/dts/internal/models"
+	"github.com/actiontech/dts/internal/server/store"
 	metrics "github.com/armon/go-metrics"
 	memdb "github.com/hashicorp/go-memdb"
 )

@@ -13,8 +13,8 @@ import (
 
 	"github.com/hashicorp/go-memdb"
 
-	"github.com/actiontech/dtle/internal/models"
-	"github.com/actiontech/dtle/internal/server/store"
+	"github.com/actiontech/dts/internal/models"
+	"github.com/actiontech/dts/internal/server/store"
 	"github.com/sirupsen/logrus"
 )
 

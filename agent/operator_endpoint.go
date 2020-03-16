@@ -13,7 +13,7 @@ import (
 
 	"github.com/hashicorp/raft"
 
-	"github.com/actiontech/dtle/internal/models"
+	"github.com/actiontech/dts/internal/models"
 )
 
 func (s *HTTPServer) OperatorRequest(resp http.ResponseWriter, req *http.Request) (interface{}, error) {

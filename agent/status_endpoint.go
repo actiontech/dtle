@@ -9,7 +9,7 @@ package agent
 import (
 	"net/http"
 
-	"github.com/actiontech/dtle/internal/models"
+	"github.com/actiontech/dts/internal/models"
 )
 
 func (s *HTTPServer) StatusLeaderRequest(resp http.ResponseWriter, req *http.Request) (interface{}, error) {

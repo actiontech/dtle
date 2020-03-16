@@ -15,8 +15,8 @@ import (
 
 	"github.com/hashicorp/go-multierror"
 
-	"github.com/actiontech/dtle/agent"
-	"github.com/actiontech/dtle/api"
+	"github.com/actiontech/dts/agent"
+	"github.com/actiontech/dts/api"
 )
 
 var (
@@ -31,7 +31,7 @@ type StartCommand struct {
 
 func (c *StartCommand) Help() string {
 	helpText := `
-Usage: dtle start [options] <path>
+Usage: dts start [options] <path>
 
   Starts running a new job or updates an existing job using
   the specification located at <path>. This is the main command

@@ -19,7 +19,7 @@ import (
 	"github.com/hashicorp/hcl/hcl/ast"
 	"github.com/mitchellh/mapstructure"
 
-	"github.com/actiontech/dtle/internal/config"
+	"github.com/actiontech/dts/internal/config"
 )
 
 // ParseConfigFile parses the given path as a config file.
@@ -105,7 +105,7 @@ func parseConfig(result *Config, list *ast.ObjectList) error {
 		"leave_on_terminate",
 		"consul",
 		"http_api_response_headers",
-		"dtle_schema_name",
+		"dts_schema_name",
 		"jaeger_agent_address",
 		"jaeger_agent_port",
 	}

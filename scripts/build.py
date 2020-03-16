@@ -17,19 +17,19 @@ import argparse
 ################
 
 # Packaging variables
-PACKAGE_NAME = "dtle"
+PACKAGE_NAME = "dts"
 INSTALL_ROOT_DIR = "/usr/bin"
-LOG_DIR = "/var/log/dtle"
-SCRIPT_DIR = "/usr/lib/dtle/scripts"
-CONFIG_DIR = "/etc/dtle"
+LOG_DIR = "/var/log/dts"
+SCRIPT_DIR = "/usr/lib/dts/scripts"
+CONFIG_DIR = "/etc/dts"
 LOGROTATE_DIR = "/etc/logrotate.d"
-COVERAGE_REPORT_RAW_CODE_DIR = "/usr/lib/dtle"
+COVERAGE_REPORT_RAW_CODE_DIR = "/usr/lib/dts"
 
 INIT_SCRIPT = "scripts/init.sh"
-SYSTEMD_SCRIPT = "scripts/dtle.service"
-LOGROTATE_SCRIPT = "etc/logrotate.d/dtle"
-DEFAULT_CONFIG = "etc/dtle.conf"
-DEFAULT_WINDOWS_CONFIG = "etc/dtle.conf"
+SYSTEMD_SCRIPT = "scripts/dts.service"
+LOGROTATE_SCRIPT = "etc/logrotate.d/dts"
+DEFAULT_CONFIG = "etc/dts.conf"
+DEFAULT_WINDOWS_CONFIG = "etc/dts.conf"
 POSTINST_SCRIPT = "scripts/post-install.sh"
 PREINST_SCRIPT = "scripts/pre-install.sh"
 POSTREMOVE_SCRIPT = "scripts/post-remove.sh"
@@ -38,8 +38,8 @@ PREREMOVE_SCRIPT = "scripts/pre-remove.sh"
 COVERAGE_REPORT_RAW_CODE = "coverage-report-raw-code"
 
 CONFIGURATION_FILES = [
-    CONFIG_DIR + '/dtle.conf',
-    LOGROTATE_DIR + '/dtle',
+    CONFIG_DIR + '/dts.conf',
+    LOGROTATE_DIR + '/dts',
 ]
 
 # META-PACKAGE VARIABLES
@@ -67,8 +67,8 @@ fpm_common_args = "-f -s dir --log error \
     VENDOR,
     PACKAGE_URL,
     MAINTAINER,
-    CONFIG_DIR + '/dtle.conf',
-    LOGROTATE_DIR + '/dtle',
+    CONFIG_DIR + '/dts.conf',
+    LOGROTATE_DIR + '/dts',
     POSTINST_SCRIPT,
     PREINST_SCRIPT,
     POSTREMOVE_SCRIPT,
@@ -76,7 +76,7 @@ fpm_common_args = "-f -s dir --log error \
     DESCRIPTION)
 
 targets = {
-    'dtle' : './cmd/dtle',
+    'dts' : './cmd/dts',
 }
 
 supported_builds = {
@@ -112,20 +112,20 @@ def package_scripts(build_root, config_only=False, windows=False):
     if config_only or windows:
         logging.info("Copying configuration to build directory")
         if windows:
-            shutil.copyfile(DEFAULT_WINDOWS_CONFIG, os.path.join(build_root, "dtle.conf"))
+            shutil.copyfile(DEFAULT_WINDOWS_CONFIG, os.path.join(build_root, "dts.conf"))
         else:
-            shutil.copyfile(DEFAULT_CONFIG, os.path.join(build_root, "dtle.conf"))
-        os.chmod(os.path.join(build_root, "dtle.conf"), 0o644)
+            shutil.copyfile(DEFAULT_CONFIG, os.path.join(build_root, "dts.conf"))
+        os.chmod(os.path.join(build_root, "dts.conf"), 0o644)
     else:
         logging.info("Copying scripts and configuration to build directory")
         shutil.copyfile(INIT_SCRIPT, os.path.join(build_root, SCRIPT_DIR[1:], INIT_SCRIPT.split('/')[1]))
         os.chmod(os.path.join(build_root, SCRIPT_DIR[1:], INIT_SCRIPT.split('/')[1]), 0o644)
         shutil.copyfile(SYSTEMD_SCRIPT, os.path.join(build_root, SCRIPT_DIR[1:], SYSTEMD_SCRIPT.split('/')[1]))
         os.chmod(os.path.join(build_root, SCRIPT_DIR[1:], SYSTEMD_SCRIPT.split('/')[1]), 0o644)
-        shutil.copyfile(LOGROTATE_SCRIPT, os.path.join(build_root, LOGROTATE_DIR[1:], "dtle"))
-        os.chmod(os.path.join(build_root, LOGROTATE_DIR[1:], "dtle"), 0o644)
-        shutil.copyfile(DEFAULT_CONFIG, os.path.join(build_root, CONFIG_DIR[1:], "dtle.conf"))
-        os.chmod(os.path.join(build_root, CONFIG_DIR[1:], "dtle.conf"), 0o644)
+        shutil.copyfile(LOGROTATE_SCRIPT, os.path.join(build_root, LOGROTATE_DIR[1:], "dts"))
+        os.chmod(os.path.join(build_root, LOGROTATE_DIR[1:], "dts"), 0o644)
+        shutil.copyfile(DEFAULT_CONFIG, os.path.join(build_root, CONFIG_DIR[1:], "dts.conf"))
+        os.chmod(os.path.join(build_root, CONFIG_DIR[1:], "dts.conf"), 0o644)
 
 def run_generate():
     # NOOP for Dtle

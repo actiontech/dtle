@@ -10,8 +10,8 @@ import (
 	"database/sql"
 	"reflect"
 	"testing"
-	"github.com/actiontech/dtle/internal/config"
-	log "github.com/actiontech/dtle/internal/logger"
+	"github.com/actiontech/dts/internal/config"
+	log "github.com/actiontech/dts/internal/logger"
 )
 
 func TestNewDumper(t *testing.T) {

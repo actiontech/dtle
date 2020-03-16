@@ -7,7 +7,7 @@
 package sql
 
 import (
-	"github.com/actiontech/dtle/internal/config/mysql"
+	"github.com/actiontech/dts/internal/config/mysql"
 	"testing"
 
 	"reflect"

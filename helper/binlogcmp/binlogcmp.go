@@ -3,8 +3,8 @@ package main
 import (
 	"context"
 	"fmt"
-	. "github.com/actiontech/dtle/helper/u"
-	"github.com/actiontech/dtle/utils"
+	. "github.com/actiontech/dts/helper/u"
+	"github.com/actiontech/dts/utils"
 	"github.com/siddontang/go-mysql/mysql"
 	rep "github.com/siddontang/go-mysql/replication"
 	"math/rand"
@@ -151,7 +151,7 @@ func main() {
 					evt := parseRowsEvent(event)
 					schemaName := string(evt.Table.Schema)
 					tableName := string(evt.Table.Table)
-					if schemaName == "dtle" && tableName == "gtid_executed_v3" {
+					if schemaName == "dts" && tableName == "gtid_executed_v3" {
 						if eventType == rep.DELETE_ROWS_EVENTv2 {
 							Printlnf("2 cleanup_meta")
 							cleanupMeta = true

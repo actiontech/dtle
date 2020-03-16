@@ -22,8 +22,8 @@ import (
 	"github.com/hashicorp/raft"
 	"github.com/hashicorp/yamux"
 
-	"github.com/actiontech/dtle/internal/models"
-	"github.com/actiontech/dtle/internal/server/store"
+	"github.com/actiontech/dts/internal/models"
+	"github.com/actiontech/dts/internal/server/store"
 )
 
 type RPCType byte

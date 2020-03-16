@@ -13,10 +13,10 @@ import (
 	"fmt"
 	"strconv"
 
-	"github.com/actiontech/dtle/internal/client/driver/common"
+	"github.com/actiontech/dts/internal/client/driver/common"
 
-	mysqlDriver "github.com/actiontech/dtle/internal/client/driver/mysql"
-	"github.com/actiontech/dtle/internal/config/mysql"
+	mysqlDriver "github.com/actiontech/dts/internal/client/driver/mysql"
+	"github.com/actiontech/dts/internal/config/mysql"
 
 	"github.com/golang/snappy"
 	gonats "github.com/nats-io/go-nats"
@@ -28,10 +28,10 @@ import (
 
 	"time"
 
-	"github.com/actiontech/dtle/internal/client/driver/mysql/binlog"
-	"github.com/actiontech/dtle/internal/config"
-	"github.com/actiontech/dtle/internal/models"
-	"github.com/actiontech/dtle/utils"
+	"github.com/actiontech/dts/internal/client/driver/mysql/binlog"
+	"github.com/actiontech/dts/internal/config"
+	"github.com/actiontech/dts/internal/models"
+	"github.com/actiontech/dts/utils"
 	"github.com/sirupsen/logrus"
 )
 

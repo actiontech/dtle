@@ -17,7 +17,7 @@ type ConfigCommand struct {
 
 func (c *ConfigCommand) Help() string {
 	helpText := `
-Usage: dtle agent-config [options]
+Usage: dts agent-config [options]
 
   View or modify client configuration details. This command only
   works on client nodes, and can be used to update the running
@@ -45,7 +45,7 @@ Agent Config Options:
     to configure. The set is updated atomically.
 
     Example:
-      $ dtle agent-config -update-servers foo:8191 bar:8191
+      $ dts agent-config -update-servers foo:8191 bar:8191
 `
 	return strings.TrimSpace(helpText)
 }

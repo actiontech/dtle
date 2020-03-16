@@ -17,13 +17,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/actiontech/dtle/internal/client/driver/common"
+	"github.com/actiontech/dts/internal/client/driver/common"
 
 	"github.com/armon/go-metrics"
 
-	"github.com/actiontech/dtle/internal/client/driver"
-	"github.com/actiontech/dtle/internal/config"
-	"github.com/actiontech/dtle/internal/models"
+	"github.com/actiontech/dts/internal/client/driver"
+	"github.com/actiontech/dts/internal/config"
+	"github.com/actiontech/dts/internal/models"
 	"github.com/sirupsen/logrus"
 )
 

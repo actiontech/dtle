@@ -13,8 +13,8 @@ import (
 	_ "net/http/pprof"
 	"os"
 
-	"github.com/actiontech/dtle/agent"
-	"github.com/actiontech/dtle/cmd/dtle/command"
+	"github.com/actiontech/dts/agent"
+	"github.com/actiontech/dts/cmd/dts/command"
 	"github.com/mitchellh/cli"
 )
 

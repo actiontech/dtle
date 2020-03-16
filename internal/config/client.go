@@ -13,9 +13,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/actiontech/dtle/internal"
-	umconf "github.com/actiontech/dtle/internal/config/mysql"
-	"github.com/actiontech/dtle/internal/models"
+	"github.com/actiontech/dts/internal"
+	umconf "github.com/actiontech/dts/internal/config/mysql"
+	"github.com/actiontech/dts/internal/models"
 
 	"strings"
 

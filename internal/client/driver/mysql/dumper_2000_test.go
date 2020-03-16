@@ -1,10 +1,10 @@
 package mysql
 
 import (
-	"github.com/actiontech/dtle/helper/u"
-	"github.com/actiontech/dtle/internal/config"
-	umconf "github.com/actiontech/dtle/internal/config/mysql"
-	"github.com/actiontech/dtle/internal/logger"
+	"github.com/actiontech/dts/helper/u"
+	"github.com/actiontech/dts/internal/config"
+	umconf "github.com/actiontech/dts/internal/config/mysql"
+	"github.com/actiontech/dts/internal/logger"
 	"os"
 	"testing"
 	"database/sql"

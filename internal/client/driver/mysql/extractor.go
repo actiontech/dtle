@@ -11,11 +11,11 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/actiontech/dtle/internal/client/driver/common"
-	"github.com/actiontech/dtle/internal/config/mysql"
-	umconf "github.com/actiontech/dtle/internal/config/mysql"
+	"github.com/actiontech/dts/internal/client/driver/common"
+	"github.com/actiontech/dts/internal/config/mysql"
+	umconf "github.com/actiontech/dts/internal/config/mysql"
 
-	"github.com/actiontech/dtle/internal/g"
+	"github.com/actiontech/dts/internal/g"
 	"github.com/opentracing/opentracing-go"
 	"github.com/opentracing/opentracing-go/ext"
 	"github.com/pkg/errors"
@@ -43,13 +43,13 @@ import (
 
 	"context"
 
-	"github.com/actiontech/dtle/internal/client/driver/mysql/base"
-	"github.com/actiontech/dtle/internal/client/driver/mysql/binlog"
-	"github.com/actiontech/dtle/internal/client/driver/mysql/sql"
-	sqle "github.com/actiontech/dtle/internal/client/driver/mysql/sqle/inspector"
-	"github.com/actiontech/dtle/internal/config"
-	"github.com/actiontech/dtle/internal/models"
-	"github.com/actiontech/dtle/utils"
+	"github.com/actiontech/dts/internal/client/driver/mysql/base"
+	"github.com/actiontech/dts/internal/client/driver/mysql/binlog"
+	"github.com/actiontech/dts/internal/client/driver/mysql/sql"
+	sqle "github.com/actiontech/dts/internal/client/driver/mysql/sqle/inspector"
+	"github.com/actiontech/dts/internal/config"
+	"github.com/actiontech/dts/internal/models"
+	"github.com/actiontech/dts/utils"
 	"github.com/shirou/gopsutil/mem"
 	"github.com/sirupsen/logrus"
 )
@@ -303,7 +303,7 @@ func (e *Extractor) Run() {
 		}
 	} else { // no full copy
 		// Will not get consistent table meta-info for an incremental only job.
-		// https://github.com/actiontech/dtle/issues/321#issuecomment-441191534
+		// https://github.com/actiontech/dts/issues/321#issuecomment-441191534
 		if err := e.getSchemaTablesAndMeta(); err != nil {
 			e.onError(TaskStateDead, err)
 			return
@@ -919,7 +919,7 @@ func (e *Extractor) StreamEvents() error {
 				select {
 				case binlogEntry := <-e.dataChannel:
 					spanContext := binlogEntry.SpanContext
-					span := opentracing.GlobalTracer().StartSpan("nat send :begin  send binlogEntry from src dtle to desc dtle", opentracing.ChildOf(spanContext))
+					span := opentracing.GlobalTracer().StartSpan("nat send :begin  send binlogEntry from src dts to desc dts", opentracing.ChildOf(spanContext))
 					span.SetTag("time", time.Now().Unix())
 					ctx = opentracing.ContextWithSpan(ctx, span)
 					//span.SetTag("timetag", time.Now().Unix())

@@ -12,8 +12,8 @@ import (
 	"reflect"
 	"sync"
 	"testing"
-	log "github.com/actiontech/dtle/internal/logger"
-	"github.com/actiontech/dtle/internal/server/store"
+	log "github.com/actiontech/dts/internal/logger"
+	"github.com/actiontech/dts/internal/server/store"
 
 	"github.com/hashicorp/raft"
 	"github.com/ugorji/go/codec"

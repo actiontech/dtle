@@ -7,9 +7,9 @@ if [[ -f /etc/debian_version ]]; then
     # Debian/Ubuntu logic
     which systemctl &>/dev/null
     if [[ $? -eq 0 ]]; then
-	deb-systemd-invoke stop dtle.service
+	deb-systemd-invoke stop dts.service
     else
 	# Assuming sysv
-	invoke-rc.d dtle stop
+	invoke-rc.d dts stop
     fi
 fi

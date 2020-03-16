@@ -11,7 +11,7 @@ import (
 	"database/sql"
 	"flag"
 	"fmt"
-	. "github.com/actiontech/dtle/helper/u"
+	. "github.com/actiontech/dts/helper/u"
 	"os"
 	"os/signal"
 

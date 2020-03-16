@@ -11,7 +11,7 @@ import (
 	"sync"
 	"testing"
 	"time"
-	"github.com/actiontech/dtle/internal/models"
+	"github.com/actiontech/dts/internal/models"
 )
 
 func TestNewPlanQueue(t *testing.T) {

@@ -1,4 +1,4 @@
-module github.com/actiontech/dtle
+module github.com/actiontech/dts
 
 go 1.12
 

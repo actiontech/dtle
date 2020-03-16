@@ -28,7 +28,7 @@ Briefly describe the problem in a few paragraphs.
 
 ## Describe the results you expected
 
-## Output of `./dtle version`:**
+## Output of `./dts version`:**
 
 ```
 (paste your output here)
@@ -42,9 +42,9 @@ Briefly describe the problem in a few paragraphs.
 ## Additional details (log, config, job config etc):
 <!--
 1. default file path 
-   - config: /etc/dtle/dtle.conf
-   - log: /var/log/dtle.log
-   - job: your local file, or get from dtle
+   - config: /etc/dts/dts.conf
+   - log: /var/log/dts.log
+   - job: your local file, or get from dts
      - curl -XGET "http://127.0.0.1:8190/v1/job/<job_uuid>"
 4. mask sensitive infomation (e.g. IP, username and password)"
 5. paste short files or the key part

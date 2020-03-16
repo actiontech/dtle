@@ -16,8 +16,8 @@ import (
 	"github.com/hashicorp/go-multierror"
 	"github.com/hashicorp/raft"
 
-	"github.com/actiontech/dtle/internal/models"
-	"github.com/actiontech/dtle/internal/server/store"
+	"github.com/actiontech/dts/internal/models"
+	"github.com/actiontech/dts/internal/server/store"
 )
 
 func (s *Server) planApply() {

@@ -30,11 +30,11 @@ import (
 	"github.com/shirou/gopsutil/host"
 	"github.com/sirupsen/logrus"
 
-	"github.com/actiontech/dtle/internal"
-	"github.com/actiontech/dtle/internal/client/driver"
-	"github.com/actiontech/dtle/internal/config"
-	"github.com/actiontech/dtle/internal/models"
-	"github.com/actiontech/dtle/internal/server"
+	"github.com/actiontech/dts/internal"
+	"github.com/actiontech/dts/internal/client/driver"
+	"github.com/actiontech/dts/internal/config"
+	"github.com/actiontech/dts/internal/models"
+	"github.com/actiontech/dts/internal/server"
 )
 
 const (

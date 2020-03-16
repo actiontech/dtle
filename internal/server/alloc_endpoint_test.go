@@ -8,7 +8,7 @@ package server
 
 import (
 	"testing"
-	"github.com/actiontech/dtle/internal/models"
+	"github.com/actiontech/dts/internal/models"
 )
 
 func TestAlloc_List(t *testing.T) {

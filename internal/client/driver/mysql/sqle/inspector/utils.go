@@ -4,7 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
-	"github.com/actiontech/dtle/internal/client/driver/mysql/sqle/g"
+	"github.com/actiontech/dts/internal/client/driver/mysql/sqle/g"
 	"strconv"
 	"strings"
 

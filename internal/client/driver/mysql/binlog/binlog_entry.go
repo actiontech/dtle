@@ -9,7 +9,7 @@ package binlog
 import (
 	"fmt"
 
-	"github.com/actiontech/dtle/internal/client/driver/mysql/base"
+	"github.com/actiontech/dts/internal/client/driver/mysql/base"
 	opentracing "github.com/opentracing/opentracing-go"
 )
 

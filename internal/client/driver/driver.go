@@ -10,11 +10,11 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/actiontech/dtle/internal/client/driver/common"
+	"github.com/actiontech/dts/internal/client/driver/common"
 	"github.com/sirupsen/logrus"
 
-	uconf "github.com/actiontech/dtle/internal/config"
-	"github.com/actiontech/dtle/internal/models"
+	uconf "github.com/actiontech/dts/internal/config"
+	"github.com/actiontech/dts/internal/models"
 )
 
 var (

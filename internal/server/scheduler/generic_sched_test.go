@@ -9,8 +9,8 @@ package scheduler
 import (
 	"reflect"
 	"testing"
-	log "github.com/actiontech/dtle/internal/logger"
-	"github.com/actiontech/dtle/internal/models"
+	log "github.com/actiontech/dts/internal/logger"
+	"github.com/actiontech/dts/internal/models"
 )
 
 func TestSetStatusError_Error(t *testing.T) {

@@ -15,7 +15,7 @@ import (
 
 	"github.com/ryanuber/columnize"
 
-	"github.com/actiontech/dtle/api"
+	"github.com/actiontech/dts/api"
 )
 
 // formatKV takes a set of strings and formats them into properly

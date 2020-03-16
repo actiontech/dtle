@@ -27,7 +27,7 @@ type InitCommand struct {
 
 func (c *InitCommand) Help() string {
 	helpText := `
-Usage: dtle init
+Usage: dts init
 
   Creates an example job file that can be used as a starting
   point to customize further.

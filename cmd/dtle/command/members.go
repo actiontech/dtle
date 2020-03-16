@@ -14,7 +14,7 @@ import (
 
 	"github.com/ryanuber/columnize"
 
-	"github.com/actiontech/dtle/api"
+	"github.com/actiontech/dts/api"
 )
 
 type ServerMembersCommand struct {
@@ -23,7 +23,7 @@ type ServerMembersCommand struct {
 
 func (c *ServerMembersCommand) Help() string {
 	helpText := `
-Usage: dtle members [options]
+Usage: dts members [options]
 
   Display a list of the known managers and their status. Only Dtle managers are
   able to service this command.

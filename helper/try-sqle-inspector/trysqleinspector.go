@@ -1,8 +1,8 @@
 package main
 
 import (
-	"github.com/actiontech/dtle/internal/client/driver/mysql/base"
-	"github.com/actiontech/dtle/internal/client/driver/mysql/sqle/inspector"
+	"github.com/actiontech/dts/internal/client/driver/mysql/base"
+	"github.com/actiontech/dts/internal/client/driver/mysql/sqle/inspector"
 	"github.com/pingcap/parser"
 	"github.com/pingcap/parser/ast"
 	"log"

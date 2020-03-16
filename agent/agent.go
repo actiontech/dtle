@@ -15,10 +15,10 @@ import (
 	"sync/atomic"
 	"time"
 
-	ucli "github.com/actiontech/dtle/internal/client"
-	uconf "github.com/actiontech/dtle/internal/config"
-	umodel "github.com/actiontech/dtle/internal/models"
-	usrv "github.com/actiontech/dtle/internal/server"
+	ucli "github.com/actiontech/dts/internal/client"
+	uconf "github.com/actiontech/dts/internal/config"
+	umodel "github.com/actiontech/dts/internal/models"
+	usrv "github.com/actiontech/dts/internal/server"
 	"github.com/hashicorp/memberlist"
 	"github.com/sirupsen/logrus"
 )

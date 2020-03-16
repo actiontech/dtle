@@ -10,7 +10,7 @@ import (
 	"io"
 	"reflect"
 	"testing"
-	"github.com/actiontech/dtle/api"
+	"github.com/actiontech/dts/api"
 
 	"github.com/hashicorp/hcl/hcl/ast"
 )

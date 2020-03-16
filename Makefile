@@ -5,7 +5,7 @@ COMMIT := $(shell sh -c 'git rev-parse --short HEAD')
 DOCKER        := $(shell which docker)
 DOCKER_IMAGE  := docker-registry:5000/actiontech/universe-compiler-udup:v3
 
-PROJECT_NAME  = dtle
+PROJECT_NAME  = dts
 VERSION       = 9.9.9.9
 
 ifdef GOBIN
@@ -24,30 +24,30 @@ windows: build-windows
 
 # Only run the build (no dependency grabbing)
 build:
-	GO111MODULE=on go build $(GOFLAGS) -o dist/dtle -ldflags \
+	GO111MODULE=on go build $(GOFLAGS) -o dist/dts -ldflags \
 		"-X main.Version=$(VERSION) -X main.GitCommit=$(COMMIT) -X main.GitBranch=$(BRANCH)" \
-		./cmd/dtle/main.go
+		./cmd/dts/main.go
 
 build-windows:
-	GO111MODULE=on GOOS=windows GOARCH=amd64 go build $(GOFLAGS) -o dist/dtle.exe -ldflags \
+	GO111MODULE=on GOOS=windows GOARCH=amd64 go build $(GOFLAGS) -o dist/dts.exe -ldflags \
 		"-X main.Version=$(VERSION) -X main.GitCommit=$(COMMIT) -X main.GitBranch=$(BRANCH)" \
-		./cmd/dtle/main.go
+		./cmd/dts/main.go
 
 build_with_coverage_report: build-coverage-report-tool coverage-report-pre-build build coverage-report-post-build
 
 build-coverage-report-tool:
-	GO111MODULE=on go install $(GOFLAGS) github.com/actiontech/dtle/vendor/github.com/ikarishinjieva/golang-live-coverage-report/cmd/golang-live-coverage-report
+	GO111MODULE=on go install $(GOFLAGS) github.com/actiontech/dts/vendor/github.com/ikarishinjieva/golang-live-coverage-report/cmd/golang-live-coverage-report
 
 coverage-report-pre-build:
 	PATH=${GOPATH}/bin:$$PATH golang-live-coverage-report \
 	    -pre-build -raw-code-build-dir ./coverage-report-raw-code -raw-code-deploy-dir ./coverage-report-raw-code \
-	    -bootstrap-outfile ./cmd/dtle/coverage_report_bootstrap.go -bootstrap-package-name main \
-	    ./agent ./api ./utils ./cmd/dtle/command ./internal ./internal/g  ./internal/logger ./internal/models  ./internal/server ./internal/server/scheduler ./internal/server/store ./internal/client/driver ./internal/client/driver/kafka3 ./internal/client/driver/mysql ./internal/client/driver/mysql/base ./internal/client/driver/mysql/binlog ./internal/client/driver/mysql/sql ./internal/client/driver/mysql/util ./internal/client/driver/mysql/sqle/g ./internal/client/driver/mysql/sqle/inspector
+	    -bootstrap-outfile ./cmd/dts/coverage_report_bootstrap.go -bootstrap-package-name main \
+	    ./agent ./api ./utils ./cmd/dts/command ./internal ./internal/g  ./internal/logger ./internal/models  ./internal/server ./internal/server/scheduler ./internal/server/store ./internal/client/driver ./internal/client/driver/kafka3 ./internal/client/driver/mysql ./internal/client/driver/mysql/base ./internal/client/driver/mysql/binlog ./internal/client/driver/mysql/sql ./internal/client/driver/mysql/util ./internal/client/driver/mysql/sqle/g ./internal/client/driver/mysql/sqle/inspector
 
 coverage-report-post-build:
 	PATH=${GOPATH}/bin:$$PATH golang-live-coverage-report \
-	    -post-build -raw-code-build-dir ./coverage-report-raw-code -bootstrap-outfile ./cmd/dtle/coverage_report_bootstrap.go \
-	    ./agent ./api ./utils ./cmd/dtle/command  ./internal ./internal/g  ./internal/logger ./internal/models  ./internal/server ./internal/server/scheduler ./internal/server/store ./internal/client/driver ./internal/client/driver/kafka3 ./internal/client/driver/mysql ./internal/client/driver/mysql/base ./internal/client/driver/mysql/binlog ./internal/client/driver/mysql/sql ./internal/client/driver/mysql/util ./internal/client/driver/mysql/sqle/g ./internal/client/driver/mysql/sqle/inspector
+	    -post-build -raw-code-build-dir ./coverage-report-raw-code -bootstrap-outfile ./cmd/dts/coverage_report_bootstrap.go \
+	    ./agent ./api ./utils ./cmd/dts/command  ./internal ./internal/g  ./internal/logger ./internal/models  ./internal/server ./internal/server/scheduler ./internal/server/store ./internal/client/driver ./internal/client/driver/kafka3 ./internal/client/driver/mysql ./internal/client/driver/mysql/base ./internal/client/driver/mysql/binlog ./internal/client/driver/mysql/sql ./internal/client/driver/mysql/util ./internal/client/driver/mysql/sqle/g ./internal/client/driver/mysql/sqle/inspector
 
 TEMP_FILE = temp_parser_file
 goyacc:
@@ -86,10 +86,10 @@ mtswatcher: helper/mtswatcher/mtswatcher.go
 	GO111MODULE=on go build $(GOFLAGS) -o dist/mtswatcher ./helper/mtswatcher/mtswatcher.go
 
 docker_rpm:
-	$(DOCKER) run -v $(shell pwd)/:/universe/src/github.com/actiontech/dtle --rm $(DOCKER_IMAGE) -c "cd /universe/src/github.com/actiontech/dtle; GOPATH=/universe make prepare package ;chmod 777 -R dist;"
+	$(DOCKER) run -v $(shell pwd)/:/universe/src/github.com/actiontech/dts --rm $(DOCKER_IMAGE) -c "cd /universe/src/github.com/actiontech/dts; GOPATH=/universe make prepare package ;chmod 777 -R dist;"
 
 docker_rpm_with_coverage_report:
-	$(DOCKER) run -v $(shell pwd)/:/universe/src/github.com/actiontech/dtle --rm $(DOCKER_IMAGE) -c "cd /universe/src/github.com/actiontech/dtle; GOPATH=/universe make prepare build-coverage-report-tool coverage-report-pre-build package coverage-report-post-build ;chmod 777 -R dist;"
+	$(DOCKER) run -v $(shell pwd)/:/universe/src/github.com/actiontech/dts --rm $(DOCKER_IMAGE) -c "cd /universe/src/github.com/actiontech/dts; GOPATH=/universe make prepare build-coverage-report-tool coverage-report-pre-build package coverage-report-post-build ;chmod 777 -R dist;"
 
 upload:
 	curl --ftp-create-dirs -T $(shell pwd)/dist/*.rpm -u admin:ftpadmin ftp://release-ftpd/actiontech-${PROJECT_NAME}/qa/${VERSION}/${PROJECT_NAME}-${VERSION}-qa.x86_64.rpm

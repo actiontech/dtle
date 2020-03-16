@@ -13,7 +13,7 @@ import (
 
 	"github.com/hashicorp/go-multierror"
 
-	"github.com/actiontech/dtle/internal"
+	"github.com/actiontech/dts/internal"
 )
 
 const (

@@ -10,9 +10,9 @@ import (
 	"reflect"
 	"sync"
 	"testing"
-	"github.com/actiontech/dtle/internal/config"
-	log "github.com/actiontech/dtle/internal/logger"
-	"github.com/actiontech/dtle/internal/models"
+	"github.com/actiontech/dts/internal/config"
+	log "github.com/actiontech/dts/internal/logger"
+	"github.com/actiontech/dts/internal/models"
 )
 
 func TestNewAllocator(t *testing.T) {

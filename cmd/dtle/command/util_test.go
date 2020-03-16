@@ -12,7 +12,7 @@ import (
 	"reflect"
 	"testing"
 	"time"
-	"github.com/actiontech/dtle/api"
+	"github.com/actiontech/dts/api"
 )
 
 func Test_formatKV(t *testing.T) {

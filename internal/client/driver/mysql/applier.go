@@ -11,9 +11,9 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/actiontech/dtle/internal/client/driver/common"
+	"github.com/actiontech/dts/internal/client/driver/common"
 
-	"github.com/actiontech/dtle/internal/g"
+	"github.com/actiontech/dts/internal/g"
 	"github.com/opentracing/opentracing-go"
 	"github.com/opentracing/opentracing-go/ext"
 
@@ -38,13 +38,13 @@ import (
 	"encoding/hex"
 	"os"
 
-	"github.com/actiontech/dtle/internal/client/driver/mysql/base"
-	"github.com/actiontech/dtle/internal/client/driver/mysql/binlog"
-	"github.com/actiontech/dtle/internal/client/driver/mysql/sql"
-	"github.com/actiontech/dtle/internal/config"
-	umconf "github.com/actiontech/dtle/internal/config/mysql"
-	"github.com/actiontech/dtle/internal/models"
-	"github.com/actiontech/dtle/utils"
+	"github.com/actiontech/dts/internal/client/driver/mysql/base"
+	"github.com/actiontech/dts/internal/client/driver/mysql/binlog"
+	"github.com/actiontech/dts/internal/client/driver/mysql/sql"
+	"github.com/actiontech/dts/internal/config"
+	umconf "github.com/actiontech/dts/internal/config/mysql"
+	"github.com/actiontech/dts/internal/models"
+	"github.com/actiontech/dts/utils"
 
 	"github.com/nats-io/not.go"
 	"github.com/satori/go.uuid"
@@ -633,7 +633,7 @@ func (a *Applier) heterogeneousReplay() {
 				binlogEntry.Coordinates.LastCommitted, binlogEntry.Coordinates.SeqenceNumber)
 
 			if binlogEntry.Coordinates.OSID == a.mysqlContext.MySQLServerUuid {
-				a.logger.Debugf("mysql.applier: skipping a dtle tx. osid: %v", binlogEntry.Coordinates.OSID)
+				a.logger.Debugf("mysql.applier: skipping a dts tx. osid: %v", binlogEntry.Coordinates.OSID)
 				continue
 			}
 			// region TestIfExecuted
@@ -1255,7 +1255,7 @@ func (a *Applier) createTableGtidExecutedV3() error {
 	if _, err := a.db.Exec(query); err != nil {
 		return err
 	}
-	a.logger.Debugf("mysql.applier. after create dtle schema")
+	a.logger.Debugf("mysql.applier. after create dts schema")
 
 	query = fmt.Sprintf(`
 			CREATE TABLE IF NOT EXISTS %v.%v (

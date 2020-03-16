@@ -4,12 +4,12 @@
 # description: Dtle daemon
 
 ### BEGIN INIT INFO
-# Provides:          dtle
+# Provides:          dts
 # Required-Start:    $all
 # Required-Stop:     $remote_fs $syslog
 # Default-Start:     2 3 4 5
 # Default-Stop:      0 1 6
-# Short-Description: Start dtle at boot time
+# Short-Description: Start dts at boot time
 ### END INIT INFO
 
 # this init script supports three different variations:
@@ -20,18 +20,18 @@
 # In the third case we have to define our own functions which are very dumb
 # and expect the args to be positioned correctly.
 
-# Command-line options that can be set in /etc/default/dtle.  These will override
+# Command-line options that can be set in /etc/default/dts.  These will override
 # any config file values.
 DTLE_OPTS=
 
-USER=dtle
-GROUP=dtle
+USER=dts
+GROUP=dts
 
 if [ -r /lib/lsb/init-functions ]; then
     source /lib/lsb/init-functions
 fi
 
-DEFAULT=/etc/default/dtle
+DEFAULT=/etc/default/dts
 
 if [ -r $DEFAULT ]; then
     source $DEFAULT
@@ -45,7 +45,7 @@ if [ ! -f "$STDOUT" ]; then
 fi
 
 if [ -z "$STDERR" ]; then
-    STDERR=/var/log/dtle/dtle.log
+    STDERR=/var/log/dts/dts.log
 fi
 if [ ! -f "$STDERR" ]; then
     mkdir -p `dirname $STDERR`
@@ -94,13 +94,13 @@ function log_success_msg() {
 }
 
 # Process name ( For display )
-name=dtle
+name=dts
 
 # Daemon name, where is the actual executable
-daemon=/usr/bin/dtle
+daemon=/usr/bin/dts
 
 # pid file for the daemon
-pidfile=/var/run/dtle/dtle.pid
+pidfile=/var/run/dts/dts.pid
 piddir=`dirname $pidfile`
 
 if [ ! -d "$piddir" ]; then
@@ -109,7 +109,7 @@ if [ ! -d "$piddir" ]; then
 fi
 
 # Configuration file
-config=/etc/dtle/dtle.conf
+config=/etc/dts/dts.conf
 
 # If the daemon is not there, then exit.
 [ -x $daemon ] || exit 5

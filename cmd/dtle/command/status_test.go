@@ -9,7 +9,7 @@ package command
 import (
 	"reflect"
 	"testing"
-	"github.com/actiontech/dtle/api"
+	"github.com/actiontech/dts/api"
 )
 
 func TestStatusCommand_Help(t *testing.T) {

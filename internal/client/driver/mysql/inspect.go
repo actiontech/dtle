@@ -12,10 +12,10 @@ import (
 	"strings"
 	"time"
 
-	ubase "github.com/actiontech/dtle/internal/client/driver/mysql/base"
-	usql "github.com/actiontech/dtle/internal/client/driver/mysql/sql"
-	uconf "github.com/actiontech/dtle/internal/config"
-	umconf "github.com/actiontech/dtle/internal/config/mysql"
+	ubase "github.com/actiontech/dts/internal/client/driver/mysql/base"
+	usql "github.com/actiontech/dts/internal/client/driver/mysql/sql"
+	uconf "github.com/actiontech/dts/internal/config"
+	umconf "github.com/actiontech/dts/internal/config/mysql"
 	"github.com/sirupsen/logrus"
 )
 
