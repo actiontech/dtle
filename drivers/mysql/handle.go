@@ -4,7 +4,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/actiontech/dtle/plugins/drivers"
+	"github.com/hashicorp/nomad/plugins/drivers"
 	hclog "github.com/hashicorp/go-hclog"
 )
 

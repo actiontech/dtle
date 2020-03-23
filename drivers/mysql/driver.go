@@ -15,13 +15,13 @@ import (
 	"github.com/actiontech/dtle/drivers/mysql/mysql/common"
 	"github.com/actiontech/dtle/drivers/mysql/mysql"
 //	"github.com/actiontech/dtle/drivers/mysql/mysql"
-	"github.com/actiontech/dtle/drivers/shared/eventer"
-	"github.com/actiontech/dtle/helper/pluginutils/loader"
-	"github.com/actiontech/dtle/nomad/structs"
-	"github.com/actiontech/dtle/plugins/base"
-	"github.com/actiontech/dtle/plugins/drivers"
-		"github.com/actiontech/dtle/plugins/shared/hclspec"
-	pstructs "github.com/actiontech/dtle/plugins/shared/structs"
+	"github.com/hashicorp/nomad/drivers/shared/eventer"
+	"github.com/hashicorp/nomad/helper/pluginutils/loader"
+	"github.com/hashicorp/nomad/nomad/structs"
+	"github.com/hashicorp/nomad/plugins/base"
+	"github.com/hashicorp/nomad/plugins/drivers"
+	"github.com/hashicorp/nomad/plugins/shared/hclspec"
+	pstructs "github.com/hashicorp/nomad/plugins/shared/structs"
 )
 
 const (
