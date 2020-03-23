@@ -17,21 +17,15 @@ endif
 GOFLAGS := -mod=vendor
 
 # Standard Dtle build
-default: build
+default: driver
+
+driver:
+	GO111MODULE=on go build $(GOFLAGS) -o dist/dtle-driver -ldflags \
+		"-X main.Version=$(VERSION) -X main.GitCommit=$(COMMIT) -X main.GitBranch=$(BRANCH)" \
+		./cmd/nomad-plugin/main.go
 
 # Windows build
 windows: build-windows
-
-# Only run the build (no dependency grabbing)
-build:
-	GO111MODULE=on go build $(GOFLAGS) -o dist/dtle -ldflags \
-		"-X main.Version=$(VERSION) -X main.GitCommit=$(COMMIT) -X main.GitBranch=$(BRANCH)" \
-		./cmd/dtle/main.go
-
-build-windows:
-	GO111MODULE=on GOOS=windows GOARCH=amd64 go build $(GOFLAGS) -o dist/dtle.exe -ldflags \
-		"-X main.Version=$(VERSION) -X main.GitCommit=$(COMMIT) -X main.GitBranch=$(BRANCH)" \
-		./cmd/dtle/main.go
 
 build_with_coverage_report: build-coverage-report-tool coverage-report-pre-build build coverage-report-post-build
 
