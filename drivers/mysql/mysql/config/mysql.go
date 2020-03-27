@@ -48,13 +48,13 @@ type MySQLDriverConfig struct {
 	TimeZone              string
 	GroupCount            int
 	GroupMaxSize          int
-	GroupTimeout          int // millisecond
+	GroupTimeout          int
 
 	Gtid              string
 	BinlogFile        string
 	BinlogPos         int64
 	GtidStart         string
-	AutoGtid          bool // For internal use. Might be changed without notification.
+	AutoGtid          bool
 	BinlogRelay       bool
 	NatsAddr          string
 	ParallelWorkers   int
@@ -78,7 +78,6 @@ type MySQLDriverConfig struct {
 	SkipCreateDbTable    bool
 
 	CountingRowsFlag int64
-
 	SkipPrivilegeCheck  bool
 	SkipIncrementalCopy bool
 }

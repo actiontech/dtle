@@ -331,18 +331,19 @@ func (a *Applier) Run() {
 			}
 		}()
 	}
-
-	a.logger.Info("mysql.applier: Apply binlog events to %s.%d", a.mysqlContext.ConnectionConfig.Host, a.mysqlContext.ConnectionConfig.Port)
+	//a.logger.Debug("the connectionconfi host is ",a.mysqlContext.ConnectionConfig.Host)
+//	a.logger.Info("mysql.applier: Apply binlog events to %s.%d", a.mysqlContext.ConnectionConfig.Host, a.mysqlContext.ConnectionConfig.Port)
 	a.mysqlContext.StartTime = time.Now()
 	if err := a.initDBConnections(); err != nil {
 		a.onError(TaskStateDead, err)
 		return
 	}
+	a.logger.Debug("initNatSubClien ",a.mysqlContext.ConnectionConfig.Host)
 	if err := a.initNatSubClient(); err != nil {
 		a.onError(TaskStateDead, err)
 		return
 	}
-
+	a.logger.Debug("initiateStreaming is ",a.mysqlContext.ConnectionConfig.Host)
 	if err := a.initiateStreaming(); err != nil {
 		a.onError(TaskStateDead, err)
 		return
@@ -1047,17 +1048,19 @@ func (a *Applier) initDBConnections() (err error) {
 		return err
 	}
 	a.db.SetMaxOpenConns(10 + a.mysqlContext.ParallelWorkers)
-
 	if a.dbs, err = sql.CreateConns(a.db, a.mysqlContext.ParallelWorkers); err != nil {
+		a.logger.Debug("beging connetion mysql 2 create conns err")
 		return err
 	}
 
 	if err := a.validateConnection(a.db); err != nil {
 		return err
 	}
+	a.logger.Debug("beging connetion mysql 4 validate  serverid")
 	if err := a.validateServerUUID(); err != nil {
 		return err
 	}
+	a.logger.Debug("beging connetion mysql 5 validate  grants")
 	if err := a.validateGrants(); err != nil {
 		a.logger.Error("mysql.applier: Unexpected error on validateGrants, got %v", err)
 		return err

@@ -22,6 +22,10 @@ import (
 	"github.com/hashicorp/nomad/plugins/drivers"
 	"github.com/hashicorp/nomad/plugins/shared/hclspec"
 	pstructs "github.com/hashicorp/nomad/plugins/shared/structs"
+	"github.com/satori/go.uuid"
+	"net"
+	gnatsd "github.com/nats-io/gnatsd/server"
+	stand "github.com/nats-io/nats-streaming-server/server"
 )
 
 const (
@@ -70,7 +74,9 @@ var (
 
 	// taskConfigSpec is the hcl specification for the driver config section of
 	// a taskConfig within a job. It is returned in the TaskConfigSchema RPC
-	taskConfigSpec = hclspec.NewObject(map[string]*hclspec.Spec{})
+	taskConfigSpec = hclspec.NewObject(map[string]*hclspec.Spec{
+		"type":       hclspec.NewAttr("type", "string", true),
+	})
 
 	// capabilities is returned by the Capabilities RPC and indicates what
 	// optional features this driver supports
@@ -128,19 +134,106 @@ type Driver struct {
 	allocID   string
 	node      *structs.Node
 	extractor *mysql.Extractor
+	stand *stand.StanServer
 }
 
+/*type TaskConfig struct {
+	ReplicateDoDb         []*config.DataSource `codec:"ReplicateDoDb"`
+	ReplicateIgnoreDb     []*config.DataSource`codec:"ReplicateIgnoreDb"`
+	DropTableIfExists     bool`codec:"DropTableIfExists"`
+	ExpandSyntaxSupport   bool`codec:"ExpandSyntaxSupport"`
+	ReplChanBufferSize    int64`codec:"ReplChanBufferSize"`
+	MsgBytesLimit         int`codec:"MsgBytesLimit"`
+	TrafficAgainstLimits  int`codec:"TrafficAgainstLimits"`
+	TotalTransferredBytes int`codec:"TotalTransferredBytes"`
+	MaxRetries            int64`codec:"MaxRetries"`
+	ChunkSize             int64`codec:"ChunkSize"`
+	SqlFilter             []string`codec:"SqlFilter"`
+	RowsEstimate          int64`codec:"RowsEstimate"`
+	DeltaEstimate         int64`codec:"DeltaEstimate"`
+	TimeZone              string`codec:"TimeZone"`
+	GroupCount            int`codec:"GroupCount"`
+	GroupMaxSize          int`codec:"GroupMaxSize"`
+	GroupTimeout          int `codec:"GroupTimeout"`
+
+	Gtid              string`codec:"Gtid"`
+	BinlogFile        string`codec:"BinlogFile"`
+	BinlogPos         int64`codec:"BinlogPos"`
+	GtidStart         string`codec:"GtidStart"`
+	AutoGtid          bool`codec:"AutoGtid"`
+	BinlogRelay       bool`codec:"BinlogRelay"`
+	NatsAddr          string`codec:"NatsAddr"`
+	ParallelWorkers   int`codec:"ParallelWorkers"`
+	ConnectionConfig  *config.ConnectionConfig`codec:"ConnectionConfig"`
+	SystemVariables   map[string]string`codec:"SystemVariables"`
+	HasSuperPrivilege bool`codec:"HasSuperPrivilege"`
+	BinlogFormat      string`codec:"BinlogFormat"`
+	BinlogRowImage    string`codec:"BinlogRowImage"`
+	SqlMode           string`codec:"SqlMode"`
+	MySQLVersion      string`codec:"MySQLVersion"`
+	MySQLServerUuid   string`codec:"MySQLServerUuid"`
+	StartTime         time.Time`codec:"StartTime"`
+	RowCopyStartTime  time.Time`codec:"RowCopyStartTime"`
+	RowCopyEndTime    time.Time`codec:"RowCopyEndTime"`
+	TotalDeltaCopied  int64`codec:"TotalDeltaCopied"`
+	TotalRowsCopied   int64`codec:"TotalRowsCopied"`
+	TotalRowsReplay   int64`codec:"TotalRowsReplay"`
+
+	Stage                string`codec:"Stage"`
+	ApproveHeterogeneous bool`codec:"ApproveHeterogeneous"`
+	SkipCreateDbTable    bool`codec:"SkipCreateDbTable"`
+
+	CountingRowsFlag int64`codec:"CountingRowsFlag"`
+
+	SkipPrivilegeCheck  bool`codec:"SkipPrivilegeCheck"`
+	SkipIncrementalCopy bool`codec:"SkipIncrementalCopy"`
+}
+*/
+type TaskConfig struct {
+	Type      string   `codec:"type"`
+}
 
 func NewDriver(logger hclog.Logger) drivers.DriverPlugin {
 	ctx, cancel := context.WithCancel(context.Background())
 	logger = logger.Named(pluginName)
+	rstand ,_:=SetupNatsServer(logger)
 	return &Driver{
 		eventer:        eventer.NewEventer(ctx, logger),
 		tasks:          newTaskStore(),
 		ctx:            ctx,
 		signalShutdown: cancel,
 		logger:         logger,
+		stand :  rstand,
 	}
+}
+
+func  SetupNatsServer(logger hclog.Logger)(rstand *stand.StanServer ,err error)  {
+	natsAddr, err := net.ResolveTCPAddr("tcp","10.186.61.121:8193")
+	if err != nil {
+		return  nil,fmt.Errorf("Failed to parse Nats address %q: %v","10.186.61.121:8193", err)
+	}
+	nOpts := gnatsd.Options{
+		Host:       natsAddr.IP.String(),
+		Port:       natsAddr.Port,
+		MaxPayload: 200,
+		//HTTPPort:   8199,
+		LogFile:"/opt/log",
+		Trace:   true,
+		Debug:   true,
+	}
+	//logger.Debug("agent: Starting nats streaming server [%v]", "10.186.61.121:8193")
+	sOpts := stand.GetDefaultOptions()
+	sOpts.ID = config.DefaultClusterID
+	//sOpts.MaxBytes = 10 * 1024
+	/*if c.config.LogLevel == "DEBUG" {
+		stand.ConfigureLogger(sOpts, &nOpts)
+	}*/
+	s, err := stand.RunServerWithOpts(sOpts, &nOpts)
+	if err != nil {
+		return nil ,err
+	}
+
+	return  s,nil
 }
 
 /*func NewMySQLDriver(ctx *DriverContext) Driver {
@@ -258,17 +351,59 @@ func (d *Driver) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHandle, *drive
 	if _, ok := d.tasks.Get(cfg.ID); ok {
 		return nil, nil, fmt.Errorf("task with ID %q already started", cfg.ID)
 	}
+	d.logger.Debug("start dtle task one")
 	var driverConfig config.MySQLDriverConfig
-	if err := cfg.DecodeDriverConfig(&driverConfig); err != nil {
+	var taskConfig TaskConfig
+
+	if err := cfg.DecodeDriverConfig(&taskConfig); err != nil {
 		return nil ,nil , fmt.Errorf("failed to decode driver config: %v", err)
 	}
+//	Config:=
+	/*if err := mapstructure.WeakDecode(Config, &driverConfig); err != nil {
+		return nil ,nil , fmt.Errorf("failed to decode driver config: %v", err)
+	}*/
 
-	ctx := &common.ExecContext{cfg.JobName, cfg.TaskGroupName, 100 * 1024 * 1024, "/opt/binlog"}
+
+
+
+	d.logger.Debug("start dtle task 2")
+
+	ctx := &common.ExecContext{uuid.NewV4().String(), cfg.TaskGroupName, 100 * 1024 * 1024, "/opt/binlog"}
 	switch cfg.TaskGroupName {
 	case TaskTypeSrc:
 		{
-			d.logger.Debug("NewExtractor ReplicateDoDb: %v", driverConfig.ReplicateDoDb)
+			d.logger.Debug("start dtle task 3")
+			driverConfig.ConnectionConfig = &config.ConnectionConfig{
+				Host:"10.186.61.26",
+				Port:3306,
+				User:"dtle",
+				Password:"root",
+				Charset:"utf8mb4",
+			}
+			d.logger.Debug("start dtle task 5")
+			var tables []*config.Table
+			tables = append(tables, &config.Table{
+				TableName:"sbstest1",
+			})
+			driverConfig.ExpandSyntaxSupport =false
+			driverConfig.ReplChanBufferSize=600
+			datasource :=&config.DataSource{
+			TableSchema:"action_db",
+			Tables:tables,
+		}
+			driverConfig.ReplicateDoDb=append(driverConfig.ReplicateDoDb, datasource)
+			driverConfig.DropTableIfExists = false
+			driverConfig.SkipCreateDbTable = false
+			driverConfig.NatsAddr = "10.186.61.121:8193"
+			driverConfig.MySQLVersion="5.7"
+			driverConfig.SkipPrivilegeCheck=true
+			driverConfig.BinlogRowImage = "FULL"
+			driverConfig.BinlogFormat="ROW"
+			driverConfig.AutoGtid=false
+			driverConfig.SkipIncrementalCopy =false
+		//	d.logger.Debug("NewExtractor ReplicateDoDb: %v", driverConfig.ReplicateDoDb)
 			// Create the extractor
+
 			e, err := mysql.NewExtractor(ctx, &driverConfig, d.logger)
 			if err != nil {
 				return  nil,nil,fmt.Errorf("failed to create extractor  e: %v", err)
@@ -279,7 +414,24 @@ func (d *Driver) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHandle, *drive
 		}
 	case TaskTypeDest:
 		{
-			d.logger.Warn("NewApplier ReplicateDoDb: %v", driverConfig.ReplicateDoDb)
+			d.logger.Debug("start dtle task4")
+			driverConfig.ConnectionConfig =&config.ConnectionConfig{
+				Host:"10.186.61.46",
+				Port:3306,
+				User:"dtle",
+				Password:"root",
+				Charset:"utf8mb4",
+			}
+			driverConfig.MySQLVersion="5.7"
+			driverConfig.NatsAddr = "10.186.61.121:8193"
+			driverConfig.SkipPrivilegeCheck=true
+			driverConfig.BinlogRowImage = "FULL"
+			driverConfig.BinlogFormat="ROW"
+			driverConfig.SkipIncrementalCopy =false
+			d.logger.Debug("print host", hclog.Fmt("%+v", driverConfig.ConnectionConfig.Host))
+
+		//	d.logger.Warn("NewApplier ReplicateDoDb: %v", driverConfig.ReplicateDoDb)
+
 			a, err := mysql.NewApplier(ctx, &driverConfig,d.logger)
 			if err != nil {
 				return nil,nil, fmt.Errorf("failed to create Applier  e: %v", err)

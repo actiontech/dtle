@@ -38,12 +38,16 @@ func NewInspector(ctx *uconf.MySQLDriverConfig, logger hclog.Logger) *Inspector 
 
 func (i *Inspector) InitDBConnections() (err error) {
 	inspectorUri := i.mysqlContext.ConnectionConfig.GetDBUri()
+	i.logger.Debug("mysql.inspector: CreateDB", "inspectorUri",hclog.Fmt("%+v", inspectorUri))
 	if i.db, err = usql.CreateDB(inspectorUri); err != nil {
 		return err
 	}
-	if err := i.validateConnection(); err != nil {
+	i.logger.Debug("mysql.inspector: validateConnection", "MySQLVersion",hclog.Fmt("%+v", i.mysqlContext.MySQLVersion))
+/*	if err := i.validateConnection(); err != nil {
 		return err
-	}
+	}*/
+
+	i.logger.Debug("mysql.inspector: validateGrants", "SkipPrivilegeCheck",hclog.Fmt("%+v",  i.mysqlContext.SkipPrivilegeCheck))
 	if err := i.validateGrants(); err != nil {
 		i.logger.Error("mysql.inspector: Unexpected error on validateGrants, got %v", err)
 		return err
@@ -57,14 +61,14 @@ func (i *Inspector) InitDBConnections() (err error) {
 			}
 		}
 	}*/
-
-	if err = i.validateGTIDMode(); err != nil {
+	i.logger.Debug("mysql.inspector: validateGTIDMode")
+	/*if err = i.validateGTIDMode(); err != nil {
 		return err
-	}
-
-	if err := i.validateBinlogs(); err != nil {
+	}*/
+	i.logger.Debug("mysql.inspector: validateBinlogs", "inspectorUri",hclog.Fmt("%+v", inspectorUri))
+	/*if err := i.validateBinlogs(); err != nil {
 		return err
-	}
+	}*/
 	i.logger.Info("mysql.inspector: Initiated on %s:%d, version %+v", i.mysqlContext.ConnectionConfig.Host, i.mysqlContext.ConnectionConfig.Port, i.mysqlContext.MySQLVersion)
 	return nil
 }
@@ -176,6 +180,7 @@ func (i *Inspector) InspectTableColumnsAndUniqueKeys(databaseName, tableName str
 func (i *Inspector) validateConnection() error {
 	query := `select @@global.version`
 	if err := i.db.QueryRow(query).Scan(&i.mysqlContext.MySQLVersion); err != nil {
+		i.logger.Info("mysql.inspector: Connection validated err ","err",hclog.Fmt("%+v", err))
 		return err
 	}
 

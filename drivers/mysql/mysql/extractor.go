@@ -110,11 +110,12 @@ type Extractor struct {
 }
 
 func NewExtractor(execCtx *common.ExecContext, cfg *config.MySQLDriverConfig, logger hclog.Logger) (*Extractor, error) {
-
+	logger.Debug("start dtle task 7")
 	cfg = cfg.SetDefault()
 	/*entry := logger.WithFields(logrus.Fields{
 		"job": execCtx.Subject,
 	})*/
+	logger.Debug("start dtle task 8")
 	e := &Extractor{
 
 		logger:          logger,
@@ -133,7 +134,7 @@ func NewExtractor(execCtx *common.ExecContext, cfg *config.MySQLDriverConfig, lo
 		fullCopyDone:    make(chan struct{}),
 	}
 	e.context.LoadSchemas(nil)
-
+	logger.Debug("start dtle task 9")
 	if delay, err := strconv.ParseInt(os.Getenv(g.ENV_TESTSTUB1_DELAY), 10, 64); err == nil {
 		e.logger.Info("%v = %v", g.ENV_TESTSTUB1_DELAY, delay)
 		e.testStub1Delay = delay
@@ -183,23 +184,26 @@ func (e *Extractor) Run() {
 	e.mysqlContext.StartTime = time.Now()
 
 	// Validate job arguments
-	{
+/*	{
 		if e.mysqlContext.SkipCreateDbTable && e.mysqlContext.DropTableIfExists {
 			e.onError(TaskStateDead,
 				fmt.Errorf("conflicting job argument: SkipCreateDbTable=true and DropTableIfExists=true"))
 			return
 		}
-	}
-
+	}*/
+	e.logger.Info("mysql.extractor:initiateInspector", "DETAIL ",hclog.Fmt("%+v", e.mysqlContext.ConnectionConfig.Host))
 	if err := e.initiateInspector(); err != nil {
 		e.onError(TaskStateDead, err)
 		return
 	}
+	e.logger.Info("mysql.extractor:initiateInspector", "initNatsPubClient ",hclog.Fmt("%+v", e.mysqlContext.ConnectionConfig.Host))
 	if err := e.initNatsPubClient(); err != nil {
 		e.onError(TaskStateDead, err)
 		return
 	}
+	e.logger.Info("mysql.extractor:initiateInspector", "initDBConnections ",hclog.Fmt("%+v", e.mysqlContext.ConnectionConfig.Host))
 	if err := e.initDBConnections(); err != nil {
+		e.logger.Error("mysql.extractor:initiateInspector err", "err ",hclog.Fmt("%+v",err))
 		e.onError(TaskStateDead, err)
 		return
 	}
@@ -208,6 +212,7 @@ func (e *Extractor) Run() {
 
 	if e.mysqlContext.Gtid == "" {
 		if e.mysqlContext.AutoGtid {
+			e.logger.Info("mysql.extractor:GetSelfBinlogCoordinates" )
 			coord, err := base.GetSelfBinlogCoordinates(e.db)
 			if err != nil {
 				e.onError(TaskStateDead, err)
@@ -577,8 +582,10 @@ func (e *Extractor) readTableColumns() (err error) {
 }
 
 func (e *Extractor) initNatsPubClient() (err error) {
+	e.logger.Debug("mysql.extractor: begin Connect nats server ","nataddr",hclog.Fmt("%+v",e.mysqlContext.NatsAddr) )
 	natsAddr := fmt.Sprintf("nats://%s", e.mysqlContext.NatsAddr)
 	sc, err := gonats.Connect(natsAddr)
+	e.logger.Debug("mysql.extractor: Connect nats in ","natsAddr",hclog.Fmt("%+v",natsAddr) )
 	if err != nil {
 		e.logger.Error("mysql.extractor: Can't connect nats server %v. make sure a nats streaming server is running.%v", natsAddr, err)
 		return err
@@ -626,9 +633,9 @@ func (e *Extractor) initDBConnections() (err error) {
 		return err
 	}
 
-	if err := e.validateConnectionAndGetVersion(); err != nil {
+	/*if err := e.validateConnectionAndGetVersion(); err != nil {
 		return err
-	}
+	}*/
 
 	{
 		getTxIsolationVarName := func(mysqlVersionDigit int) string {
@@ -771,7 +778,6 @@ func (e *Extractor) validateAndReadTimeZone() error {
 	if err := e.db.QueryRow(query).Scan(&e.mysqlContext.TimeZone); err != nil {
 		return err
 	}
-
 	e.logger.Info("mysql.extractor: Will use time_zone='%s' on extractor", e.mysqlContext.TimeZone)
 	return nil
 }
