@@ -464,7 +464,7 @@ func (s *HTTPServer) userList(resp http.ResponseWriter, req *http.Request,userId
 		return nil, CodedError(404, "user not found")
 	}
 	for i := 0; i < len(out.Users); i++ {
-		if userId=="supersuer"{
+		if userId=="superuser"{
 			out.Users[i].Passwd="*****"
 		}else if out.Users[i].ID==userId{
 			user:=out.Users[i]
@@ -478,7 +478,7 @@ func (s *HTTPServer) userList(resp http.ResponseWriter, req *http.Request,userId
 		ID:"superuser",
 		Passwd : "******",
 		UserName:"superuser",
-		UpdateDate:time.Unix(1584337360, 0),
+		UpdateDate:time.Unix(1584337360, 794351777),
 	}
 	out.Users = append(out.Users, &user)
 	}
