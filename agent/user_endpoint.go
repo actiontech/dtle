@@ -291,7 +291,7 @@ func (s *HTTPServer) userAdd(resp http.ResponseWriter, req *http.Request) (inter
 	}
 	args.Passwd = string(realPasswd)
 	verifyArgs := models.UserSpecificRequest{
-		UserID: user.Phone,
+		UserID: user.UserName,
 	}
 	s.parseRegion(req, &verifyArgs.Region)
 
@@ -301,7 +301,6 @@ func (s *HTTPServer) userAdd(resp http.ResponseWriter, req *http.Request) (inter
 	}
 	if verify.User != nil {
 		return nil, CodedError(400, " {\"code\": \"005\",\"success\": \" false  \",\"err\": \" user exist \"}")
-
 	}
 
 	sUser := ApiUserToStructUser(args)
@@ -334,7 +333,7 @@ func ApiUserToStructUser(user *api.AddUser) *models.User {
 		UserName:   user.UserName,
 		Passwd:     user.Passwd,
 		Phone:      user.Phone,
-		ID:         user.Phone,
+		ID:         user.UserName,
 		CreateDate: time.Now(),
 		UpdateDate: time.Now(),
 	}
@@ -368,7 +367,7 @@ func (s *HTTPServer) userEdit(resp http.ResponseWriter, req *http.Request) (inte
 	}
 	args.Passwd = string(realPasswd)
 	verifyArgs := models.UserSpecificRequest{
-		UserID: user.Phone,
+		UserID: user.UserID,
 	}
 	s.parseRegion(req, &verifyArgs.Region)
 
@@ -420,7 +419,7 @@ func ApiUserToStructEditUser(user *api.EditUser) *models.User {
 		UserName:   user.UserName,
 		Passwd:     user.Passwd,
 		Phone:      user.Phone,
-		ID:         user.ID,
+		ID:         user.UserID,
 		CreateDate: user.CreateDate,
 		UpdateDate: time.Now(),
 	}
@@ -455,6 +454,7 @@ func (s *HTTPServer) userList(resp http.ResponseWriter, req *http.Request,userId
 	}
 
 	var out models.UserListResponse
+	var reqOut models.PageUserListResponse
 	if err := s.agent.RPC("User.List", &args, &out); err != nil {
 		return nil, err
 	}
@@ -465,12 +465,11 @@ func (s *HTTPServer) userList(resp http.ResponseWriter, req *http.Request,userId
 	}
 	for i := 0; i < len(out.Users); i++ {
 		if userId=="superuser"{
-			out.Users[i].Passwd="*****"
+			reqOut.Users =  append(reqOut.Users, *out.Users[i])
+			reqOut.Users[i].Passwd="******"
 		}else if out.Users[i].ID==userId{
-			user:=out.Users[i]
-			user.Passwd = "******"
-			out.Users=nil
-			out.Users = append(out.Users, user)
+			reqOut.Users =  append(reqOut.Users, *out.Users[i])
+			reqOut.Users[0].Passwd="******"
 		}
 	}
 	if  userId=="superuser" {
@@ -480,7 +479,7 @@ func (s *HTTPServer) userList(resp http.ResponseWriter, req *http.Request,userId
 		UserName:"superuser",
 		UpdateDate:time.Unix(1584337360, 794351777),
 	}
-	out.Users = append(out.Users, &user)
+	reqOut.Users =  append(reqOut.Users, user)
 	}
-	return out.Users, nil
+	return reqOut.Users, nil
 }

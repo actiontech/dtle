@@ -68,3 +68,7 @@ type UserListResponse struct {
 	Users []*User
 	QueryMeta
 }
+type PageUserListResponse struct {
+	Users []User
+	QueryMeta
+}
