@@ -703,7 +703,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 				int(rowsEvent.ColumnCount),
 				rowsEvent.Timestamp,
 			)
-			b.mysqlContext.SrcBinlogTimestamp = rowsEvent.Timestamp
+			b.mysqlContext.SrcBinlogTimestamp = dmlEvent.Timestamp
 			dmlEvent.LogPos = int64(ev.Header.LogPos - ev.Header.EventSize)
 
 			if table != nil && !table.DefChangedSent {

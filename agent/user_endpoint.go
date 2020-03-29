@@ -353,13 +353,13 @@ func (s *HTTPServer) userEdit(resp http.ResponseWriter, req *http.Request) (inte
 		return nil, CodedError(400, " {\"code\": \"003\",\"success\": \" false  \",\"err\": \" passwd not null \"}")
 	}
 	if args.Phone == "" {
-		return nil, CodedError(400, " {\"code\": \"003\",\"success\": \" false  \",\"err\": \" phone not null \"}")
+		return nil, CodedError(400, " {\"code\": \"009\",\"success\": \" false  \",\"err\": \" phone not null \"}")
 	}
 
 	encryptPwd := args.Passwd
 	pwd, err := base64.StdEncoding.DecodeString(encryptPwd)
 	if err != nil {
-		return nil, CodedError(400, " {\"code\": \"003\",\"success\": \" false  \",\"err\": \" decode pwd  err \"}")
+		return nil, CodedError(400, " {\"code\": \"008\",\"success\": \" false  \",\"err\": \" decode pwd  err \"}")
 	}
 	realPasswd, err := RsaDecrypt(pwd)
 	if err != nil {
@@ -385,10 +385,10 @@ func (s *HTTPServer) userEdit(resp http.ResponseWriter, req *http.Request) (inte
 		}
 	}
 	if verify.User.UserName!=args.UserName{
-		return nil, CodedError(400, " {\"code\": \"005\",\"success\": \" false  \",\"err\": \" username not change \"}")
+		return nil, CodedError(400, " {\"code\": \"009\",\"success\": \" false  \",\"err\": \" username not change \"}")
 	}
 	if verify.User.Phone!=args.Phone{
-		return nil, CodedError(400, " {\"code\": \"005\",\"success\": \" false  \",\"err\": \" Phone not change \"}")
+		return nil, CodedError(400, " {\"code\": \"010\",\"success\": \" false  \",\"err\": \" Phone not change \"}")
 	}
     args.CreateDate = verify.User.CreateDate
 	sUser := ApiUserToStructEditUser(args)
