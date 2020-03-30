@@ -859,6 +859,7 @@ func (e *Extractor) setStatementFor() string {
 
 // Encode
 func GobEncode(v interface{}) ([]byte, error) {
+	gob.Register(types.BinaryLiteral{})
 	b := new(bytes.Buffer)
 	if err := gob.NewEncoder(b).Encode(v); err != nil {
 		return nil, err
