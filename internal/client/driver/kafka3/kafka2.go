@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/Shopify/sarama"
+	"github.com/pingcap/tidb/types"
 )
 
 type SchemaType string
@@ -460,9 +461,8 @@ func NewJsonField(optional bool, field string) *Schema {
 
 func NewBitsField(optional bool, field string, length string, defaultValue interface{}) *Schema {
 	if defaultValue != nil {
-		defaultValue = strings.Replace(defaultValue.(string)[1:], "'", "", -1)
-
-		defaultValue = base64.StdEncoding.EncodeToString(BinaryStringToBytes(defaultValue.(string)))
+		defaultV:=defaultValue.(types.BinaryLiteral)
+		defaultValue = base64.StdEncoding.EncodeToString(defaultV)
 	}
 	return &Schema{
 		Field:    field,
