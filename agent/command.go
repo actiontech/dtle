@@ -322,6 +322,8 @@ func (c *Command) Run(args []string) int {
 		autopprof.Capture(autopprof.CPUProfile{
 			Duration: time.Duration(config.PprofTime) * time.Second,
 		})
+		autopprof.Capture(autopprof.HeapProfile{
+		})
 	}
 
 	// set global value

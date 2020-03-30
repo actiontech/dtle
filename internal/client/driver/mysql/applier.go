@@ -49,7 +49,8 @@ import (
 	"github.com/nats-io/not.go"
 	"github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
-)
+	"github.com/pingcap/tidb/types"
+		)
 
 const (
 	cleanupGtidExecutedLimit = 4096
@@ -539,6 +540,7 @@ func DecodeDumpEntry(data []byte) (entry *DumpEntry, err error) {
 
 // Decode
 func Decode(data []byte, vPtr interface{}) (err error) {
+	gob.Register(types.BinaryLiteral{})
 	msg, err := snappy.Decode(nil, data)
 	if err != nil {
 		return err
@@ -928,7 +930,7 @@ func (a *Applier) initiateStreaming() error {
 	if err != nil {
 		return err
 	}
-
+	var bigEntries binlog.BinlogEntries
 	if a.mysqlContext.ApproveHeterogeneous {
 		_, err := a.natsConn.Subscribe(fmt.Sprintf("%s_incr_hete", a.subject), func(m *gonats.Msg) {
 			var binlogEntries binlog.BinlogEntries
@@ -947,9 +949,32 @@ func (a *Applier) initiateStreaming() error {
 			}
 
 			nEntries := len(binlogEntries.Entries)
-
 			handled := false
+			if binlogEntries.BigTx{
+				if binlogEntries.TxNum==1{
+					bigEntries = binlogEntries
+				}else if bigEntries.Entries!=nil{
+					bigEntries.Entries[0].Events=append(bigEntries.Entries[0].Events,  binlogEntries.Entries[0].Events... )
+					bigEntries.TxNum = binlogEntries.TxNum
+					a.logger.Debugf("applier:tx get the :%v package  ", binlogEntries.TxNum)
+					binlogEntries.Entries=nil
+				}
+				if bigEntries.TxNum==bigEntries.TxLen{
+					binlogEntries = bigEntries
+					bigEntries.Entries = nil
+				}
+			}
 			for i := 0; !handled && (i < DefaultConnectWaitSecond/2); i++ {
+				if binlogEntries.BigTx&&binlogEntries.TxNum<binlogEntries.TxLen{
+					handled = true
+					if err := a.natsConn.Publish(m.Reply, nil); err != nil {
+						a.onError(TaskStateDead, err)
+					}
+					continue
+				}
+				binlogEntries.BigTx=false
+				binlogEntries.TxNum = 0
+				binlogEntries.TxLen = 0
 				vacancy := cap(a.applyDataEntryQueue) - len(a.applyDataEntryQueue)
 				a.logger.Debugf("applier. incr. nEntries: %v, vacancy: %v", nEntries, vacancy)
 				if vacancy < nEntries {
@@ -964,7 +989,6 @@ func (a *Applier) initiateStreaming() error {
 						atomic.AddInt64(&a.mysqlContext.DeltaEstimate, 1)
 					}
 					a.mysqlContext.Stage = models.StageWaitingForMasterToSendEvent
-
 					if err := a.natsConn.Publish(m.Reply, nil); err != nil {
 						a.onError(TaskStateDead, err)
 					}
@@ -982,7 +1006,6 @@ func (a *Applier) initiateStreaming() error {
 		if err != nil {
 			return err
 		}
-
 		go a.heterogeneousReplay()
 	} else {
 		_, err := a.natsConn.Subscribe(fmt.Sprintf("%s_incr", a.subject), func(m *gonats.Msg) {

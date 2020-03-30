@@ -3,7 +3,7 @@ VERSION := $(shell sh -c 'git describe --always --tags')
 BRANCH := $(shell sh -c 'git rev-parse --abbrev-ref HEAD')
 COMMIT := $(shell sh -c 'git rev-parse --short HEAD')
 DOCKER        := $(shell which docker)
-DOCKER_IMAGE  := docker-registry:5000/actiontech/universe-compiler-udup:v3
+DOCKER_IMAGE  := docker-registry:5000/actiontech/universe-compiler-udup:v4
 
 PROJECT_NAME  = dtle
 VERSION       = 9.9.9.9
@@ -86,10 +86,10 @@ mtswatcher: helper/mtswatcher/mtswatcher.go
 	GO111MODULE=on go build $(GOFLAGS) -o dist/mtswatcher ./helper/mtswatcher/mtswatcher.go
 
 docker_rpm:
-	$(DOCKER) run -v $(shell pwd)/:/universe/src/github.com/actiontech/dtle --rm $(DOCKER_IMAGE) -c "cd /universe/src/github.com/actiontech/dtle; GOPATH=/universe make prepare package ;chmod 777 -R dist;"
+	$(DOCKER) run -v $(shell pwd)/:/universe/src/github.com/actiontech/dtle --rm $(DOCKER_IMAGE) -c "go env -w GOPROXY=https://goproxy.cn,direct;cd /universe/src/github.com/actiontech/dtle; GOPATH=/universe make prepare package ;chmod 777 -R dist;"
 
 docker_rpm_with_coverage_report:
-	$(DOCKER) run -v $(shell pwd)/:/universe/src/github.com/actiontech/dtle --rm $(DOCKER_IMAGE) -c "cd /universe/src/github.com/actiontech/dtle; GOPATH=/universe make prepare build-coverage-report-tool coverage-report-pre-build package coverage-report-post-build ;chmod 777 -R dist;"
+	$(DOCKER) run -v $(shell pwd)/:/universe/src/github.com/actiontech/dtle --rm $(DOCKER_IMAGE) -c "go env -w GOPROXY=https://goproxy.cn,direct;cd /universe/src/github.com/actiontech/dtle; GOPATH=/universe make prepare build-coverage-report-tool coverage-report-pre-build package coverage-report-post-build ;chmod 777 -R dist;"
 
 upload:
 	curl --ftp-create-dirs -T $(shell pwd)/dist/*.rpm -u admin:ftpadmin ftp://release-ftpd/actiontech-${PROJECT_NAME}/qa/${VERSION}/${PROJECT_NAME}-${VERSION}-qa.x86_64.rpm

@@ -50,14 +50,17 @@ import (
 	"github.com/actiontech/dtle/internal/config"
 	"github.com/actiontech/dtle/internal/models"
 	"github.com/actiontech/dtle/utils"
+	"github.com/pingcap/tidb/types"
 	"github.com/shirou/gopsutil/mem"
 	"github.com/sirupsen/logrus"
+	_ "net/http/pprof"
 )
 
 const (
 	// DefaultConnectWait is the default timeout used for the connect operation
 	DefaultConnectWaitSecond      = 10
 	DefaultConnectWait            = DefaultConnectWaitSecond * time.Second
+	DefaultBigTX                  = 1024 * 1024 * 100
 	ReconnectStreamerSleepSeconds = 5
 	SCHEMAS                       = "schemas"
 	SCHEMA                        = "schema"
@@ -181,7 +184,9 @@ func (e *Extractor) retryOperation(operation func() error, notFatalHint ...bool)
 func (e *Extractor) Run() {
 	e.logger.Printf("mysql.extractor: Extract binlog events from %s.%d", e.mysqlContext.ConnectionConfig.Host, e.mysqlContext.ConnectionConfig.Port)
 	e.mysqlContext.StartTime = time.Now()
-
+	/*go func() {
+		http.ListenAndServe("0.0.0.0:8899", nil)
+	}()*/
 	// Validate job arguments
 	{
 		if e.mysqlContext.SkipCreateDbTable && e.mysqlContext.DropTableIfExists {
@@ -295,9 +300,9 @@ func (e *Extractor) Run() {
 			return
 		}
 		dumpMsg, err := Encode(&dumpStatResult{
-			Gtid: e.initialBinlogCoordinates.GtidSet,
-			LogFile: e.initialBinlogCoordinates.LogFile,
-			LogPos: e.initialBinlogCoordinates.LogPos,
+			Gtid:       e.initialBinlogCoordinates.GtidSet,
+			LogFile:    e.initialBinlogCoordinates.LogFile,
+			LogPos:     e.initialBinlogCoordinates.LogPos,
 			TotalCount: e.mysqlContext.RowsEstimate,
 		})
 		if err != nil {
@@ -871,6 +876,7 @@ func (e *Extractor) setStatementFor() string {
 
 // Encode
 func GobEncode(v interface{}) ([]byte, error) {
+	gob.Register(types.BinaryLiteral{})
 	b := new(bytes.Buffer)
 	if err := gob.NewEncoder(b).Encode(v); err != nil {
 		return nil, err
@@ -878,8 +884,11 @@ func GobEncode(v interface{}) ([]byte, error) {
 	return b.Bytes(), nil
 }
 func Encode(v interface{}) ([]byte, error) {
+
+	//	gob.Register(types.BinaryLiteral{})   can not use.when the data more than 500M ,it Cause memory out
 	b := new(bytes.Buffer)
-	if err := gob.NewEncoder(b).Encode(v); err != nil {
+	enc := gob.NewEncoder(b)
+	if err := enc.Encode(v); err != nil {
 		return nil, err
 	}
 	return snappy.Encode(nil, b.Bytes()), nil
@@ -902,7 +911,6 @@ func (e *Extractor) StreamEvents() error {
 				if len(entries.Entries) > 0 {
 					gno = entries.Entries[0].Coordinates.GNO
 				}
-
 				txMsg, err := Encode(entries)
 				if err != nil {
 					return err
@@ -911,11 +919,14 @@ func (e *Extractor) StreamEvents() error {
 				if err = e.publish(ctx, fmt.Sprintf("%s_incr_hete", e.subject), "", txMsg); err != nil {
 					return err
 				}
+
 				e.logger.Debugf("mysql.extractor: send acked gno: %v, n: %v", gno, len(entries.Entries))
 
 				entries.Entries = nil
+				entries.TxLen = 0
+				entries.BigTx = false
+				entries.TxNum = 0
 				entriesSize = 0
-
 				return nil
 			}
 
@@ -947,8 +958,8 @@ func (e *Extractor) StreamEvents() error {
 						}
 						for _, ip := range addrs {
 							rip := ip.(*net.IPNet).IP.String()
-							e.logger.Debugf("mysql.extractor: self ip is  : %v,natsips is : %v", rip, natsips[0])
-							if rip == natsips[0] && entriesSize > int(v.Available/16) {
+							e.logger.Debugf("mysql.extractor: entriesSize is  : %v,free memory is : %v ", entriesSize, v.Available)
+							if rip == natsips[0] && entriesSize > int(v.Available/4) {
 								err = errors.Errorf("Too much entriesSize , not enough memory ")
 								break
 							}
@@ -961,7 +972,20 @@ func (e *Extractor) StreamEvents() error {
 					if entriesSize >= e.mysqlContext.GroupMaxSize ||
 						int64(len(entries.Entries)) == e.mysqlContext.ReplChanBufferSize {
 						e.logger.Debugf("extractor. incr. send by GroupLimit. entriesSize: %v , groupMaxSize: %v,Entries.len: %v", entriesSize, e.mysqlContext.GroupMaxSize, len(entries.Entries))
-						err = sendEntries()
+						if entriesSize > DefaultBigTX {
+							bigEntrises := splitEntries(entries, entriesSize)
+							entries.Entries = nil
+							e.logger.Debugf("extractor. incr. big tx  section  : %v ", len(bigEntrises))
+							for i, entity := range bigEntrises {
+								entries = entity
+								entriesSize = DefaultBigTX
+								e.logger.Debugf("extractor. incr. send  big tx  fragment : %v ", i)
+								err = sendEntries()
+							}
+						} else {
+							err = sendEntries()
+						}
+
 						if !timer.Stop() {
 							<-timer.C
 						}
@@ -970,8 +994,13 @@ func (e *Extractor) StreamEvents() error {
 					span.Finish()
 				case <-timer.C:
 					nEntries := len(entries.Entries)
+					if entriesSize > DefaultBigTX {
+						err = errors.Errorf("big tx not sent by timeout ,please change GroupTimeout . ")
+						break
+					}
 					if nEntries > 0 {
 						e.logger.Debugf("extractor. incr. send by timeout. entriesSize: %v,timeout time: %v", entriesSize, e.mysqlContext.GroupTimeout)
+
 						err = sendEntries()
 					}
 					timer.Reset(groupTimeoutDuration)
@@ -1134,6 +1163,36 @@ func (e *Extractor) StreamEvents() error {
 	return nil
 }
 
+func splitEntries(entries binlog.BinlogEntries, entriseSize int) (entris []binlog.BinlogEntries) {
+	clientLen := math.Ceil(float64(entriseSize) / DefaultBigTX)
+	clientNum := math.Ceil(float64(len(entries.Entries[0].Events)) / clientLen)
+	for i := 1; i <= int(clientLen); i++ {
+		var after int
+		if i == int(clientLen) {
+			after = len(entries.Entries[0].Events)
+		} else {
+			after = i * int(clientNum)
+		}
+		entry := &binlog.BinlogEntry{
+			OriginalSize: entries.Entries[0].OriginalSize,
+			SpanContext:  entries.Entries[0].SpanContext,
+			Coordinates:  entries.Entries[0].Coordinates,
+			Events:       entries.Entries[0].Events[(i-1)*int(clientNum) : after],
+		}
+		var entrys []*binlog.BinlogEntry
+		entrys = append(entrys, entry)
+		newEntries := binlog.BinlogEntries{
+			Entries: entrys,
+			BigTx:   true,
+			TxNum:   i,
+			TxLen:   int(clientLen),
+		}
+		entris = append(entris, newEntries)
+	}
+
+	return entris
+}
+
 // retryOperation attempts up to `count` attempts at running given function,
 // exiting as soon as it returns with non-error.
 func (e *Extractor) publish(ctx context.Context, subject, gtid string, txMsg []byte) (err error) {
@@ -1166,6 +1225,7 @@ func (e *Extractor) publish(ctx context.Context, subject, gtid string, txMsg []b
 			if gtid != "" {
 				e.mysqlContext.Gtid = gtid
 			}
+			txMsg = nil
 			break
 		} else if err == gonats.ErrTimeout {
 			e.logger.Debugf("mysql.extractor: publish timeout, got %v", err)

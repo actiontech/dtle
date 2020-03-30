@@ -32,6 +32,7 @@ import (
 	"github.com/actiontech/dtle/internal/config"
 	"github.com/actiontech/dtle/internal/models"
 	"github.com/actiontech/dtle/utils"
+	"github.com/pingcap/tidb/types"
 	"github.com/sirupsen/logrus"
 )
 
@@ -74,9 +75,11 @@ func (kr *KafkaRunner) ID() string {
 	id := config.DriverCtx{
 		// TODO
 		DriverConfig: &config.MySQLDriverConfig{
+			BinlogPos:  kr.kafkaConfig.BinlogPos,
+			BinlogFile: kr.kafkaConfig.BinlogFile,
 			//ReplicateDoDb:     a.mysqlContext.ReplicateDoDb,
 			//ReplicateIgnoreDb: a.mysqlContext.ReplicateIgnoreDb,
-			//Gtid:              a.mysqlContext.Gtid,
+			Gtid: kr.kafkaConfig.Gtid,
 			//NatsAddr:          a.mysqlContext.NatsAddr,
 			//ParallelWorkers:   a.mysqlContext.ParallelWorkers,
 			//ConnectionConfig:  a.mysqlContext.ConnectionConfig,
@@ -248,14 +251,30 @@ func (kr *KafkaRunner) initiateStreaming() error {
 	if err != nil {
 		return err
 	}
-
+	var bigEntries binlog.BinlogEntries
 	_, err = kr.natsConn.Subscribe(fmt.Sprintf("%s_incr_hete", kr.subject), func(m *gonats.Msg) {
 		var binlogEntries binlog.BinlogEntries
 		if err := Decode(m.Data, &binlogEntries); err != nil {
 			kr.onError(TaskStateDead, err)
 		}
+		if binlogEntries.BigTx {
+			if binlogEntries.TxNum == 1 {
+				bigEntries = binlogEntries
+			} else {
+				bigEntries.Entries[0].Events = append(bigEntries.Entries[0].Events, binlogEntries.Entries[0].Events...)
+				bigEntries.TxNum = binlogEntries.TxNum
+				binlogEntries.Entries = nil
+			}
+			if binlogEntries.TxNum == binlogEntries.TxLen {
+				binlogEntries = bigEntries
+				bigEntries.Entries = nil
+			}
+		}
 
 		for _, binlogEntry := range binlogEntries.Entries {
+			if binlogEntries.BigTx && binlogEntries.TxNum < binlogEntries.TxLen {
+				continue
+			}
 			err = kr.kafkaTransformDMLEventQuery(binlogEntry)
 		}
 
@@ -275,6 +294,7 @@ func (kr *KafkaRunner) initiateStreaming() error {
 
 // TODO move to one place
 func Decode(data []byte, vPtr interface{}) (err error) {
+	gob.Register(types.BinaryLiteral{})
 	msg, err := snappy.Decode(nil, data)
 	if err != nil {
 		return err
@@ -283,6 +303,7 @@ func Decode(data []byte, vPtr interface{}) (err error) {
 	return gob.NewDecoder(bytes.NewBuffer(msg)).Decode(vPtr)
 }
 func DecodeGob(data []byte, vPtr interface{}) (err error) {
+	gob.Register(types.BinaryLiteral{})
 	return gob.NewDecoder(bytes.NewBuffer(data)).Decode(vPtr)
 }
 
@@ -345,7 +366,7 @@ func (kr *KafkaRunner) kafkaTransformSnapshotData(table *config.Table, value *my
 		valuePayload.After = NewRow()
 
 		columnList := table.OriginalTableColumns.ColumnList()
-		valueColDef, keyColDef := kafkaColumnListToColDefs(table.OriginalTableColumns)
+		valueColDef, keyColDef := kafkaColumnListToColDefs(table.OriginalTableColumns, kr.kafkaConfig.TimeZone)
 		keySchema := NewKeySchema(tableIdent, keyColDef)
 
 		for i, _ := range columnList {
@@ -385,23 +406,28 @@ func (kr *KafkaRunner) kafkaTransformSnapshotData(table *config.Table, value *my
 				case mysql.DecimalColumnType:
 					value = DecimalValueFromStringMysql(valueStr)
 				case mysql.TimeColumnType:
-					if valueStr != "" && columnList[i].ColumnType == "timestamp" {
-						value = valueStr[:10] + "T" + valueStr[11:] + "Z"
+					value = TimeValue(valueStr)
+				case mysql.TimestampColumnType:
+					if valueStr != "" {
+						value = TimeStamp(valueStr, kr.kafkaConfig.TimeZone)
 					} else {
 						value = TimeValue(valueStr)
 					}
-
 				case mysql.BinaryColumnType:
 					value = base64.StdEncoding.EncodeToString([]byte(valueStr))
 				case mysql.BitColumnType:
 					value = base64.StdEncoding.EncodeToString([]byte(valueStr))
 				case mysql.BlobColumnType:
-					value = base64.StdEncoding.EncodeToString([]byte(valueStr))
+					if columnList[i].ColumnType == "text" {
+						value = valueStr
+					} else {
+						value = base64.StdEncoding.EncodeToString([]byte(valueStr))
+					}
 				case mysql.VarbinaryColumnType:
 					value = base64.StdEncoding.EncodeToString([]byte(valueStr))
 				case mysql.DateColumnType, mysql.DateTimeColumnType:
 					if valueStr != "" && columnList[i].ColumnType == "datetime" {
-						value = DateTimeValue(valueStr)
+						value = DateTimeValue(valueStr, kr.kafkaConfig.TimeZone)
 					} else if valueStr != "" {
 						value = DateValue(valueStr)
 					}
@@ -495,7 +521,7 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry)
 
 		keyPayload := NewRow()
 		colList := table.OriginalTableColumns.ColumnList()
-		colDefs, keyColDefs := kafkaColumnListToColDefs(table.OriginalTableColumns)
+		colDefs, keyColDefs := kafkaColumnListToColDefs(table.OriginalTableColumns, kr.kafkaConfig.TimeZone)
 
 		for i, _ := range colList {
 			colName := colList[i].RawName
@@ -530,23 +556,23 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry)
 				}
 			case mysql.TimeColumnType, mysql.TimestampColumnType:
 				if beforeValue != nil && colList[i].ColumnType == "timestamp" {
-					beforeValue = beforeValue.(string)[:10] + "T" + beforeValue.(string)[11:] + "Z"
+					beforeValue = TimeStamp(beforeValue.(string), kr.kafkaConfig.TimeZone)
 				} else if beforeValue != nil {
 					beforeValue = TimeValue(beforeValue.(string))
 				}
 				if afterValue != nil && colList[i].ColumnType == "timestamp" {
-					afterValue = afterValue.(string)[:10] + "T" + afterValue.(string)[11:] + "Z"
+					afterValue = TimeStamp(afterValue.(string), kr.kafkaConfig.TimeZone)
 				} else if afterValue != nil {
 					afterValue = TimeValue(afterValue.(string))
 				}
 			case mysql.DateColumnType, mysql.DateTimeColumnType:
 				if beforeValue != nil && colList[i].ColumnType == "datetime" {
-					beforeValue = DateTimeValue(beforeValue.(string))
+					beforeValue = DateTimeValue(beforeValue.(string), kr.kafkaConfig.TimeZone)
 				} else if beforeValue != nil {
 					beforeValue = DateValue(beforeValue.(string))
 				}
 				if afterValue != nil && colList[i].ColumnType == "datetime" {
-					afterValue = DateTimeValue(afterValue.(string))
+					afterValue = DateTimeValue(afterValue.(string), kr.kafkaConfig.TimeZone)
 				} else if afterValue != nil {
 					afterValue = DateValue(afterValue.(string))
 				}
@@ -595,6 +621,22 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry)
 				}
 				if afterValue != nil {
 					afterValue = getSetValue(afterValue.(int64), columnType)
+				}
+			case mysql.BlobColumnType:
+				if colList[i].ColumnType == "text" {
+					if beforeValue != nil {
+						beforeValue = string(afterValue.([]byte))
+					}
+					if afterValue != nil {
+						afterValue = string(afterValue.([]byte))
+					}
+				}
+			case mysql.TextColumnType:
+				if beforeValue != nil {
+					beforeValue = string(afterValue.([]byte))
+				}
+				if afterValue != nil {
+					afterValue = string(afterValue.([]byte))
 				}
 
 			case mysql.BitColumnType:
@@ -675,9 +717,13 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry)
 		}
 		//	vBs = []byte(strings.Replace(string(vBs), "\"field\":\"snapshot\"", "\"default\":false,\"field\":\"snapshot\"", -1))
 		err = kr.kafkaMgr.Send(tableIdent, kBs, vBs)
+		kr.kafkaConfig.BinlogPos = dmlEvent.Coordinates.LogPos
+		kr.kafkaConfig.Gtid = dmlEvent.Coordinates.GetGtidForThisTx()
+		kr.kafkaConfig.BinlogFile = dmlEvent.Coordinates.LogFile
 		if err != nil {
 			return err
 		}
+
 		kr.logger.Debugf("kafka: sent one msg")
 
 		// tombstone event for DELETE
@@ -694,6 +740,9 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry)
 			if err != nil {
 				return err
 			}
+			kr.kafkaConfig.Gtid = dmlEvent.Coordinates.GetGtidForThisTx()
+			kr.kafkaConfig.BinlogPos = dmlEvent.Coordinates.LogPos
+			kr.kafkaConfig.BinlogFile = dmlEvent.Coordinates.LogFile
 			kr.logger.Debugf("kafka: sent one msg")
 		}
 	}
@@ -745,7 +794,7 @@ func getBitValue(bit string, value int64) string {
 	return base64.StdEncoding.EncodeToString(buf[8-bitNumber:])
 }
 
-func kafkaColumnListToColDefs(colList *mysql.ColumnList) (valColDefs ColDefs, keyColDefs ColDefs) {
+func kafkaColumnListToColDefs(colList *mysql.ColumnList, timeZone string) (valColDefs ColDefs, keyColDefs ColDefs) {
 	cols := colList.ColumnList()
 	for i, _ := range cols {
 		var field *Schema
@@ -763,7 +812,11 @@ func kafkaColumnListToColDefs(colList *mysql.ColumnList) (valColDefs ColDefs, ke
 		case mysql.BitColumnType:
 			field = NewBitsField(optional, fieldName, cols[i].ColumnType[4:len(cols[i].ColumnType)-1], defaultValue)
 		case mysql.BlobColumnType:
-			field = NewSimpleSchemaWithDefaultField(SCHEMA_TYPE_BYTES, optional, fieldName, defaultValue)
+			if cols[i].ColumnType == "text" {
+				field = NewSimpleSchemaWithDefaultField(SCHEMA_TYPE_STRING, optional, fieldName, defaultValue)
+			} else {
+				field = NewSimpleSchemaWithDefaultField(SCHEMA_TYPE_BYTES, optional, fieldName, defaultValue)
+			}
 		case mysql.BinaryColumnType:
 			field = NewSimpleSchemaWithDefaultField(SCHEMA_TYPE_BYTES, optional, fieldName, defaultValue)
 		case mysql.VarbinaryColumnType:
@@ -806,20 +859,18 @@ func kafkaColumnListToColDefs(colList *mysql.ColumnList) (valColDefs ColDefs, ke
 			field = NewDecimalField(cols[i].Precision, cols[i].Scale, optional, fieldName, defaultValue)
 		case mysql.DateColumnType:
 			if cols[i].ColumnType == "datetime" {
-				field = NewDateTimeField(optional, fieldName, defaultValue)
+				field = NewDateTimeField(optional, fieldName, defaultValue, timeZone)
 			} else {
 				field = NewDateField(SCHEMA_TYPE_INT32, optional, fieldName, defaultValue)
 			}
 		case mysql.YearColumnType:
 			field = NewYearField(SCHEMA_TYPE_INT32, optional, fieldName, defaultValue)
 		case mysql.DateTimeColumnType:
-			field = NewDateTimeField(optional, fieldName, defaultValue)
+			field = NewDateTimeField(optional, fieldName, defaultValue, timeZone)
 		case mysql.TimeColumnType:
-			if cols[i].ColumnType == "timestamp" {
-				field = NewTimeStampField(SCHEMA_TYPE_STRING, optional, fieldName, defaultValue)
-			} else {
-				field = NewTimeField(optional, fieldName, defaultValue)
-			}
+			field = NewTimeField(optional, fieldName, defaultValue)
+		case mysql.TimestampColumnType:
+			field = NewTimeStampField(optional, fieldName, defaultValue, timeZone)
 		case mysql.JSONColumnType:
 			field = NewJsonField(optional, fieldName)
 		default:

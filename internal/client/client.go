@@ -35,6 +35,8 @@ import (
 	"github.com/actiontech/dtle/internal/config"
 	"github.com/actiontech/dtle/internal/models"
 	"github.com/actiontech/dtle/internal/server"
+	"github.com/shirou/gopsutil/mem"
+	"runtime/debug"
 )
 
 const (
@@ -240,6 +242,7 @@ func NewClient(cfg *config.ClientConfig, logger *logrus.Logger) (*Client, error)
 	// Start the client!
 	go c.run()
 
+	go c.setMemoryMonitor()
 	c.logger.Printf("agent: Node ID %q", c.Node().ID)
 	return c, nil
 }
@@ -569,6 +572,22 @@ func (c *Client) setupDrivers() error {
 	return nil
 }
 
+// setMemoryMonitor  used to free memory from go to os ,when  memory less than 1/8 and memory less than 2G
+func (c *Client) setMemoryMonitor() {
+
+	for {
+
+		v, _ := mem.VirtualMemory()
+		rate := float64(v.Available) / float64(v.Total)
+		if float64(rate) < 0.125 || v.Available < 1024*1024*1024*2 {
+			debug.FreeOSMemory()
+			time.Sleep(time.Duration(3) * time.Second)
+		}
+		time.Sleep(time.Duration(2) * time.Second)
+	}
+
+}
+
 // retryIntv calculates a retry interval value given the base
 func (c *Client) retryIntv(base time.Duration) time.Duration {
 	return base + lib.RandomStagger(base)
@@ -839,7 +858,7 @@ func (c *Client) allocSync() {
 			aUpdates[alloc.ID] = alloc
 
 		case update := <-c.workUpdates:
-			jUpdates[update.JobID + update.TaskType] = update
+			jUpdates[update.JobID+update.TaskType] = update
 
 		case <-syncTicker.C:
 			// Fast path if there are no updates
