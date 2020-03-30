@@ -1169,7 +1169,8 @@ func (a *Applier) ApplyBinlogEvent(ctx context.Context, workerIdx int, binlogEnt
 	// no error
 	a.mysqlContext.Stage = models.StageWaitingForGtidToBeCommitted
 	atomic.AddInt64(&a.mysqlContext.TotalDeltaCopied, 1)
-	a.mysqlContext.DescBinlogTimestamp =Timestamp
+	a.mysqlContext.SrcBinlogTimestamp =Timestamp
+	a.mysqlContext.DescBinlogTimestamp =uint32(time.Now().Unix())
 	return nil
 }
 
@@ -1311,6 +1312,7 @@ func (a *Applier) Stats() (*models.TaskStatistics, error) {
 	}
 
 	var etaSeconds float64 = math.MaxFloat64
+	var delayTime int64
 	eta = "N/A"
 	if progressPct >= 100.0 {
 		eta = "0s"
@@ -1322,6 +1324,9 @@ func (a *Applier) Stats() (*models.TaskStatistics, error) {
 			totalExpectedSeconds = elapsedRowCopySeconds * float64(deltaEstimate) / float64(totalDeltaCopied)
 		}
 		etaSeconds = totalExpectedSeconds - elapsedRowCopySeconds
+		if(a.mysqlContext.SrcBinlogTimestamp !=0 && a.mysqlContext.DescBinlogTimestamp!=0){
+			delayTime  =int64(a.mysqlContext.DescBinlogTimestamp - a.mysqlContext.SrcBinlogTimestamp )
+		}
 		if etaSeconds >= 0 {
 			etaDuration := time.Duration(etaSeconds) * time.Second
 			eta = base.PrettifyDurationOutput(etaDuration)
@@ -1329,14 +1334,12 @@ func (a *Applier) Stats() (*models.TaskStatistics, error) {
 			eta = "0s"
 		}
 	}
-
-	delayTime :=int64(a.mysqlContext.SrcBinlogTimestamp -a.mysqlContext.DescBinlogTimestamp)
 	taskResUsage := models.TaskStatistics{
 		ExecMasterRowCount: totalRowsReplay,
 		ExecMasterTxCount:  totalDeltaCopied,
 		ReadMasterRowCount: rowsEstimate,
 		ReadMasterTxCount:  deltaEstimate,
-		ProgressPct:        strconv.FormatFloat(progressPct, 'f', 1, 64),
+		ProgressPct:        strconv.FormatFloat(progressPct, 'f', 3, 64),
 		ETA:                eta,
 		Backlog:            backlog,
 		Stage:              a.mysqlContext.Stage,
