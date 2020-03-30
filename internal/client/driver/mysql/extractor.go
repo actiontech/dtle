@@ -52,6 +52,7 @@ import (
 	"github.com/actiontech/dtle/utils"
 	"github.com/shirou/gopsutil/mem"
 	"github.com/sirupsen/logrus"
+	"github.com/pingcap/tidb/types"
 )
 
 const (
@@ -858,6 +859,7 @@ func (e *Extractor) setStatementFor() string {
 
 // Encode
 func GobEncode(v interface{}) ([]byte, error) {
+	gob.Register(types.BinaryLiteral{})
 	b := new(bytes.Buffer)
 	if err := gob.NewEncoder(b).Encode(v); err != nil {
 		return nil, err
@@ -865,6 +867,7 @@ func GobEncode(v interface{}) ([]byte, error) {
 	return b.Bytes(), nil
 }
 func Encode(v interface{}) ([]byte, error) {
+	gob.Register(types.BinaryLiteral{})
 	b := new(bytes.Buffer)
 	if err := gob.NewEncoder(b).Encode(v); err != nil {
 		return nil, err
