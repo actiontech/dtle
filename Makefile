@@ -20,7 +20,7 @@ GOFLAGS := -mod=vendor
 default: driver
 
 driver:
-	GO111MODULE=on go build $(GOFLAGS) -o dist/dtle-driver -ldflags \
+	GO111MODULE=on go build $(GOFLAGS) -o dist/mysql -ldflags \
 		"-X main.Version=$(VERSION) -X main.GitCommit=$(COMMIT) -X main.GitBranch=$(BRANCH)" \
 		./cmd/nomad-plugin/main.go
 

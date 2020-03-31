@@ -257,6 +257,8 @@ func NewApplier(ctx *common.ExecContext, cfg *config.MySQLDriverConfig, logger h
 		return nil, err
 	}
 
+	logger.Info("NewApplier", "subject", ctx.Subject)
+
 	a := &Applier{
 		logger:                  logger,
 		subject:                 ctx.Subject,

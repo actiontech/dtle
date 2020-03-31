@@ -12,7 +12,7 @@ import (
 	"fmt"
 
 	"github.com/actiontech/dtle/drivers/mysql/mysql/common"
-//	umconf "github.com/actiontech/dtle/drivers/mysql/mysql/config"
+	//	umconf "github.com/actiontech/dtle/drivers/mysql/mysql/config"
 
 	"github.com/actiontech/dtle/drivers/mysql/mysql/g"
 	"github.com/opentracing/opentracing-go"
@@ -41,18 +41,17 @@ import (
 
 	"context"
 
-
-	utils "github.com/actiontech/dtle/drivers/mysql/mysql/util"
 	"github.com/actiontech/dtle/drivers/mysql/mysql/base"
 	"github.com/actiontech/dtle/drivers/mysql/mysql/binlog"
 	config "github.com/actiontech/dtle/drivers/mysql/mysql/config"
+	utils "github.com/actiontech/dtle/drivers/mysql/mysql/util"
 	//mysql "github.com/actiontech/dtle/drivers/mysql/mysql/config"
 	"github.com/actiontech/dtle/drivers/mysql/mysql/sql"
 	sqle "github.com/actiontech/dtle/drivers/mysql/mysql/sqle/inspector"
 	"github.com/hashicorp/go-hclog"
 	"github.com/nats-io/not.go"
 	"github.com/shirou/gopsutil/mem"
-	)
+)
 
 const (
 	// DefaultConnectWait is the default timeout used for the connect operation
@@ -110,6 +109,7 @@ type Extractor struct {
 }
 
 func NewExtractor(execCtx *common.ExecContext, cfg *config.MySQLDriverConfig, logger hclog.Logger) (*Extractor, error) {
+	logger.Info("NewExtractor", "subject", execCtx.Subject)
 	logger.Debug("start dtle task 7")
 	cfg = cfg.SetDefault()
 	/*entry := logger.WithFields(logrus.Fields{

@@ -9,12 +9,12 @@ import (
 	"runtime"
 	"time"
 
-		"github.com/hashicorp/go-hclog"
-		"math/rand"
-	config "github.com/actiontech/dtle/drivers/mysql/mysql/config"
-	"github.com/actiontech/dtle/drivers/mysql/mysql/common"
 	"github.com/actiontech/dtle/drivers/mysql/mysql"
-//	"github.com/actiontech/dtle/drivers/mysql/mysql"
+	"github.com/actiontech/dtle/drivers/mysql/mysql/common"
+	config "github.com/actiontech/dtle/drivers/mysql/mysql/config"
+	"github.com/hashicorp/go-hclog"
+	"math/rand"
+	//	"github.com/actiontech/dtle/drivers/mysql/mysql"
 	"github.com/hashicorp/nomad/drivers/shared/eventer"
 	"github.com/hashicorp/nomad/helper/pluginutils/loader"
 	"github.com/hashicorp/nomad/nomad/structs"
@@ -22,10 +22,9 @@ import (
 	"github.com/hashicorp/nomad/plugins/drivers"
 	"github.com/hashicorp/nomad/plugins/shared/hclspec"
 	pstructs "github.com/hashicorp/nomad/plugins/shared/structs"
-	"github.com/satori/go.uuid"
-	"net"
 	gnatsd "github.com/nats-io/gnatsd/server"
 	stand "github.com/nats-io/nats-streaming-server/server"
+	"net"
 )
 
 const (
@@ -70,11 +69,17 @@ var (
 	}
 
 	// configSpec is the hcl specification returned by the ConfigSchema RPC
-	configSpec = hclspec.NewObject(map[string]*hclspec.Spec{})
+	configSpec = hclspec.NewObject(map[string]*hclspec.Spec{
+		"NatsBind": hclspec.NewDefault(hclspec.NewAttr("NatsBind", "string", false),
+			hclspec.NewLiteral(`"0.0.0.0:8193"`)),
+		"NatsAdvertise": hclspec.NewDefault(hclspec.NewAttr("NatsAdvertise", "string", false),
+			hclspec.NewLiteral(`"127.0.0.1:8193"`)),
+	})
 
 	// taskConfigSpec is the hcl specification for the driver config section of
 	// a taskConfig within a job. It is returned in the TaskConfigSchema RPC
 	taskConfigSpec = hclspec.NewObject(map[string]*hclspec.Spec{
+		// TODO remove
 		"type":       hclspec.NewAttr("type", "string", true),
 	})
 
@@ -134,7 +139,9 @@ type Driver struct {
 	allocID   string
 	node      *structs.Node
 	extractor *mysql.Extractor
-	stand *stand.StanServer
+	stand     *stand.StanServer
+
+	config    *DriverConfig
 }
 
 /*type TaskConfig struct {
@@ -194,46 +201,46 @@ type TaskConfig struct {
 }
 
 func NewDriver(logger hclog.Logger) drivers.DriverPlugin {
-	ctx, cancel := context.WithCancel(context.Background())
 	logger = logger.Named(pluginName)
-	rstand ,_:=SetupNatsServer(logger)
+	logger.Info("mysql NewDriver")
+
+	ctx, cancel := context.WithCancel(context.Background())
 	return &Driver{
 		eventer:        eventer.NewEventer(ctx, logger),
 		tasks:          newTaskStore(),
 		ctx:            ctx,
 		signalShutdown: cancel,
 		logger:         logger,
-		stand :  rstand,
 	}
 }
 
-func  SetupNatsServer(logger hclog.Logger)(rstand *stand.StanServer ,err error)  {
-	natsAddr, err := net.ResolveTCPAddr("tcp","10.186.61.121:8193")
+func (d *Driver) SetupNatsServer(logger hclog.Logger) (err error)  {
+	natsAddr, err := net.ResolveTCPAddr("tcp", d.config.NatsBind)
 	if err != nil {
-		return  nil,fmt.Errorf("Failed to parse Nats address %q: %v","10.186.61.121:8193", err)
+		return fmt.Errorf("failed to parse Nats address. addr %v err %v",
+			d.config.NatsBind, err)
 	}
 	nOpts := gnatsd.Options{
 		Host:       natsAddr.IP.String(),
 		Port:       natsAddr.Port,
-		MaxPayload: 200,
+		MaxPayload: 100*1024*1024,
 		//HTTPPort:   8199,
 		LogFile:"/opt/log",
-		Trace:   true,
 		Debug:   true,
 	}
 	//logger.Debug("agent: Starting nats streaming server [%v]", "10.186.61.121:8193")
 	sOpts := stand.GetDefaultOptions()
 	sOpts.ID = config.DefaultClusterID
-	//sOpts.MaxBytes = 10 * 1024
-	/*if c.config.LogLevel == "DEBUG" {
-		stand.ConfigureLogger(sOpts, &nOpts)
-	}*/
+
 	s, err := stand.RunServerWithOpts(sOpts, &nOpts)
 	if err != nil {
-		return nil ,err
+		return err
 	}
 
-	return  s,nil
+	logger.Info("Setup nats server", "addr", d.config.NatsBind)
+
+	d.stand = s
+	return nil
 }
 
 /*func NewMySQLDriver(ctx *DriverContext) Driver {
@@ -248,10 +255,36 @@ func (d *Driver) ConfigSchema() (*hclspec.Spec, error) {
 	return configSpec, nil
 }
 
-func (d *Driver) SetConfig(cfg *base.Config) error {
-	if cfg != nil && cfg.AgentConfig != nil {
-		d.nomadConfig = cfg.AgentConfig.Driver
+type DriverConfig struct {
+	NatsBind string `codec:"NatsBind"`
+	NatsAdvertise string `codec:"NatsAdvertise"`
+}
+
+func (d *Driver) SetConfig(c *base.Config) error {
+	if c != nil && c.AgentConfig != nil {
+		d.nomadConfig = c.AgentConfig.Driver
+		d.logger.Info("SetConfig", "DriverConfig", c.AgentConfig.Driver)
 	}
+
+	var dconfig DriverConfig
+	if len(c.PluginConfig) != 0 {
+		if err := base.MsgPackDecode(c.PluginConfig, &dconfig); err != nil {
+			return err
+		}
+	}
+
+	d.config = &dconfig
+	d.logger.Info("SetConfig", "config", d.config)
+
+	go func() {
+		// Have to put this in a goroutine, or it will fail.
+		err := d.SetupNatsServer(d.logger)
+		if err != nil {
+			d.logger.Error("error in SetupNatsServer", "err", err)
+			// TODO mark driver unhealthy
+		}
+	}()
+
 	return nil
 }
 
@@ -334,12 +367,8 @@ func (d *Driver) RecoverTask(handle *drivers.TaskHandle) error {
 		return fmt.Errorf("failed to decode taskConfig state from handle: %v", err)
 	}
 
-	h := &taskHandle{
-		taskConfig: taskState.TaskConfig,
-		procState:  drivers.TaskStateRunning,
-		startedAt:  taskState.StartedAt,
-		exitResult: &drivers.ExitResult{},
-	}
+	h := newDtleTaskHandle(d.logger, taskState.TaskConfig, drivers.TaskStateRunning, taskState.StartedAt)
+	h.exitResult = &drivers.ExitResult{}
 
 	d.tasks.Set(taskState.TaskConfig.ID, h)
 
@@ -367,8 +396,11 @@ func (d *Driver) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHandle, *drive
 
 
 	d.logger.Debug("start dtle task 2")
+	d.logger.Info("StartTask", "ID", cfg.ID)
 
-	ctx := &common.ExecContext{uuid.NewV4().String(), cfg.TaskGroupName, 100 * 1024 * 1024, "/opt/binlog"}
+
+
+	ctx := &common.ExecContext{cfg.JobName, cfg.TaskGroupName, 100 * 1024 * 1024, "/opt/binlog"}
 	switch cfg.TaskGroupName {
 	case TaskTypeSrc:
 		{
@@ -383,18 +415,18 @@ func (d *Driver) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHandle, *drive
 			d.logger.Debug("start dtle task 5")
 			var tables []*config.Table
 			tables = append(tables, &config.Table{
-				TableName:"sbstest1",
+				TableName:"a",
 			})
 			driverConfig.ExpandSyntaxSupport =false
 			driverConfig.ReplChanBufferSize=600
 			datasource :=&config.DataSource{
-			TableSchema:"action_db",
+			TableSchema:"a",
 			Tables:tables,
 		}
 			driverConfig.ReplicateDoDb=append(driverConfig.ReplicateDoDb, datasource)
 			driverConfig.DropTableIfExists = false
 			driverConfig.SkipCreateDbTable = false
-			driverConfig.NatsAddr = "10.186.61.121:8193"
+			driverConfig.NatsAddr = d.config.NatsAdvertise
 			driverConfig.MySQLVersion="5.7"
 			driverConfig.SkipPrivilegeCheck=true
 			driverConfig.BinlogRowImage = "FULL"
@@ -423,7 +455,7 @@ func (d *Driver) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHandle, *drive
 				Charset:"utf8mb4",
 			}
 			driverConfig.MySQLVersion="5.7"
-			driverConfig.NatsAddr = "10.186.61.121:8193"
+			driverConfig.NatsAddr = d.config.NatsAdvertise
 			driverConfig.SkipPrivilegeCheck=true
 			driverConfig.BinlogRowImage = "FULL"
 			driverConfig.BinlogFormat="ROW"
@@ -446,12 +478,8 @@ func (d *Driver) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHandle, *drive
 	}
 	handle := drivers.NewTaskHandle(taskHandleVersion)
 	handle.Config = cfg
-	h := &taskHandle{
-		taskConfig: cfg,
-		procState:  drivers.TaskStateRunning,
-		startedAt:  time.Now().Round(time.Millisecond),
-		logger:     d.logger,
-	}
+	h := newDtleTaskHandle(d.logger, cfg, drivers.TaskStateRunning, time.Now().Round(time.Millisecond))
+
 	driverState := TaskState{
 		TaskConfig: cfg,
 		StartedAt:  time.Now().Round(time.Millisecond),
@@ -479,25 +507,20 @@ func (d *Driver) WaitTask(ctx context.Context, taskID string) (<-chan *drivers.E
 
 func (d *Driver) handleWait(ctx context.Context, handle *taskHandle, ch chan *drivers.ExitResult) {
 	defer close(ch)
-	var result *drivers.ExitResult
-	/*ps, err := handle.exec.Wait(ctx)
-	if err != nil {
-		result = &drivers.ExitResult{
-			Err: fmt.Errorf("executor: error waiting on process: %v", err),
-		}
-	} else {
-		result = &drivers.ExitResult{
-			ExitCode: ps.ExitCode,
-			Signal:   ps.Signal,
-		}
-	}*/
 
 	select {
 	case <-ctx.Done():
 		return
 	case <-d.ctx.Done():
 		return
-	case ch <- result:
+	case <-handle.ctx.Done():
+		result := &drivers.ExitResult{
+			ExitCode:  0,
+			Signal:    0,
+			OOMKilled: false,
+			Err:       nil,
+		}
+		ch <- result
 	}
 }
 
@@ -556,6 +579,16 @@ func (d *Driver) handleStats(ctx context.Context, ch chan<- *drivers.TaskResourc
 						RSS:      rand.Uint64(),
 						Measured: []string{"RSS"},
 					},
+					CpuStats:    &drivers.CpuStats{
+						SystemMode:       0,
+						UserMode:         0,
+						TotalTicks:       0,
+						ThrottledPeriods: 0,
+						ThrottledTime:    0,
+						Percent:          0,
+						Measured:         nil,
+					},
+					DeviceStats: nil,
 				},
 				Timestamp: time.Now().UTC().UnixNano(),
 			}

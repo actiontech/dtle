@@ -1,6 +1,7 @@
 package mysql
 
 import (
+	"context"
 	"sync"
 	"time"
 
@@ -19,6 +20,23 @@ type taskHandle struct {
 	startedAt   time.Time
 	completedAt time.Time
 	exitResult  *drivers.ExitResult
+
+	ctx context.Context
+	cancelFunc context.CancelFunc
+}
+
+func newDtleTaskHandle(logger hclog.Logger, cfg *drivers.TaskConfig, state drivers.TaskState, started time.Time) *taskHandle {
+	h := &taskHandle{
+		logger:      logger,
+		stateLock:   sync.RWMutex{},
+		taskConfig:  cfg,
+		procState:   state,
+		startedAt:   started,
+		completedAt: time.Time{},
+		exitResult:  nil,
+	}
+	h.ctx, h.cancelFunc = context.WithCancel(context.TODO())
+	return h
 }
 
 func (h *taskHandle) TaskStatus() *drivers.TaskStatus {
@@ -58,5 +76,6 @@ func (h *taskHandle) run() {
 func (h *taskHandle) Destroy() bool {
 	h.stateLock.RLock()
 	//driver.des
+	h.cancelFunc()
 	return h.procState == drivers.TaskStateRunning
 }
