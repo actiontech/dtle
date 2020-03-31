@@ -326,15 +326,12 @@ func (d *Driver) buildFingerprint() *drivers.Fingerprint {
 	var health drivers.HealthState
 	var desc string
 	attrs := map[string]*pstructs.Attribute{}
-	if  runtime.GOOS == "linux" {
-		health = drivers.HealthStateHealthy
-		desc = "ready"
-		attrs["driver.mysql"] = pstructs.NewBoolAttribute(true)
-		attrs["driver.mysql.version"] = pstructs.NewStringAttribute("12")
-	} else {
-		health = drivers.HealthStateUndetected
-		desc = "disabled"
-	}
+
+	health = drivers.HealthStateHealthy
+	desc = "ready"
+	attrs["driver.mysql"] = pstructs.NewBoolAttribute(true)
+	attrs["driver.mysql.version"] = pstructs.NewStringAttribute("12")
+
 	return &drivers.Fingerprint{
 		Attributes:        attrs,
 		Health:            health,
