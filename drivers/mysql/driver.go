@@ -80,8 +80,13 @@ var (
 	taskConfigSpec = hclspec.NewObject(map[string]*hclspec.Spec{
 		// TODO remove
 		"type":       hclspec.NewAttr("type", "string", true),
-
-		
+		"ConnectionConfig": hclspec.NewBlock("ConnectionConfig", true, hclspec.NewObject(map[string]*hclspec.Spec{
+			"Host": hclspec.NewAttr("Host", "string", true),
+			"Port": hclspec.NewAttr("Port", "number", true),
+			"User": hclspec.NewAttr("User", "string", true),
+			"Password": hclspec.NewAttr("Password", "string", true),
+			"Charset": hclspec.NewAttr("Charset", "string", false),
+		})),
 	})
 
 	// capabilities is returned by the Capabilities RPC and indicates what
@@ -195,7 +200,7 @@ type Driver struct {
 */
 type TaskConfig struct {
 	Type      string   `codec:"type"`
-
+	ConnectionConfig *config.ConnectionConfig `codec:"ConnectionConfig"`
 }
 
 func NewDriver(logger hclog.Logger) drivers.DriverPlugin {
@@ -400,13 +405,8 @@ func (d *Driver) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHandle, *drive
 	case TaskTypeSrc:
 		{
 			d.logger.Debug("start dtle task 3")
-			driverConfig.ConnectionConfig = &config.ConnectionConfig{
-				Host:"10.186.61.26",
-				Port:3306,
-				User:"dtle",
-				Password:"root",
-				Charset:"utf8mb4",
-			}
+
+			driverConfig.ConnectionConfig = taskConfig.ConnectionConfig
 			d.logger.Debug("start dtle task 5")
 			var tables []*config.Table
 			tables = append(tables, &config.Table{
@@ -442,13 +442,7 @@ func (d *Driver) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHandle, *drive
 	case TaskTypeDest:
 		{
 			d.logger.Debug("start dtle task4")
-			driverConfig.ConnectionConfig =&config.ConnectionConfig{
-				Host:"10.186.61.46",
-				Port:3306,
-				User:"dtle",
-				Password:"root",
-				Charset:"utf8mb4",
-			}
+			driverConfig.ConnectionConfig = taskConfig.ConnectionConfig
 			driverConfig.MySQLVersion="5.7"
 			driverConfig.NatsAddr = d.config.NatsAdvertise
 			driverConfig.SkipPrivilegeCheck=true
