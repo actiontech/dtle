@@ -33,6 +33,7 @@ import (
 	"github.com/actiontech/dts/internal/models"
 	"github.com/actiontech/dts/utils"
 	"github.com/sirupsen/logrus"
+	"github.com/pingcap/tidb/types"
 )
 
 const (
@@ -275,6 +276,7 @@ func (kr *KafkaRunner) initiateStreaming() error {
 
 // TODO move to one place
 func Decode(data []byte, vPtr interface{}) (err error) {
+	gob.Register(types.BinaryLiteral{})
 	msg, err := snappy.Decode(nil, data)
 	if err != nil {
 		return err
@@ -283,6 +285,7 @@ func Decode(data []byte, vPtr interface{}) (err error) {
 	return gob.NewDecoder(bytes.NewBuffer(msg)).Decode(vPtr)
 }
 func DecodeGob(data []byte, vPtr interface{}) (err error) {
+	gob.Register(types.BinaryLiteral{})
 	return gob.NewDecoder(bytes.NewBuffer(data)).Decode(vPtr)
 }
 

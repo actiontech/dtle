@@ -49,6 +49,7 @@ import (
 	"github.com/nats-io/not.go"
 	"github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
+	"github.com/pingcap/tidb/types"
 )
 
 const (
@@ -539,6 +540,7 @@ func DecodeDumpEntry(data []byte) (entry *DumpEntry, err error) {
 
 // Decode
 func Decode(data []byte, vPtr interface{}) (err error) {
+	gob.Register(types.BinaryLiteral{})
 	msg, err := snappy.Decode(nil, data)
 	if err != nil {
 		return err
