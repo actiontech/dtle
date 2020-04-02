@@ -388,12 +388,13 @@ func (kr *KafkaRunner) kafkaTransformSnapshotData(table *config.Table, value *my
 				case mysql.DecimalColumnType:
 					value = DecimalValueFromStringMysql(valueStr)
 				case mysql.TimeColumnType:
-					if valueStr != "" && columnList[i].ColumnType == "timestamp" {
+					value = TimeValue(valueStr)
+				case mysql.TimestampColumnType:
+					if valueStr != ""  {
 						value = valueStr[:10] + "T" + valueStr[11:] + "Z"
 					} else {
 						value = TimeValue(valueStr)
 					}
-
 				case mysql.BinaryColumnType:
 					value = base64.StdEncoding.EncodeToString([]byte(valueStr))
 				case mysql.BitColumnType:
