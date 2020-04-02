@@ -400,7 +400,11 @@ func (kr *KafkaRunner) kafkaTransformSnapshotData(table *config.Table, value *my
 				case mysql.BitColumnType:
 					value = base64.StdEncoding.EncodeToString([]byte(valueStr))
 				case mysql.BlobColumnType:
+					if columnList[i].ColumnType =="text"{
+						value =valueStr
+					}else{
 					value = base64.StdEncoding.EncodeToString([]byte(valueStr))
+					}
 				case mysql.VarbinaryColumnType:
 					value = base64.StdEncoding.EncodeToString([]byte(valueStr))
 				case mysql.DateColumnType, mysql.DateTimeColumnType:
@@ -600,6 +604,22 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry)
 				if afterValue != nil {
 					afterValue = getSetValue(afterValue.(int64), columnType)
 				}
+			case mysql.BlobColumnType:
+				if colList[i].ColumnType  =="text"{
+					if beforeValue != nil {
+						beforeValue = string(afterValue.([]byte))
+					}
+					if afterValue != nil {
+						afterValue = string(afterValue.([]byte))
+					}
+				}
+			case mysql.TextColumnType:
+				if beforeValue != nil {
+					beforeValue =  string(afterValue.([]byte))
+				}
+				if afterValue != nil {
+					afterValue = string(afterValue.([]byte))
+				}
 
 			case mysql.BitColumnType:
 				if beforeValue != nil {
@@ -767,7 +787,11 @@ func kafkaColumnListToColDefs(colList *mysql.ColumnList) (valColDefs ColDefs, ke
 		case mysql.BitColumnType:
 			field = NewBitsField(optional, fieldName, cols[i].ColumnType[4:len(cols[i].ColumnType)-1], defaultValue)
 		case mysql.BlobColumnType:
-			field = NewSimpleSchemaWithDefaultField(SCHEMA_TYPE_BYTES, optional, fieldName, defaultValue)
+			if cols[i].ColumnType =="text"{
+				field = NewSimpleSchemaWithDefaultField(SCHEMA_TYPE_STRING, optional, fieldName, defaultValue)
+			}else{
+				field = NewSimpleSchemaWithDefaultField(SCHEMA_TYPE_BYTES, optional, fieldName, defaultValue)
+			}
 		case mysql.BinaryColumnType:
 			field = NewSimpleSchemaWithDefaultField(SCHEMA_TYPE_BYTES, optional, fieldName, defaultValue)
 		case mysql.VarbinaryColumnType:
