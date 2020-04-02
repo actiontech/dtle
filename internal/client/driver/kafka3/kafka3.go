@@ -818,11 +818,9 @@ func kafkaColumnListToColDefs(colList *mysql.ColumnList) (valColDefs ColDefs, ke
 		case mysql.DateTimeColumnType:
 			field = NewDateTimeField(optional, fieldName, defaultValue)
 		case mysql.TimeColumnType:
-			if cols[i].ColumnType == "timestamp" {
-				field = NewTimeStampField(SCHEMA_TYPE_STRING, optional, fieldName, defaultValue)
-			} else {
-				field = NewTimeField(optional, fieldName, defaultValue)
-			}
+			field = NewTimeField(optional, fieldName, defaultValue)
+		case mysql.TimestampColumnType:
+			field = NewTimeStampField(optional, fieldName, defaultValue)
 		case mysql.JSONColumnType:
 			field = NewJsonField(optional, fieldName)
 		default:
