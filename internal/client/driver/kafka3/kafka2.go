@@ -36,6 +36,7 @@ const (
 	SCHEMA_TYPE_INT8    = "int8"
 	SCHEMA_TYPE_BYTES   = "bytes"
 	SCHEMA_TYPE_FLOAT64 = "float64"
+	SCHEMA_TYPE_TIMESTAMP = "timestamp"
 	SCHEMA_TYPE_DOUBLE  = "float64"
 	SCHEMA_TYPE_FLOAT32 = "float32"
 	SCHEMA_TYPE_BOOLEAN = "boolean"
@@ -518,7 +519,7 @@ func NewSetField(theType SchemaType, optional bool, field string, allowed string
 		Version: 1,
 	}
 }
-func NewTimeStampField(theType SchemaType, optional bool, field string, defaultValue interface{}) *Schema {
+func NewTimeStampField( optional bool, field string, defaultValue interface{}) *Schema {
 	if defaultValue == "CURRENT_TIMESTAMP" {
 		defaultValue = "1970-01-01T00:00:00Z"
 	} else if defaultValue != nil {
@@ -528,7 +529,7 @@ func NewTimeStampField(theType SchemaType, optional bool, field string, defaultV
 		Field:    field,
 		Optional: optional,
 		Default:  defaultValue,
-		Type:     theType,
+		Type:     SCHEMA_TYPE_TIMESTAMP,
 		Name:     "io.debezium.time.ZonedTimestamp",
 		Version:  1,
 	}
