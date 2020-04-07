@@ -17,7 +17,6 @@ import (
 	//	"github.com/actiontech/dtle/drivers/mysql/mysql"
 	"github.com/hashicorp/nomad/drivers/shared/eventer"
 	"github.com/hashicorp/nomad/helper/pluginutils/loader"
-	"github.com/hashicorp/nomad/nomad/structs"
 	"github.com/hashicorp/nomad/plugins/base"
 	"github.com/hashicorp/nomad/plugins/drivers"
 	"github.com/hashicorp/nomad/plugins/shared/hclspec"
@@ -81,6 +80,8 @@ var (
 	taskConfigSpec = hclspec.NewObject(map[string]*hclspec.Spec{
 		// TODO remove
 		"type":       hclspec.NewAttr("type", "string", true),
+
+		
 	})
 
 	// capabilities is returned by the Capabilities RPC and indicates what
@@ -135,10 +136,6 @@ type Driver struct {
 	// logger will log to the Nomad agent
 	logger hclog.Logger
 
-	taskName  string
-	allocID   string
-	node      *structs.Node
-	extractor *mysql.Extractor
 	stand     *stand.StanServer
 
 	config    *DriverConfig
@@ -198,6 +195,7 @@ type Driver struct {
 */
 type TaskConfig struct {
 	Type      string   `codec:"type"`
+
 }
 
 func NewDriver(logger hclog.Logger) drivers.DriverPlugin {
@@ -340,6 +338,7 @@ func (d *Driver) buildFingerprint() *drivers.Fingerprint {
 }
 
 func (d *Driver) RecoverTask(handle *drivers.TaskHandle) error {
+	d.logger.Info("RecoverTask")
 	if handle == nil {
 		return fmt.Errorf("handle cannot be nil")
 	}
@@ -394,7 +393,6 @@ func (d *Driver) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHandle, *drive
 
 	d.logger.Debug("start dtle task 2")
 	d.logger.Info("StartTask", "ID", cfg.ID)
-
 
 
 	ctx := &common.ExecContext{cfg.JobName, cfg.TaskGroupName, 100 * 1024 * 1024, "/opt/binlog"}
@@ -522,6 +520,7 @@ func (d *Driver) handleWait(ctx context.Context, handle *taskHandle, ch chan *dr
 }
 
 func (d *Driver) StopTask(taskID string, timeout time.Duration, signal string) error {
+	d.logger.Info("StopTask", "id", taskID)
 	/*	handle, ok := d.tasks.Get(taskID)
 		if !ok {
 			return drivers.ErrTaskNotFound
@@ -538,6 +537,7 @@ func (d *Driver) StopTask(taskID string, timeout time.Duration, signal string) e
 }
 
 func (d *Driver) DestroyTask(taskID string, force bool) error {
+	d.logger.Info("DestroyTask", "id", taskID)
 	handle, ok := d.tasks.Get(taskID)
 	if !ok {
 		return drivers.ErrTaskNotFound
@@ -551,6 +551,7 @@ func (d *Driver) DestroyTask(taskID string, force bool) error {
 }
 
 func (d *Driver) InspectTask(taskID string) (*drivers.TaskStatus, error) {
+	d.logger.Info("InspectTask", "taskID", taskID)
 	handle, ok := d.tasks.Get(taskID)
 	if !ok {
 		return nil, drivers.ErrTaskNotFound
@@ -619,6 +620,7 @@ func (d *Driver) SignalTask(taskID string, signal string) error {
 }
 
 func (d *Driver) ExecTask(taskID string, cmd []string, timeout time.Duration) (*drivers.ExecTaskResult, error) {
+	d.logger.Info("ExecTask", "id", taskID)
 	h, ok := d.tasks.Get(taskID)
 	if !ok {
 		return nil, drivers.ErrTaskNotFound
