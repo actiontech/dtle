@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	dcommon "github.com/actiontech/dtle/drivers/mysql/common"
 	"os/exec"
 	"path/filepath"
 	"runtime"
@@ -21,7 +22,7 @@ import (
 	"github.com/hashicorp/nomad/plugins/drivers"
 	"github.com/hashicorp/nomad/plugins/shared/hclspec"
 	pstructs "github.com/hashicorp/nomad/plugins/shared/structs"
-	gnatsd "github.com/nats-io/gnatsd/server"
+	gnatsd "github.com/nats-io/nats-server/v2/server"
 	stand "github.com/nats-io/nats-streaming-server/server"
 	"net"
 )
@@ -73,6 +74,7 @@ var (
 			hclspec.NewLiteral(`"0.0.0.0:8193"`)),
 		"NatsAdvertise": hclspec.NewDefault(hclspec.NewAttr("NatsAdvertise", "string", false),
 			hclspec.NewLiteral(`"127.0.0.1:8193"`)),
+		"consul": hclspec.NewAttr("consul", "list(string)", true),
 	})
 
 	// taskConfigSpec is the hcl specification for the driver config section of
@@ -141,9 +143,11 @@ type Driver struct {
 	// logger will log to the Nomad agent
 	logger hclog.Logger
 
-	stand     *stand.StanServer
+	stand *stand.StanServer
 
-	config    *DriverConfig
+	config *DriverConfig
+
+	storeManager *dcommon.StoreManager
 }
 
 /*type TaskConfig struct {
@@ -261,9 +265,10 @@ func (d *Driver) ConfigSchema() (*hclspec.Spec, error) {
 type DriverConfig struct {
 	NatsBind string `codec:"NatsBind"`
 	NatsAdvertise string `codec:"NatsAdvertise"`
+	Consul []string `codec:"consul"`
 }
 
-func (d *Driver) SetConfig(c *base.Config) error {
+func (d *Driver) SetConfig(c *base.Config) (err error) {
 	if c != nil && c.AgentConfig != nil {
 		d.nomadConfig = c.AgentConfig.Driver
 		d.logger.Info("SetConfig", "DriverConfig", c.AgentConfig.Driver)
@@ -278,6 +283,11 @@ func (d *Driver) SetConfig(c *base.Config) error {
 
 	d.config = &dconfig
 	d.logger.Info("SetConfig", "config", d.config)
+
+	d.storeManager, err = dcommon.NewStoreManager(d.config.Consul)
+	if err != nil {
+		return err
+	}
 
 	go func() {
 		// Have to put this in a goroutine, or it will fail.
