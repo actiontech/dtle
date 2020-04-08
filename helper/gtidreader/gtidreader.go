@@ -5,8 +5,8 @@ import (
 	"compress/gzip"
 	"encoding/binary"
 	"fmt"
-	. "github.com/actiontech/dtle/helper/u"
-	"github.com/actiontech/dtle/internal/client/driver/mysql/base"
+	//. "github.com/actiontech/dtle/helper/u"
+	//"github.com/actiontech/dtle/internal/client/driver/mysql/base"
 	gomysql "github.com/siddontang/go-mysql/mysql"
 )
 

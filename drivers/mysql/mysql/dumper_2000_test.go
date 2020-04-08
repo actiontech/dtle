@@ -6,10 +6,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/actiontech/dtle/olddtle/helper/u"
-	"github.com/actiontech/dtle/olddtle/internal/config"
-	umconf "github.com/actiontech/dtle/olddtle/internal/config/mysql"
-	"github.com/actiontech/dtle/olddtle/internal/logger"
+	//"github.com/actiontech/dtle/olddtle/helper/u"
+	//"github.com/actiontech/dtle/olddtle/internal/config"
+	//umconf "github.com/actiontech/dtle/olddtle/internal/config/mysql"
+	//"github.com/actiontech/dtle/olddtle/internal/logger"
 )
 
 func TestDumper2000(t *testing.T) {

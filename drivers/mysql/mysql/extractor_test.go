@@ -7,13 +7,14 @@
 package mysql
 
 import (
+	"log"
 	"reflect"
 	"testing"
 
-	"github.com/actiontech/dtle/olddtle/internal/client/driver/mysql/base"
-	"github.com/actiontech/dtle/olddtle/internal/config"
-	log "github.com/actiontech/dtle/olddtle/internal/logger"
-	"github.com/actiontech/dtle/olddtle/internal/models"
+	//"github.com/actiontech/dtle/olddtle/internal/client/driver/mysql/base"
+	//"github.com/actiontech/dtle/olddtle/internal/config"
+	//log "github.com/actiontech/dtle/olddtle/internal/logger"
+	//"github.com/actiontech/dtle/olddtle/internal/models"
 )
 
 func TestGtidSetDiff(t *testing.T) {
