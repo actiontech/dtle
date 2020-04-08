@@ -1,4 +1,4 @@
-// Copyright 2017-2018 The NATS Authors
+// Copyright 2017-2019 The NATS Authors
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -17,17 +17,17 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"regexp"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	"github.com/nats-io/go-nats-streaming/pb"
 	"github.com/nats-io/nats-streaming-server/logger"
 	"github.com/nats-io/nats-streaming-server/spb"
 	"github.com/nats-io/nats-streaming-server/util"
 	"github.com/nats-io/nuid"
+	"github.com/nats-io/stan.go/pb"
 )
 
 const (
@@ -93,41 +93,41 @@ const (
 )
 
 var sqlStmts = []string{
-	"SELECT id, tick from StoreLock FOR UPDATE",                                                                                                                    // sqlDBLockSelect
-	"INSERT INTO StoreLock (id, tick) VALUES (?, ?)",                                                                                                               // sqlDBLockInsert
-	"UPDATE StoreLock SET id=?, tick=?",                                                                                                                            // sqlDBLockUpdate
-	"SELECT COUNT(uniquerow) FROM ServerInfo",                                                                                                                      // sqlHasServerInfoRow
-	"UPDATE ServerInfo SET id=?, proto=?, version=? WHERE uniquerow=1",                                                                                             // sqlUpdateServerInfo
-	"INSERT INTO ServerInfo (id, proto, version) VALUES (?, ?, ?)",                                                                                                 // sqlAddServerInfo
-	"INSERT INTO Clients (id, hbinbox, proto) VALUES (?, ?, ?)",                                                                                                    // sqlAddClient
-	"DELETE FROM Clients WHERE id=?",                                                                                                                               // sqlDeleteClient
-	"INSERT INTO Channels (id, name, maxmsgs, maxbytes, maxage) VALUES (?, ?, ?, ?, ?)",                                                                            // sqlAddChannel
-	"INSERT INTO Messages VALUES (?, ?, ?, ?, ?)",                                                                                                                  // sqlStoreMsg
-	"SELECT timestamp, data FROM Messages WHERE id=? AND seq=?",                                                                                                    // sqlLookupMsg
-	"SELECT seq FROM Messages WHERE id=? AND timestamp>=? LIMIT 1",                                                                                                 // sqlGetSequenceFromTimestamp
-	"UPDATE Channels SET maxseq=? WHERE id=?",                                                                                                                      // sqlUpdateChannelMaxSeq
-	"SELECT COUNT(seq), COALESCE(MAX(seq), 0), COALESCE(SUM(size), 0) FROM Messages WHERE id=? AND timestamp<=?",                                                   // sqlGetExpiredMessages
-	"SELECT timestamp FROM Messages WHERE id=? AND seq>=? LIMIT 1",                                                                                                 // sqlGetFirstMsgTimestamp
-	"DELETE FROM Messages WHERE id=? AND seq<=?",                                                                                                                   // sqlDeletedMsgsWithSeqLowerThan
-	"SELECT size FROM Messages WHERE id=? AND seq=?",                                                                                                               // sqlGetSizeOfMessage
-	"DELETE FROM Messages WHERE id=? AND seq=?",                                                                                                                    // sqlDeleteMessage
-	"SELECT COUNT(subid) FROM Subscriptions WHERE id=? AND deleted=FALSE",                                                                                          // sqlCheckMaxSubs
-	"INSERT INTO Subscriptions (id, subid, proto) VALUES (?, ?, ?)",                                                                                                // sqlCreateSub
-	"UPDATE Subscriptions SET proto=? WHERE id=? AND subid=?",                                                                                                      // sqlUpdateSub
-	"UPDATE Subscriptions SET deleted=TRUE WHERE id=? AND subid=?",                                                                                                 // sqlMarkSubscriptionAsDeleted
-	"DELETE FROM Subscriptions WHERE id=? AND subid=?",                                                                                                             // sqlDeleteSubscription
-	"DELETE FROM Subscriptions WHERE id=? AND deleted=TRUE",                                                                                                        // sqlDeleteSubMarkedAsDeleted
-	"DELETE FROM SubsPending WHERE subid=?",                                                                                                                        // sqlDeleteSubPendingMessages
-	"UPDATE Subscriptions SET lastsent=? WHERE id=? AND subid=?",                                                                                                   // sqlSubUpdateLastSent
-	"INSERT INTO SubsPending (subid, `row`, seq) VALUES (?, ?, ?)",                                                                                                 // sqlSubAddPending
-	"INSERT INTO SubsPending (subid, `row`, lastsent, pending, acks) VALUES (?, ?, ?, ?, ?)",                                                                       // sqlSubAddPendingRow
-	"DELETE FROM SubsPending WHERE subid=? AND seq=?",                                                                                                              // sqlSubDeletePending
-	"DELETE FROM SubsPending WHERE subid=? AND `row`=?",                                                                                                            // sqlSubDeletePendingRow
-	"SELECT id, proto, version FROM ServerInfo WHERE uniquerow=1",                                                                                                  // sqlRecoverServerInfo
-	"SELECT id, hbinbox, proto FROM Clients",                                                                                                                       // sqlRecoverClients
-	"SELECT COALESCE(MAX(id), 0) FROM Channels",                                                                                                                    // sqlRecoverMaxChannelID
-	"SELECT COALESCE(MAX(subid), 0) FROM Subscriptions",                                                                                                            // sqlRecoverMaxSubID
-	"SELECT id, name, maxseq FROM Channels WHERE deleted=FALSE",                                                                                                    // sqlRecoverChannelsList
+	"SELECT id, tick from StoreLock FOR UPDATE",                                                                  // sqlDBLockSelect
+	"INSERT INTO StoreLock (id, tick) VALUES (?, ?)",                                                             // sqlDBLockInsert
+	"UPDATE StoreLock SET id=?, tick=?",                                                                          // sqlDBLockUpdate
+	"SELECT COUNT(uniquerow) FROM ServerInfo",                                                                    // sqlHasServerInfoRow
+	"UPDATE ServerInfo SET id=?, proto=?, version=? WHERE uniquerow=1",                                           // sqlUpdateServerInfo
+	"INSERT INTO ServerInfo (id, proto, version) VALUES (?, ?, ?)",                                               // sqlAddServerInfo
+	"INSERT INTO Clients (id, hbinbox, proto) VALUES (?, ?, ?)",                                                  // sqlAddClient
+	"DELETE FROM Clients WHERE id=?",                                                                             // sqlDeleteClient
+	"INSERT INTO Channels (id, name, maxmsgs, maxbytes, maxage) VALUES (?, ?, ?, ?, ?)",                          // sqlAddChannel
+	"INSERT INTO Messages VALUES (?, ?, ?, ?, ?)",                                                                // sqlStoreMsg
+	"SELECT timestamp, data FROM Messages WHERE id=? AND seq=?",                                                  // sqlLookupMsg
+	"SELECT seq FROM Messages WHERE id=? AND timestamp>=? ORDER BY seq LIMIT 1",                                  // sqlGetSequenceFromTimestamp
+	"UPDATE Channels SET maxseq=? WHERE id=?",                                                                    // sqlUpdateChannelMaxSeq
+	"SELECT COUNT(seq), COALESCE(MAX(seq), 0), COALESCE(SUM(size), 0) FROM Messages WHERE id=? AND timestamp<=?", // sqlGetExpiredMessages
+	"SELECT timestamp FROM Messages WHERE id=? AND seq>=? ORDER BY seq LIMIT 1",                                  // sqlGetFirstMsgTimestamp
+	"DELETE FROM Messages WHERE id=? AND seq<=?",                                                                 // sqlDeletedMsgsWithSeqLowerThan
+	"SELECT size FROM Messages WHERE id=? AND seq=?",                                                             // sqlGetSizeOfMessage
+	"DELETE FROM Messages WHERE id=? AND seq=?",                                                                  // sqlDeleteMessage
+	"SELECT COUNT(subid) FROM Subscriptions WHERE id=? AND deleted=FALSE",                                        // sqlCheckMaxSubs
+	"INSERT INTO Subscriptions (id, subid, proto) VALUES (?, ?, ?)",                                              // sqlCreateSub
+	"UPDATE Subscriptions SET proto=? WHERE id=? AND subid=?",                                                    // sqlUpdateSub
+	"UPDATE Subscriptions SET deleted=TRUE WHERE id=? AND subid=?",                                               // sqlMarkSubscriptionAsDeleted
+	"DELETE FROM Subscriptions WHERE id=? AND subid=?",                                                           // sqlDeleteSubscription
+	"DELETE FROM Subscriptions WHERE id=? AND deleted=TRUE",                                                      // sqlDeleteSubMarkedAsDeleted
+	"DELETE FROM SubsPending WHERE subid=?",                                                                      // sqlDeleteSubPendingMessages
+	"UPDATE Subscriptions SET lastsent=? WHERE id=? AND subid=?",                                                 // sqlSubUpdateLastSent
+	"INSERT INTO SubsPending (subid, `row`, seq) VALUES (?, ?, ?)",                                               // sqlSubAddPending
+	"INSERT INTO SubsPending (subid, `row`, lastsent, pending, acks) VALUES (?, ?, ?, ?, ?)",                     // sqlSubAddPendingRow
+	"DELETE FROM SubsPending WHERE subid=? AND seq=?",                                                            // sqlSubDeletePending
+	"DELETE FROM SubsPending WHERE subid=? AND `row`=?",                                                          // sqlSubDeletePendingRow
+	"SELECT id, proto, version FROM ServerInfo WHERE uniquerow=1",                                                // sqlRecoverServerInfo
+	"SELECT id, hbinbox, proto FROM Clients",                                                                     // sqlRecoverClients
+	"SELECT COALESCE(MAX(id), 0) FROM Channels",                                                                  // sqlRecoverMaxChannelID
+	"SELECT COALESCE(MAX(subid), 0) FROM Subscriptions",                                                          // sqlRecoverMaxSubID
+	"SELECT id, name, maxseq FROM Channels WHERE deleted=FALSE",                                                  // sqlRecoverChannelsList
 	"SELECT COUNT(seq), COALESCE(MIN(seq), 0), COALESCE(MAX(seq), 0), COALESCE(SUM(size), 0), COALESCE(MAX(timestamp), 0) FROM Messages WHERE id=?",                // sqlRecoverChannelMsgs
 	"SELECT lastsent, proto FROM Subscriptions WHERE id=? AND deleted=FALSE",                                                                                       // sqlRecoverChannelSubs
 	"DELETE FROM SubsPending WHERE subid=? AND (seq > 0 AND seq<?)",                                                                                                // sqlRecoverDoPurgeSubsPending
@@ -181,6 +181,10 @@ const (
 	// Number of missed update interval after which the lock is assumed
 	// lost and another instance can update it.
 	sqlDefaultLockLostCount = 3
+
+	// Limit of number of messages in the cache before message store
+	// is automatically flushed on a Store() call.
+	sqlDefaultMsgCacheLimit = 1024
 )
 
 // These are initialized based on the constants that have reasonable values.
@@ -195,6 +199,7 @@ var (
 	sqlLockUpdateInterval        = sqlDefaultLockUpdateInterval
 	sqlLockLostCount             = sqlDefaultLockLostCount
 	sqlNoPanic                   = false // Used in tests to avoid go-routine to panic
+	sqlMsgCacheLimit             = sqlDefaultMsgCacheLimit
 )
 
 // SQLStoreOptions are used to configure the SQL Store.
@@ -326,6 +331,7 @@ type SQLMsgStore struct {
 	channelID   int64
 	sqlStore    *SQLStore // Reference to "parent" store
 	expireTimer *time.Timer
+	fTimestamp  int64
 	wg          sync.WaitGroup
 
 	// If option NoBuffering is false, uses this cache for storing Store()
@@ -337,10 +343,11 @@ type SQLMsgStore struct {
 }
 
 type sqlMsgsCache struct {
-	msgs map[uint64]*sqlCachedMsg
-	head *sqlCachedMsg
-	tail *sqlCachedMsg
-	free *sqlCachedMsg
+	msgs  map[uint64]*sqlCachedMsg
+	head  *sqlCachedMsg
+	tail  *sqlCachedMsg
+	free  *sqlCachedMsg
+	count int
 }
 
 type sqlCachedMsg struct {
@@ -377,7 +384,11 @@ var sqlSeqArrayPool = &sync.Pool{
 // DefaultStoreLimits.
 func NewSQLStore(log logger.Logger, driver, source string, limits *StoreLimits, options ...SQLStoreOption) (*SQLStore, error) {
 	initSQLStmts.Do(func() { initSQLStmtsTable(driver) })
-	db, err := sql.Open(driver, source)
+	realDriver := driver
+	if driver == driverPostgres {
+		realDriver = "pq-deadlines"
+	}
+	db, err := sql.Open(realDriver, source)
 	if err != nil {
 		return nil, err
 	}
@@ -454,13 +465,26 @@ func (s *SQLStore) GetExclusiveLock() (bool, error) {
 		for i := 0; i < sqlLockLostCount; i++ {
 			time.Sleep(time.Duration(1.5 * float64(sqlLockUpdateInterval)))
 			hasLock, id, tick, err = s.acquireDBLock(false)
-			if hasLock || err != nil || id != prevID || tick != prevTick {
-				return hasLock, err
+			// If the current lock owner is closed, the lockID is being
+			// cleaned from the entry in the table, which could allow the
+			// call above to acquired the lock even though the "steal"
+			// boolean is false. If we got the lock, ensure we start the
+			// "tick" update process.
+			if hasLock {
+				break
+			}
+			// If we got an error or ID and/or tick has changed, simply
+			// return that we don't have the lock.
+			if err != nil || id != prevID || tick != prevTick {
+				return false, err
 			}
 			prevTick = tick
 		}
-		// Try to steal.
-		hasLock, _, _, err = s.acquireDBLock(true)
+		if !hasLock {
+			// Still did not get the lock but there was no update to the
+			// lock table, so try to steal.
+			hasLock, _, _, err = s.acquireDBLock(true)
+		}
 	}
 	if hasLock {
 		// Success. Keep track that we own the lock so we can clear
@@ -480,7 +504,7 @@ func (s *SQLStore) updateDBLock() {
 
 	var (
 		ticker  = time.NewTicker(sqlLockUpdateInterval)
-		hasLock = true
+		hasLock bool
 		err     error
 		failed  int
 	)
@@ -680,24 +704,20 @@ func (s *SQLStore) createPreparedStmts() error {
 func initSQLStmtsTable(driver string) {
 	// The sqlStmts table is initialized with MySQL statements.
 	// Update the statements for the selected driver.
-	switch driver {
-	case driverPostgres:
+	if driver == driverPostgres {
 		// Replace ? with $1, $2, etc...
-		reg := regexp.MustCompile(`\?`)
 		for i, stmt := range sqlStmts {
 			n := 0
-			stmt := reg.ReplaceAllStringFunc(stmt, func(string) string {
+			for strings.IndexByte(stmt, '?') != -1 {
 				n++
-				return "$" + strconv.Itoa(n)
-			})
+				param := "$" + strconv.Itoa(n)
+				stmt = strings.Replace(stmt, "?", param, 1)
+			}
 			sqlStmts[i] = stmt
 		}
 		// Replace `row` with row
-		reg = regexp.MustCompile("`row`")
 		for i, stmt := range sqlStmts {
-			stmt := reg.ReplaceAllStringFunc(stmt, func(string) string {
-				return "row"
-			})
+			stmt := strings.Replace(stmt, "`row`", "row", -1)
 			sqlStmts[i] = stmt
 		}
 		// OVER (PARTITION ...) is not supported in older MySQL servers.
@@ -820,7 +840,8 @@ func (s *SQLStore) Recover() (*RecoveredState, error) {
 		var (
 			channelID int64
 			name      string
-			maxseq    uint64
+			maxseq    uint64 // We get that from the Channels table.
+			mmseq     uint64 // This is the max seq found in the Messages table for given channel.
 		)
 		if err := channelRows.Scan(&channelID, &name, &maxseq); err != nil {
 			return nil, err
@@ -829,6 +850,16 @@ func (s *SQLStore) Recover() (*RecoveredState, error) {
 		channelLimits := s.genericStore.getChannelLimits(name)
 
 		msgStore := s.newSQLMsgStore(name, channelID, &channelLimits.MsgStoreLimits)
+
+		// We need to get the last seq from messages table before possibly expiring messages.
+		r = s.preparedStmts[sqlGetLastSeq].QueryRow(channelID)
+		if err := r.Scan(&mmseq); err != nil {
+			return nil, sqlStmtError(sqlGetLastSeq, err)
+		}
+		// If it is more than the one that was updated in the Channel row, then use this one.
+		if mmseq > maxseq {
+			maxseq = mmseq
+		}
 
 		if err := s.applyLimitsOnRecovery(msgStore); err != nil {
 			return nil, err
@@ -849,10 +880,9 @@ func (s *SQLStore) Recover() (*RecoveredState, error) {
 		msgStore.last = last
 		msgStore.totalCount = totalCount
 		msgStore.totalBytes = totalBytes
-		// If all messages have expired, the above should all be 0, however,
-		// the Channel table may contain a maxseq that we should use as starting
-		// point.
-		if msgStore.last == 0 {
+		// Since messages may have been removed due to limits, update first/last
+		// based on known max sequence.
+		if maxseq > msgStore.last {
 			msgStore.first = maxseq + 1
 			msgStore.last = maxseq
 		}
@@ -1092,7 +1122,12 @@ func (s *SQLStore) DeleteChannel(channel string) error {
 		return ErrNotFound
 	}
 	// Get the channel ID from Msgs store
-	cid := c.Msgs.(*SQLMsgStore).channelID
+	var cid int64
+	if cms, ok := c.Msgs.(*CryptoMsgStore); ok {
+		cid = cms.MsgStore.(*SQLMsgStore).channelID
+	} else {
+		cid = c.Msgs.(*SQLMsgStore).channelID
+	}
 	// Fast delete just marks the channel row as deleted
 	if _, err := s.preparedStmts[sqlDeleteChannelFast].Exec(cid); err != nil {
 		return err
@@ -1318,6 +1353,7 @@ func (mc *sqlMsgsCache) add(msg *pb.MsgProto, data []byte) {
 		mc.tail.next = cachedMsg
 	}
 	mc.tail = cachedMsg
+	mc.count++
 }
 
 func (mc *sqlMsgsCache) transferToFreeList() {
@@ -1327,6 +1363,7 @@ func (mc *sqlMsgsCache) transferToFreeList() {
 	}
 	mc.head = nil
 	mc.tail = nil
+	mc.count = 0
 }
 
 func (mc *sqlMsgsCache) pop() *sqlCachedMsg {
@@ -1337,6 +1374,7 @@ func (mc *sqlMsgsCache) pop() *sqlCachedMsg {
 		if mc.head == nil {
 			mc.tail = nil
 		}
+		mc.count--
 	}
 	return cm
 }
@@ -1358,14 +1396,20 @@ func (ms *SQLMsgStore) Store(m *pb.MsgProto) (uint64, error) {
 
 	useCache := !ms.sqlStore.opts.NoCaching
 	if useCache {
+		if ms.writeCache.count >= sqlMsgCacheLimit {
+			if err := ms.flush(); err != nil {
+				return 0, err
+			}
+		}
 		ms.writeCache.add(m, msgBytes)
 	} else {
 		if _, err := ms.sqlStore.preparedStmts[sqlStoreMsg].Exec(ms.channelID, seq, m.Timestamp, dataLen, msgBytes); err != nil {
 			return 0, sqlStmtError(sqlStoreMsg, err)
 		}
 	}
-	if ms.first == 0 {
+	if ms.first == 0 || ms.first == seq {
 		ms.first = seq
+		ms.fTimestamp = m.Timestamp
 	}
 	ms.last = seq
 	ms.totalCount++
@@ -1404,7 +1448,7 @@ func (ms *SQLMsgStore) Store(m *pb.MsgProto) (uint64, error) {
 			}
 			if !ms.hitLimit {
 				ms.hitLimit = true
-				ms.log.Noticef(droppingMsgsFmt, ms.subject, ms.totalCount, ms.limits.MaxMsgs,
+				ms.log.Warnf(droppingMsgsFmt, ms.subject, ms.totalCount, ms.limits.MaxMsgs,
 					util.FriendlyBytes(int64(ms.totalBytes)), util.FriendlyBytes(ms.limits.MaxBytes))
 			}
 		}
@@ -1418,7 +1462,7 @@ func (ms *SQLMsgStore) Store(m *pb.MsgProto) (uint64, error) {
 
 func (ms *SQLMsgStore) createExpireTimer() {
 	ms.wg.Add(1)
-	ms.expireTimer = time.AfterFunc(ms.limits.MaxAge, ms.expireMsgs)
+	ms.expireTimer = time.AfterFunc(ms.msgExpireIn(ms.fTimestamp), ms.expireMsgs)
 }
 
 // Lookup implements the MsgStore interface
@@ -1520,7 +1564,6 @@ func (ms *SQLMsgStore) expireMsgs() {
 		count     int
 		maxSeq    uint64
 		totalSize uint64
-		timestamp int64
 	)
 	processErr := func(errCode int, err error) {
 		ms.log.Errorf("Unable to perform expiration for channel %q: %v", ms.subject, sqlStmtError(errCode, err))
@@ -1552,24 +1595,24 @@ func (ms *SQLMsgStore) expireMsgs() {
 			ms.totalBytes -= totalSize
 		}
 		// Reset since we are in a loop
-		timestamp = 0
+		ms.fTimestamp = 0
 		// If there is any message left in the channel, find out what the expiration
 		// timer needs to be set to.
 		if ms.totalCount > 0 {
 			r = ms.sqlStore.preparedStmts[sqlGetFirstMsgTimestamp].QueryRow(ms.channelID, ms.first)
-			if err := r.Scan(&timestamp); err != nil {
+			if err := r.Scan(&ms.fTimestamp); err != nil {
 				processErr(sqlGetFirstMsgTimestamp, err)
 				return
 			}
 		}
 		// No message left or no message to expire. The timer will be recreated when
 		// a new message is added to the channel.
-		if timestamp == 0 {
-			ms.wg.Done()
+		if ms.fTimestamp == 0 {
 			ms.expireTimer = nil
+			ms.wg.Done()
 			return
 		}
-		elapsed := time.Duration(time.Now().UnixNano() - timestamp)
+		elapsed := time.Duration(time.Now().UnixNano() - ms.fTimestamp)
 		if elapsed < ms.limits.MaxAge {
 			ms.expireTimer.Reset(ms.limits.MaxAge - elapsed)
 			// Done with the for loop
@@ -1935,11 +1978,14 @@ func (ss *SQLSubStore) deleteSubPendingRow(subid, rowid uint64) error {
 func (ss *SQLSubStore) recoverPendingRow(rows *sql.Rows, sub *spb.SubState, ap *sqlSubAcksPending, pendingAcks PendingAcks,
 	gcedRows map[uint64]struct{}) error {
 	var (
-		seq, lastSent           uint64
+		rowID, seq, lastSent    uint64
 		pendingBytes, acksBytes []byte
 	)
-	if err := rows.Scan(&ss.curRow, &seq, &lastSent, &pendingBytes, &acksBytes); err != nil && err != sql.ErrNoRows {
+	if err := rows.Scan(&rowID, &seq, &lastSent, &pendingBytes, &acksBytes); err != nil && err != sql.ErrNoRows {
 		return err
+	}
+	if rowID > ss.curRow {
+		ss.curRow = rowID
 	}
 	// If seq is non zero, this was created from a non-buffered run.
 	if seq > 0 {
@@ -1948,12 +1994,15 @@ func (ss *SQLSubStore) recoverPendingRow(rows *sql.Rows, sub *spb.SubState, ap *
 		}
 		pendingAcks[seq] = struct{}{}
 	} else {
-		row := &sqlSubsPendingRow{
-			ID:   ss.curRow,
-			msgs: sqlSeqMapPool.Get().(map[uint64]struct{}),
+		var row *sqlSubsPendingRow
+		if ap != nil {
+			row = &sqlSubsPendingRow{
+				ID:   rowID,
+				msgs: sqlSeqMapPool.Get().(map[uint64]struct{}),
+			}
+			ap.lastSent = lastSent
+			ap.prevLastSent = lastSent
 		}
-		ap.lastSent = lastSent
-		ap.prevLastSent = lastSent
 
 		if lastSent > sub.LastSent {
 			sub.LastSent = lastSent
@@ -1961,9 +2010,11 @@ func (ss *SQLSubStore) recoverPendingRow(rows *sql.Rows, sub *spb.SubState, ap *
 		if len(pendingBytes) > 0 {
 			if err := sqlDecodeSeqs(pendingBytes, func(seq uint64) {
 				pendingAcks[seq] = struct{}{}
-				row.msgsRefs++
-				row.msgs[seq] = struct{}{}
-				ap.msgToRow[seq] = row
+				if ap != nil {
+					row.msgsRefs++
+					row.msgs[seq] = struct{}{}
+					ap.msgToRow[seq] = row
+				}
 			}); err != nil {
 				return err
 			}
@@ -1972,15 +2023,17 @@ func (ss *SQLSubStore) recoverPendingRow(rows *sql.Rows, sub *spb.SubState, ap *
 			if err := sqlDecodeSeqs(acksBytes, func(seq uint64) {
 				if _, exists := pendingAcks[seq]; exists {
 					delete(pendingAcks, seq)
-					row.acksRefs++
-					ap.ackToRow[seq] = row
+					if ap != nil {
+						row.acksRefs++
+						ap.ackToRow[seq] = row
 
-					seqRow := ap.msgToRow[seq]
-					if seqRow != nil {
-						delete(ap.msgToRow, seq)
-						seqRow.msgsRefs--
-						if seqRow.msgsRefs == 0 && seqRow.acksRefs == 0 {
-							gcedRows[seqRow.ID] = struct{}{}
+						seqRow := ap.msgToRow[seq]
+						if seqRow != nil {
+							delete(ap.msgToRow, seq)
+							seqRow.msgsRefs--
+							if seqRow.msgsRefs == 0 && seqRow.acksRefs == 0 {
+								gcedRows[seqRow.ID] = struct{}{}
+							}
 						}
 					}
 				}
@@ -2026,14 +2079,13 @@ func (ss *SQLSubStore) flush() error {
 		return err
 	}
 	for subid, ap := range ss.cache.subs {
-		prevLastSent := ap.prevLastSent
-		ap.prevLastSent = ap.lastSent
 		if len(ap.msgs) == 0 && len(ap.acks) == 0 {
 			// Update subscription's lastSent column if it has changed.
-			if ap.lastSent != prevLastSent {
+			if ap.lastSent != ap.prevLastSent {
 				if _, err := tx.Exec(sqlStmts[sqlSubUpdateLastSent], ap.lastSent, ss.channelID, subid); err != nil {
 					return err
 				}
+				ap.prevLastSent = ap.lastSent
 			}
 			// Since there was no pending nor ack for this sub, simply continue
 			// with the next subscription.

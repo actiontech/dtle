@@ -1,4 +1,4 @@
-// Copyright 2017-2018 The NATS Authors
+// Copyright 2017-2019 The NATS Authors
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -27,13 +27,14 @@ import (
 	"sync"
 	"time"
 
-	"github.com/hashicorp/raftv"
-	"github.com/nats-io/go-nats"
+	"github.com/hashicorp/raft"
+	"github.com/nats-io/nats.go"
 )
 
 const (
-	natsConnectInbox = "raft.%s.accept"
-	natsRequestInbox = "raft.%s.request.%s"
+	natsConnectInbox       = "raft.%s.accept"
+	natsRequestInbox       = "raft.%s.request.%s"
+	timeoutForDialAndFlush = 2 * time.Second
 )
 
 // natsAddr implements the net.Addr interface. An address for the NATS
@@ -182,7 +183,9 @@ type natsStreamLayer struct {
 	logger    *log.Logger
 	conns     map[*natsConn]struct{}
 	mu        sync.Mutex
-	timeout   time.Duration
+	// This is the timeout we will use for flush and dial (request timeout),
+	// not the timeout that RAFT will use to call SetDeadline.
+	dfTimeout time.Duration
 }
 
 func newNATSStreamLayer(id string, conn *nats.Conn, logger *log.Logger, timeout time.Duration) (*natsStreamLayer, error) {
@@ -191,14 +194,18 @@ func newNATSStreamLayer(id string, conn *nats.Conn, logger *log.Logger, timeout 
 		conn:      conn,
 		logger:    logger,
 		conns:     map[*natsConn]struct{}{},
-		timeout:   timeout,
+		dfTimeout: timeoutForDialAndFlush,
+	}
+	// Could be the case in tests...
+	if timeout < n.dfTimeout {
+		n.dfTimeout = timeout
 	}
 	sub, err := conn.SubscribeSync(fmt.Sprintf(natsConnectInbox, id))
 	if err != nil {
 		return nil, err
 	}
 	sub.SetPendingLimits(-1, -1)
-	if err := conn.FlushTimeout(timeout); err != nil {
+	if err := conn.FlushTimeout(n.dfTimeout); err != nil {
 		sub.Unsubscribe()
 		return nil, err
 	}
@@ -250,13 +257,13 @@ func (n *natsStreamLayer) Dial(address raft.ServerAddress, timeout time.Duration
 		return nil, err
 	}
 	sub.SetPendingLimits(-1, -1)
-	if err := n.conn.FlushTimeout(n.timeout); err != nil {
+	if err := n.conn.FlushTimeout(n.dfTimeout); err != nil {
 		sub.Unsubscribe()
 		return nil, err
 	}
 
 	// Make connect request to peer.
-	msg, err := n.conn.Request(fmt.Sprintf(natsConnectInbox, address), data, timeout)
+	msg, err := n.conn.Request(fmt.Sprintf(natsConnectInbox, address), data, n.dfTimeout)
 	if err != nil {
 		sub.Unsubscribe()
 		return nil, err
@@ -315,7 +322,7 @@ func (n *natsStreamLayer) Accept() (net.Conn, error) {
 			sub.Unsubscribe()
 			continue
 		}
-		if err := n.conn.FlushTimeout(n.timeout); err != nil {
+		if err := n.conn.FlushTimeout(n.dfTimeout); err != nil {
 			n.logger.Printf("[ERR] raft-nats: Failed to flush connect response to remote peer: %v", err)
 			sub.Unsubscribe()
 			continue
@@ -330,6 +337,9 @@ func (n *natsStreamLayer) Accept() (net.Conn, error) {
 
 func (n *natsStreamLayer) Close() error {
 	n.mu.Lock()
+	nc := n.conn
+	// Do not set nc.conn to nil since it is accessed in some functions
+	// without the stream layer lock
 	conns := make(map[*natsConn]struct{}, len(n.conns))
 	for conn, s := range n.conns {
 		conns[conn] = s
@@ -338,7 +348,10 @@ func (n *natsStreamLayer) Close() error {
 	for c := range conns {
 		c.Close()
 	}
-	return n.sub.Unsubscribe()
+	if nc != nil {
+		nc.Close()
+	}
+	return nil
 }
 
 func (n *natsStreamLayer) Addr() net.Addr {
@@ -366,7 +379,7 @@ func newNATSTransportWithLogger(id string, conn *nats.Conn, timeout time.Duratio
 // with NATS as the transport layer, using the given config struct.
 func newNATSTransportWithConfig(id string, conn *nats.Conn, config *raft.NetworkTransportConfig) (*raft.NetworkTransport, error) {
 	if config.Timeout == 0 {
-		config.Timeout = 2 * time.Second
+		config.Timeout = defaultTPortTimeout
 	}
 	return createNATSTransport(id, conn, config.Logger, config.Timeout, func(stream raft.StreamLayer) *raft.NetworkTransport {
 		config.Stream = stream

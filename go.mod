@@ -4,7 +4,6 @@ go 1.12
 
 require (
 	github.com/LK4D4/joincontext v0.0.0-20171026170139-1724345da6d5 // indirect
-	github.com/Sirupsen/logrus v0.0.0-00010101000000-000000000000 // indirect
 	github.com/araddon/dateparse v0.0.0-20190622164848-0fb0a474d195 // indirect
 	github.com/araddon/gou v0.0.0-20190110011759-c797efecbb61 // indirect
 	github.com/araddon/qlbridge v0.0.0-00010101000000-000000000000
@@ -14,6 +13,7 @@ require (
 	github.com/cznic/strutil v0.0.0-20181122101858-275e90344537 // indirect
 	github.com/cznic/y v0.0.0-20181122101901-b05e8c2e8d7b // indirect
 	github.com/docker/go-units v0.4.0 // indirect
+	github.com/docker/libkv v0.2.1
 	github.com/go-sql-driver/mysql v1.5.0
 	github.com/golang/snappy v0.0.1
 	github.com/gorhill/cronexpr v0.0.0-20180427100037-88b0669f7d75 // indirect
@@ -31,12 +31,12 @@ require (
 	github.com/issuj/gofaster v0.0.0-20170702192727-b08f1666d622
 	github.com/lytics/datemath v0.0.0-20180727225141-3ada1c10b5de // indirect
 	github.com/mb0/glob v0.0.0-20160210091149-1eb79d2de6c4 // indirect
-	github.com/mitchellh/mapstructure v1.1.2
+	github.com/mitchellh/mapstructure v1.1.2 // indirect
 	github.com/nats-io/go-nats v1.7.2
-	github.com/nats-io/nkeys v0.1.3 // indirect
+	github.com/nats-io/nats-server/v2 v2.1.6
+	github.com/nats-io/nats-streaming-server v0.17.0
 	github.com/nats-io/not.go v0.0.0-20190215212113-f31ff89f78fd
 	github.com/nats-io/nuid v1.0.1 // indirect
-	github.com/opencontainers/runc v0.1.1 // indirect
 	github.com/opentracing/opentracing-go v1.1.0
 	github.com/outbrain/golib v0.0.0-20180830062331-ab954725f502
 	github.com/pingcap/dm v0.0.0-00010101000000-000000000000
@@ -50,7 +50,6 @@ require (
 	github.com/siddontang/go-mysql v0.0.0-20200311002057-7a62847fcdb5
 	github.com/ugorji/go v1.1.7 // indirect
 	github.com/zclconf/go-cty v1.3.1 // indirect
-	golang.org/x/crypto v0.0.0-20200320181102-891825fb96df // indirect
 	golang.org/x/net v0.0.0-20200320220750-118fecf932d8
 	golang.org/x/text v0.3.2
 	google.golang.org/grpc v1.28.0 // indirect
@@ -59,7 +58,7 @@ require (
 
 replace github.com/siddontang/go-mysql => github.com/ffffwh/go-mysql v0.0.0-20190808080311-dd15a3c6
 
-replace github.com/Sirupsen/logrus => github.com/sirupsen/logrus v1.4.2
+//replace github.com/Sirupsen/logrus => github.com/sirupsen/logrus v1.4.2
 
 replace github.com/araddon/qlbridge => github.com/ffffwh/qlbridge v0.0.0-20181026023605-fc2d5205
 
