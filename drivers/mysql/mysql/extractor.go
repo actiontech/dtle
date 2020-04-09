@@ -191,6 +191,16 @@ func (e *Extractor) Run() {
 	e.mysqlContext.NatsAddr = natsAddr
 	e.logger.Info("got NatsAddr", "addr", natsAddr)
 
+	gtid, err := e.storeManager.GetGtidForJob(e.subject)
+	if err != nil {
+		e.onError(TaskStateDead, errors.Wrap(err, "GetGtidForJob"))
+		return
+	}
+	if gtid != "" {
+		e.logger.Info("Got gtid from consul", "gtid", gtid)
+		e.mysqlContext.Gtid = gtid
+	}
+
 	e.logger.Info("mysql.extractor: Extract binlog events from %s.%d", e.mysqlContext.ConnectionConfig.Host, e.mysqlContext.ConnectionConfig.Port)
 	e.mysqlContext.StartTime = time.Now()
 

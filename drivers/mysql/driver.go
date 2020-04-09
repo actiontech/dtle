@@ -2,7 +2,7 @@ package mysql
 
 import (
 	"context"
-	"errors"
+	"github.com/pkg/errors"
 	"fmt"
 	dcommon "github.com/actiontech/dtle/drivers/mysql/common"
 	"os/exec"
@@ -426,9 +426,9 @@ func (d *Driver) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHandle, *drive
 			driverConfig.ExpandSyntaxSupport =false
 			driverConfig.ReplChanBufferSize=600
 			datasource :=&config.DataSource{
-			TableSchema:"a",
-			Tables:tables,
-		}
+				TableSchema:"a",
+				Tables:tables,
+			}
 			driverConfig.ReplicateDoDb=append(driverConfig.ReplicateDoDb, datasource)
 			driverConfig.DropTableIfExists = false
 			driverConfig.SkipCreateDbTable = false

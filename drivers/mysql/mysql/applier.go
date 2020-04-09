@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"fmt"
 	dcommon "github.com/actiontech/dtle/drivers/mysql/common"
+	"github.com/pkg/errors"
 
 	"github.com/actiontech/dtle/drivers/mysql/mysql/common"
 
@@ -246,6 +247,7 @@ type Applier struct {
 
 	stubFullApplyDelay time.Duration
 	storeManager       *dcommon.StoreManager
+	lastSavedGtid      string
 }
 
 func NewApplier(ctx *common.ExecContext, cfg *umconf.MySQLDriverConfig, logger hclog.Logger, storeManager *dcommon.StoreManager) (*Applier, error) {
@@ -293,6 +295,28 @@ func NewApplier(ctx *common.ExecContext, cfg *umconf.MySQLDriverConfig, logger h
 	a.mtsManager = NewMtsManager(a.shutdownCh)
 	go a.mtsManager.LcUpdater()
 	return a, nil
+}
+
+func (a *Applier) updateGtidLoop() {
+	updateGtidInterval := 15 * time.Second
+	for !a.shutdown {
+		//t := time.NewTimer(updateGtidInterval)
+		//select {
+		//case <-t.C:
+		//case <-updateNowCh:
+		//case <-a.shutdownCh:
+		//}
+		time.Sleep(updateGtidInterval)
+		if a.mysqlContext.Gtid != a.lastSavedGtid {
+			// TODO thread safety.
+			err := a.storeManager.SaveGtidForJob(a.subject, a.mysqlContext.Gtid)
+			if err != nil {
+				a.onError(TaskStateDead, errors.Wrap(err, "SaveGtidForJob"))
+				return
+			}
+			a.lastSavedGtid = a.mysqlContext.Gtid
+		}
+	}
 }
 
 func (a *Applier) MtsWorker(workerIndex int) {
@@ -353,6 +377,8 @@ func (a *Applier) Run() {
 		a.onError(TaskStateDead, err)
 		return
 	}
+
+	go a.updateGtidLoop()
 
 	for i := 0; i < a.mysqlContext.ParallelWorkers; i++ {
 		go a.MtsWorker(i)
