@@ -410,6 +410,7 @@ func (d *Driver) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHandle, *drive
 	d.logger.Info("StartTask", "ID", cfg.ID)
 
 
+
 	ctx := &common.ExecContext{cfg.JobName, cfg.TaskGroupName, 100 * 1024 * 1024, "/opt/binlog"}
 	switch cfg.TaskGroupName {
 	case TaskTypeSrc:
@@ -431,7 +432,6 @@ func (d *Driver) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHandle, *drive
 			driverConfig.ReplicateDoDb=append(driverConfig.ReplicateDoDb, datasource)
 			driverConfig.DropTableIfExists = false
 			driverConfig.SkipCreateDbTable = false
-			driverConfig.NatsAddr = d.config.NatsAdvertise
 			driverConfig.MySQLVersion="5.7"
 			driverConfig.SkipPrivilegeCheck=true
 			driverConfig.BinlogRowImage = "FULL"
@@ -441,7 +441,7 @@ func (d *Driver) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHandle, *drive
 		//	d.logger.Debug("NewExtractor ReplicateDoDb: %v", driverConfig.ReplicateDoDb)
 			// Create the extractor
 
-			e, err := mysql.NewExtractor(ctx, &driverConfig, d.logger)
+			e, err := mysql.NewExtractor(ctx, &driverConfig, d.logger, d.storeManager)
 			if err != nil {
 				return  nil,nil,fmt.Errorf("failed to create extractor  e: %v", err)
 			}
@@ -451,6 +451,10 @@ func (d *Driver) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHandle, *drive
 		}
 	case TaskTypeDest:
 		{
+			err := d.storeManager.PutNats(cfg.JobName, d.config.NatsAdvertise)
+			if err != nil {
+				return nil, nil, err
+			}
 			d.logger.Debug("start dtle task4")
 			driverConfig.ConnectionConfig = taskConfig.ConnectionConfig
 			driverConfig.MySQLVersion="5.7"
@@ -463,12 +467,11 @@ func (d *Driver) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHandle, *drive
 
 		//	d.logger.Warn("NewApplier ReplicateDoDb: %v", driverConfig.ReplicateDoDb)
 
-			a, err := mysql.NewApplier(ctx, &driverConfig,d.logger)
+			a, err := mysql.NewApplier(ctx, &driverConfig,d.logger, d.storeManager)
 			if err != nil {
 				return nil,nil, fmt.Errorf("failed to create Applier  e: %v", err)
 			}
 			go a.Run()
-
 		}
 	default:
 		{

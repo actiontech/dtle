@@ -10,6 +10,7 @@ import (
 	gosql "database/sql"
 	"encoding/json"
 	"fmt"
+	dcommon "github.com/actiontech/dtle/drivers/mysql/common"
 
 	"github.com/actiontech/dtle/drivers/mysql/mysql/common"
 
@@ -244,9 +245,10 @@ type Applier struct {
 	nDumpEntry     int64
 
 	stubFullApplyDelay time.Duration
+	storeManager       *dcommon.StoreManager
 }
 
-func NewApplier(ctx *common.ExecContext, cfg *config.MySQLDriverConfig, logger hclog.Logger) (*Applier, error) {
+func NewApplier(ctx *common.ExecContext, cfg *umconf.MySQLDriverConfig, logger hclog.Logger, storeManager *dcommon.StoreManager) (*Applier, error) {
 	cfg = cfg.SetDefault()
 	/*entry := logger.WithFields(logrus.Fields{
 		"job": ctx.Subject,
@@ -275,6 +277,7 @@ func NewApplier(ctx *common.ExecContext, cfg *config.MySQLDriverConfig, logger h
 		waitCh:                  make(chan WaitResult, 1),
 		shutdownCh:              make(chan struct{}),
 		printTps:                os.Getenv(g.ENV_PRINT_TPS) != "",
+		storeManager:            storeManager,
 	}
 	stubFullApplyDelayStr := os.Getenv(g.ENV_FULL_APPLY_DELAY)
 	if stubFullApplyDelayStr == "" {
