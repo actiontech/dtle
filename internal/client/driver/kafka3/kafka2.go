@@ -438,7 +438,8 @@ func NewDateTimeField(optional bool, field string, defaultValue interface{}) *Sc
 	}
 }
 func DateTimeValue(dateTime string) int64 {
-	tm2, error := time.Parse("2006-01-02 15:04:05", dateTime)
+	loc, _:= time.LoadLocation("Asia/Shanghai")
+	tm2, error := time.ParseInLocation("2006-01-02 15:04:05", dateTime,loc)
 	if error != nil {
 		return 0
 	}
