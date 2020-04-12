@@ -2,11 +2,15 @@ package mysql
 
 import (
 	"context"
+	"fmt"
+	"github.com/actiontech/dtle/drivers/mysql/mysql"
+	"github.com/actiontech/dtle/drivers/mysql/mysql/common"
+	"github.com/pkg/errors"
 	"sync"
 	"time"
 
-	"github.com/hashicorp/nomad/plugins/drivers"
 	hclog "github.com/hashicorp/go-hclog"
+	"github.com/hashicorp/nomad/plugins/drivers"
 )
 
 type taskHandle struct {
@@ -59,19 +63,61 @@ func (h *taskHandle) IsRunning() bool {
 	return h.procState == drivers.TaskStateRunning
 }
 
-func (h *taskHandle) run() {
+func (h *taskHandle) run(taskConfig *DtleTaskConfig, d *Driver) {
 	h.stateLock.Lock()
 	if h.exitResult == nil {
 		h.exitResult = &drivers.ExitResult{}
 	}
+	h.procState = drivers.TaskStateRunning
 	h.stateLock.Unlock()
 
-	h.stateLock.Lock()
-	defer h.stateLock.Unlock()
-
-	h.procState = drivers.TaskStateExited
-
 	// TODO: detect if the taskConfig OOMed
+
+	cfg := h.taskConfig
+	ctx := &common.ExecContext{cfg.JobName, cfg.TaskGroupName, 100 * 1024 * 1024, "/opt/binlog"}
+
+	driverConfig, _ := InitConfig(taskConfig)
+
+	switch cfg.TaskGroupName {
+	case TaskTypeSrc:
+		{
+			//	d.logger.Debug("NewExtractor ReplicateDoDb: %v", driverConfig.ReplicateDoDb)
+			// Create the extractor
+
+			e, err := mysql.NewExtractor(ctx, driverConfig, d.logger, d.storeManager)
+			if err != nil {
+				h.exitResult.Err = errors.Wrap(err, "NewExtractor")
+				return
+			}
+			go e.Run()
+			//d.extractor = e
+
+		}
+	case TaskTypeDest:
+		{
+			err := d.storeManager.PutNats(cfg.JobName, d.config.NatsAdvertise)
+			if err != nil {
+				h.exitResult.Err = errors.Wrap(err, "PutNats")
+				return
+			}
+
+			d.logger.Debug("print host", hclog.Fmt("%+v", driverConfig.ConnectionConfig.Host))
+
+			driverConfig.NatsAddr = d.config.NatsAdvertise
+			//	d.logger.Warn("NewApplier ReplicateDoDb: %v", driverConfig.ReplicateDoDb)
+
+			a, err := mysql.NewApplier(ctx, driverConfig, d.logger, d.storeManager)
+			if err != nil {
+				h.exitResult.Err = errors.Wrap(err, "NewApplier")
+				return
+			}
+			go a.Run()
+		}
+	default:
+		h.exitResult.Err = fmt.Errorf("unknown processor type: %+v", cfg.TaskGroupName)
+		return
+	}
+
 }
 func (h *taskHandle) Destroy() bool {
 	h.stateLock.RLock()

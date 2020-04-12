@@ -10,8 +10,6 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/actiontech/dtle/drivers/mysql/mysql"
-	"github.com/actiontech/dtle/drivers/mysql/mysql/common"
 	config "github.com/actiontech/dtle/drivers/mysql/mysql/config"
 	"github.com/hashicorp/go-hclog"
 	"math/rand"
@@ -80,7 +78,6 @@ var (
 	// taskConfigSpec is the hcl specification for the driver config section of
 	// a taskConfig within a job. It is returned in the TaskConfigSchema RPC
 	taskConfigSpec = hclspec.NewObject(map[string]*hclspec.Spec{
-		// TODO remove
 		"ReplicateDoDb" :hclspec.NewBlockList("ReplicateDoDb",  hclspec.NewObject(map[string]*hclspec.Spec{
 			"TableSchema": hclspec.NewAttr("TableSchema", "string", false),
 			"TableSchemaRegex": hclspec.NewAttr("TableSchemaRegex", "string", false),
@@ -129,6 +126,7 @@ var (
 		"SkipPrivilegeCheck":hclspec.NewAttr("SkipPrivilegeCheck", "bool", false),
 		"SkipIncrementalCopy":hclspec.NewAttr("SkipIncrementalCopy", "bool", false),
 		"ApproveHeterogeneous":hclspec.NewAttr("ApproveHeterogeneous", "bool", false),
+		// TODO remove
 		"type":       hclspec.NewAttr("type", "string", true),
 		"ConnectionConfig": hclspec.NewBlock("ConnectionConfig", true, hclspec.NewObject(map[string]*hclspec.Spec{
 			"Host": hclspec.NewAttr("Host", "string", true),
@@ -164,8 +162,9 @@ func init() {
 // StartTask. This information is needed to rebuild the taskConfig state and handler
 // during recovery.
 type TaskState struct {
-	TaskConfig *drivers.TaskConfig
-	StartedAt  time.Time
+	TaskConfig     *drivers.TaskConfig
+	DtleTaskConfig *DtleTaskConfig
+	StartedAt      time.Time
 }
 
 // Driver is a driver for running images via Java
@@ -378,7 +377,6 @@ func (d *Driver) buildFingerprint() *drivers.Fingerprint {
 }
 
 func (d *Driver) RecoverTask(handle *drivers.TaskHandle) error {
-	d.logger.Info("RecoverTask")
 	if handle == nil {
 		return fmt.Errorf("handle cannot be nil")
 	}
@@ -388,19 +386,19 @@ func (d *Driver) RecoverTask(handle *drivers.TaskHandle) error {
 		return d.recoverPre09Task(handle)
 	}*/
 
+	cfg := handle.Config
+	d.logger.Info("RecoverTask", "ID", cfg.ID)
+
 	// If already attached to handle there's nothing to recover.
-	if _, ok := d.tasks.Get(handle.Config.ID); ok {
-		d.logger.Debug("nothing to recover; task already exists",
-			"task_id", handle.Config.ID,
-			"task_name", handle.Config.Name,
-		)
+	if _, ok := d.tasks.Get(cfg.ID); ok {
+		d.logger.Debug("nothing to recover; task already exists", "task_id", cfg.ID, "task_name", cfg.Name)
 		return nil
 	}
 
 	var taskState TaskState
 	if err := handle.GetDriverState(&taskState); err != nil {
 		d.logger.Error("failed to decode taskConfig state from handle", "error", err, "task_id", handle.Config.ID)
-		return fmt.Errorf("failed to decode taskConfig state from handle: %v", err)
+		return errors.Wrap(err, "GetDriverState")
 	}
 
 	h := newDtleTaskHandle(d.logger, taskState.TaskConfig, drivers.TaskStateRunning, taskState.StartedAt)
@@ -408,7 +406,8 @@ func (d *Driver) RecoverTask(handle *drivers.TaskHandle) error {
 
 	d.tasks.Set(taskState.TaskConfig.ID, h)
 
-	go h.run()
+	// Do not use cfg.DecodeDriverConfig(), whose rawDriverConfig is not serialized.
+	go h.run(taskState.DtleTaskConfig, d)
 	return nil
 }
 
@@ -421,77 +420,35 @@ func (d *Driver) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHandle, *drive
 	var dtleTaskConfig DtleTaskConfig
 
 	if err := cfg.DecodeDriverConfig(&dtleTaskConfig); err != nil {
-		return nil ,nil , fmt.Errorf("failed to decode driver config: %v", err)
+		return nil, nil, errors.Wrap(err, "DecodeDriverConfig")
 	}
-//	Config:=
-	/*if err := mapstructure.WeakDecode(Config, &driverConfig); err != nil {
-		return nil ,nil , fmt.Errorf("failed to decode driver config: %v", err)
-	}*/
-
 
 
 	d.logger.Info("StartTask", "ID", cfg.ID)
 
 
-
-	ctx := &common.ExecContext{cfg.JobName, cfg.TaskGroupName, 100 * 1024 * 1024, "/opt/binlog"}
-	switch cfg.TaskGroupName {
-	case TaskTypeSrc:
-		{
-
-			driverConfig,_:=InitConfig(dtleTaskConfig)
-
-		//	d.logger.Debug("NewExtractor ReplicateDoDb: %v", driverConfig.ReplicateDoDb)
-			// Create the extractor
-
-			e, err := mysql.NewExtractor(ctx, &driverConfig, d.logger, d.storeManager)
-			if err != nil {
-				return  nil,nil,fmt.Errorf("failed to create extractor  e: %v", err)
-			}
-			go e.Run()
-			//d.extractor = e
-
-		}
-	case TaskTypeDest:
-		{
-			err := d.storeManager.PutNats(cfg.JobName, d.config.NatsAdvertise)
-			if err != nil {
-				return nil, nil, err
-			}
-			driverConfig,_ := InitConfig(dtleTaskConfig)
-
-			d.logger.Debug("print host", hclog.Fmt("%+v", driverConfig.ConnectionConfig.Host))
-
-		//	d.logger.Warn("NewApplier ReplicateDoDb: %v", driverConfig.ReplicateDoDb)
-
-			a, err := mysql.NewApplier(ctx, &driverConfig,d.logger, d.storeManager)
-			if err != nil {
-				return nil,nil, fmt.Errorf("failed to create Applier  e: %v", err)
-			}
-			go a.Run()
-		}
-	default:
-		{
-			return nil,nil,fmt.Errorf("unknown processor type : %+v", cfg.TaskGroupName)
-		}
-	}
 	handle := drivers.NewTaskHandle(taskHandleVersion)
 	handle.Config = cfg
+
 	h := newDtleTaskHandle(d.logger, cfg, drivers.TaskStateRunning, time.Now().Round(time.Millisecond))
 
 	driverState := TaskState{
-		TaskConfig: cfg,
-		StartedAt:  time.Now().Round(time.Millisecond),
+		TaskConfig:     cfg,
+		DtleTaskConfig: &dtleTaskConfig,
+		StartedAt:      time.Now().Round(time.Millisecond),
 	}
 	if err := handle.SetDriverState(&driverState); err != nil {
 		d.logger.Error("failed to start task, error setting driver state", "error", err)
-		return nil, nil, fmt.Errorf("failed to set driver state: %v", err)
+		return nil, nil, errors.Wrap(err, "SetDriverState")
 	}
 	d.tasks.Set(cfg.ID, h)
-	go h.run()
+	go h.run(&dtleTaskConfig, d)
+
 	return handle, nil, nil
 }
-func  InitConfig (taskConfig DtleTaskConfig) (mysqlConfig  config.MySQLDriverConfig,err error) {
+func InitConfig(taskConfig *DtleTaskConfig) (mysqlConfig *config.MySQLDriverConfig, err error) {
+	mysqlConfig = &config.MySQLDriverConfig{}
+
 	//var driverConfig config.MySQLDriverConfig
 	mysqlConfig.ConnectionConfig = taskConfig.ConnectionConfig
 	//mysqlConfig = taskConfig
