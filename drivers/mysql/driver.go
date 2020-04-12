@@ -198,7 +198,7 @@ type Driver struct {
 	storeManager *dcommon.StoreManager
 }
 
-type TaskConfig struct {
+type DtleTaskConfig struct {
 	ReplicateDoDb         []*config.DataSource `codec:"ReplicateDoDb"`
 	ReplicateIgnoreDb     []*config.DataSource`codec:"ReplicateIgnoreDb"`
 	DropTableIfExists     bool`codec:"DropTableIfExists"`
@@ -418,9 +418,9 @@ func (d *Driver) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHandle, *drive
 	}
 	d.logger.Debug("start dtle task one")
 
-	var taskConfig TaskConfig
+	var dtleTaskConfig DtleTaskConfig
 
-	if err := cfg.DecodeDriverConfig(&taskConfig); err != nil {
+	if err := cfg.DecodeDriverConfig(&dtleTaskConfig); err != nil {
 		return nil ,nil , fmt.Errorf("failed to decode driver config: %v", err)
 	}
 //	Config:=
@@ -439,7 +439,7 @@ func (d *Driver) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHandle, *drive
 	case TaskTypeSrc:
 		{
 
-			driverConfig,_:=InitConfig(taskConfig)
+			driverConfig,_:=InitConfig(dtleTaskConfig)
 
 		//	d.logger.Debug("NewExtractor ReplicateDoDb: %v", driverConfig.ReplicateDoDb)
 			// Create the extractor
@@ -458,7 +458,7 @@ func (d *Driver) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHandle, *drive
 			if err != nil {
 				return nil, nil, err
 			}
-			driverConfig,_ := InitConfig(taskConfig)
+			driverConfig,_ := InitConfig(dtleTaskConfig)
 
 			d.logger.Debug("print host", hclog.Fmt("%+v", driverConfig.ConnectionConfig.Host))
 
@@ -491,7 +491,7 @@ func (d *Driver) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHandle, *drive
 	go h.run()
 	return handle, nil, nil
 }
-func  InitConfig (taskConfig TaskConfig) (mysqlConfig  config.MySQLDriverConfig,err error) {
+func  InitConfig (taskConfig DtleTaskConfig) (mysqlConfig  config.MySQLDriverConfig,err error) {
 	//var driverConfig config.MySQLDriverConfig
 	mysqlConfig.ConnectionConfig = taskConfig.ConnectionConfig
 	//mysqlConfig = taskConfig
