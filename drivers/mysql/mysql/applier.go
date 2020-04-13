@@ -315,6 +315,13 @@ func (a *Applier) updateGtidLoop() {
 				return
 			}
 			a.lastSavedGtid = a.mysqlContext.Gtid
+
+			err = a.storeManager.SaveBinlogFilePosForJob(a.subject,
+				a.mysqlContext.BinlogFile, int(a.mysqlContext.BinlogPos))
+			if err != nil {
+				a.onError(TaskStateDead, errors.Wrap(err, "SaveBinlogFilePosForJob"))
+				return
+			}
 		}
 	}
 }

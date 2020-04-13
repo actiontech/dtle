@@ -191,14 +191,27 @@ func (e *Extractor) Run() {
 	e.mysqlContext.NatsAddr = natsAddr
 	e.logger.Info("got NatsAddr", "addr", natsAddr)
 
-	gtid, err := e.storeManager.GetGtidForJob(e.subject)
-	if err != nil {
-		e.onError(TaskStateDead, errors.Wrap(err, "GetGtidForJob"))
-		return
-	}
-	if gtid != "" {
-		e.logger.Info("Got gtid from consul", "gtid", gtid)
-		e.mysqlContext.Gtid = gtid
+	{
+		gtid, err := e.storeManager.GetGtidForJob(e.subject)
+		if err != nil {
+			e.onError(TaskStateDead, errors.Wrap(err, "GetGtidForJob"))
+			return
+		}
+		if gtid != "" {
+			e.logger.Info("Got gtid from consul", "gtid", gtid)
+			e.mysqlContext.Gtid = gtid
+		}
+		pos, err := e.storeManager.GetBinlogFilePosForJob(e.subject)
+		if err != nil {
+			e.onError(TaskStateDead, errors.Wrap(err, "GetBinlogFilePosForJob"))
+			return
+		}
+		if pos.Name != "" {
+			e.mysqlContext.BinlogFile = pos.Name
+			e.mysqlContext.BinlogPos = int64(pos.Pos)
+			e.logger.Info("Got BinlogFile/Pos from consul",
+				"file", e.mysqlContext.BinlogFile, "pos", e.mysqlContext.BinlogPos)
+		}
 	}
 
 	e.logger.Info("mysql.extractor: Extract binlog events from %s.%d", e.mysqlContext.ConnectionConfig.Host, e.mysqlContext.ConnectionConfig.Port)
