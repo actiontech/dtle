@@ -7,13 +7,14 @@
 package mysql
 
 import (
+	"log"
 	"reflect"
 	"testing"
 
-	"github.com/actiontech/dtle/olddtle/internal/client/driver/mysql/base"
-	"github.com/actiontech/dtle/olddtle/internal/config"
-	log "github.com/actiontech/dtle/olddtle/internal/logger"
-	"github.com/actiontech/dtle/olddtle/internal/models"
+	//"github.com/actiontech/dtle/olddtle/internal/client/driver/mysql/base"
+	//"github.com/actiontech/dtle/olddtle/internal/config"
+	//log "github.com/actiontech/dtle/olddtle/internal/logger"
+	//"github.com/actiontech/dtle/olddtle/internal/models"
 )
 
 func TestGtidSetDiff(t *testing.T) {
@@ -41,7 +42,7 @@ func TestNewExtractor(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := NewExtractor(tt.args.subject, tt.args.tp, tt.args.maxPayload, tt.args.cfg, tt.args.logger); !reflect.DeepEqual(got, tt.want) {
+			if got := NewExtractor(tt.args.subject, tt.args.tp, tt.args.maxPayload, nil); !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("NewExtractor() = %v, want %v", got, tt.want)
 			}
 		})

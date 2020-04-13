@@ -1,4 +1,4 @@
-// Copyright 2016-2018 The NATS Authors
+// Copyright 2016-2019 The NATS Authors
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -21,11 +21,15 @@ import (
 	"strings"
 	"time"
 
-	"github.com/nats-io/gnatsd/conf"
-	natsd "github.com/nats-io/gnatsd/server"
+	"github.com/nats-io/nats-server/v2/conf"
+	natsd "github.com/nats-io/nats-server/v2/server"
 	"github.com/nats-io/nats-streaming-server/stores"
 	"github.com/nats-io/nats-streaming-server/util"
 )
+
+func init() {
+	natsd.NoErrOnUnknownFields(true)
+}
 
 // ProcessConfigFile parses the configuration file `configFile` and updates
 // the given Streaming options `opts`.
@@ -91,6 +95,11 @@ func ProcessConfigFile(configFile string, opts *Options) error {
 				return err
 			}
 			opts.NATSServerURL = v.(string)
+		case "credentials":
+			if err := checkType(k, reflect.String, v); err != nil {
+				return err
+			}
+			opts.NATSCredentials = v.(string)
 		case "secure":
 			if err := checkType(k, reflect.Bool, v); err != nil {
 				return err
@@ -149,6 +158,27 @@ func ProcessConfigFile(configFile string, opts *Options) error {
 			if err := parseCluster(v, opts); err != nil {
 				return err
 			}
+		case "syslog_name":
+			if err := checkType(k, reflect.String, v); err != nil {
+				return err
+			}
+			opts.SyslogName = v.(string)
+		case "encrypt":
+			if err := checkType(k, reflect.Bool, v); err != nil {
+				return err
+			}
+			opts.Encrypt = v.(bool)
+		case "encryption_cipher":
+			if err := checkType(k, reflect.String, v); err != nil {
+				return err
+			}
+			opts.EncryptionCipher = v.(string)
+		case "encryption_key":
+			if err := checkType(k, reflect.String, v); err != nil {
+				return err
+			}
+			opts.Encrypt = true
+			opts.EncryptionKey = []byte(v.(string))
 		}
 	}
 	return nil
@@ -188,6 +218,16 @@ func parseTLS(itf interface{}, opts *Options) error {
 				return err
 			}
 			opts.ClientCA = v.(string)
+		case "server_name", "server_hostname":
+			if err := checkType(k, reflect.String, v); err != nil {
+				return err
+			}
+			opts.TLSServerName = v.(string)
+		case "skip_verify", "insecure":
+			if err := checkType(k, reflect.Bool, v); err != nil {
+				return err
+			}
+			opts.TLSSkipVerify = v.(bool)
 		}
 	}
 	return nil
@@ -247,11 +287,40 @@ func parseCluster(itf interface{}, opts *Options) error {
 				return err
 			}
 			opts.Clustering.Sync = v.(bool)
+		case "proceed_on_restore_failure":
+			if err := checkType(k, reflect.Bool, v); err != nil {
+				return err
+			}
+			opts.Clustering.ProceedOnRestoreFailure = v.(bool)
 		case "raft_logging":
 			if err := checkType(k, reflect.Bool, v); err != nil {
 				return err
 			}
 			opts.Clustering.RaftLogging = v.(bool)
+		case "raft_heartbeat_timeout":
+			fallthrough
+		case "raft_election_timeout":
+			fallthrough
+		case "raft_lease_timeout":
+			fallthrough
+		case "raft_commit_timeout":
+			if err := checkType(k, reflect.String, v); err != nil {
+				return err
+			}
+			dur, err := time.ParseDuration(v.(string))
+			if err != nil {
+				return err
+			}
+			switch name {
+			case "raft_heartbeat_timeout":
+				opts.Clustering.RaftHeartbeatTimeout = dur
+			case "raft_election_timeout":
+				opts.Clustering.RaftElectionTimeout = dur
+			case "raft_lease_timeout":
+				opts.Clustering.RaftLeaseTimeout = dur
+			case "raft_commit_timeout":
+				opts.Clustering.RaftCommitTimeout = dur
+			}
 		}
 	}
 	return nil
@@ -449,6 +518,20 @@ func parseFileOptions(itf interface{}, opts *Options) error {
 				return err
 			}
 			opts.FileStoreOpts.ParallelRecovery = int(v.(int64))
+		case "file_read_buffer_size", "read_buffer_size":
+			if err := checkType(k, reflect.Int64, v); err != nil {
+				return err
+			}
+			opts.FileStoreOpts.ReadBufferSize = int(v.(int64))
+		case "file_auto_sync", "auto_sync":
+			if err := checkType(k, reflect.String, v); err != nil {
+				return err
+			}
+			dur, err := time.ParseDuration(v.(string))
+			if err != nil {
+				return err
+			}
+			opts.FileStoreOpts.AutoSync = dur
 		}
 	}
 	return nil
@@ -499,6 +582,7 @@ func ConfigureOptions(fs *flag.FlagSet, args []string, printVersion, printHelp, 
 		stanConfigFile string
 		natsConfigFile string
 		clusterPeers   string
+		encryptionKey  string
 	)
 
 	fs.StringVar(&sopts.ID, "cluster_id", DefaultClusterID, "stan.ID")
@@ -542,6 +626,7 @@ func ConfigureOptions(fs *flag.FlagSet, args []string, printVersion, printHelp, 
 	fs.IntVar(&sopts.FileStoreOpts.CompactInterval, "file_compact_interval", stores.DefaultFileStoreOptions.CompactInterval, "stan.FileStoreOpts.CompactInterval")
 	fs.String("file_compact_min_size", fmt.Sprintf("%v", stores.DefaultFileStoreOptions.CompactMinFileSize), "stan.FileStoreOpts.CompactMinFileSize")
 	fs.String("file_buffer_size", fmt.Sprintf("%v", stores.DefaultFileStoreOptions.BufferSize), "stan.FileStoreOpts.BufferSize")
+	fs.String("file_read_buffer_size", fmt.Sprintf("%v", stores.DefaultFileStoreOptions.ReadBufferSize), "")
 	fs.BoolVar(&sopts.FileStoreOpts.DoCRC, "file_crc", stores.DefaultFileStoreOptions.DoCRC, "stan.FileStoreOpts.DoCRC")
 	fs.Int64Var(&sopts.FileStoreOpts.CRCPolynomial, "file_crc_poly", stores.DefaultFileStoreOptions.CRCPolynomial, "stan.FileStoreOpts.CRCPolynomial")
 	fs.BoolVar(&sopts.FileStoreOpts.DoSync, "file_sync", stores.DefaultFileStoreOptions.DoSync, "stan.FileStoreOpts.DoSync")
@@ -552,6 +637,7 @@ func ConfigureOptions(fs *flag.FlagSet, args []string, printVersion, printHelp, 
 	fs.Int64Var(&sopts.FileStoreOpts.FileDescriptorsLimit, "file_fds_limit", stores.DefaultFileStoreOptions.FileDescriptorsLimit, "stan.FileStoreOpts.FileDescriptorsLimit")
 	fs.IntVar(&sopts.FileStoreOpts.ParallelRecovery, "file_parallel_recovery", stores.DefaultFileStoreOptions.ParallelRecovery, "stan.FileStoreOpts.ParallelRecovery")
 	fs.BoolVar(&sopts.FileStoreOpts.TruncateUnexpectedEOF, "file_truncate_bad_eof", stores.DefaultFileStoreOptions.TruncateUnexpectedEOF, "Truncate files for which there is an unexpected EOF on recovery, dataloss may occur")
+	fs.DurationVar(&sopts.FileStoreOpts.AutoSync, "file_auto_sync", stores.DefaultFileStoreOptions.AutoSync, "Interval at which the store should be automatically flushed and sync'ed on disk (<= 0 to disable)")
 	fs.IntVar(&sopts.IOBatchSize, "io_batch_size", DefaultIOBatchSize, "stan.IOBatchSize")
 	fs.Int64Var(&sopts.IOSleepTime, "io_sleep_time", DefaultIOSleepTime, "stan.IOSleepTime")
 	fs.StringVar(&sopts.FTGroupName, "ft_group", "", "stan.FTGroupName")
@@ -565,11 +651,16 @@ func ConfigureOptions(fs *flag.FlagSet, args []string, printVersion, printHelp, 
 	fs.Int64Var(&sopts.Clustering.TrailingLogs, "cluster_trailing_logs", DefaultTrailingLogs, "stan.Clustering.TrailingLogs")
 	fs.BoolVar(&sopts.Clustering.Sync, "cluster_sync", false, "stan.Clustering.Sync")
 	fs.BoolVar(&sopts.Clustering.RaftLogging, "cluster_raft_logging", false, "")
+	fs.BoolVar(&sopts.Clustering.ProceedOnRestoreFailure, "cluster_proceed_on_restore_failure", false, "")
 	fs.StringVar(&sopts.SQLStoreOpts.Driver, "sql_driver", "", "SQL Driver")
 	fs.StringVar(&sopts.SQLStoreOpts.Source, "sql_source", "", "SQL Data Source")
 	defSQLOpts := stores.DefaultSQLStoreOptions()
 	fs.BoolVar(&sopts.SQLStoreOpts.NoCaching, "sql_no_caching", defSQLOpts.NoCaching, "Enable/Disable caching")
 	fs.IntVar(&sopts.SQLStoreOpts.MaxOpenConns, "sql_max_open_conns", defSQLOpts.MaxOpenConns, "Max opened connections to the database")
+	fs.StringVar(&sopts.SyslogName, "syslog_name", "", "Syslog Name")
+	fs.BoolVar(&sopts.Encrypt, "encrypt", false, "Specify if server should use encryption at rest")
+	fs.StringVar(&sopts.EncryptionCipher, "encryption_cipher", stores.CryptoCipherAutoSelect, "Encryption cipher. Supported are AES and CHACHA (default is AES)")
+	fs.StringVar(&encryptionKey, "encryption_key", "", "Encryption Key. It is recommended to specify it through the NATS_STREAMING_ENCRYPTION_KEY environment variable instead")
 
 	// First, we need to call NATS's ConfigureOptions() with above flag set.
 	// It will be augmented with NATS specific flags and call fs.Parse(args) for us.
@@ -588,6 +679,11 @@ func ConfigureOptions(fs *flag.FlagSet, args []string, printVersion, printHelp, 
 				sopts.Clustering.Peers = append(sopts.Clustering.Peers, p)
 			}
 		}
+	}
+
+	if encryptionKey != "" {
+		sopts.Encrypt = true
+		sopts.EncryptionKey = []byte(encryptionKey)
 	}
 
 	// If both nats and streaming configuration files are used, then
@@ -635,6 +731,10 @@ func ConfigureOptions(fs *flag.FlagSet, args []string, printVersion, printHelp, 
 			var i64 int64
 			i64, flagErr = getBytes(f)
 			sopts.FileStoreOpts.BufferSize = int(i64)
+		case "file_read_buffer_size":
+			var i64 int64
+			i64, flagErr = getBytes(f)
+			sopts.FileStoreOpts.ReadBufferSize = int(i64)
 		}
 	})
 	if flagErr != nil {

@@ -10,9 +10,9 @@ import (
 	"reflect"
 	"testing"
 
-	uconf "github.com/actiontech/dtle/olddtle/internal/config"
-	umconf "github.com/actiontech/dtle/olddtle/internal/config/mysql"
-	log "github.com/actiontech/dtle/olddtle/internal/logger"
+	//uconf "github.com/actiontech/dtle/olddtle/internal/config"
+	//umconf "github.com/actiontech/dtle/olddtle/internal/config/mysql"
+	//log "github.com/actiontech/dtle/olddtle/internal/logger"
 )
 
 func TestNewInspector(t *testing.T) {

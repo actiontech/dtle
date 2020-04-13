@@ -10,6 +10,7 @@ import (
 	gosql "database/sql"
 	"encoding/json"
 	"fmt"
+	dcommon "github.com/actiontech/dtle/drivers/mysql/common"
 
 	"github.com/actiontech/dtle/drivers/mysql/mysql/common"
 	//	umconf "github.com/actiontech/dtle/drivers/mysql/mysql/config"
@@ -106,9 +107,10 @@ type Extractor struct {
 	gotCoordinateCh chan struct{}
 	streamerReadyCh chan error
 	fullCopyDone    chan struct{}
+	storeManager    *dcommon.StoreManager
 }
 
-func NewExtractor(execCtx *common.ExecContext, cfg *config.MySQLDriverConfig, logger hclog.Logger) (*Extractor, error) {
+func NewExtractor(execCtx *common.ExecContext, cfg *config.MySQLDriverConfig, logger hclog.Logger, storeManager *dcommon.StoreManager) (*Extractor, error) {
 	logger.Info("NewExtractor", "subject", execCtx.Subject)
 	logger.Debug("start dtle task 7")
 	cfg = cfg.SetDefault()
@@ -132,6 +134,7 @@ func NewExtractor(execCtx *common.ExecContext, cfg *config.MySQLDriverConfig, lo
 		gotCoordinateCh: make(chan struct{}),
 		streamerReadyCh: make(chan error),
 		fullCopyDone:    make(chan struct{}),
+		storeManager:    storeManager,
 	}
 	e.context.LoadSchemas(nil)
 	logger.Debug("start dtle task 9")
@@ -180,6 +183,24 @@ func (e *Extractor) retryOperation(operation func() error, notFatalHint ...bool)
 
 // Run executes the complete extract logic.
 func (e *Extractor) Run() {
+	natsAddr, err := e.storeManager.WatchNats(e.subject, e.shutdownCh)
+	if err != nil {
+		e.onError(TaskStateDead, err)
+		return
+	}
+	e.mysqlContext.NatsAddr = natsAddr
+	e.logger.Info("got NatsAddr", "addr", natsAddr)
+
+	gtid, err := e.storeManager.GetGtidForJob(e.subject)
+	if err != nil {
+		e.onError(TaskStateDead, errors.Wrap(err, "GetGtidForJob"))
+		return
+	}
+	if gtid != "" {
+		e.logger.Info("Got gtid from consul", "gtid", gtid)
+		e.mysqlContext.Gtid = gtid
+	}
+
 	e.logger.Info("mysql.extractor: Extract binlog events from %s.%d", e.mysqlContext.ConnectionConfig.Host, e.mysqlContext.ConnectionConfig.Port)
 	e.mysqlContext.StartTime = time.Now()
 

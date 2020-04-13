@@ -9,7 +9,7 @@ package sql
 import (
 	"testing"
 
-	"github.com/actiontech/dtle/olddtle/internal/config/mysql"
+	//"github.com/actiontech/dtle/olddtle/internal/config/mysql"
 
 	"reflect"
 	"regexp"

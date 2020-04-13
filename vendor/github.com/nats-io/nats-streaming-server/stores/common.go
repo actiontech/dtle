@@ -1,4 +1,4 @@
-// Copyright 2016-2018 The NATS Authors
+// Copyright 2016-2019 The NATS Authors
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -15,16 +15,17 @@ package stores
 
 import (
 	"sync"
+	"time"
 
-	"github.com/nats-io/go-nats-streaming/pb"
 	"github.com/nats-io/nats-streaming-server/logger"
 	"github.com/nats-io/nats-streaming-server/spb"
 	"github.com/nats-io/nats-streaming-server/util"
+	"github.com/nats-io/stan.go/pb"
 )
 
 // format string used to report that limit is reached when storing
 // messages.
-var droppingMsgsFmt = "WARNING: Reached limits for store %q (msgs=%v/%v bytes=%v/%v), " +
+var droppingMsgsFmt = "Reached limits for store %q (msgs=%v/%v bytes=%v/%v), " +
 	"dropping old messages to make room for new ones"
 
 // commonStore contains everything that is common to any type of store
@@ -335,6 +336,17 @@ func (gms *genericMsgStore) empty() {
 // Close closes this store.
 func (gms *genericMsgStore) Close() error {
 	return nil
+}
+
+// With the given timestamp, returns in how long the message
+// should expire. If in the past, returns 0
+func (gms *genericMsgStore) msgExpireIn(timestamp int64) time.Duration {
+	now := time.Now().UnixNano()
+	fireIn := time.Duration(timestamp + int64(gms.limits.MaxAge) - now)
+	if fireIn < 0 {
+		fireIn = 0
+	}
+	return fireIn
 }
 
 ////////////////////////////////////////////////////////////////////////////

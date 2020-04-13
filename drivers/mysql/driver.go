@@ -2,8 +2,9 @@ package mysql
 
 import (
 	"context"
-	"errors"
+	"github.com/pkg/errors"
 	"fmt"
+	dcommon "github.com/actiontech/dtle/drivers/mysql/common"
 	"os/exec"
 	"path/filepath"
 	"runtime"
@@ -21,7 +22,7 @@ import (
 	"github.com/hashicorp/nomad/plugins/drivers"
 	"github.com/hashicorp/nomad/plugins/shared/hclspec"
 	pstructs "github.com/hashicorp/nomad/plugins/shared/structs"
-	gnatsd "github.com/nats-io/gnatsd/server"
+	gnatsd "github.com/nats-io/nats-server/v2/server"
 	stand "github.com/nats-io/nats-streaming-server/server"
 	"net"
 )
@@ -73,6 +74,7 @@ var (
 			hclspec.NewLiteral(`"0.0.0.0:8193"`)),
 		"NatsAdvertise": hclspec.NewDefault(hclspec.NewAttr("NatsAdvertise", "string", false),
 			hclspec.NewLiteral(`"127.0.0.1:8193"`)),
+		"consul": hclspec.NewAttr("consul", "list(string)", true),
 	})
 
 	// taskConfigSpec is the hcl specification for the driver config section of
@@ -206,9 +208,11 @@ type Driver struct {
 	// logger will log to the Nomad agent
 	logger hclog.Logger
 
-	stand     *stand.StanServer
+	stand *stand.StanServer
 
-	config    *DriverConfig
+	config *DriverConfig
+
+	storeManager *dcommon.StoreManager
 }
 
 /*type TaskConfig struct {
@@ -373,9 +377,10 @@ func (d *Driver) ConfigSchema() (*hclspec.Spec, error) {
 type DriverConfig struct {
 	NatsBind string `codec:"NatsBind"`
 	NatsAdvertise string `codec:"NatsAdvertise"`
+	Consul []string `codec:"consul"`
 }
 
-func (d *Driver) SetConfig(c *base.Config) error {
+func (d *Driver) SetConfig(c *base.Config) (err error) {
 	if c != nil && c.AgentConfig != nil {
 		d.nomadConfig = c.AgentConfig.Driver
 		d.logger.Info("SetConfig", "DriverConfig", c.AgentConfig.Driver)
@@ -390,6 +395,11 @@ func (d *Driver) SetConfig(c *base.Config) error {
 
 	d.config = &dconfig
 	d.logger.Info("SetConfig", "config", d.config)
+
+	d.storeManager, err = dcommon.NewStoreManager(d.config.Consul)
+	if err != nil {
+		return err
+	}
 
 	go func() {
 		// Have to put this in a goroutine, or it will fail.
@@ -512,6 +522,7 @@ func (d *Driver) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHandle, *drive
 	d.logger.Info("StartTask", "ID", cfg.ID)
 
 
+
 	ctx := &common.ExecContext{cfg.JobName, cfg.TaskGroupName, 100 * 1024 * 1024, "/opt/binlog"}
 	switch cfg.TaskGroupName {
 	case TaskTypeSrc:
@@ -527,13 +538,12 @@ func (d *Driver) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHandle, *drive
 			driverConfig.ExpandSyntaxSupport =false
 			driverConfig.ReplChanBufferSize=600
 			datasource :=&config.DataSource{
-			TableSchema:"a",
-			Tables:tables,
-		}
+				TableSchema:"a",
+				Tables:tables,
+			}
 			driverConfig.ReplicateDoDb=append(driverConfig.ReplicateDoDb, datasource)
 			driverConfig.DropTableIfExists = false
 			driverConfig.SkipCreateDbTable = false
-			driverConfig.NatsAddr = d.config.NatsAdvertise
 			driverConfig.MySQLVersion="5.7"
 			driverConfig.SkipPrivilegeCheck=true
 			driverConfig.BinlogRowImage = "FULL"
@@ -543,7 +553,7 @@ func (d *Driver) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHandle, *drive
 		//	d.logger.Debug("NewExtractor ReplicateDoDb: %v", driverConfig.ReplicateDoDb)
 			// Create the extractor
 
-			e, err := mysql.NewExtractor(ctx, &driverConfig, d.logger)
+			e, err := mysql.NewExtractor(ctx, &driverConfig, d.logger, d.storeManager)
 			if err != nil {
 				return  nil,nil,fmt.Errorf("failed to create extractor  e: %v", err)
 			}
@@ -553,6 +563,10 @@ func (d *Driver) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHandle, *drive
 		}
 	case TaskTypeDest:
 		{
+			err := d.storeManager.PutNats(cfg.JobName, d.config.NatsAdvertise)
+			if err != nil {
+				return nil, nil, err
+			}
 			d.logger.Debug("start dtle task4")
 			driverConfig.ConnectionConfig = taskConfig.ConnectionConfig
 			driverConfig.MySQLVersion="5.7"
@@ -565,12 +579,11 @@ func (d *Driver) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHandle, *drive
 
 		//	d.logger.Warn("NewApplier ReplicateDoDb: %v", driverConfig.ReplicateDoDb)
 
-			a, err := mysql.NewApplier(ctx, &driverConfig,d.logger)
+			a, err := mysql.NewApplier(ctx, &driverConfig,d.logger, d.storeManager)
 			if err != nil {
 				return nil,nil, fmt.Errorf("failed to create Applier  e: %v", err)
 			}
 			go a.Run()
-
 		}
 	default:
 		{

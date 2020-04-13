@@ -14,10 +14,10 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/actiontech/dtle/olddtle/internal/client/driver/mysql/base"
-	"github.com/actiontech/dtle/olddtle/internal/config"
-	"github.com/actiontech/dtle/olddtle/internal/config/mysql"
-	log "github.com/actiontech/dtle/olddtle/internal/logger"
+	//"github.com/actiontech/dtle/olddtle/internal/client/driver/mysql/base"
+	//"github.com/actiontech/dtle/olddtle/internal/config"
+	//"github.com/actiontech/dtle/olddtle/internal/config/mysql"
+	//log "github.com/actiontech/dtle/olddtle/internal/logger"
 
 	gomysql "github.com/siddontang/go-mysql/mysql"
 	"github.com/siddontang/go-mysql/replication"
