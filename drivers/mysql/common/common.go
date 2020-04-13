@@ -22,6 +22,15 @@ func NewStoreManager(consulAddr []string) (*StoreManager, error) {
 	}
 	return &StoreManager{consulStore:consulStore}, nil
 }
+func (sm *StoreManager) DestroyJob(jobName string) error {
+	key := fmt.Sprintf("dtle/%v", jobName)
+	err := sm.consulStore.DeleteTree(key)
+	if err == store.ErrKeyNotFound {
+		return nil
+	} else {
+		return err
+	}
+}
 func (sm *StoreManager) SaveGtidForJob(jobName string, gtid string) error {
 	key := fmt.Sprintf("dtle/%v/Gtid", jobName)
 	err := sm.consulStore.Put(key, []byte(gtid), nil)

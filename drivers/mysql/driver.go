@@ -2,17 +2,14 @@ package mysql
 
 import (
 	"context"
-	"github.com/pkg/errors"
 	"fmt"
 	dcommon "github.com/actiontech/dtle/drivers/mysql/common"
-	"os/exec"
-	"path/filepath"
+	"github.com/pkg/errors"
 	"runtime"
 	"time"
 
 	config "github.com/actiontech/dtle/drivers/mysql/mysql/config"
 	"github.com/hashicorp/go-hclog"
-	"math/rand"
 	//	"github.com/actiontech/dtle/drivers/mysql/mysql"
 	"github.com/hashicorp/nomad/drivers/shared/eventer"
 	"github.com/hashicorp/nomad/helper/pluginutils/loader"
@@ -412,6 +409,8 @@ func (d *Driver) RecoverTask(handle *drivers.TaskHandle) error {
 }
 
 func (d *Driver) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHandle, *drivers.DriverNetwork, error) {
+	d.logger.Info("StartTask", "ID", cfg.ID, "allocID", cfg.AllocID)
+
 	if _, ok := d.tasks.Get(cfg.ID); ok {
 		return nil, nil, fmt.Errorf("task with ID %q already started", cfg.ID)
 	}
@@ -423,8 +422,6 @@ func (d *Driver) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHandle, *drive
 		return nil, nil, errors.Wrap(err, "DecodeDriverConfig")
 	}
 
-
-	d.logger.Info("StartTask", "ID", cfg.ID)
 
 
 	handle := drivers.NewTaskHandle(taskHandleVersion)
@@ -539,19 +536,13 @@ func (d *Driver) handleWait(ctx context.Context, handle *taskHandle, ch chan *dr
 }
 
 func (d *Driver) StopTask(taskID string, timeout time.Duration, signal string) error {
-	d.logger.Info("StopTask", "id", taskID)
-	/*	handle, ok := d.tasks.Get(taskID)
-		if !ok {
-			return drivers.ErrTaskNotFound
-		}
+	d.logger.Info("StopTask", "id", taskID, "signal", signal)
+	handle, ok := d.tasks.Get(taskID)
+	if !ok {
+		return drivers.ErrTaskNotFound
+	}
 
-		if err := handle.exec.Shutdown(signal, timeout); err != nil {
-			if handle.pluginClient.Exited() {
-				return nil
-			}
-			return fmt.Errorf("executor Shutdown failed: %v", err)
-		}*/
-
+	handle.Destroy()
 	return nil
 }
 
@@ -565,7 +556,11 @@ func (d *Driver) DestroyTask(taskID string, force bool) error {
 		return fmt.Errorf("cannot destroy running task")
 	}
 	handle.Destroy()
+
+	d.storeManager.DestroyJob(handle.taskConfig.JobName)
+
 	d.tasks.Delete(taskID)
+
 	return nil
 }
 
@@ -593,7 +588,7 @@ func (d *Driver) handleStats(ctx context.Context, ch chan<- *drivers.TaskResourc
 			s := &drivers.TaskResourceUsage{
 				ResourceUsage: &drivers.ResourceUsage{
 					MemoryStats: &drivers.MemoryStats{
-						RSS:      rand.Uint64(),
+						RSS:      0,
 						Measured: []string{"RSS"},
 					},
 					CpuStats:    &drivers.CpuStats{
@@ -650,17 +645,6 @@ func (d *Driver) ExecTask(taskID string, cmd []string, timeout time.Duration) (*
 		ExitResult: &drivers.ExitResult{},
 	}
 	return &res, nil
-}
-
-// GetAbsolutePath returns the absolute path of the passed binary by resolving
-// it in the path and following symlinks.
-func GetAbsolutePath(bin string) (string, error) {
-	lp, err := exec.LookPath(bin)
-	if err != nil {
-		return "", fmt.Errorf("failed to resolve path to %q executable: %v", bin, err)
-	}
-
-	return filepath.EvalSymlinks(lp)
 }
 
 func (d *Driver) Shutdown() {

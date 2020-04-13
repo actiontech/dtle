@@ -353,7 +353,7 @@ func (a *Applier) MtsWorker(workerIndex int) {
 func (a *Applier) Run() {
 	if a.printTps {
 		go func() {
-			for {
+			for !a.shutdown {
 				time.Sleep(5 * time.Second)
 				n := atomic.SwapUint32(&a.txLastNSeconds, 0)
 				a.logger.Info("mysql.applier: txLastNSeconds: %v", n)
