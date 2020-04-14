@@ -25,6 +25,8 @@ type taskHandle struct {
 	completedAt time.Time
 	exitResult  *drivers.ExitResult
 
+	runner DriverHandle
+
 	ctx context.Context
 	cancelFunc context.CancelFunc
 }
@@ -64,6 +66,7 @@ func (h *taskHandle) IsRunning() bool {
 }
 
 func (h *taskHandle) run(taskConfig *DtleTaskConfig, d *Driver) {
+	var err error
 	h.stateLock.Lock()
 	if h.exitResult == nil {
 		h.exitResult = &drivers.ExitResult{}
@@ -84,14 +87,12 @@ func (h *taskHandle) run(taskConfig *DtleTaskConfig, d *Driver) {
 			//	d.logger.Debug("NewExtractor ReplicateDoDb: %v", driverConfig.ReplicateDoDb)
 			// Create the extractor
 
-			e, err := mysql.NewExtractor(ctx, driverConfig, d.logger, d.storeManager)
+			h.runner, err = mysql.NewExtractor(ctx, driverConfig, d.logger, d.storeManager)
 			if err != nil {
 				h.exitResult.Err = errors.Wrap(err, "NewExtractor")
 				return
 			}
-			go e.Run()
-			//d.extractor = e
-
+			go h.runner.Run()
 		}
 	case TaskTypeDest:
 		{
@@ -106,12 +107,12 @@ func (h *taskHandle) run(taskConfig *DtleTaskConfig, d *Driver) {
 			driverConfig.NatsAddr = d.config.NatsAdvertise
 			//	d.logger.Warn("NewApplier ReplicateDoDb: %v", driverConfig.ReplicateDoDb)
 
-			a, err := mysql.NewApplier(ctx, driverConfig, d.logger, d.storeManager)
+			h.runner, err = mysql.NewApplier(ctx, driverConfig, d.logger, d.storeManager)
 			if err != nil {
 				h.exitResult.Err = errors.Wrap(err, "NewApplier")
 				return
 			}
-			go a.Run()
+			go h.runner.Run()
 		}
 	default:
 		h.exitResult.Err = fmt.Errorf("unknown processor type: %+v", cfg.TaskGroupName)
@@ -123,5 +124,24 @@ func (h *taskHandle) Destroy() bool {
 	h.stateLock.RLock()
 	//driver.des
 	h.cancelFunc()
+	err := h.runner.Shutdown()
+	if err != nil {
+		h.logger.Error("error in h.runner.Shutdown", "err", err)
+	}
 	return h.procState == drivers.TaskStateRunning
+}
+
+type DriverHandle interface {
+	Run()
+	// Returns an opaque handle that can be used to re-open the handle
+	ID() string
+
+	// WaitChan is used to return a channel used wait for task completion
+	WaitCh() chan *drivers.ExitResult
+
+	// Shutdown is used to stop the task
+	Shutdown() error
+
+	// Stats returns aggregated stats of the driver
+	Stats() (*mysql.TaskStatistics, error)
 }

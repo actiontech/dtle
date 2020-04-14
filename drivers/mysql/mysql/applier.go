@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"fmt"
 	dcommon "github.com/actiontech/dtle/drivers/mysql/common"
+	"github.com/hashicorp/nomad/plugins/drivers"
 	"github.com/pkg/errors"
 
 	"github.com/actiontech/dtle/drivers/mysql/mysql/common"
@@ -39,14 +40,14 @@ import (
 	"encoding/hex"
 	"os"
 
-	//models "github.com/actiontech/dtle/drivers/mysql/mysql"
-	utils "github.com/actiontech/dtle/drivers/mysql/mysql/util"
-	"github.com/actiontech/dtle/drivers/mysql/mysql/g"
 	"github.com/actiontech/dtle/drivers/mysql/mysql/base"
 	"github.com/actiontech/dtle/drivers/mysql/mysql/binlog"
 	config "github.com/actiontech/dtle/drivers/mysql/mysql/config"
 	umconf "github.com/actiontech/dtle/drivers/mysql/mysql/config"
+	"github.com/actiontech/dtle/drivers/mysql/mysql/g"
 	"github.com/actiontech/dtle/drivers/mysql/mysql/sql"
+	//models "github.com/actiontech/dtle/drivers/mysql/mysql"
+	utils "github.com/actiontech/dtle/drivers/mysql/mysql/util"
 	hclog "github.com/hashicorp/go-hclog"
 	not "github.com/nats-io/not.go"
 	uuid "github.com/satori/go.uuid"
@@ -233,7 +234,7 @@ type Applier struct {
 	lastAppliedBinlogTx   *binlog.BinlogTx
 
 	natsConn *gonats.Conn
-	waitCh   chan WaitResult
+	waitCh   chan *drivers.ExitResult
 	wg       sync.WaitGroup
 
 	shutdown     bool
@@ -276,7 +277,7 @@ func NewApplier(ctx *common.ExecContext, cfg *umconf.MySQLDriverConfig, logger h
 		applyBinlogMtsTxQueue:   make(chan *binlog.BinlogEntry, cfg.ReplChanBufferSize*2),
 		applyBinlogTxQueue:      make(chan *binlog.BinlogTx, cfg.ReplChanBufferSize*2),
 		applyBinlogGroupTxQueue: make(chan []*binlog.BinlogTx, cfg.ReplChanBufferSize*2),
-		waitCh:                  make(chan WaitResult, 1),
+		waitCh:                  make(chan *drivers.ExitResult, 1),
 		shutdownCh:              make(chan struct{}),
 		printTps:                os.Getenv(g.ENV_PRINT_TPS) != "",
 		storeManager:            storeManager,
@@ -1766,11 +1767,16 @@ func (a *Applier) onError(state int, err error) {
 		}
 	}
 
-	a.waitCh <- *NewWaitResult(state, err)
+	a.waitCh <- &drivers.ExitResult{
+		ExitCode:  state,
+		Signal:    0,
+		OOMKilled: false,
+		Err:       err,
+	}
 	a.Shutdown()
 }
 
-func (a *Applier) WaitCh() chan WaitResult {
+func (a *Applier) WaitCh() chan *drivers.ExitResult {
 	return a.waitCh
 }
 

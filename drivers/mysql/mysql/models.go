@@ -1,8 +1,6 @@
 package mysql
 
 import (
-	"fmt"
-
 	gonats "github.com/nats-io/go-nats"
 )
 
@@ -67,30 +65,4 @@ type TaskStatistics struct {
 	BufferStat         BufferStat
 	Stage              string
 	Timestamp          int64
-}
-
-// WaitResult stores the result of a Wait operation.
-type WaitResult struct {
-	ExitCode int
-	Err      error
-}
-
-func NewWaitResult(code int, err error) *WaitResult {
-	return &WaitResult{
-		ExitCode: code,
-		Err:      err,
-	}
-}
-
-func (r *WaitResult) Successful() bool {
-	return r.ExitCode == 0 && r.Err == nil
-}
-
-func (r *WaitResult) ShouldRestart() bool {
-	return r.ExitCode == 1 && r.Err != nil
-}
-
-func (r *WaitResult) String() string {
-	return fmt.Sprintf("Wait returned exit code %v, and error %v",
-		r.ExitCode, r.Err)
 }

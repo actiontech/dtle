@@ -557,7 +557,10 @@ func (d *Driver) DestroyTask(taskID string, force bool) error {
 	}
 	handle.Destroy()
 
-	d.storeManager.DestroyJob(handle.taskConfig.JobName)
+	err := d.storeManager.DestroyJob(handle.taskConfig.JobName)
+	if err != nil {
+		d.logger.Error("error at storeManager.DestroyJob", "err", err)
+	}
 
 	d.tasks.Delete(taskID)
 

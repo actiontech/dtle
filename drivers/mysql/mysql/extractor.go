@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"fmt"
 	dcommon "github.com/actiontech/dtle/drivers/mysql/common"
+	"github.com/hashicorp/nomad/plugins/drivers"
 
 	"github.com/actiontech/dtle/drivers/mysql/mysql/common"
 	//	umconf "github.com/actiontech/dtle/drivers/mysql/mysql/config"
@@ -93,7 +94,7 @@ type Extractor struct {
 	sendBySizeFullCounter int
 
 	natsConn *gonats.Conn
-	waitCh   chan *WaitResult
+	waitCh   chan *drivers.ExitResult
 
 	shutdown     bool
 	shutdownCh   chan struct{}
@@ -127,7 +128,7 @@ func NewExtractor(execCtx *common.ExecContext, cfg *config.MySQLDriverConfig, lo
 		binlogChannel:   make(chan *binlog.BinlogTx, cfg.ReplChanBufferSize),
 		dataChannel:     make(chan *binlog.BinlogEntry, cfg.ReplChanBufferSize),
 		rowCopyComplete: make(chan bool),
-		waitCh:          make(chan *WaitResult, 1),
+		waitCh:          make(chan *drivers.ExitResult, 1),
 		shutdownCh:      make(chan struct{}),
 		testStub1Delay:  0,
 		context:         sqle.NewContext(nil),
@@ -1671,11 +1672,16 @@ func (e *Extractor) onError(state int, err error) {
 	if e.shutdown {
 		return
 	}
-	e.waitCh <- NewWaitResult(state, err)
+	e.waitCh <- &drivers.ExitResult{
+		ExitCode:  state,
+		Signal:    0,
+		OOMKilled: false,
+		Err:       err,
+	}
 	e.Shutdown()
 }
 
-func (e *Extractor) WaitCh() chan *WaitResult {
+func (e *Extractor) WaitCh() chan *drivers.ExitResult {
 	return e.waitCh
 }
 
