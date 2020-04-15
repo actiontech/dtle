@@ -83,13 +83,13 @@ var (
 		// TODO remove
 		"ReplicateDoDb" :hclspec.NewBlockList("ReplicateDoDb",  hclspec.NewObject(map[string]*hclspec.Spec{
 			"TableSchema": hclspec.NewAttr("TableSchema", "string", false),
-			"TableSchemaRegex": hclspec.NewAttr("TableSchemaRegex", "number", false),
+			"TableSchemaRegex": hclspec.NewAttr("TableSchemaRegex", "string", false),
 			"TableSchemaRenameRegex": hclspec.NewAttr("TableSchemaRenameRegex", "string", false),
 			"TableSchemaRename": hclspec.NewAttr("TableSchemaRename", "string", false),
 			"TableSchemaScope": hclspec.NewAttr("TableSchemaScope", "string", false),
 			"Tables" :hclspec.NewBlockList("Tables", hclspec.NewObject(map[string]*hclspec.Spec{
 				"TableName": hclspec.NewAttr("TableName", "string", false),
-				"TableRegex": hclspec.NewAttr("TableRegex", "number", false),
+				"TableRegex": hclspec.NewAttr("TableRegex", "string", false),
 				"TableRename": hclspec.NewAttr("TableRename", "string", false),
 				"TableRenameRegex": hclspec.NewAttr("TableRenameRegex", "string", false),
 				"TableSchema": hclspec.NewAttr("TableSchema", "string", false),
@@ -106,46 +106,29 @@ var (
 		})),
 		"DropTableIfExists":hclspec.NewAttr("DropTableIfExists", "bool", false),
 		"ExpandSyntaxSupport":hclspec.NewAttr("ExpandSyntaxSupport", "bool", false),
-		"ReplChanBufferSize":hclspec.NewAttr("ReplChanBufferSize", "int64", false),
-		"MsgBytesLimit":hclspec.NewAttr("MsgBytesLimit", "int", false),
-		"TrafficAgainstLimits":hclspec.NewAttr("TrafficAgainstLimits", "int", false),
-		"TotalTransferredBytes":hclspec.NewAttr("TotalTransferredBytes", "int", false),
-		"MaxRetries":hclspec.NewAttr("MaxRetries", "int64", false),
-		"ChunkSize":hclspec.NewAttr("ChunkSize", "int64", false),
+		"ReplChanBufferSize":hclspec.NewAttr("ReplChanBufferSize", "number", false),
+		"MsgBytesLimit":hclspec.NewAttr("MsgBytesLimit", "number", false),
+		"TrafficAgainstLimits":hclspec.NewAttr("TrafficAgainstLimits", "number", false),
+		"MaxRetries":hclspec.NewAttr("MaxRetries", "number", false),
+		"ChunkSize":hclspec.NewAttr("ChunkSize", "number", false),
 		"SqlFilter":hclspec.NewAttr("SqlFilter", "list(string)", false),
-		"RowsEstimate":hclspec.NewAttr("RowsEstimate", "int64", false),
-		"DeltaEstimate":hclspec.NewAttr("DeltaEstimate", "string", false),
-		"TimeZone":hclspec.NewAttr("TimeZone", "string", false),
-		"GroupCount":hclspec.NewAttr("GroupCount", "int", false),
-		"GroupMaxSize":hclspec.NewAttr("GroupMaxSize", "int", false),
-		"GroupTimeout":hclspec.NewAttr("GroupTimeout", "int", false),
+		"GroupMaxSize":hclspec.NewAttr("GroupMaxSize", "number", false),
+		"GroupTimeout":hclspec.NewAttr("GroupTimeout", "number", false),
 		"Gtid":hclspec.NewAttr("Gtid", "string", false),
 		"BinlogFile":hclspec.NewAttr("BinlogFile", "string", false),
-		"BinlogPos":hclspec.NewAttr("BinlogPos", "int64", false),
+		"BinlogPos":hclspec.NewAttr("BinlogPos", "number", false),
 		"GtidStart":hclspec.NewAttr("GtidStart", "string", false),
 		"AutoGtid":hclspec.NewAttr("AutoGtid", "bool", false),
 		"BinlogRelay":hclspec.NewAttr("BinlogRelay", "bool", false),
 		"NatsAddr":hclspec.NewAttr("NatsAddr", "string", false),
-		"ParallelWorkers":hclspec.NewAttr("ParallelWorkers", "int", false),
-		"SystemVariables":hclspec.NewAttr("SystemVariables", "map[string]string", false),
-		"HasSuperPrivilege":hclspec.NewAttr("HasSuperPrivilege", "bool", false),
-		"BinlogFormat":hclspec.NewAttr("BinlogFormat", "string", false),
-		"BinlogRowImage":hclspec.NewAttr("BinlogRowImage", "string", false),
+		"ParallelWorkers":hclspec.NewAttr("ParallelWorkers", "number", false),
 		"SqlMode":hclspec.NewAttr("SqlMode", "string", false),
 		"MySQLVersion":hclspec.NewAttr("MySQLVersion", "string", false),
-		"MySQLServerUuid":hclspec.NewAttr("MySQLServerUuid", "string", false),
-		"StartTime":hclspec.NewAttr("StartTime", "time.Time", false),
-		"RowCopyStartTime":hclspec.NewAttr("RowCopyStartTime", "time.Time", false),
-		"RowCopyEndTime":hclspec.NewAttr("RowCopyEndTime", "time.Time", false),
-		"TotalDeltaCopied":hclspec.NewAttr("TotalDeltaCopied", "int64", false),
-		"TotalRowsCopied":hclspec.NewAttr("TotalRowsCopied", "int64", false),
-		"TotalRowsReplay":hclspec.NewAttr("TotalRowsReplay", "int64", false),
-		"Stage":hclspec.NewAttr("MsgBytesLimit", "string", false),
-		"ApproveHeterogeneous":hclspec.NewAttr("ApproveHeterogeneous", "bool", false),
 		"SkipCreateDbTable":hclspec.NewAttr("SkipCreateDbTable", "bool", false),
-		"CountingRowsFlag":hclspec.NewAttr("CountingRowsFlag", "int64", false),
+
 		"SkipPrivilegeCheck":hclspec.NewAttr("SkipPrivilegeCheck", "bool", false),
 		"SkipIncrementalCopy":hclspec.NewAttr("SkipIncrementalCopy", "bool", false),
+		"ApproveHeterogeneous":hclspec.NewAttr("ApproveHeterogeneous", "bool", false),
 		"type":       hclspec.NewAttr("type", "string", true),
 		"ConnectionConfig": hclspec.NewBlock("ConnectionConfig", true, hclspec.NewObject(map[string]*hclspec.Spec{
 			"Host": hclspec.NewAttr("Host", "string", true),
@@ -215,58 +198,6 @@ type Driver struct {
 	storeManager *dcommon.StoreManager
 }
 
-/*type TaskConfig struct {
-	ReplicateDoDb         []*config.DataSource `codec:"ReplicateDoDb"`
-	ReplicateIgnoreDb     []*config.DataSource`codec:"ReplicateIgnoreDb"`
-	DropTableIfExists     bool`codec:"DropTableIfExists"`
-	ExpandSyntaxSupport   bool`codec:"ExpandSyntaxSupport"`
-	ReplChanBufferSize    int64`codec:"ReplChanBufferSize"`
-	MsgBytesLimit         int`codec:"MsgBytesLimit"`
-	TrafficAgainstLimits  int`codec:"TrafficAgainstLimits"`
-	TotalTransferredBytes int`codec:"TotalTransferredBytes"`
-	MaxRetries            int64`codec:"MaxRetries"`
-	ChunkSize             int64`codec:"ChunkSize"`
-	SqlFilter             []string`codec:"SqlFilter"`
-	RowsEstimate          int64`codec:"RowsEstimate"`
-	DeltaEstimate         int64`codec:"DeltaEstimate"`
-	TimeZone              string`codec:"TimeZone"`
-	GroupCount            int`codec:"GroupCount"`
-	GroupMaxSize          int`codec:"GroupMaxSize"`
-	GroupTimeout          int `codec:"GroupTimeout"`
-
-	Gtid              string`codec:"Gtid"`
-	BinlogFile        string`codec:"BinlogFile"`
-	BinlogPos         int64`codec:"BinlogPos"`
-	GtidStart         string`codec:"GtidStart"`
-	AutoGtid          bool`codec:"AutoGtid"`
-	BinlogRelay       bool`codec:"BinlogRelay"`
-	NatsAddr          string`codec:"NatsAddr"`
-	ParallelWorkers   int`codec:"ParallelWorkers"`
-	ConnectionConfig  *config.ConnectionConfig`codec:"ConnectionConfig"`
-	SystemVariables   map[string]string`codec:"SystemVariables"`
-	HasSuperPrivilege bool`codec:"HasSuperPrivilege"`
-	BinlogFormat      string`codec:"BinlogFormat"`
-	BinlogRowImage    string`codec:"BinlogRowImage"`
-	SqlMode           string`codec:"SqlMode"`
-	MySQLVersion      string`codec:"MySQLVersion"`
-	MySQLServerUuid   string`codec:"MySQLServerUuid"`
-	StartTime         time.Time`codec:"StartTime"`
-	RowCopyStartTime  time.Time`codec:"RowCopyStartTime"`
-	RowCopyEndTime    time.Time`codec:"RowCopyEndTime"`
-	TotalDeltaCopied  int64`codec:"TotalDeltaCopied"`
-	TotalRowsCopied   int64`codec:"TotalRowsCopied"`
-	TotalRowsReplay   int64`codec:"TotalRowsReplay"`
-
-	Stage                string`codec:"Stage"`
-	ApproveHeterogeneous bool`codec:"ApproveHeterogeneous"`
-	SkipCreateDbTable    bool`codec:"SkipCreateDbTable"`
-
-	CountingRowsFlag int64`codec:"CountingRowsFlag"`
-
-	SkipPrivilegeCheck  bool`codec:"SkipPrivilegeCheck"`
-	SkipIncrementalCopy bool`codec:"SkipIncrementalCopy"`
-}
-*/
 type TaskConfig struct {
 	ReplicateDoDb         []*config.DataSource `codec:"ReplicateDoDb"`
 	ReplicateIgnoreDb     []*config.DataSource`codec:"ReplicateIgnoreDb"`
@@ -275,14 +206,9 @@ type TaskConfig struct {
 	ReplChanBufferSize    int64`codec:"ReplChanBufferSize"`
 	MsgBytesLimit         int`codec:"MsgBytesLimit"`
 	TrafficAgainstLimits  int`codec:"TrafficAgainstLimits"`
-	TotalTransferredBytes int`codec:"TotalTransferredBytes"`
 	MaxRetries            int64`codec:"MaxRetries"`
 	ChunkSize             int64`codec:"ChunkSize"`
 	SqlFilter             []string`codec:"SqlFilter"`
-	RowsEstimate          int64`codec:"RowsEstimate"`
-	DeltaEstimate         int64`codec:"DeltaEstimate"`
-	TimeZone              string`codec:"TimeZone"`
-	GroupCount            int`codec:"GroupCount"`
 	GroupMaxSize          int`codec:"GroupMaxSize"`
 	GroupTimeout          int `codec:"GroupTimeout"`
 	Gtid              string`codec:"Gtid"`
@@ -295,24 +221,11 @@ type TaskConfig struct {
 	ParallelWorkers   int`codec:"ParallelWorkers"`
 	SystemVariables   map[string]string`codec:"SystemVariables"`
 	HasSuperPrivilege bool`codec:"HasSuperPrivilege"`
-	BinlogFormat      string`codec:"BinlogFormat"`
-	BinlogRowImage    string`codec:"BinlogRowImage"`
+
 	SqlMode           string`codec:"SqlMode"`
 	MySQLVersion      string`codec:"MySQLVersion"`
-	MySQLServerUuid   string`codec:"MySQLServerUuid"`
-	StartTime         time.Time`codec:"StartTime"`
-	RowCopyStartTime  time.Time`codec:"RowCopyStartTime"`
-	RowCopyEndTime    time.Time`codec:"RowCopyEndTime"`
-	TotalDeltaCopied  int64`codec:"TotalDeltaCopied"`
-	TotalRowsCopied   int64`codec:"TotalRowsCopied"`
-	TotalRowsReplay   int64`codec:"TotalRowsReplay"`
-
-	Stage                string`codec:"Stage"`
 	ApproveHeterogeneous bool`codec:"ApproveHeterogeneous"`
 	SkipCreateDbTable    bool`codec:"SkipCreateDbTable"`
-
-	CountingRowsFlag int64`codec:"CountingRowsFlag"`
-
 	SkipPrivilegeCheck  bool`codec:"SkipPrivilegeCheck"`
 	SkipIncrementalCopy bool`codec:"SkipIncrementalCopy"`
 	Type      string   `codec:"type"`
@@ -504,7 +417,7 @@ func (d *Driver) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHandle, *drive
 		return nil, nil, fmt.Errorf("task with ID %q already started", cfg.ID)
 	}
 	d.logger.Debug("start dtle task one")
-	var driverConfig config.MySQLDriverConfig
+
 	var taskConfig TaskConfig
 
 	if err := cfg.DecodeDriverConfig(&taskConfig); err != nil {
@@ -517,8 +430,6 @@ func (d *Driver) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHandle, *drive
 
 
 
-
-	d.logger.Debug("start dtle task 2")
 	d.logger.Info("StartTask", "ID", cfg.ID)
 
 
@@ -527,29 +438,9 @@ func (d *Driver) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHandle, *drive
 	switch cfg.TaskGroupName {
 	case TaskTypeSrc:
 		{
-			d.logger.Debug("start dtle task 3")
 
-			driverConfig.ConnectionConfig = taskConfig.ConnectionConfig
-			d.logger.Debug("start dtle task 5")
-			var tables []*config.Table
-			tables = append(tables, &config.Table{
-				TableName:"a",
-			})
-			driverConfig.ExpandSyntaxSupport =false
-			driverConfig.ReplChanBufferSize=600
-			datasource :=&config.DataSource{
-				TableSchema:"a",
-				Tables:tables,
-			}
-			driverConfig.ReplicateDoDb=append(driverConfig.ReplicateDoDb, datasource)
-			driverConfig.DropTableIfExists = false
-			driverConfig.SkipCreateDbTable = false
-			driverConfig.MySQLVersion="5.7"
-			driverConfig.SkipPrivilegeCheck=true
-			driverConfig.BinlogRowImage = "FULL"
-			driverConfig.BinlogFormat="ROW"
-			driverConfig.AutoGtid=false
-			driverConfig.SkipIncrementalCopy =false
+			driverConfig,_:=InitConfig(taskConfig)
+
 		//	d.logger.Debug("NewExtractor ReplicateDoDb: %v", driverConfig.ReplicateDoDb)
 			// Create the extractor
 
@@ -567,14 +458,8 @@ func (d *Driver) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHandle, *drive
 			if err != nil {
 				return nil, nil, err
 			}
-			d.logger.Debug("start dtle task4")
-			driverConfig.ConnectionConfig = taskConfig.ConnectionConfig
-			driverConfig.MySQLVersion="5.7"
-			driverConfig.NatsAddr = d.config.NatsAdvertise
-			driverConfig.SkipPrivilegeCheck=true
-			driverConfig.BinlogRowImage = "FULL"
-			driverConfig.BinlogFormat="ROW"
-			driverConfig.SkipIncrementalCopy =false
+			driverConfig,_ := InitConfig(taskConfig)
+
 			d.logger.Debug("print host", hclog.Fmt("%+v", driverConfig.ConnectionConfig.Host))
 
 		//	d.logger.Warn("NewApplier ReplicateDoDb: %v", driverConfig.ReplicateDoDb)
@@ -605,6 +490,64 @@ func (d *Driver) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHandle, *drive
 	d.tasks.Set(cfg.ID, h)
 	go h.run()
 	return handle, nil, nil
+}
+func  InitConfig (taskConfig TaskConfig) (mysqlConfig  config.MySQLDriverConfig,err error) {
+	//var driverConfig config.MySQLDriverConfig
+	mysqlConfig.ConnectionConfig = taskConfig.ConnectionConfig
+	//mysqlConfig = taskConfig
+	//driverConfig.ExpandSyntaxSupport =false
+	if taskConfig.ReplChanBufferSize ==0{
+		mysqlConfig.ReplChanBufferSize=600
+	}
+	mysqlConfig.ReplicateDoDb=taskConfig.ReplicateDoDb
+
+	mysqlConfig.DropTableIfExists = taskConfig.DropTableIfExists
+	mysqlConfig.SkipCreateDbTable = taskConfig.SkipCreateDbTable
+	if  taskConfig.MySQLVersion==""{
+		mysqlConfig.MySQLVersion = "5.7"
+	}else{
+		mysqlConfig.MySQLVersion = taskConfig.MySQLVersion
+	}
+
+	mysqlConfig.SkipCreateDbTable =  taskConfig.SkipPrivilegeCheck
+    mysqlConfig.AutoGtid = taskConfig.AutoGtid
+	mysqlConfig.SkipIncrementalCopy =  taskConfig.SkipIncrementalCopy
+	mysqlConfig.Gtid = taskConfig.Gtid
+	mysqlConfig.GtidStart = taskConfig.GtidStart
+	mysqlConfig.BinlogRelay = taskConfig.BinlogRelay
+	mysqlConfig.BinlogFile = taskConfig.BinlogFile
+	mysqlConfig.BinlogPos = taskConfig.BinlogPos
+	if taskConfig.ParallelWorkers==0{
+		mysqlConfig.ParallelWorkers=1
+	}else{
+		mysqlConfig.ParallelWorkers = taskConfig.ParallelWorkers
+	}
+	if taskConfig.ChunkSize == 0{
+		mysqlConfig.ChunkSize = 2000
+	}else{
+		mysqlConfig.ChunkSize = taskConfig.ChunkSize
+	}
+
+	mysqlConfig.ExpandSyntaxSupport = taskConfig.ExpandSyntaxSupport
+	if taskConfig.MsgBytesLimit ==0{
+		mysqlConfig.MsgBytesLimit = 20480
+	}else{
+		mysqlConfig.MsgBytesLimit = taskConfig.MsgBytesLimit
+	}
+	if taskConfig.GroupMaxSize	 ==0{
+		mysqlConfig.GroupMaxSize =1
+	}else{
+		mysqlConfig.GroupMaxSize = taskConfig.GroupMaxSize
+	}
+	if taskConfig.GroupTimeout	 ==0{
+		mysqlConfig.GroupTimeout =1
+	}else{
+		mysqlConfig.GroupTimeout = taskConfig.GroupTimeout
+	}
+	mysqlConfig.SqlFilter = taskConfig.SqlFilter
+	mysqlConfig.SqlMode = taskConfig.SqlMode
+
+	return mysqlConfig,nil
 }
 
 func (d *Driver) WaitTask(ctx context.Context, taskID string) (<-chan *drivers.ExitResult, error) {
