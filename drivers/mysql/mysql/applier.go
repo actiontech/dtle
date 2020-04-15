@@ -359,6 +359,11 @@ func (a *Applier) MtsWorker(workerIndex int) {
 
 // Run executes the complete apply logic.
 func (a *Applier) Run() {
+	a.logger.Info("go WatchAndPutNats")
+	go a.storeManager.WatchAndPutNats(a.subject, a.mysqlContext.NatsAddr, a.shutdownCh, func(err error) {
+		a.onError(TaskStateDead, errors.Wrap(err, "WatchAndPutNats"))
+	})
+
 	if a.printTps {
 		go func() {
 			for !a.shutdown {

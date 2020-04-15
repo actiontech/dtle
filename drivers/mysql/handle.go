@@ -84,6 +84,11 @@ func (h *taskHandle) run(taskConfig *DtleTaskConfig, d *Driver) {
 	switch cfg.TaskGroupName {
 	case TaskTypeSrc:
 		{
+			err = d.storeManager.PutNatsWait(cfg.JobName)
+			if err != nil {
+				h.exitResult.Err = errors.Wrap(err, "PutNatsWait")
+				return
+			}
 			//	d.logger.Debug("NewExtractor ReplicateDoDb: %v", driverConfig.ReplicateDoDb)
 			// Create the extractor
 
@@ -96,12 +101,6 @@ func (h *taskHandle) run(taskConfig *DtleTaskConfig, d *Driver) {
 		}
 	case TaskTypeDest:
 		{
-			err := d.storeManager.PutNats(cfg.JobName, d.config.NatsAdvertise)
-			if err != nil {
-				h.exitResult.Err = errors.Wrap(err, "PutNats")
-				return
-			}
-
 			d.logger.Debug("print host", hclog.Fmt("%+v", driverConfig.ConnectionConfig.Host))
 
 			driverConfig.NatsAddr = d.config.NatsAdvertise

@@ -84,9 +84,30 @@ func (sm *StoreManager) GetGtidForJob(jobName string) (string, error) {
 	return string(p.Value), nil
 }
 
-func (sm *StoreManager) PutNats(jobName string, natsAddr string) error {
+func (sm *StoreManager) WatchAndPutNats(jobName string, natsAddr string, stopCh chan struct{},
+	onErrorF func(error)) {
+
 	natsKey := fmt.Sprintf("dtle/%v/NatsAddr", jobName)
-	return sm.consulStore.Put(natsKey, []byte(natsAddr), nil)
+	natsCh, err := sm.consulStore.Watch(natsKey, stopCh)
+	if err != nil {
+		onErrorF(err)
+		return
+	}
+	loop := true
+	for loop {
+		select {
+		case kv := <-natsCh:
+			if string(kv.Value) == "wait" {
+				err = sm.consulStore.Put(natsKey, []byte(natsAddr), nil)
+				if err != nil {
+					onErrorF(err)
+					return
+				}
+			}
+		case <-stopCh:
+			loop = false
+		}
+	}
 }
 
 func (sm *StoreManager) WatchNats(jobName string, stopCh chan struct{}) (string, error) {
@@ -95,6 +116,27 @@ func (sm *StoreManager) WatchNats(jobName string, stopCh chan struct{}) (string,
 	if err != nil {
 		return "", err
 	}
-	kv := <-natsCh
-	return string(kv.Value), nil
+	var addr string
+	for {
+		kv := <-natsCh
+		addr = string(kv.Value)
+		if addr != "wait" {
+			break
+		}
+	}
+	return addr, nil
+}
+
+func (sm *StoreManager) PutNatsWait(jobName string) error {
+	// To prevent failovered task use old NatsAddr (put by last alloc)
+	// 1. src delete and put NatsAddr = wait
+	// 2. dst keep watching NatsAddr and write if it becomes "wait"
+	key := fmt.Sprintf("dtle/%v/NatsAddr", jobName)
+	err := sm.consulStore.Delete(key)
+	if err == store.ErrKeyNotFound {
+		// ok
+	} else if err != nil {
+		return err
+	}
+	return sm.consulStore.Put(key, []byte("wait"), nil)
 }
