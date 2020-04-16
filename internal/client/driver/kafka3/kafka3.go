@@ -411,7 +411,7 @@ func (kr *KafkaRunner) kafkaTransformSnapshotData(table *config.Table, value *my
 					if valueStr != "" && columnList[i].ColumnType == "datetime" {
 						value = DateTimeValue(valueStr,kr.kafkaConfig.TimeZone)
 					} else if valueStr != "" {
-						value = DateValue(valueStr,kr.kafkaConfig.TimeZone)
+						value = DateValue(valueStr)
 					}
 
 				case mysql.YearColumnType:
@@ -551,12 +551,12 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry)
 				if beforeValue != nil && colList[i].ColumnType == "datetime" {
 					beforeValue = DateTimeValue(beforeValue.(string),kr.kafkaConfig.TimeZone)
 				} else if beforeValue != nil {
-					beforeValue = DateValue(beforeValue.(string),kr.kafkaConfig.TimeZone)
+					beforeValue = DateValue(beforeValue.(string))
 				}
 				if afterValue != nil && colList[i].ColumnType == "datetime" {
 					afterValue = DateTimeValue(afterValue.(string),kr.kafkaConfig.TimeZone)
 				} else if afterValue != nil {
-					afterValue = DateValue(afterValue.(string),kr.kafkaConfig.TimeZone)
+					afterValue = DateValue(afterValue.(string))
 				}
 			case mysql.VarbinaryColumnType:
 				if beforeValue != nil {
@@ -836,7 +836,7 @@ func kafkaColumnListToColDefs(colList *mysql.ColumnList,timeZone string) (valCol
 			if cols[i].ColumnType == "datetime" {
 				field = NewDateTimeField(optional, fieldName, defaultValue,timeZone)
 			} else {
-				field = NewDateField(SCHEMA_TYPE_INT32, optional, fieldName, defaultValue,timeZone)
+				field = NewDateField(SCHEMA_TYPE_INT32, optional, fieldName, defaultValue)
 			}
 		case mysql.YearColumnType:
 			field = NewYearField(SCHEMA_TYPE_INT32, optional, fieldName, defaultValue)
