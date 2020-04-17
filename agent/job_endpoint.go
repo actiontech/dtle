@@ -253,8 +253,10 @@ func (s *HTTPServer) jobAllocations(resp http.ResponseWriter, req *http.Request,
 	//defaultTimeZone,_:=time.LoadLocation("UTC")
 	loc,_:=time.LoadLocation("Asia/Shanghai")
 	for  _,aa := range out.Allocations{
-		aa.TaskStates[aa.Task].FinishedAt,_=time.ParseInLocation( "2006-01-02 15:04:05",(aa.TaskStates[aa.Task].FinishedAt.Add(8*time.Hour)).Format("2006-01-02 15:04:05"),loc) //   aa.TaskStates[aa.Task].FinishedAt.In(defaultTimeZone) .Format("2006-01-02 15:04:05")
-		aa.TaskStates[aa.Task].StartedAt,_=time.ParseInLocation( "2006-01-02 15:04:05",( aa.TaskStates[aa.Task].StartedAt.Add(8*time.Hour)).Format("2006-01-02 15:04:05"),loc)   //= aa.TaskStates[aa.Task].StartedAt.In(defaultTimeZone).Format("2006-01-02 15:04:05")
+		if !aa.TaskStates[aa.Task].FinishedAt.IsZero(){
+			aa.TaskStates[aa.Task].FinishedAt,_=time.ParseInLocation( "2006-01-02 15:04:05",aa.TaskStates[aa.Task].FinishedAt.Add(8*time.Hour).Format("2006-01-02 15:04:05"),loc)
+		}
+		aa.TaskStates[aa.Task].StartedAt,_=time.ParseInLocation( "2006-01-02 15:04:05",aa.TaskStates[aa.Task].StartedAt.Add(8*time.Hour).Format("2006-01-02 15:04:05"),loc)   //= aa.TaskStates[aa.Task].StartedAt.In(defaultTimeZone).Format("2006-01-02 15:04:05")
 	}
 	return out.Allocations, nil
 }

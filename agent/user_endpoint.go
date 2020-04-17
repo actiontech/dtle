@@ -463,6 +463,7 @@ func (s *HTTPServer) userList(resp http.ResponseWriter, req *http.Request,userId
 	if out.Users == nil&& userId!="superuser" {
 		return nil, CodedError(404, "user not found")
 	}
+	loc,_:=time.LoadLocation("Asia/Shanghai")
 	for i := 0; i < len(out.Users); i++ {
 		if userId=="superuser"{
 			reqOut.Users =  append(reqOut.Users, *out.Users[i])
@@ -471,13 +472,16 @@ func (s *HTTPServer) userList(resp http.ResponseWriter, req *http.Request,userId
 			reqOut.Users =  append(reqOut.Users, *out.Users[i])
 			reqOut.Users[0].Passwd="******"
 		}
+		if !reqOut.Users[i].UpdateDate.IsZero(){
+			reqOut.Users[i].UpdateDate,_=time.ParseInLocation( "2006-01-02 15:04:05",reqOut.Users[i].UpdateDate.Add(8*time.Hour).Format("2006-01-02 15:04:05"),loc)
+		}
 	}
 	if  userId=="superuser" {
 	user:=models.User{
 		ID:"superuser",
 		Passwd : "******",
 		UserName:"superuser",
-		UpdateDate:time.Unix(1584337360, 794351777),
+		UpdateDate:time.Unix(1584337360, 0).In(loc),
 	}
 	reqOut.Users =  append(reqOut.Users, user)
 	}
