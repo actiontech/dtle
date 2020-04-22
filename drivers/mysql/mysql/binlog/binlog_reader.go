@@ -798,6 +798,25 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 					// decides whether action is taken sycnhronously (meaning we wait before
 					// next iteration) or asynchronously (we keep pushing more events)
 					// In reality, reads will be synchronous
+					if table != nil && table.Table.ColumnMap != nil {
+						if dmlEvent.NewColumnValues != nil {
+							newRow := make([]*interface{}, len(table.Table.ColumnMap))
+							for i := range table.Table.ColumnMap {
+								idx := table.Table.ColumnMap[i]
+								newRow[i] = dmlEvent.NewColumnValues.AbstractValues[idx]
+							}
+							dmlEvent.NewColumnValues.AbstractValues = newRow
+						}
+
+						if dmlEvent.WhereColumnValues != nil {
+							newRow := make([]*interface{}, len(table.Table.ColumnMap))
+							for i := range table.Table.ColumnMap {
+								idx := table.Table.ColumnMap[i]
+								newRow[i] = dmlEvent.WhereColumnValues.AbstractValues[idx]
+							}
+							dmlEvent.WhereColumnValues.AbstractValues = newRow
+						}
+					}
 					b.currentBinlogEntry.Events = append(b.currentBinlogEntry.Events, dmlEvent)
 				} else {
 					b.logger.Debug("event has not passed 'where'")
@@ -1655,6 +1674,7 @@ func (b *BinlogReader) updateTableMeta(table *config.Table, realSchema string, t
 		table.Where = "true"
 	}
 	table.OriginalTableColumns = columns
+	table.ColumnMap = config.BuildColumnMapIndex(table.ColumnMapFrom, table.OriginalTableColumns.Ordinals)
 	tableMap := b.getDbTableMap(realSchema)
 	err = b.addTableToTableMap(tableMap, table)
 	if err != nil {
