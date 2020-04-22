@@ -90,6 +90,8 @@ func (i *Inspector) ValidateOriginalTable(databaseName, tableName string, table 
 	if err != nil {
 		return err
 	}
+	// TODO why assign OriginalTableColumns twice (later getSchemaTablesAndMeta->readTableColumns)?
+	table.ColumnMap = uconf.BuildColumnMapIndex(table.ColumnMapFrom, table.OriginalTableColumns.Ordinals)
 
 	i.logger.Debug("table: %s.%s. n_unique_keys: %d", table.TableSchema, table.TableName, len(uniqueKeys))
 

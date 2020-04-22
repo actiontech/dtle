@@ -400,7 +400,6 @@ func (b *BinlogReader) GetCurrentBinlogCoordinates() *base.BinlogCoordinateTx {
 func ToColumnValuesV2(abstractValues []interface{}, table *config.TableContext) *config.ColumnValues {
 	result := &config.ColumnValues{
 		AbstractValues: make([]*interface{}, len(abstractValues)),
-		ValuesPointers: make([]*interface{}, len(abstractValues)),
 	}
 
 	for i := 0; i < len(abstractValues); i++ {
@@ -425,7 +424,6 @@ func ToColumnValuesV2(abstractValues []interface{}, table *config.TableContext) 
 			}
 		}
 		result.AbstractValues[i] = &abstractValues[i]
-		result.ValuesPointers[i] = result.AbstractValues[i]
 	}
 
 	return result
@@ -800,6 +798,25 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 					// decides whether action is taken sycnhronously (meaning we wait before
 					// next iteration) or asynchronously (we keep pushing more events)
 					// In reality, reads will be synchronous
+					if table != nil && len(table.Table.ColumnMap) > 0 {
+						if dmlEvent.NewColumnValues != nil {
+							newRow := make([]*interface{}, len(table.Table.ColumnMap))
+							for i := range table.Table.ColumnMap {
+								idx := table.Table.ColumnMap[i]
+								newRow[i] = dmlEvent.NewColumnValues.AbstractValues[idx]
+							}
+							dmlEvent.NewColumnValues.AbstractValues = newRow
+						}
+
+						if dmlEvent.WhereColumnValues != nil {
+							newRow := make([]*interface{}, len(table.Table.ColumnMap))
+							for i := range table.Table.ColumnMap {
+								idx := table.Table.ColumnMap[i]
+								newRow[i] = dmlEvent.WhereColumnValues.AbstractValues[idx]
+							}
+							dmlEvent.WhereColumnValues.AbstractValues = newRow
+						}
+					}
 					b.currentBinlogEntry.Events = append(b.currentBinlogEntry.Events, dmlEvent)
 				} else {
 					b.logger.Debug("event has not passed 'where'")
@@ -1451,7 +1468,7 @@ func (b *BinlogReader) skipRowEvent(rowsEvent *replication.RowsEvent, dml EventD
 			// We make no special treat for case 2. That tx has only one insert, which should be ignored.
 			if dml == InsertDML {
 				if len(rowsEvent.Rows) == 1 {
-					sidValue := *config.ToColumnValues(rowsEvent.Rows[0]).AbstractValues[1]
+					sidValue := rowsEvent.Rows[0][1]
 					sidByte, ok := sidValue.(string)
 					if !ok {
 						b.logger.Error("cycle-prevention: unrecognized gtid_executed table sid type: %T", sidValue)
@@ -1657,6 +1674,7 @@ func (b *BinlogReader) updateTableMeta(table *config.Table, realSchema string, t
 		table.Where = "true"
 	}
 	table.OriginalTableColumns = columns
+	table.ColumnMap = config.BuildColumnMapIndex(table.ColumnMapFrom, table.OriginalTableColumns.Ordinals)
 	tableMap := b.getDbTableMap(realSchema)
 	err = b.addTableToTableMap(tableMap, table)
 	if err != nil {
