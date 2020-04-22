@@ -221,13 +221,13 @@ func NewTable(schemaName string, tableName string) *Table {
 func (t *TableContext) WhereTrue(values *ColumnValues) (bool, error) {
 	var m = make(map[string]interface{})
 	for field, idx := range t.WhereCtx.FieldsMap {
-		nCols := len(values.ValuesPointers)
+		nCols := len(values.AbstractValues)
 		if idx >= nCols {
 			return false, fmt.Errorf("cannot eval 'where' predicate: no enough columns (%v < %v)", nCols, idx)
 		}
 
 		//fmt.Printf("**** type of %v %T\n", field, *values.ValuesPointers[idx])
-		rawValue := *(values.ValuesPointers[idx])
+		rawValue := *(values.AbstractValues[idx])
 		var value interface{}
 		if rawValue == nil {
 			value = rawValue
