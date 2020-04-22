@@ -798,7 +798,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 					// decides whether action is taken sycnhronously (meaning we wait before
 					// next iteration) or asynchronously (we keep pushing more events)
 					// In reality, reads will be synchronous
-					if table != nil && table.Table.ColumnMap != nil {
+					if table != nil && len(table.Table.ColumnMap) > 0 {
 						if dmlEvent.NewColumnValues != nil {
 							newRow := make([]*interface{}, len(table.Table.ColumnMap))
 							for i := range table.Table.ColumnMap {

@@ -313,13 +313,15 @@ func (d *dumper) getChunkData() (nRows int64, err error) {
 	if d.table.TableSchemaRename != "" {
 		entry.TableSchema = d.table.TableSchemaRename
 	}
-	for i, oldRow := range entry.ValuesX {
-		row := make([]*[]byte, len(d.table.ColumnMap))
-		for i := range d.table.ColumnMap {
-			fromIdx := d.table.ColumnMap[i]
-			row[i] = oldRow[fromIdx]
+	if len(d.table.ColumnMap) > 0 {
+		for i, oldRow := range entry.ValuesX {
+			row := make([]*[]byte, len(d.table.ColumnMap))
+			for i := range d.table.ColumnMap {
+				fromIdx := d.table.ColumnMap[i]
+				row[i] = oldRow[fromIdx]
+			}
+			entry.ValuesX[i] = row
 		}
-		entry.ValuesX[i] = row
 	}
 	// ValuesX[i]: n-th row
 	// ValuesX[i][j]: j-th col of n-th row
