@@ -636,8 +636,9 @@ func (a *Applier) updateGtidSet(sidStr string, sid uuid.UUID, txGno int64) {
 			SID:       sid,
 			Intervals: slice,
 		})
+	} else {
+		uuidSet.AddInterval(slice)
 	}
-	uuidSet.AddInterval(slice)
 }
 
 func (a *Applier) heterogeneousReplay() {
