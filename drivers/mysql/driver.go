@@ -374,6 +374,11 @@ func (d *Driver) buildFingerprint() *drivers.Fingerprint {
 }
 
 func (d *Driver) RecoverTask(handle *drivers.TaskHandle) error {
+	// See docker / raw_exec driver. 'Recover' means 'reattach'.
+	// Nomad client has crashed but the container/process keeps running.
+	// On nomad client restarting, it tries to reattach to running container/process.
+	// A dtle task crashes with nomad client, so it is not recoverable.
+
 	if handle == nil {
 		return fmt.Errorf("handle cannot be nil")
 	}
@@ -392,20 +397,7 @@ func (d *Driver) RecoverTask(handle *drivers.TaskHandle) error {
 		return nil
 	}
 
-	var taskState TaskState
-	if err := handle.GetDriverState(&taskState); err != nil {
-		d.logger.Error("failed to decode taskConfig state from handle", "error", err, "task_id", handle.Config.ID)
-		return errors.Wrap(err, "GetDriverState")
-	}
-
-	h := newDtleTaskHandle(d.logger, taskState.TaskConfig, drivers.TaskStateRunning, taskState.StartedAt)
-	h.exitResult = &drivers.ExitResult{}
-
-	d.tasks.Set(taskState.TaskConfig.ID, h)
-
-	// Do not use cfg.DecodeDriverConfig(), whose rawDriverConfig is not serialized.
-	go h.run(taskState.DtleTaskConfig, d)
-	return nil
+	return fmt.Errorf("dtle task is not recoverable")
 }
 
 func (d *Driver) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHandle, *drivers.DriverNetwork, error) {
