@@ -21,7 +21,11 @@ import (
 	gnatsd "github.com/nats-io/nats-server/v2/server"
 	stand "github.com/nats-io/nats-streaming-server/server"
 	"net"
-)
+	"net/http"
+	"github.com/julienschmidt/httprouter"
+			"github.com/actiontech/dtle/drivers/mysql/route"
+
+			)
 
 const (
 	// pluginName is the name of the plugin
@@ -70,6 +74,12 @@ var (
 			hclspec.NewLiteral(`"0.0.0.0:8193"`)),
 		"NatsAdvertise": hclspec.NewDefault(hclspec.NewAttr("NatsAdvertise", "string", false),
 			hclspec.NewLiteral(`"127.0.0.1:8193"`)),
+		"ApiPort": hclspec.NewDefault(hclspec.NewAttr("ApiPort", "string", false),
+			hclspec.NewLiteral(`"9190"`)),
+		"HostIp": hclspec.NewDefault(hclspec.NewAttr("HostIp", "string", false),
+			hclspec.NewLiteral(`"127.0.0.1"`)),
+		"NomadPort": hclspec.NewDefault(hclspec.NewAttr("NomadPort", "string", false),
+			hclspec.NewLiteral(`"4646"`)),
 		"consul": hclspec.NewAttr("consul", "list(string)", true),
 	})
 
@@ -125,7 +135,7 @@ var (
 		"SkipIncrementalCopy":hclspec.NewAttr("SkipIncrementalCopy", "bool", false),
 		"ApproveHeterogeneous":hclspec.NewAttr("ApproveHeterogeneous", "bool", false),
 		// TODO remove
-		"type":       hclspec.NewAttr("type", "string", true),
+		"Type":       hclspec.NewAttr("Type", "string", true),
 		"ConnectionConfig": hclspec.NewBlock("ConnectionConfig", true, hclspec.NewObject(map[string]*hclspec.Spec{
 			"Host": hclspec.NewAttr("Host", "string", true),
 			"Port": hclspec.NewAttr("Port", "number", true),
@@ -189,6 +199,7 @@ type Driver struct {
 	logger hclog.Logger
 
 	stand *stand.StanServer
+	apiServer  *httprouter.Router
 
 	config *DriverConfig
 
@@ -225,7 +236,7 @@ type DtleTaskConfig struct {
 	SkipCreateDbTable    bool`codec:"SkipCreateDbTable"`
 	SkipPrivilegeCheck  bool`codec:"SkipPrivilegeCheck"`
 	SkipIncrementalCopy bool`codec:"SkipIncrementalCopy"`
-	Type      string   `codec:"type"`
+	Type      string   `codec:"Type"`
 	ConnectionConfig *config.ConnectionConfig `codec:"ConnectionConfig"`
 }
 
@@ -260,7 +271,6 @@ func (d *Driver) SetupNatsServer(logger hclog.Logger) (err error)  {
 	//logger.Debug("agent: Starting nats streaming server [%v]", "10.186.61.121:8193")
 	sOpts := stand.GetDefaultOptions()
 	sOpts.ID = config.DefaultClusterID
-
 	s, err := stand.RunServerWithOpts(sOpts, &nOpts)
 	if err != nil {
 		return err
@@ -272,10 +282,43 @@ func (d *Driver) SetupNatsServer(logger hclog.Logger) (err error)  {
 	return nil
 }
 
-/*func NewMySQLDriver(ctx *DriverContext) Driver {
-	return &MySQLDriver{DriverContext: *ctx}
+func (d *Driver) SetupApiServer(logger hclog.Logger) (err error)  {
+	route.Host =  d.config.HostIp
+	route.Port =  d.config.NomadPort
+	logger.Debug("Begin Setup api server", "port", d.config.ApiPort)
+	router := httprouter.New()
+	router.GET("/v1/job/:NodeId/:path",route.JobRequest)
+	router.POST("/v1/jobs",route.UpdupJob)
+	router.GET("/v1/jobs",route.JobListRequest)
+	router.GET("/v1/allocations",route.AllocsRequest)
+	router.GET("/v1/allocation/:allocID", route.AllocSpecificRequest)
+	router.GET("/v1/evaluations",route.EvalsRequest)
+	router.GET("/v1/evaluation/:evalID/:type",route.EvalRequest)
+	router.GET("/v1/agent/allocation/:tokens",route.ClientAllocRequest)
+	router.GET("/v1/self",route.AgentSelfRequest)
+	router.POST("/v1/join",route.AgentJoinRequest)
+	router.POST("/v1/agent/force-leave",route.AgentForceLeaveRequest)
+	router.GET("/v1/members",route.AgentMembersRequest)
+	router.POST("/v1/managers",route.UpdateServers)
+	router.GET("/v1/managers",route.ListServers)
+	router.GET("/v1/regions",route.RegionListRequest)
+	router.GET("/v1/leader",route.StatusLeaderRequest)
+	router.GET("/v1/peers",route.StatusPeersRequest)
+	router.POST("/v1/validate/job",route.ValidateJobRequest)
+	router.GET("/v1/nodes", route.NodesRequest)
+	router.GET("/v1/node/:nodeName/:type",route.NodeRequest)
+	//router.POST("/v1/operator/",updupJob)
+	/*router.POST("/v1/job/renewal",updupJob)
+	router.POST("/v1/job/info",updupJob)
+	*/
+	http.ListenAndServe(d.config.HostIp+d.config.ApiPort, router)
+	logger.Info("Setup api server success v%",d.config.HostIp+d.config.ApiPort)
+
+	d.apiServer = router
+	return nil
 }
-*/
+
+
 func (d *Driver) PluginInfo() (*base.PluginInfoResponse, error) {
 	return pluginInfo, nil
 }
@@ -286,6 +329,9 @@ func (d *Driver) ConfigSchema() (*hclspec.Spec, error) {
 
 type DriverConfig struct {
 	NatsBind string `codec:"NatsBind"`
+	ApiPort string `codec:"ApiPort"`
+	HostIp string `codec:"HostIp"`
+	NomadPort string `codec:"NomadPort"`
 	NatsAdvertise string `codec:"NatsAdvertise"`
 	Consul []string `codec:"consul"`
 }
@@ -312,12 +358,18 @@ func (d *Driver) SetConfig(c *base.Config) (err error) {
 	}
 
 	go func() {
+		apiErr:=d.SetupApiServer(d.logger)
+		if apiErr != nil {
+			d.logger.Error("error in SetupApiServer", "err", err)
+			// TODO mark driver unhealthy
+		}
 		// Have to put this in a goroutine, or it will fail.
 		err := d.SetupNatsServer(d.logger)
 		if err != nil {
 			d.logger.Error("error in SetupNatsServer", "err", err)
 			// TODO mark driver unhealthy
 		}
+
 	}()
 
 	return nil
@@ -419,14 +471,9 @@ func (d *Driver) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHandle, *drive
 	if err := cfg.DecodeDriverConfig(&dtleTaskConfig); err != nil {
 		return nil, nil, errors.Wrap(err, "DecodeDriverConfig")
 	}
-
-
-
 	handle := drivers.NewTaskHandle(taskHandleVersion)
 	handle.Config = cfg
-
 	h := newDtleTaskHandle(d.logger, cfg, drivers.TaskStateRunning, time.Now().Round(time.Millisecond))
-
 	driverState := TaskState{
 		TaskConfig:     cfg,
 		DtleTaskConfig: &dtleTaskConfig,
