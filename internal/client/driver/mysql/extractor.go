@@ -295,7 +295,12 @@ func (e *Extractor) Run() {
 			e.onError(TaskStateDead, err)
 			return
 		}
-		dumpMsg, err := Encode(&dumpStatResult{Gtid: e.initialBinlogCoordinates.GtidSet, TotalCount: e.mysqlContext.RowsEstimate})
+		dumpMsg, err := Encode(&dumpStatResult{
+			Gtid: e.initialBinlogCoordinates.GtidSet,
+			LogFile: e.initialBinlogCoordinates.LogFile,
+			LogPos: e.initialBinlogCoordinates.LogPos,
+			TotalCount: e.mysqlContext.RowsEstimate,
+		})
 		if err != nil {
 			e.onError(TaskStateDead, err)
 		}
@@ -421,6 +426,9 @@ func (e *Extractor) inspectTables() (err error) {
 				for _, doTb := range doDb.Tables {
 					doTb.TableSchema = doDb.TableSchema
 					doTb.TableSchemaRename = doDb.TableSchemaRename
+					if doTb.Where == "" {
+						doTb.Where = "true"
+					}
 					var regex string
 					if doTb.TableRegex != "" && doTb.TableName == "" && doTb.TableRename != "" {
 						regex = doTb.TableRegex
@@ -441,31 +449,32 @@ func (e *Extractor) inspectTables() (err error) {
 							if !reg.MatchString(table.TableName) {
 								continue
 							}
-							doTb.TableName = table.TableName
-
+							newTable := &config.Table{}
+							*newTable = *doTb
+							newTable.TableName = table.TableName
 							if tableRenameRegex != "" {
-								doTb.TableRenameRegex = tableRenameRegex
+								newTable.TableRenameRegex = tableRenameRegex
 								match := reg.FindStringSubmatchIndex(table.TableName)
-								doTb.TableRename = string(reg.ExpandString(nil, tableRenameRegex, table.TableName, match))
+								newTable.TableRename = string(reg.ExpandString(nil, tableRenameRegex, table.TableName, match))
 							}
-							if err := e.inspector.ValidateOriginalTable(doDb.TableSchema, table.TableName, doTb); err != nil {
+							if err := e.inspector.ValidateOriginalTable(doDb.TableSchema, table.TableName, newTable); err != nil {
 								e.logger.Warnf("mysql.extractor: %v", err)
 								continue
 							}
-							*table = *doTb
-							db.Tables = append(db.Tables, table)
-							doTb.TableName = ""
+							db.Tables = append(db.Tables, newTable)
 						}
 						if db.Tables == nil {
 							return fmt.Errorf("src table  was nil")
 						}
 
 					} else if doTb.TableRegex == "" && doTb.TableName != "" {
-						db.Tables = append(db.Tables, doTb)
 						if err := e.inspector.ValidateOriginalTable(doDb.TableSchema, doTb.TableName, doTb); err != nil {
 							e.logger.Warnf("mysql.extractor: %v", err)
 							continue
 						}
+						newTable := &config.Table{}
+						*newTable = *doTb
+						db.Tables = append(db.Tables, newTable)
 						db.TableSchemaScope = TABLE
 					} else {
 						return fmt.Errorf("Table  configuration error. ")
