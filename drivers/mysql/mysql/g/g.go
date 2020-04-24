@@ -1,6 +1,8 @@
 // global values
 package g
 
+import "fmt"
+
 var (
 	DtleSchemaName string = "DTLE_BUG_SCHEMA_NOT_SET"
 )
@@ -11,6 +13,9 @@ const (
 	GtidExecutedTablePrefix     string = "gtid_executed_"
 	GtidExecutedTableV2         string = "gtid_executed_v2"
 	GtidExecutedTableV3         string = "gtid_executed_v3"
+	GtidExecutedTableV4         string = "gtid_executed_v4"
+
+	JobNameLenLimit = 64
 
 	ENV_PRINT_TPS         = "UDUP_PRINT_TPS"
 	ENV_DUMP_CHECKSUM     = "DTLE_DUMP_CHECKSUM"
@@ -21,3 +26,16 @@ const (
 
 	LONG_LOG_LIMIT = 256
 )
+
+func ValidateJobName(name string) error {
+	if len(name) > JobNameLenLimit {
+		return fmt.Errorf("job name too long. jobName %v lenLimit %v", name, JobNameLenLimit)
+	}
+	for _, c := range name {
+		switch c {
+		case '\'', '"':
+			return fmt.Errorf("job name contains invalid char %v", c)
+		}
+	}
+	return nil
+}

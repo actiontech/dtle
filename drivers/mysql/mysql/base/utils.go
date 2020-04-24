@@ -170,11 +170,11 @@ func parseInterval(str string) (i gomysql.Interval, err error) {
 }
 
 // return: normalized GtidSet
-func SelectAllGtidExecuted(db usql.QueryAble, jid uuid.UUID) (gtidSet GtidSet, err error) {
+func SelectAllGtidExecuted(db usql.QueryAble, jid string) (gtidSet GtidSet, err error) {
 	query := fmt.Sprintf(`SELECT source_uuid,interval_gtid FROM %v.%v where job_uuid=?`,
 		g.DtleSchemaName, g.GtidExecutedTableV3)
 
-	rows, err := db.Query(query, jid.Bytes())
+	rows, err := db.Query(query, jid)
 	if err != nil {
 		return nil, err
 	}

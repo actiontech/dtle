@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	dcommon "github.com/actiontech/dtle/drivers/mysql/common"
+	"github.com/actiontech/dtle/drivers/mysql/mysql/g"
 	"github.com/pkg/errors"
 	"runtime"
 	"time"
@@ -402,6 +403,11 @@ func (d *Driver) RecoverTask(handle *drivers.TaskHandle) error {
 
 func (d *Driver) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHandle, *drivers.DriverNetwork, error) {
 	d.logger.Info("StartTask", "ID", cfg.ID, "allocID", cfg.AllocID)
+
+	err := g.ValidateJobName(cfg.JobName)
+	if err != nil {
+		return nil, nil, err
+	}
 
 	if _, ok := d.tasks.Get(cfg.ID); ok {
 		return nil, nil, fmt.Errorf("task with ID %q already started", cfg.ID)
