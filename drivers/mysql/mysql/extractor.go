@@ -508,13 +508,13 @@ func (e *Extractor) inspectTables() (err error) {
 						}
 
 					} else if doTb.TableRegex == "" && doTb.TableName != "" {
-						newTable := &config.Table{}
-						*newTable = *doTb
-						db.Tables = append(db.Tables, newTable)
 						if err := e.inspector.ValidateOriginalTable(doDb.TableSchema, doTb.TableName, doTb); err != nil {
 							e.logger.Warn("mysql.extractor: %v", err)
 							continue
 						}
+						newTable := &config.Table{}
+						*newTable = *doTb
+						db.Tables = append(db.Tables, newTable)
 						db.TableSchemaScope = TABLE
 					} else {
 						return fmt.Errorf("Table  configuration error. ")
