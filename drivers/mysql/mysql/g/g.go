@@ -3,11 +3,8 @@ package g
 
 import "fmt"
 
-var (
-	DtleSchemaName string = "DTLE_BUG_SCHEMA_NOT_SET"
-)
-
 const (
+	DtleSchemaName string = "dtle"
 	GtidExecutedTempTable2To3   string = "gtid_executed_temp_v2_v3"
 	GtidExecutedTempTablePrefix string = "gtid_executed_temp_"
 	GtidExecutedTablePrefix     string = "gtid_executed_"

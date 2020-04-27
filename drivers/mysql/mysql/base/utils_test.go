@@ -8,6 +8,8 @@ package base
 
 import (
 	gosql "database/sql"
+	umconf "github.com/actiontech/dtle/drivers/mysql/mysql/config"
+	"github.com/actiontech/dtle/drivers/mysql/mysql/sql"
 	"reflect"
 	"testing"
 	"time"
@@ -166,33 +168,6 @@ func TestShowCreateTable(t *testing.T) {
 			}
 			if gotCreateTableStatement != tt.wantCreateTableStatement {
 				t.Errorf("ShowCreateTable() = %v, want %v", gotCreateTableStatement, tt.wantCreateTableStatement)
-			}
-		})
-	}
-}
-
-func Test_parseInterval(t *testing.T) {
-	type args struct {
-		str string
-	}
-	tests := []struct {
-		name    string
-		args    args
-		wantI   gomysql.Interval
-		wantErr bool
-	}{
-		// TODO: Add test cases.
-		{"t1", args{"36671-36677"}, gomysql.Interval{}, false},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			gotI, err := parseInterval(tt.args.str)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("parseInterval() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
-			if !reflect.DeepEqual(gotI, tt.wantI) {
-				t.Errorf("parseInterval() = %v, want %v", gotI, tt.wantI)
 			}
 		})
 	}

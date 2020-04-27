@@ -53,7 +53,7 @@ import (
 )
 
 const (
-	cleanupGtidExecutedLimit = 4096
+	cleanupGtidExecutedLimit = 2048
 	pingInterval             = 10 * time.Second
 )
 const (
@@ -614,43 +614,6 @@ func (a *Applier) setTableItemForBinlogEntry(binlogEntry *binlog.BinlogEntry) er
 	return nil
 }
 
-func (a *Applier) cleanGtidExecuted(sid uuid.UUID, intervalStr string) error {
-	a.logger.Debug("mysql.applier. incr. cleanup before WaitForExecution")
-	if !a.mtsManager.WaitForAllCommitted() {
-		return nil // shutdown
-	}
-	a.logger.Debug("mysql.applier. incr. cleanup after WaitForExecution")
-
-	// The TX is unnecessary if we first insert and then delete.
-	// However, consider `binlog_group_commit_sync_delay > 0`,
-	// `begin; delete; insert; commit;` (1 TX) is faster than `insert; delete;` (2 TX)
-	dbApplier := a.dbs[0]
-	tx, err := dbApplier.Db.BeginTx(context.Background(), &gosql.TxOptions{})
-	if err != nil {
-		return err
-	}
-
-	defer func() {
-		if err != nil {
-			tx.Rollback()
-		} else {
-			err = tx.Commit()
-		}
-	}()
-
-	_, err = dbApplier.PsDeleteExecutedGtid.Exec(sid.Bytes())
-	if err != nil {
-		return err
-	}
-
-	a.logger.Debug("mysql.applier: compactation gtid. new interval: %v", intervalStr)
-	_, err = dbApplier.PsInsertExecutedGtid.Exec(sid.Bytes(), intervalStr)
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
 func DtleParseMysqlGTIDSet(gtidSetStr string) (*gomysql.MysqlGTIDSet, error) {
 	set0, err := gomysql.ParseMysqlGTIDSet(gtidSetStr)
 	if err != nil {
@@ -703,7 +666,7 @@ func (a *Applier) heterogeneousReplay() {
 			// region TestIfExecuted
 			if a.gtidExecuted == nil {
 				// udup crash recovery or never executed
-				a.gtidExecuted, err = base.SelectAllGtidExecuted(a.db, a.subject)
+				a.gtidExecuted, err = SelectAllGtidExecuted(a.db, a.subject)
 				if err != nil {
 					a.onError(TaskStateDead, err)
 					return
@@ -1115,19 +1078,17 @@ func (a *Applier) initDBConnections() (err error) {
 		if err := a.createTableGtidExecutedV4(); err != nil {
 			return err
 		}
-		a.logger.Debug("mysql.applier. after createTableGtidExecutedV2")
+		a.logger.Debug("mysql.applier. after createTableGtidExecutedV4")
 
 		for i := range a.dbs {
-			a.dbs[i].PsDeleteExecutedGtid, err = a.dbs[i].Db.PrepareContext(context.Background(), fmt.Sprintf("delete from %v.%v where job_uuid = '%s' and source_uuid = ?",
-				g.DtleSchemaName, g.GtidExecutedTableV3, a.subject))
+			a.dbs[i].PsDeleteExecutedGtid, err = a.dbs[i].Db.PrepareContext(context.Background(), fmt.Sprintf("delete from %v.%v where job_name = '%s' and source_uuid = ?",
+				g.DtleSchemaName, g.GtidExecutedTableV4, a.subject))
 			if err != nil {
 				return err
 			}
 			a.dbs[i].PsInsertExecutedGtid, err = a.dbs[i].Db.PrepareContext(context.Background(), fmt.Sprintf("replace into %v.%v "+
-				"(job_uuid,source_uuid,interval_gtid) "+
-				"values ('%s', ?, ?)",
-				g.DtleSchemaName, g.GtidExecutedTableV3,
-				a.subject))
+				"(job_name,source_uuid,gtid,gtid_set) values ('%s', ?, ?, null)",
+				g.DtleSchemaName, g.GtidExecutedTableV4, a.subject))
 			if err != nil {
 				return err
 			}
@@ -1184,7 +1145,7 @@ func (a *Applier) validateGrants() error {
 				foundSuper = true
 			}
 			if strings.Contains(grant, fmt.Sprintf("GRANT ALL PRIVILEGES ON `%v`.`%v`",
-				g.DtleSchemaName, g.GtidExecutedTableV3)) {
+				g.DtleSchemaName, g.GtidExecutedTableV4)) {
 				foundDBAll = true
 			}
 			if base.StringContainsAll(grant, `ALTER`, `CREATE`, `DELETE`, `DROP`, `INDEX`, `INSERT`, `SELECT`, `TRIGGER`, `UPDATE`, ` ON`) {
@@ -1223,142 +1184,6 @@ func (a *Applier) validateAndReadTimeZone() error {
 	}
 
 	a.logger.Info("mysql.applier: Will use time_zone='%s' on applier", a.mysqlContext.TimeZone)
-	return nil
-}
-func (a *Applier) migrateGtidExecutedV2toV4() error {
-	a.logger.Info(`migrateGtidExecutedV2toV3 starting`)
-
-	var err error
-	var query string
-
-	logErr := func(query string, err error) {
-		a.logger.Error(`migrateGtidExecutedV2toV3 failed. manual intervention might be required. query: %v. err: %v`,
-			query, err)
-	}
-
-	query = fmt.Sprintf("alter table %v.%v rename to %v.%v",
-		g.DtleSchemaName, g.GtidExecutedTableV2, g.DtleSchemaName, g.GtidExecutedTempTable2To3)
-	_, err = a.db.Exec(query)
-	if err != nil {
-		logErr(query, err)
-		return err
-	}
-
-	query = fmt.Sprintf("alter table %v.%v modify column interval_gtid longtext",
-		g.DtleSchemaName, g.GtidExecutedTempTable2To3)
-	_, err = a.db.Exec(query)
-	if err != nil {
-		logErr(query, err)
-		return err
-	}
-
-	query = fmt.Sprintf("alter table %v.%v rename to %v.%v",
-		g.DtleSchemaName, g.GtidExecutedTempTable2To3, g.DtleSchemaName, g.GtidExecutedTableV3)
-	_, err = a.db.Exec(query)
-	if err != nil {
-		logErr(query, err)
-		return err
-	}
-
-	a.logger.Info(`migrateGtidExecutedV2toV3 done`)
-
-	return nil
-}
-//func (a *Applier) migrateGtidExecutedV3toV4() error {
-//	a.logger.Info(`migrateGtidExecutedV3toV4 starting`)
-//
-//	var err error
-//	var query string
-//
-//	logErr := func(query string, err error) {
-//		a.logger.Error(`migrateGtidExecutedV3toV4 failed. manual intervention might be required. query: %v. err: %v`,
-//			query, err)
-//	}
-//
-//	query = fmt.Sprintf("alter table %v.%v rename to %v.%v",
-//		g.DtleSchemaName, g.GtidExecutedTableV2, g.DtleSchemaName, g.GtidExecutedTempTable2To3)
-//	_, err = a.db.Exec(query)
-//	if err != nil {
-//		logErr(query, err)
-//		return err
-//	}
-//
-//	query = fmt.Sprintf("alter table %v.%v modify column interval_gtid longtext",
-//		g.DtleSchemaName, g.GtidExecutedTempTable2To3)
-//	_, err = a.db.Exec(query)
-//	if err != nil {
-//		logErr(query, err)
-//		return err
-//	}
-//
-//	query = fmt.Sprintf("alter table %v.%v rename to %v.%v",
-//		g.DtleSchemaName, g.GtidExecutedTempTable2To3, g.DtleSchemaName, g.GtidExecutedTableV3)
-//	_, err = a.db.Exec(query)
-//	if err != nil {
-//		logErr(query, err)
-//		return err
-//	}
-//
-//	a.logger.Info(`migrateGtidExecutedV2toV3 done`)
-//
-//	return nil
-//}
-func (a *Applier) createTableGtidExecutedV4() error {
-	if result, err := sql.QueryResultData(a.db, fmt.Sprintf("SHOW TABLES FROM %v LIKE '%v%%'",
-		g.DtleSchemaName, g.GtidExecutedTempTablePrefix)); nil == err && len(result) > 0 {
-		return fmt.Errorf("GtidExecutedTempTable exists. require manual intervention")
-	}
-
-	if result, err := sql.QueryResultData(a.db, fmt.Sprintf("SHOW TABLES FROM %v LIKE '%v%%'",
-		g.DtleSchemaName, g.GtidExecutedTablePrefix)); nil == err && len(result) > 0 {
-		if len(result) > 1 {
-			return fmt.Errorf("multiple GtidExecutedTable exists, while at most one is allowed. require manual intervention")
-		} else {
-			if len(result[0]) < 1 {
-				return fmt.Errorf("mysql error: expect 1 column for 'SHOW TABLES' query")
-			}
-			switch result[0][0].String {
-			case g.GtidExecutedTableV2:
-				err = a.migrateGtidExecutedV2toV4()
-				if err != nil {
-					return err
-				}
-			case g.GtidExecutedTableV3:
-				//err = a.migrateGtidExecutedV3toV4()
-				//if err != nil {
-				//	return err
-				//}
-				//return nil
-			case g.GtidExecutedTableV4:
-				return nil
-			default:
-				return fmt.Errorf("newer GtidExecutedTable exists, which is unrecognized by this verion. require manual intervention")
-			}
-		}
-	}
-
-	a.logger.Debug("mysql.applier. after show gtid_executed table")
-
-	query := fmt.Sprintf(`
-			CREATE DATABASE IF NOT EXISTS %v;
-		`, g.DtleSchemaName)
-	if _, err := a.db.Exec(query); err != nil {
-		return err
-	}
-	a.logger.Debug("mysql.applier. after create kafkas schema")
-
-	query = fmt.Sprintf(`
-			CREATE TABLE IF NOT EXISTS %v.%v (
-				job_uuid varchar(%v) NOT NULL,
-				source_uuid binary(16) NOT NULL COMMENT 'uuid of the source where the transaction was originally executed.',
-				interval_gtid longtext NOT NULL COMMENT 'number of interval.'
-			);
-		`, g.DtleSchemaName, g.GtidExecutedTableV3, g.JobNameLenLimit)
-	if _, err := a.db.Exec(query); err != nil {
-		return err
-	}
-	a.logger.Debug("mysql.applier. after create gtid_executed table")
-
 	return nil
 }
 
@@ -1798,6 +1623,7 @@ func (a *Applier) updateGtidString() {
 }
 
 func (a *Applier) onError(state int, err error) {
+	a.logger.Error("applier: error", "err", err)
 	if a.shutdown {
 		return
 	}
