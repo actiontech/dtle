@@ -28,11 +28,5 @@ func ValidateJobName(name string) error {
 	if len(name) > JobNameLenLimit {
 		return fmt.Errorf("job name too long. jobName %v lenLimit %v", name, JobNameLenLimit)
 	}
-	for _, c := range name {
-		switch c {
-		case '\'', '"':
-			return fmt.Errorf("job name contains invalid char %v", c)
-		}
-	}
 	return nil
 }

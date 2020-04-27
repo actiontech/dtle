@@ -1081,14 +1081,15 @@ func (a *Applier) initDBConnections() (err error) {
 		a.logger.Debug("mysql.applier. after createTableGtidExecutedV4")
 
 		for i := range a.dbs {
-			a.dbs[i].PsDeleteExecutedGtid, err = a.dbs[i].Db.PrepareContext(context.Background(), fmt.Sprintf("delete from %v.%v where job_name = '%s' and source_uuid = ?",
-				g.DtleSchemaName, g.GtidExecutedTableV4, a.subject))
+			a.dbs[i].PsDeleteExecutedGtid, err = a.dbs[i].Db.PrepareContext(context.Background(),
+				fmt.Sprintf("delete from %v.%v where job_name = ? and source_uuid = ?",
+				g.DtleSchemaName, g.GtidExecutedTableV4))
 			if err != nil {
 				return err
 			}
-			a.dbs[i].PsInsertExecutedGtid, err = a.dbs[i].Db.PrepareContext(context.Background(), fmt.Sprintf("replace into %v.%v "+
-				"(job_name,source_uuid,gtid,gtid_set) values ('%s', ?, ?, null)",
-				g.DtleSchemaName, g.GtidExecutedTableV4, a.subject))
+			a.dbs[i].PsInsertExecutedGtid, err = a.dbs[i].Db.PrepareContext(context.Background(),
+				fmt.Sprintf("replace into %v.%v (job_name,source_uuid,gtid,gtid_set) values (?, ?, ?, null)",
+				g.DtleSchemaName, g.GtidExecutedTableV4))
 			if err != nil {
 				return err
 			}
@@ -1405,7 +1406,7 @@ func (a *Applier) ApplyBinlogEvent(ctx context.Context, workerIdx int, binlogEnt
 	}
 	span.SetTag("after  transform  binlogEvent to sql  ", time.Now().UnixNano()/1e6)
 	a.logger.Debug("ApplyBinlogEvent. insert gno: %v", binlogEntry.Coordinates.GNO)
-	_, err = dbApplier.PsInsertExecutedGtid.Exec(binlogEntry.Coordinates.SID.Bytes(), binlogEntry.Coordinates.GNO)
+	_, err = dbApplier.PsInsertExecutedGtid.Exec(a.subject, binlogEntry.Coordinates.SID.Bytes(), binlogEntry.Coordinates.GNO)
 	if err != nil {
 		return err
 	}

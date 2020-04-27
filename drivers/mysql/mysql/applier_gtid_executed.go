@@ -2,7 +2,7 @@ package mysql
 
 import (
 	"context"
-	sql2 "database/sql"
+	gosql "database/sql"
 	"fmt"
 	"github.com/actiontech/dtle/drivers/mysql/mysql/base"
 	"github.com/actiontech/dtle/drivers/mysql/mysql/g"
@@ -149,6 +149,14 @@ func (a *Applier) migrateGtidExecutedV3toV4() (err error) {
 }
 
 func (a *Applier) createTableGtidExecutedV4() error {
+	query := fmt.Sprintf(`
+			CREATE DATABASE IF NOT EXISTS %v;
+		`, g.DtleSchemaName)
+	if _, err := a.db.Exec(query); err != nil {
+		return err
+	}
+	a.logger.Debug("mysql.applier. after create dtle schema")
+
 	if result, err := sql.QueryResultData(a.db, fmt.Sprintf("SHOW TABLES FROM %v LIKE '%v%%'",
 		g.DtleSchemaName, g.GtidExecutedTempTablePrefix)); nil == err && len(result) > 0 {
 		return fmt.Errorf("GtidExecutedTempTable exists. require manual intervention")
@@ -188,14 +196,6 @@ func (a *Applier) createTableGtidExecutedV4() error {
 			return fmt.Errorf("newer GtidExecutedTable exists, which is unrecognized by this verion. require manual intervention")
 		}
 	} else {
-		query := fmt.Sprintf(`
-			CREATE DATABASE IF NOT EXISTS %v;
-		`, g.DtleSchemaName)
-		if _, err := a.db.Exec(query); err != nil {
-			return err
-		}
-		a.logger.Debug("mysql.applier. after create gtid schema")
-
 		if _, err := a.db.Exec(createTableGtidExecutedV4Query); err != nil {
 			return err
 		}
@@ -215,7 +215,7 @@ func (a *Applier) cleanGtidExecuted(sid uuid.UUID, intervalStr string) error {
 	// However, consider `binlog_group_commit_sync_delay > 0`,
 	// `begin; delete; insert; commit;` (1 TX) is faster than `insert; delete;` (2 TX)
 	dbApplier := a.dbs[0]
-	tx, err := dbApplier.Db.BeginTx(context.Background(), &sql2.TxOptions{})
+	tx, err := dbApplier.Db.BeginTx(context.Background(), &gosql.TxOptions{})
 	if err != nil {
 		return err
 	}
@@ -228,7 +228,7 @@ func (a *Applier) cleanGtidExecuted(sid uuid.UUID, intervalStr string) error {
 		}
 	}()
 
-	_, err = dbApplier.PsDeleteExecutedGtid.Exec(sid.Bytes())
+	_, err = dbApplier.PsDeleteExecutedGtid.Exec(a.subject, sid.Bytes())
 	if err != nil {
 		return err
 	}
@@ -285,7 +285,7 @@ func SelectAllGtidExecuted(db sql.QueryAble, jid string) (gtidSet base.GtidSet, 
 	for rows.Next() {
 		var sidUUID uuid.UUID
 		var gno int64
-		var gnoSet string
+		var gnoSet gosql.NullString
 		err = rows.Scan(&sidUUID, &gno, &gnoSet)
 
 		if err != nil {
@@ -302,7 +302,7 @@ func SelectAllGtidExecuted(db sql.QueryAble, jid string) (gtidSet base.GtidSet, 
 		}
 		item.NRow += 1
 		if gno == 0 {
-			sep := strings.Split(gnoSet, ":")
+			sep := strings.Split(gnoSet.String, ":")
 			// Handle interval
 			for i := 0; i < len(sep); i++ {
 				if in, err := parseInterval(sep[i]); err != nil {
