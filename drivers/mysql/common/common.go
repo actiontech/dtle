@@ -2,6 +2,8 @@ package common
 
 import (
 	"fmt"
+	mysql2 "github.com/actiontech/dtle/drivers/mysql/mysql/config"
+	"github.com/hashicorp/go-hclog"
 	"github.com/pkg/errors"
 	"github.com/siddontang/go-mysql/mysql"
 	"strconv"
@@ -140,3 +142,26 @@ func (sm *StoreManager) PutNatsWait(jobName string) error {
 	}
 	return sm.consulStore.Put(key, []byte("wait"), nil)
 }
+
+func GetGtidFromConsul(sm *StoreManager, subject string, logger hclog.Logger, mysqlContext *mysql2.MySQLDriverConfig) error {
+	gtid, err := sm.GetGtidForJob(subject)
+	if err != nil {
+		return errors.Wrap(err, "GetGtidForJob")
+	}
+	if gtid != "" {
+		logger.Info("Got gtid from consul", "gtid", gtid)
+		mysqlContext.Gtid = gtid
+	}
+	pos, err := sm.GetBinlogFilePosForJob(subject)
+	if err != nil {
+		return errors.Wrap(err, "GetBinlogFilePosForJob")
+	}
+	if pos.Name != "" {
+		mysqlContext.BinlogFile = pos.Name
+		mysqlContext.BinlogPos = int64(pos.Pos)
+		logger.Info("Got BinlogFile/Pos from consul",
+			"file", mysqlContext.BinlogFile, "pos", mysqlContext.BinlogPos)
+	}
+	return nil
+}
+

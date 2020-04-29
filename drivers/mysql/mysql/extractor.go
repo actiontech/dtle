@@ -192,27 +192,10 @@ func (e *Extractor) Run() {
 	e.mysqlContext.NatsAddr = natsAddr
 	e.logger.Info("got NatsAddr", "addr", natsAddr)
 
-	{
-		gtid, err := e.storeManager.GetGtidForJob(e.subject)
-		if err != nil {
-			e.onError(TaskStateDead, errors.Wrap(err, "GetGtidForJob"))
-			return
-		}
-		if gtid != "" {
-			e.logger.Info("Got gtid from consul", "gtid", gtid)
-			e.mysqlContext.Gtid = gtid
-		}
-		pos, err := e.storeManager.GetBinlogFilePosForJob(e.subject)
-		if err != nil {
-			e.onError(TaskStateDead, errors.Wrap(err, "GetBinlogFilePosForJob"))
-			return
-		}
-		if pos.Name != "" {
-			e.mysqlContext.BinlogFile = pos.Name
-			e.mysqlContext.BinlogPos = int64(pos.Pos)
-			e.logger.Info("Got BinlogFile/Pos from consul",
-				"file", e.mysqlContext.BinlogFile, "pos", e.mysqlContext.BinlogPos)
-		}
+	err = dcommon.GetGtidFromConsul(e.storeManager, e.subject, e.logger, e.mysqlContext)
+	if err != nil {
+		e.onError(TaskStateDead, errors.Wrap(err, "GetGtidFromConsul"))
+		return
 	}
 
 	e.logger.Info("mysql.extractor: Extract binlog events from %s.%d", e.mysqlContext.ConnectionConfig.Host, e.mysqlContext.ConnectionConfig.Port)
@@ -1194,13 +1177,13 @@ func (e *Extractor) publish(ctx context.Context, subject, gtid string, txMsg []b
 
 	// Inject span context into our traceMsg.
 	if err := tracer.Inject(span.Context(), opentracing.Binary, &t); err != nil {
-		e.logger.Debug("mysql.extractor: start tracer fail, got %v", err)
+		e.logger.Debug("mysql.extractor: start tracer fail", "err", err)
 	}
 	// Add the payload.
 	t.Write(txMsg)
 	defer span.Finish()
 	for {
-		e.logger.Debug("mysql.extractor: publish. gtid: %v, msg_len: %v", gtid, len(txMsg))
+		e.logger.Debug("mysql.extractor: publish", "gtid", gtid, "len", len(txMsg))
 		_, err = e.natsConn.Request(subject, t.Bytes(), DefaultConnectWait)
 		if err == nil {
 			if gtid != "" {
@@ -1208,14 +1191,14 @@ func (e *Extractor) publish(ctx context.Context, subject, gtid string, txMsg []b
 			}
 			break
 		} else if err == gonats.ErrTimeout {
-			e.logger.Debug("mysql.extractor: publish timeout, got %v", err)
+			e.logger.Debug("mysql.extractor: publish timeout", "err", err)
 			continue
 		} else {
-			e.logger.Error("mysql.extractor: unexpected error on publish, got %v", err)
+			e.logger.Error("mysql.extractor: unexpected error on publish", "err", err)
 			break
 		}
 		// there's an error. Let's try again.
-		e.logger.Debug(fmt.Sprintf("mysql.extractor: there's an error [%v]. Let's try again", err))
+		e.logger.Debug(fmt.Sprintf("mysql.extractor: there's an error. Let's try again", "err", err))
 		time.Sleep(1 * time.Second)
 	}
 	return err
