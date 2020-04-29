@@ -311,7 +311,7 @@ func (d *Driver) SetupApiServer(logger hclog.Logger) (err error)  {
 	/*router.POST("/v1/job/renewal",updupJob)
 	router.POST("/v1/job/info",updupJob)
 	*/
-	http.ListenAndServe(d.config.HostIp+d.config.ApiPort, router)
+	http.ListenAndServe(d.config.HostIp+":"+d.config.ApiPort, router)
 	logger.Info("Setup api server success v%",d.config.HostIp+d.config.ApiPort)
 
 	d.apiServer = router
