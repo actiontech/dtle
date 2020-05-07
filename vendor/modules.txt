@@ -12,7 +12,7 @@ github.com/StackExchange/wmi
 github.com/araddon/dateparse
 # github.com/araddon/gou v0.0.0-20180803232539-d7d8174cb8b3
 github.com/araddon/gou
-# github.com/araddon/qlbridge v0.0.0-20190614144613-77bcb31a8923 => github.com/ffffwh/qlbridge v0.0.0-20181026023605-fc2d5205
+# github.com/araddon/qlbridge v0.0.0-20190614144613-77bcb31a8923 => github.com/ffffwh/qlbridge v0.0.0-20181026023605-fc2d5205dad3
 github.com/araddon/qlbridge/datasource
 github.com/araddon/qlbridge/expr
 github.com/araddon/qlbridge/vm
@@ -456,7 +456,7 @@ github.com/siddontang/go/sync2
 # github.com/siddontang/go-log v0.0.0-20180807004314-8d05993dda07
 github.com/siddontang/go-log/log
 github.com/siddontang/go-log/loggers
-# github.com/siddontang/go-mysql v0.0.0-20190808080311-dd15a3c6 => github.com/ffffwh/go-mysql v0.0.0-20190808080311-dd15a3c6
+# github.com/siddontang/go-mysql v0.0.0-20190808080311-dd15a3c6 => github.com/ffffwh/go-mysql v0.0.0-20190808080613-dd15a3c6b925
 github.com/siddontang/go-mysql/mysql
 github.com/siddontang/go-mysql/replication
 github.com/siddontang/go-mysql/client
