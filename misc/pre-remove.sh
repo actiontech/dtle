@@ -1,8 +1,12 @@
 #!/bin/bash
 
 function disable_systemd {
-    systemctl disable dtle
-    rm -f /lib/systemd/system/dtle.service
+    systemctl stop consul
+    systemctl stop nomad
+    systemctl disable consul
+    systemctl disable nomad
+    rm -f /lib/systemd/system/consul.service
+    rm -f /lib/systemd/system/nomad.service
 }
 
 function disable_update_rcd {
@@ -18,7 +22,6 @@ function disable_chkconfig {
 if [[ "$1" == "0" ]]; then
     # RHEL and any distribution that follow RHEL, Amazon Linux covered
     # dtle is no longer installed, remove from init system
-    rm -f /etc/default/dtle
 
     which systemctl &>/dev/null
     if [[ $? -eq 0 ]]; then
@@ -27,16 +30,18 @@ if [[ "$1" == "0" ]]; then
         # Assuming sysv
         disable_chkconfig
     fi
-elif [ "$1" == "remove" -o "$1" == "purge" ]; then
+elif [[ -f /etc/debian_version ]]; then
     # Debian/Ubuntu logic
     # Remove/purge
-    rm -f /etc/default/dtle
 
     which systemctl &>/dev/null
     if [[ $? -eq 0 ]]; then
+      	deb-systemd-invoke stop nomad.service
+	      deb-systemd-invoke stop consul.service
         disable_systemd
     else
         # Assuming sysv
+      	invoke-rc.d dtle stop
         disable_update_rcd
     fi
 fi

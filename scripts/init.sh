@@ -20,8 +20,6 @@
 # In the third case we have to define our own functions which are very dumb
 # and expect the args to be positioned correctly.
 
-# Command-line options that can be set in /etc/default/dtle.  These will override
-# any config file values.
 DTLE_OPTS=
 
 USER=dtle
@@ -29,12 +27,6 @@ GROUP=dtle
 
 if [ -r /lib/lsb/init-functions ]; then
     source /lib/lsb/init-functions
-fi
-
-DEFAULT=/etc/default/dtle
-
-if [ -r $DEFAULT ]; then
-    source $DEFAULT
 fi
 
 if [ -z "$STDOUT" ]; then

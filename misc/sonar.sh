@@ -8,7 +8,7 @@
 set -e
 set -u
 
-if [ ! -f Gopkg.toml ]; then
+if [ ! -f go.mod ]; then
     echo "This script must be run under project root."
     exit 1
 fi

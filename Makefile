@@ -41,8 +41,10 @@ coverage-report-post-build:
 
 package-common: driver
 	rm -rf dist/install
-	mkdir -p dist/install/usr/share/nomad-plugins
-	cp dist/mysql dist/install/usr/share/nomad-plugins
+	mkdir -p dist/install/usr/share/dtle/nomad-plugin
+	cp -R dist/mysql dist/install/usr/share/dtle/nomad-plugin
+	cp -R scripts dist/install/usr/share/dtle/
+	cp -R etc dist/install/
 
 # run package script
 package-plugin-only: package-common
@@ -50,11 +52,16 @@ package-plugin-only: package-common
 	cd dist && md5sum $(PROJECT_NAME)-$(VERSION).x86_64.rpm > $(PROJECT_NAME)-$(VERSION).x86_64.rpm.md5
 
 package: package-common
-	curl -o dist/nomad.zip "https://releases.hashicorp.com/nomad/0.11.1/nomad_0.11.1_linux_amd64.zip"
-	curl -o dist/consul.zip "https://releases.hashicorp.com/consul/1.7.2/consul_1.7.2_linux_amd64.zip"
+	mkdir -p dist/install/usr/bin
+	curl -o dist/nomad.zip "ftp://ftp:ftp@10.186.18.20/binary/nomad_0.11.1_linux_amd64.zip"
+	curl -o dist/consul.zip "ftp://ftp:ftp@10.186.18.20/binary/consul_1.7.2_linux_amd64.zip"
 	mkdir -p dist/install/usr/bin
 	cd dist/install/usr/bin && unzip ../../../nomad.zip && unzip ../../../consul.zip
-	cd dist && fpm --force -s dir -t rpm -n $(PROJECT_NAME) -v $(VERSION) -C install
+	cd dist && fpm --force -s dir -t rpm -n $(PROJECT_NAME) -v $(VERSION) -C install \
+      --before-install ../misc/pre-install.sh \
+      --after-install ../misc/post-install.sh \
+      --before-remove ../misc/pre-remove.sh \
+      --after-remove ../misc/post-remove.sh
 	cd dist && md5sum $(PROJECT_NAME)-$(VERSION).x86_64.rpm > $(PROJECT_NAME)-$(VERSION).x86_64.rpm.md5
 
 vet:
