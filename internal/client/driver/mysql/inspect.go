@@ -139,9 +139,9 @@ func (i *Inspector) ValidateOriginalTable(databaseName, tableName string, table 
 	}
 	// endregion
 
-	if err := i.validateTableTriggers(databaseName, tableName); err != nil {
+	/*if err := i.validateTableTriggers(databaseName, tableName); err != nil {
 		return err
-	}
+	}*/
 
 	// region validate 'where'
 	_, err = uconf.NewWhereCtx(table.Where, table)
