@@ -311,7 +311,13 @@ func (d *Driver) SetupApiServer(logger hclog.Logger) (err error)  {
 	/*router.POST("/v1/job/renewal",updupJob)
 	router.POST("/v1/job/info",updupJob)
 	*/
-	http.ListenAndServe(d.config.HostIp+":"+d.config.ApiPort, router)
+	go func() {
+		err := http.ListenAndServe(d.config.HostIp+":"+d.config.ApiPort, router)
+		if err != nil {
+			logger.Error("in SetupApiServer ListenAndServe", "err", err)
+			// TODO mark plugin unhealthy
+		}
+	}()
 	logger.Info("Setup api server success v%",d.config.HostIp+d.config.ApiPort)
 
 	d.apiServer = router
