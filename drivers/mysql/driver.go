@@ -134,8 +134,6 @@ var (
 		"SkipPrivilegeCheck":hclspec.NewAttr("SkipPrivilegeCheck", "bool", false),
 		"SkipIncrementalCopy":hclspec.NewAttr("SkipIncrementalCopy", "bool", false),
 		"ApproveHeterogeneous":hclspec.NewAttr("ApproveHeterogeneous", "bool", false),
-		// TODO remove
-		"Type":       hclspec.NewAttr("Type", "string", true),
 		"ConnectionConfig": hclspec.NewBlock("ConnectionConfig", true, hclspec.NewObject(map[string]*hclspec.Spec{
 			"Host": hclspec.NewAttr("Host", "string", true),
 			"Port": hclspec.NewAttr("Port", "number", true),
@@ -236,7 +234,6 @@ type DtleTaskConfig struct {
 	SkipCreateDbTable    bool`codec:"SkipCreateDbTable"`
 	SkipPrivilegeCheck  bool`codec:"SkipPrivilegeCheck"`
 	SkipIncrementalCopy bool`codec:"SkipIncrementalCopy"`
-	Type      string   `codec:"Type"`
 	ConnectionConfig *config.ConnectionConfig `codec:"ConnectionConfig"`
 }
 
