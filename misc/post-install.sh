@@ -1,22 +1,17 @@
 #!/bin/bash
 
-BIN_DIR=/usr/bin
 SCRIPT_DIR=/usr/share/dtle/scripts
-CONFIG_DIR=/etc/dtle
 
 function install_init {
     echo "TODO"; false
-    sed -i 's|'daemon=$BIN_DIR'|'daemon=$RPM_INSTALL_PREFIX$BIN_DIR'|g' $RPM_INSTALL_PREFIX$SCRIPT_DIR/init.sh
-    sed -i 's|'config=$CONFIG_DIR'|'config=$RPM_INSTALL_PREFIX$CONFIG_DIR'|g' $RPM_INSTALL_PREFIX$SCRIPT_DIR/init.sh
+    sed -i 's|INSTALL_PREFIX_MAGIC|'$RPM_INSTALL_PREFIX'|g' $RPM_INSTALL_PREFIX$SCRIPT_DIR/init.sh
     cp -f $RPM_INSTALL_PREFIX$SCRIPT_DIR/init.sh /etc/init.d/dtle
     chmod +x /etc/init.d/dtle
 }
 
 function install_systemd {
-    sed -i 's|'ExecStart=$BIN_DIR'|'ExecStart=$RPM_INSTALL_PREFIX$BIN_DIR'|g' $RPM_INSTALL_PREFIX$SCRIPT_DIR/consul.service
-    sed -i 's|'ExecStart=$BIN_DIR'|'ExecStart=$RPM_INSTALL_PREFIX$BIN_DIR'|g' $RPM_INSTALL_PREFIX$SCRIPT_DIR/nomad.service
-    sed -i 's|'-config\ $CONFIG_DIR'|'-config\ $RPM_INSTALL_PREFIX$CONFIG_DIR'|g' $RPM_INSTALL_PREFIX$SCRIPT_DIR/consul.service
-    sed -i 's|'-config\ $CONFIG_DIR'|'-config\ $RPM_INSTALL_PREFIX$CONFIG_DIR'|g' $RPM_INSTALL_PREFIX$SCRIPT_DIR/nomad.service
+    sed -i 's|INSTALL_PREFIX_MAGIC|'$RPM_INSTALL_PREFIX'|g' $RPM_INSTALL_PREFIX$SCRIPT_DIR/consul.service
+    sed -i 's|INSTALL_PREFIX_MAGIC|'$RPM_INSTALL_PREFIX'|g' $RPM_INSTALL_PREFIX$SCRIPT_DIR/nomad.service
     cp -f $RPM_INSTALL_PREFIX$SCRIPT_DIR/consul.service /lib/systemd/system/
     cp -f $RPM_INSTALL_PREFIX$SCRIPT_DIR/nomad.service /lib/systemd/system/
     systemctl enable consul || true
@@ -40,7 +35,7 @@ if [[ $? -ne 0 ]]; then
 fi
 #CAP
 # see `man capabilities`
-#setcap CAP_DAC_OVERRIDE,CAP_SETUID,CAP_SETGID=+eip $RPM_INSTALL_PREFIX$BIN_DIR/dtle
+#setcap CAP_DAC_OVERRIDE,CAP_SETUID,CAP_SETGID=+eip $RPM_INSTALL_PREFIX/usr/bin/dtle
 
 # Remove legacy symlink, if it exists
 if [[ -L /etc/init.d/dtle ]]; then
@@ -54,6 +49,8 @@ fi
 mkdir -p /var/lib/nomad
 mkdir -p /var/lib/consul
 mkdir -p /var/log/nomad
+
+sed -i 's|INSTALL_PREFIX_MAGIC|'$RPM_INSTALL_PREFIX'|g' $RPM_INSTALL_PREFIX/etc/nomad/*.hcl
 
 # Distribution-specific logic
 if [[ -f /etc/redhat-release ]]; then

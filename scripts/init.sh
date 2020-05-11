@@ -89,7 +89,7 @@ function log_success_msg() {
 name=dtle
 
 # Daemon name, where is the actual executable
-daemon=/usr/bin/dtle
+daemon=INSTALL_PREFIX_MAGIC/usr/bin/dtle
 
 # pid file for the daemon
 pidfile=/var/run/dtle/dtle.pid
@@ -101,7 +101,7 @@ if [ ! -d "$piddir" ]; then
 fi
 
 # Configuration file
-config=/etc/dtle/dtle.conf
+config=INSTALL_PREFIX_MAGIC/etc/dtle/dtle.conf
 
 # If the daemon is not there, then exit.
 [ -x $daemon ] || exit 5

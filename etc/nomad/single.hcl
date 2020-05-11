@@ -1,7 +1,7 @@
 name = "nomad0" # rename for each node
 datacenter = "dc1"
 data_dir  = "/var/lib/nomad"
-plugin_dir = "/usr/share/dtle/nomad-plugin"
+plugin_dir = "INSTALL_PREFIX_MAGIC/usr/share/dtle/nomad-plugin"
 bind_addr = "0.0.0.0"
 
 disable_update_check = true
@@ -45,4 +45,4 @@ consul {
 }
 
 log_level = "Info"
-log_file = "/var/log/nomad/"
+log_file = "INSTALL_PREFIX_MAGIC/var/log/nomad/"

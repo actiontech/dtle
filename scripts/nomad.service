@@ -4,7 +4,7 @@ Documentation=https://www.nomadproject.io/docs/agent/
 After=network.target
 
 [Service]
-ExecStart=/usr/bin/nomad agent -config /etc/nomad/single.hcl
+ExecStart=INSTALL_PREFIX_MAGIC/usr/bin/nomad agent -config INSTALL_PREFIX_MAGIC/etc/nomad/single.hcl
 
 [Install]
 WantedBy=multi-user.target
