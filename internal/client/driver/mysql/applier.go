@@ -50,6 +50,7 @@ import (
 	"github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
 	"github.com/pingcap/tidb/types"
+	"runtime"
 )
 
 const (
@@ -923,7 +924,7 @@ func (a *Applier) initiateStreaming() error {
 	if err != nil {
 		return err
 	}
-
+	var bigEntries binlog.BinlogEntries
 	if a.mysqlContext.ApproveHeterogeneous {
 		_, err := a.natsConn.Subscribe(fmt.Sprintf("%s_incr_hete", a.subject), func(m *gonats.Msg) {
 			var binlogEntries binlog.BinlogEntries
@@ -942,9 +943,30 @@ func (a *Applier) initiateStreaming() error {
 			}
 
 			nEntries := len(binlogEntries.Entries)
-
 			handled := false
+			if binlogEntries.BigTx{
+				if binlogEntries.TxNum==1{
+					bigEntries = binlogEntries
+				}else{
+					bigEntries.Entries[0].Events=append(bigEntries.Entries[0].Events,  binlogEntries.Entries[0].Events... )
+					bigEntries.TxNum = binlogEntries.TxNum
+					binlogEntries.Entries=nil
+					runtime.GC()
+				}
+				if binlogEntries.TxNum==binlogEntries.TxLen{
+					binlogEntries = bigEntries
+					bigEntries.Entries = nil
+					runtime.GC()
+				}
+			}
 			for i := 0; !handled && (i < DefaultConnectWaitSecond/2); i++ {
+				if binlogEntries.BigTx&&binlogEntries.TxNum<binlogEntries.TxLen{
+					handled = true
+					if err := a.natsConn.Publish(m.Reply, nil); err != nil {
+						a.onError(TaskStateDead, err)
+					}
+					continue
+				}
 				vacancy := cap(a.applyDataEntryQueue) - len(a.applyDataEntryQueue)
 				a.logger.Debugf("applier. incr. nEntries: %v, vacancy: %v", nEntries, vacancy)
 				if vacancy < nEntries {
@@ -977,7 +999,6 @@ func (a *Applier) initiateStreaming() error {
 		if err != nil {
 			return err
 		}
-
 		go a.heterogeneousReplay()
 	} else {
 		_, err := a.natsConn.Subscribe(fmt.Sprintf("%s_incr", a.subject), func(m *gonats.Msg) {

@@ -15,6 +15,9 @@ import (
 
 type BinlogEntries struct {
 	Entries []*BinlogEntry
+	BigTx  bool
+	TxNum int
+	TxLen int
 }
 
 // BinlogEntry describes an entry in the binary log
