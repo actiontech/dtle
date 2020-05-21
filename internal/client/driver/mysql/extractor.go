@@ -59,6 +59,7 @@ const (
 	// DefaultConnectWait is the default timeout used for the connect operation
 	DefaultConnectWaitSecond      = 10
 	DefaultConnectWait            = DefaultConnectWaitSecond * time.Second
+	DefaultBigTX            = 1024*1024*100
 	ReconnectStreamerSleepSeconds = 5
 	SCHEMAS                       = "schemas"
 	SCHEMA                        = "schema"
@@ -296,9 +297,9 @@ func (e *Extractor) Run() {
 			return
 		}
 		dumpMsg, err := Encode(&dumpStatResult{
-			Gtid:       e.initialBinlogCoordinates.GtidSet,
-			LogFile:    e.initialBinlogCoordinates.LogFile,
-			LogPos:     e.initialBinlogCoordinates.LogPos,
+			Gtid: e.initialBinlogCoordinates.GtidSet,
+			LogFile: e.initialBinlogCoordinates.LogFile,
+			LogPos: e.initialBinlogCoordinates.LogPos,
 			TotalCount: e.mysqlContext.RowsEstimate,
 		})
 		if err != nil {
@@ -946,8 +947,8 @@ func (e *Extractor) StreamEvents() error {
 						}
 						for _, ip := range addrs {
 							rip := ip.(*net.IPNet).IP.String()
-							e.logger.Debugf("mysql.extractor: self ip is  : %v,natsips is : %v", rip, natsips[0])
-							if rip == natsips[0] && entriesSize > int(v.Available/16) {
+							e.logger.Debugf("mysql.extractor: entriesSize is  : %v,free memory is : %v ",entriesSize,v.Available)
+							if rip == natsips[0] && entriesSize > int(v.Available/4) {
 								err = errors.Errorf("Too much entriesSize , not enough memory ")
 								break
 							}
@@ -960,7 +961,19 @@ func (e *Extractor) StreamEvents() error {
 					if entriesSize >= e.mysqlContext.GroupMaxSize ||
 						int64(len(entries.Entries)) == e.mysqlContext.ReplChanBufferSize {
 						e.logger.Debugf("extractor. incr. send by GroupLimit. entriesSize: %v , groupMaxSize: %v,Entries.len: %v", entriesSize, e.mysqlContext.GroupMaxSize, len(entries.Entries))
-						err = sendEntries()
+						if entriesSize>DefaultBigTX {
+							bigEntrises:=splitEntries(entries,entriesSize)
+							entries.Entries=nil
+							e.logger.Debugf("extractor. incr. bing tx  section  : %v ", len(bigEntrises))
+							for  _,entity:=range bigEntrises{
+								entries = entity
+								entriesSize = DefaultBigTX
+								err = sendEntries()
+							}
+						}else{
+							err = sendEntries()
+						}
+
 						if !timer.Stop() {
 							<-timer.C
 						}
@@ -1131,6 +1144,36 @@ func (e *Extractor) StreamEvents() error {
 	}
 
 	return nil
+}
+
+func splitEntries(entries binlog.BinlogEntries,entriseSize int) (entris []binlog.BinlogEntries){
+	clientLen:=math.Ceil(float64(entriseSize)/DefaultBigTX)
+	clientNum := math.Ceil(float64(len(entries.Entries[0].Events))/clientLen)
+	for i:=1; i <= int(clientLen);i++{
+		var after int
+		if i==int(clientLen){
+			after=len(entries.Entries[0].Events)
+		}else{
+			after=i*int(clientNum)
+		}
+		entry := &binlog.BinlogEntry{
+			 OriginalSize :entries.Entries[0].OriginalSize,
+			 SpanContext: entries.Entries[0].SpanContext,
+			 Coordinates:entries.Entries[0].Coordinates,
+	 		 Events:entries.Entries[0].Events[(i-1)*int(clientNum):after],
+		 }
+		var entrys  []*binlog.BinlogEntry
+		entrys = append(entrys,entry )
+		newEntries := binlog.BinlogEntries{
+		    Entries:entrys,
+		    BigTx:true,
+		    TxNum:i,
+		    TxLen:int(clientLen),
+		}
+		entris=append(entris,newEntries )
+	}
+
+	return entris
 }
 
 // retryOperation attempts up to `count` attempts at running given function,
