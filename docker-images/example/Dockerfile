@@ -16,8 +16,10 @@ RUN groupadd -r dtle -g 1001 && useradd -u 1001 -r -g dtle -m -d $DTLE_HOME -s /
 #
 # Download Dtle and Install
 #
-RUN curl -fSL -O -u ftp:ftp ftp://10.186.18.20/actiontech-dtle/qa/$DTLE_VERSION/dtle-$DTLE_VERSION-qa.x86_64.rpm && \
-    rpm -ivh dtle-$DTLE_VERSION-qa.x86_64.rpm && \
+RUN yum install -y iproute && \
+    yum clean all && \
+    curl -fSL -O -u ftp:ftp ftp://10.186.18.20/actiontech-dtle/qa/$DTLE_VERSION/dtle-$DTLE_VERSION-qa.x86_64.rpm && \
+    rpm -ivh --prefix=/dtle dtle-$DTLE_VERSION-qa.x86_64.rpm && \
     rm dtle-$DTLE_VERSION-qa.x86_64.rpm
 
 #
@@ -33,9 +35,10 @@ WORKDIR $DTLE_HOME
 #
 # Expose the ports and set up volumes for the data and logs directories
 #
+EXPOSE 4646
 EXPOSE 8190
 VOLUME ["/dtle"]
 
-COPY ./dtle.conf /etc/dtle/
+COPY ./nomad-docker.hcl /dtle/etc/nomad/
 
-CMD ["/usr/bin/dtle", "server", "--config", "/etc/dtle/dtle.conf"]
+CMD ["/dtle/usr/bin/nomad", "agent", "-config", "/dtle/etc/nomad/nomad-docker.hcl"]

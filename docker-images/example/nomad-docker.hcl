@@ -1,7 +1,7 @@
 name = "nomad0" # rename for each node
 datacenter = "dc1"
-data_dir  = "INSTALL_PREFIX_MAGIC/var/lib/nomad"
-plugin_dir = "INSTALL_PREFIX_MAGIC/usr/share/dtle/nomad-plugin"
+data_dir  = "/dtle/var/lib/nomad"
+plugin_dir = "/dtle/usr/share/dtle/nomad-plugin"
 bind_addr = "0.0.0.0"
 
 disable_update_check = true
@@ -40,15 +40,15 @@ plugin "dtle" {
   config {
     NatsBind = "127.0.0.1:8193"
     NatsAdvertise = "127.0.0.1:8193"
-    consul = ["127.0.0.1:8500"]
+    consul = ["dtle-consul:8500"]
     ApiAddr = "127.0.0.1:8190"   # for compatibility API
     NomadAddr = "127.0.0.1:4646" # compatibility API need to access a nomad server
   }
 }
 
 consul {
-  address = "127.0.0.1:8500"
+  address = "dtle-consul:8500"
 }
 
 log_level = "Info"
-log_file = "INSTALL_PREFIX_MAGIC/var/log/nomad/"
+log_file = "/dtle/var/log/nomad/"
