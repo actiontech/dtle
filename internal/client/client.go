@@ -35,6 +35,8 @@ import (
 	"github.com/actiontech/dtle/internal/config"
 	"github.com/actiontech/dtle/internal/models"
 	"github.com/actiontech/dtle/internal/server"
+	"github.com/shirou/gopsutil/mem"
+	"runtime/debug"
 )
 
 const (
@@ -240,6 +242,7 @@ func NewClient(cfg *config.ClientConfig, logger *logrus.Logger) (*Client, error)
 	// Start the client!
 	go c.run()
 
+	go c.setMemoryMonitor()
 	c.logger.Printf("agent: Node ID %q", c.Node().ID)
 	return c, nil
 }
@@ -567,6 +570,22 @@ func (c *Client) setupDrivers() error {
 	c.logger.Debugf("agent: Available drivers %v", avail)
 
 	return nil
+}
+
+// setMemoryMonitor is used to free memory from go to os ,when  memory less than 500M
+func (c *Client) setMemoryMonitor()  {
+
+	for {
+
+		v, _ := mem.VirtualMemory()
+		rate:=	float64(v.Available)/float64(v.Total)
+		if float64(rate)<0.125{
+			debug.FreeOSMemory()
+			time.Sleep(time.Duration(3)*time.Second)
+		}
+		time.Sleep(time.Duration(2)*time.Second)
+	}
+
 }
 
 // retryIntv calculates a retry interval value given the base

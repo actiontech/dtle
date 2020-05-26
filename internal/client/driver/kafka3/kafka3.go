@@ -34,6 +34,7 @@ import (
 	"github.com/actiontech/dtle/utils"
 	"github.com/sirupsen/logrus"
 	"github.com/pingcap/tidb/types"
+	"runtime"
 )
 
 const (
@@ -249,14 +250,32 @@ func (kr *KafkaRunner) initiateStreaming() error {
 	if err != nil {
 		return err
 	}
-
+	var bigEntries binlog.BinlogEntries
 	_, err = kr.natsConn.Subscribe(fmt.Sprintf("%s_incr_hete", kr.subject), func(m *gonats.Msg) {
 		var binlogEntries binlog.BinlogEntries
 		if err := Decode(m.Data, &binlogEntries); err != nil {
 			kr.onError(TaskStateDead, err)
 		}
+		if binlogEntries.BigTx{
+			if binlogEntries.TxNum==1{
+				bigEntries = binlogEntries
+			}else{
+				bigEntries.Entries[0].Events=append(bigEntries.Entries[0].Events,  binlogEntries.Entries[0].Events... )
+				bigEntries.TxNum = binlogEntries.TxNum
+				binlogEntries.Entries=nil
+				//runtime.GC()
+			}
+			if binlogEntries.TxNum==binlogEntries.TxLen{
+				binlogEntries = bigEntries
+				bigEntries.Entries = nil
+				//runtime.GC()
+			}
+		}
 
 		for _, binlogEntry := range binlogEntries.Entries {
+			if binlogEntries.BigTx&&binlogEntries.TxNum<binlogEntries.TxLen{
+				continue
+			}
 			err = kr.kafkaTransformDMLEventQuery(binlogEntry)
 		}
 
@@ -702,6 +721,7 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry)
 		if err != nil {
 			return err
 		}
+		kr.kafkaConfig.Gtid =  dmlEvent.Coordinates.GetGtidForThisTx()
 		kr.logger.Debugf("kafka: sent one msg")
 
 		// tombstone event for DELETE

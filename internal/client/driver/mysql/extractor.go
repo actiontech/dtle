@@ -54,9 +54,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/pingcap/tidb/types"
 	_ "net/http/pprof"
-	"net/http"
-	"runtime"
-)
+		)
 
 const (
 	// DefaultConnectWait is the default timeout used for the connect operation
@@ -186,9 +184,9 @@ func (e *Extractor) retryOperation(operation func() error, notFatalHint ...bool)
 func (e *Extractor) Run() {
 	e.logger.Printf("mysql.extractor: Extract binlog events from %s.%d", e.mysqlContext.ConnectionConfig.Host, e.mysqlContext.ConnectionConfig.Port)
 	e.mysqlContext.StartTime = time.Now()
-	go func() {
+	/*go func() {
 		http.ListenAndServe("0.0.0.0:8899", nil)
-	}()
+	}()*/
 	// Validate job arguments
 	{
 		if e.mysqlContext.SkipCreateDbTable && e.mysqlContext.DropTableIfExists {
@@ -913,8 +911,10 @@ func (e *Extractor) StreamEvents() error {
 				e.logger.Debugf("mysql.extractor: send acked gno: %v, n: %v", gno, len(entries.Entries))
 
 				entries.Entries = nil
+				entries.TxLen=0
+				entries.BigTx =false
+				entries.TxNum=0
 				entriesSize = 0
-				runtime.GC()
 				return nil
 			}
 
@@ -963,11 +963,11 @@ func (e *Extractor) StreamEvents() error {
 						if entriesSize>DefaultBigTX {
 							bigEntrises:=splitEntries(entries,entriesSize)
 							entries.Entries=nil
-							runtime.GC()
-							e.logger.Debugf("extractor. incr. bing tx  section  : %v ", len(bigEntrises))
-							for  _,entity:=range bigEntrises{
+							e.logger.Debugf("extractor. incr. big tx  section  : %v ", len(bigEntrises))
+							for  i,entity:=range bigEntrises{
 								entries = entity
 								entriesSize = DefaultBigTX
+								e.logger.Debugf("extractor. incr. send  big tx  fragment : %v ", i)
 								err = sendEntries()
 							}
 						}else{
@@ -1208,6 +1208,7 @@ func (e *Extractor) publish(ctx context.Context, subject, gtid string, txMsg []b
 			if gtid != "" {
 				e.mysqlContext.Gtid = gtid
 			}
+			txMsg=nil
 			break
 		} else if err == gonats.ErrTimeout {
 		e.logger.Debugf("mysql.extractor: publish timeout, got %v", err)
