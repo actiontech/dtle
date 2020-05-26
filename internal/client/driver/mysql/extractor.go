@@ -68,7 +68,7 @@ const (
 )
 
 // Extractor is the main schema extract flow manager.
-type Extractor struct {
+ type Extractor struct {
 	execCtx      *common.ExecContext
 	logger       *logrus.Entry
 	subject      string
@@ -879,7 +879,8 @@ func GobEncode(v interface{}) ([]byte, error) {
 func Encode(v interface{}) ([]byte, error) {
 	gob.Register(types.BinaryLiteral{})
 	b := new(bytes.Buffer)
-	if err := gob.NewEncoder(b).Encode(v); err != nil {
+	enc :=  gob.NewEncoder(b)
+	if err :=enc.Encode(v); err != nil {
 		return nil, err
 	}
 	return snappy.Encode(nil, b.Bytes()), nil
@@ -902,18 +903,22 @@ func (e *Extractor) StreamEvents() error {
 				if len(entries.Entries) > 0 {
 					gno = entries.Entries[0].Coordinates.GNO
 				}
+					txMsg, err := Encode(entries)
+					if err != nil {
+						return err
+					}
+					e.logger.Debugf("mysql.extractor: sending gno: %v, n: %v", gno, len(entries.Entries))
+					if err = e.publish(ctx, fmt.Sprintf("%s_incr_hete", e.subject), "", txMsg); err != nil {
+						return err
+					}
 
-				txMsg, err := Encode(entries)
-				if err != nil {
-					return err
-				}
-				e.logger.Debugf("mysql.extractor: sending gno: %v, n: %v", gno, len(entries.Entries))
-				if err = e.publish(ctx, fmt.Sprintf("%s_incr_hete", e.subject), "", txMsg); err != nil {
-					return err
-				}
+
 				e.logger.Debugf("mysql.extractor: send acked gno: %v, n: %v", gno, len(entries.Entries))
 
 				entries.Entries = nil
+				entries.TxLen=0
+				entries.BigTx =false
+				entries.TxNum=0
 				entriesSize = 0
 
 				return nil
@@ -965,9 +970,10 @@ func (e *Extractor) StreamEvents() error {
 							bigEntrises:=splitEntries(entries,entriesSize)
 							entries.Entries=nil
 							e.logger.Debugf("extractor. incr. bing tx  section  : %v ", len(bigEntrises))
-							for  _,entity:=range bigEntrises{
+							for  i,entity:=range bigEntrises{
 								entries = entity
 								entriesSize = DefaultBigTX
+								e.logger.Debugf("extractor. incr. send  big tx  fragment : %v ", i)
 								err = sendEntries()
 							}
 						}else{
@@ -1203,14 +1209,15 @@ func (e *Extractor) publish(ctx context.Context, subject, gtid string, txMsg []b
 	defer span.Finish()
 	for {
 		e.logger.Debugf("mysql.extractor: publish. gtid: %v, msg_len: %v", gtid, len(txMsg))
-		_, err = e.natsConn.Request(subject, t.Bytes(), DefaultConnectWait)
+	_, err = e.natsConn.Request(subject, t.Bytes(), DefaultConnectWait)
 		if err == nil {
 			if gtid != "" {
 				e.mysqlContext.Gtid = gtid
 			}
+			txMsg=nil
 			break
 		} else if err == gonats.ErrTimeout {
-			e.logger.Debugf("mysql.extractor: publish timeout, got %v", err)
+		e.logger.Debugf("mysql.extractor: publish timeout, got %v", err)
 			continue
 		} else {
 			e.logger.Errorf("mysql.extractor: unexpected error on publish, got %v", err)
