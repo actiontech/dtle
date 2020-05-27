@@ -5,13 +5,14 @@ import (
 	"fmt"
 	dcommon "github.com/actiontech/dtle/drivers/mysql/common"
 	"github.com/actiontech/dtle/drivers/mysql/g"
+	"github.com/actiontech/dtle/drivers/mysql/kafka3"
 	"github.com/pkg/errors"
 	"runtime"
 	"time"
 
 	config "github.com/actiontech/dtle/drivers/mysql/mysql/config"
-	"github.com/hashicorp/go-hclog"
 	"github.com/actiontech/dtle/drivers/mysql/route"
+	"github.com/hashicorp/go-hclog"
 	//	"github.com/actiontech/dtle/drivers/mysql/mysql"
 	"github.com/hashicorp/nomad/drivers/shared/eventer"
 	"github.com/hashicorp/nomad/helper/pluginutils/loader"
@@ -141,6 +142,13 @@ var (
 			"Password": hclspec.NewAttr("Password", "string", true),
 			"Charset": hclspec.NewAttr("Charset", "string", false),
 		})),
+		"KafkaConfig": hclspec.NewBlock("KafkaConfig", false, hclspec.NewObject(map[string]*hclspec.Spec{
+			"Topic": hclspec.NewAttr("Topic", "string", true),
+			"Brokers": hclspec.NewAttr("Brokers", "list(string)", true),
+			"Converter": hclspec.NewDefault(hclspec.NewAttr("Converter", "string", false),
+				hclspec.NewLiteral(`"json"`)),
+			"NatsAddr": hclspec.NewAttr("NatsAddr", "string", false),
+		})),
 	})
 
 	// capabilities is returned by the Capabilities RPC and indicates what
@@ -228,14 +236,15 @@ type DtleTaskConfig struct {
 	SystemVariables   map[string]string`codec:"SystemVariables"`
 	HasSuperPrivilege bool`codec:"HasSuperPrivilege"`
 
-	SqlMode           string`codec:"SqlMode"`
-	MySQLVersion      string`codec:"MySQLVersion"`
-	ApproveHeterogeneous bool`codec:"ApproveHeterogeneous"`
-	SkipCreateDbTable    bool`codec:"SkipCreateDbTable"`
-	SkipPrivilegeCheck  bool`codec:"SkipPrivilegeCheck"`
-	SkipIncrementalCopy bool`codec:"SkipIncrementalCopy"`
-	Type      string   `codec:"Type"`
+	SqlMode           string                  `codec:"SqlMode"`
+	MySQLVersion      string                  `codec:"MySQLVersion"`
+	ApproveHeterogeneous bool                 `codec:"ApproveHeterogeneous"`
+	SkipCreateDbTable    bool                 `codec:"SkipCreateDbTable"`
+	SkipPrivilegeCheck  bool                  `codec:"SkipPrivilegeCheck"`
+	SkipIncrementalCopy bool                  `codec:"SkipIncrementalCopy"`
+	Type      string                          `codec:"Type"`
 	ConnectionConfig *config.ConnectionConfig `codec:"ConnectionConfig"`
+	KafkaConfig      *kafka3.KafkaConfig      `codec:"KafkaConfig"`
 }
 
 func NewDriver(logger hclog.Logger) drivers.DriverPlugin {

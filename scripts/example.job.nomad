@@ -32,6 +32,7 @@ job "job1" {
     task "dest" {
       driver = "mysql"
       config {
+        type = kafka
         ConnectionConfig = {
           Host = "127.0.0.1"
           Port = 3308
