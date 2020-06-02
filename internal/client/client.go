@@ -579,7 +579,7 @@ func (c *Client) setMemoryMonitor() {
 
 		v, _ := mem.VirtualMemory()
 		rate := float64(v.Available) / float64(v.Total)
-		if float64(rate) < 0.125 && v.Available < 1024*1024*1024*2 {
+		if float64(rate) < 0.125 || v.Available < 1024*1024*1024*2 {
 			debug.FreeOSMemory()
 			time.Sleep(time.Duration(3) * time.Second)
 		}
