@@ -572,18 +572,18 @@ func (c *Client) setupDrivers() error {
 	return nil
 }
 
-// setMemoryMonitor is used to free memory from go to os ,when  memory less than 500M
-func (c *Client) setMemoryMonitor()  {
+// setMemoryMonitor  used to free memory from go to os ,when  memory less than 1/8 and memory less than 2G
+func (c *Client) setMemoryMonitor() {
 
 	for {
 
 		v, _ := mem.VirtualMemory()
-		rate:=	float64(v.Available)/float64(v.Total)
-		if float64(rate)<0.125{
+		rate := float64(v.Available) / float64(v.Total)
+		if float64(rate) < 0.125 && v.Available < 1024*1024*1024*2 {
 			debug.FreeOSMemory()
-			time.Sleep(time.Duration(3)*time.Second)
+			time.Sleep(time.Duration(3) * time.Second)
 		}
-		time.Sleep(time.Duration(2)*time.Second)
+		time.Sleep(time.Duration(2) * time.Second)
 	}
 
 }
