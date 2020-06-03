@@ -4,13 +4,14 @@ import (
 	"context"
 	"fmt"
 	dcommon "github.com/actiontech/dtle/drivers/mysql/common"
-	"github.com/actiontech/dtle/drivers/mysql/mysql/g"
+	"github.com/actiontech/dtle/drivers/mysql/g"
 	"github.com/pkg/errors"
 	"runtime"
 	"time"
 
 	config "github.com/actiontech/dtle/drivers/mysql/mysql/config"
 	"github.com/hashicorp/go-hclog"
+	"github.com/actiontech/dtle/drivers/mysql/route"
 	//	"github.com/actiontech/dtle/drivers/mysql/mysql"
 	"github.com/hashicorp/nomad/drivers/shared/eventer"
 	"github.com/hashicorp/nomad/helper/pluginutils/loader"
@@ -18,14 +19,12 @@ import (
 	"github.com/hashicorp/nomad/plugins/drivers"
 	"github.com/hashicorp/nomad/plugins/shared/hclspec"
 	pstructs "github.com/hashicorp/nomad/plugins/shared/structs"
+	"github.com/julienschmidt/httprouter"
 	gnatsd "github.com/nats-io/nats-server/v2/server"
 	stand "github.com/nats-io/nats-streaming-server/server"
 	"net"
 	"net/http"
-	"github.com/julienschmidt/httprouter"
-			"github.com/actiontech/dtle/drivers/mysql/route"
-
-			)
+)
 
 const (
 	// pluginName is the name of the plugin

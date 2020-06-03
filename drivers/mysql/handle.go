@@ -3,8 +3,8 @@ package mysql
 import (
 	"context"
 	"fmt"
+	common2 "github.com/actiontech/dtle/drivers/mysql/common"
 	"github.com/actiontech/dtle/drivers/mysql/mysql"
-	"github.com/actiontech/dtle/drivers/mysql/mysql/common"
 	"github.com/pkg/errors"
 	"sync"
 	"time"
@@ -77,7 +77,7 @@ func (h *taskHandle) run(taskConfig *DtleTaskConfig, d *Driver) {
 	// TODO: detect if the taskConfig OOMed
 
 	cfg := h.taskConfig
-	ctx := &common.ExecContext{cfg.JobName, cfg.TaskGroupName, 100 * 1024 * 1024, "/opt/binlog"}
+	ctx := &common2.ExecContext{cfg.JobName, cfg.TaskGroupName, 100 * 1024 * 1024, "/opt/binlog"}
 
 	driverConfig, _ := InitConfig(taskConfig)
 

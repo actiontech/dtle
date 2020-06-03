@@ -13,10 +13,9 @@ import (
 	dcommon "github.com/actiontech/dtle/drivers/mysql/common"
 	"github.com/hashicorp/nomad/plugins/drivers"
 
-	"github.com/actiontech/dtle/drivers/mysql/mysql/common"
 	//	umconf "github.com/actiontech/dtle/drivers/mysql/mysql/config"
 
-	"github.com/actiontech/dtle/drivers/mysql/mysql/g"
+	"github.com/actiontech/dtle/drivers/mysql/g"
 	"github.com/opentracing/opentracing-go"
 	"github.com/opentracing/opentracing-go/ext"
 	"github.com/pkg/errors"
@@ -46,7 +45,6 @@ import (
 	"github.com/actiontech/dtle/drivers/mysql/mysql/base"
 	"github.com/actiontech/dtle/drivers/mysql/mysql/binlog"
 	config "github.com/actiontech/dtle/drivers/mysql/mysql/config"
-	utils "github.com/actiontech/dtle/drivers/mysql/mysql/util"
 	//mysql "github.com/actiontech/dtle/drivers/mysql/mysql/config"
 	"github.com/actiontech/dtle/drivers/mysql/mysql/sql"
 	sqle "github.com/actiontech/dtle/drivers/mysql/mysql/sqle/inspector"
@@ -68,7 +66,7 @@ const (
 
 // Extractor is the main schema extract flow manager.
 type Extractor struct {
-	execCtx      *common.ExecContext
+	execCtx      *dcommon.ExecContext
 	logger       hclog.Logger
 	subject      string
 	mysqlContext *config.MySQLDriverConfig
@@ -111,7 +109,7 @@ type Extractor struct {
 	storeManager    *dcommon.StoreManager
 }
 
-func NewExtractor(execCtx *common.ExecContext, cfg *config.MySQLDriverConfig, logger hclog.Logger, storeManager *dcommon.StoreManager) (*Extractor, error) {
+func NewExtractor(execCtx *dcommon.ExecContext, cfg *config.MySQLDriverConfig, logger hclog.Logger, storeManager *dcommon.StoreManager) (*Extractor, error) {
 	logger.Info("NewExtractor", "subject", execCtx.Subject)
 	logger.Debug("start dtle task 7")
 	cfg = cfg.SetDefault()
@@ -755,7 +753,7 @@ func (e *Extractor) validateConnectionAndGetVersion() error {
 	if err := e.db.QueryRow(query).Scan(&e.mysqlContext.MySQLVersion); err != nil {
 		return err
 	}
-	e.mysqlVersionDigit = utils.MysqlVersionInDigit(e.mysqlContext.MySQLVersion)
+	e.mysqlVersionDigit = dcommon.MysqlVersionInDigit(e.mysqlContext.MySQLVersion)
 	if e.mysqlVersionDigit == 0 {
 		return fmt.Errorf("cannot parse mysql version string to digit. string %v", e.mysqlContext.MySQLVersion)
 	}
@@ -1483,7 +1481,7 @@ func (e *Extractor) mysqlDump() error {
 	// ------
 	// Dump all of the tables and generate source records ...
 	e.logger.Info("mysql.extractor: Step %d: scanning contents of %d tables", step, e.tableCount)
-	startScan := utils.CurrentTimeMillis()
+	startScan := dcommon.CurrentTimeMillis()
 	counter := 0
 	//pool := models.NewPool(10)
 	for _, db := range e.replicateDoDb {
@@ -1532,7 +1530,7 @@ func (e *Extractor) mysqlDump() error {
 
 	// We've copied all of the tables, but our buffer holds onto the very last record.
 	// First mark the snapshot as complete and then apply the updated offset to the buffered record ...
-	stop := utils.CurrentTimeMillis()
+	stop := dcommon.CurrentTimeMillis()
 	e.logger.Info("mysql.extractor: Step %d: scanned %d rows in %d tables in %s",
 		step, e.mysqlContext.TotalRowsCopied, e.tableCount, time.Duration(stop-startScan))
 	step++

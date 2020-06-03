@@ -9,6 +9,7 @@ package binlog
 import (
 	"bytes"
 	gosql "database/sql"
+	common2 "github.com/actiontech/dtle/drivers/mysql/common"
 	"os"
 	"path"
 	"path/filepath"
@@ -16,12 +17,11 @@ import (
 
 	"github.com/cznic/mathutil"
 
-	"github.com/actiontech/dtle/drivers/mysql/mysql/common"
 	"github.com/pingcap/dm/dm/pb"
 	"github.com/pingcap/dm/pkg/gtid"
 	"github.com/pingcap/dm/pkg/streamer"
 
-	"github.com/actiontech/dtle/drivers/mysql/mysql/g"
+	"github.com/actiontech/dtle/drivers/mysql/g"
 	//"encoding/hex"
 	"fmt"
 	"regexp"
@@ -61,7 +61,7 @@ const (
 // a binary log file and parsing it into binlog entries
 type BinlogReader struct {
 	serverId         uint64
-	execCtx          *common.ExecContext
+	execCtx          *common2.ExecContext
 	logger           hclog.Logger
 	connectionConfig *config.ConnectionConfig
 	db               *gosql.DB
@@ -158,7 +158,7 @@ func parseSqlFilter(strs []string) (*SqlFilter, error) {
 	return s, nil
 }
 
-func NewMySQLReader(execCtx *common.ExecContext, cfg *config.MySQLDriverConfig, logger hclog.Logger, replicateDoDb []*config.DataSource, sqleContext *sqle.Context) (binlogReader *BinlogReader, err error) {
+func NewMySQLReader(execCtx *common2.ExecContext, cfg *config.MySQLDriverConfig, logger hclog.Logger, replicateDoDb []*config.DataSource, sqleContext *sqle.Context) (binlogReader *BinlogReader, err error) {
 	sqlFilter, err := parseSqlFilter(cfg.SqlFilter)
 	if err != nil {
 		return nil, err
@@ -529,7 +529,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 				}
 
 				for i, sql := range ddlInfo.sqls {
-					realSchema := util.StringElse(ddlInfo.tables[i].Schema, currentSchema)
+					realSchema := common2.StringElse(ddlInfo.tables[i].Schema, currentSchema)
 					tableName := ddlInfo.tables[i].Table
 					err = b.checkObjectFitRegexp(b.mysqlContext.ReplicateDoDb, realSchema, tableName)
 					if err != nil {
@@ -1096,7 +1096,7 @@ func (b *BinlogReader) handleBinlogRowsEvent(ev *replication.BinlogEvent, txChan
 				}
 
 				for i, sql := range ddlInfo.sqls {
-					realSchema := util.StringElse(ddlInfo.tables[i].Schema, currentSchema)
+					realSchema := common2.StringElse(ddlInfo.tables[i].Schema, currentSchema)
 					tableName := ddlInfo.tables[i].Table
 
 					if b.skipQueryDDL(sql, realSchema, tableName) {

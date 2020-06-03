@@ -17,10 +17,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/actiontech/dtle/drivers/mysql/mysql/g"
+	"github.com/actiontech/dtle/drivers/mysql/g"
+	"github.com/actiontech/dtle/drivers/mysql/mysql/config"
 	config "github.com/actiontech/dtle/drivers/mysql/mysql/config"
 	_ "github.com/go-sql-driver/mysql"
-	"github.com/actiontech/dtle/drivers/mysql/mysql/config"
 )
 
 const (

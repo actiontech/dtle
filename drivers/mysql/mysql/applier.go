@@ -14,8 +14,6 @@ import (
 	"github.com/hashicorp/nomad/plugins/drivers"
 	"github.com/pkg/errors"
 
-	"github.com/actiontech/dtle/drivers/mysql/mysql/common"
-
 	"github.com/opentracing/opentracing-go"
 	"github.com/opentracing/opentracing-go/ext"
 
@@ -39,14 +37,13 @@ import (
 	"context"
 	"os"
 
+	"github.com/actiontech/dtle/drivers/mysql/g"
 	"github.com/actiontech/dtle/drivers/mysql/mysql/base"
 	"github.com/actiontech/dtle/drivers/mysql/mysql/binlog"
 	config "github.com/actiontech/dtle/drivers/mysql/mysql/config"
 	umconf "github.com/actiontech/dtle/drivers/mysql/mysql/config"
-	"github.com/actiontech/dtle/drivers/mysql/mysql/g"
 	"github.com/actiontech/dtle/drivers/mysql/mysql/sql"
-	//models "github.com/actiontech/dtle/drivers/mysql/mysql"
-	utils "github.com/actiontech/dtle/drivers/mysql/mysql/util"
+
 	hclog "github.com/hashicorp/go-hclog"
 	not "github.com/nats-io/not.go"
 	uuid "github.com/satori/go.uuid"
@@ -252,7 +249,7 @@ type Applier struct {
 	lastSavedGtid      string
 }
 
-func NewApplier(ctx *common.ExecContext, cfg *umconf.MySQLDriverConfig, logger hclog.Logger, storeManager *dcommon.StoreManager) (a *Applier, err error) {
+func NewApplier(ctx *dcommon.ExecContext, cfg *umconf.MySQLDriverConfig, logger hclog.Logger, storeManager *dcommon.StoreManager) (a *Applier, err error) {
 	cfg = cfg.SetDefault()
 	/*entry := logger.WithFields(logrus.Fields{
 		"job": ctx.Subject,
@@ -1094,13 +1091,13 @@ func (a *Applier) initDBConnections() (err error) {
 		for i := range a.dbs {
 			a.dbs[i].PsDeleteExecutedGtid, err = a.dbs[i].Db.PrepareContext(context.Background(),
 				fmt.Sprintf("delete from %v.%v where job_name = ? and source_uuid = ?",
-				g.DtleSchemaName, g.GtidExecutedTableV4))
+					g.DtleSchemaName, g.GtidExecutedTableV4))
 			if err != nil {
 				return err
 			}
 			a.dbs[i].PsInsertExecutedGtid, err = a.dbs[i].Db.PrepareContext(context.Background(),
 				fmt.Sprintf("replace into %v.%v (job_name,source_uuid,gtid,gtid_set) values (?, ?, ?, null)",
-				g.DtleSchemaName, g.GtidExecutedTableV4))
+					g.DtleSchemaName, g.GtidExecutedTableV4))
 			if err != nil {
 				return err
 			}
@@ -1474,11 +1471,11 @@ func (a *Applier) ApplyEventQueries(db *gosql.DB, entry *DumpEntry) error {
 		return err
 	}
 	execQuery := func(query string) error {
-		a.logger.Debug("mysql.applier: Exec [%s]", utils.StrLim(query, 256))
+		a.logger.Debug("mysql.applier: Exec [%s]", dcommon.StrLim(query, 256))
 		_, err := tx.Exec(query)
 		if err != nil {
 			if !sql.IgnoreError(err) {
-				a.logger.Error("mysql.applier: Exec [%s] error: %v", utils.StrLim(query, 10), err)
+				a.logger.Error("mysql.applier: Exec [%s] error: %v", dcommon.StrLim(query, 10), err)
 				return err
 			}
 			if !sql.IgnoreExistsError(err) {
