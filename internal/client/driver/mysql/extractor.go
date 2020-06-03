@@ -992,7 +992,7 @@ func (e *Extractor) StreamEvents() error {
 					nEntries := len(entries.Entries)
 					if entriesSize > DefaultBigTX {
 						err = errors.Errorf("big tx not sent by timeout ,please change GroupTimeout . ")
-						continue
+						break
 					}
 					if nEntries > 0 {
 						e.logger.Debugf("extractor. incr. send by timeout. entriesSize: %v,timeout time: %v", entriesSize, e.mysqlContext.GroupTimeout)
