@@ -1,4 +1,4 @@
-package kafka3
+package kafka
 
 import (
 	"encoding/base64"

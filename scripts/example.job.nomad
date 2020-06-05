@@ -39,6 +39,13 @@ job "job1" {
           User = "root"
           Password = "password"
         }
+
+        # For a kafka job, do not set ConnectionConfig in dest task. Set KafkaConfig instead.
+        #KafkaConfig = {
+        #  Topic = "kafka1"
+        #  Brokers = ["127.0.0.1:9192", "127.0.0.1:9092"]
+        #  Converter = "json"
+        #}
       }
     }
   }

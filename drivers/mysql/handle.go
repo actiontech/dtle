@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	common2 "github.com/actiontech/dtle/drivers/mysql/common"
+	"github.com/actiontech/dtle/drivers/mysql/kafka"
 	"github.com/actiontech/dtle/drivers/mysql/mysql"
 	"github.com/pkg/errors"
 	"sync"
@@ -101,17 +102,23 @@ func (h *taskHandle) run(taskConfig *DtleTaskConfig, d *Driver) {
 		}
 	case TaskTypeDest:
 		{
-			d.logger.Debug("print host", hclog.Fmt("%+v", driverConfig.ConnectionConfig.Host))
+			if taskConfig.KafkaConfig != nil {
+				d.logger.Debug("found kafka", "KafkaConfig", taskConfig.KafkaConfig)
+				h.runner = kafka.NewKafkaRunner(ctx, taskConfig.KafkaConfig, d.logger)
+				go h.runner.Run()
+			} else {
+				d.logger.Debug("print host", hclog.Fmt("%+v", driverConfig.ConnectionConfig.Host))
 
-			driverConfig.NatsAddr = d.config.NatsAdvertise
-			//	d.logger.Warn("NewApplier ReplicateDoDb: %v", driverConfig.ReplicateDoDb)
+				driverConfig.NatsAddr = d.config.NatsAdvertise
+				//	d.logger.Warn("NewApplier ReplicateDoDb: %v", driverConfig.ReplicateDoDb)
 
-			h.runner, err = mysql.NewApplier(ctx, driverConfig, d.logger, d.storeManager)
-			if err != nil {
-				h.exitResult.Err = errors.Wrap(err, "NewApplier")
-				return
+				h.runner, err = mysql.NewApplier(ctx, driverConfig, d.logger, d.storeManager)
+				if err != nil {
+					h.exitResult.Err = errors.Wrap(err, "NewApplier")
+					return
+				}
+				go h.runner.Run()
 			}
-			go h.runner.Run()
 		}
 	default:
 		h.exitResult.Err = fmt.Errorf("unknown processor type: %+v", cfg.TaskGroupName)
@@ -142,5 +149,5 @@ type DriverHandle interface {
 	Shutdown() error
 
 	// Stats returns aggregated stats of the driver
-	Stats() (*mysql.TaskStatistics, error)
+	Stats() (*common2.TaskStatistics, error)
 }

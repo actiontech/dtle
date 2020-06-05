@@ -824,7 +824,7 @@ func (e *Extractor) CountTableRows(table *config.Table) (int64, error) {
 	}
 	atomic.AddInt64(&e.mysqlContext.RowsEstimate, rowsEstimate)
 
-	e.mysqlContext.Stage = StageSearchingRowsForUpdate
+	e.mysqlContext.Stage = dcommon.StageSearchingRowsForUpdate
 	e.logger.Debug("mysql.extractor: Exact number of rows(%s.%s) via %v: %d", table.TableSchema, table.TableName, method, rowsEstimate)
 	return rowsEstimate, nil
 }
@@ -1001,7 +1001,7 @@ func (e *Extractor) StreamEvents() error {
 					e.onError(TaskStateDead, err)
 					keepGoing = false
 				} else {
-					e.mysqlContext.Stage = StageSendingBinlogEventToSlave
+					e.mysqlContext.Stage = dcommon.StageSendingBinlogEventToSlave
 					atomic.AddInt64(&e.mysqlContext.DeltaEstimate, 1)
 				}
 			}
@@ -1551,11 +1551,11 @@ func (e *Extractor) encodeDumpEntry(entry *DumpEntry) error {
 	if err := e.publish(ctx, fmt.Sprintf("%s_full", e.subject), "", txMsg); err != nil {
 		return err
 	}
-	e.mysqlContext.Stage = StageSendingData
+	e.mysqlContext.Stage = dcommon.StageSendingData
 	return nil
 }
 
-func (e *Extractor) Stats() (*TaskStatistics, error) {
+func (e *Extractor) Stats() (*dcommon.TaskStatistics, error) {
 	totalRowsCopied := e.mysqlContext.GetTotalRowsCopied()
 	rowsEstimate := atomic.LoadInt64(&e.mysqlContext.RowsEstimate)
 	deltaEstimate := atomic.LoadInt64(&e.mysqlContext.DeltaEstimate)
@@ -1576,7 +1576,7 @@ func (e *Extractor) Stats() (*TaskStatistics, error) {
 	eta = "N/A"
 	if progressPct >= 100.0 {
 		eta = "0s"
-		e.mysqlContext.Stage = StageMasterHasSentAllBinlogToSlave
+		e.mysqlContext.Stage = dcommon.StageMasterHasSentAllBinlogToSlave
 	} else if progressPct >= 1.0 {
 		elapsedRowCopySeconds := e.mysqlContext.ElapsedRowCopyTime().Seconds()
 		totalExpectedSeconds := elapsedRowCopySeconds * float64(rowsEstimate) / float64(totalRowsCopied)
@@ -1589,7 +1589,7 @@ func (e *Extractor) Stats() (*TaskStatistics, error) {
 		}
 	}
 
-	taskResUsage :=  TaskStatistics{
+	taskResUsage :=  dcommon.TaskStatistics{
 		ExecMasterRowCount: totalRowsCopied,
 		ExecMasterTxCount:  deltaEstimate,
 		ReadMasterRowCount: rowsEstimate,
@@ -1598,7 +1598,7 @@ func (e *Extractor) Stats() (*TaskStatistics, error) {
 		ETA:                eta,
 		Backlog:            fmt.Sprintf("%d/%d", len(e.dataChannel), cap(e.dataChannel)),
 		Stage:              e.mysqlContext.Stage,
-		BufferStat: BufferStat{
+		BufferStat: dcommon.BufferStat{
 			ExtractorTxQueueSize: len(e.binlogChannel),
 			SendByTimeout:        e.sendByTimeoutCounter,
 			SendBySizeFull:       e.sendBySizeFullCounter,
@@ -1616,13 +1616,13 @@ func (e *Extractor) Stats() (*TaskStatistics, error) {
 	currentBinlogCoordinates := &base.BinlogCoordinateTx{}
 	if e.binlogReader != nil {
 		currentBinlogCoordinates = e.binlogReader.GetCurrentBinlogCoordinates()
-		taskResUsage.CurrentCoordinates = &CurrentCoordinates{
+		taskResUsage.CurrentCoordinates = &dcommon.CurrentCoordinates{
 			File:     currentBinlogCoordinates.LogFile,
 			Position: currentBinlogCoordinates.LogPos,
 			GtidSet:  fmt.Sprintf("%s:%d", currentBinlogCoordinates.GetSid(), currentBinlogCoordinates.GNO),
 		}
 	} else {
-		taskResUsage.CurrentCoordinates = &CurrentCoordinates{
+		taskResUsage.CurrentCoordinates = &dcommon.CurrentCoordinates{
 			File:     "",
 			Position: 0,
 			GtidSet:  "",

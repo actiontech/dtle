@@ -5,7 +5,7 @@ import (
 	"fmt"
 	dcommon "github.com/actiontech/dtle/drivers/mysql/common"
 	"github.com/actiontech/dtle/drivers/mysql/g"
-	"github.com/actiontech/dtle/drivers/mysql/kafka3"
+	"github.com/actiontech/dtle/drivers/mysql/kafka"
 	"github.com/pkg/errors"
 	"runtime"
 	"time"
@@ -120,7 +120,7 @@ var (
 		"SkipIncrementalCopy":hclspec.NewAttr("SkipIncrementalCopy", "bool", false),
 		"ApproveHeterogeneous":hclspec.NewAttr("ApproveHeterogeneous", "bool", false),
 		"Type":       hclspec.NewAttr("Type", "string", true),
-		"ConnectionConfig": hclspec.NewBlock("ConnectionConfig", true, hclspec.NewObject(map[string]*hclspec.Spec{
+		"ConnectionConfig": hclspec.NewBlock("ConnectionConfig", false, hclspec.NewObject(map[string]*hclspec.Spec{
 			"Host": hclspec.NewAttr("Host", "string", true),
 			"Port": hclspec.NewAttr("Port", "number", true),
 			"User": hclspec.NewAttr("User", "string", true),
@@ -197,6 +197,7 @@ type Driver struct {
 	storeManager *dcommon.StoreManager
 }
 
+// TODO This is repetitive to MySQLDriverConfig. Consider merge in to one struct.
 type DtleTaskConfig struct {
 	ReplicateDoDb         []*config.DataSource `codec:"ReplicateDoDb"`
 	ReplicateIgnoreDb     []*config.DataSource`codec:"ReplicateIgnoreDb"`
@@ -229,7 +230,7 @@ type DtleTaskConfig struct {
 	SkipIncrementalCopy bool                  `codec:"SkipIncrementalCopy"`
 	Type      string                          `codec:"Type"`
 	ConnectionConfig *config.ConnectionConfig `codec:"ConnectionConfig"`
-	KafkaConfig      *kafka3.KafkaConfig      `codec:"KafkaConfig"`
+	KafkaConfig      *kafka.KafkaConfig       `codec:"KafkaConfig"`
 }
 
 func NewDriver(logger hclog.Logger) drivers.DriverPlugin {
@@ -474,6 +475,12 @@ func (d *Driver) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHandle, *drive
 	if err := cfg.DecodeDriverConfig(&dtleTaskConfig); err != nil {
 		return nil, nil, errors.Wrap(err, "DecodeDriverConfig")
 	}
+
+	if (dtleTaskConfig.ConnectionConfig == nil && dtleTaskConfig.KafkaConfig == nil) ||
+		(dtleTaskConfig.ConnectionConfig != nil && dtleTaskConfig.KafkaConfig != nil) {
+		return nil, nil, fmt.Errorf("one and only one of ConnectionConfig or KafkaConfig should be set")
+	}
+
 	handle := drivers.NewTaskHandle(taskHandleVersion)
 	handle.Config = cfg
 	h := newDtleTaskHandle(d.logger, cfg, drivers.TaskStateRunning, time.Now().Round(time.Millisecond))
