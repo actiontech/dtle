@@ -75,9 +75,11 @@ func (kr *KafkaRunner) ID() string {
 	id := config.DriverCtx{
 		// TODO
 		DriverConfig: &config.MySQLDriverConfig{
+			BinlogPos:  kr.kafkaConfig.BinlogPos,
+			BinlogFile: kr.kafkaConfig.BinlogFile,
 			//ReplicateDoDb:     a.mysqlContext.ReplicateDoDb,
 			//ReplicateIgnoreDb: a.mysqlContext.ReplicateIgnoreDb,
-			//Gtid:              a.mysqlContext.Gtid,
+			Gtid: kr.kafkaConfig.Gtid,
 			//NatsAddr:          a.mysqlContext.NatsAddr,
 			//ParallelWorkers:   a.mysqlContext.ParallelWorkers,
 			//ConnectionConfig:  a.mysqlContext.ConnectionConfig,
@@ -716,10 +718,13 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry)
 		}
 		//	vBs = []byte(strings.Replace(string(vBs), "\"field\":\"snapshot\"", "\"default\":false,\"field\":\"snapshot\"", -1))
 		err = kr.kafkaMgr.Send(tableIdent, kBs, vBs)
+		kr.kafkaConfig.BinlogPos = dmlEvent.Coordinates.LogPos
+		kr.kafkaConfig.Gtid = dmlEvent.Coordinates.GetGtidForThisTx()
+		kr.kafkaConfig.BinlogFile = dmlEvent.Coordinates.LogFile
 		if err != nil {
 			return err
 		}
-		kr.kafkaConfig.Gtid = dmlEvent.Coordinates.GetGtidForThisTx()
+
 		kr.logger.Debugf("kafka: sent one msg")
 
 		// tombstone event for DELETE
@@ -736,6 +741,9 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry)
 			if err != nil {
 				return err
 			}
+			kr.kafkaConfig.Gtid = dmlEvent.Coordinates.GetGtidForThisTx()
+			kr.kafkaConfig.BinlogPos = dmlEvent.Coordinates.LogPos
+			kr.kafkaConfig.BinlogFile = dmlEvent.Coordinates.LogFile
 			kr.logger.Debugf("kafka: sent one msg")
 		}
 	}
