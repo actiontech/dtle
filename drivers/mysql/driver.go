@@ -356,26 +356,31 @@ func (d *Driver) SetConfig(c *base.Config) (err error) {
 	d.config = &dconfig
 	d.logger.Info("SetConfig", "config", d.config)
 
-	d.storeManager, err = dcommon.NewStoreManager(d.config.Consul)
-	if err != nil {
-		return err
-	}
-
-	go func() {
-		apiErr:=d.SetupApiServer(d.logger)
-		if apiErr != nil {
-			d.logger.Error("error in SetupApiServer", "err", err)
-			// TODO mark driver unhealthy
-		}
-		// Have to put this in a goroutine, or it will fail.
-		err := d.SetupNatsServer(d.logger)
+	if d.storeManager != nil {
+		// PluginLoader.validatePluginConfig() will call SetConfig() twice.
+		// This test avoids extra setup.
+		return nil
+	} else {
+		d.storeManager, err = dcommon.NewStoreManager(d.config.Consul)
 		if err != nil {
-			d.logger.Error("error in SetupNatsServer", "err", err)
-			// TODO mark driver unhealthy
+			return err
 		}
 
-	}()
+		go func() {
+			apiErr := d.SetupApiServer(d.logger)
+			if apiErr != nil {
+				d.logger.Error("error in SetupApiServer", "err", err)
+				// TODO mark driver unhealthy
+			}
+			// Have to put this in a goroutine, or it will fail.
+			err := d.SetupNatsServer(d.logger)
+			if err != nil {
+				d.logger.Error("error in SetupNatsServer", "err", err)
+				// TODO mark driver unhealthy
+			}
 
+		}()
+	}
 	return nil
 }
 
