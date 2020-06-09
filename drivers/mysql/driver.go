@@ -15,7 +15,6 @@ import (
 	"github.com/hashicorp/go-hclog"
 	//	"github.com/actiontech/dtle/drivers/mysql/mysql"
 	"github.com/hashicorp/nomad/drivers/shared/eventer"
-	"github.com/hashicorp/nomad/helper/pluginutils/loader"
 	"github.com/hashicorp/nomad/plugins/base"
 	"github.com/hashicorp/nomad/plugins/drivers"
 	"github.com/hashicorp/nomad/plugins/shared/hclspec"
@@ -46,20 +45,6 @@ const (
 )
 
 var (
-	// PluginID is the mysql plugin metadata registered in the plugin
-	// catalog.
-	PluginID = loader.PluginID{
-		Name:       pluginName,
-		PluginType: base.PluginTypeDriver,
-	}
-
-	// PluginConfig is the java driver factory function registered in the
-	// plugin catalog.
-	PluginConfig = &loader.InternalPluginConfig{
-		Config:  map[string]interface{}{},
-		Factory: func(l hclog.Logger) interface{} { return NewDriver(l) },
-	}
-
 	// pluginInfo is the response returned for the PluginInfo RPC
 	pluginInfo = &base.PluginInfoResponse{
 		Type:              base.PluginTypeDriver,
@@ -352,7 +337,7 @@ type DriverConfig struct {
 func (d *Driver) SetConfig(c *base.Config) (err error) {
 	if c != nil && c.AgentConfig != nil {
 		d.nomadConfig = c.AgentConfig.Driver
-		d.logger.Info("SetConfig", "DriverConfig", c.AgentConfig.Driver)
+		d.logger.Info("SetConfig 1", "DriverConfig", c.AgentConfig.Driver)
 	}
 
 	var dconfig DriverConfig
@@ -363,7 +348,7 @@ func (d *Driver) SetConfig(c *base.Config) (err error) {
 	}
 
 	d.config = &dconfig
-	d.logger.Info("SetConfig", "config", d.config)
+	d.logger.Info("SetConfig 2", "config", d.config)
 
 	if d.storeManager != nil {
 		// PluginLoader.validatePluginConfig() will call SetConfig() twice.
