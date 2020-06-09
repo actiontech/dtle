@@ -14,8 +14,6 @@ import (
 	"github.com/hashicorp/nomad/plugins/drivers"
 	"github.com/pkg/errors"
 
-	"github.com/actiontech/dtle/drivers/mysql/mysql/common"
-
 	"github.com/opentracing/opentracing-go"
 	"github.com/opentracing/opentracing-go/ext"
 
@@ -39,14 +37,13 @@ import (
 	"context"
 	"os"
 
+	"github.com/actiontech/dtle/drivers/mysql/g"
 	"github.com/actiontech/dtle/drivers/mysql/mysql/base"
 	"github.com/actiontech/dtle/drivers/mysql/mysql/binlog"
 	config "github.com/actiontech/dtle/drivers/mysql/mysql/config"
 	umconf "github.com/actiontech/dtle/drivers/mysql/mysql/config"
-	"github.com/actiontech/dtle/drivers/mysql/mysql/g"
 	"github.com/actiontech/dtle/drivers/mysql/mysql/sql"
-	//models "github.com/actiontech/dtle/drivers/mysql/mysql"
-	utils "github.com/actiontech/dtle/drivers/mysql/mysql/util"
+
 	hclog "github.com/hashicorp/go-hclog"
 	not "github.com/nats-io/not.go"
 	uuid "github.com/satori/go.uuid"
@@ -216,7 +213,7 @@ type Applier struct {
 	dbs                []*sql.Conn
 	db                 *gosql.DB
 	gtidExecuted       base.GtidSet
-	currentCoordinates *CurrentCoordinates
+	currentCoordinates *dcommon.CurrentCoordinates
 	tableItems         mapSchemaTableItems
 
 	rowCopyComplete     chan bool
@@ -252,7 +249,7 @@ type Applier struct {
 	lastSavedGtid      string
 }
 
-func NewApplier(ctx *common.ExecContext, cfg *umconf.MySQLDriverConfig, logger hclog.Logger, storeManager *dcommon.StoreManager) (a *Applier, err error) {
+func NewApplier(ctx *dcommon.ExecContext, cfg *umconf.MySQLDriverConfig, logger hclog.Logger, storeManager *dcommon.StoreManager) (a *Applier, err error) {
 	cfg = cfg.SetDefault()
 	/*entry := logger.WithFields(logrus.Fields{
 		"job": ctx.Subject,
@@ -264,7 +261,7 @@ func NewApplier(ctx *common.ExecContext, cfg *umconf.MySQLDriverConfig, logger h
 		logger:                  logger,
 		subject:                 ctx.Subject,
 		mysqlContext:            cfg,
-		currentCoordinates:      &CurrentCoordinates{},
+		currentCoordinates:      &dcommon.CurrentCoordinates{},
 		tableItems:              make(mapSchemaTableItems),
 		rowCopyComplete:         make(chan bool, 1),
 		copyRowsQueue:           make(chan *DumpEntry, 24),
@@ -497,7 +494,7 @@ func (a *Applier) executeWriteFuncs() {
 
 	if a.mysqlContext.Gtid == "" { // full copy
 		a.logger.Info("mysql.applier: Operating until row copy is complete")
-		a.mysqlContext.Stage =  StageSlaveWaitingForWorkersToProcessQueue
+		a.mysqlContext.Stage = dcommon.StageSlaveWaitingForWorkersToProcessQueue
 		for {
 			if atomic.LoadInt64(&a.rowCopyCompleteFlag) == 1 && a.mysqlContext.TotalRowsCopied == a.mysqlContext.TotalRowsReplay {
 				a.rowCopyComplete <- true
@@ -883,7 +880,7 @@ func (a *Applier) initiateStreaming() error {
 		case a.copyRowsQueue <- dumpData:
 			a.logger.Debug("mysql.applier: full. enqueue")
 			timer.Stop()
-			a.mysqlContext.Stage =  StageSlaveWaitingForWorkersToProcessQueue
+			a.mysqlContext.Stage = dcommon.StageSlaveWaitingForWorkersToProcessQueue
 			if err := a.natsConn.Publish(m.Reply, nil); err != nil {
 				a.onError(TaskStateDead, err)
 			}
@@ -893,7 +890,7 @@ func (a *Applier) initiateStreaming() error {
 			atomic.AddInt64(&a.nDumpEntry, -1)
 
 			a.logger.Debug("mysql.applier. full. discarding entries")
-			a.mysqlContext.Stage =  StageSlaveWaitingForWorkersToProcessQueue
+			a.mysqlContext.Stage = dcommon.StageSlaveWaitingForWorkersToProcessQueue
 		}
 	})
 	/*if err := sub.SetPendingLimits(a.mysqlContext.MsgsLimit, a.mysqlContext.BytesLimit); err != nil {
@@ -919,7 +916,7 @@ func (a *Applier) initiateStreaming() error {
 		a.currentCoordinates.File = dumpData.LogFile
 		a.currentCoordinates.Position = dumpData.LogPos
 
-		a.mysqlContext.Stage =  StageSlaveWaitingForWorkersToProcessQueue
+		a.mysqlContext.Stage = dcommon.StageSlaveWaitingForWorkersToProcessQueue
 
 		for atomic.LoadInt64(&a.nDumpEntry) != 0 {
 			a.logger.Debug("mysql.applier. nDumpEntry is not zero, waiting. %v", a.nDumpEntry)
@@ -974,7 +971,7 @@ func (a *Applier) initiateStreaming() error {
 						a.currentCoordinates.RetrievedGtidSet = binlogEntry.Coordinates.GetGtidForThisTx()
 						atomic.AddInt64(&a.mysqlContext.DeltaEstimate, 1)
 					}
-					a.mysqlContext.Stage =  StageWaitingForMasterToSendEvent
+					a.mysqlContext.Stage = dcommon.StageWaitingForMasterToSendEvent
 
 					if err := a.natsConn.Publish(m.Reply, nil); err != nil {
 						a.onError(TaskStateDead, err)
@@ -987,7 +984,7 @@ func (a *Applier) initiateStreaming() error {
 			if !handled {
 				// discard these entries
 				a.logger.Debug("applier. incr. discarding entries")
-				a.mysqlContext.Stage =  StageWaitingForMasterToSendEvent
+				a.mysqlContext.Stage = dcommon.StageWaitingForMasterToSendEvent
 			}
 		})
 		if err != nil {
@@ -1094,13 +1091,13 @@ func (a *Applier) initDBConnections() (err error) {
 		for i := range a.dbs {
 			a.dbs[i].PsDeleteExecutedGtid, err = a.dbs[i].Db.PrepareContext(context.Background(),
 				fmt.Sprintf("delete from %v.%v where job_name = ? and source_uuid = ?",
-				g.DtleSchemaName, g.GtidExecutedTableV4))
+					g.DtleSchemaName, g.GtidExecutedTableV4))
 			if err != nil {
 				return err
 			}
 			a.dbs[i].PsInsertExecutedGtid, err = a.dbs[i].Db.PrepareContext(context.Background(),
 				fmt.Sprintf("replace into %v.%v (job_name,source_uuid,gtid,gtid_set) values (?, ?, ?, null)",
-				g.DtleSchemaName, g.GtidExecutedTableV4))
+					g.DtleSchemaName, g.GtidExecutedTableV4))
 			if err != nil {
 				return err
 			}
@@ -1423,7 +1420,7 @@ func (a *Applier) ApplyBinlogEvent(ctx context.Context, workerIdx int, binlogEnt
 	}
 
 	// no error
-	a.mysqlContext.Stage =  StageWaitingForGtidToBeCommitted
+	a.mysqlContext.Stage = dcommon.StageWaitingForGtidToBeCommitted
 	atomic.AddInt64(&a.mysqlContext.TotalDeltaCopied, 1)
 	return nil
 }
@@ -1474,11 +1471,11 @@ func (a *Applier) ApplyEventQueries(db *gosql.DB, entry *DumpEntry) error {
 		return err
 	}
 	execQuery := func(query string) error {
-		a.logger.Debug("mysql.applier: Exec [%s]", utils.StrLim(query, 256))
+		a.logger.Debug("mysql.applier: Exec [%s]", dcommon.StrLim(query, 256))
 		_, err := tx.Exec(query)
 		if err != nil {
 			if !sql.IgnoreError(err) {
-				a.logger.Error("mysql.applier: Exec [%s] error: %v", utils.StrLim(query, 10), err)
+				a.logger.Error("mysql.applier: Exec [%s] error: %v", dcommon.StrLim(query, 10), err)
 				return err
 			}
 			if !sql.IgnoreExistsError(err) {
@@ -1544,7 +1541,7 @@ func (a *Applier) ApplyEventQueries(db *gosql.DB, entry *DumpEntry) error {
 	return nil
 }
 
-func (a *Applier) Stats() (*TaskStatistics, error) {
+func (a *Applier) Stats() (*dcommon.TaskStatistics, error) {
 	totalRowsReplay := a.mysqlContext.GetTotalRowsReplay()
 	rowsEstimate := atomic.LoadInt64(&a.mysqlContext.RowsEstimate)
 	totalDeltaCopied := a.mysqlContext.GetTotalDeltaCopied()
@@ -1569,7 +1566,7 @@ func (a *Applier) Stats() (*TaskStatistics, error) {
 	eta = "N/A"
 	if progressPct >= 100.0 {
 		eta = "0s"
-		a.mysqlContext.Stage =  StageSlaveHasReadAllRelayLog
+		a.mysqlContext.Stage = dcommon.StageSlaveHasReadAllRelayLog
 	} else if progressPct >= 1.0 {
 		elapsedRowCopySeconds := a.mysqlContext.ElapsedRowCopyTime().Seconds()
 		totalExpectedSeconds := elapsedRowCopySeconds * float64(rowsEstimate) / float64(totalRowsReplay)
@@ -1585,7 +1582,7 @@ func (a *Applier) Stats() (*TaskStatistics, error) {
 		}
 	}
 
-	taskResUsage :=  TaskStatistics{
+	taskResUsage :=  dcommon.TaskStatistics{
 		ExecMasterRowCount: totalRowsReplay,
 		ExecMasterTxCount:  totalDeltaCopied,
 		ReadMasterRowCount: rowsEstimate,
@@ -1595,7 +1592,7 @@ func (a *Applier) Stats() (*TaskStatistics, error) {
 		Backlog:            backlog,
 		Stage:              a.mysqlContext.Stage,
 		CurrentCoordinates: a.currentCoordinates,
-		BufferStat:  BufferStat{
+		BufferStat:  dcommon.BufferStat{
 			ApplierTxQueueSize:      len(a.applyBinlogTxQueue),
 			ApplierGroupTxQueueSize: len(a.applyBinlogGroupTxQueue),
 		},

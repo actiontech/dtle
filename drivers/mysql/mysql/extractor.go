@@ -13,10 +13,9 @@ import (
 	dcommon "github.com/actiontech/dtle/drivers/mysql/common"
 	"github.com/hashicorp/nomad/plugins/drivers"
 
-	"github.com/actiontech/dtle/drivers/mysql/mysql/common"
 	//	umconf "github.com/actiontech/dtle/drivers/mysql/mysql/config"
 
-	"github.com/actiontech/dtle/drivers/mysql/mysql/g"
+	"github.com/actiontech/dtle/drivers/mysql/g"
 	"github.com/opentracing/opentracing-go"
 	"github.com/opentracing/opentracing-go/ext"
 	"github.com/pkg/errors"
@@ -46,7 +45,6 @@ import (
 	"github.com/actiontech/dtle/drivers/mysql/mysql/base"
 	"github.com/actiontech/dtle/drivers/mysql/mysql/binlog"
 	config "github.com/actiontech/dtle/drivers/mysql/mysql/config"
-	utils "github.com/actiontech/dtle/drivers/mysql/mysql/util"
 	//mysql "github.com/actiontech/dtle/drivers/mysql/mysql/config"
 	"github.com/actiontech/dtle/drivers/mysql/mysql/sql"
 	sqle "github.com/actiontech/dtle/drivers/mysql/mysql/sqle/inspector"
@@ -68,7 +66,7 @@ const (
 
 // Extractor is the main schema extract flow manager.
 type Extractor struct {
-	execCtx      *common.ExecContext
+	execCtx      *dcommon.ExecContext
 	logger       hclog.Logger
 	subject      string
 	mysqlContext *config.MySQLDriverConfig
@@ -111,7 +109,7 @@ type Extractor struct {
 	storeManager    *dcommon.StoreManager
 }
 
-func NewExtractor(execCtx *common.ExecContext, cfg *config.MySQLDriverConfig, logger hclog.Logger, storeManager *dcommon.StoreManager) (*Extractor, error) {
+func NewExtractor(execCtx *dcommon.ExecContext, cfg *config.MySQLDriverConfig, logger hclog.Logger, storeManager *dcommon.StoreManager) (*Extractor, error) {
 	logger.Info("NewExtractor", "subject", execCtx.Subject)
 	logger.Debug("start dtle task 7")
 	cfg = cfg.SetDefault()
@@ -755,7 +753,7 @@ func (e *Extractor) validateConnectionAndGetVersion() error {
 	if err := e.db.QueryRow(query).Scan(&e.mysqlContext.MySQLVersion); err != nil {
 		return err
 	}
-	e.mysqlVersionDigit = utils.MysqlVersionInDigit(e.mysqlContext.MySQLVersion)
+	e.mysqlVersionDigit = dcommon.MysqlVersionInDigit(e.mysqlContext.MySQLVersion)
 	if e.mysqlVersionDigit == 0 {
 		return fmt.Errorf("cannot parse mysql version string to digit. string %v", e.mysqlContext.MySQLVersion)
 	}
@@ -826,7 +824,7 @@ func (e *Extractor) CountTableRows(table *config.Table) (int64, error) {
 	}
 	atomic.AddInt64(&e.mysqlContext.RowsEstimate, rowsEstimate)
 
-	e.mysqlContext.Stage = StageSearchingRowsForUpdate
+	e.mysqlContext.Stage = dcommon.StageSearchingRowsForUpdate
 	e.logger.Debug("mysql.extractor: Exact number of rows(%s.%s) via %v: %d", table.TableSchema, table.TableName, method, rowsEstimate)
 	return rowsEstimate, nil
 }
@@ -1003,7 +1001,7 @@ func (e *Extractor) StreamEvents() error {
 					e.onError(TaskStateDead, err)
 					keepGoing = false
 				} else {
-					e.mysqlContext.Stage = StageSendingBinlogEventToSlave
+					e.mysqlContext.Stage = dcommon.StageSendingBinlogEventToSlave
 					atomic.AddInt64(&e.mysqlContext.DeltaEstimate, 1)
 				}
 			}
@@ -1483,7 +1481,7 @@ func (e *Extractor) mysqlDump() error {
 	// ------
 	// Dump all of the tables and generate source records ...
 	e.logger.Info("mysql.extractor: Step %d: scanning contents of %d tables", step, e.tableCount)
-	startScan := utils.CurrentTimeMillis()
+	startScan := dcommon.CurrentTimeMillis()
 	counter := 0
 	//pool := models.NewPool(10)
 	for _, db := range e.replicateDoDb {
@@ -1532,7 +1530,7 @@ func (e *Extractor) mysqlDump() error {
 
 	// We've copied all of the tables, but our buffer holds onto the very last record.
 	// First mark the snapshot as complete and then apply the updated offset to the buffered record ...
-	stop := utils.CurrentTimeMillis()
+	stop := dcommon.CurrentTimeMillis()
 	e.logger.Info("mysql.extractor: Step %d: scanned %d rows in %d tables in %s",
 		step, e.mysqlContext.TotalRowsCopied, e.tableCount, time.Duration(stop-startScan))
 	step++
@@ -1553,11 +1551,11 @@ func (e *Extractor) encodeDumpEntry(entry *DumpEntry) error {
 	if err := e.publish(ctx, fmt.Sprintf("%s_full", e.subject), "", txMsg); err != nil {
 		return err
 	}
-	e.mysqlContext.Stage = StageSendingData
+	e.mysqlContext.Stage = dcommon.StageSendingData
 	return nil
 }
 
-func (e *Extractor) Stats() (*TaskStatistics, error) {
+func (e *Extractor) Stats() (*dcommon.TaskStatistics, error) {
 	totalRowsCopied := e.mysqlContext.GetTotalRowsCopied()
 	rowsEstimate := atomic.LoadInt64(&e.mysqlContext.RowsEstimate)
 	deltaEstimate := atomic.LoadInt64(&e.mysqlContext.DeltaEstimate)
@@ -1578,7 +1576,7 @@ func (e *Extractor) Stats() (*TaskStatistics, error) {
 	eta = "N/A"
 	if progressPct >= 100.0 {
 		eta = "0s"
-		e.mysqlContext.Stage = StageMasterHasSentAllBinlogToSlave
+		e.mysqlContext.Stage = dcommon.StageMasterHasSentAllBinlogToSlave
 	} else if progressPct >= 1.0 {
 		elapsedRowCopySeconds := e.mysqlContext.ElapsedRowCopyTime().Seconds()
 		totalExpectedSeconds := elapsedRowCopySeconds * float64(rowsEstimate) / float64(totalRowsCopied)
@@ -1591,7 +1589,7 @@ func (e *Extractor) Stats() (*TaskStatistics, error) {
 		}
 	}
 
-	taskResUsage :=  TaskStatistics{
+	taskResUsage :=  dcommon.TaskStatistics{
 		ExecMasterRowCount: totalRowsCopied,
 		ExecMasterTxCount:  deltaEstimate,
 		ReadMasterRowCount: rowsEstimate,
@@ -1600,7 +1598,7 @@ func (e *Extractor) Stats() (*TaskStatistics, error) {
 		ETA:                eta,
 		Backlog:            fmt.Sprintf("%d/%d", len(e.dataChannel), cap(e.dataChannel)),
 		Stage:              e.mysqlContext.Stage,
-		BufferStat: BufferStat{
+		BufferStat: dcommon.BufferStat{
 			ExtractorTxQueueSize: len(e.binlogChannel),
 			SendByTimeout:        e.sendByTimeoutCounter,
 			SendBySizeFull:       e.sendBySizeFullCounter,
@@ -1618,13 +1616,13 @@ func (e *Extractor) Stats() (*TaskStatistics, error) {
 	currentBinlogCoordinates := &base.BinlogCoordinateTx{}
 	if e.binlogReader != nil {
 		currentBinlogCoordinates = e.binlogReader.GetCurrentBinlogCoordinates()
-		taskResUsage.CurrentCoordinates = &CurrentCoordinates{
+		taskResUsage.CurrentCoordinates = &dcommon.CurrentCoordinates{
 			File:     currentBinlogCoordinates.LogFile,
 			Position: currentBinlogCoordinates.LogPos,
 			GtidSet:  fmt.Sprintf("%s:%d", currentBinlogCoordinates.GetSid(), currentBinlogCoordinates.GNO),
 		}
 	} else {
-		taskResUsage.CurrentCoordinates = &CurrentCoordinates{
+		taskResUsage.CurrentCoordinates = &dcommon.CurrentCoordinates{
 			File:     "",
 			Position: 0,
 			GtidSet:  "",

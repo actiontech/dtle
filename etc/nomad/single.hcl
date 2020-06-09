@@ -37,6 +37,8 @@ plugin "mysql" {
     NatsBind = "127.0.0.1:8193"
     NatsAdvertise = "127.0.0.1:8193"
     consul = ["127.0.0.1:8500"]
+    ApiAddr = "127.0.0.1:9190"   # for compatibility API
+    NomadAddr = "127.0.0.1:4646" # compatibility API need to access a nomad server
   }
 }
 
