@@ -59,12 +59,10 @@ var (
 			hclspec.NewLiteral(`"0.0.0.0:8193"`)),
 		"NatsAdvertise": hclspec.NewDefault(hclspec.NewAttr("NatsAdvertise", "string", false),
 			hclspec.NewLiteral(`"127.0.0.1:8193"`)),
-		"ApiPort": hclspec.NewDefault(hclspec.NewAttr("ApiPort", "string", false),
-			hclspec.NewLiteral(`"9190"`)),
-		"HostIp": hclspec.NewDefault(hclspec.NewAttr("HostIp", "string", false),
-			hclspec.NewLiteral(`"127.0.0.1"`)),
-		"NomadPort": hclspec.NewDefault(hclspec.NewAttr("NomadPort", "string", false),
-			hclspec.NewLiteral(`"4646"`)),
+		"ApiAddr": hclspec.NewDefault(hclspec.NewAttr("ApiAddr", "string", false),
+			hclspec.NewLiteral(`""`)),
+		"NomadAddr": hclspec.NewDefault(hclspec.NewAttr("NomadAddr", "string", false),
+			hclspec.NewLiteral(`"127.0.0.1:4646"`)),
 		"consul": hclspec.NewAttr("consul", "list(string)", true),
 	})
 
@@ -110,15 +108,11 @@ var (
 		"GtidStart":hclspec.NewAttr("GtidStart", "string", false),
 		"AutoGtid":hclspec.NewAttr("AutoGtid", "bool", false),
 		"BinlogRelay":hclspec.NewAttr("BinlogRelay", "bool", false),
-		"NatsAddr":hclspec.NewAttr("NatsAddr", "string", false),
 		"ParallelWorkers":hclspec.NewAttr("ParallelWorkers", "number", false),
 		"SqlMode":hclspec.NewAttr("SqlMode", "string", false),
-		"MySQLVersion":hclspec.NewAttr("MySQLVersion", "string", false),
 		"SkipCreateDbTable":hclspec.NewAttr("SkipCreateDbTable", "bool", false),
-
 		"SkipPrivilegeCheck":hclspec.NewAttr("SkipPrivilegeCheck", "bool", false),
 		"SkipIncrementalCopy":hclspec.NewAttr("SkipIncrementalCopy", "bool", false),
-		"ApproveHeterogeneous":hclspec.NewAttr("ApproveHeterogeneous", "bool", false),
 		"Type":       hclspec.NewAttr("Type", "string", true),
 		"ConnectionConfig": hclspec.NewBlock("ConnectionConfig", false, hclspec.NewObject(map[string]*hclspec.Spec{
 			"Host": hclspec.NewAttr("Host", "string", true),
@@ -132,7 +126,6 @@ var (
 			"Brokers": hclspec.NewAttr("Brokers", "list(string)", true),
 			"Converter": hclspec.NewDefault(hclspec.NewAttr("Converter", "string", false),
 				hclspec.NewLiteral(`"json"`)),
-			"NatsAddr": hclspec.NewAttr("NatsAddr", "string", false),
 		})),
 	})
 
@@ -276,9 +269,8 @@ func (d *Driver) SetupNatsServer(logger hclog.Logger) (err error)  {
 }
 
 func (d *Driver) SetupApiServer(logger hclog.Logger) (err error)  {
-	route.Host =  d.config.HostIp
-	route.Port =  d.config.NomadPort
-	logger.Debug("Begin Setup api server", "port", d.config.ApiPort)
+	route.Host =  d.config.NomadAddr
+	logger.Debug("Begin Setup api server", "addr", d.config.ApiAddr)
 	router := httprouter.New()
 	router.GET("/v1/job/:NodeId/:path",route.JobRequest)
 	router.POST("/v1/jobs",route.UpdupJob)
@@ -305,13 +297,13 @@ func (d *Driver) SetupApiServer(logger hclog.Logger) (err error)  {
 	router.POST("/v1/job/info",updupJob)
 	*/
 	go func() {
-		err := http.ListenAndServe(d.config.HostIp+":"+d.config.ApiPort, router)
+		err := http.ListenAndServe(d.config.ApiAddr, router)
 		if err != nil {
 			logger.Error("in SetupApiServer ListenAndServe", "err", err)
 			// TODO mark plugin unhealthy
 		}
 	}()
-	logger.Info("Setup api server success v%",d.config.HostIp+d.config.ApiPort)
+	logger.Info("Setup api server succeeded", "addr", d.config.ApiAddr)
 
 	d.apiServer = router
 	return nil
@@ -327,12 +319,11 @@ func (d *Driver) ConfigSchema() (*hclspec.Spec, error) {
 }
 
 type DriverConfig struct {
-	NatsBind string `codec:"NatsBind"`
-	ApiPort string `codec:"ApiPort"`
-	HostIp string `codec:"HostIp"`
-	NomadPort string `codec:"NomadPort"`
-	NatsAdvertise string `codec:"NatsAdvertise"`
-	Consul []string `codec:"consul"`
+	NatsBind      string   `codec:"NatsBind"`
+	ApiAddr       string   `codec:"ApiAddr"`
+	NomadAddr     string   `codec:"NomadAddr"`
+	NatsAdvertise string   `codec:"NatsAdvertise"`
+	Consul        []string `codec:"consul"`
 }
 
 func (d *Driver) SetConfig(c *base.Config) (err error) {
@@ -362,11 +353,16 @@ func (d *Driver) SetConfig(c *base.Config) (err error) {
 		}
 
 		go func() {
-			apiErr := d.SetupApiServer(d.logger)
-			if apiErr != nil {
-				d.logger.Error("error in SetupApiServer", "err", err)
-				// TODO mark driver unhealthy
+			if d.config.ApiAddr == "" {
+				d.logger.Info("ApiAddr is empty in config. Will not start compat API server.")
+			} else {
+				apiErr := d.SetupApiServer(d.logger)
+				if apiErr != nil {
+					d.logger.Error("error in SetupApiServer", "err", err)
+					// TODO mark driver unhealthy
+				}
 			}
+
 			// Have to put this in a goroutine, or it will fail.
 			err := d.SetupNatsServer(d.logger)
 			if err != nil {
