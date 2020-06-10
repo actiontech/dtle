@@ -6,6 +6,11 @@ bootstrap_expect = 1
 addresses = {
   http = "0.0.0.0"
 }
+advertise_addr = "127.0.0.1"
+
+ports = {
+  http = 8500
+}
 
 log_level = "INFO"
 ui = true

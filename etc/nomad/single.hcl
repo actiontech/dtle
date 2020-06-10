@@ -12,6 +12,7 @@ ports {
   serf = 4648
 }
 addresses {
+  # Default to `bind_addr`. Or set individually here.
   #http = "127.0.0.1:4646"
   #rpc  = "127.0.0.1:4647"
   #serf = "127.0.0.1:4648"
