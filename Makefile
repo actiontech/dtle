@@ -19,7 +19,7 @@ GOFLAGS := -mod=vendor
 default: driver
 
 driver:
-	GO111MODULE=on go build $(GOFLAGS) -o dist/mysql -ldflags \
+	GO111MODULE=on go build $(GOFLAGS) -o dist/dtle -ldflags \
 "-X github.com/actiontech/dtle/g.Version=$(VERSION) \
 -X github.com/actiontech/dtle/g.GitCommit=$(COMMIT) \
 -X github.com/actiontech/dtle/g.GitBranch=$(BRANCH)" \
@@ -44,7 +44,7 @@ coverage-report-post-build:
 package-common: driver
 	rm -rf dist/install
 	mkdir -p dist/install/usr/share/dtle/nomad-plugin
-	cp -R dist/mysql dist/install/usr/share/dtle/nomad-plugin
+	cp -R dist/dtle dist/install/usr/share/dtle/nomad-plugin
 	cp -R scripts dist/install/usr/share/dtle/
 	cp -R etc dist/install/
 

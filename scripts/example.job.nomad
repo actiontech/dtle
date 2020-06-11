@@ -8,7 +8,7 @@ job "job1" {
 
   group "Src" {
     task "src" {
-      driver = "mysql"
+      driver = "dtle"
       config {
         ReplicateDoDb = [{
           TableSchema = "db1"
@@ -30,7 +30,7 @@ job "job1" {
   }
   group "Dest" {
     task "dest" {
-      driver = "mysql"
+      driver = "dtle"
       config {
         type = kafka
         ConnectionConfig = {

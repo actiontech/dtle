@@ -33,7 +33,7 @@ client {
   network_speed = 10
 }
 
-plugin "mysql" {
+plugin "dtle" {
   config {
     NatsBind = "127.0.0.1:8193"
     NatsAdvertise = "127.0.0.1:8193"

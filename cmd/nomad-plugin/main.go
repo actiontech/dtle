@@ -4,7 +4,7 @@ import (
 	"github.com/hashicorp/nomad/plugins"
 	"github.com/hashicorp/go-hclog"
 	"os"
-	dtlemysql "github.com/actiontech/dtle/drivers/mysql"
+	dtle "github.com/actiontech/dtle/drivers/mysql"
 )
 
 func main() {
@@ -12,6 +12,6 @@ func main() {
 	plugins.Serve(func(logger hclog.Logger) interface{} {
 		loggerPid := logger.With("pid", pid)
 		loggerPid.Warn("plugins.Serve Factory called.")
-		return dtlemysql.NewDriver(loggerPid)
+		return dtle.NewDriver(loggerPid)
 	})
 }

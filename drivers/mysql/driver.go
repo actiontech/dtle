@@ -28,14 +28,14 @@ import (
 
 const (
 	// pluginName is the name of the plugin
-	pluginName = "mysql"
+	pluginName = "dtle"
 
 	// fingerprintPeriod is the interval at which the driver will send fingerprint responses
 	fingerprintPeriod = 30 * time.Second
 
-	// The key populated in Node Attributes to indicate presence of the Java driver
-	driverAttr        = "driver.mysql"
-	driverVersionAttr = "driver.mysql.version"
+	driverAttr        = "driver.dtle"
+	driverVersionAttr = "driver.dtle.version"
+	driverFullVersionAttr = "driver.dtle.full_version"
 
 	// taskHandleVersion is the version of task handle which this driver sets
 	// and understands how to decode driver state
@@ -228,7 +228,7 @@ type DtleTaskConfig struct {
 
 func NewDriver(logger hclog.Logger) drivers.DriverPlugin {
 	logger = logger.Named(pluginName)
-	logger.Info("mysql NewDriver")
+	logger.Info("dtle NewDriver")
 
 	ctx, cancel := context.WithCancel(context.Background())
 	return &Driver{
@@ -414,9 +414,9 @@ func (d *Driver) buildFingerprint() *drivers.Fingerprint {
 	attrs := map[string]*pstructs.Attribute{}
 
 	health = drivers.HealthStateHealthy
-	attrs["driver.mysql"] = pstructs.NewBoolAttribute(true)
-	attrs["driver.mysql.version"] = pstructs.NewStringAttribute(g.Version)
-	attrs["driver.mysql.full_version"] = pstructs.NewStringAttribute(
+	attrs[driverAttr] = pstructs.NewBoolAttribute(true)
+	attrs[driverVersionAttr] = pstructs.NewStringAttribute(g.Version)
+	attrs[driverFullVersionAttr] = pstructs.NewStringAttribute(
 		fmt.Sprintf("%v-%v-%v", g.Version, g.GitBranch, g.GitCommit))
 
 	return &drivers.Fingerprint{
