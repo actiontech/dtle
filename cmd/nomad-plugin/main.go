@@ -7,12 +7,6 @@ import (
 	dtlemysql "github.com/actiontech/dtle/drivers/mysql"
 )
 
-var (
-	Version   string
-	GitBranch string
-	GitCommit string
-)
-
 func main() {
 	pid := os.Getpid()
 	plugins.Serve(func(logger hclog.Logger) interface{} {

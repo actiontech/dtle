@@ -15,7 +15,7 @@ import (
 
 	//	umconf "github.com/actiontech/dtle/drivers/mysql/mysql/config"
 
-	"github.com/actiontech/dtle/drivers/mysql/g"
+	"github.com/actiontech/dtle/g"
 	"github.com/opentracing/opentracing-go"
 	"github.com/opentracing/opentracing-go/ext"
 	"github.com/pkg/errors"

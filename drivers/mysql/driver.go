@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 	dcommon "github.com/actiontech/dtle/drivers/mysql/common"
-	"github.com/actiontech/dtle/drivers/mysql/g"
 	"github.com/actiontech/dtle/drivers/mysql/kafka"
+	"github.com/actiontech/dtle/g"
 	"github.com/pkg/errors"
 	"runtime"
 	"time"
@@ -411,18 +411,18 @@ func (d *Driver) handleFingerprint(ctx context.Context, ch chan *drivers.Fingerp
 func (d *Driver) buildFingerprint() *drivers.Fingerprint {
 
 	var health drivers.HealthState
-	var desc string
 	attrs := map[string]*pstructs.Attribute{}
 
 	health = drivers.HealthStateHealthy
-	desc = "ready"
 	attrs["driver.mysql"] = pstructs.NewBoolAttribute(true)
-	attrs["driver.mysql.version"] = pstructs.NewStringAttribute("12")
+	attrs["driver.mysql.version"] = pstructs.NewStringAttribute(g.Version)
+	attrs["driver.mysql.full_version"] = pstructs.NewStringAttribute(
+		fmt.Sprintf("%v-%v-%v", g.Version, g.GitBranch, g.GitCommit))
 
 	return &drivers.Fingerprint{
 		Attributes:        attrs,
 		Health:            health,
-		HealthDescription: desc,
+		HealthDescription: drivers.DriverHealthy,
 	}
 }
 
@@ -456,7 +456,7 @@ func (d *Driver) RecoverTask(handle *drivers.TaskHandle) error {
 func (d *Driver) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHandle, *drivers.DriverNetwork, error) {
 	d.logger.Info("StartTask", "ID", cfg.ID, "allocID", cfg.AllocID)
 
-	err := g.ValidateJobName(cfg.JobName)
+	err := dcommon.ValidateJobName(cfg.JobName)
 	if err != nil {
 		return nil, nil, err
 	}

@@ -1,7 +1,11 @@
 // global values
 package g
 
-import "fmt"
+var (
+	Version   string
+	GitBranch string
+	GitCommit string
+)
 
 const (
 	DtleSchemaName string = "dtle"
@@ -23,10 +27,3 @@ const (
 
 	LONG_LOG_LIMIT = 256
 )
-
-func ValidateJobName(name string) error {
-	if len(name) > JobNameLenLimit {
-		return fmt.Errorf("job name too long. jobName %v lenLimit %v", name, JobNameLenLimit)
-	}
-	return nil
-}

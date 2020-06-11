@@ -20,7 +20,9 @@ default: driver
 
 driver:
 	GO111MODULE=on go build $(GOFLAGS) -o dist/mysql -ldflags \
-		"-X main.Version=$(VERSION) -X main.GitCommit=$(COMMIT) -X main.GitBranch=$(BRANCH)" \
+"-X github.com/actiontech/dtle/g.Version=$(VERSION) \
+-X github.com/actiontech/dtle/g.GitCommit=$(COMMIT) \
+-X github.com/actiontech/dtle/g.GitBranch=$(BRANCH)" \
 		./cmd/nomad-plugin/main.go
 
 build_with_coverage_report: build-coverage-report-tool coverage-report-pre-build build coverage-report-post-build

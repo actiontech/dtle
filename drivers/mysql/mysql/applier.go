@@ -37,12 +37,12 @@ import (
 	"context"
 	"os"
 
-	"github.com/actiontech/dtle/drivers/mysql/g"
 	"github.com/actiontech/dtle/drivers/mysql/mysql/base"
 	"github.com/actiontech/dtle/drivers/mysql/mysql/binlog"
 	config "github.com/actiontech/dtle/drivers/mysql/mysql/config"
 	umconf "github.com/actiontech/dtle/drivers/mysql/mysql/config"
 	"github.com/actiontech/dtle/drivers/mysql/mysql/sql"
+	"github.com/actiontech/dtle/g"
 
 	hclog "github.com/hashicorp/go-hclog"
 	not "github.com/nats-io/not.go"

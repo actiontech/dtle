@@ -21,7 +21,7 @@ import (
 	"github.com/pingcap/dm/pkg/gtid"
 	"github.com/pingcap/dm/pkg/streamer"
 
-	"github.com/actiontech/dtle/drivers/mysql/g"
+	"github.com/actiontech/dtle/g"
 	//"encoding/hex"
 	"fmt"
 	"regexp"

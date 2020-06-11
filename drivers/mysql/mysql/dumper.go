@@ -12,7 +12,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/actiontech/dtle/drivers/mysql/g"
+	"github.com/actiontech/dtle/g"
 	hclog "github.com/hashicorp/go-hclog"
 
 	"time"

@@ -17,9 +17,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/actiontech/dtle/drivers/mysql/g"
 	"github.com/actiontech/dtle/drivers/mysql/mysql/config"
 	config "github.com/actiontech/dtle/drivers/mysql/mysql/config"
+	"github.com/actiontech/dtle/g"
 	_ "github.com/go-sql-driver/mysql"
 )
 
