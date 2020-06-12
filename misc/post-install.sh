@@ -46,10 +46,15 @@ if [[ -L /etc/systemd/system/dtle.service ]]; then
     rm -f /etc/systemd/system/dtle.service
 fi
 
-mkdir -p /var/lib/nomad
-mkdir -p /var/lib/consul
-mkdir -p /var/log/nomad
+mkdir -p "$RPM_INSTALL_PREFIX/var/lib/consul"
+mkdir -p "$RPM_INSTALL_PREFIX/var/lib/nomad"
+mkdir -p "$RPM_INSTALL_PREFIX/var/log/nomad"
 
+chown -R -L dtle "$RPM_INSTALL_PREFIX/var/lib/consul"
+chown -R -L dtle "$RPM_INSTALL_PREFIX/var/lib/nomad"
+chown -R -L dtle "$RPM_INSTALL_PREFIX/var/log/nomad"
+
+sed -i 's|INSTALL_PREFIX_MAGIC|'$RPM_INSTALL_PREFIX'|g' $RPM_INSTALL_PREFIX/etc/consul/*.hcl
 sed -i 's|INSTALL_PREFIX_MAGIC|'$RPM_INSTALL_PREFIX'|g' $RPM_INSTALL_PREFIX/etc/nomad/*.hcl
 
 # Distribution-specific logic

@@ -1,5 +1,5 @@
 node_name = "consul0.localdomain"
-data_dir = "/var/lib/consul"
+data_dir = "INSTALL_PREFIX_MAGIC/var/lib/consul"
 
 server = true
 bootstrap_expect = 1
