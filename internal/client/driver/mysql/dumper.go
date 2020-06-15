@@ -81,6 +81,8 @@ func NewDumper(db usql.QueryAble, table *config.Table, chunkSize int64,
 type dumpStatResult struct {
 	Gtid       string
 	TotalCount int64
+	LogFile    string
+	LogPos     int64
 }
 
 type DumpEntryOrig struct {

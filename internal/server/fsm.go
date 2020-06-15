@@ -560,10 +560,21 @@ func (n *udupFSM) applyJobClientUpdate(buf []byte, index uint64) interface{} {
 		if existing, _ := n.state.JobByID(ws, ju.JobID); existing != nil {
 			existing.ModifyIndex = index
 			existing.JobModifyIndex = index
-
+			isKafka := false
+			for _, t := range existing.Tasks {
+				if t.Driver == "Kafka" {
+					isKafka = true
+				}
+			}
 			for _, t := range existing.Tasks {
 				{ // these should be updated regardless of task type
-					if ju.Gtid != "" {
+
+					if isKafka {
+						if t.Driver == "Kafka" && ju.Gtid != "" {
+							n.logger.Debugf("*** write gtid %v", ju.Gtid)
+							t.Config["Gtid"] = ju.Gtid
+						}
+					} else if ju.Gtid != "" {
 						n.logger.Debugf("*** write gtid %v", ju.Gtid)
 						t.Config["Gtid"] = ju.Gtid
 					}
