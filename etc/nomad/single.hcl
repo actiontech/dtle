@@ -31,6 +31,9 @@ server {
 client {
   enabled       = true
   network_speed = 10
+  options = {
+    "driver.blacklist" = "docker,exec,java,mock,qemu,rawexec,rkt"
+  }
 }
 
 plugin "dtle" {

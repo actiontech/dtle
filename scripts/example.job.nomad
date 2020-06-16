@@ -10,6 +10,7 @@ job "job1" {
     task "src" {
       driver = "dtle"
       config {
+        Type = "dest"
         ReplicateDoDb = [{
           TableSchema = "db1"
           Tables = [{
@@ -32,7 +33,7 @@ job "job1" {
     task "dest" {
       driver = "dtle"
       config {
-        type = kafka
+        Type = "dest"
         ConnectionConfig = {
           Host = "127.0.0.1"
           Port = 3308
