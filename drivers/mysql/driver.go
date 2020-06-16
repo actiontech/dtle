@@ -7,7 +7,6 @@ import (
 	"github.com/actiontech/dtle/drivers/mysql/kafka"
 	"github.com/actiontech/dtle/g"
 	"github.com/pkg/errors"
-	"runtime"
 	"time"
 
 	config "github.com/actiontech/dtle/drivers/mysql/mysql/config"
@@ -140,15 +139,7 @@ var (
 			drivers.NetIsolationModeGroup,
 		},
 	}
-
-	_ drivers.DriverPlugin = (*Driver)(nil)
 )
-
-func init() {
-	if runtime.GOOS == "linux" {
-		capabilities.FSIsolation = drivers.FSIsolationChroot
-	}
-}
 
 // TaskState is the state which is encoded in the handle returned in
 // StartTask. This information is needed to rebuild the taskConfig state and handler
