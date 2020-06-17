@@ -50,9 +50,9 @@ import (
 	"github.com/actiontech/dts/internal/config"
 	"github.com/actiontech/dts/internal/models"
 	"github.com/actiontech/dts/utils"
+	"github.com/pingcap/tidb/types"
 	"github.com/shirou/gopsutil/mem"
 	"github.com/sirupsen/logrus"
-	"github.com/pingcap/tidb/types"
 )
 
 const (
@@ -296,9 +296,9 @@ func (e *Extractor) Run() {
 			return
 		}
 		dumpMsg, err := Encode(&dumpStatResult{
-			Gtid: e.initialBinlogCoordinates.GtidSet,
-			LogFile: e.initialBinlogCoordinates.LogFile,
-			LogPos: e.initialBinlogCoordinates.LogPos,
+			Gtid:       e.initialBinlogCoordinates.GtidSet,
+			LogFile:    e.initialBinlogCoordinates.LogFile,
+			LogPos:     e.initialBinlogCoordinates.LogPos,
 			TotalCount: e.mysqlContext.RowsEstimate,
 		})
 		if err != nil {
