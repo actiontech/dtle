@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/hashicorp/nomad/plugins/drivers"
+	"github.com/pkg/errors"
 	"strconv"
 
 	"github.com/actiontech/dtle/drivers/mysql/common"
@@ -51,20 +52,24 @@ type KafkaRunner struct {
 	kafkaConfig *KafkaConfig
 	kafkaMgr    *KafkaManager
 
+	storeManager *common.StoreManager
+
 	tables map[string](map[string]*config.Table)
 }
 
-func NewKafkaRunner(execCtx *common.ExecContext, cfg *KafkaConfig, logger hclog.Logger) *KafkaRunner {
+func NewKafkaRunner(execCtx *common.ExecContext, cfg *KafkaConfig, logger hclog.Logger,
+	storeManager *common.StoreManager) *KafkaRunner {
 	/*	entry := logger.WithFields(logrus.Fields{
 		"job": execCtx.Subject,
 	})*/
 	return &KafkaRunner{
-		subject:     execCtx.Subject,
-		kafkaConfig: cfg,
-		logger:      logger,
-		waitCh:      make(chan *drivers.ExitResult, 1),
-		shutdownCh:  make(chan struct{}),
-		tables:      make(map[string](map[string]*config.Table)),
+		subject:      execCtx.Subject,
+		kafkaConfig:  cfg,
+		logger:       logger,
+		waitCh:       make(chan *drivers.ExitResult, 1),
+		shutdownCh:   make(chan struct{}),
+		tables:       make(map[string](map[string]*config.Table)),
+		storeManager: storeManager,
 	}
 }
 func (kr *KafkaRunner) ID() string {
@@ -124,6 +129,24 @@ func (kr *KafkaRunner) initNatSubClient() (err error) {
 func (kr *KafkaRunner) Run() {
 	kr.logger.Debug("kafkas. broker %v", kr.kafkaConfig.Brokers)
 	var err error
+
+	kr.logger.Info("go WatchAndPutNats")
+	go kr.storeManager.WatchAndPutNats(kr.subject, kr.kafkaConfig.NatsAddr, kr.shutdownCh, func(err error) {
+		kr.onError(TaskStateDead, errors.Wrap(err, "WatchAndPutNats"))
+	})
+
+	{
+		gtid, err := kr.storeManager.GetGtidForJob(kr.subject)
+		if err != nil {
+			kr.onError(TaskStateDead, errors.Wrap(err, "GetGtidForJob"))
+			return
+		}
+		if gtid != "" {
+			kr.logger.Info("kafka. Got gtid from consul", "gtid", gtid)
+			kr.kafkaConfig.Gtid = gtid
+		}
+	}
+
 	kr.kafkaMgr, err = NewKafkaManager(kr.kafkaConfig)
 	if err != nil {
 		kr.logger.Error("failed to initialize kafkas err: %v", err.Error())

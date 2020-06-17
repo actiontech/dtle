@@ -104,7 +104,8 @@ func (h *taskHandle) run(taskConfig *DtleTaskConfig, d *Driver) {
 		{
 			if taskConfig.KafkaConfig != nil {
 				d.logger.Debug("found kafka", "KafkaConfig", taskConfig.KafkaConfig)
-				h.runner = kafka.NewKafkaRunner(ctx, taskConfig.KafkaConfig, d.logger)
+				taskConfig.KafkaConfig.NatsAddr = d.config.NatsAdvertise
+				h.runner = kafka.NewKafkaRunner(ctx, taskConfig.KafkaConfig, d.logger, d.storeManager)
 				go h.runner.Run()
 			} else {
 				d.logger.Debug("print host", hclog.Fmt("%+v", driverConfig.ConnectionConfig.Host))
