@@ -3,7 +3,7 @@ package mysql
 import (
 	"context"
 	"fmt"
-	common2 "github.com/actiontech/dtle/drivers/mysql/common"
+	"github.com/actiontech/dtle/drivers/mysql/common"
 	"github.com/actiontech/dtle/drivers/mysql/kafka"
 	"github.com/actiontech/dtle/drivers/mysql/mysql"
 	"github.com/pkg/errors"
@@ -78,7 +78,7 @@ func (h *taskHandle) run(taskConfig *DtleTaskConfig, d *Driver) {
 	// TODO: detect if the taskConfig OOMed
 
 	cfg := h.taskConfig
-	ctx := &common2.ExecContext{cfg.JobName, cfg.TaskGroupName, 100 * 1024 * 1024, "/opt/binlog"}
+	ctx := &common.ExecContext{cfg.JobName, cfg.TaskGroupName, 100 * 1024 * 1024, d.config.DataDir}
 
 	driverConfig, _ := InitConfig(taskConfig)
 
@@ -150,5 +150,5 @@ type DriverHandle interface {
 	Shutdown() error
 
 	// Stats returns aggregated stats of the driver
-	Stats() (*common2.TaskStatistics, error)
+	Stats() (*common.TaskStatistics, error)
 }

@@ -63,6 +63,8 @@ var (
 		"NomadAddr": hclspec.NewDefault(hclspec.NewAttr("NomadAddr", "string", false),
 			hclspec.NewLiteral(`"127.0.0.1:4646"`)),
 		"consul": hclspec.NewAttr("consul", "list(string)", true),
+		"data_dir": hclspec.NewDefault(hclspec.NewAttr("data_dir", "string", false),
+			hclspec.NewLiteral(`"/var/lib/nomad"`)),
 	})
 
 	// taskConfigSpec is the hcl specification for the driver config section of
@@ -315,6 +317,7 @@ type DriverConfig struct {
 	NomadAddr     string   `codec:"NomadAddr"`
 	NatsAdvertise string   `codec:"NatsAdvertise"`
 	Consul        []string `codec:"consul"`
+	DataDir       string   `codec:"data_dir"`
 }
 
 func (d *Driver) SetConfig(c *base.Config) (err error) {

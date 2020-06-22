@@ -38,6 +38,7 @@ client {
 
 plugin "dtle" {
   config {
+    data_dir = "INSTALL_PREFIX_MAGIC/var/lib/nomad"
     NatsBind = "127.0.0.1:8193"
     NatsAdvertise = "127.0.0.1:8193"
     consul = ["127.0.0.1:8500"]
