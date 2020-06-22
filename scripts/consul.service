@@ -4,7 +4,7 @@ Requires=network-online.target
 After=network-online.target
 
 [Service]
-#User=consul
+User=dtle
 #Group=consul
 #EnvironmentFile=-/etc/default/consul
 Restart=on-failure

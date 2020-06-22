@@ -4,6 +4,7 @@ Documentation=https://www.nomadproject.io/docs/agent/
 After=network.target
 
 [Service]
+User=dtle
 ExecStart=INSTALL_PREFIX_MAGIC/usr/bin/nomad agent -config INSTALL_PREFIX_MAGIC/etc/nomad/single.hcl
 
 [Install]
