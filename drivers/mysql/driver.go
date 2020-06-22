@@ -54,13 +54,13 @@ var (
 
 	// configSpec is the hcl specification returned by the ConfigSchema RPC
 	configSpec = hclspec.NewObject(map[string]*hclspec.Spec{
-		"NatsBind": hclspec.NewDefault(hclspec.NewAttr("NatsBind", "string", false),
+		"nats_bind": hclspec.NewDefault(hclspec.NewAttr("nats_bind", "string", false),
 			hclspec.NewLiteral(`"0.0.0.0:8193"`)),
-		"NatsAdvertise": hclspec.NewDefault(hclspec.NewAttr("NatsAdvertise", "string", false),
+		"nats_advertise": hclspec.NewDefault(hclspec.NewAttr("nats_advertise", "string", false),
 			hclspec.NewLiteral(`"127.0.0.1:8193"`)),
-		"ApiAddr": hclspec.NewDefault(hclspec.NewAttr("ApiAddr", "string", false),
+		"api_addr": hclspec.NewDefault(hclspec.NewAttr("api_addr", "string", false),
 			hclspec.NewLiteral(`""`)),
-		"NomadAddr": hclspec.NewDefault(hclspec.NewAttr("NomadAddr", "string", false),
+		"nomad_addr": hclspec.NewDefault(hclspec.NewAttr("nomad_addr", "string", false),
 			hclspec.NewLiteral(`"127.0.0.1:4646"`)),
 		"consul": hclspec.NewAttr("consul", "list(string)", true),
 		"data_dir": hclspec.NewDefault(hclspec.NewAttr("data_dir", "string", false),
@@ -312,10 +312,10 @@ func (d *Driver) ConfigSchema() (*hclspec.Spec, error) {
 }
 
 type DriverConfig struct {
-	NatsBind      string   `codec:"NatsBind"`
-	ApiAddr       string   `codec:"ApiAddr"`
-	NomadAddr     string   `codec:"NomadAddr"`
-	NatsAdvertise string   `codec:"NatsAdvertise"`
+	NatsBind      string   `codec:"nats_bind"`
+	NatsAdvertise string   `codec:"nats_advertise"`
+	ApiAddr       string   `codec:"api_addr"`
+	NomadAddr     string   `codec:"nomad_addr"`
 	Consul        []string `codec:"consul"`
 	DataDir       string   `codec:"data_dir"`
 }

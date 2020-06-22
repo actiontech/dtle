@@ -39,11 +39,11 @@ client {
 plugin "dtle" {
   config {
     data_dir = "INSTALL_PREFIX_MAGIC/var/lib/nomad"
-    NatsBind = "127.0.0.1:8193"
-    NatsAdvertise = "127.0.0.1:8193"
+    nats_bind = "127.0.0.1:8193"
+    nats_advertise = "127.0.0.1:8193"
     consul = ["127.0.0.1:8500"]
-    ApiAddr = "127.0.0.1:8190"   # for compatibility API
-    NomadAddr = "127.0.0.1:4646" # compatibility API need to access a nomad server
+    api_addr = "127.0.0.1:8190"   # for compatibility API
+    nomad_addr = "127.0.0.1:4646" # compatibility API need to access a nomad server
   }
 }
 
