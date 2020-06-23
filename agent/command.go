@@ -229,10 +229,26 @@ func (c *Command) setupLoggers(config *Config) (io.Writer, error) {
 		c.logOutput = NewRotateFile(config.LogFile, config.LogMaxSize /*1GB*/, config.LogMaxBackups)
 	}
 	c.logger = logrus.New()
-	c.logger.SetLevel(logrus.DebugLevel) //ulog.New(oFile, ulog.ParseLevel(config.LogLevel))
+	c.logger.SetLevel(ParseLevel(config.LogLevel))
+	//ulog.New(oFile, ulog.ParseLevel(config.LogLevel))
 	//log.SetOutput(c.logOutput)
 	c.logger.SetOutput(c.logOutput)
 	return c.logOutput, nil
+}
+
+func ParseLevel(logLevel string) logrus.Level {
+	switch logLevel {
+	case "DEBUG":
+		return logrus.DebugLevel
+	case "INFO":
+		return logrus.InfoLevel
+	case "WARN":
+		return logrus.WarnLevel
+	case "ERR":
+		return logrus.ErrorLevel
+	default:
+		return logrus.InfoLevel
+	}
 }
 
 func NewRotateFile(filePath string, maxSize int, maxBackups int) *rotate.Logger {
@@ -322,8 +338,7 @@ func (c *Command) Run(args []string) int {
 		autopprof.Capture(autopprof.CPUProfile{
 			Duration: time.Duration(config.PprofTime) * time.Second,
 		})
-		autopprof.Capture(autopprof.HeapProfile{
-		})
+		autopprof.Capture(autopprof.HeapProfile{})
 	}
 
 	// set global value
