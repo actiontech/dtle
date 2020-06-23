@@ -1,12 +1,12 @@
 #!/bin/bash
 
 function disable_systemd {
-    systemctl stop consul
-    systemctl stop nomad
-    systemctl disable consul
-    systemctl disable nomad
-    rm -f /lib/systemd/system/consul.service
-    rm -f /lib/systemd/system/nomad.service
+    systemctl stop dtle-consul
+    systemctl stop dtle-nomad
+    systemctl disable dtle-consul
+    systemctl disable dtle-nomad
+    rm -f /lib/systemd/system/dtle-consul.service
+    rm -f /lib/systemd/system/dtle-nomad.service
 }
 
 function disable_update_rcd {
@@ -36,8 +36,8 @@ elif [[ -f /etc/debian_version ]]; then
 
     which systemctl &>/dev/null
     if [[ $? -eq 0 ]]; then
-      	deb-systemd-invoke stop nomad.service
-	      deb-systemd-invoke stop consul.service
+      	deb-systemd-invoke stop dtle-nomad.service
+	      deb-systemd-invoke stop dtle-consul.service
         disable_systemd
     else
         # Assuming sysv

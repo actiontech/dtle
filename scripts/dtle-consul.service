@@ -1,12 +1,10 @@
 [Unit]
-Description=Consul Agent
+Description=Consul Agent for dtle-on-nomad
 Requires=network-online.target
 After=network-online.target
 
 [Service]
 User=dtle
-#Group=consul
-#EnvironmentFile=-/etc/default/consul
 Restart=on-failure
 ExecStart=INSTALL_PREFIX_MAGIC/usr/bin/consul agent $CONSUL_FLAGS -config-file=INSTALL_PREFIX_MAGIC/etc/consul/single.hcl
 ExecReload=/usr/bin/kill -HUP $MAINPID

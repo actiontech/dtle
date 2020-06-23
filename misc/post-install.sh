@@ -10,12 +10,12 @@ function install_init {
 }
 
 function install_systemd {
-    sed -i 's|INSTALL_PREFIX_MAGIC|'$RPM_INSTALL_PREFIX'|g' $RPM_INSTALL_PREFIX$SCRIPT_DIR/consul.service
-    sed -i 's|INSTALL_PREFIX_MAGIC|'$RPM_INSTALL_PREFIX'|g' $RPM_INSTALL_PREFIX$SCRIPT_DIR/nomad.service
-    cp -f $RPM_INSTALL_PREFIX$SCRIPT_DIR/consul.service /lib/systemd/system/
-    cp -f $RPM_INSTALL_PREFIX$SCRIPT_DIR/nomad.service /lib/systemd/system/
-    systemctl enable consul || true
-    systemctl enable nomad || true
+    sed -i 's|INSTALL_PREFIX_MAGIC|'$RPM_INSTALL_PREFIX'|g' $RPM_INSTALL_PREFIX$SCRIPT_DIR/dtle-consul.service
+    sed -i 's|INSTALL_PREFIX_MAGIC|'$RPM_INSTALL_PREFIX'|g' $RPM_INSTALL_PREFIX$SCRIPT_DIR/dtle-nomad.service
+    cp -f $RPM_INSTALL_PREFIX$SCRIPT_DIR/dtle-consul.service /lib/systemd/system/
+    cp -f $RPM_INSTALL_PREFIX$SCRIPT_DIR/dtle-nomad.service /lib/systemd/system/
+    systemctl enable dtle-consul || true
+    systemctl enable dtle-nomad || true
     systemctl daemon-reload || true
 }
 
@@ -73,8 +73,8 @@ elif [[ -f /etc/debian_version ]]; then
     which systemctl &>/dev/null
     if [[ $? -eq 0 ]]; then
 	    install_systemd
-	    systemctl restart consul || echo "WARNING: failed to run systemctl start."
-	    systemctl restart nomad || echo "WARNING: failed to run systemctl start."
+	    systemctl restart dtle-consul || echo "WARNING: failed to run systemctl start."
+	    systemctl restart dtle-nomad || echo "WARNING: failed to run systemctl start."
     else
 	    # Assuming sysv
 	    install_init
