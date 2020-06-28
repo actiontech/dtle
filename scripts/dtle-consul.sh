@@ -1,15 +1,15 @@
 #! /usr/bin/env bash
 
 # chkconfig: 2345 99 01
-# description: Dtle daemon
+# description: dtle-consul daemon
 
 ### BEGIN INIT INFO
-# Provides:          dtle
+# Provides:          dtle-consul
 # Required-Start:    $all
 # Required-Stop:     $remote_fs $syslog
 # Default-Start:     2 3 4 5
 # Default-Stop:      0 1 6
-# Short-Description: Start dtle at boot time
+# Short-Description: Start dtle-consul at boot time
 ### END INIT INFO
 
 # this init script supports three different variations:
@@ -19,8 +19,6 @@
 #
 # In the third case we have to define our own functions which are very dumb
 # and expect the args to be positioned correctly.
-
-DTLE_OPTS=
 
 USER=dtle
 GROUP=dtle
@@ -37,7 +35,7 @@ if [ ! -f "$STDOUT" ]; then
 fi
 
 if [ -z "$STDERR" ]; then
-    STDERR=/var/log/dtle/dtle.log
+    STDERR=INSTALL_PREFIX_MAGIC/var/log/consul/consul.log
 fi
 if [ ! -f "$STDERR" ]; then
     mkdir -p `dirname $STDERR`
@@ -86,13 +84,13 @@ function log_success_msg() {
 }
 
 # Process name ( For display )
-name=dtle
+name=consul
 
 # Daemon name, where is the actual executable
-daemon=INSTALL_PREFIX_MAGIC/usr/bin/dtle
+daemon=INSTALL_PREFIX_MAGIC/usr/bin/consul
 
 # pid file for the daemon
-pidfile=/var/run/dtle/dtle.pid
+pidfile=INSTALL_PREFIX_MAGIC/var/run/consul/consul.pid
 piddir=`dirname $pidfile`
 
 if [ ! -d "$piddir" ]; then
@@ -101,7 +99,7 @@ if [ ! -d "$piddir" ]; then
 fi
 
 # Configuration file
-config=INSTALL_PREFIX_MAGIC/etc/dtle/dtle.conf
+config=INSTALL_PREFIX_MAGIC/etc/consul/single.hcl
 
 # If the daemon is not there, then exit.
 [ -x $daemon ] || exit 5
@@ -127,9 +125,9 @@ case $1 in
 
         log_success_msg "Starting the process" "$name"
         if which start-stop-daemon > /dev/null 2>&1; then
-            start-stop-daemon --chuid $USER:$GROUP --start --quiet --pid-file $pidfile --exec $daemon -- -pid-file $pidfile -config $config $DTLE_OPTS >>$STDOUT 2>>$STDERR &
+            start-stop-daemon --chuid $USER:$GROUP --start --quiet --pid-file $pidfile --exec $daemon -- agent -config-file $config >>$STDOUT 2>>$STDERR &
         else
-            su -s /bin/sh -c "nohup $daemon server -pid-file $pidfile -config $config $DTLE_OPTS >>$STDOUT 2>>$STDERR &" $USER
+            su -s /bin/sh -c "nohup $daemon agent -config-file $config -pid-file $pidfile >>$STDOUT 2>>$STDERR &" $USER
         fi
         log_success_msg "$name process was started"
         ;;

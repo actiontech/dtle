@@ -4,9 +4,12 @@ SCRIPT_DIR=/usr/share/dtle/scripts
 
 function install_init {
     echo "TODO"; false
-    sed -i 's|INSTALL_PREFIX_MAGIC|'$RPM_INSTALL_PREFIX'|g' $RPM_INSTALL_PREFIX$SCRIPT_DIR/init.sh
-    cp -f $RPM_INSTALL_PREFIX$SCRIPT_DIR/init.sh /etc/init.d/dtle
-    chmod +x /etc/init.d/dtle
+    sed -i 's|INSTALL_PREFIX_MAGIC|'$RPM_INSTALL_PREFIX'|g' $RPM_INSTALL_PREFIX$SCRIPT_DIR/dtle-nomad.sh
+    sed -i 's|INSTALL_PREFIX_MAGIC|'$RPM_INSTALL_PREFIX'|g' $RPM_INSTALL_PREFIX$SCRIPT_DIR/dtle-consul.sh
+    cp -f $RPM_INSTALL_PREFIX$SCRIPT_DIR/dtle-nomad.sh /etc/init.d/dtle-nomad
+    cp -f $RPM_INSTALL_PREFIX$SCRIPT_DIR/dtle-consul.sh /etc/init.d/dtle-consul
+    chmod +x /etc/init.d/dtle-nomad
+    chmod +x /etc/init.d/dtle-consul
 }
 
 function install_systemd {
@@ -20,13 +23,13 @@ function install_systemd {
 }
 
 function install_update_rcd {
-    echo "TODO"; false
-    update-rc.d dtle defaults
+    update-rc.d dtle-consul defaults
+    update-rc.d dtle-nomad defaults
 }
 
 function install_chkconfig {
-    echo "TODO"; false
-    chkconfig --add dtle
+    chkconfig --add dtle-consul
+    chkconfig --add dtle-nomad
 }
 
 id dtle &>/dev/null
@@ -47,15 +50,18 @@ if [[ -L /etc/systemd/system/dtle.service ]]; then
 fi
 
 mkdir -p "$RPM_INSTALL_PREFIX/var/lib/consul"
+mkdir -p "$RPM_INSTALL_PREFIX/var/log/consul"
 mkdir -p "$RPM_INSTALL_PREFIX/var/lib/nomad"
 mkdir -p "$RPM_INSTALL_PREFIX/var/log/nomad"
 
-chown -R -L dtle "$RPM_INSTALL_PREFIX/var/lib/consul"
-chown -R -L dtle "$RPM_INSTALL_PREFIX/var/lib/nomad"
-chown -R -L dtle "$RPM_INSTALL_PREFIX/var/log/nomad"
+chown -R -L dtle:dtle "$RPM_INSTALL_PREFIX/var/lib/consul"
+chown -R -L dtle:dtle "$RPM_INSTALL_PREFIX/var/log/consul"
+chown -R -L dtle:dtle "$RPM_INSTALL_PREFIX/var/lib/nomad"
+chown -R -L dtle:dtle "$RPM_INSTALL_PREFIX/var/log/nomad"
 
 sed -i 's|INSTALL_PREFIX_MAGIC|'$RPM_INSTALL_PREFIX'|g' $RPM_INSTALL_PREFIX/etc/consul/*.hcl
 sed -i 's|INSTALL_PREFIX_MAGIC|'$RPM_INSTALL_PREFIX'|g' $RPM_INSTALL_PREFIX/etc/nomad/*.hcl
+sed -i 's|INSTALL_PREFIX_MAGIC|'$RPM_INSTALL_PREFIX'|g' $RPM_INSTALL_PREFIX$SCRIPT_DIR/run-nomad-with-pid.sh
 
 # Distribution-specific logic
 if [[ -f /etc/redhat-release ]]; then

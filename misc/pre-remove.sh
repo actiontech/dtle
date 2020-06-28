@@ -10,13 +10,17 @@ function disable_systemd {
 }
 
 function disable_update_rcd {
-    update-rc.d -f dtle remove
-    rm -f /etc/init.d/dtle
+    update-rc.d -f dtle-nomad remove
+    update-rc.d -f dtle-consul remove
+    rm -f /etc/init.d/dtle-nomad
+    rm -f /etc/init.d/dtle-consul
 }
 
 function disable_chkconfig {
-    chkconfig --del dtle
-    rm -f /etc/init.d/dtle
+    chkconfig --del dtle-nomad
+    chkconfig --del dtle-consul
+    rm -f /etc/init.d/dtle-nomad
+    rm -f /etc/init.d/dtle-consul
 }
 
 if [[ "$1" == "0" ]]; then
@@ -41,7 +45,8 @@ elif [[ -f /etc/debian_version ]]; then
         disable_systemd
     else
         # Assuming sysv
-      	invoke-rc.d dtle stop
+      	invoke-rc.d dtle-nomad stop
+      	invoke-rc.d dtle-consul stop
         disable_update_rcd
     fi
 fi
