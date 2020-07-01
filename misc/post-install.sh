@@ -2,16 +2,6 @@
 
 SCRIPT_DIR=/usr/share/dtle/scripts
 
-function install_init {
-    echo "TODO"; false
-    sed -i 's|INSTALL_PREFIX_MAGIC|'$RPM_INSTALL_PREFIX'|g' $RPM_INSTALL_PREFIX$SCRIPT_DIR/dtle-nomad.sh
-    sed -i 's|INSTALL_PREFIX_MAGIC|'$RPM_INSTALL_PREFIX'|g' $RPM_INSTALL_PREFIX$SCRIPT_DIR/dtle-consul.sh
-    cp -f $RPM_INSTALL_PREFIX$SCRIPT_DIR/dtle-nomad.sh /etc/init.d/dtle-nomad
-    cp -f $RPM_INSTALL_PREFIX$SCRIPT_DIR/dtle-consul.sh /etc/init.d/dtle-consul
-    chmod +x /etc/init.d/dtle-nomad
-    chmod +x /etc/init.d/dtle-consul
-}
-
 function install_systemd {
     sed -i 's|INSTALL_PREFIX_MAGIC|'$RPM_INSTALL_PREFIX'|g' $RPM_INSTALL_PREFIX$SCRIPT_DIR/dtle-consul.service
     sed -i 's|INSTALL_PREFIX_MAGIC|'$RPM_INSTALL_PREFIX'|g' $RPM_INSTALL_PREFIX$SCRIPT_DIR/dtle-nomad.service
@@ -20,16 +10,6 @@ function install_systemd {
     systemctl enable dtle-consul || true
     systemctl enable dtle-nomad || true
     systemctl daemon-reload || true
-}
-
-function install_update_rcd {
-    update-rc.d dtle-consul defaults
-    update-rc.d dtle-nomad defaults
-}
-
-function install_chkconfig {
-    chkconfig --add dtle-consul
-    chkconfig --add dtle-nomad
 }
 
 id dtle &>/dev/null
@@ -61,37 +41,16 @@ chown -R -L dtle:dtle "$RPM_INSTALL_PREFIX/var/log/nomad"
 
 sed -i 's|INSTALL_PREFIX_MAGIC|'$RPM_INSTALL_PREFIX'|g' $RPM_INSTALL_PREFIX/etc/consul/*.hcl
 sed -i 's|INSTALL_PREFIX_MAGIC|'$RPM_INSTALL_PREFIX'|g' $RPM_INSTALL_PREFIX/etc/nomad/*.hcl
-sed -i 's|INSTALL_PREFIX_MAGIC|'$RPM_INSTALL_PREFIX'|g' $RPM_INSTALL_PREFIX$SCRIPT_DIR/run-nomad-with-pid.sh
 
-# Distribution-specific logic
-if [[ -f /etc/redhat-release ]]; then
-    # RHEL-variant logic
-    which systemctl &>/dev/null
-    if [[ $? -eq 0 ]]; then
-	    install_systemd
-    else
-	    # Assuming sysv
-	    install_init
-	    install_chkconfig
-    fi
-elif [[ -f /etc/debian_version ]]; then
-    # Debian/Ubuntu logic
-    which systemctl &>/dev/null
-    if [[ $? -eq 0 ]]; then
-	    install_systemd
-	    systemctl restart dtle-consul || echo "WARNING: failed to run systemctl start."
-	    systemctl restart dtle-nomad || echo "WARNING: failed to run systemctl start."
-    else
-	    # Assuming sysv
-	    install_init
-	    install_update_rcd
-	    invoke-rc.d dtle restart
-    fi
-elif [[ -f /etc/os-release ]]; then
-    source /etc/os-release
-    if [[ $ID = "amzn" ]]; then
-	    # Amazon Linux logic
-	    install_init
-	    install_chkconfig
-    fi
+which systemctl &>/dev/null
+if [[ $? -eq 0 ]]; then
+  install_systemd
+
+  if [[ -f /etc/debian_version ]]; then
+    systemctl restart dtle-consul || echo "WARNING: failed to run systemctl start."
+	  systemctl restart dtle-nomad || echo "WARNING: failed to run systemctl start."
+  fi
+else
+  echo "No systemd. Please start/stop dtle-nomad manually."
 fi
+
