@@ -1,0 +1,47 @@
+{
+  "Job": {
+    "ID": "job1",
+    "Datacenters": ["dc1"],
+    "TaskGroups": [
+      {
+        "Name": "src",
+        "Tasks": [{
+          "Name": "src",
+          "Driver": "dtle",
+          "Config": {
+            "ReplicateDoDb": [{
+              "TableSchema": "db1",
+              "Tables": [{
+                "TableName": "tb1"
+              }]
+            }],
+            "DropTableIfExists": true,
+            "Gtid": "",
+            "ChunkSize": 2000,
+            "ConnectionConfig": {
+              "Host": "127.0.0.1",
+              "Port": 3307,
+              "User": "root",
+              "Password": "password"
+            }
+          }
+        }
+        ]
+      }, {
+        "Name": "dest",
+        "Tasks": [{
+          "Name": "dest",
+          "Driver": "dtle",
+          "Config": {
+            "ConnectionConfig": {
+              "Host": "127.0.0.1",
+              "Port": 3307,
+              "User": "root",
+              "Password": "password"
+            }
+          }
+        }]
+      }
+    ]
+  }
+}

@@ -34,8 +34,6 @@ const (
 	// taskHandleVersion is the version of task handle which this driver sets
 	// and understands how to decode driver state
 	taskHandleVersion = 1
-	TaskTypeSrc       = "Src"
-	TaskTypeDest      = "Dest"
 )
 
 var (
@@ -91,7 +89,6 @@ var (
 		"DropTableIfExists":hclspec.NewAttr("DropTableIfExists", "bool", false),
 		"ExpandSyntaxSupport":hclspec.NewAttr("ExpandSyntaxSupport", "bool", false),
 		"ReplChanBufferSize":hclspec.NewAttr("ReplChanBufferSize", "number", false),
-		"MsgBytesLimit":hclspec.NewAttr("MsgBytesLimit", "number", false),
 		"TrafficAgainstLimits":hclspec.NewAttr("TrafficAgainstLimits", "number", false),
 		"MaxRetries":hclspec.NewAttr("MaxRetries", "number", false),
 		"ChunkSize":hclspec.NewAttr("ChunkSize", "number", false),
@@ -113,7 +110,8 @@ var (
 			"Port": hclspec.NewAttr("Port", "number", true),
 			"User": hclspec.NewAttr("User", "string", true),
 			"Password": hclspec.NewAttr("Password", "string", true),
-			"Charset": hclspec.NewAttr("Charset", "string", false),
+			"Charset": hclspec.NewDefault(hclspec.NewAttr("Charset", "string", false),
+				hclspec.NewLiteral(`"utf8mb4"`)),
 		})),
 		"KafkaConfig": hclspec.NewBlock("KafkaConfig", false, hclspec.NewObject(map[string]*hclspec.Spec{
 			"Topic": hclspec.NewAttr("Topic", "string", true),

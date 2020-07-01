@@ -320,6 +320,17 @@ func convertJob(oldJob *Job) (*api.Job, error) {
 		switch strings.ToUpper(oldTask.Driver) {
 		case "MYSQL", "":
 			newTask.Config = oldTask.Config
+			delete(newTask.Config, "BytesLimit")
+			delete(newTask.Config, "NatsAddr")
+			delete(newTask.Config, "MsgsLimit")
+			delete(newTask.Config, "MsgBytesLimit")
+			delete(newTask.Config, "ApproveHeterogeneous")
+			delete(newTask.Config, "SqlMode")
+			delete(newTask.Config, "SystemVariables")
+			delete(newTask.Config, "HasSuperPrivilege")
+			delete(newTask.Config, "MySQLVersion")
+			delete(newTask.Config, "TimeZone")
+			delete(newTask.Config, "MySQLServerUuid")
 		case "KAFKA":
 			newTask.Config = make(map[string]interface{})
 			newTask.Config["KafkaConfig"] = oldTask.Config

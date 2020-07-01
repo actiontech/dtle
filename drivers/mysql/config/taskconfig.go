@@ -21,7 +21,8 @@ type DtleTaskConfig struct {
 	DropTableIfExists    bool                      `codec:"DropTableIfExists"`
 	ExpandSyntaxSupport  bool                      `codec:"ExpandSyntaxSupport"`
 	ReplChanBufferSize   int64                     `codec:"ReplChanBufferSize"`
-	MsgBytesLimit        int                       `codec:"MsgBytesLimit"`
+	// removed in BigTx commit
+	//MsgBytesLimit        int                       `codec:"MsgBytesLimit"`
 	TrafficAgainstLimits int                       `codec:"TrafficAgainstLimits"`
 	MaxRetries           int64                     `codec:"MaxRetries"`
 	ChunkSize            int64                     `codec:"ChunkSize"`
@@ -56,9 +57,6 @@ func (d *DtleTaskConfig) SetDefaultForEmpty() {
 	}
 	if d.ParallelWorkers <= 0 {
 		d.ParallelWorkers = defaultNumWorkers
-	}
-	if d.MsgBytesLimit <= 0 {
-		d.MsgBytesLimit = defaultMsgBytes
 	}
 	if d.GroupMaxSize == 0 {
 		d.GroupMaxSize = 1

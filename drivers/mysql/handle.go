@@ -8,6 +8,7 @@ import (
 	"github.com/actiontech/dtle/drivers/mysql/kafka"
 	"github.com/actiontech/dtle/drivers/mysql/mysql"
 	"github.com/pkg/errors"
+	"strings"
 	"sync"
 	"time"
 
@@ -84,41 +85,36 @@ func (h *taskHandle) run(taskConfig *config.DtleTaskConfig, d *Driver) {
 	taskConfig.SetDefaultForEmpty()
 	driverConfig := &config.MySQLDriverConfig{DtleTaskConfig: *taskConfig}
 
-	switch cfg.TaskGroupName {
-	case TaskTypeSrc:
-		{
-			err = d.storeManager.PutNatsWait(cfg.JobName)
-			if err != nil {
-				h.exitResult.Err = errors.Wrap(err, "PutNatsWait")
-				return
-			}
-			//	d.logger.Debug("NewExtractor ReplicateDoDb: %v", driverConfig.ReplicateDoDb)
-			// Create the extractor
 
-			h.runner, err = mysql.NewExtractor(ctx, driverConfig, d.logger, d.storeManager)
+	switch strings.ToLower(cfg.TaskGroupName) {
+	case "src", "source":
+		err = d.storeManager.PutNatsWait(cfg.JobName)
+		if err != nil {
+			h.exitResult.Err = errors.Wrap(err, "PutNatsWait")
+			return
+		}
+
+		h.runner, err = mysql.NewExtractor(ctx, driverConfig, d.logger, d.storeManager)
+		if err != nil {
+			h.exitResult.Err = errors.Wrap(err, "NewExtractor")
+			return
+		}
+		go h.runner.Run()
+	case "dst", "dest", "destination":
+		if taskConfig.KafkaConfig != nil {
+			d.logger.Debug("found kafka", "KafkaConfig", taskConfig.KafkaConfig)
+			taskConfig.KafkaConfig.NatsAddr = d.config.NatsAdvertise
+			h.runner = kafka.NewKafkaRunner(ctx, taskConfig.KafkaConfig, d.logger, d.storeManager)
+			go h.runner.Run()
+		} else {
+			d.logger.Debug("print host", hclog.Fmt("%+v", driverConfig.ConnectionConfig.Host))
+
+			h.runner, err = mysql.NewApplier(ctx, driverConfig, d.logger, d.storeManager, d.config.NatsAdvertise)
 			if err != nil {
-				h.exitResult.Err = errors.Wrap(err, "NewExtractor")
+				h.exitResult.Err = errors.Wrap(err, "NewApplier")
 				return
 			}
 			go h.runner.Run()
-		}
-	case TaskTypeDest:
-		{
-			if taskConfig.KafkaConfig != nil {
-				d.logger.Debug("found kafka", "KafkaConfig", taskConfig.KafkaConfig)
-				taskConfig.KafkaConfig.NatsAddr = d.config.NatsAdvertise
-				h.runner = kafka.NewKafkaRunner(ctx, taskConfig.KafkaConfig, d.logger, d.storeManager)
-				go h.runner.Run()
-			} else {
-				d.logger.Debug("print host", hclog.Fmt("%+v", driverConfig.ConnectionConfig.Host))
-
-				h.runner, err = mysql.NewApplier(ctx, driverConfig, d.logger, d.storeManager, d.config.NatsAdvertise)
-				if err != nil {
-					h.exitResult.Err = errors.Wrap(err, "NewApplier")
-					return
-				}
-				go h.runner.Run()
-			}
 		}
 	default:
 		h.exitResult.Err = fmt.Errorf("unknown processor type: %+v", cfg.TaskGroupName)

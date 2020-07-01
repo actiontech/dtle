@@ -1,8 +1,7 @@
 job "job1" {
   datacenters = ["dc1"]
-  type = "service"
 
-  group "Src" {
+  group "src" {
     task "src" {
       driver = "dtle"
       config {
@@ -24,7 +23,7 @@ job "job1" {
       }
     }
   }
-  group "Dest" {
+  group "dest" {
     task "dest" {
       driver = "dtle"
       config {
