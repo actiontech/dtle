@@ -8,7 +8,6 @@ package mysql
 
 import (
 	gosql "database/sql"
-	"encoding/json"
 	"fmt"
 	dcommon "github.com/actiontech/dtle/drivers/mysql/common"
 	"github.com/hashicorp/nomad/plugins/drivers"
@@ -74,6 +73,7 @@ type Extractor struct {
 	systemVariables   map[string]string
 	sqlMode           string
 	MySQLVersion      string
+	TotalTransferredBytes int
 
 	mysqlVersionDigit int
 	db                *gosql.DB
@@ -1488,7 +1488,7 @@ func (e *Extractor) Stats() (*dcommon.TaskStatistics, error) {
 	}
 	if e.natsConn != nil {
 		taskResUsage.MsgStat = e.natsConn.Statistics
-		e.mysqlContext.TotalTransferredBytes = int(taskResUsage.MsgStat.OutBytes)
+		e.TotalTransferredBytes = int(taskResUsage.MsgStat.OutBytes)
 		if e.mysqlContext.TrafficAgainstLimits > 0 && int(taskResUsage.MsgStat.OutBytes)/1024/1024/1024 >= e.mysqlContext.TrafficAgainstLimits {
 			e.onError(TaskStateDead, fmt.Errorf("traffic limit exceeded : %d/%d", e.mysqlContext.TrafficAgainstLimits, int(taskResUsage.MsgStat.OutBytes)/1024/1024/1024))
 		}
@@ -1511,25 +1511,6 @@ func (e *Extractor) Stats() (*dcommon.TaskStatistics, error) {
 	}
 
 	return &taskResUsage, nil
-}
-
-func (e *Extractor) ID() string {
-	id := config.DriverCtx{
-		DriverConfig: &config.MySQLDriverConfig{
-			TotalTransferredBytes: e.mysqlContext.TotalTransferredBytes,
-			ReplicateDoDb:         e.mysqlContext.ReplicateDoDb,
-			ReplicateIgnoreDb:     e.mysqlContext.ReplicateIgnoreDb,
-			Gtid:                  e.mysqlContext.Gtid,
-			NatsAddr:              e.mysqlContext.NatsAddr,
-			ConnectionConfig:      e.mysqlContext.ConnectionConfig,
-		},
-	}
-
-	data, err := json.Marshal(id)
-	if err != nil {
-		e.logger.Error("mysql.extractor: Failed to marshal ID to JSON: %s", err)
-	}
-	return string(data)
 }
 
 func (e *Extractor) onError(state int, err error) {

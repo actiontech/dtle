@@ -22,10 +22,6 @@ const (
 	defaultMsgBytes   = 20 * 1024
 )
 
-type DriverCtx struct {
-	DriverConfig *MySQLDriverConfig
-}
-
 func (d *DataSource) String() string {
 	return fmt.Sprintf(d.TableSchema)
 }
@@ -60,7 +56,6 @@ type MySQLDriverConfig struct {
 
 	ConnectionConfig  *ConnectionConfig
 
-	TotalTransferredBytes int
 	RowsEstimate          int64
 	DeltaEstimate         int64
 	BinlogFormat      string

@@ -140,8 +140,6 @@ func (h *taskHandle) Destroy() bool {
 
 type DriverHandle interface {
 	Run()
-	// Returns an opaque handle that can be used to re-open the handle
-	ID() string
 
 	// WaitChan is used to return a channel used wait for task completion
 	WaitCh() chan *drivers.ExitResult

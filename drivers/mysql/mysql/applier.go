@@ -8,7 +8,6 @@ package mysql
 
 import (
 	gosql "database/sql"
-	"encoding/json"
 	"fmt"
 	dcommon "github.com/actiontech/dtle/drivers/mysql/common"
 	"github.com/hashicorp/nomad/plugins/drivers"
@@ -1419,27 +1418,6 @@ func (a *Applier) Stats() (*dcommon.TaskStatistics, error) {
 	}
 
 	return &taskResUsage, nil
-}
-
-func (a *Applier) ID() string {
-	id := config.DriverCtx{
-		DriverConfig: &config.MySQLDriverConfig{
-			ReplicateDoDb:     a.mysqlContext.ReplicateDoDb,
-			ReplicateIgnoreDb: a.mysqlContext.ReplicateIgnoreDb,
-			Gtid:              a.mysqlContext.Gtid,
-			BinlogPos:         a.mysqlContext.BinlogPos,
-			BinlogFile:        a.mysqlContext.BinlogFile,
-			NatsAddr:          a.mysqlContext.NatsAddr,
-			ParallelWorkers:   a.mysqlContext.ParallelWorkers,
-			ConnectionConfig:  a.mysqlContext.ConnectionConfig,
-		},
-	}
-
-	data, err := json.Marshal(id)
-	if err != nil {
-		a.logger.Error("mysql.applier: Failed to marshal ID to JSON: %s", err)
-	}
-	return string(data)
 }
 
 func (a *Applier) updateGtidString() {

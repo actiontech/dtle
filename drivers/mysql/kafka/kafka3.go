@@ -72,25 +72,6 @@ func NewKafkaRunner(execCtx *common.ExecContext, cfg *KafkaConfig, logger hclog.
 		storeManager: storeManager,
 	}
 }
-func (kr *KafkaRunner) ID() string {
-	id := config.DriverCtx{
-		// TODO
-		DriverConfig: &config.MySQLDriverConfig{
-		//ReplicateDoDb:     a.mysqlContext.ReplicateDoDb,
-		//ReplicateIgnoreDb: a.mysqlContext.ReplicateIgnoreDb,
-		//Gtid:              a.mysqlContext.Gtid,
-		//NatsAddr:          a.mysqlContext.NatsAddr,
-		//ParallelWorkers:   a.mysqlContext.ParallelWorkers,
-		//ConnectionConfig:  a.mysqlContext.ConnectionConfig,
-		},
-	}
-
-	data, err := json.Marshal(id)
-	if err != nil {
-		kr.logger.Error("kafkas: Failed to marshal ID to JSON: %s", err)
-	}
-	return string(data)
-}
 
 func (kr *KafkaRunner) WaitCh() chan *drivers.ExitResult {
 	return kr.waitCh
