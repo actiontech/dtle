@@ -37,21 +37,6 @@ func ToEventDML(eventType replication.EventType) EventDML {
 	}
 }
 
-type BinlogTx struct {
-	SID           string
-	GNO           int64
-	LastCommitted int64
-	//Gtid           string
-	// table -> [row]. row is identified by a hash of pk values.
-	hasBeginQuery bool
-	Impacting     map[uint64]([]string)
-	Query         string
-	Fde           string
-	eventCount    int //for evaluate
-	EventSize     uint64
-	ErrorCode     uint16
-}
-
 type BinlogQuery struct {
 	Sql string
 	DML EventDML

@@ -74,7 +74,6 @@ type MySQLDriverConfig struct {
 	TotalRowsReplay   int64
 
 	Stage                string
-	ApproveHeterogeneous bool
 	SkipCreateDbTable    bool
 
 	CountingRowsFlag int64
@@ -109,9 +108,6 @@ func (a *MySQLDriverConfig) SetDefault() *MySQLDriverConfig {
 	if result.GroupTimeout == 0 {
 		result.GroupTimeout = 100
 	}
-
-	// TODO temporarily (or permanently) disable homogeneous replication, hetero only.
-	result.ApproveHeterogeneous = true
 
 	if result.ConnectionConfig == nil {
 		result.ConnectionConfig = &ConnectionConfig{}

@@ -210,8 +210,7 @@ type DtleTaskConfig struct {
 
 	SqlMode           string                  `codec:"SqlMode"`
 	MySQLVersion      string                  `codec:"MySQLVersion"`
-	ApproveHeterogeneous bool                 `codec:"ApproveHeterogeneous"`
-	SkipCreateDbTable    bool                 `codec:"SkipCreateDbTable"`
+	SkipCreateDbTable   bool                  `codec:"SkipCreateDbTable"`
 	SkipPrivilegeCheck  bool                  `codec:"SkipPrivilegeCheck"`
 	SkipIncrementalCopy bool                  `codec:"SkipIncrementalCopy"`
 	Type      string                          `codec:"Type"`

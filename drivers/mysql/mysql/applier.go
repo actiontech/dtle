@@ -222,11 +222,8 @@ type Applier struct {
 	//  excessive work happens at the end of the iteration as new copy-jobs arrive befroe realizing the copy is complete
 	copyRowsQueue           chan *DumpEntry
 	applyDataEntryQueue     chan *binlog.BinlogEntry
-	applyBinlogTxQueue      chan *binlog.BinlogTx
-	applyBinlogGroupTxQueue chan []*binlog.BinlogTx
 	// only TX can be executed should be put into this chan
 	applyBinlogMtsTxQueue chan *binlog.BinlogEntry
-	lastAppliedBinlogTx   *binlog.BinlogTx
 
 	natsConn *gonats.Conn
 	waitCh   chan *drivers.ExitResult
@@ -267,8 +264,6 @@ func NewApplier(ctx *dcommon.ExecContext, cfg *umconf.MySQLDriverConfig, logger 
 		copyRowsQueue:           make(chan *DumpEntry, 24),
 		applyDataEntryQueue:     make(chan *binlog.BinlogEntry, cfg.ReplChanBufferSize*2),
 		applyBinlogMtsTxQueue:   make(chan *binlog.BinlogEntry, cfg.ReplChanBufferSize*2),
-		applyBinlogTxQueue:      make(chan *binlog.BinlogTx, cfg.ReplChanBufferSize*2),
-		applyBinlogGroupTxQueue: make(chan []*binlog.BinlogTx, cfg.ReplChanBufferSize*2),
 		waitCh:                  make(chan *drivers.ExitResult, 1),
 		shutdownCh:              make(chan struct{}),
 		printTps:                os.Getenv(g.ENV_PRINT_TPS) != "",
@@ -406,60 +401,6 @@ func (a *Applier) Run() {
 	go a.executeWriteFuncs()
 }
 
-func (a *Applier) onApplyTxStructWithSuper(dbApplier *sql.Conn, binlogTx *binlog.BinlogTx) error {
-	dbApplier.DbMutex.Lock()
-	defer func() {
-		_, err := sql.ExecNoPrepare(dbApplier.Db, `commit;set gtid_next='automatic'`)
-		if err != nil {
-			a.onError(TaskStateDead, err)
-		}
-		dbApplier.DbMutex.Unlock()
-	}()
-
-	if binlogTx.Fde != "" && dbApplier.Fde != binlogTx.Fde {
-		dbApplier.Fde = binlogTx.Fde // IMO it would comare the internal pointer first
-		_, err := sql.ExecNoPrepare(dbApplier.Db, binlogTx.Fde)
-		if err != nil {
-			return err
-		}
-	}
-
-	_, err := sql.ExecNoPrepare(dbApplier.Db, fmt.Sprintf(`set gtid_next='%s:%d'`, binlogTx.SID, binlogTx.GNO))
-	if err != nil {
-		return err
-	}
-	var ignoreError error
-	if binlogTx.Query == "" {
-		_, err = sql.ExecNoPrepare(dbApplier.Db, `begin;commit`)
-		if err != nil {
-			return err
-		}
-	} else {
-		_, err := sql.ExecNoPrepare(dbApplier.Db, binlogTx.Query)
-		if err != nil {
-			if !sql.IgnoreError(err) {
-				//SELECT FROM_BASE64('')
-				a.logger.Error("mysql.applier: exec gtid:[%s:%d] error: %v", binlogTx.SID, binlogTx.GNO, err)
-				return err
-			}
-			a.logger.Warn("mysql.applier: exec gtid:[%s:%d],ignore error: %v", binlogTx.SID, binlogTx.GNO, err)
-			ignoreError = err
-		}
-	}
-
-	if ignoreError != nil {
-		_, err := sql.ExecNoPrepare(dbApplier.Db, fmt.Sprintf(`commit;set gtid_next='%s:%d'`, binlogTx.SID, binlogTx.GNO))
-		if err != nil {
-			return err
-		}
-		_, err = sql.ExecNoPrepare(dbApplier.Db, `begin;commit`)
-		if err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
 // executeWriteFuncs writes data via applier: both the rowcopy and the events backlog.
 // This is where the ghost table gets the data. The function fills the data single-threaded.
 // Both event backlog and rowcopy events are polled; the backlog events have precedence.
@@ -514,41 +455,6 @@ func (a *Applier) executeWriteFuncs() {
 				break
 			}
 			time.Sleep(time.Second)
-		}
-	}
-
-	var dbApplier *sql.Conn
-
-	stopMTSIncrLoop := false
-	for !stopMTSIncrLoop {
-		select {
-		case <-a.shutdownCh:
-			stopMTSIncrLoop = true
-		case groupTx := <-a.applyBinlogGroupTxQueue:
-			// this chan is used for homogeneous
-			if len(groupTx) == 0 {
-				continue
-			}
-			for idx, binlogTx := range groupTx {
-				dbApplier = a.dbs[idx%a.mysqlContext.ParallelWorkers]
-				go func(tx *binlog.BinlogTx) {
-					a.wg.Add(1)
-					if err := a.onApplyTxStructWithSuper(dbApplier, tx); err != nil {
-						a.onError(TaskStateDead, err)
-					}
-					a.wg.Done()
-				}(binlogTx)
-			}
-			a.wg.Wait() // Waiting for all goroutines to finish
-
-			if !a.shutdown {
-				a.lastAppliedBinlogTx = groupTx[len(groupTx)-1]
-				//a.updateGtidSet(a.lastAppliedBinlogTx.SID, TODO, ) // homogeneous obsolete. not implementing
-				a.updateGtidString()
-				// a.mysqlContext.BinlogPos = // homogeneous obsolete. not implementing.
-			}
-		case <-time.After(1 * time.Second):
-			// do nothing
 		}
 	}
 }
@@ -801,55 +707,6 @@ func (a *Applier) heterogeneousReplay() {
 		}
 	}
 }
-func (a *Applier) homogeneousReplay() {
-	var lastCommitted int64
-	var err error
-	//timeout := time.After(100 * time.Millisecond)
-	groupTx := []*binlog.BinlogTx{}
-OUTER:
-	for {
-		select {
-		case binlogTx := <-a.applyBinlogTxQueue:
-			if nil == binlogTx {
-				continue
-			}
-			if a.mysqlContext.MySQLServerUuid == binlogTx.SID {
-				continue
-			}
-			if a.mysqlContext.ParallelWorkers <= 1 {
-				if err = a.onApplyTxStructWithSuper(a.dbs[0], binlogTx); err != nil {
-					a.onError(TaskStateDead, err)
-					break OUTER
-				}
-
-				if !a.shutdown {
-					a.lastAppliedBinlogTx = binlogTx
-					//a.updateGtidSet(a.lastAppliedBinlogTx.SID, TODO, a.lastAppliedBinlogTx.GNO)
-					a.updateGtidString()
-					// a.mysqlContext.BinlogPos = // homogeneous obsolete. not implementing.
-				}
-			} else {
-				if binlogTx.LastCommitted == lastCommitted {
-					groupTx = append(groupTx, binlogTx)
-				} else {
-					if len(groupTx) != 0 {
-						a.applyBinlogGroupTxQueue <- groupTx
-						groupTx = []*binlog.BinlogTx{}
-					}
-					groupTx = append(groupTx, binlogTx)
-				}
-				lastCommitted = binlogTx.LastCommitted
-			}
-		case <-time.After(100 * time.Millisecond):
-			if len(groupTx) != 0 {
-				a.applyBinlogGroupTxQueue <- groupTx
-				groupTx = []*binlog.BinlogTx{}
-			}
-		case <-a.shutdownCh:
-			break OUTER
-		}
-	}
-}
 
 // initiateStreaming begins treaming of binary log events and registers listeners for such events
 func (a *Applier) initiateStreaming() error {
@@ -937,92 +794,60 @@ func (a *Applier) initiateStreaming() error {
 		return err
 	}
 
-	if a.mysqlContext.ApproveHeterogeneous {
-		_, err := a.natsConn.Subscribe(fmt.Sprintf("%s_incr_hete", a.subject), func(m *gonats.Msg) {
-			var binlogEntries binlog.BinlogEntries
-			t := not.NewTraceMsg(m)
-			// Extract the span context from the request message.
-			spanContext, err := tracer.Extract(opentracing.Binary, t)
-			if err != nil {
-				a.logger.Debug("applier:get data")
-			}
-			// Setup a span referring to the span context of the incoming NATS message.
-			replySpan := tracer.StartSpan("nast : dest to get data  ", ext.SpanKindRPCServer, ext.RPCServerOption(spanContext))
-			ext.MessageBusDestination.Set(replySpan, m.Subject)
-			defer replySpan.Finish()
-			if err := Decode(t.Bytes(), &binlogEntries); err != nil {
-				a.onError(TaskStateDead, err)
-			}
+	_, err = a.natsConn.Subscribe(fmt.Sprintf("%s_incr_hete", a.subject), func(m *gonats.Msg) {
+		var binlogEntries binlog.BinlogEntries
+		t := not.NewTraceMsg(m)
+		// Extract the span context from the request message.
+		spanContext, err := tracer.Extract(opentracing.Binary, t)
+		if err != nil {
+			a.logger.Debug("applier:get data")
+		}
+		// Setup a span referring to the span context of the incoming NATS message.
+		replySpan := tracer.StartSpan("nast : dest to get data  ", ext.SpanKindRPCServer, ext.RPCServerOption(spanContext))
+		ext.MessageBusDestination.Set(replySpan, m.Subject)
+		defer replySpan.Finish()
+		if err := Decode(t.Bytes(), &binlogEntries); err != nil {
+			a.onError(TaskStateDead, err)
+		}
 
-			nEntries := len(binlogEntries.Entries)
+		nEntries := len(binlogEntries.Entries)
 
-			handled := false
-			for i := 0; !handled && (i < DefaultConnectWaitSecond/2); i++ {
-				vacancy := cap(a.applyDataEntryQueue) - len(a.applyDataEntryQueue)
-				a.logger.Debug("applier. incr. nEntries: %v, vacancy: %v", nEntries, vacancy)
-				if vacancy < nEntries {
-					a.logger.Debug("applier. incr. wait 1s for applyDataEntryQueue")
-					time.Sleep(1 * time.Second) // It will wait an second at the end, but seems no hurt.
-				} else {
-					a.logger.Debug("applier. incr. applyDataEntryQueue enqueue")
-					for _, binlogEntry := range binlogEntries.Entries {
-						binlogEntry.SpanContext = replySpan.Context()
-						a.applyDataEntryQueue <- binlogEntry
-						a.currentCoordinates.RetrievedGtidSet = binlogEntry.Coordinates.GetGtidForThisTx()
-						atomic.AddInt64(&a.mysqlContext.DeltaEstimate, 1)
-					}
-					a.mysqlContext.Stage = dcommon.StageWaitingForMasterToSendEvent
-
-					if err := a.natsConn.Publish(m.Reply, nil); err != nil {
-						a.onError(TaskStateDead, err)
-					}
-					a.logger.Debug("applier. incr. ack-recv. nEntries: %v", nEntries)
-
-					handled = true
+		handled := false
+		for i := 0; !handled && (i < DefaultConnectWaitSecond/2); i++ {
+			vacancy := cap(a.applyDataEntryQueue) - len(a.applyDataEntryQueue)
+			a.logger.Debug("applier. incr. nEntries: %v, vacancy: %v", nEntries, vacancy)
+			if vacancy < nEntries {
+				a.logger.Debug("applier. incr. wait 1s for applyDataEntryQueue")
+				time.Sleep(1 * time.Second) // It will wait an second at the end, but seems no hurt.
+			} else {
+				a.logger.Debug("applier. incr. applyDataEntryQueue enqueue")
+				for _, binlogEntry := range binlogEntries.Entries {
+					binlogEntry.SpanContext = replySpan.Context()
+					a.applyDataEntryQueue <- binlogEntry
+					a.currentCoordinates.RetrievedGtidSet = binlogEntry.Coordinates.GetGtidForThisTx()
+					atomic.AddInt64(&a.mysqlContext.DeltaEstimate, 1)
 				}
-			}
-			if !handled {
-				// discard these entries
-				a.logger.Debug("applier. incr. discarding entries")
 				a.mysqlContext.Stage = dcommon.StageWaitingForMasterToSendEvent
-			}
-		})
-		if err != nil {
-			return err
-		}
 
-		go a.heterogeneousReplay()
-	} else {
-		_, err := a.natsConn.Subscribe(fmt.Sprintf("%s_incr", a.subject), func(m *gonats.Msg) {
-			var binlogTx []*binlog.BinlogTx
-			t := not.NewTraceMsg(m)
-			// Extract the span context from the request message.
-			sc, err := tracer.Extract(opentracing.Binary, t)
-			if err != nil {
-				a.logger.Debug("applier:get data")
+				if err := a.natsConn.Publish(m.Reply, nil); err != nil {
+					a.onError(TaskStateDead, err)
+				}
+				a.logger.Debug("applier. incr. ack-recv. nEntries: %v", nEntries)
+
+				handled = true
 			}
-			// Setup a span referring to the span context of the incoming NATS message.
-			replySpan := tracer.StartSpan(a.subject, ext.SpanKindRPCServer, ext.RPCServerOption(sc))
-			ext.MessageBusDestination.Set(replySpan, m.Subject)
-			defer replySpan.Finish()
-			if err := Decode(t.Bytes(), &binlogTx); err != nil {
-				a.onError(TaskStateDead, err)
-			}
-			for _, tx := range binlogTx {
-				a.applyBinlogTxQueue <- tx
-			}
-			if err := a.natsConn.Publish(m.Reply, nil); err != nil {
-				a.onError(TaskStateDead, err)
-			}
-		})
-		if err != nil {
-			return err
 		}
-		/*if err := sub.SetPendingLimits(a.mysqlContext.MsgsLimit, a.mysqlContext.BytesLimit); err != nil {
-			return err
-		}*/
-		go a.homogeneousReplay()
+		if !handled {
+			// discard these entries
+			a.logger.Debug("applier. incr. discarding entries")
+			a.mysqlContext.Stage = dcommon.StageWaitingForMasterToSendEvent
+		}
+	})
+	if err != nil {
+		return err
 	}
+
+	go a.heterogeneousReplay()
 
 	return nil
 }
@@ -1082,29 +907,27 @@ func (a *Applier) initDBConnections() (err error) {
 	}
 	a.logger.Debug("mysql.applier. after validateAndReadTimeZone")
 
-	if a.mysqlContext.ApproveHeterogeneous {
-		if err := a.createTableGtidExecutedV4(); err != nil {
+	if err := a.createTableGtidExecutedV4(); err != nil {
+		return err
+	}
+	a.logger.Debug("mysql.applier. after createTableGtidExecutedV4")
+
+	for i := range a.dbs {
+		a.dbs[i].PsDeleteExecutedGtid, err = a.dbs[i].Db.PrepareContext(context.Background(),
+			fmt.Sprintf("delete from %v.%v where job_name = ? and source_uuid = ?",
+				g.DtleSchemaName, g.GtidExecutedTableV4))
+		if err != nil {
 			return err
 		}
-		a.logger.Debug("mysql.applier. after createTableGtidExecutedV4")
-
-		for i := range a.dbs {
-			a.dbs[i].PsDeleteExecutedGtid, err = a.dbs[i].Db.PrepareContext(context.Background(),
-				fmt.Sprintf("delete from %v.%v where job_name = ? and source_uuid = ?",
-					g.DtleSchemaName, g.GtidExecutedTableV4))
-			if err != nil {
-				return err
-			}
-			a.dbs[i].PsInsertExecutedGtid, err = a.dbs[i].Db.PrepareContext(context.Background(),
-				fmt.Sprintf("replace into %v.%v (job_name,source_uuid,gtid,gtid_set) values (?, ?, ?, null)",
-					g.DtleSchemaName, g.GtidExecutedTableV4))
-			if err != nil {
-				return err
-			}
-
+		a.dbs[i].PsInsertExecutedGtid, err = a.dbs[i].Db.PrepareContext(context.Background(),
+			fmt.Sprintf("replace into %v.%v (job_name,source_uuid,gtid,gtid_set) values (?, ?, ?, null)",
+				g.DtleSchemaName, g.GtidExecutedTableV4))
+		if err != nil {
+			return err
 		}
-		a.logger.Debug("mysql.applier. after prepare stmt for gtid_executed table")
+
 	}
+	a.logger.Debug("mysql.applier. after prepare stmt for gtid_executed table")
 
 	a.logger.Info("mysql.applier: Initiated on %s:%d, version %+v", a.mysqlContext.ConnectionConfig.Host, a.mysqlContext.ConnectionConfig.Port, a.mysqlContext.MySQLVersion)
 	return nil
@@ -1593,8 +1416,8 @@ func (a *Applier) Stats() (*dcommon.TaskStatistics, error) {
 		Stage:              a.mysqlContext.Stage,
 		CurrentCoordinates: a.currentCoordinates,
 		BufferStat:  dcommon.BufferStat{
-			ApplierTxQueueSize:      len(a.applyBinlogTxQueue),
-			ApplierGroupTxQueueSize: len(a.applyBinlogGroupTxQueue),
+			ApplierTxQueueSize:      0, // TODO remove
+			ApplierGroupTxQueueSize: 0,
 		},
 		Timestamp: time.Now().UTC().UnixNano(),
 	}
