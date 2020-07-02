@@ -115,6 +115,16 @@ func GetTableColumns(db usql.QueryAble, databaseName, tableName string) (*umconf
 	return umconf.NewColumnList(columns), nil
 }
 
+// ValidateAndReadTimeZone potentially reads server time-zone
+func ValidateAndReadTimeZone(db usql.QueryAble) (tz string, err error) {
+	query := `select @@global.time_zone`
+	if err := db.QueryRow(query).Scan(&tz); err != nil {
+		return "", err
+	}
+
+	return tz, nil
+}
+
 func ShowCreateTable(db *gosql.DB, databaseName, tableName string, dropTableIfExists bool, addUse bool) (statement []string, err error) {
 	var dummy, createTableStatement string
 	query := fmt.Sprintf(`show create table %s.%s`, umconf.EscapeName(databaseName), umconf.EscapeName(tableName))

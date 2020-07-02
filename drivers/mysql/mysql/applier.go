@@ -212,6 +212,7 @@ type Applier struct {
 	mysqlContext       *config.MySQLDriverConfig
 
 	MySQLVersion      string
+	MySQLServerUuid   string
 
 	dbs                []*sql.Conn
 	db                 *gosql.DB
@@ -379,7 +380,6 @@ func (a *Applier) Run() {
 	}
 	//a.logger.Debug("the connectionconfi host is ",a.mysqlContext.ConnectionConfig.Host)
 //	a.logger.Info("mysql.applier: Apply binlog events to %s.%d", a.mysqlContext.ConnectionConfig.Host, a.mysqlContext.ConnectionConfig.Port)
-	a.mysqlContext.StartTime = time.Now()
 	if err := a.initDBConnections(); err != nil {
 		a.onError(TaskStateDead, err)
 		return
@@ -576,7 +576,7 @@ func (a *Applier) heterogeneousReplay() {
 				len(a.applyDataEntryQueue), binlogEntry.Coordinates.GNO,
 				binlogEntry.Coordinates.LastCommitted, binlogEntry.Coordinates.SeqenceNumber)
 
-			if binlogEntry.Coordinates.OSID == a.mysqlContext.MySQLServerUuid {
+			if binlogEntry.Coordinates.OSID == a.MySQLServerUuid {
 				a.logger.Debug("mysql.applier: skipping a kafkas tx. osid: %v", binlogEntry.Coordinates.OSID)
 				continue
 			}
@@ -905,10 +905,12 @@ func (a *Applier) initDBConnections() (err error) {
 		return err
 	}
 	a.logger.Debug("mysql.applier. after validateGrants")
-	if err := a.validateAndReadTimeZone(); err != nil {
+
+	if timezone, err := base.ValidateAndReadTimeZone(a.db); err != nil {
 		return err
+	} else {
+		a.logger.Info("mysql.applier: got timezone", "timezone", timezone)
 	}
-	a.logger.Debug("mysql.applier. after validateAndReadTimeZone")
 
 	if err := a.createTableGtidExecutedV4(); err != nil {
 		return err
@@ -938,7 +940,7 @@ func (a *Applier) initDBConnections() (err error) {
 
 func (a *Applier) validateServerUUID() error {
 	query := `SELECT @@SERVER_UUID`
-	if err := a.db.QueryRow(query).Scan(&a.mysqlContext.MySQLServerUuid); err != nil {
+	if err := a.db.QueryRow(query).Scan(&a.MySQLServerUuid); err != nil {
 		return err
 	}
 	return nil
@@ -1007,17 +1009,6 @@ func (a *Applier) validateGrants() error {
 	}
 	a.logger.Debug("mysql.applier: Privileges: super: %t, ALL on *.*: %t", foundSuper, foundAll)
 	//return fmt.Error("user has insufficient privileges for applier. Needed: SUPER|ALL on *.*")
-	return nil
-}
-
-// validateAndReadTimeZone potentially reads server time-zone
-func (a *Applier) validateAndReadTimeZone() error {
-	query := `select @@global.time_zone`
-	if err := a.db.QueryRow(query).Scan(&a.mysqlContext.TimeZone); err != nil {
-		return err
-	}
-
-	a.logger.Info("mysql.applier: Will use time_zone='%s' on applier", a.mysqlContext.TimeZone)
 	return nil
 }
 

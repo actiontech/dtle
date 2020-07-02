@@ -63,11 +63,8 @@ type MySQLDriverConfig struct {
 	TotalTransferredBytes int
 	RowsEstimate          int64
 	DeltaEstimate         int64
-	TimeZone              string
 	BinlogFormat      string
 	BinlogRowImage    string
-	MySQLServerUuid   string
-	StartTime         time.Time
 	RowCopyStartTime  time.Time
 	RowCopyEndTime    time.Time
 	TotalDeltaCopied  int64

@@ -164,7 +164,6 @@ func (e *Extractor) Run() {
 	}
 
 	e.logger.Info("mysql.extractor: Extract binlog events from %s.%d", e.mysqlContext.ConnectionConfig.Host, e.mysqlContext.ConnectionConfig.Port)
-	e.mysqlContext.StartTime = time.Now()
 
 	// Validate job arguments
 /*	{
@@ -639,8 +638,10 @@ func (e *Extractor) initDBConnections() (err error) {
 		}
 	}
 
-	if err := e.validateAndReadTimeZone(); err != nil {
+	if timezone, err := base.ValidateAndReadTimeZone(e.db); err != nil {
 		return err
+	} else {
+		e.logger.Info("mysql.extractor: got timezone", "timezone", timezone)
 	}
 
 	return nil
@@ -756,15 +757,6 @@ func (e *Extractor) setInitialBinlogCoordinates() error {
 		return fmt.Errorf("neither Gtid nor BinlogFile is assigned")
 	}
 
-	return nil
-}
-
-func (e *Extractor) validateAndReadTimeZone() error {
-	query := `select @@global.time_zone`
-	if err := e.db.QueryRow(query).Scan(&e.mysqlContext.TimeZone); err != nil {
-		return err
-	}
-	e.logger.Info("mysql.extractor: Will use time_zone='%s' on extractor", e.mysqlContext.TimeZone)
 	return nil
 }
 
