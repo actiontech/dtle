@@ -210,6 +210,9 @@ type Applier struct {
 	logger             hclog.Logger
 	subject            string
 	mysqlContext       *config.MySQLDriverConfig
+
+	MySQLVersion      string
+
 	dbs                []*sql.Conn
 	db                 *gosql.DB
 	gtidExecuted       base.GtidSet
@@ -929,7 +932,7 @@ func (a *Applier) initDBConnections() (err error) {
 	}
 	a.logger.Debug("mysql.applier. after prepare stmt for gtid_executed table")
 
-	a.logger.Info("mysql.applier: Initiated on %s:%d, version %+v", a.mysqlContext.ConnectionConfig.Host, a.mysqlContext.ConnectionConfig.Port, a.mysqlContext.MySQLVersion)
+	a.logger.Info("mysql.applier: Initiated on %s:%d, version %+v", a.mysqlContext.ConnectionConfig.Host, a.mysqlContext.ConnectionConfig.Port, a.MySQLVersion)
 	return nil
 }
 
@@ -944,11 +947,11 @@ func (a *Applier) validateServerUUID() error {
 // validateConnection issues a simple can-connect to MySQL
 func (a *Applier) validateConnection(db *gosql.DB) error {
 	query := `select @@global.version`
-	if err := db.QueryRow(query).Scan(&a.mysqlContext.MySQLVersion); err != nil {
+	if err := db.QueryRow(query).Scan(&a.MySQLVersion); err != nil {
 		return err
 	}
 	// Match the version string (from SELECT VERSION()).
-	if strings.HasPrefix(a.mysqlContext.MySQLVersion, "5.6") {
+	if strings.HasPrefix(a.MySQLVersion, "5.6") {
 		a.mysqlContext.ParallelWorkers = 1
 	}
 	a.logger.Debug("mysql.applier: Connection validated on %s:%d", a.mysqlContext.ConnectionConfig.Host, a.mysqlContext.ConnectionConfig.Port)
@@ -989,7 +992,6 @@ func (a *Applier) validateGrants() error {
 	if err != nil {
 		return err
 	}
-	a.mysqlContext.HasSuperPrivilege = foundSuper
 
 	if foundAll {
 		a.logger.Info("mysql.applier: User has ALL privileges")

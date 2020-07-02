@@ -110,7 +110,6 @@ var (
 		"AutoGtid":hclspec.NewAttr("AutoGtid", "bool", false),
 		"BinlogRelay":hclspec.NewAttr("BinlogRelay", "bool", false),
 		"ParallelWorkers":hclspec.NewAttr("ParallelWorkers", "number", false),
-		"SqlMode":hclspec.NewAttr("SqlMode", "string", false),
 		"SkipCreateDbTable":hclspec.NewAttr("SkipCreateDbTable", "bool", false),
 		"SkipPrivilegeCheck":hclspec.NewAttr("SkipPrivilegeCheck", "bool", false),
 		"SkipIncrementalCopy":hclspec.NewAttr("SkipIncrementalCopy", "bool", false),
@@ -203,13 +202,10 @@ type DtleTaskConfig struct {
 	GtidStart         string`codec:"GtidStart"`
 	AutoGtid          bool`codec:"AutoGtid"`
 	BinlogRelay       bool`codec:"BinlogRelay"`
+
 	NatsAddr          string`codec:"NatsAddr"`
 	ParallelWorkers   int`codec:"ParallelWorkers"`
-	SystemVariables   map[string]string`codec:"SystemVariables"`
-	HasSuperPrivilege bool`codec:"HasSuperPrivilege"`
 
-	SqlMode           string                  `codec:"SqlMode"`
-	MySQLVersion      string                  `codec:"MySQLVersion"`
 	SkipCreateDbTable   bool                  `codec:"SkipCreateDbTable"`
 	SkipPrivilegeCheck  bool                  `codec:"SkipPrivilegeCheck"`
 	SkipIncrementalCopy bool                  `codec:"SkipIncrementalCopy"`
@@ -501,11 +497,6 @@ func InitConfig(taskConfig *DtleTaskConfig) (mysqlConfig *config.MySQLDriverConf
 
 	mysqlConfig.DropTableIfExists = taskConfig.DropTableIfExists
 	mysqlConfig.SkipCreateDbTable = taskConfig.SkipCreateDbTable
-	if  taskConfig.MySQLVersion==""{
-		mysqlConfig.MySQLVersion = "5.7"
-	}else{
-		mysqlConfig.MySQLVersion = taskConfig.MySQLVersion
-	}
 
 	mysqlConfig.SkipCreateDbTable =  taskConfig.SkipPrivilegeCheck
     mysqlConfig.AutoGtid = taskConfig.AutoGtid
@@ -543,7 +534,6 @@ func InitConfig(taskConfig *DtleTaskConfig) (mysqlConfig *config.MySQLDriverConf
 		mysqlConfig.GroupTimeout = taskConfig.GroupTimeout
 	}
 	mysqlConfig.SqlFilter = taskConfig.SqlFilter
-	mysqlConfig.SqlMode = taskConfig.SqlMode
 
 	return mysqlConfig,nil
 }

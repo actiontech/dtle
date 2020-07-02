@@ -42,7 +42,7 @@ func (i *Inspector) InitDBConnections() (err error) {
 	if i.db, err = usql.CreateDB(inspectorUri); err != nil {
 		return err
 	}
-	i.logger.Debug("mysql.inspector: validateConnection", "MySQLVersion",hclog.Fmt("%+v", i.mysqlContext.MySQLVersion))
+	i.logger.Debug("mysql.inspector: validateConnection")
 /*	if err := i.validateConnection(); err != nil {
 		return err
 	}*/
@@ -69,7 +69,7 @@ func (i *Inspector) InitDBConnections() (err error) {
 	/*if err := i.validateBinlogs(); err != nil {
 		return err
 	}*/
-	i.logger.Info("mysql.inspector: Initiated on %s:%d, version %+v", i.mysqlContext.ConnectionConfig.Host, i.mysqlContext.ConnectionConfig.Port, i.mysqlContext.MySQLVersion)
+	i.logger.Info("mysql.inspector: Initiated on %s:%d, version %+v", i.mysqlContext.ConnectionConfig.Host, i.mysqlContext.ConnectionConfig.Port)
 	return nil
 }
 
@@ -178,18 +178,6 @@ func (i *Inspector) InspectTableColumnsAndUniqueKeys(databaseName, tableName str
 	return columns, uniqueKeys, nil
 }
 
-// validateConnection issues a simple can-connect to MySQL
-func (i *Inspector) validateConnection() error {
-	query := `select @@global.version`
-	if err := i.db.QueryRow(query).Scan(&i.mysqlContext.MySQLVersion); err != nil {
-		i.logger.Info("mysql.inspector: Connection validated err ","err",hclog.Fmt("%+v", err))
-		return err
-	}
-
-	i.logger.Info("mysql.inspector: Connection validated on %s:%d", i.mysqlContext.ConnectionConfig.Host, i.mysqlContext.ConnectionConfig.Port)
-	return nil
-}
-
 // validateGrants verifies the user by which we're executing has necessary grants
 // to do its thang.
 func (i *Inspector) validateGrants() error {
@@ -229,7 +217,6 @@ func (i *Inspector) validateGrants() error {
 	if err != nil {
 		return err
 	}
-	i.mysqlContext.HasSuperPrivilege = foundSuper
 
 	if foundAll {
 		i.logger.Info("mysql.inspector: User has ALL privileges")

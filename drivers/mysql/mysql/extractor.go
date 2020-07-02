@@ -71,6 +71,10 @@ type Extractor struct {
 	subject      string
 	mysqlContext *config.MySQLDriverConfig
 
+	systemVariables   map[string]string
+	sqlMode           string
+	MySQLVersion      string
+
 	mysqlVersionDigit int
 	db                *gosql.DB
 	singletonDB       *gosql.DB
@@ -141,41 +145,6 @@ func NewExtractor(execCtx *dcommon.ExecContext, cfg *config.MySQLDriverConfig, l
 	}
 
 	return e, nil
-}
-
-// sleepWhileTrue sleeps indefinitely until the given function returns 'false'
-// (or fails with error)
-func (e *Extractor) sleepWhileTrue(operation func() (bool, error)) error {
-	for {
-		shouldSleep, err := operation()
-		if err != nil {
-			return err
-		}
-		if !shouldSleep {
-			return nil
-		}
-		time.Sleep(time.Second)
-	}
-}
-
-// retryOperation attempts up to `count` attempts at running given function,
-// exiting as soon as it returns with non-error.
-func (e *Extractor) retryOperation(operation func() error, notFatalHint ...bool) (err error) {
-	for i := 0; i < int(e.mysqlContext.MaxRetries); i++ {
-		if i != 0 {
-			// sleep after previous iteration
-			time.Sleep(1 * time.Second)
-		}
-		err = operation()
-		if err == nil {
-			return nil
-		}
-		// there's an error. Let's try again.
-	}
-	if len(notFatalHint) == 0 {
-		return err
-	}
-	return err
 }
 
 // Run executes the complete extract logic.
@@ -748,12 +717,12 @@ func (e *Extractor) initBinlogReader(binlogCoordinates *base.BinlogCoordinatesX)
 // validateConnection issues a simple can-connect to MySQL
 func (e *Extractor) validateConnectionAndGetVersion() error {
 	query := `select @@global.version`
-	if err := e.db.QueryRow(query).Scan(&e.mysqlContext.MySQLVersion); err != nil {
+	if err := e.db.QueryRow(query).Scan(&e.MySQLVersion); err != nil {
 		return err
 	}
-	e.mysqlVersionDigit = dcommon.MysqlVersionInDigit(e.mysqlContext.MySQLVersion)
+	e.mysqlVersionDigit = dcommon.MysqlVersionInDigit(e.MySQLVersion)
 	if e.mysqlVersionDigit == 0 {
-		return fmt.Errorf("cannot parse mysql version string to digit. string %v", e.mysqlContext.MySQLVersion)
+		return fmt.Errorf("cannot parse mysql version string to digit. string %v", e.MySQLVersion)
 	}
 	e.logger.Info("mysql.extractor: Connection validated on %s:%d", e.mysqlContext.ConnectionConfig.Host, e.mysqlContext.ConnectionConfig.Port)
 	return nil
@@ -761,7 +730,7 @@ func (e *Extractor) validateConnectionAndGetVersion() error {
 
 func (e *Extractor) selectSqlMode() error {
 	query := `select @@global.sql_mode`
-	if err := e.db.QueryRow(query).Scan(&e.mysqlContext.SqlMode); err != nil {
+	if err := e.db.QueryRow(query).Scan(&e.sqlMode); err != nil {
 		return err
 	}
 	return nil
@@ -801,8 +770,6 @@ func (e *Extractor) validateAndReadTimeZone() error {
 
 // CountTableRows counts exact number of rows on the original table
 func (e *Extractor) CountTableRows(table *config.Table) (int64, error) {
-	atomic.StoreInt64(&e.mysqlContext.CountingRowsFlag, 1)
-	defer atomic.StoreInt64(&e.mysqlContext.CountingRowsFlag, 0)
 	//e.logger.Debug("mysql.extractor: As instructed, I'm issuing a SELECT COUNT(*) on the table. This may take a while")
 
 	var query string
@@ -846,7 +813,7 @@ func (e *Extractor) readMySqlCharsetSystemVariables() error {
 		| collation_server     | utf8_general_ci |
 		+----------------------+-----------------+
 	*/
-	e.mysqlContext.SystemVariables = make(map[string]string)
+	e.systemVariables = make(map[string]string)
 	for rows.Next() {
 		var (
 			variable string
@@ -858,7 +825,7 @@ func (e *Extractor) readMySqlCharsetSystemVariables() error {
 		if err != nil {
 			return err
 		}
-		e.mysqlContext.SystemVariables[variable] = value
+		e.systemVariables[variable] = value
 	}
 
 	if rows.Err() != nil {
@@ -873,7 +840,7 @@ func (e *Extractor) setStatementFor() string {
 	var buffer bytes.Buffer
 	first := true
 	buffer.WriteString("SET ")
-	for valName, value := range e.mysqlContext.SystemVariables {
+	for valName, value := range e.systemVariables {
 		if first {
 			first = false
 		} else {
@@ -1142,7 +1109,7 @@ func (e *Extractor) sendSysVarAndSqlMode() error {
 	if err := e.selectSqlMode(); err != nil {
 		return err
 	}
-	setSqlMode := fmt.Sprintf("SET @@session.sql_mode = '%s'", e.mysqlContext.SqlMode)
+	setSqlMode := fmt.Sprintf("SET @@session.sql_mode = '%s'", e.sqlMode)
 
 	entry := &DumpEntry{
 		SystemVariablesStatement: setSystemVariablesStatement,
