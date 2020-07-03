@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/actiontech/dtle/drivers/mysql/common"
+	"github.com/actiontech/dtle/drivers/mysql/config"
 	"github.com/actiontech/dtle/drivers/mysql/kafka"
 	"github.com/actiontech/dtle/drivers/mysql/mysql"
 	"github.com/pkg/errors"
@@ -66,7 +67,7 @@ func (h *taskHandle) IsRunning() bool {
 	return h.procState == drivers.TaskStateRunning
 }
 
-func (h *taskHandle) run(taskConfig *DtleTaskConfig, d *Driver) {
+func (h *taskHandle) run(taskConfig *config.DtleTaskConfig, d *Driver) {
 	var err error
 	h.stateLock.Lock()
 	if h.exitResult == nil {

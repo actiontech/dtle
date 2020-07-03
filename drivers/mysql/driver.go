@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	dcommon "github.com/actiontech/dtle/drivers/mysql/common"
-	"github.com/actiontech/dtle/drivers/mysql/kafka"
+	config2 "github.com/actiontech/dtle/drivers/mysql/config"
 	"github.com/actiontech/dtle/g"
 	"github.com/pkg/errors"
 	"time"
@@ -143,7 +143,7 @@ var (
 // during recovery.
 type TaskState struct {
 	TaskConfig     *drivers.TaskConfig
-	DtleTaskConfig *DtleTaskConfig
+	DtleTaskConfig *config2.DtleTaskConfig
 	StartedAt      time.Time
 }
 
@@ -176,36 +176,6 @@ type Driver struct {
 	config *DriverConfig
 
 	storeManager *dcommon.StoreManager
-}
-
-// TODO This is repetitive to MySQLDriverConfig. Consider merge in to one struct.
-type DtleTaskConfig struct {
-	ReplicateDoDb         []*config.DataSource `codec:"ReplicateDoDb"`
-	ReplicateIgnoreDb     []*config.DataSource`codec:"ReplicateIgnoreDb"`
-	DropTableIfExists     bool`codec:"DropTableIfExists"`
-	ExpandSyntaxSupport   bool`codec:"ExpandSyntaxSupport"`
-	ReplChanBufferSize    int64`codec:"ReplChanBufferSize"`
-	MsgBytesLimit         int`codec:"MsgBytesLimit"`
-	TrafficAgainstLimits  int`codec:"TrafficAgainstLimits"`
-	MaxRetries            int64`codec:"MaxRetries"`
-	ChunkSize             int64`codec:"ChunkSize"`
-	SqlFilter             []string`codec:"SqlFilter"`
-	GroupMaxSize          int`codec:"GroupMaxSize"`
-	GroupTimeout          int `codec:"GroupTimeout"`
-	Gtid              string`codec:"Gtid"`
-	BinlogFile        string`codec:"BinlogFile"`
-	BinlogPos         int64`codec:"BinlogPos"`
-	GtidStart         string`codec:"GtidStart"`
-	AutoGtid          bool`codec:"AutoGtid"`
-	BinlogRelay       bool`codec:"BinlogRelay"`
-
-	ParallelWorkers   int`codec:"ParallelWorkers"`
-
-	SkipCreateDbTable   bool                  `codec:"SkipCreateDbTable"`
-	SkipPrivilegeCheck  bool                  `codec:"SkipPrivilegeCheck"`
-	SkipIncrementalCopy bool                  `codec:"SkipIncrementalCopy"`
-	ConnectionConfig *config.ConnectionConfig `codec:"ConnectionConfig"`
-	KafkaConfig      *kafka.KafkaConfig       `codec:"KafkaConfig"`
 }
 
 func NewDriver(logger hclog.Logger) drivers.DriverPlugin {
@@ -451,7 +421,7 @@ func (d *Driver) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHandle, *drive
 	}
 	d.logger.Debug("start dtle task one")
 
-	var dtleTaskConfig DtleTaskConfig
+	var dtleTaskConfig config2.DtleTaskConfig
 
 	if err := cfg.DecodeDriverConfig(&dtleTaskConfig); err != nil {
 		return nil, nil, errors.Wrap(err, "DecodeDriverConfig")
@@ -479,7 +449,7 @@ func (d *Driver) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHandle, *drive
 
 	return handle, nil, nil
 }
-func InitConfig(taskConfig *DtleTaskConfig) (mysqlConfig *config.MySQLDriverConfig, err error) {
+func InitConfig(taskConfig *config2.DtleTaskConfig) (mysqlConfig *config.MySQLDriverConfig, err error) {
 	mysqlConfig = &config.MySQLDriverConfig{}
 
 	//var driverConfig config.MySQLDriverConfig
