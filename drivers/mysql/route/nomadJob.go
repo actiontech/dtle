@@ -3,32 +3,32 @@ package route
 import "time"
 
 type TaskGroup struct {
-	Tasks            []*NomadTask
-	Name			string
-	Meta             map[string]string
-	Services         []*Service
+	Tasks    []*NomadTask
+	Name     string
+	Meta     map[string]string
+	Services []*Service
 }
 
 // Task is a single process in a task group.
 type NomadTask struct {
-	Name            string
-	Driver          string
-	User            string
-	Config          map[string]interface{}
-	Constraints     []*Constraint
-	Env             map[string]string
-	Services        []*Service
-	Meta            map[string]string
-	KillTimeout     *time.Duration `mapstructure:"kill_timeout"`
-	ShutdownDelay   time.Duration `mapstructure:"shutdown_delay"`
-	KillSignal      string        `mapstructure:"kill_signal"`
-	Kind            string
-}
-// Service represents a Consul service definition.
-type Service struct {
-	Id                string
+	Name          string
+	Driver        string
+	User          string
+	Config        map[string]interface{}
+	Constraints   []*Constraint
+	Env           map[string]string
+	Services      []*Service
+	Meta          map[string]string
+	KillTimeout   *time.Duration `mapstructure:"kill_timeout"`
+	ShutdownDelay time.Duration  `mapstructure:"shutdown_delay"`
+	KillSignal    string         `mapstructure:"kill_signal"`
+	Kind          string
 }
 
+// Service represents a Consul service definition.
+type Service struct {
+	Id string
+}
 
 // Job is used to serialize a job.
 type NomadJob struct {
@@ -38,7 +38,7 @@ type NomadJob struct {
 	ID                *string
 	ParentID          *string
 	Name              *string
-	EnforceIndex bool
+	EnforceIndex      bool
 	Type              *string
 	Priority          *int
 	AllAtOnce         *bool `mapstructure:"all_at_once"`

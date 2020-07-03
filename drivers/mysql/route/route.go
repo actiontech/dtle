@@ -1,16 +1,17 @@
 package route
 
 import (
-	"net/http"
-	"strings"
+	"encoding/json"
 	"fmt"
 	"github.com/hashicorp/go-hclog"
-	"io/ioutil"
 	"github.com/julienschmidt/httprouter"
-	"encoding/json"
-	)
+	"io/ioutil"
+	"net/http"
+	"strings"
+)
 
 var Host string
+
 // decodeBody is used to decode a JSON request body
 func decodeBody(req *http.Request, out interface{}) error {
 	dec := json.NewDecoder(req.Body)
@@ -29,7 +30,7 @@ func UpdupJob(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	}
 
 	//var nomadJob  route.NomadJob
-	nomadJob :=  &NomadJob{}
+	nomadJob := &NomadJob{}
 	nomadJob.Region = args.Region
 	nomadJob.EnforceIndex = args.EnforceIndex
 	nomadJob.JobModifyIndex = args.ModifyIndex
@@ -41,12 +42,12 @@ func UpdupJob(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	nomadJob.CreateIndex = args.CreateIndex
 	nomadJob.Datacenters = args.Datacenters
 	for _, task := range args.Tasks {
-		taskGroup  :=&TaskGroup{}
-		ta:=&NomadTask{}
+		taskGroup := &TaskGroup{}
+		ta := &NomadTask{}
 		taskGroup.Name = task.Type
-		if task.Driver =="MySQL"{
+		if task.Driver == "MySQL" {
 			ta.Driver = "mysql"
-		}else if task.Driver =="Kafka"{
+		} else if task.Driver == "Kafka" {
 			ta.Driver = "kafka"
 		}
 
@@ -54,10 +55,10 @@ func UpdupJob(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 		ta.Config = task.Config
 		ta.Name = task.Type
 		taskGroup.Tasks = append(taskGroup.Tasks, ta)
-		nomadJob.TaskGroups = append(nomadJob.TaskGroups,taskGroup)
+		nomadJob.TaskGroups = append(nomadJob.TaskGroups, taskGroup)
 	}
 
-	var nomadJobreq  NomadJobRegisterRequest
+	var nomadJobreq NomadJobRegisterRequest
 	nomadJobreq.Job = nomadJob
 
 	param, err := json.Marshal(nomadJobreq)
@@ -66,7 +67,7 @@ func UpdupJob(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 		fmt.Println("json.marshal failed, err:", err)
 		return
 	}
-	url:="http://"+Host+"/v1/jobs"
+	url := "http://" + Host + "/v1/jobs"
 	resp, err := http.Post(url, "application/x-www-form-urlencoded",
 		strings.NewReader(string(param)))
 	if err != nil {
@@ -78,10 +79,9 @@ func UpdupJob(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 
 }
 
+func JobListRequest(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 
-func JobListRequest(w http.ResponseWriter, r *http.Request,ps httprouter.Params) {
-
-	url:="http://"+Host+"/v1/jobs"
+	url := "http://" + Host + "/v1/jobs"
 	resp, err := http.Get(url)
 	if err != nil {
 		w.Write([]byte(err.Error()))
@@ -91,13 +91,13 @@ func JobListRequest(w http.ResponseWriter, r *http.Request,ps httprouter.Params)
 	fmt.Fprintf(w, string(body))
 
 }
-func JobRequest(w http.ResponseWriter, r *http.Request,ps httprouter.Params) {
+func JobRequest(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 
-//	path := strings.TrimPrefix(r.URL.Path, "/v1/node/")
-	nodeName :=  ps.ByName("NodeId")
-	path :=  ps.ByName("path")
-	if path=="allocations"{
-		url:="http://"+Host+"/v1/job/"+nodeName+"allocations"
+	//	path := strings.TrimPrefix(r.URL.Path, "/v1/node/")
+	nodeName := ps.ByName("NodeId")
+	path := ps.ByName("path")
+	if path == "allocations" {
+		url := "http://" + Host + "/v1/job/" + nodeName + "allocations"
 		resp, err := http.Get(url)
 		if err != nil {
 			w.Write([]byte(err.Error()))
@@ -105,8 +105,8 @@ func JobRequest(w http.ResponseWriter, r *http.Request,ps httprouter.Params) {
 		defer resp.Body.Close()
 		body, err := ioutil.ReadAll(resp.Body)
 		fmt.Fprintf(w, string(body))
-	}else if path=="evaluate"{
-		url:="http://"+Host+"/v1/job/"+nodeName+"evaluate"
+	} else if path == "evaluate" {
+		url := "http://" + Host + "/v1/job/" + nodeName + "evaluate"
 		resp, err := http.Post(url, "application/x-www-form-urlencoded",
 			strings.NewReader(""))
 		if err != nil {
@@ -117,13 +117,11 @@ func JobRequest(w http.ResponseWriter, r *http.Request,ps httprouter.Params) {
 		fmt.Fprintf(w, string(body))
 	}
 
-
 }
 
-func AllocsRequest(w http.ResponseWriter, r *http.Request,ps httprouter.Params) {
+func AllocsRequest(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 
-
-	url:="http://"+Host+"/v1/allocations"
+	url := "http://" + Host + "/v1/allocations"
 	resp, err := http.Get(url)
 	if err != nil {
 		w.Write([]byte(err.Error()))
@@ -133,22 +131,9 @@ func AllocsRequest(w http.ResponseWriter, r *http.Request,ps httprouter.Params) 
 	fmt.Fprintf(w, string(body))
 
 }
-func AllocSpecificRequest(w http.ResponseWriter, r *http.Request,ps httprouter.Params) {
-	allocID :=  ps.ByName("allocID")
-	url:="http://"+Host+"/v1/allocation/"+allocID
-	resp, err := http.Get(url)
-	if err != nil {
-		w.Write([]byte(err.Error()))
-	}
-	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
-	fmt.Fprintf(w, string(body))
-
-}
-
-
-func EvalsRequest(w http.ResponseWriter, r *http.Request,ps httprouter.Params) {
-	url:="http://"+Host+"/v1/evaluations"
+func AllocSpecificRequest(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+	allocID := ps.ByName("allocID")
+	url := "http://" + Host + "/v1/allocation/" + allocID
 	resp, err := http.Get(url)
 	if err != nil {
 		w.Write([]byte(err.Error()))
@@ -159,31 +144,8 @@ func EvalsRequest(w http.ResponseWriter, r *http.Request,ps httprouter.Params) {
 
 }
 
-
-
-func EvalRequest(w http.ResponseWriter, r *http.Request,ps httprouter.Params) {
-	url:="http://"+Host+"/v1/evaluation/"
-	evalID :=  ps.ByName("evalID")
-	changeType :=  ps.ByName("type")
-	if changeType =="evaluation"{
-		url="http://"+Host+"/v1/evaluation/"
-	}
-	resp, err := http.Get(url+evalID+"/allocations")
-	if err != nil {
-		w.Write([]byte(err.Error()))
-	}
-	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
-	fmt.Fprintf(w, string(body))
-
-}
-
-
-
-
-
-func AgentSelfRequest(w http.ResponseWriter, r *http.Request,ps httprouter.Params) {
-	url:="http://"+Host+"/v1/agent/self"
+func EvalsRequest(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+	url := "http://" + Host + "/v1/evaluations"
 	resp, err := http.Get(url)
 	if err != nil {
 		w.Write([]byte(err.Error()))
@@ -194,10 +156,14 @@ func AgentSelfRequest(w http.ResponseWriter, r *http.Request,ps httprouter.Param
 
 }
 
-func ClientAllocRequest(w http.ResponseWriter, r *http.Request,ps httprouter.Params) {
-	url:="http://"+Host+"/v1/agent/allocation/"
-	tokens :=  ps.ByName("tokens")
-	resp, err := http.Get(url+tokens)
+func EvalRequest(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+	url := "http://" + Host + "/v1/evaluation/"
+	evalID := ps.ByName("evalID")
+	changeType := ps.ByName("type")
+	if changeType == "evaluation" {
+		url = "http://" + Host + "/v1/evaluation/"
+	}
+	resp, err := http.Get(url + evalID + "/allocations")
 	if err != nil {
 		w.Write([]byte(err.Error()))
 	}
@@ -207,10 +173,34 @@ func ClientAllocRequest(w http.ResponseWriter, r *http.Request,ps httprouter.Par
 
 }
 
+func AgentSelfRequest(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+	url := "http://" + Host + "/v1/agent/self"
+	resp, err := http.Get(url)
+	if err != nil {
+		w.Write([]byte(err.Error()))
+	}
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
+	fmt.Fprintf(w, string(body))
 
-func AgentJoinRequest(w http.ResponseWriter, r *http.Request,ps httprouter.Params) {
-	url:="http://"+Host+"/v1/agent/join"
-	address :=  ps.ByName("address")
+}
+
+func ClientAllocRequest(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+	url := "http://" + Host + "/v1/agent/allocation/"
+	tokens := ps.ByName("tokens")
+	resp, err := http.Get(url + tokens)
+	if err != nil {
+		w.Write([]byte(err.Error()))
+	}
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
+	fmt.Fprintf(w, string(body))
+
+}
+
+func AgentJoinRequest(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+	url := "http://" + Host + "/v1/agent/join"
+	address := ps.ByName("address")
 	resp, err := http.Post(url, "application/x-www-form-urlencoded",
 		strings.NewReader(address))
 	if err != nil {
@@ -222,11 +212,9 @@ func AgentJoinRequest(w http.ResponseWriter, r *http.Request,ps httprouter.Param
 
 }
 
-
-
-func AgentForceLeaveRequest(w http.ResponseWriter, r *http.Request,ps httprouter.Params) {
-	url:="http://"+Host+"/v1/agent/force-leave"
-	node :=  ps.ByName("node")
+func AgentForceLeaveRequest(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+	url := "http://" + Host + "/v1/agent/force-leave"
+	node := ps.ByName("node")
 	resp, err := http.Post(url, "application/x-www-form-urlencoded",
 		strings.NewReader(node))
 	if err != nil {
@@ -238,11 +226,8 @@ func AgentForceLeaveRequest(w http.ResponseWriter, r *http.Request,ps httprouter
 
 }
 
-
-
-
-func AgentMembersRequest(w http.ResponseWriter, r *http.Request,ps httprouter.Params) {
-	url:="http://"+Host+"/v1/agent/members"
+func AgentMembersRequest(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+	url := "http://" + Host + "/v1/agent/members"
 	resp, err := http.Get(url)
 	if err != nil {
 		w.Write([]byte(err.Error()))
@@ -253,11 +238,9 @@ func AgentMembersRequest(w http.ResponseWriter, r *http.Request,ps httprouter.Pa
 
 }
 
-
-
-func UpdateServers(w http.ResponseWriter, r *http.Request,ps httprouter.Params) {
-	url:="http://"+Host+"/v1/agent/servers"
-	address :=  ps.ByName("address")
+func UpdateServers(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+	url := "http://" + Host + "/v1/agent/servers"
+	address := ps.ByName("address")
 	resp, err := http.Post(url, "application/x-www-form-urlencoded",
 		strings.NewReader(address))
 	if err != nil {
@@ -269,9 +252,8 @@ func UpdateServers(w http.ResponseWriter, r *http.Request,ps httprouter.Params) 
 
 }
 
-
-func ListServers(w http.ResponseWriter, r *http.Request,ps httprouter.Params) {
-	url:="http://"+Host+"/v1/agent/servers"
+func ListServers(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+	url := "http://" + Host + "/v1/agent/servers"
 	resp, err := http.Get(url)
 	if err != nil {
 		w.Write([]byte(err.Error()))
@@ -281,20 +263,8 @@ func ListServers(w http.ResponseWriter, r *http.Request,ps httprouter.Params) {
 	fmt.Fprintf(w, string(body))
 
 }
-func RegionListRequest(w http.ResponseWriter, r *http.Request,ps httprouter.Params) {
-	url:="http://"+Host+"/v1/regions"
-	resp, err := http.Get(url)
-	if err != nil {
-		w.Write([]byte(err.Error()))
-	}
-	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
-	fmt.Fprintf(w, string(body))
-
-}
-
-func StatusLeaderRequest(w http.ResponseWriter, r *http.Request,ps httprouter.Params) {
-	url:="http://"+Host+"/v1/status/leader"
+func RegionListRequest(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+	url := "http://" + Host + "/v1/regions"
 	resp, err := http.Get(url)
 	if err != nil {
 		w.Write([]byte(err.Error()))
@@ -305,9 +275,8 @@ func StatusLeaderRequest(w http.ResponseWriter, r *http.Request,ps httprouter.Pa
 
 }
 
-
-func StatusPeersRequest(w http.ResponseWriter, r *http.Request,ps httprouter.Params) {
-	url:="http://"+Host+"/v1/status/peers"
+func StatusLeaderRequest(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+	url := "http://" + Host + "/v1/status/leader"
 	resp, err := http.Get(url)
 	if err != nil {
 		w.Write([]byte(err.Error()))
@@ -318,6 +287,17 @@ func StatusPeersRequest(w http.ResponseWriter, r *http.Request,ps httprouter.Par
 
 }
 
+func StatusPeersRequest(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+	url := "http://" + Host + "/v1/status/peers"
+	resp, err := http.Get(url)
+	if err != nil {
+		w.Write([]byte(err.Error()))
+	}
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
+	fmt.Fprintf(w, string(body))
+
+}
 
 func ValidateJobRequest(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 
@@ -327,7 +307,7 @@ func ValidateJobRequest(w http.ResponseWriter, r *http.Request, ps httprouter.Pa
 	}
 
 	//var nomadJob  route.NomadJob
-	nomadJob :=  &NomadJob{}
+	nomadJob := &NomadJob{}
 	nomadJob.Region = args.Region
 	nomadJob.EnforceIndex = args.EnforceIndex
 	nomadJob.JobModifyIndex = args.ModifyIndex
@@ -339,17 +319,17 @@ func ValidateJobRequest(w http.ResponseWriter, r *http.Request, ps httprouter.Pa
 	nomadJob.CreateIndex = args.CreateIndex
 	nomadJob.Datacenters = args.Datacenters
 	for _, task := range args.Tasks {
-		taskGroup  :=&TaskGroup{}
-		ta:=&NomadTask{}
+		taskGroup := &TaskGroup{}
+		ta := &NomadTask{}
 		taskGroup.Name = task.Type
 		ta.Driver = task.Driver
 		ta.Config = task.Config
 		ta.Name = task.Type
 		taskGroup.Tasks = append(taskGroup.Tasks, ta)
-		nomadJob.TaskGroups = append(nomadJob.TaskGroups,taskGroup)
+		nomadJob.TaskGroups = append(nomadJob.TaskGroups, taskGroup)
 	}
 
-	var nomadJobreq  NomadJobRegisterRequest
+	var nomadJobreq NomadJobRegisterRequest
 	nomadJobreq.Job = nomadJob
 
 	param, err := json.Marshal(nomadJobreq)
@@ -358,7 +338,7 @@ func ValidateJobRequest(w http.ResponseWriter, r *http.Request, ps httprouter.Pa
 		fmt.Println("json.marshal failed, err:", err)
 		return
 	}
-	url:="http://"+Host+"/v1/validate/job"
+	url := "http://" + Host + "/v1/validate/job"
 	resp, err := http.Post(url, "application/x-www-form-urlencoded",
 		strings.NewReader(string(param)))
 	if err != nil {
@@ -370,11 +350,8 @@ func ValidateJobRequest(w http.ResponseWriter, r *http.Request, ps httprouter.Pa
 
 }
 
-
-
-
-func NodesRequest(w http.ResponseWriter, r *http.Request,ps httprouter.Params) {
-	url:="http://"+Host+"/v1/nodes"
+func NodesRequest(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+	url := "http://" + Host + "/v1/nodes"
 	resp, err := http.Get(url)
 	if err != nil {
 		w.Write([]byte(err.Error()))
@@ -382,20 +359,18 @@ func NodesRequest(w http.ResponseWriter, r *http.Request,ps httprouter.Params) {
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
 
-	result :=string(body)
-	result = strings.Replace(result, "Address", "HTTPAddr", -1 )
+	result := string(body)
+	result = strings.Replace(result, "Address", "HTTPAddr", -1)
 	fmt.Fprintf(w, result)
 
 }
 
-
-
-func NodeRequest(w http.ResponseWriter, r *http.Request,ps httprouter.Params) {
-	nodeName :=  ps.ByName("nodeName")
-	changeType :=  ps.ByName("type")
-	url := "http://"+Host+"/v1/node/"+nodeName+"/evaluate"
-	if changeType=="evaluate"{
-		url = "http://"+Host+"/v1/node/"+nodeName+"/evaluate"
+func NodeRequest(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+	nodeName := ps.ByName("nodeName")
+	changeType := ps.ByName("type")
+	url := "http://" + Host + "/v1/node/" + nodeName + "/evaluate"
+	if changeType == "evaluate" {
+		url = "http://" + Host + "/v1/node/" + nodeName + "/evaluate"
 		resp, err := http.Post(url, "application/x-www-form-urlencoded",
 			strings.NewReader(""))
 		if err != nil {
@@ -405,8 +380,8 @@ func NodeRequest(w http.ResponseWriter, r *http.Request,ps httprouter.Params) {
 		body, err := ioutil.ReadAll(resp.Body)
 		fmt.Fprintf(w, string(body))
 
-	}else if changeType=="allocations" {
-		url  ="http://"+Host+"/v1/node/"+nodeName+"/allocations"
+	} else if changeType == "allocations" {
+		url = "http://" + Host + "/v1/node/" + nodeName + "/allocations"
 		resp, err := http.Get(url)
 		if err != nil {
 			w.Write([]byte(err.Error()))
@@ -417,7 +392,3 @@ func NodeRequest(w http.ResponseWriter, r *http.Request,ps httprouter.Params) {
 	}
 
 }
-
-
-
-

@@ -216,8 +216,6 @@ type ObjectDiff struct {
 	Objects []*ObjectDiff
 }
 
-
-
 type NoamdNodeListStub struct {
 	Address               string
 	ID                    string
@@ -233,6 +231,7 @@ type NoamdNodeListStub struct {
 	CreateIndex           uint64
 	ModifyIndex           uint64
 }
+
 // regularly as driver health changes on the node.
 type DriverInfo struct {
 	Attributes        map[string]string
