@@ -3,12 +3,22 @@ package route
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/actiontech/dtle/g"
 	"github.com/hashicorp/go-hclog"
+	"github.com/hashicorp/nomad/api"
+	"github.com/hashicorp/nomad/nomad/structs"
 	"github.com/julienschmidt/httprouter"
+	"github.com/pkg/errors"
 	"io/ioutil"
 	"net/http"
 	"strings"
+	"time"
 )
+
+var logger = hclog.NewNullLogger()
+func SetLogger(theLogger hclog.Logger) {
+	logger = theLogger
+}
 
 var Host string
 
@@ -23,59 +33,49 @@ func buildUrl(path string) string {
 	return "http://" + Host + path
 }
 func UpdupJob(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-
-	var args Job
-	if err := decodeBody(r, &args); err != nil {
-		hclog.Fmt("err ", err)
-	}
-
-	//var nomadJob  route.NomadJob
-	nomadJob := &NomadJob{}
-	nomadJob.Region = args.Region
-	nomadJob.EnforceIndex = args.EnforceIndex
-	nomadJob.JobModifyIndex = args.ModifyIndex
-	nomadJob.ID = args.ID
-	nomadJob.ModifyIndex = args.ModifyIndex
-	nomadJob.JobModifyIndex = args.JobModifyIndex
-	nomadJob.Type = args.Type
-	nomadJob.Name = args.Name
-	nomadJob.CreateIndex = args.CreateIndex
-	nomadJob.Datacenters = args.Datacenters
-	for _, task := range args.Tasks {
-		taskGroup := &TaskGroup{}
-		ta := &NomadTask{}
-		taskGroup.Name = task.Type
-		if task.Driver == "MySQL" {
-			ta.Driver = "mysql"
-		} else if task.Driver == "Kafka" {
-			ta.Driver = "kafka"
+	err := func() (err error) {
+		var oldJob Job
+		if err := decodeBody(r, &oldJob); err != nil {
+			return errors.Wrap(err, "decodeBody")
 		}
 
-		task.Config["Type"] = task.Type
-		ta.Config = task.Config
-		ta.Name = task.Type
-		taskGroup.Tasks = append(taskGroup.Tasks, ta)
-		nomadJob.TaskGroups = append(nomadJob.TaskGroups, taskGroup)
-	}
+		var nomadJobreq NomadJobRegisterRequest
+		nomadJobreq.Job, err = convertJob(&oldJob)
+		if err != nil {
+			return errors.Wrap(err, "convertJob")
+		}
 
-	var nomadJobreq NomadJobRegisterRequest
-	nomadJobreq.Job = nomadJob
+		param, err := json.Marshal(nomadJobreq)
+		if err != nil {
+			return errors.Wrap(err, "json.Marshal")
+		}
 
-	param, err := json.Marshal(nomadJobreq)
+		//logger.Debug("*** json", "json", string(param))
+
+		url := "http://" + Host + "/v1/jobs"
+		resp, err := http.Post(url, "application/x-www-form-urlencoded",
+			strings.NewReader(string(param)))
+		if err != nil {
+			return errors.Wrap(err, "forwarding")
+		}
+		defer resp.Body.Close()
+		body, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			return errors.Wrap(err, "reading forwarded resp")
+		}
+		_, err = fmt.Fprintf(w, string(body))
+		if err != nil {
+			return errors.Wrap(err, "writing forwarded resp")
+		}
+
+		return nil
+	}()
 
 	if err != nil {
-		fmt.Println("json.marshal failed, err:", err)
-		return
+		logger.Error("UpdupJob error", "err", err)
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(err.Error()))
 	}
-	url := "http://" + Host + "/v1/jobs"
-	resp, err := http.Post(url, "application/x-www-form-urlencoded",
-		strings.NewReader(string(param)))
-	if err != nil {
-		w.Write([]byte(err.Error()))
-	}
-	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
-	fmt.Fprintf(w, string(body))
 
 }
 
@@ -299,38 +299,56 @@ func StatusPeersRequest(w http.ResponseWriter, r *http.Request, ps httprouter.Pa
 
 }
 
+func convertJob(oldJob *Job) (*api.Job, error) {
+	// oldJob: Name is optional (can be empty. repeatable). ID is optional (autogen if empty)
+	// newJob: Name is mandatory and unique
+	var jobName string
+	if !g.StringPtrEmpty(oldJob.Name) {
+		jobName = *oldJob.Name
+	} else if !g.StringPtrEmpty(oldJob.ID) {
+		jobName = *oldJob.ID
+	} else {
+		jobName = time.Now().Format("2006-01-02_15:04:05.000000")
+	}
+
+	nomadJob := api.NewServiceJob(jobName, jobName, "", structs.JobDefaultPriority)
+	nomadJob.Datacenters = []string{"dc1"}
+	for _, oldTask := range oldJob.Tasks {
+		taskGroup := api.NewTaskGroup(oldTask.Type, 1)
+		newTask := api.NewTask(oldTask.Type, g.PluginName)
+
+		logger.Debug("*** task config", "config", oldTask.Config)
+
+		switch strings.ToUpper(oldTask.Driver) {
+		case "MYSQL", "":
+			newTask.Config = oldTask.Config
+		case "KAFKA":
+			newTask.Config = make(map[string]interface{})
+			newTask.Config["KafkaConfig"] = oldTask.Config
+		default:
+			return nil, fmt.Errorf("unknown driver %v", oldTask.Driver)
+		}
+
+		taskGroup.Tasks = append(taskGroup.Tasks, newTask)
+		nomadJob.TaskGroups = append(nomadJob.TaskGroups, taskGroup)
+	}
+	return nomadJob, nil
+}
+
 func ValidateJobRequest(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 
-	var args Job
-	if err := decodeBody(r, &args); err != nil {
+	var err error
+	var oldJob Job
+	if err := decodeBody(r, &oldJob); err != nil {
 		hclog.Fmt("err ", err)
 	}
 
-	//var nomadJob  route.NomadJob
-	nomadJob := &NomadJob{}
-	nomadJob.Region = args.Region
-	nomadJob.EnforceIndex = args.EnforceIndex
-	nomadJob.JobModifyIndex = args.ModifyIndex
-	nomadJob.ID = args.ID
-	nomadJob.ModifyIndex = args.ModifyIndex
-	nomadJob.JobModifyIndex = args.JobModifyIndex
-	nomadJob.Type = args.Type
-	nomadJob.Name = args.Name
-	nomadJob.CreateIndex = args.CreateIndex
-	nomadJob.Datacenters = args.Datacenters
-	for _, task := range args.Tasks {
-		taskGroup := &TaskGroup{}
-		ta := &NomadTask{}
-		taskGroup.Name = task.Type
-		ta.Driver = task.Driver
-		ta.Config = task.Config
-		ta.Name = task.Type
-		taskGroup.Tasks = append(taskGroup.Tasks, ta)
-		nomadJob.TaskGroups = append(nomadJob.TaskGroups, taskGroup)
-	}
-
 	var nomadJobreq NomadJobRegisterRequest
-	nomadJobreq.Job = nomadJob
+	nomadJobreq.Job, err = convertJob(&oldJob)
+	if err != nil {
+		//return errors.Wrap(err, "convertJob")
+		// TODO
+	}
 
 	param, err := json.Marshal(nomadJobreq)
 

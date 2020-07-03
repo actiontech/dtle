@@ -26,9 +26,6 @@ import (
 )
 
 const (
-	// pluginName is the name of the plugin
-	pluginName = "dtle"
-
 	// fingerprintPeriod is the interval at which the driver will send fingerprint responses
 	fingerprintPeriod = 30 * time.Second
 
@@ -49,7 +46,7 @@ var (
 		Type:              base.PluginTypeDriver,
 		PluginApiVersions: []string{drivers.ApiVersion010},
 		PluginVersion:     "0.1.0",
-		Name:              pluginName,
+		Name:              g.PluginName,
 	}
 
 	// configSpec is the hcl specification returned by the ConfigSchema RPC
@@ -212,8 +209,10 @@ type DtleTaskConfig struct {
 }
 
 func NewDriver(logger hclog.Logger) drivers.DriverPlugin {
-	logger = logger.Named(pluginName)
+	logger = logger.Named(g.PluginName)
 	logger.Info("dtle NewDriver")
+
+	route.SetLogger(logger)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	return &Driver{

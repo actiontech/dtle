@@ -26,4 +26,14 @@ const (
 	ENV_COUNT_INFO_SCHEMA = "DTLE_COUNT_INFO_SCHEMA"
 
 	LONG_LOG_LIMIT = 256
+
+	PluginName = "dtle"
 )
+
+func StringPtrEmpty(p *string) bool {
+	if p == nil {
+		return true
+	} else {
+		return *p == ""
+	}
+}
