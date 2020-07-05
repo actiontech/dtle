@@ -727,6 +727,22 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry)
 		err = kr.kafkaMgr.Send(tableIdent, kBs, vBs)
 		kr.kafkaConfig.BinlogPos = dmlEvent.Coordinates.LogPos
 		kr.kafkaConfig.Gtid = dmlEvent.Coordinates.GetGtidForThisTx()
+		//kr.mysqlContext.Gtid = a.currentCoordinates.RetrievedGtidSet
+		txSid := dmlEvent.Coordinates.GetSid()
+		if kr.kafkaConfig.Gtid != "" {
+			sp := strings.Split(kr.kafkaConfig.Gtid, ",")
+			if strings.Split(sp[len(sp)-1], ":")[0] == txSid || strings.Split(sp[len(sp)-1], ":")[0] == "\n"+txSid {
+				sp[len(sp)-1] = fmt.Sprintf("%s:1-%d", txSid, dmlEvent.Coordinates.GNO)
+			}
+			var rgtid string
+			for _, gtid := range sp {
+				rgtid = rgtid + "," + gtid
+			}
+			kr.kafkaConfig.Gtid = rgtid[1:]
+		} else {
+			kr.kafkaConfig.Gtid = fmt.Sprintf("%s:1-%d", txSid, dmlEvent.Coordinates.GNO)
+		}
+
 		kr.kafkaConfig.BinlogFile = dmlEvent.Coordinates.LogFile
 		if err != nil {
 			return err

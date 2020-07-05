@@ -65,6 +65,8 @@ const (
 	SCHEMA                        = "schema"
 	TABLES                        = "tables"
 	TABLE                         = "table"
+	WaiteTimes                    = 5
+	SleepTime                     = 5
 )
 
 // Extractor is the main schema extract flow manager.
@@ -903,15 +905,14 @@ func (e *Extractor) StreamEvents() error {
 				if len(entries.Entries) > 0 {
 					gno = entries.Entries[0].Coordinates.GNO
 				}
-					txMsg, err := Encode(entries)
-					if err != nil {
-						return err
-					}
-					e.logger.Debugf("mysql.extractor: sending gno: %v, n: %v", gno, len(entries.Entries))
-					if err = e.publish(ctx, fmt.Sprintf("%s_incr_hete", e.subject), "", txMsg); err != nil {
-						return err
-					}
-
+				txMsg, err := Encode(entries)
+				if err != nil {
+					return err
+				}
+				e.logger.Debugf("mysql.extractor: sending gno: %v, n: %v", gno, len(entries.Entries))
+				if err = e.publish(ctx, fmt.Sprintf("%s_incr_hete", e.subject), "", txMsg); err != nil {
+					return err
+				}
 
 				e.logger.Debugf("mysql.extractor: send acked gno: %v, n: %v", gno, len(entries.Entries))
 
@@ -951,10 +952,25 @@ func (e *Extractor) StreamEvents() error {
 						}
 						for _, ip := range addrs {
 							rip := ip.(*net.IPNet).IP.String()
-							e.logger.Debugf("mysql.extractor: entriesSize is  : %v,free memory is : %v ", entriesSize, v.Available)
+							e.logger.Debug("mysql.extractor: entriesSize is  : %v,free memory is : %v ", entriesSize, v.Available)
 							if rip == natsips[0] && entriesSize > int(v.Available/4) {
-								err = errors.Errorf("Too much entriesSize , not enough memory ")
-								break
+								e.logger.Info("Too much entriesSize , not enough memory ,entriesSize is:%v,free memory is : %v ，sleep 5s）", entriesSize, v.Available)
+								for {
+									i := 0
+									time.Sleep(SleepTime * time.Second)
+									if entriesSize < int(v.Available/4) {
+										break
+									}
+									i++
+									if i > WaiteTimes {
+										err = errors.Errorf(" sleep timeout ,still Too much entriesSize , not enough memory ,entriesSize is:%v,free memory is : %v", entriesSize, v.Available)
+										break
+									}
+
+								}
+								if err != nil {
+									break
+								}
 							}
 						}
 					}
