@@ -39,8 +39,6 @@ import (
 
 	"regexp"
 
-	"net"
-
 	"context"
 
 	"github.com/actiontech/dts/internal/client/driver/mysql/base"
@@ -51,7 +49,6 @@ import (
 	"github.com/actiontech/dts/internal/models"
 	"github.com/actiontech/dts/utils"
 	"github.com/pingcap/tidb/types"
-	"github.com/shirou/gopsutil/mem"
 	"github.com/sirupsen/logrus"
 )
 
@@ -65,8 +62,7 @@ const (
 	SCHEMA                        = "schema"
 	TABLES                        = "tables"
 	TABLE                         = "table"
-	WaiteTimes                    = 5
-	SleepTime                     = 5
+	WaiteTimes                    = 300
 )
 
 // Extractor is the main schema extract flow manager.
@@ -110,8 +106,6 @@ type Extractor struct {
 	gotCoordinateCh chan struct{}
 	streamerReadyCh chan error
 	fullCopyDone    chan struct{}
-
-	sameNodeAsApplier bool
 }
 
 func NewExtractor(execCtx *common.ExecContext, cfg *config.MySQLDriverConfig, logger *logrus.Logger) (*Extractor, error) {
@@ -146,32 +140,8 @@ func NewExtractor(execCtx *common.ExecContext, cfg *config.MySQLDriverConfig, lo
 	return e, nil
 }
 
-func isSameNodeAsApplier(natsAddr string) bool {
-	// TODO This cannot determine precisely whether on same node or not.
-	//  NatsAddr could be an external addr (advertise addr and NAT).
-	natsips := strings.Split(natsAddr, ":")
-	if len(natsips) != 2 {
-		// Whatever. Leave it false.
-	} else {
-		addrs, err := net.InterfaceAddrs()
-		if err != nil {
-			// Whatever. Leave it false.
-		} else {
-			for _, ip := range addrs {
-				rip := ip.(*net.IPNet).IP.String()
-				if rip == natsips[0] {
-					return true
-				}
-			}
-		}
-	}
-	return false
-}
-
 // Run executes the complete extract logic.
 func (e *Extractor) Run() {
-	e.sameNodeAsApplier = isSameNodeAsApplier(e.mysqlContext.NatsAddr)
-
 	e.logger.Printf("mysql.extractor: Extract binlog events from %s.%d", e.mysqlContext.ConnectionConfig.Host, e.mysqlContext.ConnectionConfig.Port)
 	e.mysqlContext.StartTime = time.Now()
 
@@ -935,33 +905,7 @@ func (e *Extractor) StreamEvents() error {
 					binlogEntry.SpanContext = nil
 					entries.Entries = append(entries.Entries, binlogEntry)
 					entriesSize += binlogEntry.OriginalSize
-					if int64(len(entries.Entries)) <= 1 {
-						v, _ := mem.VirtualMemory()
-						e.logger.Debug("mysql.extractor: entriesSize is  : %v,free memory is : %v ", entriesSize, v.Available)
-						if e.sameNodeAsApplier && entriesSize > int(v.Available/4) {
-							e.logger.Info("Too much entriesSize , not enough memory ,entriesSize is:%v,free memory is : %v ，sleep 5s）", entriesSize, v.Available)
-							for {
-								i := 0
-								time.Sleep(SleepTime * time.Second)
-								if entriesSize < int(v.Available/4) {
-									break
-								}
-								i++
-								if i > WaiteTimes {
-									err = errors.Errorf(" sleep timeout ,still Too much entriesSize , not enough memory ,entriesSize is:%v,free memory is : %v", entriesSize, v.Available)
-									break
-								}
 
-							}
-							if err != nil {
-								break
-							}
-						}
-					}
-					if err != nil {
-						break
-					}
-					e.logger.Debugf("mysql.extractor: err is  : %v", err != nil)
 					if entriesSize >= e.mysqlContext.GroupMaxSize ||
 						int64(len(entries.Entries)) == e.mysqlContext.ReplChanBufferSize {
 						e.logger.Debugf("extractor. incr. send by GroupLimit. entriesSize: %v , groupMaxSize: %v,Entries.len: %v", entriesSize, e.mysqlContext.GroupMaxSize, len(entries.Entries))
@@ -1005,7 +949,7 @@ func (e *Extractor) StreamEvents() error {
 					e.mysqlContext.Stage = models.StageSendingBinlogEventToSlave
 					atomic.AddInt64(&e.mysqlContext.DeltaEstimate, 1)
 				}
-			}
+			} // end for keepGoing && !e.shutdown
 		}()
 		// region commented out
 		/*entryArray := make([]*binlog.BinlogEntry, 0)
