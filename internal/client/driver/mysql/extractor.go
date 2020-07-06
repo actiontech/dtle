@@ -110,6 +110,8 @@ type Extractor struct {
 	gotCoordinateCh chan struct{}
 	streamerReadyCh chan error
 	fullCopyDone    chan struct{}
+
+	sameNodeAsApplier bool
 }
 
 func NewExtractor(execCtx *common.ExecContext, cfg *config.MySQLDriverConfig, logger *logrus.Logger) (*Extractor, error) {
@@ -144,8 +146,32 @@ func NewExtractor(execCtx *common.ExecContext, cfg *config.MySQLDriverConfig, lo
 	return e, nil
 }
 
+func isSameNodeAsApplier(natsAddr string) bool {
+	// TODO This cannot determine precisely whether on same node or not.
+	//  NatsAddr could be an external addr (advertise addr and NAT).
+	natsips := strings.Split(natsAddr, ":")
+	if len(natsips) != 2 {
+		// Whatever. Leave it false.
+	} else {
+		addrs, err := net.InterfaceAddrs()
+		if err != nil {
+			// Whatever. Leave it false.
+		} else {
+			for _, ip := range addrs {
+				rip := ip.(*net.IPNet).IP.String()
+				if rip == natsips[0] {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
 // Run executes the complete extract logic.
 func (e *Extractor) Run() {
+	e.sameNodeAsApplier = isSameNodeAsApplier(e.mysqlContext.NatsAddr)
+
 	e.logger.Printf("mysql.extractor: Extract binlog events from %s.%d", e.mysqlContext.ConnectionConfig.Host, e.mysqlContext.ConnectionConfig.Port)
 	e.mysqlContext.StartTime = time.Now()
 
@@ -896,11 +922,9 @@ func (e *Extractor) StreamEvents() error {
 			groupTimeoutDuration := time.Duration(e.mysqlContext.GroupTimeout) * time.Millisecond
 			timer := time.NewTimer(groupTimeoutDuration)
 			defer timer.Stop()
-			natsips := strings.Split(e.mysqlContext.NatsAddr, ":")
 
 			for keepGoing && !e.shutdown {
 				var err error
-				var addrs []net.Addr
 				select {
 				case binlogEntry := <-e.dataChannel:
 					spanContext := binlogEntry.SpanContext
@@ -913,31 +937,24 @@ func (e *Extractor) StreamEvents() error {
 					entriesSize += binlogEntry.OriginalSize
 					if int64(len(entries.Entries)) <= 1 {
 						v, _ := mem.VirtualMemory()
-						addrs, err = net.InterfaceAddrs()
-						if err != nil {
-							break
-						}
-						for _, ip := range addrs {
-							rip := ip.(*net.IPNet).IP.String()
-							e.logger.Debug("mysql.extractor: entriesSize is  : %v,free memory is : %v ", entriesSize, v.Available)
-							if rip == natsips[0] && entriesSize > int(v.Available/4) {
-								e.logger.Info("Too much entriesSize , not enough memory ,entriesSize is:%v,free memory is : %v ，sleep 5s）", entriesSize, v.Available)
-								for {
-									i := 0
-									time.Sleep(SleepTime * time.Second)
-									if entriesSize < int(v.Available/4) {
-										break
-									}
-									i++
-									if i > WaiteTimes {
-										err = errors.Errorf(" sleep timeout ,still Too much entriesSize , not enough memory ,entriesSize is:%v,free memory is : %v", entriesSize, v.Available)
-										break
-									}
-
-								}
-								if err != nil {
+						e.logger.Debug("mysql.extractor: entriesSize is  : %v,free memory is : %v ", entriesSize, v.Available)
+						if e.sameNodeAsApplier && entriesSize > int(v.Available/4) {
+							e.logger.Info("Too much entriesSize , not enough memory ,entriesSize is:%v,free memory is : %v ，sleep 5s）", entriesSize, v.Available)
+							for {
+								i := 0
+								time.Sleep(SleepTime * time.Second)
+								if entriesSize < int(v.Available/4) {
 									break
 								}
+								i++
+								if i > WaiteTimes {
+									err = errors.Errorf(" sleep timeout ,still Too much entriesSize , not enough memory ,entriesSize is:%v,free memory is : %v", entriesSize, v.Available)
+									break
+								}
+
+							}
+							if err != nil {
+								break
 							}
 						}
 					}
