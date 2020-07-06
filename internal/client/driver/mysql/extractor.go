@@ -261,7 +261,7 @@ func (e *Extractor) Run() {
 			e.onError(TaskStateDead, err)
 			return
 		}
-		dumpMsg, err := Encode(&dumpStatResult{
+		dumpMsg, err := Encode(&DumpStatResult{
 			Gtid:       e.initialBinlogCoordinates.GtidSet,
 			LogFile:    e.initialBinlogCoordinates.LogFile,
 			LogPos:     e.initialBinlogCoordinates.LogPos,
