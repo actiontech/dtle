@@ -242,7 +242,9 @@ func NewClient(cfg *config.ClientConfig, logger *logrus.Logger) (*Client, error)
 	// Start the client!
 	go c.run()
 
-	go c.setMemoryMonitor()
+	//go c.setMemoryMonitor()
+
+	//go memoryFreer()
 	c.logger.Printf("agent: Node ID %q", c.Node().ID)
 	return c, nil
 }
@@ -571,6 +573,26 @@ func (c *Client) setupDrivers() error {
 
 	return nil
 }
+/*var freeMemoryChan = make(chan struct{}, 0)
+
+func memoryFreer() {
+	for {
+		select {
+		case <-freeMemoryChan:
+			debug.FreeOSMemory()
+			time.Sleep(30 * time.Second)
+		}
+	}
+}
+
+func triggerFreeMemory() {
+	select {
+	case freeMemoryChan <- struct{}{}:
+	default:
+	}
+}
+*/
+
 
 // setMemoryMonitor  used to free memory from go to os ,when  memory less than 1/8 and memory less than 2G
 func (c *Client) setMemoryMonitor() {
