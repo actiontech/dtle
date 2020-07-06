@@ -90,7 +90,7 @@ func (kr *KafkaRunner) ID() string {
 			//ReplicateDoDb:     a.mysqlContext.ReplicateDoDb,
 			//ReplicateIgnoreDb: a.mysqlContext.ReplicateIgnoreDb,
 			Gtid: kr.kafkaConfig.Gtid,
-			//NatsAddr:          a.mysqlContext.NatsAddr,
+			NatsAddr:          kr.kafkaConfig.NatsAddr,
 			//ParallelWorkers:   a.mysqlContext.ParallelWorkers,
 			//ConnectionConfig:  a.mysqlContext.ConnectionConfig,
 		},
