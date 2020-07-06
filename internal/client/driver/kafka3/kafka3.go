@@ -11,6 +11,8 @@ import (
 	"encoding/gob"
 	"encoding/json"
 	"fmt"
+	"github.com/pkg/errors"
+	gomysql "github.com/siddontang/go-mysql/mysql"
 	"strconv"
 
 	"github.com/actiontech/dtle/internal/client/driver/common"
@@ -56,6 +58,8 @@ type KafkaRunner struct {
 	kafkaMgr    *KafkaManager
 
 	tables map[string](map[string]*config.Table)
+
+	gtidSet *gomysql.MysqlGTIDSet
 }
 
 func NewKafkaRunner(execCtx *common.ExecContext, cfg *KafkaConfig, logger *logrus.Logger) *KafkaRunner {
@@ -71,6 +75,12 @@ func NewKafkaRunner(execCtx *common.ExecContext, cfg *KafkaConfig, logger *logru
 		tables:      make(map[string](map[string]*config.Table)),
 	}
 }
+
+func (kr *KafkaRunner) updateGtidString() {
+	kr.kafkaConfig.Gtid = kr.gtidSet.String()
+	kr.logger.WithField("gtid", kr.kafkaConfig.Gtid).Debugf("kafka. updateGtidString")
+}
+
 func (kr *KafkaRunner) ID() string {
 	id := config.DriverCtx{
 		// TODO
@@ -193,6 +203,11 @@ func (kr *KafkaRunner) getOrSetTable(schemaName string, tableName string, table 
 func (kr *KafkaRunner) initiateStreaming() error {
 	var err error
 
+	hasFull := kr.kafkaConfig.Gtid == ""
+	afterFull := make(chan struct{})
+
+	// TODO We subscribe _full anyway to receive sendSysVarAndSqlMode.
+	//  Use a better method.
 	_, err = kr.natsConn.Subscribe(fmt.Sprintf("%s_full", kr.subject), func(m *gonats.Msg) {
 		kr.logger.Debugf("kafka: recv a msg")
 		dumpData, err := mysqlDriver.DecodeDumpEntry(m.Data)
@@ -244,15 +259,39 @@ func (kr *KafkaRunner) initiateStreaming() error {
 	}
 
 	_, err = kr.natsConn.Subscribe(fmt.Sprintf("%s_full_complete", kr.subject), func(m *gonats.Msg) {
+		dumpData := &mysqlDriver.DumpStatResult{}
+		if err := Decode(m.Data, dumpData); err != nil {
+			kr.onError(TaskStateDead, err)
+		}
+
+		kr.kafkaConfig.BinlogFile = dumpData.LogFile
+		kr.kafkaConfig.BinlogPos = dumpData.LogPos
+		kr.kafkaConfig.Gtid = dumpData.Gtid
+
 		if err := kr.natsConn.Publish(m.Reply, nil); err != nil {
 			kr.onError(TaskStateDead, err)
+		}
+
+		if hasFull {
+			afterFull <- struct{}{}
 		}
 	})
 	if err != nil {
 		return err
 	}
-	var bigEntries binlog.BinlogEntries
+
+	if hasFull {
+		<-afterFull
+	}
+	kr.logger.WithField("gtid", kr.kafkaConfig.Gtid).Infof("kafka. starting incremental replication.")
+
+	kr.gtidSet, err = common.DtleParseMysqlGTIDSet(kr.kafkaConfig.Gtid)
+	if err != nil {
+		return errors.Wrap(err, "DtleParseMysqlGTIDSet")
+	}
+
 	_, err = kr.natsConn.Subscribe(fmt.Sprintf("%s_incr_hete", kr.subject), func(m *gonats.Msg) {
+		var bigEntries binlog.BinlogEntries
 		var binlogEntries binlog.BinlogEntries
 		if err := Decode(m.Data, &binlogEntries); err != nil {
 			kr.onError(TaskStateDead, err)
@@ -485,6 +524,8 @@ func (kr *KafkaRunner) kafkaTransformSnapshotData(table *config.Table, value *my
 }
 
 func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry) (err error) {
+	txSid := dmlEvent.Coordinates.GetSid()
+
 	for i, _ := range dmlEvent.Events {
 		dataEvent := &dmlEvent.Events[i]
 		// this must be executed before skipping DDL
@@ -682,7 +723,7 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry)
 		valuePayload.Source.Name = kr.kafkaMgr.Cfg.Topic
 		valuePayload.Source.ServerID = 1 // TODO
 		valuePayload.Source.TsSec = time.Now().Unix()
-		valuePayload.Source.Gtid = dmlEvent.Coordinates.GetGtidForThisTx()
+		valuePayload.Source.Gtid = fmt.Sprintf("%s:%d", txSid, dmlEvent.Coordinates.GNO)
 		valuePayload.Source.File = dmlEvent.Coordinates.LogFile
 		valuePayload.Source.Pos = dataEvent.LogPos
 		valuePayload.Source.Row = 0          // TODO "the row within the event (if there is more than one)".
@@ -717,9 +758,6 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry)
 		}
 		//	vBs = []byte(strings.Replace(string(vBs), "\"field\":\"snapshot\"", "\"default\":false,\"field\":\"snapshot\"", -1))
 		err = kr.kafkaMgr.Send(tableIdent, kBs, vBs)
-		kr.kafkaConfig.BinlogPos = dmlEvent.Coordinates.LogPos
-		kr.kafkaConfig.Gtid = dmlEvent.Coordinates.GetGtidForThisTx()
-		kr.kafkaConfig.BinlogFile = dmlEvent.Coordinates.LogFile
 		if err != nil {
 			return err
 		}
@@ -740,12 +778,15 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry)
 			if err != nil {
 				return err
 			}
-			kr.kafkaConfig.Gtid = dmlEvent.Coordinates.GetGtidForThisTx()
-			kr.kafkaConfig.BinlogPos = dmlEvent.Coordinates.LogPos
-			kr.kafkaConfig.BinlogFile = dmlEvent.Coordinates.LogFile
 			kr.logger.Debugf("kafka: sent one msg")
 		}
 	}
+
+	kr.kafkaConfig.BinlogFile = dmlEvent.Coordinates.LogFile
+	kr.kafkaConfig.BinlogPos = dmlEvent.Coordinates.LogPos
+
+	common.UpdateGtidSet(kr.gtidSet, txSid, dmlEvent.Coordinates.SID, dmlEvent.Coordinates.GNO)
+	kr.updateGtidString()
 
 	return nil
 }
