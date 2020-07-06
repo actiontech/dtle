@@ -203,82 +203,86 @@ func (kr *KafkaRunner) getOrSetTable(schemaName string, tableName string, table 
 func (kr *KafkaRunner) initiateStreaming() error {
 	var err error
 
+	hasFull := kr.kafkaConfig.Gtid == ""
 	afterFull := make(chan struct{})
-	if kr.kafkaConfig.Gtid == "" {
-		_, err = kr.natsConn.Subscribe(fmt.Sprintf("%s_full", kr.subject), func(m *gonats.Msg) {
-			kr.logger.Debugf("kafka: recv a msg")
-			dumpData, err := mysqlDriver.DecodeDumpEntry(m.Data)
+
+	// TODO We subscribe _full anyway to receive sendSysVarAndSqlMode.
+	//  Use a better method.
+	_, err = kr.natsConn.Subscribe(fmt.Sprintf("%s_full", kr.subject), func(m *gonats.Msg) {
+		kr.logger.Debugf("kafka: recv a msg")
+		dumpData, err := mysqlDriver.DecodeDumpEntry(m.Data)
+		if err != nil {
+			kr.onError(TaskStateDead, err)
+			return
+		}
+
+		if dumpData.DbSQL != "" || len(dumpData.TbSQL) > 0 {
+			kr.logger.Debugf("kafka. a sql dumpEntry")
+		} else if dumpData.TableSchema == "" && dumpData.TableName == "" {
+			kr.logger.Debugf("kafka.  skip apply sqlMode and SystemVariablesStatement")
+			if err := kr.natsConn.Publish(m.Reply, nil); err != nil {
+				kr.onError(TaskStateDead, err)
+				return
+			}
+			return
+		} else {
+			var tableFromDumpData *config.Table = nil
+			if len(dumpData.Table) > 0 {
+				tableFromDumpData = &config.Table{}
+				err = DecodeGob(dumpData.Table, tableFromDumpData)
+				if err != nil {
+					kr.onError(TaskStateDead, err)
+					return
+				}
+			}
+			table, err := kr.getOrSetTable(dumpData.TableSchema, dumpData.TableName, tableFromDumpData)
 			if err != nil {
 				kr.onError(TaskStateDead, err)
 				return
 			}
 
-			if dumpData.DbSQL != "" || len(dumpData.TbSQL) > 0 {
-				kr.logger.Debugf("kafka. a sql dumpEntry")
-			} else if dumpData.TableSchema == "" && dumpData.TableName == "" {
-				kr.logger.Debugf("kafka.  skip apply sqlMode and SystemVariablesStatement")
-				if err := kr.natsConn.Publish(m.Reply, nil); err != nil {
-					kr.onError(TaskStateDead, err)
-					return
-				}
-				return
-			} else {
-				var tableFromDumpData *config.Table = nil
-				if len(dumpData.Table) > 0 {
-					tableFromDumpData = &config.Table{}
-					err = DecodeGob(dumpData.Table, tableFromDumpData)
-					if err != nil {
-						kr.onError(TaskStateDead, err)
-						return
-					}
-				}
-				table, err := kr.getOrSetTable(dumpData.TableSchema, dumpData.TableName, tableFromDumpData)
-				if err != nil {
-					kr.onError(TaskStateDead, err)
-					return
-				}
-
-				err = kr.kafkaTransformSnapshotData(table, dumpData)
-				if err != nil {
-					kr.onError(TaskStateDead, err)
-					return
-				}
-			}
-
-			if err := kr.natsConn.Publish(m.Reply, nil); err != nil {
+			err = kr.kafkaTransformSnapshotData(table, dumpData)
+			if err != nil {
 				kr.onError(TaskStateDead, err)
 				return
 			}
-			kr.logger.Debugf("kafka: after publish nats reply")
-		})
-		if err != nil {
-			return err
 		}
 
-		_, err = kr.natsConn.Subscribe(fmt.Sprintf("%s_full_complete", kr.subject), func(m *gonats.Msg) {
-			dumpData := &mysqlDriver.DumpStatResult{}
-			if err := Decode(m.Data, dumpData); err != nil {
-				kr.onError(TaskStateDead, err)
-			}
-
-			kr.kafkaConfig.BinlogFile = dumpData.LogFile
-			kr.kafkaConfig.BinlogPos = dumpData.LogPos
-			kr.kafkaConfig.Gtid = dumpData.Gtid
-
-			if err := kr.natsConn.Publish(m.Reply, nil); err != nil {
-				kr.onError(TaskStateDead, err)
-			}
-
-			afterFull <- struct{}{}
-		})
-		if err != nil {
-			return err
+		if err := kr.natsConn.Publish(m.Reply, nil); err != nil {
+			kr.onError(TaskStateDead, err)
+			return
 		}
-	} else {
-		afterFull <- struct{}{}
+		kr.logger.Debugf("kafka: after publish nats reply")
+	})
+	if err != nil {
+		return err
 	}
 
-	<-afterFull
+	_, err = kr.natsConn.Subscribe(fmt.Sprintf("%s_full_complete", kr.subject), func(m *gonats.Msg) {
+		dumpData := &mysqlDriver.DumpStatResult{}
+		if err := Decode(m.Data, dumpData); err != nil {
+			kr.onError(TaskStateDead, err)
+		}
+
+		kr.kafkaConfig.BinlogFile = dumpData.LogFile
+		kr.kafkaConfig.BinlogPos = dumpData.LogPos
+		kr.kafkaConfig.Gtid = dumpData.Gtid
+
+		if err := kr.natsConn.Publish(m.Reply, nil); err != nil {
+			kr.onError(TaskStateDead, err)
+		}
+
+		if hasFull {
+			afterFull <- struct{}{}
+		}
+	})
+	if err != nil {
+		return err
+	}
+
+	if hasFull {
+		<-afterFull
+	}
 	kr.logger.WithField("gtid", kr.kafkaConfig.Gtid).Infof("kafka. starting incremental replication.")
 
 	kr.gtidSet, err = common.DtleParseMysqlGTIDSet(kr.kafkaConfig.Gtid)
