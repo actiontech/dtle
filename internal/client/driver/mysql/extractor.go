@@ -82,7 +82,6 @@ type Extractor struct {
 	// db.tb exists when creating the job, for full-copy.
 	// vs e.mysqlContext.ReplicateDoDb: all user assigned db.tb
 	replicateDoDb            []*config.DataSource
-	binlogChannel            chan *binlog.BinlogTx
 	dataChannel              chan *binlog.BinlogEntry
 	inspector                *Inspector
 	binlogReader             *binlog.BinlogReader
@@ -124,7 +123,6 @@ func NewExtractor(execCtx *common.ExecContext, cfg *config.MySQLDriverConfig, lo
 		execCtx:         execCtx,
 		subject:         execCtx.Subject,
 		mysqlContext:    cfg,
-		binlogChannel:   make(chan *binlog.BinlogTx, cfg.ReplChanBufferSize),
 		dataChannel:     make(chan *binlog.BinlogEntry, cfg.ReplChanBufferSize),
 		rowCopyComplete: make(chan bool),
 		waitCh:          make(chan *models.WaitResult, 1),
@@ -143,41 +141,6 @@ func NewExtractor(execCtx *common.ExecContext, cfg *config.MySQLDriverConfig, lo
 	}
 
 	return e, nil
-}
-
-// sleepWhileTrue sleeps indefinitely until the given function returns 'false'
-// (or fails with error)
-func (e *Extractor) sleepWhileTrue(operation func() (bool, error)) error {
-	for {
-		shouldSleep, err := operation()
-		if err != nil {
-			return err
-		}
-		if !shouldSleep {
-			return nil
-		}
-		time.Sleep(time.Second)
-	}
-}
-
-// retryOperation attempts up to `count` attempts at running given function,
-// exiting as soon as it returns with non-error.
-func (e *Extractor) retryOperation(operation func() error, notFatalHint ...bool) (err error) {
-	for i := 0; i < int(e.mysqlContext.MaxRetries); i++ {
-		if i != 0 {
-			// sleep after previous iteration
-			time.Sleep(1 * time.Second)
-		}
-		err = operation()
-		if err == nil {
-			return nil
-		}
-		// there's an error. Let's try again.
-	}
-	if len(notFatalHint) == 0 {
-		return err
-	}
-	return err
 }
 
 // Run executes the complete extract logic.
@@ -901,7 +864,7 @@ func (e *Extractor) StreamEvents() error {
 	var ctx context.Context
 	//tracer := opentracing.GlobalTracer()
 
-	if e.mysqlContext.ApproveHeterogeneous {
+	{
 		go func() {
 			defer e.logger.Debugf("extractor. StreamEvents goroutine exited")
 			entries := binlog.BinlogEntries{}
@@ -1083,83 +1046,7 @@ func (e *Extractor) StreamEvents() error {
 			}
 			return fmt.Errorf("mysql.extractor: StreamEvents encountered unexpected error: %+v", err)
 		}
-	} else {
-		// region homogeneous
-		//timeout := time.NewTimer(100 * time.Millisecond)
-		txArray := make([]*binlog.BinlogTx, 0)
-		txBytes := 0
-		subject := fmt.Sprintf("%s_incr", e.subject)
-
-		go func() {
-		L:
-			for {
-				select {
-				case binlogTx := <-e.binlogChannel:
-					{
-						if nil == binlogTx {
-							continue
-						}
-						txArray = append(txArray, binlogTx)
-						txBytes += len([]byte(binlogTx.Query))
-						if txBytes > e.mysqlContext.MsgBytesLimit {
-							txMsg, err := Encode(&txArray)
-							if err != nil {
-								e.onError(TaskStateDead, err)
-								break L
-							}
-							if len(txMsg) > e.execCtx.MaxPayload {
-								e.onError(TaskStateDead, gonats.ErrMaxPayload)
-							}
-							if err = e.publish(ctx, subject, fmt.Sprintf("%s:1-%d", binlogTx.SID, binlogTx.GNO), txMsg); err != nil {
-								e.onError(TaskStateDead, err)
-								break L
-							}
-							//send_by_size_full
-							e.sendBySizeFullCounter += len(txArray)
-							txArray = []*binlog.BinlogTx{}
-							txBytes = 0
-						}
-					}
-				case <-time.After(100 * time.Millisecond):
-					{
-						if len(txArray) != 0 {
-							txMsg, err := Encode(&txArray)
-							if err != nil {
-								e.onError(TaskStateDead, err)
-								break L
-							}
-							if len(txMsg) > e.execCtx.MaxPayload {
-								e.onError(TaskStateDead, gonats.ErrMaxPayload)
-							}
-							if err = e.publish(ctx, subject,
-								fmt.Sprintf("%s:1-%d",
-									txArray[len(txArray)-1].SID,
-									txArray[len(txArray)-1].GNO),
-								txMsg); err != nil {
-								e.onError(TaskStateDead, err)
-								break L
-							}
-							//send_by_timeout
-							e.sendByTimeoutCounter += len(txArray)
-							txArray = []*binlog.BinlogTx{}
-							txBytes = 0
-						}
-					}
-				case <-e.shutdownCh:
-					break L
-				}
-			}
-		}()
-		// The next should block and execute forever, unless there's a serious error
-		if err := e.binlogReader.BinlogStreamEvents(e.binlogChannel); err != nil {
-			if e.shutdown {
-				return nil
-			}
-			return fmt.Errorf("mysql.extractor: StreamEvents encountered unexpected error: %+v", err)
-		}
-		// endregion
 	}
-
 	return nil
 }
 
@@ -1638,7 +1525,7 @@ func (e *Extractor) Stats() (*models.TaskStatistics, error) {
 		Backlog:            fmt.Sprintf("%d/%d", len(e.dataChannel), cap(e.dataChannel)),
 		Stage:              e.mysqlContext.Stage,
 		BufferStat: models.BufferStat{
-			ExtractorTxQueueSize: len(e.binlogChannel),
+			ExtractorTxQueueSize: 0,
 			SendByTimeout:        e.sendByTimeoutCounter,
 			SendBySizeFull:       e.sendBySizeFullCounter,
 		},
