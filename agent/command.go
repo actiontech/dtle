@@ -355,6 +355,9 @@ func (c *Command) Run(args []string) int {
 		return 1
 	}
 	defer c.agent.Shutdown()
+	go func() {
+		http.ListenAndServe("0.0.0.0:8899", nil)
+	}()
 
 	defer func() {
 		if c.httpServer != nil {
