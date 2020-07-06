@@ -1080,7 +1080,7 @@ func (e *Extractor) publish(ctx context.Context, subject, gtid string, txMsg []b
 	t.Write(txMsg)
 	defer span.Finish()
 	for {
-		e.logger.Debugf("mysql.extractor: publish. gtid: %v, msg_len: %v，subject: %v ", gtid, len(txMsg),subject)
+		e.logger.Debugf("mysql.extractor: publish. gtid: %v, msg_len: %v, subject: %v ", gtid, len(txMsg),subject)
 		_, err = e.natsConn.Request(subject, t.Bytes(), DefaultConnectWait)
 		if err == nil {
 			if gtid != "" {
