@@ -720,13 +720,13 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry)
 			if before != nil {
 				kr.logger.WithFields(logrus.Fields{
 					"beforeValue": beforeValue,
-				}).Debugf("kafka. beforeValue")
+				}).Trace("kafka. beforeValue")
 				before.AddField(colName, beforeValue)
 			}
 			if after != nil {
 				kr.logger.WithFields(logrus.Fields{
 					"afterValue": afterValue,
-				}).Debugf("kafka. afterValue")
+				}).Trace("kafka. afterValue")
 				after.AddField(colName, afterValue)
 			}
 		}
