@@ -47,10 +47,10 @@ import (
 	"github.com/actiontech/dts/utils"
 
 	"github.com/nats-io/not.go"
+	"github.com/pingcap/tidb/types"
 	"github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
-	"github.com/pingcap/tidb/types"
-		)
+)
 
 const (
 	cleanupGtidExecutedLimit = 4096
@@ -278,7 +278,7 @@ func NewApplier(ctx *common.ExecContext, cfg *config.MySQLDriverConfig, logger *
 		shutdownCh:              make(chan struct{}),
 		printTps:                os.Getenv(g.ENV_PRINT_TPS) != "",
 	}
-	a.gtidSet, err = DtleParseMysqlGTIDSet(a.mysqlContext.Gtid)
+	a.gtidSet, err = common.DtleParseMysqlGTIDSet(a.mysqlContext.Gtid)
 	if err != nil {
 		return nil, err
 	}
@@ -458,7 +458,7 @@ func (a *Applier) executeWriteFuncs() {
 				a.logger.Printf("mysql.applier: Rows copy complete.number of rows:%d", a.mysqlContext.TotalRowsReplay)
 				a.mysqlContext.Gtid = a.currentCoordinates.RetrievedGtidSet
 				var err error
-				a.gtidSet, err = DtleParseMysqlGTIDSet(a.mysqlContext.Gtid)
+				a.gtidSet, err = common.DtleParseMysqlGTIDSet(a.mysqlContext.Gtid)
 				if err != nil {
 					a.onError(TaskStateDead, err)
 				}
@@ -616,33 +616,6 @@ func (a *Applier) cleanGtidExecuted(sid uuid.UUID, intervalStr string) error {
 	return nil
 }
 
-func DtleParseMysqlGTIDSet(gtidSetStr string) (*gomysql.MysqlGTIDSet, error) {
-	set0, err := gomysql.ParseMysqlGTIDSet(gtidSetStr)
-	if err != nil {
-		return nil, err
-	}
-
-	return set0.(*gomysql.MysqlGTIDSet), nil
-}
-
-func (a *Applier) updateGtidSet(sidStr string, sid uuid.UUID, txGno int64) {
-	slice := gomysql.IntervalSlice{gomysql.Interval{
-		Start: txGno,
-		Stop:  txGno + 1,
-	}}
-
-	// It seems they all use lower case for uuid.
-	uuidSet, ok := a.gtidSet.Sets[sidStr]
-	if !ok {
-		a.gtidSet.AddSet(&gomysql.UUIDSet{
-			SID:       sid,
-			Intervals: slice,
-		})
-	} else {
-		uuidSet.AddInterval(slice)
-	}
-}
-
 func (a *Applier) heterogeneousReplay() {
 	var err error
 	stopSomeLoop := false
@@ -780,7 +753,7 @@ func (a *Applier) heterogeneousReplay() {
 			}
 			span.Finish()
 			if !a.shutdown {
-				a.updateGtidSet(txSid, binlogEntry.Coordinates.SID, binlogEntry.Coordinates.GNO)
+				common.UpdateGtidSet(a.gtidSet, txSid, binlogEntry.Coordinates.SID, binlogEntry.Coordinates.GNO)
 				a.updateGtidString()
 				if a.mysqlContext.BinlogFile != binlogEntry.Coordinates.LogFile {
 					a.mysqlContext.BinlogFile = binlogEntry.Coordinates.LogFile
