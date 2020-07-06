@@ -210,6 +210,12 @@ func (kr *KafkaRunner) initiateStreaming() error {
 	//  Use a better method.
 	_, err = kr.natsConn.Subscribe(fmt.Sprintf("%s_full", kr.subject), func(m *gonats.Msg) {
 		kr.logger.Debugf("kafka: recv a full msg")
+		if err := kr.natsConn.Publish(m.Reply, nil); err != nil {
+			kr.onError(TaskStateDead, err)
+			return
+		}
+		kr.logger.Debugf("kafka: after publish nats reply")
+
 		dumpData, err := mysqlDriver.DecodeDumpEntry(m.Data)
 		if err != nil {
 			kr.onError(TaskStateDead, err)
@@ -247,12 +253,6 @@ func (kr *KafkaRunner) initiateStreaming() error {
 				return
 			}
 		}
-
-		if err := kr.natsConn.Publish(m.Reply, nil); err != nil {
-			kr.onError(TaskStateDead, err)
-			return
-		}
-		kr.logger.Debugf("kafka: after publish nats reply")
 	})
 	if err != nil {
 		return err
@@ -260,6 +260,11 @@ func (kr *KafkaRunner) initiateStreaming() error {
 
 	_, err = kr.natsConn.Subscribe(fmt.Sprintf("%s_full_complete", kr.subject), func(m *gonats.Msg) {
 		kr.logger.Debugf("kafka: recv a full_complete msg")
+
+		if err := kr.natsConn.Publish(m.Reply, nil); err != nil {
+			kr.onError(TaskStateDead, err)
+		}
+		kr.logger.Debugf("kafka: ack a full_complete msg")
 
 		dumpData := &mysqlDriver.DumpStatResult{}
 		if err := Decode(m.Data, dumpData); err != nil {
@@ -269,10 +274,6 @@ func (kr *KafkaRunner) initiateStreaming() error {
 		kr.kafkaConfig.BinlogFile = dumpData.LogFile
 		kr.kafkaConfig.BinlogPos = dumpData.LogPos
 		kr.kafkaConfig.Gtid = dumpData.Gtid
-
-		if err := kr.natsConn.Publish(m.Reply, nil); err != nil {
-			kr.onError(TaskStateDead, err)
-		}
 
 		if hasFull {
 			afterFull <- struct{}{}
@@ -294,6 +295,11 @@ func (kr *KafkaRunner) initiateStreaming() error {
 
 	_, err = kr.natsConn.Subscribe(fmt.Sprintf("%s_incr_hete", kr.subject), func(m *gonats.Msg) {
 		kr.logger.Debugf("kafka: recv a incr_hete msg")
+
+		if err := kr.natsConn.Publish(m.Reply, nil); err != nil {
+			kr.onError(TaskStateDead, errors.Wrap(err, "Publish"))
+		}
+		kr.logger.Debugf("kafka. incr. ack-recv.")
 
 		var bigEntries binlog.BinlogEntries
 		var binlogEntries binlog.BinlogEntries
@@ -326,13 +332,6 @@ func (kr *KafkaRunner) initiateStreaming() error {
 			}
 			kr.logger.Debugf("kafka: after kafkaTransformDMLEventQuery")
 		}
-
-		if err := kr.natsConn.Publish(m.Reply, nil); err != nil {
-			kr.onError(TaskStateDead, errors.Wrap(err, "Publish"))
-		}
-		kr.logger.WithFields(logrus.Fields{
-			"nEntries": len(binlogEntries.Entries),
-		}).Debugf("applier. incr. ack-recv. nEntries")
 	})
 	if err != nil {
 		return errors.Wrap(err, "Subscribe")
