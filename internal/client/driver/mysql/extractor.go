@@ -39,8 +39,6 @@ import (
 
 	"regexp"
 
-	"net"
-
 	"context"
 
 	"github.com/actiontech/dtle/internal/client/driver/mysql/base"
@@ -51,7 +49,6 @@ import (
 	"github.com/actiontech/dtle/internal/models"
 	"github.com/actiontech/dtle/utils"
 	"github.com/pingcap/tidb/types"
-	"github.com/shirou/gopsutil/mem"
 	"github.com/sirupsen/logrus"
 	_ "net/http/pprof"
 )
@@ -898,11 +895,9 @@ func (e *Extractor) StreamEvents() error {
 			groupTimeoutDuration := time.Duration(e.mysqlContext.GroupTimeout) * time.Millisecond
 			timer := time.NewTimer(groupTimeoutDuration)
 			defer timer.Stop()
-			natsips := strings.Split(e.mysqlContext.NatsAddr, ":")
 
 			for keepGoing && !e.shutdown {
 				var err error
-				var addrs []net.Addr
 				select {
 				case binlogEntry := <-e.dataChannel:
 					spanContext := binlogEntry.SpanContext
@@ -913,25 +908,7 @@ func (e *Extractor) StreamEvents() error {
 					binlogEntry.SpanContext = nil
 					entries.Entries = append(entries.Entries, binlogEntry)
 					entriesSize += binlogEntry.OriginalSize
-					if int64(len(entries.Entries)) <= 1 {
-						v, _ := mem.VirtualMemory()
-						addrs, err = net.InterfaceAddrs()
-						if err != nil {
-							break
-						}
-						for _, ip := range addrs {
-							rip := ip.(*net.IPNet).IP.String()
-							e.logger.Debugf("mysql.extractor: entriesSize is  : %v,free memory is : %v ", entriesSize, v.Available)
-							if rip == natsips[0] && entriesSize > int(v.Available/4) {
-								err = errors.Errorf("Too much entriesSize , not enough memory ")
-								break
-							}
-						}
-					}
-					if err != nil {
-						break
-					}
-					e.logger.Debugf("mysql.extractor: err is  : %v", err != nil)
+
 					if entriesSize >= e.mysqlContext.GroupMaxSize ||
 						int64(len(entries.Entries)) == e.mysqlContext.ReplChanBufferSize {
 						e.logger.Debugf("extractor. incr. send by GroupLimit. entriesSize: %v , groupMaxSize: %v,Entries.len: %v", entriesSize, e.mysqlContext.GroupMaxSize, len(entries.Entries))
@@ -975,7 +952,7 @@ func (e *Extractor) StreamEvents() error {
 					e.mysqlContext.Stage = models.StageSendingBinlogEventToSlave
 					atomic.AddInt64(&e.mysqlContext.DeltaEstimate, 1)
 				}
-			}
+			} // end for keepGoing && !e.shutdown
 		}()
 		// region commented out
 		/*entryArray := make([]*binlog.BinlogEntry, 0)
