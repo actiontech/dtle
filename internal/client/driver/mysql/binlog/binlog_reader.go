@@ -702,7 +702,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 			avgRowSize := len(ev.RawData) / len(rowsEvent.Rows)
 
 			for i, row := range rowsEvent.Rows {
-				b.logger.Debugf("mysql.reader: row values: %v", row[:mathutil.Min(len(row), g.LONG_LOG_LIMIT)])
+				b.logger.Tracef("mysql.reader: row values: %v", row[:mathutil.Min(len(row), g.LONG_LOG_LIMIT)])
 				if dml == UpdateDML && i%2 == 1 {
 					// An update has two rows (WHERE+SET)
 					// We do both at the same time
@@ -886,7 +886,7 @@ func (b *BinlogReader) DataStreamEvents(entriesChannel chan<- *BinlogEntry) erro
 
 		memory, _ := mem.VirtualMemory()
 		for float64(memory.Available) / float64(memory.Total) < 0.2 {
-			b.logger.Warnf("available memory is lower than 20%% (%v/%v), wait 1s for memory",
+			b.logger.Warnf("available memory is lower than 20%% (%v/%v), pause binlog parsing 1s for memory",
 				memory.Available, memory.Total)
 			debug.FreeOSMemory()
 			time.Sleep(1 * time.Second)
