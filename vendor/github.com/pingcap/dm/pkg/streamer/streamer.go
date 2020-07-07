@@ -77,7 +77,7 @@ func (s *LocalStreamer) closeWithError(err error) {
 func newLocalStreamer() *LocalStreamer {
 	s := new(LocalStreamer)
 
-	s.ch = make(chan *replication.BinlogEvent, 10240)
+	s.ch = make(chan *replication.BinlogEvent, 5120)
 	s.ech = make(chan error, 4)
 
 	return s

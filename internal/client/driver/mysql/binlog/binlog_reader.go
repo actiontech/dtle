@@ -52,7 +52,6 @@ import (
 
 	dmrelay "github.com/pingcap/dm/relay"
 	"github.com/shirou/gopsutil/mem"
-	"runtime/debug"
 )
 
 // BinlogReader is a general interface whose implementations can choose their methods of reading
@@ -854,45 +853,27 @@ func loadMapping(sql, beforeName, afterName, mappingType, currentSchema string) 
 	return sql
 }
 
-/*var freeMemoryChan = make(chan struct{}, 0)
 
-func memoryFreer() {
-	for {
-		select {
-		case <-freeMemoryChan:
-			debug.FreeOSMemory()
-			time.Sleep(30 * time.Second)
-		}
-	}
-}
 
-func triggerFreeMemory() {
-	select {
-	case freeMemoryChan <- struct{}{}:
-	default:
-	}
-}*/
 
 
 // StreamEvents
 func (b *BinlogReader) DataStreamEvents(entriesChannel chan<- *BinlogEntry) error {
+//	checkMemoryInterval := 0
 	for {
 		// Check for shutdown
 		if b.shutdown {
 			break
 		}
-
-		trace := opentracing.GlobalTracer()
-
 		memory, _ := mem.VirtualMemory()
-		for float64(memory.Available) / float64(memory.Total) < 0.2 {
+		for float64(memory.Available) / float64(memory.Total) < 0.25 {
 			b.logger.Warnf("available memory is lower than 20%% (%v/%v), pause binlog parsing 1s for memory",
 				memory.Available, memory.Total)
-			debug.FreeOSMemory()
+			g.TriggerFreeMemory()
 			time.Sleep(1 * time.Second)
 			memory, _ = mem.VirtualMemory()
 		}
-
+		trace := opentracing.GlobalTracer()
 		ev, err := b.binlogStreamer.GetEvent(context.Background())
 		if err != nil {
 			b.logger.Errorf("mysql.reader error GetEvent. err: %v", err)
