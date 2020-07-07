@@ -54,7 +54,7 @@ import (
 
 const (
 	// DefaultConnectWait is the default timeout used for the connect operation
-	DefaultConnectWaitSecond      = 10
+	DefaultConnectWaitSecond      = 180
 	DefaultConnectWait            = DefaultConnectWaitSecond * time.Second
 	DefaultBigTX                  = 1024 * 1024 * 100
 	ReconnectStreamerSleepSeconds = 5
@@ -106,9 +106,10 @@ type Extractor struct {
 	gotCoordinateCh chan struct{}
 	streamerReadyCh chan error
 	fullCopyDone    chan struct{}
+	freeMemoryChan  chan struct{}
 }
 
-func NewExtractor(execCtx *common.ExecContext, cfg *config.MySQLDriverConfig, logger *logrus.Logger) (*Extractor, error) {
+func NewExtractor(execCtx *common.ExecContext, cfg *config.MySQLDriverConfig, logger *logrus.Logger,freeMemoryChan chan struct{}) (*Extractor, error) {
 
 	cfg = cfg.SetDefault()
 	entry := logger.WithFields(logrus.Fields{
@@ -129,6 +130,8 @@ func NewExtractor(execCtx *common.ExecContext, cfg *config.MySQLDriverConfig, lo
 		gotCoordinateCh: make(chan struct{}),
 		streamerReadyCh: make(chan error),
 		fullCopyDone:    make(chan struct{}),
+		freeMemoryChan:  freeMemoryChan,
+
 	}
 	e.context.LoadSchemas(nil)
 
@@ -1014,7 +1017,7 @@ func (e *Extractor) StreamEvents() error {
 		}()*/
 		// endregion
 		// The next should block and execute forever, unless there's a serious error
-		if err := e.binlogReader.DataStreamEvents(e.dataChannel); err != nil {
+		if err := e.binlogReader.DataStreamEvents(e.dataChannel,e.freeMemoryChan); err != nil {
 			if e.shutdown {
 				return nil
 			}

@@ -35,8 +35,7 @@ import (
 	"github.com/actiontech/dts/internal/config"
 	"github.com/actiontech/dts/internal/models"
 	"github.com/actiontech/dts/internal/server"
-	"github.com/shirou/gopsutil/mem"
-	"runtime/debug"
+		"runtime/debug"
 )
 
 const (
@@ -140,6 +139,7 @@ type Client struct {
 	shutdown     bool
 	shutdownCh   chan struct{}
 	shutdownLock sync.Mutex
+	freeMemoryChan  chan struct{}
 }
 
 // migrateAllocCtrl indicates whether migration is complete
@@ -194,6 +194,7 @@ func NewClient(cfg *config.ClientConfig, logger *logrus.Logger) (*Client, error)
 		servers:             newServerList(),
 		triggerDiscoveryCh:  make(chan struct{}),
 		serversDiscoveredCh: make(chan struct{}),
+		freeMemoryChan: make(chan struct{}, 0),
 	}
 
 	// Initialize the client
@@ -244,7 +245,7 @@ func NewClient(cfg *config.ClientConfig, logger *logrus.Logger) (*Client, error)
 
 	//go c.setMemoryMonitor()
 
-	//go memoryFreer()
+	go c.memoryFreer()
 	c.logger.Printf("agent: Node ID %q", c.Node().ID)
 	return c, nil
 }
@@ -558,7 +559,7 @@ func (c *Client) setupNatsServer() error {
 // setupDrivers is used to find the available drivers
 func (c *Client) setupDrivers() error {
 	var avail []string
-	driverCtx := driver.NewDriverContext("", "", c.config, c.config.Node, c.logger)
+	driverCtx := driver.NewDriverContext("", "", c.config, c.config.Node, c.logger,c.freeMemoryChan)
 	for name := range driver.BuiltinDrivers {
 		_, err := driver.NewDriver(name, driverCtx)
 		if err != nil {
@@ -573,29 +574,20 @@ func (c *Client) setupDrivers() error {
 
 	return nil
 }
-/*var freeMemoryChan = make(chan struct{}, 0)
 
-func memoryFreer() {
+func  (c *Client) memoryFreer() {
 	for {
 		select {
-		case <-freeMemoryChan:
+		case <-c.freeMemoryChan:
+			c.logger.Info("memory exceed limit ,use debug.FreeOSMemory() to recycle memory.")
 			debug.FreeOSMemory()
 			time.Sleep(30 * time.Second)
 		}
 	}
 }
 
-func triggerFreeMemory() {
-	select {
-	case freeMemoryChan <- struct{}{}:
-	default:
-	}
-}
-*/
-
-
 // setMemoryMonitor  used to free memory from go to os ,when  memory less than 1/8 and memory less than 2G
-func (c *Client) setMemoryMonitor() {
+/*func (c *Client) setMemoryMonitor() {
 
 	for {
 
@@ -608,7 +600,7 @@ func (c *Client) setMemoryMonitor() {
 		time.Sleep(time.Duration(2) * time.Second)
 	}
 
-}
+}*/
 
 // retryIntv calculates a retry interval value given the base
 func (c *Client) retryIntv(base time.Duration) time.Duration {
@@ -1476,7 +1468,7 @@ func (c *Client) addAlloc(alloc *models.Allocation) error {
 	defer c.allocLock.Unlock()
 
 	c.configLock.RLock()
-	ar := NewAllocator(c.logger, c.configCopy, c.updateAllocStatus, alloc, c.workUpdates)
+	ar := NewAllocator(c.logger, c.configCopy, c.updateAllocStatus, alloc, c.workUpdates,c.freeMemoryChan)
 	c.configLock.RUnlock()
 	go ar.Run()
 
