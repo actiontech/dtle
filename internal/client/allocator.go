@@ -392,6 +392,9 @@ func (r *Allocator) Run() {
 	defer func() {
 		ignore := false
 		v := recover()
+		if v == nil {
+			return
+		}
 		if err, ok := v.(error); ok {
 			if err.Error() == "close of closed channel" {
 				r.logger.Error("DTLE_BUG Allocator.Run")
