@@ -214,7 +214,7 @@ func (kr *KafkaRunner) initiateStreaming() error {
 			kr.onError(TaskStateDead, err)
 			return
 		}
-		kr.logger.Debugf("kafka: after publish nats reply")
+		kr.logger.Debugf("kafka: ack a full msg")
 
 		dumpData, err := mysqlDriver.DecodeDumpEntry(m.Data)
 		if err != nil {
@@ -299,7 +299,7 @@ func (kr *KafkaRunner) initiateStreaming() error {
 		if err := kr.natsConn.Publish(m.Reply, nil); err != nil {
 			kr.onError(TaskStateDead, errors.Wrap(err, "Publish"))
 		}
-		kr.logger.Debugf("kafka. incr. ack-recv.")
+		kr.logger.Debugf("kafka. ack a incr_hete msg")
 
 		var bigEntries binlog.BinlogEntries
 		var binlogEntries binlog.BinlogEntries
