@@ -67,7 +67,6 @@ type DriverContext struct {
 	config   *uconf.ClientConfig
 	logger   *logrus.Logger
 	node     *models.Node
-	freeMemoryChan  chan struct{}
 }
 
 // NewEmptyDriverContext returns a DriverContext with all fields set to their
@@ -81,14 +80,13 @@ func NewEmptyDriverContext() *DriverContext {
 // private to the driver. If we want to change this later we can gorename all of
 // the fields in DriverContext.
 func NewDriverContext(taskName, allocID string, config *uconf.ClientConfig, node *models.Node,
-	logger *logrus.Logger,freeMemoryChan chan struct{}) *DriverContext {
+	logger *logrus.Logger) *DriverContext {
 	return &DriverContext{
 		taskName: taskName,
 		allocID:  allocID,
 		config:   config,
 		node:     node,
 		logger:   logger,
-		freeMemoryChan: freeMemoryChan,
 	}
 }
 

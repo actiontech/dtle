@@ -861,16 +861,10 @@ func loadMapping(sql, beforeName, afterName, mappingType, currentSchema string) 
 
 
 
-func triggerFreeMemory(freeMemoryChan chan struct{}) {
-	select {
-	case freeMemoryChan <- struct{}{}:
-	default:
-	}
-}
 
 
 // StreamEvents
-func (b *BinlogReader) DataStreamEvents(entriesChannel chan<- *BinlogEntry,freeMemoryChan chan struct{}) error {
+func (b *BinlogReader) DataStreamEvents(entriesChannel chan<- *BinlogEntry) error {
 //	checkMemoryInterval := 0
 	for {
 		// Check for shutdown
@@ -881,7 +875,7 @@ func (b *BinlogReader) DataStreamEvents(entriesChannel chan<- *BinlogEntry,freeM
 		for float64(memory.Available) / float64(memory.Total) < 0.25 {
 			b.logger.Warnf("available memory is lower than 20%% (%v/%v), pause binlog parsing 1s for memory",
 				memory.Available, memory.Total)
-			triggerFreeMemory(freeMemoryChan)
+			g.TriggerFreeMemory()
 			time.Sleep(1 * time.Second)
 			memory, _ = mem.VirtualMemory()
 		}

@@ -83,7 +83,6 @@ type Worker struct {
 
 	// waitCh closing marks the run loop as having exited
 	waitCh chan struct{}
-	freeMemoryChan  chan struct{}
 	// persistLock must be acquired when accessing fields stored by
 	// SaveState. SaveState is called asynchronously to TaskRunner.Run by
 	// AllocRunner, so all store fields must be synchronized using this
@@ -105,7 +104,7 @@ type TaskStateUpdater func(taskName, state string, event *models.TaskEvent)
 // NewWorker is used to create a new task context
 func NewWorker(logger *logrus.Logger, config *config.ClientConfig,
 	updater TaskStateUpdater, alloc *models.Allocation,
-	task *models.Task, workUpdates chan *models.TaskUpdate,freeMemoryChan chan struct{}) *Worker {
+	task *models.Task, workUpdates chan *models.TaskUpdate) *Worker {
 
 	// Build the restart tracker.
 	t := alloc.Job.LookupTask(alloc.Task)
@@ -129,7 +128,6 @@ func NewWorker(logger *logrus.Logger, config *config.ClientConfig,
 		unblockCh:      make(chan struct{}),
 		restartCh:      make(chan *models.TaskEvent),
 		workUpdates:    workUpdates,
-		freeMemoryChan:  freeMemoryChan,
 	}
 
 	return tc
@@ -240,7 +238,7 @@ func (r *Worker) setState(state string, event *models.TaskEvent) {
 
 // createDriver makes a driver for the task
 func (r *Worker) createDriver() (driver.Driver, error) {
-	driverCtx := driver.NewDriverContext(r.task.Type, r.alloc.ID, r.config, r.config.Node, r.logger,r.freeMemoryChan)
+	driverCtx := driver.NewDriverContext(r.task.Type, r.alloc.ID, r.config, r.config.Node, r.logger)
 	driver, err := driver.NewDriver(r.task.Driver, driverCtx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create driver '%s' for alloc %s: %v",

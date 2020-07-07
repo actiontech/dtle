@@ -54,7 +54,6 @@ type Allocator struct {
 	destroyCh   chan struct{}
 	destroyLock sync.Mutex
 	waitCh      chan struct{}
-	freeMemoryChan  chan struct{}
 	// serialize saveAllocatorState calls
 	persistLock sync.Mutex
 }
@@ -69,7 +68,7 @@ type allocatorState struct {
 
 // NewAllocator is used to create a new allocation context
 func NewAllocator(logger *logrus.Logger, config *config.ClientConfig, updater AllocStateUpdater,
-	alloc *models.Allocation, workUpdates chan *models.TaskUpdate,freeMemoryChan chan struct{}) *Allocator {
+	alloc *models.Allocation, workUpdates chan *models.TaskUpdate) *Allocator {
 	ar := &Allocator{
 		config:      config,
 		updater:     updater,
@@ -83,7 +82,6 @@ func NewAllocator(logger *logrus.Logger, config *config.ClientConfig, updater Al
 		workUpdates: workUpdates,
 		destroyCh:   make(chan struct{}),
 		waitCh:      make(chan struct{}),
-		freeMemoryChan: freeMemoryChan,
 	}
 	return ar
 }
@@ -434,7 +432,7 @@ func (r *Allocator) Run() {
 		return
 	}
 
-	tr := NewWorker(r.logger, r.config, r.setTaskState, r.Alloc(), t.Copy(), r.workUpdates,r.freeMemoryChan)
+	tr := NewWorker(r.logger, r.config, r.setTaskState, r.Alloc(), t.Copy(), r.workUpdates,)
 	r.tasks[t.Type] = tr
 	tr.MarkReceived()
 

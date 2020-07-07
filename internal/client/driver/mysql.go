@@ -235,7 +235,7 @@ func (m *MySQLDriver) Start(ctx *common.ExecContext, task *models.Task) (DriverH
 		{
 			m.logger.Debugf("NewExtractor ReplicateDoDb: %v", driverConfig.ReplicateDoDb)
 			// Create the extractor
-			e, err := mysql.NewExtractor(ctx, &driverConfig, m.logger,m.freeMemoryChan)
+			e, err := mysql.NewExtractor(ctx, &driverConfig, m.logger)
 			if err != nil {
 				return nil, err
 			}

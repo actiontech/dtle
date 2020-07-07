@@ -1,6 +1,11 @@
 // global values
 package g
 
+import (
+	"runtime/debug"
+	"time"
+)
+
 var (
 	DtleSchemaName string = "DTLE_BUG_SCHEMA_NOT_SET"
 )
@@ -21,3 +26,25 @@ const (
 
 	LONG_LOG_LIMIT = 256
 )
+
+
+var freeMemoryChan = make(chan struct{}, 0)
+
+func MemoryFreer() {
+	for {
+		select {
+		case <-freeMemoryChan:
+			println("menory over limit ,begin to receicer")
+			debug.FreeOSMemory()
+			time.Sleep(10 * time.Second)
+		}
+	}
+}
+
+
+func TriggerFreeMemory() {
+	select {
+	case freeMemoryChan <- struct{}{}:
+	default:
+	}
+}

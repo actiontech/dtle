@@ -35,7 +35,7 @@ import (
 	"github.com/actiontech/dts/internal/config"
 	"github.com/actiontech/dts/internal/models"
 	"github.com/actiontech/dts/internal/server"
-		"runtime/debug"
+			. "github.com/actiontech/dts/internal/g"
 )
 
 const (
@@ -139,8 +139,7 @@ type Client struct {
 	shutdown     bool
 	shutdownCh   chan struct{}
 	shutdownLock sync.Mutex
-	freeMemoryChan  chan struct{}
-}
+	}
 
 // migrateAllocCtrl indicates whether migration is complete
 type migrateAllocCtrl struct {
@@ -194,7 +193,6 @@ func NewClient(cfg *config.ClientConfig, logger *logrus.Logger) (*Client, error)
 		servers:             newServerList(),
 		triggerDiscoveryCh:  make(chan struct{}),
 		serversDiscoveredCh: make(chan struct{}),
-		freeMemoryChan: make(chan struct{}, 0),
 	}
 
 	// Initialize the client
@@ -244,8 +242,7 @@ func NewClient(cfg *config.ClientConfig, logger *logrus.Logger) (*Client, error)
 	go c.run()
 
 	//go c.setMemoryMonitor()
-
-	go c.memoryFreer()
+	go MemoryFreer()
 	c.logger.Printf("agent: Node ID %q", c.Node().ID)
 	return c, nil
 }
@@ -559,7 +556,7 @@ func (c *Client) setupNatsServer() error {
 // setupDrivers is used to find the available drivers
 func (c *Client) setupDrivers() error {
 	var avail []string
-	driverCtx := driver.NewDriverContext("", "", c.config, c.config.Node, c.logger,c.freeMemoryChan)
+	driverCtx := driver.NewDriverContext("", "", c.config, c.config.Node, c.logger)
 	for name := range driver.BuiltinDrivers {
 		_, err := driver.NewDriver(name, driverCtx)
 		if err != nil {
@@ -575,16 +572,6 @@ func (c *Client) setupDrivers() error {
 	return nil
 }
 
-func  (c *Client) memoryFreer() {
-	for {
-		select {
-		case <-c.freeMemoryChan:
-			c.logger.Info("memory exceed limit ,use debug.FreeOSMemory() to recycle memory.")
-			debug.FreeOSMemory()
-			time.Sleep(30 * time.Second)
-		}
-	}
-}
 
 // setMemoryMonitor  used to free memory from go to os ,when  memory less than 1/8 and memory less than 2G
 /*func (c *Client) setMemoryMonitor() {
@@ -1468,7 +1455,7 @@ func (c *Client) addAlloc(alloc *models.Allocation) error {
 	defer c.allocLock.Unlock()
 
 	c.configLock.RLock()
-	ar := NewAllocator(c.logger, c.configCopy, c.updateAllocStatus, alloc, c.workUpdates,c.freeMemoryChan)
+	ar := NewAllocator(c.logger, c.configCopy, c.updateAllocStatus, alloc, c.workUpdates)
 	c.configLock.RUnlock()
 	go ar.Run()
 
