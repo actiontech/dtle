@@ -274,16 +274,29 @@ type Table struct {
 	TableSchema       string
 	TableSchemaRename string
 	Counter           int64
+	ColumnMapFrom     []string
+	//ColumnMapTo       []string
+	//ColumnMapUseRe    bool
 
 	OriginalTableColumns *umconf.ColumnList
 	UseUniqueKey         *umconf.UniqueKey
 	Iteration            int64
+	ColumnMap            []int
 
 	TableType    string
 	TableEngine  string
 	RowsEstimate int64
 
 	Where string // TODO load from job description
+}
+
+func BuildColumnMapIndex(from []string, ordinals umconf.ColumnsMap) (mapIndex []int) {
+	mapIndex = make([]int, len(from))
+	for i, colName := range from {
+		idxFrom := ordinals[colName]
+		mapIndex[i] = idxFrom
+	}
+	return mapIndex
 }
 
 type TableContext struct {
@@ -312,13 +325,13 @@ func NewTable(schemaName string, tableName string) *Table {
 func (t *TableContext) WhereTrue(values *umconf.ColumnValues) (bool, error) {
 	var m = make(map[string]interface{})
 	for field, idx := range t.WhereCtx.FieldsMap {
-		nCols := len(values.ValuesPointers)
+		nCols := len(values.AbstractValues)
 		if idx >= nCols {
 			return false, fmt.Errorf("cannot eval 'where' predicate: no enough columns (%v < %v)", nCols, idx)
 		}
 
 		//fmt.Printf("**** type of %v %T\n", field, *values.ValuesPointers[idx])
-		rawValue := *(values.ValuesPointers[idx])
+		rawValue := *(values.AbstractValues[idx])
 		var value interface{}
 		if rawValue == nil {
 			value = rawValue

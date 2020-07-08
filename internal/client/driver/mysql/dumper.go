@@ -63,6 +63,7 @@ func NewDumper(db usql.QueryAble, table *config.Table, chunkSize int64,
 		shutdownCh:         make(chan struct{}),
 		sentTableDef:       false,
 	}
+
 	switch os.Getenv(g.ENV_DUMP_CHECKSUM) {
 	case "1":
 		dumper.doChecksum = 1
@@ -312,6 +313,16 @@ func (d *dumper) getChunkData() (nRows int64, err error) {
 	}
 	if d.table.TableSchemaRename != "" {
 		entry.TableSchema = d.table.TableSchemaRename
+	}
+	if len(d.table.ColumnMap) > 0 {
+		for i, oldRow := range entry.ValuesX {
+			row := make([]*[]byte, len(d.table.ColumnMap))
+			for i := range d.table.ColumnMap {
+				fromIdx := d.table.ColumnMap[i]
+				row[i] = oldRow[fromIdx]
+			}
+			entry.ValuesX[i] = row
+		}
 	}
 	// ValuesX[i]: n-th row
 	// ValuesX[i][j]: j-th col of n-th row
