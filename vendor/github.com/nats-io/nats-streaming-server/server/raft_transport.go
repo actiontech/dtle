@@ -27,6 +27,7 @@ import (
 	"sync"
 	"time"
 
+	hclog "github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/raft"
 	"github.com/nats-io/nats.go"
 )
@@ -371,7 +372,9 @@ func newNATSTransport(id string, conn *nats.Conn, timeout time.Duration, logOutp
 // with NATS as the transport layer using the provided Logger.
 func newNATSTransportWithLogger(id string, conn *nats.Conn, timeout time.Duration, logger *log.Logger) (*raft.NetworkTransport, error) {
 	return createNATSTransport(id, conn, logger, timeout, func(stream raft.StreamLayer) *raft.NetworkTransport {
-		return raft.NewNetworkTransportWithLogger(stream, 3, timeout, logger)
+		opt := hclog.DefaultOptions
+		opt.Output = logger.Writer()
+		return raft.NewNetworkTransportWithLogger(stream, 3, timeout, hclog.New(opt))
 	})
 }
 
@@ -381,7 +384,11 @@ func newNATSTransportWithConfig(id string, conn *nats.Conn, config *raft.Network
 	if config.Timeout == 0 {
 		config.Timeout = defaultTPortTimeout
 	}
-	return createNATSTransport(id, conn, config.Logger, config.Timeout, func(stream raft.StreamLayer) *raft.NetworkTransport {
+	stdlogger := config.Logger.StandardLogger(&hclog.StandardLoggerOptions{
+		InferLevels: false,
+		ForceLevel:  0,
+	})
+	return createNATSTransport(id, conn, stdlogger, config.Timeout, func(stream raft.StreamLayer) *raft.NetworkTransport {
 		config.Stream = stream
 		return raft.NewNetworkTransportWithConfig(config)
 	})
