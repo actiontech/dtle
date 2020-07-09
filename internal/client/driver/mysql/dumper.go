@@ -8,6 +8,7 @@ package mysql
 
 import (
 	"fmt"
+	"github.com/actiontech/dtle/internal/client/driver/common"
 	"os"
 	"strings"
 	"sync"
@@ -31,7 +32,7 @@ type dumper struct {
 	EscapedTableName   string
 	table              *config.Table
 	columns            string
-	resultsChannel     chan *DumpEntry
+	resultsChannel     chan *common.DumpEntry
 	shutdown           bool
 	shutdownCh         chan struct{}
 	shutdownLock       sync.Mutex
@@ -58,7 +59,7 @@ func NewDumper(db usql.QueryAble, table *config.Table, chunkSize int64,
 		TableName:          table.TableName,
 		EscapedTableName:   umconf.EscapeName(table.TableName),
 		table:              table,
-		resultsChannel:     make(chan *DumpEntry, 24),
+		resultsChannel:     make(chan *common.DumpEntry, 24),
 		chunkSize:          chunkSize,
 		shutdownCh:         make(chan struct{}),
 		sentTableDef:       false,
@@ -101,10 +102,6 @@ type DumpEntryOrig struct {
 	RowsCount  int64
 	Err        error
 	Table      *config.Table
-}
-
-func (e *DumpEntry) incrementCounter() {
-	e.RowsCount++
 }
 
 func (d *dumper) prepareForDumping() error {
@@ -195,7 +192,7 @@ func (d *dumper) buildQueryOnUniqueKey() string {
 
 // dumps a specific chunk, reading chunk info from the channel
 func (d *dumper) getChunkData() (nRows int64, err error) {
-	entry := &DumpEntry{
+	entry := &common.DumpEntry{
 		TableSchema: d.TableSchema,
 		TableName:   d.TableName,
 		RowsCount:   0,
@@ -282,7 +279,7 @@ func (d *dumper) getChunkData() (nRows int64, err error) {
 
 		entry.ValuesX = append(entry.ValuesX, rowValuesRaw)
 
-		entry.incrementCounter()
+		entry.IncrementCounter()
 	}
 
 	d.logger.Debugf("getChunkData. n_row: %d", entry.RowsCount)

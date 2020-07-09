@@ -8,7 +8,6 @@ package kafka3
 
 import (
 	"bytes"
-	"encoding/gob"
 	"encoding/json"
 	"fmt"
 	"github.com/pkg/errors"
@@ -20,7 +19,6 @@ import (
 	mysqlDriver "github.com/actiontech/dtle/internal/client/driver/mysql"
 	"github.com/actiontech/dtle/internal/config/mysql"
 
-	"github.com/golang/snappy"
 	gonats "github.com/nats-io/go-nats"
 	"github.com/satori/go.uuid"
 
@@ -34,7 +32,6 @@ import (
 	"github.com/actiontech/dtle/internal/config"
 	"github.com/actiontech/dtle/internal/models"
 	"github.com/actiontech/dtle/utils"
-	"github.com/pingcap/tidb/types"
 	"github.com/sirupsen/logrus"
 )
 
@@ -89,8 +86,8 @@ func (kr *KafkaRunner) ID() string {
 			BinlogFile: kr.kafkaConfig.BinlogFile,
 			//ReplicateDoDb:     a.mysqlContext.ReplicateDoDb,
 			//ReplicateIgnoreDb: a.mysqlContext.ReplicateIgnoreDb,
-			Gtid: kr.kafkaConfig.Gtid,
-			NatsAddr:          kr.kafkaConfig.NatsAddr,
+			Gtid:     kr.kafkaConfig.Gtid,
+			NatsAddr: kr.kafkaConfig.NatsAddr,
 			//ParallelWorkers:   a.mysqlContext.ParallelWorkers,
 			//ConnectionConfig:  a.mysqlContext.ConnectionConfig,
 		},
@@ -216,7 +213,7 @@ func (kr *KafkaRunner) initiateStreaming() error {
 		}
 		kr.logger.Debugf("kafka: ack a full msg")
 
-		dumpData, err := mysqlDriver.DecodeDumpEntry(m.Data)
+		dumpData, err := common.DecodeDumpEntry(m.Data)
 		if err != nil {
 			kr.onError(TaskStateDead, err)
 			return
@@ -235,7 +232,7 @@ func (kr *KafkaRunner) initiateStreaming() error {
 			var tableFromDumpData *config.Table = nil
 			if len(dumpData.Table) > 0 {
 				tableFromDumpData = &config.Table{}
-				err = DecodeGob(dumpData.Table, tableFromDumpData)
+				err = common.DecodeGob(dumpData.Table, tableFromDumpData)
 				if err != nil {
 					kr.onError(TaskStateDead, err)
 					return
@@ -267,7 +264,7 @@ func (kr *KafkaRunner) initiateStreaming() error {
 		kr.logger.Debugf("kafka: ack a full_complete msg")
 
 		dumpData := &mysqlDriver.DumpStatResult{}
-		if err := Decode(m.Data, dumpData); err != nil {
+		if err := common.Decode(m.Data, dumpData); err != nil {
 			kr.onError(TaskStateDead, err)
 		}
 
@@ -303,7 +300,7 @@ func (kr *KafkaRunner) initiateStreaming() error {
 
 		var bigEntries binlog.BinlogEntries
 		var binlogEntries binlog.BinlogEntries
-		if err := Decode(m.Data, &binlogEntries); err != nil {
+		if err := common.Decode(m.Data, &binlogEntries); err != nil {
 			kr.onError(TaskStateDead, err)
 		}
 		if binlogEntries.BigTx {
@@ -339,21 +336,6 @@ func (kr *KafkaRunner) initiateStreaming() error {
 	return nil
 }
 
-// TODO move to one place
-func Decode(data []byte, vPtr interface{}) (err error) {
-	gob.Register(types.BinaryLiteral{})
-	msg, err := snappy.Decode(nil, data)
-	if err != nil {
-		return err
-	}
-
-	return gob.NewDecoder(bytes.NewBuffer(msg)).Decode(vPtr)
-}
-func DecodeGob(data []byte, vPtr interface{}) (err error) {
-	gob.Register(types.BinaryLiteral{})
-	return gob.NewDecoder(bytes.NewBuffer(data)).Decode(vPtr)
-}
-
 func (kr *KafkaRunner) onError(state int, err error) {
 	if kr.shutdown {
 		return
@@ -383,7 +365,7 @@ func (kr *KafkaRunner) onError(state int, err error) {
 	kr.Shutdown()
 }
 
-func (kr *KafkaRunner) kafkaTransformSnapshotData(table *config.Table, value *mysqlDriver.DumpEntry) error {
+func (kr *KafkaRunner) kafkaTransformSnapshotData(table *config.Table, value *common.DumpEntry) error {
 	var err error
 
 	tableIdent := fmt.Sprintf("%v.%v.%v", kr.kafkaMgr.Cfg.Topic, table.TableSchema, table.TableName)

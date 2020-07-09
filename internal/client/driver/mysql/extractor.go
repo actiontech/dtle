@@ -22,7 +22,6 @@ import (
 
 	//"math"
 	"bytes"
-	"encoding/gob"
 	"math"
 	"strconv"
 	"strings"
@@ -48,7 +47,6 @@ import (
 	"github.com/actiontech/dtle/internal/config"
 	"github.com/actiontech/dtle/internal/models"
 	"github.com/actiontech/dtle/utils"
-	"github.com/pingcap/tidb/types"
 	"github.com/sirupsen/logrus"
 	_ "net/http/pprof"
 )
@@ -259,7 +257,7 @@ func (e *Extractor) Run() {
 			e.onError(TaskStateDead, err)
 			return
 		}
-		dumpMsg, err := Encode(&DumpStatResult{
+		dumpMsg, err := common.Encode(&DumpStatResult{
 			Gtid:       e.initialBinlogCoordinates.GtidSet,
 			LogFile:    e.initialBinlogCoordinates.LogFile,
 			LogPos:     e.initialBinlogCoordinates.LogPos,
@@ -834,27 +832,6 @@ func (e *Extractor) setStatementFor() string {
 	return buffer.String()
 }
 
-// Encode
-func GobEncode(v interface{}) ([]byte, error) {
-	gob.Register(types.BinaryLiteral{})
-	b := new(bytes.Buffer)
-	if err := gob.NewEncoder(b).Encode(v); err != nil {
-		return nil, err
-	}
-	return b.Bytes(), nil
-}
-func Encode(v interface{}) ([]byte, error) {
-
-	//	gob.Register(types.BinaryLiteral{})   can not use.when the data more than 500M ,it Cause memory out
-	b := new(bytes.Buffer)
-	enc := gob.NewEncoder(b)
-	if err := enc.Encode(v); err != nil {
-		return nil, err
-	}
-	return snappy.Encode(nil, b.Bytes()), nil
-	//return b.Bytes(), nil
-}
-
 // StreamEvents will begin streaming events. It will be blocking, so should be
 // executed by a goroutine
 func (e *Extractor) StreamEvents() error {
@@ -871,7 +848,7 @@ func (e *Extractor) StreamEvents() error {
 				if len(entries.Entries) > 0 {
 					gno = entries.Entries[0].Coordinates.GNO
 				}
-				txMsg, err := Encode(entries)
+				txMsg, err := common.Encode(entries)
 				if err != nil {
 					return err
 				}
@@ -1125,7 +1102,7 @@ func (e *Extractor) sendSysVarAndSqlMode() error {
 	}
 	setSqlMode := fmt.Sprintf("SET @@session.sql_mode = '%s'", e.mysqlContext.SqlMode)
 
-	entry := &DumpEntry{
+	entry := &common.DumpEntry{
 		SystemVariablesStatement: setSystemVariablesStatement,
 		SqlMode:                  setSqlMode,
 	}
@@ -1340,7 +1317,7 @@ func (e *Extractor) mysqlDump() error {
 						}
 					}
 				}
-				entry := &DumpEntry{
+				entry := &common.DumpEntry{
 					DbSQL:      dbSQL,
 					TbSQL:      tbSQL,
 					TotalCount: tb.Counter + 1,
@@ -1365,7 +1342,7 @@ func (e *Extractor) mysqlDump() error {
 
 				}
 			}
-			entry := &DumpEntry{
+			entry := &common.DumpEntry{
 				DbSQL:      dbSQL,
 				TotalCount: 1,
 				RowsCount:  1,
@@ -1407,7 +1384,7 @@ func (e *Extractor) mysqlDump() error {
 					e.onError(TaskStateDead, fmt.Errorf(entry.Err))
 				} else {
 					if !d.sentTableDef {
-						tableBs, err := GobEncode(d.table)
+						tableBs, err := common.GobEncode(d.table)
 						if err != nil {
 							realErr := fmt.Errorf(entry.Err)
 							e.onError(TaskStateDead, realErr)
@@ -1440,7 +1417,7 @@ func (e *Extractor) mysqlDump() error {
 
 	return nil
 }
-func (e *Extractor) encodeDumpEntry(entry *DumpEntry) error {
+func (e *Extractor) encodeDumpEntry(entry *common.DumpEntry) error {
 	var ctx context.Context
 	//tracer := opentracing.GlobalTracer()
 	span := opentracing.GlobalTracer().StartSpan("span_full")

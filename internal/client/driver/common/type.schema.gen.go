@@ -1,4 +1,4 @@
-package mysql
+package common
 
 import (
 	"io"
@@ -829,4 +829,8 @@ func (d *DumpEntry) Unmarshal(buf []byte) (uint64, error) {
 		i += l
 	}
 	return i + 16, nil
+}
+
+func (d *DumpEntry) IncrementCounter() {
+	d.RowsCount++
 }

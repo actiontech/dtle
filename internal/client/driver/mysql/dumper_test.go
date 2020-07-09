@@ -8,10 +8,11 @@ package mysql
 
 import (
 	"database/sql"
-	"reflect"
-	"testing"
+	"github.com/actiontech/dtle/internal/client/driver/common"
 	"github.com/actiontech/dtle/internal/config"
 	log "github.com/actiontech/dtle/internal/logger"
+	"reflect"
+	"testing"
 )
 
 func TestNewDumper(t *testing.T) {
@@ -40,7 +41,7 @@ func TestNewDumper(t *testing.T) {
 func Test_dumpEntry_incrementCounter(t *testing.T) {
 	tests := []struct {
 		name string
-		e    *DumpEntry
+		e    *common.DumpEntry
 	}{
 		// TODO: Add test cases.
 	}
