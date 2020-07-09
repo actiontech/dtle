@@ -388,6 +388,22 @@ func (r *Allocator) appendTaskEvent(state *models.TaskState, event *models.TaskE
 
 // Run is a long running goroutine used to manage an allocation
 func (r *Allocator) Run() {
+	defer func() {
+		ignore := false
+		v := recover()
+		if v == nil {
+			return
+		}
+		if err, ok := v.(error); ok {
+			if err.Error() == "close of closed channel" {
+				r.logger.Error("DTLE_BUG Allocator.Run")
+				ignore = true
+			}
+		}
+		if !ignore {
+			panic(v)
+		}
+	}()
 	defer close(r.waitCh)
 	go r.dirtySyncState()
 

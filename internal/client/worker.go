@@ -252,8 +252,8 @@ func (r *Worker) createDriver() (driver.Driver, error) {
 func (r *Worker) Run() {
 	defer close(r.waitCh)
 	r.logger.WithFields(logrus.Fields{
-		"taskType": r.task.Type,
-		"allocId":  r.alloc.ID,
+		"taskType":   r.task.Type,
+		"allocId":    r.alloc.ID,
 		"taskConfig": r.task.Config,
 	}).Debugf("agent: Starting task context from alloc")
 
