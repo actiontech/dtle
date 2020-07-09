@@ -51,6 +51,7 @@ import (
 	"github.com/opentracing/opentracing-go"
 
 	dmrelay "github.com/pingcap/dm/relay"
+	"github.com/shirou/gopsutil/mem"
 )
 
 // BinlogReader is a general interface whose implementations can choose their methods of reading
@@ -359,7 +360,7 @@ func (b *BinlogReader) ConnectBinlogStreamer(coordinates base.BinlogCoordinatesX
 
 		if coordinates.GtidSet == "" {
 			b.binlogStreamer, err = b.binlogSyncer.StartSync(
-				gomysql.Position{Name:coordinates.LogFile,Pos:uint32(coordinates.LogPos)})
+				gomysql.Position{Name: coordinates.LogFile, Pos: uint32(coordinates.LogPos)})
 		} else {
 			gtidSet, err := gomysql.ParseMysqlGTIDSet(coordinates.GtidSet)
 			if err != nil {
@@ -700,7 +701,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 			avgRowSize := len(ev.RawData) / len(rowsEvent.Rows)
 
 			for i, row := range rowsEvent.Rows {
-				b.logger.Debugf("mysql.reader: row values: %v", row[:mathutil.Min(len(row), g.LONG_LOG_LIMIT)])
+				b.logger.Tracef("mysql.reader: row values: %v", row[:mathutil.Min(len(row), g.LONG_LOG_LIMIT)])
 				if dml == UpdateDML && i%2 == 1 {
 					// An update has two rows (WHERE+SET)
 					// We do both at the same time
@@ -852,14 +853,26 @@ func loadMapping(sql, beforeName, afterName, mappingType, currentSchema string) 
 	return sql
 }
 
+
+
+
+
 // StreamEvents
 func (b *BinlogReader) DataStreamEvents(entriesChannel chan<- *BinlogEntry) error {
+//	checkMemoryInterval := 0
 	for {
 		// Check for shutdown
 		if b.shutdown {
 			break
 		}
-
+		memory, _ := mem.VirtualMemory()
+		for float64(memory.Available) / float64(memory.Total) < 0.25 {
+			b.logger.Warnf("available memory is lower than 20%% (%v/%v), pause binlog parsing 1s for memory",
+				memory.Available, memory.Total)
+			g.TriggerFreeMemory()
+			time.Sleep(1 * time.Second)
+			memory, _ = mem.VirtualMemory()
+		}
 		trace := opentracing.GlobalTracer()
 		ev, err := b.binlogStreamer.GetEvent(context.Background())
 		if err != nil {
