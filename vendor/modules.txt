@@ -6,10 +6,6 @@ github.com/LK4D4/joincontext
 github.com/Shopify/sarama
 # github.com/StackExchange/wmi v0.0.0-20190523213315-cbe66965904d
 github.com/StackExchange/wmi
-# github.com/agext/levenshtein v1.2.1
-github.com/agext/levenshtein
-# github.com/apparentlymart/go-textseg v1.0.0
-github.com/apparentlymart/go-textseg/textseg
 # github.com/araddon/dateparse v0.0.0-20190622164848-0fb0a474d195
 github.com/araddon/dateparse
 # github.com/araddon/gou v0.0.0-20190110011759-c797efecbb61
@@ -89,6 +85,8 @@ github.com/google/btree
 github.com/google/uuid
 # github.com/gorhill/cronexpr v0.0.0-20180427100037-88b0669f7d75
 github.com/gorhill/cronexpr
+# github.com/gorilla/websocket v1.4.1
+github.com/gorilla/websocket
 # github.com/grpc-ecosystem/go-grpc-middleware v1.0.1-0.20190118093823-f849b5445de4
 github.com/grpc-ecosystem/go-grpc-middleware
 github.com/grpc-ecosystem/go-grpc-middleware/tags
@@ -96,6 +94,8 @@ github.com/grpc-ecosystem/go-grpc-middleware/tracing/opentracing
 github.com/grpc-ecosystem/go-grpc-middleware/util/metautils
 # github.com/hashicorp/consul/api v1.4.0
 github.com/hashicorp/consul/api
+# github.com/hashicorp/cronexpr v1.1.0
+github.com/hashicorp/cronexpr
 # github.com/hashicorp/errwrap v1.0.0
 github.com/hashicorp/errwrap
 # github.com/hashicorp/go-cleanhttp v0.5.1
@@ -111,12 +111,8 @@ github.com/hashicorp/go-multierror
 # github.com/hashicorp/go-plugin v1.2.0
 github.com/hashicorp/go-plugin
 github.com/hashicorp/go-plugin/internal/plugin
-# github.com/hashicorp/go-retryablehttp v0.5.4
-github.com/hashicorp/go-retryablehttp
 # github.com/hashicorp/go-rootcerts v1.0.2
 github.com/hashicorp/go-rootcerts
-# github.com/hashicorp/go-sockaddr v1.0.2
-github.com/hashicorp/go-sockaddr
 # github.com/hashicorp/go-uuid v1.0.2
 github.com/hashicorp/go-uuid
 # github.com/hashicorp/go-version v1.2.0
@@ -134,11 +130,6 @@ github.com/hashicorp/hcl/hcl/token
 github.com/hashicorp/hcl/json/parser
 github.com/hashicorp/hcl/json/scanner
 github.com/hashicorp/hcl/json/token
-# github.com/hashicorp/hcl2 v0.0.0-20191002203319-fb75b3253c80
-github.com/hashicorp/hcl2/hcl
-github.com/hashicorp/hcl2/hcl/hclsyntax
-github.com/hashicorp/hcl2/hcl/json
-github.com/hashicorp/hcl2/hcldec
 # github.com/hashicorp/nomad v0.10.4
 github.com/hashicorp/nomad/acl
 github.com/hashicorp/nomad/client/allocdir
@@ -151,14 +142,10 @@ github.com/hashicorp/nomad/helper/args
 github.com/hashicorp/nomad/helper/constraints/semver
 github.com/hashicorp/nomad/helper/flatmap
 github.com/hashicorp/nomad/helper/pluginutils/grpcutils
-github.com/hashicorp/nomad/helper/pluginutils/hclspecutils
-github.com/hashicorp/nomad/helper/pluginutils/hclutils
-github.com/hashicorp/nomad/helper/pluginutils/loader
 github.com/hashicorp/nomad/helper/stats
 github.com/hashicorp/nomad/helper/uuid
 github.com/hashicorp/nomad/lib/kheap
 github.com/hashicorp/nomad/nomad/structs
-github.com/hashicorp/nomad/nomad/structs/config
 github.com/hashicorp/nomad/plugins
 github.com/hashicorp/nomad/plugins/base
 github.com/hashicorp/nomad/plugins/base/proto
@@ -170,19 +157,13 @@ github.com/hashicorp/nomad/plugins/drivers/proto
 github.com/hashicorp/nomad/plugins/shared/hclspec
 github.com/hashicorp/nomad/plugins/shared/structs
 github.com/hashicorp/nomad/plugins/shared/structs/proto
+# github.com/hashicorp/nomad/api v0.0.0-20200709025555-f35405485151
+github.com/hashicorp/nomad/api
+github.com/hashicorp/nomad/api/contexts
 # github.com/hashicorp/raft v1.1.2
 github.com/hashicorp/raft
 # github.com/hashicorp/serf v0.8.3
 github.com/hashicorp/serf/coordinate
-# github.com/hashicorp/vault/api v1.0.5-0.20190730042357-746c0b111519
-github.com/hashicorp/vault/api
-# github.com/hashicorp/vault/sdk v0.1.14-0.20190730042320-0dc007d98cc8
-github.com/hashicorp/vault/sdk/helper/compressutil
-github.com/hashicorp/vault/sdk/helper/consts
-github.com/hashicorp/vault/sdk/helper/hclutil
-github.com/hashicorp/vault/sdk/helper/jsonutil
-github.com/hashicorp/vault/sdk/helper/parseutil
-github.com/hashicorp/vault/sdk/helper/strutil
 # github.com/hashicorp/yamux v0.0.0-20181012175058-2f1d1f20f75d
 github.com/hashicorp/yamux
 # github.com/hpcloud/tail v1.0.0
@@ -190,8 +171,6 @@ github.com/hpcloud/tail/util
 github.com/hpcloud/tail/watch
 # github.com/ikarishinjieva/golang-live-coverage-report v0.0.0-20190317040040-52af5b19c76c
 github.com/ikarishinjieva/golang-live-coverage-report/cmd/golang-live-coverage-report
-# github.com/issuj/gofaster v0.0.0-20170702192727-b08f1666d622
-github.com/issuj/gofaster/base64
 # github.com/jcmturner/gofork v1.0.0
 github.com/jcmturner/gofork/encoding/asn1
 github.com/jcmturner/gofork/x/crypto/pbkdf2
@@ -223,8 +202,6 @@ github.com/mitchellh/copystructure
 github.com/mitchellh/go-homedir
 # github.com/mitchellh/go-testing-interface v1.0.0
 github.com/mitchellh/go-testing-interface
-# github.com/mitchellh/go-wordwrap v1.0.0
-github.com/mitchellh/go-wordwrap
 # github.com/mitchellh/hashstructure v1.0.0
 github.com/mitchellh/hashstructure
 # github.com/mitchellh/mapstructure v1.1.2
@@ -412,8 +389,6 @@ github.com/pingcap/tipb/go-tipb
 github.com/pingcap/tipb/sharedbytes
 # github.com/pkg/errors v0.9.1
 github.com/pkg/errors
-# github.com/pmezard/go-difflib v1.0.0
-github.com/pmezard/go-difflib/difflib
 # github.com/prometheus/client_golang v0.9.4
 github.com/prometheus/client_golang/prometheus
 github.com/prometheus/client_golang/prometheus/internal
@@ -459,9 +434,6 @@ github.com/siddontang/go-mysql/replication
 github.com/sirupsen/logrus
 # github.com/spaolacci/murmur3 v1.1.0
 github.com/spaolacci/murmur3
-# github.com/stretchr/testify v1.4.0
-github.com/stretchr/testify/assert
-github.com/stretchr/testify/require
 # github.com/twinj/uuid v1.0.0
 github.com/twinj/uuid
 # github.com/uber/jaeger-client-go v2.16.0+incompatible
@@ -492,10 +464,6 @@ github.com/vmihailenco/msgpack/codes
 # github.com/zclconf/go-cty v1.3.1
 github.com/zclconf/go-cty/cty
 github.com/zclconf/go-cty/cty/convert
-github.com/zclconf/go-cty/cty/function
-github.com/zclconf/go-cty/cty/function/stdlib
-github.com/zclconf/go-cty/cty/gocty
-github.com/zclconf/go-cty/cty/json
 github.com/zclconf/go-cty/cty/msgpack
 github.com/zclconf/go-cty/cty/set
 # go.etcd.io/bbolt v1.3.3
@@ -558,8 +526,6 @@ golang.org/x/text/secure/bidirule
 golang.org/x/text/transform
 golang.org/x/text/unicode/bidi
 golang.org/x/text/unicode/norm
-# golang.org/x/time v0.0.0-20190308202827-9d24e82272b4
-golang.org/x/time/rate
 # golang.org/x/tools v0.0.0-20190624222133-a101b041ded4
 golang.org/x/tools/container/intsets
 # google.golang.org/appengine v1.4.0
@@ -659,11 +625,6 @@ gopkg.in/jcmturner/rpc.v1/mstypes
 gopkg.in/jcmturner/rpc.v1/ndr
 # gopkg.in/natefinch/lumberjack.v2 v2.0.0
 gopkg.in/natefinch/lumberjack.v2
-# gopkg.in/square/go-jose.v2 v2.3.1
-gopkg.in/square/go-jose.v2
-gopkg.in/square/go-jose.v2/cipher
-gopkg.in/square/go-jose.v2/json
-gopkg.in/square/go-jose.v2/jwt
 # gopkg.in/tomb.v1 v1.0.0-20141024135613-dd632973f1e7
 gopkg.in/tomb.v1
 # gopkg.in/yaml.v2 v2.2.8
