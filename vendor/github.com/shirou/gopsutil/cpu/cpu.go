@@ -28,6 +28,7 @@ type TimesStat struct {
 	Steal     float64 `json:"steal"`
 	Guest     float64 `json:"guest"`
 	GuestNice float64 `json:"guestNice"`
+	Stolen    float64
 }
 
 type InfoStat struct {

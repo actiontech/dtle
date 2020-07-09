@@ -190,6 +190,7 @@ type BasicHandle struct {
 	extHandle
 	EncodeOptions
 	DecodeOptions
+	TimeNotBuiltin bool
 }
 
 // Handle is the interface for a specific encoding format.
