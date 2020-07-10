@@ -8,7 +8,6 @@ package mysql
 
 import (
 	gosql "database/sql"
-	"encoding/json"
 	"fmt"
 	dcommon "github.com/actiontech/dtle/drivers/mysql/common"
 	"github.com/hashicorp/nomad/plugins/drivers"
@@ -70,6 +69,12 @@ type Extractor struct {
 	logger       hclog.Logger
 	subject      string
 	mysqlContext *config.MySQLDriverConfig
+
+	systemVariables   map[string]string
+	sqlMode           string
+	MySQLVersion      string
+	TotalTransferredBytes int
+	NatsAddr          string
 
 	mysqlVersionDigit int
 	db                *gosql.DB
@@ -143,41 +148,6 @@ func NewExtractor(execCtx *dcommon.ExecContext, cfg *config.MySQLDriverConfig, l
 	return e, nil
 }
 
-// sleepWhileTrue sleeps indefinitely until the given function returns 'false'
-// (or fails with error)
-func (e *Extractor) sleepWhileTrue(operation func() (bool, error)) error {
-	for {
-		shouldSleep, err := operation()
-		if err != nil {
-			return err
-		}
-		if !shouldSleep {
-			return nil
-		}
-		time.Sleep(time.Second)
-	}
-}
-
-// retryOperation attempts up to `count` attempts at running given function,
-// exiting as soon as it returns with non-error.
-func (e *Extractor) retryOperation(operation func() error, notFatalHint ...bool) (err error) {
-	for i := 0; i < int(e.mysqlContext.MaxRetries); i++ {
-		if i != 0 {
-			// sleep after previous iteration
-			time.Sleep(1 * time.Second)
-		}
-		err = operation()
-		if err == nil {
-			return nil
-		}
-		// there's an error. Let's try again.
-	}
-	if len(notFatalHint) == 0 {
-		return err
-	}
-	return err
-}
-
 // Run executes the complete extract logic.
 func (e *Extractor) Run() {
 	natsAddr, err := e.storeManager.WatchNats(e.subject, e.shutdownCh)
@@ -185,7 +155,7 @@ func (e *Extractor) Run() {
 		e.onError(TaskStateDead, err)
 		return
 	}
-	e.mysqlContext.NatsAddr = natsAddr
+	e.NatsAddr = natsAddr
 	e.logger.Info("got NatsAddr", "addr", natsAddr)
 
 	err = dcommon.GetGtidFromConsul(e.storeManager, e.subject, e.logger, e.mysqlContext)
@@ -195,7 +165,6 @@ func (e *Extractor) Run() {
 	}
 
 	e.logger.Info("mysql.extractor: Extract binlog events from %s.%d", e.mysqlContext.ConnectionConfig.Host, e.mysqlContext.ConnectionConfig.Port)
-	e.mysqlContext.StartTime = time.Now()
 
 	// Validate job arguments
 /*	{
@@ -599,8 +568,8 @@ func (e *Extractor) readTableColumns() (err error) {
 }
 
 func (e *Extractor) initNatsPubClient() (err error) {
-	e.logger.Debug("mysql.extractor: begin Connect nats server ","nataddr",hclog.Fmt("%+v",e.mysqlContext.NatsAddr) )
-	natsAddr := fmt.Sprintf("nats://%s", e.mysqlContext.NatsAddr)
+	e.logger.Debug("mysql.extractor: begin Connect nats server", "NatAddr", e.NatsAddr)
+	natsAddr := fmt.Sprintf("nats://%s", e.NatsAddr)
 	sc, err := gonats.Connect(natsAddr)
 	e.logger.Debug("mysql.extractor: Connect nats in ","natsAddr",hclog.Fmt("%+v",natsAddr) )
 	if err != nil {
@@ -670,8 +639,10 @@ func (e *Extractor) initDBConnections() (err error) {
 		}
 	}
 
-	if err := e.validateAndReadTimeZone(); err != nil {
+	if timezone, err := base.ValidateAndReadTimeZone(e.db); err != nil {
 		return err
+	} else {
+		e.logger.Info("mysql.extractor: got timezone", "timezone", timezone)
 	}
 
 	return nil
@@ -748,12 +719,12 @@ func (e *Extractor) initBinlogReader(binlogCoordinates *base.BinlogCoordinatesX)
 // validateConnection issues a simple can-connect to MySQL
 func (e *Extractor) validateConnectionAndGetVersion() error {
 	query := `select @@global.version`
-	if err := e.db.QueryRow(query).Scan(&e.mysqlContext.MySQLVersion); err != nil {
+	if err := e.db.QueryRow(query).Scan(&e.MySQLVersion); err != nil {
 		return err
 	}
-	e.mysqlVersionDigit = dcommon.MysqlVersionInDigit(e.mysqlContext.MySQLVersion)
+	e.mysqlVersionDigit = dcommon.MysqlVersionInDigit(e.MySQLVersion)
 	if e.mysqlVersionDigit == 0 {
-		return fmt.Errorf("cannot parse mysql version string to digit. string %v", e.mysqlContext.MySQLVersion)
+		return fmt.Errorf("cannot parse mysql version string to digit. string %v", e.MySQLVersion)
 	}
 	e.logger.Info("mysql.extractor: Connection validated on %s:%d", e.mysqlContext.ConnectionConfig.Host, e.mysqlContext.ConnectionConfig.Port)
 	return nil
@@ -761,7 +732,7 @@ func (e *Extractor) validateConnectionAndGetVersion() error {
 
 func (e *Extractor) selectSqlMode() error {
 	query := `select @@global.sql_mode`
-	if err := e.db.QueryRow(query).Scan(&e.mysqlContext.SqlMode); err != nil {
+	if err := e.db.QueryRow(query).Scan(&e.sqlMode); err != nil {
 		return err
 	}
 	return nil
@@ -790,19 +761,8 @@ func (e *Extractor) setInitialBinlogCoordinates() error {
 	return nil
 }
 
-func (e *Extractor) validateAndReadTimeZone() error {
-	query := `select @@global.time_zone`
-	if err := e.db.QueryRow(query).Scan(&e.mysqlContext.TimeZone); err != nil {
-		return err
-	}
-	e.logger.Info("mysql.extractor: Will use time_zone='%s' on extractor", e.mysqlContext.TimeZone)
-	return nil
-}
-
 // CountTableRows counts exact number of rows on the original table
 func (e *Extractor) CountTableRows(table *config.Table) (int64, error) {
-	atomic.StoreInt64(&e.mysqlContext.CountingRowsFlag, 1)
-	defer atomic.StoreInt64(&e.mysqlContext.CountingRowsFlag, 0)
 	//e.logger.Debug("mysql.extractor: As instructed, I'm issuing a SELECT COUNT(*) on the table. This may take a while")
 
 	var query string
@@ -846,7 +806,7 @@ func (e *Extractor) readMySqlCharsetSystemVariables() error {
 		| collation_server     | utf8_general_ci |
 		+----------------------+-----------------+
 	*/
-	e.mysqlContext.SystemVariables = make(map[string]string)
+	e.systemVariables = make(map[string]string)
 	for rows.Next() {
 		var (
 			variable string
@@ -858,7 +818,7 @@ func (e *Extractor) readMySqlCharsetSystemVariables() error {
 		if err != nil {
 			return err
 		}
-		e.mysqlContext.SystemVariables[variable] = value
+		e.systemVariables[variable] = value
 	}
 
 	if rows.Err() != nil {
@@ -873,7 +833,7 @@ func (e *Extractor) setStatementFor() string {
 	var buffer bytes.Buffer
 	first := true
 	buffer.WriteString("SET ")
-	for valName, value := range e.mysqlContext.SystemVariables {
+	for valName, value := range e.systemVariables {
 		if first {
 			first = false
 		} else {
@@ -943,7 +903,7 @@ func (e *Extractor) StreamEvents() error {
 			groupTimeoutDuration := time.Duration(e.mysqlContext.GroupTimeout) * time.Millisecond
 			timer := time.NewTimer(groupTimeoutDuration)
 			defer timer.Stop()
-			natsips := strings.Split(e.mysqlContext.NatsAddr, ":")
+			natsips := strings.Split(e.NatsAddr, ":") // TODO what?
 
 			for keepGoing && !e.shutdown {
 				var err error
@@ -1142,7 +1102,7 @@ func (e *Extractor) sendSysVarAndSqlMode() error {
 	if err := e.selectSqlMode(); err != nil {
 		return err
 	}
-	setSqlMode := fmt.Sprintf("SET @@session.sql_mode = '%s'", e.mysqlContext.SqlMode)
+	setSqlMode := fmt.Sprintf("SET @@session.sql_mode = '%s'", e.sqlMode)
 
 	entry := &DumpEntry{
 		SystemVariablesStatement: setSystemVariablesStatement,
@@ -1529,7 +1489,7 @@ func (e *Extractor) Stats() (*dcommon.TaskStatistics, error) {
 	}
 	if e.natsConn != nil {
 		taskResUsage.MsgStat = e.natsConn.Statistics
-		e.mysqlContext.TotalTransferredBytes = int(taskResUsage.MsgStat.OutBytes)
+		e.TotalTransferredBytes = int(taskResUsage.MsgStat.OutBytes)
 		if e.mysqlContext.TrafficAgainstLimits > 0 && int(taskResUsage.MsgStat.OutBytes)/1024/1024/1024 >= e.mysqlContext.TrafficAgainstLimits {
 			e.onError(TaskStateDead, fmt.Errorf("traffic limit exceeded : %d/%d", e.mysqlContext.TrafficAgainstLimits, int(taskResUsage.MsgStat.OutBytes)/1024/1024/1024))
 		}
@@ -1552,25 +1512,6 @@ func (e *Extractor) Stats() (*dcommon.TaskStatistics, error) {
 	}
 
 	return &taskResUsage, nil
-}
-
-func (e *Extractor) ID() string {
-	id := config.DriverCtx{
-		DriverConfig: &config.MySQLDriverConfig{
-			TotalTransferredBytes: e.mysqlContext.TotalTransferredBytes,
-			ReplicateDoDb:         e.mysqlContext.ReplicateDoDb,
-			ReplicateIgnoreDb:     e.mysqlContext.ReplicateIgnoreDb,
-			Gtid:                  e.mysqlContext.Gtid,
-			NatsAddr:              e.mysqlContext.NatsAddr,
-			ConnectionConfig:      e.mysqlContext.ConnectionConfig,
-		},
-	}
-
-	data, err := json.Marshal(id)
-	if err != nil {
-		e.logger.Error("mysql.extractor: Failed to marshal ID to JSON: %s", err)
-	}
-	return string(data)
 }
 
 func (e *Extractor) onError(state int, err error) {

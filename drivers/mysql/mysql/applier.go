@@ -8,7 +8,6 @@ package mysql
 
 import (
 	gosql "database/sql"
-	"encoding/json"
 	"fmt"
 	dcommon "github.com/actiontech/dtle/drivers/mysql/common"
 	"github.com/hashicorp/nomad/plugins/drivers"
@@ -210,6 +209,11 @@ type Applier struct {
 	logger             hclog.Logger
 	subject            string
 	mysqlContext       *config.MySQLDriverConfig
+
+	NatsAddr        string
+	MySQLVersion    string
+	MySQLServerUuid string
+
 	dbs                []*sql.Conn
 	db                 *gosql.DB
 	gtidExecuted       base.GtidSet
@@ -246,7 +250,10 @@ type Applier struct {
 	lastSavedGtid      string
 }
 
-func NewApplier(ctx *dcommon.ExecContext, cfg *umconf.MySQLDriverConfig, logger hclog.Logger, storeManager *dcommon.StoreManager) (a *Applier, err error) {
+func NewApplier(
+	ctx *dcommon.ExecContext, cfg *umconf.MySQLDriverConfig, logger hclog.Logger,
+	storeManager *dcommon.StoreManager, natsAddr string) (a *Applier, err error) {
+
 	cfg = cfg.SetDefault()
 	/*entry := logger.WithFields(logrus.Fields{
 		"job": ctx.Subject,
@@ -258,6 +265,7 @@ func NewApplier(ctx *dcommon.ExecContext, cfg *umconf.MySQLDriverConfig, logger 
 		logger:                  logger,
 		subject:                 ctx.Subject,
 		mysqlContext:            cfg,
+		NatsAddr:                natsAddr,
 		currentCoordinates:      &dcommon.CurrentCoordinates{},
 		tableItems:              make(mapSchemaTableItems),
 		rowCopyComplete:         make(chan bool, 1),
@@ -349,7 +357,7 @@ func (a *Applier) MtsWorker(workerIndex int) {
 func (a *Applier) Run() {
 	var err error
 	a.logger.Info("go WatchAndPutNats")
-	go a.storeManager.WatchAndPutNats(a.subject, a.mysqlContext.NatsAddr, a.shutdownCh, func(err error) {
+	go a.storeManager.WatchAndPutNats(a.subject, a.NatsAddr, a.shutdownCh, func(err error) {
 		a.onError(TaskStateDead, errors.Wrap(err, "WatchAndPutNats"))
 	})
 
@@ -376,7 +384,6 @@ func (a *Applier) Run() {
 	}
 	//a.logger.Debug("the connectionconfi host is ",a.mysqlContext.ConnectionConfig.Host)
 //	a.logger.Info("mysql.applier: Apply binlog events to %s.%d", a.mysqlContext.ConnectionConfig.Host, a.mysqlContext.ConnectionConfig.Port)
-	a.mysqlContext.StartTime = time.Now()
 	if err := a.initDBConnections(); err != nil {
 		a.onError(TaskStateDead, err)
 		return
@@ -460,7 +467,7 @@ func (a *Applier) executeWriteFuncs() {
 }
 
 func (a *Applier) initNatSubClient() (err error) {
-	natsAddr := fmt.Sprintf("nats://%s", a.mysqlContext.NatsAddr)
+	natsAddr := fmt.Sprintf("nats://%s", a.NatsAddr)
 	sc, err := gonats.Connect(natsAddr)
 	if err != nil {
 		a.logger.Error("mysql.applier: Can't connect nats server %v. make sure a nats streaming server is running.%v", natsAddr, err)
@@ -573,7 +580,7 @@ func (a *Applier) heterogeneousReplay() {
 				len(a.applyDataEntryQueue), binlogEntry.Coordinates.GNO,
 				binlogEntry.Coordinates.LastCommitted, binlogEntry.Coordinates.SeqenceNumber)
 
-			if binlogEntry.Coordinates.OSID == a.mysqlContext.MySQLServerUuid {
+			if binlogEntry.Coordinates.OSID == a.MySQLServerUuid {
 				a.logger.Debug("mysql.applier: skipping a kafkas tx. osid: %v", binlogEntry.Coordinates.OSID)
 				continue
 			}
@@ -902,10 +909,12 @@ func (a *Applier) initDBConnections() (err error) {
 		return err
 	}
 	a.logger.Debug("mysql.applier. after validateGrants")
-	if err := a.validateAndReadTimeZone(); err != nil {
+
+	if timezone, err := base.ValidateAndReadTimeZone(a.db); err != nil {
 		return err
+	} else {
+		a.logger.Info("mysql.applier: got timezone", "timezone", timezone)
 	}
-	a.logger.Debug("mysql.applier. after validateAndReadTimeZone")
 
 	if err := a.createTableGtidExecutedV4(); err != nil {
 		return err
@@ -929,13 +938,13 @@ func (a *Applier) initDBConnections() (err error) {
 	}
 	a.logger.Debug("mysql.applier. after prepare stmt for gtid_executed table")
 
-	a.logger.Info("mysql.applier: Initiated on %s:%d, version %+v", a.mysqlContext.ConnectionConfig.Host, a.mysqlContext.ConnectionConfig.Port, a.mysqlContext.MySQLVersion)
+	a.logger.Info("mysql.applier: Initiated on %s:%d, version %+v", a.mysqlContext.ConnectionConfig.Host, a.mysqlContext.ConnectionConfig.Port, a.MySQLVersion)
 	return nil
 }
 
 func (a *Applier) validateServerUUID() error {
 	query := `SELECT @@SERVER_UUID`
-	if err := a.db.QueryRow(query).Scan(&a.mysqlContext.MySQLServerUuid); err != nil {
+	if err := a.db.QueryRow(query).Scan(&a.MySQLServerUuid); err != nil {
 		return err
 	}
 	return nil
@@ -944,11 +953,11 @@ func (a *Applier) validateServerUUID() error {
 // validateConnection issues a simple can-connect to MySQL
 func (a *Applier) validateConnection(db *gosql.DB) error {
 	query := `select @@global.version`
-	if err := db.QueryRow(query).Scan(&a.mysqlContext.MySQLVersion); err != nil {
+	if err := db.QueryRow(query).Scan(&a.MySQLVersion); err != nil {
 		return err
 	}
 	// Match the version string (from SELECT VERSION()).
-	if strings.HasPrefix(a.mysqlContext.MySQLVersion, "5.6") {
+	if strings.HasPrefix(a.MySQLVersion, "5.6") {
 		a.mysqlContext.ParallelWorkers = 1
 	}
 	a.logger.Debug("mysql.applier: Connection validated on %s:%d", a.mysqlContext.ConnectionConfig.Host, a.mysqlContext.ConnectionConfig.Port)
@@ -989,7 +998,6 @@ func (a *Applier) validateGrants() error {
 	if err != nil {
 		return err
 	}
-	a.mysqlContext.HasSuperPrivilege = foundSuper
 
 	if foundAll {
 		a.logger.Info("mysql.applier: User has ALL privileges")
@@ -1005,17 +1013,6 @@ func (a *Applier) validateGrants() error {
 	}
 	a.logger.Debug("mysql.applier: Privileges: super: %t, ALL on *.*: %t", foundSuper, foundAll)
 	//return fmt.Error("user has insufficient privileges for applier. Needed: SUPER|ALL on *.*")
-	return nil
-}
-
-// validateAndReadTimeZone potentially reads server time-zone
-func (a *Applier) validateAndReadTimeZone() error {
-	query := `select @@global.time_zone`
-	if err := a.db.QueryRow(query).Scan(&a.mysqlContext.TimeZone); err != nil {
-		return err
-	}
-
-	a.logger.Info("mysql.applier: Will use time_zone='%s' on applier", a.mysqlContext.TimeZone)
 	return nil
 }
 
@@ -1426,27 +1423,6 @@ func (a *Applier) Stats() (*dcommon.TaskStatistics, error) {
 	}
 
 	return &taskResUsage, nil
-}
-
-func (a *Applier) ID() string {
-	id := config.DriverCtx{
-		DriverConfig: &config.MySQLDriverConfig{
-			ReplicateDoDb:     a.mysqlContext.ReplicateDoDb,
-			ReplicateIgnoreDb: a.mysqlContext.ReplicateIgnoreDb,
-			Gtid:              a.mysqlContext.Gtid,
-			BinlogPos:         a.mysqlContext.BinlogPos,
-			BinlogFile:        a.mysqlContext.BinlogFile,
-			NatsAddr:          a.mysqlContext.NatsAddr,
-			ParallelWorkers:   a.mysqlContext.ParallelWorkers,
-			ConnectionConfig:  a.mysqlContext.ConnectionConfig,
-		},
-	}
-
-	data, err := json.Marshal(id)
-	if err != nil {
-		a.logger.Error("mysql.applier: Failed to marshal ID to JSON: %s", err)
-	}
-	return string(data)
 }
 
 func (a *Applier) updateGtidString() {

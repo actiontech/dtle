@@ -22,10 +22,6 @@ const (
 	defaultMsgBytes   = 20 * 1024
 )
 
-type DriverCtx struct {
-	DriverConfig *MySQLDriverConfig
-}
-
 func (d *DataSource) String() string {
 	return fmt.Sprintf(d.TableSchema)
 }
@@ -39,34 +35,29 @@ type MySQLDriverConfig struct {
 	ReplChanBufferSize    int64
 	MsgBytesLimit         int
 	TrafficAgainstLimits  int
-	TotalTransferredBytes int
 	MaxRetries            int64
 	ChunkSize             int64
 	SqlFilter             []string
-	RowsEstimate          int64
-	DeltaEstimate         int64
-	TimeZone              string
-	GroupCount            int
 	GroupMaxSize          int
 	GroupTimeout          int
-
 	Gtid              string
 	BinlogFile        string
 	BinlogPos         int64
 	GtidStart         string
 	AutoGtid          bool
 	BinlogRelay       bool
-	NatsAddr          string
+
 	ParallelWorkers   int
+
+	SkipCreateDbTable   bool
+	SkipPrivilegeCheck  bool
+	SkipIncrementalCopy bool
+
 	ConnectionConfig  *ConnectionConfig
-	SystemVariables   map[string]string
-	HasSuperPrivilege bool
-	BinlogFormat      string
+
+	RowsEstimate          int64
+	DeltaEstimate         int64
 	BinlogRowImage    string
-	SqlMode           string
-	MySQLVersion      string
-	MySQLServerUuid   string
-	StartTime         time.Time
 	RowCopyStartTime  time.Time
 	RowCopyEndTime    time.Time
 	TotalDeltaCopied  int64
@@ -74,11 +65,6 @@ type MySQLDriverConfig struct {
 	TotalRowsReplay   int64
 
 	Stage                string
-	SkipCreateDbTable    bool
-
-	CountingRowsFlag int64
-	SkipPrivilegeCheck  bool
-	SkipIncrementalCopy bool
 }
 
 func (a *MySQLDriverConfig) SetDefault() *MySQLDriverConfig {
@@ -99,9 +85,6 @@ func (a *MySQLDriverConfig) SetDefault() *MySQLDriverConfig {
 	if result.MsgBytesLimit <= 0 {
 		result.MsgBytesLimit = defaultMsgBytes
 	}
-	if result.GroupCount == 0 {
-		result.GroupCount = 1
-	}
 	if result.GroupMaxSize == 0 {
 		result.GroupMaxSize = 1
 	}
@@ -116,11 +99,6 @@ func (a *MySQLDriverConfig) SetDefault() *MySQLDriverConfig {
 		result.ConnectionConfig.Charset = "utf8mb4"
 	}
 	return &result
-}
-
-// RequiresBinlogFormatChange is `true` when the original binlog format isn't `ROW`
-func (m *MySQLDriverConfig) RequiresBinlogFormatChange() bool {
-	return m.BinlogFormat != "ROW"
 }
 
 // ElapsedRowCopyTime returns time since starting to copy chunks of rows
