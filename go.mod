@@ -28,14 +28,15 @@ require (
 	github.com/hashicorp/golang-lru v0.5.4 // indirect
 	github.com/hashicorp/hcl2 v0.0.0-20191002203319-fb75b3253c80 // indirect
 	github.com/hashicorp/nomad v0.10.4
+	github.com/hashicorp/nomad/api v0.0.0-20200709025555-f35405485151
 	github.com/hashicorp/raft v1.1.2 // indirect
 	github.com/ikarishinjieva/golang-live-coverage-report v0.0.0-20190317040040-52af5b19c76c
-	github.com/issuj/gofaster v0.0.0-20170702192727-b08f1666d622
+	github.com/issuj/gofaster v0.0.0-20170702192727-b08f1666d622 // indirect
 	github.com/julienschmidt/httprouter v1.2.0
 	github.com/lytics/datemath v0.0.0-20180727225141-3ada1c10b5de // indirect
 	github.com/mb0/glob v0.0.0-20160210091149-1eb79d2de6c4 // indirect
 	github.com/mitchellh/copystructure v1.0.0
-	github.com/mitchellh/mapstructure v1.1.2 // indirect
+	github.com/mitchellh/mapstructure v1.1.2
 	github.com/nats-io/go-nats v1.7.2
 	github.com/nats-io/nats-server/v2 v2.1.6
 	github.com/nats-io/nats-streaming-server v0.17.0
