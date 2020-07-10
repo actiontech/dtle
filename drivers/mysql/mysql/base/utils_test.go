@@ -8,7 +8,7 @@ package base
 
 import (
 	gosql "database/sql"
-	umconf "github.com/actiontech/dtle/drivers/mysql/mysql/config"
+	umconf "github.com/actiontech/dtle/drivers/mysql/mysql/mysqlconfig"
 	"github.com/actiontech/dtle/drivers/mysql/mysql/sql"
 	"reflect"
 	"testing"

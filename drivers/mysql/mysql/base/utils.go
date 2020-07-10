@@ -21,7 +21,7 @@ import (
 
 	"database/sql"
 
-	umconf "github.com/actiontech/dtle/drivers/mysql/mysql/config"
+	umconf "github.com/actiontech/dtle/drivers/mysql/mysql/mysqlconfig"
 	usql "github.com/actiontech/dtle/drivers/mysql/mysql/sql"
 	gomysql "github.com/siddontang/go-mysql/mysql"
 	"github.com/siddontang/go/hack"

@@ -17,8 +17,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/actiontech/dtle/drivers/mysql/mysql/config"
-	config "github.com/actiontech/dtle/drivers/mysql/mysql/config"
+	"github.com/actiontech/dtle/drivers/mysql/mysql/mysqlconfig"
+	config "github.com/actiontech/dtle/drivers/mysql/mysql/mysqlconfig"
 	"github.com/actiontech/dtle/g"
 	_ "github.com/go-sql-driver/mysql"
 )
@@ -382,7 +382,7 @@ func ShowDatabases(db *gosql.DB) ([]string, error) {
 func ShowTables(db *gosql.DB, dbName string, showType bool) (tables []*config.Table, err error) {
 	// Get table list
 	var query string
-	escapedDbName := mysql.EscapeName(dbName)
+	escapedDbName := mysqlconfig.EscapeName(dbName)
 	if showType {
 		query = fmt.Sprintf("SHOW FULL TABLES IN %s", escapedDbName)
 	} else {

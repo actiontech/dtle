@@ -17,8 +17,8 @@ import (
 
 	"time"
 
-	config "github.com/actiontech/dtle/drivers/mysql/mysql/config"
-	umconf "github.com/actiontech/dtle/drivers/mysql/mysql/config"
+	config "github.com/actiontech/dtle/drivers/mysql/mysql/mysqlconfig"
+	umconf "github.com/actiontech/dtle/drivers/mysql/mysql/mysqlconfig"
 	usql "github.com/actiontech/dtle/drivers/mysql/mysql/sql"
 )
 

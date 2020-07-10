@@ -1,7 +1,7 @@
 package config
 
 import (
-	"github.com/actiontech/dtle/drivers/mysql/mysql/config"
+	"github.com/actiontech/dtle/drivers/mysql/mysql/mysqlconfig"
 	"sync/atomic"
 	"time"
 )
@@ -17,38 +17,38 @@ const (
 
 // TODO This is repetitive to MySQLDriverConfig. Consider merge in to one struct.
 type DtleTaskConfig struct {
-	ReplicateDoDb        []*mysql.DataSource `codec:"ReplicateDoDb"`
-	ReplicateIgnoreDb    []*mysql.DataSource `codec:"ReplicateIgnoreDb"`
-	DropTableIfExists    bool                `codec:"DropTableIfExists"`
-	ExpandSyntaxSupport  bool                `codec:"ExpandSyntaxSupport"`
-	ReplChanBufferSize   int64               `codec:"ReplChanBufferSize"`
-	MsgBytesLimit        int                 `codec:"MsgBytesLimit"`
-	TrafficAgainstLimits int                 `codec:"TrafficAgainstLimits"`
-	MaxRetries           int64               `codec:"MaxRetries"`
-	ChunkSize            int64               `codec:"ChunkSize"`
-	SqlFilter            []string            `codec:"SqlFilter"`
-	GroupMaxSize         int                 `codec:"GroupMaxSize"`
-	GroupTimeout         int                 `codec:"GroupTimeout"`
+	ReplicateDoDb        []*mysqlconfig.DataSource `codec:"ReplicateDoDb"`
+	ReplicateIgnoreDb    []*mysqlconfig.DataSource `codec:"ReplicateIgnoreDb"`
+	DropTableIfExists    bool                      `codec:"DropTableIfExists"`
+	ExpandSyntaxSupport  bool                      `codec:"ExpandSyntaxSupport"`
+	ReplChanBufferSize   int64                     `codec:"ReplChanBufferSize"`
+	MsgBytesLimit        int                       `codec:"MsgBytesLimit"`
+	TrafficAgainstLimits int                       `codec:"TrafficAgainstLimits"`
+	MaxRetries           int64                     `codec:"MaxRetries"`
+	ChunkSize            int64                     `codec:"ChunkSize"`
+	SqlFilter            []string                  `codec:"SqlFilter"`
+	GroupMaxSize         int                       `codec:"GroupMaxSize"`
+	GroupTimeout         int                       `codec:"GroupTimeout"`
 	Gtid                 string              `codec:"Gtid"`
 	BinlogFile           string              `codec:"BinlogFile"`
-	BinlogPos            int64               `codec:"BinlogPos"`
-	GtidStart            string              `codec:"GtidStart"`
-	AutoGtid             bool                `codec:"AutoGtid"`
-	BinlogRelay          bool                `codec:"BinlogRelay"`
+	BinlogPos            int64                     `codec:"BinlogPos"`
+	GtidStart            string                    `codec:"GtidStart"`
+	AutoGtid             bool                      `codec:"AutoGtid"`
+	BinlogRelay          bool                      `codec:"BinlogRelay"`
 
 	ParallelWorkers int `codec:"ParallelWorkers"`
 
-	SkipCreateDbTable   bool                    `codec:"SkipCreateDbTable"`
-	SkipPrivilegeCheck  bool                    `codec:"SkipPrivilegeCheck"`
-	SkipIncrementalCopy bool                    `codec:"SkipIncrementalCopy"`
-	ConnectionConfig    *mysql.ConnectionConfig `codec:"ConnectionConfig"`
-	KafkaConfig         *KafkaConfig            `codec:"KafkaConfig"`
+	SkipCreateDbTable   bool                          `codec:"SkipCreateDbTable"`
+	SkipPrivilegeCheck  bool                          `codec:"SkipPrivilegeCheck"`
+	SkipIncrementalCopy bool                          `codec:"SkipIncrementalCopy"`
+	ConnectionConfig    *mysqlconfig.ConnectionConfig `codec:"ConnectionConfig"`
+	KafkaConfig         *KafkaConfig                  `codec:"KafkaConfig"`
 }
 
 type MySQLDriverConfig struct {
 	//Ref:http://dev.mysql.com/doc/refman/5.7/en/replication-options-slave.html#option_mysqld_replicate-do-table
-	ReplicateDoDb        []*mysql.DataSource
-	ReplicateIgnoreDb    []*mysql.DataSource
+	ReplicateDoDb        []*mysqlconfig.DataSource
+	ReplicateIgnoreDb    []*mysqlconfig.DataSource
 	DropTableIfExists    bool
 	ExpandSyntaxSupport  bool
 	ReplChanBufferSize   int64
@@ -72,7 +72,7 @@ type MySQLDriverConfig struct {
 	SkipPrivilegeCheck  bool
 	SkipIncrementalCopy bool
 
-	ConnectionConfig *mysql.ConnectionConfig
+	ConnectionConfig *mysqlconfig.ConnectionConfig
 
 	RowsEstimate     int64
 	DeltaEstimate    int64
@@ -112,7 +112,7 @@ func (a *MySQLDriverConfig) SetDefault() *MySQLDriverConfig {
 	}
 
 	if result.ConnectionConfig == nil {
-		result.ConnectionConfig = &mysql.ConnectionConfig{}
+		result.ConnectionConfig = &mysqlconfig.ConnectionConfig{}
 	}
 	if "" == result.ConnectionConfig.Charset {
 		result.ConnectionConfig.Charset = "utf8mb4"

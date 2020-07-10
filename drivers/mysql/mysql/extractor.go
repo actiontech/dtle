@@ -13,7 +13,7 @@ import (
 	config2 "github.com/actiontech/dtle/drivers/mysql/config"
 	"github.com/hashicorp/nomad/plugins/drivers"
 
-	//	umconf "github.com/actiontech/dtle/drivers/mysql/mysql/config"
+	//	umconf "github.com/actiontech/dtle/drivers/mysql/mysql/mysqlconfig"
 
 	"github.com/actiontech/dtle/g"
 	"github.com/opentracing/opentracing-go"
@@ -44,8 +44,8 @@ import (
 
 	"github.com/actiontech/dtle/drivers/mysql/mysql/base"
 	"github.com/actiontech/dtle/drivers/mysql/mysql/binlog"
-	config "github.com/actiontech/dtle/drivers/mysql/mysql/config"
-	//mysql "github.com/actiontech/dtle/drivers/mysql/mysql/config"
+	config "github.com/actiontech/dtle/drivers/mysql/mysql/mysqlconfig"
+	//mysql "github.com/actiontech/dtle/drivers/mysql/mysql/mysqlconfig"
 	"github.com/actiontech/dtle/drivers/mysql/mysql/sql"
 	sqle "github.com/actiontech/dtle/drivers/mysql/mysql/sqle/inspector"
 	"github.com/hashicorp/go-hclog"

@@ -4,7 +4,7 @@
  * License: MPL version 2: https://www.mozilla.org/en-US/MPL/2.0 .
  */
 
-package mysql
+package mysqlconfig
 
 import (
 	"golang.org/x/text/encoding"

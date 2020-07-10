@@ -37,7 +37,7 @@ import (
 	_ "github.com/pingcap/tidb/types/parser_driver"
 
 	"github.com/actiontech/dtle/drivers/mysql/mysql/base"
-	config "github.com/actiontech/dtle/drivers/mysql/mysql/config"
+	config "github.com/actiontech/dtle/drivers/mysql/mysql/mysqlconfig"
 	"github.com/actiontech/dtle/drivers/mysql/mysql/sql"
 	sqle "github.com/actiontech/dtle/drivers/mysql/mysql/sqle/inspector"
 	"github.com/actiontech/dtle/drivers/mysql/mysql/util"

@@ -26,7 +26,7 @@ import (
 
 	//"github.com/actiontech/dtle/drivers/kafka"
 	"github.com/actiontech/dtle/drivers/mysql/mysql/binlog"
-	config "github.com/actiontech/dtle/drivers/mysql/mysql/config"
+	config "github.com/actiontech/dtle/drivers/mysql/mysql/mysqlconfig"
 	"github.com/golang/snappy"
 
 	hclog "github.com/hashicorp/go-hclog"

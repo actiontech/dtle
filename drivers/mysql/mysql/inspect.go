@@ -14,8 +14,8 @@ import (
 	"time"
 
 	ubase "github.com/actiontech/dtle/drivers/mysql/mysql/base"
-	uconf "github.com/actiontech/dtle/drivers/mysql/mysql/config"
-	umconf "github.com/actiontech/dtle/drivers/mysql/mysql/config"
+	uconf "github.com/actiontech/dtle/drivers/mysql/mysql/mysqlconfig"
+	umconf "github.com/actiontech/dtle/drivers/mysql/mysql/mysqlconfig"
 	usql "github.com/actiontech/dtle/drivers/mysql/mysql/sql"
 	hclog "github.com/hashicorp/go-hclog"
 )
