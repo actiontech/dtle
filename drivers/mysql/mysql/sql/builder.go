@@ -11,7 +11,7 @@ import (
 	"fmt"
 	"strings"
 
-	umconf "github.com/actiontech/dtle/drivers/mysql/mysql/config"
+	umconf "github.com/actiontech/dtle/drivers/mysql/mysql/mysqlconfig"
 )
 
 type ValueComparisonSign string

@@ -10,6 +10,7 @@ import (
 	gosql "database/sql"
 	"fmt"
 	dcommon "github.com/actiontech/dtle/drivers/mysql/common"
+	config2 "github.com/actiontech/dtle/drivers/mysql/config"
 	"github.com/hashicorp/nomad/plugins/drivers"
 	"github.com/pkg/errors"
 
@@ -38,8 +39,7 @@ import (
 
 	"github.com/actiontech/dtle/drivers/mysql/mysql/base"
 	"github.com/actiontech/dtle/drivers/mysql/mysql/binlog"
-	config "github.com/actiontech/dtle/drivers/mysql/mysql/config"
-	umconf "github.com/actiontech/dtle/drivers/mysql/mysql/config"
+	umconf "github.com/actiontech/dtle/drivers/mysql/mysql/mysqlconfig"
 	"github.com/actiontech/dtle/drivers/mysql/mysql/sql"
 	"github.com/actiontech/dtle/g"
 
@@ -208,7 +208,7 @@ func (mm *MtsManager) Executed(binlogEntry *binlog.BinlogEntry) {
 type Applier struct {
 	logger             hclog.Logger
 	subject            string
-	mysqlContext       *config.MySQLDriverConfig
+	mysqlContext       *config2.MySQLDriverConfig
 
 	NatsAddr        string
 	MySQLVersion    string
@@ -251,13 +251,8 @@ type Applier struct {
 }
 
 func NewApplier(
-	ctx *dcommon.ExecContext, cfg *umconf.MySQLDriverConfig, logger hclog.Logger,
+	ctx *dcommon.ExecContext, cfg *config2.MySQLDriverConfig, logger hclog.Logger,
 	storeManager *dcommon.StoreManager, natsAddr string) (a *Applier, err error) {
-
-	cfg = cfg.SetDefault()
-	/*entry := logger.WithFields(logrus.Fields{
-		"job": ctx.Subject,
-	})*/
 
 	logger.Info("NewApplier", "subject", ctx.Subject)
 

@@ -10,6 +10,7 @@ import (
 	"bytes"
 	gosql "database/sql"
 	common2 "github.com/actiontech/dtle/drivers/mysql/common"
+	config2 "github.com/actiontech/dtle/drivers/mysql/config"
 	"os"
 	"path"
 	"path/filepath"
@@ -36,7 +37,7 @@ import (
 	_ "github.com/pingcap/tidb/types/parser_driver"
 
 	"github.com/actiontech/dtle/drivers/mysql/mysql/base"
-	config "github.com/actiontech/dtle/drivers/mysql/mysql/config"
+	config "github.com/actiontech/dtle/drivers/mysql/mysql/mysqlconfig"
 	"github.com/actiontech/dtle/drivers/mysql/mysql/sql"
 	sqle "github.com/actiontech/dtle/drivers/mysql/mysql/sqle/inspector"
 	"github.com/actiontech/dtle/drivers/mysql/mysql/util"
@@ -76,7 +77,7 @@ type BinlogReader struct {
 	currentCoordinatesMutex  *sync.Mutex
 	LastAppliedRowsEventHint base.BinlogCoordinateTx
 	// raw config, whose ReplicateDoDB is same as config file (empty-is-all & no dynamically created tables)
-	mysqlContext *config.MySQLDriverConfig
+	mysqlContext *config2.MySQLDriverConfig
 	// dynamic config, include all tables (implicitly assigned or dynamically created)
 	tables map[string](map[string]*config.TableContext)
 
@@ -156,7 +157,7 @@ func parseSqlFilter(strs []string) (*SqlFilter, error) {
 	return s, nil
 }
 
-func NewMySQLReader(execCtx *common2.ExecContext, cfg *config.MySQLDriverConfig, logger hclog.Logger, replicateDoDb []*config.DataSource, sqleContext *sqle.Context) (binlogReader *BinlogReader, err error) {
+func NewMySQLReader(execCtx *common2.ExecContext, cfg *config2.MySQLDriverConfig, logger hclog.Logger, replicateDoDb []*config.DataSource, sqleContext *sqle.Context) (binlogReader *BinlogReader, err error) {
 	sqlFilter, err := parseSqlFilter(cfg.SqlFilter)
 	if err != nil {
 		return nil, err
