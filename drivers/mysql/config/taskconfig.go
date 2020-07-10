@@ -15,8 +15,8 @@ const (
 	DefaultClusterID     = "dtle-nats"
 )
 
-// TODO This is repetitive to MySQLDriverConfig. Consider merge in to one struct.
 type DtleTaskConfig struct {
+	//Ref:http://dev.mysql.com/doc/refman/5.7/en/replication-options-slave.html#option_mysqld_replicate-do-table
 	ReplicateDoDb        []*mysqlconfig.DataSource `codec:"ReplicateDoDb"`
 	ReplicateIgnoreDb    []*mysqlconfig.DataSource `codec:"ReplicateIgnoreDb"`
 	DropTableIfExists    bool                      `codec:"DropTableIfExists"`
@@ -45,34 +45,39 @@ type DtleTaskConfig struct {
 	KafkaConfig         *KafkaConfig                  `codec:"KafkaConfig"`
 }
 
+func (d *DtleTaskConfig) SetDefaultForEmpty() {
+	if d.MaxRetries <= 0 {
+		d.MaxRetries = defaultNumRetries
+	}
+	if d.ChunkSize <= 0 {
+		d.ChunkSize = defaultChunkSize
+	}
+	if d.ReplChanBufferSize <= 0 {
+		d.ReplChanBufferSize = channelBufferSize
+	}
+	if d.ParallelWorkers <= 0 {
+		d.ParallelWorkers = defaultNumWorkers
+	}
+	if d.MsgBytesLimit <= 0 {
+		d.MsgBytesLimit = defaultMsgBytes
+	}
+	if d.GroupMaxSize == 0 {
+		d.GroupMaxSize = 1
+	}
+	if d.GroupTimeout == 0 {
+		d.GroupTimeout = 100
+	}
+
+	if d.ConnectionConfig == nil {
+		d.ConnectionConfig = &mysqlconfig.ConnectionConfig{}
+	}
+	if d.ConnectionConfig.Charset == "" {
+		d.ConnectionConfig.Charset = "utf8mb4"
+	}
+}
+
 type MySQLDriverConfig struct {
-	//Ref:http://dev.mysql.com/doc/refman/5.7/en/replication-options-slave.html#option_mysqld_replicate-do-table
-	ReplicateDoDb        []*mysqlconfig.DataSource
-	ReplicateIgnoreDb    []*mysqlconfig.DataSource
-	DropTableIfExists    bool
-	ExpandSyntaxSupport  bool
-	ReplChanBufferSize   int64
-	MsgBytesLimit        int
-	TrafficAgainstLimits int
-	MaxRetries           int64
-	ChunkSize            int64
-	SqlFilter            []string
-	GroupMaxSize         int
-	GroupTimeout         int
-	Gtid                 string
-	BinlogFile           string
-	BinlogPos            int64
-	GtidStart            string
-	AutoGtid             bool
-	BinlogRelay          bool
-
-	ParallelWorkers int
-
-	SkipCreateDbTable   bool
-	SkipPrivilegeCheck  bool
-	SkipIncrementalCopy bool
-
-	ConnectionConfig *mysqlconfig.ConnectionConfig
+	DtleTaskConfig
 
 	RowsEstimate     int64
 	DeltaEstimate    int64
@@ -84,40 +89,6 @@ type MySQLDriverConfig struct {
 	TotalRowsReplay  int64
 
 	Stage string
-}
-
-func (a *MySQLDriverConfig) SetDefault() *MySQLDriverConfig {
-	result := *a
-
-	if result.MaxRetries <= 0 {
-		result.MaxRetries = defaultNumRetries
-	}
-	if result.ChunkSize <= 0 {
-		result.ChunkSize = defaultChunkSize
-	}
-	if result.ReplChanBufferSize <= 0 {
-		result.ReplChanBufferSize = channelBufferSize
-	}
-	if result.ParallelWorkers <= 0 {
-		result.ParallelWorkers = defaultNumWorkers
-	}
-	if result.MsgBytesLimit <= 0 {
-		result.MsgBytesLimit = defaultMsgBytes
-	}
-	if result.GroupMaxSize == 0 {
-		result.GroupMaxSize = 1
-	}
-	if result.GroupTimeout == 0 {
-		result.GroupTimeout = 100
-	}
-
-	if result.ConnectionConfig == nil {
-		result.ConnectionConfig = &mysqlconfig.ConnectionConfig{}
-	}
-	if "" == result.ConnectionConfig.Charset {
-		result.ConnectionConfig.Charset = "utf8mb4"
-	}
-	return &result
 }
 
 // ElapsedRowCopyTime returns time since starting to copy chunks of rows

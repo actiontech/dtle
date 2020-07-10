@@ -116,14 +116,8 @@ type Extractor struct {
 
 func NewExtractor(execCtx *dcommon.ExecContext, cfg *config2.MySQLDriverConfig, logger hclog.Logger, storeManager *dcommon.StoreManager) (*Extractor, error) {
 	logger.Info("NewExtractor", "subject", execCtx.Subject)
-	logger.Debug("start dtle task 7")
-	cfg = cfg.SetDefault()
-	/*entry := logger.WithFields(logrus.Fields{
-		"job": execCtx.Subject,
-	})*/
-	logger.Debug("start dtle task 8")
-	e := &Extractor{
 
+	e := &Extractor{
 		logger:          logger,
 		execCtx:         execCtx,
 		subject:         execCtx.Subject,

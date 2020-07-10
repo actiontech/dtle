@@ -254,11 +254,6 @@ func NewApplier(
 	ctx *dcommon.ExecContext, cfg *config2.MySQLDriverConfig, logger hclog.Logger,
 	storeManager *dcommon.StoreManager, natsAddr string) (a *Applier, err error) {
 
-	cfg = cfg.SetDefault()
-	/*entry := logger.WithFields(logrus.Fields{
-		"job": ctx.Subject,
-	})*/
-
 	logger.Info("NewApplier", "subject", ctx.Subject)
 
 	a = &Applier{

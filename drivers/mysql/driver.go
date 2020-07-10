@@ -448,60 +448,6 @@ func (d *Driver) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHandle, *drive
 
 	return handle, nil, nil
 }
-func InitConfig(taskConfig *config.DtleTaskConfig) (mysqlConfig *config.MySQLDriverConfig, err error) {
-	mysqlConfig = &config.MySQLDriverConfig{}
-
-	//var driverConfig config.MySQLDriverConfig
-	mysqlConfig.ConnectionConfig = taskConfig.ConnectionConfig
-	//mysqlConfig = taskConfig
-	//driverConfig.ExpandSyntaxSupport =false
-	if taskConfig.ReplChanBufferSize ==0{
-		mysqlConfig.ReplChanBufferSize=600
-	}
-	mysqlConfig.ReplicateDoDb=taskConfig.ReplicateDoDb
-
-	mysqlConfig.DropTableIfExists = taskConfig.DropTableIfExists
-	mysqlConfig.SkipCreateDbTable = taskConfig.SkipCreateDbTable
-
-	mysqlConfig.SkipCreateDbTable =  taskConfig.SkipPrivilegeCheck
-    mysqlConfig.AutoGtid = taskConfig.AutoGtid
-	mysqlConfig.SkipIncrementalCopy =  taskConfig.SkipIncrementalCopy
-	mysqlConfig.Gtid = taskConfig.Gtid
-	mysqlConfig.GtidStart = taskConfig.GtidStart
-	mysqlConfig.BinlogRelay = taskConfig.BinlogRelay
-	mysqlConfig.BinlogFile = taskConfig.BinlogFile
-	mysqlConfig.BinlogPos = taskConfig.BinlogPos
-	if taskConfig.ParallelWorkers==0{
-		mysqlConfig.ParallelWorkers=1
-	}else{
-		mysqlConfig.ParallelWorkers = taskConfig.ParallelWorkers
-	}
-	if taskConfig.ChunkSize == 0{
-		mysqlConfig.ChunkSize = 2000
-	}else{
-		mysqlConfig.ChunkSize = taskConfig.ChunkSize
-	}
-
-	mysqlConfig.ExpandSyntaxSupport = taskConfig.ExpandSyntaxSupport
-	if taskConfig.MsgBytesLimit ==0{
-		mysqlConfig.MsgBytesLimit = 20480
-	}else{
-		mysqlConfig.MsgBytesLimit = taskConfig.MsgBytesLimit
-	}
-	if taskConfig.GroupMaxSize	 ==0{
-		mysqlConfig.GroupMaxSize =1
-	}else{
-		mysqlConfig.GroupMaxSize = taskConfig.GroupMaxSize
-	}
-	if taskConfig.GroupTimeout	 ==0{
-		mysqlConfig.GroupTimeout =1
-	}else{
-		mysqlConfig.GroupTimeout = taskConfig.GroupTimeout
-	}
-	mysqlConfig.SqlFilter = taskConfig.SqlFilter
-
-	return mysqlConfig,nil
-}
 
 func (d *Driver) WaitTask(ctx context.Context, taskID string) (<-chan *drivers.ExitResult, error) {
 	handle, ok := d.tasks.Get(taskID)

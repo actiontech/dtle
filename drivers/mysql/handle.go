@@ -81,7 +81,8 @@ func (h *taskHandle) run(taskConfig *config.DtleTaskConfig, d *Driver) {
 	cfg := h.taskConfig
 	ctx := &common.ExecContext{cfg.JobName, cfg.TaskGroupName, 100 * 1024 * 1024, d.config.DataDir}
 
-	driverConfig, _ := InitConfig(taskConfig)
+	taskConfig.SetDefaultForEmpty()
+	driverConfig := &config.MySQLDriverConfig{DtleTaskConfig: *taskConfig}
 
 	switch cfg.TaskGroupName {
 	case TaskTypeSrc:
