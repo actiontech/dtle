@@ -4,12 +4,11 @@ import (
 	"context"
 	"fmt"
 	dcommon "github.com/actiontech/dtle/drivers/mysql/common"
-	config2 "github.com/actiontech/dtle/drivers/mysql/config"
+	"github.com/actiontech/dtle/drivers/mysql/config"
 	"github.com/actiontech/dtle/g"
 	"github.com/pkg/errors"
 	"time"
 
-	config "github.com/actiontech/dtle/drivers/mysql/mysql/config"
 	"github.com/actiontech/dtle/drivers/mysql/route"
 	"github.com/hashicorp/go-hclog"
 	//	"github.com/actiontech/dtle/drivers/mysql/mysql"
@@ -143,7 +142,7 @@ var (
 // during recovery.
 type TaskState struct {
 	TaskConfig     *drivers.TaskConfig
-	DtleTaskConfig *config2.DtleTaskConfig
+	DtleTaskConfig *config.DtleTaskConfig
 	StartedAt      time.Time
 }
 
@@ -421,7 +420,7 @@ func (d *Driver) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHandle, *drive
 	}
 	d.logger.Debug("start dtle task one")
 
-	var dtleTaskConfig config2.DtleTaskConfig
+	var dtleTaskConfig config.DtleTaskConfig
 
 	if err := cfg.DecodeDriverConfig(&dtleTaskConfig); err != nil {
 		return nil, nil, errors.Wrap(err, "DecodeDriverConfig")
@@ -449,7 +448,7 @@ func (d *Driver) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHandle, *drive
 
 	return handle, nil, nil
 }
-func InitConfig(taskConfig *config2.DtleTaskConfig) (mysqlConfig *config.MySQLDriverConfig, err error) {
+func InitConfig(taskConfig *config.DtleTaskConfig) (mysqlConfig *config.MySQLDriverConfig, err error) {
 	mysqlConfig = &config.MySQLDriverConfig{}
 
 	//var driverConfig config.MySQLDriverConfig

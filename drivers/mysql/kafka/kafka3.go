@@ -11,6 +11,7 @@ import (
 	"encoding/gob"
 	"encoding/json"
 	"fmt"
+	config2 "github.com/actiontech/dtle/drivers/mysql/config"
 	"github.com/hashicorp/nomad/plugins/drivers"
 	"github.com/pkg/errors"
 	"strconv"
@@ -49,7 +50,7 @@ type KafkaRunner struct {
 	shutdown   bool
 	shutdownCh chan struct{}
 
-	kafkaConfig *KafkaConfig
+	kafkaConfig *config2.KafkaConfig
 	kafkaMgr    *KafkaManager
 
 	storeManager *common.StoreManager
@@ -57,7 +58,7 @@ type KafkaRunner struct {
 	tables map[string](map[string]*config.Table)
 }
 
-func NewKafkaRunner(execCtx *common.ExecContext, cfg *KafkaConfig, logger hclog.Logger,
+func NewKafkaRunner(execCtx *common.ExecContext, cfg *config2.KafkaConfig, logger hclog.Logger,
 	storeManager *common.StoreManager) *KafkaRunner {
 	/*	entry := logger.WithFields(logrus.Fields{
 		"job": execCtx.Subject,

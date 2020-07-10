@@ -2,7 +2,7 @@ package common
 
 import (
 	"fmt"
-	mysql2 "github.com/actiontech/dtle/drivers/mysql/mysql/config"
+	"github.com/actiontech/dtle/drivers/mysql/config"
 	"github.com/hashicorp/go-hclog"
 	"github.com/pkg/errors"
 	"github.com/siddontang/go-mysql/mysql"
@@ -143,7 +143,7 @@ func (sm *StoreManager) PutNatsWait(jobName string) error {
 	return sm.consulStore.Put(key, []byte("wait"), nil)
 }
 
-func GetGtidFromConsul(sm *StoreManager, subject string, logger hclog.Logger, mysqlContext *mysql2.MySQLDriverConfig) error {
+func GetGtidFromConsul(sm *StoreManager, subject string, logger hclog.Logger, mysqlContext *config.MySQLDriverConfig) error {
 	gtid, err := sm.GetGtidForJob(subject)
 	if err != nil {
 		return errors.Wrap(err, "GetGtidForJob")

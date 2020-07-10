@@ -10,6 +10,7 @@ import (
 	gosql "database/sql"
 	"fmt"
 	dcommon "github.com/actiontech/dtle/drivers/mysql/common"
+	config2 "github.com/actiontech/dtle/drivers/mysql/config"
 	"github.com/hashicorp/nomad/plugins/drivers"
 
 	//	umconf "github.com/actiontech/dtle/drivers/mysql/mysql/config"
@@ -68,7 +69,7 @@ type Extractor struct {
 	execCtx      *dcommon.ExecContext
 	logger       hclog.Logger
 	subject      string
-	mysqlContext *config.MySQLDriverConfig
+	mysqlContext *config2.MySQLDriverConfig
 
 	systemVariables   map[string]string
 	sqlMode           string
@@ -113,7 +114,7 @@ type Extractor struct {
 	storeManager    *dcommon.StoreManager
 }
 
-func NewExtractor(execCtx *dcommon.ExecContext, cfg *config.MySQLDriverConfig, logger hclog.Logger, storeManager *dcommon.StoreManager) (*Extractor, error) {
+func NewExtractor(execCtx *dcommon.ExecContext, cfg *config2.MySQLDriverConfig, logger hclog.Logger, storeManager *dcommon.StoreManager) (*Extractor, error) {
 	logger.Info("NewExtractor", "subject", execCtx.Subject)
 	logger.Debug("start dtle task 7")
 	cfg = cfg.SetDefault()

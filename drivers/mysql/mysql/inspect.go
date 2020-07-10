@@ -9,6 +9,7 @@ package mysql
 import (
 	gosql "database/sql"
 	"fmt"
+	"github.com/actiontech/dtle/drivers/mysql/config"
 	"strings"
 	"time"
 
@@ -26,10 +27,10 @@ const startSlavePostWaitMilliseconds = 500 * time.Millisecond
 type Inspector struct {
 	logger       hclog.Logger
 	db           *gosql.DB
-	mysqlContext *uconf.MySQLDriverConfig
+	mysqlContext *config.MySQLDriverConfig
 }
 
-func NewInspector(ctx *uconf.MySQLDriverConfig, logger hclog.Logger) *Inspector {
+func NewInspector(ctx *config.MySQLDriverConfig, logger hclog.Logger) *Inspector {
 	return &Inspector{
 		logger:       logger,
 		mysqlContext: ctx,
