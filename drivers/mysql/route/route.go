@@ -28,7 +28,6 @@ func decodeBody(req *http.Request, out interface{}) error {
 	return dec.Decode(&out)
 }
 
-// TODO use this instead of + everywhere.
 func buildUrl(path string) string {
 	return "http://" + Host + path
 }
@@ -52,7 +51,7 @@ func UpdupJob(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 
 		//logger.Debug("*** json", "json", string(param))
 
-		url := "http://" + Host + "/v1/jobs"
+		url := buildUrl("/v1/jobs")
 		resp, err := http.Post(url, "application/x-www-form-urlencoded",
 			strings.NewReader(string(param)))
 		if err != nil {
@@ -81,7 +80,7 @@ func UpdupJob(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 
 func JobListRequest(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 
-	url := "http://" + Host + "/v1/jobs"
+	url := buildUrl("/v1/jobs")
 	resp, err := http.Get(url)
 	if err != nil {
 		w.Write([]byte(err.Error()))
@@ -97,7 +96,7 @@ func JobRequest(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	nodeName := ps.ByName("NodeId")
 	path := ps.ByName("path")
 	if path == "allocations" {
-		url := "http://" + Host + "/v1/job/" + nodeName + "allocations"
+		url := buildUrl("/v1/job/" + nodeName + "/allocations")
 		resp, err := http.Get(url)
 		if err != nil {
 			w.Write([]byte(err.Error()))
@@ -106,7 +105,7 @@ func JobRequest(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 		body, err := ioutil.ReadAll(resp.Body)
 		fmt.Fprintf(w, string(body))
 	} else if path == "evaluate" {
-		url := "http://" + Host + "/v1/job/" + nodeName + "evaluate"
+		url := buildUrl("/v1/job/" + nodeName + "/evaluate")
 		resp, err := http.Post(url, "application/x-www-form-urlencoded",
 			strings.NewReader(""))
 		if err != nil {
@@ -121,7 +120,7 @@ func JobRequest(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 
 func AllocsRequest(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 
-	url := "http://" + Host + "/v1/allocations"
+	url := buildUrl("/v1/allocations")
 	resp, err := http.Get(url)
 	if err != nil {
 		w.Write([]byte(err.Error()))
@@ -133,7 +132,7 @@ func AllocsRequest(w http.ResponseWriter, r *http.Request, ps httprouter.Params)
 }
 func AllocSpecificRequest(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	allocID := ps.ByName("allocID")
-	url := "http://" + Host + "/v1/allocation/" + allocID
+	url := buildUrl("/v1/allocation/" + allocID)
 	resp, err := http.Get(url)
 	if err != nil {
 		w.Write([]byte(err.Error()))
@@ -145,7 +144,7 @@ func AllocSpecificRequest(w http.ResponseWriter, r *http.Request, ps httprouter.
 }
 
 func EvalsRequest(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-	url := "http://" + Host + "/v1/evaluations"
+	url := buildUrl("/v1/evaluations")
 	resp, err := http.Get(url)
 	if err != nil {
 		w.Write([]byte(err.Error()))
@@ -157,7 +156,7 @@ func EvalsRequest(w http.ResponseWriter, r *http.Request, ps httprouter.Params) 
 }
 
 func EvalRequest(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-	url := "http://" + Host + "/v1/evaluation/"
+	url := buildUrl("/v1/evaluation/")
 	evalID := ps.ByName("evalID")
 	changeType := ps.ByName("type")
 	if changeType == "evaluation" {
@@ -174,7 +173,7 @@ func EvalRequest(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 }
 
 func AgentSelfRequest(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-	url := "http://" + Host + "/v1/agent/self"
+	url := buildUrl("/v1/agent/self")
 	resp, err := http.Get(url)
 	if err != nil {
 		w.Write([]byte(err.Error()))
@@ -186,9 +185,8 @@ func AgentSelfRequest(w http.ResponseWriter, r *http.Request, ps httprouter.Para
 }
 
 func ClientAllocRequest(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-	url := "http://" + Host + "/v1/agent/allocation/"
-	tokens := ps.ByName("tokens")
-	resp, err := http.Get(url + tokens)
+	url := buildUrl("/v1/agent/allocation/" + ps.ByName("tokens"))
+	resp, err := http.Get(url)
 	if err != nil {
 		w.Write([]byte(err.Error()))
 	}
@@ -199,7 +197,7 @@ func ClientAllocRequest(w http.ResponseWriter, r *http.Request, ps httprouter.Pa
 }
 
 func AgentJoinRequest(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-	url := "http://" + Host + "/v1/agent/join"
+	url := buildUrl("/v1/agent/join")
 	address := ps.ByName("address")
 	resp, err := http.Post(url, "application/x-www-form-urlencoded",
 		strings.NewReader(address))
@@ -213,7 +211,7 @@ func AgentJoinRequest(w http.ResponseWriter, r *http.Request, ps httprouter.Para
 }
 
 func AgentForceLeaveRequest(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-	url := "http://" + Host + "/v1/agent/force-leave"
+	url := buildUrl("/v1/agent/force-leave")
 	node := ps.ByName("node")
 	resp, err := http.Post(url, "application/x-www-form-urlencoded",
 		strings.NewReader(node))
@@ -227,7 +225,7 @@ func AgentForceLeaveRequest(w http.ResponseWriter, r *http.Request, ps httproute
 }
 
 func AgentMembersRequest(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-	url := "http://" + Host + "/v1/agent/members"
+	url := buildUrl("/v1/agent/members")
 	resp, err := http.Get(url)
 	if err != nil {
 		w.Write([]byte(err.Error()))
@@ -239,7 +237,7 @@ func AgentMembersRequest(w http.ResponseWriter, r *http.Request, ps httprouter.P
 }
 
 func UpdateServers(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-	url := "http://" + Host + "/v1/agent/servers"
+	url := buildUrl("/v1/agent/servers")
 	address := ps.ByName("address")
 	resp, err := http.Post(url, "application/x-www-form-urlencoded",
 		strings.NewReader(address))
@@ -253,7 +251,7 @@ func UpdateServers(w http.ResponseWriter, r *http.Request, ps httprouter.Params)
 }
 
 func ListServers(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-	url := "http://" + Host + "/v1/agent/servers"
+	url := buildUrl("/v1/agent/servers")
 	resp, err := http.Get(url)
 	if err != nil {
 		w.Write([]byte(err.Error()))
@@ -264,7 +262,7 @@ func ListServers(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 
 }
 func RegionListRequest(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-	url := "http://" + Host + "/v1/regions"
+	url := buildUrl("/v1/regions")
 	resp, err := http.Get(url)
 	if err != nil {
 		w.Write([]byte(err.Error()))
@@ -276,7 +274,7 @@ func RegionListRequest(w http.ResponseWriter, r *http.Request, ps httprouter.Par
 }
 
 func StatusLeaderRequest(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-	url := "http://" + Host + "/v1/status/leader"
+	url := buildUrl("/v1/status/leader")
 	resp, err := http.Get(url)
 	if err != nil {
 		w.Write([]byte(err.Error()))
@@ -288,7 +286,7 @@ func StatusLeaderRequest(w http.ResponseWriter, r *http.Request, ps httprouter.P
 }
 
 func StatusPeersRequest(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-	url := "http://" + Host + "/v1/status/peers"
+	url := buildUrl("/v1/status/peers")
 	resp, err := http.Get(url)
 	if err != nil {
 		w.Write([]byte(err.Error()))
@@ -356,7 +354,7 @@ func ValidateJobRequest(w http.ResponseWriter, r *http.Request, ps httprouter.Pa
 		fmt.Println("json.marshal failed, err:", err)
 		return
 	}
-	url := "http://" + Host + "/v1/validate/job"
+	url := buildUrl("/v1/validate/job")
 	resp, err := http.Post(url, "application/x-www-form-urlencoded",
 		strings.NewReader(string(param)))
 	if err != nil {
@@ -369,7 +367,7 @@ func ValidateJobRequest(w http.ResponseWriter, r *http.Request, ps httprouter.Pa
 }
 
 func NodesRequest(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-	url := "http://" + Host + "/v1/nodes"
+	url := buildUrl("/v1/nodes")
 	resp, err := http.Get(url)
 	if err != nil {
 		w.Write([]byte(err.Error()))
@@ -386,9 +384,9 @@ func NodesRequest(w http.ResponseWriter, r *http.Request, ps httprouter.Params) 
 func NodeRequest(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	nodeName := ps.ByName("nodeName")
 	changeType := ps.ByName("type")
-	url := "http://" + Host + "/v1/node/" + nodeName + "/evaluate"
+	url := buildUrl("/v1/node/" + nodeName + "/evaluate")
 	if changeType == "evaluate" {
-		url = "http://" + Host + "/v1/node/" + nodeName + "/evaluate"
+		url = buildUrl("/v1/node/" + nodeName + "/evaluate")
 		resp, err := http.Post(url, "application/x-www-form-urlencoded",
 			strings.NewReader(""))
 		if err != nil {
@@ -399,7 +397,7 @@ func NodeRequest(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 		fmt.Fprintf(w, string(body))
 
 	} else if changeType == "allocations" {
-		url = "http://" + Host + "/v1/node/" + nodeName + "/allocations"
+		url = buildUrl("/v1/node/" + nodeName + "/allocations")
 		resp, err := http.Get(url)
 		if err != nil {
 			w.Write([]byte(err.Error()))
