@@ -74,6 +74,7 @@ type Extractor struct {
 	sqlMode           string
 	MySQLVersion      string
 	TotalTransferredBytes int
+	NatsAddr          string
 
 	mysqlVersionDigit int
 	db                *gosql.DB
@@ -154,7 +155,7 @@ func (e *Extractor) Run() {
 		e.onError(TaskStateDead, err)
 		return
 	}
-	e.mysqlContext.NatsAddr = natsAddr
+	e.NatsAddr = natsAddr
 	e.logger.Info("got NatsAddr", "addr", natsAddr)
 
 	err = dcommon.GetGtidFromConsul(e.storeManager, e.subject, e.logger, e.mysqlContext)
@@ -567,8 +568,8 @@ func (e *Extractor) readTableColumns() (err error) {
 }
 
 func (e *Extractor) initNatsPubClient() (err error) {
-	e.logger.Debug("mysql.extractor: begin Connect nats server ","nataddr",hclog.Fmt("%+v",e.mysqlContext.NatsAddr) )
-	natsAddr := fmt.Sprintf("nats://%s", e.mysqlContext.NatsAddr)
+	e.logger.Debug("mysql.extractor: begin Connect nats server", "NatAddr", e.NatsAddr)
+	natsAddr := fmt.Sprintf("nats://%s", e.NatsAddr)
 	sc, err := gonats.Connect(natsAddr)
 	e.logger.Debug("mysql.extractor: Connect nats in ","natsAddr",hclog.Fmt("%+v",natsAddr) )
 	if err != nil {
@@ -902,7 +903,7 @@ func (e *Extractor) StreamEvents() error {
 			groupTimeoutDuration := time.Duration(e.mysqlContext.GroupTimeout) * time.Millisecond
 			timer := time.NewTimer(groupTimeoutDuration)
 			defer timer.Stop()
-			natsips := strings.Split(e.mysqlContext.NatsAddr, ":")
+			natsips := strings.Split(e.NatsAddr, ":") // TODO what?
 
 			for keepGoing && !e.shutdown {
 				var err error

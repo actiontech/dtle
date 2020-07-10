@@ -210,8 +210,9 @@ type Applier struct {
 	subject            string
 	mysqlContext       *config.MySQLDriverConfig
 
-	MySQLVersion      string
-	MySQLServerUuid   string
+	NatsAddr        string
+	MySQLVersion    string
+	MySQLServerUuid string
 
 	dbs                []*sql.Conn
 	db                 *gosql.DB
@@ -249,7 +250,10 @@ type Applier struct {
 	lastSavedGtid      string
 }
 
-func NewApplier(ctx *dcommon.ExecContext, cfg *umconf.MySQLDriverConfig, logger hclog.Logger, storeManager *dcommon.StoreManager) (a *Applier, err error) {
+func NewApplier(
+	ctx *dcommon.ExecContext, cfg *umconf.MySQLDriverConfig, logger hclog.Logger,
+	storeManager *dcommon.StoreManager, natsAddr string) (a *Applier, err error) {
+
 	cfg = cfg.SetDefault()
 	/*entry := logger.WithFields(logrus.Fields{
 		"job": ctx.Subject,
@@ -261,6 +265,7 @@ func NewApplier(ctx *dcommon.ExecContext, cfg *umconf.MySQLDriverConfig, logger 
 		logger:                  logger,
 		subject:                 ctx.Subject,
 		mysqlContext:            cfg,
+		NatsAddr:                natsAddr,
 		currentCoordinates:      &dcommon.CurrentCoordinates{},
 		tableItems:              make(mapSchemaTableItems),
 		rowCopyComplete:         make(chan bool, 1),
@@ -352,7 +357,7 @@ func (a *Applier) MtsWorker(workerIndex int) {
 func (a *Applier) Run() {
 	var err error
 	a.logger.Info("go WatchAndPutNats")
-	go a.storeManager.WatchAndPutNats(a.subject, a.mysqlContext.NatsAddr, a.shutdownCh, func(err error) {
+	go a.storeManager.WatchAndPutNats(a.subject, a.NatsAddr, a.shutdownCh, func(err error) {
 		a.onError(TaskStateDead, errors.Wrap(err, "WatchAndPutNats"))
 	})
 
@@ -462,7 +467,7 @@ func (a *Applier) executeWriteFuncs() {
 }
 
 func (a *Applier) initNatSubClient() (err error) {
-	natsAddr := fmt.Sprintf("nats://%s", a.mysqlContext.NatsAddr)
+	natsAddr := fmt.Sprintf("nats://%s", a.NatsAddr)
 	sc, err := gonats.Connect(natsAddr)
 	if err != nil {
 		a.logger.Error("mysql.applier: Can't connect nats server %v. make sure a nats streaming server is running.%v", natsAddr, err)

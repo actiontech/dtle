@@ -250,14 +250,15 @@ func (i *Inspector) validateGTIDMode() error {
 func (i *Inspector) validateBinlogs() error {
 	query := `select @@global.log_bin, @@global.binlog_format`
 	var hasBinaryLogs bool
-	if err := i.db.QueryRow(query).Scan(&hasBinaryLogs, &i.mysqlContext.BinlogFormat); err != nil {
+	var binlogFormat string
+	if err := i.db.QueryRow(query).Scan(&hasBinaryLogs, &binlogFormat); err != nil {
 		return err
 	}
 	if !hasBinaryLogs {
 		return fmt.Errorf("%s:%d must have binary logs enabled", i.mysqlContext.ConnectionConfig.Host, i.mysqlContext.ConnectionConfig.Port)
 	}
-	if i.mysqlContext.RequiresBinlogFormatChange() {
-		return fmt.Errorf("You must be using ROW binlog format. I can switch it for you, provided --switch-to-rbr and that %s:%d doesn't have replicas", i.mysqlContext.ConnectionConfig.Host, i.mysqlContext.ConnectionConfig.Port)
+	if binlogFormat != "ROW" {
+		return fmt.Errorf("it is required to set binlog_format=row")
 	}
 	query = `select @@global.binlog_row_image`
 	if err := i.db.QueryRow(query).Scan(&i.mysqlContext.BinlogRowImage); err != nil {

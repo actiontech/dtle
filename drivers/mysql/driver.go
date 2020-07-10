@@ -113,7 +113,6 @@ var (
 		"SkipCreateDbTable":hclspec.NewAttr("SkipCreateDbTable", "bool", false),
 		"SkipPrivilegeCheck":hclspec.NewAttr("SkipPrivilegeCheck", "bool", false),
 		"SkipIncrementalCopy":hclspec.NewAttr("SkipIncrementalCopy", "bool", false),
-		"Type":       hclspec.NewAttr("Type", "string", true),
 		"ConnectionConfig": hclspec.NewBlock("ConnectionConfig", false, hclspec.NewObject(map[string]*hclspec.Spec{
 			"Host": hclspec.NewAttr("Host", "string", true),
 			"Port": hclspec.NewAttr("Port", "number", true),
@@ -203,13 +202,11 @@ type DtleTaskConfig struct {
 	AutoGtid          bool`codec:"AutoGtid"`
 	BinlogRelay       bool`codec:"BinlogRelay"`
 
-	NatsAddr          string`codec:"NatsAddr"`
 	ParallelWorkers   int`codec:"ParallelWorkers"`
 
 	SkipCreateDbTable   bool                  `codec:"SkipCreateDbTable"`
 	SkipPrivilegeCheck  bool                  `codec:"SkipPrivilegeCheck"`
 	SkipIncrementalCopy bool                  `codec:"SkipIncrementalCopy"`
-	Type      string                          `codec:"Type"`
 	ConnectionConfig *config.ConnectionConfig `codec:"ConnectionConfig"`
 	KafkaConfig      *kafka.KafkaConfig       `codec:"KafkaConfig"`
 }

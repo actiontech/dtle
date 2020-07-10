@@ -47,10 +47,9 @@ type MySQLDriverConfig struct {
 	AutoGtid          bool
 	BinlogRelay       bool
 
-	NatsAddr          string
 	ParallelWorkers   int
 
-	SkipCreateDbTable    bool
+	SkipCreateDbTable   bool
 	SkipPrivilegeCheck  bool
 	SkipIncrementalCopy bool
 
@@ -58,7 +57,6 @@ type MySQLDriverConfig struct {
 
 	RowsEstimate          int64
 	DeltaEstimate         int64
-	BinlogFormat      string
 	BinlogRowImage    string
 	RowCopyStartTime  time.Time
 	RowCopyEndTime    time.Time
@@ -101,11 +99,6 @@ func (a *MySQLDriverConfig) SetDefault() *MySQLDriverConfig {
 		result.ConnectionConfig.Charset = "utf8mb4"
 	}
 	return &result
-}
-
-// RequiresBinlogFormatChange is `true` when the original binlog format isn't `ROW`
-func (m *MySQLDriverConfig) RequiresBinlogFormatChange() bool {
-	return m.BinlogFormat != "ROW"
 }
 
 // ElapsedRowCopyTime returns time since starting to copy chunks of rows

@@ -110,10 +110,7 @@ func (h *taskHandle) run(taskConfig *DtleTaskConfig, d *Driver) {
 			} else {
 				d.logger.Debug("print host", hclog.Fmt("%+v", driverConfig.ConnectionConfig.Host))
 
-				driverConfig.NatsAddr = d.config.NatsAdvertise
-				//	d.logger.Warn("NewApplier ReplicateDoDb: %v", driverConfig.ReplicateDoDb)
-
-				h.runner, err = mysql.NewApplier(ctx, driverConfig, d.logger, d.storeManager)
+				h.runner, err = mysql.NewApplier(ctx, driverConfig, d.logger, d.storeManager, d.config.NatsAdvertise)
 				if err != nil {
 					h.exitResult.Err = errors.Wrap(err, "NewApplier")
 					return
