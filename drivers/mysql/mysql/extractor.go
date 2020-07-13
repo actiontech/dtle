@@ -9,18 +9,15 @@ package mysql
 import (
 	gosql "database/sql"
 	"fmt"
-	dcommon "github.com/actiontech/dtle/drivers/mysql/common"
-	config2 "github.com/actiontech/dtle/drivers/mysql/config"
+	"github.com/actiontech/dtle/drivers/mysql/common"
+	"github.com/actiontech/dtle/drivers/mysql/config"
 	"github.com/hashicorp/nomad/plugins/drivers"
-
-	//	umconf "github.com/actiontech/dtle/drivers/mysql/mysql/mysqlconfig"
 
 	"github.com/actiontech/dtle/g"
 	"github.com/opentracing/opentracing-go"
 	"github.com/opentracing/opentracing-go/ext"
 	"github.com/pkg/errors"
 
-	//"math"
 	"bytes"
 	"encoding/gob"
 	"math"
@@ -35,17 +32,13 @@ import (
 	gomysql "github.com/siddontang/go-mysql/mysql"
 
 	"os"
-
 	"regexp"
-
 	"net"
-
 	"context"
 
 	"github.com/actiontech/dtle/drivers/mysql/mysql/base"
 	"github.com/actiontech/dtle/drivers/mysql/mysql/binlog"
-	config "github.com/actiontech/dtle/drivers/mysql/mysql/mysqlconfig"
-	//mysql "github.com/actiontech/dtle/drivers/mysql/mysql/mysqlconfig"
+	"github.com/actiontech/dtle/drivers/mysql/mysql/mysqlconfig"
 	"github.com/actiontech/dtle/drivers/mysql/mysql/sql"
 	sqle "github.com/actiontech/dtle/drivers/mysql/mysql/sqle/inspector"
 	"github.com/hashicorp/go-hclog"
@@ -66,10 +59,10 @@ const (
 
 // Extractor is the main schema extract flow manager.
 type Extractor struct {
-	execCtx      *dcommon.ExecContext
+	execCtx      *common.ExecContext
 	logger       hclog.Logger
 	subject      string
-	mysqlContext *config2.MySQLDriverConfig
+	mysqlContext *config.MySQLDriverConfig
 
 	systemVariables   map[string]string
 	sqlMode           string
@@ -83,7 +76,7 @@ type Extractor struct {
 	dumpers           []*dumper
 	// db.tb exists when creating the job, for full-copy.
 	// vs e.mysqlContext.ReplicateDoDb: all user assigned db.tb
-	replicateDoDb            []*config.DataSource
+	replicateDoDb            []*mysqlconfig.DataSource
 	dataChannel              chan *binlog.BinlogEntry
 	inspector                *Inspector
 	binlogReader             *binlog.BinlogReader
@@ -111,10 +104,10 @@ type Extractor struct {
 	gotCoordinateCh chan struct{}
 	streamerReadyCh chan error
 	fullCopyDone    chan struct{}
-	storeManager    *dcommon.StoreManager
+	storeManager    *common.StoreManager
 }
 
-func NewExtractor(execCtx *dcommon.ExecContext, cfg *config2.MySQLDriverConfig, logger hclog.Logger, storeManager *dcommon.StoreManager) (*Extractor, error) {
+func NewExtractor(execCtx *common.ExecContext, cfg *config.MySQLDriverConfig, logger hclog.Logger, storeManager *common.StoreManager) (*Extractor, error) {
 	logger.Info("NewExtractor", "subject", execCtx.Subject)
 
 	e := &Extractor{
@@ -153,7 +146,7 @@ func (e *Extractor) Run() {
 	e.NatsAddr = natsAddr
 	e.logger.Info("got NatsAddr", "addr", natsAddr)
 
-	err = dcommon.GetGtidFromConsul(e.storeManager, e.subject, e.logger, e.mysqlContext)
+	err = common.GetGtidFromConsul(e.storeManager, e.subject, e.logger, e.mysqlContext)
 	if err != nil {
 		e.onError(TaskStateDead, errors.Wrap(err, "GetGtidFromConsul"))
 		return
@@ -340,7 +333,7 @@ func (e *Extractor) initiateInspector() (err error) {
 func (e *Extractor) inspectTables() (err error) {
 	// Creates a MYSQL Dump based on the options supplied through the dumper.
 	if len(e.mysqlContext.ReplicateDoDb) > 0 {
-		var doDbs []*config.DataSource
+		var doDbs []*mysqlconfig.DataSource
 		// Get all db from  TableSchemaRegex regex and get all tableSchemaRename
 		for _, doDb := range e.mysqlContext.ReplicateDoDb {
 			if doDb.TableSchema == "" && doDb.TableSchemaRegex == "" {
@@ -356,7 +349,7 @@ func (e *Extractor) inspectTables() (err error) {
 				schemaRenameRegex := doDb.TableSchemaRename
 
 				for _, db := range dbs {
-					newdb := &config.DataSource{}
+					newdb := &mysqlconfig.DataSource{}
 					reg := regexp.MustCompile(regex)
 					if !reg.MatchString(db) {
 						continue
@@ -383,7 +376,7 @@ func (e *Extractor) inspectTables() (err error) {
 
 		}
 		for _, doDb := range doDbs {
-			db := &config.DataSource{
+			db := &mysqlconfig.DataSource{
 				TableSchema:            doDb.TableSchema,
 				TableSchemaRegex:       doDb.TableSchemaRegex,
 				TableSchemaRename:      doDb.TableSchemaRename,
@@ -432,7 +425,7 @@ func (e *Extractor) inspectTables() (err error) {
 							if !reg.MatchString(table.TableName) {
 								continue
 							}
-							newTable := &config.Table{}
+							newTable := &mysqlconfig.Table{}
 							*newTable = *doTb
 							newTable.TableName = table.TableName
 							if tableRenameRegex != "" {
@@ -455,7 +448,7 @@ func (e *Extractor) inspectTables() (err error) {
 							e.logger.Warn("mysql.extractor: %v", err)
 							continue
 						}
-						newTable := &config.Table{}
+						newTable := &mysqlconfig.Table{}
 						*newTable = *doTb
 						db.Tables = append(db.Tables, newTable)
 						db.TableSchemaScope = TABLE
@@ -474,7 +467,7 @@ func (e *Extractor) inspectTables() (err error) {
 			return err
 		}
 		for _, dbName := range dbs {
-			ds := &config.DataSource{
+			ds := &mysqlconfig.DataSource{
 				TableSchema:      dbName,
 				TableSchemaScope: SCHEMA,
 			}
@@ -555,7 +548,7 @@ func (e *Extractor) readTableColumns() (err error) {
 			if err != nil {
 				return err
 			}
-			doTb.ColumnMap = config.BuildColumnMapIndex(doTb.ColumnMapFrom, doTb.OriginalTableColumns.Ordinals)
+			doTb.ColumnMap = mysqlconfig.BuildColumnMapIndex(doTb.ColumnMapFrom, doTb.OriginalTableColumns.Ordinals)
 
 		}
 	}
@@ -717,7 +710,7 @@ func (e *Extractor) validateConnectionAndGetVersion() error {
 	if err := e.db.QueryRow(query).Scan(&e.MySQLVersion); err != nil {
 		return err
 	}
-	e.mysqlVersionDigit = dcommon.MysqlVersionInDigit(e.MySQLVersion)
+	e.mysqlVersionDigit = common.MysqlVersionInDigit(e.MySQLVersion)
 	if e.mysqlVersionDigit == 0 {
 		return fmt.Errorf("cannot parse mysql version string to digit. string %v", e.MySQLVersion)
 	}
@@ -757,7 +750,7 @@ func (e *Extractor) setInitialBinlogCoordinates() error {
 }
 
 // CountTableRows counts exact number of rows on the original table
-func (e *Extractor) CountTableRows(table *config.Table) (int64, error) {
+func (e *Extractor) CountTableRows(table *mysqlconfig.Table) (int64, error) {
 	//e.logger.Debug("mysql.extractor: As instructed, I'm issuing a SELECT COUNT(*) on the table. This may take a while")
 
 	var query string
@@ -769,7 +762,7 @@ func (e *Extractor) CountTableRows(table *config.Table) (int64, error) {
 	} else {
 		method = "COUNT"
 		query = fmt.Sprintf(`select count(*) from %s.%s where (%s)`,
-			config.EscapeName(table.TableSchema), config.EscapeName(table.TableName), table.Where)
+			mysqlconfig.EscapeName(table.TableSchema), mysqlconfig.EscapeName(table.TableName), table.Where)
 	}
 	var rowsEstimate int64
 	if err := e.db.QueryRow(query).Scan(&rowsEstimate); err != nil {
@@ -777,7 +770,7 @@ func (e *Extractor) CountTableRows(table *config.Table) (int64, error) {
 	}
 	atomic.AddInt64(&e.mysqlContext.RowsEstimate, rowsEstimate)
 
-	e.mysqlContext.Stage = dcommon.StageSearchingRowsForUpdate
+	e.mysqlContext.Stage = common.StageSearchingRowsForUpdate
 	e.logger.Debug("mysql.extractor: Exact number of rows(%s.%s) via %v: %d", table.TableSchema, table.TableName, method, rowsEstimate)
 	return rowsEstimate, nil
 }
@@ -954,7 +947,7 @@ func (e *Extractor) StreamEvents() error {
 					e.onError(TaskStateDead, err)
 					keepGoing = false
 				} else {
-					e.mysqlContext.Stage = dcommon.StageSendingBinlogEventToSlave
+					e.mysqlContext.Stage = common.StageSendingBinlogEventToSlave
 					atomic.AddInt64(&e.mysqlContext.DeltaEstimate, 1)
 				}
 			}
@@ -1289,9 +1282,9 @@ func (e *Extractor) mysqlDump() error {
 					var err error
 					if strings.ToLower(tb.TableSchema) != "mysql" {
 						if db.TableSchemaRename != "" {
-							dbSQL = fmt.Sprintf("CREATE DATABASE IF NOT EXISTS %s", config.EscapeName(tb.TableSchemaRename))
+							dbSQL = fmt.Sprintf("CREATE DATABASE IF NOT EXISTS %s", mysqlconfig.EscapeName(tb.TableSchemaRename))
 						} else {
-							dbSQL = fmt.Sprintf("CREATE DATABASE IF NOT EXISTS %s", config.EscapeName(tb.TableSchema))
+							dbSQL = fmt.Sprintf("CREATE DATABASE IF NOT EXISTS %s", mysqlconfig.EscapeName(tb.TableSchema))
 						}
 					}
 					if strings.ToLower(tb.TableType) == "view" {
@@ -1302,11 +1295,11 @@ func (e *Extractor) mysqlDump() error {
 					} else if strings.ToLower(tb.TableSchema) != "mysql" {
 						tbSQL, err = base.ShowCreateTable(e.singletonDB, tb.TableSchema, tb.TableName, e.mysqlContext.DropTableIfExists, true)
 						for num, sql := range tbSQL {
-							if db.TableSchemaRename != "" && strings.Contains(sql, fmt.Sprintf("USE %s", config.EscapeName(tb.TableSchema))) {
+							if db.TableSchemaRename != "" && strings.Contains(sql, fmt.Sprintf("USE %s", mysqlconfig.EscapeName(tb.TableSchema))) {
 								tbSQL[num] = strings.Replace(sql, tb.TableSchema, db.TableSchemaRename, 1)
 							}
-							if tb.TableRename != "" && (strings.Contains(sql, fmt.Sprintf("DROP TABLE IF EXISTS %s", config.EscapeName(tb.TableName))) || strings.Contains(sql, "CREATE TABLE")) {
-								tbSQL[num] = strings.Replace(sql, config.EscapeName(tb.TableName), tb.TableRename, 1)
+							if tb.TableRename != "" && (strings.Contains(sql, fmt.Sprintf("DROP TABLE IF EXISTS %s", mysqlconfig.EscapeName(tb.TableName))) || strings.Contains(sql, "CREATE TABLE")) {
+								tbSQL[num] = strings.Replace(sql, mysqlconfig.EscapeName(tb.TableName), tb.TableRename, 1)
 							}
 						}
 						if err != nil {
@@ -1332,9 +1325,9 @@ func (e *Extractor) mysqlDump() error {
 			if !e.mysqlContext.SkipCreateDbTable {
 				if strings.ToLower(db.TableSchema) != "mysql" {
 					if db.TableSchemaRename != "" {
-						dbSQL = fmt.Sprintf("CREATE DATABASE IF NOT EXISTS %s", config.EscapeName(db.TableSchemaRename))
+						dbSQL = fmt.Sprintf("CREATE DATABASE IF NOT EXISTS %s", mysqlconfig.EscapeName(db.TableSchemaRename))
 					} else {
-						dbSQL = fmt.Sprintf("CREATE DATABASE IF NOT EXISTS %s", config.EscapeName(db.TableSchema))
+						dbSQL = fmt.Sprintf("CREATE DATABASE IF NOT EXISTS %s", mysqlconfig.EscapeName(db.TableSchema))
 					}
 
 				}
@@ -1358,7 +1351,7 @@ func (e *Extractor) mysqlDump() error {
 	// ------
 	// Dump all of the tables and generate source records ...
 	e.logger.Info("mysql.extractor: Step %d: scanning contents of %d tables", step, e.tableCount)
-	startScan := dcommon.CurrentTimeMillis()
+	startScan := common.CurrentTimeMillis()
 	counter := 0
 	//pool := models.NewPool(10)
 	for _, db := range e.replicateDoDb {
@@ -1407,7 +1400,7 @@ func (e *Extractor) mysqlDump() error {
 
 	// We've copied all of the tables, but our buffer holds onto the very last record.
 	// First mark the snapshot as complete and then apply the updated offset to the buffered record ...
-	stop := dcommon.CurrentTimeMillis()
+	stop := common.CurrentTimeMillis()
 	e.logger.Info("mysql.extractor: Step %d: scanned %d rows in %d tables in %s",
 		step, e.mysqlContext.TotalRowsCopied, e.tableCount, time.Duration(stop-startScan))
 	step++
@@ -1428,11 +1421,11 @@ func (e *Extractor) encodeDumpEntry(entry *DumpEntry) error {
 	if err := e.publish(ctx, fmt.Sprintf("%s_full", e.subject), "", txMsg); err != nil {
 		return err
 	}
-	e.mysqlContext.Stage = dcommon.StageSendingData
+	e.mysqlContext.Stage = common.StageSendingData
 	return nil
 }
 
-func (e *Extractor) Stats() (*dcommon.TaskStatistics, error) {
+func (e *Extractor) Stats() (*common.TaskStatistics, error) {
 	totalRowsCopied := e.mysqlContext.GetTotalRowsCopied()
 	rowsEstimate := atomic.LoadInt64(&e.mysqlContext.RowsEstimate)
 	deltaEstimate := atomic.LoadInt64(&e.mysqlContext.DeltaEstimate)
@@ -1453,7 +1446,7 @@ func (e *Extractor) Stats() (*dcommon.TaskStatistics, error) {
 	eta = "N/A"
 	if progressPct >= 100.0 {
 		eta = "0s"
-		e.mysqlContext.Stage = dcommon.StageMasterHasSentAllBinlogToSlave
+		e.mysqlContext.Stage = common.StageMasterHasSentAllBinlogToSlave
 	} else if progressPct >= 1.0 {
 		elapsedRowCopySeconds := e.mysqlContext.ElapsedRowCopyTime().Seconds()
 		totalExpectedSeconds := elapsedRowCopySeconds * float64(rowsEstimate) / float64(totalRowsCopied)
@@ -1466,7 +1459,7 @@ func (e *Extractor) Stats() (*dcommon.TaskStatistics, error) {
 		}
 	}
 
-	taskResUsage :=  dcommon.TaskStatistics{
+	taskResUsage :=  common.TaskStatistics{
 		ExecMasterRowCount: totalRowsCopied,
 		ExecMasterTxCount:  deltaEstimate,
 		ReadMasterRowCount: rowsEstimate,
@@ -1475,7 +1468,7 @@ func (e *Extractor) Stats() (*dcommon.TaskStatistics, error) {
 		ETA:                eta,
 		Backlog:            fmt.Sprintf("%d/%d", len(e.dataChannel), cap(e.dataChannel)),
 		Stage:              e.mysqlContext.Stage,
-		BufferStat: dcommon.BufferStat{
+		BufferStat: common.BufferStat{
 			ExtractorTxQueueSize: 0, // TODO remove
 			SendByTimeout:        e.sendByTimeoutCounter,
 			SendBySizeFull:       e.sendBySizeFullCounter,
@@ -1493,13 +1486,13 @@ func (e *Extractor) Stats() (*dcommon.TaskStatistics, error) {
 	currentBinlogCoordinates := &base.BinlogCoordinateTx{}
 	if e.binlogReader != nil {
 		currentBinlogCoordinates = e.binlogReader.GetCurrentBinlogCoordinates()
-		taskResUsage.CurrentCoordinates = &dcommon.CurrentCoordinates{
+		taskResUsage.CurrentCoordinates = &common.CurrentCoordinates{
 			File:     currentBinlogCoordinates.LogFile,
 			Position: currentBinlogCoordinates.LogPos,
 			GtidSet:  fmt.Sprintf("%s:%d", currentBinlogCoordinates.GetSid(), currentBinlogCoordinates.GNO),
 		}
 	} else {
-		taskResUsage.CurrentCoordinates = &dcommon.CurrentCoordinates{
+		taskResUsage.CurrentCoordinates = &common.CurrentCoordinates{
 			File:     "",
 			Position: 0,
 			GtidSet:  "",

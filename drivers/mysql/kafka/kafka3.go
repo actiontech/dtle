@@ -11,7 +11,7 @@ import (
 	"encoding/gob"
 	"encoding/json"
 	"fmt"
-	config2 "github.com/actiontech/dtle/drivers/mysql/config"
+	"github.com/actiontech/dtle/drivers/mysql/config"
 	"github.com/hashicorp/nomad/plugins/drivers"
 	"github.com/pkg/errors"
 	"strconv"
@@ -24,9 +24,8 @@ import (
 	"strings"
 	"time"
 
-	//"github.com/actiontech/dtle/drivers/kafka"
 	"github.com/actiontech/dtle/drivers/mysql/mysql/binlog"
-	config "github.com/actiontech/dtle/drivers/mysql/mysql/mysqlconfig"
+	"github.com/actiontech/dtle/drivers/mysql/mysql/mysqlconfig"
 	"github.com/golang/snappy"
 
 	hclog "github.com/hashicorp/go-hclog"
@@ -50,15 +49,15 @@ type KafkaRunner struct {
 	shutdown   bool
 	shutdownCh chan struct{}
 
-	kafkaConfig *config2.KafkaConfig
+	kafkaConfig *config.KafkaConfig
 	kafkaMgr    *KafkaManager
 
 	storeManager *common.StoreManager
 
-	tables map[string](map[string]*config.Table)
+	tables map[string](map[string]*mysqlconfig.Table)
 }
 
-func NewKafkaRunner(execCtx *common.ExecContext, cfg *config2.KafkaConfig, logger hclog.Logger,
+func NewKafkaRunner(execCtx *common.ExecContext, cfg *config.KafkaConfig, logger hclog.Logger,
 	storeManager *common.StoreManager) *KafkaRunner {
 	/*	entry := logger.WithFields(logrus.Fields{
 		"job": execCtx.Subject,
@@ -69,7 +68,7 @@ func NewKafkaRunner(execCtx *common.ExecContext, cfg *config2.KafkaConfig, logge
 		logger:       logger,
 		waitCh:       make(chan *drivers.ExitResult, 1),
 		shutdownCh:   make(chan struct{}),
-		tables:       make(map[string](map[string]*config.Table)),
+		tables:       make(map[string](map[string]*mysqlconfig.Table)),
 		storeManager: storeManager,
 	}
 }
@@ -151,10 +150,10 @@ func (kr *KafkaRunner) Run() {
 	}
 }
 
-func (kr *KafkaRunner) getOrSetTable(schemaName string, tableName string, table *config.Table) (*config.Table, error) {
+func (kr *KafkaRunner) getOrSetTable(schemaName string, tableName string, table *mysqlconfig.Table) (*mysqlconfig.Table, error) {
 	a, ok := kr.tables[schemaName]
 	if !ok {
-		a = make(map[string]*config.Table)
+		a = make(map[string]*mysqlconfig.Table)
 		kr.tables[schemaName] = a
 	}
 
@@ -194,9 +193,9 @@ func (kr *KafkaRunner) initiateStreaming() error {
 			}
 			return
 		} else {
-			var tableFromDumpData *config.Table = nil
+			var tableFromDumpData *mysqlconfig.Table = nil
 			if len(dumpData.Table) > 0 {
-				tableFromDumpData = &config.Table{}
+				tableFromDumpData = &mysqlconfig.Table{}
 				err = DecodeGob(dumpData.Table, tableFromDumpData)
 				if err != nil {
 					kr.onError(TaskStateDead, err)
@@ -300,7 +299,7 @@ func (kr *KafkaRunner) onError(state int, err error) {
 	kr.Shutdown()
 }
 
-func (kr *KafkaRunner) kafkaTransformSnapshotData(table *config.Table, value *mysqlDriver.DumpEntry) error {
+func (kr *KafkaRunner) kafkaTransformSnapshotData(table *mysqlconfig.Table, value *mysqlDriver.DumpEntry) error {
 	var err error
 
 	tableIdent := fmt.Sprintf("%v.%v.%v", kr.kafkaMgr.Cfg.Topic, table.TableSchema, table.TableName)
@@ -337,12 +336,12 @@ func (kr *KafkaRunner) kafkaTransformSnapshotData(table *config.Table, value *my
 			if rowValues[i] != nil {
 				valueStr := string(*rowValues[i])
 				switch columnList[i].Type {
-				case config.TinyintColumnType, config.SmallintColumnType, config.MediumIntColumnType, config.IntColumnType:
+				case mysqlconfig.TinyintColumnType, mysqlconfig.SmallintColumnType, mysqlconfig.MediumIntColumnType, mysqlconfig.IntColumnType:
 					value, err = strconv.ParseInt(valueStr, 10, 64)
 					if err != nil {
 						return err
 					}
-				case config.BigIntColumnType:
+				case mysqlconfig.BigIntColumnType:
 					if columnList[i].IsUnsigned {
 						valueUint64, err := strconv.ParseUint(valueStr, 10, 64)
 						if err != nil {
@@ -355,41 +354,41 @@ func (kr *KafkaRunner) kafkaTransformSnapshotData(table *config.Table, value *my
 							return err
 						}
 					}
-				case config.DoubleColumnType:
+				case mysqlconfig.DoubleColumnType:
 					value, err = strconv.ParseFloat(valueStr, 64)
 					if err != nil {
 						return err
 					}
-				case config.FloatColumnType:
+				case mysqlconfig.FloatColumnType:
 					value, err = strconv.ParseFloat(valueStr, 64)
 					if err != nil {
 						return err
 					}
-				case config.DecimalColumnType:
+				case mysqlconfig.DecimalColumnType:
 					value = DecimalValueFromStringMysql(valueStr)
-				case config.TimeColumnType:
+				case mysqlconfig.TimeColumnType:
 					if valueStr != "" && columnList[i].ColumnType == "timestamp" {
 						value = valueStr[:10] + "T" + valueStr[11:] + "Z"
 					} else {
 						value = TimeValue(valueStr)
 					}
 
-				case config.BinaryColumnType:
+				case mysqlconfig.BinaryColumnType:
 					value = base64.StdEncoding.EncodeToString([]byte(valueStr))
-				case config.BitColumnType:
+				case mysqlconfig.BitColumnType:
 					value = base64.StdEncoding.EncodeToString([]byte(valueStr))
-				case config.BlobColumnType:
+				case mysqlconfig.BlobColumnType:
 					value = base64.StdEncoding.EncodeToString([]byte(valueStr))
-				case config.VarbinaryColumnType:
+				case mysqlconfig.VarbinaryColumnType:
 					value = base64.StdEncoding.EncodeToString([]byte(valueStr))
-				case config.DateColumnType, config.DateTimeColumnType:
+				case mysqlconfig.DateColumnType, mysqlconfig.DateTimeColumnType:
 					if valueStr != "" && columnList[i].ColumnType == "datetime" {
 						value = DateTimeValue(valueStr)
 					} else if valueStr != "" {
 						value = DateValue(valueStr)
 					}
 
-				case config.YearColumnType:
+				case mysqlconfig.YearColumnType:
 					if valueStr != "" {
 						value = YearValue(valueStr)
 					} else {
@@ -491,7 +490,7 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry)
 			}
 
 			switch colList[i].Type {
-			case config.DecimalColumnType:
+			case mysqlconfig.DecimalColumnType:
 				// nil: either entire row does not exist or this field is NULL
 				if beforeValue != nil {
 					beforeValue = DecimalValueFromStringMysql(beforeValue.(string))
@@ -499,7 +498,7 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry)
 				if afterValue != nil {
 					afterValue = DecimalValueFromStringMysql(afterValue.(string))
 				}
-			case config.BigIntColumnType:
+			case mysqlconfig.BigIntColumnType:
 				if colList[i].IsUnsigned {
 					if beforeValue != nil {
 						beforeValue = int64(beforeValue.(uint64))
@@ -508,7 +507,7 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry)
 						afterValue = int64(afterValue.(uint64))
 					}
 				}
-			case config.TimeColumnType, config.TimestampColumnType:
+			case mysqlconfig.TimeColumnType, mysqlconfig.TimestampColumnType:
 				if beforeValue != nil && colList[i].ColumnType == "timestamp" {
 					beforeValue = beforeValue.(string)[:10] + "T" + beforeValue.(string)[11:] + "Z"
 				} else if beforeValue != nil {
@@ -519,7 +518,7 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry)
 				} else if afterValue != nil {
 					afterValue = TimeValue(afterValue.(string))
 				}
-			case config.DateColumnType, config.DateTimeColumnType:
+			case mysqlconfig.DateColumnType, mysqlconfig.DateTimeColumnType:
 				if beforeValue != nil && colList[i].ColumnType == "datetime" {
 					beforeValue = DateTimeValue(beforeValue.(string))
 				} else if beforeValue != nil {
@@ -530,14 +529,14 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry)
 				} else if afterValue != nil {
 					afterValue = DateValue(afterValue.(string))
 				}
-			case config.VarbinaryColumnType:
+			case mysqlconfig.VarbinaryColumnType:
 				if beforeValue != nil {
 					beforeValue = beforeValue.(string)
 				}
 				if afterValue != nil {
 					afterValue = afterValue.(string)
 				}
-			case config.BinaryColumnType:
+			case mysqlconfig.BinaryColumnType:
 
 				if beforeValue != nil {
 					beforeValue = getBinaryValue(colList[i].ColumnType, beforeValue.(string))
@@ -545,7 +544,7 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry)
 				if afterValue != nil {
 					afterValue = getBinaryValue(colList[i].ColumnType, afterValue.(string))
 				}
-			case config.TinytextColumnType:
+			case mysqlconfig.TinytextColumnType:
 				//println("beforeValue:",string(beforeValue.([]uint8)))
 				if beforeValue != nil {
 					beforeValue = string(beforeValue.([]uint8))
@@ -553,14 +552,14 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry)
 				if afterValue != nil {
 					afterValue = string(afterValue.([]uint8))
 				}
-			case config.FloatColumnType:
+			case mysqlconfig.FloatColumnType:
 				if beforeValue != nil {
 					beforeValue = beforeValue.(float32)
 				}
 				if afterValue != nil {
 					afterValue = afterValue.(float32)
 				}
-			case config.EnumColumnType:
+			case mysqlconfig.EnumColumnType:
 				enums := strings.Split(colList[i].ColumnType[5:len(colList[i].ColumnType)-1], ",")
 				if beforeValue != nil {
 					beforeValue = strings.Replace(enums[beforeValue.(int64)-1], "'", "", -1)
@@ -568,7 +567,7 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry)
 				if afterValue != nil {
 					afterValue = strings.Replace(enums[afterValue.(int64)-1], "'", "", -1)
 				}
-			case config.SetColumnType:
+			case mysqlconfig.SetColumnType:
 				columnType := colList[i].ColumnType
 				if beforeValue != nil {
 					beforeValue = getSetValue(beforeValue.(int64), columnType)
@@ -577,7 +576,7 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry)
 					afterValue = getSetValue(afterValue.(int64), columnType)
 				}
 
-			case config.BitColumnType:
+			case mysqlconfig.BitColumnType:
 				if beforeValue != nil {
 					beforeValue = getBitValue(colList[i].ColumnType, beforeValue.(int64))
 				}
@@ -721,7 +720,7 @@ func getBitValue(bit string, value int64) string {
 	return base64.StdEncoding.EncodeToString(buf[8-bitNumber:])
 }
 
-func kafkaColumnListToColDefs(colList *config.ColumnList) (valColDefs ColDefs, keyColDefs ColDefs) {
+func kafkaColumnListToColDefs(colList *mysqlconfig.ColumnList) (valColDefs ColDefs, keyColDefs ColDefs) {
 	cols := colList.ColumnList()
 	for i, _ := range cols {
 		var field *Schema
@@ -732,71 +731,71 @@ func kafkaColumnListToColDefs(colList *config.ColumnList) (valColDefs ColDefs, k
 		optional := cols[i].Nullable
 		fieldName := cols[i].RawName
 		switch cols[i].Type {
-		case config.UnknownColumnType:
+		case mysqlconfig.UnknownColumnType:
 			// TODO warning
 			field = NewSimpleSchemaWithDefaultField("", optional, fieldName, defaultValue)
 
-		case config.BitColumnType:
+		case mysqlconfig.BitColumnType:
 			field = NewBitsField(optional, fieldName, cols[i].ColumnType[4:len(cols[i].ColumnType)-1], defaultValue)
-		case config.BlobColumnType:
+		case mysqlconfig.BlobColumnType:
 			field = NewSimpleSchemaWithDefaultField(SCHEMA_TYPE_BYTES, optional, fieldName, defaultValue)
-		case config.BinaryColumnType:
+		case mysqlconfig.BinaryColumnType:
 			field = NewSimpleSchemaWithDefaultField(SCHEMA_TYPE_BYTES, optional, fieldName, defaultValue)
-		case config.VarbinaryColumnType:
+		case mysqlconfig.VarbinaryColumnType:
 			field = NewSimpleSchemaWithDefaultField(SCHEMA_TYPE_BYTES, optional, fieldName, defaultValue)
-		case config.TextColumnType:
+		case mysqlconfig.TextColumnType:
 			fallthrough
-		case config.CharColumnType:
+		case mysqlconfig.CharColumnType:
 			fallthrough
-		case config.VarcharColumnType:
+		case mysqlconfig.VarcharColumnType:
 			field = NewSimpleSchemaWithDefaultField(SCHEMA_TYPE_STRING, optional, fieldName, defaultValue)
-		case config.EnumColumnType:
+		case mysqlconfig.EnumColumnType:
 			field = NewEnumField(SCHEMA_TYPE_STRING, optional, fieldName, cols[i].ColumnType, defaultValue)
-		case config.SetColumnType:
+		case mysqlconfig.SetColumnType:
 			field = NewSetField(SCHEMA_TYPE_STRING, optional, fieldName, cols[i].ColumnType, defaultValue)
-		case config.TinyintColumnType:
+		case mysqlconfig.TinyintColumnType:
 			field = NewSimpleSchemaWithDefaultField(SCHEMA_TYPE_INT16, optional, fieldName, defaultValue)
-		case config.TinytextColumnType:
+		case mysqlconfig.TinytextColumnType:
 			field = NewSimpleSchemaWithDefaultField(SCHEMA_TYPE_STRING, optional, fieldName, defaultValue)
-		case config.SmallintColumnType:
+		case mysqlconfig.SmallintColumnType:
 			if cols[i].IsUnsigned {
 				field = NewSimpleSchemaWithDefaultField(SCHEMA_TYPE_INT32, optional, fieldName, defaultValue)
 			} else {
 				field = NewSimpleSchemaWithDefaultField(SCHEMA_TYPE_INT16, optional, fieldName, defaultValue)
 			}
-		case config.MediumIntColumnType: // 24 bit in config
+		case mysqlconfig.MediumIntColumnType: // 24 bit in config
 			field = NewSimpleSchemaWithDefaultField(SCHEMA_TYPE_INT32, optional, fieldName, defaultValue)
-		case config.IntColumnType:
+		case mysqlconfig.IntColumnType:
 			if cols[i].IsUnsigned {
 				field = NewSimpleSchemaWithDefaultField(SCHEMA_TYPE_INT64, optional, fieldName, defaultValue)
 			} else {
 				field = NewSimpleSchemaWithDefaultField(SCHEMA_TYPE_INT32, optional, fieldName, defaultValue)
 			}
-		case config.BigIntColumnType:
+		case mysqlconfig.BigIntColumnType:
 			field = NewSimpleSchemaWithDefaultField(SCHEMA_TYPE_INT64, optional, fieldName, defaultValue)
-		case config.FloatColumnType:
+		case mysqlconfig.FloatColumnType:
 			field = NewSimpleSchemaWithDefaultField(SCHEMA_TYPE_FLOAT64, optional, fieldName, defaultValue)
-		case config.DoubleColumnType:
+		case mysqlconfig.DoubleColumnType:
 			field = NewSimpleSchemaWithDefaultField(SCHEMA_TYPE_FLOAT64, optional, fieldName, defaultValue)
-		case config.DecimalColumnType:
+		case mysqlconfig.DecimalColumnType:
 			field = NewDecimalField(cols[i].Precision, cols[i].Scale, optional, fieldName, defaultValue)
-		case config.DateColumnType:
+		case mysqlconfig.DateColumnType:
 			if cols[i].ColumnType == "datetime" {
 				field = NewDateTimeField(optional, fieldName, defaultValue)
 			} else {
 				field = NewDateField(SCHEMA_TYPE_INT32, optional, fieldName, defaultValue)
 			}
-		case config.YearColumnType:
+		case mysqlconfig.YearColumnType:
 			field = NewYearField(SCHEMA_TYPE_INT32, optional, fieldName, defaultValue)
-		case config.DateTimeColumnType:
+		case mysqlconfig.DateTimeColumnType:
 			field = NewDateTimeField(optional, fieldName, defaultValue)
-		case config.TimeColumnType:
+		case mysqlconfig.TimeColumnType:
 			if cols[i].ColumnType == "timestamp" {
 				field = NewTimeStampField(SCHEMA_TYPE_STRING, optional, fieldName, defaultValue)
 			} else {
 				field = NewTimeField(optional, fieldName, defaultValue)
 			}
-		case config.JSONColumnType:
+		case mysqlconfig.JSONColumnType:
 			field = NewJsonField(optional, fieldName)
 		default:
 			// TODO report a BUG

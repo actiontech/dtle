@@ -3,7 +3,7 @@ package mysql
 import (
 	"context"
 	"fmt"
-	dcommon "github.com/actiontech/dtle/drivers/mysql/common"
+	"github.com/actiontech/dtle/drivers/mysql/common"
 	"github.com/actiontech/dtle/drivers/mysql/config"
 	"github.com/actiontech/dtle/g"
 	"github.com/pkg/errors"
@@ -11,7 +11,6 @@ import (
 
 	"github.com/actiontech/dtle/drivers/mysql/route"
 	"github.com/hashicorp/go-hclog"
-	//	"github.com/actiontech/dtle/drivers/mysql/mysql"
 	"github.com/hashicorp/nomad/drivers/shared/eventer"
 	"github.com/hashicorp/nomad/plugins/base"
 	"github.com/hashicorp/nomad/plugins/drivers"
@@ -174,7 +173,7 @@ type Driver struct {
 
 	config *DriverConfig
 
-	storeManager *dcommon.StoreManager
+	storeManager *common.StoreManager
 }
 
 func NewDriver(logger hclog.Logger) drivers.DriverPlugin {
@@ -301,7 +300,7 @@ func (d *Driver) SetConfig(c *base.Config) (err error) {
 		// This test avoids extra setup.
 		return nil
 	} else {
-		d.storeManager, err = dcommon.NewStoreManager(d.config.Consul)
+		d.storeManager, err = common.NewStoreManager(d.config.Consul)
 		if err != nil {
 			return err
 		}
@@ -410,7 +409,7 @@ func (d *Driver) RecoverTask(handle *drivers.TaskHandle) error {
 func (d *Driver) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHandle, *drivers.DriverNetwork, error) {
 	d.logger.Info("StartTask", "ID", cfg.ID, "allocID", cfg.AllocID)
 
-	err := dcommon.ValidateJobName(cfg.JobName)
+	err := common.ValidateJobName(cfg.JobName)
 	if err != nil {
 		return nil, nil, err
 	}
