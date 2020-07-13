@@ -19,14 +19,15 @@ const (
 )
 
 type CurrentCoordinates struct {
+	// replayed (executed)
 	File     string
 	Position int64
 	GtidSet  string
 
+	// relayed (retrieved)
 	RelayMasterLogFile string
 	ReadMasterLogPos   int64
 	RetrievedGtidSet   string
-	ExecutedGtidSet    string
 }
 type TableStats struct {
 	InsertCount int64

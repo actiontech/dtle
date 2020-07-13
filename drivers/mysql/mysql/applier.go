@@ -209,11 +209,10 @@ type Applier struct {
 	MySQLVersion    string
 	MySQLServerUuid string
 
-	dbs                []*sql.Conn
-	db                 *gosql.DB
-	gtidExecuted       base.GtidSet
-	currentCoordinates *common.CurrentCoordinates
-	tableItems         mapSchemaTableItems
+	dbs              []*sql.Conn
+	db               *gosql.DB
+	gtidExecuted     base.GtidSet
+	tableItems       mapSchemaTableItems
 
 	rowCopyComplete     chan bool
 	rowCopyCompleteFlag int64
@@ -256,7 +255,6 @@ func NewApplier(
 		subject:                 ctx.Subject,
 		mysqlContext:            cfg,
 		NatsAddr:                natsAddr,
-		currentCoordinates:      &common.CurrentCoordinates{},
 		tableItems:              make(mapSchemaTableItems),
 		rowCopyComplete:         make(chan bool, 1),
 		copyRowsQueue:           make(chan *common.DumpEntry, 24),
@@ -437,15 +435,6 @@ func (a *Applier) executeWriteFuncs() {
 			if atomic.LoadInt64(&a.rowCopyCompleteFlag) == 1 && a.mysqlContext.TotalRowsCopied == a.mysqlContext.TotalRowsReplay {
 				a.rowCopyComplete <- true
 				a.logger.Info("mysql.applier: Rows copy complete.number of rows:%d", a.mysqlContext.TotalRowsReplay)
-				a.mysqlContext.Gtid = a.currentCoordinates.RetrievedGtidSet
-				a.logger.Info("mysql.applier: got gtid from extractor", "gtid", a.mysqlContext.Gtid)
-				var err error
-				a.gtidSet, err = DtleParseMysqlGTIDSet(a.mysqlContext.Gtid)
-				if err != nil {
-					a.onError(TaskStateDead, err)
-				}
-				a.mysqlContext.BinlogFile = a.currentCoordinates.File
-				a.mysqlContext.BinlogPos = a.currentCoordinates.Position
 				break
 			}
 			if a.shutdown {
@@ -530,6 +519,9 @@ func (a *Applier) heterogeneousReplay() {
 	stopSomeLoop := false
 	prevDDL := false
 	var ctx context.Context
+
+	replayingBinlogFile := ""
+
 	for !stopSomeLoop {
 		select {
 		case binlogEntry := <-a.applyDataEntryQueue:
@@ -571,11 +563,11 @@ func (a *Applier) heterogeneousReplay() {
 			// endregion
 			// this must be after duplication check
 			var rotated bool
-			if a.currentCoordinates.File == binlogEntry.Coordinates.LogFile {
+			if replayingBinlogFile == binlogEntry.Coordinates.LogFile {
 				rotated = false
 			} else {
 				rotated = true
-				a.currentCoordinates.File = binlogEntry.Coordinates.LogFile
+				replayingBinlogFile = binlogEntry.Coordinates.LogFile
 			}
 
 			a.logger.Debug("mysql.applier. gtidSetItem.NRow: %v", gtidSetItem.NRow)
@@ -608,7 +600,7 @@ func (a *Applier) heterogeneousReplay() {
 				}
 			} else {
 				if rotated {
-					a.logger.Debug("mysql.applier: binlog rotated to %v", a.currentCoordinates.File)
+					a.logger.Debug("mysql.applier: binlog rotated to %v", replayingBinlogFile)
 					if !a.mtsManager.WaitForAllCommitted() {
 						return // shutdown
 					}
@@ -725,6 +717,11 @@ func (a *Applier) initiateStreaming() error {
 	}*/
 
 	_, err = a.natsConn.Subscribe(fmt.Sprintf("%s_full_complete", a.subject), func(m *gonats.Msg) {
+		a.logger.Debug("mysql.applier. ack full_complete")
+		if err := a.natsConn.Publish(m.Reply, nil); err != nil {
+			a.onError(TaskStateDead, err)
+		}
+
 		dumpData := &dumpStatResult{}
 		t := not.NewTraceMsg(m)
 		// Extract the span context from the request message.
@@ -739,9 +736,15 @@ func (a *Applier) initiateStreaming() error {
 		if err := common.Decode(t.Bytes(), dumpData); err != nil {
 			a.onError(TaskStateDead, err)
 		}
-		a.currentCoordinates.RetrievedGtidSet = dumpData.Gtid
-		a.currentCoordinates.File = dumpData.LogFile
-		a.currentCoordinates.Position = dumpData.LogPos
+		a.mysqlContext.Gtid = dumpData.Gtid
+		a.mysqlContext.BinlogFile = dumpData.LogFile
+		a.mysqlContext.BinlogPos = dumpData.LogPos
+
+		a.logger.Info("mysql.applier: got gtid from extractor", "gtid", a.mysqlContext.Gtid)
+		a.gtidSet, err = DtleParseMysqlGTIDSet(a.mysqlContext.Gtid)
+		if err != nil {
+			a.onError(TaskStateDead, err)
+		}
 
 		a.mysqlContext.Stage = common.StageSlaveWaitingForWorkersToProcessQueue
 
@@ -751,11 +754,6 @@ func (a *Applier) initiateStreaming() error {
 			if a.shutdown {
 				return
 			}
-		}
-
-		a.logger.Debug("mysql.applier. ack full_complete")
-		if err := a.natsConn.Publish(m.Reply, nil); err != nil {
-			a.onError(TaskStateDead, err)
 		}
 		atomic.AddInt64(&a.mysqlContext.TotalRowsCopied, dumpData.TotalCount)
 		atomic.StoreInt64(&a.rowCopyCompleteFlag, 1)
@@ -794,7 +792,10 @@ func (a *Applier) initiateStreaming() error {
 				for _, binlogEntry := range binlogEntries.Entries {
 					binlogEntry.SpanContext = replySpan.Context()
 					a.applyDataEntryQueue <- binlogEntry
-					a.currentCoordinates.RetrievedGtidSet = binlogEntry.Coordinates.GetGtidForThisTx()
+					//a.retrievedGtidSet = ""
+					// It costs quite a lot to maintain the set, and retrievedGtidSet is not
+					// as necessary as executedGtidSet. So I removed it.
+					// Union incoming TX gtid with current set if you want to set it.
 					atomic.AddInt64(&a.mysqlContext.DeltaEstimate, 1)
 				}
 				a.mysqlContext.Stage = common.StageWaitingForMasterToSendEvent
@@ -1374,7 +1375,14 @@ func (a *Applier) Stats() (*common.TaskStatistics, error) {
 		ETA:                eta,
 		Backlog:            backlog,
 		Stage:              a.mysqlContext.Stage,
-		CurrentCoordinates: a.currentCoordinates,
+		CurrentCoordinates: &common.CurrentCoordinates{
+			File:               a.mysqlContext.BinlogFile,
+			Position:           a.mysqlContext.BinlogPos,
+			GtidSet:            a.mysqlContext.Gtid, // TODO
+			RelayMasterLogFile: "",
+			ReadMasterLogPos:   0,
+			RetrievedGtidSet:   "",
+		},
 		BufferStat:  common.BufferStat{
 			ApplierTxQueueSize:      0, // TODO remove
 			ApplierGroupTxQueueSize: 0,
