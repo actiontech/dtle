@@ -1,4 +1,4 @@
-package mysql
+package common
 
 import (
 	"io"

@@ -18,8 +18,6 @@ import (
 	"github.com/opentracing/opentracing-go/ext"
 
 	"bytes"
-	"encoding/gob"
-
 	"math"
 	"strconv"
 	"strings"
@@ -27,7 +25,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/golang/snappy"
 	gonats "github.com/nats-io/go-nats"
 	gomysql "github.com/siddontang/go-mysql/mysql"
 
@@ -222,7 +219,7 @@ type Applier struct {
 	rowCopyCompleteFlag int64
 	// copyRowsQueue should not be buffered; if buffered some non-damaging but
 	//  excessive work happens at the end of the iteration as new copy-jobs arrive befroe realizing the copy is complete
-	copyRowsQueue           chan *DumpEntry
+	copyRowsQueue           chan *common.DumpEntry
 	applyDataEntryQueue     chan *binlog.BinlogEntry
 	// only TX can be executed should be put into this chan
 	applyBinlogMtsTxQueue chan *binlog.BinlogEntry
@@ -262,7 +259,7 @@ func NewApplier(
 		currentCoordinates:      &common.CurrentCoordinates{},
 		tableItems:              make(mapSchemaTableItems),
 		rowCopyComplete:         make(chan bool, 1),
-		copyRowsQueue:           make(chan *DumpEntry, 24),
+		copyRowsQueue:           make(chan *common.DumpEntry, 24),
 		applyDataEntryQueue:     make(chan *binlog.BinlogEntry, cfg.ReplChanBufferSize*2),
 		applyBinlogMtsTxQueue:   make(chan *binlog.BinlogEntry, cfg.ReplChanBufferSize*2),
 		waitCh:                  make(chan *drivers.ExitResult, 1),
@@ -469,33 +466,6 @@ func (a *Applier) initNatSubClient() (err error) {
 	a.logger.Debug("mysql.applier: Connect nats server %v", natsAddr)
 	a.natsConn = sc
 	return nil
-}
-func DecodeDumpEntry(data []byte) (entry *DumpEntry, err error) {
-	msg, err := snappy.Decode(nil, data)
-	if err != nil {
-		return nil, err
-	}
-
-	entry = &DumpEntry{}
-	n, err := entry.Unmarshal(msg)
-	if err != nil {
-		return nil, err
-	}
-	if n != uint64(len(msg)) {
-		return nil, fmt.Errorf("DumpEntry.Unmarshal: not all consumed. data: %v, consumed: %v",
-			len(msg), n)
-	}
-	return entry, nil
-}
-
-// Decode
-func Decode(data []byte, vPtr interface{}) (err error) {
-	msg, err := snappy.Decode(nil, data)
-	if err != nil {
-		return err
-	}
-
-	return gob.NewDecoder(bytes.NewBuffer(msg)).Decode(vPtr)
 }
 
 func (a *Applier) setTableItemForBinlogEntry(binlogEntry *binlog.BinlogEntry) error {
@@ -725,7 +695,7 @@ func (a *Applier) initiateStreaming() error {
 		replySpan := tracer.StartSpan("Service Responder", ext.SpanKindRPCServer, ext.RPCServerOption(sc))
 		ext.MessageBusDestination.Set(replySpan, m.Subject)
 		defer replySpan.Finish()
-		dumpData, err := DecodeDumpEntry(t.Bytes())
+		dumpData, err := common.DecodeDumpEntry(t.Bytes())
 		if err != nil {
 			a.onError(TaskStateDead, err)
 			// TODO return?
@@ -766,7 +736,7 @@ func (a *Applier) initiateStreaming() error {
 		replySpan := tracer.StartSpan("Service Responder", ext.SpanKindRPCServer, ext.RPCServerOption(sc))
 		ext.MessageBusDestination.Set(replySpan, m.Subject)
 		defer replySpan.Finish()
-		if err := Decode(t.Bytes(), dumpData); err != nil {
+		if err := common.Decode(t.Bytes(), dumpData); err != nil {
 			a.onError(TaskStateDead, err)
 		}
 		a.currentCoordinates.RetrievedGtidSet = dumpData.Gtid
@@ -806,7 +776,7 @@ func (a *Applier) initiateStreaming() error {
 		replySpan := tracer.StartSpan("nast : dest to get data  ", ext.SpanKindRPCServer, ext.RPCServerOption(spanContext))
 		ext.MessageBusDestination.Set(replySpan, m.Subject)
 		defer replySpan.Finish()
-		if err := Decode(t.Bytes(), &binlogEntries); err != nil {
+		if err := common.Decode(t.Bytes(), &binlogEntries); err != nil {
 			a.onError(TaskStateDead, err)
 		}
 
@@ -1238,7 +1208,7 @@ func (a *Applier) ApplyBinlogEvent(ctx context.Context, workerIdx int, binlogEnt
 	return nil
 }
 
-func (a *Applier) ApplyEventQueries(db *gosql.DB, entry *DumpEntry) error {
+func (a *Applier) ApplyEventQueries(db *gosql.DB, entry *common.DumpEntry) error {
 	if a.stubFullApplyDelay != 0 {
 		a.logger.Debug("mysql.applier: stubFullApplyDelay start sleep")
 		time.Sleep(a.stubFullApplyDelay)
