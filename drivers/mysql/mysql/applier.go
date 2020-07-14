@@ -205,17 +205,18 @@ type Applier struct {
 	subject            string
 	mysqlContext       *config.MySQLDriverConfig
 
-	NatsAddr        string
-	MySQLVersion    string
-	MySQLServerUuid string
+	NatsAddr          string
+	MySQLVersion      string
+	MySQLServerUuid   string
+	TotalRowsReplayed int64
+	TotalDeltaCopied  int64
 
 	dbs              []*sql.Conn
 	db               *gosql.DB
 	gtidExecuted     base.GtidSet
 	tableItems       mapSchemaTableItems
 
-	rowCopyComplete     chan bool
-	rowCopyCompleteFlag int64
+	rowCopyComplete     chan struct{}
 	// copyRowsQueue should not be buffered; if buffered some non-damaging but
 	//  excessive work happens at the end of the iteration as new copy-jobs arrive befroe realizing the copy is complete
 	copyRowsQueue           chan *common.DumpEntry
@@ -256,7 +257,7 @@ func NewApplier(
 		mysqlContext:            cfg,
 		NatsAddr:                natsAddr,
 		tableItems:              make(mapSchemaTableItems),
-		rowCopyComplete:         make(chan bool, 1),
+		rowCopyComplete:         make(chan struct{}),
 		copyRowsQueue:           make(chan *common.DumpEntry, 24),
 		applyDataEntryQueue:     make(chan *binlog.BinlogEntry, cfg.ReplChanBufferSize*2),
 		applyBinlogMtsTxQueue:   make(chan *binlog.BinlogEntry, cfg.ReplChanBufferSize*2),
@@ -402,8 +403,14 @@ func (a *Applier) Run() {
 func (a *Applier) executeWriteFuncs() {
 	if a.mysqlContext.Gtid == "" {
 		go func() {
+			t10 := time.NewTimer(10 * time.Second)
 			var stopLoop = false
 			for !stopLoop {
+				if !t10.Stop() {
+					<-t10.C
+				}
+				t10.Reset(10 * time.Second)
+
 				select {
 				case copyRows := <-a.copyRowsQueue:
 					if nil != copyRows {
@@ -412,8 +419,10 @@ func (a *Applier) executeWriteFuncs() {
 							a.onError(TaskStateDead, err)
 						}
 					}
-					if atomic.LoadInt64(&a.nDumpEntry) < 0 {
-						a.onError(TaskStateDead, fmt.Errorf("DTLE_BUG"))
+					if atomic.LoadInt64(&a.nDumpEntry) <= 0 {
+						err := fmt.Errorf("DTLE_BUG a.nDumpEntry <= 0")
+						a.logger.Error(err.Error())
+						a.onError(TaskStateDead, err)
 					} else {
 						atomic.AddInt64(&a.nDumpEntry, -1)
 					}
@@ -421,27 +430,13 @@ func (a *Applier) executeWriteFuncs() {
 					stopLoop = true
 				case <-a.shutdownCh:
 					stopLoop = true
-				case <-time.After(10 * time.Second):
+				case <-t10.C:
 					a.logger.Debug("mysql.applier: no copyRows for 10s.")
 				}
 			}
 		}()
-	}
-
-	if a.mysqlContext.Gtid == "" { // full copy
 		a.logger.Info("mysql.applier: Operating until row copy is complete")
 		a.mysqlContext.Stage = common.StageSlaveWaitingForWorkersToProcessQueue
-		for {
-			if atomic.LoadInt64(&a.rowCopyCompleteFlag) == 1 && a.mysqlContext.TotalRowsCopied == a.mysqlContext.TotalRowsReplay {
-				a.rowCopyComplete <- true
-				a.logger.Info("mysql.applier: Rows copy complete.number of rows:%d", a.mysqlContext.TotalRowsReplay)
-				break
-			}
-			if a.shutdown {
-				break
-			}
-			time.Sleep(time.Second)
-		}
 	}
 }
 
@@ -689,8 +684,8 @@ func (a *Applier) initiateStreaming() error {
 		defer replySpan.Finish()
 		dumpData, err := common.DecodeDumpEntry(t.Bytes())
 		if err != nil {
-			a.onError(TaskStateDead, err)
-			// TODO return?
+			a.onError(TaskStateDead, errors.Wrap(err, "DecodeDumpEntry"))
+			return
 		}
 
 		timer := time.NewTimer(DefaultConnectWait / 2)
@@ -717,11 +712,6 @@ func (a *Applier) initiateStreaming() error {
 	}*/
 
 	_, err = a.natsConn.Subscribe(fmt.Sprintf("%s_full_complete", a.subject), func(m *gonats.Msg) {
-		a.logger.Debug("mysql.applier. ack full_complete")
-		if err := a.natsConn.Publish(m.Reply, nil); err != nil {
-			a.onError(TaskStateDead, err)
-		}
-
 		dumpData := &dumpStatResult{}
 		t := not.NewTraceMsg(m)
 		// Extract the span context from the request message.
@@ -734,16 +724,19 @@ func (a *Applier) initiateStreaming() error {
 		ext.MessageBusDestination.Set(replySpan, m.Subject)
 		defer replySpan.Finish()
 		if err := common.Decode(t.Bytes(), dumpData); err != nil {
-			a.onError(TaskStateDead, err)
+			a.onError(TaskStateDead, errors.Wrap(err, "Decode"))
+			return
 		}
 		a.mysqlContext.Gtid = dumpData.Gtid
 		a.mysqlContext.BinlogFile = dumpData.LogFile
 		a.mysqlContext.BinlogPos = dumpData.LogPos
+		atomic.AddInt64(&a.mysqlContext.TotalRowsCopied, dumpData.TotalCount)
 
 		a.logger.Info("mysql.applier: got gtid from extractor", "gtid", a.mysqlContext.Gtid)
 		a.gtidSet, err = DtleParseMysqlGTIDSet(a.mysqlContext.Gtid)
 		if err != nil {
-			a.onError(TaskStateDead, err)
+			a.onError(TaskStateDead, errors.Wrap(err, "DtleParseMysqlGTIDSet"))
+			return
 		}
 
 		a.mysqlContext.Stage = common.StageSlaveWaitingForWorkersToProcessQueue
@@ -755,8 +748,14 @@ func (a *Applier) initiateStreaming() error {
 				return
 			}
 		}
-		atomic.AddInt64(&a.mysqlContext.TotalRowsCopied, dumpData.TotalCount)
-		atomic.StoreInt64(&a.rowCopyCompleteFlag, 1)
+		a.logger.Info("mysql.applier: Rows copy complete.number of rows:%d", a.TotalRowsReplayed)
+		close(a.rowCopyComplete)
+
+		a.logger.Debug("mysql.applier. ack full_complete")
+		if err := a.natsConn.Publish(m.Reply, nil); err != nil {
+			a.onError(TaskStateDead, errors.Wrap(err, "Publish"))
+			return
+		}
 	})
 	if err != nil {
 		return err
@@ -1205,7 +1204,7 @@ func (a *Applier) ApplyBinlogEvent(ctx context.Context, workerIdx int, binlogEnt
 
 	// no error
 	a.mysqlContext.Stage = common.StageWaitingForGtidToBeCommitted
-	atomic.AddInt64(&a.mysqlContext.TotalDeltaCopied, 1)
+	atomic.AddInt64(&a.TotalDeltaCopied, 1)
 	return nil
 }
 
@@ -1248,7 +1247,7 @@ func (a *Applier) ApplyEventQueries(db *gosql.DB, entry *common.DumpEntry) error
 		if err := tx.Commit(); err != nil {
 			a.onError(TaskStateDead, err)
 		}
-		atomic.AddInt64(&a.mysqlContext.TotalRowsReplay, entry.RowsCount)
+		atomic.AddInt64(&a.TotalRowsReplayed, entry.RowsCount)
 	}()
 	sessionQuery := `SET @@session.foreign_key_checks = 0`
 	if _, err := tx.Exec(sessionQuery); err != nil {
@@ -1326,9 +1325,9 @@ func (a *Applier) ApplyEventQueries(db *gosql.DB, entry *common.DumpEntry) error
 }
 
 func (a *Applier) Stats() (*common.TaskStatistics, error) {
-	totalRowsReplay := a.mysqlContext.GetTotalRowsReplay()
+	totalRowsReplay := a.TotalRowsReplayed
 	rowsEstimate := atomic.LoadInt64(&a.mysqlContext.RowsEstimate)
-	totalDeltaCopied := a.mysqlContext.GetTotalDeltaCopied()
+	totalDeltaCopied := a.TotalDeltaCopied
 	deltaEstimate := atomic.LoadInt64(&a.mysqlContext.DeltaEstimate)
 
 	var progressPct float64
@@ -1354,7 +1353,7 @@ func (a *Applier) Stats() (*common.TaskStatistics, error) {
 	} else if progressPct >= 1.0 {
 		elapsedRowCopySeconds := a.mysqlContext.ElapsedRowCopyTime().Seconds()
 		totalExpectedSeconds := elapsedRowCopySeconds * float64(rowsEstimate) / float64(totalRowsReplay)
-		if atomic.LoadInt64(&a.rowCopyCompleteFlag) == 1 {
+		if a.mysqlContext.Gtid != "" {
 			totalExpectedSeconds = elapsedRowCopySeconds * float64(deltaEstimate) / float64(totalDeltaCopied)
 		}
 		etaSeconds = totalExpectedSeconds - elapsedRowCopySeconds

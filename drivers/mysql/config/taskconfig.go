@@ -84,9 +84,7 @@ type MySQLDriverConfig struct {
 	BinlogRowImage   string
 	RowCopyStartTime time.Time
 	RowCopyEndTime   time.Time
-	TotalDeltaCopied int64
 	TotalRowsCopied  int64
-	TotalRowsReplay  int64
 
 	Stage string
 }
@@ -118,14 +116,6 @@ func (m *MySQLDriverConfig) ElapsedRowCopyTime() time.Duration {
 // This is not exactly the same as the rows being iterated via chunks, but potentially close enough
 func (m *MySQLDriverConfig) GetTotalRowsCopied() int64 {
 	return atomic.LoadInt64(&m.TotalRowsCopied)
-}
-
-func (m *MySQLDriverConfig) GetTotalRowsReplay() int64 {
-	return atomic.LoadInt64(&m.TotalRowsReplay)
-}
-
-func (m *MySQLDriverConfig) GetTotalDeltaCopied() int64 {
-	return atomic.LoadInt64(&m.TotalDeltaCopied)
 }
 
 type KafkaConfig struct {
