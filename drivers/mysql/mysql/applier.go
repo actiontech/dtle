@@ -730,7 +730,6 @@ func (a *Applier) initiateStreaming() error {
 		a.mysqlContext.Gtid = dumpData.Gtid
 		a.mysqlContext.BinlogFile = dumpData.LogFile
 		a.mysqlContext.BinlogPos = dumpData.LogPos
-		atomic.AddInt64(&a.mysqlContext.TotalRowsCopied, dumpData.TotalCount)
 
 		a.logger.Info("mysql.applier: got gtid from extractor", "gtid", a.mysqlContext.Gtid)
 		a.gtidSet, err = DtleParseMysqlGTIDSet(a.mysqlContext.Gtid)
