@@ -126,11 +126,13 @@ func (h *taskHandle) Destroy() bool {
 	h.stateLock.RLock()
 	//driver.des
 	h.cancelFunc()
-	err := h.runner.Shutdown()
-	if err != nil {
-		h.logger.Error("error in h.runner.Shutdown", "err", err)
+	if h.runner != nil {
+		err := h.runner.Shutdown()
+		if err != nil {
+			h.logger.Error("error in h.runner.Shutdown", "err", err)
+		}
 	}
-	return h.procState == drivers.TaskStateRunning
+	return h.procState == drivers.TaskStateExited
 }
 
 type DriverHandle interface {
