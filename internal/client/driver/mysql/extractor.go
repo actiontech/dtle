@@ -218,12 +218,14 @@ func (e *Extractor) Run() {
 		e.onError(TaskStateDead, err)
 		return
 	}
+	e.logger.Debugf("sendSysVarAndSqlMode. after")
 
 	go func() {
-		if e.mysqlContext.SkipIncrementalCopy {
+		<-e.gotCoordinateCh
 
+		if e.mysqlContext.SkipIncrementalCopy {
+			// empty
 		} else {
-			<-e.gotCoordinateCh
 			if !e.mysqlContext.BinlogRelay {
 				// This must be after `<-e.gotCoordinateCh` or there will be a deadlock
 				<-e.fullCopyDone
@@ -250,6 +252,7 @@ func (e *Extractor) Run() {
 	}()
 
 	if fullCopy {
+		e.logger.Debugf("mysqlDump. before")
 		var ctx context.Context
 		span := opentracing.GlobalTracer().StartSpan("span_full_complete")
 		defer span.Finish()
