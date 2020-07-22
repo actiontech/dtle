@@ -67,6 +67,10 @@ type Extractor struct {
 	sqlMode           string
 	MySQLVersion      string
 	TotalTransferredBytes int
+	// Original comment: TotalRowsCopied returns the accurate number of rows being copied (affected)
+	// This is not exactly the same as the rows being iterated via chunks, but potentially close enough.
+	// TODO What is the difference between mysqlContext.RowsEstimate ?
+	TotalRowsCopied  int64
 	NatsAddr          string
 
 	mysqlVersionDigit int
@@ -273,7 +277,6 @@ func (e *Extractor) Run() {
 			Gtid:       e.initialBinlogCoordinates.GtidSet,
 			LogFile:    e.initialBinlogCoordinates.LogFile,
 			LogPos:     e.initialBinlogCoordinates.LogPos,
-			TotalCount: e.mysqlContext.RowsEstimate,
 		})
 		if err != nil {
 			e.onError(TaskStateDead, err)
@@ -1296,7 +1299,7 @@ func (e *Extractor) mysqlDump() error {
 					RowsCount:  1,
 				}
 				atomic.AddInt64(&e.mysqlContext.RowsEstimate, 1)
-				atomic.AddInt64(&e.mysqlContext.TotalRowsCopied, 1)
+				atomic.AddInt64(&e.TotalRowsCopied, 1)
 				if err := e.encodeDumpEntry(entry); err != nil {
 					e.onError(TaskStateRestart, err)
 				}
@@ -1320,7 +1323,7 @@ func (e *Extractor) mysqlDump() error {
 				RowsCount:  1,
 			}
 			atomic.AddInt64(&e.mysqlContext.RowsEstimate, 1)
-			atomic.AddInt64(&e.mysqlContext.TotalRowsCopied, 1)
+			atomic.AddInt64(&e.TotalRowsCopied, 1)
 			if err := e.encodeDumpEntry(entry); err != nil {
 				e.onError(TaskStateRestart, err)
 			}
@@ -1369,7 +1372,7 @@ func (e *Extractor) mysqlDump() error {
 					if err = e.encodeDumpEntry(entry); err != nil {
 						e.onError(TaskStateRestart, err)
 					}
-					atomic.AddInt64(&e.mysqlContext.TotalRowsCopied, entry.RowsCount)
+					atomic.AddInt64(&e.TotalRowsCopied, entry.RowsCount)
 				}
 			}
 
@@ -1384,7 +1387,7 @@ func (e *Extractor) mysqlDump() error {
 	// First mark the snapshot as complete and then apply the updated offset to the buffered record ...
 	stop := common.CurrentTimeMillis()
 	e.logger.Info("mysql.extractor: Step %d: scanned %d rows in %d tables in %s",
-		step, e.mysqlContext.TotalRowsCopied, e.tableCount, time.Duration(stop-startScan))
+		step, e.TotalRowsCopied, e.tableCount, time.Duration(stop-startScan))
 	step++
 
 	return nil
@@ -1408,7 +1411,7 @@ func (e *Extractor) encodeDumpEntry(entry *common.DumpEntry) error {
 }
 
 func (e *Extractor) Stats() (*common.TaskStatistics, error) {
-	totalRowsCopied := e.mysqlContext.GetTotalRowsCopied()
+	totalRowsCopied := atomic.LoadInt64(&e.TotalRowsCopied)
 	rowsEstimate := atomic.LoadInt64(&e.mysqlContext.RowsEstimate)
 	deltaEstimate := atomic.LoadInt64(&e.mysqlContext.DeltaEstimate)
 	if atomic.LoadInt64(&e.rowCopyCompleteFlag) == 1 {

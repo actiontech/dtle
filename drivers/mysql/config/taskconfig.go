@@ -2,7 +2,6 @@ package config
 
 import (
 	"github.com/actiontech/dtle/drivers/mysql/mysql/mysqlconfig"
-	"sync/atomic"
 	"time"
 )
 
@@ -84,9 +83,6 @@ type MySQLDriverConfig struct {
 	BinlogRowImage   string
 	RowCopyStartTime time.Time
 	RowCopyEndTime   time.Time
-	TotalDeltaCopied int64
-	TotalRowsCopied  int64
-	TotalRowsReplay  int64
 
 	Stage string
 }
@@ -112,20 +108,6 @@ func (m *MySQLDriverConfig) ElapsedRowCopyTime() time.Duration {
 		return time.Since(m.RowCopyStartTime)
 	}
 	return m.RowCopyEndTime.Sub(m.RowCopyStartTime)
-}
-
-// GetTotalRowsCopied returns the accurate number of rows being copied (affected)
-// This is not exactly the same as the rows being iterated via chunks, but potentially close enough
-func (m *MySQLDriverConfig) GetTotalRowsCopied() int64 {
-	return atomic.LoadInt64(&m.TotalRowsCopied)
-}
-
-func (m *MySQLDriverConfig) GetTotalRowsReplay() int64 {
-	return atomic.LoadInt64(&m.TotalRowsReplay)
-}
-
-func (m *MySQLDriverConfig) GetTotalDeltaCopied() int64 {
-	return atomic.LoadInt64(&m.TotalDeltaCopied)
 }
 
 type KafkaConfig struct {
