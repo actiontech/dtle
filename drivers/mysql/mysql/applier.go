@@ -199,9 +199,9 @@ func (mm *MtsManager) Executed(binlogEntry *binlog.BinlogEntry) {
 }
 
 type Applier struct {
-	logger             hclog.Logger
-	subject            string
-	mysqlContext       *config.MySQLDriverConfig
+	logger       hclog.Logger
+	subject      string
+	mysqlContext *config.MySQLDriverConfig
 
 	NatsAddr          string
 	MySQLVersion      string
@@ -209,16 +209,16 @@ type Applier struct {
 	TotalRowsReplayed int64
 	TotalDeltaCopied  int64
 
-	dbs              []*sql.Conn
-	db               *gosql.DB
-	gtidExecuted     base.GtidSet
-	tableItems       mapSchemaTableItems
+	dbs         []*sql.Conn
+	db          *gosql.DB
+	gtidItemMap base.GtidItemMap
+	tableItems  mapSchemaTableItems
 
-	rowCopyComplete     chan struct{}
+	rowCopyComplete chan struct{}
 	// copyRowsQueue should not be buffered; if buffered some non-damaging but
 	//  excessive work happens at the end of the iteration as new copy-jobs arrive befroe realizing the copy is complete
-	copyRowsQueue           chan *common.DumpEntry
-	applyDataEntryQueue     chan *binlog.BinlogEntry
+	copyRowsQueue       chan *common.DumpEntry
+	applyDataEntryQueue chan *binlog.BinlogEntry
 	// only TX can be executed should be put into this chan
 	applyBinlogMtsTxQueue chan *binlog.BinlogEntry
 
@@ -239,8 +239,8 @@ type Applier struct {
 
 	gtidSet *gomysql.MysqlGTIDSet
 
-	storeManager       *common.StoreManager
-	lastSavedGtid      string
+	storeManager  *common.StoreManager
+	gtidCh        chan *base.BinlogCoordinateTx
 }
 
 func NewApplier(
@@ -263,6 +263,7 @@ func NewApplier(
 		shutdownCh:              make(chan struct{}),
 		printTps:                os.Getenv(g.ENV_PRINT_TPS) != "",
 		storeManager:            storeManager,
+		gtidCh:                  make(chan *base.BinlogCoordinateTx, 4096),
 	}
 	stubFullApplyDelayStr := os.Getenv(g.ENV_FULL_APPLY_DELAY)
 	if stubFullApplyDelayStr == "" {
@@ -282,30 +283,44 @@ func NewApplier(
 
 func (a *Applier) updateGtidLoop() {
 	updateGtidInterval := 15 * time.Second
-	for !a.shutdown {
-		//t := time.NewTimer(updateGtidInterval)
-		//select {
-		//case <-t.C:
-		//case <-updateNowCh:
-		//case <-a.shutdownCh:
-		//}
-		time.Sleep(updateGtidInterval)
-		if a.mysqlContext.Gtid != a.lastSavedGtid {
-			// TODO thread safety.
-			a.logger.Debug("SaveGtidForJob", "job", a.subject, "gtid", a.mysqlContext.Gtid)
-			err := a.storeManager.SaveGtidForJob(a.subject, a.mysqlContext.Gtid)
-			if err != nil {
-				a.onError(TaskStateDead, errors.Wrap(err, "SaveGtidForJob"))
-				return
-			}
-			a.lastSavedGtid = a.mysqlContext.Gtid
 
-			err = a.storeManager.SaveBinlogFilePosForJob(a.subject,
-				a.mysqlContext.BinlogFile, int(a.mysqlContext.BinlogPos))
-			if err != nil {
-				a.onError(TaskStateDead, errors.Wrap(err, "SaveBinlogFilePosForJob"))
-				return
+	updated := false
+	for !a.shutdown {
+		t := time.NewTimer(updateGtidInterval)
+		select {
+		case <-a.shutdownCh:
+			return
+		case <-t.C: // this must be prior to gtidCh
+			if updated {
+				updated = false
+
+				gtid := a.gtidSet.String()
+				a.mysqlContext.Gtid = gtid
+
+				a.logger.Debug("SaveGtidForJob", "job", a.subject, "gtid", gtid)
+				err := a.storeManager.SaveGtidForJob(a.subject, gtid)
+				if err != nil {
+					a.onError(TaskStateDead, errors.Wrap(err, "SaveGtidForJob"))
+					return
+				}
+
+				err = a.storeManager.SaveBinlogFilePosForJob(a.subject,
+					a.mysqlContext.BinlogFile, int(a.mysqlContext.BinlogPos))
+				if err != nil {
+					a.onError(TaskStateDead, errors.Wrap(err, "SaveBinlogFilePosForJob"))
+					return
+				}
+
+				t.Reset(updateGtidInterval)
 			}
+		case coord := <-a.gtidCh:
+			updated = true
+			common.UpdateGtidSet(a.gtidSet, coord.GetSid(), coord.SID, coord.GNO)
+			if a.mysqlContext.BinlogFile != coord.LogFile {
+				a.mysqlContext.BinlogFile = coord.LogFile
+				a.publishProgress()
+			}
+			a.mysqlContext.BinlogPos = coord.LogPos
 		}
 	}
 }
@@ -373,6 +388,13 @@ func (a *Applier) Run() {
 		a.onError(TaskStateDead, err)
 		return
 	}
+
+	a.gtidItemMap, err = SelectAllGtidExecuted(a.db, a.subject, a.gtidSet)
+	if err != nil {
+		a.onError(TaskStateDead, err)
+		return
+	}
+
 	a.logger.Debug("initNatSubClient")
 	if err := a.initNatSubClient(); err != nil {
 		a.onError(TaskStateDead, err)
@@ -502,22 +524,15 @@ func (a *Applier) heterogeneousReplay() {
 				continue
 			}
 			// region TestIfExecuted
-			if a.gtidExecuted == nil {
-				// udup crash recovery or never executed
-				a.gtidExecuted, err = SelectAllGtidExecuted(a.db, a.subject)
-				if err != nil {
-					a.onError(TaskStateDead, err)
-					return
-				}
-			}
 			txSid := binlogEntry.Coordinates.GetSid()
 
-			gtidSetItem, hasSid := a.gtidExecuted[binlogEntry.Coordinates.SID]
+			gtidSetItem, hasSid := a.gtidItemMap[binlogEntry.Coordinates.SID]
 			if !hasSid {
-				gtidSetItem = &base.GtidExecutedItem{}
-				a.gtidExecuted[binlogEntry.Coordinates.SID] = gtidSetItem
+				gtidSetItem = &base.GtidItem{}
+				a.gtidItemMap[binlogEntry.Coordinates.SID] = gtidSetItem
 			}
-			if base.IntervalSlicesContainOne(gtidSetItem.Intervals, binlogEntry.Coordinates.GNO) {
+			intervals := a.gtidSet.Sets[binlogEntry.Coordinates.GetSid()].Intervals
+			if base.IntervalSlicesContainOne(intervals, binlogEntry.Coordinates.GNO) {
 				// entry executed
 				a.logger.Debug("skip an executed tx", "sid", txSid, "gno", binlogEntry.Coordinates.GNO)
 				continue
@@ -534,7 +549,7 @@ func (a *Applier) heterogeneousReplay() {
 
 			a.logger.Debug("gtidSetItem", "NRow", gtidSetItem.NRow)
 			if gtidSetItem.NRow >= cleanupGtidExecutedLimit {
-				err = a.cleanGtidExecuted(binlogEntry.Coordinates.SID, base.StringInterval(gtidSetItem.Intervals))
+				err = a.cleanGtidExecuted(binlogEntry.Coordinates.SID, base.StringInterval(intervals))
 				if err != nil {
 					a.onError(TaskStateDead, err)
 					return
@@ -542,13 +557,7 @@ func (a *Applier) heterogeneousReplay() {
 				gtidSetItem.NRow = 1
 			}
 
-			thisInterval := gomysql.Interval{Start: binlogEntry.Coordinates.GNO, Stop: binlogEntry.Coordinates.GNO + 1}
-
 			gtidSetItem.NRow += 1
-			// TODO normalize may affect oringinal intervals
-			newInterval := append(gtidSetItem.Intervals, thisInterval).Normalize()
-			// TODO this is assigned before real execution
-			gtidSetItem.Intervals = newInterval
 			if binlogEntry.Coordinates.SeqenceNumber == 0 {
 				// MySQL 5.6: non mts
 				err := a.setTableItemForBinlogEntry(binlogEntry)
@@ -615,15 +624,6 @@ func (a *Applier) heterogeneousReplay() {
 				a.applyBinlogMtsTxQueue <- binlogEntry
 			}
 			span.Finish()
-			if !a.shutdown {
-				common.UpdateGtidSet(a.gtidSet, txSid, binlogEntry.Coordinates.SID, binlogEntry.Coordinates.GNO)
-				a.updateGtidString()
-				if a.mysqlContext.BinlogFile != binlogEntry.Coordinates.LogFile {
-					a.mysqlContext.BinlogFile = binlogEntry.Coordinates.LogFile
-					a.publishProgress()
-				}
-				a.mysqlContext.BinlogPos = binlogEntry.Coordinates.LogPos
-			}
 		case <-time.After(10 * time.Second):
 			a.logger.Debug("no binlogEntry for 10s")
 		case <-a.shutdownCh:
@@ -1105,6 +1105,7 @@ func (a *Applier) ApplyBinlogEvent(ctx context.Context, workerIdx int, binlogEnt
 			a.onError(TaskStateDead, err)
 		} else {
 			a.mtsManager.Executed(binlogEntry)
+			a.gtidCh <- &binlogEntry.Coordinates
 		}
 		if a.printTps {
 			atomic.AddUint32(&a.txLastNSeconds, 1)
@@ -1395,11 +1396,6 @@ func (a *Applier) Stats() (*common.TaskStatistics, error) {
 	}
 
 	return &taskResUsage, nil
-}
-
-func (a *Applier) updateGtidString() {
-	a.mysqlContext.Gtid = a.gtidSet.String()
-	a.logger.Debug("updateGtidString", "gtid", a.mysqlContext.Gtid)
 }
 
 func (a *Applier) onError(state int, err error) {

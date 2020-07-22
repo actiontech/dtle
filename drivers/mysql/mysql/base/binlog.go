@@ -90,10 +90,9 @@ func (b *BinlogCoordinateTx) GetGtidForThisTx() string {
 	return fmt.Sprintf("%s:%d", b.GetSid(), b.GNO)
 }
 
-type GtidSet map[uuid.UUID]*GtidExecutedItem
-type GtidExecutedItem struct {
+type GtidItemMap map[uuid.UUID]*GtidItem
+type GtidItem struct {
 	NRow      int
-	Intervals gomysql.IntervalSlice
 }
 
 func IntervalSlicesContainOne(intervals gomysql.IntervalSlice, gno int64) bool {

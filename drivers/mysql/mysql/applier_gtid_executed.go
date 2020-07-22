@@ -8,7 +8,7 @@ import (
 	"github.com/actiontech/dtle/drivers/mysql/mysql/sql"
 	"github.com/actiontech/dtle/g"
 	"github.com/satori/go.uuid"
-	"github.com/siddontang/go-mysql/mysql"
+	mysql "github.com/siddontang/go-mysql/mysql"
 	"strconv"
 	"strings"
 )
@@ -270,7 +270,9 @@ func parseInterval(str string) (i mysql.Interval, err error) {
 }
 
 // return: normalized GtidSet
-func SelectAllGtidExecuted(db sql.QueryAble, jid string) (gtidSet base.GtidSet, err error) {
+func SelectAllGtidExecuted(db sql.QueryAble, jid string, gtidSet *mysql.MysqlGTIDSet) (
+	itemMap base.GtidItemMap, err error) {
+
 	query := fmt.Sprintf(`SELECT source_uuid,gtid,gtid_set FROM %v.%v where job_name=?`,
 		g.DtleSchemaName, g.GtidExecutedTableV4)
 
@@ -280,7 +282,7 @@ func SelectAllGtidExecuted(db sql.QueryAble, jid string) (gtidSet base.GtidSet, 
 	}
 	defer rows.Close()
 
-	gtidSet = make(base.GtidSet)
+	itemMap = make(base.GtidItemMap)
 
 	for rows.Next() {
 		var sidUUID uuid.UUID
@@ -292,15 +294,15 @@ func SelectAllGtidExecuted(db sql.QueryAble, jid string) (gtidSet base.GtidSet, 
 			return nil, err
 		}
 
-		item, ok := gtidSet[sidUUID]
+		item, ok := itemMap[sidUUID]
 		if !ok {
-			item = &base.GtidExecutedItem{
+			item = &base.GtidItem{
 				NRow:      0,
-				Intervals: nil,
 			}
-			gtidSet[sidUUID] = item
+			itemMap[sidUUID] = item
 		}
 		item.NRow += 1
+
 		if gno == 0 {
 			sep := strings.Split(gnoSet.String, ":")
 			// Handle interval
@@ -308,21 +310,17 @@ func SelectAllGtidExecuted(db sql.QueryAble, jid string) (gtidSet base.GtidSet, 
 				if in, err := parseInterval(sep[i]); err != nil {
 					return nil, err
 				} else {
-					item.Intervals = append(item.Intervals, in)
+					gtidSet.AddSet(mysql.NewUUIDSet(sidUUID, in))
 				}
 			}
 		} else {
-			item.Intervals = append(item.Intervals, mysql.Interval{
+			gtidSet.AddSet(mysql.NewUUIDSet(sidUUID, mysql.Interval{
 				Start: gno,
 				Stop:  gno + 1,
-			})
+			}))
 		}
 	}
 
-	for sid, item := range gtidSet {
-		gtidSet[sid].Intervals = item.Intervals.Normalize()
-	}
-
-	return gtidSet, err
+	return itemMap, err
 }
 
