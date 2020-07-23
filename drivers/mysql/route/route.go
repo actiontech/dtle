@@ -185,7 +185,7 @@ func AgentSelfRequest(w http.ResponseWriter, r *http.Request, ps httprouter.Para
 }
 
 func ClientAllocRequest(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-	url := buildUrl("/v1/agent/allocation/" + ps.ByName("tokens"))
+	url := buildUrl("/v1/client/allocation/" + ps.ByName("tokens") + "/stats")
 	resp, err := http.Get(url)
 	if err != nil {
 		w.Write([]byte(err.Error()))
