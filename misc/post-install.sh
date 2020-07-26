@@ -39,8 +39,7 @@ chown -R -L dtle:dtle "$RPM_INSTALL_PREFIX/var/log/consul"
 chown -R -L dtle:dtle "$RPM_INSTALL_PREFIX/var/lib/nomad"
 chown -R -L dtle:dtle "$RPM_INSTALL_PREFIX/var/log/nomad"
 
-sed -i 's|INSTALL_PREFIX_MAGIC|'$RPM_INSTALL_PREFIX'|g' $RPM_INSTALL_PREFIX/etc/consul/*.hcl
-sed -i 's|INSTALL_PREFIX_MAGIC|'$RPM_INSTALL_PREFIX'|g' $RPM_INSTALL_PREFIX/etc/nomad/*.hcl
+sed -i 's|INSTALL_PREFIX_MAGIC|'$RPM_INSTALL_PREFIX'|g' $RPM_INSTALL_PREFIX/etc/dtle/*.hcl
 
 which systemctl &>/dev/null
 if [[ $? -eq 0 ]]; then

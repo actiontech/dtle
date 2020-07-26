@@ -39,6 +39,6 @@ EXPOSE 4646
 EXPOSE 8190
 VOLUME ["/dtle"]
 
-COPY ./nomad-docker.hcl /dtle/etc/nomad/
+COPY ./nomad-docker.hcl /dtle/etc/dtle/nomad.hcl
 
-CMD ["/dtle/usr/bin/nomad", "agent", "-config", "/dtle/etc/nomad/nomad-docker.hcl"]
+CMD ["/dtle/usr/bin/nomad", "agent", "-config", "/dtle/etc/dtle/nomad.hcl"]

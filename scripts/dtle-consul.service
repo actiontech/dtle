@@ -6,7 +6,7 @@ After=network-online.target
 [Service]
 User=dtle
 Restart=on-failure
-ExecStart=INSTALL_PREFIX_MAGIC/usr/bin/consul agent $CONSUL_FLAGS -config-file=INSTALL_PREFIX_MAGIC/etc/consul/single.hcl
+ExecStart=INSTALL_PREFIX_MAGIC/usr/bin/consul agent $CONSUL_FLAGS -config-file=INSTALL_PREFIX_MAGIC/etc/dtle/consul.hcl
 ExecReload=/usr/bin/kill -HUP $MAINPID
 KillSignal=SIGINT
 

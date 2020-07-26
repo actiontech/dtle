@@ -6,6 +6,7 @@ bind_addr = "0.0.0.0"
 
 disable_update_check = true
 
+# change ports if multiple nodes run on a same machine
 ports {
   http = 4646
   rpc  = 4647
@@ -30,7 +31,6 @@ server {
 
 client {
   enabled       = true
-  network_speed = 10
   options = {
     "driver.blacklist" = "docker,exec,java,mock,qemu,rawexec,rkt"
   }
