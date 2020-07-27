@@ -55,7 +55,8 @@ var (
 			hclspec.NewLiteral(`""`)),
 		"nomad_addr": hclspec.NewDefault(hclspec.NewAttr("nomad_addr", "string", false),
 			hclspec.NewLiteral(`"127.0.0.1:4646"`)),
-		"consul": hclspec.NewAttr("consul", "list(string)", true),
+		"consul": hclspec.NewDefault(hclspec.NewAttr("consul", "string", false),
+			hclspec.NewLiteral(`"127.0.0.1:8500"`)),
 		"data_dir": hclspec.NewDefault(hclspec.NewAttr("data_dir", "string", false),
 			hclspec.NewLiteral(`"/var/lib/nomad"`)),
 	})
@@ -273,7 +274,7 @@ type DriverConfig struct {
 	NatsAdvertise string   `codec:"nats_advertise"`
 	ApiAddr       string   `codec:"api_addr"`
 	NomadAddr     string   `codec:"nomad_addr"`
-	Consul        []string `codec:"consul"`
+	Consul        string `codec:"consul"`
 	DataDir       string   `codec:"data_dir"`
 }
 
@@ -298,7 +299,7 @@ func (d *Driver) SetConfig(c *base.Config) (err error) {
 		// This test avoids extra setup.
 		return nil
 	} else {
-		d.storeManager, err = common.NewStoreManager(d.config.Consul)
+		d.storeManager, err = common.NewStoreManager([]string{d.config.Consul})
 		if err != nil {
 			return err
 		}

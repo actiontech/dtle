@@ -5,9 +5,9 @@ ui = true
 
 disable_update_check = true
 
-// Address that should be bound to for internal cluster communications
+# Address that should be bound to for internal cluster communications
 bind_addr = "0.0.0.0"
-// Address to which Consul will bind client interfaces, including the HTTP and DNS servers
+# Address to which Consul will bind client interfaces, including the HTTP and DNS servers
 client_addr = "127.0.0.1"
 advertise_addr = "127.0.0.1"
 ports = {
