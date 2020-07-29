@@ -748,7 +748,12 @@ func (a *Applier) initiateStreaming() error {
 			}
 		}
 		a.logger.Info("mysql.applier: Rows copy complete.number of rows:%d", a.TotalRowsReplayed)
-		close(a.rowCopyComplete)
+		select {
+		case <-a.rowCopyComplete:
+			// chan already closed (this _full_complete msg is repeated)
+		default:
+			close(a.rowCopyComplete)
+		}
 
 		a.logger.Debug("mysql.applier. ack full_complete")
 		if err := a.natsConn.Publish(m.Reply, nil); err != nil {
