@@ -193,7 +193,7 @@ func (e *Extractor) Run() {
 				return
 			}
 			e.mysqlContext.Gtid = coord.GtidSet
-			e.logger.Debug("use auto gtid: %v", coord.GtidSet)
+			e.logger.Debug("use auto gtid", "gtidset", coord.GtidSet)
 			fullCopy = false
 		}
 
@@ -248,7 +248,7 @@ func (e *Extractor) Run() {
 			go func() {
 				_, err := e.natsConn.Subscribe(fmt.Sprintf("%s_progress", e.subject), func(m *gonats.Msg) {
 					binlogFile := string(m.Data)
-					e.logger.Debug("*** progress: %v", binlogFile)
+					e.logger.Debug("*** progress", "binlogFile", binlogFile)
 					err := e.natsConn.Publish(m.Reply, nil)
 					if err != nil {
 						e.logger.Debug("*** progress reply error.", "err", err)
@@ -306,12 +306,12 @@ func (e *Extractor) Run() {
 	} else {
 		err := <-e.streamerReadyCh
 		if err != nil {
-			e.logger.Error("error after streamerReadyCh: %v", err)
+			e.logger.Error("error after streamerReadyCh", "err", err)
 			e.onError(TaskStateDead, err)
 			return
 		}
 		if err := e.initiateStreaming(); err != nil {
-			e.logger.Debug("error at initiateStreaming: %v", err)
+			e.logger.Error("error at initiateStreaming", "err", err)
 			e.onError(TaskStateDead, err)
 			return
 		}
@@ -860,11 +860,11 @@ func (e *Extractor) StreamEvents() error {
 				if err != nil {
 					return err
 				}
-				e.logger.Debug("sending gno: %v, n: %v", gno, len(entries.Entries))
+				e.logger.Debug("publish.before", "gno", gno, "n", len(entries.Entries))
 				if err = e.publish(ctx, fmt.Sprintf("%s_incr_hete", e.subject), "", txMsg); err != nil {
 					return err
 				}
-				e.logger.Debug("send acked gno: %v, n: %v", gno, len(entries.Entries))
+				e.logger.Debug("publish.after", "gno", gno, "n", len(entries.Entries))
 
 				entries.Entries = nil
 				entriesSize = 0
@@ -913,7 +913,8 @@ func (e *Extractor) StreamEvents() error {
 					e.logger.Debug("err is  : %v", err != nil)
 					if entriesSize >= e.mysqlContext.GroupMaxSize ||
 						int64(len(entries.Entries)) == e.mysqlContext.ReplChanBufferSize {
-						e.logger.Debug("incr. send by GroupLimit. entriesSize: %v , groupMaxSize: %v,Entries.len: %v", entriesSize, e.mysqlContext.GroupMaxSize, len(entries.Entries))
+						e.logger.Debug("incr. send by GroupLimit.", "entriesSize", entriesSize,
+							"groupMaxSize", e.mysqlContext.GroupMaxSize, "Entries.len", len(entries.Entries))
 						err = sendEntries()
 						if !timer.Stop() {
 							<-timer.C
@@ -924,7 +925,8 @@ func (e *Extractor) StreamEvents() error {
 				case <-timer.C:
 					nEntries := len(entries.Entries)
 					if nEntries > 0 {
-						e.logger.Debug("incr. send by timeout. entriesSize: %v,timeout time: %v", entriesSize, e.mysqlContext.GroupTimeout)
+						e.logger.Debug("incr. send by timeout.", "entriesSize", entriesSize,
+							"timeout",e.mysqlContext.GroupTimeout)
 						err = sendEntries()
 					}
 					timer.Reset(groupTimeoutDuration)
@@ -1072,7 +1074,7 @@ func (e *Extractor) sendSysVarAndSqlMode() error {
 		return err
 	}
 	setSystemVariablesStatement := e.setStatementFor()
-	e.logger.Debug("set sysvar query: %v", setSystemVariablesStatement)
+	e.logger.Debug("set sysvar query", "query", setSystemVariablesStatement)
 	if err := e.selectSqlMode(); err != nil {
 		return err
 	}

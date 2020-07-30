@@ -233,7 +233,7 @@ func (a *Applier) cleanGtidExecuted(sid uuid.UUID, intervalStr string) error {
 		return err
 	}
 
-	a.logger.Debug("compactation gtid. new interval: %v", intervalStr)
+	a.logger.Debug("compactation gtid. new interval", "intervalStr", intervalStr)
 	_, err = dbApplier.Db.ExecContext(context.TODO(),
 		fmt.Sprintf("insert into %v.%v values (?,?,0,?)", g.DtleSchemaName, g.GtidExecutedTableV4),
 		a.subject, sid.Bytes(), intervalStr)

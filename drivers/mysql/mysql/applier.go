@@ -529,7 +529,7 @@ func (a *Applier) heterogeneousReplay() {
 				binlogEntry.Coordinates.LastCommitted, binlogEntry.Coordinates.SeqenceNumber)
 
 			if binlogEntry.Coordinates.OSID == a.MySQLServerUuid {
-				a.logger.Debug("skipping a kafkas tx. osid: %v", binlogEntry.Coordinates.OSID)
+				a.logger.Debug("skipping a dtle tx. osid: %v", binlogEntry.Coordinates.OSID)
 				continue
 			}
 			// region TestIfExecuted
@@ -563,7 +563,7 @@ func (a *Applier) heterogeneousReplay() {
 				replayingBinlogFile = binlogEntry.Coordinates.LogFile
 			}
 
-			a.logger.Debug("gtidSetItem.NRow: %v", gtidSetItem.NRow)
+			a.logger.Debug("gtidSetItem", "NRow", gtidSetItem.NRow)
 			if gtidSetItem.NRow >= cleanupGtidExecutedLimit {
 				err = a.cleanGtidExecuted(binlogEntry.Coordinates.SID, base.StringInterval(gtidSetItem.Intervals))
 				if err != nil {
@@ -593,7 +593,7 @@ func (a *Applier) heterogeneousReplay() {
 				}
 			} else {
 				if rotated {
-					a.logger.Debug("binlog rotated to %v", replayingBinlogFile)
+					a.logger.Debug("binlog rotated", "file", replayingBinlogFile)
 					if !a.mtsManager.WaitForAllCommitted() {
 						return // shutdown
 					}

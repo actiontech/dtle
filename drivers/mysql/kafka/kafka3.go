@@ -103,7 +103,7 @@ func (kr *KafkaRunner) initNatSubClient() (err error) {
 	return nil
 }
 func (kr *KafkaRunner) Run() {
-	kr.logger.Debug("broker %v", kr.kafkaConfig.Brokers)
+	kr.logger.Debug("Run", "brokers", kr.kafkaConfig.Brokers)
 	var err error
 
 	kr.logger.Info("go WatchAndPutNats")
@@ -155,13 +155,13 @@ func (kr *KafkaRunner) getOrSetTable(schemaName string, tableName string, table 
 	if table == nil {
 		b, ok := a[tableName]
 		if ok {
-			kr.logger.Debug("schemaName: %v,tableName: %v,kafkas: reuse table info", schemaName, tableName)
+			kr.logger.Debug("reuse table info", "schemaName", schemaName, "tableName", tableName)
 			return b, nil
 		} else {
 			return nil, fmt.Errorf("DTLE_BUG kafkas: unknown table structure")
 		}
 	} else {
-		kr.logger.Debug("schemaName: %v,tableName: %v,kafkas: new table info", schemaName, tableName)
+		kr.logger.Debug("new table info", "schemaName", schemaName, "tableName", tableName)
 		a[tableName] = table
 		return table, nil
 	}
@@ -242,7 +242,7 @@ func (kr *KafkaRunner) initiateStreaming() error {
 		if err := kr.natsConn.Publish(m.Reply, nil); err != nil {
 			kr.onError(TaskStateDead, err)
 		}
-		kr.logger.Debug("applier. incr. ack-recv. nEntries: %v", binlogEntries.Entries)
+		kr.logger.Debug("applier. incr. ack-recv.", "nEntries", binlogEntries.Entries)
 	})
 	if err != nil {
 		return err
@@ -285,7 +285,7 @@ func (kr *KafkaRunner) kafkaTransformSnapshotData(table *mysqlconfig.Table, valu
 	var err error
 
 	tableIdent := fmt.Sprintf("%v.%v.%v", kr.kafkaMgr.Cfg.Topic, table.TableSchema, table.TableName)
-	kr.logger.Debug("kafkaTransformSnapshotData value: %v", value.ValuesX)
+	kr.logger.Debug("kafkaTransformSnapshotData", "value", value.ValuesX)
 	for _, rowValues := range value.ValuesX {
 		keyPayload := NewRow()
 		valuePayload := NewValuePayload()
@@ -386,7 +386,7 @@ func (kr *KafkaRunner) kafkaTransformSnapshotData(table *mysqlconfig.Table, valu
 			if columnList[i].IsPk() {
 				keyPayload.AddField(columnList[i].RawName, value)
 			}
-			kr.logger.Debug("kafkaTransformSnapshotData rowvalue: %v", value)
+			kr.logger.Debug("kafkaTransformSnapshotData", "rowvalue", value)
 			valuePayload.After.AddField(columnList[i].RawName, value)
 		}
 
@@ -580,11 +580,11 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry)
 			}
 
 			if before != nil {
-				kr.logger.Debug("beforeValue: %v", beforeValue)
+				kr.logger.Debug("beforeValue", "v", beforeValue)
 				before.AddField(colName, beforeValue)
 			}
 			if after != nil {
-				kr.logger.Debug("afterValue: %v", afterValue)
+				kr.logger.Debug("afterValue", "v", afterValue)
 				after.AddField(colName, afterValue)
 			}
 		}

@@ -245,7 +245,7 @@ func (b *BinlogReader) addTableToTableMap(tableMap map[string]*mysqlconfig.Table
 	}
 	whereCtx, err := mysqlconfig.NewWhereCtx(table.Where, table)
 	if err != nil {
-		b.logger.Error("Error parse where '%v'", table.Where)
+		b.logger.Error("Error parsing where", "where", table.Where, "err", err)
 		return err
 	}
 
@@ -267,8 +267,8 @@ func (b *BinlogReader) ConnectBinlogStreamer(coordinates base.BinlogCoordinatesX
 		LogFile: coordinates.LogFile,
 		LogPos:  coordinates.LogPos,
 	}
-	b.logger.Info("Connecting binlog streamer at file %v pos %v gtid %v",
-		coordinates.LogFile, coordinates.LogPos, coordinates.GtidSet)
+	b.logger.Info("Connecting binlog streamer",
+		"file", coordinates.LogFile, "pos", coordinates.LogPos, "gtid", coordinates.GtidSet)
 
 	if b.mysqlContext.BinlogRelay {
 		startPos := gomysql.Position{Pos: uint32(coordinates.LogPos), Name: coordinates.LogFile}
@@ -342,9 +342,9 @@ func (b *BinlogReader) ConnectBinlogStreamer(coordinates base.BinlogCoordinatesX
 
 				if waitForRelay {
 					if targetGtid.Contain(gs) {
-						b.logger.Debug("Relay: keep waiting. pos %v gs %v", p, gs)
+						b.logger.Debug("Relay: keep waiting.", "pos", p, "gs", gs)
 					} else {
-						b.logger.Debug("Relay: stop waiting. pos %v gs %v", p, gs)
+						b.logger.Debug("Relay: stop waiting.", "pos", p, "gs", gs)
 						chWait <- struct{}{}
 						waitForRelay = false
 					}
@@ -357,13 +357,13 @@ func (b *BinlogReader) ConnectBinlogStreamer(coordinates base.BinlogCoordinatesX
 		<-chWait
 		b.binlogStreamer, err = b.binlogReader.StartSync(startPos)
 		if err != nil {
-			b.logger.Debug("err at StartSync: %v", err)
+			b.logger.Debug("err at StartSync", "err", err)
 			return err
 		}
 	} else {
 		// Start sync with sepcified binlog gtid
 		//	b.logger.WithField("coordinate", coordinates).Debugf("will start sync")
-		b.logger.Debug("will start sync coordinate: %v", coordinates)
+		b.logger.Debug("will start sync coordinate", "coordinates", coordinates)
 		if coordinates.GtidSet == "" {
 			b.binlogStreamer, err = b.binlogSyncer.StartSync(
 				gomysql.Position{Name: coordinates.LogFile, Pos: uint32(coordinates.LogPos)})
@@ -1251,8 +1251,8 @@ func (b *BinlogReader) updateTableMeta(table *mysqlconfig.Table, realSchema stri
 		b.logger.Warn("updateTableMeta: cannot get table info after ddl.", "err", err, "realSchema", realSchema, "tableName", tableName)
 		return err
 	}
-	b.logger.Debug("binlog_reader. new columns. table: %v.%v, columns: %v",
-		realSchema, tableName, columns.String())
+	b.logger.Debug("binlog_reader. new columns.",
+		"schema", realSchema, "table", tableName, "columns", columns.String())
 
 	//var table *config.Table
 

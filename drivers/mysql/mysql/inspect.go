@@ -50,7 +50,7 @@ func (i *Inspector) InitDBConnections() (err error) {
 
 	i.logger.Debug("validateGrants", "SkipPrivilegeCheck",hclog.Fmt("%+v",  i.mysqlContext.SkipPrivilegeCheck))
 	if err := i.validateGrants(); err != nil {
-		i.logger.Error("Unexpected error on validateGrants, got %v", err)
+		i.logger.Error("Unexpected error on validateGrants", "err", err)
 		return err
 	}
 	/*for _, doDb := range i.mysqlContext.ReplicateDoDb {
@@ -76,7 +76,7 @@ func (i *Inspector) InitDBConnections() (err error) {
 
 func (i *Inspector) ValidateOriginalTable(databaseName, tableName string, table *uconf.Table) (err error) {
 	// this should be set event if there is an error (#177)
-	i.logger.Info("Found 'where' on this table: '%v'", table.Where)
+	i.logger.Info("ValidateOriginalTable", "where", table.Where)
 	if table.Where == "" {
 		table.Where = "true"
 	}
@@ -153,7 +153,7 @@ func (i *Inspector) ValidateOriginalTable(databaseName, tableName string, table 
 	// region validate 'where'
 	_, err = uconf.NewWhereCtx(table.Where, table)
 	if err != nil {
-		i.logger.Error("Error parse where '%v'", table.Where)
+		i.logger.Error("Error parsing where", "where", table.Where, "err", err)
 		return err
 	}
 	// TODO the err cause only a WARN
