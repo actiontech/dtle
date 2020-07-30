@@ -214,15 +214,15 @@ func (d *dumper) getChunkData() (nRows int64, err error) {
 				keepGoing = false
 			case <-timer.C:
 				timer.Reset(pingInterval)
-				d.logger.Debug("mysql.dumper: resultsChannel full. waiting and ping conn")
+				d.logger.Debug("resultsChannel full. waiting and ping conn")
 				var dummy int
 				errPing := d.db.QueryRow("select 1").Scan(&dummy)
 				if errPing != nil {
-					d.logger.Debug("mysql.dumper: ping query row got error. err: %v", errPing)
+					d.logger.Debug("ping query row got error. err: %v", errPing)
 				}
 			}
 		}
-		d.logger.Debug("mysql.dumper: resultsChannel: %v", len(d.resultsChannel))
+		d.logger.Debug("resultsChannel: %v", len(d.resultsChannel))
 	}()
 
 	query := ""
@@ -251,8 +251,8 @@ func (d *dumper) getChunkData() (nRows int64, err error) {
 	d.table.Iteration += 1
 	rows, err := d.db.Query(query)
 	if err != nil {
-		d.logger.Debug("mysql.dumper. error at select chunk. query: ", query)
-		newErr := fmt.Errorf("mysql.dumper. error at select chunk. err: %v", err)
+		d.logger.Debug("error at select chunk. query: ", query)
+		newErr := fmt.Errorf("error at select chunk. err: %v", err)
 		d.logger.Error(newErr.Error())
 		return 0, err
 	}
@@ -343,16 +343,16 @@ func (d *dumper) Dump() error {
 
 			nRows, err := d.getChunkData()
 			if err != nil {
-				d.logger.Error("mysql.dumper: error at dump %v", err)
+				d.logger.Error("error at dump %v", err)
 				break
 			}
 
 			if nRows < d.chunkSize {
 				// If nRows < d.chunkSize while there are still more rows, it is a possible mysql bug.
-				d.logger.Info("mysql.dumper: nRows < d.chunkSize. %v %v", nRows, d.chunkSize)
+				d.logger.Info("nRows < d.chunkSize. %v %v", nRows, d.chunkSize)
 			}
 			if nRows == 0 {
-				d.logger.Info("mysql.dumper: nRows == 0. dump finished. %v %v", nRows, d.chunkSize)
+				d.logger.Info("nRows == 0. dump finished. %v %v", nRows, d.chunkSize)
 				break
 			}
 		}

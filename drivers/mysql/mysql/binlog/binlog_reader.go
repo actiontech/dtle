@@ -245,7 +245,7 @@ func (b *BinlogReader) addTableToTableMap(tableMap map[string]*mysqlconfig.Table
 	}
 	whereCtx, err := mysqlconfig.NewWhereCtx(table.Where, table)
 	if err != nil {
-		b.logger.Error("mysql.reader: Error parse where '%v'", table.Where)
+		b.logger.Error("Error parse where '%v'", table.Where)
 		return err
 	}
 
@@ -260,14 +260,14 @@ func (b *BinlogReader) getBinlogDir() string {
 // ConnectBinlogStreamer
 func (b *BinlogReader) ConnectBinlogStreamer(coordinates base.BinlogCoordinatesX) (err error) {
 	if coordinates.IsEmpty() {
-		b.logger.Warn("mysql.reader: Emptry coordinates at ConnectBinlogStreamer")
+		b.logger.Warn("Emptry coordinates at ConnectBinlogStreamer")
 	}
 
 	b.currentCoordinates = base.BinlogCoordinateTx{
 		LogFile: coordinates.LogFile,
 		LogPos:  coordinates.LogPos,
 	}
-	b.logger.Info("mysql.reader: Connecting binlog streamer at file %v pos %v gtid %v",
+	b.logger.Info("Connecting binlog streamer at file %v pos %v gtid %v",
 		coordinates.LogFile, coordinates.LogPos, coordinates.GtidSet)
 
 	if b.mysqlContext.BinlogRelay {
@@ -342,9 +342,9 @@ func (b *BinlogReader) ConnectBinlogStreamer(coordinates base.BinlogCoordinatesX
 
 				if waitForRelay {
 					if targetGtid.Contain(gs) {
-						b.logger.Debug("mysql.reader: Relay: keep waiting. pos %v gs %v", p, gs)
+						b.logger.Debug("Relay: keep waiting. pos %v gs %v", p, gs)
 					} else {
-						b.logger.Debug("mysql.reader: Relay: stop waiting. pos %v gs %v", p, gs)
+						b.logger.Debug("Relay: stop waiting. pos %v gs %v", p, gs)
 						chWait <- struct{}{}
 						waitForRelay = false
 					}
@@ -357,27 +357,27 @@ func (b *BinlogReader) ConnectBinlogStreamer(coordinates base.BinlogCoordinatesX
 		<-chWait
 		b.binlogStreamer, err = b.binlogReader.StartSync(startPos)
 		if err != nil {
-			b.logger.Debug("mysql.reader: err at StartSync: %v", err)
+			b.logger.Debug("err at StartSync: %v", err)
 			return err
 		}
 	} else {
 		// Start sync with sepcified binlog gtid
-		//	b.logger.WithField("coordinate", coordinates).Debugf("mysql.reader: will start sync")
-		b.logger.Debug("mysql.reader: will start sync coordinate: %v", coordinates)
+		//	b.logger.WithField("coordinate", coordinates).Debugf("will start sync")
+		b.logger.Debug("will start sync coordinate: %v", coordinates)
 		if coordinates.GtidSet == "" {
 			b.binlogStreamer, err = b.binlogSyncer.StartSync(
 				gomysql.Position{Name: coordinates.LogFile, Pos: uint32(coordinates.LogPos)})
 		} else {
 			gtidSet, err := gomysql.ParseMysqlGTIDSet(coordinates.GtidSet)
 			if err != nil {
-				b.logger.Error("mysql.reader: err: %v", err)
+				b.logger.Error("err: %v", err)
 				return err
 			}
 
 			b.binlogStreamer, err = b.binlogSyncer.StartSyncGTID(gtidSet)
 		}
 		if err != nil {
-			b.logger.Debug("mysql.reader: err at StartSyncGTID: %v", err)
+			b.logger.Debug("err at StartSyncGTID: %v", err)
 			return err
 		}
 	}
@@ -441,7 +441,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 	span.SetTag("begin to translation", time.Now().Unix())
 	defer span.Finish()
 	if b.currentCoordinates.SmallerThanOrEquals(&b.LastAppliedRowsEventHint) {
-		b.logger.Debug("mysql.reader: Skipping handled query at %+v", b.currentCoordinates)
+		b.logger.Debug("Skipping handled query at %+v", b.currentCoordinates)
 		return nil
 	}
 
@@ -466,7 +466,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 				evt.ErrorCode, query)
 		}
 
-		b.logger.Debug("mysql.reader: query event: schema: %s, query: %s", evt.Schema, query)
+		b.logger.Debug("query event: schema: %s, query: %s", evt.Schema, query)
 
 		if strings.ToUpper(query) == "BEGIN" {
 			b.currentBinlogEntry.hasBeginQuery = true
@@ -475,23 +475,23 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 				currentSchema := string(evt.Schema)
 				if b.mysqlContext.SkipCreateDbTable {
 					if skipCreateDbTable(query) {
-						b.logger.Warn("mysql.reader: skip create db/table %s", query)
+						b.logger.Warn("skip create db/table %s", query)
 						return nil
 					}
 				}
 
 				if !b.mysqlContext.ExpandSyntaxSupport {
 					if skipQueryEvent(query) {
-						b.logger.Warn("mysql.reader: skip query %s", query)
+						b.logger.Warn("skip query %s", query)
 						return nil
 					}
 				}
 
 				ddlInfo, err := resolveDDLSQL(query)
 				if err != nil {
-					b.logger.Debug("mysql.reader: Parse query [%v] event failed: %v", query, err)
+					b.logger.Debug("Parse query [%v] event failed: %v", query, err)
 					if b.skipQueryDDL(query, currentSchema, "") {
-						b.logger.Debug("mysql.reader: skip QueryEvent at schema: %s,sql: %s", currentSchema, query)
+						b.logger.Debug("skip QueryEvent at schema: %s,sql: %s", currentSchema, query)
 						return nil
 					}
 				}
@@ -529,12 +529,12 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 					tableName := ddlInfo.tables[i].Table
 					err = b.checkObjectFitRegexp(b.mysqlContext.ReplicateDoDb, realSchema, tableName)
 					if err != nil {
-						b.logger.Warn("mysql.reader: skip query %s", query)
+						b.logger.Warn("skip query %s", query)
 						return nil
 					}
 
 					if b.skipQueryDDL(sql, realSchema, tableName) {
-						b.logger.Debug("mysql.reader: Skip QueryEvent currentSchema: %s, sql: %s, realSchema: %v, tableName: %v", currentSchema, sql, realSchema, tableName)
+						b.logger.Debug("Skip QueryEvent currentSchema: %s, sql: %s, realSchema: %v, tableName: %v", currentSchema, sql, realSchema, tableName)
 						return nil
 					}
 
@@ -555,7 +555,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 					case *ast.CreateDatabaseStmt:
 						b.context.LoadTables(ddlInfo.tables[i].Schema, nil)
 					case *ast.CreateTableStmt:
-						b.logger.Debug("mysql.reader: ddl is create table")
+						b.logger.Debug("ddl is create table")
 						err := b.updateTableMeta(table, realSchema, tableName)
 						if err != nil {
 							return err
@@ -569,7 +569,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 							skipEvent = true
 						}
 					case *ast.AlterTableStmt:
-						b.logger.Debug("mysql.reader: ddl is alter table. specs: %v", realAst.Specs)
+						b.logger.Debug("ddl is alter table. specs: %v", realAst.Specs)
 
 						fromTable := table
 						tableNameX := tableName
@@ -621,7 +621,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 					}
 					if schema != nil && schema.TableSchemaRename != "" {
 						ddlInfo.tables[i].Schema = schema.TableSchemaRename
-						b.logger.Debug("mysql.reader. ddl schema mapping :from  %s to %s", realSchema, schema.TableSchemaRename)
+						b.logger.Debug("ddl schema mapping :from  %s to %s", realSchema, schema.TableSchemaRename)
 						//sql = strings.Replace(sql, realSchema, schema.TableSchemaRename, 1)
 						sql = loadMapping(sql, realSchema, schema.TableSchemaRename, "schemaRename", " ")
 						currentSchema = schema.TableSchemaRename
@@ -631,11 +631,11 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 						ddlInfo.tables[i].Table = table.TableRename
 						//sql = strings.Replace(sql, tableName, table.TableRename, 1)
 						sql = loadMapping(sql, tableName, table.TableRename, "", currentSchema)
-						b.logger.Debug("mysql.reader. ddl table mapping  :from %s to %s", tableName, table.TableRename)
+						b.logger.Debug("ddl table mapping  :from %s to %s", tableName, table.TableRename)
 					}
 
 					if skipEvent {
-						b.logger.Debug("mysql.reader. skipped a ddl event. query: %v", query)
+						b.logger.Debug("skipped a ddl event. query: %v", query)
 					} else {
 						event := NewQueryEventAffectTable(
 							currentSchema,
@@ -665,7 +665,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 			dml := ToEventDML(ev.Header.EventType)
 			skip, table := b.skipRowEvent(rowsEvent, dml)
 			if skip {
-				b.logger.Debug("mysql.reader: skip rowsEvent %s.%s %v", rowsEvent.Table.Schema, rowsEvent.Table.Table, b.currentCoordinates.GNO)
+				b.logger.Debug("skip rowsEvent %s.%s %v", rowsEvent.Table.Schema, rowsEvent.Table.Table, b.currentCoordinates.GNO)
 				return nil
 			}
 
@@ -677,7 +677,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 				(b.sqlFilter.NoDMLInsert && dml == InsertDML) ||
 				(b.sqlFilter.NoDMLUpdate && dml == UpdateDML) {
 
-				b.logger.Debug("mysql.reader. skipped_a_dml_event. type: %v, table: %v.%v", dml, schemaName, tableName)
+				b.logger.Debug("skipped_a_dml_event. type: %v, table: %v.%v", dml, schemaName, tableName)
 				return nil
 			}
 
@@ -707,7 +707,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 			avgRowSize := len(ev.RawData) / len(rowsEvent.Rows)
 
 			for i, row := range rowsEvent.Rows {
-				b.logger.Debug("mysql.reader: row values: %v", row[:mathutil.Min(len(row), g.LONG_LOG_LIMIT)])
+				b.logger.Debug("row values: %v", row[:mathutil.Min(len(row), g.LONG_LOG_LIMIT)])
 				if dml == UpdateDML && i%2 == 1 {
 					// An update has two rows (WHERE+SET)
 					// We do both at the same time
@@ -768,7 +768,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 						dmlEvent.Table.TableRename = table.Table.TableRename
 					}
 					dmlEvent.TableName = table.Table.TableRename
-					b.logger.Debug("mysql.reader. dml  table mapping : from %s to %s", dmlEvent.TableName, table.Table.TableRename)
+					b.logger.Debug("dml  table mapping : from %s to %s", dmlEvent.TableName, table.Table.TableRename)
 				}
 				for _, schema := range b.mysqlContext.ReplicateDoDb {
 					if schema.TableSchema != schemaName {
@@ -780,7 +780,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 					if dmlEvent.Table != nil {
 						dmlEvent.Table.TableSchemaRename = schema.TableSchemaRename
 					}
-					b.logger.Debug("mysql.reader. dml  schema mapping: from  %s to %s", dmlEvent.DatabaseName, schema.TableSchemaRename)
+					b.logger.Debug("dml  schema mapping: from  %s to %s", dmlEvent.DatabaseName, schema.TableSchemaRename)
 					dmlEvent.DatabaseName = schema.TableSchemaRename
 				}
 				if whereTrue {
@@ -870,7 +870,7 @@ func (b *BinlogReader) DataStreamEvents(entriesChannel chan<- *BinlogEntry) erro
 		trace := opentracing.GlobalTracer()
 		ev, err := b.binlogStreamer.GetEvent(context.Background())
 		if err != nil {
-			b.logger.Error("mysql.reader error GetEvent. err: %v", err)
+			b.logger.Error("error GetEvent. err: %v", err)
 			return err
 		}
 		spanContext := ev.SpanContest
@@ -897,9 +897,9 @@ func (b *BinlogReader) DataStreamEvents(entriesChannel chan<- *BinlogEntry) erro
 					b.currentCoordinates.LogFile = string(rotateEvent.NextLogName)
 				}()
 				b.mysqlContext.Stage = StageFinishedReadingOneBinlogSwitchingToNextBinlog
-				b.logger.Info("mysql.reader: Rotate to next log name: %s", rotateEvent.NextLogName)
+				b.logger.Info("Rotate to next log name: %s", rotateEvent.NextLogName)
 			} else {
-				b.logger.Warn("mysql.reader: fake rotate_event.")
+				b.logger.Warn("fake rotate_event.")
 			}
 		} else {
 			if err := b.handleEvent(ev, entriesChannel); err != nil {
@@ -1076,7 +1076,7 @@ func (b *BinlogReader) skipRowEvent(rowsEvent *replication.RowsEvent, dml EventD
 							b.logger.Error("cycle-prevention: cannot convert sid to uuid: %v", err.Error())
 						} else {
 							b.currentBinlogEntry.Coordinates.OSID = sid.String()
-							b.logger.Debug("mysql.reader: found an osid: %v", b.currentBinlogEntry.Coordinates.OSID)
+							b.logger.Debug("found an osid: %v", b.currentBinlogEntry.Coordinates.OSID)
 						}
 					}
 				}

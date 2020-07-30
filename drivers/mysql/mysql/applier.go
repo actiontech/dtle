@@ -319,7 +319,7 @@ func (a *Applier) MtsWorker(workerIndex int) {
 		timer := time.NewTimer(pingInterval)
 		select {
 		case tx := <-a.applyBinlogMtsTxQueue:
-			a.logger.Debug("mysql.applier: a binlogEntry MTS dequeue, worker: %v. GNO: %v",
+			a.logger.Debug("a binlogEntry MTS dequeue, worker: %v. GNO: %v",
 				workerIndex, tx.Coordinates.GNO)
 			if err := a.ApplyBinlogEvent(nil, workerIndex, tx); err != nil {
 				a.onError(TaskStateDead, err) // TODO coordinate with other goroutine
@@ -327,14 +327,14 @@ func (a *Applier) MtsWorker(workerIndex int) {
 			} else {
 				// do nothing
 			}
-			a.logger.Debug("mysql.applier: worker: %v. after ApplyBinlogEvent. GNO: %v",
+			a.logger.Debug("worker: %v. after ApplyBinlogEvent. GNO: %v",
 				workerIndex, tx.Coordinates.GNO)
 		case <-a.shutdownCh:
 			keepLoop = false
 		case <-timer.C:
 			err := a.dbs[workerIndex].Db.PingContext(context.Background())
 			if err != nil {
-				a.logger.Error("mysql.applier. bad connection for mts worker. workerIndex: %v, err: %v",
+				a.logger.Error("bad connection for mts worker. workerIndex: %v, err: %v",
 					workerIndex, err)
 			}
 		}
@@ -367,12 +367,12 @@ func (a *Applier) Run() {
 			for !a.shutdown {
 				time.Sleep(5 * time.Second)
 				n := atomic.SwapUint32(&a.txLastNSeconds, 0)
-				a.logger.Info("mysql.applier: txLastNSeconds: %v", n)
+				a.logger.Info("txLastNSeconds: %v", n)
 			}
 		}()
 	}
 	//a.logger.Debug("the connectionconfi host is ",a.mysqlContext.ConnectionConfig.Host)
-//	a.logger.Info("mysql.applier: Apply binlog events to %s.%d", a.mysqlContext.ConnectionConfig.Host, a.mysqlContext.ConnectionConfig.Port)
+//	a.logger.Info("Apply binlog events to %s.%d", a.mysqlContext.ConnectionConfig.Host, a.mysqlContext.ConnectionConfig.Port)
 	if err := a.initDBConnections(); err != nil {
 		a.onError(TaskStateDead, err)
 		return
@@ -431,11 +431,11 @@ func (a *Applier) executeWriteFuncs() {
 				case <-a.shutdownCh:
 					stopLoop = true
 				case <-t10.C:
-					a.logger.Debug("mysql.applier: no copyRows for 10s.")
+					a.logger.Debug("no copyRows for 10s.")
 				}
 			}
 		}()
-		a.logger.Info("mysql.applier: Operating until row copy is complete")
+		a.logger.Info("Operating until row copy is complete")
 		a.mysqlContext.Stage = common.StageSlaveWaitingForWorkersToProcessQueue
 	}
 }
@@ -444,10 +444,10 @@ func (a *Applier) initNatSubClient() (err error) {
 	natsAddr := fmt.Sprintf("nats://%s", a.NatsAddr)
 	sc, err := gonats.Connect(natsAddr)
 	if err != nil {
-		a.logger.Error("mysql.applier: Can't connect nats server %v. make sure a nats streaming server is running.%v", natsAddr, err)
+		a.logger.Error("Can't connect nats server %v. make sure a nats streaming server is running.%v", natsAddr, err)
 		return err
 	}
-	a.logger.Debug("mysql.applier: Connect nats server %v", natsAddr)
+	a.logger.Debug("Connect nats server %v", natsAddr)
 	a.natsConn = sc
 	return nil
 }
@@ -462,19 +462,19 @@ func (a *Applier) setTableItemForBinlogEntry(binlogEntry *binlog.BinlogEntry) er
 		default:
 			tableItem := a.getTableItem(dmlEvent.DatabaseName, dmlEvent.TableName)
 			if tableItem.columns == nil {
-				a.logger.Debug("mysql.applier: get tableColumns %v.%v", dmlEvent.DatabaseName, dmlEvent.TableName)
+				a.logger.Debug("get tableColumns %v.%v", dmlEvent.DatabaseName, dmlEvent.TableName)
 				tableItem.columns, err = base.GetTableColumns(a.db, dmlEvent.DatabaseName, dmlEvent.TableName)
 				if err != nil {
-					a.logger.Error("mysql.applier. GetTableColumns error. err: %v", err)
+					a.logger.Error("GetTableColumns error. err: %v", err)
 					return err
 				}
 				err = base.ApplyColumnTypes(a.db, dmlEvent.DatabaseName, dmlEvent.TableName, tableItem.columns)
 				if err != nil {
-					a.logger.Error("mysql.applier. ApplyColumnTypes error. err: %v", err)
+					a.logger.Error("ApplyColumnTypes error. err: %v", err)
 					return err
 				}
 			} else {
-				a.logger.Debug("mysql.applier: reuse tableColumns %v.%v", dmlEvent.DatabaseName, dmlEvent.TableName)
+				a.logger.Debug("reuse tableColumns %v.%v", dmlEvent.DatabaseName, dmlEvent.TableName)
 			}
 			dmlEvent.TableItem = tableItem
 		}
@@ -526,12 +526,12 @@ func (a *Applier) heterogeneousReplay() {
 			spanContext := binlogEntry.SpanContext
 			span := opentracing.GlobalTracer().StartSpan("dest use binlogEntry  ", opentracing.FollowsFrom(spanContext))
 			ctx = opentracing.ContextWithSpan(ctx, span)
-			a.logger.Debug("mysql.applier: a binlogEntry. remaining: %v. gno: %v, lc: %v, seq: %v",
+			a.logger.Debug("a binlogEntry. remaining: %v. gno: %v, lc: %v, seq: %v",
 				len(a.applyDataEntryQueue), binlogEntry.Coordinates.GNO,
 				binlogEntry.Coordinates.LastCommitted, binlogEntry.Coordinates.SeqenceNumber)
 
 			if binlogEntry.Coordinates.OSID == a.MySQLServerUuid {
-				a.logger.Debug("mysql.applier: skipping a kafkas tx. osid: %v", binlogEntry.Coordinates.OSID)
+				a.logger.Debug("skipping a kafkas tx. osid: %v", binlogEntry.Coordinates.OSID)
 				continue
 			}
 			// region TestIfExecuted
@@ -552,7 +552,7 @@ func (a *Applier) heterogeneousReplay() {
 			}
 			if base.IntervalSlicesContainOne(gtidSetItem.Intervals, binlogEntry.Coordinates.GNO) {
 				// entry executed
-				a.logger.Debug("mysql.applier: skip an executed tx: %v:%v", txSid, binlogEntry.Coordinates.GNO)
+				a.logger.Debug("skip an executed tx: %v:%v", txSid, binlogEntry.Coordinates.GNO)
 				continue
 			}
 			// endregion
@@ -565,7 +565,7 @@ func (a *Applier) heterogeneousReplay() {
 				replayingBinlogFile = binlogEntry.Coordinates.LogFile
 			}
 
-			a.logger.Debug("mysql.applier. gtidSetItem.NRow: %v", gtidSetItem.NRow)
+			a.logger.Debug("gtidSetItem.NRow: %v", gtidSetItem.NRow)
 			if gtidSetItem.NRow >= cleanupGtidExecutedLimit {
 				err = a.cleanGtidExecuted(binlogEntry.Coordinates.SID, base.StringInterval(gtidSetItem.Intervals))
 				if err != nil {
@@ -595,7 +595,7 @@ func (a *Applier) heterogeneousReplay() {
 				}
 			} else {
 				if rotated {
-					a.logger.Debug("mysql.applier: binlog rotated to %v", replayingBinlogFile)
+					a.logger.Debug("binlog rotated to %v", replayingBinlogFile)
 					if !a.mtsManager.WaitForAllCommitted() {
 						return // shutdown
 					}
@@ -623,7 +623,7 @@ func (a *Applier) heterogeneousReplay() {
 				}()
 				// DDL must be executed separatedly
 				if hasDDL || prevDDL {
-					a.logger.Debug("mysql.applier: gno: %v MTS found DDL(%v,%v). WaitForAllCommitted",
+					a.logger.Debug("gno: %v MTS found DDL(%v,%v). WaitForAllCommitted",
 						binlogEntry.Coordinates.GNO, hasDDL, prevDDL)
 					if !a.mtsManager.WaitForAllCommitted() {
 						return // shutdown
@@ -638,7 +638,7 @@ func (a *Applier) heterogeneousReplay() {
 				if !a.mtsManager.WaitForExecution(binlogEntry) {
 					return // shutdown
 				}
-				a.logger.Debug("mysql.applier: a binlogEntry MTS enqueue. gno: %v", binlogEntry.Coordinates.GNO)
+				a.logger.Debug("a binlogEntry MTS enqueue. gno: %v", binlogEntry.Coordinates.GNO)
 				err = a.setTableItemForBinlogEntry(binlogEntry)
 				if err != nil {
 					a.onError(TaskStateDead, err)
@@ -658,7 +658,7 @@ func (a *Applier) heterogeneousReplay() {
 				a.mysqlContext.BinlogPos = binlogEntry.Coordinates.LogPos
 			}
 		case <-time.After(10 * time.Second):
-			a.logger.Debug("mysql.applier: no binlogEntry for 10s")
+			a.logger.Debug("no binlogEntry for 10s")
 		case <-a.shutdownCh:
 			stopSomeLoop = true
 		}
@@ -668,15 +668,15 @@ func (a *Applier) heterogeneousReplay() {
 // initiateStreaming begins treaming of binary log events and registers listeners for such events
 func (a *Applier) initiateStreaming() error {
 	a.mysqlContext.MarkRowCopyStartTime()
-	a.logger.Debug("mysql.applier: nats subscribe")
+	a.logger.Debug("nats subscribe")
 	tracer := opentracing.GlobalTracer()
 	_, err := a.natsConn.Subscribe(fmt.Sprintf("%s_full", a.subject), func(m *gonats.Msg) {
-		a.logger.Debug("mysql.applier: full. recv a msg. copyRowsQueue: %v", len(a.copyRowsQueue))
+		a.logger.Debug("full. recv a msg. copyRowsQueue: %v", len(a.copyRowsQueue))
 		t := not.NewTraceMsg(m)
 		// Extract the span context from the request message.
 		sc, err := tracer.Extract(opentracing.Binary, t)
 		if err != nil {
-			a.logger.Debug("applier:get data")
+			a.logger.Debug("get data")
 		}
 		// Setup a span referring to the span context of the incoming NATS message.
 		replySpan := tracer.StartSpan("Service Responder", ext.SpanKindRPCServer, ext.RPCServerOption(sc))
@@ -692,18 +692,18 @@ func (a *Applier) initiateStreaming() error {
 		atomic.AddInt64(&a.nDumpEntry, 1) // this must be increased before enqueuing
 		select {
 		case a.copyRowsQueue <- dumpData:
-			a.logger.Debug("mysql.applier: full. enqueue")
+			a.logger.Debug("full. enqueue")
 			timer.Stop()
 			a.mysqlContext.Stage = common.StageSlaveWaitingForWorkersToProcessQueue
 			if err := a.natsConn.Publish(m.Reply, nil); err != nil {
 				a.onError(TaskStateDead, err)
 			}
-			a.logger.Debug("mysql.applier. full. after publish nats reply")
+			a.logger.Debug("full. after publish nats reply")
 			atomic.AddInt64(&a.mysqlContext.RowsEstimate, dumpData.TotalCount)
 		case <-timer.C:
 			atomic.AddInt64(&a.nDumpEntry, -1)
 
-			a.logger.Debug("mysql.applier. full. discarding entries")
+			a.logger.Debug("full. discarding entries")
 			a.mysqlContext.Stage = common.StageSlaveWaitingForWorkersToProcessQueue
 		}
 	})
@@ -717,7 +717,7 @@ func (a *Applier) initiateStreaming() error {
 		// Extract the span context from the request message.
 		sc, err := tracer.Extract(opentracing.Binary, t)
 		if err != nil {
-			a.logger.Debug("applier:get data")
+			a.logger.Debug("get data")
 		}
 		// Setup a span referring to the span context of the incoming NATS message.
 		replySpan := tracer.StartSpan("Service Responder", ext.SpanKindRPCServer, ext.RPCServerOption(sc))
@@ -731,7 +731,7 @@ func (a *Applier) initiateStreaming() error {
 		a.mysqlContext.BinlogFile = dumpData.LogFile
 		a.mysqlContext.BinlogPos = dumpData.LogPos
 
-		a.logger.Info("mysql.applier: got gtid from extractor", "gtid", a.mysqlContext.Gtid)
+		a.logger.Info("got gtid from extractor", "gtid", a.mysqlContext.Gtid)
 		a.gtidSet, err = DtleParseMysqlGTIDSet(a.mysqlContext.Gtid)
 		if err != nil {
 			a.onError(TaskStateDead, errors.Wrap(err, "DtleParseMysqlGTIDSet"))
@@ -741,13 +741,13 @@ func (a *Applier) initiateStreaming() error {
 		a.mysqlContext.Stage = common.StageSlaveWaitingForWorkersToProcessQueue
 
 		for atomic.LoadInt64(&a.nDumpEntry) != 0 {
-			a.logger.Debug("mysql.applier. nDumpEntry is not zero, waiting. %v", a.nDumpEntry)
+			a.logger.Debug("nDumpEntry is not zero, waiting. %v", a.nDumpEntry)
 			time.Sleep(1 * time.Second)
 			if a.shutdown {
 				return
 			}
 		}
-		a.logger.Info("mysql.applier: Rows copy complete.number of rows:%d", a.TotalRowsReplayed)
+		a.logger.Info("Rows copy complete.number of rows:%d", a.TotalRowsReplayed)
 		select {
 		case <-a.rowCopyComplete:
 			// chan already closed (this _full_complete msg is repeated)
@@ -755,7 +755,7 @@ func (a *Applier) initiateStreaming() error {
 			close(a.rowCopyComplete)
 		}
 
-		a.logger.Debug("mysql.applier. ack full_complete")
+		a.logger.Debug("ack full_complete")
 		if err := a.natsConn.Publish(m.Reply, nil); err != nil {
 			a.onError(TaskStateDead, errors.Wrap(err, "Publish"))
 			return
@@ -771,7 +771,7 @@ func (a *Applier) initiateStreaming() error {
 		// Extract the span context from the request message.
 		spanContext, err := tracer.Extract(opentracing.Binary, t)
 		if err != nil {
-			a.logger.Debug("applier:get data")
+			a.logger.Debug("get data")
 		}
 		// Setup a span referring to the span context of the incoming NATS message.
 		replySpan := tracer.StartSpan("nast : dest to get data  ", ext.SpanKindRPCServer, ext.RPCServerOption(spanContext))
@@ -786,12 +786,12 @@ func (a *Applier) initiateStreaming() error {
 		handled := false
 		for i := 0; !handled && (i < DefaultConnectWaitSecond/2); i++ {
 			vacancy := cap(a.applyDataEntryQueue) - len(a.applyDataEntryQueue)
-			a.logger.Debug("applier. incr. nEntries: %v, vacancy: %v", nEntries, vacancy)
+			a.logger.Debug("incr. nEntries: %v, vacancy: %v", nEntries, vacancy)
 			if vacancy < nEntries {
-				a.logger.Debug("applier. incr. wait 1s for applyDataEntryQueue")
+				a.logger.Debug("incr. wait 1s for applyDataEntryQueue")
 				time.Sleep(1 * time.Second) // It will wait an second at the end, but seems no hurt.
 			} else {
-				a.logger.Debug("applier. incr. applyDataEntryQueue enqueue")
+				a.logger.Debug("incr. applyDataEntryQueue enqueue")
 				for _, binlogEntry := range binlogEntries.Entries {
 					binlogEntry.SpanContext = replySpan.Context()
 					a.applyDataEntryQueue <- binlogEntry
@@ -806,14 +806,14 @@ func (a *Applier) initiateStreaming() error {
 				if err := a.natsConn.Publish(m.Reply, nil); err != nil {
 					a.onError(TaskStateDead, err)
 				}
-				a.logger.Debug("applier. incr. ack-recv. nEntries: %v", nEntries)
+				a.logger.Debug("incr. ack-recv. nEntries: %v", nEntries)
 
 				handled = true
 			}
 		}
 		if !handled {
 			// discard these entries
-			a.logger.Debug("applier. incr. discarding entries")
+			a.logger.Debug("incr. discarding entries")
 			a.mysqlContext.Stage = common.StageWaitingForMasterToSendEvent
 		}
 	})
@@ -872,21 +872,21 @@ func (a *Applier) initDBConnections() (err error) {
 	}
 	a.logger.Debug("beging connetion mysql 5 validate  grants")
 	if err := a.validateGrants(); err != nil {
-		a.logger.Error("mysql.applier: Unexpected error on validateGrants, got %v", err)
+		a.logger.Error("Unexpected error on validateGrants, got %v", err)
 		return err
 	}
-	a.logger.Debug("mysql.applier. after validateGrants")
+	a.logger.Debug("after validateGrants")
 
 	if timezone, err := base.ValidateAndReadTimeZone(a.db); err != nil {
 		return err
 	} else {
-		a.logger.Info("mysql.applier: got timezone", "timezone", timezone)
+		a.logger.Info("got timezone", "timezone", timezone)
 	}
 
 	if err := a.createTableGtidExecutedV4(); err != nil {
 		return err
 	}
-	a.logger.Debug("mysql.applier. after createTableGtidExecutedV4")
+	a.logger.Debug("after createTableGtidExecutedV4")
 
 	for i := range a.dbs {
 		a.dbs[i].PsDeleteExecutedGtid, err = a.dbs[i].Db.PrepareContext(context.Background(),
@@ -903,9 +903,9 @@ func (a *Applier) initDBConnections() (err error) {
 		}
 
 	}
-	a.logger.Debug("mysql.applier. after prepare stmt for gtid_executed table")
+	a.logger.Debug("after prepare stmt for gtid_executed table")
 
-	a.logger.Info("mysql.applier: Initiated on %s:%d, version %+v", a.mysqlContext.ConnectionConfig.Host, a.mysqlContext.ConnectionConfig.Port, a.MySQLVersion)
+	a.logger.Info("Initiated on %s:%d, version %+v", a.mysqlContext.ConnectionConfig.Host, a.mysqlContext.ConnectionConfig.Port, a.MySQLVersion)
 	return nil
 }
 
@@ -927,7 +927,7 @@ func (a *Applier) validateConnection(db *gosql.DB) error {
 	if strings.HasPrefix(a.MySQLVersion, "5.6") {
 		a.mysqlContext.ParallelWorkers = 1
 	}
-	a.logger.Debug("mysql.applier: Connection validated on %s:%d", a.mysqlContext.ConnectionConfig.Host, a.mysqlContext.ConnectionConfig.Port)
+	a.logger.Debug("Connection validated on %s:%d", a.mysqlContext.ConnectionConfig.Host, a.mysqlContext.ConnectionConfig.Port)
 	return nil
 }
 
@@ -935,7 +935,7 @@ func (a *Applier) validateConnection(db *gosql.DB) error {
 // to do its thang.
 func (a *Applier) validateGrants() error {
 	if a.mysqlContext.SkipPrivilegeCheck {
-		a.logger.Debug("mysql.applier: skipping priv check")
+		a.logger.Debug("skipping priv check")
 		return nil
 	}
 	query := `show grants for current_user()`
@@ -967,18 +967,18 @@ func (a *Applier) validateGrants() error {
 	}
 
 	if foundAll {
-		a.logger.Info("mysql.applier: User has ALL privileges")
+		a.logger.Info("User has ALL privileges")
 		return nil
 	}
 	if foundSuper {
-		a.logger.Info("mysql.applier: User has SUPER privileges")
+		a.logger.Info("User has SUPER privileges")
 		return nil
 	}
 	if foundDBAll {
 		a.logger.Info("User has ALL privileges on *.*")
 		return nil
 	}
-	a.logger.Debug("mysql.applier: Privileges: super: %t, ALL on *.*: %t", foundSuper, foundAll)
+	a.logger.Debug("Privileges: super: %t, ALL on *.*: %t", foundSuper, foundAll)
 	//return fmt.Error("user has insufficient privileges for applier. Needed: SUPER|ALL on *.*")
 	return nil
 }
@@ -1010,10 +1010,10 @@ func (a *Applier) buildDMLEventQuery(dmlEvent binlog.DataEvent, workerIdx int, s
 	doPrepareIfNil := func(stmts []*gosql.Stmt, query string) (*gosql.Stmt, error) {
 		var err error
 		if stmts[workerIdx] == nil {
-			a.logger.Debug("mysql.applier buildDMLEventQuery prepare query %v", query)
+			a.logger.Debug("buildDMLEventQuery prepare query %v", query)
 			stmts[workerIdx], err = a.dbs[workerIdx].Db.PrepareContext(context.Background(), query)
 			if err != nil {
-				a.logger.Error("mysql.applier buildDMLEventQuery prepare query %v err %v", query, err)
+				a.logger.Error("buildDMLEventQuery prepare query %v err %v", query, err)
 			}
 		}
 		return stmts[workerIdx], err
@@ -1117,23 +1117,23 @@ func (a *Applier) ApplyBinlogEvent(ctx context.Context, workerIdx int, binlogEnt
 	}()
 	span.SetTag("begin transform binlogEvent to sql time  ", time.Now().UnixNano()/1e6)
 	for i, event := range binlogEntry.Events {
-		a.logger.Debug("mysql.applier: ApplyBinlogEvent. gno: %v, event: %v",
+		a.logger.Debug("ApplyBinlogEvent. gno: %v, event: %v",
 			binlogEntry.Coordinates.GNO, i)
 		switch event.DML {
 		case binlog.NotDML:
 			var err error
-			a.logger.Debug("mysql.applier: ApplyBinlogEvent: not dml: %v", event.Query)
+			a.logger.Debug("ApplyBinlogEvent: not dml: %v", event.Query)
 
 			if event.CurrentSchema != "" {
 				query := fmt.Sprintf("USE %s", umconf.EscapeName(event.CurrentSchema))
-				a.logger.Debug("mysql.applier: query: %v", query)
+				a.logger.Debug("query: %v", query)
 				_, err = tx.Exec(query)
 				if err != nil {
 					if !sql.IgnoreError(err) {
-						a.logger.Error("mysql.applier: Exec sql error: %v", err)
+						a.logger.Error("Exec sql error: %v", err)
 						return err
 					} else {
-						a.logger.Warn("mysql.applier: Ignore error: %v", err)
+						a.logger.Warn("Ignore error: %v", err)
 					}
 				}
 			}
@@ -1145,13 +1145,13 @@ func (a *Applier) ApplyBinlogEvent(ctx context.Context, workerIdx int, binlogEnt
 				} else {
 					schema = event.CurrentSchema
 				}
-				a.logger.Debug("mysql.applier: reset tableItem %v.%v", schema, event.TableName)
+				a.logger.Debug("reset tableItem %v.%v", schema, event.TableName)
 				a.getTableItem(schema, event.TableName).Reset()
 			} else { // TableName == ""
 				if event.DatabaseName != "" {
 					if schemaItem, ok := a.tableItems[event.DatabaseName]; ok {
 						for tableName, v := range schemaItem {
-							a.logger.Debug("mysql.applier: reset tableItem %v.%v", event.DatabaseName, tableName)
+							a.logger.Debug("reset tableItem %v.%v", event.DatabaseName, tableName)
 							v.Reset()
 						}
 					}
@@ -1162,18 +1162,18 @@ func (a *Applier) ApplyBinlogEvent(ctx context.Context, workerIdx int, binlogEnt
 			_, err = tx.Exec(event.Query)
 			if err != nil {
 				if !sql.IgnoreError(err) {
-					a.logger.Error("mysql.applier: Exec sql error: %v", err)
+					a.logger.Error("Exec sql error: %v", err)
 					return err
 				} else {
-					a.logger.Warn("mysql.applier: Ignore error: %v", err)
+					a.logger.Warn("Ignore error: %v", err)
 				}
 			}
-			a.logger.Debug("mysql.applier: Exec [%s]", event.Query)
+			a.logger.Debug("Exec [%s]", event.Query)
 		default:
-			a.logger.Debug("mysql.applier: ApplyBinlogEvent: a dml event")
+			a.logger.Debug("ApplyBinlogEvent: a dml event")
 			stmt, query, args, rowDelta, err := a.buildDMLEventQuery(event, workerIdx, spanContext)
 			if err != nil {
-				a.logger.Error("mysql.applier: Build dml query error: %v", err)
+				a.logger.Error("Build dml query error: %v", err)
 				return err
 			}
 
@@ -1187,7 +1187,7 @@ func (a *Applier) ApplyBinlogEvent(ctx context.Context, workerIdx int, binlogEnt
 			}
 
 			if err != nil {
-				a.logger.Error("mysql.applier: gtid: %s:%d, error: %v", txSid, binlogEntry.Coordinates.GNO, err)
+				a.logger.Error("gtid: %s:%d, error: %v", txSid, binlogEntry.Coordinates.GNO, err)
 				return err
 			}
 			nr, err := r.RowsAffected()
@@ -1214,27 +1214,27 @@ func (a *Applier) ApplyBinlogEvent(ctx context.Context, workerIdx int, binlogEnt
 
 func (a *Applier) ApplyEventQueries(db *gosql.DB, entry *common.DumpEntry) error {
 	if a.stubFullApplyDelay != 0 {
-		a.logger.Debug("mysql.applier: stubFullApplyDelay start sleep")
+		a.logger.Debug("stubFullApplyDelay start sleep")
 		time.Sleep(a.stubFullApplyDelay)
-		a.logger.Debug("mysql.applier: stubFullApplyDelay end sleep")
+		a.logger.Debug("stubFullApplyDelay end sleep")
 	}
 
 	if entry.SystemVariablesStatement != "" {
 		for i := range a.dbs {
-			a.logger.Debug("mysql.applier: exec sysvar query: %v", entry.SystemVariablesStatement)
+			a.logger.Debug("exec sysvar query: %v", entry.SystemVariablesStatement)
 			_, err := a.dbs[i].Db.ExecContext(context.Background(), entry.SystemVariablesStatement)
 			if err != nil {
-				a.logger.Error("mysql.applier: err exec sysvar query. err: %v", err)
+				a.logger.Error("err exec sysvar query. err: %v", err)
 				return err
 			}
 		}
 	}
 	if entry.SqlMode != "" {
 		for i := range a.dbs {
-			a.logger.Debug("mysql.applier: exec sqlmode query: %v", entry.SqlMode)
+			a.logger.Debug("exec sqlmode query: %v", entry.SqlMode)
 			_, err := a.dbs[i].Db.ExecContext(context.Background(), entry.SqlMode)
 			if err != nil {
-				a.logger.Error("mysql.applier: err exec sysvar query. err: %v", err)
+				a.logger.Error("err exec sysvar query. err: %v", err)
 				return err
 			}
 		}
@@ -1258,15 +1258,15 @@ func (a *Applier) ApplyEventQueries(db *gosql.DB, entry *common.DumpEntry) error
 		return err
 	}
 	execQuery := func(query string) error {
-		a.logger.Debug("mysql.applier: Exec [%s]", common.StrLim(query, 256))
+		a.logger.Debug("Exec [%s]", common.StrLim(query, 256))
 		_, err := tx.Exec(query)
 		if err != nil {
 			if !sql.IgnoreError(err) {
-				a.logger.Error("mysql.applier: Exec [%s] error: %v", common.StrLim(query, 10), err)
+				a.logger.Error("Exec [%s] error: %v", common.StrLim(query, 10), err)
 				return err
 			}
 			if !sql.IgnoreExistsError(err) {
-				a.logger.Warn("mysql.applier: Ignore error: %v", err)
+				a.logger.Warn("Ignore error: %v", err)
 			}
 		}
 		return nil
@@ -1401,27 +1401,27 @@ func (a *Applier) Stats() (*common.TaskStatistics, error) {
 
 func (a *Applier) updateGtidString() {
 	a.mysqlContext.Gtid = a.gtidSet.String()
-	a.logger.Debug("applier updateGtidString", "gtid", a.mysqlContext.Gtid)
+	a.logger.Debug("updateGtidString", "gtid", a.mysqlContext.Gtid)
 }
 
 func (a *Applier) onError(state int, err error) {
-	a.logger.Error("applier: error", "err", err)
+	a.logger.Error("onError", "err", err)
 	if a.shutdown {
 		return
 	}
 	switch state {
 	case TaskStateComplete:
-		a.logger.Info("mysql.applier: Done migrating")
+		a.logger.Info("Done migrating")
 	case TaskStateRestart:
 		if a.natsConn != nil {
 			if err := a.natsConn.Publish(fmt.Sprintf("%s_restart", a.subject), []byte(a.mysqlContext.Gtid)); err != nil {
-				a.logger.Error("mysql.applier: Trigger restart extractor : %v", err)
+				a.logger.Error("Trigger restart extractor : %v", err)
 			}
 		}
 	default:
 		if a.natsConn != nil {
 			if err := a.natsConn.Publish(fmt.Sprintf("%s_error", a.subject), []byte(a.mysqlContext.Gtid)); err != nil {
-				a.logger.Error("mysql.applier: Trigger extractor shutdown: %v", err)
+				a.logger.Error("Trigger extractor shutdown: %v", err)
 			}
 		}
 	}
@@ -1462,6 +1462,6 @@ func (a *Applier) Shutdown() error {
 
 	//close(a.applyBinlogTxQueue)
 	//close(a.applyBinlogGroupTxQueue)
-	a.logger.Info("mysql.applier: Shutting down")
+	a.logger.Info("Shutting down")
 	return nil
 }

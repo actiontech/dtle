@@ -94,7 +94,7 @@ func (h *taskHandle) run(taskConfig *config.DtleTaskConfig, d *Driver) {
 			return
 		}
 
-		h.runner, err = mysql.NewExtractor(ctx, driverConfig, d.logger, d.storeManager)
+		h.runner, err = mysql.NewExtractor(ctx, driverConfig, d.logger.Named("extractor"), d.storeManager)
 		if err != nil {
 			h.exitResult.Err = errors.Wrap(err, "NewExtractor")
 			return
@@ -104,12 +104,12 @@ func (h *taskHandle) run(taskConfig *config.DtleTaskConfig, d *Driver) {
 		if taskConfig.KafkaConfig != nil {
 			d.logger.Debug("found kafka", "KafkaConfig", taskConfig.KafkaConfig)
 			taskConfig.KafkaConfig.NatsAddr = d.config.NatsAdvertise
-			h.runner = kafka.NewKafkaRunner(ctx, taskConfig.KafkaConfig, d.logger, d.storeManager)
+			h.runner = kafka.NewKafkaRunner(ctx, taskConfig.KafkaConfig, d.logger.Named("kafka"), d.storeManager)
 			go h.runner.Run()
 		} else {
 			d.logger.Debug("print host", hclog.Fmt("%+v", driverConfig.ConnectionConfig.Host))
 
-			h.runner, err = mysql.NewApplier(ctx, driverConfig, d.logger, d.storeManager, d.config.NatsAdvertise)
+			h.runner, err = mysql.NewApplier(ctx, driverConfig, d.logger.Named("applier"), d.storeManager, d.config.NatsAdvertise)
 			if err != nil {
 				h.exitResult.Err = errors.Wrap(err, "NewApplier")
 				return
