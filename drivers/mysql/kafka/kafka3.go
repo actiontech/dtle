@@ -125,14 +125,14 @@ func (kr *KafkaRunner) Run() {
 
 	kr.kafkaMgr, err = NewKafkaManager(kr.kafkaConfig)
 	if err != nil {
-		kr.logger.Error("failed to initialize kafkas err: %v", err.Error())
+		kr.logger.Error("failed to initialize kafkas", "err", err)
 		kr.onError(TaskStateDead, err)
 		return
 	}
 
 	err = kr.initNatSubClient()
 	if err != nil {
-		kr.logger.Error("initNatSubClient error: %v", err.Error())
+		kr.logger.Error("initNatSubClient", "err", err)
 
 		kr.onError(TaskStateDead, err)
 		return
@@ -261,13 +261,13 @@ func (kr *KafkaRunner) onError(state int, err error) {
 	case TaskStateRestart:
 		if kr.natsConn != nil {
 			if err := kr.natsConn.Publish(fmt.Sprintf("%s_restart", kr.subject), []byte(kr.kafkaConfig.Gtid)); err != nil {
-				kr.logger.Error("Trigger restart err: %v", err)
+				kr.logger.Error("Trigger restart", "err", err)
 			}
 		}
 	default:
 		if kr.natsConn != nil {
 			if err := kr.natsConn.Publish(fmt.Sprintf("%s_error", kr.subject), []byte(kr.kafkaConfig.Gtid)); err != nil {
-				kr.logger.Error("Trigger shutdown, err: %v", err)
+				kr.logger.Error("Trigger shutdown", "err", err)
 			}
 		}
 	}

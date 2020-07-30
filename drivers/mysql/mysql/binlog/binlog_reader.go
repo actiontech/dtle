@@ -870,7 +870,7 @@ func (b *BinlogReader) DataStreamEvents(entriesChannel chan<- *BinlogEntry) erro
 		trace := opentracing.GlobalTracer()
 		ev, err := b.binlogStreamer.GetEvent(context.Background())
 		if err != nil {
-			b.logger.Error("error GetEvent. err: %v", err)
+			b.logger.Error("error GetEvent.", "err", err)
 			return err
 		}
 		spanContext := ev.SpanContest
@@ -1073,10 +1073,10 @@ func (b *BinlogReader) skipRowEvent(rowsEvent *replication.RowsEvent, dml EventD
 					} else {
 						sid, err := uuid.FromBytes([]byte(sidByte))
 						if err != nil {
-							b.logger.Error("cycle-prevention: cannot convert sid to uuid: %v", err.Error())
+							b.logger.Error("cycle-prevention: cannot convert sid to uuid", "err", err)
 						} else {
 							b.currentBinlogEntry.Coordinates.OSID = sid.String()
-							b.logger.Debug("found an osid: %v", b.currentBinlogEntry.Coordinates.OSID)
+							b.logger.Debug("found an osid", "osid", b.currentBinlogEntry.Coordinates.OSID)
 						}
 					}
 				}
@@ -1248,7 +1248,7 @@ func (b *BinlogReader) updateTableMeta(table *mysqlconfig.Table, realSchema stri
 
 	columns, err := base.GetTableColumnsSqle(b.context, realSchema, tableName)
 	if err != nil {
-		b.logger.Warn("updateTableMeta: cannot get table info after ddl. err: %v, table %v.%v", err.Error(), realSchema, tableName)
+		b.logger.Warn("updateTableMeta: cannot get table info after ddl.", "err", err, "realSchema", realSchema, "tableName", tableName)
 		return err
 	}
 	b.logger.Debug("binlog_reader. new columns. table: %v.%v, columns: %v",
@@ -1267,7 +1267,7 @@ func (b *BinlogReader) updateTableMeta(table *mysqlconfig.Table, realSchema stri
 	tableMap := b.getDbTableMap(realSchema)
 	err = b.addTableToTableMap(tableMap, table)
 	if err != nil {
-		b.logger.Error("failed to make table context: %v", err)
+		b.logger.Error("failed to make table context", "err", err)
 		return err
 	}
 
@@ -1321,6 +1321,7 @@ func (b *BinlogReader) checkObjectFitRegexp(patternTBS []*mysqlconfig.DataSource
 }
 
 func (b *BinlogReader) OnApplierRotate(binlogFile string) {
+	logger := b.logger.Named("OnApplierRotate")
 	if !b.mysqlContext.BinlogRelay {
 		// do nothing if BinlogRelay is not enabled
 		return
@@ -1329,7 +1330,7 @@ func (b *BinlogReader) OnApplierRotate(binlogFile string) {
 	wrappingDir := b.getBinlogDir()
 	fs, err := streamer.ReadDir(wrappingDir)
 	if err != nil {
-		b.logger.Error("OnApplierRotate. err at reading dir: %v", wrappingDir)
+		logger.Error("ReadDir error", "dir", wrappingDir, "err", err)
 		return
 	}
 
@@ -1342,7 +1343,7 @@ func (b *BinlogReader) OnApplierRotate(binlogFile string) {
 		subdir := filepath.Join(wrappingDir, fs[i])
 		stat, err := os.Stat(subdir)
 		if err != nil {
-			b.logger.Error("OnApplierRotate. err at stat: %v", err)
+			logger.Error("err at stat", "err", err)
 			return
 		} else {
 			if stat.IsDir() {
@@ -1354,7 +1355,7 @@ func (b *BinlogReader) OnApplierRotate(binlogFile string) {
 	}
 
 	if dir == "" {
-		b.logger.Warn("OnApplierRotate. empty dir")
+		logger.Warn("empty dir")
 		return
 	}
 
@@ -1362,15 +1363,15 @@ func (b *BinlogReader) OnApplierRotate(binlogFile string) {
 
 	cmp, err := streamer.CollectBinlogFilesCmp(dir, realBinlogFile, streamer.FileCmpLess)
 	if err != nil {
-		b.logger.Error("OnApplierRotate. err at cmp %v", err)
+		logger.Error("err at cmp", "err", err)
 	}
-	b.logger.Debug("OnApplierRotate.cmp: %v", cmp)
+	b.logger.Debug("cmp", "cmp", cmp)
 	for i := range cmp {
 		f := filepath.Join(dir, cmp[i])
-		b.logger.Info("OnApplierRotate will remove file is: %v", f)
+		b.logger.Info("will remove", "file", f)
 		err := os.Remove(f)
 		if err != nil {
-			b.logger.Error("OnApplierRotate error when removing binlog file: %v", f)
+			b.logger.Error("error when removing binlog", "file", f)
 		}
 	}
 }

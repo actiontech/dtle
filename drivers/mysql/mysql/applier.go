@@ -315,27 +315,25 @@ func (a *Applier) updateGtidLoop() {
 func (a *Applier) MtsWorker(workerIndex int) {
 	keepLoop := true
 
+	logger := a.logger.With("worker", workerIndex)
 	for keepLoop {
 		timer := time.NewTimer(pingInterval)
 		select {
 		case tx := <-a.applyBinlogMtsTxQueue:
-			a.logger.Debug("a binlogEntry MTS dequeue, worker: %v. GNO: %v",
-				workerIndex, tx.Coordinates.GNO)
+			logger.Debug("a binlogEntry MTS dequeue", "gno", tx.Coordinates.GNO)
 			if err := a.ApplyBinlogEvent(nil, workerIndex, tx); err != nil {
 				a.onError(TaskStateDead, err) // TODO coordinate with other goroutine
 				keepLoop = false
 			} else {
 				// do nothing
 			}
-			a.logger.Debug("worker: %v. after ApplyBinlogEvent. GNO: %v",
-				workerIndex, tx.Coordinates.GNO)
+			logger.Debug("after ApplyBinlogEvent.", "gno", tx.Coordinates.GNO)
 		case <-a.shutdownCh:
 			keepLoop = false
 		case <-timer.C:
 			err := a.dbs[workerIndex].Db.PingContext(context.Background())
 			if err != nil {
-				a.logger.Error("bad connection for mts worker. workerIndex: %v, err: %v",
-					workerIndex, err)
+				logger.Error("bad connection for mts worker.", "err", err)
 			}
 		}
 		timer.Stop()
@@ -367,7 +365,7 @@ func (a *Applier) Run() {
 			for !a.shutdown {
 				time.Sleep(5 * time.Second)
 				n := atomic.SwapUint32(&a.txLastNSeconds, 0)
-				a.logger.Info("txLastNSeconds: %v", n)
+				a.logger.Info("txLastNSeconds", "n", n)
 			}
 		}()
 	}
@@ -444,10 +442,10 @@ func (a *Applier) initNatSubClient() (err error) {
 	natsAddr := fmt.Sprintf("nats://%s", a.NatsAddr)
 	sc, err := gonats.Connect(natsAddr)
 	if err != nil {
-		a.logger.Error("Can't connect nats server %v. make sure a nats streaming server is running.%v", natsAddr, err)
+		a.logger.Error("cannot connect to nats server", "natsAddr", natsAddr, "err", err)
 		return err
 	}
-	a.logger.Debug("Connect nats server %v", natsAddr)
+	a.logger.Debug("Connect nats server", "natsAddr", natsAddr)
 	a.natsConn = sc
 	return nil
 }
@@ -465,12 +463,12 @@ func (a *Applier) setTableItemForBinlogEntry(binlogEntry *binlog.BinlogEntry) er
 				a.logger.Debug("get tableColumns %v.%v", dmlEvent.DatabaseName, dmlEvent.TableName)
 				tableItem.columns, err = base.GetTableColumns(a.db, dmlEvent.DatabaseName, dmlEvent.TableName)
 				if err != nil {
-					a.logger.Error("GetTableColumns error. err: %v", err)
+					a.logger.Error("GetTableColumns error.", "err", err)
 					return err
 				}
 				err = base.ApplyColumnTypes(a.db, dmlEvent.DatabaseName, dmlEvent.TableName, tableItem.columns)
 				if err != nil {
-					a.logger.Error("ApplyColumnTypes error. err: %v", err)
+					a.logger.Error("ApplyColumnTypes error.", "err", err)
 					return err
 				}
 			} else {
@@ -638,7 +636,7 @@ func (a *Applier) heterogeneousReplay() {
 				if !a.mtsManager.WaitForExecution(binlogEntry) {
 					return // shutdown
 				}
-				a.logger.Debug("a binlogEntry MTS enqueue. gno: %v", binlogEntry.Coordinates.GNO)
+				a.logger.Debug("a binlogEntry MTS enqueue.", "gno", binlogEntry.Coordinates.GNO)
 				err = a.setTableItemForBinlogEntry(binlogEntry)
 				if err != nil {
 					a.onError(TaskStateDead, err)
@@ -1010,10 +1008,10 @@ func (a *Applier) buildDMLEventQuery(dmlEvent binlog.DataEvent, workerIdx int, s
 	doPrepareIfNil := func(stmts []*gosql.Stmt, query string) (*gosql.Stmt, error) {
 		var err error
 		if stmts[workerIdx] == nil {
-			a.logger.Debug("buildDMLEventQuery prepare query %v", query)
+			a.logger.Debug("buildDMLEventQuery prepare query", "query", query)
 			stmts[workerIdx], err = a.dbs[workerIdx].Db.PrepareContext(context.Background(), query)
 			if err != nil {
-				a.logger.Error("buildDMLEventQuery prepare query %v err %v", query, err)
+				a.logger.Error("buildDMLEventQuery prepare query", "query", query, "err", err)
 			}
 		}
 		return stmts[workerIdx], err
@@ -1075,6 +1073,8 @@ func (a *Applier) buildDMLEventQuery(dmlEvent binlog.DataEvent, workerIdx int, s
 
 // ApplyEventQueries applies multiple DML queries onto the dest table
 func (a *Applier) ApplyBinlogEvent(ctx context.Context, workerIdx int, binlogEntry *binlog.BinlogEntry) error {
+	logger := a.logger.Named("ApplyBinlogEvent")
+
 	dbApplier := a.dbs[workerIdx]
 
 	var totalDelta int64
@@ -1083,13 +1083,15 @@ func (a *Applier) ApplyBinlogEvent(ctx context.Context, workerIdx int, binlogEnt
 	var span opentracing.Span
 	if ctx != nil {
 		spanContext = opentracing.SpanFromContext(ctx).Context()
-		span = opentracing.GlobalTracer().StartSpan(" desc single binlogEvent transform to sql ", opentracing.ChildOf(spanContext))
+		span = opentracing.GlobalTracer().StartSpan(" desc single binlogEvent transform to sql ",
+			opentracing.ChildOf(spanContext))
 		span.SetTag("start insert sql ", time.Now().UnixNano()/1e6)
 		defer span.Finish()
 
 	} else {
 		spanContext = binlogEntry.SpanContext
-		span = opentracing.GlobalTracer().StartSpan("desc mts binlogEvent transform to sql ", opentracing.ChildOf(spanContext))
+		span = opentracing.GlobalTracer().StartSpan("desc mts binlogEvent transform to sql ",
+			opentracing.ChildOf(spanContext))
 		span.SetTag("start insert sql ", time.Now().UnixNano()/1e6)
 		defer span.Finish()
 		spanContext = span.Context()
@@ -1117,23 +1119,23 @@ func (a *Applier) ApplyBinlogEvent(ctx context.Context, workerIdx int, binlogEnt
 	}()
 	span.SetTag("begin transform binlogEvent to sql time  ", time.Now().UnixNano()/1e6)
 	for i, event := range binlogEntry.Events {
-		a.logger.Debug("ApplyBinlogEvent. gno: %v, event: %v",
+		logger.Debug("gno: %v, event: %v",
 			binlogEntry.Coordinates.GNO, i)
 		switch event.DML {
 		case binlog.NotDML:
 			var err error
-			a.logger.Debug("ApplyBinlogEvent: not dml: %v", event.Query)
+			logger.Debug("not dml", "query", event.Query)
 
 			if event.CurrentSchema != "" {
 				query := fmt.Sprintf("USE %s", umconf.EscapeName(event.CurrentSchema))
-				a.logger.Debug("query: %v", query)
+				logger.Debug("use", "query", query)
 				_, err = tx.Exec(query)
 				if err != nil {
 					if !sql.IgnoreError(err) {
-						a.logger.Error("Exec sql error: %v", err)
+						logger.Error("Exec sql error", "err", err)
 						return err
 					} else {
-						a.logger.Warn("Ignore error: %v", err)
+						logger.Warn("Ignore error", "err", err)
 					}
 				}
 			}
@@ -1145,13 +1147,13 @@ func (a *Applier) ApplyBinlogEvent(ctx context.Context, workerIdx int, binlogEnt
 				} else {
 					schema = event.CurrentSchema
 				}
-				a.logger.Debug("reset tableItem %v.%v", schema, event.TableName)
+				logger.Debug("reset tableItem", "schema", schema, "table", event.TableName)
 				a.getTableItem(schema, event.TableName).Reset()
 			} else { // TableName == ""
 				if event.DatabaseName != "" {
 					if schemaItem, ok := a.tableItems[event.DatabaseName]; ok {
 						for tableName, v := range schemaItem {
-							a.logger.Debug("reset tableItem %v.%v", event.DatabaseName, tableName)
+							logger.Debug("reset tableItem", "schema", event.DatabaseName, "table", tableName)
 							v.Reset()
 						}
 					}
@@ -1162,22 +1164,22 @@ func (a *Applier) ApplyBinlogEvent(ctx context.Context, workerIdx int, binlogEnt
 			_, err = tx.Exec(event.Query)
 			if err != nil {
 				if !sql.IgnoreError(err) {
-					a.logger.Error("Exec sql error: %v", err)
+					logger.Error("Exec sql error", "err", err)
 					return err
 				} else {
-					a.logger.Warn("Ignore error: %v", err)
+					logger.Warn("Ignore error", "err", err)
 				}
 			}
-			a.logger.Debug("Exec [%s]", event.Query)
+			logger.Debug("Exec.after", "query", event.Query)
 		default:
-			a.logger.Debug("ApplyBinlogEvent: a dml event")
+			logger.Debug("a dml event")
 			stmt, query, args, rowDelta, err := a.buildDMLEventQuery(event, workerIdx, spanContext)
 			if err != nil {
-				a.logger.Error("Build dml query error: %v", err)
+				logger.Error("buildDMLEventQuery error", "err", err)
 				return err
 			}
 
-			a.logger.Debug("ApplyBinlogEvent. args: %v", args)
+			logger.Debug("buildDMLEventQuery.after", "args", args)
 
 			var r gosql.Result
 			if stmt != nil {
@@ -1187,20 +1189,21 @@ func (a *Applier) ApplyBinlogEvent(ctx context.Context, workerIdx int, binlogEnt
 			}
 
 			if err != nil {
-				a.logger.Error("gtid: %s:%d, error: %v", txSid, binlogEntry.Coordinates.GNO, err)
+				logger.Error("at exec", "gtid", hclog.Fmt("%s:%d", txSid, binlogEntry.Coordinates.GNO),
+					"err", err)
 				return err
 			}
 			nr, err := r.RowsAffected()
 			if err != nil {
-				a.logger.Debug("ApplyBinlogEvent executed gno %v event %v rows_affected_err %v schema", binlogEntry.Coordinates.GNO, i, err)
+				logger.Error("RowsAffected error", "gno", binlogEntry.Coordinates.GNO, "event", i, "err", err)
 			} else {
-				a.logger.Debug("ApplyBinlogEvent executed gno %v event %v rows_affected %v", binlogEntry.Coordinates.GNO, i, nr)
+				logger.Debug("RowsAffected.after", "gno", binlogEntry.Coordinates.GNO, "event", i, "nr", nr)
 			}
 			totalDelta += rowDelta
 		}
 	}
 	span.SetTag("after  transform  binlogEvent to sql  ", time.Now().UnixNano()/1e6)
-	a.logger.Debug("ApplyBinlogEvent. insert gno: %v", binlogEntry.Coordinates.GNO)
+	logger.Debug("insert gno", "gno", binlogEntry.Coordinates.GNO)
 	_, err = dbApplier.PsInsertExecutedGtid.Exec(a.subject, binlogEntry.Coordinates.SID.Bytes(), binlogEntry.Coordinates.GNO)
 	if err != nil {
 		return err
@@ -1221,20 +1224,20 @@ func (a *Applier) ApplyEventQueries(db *gosql.DB, entry *common.DumpEntry) error
 
 	if entry.SystemVariablesStatement != "" {
 		for i := range a.dbs {
-			a.logger.Debug("exec sysvar query: %v", entry.SystemVariablesStatement)
+			a.logger.Debug("exec sysvar query", "query", entry.SystemVariablesStatement)
 			_, err := a.dbs[i].Db.ExecContext(context.Background(), entry.SystemVariablesStatement)
 			if err != nil {
-				a.logger.Error("err exec sysvar query. err: %v", err)
+				a.logger.Error("err exec sysvar query.", "err", err)
 				return err
 			}
 		}
 	}
 	if entry.SqlMode != "" {
 		for i := range a.dbs {
-			a.logger.Debug("exec sqlmode query: %v", entry.SqlMode)
+			a.logger.Debug("exec sqlmode query", "query", entry.SqlMode)
 			_, err := a.dbs[i].Db.ExecContext(context.Background(), entry.SqlMode)
 			if err != nil {
-				a.logger.Error("err exec sysvar query. err: %v", err)
+				a.logger.Error("err exec sysvar query.", "err", err)
 				return err
 			}
 		}
@@ -1262,11 +1265,11 @@ func (a *Applier) ApplyEventQueries(db *gosql.DB, entry *common.DumpEntry) error
 		_, err := tx.Exec(query)
 		if err != nil {
 			if !sql.IgnoreError(err) {
-				a.logger.Error("Exec [%s] error: %v", common.StrLim(query, 10), err)
+				a.logger.Error("Exec error", "query", common.StrLim(query, 10), "err", err)
 				return err
 			}
 			if !sql.IgnoreExistsError(err) {
-				a.logger.Warn("Ignore error: %v", err)
+				a.logger.Warn("Ignore error", "err", err)
 			}
 		}
 		return nil
@@ -1415,13 +1418,13 @@ func (a *Applier) onError(state int, err error) {
 	case TaskStateRestart:
 		if a.natsConn != nil {
 			if err := a.natsConn.Publish(fmt.Sprintf("%s_restart", a.subject), []byte(a.mysqlContext.Gtid)); err != nil {
-				a.logger.Error("Trigger restart extractor : %v", err)
+				a.logger.Error("Trigger restart extractor", "err", err)
 			}
 		}
 	default:
 		if a.natsConn != nil {
 			if err := a.natsConn.Publish(fmt.Sprintf("%s_error", a.subject), []byte(a.mysqlContext.Gtid)); err != nil {
-				a.logger.Error("Trigger extractor shutdown: %v", err)
+				a.logger.Error("Trigger extractor shutdown", "err", err)
 			}
 		}
 	}

@@ -29,8 +29,8 @@ func (a *Applier) migrateGtidExecutedV2toV3() error {
 	var query string
 
 	logErr := func(query string, err error) {
-		a.logger.Error(`migrateGtidExecutedV2toV3 failed. manual intervention might be required. query: %v. err: %v`,
-			query, err)
+		a.logger.Error(`migrateGtidExecutedV2toV3 failed. manual intervention might be required.`,
+			"query", query, "err", err)
 	}
 
 	query = fmt.Sprintf("alter table %v.%v rename to %v.%v",
@@ -67,8 +67,8 @@ func (a *Applier) migrateGtidExecutedV3toV4() (err error) {
 	var query string
 
 	logErr := func(query string, err error) {
-		a.logger.Error(`migrateGtidExecutedV3toV4 failed. manual intervention might be required. query: %v. err: %v`,
-			query, err)
+		a.logger.Error(`migrateGtidExecutedV3toV4 failed. manual intervention might be required.`,
+			"query", query, "err", err)
 	}
 
 	_, err = a.db.Exec(createTableGtidExecutedV4Query)

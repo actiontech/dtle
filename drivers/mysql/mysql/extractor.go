@@ -251,7 +251,7 @@ func (e *Extractor) Run() {
 					e.logger.Debug("*** progress: %v", binlogFile)
 					err := e.natsConn.Publish(m.Reply, nil)
 					if err != nil {
-						e.logger.Debug("*** progress reply error. err %v", err)
+						e.logger.Debug("*** progress reply error.", "err", err)
 					}
 					e.binlogReader.OnApplierRotate(binlogFile)
 				})
@@ -660,13 +660,13 @@ func (e *Extractor) getSchemaTablesAndMeta() error {
 
 			stmts, err := base.ShowCreateTable(e.db, db.TableSchema, tb.TableName, false, false)
 			if err != nil {
-				e.logger.Error("error at ShowCreateTable. err: %v", err)
+				e.logger.Error("error at ShowCreateTable.", "err", err)
 				return err
 			}
 			stmt := stmts[0]
 			ast, err := sqle.ParseCreateTableStmt("mysql", stmt)
 			if err != nil {
-				e.logger.Error("error at ParseCreateTableStmt. err: %v", err)
+				e.logger.Error("error at ParseCreateTableStmt.", "err", err)
 				return err
 			}
 			e.context.UpdateContext(ast, "mysql")
@@ -690,7 +690,7 @@ func (e *Extractor) initBinlogReader(binlogCoordinates *base.BinlogCoordinatesX)
 	binlogReader, err := binlog.NewMySQLReader(e.execCtx, e.mysqlContext, e.logger.ResetNamed("reader"),
 		e.replicateDoDb, e.context)
 	if err != nil {
-		e.logger.Debug("err at initBinlogReader: NewMySQLReader: %v", err.Error())
+		e.logger.Error("err at initBinlogReader: NewMySQLReader", "err", err)
 		e.streamerReadyCh <- err
 		return
 	}
@@ -1052,7 +1052,7 @@ func (e *Extractor) publish(ctx context.Context, subject, gtid string, txMsg []b
 			break
 		}
 		// there's an error. Let's try again.
-		e.logger.Debug(fmt.Sprintf("there's an error. Let's try again", "err", err))
+		e.logger.Debug("there's an error. Let's try again", "err", err)
 		time.Sleep(1 * time.Second)
 	}
 	return err
@@ -1145,7 +1145,7 @@ func (e *Extractor) mysqlDump() error {
 			// 1
 			rows1, err := e.singletonDB.Query("show master status")
 			if err != nil {
-				e.logger.Error("get gtid, round: %v, phase 1, err: %v", gtidMatchRound, err)
+				e.logger.Error("get gtid 1 error", "round", gtidMatchRound, "err", err)
 				return err
 			}
 
@@ -1489,7 +1489,7 @@ func (e *Extractor) Stats() (*common.TaskStatistics, error) {
 }
 
 func (e *Extractor) onError(state int, err error) {
-	e.logger.Error("error: %v", err.Error())
+	e.logger.Error("onError", "err", err)
 	if e.shutdown {
 		return
 	}
@@ -1527,21 +1527,21 @@ func (e *Extractor) Shutdown() error {
 	}
 
 	if err := sql.CloseDB(e.singletonDB); err != nil {
-		e.logger.Error("Shutdown error close singletonDB. err %v", err)
+		e.logger.Error("Shutdown error close singletonDB.", "err", err)
 	}
 
 	if err := sql.CloseDB(e.inspector.db); err != nil {
-		e.logger.Error("Shutdown error close inspector.db. err %v", err)
+		e.logger.Error("Shutdown error close inspector.db.", "err", err)
 	}
 
 	if e.binlogReader != nil {
 		if err := e.binlogReader.Close(); err != nil {
-			e.logger.Error("Shutdown error close binlogReader. err %v", err)
+			e.logger.Error("Shutdown error close binlogReader.", "err", err)
 		}
 	}
 
 	if err := sql.CloseDB(e.db); err != nil {
-		e.logger.Error("Shutdown error close e.db. err %v", err)
+		e.logger.Error("Shutdown error close e.db.", "err", err)
 	}
 
 	//close(e.binlogChannel)
