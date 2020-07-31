@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2016-2018. ActionTech.
- * Based on: github.com/actiontech/kafkas, github.com/github/gh-ost .
+ * Based on: github.com/hashicorp/nomad, github.com/github/gh-ost .
  * License: MPL version 2: https://www.mozilla.org/en-US/MPL/2.0 .
  */
 
@@ -69,7 +69,7 @@ type DataEvent struct {
 	WhereColumnValues *config.ColumnValues
 	NewColumnValues   *config.ColumnValues
 	Table             *config.Table // TODO tmp solution
-	LogPos            int64         // for kafkas. The pos of WRITE_ROW_EVENT
+	LogPos            int64         // for kafka. The pos of WRITE_ROW_EVENT
 	TableItem         interface{}
 }
 

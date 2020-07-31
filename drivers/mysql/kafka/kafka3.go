@@ -2,7 +2,7 @@ package kafka
 
 /*
  * Copyright (C) 2016-2018. ActionTech.
- * Based on: github.com/actiontech/kafkas, github.com/github/gh-ost .
+ * Based on: github.com/hashicorp/nomad, github.com/github/gh-ost .
  * License: MPL version 2: https://www.mozilla.org/en-US/MPL/2.0 .
  */
 
@@ -82,7 +82,7 @@ func (kr *KafkaRunner) Shutdown() error {
 	kr.shutdown = true
 	close(kr.shutdownCh)
 
-	kr.logger.Info("kafkas: Shutting down")
+	kr.logger.Info("Shutting down")
 	return nil
 }
 
@@ -94,16 +94,16 @@ func (kr *KafkaRunner) initNatSubClient() (err error) {
 	natsAddr := fmt.Sprintf("nats://%s", kr.kafkaConfig.NatsAddr)
 	sc, err := gonats.Connect(natsAddr)
 	if err != nil {
-		kr.logger.Error("err: %v ,natsServer: %v kafkas: Can't connect nats server. make sure a nats streaming server is running", err, natsAddr)
+		kr.logger.Error("Can't connect nats server.", "err", err, "natsAddr", natsAddr)
 		return err
 	}
-	kr.logger.Debug("natsServer: %v ,natsServer: %vkafkas: Connect nats server %v", natsAddr, natsAddr)
+	kr.logger.Debug("kafka: Connect nats server", "natsAddr", natsAddr)
 
 	kr.natsConn = sc
 	return nil
 }
 func (kr *KafkaRunner) Run() {
-	kr.logger.Debug("kafkas. broker %v", kr.kafkaConfig.Brokers)
+	kr.logger.Debug("Run", "brokers", kr.kafkaConfig.Brokers)
 	var err error
 
 	kr.logger.Info("go WatchAndPutNats")
@@ -118,21 +118,21 @@ func (kr *KafkaRunner) Run() {
 			return
 		}
 		if gtid != "" {
-			kr.logger.Info("kafka. Got gtid from consul", "gtid", gtid)
+			kr.logger.Info("Got gtid from consul", "gtid", gtid)
 			kr.kafkaConfig.Gtid = gtid
 		}
 	}
 
 	kr.kafkaMgr, err = NewKafkaManager(kr.kafkaConfig)
 	if err != nil {
-		kr.logger.Error("failed to initialize kafkas err: %v", err.Error())
+		kr.logger.Error("failed to initialize kafka", "err", err)
 		kr.onError(TaskStateDead, err)
 		return
 	}
 
 	err = kr.initNatSubClient()
 	if err != nil {
-		kr.logger.Error("initNatSubClient error: %v", err.Error())
+		kr.logger.Error("initNatSubClient", "err", err)
 
 		kr.onError(TaskStateDead, err)
 		return
@@ -155,13 +155,13 @@ func (kr *KafkaRunner) getOrSetTable(schemaName string, tableName string, table 
 	if table == nil {
 		b, ok := a[tableName]
 		if ok {
-			kr.logger.Debug("schemaName: %v,tableName: %v,kafkas: reuse table info", schemaName, tableName)
+			kr.logger.Debug("reuse table info", "schemaName", schemaName, "tableName", tableName)
 			return b, nil
 		} else {
-			return nil, fmt.Errorf("DTLE_BUG kafkas: unknown table structure")
+			return nil, fmt.Errorf("DTLE_BUG kafka: unknown table structure")
 		}
 	} else {
-		kr.logger.Debug("schemaName: %v,tableName: %v,kafkas: new table info", schemaName, tableName)
+		kr.logger.Debug("new table info", "schemaName", schemaName, "tableName", tableName)
 		a[tableName] = table
 		return table, nil
 	}
@@ -171,7 +171,7 @@ func (kr *KafkaRunner) initiateStreaming() error {
 	var err error
 
 	_, err = kr.natsConn.Subscribe(fmt.Sprintf("%s_full", kr.subject), func(m *gonats.Msg) {
-		kr.logger.Debug("kafkas: recv a msg")
+		kr.logger.Debug("recv a msg")
 		dumpData, err := common.DecodeDumpEntry(m.Data)
 		if err != nil {
 			kr.onError(TaskStateDead, err)
@@ -179,9 +179,9 @@ func (kr *KafkaRunner) initiateStreaming() error {
 		}
 
 		if dumpData.DbSQL != "" || len(dumpData.TbSQL) > 0 {
-			kr.logger.Debug("kafkas. a sql dumpEntry")
+			kr.logger.Debug("a sql dumpEntry")
 		} else if dumpData.TableSchema == "" && dumpData.TableName == "" {
-			kr.logger.Debug("kafkas.  skip apply sqlMode and SystemVariablesStatement")
+			kr.logger.Debug("skip apply sqlMode and SystemVariablesStatement")
 			if err := kr.natsConn.Publish(m.Reply, nil); err != nil {
 				kr.onError(TaskStateDead, err)
 				return
@@ -214,7 +214,7 @@ func (kr *KafkaRunner) initiateStreaming() error {
 			kr.onError(TaskStateDead, err)
 			return
 		}
-		kr.logger.Debug("kafkas: after publish nats reply")
+		kr.logger.Debug("after publish nats reply")
 	})
 	if err != nil {
 		return err
@@ -242,7 +242,7 @@ func (kr *KafkaRunner) initiateStreaming() error {
 		if err := kr.natsConn.Publish(m.Reply, nil); err != nil {
 			kr.onError(TaskStateDead, err)
 		}
-		kr.logger.Debug("applier. incr. ack-recv. nEntries: %v", binlogEntries.Entries)
+		kr.logger.Debug("applier. incr. ack-recv.", "nEntries", binlogEntries.Entries)
 	})
 	if err != nil {
 		return err
@@ -257,17 +257,17 @@ func (kr *KafkaRunner) onError(state int, err error) {
 	}
 	switch state {
 	case TaskStateComplete:
-		kr.logger.Info("kafkas: Done migrating")
+		kr.logger.Info("Done migrating")
 	case TaskStateRestart:
 		if kr.natsConn != nil {
 			if err := kr.natsConn.Publish(fmt.Sprintf("%s_restart", kr.subject), []byte(kr.kafkaConfig.Gtid)); err != nil {
-				kr.logger.Error("kafkas: Trigger restart err: %v", err)
+				kr.logger.Error("Trigger restart", "err", err)
 			}
 		}
 	default:
 		if kr.natsConn != nil {
 			if err := kr.natsConn.Publish(fmt.Sprintf("%s_error", kr.subject), []byte(kr.kafkaConfig.Gtid)); err != nil {
-				kr.logger.Error("kafkas: Trigger shutdown, err: %v", err)
+				kr.logger.Error("Trigger shutdown", "err", err)
 			}
 		}
 	}
@@ -285,7 +285,7 @@ func (kr *KafkaRunner) kafkaTransformSnapshotData(table *mysqlconfig.Table, valu
 	var err error
 
 	tableIdent := fmt.Sprintf("%v.%v.%v", kr.kafkaMgr.Cfg.Topic, table.TableSchema, table.TableName)
-	kr.logger.Debug("kafkas: kafkaTransformSnapshotData value: %v", value.ValuesX)
+	kr.logger.Debug("kafkaTransformSnapshotData", "value", value.ValuesX)
 	for _, rowValues := range value.ValuesX {
 		keyPayload := NewRow()
 		valuePayload := NewValuePayload()
@@ -386,7 +386,7 @@ func (kr *KafkaRunner) kafkaTransformSnapshotData(table *mysqlconfig.Table, valu
 			if columnList[i].IsPk() {
 				keyPayload.AddField(columnList[i].RawName, value)
 			}
-			kr.logger.Debug("kafkas: kafkaTransformSnapshotData rowvalue: %v", value)
+			kr.logger.Debug("kafkaTransformSnapshotData", "rowvalue", value)
 			valuePayload.After.AddField(columnList[i].RawName, value)
 		}
 
@@ -403,18 +403,18 @@ func (kr *KafkaRunner) kafkaTransformSnapshotData(table *mysqlconfig.Table, valu
 
 		kBs, err := json.Marshal(k)
 		if err != nil {
-			return fmt.Errorf("kafkas: serialization error: %v", err)
+			return fmt.Errorf("serialization error: %v", err)
 		}
 		vBs, err := json.Marshal(v)
 		if err != nil {
-			return fmt.Errorf("kafkas: serialization error: %v", err)
+			return fmt.Errorf("serialization error: %v", err)
 		}
 		//vBs = []byte(strings.Replace(string(vBs), "\"field\":\"snapshot\"", "\"default\":false,\"field\":\"snapshot\"", -1))
 		err = kr.kafkaMgr.Send(tableIdent, kBs, vBs)
 		if err != nil {
 			return err
 		}
-		kr.logger.Debug("kafkas: sent one msg")
+		kr.logger.Debug("sent one msg")
 	}
 	return nil
 }
@@ -580,11 +580,11 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry)
 			}
 
 			if before != nil {
-				kr.logger.Debug("kafkas. beforeValue: %v", beforeValue)
+				kr.logger.Debug("beforeValue", "v", beforeValue)
 				before.AddField(colName, beforeValue)
 			}
 			if after != nil {
-				kr.logger.Debug("kafkas. afterValue: %v", afterValue)
+				kr.logger.Debug("afterValue", "v", afterValue)
 				after.AddField(colName, afterValue)
 			}
 		}
@@ -635,7 +635,7 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry)
 		if err != nil {
 			return err
 		}
-		kr.logger.Debug("kafkas: sent one msg")
+		kr.logger.Debug("sent one msg")
 
 		// tombstone event for DELETE
 		if dataEvent.DML == binlog.DeleteDML {
@@ -651,7 +651,7 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry)
 			if err != nil {
 				return err
 			}
-			kr.logger.Debug("kafkas: sent one msg")
+			kr.logger.Debug("sent one msg")
 		}
 	}
 

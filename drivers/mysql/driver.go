@@ -205,7 +205,7 @@ func (d *Driver) SetupNatsServer(logger hclog.Logger) (err error)  {
 		LogFile:"/opt/log",
 		Debug:   true,
 	}
-	//logger.Debug("agent: Starting nats streaming server [%v]", "10.186.61.121:8193")
+	//logger.Debug("Starting nats streaming server", "addr", natsAddr)
 	sOpts := stand.GetDefaultOptions()
 	sOpts.ID = config.DefaultClusterID
 	s, err := stand.RunServerWithOpts(sOpts, &nOpts)

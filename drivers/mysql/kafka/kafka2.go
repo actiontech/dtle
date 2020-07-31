@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2016-2018. ActionTech.
- * Based on: github.com/actiontech/kafkas, github.com/github/gh-ost .
+ * Based on: github.com/hashicorp/nomad, github.com/github/gh-ost .
  * License: MPL version 2: https://www.mozilla.org/en-US/MPL/2.0 .
  */
 
@@ -277,7 +277,7 @@ func NewDecimalField(precision int, scale int, optional bool, field string, defa
 		Field:    field,
 		Default:  defaultValue,
 		Optional: optional,
-		Name:     "org.apache.kafkas.connect.data.Decimal",
+		Name:     "org.apache.kafka.connect.data.Decimal",
 		Parameters: map[string]interface{}{
 			"connect.decimal.precision": strconv.Itoa(precision),
 			"scale":                     strconv.Itoa(scale),

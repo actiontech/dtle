@@ -608,7 +608,7 @@ func ParseCreateTableStmt(dbtype string, sql string) (*ast.CreateTableStmt, erro
 	t, err := parseOneSql(dbtype, sql)
 	if err != nil {
 		// TODO logger
-		//logger.Errorf("parse sql from show create failed, error: %v", err)
+		//logger.Error("parse sql from show create failed", "err", err)
 		return nil, err
 	}
 	createStmt, ok := t.(*ast.CreateTableStmt)

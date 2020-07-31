@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2016-2018. ActionTech.
- * Based on: github.com/actiontech/kafkas, github.com/github/gh-ost .
+ * Based on: github.com/hashicorp/nomad, github.com/github/gh-ost .
  * License: MPL version 2: https://www.mozilla.org/en-US/MPL/2.0 .
  */
 
@@ -214,15 +214,15 @@ func (d *dumper) getChunkData() (nRows int64, err error) {
 				keepGoing = false
 			case <-timer.C:
 				timer.Reset(pingInterval)
-				d.logger.Debug("mysql.dumper: resultsChannel full. waiting and ping conn")
+				d.logger.Debug("resultsChannel full. waiting and ping conn")
 				var dummy int
 				errPing := d.db.QueryRow("select 1").Scan(&dummy)
 				if errPing != nil {
-					d.logger.Debug("mysql.dumper: ping query row got error. err: %v", errPing)
+					d.logger.Debug("ping query row got error.", "err", errPing)
 				}
 			}
 		}
-		d.logger.Debug("mysql.dumper: resultsChannel: %v", len(d.resultsChannel))
+		d.logger.Debug("resultsChannel", "n", len(d.resultsChannel))
 	}()
 
 	query := ""
@@ -240,9 +240,9 @@ func (d *dumper) getChunkData() (nRows int64, err error) {
 			var cs int64
 			err := row.Scan(&table, &cs)
 			if err != nil {
-				d.logger.Debug("getChunkData checksum_table_err %v %v", table, err)
+				d.logger.Debug("getChunkData checksum_table_err", "table", table, "err", err)
 			} else {
-				d.logger.Debug("getChunkData checksum_table %v %v", table, cs)
+				d.logger.Debug("getChunkData checksum_table", "table", table, "cs", cs)
 			}
 		}
 	}
@@ -251,8 +251,8 @@ func (d *dumper) getChunkData() (nRows int64, err error) {
 	d.table.Iteration += 1
 	rows, err := d.db.Query(query)
 	if err != nil {
-		d.logger.Debug("mysql.dumper. error at select chunk. query: ", query)
-		newErr := fmt.Errorf("mysql.dumper. error at select chunk. err: %v", err)
+		d.logger.Debug("error at select chunk. query: ", query)
+		newErr := fmt.Errorf("error at select chunk. err: %v", err)
 		d.logger.Error(newErr.Error())
 		return 0, err
 	}
@@ -300,7 +300,7 @@ func (d *dumper) getChunkData() (nRows int64, err error) {
 					d.table.UseUniqueKey.LastMaxVals[i] = lastVals[idx]
 				}
 			}
-			d.logger.Debug("GetLastMaxVal: got %v", d.table.UseUniqueKey.LastMaxVals)
+			d.logger.Debug("GetLastMaxVal", "val", d.table.UseUniqueKey.LastMaxVals)
 		}
 	}
 	if d.table.TableRename != "" {
@@ -343,16 +343,16 @@ func (d *dumper) Dump() error {
 
 			nRows, err := d.getChunkData()
 			if err != nil {
-				d.logger.Error("mysql.dumper: error at dump %v", err)
+				d.logger.Error("error at dump", "err", err)
 				break
 			}
 
 			if nRows < d.chunkSize {
 				// If nRows < d.chunkSize while there are still more rows, it is a possible mysql bug.
-				d.logger.Info("mysql.dumper: nRows < d.chunkSize. %v %v", nRows, d.chunkSize)
+				d.logger.Info("nRows < d.chunkSize.", "nRows", nRows, "chunkSize", d.chunkSize)
 			}
 			if nRows == 0 {
-				d.logger.Info("mysql.dumper: nRows == 0. dump finished. %v %v", nRows, d.chunkSize)
+				d.logger.Info("nRows == 0. dump finished.", "nRows", nRows, "chunkSize", d.chunkSize)
 				break
 			}
 		}

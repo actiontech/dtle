@@ -29,8 +29,8 @@ func (a *Applier) migrateGtidExecutedV2toV3() error {
 	var query string
 
 	logErr := func(query string, err error) {
-		a.logger.Error(`migrateGtidExecutedV2toV3 failed. manual intervention might be required. query: %v. err: %v`,
-			query, err)
+		a.logger.Error(`migrateGtidExecutedV2toV3 failed. manual intervention might be required.`,
+			"query", query, "err", err)
 	}
 
 	query = fmt.Sprintf("alter table %v.%v rename to %v.%v",
@@ -67,8 +67,8 @@ func (a *Applier) migrateGtidExecutedV3toV4() (err error) {
 	var query string
 
 	logErr := func(query string, err error) {
-		a.logger.Error(`migrateGtidExecutedV3toV4 failed. manual intervention might be required. query: %v. err: %v`,
-			query, err)
+		a.logger.Error(`migrateGtidExecutedV3toV4 failed. manual intervention might be required.`,
+			"query", query, "err", err)
 	}
 
 	_, err = a.db.Exec(createTableGtidExecutedV4Query)
@@ -155,7 +155,7 @@ func (a *Applier) createTableGtidExecutedV4() error {
 	if _, err := a.db.Exec(query); err != nil {
 		return err
 	}
-	a.logger.Debug("mysql.applier. after create dtle schema")
+	a.logger.Debug("after create dtle schema")
 
 	if result, err := sql.QueryResultData(a.db, fmt.Sprintf("SHOW TABLES FROM %v LIKE '%v%%'",
 		g.DtleSchemaName, g.GtidExecutedTempTablePrefix)); nil == err && len(result) > 0 {
@@ -167,7 +167,7 @@ func (a *Applier) createTableGtidExecutedV4() error {
 	if err != nil {
 		return err
 	}
-	a.logger.Debug("mysql.applier. after show gtid_executed table", "result", result)
+	a.logger.Debug("after show gtid_executed table", "result", result)
 
 	if len(result) > 1 {
 		return fmt.Errorf("multiple GtidExecutedTable exists, while at most one is allowed." +
@@ -199,17 +199,17 @@ func (a *Applier) createTableGtidExecutedV4() error {
 		if _, err := a.db.Exec(createTableGtidExecutedV4Query); err != nil {
 			return err
 		}
-		a.logger.Debug("mysql.applier. after create gtid_executed table")
+		a.logger.Debug("after create gtid_executed table")
 		return nil
 	}
 }
 
 func (a *Applier) cleanGtidExecuted(sid uuid.UUID, intervalStr string) error {
-	a.logger.Debug("mysql.applier. incr. cleanup before WaitForExecution")
+	a.logger.Debug("incr. cleanup before WaitForExecution")
 	if !a.mtsManager.WaitForAllCommitted() {
 		return nil // shutdown
 	}
-	a.logger.Debug("mysql.applier. incr. cleanup after WaitForExecution")
+	a.logger.Debug("incr. cleanup after WaitForExecution")
 
 	// The TX is unnecessary if we first insert and then delete.
 	// However, consider `binlog_group_commit_sync_delay > 0`,
@@ -233,7 +233,7 @@ func (a *Applier) cleanGtidExecuted(sid uuid.UUID, intervalStr string) error {
 		return err
 	}
 
-	a.logger.Debug("mysql.applier: compactation gtid. new interval: %v", intervalStr)
+	a.logger.Debug("compactation gtid. new interval", "intervalStr", intervalStr)
 	_, err = dbApplier.Db.ExecContext(context.TODO(),
 		fmt.Sprintf("insert into %v.%v values (?,?,0,?)", g.DtleSchemaName, g.GtidExecutedTableV4),
 		a.subject, sid.Bytes(), intervalStr)
