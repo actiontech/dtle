@@ -31,7 +31,6 @@ import (
 	gomysql "github.com/siddontang/go-mysql/mysql"
 
 	"context"
-	"net"
 	"os"
 	"regexp"
 
@@ -42,7 +41,6 @@ import (
 	sqle "github.com/actiontech/dtle/drivers/mysql/mysql/sqle/inspector"
 	"github.com/hashicorp/go-hclog"
 	"github.com/nats-io/not.go"
-	"github.com/shirou/gopsutil/mem"
 )
 
 const (
@@ -877,11 +875,9 @@ func (e *Extractor) StreamEvents() error {
 			groupTimeoutDuration := time.Duration(e.mysqlContext.GroupTimeout) * time.Millisecond
 			timer := time.NewTimer(groupTimeoutDuration)
 			defer timer.Stop()
-			natsips := strings.Split(e.NatsAddr, ":") // TODO what?
 
 			for keepGoing && !e.shutdown {
 				var err error
-				var addrs []net.Addr
 				select {
 				case binlogEntry := <-e.dataChannel:
 					spanContext := binlogEntry.SpanContext
@@ -892,25 +888,6 @@ func (e *Extractor) StreamEvents() error {
 					binlogEntry.SpanContext = nil
 					entries.Entries = append(entries.Entries, binlogEntry)
 					entriesSize += binlogEntry.OriginalSize
-					if int64(len(entries.Entries)) <= 1 {
-						v, _ := mem.VirtualMemory()
-						addrs, err = net.InterfaceAddrs()
-						if err != nil {
-							break
-						}
-						for _, ip := range addrs {
-							rip := ip.(*net.IPNet).IP.String()
-							e.logger.Debug("self ip is  : %v,natsips is : %v", rip, natsips[0])
-							if rip == natsips[0] && entriesSize > int(v.Available/16) {
-								err = errors.Errorf("Too much entriesSize , not enough memory ")
-								break
-							}
-						}
-					}
-					if err != nil {
-						break
-					}
-					e.logger.Debug("err is  : %v", err != nil) // TODO remove
 					if entriesSize >= e.mysqlContext.GroupMaxSize ||
 						int64(len(entries.Entries)) == e.mysqlContext.ReplChanBufferSize {
 						e.logger.Debug("incr. send by GroupLimit.", "entriesSize", entriesSize,
@@ -938,7 +915,7 @@ func (e *Extractor) StreamEvents() error {
 					e.mysqlContext.Stage = common.StageSendingBinlogEventToSlave
 					atomic.AddInt64(&e.mysqlContext.DeltaEstimate, 1)
 				}
-			}
+			} // end for keepGoing && !e.shutdown
 		}()
 		// region commented out
 		/*entryArray := make([]*binlog.BinlogEntry, 0)
