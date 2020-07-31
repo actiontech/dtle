@@ -69,7 +69,7 @@ type DataEvent struct {
 	WhereColumnValues *config.ColumnValues
 	NewColumnValues   *config.ColumnValues
 	Table             *config.Table // TODO tmp solution
-	LogPos            int64         // for kafkas. The pos of WRITE_ROW_EVENT
+	LogPos            int64         // for kafka. The pos of WRITE_ROW_EVENT
 	TableItem         interface{}
 }
 

@@ -885,7 +885,7 @@ func (e *Extractor) StreamEvents() error {
 				select {
 				case binlogEntry := <-e.dataChannel:
 					spanContext := binlogEntry.SpanContext
-					span := opentracing.GlobalTracer().StartSpan("nat send :begin  send binlogEntry from src kafkas to desc kafkas", opentracing.ChildOf(spanContext))
+					span := opentracing.GlobalTracer().StartSpan("nat send :begin  send binlogEntry from src kafka to desc kafka", opentracing.ChildOf(spanContext))
 					span.SetTag("time", time.Now().Unix())
 					ctx = opentracing.ContextWithSpan(ctx, span)
 					//span.SetTag("timetag", time.Now().Unix())

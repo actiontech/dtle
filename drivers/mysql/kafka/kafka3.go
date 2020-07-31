@@ -94,10 +94,10 @@ func (kr *KafkaRunner) initNatSubClient() (err error) {
 	natsAddr := fmt.Sprintf("nats://%s", kr.kafkaConfig.NatsAddr)
 	sc, err := gonats.Connect(natsAddr)
 	if err != nil {
-		kr.logger.Error("err: %v ,natsServer: %v kafkas: Can't connect nats server. make sure a nats streaming server is running", err, natsAddr)
+		kr.logger.Error("Can't connect nats server.", "err", err, "natsAddr", natsAddr)
 		return err
 	}
-	kr.logger.Debug("natsServer: %v ,natsServer: %vkafkas: Connect nats server %v", natsAddr, natsAddr)
+	kr.logger.Debug("kafka: Connect nats server", "natsAddr", natsAddr)
 
 	kr.natsConn = sc
 	return nil
@@ -125,7 +125,7 @@ func (kr *KafkaRunner) Run() {
 
 	kr.kafkaMgr, err = NewKafkaManager(kr.kafkaConfig)
 	if err != nil {
-		kr.logger.Error("failed to initialize kafkas", "err", err)
+		kr.logger.Error("failed to initialize kafka", "err", err)
 		kr.onError(TaskStateDead, err)
 		return
 	}
@@ -158,7 +158,7 @@ func (kr *KafkaRunner) getOrSetTable(schemaName string, tableName string, table 
 			kr.logger.Debug("reuse table info", "schemaName", schemaName, "tableName", tableName)
 			return b, nil
 		} else {
-			return nil, fmt.Errorf("DTLE_BUG kafkas: unknown table structure")
+			return nil, fmt.Errorf("DTLE_BUG kafka: unknown table structure")
 		}
 	} else {
 		kr.logger.Debug("new table info", "schemaName", schemaName, "tableName", tableName)

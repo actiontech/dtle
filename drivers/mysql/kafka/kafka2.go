@@ -277,7 +277,7 @@ func NewDecimalField(precision int, scale int, optional bool, field string, defa
 		Field:    field,
 		Default:  defaultValue,
 		Optional: optional,
-		Name:     "org.apache.kafkas.connect.data.Decimal",
+		Name:     "org.apache.kafka.connect.data.Decimal",
 		Parameters: map[string]interface{}{
 			"connect.decimal.precision": strconv.Itoa(precision),
 			"scale":                     strconv.Itoa(scale),
