@@ -312,7 +312,7 @@ func (b *BinlogReader) ConnectBinlogStreamer(coordinates base.BinlogCoordinatesX
 		if err != nil {
 			return err
 		}
-		b.logger.Debug("*** after AdjustWithStartPos. changed %v", changed)
+		b.logger.Debug("AdjustWithStartPos.after", "changed", changed)
 
 		ch := make(chan pb.ProcessResult)
 		var ctx context.Context
@@ -370,14 +370,14 @@ func (b *BinlogReader) ConnectBinlogStreamer(coordinates base.BinlogCoordinatesX
 		} else {
 			gtidSet, err := gomysql.ParseMysqlGTIDSet(coordinates.GtidSet)
 			if err != nil {
-				b.logger.Error("err: %v", err)
+				b.logger.Error("ParseMysqlGTIDSet error", "err", err)
 				return err
 			}
 
 			b.binlogStreamer, err = b.binlogSyncer.StartSyncGTID(gtidSet)
 		}
 		if err != nil {
-			b.logger.Debug("err at StartSyncGTID: %v", err)
+			b.logger.Debug("StartSyncGTID error", "err", err)
 			return err
 		}
 	}
@@ -462,11 +462,11 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 		query := string(evt.Query)
 
 		if evt.ErrorCode != 0 {
-			b.logger.Error("DTLE_BUG: found query_event with error code, which is not handled. ec: %v, query: %v",
-				evt.ErrorCode, query)
+			b.logger.Error("DTLE_BUG: found query_event with error code, which is not handled.",
+				"ErrorCode", evt.ErrorCode, "query", query)
 		}
 
-		b.logger.Debug("query event: schema: %s, query: %s", evt.Schema, query)
+		b.logger.Debug("query event", "schema", evt.Schema, "query", query)
 
 		if strings.ToUpper(query) == "BEGIN" {
 			b.currentBinlogEntry.hasBeginQuery = true
@@ -475,23 +475,23 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 				currentSchema := string(evt.Schema)
 				if b.mysqlContext.SkipCreateDbTable {
 					if skipCreateDbTable(query) {
-						b.logger.Warn("skip create db/table %s", query)
+						b.logger.Warn("skip create db/table", "query", query)
 						return nil
 					}
 				}
 
 				if !b.mysqlContext.ExpandSyntaxSupport {
 					if skipQueryEvent(query) {
-						b.logger.Warn("skip query %s", query)
+						b.logger.Warn("skip query", "query", query)
 						return nil
 					}
 				}
 
 				ddlInfo, err := resolveDDLSQL(query)
 				if err != nil {
-					b.logger.Debug("Parse query [%v] event failed: %v", query, err)
+					b.logger.Debug("Parse query event failed", "query", query, "err", err)
 					if b.skipQueryDDL(query, currentSchema, "") {
-						b.logger.Debug("skip QueryEvent at schema: %s,sql: %s", currentSchema, query)
+						b.logger.Debug("skip QueryEvent", "schema", currentSchema, "query", query)
 						return nil
 					}
 				}
@@ -534,7 +534,8 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 					}
 
 					if b.skipQueryDDL(sql, realSchema, tableName) {
-						b.logger.Debug("Skip QueryEvent currentSchema: %s, sql: %s, realSchema: %v, tableName: %v", currentSchema, sql, realSchema, tableName)
+						b.logger.Debug("Skip QueryEvent", "currentSchema", currentSchema, "sql", sql,
+							"realSchema", realSchema, "tableName", tableName)
 						return nil
 					}
 
@@ -569,7 +570,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 							skipEvent = true
 						}
 					case *ast.AlterTableStmt:
-						b.logger.Debug("ddl is alter table. specs: %v", realAst.Specs)
+						b.logger.Debug("ddl is alter table.", "specs", realAst.Specs)
 
 						fromTable := table
 						tableNameX := tableName
@@ -635,7 +636,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 					}
 
 					if skipEvent {
-						b.logger.Debug("skipped a ddl event. query: %v", query)
+						b.logger.Debug("skipped a ddl event.", "query", query)
 					} else {
 						event := NewQueryEventAffectTable(
 							currentSchema,
@@ -665,7 +666,8 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 			dml := ToEventDML(ev.Header.EventType)
 			skip, table := b.skipRowEvent(rowsEvent, dml)
 			if skip {
-				b.logger.Debug("skip rowsEvent %s.%s %v", rowsEvent.Table.Schema, rowsEvent.Table.Table, b.currentCoordinates.GNO)
+				b.logger.Debug("skip rowsEvent", "schema", rowsEvent.Table.Schema, "table", rowsEvent.Table.Table,
+					"gno", b.currentCoordinates.GNO)
 				return nil
 			}
 
@@ -677,12 +679,12 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 				(b.sqlFilter.NoDMLInsert && dml == InsertDML) ||
 				(b.sqlFilter.NoDMLUpdate && dml == UpdateDML) {
 
-				b.logger.Debug("skipped_a_dml_event. type: %v, table: %v.%v", dml, schemaName, tableName)
+				b.logger.Debug("skipped_a_dml_event.", "type", dml, "schema", schemaName, "table", tableName)
 				return nil
 			}
 
 			if dml == NotDML {
-				return fmt.Errorf("Unknown DML type: %s", ev.Header.EventType.String())
+				return fmt.Errorf("unknown DML type: %s", ev.Header.EventType.String())
 			}
 			dmlEvent := NewDataEvent(
 				schemaName,
@@ -707,7 +709,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 			avgRowSize := len(ev.RawData) / len(rowsEvent.Rows)
 
 			for i, row := range rowsEvent.Rows {
-				b.logger.Debug("row values: %v", row[:mathutil.Min(len(row), g.LONG_LOG_LIMIT)])
+				b.logger.Debug("a row", "value", row[:mathutil.Min(len(row), g.LONG_LOG_LIMIT)])
 				if dml == UpdateDML && i%2 == 1 {
 					// An update has two rows (WHERE+SET)
 					// We do both at the same time
@@ -729,8 +731,8 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 					}
 				}
 
-				//b.logger.Debug("event before row: %v", dmlEvent.WhereColumnValues)
-				//b.logger.Debug("event after row: %v", dmlEvent.NewColumnValues)
+				//b.logger.Debug("event before row", "values", dmlEvent.WhereColumnValues)
+				//b.logger.Debug("event after row", "values", dmlEvent.NewColumnValues)
 				whereTrue := true
 				var err error
 				if table != nil && !table.WhereCtx.IsDefault {

@@ -132,7 +132,7 @@ func NewExtractor(execCtx *common.ExecContext, cfg *config.MySQLDriverConfig, lo
 	e.context.LoadSchemas(nil)
 	logger.Debug("start dtle task 9")
 	if delay, err := strconv.ParseInt(os.Getenv(g.ENV_TESTSTUB1_DELAY), 10, 64); err == nil {
-		e.logger.Info("%v = %v", g.ENV_TESTSTUB1_DELAY, delay)
+		e.logger.Info("env", g.ENV_TESTSTUB1_DELAY, delay)
 		e.testStub1Delay = delay
 	}
 
@@ -394,7 +394,7 @@ func (e *Extractor) inspectTables() (err error) {
 					doTb.TableSchema = doDb.TableSchema
 					doTb.TableSchemaRename = doDb.TableSchemaRename
 					if err := e.inspector.ValidateOriginalTable(doDb.TableSchema, doTb.TableName, doTb); err != nil {
-						e.logger.Warn("%v", err)
+						e.logger.Warn("ValidateOriginalTable error", "err", err)
 						continue
 					}
 					db.Tables = append(db.Tables, doTb)
@@ -436,7 +436,7 @@ func (e *Extractor) inspectTables() (err error) {
 								newTable.TableRename = string(reg.ExpandString(nil, tableRenameRegex, table.TableName, match))
 							}
 							if err := e.inspector.ValidateOriginalTable(doDb.TableSchema, table.TableName, newTable); err != nil {
-								e.logger.Warn("%v", err)
+								e.logger.Warn("ValidateOriginalTable error", "err", err)
 								continue
 							}
 							db.Tables = append(db.Tables, newTable)
@@ -447,7 +447,7 @@ func (e *Extractor) inspectTables() (err error) {
 
 					} else if doTb.TableRegex == "" && doTb.TableName != "" {
 						if err := e.inspector.ValidateOriginalTable(doDb.TableSchema, doTb.TableName, doTb); err != nil {
-							e.logger.Warn("%v", err)
+							e.logger.Warn("ValidateOriginalTable error", "err", err)
 							continue
 						}
 						newTable := &mysqlconfig.Table{}
@@ -487,7 +487,7 @@ func (e *Extractor) inspectTables() (err error) {
 					continue
 				}
 				if err := e.inspector.ValidateOriginalTable(dbName, tb.TableName, tb); err != nil {
-					e.logger.Warn("%v", err)
+					e.logger.Warn("ValidateOriginalTable error", "err", err)
 					continue
 				}
 
@@ -561,12 +561,11 @@ func (e *Extractor) initNatsPubClient() (err error) {
 	e.logger.Debug("begin Connect nats server", "NatAddr", e.NatsAddr)
 	natsAddr := fmt.Sprintf("nats://%s", e.NatsAddr)
 	sc, err := gonats.Connect(natsAddr)
-	e.logger.Debug("Connect nats in ","natsAddr",hclog.Fmt("%+v",natsAddr) )
 	if err != nil {
-		e.logger.Error("Can't connect nats server %v. make sure a nats streaming server is running.%v", natsAddr, err)
+		e.logger.Error("cannot connect nats server", "natsAddr", natsAddr, "err", err)
 		return err
 	}
-	e.logger.Debug("Connect nats server %v", natsAddr)
+	e.logger.Debug("Connect nats server", "natsAddr", natsAddr)
 	e.natsConn = sc
 
 	return nil
@@ -774,7 +773,8 @@ func (e *Extractor) CountTableRows(table *mysqlconfig.Table) (int64, error) {
 	atomic.AddInt64(&e.mysqlContext.RowsEstimate, rowsEstimate)
 
 	e.mysqlContext.Stage = common.StageSearchingRowsForUpdate
-	e.logger.Debug("Exact number of rows(%s.%s) via %v: %d", table.TableSchema, table.TableName, method, rowsEstimate)
+	e.logger.Debug("Exact number of rows", "schema", table.TableSchema, "table", table.TableName,
+		"method", method, "n", rowsEstimate)
 	return rowsEstimate, nil
 }
 
@@ -910,7 +910,7 @@ func (e *Extractor) StreamEvents() error {
 					if err != nil {
 						break
 					}
-					e.logger.Debug("err is  : %v", err != nil)
+					e.logger.Debug("err is  : %v", err != nil) // TODO remove
 					if entriesSize >= e.mysqlContext.GroupMaxSize ||
 						int64(len(entries.Entries)) == e.mysqlContext.ReplChanBufferSize {
 						e.logger.Debug("incr. send by GroupLimit.", "entriesSize", entriesSize,
@@ -1164,7 +1164,7 @@ func (e *Extractor) mysqlDump() error {
 			query := "START TRANSACTION WITH CONSISTENT SNAPSHOT"
 			_, err = realTx.Exec(query)
 			if err != nil {
-				e.logger.Error("exec %+v, error: %v", query, err)
+				e.logger.Error("realTx.Exec error", "query", query, "err", err)
 				return err
 			}
 
@@ -1187,7 +1187,7 @@ func (e *Extractor) mysqlDump() error {
 
 			if binlogCoordinates1.GtidSet == binlogCoordinates2.GtidSet {
 				gtidMatch = true
-				e.logger.Info("Got gtid after %v rounds", gtidMatchRound)
+				e.logger.Info("Got gtid", "gtidMatchRound", gtidMatchRound)
 
 				// Obtain the binlog position and update the SourceInfo in the context. This means that all source records generated
 				// as part of the snapshot will contain the binlog position of the snapshot.
@@ -1210,7 +1210,7 @@ func (e *Extractor) mysqlDump() error {
 					}
 				}()
 			} else {
-				e.logger.Warn("Failed got a consistenct TX with GTID in %v rounds. Will retry.", gtidMatchRound)
+				e.logger.Warn("Failed got a consistenct TX with GTID. Will retry.", "gtidMatchRound", gtidMatchRound)
 				err = realTx.Rollback()
 				if err != nil {
 					return err
@@ -1251,7 +1251,7 @@ func (e *Extractor) mysqlDump() error {
 	// Transform the current schema so that it reflects the *current* state of the MySQL server's contents.
 	// First, get the DROP TABLE and CREATE TABLE statement (with keys and constraint definitions) for our tables ...
 	if !e.mysqlContext.SkipCreateDbTable {
-		e.logger.Info("Step %d: - generating DROP and CREATE statements to reflect current database schemas:%v", step, e.replicateDoDb)
+		e.logger.Info("generating DROP and CREATE statements to reflect current database schemas", "replicateDoDb", e.replicateDoDb)
 	}
 	for _, db := range e.replicateDoDb {
 		if len(db.Tables) > 0 {

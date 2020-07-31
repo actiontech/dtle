@@ -460,7 +460,7 @@ func (a *Applier) setTableItemForBinlogEntry(binlogEntry *binlog.BinlogEntry) er
 		default:
 			tableItem := a.getTableItem(dmlEvent.DatabaseName, dmlEvent.TableName)
 			if tableItem.columns == nil {
-				a.logger.Debug("get tableColumns %v.%v", dmlEvent.DatabaseName, dmlEvent.TableName)
+				a.logger.Debug("get tableColumns", "schema", dmlEvent.DatabaseName, "table", dmlEvent.TableName)
 				tableItem.columns, err = base.GetTableColumns(a.db, dmlEvent.DatabaseName, dmlEvent.TableName)
 				if err != nil {
 					a.logger.Error("GetTableColumns error.", "err", err)
@@ -472,7 +472,7 @@ func (a *Applier) setTableItemForBinlogEntry(binlogEntry *binlog.BinlogEntry) er
 					return err
 				}
 			} else {
-				a.logger.Debug("reuse tableColumns %v.%v", dmlEvent.DatabaseName, dmlEvent.TableName)
+				a.logger.Debug("reuse tableColumns", "schema", dmlEvent.DatabaseName, "table", dmlEvent.TableName)
 			}
 			dmlEvent.TableItem = tableItem
 		}
@@ -524,12 +524,12 @@ func (a *Applier) heterogeneousReplay() {
 			spanContext := binlogEntry.SpanContext
 			span := opentracing.GlobalTracer().StartSpan("dest use binlogEntry  ", opentracing.FollowsFrom(spanContext))
 			ctx = opentracing.ContextWithSpan(ctx, span)
-			a.logger.Debug("a binlogEntry. remaining: %v. gno: %v, lc: %v, seq: %v",
-				len(a.applyDataEntryQueue), binlogEntry.Coordinates.GNO,
-				binlogEntry.Coordinates.LastCommitted, binlogEntry.Coordinates.SeqenceNumber)
+			a.logger.Debug("a binlogEntry.", "remaining", len(a.applyDataEntryQueue),
+				"gno", binlogEntry.Coordinates.GNO, "lc", binlogEntry.Coordinates.LastCommitted,
+				"seq", binlogEntry.Coordinates.SeqenceNumber)
 
 			if binlogEntry.Coordinates.OSID == a.MySQLServerUuid {
-				a.logger.Debug("skipping a dtle tx. osid: %v", binlogEntry.Coordinates.OSID)
+				a.logger.Debug("skipping a dtle tx.", "osid", binlogEntry.Coordinates.OSID)
 				continue
 			}
 			// region TestIfExecuted
@@ -550,7 +550,7 @@ func (a *Applier) heterogeneousReplay() {
 			}
 			if base.IntervalSlicesContainOne(gtidSetItem.Intervals, binlogEntry.Coordinates.GNO) {
 				// entry executed
-				a.logger.Debug("skip an executed tx: %v:%v", txSid, binlogEntry.Coordinates.GNO)
+				a.logger.Debug("skip an executed tx", "sid", txSid, "gno", binlogEntry.Coordinates.GNO)
 				continue
 			}
 			// endregion
@@ -621,8 +621,8 @@ func (a *Applier) heterogeneousReplay() {
 				}()
 				// DDL must be executed separatedly
 				if hasDDL || prevDDL {
-					a.logger.Debug("gno: %v MTS found DDL(%v,%v). WaitForAllCommitted",
-						binlogEntry.Coordinates.GNO, hasDDL, prevDDL)
+					a.logger.Debug("MTS found DDL. WaitForAllCommitted",
+						"gno", binlogEntry.Coordinates.GNO, "hasDDL", hasDDL, "prevDDL", prevDDL)
 					if !a.mtsManager.WaitForAllCommitted() {
 						return // shutdown
 					}
@@ -669,7 +669,7 @@ func (a *Applier) initiateStreaming() error {
 	a.logger.Debug("nats subscribe")
 	tracer := opentracing.GlobalTracer()
 	_, err := a.natsConn.Subscribe(fmt.Sprintf("%s_full", a.subject), func(m *gonats.Msg) {
-		a.logger.Debug("full. recv a msg. copyRowsQueue: %v", len(a.copyRowsQueue))
+		a.logger.Debug("full. recv a msg.", "copyRowsQueue", len(a.copyRowsQueue))
 		t := not.NewTraceMsg(m)
 		// Extract the span context from the request message.
 		sc, err := tracer.Extract(opentracing.Binary, t)
@@ -739,13 +739,13 @@ func (a *Applier) initiateStreaming() error {
 		a.mysqlContext.Stage = common.StageSlaveWaitingForWorkersToProcessQueue
 
 		for atomic.LoadInt64(&a.nDumpEntry) != 0 {
-			a.logger.Debug("nDumpEntry is not zero, waiting. %v", a.nDumpEntry)
+			a.logger.Debug("nDumpEntry is not zero, waiting", "nDumpEntry", a.nDumpEntry)
 			time.Sleep(1 * time.Second)
 			if a.shutdown {
 				return
 			}
 		}
-		a.logger.Info("Rows copy complete.number of rows:%d", a.TotalRowsReplayed)
+		a.logger.Info("Rows copy complete.", "TotalRowsReplayed", a.TotalRowsReplayed)
 		select {
 		case <-a.rowCopyComplete:
 			// chan already closed (this _full_complete msg is repeated)
@@ -784,7 +784,7 @@ func (a *Applier) initiateStreaming() error {
 		handled := false
 		for i := 0; !handled && (i < DefaultConnectWaitSecond/2); i++ {
 			vacancy := cap(a.applyDataEntryQueue) - len(a.applyDataEntryQueue)
-			a.logger.Debug("incr. nEntries: %v, vacancy: %v", nEntries, vacancy)
+			a.logger.Debug("incr.", "nEntries", nEntries, "vacancy", vacancy)
 			if vacancy < nEntries {
 				a.logger.Debug("incr. wait 1s for applyDataEntryQueue")
 				time.Sleep(1 * time.Second) // It will wait an second at the end, but seems no hurt.
@@ -804,7 +804,7 @@ func (a *Applier) initiateStreaming() error {
 				if err := a.natsConn.Publish(m.Reply, nil); err != nil {
 					a.onError(TaskStateDead, err)
 				}
-				a.logger.Debug("incr. ack-recv. nEntries: %v", nEntries)
+				a.logger.Debug("incr. ack-recv.", "nEntries", nEntries)
 
 				handled = true
 			}
@@ -825,19 +825,20 @@ func (a *Applier) initiateStreaming() error {
 }
 
 func (a *Applier) publishProgress() {
+	logger := a.logger.Named("publishProgress")
 	retry := 0
 	keep := true
 	for keep {
-		a.logger.Debug("*** applier.publishProgress. retry %v, file %v", retry, a.mysqlContext.BinlogFile)
+		logger.Debug("Request.before", "retry", retry, "file", a.mysqlContext.BinlogFile)
 		_, err := a.natsConn.Request(fmt.Sprintf("%s_progress", a.subject), []byte(a.mysqlContext.BinlogFile), 10*time.Second)
 		if err == nil {
 			keep = false
 		} else {
 			if err == gonats.ErrTimeout {
-				a.logger.Debug("retry: %v file: %v applier.publishProgress. timeout", retry, a.mysqlContext.BinlogFile)
+				logger.Debug("timeout", "retry", retry, "file", a.mysqlContext.BinlogFile)
 				break
 			} else {
-				a.logger.Debug("retry: %v file: %v applier.publishProgress. unknown error", retry, a.mysqlContext.BinlogFile)
+				a.logger.Debug("unknown error", "retry", retry, "file", a.mysqlContext.BinlogFile, "err", err)
 
 			}
 			retry += 1
@@ -870,7 +871,7 @@ func (a *Applier) initDBConnections() (err error) {
 	}
 	a.logger.Debug("beging connetion mysql 5 validate  grants")
 	if err := a.validateGrants(); err != nil {
-		a.logger.Error("Unexpected error on validateGrants, got %v", err)
+		a.logger.Error("Unexpected error on validateGrants", "err", err)
 		return err
 	}
 	a.logger.Debug("after validateGrants")
@@ -1119,8 +1120,7 @@ func (a *Applier) ApplyBinlogEvent(ctx context.Context, workerIdx int, binlogEnt
 	}()
 	span.SetTag("begin transform binlogEvent to sql time  ", time.Now().UnixNano()/1e6)
 	for i, event := range binlogEntry.Events {
-		logger.Debug("gno: %v, event: %v",
-			binlogEntry.Coordinates.GNO, i)
+		logger.Debug("binlogEntry.Events", "gno", binlogEntry.Coordinates.GNO, "event", i)
 		switch event.DML {
 		case binlog.NotDML:
 			var err error

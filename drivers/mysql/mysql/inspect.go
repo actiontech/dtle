@@ -57,7 +57,7 @@ func (i *Inspector) InitDBConnections() (err error) {
 
 		for _, doTb := range doDb.Table {
 			if err := i.InspectOriginalTable(doDb.Database, doTb); err != nil {
-				i.logger.Error("unexpected error on InspectOriginalTable, got %v", err)
+				i.logger.Error("unexpected error on InspectOriginalTable", "err", err)
 				return err
 			}
 		}
