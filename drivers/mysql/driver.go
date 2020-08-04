@@ -223,7 +223,8 @@ func (d *Driver) SetupApiServer(logger hclog.Logger) (err error)  {
 	route.Host =  d.config.NomadAddr
 	logger.Debug("Begin Setup api server", "addr", d.config.ApiAddr)
 	router := httprouter.New()
-	router.GET("/v1/job/:NodeId/:path",route.JobRequest)
+	router.GET("/v1/job/:jobId",route.JobDetailRequest)
+	router.GET("/v1/job/:jobId/:path",route.JobRequest)
 	router.POST("/v1/jobs",route.UpdupJob)
 	router.GET("/v1/jobs",route.JobListRequest)
 	router.GET("/v1/allocations",route.AllocsRequest)

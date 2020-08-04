@@ -93,10 +93,10 @@ func JobListRequest(w http.ResponseWriter, r *http.Request, ps httprouter.Params
 func JobRequest(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 
 	//	path := strings.TrimPrefix(r.URL.Path, "/v1/node/")
-	nodeName := ps.ByName("NodeId")
+	jobId := ps.ByName("jobId")
 	path := ps.ByName("path")
 	if path == "allocations" {
-		url := buildUrl("/v1/job/" + nodeName + "/allocations")
+		url := buildUrl("/v1/job/" + jobId + "/allocations")
 		resp, err := http.Get(url)
 		if err != nil {
 			w.Write([]byte(err.Error()))
@@ -105,7 +105,7 @@ func JobRequest(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 		body, err := ioutil.ReadAll(resp.Body)
 		fmt.Fprintf(w, string(body))
 	} else if path == "evaluate" {
-		url := buildUrl("/v1/job/" + nodeName + "/evaluate")
+		url := buildUrl("/v1/job/" + jobId + "/evaluate")
 		resp, err := http.Post(url, "application/x-www-form-urlencoded",
 			strings.NewReader(""))
 		if err != nil {
@@ -115,7 +115,18 @@ func JobRequest(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 		body, err := ioutil.ReadAll(resp.Body)
 		fmt.Fprintf(w, string(body))
 	}
+}
 
+func JobDetailRequest(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+	jobId := ps.ByName("jobId")
+	url := buildUrl("/v1/job/" + jobId )
+	resp, err := http.Get(url)
+	if err != nil {
+		w.Write([]byte(err.Error()))
+	}
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
+	fmt.Fprintf(w, string(body))
 }
 
 func AllocsRequest(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
