@@ -1015,7 +1015,7 @@ func (e *Extractor) publish(ctx context.Context, subject, gtid string, txMsg []b
 	// Add the payload.
 	t.Write(txMsg)
 	defer span.Finish()
-	for {
+	for i := 1; ; i++ {
 		e.logger.Debug("publish", "gtid", gtid, "len", len(txMsg))
 		_, err = e.natsConn.Request(subject, t.Bytes(), DefaultConnectWait)
 		if err == nil {
@@ -1025,14 +1025,14 @@ func (e *Extractor) publish(ctx context.Context, subject, gtid string, txMsg []b
 			break
 		} else if err == gonats.ErrTimeout {
 			e.logger.Debug("publish timeout", "err", err)
-			continue
+			if i % 20 == 0 {
+				e.logger.Warn("publish timeout for 20 times", "err", err)
+			}
+			time.Sleep(1 * time.Second)
 		} else {
 			e.logger.Error("unexpected error on publish", "err", err)
 			break
 		}
-		// there's an error. Let's try again.
-		e.logger.Debug("there's an error. Let's try again", "err", err)
-		time.Sleep(1 * time.Second)
 	}
 	return err
 }
