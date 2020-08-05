@@ -295,6 +295,10 @@ func (d *Driver) SetConfig(c *base.Config) (err error) {
 	d.config = &dconfig
 	d.logger.Info("SetConfig 2", "config", d.config)
 
+	if d.config.ApiAddr != "" && d.config.NomadAddr == "" {
+		return fmt.Errorf("nomad_addr cannot be empty when api_addr is set")
+	}
+
 	if d.storeManager != nil {
 		// PluginLoader.validatePluginConfig() will call SetConfig() twice.
 		// This test avoids extra setup.
