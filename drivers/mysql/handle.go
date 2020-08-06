@@ -107,8 +107,6 @@ func (h *taskHandle) run(taskConfig *config.DtleTaskConfig, d *Driver) {
 			h.runner = kafka.NewKafkaRunner(ctx, taskConfig.KafkaConfig, d.logger.Named("kafka"), d.storeManager)
 			go h.runner.Run()
 		} else {
-			d.logger.Debug("print host", hclog.Fmt("%+v", driverConfig.ConnectionConfig.Host))
-
 			h.runner, err = mysql.NewApplier(ctx, driverConfig, d.logger.Named("applier"), d.storeManager, d.config.NatsAdvertise)
 			if err != nil {
 				h.exitResult.Err = errors.Wrap(err, "NewApplier")

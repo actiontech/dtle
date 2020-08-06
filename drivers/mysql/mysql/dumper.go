@@ -231,11 +231,11 @@ func (d *dumper) getChunkData() (nRows int64, err error) {
 	} else {
 		query = d.buildQueryOnUniqueKey()
 	}
-	d.logger.Debug("getChunkData. query: %s", query)
+	d.logger.Debug("getChunkData.", "query", query)
 
 	if d.doChecksum != 0 {
 		if d.doChecksum == 2 || (d.doChecksum == 1 && d.table.Iteration == 0) {
-			row := d.db.QueryRow(fmt.Sprintf("checksum table %v.%v", d.TableSchema, d.TableName))
+			row := d.db.QueryRow(fmt.Sprintf("checksum table", "schema", d.TableSchema, "table", d.TableName))
 			var table string
 			var cs int64
 			err := row.Scan(&table, &cs)
@@ -280,7 +280,7 @@ func (d *dumper) getChunkData() (nRows int64, err error) {
 		entry.IncrementCounter()
 	}
 
-	d.logger.Debug("getChunkData. n_row: %d", entry.RowsCount)
+	d.logger.Debug("getChunkData.", "n_row", entry.RowsCount)
 
 	if entry.RowsCount > 0 {
 		var lastVals []string

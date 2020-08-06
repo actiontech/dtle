@@ -33,3 +33,7 @@ func (c *ConnectionConfig) GetDBUri() string {
 func (c *ConnectionConfig) GetSingletonDBUri() string {
 	return fmt.Sprintf("%s:%s@tcp(%s:%d)/?timeout=5s&tls=false&autocommit=false&charset=%v&multiStatements=true&maxAllowedPacket=0", c.User, c.Password, c.Host, c.Port, c.Charset)
 }
+
+func (c *ConnectionConfig) GetAddr() string {
+	return fmt.Sprintf("%s:%d", c.Host, c.Port)
+}

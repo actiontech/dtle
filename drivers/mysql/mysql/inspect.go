@@ -44,7 +44,7 @@ func (i *Inspector) Close() {
 }
 func (i *Inspector) InitDBConnections() (err error) {
 	inspectorUri := i.mysqlContext.ConnectionConfig.GetDBUri()
-	i.logger.Debug("CreateDB", "inspectorUri",hclog.Fmt("%+v", inspectorUri))
+	i.logger.Debug("CreateDB", "inspectorUri", inspectorUri)
 	if i.db, err = usql.CreateDB(inspectorUri); err != nil {
 		return err
 	}
@@ -53,7 +53,7 @@ func (i *Inspector) InitDBConnections() (err error) {
 		return err
 	}*/
 
-	i.logger.Debug("validateGrants", "SkipPrivilegeCheck",hclog.Fmt("%+v",  i.mysqlContext.SkipPrivilegeCheck))
+	i.logger.Debug("validateGrants", "SkipPrivilegeCheck", i.mysqlContext.SkipPrivilegeCheck)
 	if err := i.validateGrants(); err != nil {
 		i.logger.Error("Unexpected error on validateGrants", "err", err)
 		return err
@@ -71,7 +71,7 @@ func (i *Inspector) InitDBConnections() (err error) {
 	/*if err = i.validateGTIDMode(); err != nil {
 		return err
 	}*/
-	i.logger.Debug("validateBinlogs", "inspectorUri",hclog.Fmt("%+v", inspectorUri))
+	i.logger.Debug("validateBinlogs", "inspectorUri", inspectorUri)
 	/*if err := i.validateBinlogs(); err != nil {
 		return err
 	}*/
@@ -99,10 +99,11 @@ func (i *Inspector) ValidateOriginalTable(databaseName, tableName string, table 
 	// TODO why assign OriginalTableColumns twice (later getSchemaTablesAndMeta->readTableColumns)?
 	table.ColumnMap = uconf.BuildColumnMapIndex(table.ColumnMapFrom, table.OriginalTableColumns.Ordinals)
 
-	i.logger.Debug("table: %s.%s. n_unique_keys: %d", table.TableSchema, table.TableName, len(uniqueKeys))
+	i.logger.Debug("table has unique keys", "schema", table.TableSchema, "table", table.TableName,
+		"n_unique_keys", len(uniqueKeys))
 
 	for _, uk := range uniqueKeys {
-		i.logger.Debug("A unique key: %s", uk.String())
+		i.logger.Debug("a unique key", "uk", uk.String())
 
 		ubase.ApplyColumnTypes(i.db, table.TableSchema, table.TableName, &uk.Columns)
 
@@ -111,12 +112,12 @@ func (i *Inspector) ValidateOriginalTable(databaseName, tableName string, table 
 		for _, column := range uk.Columns.Columns {
 			switch column.Type {
 			case umconf.FloatColumnType:
-				i.logger.Warn("Will not use %+v as unique key due to FLOAT data type", uk.Name)
+				i.logger.Warn("Will not use the unique key due to FLOAT data type", "name", uk.Name)
 				uniqueKeyIsValid = false
 			case umconf.JSONColumnType:
 				// Noteworthy that at this time MySQL does not allow JSON indexing anyhow, but this code
 				// will remain in place to potentially handle the future case where JSON is supported in indexes.
-				i.logger.Warn("Will not use %+v as unique key due to JSON data type", uk.Name)
+				i.logger.Warn("Will not use the unique key due to JSON data type", "name", uk.Name)
 				uniqueKeyIsValid = false
 			default:
 				// do nothing
@@ -124,12 +125,13 @@ func (i *Inspector) ValidateOriginalTable(databaseName, tableName string, table 
 		}
 
 		if uk.HasNullable {
-			i.logger.Warn("Will not use %+v as unique key due to having nullable", uk.Name)
+			i.logger.Warn("Will not use the unique key due to having nullable", "name", uk.Name)
 			uniqueKeyIsValid = false
 		}
 
 		if !uk.IsPrimary() && "FULL" != i.mysqlContext.BinlogRowImage {
-			i.logger.Warn("Will not use %+v as unique key due to not primary when binlog row image is FULL", uk.Name)
+			i.logger.Warn("Will not use the unique key due to not primary when binlog row image is FULL",
+				"name", uk.Name)
 			uniqueKeyIsValid = false
 		}
 
@@ -144,10 +146,11 @@ func (i *Inspector) ValidateOriginalTable(databaseName, tableName string, table 
 		}
 	}
 	if table.UseUniqueKey == nil {
-		i.logger.Warn("No valid unique key found for table %s.%s. It will be slow on large table.", table.TableSchema, table.TableName)
+		i.logger.Warn("No valid unique key found. It will be slow on large table.",
+			"schema", table.TableSchema, "table", table.TableName)
 	} else {
-		i.logger.Info("Chosen unique key for %s.%s is %s",
-			table.TableSchema, table.TableName, table.UseUniqueKey.String())
+		i.logger.Info("chosen unique key",
+			"schema", table.TableSchema, "table", table.TableName, "uk", table.UseUniqueKey.String())
 	}
 	// endregion
 
@@ -236,8 +239,10 @@ func (i *Inspector) validateGrants() error {
 		i.logger.Info("User has REPLICATION CLIENT, REPLICATION SLAVE privileges, and has SELECT privileges")
 		return nil
 	}
-	i.logger.Debug("Privileges: super: %t, REPLICATION CLIENT: %t, REPLICATION SLAVE: %t, ALL on *.*: %t, ALL on *.*: %t", foundSuper, foundReplicationClient, foundReplicationSlave, foundAll, foundDBAll)
-	return fmt.Errorf("user has insufficient privileges for extractor. Needed: SUPER|REPLICATION CLIENT, REPLICATION SLAVE and ALL on *.*")
+	i.logger.Debug("Privileges", "Super", foundSuper, "ReplicationClient", foundReplicationClient,
+		"ReplicationSlave", foundReplicationSlave, "All", foundAll, "DBAll", foundDBAll)
+	return fmt.Errorf("user has insufficient privileges for extractor." +
+		" Needed: SUPER|REPLICATION CLIENT, REPLICATION SLAVE and ALL on *.*")
 }
 
 func (i *Inspector) validateGTIDMode() error {
@@ -273,7 +278,8 @@ func (i *Inspector) validateBinlogs() error {
 	}
 	i.mysqlContext.BinlogRowImage = strings.ToUpper(i.mysqlContext.BinlogRowImage)
 
-	i.logger.Info("Binary logs validated on %s:%d", i.mysqlContext.ConnectionConfig.Host, i.mysqlContext.ConnectionConfig.Port)
+	i.logger.Info("Binary logs validated", "mysql",
+		hclog.Fmt("%v:%v", i.mysqlContext.ConnectionConfig.Host, i.mysqlContext.ConnectionConfig.Port))
 	return nil
 }
 
@@ -423,6 +429,6 @@ func (i *Inspector) getCandidateUniqueKeys(databaseName, tableName string) (uniq
 	if err != nil {
 		return uniqueKeys, err
 	}
-	i.logger.Debug("Potential unique keys in %+v.%+v: %+v", databaseName, tableName, uniqueKeys)
+	i.logger.Debug("Potential unique keys.", "schema", databaseName, "table", tableName, "uniqueKeys", uniqueKeys)
 	return uniqueKeys, nil
 }

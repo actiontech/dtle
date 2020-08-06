@@ -437,11 +437,11 @@ type parseDDLResult struct {
 func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel chan<- *BinlogEntry) error {
 	spanContext := ev.SpanContest
 	trace := opentracing.GlobalTracer()
-	span := trace.StartSpan("incremental  binlogEvent translation to  sql", opentracing.ChildOf(spanContext))
+	span := trace.StartSpan("incremental binlogEvent translation to sql", opentracing.ChildOf(spanContext))
 	span.SetTag("begin to translation", time.Now().Unix())
 	defer span.Finish()
 	if b.currentCoordinates.SmallerThanOrEquals(&b.LastAppliedRowsEventHint) {
-		b.logger.Debug("Skipping handled query at %+v", b.currentCoordinates)
+		b.logger.Debug("Skipping handled query", "coordinate", b.currentCoordinates)
 		return nil
 	}
 
@@ -529,7 +529,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 					tableName := ddlInfo.tables[i].Table
 					err = b.checkObjectFitRegexp(b.mysqlContext.ReplicateDoDb, realSchema, tableName)
 					if err != nil {
-						b.logger.Warn("skip query %s", query)
+						b.logger.Warn("skip query", "query", query)
 						return nil
 					}
 
@@ -622,7 +622,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 					}
 					if schema != nil && schema.TableSchemaRename != "" {
 						ddlInfo.tables[i].Schema = schema.TableSchemaRename
-						b.logger.Debug("ddl schema mapping :from  %s to %s", realSchema, schema.TableSchemaRename)
+						b.logger.Debug("ddl schema mapping", "from", realSchema, "to", schema.TableSchemaRename)
 						//sql = strings.Replace(sql, realSchema, schema.TableSchemaRename, 1)
 						sql = loadMapping(sql, realSchema, schema.TableSchemaRename, "schemaRename", " ")
 						currentSchema = schema.TableSchemaRename
@@ -770,7 +770,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 						dmlEvent.Table.TableRename = table.Table.TableRename
 					}
 					dmlEvent.TableName = table.Table.TableRename
-					b.logger.Debug("dml  table mapping : from %s to %s", dmlEvent.TableName, table.Table.TableRename)
+					b.logger.Debug("dml table mapping", "from", dmlEvent.TableName, "to", table.Table.TableRename)
 				}
 				for _, schema := range b.mysqlContext.ReplicateDoDb {
 					if schema.TableSchema != schemaName {
@@ -782,7 +782,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 					if dmlEvent.Table != nil {
 						dmlEvent.Table.TableSchemaRename = schema.TableSchemaRename
 					}
-					b.logger.Debug("dml  schema mapping: from  %s to %s", dmlEvent.DatabaseName, schema.TableSchemaRename)
+					b.logger.Debug("dml schema mapping", "from", dmlEvent.DatabaseName, "to", schema.TableSchemaRename)
 					dmlEvent.DatabaseName = schema.TableSchemaRename
 				}
 				if whereTrue {
@@ -899,7 +899,7 @@ func (b *BinlogReader) DataStreamEvents(entriesChannel chan<- *BinlogEntry) erro
 					b.currentCoordinates.LogFile = string(rotateEvent.NextLogName)
 				}()
 				b.mysqlContext.Stage = StageFinishedReadingOneBinlogSwitchingToNextBinlog
-				b.logger.Info("Rotate to next log name: %s", rotateEvent.NextLogName)
+				b.logger.Info("Rotate to next binlog", "name", rotateEvent.NextLogName)
 			} else {
 				b.logger.Warn("fake rotate_event.")
 			}
@@ -1071,7 +1071,8 @@ func (b *BinlogReader) skipRowEvent(rowsEvent *replication.RowsEvent, dml EventD
 					sidValue := rowsEvent.Rows[0][1]
 					sidByte, ok := sidValue.(string)
 					if !ok {
-						b.logger.Error("cycle-prevention: unrecognized gtid_executed table sid type: %T", sidValue)
+						b.logger.Error("cycle-prevention: unrecognized gtid_executed table sid type",
+							"type", hclog.Fmt("%T", sidValue))
 					} else {
 						sid, err := uuid.FromBytes([]byte(sidByte))
 						if err != nil {

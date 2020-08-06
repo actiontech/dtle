@@ -153,7 +153,7 @@ func (e *Extractor) Run() {
 		return
 	}
 
-	e.logger.Info("Extract binlog events from %s.%d", e.mysqlContext.ConnectionConfig.Host, e.mysqlContext.ConnectionConfig.Port)
+	e.logger.Info("Extract binlog events", "mysql", e.mysqlContext.ConnectionConfig.GetAddr())
 
 	// Validate job arguments
 /*	{
@@ -163,19 +163,19 @@ func (e *Extractor) Run() {
 			return
 		}
 	}*/
-	e.logger.Info("initiateInspector", "DETAIL ",hclog.Fmt("%+v", e.mysqlContext.ConnectionConfig.Host))
+	e.logger.Info("initiateInspector")
 	if err := e.initiateInspector(); err != nil {
 		e.onError(TaskStateDead, err)
 		return
 	}
-	e.logger.Info("initiateInspector", "initNatsPubClient ",hclog.Fmt("%+v", e.mysqlContext.ConnectionConfig.Host))
+	e.logger.Info("initNatsPubClient")
 	if err := e.initNatsPubClient(); err != nil {
 		e.onError(TaskStateDead, err)
 		return
 	}
-	e.logger.Info("initiateInspector", "initDBConnections ",hclog.Fmt("%+v", e.mysqlContext.ConnectionConfig.Host))
+	e.logger.Info("initDBConnections")
 	if err := e.initDBConnections(); err != nil {
-		e.logger.Error("initiateInspector err", "err ",hclog.Fmt("%+v",err))
+		e.logger.Error("initiateInspector error", "err", err)
 		e.onError(TaskStateDead, err)
 		return
 	}
@@ -1087,7 +1087,7 @@ func (e *Extractor) mysqlDump() error {
 	// See: https://dev.mysql.com/doc/refman/5.7/en/set-transaction.html
 	// See: https://dev.mysql.com/doc/refman/5.7/en/innodb-transaction-isolation-levels.html
 	// See: https://dev.mysql.com/doc/refman/5.7/en/innodb-consistent-read.html
-	e.logger.Info("Step %d: disabling autocommit and enabling repeatable read transactions", step)
+	e.logger.Info("Step: disabling autocommit and enabling repeatable read transactions", "n", step)
 
 	step++
 
@@ -1114,7 +1114,7 @@ func (e *Extractor) mysqlDump() error {
 
 	var needConsistentSnapshot = true // TODO determine by table characteristic (has-PK or not)
 	if needConsistentSnapshot {
-		e.logger.Info("Step %d: start transaction with consistent snapshot", step)
+		e.logger.Info("Step: start transaction with consistent snapshot", "n", step)
 		gtidMatch := false
 		gtidMatchRound := 0
 		delayBetweenRetries := 200 * time.Millisecond
@@ -1159,8 +1159,8 @@ func (e *Extractor) mysqlDump() error {
 			if err != nil {
 				return err
 			}
-			e.logger.Debug("binlog coordinates 1: %+v", binlogCoordinates1)
-			e.logger.Debug("binlog coordinates 2: %+v", binlogCoordinates2)
+			e.logger.Debug("binlog coordinates 1", "coordinate", hclog.Fmt("%+v", binlogCoordinates1))
+			e.logger.Debug("binlog coordinates 2", "coordinate", hclog.Fmt("%+v", binlogCoordinates2))
 
 			if binlogCoordinates1.GtidSet == binlogCoordinates2.GtidSet {
 				gtidMatch = true
@@ -1171,7 +1171,8 @@ func (e *Extractor) mysqlDump() error {
 				//binlogCoordinates, err := base.GetSelfBinlogCoordinatesWithTx(tx)
 
 				e.initialBinlogCoordinates = binlogCoordinates2
-				e.logger.Info("Step %d: read binlog coordinates of MySQL master: %+v", step, *e.initialBinlogCoordinates)
+				e.logger.Info("Step: read binlog coordinates of MySQL master", "n", step,
+					"coordinate", hclog.Fmt("%+v", *e.initialBinlogCoordinates))
 
 				defer func() {
 					/*e.logger.Info("Step %d: releasing global read lock to enable MySQL writes", step)
@@ -1181,7 +1182,7 @@ func (e *Extractor) mysqlDump() error {
 						e.logger.Info("exec %+v, error: %v", query, err)
 					}
 					step++*/
-					e.logger.Info("Step %d: committing transaction", step)
+					e.logger.Info("Step: committing transaction", "n", step)
 					if err := realTx.Commit(); err != nil {
 						e.onError(TaskStateDead, err)
 					}
@@ -1216,7 +1217,7 @@ func (e *Extractor) mysqlDump() error {
 	// Get the list of table IDs for each database. We can't use a prepared statement with MySQL, so we have to
 	// build the SQL statement each time. Although in other cases this might lead to SQL injection, in our case
 	// we are reading the database names from the database and not taking them from the user ...
-	e.logger.Info("Step %d: read list of available tables in each database", step)
+	e.logger.Info("Step: read list of available tables in each database", "n", step)
 
 	err = e.getSchemaTablesAndMeta()
 	if err != nil {
@@ -1315,7 +1316,7 @@ func (e *Extractor) mysqlDump() error {
 	// STEP 5
 	// ------
 	// Dump all of the tables and generate source records ...
-	e.logger.Info("Step %d: scanning contents of %d tables", step, e.tableCount)
+	e.logger.Info("Step: scanning contents of x tables", "n", step, "x", e.tableCount)
 	startScan := common.CurrentTimeMillis()
 	counter := 0
 	//pool := models.NewPool(10)
@@ -1366,8 +1367,8 @@ func (e *Extractor) mysqlDump() error {
 	// We've copied all of the tables, but our buffer holds onto the very last record.
 	// First mark the snapshot as complete and then apply the updated offset to the buffered record ...
 	stop := common.CurrentTimeMillis()
-	e.logger.Info("Step %d: scanned %d rows in %d tables in %s",
-		step, e.TotalRowsCopied, e.tableCount, time.Duration(stop-startScan))
+	e.logger.Info("Step: scanned x rows in y tables in t",
+		"n", step, "x", e.TotalRowsCopied, "y", e.tableCount, "t", time.Duration(stop-startScan))
 	step++
 
 	return nil

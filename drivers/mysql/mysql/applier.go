@@ -375,12 +375,12 @@ func (a *Applier) Run() {
 		a.onError(TaskStateDead, err)
 		return
 	}
-	a.logger.Debug("initNatSubClien ",a.mysqlContext.ConnectionConfig.Host)
+	a.logger.Debug("initNatSubClient")
 	if err := a.initNatSubClient(); err != nil {
 		a.onError(TaskStateDead, err)
 		return
 	}
-	a.logger.Debug("initiateStreaming is ",a.mysqlContext.ConnectionConfig.Host)
+	a.logger.Debug("initiateStreaming")
 	if err := a.initiateStreaming(); err != nil {
 		a.onError(TaskStateDead, err)
 		return
@@ -901,7 +901,7 @@ func (a *Applier) initDBConnections() (err error) {
 	}
 	a.logger.Debug("after prepare stmt for gtid_executed table")
 
-	a.logger.Info("Initiated on %s:%d, version %+v", a.mysqlContext.ConnectionConfig.Host, a.mysqlContext.ConnectionConfig.Port, a.MySQLVersion)
+	a.logger.Info("Initiated", "mysql", a.mysqlContext.ConnectionConfig.GetAddr(), "version", a.MySQLVersion)
 	return nil
 }
 
@@ -974,7 +974,7 @@ func (a *Applier) validateGrants() error {
 		a.logger.Info("User has ALL privileges on *.*")
 		return nil
 	}
-	a.logger.Debug("Privileges: super: %t, ALL on *.*: %t", foundSuper, foundAll)
+	a.logger.Debug("Privileges", "Super", foundSuper, "All", foundAll)
 	//return fmt.Error("user has insufficient privileges for applier. Needed: SUPER|ALL on *.*")
 	return nil
 }
@@ -1186,7 +1186,7 @@ func (a *Applier) ApplyBinlogEvent(ctx context.Context, workerIdx int, binlogEnt
 			}
 
 			if err != nil {
-				logger.Error("at exec", "gtid", hclog.Fmt("%s:%d", txSid, binlogEntry.Coordinates.GNO),
+				logger.Error("error at exec", "gtid", hclog.Fmt("%s:%d", txSid, binlogEntry.Coordinates.GNO),
 					"err", err)
 				return err
 			}
@@ -1258,7 +1258,7 @@ func (a *Applier) ApplyEventQueries(db *gosql.DB, entry *common.DumpEntry) error
 		return err
 	}
 	execQuery := func(query string) error {
-		a.logger.Debug("Exec [%s]", common.StrLim(query, 256))
+		a.logger.Debug("Exec", "query", common.StrLim(query, 256))
 		_, err := tx.Exec(query)
 		if err != nil {
 			if !sql.IgnoreError(err) {
