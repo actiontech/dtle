@@ -917,68 +917,6 @@ func (e *Extractor) StreamEvents() error {
 				}
 			} // end for keepGoing && !e.shutdown
 		}()
-		// region commented out
-		/*entryArray := make([]*binlog.BinlogEntry, 0)
-		subject := fmt.Sprintf("%s_incr_hete", e.subject)
-
-		go func() {
-		L:
-			for {
-				select {
-				case binlogEntry := <-e.dataChannel:
-					{
-						if nil == binlogEntry {
-							continue
-						}
-						entryArray = append(entryArray, binlogEntry)
-						txMsg, err := Encode(&entryArray)
-						if err != nil {
-							e.onError(TaskStateDead, err)
-							break L
-						}
-						if len(txMsg) > e.mysqlContext.MsgBytesLimit {
-							if len(txMsg) > e.maxPayload {
-								e.onError(TaskStateDead, gonats.ErrMaxPayload)
-							}
-							if err = e.publish(subject, fmt.Sprintf("%s:1-%d", binlogEntry.Coordinates.SID, binlogEntry.Coordinates.GNO), txMsg); err != nil {
-								e.onError(TaskStateDead, err)
-								break L
-							}
-							//send_by_size_full
-							e.sendBySizeFullCounter += len(entryArray)
-							entryArray = []*binlog.BinlogEntry{}
-						}
-					}
-				case <-time.After(100 * time.Millisecond):
-					{
-						if len(entryArray) != 0 {
-							txMsg, err := Encode(&entryArray)
-							if err != nil {
-								e.onError(TaskStateDead, err)
-								break L
-							}
-							if len(txMsg) > e.maxPayload {
-								e.onError(TaskStateDead, gonats.ErrMaxPayload)
-							}
-							if err = e.publish(subject,
-								fmt.Sprintf("%s:1-%d",
-									entryArray[len(entryArray)-1].Coordinates.SID,
-									entryArray[len(entryArray)-1].Coordinates.GNO),
-								txMsg); err != nil {
-								e.onError(TaskStateDead, err)
-								break L
-							}
-							//send_by_timeout
-							e.sendByTimeoutCounter += len(entryArray)
-							entryArray = []*binlog.BinlogEntry{}
-						}
-					}
-				case <-e.shutdownCh:
-					break L
-				}
-			}
-		}()*/
-		// endregion
 		// The next should block and execute forever, unless there's a serious error
 		if err := e.binlogReader.DataStreamEvents(e.dataChannel); err != nil {
 			if e.shutdown {

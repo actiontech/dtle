@@ -80,7 +80,10 @@ func (h *taskHandle) run(taskConfig *config.DtleTaskConfig, d *Driver) {
 	// TODO: detect if the taskConfig OOMed
 
 	cfg := h.taskConfig
-	ctx := &common.ExecContext{cfg.JobName, cfg.TaskGroupName, 100 * 1024 * 1024, d.config.DataDir}
+	ctx := &common.ExecContext{
+		Subject:    cfg.JobName,
+		StateDir:   d.config.DataDir,
+	}
 
 	taskConfig.SetDefaultForEmpty()
 	driverConfig := &config.MySQLDriverConfig{DtleTaskConfig: *taskConfig}

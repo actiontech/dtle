@@ -15,8 +15,6 @@ func init() {
 
 type ExecContext struct {
 	Subject    string
-	Tp         string
-	MaxPayload int
 	StateDir   string
 }
 
