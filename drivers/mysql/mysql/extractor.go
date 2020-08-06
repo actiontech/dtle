@@ -108,7 +108,7 @@ type Extractor struct {
 	storeManager    *common.StoreManager
 }
 
-func NewExtractor(execCtx *common.ExecContext, cfg *config.MySQLDriverConfig, logger hclog.Logger, storeManager *common.StoreManager) (*Extractor, error) {
+func NewExtractor(execCtx *common.ExecContext, cfg *config.MySQLDriverConfig, logger hclog.Logger, storeManager *common.StoreManager, waitCh chan *drivers.ExitResult) (*Extractor, error) {
 	logger.Info("NewExtractor", "subject", execCtx.Subject)
 
 	e := &Extractor{
@@ -118,7 +118,7 @@ func NewExtractor(execCtx *common.ExecContext, cfg *config.MySQLDriverConfig, lo
 		mysqlContext:    cfg,
 		dataChannel:     make(chan *binlog.BinlogEntry, cfg.ReplChanBufferSize),
 		rowCopyComplete: make(chan bool),
-		waitCh:          make(chan *drivers.ExitResult, 1),
+		waitCh:          waitCh,
 		shutdownCh:      make(chan struct{}),
 		testStub1Delay:  0,
 		context:         sqle.NewContext(nil),
@@ -1428,10 +1428,6 @@ func (e *Extractor) onError(state int, err error) {
 		Err:       err,
 	}
 	e.Shutdown()
-}
-
-func (e *Extractor) WaitCh() chan *drivers.ExitResult {
-	return e.waitCh
 }
 
 // Shutdown is used to tear down the extractor

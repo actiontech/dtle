@@ -247,7 +247,7 @@ type Applier struct {
 
 func NewApplier(
 	ctx *common.ExecContext, cfg *config.MySQLDriverConfig, logger hclog.Logger,
-	storeManager *common.StoreManager, natsAddr string) (a *Applier, err error) {
+	storeManager *common.StoreManager, natsAddr string, waitCh chan *drivers.ExitResult) (a *Applier, err error) {
 
 	logger.Info("NewApplier", "subject", ctx.Subject)
 
@@ -261,7 +261,7 @@ func NewApplier(
 		copyRowsQueue:           make(chan *common.DumpEntry, 24),
 		applyDataEntryQueue:     make(chan *binlog.BinlogEntry, cfg.ReplChanBufferSize*2),
 		applyBinlogMtsTxQueue:   make(chan *binlog.BinlogEntry, cfg.ReplChanBufferSize*2),
-		waitCh:                  make(chan *drivers.ExitResult, 1),
+		waitCh:                  waitCh,
 		shutdownCh:              make(chan struct{}),
 		printTps:                os.Getenv(g.ENV_PRINT_TPS) != "",
 		storeManager:            storeManager,
@@ -1441,10 +1441,6 @@ func (a *Applier) onError(state int, err error) {
 		Err:       err,
 	}
 	a.Shutdown()
-}
-
-func (a *Applier) WaitCh() chan *drivers.ExitResult {
-	return a.waitCh
 }
 
 func (a *Applier) Shutdown() error {

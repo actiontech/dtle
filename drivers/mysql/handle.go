@@ -32,6 +32,7 @@ type taskHandle struct {
 
 	ctx context.Context
 	cancelFunc context.CancelFunc
+	waitCh chan *drivers.ExitResult
 }
 
 func newDtleTaskHandle(logger hclog.Logger, cfg *drivers.TaskConfig, state drivers.TaskState, started time.Time) *taskHandle {
@@ -43,6 +44,7 @@ func newDtleTaskHandle(logger hclog.Logger, cfg *drivers.TaskConfig, state drive
 		startedAt:   started,
 		completedAt: time.Time{},
 		exitResult:  nil,
+		waitCh:      make(chan *drivers.ExitResult, 1),
 	}
 	h.ctx, h.cancelFunc = context.WithCancel(context.TODO())
 	return h
@@ -97,7 +99,7 @@ func (h *taskHandle) run(taskConfig *config.DtleTaskConfig, d *Driver) {
 			return
 		}
 
-		h.runner, err = mysql.NewExtractor(ctx, driverConfig, d.logger.Named("extractor"), d.storeManager)
+		h.runner, err = mysql.NewExtractor(ctx, driverConfig, d.logger.Named("extractor"), d.storeManager, h.waitCh)
 		if err != nil {
 			h.exitResult.Err = errors.Wrap(err, "NewExtractor")
 			return
@@ -107,10 +109,12 @@ func (h *taskHandle) run(taskConfig *config.DtleTaskConfig, d *Driver) {
 		if taskConfig.KafkaConfig != nil {
 			d.logger.Debug("found kafka", "KafkaConfig", taskConfig.KafkaConfig)
 			taskConfig.KafkaConfig.NatsAddr = d.config.NatsAdvertise
-			h.runner = kafka.NewKafkaRunner(ctx, taskConfig.KafkaConfig, d.logger.Named("kafka"), d.storeManager)
+			h.runner = kafka.NewKafkaRunner(ctx, taskConfig.KafkaConfig, d.logger.Named("kafka"),
+				d.storeManager, h.waitCh)
 			go h.runner.Run()
 		} else {
-			h.runner, err = mysql.NewApplier(ctx, driverConfig, d.logger.Named("applier"), d.storeManager, d.config.NatsAdvertise)
+			h.runner, err = mysql.NewApplier(ctx, driverConfig, d.logger.Named("applier"), d.storeManager,
+				d.config.NatsAdvertise, h.waitCh)
 			if err != nil {
 				h.exitResult.Err = errors.Wrap(err, "NewApplier")
 				return
@@ -138,9 +142,6 @@ func (h *taskHandle) Destroy() bool {
 
 type DriverHandle interface {
 	Run()
-
-	// WaitChan is used to return a channel used wait for task completion
-	WaitCh() chan *drivers.ExitResult
 
 	// Shutdown is used to stop the task
 	Shutdown() error

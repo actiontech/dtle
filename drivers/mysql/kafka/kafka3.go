@@ -53,7 +53,7 @@ type KafkaRunner struct {
 }
 
 func NewKafkaRunner(execCtx *common.ExecContext, cfg *config.KafkaConfig, logger hclog.Logger,
-	storeManager *common.StoreManager) *KafkaRunner {
+	storeManager *common.StoreManager, waitCh chan *drivers.ExitResult) *KafkaRunner {
 	/*	entry := logger.WithFields(logrus.Fields{
 		"job": execCtx.Subject,
 	})*/
@@ -61,15 +61,11 @@ func NewKafkaRunner(execCtx *common.ExecContext, cfg *config.KafkaConfig, logger
 		subject:      execCtx.Subject,
 		kafkaConfig:  cfg,
 		logger:       logger,
-		waitCh:       make(chan *drivers.ExitResult, 1),
+		waitCh:       waitCh,
 		shutdownCh:   make(chan struct{}),
 		tables:       make(map[string](map[string]*mysqlconfig.Table)),
 		storeManager: storeManager,
 	}
-}
-
-func (kr *KafkaRunner) WaitCh() chan *drivers.ExitResult {
-	return kr.waitCh
 }
 
 func (kr *KafkaRunner) Shutdown() error {

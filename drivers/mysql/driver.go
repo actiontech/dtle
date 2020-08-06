@@ -480,6 +480,11 @@ func (d *Driver) handleWait(ctx context.Context, handle *taskHandle, ch chan *dr
 			Err:       nil,
 		}
 		ch <- result
+	case result := <-handle.waitCh: // Do not refer to handle.runner.waitCh. It might be nil.
+		handle.stateLock.Lock()
+		handle.procState = drivers.TaskStateExited
+		handle.stateLock.Unlock()
+		ch <- result
 	}
 }
 
