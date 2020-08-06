@@ -422,12 +422,7 @@ func CloseDB(db *gosql.DB) error {
 		return nil
 	}
 
-	err := db.Close()
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return db.Close()
 }
 
 func CloseConns(dbs ...*Conn) error {

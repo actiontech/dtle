@@ -37,6 +37,11 @@ func NewInspector(ctx *config.MySQLDriverConfig, logger hclog.Logger) *Inspector
 	}
 }
 
+func (i *Inspector) Close() {
+	if i.db != nil {
+		i.db.Close()
+	}
+}
 func (i *Inspector) InitDBConnections() (err error) {
 	inspectorUri := i.mysqlContext.ConnectionConfig.GetDBUri()
 	i.logger.Debug("CreateDB", "inspectorUri",hclog.Fmt("%+v", inspectorUri))

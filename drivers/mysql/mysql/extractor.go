@@ -1509,8 +1509,8 @@ func (e *Extractor) Shutdown() error {
 		e.logger.Error("Shutdown error close singletonDB.", "err", err)
 	}
 
-	if err := sql.CloseDB(e.inspector.db); err != nil {
-		e.logger.Error("Shutdown error close inspector.db.", "err", err)
+	if e.inspector != nil {
+		e.inspector.Close()
 	}
 
 	if e.binlogReader != nil {
