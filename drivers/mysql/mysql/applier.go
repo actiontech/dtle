@@ -1409,18 +1409,26 @@ func (a *Applier) onError(state int, err error) {
 	if a.shutdown {
 		return
 	}
+
+	pe := common.PassError{
+		Gtid: a.mysqlContext.Gtid,
+		Err:  err.Error(),
+	}
+
+	peBs, _ := common.GobEncode(pe)
+
 	switch state {
 	case TaskStateComplete:
 		a.logger.Info("Done migrating")
 	case TaskStateRestart:
 		if a.natsConn != nil {
-			if err := a.natsConn.Publish(fmt.Sprintf("%s_restart", a.subject), []byte(a.mysqlContext.Gtid)); err != nil {
+			if err := a.natsConn.Publish(fmt.Sprintf("%s_restart", a.subject), peBs); err != nil {
 				a.logger.Error("Trigger restart extractor", "err", err)
 			}
 		}
 	default:
 		if a.natsConn != nil {
-			if err := a.natsConn.Publish(fmt.Sprintf("%s_error", a.subject), []byte(a.mysqlContext.Gtid)); err != nil {
+			if err := a.natsConn.Publish(fmt.Sprintf("%s_error", a.subject), peBs); err != nil {
 				a.logger.Error("Trigger extractor shutdown", "err", err)
 			}
 		}

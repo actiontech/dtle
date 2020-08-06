@@ -191,7 +191,7 @@ func (kr *KafkaRunner) initiateStreaming() error {
 			var tableFromDumpData *mysqlconfig.Table = nil
 			if len(dumpData.Table) > 0 {
 				tableFromDumpData = &mysqlconfig.Table{}
-				err = common.DecodeGob(dumpData.Table, tableFromDumpData)
+				err = common.GobDecode(dumpData.Table, tableFromDumpData)
 				if err != nil {
 					kr.onError(TaskStateDead, err)
 					return
@@ -255,18 +255,25 @@ func (kr *KafkaRunner) onError(state int, err error) {
 	if kr.shutdown {
 		return
 	}
+
+	pe := common.PassError{
+		Gtid: kr.kafkaConfig.Gtid,
+		Err:  err.Error(),
+	}
+	peBs, _ := common.GobEncode(pe)
+
 	switch state {
 	case TaskStateComplete:
 		kr.logger.Info("Done migrating")
 	case TaskStateRestart:
 		if kr.natsConn != nil {
-			if err := kr.natsConn.Publish(fmt.Sprintf("%s_restart", kr.subject), []byte(kr.kafkaConfig.Gtid)); err != nil {
+			if err := kr.natsConn.Publish(fmt.Sprintf("%s_restart", kr.subject), peBs); err != nil {
 				kr.logger.Error("Trigger restart", "err", err)
 			}
 		}
 	default:
 		if kr.natsConn != nil {
-			if err := kr.natsConn.Publish(fmt.Sprintf("%s_error", kr.subject), []byte(kr.kafkaConfig.Gtid)); err != nil {
+			if err := kr.natsConn.Publish(fmt.Sprintf("%s_error", kr.subject), peBs); err != nil {
 				kr.logger.Error("Trigger shutdown", "err", err)
 			}
 		}

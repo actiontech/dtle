@@ -579,18 +579,28 @@ func (e *Extractor) initiateStreaming() error {
 		}
 	}()
 
+	pe := &common.PassError{
+		Gtid: "",
+		Err:  "unknown",
+	}
 	go func() {
 		_, err := e.natsConn.Subscribe(fmt.Sprintf("%s_restart", e.subject), func(m *gonats.Msg) {
-			e.mysqlContext.Gtid = string(m.Data)
-			e.onError(TaskStateRestart, fmt.Errorf("restart"))
+			err := common.GobDecode(m.Data, pe)
+			if err == nil {
+				e.mysqlContext.Gtid = pe.Gtid
+			}
+			e.onError(TaskStateRestart, fmt.Errorf("applier restart: %v", pe.Err))
 		})
 		if err != nil {
 			e.onError(TaskStateRestart, err)
 		}
 
 		_, err = e.natsConn.Subscribe(fmt.Sprintf("%s_error", e.subject), func(m *gonats.Msg) {
-			e.mysqlContext.Gtid = string(m.Data)
-			e.onError(TaskStateDead, fmt.Errorf("applier"))
+			err := common.GobDecode(m.Data, pe)
+			if err == nil {
+				e.mysqlContext.Gtid = pe.Gtid
+			}
+			e.onError(TaskStateDead, fmt.Errorf("applier error: %v", pe.Err))
 		})
 		if err != nil {
 			e.onError(TaskStateDead, err)

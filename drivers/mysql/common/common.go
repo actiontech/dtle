@@ -52,7 +52,7 @@ func Decode(data []byte, vPtr interface{}) (err error) {
 	return gob.NewDecoder(bytes.NewBuffer(msg)).Decode(vPtr)
 }
 
-func DecodeGob(data []byte, vPtr interface{}) (err error) {
+func GobDecode(data []byte, vPtr interface{}) (err error) {
 	return gob.NewDecoder(bytes.NewBuffer(data)).Decode(vPtr)
 }
 
@@ -76,4 +76,9 @@ func DecodeDumpEntry(data []byte) (entry *DumpEntry, err error) {
 
 func (d *DumpEntry) IncrementCounter() {
 	d.RowsCount++
+}
+
+type PassError struct {
+	Gtid string
+	Err  string
 }
