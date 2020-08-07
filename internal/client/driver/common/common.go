@@ -8,6 +8,14 @@ import (
 	"github.com/pingcap/tidb/types"
 	"github.com/satori/go.uuid"
 	"github.com/siddontang/go-mysql/mysql"
+	"time"
+)
+
+const (
+	// DefaultConnectWait is the default timeout used for the connect operation
+	DefaultConnectWaitSecond = 10
+	DefaultConnectWait = DefaultConnectWaitSecond * time.Second
+	DefaultBigTX = 1024 * 1024 * 100
 )
 
 func init() {
