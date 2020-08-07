@@ -290,6 +290,7 @@ func (kr *KafkaRunner) initiateStreaming() error {
 		return errors.Wrap(err, "DtleParseMysqlGTIDSet")
 	}
 
+	var bigEntries binlog.BinlogEntries
 	_, err = kr.natsConn.Subscribe(fmt.Sprintf("%s_incr_hete", kr.subject), func(m *gonats.Msg) {
 		kr.logger.Debugf("kafka: recv a incr_hete msg")
 
@@ -298,7 +299,6 @@ func (kr *KafkaRunner) initiateStreaming() error {
 		}
 		kr.logger.Debugf("kafka. ack a incr_hete msg")
 
-		var bigEntries binlog.BinlogEntries
 		var binlogEntries binlog.BinlogEntries
 		if err := common.Decode(m.Data, &binlogEntries); err != nil {
 			kr.onError(TaskStateDead, err)
