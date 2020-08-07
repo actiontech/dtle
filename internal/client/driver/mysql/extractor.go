@@ -1061,8 +1061,8 @@ func (e *Extractor) publish(ctx context.Context, subject, gtid string, txMsg []b
 	// Add the payload.
 	t.Write(txMsg)
 	defer span.Finish()
-	for {
-		e.logger.Debugf("mysql.extractor: publish. gtid: %v, msg_len: %v, subject: %v ", gtid, len(txMsg),subject)
+	for i := 1; ; i++ {
+		e.logger.Debugf("mysql.extractor: publish. gtid: %v, msg_len: %v, subject: %v ", gtid, len(txMsg), subject)
 		_, err = e.natsConn.Request(subject, t.Bytes(), DefaultConnectWait)
 		if err == nil {
 			if gtid != "" {
@@ -1071,15 +1071,15 @@ func (e *Extractor) publish(ctx context.Context, subject, gtid string, txMsg []b
 			txMsg = nil
 			break
 		} else if err == gonats.ErrTimeout {
-			e.logger.Debugf("mysql.extractor: publish timeout, got %v", err)
-			continue
+			e.logger.WithError(err).Debugf("mysql.extractor: publish timeout")
+			if i % 20 == 0 {
+				e.logger.WithError(err).Warn("publish timeout for 20 times")
+			}
+			time.Sleep(1 * time.Second)
 		} else {
 			e.logger.Errorf("mysql.extractor: unexpected error on publish, got %v", err)
 			break
 		}
-		// there's an error. Let's try again.
-		e.logger.Debugf(fmt.Sprintf("mysql.extractor: there's an error [%v]. Let's try again", err))
-		time.Sleep(1 * time.Second)
 	}
 	return err
 }
