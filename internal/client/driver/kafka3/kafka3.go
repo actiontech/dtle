@@ -447,7 +447,7 @@ func (kr *KafkaRunner) kafkaTransformSnapshotData(table *config.Table, value *co
 				case mysql.BitColumnType:
 					value = base64.StdEncoding.EncodeToString([]byte(valueStr))
 				case mysql.BlobColumnType:
-					if columnList[i].ColumnType == "text"||columnList[i].ColumnType == "tingytext" || columnList[i].ColumnType == "mediumtext"|| columnList[i].ColumnType == "longtext" {
+					if columnList[i].ColumnType == "text"||columnList[i].ColumnType == "tinytext" || columnList[i].ColumnType == "mediumtext"|| columnList[i].ColumnType == "longtext" {
 						value = valueStr
 					} else {
 						value = base64.StdEncoding.EncodeToString([]byte(valueStr))
@@ -664,7 +664,7 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry)
 				}
 			case mysql.TextColumnType:
 				if beforeValue != nil {
-					beforeValue = string(afterValue.([]byte))
+					beforeValue = string(beforeValue.([]byte))
 				}
 				if afterValue != nil {
 					afterValue = string(afterValue.([]byte))
@@ -843,7 +843,7 @@ func kafkaColumnListToColDefs(colList *mysql.ColumnList, timeZone string) (valCo
 		case mysql.BitColumnType:
 			field = NewBitsField(optional, fieldName, cols[i].ColumnType[4:len(cols[i].ColumnType)-1], defaultValue)
 		case mysql.BlobColumnType:
-			if cols[i].ColumnType == "text" {
+			if cols[i].ColumnType == "text"||cols[i].ColumnType == "tinytext" || cols[i].ColumnType == "mediumtext"|| colsq[i].ColumnType == "longtext"  {
 				field = NewSimpleSchemaWithDefaultField(SCHEMA_TYPE_STRING, optional, fieldName, defaultValue)
 			} else {
 				field = NewSimpleSchemaWithDefaultField(SCHEMA_TYPE_BYTES, optional, fieldName, defaultValue)
