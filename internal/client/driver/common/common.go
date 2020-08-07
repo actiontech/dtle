@@ -3,6 +3,14 @@ package common
 import (
 	"github.com/satori/go.uuid"
 	"github.com/siddontang/go-mysql/mysql"
+	"time"
+)
+
+const (
+	// DefaultConnectWait is the default timeout used for the connect operation
+	DefaultConnectWaitSecond = 10
+	DefaultConnectWait = DefaultConnectWaitSecond * time.Second
+	DefaultBigTX = 1024 * 1024 * 100
 )
 
 type ExecContext struct {
@@ -38,4 +46,3 @@ func UpdateGtidSet(gtidSet *mysql.MysqlGTIDSet, sidStr string, sid uuid.UUID, tx
 		uuidSet.AddInterval(slice)
 	}
 }
-

@@ -54,10 +54,6 @@ import (
 )
 
 const (
-	// DefaultConnectWait is the default timeout used for the connect operation
-	DefaultConnectWaitSecond      = 10
-	DefaultConnectWait            = DefaultConnectWaitSecond * time.Second
-	DefaultBigTX                  = 1024 * 1024 * 100
 	ReconnectStreamerSleepSeconds = 5
 	SCHEMAS                       = "schemas"
 	SCHEMA                        = "schema"
@@ -915,13 +911,13 @@ func (e *Extractor) StreamEvents() error {
 					if entriesSize >= e.mysqlContext.GroupMaxSize ||
 						int64(len(entries.Entries)) == e.mysqlContext.ReplChanBufferSize {
 						e.logger.Debugf("extractor. incr. send by GroupLimit. entriesSize: %v , groupMaxSize: %v,Entries.len: %v", entriesSize, e.mysqlContext.GroupMaxSize, len(entries.Entries))
-						if entriesSize > DefaultBigTX {
+						if entriesSize > common.DefaultBigTX {
 							bigEntrises := splitEntries(entries, entriesSize)
 							entries.Entries = nil
 							e.logger.Debugf("extractor. incr. big tx  section  : %v ", len(bigEntrises))
 							for i, entity := range bigEntrises {
 								entries = entity
-								entriesSize = DefaultBigTX
+								entriesSize = common.DefaultBigTX
 								e.logger.Debugf("extractor. incr. send  big tx  fragment : %v ", i)
 								err = sendEntries()
 							}
@@ -937,7 +933,7 @@ func (e *Extractor) StreamEvents() error {
 					span.Finish()
 				case <-timer.C:
 					nEntries := len(entries.Entries)
-					if entriesSize > DefaultBigTX {
+					if entriesSize > common.DefaultBigTX {
 						err = errors.Errorf("big tx not sent by timeout ,please change GroupTimeout . ")
 						break
 					}
@@ -1031,7 +1027,7 @@ func (e *Extractor) StreamEvents() error {
 }
 
 func splitEntries(entries binlog.BinlogEntries, entriseSize int) (entris []binlog.BinlogEntries) {
-	clientLen := math.Ceil(float64(entriseSize) / DefaultBigTX)
+	clientLen := math.Ceil(float64(entriseSize) / common.DefaultBigTX)
 	clientNum := math.Ceil(float64(len(entries.Entries[0].Events)) / clientLen)
 	for i := 1; i <= int(clientLen); i++ {
 		var after int
@@ -1087,7 +1083,7 @@ func (e *Extractor) publish(ctx context.Context, subject, gtid string, txMsg []b
 	defer span.Finish()
 	for i := 1; ; i++ {
 		e.logger.Debugf("mysql.extractor: publish. gtid: %v, msg_len: %v, subject: %v ", gtid, len(txMsg), subject)
-		_, err = e.natsConn.Request(subject, t.Bytes(), DefaultConnectWait)
+		_, err = e.natsConn.Request(subject, t.Bytes(), common.DefaultConnectWait)
 		if err == nil {
 			if gtid != "" {
 				e.mysqlContext.Gtid = gtid
