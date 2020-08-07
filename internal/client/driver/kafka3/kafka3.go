@@ -447,7 +447,7 @@ func (kr *KafkaRunner) kafkaTransformSnapshotData(table *config.Table, value *co
 				case mysql.BitColumnType:
 					value = base64.StdEncoding.EncodeToString([]byte(valueStr))
 				case mysql.BlobColumnType:
-					if columnList[i].ColumnType == "text" {
+					if columnList[i].ColumnType == "text"||columnList[i].ColumnType == "tingytext" || columnList[i].ColumnType == "mediumtext"|| columnList[i].ColumnType == "longtext" {
 						value = valueStr
 					} else {
 						value = base64.StdEncoding.EncodeToString([]byte(valueStr))
@@ -468,7 +468,7 @@ func (kr *KafkaRunner) kafkaTransformSnapshotData(table *config.Table, value *co
 						value = valueStr
 					}
 				default:
-					value = valueStr
+						value = valueStr
 				}
 			} else {
 				value = nil
