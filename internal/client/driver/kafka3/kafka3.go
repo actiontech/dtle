@@ -843,7 +843,7 @@ func kafkaColumnListToColDefs(colList *mysql.ColumnList, timeZone string) (valCo
 		case mysql.BitColumnType:
 			field = NewBitsField(optional, fieldName, cols[i].ColumnType[4:len(cols[i].ColumnType)-1], defaultValue)
 		case mysql.BlobColumnType:
-			if cols[i].ColumnType == "text"||cols[i].ColumnType == "tinytext" || cols[i].ColumnType == "mediumtext"|| colsq[i].ColumnType == "longtext"  {
+			if cols[i].ColumnType == "text"||cols[i].ColumnType == "tinytext" || cols[i].ColumnType == "mediumtext"|| cols[i].ColumnType == "longtext"  {
 				field = NewSimpleSchemaWithDefaultField(SCHEMA_TYPE_STRING, optional, fieldName, defaultValue)
 			} else {
 				field = NewSimpleSchemaWithDefaultField(SCHEMA_TYPE_BYTES, optional, fieldName, defaultValue)
