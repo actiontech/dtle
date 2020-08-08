@@ -530,6 +530,11 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry)
 			if err != nil {
 				return err
 			}
+		} else {
+			kr.logger.WithFields(logrus.Fields{
+				"query": dataEvent.Query,
+				"type": dataEvent.DML,
+			}).Info("kafkaTransformDMLEventQuery: empty table name")
 		}
 
 		// skipping DDL

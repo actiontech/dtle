@@ -636,6 +636,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 							b.logger.WithFields(logrus.Fields{
 								"schema": ddlTable.Schema,
 								"table":  ddlTable.Table,
+								"query":  sql,
 							}).Info("NewQueryEventAffectTable. found empty schema or table.")
 						}
 						event := NewQueryEventAffectTable(
