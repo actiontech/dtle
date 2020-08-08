@@ -687,7 +687,13 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 			dmlEvent.LogPos = int64(ev.Header.LogPos - ev.Header.EventSize)
 
 			if table != nil && !table.DefChangedSent {
+				b.logger.WithField("schema", schemaName).WithField("table", tableName).
+					Info("send table structure")
 				dmlEvent.Table = table.Table
+				if table.Table == nil {
+					b.logger.WithField("schema", schemaName).WithField("table", tableName).
+						Warn("DTLE_BUG binlog_reader: table.Table is nil")
+				}
 				table.DefChangedSent = true
 			}
 

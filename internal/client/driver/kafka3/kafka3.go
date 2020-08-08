@@ -185,13 +185,17 @@ func (kr *KafkaRunner) getOrSetTable(schemaName string, tableName string, table 
 			}).Debugf("kafka: reuse table info ")
 			return b, nil
 		} else {
-			return nil, fmt.Errorf("DTLE_BUG kafka: unknown table structure")
+			kr.logger.WithFields(logrus.Fields{
+				"schemaName": schemaName,
+				"tableName":  tableName,
+			}).Error("kafka: unknown table structure")
+			return nil, fmt.Errorf("DTLE_BUG kafka: unknown table structure %v.%v", schemaName, tableName)
 		}
 	} else {
 		kr.logger.WithFields(logrus.Fields{
 			"schemaName": schemaName,
 			"tableName":  tableName,
-		}).Debugf("kafka: new table info")
+		}).Info("kafka: new table info")
 		a[tableName] = table
 		return table, nil
 	}
