@@ -195,7 +195,7 @@ func (kr *KafkaRunner) getOrSetTable(schemaName string, tableName string, table 
 		kr.logger.WithFields(logrus.Fields{
 			"schemaName": schemaName,
 			"tableName":  tableName,
-		}).Info("kafka: new table info")
+		}).Debug("kafka: new table info")
 		a[tableName] = table
 		return table, nil
 	}
@@ -534,7 +534,7 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry)
 			kr.logger.WithFields(logrus.Fields{
 				"query": dataEvent.Query,
 				"type": dataEvent.DML,
-			}).Info("kafkaTransformDMLEventQuery: empty table name")
+			}).Debug("kafkaTransformDMLEventQuery: empty table name")
 		}
 
 		// skipping DDL
