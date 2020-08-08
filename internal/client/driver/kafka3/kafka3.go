@@ -189,13 +189,17 @@ func (kr *KafkaRunner) getOrSetTable(schemaName string, tableName string, table 
 			}).Debugf("kafka: reuse table info ")
 			return b, nil
 		} else {
-			return nil, fmt.Errorf("DTLE_BUG kafka: unknown table structure")
+			kr.logger.WithFields(logrus.Fields{
+				"schemaName": schemaName,
+				"tableName":  tableName,
+			}).Error("kafka: unknown table structure")
+			return nil, fmt.Errorf("DTLE_BUG kafka: unknown table structure %v.%v", schemaName, tableName)
 		}
 	} else {
 		kr.logger.WithFields(logrus.Fields{
 			"schemaName": schemaName,
 			"tableName":  tableName,
-		}).Debugf("kafka: new table info")
+		}).Debug("kafka: new table info")
 		a[tableName] = table
 		return table, nil
 	}
@@ -552,15 +556,30 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry)
 
 	for i, _ := range dmlEvent.Events {
 		dataEvent := &dmlEvent.Events[i]
-		// this must be executed before skipping DDL
-		table, err := kr.getOrSetTable(dataEvent.DatabaseName, dataEvent.TableName, dataEvent.Table)
-		if err != nil {
-			return err
+
+		var table *config.Table
+		if dataEvent.TableName != "" {
+			// this must be executed before skipping DDL
+			table, err = kr.getOrSetTable(dataEvent.DatabaseName, dataEvent.TableName, dataEvent.Table)
+			if err != nil {
+				return err
+			}
+		} else {
+			kr.logger.WithFields(logrus.Fields{
+				"query": dataEvent.Query,
+				"type": dataEvent.DML,
+			}).Debug("kafkaTransformDMLEventQuery: empty table name")
 		}
 
 		// skipping DDL
 		if dataEvent.DML == binlog.NotDML {
 			continue
+		}
+
+		if table == nil {
+			err = fmt.Errorf("DTLE_BUG: table meta is nil %v.%v", dataEvent.DatabaseName, dataEvent.TableName)
+			kr.logger.WithError(err).Error("table meta is nil")
+			return err
 		}
 
 		var op string
