@@ -631,11 +631,19 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 					if skipEvent {
 						b.logger.Debugf("mysql.reader. skipped a ddl event. query: %v", query)
 					} else {
+						ddlTable := ddlInfo.tables[i]
+						if ddlTable.Schema == "" || ddlTable.Table == "" {
+							b.logger.WithFields(logrus.Fields{
+								"schema": ddlTable.Schema,
+								"table":  ddlTable.Table,
+								"query":  sql,
+							}).Info("NewQueryEventAffectTable. found empty schema or table.")
+						}
 						event := NewQueryEventAffectTable(
 							currentSchema,
 							sql,
 							NotDML,
-							ddlInfo.tables[i],
+							ddlTable,
 						)
 						b.currentBinlogEntry.Events = append(b.currentBinlogEntry.Events, event)
 					}
@@ -687,7 +695,13 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 			dmlEvent.LogPos = int64(ev.Header.LogPos - ev.Header.EventSize)
 
 			if table != nil && !table.DefChangedSent {
+				b.logger.WithField("schema", schemaName).WithField("table", tableName).
+					Debug("send table structure")
 				dmlEvent.Table = table.Table
+				if table.Table == nil {
+					b.logger.WithField("schema", schemaName).WithField("table", tableName).
+						Warn("DTLE_BUG binlog_reader: table.Table is nil")
+				}
 				table.DefChangedSent = true
 			}
 
