@@ -522,15 +522,25 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry)
 
 	for i, _ := range dmlEvent.Events {
 		dataEvent := &dmlEvent.Events[i]
-		// this must be executed before skipping DDL
-		table, err := kr.getOrSetTable(dataEvent.DatabaseName, dataEvent.TableName, dataEvent.Table)
-		if err != nil {
-			return err
+
+		var table *config.Table
+		if dataEvent.TableName != "" {
+			// this must be executed before skipping DDL
+			table, err = kr.getOrSetTable(dataEvent.DatabaseName, dataEvent.TableName, dataEvent.Table)
+			if err != nil {
+				return err
+			}
 		}
 
 		// skipping DDL
 		if dataEvent.DML == binlog.NotDML {
 			continue
+		}
+
+		if table == nil {
+			err = fmt.Errorf("DTLE_BUG: table meta is nil %v.%v", dataEvent.DatabaseName, dataEvent.TableName)
+			kr.logger.WithError(err).Error("table meta is nil")
+			return err
 		}
 
 		var op string
