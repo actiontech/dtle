@@ -148,18 +148,21 @@ func GetGtidFromConsul(sm *StoreManager, subject string, logger hclog.Logger, my
 	if err != nil {
 		return errors.Wrap(err, "GetGtidForJob")
 	}
+	logger.Info("Got gtid from consul", "gtid", gtid)
 	if gtid != "" {
-		logger.Info("Got gtid from consul", "gtid", gtid)
+		logger.Info("Use gtid from consul", "gtid", gtid)
 		mysqlContext.Gtid = gtid
 	}
 	pos, err := sm.GetBinlogFilePosForJob(subject)
 	if err != nil {
 		return errors.Wrap(err, "GetBinlogFilePosForJob")
 	}
+	logger.Info("Got BinlogFile/Pos from consul",
+		"file", mysqlContext.BinlogFile, "pos", mysqlContext.BinlogPos)
 	if pos.Name != "" {
 		mysqlContext.BinlogFile = pos.Name
 		mysqlContext.BinlogPos = int64(pos.Pos)
-		logger.Info("Got BinlogFile/Pos from consul",
+		logger.Info("Use BinlogFile/Pos from consul",
 			"file", mysqlContext.BinlogFile, "pos", mysqlContext.BinlogPos)
 	}
 	return nil
