@@ -401,13 +401,9 @@ func (a *Applier) Run() {
 func (a *Applier) executeWriteFuncs() {
 	if a.mysqlContext.Gtid == "" {
 		go func() {
-			t10 := time.NewTimer(10 * time.Second)
 			var stopLoop = false
-			for !stopLoop {
-				if !t10.Stop() {
-					<-t10.C
-				}
-				t10.Reset(10 * time.Second)
+			for !stopLoop && !a.shutdown {
+				t10 := time.NewTimer(10 * time.Second)
 
 				select {
 				case copyRows := <-a.copyRowsQueue:
@@ -431,6 +427,7 @@ func (a *Applier) executeWriteFuncs() {
 				case <-t10.C:
 					a.logger.Debug("no copyRows for 10s.")
 				}
+				t10.Stop()
 			}
 		}()
 		a.logger.Info("Operating until row copy is complete")
