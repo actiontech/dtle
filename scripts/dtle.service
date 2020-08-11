@@ -5,6 +5,7 @@ After=network.target
 
 [Service]
 EnvironmentFile=-/etc/default/dtle
+Environment=GODEBUG=madvdontneed=1
 User=dtle
 ExecStart=/usr/bin/dtle server -config /etc/dtle/dtle.conf ${DTLE_OPTS}
 ExecReload=/bin/kill -HUP $MAINPID
