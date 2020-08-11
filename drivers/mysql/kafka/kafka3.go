@@ -154,7 +154,9 @@ func (kr *KafkaRunner) getOrSetTable(schemaName string, tableName string, table 
 			kr.logger.Debug("reuse table info", "schemaName", schemaName, "tableName", tableName)
 			return b, nil
 		} else {
-			return nil, fmt.Errorf("DTLE_BUG kafka: unknown table structure")
+			kr.logger.Error("kafka: unknown table structure",
+				"schemaName", schemaName, "tableName", tableName)
+			return nil, fmt.Errorf("DTLE_BUG kafka: unknown table structure %v.%v", schemaName, tableName)
 		}
 	} else {
 		kr.logger.Debug("new table info", "schemaName", schemaName, "tableName", tableName)
@@ -425,15 +427,27 @@ func (kr *KafkaRunner) kafkaTransformSnapshotData(table *mysqlconfig.Table, valu
 func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry) (err error) {
 	for i, _ := range dmlEvent.Events {
 		dataEvent := &dmlEvent.Events[i]
-		// this must be executed before skipping DDL
-		table, err := kr.getOrSetTable(dataEvent.DatabaseName, dataEvent.TableName, dataEvent.Table)
-		if err != nil {
-			return err
+		var table *mysqlconfig.Table
+		if dataEvent.TableName != "" {
+			// this must be executed before skipping DDL
+			table, err = kr.getOrSetTable(dataEvent.DatabaseName, dataEvent.TableName, dataEvent.Table)
+			if err != nil {
+				return err
+			}
+		} else {
+			kr.logger.Debug("kafkaTransformDMLEventQuery: empty table name",
+				"query", dataEvent.Query, "type", dataEvent.DML)
 		}
 
 		// skipping DDL
 		if dataEvent.DML == binlog.NotDML {
 			continue
+		}
+
+		if table == nil {
+			err = fmt.Errorf("DTLE_BUG: table meta is nil %v.%v", dataEvent.DatabaseName, dataEvent.TableName)
+			kr.logger.Error("table meta is nil", "err", err)
+			return err
 		}
 
 		var op string

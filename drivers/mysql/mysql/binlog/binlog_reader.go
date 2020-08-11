@@ -22,8 +22,8 @@ import (
 	"github.com/pingcap/dm/pkg/gtid"
 	"github.com/pingcap/dm/pkg/streamer"
 
-	"github.com/actiontech/dtle/g"
 	"fmt"
+	"github.com/actiontech/dtle/g"
 	"regexp"
 	"strconv"
 	"strings"
@@ -638,11 +638,17 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 					if skipEvent {
 						b.logger.Debug("skipped a ddl event.", "query", query)
 					} else {
+						ddlTable := ddlInfo.tables[i]
+						if ddlTable.Schema == "" || ddlTable.Table == "" {
+							b.logger.Info("NewQueryEventAffectTable. found empty schema or table.",
+								"schema", ddlTable.Schema, "table", ddlTable.Table, "query", sql)
+						}
+
 						event := NewQueryEventAffectTable(
 							currentSchema,
 							sql,
 							NotDML,
-							ddlInfo.tables[i],
+							ddlTable,
 						)
 						b.currentBinlogEntry.Events = append(b.currentBinlogEntry.Events, event)
 					}
@@ -695,7 +701,13 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 			dmlEvent.LogPos = int64(ev.Header.LogPos - ev.Header.EventSize)
 
 			if table != nil && !table.DefChangedSent {
+				b.logger.Debug("send table structure", "schema", schemaName, "table", tableName)
 				dmlEvent.Table = table.Table
+				if table.Table == nil {
+					b.logger.Warn("DTLE_BUG binlog_reader: table.Table is nil",
+						"schema", schemaName, "table", tableName)
+				}
+
 				table.DefChangedSent = true
 			}
 
