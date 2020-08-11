@@ -5,6 +5,7 @@ After=network.target
 
 [Service]
 EnvironmentFile=-/etc/default/dts
+Environment=GODEBUG=madvdontneed=1
 User=dts
 ExecStart=/usr/bin/dts server -config /etc/dts/dts.conf ${DTLE_OPTS}
 ExecReload=/bin/kill -HUP $MAINPID
