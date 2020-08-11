@@ -5,6 +5,7 @@ After=network.target
 
 [Service]
 User=dtle
+Environment=GODEBUG=madvdontneed=1
 ExecStart=INSTALL_PREFIX_MAGIC/usr/bin/nomad agent -config INSTALL_PREFIX_MAGIC/etc/dtle/nomad.hcl
 
 [Install]
