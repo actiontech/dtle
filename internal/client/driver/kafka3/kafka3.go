@@ -41,6 +41,11 @@ const (
 	TaskStateDead
 )
 
+type KafkaTableItem struct {
+	table *config.Table
+	keySchema *Schema
+	valueSchema *Schema
+}
 type KafkaRunner struct {
 	logger      *logrus.Entry
 	subject     string
@@ -54,7 +59,7 @@ type KafkaRunner struct {
 	kafkaConfig *KafkaConfig
 	kafkaMgr    *KafkaManager
 
-	tables map[string](map[string]*config.Table)
+	tables map[string](map[string]*KafkaTableItem)
 
 	gtidSet *gomysql.MysqlGTIDSet
 }
@@ -69,7 +74,7 @@ func NewKafkaRunner(execCtx *common.ExecContext, cfg *KafkaConfig, logger *logru
 		logger:      entry,
 		waitCh:      make(chan *models.WaitResult, 1),
 		shutdownCh:  make(chan struct{}),
-		tables:      make(map[string](map[string]*config.Table)),
+		tables:      make(map[string](map[string]*KafkaTableItem)),
 	}
 }
 
@@ -169,10 +174,11 @@ func (kr *KafkaRunner) Run() {
 	}
 }
 
-func (kr *KafkaRunner) getOrSetTable(schemaName string, tableName string, table *config.Table) (*config.Table, error) {
+func (kr *KafkaRunner) getOrSetTable(schemaName string, tableName string,
+	table *config.Table) (*KafkaTableItem, error) {
 	a, ok := kr.tables[schemaName]
 	if !ok {
-		a = make(map[string]*config.Table)
+		a = make(map[string]*KafkaTableItem)
 		kr.tables[schemaName] = a
 	}
 
@@ -196,8 +202,19 @@ func (kr *KafkaRunner) getOrSetTable(schemaName string, tableName string, table 
 			"schemaName": schemaName,
 			"tableName":  tableName,
 		}).Debug("kafka: new table info")
-		a[tableName] = table
-		return table, nil
+
+		tableIdent := fmt.Sprintf("%v.%v.%v", kr.kafkaMgr.Cfg.Topic, table.TableSchema, table.TableName)
+		colDefs, keyColDefs := kafkaColumnListToColDefs(table.OriginalTableColumns, kr.kafkaConfig.TimeZone)
+		keySchema := NewKeySchema(tableIdent, keyColDefs)
+		valueSchema := NewEnvelopeSchema(tableIdent, colDefs)
+
+		item := &KafkaTableItem{
+			table:       table,
+			keySchema:   keySchema,
+			valueSchema: valueSchema,
+		}
+		a[tableName] = item
+		return item, nil
 	}
 }
 
@@ -242,13 +259,12 @@ func (kr *KafkaRunner) initiateStreaming() error {
 					return
 				}
 			}
-			table, err := kr.getOrSetTable(dumpData.TableSchema, dumpData.TableName, tableFromDumpData)
+			tableItem, err := kr.getOrSetTable(dumpData.TableSchema, dumpData.TableName, tableFromDumpData)
 			if err != nil {
 				kr.onError(TaskStateDead, err)
 				return
 			}
-
-			err = kr.kafkaTransformSnapshotData(table, dumpData)
+			err = kr.kafkaTransformSnapshotData(tableItem, dumpData)
 			if err != nil {
 				kr.onError(TaskStateDead, err)
 				return
@@ -369,8 +385,11 @@ func (kr *KafkaRunner) onError(state int, err error) {
 	kr.Shutdown()
 }
 
-func (kr *KafkaRunner) kafkaTransformSnapshotData(table *config.Table, value *common.DumpEntry) error {
+func (kr *KafkaRunner) kafkaTransformSnapshotData(
+	tableItem *KafkaTableItem, value *common.DumpEntry) error {
+
 	var err error
+	table := tableItem.table
 
 	tableIdent := fmt.Sprintf("%v.%v.%v", kr.kafkaMgr.Cfg.Topic, table.TableSchema, table.TableName)
 	kr.logger.WithFields(logrus.Fields{
@@ -399,8 +418,6 @@ func (kr *KafkaRunner) kafkaTransformSnapshotData(table *config.Table, value *co
 		valuePayload.After = NewRow()
 
 		columnList := table.OriginalTableColumns.ColumnList()
-		valueColDef, keyColDef := kafkaColumnListToColDefs(table.OriginalTableColumns, kr.kafkaConfig.TimeZone)
-		keySchema := NewKeySchema(tableIdent, keyColDef)
 
 		for i, _ := range columnList {
 			var value interface{}
@@ -488,14 +505,12 @@ func (kr *KafkaRunner) kafkaTransformSnapshotData(table *config.Table, value *co
 			valuePayload.After.AddField(columnList[i].RawName, value)
 		}
 
-		valueSchema := NewEnvelopeSchema(tableIdent, valueColDef)
-
 		k := DbzOutput{
-			Schema:  keySchema,
+			Schema:  tableItem.keySchema,
 			Payload: keyPayload,
 		}
 		v := DbzOutput{
-			Schema:  valueSchema,
+			Schema:  tableItem.valueSchema,
 			Payload: valuePayload,
 		}
 
@@ -523,10 +538,10 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry)
 	for i, _ := range dmlEvent.Events {
 		dataEvent := &dmlEvent.Events[i]
 
-		var table *config.Table
+		var tableItem *KafkaTableItem
 		if dataEvent.TableName != "" {
 			// this must be executed before skipping DDL
-			table, err = kr.getOrSetTable(dataEvent.DatabaseName, dataEvent.TableName, dataEvent.Table)
+			tableItem, err = kr.getOrSetTable(dataEvent.DatabaseName, dataEvent.TableName, dataEvent.Table)
 			if err != nil {
 				return err
 			}
@@ -542,11 +557,13 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry)
 			continue
 		}
 
-		if table == nil {
+		if tableItem == nil {
 			err = fmt.Errorf("DTLE_BUG: table meta is nil %v.%v", dataEvent.DatabaseName, dataEvent.TableName)
 			kr.logger.WithError(err).Error("table meta is nil")
 			return err
 		}
+
+		table := tableItem.table
 
 		var op string
 		var before *Row
@@ -571,7 +588,6 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry)
 
 		keyPayload := NewRow()
 		colList := table.OriginalTableColumns.ColumnList()
-		colDefs, keyColDefs := kafkaColumnListToColDefs(table.OriginalTableColumns, kr.kafkaConfig.TimeZone)
 
 		for i, _ := range colList {
 			colName := colList[i].RawName
@@ -746,15 +762,12 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry)
 		valuePayload.Op = op
 		valuePayload.TsMs = utils.CurrentTimeMillis()
 
-		valueSchema := NewEnvelopeSchema(tableIdent, colDefs)
-
-		keySchema := NewKeySchema(tableIdent, keyColDefs)
 		k := DbzOutput{
-			Schema:  keySchema,
+			Schema:  tableItem.keySchema,
 			Payload: keyPayload,
 		}
 		v := DbzOutput{
-			Schema:  valueSchema,
+			Schema:  tableItem.valueSchema,
 			Payload: valuePayload,
 		}
 		kBs, err := json.Marshal(k)
