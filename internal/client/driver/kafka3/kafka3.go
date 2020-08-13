@@ -43,8 +43,8 @@ const (
 
 type KafkaTableItem struct {
 	table *config.Table
-	keySchema *Schema
-	valueSchema *Schema
+	keySchema *SchemaJson
+	valueSchema *SchemaJson
 }
 type KafkaRunner struct {
 	logger      *logrus.Entry
@@ -175,7 +175,8 @@ func (kr *KafkaRunner) Run() {
 }
 
 func (kr *KafkaRunner) getOrSetTable(schemaName string, tableName string,
-	table *config.Table) (*KafkaTableItem, error) {
+	table *config.Table) (item *KafkaTableItem, err error) {
+
 	a, ok := kr.tables[schemaName]
 	if !ok {
 		a = make(map[string]*KafkaTableItem)
@@ -205,10 +206,23 @@ func (kr *KafkaRunner) getOrSetTable(schemaName string, tableName string,
 
 		tableIdent := fmt.Sprintf("%v.%v.%v", kr.kafkaMgr.Cfg.Topic, table.TableSchema, table.TableName)
 		colDefs, keyColDefs := kafkaColumnListToColDefs(table.OriginalTableColumns, kr.kafkaConfig.TimeZone)
-		keySchema := NewKeySchema(tableIdent, keyColDefs)
-		valueSchema := NewEnvelopeSchema(tableIdent, colDefs)
+		keySchema := &SchemaJson{
+			schema: NewKeySchema(tableIdent, keyColDefs),
+		}
+		valueSchema := &SchemaJson{
+			schema: NewEnvelopeSchema(tableIdent, colDefs),
+		}
 
-		item := &KafkaTableItem{
+		keySchema.cache, err = json.Marshal(keySchema)
+		if err != nil {
+			return nil, err
+		}
+		valueSchema.cache, err = json.Marshal(valueSchema)
+		if err != nil {
+			return nil, err
+		}
+
+		item = &KafkaTableItem{
 			table:       table,
 			keySchema:   keySchema,
 			valueSchema: valueSchema,
