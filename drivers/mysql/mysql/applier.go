@@ -421,6 +421,7 @@ func (a *Applier) executeWriteFuncs() {
 						atomic.AddInt64(&a.nDumpEntry, -1)
 					}
 				case <-a.rowCopyComplete:
+					a.logger.Info("executeWriteFuncs: loop: rowCopyComplete")
 					stopLoop = true
 				case <-a.shutdownCh:
 					stopLoop = true

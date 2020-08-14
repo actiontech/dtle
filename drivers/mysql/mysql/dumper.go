@@ -235,7 +235,7 @@ func (d *dumper) getChunkData() (nRows int64, err error) {
 
 	if d.doChecksum != 0 {
 		if d.doChecksum == 2 || (d.doChecksum == 1 && d.table.Iteration == 0) {
-			row := d.db.QueryRow(fmt.Sprintf("checksum table", "schema", d.TableSchema, "table", d.TableName))
+			row := d.db.QueryRow(fmt.Sprintf("checksum table %v.%v", d.TableSchema, d.TableName))
 			var table string
 			var cs int64
 			err := row.Scan(&table, &cs)
