@@ -431,15 +431,16 @@ func NewDateTimeField(optional bool, field string, defaultValue interface{}) *Sc
 	}
 }
 func DateTimeValue(dateTime string) int64 {
-	tm2, error := time.Parse("2006-01-02 15:04:05", dateTime)
-	if error != nil {
+	loc, _:= time.LoadLocation("Asia/Shanghai")
+	tm2, err := time.ParseInLocation("2006-01-02 15:04:05", dateTime, loc)
+	if err != nil {
 		return 0
 	}
 	return tm2.UnixNano() / 1e6
 }
 func DateValue(date string) int64 {
-	tm2, error := time.Parse("2006-01-02 15:04:05", date+" 00:00:00")
-	if error != nil {
+	tm2, err := time.Parse("2006-01-02 15:04:05", date + " 00:00:00")
+	if err != nil {
 		return 0
 	}
 	return tm2.Unix() / 60 / 60 / 24
