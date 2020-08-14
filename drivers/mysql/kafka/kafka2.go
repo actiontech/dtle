@@ -450,12 +450,8 @@ func DateTimeValue(dateTime string, timeZone string) int64 {
 	}
 	return tm2.UnixNano() / 1e6
 }
-func DateValue(date string, timeZone string) int64 {
-	if timeZone == "" {
-		timeZone = "UTC"
-	}
-	loc, _ := time.LoadLocation(timeZone)
-	tm2, err := time.ParseInLocation(LAYOUT, date+" 00:00:00", loc)
+func DateValue(date string) int64 {
+	tm2, err := time.Parse(LAYOUT, date+" 00:00:00")
 	if err != nil {
 		return 0
 	}
@@ -485,7 +481,6 @@ func NewJsonField(optional bool, field string) *Schema {
 
 func NewBitsField(optional bool, field string, length string, defaultValue interface{}) *Schema {
 	if defaultValue != nil {
-		//defaultValue = strings.Replace(defaultValue.(string)[1:], "'", "", -1)
 		defaultV:=defaultValue.(types.BinaryLiteral)
 		defaultValue = base64.StdEncoding.EncodeToString(defaultV)
 	}
@@ -501,9 +496,9 @@ func NewBitsField(optional bool, field string, length string, defaultValue inter
 		Version: 1,
 	}
 }
-func NewDateField(theType SchemaType, optional bool, field string, defaultValue interface{}, timeZone string) *Schema {
+func NewDateField(theType SchemaType, optional bool, field string, defaultValue interface{},) *Schema {
 	if defaultValue != nil {
-		defaultValue = DateValue(defaultValue.(string), timeZone)
+		defaultValue = DateValue(defaultValue.(string))
 	}
 	return &Schema{
 		Field:    field,
