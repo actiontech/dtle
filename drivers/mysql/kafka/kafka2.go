@@ -522,7 +522,7 @@ func NewTimeStampField(optional bool, field string, defaultValue interface{}) *S
 		Field:    field,
 		Optional: optional,
 		Default:  defaultValue,
-		Type:     SCHEMA_TYPE_TIMESTAMP,
+		Type:     SCHEMA_TYPE_STRING,
 		Name:     "io.debezium.time.ZonedTimestamp",
 		Version:  1,
 	}
