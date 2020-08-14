@@ -366,7 +366,11 @@ func (kr *KafkaRunner) kafkaTransformSnapshotData(table *mysqlconfig.Table, valu
 				case mysqlconfig.BitColumnType:
 					value = base64.StdEncoding.EncodeToString([]byte(valueStr))
 				case mysqlconfig.BlobColumnType:
-					value = base64.StdEncoding.EncodeToString([]byte(valueStr))
+					if columnList[i].ColumnType =="text"{
+						value =valueStr
+					} else {
+						value = base64.StdEncoding.EncodeToString([]byte(valueStr))
+					}
 				case mysqlconfig.VarbinaryColumnType:
 					value = base64.StdEncoding.EncodeToString([]byte(valueStr))
 				case mysqlconfig.DateColumnType, mysqlconfig.DateTimeColumnType:
@@ -575,6 +579,22 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry)
 				if afterValue != nil {
 					afterValue = getSetValue(afterValue.(int64), columnType)
 				}
+			case mysqlconfig.BlobColumnType:
+				if colList[i].ColumnType == "text" {
+					if beforeValue != nil {
+						beforeValue = string(afterValue.([]byte))
+					}
+					if afterValue != nil {
+						afterValue = string(afterValue.([]byte))
+					}
+				}
+			case mysqlconfig.TextColumnType:
+				if beforeValue != nil {
+					beforeValue =  string(afterValue.([]byte))
+				}
+				if afterValue != nil {
+					afterValue = string(afterValue.([]byte))
+				}
 
 			case mysqlconfig.BitColumnType:
 				if beforeValue != nil {
@@ -738,7 +758,11 @@ func kafkaColumnListToColDefs(colList *mysqlconfig.ColumnList) (valColDefs ColDe
 		case mysqlconfig.BitColumnType:
 			field = NewBitsField(optional, fieldName, cols[i].ColumnType[4:len(cols[i].ColumnType)-1], defaultValue)
 		case mysqlconfig.BlobColumnType:
-			field = NewSimpleSchemaWithDefaultField(SCHEMA_TYPE_BYTES, optional, fieldName, defaultValue)
+			if cols[i].ColumnType == "text" {
+				field = NewSimpleSchemaWithDefaultField(SCHEMA_TYPE_STRING, optional, fieldName, defaultValue)
+			} else {
+				field = NewSimpleSchemaWithDefaultField(SCHEMA_TYPE_BYTES, optional, fieldName, defaultValue)
+			}
 		case mysqlconfig.BinaryColumnType:
 			field = NewSimpleSchemaWithDefaultField(SCHEMA_TYPE_BYTES, optional, fieldName, defaultValue)
 		case mysqlconfig.VarbinaryColumnType:
