@@ -13,6 +13,7 @@ import (
 	"github.com/actiontech/dtle/drivers/mysql/config"
 	"github.com/hashicorp/nomad/plugins/drivers"
 	"github.com/pkg/errors"
+	"runtime"
 
 	"github.com/opentracing/opentracing-go"
 	"github.com/opentracing/opentracing-go/ext"
@@ -761,6 +762,7 @@ func (a *Applier) initiateStreaming() error {
 		return err
 	}
 
+	var bigEntries binlog.BinlogEntries
 	_, err = a.natsConn.Subscribe(fmt.Sprintf("%s_incr_hete", a.subject), func(m *gonats.Msg) {
 		var binlogEntries binlog.BinlogEntries
 		t := not.NewTraceMsg(m)
@@ -780,7 +782,30 @@ func (a *Applier) initiateStreaming() error {
 		nEntries := len(binlogEntries.Entries)
 
 		handled := false
+		if binlogEntries.BigTx {
+			if binlogEntries.TxNum == 1 {
+				bigEntries = binlogEntries
+			} else {
+				bigEntries.Entries[0].Events = append(bigEntries.Entries[0].Events, binlogEntries.Entries[0].Events...)
+				bigEntries.TxNum = binlogEntries.TxNum
+				binlogEntries.Entries = nil
+				runtime.GC()
+			}
+			if binlogEntries.TxNum == binlogEntries.TxLen {
+				binlogEntries = bigEntries
+				bigEntries.Entries = nil
+				runtime.GC()
+			}
+		}
 		for i := 0; !handled && (i < DefaultConnectWaitSecond/2); i++ {
+			if binlogEntries.BigTx && binlogEntries.TxNum < binlogEntries.TxLen {
+				handled = true
+				if err := a.natsConn.Publish(m.Reply, nil); err != nil {
+					a.onError(TaskStateDead, err)
+				}
+				continue
+			}
+
 			vacancy := cap(a.applyDataEntryQueue) - len(a.applyDataEntryQueue)
 			a.logger.Debug("incr.", "nEntries", nEntries, "vacancy", vacancy)
 			if vacancy < nEntries {

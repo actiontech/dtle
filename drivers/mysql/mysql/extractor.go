@@ -47,6 +47,7 @@ const (
 	// DefaultConnectWait is the default timeout used for the connect operation
 	DefaultConnectWaitSecond      = 10
 	DefaultConnectWait            = DefaultConnectWaitSecond * time.Second
+	DefaultBigTX                  = 1024*1024*100
 	ReconnectStreamerSleepSeconds = 5
 	SCHEMAS                       = "schemas"
 	SCHEMA                        = "schema"
@@ -905,7 +906,18 @@ func (e *Extractor) StreamEvents() error {
 						int64(len(entries.Entries)) == e.mysqlContext.ReplChanBufferSize {
 						e.logger.Debug("incr. send by GroupLimit.", "entriesSize", entriesSize,
 							"groupMaxSize", e.mysqlContext.GroupMaxSize, "Entries.len", len(entries.Entries))
-						err = sendEntries()
+						if entriesSize > DefaultBigTX {
+							bigEntrises := splitEntries(entries, entriesSize)
+							entries.Entries = nil
+							e.logger.Debug("incr. big tx section", "n", len(bigEntrises))
+							for _, entity := range bigEntrises {
+								entries = entity
+								entriesSize = DefaultBigTX
+								err = sendEntries()
+							}
+						} else {
+							err = sendEntries()
+						}
 						if !timer.Stop() {
 							<-timer.C
 						}
@@ -939,6 +951,36 @@ func (e *Extractor) StreamEvents() error {
 		}
 	}
 	return nil
+}
+
+func splitEntries(entries binlog.BinlogEntries, entriseSize int) (entris []binlog.BinlogEntries) {
+	clientLen := math.Ceil(float64(entriseSize) / DefaultBigTX)
+	clientNum := math.Ceil(float64(len(entries.Entries[0].Events)) / clientLen)
+	for i := 1; i <= int(clientLen); i++ {
+		var after int
+		if i == int(clientLen) {
+			after = len(entries.Entries[0].Events)
+		} else {
+			after = i * int(clientNum)
+		}
+		entry := &binlog.BinlogEntry{
+			OriginalSize: entries.Entries[0].OriginalSize,
+			SpanContext:  entries.Entries[0].SpanContext,
+			Coordinates:  entries.Entries[0].Coordinates,
+			Events:       entries.Entries[0].Events[(i-1)*int(clientNum) : after],
+		}
+		var entrys []*binlog.BinlogEntry
+		entrys = append(entrys, entry)
+		newEntries := binlog.BinlogEntries{
+			Entries: entrys,
+			BigTx:   true,
+			TxNum:   i,
+			TxLen:   int(clientLen),
+		}
+		entris = append(entris, newEntries)
+	}
+
+	return entris
 }
 
 // retryOperation attempts up to `count` attempts at running given function,
