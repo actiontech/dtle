@@ -48,6 +48,10 @@ const (
 	RECORD_OP_READ   = "r"
 )
 
+const (
+	LAYOUT = "2006-01-02 15:04:05"
+)
+
 type ColDefs []*Schema
 
 type KafkaManager struct {
@@ -417,9 +421,9 @@ func TimeValue(value string) int64 {
 
 	return timeValueHelper(h, m, s, microsec, isNeg)
 }
-func NewDateTimeField(optional bool, field string, defaultValue interface{}) *Schema {
+func NewDateTimeField(optional bool, field string, defaultValue interface{}, timeZone string) *Schema {
 	if defaultValue != nil {
-		defaultValue = DateTimeValue(defaultValue.(string))
+		defaultValue = DateTimeValue(defaultValue.(string), timeZone)
 	}
 	return &Schema{
 		Default:  defaultValue,
@@ -430,21 +434,41 @@ func NewDateTimeField(optional bool, field string, defaultValue interface{}) *Sc
 		Version:  1,
 	}
 }
-func DateTimeValue(dateTime string) int64 {
-	loc, _:= time.LoadLocation("Asia/Shanghai")
-	tm2, err := time.ParseInLocation("2006-01-02 15:04:05", dateTime, loc)
+func DateTimeValue(dateTime string, timeZone string) int64 {
+	if timeZone == "" {
+		timeZone = "UTC"
+	}
+	loc, _ := time.LoadLocation(timeZone)
+	tm2, err := time.ParseInLocation(LAYOUT, dateTime, loc)
 	if err != nil {
 		return 0
 	}
 	return tm2.UnixNano() / 1e6
 }
-func DateValue(date string) int64 {
-	tm2, err := time.Parse("2006-01-02 15:04:05", date + " 00:00:00")
+func DateValue(date string, timeZone string) int64 {
+	if timeZone == "" {
+		timeZone = "UTC"
+	}
+	loc, _ := time.LoadLocation(timeZone)
+	tm2, err := time.ParseInLocation(LAYOUT, date+" 00:00:00", loc)
 	if err != nil {
 		return 0
 	}
 	return tm2.Unix() / 60 / 60 / 24
 }
+func TimeStamp(timestamp string, timeZone string) string {
+
+	if timeZone == "" {
+		timeZone = "UTC"
+	}
+	loc, _ := time.LoadLocation(timeZone)
+	tm2, _ := time.ParseInLocation(LAYOUT, timestamp, loc)
+	defaultTimeZone, _ := time.LoadLocation("UTC")
+	value := tm2.In(defaultTimeZone).Format(LAYOUT)
+	timestamp = value[:10] + "T" + value[11:] + "Z"
+	return timestamp
+}
+
 func NewJsonField(optional bool, field string) *Schema {
 	return &Schema{
 		Field:    field,
@@ -472,9 +496,9 @@ func NewBitsField(optional bool, field string, length string, defaultValue inter
 		Version: 1,
 	}
 }
-func NewDateField(theType SchemaType, optional bool, field string, defaultValue interface{}) *Schema {
+func NewDateField(theType SchemaType, optional bool, field string, defaultValue interface{}, timeZone string) *Schema {
 	if defaultValue != nil {
-		defaultValue = DateValue(defaultValue.(string))
+		defaultValue = DateValue(defaultValue.(string), timeZone)
 	}
 	return &Schema{
 		Field:    field,
@@ -513,11 +537,18 @@ func NewSetField(theType SchemaType, optional bool, field string, allowed string
 		Version: 1,
 	}
 }
-func NewTimeStampField(optional bool, field string, defaultValue interface{}) *Schema {
+func NewTimeStampField(optional bool, field string, defaultValue interface{}, timeZone string) *Schema {
 	if defaultValue == "CURRENT_TIMESTAMP" {
 		defaultValue = "1970-01-01T00:00:00Z"
 	} else if defaultValue != nil {
-		defaultValue = defaultValue.(string)[:10] + "T" + defaultValue.(string)[11:] + "Z"
+		if timeZone == "" {
+			timeZone = "UTC"
+		}
+		loc, _ := time.LoadLocation(timeZone)
+		tm2, _ := time.ParseInLocation(LAYOUT, defaultValue.(string), loc)
+		defaultTimeZone, _ := time.LoadLocation("UTC")
+		value := tm2.In(defaultTimeZone).Format(LAYOUT)
+		defaultValue = value[:10] + "T" + value[11:] + "Z"
 	}
 	return &Schema{
 		Field:    field,
@@ -528,6 +559,7 @@ func NewTimeStampField(optional bool, field string, defaultValue interface{}) *S
 		Version:  1,
 	}
 }
+
 func NewYearField(theType SchemaType, optional bool, field string, defaultValue interface{}) *Schema {
 	return &Schema{
 		Field:    field,

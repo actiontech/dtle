@@ -114,5 +114,6 @@ type KafkaConfig struct {
 	Converter string
 	NatsAddr  string
 	Gtid      string // TODO remove?
+	TimeZone  string
 }
 

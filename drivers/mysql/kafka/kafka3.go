@@ -314,7 +314,7 @@ func (kr *KafkaRunner) kafkaTransformSnapshotData(table *mysqlconfig.Table, valu
 		valuePayload.After = NewRow()
 
 		columnList := table.OriginalTableColumns.ColumnList()
-		valueColDef, keyColDef := kafkaColumnListToColDefs(table.OriginalTableColumns)
+		valueColDef, keyColDef := kafkaColumnListToColDefs(table.OriginalTableColumns, kr.kafkaConfig.TimeZone)
 		keySchema := NewKeySchema(tableIdent, keyColDef)
 
 		for i, _ := range columnList {
@@ -357,7 +357,7 @@ func (kr *KafkaRunner) kafkaTransformSnapshotData(table *mysqlconfig.Table, valu
 					value = TimeValue(valueStr)
 				case mysqlconfig.TimestampColumnType:
 					if valueStr != "" {
-						value = valueStr[:10] + "T" + valueStr[11:] + "Z"
+						value = TimeStamp(valueStr, kr.kafkaConfig.TimeZone)
 					} else {
 						value = TimeValue(valueStr)
 					}
@@ -375,9 +375,9 @@ func (kr *KafkaRunner) kafkaTransformSnapshotData(table *mysqlconfig.Table, valu
 					value = base64.StdEncoding.EncodeToString([]byte(valueStr))
 				case mysqlconfig.DateColumnType, mysqlconfig.DateTimeColumnType:
 					if valueStr != "" && columnList[i].ColumnType == "datetime" {
-						value = DateTimeValue(valueStr)
+						value = DateTimeValue(valueStr, kr.kafkaConfig.TimeZone)
 					} else if valueStr != "" {
-						value = DateValue(valueStr)
+						value = DateValue(valueStr, kr.kafkaConfig.TimeZone)
 					}
 
 				case mysqlconfig.YearColumnType:
@@ -478,7 +478,7 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry)
 
 		keyPayload := NewRow()
 		colList := table.OriginalTableColumns.ColumnList()
-		colDefs, keyColDefs := kafkaColumnListToColDefs(table.OriginalTableColumns)
+		colDefs, keyColDefs := kafkaColumnListToColDefs(table.OriginalTableColumns, kr.kafkaConfig.TimeZone)
 
 		for i, _ := range colList {
 			colName := colList[i].RawName
@@ -513,25 +513,25 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry)
 				}
 			case mysqlconfig.TimeColumnType, mysqlconfig.TimestampColumnType:
 				if beforeValue != nil && colList[i].ColumnType == "timestamp" {
-					beforeValue = beforeValue.(string)[:10] + "T" + beforeValue.(string)[11:] + "Z"
+					beforeValue = TimeStamp(beforeValue.(string), kr.kafkaConfig.TimeZone)
 				} else if beforeValue != nil {
 					beforeValue = TimeValue(beforeValue.(string))
 				}
 				if afterValue != nil && colList[i].ColumnType == "timestamp" {
-					afterValue = afterValue.(string)[:10] + "T" + afterValue.(string)[11:] + "Z"
+					afterValue = TimeStamp(afterValue.(string), kr.kafkaConfig.TimeZone)
 				} else if afterValue != nil {
 					afterValue = TimeValue(afterValue.(string))
 				}
 			case mysqlconfig.DateColumnType, mysqlconfig.DateTimeColumnType:
 				if beforeValue != nil && colList[i].ColumnType == "datetime" {
-					beforeValue = DateTimeValue(beforeValue.(string))
+					beforeValue = DateTimeValue(beforeValue.(string), kr.kafkaConfig.TimeZone)
 				} else if beforeValue != nil {
-					beforeValue = DateValue(beforeValue.(string))
+					beforeValue = DateValue(beforeValue.(string), kr.kafkaConfig.TimeZone)
 				}
 				if afterValue != nil && colList[i].ColumnType == "datetime" {
-					afterValue = DateTimeValue(afterValue.(string))
+					afterValue = DateTimeValue(afterValue.(string), kr.kafkaConfig.TimeZone)
 				} else if afterValue != nil {
-					afterValue = DateValue(afterValue.(string))
+					afterValue = DateValue(afterValue.(string), kr.kafkaConfig.TimeZone)
 				}
 			case mysqlconfig.VarbinaryColumnType:
 				if beforeValue != nil {
@@ -740,7 +740,7 @@ func getBitValue(bit string, value int64) string {
 	return base64.StdEncoding.EncodeToString(buf[8-bitNumber:])
 }
 
-func kafkaColumnListToColDefs(colList *mysqlconfig.ColumnList) (valColDefs ColDefs, keyColDefs ColDefs) {
+func kafkaColumnListToColDefs(colList *mysqlconfig.ColumnList, timeZone string) (valColDefs ColDefs, keyColDefs ColDefs) {
 	cols := colList.ColumnList()
 	for i, _ := range cols {
 		var field *Schema
@@ -805,18 +805,18 @@ func kafkaColumnListToColDefs(colList *mysqlconfig.ColumnList) (valColDefs ColDe
 			field = NewDecimalField(cols[i].Precision, cols[i].Scale, optional, fieldName, defaultValue)
 		case mysqlconfig.DateColumnType:
 			if cols[i].ColumnType == "datetime" {
-				field = NewDateTimeField(optional, fieldName, defaultValue)
+				field = NewDateTimeField(optional, fieldName, defaultValue, timeZone)
 			} else {
-				field = NewDateField(SCHEMA_TYPE_INT32, optional, fieldName, defaultValue)
+				field = NewDateField(SCHEMA_TYPE_INT32, optional, fieldName, defaultValue, timeZone)
 			}
 		case mysqlconfig.YearColumnType:
 			field = NewYearField(SCHEMA_TYPE_INT32, optional, fieldName, defaultValue)
 		case mysqlconfig.DateTimeColumnType:
-			field = NewDateTimeField(optional, fieldName, defaultValue)
+			field = NewDateTimeField(optional, fieldName, defaultValue, timeZone)
 		case mysqlconfig.TimeColumnType:
 			field = NewTimeField(optional, fieldName, defaultValue)
 		case mysqlconfig.TimestampColumnType:
-			field = NewTimeStampField(optional, fieldName, defaultValue)
+			field = NewTimeStampField(optional, fieldName, defaultValue, timeZone)
 		case mysqlconfig.JSONColumnType:
 			field = NewJsonField(optional, fieldName)
 		default:
