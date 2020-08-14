@@ -6,7 +6,7 @@ import (
 )
 
 const (
-	channelBufferSize = 600
+	channelBufferSize = 60
 	defaultNumRetries = 5
 	defaultChunkSize = 2000
 	defaultNumWorkers = 1
