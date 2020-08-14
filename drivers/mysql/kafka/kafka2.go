@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/actiontech/dtle/drivers/mysql/config"
+	"github.com/pingcap/tidb/types"
 	"math/big"
 	"strings"
 
@@ -453,9 +454,9 @@ func NewJsonField(optional bool, field string) *Schema {
 
 func NewBitsField(optional bool, field string, length string, defaultValue interface{}) *Schema {
 	if defaultValue != nil {
-		defaultValue = strings.Replace(defaultValue.(string)[1:], "'", "", -1)
-
-		defaultValue = base64.StdEncoding.EncodeToString(BinaryStringToBytes(defaultValue.(string)))
+		//defaultValue = strings.Replace(defaultValue.(string)[1:], "'", "", -1)
+		defaultV:=defaultValue.(types.BinaryLiteral)
+		defaultValue = base64.StdEncoding.EncodeToString(defaultV)
 	}
 	return &Schema{
 		Field:    field,
