@@ -443,6 +443,11 @@ func DateTimeValue(dateTime string, timeZone string) int64 {
 	if err != nil {
 		return 0
 	}
+	if tm2.UnixNano()/ 1e6 < -2177481600000{
+		return tm2.UnixNano() / 1e6 - 343000
+		// fix bug 1900 year. timezone change. LMT（Local Mean Time）change to CST (China Standard Time).
+		// +8:05:43 change to +8:00:00
+	}
 	return tm2.UnixNano() / 1e6
 }
 func DateValue(date string, timeZone string) int64 {
