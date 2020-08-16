@@ -496,7 +496,7 @@ func NewBitsField(optional bool, field string, length string, defaultValue inter
 		Version: 1,
 	}
 }
-func NewDateField(theType SchemaType, optional bool, field string, defaultValue interface{},) *Schema {
+func NewDateField(theType SchemaType, optional bool, field string, defaultValue interface{}) *Schema {
 	if defaultValue != nil {
 		defaultValue = DateValue(defaultValue.(string))
 	}
