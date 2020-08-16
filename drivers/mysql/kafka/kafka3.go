@@ -385,8 +385,8 @@ func (kr *KafkaRunner) kafkaTransformSnapshotData(table *mysqlconfig.Table, valu
 				case mysqlconfig.BitColumnType:
 					value = base64.StdEncoding.EncodeToString([]byte(valueStr))
 				case mysqlconfig.BlobColumnType:
-					if columnList[i].ColumnType =="text"{
-						value =valueStr
+					if strings.Contains(columnList[i].ColumnType, "text") {
+						value = valueStr
 					} else {
 						value = base64.StdEncoding.EncodeToString([]byte(valueStr))
 					}
@@ -402,6 +402,12 @@ func (kr *KafkaRunner) kafkaTransformSnapshotData(table *mysqlconfig.Table, valu
 				case mysqlconfig.YearColumnType:
 					if valueStr != "" {
 						value = YearValue(valueStr)
+					} else {
+						value = valueStr
+					}
+				case mysqlconfig.VarcharColumnType:
+					if strings.Contains(columnList[i].ColumnType, "binary") {
+						value = base64.StdEncoding.EncodeToString([]byte(valueStr))
 					} else {
 						value = valueStr
 					}
@@ -599,7 +605,7 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry)
 					afterValue = getSetValue(afterValue.(int64), columnType)
 				}
 			case mysqlconfig.BlobColumnType:
-				if colList[i].ColumnType == "text" {
+				if strings.Contains(colList[i].ColumnType, "text") {
 					if beforeValue != nil {
 						beforeValue = string(afterValue.([]byte))
 					}
@@ -778,7 +784,7 @@ func kafkaColumnListToColDefs(colList *mysqlconfig.ColumnList, timeZone string) 
 		case mysqlconfig.BitColumnType:
 			field = NewBitsField(optional, fieldName, cols[i].ColumnType[4:len(cols[i].ColumnType)-1], defaultValue)
 		case mysqlconfig.BlobColumnType:
-			if cols[i].ColumnType == "text" {
+			if strings.Contains(cols[i].ColumnType, "text") {
 				field = NewSimpleSchemaWithDefaultField(SCHEMA_TYPE_STRING, optional, fieldName, defaultValue)
 			} else {
 				field = NewSimpleSchemaWithDefaultField(SCHEMA_TYPE_BYTES, optional, fieldName, defaultValue)
@@ -792,7 +798,11 @@ func kafkaColumnListToColDefs(colList *mysqlconfig.ColumnList, timeZone string) 
 		case mysqlconfig.CharColumnType:
 			fallthrough
 		case mysqlconfig.VarcharColumnType:
-			field = NewSimpleSchemaWithDefaultField(SCHEMA_TYPE_STRING, optional, fieldName, defaultValue)
+			if strings.Contains(cols[i].ColumnType, "binary") {
+				field = NewSimpleSchemaWithDefaultField(SCHEMA_TYPE_BYTES, optional, fieldName, defaultValue)
+			} else {
+				field = NewSimpleSchemaWithDefaultField(SCHEMA_TYPE_STRING, optional, fieldName, defaultValue)
+			}
 		case mysqlconfig.EnumColumnType:
 			field = NewEnumField(SCHEMA_TYPE_STRING, optional, fieldName, cols[i].ColumnType, defaultValue)
 		case mysqlconfig.SetColumnType:
