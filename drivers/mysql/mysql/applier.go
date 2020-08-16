@@ -12,11 +12,9 @@ import (
 	"github.com/actiontech/dtle/drivers/mysql/common"
 	"github.com/actiontech/dtle/drivers/mysql/config"
 	"github.com/hashicorp/nomad/plugins/drivers"
-	"github.com/pkg/errors"
-	"runtime"
-
 	"github.com/opentracing/opentracing-go"
 	"github.com/opentracing/opentracing-go/ext"
+	"github.com/pkg/errors"
 
 	"bytes"
 	"math"
@@ -785,16 +783,15 @@ func (a *Applier) initiateStreaming() error {
 		if binlogEntries.BigTx {
 			if binlogEntries.TxNum == 1 {
 				bigEntries = binlogEntries
-			} else {
+			} else if bigEntries.Entries != nil {
 				bigEntries.Entries[0].Events = append(bigEntries.Entries[0].Events, binlogEntries.Entries[0].Events...)
 				bigEntries.TxNum = binlogEntries.TxNum
+				a.logger.Debug("tx get the n package", "n", binlogEntries.TxNum)
 				binlogEntries.Entries = nil
-				runtime.GC()
 			}
-			if binlogEntries.TxNum == binlogEntries.TxLen {
+			if bigEntries.TxNum == bigEntries.TxLen {
 				binlogEntries = bigEntries
 				bigEntries.Entries = nil
-				runtime.GC()
 			}
 		}
 		for i := 0; !handled && (i < DefaultConnectWaitSecond/2); i++ {
@@ -805,7 +802,9 @@ func (a *Applier) initiateStreaming() error {
 				}
 				continue
 			}
-
+			binlogEntries.BigTx=false
+			binlogEntries.TxNum = 0
+			binlogEntries.TxLen = 0
 			vacancy := cap(a.applyDataEntryQueue) - len(a.applyDataEntryQueue)
 			a.logger.Debug("incr.", "nEntries", nEntries, "vacancy", vacancy)
 			if vacancy < nEntries {

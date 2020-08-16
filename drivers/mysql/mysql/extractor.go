@@ -879,6 +879,9 @@ func (e *Extractor) StreamEvents() error {
 				e.logger.Debug("publish.after", "gno", gno, "n", len(entries.Entries))
 
 				entries.Entries = nil
+				entries.TxLen = 0
+				entries.BigTx = false
+				entries.TxNum = 0
 				entriesSize = 0
 
 				return nil
@@ -910,9 +913,10 @@ func (e *Extractor) StreamEvents() error {
 							bigEntrises := splitEntries(entries, entriesSize)
 							entries.Entries = nil
 							e.logger.Debug("incr. big tx section", "n", len(bigEntrises))
-							for _, entity := range bigEntrises {
+							for i, entity := range bigEntrises {
 								entries = entity
 								entriesSize = DefaultBigTX
+								e.logger.Debug("incr. send big tx fragment", "i", i)
 								err = sendEntries()
 							}
 						} else {
@@ -1015,6 +1019,7 @@ func (e *Extractor) publish(ctx context.Context, subject, gtid string, txMsg []b
 			if gtid != "" {
 				e.mysqlContext.Gtid = gtid
 			}
+			txMsg=nil
 			break
 		} else if err == gonats.ErrTimeout {
 			e.logger.Debug("publish timeout", "err", err)
