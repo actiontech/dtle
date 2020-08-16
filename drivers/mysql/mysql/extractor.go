@@ -930,12 +930,16 @@ func (e *Extractor) StreamEvents() error {
 					span.Finish()
 				case <-timer.C:
 					nEntries := len(entries.Entries)
-					if nEntries > 0 {
-						e.logger.Debug("incr. send by timeout.", "entriesSize", entriesSize,
-							"timeout",e.mysqlContext.GroupTimeout)
-						err = sendEntries()
+					if entriesSize > DefaultBigTX {
+						err = errors.Errorf("big tx not sent by timeout. please change GroupTimeout.")
+					} else {
+						if nEntries > 0 {
+							e.logger.Debug("incr. send by timeout.", "entriesSize", entriesSize,
+								"timeout", e.mysqlContext.GroupTimeout)
+							err = sendEntries()
+						}
+						timer.Reset(groupTimeoutDuration)
 					}
-					timer.Reset(groupTimeoutDuration)
 				}
 				if err != nil {
 					e.onError(TaskStateDead, err)
