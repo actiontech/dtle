@@ -62,6 +62,7 @@ type KafkaRunner struct {
 	gtidSet *gomysql.MysqlGTIDSet
 
 	chBinlogEntries chan *binlog.BinlogEntries
+	lastSavedGtid   string
 }
 
 func NewKafkaRunner(execCtx *common.ExecContext, cfg *config.KafkaConfig, logger hclog.Logger,
@@ -85,6 +86,29 @@ func NewKafkaRunner(execCtx *common.ExecContext, cfg *config.KafkaConfig, logger
 func (kr *KafkaRunner) updateGtidString() {
 	kr.kafkaConfig.Gtid = kr.gtidSet.String()
 	kr.logger.Debug("kafka. updateGtidString", "gtid", kr.kafkaConfig.Gtid)
+}
+func (kr *KafkaRunner) updateGtidLoop() {
+	updateGtidInterval := 15 * time.Second
+	for !kr.shutdown {
+		time.Sleep(updateGtidInterval)
+		if kr.kafkaConfig.Gtid != kr.lastSavedGtid {
+			// TODO thread safety.
+			kr.logger.Debug("SaveGtidForJob", "job", kr.subject, "gtid", kr.kafkaConfig.Gtid)
+			err := kr.storeManager.SaveGtidForJob(kr.subject, kr.kafkaConfig.Gtid)
+			if err != nil {
+				kr.onError(TaskStateDead, errors.Wrap(err, "SaveGtidForJob"))
+				return
+			}
+			kr.lastSavedGtid = kr.kafkaConfig.Gtid
+
+			err = kr.storeManager.SaveBinlogFilePosForJob(kr.subject,
+				kr.kafkaConfig.BinlogFile, int(kr.kafkaConfig.BinlogPos))
+			if err != nil {
+				kr.onError(TaskStateDead, errors.Wrap(err, "SaveBinlogFilePosForJob"))
+				return
+			}
+		}
+	}
 }
 
 func (kr *KafkaRunner) Shutdown() error {
@@ -158,6 +182,8 @@ func (kr *KafkaRunner) Run() {
 		kr.onError(TaskStateDead, err)
 		return
 	}
+
+	go kr.updateGtidLoop()
 }
 
 func (kr *KafkaRunner) getOrSetTable(schemaName string, tableName string,
