@@ -39,7 +39,6 @@ import (
 
 	hclog "github.com/hashicorp/go-hclog"
 	not "github.com/nats-io/not.go"
-	uuid "github.com/satori/go.uuid"
 )
 
 const (
@@ -353,7 +352,7 @@ func (a *Applier) Run() {
 		return
 	}
 
-	a.gtidSet, err = DtleParseMysqlGTIDSet(a.mysqlContext.Gtid)
+	a.gtidSet, err = common.DtleParseMysqlGTIDSet(a.mysqlContext.Gtid)
 	if err != nil {
 		a.onError(TaskStateDead, errors.Wrap(err, "DtleParseMysqlGTIDSet"))
 		return
@@ -475,33 +474,6 @@ func (a *Applier) setTableItemForBinlogEntry(binlogEntry *binlog.BinlogEntry) er
 		}
 	}
 	return nil
-}
-
-func DtleParseMysqlGTIDSet(gtidSetStr string) (*gomysql.MysqlGTIDSet, error) {
-	set0, err := gomysql.ParseMysqlGTIDSet(gtidSetStr)
-	if err != nil {
-		return nil, err
-	}
-
-	return set0.(*gomysql.MysqlGTIDSet), nil
-}
-
-func (a *Applier) updateGtidSet(sidStr string, sid uuid.UUID, txGno int64) {
-	slice := gomysql.IntervalSlice{gomysql.Interval{
-		Start: txGno,
-		Stop:  txGno + 1,
-	}}
-
-	// It seems they all use lower case for uuid.
-	uuidSet, ok := a.gtidSet.Sets[sidStr]
-	if !ok {
-		a.gtidSet.AddSet(&gomysql.UUIDSet{
-			SID:       sid,
-			Intervals: slice,
-		})
-	} else {
-		uuidSet.AddInterval(slice)
-	}
 }
 
 func (a *Applier) heterogeneousReplay() {
@@ -644,7 +616,7 @@ func (a *Applier) heterogeneousReplay() {
 			}
 			span.Finish()
 			if !a.shutdown {
-				a.updateGtidSet(txSid, binlogEntry.Coordinates.SID, binlogEntry.Coordinates.GNO)
+				common.UpdateGtidSet(a.gtidSet, txSid, binlogEntry.Coordinates.SID, binlogEntry.Coordinates.GNO)
 				a.updateGtidString()
 				if a.mysqlContext.BinlogFile != binlogEntry.Coordinates.LogFile {
 					a.mysqlContext.BinlogFile = binlogEntry.Coordinates.LogFile
@@ -727,7 +699,7 @@ func (a *Applier) initiateStreaming() error {
 		a.mysqlContext.BinlogPos = dumpData.LogPos
 
 		a.logger.Info("got gtid from extractor", "gtid", a.mysqlContext.Gtid)
-		a.gtidSet, err = DtleParseMysqlGTIDSet(a.mysqlContext.Gtid)
+		a.gtidSet, err = common.DtleParseMysqlGTIDSet(a.mysqlContext.Gtid)
 		if err != nil {
 			a.onError(TaskStateDead, errors.Wrap(err, "DtleParseMysqlGTIDSet"))
 			return
