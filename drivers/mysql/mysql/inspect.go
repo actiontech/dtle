@@ -75,7 +75,8 @@ func (i *Inspector) InitDBConnections() (err error) {
 	/*if err := i.validateBinlogs(); err != nil {
 		return err
 	}*/
-	i.logger.Info("Initiated on %s:%d, version %+v", i.mysqlContext.ConnectionConfig.Host, i.mysqlContext.ConnectionConfig.Port)
+	i.logger.Info("Initiated", "on",
+		hclog.Fmt("%s:%d", i.mysqlContext.ConnectionConfig.Host, i.mysqlContext.ConnectionConfig.Port))
 	return nil
 }
 

@@ -920,7 +920,8 @@ func (a *Applier) validateConnection(db *gosql.DB) error {
 	if strings.HasPrefix(a.MySQLVersion, "5.6") {
 		a.mysqlContext.ParallelWorkers = 1
 	}
-	a.logger.Debug("Connection validated on %s:%d", a.mysqlContext.ConnectionConfig.Host, a.mysqlContext.ConnectionConfig.Port)
+	a.logger.Debug("Connection validated", "on",
+		hclog.Fmt("%s:%d", a.mysqlContext.ConnectionConfig.Host, a.mysqlContext.ConnectionConfig.Port))
 	return nil
 }
 

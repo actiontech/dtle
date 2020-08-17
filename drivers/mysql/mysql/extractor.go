@@ -724,7 +724,8 @@ func (e *Extractor) validateConnectionAndGetVersion() error {
 	if e.mysqlVersionDigit == 0 {
 		return fmt.Errorf("cannot parse mysql version string to digit. string %v", e.MySQLVersion)
 	}
-	e.logger.Info("Connection validated on %s:%d", e.mysqlContext.ConnectionConfig.Host, e.mysqlContext.ConnectionConfig.Port)
+	e.logger.Info("Connection validated", "on",
+		hclog.Fmt("%s:%d", e.mysqlContext.ConnectionConfig.Host, e.mysqlContext.ConnectionConfig.Port))
 	return nil
 }
 
@@ -1325,7 +1326,8 @@ func (e *Extractor) mysqlDump() error {
 			counter++
 			// Obtain a record maker for this table, which knows about the schema ...
 			// Choose how we create statements based on the # of rows ...
-			e.logger.Info("Step %d: - scanning table '%s.%s' (%d of %d tables)", step, t.TableSchema, t.TableName, counter, e.tableCount)
+			e.logger.Info("Step n: - scanning table (i of N tables)",
+				"n", step, "schema", t.TableSchema, "table", t.TableName, "i", counter, "N", e.tableCount)
 
 			d := NewDumper(tx, t, e.mysqlContext.ChunkSize, e.logger.ResetNamed("dumper"))
 			if err := d.Dump(); err != nil {

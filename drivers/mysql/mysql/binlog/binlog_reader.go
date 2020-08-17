@@ -632,7 +632,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 						ddlInfo.tables[i].Table = table.TableRename
 						//sql = strings.Replace(sql, tableName, table.TableRename, 1)
 						sql = loadMapping(sql, tableName, table.TableRename, "", currentSchema)
-						b.logger.Debug("ddl table mapping  :from %s to %s", tableName, table.TableRename)
+						b.logger.Debug("ddl table mapping", "from", tableName, "to", table.TableRename)
 					}
 
 					if skipEvent {
