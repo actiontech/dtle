@@ -12,10 +12,9 @@ import (
 	"github.com/actiontech/dtle/drivers/mysql/common"
 	"github.com/actiontech/dtle/drivers/mysql/config"
 	"github.com/hashicorp/nomad/plugins/drivers"
-	"github.com/pkg/errors"
-
 	"github.com/opentracing/opentracing-go"
 	"github.com/opentracing/opentracing-go/ext"
+	"github.com/pkg/errors"
 
 	"bytes"
 	"math"
@@ -40,7 +39,6 @@ import (
 
 	hclog "github.com/hashicorp/go-hclog"
 	not "github.com/nats-io/not.go"
-	uuid "github.com/satori/go.uuid"
 )
 
 const (
@@ -354,7 +352,7 @@ func (a *Applier) Run() {
 		return
 	}
 
-	a.gtidSet, err = DtleParseMysqlGTIDSet(a.mysqlContext.Gtid)
+	a.gtidSet, err = common.DtleParseMysqlGTIDSet(a.mysqlContext.Gtid)
 	if err != nil {
 		a.onError(TaskStateDead, errors.Wrap(err, "DtleParseMysqlGTIDSet"))
 		return
@@ -476,33 +474,6 @@ func (a *Applier) setTableItemForBinlogEntry(binlogEntry *binlog.BinlogEntry) er
 		}
 	}
 	return nil
-}
-
-func DtleParseMysqlGTIDSet(gtidSetStr string) (*gomysql.MysqlGTIDSet, error) {
-	set0, err := gomysql.ParseMysqlGTIDSet(gtidSetStr)
-	if err != nil {
-		return nil, err
-	}
-
-	return set0.(*gomysql.MysqlGTIDSet), nil
-}
-
-func (a *Applier) updateGtidSet(sidStr string, sid uuid.UUID, txGno int64) {
-	slice := gomysql.IntervalSlice{gomysql.Interval{
-		Start: txGno,
-		Stop:  txGno + 1,
-	}}
-
-	// It seems they all use lower case for uuid.
-	uuidSet, ok := a.gtidSet.Sets[sidStr]
-	if !ok {
-		a.gtidSet.AddSet(&gomysql.UUIDSet{
-			SID:       sid,
-			Intervals: slice,
-		})
-	} else {
-		uuidSet.AddInterval(slice)
-	}
 }
 
 func (a *Applier) heterogeneousReplay() {
@@ -645,7 +616,7 @@ func (a *Applier) heterogeneousReplay() {
 			}
 			span.Finish()
 			if !a.shutdown {
-				a.updateGtidSet(txSid, binlogEntry.Coordinates.SID, binlogEntry.Coordinates.GNO)
+				common.UpdateGtidSet(a.gtidSet, txSid, binlogEntry.Coordinates.SID, binlogEntry.Coordinates.GNO)
 				a.updateGtidString()
 				if a.mysqlContext.BinlogFile != binlogEntry.Coordinates.LogFile {
 					a.mysqlContext.BinlogFile = binlogEntry.Coordinates.LogFile
@@ -684,7 +655,7 @@ func (a *Applier) initiateStreaming() error {
 			return
 		}
 
-		timer := time.NewTimer(DefaultConnectWait / 2)
+		timer := time.NewTimer(common.DefaultConnectWait / 2)
 		atomic.AddInt64(&a.nDumpEntry, 1) // this must be increased before enqueuing
 		select {
 		case a.copyRowsQueue <- dumpData:
@@ -708,7 +679,7 @@ func (a *Applier) initiateStreaming() error {
 	}*/
 
 	_, err = a.natsConn.Subscribe(fmt.Sprintf("%s_full_complete", a.subject), func(m *gonats.Msg) {
-		dumpData := &dumpStatResult{}
+		dumpData := &DumpStatResult{}
 		t := not.NewTraceMsg(m)
 		// Extract the span context from the request message.
 		sc, err := tracer.Extract(opentracing.Binary, t)
@@ -728,7 +699,7 @@ func (a *Applier) initiateStreaming() error {
 		a.mysqlContext.BinlogPos = dumpData.LogPos
 
 		a.logger.Info("got gtid from extractor", "gtid", a.mysqlContext.Gtid)
-		a.gtidSet, err = DtleParseMysqlGTIDSet(a.mysqlContext.Gtid)
+		a.gtidSet, err = common.DtleParseMysqlGTIDSet(a.mysqlContext.Gtid)
 		if err != nil {
 			a.onError(TaskStateDead, errors.Wrap(err, "DtleParseMysqlGTIDSet"))
 			return
@@ -761,6 +732,7 @@ func (a *Applier) initiateStreaming() error {
 		return err
 	}
 
+	var bigEntries binlog.BinlogEntries
 	_, err = a.natsConn.Subscribe(fmt.Sprintf("%s_incr_hete", a.subject), func(m *gonats.Msg) {
 		var binlogEntries binlog.BinlogEntries
 		t := not.NewTraceMsg(m)
@@ -780,7 +752,31 @@ func (a *Applier) initiateStreaming() error {
 		nEntries := len(binlogEntries.Entries)
 
 		handled := false
-		for i := 0; !handled && (i < DefaultConnectWaitSecond/2); i++ {
+		if binlogEntries.BigTx {
+			if binlogEntries.TxNum == 1 {
+				bigEntries = binlogEntries
+			} else if bigEntries.Entries != nil {
+				bigEntries.Entries[0].Events = append(bigEntries.Entries[0].Events, binlogEntries.Entries[0].Events...)
+				bigEntries.TxNum = binlogEntries.TxNum
+				a.logger.Debug("tx get the n package", "n", binlogEntries.TxNum)
+				binlogEntries.Entries = nil
+			}
+			if bigEntries.TxNum == bigEntries.TxLen {
+				binlogEntries = bigEntries
+				bigEntries.Entries = nil
+			}
+		}
+		for i := 0; !handled && (i < common.DefaultConnectWaitSecond/2); i++ {
+			if binlogEntries.BigTx && binlogEntries.TxNum < binlogEntries.TxLen {
+				handled = true
+				if err := a.natsConn.Publish(m.Reply, nil); err != nil {
+					a.onError(TaskStateDead, err)
+				}
+				continue
+			}
+			binlogEntries.BigTx=false
+			binlogEntries.TxNum = 0
+			binlogEntries.TxLen = 0
 			vacancy := cap(a.applyDataEntryQueue) - len(a.applyDataEntryQueue)
 			a.logger.Debug("incr.", "nEntries", nEntries, "vacancy", vacancy)
 			if vacancy < nEntries {

@@ -721,7 +721,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 			avgRowSize := len(ev.RawData) / len(rowsEvent.Rows)
 
 			for i, row := range rowsEvent.Rows {
-				b.logger.Debug("a row", "value", row[:mathutil.Min(len(row), g.LONG_LOG_LIMIT)])
+				b.logger.Trace("a row", "value", row[:mathutil.Min(len(row), g.LONG_LOG_LIMIT)])
 				if dml == UpdateDML && i%2 == 1 {
 					// An update has two rows (WHERE+SET)
 					// We do both at the same time

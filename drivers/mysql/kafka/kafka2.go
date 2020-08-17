@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/actiontech/dtle/drivers/mysql/config"
+	"github.com/pingcap/tidb/types"
 	"math/big"
 	"strings"
 
@@ -36,6 +37,7 @@ const (
 	SCHEMA_TYPE_INT8    = "int8"
 	SCHEMA_TYPE_BYTES   = "bytes"
 	SCHEMA_TYPE_FLOAT64 = "float64"
+	SCHEMA_TYPE_TIMESTAMP = "timestamp"
 	SCHEMA_TYPE_DOUBLE  = "float64"
 	SCHEMA_TYPE_FLOAT32 = "float32"
 	SCHEMA_TYPE_BOOLEAN = "boolean"
@@ -44,6 +46,10 @@ const (
 	RECORD_OP_UPDATE = "u"
 	RECORD_OP_DELETE = "d"
 	RECORD_OP_READ   = "r"
+)
+
+const (
+	LAYOUT = "2006-01-02 15:04:05"
 )
 
 type ColDefs []*Schema
@@ -96,11 +102,11 @@ var (
 			NewSimpleSchemaField(SCHEMA_TYPE_STRING, false, "file"),
 			NewSimpleSchemaField(SCHEMA_TYPE_INT64, false, "pos"),
 			NewSimpleSchemaField(SCHEMA_TYPE_INT32, false, "row"),
-			NewSimpleSchemaField(SCHEMA_TYPE_STRING, true, "query"),
 			NewSimpleSchemaWithDefaultField(SCHEMA_TYPE_BOOLEAN, true, "snapshot", false),
 			NewSimpleSchemaField(SCHEMA_TYPE_INT64, true, "thread"),
 			NewSimpleSchemaField(SCHEMA_TYPE_STRING, true, "db"),
 			NewSimpleSchemaField(SCHEMA_TYPE_STRING, true, "table"),
+			NewSimpleSchemaField(SCHEMA_TYPE_STRING, true, "query"),
 		},
 		Optional: false,
 		Name:     "io.debezium.connector.mysql.Source",
@@ -152,7 +158,7 @@ func NewEnvelopeSchema(tableIdent string, colDefs ColDefs) *Schema {
 }
 
 type DbzOutput struct {
-	Schema *Schema `json:"schema"`
+	Schema *SchemaJson `json:"schema"`
 	// ValuePayload or Row
 	Payload interface{} `json:"payload"`
 }
@@ -198,6 +204,19 @@ type Schema struct {
 	Version    int                    `json:"version,omitempty"`
 	Parameters map[string]interface{} `json:"parameters,omitempty"`
 }
+
+type SchemaJson struct {
+	schema *Schema
+	cache  []byte
+}
+func (sj *SchemaJson) MarshalJSON() ([]byte, error) {
+	if sj.cache != nil {
+		return sj.cache, nil
+	} else {
+		return json.Marshal(sj.schema)
+	}
+}
+
 type Row struct {
 	ColNames []string
 	Values   []interface{}
@@ -415,9 +434,9 @@ func TimeValue(value string) int64 {
 
 	return timeValueHelper(h, m, s, microsec, isNeg)
 }
-func NewDateTimeField(optional bool, field string, defaultValue interface{}) *Schema {
+func NewDateTimeField(optional bool, field string, defaultValue interface{}, timeZone string) *Schema {
 	if defaultValue != nil {
-		defaultValue = DateTimeValue(defaultValue.(string))
+		defaultValue = DateTimeValue(defaultValue.(string), timeZone)
 	}
 	return &Schema{
 		Default:  defaultValue,
@@ -428,20 +447,42 @@ func NewDateTimeField(optional bool, field string, defaultValue interface{}) *Sc
 		Version:  1,
 	}
 }
-func DateTimeValue(dateTime string) int64 {
-	tm2, error := time.Parse("2006-01-02 15:04:05", dateTime)
-	if error != nil {
+func DateTimeValue(dateTime string, timeZone string) int64 {
+	if timeZone == "" {
+		timeZone = "UTC"
+	}
+	loc, _ := time.LoadLocation(timeZone)
+	tm2, err := time.ParseInLocation(LAYOUT, dateTime, loc)
+	if err != nil {
 		return 0
+	}
+	if tm2.UnixNano()/ 1e6 < -2177481600000{
+		return tm2.UnixNano() / 1e6 - 343000
+		// fix bug 1900 year. timezone change. LMT（Local Mean Time）change to CST (China Standard Time).
+		// +8:05:43 change to +8:00:00
 	}
 	return tm2.UnixNano() / 1e6
 }
 func DateValue(date string) int64 {
-	tm2, error := time.Parse("2006-01-02 15:04:05", date+" 00:00:00")
-	if error != nil {
+	tm2, err := time.Parse(LAYOUT, date+" 00:00:00")
+	if err != nil {
 		return 0
 	}
 	return tm2.Unix() / 60 / 60 / 24
 }
+func TimeStamp(timestamp string, timeZone string) string {
+
+	if timeZone == "" {
+		timeZone = "UTC"
+	}
+	loc, _ := time.LoadLocation(timeZone)
+	tm2, _ := time.ParseInLocation(LAYOUT, timestamp, loc)
+	defaultTimeZone, _ := time.LoadLocation("UTC")
+	value := tm2.In(defaultTimeZone).Format(LAYOUT)
+	timestamp = value[:10] + "T" + value[11:] + "Z"
+	return timestamp
+}
+
 func NewJsonField(optional bool, field string) *Schema {
 	return &Schema{
 		Field:    field,
@@ -453,9 +494,8 @@ func NewJsonField(optional bool, field string) *Schema {
 
 func NewBitsField(optional bool, field string, length string, defaultValue interface{}) *Schema {
 	if defaultValue != nil {
-		defaultValue = strings.Replace(defaultValue.(string)[1:], "'", "", -1)
-
-		defaultValue = base64.StdEncoding.EncodeToString(BinaryStringToBytes(defaultValue.(string)))
+		defaultV:=defaultValue.(types.BinaryLiteral)
+		defaultValue = base64.StdEncoding.EncodeToString(defaultV)
 	}
 	return &Schema{
 		Field:    field,
@@ -510,21 +550,29 @@ func NewSetField(theType SchemaType, optional bool, field string, allowed string
 		Version: 1,
 	}
 }
-func NewTimeStampField(theType SchemaType, optional bool, field string, defaultValue interface{}) *Schema {
+func NewTimeStampField(optional bool, field string, defaultValue interface{}, timeZone string) *Schema {
 	if defaultValue == "CURRENT_TIMESTAMP" {
 		defaultValue = "1970-01-01T00:00:00Z"
 	} else if defaultValue != nil {
-		defaultValue = defaultValue.(string)[:10] + "T" + defaultValue.(string)[11:] + "Z"
+		if timeZone == "" {
+			timeZone = "UTC"
+		}
+		loc, _ := time.LoadLocation(timeZone)
+		tm2, _ := time.ParseInLocation(LAYOUT, defaultValue.(string), loc)
+		defaultTimeZone, _ := time.LoadLocation("UTC")
+		value := tm2.In(defaultTimeZone).Format(LAYOUT)
+		defaultValue = value[:10] + "T" + value[11:] + "Z"
 	}
 	return &Schema{
 		Field:    field,
 		Optional: optional,
 		Default:  defaultValue,
-		Type:     theType,
+		Type:     SCHEMA_TYPE_STRING,
 		Name:     "io.debezium.time.ZonedTimestamp",
 		Version:  1,
 	}
 }
+
 func NewYearField(theType SchemaType, optional bool, field string, defaultValue interface{}) *Schema {
 	return &Schema{
 		Field:    field,

@@ -44,9 +44,6 @@ import (
 )
 
 const (
-	// DefaultConnectWait is the default timeout used for the connect operation
-	DefaultConnectWaitSecond      = 10
-	DefaultConnectWait            = DefaultConnectWaitSecond * time.Second
 	ReconnectStreamerSleepSeconds = 5
 	SCHEMAS                       = "schemas"
 	SCHEMA                        = "schema"
@@ -274,7 +271,7 @@ func (e *Extractor) Run() {
 			e.onError(TaskStateDead, err)
 			return
 		}
-		dumpMsg, err := common.Encode(&dumpStatResult{
+		dumpMsg, err := common.Encode(&DumpStatResult{
 			Gtid:       e.initialBinlogCoordinates.GtidSet,
 			LogFile:    e.initialBinlogCoordinates.LogFile,
 			LogPos:     e.initialBinlogCoordinates.LogPos,
@@ -878,6 +875,9 @@ func (e *Extractor) StreamEvents() error {
 				e.logger.Debug("publish.after", "gno", gno, "n", len(entries.Entries))
 
 				entries.Entries = nil
+				entries.TxLen = 0
+				entries.BigTx = false
+				entries.TxNum = 0
 				entriesSize = 0
 
 				return nil
@@ -905,7 +905,19 @@ func (e *Extractor) StreamEvents() error {
 						int64(len(entries.Entries)) == e.mysqlContext.ReplChanBufferSize {
 						e.logger.Debug("incr. send by GroupLimit.", "entriesSize", entriesSize,
 							"groupMaxSize", e.mysqlContext.GroupMaxSize, "Entries.len", len(entries.Entries))
-						err = sendEntries()
+						if entriesSize > common.DefaultBigTX {
+							bigEntrises := splitEntries(entries, entriesSize)
+							entries.Entries = nil
+							e.logger.Debug("incr. big tx section", "n", len(bigEntrises))
+							for i, entity := range bigEntrises {
+								entries = entity
+								entriesSize = common.DefaultBigTX
+								e.logger.Debug("incr. send big tx fragment", "i", i)
+								err = sendEntries()
+							}
+						} else {
+							err = sendEntries()
+						}
 						if !timer.Stop() {
 							<-timer.C
 						}
@@ -914,12 +926,16 @@ func (e *Extractor) StreamEvents() error {
 					span.Finish()
 				case <-timer.C:
 					nEntries := len(entries.Entries)
-					if nEntries > 0 {
-						e.logger.Debug("incr. send by timeout.", "entriesSize", entriesSize,
-							"timeout",e.mysqlContext.GroupTimeout)
-						err = sendEntries()
+					if entriesSize > common.DefaultBigTX {
+						err = errors.Errorf("big tx not sent by timeout. please change GroupTimeout.")
+					} else {
+						if nEntries > 0 {
+							e.logger.Debug("incr. send by timeout.", "entriesSize", entriesSize,
+								"timeout", e.mysqlContext.GroupTimeout)
+							err = sendEntries()
+						}
+						timer.Reset(groupTimeoutDuration)
 					}
-					timer.Reset(groupTimeoutDuration)
 				}
 				if err != nil {
 					e.onError(TaskStateDead, err)
@@ -939,6 +955,36 @@ func (e *Extractor) StreamEvents() error {
 		}
 	}
 	return nil
+}
+
+func splitEntries(entries binlog.BinlogEntries, entriseSize int) (entris []binlog.BinlogEntries) {
+	clientLen := math.Ceil(float64(entriseSize) / common.DefaultBigTX)
+	clientNum := math.Ceil(float64(len(entries.Entries[0].Events)) / clientLen)
+	for i := 1; i <= int(clientLen); i++ {
+		var after int
+		if i == int(clientLen) {
+			after = len(entries.Entries[0].Events)
+		} else {
+			after = i * int(clientNum)
+		}
+		entry := &binlog.BinlogEntry{
+			OriginalSize: entries.Entries[0].OriginalSize,
+			SpanContext:  entries.Entries[0].SpanContext,
+			Coordinates:  entries.Entries[0].Coordinates,
+			Events:       entries.Entries[0].Events[(i-1)*int(clientNum) : after],
+		}
+		var entrys []*binlog.BinlogEntry
+		entrys = append(entrys, entry)
+		newEntries := binlog.BinlogEntries{
+			Entries: entrys,
+			BigTx:   true,
+			TxNum:   i,
+			TxLen:   int(clientLen),
+		}
+		entris = append(entris, newEntries)
+	}
+
+	return entris
 }
 
 // retryOperation attempts up to `count` attempts at running given function,
@@ -967,12 +1013,13 @@ func (e *Extractor) publish(ctx context.Context, subject, gtid string, txMsg []b
 	t.Write(txMsg)
 	defer span.Finish()
 	for i := 1; ; i++ {
-		e.logger.Debug("publish", "gtid", gtid, "len", len(txMsg))
-		_, err = e.natsConn.Request(subject, t.Bytes(), DefaultConnectWait)
+		e.logger.Debug("publish", "gtid", gtid, "len", len(txMsg), "subject", subject)
+		_, err = e.natsConn.Request(subject, t.Bytes(), common.DefaultConnectWait)
 		if err == nil {
 			if gtid != "" {
 				e.mysqlContext.Gtid = gtid
 			}
+			txMsg=nil
 			break
 		} else if err == gonats.ErrTimeout {
 			e.logger.Debug("publish timeout", "err", err)

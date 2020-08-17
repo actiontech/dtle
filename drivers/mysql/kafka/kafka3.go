@@ -11,8 +11,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/actiontech/dtle/drivers/mysql/config"
+	"github.com/actiontech/dtle/drivers/mysql/mysql"
 	"github.com/hashicorp/nomad/plugins/drivers"
 	"github.com/pkg/errors"
+	gomysql "github.com/siddontang/go-mysql/mysql"
 	"strconv"
 
 	"encoding/base64"
@@ -34,6 +36,12 @@ const (
 	TaskStateDead
 )
 
+type KafkaTableItem struct {
+	table *mysqlconfig.Table
+	keySchema *SchemaJson
+	valueSchema *SchemaJson
+}
+
 type KafkaRunner struct {
 	logger      hclog.Logger
 	subject     string
@@ -49,7 +57,11 @@ type KafkaRunner struct {
 
 	storeManager *common.StoreManager
 
-	tables map[string](map[string]*mysqlconfig.Table)
+	tables map[string](map[string]*KafkaTableItem)
+
+	gtidSet *gomysql.MysqlGTIDSet
+
+	chBinlogEntries chan *binlog.BinlogEntries
 }
 
 func NewKafkaRunner(execCtx *common.ExecContext, cfg *config.KafkaConfig, logger hclog.Logger,
@@ -63,9 +75,16 @@ func NewKafkaRunner(execCtx *common.ExecContext, cfg *config.KafkaConfig, logger
 		logger:       logger,
 		waitCh:       waitCh,
 		shutdownCh:   make(chan struct{}),
-		tables:       make(map[string](map[string]*mysqlconfig.Table)),
+		tables:       make(map[string](map[string]*KafkaTableItem)),
 		storeManager: storeManager,
+
+		chBinlogEntries: make(chan *binlog.BinlogEntries, 2),
 	}
+}
+
+func (kr *KafkaRunner) updateGtidString() {
+	kr.kafkaConfig.Gtid = kr.gtidSet.String()
+	kr.logger.Debug("kafka. updateGtidString", "gtid", kr.kafkaConfig.Gtid)
 }
 
 func (kr *KafkaRunner) Shutdown() error {
@@ -141,10 +160,11 @@ func (kr *KafkaRunner) Run() {
 	}
 }
 
-func (kr *KafkaRunner) getOrSetTable(schemaName string, tableName string, table *mysqlconfig.Table) (*mysqlconfig.Table, error) {
+func (kr *KafkaRunner) getOrSetTable(schemaName string, tableName string,
+	table *mysqlconfig.Table) (item *KafkaTableItem, err error) {
 	a, ok := kr.tables[schemaName]
 	if !ok {
-		a = make(map[string]*mysqlconfig.Table)
+		a = make(map[string]*KafkaTableItem)
 		kr.tables[schemaName] = a
 	}
 
@@ -160,16 +180,50 @@ func (kr *KafkaRunner) getOrSetTable(schemaName string, tableName string, table 
 		}
 	} else {
 		kr.logger.Debug("new table info", "schemaName", schemaName, "tableName", tableName)
-		a[tableName] = table
-		return table, nil
+		tableIdent := fmt.Sprintf("%v.%v.%v", kr.kafkaMgr.Cfg.Topic, table.TableSchema, table.TableName)
+		colDefs, keyColDefs := kafkaColumnListToColDefs(table.OriginalTableColumns, kr.kafkaConfig.TimeZone)
+		keySchema := &SchemaJson{
+			schema: NewKeySchema(tableIdent, keyColDefs),
+		}
+		valueSchema := &SchemaJson{
+			schema: NewEnvelopeSchema(tableIdent, colDefs),
+		}
+
+		keySchema.cache, err = json.Marshal(keySchema)
+		if err != nil {
+			return nil, err
+		}
+		valueSchema.cache, err = json.Marshal(valueSchema)
+		if err != nil {
+			return nil, err
+		}
+
+		item = &KafkaTableItem{
+			table:       table,
+			keySchema:   keySchema,
+			valueSchema: valueSchema,
+		}
+		a[tableName] = item
+		return item, nil
 	}
 }
 
 func (kr *KafkaRunner) initiateStreaming() error {
 	var err error
 
+	hasFull := kr.kafkaConfig.Gtid == ""
+	afterFull := make(chan struct{})
+
+	// TODO We subscribe _full anyway to receive sendSysVarAndSqlMode.
+	//  Use a better method.
 	_, err = kr.natsConn.Subscribe(fmt.Sprintf("%s_full", kr.subject), func(m *gonats.Msg) {
-		kr.logger.Debug("recv a msg")
+		kr.logger.Debug("recv a full msg")
+		if err := kr.natsConn.Publish(m.Reply, nil); err != nil {
+			kr.onError(TaskStateDead, err)
+			return
+		}
+		kr.logger.Debug("ack a full msg")
+
 		dumpData, err := common.DecodeDumpEntry(m.Data)
 		if err != nil {
 			kr.onError(TaskStateDead, err)
@@ -195,55 +249,121 @@ func (kr *KafkaRunner) initiateStreaming() error {
 					return
 				}
 			}
-			table, err := kr.getOrSetTable(dumpData.TableSchema, dumpData.TableName, tableFromDumpData)
+			tableItem, err := kr.getOrSetTable(dumpData.TableSchema, dumpData.TableName, tableFromDumpData)
 			if err != nil {
 				kr.onError(TaskStateDead, err)
 				return
 			}
 
-			err = kr.kafkaTransformSnapshotData(table, dumpData)
+			err = kr.kafkaTransformSnapshotData(tableItem, dumpData)
 			if err != nil {
 				kr.onError(TaskStateDead, err)
 				return
 			}
 		}
-
-		if err := kr.natsConn.Publish(m.Reply, nil); err != nil {
-			kr.onError(TaskStateDead, err)
-			return
-		}
-		kr.logger.Debug("after publish nats reply")
 	})
 	if err != nil {
 		return err
 	}
 
 	_, err = kr.natsConn.Subscribe(fmt.Sprintf("%s_full_complete", kr.subject), func(m *gonats.Msg) {
+		kr.logger.Debug("recv a full_complete msg")
 		if err := kr.natsConn.Publish(m.Reply, nil); err != nil {
 			kr.onError(TaskStateDead, err)
+		}
+		kr.logger.Debug("ack a full_complete msg")
+
+		dumpData := &mysql.DumpStatResult{}
+		if err := common.Decode(m.Data, dumpData); err != nil {
+			kr.onError(TaskStateDead, err)
+		}
+
+		kr.kafkaConfig.BinlogFile = dumpData.LogFile
+		kr.kafkaConfig.BinlogPos = dumpData.LogPos
+		kr.kafkaConfig.Gtid = dumpData.Gtid
+
+		if hasFull {
+			afterFull <- struct{}{}
 		}
 	})
 	if err != nil {
 		return err
 	}
 
+	if hasFull {
+		<-afterFull
+	}
+	kr.logger.Info("starting incremental replication.", "gtid", kr.kafkaConfig.Gtid)
+
+	kr.gtidSet, err = common.DtleParseMysqlGTIDSet(kr.kafkaConfig.Gtid)
+	if err != nil {
+		return errors.Wrap(err, "DtleParseMysqlGTIDSet")
+	}
+
+	bigEntries := &binlog.BinlogEntries{}
+	go func() {
+		for !kr.shutdown {
+			var binlogEntries *binlog.BinlogEntries
+			select {
+			case binlogEntries = <-kr.chBinlogEntries:
+			case <-kr.shutdownCh:
+				return
+			}
+
+			if binlogEntries.BigTx {
+				if binlogEntries.TxNum == 1 {
+					bigEntries = binlogEntries
+				} else {
+					bigEntries.Entries[0].Events = append(bigEntries.Entries[0].Events, binlogEntries.Entries[0].Events...)
+					bigEntries.TxNum = binlogEntries.TxNum
+					binlogEntries.Entries = nil
+				}
+				if binlogEntries.TxNum == binlogEntries.TxLen {
+					binlogEntries = bigEntries
+					bigEntries.Entries = nil
+				}
+			}
+
+			for _, binlogEntry := range binlogEntries.Entries {
+				if binlogEntries.BigTx && binlogEntries.TxNum < binlogEntries.TxLen {
+					continue
+				}
+				err = kr.kafkaTransformDMLEventQuery(binlogEntry)
+				if err != nil {
+					kr.onError(TaskStateDead, errors.Wrap(err, "kafkaTransformDMLEventQuery"))
+					return
+				}
+				kr.logger.Debug("kafka: after kafkaTransformDMLEventQuery")
+			}
+		}
+	}()
+
 	_, err = kr.natsConn.Subscribe(fmt.Sprintf("%s_incr_hete", kr.subject), func(m *gonats.Msg) {
+		kr.logger.Debug("recv a incr_hete msg")
+		if err := kr.natsConn.Publish(m.Reply, nil); err != nil {
+			kr.onError(TaskStateDead, errors.Wrap(err, "Publish"))
+		}
+		kr.logger.Debug("ack a incr_hete msg")
+
 		var binlogEntries binlog.BinlogEntries
 		if err := common.Decode(m.Data, &binlogEntries); err != nil {
 			kr.onError(TaskStateDead, err)
 		}
-
-		for _, binlogEntry := range binlogEntries.Entries {
-			err = kr.kafkaTransformDMLEventQuery(binlogEntry)
+		t := time.NewTimer(common.DefaultConnectWaitSecond / 2 * time.Second)
+		select {
+		case kr.chBinlogEntries <-&binlogEntries:
+			if err := kr.natsConn.Publish(m.Reply, nil); err != nil {
+				kr.onError(TaskStateDead, errors.Wrap(err, "Publish"))
+			}
+			kr.logger.Debug("ack an incr_hete msg")
+		case <-t.C:
+			kr.logger.Debug("discard an incr_hete msg")
+			//kr.natsConn.Publish(m.Reply, "wait")
 		}
-
-		if err := kr.natsConn.Publish(m.Reply, nil); err != nil {
-			kr.onError(TaskStateDead, err)
-		}
-		kr.logger.Debug("applier. incr. ack-recv.", "nEntries", binlogEntries.Entries)
+		t.Stop()
 	})
 	if err != nil {
-		return err
+		return errors.Wrap(err, "Subscribe")
 	}
 
 	return nil
@@ -286,8 +406,11 @@ func (kr *KafkaRunner) onError(state int, err error) {
 	kr.Shutdown()
 }
 
-func (kr *KafkaRunner) kafkaTransformSnapshotData(table *mysqlconfig.Table, value *common.DumpEntry) error {
+func (kr *KafkaRunner) kafkaTransformSnapshotData(
+	tableItem *KafkaTableItem, value *common.DumpEntry) error {
+
 	var err error
+	table := tableItem.table
 
 	tableIdent := fmt.Sprintf("%v.%v.%v", kr.kafkaMgr.Cfg.Topic, table.TableSchema, table.TableName)
 	kr.logger.Debug("kafkaTransformSnapshotData", "value", value.ValuesX)
@@ -314,8 +437,6 @@ func (kr *KafkaRunner) kafkaTransformSnapshotData(table *mysqlconfig.Table, valu
 		valuePayload.After = NewRow()
 
 		columnList := table.OriginalTableColumns.ColumnList()
-		valueColDef, keyColDef := kafkaColumnListToColDefs(table.OriginalTableColumns)
-		keySchema := NewKeySchema(tableIdent, keyColDef)
 
 		for i, _ := range columnList {
 			var value interface{}
@@ -354,23 +475,33 @@ func (kr *KafkaRunner) kafkaTransformSnapshotData(table *mysqlconfig.Table, valu
 				case mysqlconfig.DecimalColumnType:
 					value = DecimalValueFromStringMysql(valueStr)
 				case mysqlconfig.TimeColumnType:
-					if valueStr != "" && columnList[i].ColumnType == "timestamp" {
-						value = valueStr[:10] + "T" + valueStr[11:] + "Z"
+					value = TimeValue(valueStr)
+				case mysqlconfig.TimestampColumnType:
+					if valueStr != "" {
+						value = TimeStamp(valueStr, kr.kafkaConfig.TimeZone)
 					} else {
 						value = TimeValue(valueStr)
 					}
-
 				case mysqlconfig.BinaryColumnType:
 					value = base64.StdEncoding.EncodeToString([]byte(valueStr))
 				case mysqlconfig.BitColumnType:
 					value = base64.StdEncoding.EncodeToString([]byte(valueStr))
 				case mysqlconfig.BlobColumnType:
-					value = base64.StdEncoding.EncodeToString([]byte(valueStr))
+					if strings.Contains(columnList[i].ColumnType, "text") {
+						value = valueStr
+					} else {
+						value = base64.StdEncoding.EncodeToString([]byte(valueStr))
+					}
 				case mysqlconfig.VarbinaryColumnType:
+					value = base64.StdEncoding.EncodeToString([]byte(valueStr))
+				case mysqlconfig.CharColumnType:
+					if valueStr == "" {
+						valueStr = "char(255)"
+					}
 					value = base64.StdEncoding.EncodeToString([]byte(valueStr))
 				case mysqlconfig.DateColumnType, mysqlconfig.DateTimeColumnType:
 					if valueStr != "" && columnList[i].ColumnType == "datetime" {
-						value = DateTimeValue(valueStr)
+						value = DateTimeValue(valueStr, kr.kafkaConfig.TimeZone)
 					} else if valueStr != "" {
 						value = DateValue(valueStr)
 					}
@@ -378,6 +509,12 @@ func (kr *KafkaRunner) kafkaTransformSnapshotData(table *mysqlconfig.Table, valu
 				case mysqlconfig.YearColumnType:
 					if valueStr != "" {
 						value = YearValue(valueStr)
+					} else {
+						value = valueStr
+					}
+				case mysqlconfig.VarcharColumnType:
+					if strings.Contains(columnList[i].ColumnType, "binary") {
+						value = base64.StdEncoding.EncodeToString([]byte(valueStr))
 					} else {
 						value = valueStr
 					}
@@ -395,14 +532,12 @@ func (kr *KafkaRunner) kafkaTransformSnapshotData(table *mysqlconfig.Table, valu
 			valuePayload.After.AddField(columnList[i].RawName, value)
 		}
 
-		valueSchema := NewEnvelopeSchema(tableIdent, valueColDef)
-
 		k := DbzOutput{
-			Schema:  keySchema,
+			Schema:  tableItem.keySchema,
 			Payload: keyPayload,
 		}
 		v := DbzOutput{
-			Schema:  valueSchema,
+			Schema:  tableItem.valueSchema,
 			Payload: valuePayload,
 		}
 
@@ -425,12 +560,14 @@ func (kr *KafkaRunner) kafkaTransformSnapshotData(table *mysqlconfig.Table, valu
 }
 
 func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry) (err error) {
+	txSid := dmlEvent.Coordinates.GetSid()
+
 	for i, _ := range dmlEvent.Events {
 		dataEvent := &dmlEvent.Events[i]
-		var table *mysqlconfig.Table
+		var tableItem *KafkaTableItem
 		if dataEvent.TableName != "" {
 			// this must be executed before skipping DDL
-			table, err = kr.getOrSetTable(dataEvent.DatabaseName, dataEvent.TableName, dataEvent.Table)
+			tableItem, err = kr.getOrSetTable(dataEvent.DatabaseName, dataEvent.TableName, dataEvent.Table)
 			if err != nil {
 				return err
 			}
@@ -444,11 +581,13 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry)
 			continue
 		}
 
-		if table == nil {
+		if tableItem == nil {
 			err = fmt.Errorf("DTLE_BUG: table meta is nil %v.%v", dataEvent.DatabaseName, dataEvent.TableName)
 			kr.logger.Error("table meta is nil", "err", err)
 			return err
 		}
+
+		table := tableItem.table
 
 		var op string
 		var before *Row
@@ -473,7 +612,6 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry)
 
 		keyPayload := NewRow()
 		colList := table.OriginalTableColumns.ColumnList()
-		colDefs, keyColDefs := kafkaColumnListToColDefs(table.OriginalTableColumns)
 
 		for i, _ := range colList {
 			colName := colList[i].RawName
@@ -508,23 +646,23 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry)
 				}
 			case mysqlconfig.TimeColumnType, mysqlconfig.TimestampColumnType:
 				if beforeValue != nil && colList[i].ColumnType == "timestamp" {
-					beforeValue = beforeValue.(string)[:10] + "T" + beforeValue.(string)[11:] + "Z"
+					beforeValue = TimeStamp(beforeValue.(string), kr.kafkaConfig.TimeZone)
 				} else if beforeValue != nil {
 					beforeValue = TimeValue(beforeValue.(string))
 				}
 				if afterValue != nil && colList[i].ColumnType == "timestamp" {
-					afterValue = afterValue.(string)[:10] + "T" + afterValue.(string)[11:] + "Z"
+					afterValue = TimeStamp(afterValue.(string), kr.kafkaConfig.TimeZone)
 				} else if afterValue != nil {
 					afterValue = TimeValue(afterValue.(string))
 				}
 			case mysqlconfig.DateColumnType, mysqlconfig.DateTimeColumnType:
 				if beforeValue != nil && colList[i].ColumnType == "datetime" {
-					beforeValue = DateTimeValue(beforeValue.(string))
+					beforeValue = DateTimeValue(beforeValue.(string), kr.kafkaConfig.TimeZone)
 				} else if beforeValue != nil {
 					beforeValue = DateValue(beforeValue.(string))
 				}
 				if afterValue != nil && colList[i].ColumnType == "datetime" {
-					afterValue = DateTimeValue(afterValue.(string))
+					afterValue = DateTimeValue(afterValue.(string), kr.kafkaConfig.TimeZone)
 				} else if afterValue != nil {
 					afterValue = DateValue(afterValue.(string))
 				}
@@ -574,6 +712,22 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry)
 				if afterValue != nil {
 					afterValue = getSetValue(afterValue.(int64), columnType)
 				}
+			case mysqlconfig.BlobColumnType:
+				if strings.Contains(colList[i].ColumnType, "text") {
+					if beforeValue != nil {
+						beforeValue = string(afterValue.([]byte))
+					}
+					if afterValue != nil {
+						afterValue = string(afterValue.([]byte))
+					}
+				}
+			case mysqlconfig.TextColumnType:
+				if beforeValue != nil {
+					beforeValue =  string(afterValue.([]byte))
+				}
+				if afterValue != nil {
+					afterValue = string(afterValue.([]byte))
+				}
 
 			case mysqlconfig.BitColumnType:
 				if beforeValue != nil {
@@ -597,11 +751,11 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry)
 			}
 
 			if before != nil {
-				kr.logger.Debug("beforeValue", "v", beforeValue)
+				kr.logger.Trace("beforeValue", "v", beforeValue)
 				before.AddField(colName, beforeValue)
 			}
 			if after != nil {
-				kr.logger.Debug("afterValue", "v", afterValue)
+				kr.logger.Trace("afterValue", "v", afterValue)
 				after.AddField(colName, afterValue)
 			}
 		}
@@ -614,7 +768,7 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry)
 		valuePayload.Source.Name = kr.kafkaMgr.Cfg.Topic
 		valuePayload.Source.ServerID = 1 // TODO
 		valuePayload.Source.TsSec = time.Now().Unix()
-		valuePayload.Source.Gtid = dmlEvent.Coordinates.GetGtidForThisTx()
+		valuePayload.Source.Gtid = fmt.Sprintf("%s:%d", txSid, dmlEvent.Coordinates.GNO)
 		valuePayload.Source.File = dmlEvent.Coordinates.LogFile
 		valuePayload.Source.Pos = dataEvent.LogPos
 		valuePayload.Source.Row = 0          // TODO "the row within the event (if there is more than one)".
@@ -628,15 +782,12 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry)
 		valuePayload.Op = op
 		valuePayload.TsMs = common.CurrentTimeMillis()
 
-		valueSchema := NewEnvelopeSchema(tableIdent, colDefs)
-
-		keySchema := NewKeySchema(tableIdent, keyColDefs)
 		k := DbzOutput{
-			Schema:  keySchema,
+			Schema:  tableItem.keySchema,
 			Payload: keyPayload,
 		}
 		v := DbzOutput{
-			Schema:  valueSchema,
+			Schema:  tableItem.valueSchema,
 			Payload: valuePayload,
 		}
 		kBs, err := json.Marshal(k)
@@ -671,6 +822,12 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry)
 			kr.logger.Debug("sent one msg")
 		}
 	}
+
+	kr.kafkaConfig.BinlogFile = dmlEvent.Coordinates.LogFile
+	kr.kafkaConfig.BinlogPos = dmlEvent.Coordinates.LogPos
+
+	common.UpdateGtidSet(kr.gtidSet, txSid, dmlEvent.Coordinates.SID, dmlEvent.Coordinates.GNO)
+	kr.updateGtidString()
 
 	return nil
 }
@@ -719,7 +876,7 @@ func getBitValue(bit string, value int64) string {
 	return base64.StdEncoding.EncodeToString(buf[8-bitNumber:])
 }
 
-func kafkaColumnListToColDefs(colList *mysqlconfig.ColumnList) (valColDefs ColDefs, keyColDefs ColDefs) {
+func kafkaColumnListToColDefs(colList *mysqlconfig.ColumnList, timeZone string) (valColDefs ColDefs, keyColDefs ColDefs) {
 	cols := colList.ColumnList()
 	for i, _ := range cols {
 		var field *Schema
@@ -737,7 +894,11 @@ func kafkaColumnListToColDefs(colList *mysqlconfig.ColumnList) (valColDefs ColDe
 		case mysqlconfig.BitColumnType:
 			field = NewBitsField(optional, fieldName, cols[i].ColumnType[4:len(cols[i].ColumnType)-1], defaultValue)
 		case mysqlconfig.BlobColumnType:
-			field = NewSimpleSchemaWithDefaultField(SCHEMA_TYPE_BYTES, optional, fieldName, defaultValue)
+			if strings.Contains(cols[i].ColumnType, "text") {
+				field = NewSimpleSchemaWithDefaultField(SCHEMA_TYPE_STRING, optional, fieldName, defaultValue)
+			} else {
+				field = NewSimpleSchemaWithDefaultField(SCHEMA_TYPE_BYTES, optional, fieldName, defaultValue)
+			}
 		case mysqlconfig.BinaryColumnType:
 			field = NewSimpleSchemaWithDefaultField(SCHEMA_TYPE_BYTES, optional, fieldName, defaultValue)
 		case mysqlconfig.VarbinaryColumnType:
@@ -747,7 +908,11 @@ func kafkaColumnListToColDefs(colList *mysqlconfig.ColumnList) (valColDefs ColDe
 		case mysqlconfig.CharColumnType:
 			fallthrough
 		case mysqlconfig.VarcharColumnType:
-			field = NewSimpleSchemaWithDefaultField(SCHEMA_TYPE_STRING, optional, fieldName, defaultValue)
+			if strings.Contains(cols[i].ColumnType, "binary") {
+				field = NewSimpleSchemaWithDefaultField(SCHEMA_TYPE_BYTES, optional, fieldName, defaultValue)
+			} else {
+				field = NewSimpleSchemaWithDefaultField(SCHEMA_TYPE_STRING, optional, fieldName, defaultValue)
+			}
 		case mysqlconfig.EnumColumnType:
 			field = NewEnumField(SCHEMA_TYPE_STRING, optional, fieldName, cols[i].ColumnType, defaultValue)
 		case mysqlconfig.SetColumnType:
@@ -780,20 +945,18 @@ func kafkaColumnListToColDefs(colList *mysqlconfig.ColumnList) (valColDefs ColDe
 			field = NewDecimalField(cols[i].Precision, cols[i].Scale, optional, fieldName, defaultValue)
 		case mysqlconfig.DateColumnType:
 			if cols[i].ColumnType == "datetime" {
-				field = NewDateTimeField(optional, fieldName, defaultValue)
+				field = NewDateTimeField(optional, fieldName, defaultValue, timeZone)
 			} else {
 				field = NewDateField(SCHEMA_TYPE_INT32, optional, fieldName, defaultValue)
 			}
 		case mysqlconfig.YearColumnType:
 			field = NewYearField(SCHEMA_TYPE_INT32, optional, fieldName, defaultValue)
 		case mysqlconfig.DateTimeColumnType:
-			field = NewDateTimeField(optional, fieldName, defaultValue)
+			field = NewDateTimeField(optional, fieldName, defaultValue, timeZone)
 		case mysqlconfig.TimeColumnType:
-			if cols[i].ColumnType == "timestamp" {
-				field = NewTimeStampField(SCHEMA_TYPE_STRING, optional, fieldName, defaultValue)
-			} else {
-				field = NewTimeField(optional, fieldName, defaultValue)
-			}
+			field = NewTimeField(optional, fieldName, defaultValue)
+		case mysqlconfig.TimestampColumnType:
+			field = NewTimeStampField(optional, fieldName, defaultValue, timeZone)
 		case mysqlconfig.JSONColumnType:
 			field = NewJsonField(optional, fieldName)
 		default:
