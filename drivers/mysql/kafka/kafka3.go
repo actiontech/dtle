@@ -36,6 +36,12 @@ const (
 	TaskStateDead
 )
 
+type KafkaTableItem struct {
+	table *mysqlconfig.Table
+	keySchema *SchemaJson
+	valueSchema *SchemaJson
+}
+
 type KafkaRunner struct {
 	logger      hclog.Logger
 	subject     string
@@ -51,7 +57,7 @@ type KafkaRunner struct {
 
 	storeManager *common.StoreManager
 
-	tables map[string](map[string]*mysqlconfig.Table)
+	tables map[string](map[string]*KafkaTableItem)
 
 	gtidSet *gomysql.MysqlGTIDSet
 
@@ -69,7 +75,7 @@ func NewKafkaRunner(execCtx *common.ExecContext, cfg *config.KafkaConfig, logger
 		logger:       logger,
 		waitCh:       waitCh,
 		shutdownCh:   make(chan struct{}),
-		tables:       make(map[string](map[string]*mysqlconfig.Table)),
+		tables:       make(map[string](map[string]*KafkaTableItem)),
 		storeManager: storeManager,
 
 		chBinlogEntries: make(chan *binlog.BinlogEntries, 2),
@@ -154,10 +160,11 @@ func (kr *KafkaRunner) Run() {
 	}
 }
 
-func (kr *KafkaRunner) getOrSetTable(schemaName string, tableName string, table *mysqlconfig.Table) (*mysqlconfig.Table, error) {
+func (kr *KafkaRunner) getOrSetTable(schemaName string, tableName string,
+	table *mysqlconfig.Table) (item *KafkaTableItem, err error) {
 	a, ok := kr.tables[schemaName]
 	if !ok {
-		a = make(map[string]*mysqlconfig.Table)
+		a = make(map[string]*KafkaTableItem)
 		kr.tables[schemaName] = a
 	}
 
@@ -173,8 +180,31 @@ func (kr *KafkaRunner) getOrSetTable(schemaName string, tableName string, table 
 		}
 	} else {
 		kr.logger.Debug("new table info", "schemaName", schemaName, "tableName", tableName)
-		a[tableName] = table
-		return table, nil
+		tableIdent := fmt.Sprintf("%v.%v.%v", kr.kafkaMgr.Cfg.Topic, table.TableSchema, table.TableName)
+		colDefs, keyColDefs := kafkaColumnListToColDefs(table.OriginalTableColumns, kr.kafkaConfig.TimeZone)
+		keySchema := &SchemaJson{
+			schema: NewKeySchema(tableIdent, keyColDefs),
+		}
+		valueSchema := &SchemaJson{
+			schema: NewEnvelopeSchema(tableIdent, colDefs),
+		}
+
+		keySchema.cache, err = json.Marshal(keySchema)
+		if err != nil {
+			return nil, err
+		}
+		valueSchema.cache, err = json.Marshal(valueSchema)
+		if err != nil {
+			return nil, err
+		}
+
+		item = &KafkaTableItem{
+			table:       table,
+			keySchema:   keySchema,
+			valueSchema: valueSchema,
+		}
+		a[tableName] = item
+		return item, nil
 	}
 }
 
@@ -219,13 +249,13 @@ func (kr *KafkaRunner) initiateStreaming() error {
 					return
 				}
 			}
-			table, err := kr.getOrSetTable(dumpData.TableSchema, dumpData.TableName, tableFromDumpData)
+			tableItem, err := kr.getOrSetTable(dumpData.TableSchema, dumpData.TableName, tableFromDumpData)
 			if err != nil {
 				kr.onError(TaskStateDead, err)
 				return
 			}
 
-			err = kr.kafkaTransformSnapshotData(table, dumpData)
+			err = kr.kafkaTransformSnapshotData(tableItem, dumpData)
 			if err != nil {
 				kr.onError(TaskStateDead, err)
 				return
@@ -376,8 +406,11 @@ func (kr *KafkaRunner) onError(state int, err error) {
 	kr.Shutdown()
 }
 
-func (kr *KafkaRunner) kafkaTransformSnapshotData(table *mysqlconfig.Table, value *common.DumpEntry) error {
+func (kr *KafkaRunner) kafkaTransformSnapshotData(
+	tableItem *KafkaTableItem, value *common.DumpEntry) error {
+
 	var err error
+	table := tableItem.table
 
 	tableIdent := fmt.Sprintf("%v.%v.%v", kr.kafkaMgr.Cfg.Topic, table.TableSchema, table.TableName)
 	kr.logger.Debug("kafkaTransformSnapshotData", "value", value.ValuesX)
@@ -404,8 +437,6 @@ func (kr *KafkaRunner) kafkaTransformSnapshotData(table *mysqlconfig.Table, valu
 		valuePayload.After = NewRow()
 
 		columnList := table.OriginalTableColumns.ColumnList()
-		valueColDef, keyColDef := kafkaColumnListToColDefs(table.OriginalTableColumns, kr.kafkaConfig.TimeZone)
-		keySchema := NewKeySchema(tableIdent, keyColDef)
 
 		for i, _ := range columnList {
 			var value interface{}
@@ -501,14 +532,12 @@ func (kr *KafkaRunner) kafkaTransformSnapshotData(table *mysqlconfig.Table, valu
 			valuePayload.After.AddField(columnList[i].RawName, value)
 		}
 
-		valueSchema := NewEnvelopeSchema(tableIdent, valueColDef)
-
 		k := DbzOutput{
-			Schema:  keySchema,
+			Schema:  tableItem.keySchema,
 			Payload: keyPayload,
 		}
 		v := DbzOutput{
-			Schema:  valueSchema,
+			Schema:  tableItem.valueSchema,
 			Payload: valuePayload,
 		}
 
@@ -535,10 +564,10 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry)
 
 	for i, _ := range dmlEvent.Events {
 		dataEvent := &dmlEvent.Events[i]
-		var table *mysqlconfig.Table
+		var tableItem *KafkaTableItem
 		if dataEvent.TableName != "" {
 			// this must be executed before skipping DDL
-			table, err = kr.getOrSetTable(dataEvent.DatabaseName, dataEvent.TableName, dataEvent.Table)
+			tableItem, err = kr.getOrSetTable(dataEvent.DatabaseName, dataEvent.TableName, dataEvent.Table)
 			if err != nil {
 				return err
 			}
@@ -552,11 +581,13 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry)
 			continue
 		}
 
-		if table == nil {
+		if tableItem == nil {
 			err = fmt.Errorf("DTLE_BUG: table meta is nil %v.%v", dataEvent.DatabaseName, dataEvent.TableName)
 			kr.logger.Error("table meta is nil", "err", err)
 			return err
 		}
+
+		table := tableItem.table
 
 		var op string
 		var before *Row
@@ -581,7 +612,6 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry)
 
 		keyPayload := NewRow()
 		colList := table.OriginalTableColumns.ColumnList()
-		colDefs, keyColDefs := kafkaColumnListToColDefs(table.OriginalTableColumns, kr.kafkaConfig.TimeZone)
 
 		for i, _ := range colList {
 			colName := colList[i].RawName
@@ -752,15 +782,12 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry)
 		valuePayload.Op = op
 		valuePayload.TsMs = common.CurrentTimeMillis()
 
-		valueSchema := NewEnvelopeSchema(tableIdent, colDefs)
-
-		keySchema := NewKeySchema(tableIdent, keyColDefs)
 		k := DbzOutput{
-			Schema:  keySchema,
+			Schema:  tableItem.keySchema,
 			Payload: keyPayload,
 		}
 		v := DbzOutput{
-			Schema:  valueSchema,
+			Schema:  tableItem.valueSchema,
 			Payload: valuePayload,
 		}
 		kBs, err := json.Marshal(k)

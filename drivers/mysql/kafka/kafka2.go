@@ -158,7 +158,7 @@ func NewEnvelopeSchema(tableIdent string, colDefs ColDefs) *Schema {
 }
 
 type DbzOutput struct {
-	Schema *Schema `json:"schema"`
+	Schema *SchemaJson `json:"schema"`
 	// ValuePayload or Row
 	Payload interface{} `json:"payload"`
 }
@@ -204,6 +204,19 @@ type Schema struct {
 	Version    int                    `json:"version,omitempty"`
 	Parameters map[string]interface{} `json:"parameters,omitempty"`
 }
+
+type SchemaJson struct {
+	schema *Schema
+	cache  []byte
+}
+func (sj *SchemaJson) MarshalJSON() ([]byte, error) {
+	if sj.cache != nil {
+		return sj.cache, nil
+	} else {
+		return json.Marshal(sj.schema)
+	}
+}
+
 type Row struct {
 	ColNames []string
 	Values   []interface{}
