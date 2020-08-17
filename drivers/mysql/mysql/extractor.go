@@ -44,10 +44,6 @@ import (
 )
 
 const (
-	// DefaultConnectWait is the default timeout used for the connect operation
-	DefaultConnectWaitSecond      = 10
-	DefaultConnectWait            = DefaultConnectWaitSecond * time.Second
-	DefaultBigTX                  = 1024*1024*100
 	ReconnectStreamerSleepSeconds = 5
 	SCHEMAS                       = "schemas"
 	SCHEMA                        = "schema"
@@ -909,13 +905,13 @@ func (e *Extractor) StreamEvents() error {
 						int64(len(entries.Entries)) == e.mysqlContext.ReplChanBufferSize {
 						e.logger.Debug("incr. send by GroupLimit.", "entriesSize", entriesSize,
 							"groupMaxSize", e.mysqlContext.GroupMaxSize, "Entries.len", len(entries.Entries))
-						if entriesSize > DefaultBigTX {
+						if entriesSize > common.DefaultBigTX {
 							bigEntrises := splitEntries(entries, entriesSize)
 							entries.Entries = nil
 							e.logger.Debug("incr. big tx section", "n", len(bigEntrises))
 							for i, entity := range bigEntrises {
 								entries = entity
-								entriesSize = DefaultBigTX
+								entriesSize = common.DefaultBigTX
 								e.logger.Debug("incr. send big tx fragment", "i", i)
 								err = sendEntries()
 							}
@@ -930,7 +926,7 @@ func (e *Extractor) StreamEvents() error {
 					span.Finish()
 				case <-timer.C:
 					nEntries := len(entries.Entries)
-					if entriesSize > DefaultBigTX {
+					if entriesSize > common.DefaultBigTX {
 						err = errors.Errorf("big tx not sent by timeout. please change GroupTimeout.")
 					} else {
 						if nEntries > 0 {
@@ -962,7 +958,7 @@ func (e *Extractor) StreamEvents() error {
 }
 
 func splitEntries(entries binlog.BinlogEntries, entriseSize int) (entris []binlog.BinlogEntries) {
-	clientLen := math.Ceil(float64(entriseSize) / DefaultBigTX)
+	clientLen := math.Ceil(float64(entriseSize) / common.DefaultBigTX)
 	clientNum := math.Ceil(float64(len(entries.Entries[0].Events)) / clientLen)
 	for i := 1; i <= int(clientLen); i++ {
 		var after int
@@ -1018,7 +1014,7 @@ func (e *Extractor) publish(ctx context.Context, subject, gtid string, txMsg []b
 	defer span.Finish()
 	for i := 1; ; i++ {
 		e.logger.Debug("publish", "gtid", gtid, "len", len(txMsg), "subject", subject)
-		_, err = e.natsConn.Request(subject, t.Bytes(), DefaultConnectWait)
+		_, err = e.natsConn.Request(subject, t.Bytes(), common.DefaultConnectWait)
 		if err == nil {
 			if gtid != "" {
 				e.mysqlContext.Gtid = gtid

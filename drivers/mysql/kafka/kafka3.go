@@ -54,6 +54,8 @@ type KafkaRunner struct {
 	tables map[string](map[string]*mysqlconfig.Table)
 
 	gtidSet *gomysql.MysqlGTIDSet
+
+	chBinlogEntries chan *binlog.BinlogEntries
 }
 
 func NewKafkaRunner(execCtx *common.ExecContext, cfg *config.KafkaConfig, logger hclog.Logger,
@@ -69,6 +71,8 @@ func NewKafkaRunner(execCtx *common.ExecContext, cfg *config.KafkaConfig, logger
 		shutdownCh:   make(chan struct{}),
 		tables:       make(map[string](map[string]*mysqlconfig.Table)),
 		storeManager: storeManager,
+
+		chBinlogEntries: make(chan *binlog.BinlogEntries, 2),
 	}
 }
 
@@ -266,7 +270,44 @@ func (kr *KafkaRunner) initiateStreaming() error {
 		return errors.Wrap(err, "DtleParseMysqlGTIDSet")
 	}
 
-	var bigEntries binlog.BinlogEntries
+	bigEntries := &binlog.BinlogEntries{}
+	go func() {
+		for !kr.shutdown {
+			var binlogEntries *binlog.BinlogEntries
+			select {
+			case binlogEntries = <-kr.chBinlogEntries:
+			case <-kr.shutdownCh:
+				return
+			}
+
+			if binlogEntries.BigTx {
+				if binlogEntries.TxNum == 1 {
+					bigEntries = binlogEntries
+				} else {
+					bigEntries.Entries[0].Events = append(bigEntries.Entries[0].Events, binlogEntries.Entries[0].Events...)
+					bigEntries.TxNum = binlogEntries.TxNum
+					binlogEntries.Entries = nil
+				}
+				if binlogEntries.TxNum == binlogEntries.TxLen {
+					binlogEntries = bigEntries
+					bigEntries.Entries = nil
+				}
+			}
+
+			for _, binlogEntry := range binlogEntries.Entries {
+				if binlogEntries.BigTx && binlogEntries.TxNum < binlogEntries.TxLen {
+					continue
+				}
+				err = kr.kafkaTransformDMLEventQuery(binlogEntry)
+				if err != nil {
+					kr.onError(TaskStateDead, errors.Wrap(err, "kafkaTransformDMLEventQuery"))
+					return
+				}
+				kr.logger.Debug("kafka: after kafkaTransformDMLEventQuery")
+			}
+		}
+	}()
+
 	_, err = kr.natsConn.Subscribe(fmt.Sprintf("%s_incr_hete", kr.subject), func(m *gonats.Msg) {
 		kr.logger.Debug("recv a incr_hete msg")
 		if err := kr.natsConn.Publish(m.Reply, nil); err != nil {
@@ -278,33 +319,18 @@ func (kr *KafkaRunner) initiateStreaming() error {
 		if err := common.Decode(m.Data, &binlogEntries); err != nil {
 			kr.onError(TaskStateDead, err)
 		}
-		if binlogEntries.BigTx{
-			if binlogEntries.TxNum==1{
-				bigEntries = binlogEntries
-			}else{
-				bigEntries.Entries[0].Events=append(bigEntries.Entries[0].Events,  binlogEntries.Entries[0].Events... )
-				bigEntries.TxNum = binlogEntries.TxNum
-				binlogEntries.Entries=nil
-				//runtime.GC()
+		t := time.NewTimer(common.DefaultConnectWaitSecond / 2 * time.Second)
+		select {
+		case kr.chBinlogEntries <-&binlogEntries:
+			if err := kr.natsConn.Publish(m.Reply, nil); err != nil {
+				kr.onError(TaskStateDead, errors.Wrap(err, "Publish"))
 			}
-			if binlogEntries.TxNum==binlogEntries.TxLen{
-				binlogEntries = bigEntries
-				bigEntries.Entries = nil
-				//runtime.GC()
-			}
+			kr.logger.Debug("ack an incr_hete msg")
+		case <-t.C:
+			kr.logger.Debug("discard an incr_hete msg")
+			//kr.natsConn.Publish(m.Reply, "wait")
 		}
-
-		for _, binlogEntry := range binlogEntries.Entries {
-			if binlogEntries.BigTx&&binlogEntries.TxNum<binlogEntries.TxLen{
-				continue
-			}
-			err = kr.kafkaTransformDMLEventQuery(binlogEntry)
-			if err != nil {
-				kr.onError(TaskStateDead, errors.Wrap(err, "kafkaTransformDMLEventQuery"))
-				return
-			}
-			kr.logger.Debug("after kafkaTransformDMLEventQuery")
-		}
+		t.Stop()
 	})
 	if err != nil {
 		return errors.Wrap(err, "Subscribe")

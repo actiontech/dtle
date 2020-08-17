@@ -655,7 +655,7 @@ func (a *Applier) initiateStreaming() error {
 			return
 		}
 
-		timer := time.NewTimer(DefaultConnectWait / 2)
+		timer := time.NewTimer(common.DefaultConnectWait / 2)
 		atomic.AddInt64(&a.nDumpEntry, 1) // this must be increased before enqueuing
 		select {
 		case a.copyRowsQueue <- dumpData:
@@ -766,7 +766,7 @@ func (a *Applier) initiateStreaming() error {
 				bigEntries.Entries = nil
 			}
 		}
-		for i := 0; !handled && (i < DefaultConnectWaitSecond/2); i++ {
+		for i := 0; !handled && (i < common.DefaultConnectWaitSecond/2); i++ {
 			if binlogEntries.BigTx && binlogEntries.TxNum < binlogEntries.TxLen {
 				handled = true
 				if err := a.natsConn.Publish(m.Reply, nil); err != nil {
