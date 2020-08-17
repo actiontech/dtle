@@ -183,7 +183,7 @@ func (kr *KafkaRunner) initiateStreaming() error {
 	// TODO We subscribe _full anyway to receive sendSysVarAndSqlMode.
 	//  Use a better method.
 	_, err = kr.natsConn.Subscribe(fmt.Sprintf("%s_full", kr.subject), func(m *gonats.Msg) {
-		kr.logger.Debug("recv a msg")
+		kr.logger.Debug("recv a full msg")
 		dumpData, err := common.DecodeDumpEntry(m.Data)
 		if err != nil {
 			kr.onError(TaskStateDead, err)
@@ -233,6 +233,8 @@ func (kr *KafkaRunner) initiateStreaming() error {
 	}
 
 	_, err = kr.natsConn.Subscribe(fmt.Sprintf("%s_full_complete", kr.subject), func(m *gonats.Msg) {
+		kr.logger.Debug("recv a full_complete msg")
+
 		dumpData := &mysql.DumpStatResult{}
 		if err := common.Decode(m.Data, dumpData); err != nil {
 			kr.onError(TaskStateDead, err)
@@ -266,6 +268,8 @@ func (kr *KafkaRunner) initiateStreaming() error {
 
 	var bigEntries binlog.BinlogEntries
 	_, err = kr.natsConn.Subscribe(fmt.Sprintf("%s_incr_hete", kr.subject), func(m *gonats.Msg) {
+		kr.logger.Debug("recv a incr_hete msg")
+
 		var binlogEntries binlog.BinlogEntries
 		if err := common.Decode(m.Data, &binlogEntries); err != nil {
 			kr.onError(TaskStateDead, err)
@@ -291,15 +295,20 @@ func (kr *KafkaRunner) initiateStreaming() error {
 				continue
 			}
 			err = kr.kafkaTransformDMLEventQuery(binlogEntry)
+			if err != nil {
+				kr.onError(TaskStateDead, errors.Wrap(err, "kafkaTransformDMLEventQuery"))
+				return
+			}
+			kr.logger.Debug("after kafkaTransformDMLEventQuery")
 		}
 
 		if err := kr.natsConn.Publish(m.Reply, nil); err != nil {
-			kr.onError(TaskStateDead, err)
+			kr.onError(TaskStateDead, errors.Wrap(err, "Publish"))
 		}
 		kr.logger.Debug("applier. incr. ack-recv.", "nEntries", binlogEntries.Entries)
 	})
 	if err != nil {
-		return err
+		return errors.Wrap(err, "Subscribe")
 	}
 
 	return nil
