@@ -79,7 +79,7 @@ func NewDumper(db usql.QueryAble, table *config.Table, chunkSize int64,
 	return dumper
 }
 
-type dumpStatResult struct {
+type DumpStatResult struct {
 	Gtid       string
 	LogFile    string
 	LogPos     int64

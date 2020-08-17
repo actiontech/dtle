@@ -11,8 +11,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/actiontech/dtle/drivers/mysql/config"
+	"github.com/actiontech/dtle/drivers/mysql/mysql"
 	"github.com/hashicorp/nomad/plugins/drivers"
 	"github.com/pkg/errors"
+	gomysql "github.com/siddontang/go-mysql/mysql"
 	"strconv"
 
 	"encoding/base64"
@@ -50,6 +52,8 @@ type KafkaRunner struct {
 	storeManager *common.StoreManager
 
 	tables map[string](map[string]*mysqlconfig.Table)
+
+	gtidSet *gomysql.MysqlGTIDSet
 }
 
 func NewKafkaRunner(execCtx *common.ExecContext, cfg *config.KafkaConfig, logger hclog.Logger,
@@ -66,6 +70,11 @@ func NewKafkaRunner(execCtx *common.ExecContext, cfg *config.KafkaConfig, logger
 		tables:       make(map[string](map[string]*mysqlconfig.Table)),
 		storeManager: storeManager,
 	}
+}
+
+func (kr *KafkaRunner) updateGtidString() {
+	kr.kafkaConfig.Gtid = kr.gtidSet.String()
+	kr.logger.Debug("kafka. updateGtidString", "gtid", kr.kafkaConfig.Gtid)
 }
 
 func (kr *KafkaRunner) Shutdown() error {
@@ -168,6 +177,11 @@ func (kr *KafkaRunner) getOrSetTable(schemaName string, tableName string, table 
 func (kr *KafkaRunner) initiateStreaming() error {
 	var err error
 
+	hasFull := kr.kafkaConfig.Gtid == ""
+	afterFull := make(chan struct{})
+
+	// TODO We subscribe _full anyway to receive sendSysVarAndSqlMode.
+	//  Use a better method.
 	_, err = kr.natsConn.Subscribe(fmt.Sprintf("%s_full", kr.subject), func(m *gonats.Msg) {
 		kr.logger.Debug("recv a msg")
 		dumpData, err := common.DecodeDumpEntry(m.Data)
@@ -219,12 +233,35 @@ func (kr *KafkaRunner) initiateStreaming() error {
 	}
 
 	_, err = kr.natsConn.Subscribe(fmt.Sprintf("%s_full_complete", kr.subject), func(m *gonats.Msg) {
+		dumpData := &mysql.DumpStatResult{}
+		if err := common.Decode(m.Data, dumpData); err != nil {
+			kr.onError(TaskStateDead, err)
+		}
+
+		kr.kafkaConfig.BinlogFile = dumpData.LogFile
+		kr.kafkaConfig.BinlogPos = dumpData.LogPos
+		kr.kafkaConfig.Gtid = dumpData.Gtid
+
 		if err := kr.natsConn.Publish(m.Reply, nil); err != nil {
 			kr.onError(TaskStateDead, err)
+		}
+
+		if hasFull {
+			afterFull <- struct{}{}
 		}
 	})
 	if err != nil {
 		return err
+	}
+
+	if hasFull {
+		<-afterFull
+	}
+	kr.logger.Info("starting incremental replication.", "gtid", kr.kafkaConfig.Gtid)
+
+	kr.gtidSet, err = common.DtleParseMysqlGTIDSet(kr.kafkaConfig.Gtid)
+	if err != nil {
+		return errors.Wrap(err, "DtleParseMysqlGTIDSet")
 	}
 
 	var bigEntries binlog.BinlogEntries
@@ -455,6 +492,8 @@ func (kr *KafkaRunner) kafkaTransformSnapshotData(table *mysqlconfig.Table, valu
 }
 
 func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry) (err error) {
+	txSid := dmlEvent.Coordinates.GetSid()
+
 	for i, _ := range dmlEvent.Events {
 		dataEvent := &dmlEvent.Events[i]
 		var table *mysqlconfig.Table
@@ -660,7 +699,7 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry)
 		valuePayload.Source.Name = kr.kafkaMgr.Cfg.Topic
 		valuePayload.Source.ServerID = 1 // TODO
 		valuePayload.Source.TsSec = time.Now().Unix()
-		valuePayload.Source.Gtid = dmlEvent.Coordinates.GetGtidForThisTx()
+		valuePayload.Source.Gtid = fmt.Sprintf("%s:%d", txSid, dmlEvent.Coordinates.GNO)
 		valuePayload.Source.File = dmlEvent.Coordinates.LogFile
 		valuePayload.Source.Pos = dataEvent.LogPos
 		valuePayload.Source.Row = 0          // TODO "the row within the event (if there is more than one)".
@@ -698,7 +737,6 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry)
 		if err != nil {
 			return err
 		}
-		kr.kafkaConfig.Gtid =  dmlEvent.Coordinates.GetGtidForThisTx()
 		kr.logger.Debug("sent one msg")
 
 		// tombstone event for DELETE
@@ -718,6 +756,12 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry)
 			kr.logger.Debug("sent one msg")
 		}
 	}
+
+	kr.kafkaConfig.BinlogFile = dmlEvent.Coordinates.LogFile
+	kr.kafkaConfig.BinlogPos = dmlEvent.Coordinates.LogPos
+
+	common.UpdateGtidSet(kr.gtidSet, txSid, dmlEvent.Coordinates.SID, dmlEvent.Coordinates.GNO)
+	kr.updateGtidString()
 
 	return nil
 }
