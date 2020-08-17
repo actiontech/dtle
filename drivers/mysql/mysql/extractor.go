@@ -1017,7 +1017,7 @@ func (e *Extractor) publish(ctx context.Context, subject, gtid string, txMsg []b
 	t.Write(txMsg)
 	defer span.Finish()
 	for i := 1; ; i++ {
-		e.logger.Debug("publish", "gtid", gtid, "len", len(txMsg))
+		e.logger.Debug("publish", "gtid", gtid, "len", len(txMsg), "subject", subject)
 		_, err = e.natsConn.Request(subject, t.Bytes(), DefaultConnectWait)
 		if err == nil {
 			if gtid != "" {

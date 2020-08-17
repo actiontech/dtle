@@ -188,7 +188,7 @@ func (kr *KafkaRunner) initiateStreaming() error {
 			kr.onError(TaskStateDead, err)
 			return
 		}
-		kr.logger.Debug("after publish nats reply")
+		kr.logger.Debug("ack a full msg")
 
 		dumpData, err := common.DecodeDumpEntry(m.Data)
 		if err != nil {
@@ -690,11 +690,11 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry)
 			}
 
 			if before != nil {
-				kr.logger.Debug("beforeValue", "v", beforeValue)
+				kr.logger.Trace("beforeValue", "v", beforeValue)
 				before.AddField(colName, beforeValue)
 			}
 			if after != nil {
-				kr.logger.Debug("afterValue", "v", afterValue)
+				kr.logger.Trace("afterValue", "v", afterValue)
 				after.AddField(colName, afterValue)
 			}
 		}
