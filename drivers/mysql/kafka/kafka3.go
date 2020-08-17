@@ -437,6 +437,11 @@ func (kr *KafkaRunner) kafkaTransformSnapshotData(table *mysqlconfig.Table, valu
 					}
 				case mysqlconfig.VarbinaryColumnType:
 					value = base64.StdEncoding.EncodeToString([]byte(valueStr))
+				case mysqlconfig.CharColumnType:
+					if valueStr == "" {
+						valueStr = "char(255)"
+					}
+					value = base64.StdEncoding.EncodeToString([]byte(valueStr))
 				case mysqlconfig.DateColumnType, mysqlconfig.DateTimeColumnType:
 					if valueStr != "" && columnList[i].ColumnType == "datetime" {
 						value = DateTimeValue(valueStr, kr.kafkaConfig.TimeZone)
