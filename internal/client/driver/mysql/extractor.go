@@ -856,7 +856,7 @@ func (e *Extractor) StreamEvents() error {
 				}
 
 				e.logger.Debugf("mysql.extractor: send acked gno: %v, n: %v", gno, len(entries.Entries))
-
+				ctx=nil
 				entries.Entries = nil
 				entries.TxLen = 0
 				entries.BigTx = false
