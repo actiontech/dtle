@@ -635,9 +635,9 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 						b.logger.Debugf("mysql.reader. skipped a ddl event. query: %v", query)
 					} else {
 						ddlTable := ddlInfo.tables[i]
-						if ddlTable.Schema == "" || ddlTable.Table == "" {
+						if realSchema == "" || ddlTable.Table == "" {
 							b.logger.WithFields(logrus.Fields{
-								"schema": ddlTable.Schema,
+								"schema": realSchema,
 								"table":  ddlTable.Table,
 								"query":  sql,
 							}).Info("NewQueryEventAffectTable. found empty schema or table.")
@@ -648,6 +648,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 							NotDML,
 							ddlTable,
 						)
+						event.Table = table
 						b.currentBinlogEntry.Events = append(b.currentBinlogEntry.Events, event)
 					}
 				}
