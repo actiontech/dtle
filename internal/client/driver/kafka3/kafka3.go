@@ -740,7 +740,7 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry)
 
 				if strings.Contains(colList[i].ColumnType, "text") {
 					if beforeValue != nil {
-						beforeValue = string(afterValue.([]byte))
+						beforeValue = string(beforeValue.([]byte))
 					}
 					if afterValue != nil {
 						afterValue = string(afterValue.([]byte))
@@ -748,7 +748,7 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry)
 				}
 			case mysql.TextColumnType:
 				if beforeValue != nil {
-					beforeValue = string(afterValue.([]byte))
+					beforeValue = string(beforeValue.([]byte))
 				}
 				if afterValue != nil {
 					afterValue = string(afterValue.([]byte))
