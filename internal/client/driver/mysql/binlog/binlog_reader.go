@@ -648,6 +648,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 							ddlTable,
 							evt.ExecutionTime,
 						)
+						event.Table = table
 						b.mysqlContext.SrcBinlogTimestamp = evt.ExecutionTime
 						b.currentBinlogEntry.Events = append(b.currentBinlogEntry.Events, event)
 					}
