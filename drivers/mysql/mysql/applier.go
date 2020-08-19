@@ -367,6 +367,9 @@ func (a *Applier) Run() {
 		return
 	}
 
+	// Set before initiateStreaming. It might change a.mysqlContext.Gtid .
+	hasFull := a.mysqlContext.Gtid == ""
+
 	a.gtidSet, err = common.DtleParseMysqlGTIDSet(a.mysqlContext.Gtid)
 	if err != nil {
 		a.onError(TaskStateDead, errors.Wrap(err, "DtleParseMysqlGTIDSet"))
@@ -412,47 +415,43 @@ func (a *Applier) Run() {
 		go a.MtsWorker(i)
 	}
 
-	go a.executeWriteFuncs()
+	if hasFull {
+		go a.doFullCopy()
+	}
 }
 
-// executeWriteFuncs writes data via applier: both the rowcopy and the events backlog.
-// This is where the ghost table gets the data. The function fills the data single-threaded.
-// Both event backlog and rowcopy events are polled; the backlog events have precedence.
-func (a *Applier) executeWriteFuncs() {
-	if a.mysqlContext.Gtid == "" {
-		go func() {
-			var stopLoop = false
-			for !stopLoop && !a.shutdown {
-				t10 := time.NewTimer(10 * time.Second)
+func (a *Applier) doFullCopy() {
+	a.mysqlContext.Stage = common.StageSlaveWaitingForWorkersToProcessQueue
+	a.logger.Info("Operating until row copy is complete")
 
-				select {
-				case copyRows := <-a.copyRowsQueue:
-					if nil != copyRows {
-						//time.Sleep(20 * time.Second) // #348 stub
-						if err := a.ApplyEventQueries(a.db, copyRows); err != nil {
-							a.onError(TaskStateDead, err)
-						}
-					}
-					if atomic.LoadInt64(&a.nDumpEntry) <= 0 {
-						err := fmt.Errorf("DTLE_BUG a.nDumpEntry <= 0")
-						a.logger.Error(err.Error())
-						a.onError(TaskStateDead, err)
-					} else {
-						atomic.AddInt64(&a.nDumpEntry, -1)
-					}
-				case <-a.rowCopyComplete:
-					a.logger.Info("executeWriteFuncs: loop: rowCopyComplete")
-					stopLoop = true
-				case <-a.shutdownCh:
-					stopLoop = true
-				case <-t10.C:
-					a.logger.Debug("no copyRows for 10s.")
+	var stopLoop = false
+	for !stopLoop && !a.shutdown {
+		t10 := time.NewTimer(10 * time.Second)
+
+		select {
+		case copyRows := <-a.copyRowsQueue:
+			if nil != copyRows {
+				//time.Sleep(20 * time.Second) // #348 stub
+				if err := a.ApplyEventQueries(a.db, copyRows); err != nil {
+					a.onError(TaskStateDead, err)
 				}
-				t10.Stop()
 			}
-		}()
-		a.logger.Info("Operating until row copy is complete")
-		a.mysqlContext.Stage = common.StageSlaveWaitingForWorkersToProcessQueue
+			if atomic.LoadInt64(&a.nDumpEntry) <= 0 {
+				err := fmt.Errorf("DTLE_BUG a.nDumpEntry <= 0")
+				a.logger.Error(err.Error())
+				a.onError(TaskStateDead, err)
+			} else {
+				atomic.AddInt64(&a.nDumpEntry, -1)
+			}
+		case <-a.rowCopyComplete:
+			a.logger.Info("doFullCopy: loop: rowCopyComplete")
+			stopLoop = true
+		case <-a.shutdownCh:
+			stopLoop = true
+		case <-t10.C:
+			a.logger.Debug("no copyRows for 10s.")
+		}
+		t10.Stop()
 	}
 }
 
@@ -694,16 +693,16 @@ func (a *Applier) initiateStreaming() error {
 			a.onError(TaskStateDead, errors.Wrap(err, "Decode"))
 			return
 		}
-		a.mysqlContext.Gtid = dumpData.Gtid
-		a.mysqlContext.BinlogFile = dumpData.LogFile
-		a.mysqlContext.BinlogPos = dumpData.LogPos
-
-		a.logger.Info("got gtid from extractor", "gtid", a.mysqlContext.Gtid)
-		a.gtidSet, err = common.DtleParseMysqlGTIDSet(a.mysqlContext.Gtid)
+		a.logger.Info("got gtid from extractor", "gtid", dumpData.Gtid)
+		a.gtidSet, err = common.DtleParseMysqlGTIDSet(dumpData.Gtid)
 		if err != nil {
 			a.onError(TaskStateDead, errors.Wrap(err, "DtleParseMysqlGTIDSet"))
 			return
 		}
+
+		a.mysqlContext.Gtid = dumpData.Gtid
+		a.mysqlContext.BinlogFile = dumpData.LogFile
+		a.mysqlContext.BinlogPos = dumpData.LogPos
 
 		a.mysqlContext.Stage = common.StageSlaveWaitingForWorkersToProcessQueue
 
