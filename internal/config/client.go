@@ -33,6 +33,7 @@ const (
 	defaultNumRetries = 5
 	defaultChunkSize  = 2000
 	defaultNumWorkers = 1
+	defaultGroupMaxSize = 1048576
 	defaultMsgBytes   = 20 * 1024
 )
 
@@ -196,8 +197,8 @@ func (a *MySQLDriverConfig) SetDefault() *MySQLDriverConfig {
 	if result.GroupCount == 0 {
 		result.GroupCount = 1
 	}
-	if result.GroupMaxSize == 0 {
-		result.GroupMaxSize = 1
+	if result.GroupMaxSize <2  {
+		result.GroupMaxSize = defaultGroupMaxSize
 	}
 	if result.GroupTimeout == 0 {
 		result.GroupTimeout = 100
