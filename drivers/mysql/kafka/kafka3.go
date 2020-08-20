@@ -160,6 +160,16 @@ func (kr *KafkaRunner) Run() {
 			kr.logger.Info("Got gtid from consul", "gtid", gtid)
 			kr.kafkaConfig.Gtid = gtid
 		}
+
+		pos, err := kr.storeManager.GetBinlogFilePosForJob(kr.subject)
+		if err != nil {
+			kr.onError(TaskStateDead, errors.Wrap(err, "GetBinlogFilePosForJob"))
+			return
+		}
+		if pos.Name != "" {
+			kr.kafkaConfig.BinlogFile = pos.Name
+			kr.kafkaConfig.BinlogPos = int64(pos.Pos)
+		}
 	}
 
 	kr.kafkaMgr, err = NewKafkaManager(kr.kafkaConfig)
