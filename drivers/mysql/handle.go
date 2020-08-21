@@ -93,12 +93,6 @@ func (h *taskHandle) run(taskConfig *config.DtleTaskConfig, d *Driver) {
 
 	switch strings.ToLower(cfg.TaskGroupName) {
 	case "src", "source":
-		err = d.storeManager.PutNatsWait(cfg.JobName)
-		if err != nil {
-			h.exitResult.Err = errors.Wrap(err, "PutNatsWait")
-			return
-		}
-
 		h.runner, err = mysql.NewExtractor(ctx, driverConfig, d.logger.Named("extractor"), d.storeManager, h.waitCh)
 		if err != nil {
 			h.exitResult.Err = errors.Wrap(err, "NewExtractor")

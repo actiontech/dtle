@@ -67,6 +67,7 @@ type Extractor struct {
 	// TODO What is the difference between mysqlContext.RowsEstimate ?
 	TotalRowsCopied  int64
 	NatsAddr          string
+	lastConnectedNatsAddr string
 
 	mysqlVersionDigit int
 	db                *gosql.DB
@@ -136,13 +137,45 @@ func NewExtractor(execCtx *common.ExecContext, cfg *config.MySQLDriverConfig, lo
 
 // Run executes the complete extract logic.
 func (e *Extractor) Run() {
-	natsAddr, err := e.storeManager.WatchNats(e.subject, e.shutdownCh)
+	err := e.storeManager.PutNatsWait(e.subject)
+	if err != nil {
+		e.onError(TaskStateDead, errors.Wrap(err, "PutNatsWait"))
+		return
+	}
+
+	firstNatsCh := make(chan struct{})
+	natsAddrCh, err := e.storeManager.WatchNats(e.subject, e.shutdownCh)
 	if err != nil {
 		e.onError(TaskStateDead, err)
 		return
 	}
-	e.NatsAddr = natsAddr
-	e.logger.Info("got NatsAddr", "addr", natsAddr)
+	go func() {
+		for !e.shutdown {
+			kv := <-natsAddrCh
+			if kv != nil {
+				natsAddr := string(kv.Value)
+				if natsAddr != "wait" {
+					e.NatsAddr = natsAddr
+					e.logger.Info("got NatsAddr", "addr", natsAddr)
+					select {
+					case <-firstNatsCh:
+						// already closed
+					default:
+						// first NatsAddr
+						close(firstNatsCh)
+					}
+				}
+			}
+		}
+	}()
+
+	<-firstNatsCh
+	if e.shutdown {
+		return
+	} else if e.NatsAddr == "" {
+		e.onError(TaskStateDead, fmt.Errorf("DTLE_BUG: got empty NatsAddr"))
+		return
+	}
 
 	err = common.GetGtidFromConsul(e.storeManager, e.subject, e.logger, e.mysqlContext)
 	if err != nil {
@@ -556,14 +589,16 @@ func (e *Extractor) readTableColumns() (err error) {
 }
 
 func (e *Extractor) initNatsPubClient() (err error) {
-	e.logger.Debug("begin Connect nats server", "NatAddr", e.NatsAddr)
-	natsAddr := fmt.Sprintf("nats://%s", e.NatsAddr)
+	natsAddr := e.NatsAddr
+
+	e.logger.Debug("begin Connect nats server", "NatAddr", natsAddr)
 	sc, err := gonats.Connect(natsAddr)
 	if err != nil {
 		e.logger.Error("cannot connect nats server", "natsAddr", natsAddr, "err", err)
 		return err
 	}
-	e.logger.Debug("Connect nats server", "natsAddr", natsAddr)
+	e.logger.Info("Connect nats server", "natsAddr", natsAddr)
+	e.lastConnectedNatsAddr = natsAddr
 	e.natsConn = sc
 
 	return nil
@@ -1014,6 +1049,17 @@ func (e *Extractor) publish(ctx context.Context, subject, gtid string, txMsg []b
 	t.Write(txMsg)
 	defer span.Finish()
 	for i := 1; ; i++ {
+		if e.NatsAddr != e.lastConnectedNatsAddr {
+			e.logger.Info("found updated NatsAddr. Reconnecting", "NatsAddr", e.NatsAddr)
+
+			e.natsConn.Close()
+			e.natsConn = nil
+			err = e.initNatsPubClient()
+			if err != nil {
+				return errors.Wrap(err, "initNatsPubClient")
+			}
+		}
+
 		e.logger.Debug("publish", "gtid", gtid, "len", len(txMsg), "subject", subject)
 		_, err = e.natsConn.Request(subject, t.Bytes(), common.DefaultConnectWait)
 		if err == nil {
@@ -1027,6 +1073,7 @@ func (e *Extractor) publish(ctx context.Context, subject, gtid string, txMsg []b
 			if i % 20 == 0 {
 				e.logger.Warn("publish timeout for 20 times", "err", err)
 			}
+
 			time.Sleep(1 * time.Second)
 		} else {
 			e.logger.Error("unexpected error on publish", "err", err)

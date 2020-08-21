@@ -112,21 +112,13 @@ func (sm *StoreManager) WatchAndPutNats(jobName string, natsAddr string, stopCh 
 	}
 }
 
-func (sm *StoreManager) WatchNats(jobName string, stopCh chan struct{}) (string, error) {
+func (sm *StoreManager) WatchNats(jobName string, stopCh chan struct{}) (<-chan *store.KVPair, error) {
 	natsKey := fmt.Sprintf("dtle/%v/NatsAddr", jobName)
 	natsCh, err := sm.consulStore.Watch(natsKey, stopCh)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-	var addr string
-	for {
-		kv := <-natsCh
-		addr = string(kv.Value)
-		if addr != "wait" {
-			break
-		}
-	}
-	return addr, nil
+	return natsCh, nil
 }
 
 func (sm *StoreManager) PutNatsWait(jobName string) error {
