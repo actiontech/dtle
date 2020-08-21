@@ -525,12 +525,8 @@ func (a *Applier) heterogeneousReplay() {
 			// region TestIfExecuted
 			txSid := binlogEntry.Coordinates.GetSid()
 
-			gtidSetItem, hasSid := a.gtidItemMap[binlogEntry.Coordinates.SID]
-			if !hasSid {
-				gtidSetItem = &base.GtidItem{}
-				a.gtidItemMap[binlogEntry.Coordinates.SID] = gtidSetItem
-			}
-			intervals := a.gtidSet.Sets[binlogEntry.Coordinates.GetSid()].Intervals
+			gtidSetItem := a.gtidItemMap.GetItem(binlogEntry.Coordinates.SID)
+			intervals := base.GetIntervals(a.gtidSet, binlogEntry.Coordinates.SID)
 			if base.IntervalSlicesContainOne(intervals, binlogEntry.Coordinates.GNO) {
 				// entry executed
 				a.logger.Debug("skip an executed tx", "sid", txSid, "gno", binlogEntry.Coordinates.GNO)
