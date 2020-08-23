@@ -274,22 +274,6 @@ func (e *Extractor) Run() {
 			}
 			e.logger.Info("initBinlogReader")
 			e.initBinlogReader(e.initialBinlogCoordinates)
-
-			go func() {
-				_, err := e.natsConn.Subscribe(fmt.Sprintf("%s_progress", e.subject), func(m *gonats.Msg) {
-					binlogFile := string(m.Data)
-					e.logger.Debug("*** progress", "binlogFile", binlogFile)
-					err := e.natsConn.Publish(m.Reply, nil)
-					if err != nil {
-						e.logger.Debug("*** progress reply error.", "err", err)
-					}
-					e.binlogReader.OnApplierRotate(binlogFile)
-				})
-				if err != nil {
-					e.onError(TaskStateDead, err)
-					return
-				}
-			}()
 		}
 	}()
 
@@ -601,6 +585,56 @@ func (e *Extractor) initNatsPubClient() (err error) {
 	e.lastConnectedNatsAddr = natsAddr
 	e.natsConn = sc
 
+	_, err = e.natsConn.Subscribe(fmt.Sprintf("%s_restart", e.subject), func(m *gonats.Msg) {
+		pe := &common.PassError{
+			Gtid: "",
+			Err:  "unknown",
+		}
+		err := common.GobDecode(m.Data, pe)
+		if err == nil {
+			e.mysqlContext.Gtid = pe.Gtid
+		}
+		e.onError(TaskStateRestart, fmt.Errorf("applier restart: %v", pe.Err))
+	})
+	if err != nil {
+		e.onError(TaskStateDead, errors.Wrap(err, "Subscribe restart"))
+		return
+	}
+
+	_, err = e.natsConn.Subscribe(fmt.Sprintf("%s_error", e.subject), func(m *gonats.Msg) {
+		pe := &common.PassError{
+			Gtid: "",
+			Err:  "unknown",
+		}
+		err := common.GobDecode(m.Data, pe)
+		if err == nil {
+			e.mysqlContext.Gtid = pe.Gtid
+		}
+		e.onError(TaskStateDead, fmt.Errorf("applier error: %v", pe.Err))
+	})
+	if err != nil {
+		e.onError(TaskStateDead, errors.Wrap(err, "Subscribe error"))
+		return
+	}
+
+	_, err = e.natsConn.Subscribe(fmt.Sprintf("%s_progress", e.subject), func(m *gonats.Msg) {
+		binlogFile := string(m.Data)
+		e.logger.Debug("progress", "binlogFile", binlogFile)
+		err := e.natsConn.Publish(m.Reply, nil)
+		if err != nil {
+			e.logger.Error("progress reply error", "err", err)
+		}
+		if e.binlogReader != nil {
+			e.binlogReader.OnApplierRotate(binlogFile)
+		} else {
+			e.logger.Warn("DTLE_BUG. recv progress msg, but e.binlogReader is nil")
+		}
+	})
+	if err != nil {
+		e.onError(TaskStateDead, errors.Wrap(err, "Subscribe progress"))
+		return
+	}
+
 	return nil
 }
 
@@ -614,33 +648,6 @@ func (e *Extractor) initiateStreaming() error {
 		}
 	}()
 
-	pe := &common.PassError{
-		Gtid: "",
-		Err:  "unknown",
-	}
-	go func() {
-		_, err := e.natsConn.Subscribe(fmt.Sprintf("%s_restart", e.subject), func(m *gonats.Msg) {
-			err := common.GobDecode(m.Data, pe)
-			if err == nil {
-				e.mysqlContext.Gtid = pe.Gtid
-			}
-			e.onError(TaskStateRestart, fmt.Errorf("applier restart: %v", pe.Err))
-		})
-		if err != nil {
-			e.onError(TaskStateRestart, err)
-		}
-
-		_, err = e.natsConn.Subscribe(fmt.Sprintf("%s_error", e.subject), func(m *gonats.Msg) {
-			err := common.GobDecode(m.Data, pe)
-			if err == nil {
-				e.mysqlContext.Gtid = pe.Gtid
-			}
-			e.onError(TaskStateDead, fmt.Errorf("applier error: %v", pe.Err))
-		})
-		if err != nil {
-			e.onError(TaskStateDead, err)
-		}
-	}()
 	return nil
 }
 
