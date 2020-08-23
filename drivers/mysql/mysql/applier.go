@@ -256,9 +256,6 @@ func (a *Applier) Run() {
 		return
 	}
 
-	// Set before initiateStreaming. It might change a.mysqlContext.Gtid .
-	hasFull := a.mysqlContext.Gtid == ""
-
 	a.gtidSet, err = common.DtleParseMysqlGTIDSet(a.mysqlContext.Gtid)
 	if err != nil {
 		a.onError(TaskStateDead, errors.Wrap(err, "DtleParseMysqlGTIDSet"))
@@ -304,9 +301,7 @@ func (a *Applier) Run() {
 		go a.MtsWorker(i)
 	}
 
-	if hasFull {
-		go a.doFullCopy()
-	}
+	go a.doFullCopy()
 }
 
 func (a *Applier) doFullCopy() {

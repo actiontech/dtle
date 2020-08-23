@@ -8,19 +8,19 @@ package kafka
 
 import (
 	"bytes"
+	"encoding/base64"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"github.com/actiontech/dtle/drivers/mysql/common"
 	"github.com/actiontech/dtle/drivers/mysql/config"
 	"github.com/actiontech/dtle/drivers/mysql/mysql"
 	"github.com/hashicorp/nomad/plugins/drivers"
 	"github.com/pkg/errors"
 	gomysql "github.com/siddontang/go-mysql/mysql"
 	"strconv"
-
-	"encoding/base64"
-	"encoding/binary"
-	"github.com/actiontech/dtle/drivers/mysql/common"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/actiontech/dtle/drivers/mysql/mysql/binlog"
@@ -63,6 +63,11 @@ type KafkaRunner struct {
 
 	chBinlogEntries chan *binlog.BinlogEntries
 	lastSavedGtid   string
+
+	// _full_complete must be ack-ed after all full entries has been executed
+	// (not just received). Since the applier ack _full before execution, the extractor
+	// might send _full_complete before the entry has been executed.
+	fullMtx sync.WaitGroup
 }
 
 func NewKafkaRunner(execCtx *common.ExecContext, cfg *config.KafkaConfig, logger hclog.Logger,
@@ -158,6 +163,11 @@ func (kr *KafkaRunner) Run() {
 		}
 		if gtid != "" {
 			kr.logger.Info("Got gtid from consul", "gtid", gtid)
+			kr.gtidSet, err = common.DtleParseMysqlGTIDSet(gtid)
+			if err != nil {
+				kr.onError(TaskStateDead, errors.Wrap(err, "DtleParseMysqlGTIDSet"))
+				return
+			}
 			kr.kafkaConfig.Gtid = gtid
 		}
 
@@ -247,13 +257,14 @@ func (kr *KafkaRunner) getOrSetTable(schemaName string, tableName string,
 func (kr *KafkaRunner) initiateStreaming() error {
 	var err error
 
-	hasFull := kr.kafkaConfig.Gtid == ""
-	afterFull := make(chan struct{})
-
 	// TODO We subscribe _full anyway to receive sendSysVarAndSqlMode.
 	//  Use a better method.
 	_, err = kr.natsConn.Subscribe(fmt.Sprintf("%s_full", kr.subject), func(m *gonats.Msg) {
 		kr.logger.Debug("recv a full msg")
+
+		kr.fullMtx.Add(1)
+		defer kr.fullMtx.Add(-1)
+
 		if err := kr.natsConn.Publish(m.Reply, nil); err != nil {
 			kr.onError(TaskStateDead, err)
 			return
@@ -274,7 +285,6 @@ func (kr *KafkaRunner) initiateStreaming() error {
 				kr.onError(TaskStateDead, err)
 				return
 			}
-			return
 		} else {
 			var tableFromDumpData *mysqlconfig.Table = nil
 			if len(dumpData.Table) > 0 {
@@ -304,37 +314,35 @@ func (kr *KafkaRunner) initiateStreaming() error {
 
 	_, err = kr.natsConn.Subscribe(fmt.Sprintf("%s_full_complete", kr.subject), func(m *gonats.Msg) {
 		kr.logger.Debug("recv a full_complete msg")
-		if err := kr.natsConn.Publish(m.Reply, nil); err != nil {
-			kr.onError(TaskStateDead, err)
-		}
-		kr.logger.Debug("ack a full_complete msg")
 
 		dumpData := &mysql.DumpStatResult{}
 		if err := common.Decode(m.Data, dumpData); err != nil {
 			kr.onError(TaskStateDead, err)
+			return
 		}
+
+		kr.fullMtx.Wait()
 
 		kr.kafkaConfig.BinlogFile = dumpData.LogFile
 		kr.kafkaConfig.BinlogPos = dumpData.LogPos
+		kr.gtidSet, err = common.DtleParseMysqlGTIDSet(dumpData.Gtid)
+		if err != nil {
+			kr.onError(TaskStateDead, errors.Wrap(err, "DtleParseMysqlGTIDSet"))
+			return
+		}
 		kr.kafkaConfig.Gtid = dumpData.Gtid
 
-		if hasFull {
-			afterFull <- struct{}{}
+		if err := kr.natsConn.Publish(m.Reply, nil); err != nil {
+			kr.onError(TaskStateDead, err)
+			return
 		}
+		kr.logger.Debug("ack a full_complete msg")
 	})
 	if err != nil {
 		return err
 	}
 
-	if hasFull {
-		<-afterFull
-	}
 	kr.logger.Info("starting incremental replication.", "gtid", kr.kafkaConfig.Gtid)
-
-	kr.gtidSet, err = common.DtleParseMysqlGTIDSet(kr.kafkaConfig.Gtid)
-	if err != nil {
-		return errors.Wrap(err, "DtleParseMysqlGTIDSet")
-	}
 
 	bigEntries := &binlog.BinlogEntries{}
 	go func() {
@@ -378,18 +386,21 @@ func (kr *KafkaRunner) initiateStreaming() error {
 		kr.logger.Debug("recv a incr_hete msg")
 		if err := kr.natsConn.Publish(m.Reply, nil); err != nil {
 			kr.onError(TaskStateDead, errors.Wrap(err, "Publish"))
+			return
 		}
 		kr.logger.Debug("ack a incr_hete msg")
 
 		var binlogEntries binlog.BinlogEntries
 		if err := common.Decode(m.Data, &binlogEntries); err != nil {
 			kr.onError(TaskStateDead, err)
+			return
 		}
 		t := time.NewTimer(common.DefaultConnectWaitSecond / 2 * time.Second)
 		select {
 		case kr.chBinlogEntries <-&binlogEntries:
 			if err := kr.natsConn.Publish(m.Reply, nil); err != nil {
 				kr.onError(TaskStateDead, errors.Wrap(err, "Publish"))
+				return
 			}
 			kr.logger.Debug("ack an incr_hete msg")
 		case <-t.C:
