@@ -289,8 +289,8 @@ func (a *Applier) Run() {
 		a.onError(TaskStateDead, err)
 		return
 	}
-	a.logger.Debug("initiateStreaming")
-	if err := a.initiateStreaming(); err != nil {
+	a.logger.Debug("subscribeNats")
+	if err := a.subscribeNats(); err != nil {
 		a.onError(TaskStateDead, err)
 		return
 	}
@@ -302,6 +302,7 @@ func (a *Applier) Run() {
 	}
 
 	go a.doFullCopy()
+	go a.heterogeneousReplay()
 }
 
 func (a *Applier) doFullCopy() {
@@ -512,7 +513,7 @@ func (a *Applier) heterogeneousReplay() {
 }
 
 // initiateStreaming begins treaming of binary log events and registers listeners for such events
-func (a *Applier) initiateStreaming() error {
+func (a *Applier) subscribeNats() error {
 	a.mysqlContext.MarkRowCopyStartTime()
 	a.logger.Debug("nats subscribe")
 	tracer := opentracing.GlobalTracer()
@@ -573,19 +574,6 @@ func (a *Applier) initiateStreaming() error {
 			a.onError(TaskStateDead, errors.Wrap(err, "Decode"))
 			return
 		}
-		a.logger.Info("got gtid from extractor", "gtid", dumpData.Gtid)
-		a.gtidSet, err = common.DtleParseMysqlGTIDSet(dumpData.Gtid)
-		if err != nil {
-			a.onError(TaskStateDead, errors.Wrap(err, "DtleParseMysqlGTIDSet"))
-			return
-		}
-
-		a.mysqlContext.Gtid = dumpData.Gtid
-		a.mysqlContext.BinlogFile = dumpData.LogFile
-		a.mysqlContext.BinlogPos = dumpData.LogPos
-
-		a.mysqlContext.Stage = common.StageSlaveWaitingForWorkersToProcessQueue
-
 		for atomic.LoadInt64(&a.nDumpEntry) != 0 {
 			a.logger.Debug("nDumpEntry is not zero, waiting", "nDumpEntry", a.nDumpEntry)
 			time.Sleep(1 * time.Second)
@@ -594,6 +582,19 @@ func (a *Applier) initiateStreaming() error {
 			}
 		}
 		a.logger.Info("Rows copy complete.", "TotalRowsReplayed", a.TotalRowsReplayed)
+
+		a.logger.Info("got gtid from extractor", "gtid", dumpData.Gtid)
+		a.gtidSet, err = common.DtleParseMysqlGTIDSet(dumpData.Gtid)
+		if err != nil {
+			a.onError(TaskStateDead, errors.Wrap(err, "DtleParseMysqlGTIDSet"))
+			return
+		}
+		a.mysqlContext.Gtid = dumpData.Gtid
+		a.mysqlContext.BinlogFile = dumpData.LogFile
+		a.mysqlContext.BinlogPos = dumpData.LogPos
+
+		a.mysqlContext.Stage = common.StageSlaveWaitingForWorkersToProcessQueue
+
 		select {
 		case <-a.rowCopyComplete:
 			// chan already closed (this _full_complete msg is repeated)
@@ -645,7 +646,7 @@ func (a *Applier) initiateStreaming() error {
 				bigEntries.Entries = nil
 			}
 		}
-		for i := 0; !handled && (i < common.DefaultConnectWaitSecond/2); i++ {
+		for i := 0; !handled && (i < common.DefaultConnectWaitSecond / 2); i++ {
 			if binlogEntries.BigTx && binlogEntries.TxNum < binlogEntries.TxLen {
 				handled = true
 				if err := a.natsConn.Publish(m.Reply, nil); err != nil {
@@ -691,8 +692,6 @@ func (a *Applier) initiateStreaming() error {
 	if err != nil {
 		return err
 	}
-
-	go a.heterogeneousReplay()
 
 	return nil
 }
