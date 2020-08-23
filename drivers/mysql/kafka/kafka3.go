@@ -62,12 +62,14 @@ type KafkaRunner struct {
 	gtidSet *gomysql.MysqlGTIDSet
 
 	chBinlogEntries chan *binlog.BinlogEntries
+	chDumpEntry     chan *common.DumpEntry
+
 	lastSavedGtid   string
 
 	// _full_complete must be ack-ed after all full entries has been executed
 	// (not just received). Since the applier ack _full before execution, the extractor
 	// might send _full_complete before the entry has been executed.
-	fullMtx sync.WaitGroup
+	fullWg sync.WaitGroup
 }
 
 func NewKafkaRunner(execCtx *common.ExecContext, cfg *config.KafkaConfig, logger hclog.Logger,
@@ -85,6 +87,7 @@ func NewKafkaRunner(execCtx *common.ExecContext, cfg *config.KafkaConfig, logger
 		storeManager: storeManager,
 
 		chBinlogEntries: make(chan *binlog.BinlogEntries, 2),
+		chDumpEntry: make(chan *common.DumpEntry, 2),
 	}
 }
 
@@ -254,37 +257,22 @@ func (kr *KafkaRunner) getOrSetTable(schemaName string, tableName string,
 	}
 }
 
-func (kr *KafkaRunner) initiateStreaming() error {
+func (kr *KafkaRunner) handleFullCopy() {
 	var err error
-
-	// TODO We subscribe _full anyway to receive sendSysVarAndSqlMode.
-	//  Use a better method.
-	_, err = kr.natsConn.Subscribe(fmt.Sprintf("%s_full", kr.subject), func(m *gonats.Msg) {
-		kr.logger.Debug("recv a full msg")
-
-		kr.fullMtx.Add(1)
-		defer kr.fullMtx.Add(-1)
-
-		if err := kr.natsConn.Publish(m.Reply, nil); err != nil {
-			kr.onError(TaskStateDead, err)
+	for !kr.shutdown {
+		var dumpData *common.DumpEntry
+		select {
+		case dumpData = <-kr.chDumpEntry:
+		case <-kr.shutdownCh:
 			return
 		}
-		kr.logger.Debug("ack a full msg")
 
-		dumpData, err := common.DecodeDumpEntry(m.Data)
-		if err != nil {
-			kr.onError(TaskStateDead, err)
-			return
-		}
+		defer kr.fullWg.Done()
 
 		if dumpData.DbSQL != "" || len(dumpData.TbSQL) > 0 {
 			kr.logger.Debug("a sql dumpEntry")
 		} else if dumpData.TableSchema == "" && dumpData.TableName == "" {
 			kr.logger.Debug("skip apply sqlMode and SystemVariablesStatement")
-			if err := kr.natsConn.Publish(m.Reply, nil); err != nil {
-				kr.onError(TaskStateDead, err)
-				return
-			}
 		} else {
 			var tableFromDumpData *mysqlconfig.Table = nil
 			if len(dumpData.Table) > 0 {
@@ -307,6 +295,75 @@ func (kr *KafkaRunner) initiateStreaming() error {
 				return
 			}
 		}
+	}
+}
+func (kr *KafkaRunner) handleIncr() {
+	var err error
+	bigEntries := &binlog.BinlogEntries{}
+	for !kr.shutdown {
+		var binlogEntries *binlog.BinlogEntries
+		select {
+		case binlogEntries = <-kr.chBinlogEntries:
+		case <-kr.shutdownCh:
+			return
+		}
+
+		if binlogEntries.BigTx {
+			if binlogEntries.TxNum == 1 {
+				bigEntries = binlogEntries
+			} else {
+				bigEntries.Entries[0].Events = append(bigEntries.Entries[0].Events, binlogEntries.Entries[0].Events...)
+				bigEntries.TxNum = binlogEntries.TxNum
+				binlogEntries.Entries = nil
+			}
+			if binlogEntries.TxNum == binlogEntries.TxLen {
+				binlogEntries = bigEntries
+				bigEntries.Entries = nil
+			}
+		}
+
+		for _, binlogEntry := range binlogEntries.Entries {
+			if binlogEntries.BigTx && binlogEntries.TxNum < binlogEntries.TxLen {
+				continue
+			}
+			err = kr.kafkaTransformDMLEventQuery(binlogEntry)
+			if err != nil {
+				kr.onError(TaskStateDead, errors.Wrap(err, "kafkaTransformDMLEventQuery"))
+				return
+			}
+			kr.logger.Debug("kafka: after kafkaTransformDMLEventQuery")
+		}
+	}
+}
+func (kr *KafkaRunner) initiateStreaming() error {
+	var err error
+
+	go kr.handleFullCopy()
+	go kr.handleIncr()
+
+	_, err = kr.natsConn.Subscribe(fmt.Sprintf("%s_full", kr.subject), func(m *gonats.Msg) {
+		kr.logger.Debug("recv a full msg")
+
+		kr.fullWg.Add(1)
+		dumpData, err := common.DecodeDumpEntry(m.Data)
+		if err != nil {
+			kr.onError(TaskStateDead, err)
+			return
+		}
+
+		t := time.NewTimer(common.DefaultConnectWait / 2)
+		select {
+		case kr.chDumpEntry <- dumpData:
+			if err := kr.natsConn.Publish(m.Reply, nil); err != nil {
+				kr.onError(TaskStateDead, err)
+				return
+			}
+			kr.logger.Debug("ack a full msg")
+		case <-t.C:
+			kr.fullWg.Done()
+			kr.logger.Debug("discard a full msg")
+		}
+		t.Stop()
 	})
 	if err != nil {
 		return err
@@ -321,16 +378,16 @@ func (kr *KafkaRunner) initiateStreaming() error {
 			return
 		}
 
-		kr.fullMtx.Wait()
+		kr.fullWg.Wait()
 
-		kr.kafkaConfig.BinlogFile = dumpData.LogFile
-		kr.kafkaConfig.BinlogPos = dumpData.LogPos
 		kr.gtidSet, err = common.DtleParseMysqlGTIDSet(dumpData.Gtid)
 		if err != nil {
 			kr.onError(TaskStateDead, errors.Wrap(err, "DtleParseMysqlGTIDSet"))
 			return
 		}
 		kr.kafkaConfig.Gtid = dumpData.Gtid
+		kr.kafkaConfig.BinlogFile = dumpData.LogFile
+		kr.kafkaConfig.BinlogPos = dumpData.LogPos
 
 		if err := kr.natsConn.Publish(m.Reply, nil); err != nil {
 			kr.onError(TaskStateDead, err)
@@ -341,46 +398,6 @@ func (kr *KafkaRunner) initiateStreaming() error {
 	if err != nil {
 		return err
 	}
-
-	kr.logger.Info("starting incremental replication.", "gtid", kr.kafkaConfig.Gtid)
-
-	bigEntries := &binlog.BinlogEntries{}
-	go func() {
-		for !kr.shutdown {
-			var binlogEntries *binlog.BinlogEntries
-			select {
-			case binlogEntries = <-kr.chBinlogEntries:
-			case <-kr.shutdownCh:
-				return
-			}
-
-			if binlogEntries.BigTx {
-				if binlogEntries.TxNum == 1 {
-					bigEntries = binlogEntries
-				} else {
-					bigEntries.Entries[0].Events = append(bigEntries.Entries[0].Events, binlogEntries.Entries[0].Events...)
-					bigEntries.TxNum = binlogEntries.TxNum
-					binlogEntries.Entries = nil
-				}
-				if binlogEntries.TxNum == binlogEntries.TxLen {
-					binlogEntries = bigEntries
-					bigEntries.Entries = nil
-				}
-			}
-
-			for _, binlogEntry := range binlogEntries.Entries {
-				if binlogEntries.BigTx && binlogEntries.TxNum < binlogEntries.TxLen {
-					continue
-				}
-				err = kr.kafkaTransformDMLEventQuery(binlogEntry)
-				if err != nil {
-					kr.onError(TaskStateDead, errors.Wrap(err, "kafkaTransformDMLEventQuery"))
-					return
-				}
-				kr.logger.Debug("kafka: after kafkaTransformDMLEventQuery")
-			}
-		}
-	}()
 
 	_, err = kr.natsConn.Subscribe(fmt.Sprintf("%s_incr_hete", kr.subject), func(m *gonats.Msg) {
 		kr.logger.Debug("recv a incr_hete msg")
@@ -395,7 +412,7 @@ func (kr *KafkaRunner) initiateStreaming() error {
 			kr.onError(TaskStateDead, err)
 			return
 		}
-		t := time.NewTimer(common.DefaultConnectWaitSecond / 2 * time.Second)
+		t := time.NewTimer(common.DefaultConnectWait / 2)
 		select {
 		case kr.chBinlogEntries <-&binlogEntries:
 			if err := kr.natsConn.Publish(m.Reply, nil); err != nil {
