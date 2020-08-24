@@ -1521,13 +1521,15 @@ func (e *Extractor) onError(state int, err error) {
 
 // Shutdown is used to tear down the extractor
 func (e *Extractor) Shutdown() error {
-	e.logger.Debug("*** Extractor.Shutdown")
+	e.logger.Debug("extractor shutdown")
 	e.shutdownLock.Lock()
 	defer e.shutdownLock.Unlock()
 
 	if e.shutdown {
 		return nil
 	}
+	e.logger.Info("extractor shutdown")
+
 	e.shutdown = true
 	close(e.shutdownCh)
 

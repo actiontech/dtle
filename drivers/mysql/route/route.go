@@ -326,7 +326,7 @@ func convertJob(oldJob *Job) (*api.Job, error) {
 		taskGroup := api.NewTaskGroup(oldTask.Type, 1)
 		newTask := api.NewTask(oldTask.Type, g.PluginName)
 
-		logger.Debug("*** task config", "config", oldTask.Config)
+		logger.Debug("task config", "config", oldTask.Config)
 
 		switch strings.ToUpper(oldTask.Driver) {
 		case "MYSQL", "":

@@ -1231,7 +1231,7 @@ func (b *BinlogReader) genRegexMap() {
 }
 
 func (b *BinlogReader) Close() error {
-	b.logger.Debug("*** BinlogReader.Close")
+	b.logger.Debug("BinlogReader.Close")
 	b.shutdownLock.Lock()
 	defer b.shutdownLock.Unlock()
 
