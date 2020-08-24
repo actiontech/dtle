@@ -172,10 +172,26 @@ func NewApplier(
 
 func (a *Applier) updateGtidLoop() {
 	updateGtidInterval := 15 * time.Second
+	t0 := time.NewTicker(2 * time.Second)
+	t := time.NewTicker(updateGtidInterval)
+
+	var file string
+	var pos  int64
+
+	doUpdate := func() {
+		a.mysqlContext.Gtid = a.gtidSet.String()
+		if file != "" {
+			if a.mysqlContext.BinlogFile != file {
+				a.mysqlContext.BinlogFile = file
+				a.publishProgress()
+			}
+			a.mysqlContext.BinlogPos = pos
+
+		}
+	}
 
 	updated := false
 	for !a.shutdown {
-		t := time.NewTimer(updateGtidInterval)
 		select {
 		case <-a.shutdownCh:
 			return
@@ -183,11 +199,10 @@ func (a *Applier) updateGtidLoop() {
 			if updated {
 				updated = false
 
-				gtid := a.gtidSet.String()
-				a.mysqlContext.Gtid = gtid
+				doUpdate()
 
-				a.logger.Debug("SaveGtidForJob", "job", a.subject, "gtid", gtid)
-				err := a.storeManager.SaveGtidForJob(a.subject, gtid)
+				a.logger.Debug("SaveGtidForJob", "job", a.subject, "gtid", a.mysqlContext.Gtid)
+				err := a.storeManager.SaveGtidForJob(a.subject, a.mysqlContext.Gtid)
 				if err != nil {
 					a.onError(TaskStateDead, errors.Wrap(err, "SaveGtidForJob"))
 					return
@@ -199,17 +214,18 @@ func (a *Applier) updateGtidLoop() {
 					a.onError(TaskStateDead, errors.Wrap(err, "SaveBinlogFilePosForJob"))
 					return
 				}
-
-				t.Reset(updateGtidInterval)
+			}
+		case <-t0.C:
+			if updated {
+				// skip if just updated by t.C
+				// but do not set to false here.
+				doUpdate()
 			}
 		case coord := <-a.gtidCh:
 			updated = true
 			common.UpdateGtidSet(a.gtidSet, coord.GetSid(), coord.SID, coord.GNO)
-			if a.mysqlContext.BinlogFile != coord.LogFile {
-				a.mysqlContext.BinlogFile = coord.LogFile
-				a.publishProgress()
-			}
-			a.mysqlContext.BinlogPos = coord.LogPos
+			file = coord.LogFile
+			pos = coord.LogPos
 		}
 	}
 }
