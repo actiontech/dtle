@@ -267,8 +267,6 @@ func (kr *KafkaRunner) handleFullCopy() {
 			return
 		}
 
-		defer kr.fullWg.Done()
-
 		if dumpData.DbSQL != "" || len(dumpData.TbSQL) > 0 {
 			kr.logger.Debug("a sql dumpEntry")
 		} else if dumpData.TableSchema == "" && dumpData.TableName == "" {
@@ -295,6 +293,7 @@ func (kr *KafkaRunner) handleFullCopy() {
 				return
 			}
 		}
+		kr.fullWg.Done()
 	}
 }
 func (kr *KafkaRunner) handleIncr() {
