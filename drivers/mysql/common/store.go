@@ -90,6 +90,13 @@ func (sm *StoreManager) WatchAndPutNats(jobName string, natsAddr string, stopCh 
 	onErrorF func(error)) {
 
 	natsKey := fmt.Sprintf("dtle/%v/NatsAddr", jobName)
+
+	err := sm.consulStore.Put(natsKey, []byte(natsAddr), nil)
+	if err != nil {
+		onErrorF(err)
+		return
+	}
+
 	natsCh, err := sm.consulStore.Watch(natsKey, stopCh)
 	if err != nil {
 		onErrorF(err)
