@@ -112,10 +112,6 @@ type KafkaConfig struct {
 	Brokers   []string
 	Topic     string
 	Converter string
-	NatsAddr  string
-	Gtid      string // TODO remove?
-	BinlogFile string
-	BinlogPos  int64
 	TimeZone  string
 }
 

@@ -102,9 +102,8 @@ func (h *taskHandle) run(taskConfig *config.DtleTaskConfig, d *Driver) {
 	case "dst", "dest", "destination":
 		if taskConfig.KafkaConfig != nil {
 			d.logger.Debug("found kafka", "KafkaConfig", taskConfig.KafkaConfig)
-			taskConfig.KafkaConfig.NatsAddr = d.config.NatsAdvertise
 			h.runner = kafka.NewKafkaRunner(ctx, taskConfig.KafkaConfig, d.logger.Named("kafka"),
-				d.storeManager, h.waitCh)
+				d.storeManager, d.config.NatsAdvertise, h.waitCh)
 			go h.runner.Run()
 		} else {
 			h.runner, err = mysql.NewApplier(ctx, driverConfig, d.logger.Named("applier"), d.storeManager,

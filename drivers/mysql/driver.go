@@ -119,6 +119,8 @@ var (
 			"Brokers": hclspec.NewAttr("Brokers", "list(string)", true),
 			"Converter": hclspec.NewDefault(hclspec.NewAttr("Converter", "string", false),
 				hclspec.NewLiteral(`"json"`)),
+			"TimeZone": hclspec.NewDefault(hclspec.NewAttr("TimeZone", "string", false),
+				hclspec.NewLiteral(`"UTC"`)),
 		})),
 	})
 

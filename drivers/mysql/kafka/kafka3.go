@@ -54,33 +54,36 @@ type KafkaRunner struct {
 
 	kafkaConfig *config.KafkaConfig
 	kafkaMgr    *KafkaManager
+	natsAddr string
 
 	storeManager *common.StoreManager
 
 	tables map[string](map[string]*KafkaTableItem)
 
 	gtidSet *gomysql.MysqlGTIDSet
+	Gtid      string // TODO remove?
+	BinlogFile string
+	BinlogPos  int64
 
 	chBinlogEntries chan *binlog.BinlogEntries
 	chDumpEntry     chan *common.DumpEntry
 
-	lastSavedGtid   string
+	lastSavedGtid string
 
 	// _full_complete must be ack-ed after all full entries has been executed
 	// (not just received). Since the applier ack _full before execution, the extractor
 	// might send _full_complete before the entry has been executed.
-	fullWg sync.WaitGroup
+	fullWg   sync.WaitGroup
 }
 
 func NewKafkaRunner(execCtx *common.ExecContext, cfg *config.KafkaConfig, logger hclog.Logger,
-	storeManager *common.StoreManager, waitCh chan *drivers.ExitResult) *KafkaRunner {
-	/*	entry := logger.WithFields(logrus.Fields{
-		"job": execCtx.Subject,
-	})*/
+	storeManager *common.StoreManager, natsAddr string, waitCh chan *drivers.ExitResult) *KafkaRunner {
+
 	return &KafkaRunner{
 		subject:      execCtx.Subject,
 		kafkaConfig:  cfg,
 		logger:       logger,
+		natsAddr:     natsAddr,
 		waitCh:       waitCh,
 		shutdownCh:   make(chan struct{}),
 		tables:       make(map[string](map[string]*KafkaTableItem)),
@@ -92,25 +95,25 @@ func NewKafkaRunner(execCtx *common.ExecContext, cfg *config.KafkaConfig, logger
 }
 
 func (kr *KafkaRunner) updateGtidString() {
-	kr.kafkaConfig.Gtid = kr.gtidSet.String()
-	kr.logger.Debug("kafka. updateGtidString", "gtid", kr.kafkaConfig.Gtid)
+	kr.Gtid = kr.gtidSet.String()
+	kr.logger.Debug("kafka. updateGtidString", "gtid", kr.Gtid)
 }
 func (kr *KafkaRunner) updateGtidLoop() {
 	updateGtidInterval := 15 * time.Second
 	for !kr.shutdown {
 		time.Sleep(updateGtidInterval)
-		if kr.kafkaConfig.Gtid != kr.lastSavedGtid {
+		if kr.Gtid != kr.lastSavedGtid {
 			// TODO thread safety.
-			kr.logger.Debug("SaveGtidForJob", "job", kr.subject, "gtid", kr.kafkaConfig.Gtid)
-			err := kr.storeManager.SaveGtidForJob(kr.subject, kr.kafkaConfig.Gtid)
+			kr.logger.Debug("SaveGtidForJob", "job", kr.subject, "gtid", kr.Gtid)
+			err := kr.storeManager.SaveGtidForJob(kr.subject, kr.Gtid)
 			if err != nil {
 				kr.onError(TaskStateDead, errors.Wrap(err, "SaveGtidForJob"))
 				return
 			}
-			kr.lastSavedGtid = kr.kafkaConfig.Gtid
+			kr.lastSavedGtid = kr.Gtid
 
 			err = kr.storeManager.SaveBinlogFilePosForJob(kr.subject,
-				kr.kafkaConfig.BinlogFile, int(kr.kafkaConfig.BinlogPos))
+				kr.BinlogFile, int(kr.BinlogPos))
 			if err != nil {
 				kr.onError(TaskStateDead, errors.Wrap(err, "SaveBinlogFilePosForJob"))
 				return
@@ -138,13 +141,12 @@ func (kr *KafkaRunner) Stats() (*common.TaskStatistics, error) {
 	return taskResUsage, nil
 }
 func (kr *KafkaRunner) initNatSubClient() (err error) {
-	natsAddr := fmt.Sprintf("nats://%s", kr.kafkaConfig.NatsAddr)
-	sc, err := gonats.Connect(natsAddr)
+	sc, err := gonats.Connect(kr.natsAddr)
 	if err != nil {
-		kr.logger.Error("Can't connect nats server.", "err", err, "natsAddr", natsAddr)
+		kr.logger.Error("Can't connect nats server.", "err", err, "natsAddr", kr.natsAddr)
 		return err
 	}
-	kr.logger.Debug("kafka: Connect nats server", "natsAddr", natsAddr)
+	kr.logger.Debug("kafka: Connect nats server", "natsAddr", kr.natsAddr)
 
 	kr.natsConn = sc
 	return nil
@@ -154,7 +156,7 @@ func (kr *KafkaRunner) Run() {
 	var err error
 
 	kr.logger.Info("go WatchAndPutNats")
-	go kr.storeManager.WatchAndPutNats(kr.subject, kr.kafkaConfig.NatsAddr, kr.shutdownCh, func(err error) {
+	go kr.storeManager.WatchAndPutNats(kr.subject, kr.natsAddr, kr.shutdownCh, func(err error) {
 		kr.onError(TaskStateDead, errors.Wrap(err, "WatchAndPutNats"))
 	})
 
@@ -171,7 +173,7 @@ func (kr *KafkaRunner) Run() {
 				kr.onError(TaskStateDead, errors.Wrap(err, "DtleParseMysqlGTIDSet"))
 				return
 			}
-			kr.kafkaConfig.Gtid = gtid
+			kr.Gtid = gtid
 		}
 
 		pos, err := kr.storeManager.GetBinlogFilePosForJob(kr.subject)
@@ -180,8 +182,8 @@ func (kr *KafkaRunner) Run() {
 			return
 		}
 		if pos.Name != "" {
-			kr.kafkaConfig.BinlogFile = pos.Name
-			kr.kafkaConfig.BinlogPos = int64(pos.Pos)
+			kr.BinlogFile = pos.Name
+			kr.BinlogPos = int64(pos.Pos)
 		}
 	}
 
@@ -384,9 +386,9 @@ func (kr *KafkaRunner) initiateStreaming() error {
 			kr.onError(TaskStateDead, errors.Wrap(err, "DtleParseMysqlGTIDSet"))
 			return
 		}
-		kr.kafkaConfig.Gtid = dumpData.Gtid
-		kr.kafkaConfig.BinlogFile = dumpData.LogFile
-		kr.kafkaConfig.BinlogPos = dumpData.LogPos
+		kr.Gtid = dumpData.Gtid
+		kr.BinlogFile = dumpData.LogFile
+		kr.BinlogPos = dumpData.LogPos
 
 		if err := kr.natsConn.Publish(m.Reply, nil); err != nil {
 			kr.onError(TaskStateDead, err)
@@ -882,8 +884,8 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry)
 		}
 	}
 
-	kr.kafkaConfig.BinlogFile = dmlEvent.Coordinates.LogFile
-	kr.kafkaConfig.BinlogPos = dmlEvent.Coordinates.LogPos
+	kr.BinlogFile = dmlEvent.Coordinates.LogFile
+	kr.BinlogPos = dmlEvent.Coordinates.LogPos
 
 	common.UpdateGtidSet(kr.gtidSet, txSid, dmlEvent.Coordinates.SID, dmlEvent.Coordinates.GNO)
 	kr.updateGtidString()
