@@ -1282,25 +1282,20 @@ func (a *Applier) onError(state int, err error) {
 		return
 	}
 
-	pe := common.PassError{
-		Gtid: a.mysqlContext.Gtid,
-		Err:  err.Error(),
-	}
-
-	peBs, _ := common.GobEncode(pe)
+	bs := []byte(err.Error())
 
 	switch state {
 	case TaskStateComplete:
 		a.logger.Info("Done migrating")
 	case TaskStateRestart:
 		if a.natsConn != nil {
-			if err := a.natsConn.Publish(fmt.Sprintf("%s_restart", a.subject), peBs); err != nil {
+			if err := a.natsConn.Publish(fmt.Sprintf("%s_restart", a.subject), bs); err != nil {
 				a.logger.Error("Trigger restart extractor", "err", err)
 			}
 		}
 	default:
 		if a.natsConn != nil {
-			if err := a.natsConn.Publish(fmt.Sprintf("%s_error", a.subject), peBs); err != nil {
+			if err := a.natsConn.Publish(fmt.Sprintf("%s_error", a.subject), bs); err != nil {
 				a.logger.Error("Trigger extractor shutdown", "err", err)
 			}
 		}

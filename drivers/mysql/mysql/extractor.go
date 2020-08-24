@@ -586,31 +586,14 @@ func (e *Extractor) initNatsPubClient() (err error) {
 	e.natsConn = sc
 
 	_, err = e.natsConn.Subscribe(fmt.Sprintf("%s_restart", e.subject), func(m *gonats.Msg) {
-		pe := &common.PassError{
-			Gtid: "",
-			Err:  "unknown",
-		}
-		err := common.GobDecode(m.Data, pe)
-		if err == nil {
-			e.mysqlContext.Gtid = pe.Gtid
-		}
-		e.onError(TaskStateRestart, fmt.Errorf("applier restart: %v", pe.Err))
+		e.onError(TaskStateRestart, fmt.Errorf("applier restart: %v", string(m.Data)))
 	})
 	if err != nil {
 		e.onError(TaskStateDead, errors.Wrap(err, "Subscribe restart"))
 		return
 	}
-
 	_, err = e.natsConn.Subscribe(fmt.Sprintf("%s_error", e.subject), func(m *gonats.Msg) {
-		pe := &common.PassError{
-			Gtid: "",
-			Err:  "unknown",
-		}
-		err := common.GobDecode(m.Data, pe)
-		if err == nil {
-			e.mysqlContext.Gtid = pe.Gtid
-		}
-		e.onError(TaskStateDead, fmt.Errorf("applier error: %v", pe.Err))
+		e.onError(TaskStateDead, fmt.Errorf("applier error: %v", string(m.Data)))
 	})
 	if err != nil {
 		e.onError(TaskStateDead, errors.Wrap(err, "Subscribe error"))

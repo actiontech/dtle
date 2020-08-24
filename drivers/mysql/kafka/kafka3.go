@@ -438,24 +438,20 @@ func (kr *KafkaRunner) onError(state int, err error) {
 		return
 	}
 
-	pe := common.PassError{
-		Gtid: kr.kafkaConfig.Gtid,
-		Err:  err.Error(),
-	}
-	peBs, _ := common.GobEncode(pe)
+	bs := []byte(err.Error())
 
 	switch state {
 	case TaskStateComplete:
 		kr.logger.Info("Done migrating")
 	case TaskStateRestart:
 		if kr.natsConn != nil {
-			if err := kr.natsConn.Publish(fmt.Sprintf("%s_restart", kr.subject), peBs); err != nil {
+			if err := kr.natsConn.Publish(fmt.Sprintf("%s_restart", kr.subject), bs); err != nil {
 				kr.logger.Error("Trigger restart", "err", err)
 			}
 		}
 	default:
 		if kr.natsConn != nil {
-			if err := kr.natsConn.Publish(fmt.Sprintf("%s_error", kr.subject), peBs); err != nil {
+			if err := kr.natsConn.Publish(fmt.Sprintf("%s_error", kr.subject), bs); err != nil {
 				kr.logger.Error("Trigger shutdown", "err", err)
 			}
 		}

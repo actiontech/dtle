@@ -89,11 +89,6 @@ func (d *DumpEntry) IncrementCounter() {
 	d.RowsCount++
 }
 
-type PassError struct {
-	Gtid string
-	Err  string
-}
-
 func DtleParseMysqlGTIDSet(gtidSetStr string) (*mysql.MysqlGTIDSet, error) {
 	set0, err := mysql.ParseMysqlGTIDSet(gtidSetStr)
 	if err != nil {
