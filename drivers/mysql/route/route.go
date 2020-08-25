@@ -331,13 +331,6 @@ func convertJob(oldJob *Job) (*api.Job, error) {
 		switch strings.ToUpper(oldTask.Driver) {
 		case "MYSQL", "":
 			newTask.Config = oldTask.Config
-			if oldTask.NodeID !="" {
-				newAff := api.NewAffinity("${node.unique.id}", "=", oldTask.NodeID,50)
-				newTask.Affinities = append(newTask.Affinities, newAff)
-			}else if oldTask.NodeName!=""{
-				newAff := api.NewAffinity("${node.unique.name}", "=", oldTask.NodeName,50)
-				newTask.Affinities = append(newTask.Affinities, newAff)
-			}
 			delete(newTask.Config, "BytesLimit")
 			delete(newTask.Config, "NatsAddr")
 			delete(newTask.Config, "MsgsLimit")
@@ -354,6 +347,16 @@ func convertJob(oldJob *Job) (*api.Job, error) {
 			newTask.Config["KafkaConfig"] = oldTask.Config
 		default:
 			return nil, fmt.Errorf("unknown driver %v", oldTask.Driver)
+		}
+		if oldTask.NodeID != "" {
+			newAff := api.NewAffinity("${node.unique.id}", "=",
+				// https://www.nomadproject.io/docs/runtime/interpolation
+				// This page uses lower ID. I don't know if it is necessary.
+				strings.ToLower(oldTask.NodeID), 50)
+			newTask.Affinities = append(newTask.Affinities, newAff)
+		} else if oldTask.NodeName != "" {
+			newAff := api.NewAffinity("${node.unique.name}", "=", oldTask.NodeName, 50)
+			newTask.Affinities = append(newTask.Affinities, newAff)
 		}
 
 		taskGroup.Tasks = append(taskGroup.Tasks, newTask)
