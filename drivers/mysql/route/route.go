@@ -331,6 +331,13 @@ func convertJob(oldJob *Job) (*api.Job, error) {
 		switch strings.ToUpper(oldTask.Driver) {
 		case "MYSQL", "":
 			newTask.Config = oldTask.Config
+			if oldTask.NodeID !="" {
+				newAff := api.NewAffinity("${node.unique.id}", "=", oldTask.NodeID,50)
+				newTask.Affinities = append(newTask.Affinities, newAff)
+			}else if oldTask.NodeName!=""{
+				newAff := api.NewAffinity("${node.unique.name}", "=", oldTask.NodeName,50)
+				newTask.Affinities = append(newTask.Affinities, newAff)
+			}
 			delete(newTask.Config, "BytesLimit")
 			delete(newTask.Config, "NatsAddr")
 			delete(newTask.Config, "MsgsLimit")
