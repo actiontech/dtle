@@ -898,7 +898,7 @@ func (e *Extractor) StreamEvents() error {
 					return err
 				}
 				e.logger.Debug("publish.after", "gno", gno, "n", len(entries.Entries))
-
+				ctx = nil
 				entries.Entries = nil
 				entries.TxLen = 0
 				entries.BigTx = false
