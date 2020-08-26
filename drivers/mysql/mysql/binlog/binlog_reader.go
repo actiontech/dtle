@@ -650,6 +650,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 							NotDML,
 							ddlTable,
 						)
+						event.Table = table
 						b.currentBinlogEntry.Events = append(b.currentBinlogEntry.Events, event)
 					}
 				}
