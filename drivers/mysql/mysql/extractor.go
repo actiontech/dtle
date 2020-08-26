@@ -288,16 +288,10 @@ func (e *Extractor) Run() {
 			e.onError(TaskStateDead, err)
 			return
 		}
-		dumpMsg, err := common.Encode(&DumpStatResult{
-			Gtid:       e.initialBinlogCoordinates.GtidSet,
-			LogFile:    e.initialBinlogCoordinates.LogFile,
-			LogPos:     e.initialBinlogCoordinates.LogPos,
-		})
+		err = e.sendFullComplete(ctx)
 		if err != nil {
-			e.onError(TaskStateDead, err)
-		}
-		if err := e.publish(ctx, fmt.Sprintf("%s_full_complete", e.subject), "", dumpMsg); err != nil {
-			e.onError(TaskStateDead, err)
+			e.onError(TaskStateDead, errors.Wrap(err, "sendFullComplete"))
+			return
 		}
 	} else { // no full copy
 		// Will not get consistent table meta-info for an incremental only job.
@@ -308,6 +302,11 @@ func (e *Extractor) Run() {
 		}
 		if err := e.setInitialBinlogCoordinates(); err != nil {
 			e.onError(TaskStateDead, err)
+			return
+		}
+		err = e.sendFullComplete(nil) // TODO
+		if err != nil {
+			e.onError(TaskStateDead, errors.Wrap(err, "sendFullComplete"))
 			return
 		}
 		e.gotCoordinateCh <- struct{}{}
@@ -1561,5 +1560,19 @@ func (e *Extractor) Shutdown() error {
 
 	//close(e.binlogChannel)
 	e.logger.Info("Shutting down")
+	return nil
+}
+func (e *Extractor) sendFullComplete(ctx context.Context) (err error) {
+	dumpMsg, err := common.Encode(&DumpStatResult{
+		Gtid:       e.initialBinlogCoordinates.GtidSet,
+		LogFile:    e.initialBinlogCoordinates.LogFile,
+		LogPos:     e.initialBinlogCoordinates.LogPos,
+	})
+	if err != nil {
+		return err
+	}
+	if err := e.publish(ctx, fmt.Sprintf("%s_full_complete", e.subject), "", dumpMsg); err != nil {
+		return err
+	}
 	return nil
 }
