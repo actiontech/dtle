@@ -178,54 +178,61 @@ func (a *Applier) updateGtidLoop() {
 	var file string
 	var pos  int64
 
+	updated := false
 	doUpdate := func() {
-		a.mysqlContext.Gtid = a.gtidSet.String()
-		if file != "" {
-			if a.mysqlContext.BinlogFile != file {
-				a.mysqlContext.BinlogFile = file
-				a.publishProgress()
+		if updated { // catch by reference
+			updated = false
+			a.mysqlContext.Gtid = a.gtidSet.String()
+			if file != "" {
+				if a.mysqlContext.BinlogFile != file {
+					a.mysqlContext.BinlogFile = file
+					a.publishProgress()
+				}
+				a.mysqlContext.BinlogPos = pos
 			}
-			a.mysqlContext.BinlogPos = pos
-
 		}
 	}
 
-	updated := false
+	needUpload := true
+	doUpload := func() {
+		if needUpload {
+			needUpload = false
+			a.logger.Debug("SaveGtidForJob", "job", a.subject, "gtid", a.mysqlContext.Gtid)
+			err := a.storeManager.SaveGtidForJob(a.subject, a.mysqlContext.Gtid)
+			if err != nil {
+				a.onError(TaskStateDead, errors.Wrap(err, "SaveGtidForJob"))
+				return
+			}
+
+			err = a.storeManager.SaveBinlogFilePosForJob(a.subject,
+				a.mysqlContext.BinlogFile, int(a.mysqlContext.BinlogPos))
+			if err != nil {
+				a.onError(TaskStateDead, errors.Wrap(err, "SaveBinlogFilePosForJob"))
+				return
+			}
+		}
+	}
 	for !a.shutdown {
 		select {
 		case <-a.shutdownCh:
 			return
 		case <-t.C: // this must be prior to gtidCh
-			if updated {
-				updated = false
-
-				doUpdate()
-
-				a.logger.Debug("SaveGtidForJob", "job", a.subject, "gtid", a.mysqlContext.Gtid)
-				err := a.storeManager.SaveGtidForJob(a.subject, a.mysqlContext.Gtid)
-				if err != nil {
-					a.onError(TaskStateDead, errors.Wrap(err, "SaveGtidForJob"))
-					return
-				}
-
-				err = a.storeManager.SaveBinlogFilePosForJob(a.subject,
-					a.mysqlContext.BinlogFile, int(a.mysqlContext.BinlogPos))
-				if err != nil {
-					a.onError(TaskStateDead, errors.Wrap(err, "SaveBinlogFilePosForJob"))
-					return
-				}
-			}
+			doUpdate()
+			doUpload()
 		case <-t0.C:
-			if updated {
-				// skip if just updated by t.C
-				// but do not set to false here.
-				doUpdate()
-			}
+			doUpdate()
 		case coord := <-a.gtidCh:
 			updated = true
-			common.UpdateGtidSet(a.gtidSet, coord.SID, coord.GNO)
-			file = coord.LogFile
-			pos = coord.LogPos
+			needUpload = true
+			if coord == nil {
+				// coord == nil is a flag for update/upload gtid
+				doUpdate()
+				doUpload()
+			} else {
+				common.UpdateGtidSet(a.gtidSet, coord.SID, coord.GNO)
+				file = coord.LogFile
+				pos = coord.LogPos
+			}
 		}
 	}
 }
@@ -608,6 +615,7 @@ func (a *Applier) subscribeNats() error {
 		a.mysqlContext.Gtid = dumpData.Gtid
 		a.mysqlContext.BinlogFile = dumpData.LogFile
 		a.mysqlContext.BinlogPos = dumpData.LogPos
+		a.gtidCh <- nil // coord == nil is a flag for update/upload gtid
 
 		a.mysqlContext.Stage = common.StageSlaveWaitingForWorkersToProcessQueue
 
