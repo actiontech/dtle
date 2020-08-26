@@ -11,6 +11,7 @@ func main() {
 	pid := os.Getpid()
 	plugins.Serve(func(logger hclog.Logger) interface{} {
 		loggerPid := logger.With("pid", pid)
+		loggerPid.Info("env", "GODEBUG", os.Getenv("GODEBUG"))
 		loggerPid.Warn("plugins.Serve Factory called.")
 		return dtle.NewDriver(loggerPid)
 	})

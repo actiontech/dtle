@@ -878,106 +878,104 @@ func (e *Extractor) StreamEvents() error {
 	var ctx context.Context
 	//tracer := opentracing.GlobalTracer()
 
-	{
-		go func() {
-			defer e.logger.Debug("StreamEvents goroutine exited")
-			entries := binlog.BinlogEntries{}
-			entriesSize := 0
-			sendEntries := func() error {
-				var gno int64 = 0
-				if len(entries.Entries) > 0 {
-					gno = entries.Entries[0].Coordinates.GNO
-				}
-
-				txMsg, err := common.Encode(entries)
-				if err != nil {
-					return err
-				}
-				e.logger.Debug("publish.before", "gno", gno, "n", len(entries.Entries))
-				if err = e.publish(ctx, fmt.Sprintf("%s_incr_hete", e.subject), "", txMsg); err != nil {
-					return err
-				}
-				e.logger.Debug("publish.after", "gno", gno, "n", len(entries.Entries))
-				ctx = nil
-				entries.Entries = nil
-				entries.TxLen = 0
-				entries.BigTx = false
-				entries.TxNum = 0
-				entriesSize = 0
-
-				return nil
+	go func() {
+		defer e.logger.Debug("StreamEvents goroutine exited")
+		entries := binlog.BinlogEntries{}
+		entriesSize := 0
+		sendEntries := func() error {
+			var gno int64 = 0
+			if len(entries.Entries) > 0 {
+				gno = entries.Entries[0].Coordinates.GNO
 			}
 
-			keepGoing := true
-
-			groupTimeoutDuration := time.Duration(e.mysqlContext.GroupTimeout) * time.Millisecond
-			timer := time.NewTimer(groupTimeoutDuration)
-			defer timer.Stop()
-
-			for keepGoing && !e.shutdown {
-				var err error
-				select {
-				case binlogEntry := <-e.dataChannel:
-					spanContext := binlogEntry.SpanContext
-					span := opentracing.GlobalTracer().StartSpan("nat send :begin  send binlogEntry from src kafka to desc kafka", opentracing.ChildOf(spanContext))
-					span.SetTag("time", time.Now().Unix())
-					ctx = opentracing.ContextWithSpan(ctx, span)
-					//span.SetTag("timetag", time.Now().Unix())
-					binlogEntry.SpanContext = nil
-					entries.Entries = append(entries.Entries, binlogEntry)
-					entriesSize += binlogEntry.OriginalSize
-					if entriesSize >= e.mysqlContext.GroupMaxSize ||
-						int64(len(entries.Entries)) == e.mysqlContext.ReplChanBufferSize {
-						e.logger.Debug("incr. send by GroupLimit.", "entriesSize", entriesSize,
-							"groupMaxSize", e.mysqlContext.GroupMaxSize, "Entries.len", len(entries.Entries))
-						if entriesSize > common.DefaultBigTX {
-							bigEntrises := splitEntries(entries, entriesSize)
-							entries.Entries = nil
-							e.logger.Debug("incr. big tx section", "n", len(bigEntrises))
-							for i, entity := range bigEntrises {
-								entries = entity
-								entriesSize = common.DefaultBigTX
-								e.logger.Debug("incr. send big tx fragment", "i", i)
-								err = sendEntries()
-							}
-						} else {
-							err = sendEntries()
-						}
-						if !timer.Stop() {
-							<-timer.C
-						}
-						timer.Reset(groupTimeoutDuration)
-					}
-					span.Finish()
-				case <-timer.C:
-					nEntries := len(entries.Entries)
-					if entriesSize > common.DefaultBigTX {
-						err = errors.Errorf("big tx not sent by timeout. please change GroupTimeout.")
-					} else {
-						if nEntries > 0 {
-							e.logger.Debug("incr. send by timeout.", "entriesSize", entriesSize,
-								"timeout", e.mysqlContext.GroupTimeout)
-							err = sendEntries()
-						}
-						timer.Reset(groupTimeoutDuration)
-					}
-				}
-				if err != nil {
-					e.onError(TaskStateDead, err)
-					keepGoing = false
-				} else {
-					e.mysqlContext.Stage = common.StageSendingBinlogEventToSlave
-					atomic.AddInt64(&e.mysqlContext.DeltaEstimate, 1)
-				}
-			} // end for keepGoing && !e.shutdown
-		}()
-		// The next should block and execute forever, unless there's a serious error
-		if err := e.binlogReader.DataStreamEvents(e.dataChannel); err != nil {
-			if e.shutdown {
-				return nil
+			txMsg, err := common.Encode(entries)
+			if err != nil {
+				return err
 			}
-			return fmt.Errorf("StreamEvents encountered unexpected error: %+v", err)
+			e.logger.Debug("publish.before", "gno", gno, "n", len(entries.Entries))
+			if err = e.publish(ctx, fmt.Sprintf("%s_incr_hete", e.subject), "", txMsg); err != nil {
+				return err
+			}
+			e.logger.Debug("publish.after", "gno", gno, "n", len(entries.Entries))
+			ctx = nil
+			entries.Entries = nil
+			entries.TxLen = 0
+			entries.BigTx = false
+			entries.TxNum = 0
+			entriesSize = 0
+
+			return nil
 		}
+
+		keepGoing := true
+
+		groupTimeoutDuration := time.Duration(e.mysqlContext.GroupTimeout) * time.Millisecond
+		timer := time.NewTimer(groupTimeoutDuration)
+		defer timer.Stop()
+
+		for keepGoing && !e.shutdown {
+			var err error
+			select {
+			case binlogEntry := <-e.dataChannel:
+				spanContext := binlogEntry.SpanContext
+				span := opentracing.GlobalTracer().StartSpan("nat send :begin  send binlogEntry from src kafka to desc kafka", opentracing.ChildOf(spanContext))
+				span.SetTag("time", time.Now().Unix())
+				ctx = opentracing.ContextWithSpan(ctx, span)
+				//span.SetTag("timetag", time.Now().Unix())
+				binlogEntry.SpanContext = nil
+				entries.Entries = append(entries.Entries, binlogEntry)
+				entriesSize += binlogEntry.OriginalSize
+				if entriesSize >= e.mysqlContext.GroupMaxSize ||
+					int64(len(entries.Entries)) == e.mysqlContext.ReplChanBufferSize {
+					e.logger.Debug("incr. send by GroupLimit.", "entriesSize", entriesSize,
+						"groupMaxSize", e.mysqlContext.GroupMaxSize, "Entries.len", len(entries.Entries))
+					if entriesSize > common.DefaultBigTX {
+						bigEntrises := splitEntries(entries, entriesSize)
+						entries.Entries = nil
+						e.logger.Debug("incr. big tx section", "n", len(bigEntrises))
+						for i, entity := range bigEntrises {
+							entries = entity
+							entriesSize = common.DefaultBigTX
+							e.logger.Debug("incr. send big tx fragment", "i", i)
+							err = sendEntries()
+						}
+					} else {
+						err = sendEntries()
+					}
+					if !timer.Stop() {
+						<-timer.C
+					}
+					timer.Reset(groupTimeoutDuration)
+				}
+				span.Finish()
+			case <-timer.C:
+				nEntries := len(entries.Entries)
+				if entriesSize > common.DefaultBigTX {
+					err = errors.Errorf("big tx not sent by timeout. please change GroupTimeout.")
+				} else {
+					if nEntries > 0 {
+						e.logger.Debug("incr. send by timeout.", "entriesSize", entriesSize,
+							"timeout", e.mysqlContext.GroupTimeout)
+						err = sendEntries()
+					}
+					timer.Reset(groupTimeoutDuration)
+				}
+			}
+			if err != nil {
+				e.onError(TaskStateDead, err)
+				keepGoing = false
+			} else {
+				e.mysqlContext.Stage = common.StageSendingBinlogEventToSlave
+				atomic.AddInt64(&e.mysqlContext.DeltaEstimate, 1)
+			}
+		} // end for keepGoing && !e.shutdown
+	}()
+	// The next should block and execute forever, unless there's a serious error
+	if err := e.binlogReader.DataStreamEvents(e.dataChannel); err != nil {
+		if e.shutdown {
+			return nil
+		}
+		return fmt.Errorf("StreamEvents encountered unexpected error: %+v", err)
 	}
 	return nil
 }
