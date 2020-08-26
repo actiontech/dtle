@@ -887,7 +887,7 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry)
 	kr.BinlogFile = dmlEvent.Coordinates.LogFile
 	kr.BinlogPos = dmlEvent.Coordinates.LogPos
 
-	common.UpdateGtidSet(kr.gtidSet, txSid, dmlEvent.Coordinates.SID, dmlEvent.Coordinates.GNO)
+	common.UpdateGtidSet(kr.gtidSet, dmlEvent.Coordinates.SID, dmlEvent.Coordinates.GNO)
 	kr.updateGtidString()
 
 	return nil

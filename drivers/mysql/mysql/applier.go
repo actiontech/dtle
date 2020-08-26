@@ -223,7 +223,7 @@ func (a *Applier) updateGtidLoop() {
 			}
 		case coord := <-a.gtidCh:
 			updated = true
-			common.UpdateGtidSet(a.gtidSet, coord.GetSid(), coord.SID, coord.GNO)
+			common.UpdateGtidSet(a.gtidSet, coord.SID, coord.GNO)
 			file = coord.LogFile
 			pos = coord.LogPos
 		}
