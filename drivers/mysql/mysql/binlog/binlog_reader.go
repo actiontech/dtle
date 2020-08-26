@@ -11,9 +11,11 @@ import (
 	gosql "database/sql"
 	"github.com/actiontech/dtle/drivers/mysql/common"
 	"github.com/actiontech/dtle/drivers/mysql/config"
+	"github.com/shirou/gopsutil/mem"
 	"os"
 	"path"
 	"path/filepath"
+	"runtime/debug"
 	"time"
 
 	"github.com/cznic/mathutil"
@@ -876,6 +878,40 @@ func loadMapping(sql, beforeName, afterName, mappingType, currentSchema string) 
 
 // StreamEvents
 func (b *BinlogReader) DataStreamEvents(entriesChannel chan<- *BinlogEntry) error {
+	lowMemory := false // TODO atomicity?
+	go func() {
+		t := time.NewTicker(1 * time.Second)
+		i := 0
+		for !b.shutdown {
+			<-t.C
+			memory, err := mem.VirtualMemory()
+			if err != nil {
+				lowMemory = false
+			} else {
+				if float64(memory.Available) / float64(memory.Total) < 0.2 {
+					if i % 30 == 0 { // suppress log
+						b.logger.Warn("memory is less than 20%. pause parsing binlog for 1s",
+							"available", memory.Available, "total", memory.Total)
+					} else {
+						b.logger.Debug("memory is less than 20% pause parsing binlog for 1s",
+							"available", memory.Available, "total", memory.Total)
+					}
+					lowMemory = true
+					debug.FreeOSMemory()
+					i += 1
+				} else {
+					lowMemory = false
+					if i != 0 {
+						b.logger.Info("memory is greater than 20%. continue parsing binlog",
+							"available", memory.Available, "total", memory.Total)
+					}
+					i = 0
+				}
+			}
+		}
+		t.Stop()
+	}()
+
 	for {
 		// Check for shutdown
 		if b.shutdown {
@@ -888,6 +924,13 @@ func (b *BinlogReader) DataStreamEvents(entriesChannel chan<- *BinlogEntry) erro
 			b.logger.Error("error GetEvent.", "err", err)
 			return err
 		}
+		for lowMemory {
+			time.Sleep(900 * time.Millisecond)
+		}
+		if b.shutdown {
+			return nil
+		}
+
 		spanContext := ev.SpanContest
 		span := trace.StartSpan("DataStreamEvents()  get binlogEvent  from mysql-go ", opentracing.FollowsFrom(spanContext))
 		span.SetTag("time", time.Now().Unix())
