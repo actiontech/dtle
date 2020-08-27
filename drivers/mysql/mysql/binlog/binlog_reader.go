@@ -641,9 +641,9 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 						b.logger.Debug("skipped a ddl event.", "query", query)
 					} else {
 						ddlTable := ddlInfo.tables[i]
-						if ddlTable.Schema == "" || ddlTable.Table == "" {
+						if realSchema == "" || ddlTable.Table == "" {
 							b.logger.Info("NewQueryEventAffectTable. found empty schema or table.",
-								"schema", ddlTable.Schema, "table", ddlTable.Table, "query", sql)
+								"schema", realSchema, "table", ddlTable.Table, "query", sql)
 						}
 
 						event := NewQueryEventAffectTable(

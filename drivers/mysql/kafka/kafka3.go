@@ -225,9 +225,9 @@ func (kr *KafkaRunner) getOrSetTable(schemaName string, tableName string,
 			kr.logger.Debug("reuse table info", "schemaName", schemaName, "tableName", tableName)
 			return b, nil
 		} else {
-			kr.logger.Error("kafka: unknown table structure",
-				"schemaName", schemaName, "tableName", tableName)
-			return nil, fmt.Errorf("DTLE_BUG kafka: unknown table structure %v.%v", schemaName, tableName)
+			// e.g. `drop table if exists` does not have a table structure. It will be ignored.
+			kr.logger.Debug("nil table info", "schemaName", schemaName, "tableName", tableName)
+			return nil, nil
 		}
 	} else {
 		kr.logger.Debug("new table info", "schemaName", schemaName, "tableName", tableName)
@@ -625,10 +625,11 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry)
 
 	for i, _ := range dmlEvent.Events {
 		dataEvent := &dmlEvent.Events[i]
+		realSchema := common.StringElse(dataEvent.DatabaseName, dataEvent.CurrentSchema)
+
 		var tableItem *KafkaTableItem
 		if dataEvent.TableName != "" {
 			// this must be executed before skipping DDL
-			realSchema := common.StringElse(dataEvent.DatabaseName, dataEvent.CurrentSchema)
 			tableItem, err = kr.getOrSetTable(realSchema, dataEvent.TableName, dataEvent.Table)
 			if err != nil {
 				return err
@@ -644,7 +645,7 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry)
 		}
 
 		if tableItem == nil {
-			err = fmt.Errorf("DTLE_BUG: table meta is nil %v.%v", dataEvent.DatabaseName, dataEvent.TableName)
+			err = fmt.Errorf("DTLE_BUG: table meta is nil %v.%v", realSchema, dataEvent.TableName)
 			kr.logger.Error("table meta is nil", "err", err)
 			return err
 		}
