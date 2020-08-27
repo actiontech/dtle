@@ -1255,9 +1255,26 @@ func (e *Extractor) mysqlDump() error {
 	// First, get the DROP TABLE and CREATE TABLE statement (with keys and constraint definitions) for our tables ...
 	if !e.mysqlContext.SkipCreateDbTable {
 		e.logger.Info("generating DROP and CREATE statements to reflect current database schemas", "replicateDoDb", e.replicateDoDb)
-	}
-	for _, db := range e.replicateDoDb {
-		if len(db.Tables) > 0 {
+
+		for _, db := range e.replicateDoDb {
+			var dbSQL string
+			if strings.ToLower(db.TableSchema) != "mysql" {
+				if db.TableSchemaRename != "" {
+					dbSQL = fmt.Sprintf("CREATE DATABASE IF NOT EXISTS %s", mysqlconfig.EscapeName(db.TableSchemaRename))
+				} else {
+					dbSQL = fmt.Sprintf("CREATE DATABASE IF NOT EXISTS %s", mysqlconfig.EscapeName(db.TableSchema))
+				}
+
+			}
+			entry := &common.DumpEntry{
+				DbSQL:      dbSQL,
+			}
+			atomic.AddInt64(&e.mysqlContext.RowsEstimate, 1)
+			atomic.AddInt64(&e.TotalRowsCopied, 1)
+			if err := e.encodeDumpEntry(entry); err != nil {
+				e.onError(TaskStateRestart, err)
+			}
+
 			for _, tb := range db.Tables {
 				if tb.TableSchema != db.TableSchema {
 					continue
@@ -1267,41 +1284,29 @@ func (e *Extractor) mysqlDump() error {
 					return err
 				}
 				tb.Counter = total
-				var dbSQL string
 				var tbSQL []string
-				if !e.mysqlContext.SkipCreateDbTable {
-					var err error
-					if strings.ToLower(tb.TableSchema) != "mysql" {
-						if db.TableSchemaRename != "" {
-							dbSQL = fmt.Sprintf("CREATE DATABASE IF NOT EXISTS %s", mysqlconfig.EscapeName(tb.TableSchemaRename))
-						} else {
-							dbSQL = fmt.Sprintf("CREATE DATABASE IF NOT EXISTS %s", mysqlconfig.EscapeName(tb.TableSchema))
+				if strings.ToLower(tb.TableType) == "view" {
+					/*tbSQL, err = base.ShowCreateView(e.singletonDB, tb.TableSchema, tb.TableName, e.mysqlContext.DropTableIfExists)
+					if err != nil {
+						return err
+					}*/
+				} else if strings.ToLower(tb.TableSchema) != "mysql" {
+					tbSQL, err = base.ShowCreateTable(e.singletonDB, tb.TableSchema, tb.TableName, e.mysqlContext.DropTableIfExists, true)
+					for num, sql := range tbSQL {
+						if db.TableSchemaRename != "" && strings.Contains(sql, fmt.Sprintf("USE %s", mysqlconfig.EscapeName(tb.TableSchema))) {
+							tbSQL[num] = strings.Replace(sql, tb.TableSchema, db.TableSchemaRename, 1)
+						}
+						if tb.TableRename != "" && (strings.Contains(sql, fmt.Sprintf("DROP TABLE IF EXISTS %s", mysqlconfig.EscapeName(tb.TableName))) || strings.Contains(sql, "CREATE TABLE")) {
+							tbSQL[num] = strings.Replace(sql, mysqlconfig.EscapeName(tb.TableName), tb.TableRename, 1)
 						}
 					}
-					if strings.ToLower(tb.TableType) == "view" {
-						/*tbSQL, err = base.ShowCreateView(e.singletonDB, tb.TableSchema, tb.TableName, e.mysqlContext.DropTableIfExists)
-						if err != nil {
-							return err
-						}*/
-					} else if strings.ToLower(tb.TableSchema) != "mysql" {
-						tbSQL, err = base.ShowCreateTable(e.singletonDB, tb.TableSchema, tb.TableName, e.mysqlContext.DropTableIfExists, true)
-						for num, sql := range tbSQL {
-							if db.TableSchemaRename != "" && strings.Contains(sql, fmt.Sprintf("USE %s", mysqlconfig.EscapeName(tb.TableSchema))) {
-								tbSQL[num] = strings.Replace(sql, tb.TableSchema, db.TableSchemaRename, 1)
-							}
-							if tb.TableRename != "" && (strings.Contains(sql, fmt.Sprintf("DROP TABLE IF EXISTS %s", mysqlconfig.EscapeName(tb.TableName))) || strings.Contains(sql, "CREATE TABLE")) {
-								tbSQL[num] = strings.Replace(sql, mysqlconfig.EscapeName(tb.TableName), tb.TableRename, 1)
-							}
-						}
-						if err != nil {
-							return err
-						}
+					if err != nil {
+						return err
 					}
 				}
 				entry := &common.DumpEntry{
-					DbSQL:      dbSQL,
 					TbSQL:      tbSQL,
-					TotalCount: tb.Counter + 1,
+					TotalCount: tb.Counter,
 				}
 				atomic.AddInt64(&e.mysqlContext.RowsEstimate, 1)
 				atomic.AddInt64(&e.TotalRowsCopied, 1)
@@ -1310,27 +1315,6 @@ func (e *Extractor) mysqlDump() error {
 				}
 			}
 			e.tableCount += len(db.Tables)
-		} else {
-			var dbSQL string
-			if !e.mysqlContext.SkipCreateDbTable {
-				if strings.ToLower(db.TableSchema) != "mysql" {
-					if db.TableSchemaRename != "" {
-						dbSQL = fmt.Sprintf("CREATE DATABASE IF NOT EXISTS %s", mysqlconfig.EscapeName(db.TableSchemaRename))
-					} else {
-						dbSQL = fmt.Sprintf("CREATE DATABASE IF NOT EXISTS %s", mysqlconfig.EscapeName(db.TableSchema))
-					}
-
-				}
-			}
-			entry := &common.DumpEntry{
-				DbSQL:      dbSQL,
-				TotalCount: 1,
-			}
-			atomic.AddInt64(&e.mysqlContext.RowsEstimate, 1)
-			atomic.AddInt64(&e.TotalRowsCopied, 1)
-			if err := e.encodeDumpEntry(entry); err != nil {
-				e.onError(TaskStateRestart, err)
-			}
 		}
 	}
 	step++
