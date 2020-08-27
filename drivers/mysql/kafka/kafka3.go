@@ -628,7 +628,8 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry)
 		var tableItem *KafkaTableItem
 		if dataEvent.TableName != "" {
 			// this must be executed before skipping DDL
-			tableItem, err = kr.getOrSetTable(dataEvent.DatabaseName, dataEvent.TableName, dataEvent.Table)
+			realSchema := common.StringElse(dataEvent.DatabaseName, dataEvent.CurrentSchema)
+			tableItem, err = kr.getOrSetTable(realSchema, dataEvent.TableName, dataEvent.Table)
 			if err != nil {
 				return err
 			}
