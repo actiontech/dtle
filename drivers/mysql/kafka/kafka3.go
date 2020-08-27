@@ -28,6 +28,7 @@ import (
 	hclog "github.com/hashicorp/go-hclog"
 	gonats "github.com/nats-io/go-nats"
 	uuid "github.com/satori/go.uuid"
+	"github.com/pingcap/tidb/types"
 )
 
 const (
@@ -546,7 +547,11 @@ func (kr *KafkaRunner) kafkaTransformSnapshotData(
 				case mysqlconfig.BinaryColumnType:
 					value = base64.StdEncoding.EncodeToString([]byte(valueStr))
 				case mysqlconfig.BitColumnType:
-					value = base64.StdEncoding.EncodeToString([]byte(valueStr))
+					if columnList[i].ColumnType=="bit(1)"{
+						value,_ = strconv.ParseBool( base64.StdEncoding.EncodeToString([]byte(valueStr)))
+					}else{
+						value = base64.StdEncoding.EncodeToString([]byte(valueStr))
+					}
 				case mysqlconfig.BlobColumnType:
 					if strings.Contains(columnList[i].ColumnType, "text") {
 						value = valueStr
@@ -793,11 +798,20 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry)
 				}
 
 			case mysqlconfig.BitColumnType:
-				if beforeValue != nil {
-					beforeValue = getBitValue(colList[i].ColumnType, beforeValue.(int64))
-				}
-				if afterValue != nil {
-					afterValue = getBitValue(colList[i].ColumnType, afterValue.(int64))
+				if colList[i].ColumnType=="bit(1)" {
+					if beforeValue != nil {
+						beforeValue ,_= strconv.ParseBool(getBitValue(colList[i].ColumnType, beforeValue.(int64)))
+					}
+					if afterValue != nil {
+						afterValue,_ = strconv.ParseBool(getBitValue(colList[i].ColumnType, afterValue.(int64)))
+					}
+				}else {
+					if beforeValue != nil {
+						beforeValue = getBitValue(colList[i].ColumnType, beforeValue.(int64))
+					}
+					if afterValue != nil {
+						afterValue = getBitValue(colList[i].ColumnType, afterValue.(int64))
+					}
 				}
 			default:
 				// do nothing
@@ -955,7 +969,12 @@ func kafkaColumnListToColDefs(colList *mysqlconfig.ColumnList, timeZone string) 
 			field = NewSimpleSchemaWithDefaultField("", optional, fieldName, defaultValue)
 
 		case mysqlconfig.BitColumnType:
-			field = NewBitsField(optional, fieldName, cols[i].ColumnType[4:len(cols[i].ColumnType)-1], defaultValue)
+			if cols[i].ColumnType=="bit(1)"{
+				value,_ := strconv.ParseBool( defaultValue.(types.BinaryLiteral).ToString())
+				field = NewSimpleSchemaWithDefaultField(SCHEMA_TYPE_BOOLEAN, optional, fieldName, value)
+			}else{
+				field = NewBitsField(optional, fieldName, cols[i].ColumnType[4:len(cols[i].ColumnType)-1], defaultValue)
+			}
 		case mysqlconfig.BlobColumnType:
 			if strings.Contains(cols[i].ColumnType, "text") {
 				field = NewSimpleSchemaWithDefaultField(SCHEMA_TYPE_STRING, optional, fieldName, defaultValue)
