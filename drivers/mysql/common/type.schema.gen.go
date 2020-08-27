@@ -21,7 +21,6 @@ type DumpEntry struct {
 	TbSQL                    []string
 	ValuesX                  [][]*[]byte
 	TotalCount               int64
-	RowsCount                int64
 	Err                      string
 	Table                    []byte
 }
@@ -231,7 +230,7 @@ func (d *DumpEntry) Size() (s uint64) {
 		}
 		s += l
 	}
-	s += 16
+	s += 8
 	return
 }
 func (d *DumpEntry) Marshal(buf []byte) ([]byte, error) {
@@ -472,25 +471,6 @@ func (d *DumpEntry) Marshal(buf []byte) ([]byte, error) {
 
 	}
 	{
-
-		buf[i+0+8] = byte(d.RowsCount >> 0)
-
-		buf[i+1+8] = byte(d.RowsCount >> 8)
-
-		buf[i+2+8] = byte(d.RowsCount >> 16)
-
-		buf[i+3+8] = byte(d.RowsCount >> 24)
-
-		buf[i+4+8] = byte(d.RowsCount >> 32)
-
-		buf[i+5+8] = byte(d.RowsCount >> 40)
-
-		buf[i+6+8] = byte(d.RowsCount >> 48)
-
-		buf[i+7+8] = byte(d.RowsCount >> 56)
-
-	}
-	{
 		l := uint64(len(d.Err))
 
 		{
@@ -498,15 +478,15 @@ func (d *DumpEntry) Marshal(buf []byte) ([]byte, error) {
 			t := uint64(l)
 
 			for t >= 0x80 {
-				buf[i+16] = byte(t) | 0x80
+				buf[i+8] = byte(t) | 0x80
 				t >>= 7
 				i++
 			}
-			buf[i+16] = byte(t)
+			buf[i+8] = byte(t)
 			i++
 
 		}
-		copy(buf[i+16:], d.Err)
+		copy(buf[i+8:], d.Err)
 		i += l
 	}
 	{
@@ -517,18 +497,18 @@ func (d *DumpEntry) Marshal(buf []byte) ([]byte, error) {
 			t := uint64(l)
 
 			for t >= 0x80 {
-				buf[i+16] = byte(t) | 0x80
+				buf[i+8] = byte(t) | 0x80
 				t >>= 7
 				i++
 			}
-			buf[i+16] = byte(t)
+			buf[i+8] = byte(t)
 			i++
 
 		}
-		copy(buf[i+16:], d.Table)
+		copy(buf[i+8:], d.Table)
 		i += l
 	}
-	return buf[:i+16], nil
+	return buf[:i+8], nil
 }
 
 func (d *DumpEntry) Unmarshal(buf []byte) (uint64, error) {
@@ -779,20 +759,15 @@ func (d *DumpEntry) Unmarshal(buf []byte) (uint64, error) {
 
 	}
 	{
-
-		d.RowsCount = 0 | (int64(buf[i+0+8]) << 0) | (int64(buf[i+1+8]) << 8) | (int64(buf[i+2+8]) << 16) | (int64(buf[i+3+8]) << 24) | (int64(buf[i+4+8]) << 32) | (int64(buf[i+5+8]) << 40) | (int64(buf[i+6+8]) << 48) | (int64(buf[i+7+8]) << 56)
-
-	}
-	{
 		l := uint64(0)
 
 		{
 
 			bs := uint8(7)
-			t := uint64(buf[i+16] & 0x7F)
-			for buf[i+16]&0x80 == 0x80 {
+			t := uint64(buf[i+8] & 0x7F)
+			for buf[i+8]&0x80 == 0x80 {
 				i++
-				t |= uint64(buf[i+16]&0x7F) << bs
+				t |= uint64(buf[i+8]&0x7F) << bs
 				bs += 7
 			}
 			i++
@@ -800,7 +775,7 @@ func (d *DumpEntry) Unmarshal(buf []byte) (uint64, error) {
 			l = t
 
 		}
-		d.Err = string(buf[i+16 : i+16+l])
+		d.Err = string(buf[i+8 : i+8+l])
 		i += l
 	}
 	{
@@ -809,10 +784,10 @@ func (d *DumpEntry) Unmarshal(buf []byte) (uint64, error) {
 		{
 
 			bs := uint8(7)
-			t := uint64(buf[i+16] & 0x7F)
-			for buf[i+16]&0x80 == 0x80 {
+			t := uint64(buf[i+8] & 0x7F)
+			for buf[i+8]&0x80 == 0x80 {
 				i++
-				t |= uint64(buf[i+16]&0x7F) << bs
+				t |= uint64(buf[i+8]&0x7F) << bs
 				bs += 7
 			}
 			i++
@@ -825,8 +800,8 @@ func (d *DumpEntry) Unmarshal(buf []byte) (uint64, error) {
 		} else {
 			d.Table = make([]byte, l)
 		}
-		copy(d.Table, buf[i+16:])
+		copy(d.Table, buf[i+8:])
 		i += l
 	}
-	return i + 16, nil
+	return i + 8, nil
 }

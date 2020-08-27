@@ -193,13 +193,12 @@ func (d *dumper) getChunkData() (nRows int64, err error) {
 	entry := &common.DumpEntry{
 		TableSchema: d.TableSchema,
 		TableName:   d.TableName,
-		RowsCount:   0,
 	}
 	defer func() {
 		if err != nil {
 			entry.Err = err.Error()
 		}
-		if err == nil && entry.RowsCount == 0 {
+		if err == nil && len(entry.ValuesX) == 0 {
 			return
 		}
 
@@ -276,13 +275,12 @@ func (d *dumper) getChunkData() (nRows int64, err error) {
 		}
 
 		entry.ValuesX = append(entry.ValuesX, rowValuesRaw)
-
-		entry.IncrementCounter()
 	}
 
-	d.logger.Debug("getChunkData.", "n_row", entry.RowsCount)
+	nRows = int64(len(entry.ValuesX))
+	d.logger.Debug("getChunkData.", "n_row", nRows)
 
-	if entry.RowsCount > 0 {
+	if nRows > 0 {
 		var lastVals []string
 
 		for _, col := range entry.ValuesX[len(entry.ValuesX)-1] {
@@ -295,7 +293,7 @@ func (d *dumper) getChunkData() (nRows int64, err error) {
 				// TODO save the idx
 				idx := d.table.OriginalTableColumns.Ordinals[strings.ToLower(col.RawName)]
 				if idx > len(lastVals) {
-					return entry.RowsCount, fmt.Errorf("getChunkData. GetLastMaxVal: column index %v > n_column %v", idx, len(lastVals))
+					return nRows, fmt.Errorf("getChunkData. GetLastMaxVal: column index %v > n_column %v", idx, len(lastVals))
 				} else {
 					d.table.UseUniqueKey.LastMaxVals[i] = lastVals[idx]
 				}
@@ -324,7 +322,7 @@ func (d *dumper) getChunkData() (nRows int64, err error) {
 	// Values[i]: i-th chunk of rows
 	// Values[i][j]: j-th row (in paren-wrapped string)
 
-	return entry.RowsCount, nil
+	return nRows, nil
 }
 
 func (d *dumper) Dump() error {

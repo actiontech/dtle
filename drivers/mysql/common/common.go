@@ -84,10 +84,6 @@ func DecodeDumpEntry(data []byte) (entry *DumpEntry, err error) {
 	return entry, nil
 }
 
-func (d *DumpEntry) IncrementCounter() {
-	d.RowsCount++
-}
-
 func DtleParseMysqlGTIDSet(gtidSetStr string) (*mysql.MysqlGTIDSet, error) {
 	set0, err := mysql.ParseMysqlGTIDSet(gtidSetStr)
 	if err != nil {

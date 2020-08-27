@@ -7,7 +7,6 @@ struct DumpEntry {
 	TbSQL                    []string
 	ValuesX    [][]*[]byte
 	TotalCount int64
-	RowsCount  int64
 	Err        string
 	Table      []byte
 }

@@ -1310,7 +1310,6 @@ func (e *Extractor) mysqlDump() error {
 					DbSQL:      dbSQL,
 					TbSQL:      tbSQL,
 					TotalCount: tb.Counter + 1,
-					RowsCount:  1,
 				}
 				atomic.AddInt64(&e.mysqlContext.RowsEstimate, 1)
 				atomic.AddInt64(&e.TotalRowsCopied, 1)
@@ -1334,7 +1333,6 @@ func (e *Extractor) mysqlDump() error {
 			entry := &common.DumpEntry{
 				DbSQL:      dbSQL,
 				TotalCount: 1,
-				RowsCount:  1,
 			}
 			atomic.AddInt64(&e.mysqlContext.RowsEstimate, 1)
 			atomic.AddInt64(&e.TotalRowsCopied, 1)
@@ -1387,7 +1385,7 @@ func (e *Extractor) mysqlDump() error {
 					if err = e.encodeDumpEntry(entry); err != nil {
 						e.onError(TaskStateRestart, err)
 					}
-					atomic.AddInt64(&e.TotalRowsCopied, entry.RowsCount)
+					atomic.AddInt64(&e.TotalRowsCopied, int64(len(entry.ValuesX)))
 				}
 			}
 

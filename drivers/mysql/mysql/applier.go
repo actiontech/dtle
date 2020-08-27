@@ -1148,11 +1148,12 @@ func (a *Applier) ApplyEventQueries(db *gosql.DB, entry *common.DumpEntry) error
 	if err != nil {
 		return err
 	}
+	nRows := int64(len(entry.ValuesX))
 	defer func() {
 		if err := tx.Commit(); err != nil {
 			a.onError(TaskStateDead, err)
 		}
-		atomic.AddInt64(&a.TotalRowsReplayed, entry.RowsCount)
+		atomic.AddInt64(&a.TotalRowsReplayed, nRows)
 	}()
 	sessionQuery := `SET @@session.foreign_key_checks = 0`
 	if _, err := tx.Exec(sessionQuery); err != nil {
