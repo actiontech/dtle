@@ -372,6 +372,7 @@ func LogTraceDf(logLvl, lineCt int, format string, v ...interface{}) {
 	}
 }
 
+// PrettyStack is a helper to pull stack-trace, prettify it.
 func PrettyStack(lineCt int) string {
 	stackBuf := make([]byte, 10000)
 	stackBufLen := runtime.Stack(stackBuf, false)
@@ -399,83 +400,83 @@ func PrettyStack(lineCt int) string {
 //    LogThrottleKey(u.ERROR, 1,"error_that_happens_a_lot" "message %s", varx)
 //
 func LogThrottleKey(logLvl, limit int, key, format string, v ...interface{}) {
-	if LogLevel >= logLvl {
-		throttleMu.Lock()
-		th, ok := logThrottles[key]
-		if !ok {
-			th = NewThrottler(limit, 3600*time.Second)
-			logThrottles[key] = th
-		}
-		skip, throttleCount := th.Throttle()
-		if skip {
-			throttleMu.Unlock()
-			return
-		}
-		throttleMu.Unlock()
-
-		prefix := ""
-		if throttleCount > 0 {
-			prefix = fmt.Sprintf("LogsThrottled[%d] ", throttleCount)
-		}
-		DoLog(3, logLvl, prefix+fmt.Sprintf(format, v...))
+	if LogLevel < logLvl {
+		return
 	}
+
+	doLogThrottle(4, logLvl, limit, key, fmt.Sprintf(format, v...))
 }
 
-// Throttle logging based on @format as a key, such that key would never occur more than
+// LogThrottleKeyCtx log formatted context writer
+func LogThrottleKeyCtx(ctx context.Context, logLvl, limit int, key, format string, v ...interface{}) {
+	if LogLevel < logLvl {
+		return
+	}
+
+	lc := FromContext(ctx)
+	if len(lc) > 0 {
+		format = fmt.Sprintf("%s %s", lc, format)
+	}
+	doLogThrottle(4, logLvl, limit, key, fmt.Sprintf(format, v...))
+}
+
+// LogThrottleD logging based on @format as a key, such that key would never occur more than
 // @limit times per hour
 //
 //    LogThrottle(u.ERROR, 1, "message %s", varx)
 //
 func LogThrottle(logLvl, limit int, format string, v ...interface{}) {
-	if LogLevel >= logLvl {
-		throttleMu.Lock()
-		th, ok := logThrottles[format]
-		if !ok {
-			th = NewThrottler(limit, 3600*time.Second)
-			logThrottles[format] = th
-		}
-		var throttleCount int32
-		skip, throttleCount := th.Throttle()
-		if skip {
-			throttleMu.Unlock()
-			return
-		}
-		throttleMu.Unlock()
-
-		prefix := ""
-		if throttleCount > 0 {
-			prefix = fmt.Sprintf("LogsThrottled[%d] ", throttleCount)
-		}
-		DoLog(3, logLvl, prefix+fmt.Sprintf(format, v...))
+	if LogLevel < logLvl {
+		return
 	}
+	doLogThrottle(4, logLvl, limit, format, fmt.Sprintf(format, v...))
 }
 
-// Throttle logging based on @format as a key, such that key would never occur more than
-// @limit times per hour
+// LogThrottleCtx log formatted context writer, limits to @limit/hour.
+func LogThrottleCtx(ctx context.Context, logLvl, limit int, format string, v ...interface{}) {
+	if LogLevel < logLvl {
+		return
+	}
+
+	lc := FromContext(ctx)
+	if len(lc) > 0 {
+		format = fmt.Sprintf("%s %s", lc, format)
+	}
+	doLogThrottle(4, logLvl, limit, format, fmt.Sprintf(format, v...))
+}
+
+// LogThrottleD Throttle logging based on @format as a key, such that key would never
+// occur more than @limit times per hour
 //
 //    LogThrottleD(5, u.ERROR, 1, "message %s", varx)
 //
 func LogThrottleD(depth, logLvl, limit int, format string, v ...interface{}) {
-	if LogLevel >= logLvl {
-		throttleMu.Lock()
-		th, ok := logThrottles[format]
-		if !ok {
-			th = NewThrottler(limit, 3600*time.Second)
-			logThrottles[format] = th
-		}
-		skip, throttleCount := th.Throttle()
-		if skip {
-			throttleMu.Unlock()
-			return
-		}
-		throttleMu.Unlock()
-
-		prefix := fmt.Sprintf("Log Throttled[%d] ", throttleCount)
-		DoLog(depth, logLvl, prefix+fmt.Sprintf(format, v...))
+	if LogLevel < logLvl {
+		return
 	}
+	doLogThrottle(depth, logLvl, limit, format, fmt.Sprintf(format, v...))
 }
 
-// Log to logger if setup
+func doLogThrottle(depth, logLvl, limit int, key, msg string) {
+	if LogLevel < logLvl {
+		return
+	}
+	throttleMu.Lock()
+	th, ok := logThrottles[key]
+	if !ok {
+		th = NewThrottler(limit, 3600*time.Second)
+		logThrottles[key] = th
+	}
+	skip, _ := th.Throttle()
+	throttleMu.Unlock()
+	if skip {
+		return
+	}
+
+	DoLog(depth, logLvl, msg)
+}
+
+// Logf to logger if setup
 //    Logf(ERROR, "message %d", 20)
 func Logf(logLvl int, format string, v ...interface{}) {
 	if LogLevel >= logLvl {

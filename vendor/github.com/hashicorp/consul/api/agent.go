@@ -2,7 +2,11 @@ package api
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
+	"io"
+	"net/http"
+	"net/url"
 )
 
 // ServiceKind is the kind of service being registered.
@@ -19,23 +23,23 @@ const (
 	// service proxies another service within Consul and speaks the connect
 	// protocol.
 	ServiceKindConnectProxy ServiceKind = "connect-proxy"
+
+	// ServiceKindMeshGateway is a Mesh Gateway for the Connect feature. This
+	// service will proxy connections based off the SNI header set by other
+	// connect proxies
+	ServiceKindMeshGateway ServiceKind = "mesh-gateway"
 )
 
-// ProxyExecMode is the execution mode for a managed Connect proxy.
-type ProxyExecMode string
+// UpstreamDestType is the type of upstream discovery mechanism.
+type UpstreamDestType string
 
 const (
-	// ProxyExecModeDaemon indicates that the proxy command should be long-running
-	// and should be started and supervised by the agent until it's target service
-	// is deregistered.
-	ProxyExecModeDaemon ProxyExecMode = "daemon"
+	// UpstreamDestTypeService discovers instances via healthy service lookup.
+	UpstreamDestTypeService UpstreamDestType = "service"
 
-	// ProxyExecModeScript indicates that the proxy command should be invoke to
-	// completion on each change to the configuration of lifecycle event. The
-	// script typically fetches the config and certificates from the agent API and
-	// then configures an externally managed daemon, perhaps starting and stopping
-	// it if necessary.
-	ProxyExecModeScript ProxyExecMode = "script"
+	// UpstreamDestTypePreparedQuery discovers instances via prepared query
+	// execution.
+	UpstreamDestTypePreparedQuery UpstreamDestType = "prepared_query"
 )
 
 // AgentCheck represents a check known to the agent
@@ -48,37 +52,64 @@ type AgentCheck struct {
 	Output      string
 	ServiceID   string
 	ServiceName string
+	Type        string
 	Definition  HealthCheckDefinition
+	Namespace   string `json:",omitempty"`
+}
+
+// AgentWeights represent optional weights for a service
+type AgentWeights struct {
+	Passing int
+	Warning int
 }
 
 // AgentService represents a service known to the agent
 type AgentService struct {
-	Kind              ServiceKind
+	Kind              ServiceKind `json:",omitempty"`
 	ID                string
 	Service           string
 	Tags              []string
 	Meta              map[string]string
 	Port              int
 	Address           string
+	TaggedAddresses   map[string]ServiceAddress `json:",omitempty"`
+	Weights           AgentWeights
 	EnableTagOverride bool
-	CreateIndex       uint64
-	ModifyIndex       uint64
-	ProxyDestination  string
-	Connect           *AgentServiceConnect
+	CreateIndex       uint64                          `json:",omitempty" bexpr:"-"`
+	ModifyIndex       uint64                          `json:",omitempty" bexpr:"-"`
+	ContentHash       string                          `json:",omitempty" bexpr:"-"`
+	Proxy             *AgentServiceConnectProxyConfig `json:",omitempty"`
+	Connect           *AgentServiceConnect            `json:",omitempty"`
+	// NOTE: If we ever set the ContentHash outside of singular service lookup then we may need
+	// to include the Namespace in the hash. When we do, then we are in for lots of fun with tests.
+	// For now though, ignoring it works well enough.
+	Namespace string `json:",omitempty" bexpr:"-" hash:"ignore"`
+}
+
+// AgentServiceChecksInfo returns information about a Service and its checks
+type AgentServiceChecksInfo struct {
+	AggregatedStatus string
+	Service          *AgentService
+	Checks           HealthChecks
 }
 
 // AgentServiceConnect represents the Connect configuration of a service.
 type AgentServiceConnect struct {
-	Native bool
-	Proxy  *AgentServiceConnectProxy
+	Native         bool                      `json:",omitempty"`
+	SidecarService *AgentServiceRegistration `json:",omitempty" bexpr:"-"`
 }
 
-// AgentServiceConnectProxy represents the Connect Proxy configuration of a
-// service.
-type AgentServiceConnectProxy struct {
-	ExecMode ProxyExecMode
-	Command  []string
-	Config   map[string]interface{}
+// AgentServiceConnectProxyConfig is the proxy configuration in a connect-proxy
+// ServiceDefinition or response.
+type AgentServiceConnectProxyConfig struct {
+	DestinationServiceName string                 `json:",omitempty"`
+	DestinationServiceID   string                 `json:",omitempty"`
+	LocalServiceAddress    string                 `json:",omitempty"`
+	LocalServicePort       int                    `json:",omitempty"`
+	Config                 map[string]interface{} `json:",omitempty" bexpr:"-"`
+	Upstreams              []Upstream             `json:",omitempty"`
+	MeshGateway            MeshGatewayConfig      `json:",omitempty"`
+	Expose                 ExposeConfig           `json:",omitempty"`
 }
 
 // AgentMember represents a cluster member known to the agent
@@ -111,18 +142,29 @@ type MembersOpts struct {
 
 // AgentServiceRegistration is used to register a new service
 type AgentServiceRegistration struct {
-	Kind              ServiceKind       `json:",omitempty"`
-	ID                string            `json:",omitempty"`
-	Name              string            `json:",omitempty"`
-	Tags              []string          `json:",omitempty"`
-	Port              int               `json:",omitempty"`
-	Address           string            `json:",omitempty"`
-	EnableTagOverride bool              `json:",omitempty"`
-	Meta              map[string]string `json:",omitempty"`
+	Kind              ServiceKind               `json:",omitempty"`
+	ID                string                    `json:",omitempty"`
+	Name              string                    `json:",omitempty"`
+	Tags              []string                  `json:",omitempty"`
+	Port              int                       `json:",omitempty"`
+	Address           string                    `json:",omitempty"`
+	TaggedAddresses   map[string]ServiceAddress `json:",omitempty"`
+	EnableTagOverride bool                      `json:",omitempty"`
+	Meta              map[string]string         `json:",omitempty"`
+	Weights           *AgentWeights             `json:",omitempty"`
 	Check             *AgentServiceCheck
 	Checks            AgentServiceChecks
-	ProxyDestination  string               `json:",omitempty"`
-	Connect           *AgentServiceConnect `json:",omitempty"`
+	Proxy             *AgentServiceConnectProxyConfig `json:",omitempty"`
+	Connect           *AgentServiceConnect            `json:",omitempty"`
+	Namespace         string                          `json:",omitempty" bexpr:"-" hash:"ignore"`
+}
+
+//ServiceRegisterOpts is used to pass extra options to the service register.
+type ServiceRegisterOpts struct {
+	//Missing healthchecks will be deleted from the agent.
+	//Using this parameter allows to idempotently register a service and its checks without
+	//having to manually deregister checks.
+	ReplaceExistingChecks bool
 }
 
 // AgentCheckRegistration is used to register a new check
@@ -132,6 +174,7 @@ type AgentCheckRegistration struct {
 	Notes     string `json:",omitempty"`
 	ServiceID string `json:",omitempty"`
 	AgentServiceCheck
+	Namespace string `json:",omitempty"`
 }
 
 // AgentServiceCheck is used to define a node or service level check
@@ -147,12 +190,15 @@ type AgentServiceCheck struct {
 	HTTP              string              `json:",omitempty"`
 	Header            map[string][]string `json:",omitempty"`
 	Method            string              `json:",omitempty"`
+	Body              string              `json:",omitempty"`
 	TCP               string              `json:",omitempty"`
 	Status            string              `json:",omitempty"`
 	Notes             string              `json:",omitempty"`
 	TLSSkipVerify     bool                `json:",omitempty"`
 	GRPC              string              `json:",omitempty"`
 	GRPCUseTLS        bool                `json:",omitempty"`
+	AliasNode         string              `json:",omitempty"`
+	AliasService      string              `json:",omitempty"`
 
 	// In Consul 0.7 and later, checks that are associated with a service
 	// may also contain this optional DeregisterCriticalServiceAfter field,
@@ -225,9 +271,20 @@ type ConnectProxyConfig struct {
 	TargetServiceID   string
 	TargetServiceName string
 	ContentHash       string
-	ExecMode          ProxyExecMode
-	Command           []string
-	Config            map[string]interface{}
+	Config            map[string]interface{} `bexpr:"-"`
+	Upstreams         []Upstream
+}
+
+// Upstream is the response structure for a proxy upstream configuration.
+type Upstream struct {
+	DestinationType      UpstreamDestType `json:",omitempty"`
+	DestinationNamespace string           `json:",omitempty"`
+	DestinationName      string
+	Datacenter           string                 `json:",omitempty"`
+	LocalBindAddress     string                 `json:",omitempty"`
+	LocalBindPort        int                    `json:",omitempty"`
+	Config               map[string]interface{} `json:",omitempty" bexpr:"-"`
+	MeshGateway          MeshGatewayConfig      `json:",omitempty"`
 }
 
 // Agent can be used to query the Agent endpoints
@@ -254,6 +311,24 @@ func (a *Agent) Self() (map[string]map[string]interface{}, error) {
 	defer resp.Body.Close()
 
 	var out map[string]map[string]interface{}
+	if err := decodeBody(resp, &out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// Host is used to retrieve information about the host the
+// agent is running on such as CPU, memory, and disk. Requires
+// a operator:read ACL token.
+func (a *Agent) Host() (map[string]interface{}, error) {
+	r := a.c.newRequest("GET", "/v1/agent/host")
+	_, resp, err := requireOK(a.c.doRequest(r))
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	var out map[string]interface{}
 	if err := decodeBody(resp, &out); err != nil {
 		return nil, err
 	}
@@ -304,7 +379,14 @@ func (a *Agent) NodeName() (string, error) {
 
 // Checks returns the locally registered checks
 func (a *Agent) Checks() (map[string]*AgentCheck, error) {
+	return a.ChecksWithFilter("")
+}
+
+// ChecksWithFilter returns a subset of the locally registered checks that match
+// the given filter expression
+func (a *Agent) ChecksWithFilter(filter string) (map[string]*AgentCheck, error) {
 	r := a.c.newRequest("GET", "/v1/agent/checks")
+	r.filterQuery(filter)
 	_, resp, err := requireOK(a.c.doRequest(r))
 	if err != nil {
 		return nil, err
@@ -320,7 +402,14 @@ func (a *Agent) Checks() (map[string]*AgentCheck, error) {
 
 // Services returns the locally registered services
 func (a *Agent) Services() (map[string]*AgentService, error) {
+	return a.ServicesWithFilter("")
+}
+
+// ServicesWithFilter returns a subset of the locally registered services that match
+// the given filter expression
+func (a *Agent) ServicesWithFilter(filter string) (map[string]*AgentService, error) {
 	r := a.c.newRequest("GET", "/v1/agent/services")
+	r.filterQuery(filter)
 	_, resp, err := requireOK(a.c.doRequest(r))
 	if err != nil {
 		return nil, err
@@ -333,6 +422,100 @@ func (a *Agent) Services() (map[string]*AgentService, error) {
 	}
 
 	return out, nil
+}
+
+// AgentHealthServiceByID returns for a given serviceID: the aggregated health status, the service definition or an error if any
+// - If the service is not found, will return status (critical, nil, nil)
+// - If the service is found, will return (critical|passing|warning), AgentServiceChecksInfo, nil)
+// - In all other cases, will return an error
+func (a *Agent) AgentHealthServiceByID(serviceID string) (string, *AgentServiceChecksInfo, error) {
+	path := fmt.Sprintf("/v1/agent/health/service/id/%v", url.PathEscape(serviceID))
+	r := a.c.newRequest("GET", path)
+	r.params.Add("format", "json")
+	r.header.Set("Accept", "application/json")
+	_, resp, err := a.c.doRequest(r)
+	if err != nil {
+		return "", nil, err
+	}
+	defer resp.Body.Close()
+	// Service not Found
+	if resp.StatusCode == http.StatusNotFound {
+		return HealthCritical, nil, nil
+	}
+	var out *AgentServiceChecksInfo
+	if err := decodeBody(resp, &out); err != nil {
+		return HealthCritical, out, err
+	}
+	switch resp.StatusCode {
+	case http.StatusOK:
+		return HealthPassing, out, nil
+	case http.StatusTooManyRequests:
+		return HealthWarning, out, nil
+	case http.StatusServiceUnavailable:
+		return HealthCritical, out, nil
+	}
+	return HealthCritical, out, fmt.Errorf("Unexpected Error Code %v for %s", resp.StatusCode, path)
+}
+
+// AgentHealthServiceByName returns for a given service name: the aggregated health status for all services
+// having the specified name.
+// - If no service is not found, will return status (critical, [], nil)
+// - If the service is found, will return (critical|passing|warning), []api.AgentServiceChecksInfo, nil)
+// - In all other cases, will return an error
+func (a *Agent) AgentHealthServiceByName(service string) (string, []AgentServiceChecksInfo, error) {
+	path := fmt.Sprintf("/v1/agent/health/service/name/%v", url.PathEscape(service))
+	r := a.c.newRequest("GET", path)
+	r.params.Add("format", "json")
+	r.header.Set("Accept", "application/json")
+	_, resp, err := a.c.doRequest(r)
+	if err != nil {
+		return "", nil, err
+	}
+	defer resp.Body.Close()
+	// Service not Found
+	if resp.StatusCode == http.StatusNotFound {
+		return HealthCritical, nil, nil
+	}
+	var out []AgentServiceChecksInfo
+	if err := decodeBody(resp, &out); err != nil {
+		return HealthCritical, out, err
+	}
+	switch resp.StatusCode {
+	case http.StatusOK:
+		return HealthPassing, out, nil
+	case http.StatusTooManyRequests:
+		return HealthWarning, out, nil
+	case http.StatusServiceUnavailable:
+		return HealthCritical, out, nil
+	}
+	return HealthCritical, out, fmt.Errorf("Unexpected Error Code %v for %s", resp.StatusCode, path)
+}
+
+// Service returns a locally registered service instance and allows for
+// hash-based blocking.
+//
+// Note that this uses an unconventional blocking mechanism since it's
+// agent-local state. That means there is no persistent raft index so we block
+// based on object hash instead.
+func (a *Agent) Service(serviceID string, q *QueryOptions) (*AgentService, *QueryMeta, error) {
+	r := a.c.newRequest("GET", "/v1/agent/service/"+serviceID)
+	r.setQueryOptions(q)
+	rtt, resp, err := requireOK(a.c.doRequest(r))
+	if err != nil {
+		return nil, nil, err
+	}
+	defer resp.Body.Close()
+
+	qm := &QueryMeta{}
+	parseQueryMeta(resp, qm)
+	qm.RequestTime = rtt
+
+	var out *AgentService
+	if err := decodeBody(resp, &out); err != nil {
+		return nil, nil, err
+	}
+
+	return out, qm, nil
 }
 
 // Members returns the known gossip members. The WAN
@@ -380,8 +563,25 @@ func (a *Agent) MembersOpts(opts MembersOpts) ([]*AgentMember, error) {
 // ServiceRegister is used to register a new service with
 // the local agent
 func (a *Agent) ServiceRegister(service *AgentServiceRegistration) error {
+	opts := ServiceRegisterOpts{
+		ReplaceExistingChecks: false,
+	}
+
+	return a.serviceRegister(service, opts)
+}
+
+// ServiceRegister is used to register a new service with
+// the local agent and can be passed additional options.
+func (a *Agent) ServiceRegisterOpts(service *AgentServiceRegistration, opts ServiceRegisterOpts) error {
+	return a.serviceRegister(service, opts)
+}
+
+func (a *Agent) serviceRegister(service *AgentServiceRegistration, opts ServiceRegisterOpts) error {
 	r := a.c.newRequest("PUT", "/v1/agent/service/register")
 	r.obj = service
+	if opts.ReplaceExistingChecks {
+		r.params.Set("replace-existing-checks", "true")
+	}
 	_, resp, err := requireOK(a.c.doRequest(r))
 	if err != nil {
 		return err
@@ -564,6 +764,19 @@ func (a *Agent) ForceLeave(node string) error {
 	return nil
 }
 
+//ForceLeavePrune is used to have an a failed agent removed
+//from the list of members
+func (a *Agent) ForceLeavePrune(node string) error {
+	r := a.c.newRequest("PUT", "/v1/agent/force-leave/"+node)
+	r.params.Set("prune", "1")
+	_, resp, err := requireOK(a.c.doRequest(r))
+	if err != nil {
+		return err
+	}
+	resp.Body.Close()
+	return nil
+}
+
 // ConnectAuthorize is used to authorize an incoming connection
 // to a natively integrated Connect service.
 func (a *Agent) ConnectAuthorize(auth *AgentAuthorizeParams) (*AgentAuthorize, error) {
@@ -618,31 +831,6 @@ func (a *Agent) ConnectCALeaf(serviceID string, q *QueryOptions) (*LeafCert, *Qu
 	qm.RequestTime = rtt
 
 	var out LeafCert
-	if err := decodeBody(resp, &out); err != nil {
-		return nil, nil, err
-	}
-	return &out, qm, nil
-}
-
-// ConnectProxyConfig gets the configuration for a local managed proxy instance.
-//
-// Note that this uses an unconventional blocking mechanism since it's
-// agent-local state. That means there is no persistent raft index so we block
-// based on object hash instead.
-func (a *Agent) ConnectProxyConfig(proxyServiceID string, q *QueryOptions) (*ConnectProxyConfig, *QueryMeta, error) {
-	r := a.c.newRequest("GET", "/v1/agent/connect/proxy/"+proxyServiceID)
-	r.setQueryOptions(q)
-	rtt, resp, err := requireOK(a.c.doRequest(r))
-	if err != nil {
-		return nil, nil, err
-	}
-	defer resp.Body.Close()
-
-	qm := &QueryMeta{}
-	parseQueryMeta(resp, qm)
-	qm.RequestTime = rtt
-
-	var out ConnectProxyConfig
 	if err := decodeBody(resp, &out); err != nil {
 		return nil, nil, err
 	}
@@ -708,20 +896,29 @@ func (a *Agent) DisableNodeMaintenance() error {
 // log stream. An empty string will be sent down the given channel when there's
 // nothing left to stream, after which the caller should close the stopCh.
 func (a *Agent) Monitor(loglevel string, stopCh <-chan struct{}, q *QueryOptions) (chan string, error) {
+	return a.monitor(loglevel, false, stopCh, q)
+}
+
+// MonitorJSON is like Monitor except it returns logs in JSON format.
+func (a *Agent) MonitorJSON(loglevel string, stopCh <-chan struct{}, q *QueryOptions) (chan string, error) {
+	return a.monitor(loglevel, true, stopCh, q)
+}
+func (a *Agent) monitor(loglevel string, logJSON bool, stopCh <-chan struct{}, q *QueryOptions) (chan string, error) {
 	r := a.c.newRequest("GET", "/v1/agent/monitor")
 	r.setQueryOptions(q)
 	if loglevel != "" {
 		r.params.Add("loglevel", loglevel)
 	}
+	if logJSON {
+		r.params.Set("logjson", "true")
+	}
 	_, resp, err := requireOK(a.c.doRequest(r))
 	if err != nil {
 		return nil, err
 	}
-
 	logCh := make(chan string, 64)
 	go func() {
 		defer resp.Body.Close()
-
 		scanner := bufio.NewScanner(resp.Body)
 		for {
 			select {
@@ -745,47 +942,99 @@ func (a *Agent) Monitor(loglevel string, stopCh <-chan struct{}, q *QueryOptions
 			}
 		}
 	}()
-
 	return logCh, nil
 }
 
 // UpdateACLToken updates the agent's "acl_token". See updateToken for more
 // details.
+//
+// DEPRECATED (ACL-Legacy-Compat) - Prefer UpdateDefaultACLToken for v1.4.3 and above
 func (a *Agent) UpdateACLToken(token string, q *WriteOptions) (*WriteMeta, error) {
 	return a.updateToken("acl_token", token, q)
 }
 
 // UpdateACLAgentToken updates the agent's "acl_agent_token". See updateToken
 // for more details.
+//
+// DEPRECATED (ACL-Legacy-Compat) - Prefer UpdateAgentACLToken for v1.4.3 and above
 func (a *Agent) UpdateACLAgentToken(token string, q *WriteOptions) (*WriteMeta, error) {
 	return a.updateToken("acl_agent_token", token, q)
 }
 
 // UpdateACLAgentMasterToken updates the agent's "acl_agent_master_token". See
 // updateToken for more details.
+//
+// DEPRECATED (ACL-Legacy-Compat) - Prefer UpdateAgentMasterACLToken for v1.4.3 and above
 func (a *Agent) UpdateACLAgentMasterToken(token string, q *WriteOptions) (*WriteMeta, error) {
 	return a.updateToken("acl_agent_master_token", token, q)
 }
 
 // UpdateACLReplicationToken updates the agent's "acl_replication_token". See
 // updateToken for more details.
+//
+// DEPRECATED (ACL-Legacy-Compat) - Prefer UpdateReplicationACLToken for v1.4.3 and above
 func (a *Agent) UpdateACLReplicationToken(token string, q *WriteOptions) (*WriteMeta, error) {
 	return a.updateToken("acl_replication_token", token, q)
 }
 
-// updateToken can be used to update an agent's ACL token after the agent has
-// started. The tokens are not persisted, so will need to be updated again if
-// the agent is restarted.
+// UpdateDefaultACLToken updates the agent's "default" token. See updateToken
+// for more details
+func (a *Agent) UpdateDefaultACLToken(token string, q *WriteOptions) (*WriteMeta, error) {
+	return a.updateTokenFallback("default", "acl_token", token, q)
+}
+
+// UpdateAgentACLToken updates the agent's "agent" token. See updateToken
+// for more details
+func (a *Agent) UpdateAgentACLToken(token string, q *WriteOptions) (*WriteMeta, error) {
+	return a.updateTokenFallback("agent", "acl_agent_token", token, q)
+}
+
+// UpdateAgentMasterACLToken updates the agent's "agent_master" token. See updateToken
+// for more details
+func (a *Agent) UpdateAgentMasterACLToken(token string, q *WriteOptions) (*WriteMeta, error) {
+	return a.updateTokenFallback("agent_master", "acl_agent_master_token", token, q)
+}
+
+// UpdateReplicationACLToken updates the agent's "replication" token. See updateToken
+// for more details
+func (a *Agent) UpdateReplicationACLToken(token string, q *WriteOptions) (*WriteMeta, error) {
+	return a.updateTokenFallback("replication", "acl_replication_token", token, q)
+}
+
+// updateToken can be used to update one of an agent's ACL tokens after the agent has
+// started. The tokens are may not be persisted, so will need to be updated again if
+// the agent is restarted unless the agent is configured to persist them.
 func (a *Agent) updateToken(target, token string, q *WriteOptions) (*WriteMeta, error) {
+	meta, _, err := a.updateTokenOnce(target, token, q)
+	return meta, err
+}
+
+func (a *Agent) updateTokenFallback(target, fallback, token string, q *WriteOptions) (*WriteMeta, error) {
+	meta, status, err := a.updateTokenOnce(target, token, q)
+	if err != nil && status == 404 {
+		meta, _, err = a.updateTokenOnce(fallback, token, q)
+	}
+	return meta, err
+}
+
+func (a *Agent) updateTokenOnce(target, token string, q *WriteOptions) (*WriteMeta, int, error) {
 	r := a.c.newRequest("PUT", fmt.Sprintf("/v1/agent/token/%s", target))
 	r.setWriteOptions(q)
 	r.obj = &AgentToken{Token: token}
-	rtt, resp, err := requireOK(a.c.doRequest(r))
+
+	rtt, resp, err := a.c.doRequest(r)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
-	resp.Body.Close()
+	defer resp.Body.Close()
 
 	wm := &WriteMeta{RequestTime: rtt}
-	return wm, nil
+
+	if resp.StatusCode != 200 {
+		var buf bytes.Buffer
+		io.Copy(&buf, resp.Body)
+		return wm, resp.StatusCode, fmt.Errorf("Unexpected response code: %d (%s)", resp.StatusCode, buf.Bytes())
+	}
+
+	return wm, resp.StatusCode, nil
 }

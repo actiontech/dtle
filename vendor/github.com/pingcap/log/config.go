@@ -58,9 +58,6 @@ type Config struct {
 	// default, stacktraces are captured for WarnLevel and above logs in
 	// development and ErrorLevel and above in production.
 	DisableStacktrace bool `toml:"disable-stacktrace" json:"disable-stacktrace"`
-	// DisableErrorVerbose stops annotating logs with the full verbose error
-	// message.
-	DisableErrorVerbose bool `toml:"disable-error-verbose" json:"disable-error-verbose"`
 	// SamplingConfig sets a sampling strategy for the logger. Sampling caps the
 	// global CPU and I/O load that logging puts on your process while attempting
 	// to preserve a representative subset of your logs.
@@ -77,7 +74,24 @@ type ZapProperties struct {
 }
 
 func newZapTextEncoder(cfg *Config) zapcore.Encoder {
-	return NewTextEncoder(cfg)
+	cc := zapcore.EncoderConfig{
+		// Keys can be anything except the empty string.
+		TimeKey:        "time",
+		LevelKey:       "level",
+		NameKey:        "name",
+		CallerKey:      "caller",
+		MessageKey:     "message",
+		StacktraceKey:  "stack",
+		LineEnding:     zapcore.DefaultLineEnding,
+		EncodeLevel:    zapcore.CapitalLevelEncoder,
+		EncodeTime:     DefaultTimeEncoder,
+		EncodeDuration: zapcore.StringDurationEncoder,
+		EncodeCaller:   ShortCallerEncoder,
+	}
+	if cfg.DisableTimestamp {
+		cc.TimeKey = ""
+	}
+	return NewTextEncoder(cc)
 }
 
 func (cfg *Config) buildOptions(errSink zapcore.WriteSyncer) []zap.Option {

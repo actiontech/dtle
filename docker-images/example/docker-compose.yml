@@ -1,0 +1,20 @@
+version: '2.0'
+networks:
+  dtle-net:
+    driver: bridge
+services:
+  dtle-consul:
+    image: consul:latest
+    ports:
+      - "8500:8500"
+    networks:
+      - dtle-net
+  dtle:
+    image: actiontech/dtle:latest
+    ports:
+      - "4646:4646"
+      - "8190:8190"
+    networks:
+      - dtle-net
+    depends_on:
+      - dtle-consul

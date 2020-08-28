@@ -11,7 +11,7 @@ Parse many date strings without knowing format in advance.  Uses a scanner to re
 
 **MM/DD/YYYY VS DD/MM/YYYY** Right now this uses mm/dd/yyyy WHEN ambiguous if this is not desired behavior, use `ParseStrict` which will fail on ambiguous date strings.
 
-**Timezones** The location your server is configured effects the results!  See example or https://play.golang.org/p/IDHRalIyXh and last paragraph here https://golang.org/pkg/time/#Parse.
+**Timezones** The location your server is configured affects the results!  See example or https://play.golang.org/p/IDHRalIyXh and last paragraph here https://golang.org/pkg/time/#Parse.
 
 
 ```go
@@ -68,13 +68,17 @@ var examples = []string{
 	"Thu, 4 Jan 2018 17:53:36 +0000",
 	"Mon Aug 10 15:44:11 UTC+0100 2015",
 	"Fri Jul 03 2015 18:04:07 GMT+0100 (GMT Daylight Time)",
+	"September 17, 2012 10:09am",
 	"September 17, 2012 at 10:09am PST-08",
+	"September 17, 2012, 10:10:09",
 	"October 7, 1970",
+	"October 7th, 1970",
 	"12 Feb 2006, 19:17",
 	"12 Feb 2006 19:17",
 	"7 oct 70",
 	"7 oct 1970",
 	"03 February 2013",
+	"1 July 2013",
 	"2013-Feb-03",
 	//   mm/dd/yy
 	"3/31/2014",
@@ -137,6 +141,7 @@ var examples = []string{
 	"03.31.2014",
 	"08.21.71",
 	"2014.03",
+	"2014.03.30",
 	//  yyyymmdd and similar
 	"20140601",
 	"20140722105203",
@@ -197,13 +202,17 @@ func main() {
 | Thu, 4 Jan 2018 17:53:36 +0000                        | 2018-01-04 17:53:36 +0000 UTC           |
 | Mon Aug 10 15:44:11 UTC+0100 2015                     | 2015-08-10 15:44:11 +0000 UTC           |
 | Fri Jul 03 2015 18:04:07 GMT+0100 (GMT Daylight Time) | 2015-07-03 18:04:07 +0100 GMT           |
+| September 17, 2012 10:09am                            | 2012-09-17 10:09:00 +0000 UTC           |
 | September 17, 2012 at 10:09am PST-08                  | 2012-09-17 10:09:00 -0800 PST           |
+| September 17, 2012, 10:10:09                          | 2012-09-17 10:10:09 +0000 UTC           |
 | October 7, 1970                                       | 1970-10-07 00:00:00 +0000 UTC           |
+| October 7th, 1970                                     | 1970-10-07 00:00:00 +0000 UTC           |
 | 12 Feb 2006, 19:17                                    | 2006-02-12 19:17:00 +0000 UTC           |
 | 12 Feb 2006 19:17                                     | 2006-02-12 19:17:00 +0000 UTC           |
 | 7 oct 70                                              | 1970-10-07 00:00:00 +0000 UTC           |
 | 7 oct 1970                                            | 1970-10-07 00:00:00 +0000 UTC           |
 | 03 February 2013                                      | 2013-02-03 00:00:00 +0000 UTC           |
+| 1 July 2013                                           | 2013-07-01 00:00:00 +0000 UTC           |
 | 2013-Feb-03                                           | 2013-02-03 00:00:00 +0000 UTC           |
 | 3/31/2014                                             | 2014-03-31 00:00:00 +0000 UTC           |
 | 03/31/2014                                            | 2014-03-31 00:00:00 +0000 UTC           |
@@ -260,6 +269,7 @@ func main() {
 | 03.31.2014                                            | 2014-03-31 00:00:00 +0000 UTC           |
 | 08.21.71                                              | 1971-08-21 00:00:00 +0000 UTC           |
 | 2014.03                                               | 2014-03-01 00:00:00 +0000 UTC           |
+| 2014.03.30                                            | 2014-03-30 00:00:00 +0000 UTC           |
 | 20140601                                              | 2014-06-01 00:00:00 +0000 UTC           |
 | 20140722105203                                        | 2014-07-22 10:52:03 +0000 UTC           |
 | 1332151919                                            | 2012-03-19 10:11:59 +0000 UTC           |

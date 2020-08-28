@@ -1,4 +1,4 @@
-// Copyright 2017-2018 The NATS Authors
+// Copyright 2017-2019 The NATS Authors
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -17,15 +17,14 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/nats-io/go-nats"
-
 	"github.com/nats-io/nats-streaming-server/spb"
+	"github.com/nats-io/nats.go"
 )
 
 // Number of bytes used to encode a channel name
 const encodedChannelLen = 2
 
-// SendsChannelsList sends the list of channels to the given subject, possibly
+// SendChannelsList sends the list of channels to the given subject, possibly
 // splitting the list in several requests if it cannot fit in a single message.
 func SendChannelsList(channels []string, sendInbox, replyInbox string, nc *nats.Conn, serverID string) error {
 	// Since the NATS message payload is limited, we need to repeat
