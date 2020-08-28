@@ -128,8 +128,8 @@ type Applier struct {
 
 	gtidSet *gomysql.MysqlGTIDSet
 
-	storeManager  *common.StoreManager
-	gtidCh        chan *base.BinlogCoordinateTx
+	storeManager *common.StoreManager
+	gtidCh       chan *base.BinlogCoordinateTx
 }
 
 func NewApplier(
@@ -350,6 +350,7 @@ func (a *Applier) doFullCopy() {
 				a.onError(TaskStateDead, err)
 			} else {
 				atomic.AddInt64(&a.nDumpEntry, -1)
+				a.logger.Debug("ApplyEventQueries. after", "nDumpEntry", a.nDumpEntry)
 			}
 		case <-a.rowCopyComplete:
 			a.logger.Info("doFullCopy: loop: rowCopyComplete")
@@ -542,6 +543,16 @@ func (a *Applier) subscribeNats() error {
 	tracer := opentracing.GlobalTracer()
 	_, err := a.natsConn.Subscribe(fmt.Sprintf("%s_full", a.subject), func(m *gonats.Msg) {
 		a.logger.Debug("full. recv a msg.", "copyRowsQueue", len(a.copyRowsQueue))
+
+		select {
+		case <-a.rowCopyComplete: // full complete. Maybe src task restart.
+			if err := a.natsConn.Publish(m.Reply, nil); err != nil {
+				a.onError(TaskStateDead, err)
+			}
+			return
+		default:
+		}
+
 		t := not.NewTraceMsg(m)
 		// Extract the span context from the request message.
 		sc, err := tracer.Extract(opentracing.Binary, t)
@@ -562,7 +573,7 @@ func (a *Applier) subscribeNats() error {
 		atomic.AddInt64(&a.nDumpEntry, 1) // this must be increased before enqueuing
 		select {
 		case a.copyRowsQueue <- dumpData:
-			a.logger.Debug("full. enqueue")
+			a.logger.Debug("full. enqueue", "nDumpEntry", a.nDumpEntry)
 			timer.Stop()
 			a.mysqlContext.Stage = common.StageSlaveWaitingForWorkersToProcessQueue
 			if err := a.natsConn.Publish(m.Reply, nil); err != nil {
@@ -572,8 +583,8 @@ func (a *Applier) subscribeNats() error {
 			atomic.AddInt64(&a.mysqlContext.RowsEstimate, dumpData.TotalCount)
 		case <-timer.C:
 			atomic.AddInt64(&a.nDumpEntry, -1)
+			a.logger.Debug("full. discarding entries", "nDumpEntry", a.nDumpEntry)
 
-			a.logger.Debug("full. discarding entries")
 			a.mysqlContext.Stage = common.StageSlaveWaitingForWorkersToProcessQueue
 		}
 	})
@@ -582,12 +593,23 @@ func (a *Applier) subscribeNats() error {
 	}*/
 
 	_, err = a.natsConn.Subscribe(fmt.Sprintf("%s_full_complete", a.subject), func(m *gonats.Msg) {
+		a.logger.Debug("recv _full_complete.")
+
+		select {
+		case <-a.rowCopyComplete: // already full complete. Maybe src task restart.
+			if err := a.natsConn.Publish(m.Reply, nil); err != nil {
+				a.onError(TaskStateDead, err)
+			}
+			return
+		default:
+		}
+
 		dumpData := &DumpStatResult{}
 		t := not.NewTraceMsg(m)
 		// Extract the span context from the request message.
 		sc, err := tracer.Extract(opentracing.Binary, t)
 		if err != nil {
-			a.logger.Debug("get data")
+			a.logger.Debug("tracer.Extract error", "err", err)
 		}
 		// Setup a span referring to the span context of the incoming NATS message.
 		replySpan := tracer.StartSpan("Service Responder", ext.SpanKindRPCServer, ext.RPCServerOption(sc))
@@ -619,14 +641,9 @@ func (a *Applier) subscribeNats() error {
 
 		a.mysqlContext.Stage = common.StageSlaveWaitingForWorkersToProcessQueue
 
-		select {
-		case <-a.rowCopyComplete:
-			// chan already closed (this _full_complete msg is repeated)
-		default:
-			close(a.rowCopyComplete)
-		}
+		close(a.rowCopyComplete)
 
-		a.logger.Debug("ack full_complete")
+		a.logger.Debug("ack _full_complete")
 		if err := a.natsConn.Publish(m.Reply, nil); err != nil {
 			a.onError(TaskStateDead, errors.Wrap(err, "Publish"))
 			return
