@@ -467,14 +467,14 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 			b.logger.Error("DTLE_BUG: found query_event with error code, which is not handled.",
 				"ErrorCode", evt.ErrorCode, "query", query)
 		}
+		currentSchema := string(evt.Schema)
 
-		b.logger.Debug("query event", "schema", evt.Schema, "query", query)
+		b.logger.Debug("query event", "schema", currentSchema, "query", query)
 
 		if strings.ToUpper(query) == "BEGIN" {
 			b.currentBinlogEntry.hasBeginQuery = true
 		} else {
 			if strings.ToUpper(query) == "COMMIT" || !b.currentBinlogEntry.hasBeginQuery {
-				currentSchema := string(evt.Schema)
 				if b.mysqlContext.SkipCreateDbTable {
 					if skipCreateDbTable(query) {
 						b.logger.Warn("skip create db/table", "query", query)

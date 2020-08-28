@@ -107,10 +107,10 @@ type Extractor struct {
 }
 
 func NewExtractor(execCtx *common.ExecContext, cfg *config.MySQLDriverConfig, logger hclog.Logger, storeManager *common.StoreManager, waitCh chan *drivers.ExitResult) (*Extractor, error) {
-	logger.Info("NewExtractor", "subject", execCtx.Subject)
+	logger.Info("NewExtractor", "job", execCtx.Subject)
 
 	e := &Extractor{
-		logger:          logger,
+		logger:          logger.Named("extractor").With("job", execCtx.Subject),
 		execCtx:         execCtx,
 		subject:         execCtx.Subject,
 		mysqlContext:    cfg,
@@ -126,7 +126,7 @@ func NewExtractor(execCtx *common.ExecContext, cfg *config.MySQLDriverConfig, lo
 		storeManager:    storeManager,
 	}
 	e.context.LoadSchemas(nil)
-	logger.Debug("start dtle task 9")
+	logger.Debug("NewExtractor. after LoadSchemas")
 	if delay, err := strconv.ParseInt(os.Getenv(g.ENV_TESTSTUB1_DELAY), 10, 64); err == nil {
 		e.logger.Info("env", g.ENV_TESTSTUB1_DELAY, delay)
 		e.testStub1Delay = delay
@@ -888,7 +888,7 @@ func (e *Extractor) StreamEvents() error {
 				return err
 			}
 			e.logger.Debug("publish.before", "gno", gno, "n", len(entries.Entries))
-			if err = e.publish(ctx, fmt.Sprintf("%s_incr_hete", e.subject), "", txMsg); err != nil {
+			if err = e.publish(ctx, fmt.Sprintf("%s_incr_hete", e.subject), txMsg); err != nil {
 				return err
 			}
 			e.logger.Debug("publish.after", "gno", gno, "n", len(entries.Entries))
@@ -1007,7 +1007,7 @@ func splitEntries(entries binlog.BinlogEntries, entriseSize int) (entris []binlo
 
 // retryOperation attempts up to `count` attempts at running given function,
 // exiting as soon as it returns with non-error.
-func (e *Extractor) publish(ctx context.Context, subject, gtid string, txMsg []byte) (err error) {
+func (e *Extractor) publish(ctx context.Context, subject string, txMsg []byte) (err error) {
 	tracer := opentracing.GlobalTracer()
 	var t not.TraceMsg
 	var spanctx opentracing.SpanContext
@@ -1042,13 +1042,10 @@ func (e *Extractor) publish(ctx context.Context, subject, gtid string, txMsg []b
 			}
 		}
 
-		e.logger.Debug("publish", "gtid", gtid, "len", len(txMsg), "subject", subject)
+		e.logger.Debug("publish", "len", len(txMsg), "subject", subject)
 		_, err = e.natsConn.Request(subject, t.Bytes(), common.DefaultConnectWait)
 		if err == nil {
-			if gtid != "" {
-				e.mysqlContext.Gtid = gtid
-			}
-			txMsg=nil
+			txMsg = nil
 			break
 		} else if err == gonats.ErrTimeout {
 			e.logger.Debug("publish timeout", "err", err)
@@ -1411,7 +1408,7 @@ func (e *Extractor) encodeDumpEntry(entry *common.DumpEntry) error {
 		return err
 	}
 	txMsg := snappy.Encode(nil, bs)
-	if err := e.publish(ctx, fmt.Sprintf("%s_full", e.subject), "", txMsg); err != nil {
+	if err := e.publish(ctx, fmt.Sprintf("%s_full", e.subject), txMsg); err != nil {
 		return err
 	}
 	e.mysqlContext.Stage = common.StageSendingData
@@ -1562,7 +1559,7 @@ func (e *Extractor) sendFullComplete(ctx context.Context) (err error) {
 	if err != nil {
 		return err
 	}
-	if err := e.publish(ctx, fmt.Sprintf("%s_full_complete", e.subject), "", dumpMsg); err != nil {
+	if err := e.publish(ctx, fmt.Sprintf("%s_full_complete", e.subject), dumpMsg); err != nil {
 		return err
 	}
 	return nil

@@ -83,7 +83,7 @@ func NewKafkaRunner(execCtx *common.ExecContext, cfg *config.KafkaConfig, logger
 	return &KafkaRunner{
 		subject:      execCtx.Subject,
 		kafkaConfig:  cfg,
-		logger:       logger,
+		logger:       logger.Named("kafka").With("job", execCtx.Subject),
 		natsAddr:     natsAddr,
 		waitCh:       waitCh,
 		shutdownCh:   make(chan struct{}),

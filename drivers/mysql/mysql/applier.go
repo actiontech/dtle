@@ -136,10 +136,10 @@ func NewApplier(
 	ctx *common.ExecContext, cfg *config.MySQLDriverConfig, logger hclog.Logger,
 	storeManager *common.StoreManager, natsAddr string, waitCh chan *drivers.ExitResult) (a *Applier, err error) {
 
-	logger.Info("NewApplier", "subject", ctx.Subject)
+	logger.Info("NewApplier", "job", ctx.Subject)
 
 	a = &Applier{
-		logger:                  logger,
+		logger:                  logger.Named("applier").With("job", ctx.Subject),
 		subject:                 ctx.Subject,
 		mysqlContext:            cfg,
 		NatsAddr:                natsAddr,

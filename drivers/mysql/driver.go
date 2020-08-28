@@ -423,7 +423,7 @@ func (d *Driver) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHandle, *drive
 	if _, ok := d.tasks.Get(cfg.ID); ok {
 		return nil, nil, fmt.Errorf("task with ID %q already started", cfg.ID)
 	}
-	d.logger.Debug("start dtle task one")
+	d.logger.Debug("start dtle task 1")
 
 	var dtleTaskConfig config.DtleTaskConfig
 
