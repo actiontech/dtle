@@ -789,25 +789,20 @@ func (e *Extractor) CountTableRows(table *mysqlconfig.Table) (int64, error) {
 	//e.logger.Debug("As instructed, I'm issuing a SELECT COUNT(*) on the table. This may take a while")
 
 	var query string
-	var method string
-	if os.Getenv(g.ENV_COUNT_INFO_SCHEMA) != "" {
-		method = "information_schema"
-		query = fmt.Sprintf(`select table_rows from information_schema.tables where table_schema = '%s' and table_name = '%s'`,
-			table.TableSchema, table.TableName)
-	} else {
-		method = "COUNT"
-		query = fmt.Sprintf(`select count(*) from %s.%s where (%s)`,
-			mysqlconfig.EscapeName(table.TableSchema), mysqlconfig.EscapeName(table.TableName), table.Where)
-	}
+	// It only requires select privilege on target table to select its information_schema item.
+	query = fmt.Sprintf(`select table_rows from information_schema.tables where table_schema = '%s' and table_name = '%s'`,
+		sql.EscapeValue(table.TableSchema), sql.EscapeValue(table.TableName))
 	var rowsEstimate int64
-	if err := e.db.QueryRow(query).Scan(&rowsEstimate); err != nil {
-		return 0, err
+	err := e.db.QueryRow(query).Scan(&rowsEstimate)
+	if err != nil {
+		e.logger.Error("error when getting estimated row number (using information_schema)", "err", err,
+			"schema", table.TableSchema, "table", table.TableName)
+		rowsEstimate = 0
 	}
 	atomic.AddInt64(&e.mysqlContext.RowsEstimate, rowsEstimate)
 
 	e.mysqlContext.Stage = common.StageSearchingRowsForUpdate
-	e.logger.Debug("Exact number of rows", "schema", table.TableSchema, "table", table.TableName,
-		"method", method, "n", rowsEstimate)
+	e.logger.Debug("Estimated number of rows", "schema", table.TableSchema, "table", table.TableName, "n", rowsEstimate)
 	return rowsEstimate, nil
 }
 
