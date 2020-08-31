@@ -268,10 +268,6 @@ func (a *Applier) MtsWorker(workerIndex int) {
 // Run executes the complete apply logic.
 func (a *Applier) Run() {
 	var err error
-	a.logger.Info("go WatchAndPutNats")
-	go a.storeManager.WatchAndPutNats(a.subject, a.NatsAddr, a.shutdownCh, func(err error) {
-		a.onError(TaskStateDead, errors.Wrap(err, "WatchAndPutNats"))
-	})
 
 	err = common.GetGtidFromConsul(a.storeManager, a.subject, a.logger, a.mysqlContext)
 	if err != nil {
@@ -317,6 +313,10 @@ func (a *Applier) Run() {
 		a.onError(TaskStateDead, err)
 		return
 	}
+	a.logger.Info("go WatchAndPutNats")
+	go a.storeManager.WatchAndPutNats(a.subject, a.NatsAddr, a.shutdownCh, func(err error) {
+		a.onError(TaskStateDead, errors.Wrap(err, "WatchAndPutNats"))
+	})
 
 	go a.updateGtidLoop()
 
@@ -365,13 +365,12 @@ func (a *Applier) doFullCopy() {
 }
 
 func (a *Applier) initNatSubClient() (err error) {
-	natsAddr := fmt.Sprintf("nats://%s", a.NatsAddr)
-	sc, err := gonats.Connect(natsAddr)
+	sc, err := gonats.Connect(a.NatsAddr)
 	if err != nil {
-		a.logger.Error("cannot connect to nats server", "natsAddr", natsAddr, "err", err)
+		a.logger.Error("cannot connect to nats server", "natsAddr", a.NatsAddr, "err", err)
 		return err
 	}
-	a.logger.Debug("Connect nats server", "natsAddr", natsAddr)
+	a.logger.Debug("Connect nats server", "natsAddr", a.NatsAddr)
 	a.natsConn = sc
 	return nil
 }

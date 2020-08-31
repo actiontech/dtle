@@ -156,11 +156,6 @@ func (kr *KafkaRunner) Run() {
 	kr.logger.Debug("Run", "brokers", kr.kafkaConfig.Brokers)
 	var err error
 
-	kr.logger.Info("go WatchAndPutNats")
-	go kr.storeManager.WatchAndPutNats(kr.subject, kr.natsAddr, kr.shutdownCh, func(err error) {
-		kr.onError(TaskStateDead, errors.Wrap(err, "WatchAndPutNats"))
-	})
-
 	{
 		gtid, err := kr.storeManager.GetGtidForJob(kr.subject)
 		if err != nil {
@@ -208,6 +203,12 @@ func (kr *KafkaRunner) Run() {
 		kr.onError(TaskStateDead, err)
 		return
 	}
+
+	kr.logger.Info("go WatchAndPutNats")
+	go kr.storeManager.WatchAndPutNats(kr.subject, kr.natsAddr, kr.shutdownCh, func(err error) {
+		kr.onError(TaskStateDead, errors.Wrap(err, "WatchAndPutNats"))
+	})
+
 
 	go kr.updateGtidLoop()
 }
