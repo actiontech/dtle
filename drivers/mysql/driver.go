@@ -524,47 +524,49 @@ func (d *Driver) InspectTask(taskID string) (*drivers.TaskStatus, error) {
 		return nil, drivers.ErrTaskNotFound
 	}
 
-	return handle.TaskStatus(), nil
+	return handle.TaskStatus()
 }
 
 func (d *Driver) TaskStats(ctx context.Context, taskID string, interval time.Duration) (<-chan *drivers.TaskResourceUsage, error) {
 	ch := make(chan *drivers.TaskResourceUsage)
-	go d.handleStats(ctx, ch)
+	go d.handleStats(ctx, interval, ch)
 	return ch, nil
 }
-func (d *Driver) handleStats(ctx context.Context, ch chan<- *drivers.TaskResourceUsage) {
+
+func (d *Driver) handleStats(ctx context.Context, interval time.Duration, ch chan *drivers.TaskResourceUsage) {
 	timer := time.NewTimer(0)
 	for {
 		select {
-		case <-timer.C:
-			// Generate random value for the memory usage
-			s := &drivers.TaskResourceUsage{
-				ResourceUsage: &drivers.ResourceUsage{
-					MemoryStats: &drivers.MemoryStats{
-						RSS:      0,
-						Measured: []string{"RSS"},
-					},
-					CpuStats:    &drivers.CpuStats{
-						SystemMode:       0,
-						UserMode:         0,
-						TotalTicks:       0,
-						ThrottledPeriods: 0,
-						ThrottledTime:    0,
-						Percent:          0,
-						Measured:         nil,
-					},
-					DeviceStats: nil,
-				},
-				Timestamp: time.Now().UTC().UnixNano(),
-			}
-			select {
-			case <-ctx.Done():
-				return
-			case ch <- s:
-			default:
-			}
 		case <-ctx.Done():
 			return
+		case <-timer.C:
+			timer.Reset(interval)
+		}
+
+		s := &drivers.TaskResourceUsage{
+			ResourceUsage: &drivers.ResourceUsage{
+				MemoryStats: &drivers.MemoryStats{
+					RSS:      0,
+					Measured: []string{"RSS"},
+				},
+				CpuStats: &drivers.CpuStats{
+					SystemMode:       0,
+					UserMode:         0,
+					TotalTicks:       0,
+					ThrottledPeriods: 0,
+					ThrottledTime:    0,
+					Percent:          0,
+					Measured:         nil,
+				},
+				DeviceStats: nil,
+			},
+			Timestamp: time.Now().UTC().UnixNano(),
+		}
+
+		select {
+		case <-ctx.Done():
+			return
+		case ch <- s:
 		}
 	}
 }

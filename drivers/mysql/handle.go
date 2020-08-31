@@ -50,10 +50,19 @@ func newDtleTaskHandle(logger hclog.Logger, cfg *drivers.TaskConfig, state drive
 	return h
 }
 
-func (h *taskHandle) TaskStatus() *drivers.TaskStatus {
+func (h *taskHandle) TaskStatus() (*drivers.TaskStatus, error) {
 	h.stateLock.RLock()
 	defer h.stateLock.RUnlock()
 
+	m := map[string]string{}
+
+	stat, err := h.runner.Stats()
+	if err != nil {
+		return nil, errors.Wrap(err, "runner.Stats")
+	}
+	m["GtidSet"] = stat.CurrentCoordinates.GtidSet
+	// TODO Cannot get InspectTask -> TaskStatus called by any API.
+	// See https://github.com/hashicorp/nomad/issues/4848
 	return &drivers.TaskStatus{
 		ID:          h.taskConfig.ID,
 		Name:        h.taskConfig.Name,
@@ -61,7 +70,8 @@ func (h *taskHandle) TaskStatus() *drivers.TaskStatus {
 		StartedAt:   h.startedAt,
 		CompletedAt: h.completedAt,
 		ExitResult:  h.exitResult,
-	}
+		DriverAttributes: m,
+	}, nil
 }
 
 func (h *taskHandle) IsRunning() bool {
