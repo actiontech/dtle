@@ -142,6 +142,25 @@ func (sm *StoreManager) PutNatsWait(jobName string) error {
 	return sm.consulStore.Put(key, []byte("wait"), nil)
 }
 
+func (sm *StoreManager) PutKey(subject string, key string, value []byte) error {
+	url := fmt.Sprintf("dtle/%v/%v", subject, key)
+	return sm.consulStore.Put(url, value, nil)
+}
+
+func (sm *StoreManager) WaitKv(subject string, key string, stopCh chan struct{}) ([]byte, error) {
+	url := fmt.Sprintf("dtle/%v/%v", subject, key)
+	ch, err := sm.consulStore.Watch(url, stopCh)
+	if err != nil {
+		return nil, err
+	}
+	kv := <-ch
+	if kv == nil {
+		return nil, nil
+	} else {
+		return kv.Value, nil
+	}
+}
+
 func GetGtidFromConsul(sm *StoreManager, subject string, logger hclog.Logger, mysqlContext *config.MySQLDriverConfig) error {
 	gtid, err := sm.GetGtidForJob(subject)
 	if err != nil {

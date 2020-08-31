@@ -146,8 +146,6 @@ func NewApplier(
 		tableItems:              make(mapSchemaTableItems),
 		rowCopyComplete:         make(chan struct{}),
 		copyRowsQueue:           make(chan *common.DumpEntry, 24),
-		applyDataEntryQueue:     make(chan *binlog.BinlogEntry, cfg.ReplChanBufferSize*2),
-		applyBinlogMtsTxQueue:   make(chan *binlog.BinlogEntry, cfg.ReplChanBufferSize*2),
 		waitCh:                  waitCh,
 		shutdownCh:              make(chan struct{}),
 		printTps:                os.Getenv(g.ENV_PRINT_TPS) != "",
@@ -268,6 +266,26 @@ func (a *Applier) MtsWorker(workerIndex int) {
 // Run executes the complete apply logic.
 func (a *Applier) Run() {
 	var err error
+
+	{
+		v, err := a.storeManager.WaitKv(a.subject, "ReplChanBufferSize", a.shutdownCh)
+		if err != nil {
+			a.onError(TaskStateDead, errors.Wrap(err, "WaitKv ReplChanBufferSize"))
+			return
+		}
+		i, err := strconv.Atoi(string(v))
+		if err != nil {
+			a.onError(TaskStateDead, errors.Wrap(err, "Atoi ReplChanBufferSize"))
+			return
+		}
+		a.logger.Debug("got ReplChanBufferSize from consul", "i", i)
+		if i > 0 {
+			a.logger.Debug("use ReplChanBufferSize from consul", "i", i)
+			a.mysqlContext.ReplChanBufferSize = int64(i)
+		}
+		a.applyDataEntryQueue = make(chan *binlog.BinlogEntry, a.mysqlContext.ReplChanBufferSize * 2)
+		a.applyBinlogMtsTxQueue = make(chan *binlog.BinlogEntry, a.mysqlContext.ReplChanBufferSize * 2)
+	}
 
 	err = common.GetGtidFromConsul(a.storeManager, a.subject, a.logger, a.mysqlContext)
 	if err != nil {

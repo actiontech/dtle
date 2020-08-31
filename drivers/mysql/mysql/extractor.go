@@ -137,7 +137,16 @@ func NewExtractor(execCtx *common.ExecContext, cfg *config.MySQLDriverConfig, lo
 
 // Run executes the complete extract logic.
 func (e *Extractor) Run() {
-	err := e.storeManager.PutNatsWait(e.subject)
+	var err error
+
+	err = e.storeManager.PutKey(e.subject, "ReplChanBufferSize",
+		[]byte(strconv.Itoa(int(e.mysqlContext.ReplChanBufferSize))))
+	if err != nil {
+		e.onError(TaskStateDead, errors.Wrap(err, "PutKey ReplChanBufferSize"))
+		return
+	}
+
+	err = e.storeManager.PutNatsWait(e.subject)
 	if err != nil {
 		e.onError(TaskStateDead, errors.Wrap(err, "PutNatsWait"))
 		return
