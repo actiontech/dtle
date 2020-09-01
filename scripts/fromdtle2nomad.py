@@ -105,18 +105,26 @@ def parse(jobs):
         with open(job['Name'] + ".json", "w") as f:
             json.dump(new_job, f, indent=2)
 
-
+def  dtleHelp():
+    print("Usage:  [help] [args]")
+    print("args：")
+    print("DTLE_IP      --old dtle ip,not null")
+    print("DTLE_PORT    --old dtle port,not null")
 def main(argv):
     init_log()
     LOGGER.info('*' + 'FROM DTLE TO NOMAD START'.center(28) + '*')
-    DTLE_IP = argv[1]
-    DTLE_PORT = argv[2]
-    jobs = get_jobs(DTLE_IP , DTLE_PORT)
-    parse(jobs)
-
-    print('Please replace database password by yourself!')
-
-    LOGGER.info('*' + 'FROM DTLE TO NOMAD EMD'.center(28) + '*')
-
-
+    if len(argv) == 2 and (argv[1]=="help"or argv[1]=="args"):
+        dtleHelp()
+    else if len(argv) == 3:
+        DTLE_IP = argv[1]
+        DTLE_PORT = argv[2]
+        jobs = get_jobs(DTLE_IP , DTLE_PORT)
+        parse(jobs)
+        print('Please replace database password by yourself!')
+        LOGGER.info('*' + 'FROM DTLE TO NOMAD EMD'.center(28) + '*')
+    else:
+        print("agrv number err, Usage:  [help] [args] ")
+        print("args：")
+        print("DTLE_IP      --old dtle ip,not null")
+        print("DTLE_PORT    --old dtle port,not null")
 main(sys.argv)
