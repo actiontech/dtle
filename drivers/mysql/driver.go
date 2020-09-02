@@ -6,7 +6,10 @@ import (
 	"github.com/actiontech/dtle/drivers/mysql/common"
 	"github.com/actiontech/dtle/drivers/mysql/config"
 	"github.com/actiontech/dtle/g"
+	"github.com/armon/go-metrics"
+	"github.com/armon/go-metrics/prometheus"
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"time"
 
 	"github.com/actiontech/dtle/drivers/mysql/route"
@@ -59,6 +62,8 @@ var (
 			hclspec.NewLiteral(`"127.0.0.1:8500"`)),
 		"data_dir": hclspec.NewDefault(hclspec.NewAttr("data_dir", "string", false),
 			hclspec.NewLiteral(`"/var/lib/nomad"`)),
+		"stats_collection_interval": hclspec.NewDefault(hclspec.NewAttr("stats_collection_interval", "number", false),
+			hclspec.NewLiteral(`0`)),
 	})
 
 	// taskConfigSpec is the hcl specification for the driver config section of
@@ -260,6 +265,20 @@ func (d *Driver) SetupApiServer(logger hclog.Logger) (err error)  {
 	logger.Info("Setup api server succeeded", "addr", d.config.ApiAddr)
 
 	d.apiServer = router
+
+	router.Handler("GET", "/metrics", promhttp.Handler())
+
+	sink, err := prometheus.NewPrometheusSink()
+	if err != nil {
+		return err
+	}
+
+	metricsConfig := metrics.DefaultConfig("dtle")
+	_, err = metrics.NewGlobal(metricsConfig, sink)
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -279,6 +298,7 @@ type DriverConfig struct {
 	NomadAddr     string   `codec:"nomad_addr"`
 	Consul        string `codec:"consul"`
 	DataDir       string   `codec:"data_dir"`
+	StatsCollectionInterval int `codec:"stats_collection_interval"`
 }
 
 func (d *Driver) SetConfig(c *base.Config) (err error) {

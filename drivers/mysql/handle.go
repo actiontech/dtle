@@ -7,6 +7,7 @@ import (
 	"github.com/actiontech/dtle/drivers/mysql/config"
 	"github.com/actiontech/dtle/drivers/mysql/kafka"
 	"github.com/actiontech/dtle/drivers/mysql/mysql"
+	"github.com/armon/go-metrics"
 	"github.com/pkg/errors"
 	"strings"
 	"sync"
@@ -129,7 +130,57 @@ func (h *taskHandle) run(taskConfig *config.DtleTaskConfig, d *Driver) {
 		return
 	}
 
+	if d.config.StatsCollectionInterval != 0 {
+		duration := time.Duration(d.config.StatsCollectionInterval) * time.Second
+		go func() {
+			t := time.NewTimer(0)
+			for {
+				select {
+				case <-h.ctx.Done():
+				case <-t.C:
+					s, err := h.runner.Stats()
+					if err != nil {
+						// ignore
+					} else {
+						h.emitStats(s)
+					}
+					t.Reset(duration)
+				}
+			}
+		}()
+	}
 }
+
+func (h *taskHandle) emitStats(ru *common.TaskStatistics) {
+	labels := []metrics.Label{{"task_name", fmt.Sprintf("%s_%s", h.taskConfig.JobName, h.taskConfig.TaskGroupName)}}
+
+	metrics.SetGaugeWithLabels([]string{"network", "in_msgs"}, float32(ru.MsgStat.InMsgs), labels)
+	metrics.SetGaugeWithLabels([]string{"network", "out_msgs"}, float32(ru.MsgStat.OutMsgs), labels)
+	metrics.SetGaugeWithLabels([]string{"network", "in_bytes"}, float32(ru.MsgStat.InBytes), labels)
+	metrics.SetGaugeWithLabels([]string{"network", "out_bytes"}, float32(ru.MsgStat.OutBytes), labels)
+	metrics.SetGaugeWithLabels([]string{"buffer", "src_queue_size"}, float32(ru.BufferStat.ExtractorTxQueueSize), labels)
+	metrics.SetGaugeWithLabels([]string{"buffer", "dest_group_queue_size"}, float32(ru.BufferStat.ApplierGroupTxQueueSize), labels)
+	metrics.SetGaugeWithLabels([]string{"buffer", "dest_queue_size"}, float32(ru.BufferStat.ApplierTxQueueSize), labels)
+	metrics.SetGaugeWithLabels([]string{"buffer", "send_by_timeout"}, float32(ru.BufferStat.SendByTimeout), labels)
+	metrics.SetGaugeWithLabels([]string{"buffer", "send_by_size_full"}, float32(ru.BufferStat.SendBySizeFull), labels)
+
+	if ru.TableStats != nil {
+		metrics.SetGaugeWithLabels([]string{"table", "insert"}, float32(ru.TableStats.InsertCount), labels)
+		metrics.SetGaugeWithLabels([]string{"table", "update"}, float32(ru.TableStats.UpdateCount), labels)
+		metrics.SetGaugeWithLabels([]string{"table", "delete"}, float32(ru.TableStats.DelCount), labels)
+	}
+
+	if ru.DelayCount != nil {
+		metrics.SetGaugeWithLabels([]string{"delay", "num"}, float32(ru.DelayCount.Num), labels)
+		metrics.SetGaugeWithLabels([]string{"delay", "time"}, float32(ru.DelayCount.Time), labels)
+	}
+
+	if ru.ThroughputStat != nil {
+		metrics.SetGaugeWithLabels([]string{"throughput", "num"}, float32(ru.ThroughputStat.Num), labels)
+		metrics.SetGaugeWithLabels([]string{"throughput", "time"}, float32(ru.ThroughputStat.Time), labels)
+	}
+}
+
 func (h *taskHandle) Destroy() bool {
 	h.stateLock.RLock()
 	//driver.des
