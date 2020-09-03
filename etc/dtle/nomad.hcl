@@ -63,5 +63,8 @@ plugin "dtle" {
     # By default, API compatibility layer is disabled.
     #api_addr = "127.0.0.1:8190"   # for compatibility API
     nomad_addr = "127.0.0.1:4646" # compatibility API need to access a nomad server
+
+    publish_metrics = false
+    stats_collection_interval = 15
   }
 }

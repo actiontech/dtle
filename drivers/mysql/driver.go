@@ -63,7 +63,9 @@ var (
 		"data_dir": hclspec.NewDefault(hclspec.NewAttr("data_dir", "string", false),
 			hclspec.NewLiteral(`"/var/lib/nomad"`)),
 		"stats_collection_interval": hclspec.NewDefault(hclspec.NewAttr("stats_collection_interval", "number", false),
-			hclspec.NewLiteral(`0`)),
+			hclspec.NewLiteral(`15`)),
+		"publish_metrics": hclspec.NewDefault(hclspec.NewAttr("publish_metrics", "bool", false),
+			hclspec.NewLiteral(`false`)),
 	})
 
 	// taskConfigSpec is the hcl specification for the driver config section of
@@ -299,6 +301,7 @@ type DriverConfig struct {
 	Consul        string `codec:"consul"`
 	DataDir       string   `codec:"data_dir"`
 	StatsCollectionInterval int `codec:"stats_collection_interval"`
+	PublishMetrics bool `codec:"publish_metrics"`
 }
 
 func (d *Driver) SetConfig(c *base.Config) (err error) {

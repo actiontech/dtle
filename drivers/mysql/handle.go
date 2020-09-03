@@ -130,25 +130,25 @@ func (h *taskHandle) run(taskConfig *config.DtleTaskConfig, d *Driver) {
 		return
 	}
 
-	if d.config.StatsCollectionInterval != 0 {
+	go func() {
 		duration := time.Duration(d.config.StatsCollectionInterval) * time.Second
-		go func() {
-			t := time.NewTimer(0)
-			for {
-				select {
-				case <-h.ctx.Done():
-				case <-t.C:
-					s, err := h.runner.Stats()
-					if err != nil {
-						// ignore
-					} else {
+		t := time.NewTimer(0)
+		for {
+			select {
+			case <-h.ctx.Done():
+			case <-t.C:
+				s, err := h.runner.Stats()
+				if err != nil {
+					// ignore
+				} else {
+					if d.config.PublishMetrics {
 						h.emitStats(s)
 					}
-					t.Reset(duration)
 				}
+				t.Reset(duration)
 			}
-		}()
-	}
+		}
+	}()
 }
 
 func (h *taskHandle) emitStats(ru *common.TaskStatistics) {
