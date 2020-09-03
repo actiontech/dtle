@@ -1,21 +1,25 @@
+#! /usr/bin/env python
 # coding=utf-8
+from __future__ import print_function
+
 """
-    Name:       fromdtle2nomad
+    Name:       dtle-job-2to3.py
     Author:     Andy Liu
     Email :     liuan@actionsky.com
     Created:    2020/8/20
-    Requirement package: requests <pip install requests>
 """
-import requests
-import logging
+import argparse
 import json
-import sys
-from pprint import pformat
+import logging
 from copy import deepcopy
+from pprint import pformat
 
-# CHANGE HERE
-#DTLE_IP = "127.0.0.1"
-#DTLE_PORT = "8190"
+import sys
+
+if sys.version_info[0] >= 3:
+    import urllib.request as request
+else:
+    import urllib2 as request
 
 LOGGER = logging.getLogger()
 
@@ -32,18 +36,33 @@ NEED_INT = ['BinlogPos', 'GroupMaxSize', 'ChunkSize', 'GroupTimeout', 'ReplChanB
 def init_log():
     log_format = "[%(asctime)s][%(levelname)5s][%(filename)14s][%(lineno)4d][%(funcName)s][%(message)s]"
     dft = "%Y-%m-%d %H:%M:%S"
-    logging.basicConfig(format=log_format, level=logging.DEBUG, datefmt=dft, filename='fromdtle2nomad.log',
+    logging.basicConfig(format=log_format, level=logging.DEBUG, datefmt=dft, filename='dtle-job-2to3.log',
                         filemode='w')
 
 
-def get_jobs(DTLE_IP , DTLE_PORT):
-    api = 'http://{0}:{1}/v1/jobs'.format(DTLE_IP, DTLE_PORT)
+# remove third-party dependencies
+# def get_jobs(DTLE_IP, DTLE_PORT):
+#     api = 'http://{0}:{1}/v1/jobs'.format(DTLE_IP, DTLE_PORT)
+#     LOGGER.debug('api url: <{0}>'.format(pformat(api)))
+#     r = requests.get(api)
+#     if r.status_code != requests.codes.ok:
+#         LOGGER.error('GET <{0}> - status_code: <{1}> - content: <{2}>'.format(api, r.status_code, r.text))
+#         exit(1)
+#     jobs = r.json()
+#     LOGGER.debug('jobs: <{0}>'.format(pformat(jobs)))
+#     return jobs
+
+
+def get_jobs(DTLE_ADDR):
+    api = 'http://{0}/v1/jobs'.format(DTLE_ADDR)
     LOGGER.debug('api url: <{0}>'.format(pformat(api)))
-    r = requests.get(api)
-    if r.status_code != requests.codes.ok:
-        LOGGER.error('GET <{0}> - status_code: <{1}> - content: <{2}>'.format(api, r.status_code, r.text))
+    req = request.Request(api)
+    r = request.urlopen(req)
+    content = r.read().decode('utf-8')
+    if r.getcode() != 200:
+        LOGGER.error('GET <{0}> - status_code: <{1}> - content: <{2}>'.format(api, r.getcode(), content))
         exit(1)
-    jobs = r.json()
+    jobs = json.loads(content)
     LOGGER.debug('jobs: <{0}>'.format(pformat(jobs)))
     return jobs
 
@@ -105,26 +124,24 @@ def parse(jobs):
         with open(job['Name'] + ".json", "w") as f:
             json.dump(new_job, f, indent=2)
 
-def  dtleHelp():
-    print("Usage:  [help] [args]")
-    print("args：")
-    print("DTLE_IP      --old dtle ip,not null")
-    print("DTLE_PORT    --old dtle port,not null")
-def main(argv):
+
+def parse_command_line():
+    parser = argparse.ArgumentParser(prog='dtle-job-2to3.py')
+    parser.description = 'Get existing jobs from running dtle 2.x and convert them to dtle 3.x job specification files.'
+    parser.add_argument('DTLE_ADDR', action="store", help="dtle 2.x server http address, e.g. 127.0.0.1:8190")
+    args = parser.parse_args()
+
+    return args
+
+
+def main():
     init_log()
-    LOGGER.info('*' + 'FROM DTLE TO NOMAD START'.center(28) + '*')
-    if len(argv) == 2 and (argv[1]=="help"or argv[1]=="args"):
-        dtleHelp()
-    else if len(argv) == 3:
-        DTLE_IP = argv[1]
-        DTLE_PORT = argv[2]
-        jobs = get_jobs(DTLE_IP , DTLE_PORT)
-        parse(jobs)
-        print('Please replace database password by yourself!')
-        LOGGER.info('*' + 'FROM DTLE TO NOMAD EMD'.center(28) + '*')
-    else:
-        print("agrv number err, Usage:  [help] [args] ")
-        print("args：")
-        print("DTLE_IP      --old dtle ip,not null")
-        print("DTLE_PORT    --old dtle port,not null")
-main(sys.argv)
+    LOGGER.info('*' + 'DTLE 2 TO 3 START'.center(28) + '*')
+    args = parse_command_line()
+    jobs = get_jobs(args.DTLE_ADDR)
+    parse(jobs)
+    print('Please replace database password by yourself!')
+    LOGGER.info('*' + 'DTLE 2 TO 3 END'.center(28) + '*')
+
+
+main()
