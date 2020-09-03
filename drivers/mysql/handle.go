@@ -31,9 +31,10 @@ type taskHandle struct {
 
 	runner DriverHandle
 
-	ctx context.Context
+	ctx        context.Context
 	cancelFunc context.CancelFunc
-	waitCh chan *drivers.ExitResult
+	waitCh     chan *drivers.ExitResult
+	stats      *common.TaskStatistics
 }
 
 func newDtleTaskHandle(logger hclog.Logger, cfg *drivers.TaskConfig, state drivers.TaskState, started time.Time) *taskHandle {
@@ -141,6 +142,7 @@ func (h *taskHandle) run(taskConfig *config.DtleTaskConfig, d *Driver) {
 				if err != nil {
 					// ignore
 				} else {
+					h.stats = s
 					if d.config.PublishMetrics {
 						h.emitStats(s)
 					}

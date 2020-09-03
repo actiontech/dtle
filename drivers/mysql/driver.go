@@ -2,6 +2,7 @@ package mysql
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"github.com/actiontech/dtle/drivers/mysql/common"
 	"github.com/actiontech/dtle/drivers/mysql/config"
@@ -599,16 +600,28 @@ func (d *Driver) TaskEvents(ctx context.Context) (<-chan *drivers.TaskEvent, err
 }
 
 func (d *Driver) SignalTask(taskID string, signal string) error {
+	d.logger.Debug("SignalTask", "taskID", taskID, "signal", signal)
+	// SignalTask: driver=dtle @module=dtle pid=72685 signal=SIGKILL taskID=37c60a2d-b7c0-37ff-787b-fdb98e921e92/Src/51b71e84
+
 	h, ok := d.tasks.Get(taskID)
 	if !ok {
 		return drivers.ErrTaskNotFound
 	}
 
-	if h.exitResult == nil {
-		return nil
-	}
+	//if h.exitResult == nil {
+	//	return nil
+	//}
 
-	return errors.New(h.exitResult.Err.Error())
+	if signal == "stats" {
+		if h.stats != nil {
+			bs, err := json.Marshal(h.stats)
+			if err != nil {
+				return err
+			}
+			return errors.New(string(bs))
+		}
+	}
+	return nil
 }
 
 func (d *Driver) ExecTask(taskID string, cmd []string, timeout time.Duration) (*drivers.ExecTaskResult, error) {
