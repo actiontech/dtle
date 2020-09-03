@@ -955,7 +955,7 @@ func (b *BinlogReader) DataStreamEvents(entriesChannel chan<- *BinlogEntry) erro
 					b.currentCoordinates.LogFile = string(rotateEvent.NextLogName)
 				}()
 				b.mysqlContext.Stage = StageFinishedReadingOneBinlogSwitchingToNextBinlog
-				b.logger.Info("Rotate to next binlog", "name", rotateEvent.NextLogName)
+				b.logger.Info("Rotate to next binlog", "name", string(rotateEvent.NextLogName))
 			} else {
 				b.logger.Warn("fake rotate_event.")
 			}

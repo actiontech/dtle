@@ -84,9 +84,7 @@ func ParseBinlogCoordinatesFromRows(rows *sql.Rows) (selfBinlogCoordinates *Binl
 
 // GetTableColumns reads column list from given table
 func GetTableColumns(db usql.QueryAble, databaseName, tableName string) (*umconf.ColumnList, error) {
-	query := fmt.Sprintf(`
-		show columns from %s.%s
-		`,
+	query := fmt.Sprintf(`show columns from %s.%s`,
 		umconf.EscapeName(databaseName),
 		umconf.EscapeName(tableName),
 	)
