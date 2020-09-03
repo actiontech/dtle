@@ -120,30 +120,6 @@ func (this *RowMap) GetBool(key string) bool {
 	return this.GetInt(key) != 0
 }
 
-// knownDBs is a DB cache by uri
-var knownDBs map[string]*gosql.DB = make(map[string]*gosql.DB)
-var knownDBsMutex = &sync.Mutex{}
-
-// GetDB returns a DB instance based on uri.
-// bool result indicates whether the DB was returned from cache; err
-func GetDB(mysql_uri string) (*gosql.DB, bool, error) {
-	knownDBsMutex.Lock()
-	defer func() {
-		knownDBsMutex.Unlock()
-	}()
-
-	var exists bool
-	if _, exists = knownDBs[mysql_uri]; !exists {
-		if db, err := gosql.Open("mysql", mysql_uri); err == nil {
-			db.SetConnMaxLifetime(ConnMaxLifetime)
-			knownDBs[mysql_uri] = db
-		} else {
-			return db, exists, err
-		}
-	}
-	return knownDBs[mysql_uri], exists, nil
-}
-
 type Conn struct {
 	DbMutex *sync.Mutex
 	Db      *gosql.Conn
@@ -297,56 +273,6 @@ func queryResultData(db *gosql.DB, query string, retrieveColumns bool, args ...i
 func QueryResultData(db *gosql.DB, query string, args ...interface{}) (ResultData, error) {
 	resultData, _, err := queryResultData(db, query, false, args...)
 	return resultData, err
-}
-
-// QueryResultDataNamed returns a raw array of rows, with column names
-func QueryResultDataNamed(db *gosql.DB, query string, args ...interface{}) (ResultData, []string, error) {
-	return queryResultData(db, query, true, args...)
-}
-
-// QueryRowsMapBuffered reads data from the database into a buffer, and only then applies the given function per row.
-// This allows the application to take its time with processing the data, albeit consuming as much memory as required by
-// the result set.
-func QueryRowsMapBuffered(db *gosql.DB, query string, on_row func(RowMap) error, args ...interface{}) error {
-	resultData, columns, err := queryResultData(db, query, true, args...)
-	if err != nil {
-		// Already logged
-		return err
-	}
-	for _, row := range resultData {
-		err = on_row(rowToMap(row, columns))
-		if err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// ExecNoPrepare executes given query using given args on given DB, without using prepared statements.
-func ExecNoPrepare(db *gosql.Conn, query string, args ...interface{}) (gosql.Result, error) {
-	var err error
-	defer func() {
-		if derr := recover(); derr != nil {
-			err = errors.New(fmt.Sprintf("ExecNoPrepare unexpected error: %+v", derr))
-		}
-	}()
-
-	var res gosql.Result
-	res, err = db.ExecContext(context.Background(), query, args...)
-	return res, err
-}
-
-func InClauseStringValues(terms []string) string {
-	quoted := []string{}
-	for _, s := range terms {
-		quoted = append(quoted, fmt.Sprintf("'%s'", strings.Replace(s, ",", "''", -1)))
-	}
-	return strings.Join(quoted, ", ")
-}
-
-// Convert variable length arguments into arguments array
-func Args(args ...interface{}) []interface{} {
-	return args
 }
 
 //LOCK TABLES {{ .Name }} WRITE;
