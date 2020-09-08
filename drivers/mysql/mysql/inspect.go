@@ -48,10 +48,6 @@ func (i *Inspector) InitDBConnections() (err error) {
 	if i.db, err = usql.CreateDB(inspectorUri); err != nil {
 		return err
 	}
-	i.logger.Debug("validateConnection")
-/*	if err := i.validateConnection(); err != nil {
-		return err
-	}*/
 
 	i.logger.Debug("validateGrants", "SkipPrivilegeCheck", i.mysqlContext.SkipPrivilegeCheck)
 	if err := i.validateGrants(); err != nil {
@@ -68,13 +64,13 @@ func (i *Inspector) InitDBConnections() (err error) {
 		}
 	}*/
 	i.logger.Debug("validateGTIDMode")
-	/*if err = i.validateGTIDMode(); err != nil {
+	if err = i.validateGTIDMode(); err != nil {
 		return err
-	}*/
+	}
 	i.logger.Debug("validateBinlogs", "inspectorUri", inspectorUri)
-	/*if err := i.validateBinlogs(); err != nil {
+	if err := i.validateBinlogs(); err != nil {
 		return err
-	}*/
+	}
 	i.logger.Info("Initiated", "on",
 		hclog.Fmt("%s:%d", i.mysqlContext.ConnectionConfig.Host, i.mysqlContext.ConnectionConfig.Port))
 	return nil

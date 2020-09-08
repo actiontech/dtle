@@ -649,9 +649,9 @@ func (e *Extractor) initDBConnections() (err error) {
 		return err
 	}
 
-	/*if err := e.validateConnectionAndGetVersion(); err != nil {
+	if err := e.validateConnectionAndGetVersion(); err != nil {
 		return err
-	}*/
+	}
 
 	{
 		getTxIsolationVarName := func(mysqlVersionDigit int) string {
