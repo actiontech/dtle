@@ -165,13 +165,14 @@ func (s *HTTPServer) registerHandlers() {
 	s.mux.HandleFunc("/v1/node/", s.wrap(s.NodeSpecificRequest))
 
 	s.mux.HandleFunc("/v1/allocations", s.wrap(s.AllocsRequest))
+	s.mux.HandleFunc("/agent/allocations", s.wrap(s.AllocsRequest))
 	s.mux.HandleFunc("/v1/allocation/", s.wrap(s.AllocSpecificRequest))
 
 	s.mux.HandleFunc("/v1/evaluations", s.wrap(s.EvalsRequest))
 	s.mux.HandleFunc("/v1/evaluation/", s.wrap(s.EvalSpecificRequest))
 
 	s.mux.HandleFunc("/v1/agent/allocation/", s.wrap(s.ClientAllocRequest))
-
+	s.mux.HandleFunc("/agent/allocation/", s.wrap(s.ClientAllocRequest))
 	s.mux.HandleFunc("/v1/self", s.wrap(s.AgentSelfRequest))
 	s.mux.HandleFunc("/v1/join", s.wrap(s.AgentJoinRequest))
 	s.mux.HandleFunc("/v1/agent/force-leave", s.wrap(s.AgentForceLeaveRequest))
@@ -233,7 +234,7 @@ func (s *HTTPServer) wrap(handler func(resp http.ResponseWriter, req *http.Reque
 		setHeaders(resp, s.agent.config.HTTPAPIResponseHeaders)
 		// Invoke the handler
 		reqURL := req.URL.String()
-		if !strings.Contains(reqURL, "login") {
+		if !strings.Contains(reqURL, "login") && strings.Contains(reqURL, "/v1"){
 			if "" != req.Header.Get("authorization") {
 				tokenString := req.Header.Get("authorization")
 				token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {

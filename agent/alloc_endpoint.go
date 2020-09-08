@@ -80,7 +80,13 @@ func (s *HTTPServer) AllocSpecificRequest(resp http.ResponseWriter, req *http.Re
 }
 
 func (s *HTTPServer) ClientAllocRequest(resp http.ResponseWriter, req *http.Request) (interface{}, error) {
-	reqSuffix := strings.TrimPrefix(req.URL.Path, "/v1/agent/allocation/")
+	reqSuffix:=""
+	if strings.Contains(req.URL.Path, "/v1"){
+		reqSuffix = strings.TrimPrefix(req.URL.Path, "/v1/agent/allocation/")
+	}else {
+		reqSuffix = strings.TrimPrefix(req.URL.Path, "/agent/allocation/")
+	}
+
 	// tokenize the suffix of the path to get the alloc id and find the action
 	// invoked on the alloc id
 	tokens := strings.Split(reqSuffix, "/")
