@@ -41,7 +41,7 @@ chown -R -L dtle:dtle "$RPM_INSTALL_PREFIX/var/log/nomad"
 
 sed -i 's|INSTALL_PREFIX_MAGIC|'$RPM_INSTALL_PREFIX'|g' $RPM_INSTALL_PREFIX/etc/dtle/*.hcl
 
-which systemctl &>/dev/null
+systemctl --help &>/dev/null
 if [[ $? -eq 0 ]]; then
   install_systemd
 
