@@ -130,6 +130,7 @@ type Applier struct {
 
 	storeManager *common.StoreManager
 	gtidCh       chan *base.BinlogCoordinateTx
+	SrcBinlogTimestamp          uint32
 }
 
 func NewApplier(
@@ -1013,6 +1014,7 @@ func (a *Applier) ApplyBinlogEvent(ctx context.Context, workerIdx int, binlogEnt
 	var err error
 	var spanContext opentracing.SpanContext
 	var span opentracing.Span
+	var Timestamp uint32
 	if ctx != nil {
 		spanContext = opentracing.SpanFromContext(ctx).Context()
 		span = opentracing.GlobalTracer().StartSpan(" desc single binlogEvent transform to sql ",
@@ -1133,7 +1135,9 @@ func (a *Applier) ApplyBinlogEvent(ctx context.Context, workerIdx int, binlogEnt
 			}
 			totalDelta += rowDelta
 		}
+		Timestamp = event.Timestamp
 	}
+
 	span.SetTag("after  transform  binlogEvent to sql  ", time.Now().UnixNano()/1e6)
 	logger.Debug("insert gno", "gno", binlogEntry.Coordinates.GNO)
 	_, err = dbApplier.PsInsertExecutedGtid.Exec(a.subject, binlogEntry.Coordinates.SID.Bytes(), binlogEntry.Coordinates.GNO)
@@ -1144,6 +1148,8 @@ func (a *Applier) ApplyBinlogEvent(ctx context.Context, workerIdx int, binlogEnt
 	// no error
 	a.mysqlContext.Stage = common.StageWaitingForGtidToBeCommitted
 	atomic.AddInt64(&a.TotalDeltaCopied, 1)
+	logger.Debug("event delay  time :", "commit time ", Timestamp, "copy finish time ", uint32(time.Now().Unix()))
+	a.SrcBinlogTimestamp = Timestamp
 	return nil
 }
 
@@ -1268,6 +1274,7 @@ func (a *Applier) Stats() (*common.TaskStatistics, error) {
 	totalRowsReplay := a.TotalRowsReplayed
 	rowsEstimate := atomic.LoadInt64(&a.mysqlContext.RowsEstimate)
 	totalDeltaCopied := a.TotalDeltaCopied
+	var delayTime int64
 	deltaEstimate := atomic.LoadInt64(&a.mysqlContext.DeltaEstimate)
 
 	var progressPct float64
@@ -1297,6 +1304,9 @@ func (a *Applier) Stats() (*common.TaskStatistics, error) {
 			totalExpectedSeconds = elapsedRowCopySeconds * float64(deltaEstimate) / float64(totalDeltaCopied)
 		}
 		etaSeconds = totalExpectedSeconds - elapsedRowCopySeconds
+		if(a.SrcBinlogTimestamp != 0){
+			delayTime = int64(uint32(time.Now().Unix()) - a.SrcBinlogTimestamp )
+		}
 		if etaSeconds >= 0 {
 			etaDuration := time.Duration(etaSeconds) * time.Second
 			eta = base.PrettifyDurationOutput(etaDuration)
@@ -1327,6 +1337,7 @@ func (a *Applier) Stats() (*common.TaskStatistics, error) {
 			ApplierGroupTxQueueSize: 0,
 		},
 		Timestamp: time.Now().UTC().UnixNano(),
+		DelayTime :delayTime,
 	}
 	if a.natsConn != nil {
 		taskResUsage.MsgStat = a.natsConn.Statistics

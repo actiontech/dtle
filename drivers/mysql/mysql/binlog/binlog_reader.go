@@ -503,7 +503,9 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 						currentSchema,
 						query,
 						NotDML,
+						ev.Header.Timestamp,
 					)
+
 					b.currentBinlogEntry.Events = append(b.currentBinlogEntry.Events, event)
 					b.currentBinlogEntry.SpanContext = span.Context()
 					b.currentBinlogEntry.OriginalSize += len(ev.RawData)
@@ -651,6 +653,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 							sql,
 							NotDML,
 							ddlTable,
+							ev.Header.Timestamp,
 						)
 						event.Table = table
 						b.currentBinlogEntry.Events = append(b.currentBinlogEntry.Events, event)
@@ -700,6 +703,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 				tableName,
 				dml,
 				int(rowsEvent.ColumnCount),
+				ev.Header.Timestamp,
 			)
 			dmlEvent.LogPos = int64(ev.Header.LogPos - ev.Header.EventSize)
 

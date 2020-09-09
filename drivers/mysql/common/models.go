@@ -66,4 +66,5 @@ type TaskStatistics struct {
 	BufferStat         BufferStat
 	Stage              string
 	Timestamp          int64
+	DelayTime          int64
 }
