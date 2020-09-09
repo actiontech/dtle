@@ -1,11 +1,17 @@
 // global values
 package g
 
+import (
+	hclog "github.com/hashicorp/go-hclog"
+)
+
 var (
 	Version   string
 	GitBranch string
 	GitCommit string
 )
+
+var Logger hclog.Logger
 
 const (
 	DtleSchemaName string = "dtle"

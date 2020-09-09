@@ -22,6 +22,8 @@ func main() {
 
 	pid := os.Getpid()
 	plugins.Serve(func(logger hclog.Logger) interface{} {
+		g.Logger = logger
+
 		logger.Info("dtle starting", "version", versionStr, "pid", pid)
 		logger.Info("env", "GODEBUG", os.Getenv("GODEBUG"))
 		logger.Debug("plugins.Serve Factory called.")

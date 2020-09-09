@@ -203,7 +203,7 @@ func NewMySQLReader(execCtx *common.ExecContext, cfg *config.MySQLDriverConfig, 
 	if err != nil {
 		return nil, err
 	}
-	logger.Debug("job.start: debug server id is :", binlogReader.serverId)
+	logger.Debug("got replication serverId", "id", binlogReader.serverId)
 	// support regex
 	binlogReader.genRegexMap()
 
