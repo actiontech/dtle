@@ -80,29 +80,31 @@ func NewDataEvent(databaseName, tableName string, dml EventDML, columnCount int,
 		TableName:    tableName,
 		DML:          dml,
 		ColumnCount:  columnCount,
-		Timestamp:timestamp,
+		Timestamp:    timestamp,
 	}
 	return event
 }
 
-func  NewQueryEvent(currentSchema, query string, dml EventDML, ExecutionTime uint32) DataEvent {
+func  NewQueryEvent(currentSchema, query string, dml EventDML, timestamp uint32) DataEvent {
 	event := DataEvent{
 		CurrentSchema: currentSchema,
 		Query:         query,
 		DML:           dml,
-		Timestamp:ExecutionTime,
+		Timestamp:     timestamp,
 
 	}
 	return event
 }
-func  NewQueryEventAffectTable(currentSchema, query string, dml EventDML, affectedTable SchemaTable, ExecutionTime uint32) DataEvent {
+func  NewQueryEventAffectTable(currentSchema, query string, dml EventDML, affectedTable SchemaTable,
+	timestamp uint32) DataEvent {
+
 	event := DataEvent{
 		CurrentSchema: currentSchema,
 		DatabaseName:  affectedTable.Schema,
 		TableName:     affectedTable.Table,
 		Query:         query,
 		DML:           dml,
-		Timestamp:ExecutionTime,
+		Timestamp:     timestamp,
 	}
 	return event
 }

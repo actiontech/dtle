@@ -130,7 +130,7 @@ type Applier struct {
 
 	storeManager *common.StoreManager
 	gtidCh       chan *base.BinlogCoordinateTx
-	SrcBinlogTimestamp          uint32
+	SrcBinlogTimestamp uint32
 }
 
 func NewApplier(
@@ -1014,7 +1014,7 @@ func (a *Applier) ApplyBinlogEvent(ctx context.Context, workerIdx int, binlogEnt
 	var err error
 	var spanContext opentracing.SpanContext
 	var span opentracing.Span
-	var Timestamp uint32
+	var timestamp uint32
 	if ctx != nil {
 		spanContext = opentracing.SpanFromContext(ctx).Context()
 		span = opentracing.GlobalTracer().StartSpan(" desc single binlogEvent transform to sql ",
@@ -1135,7 +1135,7 @@ func (a *Applier) ApplyBinlogEvent(ctx context.Context, workerIdx int, binlogEnt
 			}
 			totalDelta += rowDelta
 		}
-		Timestamp = event.Timestamp
+		timestamp = event.Timestamp
 	}
 
 	span.SetTag("after  transform  binlogEvent to sql  ", time.Now().UnixNano()/1e6)
@@ -1148,8 +1148,8 @@ func (a *Applier) ApplyBinlogEvent(ctx context.Context, workerIdx int, binlogEnt
 	// no error
 	a.mysqlContext.Stage = common.StageWaitingForGtidToBeCommitted
 	atomic.AddInt64(&a.TotalDeltaCopied, 1)
-	logger.Debug("event delay  time :", "commit time ", Timestamp, "copy finish time ", uint32(time.Now().Unix()))
-	a.SrcBinlogTimestamp = Timestamp
+	logger.Debug("event delay time", "timestamp", timestamp)
+	a.SrcBinlogTimestamp = timestamp
 	return nil
 }
 
@@ -1304,8 +1304,10 @@ func (a *Applier) Stats() (*common.TaskStatistics, error) {
 			totalExpectedSeconds = elapsedRowCopySeconds * float64(deltaEstimate) / float64(totalDeltaCopied)
 		}
 		etaSeconds = totalExpectedSeconds - elapsedRowCopySeconds
-		if(a.SrcBinlogTimestamp != 0){
-			delayTime = int64(uint32(time.Now().Unix()) - a.SrcBinlogTimestamp )
+		if a.SrcBinlogTimestamp != 0 {
+			delayTime = time.Now().Unix() - int64(a.SrcBinlogTimestamp)
+		} else {
+			delayTime = 0
 		}
 		if etaSeconds >= 0 {
 			etaDuration := time.Duration(etaSeconds) * time.Second
@@ -1337,7 +1339,7 @@ func (a *Applier) Stats() (*common.TaskStatistics, error) {
 			ApplierGroupTxQueueSize: 0,
 		},
 		Timestamp: time.Now().UTC().UnixNano(),
-		DelayTime :delayTime,
+		DelayTime: delayTime,
 	}
 	if a.natsConn != nil {
 		taskResUsage.MsgStat = a.natsConn.Statistics
