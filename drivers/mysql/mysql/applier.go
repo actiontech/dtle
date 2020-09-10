@@ -1271,6 +1271,7 @@ func (a *Applier) ApplyEventQueries(db *gosql.DB, entry *common.DumpEntry) error
 }
 
 func (a *Applier) Stats() (*common.TaskStatistics, error) {
+	a.logger.Debug("Stats")
 	totalRowsReplay := a.TotalRowsReplayed
 	rowsEstimate := atomic.LoadInt64(&a.mysqlContext.RowsEstimate)
 	totalDeltaCopied := a.TotalDeltaCopied
@@ -1304,17 +1305,17 @@ func (a *Applier) Stats() (*common.TaskStatistics, error) {
 			totalExpectedSeconds = elapsedRowCopySeconds * float64(deltaEstimate) / float64(totalDeltaCopied)
 		}
 		etaSeconds = totalExpectedSeconds - elapsedRowCopySeconds
-		if a.SrcBinlogTimestamp != 0 {
-			delayTime = time.Now().Unix() - int64(a.SrcBinlogTimestamp)
-		} else {
-			delayTime = 0
-		}
 		if etaSeconds >= 0 {
 			etaDuration := time.Duration(etaSeconds) * time.Second
 			eta = base.PrettifyDurationOutput(etaDuration)
 		} else {
 			eta = "0s"
 		}
+	}
+	if a.SrcBinlogTimestamp != 0 {
+		delayTime = time.Now().Unix() - int64(a.SrcBinlogTimestamp)
+	} else {
+		delayTime = 0
 	}
 
 	taskResUsage :=  common.TaskStatistics{
@@ -1339,7 +1340,10 @@ func (a *Applier) Stats() (*common.TaskStatistics, error) {
 			ApplierGroupTxQueueSize: 0,
 		},
 		Timestamp: time.Now().UTC().UnixNano(),
-		DelayTime: delayTime,
+		DelayCount: &common.DelayCount{
+			Num:  0,
+			Time: delayTime,
+		},
 	}
 	if a.natsConn != nil {
 		taskResUsage.MsgStat = a.natsConn.Statistics

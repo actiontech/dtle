@@ -144,6 +144,7 @@ func (h *taskHandle) run(taskConfig *config.DtleTaskConfig, d *Driver) {
 				} else {
 					h.stats = s
 					if d.config.PublishMetrics {
+						h.logger.Debug("emitStats")
 						h.emitStats(s)
 					}
 				}
@@ -173,7 +174,8 @@ func (h *taskHandle) emitStats(ru *common.TaskStatistics) {
 	}
 
 	if ru.DelayCount != nil {
-		metrics.SetGaugeWithLabels([]string{"delay", "num"}, float32(ru.DelayCount.Num), labels)
+		// TODO
+		//metrics.SetGaugeWithLabels([]string{"delay", "num"}, float32(ru.DelayCount.Num), labels)
 		metrics.SetGaugeWithLabels([]string{"delay", "time"}, float32(ru.DelayCount.Time), labels)
 	}
 

@@ -37,7 +37,7 @@ type TableStats struct {
 
 type DelayCount struct {
 	Num  uint64
-	Time uint64
+	Time int64 // it might be negative if hw clock is wrong
 }
 type ThroughputStat struct {
 	Num  uint64
@@ -66,5 +66,4 @@ type TaskStatistics struct {
 	BufferStat         BufferStat
 	Stage              string
 	Timestamp          int64
-	DelayTime          int64
 }

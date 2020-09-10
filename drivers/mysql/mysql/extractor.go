@@ -104,6 +104,8 @@ type Extractor struct {
 	streamerReadyCh chan error
 	fullCopyDone    chan struct{}
 	storeManager    *common.StoreManager
+
+	timestamp uint32
 }
 
 func NewExtractor(execCtx *common.ExecContext, cfg *config.MySQLDriverConfig, logger hclog.Logger, storeManager *common.StoreManager, waitCh chan *drivers.ExitResult) (*Extractor, error) {
@@ -889,7 +891,9 @@ func (e *Extractor) StreamEvents() error {
 		sendEntries := func() error {
 			var gno int64 = 0
 			if len(entries.Entries) > 0 {
-				gno = entries.Entries[0].Coordinates.GNO
+				theEntries := entries.Entries[0]
+				gno = theEntries.Coordinates.GNO
+				e.timestamp = theEntries.Events[0].Timestamp
 			}
 
 			txMsg, err := common.Encode(entries)
@@ -1427,6 +1431,12 @@ func (e *Extractor) Stats() (*common.TaskStatistics, error) {
 	var etaSeconds float64 = math.MaxFloat64
 	var eta string
 	eta = "N/A"
+	var delay int64
+	if e.timestamp != 0 {
+		delay = time.Now().Unix() - int64(e.timestamp)
+	} else {
+		delay = 0
+	}
 	if progressPct >= 100.0 {
 		eta = "0s"
 		e.mysqlContext.Stage = common.StageMasterHasSentAllBinlogToSlave
@@ -1455,6 +1465,10 @@ func (e *Extractor) Stats() (*common.TaskStatistics, error) {
 			ExtractorTxQueueSize: 0, // TODO remove
 			SendByTimeout:        e.sendByTimeoutCounter,
 			SendBySizeFull:       e.sendBySizeFullCounter,
+		},
+		DelayCount: &common.DelayCount{
+			Num:  0,
+			Time: delay,
 		},
 		Timestamp: time.Now().UTC().UnixNano(),
 	}
