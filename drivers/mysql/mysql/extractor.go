@@ -58,15 +58,15 @@ type Extractor struct {
 	subject      string
 	mysqlContext *config.MySQLDriverConfig
 
-	systemVariables   map[string]string
-	sqlMode           string
-	MySQLVersion      string
+	systemVariables       map[string]string
+	sqlMode               string
+	MySQLVersion          string
 	TotalTransferredBytes int
 	// Original comment: TotalRowsCopied returns the accurate number of rows being copied (affected)
 	// This is not exactly the same as the rows being iterated via chunks, but potentially close enough.
 	// TODO What is the difference between mysqlContext.RowsEstimate ?
-	TotalRowsCopied  int64
-	NatsAddr          string
+	TotalRowsCopied       int64
+	NatsAddr              string
 	lastConnectedNatsAddr string
 
 	mysqlVersionDigit int
@@ -105,7 +105,8 @@ type Extractor struct {
 	fullCopyDone    chan struct{}
 	storeManager    *common.StoreManager
 
-	timestamp uint32
+	timestamp   uint32
+	timestampCh chan uint32
 }
 
 func NewExtractor(execCtx *common.ExecContext, cfg *config.MySQLDriverConfig, logger hclog.Logger, storeManager *common.StoreManager, waitCh chan *drivers.ExitResult) (*Extractor, error) {
@@ -126,6 +127,7 @@ func NewExtractor(execCtx *common.ExecContext, cfg *config.MySQLDriverConfig, lo
 		streamerReadyCh: make(chan error),
 		fullCopyDone:    make(chan struct{}),
 		storeManager:    storeManager,
+		timestampCh:     make(chan uint32),
 	}
 	e.context.LoadSchemas(nil)
 	logger.Debug("NewExtractor. after LoadSchemas")
@@ -273,6 +275,7 @@ func (e *Extractor) Run() {
 	}
 	e.logger.Debug("sendSysVarAndSqlMode. after")
 
+	go e.handleTimestamp()
 	go func() {
 		<-e.gotCoordinateCh
 
@@ -878,6 +881,28 @@ func (e *Extractor) setStatementFor() string {
 	return buffer.String()
 }
 
+func (e *Extractor) handleTimestamp() {
+	interval := 15 * time.Second
+	t := time.NewTimer(interval)
+	for !e.shutdown {
+		select {
+		case ts := <-e.timestampCh:
+			e.timestamp = ts
+			if !t.Stop() {
+				<-t.C
+			}
+			t.Reset(interval)
+		case <-t.C:
+			// TODO need a more reliable method to determine queue.empty.
+			if len(e.dataChannel) == 0 {
+				e.logger.Debug("delay: resetting timestamp")
+				e.timestamp = 0
+			}
+		case <-e.shutdownCh:
+			// will end the loop
+		}
+	}
+}
 // StreamEvents will begin streaming events. It will be blocking, so should be
 // executed by a goroutine
 func (e *Extractor) StreamEvents() error {
@@ -893,7 +918,7 @@ func (e *Extractor) StreamEvents() error {
 			if len(entries.Entries) > 0 {
 				theEntries := entries.Entries[0]
 				gno = theEntries.Coordinates.GNO
-				e.timestamp = theEntries.Events[0].Timestamp
+				e.timestampCh <- theEntries.Events[0].Timestamp
 			}
 
 			txMsg, err := common.Encode(entries)

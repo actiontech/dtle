@@ -128,9 +128,11 @@ type Applier struct {
 
 	gtidSet *gomysql.MysqlGTIDSet
 
-	storeManager *common.StoreManager
-	gtidCh       chan *base.BinlogCoordinateTx
+	storeManager       *common.StoreManager
+	gtidCh             chan *base.BinlogCoordinateTx
+
 	SrcBinlogTimestamp uint32
+	timestampCh        chan uint32
 }
 
 func NewApplier(
@@ -140,18 +142,19 @@ func NewApplier(
 	logger.Info("NewApplier", "job", ctx.Subject)
 
 	a = &Applier{
-		logger:                  logger.Named("applier").With("job", ctx.Subject),
-		subject:                 ctx.Subject,
-		mysqlContext:            cfg,
-		NatsAddr:                natsAddr,
-		tableItems:              make(mapSchemaTableItems),
-		rowCopyComplete:         make(chan struct{}),
-		copyRowsQueue:           make(chan *common.DumpEntry, 24),
-		waitCh:                  waitCh,
-		shutdownCh:              make(chan struct{}),
-		printTps:                os.Getenv(g.ENV_PRINT_TPS) != "",
-		storeManager:            storeManager,
-		gtidCh:                  make(chan *base.BinlogCoordinateTx, 4096),
+		logger:          logger.Named("applier").With("job", ctx.Subject),
+		subject:         ctx.Subject,
+		mysqlContext:    cfg,
+		NatsAddr:        natsAddr,
+		tableItems:      make(mapSchemaTableItems),
+		rowCopyComplete: make(chan struct{}),
+		copyRowsQueue:   make(chan *common.DumpEntry, 24),
+		waitCh:          waitCh,
+		shutdownCh:      make(chan struct{}),
+		printTps:        os.Getenv(g.ENV_PRINT_TPS) != "",
+		storeManager:    storeManager,
+		gtidCh:          make(chan *base.BinlogCoordinateTx, 4096),
+		timestampCh:     make(chan uint32),
 	}
 	stubFullApplyDelayStr := os.Getenv(g.ENV_FULL_APPLY_DELAY)
 	if stubFullApplyDelayStr == "" {
@@ -337,6 +340,7 @@ func (a *Applier) Run() {
 		a.onError(TaskStateDead, errors.Wrap(err, "WatchAndPutNats"))
 	})
 
+	go a.handleTimestamp()
 	go a.updateGtidLoop()
 
 	for i := 0; i < a.mysqlContext.ParallelWorkers; i++ {
@@ -1149,8 +1153,31 @@ func (a *Applier) ApplyBinlogEvent(ctx context.Context, workerIdx int, binlogEnt
 	a.mysqlContext.Stage = common.StageWaitingForGtidToBeCommitted
 	atomic.AddInt64(&a.TotalDeltaCopied, 1)
 	logger.Debug("event delay time", "timestamp", timestamp)
-	a.SrcBinlogTimestamp = timestamp
+	a.timestampCh <- timestamp
 	return nil
+}
+
+func (a *Applier) handleTimestamp() {
+	interval := 15 * time.Second
+	t := time.NewTimer(interval)
+	for {
+		select {
+		case ts := <-a.timestampCh:
+			a.SrcBinlogTimestamp = ts
+			if !t.Stop() {
+				<-t.C
+			}
+			t.Reset(interval)
+		case <-t.C:
+			if len(a.applyDataEntryQueue) == 0 && len(a.applyBinlogMtsTxQueue) == 0 {
+				a.logger.Debug("delay: resetting timestamp")
+				a.SrcBinlogTimestamp = 0
+			}
+			t.Reset(interval)
+		case <-a.shutdownCh:
+			// will end the loop
+		}
+	}
 }
 
 func (a *Applier) ApplyEventQueries(db *gosql.DB, entry *common.DumpEntry) error {
