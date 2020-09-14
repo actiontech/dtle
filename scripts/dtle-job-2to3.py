@@ -31,6 +31,7 @@ NOMAD_SRC_CFG_WHITE_LIST = ['Gtid', 'GtidStart', 'AutoGtid', 'BinlogRelay', 'Bin
 NOMAD_DEST_CFG_WHITE_LIST = ['ConnectionConfig', 'ParallelWorkers', 'Brokers', 'Converter', 'Topic', 'TimeZone']
 # fix kafka job return float
 NEED_INT = ['BinlogPos', 'GroupMaxSize', 'ChunkSize', 'GroupTimeout', 'ReplChanBufferSize', 'ParallelWorkers']
+MUST_SET_FALSE = ['DropTableIfExists']
 
 
 def init_log():
@@ -98,6 +99,11 @@ def parse(jobs):
                     if k not in NOMAD_SRC_CFG_WHITE_LIST:
                         task['Config'].pop(k)
                         LOGGER.debug('src pop: <{0}>'.format(pformat(k)))
+
+                for k, _ in task['Config'].items():
+                    if k in MUST_SET_FALSE:
+                        task['Config'][k] = False
+                        LOGGER.debug('set false: <{0}>'.format(pformat(k)))
 
                 if 'ReplicateDoDb' in task['Config']:
                     for db in task['Config']['ReplicateDoDb']:
