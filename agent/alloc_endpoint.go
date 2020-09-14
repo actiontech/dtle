@@ -138,7 +138,7 @@ func (s *HTTPServer) allocStatsForward(allocID string,addr string) (interface{},
 	for _ ,server:=range out.Nodes{
 		serverAddr:= server.HTTPAddr
 		if serverAddr!=addr && server.Status=="ready"{
-			url:="http://"+ serverAddr+"/v1/agent/allocation/"+allocID+"/stats/forward"
+			url:="http://"+ serverAddr+"/agent/allocation/"+allocID+"/stats/forward"
 			s.logger.Debug("go to  %v ,find the alloc",url)
 			resp, err :=   http.Get(url)
 			if err != nil {
