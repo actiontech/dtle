@@ -1225,7 +1225,16 @@ func (e *Extractor) mysqlDump() error {
 			e.logger.Debug("binlog coordinates 1", "coordinate", hclog.Fmt("%+v", binlogCoordinates1))
 			e.logger.Debug("binlog coordinates 2", "coordinate", hclog.Fmt("%+v", binlogCoordinates2))
 
-			if binlogCoordinates1.GtidSet == binlogCoordinates2.GtidSet {
+			gs1, err := gomysql.ParseMysqlGTIDSet(binlogCoordinates1.GtidSet)
+			if err != nil {
+				return err
+			}
+			gs2, err := gomysql.ParseMysqlGTIDSet(binlogCoordinates2.GtidSet)
+			if err != nil {
+				return err
+			}
+
+			if gs1.Contain(gs2) && gs2.Contain(gs1) {
 				gtidMatch = true
 				e.logger.Info("Got gtid", "gtidMatchRound", gtidMatchRound)
 
