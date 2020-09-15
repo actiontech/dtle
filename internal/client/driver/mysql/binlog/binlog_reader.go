@@ -620,6 +620,8 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 						//sql = strings.Replace(sql, realSchema, schema.TableSchemaRename, 1)
 						sql = loadMapping(sql, realSchema, schema.TableSchemaRename, "schemaRename", " ")
 						currentSchema = schema.TableSchemaRename
+					}else{
+						ddlInfo.tables[i].Schema = schema.TableSchema
 					}
 
 					if table != nil && table.TableRename != "" {
