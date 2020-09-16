@@ -1363,8 +1363,7 @@ func (a *Applier) Stats() (*common.TaskStatistics, error) {
 			RetrievedGtidSet:   "",
 		},
 		BufferStat:  common.BufferStat{
-			ApplierTxQueueSize:      0, // TODO remove
-			ApplierGroupTxQueueSize: 0,
+			ApplierTxQueueSize:      len(a.applyDataEntryQueue),
 		},
 		Timestamp: time.Now().UTC().UnixNano(),
 		DelayCount: &common.DelayCount{

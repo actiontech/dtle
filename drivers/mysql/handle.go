@@ -162,10 +162,11 @@ func (h *taskHandle) emitStats(ru *common.TaskStatistics) {
 	metrics.SetGaugeWithLabels([]string{"network", "in_bytes"}, float32(ru.MsgStat.InBytes), labels)
 	metrics.SetGaugeWithLabels([]string{"network", "out_bytes"}, float32(ru.MsgStat.OutBytes), labels)
 	metrics.SetGaugeWithLabels([]string{"buffer", "src_queue_size"}, float32(ru.BufferStat.ExtractorTxQueueSize), labels)
-	metrics.SetGaugeWithLabels([]string{"buffer", "dest_group_queue_size"}, float32(ru.BufferStat.ApplierGroupTxQueueSize), labels)
 	metrics.SetGaugeWithLabels([]string{"buffer", "dest_queue_size"}, float32(ru.BufferStat.ApplierTxQueueSize), labels)
 	metrics.SetGaugeWithLabels([]string{"buffer", "send_by_timeout"}, float32(ru.BufferStat.SendByTimeout), labels)
 	metrics.SetGaugeWithLabels([]string{"buffer", "send_by_size_full"}, float32(ru.BufferStat.SendBySizeFull), labels)
+
+	metrics.SetGaugeWithLabels([]string{"memory.total"}, float32(ru.MemoryStat.Total), labels)
 
 	if ru.TableStats != nil {
 		metrics.SetGaugeWithLabels([]string{"table", "insert"}, float32(ru.TableStats.InsertCount), labels)

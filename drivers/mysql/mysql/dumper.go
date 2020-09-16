@@ -12,6 +12,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/actiontech/dtle/g"
 	hclog "github.com/hashicorp/go-hclog"
@@ -46,10 +47,12 @@ type dumper struct {
 	oldWayDump bool
 
 	sentTableDef bool
+
+	memory *int64
 }
 
 func NewDumper(db usql.QueryAble, table *config.Table, chunkSize int64,
-	logger hclog.Logger) *dumper {
+	logger hclog.Logger, memory *int64) *dumper {
 
 	dumper := &dumper{
 		logger:             logger,
@@ -63,6 +66,7 @@ func NewDumper(db usql.QueryAble, table *config.Table, chunkSize int64,
 		chunkSize:          chunkSize,
 		shutdownCh:         make(chan struct{}),
 		sentTableDef:       false,
+		memory:             memory,
 	}
 	switch os.Getenv(g.ENV_DUMP_CHECKSUM) {
 	case "1":
@@ -207,6 +211,8 @@ func (d *dumper) getChunkData() (nRows int64, err error) {
 		for keepGoing {
 			select {
 			case d.resultsChannel <- entry:
+				atomic.AddInt64(d.memory, int64(entry.Size()))
+				d.logger.Debug("*** memory", "memory", atomic.LoadInt64(d.memory))
 				if !timer.Stop() {
 					<-timer.C
 				}

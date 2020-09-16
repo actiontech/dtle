@@ -107,6 +107,9 @@ type Extractor struct {
 
 	timestamp   uint32
 	timestampCh chan uint32
+
+	memory1 *int64
+	memory2 *int64
 }
 
 func NewExtractor(execCtx *common.ExecContext, cfg *config.MySQLDriverConfig, logger hclog.Logger, storeManager *common.StoreManager, waitCh chan *drivers.ExitResult) (*Extractor, error) {
@@ -128,6 +131,8 @@ func NewExtractor(execCtx *common.ExecContext, cfg *config.MySQLDriverConfig, lo
 		fullCopyDone:    make(chan struct{}),
 		storeManager:    storeManager,
 		timestampCh:     make(chan uint32),
+		memory1:         new(int64),
+		memory2:         new(int64),
 	}
 	e.context.LoadSchemas(nil)
 	logger.Debug("NewExtractor. after LoadSchemas")
@@ -1384,7 +1389,7 @@ func (e *Extractor) mysqlDump() error {
 			e.logger.Info("Step n: - scanning table (i of N tables)",
 				"n", step, "schema", t.TableSchema, "table", t.TableName, "i", counter, "N", e.tableCount)
 
-			d := NewDumper(tx, t, e.mysqlContext.ChunkSize, e.logger.ResetNamed("dumper"))
+			d := NewDumper(tx, t, e.mysqlContext.ChunkSize, e.logger.ResetNamed("dumper"), e.memory1)
 			if err := d.Dump(); err != nil {
 				e.onError(TaskStateDead, err)
 			}
@@ -1409,6 +1414,7 @@ func (e *Extractor) mysqlDump() error {
 						e.onError(TaskStateRestart, err)
 					}
 					atomic.AddInt64(&e.TotalRowsCopied, int64(len(entry.ValuesX)))
+					atomic.AddInt64(d.memory, -int64(entry.Size()))
 				}
 			}
 
@@ -1505,6 +1511,9 @@ func (e *Extractor) Stats() (*common.TaskStatistics, error) {
 			Time: delay,
 		},
 		Timestamp: time.Now().UTC().UnixNano(),
+		MemoryStat: common.MemoryStat{
+			Total: *e.memory1 + *e.memory2,
+		},
 	}
 	if e.natsConn != nil {
 		taskResUsage.MsgStat = e.natsConn.Statistics

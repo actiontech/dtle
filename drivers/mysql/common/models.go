@@ -46,9 +46,11 @@ type ThroughputStat struct {
 type BufferStat struct {
 	ExtractorTxQueueSize    int
 	ApplierTxQueueSize      int
-	ApplierGroupTxQueueSize int
 	SendByTimeout           int
 	SendBySizeFull          int
+}
+type MemoryStat struct {
+	Total int64
 }
 type TaskStatistics struct {
 	CurrentCoordinates *CurrentCoordinates
@@ -66,4 +68,5 @@ type TaskStatistics struct {
 	BufferStat         BufferStat
 	Stage              string
 	Timestamp          int64
+	MemoryStat         MemoryStat
 }
