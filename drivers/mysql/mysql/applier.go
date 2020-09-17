@@ -99,6 +99,8 @@ type Applier struct {
 	gtidCh       chan *common.BinlogCoordinateTx
 
 	timestampCtx       *TimestampContext
+
+	memory2     *int64
 }
 
 func NewApplier(
@@ -120,6 +122,7 @@ func NewApplier(
 		printTps:        os.Getenv(g.ENV_PRINT_TPS) != "",
 		storeManager:    storeManager,
 		gtidCh:          make(chan *common.BinlogCoordinateTx, 4096),
+		memory2:         new(int64),
 	}
 
 	a.timestampCtx = NewTimestampContext(a.shutdownCh, a.logger, func() bool {
@@ -703,6 +706,7 @@ func (a *Applier) subscribeNats() error {
 			} else {
 				a.logger.Debug("incr. applyDataEntryQueue enqueue")
 				for _, binlogEntry := range binlogEntries.Entries {
+					atomic.AddInt64(a.memory2, int64(binlogEntry.Size()))
 					a.applyDataEntryQueue <- &common.BinlogEntryContext{
 						Entry:       binlogEntry,
 						SpanContext: replySpan.Context(),
@@ -1034,6 +1038,7 @@ func (a *Applier) ApplyBinlogEvent(ctx context.Context, workerIdx int, binlogEnt
 		span.SetTag("after  commit sql ", time.Now().UnixNano()/1e6)
 
 		dbApplier.DbMutex.Unlock()
+		atomic.AddInt64(a.memory2, -int64(binlogEntry.Size()))
 	}()
 	span.SetTag("begin transform binlogEvent to sql time  ", time.Now().UnixNano()/1e6)
 	for i, event := range binlogEntry.Events {
@@ -1320,6 +1325,9 @@ func (a *Applier) Stats() (*common.TaskStatistics, error) {
 		DelayCount: &common.DelayCount{
 			Num:  0,
 			Time: a.timestampCtx.GetDelay(),
+		},
+		MemoryStat: common.MemoryStat{
+			Total: atomic.LoadInt64(a.memory2),
 		},
 	}
 	if a.natsConn != nil {

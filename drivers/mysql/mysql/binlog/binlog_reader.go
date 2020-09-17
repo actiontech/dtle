@@ -16,6 +16,7 @@ import (
 	"path"
 	"path/filepath"
 	"runtime/debug"
+	"sync/atomic"
 	"time"
 
 	"github.com/cznic/mathutil"
@@ -98,6 +99,7 @@ type BinlogReader struct {
 	sqlFilter *SqlFilter
 
 	context *sqle.Context
+	memory  *int64
 }
 
 type SqlFilter struct {
@@ -159,7 +161,7 @@ func parseSqlFilter(strs []string) (*SqlFilter, error) {
 }
 
 func NewMySQLReader(execCtx *common.ExecContext, cfg *common.MySQLDriverConfig, logger hclog.Logger,
-	replicateDoDb []*common.DataSource, sqleContext *sqle.Context,
+	replicateDoDb []*common.DataSource, sqleContext *sqle.Context, memory *int64,
 ) (binlogReader *BinlogReader, err error) {
 
 	sqlFilter, err := parseSqlFilter(cfg.SqlFilter)
@@ -179,6 +181,7 @@ func NewMySQLReader(execCtx *common.ExecContext, cfg *common.MySQLDriverConfig, 
 		tables:                  make(map[string](map[string]*common.TableContext)),
 		sqlFilter:               sqlFilter,
 		context:                 sqleContext,
+		memory:                  memory,
 	}
 
 	for _, db := range replicateDoDb {
@@ -523,7 +526,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 					b.currentBinlogEntry.Events = append(b.currentBinlogEntry.Events, event)
 					b.entryContext.SpanContext = span.Context()
 					b.entryContext.OriginalSize += len(ev.RawData)
-					entriesChannel <- b.entryContext
+					b.sendEntry(entriesChannel)
 					b.LastAppliedRowsEventHint = b.currentCoordinates
 					return nil
 				} else {
@@ -681,7 +684,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 				}
 				b.entryContext.SpanContext = span.Context()
 				b.entryContext.OriginalSize += len(ev.RawData)
-				entriesChannel <- b.entryContext
+				b.sendEntry(entriesChannel)
 				b.LastAppliedRowsEventHint = b.currentCoordinates
 			}
 		}
@@ -691,7 +694,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 		// TODO is the pos the start or the end of a event?
 		// pos if which event should be use? Do we need +1?
 		b.currentBinlogEntry.Coordinates.LogPos = b.currentCoordinates.LogPos
-		entriesChannel <- b.entryContext
+		b.sendEntry(entriesChannel)
 		b.LastAppliedRowsEventHint = b.currentCoordinates
 	default:
 		if rowsEvent, ok := ev.Event.(*replication.RowsEvent); ok {
@@ -862,6 +865,11 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 		}
 	}
 	return nil
+}
+
+func (b *BinlogReader) sendEntry(entriesChannel chan<- *common.BinlogEntryContext) {
+	atomic.AddInt64(b.memory, int64(b.entryContext.Entry.Size()))
+	entriesChannel <- b.entryContext
 }
 
 func loadMapping(sql, beforeName, afterName, mappingType, currentSchema string) string {

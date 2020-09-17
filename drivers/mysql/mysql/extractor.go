@@ -741,7 +741,7 @@ func (e *Extractor) getSchemaTablesAndMeta() error {
 // Cooperate with `initiateStreaming()` using `e.streamerReadyCh`. Any err will be sent thru the chan.
 func (e *Extractor) initBinlogReader(binlogCoordinates *base.BinlogCoordinatesX) {
 	binlogReader, err := binlog.NewMySQLReader(e.execCtx, e.mysqlContext, e.logger.ResetNamed("reader"),
-		e.replicateDoDb, e.context)
+		e.replicateDoDb, e.context, e.memory2)
 	if err != nil {
 		e.logger.Error("err at initBinlogReader: NewMySQLReader", "err", err)
 		e.streamerReadyCh <- err
@@ -961,7 +961,6 @@ func (e *Extractor) StreamEvents() error {
 				}
 			}
 
-
 			txMsg, err := common.Encode(&entries)
 			if err != nil {
 				return err
@@ -970,6 +969,11 @@ func (e *Extractor) StreamEvents() error {
 			if err = e.publish(ctx, fmt.Sprintf("%s_incr_hete", e.subject), txMsg); err != nil {
 				return err
 			}
+
+			for _, entry := range entries.Entries {
+				atomic.AddInt64(e.memory2, -int64(entry.Size()))
+			}
+
 			e.logger.Debug("publish.after", "gno", gno, "n", len(entries.Entries))
 			ctx = nil
 			entries.Entries = nil
@@ -1533,7 +1537,7 @@ func (e *Extractor) Stats() (*common.TaskStatistics, error) {
 		Backlog:            fmt.Sprintf("%d/%d", len(e.dataChannel), cap(e.dataChannel)),
 		Stage:              e.mysqlContext.Stage,
 		BufferStat: common.BufferStat{
-			ExtractorTxQueueSize: 0, // TODO remove
+			ExtractorTxQueueSize: len(e.dataChannel),
 			SendByTimeout:        e.sendByTimeoutCounter,
 			SendBySizeFull:       e.sendBySizeFullCounter,
 		},
