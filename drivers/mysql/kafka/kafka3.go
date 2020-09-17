@@ -261,8 +261,20 @@ func (kr *KafkaRunner) getOrSetTable(schemaName string, tableName string,
 	}
 }
 
+func decodeMaybeTable(tableBs []byte) (*mysqlconfig.Table, error) {
+	if len(tableBs) > 0 {
+		var r *mysqlconfig.Table
+		r = &mysqlconfig.Table{}
+		err := common.GobDecode(tableBs, r)
+		if err != nil {
+			return nil, errors.Wrap(err, "GobDecode")
+		}
+		return r, nil
+	} else {
+		return nil, nil
+	}
+}
 func (kr *KafkaRunner) handleFullCopy() {
-	var err error
 	for !kr.shutdown {
 		var dumpData *common.DumpEntry
 		select {
@@ -276,14 +288,10 @@ func (kr *KafkaRunner) handleFullCopy() {
 		} else if dumpData.TableSchema == "" && dumpData.TableName == "" {
 			kr.logger.Debug("skip apply sqlMode and SystemVariablesStatement")
 		} else {
-			var tableFromDumpData *mysqlconfig.Table = nil
-			if len(dumpData.Table) > 0 {
-				tableFromDumpData = &mysqlconfig.Table{}
-				err = common.GobDecode(dumpData.Table, tableFromDumpData)
-				if err != nil {
-					kr.onError(TaskStateDead, err)
-					return
-				}
+			tableFromDumpData, err := decodeMaybeTable(dumpData.Table)
+			if err != nil {
+				kr.onError(TaskStateDead, errors.Wrap(err, "decodeMaybeTable"))
+				return
 			}
 			tableItem, err := kr.getOrSetTable(dumpData.TableSchema, dumpData.TableName, tableFromDumpData)
 			if err != nil {
@@ -636,7 +644,8 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry)
 		var tableItem *KafkaTableItem
 		if dataEvent.TableName != "" {
 			// this must be executed before skipping DDL
-			tableItem, err = kr.getOrSetTable(realSchema, dataEvent.TableName, dataEvent.Table)
+			table, err := decodeMaybeTable(dataEvent.Table)
+			tableItem, err = kr.getOrSetTable(realSchema, dataEvent.TableName, table)
 			if err != nil {
 				return err
 			}

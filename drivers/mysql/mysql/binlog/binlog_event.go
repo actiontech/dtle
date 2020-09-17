@@ -68,7 +68,7 @@ type DataEvent struct {
 	ColumnCount       int
 	WhereColumnValues *config.ColumnValues
 	NewColumnValues   *config.ColumnValues
-	Table             *config.Table // TODO tmp solution
+	Table             []byte // TODO tmp solution
 	LogPos            int64         // for kafka. The pos of WRITE_ROW_EVENT
 	TableItem         interface{}
 	Timestamp uint32

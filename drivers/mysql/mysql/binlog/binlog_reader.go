@@ -11,6 +11,7 @@ import (
 	gosql "database/sql"
 	"github.com/actiontech/dtle/drivers/mysql/common"
 	"github.com/actiontech/dtle/drivers/mysql/config"
+	"github.com/pkg/errors"
 	"github.com/shirou/gopsutil/mem"
 	"os"
 	"path"
@@ -655,7 +656,11 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 							ddlTable,
 							ev.Header.Timestamp,
 						)
-						event.Table = table
+						tableBs, err := common.GobEncode(table)
+						if err != nil {
+							return errors.Wrap(err, "GobEncode(table)")
+						}
+						event.Table = tableBs
 						b.currentBinlogEntry.Events = append(b.currentBinlogEntry.Events, event)
 					}
 				}
@@ -706,17 +711,6 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 				ev.Header.Timestamp,
 			)
 			dmlEvent.LogPos = int64(ev.Header.LogPos - ev.Header.EventSize)
-
-			if table != nil && !table.DefChangedSent {
-				b.logger.Debug("send table structure", "schema", schemaName, "table", tableName)
-				dmlEvent.Table = table.Table
-				if table.Table == nil {
-					b.logger.Warn("DTLE_BUG binlog_reader: table.Table is nil",
-						"schema", schemaName, "table", tableName)
-				}
-
-				table.DefChangedSent = true
-			}
 
 			/*originalTableColumns, _, err := b.InspectTableColumnsAndUniqueKeys(string(rowsEvent.Table.Schema), string(rowsEvent.Table.Table))
 			if err != nil {
@@ -784,10 +778,6 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 					}
 				}
 				if table != nil && table.Table.TableRename != "" {
-					if dmlEvent.Table != nil {
-						dmlEvent.Table.TableName = table.Table.TableName
-						dmlEvent.Table.TableRename = table.Table.TableRename
-					}
 					dmlEvent.TableName = table.Table.TableRename
 					b.logger.Debug("dml table mapping", "from", dmlEvent.TableName, "to", table.Table.TableRename)
 				}
@@ -798,12 +788,26 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 					if schema.TableSchemaRename == "" {
 						continue
 					}
-					if dmlEvent.Table != nil {
-						dmlEvent.Table.TableSchemaRename = schema.TableSchemaRename
-					}
 					b.logger.Debug("dml schema mapping", "from", dmlEvent.DatabaseName, "to", schema.TableSchemaRename)
 					dmlEvent.DatabaseName = schema.TableSchemaRename
 				}
+
+				if table != nil && !table.DefChangedSent {
+					b.logger.Debug("send table structure", "schema", schemaName, "table", tableName)
+					if table.Table == nil {
+						b.logger.Warn("DTLE_BUG binlog_reader: table.Table is nil",
+							"schema", schemaName, "table", tableName)
+					} else {
+						tableBs, err := common.GobEncode(table.Table)
+						if err != nil {
+							return errors.Wrap(err, "GobEncode(table)")
+						}
+						dmlEvent.Table = tableBs
+					}
+
+					table.DefChangedSent = true
+				}
+
 				if whereTrue {
 					if dmlEvent.WhereColumnValues != nil {
 						b.currentBinlogEntry.OriginalSize += avgRowSize
