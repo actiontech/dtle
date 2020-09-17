@@ -8,8 +8,8 @@ package binlog
 
 import (
 	"fmt"
+	"github.com/actiontech/dtle/drivers/mysql/common"
 
-	"github.com/actiontech/dtle/drivers/mysql/mysql/base"
 	opentracing "github.com/opentracing/opentracing-go"
 )
 
@@ -23,14 +23,14 @@ type BinlogEntries struct {
 // BinlogEntry describes an entry in the binary log
 type BinlogEntry struct {
 	hasBeginQuery bool
-	Coordinates   base.BinlogCoordinateTx
+	Coordinates   common.BinlogCoordinateTx
 	SpanContext   opentracing.SpanContext
 	Events        []DataEvent
 	OriginalSize  int // size of binlog entry
 }
 
 // NewBinlogEntry creates an empty, ready to go BinlogEntry object
-func NewBinlogEntryAt(coordinates base.BinlogCoordinateTx) *BinlogEntry {
+func NewBinlogEntryAt(coordinates common.BinlogCoordinateTx) *BinlogEntry {
 	binlogEntry := &BinlogEntry{
 		Coordinates:  coordinates,
 		Events:       make([]DataEvent, 0),

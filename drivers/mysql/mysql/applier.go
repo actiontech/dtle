@@ -15,6 +15,7 @@ import (
 	"github.com/opentracing/opentracing-go"
 	"github.com/opentracing/opentracing-go/ext"
 	"github.com/pkg/errors"
+	uuid "github.com/satori/go.uuid"
 
 	"bytes"
 	"math"
@@ -129,7 +130,7 @@ type Applier struct {
 	gtidSet *gomysql.MysqlGTIDSet
 
 	storeManager       *common.StoreManager
-	gtidCh             chan *base.BinlogCoordinateTx
+	gtidCh             chan *common.BinlogCoordinateTx
 
 	SrcBinlogTimestamp uint32
 	timestampCh        chan uint32
@@ -153,7 +154,7 @@ func NewApplier(
 		shutdownCh:      make(chan struct{}),
 		printTps:        os.Getenv(g.ENV_PRINT_TPS) != "",
 		storeManager:    storeManager,
-		gtidCh:          make(chan *base.BinlogCoordinateTx, 4096),
+		gtidCh:          make(chan *common.BinlogCoordinateTx, 4096),
 		timestampCh:     make(chan uint32),
 	}
 	stubFullApplyDelayStr := os.Getenv(g.ENV_FULL_APPLY_DELAY)
@@ -1144,9 +1145,9 @@ func (a *Applier) ApplyBinlogEvent(ctx context.Context, workerIdx int, binlogEnt
 
 	span.SetTag("after  transform  binlogEvent to sql  ", time.Now().UnixNano()/1e6)
 	logger.Debug("insert gno", "gno", binlogEntry.Coordinates.GNO)
-	_, err = dbApplier.PsInsertExecutedGtid.Exec(a.subject, binlogEntry.Coordinates.SID.Bytes(), binlogEntry.Coordinates.GNO)
+	_, err = dbApplier.PsInsertExecutedGtid.Exec(a.subject, uuid.UUID(binlogEntry.Coordinates.SID).Bytes(), binlogEntry.Coordinates.GNO)
 	if err != nil {
-		return err
+		return errors.Wrap(err, "insert gno")
 	}
 
 	// no error

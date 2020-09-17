@@ -80,7 +80,7 @@ type Extractor struct {
 	inspector                *Inspector
 	binlogReader             *binlog.BinlogReader
 	initialBinlogCoordinates *base.BinlogCoordinatesX
-	currentBinlogCoordinates *base.BinlogCoordinateTx
+	currentBinlogCoordinates *common.BinlogCoordinateTx
 	rowCopyComplete          chan bool
 	rowCopyCompleteFlag      int64
 	tableCount               int
@@ -1523,7 +1523,7 @@ func (e *Extractor) Stats() (*common.TaskStatistics, error) {
 		}
 	}
 
-	currentBinlogCoordinates := &base.BinlogCoordinateTx{}
+	currentBinlogCoordinates := &common.BinlogCoordinateTx{}
 	if e.binlogReader != nil {
 		currentBinlogCoordinates = e.binlogReader.GetCurrentBinlogCoordinates()
 		taskResUsage.CurrentCoordinates = &common.CurrentCoordinates{
