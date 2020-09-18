@@ -41,13 +41,3 @@ func (b *BinlogCoordinateTx) SmallerThanOrEquals(other *BinlogCoordinateTx) bool
 func (b *BinlogCoordinateTx) GetGtidForThisTx() string {
 	return fmt.Sprintf("%s:%d", b.GetSid(), b.GNO)
 }
-
-type BinlogCoordinateTx struct {
-	LogFile       string
-	LogPos        int64
-	OSID          string
-	SID           [16]byte
-	GNO           int64
-	LastCommitted int64
-	SeqenceNumber int64
-}

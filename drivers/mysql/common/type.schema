@@ -10,3 +10,13 @@ struct DumpEntry {
 	Err        string
 	Table      []byte
 }
+
+struct BinlogCoordinateTx {
+	LogFile string
+	LogPos  int64
+	OSID          string
+	SID           [16]byte
+	GNO           int64
+	LastCommitted int64
+	SeqenceNumber int64
+}
