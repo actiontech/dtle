@@ -963,7 +963,7 @@ func (e *Extractor) StreamEvents() error {
 				//span.SetTag("timetag", time.Now().Unix())
 				entryCtx.SpanContext = nil
 				entries.Entries = append(entries.Entries, binlogEntry)
-				entriesSize += binlogEntry.OriginalSize
+				entriesSize += entryCtx.OriginalSize
 				if entriesSize >= e.mysqlContext.GroupMaxSize ||
 					int64(len(entries.Entries)) == e.mysqlContext.ReplChanBufferSize {
 					e.logger.Debug("incr. send by GroupLimit.", "entriesSize", entriesSize,
@@ -1030,7 +1030,6 @@ func splitEntries(entries common.BinlogEntries, entriseSize int) (entris []commo
 			after = i * int(clientNum)
 		}
 		entry := &common.BinlogEntry{
-			OriginalSize: entries.Entries[0].OriginalSize,
 			Coordinates:  entries.Entries[0].Coordinates,
 			Events:       entries.Entries[0].Events[(i-1)*int(clientNum) : after],
 		}

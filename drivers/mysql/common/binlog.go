@@ -55,16 +55,15 @@ type BinlogEntries struct {
 
 // BinlogEntry describes an entry in the binary log
 type BinlogEntry struct {
-	HasBeginQuery bool
 	Coordinates   BinlogCoordinateTx
 	Events        []DataEvent
-	OriginalSize  int // size of binlog entry
 }
 
 type BinlogEntryContext struct {
 	Entry       *BinlogEntry
 	SpanContext opentracing.SpanContext
 	TableItems  []*ApplierTableItem
+	OriginalSize  int // size of binlog entry
 }
 
 // NewBinlogEntry creates an empty, ready to go BinlogEntry object
@@ -72,7 +71,6 @@ func NewBinlogEntryAt(coordinates BinlogCoordinateTx) *BinlogEntry {
 	binlogEntry := &BinlogEntry{
 		Coordinates:  coordinates,
 		Events:       make([]DataEvent, 0),
-		OriginalSize: 1, // GroupMaxSize is default to 1 and we send on EntriesSize >= GroupMaxSize
 	}
 	return binlogEntry
 }

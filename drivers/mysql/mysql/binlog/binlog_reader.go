@@ -82,6 +82,7 @@ type BinlogReader struct {
 	tables map[string](map[string]*mysqlconfig.TableContext)
 
 	currentBinlogEntry *common.BinlogEntry
+	hasBeginQuery      bool
 	entryContext       *common.BinlogEntryContext
 	txCount            int
 	currentFde         string
@@ -461,10 +462,12 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 		b.currentCoordinates.LastCommitted = evt.LastCommitted
 		b.currentCoordinates.SeqenceNumber = evt.SequenceNumber
 		b.currentBinlogEntry = common.NewBinlogEntryAt(b.currentCoordinates)
+		b.hasBeginQuery = false
 		b.entryContext = &common.BinlogEntryContext{
 			Entry:       b.currentBinlogEntry,
 			SpanContext: nil,
 			TableItems:  nil,
+			OriginalSize: 1, // GroupMaxSize is default to 1 and we send on EntriesSize >= GroupMaxSize
 		}
 	case replication.QUERY_EVENT:
 		evt := ev.Event.(*replication.QueryEvent)
@@ -479,9 +482,9 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 		b.logger.Debug("query event", "schema", currentSchema, "query", query)
 
 		if strings.ToUpper(query) == "BEGIN" {
-			b.currentBinlogEntry.HasBeginQuery = true
+			b.hasBeginQuery = true
 		} else {
-			if strings.ToUpper(query) == "COMMIT" || !b.currentBinlogEntry.HasBeginQuery {
+			if strings.ToUpper(query) == "COMMIT" || !b.hasBeginQuery {
 				if b.mysqlContext.SkipCreateDbTable {
 					if skipCreateDbTable(query) {
 						b.logger.Warn("skip create db/table", "query", query)
@@ -515,7 +518,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 
 					b.currentBinlogEntry.Events = append(b.currentBinlogEntry.Events, event)
 					b.entryContext.SpanContext = span.Context()
-					b.currentBinlogEntry.OriginalSize += len(ev.RawData)
+					b.entryContext.OriginalSize += len(ev.RawData)
 					entriesChannel <- b.entryContext
 					b.LastAppliedRowsEventHint = b.currentCoordinates
 					return nil
@@ -671,7 +674,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 					}
 				}
 				b.entryContext.SpanContext = span.Context()
-				b.currentBinlogEntry.OriginalSize += len(ev.RawData)
+				b.entryContext.OriginalSize += len(ev.RawData)
 				entriesChannel <- b.entryContext
 				b.LastAppliedRowsEventHint = b.currentCoordinates
 			}
@@ -816,10 +819,10 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 
 				if whereTrue {
 					if dmlEvent.WhereColumnValues != nil {
-						b.currentBinlogEntry.OriginalSize += avgRowSize
+						b.entryContext.OriginalSize += avgRowSize
 					}
 					if dmlEvent.NewColumnValues != nil {
-						b.currentBinlogEntry.OriginalSize += avgRowSize
+						b.entryContext.OriginalSize += avgRowSize
 					}
 					// The channel will do the throttling. Whoever is reding from the channel
 					// decides whether action is taken sycnhronously (meaning we wait before
