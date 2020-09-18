@@ -37,22 +37,6 @@ func ToEventDML(eventType replication.EventType) EventDML {
 	}
 }
 
-type BinlogQuery struct {
-	Sql string
-	DML EventDML
-}
-
-type BinlogEvent struct {
-	BinlogFile string
-	RealPos    uint32
-	Header     *replication.EventHeader
-	Evt        replication.Event
-	RawBs      []byte
-	Query      []*BinlogQuery
-
-	Err error
-}
-
 type SchemaTable struct {
 	Schema string
 	Table  string

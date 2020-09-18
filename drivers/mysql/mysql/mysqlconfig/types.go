@@ -8,7 +8,6 @@ package mysqlconfig
 
 import (
 	"fmt"
-	"sort"
 	"strconv"
 	"strings"
 
@@ -262,35 +261,6 @@ func (c *ColumnList) IsSubsetOf(other *ColumnList) bool {
 
 func (c *ColumnList) Len() int {
 	return len(c.Columns)
-}
-
-type TableWithForeignKey struct {
-	ReferencedTableSchema string
-	ReferencedTableName   string
-	TableSchema           string
-	TableName             string
-	Index                 int
-}
-
-type TableWrapper struct {
-	Table []TableWithForeignKey
-	By    func(p, q *TableWithForeignKey) bool
-}
-
-type SortBy func(p, q *TableWithForeignKey) bool
-
-func (pw TableWrapper) Len() int { // Len() Method overriding
-	return len(pw.Table)
-}
-func (pw TableWrapper) Swap(i, j int) { // Swap() Method overriding
-	pw.Table[i], pw.Table[j] = pw.Table[j], pw.Table[i]
-}
-func (pw TableWrapper) Less(i, j int) bool { // Less() Method overriding
-	return pw.By(&pw.Table[i], &pw.Table[j])
-}
-
-func SortTable(table []TableWithForeignKey, by SortBy) { // SortTable method
-	sort.Sort(TableWrapper{table, by})
 }
 
 // UniqueKey is the combination of a key's name and columns
