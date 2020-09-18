@@ -368,6 +368,8 @@ func (a *Applier) initNatSubClient() (err error) {
 
 func (a *Applier) setTableItemForBinlogEntry(binlogEntry *common.BinlogEntryContext) error {
 	var err error
+	binlogEntry.TableItems = make([]*common.ApplierTableItem, len(binlogEntry.Entry.Events))
+
 	for i := range binlogEntry.Entry.Events {
 		dmlEvent := &binlogEntry.Entry.Events[i]
 		switch dmlEvent.DML {
@@ -390,7 +392,7 @@ func (a *Applier) setTableItemForBinlogEntry(binlogEntry *common.BinlogEntryCont
 			} else {
 				a.logger.Debug("reuse tableColumns", "schema", dmlEvent.DatabaseName, "table", dmlEvent.TableName)
 			}
-			dmlEvent.TableItem = tableItem
+			binlogEntry.TableItems[i] = tableItem
 		}
 	}
 	return nil
@@ -700,6 +702,7 @@ func (a *Applier) subscribeNats() error {
 					a.applyDataEntryQueue <- &common.BinlogEntryContext{
 						Entry:       binlogEntry,
 						SpanContext: replySpan.Context(),
+						TableItems:  nil,
 					}
 					//a.retrievedGtidSet = ""
 					// It costs quite a lot to maintain the set, and retrievedGtidSet is not
@@ -907,9 +910,9 @@ func (a *Applier) getTableItem(schema string, table string) *common.ApplierTable
 
 // buildDMLEventQuery creates a query to operate on the ghost table, based on an intercepted binlog
 // event entry on the original table.
-func (a *Applier) buildDMLEventQuery(dmlEvent common.DataEvent, workerIdx int, spanContext opentracing.SpanContext) (stmt *gosql.Stmt, query string, args []interface{}, rowsDelta int64, err error) {
+func (a *Applier) buildDMLEventQuery(dmlEvent common.DataEvent, workerIdx int, spanContext opentracing.SpanContext,
+	tableItem *common.ApplierTableItem) (stmt *gosql.Stmt, query string, args []interface{}, rowsDelta int64, err error) {
 	// Large piece of code deleted here. See git annotate.
-	tableItem := dmlEvent.TableItem.(*common.ApplierTableItem)
 	var tableColumns = tableItem.Columns
 	span := opentracing.GlobalTracer().StartSpan("desc  buildDMLEventQuery ", opentracing.FollowsFrom(spanContext))
 	defer span.Finish()
@@ -1083,7 +1086,8 @@ func (a *Applier) ApplyBinlogEvent(ctx context.Context, workerIdx int, binlogEnt
 			logger.Debug("Exec.after", "query", event.Query)
 		default:
 			logger.Debug("a dml event")
-			stmt, query, args, rowDelta, err := a.buildDMLEventQuery(event, workerIdx, spanContext)
+			stmt, query, args, rowDelta, err := a.buildDMLEventQuery(event, workerIdx, spanContext,
+				binlogEntryCtx.TableItems[i])
 			if err != nil {
 				logger.Error("buildDMLEventQuery error", "err", err)
 				return err

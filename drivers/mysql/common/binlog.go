@@ -64,7 +64,7 @@ type BinlogEntry struct {
 type BinlogEntryContext struct {
 	Entry       *BinlogEntry
 	SpanContext opentracing.SpanContext
-	//TableItems  []*ApplierTableItem
+	TableItems  []*ApplierTableItem
 }
 
 // NewBinlogEntry creates an empty, ready to go BinlogEntry object
@@ -122,7 +122,6 @@ type DataEvent struct {
 	NewColumnValues   *mysqlconfig.ColumnValues
 	Table             []byte // TODO tmp solution
 	LogPos            int64  // for kafka. The pos of WRITE_ROW_EVENT
-	TableItem         interface{}
 	Timestamp         uint32
 }
 

@@ -464,6 +464,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 		b.entryContext = &common.BinlogEntryContext{
 			Entry:       b.currentBinlogEntry,
 			SpanContext: nil,
+			TableItems:  nil,
 		}
 	case replication.QUERY_EVENT:
 		evt := ev.Event.(*replication.QueryEvent)
