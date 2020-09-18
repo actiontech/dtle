@@ -137,6 +137,7 @@ func (h *taskHandle) run(taskConfig *config.DtleTaskConfig, d *Driver) {
 		for {
 			select {
 			case <-h.ctx.Done():
+				return
 			case <-t.C:
 				s, err := h.runner.Stats()
 				if err != nil {
