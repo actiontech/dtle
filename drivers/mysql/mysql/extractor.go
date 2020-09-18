@@ -76,7 +76,7 @@ type Extractor struct {
 	// db.tb exists when creating the job, for full-copy.
 	// vs e.mysqlContext.ReplicateDoDb: all user assigned db.tb
 	replicateDoDb            []*mysqlconfig.DataSource
-	dataChannel              chan *common.BinlogEntry
+	dataChannel              chan *common.BinlogEntryContext
 	inspector                *Inspector
 	binlogReader             *binlog.BinlogReader
 	initialBinlogCoordinates *base.BinlogCoordinatesX
@@ -120,7 +120,7 @@ func NewExtractor(execCtx *common.ExecContext, cfg *config.MySQLDriverConfig, lo
 		execCtx:         execCtx,
 		subject:         execCtx.Subject,
 		mysqlContext:    cfg,
-		dataChannel:     make(chan *common.BinlogEntry, cfg.ReplChanBufferSize),
+		dataChannel:     make(chan *common.BinlogEntryContext, cfg.ReplChanBufferSize),
 		rowCopyComplete: make(chan bool),
 		waitCh:          waitCh,
 		shutdownCh:      make(chan struct{}),
@@ -954,7 +954,8 @@ func (e *Extractor) StreamEvents() error {
 		for keepGoing && !e.shutdown {
 			var err error
 			select {
-			case binlogEntry := <-e.dataChannel:
+			case entryCtx := <-e.dataChannel:
+				binlogEntry := entryCtx.Entry
 				spanContext := binlogEntry.SpanContext
 				span := opentracing.GlobalTracer().StartSpan("nat send :begin  send binlogEntry from src kafka to desc kafka", opentracing.ChildOf(spanContext))
 				span.SetTag("time", time.Now().Unix())

@@ -62,6 +62,12 @@ type BinlogEntry struct {
 	OriginalSize  int // size of binlog entry
 }
 
+type BinlogEntryContext struct {
+	Entry       *BinlogEntry
+	//SpanContext opentracing.SpanContext
+	//TableItems  []*ApplierTableItem
+}
+
 // NewBinlogEntry creates an empty, ready to go BinlogEntry object
 func NewBinlogEntryAt(coordinates BinlogCoordinateTx) *BinlogEntry {
 	binlogEntry := &BinlogEntry{

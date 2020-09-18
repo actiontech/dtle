@@ -75,9 +75,9 @@ type Applier struct {
 	// copyRowsQueue should not be buffered; if buffered some non-damaging but
 	//  excessive work happens at the end of the iteration as new copy-jobs arrive befroe realizing the copy is complete
 	copyRowsQueue       chan *common.DumpEntry
-	applyDataEntryQueue chan *common.BinlogEntry
+	applyDataEntryQueue chan *common.BinlogEntryContext
 	// only TX can be executed should be put into this chan
-	applyBinlogMtsTxQueue chan *common.BinlogEntry
+	applyBinlogMtsTxQueue chan *common.BinlogEntryContext
 
 	natsConn *gonats.Conn
 	waitCh   chan *drivers.ExitResult
@@ -214,15 +214,15 @@ func (a *Applier) MtsWorker(workerIndex int) {
 	for keepLoop {
 		timer := time.NewTimer(pingInterval)
 		select {
-		case tx := <-a.applyBinlogMtsTxQueue:
-			logger.Debug("a binlogEntry MTS dequeue", "gno", tx.Coordinates.GNO)
-			if err := a.ApplyBinlogEvent(nil, workerIndex, tx); err != nil {
+		case entryContext := <-a.applyBinlogMtsTxQueue:
+			logger.Debug("a binlogEntry MTS dequeue", "gno", entryContext.Entry.Coordinates.GNO)
+			if err := a.ApplyBinlogEvent(nil, workerIndex, entryContext); err != nil {
 				a.onError(TaskStateDead, err) // TODO coordinate with other goroutine
 				keepLoop = false
 			} else {
 				// do nothing
 			}
-			logger.Debug("after ApplyBinlogEvent.", "gno", tx.Coordinates.GNO)
+			logger.Debug("after ApplyBinlogEvent.", "gno", entryContext.Entry.Coordinates.GNO)
 		case <-a.shutdownCh:
 			keepLoop = false
 		case <-timer.C:
@@ -255,8 +255,8 @@ func (a *Applier) Run() {
 			a.logger.Debug("use ReplChanBufferSize from consul", "i", i)
 			a.mysqlContext.ReplChanBufferSize = int64(i)
 		}
-		a.applyDataEntryQueue = make(chan *common.BinlogEntry, a.mysqlContext.ReplChanBufferSize * 2)
-		a.applyBinlogMtsTxQueue = make(chan *common.BinlogEntry, a.mysqlContext.ReplChanBufferSize * 2)
+		a.applyDataEntryQueue = make(chan *common.BinlogEntryContext, a.mysqlContext.ReplChanBufferSize * 2)
+		a.applyBinlogMtsTxQueue = make(chan *common.BinlogEntryContext, a.mysqlContext.ReplChanBufferSize * 2)
 	}
 
 	err = common.GetGtidFromConsul(a.storeManager, a.subject, a.logger, a.mysqlContext)
@@ -366,10 +366,10 @@ func (a *Applier) initNatSubClient() (err error) {
 	return nil
 }
 
-func (a *Applier) setTableItemForBinlogEntry(binlogEntry *common.BinlogEntry) error {
+func (a *Applier) setTableItemForBinlogEntry(binlogEntry *common.BinlogEntryContext) error {
 	var err error
-	for i := range binlogEntry.Events {
-		dmlEvent := &binlogEntry.Events[i]
+	for i := range binlogEntry.Entry.Events {
+		dmlEvent := &binlogEntry.Entry.Events[i]
 		switch dmlEvent.DML {
 		case common.NotDML:
 			// do nothing
@@ -406,10 +406,11 @@ func (a *Applier) heterogeneousReplay() {
 
 	for !stopSomeLoop {
 		select {
-		case binlogEntry := <-a.applyDataEntryQueue:
-			if nil == binlogEntry {
+		case entryCtx := <-a.applyDataEntryQueue:
+			if nil == entryCtx {
 				continue
 			}
+			binlogEntry := entryCtx.Entry
 			spanContext := binlogEntry.SpanContext
 			span := opentracing.GlobalTracer().StartSpan("dest use binlogEntry  ", opentracing.FollowsFrom(spanContext))
 			ctx = opentracing.ContextWithSpan(ctx, span)
@@ -454,12 +455,12 @@ func (a *Applier) heterogeneousReplay() {
 			gtidSetItem.NRow += 1
 			if binlogEntry.Coordinates.SeqenceNumber == 0 {
 				// MySQL 5.6: non mts
-				err := a.setTableItemForBinlogEntry(binlogEntry)
+				err := a.setTableItemForBinlogEntry(entryCtx)
 				if err != nil {
 					a.onError(TaskStateDead, err)
 					return
 				}
-				if err := a.ApplyBinlogEvent(ctx, 0, binlogEntry); err != nil {
+				if err := a.ApplyBinlogEvent(ctx, 0, entryCtx); err != nil {
 					a.onError(TaskStateDead, err)
 					return
 				}
@@ -509,13 +510,13 @@ func (a *Applier) heterogeneousReplay() {
 					return // shutdown
 				}
 				a.logger.Debug("a binlogEntry MTS enqueue.", "gno", binlogEntry.Coordinates.GNO)
-				err = a.setTableItemForBinlogEntry(binlogEntry)
+				err = a.setTableItemForBinlogEntry(entryCtx)
 				if err != nil {
 					a.onError(TaskStateDead, err)
 					return
 				}
 				binlogEntry.SpanContext = span.Context()
-				a.applyBinlogMtsTxQueue <- binlogEntry
+				a.applyBinlogMtsTxQueue <- entryCtx
 			}
 			span.Finish()
 		case <-time.After(10 * time.Second):
@@ -697,7 +698,9 @@ func (a *Applier) subscribeNats() error {
 				a.logger.Debug("incr. applyDataEntryQueue enqueue")
 				for _, binlogEntry := range binlogEntries.Entries {
 					binlogEntry.SpanContext = replySpan.Context()
-					a.applyDataEntryQueue <- binlogEntry
+					a.applyDataEntryQueue <- &common.BinlogEntryContext{
+						Entry:       binlogEntry,
+					}
 					//a.retrievedGtidSet = ""
 					// It costs quite a lot to maintain the set, and retrievedGtidSet is not
 					// as necessary as executedGtidSet. So I removed it.
@@ -977,8 +980,9 @@ func (a *Applier) buildDMLEventQuery(dmlEvent common.DataEvent, workerIdx int, s
 }
 
 // ApplyEventQueries applies multiple DML queries onto the dest table
-func (a *Applier) ApplyBinlogEvent(ctx context.Context, workerIdx int, binlogEntry *common.BinlogEntry) error {
+func (a *Applier) ApplyBinlogEvent(ctx context.Context, workerIdx int, binlogEntryCtx *common.BinlogEntryContext) error {
 	logger := a.logger.Named("ApplyBinlogEvent")
+	binlogEntry := binlogEntryCtx.Entry
 
 	dbApplier := a.dbs[workerIdx]
 
