@@ -76,7 +76,7 @@ type Extractor struct {
 	// db.tb exists when creating the job, for full-copy.
 	// vs e.mysqlContext.ReplicateDoDb: all user assigned db.tb
 	replicateDoDb            []*mysqlconfig.DataSource
-	dataChannel              chan *binlog.BinlogEntry
+	dataChannel              chan *common.BinlogEntry
 	inspector                *Inspector
 	binlogReader             *binlog.BinlogReader
 	initialBinlogCoordinates *base.BinlogCoordinatesX
@@ -120,7 +120,7 @@ func NewExtractor(execCtx *common.ExecContext, cfg *config.MySQLDriverConfig, lo
 		execCtx:         execCtx,
 		subject:         execCtx.Subject,
 		mysqlContext:    cfg,
-		dataChannel:     make(chan *binlog.BinlogEntry, cfg.ReplChanBufferSize),
+		dataChannel:     make(chan *common.BinlogEntry, cfg.ReplChanBufferSize),
 		rowCopyComplete: make(chan bool),
 		waitCh:          waitCh,
 		shutdownCh:      make(chan struct{}),
@@ -916,7 +916,7 @@ func (e *Extractor) StreamEvents() error {
 
 	go func() {
 		defer e.logger.Debug("StreamEvents goroutine exited")
-		entries := binlog.BinlogEntries{}
+		entries := common.BinlogEntries{}
 		entriesSize := 0
 		sendEntries := func() error {
 			var gno int64 = 0
@@ -1018,7 +1018,7 @@ func (e *Extractor) StreamEvents() error {
 	return nil
 }
 
-func splitEntries(entries binlog.BinlogEntries, entriseSize int) (entris []binlog.BinlogEntries) {
+func splitEntries(entries common.BinlogEntries, entriseSize int) (entris []common.BinlogEntries) {
 	clientLen := math.Ceil(float64(entriseSize) / common.DefaultBigTX)
 	clientNum := math.Ceil(float64(len(entries.Entries[0].Events)) / clientLen)
 	for i := 1; i <= int(clientLen); i++ {
@@ -1028,15 +1028,15 @@ func splitEntries(entries binlog.BinlogEntries, entriseSize int) (entris []binlo
 		} else {
 			after = i * int(clientNum)
 		}
-		entry := &binlog.BinlogEntry{
+		entry := &common.BinlogEntry{
 			OriginalSize: entries.Entries[0].OriginalSize,
 			SpanContext:  entries.Entries[0].SpanContext,
 			Coordinates:  entries.Entries[0].Coordinates,
 			Events:       entries.Entries[0].Events[(i-1)*int(clientNum) : after],
 		}
-		var entrys []*binlog.BinlogEntry
+		var entrys []*common.BinlogEntry
 		entrys = append(entrys, entry)
-		newEntries := binlog.BinlogEntries{
+		newEntries := common.BinlogEntries{
 			Entries: entrys,
 			BigTx:   true,
 			TxNum:   i,

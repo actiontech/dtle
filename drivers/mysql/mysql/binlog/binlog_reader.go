@@ -81,7 +81,7 @@ type BinlogReader struct {
 	// dynamic config, include all tables (implicitly assigned or dynamically created)
 	tables map[string](map[string]*mysqlconfig.TableContext)
 
-	currentBinlogEntry *BinlogEntry
+	currentBinlogEntry *common.BinlogEntry
 	txCount            int
 	currentFde         string
 	currentQuery       *bytes.Buffer
@@ -431,13 +431,13 @@ func ToColumnValuesV2(abstractValues []interface{}, table *mysqlconfig.TableCont
 // If isDDL, a sql correspond to a table item, aka len(tables) == len(sqls).
 type parseDDLResult struct {
 	isDDL  bool
-	tables []SchemaTable
+	tables []common.SchemaTable
 	sqls   []string
 	ast    ast.StmtNode
 }
 
 // StreamEvents
-func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel chan<- *BinlogEntry) error {
+func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel chan<- *common.BinlogEntry) error {
 	spanContext := ev.SpanContest
 	trace := opentracing.GlobalTracer()
 	span := trace.StartSpan("incremental binlogEvent translation to sql", opentracing.ChildOf(spanContext))
@@ -459,7 +459,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 		b.currentCoordinates.GNO = evt.GNO
 		b.currentCoordinates.LastCommitted = evt.LastCommitted
 		b.currentCoordinates.SeqenceNumber = evt.SequenceNumber
-		b.currentBinlogEntry = NewBinlogEntryAt(b.currentCoordinates)
+		b.currentBinlogEntry = common.NewBinlogEntryAt(b.currentCoordinates)
 	case replication.QUERY_EVENT:
 		evt := ev.Event.(*replication.QueryEvent)
 		query := string(evt.Query)
@@ -473,9 +473,9 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 		b.logger.Debug("query event", "schema", currentSchema, "query", query)
 
 		if strings.ToUpper(query) == "BEGIN" {
-			b.currentBinlogEntry.hasBeginQuery = true
+			b.currentBinlogEntry.HasBeginQuery = true
 		} else {
-			if strings.ToUpper(query) == "COMMIT" || !b.currentBinlogEntry.hasBeginQuery {
+			if strings.ToUpper(query) == "COMMIT" || !b.currentBinlogEntry.HasBeginQuery {
 				if b.mysqlContext.SkipCreateDbTable {
 					if skipCreateDbTable(query) {
 						b.logger.Warn("skip create db/table", "query", query)
@@ -500,10 +500,10 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 				}
 
 				if !ddlInfo.isDDL {
-					event := NewQueryEvent(
+					event := common.NewQueryEvent(
 						currentSchema,
 						query,
-						NotDML,
+						common.NotDML,
 						ev.Header.Timestamp,
 					)
 
@@ -649,10 +649,10 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 								"schema", realSchema, "table", ddlTable.Table, "query", sql)
 						}
 
-						event := NewQueryEventAffectTable(
+						event := common.NewQueryEventAffectTable(
 							currentSchema,
 							sql,
-							NotDML,
+							common.NotDML,
 							ddlTable,
 							ev.Header.Timestamp,
 						)
@@ -680,7 +680,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 		b.LastAppliedRowsEventHint = b.currentCoordinates
 	default:
 		if rowsEvent, ok := ev.Event.(*replication.RowsEvent); ok {
-			dml := ToEventDML(ev.Header.EventType)
+			dml := common.ToEventDML(ev.Header.EventType)
 			skip, table := b.skipRowEvent(rowsEvent, dml)
 			if skip {
 				b.logger.Debug("skip rowsEvent", "schema", rowsEvent.Table.Schema, "table", rowsEvent.Table.Table,
@@ -692,18 +692,18 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 			tableName := string(rowsEvent.Table.Table)
 
 			if b.sqlFilter.NoDML ||
-				(b.sqlFilter.NoDMLDelete && dml == DeleteDML) ||
-				(b.sqlFilter.NoDMLInsert && dml == InsertDML) ||
-				(b.sqlFilter.NoDMLUpdate && dml == UpdateDML) {
+				(b.sqlFilter.NoDMLDelete && dml == common.DeleteDML) ||
+				(b.sqlFilter.NoDMLInsert && dml == common.InsertDML) ||
+				(b.sqlFilter.NoDMLUpdate && dml == common.UpdateDML) {
 
 				b.logger.Debug("skipped_a_dml_event.", "type", dml, "schema", schemaName, "table", tableName)
 				return nil
 			}
 
-			if dml == NotDML {
+			if dml == common.NotDML {
 				return fmt.Errorf("unknown DML type: %s", ev.Header.EventType.String())
 			}
-			dmlEvent := NewDataEvent(
+			dmlEvent := common.NewDataEvent(
 				schemaName,
 				tableName,
 				dml,
@@ -723,22 +723,22 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 
 			for i, row := range rowsEvent.Rows {
 				b.logger.Trace("a row", "value", row[:mathutil.Min(len(row), g.LONG_LOG_LIMIT)])
-				if dml == UpdateDML && i%2 == 1 {
+				if dml == common.UpdateDML && i%2 == 1 {
 					// An update has two rows (WHERE+SET)
 					// We do both at the same time
 					continue
 				}
 				switch dml {
-				case InsertDML:
+				case common.InsertDML:
 					{
 						dmlEvent.NewColumnValues = ToColumnValuesV2(row, table)
 					}
-				case UpdateDML:
+				case common.UpdateDML:
 					{
 						dmlEvent.WhereColumnValues = ToColumnValuesV2(row, table)
 						dmlEvent.NewColumnValues = ToColumnValuesV2(rowsEvent.Rows[i+1], table)
 					}
-				case DeleteDML:
+				case common.DeleteDML:
 					{
 						dmlEvent.WhereColumnValues = ToColumnValuesV2(row, table)
 					}
@@ -750,12 +750,12 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 				var err error
 				if table != nil && !table.WhereCtx.IsDefault {
 					switch dml {
-					case InsertDML:
+					case common.InsertDML:
 						whereTrue, err = table.WhereTrue(dmlEvent.NewColumnValues)
 						if err != nil {
 							return err
 						}
-					case UpdateDML:
+					case common.UpdateDML:
 						before, err := table.WhereTrue(dmlEvent.WhereColumnValues)
 						if err != nil {
 							return err
@@ -770,7 +770,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 						} else {
 							whereTrue = before
 						}
-					case DeleteDML:
+					case common.DeleteDML:
 						whereTrue, err = table.WhereTrue(dmlEvent.WhereColumnValues)
 						if err != nil {
 							return err
@@ -885,7 +885,7 @@ func loadMapping(sql, beforeName, afterName, mappingType, currentSchema string) 
 }
 
 // StreamEvents
-func (b *BinlogReader) DataStreamEvents(entriesChannel chan<- *BinlogEntry) error {
+func (b *BinlogReader) DataStreamEvents(entriesChannel chan<- *common.BinlogEntry) error {
 	lowMemory := false // TODO atomicity?
 	go func() {
 		t := time.NewTicker(1 * time.Second)
@@ -998,7 +998,7 @@ func resolveDDLSQL(sql string) (result parseDDLResult, err error) {
 	}
 
 	appendSql := func(sql string, schema string, table string) {
-		result.tables = append(result.tables, SchemaTable{Schema: schema, Table: table})
+		result.tables = append(result.tables, common.SchemaTable{Schema: schema, Table: table})
 		result.sqls = append(result.sqls, sql)
 	}
 
@@ -1122,7 +1122,7 @@ func skipMysqlSchemaEvent(tableLower string) bool {
 	}
 }
 
-func (b *BinlogReader) skipRowEvent(rowsEvent *replication.RowsEvent, dml EventDML) (bool, *mysqlconfig.TableContext) {
+func (b *BinlogReader) skipRowEvent(rowsEvent *replication.RowsEvent, dml common.EventDML) (bool, *mysqlconfig.TableContext) {
 	tableOrigin := string(rowsEvent.Table.Table)
 	tableLower := strings.ToLower(tableOrigin)
 	switch strings.ToLower(string(rowsEvent.Table.Schema)) {
@@ -1130,7 +1130,7 @@ func (b *BinlogReader) skipRowEvent(rowsEvent *replication.RowsEvent, dml EventD
 		if  strings.HasPrefix(strings.ToLower(string(rowsEvent.Table.Table)), g.GtidExecutedTablePrefix) {
 			// cases: 1. delete for compaction; 2. insert for compaction (gtid interval); 3. normal insert for tx (single gtid)
 			// We make no special treat for case 2. That tx has only one insert, which should be ignored.
-			if dml == InsertDML {
+			if dml == common.InsertDML {
 				if len(rowsEvent.Rows) == 1 {
 					sidValue := rowsEvent.Rows[0][1]
 					sidByte, ok := sidValue.(string)

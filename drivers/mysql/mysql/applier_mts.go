@@ -2,7 +2,7 @@ package mysql
 
 import (
 	"container/heap"
-	"github.com/actiontech/dtle/drivers/mysql/mysql/binlog"
+	"github.com/actiontech/dtle/drivers/mysql/common"
 	"sync/atomic"
 )
 
@@ -63,7 +63,7 @@ func (mm *MtsManager) WaitForAllCommitted() bool {
 
 // block for waiting. return true for can_execute, false for abortion.
 //  This function must be called sequentially.
-func (mm *MtsManager) WaitForExecution(binlogEntry *binlog.BinlogEntry) bool {
+func (mm *MtsManager) WaitForExecution(binlogEntry *common.BinlogEntry) bool {
 	mm.lastEnqueue = binlogEntry.Coordinates.SeqenceNumber
 
 	for {
@@ -112,6 +112,6 @@ func (mm *MtsManager) LcUpdater() {
 	}
 }
 
-func (mm *MtsManager) Executed(binlogEntry *binlog.BinlogEntry) {
+func (mm *MtsManager) Executed(binlogEntry *common.BinlogEntry) {
 	mm.chExecuted <- binlogEntry.Coordinates.SeqenceNumber
 }
