@@ -57,14 +57,13 @@ type BinlogEntries struct {
 type BinlogEntry struct {
 	HasBeginQuery bool
 	Coordinates   BinlogCoordinateTx
-	SpanContext   opentracing.SpanContext
 	Events        []DataEvent
 	OriginalSize  int // size of binlog entry
 }
 
 type BinlogEntryContext struct {
 	Entry       *BinlogEntry
-	//SpanContext opentracing.SpanContext
+	SpanContext opentracing.SpanContext
 	//TableItems  []*ApplierTableItem
 }
 

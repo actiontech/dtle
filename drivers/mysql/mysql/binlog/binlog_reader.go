@@ -463,6 +463,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 		b.currentBinlogEntry = common.NewBinlogEntryAt(b.currentCoordinates)
 		b.entryContext = &common.BinlogEntryContext{
 			Entry:       b.currentBinlogEntry,
+			SpanContext: nil,
 		}
 	case replication.QUERY_EVENT:
 		evt := ev.Event.(*replication.QueryEvent)
@@ -512,7 +513,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 					)
 
 					b.currentBinlogEntry.Events = append(b.currentBinlogEntry.Events, event)
-					b.currentBinlogEntry.SpanContext = span.Context()
+					b.entryContext.SpanContext = span.Context()
 					b.currentBinlogEntry.OriginalSize += len(ev.RawData)
 					entriesChannel <- b.entryContext
 					b.LastAppliedRowsEventHint = b.currentCoordinates
@@ -668,14 +669,14 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 						b.currentBinlogEntry.Events = append(b.currentBinlogEntry.Events, event)
 					}
 				}
-				b.currentBinlogEntry.SpanContext = span.Context()
+				b.entryContext.SpanContext = span.Context()
 				b.currentBinlogEntry.OriginalSize += len(ev.RawData)
 				entriesChannel <- b.entryContext
 				b.LastAppliedRowsEventHint = b.currentCoordinates
 			}
 		}
 	case replication.XID_EVENT:
-		b.currentBinlogEntry.SpanContext = span.Context()
+		b.entryContext.SpanContext = span.Context()
 		b.currentCoordinates.LogPos = int64(ev.Header.LogPos)
 		// TODO is the pos the start or the end of a event?
 		// pos if which event should be use? Do we need +1?

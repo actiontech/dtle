@@ -411,7 +411,7 @@ func (a *Applier) heterogeneousReplay() {
 				continue
 			}
 			binlogEntry := entryCtx.Entry
-			spanContext := binlogEntry.SpanContext
+			spanContext := entryCtx.SpanContext
 			span := opentracing.GlobalTracer().StartSpan("dest use binlogEntry  ", opentracing.FollowsFrom(spanContext))
 			ctx = opentracing.ContextWithSpan(ctx, span)
 			a.logger.Debug("a binlogEntry.", "remaining", len(a.applyDataEntryQueue),
@@ -515,7 +515,7 @@ func (a *Applier) heterogeneousReplay() {
 					a.onError(TaskStateDead, err)
 					return
 				}
-				binlogEntry.SpanContext = span.Context()
+				entryCtx.SpanContext = span.Context()
 				a.applyBinlogMtsTxQueue <- entryCtx
 			}
 			span.Finish()
@@ -697,9 +697,9 @@ func (a *Applier) subscribeNats() error {
 			} else {
 				a.logger.Debug("incr. applyDataEntryQueue enqueue")
 				for _, binlogEntry := range binlogEntries.Entries {
-					binlogEntry.SpanContext = replySpan.Context()
 					a.applyDataEntryQueue <- &common.BinlogEntryContext{
 						Entry:       binlogEntry,
+						SpanContext: replySpan.Context(),
 					}
 					//a.retrievedGtidSet = ""
 					// It costs quite a lot to maintain the set, and retrievedGtidSet is not
@@ -999,7 +999,7 @@ func (a *Applier) ApplyBinlogEvent(ctx context.Context, workerIdx int, binlogEnt
 		defer span.Finish()
 
 	} else {
-		spanContext = binlogEntry.SpanContext
+		spanContext = binlogEntryCtx.SpanContext
 		span = opentracing.GlobalTracer().StartSpan("desc mts binlogEvent transform to sql ",
 			opentracing.ChildOf(spanContext))
 		span.SetTag("start insert sql ", time.Now().UnixNano()/1e6)

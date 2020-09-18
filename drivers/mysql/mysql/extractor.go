@@ -956,12 +956,12 @@ func (e *Extractor) StreamEvents() error {
 			select {
 			case entryCtx := <-e.dataChannel:
 				binlogEntry := entryCtx.Entry
-				spanContext := binlogEntry.SpanContext
+				spanContext := entryCtx.SpanContext
 				span := opentracing.GlobalTracer().StartSpan("nat send :begin  send binlogEntry from src kafka to desc kafka", opentracing.ChildOf(spanContext))
 				span.SetTag("time", time.Now().Unix())
 				ctx = opentracing.ContextWithSpan(ctx, span)
 				//span.SetTag("timetag", time.Now().Unix())
-				binlogEntry.SpanContext = nil
+				entryCtx.SpanContext = nil
 				entries.Entries = append(entries.Entries, binlogEntry)
 				entriesSize += binlogEntry.OriginalSize
 				if entriesSize >= e.mysqlContext.GroupMaxSize ||
@@ -1031,7 +1031,6 @@ func splitEntries(entries common.BinlogEntries, entriseSize int) (entris []commo
 		}
 		entry := &common.BinlogEntry{
 			OriginalSize: entries.Entries[0].OriginalSize,
-			SpanContext:  entries.Entries[0].SpanContext,
 			Coordinates:  entries.Entries[0].Coordinates,
 			Events:       entries.Entries[0].Events[(i-1)*int(clientNum) : after],
 		}
