@@ -23,12 +23,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/actiontech/dtle/drivers/mysql/mysql/binlog"
 	"github.com/actiontech/dtle/drivers/mysql/mysql/mysqlconfig"
 	hclog "github.com/hashicorp/go-hclog"
 	gonats "github.com/nats-io/go-nats"
-	uuid "github.com/satori/go.uuid"
 	"github.com/pingcap/tidb/types"
+	uuid "github.com/satori/go.uuid"
 )
 
 const (
@@ -66,7 +65,7 @@ type KafkaRunner struct {
 	BinlogFile string
 	BinlogPos  int64
 
-	chBinlogEntries chan *binlog.BinlogEntries
+	chBinlogEntries chan *common.BinlogEntries
 	chDumpEntry     chan *common.DumpEntry
 
 	lastSavedGtid string
@@ -90,7 +89,7 @@ func NewKafkaRunner(execCtx *common.ExecContext, cfg *config.KafkaConfig, logger
 		tables:       make(map[string](map[string]*KafkaTableItem)),
 		storeManager: storeManager,
 
-		chBinlogEntries: make(chan *binlog.BinlogEntries, 2),
+		chBinlogEntries: make(chan *common.BinlogEntries, 2),
 		chDumpEntry: make(chan *common.DumpEntry, 2),
 	}
 }
@@ -261,8 +260,20 @@ func (kr *KafkaRunner) getOrSetTable(schemaName string, tableName string,
 	}
 }
 
+func decodeMaybeTable(tableBs []byte) (*mysqlconfig.Table, error) {
+	if len(tableBs) > 0 {
+		var r *mysqlconfig.Table
+		r = &mysqlconfig.Table{}
+		err := common.GobDecode(tableBs, r)
+		if err != nil {
+			return nil, errors.Wrap(err, "GobDecode")
+		}
+		return r, nil
+	} else {
+		return nil, nil
+	}
+}
 func (kr *KafkaRunner) handleFullCopy() {
-	var err error
 	for !kr.shutdown {
 		var dumpData *common.DumpEntry
 		select {
@@ -276,14 +287,10 @@ func (kr *KafkaRunner) handleFullCopy() {
 		} else if dumpData.TableSchema == "" && dumpData.TableName == "" {
 			kr.logger.Debug("skip apply sqlMode and SystemVariablesStatement")
 		} else {
-			var tableFromDumpData *mysqlconfig.Table = nil
-			if len(dumpData.Table) > 0 {
-				tableFromDumpData = &mysqlconfig.Table{}
-				err = common.GobDecode(dumpData.Table, tableFromDumpData)
-				if err != nil {
-					kr.onError(TaskStateDead, err)
-					return
-				}
+			tableFromDumpData, err := decodeMaybeTable(dumpData.Table)
+			if err != nil {
+				kr.onError(TaskStateDead, errors.Wrap(err, "decodeMaybeTable"))
+				return
 			}
 			tableItem, err := kr.getOrSetTable(dumpData.TableSchema, dumpData.TableName, tableFromDumpData)
 			if err != nil {
@@ -302,9 +309,9 @@ func (kr *KafkaRunner) handleFullCopy() {
 }
 func (kr *KafkaRunner) handleIncr() {
 	var err error
-	bigEntries := &binlog.BinlogEntries{}
+	bigEntries := &common.BinlogEntries{}
 	for !kr.shutdown {
-		var binlogEntries *binlog.BinlogEntries
+		var binlogEntries *common.BinlogEntries
 		select {
 		case binlogEntries = <-kr.chBinlogEntries:
 		case <-kr.shutdownCh:
@@ -410,7 +417,7 @@ func (kr *KafkaRunner) initiateStreaming() error {
 		}
 		kr.logger.Debug("ack a incr_hete msg")
 
-		var binlogEntries binlog.BinlogEntries
+		var binlogEntries common.BinlogEntries
 		if err := common.Decode(m.Data, &binlogEntries); err != nil {
 			kr.onError(TaskStateDead, err)
 			return
@@ -626,7 +633,7 @@ func (kr *KafkaRunner) kafkaTransformSnapshotData(
 	return nil
 }
 
-func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry) (err error) {
+func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *common.BinlogEntry) (err error) {
 	txSid := dmlEvent.Coordinates.GetSid()
 
 	for i, _ := range dmlEvent.Events {
@@ -636,7 +643,8 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry)
 		var tableItem *KafkaTableItem
 		if dataEvent.TableName != "" {
 			// this must be executed before skipping DDL
-			tableItem, err = kr.getOrSetTable(realSchema, dataEvent.TableName, dataEvent.Table)
+			table, err := decodeMaybeTable(dataEvent.Table)
+			tableItem, err = kr.getOrSetTable(realSchema, dataEvent.TableName, table)
 			if err != nil {
 				return err
 			}
@@ -646,7 +654,7 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry)
 		}
 
 		// skipping DDL
-		if dataEvent.DML == binlog.NotDML {
+		if dataEvent.DML == common.NotDML {
 			continue
 		}
 
@@ -663,15 +671,15 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry)
 		var after *Row
 
 		switch dataEvent.DML {
-		case binlog.InsertDML:
+		case common.InsertDML:
 			op = RECORD_OP_INSERT
 			before = nil
 			after = NewRow()
-		case binlog.DeleteDML:
+		case common.DeleteDML:
 			op = RECORD_OP_DELETE
 			before = NewRow()
 			after = nil
-		case binlog.UpdateDML:
+		case common.UpdateDML:
 			op = RECORD_OP_UPDATE
 			before = NewRow()
 			after = NewRow()
@@ -884,7 +892,7 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry)
 		kr.logger.Debug("sent one msg")
 
 		// tombstone event for DELETE
-		if dataEvent.DML == binlog.DeleteDML {
+		if dataEvent.DML == common.DeleteDML {
 			v2 := DbzOutput{
 				Schema:  nil,
 				Payload: nil,

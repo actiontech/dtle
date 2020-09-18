@@ -15,6 +15,7 @@ import (
 	"github.com/opentracing/opentracing-go"
 	"github.com/opentracing/opentracing-go/ext"
 	"github.com/pkg/errors"
+	uuid "github.com/satori/go.uuid"
 
 	"bytes"
 	"math"
@@ -31,7 +32,6 @@ import (
 	"os"
 
 	"github.com/actiontech/dtle/drivers/mysql/mysql/base"
-	"github.com/actiontech/dtle/drivers/mysql/mysql/binlog"
 	umconf "github.com/actiontech/dtle/drivers/mysql/mysql/mysqlconfig"
 	"github.com/actiontech/dtle/drivers/mysql/mysql/sql"
 	"github.com/actiontech/dtle/g"
@@ -50,39 +50,7 @@ const (
 	TaskStateDead
 )
 
-type applierTableItem struct {
-	columns  *umconf.ColumnList
-	psInsert []*gosql.Stmt
-	psDelete []*gosql.Stmt
-	psUpdate []*gosql.Stmt
-}
-
-func newApplierTableItem(parallelWorkers int) *applierTableItem {
-	return &applierTableItem{
-		columns:  nil,
-		psInsert: make([]*gosql.Stmt, parallelWorkers),
-		psDelete: make([]*gosql.Stmt, parallelWorkers),
-		psUpdate: make([]*gosql.Stmt, parallelWorkers),
-	}
-}
-func (ait *applierTableItem) Reset() {
-	// TODO handle err of `.Close()`?
-	closeStmts := func(stmts []*gosql.Stmt) {
-		for i := range stmts {
-			if stmts[i] != nil {
-				stmts[i].Close()
-				stmts[i] = nil
-			}
-		}
-	}
-	closeStmts(ait.psInsert)
-	closeStmts(ait.psDelete)
-	closeStmts(ait.psUpdate)
-
-	ait.columns = nil
-}
-
-type mapSchemaTableItems map[string](map[string](*applierTableItem))
+type mapSchemaTableItems map[string](map[string](*common.ApplierTableItem))
 
 // Applier connects and writes the the applier-server, which is the server where
 // write row data and apply binlog events onto the dest table.
@@ -107,9 +75,9 @@ type Applier struct {
 	// copyRowsQueue should not be buffered; if buffered some non-damaging but
 	//  excessive work happens at the end of the iteration as new copy-jobs arrive befroe realizing the copy is complete
 	copyRowsQueue       chan *common.DumpEntry
-	applyDataEntryQueue chan *binlog.BinlogEntry
+	applyDataEntryQueue chan *common.BinlogEntryContext
 	// only TX can be executed should be put into this chan
-	applyBinlogMtsTxQueue chan *binlog.BinlogEntry
+	applyBinlogMtsTxQueue chan *common.BinlogEntryContext
 
 	natsConn *gonats.Conn
 	waitCh   chan *drivers.ExitResult
@@ -129,7 +97,7 @@ type Applier struct {
 	gtidSet *gomysql.MysqlGTIDSet
 
 	storeManager       *common.StoreManager
-	gtidCh             chan *base.BinlogCoordinateTx
+	gtidCh             chan *common.BinlogCoordinateTx
 
 	SrcBinlogTimestamp uint32
 	timestampCh        chan uint32
@@ -153,7 +121,7 @@ func NewApplier(
 		shutdownCh:      make(chan struct{}),
 		printTps:        os.Getenv(g.ENV_PRINT_TPS) != "",
 		storeManager:    storeManager,
-		gtidCh:          make(chan *base.BinlogCoordinateTx, 4096),
+		gtidCh:          make(chan *common.BinlogCoordinateTx, 4096),
 		timestampCh:     make(chan uint32),
 	}
 	stubFullApplyDelayStr := os.Getenv(g.ENV_FULL_APPLY_DELAY)
@@ -246,15 +214,15 @@ func (a *Applier) MtsWorker(workerIndex int) {
 	for keepLoop {
 		timer := time.NewTimer(pingInterval)
 		select {
-		case tx := <-a.applyBinlogMtsTxQueue:
-			logger.Debug("a binlogEntry MTS dequeue", "gno", tx.Coordinates.GNO)
-			if err := a.ApplyBinlogEvent(nil, workerIndex, tx); err != nil {
+		case entryContext := <-a.applyBinlogMtsTxQueue:
+			logger.Debug("a binlogEntry MTS dequeue", "gno", entryContext.Entry.Coordinates.GNO)
+			if err := a.ApplyBinlogEvent(nil, workerIndex, entryContext); err != nil {
 				a.onError(TaskStateDead, err) // TODO coordinate with other goroutine
 				keepLoop = false
 			} else {
 				// do nothing
 			}
-			logger.Debug("after ApplyBinlogEvent.", "gno", tx.Coordinates.GNO)
+			logger.Debug("after ApplyBinlogEvent.", "gno", entryContext.Entry.Coordinates.GNO)
 		case <-a.shutdownCh:
 			keepLoop = false
 		case <-timer.C:
@@ -287,8 +255,8 @@ func (a *Applier) Run() {
 			a.logger.Debug("use ReplChanBufferSize from consul", "i", i)
 			a.mysqlContext.ReplChanBufferSize = int64(i)
 		}
-		a.applyDataEntryQueue = make(chan *binlog.BinlogEntry, a.mysqlContext.ReplChanBufferSize * 2)
-		a.applyBinlogMtsTxQueue = make(chan *binlog.BinlogEntry, a.mysqlContext.ReplChanBufferSize * 2)
+		a.applyDataEntryQueue = make(chan *common.BinlogEntryContext, a.mysqlContext.ReplChanBufferSize * 2)
+		a.applyBinlogMtsTxQueue = make(chan *common.BinlogEntryContext, a.mysqlContext.ReplChanBufferSize * 2)
 	}
 
 	err = common.GetGtidFromConsul(a.storeManager, a.subject, a.logger, a.mysqlContext)
@@ -398,23 +366,25 @@ func (a *Applier) initNatSubClient() (err error) {
 	return nil
 }
 
-func (a *Applier) setTableItemForBinlogEntry(binlogEntry *binlog.BinlogEntry) error {
+func (a *Applier) setTableItemForBinlogEntry(binlogEntry *common.BinlogEntryContext) error {
 	var err error
-	for i := range binlogEntry.Events {
-		dmlEvent := &binlogEntry.Events[i]
+	binlogEntry.TableItems = make([]*common.ApplierTableItem, len(binlogEntry.Entry.Events))
+
+	for i := range binlogEntry.Entry.Events {
+		dmlEvent := &binlogEntry.Entry.Events[i]
 		switch dmlEvent.DML {
-		case binlog.NotDML:
+		case common.NotDML:
 			// do nothing
 		default:
 			tableItem := a.getTableItem(dmlEvent.DatabaseName, dmlEvent.TableName)
-			if tableItem.columns == nil {
+			if tableItem.Columns == nil {
 				a.logger.Debug("get tableColumns", "schema", dmlEvent.DatabaseName, "table", dmlEvent.TableName)
-				tableItem.columns, err = base.GetTableColumns(a.db, dmlEvent.DatabaseName, dmlEvent.TableName)
+				tableItem.Columns, err = base.GetTableColumns(a.db, dmlEvent.DatabaseName, dmlEvent.TableName)
 				if err != nil {
 					a.logger.Error("GetTableColumns error.", "err", err)
 					return err
 				}
-				err = base.ApplyColumnTypes(a.db, dmlEvent.DatabaseName, dmlEvent.TableName, tableItem.columns)
+				err = base.ApplyColumnTypes(a.db, dmlEvent.DatabaseName, dmlEvent.TableName, tableItem.Columns)
 				if err != nil {
 					a.logger.Error("ApplyColumnTypes error.", "err", err)
 					return err
@@ -422,7 +392,7 @@ func (a *Applier) setTableItemForBinlogEntry(binlogEntry *binlog.BinlogEntry) er
 			} else {
 				a.logger.Debug("reuse tableColumns", "schema", dmlEvent.DatabaseName, "table", dmlEvent.TableName)
 			}
-			dmlEvent.TableItem = tableItem
+			binlogEntry.TableItems[i] = tableItem
 		}
 	}
 	return nil
@@ -438,11 +408,12 @@ func (a *Applier) heterogeneousReplay() {
 
 	for !stopSomeLoop {
 		select {
-		case binlogEntry := <-a.applyDataEntryQueue:
-			if nil == binlogEntry {
+		case entryCtx := <-a.applyDataEntryQueue:
+			if nil == entryCtx {
 				continue
 			}
-			spanContext := binlogEntry.SpanContext
+			binlogEntry := entryCtx.Entry
+			spanContext := entryCtx.SpanContext
 			span := opentracing.GlobalTracer().StartSpan("dest use binlogEntry  ", opentracing.FollowsFrom(spanContext))
 			ctx = opentracing.ContextWithSpan(ctx, span)
 			a.logger.Debug("a binlogEntry.", "remaining", len(a.applyDataEntryQueue),
@@ -486,12 +457,12 @@ func (a *Applier) heterogeneousReplay() {
 			gtidSetItem.NRow += 1
 			if binlogEntry.Coordinates.SeqenceNumber == 0 {
 				// MySQL 5.6: non mts
-				err := a.setTableItemForBinlogEntry(binlogEntry)
+				err := a.setTableItemForBinlogEntry(entryCtx)
 				if err != nil {
 					a.onError(TaskStateDead, err)
 					return
 				}
-				if err := a.ApplyBinlogEvent(ctx, 0, binlogEntry); err != nil {
+				if err := a.ApplyBinlogEvent(ctx, 0, entryCtx); err != nil {
 					a.onError(TaskStateDead, err)
 					return
 				}
@@ -516,7 +487,7 @@ func (a *Applier) heterogeneousReplay() {
 					for i := range binlogEntry.Events {
 						dmlEvent := &binlogEntry.Events[i]
 						switch dmlEvent.DML {
-						case binlog.NotDML:
+						case common.NotDML:
 							return true
 						default:
 						}
@@ -541,13 +512,13 @@ func (a *Applier) heterogeneousReplay() {
 					return // shutdown
 				}
 				a.logger.Debug("a binlogEntry MTS enqueue.", "gno", binlogEntry.Coordinates.GNO)
-				err = a.setTableItemForBinlogEntry(binlogEntry)
+				err = a.setTableItemForBinlogEntry(entryCtx)
 				if err != nil {
 					a.onError(TaskStateDead, err)
 					return
 				}
-				binlogEntry.SpanContext = span.Context()
-				a.applyBinlogMtsTxQueue <- binlogEntry
+				entryCtx.SpanContext = span.Context()
+				a.applyBinlogMtsTxQueue <- entryCtx
 			}
 			span.Finish()
 		case <-time.After(10 * time.Second):
@@ -675,9 +646,9 @@ func (a *Applier) subscribeNats() error {
 		return err
 	}
 
-	var bigEntries binlog.BinlogEntries
+	var bigEntries common.BinlogEntries
 	_, err = a.natsConn.Subscribe(fmt.Sprintf("%s_incr_hete", a.subject), func(m *gonats.Msg) {
-		var binlogEntries binlog.BinlogEntries
+		var binlogEntries common.BinlogEntries
 		t := not.NewTraceMsg(m)
 		// Extract the span context from the request message.
 		spanContext, err := tracer.Extract(opentracing.Binary, t)
@@ -728,8 +699,11 @@ func (a *Applier) subscribeNats() error {
 			} else {
 				a.logger.Debug("incr. applyDataEntryQueue enqueue")
 				for _, binlogEntry := range binlogEntries.Entries {
-					binlogEntry.SpanContext = replySpan.Context()
-					a.applyDataEntryQueue <- binlogEntry
+					a.applyDataEntryQueue <- &common.BinlogEntryContext{
+						Entry:       binlogEntry,
+						SpanContext: replySpan.Context(),
+						TableItems:  nil,
+					}
 					//a.retrievedGtidSet = ""
 					// It costs quite a lot to maintain the set, and retrievedGtidSet is not
 					// as necessary as executedGtidSet. So I removed it.
@@ -918,16 +892,16 @@ func (a *Applier) validateGrants() error {
 	return nil
 }
 
-func (a *Applier) getTableItem(schema string, table string) *applierTableItem {
+func (a *Applier) getTableItem(schema string, table string) *common.ApplierTableItem {
 	schemaItem, ok := a.tableItems[schema]
 	if !ok {
-		schemaItem = make(map[string]*applierTableItem)
+		schemaItem = make(map[string]*common.ApplierTableItem)
 		a.tableItems[schema] = schemaItem
 	}
 
 	tableItem, ok := schemaItem[table]
 	if !ok {
-		tableItem = newApplierTableItem(a.mysqlContext.ParallelWorkers)
+		tableItem = common.NewApplierTableItem(a.mysqlContext.ParallelWorkers)
 		schemaItem[table] = tableItem
 	}
 
@@ -936,10 +910,10 @@ func (a *Applier) getTableItem(schema string, table string) *applierTableItem {
 
 // buildDMLEventQuery creates a query to operate on the ghost table, based on an intercepted binlog
 // event entry on the original table.
-func (a *Applier) buildDMLEventQuery(dmlEvent binlog.DataEvent, workerIdx int, spanContext opentracing.SpanContext) (stmt *gosql.Stmt, query string, args []interface{}, rowsDelta int64, err error) {
+func (a *Applier) buildDMLEventQuery(dmlEvent common.DataEvent, workerIdx int, spanContext opentracing.SpanContext,
+	tableItem *common.ApplierTableItem) (stmt *gosql.Stmt, query string, args []interface{}, rowsDelta int64, err error) {
 	// Large piece of code deleted here. See git annotate.
-	tableItem := dmlEvent.TableItem.(*applierTableItem)
-	var tableColumns = tableItem.columns
+	var tableColumns = tableItem.Columns
 	span := opentracing.GlobalTracer().StartSpan("desc  buildDMLEventQuery ", opentracing.FollowsFrom(spanContext))
 	defer span.Finish()
 	doPrepareIfNil := func(stmts []*gosql.Stmt, query string) (*gosql.Stmt, error) {
@@ -955,14 +929,14 @@ func (a *Applier) buildDMLEventQuery(dmlEvent binlog.DataEvent, workerIdx int, s
 	}
 
 	switch dmlEvent.DML {
-	case binlog.DeleteDML:
+	case common.DeleteDML:
 		{
 			query, uniqueKeyArgs, hasUK, err := sql.BuildDMLDeleteQuery(dmlEvent.DatabaseName, dmlEvent.TableName, tableColumns, dmlEvent.WhereColumnValues.GetAbstractValues())
 			if err != nil {
 				return nil, "", nil, -1, err
 			}
 			if hasUK {
-				stmt, err := doPrepareIfNil(tableItem.psDelete, query)
+				stmt, err := doPrepareIfNil(tableItem.PsDelete, query)
 				if err != nil {
 					return nil, "", nil, -1, err
 				}
@@ -971,20 +945,20 @@ func (a *Applier) buildDMLEventQuery(dmlEvent binlog.DataEvent, workerIdx int, s
 				return nil, query, uniqueKeyArgs, -1, nil
 			}
 		}
-	case binlog.InsertDML:
+	case common.InsertDML:
 		{
 			// TODO no need to generate query string every time
 			query, sharedArgs, err := sql.BuildDMLInsertQuery(dmlEvent.DatabaseName, dmlEvent.TableName, tableColumns, tableColumns, tableColumns, dmlEvent.NewColumnValues.GetAbstractValues())
 			if err != nil {
 				return nil, "", nil, -1, err
 			}
-			stmt, err := doPrepareIfNil(tableItem.psInsert, query)
+			stmt, err := doPrepareIfNil(tableItem.PsInsert, query)
 			if err != nil {
 				return nil, "", nil, -1, err
 			}
 			return stmt, "", sharedArgs, 1, err
 		}
-	case binlog.UpdateDML:
+	case common.UpdateDML:
 		{
 			query, sharedArgs, uniqueKeyArgs, hasUK, err := sql.BuildDMLUpdateQuery(dmlEvent.DatabaseName, dmlEvent.TableName, tableColumns, tableColumns, tableColumns, tableColumns, dmlEvent.NewColumnValues.GetAbstractValues(), dmlEvent.WhereColumnValues.GetAbstractValues())
 			if err != nil {
@@ -994,7 +968,7 @@ func (a *Applier) buildDMLEventQuery(dmlEvent binlog.DataEvent, workerIdx int, s
 			args = append(args, uniqueKeyArgs...)
 
 			if hasUK {
-				stmt, err := doPrepareIfNil(tableItem.psUpdate, query)
+				stmt, err := doPrepareIfNil(tableItem.PsUpdate, query)
 				if err != nil {
 					return nil, "", nil, -1, err
 				}
@@ -1009,8 +983,9 @@ func (a *Applier) buildDMLEventQuery(dmlEvent binlog.DataEvent, workerIdx int, s
 }
 
 // ApplyEventQueries applies multiple DML queries onto the dest table
-func (a *Applier) ApplyBinlogEvent(ctx context.Context, workerIdx int, binlogEntry *binlog.BinlogEntry) error {
+func (a *Applier) ApplyBinlogEvent(ctx context.Context, workerIdx int, binlogEntryCtx *common.BinlogEntryContext) error {
 	logger := a.logger.Named("ApplyBinlogEvent")
+	binlogEntry := binlogEntryCtx.Entry
 
 	dbApplier := a.dbs[workerIdx]
 
@@ -1027,7 +1002,7 @@ func (a *Applier) ApplyBinlogEvent(ctx context.Context, workerIdx int, binlogEnt
 		defer span.Finish()
 
 	} else {
-		spanContext = binlogEntry.SpanContext
+		spanContext = binlogEntryCtx.SpanContext
 		span = opentracing.GlobalTracer().StartSpan("desc mts binlogEvent transform to sql ",
 			opentracing.ChildOf(spanContext))
 		span.SetTag("start insert sql ", time.Now().UnixNano()/1e6)
@@ -1060,7 +1035,7 @@ func (a *Applier) ApplyBinlogEvent(ctx context.Context, workerIdx int, binlogEnt
 	for i, event := range binlogEntry.Events {
 		logger.Debug("binlogEntry.Events", "gno", binlogEntry.Coordinates.GNO, "event", i)
 		switch event.DML {
-		case binlog.NotDML:
+		case common.NotDML:
 			var err error
 			logger.Debug("not dml", "query", event.Query)
 
@@ -1111,7 +1086,8 @@ func (a *Applier) ApplyBinlogEvent(ctx context.Context, workerIdx int, binlogEnt
 			logger.Debug("Exec.after", "query", event.Query)
 		default:
 			logger.Debug("a dml event")
-			stmt, query, args, rowDelta, err := a.buildDMLEventQuery(event, workerIdx, spanContext)
+			stmt, query, args, rowDelta, err := a.buildDMLEventQuery(event, workerIdx, spanContext,
+				binlogEntryCtx.TableItems[i])
 			if err != nil {
 				logger.Error("buildDMLEventQuery error", "err", err)
 				return err
@@ -1144,9 +1120,9 @@ func (a *Applier) ApplyBinlogEvent(ctx context.Context, workerIdx int, binlogEnt
 
 	span.SetTag("after  transform  binlogEvent to sql  ", time.Now().UnixNano()/1e6)
 	logger.Debug("insert gno", "gno", binlogEntry.Coordinates.GNO)
-	_, err = dbApplier.PsInsertExecutedGtid.Exec(a.subject, binlogEntry.Coordinates.SID.Bytes(), binlogEntry.Coordinates.GNO)
+	_, err = dbApplier.PsInsertExecutedGtid.Exec(a.subject, uuid.UUID(binlogEntry.Coordinates.SID).Bytes(), binlogEntry.Coordinates.GNO)
 	if err != nil {
-		return err
+		return errors.Wrap(err, "insert gno")
 	}
 
 	// no error
