@@ -827,7 +827,7 @@ func (a *Applier) validateServerUUID() error {
 
 // validateConnection issues a simple can-connect to MySQL
 func (a *Applier) validateConnection(db *gosql.DB) error {
-	query := `select @@global.version`
+	query := `select @@version`
 	if err := db.QueryRow(query).Scan(&a.MySQLVersion); err != nil {
 		return err
 	}

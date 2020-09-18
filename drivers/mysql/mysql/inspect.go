@@ -256,7 +256,7 @@ func (i *Inspector) validateGTIDMode() error {
 
 // validateBinlogs checks that binary log configuration is good to go
 func (i *Inspector) validateBinlogs() error {
-	query := `select @@global.log_bin, @@global.binlog_format`
+	query := `select @@log_bin, @@binlog_format`
 	var hasBinaryLogs bool
 	var binlogFormat string
 	if err := i.db.QueryRow(query).Scan(&hasBinaryLogs, &binlogFormat); err != nil {
@@ -268,7 +268,7 @@ func (i *Inspector) validateBinlogs() error {
 	if binlogFormat != "ROW" {
 		return fmt.Errorf("it is required to set binlog_format=row")
 	}
-	query = `select @@global.binlog_row_image`
+	query = `select @@binlog_row_image`
 	if err := i.db.QueryRow(query).Scan(&i.mysqlContext.BinlogRowImage); err != nil {
 		// Only as of 5.6. We wish to support 5.5 as well
 		i.mysqlContext.BinlogRowImage = "FULL"

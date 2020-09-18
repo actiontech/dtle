@@ -115,7 +115,7 @@ func GetTableColumns(db usql.QueryAble, databaseName, tableName string) (*umconf
 
 // ValidateAndReadTimeZone potentially reads server time-zone
 func ValidateAndReadTimeZone(db usql.QueryAble) (tz string, err error) {
-	query := `select @@global.time_zone`
+	query := `select @@time_zone`
 	if err := db.QueryRow(query).Scan(&tz); err != nil {
 		return "", err
 	}

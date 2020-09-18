@@ -759,7 +759,7 @@ func (e *Extractor) initBinlogReader(binlogCoordinates *base.BinlogCoordinatesX)
 
 // validateConnection issues a simple can-connect to MySQL
 func (e *Extractor) validateConnectionAndGetVersion() error {
-	query := `select @@global.version`
+	query := `select @@version`
 	if err := e.db.QueryRow(query).Scan(&e.MySQLVersion); err != nil {
 		return err
 	}
@@ -773,7 +773,7 @@ func (e *Extractor) validateConnectionAndGetVersion() error {
 }
 
 func (e *Extractor) selectSqlMode() error {
-	query := `select @@global.sql_mode`
+	query := `select @@sql_mode`
 	if err := e.db.QueryRow(query).Scan(&e.sqlMode); err != nil {
 		return err
 	}
