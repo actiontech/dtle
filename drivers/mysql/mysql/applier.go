@@ -96,11 +96,10 @@ type Applier struct {
 
 	gtidSet *gomysql.MysqlGTIDSet
 
-	storeManager       *common.StoreManager
-	gtidCh             chan *common.BinlogCoordinateTx
+	storeManager *common.StoreManager
+	gtidCh       chan *common.BinlogCoordinateTx
 
-	SrcBinlogTimestamp uint32
-	timestampCh        chan uint32
+	timestampCtx       *TimestampContext
 }
 
 func NewApplier(
@@ -122,8 +121,13 @@ func NewApplier(
 		printTps:        os.Getenv(g.ENV_PRINT_TPS) != "",
 		storeManager:    storeManager,
 		gtidCh:          make(chan *common.BinlogCoordinateTx, 4096),
-		timestampCh:     make(chan uint32),
 	}
+
+	a.timestampCtx = NewTimestampContext(a.shutdownCh, a.logger, func() bool {
+		return len(a.applyDataEntryQueue) == 0 && len(a.applyBinlogMtsTxQueue) == 0
+		// TODO need a more reliable method to determine queue.empty.
+	})
+
 	stubFullApplyDelayStr := os.Getenv(g.ENV_FULL_APPLY_DELAY)
 	if stubFullApplyDelayStr == "" {
 		a.stubFullApplyDelay = 0
@@ -308,7 +312,7 @@ func (a *Applier) Run() {
 		a.onError(TaskStateDead, errors.Wrap(err, "WatchAndPutNats"))
 	})
 
-	go a.handleTimestamp()
+	go a.timestampCtx.Handle()
 	go a.updateGtidLoop()
 
 	for i := 0; i < a.mysqlContext.ParallelWorkers; i++ {
@@ -1129,31 +1133,8 @@ func (a *Applier) ApplyBinlogEvent(ctx context.Context, workerIdx int, binlogEnt
 	a.mysqlContext.Stage = common.StageWaitingForGtidToBeCommitted
 	atomic.AddInt64(&a.TotalDeltaCopied, 1)
 	logger.Debug("event delay time", "timestamp", timestamp)
-	a.timestampCh <- timestamp
+	a.timestampCtx.TimestampCh <- timestamp
 	return nil
-}
-
-func (a *Applier) handleTimestamp() {
-	interval := 15 * time.Second
-	t := time.NewTimer(interval)
-	for {
-		select {
-		case ts := <-a.timestampCh:
-			a.SrcBinlogTimestamp = ts
-			if !t.Stop() {
-				<-t.C
-			}
-			t.Reset(interval)
-		case <-t.C:
-			if len(a.applyDataEntryQueue) == 0 && len(a.applyBinlogMtsTxQueue) == 0 {
-				a.logger.Debug("delay: resetting timestamp")
-				a.SrcBinlogTimestamp = 0
-			}
-			t.Reset(interval)
-		case <-a.shutdownCh:
-			// will end the loop
-		}
-	}
 }
 
 func (a *Applier) ApplyEventQueries(db *gosql.DB, entry *common.DumpEntry) error {
@@ -1278,7 +1259,6 @@ func (a *Applier) Stats() (*common.TaskStatistics, error) {
 	totalRowsReplay := a.TotalRowsReplayed
 	rowsEstimate := atomic.LoadInt64(&a.mysqlContext.RowsEstimate)
 	totalDeltaCopied := a.TotalDeltaCopied
-	var delayTime int64
 	deltaEstimate := atomic.LoadInt64(&a.mysqlContext.DeltaEstimate)
 
 	var progressPct float64
@@ -1315,11 +1295,6 @@ func (a *Applier) Stats() (*common.TaskStatistics, error) {
 			eta = "0s"
 		}
 	}
-	if a.SrcBinlogTimestamp != 0 {
-		delayTime = time.Now().Unix() - int64(a.SrcBinlogTimestamp)
-	} else {
-		delayTime = 0
-	}
 
 	taskResUsage :=  common.TaskStatistics{
 		ExecMasterRowCount: totalRowsReplay,
@@ -1344,7 +1319,7 @@ func (a *Applier) Stats() (*common.TaskStatistics, error) {
 		Timestamp: time.Now().UTC().UnixNano(),
 		DelayCount: &common.DelayCount{
 			Num:  0,
-			Time: delayTime,
+			Time: a.timestampCtx.GetDelay(),
 		},
 	}
 	if a.natsConn != nil {

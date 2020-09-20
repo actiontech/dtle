@@ -74,12 +74,14 @@ type KafkaRunner struct {
 	// (not just received). Since the applier ack _full before execution, the extractor
 	// might send _full_complete before the entry has been executed.
 	fullWg   sync.WaitGroup
+
+	timestampCtx *mysql.TimestampContext
 }
 
 func NewKafkaRunner(execCtx *common.ExecContext, cfg *config.KafkaConfig, logger hclog.Logger,
 	storeManager *common.StoreManager, natsAddr string, waitCh chan *drivers.ExitResult) *KafkaRunner {
 
-	return &KafkaRunner{
+	kr := &KafkaRunner{
 		subject:      execCtx.Subject,
 		kafkaConfig:  cfg,
 		logger:       logger.Named("kafka").With("job", execCtx.Subject),
@@ -92,6 +94,10 @@ func NewKafkaRunner(execCtx *common.ExecContext, cfg *config.KafkaConfig, logger
 		chBinlogEntries: make(chan *common.BinlogEntries, 2),
 		chDumpEntry: make(chan *common.DumpEntry, 2),
 	}
+	kr.timestampCtx = mysql.NewTimestampContext(kr.shutdownCh, kr.logger, func() bool {
+		return len(kr.chBinlogEntries) == 0
+	})
+	return kr
 }
 
 func (kr *KafkaRunner) updateGtidString() {
@@ -137,7 +143,34 @@ func (kr *KafkaRunner) Shutdown() error {
 }
 
 func (kr *KafkaRunner) Stats() (*common.TaskStatistics, error) {
-	taskResUsage := &common.TaskStatistics{}
+	taskResUsage := &common.TaskStatistics{
+		CurrentCoordinates: &common.CurrentCoordinates{
+			File:               kr.BinlogFile,
+			Position:           kr.BinlogPos,
+			GtidSet:            kr.Gtid,
+			RelayMasterLogFile: "",
+			ReadMasterLogPos:   0,
+			RetrievedGtidSet:   "",
+		},
+		TableStats:         nil,
+		DelayCount:         &common.DelayCount{
+			Num:  0,
+			Time: kr.timestampCtx.GetDelay(),
+		},
+		ProgressPct:        "",
+		ExecMasterRowCount: 0,
+		ExecMasterTxCount:  0,
+		ReadMasterRowCount: 0,
+		ReadMasterTxCount:  0,
+		ETA:                "",
+		Backlog:            "",
+		ThroughputStat:     nil,
+		MsgStat:            gonats.Statistics{},
+		BufferStat:         common.BufferStat{},
+		Stage:              "",
+		Timestamp:          time.Now().Unix(),
+		MemoryStat:         common.MemoryStat{},
+	}
 	return taskResUsage, nil
 }
 func (kr *KafkaRunner) initNatSubClient() (err error) {
@@ -196,6 +229,8 @@ func (kr *KafkaRunner) Run() {
 		kr.onError(TaskStateDead, err)
 		return
 	}
+
+	go kr.timestampCtx.Handle()
 
 	err = kr.initiateStreaming()
 	if err != nil {
@@ -906,6 +941,10 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *common.BinlogEntry)
 				return err
 			}
 			kr.logger.Debug("sent one msg")
+		}
+
+		if i == len(dmlEvent.Events) - 1 {
+			kr.timestampCtx.TimestampCh <- dmlEvent.Events[0].Timestamp
 		}
 	}
 

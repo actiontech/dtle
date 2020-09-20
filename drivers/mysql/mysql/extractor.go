@@ -105,8 +105,7 @@ type Extractor struct {
 	fullCopyDone    chan struct{}
 	storeManager    *common.StoreManager
 
-	timestamp   uint32
-	timestampCh chan uint32
+	timestampCtx *TimestampContext
 
 	memory1 *int64
 	memory2 *int64
@@ -130,10 +129,15 @@ func NewExtractor(execCtx *common.ExecContext, cfg *config.MySQLDriverConfig, lo
 		streamerReadyCh: make(chan error),
 		fullCopyDone:    make(chan struct{}),
 		storeManager:    storeManager,
-		timestampCh:     make(chan uint32),
 		memory1:         new(int64),
 		memory2:         new(int64),
 	}
+
+	e.timestampCtx = NewTimestampContext(e.shutdownCh, e.logger, func() bool {
+		return len(e.dataChannel) == 0
+		// TODO need a more reliable method to determine queue.empty.
+	})
+
 	e.context.LoadSchemas(nil)
 	logger.Debug("NewExtractor. after LoadSchemas")
 	if delay, err := strconv.ParseInt(os.Getenv(g.ENV_TESTSTUB1_DELAY), 10, 64); err == nil {
@@ -280,7 +284,7 @@ func (e *Extractor) Run() {
 	}
 	e.logger.Debug("sendSysVarAndSqlMode. after")
 
-	go e.handleTimestamp()
+	go e.timestampCtx.Handle()
 	go func() {
 		<-e.gotCoordinateCh
 
@@ -885,29 +889,59 @@ func (e *Extractor) setStatementFor() string {
 	}
 	return buffer.String()
 }
+type TimestampContext struct {
+	stopCh      chan struct{}
+	Timestamp   uint32
+	TimestampCh chan uint32
+	logger      hclog.Logger
+	f           func() bool
+}
+func NewTimestampContext(stopCh chan struct{}, logger hclog.Logger, f func() bool) *TimestampContext {
+	return &TimestampContext{
+		stopCh: stopCh,
+		logger: logger,
+		f:      f,
 
-func (e *Extractor) handleTimestamp() {
+		TimestampCh: make(chan uint32, 16),
+	}
+}
+func (tsc *TimestampContext) GetDelay() (d int64) {
+	if tsc.Timestamp == 0 {
+		d = 0
+	} else {
+		d = time.Now().Unix() - int64(tsc.Timestamp)
+	}
+	tsc.logger.Debug("TimestampContext.GetDelay", "delay", d)
+	return d
+}
+func (tsc *TimestampContext) Handle() {
 	interval := 15 * time.Second
-	t := time.NewTimer(interval)
-	for !e.shutdown {
+	t := time.NewTimer(0)
+	<-t.C
+	for {
 		select {
-		case ts := <-e.timestampCh:
-			e.timestamp = ts
+		case ts := <-tsc.TimestampCh:
+			tsc.logger.Debug("TimestampContext.Handle: got", "timestamp", ts)
+			tsc.Timestamp = ts
 			if !t.Stop() {
-				<-t.C
+				select {
+				case <-t.C:
+				default:
+					// Stop a stopped timer, nothing to read from t.C.
+				}
 			}
-			t.Reset(interval)
+			if tsc.f() {
+				t.Reset(interval)
+			}
 		case <-t.C:
-			// TODO need a more reliable method to determine queue.empty.
-			if len(e.dataChannel) == 0 {
-				e.logger.Debug("delay: resetting timestamp")
-				e.timestamp = 0
-			}
-		case <-e.shutdownCh:
-			// will end the loop
+			tsc.logger.Debug("delay: resetting timestamp")
+			tsc.Timestamp = 0
+		case <-tsc.stopCh:
+			return
 		}
 	}
 }
+
 // StreamEvents will begin streaming events. It will be blocking, so should be
 // executed by a goroutine
 func (e *Extractor) StreamEvents() error {
@@ -923,7 +957,7 @@ func (e *Extractor) StreamEvents() error {
 			if len(entries.Entries) > 0 {
 				theEntries := entries.Entries[0]
 				gno = theEntries.Coordinates.GNO
-				e.timestampCh <- theEntries.Events[0].Timestamp
+				e.timestampCtx.TimestampCh <- theEntries.Events[0].Timestamp
 			}
 
 			txMsg, err := common.Encode(entries)
@@ -1470,12 +1504,7 @@ func (e *Extractor) Stats() (*common.TaskStatistics, error) {
 	var etaSeconds float64 = math.MaxFloat64
 	var eta string
 	eta = "N/A"
-	var delay int64
-	if e.timestamp != 0 {
-		delay = time.Now().Unix() - int64(e.timestamp)
-	} else {
-		delay = 0
-	}
+
 	if progressPct >= 100.0 {
 		eta = "0s"
 		e.mysqlContext.Stage = common.StageMasterHasSentAllBinlogToSlave
@@ -1507,7 +1536,7 @@ func (e *Extractor) Stats() (*common.TaskStatistics, error) {
 		},
 		DelayCount: &common.DelayCount{
 			Num:  0,
-			Time: delay,
+			Time: e.timestampCtx.GetDelay(),
 		},
 		Timestamp: time.Now().UTC().UnixNano(),
 		MemoryStat: common.MemoryStat{
