@@ -398,8 +398,8 @@ func (b *BinlogReader) GetCurrentBinlogCoordinates() *common.BinlogCoordinateTx 
 	return &returnCoordinates
 }
 
-func ToColumnValuesV2(abstractValues []interface{}, table *mysqlconfig.TableContext) *mysqlconfig.ColumnValues {
-	result := &mysqlconfig.ColumnValues{
+func ToColumnValuesV2(abstractValues []interface{}, table *mysqlconfig.TableContext) *common.ColumnValues {
+	result := &common.ColumnValues{
 		AbstractValues: make([]*interface{}, len(abstractValues)),
 	}
 

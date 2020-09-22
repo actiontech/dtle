@@ -116,8 +116,8 @@ type DataEvent struct {
 	TableName         string
 	DML               EventDML
 	ColumnCount       int
-	WhereColumnValues *mysqlconfig.ColumnValues
-	NewColumnValues   *mysqlconfig.ColumnValues
+	WhereColumnValues *ColumnValues
+	NewColumnValues   *ColumnValues
 	Table             []byte // TODO tmp solution
 	LogPos            int64  // for kafka. The pos of WRITE_ROW_EVENT
 	Timestamp         uint32

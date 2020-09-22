@@ -289,30 +289,6 @@ func (c *UniqueKey) String() string {
 	return fmt.Sprintf("%s: %s; has nullable: %+v", description, c.Columns.Names(), c.HasNullable)
 }
 
-type ColumnValues struct {
-	AbstractValues []*interface{}
-}
-
-func (this *ColumnValues) GetAbstractValues() []*interface{} {
-	return this.AbstractValues
-}
-
-func (c *ColumnValues) StringColumn(index int) string {
-	val := *c.GetAbstractValues()[index]
-	if ints, ok := val.([]uint8); ok {
-		return string(ints)
-	}
-	return fmt.Sprintf("%+v", val)
-}
-
-func (c *ColumnValues) String() string {
-	stringValues := []string{}
-	for i := range c.GetAbstractValues() {
-		stringValues = append(stringValues, c.StringColumn(i))
-	}
-	return strings.Join(stringValues, ",")
-}
-
 func EscapeName(name string) string {
 	sb := strings.Builder{}
 	sb.WriteByte('`')

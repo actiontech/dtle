@@ -2,6 +2,7 @@ package mysqlconfig
 
 import (
 	"fmt"
+	"github.com/actiontech/dtle/drivers/mysql/common"
 	qldatasource "github.com/araddon/qlbridge/datasource"
 	qlexpr "github.com/araddon/qlbridge/expr"
 	qlvm "github.com/araddon/qlbridge/vm"
@@ -79,7 +80,7 @@ func NewTable(schemaName string, tableName string) *Table {
 	}
 }
 
-func (t *TableContext) WhereTrue(values *ColumnValues) (bool, error) {
+func (t *TableContext) WhereTrue(values *common.ColumnValues) (bool, error) {
 	var m = make(map[string]interface{})
 	for field, idx := range t.WhereCtx.FieldsMap {
 		nCols := len(values.AbstractValues)
