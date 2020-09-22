@@ -1085,17 +1085,32 @@ func (d *ColumnValues) Size() (s uint64) {
 						var v uint64
 						switch (*d.AbstractValues[k0]).(type) {
 
-						case int64:
+						case string:
 							v = 0 + 1
 
-						case []byte:
+						case int8:
 							v = 1 + 1
 
-						case string:
+						case int16:
 							v = 2 + 1
 
-						case float64:
+						case int32:
 							v = 3 + 1
+
+						case int64:
+							v = 4 + 1
+
+						case []byte:
+							v = 5 + 1
+
+						case float32:
+							v = 6 + 1
+
+						case float64:
+							v = 7 + 1
+
+						case bool:
+							v = 8 + 1
 
 						}
 
@@ -1111,6 +1126,36 @@ func (d *ColumnValues) Size() (s uint64) {
 						}
 						switch tt := (*d.AbstractValues[k0]).(type) {
 
+						case string:
+
+							{
+								l := uint64(len(tt))
+
+								{
+
+									t := l
+									for t >= 0x80 {
+										t >>= 7
+										s++
+									}
+									s++
+
+								}
+								s += l
+							}
+
+						case int8:
+
+							s += 1
+
+						case int16:
+
+							s += 2
+
+						case int32:
+
+							s += 4
+
 						case int64:
 
 							s += 8
@@ -1133,27 +1178,17 @@ func (d *ColumnValues) Size() (s uint64) {
 								s += l
 							}
 
-						case string:
+						case float32:
 
-							{
-								l := uint64(len(tt))
-
-								{
-
-									t := l
-									for t >= 0x80 {
-										t >>= 7
-										s++
-									}
-									s++
-
-								}
-								s += l
-							}
+							s += 4
 
 						case float64:
 
 							s += 8
+
+						case bool:
+
+							s += 1
 
 						}
 					}
@@ -1207,17 +1242,32 @@ func (d *ColumnValues) Marshal(buf []byte) ([]byte, error) {
 						var v uint64
 						switch (*d.AbstractValues[k0]).(type) {
 
-						case int64:
+						case string:
 							v = 0 + 1
 
-						case []byte:
+						case int8:
 							v = 1 + 1
 
-						case string:
+						case int16:
 							v = 2 + 1
 
-						case float64:
+						case int32:
 							v = 3 + 1
+
+						case int64:
+							v = 4 + 1
+
+						case []byte:
+							v = 5 + 1
+
+						case float32:
+							v = 6 + 1
+
+						case float64:
+							v = 7 + 1
+
+						case bool:
+							v = 8 + 1
 
 						}
 
@@ -1235,6 +1285,66 @@ func (d *ColumnValues) Marshal(buf []byte) ([]byte, error) {
 
 						}
 						switch tt := (*d.AbstractValues[k0]).(type) {
+
+						case string:
+
+							{
+								l := uint64(len(tt))
+
+								{
+
+									t := uint64(l)
+
+									for t >= 0x80 {
+										buf[i+1] = byte(t) | 0x80
+										t >>= 7
+										i++
+									}
+									buf[i+1] = byte(t)
+									i++
+
+								}
+								copy(buf[i+1:], tt)
+								i += l
+							}
+
+						case int8:
+
+							{
+
+								buf[i+0+1] = byte(tt >> 0)
+
+							}
+
+							i += 1
+
+						case int16:
+
+							{
+
+								buf[i+0+1] = byte(tt >> 0)
+
+								buf[i+1+1] = byte(tt >> 8)
+
+							}
+
+							i += 2
+
+						case int32:
+
+							{
+
+								buf[i+0+1] = byte(tt >> 0)
+
+								buf[i+1+1] = byte(tt >> 8)
+
+								buf[i+2+1] = byte(tt >> 16)
+
+								buf[i+3+1] = byte(tt >> 24)
+
+							}
+
+							i += 4
 
 						case int64:
 
@@ -1282,27 +1392,23 @@ func (d *ColumnValues) Marshal(buf []byte) ([]byte, error) {
 								i += l
 							}
 
-						case string:
+						case float32:
 
 							{
-								l := uint64(len(tt))
 
-								{
+								v := *(*uint32)(unsafe.Pointer(&(tt)))
 
-									t := uint64(l)
+								buf[i+0+1] = byte(v >> 0)
 
-									for t >= 0x80 {
-										buf[i+1] = byte(t) | 0x80
-										t >>= 7
-										i++
-									}
-									buf[i+1] = byte(t)
-									i++
+								buf[i+1+1] = byte(v >> 8)
 
-								}
-								copy(buf[i+1:], tt)
-								i += l
+								buf[i+2+1] = byte(v >> 16)
+
+								buf[i+3+1] = byte(v >> 24)
+
 							}
+
+							i += 4
 
 						case float64:
 
@@ -1329,6 +1435,18 @@ func (d *ColumnValues) Marshal(buf []byte) ([]byte, error) {
 							}
 
 							i += 8
+
+						case bool:
+
+							{
+								if tt {
+									buf[i+1] = 1
+								} else {
+									buf[i+1] = 0
+								}
+							}
+
+							i += 1
 
 						}
 					}
@@ -1396,6 +1514,71 @@ func (d *ColumnValues) Unmarshal(buf []byte) (uint64, error) {
 						switch v {
 
 						case 0 + 1:
+							var tt string
+
+							{
+								l := uint64(0)
+
+								{
+
+									bs := uint8(7)
+									t := uint64(buf[i+1] & 0x7F)
+									for buf[i+1]&0x80 == 0x80 {
+										i++
+										t |= uint64(buf[i+1]&0x7F) << bs
+										bs += 7
+									}
+									i++
+
+									l = t
+
+								}
+								tt = string(buf[i+1 : i+1+l])
+								i += l
+							}
+
+							(*d.AbstractValues[k0]) = tt
+
+						case 1 + 1:
+							var tt int8
+
+							{
+
+								tt = 0 | (int8(buf[i+0+1]) << 0)
+
+							}
+
+							i += 1
+
+							(*d.AbstractValues[k0]) = tt
+
+						case 2 + 1:
+							var tt int16
+
+							{
+
+								tt = 0 | (int16(buf[i+0+1]) << 0) | (int16(buf[i+1+1]) << 8)
+
+							}
+
+							i += 2
+
+							(*d.AbstractValues[k0]) = tt
+
+						case 3 + 1:
+							var tt int32
+
+							{
+
+								tt = 0 | (int32(buf[i+0+1]) << 0) | (int32(buf[i+1+1]) << 8) | (int32(buf[i+2+1]) << 16) | (int32(buf[i+3+1]) << 24)
+
+							}
+
+							i += 4
+
+							(*d.AbstractValues[k0]) = tt
+
+						case 4 + 1:
 							var tt int64
 
 							{
@@ -1408,7 +1591,7 @@ func (d *ColumnValues) Unmarshal(buf []byte) (uint64, error) {
 
 							(*d.AbstractValues[k0]) = tt
 
-						case 1 + 1:
+						case 5 + 1:
 							var tt []byte
 
 							{
@@ -1439,33 +1622,21 @@ func (d *ColumnValues) Unmarshal(buf []byte) (uint64, error) {
 
 							(*d.AbstractValues[k0]) = tt
 
-						case 2 + 1:
-							var tt string
+						case 6 + 1:
+							var tt float32
 
 							{
-								l := uint64(0)
 
-								{
+								v := 0 | (uint32(buf[i+0+1]) << 0) | (uint32(buf[i+1+1]) << 8) | (uint32(buf[i+2+1]) << 16) | (uint32(buf[i+3+1]) << 24)
+								tt = *(*float32)(unsafe.Pointer(&v))
 
-									bs := uint8(7)
-									t := uint64(buf[i+1] & 0x7F)
-									for buf[i+1]&0x80 == 0x80 {
-										i++
-										t |= uint64(buf[i+1]&0x7F) << bs
-										bs += 7
-									}
-									i++
-
-									l = t
-
-								}
-								tt = string(buf[i+1 : i+1+l])
-								i += l
 							}
+
+							i += 4
 
 							(*d.AbstractValues[k0]) = tt
 
-						case 3 + 1:
+						case 7 + 1:
 							var tt float64
 
 							{
@@ -1476,6 +1647,17 @@ func (d *ColumnValues) Unmarshal(buf []byte) (uint64, error) {
 							}
 
 							i += 8
+
+							(*d.AbstractValues[k0]) = tt
+
+						case 8 + 1:
+							var tt bool
+
+							{
+								tt = buf[i+1] == 1
+							}
+
+							i += 1
 
 							(*d.AbstractValues[k0]) = tt
 

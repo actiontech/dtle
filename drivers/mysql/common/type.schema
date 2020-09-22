@@ -23,10 +23,15 @@ struct BinlogCoordinateTx {
 
 struct ColumnValues {
     AbstractValues []*union {
+        string
+        int8
+        int16
+        int32
         int64
         []byte
-        string
+        float32
         float64
+        bool
     }
 }
 

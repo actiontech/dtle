@@ -228,6 +228,8 @@ func NewMySQLReader(execCtx *common.ExecContext, cfg *common.MySQLDriverConfig, 
 			MaxReconnectAttempts: 3,
 			HeartbeatPeriod:      3 * time.Second,
 			ReadTimeout:          6 * time.Second,
+
+			ParseTime: false, // must be false, or gencode will complain.
 		}
 		binlogReader.binlogSyncer = replication.NewBinlogSyncer(binlogSyncerConfig)
 	}
