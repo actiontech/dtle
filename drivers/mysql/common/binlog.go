@@ -3,7 +3,6 @@ package common
 import (
 	"database/sql"
 	"fmt"
-	"github.com/actiontech/dtle/drivers/mysql/mysql/mysqlconfig"
 	"github.com/opentracing/opentracing-go"
 	"github.com/satori/go.uuid"
 	"github.com/siddontang/go-mysql/replication"
@@ -162,7 +161,7 @@ func (b *DataEvent) String() string {
 }
 
 type ApplierTableItem struct {
-	Columns  *mysqlconfig.ColumnList
+	Columns  *ColumnList
 	PsInsert []*sql.Stmt
 	PsDelete []*sql.Stmt
 	PsUpdate []*sql.Stmt

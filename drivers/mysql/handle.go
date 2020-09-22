@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"github.com/actiontech/dtle/drivers/mysql/common"
-	"github.com/actiontech/dtle/drivers/mysql/config"
 	"github.com/actiontech/dtle/drivers/mysql/kafka"
 	"github.com/actiontech/dtle/drivers/mysql/mysql"
 	"github.com/armon/go-metrics"
@@ -82,7 +81,7 @@ func (h *taskHandle) IsRunning() bool {
 	return h.procState == drivers.TaskStateRunning
 }
 
-func (h *taskHandle) run(taskConfig *config.DtleTaskConfig, d *Driver) {
+func (h *taskHandle) run(taskConfig *common.DtleTaskConfig, d *Driver) {
 	var err error
 	h.stateLock.Lock()
 	if h.exitResult == nil {
@@ -100,7 +99,7 @@ func (h *taskHandle) run(taskConfig *config.DtleTaskConfig, d *Driver) {
 	}
 
 	taskConfig.SetDefaultForEmpty()
-	driverConfig := &config.MySQLDriverConfig{DtleTaskConfig: *taskConfig}
+	driverConfig := &common.MySQLDriverConfig{DtleTaskConfig: *taskConfig}
 
 
 	switch strings.ToLower(cfg.TaskGroupName) {

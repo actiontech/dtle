@@ -10,7 +10,6 @@ import (
 	"bytes"
 	gosql "database/sql"
 	"github.com/actiontech/dtle/drivers/mysql/common"
-	"github.com/actiontech/dtle/drivers/mysql/config"
 	"github.com/pkg/errors"
 	"github.com/shirou/gopsutil/mem"
 	"os"
@@ -77,9 +76,9 @@ type BinlogReader struct {
 	currentCoordinatesMutex  *sync.Mutex
 	LastAppliedRowsEventHint common.BinlogCoordinateTx
 	// raw config, whose ReplicateDoDB is same as config file (empty-is-all & no dynamically created tables)
-	mysqlContext *config.MySQLDriverConfig
+	mysqlContext *common.MySQLDriverConfig
 	// dynamic config, include all tables (implicitly assigned or dynamically created)
-	tables map[string](map[string]*mysqlconfig.TableContext)
+	tables map[string](map[string]*common.TableContext)
 
 	currentBinlogEntry *common.BinlogEntry
 	hasBeginQuery      bool
@@ -159,7 +158,10 @@ func parseSqlFilter(strs []string) (*SqlFilter, error) {
 	return s, nil
 }
 
-func NewMySQLReader(execCtx *common.ExecContext, cfg *config.MySQLDriverConfig, logger hclog.Logger, replicateDoDb []*mysqlconfig.DataSource, sqleContext *sqle.Context) (binlogReader *BinlogReader, err error) {
+func NewMySQLReader(execCtx *common.ExecContext, cfg *common.MySQLDriverConfig, logger hclog.Logger,
+	replicateDoDb []*common.DataSource, sqleContext *sqle.Context,
+) (binlogReader *BinlogReader, err error) {
+
 	sqlFilter, err := parseSqlFilter(cfg.SqlFilter)
 	if err != nil {
 		return nil, err
@@ -174,7 +176,7 @@ func NewMySQLReader(execCtx *common.ExecContext, cfg *config.MySQLDriverConfig, 
 		appendB64SqlBs:          make([]byte, 1024*1024),
 		ReMap:                   make(map[string]*regexp.Regexp),
 		shutdownCh:              make(chan struct{}),
-		tables:                  make(map[string](map[string]*mysqlconfig.TableContext)),
+		tables:                  make(map[string](map[string]*common.TableContext)),
 		sqlFilter:               sqlFilter,
 		context:                 sqleContext,
 	}
@@ -235,26 +237,26 @@ func NewMySQLReader(execCtx *common.ExecContext, cfg *config.MySQLDriverConfig, 
 	return binlogReader, err
 }
 
-func (b *BinlogReader) getDbTableMap(schemaName string) map[string]*mysqlconfig.TableContext {
+func (b *BinlogReader) getDbTableMap(schemaName string) map[string]*common.TableContext {
 	tableMap, ok := b.tables[schemaName]
 	if !ok {
-		tableMap = make(map[string]*mysqlconfig.TableContext)
+		tableMap = make(map[string]*common.TableContext)
 		b.tables[schemaName] = tableMap
 	}
 	return tableMap
 }
-func (b *BinlogReader) addTableToTableMap(tableMap map[string]*mysqlconfig.TableContext, table *mysqlconfig.Table) error {
+func (b *BinlogReader) addTableToTableMap(tableMap map[string]*common.TableContext, table *common.Table) error {
 	if table.Where == "" {
 		b.logger.Warn("DTLE_BUG: NewMySQLReader: table.Where is empty (#177 like)")
 		table.Where = "true"
 	}
-	whereCtx, err := mysqlconfig.NewWhereCtx(table.Where, table)
+	whereCtx, err := common.NewWhereCtx(table.Where, table)
 	if err != nil {
 		b.logger.Error("Error parsing where", "where", table.Where, "err", err)
 		return err
 	}
 
-	tableMap[table.TableName] = mysqlconfig.NewTableContext(table, whereCtx)
+	tableMap[table.TableName] = common.NewTableContext(table, whereCtx)
 	return nil
 }
 
@@ -398,7 +400,7 @@ func (b *BinlogReader) GetCurrentBinlogCoordinates() *common.BinlogCoordinateTx 
 	return &returnCoordinates
 }
 
-func ToColumnValuesV2(abstractValues []interface{}, table *mysqlconfig.TableContext) *common.ColumnValues {
+func ToColumnValuesV2(abstractValues []interface{}, table *common.TableContext) *common.ColumnValues {
 	result := &common.ColumnValues{
 		AbstractValues: make([]*interface{}, len(abstractValues)),
 	}
@@ -553,8 +555,8 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 						return nil
 					}
 
-					var table *mysqlconfig.Table
-					var schema *mysqlconfig.DataSource
+					var table *common.Table
+					var schema *common.DataSource
 					for i := range b.mysqlContext.ReplicateDoDb {
 						if b.mysqlContext.ReplicateDoDb[i].TableSchema == realSchema {
 							schema = b.mysqlContext.ReplicateDoDb[i]
@@ -1131,7 +1133,7 @@ func skipMysqlSchemaEvent(tableLower string) bool {
 	}
 }
 
-func (b *BinlogReader) skipRowEvent(rowsEvent *replication.RowsEvent, dml common.EventDML) (bool, *mysqlconfig.TableContext) {
+func (b *BinlogReader) skipRowEvent(rowsEvent *replication.RowsEvent, dml common.EventDML) (bool, *common.TableContext) {
 	tableOrigin := string(rowsEvent.Table.Table)
 	tableLower := strings.ToLower(tableOrigin)
 	switch strings.ToLower(string(rowsEvent.Table.Schema)) {
@@ -1215,7 +1217,7 @@ func (b *BinlogReader) matchString(pattern string, t string) bool {
 	return pattern == t
 }
 
-func (b *BinlogReader) matchTable(patternTBS []*mysqlconfig.DataSource, schemaName string, tableName string) bool {
+func (b *BinlogReader) matchTable(patternTBS []*common.DataSource, schemaName string, tableName string) bool {
 	for _, pdb := range patternTBS {
 		if pdb.TableSchemaScope == "schema" && pdb.TableSchema == schemaName {
 			return true
@@ -1319,7 +1321,7 @@ func (b *BinlogReader) Close() error {
 	// This is the year 2017. Let's see what year these comments get deleted.
 	return nil
 }
-func (b *BinlogReader) updateTableMeta(table *mysqlconfig.Table, realSchema string, tableName string) error {
+func (b *BinlogReader) updateTableMeta(table *common.Table, realSchema string, tableName string) error {
 	var err error
 
 	columns, err := base.GetTableColumnsSqle(b.context, realSchema, tableName)
@@ -1334,7 +1336,7 @@ func (b *BinlogReader) updateTableMeta(table *mysqlconfig.Table, realSchema stri
 
 	if table == nil {
 		// a new table (it might be in all db copy since it is not ignored).
-		table = mysqlconfig.NewTable(realSchema, tableName)
+		table = common.NewTable(realSchema, tableName)
 		table.TableType = "BASE TABLE"
 		table.Where = "true"
 	}
@@ -1350,7 +1352,7 @@ func (b *BinlogReader) updateTableMeta(table *mysqlconfig.Table, realSchema stri
 	return nil
 }
 
-func (b *BinlogReader) checkObjectFitRegexp(patternTBS []*mysqlconfig.DataSource, schemaName string, tableName string) error {
+func (b *BinlogReader) checkObjectFitRegexp(patternTBS []*common.DataSource, schemaName string, tableName string) error {
 
 	for _, schema := range patternTBS {
 		if schema.TableSchema == schemaName && schema.TableSchemaScope == "schemas" {
@@ -1359,8 +1361,8 @@ func (b *BinlogReader) checkObjectFitRegexp(patternTBS []*mysqlconfig.DataSource
 	}
 
 	for i, pdb := range patternTBS {
-		table := &mysqlconfig.Table{}
-		schema := &mysqlconfig.DataSource{}
+		table := &common.Table{}
+		schema := &common.DataSource{}
 		if pdb.TableSchemaScope == "schemas" && pdb.TableSchema != schemaName {
 			reg := regexp.MustCompile(pdb.TableSchemaRegex)
 			if reg.MatchString(schemaName) {

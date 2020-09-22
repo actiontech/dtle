@@ -13,7 +13,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/actiontech/dtle/drivers/mysql/common"
-	"github.com/actiontech/dtle/drivers/mysql/config"
 	"github.com/actiontech/dtle/drivers/mysql/mysql"
 	"github.com/hashicorp/nomad/plugins/drivers"
 	"github.com/pkg/errors"
@@ -37,7 +36,7 @@ const (
 )
 
 type KafkaTableItem struct {
-	table *mysqlconfig.Table
+	table *common.Table
 	keySchema *SchemaJson
 	valueSchema *SchemaJson
 }
@@ -52,7 +51,7 @@ type KafkaRunner struct {
 	shutdown   bool
 	shutdownCh chan struct{}
 
-	kafkaConfig *config.KafkaConfig
+	kafkaConfig *common.KafkaConfig
 	kafkaMgr    *KafkaManager
 	natsAddr string
 
@@ -78,7 +77,7 @@ type KafkaRunner struct {
 	timestampCtx *mysql.TimestampContext
 }
 
-func NewKafkaRunner(execCtx *common.ExecContext, cfg *config.KafkaConfig, logger hclog.Logger,
+func NewKafkaRunner(execCtx *common.ExecContext, cfg *common.KafkaConfig, logger hclog.Logger,
 	storeManager *common.StoreManager, natsAddr string, waitCh chan *drivers.ExitResult) *KafkaRunner {
 
 	kr := &KafkaRunner{
@@ -248,7 +247,7 @@ func (kr *KafkaRunner) Run() {
 }
 
 func (kr *KafkaRunner) getOrSetTable(schemaName string, tableName string,
-	table *mysqlconfig.Table) (item *KafkaTableItem, err error) {
+	table *common.Table) (item *KafkaTableItem, err error) {
 	a, ok := kr.tables[schemaName]
 	if !ok {
 		a = make(map[string]*KafkaTableItem)
@@ -295,10 +294,10 @@ func (kr *KafkaRunner) getOrSetTable(schemaName string, tableName string,
 	}
 }
 
-func decodeMaybeTable(tableBs []byte) (*mysqlconfig.Table, error) {
+func decodeMaybeTable(tableBs []byte) (*common.Table, error) {
 	if len(tableBs) > 0 {
-		var r *mysqlconfig.Table
-		r = &mysqlconfig.Table{}
+		var r *common.Table
+		r = &common.Table{}
 		err := common.GobDecode(tableBs, r)
 		if err != nil {
 			return nil, errors.Wrap(err, "GobDecode")
@@ -1001,7 +1000,7 @@ func getBitValue(bit string, value int64) string {
 	return base64.StdEncoding.EncodeToString(buf[8-bitNumber:])
 }
 
-func kafkaColumnListToColDefs(colList *mysqlconfig.ColumnList, timeZone string) (valColDefs ColDefs, keyColDefs ColDefs) {
+func kafkaColumnListToColDefs(colList *common.ColumnList, timeZone string) (valColDefs ColDefs, keyColDefs ColDefs) {
 	cols := colList.ColumnList()
 	for i, _ := range cols {
 		var field *Schema

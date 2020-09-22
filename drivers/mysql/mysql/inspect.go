@@ -9,7 +9,7 @@ package mysql
 import (
 	gosql "database/sql"
 	"fmt"
-	"github.com/actiontech/dtle/drivers/mysql/config"
+	"github.com/actiontech/dtle/drivers/mysql/common"
 	"strings"
 	"time"
 
@@ -27,10 +27,10 @@ const startSlavePostWaitMilliseconds = 500 * time.Millisecond
 type Inspector struct {
 	logger       hclog.Logger
 	db           *gosql.DB
-	mysqlContext *config.MySQLDriverConfig
+	mysqlContext *common.MySQLDriverConfig
 }
 
-func NewInspector(ctx *config.MySQLDriverConfig, logger hclog.Logger) *Inspector {
+func NewInspector(ctx *common.MySQLDriverConfig, logger hclog.Logger) *Inspector {
 	return &Inspector{
 		logger:       logger,
 		mysqlContext: ctx,
@@ -76,7 +76,7 @@ func (i *Inspector) InitDBConnections() (err error) {
 	return nil
 }
 
-func (i *Inspector) ValidateOriginalTable(databaseName, tableName string, table *uconf.Table) (err error) {
+func (i *Inspector) ValidateOriginalTable(databaseName, tableName string, table *common.Table) (err error) {
 	// this should be set event if there is an error (#177)
 	i.logger.Info("ValidateOriginalTable", "where", table.Where)
 	if table.Where == "" {
@@ -88,7 +88,7 @@ func (i *Inspector) ValidateOriginalTable(databaseName, tableName string, table 
 	}
 
 	// region UniqueKey
-	var uniqueKeys [](*umconf.UniqueKey)
+	var uniqueKeys [](*common.UniqueKey)
 	table.OriginalTableColumns, uniqueKeys, err = i.InspectTableColumnsAndUniqueKeys(databaseName, tableName)
 	if err != nil {
 		return err
@@ -156,7 +156,7 @@ func (i *Inspector) ValidateOriginalTable(databaseName, tableName string, table 
 	}*/
 
 	// region validate 'where'
-	_, err = uconf.NewWhereCtx(table.Where, table)
+	_, err = common.NewWhereCtx(table.Where, table)
 	if err != nil {
 		i.logger.Error("Error parsing where", "where", table.Where, "err", err)
 		return err
@@ -168,7 +168,7 @@ func (i *Inspector) ValidateOriginalTable(databaseName, tableName string, table 
 	return nil
 }
 
-func (i *Inspector) InspectTableColumnsAndUniqueKeys(databaseName, tableName string) (columns *umconf.ColumnList, uniqueKeys [](*umconf.UniqueKey), err error) {
+func (i *Inspector) InspectTableColumnsAndUniqueKeys(databaseName, tableName string) (columns *common.ColumnList, uniqueKeys [](*common.UniqueKey), err error) {
 	uniqueKeys, err = i.getCandidateUniqueKeys(databaseName, tableName)
 	if err != nil {
 		return columns, uniqueKeys, err
@@ -334,7 +334,7 @@ func (i *Inspector) validateTableTriggers(databaseName, tableName string) error 
 
 // getCandidateUniqueKeys investigates a table and returns the list of unique keys
 // candidate for chunking
-func (i *Inspector) getCandidateUniqueKeys(databaseName, tableName string) (uniqueKeys [](*umconf.UniqueKey), err error) {
+func (i *Inspector) getCandidateUniqueKeys(databaseName, tableName string) (uniqueKeys [](*common.UniqueKey), err error) {
 	query := `SELECT
       UNIQUES.INDEX_NAME,UNIQUES.COLUMN_NAMES,LOCATE('auto_increment', EXTRA) > 0 as is_auto_increment,has_nullable
     FROM INFORMATION_SCHEMA.COLUMNS INNER JOIN (
@@ -412,8 +412,8 @@ func (i *Inspector) getCandidateUniqueKeys(databaseName, tableName string) (uniq
 	      COUNT_COLUMN_IN_INDEX
 	  `*/
 	err = usql.QueryRowsMap(i.db, query, func(m usql.RowMap) error {
-		columns := umconf.ParseColumnList(m.GetString("COLUMN_NAMES"))
-		uniqueKey := &umconf.UniqueKey{
+		columns := common.ParseColumnList(m.GetString("COLUMN_NAMES"))
+		uniqueKey := &common.UniqueKey{
 			Name:            m.GetString("INDEX_NAME"),
 			Columns:         *columns,
 			HasNullable:     m.GetBool("has_nullable"),

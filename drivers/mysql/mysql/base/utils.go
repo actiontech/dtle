@@ -10,6 +10,7 @@ import (
 	"bytes"
 	gosql "database/sql"
 	"fmt"
+	"github.com/actiontech/dtle/drivers/mysql/common"
 	"regexp"
 	"strings"
 	"time"
@@ -83,7 +84,7 @@ func ParseBinlogCoordinatesFromRows(rows *sql.Rows) (selfBinlogCoordinates *Binl
 }
 
 // GetTableColumns reads column list from given table
-func GetTableColumns(db usql.QueryAble, databaseName, tableName string) (*umconf.ColumnList, error) {
+func GetTableColumns(db usql.QueryAble, databaseName, tableName string) (*common.ColumnList, error) {
 	query := fmt.Sprintf(`show columns from %s.%s`,
 		umconf.EscapeName(databaseName),
 		umconf.EscapeName(tableName),
@@ -110,7 +111,7 @@ func GetTableColumns(db usql.QueryAble, databaseName, tableName string) (*umconf
 			umconf.EscapeName(tableName),
 		)
 	}
-	return umconf.NewColumnList(columns), nil
+	return common.NewColumnList(columns), nil
 }
 
 // ValidateAndReadTimeZone potentially reads server time-zone
@@ -162,7 +163,7 @@ func StringInterval(intervals gomysql.IntervalSlice) string {
 }
 
 // applyColumnTypes
-func ApplyColumnTypes(db usql.QueryAble, databaseName, tableName string, columnsLists ...*umconf.ColumnList) error {
+func ApplyColumnTypes(db usql.QueryAble, databaseName, tableName string, columnsLists ...*common.ColumnList) error {
 	query := `
 		select
 				*
@@ -389,7 +390,7 @@ func GtidSetDiff(set1 string, set2 string) (string, error) {
 	return gExecuted.String(), nil
 }
 
-func GetTableColumnsSqle(sqleContext *sqle.Context, schema string, table string) (*umconf.ColumnList, error) {
+func GetTableColumnsSqle(sqleContext *sqle.Context, schema string, table string) (*common.ColumnList, error) {
 	tableInfo, exists := sqleContext.GetTable(schema, table)
 	if !exists {
 		return nil, fmt.Errorf("table does not exists in sqle context. table: %v.%v", schema, table)
@@ -526,7 +527,7 @@ func GetTableColumnsSqle(sqleContext *sqle.Context, schema string, table string)
 		}
 	}
 
-	r := umconf.NewColumnList(columns)
+	r := common.NewColumnList(columns)
 	//r.SetCharset() // TODO
 	return r, nil
 }

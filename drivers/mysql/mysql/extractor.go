@@ -10,7 +10,6 @@ import (
 	gosql "database/sql"
 	"fmt"
 	"github.com/actiontech/dtle/drivers/mysql/common"
-	"github.com/actiontech/dtle/drivers/mysql/config"
 	"github.com/hashicorp/nomad/plugins/drivers"
 
 	"github.com/actiontech/dtle/g"
@@ -56,7 +55,7 @@ type Extractor struct {
 	execCtx      *common.ExecContext
 	logger       hclog.Logger
 	subject      string
-	mysqlContext *config.MySQLDriverConfig
+	mysqlContext *common.MySQLDriverConfig
 
 	systemVariables       map[string]string
 	sqlMode               string
@@ -75,7 +74,7 @@ type Extractor struct {
 	dumpers           []*dumper
 	// db.tb exists when creating the job, for full-copy.
 	// vs e.mysqlContext.ReplicateDoDb: all user assigned db.tb
-	replicateDoDb            []*mysqlconfig.DataSource
+	replicateDoDb            []*common.DataSource
 	dataChannel              chan *common.BinlogEntryContext
 	inspector                *Inspector
 	binlogReader             *binlog.BinlogReader
@@ -111,7 +110,7 @@ type Extractor struct {
 	memory2 *int64
 }
 
-func NewExtractor(execCtx *common.ExecContext, cfg *config.MySQLDriverConfig, logger hclog.Logger, storeManager *common.StoreManager, waitCh chan *drivers.ExitResult) (*Extractor, error) {
+func NewExtractor(execCtx *common.ExecContext, cfg *common.MySQLDriverConfig, logger hclog.Logger, storeManager *common.StoreManager, waitCh chan *drivers.ExitResult) (*Extractor, error) {
 	logger.Info("NewExtractor", "job", execCtx.Subject)
 
 	e := &Extractor{
@@ -372,7 +371,7 @@ func (e *Extractor) initiateInspector() (err error) {
 func (e *Extractor) inspectTables() (err error) {
 	// Creates a MYSQL Dump based on the options supplied through the dumper.
 	if len(e.mysqlContext.ReplicateDoDb) > 0 {
-		var doDbs []*mysqlconfig.DataSource
+		var doDbs []*common.DataSource
 		// Get all db from  TableSchemaRegex regex and get all tableSchemaRename
 		for _, doDb := range e.mysqlContext.ReplicateDoDb {
 			if doDb.TableSchema == "" && doDb.TableSchemaRegex == "" {
@@ -388,7 +387,7 @@ func (e *Extractor) inspectTables() (err error) {
 				schemaRenameRegex := doDb.TableSchemaRename
 
 				for _, db := range dbs {
-					newdb := &mysqlconfig.DataSource{}
+					newdb := &common.DataSource{}
 					reg := regexp.MustCompile(regex)
 					if !reg.MatchString(db) {
 						continue
@@ -415,7 +414,7 @@ func (e *Extractor) inspectTables() (err error) {
 
 		}
 		for _, doDb := range doDbs {
-			db := &mysqlconfig.DataSource{
+			db := &common.DataSource{
 				TableSchema:            doDb.TableSchema,
 				TableSchemaRegex:       doDb.TableSchemaRegex,
 				TableSchemaRename:      doDb.TableSchemaRename,
@@ -464,7 +463,7 @@ func (e *Extractor) inspectTables() (err error) {
 							if !reg.MatchString(table.TableName) {
 								continue
 							}
-							newTable := &mysqlconfig.Table{}
+							newTable := &common.Table{}
 							*newTable = *doTb
 							newTable.TableName = table.TableName
 							if tableRenameRegex != "" {
@@ -487,7 +486,7 @@ func (e *Extractor) inspectTables() (err error) {
 							e.logger.Warn("ValidateOriginalTable error", "err", err)
 							continue
 						}
-						newTable := &mysqlconfig.Table{}
+						newTable := &common.Table{}
 						*newTable = *doTb
 						db.Tables = append(db.Tables, newTable)
 						db.TableSchemaScope = TABLE
@@ -506,7 +505,7 @@ func (e *Extractor) inspectTables() (err error) {
 			return err
 		}
 		for _, dbName := range dbs {
-			ds := &mysqlconfig.DataSource{
+			ds := &common.DataSource{
 				TableSchema:      dbName,
 				TableSchemaScope: SCHEMA,
 			}
@@ -808,7 +807,7 @@ func (e *Extractor) setInitialBinlogCoordinates() error {
 }
 
 // CountTableRows counts exact number of rows on the original table
-func (e *Extractor) CountTableRows(table *mysqlconfig.Table) (int64, error) {
+func (e *Extractor) CountTableRows(table *common.Table) (int64, error) {
 	//e.logger.Debug("As instructed, I'm issuing a SELECT COUNT(*) on the table. This may take a while")
 
 	var query string
