@@ -79,17 +79,14 @@ func (b *BinlogEntry) String() string {
 	return fmt.Sprintf("[BinlogEntry at %+v]", b.Coordinates)
 }
 
-type EventDML string
-
-// TODO string vs int in serialized struct?
 const (
-	NotDML    EventDML = "NoDML"
-	InsertDML          = "Insert"
-	UpdateDML          = "Update"
-	DeleteDML          = "Delete"
+	NotDML    int8 = iota
+	InsertDML
+	UpdateDML
+	DeleteDML
 )
 
-func ToEventDML(eventType replication.EventType) EventDML {
+func ToEventDML(eventType replication.EventType) int8 {
 	switch eventType {
 	case replication.WRITE_ROWS_EVENTv0, replication.WRITE_ROWS_EVENTv1, replication.WRITE_ROWS_EVENTv2:
 		return InsertDML
@@ -113,7 +110,7 @@ type DataEvent struct {
 	CurrentSchema     string
 	DatabaseName      string
 	TableName         string
-	DML               EventDML
+	DML               int8
 	ColumnCount       int
 	WhereColumnValues *ColumnValues
 	NewColumnValues   *ColumnValues
@@ -122,7 +119,7 @@ type DataEvent struct {
 	Timestamp         uint32
 }
 
-func NewDataEvent(databaseName, tableName string, dml EventDML, columnCount int, timestamp uint32) DataEvent {
+func NewDataEvent(databaseName, tableName string, dml int8, columnCount int, timestamp uint32) DataEvent {
 	event := DataEvent{
 		DatabaseName: databaseName,
 		TableName:    tableName,
@@ -133,7 +130,7 @@ func NewDataEvent(databaseName, tableName string, dml EventDML, columnCount int,
 	return event
 }
 
-func NewQueryEvent(currentSchema, query string, dml EventDML, timestamp uint32) DataEvent {
+func NewQueryEvent(currentSchema, query string, dml int8, timestamp uint32) DataEvent {
 	event := DataEvent{
 		CurrentSchema: currentSchema,
 		Query:         query,
@@ -142,7 +139,7 @@ func NewQueryEvent(currentSchema, query string, dml EventDML, timestamp uint32) 
 	}
 	return event
 }
-func NewQueryEventAffectTable(currentSchema, query string, dml EventDML, affectedTable SchemaTable,
+func NewQueryEventAffectTable(currentSchema, query string, dml int8, affectedTable SchemaTable,
 	timestamp uint32) DataEvent {
 
 	event := DataEvent{

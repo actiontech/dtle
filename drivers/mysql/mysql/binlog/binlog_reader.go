@@ -1133,7 +1133,7 @@ func skipMysqlSchemaEvent(tableLower string) bool {
 	}
 }
 
-func (b *BinlogReader) skipRowEvent(rowsEvent *replication.RowsEvent, dml common.EventDML) (bool, *common.TableContext) {
+func (b *BinlogReader) skipRowEvent(rowsEvent *replication.RowsEvent, dml int8) (bool, *common.TableContext) {
 	tableOrigin := string(rowsEvent.Table.Table)
 	tableLower := strings.ToLower(tableOrigin)
 	switch strings.ToLower(string(rowsEvent.Table.Schema)) {
