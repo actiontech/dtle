@@ -559,7 +559,8 @@ func (a *Applier) subscribeNats() error {
 		replySpan := tracer.StartSpan("Service Responder", ext.SpanKindRPCServer, ext.RPCServerOption(sc))
 		ext.MessageBusDestination.Set(replySpan, m.Subject)
 		defer replySpan.Finish()
-		dumpData, err := common.DecodeDumpEntry(t.Bytes())
+		dumpData := &common.DumpEntry{}
+		err = common.Decode(t.Bytes(), dumpData)
 		if err != nil {
 			a.onError(TaskStateDead, errors.Wrap(err, "DecodeDumpEntry"))
 			return

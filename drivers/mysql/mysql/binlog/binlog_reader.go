@@ -718,7 +718,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 				schemaName,
 				tableName,
 				dml,
-				int(rowsEvent.ColumnCount),
+				rowsEvent.ColumnCount,
 				ev.Header.Timestamp,
 			)
 			dmlEvent.LogPos = int64(ev.Header.LogPos - ev.Header.EventSize)

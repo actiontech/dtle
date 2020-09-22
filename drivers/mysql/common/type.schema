@@ -35,3 +35,29 @@ struct DumpStatResult {
 	LogFile string
 	LogPos  int64
 }
+
+struct DataEvent {
+	Query             string
+	CurrentSchema     string
+	DatabaseName      string
+	TableName         string
+	DML               int8
+	ColumnCount       uint64
+	WhereColumnValues *ColumnValues
+	NewColumnValues   *ColumnValues
+	Table             []byte
+	LogPos            int64
+	Timestamp         uint32
+}
+
+struct BinlogEntry {
+	Coordinates   BinlogCoordinateTx
+	Events        []DataEvent
+}
+
+struct BinlogEntries {
+	Entries []*BinlogEntry
+	BigTx   bool
+	TxNum   int64
+	TxLen   int64
+}

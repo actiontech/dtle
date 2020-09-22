@@ -389,7 +389,8 @@ func (kr *KafkaRunner) initiateStreaming() error {
 		kr.logger.Debug("recv a full msg")
 
 		kr.fullWg.Add(1)
-		dumpData, err := common.DecodeDumpEntry(m.Data)
+		dumpData := &common.DumpEntry{}
+		err = common.Decode(m.Data, dumpData)
 		if err != nil {
 			kr.onError(TaskStateDead, err)
 			return

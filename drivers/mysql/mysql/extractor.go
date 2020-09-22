@@ -959,7 +959,8 @@ func (e *Extractor) StreamEvents() error {
 				e.timestampCtx.TimestampCh <- theEntries.Events[0].Timestamp
 			}
 
-			txMsg, err := common.Encode(entries)
+
+			txMsg, err := common.Encode(&entries)
 			if err != nil {
 				return err
 			}
@@ -1071,8 +1072,8 @@ func splitEntries(entries common.BinlogEntries, entriseSize int) (entris []commo
 		newEntries := common.BinlogEntries{
 			Entries: entrys,
 			BigTx:   true,
-			TxNum:   i,
-			TxLen:   int(clientLen),
+			TxNum:   int64(i),
+			TxLen:   int64(clientLen),
 		}
 		entris = append(entris, newEntries)
 	}

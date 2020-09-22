@@ -45,19 +45,6 @@ func (b *BinlogCoordinateTx) GetGtidForThisTx() string {
 	return fmt.Sprintf("%s:%d", b.GetSid(), b.GNO)
 }
 
-type BinlogEntries struct {
-	Entries []*BinlogEntry
-	BigTx   bool
-	TxNum   int
-	TxLen   int
-}
-
-// BinlogEntry describes an entry in the binary log
-type BinlogEntry struct {
-	Coordinates   BinlogCoordinateTx
-	Events        []DataEvent
-}
-
 type BinlogEntryContext struct {
 	Entry       *BinlogEntry
 	SpanContext opentracing.SpanContext
@@ -104,22 +91,7 @@ type SchemaTable struct {
 	Table  string
 }
 
-// BinlogDMLEvent is a binary log rows (DML) event entry, with data
-type DataEvent struct {
-	Query             string
-	CurrentSchema     string
-	DatabaseName      string
-	TableName         string
-	DML               int8
-	ColumnCount       int
-	WhereColumnValues *ColumnValues
-	NewColumnValues   *ColumnValues
-	Table             []byte // TODO tmp solution
-	LogPos            int64  // for kafka. The pos of WRITE_ROW_EVENT
-	Timestamp         uint32
-}
-
-func NewDataEvent(databaseName, tableName string, dml int8, columnCount int, timestamp uint32) DataEvent {
+func NewDataEvent(databaseName, tableName string, dml int8, columnCount uint64, timestamp uint32) DataEvent {
 	event := DataEvent{
 		DatabaseName: databaseName,
 		TableName:    tableName,
