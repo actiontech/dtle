@@ -416,7 +416,7 @@ func (kr *KafkaRunner) initiateStreaming() error {
 	_, err = kr.natsConn.Subscribe(fmt.Sprintf("%s_full_complete", kr.subject), func(m *gonats.Msg) {
 		kr.logger.Debug("recv a full_complete msg")
 
-		dumpData := &mysql.DumpStatResult{}
+		dumpData := &common.DumpStatResult{}
 		if err := common.Decode(m.Data, dumpData); err != nil {
 			kr.onError(TaskStateDead, err)
 			return

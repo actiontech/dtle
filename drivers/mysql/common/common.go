@@ -99,3 +99,4 @@ func UpdateGtidSet(gtidSet *mysql.MysqlGTIDSet, sid uuid.UUID, txGno int64) {
 		Stop:  txGno + 1,
 	}))
 }
+

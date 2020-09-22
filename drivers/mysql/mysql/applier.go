@@ -600,7 +600,7 @@ func (a *Applier) subscribeNats() error {
 		default:
 		}
 
-		dumpData := &DumpStatResult{}
+		dumpData := &common.DumpStatResult{}
 		t := not.NewTraceMsg(m)
 		// Extract the span context from the request message.
 		sc, err := tracer.Extract(opentracing.Binary, t)

@@ -1629,7 +1629,7 @@ func (e *Extractor) Shutdown() error {
 	return nil
 }
 func (e *Extractor) sendFullComplete(ctx context.Context) (err error) {
-	dumpMsg, err := common.Encode(&DumpStatResult{
+	dumpMsg, err := common.Encode(&common.DumpStatResult{
 		Gtid:       e.initialBinlogCoordinates.GtidSet,
 		LogFile:    e.initialBinlogCoordinates.LogFile,
 		LogPos:     e.initialBinlogCoordinates.LogPos,

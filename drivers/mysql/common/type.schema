@@ -29,3 +29,9 @@ struct ColumnValues {
         float64
     }
 }
+
+struct DumpStatResult {
+	Gtid    string
+	LogFile string
+	LogPos  int64
+}
