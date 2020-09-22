@@ -1432,6 +1432,7 @@ func (e *Extractor) mysqlDump() error {
 				if entry.Err != "" {
 					e.onError(TaskStateDead, fmt.Errorf(entry.Err))
 				} else {
+					memSize := int64(entry.Size())
 					if !d.sentTableDef {
 						tableBs, err := common.GobEncode(d.table)
 						if err != nil {
@@ -1447,7 +1448,7 @@ func (e *Extractor) mysqlDump() error {
 						e.onError(TaskStateRestart, err)
 					}
 					atomic.AddInt64(&e.TotalRowsCopied, int64(len(entry.ValuesX)))
-					atomic.AddInt64(d.memory, -int64(entry.Size()))
+					atomic.AddInt64(d.memory, -memSize)
 				}
 			}
 
