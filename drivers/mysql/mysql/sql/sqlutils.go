@@ -12,13 +12,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/actiontech/dtle/drivers/mysql/common"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/actiontech/dtle/drivers/mysql/mysql/mysqlconfig"
-	config "github.com/actiontech/dtle/drivers/mysql/mysql/mysqlconfig"
 	"github.com/actiontech/dtle/g"
 	_ "github.com/go-sql-driver/mysql"
 )
@@ -305,7 +305,7 @@ func ShowDatabases(db *gosql.DB) ([]string, error) {
 	return dbs, rows.Err()
 }
 
-func ShowTables(db *gosql.DB, dbName string, showType bool) (tables []*config.Table, err error) {
+func ShowTables(db *gosql.DB, dbName string, showType bool) (tables []*common.Table, err error) {
 	// Get table list
 	var query string
 	escapedDbName := mysqlconfig.EscapeName(dbName)
@@ -334,7 +334,7 @@ func ShowTables(db *gosql.DB, dbName string, showType bool) (tables []*config.Ta
 		if err != nil {
 			return tables, err
 		}
-		tb := &config.Table{TableSchema: dbName, TableName: table.String}
+		tb := &common.Table{TableSchema: dbName, TableName: table.String}
 		if showType {
 			tb.TableType = tableType.String
 		}

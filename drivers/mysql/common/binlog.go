@@ -3,7 +3,6 @@ package common
 import (
 	"database/sql"
 	"fmt"
-	"github.com/actiontech/dtle/drivers/mysql/mysql/mysqlconfig"
 	"github.com/opentracing/opentracing-go"
 	"github.com/satori/go.uuid"
 	"github.com/siddontang/go-mysql/replication"
@@ -46,19 +45,6 @@ func (b *BinlogCoordinateTx) GetGtidForThisTx() string {
 	return fmt.Sprintf("%s:%d", b.GetSid(), b.GNO)
 }
 
-type BinlogEntries struct {
-	Entries []*BinlogEntry
-	BigTx   bool
-	TxNum   int
-	TxLen   int
-}
-
-// BinlogEntry describes an entry in the binary log
-type BinlogEntry struct {
-	Coordinates   BinlogCoordinateTx
-	Events        []DataEvent
-}
-
 type BinlogEntryContext struct {
 	Entry       *BinlogEntry
 	SpanContext opentracing.SpanContext
@@ -80,17 +66,14 @@ func (b *BinlogEntry) String() string {
 	return fmt.Sprintf("[BinlogEntry at %+v]", b.Coordinates)
 }
 
-type EventDML string
-
-// TODO string vs int in serialized struct?
 const (
-	NotDML    EventDML = "NoDML"
-	InsertDML          = "Insert"
-	UpdateDML          = "Update"
-	DeleteDML          = "Delete"
+	NotDML    int8 = iota
+	InsertDML
+	UpdateDML
+	DeleteDML
 )
 
-func ToEventDML(eventType replication.EventType) EventDML {
+func ToEventDML(eventType replication.EventType) int8 {
 	switch eventType {
 	case replication.WRITE_ROWS_EVENTv0, replication.WRITE_ROWS_EVENTv1, replication.WRITE_ROWS_EVENTv2:
 		return InsertDML
@@ -108,22 +91,7 @@ type SchemaTable struct {
 	Table  string
 }
 
-// BinlogDMLEvent is a binary log rows (DML) event entry, with data
-type DataEvent struct {
-	Query             string
-	CurrentSchema     string
-	DatabaseName      string
-	TableName         string
-	DML               EventDML
-	ColumnCount       int
-	WhereColumnValues *mysqlconfig.ColumnValues
-	NewColumnValues   *mysqlconfig.ColumnValues
-	Table             []byte // TODO tmp solution
-	LogPos            int64  // for kafka. The pos of WRITE_ROW_EVENT
-	Timestamp         uint32
-}
-
-func NewDataEvent(databaseName, tableName string, dml EventDML, columnCount int, timestamp uint32) DataEvent {
+func NewDataEvent(databaseName, tableName string, dml int8, columnCount uint64, timestamp uint32) DataEvent {
 	event := DataEvent{
 		DatabaseName: databaseName,
 		TableName:    tableName,
@@ -134,7 +102,7 @@ func NewDataEvent(databaseName, tableName string, dml EventDML, columnCount int,
 	return event
 }
 
-func NewQueryEvent(currentSchema, query string, dml EventDML, timestamp uint32) DataEvent {
+func NewQueryEvent(currentSchema, query string, dml int8, timestamp uint32) DataEvent {
 	event := DataEvent{
 		CurrentSchema: currentSchema,
 		Query:         query,
@@ -143,7 +111,7 @@ func NewQueryEvent(currentSchema, query string, dml EventDML, timestamp uint32) 
 	}
 	return event
 }
-func NewQueryEventAffectTable(currentSchema, query string, dml EventDML, affectedTable SchemaTable,
+func NewQueryEventAffectTable(currentSchema, query string, dml int8, affectedTable SchemaTable,
 	timestamp uint32) DataEvent {
 
 	event := DataEvent{
@@ -162,7 +130,7 @@ func (b *DataEvent) String() string {
 }
 
 type ApplierTableItem struct {
-	Columns  *mysqlconfig.ColumnList
+	Columns  *ColumnList
 	PsInsert []*sql.Stmt
 	PsDelete []*sql.Stmt
 	PsUpdate []*sql.Stmt

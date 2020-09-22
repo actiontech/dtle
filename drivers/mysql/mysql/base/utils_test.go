@@ -8,7 +8,7 @@ package base
 
 import (
 	gosql "database/sql"
-	umconf "github.com/actiontech/dtle/drivers/mysql/mysql/mysqlconfig"
+	"github.com/actiontech/dtle/drivers/mysql/common"
 	"github.com/actiontech/dtle/drivers/mysql/mysql/sql"
 	"reflect"
 	"testing"
@@ -96,7 +96,7 @@ func TestGetTableColumns(t *testing.T) {
 	tests := []struct {
 		name    string
 		args    args
-		want    *umconf.ColumnList
+		want    *common.ColumnList
 		wantErr bool
 	}{
 	// TODO: Add test cases.
@@ -120,12 +120,12 @@ func TestApplyColumnTypes(t *testing.T) {
 		db           *gosql.Tx
 		database     string
 		tablename    string
-		columnsLists []*umconf.ColumnList
+		columnsLists []*common.ColumnList
 	}
 	tests := []struct {
 		name    string
 		args    args
-		want    []*umconf.ColumnList
+		want    []*common.ColumnList
 		wantErr bool
 	}{
 	// TODO: Add test cases.

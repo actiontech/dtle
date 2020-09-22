@@ -11,7 +11,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"github.com/actiontech/dtle/drivers/mysql/config"
+	"github.com/actiontech/dtle/drivers/mysql/common"
 	"github.com/pingcap/tidb/types"
 	"math/big"
 	"strings"
@@ -55,11 +55,11 @@ const (
 type ColDefs []*Schema
 
 type KafkaManager struct {
-	Cfg      *config.KafkaConfig
+	Cfg      *common.KafkaConfig
 	producer sarama.SyncProducer
 }
 
-func NewKafkaManager(kcfg *config.KafkaConfig) (*KafkaManager, error) {
+func NewKafkaManager(kcfg *common.KafkaConfig) (*KafkaManager, error) {
 	var err error
 	k := &KafkaManager{
 		Cfg: kcfg,

@@ -1,16 +1,13 @@
-package mysqlconfig
+package common
 
 import (
 	"fmt"
-	qldatasource "github.com/araddon/qlbridge/datasource"
-	qlexpr "github.com/araddon/qlbridge/expr"
-	qlvm "github.com/araddon/qlbridge/vm"
+	"github.com/actiontech/dtle/drivers/mysql/mysql/mysqlconfig"
+	"github.com/araddon/qlbridge/datasource"
+	"github.com/araddon/qlbridge/expr"
+	"github.com/araddon/qlbridge/vm"
 	"strings"
 )
-
-func (d *DataSource) String() string {
-	return fmt.Sprintf(d.TableSchema)
-}
 
 // TableName is the table configuration
 // slave restrict replication to a given table
@@ -21,6 +18,10 @@ type DataSource struct {
 	TableSchemaRename      string
 	TableSchemaScope       string
 	Tables                 []*Table
+}
+
+func (d *DataSource) String() string {
+	return fmt.Sprintf(d.TableSchema)
 }
 
 type Table struct {
@@ -47,13 +48,13 @@ type Table struct {
 	Where string // TODO load from job description
 }
 
-func BuildColumnMapIndex(from []string, ordinals ColumnsMap) (mapIndex []int) {
-	mapIndex = make([]int, len(from))
-	for i, colName := range from {
-		idxFrom := ordinals[colName]
-		mapIndex[i] = idxFrom
+func NewTable(schemaName string, tableName string) *Table {
+	return &Table{
+		TableSchema: schemaName,
+		TableName:   tableName,
+		Iteration:   0,
+		Where:       "true",
 	}
-	return mapIndex
 }
 
 type TableContext struct {
@@ -67,15 +68,6 @@ func NewTableContext(table *Table, whereCtx *WhereContext) *TableContext {
 		Table:          table,
 		WhereCtx:       whereCtx,
 		DefChangedSent: false,
-	}
-}
-
-func NewTable(schemaName string, tableName string) *Table {
-	return &Table{
-		TableSchema: schemaName,
-		TableName:   tableName,
-		Iteration:   0,
-		Where:       "true",
 	}
 }
 
@@ -94,7 +86,7 @@ func (t *TableContext) WhereTrue(values *ColumnValues) (bool, error) {
 			value = rawValue
 		} else {
 			switch t.Table.OriginalTableColumns.ColumnList()[idx].Type {
-			case TextColumnType:
+			case mysqlconfig.TextColumnType:
 				bs, ok := rawValue.([]byte)
 				if !ok {
 					return false,
@@ -108,8 +100,8 @@ func (t *TableContext) WhereTrue(values *ColumnValues) (bool, error) {
 
 		m[field] = value
 	}
-	ctx := qldatasource.NewContextSimpleNative(m)
-	val, ok := qlvm.Eval(ctx, t.WhereCtx.Ast)
+	ctx := datasource.NewContextSimpleNative(m)
+	val, ok := vm.Eval(ctx, t.WhereCtx.Ast)
 	if !ok {
 		return false, fmt.Errorf("cannot eval 'where' predicate with the row value")
 	}
@@ -123,17 +115,17 @@ func (t *TableContext) WhereTrue(values *ColumnValues) (bool, error) {
 
 type WhereContext struct {
 	Where     string
-	Ast       qlexpr.Node
+	Ast       expr.Node
 	FieldsMap map[string]int
 	IsDefault bool // is 'true'
 }
 
 func NewWhereCtx(where string, table *Table) (*WhereContext, error) {
-	ast, err := qlexpr.ParseExpression(where)
+	ast, err := expr.ParseExpression(where)
 	if err != nil {
 		return nil, err
 	} else {
-		fields := qlexpr.FindAllIdentityField(ast)
+		fields := expr.FindAllIdentityField(ast)
 		fieldsMap := make(map[string]int)
 		for _, field := range fields {
 			escapedFieldName := strings.ToLower(field) // TODO thorough escape

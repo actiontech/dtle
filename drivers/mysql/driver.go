@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/actiontech/dtle/drivers/mysql/common"
-	"github.com/actiontech/dtle/drivers/mysql/config"
 	"github.com/actiontech/dtle/g"
 	"github.com/armon/go-metrics"
 	"github.com/armon/go-metrics/prometheus"
@@ -150,7 +149,7 @@ var (
 // during recovery.
 type TaskState struct {
 	TaskConfig     *drivers.TaskConfig
-	DtleTaskConfig *config.DtleTaskConfig
+	DtleTaskConfig *common.DtleTaskConfig
 	StartedAt      time.Time
 }
 
@@ -217,7 +216,7 @@ func (d *Driver) SetupNatsServer(logger hclog.Logger) (err error)  {
 	}
 	//logger.Debug("Starting nats streaming server", "addr", natsAddr)
 	sOpts := stand.GetDefaultOptions()
-	sOpts.ID = config.DefaultClusterID
+	sOpts.ID = common.DefaultClusterID
 	s, err := stand.RunServerWithOpts(sOpts, &nOpts)
 	if err != nil {
 		return err
@@ -449,7 +448,7 @@ func (d *Driver) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHandle, *drive
 	}
 	d.logger.Debug("start dtle task 1")
 
-	var dtleTaskConfig config.DtleTaskConfig
+	var dtleTaskConfig common.DtleTaskConfig
 
 	if err := cfg.DecodeDriverConfig(&dtleTaskConfig); err != nil {
 		return nil, nil, errors.Wrap(err, "DecodeDriverConfig")

@@ -9,6 +9,7 @@ package sql
 import (
 	"bytes"
 	"fmt"
+	"github.com/actiontech/dtle/drivers/mysql/common"
 	"strings"
 
 	umconf "github.com/actiontech/dtle/drivers/mysql/mysql/mysqlconfig"
@@ -68,7 +69,7 @@ func EscapeValue(colValue string) string {
 	return colBuffer.String()
 }
 
-func buildColumnsPreparedValues(columns *umconf.ColumnList) []string {
+func buildColumnsPreparedValues(columns *common.ColumnList) []string {
 	values := make([]string, columns.Len(), columns.Len())
 	for i, column := range columns.ColumnList() {
 		var token string
@@ -99,7 +100,7 @@ func BuildValueComparison(columnEscaped string, value string, comparisonSign Val
 	return comparison, err
 }
 
-func BuildSetPreparedClause(columns *umconf.ColumnList) (result string, err error) {
+func BuildSetPreparedClause(columns *common.ColumnList) (result string, err error) {
 	if columns.Len() == 0 {
 		return "", fmt.Errorf("Got 0 columns in BuildSetPreparedClause")
 	}
@@ -116,7 +117,7 @@ func BuildSetPreparedClause(columns *umconf.ColumnList) (result string, err erro
 	return strings.Join(setTokens, ", "), nil
 }
 
-func BuildDMLDeleteQuery(databaseName, tableName string, tableColumns *umconf.ColumnList, args []*interface{}) (result string, columnArgs []interface{}, hasUK bool, err error) {
+func BuildDMLDeleteQuery(databaseName, tableName string, tableColumns *common.ColumnList, args []*interface{}) (result string, columnArgs []interface{}, hasUK bool, err error) {
 	if len(args) < tableColumns.Len() {
 		return result, columnArgs, hasUK, fmt.Errorf("args count differs from table column count in BuildDMLDeleteQuery %v, %v",
 			len(args), tableColumns.Len())
@@ -183,7 +184,7 @@ func BuildDMLDeleteQuery(databaseName, tableName string, tableColumns *umconf.Co
 	return result, columnArgs, hasUK, nil
 }
 
-func BuildDMLInsertQuery(databaseName, tableName string, tableColumns, sharedColumns, mappedSharedColumns *umconf.ColumnList, args []*interface{}) (result string, sharedArgs []interface{}, err error) {
+func BuildDMLInsertQuery(databaseName, tableName string, tableColumns, sharedColumns, mappedSharedColumns *common.ColumnList, args []*interface{}) (result string, sharedArgs []interface{}, err error) {
 	if len(args) < tableColumns.Len() {
 		return result, sharedArgs, fmt.Errorf("args count differs from table column count in BuildDMLInsertQuery %v, %v",
 			len(args), tableColumns.Len())
@@ -224,7 +225,7 @@ func BuildDMLInsertQuery(databaseName, tableName string, tableColumns, sharedCol
 	return result, sharedArgs, nil
 }
 
-func BuildDMLUpdateQuery(databaseName, tableName string, tableColumns, sharedColumns, mappedSharedColumns, uniqueKeyColumns *umconf.ColumnList, valueArgs, whereArgs []*interface{}) (result string, sharedArgs, columnArgs []interface{}, hasUK bool, err error) {
+func BuildDMLUpdateQuery(databaseName, tableName string, tableColumns, sharedColumns, mappedSharedColumns, uniqueKeyColumns *common.ColumnList, valueArgs, whereArgs []*interface{}) (result string, sharedArgs, columnArgs []interface{}, hasUK bool, err error) {
 	if len(valueArgs) < tableColumns.Len() {
 		return result, sharedArgs, columnArgs, hasUK, fmt.Errorf("value args count differs from table column count in BuildDMLUpdateQuery %v, %v",
 			len(valueArgs), tableColumns.Len())

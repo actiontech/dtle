@@ -19,7 +19,6 @@ import (
 
 	"time"
 
-	config "github.com/actiontech/dtle/drivers/mysql/mysql/mysqlconfig"
 	umconf "github.com/actiontech/dtle/drivers/mysql/mysql/mysqlconfig"
 	usql "github.com/actiontech/dtle/drivers/mysql/mysql/sql"
 )
@@ -31,7 +30,7 @@ type dumper struct {
 	EscapedTableSchema string
 	TableName          string
 	EscapedTableName   string
-	table              *config.Table
+	table              *common.Table
 	columns            string
 	resultsChannel     chan *common.DumpEntry
 	shutdown           bool
@@ -51,7 +50,7 @@ type dumper struct {
 	memory *int64
 }
 
-func NewDumper(db usql.QueryAble, table *config.Table, chunkSize int64,
+func NewDumper(db usql.QueryAble, table *common.Table, chunkSize int64,
 	logger hclog.Logger, memory *int64) *dumper {
 
 	dumper := &dumper{
@@ -83,12 +82,6 @@ func NewDumper(db usql.QueryAble, table *config.Table, chunkSize int64,
 	return dumper
 }
 
-type DumpStatResult struct {
-	Gtid       string
-	LogFile    string
-	LogPos     int64
-}
-
 type DumpEntryOrig struct {
 	SystemVariablesStatement string
 	SqlMode                  string
@@ -103,7 +96,7 @@ type DumpEntryOrig struct {
 	TotalCount int64
 	RowsCount  int64
 	Err        error
-	Table      *config.Table
+	Table      *common.Table
 }
 
 func (d *dumper) prepareForDumping() error {

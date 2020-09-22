@@ -10,7 +10,6 @@ import (
 	gosql "database/sql"
 	"fmt"
 	"github.com/actiontech/dtle/drivers/mysql/common"
-	"github.com/actiontech/dtle/drivers/mysql/config"
 	"github.com/hashicorp/nomad/plugins/drivers"
 	"github.com/opentracing/opentracing-go"
 	"github.com/opentracing/opentracing-go/ext"
@@ -58,7 +57,7 @@ type mapSchemaTableItems map[string](map[string](*common.ApplierTableItem))
 type Applier struct {
 	logger       hclog.Logger
 	subject      string
-	mysqlContext *config.MySQLDriverConfig
+	mysqlContext *common.MySQLDriverConfig
 
 	NatsAddr          string
 	MySQLVersion      string
@@ -103,7 +102,7 @@ type Applier struct {
 }
 
 func NewApplier(
-	ctx *common.ExecContext, cfg *config.MySQLDriverConfig, logger hclog.Logger,
+	ctx *common.ExecContext, cfg *common.MySQLDriverConfig, logger hclog.Logger,
 	storeManager *common.StoreManager, natsAddr string, waitCh chan *drivers.ExitResult) (a *Applier, err error) {
 
 	logger.Info("NewApplier", "job", ctx.Subject)
@@ -560,7 +559,8 @@ func (a *Applier) subscribeNats() error {
 		replySpan := tracer.StartSpan("Service Responder", ext.SpanKindRPCServer, ext.RPCServerOption(sc))
 		ext.MessageBusDestination.Set(replySpan, m.Subject)
 		defer replySpan.Finish()
-		dumpData, err := common.DecodeDumpEntry(t.Bytes())
+		dumpData := &common.DumpEntry{}
+		err = common.Decode(t.Bytes(), dumpData)
 		if err != nil {
 			a.onError(TaskStateDead, errors.Wrap(err, "DecodeDumpEntry"))
 			return
@@ -601,7 +601,7 @@ func (a *Applier) subscribeNats() error {
 		default:
 		}
 
-		dumpData := &DumpStatResult{}
+		dumpData := &common.DumpStatResult{}
 		t := not.NewTraceMsg(m)
 		// Extract the span context from the request message.
 		sc, err := tracer.Extract(opentracing.Binary, t)

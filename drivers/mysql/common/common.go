@@ -19,6 +19,12 @@ const (
 	DefaultBigTX = 1024 * 1024 * 100
 )
 
+type GencodeType interface {
+	Marshal(buf []byte) ([]byte, error)
+	Unmarshal(buf []byte) (uint64, error)
+	Size() (s uint64)
+}
+
 func init() {
 	gob.Register(types.BinaryLiteral{})
 }
@@ -35,7 +41,6 @@ func ValidateJobName(name string) error {
 	return nil
 }
 
-// Encode
 func GobEncode(v interface{}) ([]byte, error) {
 	b := new(bytes.Buffer)
 	if err := gob.NewEncoder(b).Encode(v); err != nil {
@@ -43,45 +48,32 @@ func GobEncode(v interface{}) ([]byte, error) {
 	}
 	return b.Bytes(), nil
 }
-func Encode(v interface{}) ([]byte, error) {
-	b := new(bytes.Buffer)
-	enc := gob.NewEncoder(b)
-	if err := enc.Encode(v); err != nil {
+func Encode(v GencodeType) ([]byte, error) {
+	bs, err := v.Marshal(nil)
+	if err != nil {
 		return nil, err
 	}
-	return snappy.Encode(nil, b.Bytes()), nil
+	return snappy.Encode(nil, bs), nil
 }
 
-// Decode
-func Decode(data []byte, vPtr interface{}) (err error) {
+func Decode(data []byte, out GencodeType) (err error) {
 	msg, err := snappy.Decode(nil, data)
 	if err != nil {
 		return err
 	}
 
-	return gob.NewDecoder(bytes.NewBuffer(msg)).Decode(vPtr)
-}
-
-func GobDecode(data []byte, vPtr interface{}) (err error) {
-	return gob.NewDecoder(bytes.NewBuffer(data)).Decode(vPtr)
-}
-
-func DecodeDumpEntry(data []byte) (entry *DumpEntry, err error) {
-	msg, err := snappy.Decode(nil, data)
+	n, err := out.Unmarshal(msg)
 	if err != nil {
-		return nil, err
-	}
-
-	entry = &DumpEntry{}
-	n, err := entry.Unmarshal(msg)
-	if err != nil {
-		return nil, err
+		return err
 	}
 	if n != uint64(len(msg)) {
-		return nil, fmt.Errorf("DumpEntry.Unmarshal: not all consumed. data: %v, consumed: %v",
+		return fmt.Errorf("BinlogEntries.Unmarshal: not all consumed. data: %v, consumed: %v",
 			len(msg), n)
 	}
-	return entry, nil
+	return nil
+}
+func GobDecode(data []byte, vPtr interface{}) (err error) {
+	return gob.NewDecoder(bytes.NewBuffer(data)).Decode(vPtr)
 }
 
 func DtleParseMysqlGTIDSet(gtidSetStr string) (*mysql.MysqlGTIDSet, error) {
@@ -99,3 +91,4 @@ func UpdateGtidSet(gtidSet *mysql.MysqlGTIDSet, sid uuid.UUID, txGno int64) {
 		Stop:  txGno + 1,
 	}))
 }
+

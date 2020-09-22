@@ -7,6 +7,7 @@
 package mysqlconfig
 
 import (
+	"github.com/actiontech/dtle/drivers/mysql/common"
 	"testing"
 
 	"reflect"
@@ -17,7 +18,7 @@ import (
 func TestParseColumnList(t *testing.T) {
 	names := "id,category,max_len"
 
-	columnList := ParseColumnList(names)
+	columnList := common.ParseColumnList(names)
 	test.S(t).ExpectEquals(columnList.Len(), 3)
 	test.S(t).ExpectTrue(reflect.DeepEqual(columnList.Names(), []string{"id", "category", "max_len"}))
 	test.S(t).ExpectEquals(columnList.Ordinals["id"], 0)
@@ -27,7 +28,7 @@ func TestParseColumnList(t *testing.T) {
 
 func TestGetColumn(t *testing.T) {
 	names := "id,category,max_len"
-	columnList := ParseColumnList(names)
+	columnList := common.ParseColumnList(names)
 	{
 		column := columnList.GetColumn("category")
 		test.S(t).ExpectTrue(column != nil)

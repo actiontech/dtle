@@ -2,7 +2,6 @@ package common
 
 import (
 	"fmt"
-	"github.com/actiontech/dtle/drivers/mysql/config"
 	"github.com/hashicorp/go-hclog"
 	"github.com/pkg/errors"
 	"github.com/siddontang/go-mysql/mysql"
@@ -161,7 +160,7 @@ func (sm *StoreManager) WaitKv(subject string, key string, stopCh chan struct{})
 	}
 }
 
-func GetGtidFromConsul(sm *StoreManager, subject string, logger hclog.Logger, mysqlContext *config.MySQLDriverConfig) error {
+func GetGtidFromConsul(sm *StoreManager, subject string, logger hclog.Logger, mysqlContext *MySQLDriverConfig) error {
 	gtid, err := sm.GetGtidForJob(subject)
 	if err != nil {
 		return errors.Wrap(err, "GetGtidForJob")

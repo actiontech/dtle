@@ -1,4 +1,4 @@
-package config
+package common
 
 import (
 	"github.com/actiontech/dtle/drivers/mysql/mysql/mysqlconfig"
@@ -8,33 +8,33 @@ import (
 const (
 	channelBufferSize = 60
 	defaultNumRetries = 5
-	defaultChunkSize = 2000
+	defaultChunkSize  = 2000
 	defaultNumWorkers = 1
-	defaultMsgBytes = 20 * 1024
-	DefaultClusterID     = "dtle-nats"
+	defaultMsgBytes   = 20 * 1024
+	DefaultClusterID  = "dtle-nats"
 )
 
 type DtleTaskConfig struct {
 	//Ref:http://dev.mysql.com/doc/refman/5.7/en/replication-options-slave.html#option_mysqld_replicate-do-table
-	ReplicateDoDb        []*mysqlconfig.DataSource `codec:"ReplicateDoDb"`
-	ReplicateIgnoreDb    []*mysqlconfig.DataSource `codec:"ReplicateIgnoreDb"`
-	DropTableIfExists    bool                      `codec:"DropTableIfExists"`
-	ExpandSyntaxSupport  bool                      `codec:"ExpandSyntaxSupport"`
-	ReplChanBufferSize   int64                     `codec:"ReplChanBufferSize"`
+	ReplicateDoDb       []*DataSource `codec:"ReplicateDoDb"`
+	ReplicateIgnoreDb   []*DataSource `codec:"ReplicateIgnoreDb"`
+	DropTableIfExists   bool          `codec:"DropTableIfExists"`
+	ExpandSyntaxSupport bool          `codec:"ExpandSyntaxSupport"`
+	ReplChanBufferSize  int64         `codec:"ReplChanBufferSize"`
 	// removed in BigTx commit
 	//MsgBytesLimit        int                       `codec:"MsgBytesLimit"`
-	TrafficAgainstLimits int                       `codec:"TrafficAgainstLimits"`
-	MaxRetries           int64                     `codec:"MaxRetries"`
-	ChunkSize            int64                     `codec:"ChunkSize"`
-	SqlFilter            []string                  `codec:"SqlFilter"`
-	GroupMaxSize         int                       `codec:"GroupMaxSize"`
-	GroupTimeout         int                       `codec:"GroupTimeout"`
-	Gtid                 string              `codec:"Gtid"`
-	BinlogFile           string              `codec:"BinlogFile"`
-	BinlogPos            int64                     `codec:"BinlogPos"`
-	GtidStart            string                    `codec:"GtidStart"`
-	AutoGtid             bool                      `codec:"AutoGtid"`
-	BinlogRelay          bool                      `codec:"BinlogRelay"`
+	TrafficAgainstLimits int      `codec:"TrafficAgainstLimits"`
+	MaxRetries           int64    `codec:"MaxRetries"`
+	ChunkSize            int64    `codec:"ChunkSize"`
+	SqlFilter            []string `codec:"SqlFilter"`
+	GroupMaxSize         int      `codec:"GroupMaxSize"`
+	GroupTimeout         int      `codec:"GroupTimeout"`
+	Gtid                 string   `codec:"Gtid"`
+	BinlogFile           string   `codec:"BinlogFile"`
+	BinlogPos            int64    `codec:"BinlogPos"`
+	GtidStart            string   `codec:"GtidStart"`
+	AutoGtid             bool     `codec:"AutoGtid"`
+	BinlogRelay          bool     `codec:"BinlogRelay"`
 
 	ParallelWorkers int `codec:"ParallelWorkers"`
 
@@ -114,4 +114,3 @@ type KafkaConfig struct {
 	Converter string
 	TimeZone  string
 }
-
