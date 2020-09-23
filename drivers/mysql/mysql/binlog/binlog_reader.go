@@ -669,11 +669,13 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 							ddlTable,
 							ev.Header.Timestamp,
 						)
-						tableBs, err := common.GobEncode(table)
-						if err != nil {
-							return errors.Wrap(err, "GobEncode(table)")
+						if table != nil {
+							tableBs, err := common.GobEncode(table)
+							if err != nil {
+								return errors.Wrap(err, "GobEncode(table)")
+							}
+							event.Table = tableBs
 						}
-						event.Table = tableBs
 						b.currentBinlogEntry.Events = append(b.currentBinlogEntry.Events, event)
 					}
 				}
