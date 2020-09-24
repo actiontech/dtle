@@ -1100,17 +1100,29 @@ func (d *ColumnValues) Size() (s uint64) {
 						case int64:
 							v = 4 + 1
 
-						case []byte:
+						case uint8:
 							v = 5 + 1
 
-						case float32:
+						case uint16:
 							v = 6 + 1
 
-						case float64:
+						case uint32:
 							v = 7 + 1
 
-						case bool:
+						case uint64:
 							v = 8 + 1
+
+						case []byte:
+							v = 9 + 1
+
+						case float32:
+							v = 10 + 1
+
+						case float64:
+							v = 11 + 1
+
+						case bool:
+							v = 12 + 1
 
 						}
 
@@ -1157,6 +1169,22 @@ func (d *ColumnValues) Size() (s uint64) {
 							s += 4
 
 						case int64:
+
+							s += 8
+
+						case uint8:
+
+							s += 1
+
+						case uint16:
+
+							s += 2
+
+						case uint32:
+
+							s += 4
+
+						case uint64:
 
 							s += 8
 
@@ -1257,17 +1285,29 @@ func (d *ColumnValues) Marshal(buf []byte) ([]byte, error) {
 						case int64:
 							v = 4 + 1
 
-						case []byte:
+						case uint8:
 							v = 5 + 1
 
-						case float32:
+						case uint16:
 							v = 6 + 1
 
-						case float64:
+						case uint32:
 							v = 7 + 1
 
-						case bool:
+						case uint64:
 							v = 8 + 1
+
+						case []byte:
+							v = 9 + 1
+
+						case float32:
+							v = 10 + 1
+
+						case float64:
+							v = 11 + 1
+
+						case bool:
+							v = 12 + 1
 
 						}
 
@@ -1347,6 +1387,68 @@ func (d *ColumnValues) Marshal(buf []byte) ([]byte, error) {
 							i += 4
 
 						case int64:
+
+							{
+
+								buf[i+0+1] = byte(tt >> 0)
+
+								buf[i+1+1] = byte(tt >> 8)
+
+								buf[i+2+1] = byte(tt >> 16)
+
+								buf[i+3+1] = byte(tt >> 24)
+
+								buf[i+4+1] = byte(tt >> 32)
+
+								buf[i+5+1] = byte(tt >> 40)
+
+								buf[i+6+1] = byte(tt >> 48)
+
+								buf[i+7+1] = byte(tt >> 56)
+
+							}
+
+							i += 8
+
+						case uint8:
+
+							{
+
+								buf[i+0+1] = byte(tt >> 0)
+
+							}
+
+							i += 1
+
+						case uint16:
+
+							{
+
+								buf[i+0+1] = byte(tt >> 0)
+
+								buf[i+1+1] = byte(tt >> 8)
+
+							}
+
+							i += 2
+
+						case uint32:
+
+							{
+
+								buf[i+0+1] = byte(tt >> 0)
+
+								buf[i+1+1] = byte(tt >> 8)
+
+								buf[i+2+1] = byte(tt >> 16)
+
+								buf[i+3+1] = byte(tt >> 24)
+
+							}
+
+							i += 4
+
+						case uint64:
 
 							{
 
@@ -1592,6 +1694,58 @@ func (d *ColumnValues) Unmarshal(buf []byte) (uint64, error) {
 							(*d.AbstractValues[k0]) = tt
 
 						case 5 + 1:
+							var tt uint8
+
+							{
+
+								tt = 0 | (uint8(buf[i+0+1]) << 0)
+
+							}
+
+							i += 1
+
+							(*d.AbstractValues[k0]) = tt
+
+						case 6 + 1:
+							var tt uint16
+
+							{
+
+								tt = 0 | (uint16(buf[i+0+1]) << 0) | (uint16(buf[i+1+1]) << 8)
+
+							}
+
+							i += 2
+
+							(*d.AbstractValues[k0]) = tt
+
+						case 7 + 1:
+							var tt uint32
+
+							{
+
+								tt = 0 | (uint32(buf[i+0+1]) << 0) | (uint32(buf[i+1+1]) << 8) | (uint32(buf[i+2+1]) << 16) | (uint32(buf[i+3+1]) << 24)
+
+							}
+
+							i += 4
+
+							(*d.AbstractValues[k0]) = tt
+
+						case 8 + 1:
+							var tt uint64
+
+							{
+
+								tt = 0 | (uint64(buf[i+0+1]) << 0) | (uint64(buf[i+1+1]) << 8) | (uint64(buf[i+2+1]) << 16) | (uint64(buf[i+3+1]) << 24) | (uint64(buf[i+4+1]) << 32) | (uint64(buf[i+5+1]) << 40) | (uint64(buf[i+6+1]) << 48) | (uint64(buf[i+7+1]) << 56)
+
+							}
+
+							i += 8
+
+							(*d.AbstractValues[k0]) = tt
+
+						case 9 + 1:
 							var tt []byte
 
 							{
@@ -1622,7 +1776,7 @@ func (d *ColumnValues) Unmarshal(buf []byte) (uint64, error) {
 
 							(*d.AbstractValues[k0]) = tt
 
-						case 6 + 1:
+						case 10 + 1:
 							var tt float32
 
 							{
@@ -1636,7 +1790,7 @@ func (d *ColumnValues) Unmarshal(buf []byte) (uint64, error) {
 
 							(*d.AbstractValues[k0]) = tt
 
-						case 7 + 1:
+						case 11 + 1:
 							var tt float64
 
 							{
@@ -1650,7 +1804,7 @@ func (d *ColumnValues) Unmarshal(buf []byte) (uint64, error) {
 
 							(*d.AbstractValues[k0]) = tt
 
-						case 8 + 1:
+						case 12 + 1:
 							var tt bool
 
 							{
