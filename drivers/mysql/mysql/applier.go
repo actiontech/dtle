@@ -100,6 +100,7 @@ type Applier struct {
 
 	timestampCtx       *TimestampContext
 
+	memory1     *int64
 	memory2     *int64
 }
 
@@ -122,6 +123,7 @@ func NewApplier(
 		printTps:        os.Getenv(g.ENV_PRINT_TPS) != "",
 		storeManager:    storeManager,
 		gtidCh:          make(chan *common.BinlogCoordinateTx, 4096),
+		memory1:         new(int64),
 		memory2:         new(int64),
 	}
 
@@ -340,6 +342,7 @@ func (a *Applier) doFullCopy() {
 				if err := a.ApplyEventQueries(a.db, copyRows); err != nil {
 					a.onError(TaskStateDead, err)
 				}
+				atomic.AddInt64(a.memory1, -int64(copyRows.Size()))
 			}
 			if atomic.LoadInt64(&a.nDumpEntry) <= 0 {
 				err := fmt.Errorf("DTLE_BUG a.nDumpEntry <= 0")
@@ -573,6 +576,7 @@ func (a *Applier) subscribeNats() error {
 		atomic.AddInt64(&a.nDumpEntry, 1) // this must be increased before enqueuing
 		select {
 		case a.copyRowsQueue <- dumpData:
+			atomic.AddInt64(a.memory1, int64(dumpData.Size()))
 			a.logger.Debug("full. enqueue", "nDumpEntry", a.nDumpEntry)
 			timer.Stop()
 			a.mysqlContext.Stage = common.StageSlaveWaitingForWorkersToProcessQueue
@@ -1327,7 +1331,8 @@ func (a *Applier) Stats() (*common.TaskStatistics, error) {
 			Time: a.timestampCtx.GetDelay(),
 		},
 		MemoryStat: common.MemoryStat{
-			Total: atomic.LoadInt64(a.memory2),
+			Full: *a.memory1,
+			Incr: *a.memory2,
 		},
 	}
 	if a.natsConn != nil {

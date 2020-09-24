@@ -51,7 +51,8 @@ type BufferStat struct {
 	SendBySizeFull          int
 }
 type MemoryStat struct {
-	Total int64
+	Full  int64
+	Incr  int64
 }
 type TaskStatistics struct {
 	CurrentCoordinates *CurrentCoordinates

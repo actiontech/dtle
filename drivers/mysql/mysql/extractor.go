@@ -1547,7 +1547,8 @@ func (e *Extractor) Stats() (*common.TaskStatistics, error) {
 		},
 		Timestamp: time.Now().UTC().UnixNano(),
 		MemoryStat: common.MemoryStat{
-			Total: *e.memory1 + *e.memory2,
+			Full: *e.memory1,
+			Incr: *e.memory2,
 		},
 	}
 	if e.natsConn != nil {

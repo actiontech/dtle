@@ -166,7 +166,8 @@ func (h *taskHandle) emitStats(ru *common.TaskStatistics) {
 	metrics.SetGaugeWithLabels([]string{"buffer", "send_by_timeout"}, float32(ru.BufferStat.SendByTimeout), labels)
 	metrics.SetGaugeWithLabels([]string{"buffer", "send_by_size_full"}, float32(ru.BufferStat.SendBySizeFull), labels)
 
-	metrics.SetGaugeWithLabels([]string{"memory.total_kb"}, float32(ru.MemoryStat.Total / 1024), labels)
+	metrics.SetGaugeWithLabels([]string{"memory.full_kb"}, float32(ru.MemoryStat.Full / 1024), labels)
+	metrics.SetGaugeWithLabels([]string{"memory.incr_kb"}, float32(ru.MemoryStat.Incr / 1024), labels)
 
 	if ru.TableStats != nil {
 		metrics.SetGaugeWithLabels([]string{"table", "insert"}, float32(ru.TableStats.InsertCount), labels)
