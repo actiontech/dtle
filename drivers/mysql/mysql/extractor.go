@@ -956,7 +956,9 @@ func (e *Extractor) StreamEvents() error {
 			if len(entries.Entries) > 0 {
 				theEntries := entries.Entries[0]
 				gno = theEntries.Coordinates.GNO
-				e.timestampCtx.TimestampCh <- theEntries.Events[0].Timestamp
+				if theEntries.Events != nil && len(theEntries.Events) > 0 {
+					e.timestampCtx.TimestampCh <- theEntries.Events[0].Timestamp
+				}
 			}
 
 
