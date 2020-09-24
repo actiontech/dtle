@@ -9,6 +9,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/pingcap/errors"
@@ -764,6 +765,7 @@ func (b *BinlogSyncer) parseEvent(spanContext opentracing.SpanContext, s *Binlog
 	needStop := false
 	select {
 	case s.ch <- e:
+		atomic.AddInt64(&s.mem, int64(len(e.RawData)))
 	case <-b.ctx.Done():
 		needStop = true
 	}

@@ -63,7 +63,7 @@ require (
 	honnef.co/go/tools v0.0.0-20190523083050-ea95bdfd59fc // indirect
 )
 
-replace github.com/siddontang/go-mysql => github.com/ffffwh/go-mysql v0.0.0-20190808080311-dd15a3c6
+replace github.com/siddontang/go-mysql => github.com/ffffwh/go-mysql v0.0.0-20200924085500-ac421eaba5fe
 
 //replace github.com/Sirupsen/logrus => github.com/sirupsen/logrus v1.4.2
 
