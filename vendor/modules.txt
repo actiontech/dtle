@@ -427,7 +427,7 @@ github.com/siddontang/go/sync2
 # github.com/siddontang/go-log v0.0.0-20180807004314-8d05993dda07
 github.com/siddontang/go-log/log
 github.com/siddontang/go-log/loggers
-# github.com/siddontang/go-mysql v0.0.0-20200311002057-7a62847fcdb5 => github.com/ffffwh/go-mysql v0.0.0-20200924085500-ac421eaba5fe
+# github.com/siddontang/go-mysql v0.0.0-20200311002057-7a62847fcdb5 => github.com/ffffwh/go-mysql v0.0.0-20200925063934-115f316df86d
 github.com/siddontang/go-mysql/client
 github.com/siddontang/go-mysql/mysql
 github.com/siddontang/go-mysql/packet

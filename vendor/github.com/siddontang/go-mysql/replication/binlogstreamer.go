@@ -81,8 +81,8 @@ func (s *BinlogStreamer) QueueSize() int {
 	return len(s.ch)
 }
 
-func (s *BinlogStreamer) QueueMem() int {
-	return len(s.ch)
+func (s *BinlogStreamer) QueueMem() int64 {
+	return s.mem
 }
 
 func (s *BinlogStreamer) close() {
