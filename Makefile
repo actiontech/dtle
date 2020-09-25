@@ -65,7 +65,7 @@ package: package-common
       --before-remove ../misc/pre-remove.sh \
       --after-remove ../misc/post-remove.sh \
       --depends iproute
-	cd dist && md5sum $(PROJECT_NAME)-$(VERSION).x86_64.rpm > $(PROJECT_NAME)-$(VERSION).x86_64.rpm.md5
+	cd dist && md5sum $(PROJECT_NAME)-$(VERSION)-1.x86_64.rpm > $(PROJECT_NAME)-$(VERSION).x86_64.rpm.md5
 
 vet:
 	go vet ./...
