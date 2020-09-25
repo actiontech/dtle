@@ -67,9 +67,10 @@ type BinlogReader struct {
 	db               *gosql.DB
 	relay            dmrelay.Process
 	relayCancelF     context.CancelFunc
-	// for direct stream
+	// for direct streaming
 	binlogSyncer *replication.BinlogSyncer
-	// for relay
+	binlogStreamer0 *replication.BinlogStreamer // for the functions added by us.
+	// for relay & streaming
 	binlogStreamer streamer.Streamer
 	// for relay
 	binlogReader             *streamer.BinlogReader
@@ -377,8 +378,9 @@ func (b *BinlogReader) ConnectBinlogStreamer(coordinates base.BinlogCoordinatesX
 		//	b.logger.WithField("coordinate", coordinates).Debugf("will start sync")
 		b.logger.Debug("will start sync coordinate", "coordinates", coordinates)
 		if coordinates.GtidSet == "" {
-			b.binlogStreamer, err = b.binlogSyncer.StartSync(
+			b.binlogStreamer0, err = b.binlogSyncer.StartSync(
 				gomysql.Position{Name: coordinates.LogFile, Pos: uint32(coordinates.LogPos)})
+			b.binlogStreamer = b.binlogStreamer0
 		} else {
 			gtidSet, err := gomysql.ParseMysqlGTIDSet(coordinates.GtidSet)
 			if err != nil {
@@ -386,7 +388,8 @@ func (b *BinlogReader) ConnectBinlogStreamer(coordinates base.BinlogCoordinatesX
 				return err
 			}
 
-			b.binlogStreamer, err = b.binlogSyncer.StartSyncGTID(gtidSet)
+			b.binlogStreamer0, err = b.binlogSyncer.StartSyncGTID(gtidSet)
+			b.binlogStreamer = b.binlogStreamer0
 		}
 		if err != nil {
 			b.logger.Debug("StartSyncGTID error", "err", err)
@@ -1476,3 +1479,20 @@ func normalizeBinlogFilename(name string) string {
 		return name
 	}
 }
+
+func (b *BinlogReader) GetQueueSize() int {
+	if b != nil && b.binlogStreamer0 != nil {
+		return b.binlogStreamer0.QueueSize()
+	} else {
+		return 0
+	}
+}
+
+func (b *BinlogReader) GetQueueMem() int64 {
+	if b != nil && b.binlogStreamer0 != nil {
+		return b.binlogStreamer0.QueueMem()
+	} else {
+		return 0
+	}
+}
+

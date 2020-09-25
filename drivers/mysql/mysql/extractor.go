@@ -1537,6 +1537,7 @@ func (e *Extractor) Stats() (*common.TaskStatistics, error) {
 		Backlog:            fmt.Sprintf("%d/%d", len(e.dataChannel), cap(e.dataChannel)),
 		Stage:              e.mysqlContext.Stage,
 		BufferStat: common.BufferStat{
+			BinlogEventQueueSize: e.binlogReader.GetQueueSize(),
 			ExtractorTxQueueSize: len(e.dataChannel),
 			SendByTimeout:        e.sendByTimeoutCounter,
 			SendBySizeFull:       e.sendBySizeFullCounter,
@@ -1548,7 +1549,7 @@ func (e *Extractor) Stats() (*common.TaskStatistics, error) {
 		Timestamp: time.Now().UTC().UnixNano(),
 		MemoryStat: common.MemoryStat{
 			Full: *e.memory1,
-			Incr: *e.memory2,
+			Incr: *e.memory2 + e.binlogReader.GetQueueMem(),
 		},
 	}
 	if e.natsConn != nil {

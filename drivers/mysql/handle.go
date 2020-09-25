@@ -16,6 +16,24 @@ import (
 	"github.com/hashicorp/nomad/plugins/drivers"
 )
 
+type taskType int
+const (
+	taskTypeUnknown taskType = iota
+	taskTypeSrc
+	taskTypeDest
+)
+
+func taskTypeFromString(s string) taskType {
+	switch strings.ToLower(s) {
+	case "src", "source":
+		return taskTypeSrc
+	case "dst", "dest", "destination":
+		return taskTypeDest
+	default:
+		return taskTypeUnknown
+	}
+}
+
 type taskHandle struct {
 	logger hclog.Logger
 
@@ -101,16 +119,15 @@ func (h *taskHandle) run(taskConfig *common.DtleTaskConfig, d *Driver) {
 	taskConfig.SetDefaultForEmpty()
 	driverConfig := &common.MySQLDriverConfig{DtleTaskConfig: *taskConfig}
 
-
-	switch strings.ToLower(cfg.TaskGroupName) {
-	case "src", "source":
+	switch taskTypeFromString(cfg.TaskGroupName) {
+	case taskTypeSrc:
 		h.runner, err = mysql.NewExtractor(ctx, driverConfig, d.logger, d.storeManager, h.waitCh)
 		if err != nil {
 			h.exitResult.Err = errors.Wrap(err, "NewExtractor")
 			return
 		}
 		go h.runner.Run()
-	case "dst", "dest", "destination":
+	case taskTypeDest:
 		if taskConfig.KafkaConfig != nil {
 			d.logger.Debug("found kafka", "KafkaConfig", taskConfig.KafkaConfig)
 			h.runner = kafka.NewKafkaRunner(ctx, taskConfig.KafkaConfig, d.logger,
@@ -125,7 +142,7 @@ func (h *taskHandle) run(taskConfig *common.DtleTaskConfig, d *Driver) {
 			}
 			go h.runner.Run()
 		}
-	default:
+	case taskTypeUnknown:
 		h.exitResult.Err = fmt.Errorf("unknown processor type: %+v", cfg.TaskGroupName)
 		return
 	}
@@ -154,20 +171,38 @@ func (h *taskHandle) run(taskConfig *common.DtleTaskConfig, d *Driver) {
 	}()
 }
 
+
 func (h *taskHandle) emitStats(ru *common.TaskStatistics) {
+	const srcFullFactor float32 = 4.5
+	const dstFullFactor float32 = 5
+	const srcIncrFactor float32 = 19
+	const dstIncrFactor float32 = 9.5
+
 	labels := []metrics.Label{{"task_name", fmt.Sprintf("%s_%s", h.taskConfig.JobName, h.taskConfig.TaskGroupName)}}
 
 	metrics.SetGaugeWithLabels([]string{"network", "in_msgs"}, float32(ru.MsgStat.InMsgs), labels)
 	metrics.SetGaugeWithLabels([]string{"network", "out_msgs"}, float32(ru.MsgStat.OutMsgs), labels)
 	metrics.SetGaugeWithLabels([]string{"network", "in_bytes"}, float32(ru.MsgStat.InBytes), labels)
 	metrics.SetGaugeWithLabels([]string{"network", "out_bytes"}, float32(ru.MsgStat.OutBytes), labels)
-	metrics.SetGaugeWithLabels([]string{"buffer", "src_queue_size"}, float32(ru.BufferStat.ExtractorTxQueueSize), labels)
-	metrics.SetGaugeWithLabels([]string{"buffer", "dest_queue_size"}, float32(ru.BufferStat.ApplierTxQueueSize), labels)
-	metrics.SetGaugeWithLabels([]string{"buffer", "send_by_timeout"}, float32(ru.BufferStat.SendByTimeout), labels)
-	metrics.SetGaugeWithLabels([]string{"buffer", "send_by_size_full"}, float32(ru.BufferStat.SendBySizeFull), labels)
+	switch taskTypeFromString(h.taskConfig.TaskGroupName) {
+	case taskTypeSrc:
+		metrics.SetGaugeWithLabels([]string{"buffer", "event_queue_size"}, float32(ru.BufferStat.BinlogEventQueueSize), labels)
+		metrics.SetGaugeWithLabels([]string{"buffer", "src_queue_size"}, float32(ru.BufferStat.ExtractorTxQueueSize), labels)
+		metrics.SetGaugeWithLabels([]string{"buffer", "send_by_timeout"}, float32(ru.BufferStat.SendByTimeout), labels)
+		metrics.SetGaugeWithLabels([]string{"buffer", "send_by_size_full"}, float32(ru.BufferStat.SendBySizeFull), labels)
 
-	metrics.SetGaugeWithLabels([]string{"memory.full_kb"}, float32(ru.MemoryStat.Full / 1024), labels)
-	metrics.SetGaugeWithLabels([]string{"memory.incr_kb"}, float32(ru.MemoryStat.Incr / 1024), labels)
+		metrics.SetGaugeWithLabels([]string{"memory.full_kb_est"}, float32(ru.MemoryStat.Full) * srcFullFactor / 1024, labels)
+		metrics.SetGaugeWithLabels([]string{"memory.incr_kb_est"}, float32(ru.MemoryStat.Incr) * srcIncrFactor / 1024, labels)
+	case taskTypeDest:
+		metrics.SetGaugeWithLabels([]string{"buffer", "dest_queue_size"}, float32(ru.BufferStat.ApplierTxQueueSize), labels)
+
+		metrics.SetGaugeWithLabels([]string{"memory.full_kb_est"}, float32(ru.MemoryStat.Full) * dstFullFactor / 1024, labels)
+		metrics.SetGaugeWithLabels([]string{"memory.incr_kb_est"}, float32(ru.MemoryStat.Incr) * dstIncrFactor / 1024, labels)
+	case taskTypeUnknown:
+	}
+
+	metrics.SetGaugeWithLabels([]string{"memory.full_kb_count"}, float32(ru.MemoryStat.Full) / 1024, labels)
+	metrics.SetGaugeWithLabels([]string{"memory.incr_kb_count"}, float32(ru.MemoryStat.Incr) / 1024, labels)
 
 	if ru.TableStats != nil {
 		metrics.SetGaugeWithLabels([]string{"table", "insert"}, float32(ru.TableStats.InsertCount), labels)
