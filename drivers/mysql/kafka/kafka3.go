@@ -20,6 +20,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/actiontech/dtle/drivers/mysql/mysql/mysqlconfig"
@@ -53,14 +54,14 @@ type KafkaRunner struct {
 
 	kafkaConfig *common.KafkaConfig
 	kafkaMgr    *KafkaManager
-	natsAddr string
+	natsAddr    string
 
 	storeManager *common.StoreManager
 
 	tables map[string](map[string]*KafkaTableItem)
 
-	gtidSet *gomysql.MysqlGTIDSet
-	Gtid      string // TODO remove?
+	gtidSet    *gomysql.MysqlGTIDSet
+	Gtid       string // TODO remove?
 	BinlogFile string
 	BinlogPos  int64
 
@@ -72,9 +73,11 @@ type KafkaRunner struct {
 	// _full_complete must be ack-ed after all full entries has been executed
 	// (not just received). Since the applier ack _full before execution, the extractor
 	// might send _full_complete before the entry has been executed.
-	fullWg   sync.WaitGroup
+	fullWg sync.WaitGroup
 
 	timestampCtx *mysql.TimestampContext
+	memory1      *int64
+	memory2      *int64
 }
 
 func NewKafkaRunner(execCtx *common.ExecContext, cfg *common.KafkaConfig, logger hclog.Logger,
@@ -90,8 +93,11 @@ func NewKafkaRunner(execCtx *common.ExecContext, cfg *common.KafkaConfig, logger
 		tables:       make(map[string](map[string]*KafkaTableItem)),
 		storeManager: storeManager,
 
+		chDumpEntry:     make(chan *common.DumpEntry, 2),
 		chBinlogEntries: make(chan *common.BinlogEntries, 2),
-		chDumpEntry: make(chan *common.DumpEntry, 2),
+
+		memory1: new(int64),
+		memory2: new(int64),
 	}
 	kr.timestampCtx = mysql.NewTimestampContext(kr.shutdownCh, kr.logger, func() bool {
 		return len(kr.chBinlogEntries) == 0
@@ -168,7 +174,10 @@ func (kr *KafkaRunner) Stats() (*common.TaskStatistics, error) {
 		BufferStat:         common.BufferStat{},
 		Stage:              "",
 		Timestamp:          time.Now().Unix(),
-		MemoryStat:         common.MemoryStat{},
+		MemoryStat:         common.MemoryStat{
+			Full: *kr.memory1,
+			Incr: *kr.memory2,
+		},
 	}
 	return taskResUsage, nil
 }
@@ -337,6 +346,7 @@ func (kr *KafkaRunner) handleFullCopy() {
 				kr.onError(TaskStateDead, err)
 				return
 			}
+			atomic.AddInt64(kr.memory1, -int64(dumpData.Size()))
 		}
 		kr.fullWg.Done()
 	}
@@ -351,6 +361,7 @@ func (kr *KafkaRunner) handleIncr() {
 		case <-kr.shutdownCh:
 			return
 		}
+		memSize := int64(binlogEntries.Size())
 
 		if binlogEntries.BigTx {
 			if binlogEntries.TxNum == 1 {
@@ -377,6 +388,7 @@ func (kr *KafkaRunner) handleIncr() {
 			}
 			kr.logger.Debug("kafka: after kafkaTransformDMLEventQuery")
 		}
+		atomic.AddInt64(kr.memory2, -memSize)
 	}
 }
 func (kr *KafkaRunner) initiateStreaming() error {
@@ -399,6 +411,7 @@ func (kr *KafkaRunner) initiateStreaming() error {
 		t := time.NewTimer(common.DefaultConnectWait / 2)
 		select {
 		case kr.chDumpEntry <- dumpData:
+			atomic.AddInt64(kr.memory1, int64(dumpData.Size()))
 			if err := kr.natsConn.Publish(m.Reply, nil); err != nil {
 				kr.onError(TaskStateDead, err)
 				return
@@ -460,6 +473,7 @@ func (kr *KafkaRunner) initiateStreaming() error {
 		t := time.NewTimer(common.DefaultConnectWait / 2)
 		select {
 		case kr.chBinlogEntries <-&binlogEntries:
+			atomic.AddInt64(kr.memory2, int64(binlogEntries.Size()))
 			if err := kr.natsConn.Publish(m.Reply, nil); err != nil {
 				kr.onError(TaskStateDead, errors.Wrap(err, "Publish"))
 				return
