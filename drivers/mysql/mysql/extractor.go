@@ -890,10 +890,10 @@ func (e *Extractor) setStatementFor() string {
 }
 type TimestampContext struct {
 	stopCh      chan struct{}
-	Timestamp   uint32
 	TimestampCh chan uint32
 	logger      hclog.Logger
 	f           func() bool
+	delay       int64
 }
 func NewTimestampContext(stopCh chan struct{}, logger hclog.Logger, f func() bool) *TimestampContext {
 	return &TimestampContext{
@@ -905,13 +905,8 @@ func NewTimestampContext(stopCh chan struct{}, logger hclog.Logger, f func() boo
 	}
 }
 func (tsc *TimestampContext) GetDelay() (d int64) {
-	if tsc.Timestamp == 0 {
-		d = 0
-	} else {
-		d = time.Now().Unix() - int64(tsc.Timestamp)
-	}
-	tsc.logger.Debug("TimestampContext.GetDelay", "delay", d)
-	return d
+	tsc.logger.Debug("TimestampContext.GetDelay", "delay", tsc.delay)
+	return tsc.delay
 }
 func (tsc *TimestampContext) Handle() {
 	interval := 15 * time.Second
@@ -921,7 +916,7 @@ func (tsc *TimestampContext) Handle() {
 		select {
 		case ts := <-tsc.TimestampCh:
 			tsc.logger.Debug("TimestampContext.Handle: got", "timestamp", ts)
-			tsc.Timestamp = ts
+			tsc.delay = time.Now().Unix() - int64(ts)
 			if !t.Stop() {
 				select {
 				case <-t.C:
@@ -934,7 +929,7 @@ func (tsc *TimestampContext) Handle() {
 			}
 		case <-t.C:
 			tsc.logger.Debug("delay: resetting timestamp")
-			tsc.Timestamp = 0
+			tsc.delay = 0
 		case <-tsc.stopCh:
 			return
 		}
