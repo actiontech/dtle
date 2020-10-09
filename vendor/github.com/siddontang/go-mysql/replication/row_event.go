@@ -485,7 +485,7 @@ func (e *RowsEvent) decodeValue(data []byte, tp byte, meta uint16) (v interface{
 
 	case MYSQL_TYPE_YEAR:
 		n = 1
-		v = int(data[0]) + 1900
+		v = int64(data[0]) + 1900
 	case MYSQL_TYPE_ENUM:
 		l := meta & 0xFF
 		switch l {

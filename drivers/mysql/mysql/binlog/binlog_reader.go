@@ -227,7 +227,7 @@ func NewMySQLReader(execCtx *common.ExecContext, cfg *common.MySQLDriverConfig, 
 			User:           cfg.ConnectionConfig.User,
 			Password:       cfg.ConnectionConfig.Password,
 			RawModeEnabled: false,
-			UseDecimal:     true,
+			UseDecimal:     true, // my mod: use string instead of Decimal if UseDecimal = true
 
 			MaxReconnectAttempts: 3,
 			HeartbeatPeriod:      3 * time.Second,
@@ -743,6 +743,9 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 			avgRowSize := len(ev.RawData) / len(rowsEvent.Rows)
 
 			for i, row := range rowsEvent.Rows {
+				//for _, col := range row {
+				//	b.logger.Debug("*** column type", "col", col, "type", hclog.Fmt("%T", col))
+				//}
 				b.logger.Trace("a row", "value", row[:mathutil.Min(len(row), g.LONG_LOG_LIMIT)])
 				if dml == common.UpdateDML && i%2 == 1 {
 					// An update has two rows (WHERE+SET)
