@@ -64,6 +64,7 @@ var charsetInfos = []*Charset{
 	{CharsetLatin1, CollationLatin1, make(map[string]*Collation), "Latin1", 1},
 	{CharsetBin, CollationBin, make(map[string]*Collation), "binary", 1},
 	{CharsetGbk, CollationGbk, make(map[string]*Collation), "gbk", 1},
+	{CharsetLatin2, CollationLatin2, make(map[string]*Collation), "Latin2", 1},
 }
 
 // All the names supported collations should be in the following table.
@@ -74,6 +75,7 @@ var supportedCollationNames = map[string]struct{}{
 	CollationLatin1:  {},
 	CollationBin:     {},
 	CollationGbk:     {},
+	CollationLatin2:  {},
 }
 
 // Desc is a charset description.
@@ -161,6 +163,8 @@ func GetCharsetDesc(cs string) (*Desc, error) {
 		return descs[4], nil
 	case CharsetGbk:
 		return descs[5], nil
+	case CharsetLatin2:
+		return descs[6], nil
 	default:
 		return nil, errors.Errorf("Unknown charset %s", cs)
 	}
@@ -214,6 +218,8 @@ const (
 
 	CharsetGbk   = "gbk"
 	CollationGbk = "gbk_bin"
+	CharsetLatin2 = "latin2"
+	CollationLatin2 = "latin2_bin"
 )
 
 var collations = []*Collation{
