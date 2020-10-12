@@ -43,4 +43,12 @@ job "job1" {
       }
     }
   }
+
+  reschedule {
+    # By default, nomad will unlimitedly reschedule a failed task.
+    # We limit it to once per 30min here.
+    attempts = 1
+    interval = "30m"
+    unlimited = false
+  }
 }

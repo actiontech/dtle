@@ -41,6 +41,11 @@
           }
         }]
       }
-    ]
+    ],
+    "Reschedule": {
+      "Attempts": 1,
+      "Interval": 1800000000000,
+      "Unlimited": false
+    }
   }
 }
