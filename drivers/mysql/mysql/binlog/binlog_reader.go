@@ -7,8 +7,6 @@
 package binlog
 
 import (
-	"bytes"
-	gosql "database/sql"
 	"github.com/actiontech/dtle/drivers/mysql/common"
 	"github.com/pkg/errors"
 	"github.com/shirou/gopsutil/mem"
@@ -38,7 +36,6 @@ import (
 
 	"github.com/actiontech/dtle/drivers/mysql/mysql/base"
 	"github.com/actiontech/dtle/drivers/mysql/mysql/mysqlconfig"
-	"github.com/actiontech/dtle/drivers/mysql/mysql/sql"
 	sqle "github.com/actiontech/dtle/drivers/mysql/mysql/sqle/inspector"
 	"github.com/actiontech/dtle/drivers/mysql/mysql/util"
 	hclog "github.com/hashicorp/go-hclog"
@@ -63,8 +60,7 @@ type BinlogReader struct {
 	serverId         uint64
 	execCtx          *common.ExecContext
 	logger           hclog.Logger
-	connectionConfig *mysqlconfig.ConnectionConfig
-	db               *gosql.DB
+
 	relay            dmrelay.Process
 	relayCancelF     context.CancelFunc
 	// for direct streaming
@@ -85,14 +81,8 @@ type BinlogReader struct {
 	currentBinlogEntry *common.BinlogEntry
 	hasBeginQuery      bool
 	entryContext       *common.BinlogEntryContext
-	txCount            int
-	currentFde         string
-	currentQuery       *bytes.Buffer
-	currentSqlB64      *bytes.Buffer
-	appendB64SqlBs     []byte
 	ReMap              map[string]*regexp.Regexp
 
-	wg           sync.WaitGroup
 	shutdown     bool
 	shutdownCh   chan struct{}
 	shutdownLock sync.Mutex
@@ -176,7 +166,6 @@ func NewMySQLReader(execCtx *common.ExecContext, cfg *common.MySQLDriverConfig, 
 		currentCoordinates:      common.BinlogCoordinateTx{},
 		currentCoordinatesMutex: &sync.Mutex{},
 		mysqlContext:            cfg,
-		appendB64SqlBs:          make([]byte, 1024*1024),
 		ReMap:                   make(map[string]*regexp.Regexp),
 		shutdownCh:              make(chan struct{}),
 		tables:                  make(map[string](map[string]*common.TableContext)),
@@ -192,11 +181,6 @@ func NewMySQLReader(execCtx *common.ExecContext, cfg *common.MySQLDriverConfig, 
 				return nil, err
 			}
 		}
-	}
-
-	uri := cfg.ConnectionConfig.GetDBUri()
-	if binlogReader.db, err = sql.CreateDB(uri); err != nil {
-		return nil, err
 	}
 
 	id, err := util.NewIdWorker(2, 3, util.SnsEpoch)
@@ -455,7 +439,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 	span := trace.StartSpan("incremental binlogEvent translation to sql", opentracing.ChildOf(spanContext))
 	span.SetTag("begin to translation", time.Now().Unix())
 	defer span.Finish()
-	if b.currentCoordinates.SmallerThanOrEquals(&b.LastAppliedRowsEventHint) {
+	if b.currentCoordinates.CompareFilePos(&b.LastAppliedRowsEventHint) <= 0 {
 		b.logger.Debug("Skipping handled query", "coordinate", b.currentCoordinates)
 		return nil
 	}
@@ -1322,10 +1306,6 @@ func (b *BinlogReader) Close() error {
 	b.shutdown = true
 	close(b.shutdownCh)
 
-	b.wg.Wait()
-	if err := sql.CloseDB(b.db); err != nil {
-		return err
-	}
 	// Historically there was a:
 	if b.mysqlContext.BinlogRelay {
 		b.binlogReader.Close()

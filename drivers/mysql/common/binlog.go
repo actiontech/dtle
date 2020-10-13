@@ -13,32 +13,20 @@ func (b *BinlogCoordinateTx) GetSid() string {
 	return uuid.UUID(b.SID).String()
 }
 
-// Equals tests equality of this corrdinate and another one.
-func (b *BinlogCoordinateTx) Equals(other *BinlogCoordinateTx) bool {
-	if other == nil {
-		return false
-	}
-	return b.LogFile == other.LogFile && b.LogPos == other.LogPos
-}
-
-// SmallerThan returns true if this coordinate is strictly smaller than the other.
-func (b *BinlogCoordinateTx) SmallerThan(other *BinlogCoordinateTx) bool {
+func (b *BinlogCoordinateTx) CompareFilePos(other *BinlogCoordinateTx) int {
 	if b.LogFile < other.LogFile {
-		return true
+		return -1
+	} else if b.LogFile == other.LogFile {
+		if  b.LogPos < other.LogPos {
+			return -1
+		} else if b.LogPos == other.LogPos {
+			return 0
+		} else {
+			return 1
+		}
+	} else {
+		return 1
 	}
-	if b.LogFile == other.LogFile && b.LogPos < other.LogPos {
-		return true
-	}
-	return false
-}
-
-// SmallerThanOrEquals returns true if this coordinate is the same or equal to the other one.
-// We do NOT compare the type so we can not use b.Equals()
-func (b *BinlogCoordinateTx) SmallerThanOrEquals(other *BinlogCoordinateTx) bool {
-	if b.SmallerThan(other) {
-		return true
-	}
-	return b.LogFile == other.LogFile && b.LogPos == other.LogPos // No Type comparison
 }
 
 func (b *BinlogCoordinateTx) GetGtidForThisTx() string {
