@@ -204,7 +204,7 @@ func (a *Applier) createTableGtidExecutedV4() error {
 	}
 }
 
-func (a *Applier) cleanGtidExecuted(sid uuid.UUID, intervalStr string) error {
+func (a *ApplierIncr) cleanGtidExecuted(sid uuid.UUID, intervalStr string) error {
 	a.logger.Debug("incr. cleanup before WaitForExecution")
 	if !a.mtsManager.WaitForAllCommitted() {
 		return nil // shutdown
