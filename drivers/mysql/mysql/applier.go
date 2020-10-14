@@ -99,6 +99,7 @@ type Applier struct {
 	gtidCh       chan *common.BinlogCoordinateTx
 
 	timestampCtx       *TimestampContext
+	status      string
 
 	memory1     *int64
 	memory2     *int64
@@ -644,7 +645,7 @@ func (a *Applier) subscribeNats() error {
 		a.gtidCh <- nil // coord == nil is a flag for update/upload gtid
 
 		a.mysqlContext.Stage = common.StageSlaveWaitingForWorkersToProcessQueue
-
+		a.status = "FULLCOPY"
 		close(a.rowCopyComplete)
 
 		a.logger.Debug("ack _full_complete")
@@ -661,6 +662,7 @@ func (a *Applier) subscribeNats() error {
 	_, err = a.natsConn.Subscribe(fmt.Sprintf("%s_incr_hete", a.subject), func(m *gonats.Msg) {
 		var binlogEntries common.BinlogEntries
 		t := not.NewTraceMsg(m)
+		a.status = "INCRCOPY"
 		// Extract the span context from the request message.
 		spanContext, err := tracer.Extract(opentracing.Binary, t)
 		if err != nil {
@@ -1334,6 +1336,7 @@ func (a *Applier) Stats() (*common.TaskStatistics, error) {
 			Full: *a.memory1,
 			Incr: *a.memory2,
 		},
+		Status: a.status,
 	}
 	if a.natsConn != nil {
 		taskResUsage.MsgStat = a.natsConn.Statistics

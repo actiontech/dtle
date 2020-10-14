@@ -169,6 +169,31 @@ func (h *taskHandle) run(taskConfig *common.DtleTaskConfig, d *Driver) {
 			}
 		}
 	}()
+//todo
+	/*go func() {
+		duration := 20 * time.Second
+		t := time.NewTimer(0)
+		for {
+			select {
+			case <-h.ctx.Done():
+				return
+			case <-t.C:
+				s, err := h.runner.Stats()
+				if err != nil {
+					// ignore
+				} else {
+					h.stats = s
+					d.eventer.EmitEvent(&drivers.TaskEvent{
+						TaskID:h.taskConfig.ID,
+						TaskName:h.taskConfig.Name,
+						AllocID:h.taskConfig.AllocID,
+						Message:s.Status,
+					})
+				}
+				t.Reset(duration)
+			}
+		}
+	}()*/
 }
 
 
@@ -203,6 +228,7 @@ func (h *taskHandle) emitStats(ru *common.TaskStatistics) {
 
 	metrics.SetGaugeWithLabels([]string{"memory.full_kb_count"}, float32(ru.MemoryStat.Full) / 1024, labels)
 	metrics.SetGaugeWithLabels([]string{"memory.incr_kb_count"}, float32(ru.MemoryStat.Incr) / 1024, labels)
+	metrics.SetGaugeWithLabels([]string{"job status ",ru.Status}, float32(1), labels)
 
 	if ru.TableStats != nil {
 		metrics.SetGaugeWithLabels([]string{"table", "insert"}, float32(ru.TableStats.InsertCount), labels)

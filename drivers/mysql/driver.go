@@ -233,6 +233,7 @@ func (d *Driver) SetupApiServer(logger hclog.Logger) (err error)  {
 	logger.Debug("Begin Setup api server", "addr", d.config.ApiAddr)
 	router := httprouter.New()
 	router.GET("/v1/job/:jobId",route.JobDetailRequest)
+	router.DELETE("/v1/job/:jobId",route.JobDeleteRequest)
 	router.GET("/v1/job/:jobId/:path",route.JobRequest)
 	router.POST("/v1/jobs",route.UpdupJob)
 	router.GET("/v1/jobs",route.JobListRequest)
@@ -447,7 +448,6 @@ func (d *Driver) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHandle, *drive
 		return nil, nil, fmt.Errorf("task with ID %q already started", cfg.ID)
 	}
 	d.logger.Debug("start dtle task 1")
-
 	var dtleTaskConfig common.DtleTaskConfig
 
 	if err := cfg.DecodeDriverConfig(&dtleTaskConfig); err != nil {
