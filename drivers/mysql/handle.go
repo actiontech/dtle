@@ -135,7 +135,7 @@ func (h *taskHandle) run(taskConfig *common.DtleTaskConfig, d *Driver) {
 			go h.runner.Run()
 		} else {
 			h.runner, err = mysql.NewApplier(ctx, driverConfig, d.logger, d.storeManager,
-				d.config.NatsAdvertise, h.waitCh)
+				d.config.NatsAdvertise, h.waitCh,d.eventer, h.taskConfig)
 			if err != nil {
 				h.exitResult.Err = errors.Wrap(err, "NewApplier")
 				return
@@ -169,31 +169,7 @@ func (h *taskHandle) run(taskConfig *common.DtleTaskConfig, d *Driver) {
 			}
 		}
 	}()
-//todo
-	/*go func() {
-		duration := 20 * time.Second
-		t := time.NewTimer(0)
-		for {
-			select {
-			case <-h.ctx.Done():
-				return
-			case <-t.C:
-				s, err := h.runner.Stats()
-				if err != nil {
-					// ignore
-				} else {
-					h.stats = s
-					d.eventer.EmitEvent(&drivers.TaskEvent{
-						TaskID:h.taskConfig.ID,
-						TaskName:h.taskConfig.Name,
-						AllocID:h.taskConfig.AllocID,
-						Message:s.Status,
-					})
-				}
-				t.Reset(duration)
-			}
-		}
-	}()*/
+
 }
 
 
