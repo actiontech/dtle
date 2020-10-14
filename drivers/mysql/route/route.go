@@ -13,7 +13,7 @@ import (
 	"net/http"
 	"strings"
 	"time"
-)
+	)
 
 var logger = hclog.NewNullLogger()
 func SetLogger(theLogger hclog.Logger) {
@@ -114,13 +114,43 @@ func JobRequest(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 		defer resp.Body.Close()
 		body, err := ioutil.ReadAll(resp.Body)
 		fmt.Fprintf(w, string(body))
+	} else if path == "resume" {
+		url := buildUrl("/v1/job/" + jobId + "/resume")
+		resp, err := http.Get(url)
+		if err != nil {
+			w.Write([]byte(err.Error()))
+		}
+		defer resp.Body.Close()
+		body, err := ioutil.ReadAll(resp.Body)
+		fmt.Fprintf(w, string(body))
+	} else if path == "pause" {
+		url := buildUrl("/v1/job/" + jobId + "/pause")
+		resp, err := http.Get(url)
+		if err != nil {
+			w.Write([]byte(err.Error()))
+		}
+		defer resp.Body.Close()
+		body, err := ioutil.ReadAll(resp.Body)
+		fmt.Fprintf(w, string(body))
 	}
 }
-
 func JobDetailRequest(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	jobId := ps.ByName("jobId")
 	url := buildUrl("/v1/job/" + jobId )
 	resp, err := http.Get(url)
+	if err != nil {
+		w.Write([]byte(err.Error()))
+	}
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
+	fmt.Fprintf(w, string(body))
+}
+func JobDeleteRequest(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+	jobId := ps.ByName("jobId")
+	url := buildUrl("/v1/job/" + jobId+"?purge=true")
+	req, _ := http.NewRequest("DELETE", url, nil)
+	client := &http.Client{}
+	resp, err := client.Do(req)
 	if err != nil {
 		w.Write([]byte(err.Error()))
 	}
