@@ -37,11 +37,14 @@ import (
 
 	hclog "github.com/hashicorp/go-hclog"
 	not "github.com/nats-io/not.go"
+	"github.com/hashicorp/nomad/drivers/shared/eventer"
 )
 
 const (
 	cleanupGtidExecutedLimit = 2048
 	pingInterval             = 10 * time.Second
+	jobIncrCopy              = "INCRCOPY"
+	jobFullCopy              = "FULLCOPY"
 )
 const (
 	TaskStateComplete int = iota
@@ -99,14 +102,17 @@ type Applier struct {
 	gtidCh       chan *common.BinlogCoordinateTx
 
 	timestampCtx       *TimestampContext
+	status      string
 
 	memory1     *int64
 	memory2     *int64
+	event       *eventer.Eventer
+	taskConfig  *drivers.TaskConfig
 }
 
 func NewApplier(
 	ctx *common.ExecContext, cfg *common.MySQLDriverConfig, logger hclog.Logger,
-	storeManager *common.StoreManager, natsAddr string, waitCh chan *drivers.ExitResult) (a *Applier, err error) {
+	storeManager *common.StoreManager, natsAddr string, waitCh chan *drivers.ExitResult, event *eventer.Eventer, taskConfig *drivers.TaskConfig) (a *Applier, err error) {
 
 	logger.Info("NewApplier", "job", ctx.Subject)
 
@@ -125,6 +131,8 @@ func NewApplier(
 		gtidCh:          make(chan *common.BinlogCoordinateTx, 4096),
 		memory1:         new(int64),
 		memory2:         new(int64),
+		event:			 event,
+		taskConfig:      taskConfig,
 	}
 
 	a.timestampCtx = NewTimestampContext(a.shutdownCh, a.logger, func() bool {
@@ -537,6 +545,19 @@ func (a *Applier) heterogeneousReplay() {
 		}
 	}
 }
+func (a *Applier) sendEvent(status string) {
+	anno := make(map[string]string)
+	anno["jobstatus"] = status
+	err := a.event.EmitEvent(&drivers.TaskEvent{
+		TaskID:      a.taskConfig.ID,
+		TaskName:    a.taskConfig.Name,
+		AllocID:     a.taskConfig.AllocID,
+		Timestamp:   time.Now(),
+		Message:     status,
+		Annotations: anno,
+	})
+	a.logger.Error("error at sending task event", "err", err)
+}
 
 // initiateStreaming begins treaming of binary log events and registers listeners for such events
 func (a *Applier) subscribeNats() error {
@@ -644,7 +665,10 @@ func (a *Applier) subscribeNats() error {
 		a.gtidCh <- nil // coord == nil is a flag for update/upload gtid
 
 		a.mysqlContext.Stage = common.StageSlaveWaitingForWorkersToProcessQueue
-
+		if a.status != jobFullCopy {
+			a.status = jobFullCopy
+			a.sendEvent(jobFullCopy)
+		}
 		close(a.rowCopyComplete)
 
 		a.logger.Debug("ack _full_complete")
@@ -661,6 +685,10 @@ func (a *Applier) subscribeNats() error {
 	_, err = a.natsConn.Subscribe(fmt.Sprintf("%s_incr_hete", a.subject), func(m *gonats.Msg) {
 		var binlogEntries common.BinlogEntries
 		t := not.NewTraceMsg(m)
+		if a.status != jobIncrCopy {
+			a.status = jobIncrCopy
+			a.sendEvent(jobIncrCopy)
+		}
 		// Extract the span context from the request message.
 		spanContext, err := tracer.Extract(opentracing.Binary, t)
 		if err != nil {
@@ -1334,6 +1362,7 @@ func (a *Applier) Stats() (*common.TaskStatistics, error) {
 			Full: *a.memory1,
 			Incr: *a.memory2,
 		},
+		Status: a.status,
 	}
 	if a.natsConn != nil {
 		taskResUsage.MsgStat = a.natsConn.Statistics
