@@ -147,7 +147,7 @@ func JobDetailRequest(w http.ResponseWriter, r *http.Request, ps httprouter.Para
 }
 func JobDeleteRequest(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	jobId := ps.ByName("jobId")
-	url := buildUrl("/v1/job/" + jobId+"?purge=true")
+	url := buildUrl("/v1/job/" + jobId + "?purge=true")
 	req, _ := http.NewRequest("DELETE", url, nil)
 	client := &http.Client{}
 	resp, err := client.Do(req)

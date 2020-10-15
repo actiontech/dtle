@@ -43,8 +43,8 @@ import (
 const (
 	cleanupGtidExecutedLimit = 2048
 	pingInterval             = 10 * time.Second
-	jobIncrCopy			= "INCRCOPY"
-	jobFullCopy            = "FULLCOPY"
+	jobIncrCopy              = "INCRCOPY"
+	jobFullCopy              = "FULLCOPY"
 )
 const (
 	TaskStateComplete int = iota
@@ -112,7 +112,7 @@ type Applier struct {
 
 func NewApplier(
 	ctx *common.ExecContext, cfg *common.MySQLDriverConfig, logger hclog.Logger,
-	storeManager *common.StoreManager, natsAddr string, waitCh chan *drivers.ExitResult, event *eventer.Eventer, taskConfig *drivers.TaskConfig ) (a *Applier, err error) {
+	storeManager *common.StoreManager, natsAddr string, waitCh chan *drivers.ExitResult, event *eventer.Eventer, taskConfig *drivers.TaskConfig) (a *Applier, err error) {
 
 	logger.Info("NewApplier", "job", ctx.Subject)
 
@@ -545,17 +545,18 @@ func (a *Applier) heterogeneousReplay() {
 		}
 	}
 }
-func (a *Applier)sendEvent(status string){
+func (a *Applier) sendEvent(status string) {
 	anno := make(map[string]string)
-	anno ["jobstatus"] = status
-	a.event.EmitEvent(&drivers.TaskEvent{
-		TaskID:a.taskConfig.ID,
-		TaskName:a.taskConfig.Name,
-		AllocID:a.taskConfig.AllocID,
-		Timestamp:time.Now(),
-		Message:status,
-		Annotations:anno,
+	anno["jobstatus"] = status
+	err := a.event.EmitEvent(&drivers.TaskEvent{
+		TaskID:      a.taskConfig.ID,
+		TaskName:    a.taskConfig.Name,
+		AllocID:     a.taskConfig.AllocID,
+		Timestamp:   time.Now(),
+		Message:     status,
+		Annotations: anno,
 	})
+	a.logger.Error("error at sending task event", "err", err)
 }
 
 // initiateStreaming begins treaming of binary log events and registers listeners for such events
@@ -664,7 +665,7 @@ func (a *Applier) subscribeNats() error {
 		a.gtidCh <- nil // coord == nil is a flag for update/upload gtid
 
 		a.mysqlContext.Stage = common.StageSlaveWaitingForWorkersToProcessQueue
-		if a.status != jobFullCopy{
+		if a.status != jobFullCopy {
 			a.status = jobFullCopy
 			a.sendEvent(jobFullCopy)
 		}
@@ -684,7 +685,7 @@ func (a *Applier) subscribeNats() error {
 	_, err = a.natsConn.Subscribe(fmt.Sprintf("%s_incr_hete", a.subject), func(m *gonats.Msg) {
 		var binlogEntries common.BinlogEntries
 		t := not.NewTraceMsg(m)
-		if a.status != jobIncrCopy{
+		if a.status != jobIncrCopy {
 			a.status = jobIncrCopy
 			a.sendEvent(jobIncrCopy)
 		}
