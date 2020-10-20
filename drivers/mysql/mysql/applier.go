@@ -41,8 +41,8 @@ import (
 const (
 	cleanupGtidExecutedLimit = 2048
 	pingInterval             = 10 * time.Second
-	jobIncrCopy              = "INCRCOPY"
-	jobFullCopy              = "FULLCOPY"
+	jobIncrCopy              = "job_stage_incr"
+	jobFullCopy              = "job_stage_full"
 )
 const (
 	TaskStateComplete int = iota
@@ -268,6 +268,11 @@ func (a *Applier) Run() {
 
 	go a.updateGtidLoop()
 
+	if a.status != jobFullCopy {
+		a.status = jobFullCopy
+		a.sendEvent(jobFullCopy)
+	}
+
 	go a.doFullCopy()
 	go a.ai.Run()
 }
@@ -321,15 +326,14 @@ func (a *Applier) initNatSubClient() (err error) {
 }
 
 func (a *Applier) sendEvent(status string) {
-	anno := make(map[string]string)
-	anno["jobstatus"] = status
 	err := a.event.EmitEvent(&drivers.TaskEvent{
 		TaskID:      a.taskConfig.ID,
 		TaskName:    a.taskConfig.Name,
 		AllocID:     a.taskConfig.AllocID,
 		Timestamp:   time.Now(),
 		Message:     status,
-		Annotations: anno,
+		Annotations: nil,
+		Err:         nil,
 	})
 	a.logger.Error("error at sending task event", "err", err)
 }
@@ -440,9 +444,9 @@ func (a *Applier) subscribeNats() error {
 		a.gtidCh <- nil // coord == nil is a flag for update/upload gtid
 
 		a.mysqlContext.Stage = common.StageSlaveWaitingForWorkersToProcessQueue
-		if a.status != jobFullCopy {
-			a.status = jobFullCopy
-			a.sendEvent(jobFullCopy)
+		if a.status != jobIncrCopy {
+			a.status = jobIncrCopy
+			a.sendEvent(jobIncrCopy)
 		}
 		close(a.rowCopyComplete)
 
@@ -460,10 +464,6 @@ func (a *Applier) subscribeNats() error {
 	_, err = a.natsConn.Subscribe(fmt.Sprintf("%s_incr_hete", a.subject), func(m *gonats.Msg) {
 		var binlogEntries common.BinlogEntries
 		t := not.NewTraceMsg(m)
-		if a.status != jobIncrCopy {
-			a.status = jobIncrCopy
-			a.sendEvent(jobIncrCopy)
-		}
 		// Extract the span context from the request message.
 		spanContext, err := tracer.Extract(opentracing.Binary, t)
 		if err != nil {
