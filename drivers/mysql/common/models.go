@@ -69,7 +69,6 @@ type TaskStatistics struct {
 	MsgStat            gonats.Statistics
 	BufferStat         BufferStat
 	Stage              string
-	Status             string
 	Timestamp          int64
 	MemoryStat         MemoryStat
 }

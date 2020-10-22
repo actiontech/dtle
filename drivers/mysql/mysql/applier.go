@@ -88,11 +88,11 @@ type Applier struct {
 	storeManager *common.StoreManager
 	gtidCh       chan *common.BinlogCoordinateTx
 
-	status      string
-	memory1     *int64
-	memory2     *int64
-	event       *eventer.Eventer
-	taskConfig  *drivers.TaskConfig
+	stage      string
+	memory1    *int64
+	memory2    *int64
+	event      *eventer.Eventer
+	taskConfig *drivers.TaskConfig
 }
 
 func NewApplier(
@@ -268,8 +268,8 @@ func (a *Applier) Run() {
 
 	go a.updateGtidLoop()
 
-	if a.status != jobFullCopy {
-		a.status = jobFullCopy
+	if a.stage != jobFullCopy {
+		a.stage = jobFullCopy
 		a.sendEvent(jobFullCopy)
 	}
 
@@ -444,8 +444,8 @@ func (a *Applier) subscribeNats() error {
 		a.gtidCh <- nil // coord == nil is a flag for update/upload gtid
 
 		a.mysqlContext.Stage = common.StageSlaveWaitingForWorkersToProcessQueue
-		if a.status != jobIncrCopy {
-			a.status = jobIncrCopy
+		if a.stage != jobIncrCopy {
+			a.stage = jobIncrCopy
 			a.sendEvent(jobIncrCopy)
 		}
 		close(a.rowCopyComplete)
@@ -892,7 +892,6 @@ func (a *Applier) Stats() (*common.TaskStatistics, error) {
 			Full: *a.memory1,
 			Incr: *a.memory2,
 		},
-		Status: a.status,
 	}
 	if a.natsConn != nil {
 		taskResUsage.MsgStat = a.natsConn.Statistics
