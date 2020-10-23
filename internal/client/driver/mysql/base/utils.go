@@ -11,18 +11,15 @@ import (
 	gosql "database/sql"
 	"fmt"
 	"regexp"
-	"strconv"
 	"strings"
 	"time"
 
 	sqle "github.com/actiontech/dtle/internal/client/driver/mysql/sqle/inspector"
-	"github.com/actiontech/dtle/internal/g"
 	"github.com/pingcap/parser/ast"
 	parsermysql "github.com/pingcap/parser/mysql"
 
 	"database/sql"
 
-	"github.com/satori/go.uuid"
 	gomysql "github.com/siddontang/go-mysql/mysql"
 	"github.com/siddontang/go/hack"
 
@@ -141,81 +138,6 @@ func ShowCreateView(db *gosql.DB, databaseName, tableName string, dropTableIfExi
 		statement = fmt.Sprintf("%s;DROP TABLE IF EXISTS `%s`", statement, tableName)
 	}
 	return fmt.Sprintf("%s;%s", statement, createTableStatement), err
-}
-
-// Interval is [start, stop), but the GTID string's format is [n] or [n1-n2], closed interval
-func parseInterval(str string) (i gomysql.Interval, err error) {
-	p := strings.Split(str, "-")
-	switch len(p) {
-	case 1:
-		i.Start, err = strconv.ParseInt(p[0], 10, 64)
-		i.Stop = i.Start + 1
-	case 2:
-		i.Start, err = strconv.ParseInt(p[0], 10, 64)
-		i.Stop, err = strconv.ParseInt(p[1], 10, 64)
-		i.Stop = i.Stop + 1
-	default:
-		err = fmt.Errorf("invalid interval format, must n[-n]")
-	}
-
-	if err != nil {
-		return
-	}
-
-	if i.Stop <= i.Start {
-		err = fmt.Errorf("invalid interval format, must n[-n] and the end must >= start")
-	}
-
-	return
-}
-
-// return: normalized GtidSet
-func SelectAllGtidExecuted(db usql.QueryAble, jid uuid.UUID) (gtidSet GtidSet, err error) {
-	query := fmt.Sprintf(`SELECT source_uuid,interval_gtid FROM %v.%v where job_uuid=?`,
-		g.DtleSchemaName, g.GtidExecutedTableV3)
-
-	rows, err := db.Query(query, jid.Bytes())
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	gtidSet = make(GtidSet)
-
-	for rows.Next() {
-		var sidUUID uuid.UUID
-		var interval string
-		err = rows.Scan(&sidUUID, &interval)
-
-		if err != nil {
-			return nil, err
-		}
-
-		item, ok := gtidSet[sidUUID]
-		if !ok {
-			item = &GtidExecutedItem{
-				NRow:      0,
-				Intervals: nil,
-			}
-			gtidSet[sidUUID] = item
-		}
-		item.NRow += 1
-		sep := strings.Split(interval, ":")
-		// Handle interval
-		for i := 0; i < len(sep); i++ {
-			if in, err := parseInterval(sep[i]); err != nil {
-				return nil, err
-			} else {
-				item.Intervals = append(item.Intervals, in)
-			}
-		}
-	}
-
-	for sid, item := range gtidSet {
-		gtidSet[sid].Intervals = item.Intervals.Normalize()
-	}
-
-	return gtidSet, err
 }
 
 func StringInterval(intervals gomysql.IntervalSlice) string {
