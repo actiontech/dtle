@@ -340,7 +340,9 @@ func (a *Applier) sendEvent(status string) {
 		Annotations: nil,
 		Err:         nil,
 	})
-	a.logger.Error("error at sending task event", "err", err)
+	if err != nil {
+		a.logger.Error("error at sending task event", "err", err)
+	}
 }
 
 // initiateStreaming begins treaming of binary log events and registers listeners for such events

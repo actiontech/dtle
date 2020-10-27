@@ -685,16 +685,16 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 		b.LastAppliedRowsEventHint = b.currentCoordinates
 	default:
 		if rowsEvent, ok := ev.Event.(*replication.RowsEvent); ok {
+			schemaName := string(rowsEvent.Table.Schema)
+			tableName := string(rowsEvent.Table.Table)
+
 			dml := common.ToEventDML(ev.Header.EventType)
 			skip, table := b.skipRowEvent(rowsEvent, dml)
 			if skip {
-				b.logger.Debug("skip rowsEvent", "schema", rowsEvent.Table.Schema, "table", rowsEvent.Table.Table,
+				b.logger.Debug("skip rowsEvent", "schema", schemaName, "table", tableName,
 					"gno", b.currentCoordinates.GNO)
 				return nil
 			}
-
-			schemaName := string(rowsEvent.Table.Schema)
-			tableName := string(rowsEvent.Table.Table)
 
 			if b.sqlFilter.NoDML ||
 				(b.sqlFilter.NoDMLDelete && dml == common.DeleteDML) ||
