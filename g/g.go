@@ -20,6 +20,7 @@ const (
 	GtidExecutedTablePrefix     string = "gtid_executed_"
 	GtidExecutedTableV2         string = "gtid_executed_v2"
 	GtidExecutedTableV3         string = "gtid_executed_v3"
+	GtidExecutedTableV3a        string = "gtid_executed_v3a"
 	GtidExecutedTableV4         string = "gtid_executed_v4"
 
 	JobNameLenLimit = 64

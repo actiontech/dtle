@@ -148,7 +148,36 @@ func (a *GtidExecutedCreater) migrateGtidExecutedV3toV4() (err error) {
 
 	return nil
 }
+func (a *GtidExecutedCreater) migrateGtidExecutedV3atoV4() (err error) {
+	a.logger.Info(`migrateGtidExecutedV3atoV4 starting`)
 
+	var query string
+
+	logErr := func(query string, err error) {
+		a.logger.Error(`migrateGtidExecutedV3atoV4 failed. manual intervention might be required.`,
+			"query", query, "err", err)
+	}
+
+	_, err = a.db.Exec(createTableGtidExecutedV4Query)
+	if err != nil {
+		logErr(query, err)
+		return err
+	}
+
+	_, err = a.db.Exec(fmt.Sprintf("insert into %v.%v (select hex(job_uuid), source_uuid, gtid, gtid_set from %v.%v)",
+		g.DtleSchemaName, g.GtidExecutedTableV4, g.DtleSchemaName, g.GtidExecutedTableV3a))
+
+	query = fmt.Sprintf("drop table %v.%v", g.DtleSchemaName, g.GtidExecutedTableV3a)
+	_, err = a.db.Exec(query)
+	if err != nil {
+		logErr(query, err)
+		return err
+	}
+
+	a.logger.Info(`migrateGtidExecutedV3atoV4 done`)
+
+	return nil
+}
 type GtidExecutedCreater struct {
 	db *gosql.DB
 	logger hclog.Logger
@@ -192,6 +221,12 @@ func (a *GtidExecutedCreater) createTableGtidExecutedV4() error {
 			return nil
 		case g.GtidExecutedTableV3:
 			err = a.migrateGtidExecutedV3toV4()
+			if err != nil {
+				return err
+			}
+			return nil
+		case g.GtidExecutedTableV3a:
+			err = a.migrateGtidExecutedV3atoV4()
 			if err != nil {
 				return err
 			}
