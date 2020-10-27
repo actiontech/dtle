@@ -7,6 +7,7 @@ import (
 	"github.com/actiontech/dtle/drivers/mysql/mysql/base"
 	"github.com/actiontech/dtle/drivers/mysql/mysql/sql"
 	"github.com/actiontech/dtle/g"
+	"github.com/hashicorp/go-hclog"
 	"github.com/satori/go.uuid"
 	mysql "github.com/siddontang/go-mysql/mysql"
 	"strconv"
@@ -22,7 +23,7 @@ gtid_set longtext NULL COMMENT 'Meanful when gtid=0. Summary of all GTIDs',
 primary key (job_name, source_uuid, gtid))`,
 	g.DtleSchemaName, g.GtidExecutedTableV4, g.JobNameLenLimit)
 
-func (a *Applier) migrateGtidExecutedV2toV3() error {
+func (a *GtidExecutedCreater) migrateGtidExecutedV2toV3() error {
 	a.logger.Info(`migrateGtidExecutedV2toV3 starting`)
 
 	var err error
@@ -61,7 +62,7 @@ func (a *Applier) migrateGtidExecutedV2toV3() error {
 
 	return nil
 }
-func (a *Applier) migrateGtidExecutedV3toV4() (err error) {
+func (a *GtidExecutedCreater) migrateGtidExecutedV3toV4() (err error) {
 	a.logger.Info(`migrateGtidExecutedV3toV4 starting`)
 
 	var query string
@@ -148,7 +149,12 @@ func (a *Applier) migrateGtidExecutedV3toV4() (err error) {
 	return nil
 }
 
-func (a *Applier) createTableGtidExecutedV4() error {
+type GtidExecutedCreater struct {
+	db *gosql.DB
+	logger hclog.Logger
+}
+
+func (a *GtidExecutedCreater) createTableGtidExecutedV4() error {
 	query := fmt.Sprintf(`
 			CREATE DATABASE IF NOT EXISTS %v;
 		`, g.DtleSchemaName)

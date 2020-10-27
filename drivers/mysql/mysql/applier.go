@@ -34,8 +34,8 @@ import (
 	"github.com/actiontech/dtle/g"
 
 	hclog "github.com/hashicorp/go-hclog"
-	not "github.com/nats-io/not.go"
 	"github.com/hashicorp/nomad/drivers/shared/eventer"
+	not "github.com/nats-io/not.go"
 )
 
 const (
@@ -274,7 +274,12 @@ func (a *Applier) Run() {
 	}
 
 	go a.doFullCopy()
-	go a.ai.Run()
+	go func() {
+		err := a.ai.Run()
+		if err != nil {
+			a.onError(TaskStateDead, err)
+		}
+	}()
 }
 
 func (a *Applier) doFullCopy() {
@@ -601,28 +606,6 @@ func (a *Applier) initDBConnections() (err error) {
 	} else {
 		a.logger.Info("got timezone", "timezone", timezone)
 	}
-
-	if err := a.createTableGtidExecutedV4(); err != nil {
-		return err
-	}
-	a.logger.Debug("after createTableGtidExecutedV4")
-
-	for i := range a.dbs {
-		a.dbs[i].PsDeleteExecutedGtid, err = a.dbs[i].Db.PrepareContext(context.Background(),
-			fmt.Sprintf("delete from %v.%v where job_name = ? and source_uuid = ?",
-				g.DtleSchemaName, g.GtidExecutedTableV4))
-		if err != nil {
-			return err
-		}
-		a.dbs[i].PsInsertExecutedGtid, err = a.dbs[i].Db.PrepareContext(context.Background(),
-			fmt.Sprintf("replace into %v.%v (job_name,source_uuid,gtid,gtid_set) values (?, ?, ?, null)",
-				g.DtleSchemaName, g.GtidExecutedTableV4))
-		if err != nil {
-			return err
-		}
-
-	}
-	a.logger.Debug("after prepare stmt for gtid_executed table")
 
 	a.logger.Info("Initiated", "mysql", a.mysqlContext.ConnectionConfig.GetAddr(), "version", a.MySQLVersion)
 	return nil

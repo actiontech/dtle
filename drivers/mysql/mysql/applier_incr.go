@@ -54,7 +54,6 @@ type ApplierIncr struct {
 func NewApplierIncr(subject string, mysqlContext *common.MySQLDriverConfig,
 	logger hclog.Logger, gtidSet *gomysql.MysqlGTIDSet, memory2 *int64,
 	db *gosql.DB, dbs []*sql.Conn, shutdownCh chan struct{}) (*ApplierIncr, error) {
-	var err error
 
 	a := &ApplierIncr{
 		logger:                logger,
@@ -71,11 +70,6 @@ func NewApplierIncr(subject string, mysqlContext *common.MySQLDriverConfig,
 		tableItems:            make(mapSchemaTableItems),
 	}
 
-	a.gtidItemMap, err = SelectAllGtidExecuted(a.db, a.subject, a.gtidSet)
-	if err != nil {
-		return nil, err
-	}
-
 	a.timestampCtx = NewTimestampContext(a.shutdownCh, a.logger, func() bool {
 		return len(a.applyDataEntryQueue) == 0 && len(a.applyBinlogMtsTxQueue) == 0
 		// TODO need a more reliable method to determine queue.empty.
@@ -87,12 +81,44 @@ func NewApplierIncr(subject string, mysqlContext *common.MySQLDriverConfig,
 	return a, nil
 }
 
-func (a *ApplierIncr) Run() {
+func (a *ApplierIncr) Run() (err error) {
 	a.logger.Debug("beging connetion mysql 4 validate  serverid")
 	if err := a.validateServerUUID(); err != nil {
-		a.OnError(TaskStateDead, err)
-		return
+		return err
 	}
+
+	err = (&GtidExecutedCreater{
+		db:     a.db,
+		logger: a.logger,
+	}).createTableGtidExecutedV4()
+	if err != nil {
+		return err
+	}
+	a.logger.Debug("after createTableGtidExecutedV4")
+
+	for i := range a.dbs {
+		a.dbs[i].PsDeleteExecutedGtid, err = a.dbs[i].Db.PrepareContext(context.Background(),
+			fmt.Sprintf("delete from %v.%v where job_name = ? and source_uuid = ?",
+				g.DtleSchemaName, g.GtidExecutedTableV4))
+		if err != nil {
+			return err
+		}
+		a.dbs[i].PsInsertExecutedGtid, err = a.dbs[i].Db.PrepareContext(context.Background(),
+			fmt.Sprintf("replace into %v.%v (job_name,source_uuid,gtid,gtid_set) values (?, ?, ?, null)",
+				g.DtleSchemaName, g.GtidExecutedTableV4))
+		if err != nil {
+			return err
+		}
+
+	}
+	a.logger.Debug("after prepare stmt for gtid_executed table")
+
+	a.gtidItemMap, err = SelectAllGtidExecuted(a.db, a.subject, a.gtidSet)
+	if err != nil {
+		return err
+	}
+
+	a.logger.Debug("after SelectAllGtidExecuted")
 
 	for i := 0; i < a.mysqlContext.ParallelWorkers; i++ {
 		go a.MtsWorker(i)
@@ -117,6 +143,8 @@ func (a *ApplierIncr) Run() {
 			}
 		}()
 	}
+
+	return nil
 }
 func (a *ApplierIncr) MtsWorker(workerIndex int) {
 	keepLoop := true
