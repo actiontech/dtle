@@ -42,13 +42,13 @@ type ApplierIncr struct {
 	timestampCtx       *TimestampContext
 	TotalDeltaCopied  int64
 
-	gtidSet *gomysql.MysqlGTIDSet
-	gtidItemMap base.GtidItemMap
-	gtidUpdateHook func(*common.BinlogCoordinateTx)
+	gtidSet        *gomysql.MysqlGTIDSet
+	gtidItemMap    base.GtidItemMap
+	GtidUpdateHook func(*common.BinlogCoordinateTx)
 
 	tableItems  mapSchemaTableItems
 
-	onError func(int, error)
+	OnError func(int, error)
 }
 
 func NewApplierIncr(subject string, mysqlContext *common.MySQLDriverConfig,
@@ -90,7 +90,7 @@ func NewApplierIncr(subject string, mysqlContext *common.MySQLDriverConfig,
 func (a *ApplierIncr) Run() {
 	a.logger.Debug("beging connetion mysql 4 validate  serverid")
 	if err := a.validateServerUUID(); err != nil {
-		a.onError(TaskStateDead, err)
+		a.OnError(TaskStateDead, err)
 		return
 	}
 
@@ -128,7 +128,7 @@ func (a *ApplierIncr) MtsWorker(workerIndex int) {
 		case entryContext := <-a.applyBinlogMtsTxQueue:
 			logger.Debug("a binlogEntry MTS dequeue", "gno", entryContext.Entry.Coordinates.GNO)
 			if err := a.ApplyBinlogEvent(nil, workerIndex, entryContext); err != nil {
-				a.onError(TaskStateDead, err) // TODO coordinate with other goroutine
+				a.OnError(TaskStateDead, err) // TODO coordinate with other goroutine
 				keepLoop = false
 			} else {
 				// do nothing
@@ -196,7 +196,7 @@ func (a *ApplierIncr) heterogeneousReplay() {
 			if gtidSetItem.NRow >= cleanupGtidExecutedLimit {
 				err = a.cleanGtidExecuted(binlogEntry.Coordinates.SID, base.StringInterval(intervals))
 				if err != nil {
-					a.onError(TaskStateDead, err)
+					a.OnError(TaskStateDead, err)
 					return
 				}
 				gtidSetItem.NRow = 1
@@ -207,11 +207,11 @@ func (a *ApplierIncr) heterogeneousReplay() {
 				// MySQL 5.6: non mts
 				err := a.setTableItemForBinlogEntry(entryCtx)
 				if err != nil {
-					a.onError(TaskStateDead, err)
+					a.OnError(TaskStateDead, err)
 					return
 				}
 				if err := a.ApplyBinlogEvent(ctx, 0, entryCtx); err != nil {
-					a.onError(TaskStateDead, err)
+					a.OnError(TaskStateDead, err)
 					return
 				}
 			} else {
@@ -262,7 +262,7 @@ func (a *ApplierIncr) heterogeneousReplay() {
 				a.logger.Debug("a binlogEntry MTS enqueue.", "gno", binlogEntry.Coordinates.GNO)
 				err = a.setTableItemForBinlogEntry(entryCtx)
 				if err != nil {
-					a.onError(TaskStateDead, err)
+					a.OnError(TaskStateDead, err)
 					return
 				}
 				entryCtx.SpanContext = span.Context()
@@ -388,10 +388,10 @@ func (a *ApplierIncr) ApplyBinlogEvent(ctx context.Context, workerIdx int, binlo
 	defer func() {
 		span.SetTag("begin commit sql ", time.Now().UnixNano()/1e6)
 		if err := tx.Commit(); err != nil {
-			a.onError(TaskStateDead, err)
+			a.OnError(TaskStateDead, err)
 		} else {
 			a.mtsManager.Executed(binlogEntry)
-			a.gtidUpdateHook(&binlogEntry.Coordinates)
+			a.GtidUpdateHook(&binlogEntry.Coordinates)
 		}
 		if a.printTps {
 			atomic.AddUint32(&a.txLastNSeconds, 1)
@@ -559,4 +559,8 @@ func (a *ApplierIncr) validateServerUUID() error {
 		return err
 	}
 	return nil
+}
+
+func (a *ApplierIncr) AddEvent(entryContext *common.BinlogEntryContext) {
+	a.applyDataEntryQueue <- entryContext
 }

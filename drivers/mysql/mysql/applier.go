@@ -246,10 +246,10 @@ func (a *Applier) Run() {
 		a.onError(TaskStateDead, errors.Wrap(err, "NewApplierIncr"))
 		return
 	}
-	a.ai.gtidUpdateHook = func(coord *common.BinlogCoordinateTx) {
+	a.ai.GtidUpdateHook = func(coord *common.BinlogCoordinateTx) {
 		a.gtidCh <- coord
 	}
-	a.ai.onError = a.onError
+	a.ai.OnError = a.onError
 
 	a.logger.Debug("initNatSubClient")
 	if err := a.initNatSubClient(); err != nil {
@@ -514,11 +514,11 @@ func (a *Applier) subscribeNats() error {
 				a.logger.Debug("incr. applyDataEntryQueue enqueue")
 				for _, binlogEntry := range binlogEntries.Entries {
 					atomic.AddInt64(a.memory2, int64(binlogEntry.Size()))
-					a.ai.applyDataEntryQueue <- &common.BinlogEntryContext{
+					a.ai.AddEvent(&common.BinlogEntryContext{
 						Entry:       binlogEntry,
 						SpanContext: replySpan.Context(),
 						TableItems:  nil,
-					}
+					})
 					//a.retrievedGtidSet = ""
 					// It costs quite a lot to maintain the set, and retrievedGtidSet is not
 					// as necessary as executedGtidSet. So I removed it.
