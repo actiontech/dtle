@@ -89,8 +89,8 @@ type BinlogReader struct {
 
 	sqlFilter *SqlFilter
 
-	context *sqle.Context
-	memory  *int64
+	maybeSqleContext *sqle.Context
+	memory           *int64
 }
 
 type SqlFilter struct {
@@ -170,7 +170,7 @@ func NewMySQLReader(execCtx *common.ExecContext, cfg *common.MySQLDriverConfig, 
 		shutdownCh:              make(chan struct{}),
 		tables:                  make(map[string](map[string]*common.TableContext)),
 		sqlFilter:               sqlFilter,
-		context:                 sqleContext,
+		maybeSqleContext:        sqleContext,
 		memory:                  memory,
 	}
 
@@ -522,11 +522,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 
 				skipEvent := false
 
-				b.context.LoadSchemas(nil)
-				if currentSchema != "" {
-					b.context.UseSchema(currentSchema)
-				}
-				b.context.UpdateContext(ddlInfo.ast, "mysql")
+				b.sqleSwitchSchema(currentSchema, ddlInfo.ast)
 
 				if b.sqlFilter.NoDDL {
 					skipEvent = true
@@ -562,7 +558,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 
 					switch realAst := ddlInfo.ast.(type) {
 					case *ast.CreateDatabaseStmt:
-						b.context.LoadTables(ddlInfo.tables[i].Schema, nil)
+						b.sqleAfterCreateSchema(ddlInfo.tables[i].Schema)
 					case *ast.CreateTableStmt:
 						b.logger.Debug("ddl is create table")
 						err := b.updateTableMeta(table, realSchema, tableName)
@@ -1322,7 +1318,12 @@ func (b *BinlogReader) Close() error {
 func (b *BinlogReader) updateTableMeta(table *common.Table, realSchema string, tableName string) error {
 	var err error
 
-	columns, err := base.GetTableColumnsSqle(b.context, realSchema, tableName)
+	if b.maybeSqleContext == nil {
+		b.logger.Debug("ignore updating table meta", "schema", realSchema, "table", tableName)
+		return nil
+	}
+
+	columns, err := base.GetTableColumnsSqle(b.maybeSqleContext, realSchema, tableName)
 	if err != nil {
 		b.logger.Warn("updateTableMeta: cannot get table info after ddl.", "err", err, "realSchema", realSchema, "tableName", tableName)
 		return err
@@ -1479,3 +1480,18 @@ func (b *BinlogReader) GetQueueMem() int64 {
 	}
 }
 
+func (b *BinlogReader) sqleSwitchSchema(currentSchema string, ast ast.Node) {
+	if b.maybeSqleContext != nil {
+		b.maybeSqleContext.LoadSchemas(nil)
+		if currentSchema != "" {
+			b.maybeSqleContext.UseSchema(currentSchema)
+		}
+		b.maybeSqleContext.UpdateContext(ast, "mysql")
+	}
+}
+
+func (b *BinlogReader) sqleAfterCreateSchema(schema string) {
+	if b.maybeSqleContext != nil {
+		b.maybeSqleContext.LoadTables(schema, nil)
+	}
+}
