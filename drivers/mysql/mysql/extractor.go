@@ -151,6 +151,7 @@ func NewExtractor(execCtx *common.ExecContext, cfg *common.MySQLDriverConfig, lo
 func (e *Extractor) Run() {
 	var err error
 
+	e.logger.Debug("consul put ReplChanBufferSize")
 	err = e.storeManager.PutKey(e.subject, "ReplChanBufferSize",
 		[]byte(strconv.Itoa(int(e.mysqlContext.ReplChanBufferSize))))
 	if err != nil {
@@ -158,12 +159,14 @@ func (e *Extractor) Run() {
 		return
 	}
 
+	e.logger.Debug("consul PutNatsWait")
 	err = e.storeManager.PutNatsWait(e.subject)
 	if err != nil {
 		e.onError(TaskStateDead, errors.Wrap(err, "PutNatsWait"))
 		return
 	}
 
+	e.logger.Debug("consul WatchNats")
 	firstNatsCh := make(chan struct{})
 	natsAddrCh, err := e.storeManager.WatchNats(e.subject, e.shutdownCh)
 	if err != nil {
