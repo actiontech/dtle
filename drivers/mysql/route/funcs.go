@@ -1,9 +1,6 @@
 package route
 
 import (
-	crand "crypto/rand"
-	"fmt"
-	"regexp"
 	"runtime"
 	"strconv"
 	"time"
@@ -25,19 +22,6 @@ func RuntimeStats() map[string]string {
 		"goroutines":  strconv.FormatInt(int64(runtime.NumGoroutine()), 10),
 		"cpu_count":   strconv.FormatInt(int64(runtime.NumCPU()), 10),
 	}
-}
-
-// validUUID is used to check if a given string looks like a UUID
-var validUUID = regexp.MustCompile(`(?i)^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$`)
-
-// IsUUID returns true if the given string is a valid UUID.
-func IsUUID(str string) bool {
-	const uuidLen = 36
-	if len(str) != uuidLen {
-		return false
-	}
-
-	return validUUID.MatchString(str)
 }
 
 // boolToPtr returns the pointer to a boolean
@@ -116,19 +100,4 @@ func CopySliceString(s []string) []string {
 		c[i] = v
 	}
 	return c
-}
-
-// GenerateUUID is used to generate a random UUID
-func GenerateUUID() string {
-	buf := make([]byte, 16)
-	if _, err := crand.Read(buf); err != nil {
-		panic(fmt.Errorf("failed to read random bytes: %v", err))
-	}
-
-	return fmt.Sprintf("%08x-%04x-%04x-%04x-%12x",
-		buf[0:4],
-		buf[4:6],
-		buf[6:8],
-		buf[8:10],
-		buf[10:16])
 }

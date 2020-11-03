@@ -1,6 +1,9 @@
 package route
 
-import "time"
+import (
+	uuid "github.com/satori/go.uuid"
+	"time"
+)
 
 const (
 	JobTypeSync = "synchronous"
@@ -26,7 +29,7 @@ type Job struct {
 
 func (j *Job) Canonicalize() {
 	if j.ID == nil {
-		j.ID = StringToPtr(GenerateUUID())
+		j.ID = StringToPtr(uuid.NewV4().String())
 	}
 	if j.Name == nil {
 		j.Name = StringToPtr(*j.ID)
