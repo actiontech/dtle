@@ -213,9 +213,9 @@ func NewMySQLReader(execCtx *common.ExecContext, cfg *common.MySQLDriverConfig, 
 			RawModeEnabled: false,
 			UseDecimal:     true, // my mod: use string instead of Decimal if UseDecimal = true
 
-			MaxReconnectAttempts: 3,
-			HeartbeatPeriod:      3 * time.Second,
-			ReadTimeout:          6 * time.Second,
+			MaxReconnectAttempts: 10,
+			HeartbeatPeriod:      5 * time.Second,
+			ReadTimeout:          10 * time.Second,
 
 			ParseTime: false, // must be false, or gencode will complain.
 		}
