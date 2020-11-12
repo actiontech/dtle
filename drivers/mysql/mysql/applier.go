@@ -440,9 +440,9 @@ func (a *Applier) subscribeNats() error {
 		a.logger.Info("Rows copy complete.", "TotalRowsReplayed", a.TotalRowsReplayed)
 
 		a.logger.Info("got gtid from extractor", "gtid", dumpData.Gtid)
-		a.gtidSet, err = common.DtleParseMysqlGTIDSet(dumpData.Gtid)
+		err = a.gtidSet.Update(dumpData.Gtid) // do not re-assign a.gtidSet (#538)
 		if err != nil {
-			a.onError(TaskStateDead, errors.Wrap(err, "DtleParseMysqlGTIDSet"))
+			a.onError(TaskStateDead, errors.Wrap(err, "gtidSet.Update"))
 			return
 		}
 		a.mysqlContext.Gtid = dumpData.Gtid
