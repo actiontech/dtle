@@ -4,8 +4,6 @@ import (
 	"context"
 	"fmt"
 	"github.com/actiontech/dtle/drivers/mysql/common"
-	"github.com/actiontech/dtle/drivers/mysql/kafka"
-	"github.com/actiontech/dtle/drivers/mysql/mysql"
 	"github.com/armon/go-metrics"
 	"github.com/pkg/errors"
 	"strings"
@@ -99,8 +97,7 @@ func (h *taskHandle) IsRunning() bool {
 	return h.procState == drivers.TaskStateRunning
 }
 
-func (h *taskHandle) run(taskConfig *common.DtleTaskConfig, d *Driver) {
-	var err error
+func (h *taskHandle) run(d *Driver) {
 	h.stateLock.Lock()
 	if h.exitResult == nil {
 		h.exitResult = &drivers.ExitResult{}
@@ -108,44 +105,7 @@ func (h *taskHandle) run(taskConfig *common.DtleTaskConfig, d *Driver) {
 	h.procState = drivers.TaskStateRunning
 	h.stateLock.Unlock()
 
-	// TODO: detect if the taskConfig OOMed
-
-	cfg := h.taskConfig
-	ctx := &common.ExecContext{
-		Subject:    cfg.JobName,
-		StateDir:   d.config.DataDir,
-	}
-
-	taskConfig.SetDefaultForEmpty()
-	driverConfig := &common.MySQLDriverConfig{DtleTaskConfig: *taskConfig}
-
-	switch taskTypeFromString(cfg.TaskGroupName) {
-	case taskTypeSrc:
-		h.runner, err = mysql.NewExtractor(ctx, driverConfig, d.logger, d.storeManager, h.waitCh)
-		if err != nil {
-			h.exitResult.Err = errors.Wrap(err, "NewExtractor")
-			return
-		}
-		go h.runner.Run()
-	case taskTypeDest:
-		if taskConfig.KafkaConfig != nil {
-			d.logger.Debug("found kafka", "KafkaConfig", taskConfig.KafkaConfig)
-			h.runner = kafka.NewKafkaRunner(ctx, taskConfig.KafkaConfig, d.logger,
-				d.storeManager, d.config.NatsAdvertise, h.waitCh)
-			go h.runner.Run()
-		} else {
-			h.runner, err = mysql.NewApplier(ctx, driverConfig, d.logger, d.storeManager,
-				d.config.NatsAdvertise, h.waitCh,d.eventer, h.taskConfig)
-			if err != nil {
-				h.exitResult.Err = errors.Wrap(err, "NewApplier")
-				return
-			}
-			go h.runner.Run()
-		}
-	case taskTypeUnknown:
-		h.exitResult.Err = fmt.Errorf("unknown processor type: %+v", cfg.TaskGroupName)
-		return
-	}
+	go h.runner.Run()
 
 	go func() {
 		duration := time.Duration(d.config.StatsCollectionInterval) * time.Second

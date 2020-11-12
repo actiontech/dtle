@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/actiontech/dtle/drivers/mysql/common"
+	"github.com/actiontech/dtle/drivers/mysql/kafka"
+	"github.com/actiontech/dtle/drivers/mysql/mysql"
 	"github.com/actiontech/dtle/g"
 	"github.com/armon/go-metrics"
 	"github.com/armon/go-metrics/prometheus"
@@ -472,7 +474,40 @@ func (d *Driver) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHandle, *drive
 		return nil, nil, errors.Wrap(err, "SetDriverState")
 	}
 	d.tasks.Set(cfg.ID, h)
-	go h.run(&dtleTaskConfig, d)
+
+	{
+		ctx := &common.ExecContext{
+			Subject:    cfg.JobName,
+			StateDir:   d.config.DataDir,
+		}
+		dtleTaskConfig.SetDefaultForEmpty()
+		driverConfig := &common.MySQLDriverConfig{DtleTaskConfig: dtleTaskConfig}
+
+		switch taskTypeFromString(cfg.TaskGroupName) {
+		case taskTypeSrc:
+			h.runner, err = mysql.NewExtractor(ctx, driverConfig, d.logger, d.storeManager, h.waitCh)
+			if err != nil {
+				return nil, nil, errors.Wrap(err, "NewExtractor")
+			}
+		case taskTypeDest:
+			if driverConfig.KafkaConfig != nil {
+				d.logger.Debug("found kafka", "KafkaConfig", driverConfig.KafkaConfig)
+				h.runner = kafka.NewKafkaRunner(ctx, driverConfig.KafkaConfig, d.logger,
+					d.storeManager, d.config.NatsAdvertise, h.waitCh)
+				go h.runner.Run()
+			} else {
+				h.runner, err = mysql.NewApplier(ctx, driverConfig, d.logger, d.storeManager,
+					d.config.NatsAdvertise, h.waitCh,d.eventer, h.taskConfig)
+				if err != nil {
+					return nil, nil, errors.Wrap(err, "NewApplier")
+				}
+			}
+		case taskTypeUnknown:
+			return nil, nil, fmt.Errorf("unknown processor type: %+v", cfg.TaskGroupName)
+		}
+
+	}
+	go h.run(d)
 
 	return handle, nil, nil
 }
