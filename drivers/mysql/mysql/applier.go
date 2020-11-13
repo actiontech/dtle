@@ -440,10 +440,15 @@ func (a *Applier) subscribeNats() error {
 		a.logger.Info("Rows copy complete.", "TotalRowsReplayed", a.TotalRowsReplayed)
 
 		a.logger.Info("got gtid from extractor", "gtid", dumpData.Gtid)
-		err = a.gtidSet.Update(dumpData.Gtid) // do not re-assign a.gtidSet (#538)
+		// Do not re-assign a.gtidSet (#538). Update it.
+		gs0, err := gomysql.ParseMysqlGTIDSet(dumpData.Gtid)
 		if err != nil {
-			a.onError(TaskStateDead, errors.Wrap(err, "gtidSet.Update"))
+			a.onError(TaskStateDead, errors.Wrap(err, "ParseMysqlGTIDSet"))
 			return
+		}
+		gs := gs0.(*gomysql.MysqlGTIDSet)
+		for _, uuidSet := range gs.Sets {
+			a.gtidSet.AddSet(uuidSet)
 		}
 		a.mysqlContext.Gtid = dumpData.Gtid
 		a.mysqlContext.BinlogFile = dumpData.LogFile
