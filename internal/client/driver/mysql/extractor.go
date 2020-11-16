@@ -200,6 +200,7 @@ func (e *Extractor) Run() {
 			fullCopy = false
 		}
 	} else {
+		e.logger.WithField("gtid", e.mysqlContext.Gtid).Info("mysql.extractor: from gtid")
 		fullCopy = false
 		if e.mysqlContext.BinlogRelay {
 			if e.mysqlContext.BinlogFile == "" {
