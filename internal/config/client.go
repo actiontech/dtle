@@ -162,8 +162,6 @@ type MySQLDriverConfig struct {
 	TotalDeltaCopied         int64
 	TotalRowsCopied          int64
 	TotalRowsReplay          int64
-	SrcBinlogTimestamp          uint32
-	DescBinlogTimestamp         uint32
 
 	Stage                string
 	ApproveHeterogeneous bool
