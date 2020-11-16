@@ -15,11 +15,12 @@ import (
 
 	"github.com/mitchellh/mapstructure"
 
+	"time"
+
 	"github.com/actiontech/dts/api"
 	"github.com/actiontech/dts/internal/client/driver/mysql/sql"
 	"github.com/actiontech/dts/internal/config"
 	"github.com/actiontech/dts/internal/models"
-	"time"
 )
 
 func (s *HTTPServer) JobsRequest(resp http.ResponseWriter, req *http.Request) (interface{}, error) {
@@ -250,13 +251,15 @@ func (s *HTTPServer) jobAllocations(resp http.ResponseWriter, req *http.Request,
 	if out.Allocations == nil {
 		out.Allocations = make([]*models.AllocListStub, 0)
 	}
-	//defaultTimeZone,_:=time.LoadLocation("UTC")
-	loc,_:=time.LoadLocation("Asia/Shanghai")
-	for  _,aa := range out.Allocations{
-		if !aa.TaskStates[aa.Task].FinishedAt.IsZero(){
-			aa.TaskStates[aa.Task].FinishedAt,_=time.ParseInLocation( "2006-01-02 15:04:05",aa.TaskStates[aa.Task].FinishedAt.Add(8*time.Hour).Format("2006-01-02 15:04:05"),loc)
+
+	convertTimeZone := func(t time.Time) (time.Time, error) {
+		return time.ParseInLocation("2006-01-02 15:04:05", t.In(time.Local).Format("2006-01-02 15:04:05"), time.Local)
+	}
+	for _, aa := range out.Allocations {
+		if !aa.TaskStates[aa.Task].FinishedAt.IsZero() {
+			aa.TaskStates[aa.Task].FinishedAt, _ = convertTimeZone(aa.TaskStates[aa.Task].FinishedAt)
 		}
-		aa.TaskStates[aa.Task].StartedAt,_=time.ParseInLocation( "2006-01-02 15:04:05",aa.TaskStates[aa.Task].StartedAt.Add(8*time.Hour).Format("2006-01-02 15:04:05"),loc)   //= aa.TaskStates[aa.Task].StartedAt.In(defaultTimeZone).Format("2006-01-02 15:04:05")
+		aa.TaskStates[aa.Task].StartedAt, _ = convertTimeZone(aa.TaskStates[aa.Task].StartedAt)
 	}
 	return out.Allocations, nil
 }
