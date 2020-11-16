@@ -999,7 +999,7 @@ func (e *Extractor) StreamEvents() error {
 				entryCtx.SpanContext = nil
 				entries.Entries = append(entries.Entries, binlogEntry)
 				entriesSize += entryCtx.OriginalSize
-				if entriesSize >= e.mysqlContext.GroupMaxSize ||
+				if entriesSize >= e.mysqlContext.GroupMaxSize || entriesSize >= common.DefaultBigTX ||
 					int64(len(entries.Entries)) == e.mysqlContext.ReplChanBufferSize {
 					e.logger.Debug("incr. send by GroupLimit.", "entriesSize", entriesSize,
 						"groupMaxSize", e.mysqlContext.GroupMaxSize, "Entries.len", len(entries.Entries))
@@ -1024,16 +1024,12 @@ func (e *Extractor) StreamEvents() error {
 				span.Finish()
 			case <-timer.C:
 				nEntries := len(entries.Entries)
-				if entriesSize > common.DefaultBigTX {
-					err = errors.Errorf("big tx not sent by timeout. please change GroupTimeout.")
-				} else {
-					if nEntries > 0 {
-						e.logger.Debug("incr. send by timeout.", "entriesSize", entriesSize,
-							"timeout", e.mysqlContext.GroupTimeout)
-						err = sendEntries()
-					}
-					timer.Reset(groupTimeoutDuration)
+				if nEntries > 0 {
+					e.logger.Debug("incr. send by timeout.", "entriesSize", entriesSize,
+						"timeout", e.mysqlContext.GroupTimeout)
+					err = sendEntries()
 				}
+				timer.Reset(groupTimeoutDuration)
 			}
 			if err != nil {
 				e.onError(TaskStateDead, err)
