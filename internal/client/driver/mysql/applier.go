@@ -10,6 +10,7 @@ import (
 	gosql "database/sql"
 	"encoding/json"
 	"fmt"
+	"github.com/pkg/errors"
 
 	"github.com/actiontech/dts/internal/client/driver/common"
 
@@ -216,7 +217,7 @@ type Applier struct {
 	currentCoordinates *models.CurrentCoordinates
 	tableItems         mapSchemaTableItems
 
-	rowCopyComplete     chan bool
+	rowCopyComplete     chan struct{}
 	rowCopyCompleteFlag int64
 	// copyRowsQueue should not be buffered; if buffered some non-damaging but
 	//  excessive work happens at the end of the iteration as new copy-jobs arrive befroe realizing the copy is complete
@@ -264,7 +265,7 @@ func NewApplier(ctx *common.ExecContext, cfg *config.MySQLDriverConfig, logger *
 		mysqlContext:          cfg,
 		currentCoordinates:    &models.CurrentCoordinates{},
 		tableItems:            make(mapSchemaTableItems),
-		rowCopyComplete:       make(chan bool, 1),
+		rowCopyComplete:       make(chan struct{}),
 		copyRowsQueue:         make(chan *common.DumpEntry, 24),
 		applyDataEntryQueue:   make(chan *binlog.BinlogEntry, cfg.ReplChanBufferSize*2),
 		applyBinlogMtsTxQueue: make(chan *binlog.BinlogEntry, cfg.ReplChanBufferSize*2),
@@ -361,46 +362,56 @@ func (a *Applier) Run() {
 // This is where the ghost table gets the data. The function fills the data single-threaded.
 // Both event backlog and rowcopy events are polled; the backlog events have precedence.
 func (a *Applier) executeWriteFuncs() {
-	if a.mysqlContext.Gtid == "" {
-		go func() {
-			var stopLoop = false
-			for !stopLoop {
-				select {
-				case copyRows := <-a.copyRowsQueue:
-					if nil != copyRows {
-						//time.Sleep(20 * time.Second) // #348 stub
-						if err := a.ApplyEventQueries(a.db, copyRows); err != nil {
-							a.onError(TaskStateDead, err)
-						}
+	go func() {
+		var stopLoop = false
+		for !stopLoop {
+			t10 := time.NewTimer(10 * time.Second)
+
+			select {
+			case copyRows := <-a.copyRowsQueue:
+				if nil != copyRows {
+					//time.Sleep(20 * time.Second) // #348 stub
+					if err := a.ApplyEventQueries(a.db, copyRows); err != nil {
+						a.onError(TaskStateDead, err)
 					}
-					if atomic.LoadInt64(&a.nDumpEntry) < 0 {
-						a.onError(TaskStateDead, fmt.Errorf("DTLE_BUG"))
-					} else {
-						atomic.AddInt64(&a.nDumpEntry, -1)
-					}
-				case <-a.rowCopyComplete:
-					stopLoop = true
-				case <-a.shutdownCh:
-					stopLoop = true
-				case <-time.After(10 * time.Second):
-					a.logger.Debugf("mysql.applier: no copyRows for 10s.")
 				}
+				if atomic.LoadInt64(&a.nDumpEntry) <= 0 {
+					err := fmt.Errorf("DTLE_BUG a.nDumpEntry <= 0")
+					a.logger.Error(err.Error())
+					a.onError(TaskStateDead, err)
+				} else {
+					atomic.AddInt64(&a.nDumpEntry, -1)
+					a.logger.WithField("nDumpEntry", a.nDumpEntry).Debug("ApplyEventQueries. after")
+				}
+			case <-a.rowCopyComplete:
+				stopLoop = true
+			case <-a.shutdownCh:
+				stopLoop = true
+			case <-t10.C:
+				a.logger.Debugf("mysql.applier: no copyRows for 10s.")
 			}
-		}()
-	}
+			t10.Stop()
+		}
+	}()
 
 	if a.mysqlContext.Gtid == "" { // full copy
 		a.logger.Printf("mysql.applier: Operating until row copy is complete")
 		a.mysqlContext.Stage = models.StageSlaveWaitingForWorkersToProcessQueue
 		for {
 			if atomic.LoadInt64(&a.rowCopyCompleteFlag) == 1 && a.mysqlContext.TotalRowsCopied == a.mysqlContext.TotalRowsReplay {
-				a.rowCopyComplete <- true
+				close(a.rowCopyComplete)
 				a.logger.Printf("mysql.applier: Rows copy complete.number of rows:%d", a.mysqlContext.TotalRowsReplay)
 				a.mysqlContext.Gtid = a.currentCoordinates.RetrievedGtidSet
 				var err error
-				a.gtidSet, err = common.DtleParseMysqlGTIDSet(a.mysqlContext.Gtid)
+				a.logger.WithField("gtid", a.mysqlContext.Gtid).Info("parse full_complete gtid")
+				gs0, err := gomysql.ParseMysqlGTIDSet(a.mysqlContext.Gtid)
 				if err != nil {
-					a.onError(TaskStateDead, err)
+					a.onError(TaskStateDead, errors.Wrap(err, "ParseMysqlGTIDSet"))
+					return
+				}
+				gs := gs0.(*gomysql.MysqlGTIDSet)
+				for _, uuidSet := range gs.Sets {
+					a.gtidSet.AddSet(uuidSet)
 				}
 				a.mysqlContext.BinlogFile = a.currentCoordinates.File
 				a.mysqlContext.BinlogPos = a.currentCoordinates.Position
@@ -616,6 +627,15 @@ func (a *Applier) initiateStreaming() error {
 	tracer := opentracing.GlobalTracer()
 	_, err := a.natsConn.Subscribe(fmt.Sprintf("%s_full", a.subject), func(m *gonats.Msg) {
 		a.logger.Debugf("mysql.applier: full. recv a msg. copyRowsQueue: %v", len(a.copyRowsQueue))
+
+		if atomic.LoadInt64(&a.rowCopyCompleteFlag) == 1 {
+			if err := a.natsConn.Publish(m.Reply, nil); err != nil {
+				a.onError(TaskStateDead, err)
+			}
+			a.logger.Debugf("mysql.applier. full. after publish nats reply. (ignored)")
+			return
+		}
+
 		t := not.NewTraceMsg(m)
 		// Extract the span context from the request message.
 		sc, err := tracer.Extract(opentracing.Binary, t)
@@ -636,7 +656,7 @@ func (a *Applier) initiateStreaming() error {
 		atomic.AddInt64(&a.nDumpEntry, 1) // this must be increased before enqueuing
 		select {
 		case a.copyRowsQueue <- dumpData:
-			a.logger.Debugf("mysql.applier: full. enqueue")
+			a.logger.WithField("nDumpEntry", a.nDumpEntry).Debugf("mysql.applier: full. enqueue")
 			timer.Stop()
 			a.mysqlContext.Stage = models.StageSlaveWaitingForWorkersToProcessQueue
 			if err := a.natsConn.Publish(m.Reply, nil); err != nil {
@@ -647,7 +667,7 @@ func (a *Applier) initiateStreaming() error {
 		case <-timer.C:
 			atomic.AddInt64(&a.nDumpEntry, -1)
 
-			a.logger.Debugf("mysql.applier. full. discarding entries")
+			a.logger.WithField("nDumpEntry", a.nDumpEntry).Debugf("mysql.applier. full. discarding entries")
 			a.mysqlContext.Stage = models.StageSlaveWaitingForWorkersToProcessQueue
 		}
 	})
@@ -656,6 +676,14 @@ func (a *Applier) initiateStreaming() error {
 	}*/
 
 	_, err = a.natsConn.Subscribe(fmt.Sprintf("%s_full_complete", a.subject), func(m *gonats.Msg) {
+		if atomic.LoadInt64(&a.rowCopyCompleteFlag) == 1 {
+			// already full complete. Maybe src task restart.
+			if err := a.natsConn.Publish(m.Reply, nil); err != nil {
+				a.onError(TaskStateDead, err)
+			}
+			return
+		}
+
 		dumpData := &DumpStatResult{}
 		t := not.NewTraceMsg(m)
 		// Extract the span context from the request message.
@@ -670,6 +698,7 @@ func (a *Applier) initiateStreaming() error {
 		if err := common.Decode(t.Bytes(), dumpData); err != nil {
 			a.onError(TaskStateDead, err)
 		}
+		a.logger.WithField("gtid", dumpData.Gtid).Info("got full_complete gtid")
 		a.currentCoordinates.RetrievedGtidSet = dumpData.Gtid
 		a.currentCoordinates.File = dumpData.LogFile
 		a.currentCoordinates.Position = dumpData.LogPos
