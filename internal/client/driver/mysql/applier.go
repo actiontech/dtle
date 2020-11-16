@@ -241,6 +241,9 @@ type Applier struct {
 	stubFullApplyDelay time.Duration
 
 	gtidSet *gomysql.MysqlGTIDSet
+
+	SrcBinlogTimestamp  int64
+	DescBinlogTimestamp int64
 }
 
 func NewApplier(ctx *common.ExecContext, cfg *config.MySQLDriverConfig, logger *logrus.Logger) (*Applier, error) {
@@ -1169,8 +1172,8 @@ func (a *Applier) ApplyBinlogEvent(ctx context.Context, workerIdx int, binlogEnt
 	// no error
 	a.mysqlContext.Stage = models.StageWaitingForGtidToBeCommitted
 	atomic.AddInt64(&a.mysqlContext.TotalDeltaCopied, 1)
-	a.mysqlContext.SrcBinlogTimestamp =Timestamp
-	a.mysqlContext.DescBinlogTimestamp =uint32(time.Now().Unix())
+	a.SrcBinlogTimestamp = int64(Timestamp)
+	a.DescBinlogTimestamp = time.Now().Unix()
 	return nil
 }
 
@@ -1324,8 +1327,8 @@ func (a *Applier) Stats() (*models.TaskStatistics, error) {
 			totalExpectedSeconds = elapsedRowCopySeconds * float64(deltaEstimate) / float64(totalDeltaCopied)
 		}
 		etaSeconds = totalExpectedSeconds - elapsedRowCopySeconds
-		if(a.mysqlContext.SrcBinlogTimestamp !=0 && a.mysqlContext.DescBinlogTimestamp!=0){
-			delayTime  =int64(a.mysqlContext.DescBinlogTimestamp - a.mysqlContext.SrcBinlogTimestamp )
+		if a.SrcBinlogTimestamp != 0 && a.DescBinlogTimestamp != 0 {
+			delayTime = a.DescBinlogTimestamp - a.SrcBinlogTimestamp
 		}
 		if etaSeconds >= 0 {
 			etaDuration := time.Duration(etaSeconds) * time.Second
@@ -1349,7 +1352,7 @@ func (a *Applier) Stats() (*models.TaskStatistics, error) {
 			ApplierGroupTxQueueSize: 0,
 		},
 		Timestamp: time.Now().UTC().UnixNano(),
-		DelayTime :delayTime,
+		DelayTime: delayTime,
 	}
 	if a.natsConn != nil {
 		taskResUsage.MsgStat = a.natsConn.Statistics

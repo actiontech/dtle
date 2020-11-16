@@ -75,27 +75,27 @@ type DataEvent struct {
 	Timestamp uint32
 }
 
-func NewDataEvent(databaseName, tableName string, dml EventDML, columnCount int,timestamp uint32) DataEvent {
+func NewDataEvent(databaseName, tableName string, dml EventDML, columnCount int, timestamp uint32) DataEvent {
 	event := DataEvent{
 		DatabaseName: databaseName,
 		TableName:    tableName,
 		DML:          dml,
 		ColumnCount:  columnCount,
-		Timestamp:timestamp,
+		Timestamp:    timestamp,
 	}
 	return event
 }
 
-func NewQueryEvent(currentSchema, query string, dml EventDML,ExecutionTime uint32) DataEvent {
+func NewQueryEvent(currentSchema, query string, dml EventDML, timestamp uint32) DataEvent {
 	event := DataEvent{
 		CurrentSchema: currentSchema,
 		Query:         query,
 		DML:           dml,
-		Timestamp:ExecutionTime,
+		Timestamp:     timestamp,
 	}
 	return event
 }
-func NewQueryEventAffectTable(currentSchema, query string, dml EventDML, affectedTable SchemaTable,	ExecutionTime uint32) DataEvent {
+func NewQueryEventAffectTable(currentSchema, query string, dml EventDML, affectedTable SchemaTable,	timestamp uint32) DataEvent {
 
 	event := DataEvent{
 		CurrentSchema: currentSchema,
@@ -103,7 +103,7 @@ func NewQueryEventAffectTable(currentSchema, query string, dml EventDML, affecte
 		TableName:     affectedTable.Table,
 		Query:         query,
 		DML:           dml,
-		Timestamp:ExecutionTime,
+		Timestamp:     timestamp,
 	}
 	return event
 }

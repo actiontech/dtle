@@ -231,7 +231,6 @@ type RowsEvent struct {
 
 	parseTime               bool
 	timestampStringLocation *time.Location
-	Timestamp uint32
 	useDecimal              bool
 	ignoreJSONDecodeErr     bool
 }
