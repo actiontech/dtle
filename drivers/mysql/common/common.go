@@ -24,6 +24,10 @@ var (
 	DefaultBigTX = 1024 * 1024 * 100
 )
 
+var (
+	ErrNoConsul = fmt.Errorf("consul return nil value. check if consul is started or reachable")
+)
+
 type GencodeType interface {
 	Marshal(buf []byte) ([]byte, error)
 	Unmarshal(buf []byte) (uint64, error)

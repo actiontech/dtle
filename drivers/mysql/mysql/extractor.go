@@ -176,7 +176,10 @@ func (e *Extractor) Run() {
 	go func() {
 		for !e.shutdown {
 			kv := <-natsAddrCh
-			if kv != nil {
+			if kv == nil {
+				e.onError(TaskStateDead, errors.Wrap(common.ErrNoConsul, "WatchNats"))
+				return
+			} else {
 				natsAddr := string(kv.Value)
 				if natsAddr != "wait" {
 					e.NatsAddr = natsAddr

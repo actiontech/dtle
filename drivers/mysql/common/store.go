@@ -89,7 +89,6 @@ func (sm *StoreManager) WatchAndPutNats(jobName string, natsAddr string, stopCh 
 	onErrorF func(error)) {
 
 	natsKey := fmt.Sprintf("dtle/%v/NatsAddr", jobName)
-
 	err := sm.consulStore.Put(natsKey, []byte(natsAddr), nil)
 	if err != nil {
 		onErrorF(err)
@@ -105,7 +104,10 @@ func (sm *StoreManager) WatchAndPutNats(jobName string, natsAddr string, stopCh 
 	for loop {
 		select {
 		case kv := <-natsCh:
-			if string(kv.Value) == "wait" {
+			if kv == nil {
+				loop = false
+				onErrorF(errors.Wrap(ErrNoConsul, "WatchAndPutNats"))
+			} else if string(kv.Value) == "wait" {
 				err = sm.consulStore.Put(natsKey, []byte(natsAddr), nil)
 				if err != nil {
 					onErrorF(err)
@@ -154,7 +156,7 @@ func (sm *StoreManager) WaitKv(subject string, key string, stopCh chan struct{})
 	}
 	kv := <-ch
 	if kv == nil {
-		return nil, nil
+		return nil, errors.Wrap(ErrNoConsul, "WaitKv")
 	} else {
 		return kv.Value, nil
 	}
