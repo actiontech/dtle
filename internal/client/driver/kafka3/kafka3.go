@@ -276,11 +276,9 @@ func (kr *KafkaRunner) getOrSetTable(schemaName string, tableName string,
 func (kr *KafkaRunner) initiateStreaming() error {
 	var err error
 
-	hasFull := kr.kafkaConfig.Gtid == ""
 	afterFull := make(chan struct{})
 
-	// TODO We subscribe _full anyway to receive sendSysVarAndSqlMode.
-	//  Use a better method.
+	// We subscribe _full anyway to receive sendSysVarAndSqlMode.
 	_, err = kr.natsConn.Subscribe(fmt.Sprintf("%s_full", kr.subject), func(m *gonats.Msg) {
 		kr.logger.Debugf("kafka: recv a full msg")
 		if err := kr.natsConn.Publish(m.Reply, nil); err != nil {
@@ -330,6 +328,7 @@ func (kr *KafkaRunner) initiateStreaming() error {
 		return err
 	}
 
+	// An incr-only job will send Gtid via _full_complete.
 	_, err = kr.natsConn.Subscribe(fmt.Sprintf("%s_full_complete", kr.subject), func(m *gonats.Msg) {
 		kr.logger.Debugf("kafka: recv a full_complete msg")
 
@@ -337,6 +336,13 @@ func (kr *KafkaRunner) initiateStreaming() error {
 			kr.onError(TaskStateDead, err)
 		}
 		kr.logger.Debugf("kafka: ack a full_complete msg")
+
+		select {
+		case <-afterFull:
+			// repeated _full_complete
+			return
+		default:
+		}
 
 		dumpData := &mysqlDriver.DumpStatResult{}
 		if err := common.Decode(m.Data, dumpData); err != nil {
@@ -347,17 +353,19 @@ func (kr *KafkaRunner) initiateStreaming() error {
 		kr.kafkaConfig.BinlogPos = dumpData.LogPos
 		kr.kafkaConfig.Gtid = dumpData.Gtid
 
-		if hasFull {
-			afterFull <- struct{}{}
+		select {
+		case <-afterFull:
+			// already closed
+		default:
+			close(afterFull)
 		}
 	})
 	if err != nil {
 		return err
 	}
 
-	if hasFull {
-		<-afterFull
-	}
+	<-afterFull
+
 	kr.logger.WithField("gtid", kr.kafkaConfig.Gtid).Infof("kafka. starting incremental replication.")
 
 	kr.gtidSet, err = common.DtleParseMysqlGTIDSet(kr.kafkaConfig.Gtid)
