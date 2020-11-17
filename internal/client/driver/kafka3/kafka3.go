@@ -64,6 +64,9 @@ type KafkaRunner struct {
 	gtidSet *gomysql.MysqlGTIDSet
 
 	chBinlogEntries chan *binlog.BinlogEntries
+
+	srcTimestamp int64
+	dstTimestamp time.Time
 }
 
 func NewKafkaRunner(execCtx *common.ExecContext, cfg *KafkaConfig, logger *logrus.Logger) *KafkaRunner {
@@ -128,7 +131,40 @@ func (kr *KafkaRunner) Shutdown() error {
 }
 
 func (kr *KafkaRunner) Stats() (*models.TaskStatistics, error) {
-	taskResUsage := &models.TaskStatistics{}
+	var delay int64
+
+	if time.Now().After(kr.dstTimestamp.Add(15 * time.Second)) {
+		// Reset delay after 15s inactivity.
+		delay = 0
+	} else {
+		delay = kr.dstTimestamp.Unix() - kr.srcTimestamp
+	}
+
+	taskResUsage := &models.TaskStatistics{
+		CurrentCoordinates: &models.CurrentCoordinates{
+			File:               "",
+			Position:           0,
+			GtidSet:            "",
+			RelayMasterLogFile: "",
+			ReadMasterLogPos:   0,
+			RetrievedGtidSet:   "",
+		},
+		TableStats:         nil,
+		DelayCount:         nil,
+		ProgressPct:        "",
+		ExecMasterRowCount: 0,
+		ExecMasterTxCount:  0,
+		ReadMasterRowCount: 0,
+		ReadMasterTxCount:  0,
+		ETA:                "",
+		Backlog:            "",
+		ThroughputStat:     nil,
+		MsgStat:            gonats.Statistics{},
+		BufferStat:         models.BufferStat{},
+		Stage:              "",
+		Timestamp:          0,
+		DelayTime:          delay,
+	}
 	return taskResUsage, nil
 }
 func (kr *KafkaRunner) initNatSubClient() (err error) {
@@ -852,6 +888,11 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry)
 				return err
 			}
 			kr.logger.Debugf("kafka: sent one msg")
+		}
+
+		if i == len(dmlEvent.Events) - 1 {
+			kr.srcTimestamp = int64(dmlEvent.Events[0].Timestamp)
+			kr.dstTimestamp = time.Now()
 		}
 	}
 
