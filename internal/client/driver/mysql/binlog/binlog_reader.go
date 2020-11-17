@@ -778,10 +778,6 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 					}
 				}
 				if table != nil && table.Table.TableRename != "" {
-					if dmlEvent.Table != nil {
-						dmlEvent.Table.TableName = table.Table.TableName
-						dmlEvent.Table.TableRename = table.Table.TableRename
-					}
 					dmlEvent.TableName = table.Table.TableRename
 					b.logger.Debugf("mysql.reader. dml  table mapping : from %s to %s", dmlEvent.TableName, table.Table.TableRename)
 				}
@@ -792,12 +788,20 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 					if schema.TableSchemaRename == "" {
 						continue
 					}
-					if dmlEvent.Table != nil {
-						dmlEvent.Table.TableSchemaRename = schema.TableSchemaRename
-					}
 					b.logger.Debugf("mysql.reader. dml  schema mapping: from  %s to %s", dmlEvent.DatabaseName, schema.TableSchemaRename)
 					dmlEvent.DatabaseName = schema.TableSchemaRename
 				}
+				if table != nil && !table.DefChangedSent {
+					b.logger.Debug("send table structure", "schema", schemaName, "table", tableName)
+					dmlEvent.Table = table.Table
+					if table.Table == nil {
+						b.logger.Warn("DTLE_BUG binlog_reader: table.Table is nil",
+							"schema", schemaName, "table", tableName)
+					}
+
+					table.DefChangedSent = true
+				}
+
 				if whereTrue {
 					if dmlEvent.WhereColumnValues != nil {
 						b.currentBinlogEntry.OriginalSize += avgRowSize
