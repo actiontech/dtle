@@ -87,6 +87,7 @@ var (
 				"TableSchema": hclspec.NewAttr("TableSchema", "string", false),
 				"TableSchemaRename": hclspec.NewAttr("TableSchemaRename", "string", false),
 				"Where": hclspec.NewAttr("Where", "string", false),
+				"ColumnMapFrom": hclspec.NewAttr("ColumnMapFrom", "list(string)", false),
 			})),
 		})),
 		"ReplicateIgnoreDb" :hclspec.NewBlockList("ReplicateIgnoreDb",  hclspec.NewObject(map[string]*hclspec.Spec{
