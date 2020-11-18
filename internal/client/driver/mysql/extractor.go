@@ -883,7 +883,7 @@ func (e *Extractor) StreamEvents() error {
 					entries.Entries = append(entries.Entries, binlogEntry)
 					entriesSize += binlogEntry.OriginalSize
 
-					if entriesSize >= e.mysqlContext.GroupMaxSize ||
+					if entriesSize >= e.mysqlContext.GroupMaxSize || entriesSize >= common.DefaultBigTX ||
 						int64(len(entries.Entries)) == e.mysqlContext.ReplChanBufferSize {
 						e.logger.Debugf("extractor. incr. send by GroupLimit. entriesSize: %v , groupMaxSize: %v,Entries.len: %v", entriesSize, e.mysqlContext.GroupMaxSize, len(entries.Entries))
 						if entriesSize > common.DefaultBigTX {
@@ -908,10 +908,6 @@ func (e *Extractor) StreamEvents() error {
 					span.Finish()
 				case <-timer.C:
 					nEntries := len(entries.Entries)
-					if entriesSize > common.DefaultBigTX {
-						err = errors.Errorf("big tx not sent by timeout ,please change GroupTimeout . ")
-						break
-					}
 					if nEntries > 0 {
 						e.logger.Debugf("extractor. incr. send by timeout. entriesSize: %v,timeout time: %v", entriesSize, e.mysqlContext.GroupTimeout)
 

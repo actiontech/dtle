@@ -15,7 +15,7 @@ const (
 	// DefaultConnectWait is the default timeout used for the connect operation
 	DefaultConnectWaitSecond = 10
 	DefaultConnectWait = DefaultConnectWaitSecond * time.Second
-	DefaultBigTX = 1024 * 1024 * 100
+	DefaultBigTX = 1024 * 1024 * 80
 )
 
 func init() {
