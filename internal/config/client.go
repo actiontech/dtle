@@ -29,10 +29,11 @@ const (
 	DefaultBindPort  int = 8191
 	DefaultClusterID     = "udup-cluster"
 
-	channelBufferSize = 60
+	channelBufferSize = 180
 	defaultNumRetries = 5
 	defaultChunkSize  = 2000
 	defaultNumWorkers = 1
+	defaultGroupMaxSize = 512 * 1024
 	defaultMsgBytes   = 20 * 1024
 )
 
