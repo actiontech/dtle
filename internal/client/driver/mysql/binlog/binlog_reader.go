@@ -620,7 +620,13 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 						b.logger.Debugf("mysql.reader. ddl schema mapping :from  %s to %s", realSchema, schema.TableSchemaRename)
 						//sql = strings.Replace(sql, realSchema, schema.TableSchemaRename, 1)
 						sql = loadMapping(sql, realSchema, schema.TableSchemaRename, "schemaRename", " ")
-						currentSchema = schema.TableSchemaRename
+						if currentSchema == realSchema {
+							currentSchema = schema.TableSchemaRename
+						}
+						realSchema = schema.TableSchemaRename
+					} else {
+						// schema == nil means it is not explicit in ReplicateDoDb, thus no renaming
+						// or schema.TableSchemaRename == "" means no renaming
 					}
 
 					if table != nil && table.TableRename != "" {
