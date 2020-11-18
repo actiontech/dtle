@@ -909,7 +909,8 @@ func (e *Extractor) StreamEvents() error {
 				case <-timer.C:
 					nEntries := len(entries.Entries)
 					if nEntries > 0 {
-						e.logger.Debugf("extractor. incr. send by timeout. entriesSize: %v,timeout time: %v", entriesSize, e.mysqlContext.GroupTimeout)
+						e.logger.Debugf("extractor. incr. send by timeout. entriesSize: %v, timeout time: %v",
+							entriesSize, e.mysqlContext.GroupTimeout)
 
 						err = sendEntries()
 					}
