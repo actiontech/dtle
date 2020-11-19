@@ -479,7 +479,7 @@ func (a *Applier) subscribeNats() error {
 		// Extract the span context from the request message.
 		spanContext, err := tracer.Extract(opentracing.Binary, t)
 		if err != nil {
-			a.logger.Debug("get data")
+			a.logger.Debug("tracer.Extract error", "err", err)
 		}
 		// Setup a span referring to the span context of the incoming NATS message.
 		replySpan := tracer.StartSpan("nast : dest to get data  ", ext.SpanKindRPCServer, ext.RPCServerOption(spanContext))
@@ -487,6 +487,7 @@ func (a *Applier) subscribeNats() error {
 		defer replySpan.Finish()
 		if err := common.Decode(t.Bytes(), &binlogEntries); err != nil {
 			a.onError(TaskStateDead, err)
+			return
 		}
 
 		nEntries := len(binlogEntries.Entries)
@@ -511,6 +512,7 @@ func (a *Applier) subscribeNats() error {
 				handled = true
 				if err := a.natsConn.Publish(m.Reply, nil); err != nil {
 					a.onError(TaskStateDead, err)
+					return
 				}
 				continue
 			}
@@ -519,6 +521,13 @@ func (a *Applier) subscribeNats() error {
 			binlogEntries.TxLen = 0
 			vacancy := cap(a.ai.applyDataEntryQueue) - len(a.ai.applyDataEntryQueue)
 			a.logger.Debug("incr.", "nEntries", nEntries, "vacancy", vacancy)
+			if nEntries > cap(a.ai.applyDataEntryQueue) {
+				err := fmt.Errorf("DTLE_BUG nEntries is greater than cap(queue) %v %v",
+					nEntries, cap(a.ai.applyDataEntryQueue))
+				a.logger.Error(err.Error())
+				a.onError(TaskStateDead, err)
+				return
+			}
 			if vacancy < nEntries {
 				a.logger.Debug("incr. wait 1s for applyDataEntryQueue")
 				time.Sleep(1 * time.Second) // It will wait an second at the end, but seems no hurt.
@@ -541,6 +550,7 @@ func (a *Applier) subscribeNats() error {
 
 				if err := a.natsConn.Publish(m.Reply, nil); err != nil {
 					a.onError(TaskStateDead, err)
+					return
 				}
 				a.logger.Debug("incr. ack-recv.", "nEntries", nEntries)
 
