@@ -740,6 +740,7 @@ func (a *Applier) initiateStreaming() error {
 			defer replySpan.Finish()
 			if err := common.Decode(t.Bytes(), &binlogEntries); err != nil {
 				a.onError(TaskStateDead, err)
+				return
 			}
 
 			nEntries := len(binlogEntries.Entries)
@@ -763,6 +764,7 @@ func (a *Applier) initiateStreaming() error {
 					handled = true
 					if err := a.natsConn.Publish(m.Reply, nil); err != nil {
 						a.onError(TaskStateDead, err)
+						return
 					}
 					continue
 				}
@@ -771,6 +773,13 @@ func (a *Applier) initiateStreaming() error {
 				binlogEntries.TxLen = 0
 				vacancy := cap(a.applyDataEntryQueue) - len(a.applyDataEntryQueue)
 				a.logger.Debugf("applier. incr. nEntries: %v, vacancy: %v", nEntries, vacancy)
+				if nEntries > cap(a.applyDataEntryQueue) {
+					err := fmt.Errorf("DTLE_BUG nEntries is greater than cap(queue) %v %v",
+						nEntries, cap(a.applyDataEntryQueue))
+					a.logger.Error(err.Error())
+					a.onError(TaskStateDead, err)
+					return
+				}
 				if vacancy < nEntries {
 					a.logger.Debugf("applier. incr. wait 1s for applyDataEntryQueue")
 					time.Sleep(1 * time.Second) // It will wait an second at the end, but seems no hurt.
@@ -785,6 +794,7 @@ func (a *Applier) initiateStreaming() error {
 					a.mysqlContext.Stage = models.StageWaitingForMasterToSendEvent
 					if err := a.natsConn.Publish(m.Reply, nil); err != nil {
 						a.onError(TaskStateDead, err)
+						return
 					}
 					a.logger.Debugf("applier. incr. ack-recv. nEntries: %v", nEntries)
 
