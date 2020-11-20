@@ -244,7 +244,7 @@ type Applier struct {
 	gtidSet *gomysql.MysqlGTIDSet
 
 	SrcBinlogTimestamp  int64
-	DescBinlogTimestamp int64
+	DescBinlogTimestamp time.Time
 }
 
 func NewApplier(ctx *common.ExecContext, cfg *config.MySQLDriverConfig, logger *logrus.Logger) (*Applier, error) {
@@ -1081,7 +1081,7 @@ func (a *Applier) ApplyBinlogEvent(ctx context.Context, workerIdx int, binlogEnt
 	var err error
 	var spanContext opentracing.SpanContext
 	var span opentracing.Span
-	var Timestamp uint32
+	var timestamp uint32
 	if ctx != nil {
 		spanContext = opentracing.SpanFromContext(ctx).Context()
 		span = opentracing.GlobalTracer().StartSpan(" desc single binlogEvent transform to sql ", opentracing.ChildOf(spanContext))
@@ -1199,7 +1199,7 @@ func (a *Applier) ApplyBinlogEvent(ctx context.Context, workerIdx int, binlogEnt
 			}
 			totalDelta += rowDelta
 		}
-		Timestamp = event.Timestamp
+		timestamp = event.Timestamp
 	}
 	span.SetTag("after  transform  binlogEvent to sql  ", time.Now().UnixNano()/1e6)
 	a.logger.Debugf("ApplyBinlogEvent. insert gno: %v", binlogEntry.Coordinates.GNO)
@@ -1211,10 +1211,19 @@ func (a *Applier) ApplyBinlogEvent(ctx context.Context, workerIdx int, binlogEnt
 	// no error
 	a.mysqlContext.Stage = models.StageWaitingForGtidToBeCommitted
 	atomic.AddInt64(&a.mysqlContext.TotalDeltaCopied, 1)
-	a.SrcBinlogTimestamp = int64(Timestamp)
-	a.DescBinlogTimestamp = time.Now().Unix()
+	a.SrcBinlogTimestamp = int64(timestamp)
+	a.DescBinlogTimestamp = time.Now()
+	if timestamp == 0 {
+		// suppress repeated logs
+		if lastWarnTime1.Add(10 * time.Minute).Before(time.Now()) {
+			a.logger.Warn("mysql.applier: timestamp is zero")
+			lastWarnTime1 = time.Now()
+		}
+	}
 	return nil
 }
+
+var lastWarnTime1 = time.Now().Add(-1 * time.Hour) // for binlog timestamp being zero
 
 func (a *Applier) ApplyEventQueries(db *gosql.DB, entry *common.DumpEntry) error {
 	if a.stubFullApplyDelay != 0 {
@@ -1354,7 +1363,7 @@ func (a *Applier) Stats() (*models.TaskStatistics, error) {
 	}
 
 	var etaSeconds float64 = math.MaxFloat64
-	var delayTime int64
+	var delayTime int64 = 0
 	eta = "N/A"
 	if progressPct >= 100.0 {
 		eta = "0s"
@@ -1366,14 +1375,19 @@ func (a *Applier) Stats() (*models.TaskStatistics, error) {
 			totalExpectedSeconds = elapsedRowCopySeconds * float64(deltaEstimate) / float64(totalDeltaCopied)
 		}
 		etaSeconds = totalExpectedSeconds - elapsedRowCopySeconds
-		if a.SrcBinlogTimestamp != 0 && a.DescBinlogTimestamp != 0 {
-			delayTime = a.DescBinlogTimestamp - a.SrcBinlogTimestamp
-		}
 		if etaSeconds >= 0 {
 			etaDuration := time.Duration(etaSeconds) * time.Second
 			eta = base.PrettifyDurationOutput(etaDuration)
 		} else {
 			eta = "0s"
+		}
+	}
+	if a.SrcBinlogTimestamp != 0 {
+		if len(a.applyBinlogMtsTxQueue) == 0 && len(a.applyDataEntryQueue) == 0 &&
+			a.DescBinlogTimestamp.Add(15 * time.Second).Before(time.Now()) {
+			// keep delayTime 0
+		} else {
+			delayTime = a.DescBinlogTimestamp.Unix() - a.SrcBinlogTimestamp
 		}
 	}
 	taskResUsage := models.TaskStatistics{
