@@ -213,9 +213,9 @@ func NewMySQLReader(execCtx *common.ExecContext, cfg *config.MySQLDriverConfig, 
 			RawModeEnabled: false,
 			UseDecimal:     true,
 
-			MaxReconnectAttempts: 3,
+			MaxReconnectAttempts: 10,
 			HeartbeatPeriod:      3 * time.Second,
-			ReadTimeout:          6 * time.Second,
+			ReadTimeout:          12 * time.Second,
 		}
 		binlogReader.binlogSyncer = replication.NewBinlogSyncer(binlogSyncerConfig)
 	}
