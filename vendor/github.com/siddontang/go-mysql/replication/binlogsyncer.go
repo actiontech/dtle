@@ -118,7 +118,7 @@ type BinlogSyncer struct {
 
 	nextPos Position
 
-	gset GTIDSet
+	prevGset, currGset GTIDSet
 
 	running bool
 
@@ -380,7 +380,7 @@ func (b *BinlogSyncer) StartSync(pos Position) (*BinlogStreamer, error) {
 func (b *BinlogSyncer) StartSyncGTID(gset GTIDSet) (*BinlogStreamer, error) {
 	log.Infof("begin to sync binlog from GTID set %s", gset)
 
-	b.gset = gset
+	b.prevGset = gset
 
 	b.m.Lock()
 	defer b.m.Unlock()
@@ -388,6 +388,10 @@ func (b *BinlogSyncer) StartSyncGTID(gset GTIDSet) (*BinlogStreamer, error) {
 	if b.running {
 		return nil, errors.Trace(errSyncRunning)
 	}
+
+	// establishing network connection here and will start getting binlog events from "gset + 1", thus until first
+	// MariadbGTIDEvent/GTIDEvent event is received - we effectively do not have a "current GTID"
+	b.currGset = nil
 
 	if err := b.prepare(); err != nil {
 		return nil, errors.Trace(err)
@@ -573,9 +577,14 @@ func (b *BinlogSyncer) retrySync() error {
 
 	b.parser.Reset()
 
-	if b.gset != nil {
-		log.Infof("begin to re-sync from %s", b.gset.String())
-		if err := b.prepareSyncGTID(b.gset); err != nil {
+	if b.prevGset != nil {
+		msg := fmt.Sprintf("begin to re-sync from %s", b.prevGset.String())
+		if b.currGset != nil {
+			msg = fmt.Sprintf("%v (last read GTID=%v)", msg, b.currGset)
+		}
+		log.Infof(msg)
+
+		if err := b.prepareSyncGTID(b.prevGset); err != nil {
 			return errors.Trace(err)
 		}
 	} else {
@@ -607,6 +616,10 @@ func (b *BinlogSyncer) prepareSyncPos(pos Position) error {
 
 func (b *BinlogSyncer) prepareSyncGTID(gset GTIDSet) error {
 	var err error
+
+	// re establishing network connection here and will start getting binlog events from "gset + 1", thus until first
+	// MariadbGTIDEvent/GTIDEvent event is received - we effectively do not have a "current GTID"
+	b.currGset = nil
 
 	if err = b.prepare(); err != nil {
 		return errors.Trace(err)
@@ -644,7 +657,7 @@ func (b *BinlogSyncer) onStream(s *BinlogStreamer) {
 
 			// we meet connection error, should re-connect again with
 			// last nextPos or nextGTID we got.
-			if len(b.nextPos.Name) == 0 && b.gset == nil {
+			if len(b.nextPos.Name) == 0 && b.prevGset == nil {
 				// we can't get the correct position, close.
 				s.closeWithError(err)
 				return
@@ -732,33 +745,56 @@ func (b *BinlogSyncer) parseEvent(spanContext opentracing.SpanContext, s *Binlog
 		// Some events like FormatDescriptionEvent return 0, ignore.
 		b.nextPos.Pos = e.Header.LogPos
 	}
+
+	getCurrentGtidSet := func() GTIDSet {
+		if b.currGset == nil {
+			return nil
+		}
+		return b.currGset.Clone()
+	}
+
+	advanceCurrentGtidSet := func(gtid string) error {
+		if b.currGset == nil {
+			b.currGset = b.prevGset.Clone()
+		}
+		prev := b.currGset.Clone()
+		err := b.currGset.Update(gtid)
+		if err == nil {
+			// right after reconnect we will see same gtid as we saw before, thus currGset will not get changed
+			if !b.currGset.Equal(prev) {
+				b.prevGset = prev
+			}
+		}
+		return err
+	}
+
 	switch event := e.Event.(type) {
 	case *RotateEvent:
 		b.nextPos.Name = string(event.NextLogName)
 		b.nextPos.Pos = uint32(event.Position)
 		log.Infof("rotate to %s", b.nextPos)
 	case *GTIDEvent:
-		if b.gset == nil {
+		if b.prevGset == nil {
 			break
 		}
 		u, _ := uuid.FromBytes(event.SID)
-		err := b.gset.Update(fmt.Sprintf("%s:%d", u.String(), event.GNO))
+		err := advanceCurrentGtidSet(fmt.Sprintf("%s:%d", u.String(), event.GNO))
 		if err != nil {
 			return errors.Trace(err)
 		}
 	case *MariadbGTIDEvent:
-		if b.gset == nil {
+		if b.prevGset == nil {
 			break
 		}
 		GTID := event.GTID
-		err := b.gset.Update(fmt.Sprintf("%d-%d-%d", GTID.DomainID, GTID.ServerID, GTID.SequenceNumber))
+		err := advanceCurrentGtidSet(fmt.Sprintf("%d-%d-%d", GTID.DomainID, GTID.ServerID, GTID.SequenceNumber))
 		if err != nil {
 			return errors.Trace(err)
 		}
 	case *XIDEvent:
-		event.GSet = b.getGtidSet()
+		event.GSet = getCurrentGtidSet()
 	case *QueryEvent:
-		event.GSet = b.getGtidSet()
+		event.GSet = getCurrentGtidSet()
 	}
 
 	needStop := false
@@ -780,13 +816,6 @@ func (b *BinlogSyncer) parseEvent(spanContext opentracing.SpanContext, s *Binlog
 	}
 
 	return nil
-}
-
-func (b *BinlogSyncer) getGtidSet() GTIDSet {
-	if b.gset == nil {
-		return nil
-	}
-	return b.gset.Clone()
 }
 
 // LastConnectionID returns last connectionID.
