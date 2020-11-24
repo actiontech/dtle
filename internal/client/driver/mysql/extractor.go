@@ -937,15 +937,19 @@ func (e *Extractor) StreamEvents() error {
 	return nil
 }
 
+// original BinlogEntries: collection of `BinlogEntry` for group sending as a natsMsg
+// BinlogEntries with BigTx=true: Considering there is only one BinlogEntry (the big tx),
+//                                split the events of Entries[0] to multiple `BinlogEntries`
+// Problem: len(Entries) might be greater than 1
 func splitEntries(entries binlog.BinlogEntries, entriseSize int) (entris []binlog.BinlogEntries) {
-	clientLen := math.Ceil(float64(entriseSize) / common.DefaultBigTX)
-	clientNum := math.Ceil(float64(len(entries.Entries[0].Events)) / clientLen)
+	clientLen := math.Ceil(float64(entriseSize) / common.DefaultBigTX) // the number of natsMsg to send
+	clientNum := math.Ceil(float64(len(entries.Entries[0].Events)) / clientLen) // the number of events for each natsMsg
 	for i := 1; i <= int(clientLen); i++ {
 		var after int
-		if i == int(clientLen) {
+		if i == int(clientLen) { // last natsMsg
 			after = len(entries.Entries[0].Events)
 		} else {
-			after = i * int(clientNum)
+			after = i * int(clientNum) // stop limit for slicing Entries[0].Events
 		}
 		entry := &binlog.BinlogEntry{
 			OriginalSize: entries.Entries[0].OriginalSize,
@@ -953,10 +957,8 @@ func splitEntries(entries binlog.BinlogEntries, entriseSize int) (entris []binlo
 			Coordinates:  entries.Entries[0].Coordinates,
 			Events:       entries.Entries[0].Events[(i-1)*int(clientNum) : after],
 		}
-		var entrys []*binlog.BinlogEntry
-		entrys = append(entrys, entry)
 		newEntries := binlog.BinlogEntries{
-			Entries: entrys,
+			Entries: []*binlog.BinlogEntry{entry},
 			BigTx:   true,
 			TxNum:   i,
 			TxLen:   int(clientLen),

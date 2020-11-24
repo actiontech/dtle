@@ -749,25 +749,34 @@ func (a *Applier) initiateStreaming() error {
 				if binlogEntries.TxNum == 1 {
 					bigEntries = binlogEntries
 				} else if bigEntries.Entries != nil {
+					// merge events to bigEntries
 					bigEntries.Entries[0].Events = append(bigEntries.Entries[0].Events, binlogEntries.Entries[0].Events...)
 					bigEntries.TxNum = binlogEntries.TxNum
 					a.logger.Debugf("applier:tx get the :%v package  ", binlogEntries.TxNum)
 					binlogEntries.Entries = nil
 				}
 				if bigEntries.TxNum == bigEntries.TxLen {
+					// the last part. bigEntries has been merged. assign it to binlogEntries for processing
 					binlogEntries = bigEntries
 					bigEntries.Entries = nil
 				}
 			}
 			for i := 0; !handled && (i < common.DefaultConnectWaitSecond/2); i++ {
 				if binlogEntries.BigTx && binlogEntries.TxNum < binlogEntries.TxLen {
+					// the non-last part of a big tx has already been merged. ack it.
 					handled = true
 					if err := a.natsConn.Publish(m.Reply, nil); err != nil {
 						a.onError(TaskStateDead, err)
 						return
 					}
-					continue
+					continue // since handled = true, it will break loop and wait for next binlogEntries (part of bigTx)
+				} else {
+					// not bigTx or is the last part (has been merged and assigned to binlogEntries)
+					// will enqueue.
+					// If it cannot be enqueued (queue full) and discarded. extractor will resend.
+					// TODO duplicated events of last part of a big tx?
 				}
+
 				binlogEntries.BigTx = false
 				binlogEntries.TxNum = 0
 				binlogEntries.TxLen = 0
@@ -1441,6 +1450,8 @@ func (a *Applier) updateGtidString() {
 }
 
 func (a *Applier) onError(state int, err error) {
+	a.logger.WithError(err).Error("mysql.applier: onError")
+
 	if a.shutdown {
 		return
 	}
