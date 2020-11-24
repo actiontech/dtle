@@ -540,6 +540,8 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 					if b.skipQueryDDL(sql, realSchema, tableName) {
 						b.logger.Debug("Skip QueryEvent", "currentSchema", currentSchema, "sql", sql,
 							"realSchema", realSchema, "tableName", tableName)
+						// send EmptyEntry when an unrelated DDL to ensure
+						b.sendEmptyEntry(entriesChannel)
 						return nil
 					}
 
@@ -856,6 +858,14 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 func (b *BinlogReader) sendEntry(entriesChannel chan<- *common.BinlogEntryContext) {
 	atomic.AddInt64(b.memory, int64(b.entryContext.Entry.Size()))
 	entriesChannel <- b.entryContext
+}
+
+func (b *BinlogReader) sendEmptyEntry(entriesChannel chan<- *common.BinlogEntryContext) {
+	atomic.AddInt64(b.memory, int64(b.entryContext.Entry.Size()))
+	b.logger.Debug("sendEmptyEntry","entryContext", b.entryContext)
+	emptyEntry := b.entryContext
+	emptyEntry.Entry.Events = []common.DataEvent{}
+	entriesChannel <- emptyEntry
 }
 
 func loadMapping(sql, beforeName, afterName, mappingType, currentSchema string) string {
