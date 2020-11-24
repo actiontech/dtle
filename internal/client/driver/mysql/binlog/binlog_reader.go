@@ -430,13 +430,18 @@ type parseDDLResult struct {
 
 // StreamEvents
 func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel chan<- *BinlogEntry) error {
+	emitBinlogEntry := func() {
+		b.logger.WithField("gno", b.currentBinlogEntry.Coordinates.GNO).Debug("emitBinlogEntry")
+		entriesChannel <- b.currentBinlogEntry
+	}
 	spanContext := ev.SpanContest
 	trace := opentracing.GlobalTracer()
 	span := trace.StartSpan("incremental  binlogEvent translation to  sql", opentracing.ChildOf(spanContext))
 	span.SetTag("begin to translation", time.Now().Unix())
 	defer span.Finish()
 	if b.currentCoordinates.SmallerThanOrEquals(&b.LastAppliedRowsEventHint) {
-		b.logger.Debugf("mysql.reader: Skipping handled query at %+v", b.currentCoordinates)
+		b.logger.WithField("lastPos", b.LastAppliedRowsEventHint.LogPos).Debugf(
+			"mysql.reader: Skipping handled query at %+v", b.currentCoordinates)
 		return nil
 	}
 
@@ -452,6 +457,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 		b.currentCoordinates.LastCommitted = evt.LastCommitted
 		b.currentCoordinates.SeqenceNumber = evt.SequenceNumber
 		b.currentBinlogEntry = NewBinlogEntryAt(b.currentCoordinates)
+		b.logger.WithField("gno", evt.GNO).Trace("mysql.reader: gtid event")
 	case replication.QUERY_EVENT:
 		evt := ev.Event.(*replication.QueryEvent)
 		query := string(evt.Query)
@@ -501,7 +507,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 					b.currentBinlogEntry.Events = append(b.currentBinlogEntry.Events, event)
 					b.currentBinlogEntry.SpanContext = span.Context()
 					b.currentBinlogEntry.OriginalSize += len(ev.RawData)
-					entriesChannel <- b.currentBinlogEntry
+					emitBinlogEntry()
 					b.LastAppliedRowsEventHint = b.currentCoordinates
 					return nil
 				} else {
@@ -660,7 +666,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 				}
 				b.currentBinlogEntry.SpanContext = span.Context()
 				b.currentBinlogEntry.OriginalSize += len(ev.RawData)
-				entriesChannel <- b.currentBinlogEntry
+				emitBinlogEntry()
 				b.LastAppliedRowsEventHint = b.currentCoordinates
 			}
 		}
@@ -670,7 +676,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 		// TODO is the pos the start or the end of a event?
 		// pos if which event should be use? Do we need +1?
 		b.currentBinlogEntry.Coordinates.LogPos = b.currentCoordinates.LogPos
-		entriesChannel <- b.currentBinlogEntry
+		emitBinlogEntry()
 		b.LastAppliedRowsEventHint = b.currentCoordinates
 	default:
 		if rowsEvent, ok := ev.Event.(*replication.RowsEvent); ok {
@@ -925,6 +931,10 @@ func (b *BinlogReader) DataStreamEvents(entriesChannel chan<- *BinlogEntry) erro
 			b.currentCoordinatesMutex.Lock()
 			defer b.currentCoordinatesMutex.Unlock()
 			b.currentCoordinates.LogPos = int64(ev.Header.LogPos)
+			b.logger.WithFields(logrus.Fields{
+				"pos": b.currentCoordinates.LogPos,
+				"type": ev.Header.EventType,
+			}).Trace("update LogPos")
 		}()
 
 		if ev.Header.EventType == replication.ROTATE_EVENT {

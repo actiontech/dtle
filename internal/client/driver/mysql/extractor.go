@@ -875,6 +875,7 @@ func (e *Extractor) StreamEvents() error {
 				var err error
 				select {
 				case binlogEntry := <-e.dataChannel:
+					e.logger.WithField("gno", binlogEntry.Coordinates.GNO).Trace("got an binlogEntry from dataChannel")
 					spanContext := binlogEntry.SpanContext
 					span := opentracing.GlobalTracer().StartSpan("nat send :begin  send binlogEntry from src dtle to desc dtle", opentracing.ChildOf(spanContext))
 					span.SetTag("time", time.Now().Unix())
