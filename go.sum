@@ -118,7 +118,10 @@ github.com/ffffwh/go-mysql v0.0.0-20200925063934-115f316df86d h1:og4nCChRMRGemjt
 github.com/ffffwh/go-mysql v0.0.0-20200925063934-115f316df86d/go.mod h1:Bl4lryU44qtIXEXNbP0k0pD646Nkw/qHn21wfZVGJx4=
 github.com/ffffwh/go-mysql v0.0.0-20201009082833-5fab8e2e5b54 h1:xzCrwhZ9pMb41SpzzIyZ/GZQbiLdGPk9c+pqnjITwP0=
 github.com/ffffwh/go-mysql v0.0.0-20201009082833-5fab8e2e5b54/go.mod h1:Bl4lryU44qtIXEXNbP0k0pD646Nkw/qHn21wfZVGJx4=
+github.com/ffffwh/go-mysql v0.0.0-20201009082833-67dc9957b4da/go.mod h1:+W4RCzesQDI11HvIkaDjS8yM36SpAnGNQ7jmTLn5BnU=
 github.com/ffffwh/go-mysql v0.0.0-20201009082834-5fab8e2e5b54/go.mod h1:Bl4lryU44qtIXEXNbP0k0pD646Nkw/qHn21wfZVGJx4=
+github.com/ffffwh/go-mysql v0.0.0-20201125093656-67dc9957b4da h1:xRPnR5h12OGa4GzlPn8atuCpiihGv1emZN+PrR9kbzM=
+github.com/ffffwh/go-mysql v0.0.0-20201125093656-67dc9957b4da/go.mod h1:+W4RCzesQDI11HvIkaDjS8yM36SpAnGNQ7jmTLn5BnU=
 github.com/ffffwh/qlbridge v0.0.0-20181026023605-fc2d5205 h1:FmRxc/ePtu+IAPDxRhHIOwzAbBRwIIcJHiC9ra6fraI=
 github.com/ffffwh/qlbridge v0.0.0-20181026023605-fc2d5205/go.mod h1:OcgDZHkJGBiiCpy241ZbouFjd+7oU9qUf7ZXbwBQMWE=
 github.com/fortytw2/leaktest v1.3.0/go.mod h1:jDsjWgpAGjm2CA7WthBh/CdZYEPF31XHquHwclZch5g=
