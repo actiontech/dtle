@@ -4,22 +4,29 @@ import (
 	"bytes"
 	"encoding/gob"
 	"fmt"
+	"github.com/actiontech/dtle/internal/g"
 	"github.com/golang/snappy"
 	"github.com/pingcap/tidb/types"
 	"github.com/satori/go.uuid"
 	"github.com/siddontang/go-mysql/mysql"
+	"os"
 	"time"
 )
 
 const (
 	// DefaultConnectWait is the default timeout used for the connect operation
 	DefaultConnectWaitSecond = 10
+	DefaultConnectWaitSecondAckLimit = 6
 	DefaultConnectWait = DefaultConnectWaitSecond * time.Second
-	DefaultBigTX = 1024 * 1024 * 80
 )
+
+var DefaultBigTX = 1024 * 1024 * 80
 
 func init() {
 	gob.Register(types.BinaryLiteral{})
+	if os.Getenv(g.ENV_BIG_TX_1M) != "" {
+		DefaultBigTX = 1024 * 1024
+	}
 }
 
 type ExecContext struct {

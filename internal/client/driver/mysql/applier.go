@@ -725,102 +725,107 @@ func (a *Applier) initiateStreaming() error {
 	}
 	var bigEntries binlog.BinlogEntries
 
-	{
-		_, err := a.natsConn.Subscribe(fmt.Sprintf("%s_incr_hete", a.subject), func(m *gonats.Msg) {
-			var binlogEntries binlog.BinlogEntries
-			t := not.NewTraceMsg(m)
-			// Extract the span context from the request message.
-			spanContext, err := tracer.Extract(opentracing.Binary, t)
-			if err != nil {
-				a.logger.Debugf("applier:get data")
+	_, err = a.natsConn.Subscribe(fmt.Sprintf("%s_incr_hete", a.subject), func(m *gonats.Msg) {
+		var binlogEntries binlog.BinlogEntries
+		t := not.NewTraceMsg(m)
+		// Extract the span context from the request message.
+		spanContext, err := tracer.Extract(opentracing.Binary, t)
+		if err != nil {
+			a.logger.Debugf("applier:get data")
+		}
+		// Setup a span referring to the span context of the incoming NATS message.
+		replySpan := tracer.StartSpan("nast : dest to get data  ", ext.SpanKindRPCServer, ext.RPCServerOption(spanContext))
+		ext.MessageBusDestination.Set(replySpan, m.Subject)
+		defer replySpan.Finish()
+		if err := common.Decode(t.Bytes(), &binlogEntries); err != nil {
+			a.onError(TaskStateDead, err)
+			return
+		}
+
+		nEntries := len(binlogEntries.Entries) // it should be 1 for a bigTx binlogEntries
+		if nEntries > cap(a.applyDataEntryQueue) {
+			err := fmt.Errorf("DTLE_BUG nEntries is greater than cap(queue) %v %v",
+				nEntries, cap(a.applyDataEntryQueue))
+			a.onError(TaskStateDead, err)
+			return
+		}
+
+		hasVacancy := false
+		for i := 0; i < common.DefaultConnectWaitSecondAckLimit; i++ {
+			if i != 0 {
+				a.logger.Debugf("applier. incr. wait 1s for applyDataEntryQueue")
+				time.Sleep(1 * time.Second)
 			}
-			// Setup a span referring to the span context of the incoming NATS message.
-			replySpan := tracer.StartSpan("nast : dest to get data  ", ext.SpanKindRPCServer, ext.RPCServerOption(spanContext))
-			ext.MessageBusDestination.Set(replySpan, m.Subject)
-			defer replySpan.Finish()
-			if err := common.Decode(t.Bytes(), &binlogEntries); err != nil {
+			vacancy := cap(a.applyDataEntryQueue) - len(a.applyDataEntryQueue)
+			a.logger.Debugf("applier. incr. nEntries: %v, vacancy: %v", nEntries, vacancy)
+			if vacancy >= nEntries {
+				hasVacancy = true
+				break
+			}
+		}
+
+		if !hasVacancy {
+			// no vacancy. discard these entries
+			a.logger.Debugf("applier. incr. discarding entries")
+			a.mysqlContext.Stage = models.StageWaitingForMasterToSendEvent
+		} else {
+			if err := a.natsConn.Publish(m.Reply, nil); err != nil {
 				a.onError(TaskStateDead, err)
 				return
 			}
+			a.logger.WithField("nEntries", nEntries).Debug("applier. incr. ack-recv.")
 
-			nEntries := len(binlogEntries.Entries)
-			handled := false
-			if binlogEntries.BigTx {
-				if binlogEntries.TxNum == 1 {
-					bigEntries = binlogEntries
-				} else if bigEntries.Entries != nil {
-					// merge events to bigEntries
-					bigEntries.Entries[0].Events = append(bigEntries.Entries[0].Events, binlogEntries.Entries[0].Events...)
+			needCopy := true
+			if binlogEntries.IsBigTx() {
+				// For a big tx, we ensure there is the vacancy (for 1 TX) when seeing the first part.
+				// This is not the best practice for performance, but makes the logic (with kafka) unified.
+				needCopy = false
+				if bigEntries.TxNum + 1 == binlogEntries.TxNum {
+					a.logger.WithField("TxNum", binlogEntries.TxNum).Debug("applier: big tx: get a fragment")
 					bigEntries.TxNum = binlogEntries.TxNum
-					a.logger.Debugf("applier:tx get the :%v package  ", binlogEntries.TxNum)
+					if bigEntries.TxNum == 1 {
+						bigEntries.Entries = binlogEntries.Entries
+						bigEntries.TxLen = binlogEntries.TxLen
+					} else {
+						bigEntries.Entries[0].Events = append(bigEntries.Entries[0].Events, binlogEntries.Entries[0].Events...)
+					}
 					binlogEntries.Entries = nil
-				}
-				if bigEntries.TxNum == bigEntries.TxLen {
-					// the last part. bigEntries has been merged. assign it to binlogEntries for processing
-					binlogEntries = bigEntries
-					bigEntries.Entries = nil
-				}
-			}
-			for i := 0; !handled && (i < common.DefaultConnectWaitSecond/2); i++ {
-				if binlogEntries.BigTx && binlogEntries.TxNum < binlogEntries.TxLen {
-					// the non-last part of a big tx has already been merged. ack it.
-					handled = true
-					if err := a.natsConn.Publish(m.Reply, nil); err != nil {
-						a.onError(TaskStateDead, err)
-						return
-					}
-					continue // since handled = true, it will break loop and wait for next binlogEntries (part of bigTx)
-				} else {
-					// not bigTx or is the last part (has been merged and assigned to binlogEntries)
-					// will enqueue.
-					// If it cannot be enqueued (queue full) and discarded. extractor will resend.
-					// TODO duplicated events of last part of a big tx?
-				}
 
-				binlogEntries.BigTx = false
-				binlogEntries.TxNum = 0
-				binlogEntries.TxLen = 0
-				vacancy := cap(a.applyDataEntryQueue) - len(a.applyDataEntryQueue)
-				a.logger.Debugf("applier. incr. nEntries: %v, vacancy: %v", nEntries, vacancy)
-				if nEntries > cap(a.applyDataEntryQueue) {
-					err := fmt.Errorf("DTLE_BUG nEntries is greater than cap(queue) %v %v",
-						nEntries, cap(a.applyDataEntryQueue))
-					a.logger.Error(err.Error())
-					a.onError(TaskStateDead, err)
-					return
-				}
-				if vacancy < nEntries {
-					a.logger.Debugf("applier. incr. wait 1s for applyDataEntryQueue")
-					time.Sleep(1 * time.Second) // It will wait an second at the end, but seems no hurt.
-				} else {
-					a.logger.Debugf("applier. incr. applyDataEntryQueue enqueue")
-					for _, binlogEntry := range binlogEntries.Entries {
-						binlogEntry.SpanContext = replySpan.Context()
-						a.applyDataEntryQueue <- binlogEntry
-						a.currentCoordinates.RetrievedGtidSet = binlogEntry.Coordinates.GetGtidForThisTx()
-						atomic.AddInt64(&a.mysqlContext.DeltaEstimate, 1)
-					}
-					a.mysqlContext.Stage = models.StageWaitingForMasterToSendEvent
-					if err := a.natsConn.Publish(m.Reply, nil); err != nil {
-						a.onError(TaskStateDead, err)
-						return
-					}
-					a.logger.Debugf("applier. incr. ack-recv. nEntries: %v", nEntries)
+					if binlogEntries.IsLastBigTxPart() {
+						needCopy = true
+						binlogEntries.TxNum = 0
+						binlogEntries.TxLen = 0
+						binlogEntries.Entries = bigEntries.Entries
 
-					handled = true
+						bigEntries.TxNum = 0
+						bigEntries.TxLen = 0
+						bigEntries.Entries = nil
+					}
+				} else if bigEntries.TxNum == binlogEntries.TxNum ||
+					(bigEntries.TxNum == 0 && binlogEntries.IsLastBigTxPart()) {
+					// repeated msg. ignore it.
+				} else {
+					a.logger.WithField("current", bigEntries.TxNum).WithField("got", binlogEntries.TxNum).Warn(
+						"DTLE_BUG big tx unexpected TxNum")
 				}
 			}
-			if !handled {
-				// discard these entries
-				a.logger.Debugf("applier. incr. discarding entries")
-				a.mysqlContext.Stage = models.StageWaitingForMasterToSendEvent
+
+			if needCopy {
+				for _, binlogEntry := range binlogEntries.Entries {
+					binlogEntry.SpanContext = replySpan.Context()
+					a.applyDataEntryQueue <- binlogEntry
+					a.currentCoordinates.RetrievedGtidSet = binlogEntry.Coordinates.GetGtidForThisTx()
+					atomic.AddInt64(&a.mysqlContext.DeltaEstimate, 1)
+				}
+				a.logger.Debugf("applier. incr. applyDataEntryQueue enqueued")
 			}
-		})
-		if err != nil {
-			return err
+			a.mysqlContext.Stage = models.StageWaitingForMasterToSendEvent
 		}
-		go a.heterogeneousReplay()
+	})
+	if err != nil {
+		return err
 	}
+	go a.heterogeneousReplay()
 
 	return nil
 }

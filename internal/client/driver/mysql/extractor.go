@@ -859,7 +859,6 @@ func (e *Extractor) StreamEvents() error {
 				ctx = nil
 				entries.Entries = nil
 				entries.TxLen = 0
-				entries.BigTx = false
 				entries.TxNum = 0
 				entriesSize = 0
 				return nil
@@ -904,9 +903,9 @@ func (e *Extractor) StreamEvents() error {
 					if binlogEntry.OriginalSize >= common.DefaultBigTX {
 						bigEntrises := splitEntries(binlogEntry)
 						e.logger.Debugf("extractor. incr. big tx section: %v", len(bigEntrises))
-						for i, entity := range bigEntrises {
+						for _, entity := range bigEntrises {
 							entries = entity
-							e.logger.Debugf("extractor. incr. send big tx fragment : %v", i)
+							e.logger.Debugf("extractor. incr. send big tx fragment : %v", entries.TxNum)
 							hasSent = true
 							err := sendEntriesAndClear()
 							if err != nil {
@@ -973,27 +972,34 @@ func (e *Extractor) StreamEvents() error {
 	return nil
 }
 
+func ceilDiv(a int, b int) (r int) {
+	r = a / b
+	if a % b != 0 {
+		r += 1
+	}
+	return r
+}
+
 func splitEntries(bigEntry *binlog.BinlogEntry) (splitted []binlog.BinlogEntries) {
-	clientLen := math.Ceil(float64(bigEntry.OriginalSize) / common.DefaultBigTX) // the number of natsMsg to send
-	clientNum := math.Ceil(float64(len(bigEntry.Events)) / clientLen)            // the number of events for each natsMsg
-	for i := 1; i <= int(clientLen); i++ {
+	clientLen := ceilDiv(bigEntry.OriginalSize, common.DefaultBigTX) // the number of natsMsg to send
+	clientNum := ceilDiv(len(bigEntry.Events), clientLen) // the number of events for each natsMsg
+	for i := 1; i <= clientLen; i++ {
 		var after int
-		if i == int(clientLen) { // last natsMsg
+		if i == clientLen { // last natsMsg
 			after = len(bigEntry.Events)
 		} else {
-			after = i * int(clientNum) // stop limit for slicing Entries[0].Events
+			after = i * clientNum // stop limit for slicing Entries[0].Events
 		}
 		entry := &binlog.BinlogEntry{
 			OriginalSize: bigEntry.OriginalSize,
 			SpanContext:  bigEntry.SpanContext,
 			Coordinates:  bigEntry.Coordinates,
-			Events:       bigEntry.Events[(i-1)*int(clientNum) : after],
+			Events:       bigEntry.Events[(i-1)*clientNum : after],
 		}
 		newEntries := binlog.BinlogEntries{
 			Entries: []*binlog.BinlogEntry{entry}, // For a big TX, a BinlogEntries (Group) has only 1 BinlogEntry (Tx)
-			BigTx:   true,
 			TxNum:   i,
-			TxLen:   int(clientLen),
+			TxLen:   clientLen,
 		}
 		splitted = append(splitted, newEntries)
 	}

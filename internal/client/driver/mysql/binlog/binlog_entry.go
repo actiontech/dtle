@@ -15,9 +15,15 @@ import (
 
 type BinlogEntries struct {
 	Entries []*BinlogEntry
-	BigTx  bool
-	TxNum int
+	TxNum int // starts from 1 for a big TX
 	TxLen int
+}
+
+func (b *BinlogEntries) IsBigTx() bool {
+	return b.TxNum > 0
+}
+func (b *BinlogEntries) IsLastBigTxPart() bool {
+	return b.TxNum == b.TxLen
 }
 
 // BinlogEntry describes an entry in the binary log
