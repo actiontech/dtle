@@ -463,11 +463,12 @@ github.com/siddontang/go/sync2
 # github.com/siddontang/go-log v0.0.0-20180807004314-8d05993dda07
 github.com/siddontang/go-log/log
 github.com/siddontang/go-log/loggers
-# github.com/siddontang/go-mysql v0.0.0-20190808080311-dd15a3c6 => github.com/ffffwh/go-mysql v0.0.0-20190808080311-dd15a3c6
+# github.com/siddontang/go-mysql v0.0.0-20190808080311-dd15a3c6 => github.com/ffffwh/go-mysql v0.0.0-20201126082703-d55fb6d863ea
 github.com/siddontang/go-mysql/client
 github.com/siddontang/go-mysql/mysql
 github.com/siddontang/go-mysql/packet
 github.com/siddontang/go-mysql/replication
+github.com/siddontang/go-mysql/utils
 # github.com/sirupsen/logrus v1.4.2
 github.com/sirupsen/logrus
 # github.com/spaolacci/murmur3 v1.1.0

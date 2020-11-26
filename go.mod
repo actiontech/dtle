@@ -111,7 +111,7 @@ require (
 	gopkg.in/vmihailenco/msgpack.v2 v2.9.1 // indirect
 )
 
-replace github.com/siddontang/go-mysql => github.com/ffffwh/go-mysql v0.0.0-20190808080613-dd15a3c6b925
+replace github.com/siddontang/go-mysql => github.com/ffffwh/go-mysql v0.0.0-20201126082703-d55fb6d863ea
 
 replace github.com/araddon/qlbridge => github.com/ffffwh/qlbridge v0.0.0-20181026023605-fc2d5205dad3
 
