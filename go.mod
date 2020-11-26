@@ -22,6 +22,7 @@ require (
 	github.com/cznic/strutil v0.0.0-20181122101858-275e90344537 // indirect
 	github.com/cznic/y v0.0.0-20181122101901-b05e8c2e8d7b // indirect
 	github.com/dchest/siphash v1.2.1 // indirect
+	github.com/dgrijalva/jwt-go v3.2.0+incompatible
 	github.com/docker/leadership v0.1.0
 	github.com/docker/libkv v0.2.1
 	github.com/eapache/go-resiliency v1.1.0 // indirect
@@ -53,7 +54,7 @@ require (
 	github.com/hashicorp/serf v0.0.0-20180504200640-4b67f2c2b2bb
 	github.com/hashicorp/yamux v0.0.0-20180826203732-cc6d2ea263b2
 	github.com/ikarishinjieva/golang-live-coverage-report v0.0.0-20190317040040-52af5b19c76c
-	github.com/issuj/gofaster v0.0.0-20170702192727-b08f1666d622
+	github.com/issuj/gofaster v0.0.0-20170702192727-b08f1666d622 // indirect
 	github.com/jmoiron/sqlx v1.2.0 // indirect
 	github.com/leekchan/timeutil v0.0.0-20150802142658-28917288c48d // indirect
 	github.com/lib/pq v1.2.0 // indirect
@@ -66,6 +67,7 @@ require (
 	github.com/mitchellh/go-testing-interface v1.0.0 // indirect
 	github.com/mitchellh/hashstructure v1.0.0
 	github.com/mitchellh/mapstructure v1.1.2
+	github.com/mojocn/base64Captcha v1.2.2
 	github.com/mssola/user_agent v0.5.0 // indirect
 	github.com/natefinch/lumberjack v2.0.0+incompatible
 	github.com/nats-io/gnatsd v1.2.0
