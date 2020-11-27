@@ -1109,8 +1109,8 @@ func (b *BinlogReader) skipRowEvent(rowsEvent *replication.RowsEvent, dml EventD
 	tableLower := strings.ToLower(tableOrigin)
 	switch strings.ToLower(string(rowsEvent.Table.Schema)) {
 	case g.DtleSchemaName:
-		if strings.ToLower(string(rowsEvent.Table.Table)) == g.GtidExecutedTableV2 ||
-			strings.ToLower(string(rowsEvent.Table.Table)) == g.GtidExecutedTableV3 {
+		switch strings.ToLower(string(rowsEvent.Table.Table)) {
+		case g.GtidExecutedTableV2, g.GtidExecutedTableV3, g.GtidExecutedTableV3a:
 			// cases: 1. delete for compaction; 2. insert for compaction (gtid interval); 3. normal insert for tx (single gtid)
 			// We make no special treat for case 2. That tx has only one insert, which should be ignored.
 			if dml == InsertDML {
