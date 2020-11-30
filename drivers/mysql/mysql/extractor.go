@@ -976,7 +976,6 @@ func (e *Extractor) StreamEvents() error {
 			ctx = nil
 			entries.Entries = nil
 			entries.TxLen = 0
-			entries.BigTx = false
 			entries.TxNum = 0
 			entriesSize = 0
 

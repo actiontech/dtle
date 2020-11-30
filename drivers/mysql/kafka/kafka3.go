@@ -363,30 +363,48 @@ func (kr *KafkaRunner) handleIncr() {
 		}
 		memSize := int64(binlogEntries.Size())
 
-		if binlogEntries.BigTx {
-			if binlogEntries.TxNum == 1 {
-				bigEntries = binlogEntries
-			} else {
-				bigEntries.Entries[0].Events = append(bigEntries.Entries[0].Events, binlogEntries.Entries[0].Events...)
+		needCopy := true
+		if binlogEntries.IsBigTx() {
+			needCopy = false
+			if bigEntries.TxNum + 1 == binlogEntries.TxNum {
+				kr.logger.Debug("kafka: big tx: get a fragment", "TxNum", binlogEntries.TxNum)
 				bigEntries.TxNum = binlogEntries.TxNum
+				if bigEntries.TxNum == 1 {
+					bigEntries.Entries = binlogEntries.Entries
+					bigEntries.TxLen = binlogEntries.TxLen
+				} else {
+					bigEntries.Entries[0].Events = append(bigEntries.Entries[0].Events, binlogEntries.Entries[0].Events...)
+				}
 				binlogEntries.Entries = nil
-			}
-			if binlogEntries.TxNum == binlogEntries.TxLen {
-				binlogEntries = bigEntries
-				bigEntries.Entries = nil
+
+				if binlogEntries.IsLastBigTxPart() {
+					needCopy = true
+					binlogEntries.TxNum = 0
+					binlogEntries.TxLen = 0
+					binlogEntries.Entries = bigEntries.Entries
+
+					bigEntries.TxNum = 0
+					bigEntries.TxLen = 0
+					bigEntries.Entries = nil
+				}
+			} else if bigEntries.TxNum == binlogEntries.TxNum ||
+				(bigEntries.TxNum ==0 && binlogEntries.IsLastBigTxPart()) {
+				// repeated msg. ignore it.
+			} else {
+				kr.logger.Warn(
+					"DTLE_BUG big tx unexpected TxNum", "current", bigEntries.TxNum, "got", binlogEntries.TxNum)
 			}
 		}
 
-		for _, binlogEntry := range binlogEntries.Entries {
-			if binlogEntries.BigTx && binlogEntries.TxNum < binlogEntries.TxLen {
-				continue
+		if needCopy {
+			for _, binlogEntry := range binlogEntries.Entries {
+				err = kr.kafkaTransformDMLEventQuery(binlogEntry)
+				if err != nil {
+					kr.onError(TaskStateDead, errors.Wrap(err, "kafkaTransformDMLEventQuery"))
+					return
+				}
+				kr.logger.Debug("kafka: after kafkaTransformDMLEventQuery")
 			}
-			err = kr.kafkaTransformDMLEventQuery(binlogEntry)
-			if err != nil {
-				kr.onError(TaskStateDead, errors.Wrap(err, "kafkaTransformDMLEventQuery"))
-				return
-			}
-			kr.logger.Debug("kafka: after kafkaTransformDMLEventQuery")
 		}
 		atomic.AddInt64(kr.memory2, -memSize)
 	}

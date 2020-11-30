@@ -9,13 +9,18 @@ import (
 	"github.com/pingcap/tidb/types"
 	"github.com/satori/go.uuid"
 	"github.com/siddontang/go-mysql/mysql"
+	"os"
 	"time"
 )
 
 const (
 	// DefaultConnectWait is the default timeout used for the connect operation
 	DefaultConnectWaitSecond = 10
+	DefaultConnectWaitSecondAckLimit = 6
 	DefaultConnectWait = DefaultConnectWaitSecond * time.Second
+)
+
+var (
 	DefaultBigTX = 1024 * 1024 * 100
 )
 
@@ -27,6 +32,9 @@ type GencodeType interface {
 
 func init() {
 	gob.Register(types.BinaryLiteral{})
+	if os.Getenv(g.ENV_BIG_TX_1M) != "" {
+		DefaultBigTX = 1024 * 1024
+	}
 }
 
 type ExecContext struct {

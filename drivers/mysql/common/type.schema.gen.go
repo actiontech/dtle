@@ -2602,7 +2602,6 @@ func (d *BinlogEntry) Unmarshal(buf []byte) (uint64, error) {
 
 type BinlogEntries struct {
 	Entries []*BinlogEntry
-	BigTx   bool
 	TxNum   int64
 	TxLen   int64
 }
@@ -2640,7 +2639,7 @@ func (d *BinlogEntries) Size() (s uint64) {
 		}
 
 	}
-	s += 17
+	s += 16
 	return
 }
 func (d *BinlogEntries) Marshal(buf []byte) ([]byte, error) {
@@ -2694,51 +2693,44 @@ func (d *BinlogEntries) Marshal(buf []byte) ([]byte, error) {
 		}
 	}
 	{
-		if d.BigTx {
-			buf[i+0] = 1
-		} else {
-			buf[i+0] = 0
-		}
-	}
-	{
 
-		buf[i+0+1] = byte(d.TxNum >> 0)
+		buf[i+0+0] = byte(d.TxNum >> 0)
 
-		buf[i+1+1] = byte(d.TxNum >> 8)
+		buf[i+1+0] = byte(d.TxNum >> 8)
 
-		buf[i+2+1] = byte(d.TxNum >> 16)
+		buf[i+2+0] = byte(d.TxNum >> 16)
 
-		buf[i+3+1] = byte(d.TxNum >> 24)
+		buf[i+3+0] = byte(d.TxNum >> 24)
 
-		buf[i+4+1] = byte(d.TxNum >> 32)
+		buf[i+4+0] = byte(d.TxNum >> 32)
 
-		buf[i+5+1] = byte(d.TxNum >> 40)
+		buf[i+5+0] = byte(d.TxNum >> 40)
 
-		buf[i+6+1] = byte(d.TxNum >> 48)
+		buf[i+6+0] = byte(d.TxNum >> 48)
 
-		buf[i+7+1] = byte(d.TxNum >> 56)
+		buf[i+7+0] = byte(d.TxNum >> 56)
 
 	}
 	{
 
-		buf[i+0+9] = byte(d.TxLen >> 0)
+		buf[i+0+8] = byte(d.TxLen >> 0)
 
-		buf[i+1+9] = byte(d.TxLen >> 8)
+		buf[i+1+8] = byte(d.TxLen >> 8)
 
-		buf[i+2+9] = byte(d.TxLen >> 16)
+		buf[i+2+8] = byte(d.TxLen >> 16)
 
-		buf[i+3+9] = byte(d.TxLen >> 24)
+		buf[i+3+8] = byte(d.TxLen >> 24)
 
-		buf[i+4+9] = byte(d.TxLen >> 32)
+		buf[i+4+8] = byte(d.TxLen >> 32)
 
-		buf[i+5+9] = byte(d.TxLen >> 40)
+		buf[i+5+8] = byte(d.TxLen >> 40)
 
-		buf[i+6+9] = byte(d.TxLen >> 48)
+		buf[i+6+8] = byte(d.TxLen >> 48)
 
-		buf[i+7+9] = byte(d.TxLen >> 56)
+		buf[i+7+8] = byte(d.TxLen >> 56)
 
 	}
-	return buf[:i+17], nil
+	return buf[:i+16], nil
 }
 
 func (d *BinlogEntries) Unmarshal(buf []byte) (uint64, error) {
@@ -2792,17 +2784,14 @@ func (d *BinlogEntries) Unmarshal(buf []byte) (uint64, error) {
 		}
 	}
 	{
-		d.BigTx = buf[i+0] == 1
-	}
-	{
 
-		d.TxNum = 0 | (int64(buf[i+0+1]) << 0) | (int64(buf[i+1+1]) << 8) | (int64(buf[i+2+1]) << 16) | (int64(buf[i+3+1]) << 24) | (int64(buf[i+4+1]) << 32) | (int64(buf[i+5+1]) << 40) | (int64(buf[i+6+1]) << 48) | (int64(buf[i+7+1]) << 56)
+		d.TxNum = 0 | (int64(buf[i+0+0]) << 0) | (int64(buf[i+1+0]) << 8) | (int64(buf[i+2+0]) << 16) | (int64(buf[i+3+0]) << 24) | (int64(buf[i+4+0]) << 32) | (int64(buf[i+5+0]) << 40) | (int64(buf[i+6+0]) << 48) | (int64(buf[i+7+0]) << 56)
 
 	}
 	{
 
-		d.TxLen = 0 | (int64(buf[i+0+9]) << 0) | (int64(buf[i+1+9]) << 8) | (int64(buf[i+2+9]) << 16) | (int64(buf[i+3+9]) << 24) | (int64(buf[i+4+9]) << 32) | (int64(buf[i+5+9]) << 40) | (int64(buf[i+6+9]) << 48) | (int64(buf[i+7+9]) << 56)
+		d.TxLen = 0 | (int64(buf[i+0+8]) << 0) | (int64(buf[i+1+8]) << 8) | (int64(buf[i+2+8]) << 16) | (int64(buf[i+3+8]) << 24) | (int64(buf[i+4+8]) << 32) | (int64(buf[i+5+8]) << 40) | (int64(buf[i+6+8]) << 48) | (int64(buf[i+7+8]) << 56)
 
 	}
-	return i + 17, nil
+	return i + 16, nil
 }
