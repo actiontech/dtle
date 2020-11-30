@@ -949,7 +949,7 @@ func (e *Extractor) StreamEvents() error {
 		defer e.logger.Debug("StreamEvents goroutine exited")
 		entries := common.BinlogEntries{}
 		entriesSize := 0
-		sendEntries := func() error {
+		sendEntriesAndClear := func() error {
 			var gno int64 = 0
 			if len(entries.Entries) > 0 {
 				theEntries := entries.Entries[0]
@@ -983,14 +983,11 @@ func (e *Extractor) StreamEvents() error {
 			return nil
 		}
 
-		keepGoing := true
-
 		groupTimeoutDuration := time.Duration(e.mysqlContext.GroupTimeout) * time.Millisecond
 		timer := time.NewTimer(groupTimeoutDuration)
 		defer timer.Stop()
 
-		for keepGoing && !e.shutdown {
-			var err error
+		LOOP: for !e.shutdown {
 			select {
 			case entryCtx := <-e.dataChannel:
 				binlogEntry := entryCtx.Entry
@@ -1000,47 +997,84 @@ func (e *Extractor) StreamEvents() error {
 				ctx = opentracing.ContextWithSpan(ctx, span)
 				//span.SetTag("timetag", time.Now().Unix())
 				entryCtx.SpanContext = nil
-				entries.Entries = append(entries.Entries, binlogEntry)
-				entriesSize += entryCtx.OriginalSize
-				if entriesSize >= e.mysqlContext.GroupMaxSize || entriesSize >= common.DefaultBigTX ||
-					int64(len(entries.Entries)) == e.mysqlContext.ReplChanBufferSize {
-					e.logger.Debug("incr. send by GroupLimit.", "entriesSize", entriesSize,
-						"groupMaxSize", e.mysqlContext.GroupMaxSize, "Entries.len", len(entries.Entries))
-					if entriesSize > common.DefaultBigTX {
-						bigEntrises := splitEntries(entries, entriesSize)
-						entries.Entries = nil
-						e.logger.Debug("incr. big tx section", "n", len(bigEntrises))
-						for i, entity := range bigEntrises {
-							entries = entity
-							entriesSize = common.DefaultBigTX
-							e.logger.Debug("incr. send big tx fragment", "i", i)
-							err = sendEntries()
+
+				hasSent := false
+				if entriesSize + entryCtx.OriginalSize >= common.DefaultBigTX {
+					// send the EntryGroup before reaching BigTX
+					e.logger.Debug("extractor. incr. send pre-BigTX entries",
+						"previousSize", entriesSize,
+						"entrySize", entryCtx.OriginalSize,
+						"Entries.len", len(entries.Entries))
+
+					if len(entries.Entries) > 0 {
+						hasSent = true
+						err := sendEntriesAndClear()
+						if err != nil {
+							e.onError(TaskStateDead, err)
+							break LOOP
 						}
 					} else {
-						err = sendEntries()
+						// no before entries
 					}
+				}
+
+				if entryCtx.OriginalSize >= common.DefaultBigTX {
+					bigEntrises := splitEntries(binlogEntry, entryCtx.OriginalSize)
+					e.logger.Debug("extractor. incr. big tx.", "len", len(bigEntrises))
+					for _, entity := range bigEntrises {
+						entries = entity
+						e.logger.Debug("extractor. incr. send big tx", "fragment", entries.TxNum)
+						hasSent = true
+						err := sendEntriesAndClear()
+						if err != nil {
+							e.onError(TaskStateDead, err)
+							break LOOP
+						}
+					}
+				} else {
+					entries.Entries = append(entries.Entries, binlogEntry)
+					entriesSize += entryCtx.OriginalSize
+
+					if entriesSize >= e.mysqlContext.GroupMaxSize ||
+						int64(len(entries.Entries)) == e.mysqlContext.ReplChanBufferSize {
+
+						e.logger.Debug("extractor. incr. send by GroupLimit",
+							"entriesSize", entriesSize,
+							"groupMaxSize", e.mysqlContext.GroupMaxSize,
+							"Entries.len", len(entries.Entries))
+
+						hasSent = true
+						err := sendEntriesAndClear()
+						if err != nil {
+							e.onError(TaskStateDead, err)
+							break LOOP
+						}
+					}
+				}
+
+				if hasSent {
 					if !timer.Stop() {
 						<-timer.C
 					}
 					timer.Reset(groupTimeoutDuration)
 				}
+
 				span.Finish()
 			case <-timer.C:
 				nEntries := len(entries.Entries)
 				if nEntries > 0 {
 					e.logger.Debug("incr. send by timeout.", "entriesSize", entriesSize,
 						"timeout", e.mysqlContext.GroupTimeout)
-					err = sendEntries()
+					err := sendEntriesAndClear()
+					if err != nil {
+						e.onError(TaskStateDead, err)
+						break LOOP
+					}
 				}
 				timer.Reset(groupTimeoutDuration)
 			}
-			if err != nil {
-				e.onError(TaskStateDead, err)
-				keepGoing = false
-			} else {
-				e.mysqlContext.Stage = common.StageSendingBinlogEventToSlave
-				atomic.AddInt64(&e.mysqlContext.DeltaEstimate, 1)
-			}
+			e.mysqlContext.Stage = common.StageSendingBinlogEventToSlave
+			atomic.AddInt64(&e.mysqlContext.DeltaEstimate, 1)
 		} // end for keepGoing && !e.shutdown
 	}()
 	// The next should block and execute forever, unless there's a serious error
@@ -1053,32 +1087,37 @@ func (e *Extractor) StreamEvents() error {
 	return nil
 }
 
-func splitEntries(entries common.BinlogEntries, entriseSize int) (entris []common.BinlogEntries) {
-	clientLen := math.Ceil(float64(entriseSize) / common.DefaultBigTX)
-	clientNum := math.Ceil(float64(len(entries.Entries[0].Events)) / clientLen)
-	for i := 1; i <= int(clientLen); i++ {
+func ceilDiv(a int, b int) (r int) {
+	r = a / b
+	if a % b != 0 {
+		r += 1
+	}
+	return r
+}
+
+func splitEntries(bigEntry *common.BinlogEntry, originalSize int) (splitted []common.BinlogEntries) {
+	clientLen := ceilDiv(originalSize, common.DefaultBigTX) // the number of natsMsg to send
+	clientNum := ceilDiv(len(bigEntry.Events), clientLen) // the number of events for each natsMsg
+	for i := 1; i <= clientLen; i++ {
 		var after int
-		if i == int(clientLen) {
-			after = len(entries.Entries[0].Events)
+		if i == clientLen { // last natsMsg
+			after = len(bigEntry.Events)
 		} else {
-			after = i * int(clientNum)
+			after = i * clientNum // stop limit for slicing Entries[0].Events
 		}
 		entry := &common.BinlogEntry{
-			Coordinates:  entries.Entries[0].Coordinates,
-			Events:       entries.Entries[0].Events[(i-1)*int(clientNum) : after],
+			Coordinates:  bigEntry.Coordinates,
+			Events:       bigEntry.Events[(i-1)*clientNum : after],
 		}
-		var entrys []*common.BinlogEntry
-		entrys = append(entrys, entry)
 		newEntries := common.BinlogEntries{
-			Entries: entrys,
-			BigTx:   true,
+			Entries: []*common.BinlogEntry{entry}, // For a big TX, a BinlogEntries (Group) has only 1 BinlogEntry (Tx)
 			TxNum:   int64(i),
 			TxLen:   int64(clientLen),
 		}
-		entris = append(entris, newEntries)
+		splitted = append(splitted, newEntries)
 	}
 
-	return entris
+	return splitted
 }
 
 // retryOperation attempts up to `count` attempts at running given function,
