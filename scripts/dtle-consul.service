@@ -1,3 +1,5 @@
+# https://learn.hashicorp.com/tutorials/consul/deployment-guide#configure-systemd
+
 [Unit]
 Description=Consul Agent for dtle-on-nomad
 Requires=network-online.target
@@ -8,7 +10,9 @@ User=dtle
 Restart=on-failure
 ExecStart=INSTALL_PREFIX_MAGIC/usr/bin/consul agent $CONSUL_FLAGS -config-file=INSTALL_PREFIX_MAGIC/etc/dtle/consul.hcl
 ExecReload=/usr/bin/kill -HUP $MAINPID
-KillSignal=SIGINT
+KillMode=process
+KillSignal=SIGTERM
+LimitNOFILE=65536
 
 [Install]
 WantedBy=multi-user.target

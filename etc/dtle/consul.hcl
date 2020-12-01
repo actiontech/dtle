@@ -19,6 +19,10 @@ ports = {
   #serf_lan = 8301
 }
 
+limits = {
+  http_max_conns_per_client = 4096
+}
+
 server = true
 # For single node
 bootstrap_expect = 1
