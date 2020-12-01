@@ -289,6 +289,7 @@ func (e *Extractor) Run() {
 		<-e.gotCoordinateCh
 
 		if e.mysqlContext.SkipIncrementalCopy {
+			e.logger.Warn("SkipIncrementalCopy is true. Make sure it is intended.")
 			// empty
 		} else {
 			if !e.mysqlContext.BinlogRelay {

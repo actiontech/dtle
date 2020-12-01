@@ -83,7 +83,7 @@ type BinlogReader struct {
 	currentBinlogEntry *common.BinlogEntry
 	hasBeginQuery      bool
 	entryContext       *common.BinlogEntryContext
-	ReMap              map[string]*regexp.Regexp
+	ReMap              map[string]*regexp.Regexp // This is a cache for regexp.
 
 	shutdown     bool
 	shutdownCh   chan struct{}
