@@ -45,7 +45,15 @@ type Table struct {
 	TableEngine  string
 	RowsEstimate int64
 
-	Where string // TODO load from job description
+	Where string // Call GetWhere() instead of directly accessing.
+}
+
+func (t *Table) GetWhere() string {
+	if t.Where == "" {
+		return "true"
+	} else {
+		return t.Where
+	}
 }
 
 func NewTable(schemaName string, tableName string) *Table {

@@ -78,10 +78,7 @@ func (i *Inspector) InitDBConnections() (err error) {
 
 func (i *Inspector) ValidateOriginalTable(databaseName, tableName string, table *common.Table) (err error) {
 	// this should be set event if there is an error (#177)
-	i.logger.Info("ValidateOriginalTable", "where", table.Where)
-	if table.Where == "" {
-		table.Where = "true"
-	}
+	i.logger.Info("ValidateOriginalTable", "where", table.GetWhere())
 
 	if err := i.validateTable(databaseName, tableName); err != nil {
 		return err
@@ -156,9 +153,9 @@ func (i *Inspector) ValidateOriginalTable(databaseName, tableName string, table 
 	}*/
 
 	// region validate 'where'
-	_, err = common.NewWhereCtx(table.Where, table)
+	_, err = common.NewWhereCtx(table.GetWhere(), table)
 	if err != nil {
-		i.logger.Error("Error parsing where", "where", table.Where, "err", err)
+		i.logger.Error("Error parsing where", "where", table.GetWhere(), "err", err)
 		return err
 	}
 	// TODO the err cause only a WARN
@@ -280,7 +277,6 @@ func (i *Inspector) validateBinlogs() error {
 	return nil
 }
 
-// validateTable makes sure the table we need to operate on actually exists
 func (i *Inspector) validateTable(databaseName, tableName string) error {
 	query := fmt.Sprintf(`show table status from %s like '%s'`, umconf.EscapeName(databaseName), tableName)
 

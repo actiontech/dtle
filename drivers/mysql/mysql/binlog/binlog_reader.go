@@ -236,13 +236,9 @@ func (b *BinlogReader) getDbTableMap(schemaName string) map[string]*common.Table
 	return tableMap
 }
 func (b *BinlogReader) addTableToTableMap(tableMap map[string]*common.TableContext, table *common.Table) error {
-	if table.Where == "" {
-		b.logger.Warn("DTLE_BUG: NewMySQLReader: table.Where is empty (#177 like)")
-		table.Where = "true"
-	}
-	whereCtx, err := common.NewWhereCtx(table.Where, table)
+	whereCtx, err := common.NewWhereCtx(table.GetWhere(), table)
 	if err != nil {
-		b.logger.Error("Error parsing where", "where", table.Where, "err", err)
+		b.logger.Error("Error parsing where", "where", table.GetWhere(), "err", err)
 		return err
 	}
 
@@ -1353,7 +1349,6 @@ func (b *BinlogReader) updateTableMeta(table *common.Table, realSchema string, t
 		// a new table (it might be in all db copy since it is not ignored).
 		table = common.NewTable(realSchema, tableName)
 		table.TableType = "BASE TABLE"
-		table.Where = "true"
 	}
 	table.OriginalTableColumns = columns
 	table.ColumnMap = mysqlconfig.BuildColumnMapIndex(table.ColumnMapFrom, table.OriginalTableColumns.Ordinals)

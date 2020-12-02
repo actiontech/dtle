@@ -127,7 +127,7 @@ func (d *dumper) buildQueryOldWay() string {
 		d.columns,
 		d.EscapedTableSchema,
 		d.EscapedTableName,
-		d.table.Where,
+		d.table.GetWhere(),
 		d.chunkSize,
 		d.table.Iteration*d.chunkSize,
 	)
@@ -177,7 +177,7 @@ func (d *dumper) buildQueryOnUniqueKey() string {
 		d.EscapedTableSchema,
 		d.EscapedTableName,
 		// where
-		rangeStr, d.table.Where,
+		rangeStr, d.table.GetWhere(),
 		// order by
 		strings.Join(uniqueKeyColumnAscending, ", "),
 		// limit
