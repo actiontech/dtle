@@ -7,6 +7,7 @@
 package binlog
 
 import (
+	"bytes"
 	"github.com/actiontech/dtle/drivers/mysql/common"
 	"github.com/pkg/errors"
 	"github.com/shirou/gopsutil/mem"
@@ -422,8 +423,9 @@ func ToColumnValuesV2(abstractValues []interface{}, table *common.TableContext) 
 // If isDDL, a sql correspond to a table item, aka len(tables) == len(sqls).
 type parseDDLResult struct {
 	isDDL  bool
-	tables []common.SchemaTable
-	sqls   []string
+	table  common.SchemaTable
+	extraTables []common.SchemaTable
+	sql    string
 	ast    ast.StmtNode
 }
 
@@ -488,10 +490,10 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 					}
 				}
 
-				ddlInfo, err := resolveDDLSQL(query)
+				ddlInfo, err := b.resolveDDLSQL(currentSchema, query)
 				if err != nil {
 					b.logger.Debug("Parse query event failed", "query", query, "err", err)
-					if b.skipQueryDDL(query, currentSchema, "") {
+					if b.skipQueryDDL(currentSchema, "") {
 						b.logger.Debug("skip QueryEvent", "schema", currentSchema, "query", query)
 						return nil
 					}
@@ -523,15 +525,16 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 					skipEvent = true
 				}
 
-				for i, sql := range ddlInfo.sqls {
-					realSchema := common.StringElse(ddlInfo.tables[i].Schema, currentSchema)
-					tableName := ddlInfo.tables[i].Table
+				{
+					sql := ddlInfo.sql
+					realSchema := common.StringElse(ddlInfo.table.Schema, currentSchema)
+					tableName := ddlInfo.table.Table
 					err = b.checkObjectFitRegexp(b.mysqlContext.ReplicateDoDb, realSchema, tableName)
 					if err != nil {
 						return errors.Wrap(err, "checkObjectFitRegexp")
 					}
 
-					if b.skipQueryDDL(sql, realSchema, tableName) {
+					if b.skipQueryDDL(realSchema, tableName) {
 						b.logger.Debug("Skip QueryEvent", "currentSchema", currentSchema, "sql", sql,
 							"realSchema", realSchema, "tableName", tableName)
 						// send EmptyEntry when an unrelated DDL to ensure
@@ -544,7 +547,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 					skipEvent = skipBySqlFilter(ddlInfo.ast, b.sqlFilter)
 					switch realAst := ddlInfo.ast.(type) {
 					case *ast.CreateDatabaseStmt:
-						b.sqleAfterCreateSchema(ddlInfo.tables[i].Schema)
+						b.sqleAfterCreateSchema(ddlInfo.table.Schema)
 					case *ast.CreateTableStmt:
 						b.logger.Debug("ddl is create table")
 						err := b.updateTableMeta(table, realSchema, tableName)
@@ -573,7 +576,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 						}
 					}
 					if schema != nil && schema.TableSchemaRename != "" {
-						ddlInfo.tables[i].Schema = schema.TableSchemaRename
+						ddlInfo.table.Schema = schema.TableSchemaRename
 						b.logger.Debug("ddl schema mapping", "from", realSchema, "to", schema.TableSchemaRename)
 						//sql = strings.Replace(sql, realSchema, schema.TableSchemaRename, 1)
 						sql = loadMapping(sql, realSchema, schema.TableSchemaRename, "schemaRename", " ")
@@ -587,7 +590,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 					}
 
 					if table != nil && table.TableRename != "" {
-						ddlInfo.tables[i].Table = table.TableRename
+						ddlInfo.table.Table = table.TableRename
 						//sql = strings.Replace(sql, tableName, table.TableRename, 1)
 						sql = loadMapping(sql, tableName, table.TableRename, "", currentSchema)
 						b.logger.Debug("ddl table mapping", "from", tableName, "to", table.TableRename)
@@ -596,17 +599,16 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 					if skipEvent {
 						b.logger.Debug("skipped a ddl event.", "query", query)
 					} else {
-						ddlTable := ddlInfo.tables[i]
-						if realSchema == "" || ddlTable.Table == "" {
+						if realSchema == "" || ddlInfo.table.Table == "" {
 							b.logger.Info("NewQueryEventAffectTable. found empty schema or table.",
-								"schema", realSchema, "table", ddlTable.Table, "query", sql)
+								"schema", realSchema, "table", ddlInfo.table.Table, "query", sql)
 						}
 
 						event := common.NewQueryEventAffectTable(
 							currentSchema,
 							sql,
 							common.NotDML,
-							ddlTable,
+							ddlInfo.table,
 							ev.Header.Timestamp,
 						)
 						if table != nil {
@@ -954,55 +956,64 @@ func (b *BinlogReader) DataStreamEvents(entriesChannel chan<- *common.BinlogEntr
 //
 // schemaTables is the schema.table that the query has invalidated. For err or non-DDL, it is nil.
 // For DDL, it size equals len(sqls).
-func resolveDDLSQL(sql string) (result parseDDLResult, err error) {
+func (b *BinlogReader) resolveDDLSQL(currentSchema string, sql string) (result parseDDLResult, err error) {
+	result.sql = sql
+
 	stmt, err := parser.New().ParseOneStmt(sql, "", "")
 	if err != nil {
-		result.sqls = append(result.sqls, sql)
 		return result, err
 	}
 	result.ast = stmt
 
 	_, result.isDDL = stmt.(ast.DDLNode)
 	if !result.isDDL {
-		result.sqls = append(result.sqls, sql)
 		return result, nil
 	}
 
-	appendSql := func(sql string, schema string, table string) {
-		result.tables = append(result.tables, common.SchemaTable{Schema: schema, Table: table})
-		result.sqls = append(result.sqls, sql)
+	setTable := func(schema string, table string) {
+		result.table = common.SchemaTable{Schema: schema, Table: table}
 	}
 
 	switch v := stmt.(type) {
 	case *ast.CreateDatabaseStmt:
-		appendSql(sql, v.Name, "")
+		setTable(v.Name, "")
 	case *ast.DropDatabaseStmt:
-		appendSql(sql, v.Name, "")
+		setTable(v.Name, "")
 	case *ast.CreateIndexStmt:
-		appendSql(sql, v.Table.Schema.O, v.Table.Name.O)
+		setTable(v.Table.Schema.O, v.Table.Name.O)
 	case *ast.DropIndexStmt:
-		appendSql(sql, v.Table.Schema.O, v.Table.Name.O)
+		setTable(v.Table.Schema.O, v.Table.Name.O)
 	case *ast.TruncateTableStmt:
-		appendSql(sql, v.Table.Schema.O, v.Table.Name.O)
+		setTable(v.Table.Schema.O, v.Table.Name.O)
 	case *ast.CreateTableStmt:
-		appendSql(sql, v.Table.Schema.O, v.Table.Name.O)
+		setTable(v.Table.Schema.O, v.Table.Name.O)
 	case *ast.AlterTableStmt:
-		appendSql(sql, v.Table.Schema.O, v.Table.Name.O)
+		setTable(v.Table.Schema.O, v.Table.Name.O)
 	case *ast.DropTableStmt:
-		var ex string
+		bs := bytes.NewBufferString("drop table ")
 		if v.IfExists {
-			ex = "if exists"
+			bs.WriteString("if exists ")
 		}
-		for _, t := range v.Tables {
-			var db string
-			if t.Schema.O != "" {
-				db = fmt.Sprintf("%s.", t.Schema.O)
+
+		for i, t := range v.Tables {
+			schema := common.StringElse(t.Schema.O, currentSchema)
+			if !b.skipQueryDDL(schema, t.Name.O) {
+				if i == 0 {
+					setTable(t.Schema.O, t.Name.O)
+				} else {
+					bs.WriteString(", ")
+					result.extraTables = append(result.extraTables,
+						common.SchemaTable{Schema: t.Schema.O, Table: t.Name.O})
+				}
+				if t.Schema.O != "" {
+					bs.WriteString(mysqlconfig.EscapeName(t.Schema.O))
+					bs.WriteString(".")
+				}
+				bs.WriteString(mysqlconfig.EscapeName(t.Name.O))
 			}
-			s := fmt.Sprintf("drop table %s %s`%s`", ex, db, t.Name.O)
-			appendSql(s, t.Schema.O, t.Name.O)
 		}
 	case *ast.CreateUserStmt, *ast.GrantStmt:
-		appendSql(sql, "mysql", "user")
+		setTable("mysql", "user")
 	default:
 		return result, fmt.Errorf("unknown DDL type")
 	}
@@ -1010,7 +1021,7 @@ func resolveDDLSQL(sql string) (result parseDDLResult, err error) {
 	return result, nil
 }
 
-func (b *BinlogReader) skipQueryDDL(sql string, schema string, tableName string) bool {
+func (b *BinlogReader) skipQueryDDL(schema string, tableName string) bool {
 	switch strings.ToLower(schema) {
 	case "mysql":
 		if b.mysqlContext.ExpandSyntaxSupport {
