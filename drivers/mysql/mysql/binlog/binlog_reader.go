@@ -541,19 +541,9 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 						return nil
 					}
 
-					var table *common.Table
-					var schema *common.DataSource
-					for i := range b.mysqlContext.ReplicateDoDb {
-						if b.mysqlContext.ReplicateDoDb[i].TableSchema == realSchema {
-							schema = b.mysqlContext.ReplicateDoDb[i]
-							for j := range b.mysqlContext.ReplicateDoDb[i].Tables {
-								if b.mysqlContext.ReplicateDoDb[i].Tables[j].TableName == tableName {
-									table = b.mysqlContext.ReplicateDoDb[i].Tables[j]
-								}
-							}
-						}
-					}
+					schema, table := b.findSchemaTable(realSchema, tableName)
 
+					skipEvent = skipBySqlFilter(ddlInfo.ast, b.sqlFilter)
 					switch realAst := ddlInfo.ast.(type) {
 					case *ast.CreateDatabaseStmt:
 						b.sqleAfterCreateSchema(ddlInfo.tables[i].Schema)
@@ -563,14 +553,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 						if err != nil {
 							return err
 						}
-
-						if b.sqlFilter.NoDDLCreateTable {
-							skipEvent = true
-						}
-					case *ast.DropTableStmt:
-						if b.sqlFilter.NoDDLDropTable {
-							skipEvent = true
-						}
+					//case *ast.DropTableStmt:
 					case *ast.AlterTableStmt:
 						b.logger.Debug("ddl is alter table.", "specs", realAst.Specs)
 
@@ -589,37 +572,6 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 						err := b.updateTableMeta(fromTable, realSchema, tableNameX)
 						if err != nil {
 							return err
-						}
-
-						if b.sqlFilter.NoDDLAlterTable {
-							skipEvent = true
-						} else {
-							for i := range realAst.Specs {
-								switch realAst.Specs[i].Tp {
-								case ast.AlterTableAddColumns:
-									if b.sqlFilter.NoDDLAlterTableAddColumn {
-										skipEvent = true
-									}
-								case ast.AlterTableDropColumn:
-									if b.sqlFilter.NoDDLAlterTableDropColumn {
-										skipEvent = true
-									}
-								case ast.AlterTableModifyColumn:
-									if b.sqlFilter.NoDDLAlterTableModifyColumn {
-										skipEvent = true
-									}
-								case ast.AlterTableChangeColumn:
-									if b.sqlFilter.NoDDLAlterTableChangeColumn {
-										skipEvent = true
-									}
-								case ast.AlterTableAlterColumn:
-									if b.sqlFilter.NoDDLAlterTableAlterColumn {
-										skipEvent = true
-									}
-								default:
-									// other case
-								}
-							}
 						}
 					}
 					if schema != nil && schema.TableSchemaRename != "" {
@@ -1505,4 +1457,65 @@ func (b *BinlogReader) sqleAfterCreateSchema(schema string) {
 	if b.maybeSqleContext != nil {
 		b.maybeSqleContext.LoadTables(schema, nil)
 	}
+}
+func (b *BinlogReader) findSchemaTable(realSchema string, tableName string) (schema *common.DataSource, table *common.Table) {
+	for i := range b.mysqlContext.ReplicateDoDb {
+		if b.mysqlContext.ReplicateDoDb[i].TableSchema == realSchema {
+			schema = b.mysqlContext.ReplicateDoDb[i]
+			for j := range b.mysqlContext.ReplicateDoDb[i].Tables {
+				if b.mysqlContext.ReplicateDoDb[i].Tables[j].TableName == tableName {
+					table = b.mysqlContext.ReplicateDoDb[i].Tables[j]
+					return schema, table
+				}
+			}
+			return schema, nil
+		}
+	}
+	return nil, nil
+}
+
+func skipBySqlFilter(ddlAst ast.StmtNode, sqlFilter *SqlFilter) bool {
+	switch realAst := ddlAst.(type) {
+	case *ast.CreateTableStmt:
+		if sqlFilter.NoDDLCreateTable {
+			return true
+		}
+	case *ast.DropTableStmt:
+		if sqlFilter.NoDDLDropTable {
+			return true
+		}
+	case *ast.AlterTableStmt:
+		if sqlFilter.NoDDLAlterTable {
+			return true
+		} else {
+			for i := range realAst.Specs {
+				switch realAst.Specs[i].Tp {
+				case ast.AlterTableAddColumns:
+					if sqlFilter.NoDDLAlterTableAddColumn {
+						return true
+					}
+				case ast.AlterTableDropColumn:
+					if sqlFilter.NoDDLAlterTableDropColumn {
+						return true
+					}
+				case ast.AlterTableModifyColumn:
+					if sqlFilter.NoDDLAlterTableModifyColumn {
+						return true
+					}
+				case ast.AlterTableChangeColumn:
+					if sqlFilter.NoDDLAlterTableChangeColumn {
+						return true
+					}
+				case ast.AlterTableAlterColumn:
+					if sqlFilter.NoDDLAlterTableAlterColumn {
+						return true
+					}
+				default:
+					// other case
+				}
+			}
+		}
+	}
+
+	return false
 }
