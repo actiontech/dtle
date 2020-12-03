@@ -537,88 +537,85 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 					if b.skipQueryDDL(realSchema, tableName) {
 						b.logger.Debug("Skip QueryEvent", "currentSchema", currentSchema, "sql", sql,
 							"realSchema", realSchema, "tableName", tableName)
-						// send EmptyEntry when an unrelated DDL to ensure
-						b.sendEmptyEntry(entriesChannel)
-						return nil
-					}
-
-					schema, table := b.findSchemaTable(realSchema, tableName)
-
-					skipEvent = skipBySqlFilter(ddlInfo.ast, b.sqlFilter)
-					switch realAst := ddlInfo.ast.(type) {
-					case *ast.CreateDatabaseStmt:
-						b.sqleAfterCreateSchema(ddlInfo.table.Schema)
-					case *ast.CreateTableStmt:
-						b.logger.Debug("ddl is create table")
-						err := b.updateTableMeta(table, realSchema, tableName)
-						if err != nil {
-							return err
-						}
-					//case *ast.DropTableStmt:
-					case *ast.AlterTableStmt:
-						b.logger.Debug("ddl is alter table.", "specs", realAst.Specs)
-
-						fromTable := table
-						tableNameX := tableName
-
-						for iSpec := range realAst.Specs {
-							switch realAst.Specs[iSpec].Tp {
-							case ast.AlterTableRenameTable:
-								fromTable = nil
-								tableNameX = realAst.Specs[iSpec].NewTable.Name.O
-							default:
-								// do nothing
-							}
-						}
-						err := b.updateTableMeta(fromTable, realSchema, tableNameX)
-						if err != nil {
-							return err
-						}
-					}
-					if schema != nil && schema.TableSchemaRename != "" {
-						ddlInfo.table.Schema = schema.TableSchemaRename
-						b.logger.Debug("ddl schema mapping", "from", realSchema, "to", schema.TableSchemaRename)
-						//sql = strings.Replace(sql, realSchema, schema.TableSchemaRename, 1)
-						sql = loadMapping(sql, realSchema, schema.TableSchemaRename, "schemaRename", " ")
-						if currentSchema == realSchema {
-							currentSchema = schema.TableSchemaRename
-						}
-						realSchema = schema.TableSchemaRename
 					} else {
-						// schema == nil means it is not explicit in ReplicateDoDb, thus no renaming
-						// or schema.TableSchemaRename == "" means no renaming
-					}
+						schema, table := b.findSchemaTable(realSchema, tableName)
 
-					if table != nil && table.TableRename != "" {
-						ddlInfo.table.Table = table.TableRename
-						//sql = strings.Replace(sql, tableName, table.TableRename, 1)
-						sql = loadMapping(sql, tableName, table.TableRename, "", currentSchema)
-						b.logger.Debug("ddl table mapping", "from", tableName, "to", table.TableRename)
-					}
-
-					if skipEvent {
-						b.logger.Debug("skipped a ddl event.", "query", query)
-					} else {
-						if realSchema == "" || ddlInfo.table.Table == "" {
-							b.logger.Info("NewQueryEventAffectTable. found empty schema or table.",
-								"schema", realSchema, "table", ddlInfo.table.Table, "query", sql)
-						}
-
-						event := common.NewQueryEventAffectTable(
-							currentSchema,
-							sql,
-							common.NotDML,
-							ddlInfo.table,
-							ev.Header.Timestamp,
-						)
-						if table != nil {
-							tableBs, err := common.GobEncode(table)
+						skipEvent = skipBySqlFilter(ddlInfo.ast, b.sqlFilter)
+						switch realAst := ddlInfo.ast.(type) {
+						case *ast.CreateDatabaseStmt:
+							b.sqleAfterCreateSchema(ddlInfo.table.Schema)
+						case *ast.CreateTableStmt:
+							b.logger.Debug("ddl is create table")
+							err := b.updateTableMeta(table, realSchema, tableName)
 							if err != nil {
-								return errors.Wrap(err, "GobEncode(table)")
+								return err
 							}
-							event.Table = tableBs
+						//case *ast.DropTableStmt:
+						case *ast.AlterTableStmt:
+							b.logger.Debug("ddl is alter table.", "specs", realAst.Specs)
+
+							fromTable := table
+							tableNameX := tableName
+
+							for iSpec := range realAst.Specs {
+								switch realAst.Specs[iSpec].Tp {
+								case ast.AlterTableRenameTable:
+									fromTable = nil
+									tableNameX = realAst.Specs[iSpec].NewTable.Name.O
+								default:
+									// do nothing
+								}
+							}
+							err := b.updateTableMeta(fromTable, realSchema, tableNameX)
+							if err != nil {
+								return err
+							}
 						}
-						b.currentBinlogEntry.Events = append(b.currentBinlogEntry.Events, event)
+						if schema != nil && schema.TableSchemaRename != "" {
+							ddlInfo.table.Schema = schema.TableSchemaRename
+							b.logger.Debug("ddl schema mapping", "from", realSchema, "to", schema.TableSchemaRename)
+							//sql = strings.Replace(sql, realSchema, schema.TableSchemaRename, 1)
+							sql = loadMapping(sql, realSchema, schema.TableSchemaRename, "schemaRename", " ")
+							if currentSchema == realSchema {
+								currentSchema = schema.TableSchemaRename
+							}
+							realSchema = schema.TableSchemaRename
+						} else {
+							// schema == nil means it is not explicit in ReplicateDoDb, thus no renaming
+							// or schema.TableSchemaRename == "" means no renaming
+						}
+
+						if table != nil && table.TableRename != "" {
+							ddlInfo.table.Table = table.TableRename
+							//sql = strings.Replace(sql, tableName, table.TableRename, 1)
+							sql = loadMapping(sql, tableName, table.TableRename, "", currentSchema)
+							b.logger.Debug("ddl table mapping", "from", tableName, "to", table.TableRename)
+						}
+
+						if skipEvent {
+							b.logger.Debug("skipped a ddl event.", "query", query)
+						} else {
+							if realSchema == "" || ddlInfo.table.Table == "" {
+								b.logger.Info("NewQueryEventAffectTable. found empty schema or table.",
+									"schema", realSchema, "table", ddlInfo.table.Table, "query", sql)
+							}
+
+							event := common.NewQueryEventAffectTable(
+								currentSchema,
+								sql,
+								common.NotDML,
+								ddlInfo.table,
+								ev.Header.Timestamp,
+							)
+							if table != nil {
+								tableBs, err := common.GobEncode(table)
+								if err != nil {
+									return errors.Wrap(err, "GobEncode(table)")
+								}
+								event.Table = tableBs
+							}
+							b.currentBinlogEntry.Events = append(b.currentBinlogEntry.Events, event)
+						}
 					}
 				}
 				b.entryContext.SpanContext = span.Context()
@@ -812,14 +809,6 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 func (b *BinlogReader) sendEntry(entriesChannel chan<- *common.BinlogEntryContext) {
 	atomic.AddInt64(b.memory, int64(b.entryContext.Entry.Size()))
 	entriesChannel <- b.entryContext
-}
-
-func (b *BinlogReader) sendEmptyEntry(entriesChannel chan<- *common.BinlogEntryContext) {
-	atomic.AddInt64(b.memory, int64(b.entryContext.Entry.Size()))
-	b.logger.Debug("sendEmptyEntry","entryContext", b.entryContext)
-	emptyEntry := b.entryContext
-	emptyEntry.Entry.Events = []common.DataEvent{}
-	entriesChannel <- emptyEntry
 }
 
 func loadMapping(sql, beforeName, afterName, mappingType, currentSchema string) string {
