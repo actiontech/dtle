@@ -528,8 +528,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 					tableName := ddlInfo.tables[i].Table
 					err = b.checkObjectFitRegexp(b.mysqlContext.ReplicateDoDb, realSchema, tableName)
 					if err != nil {
-						b.logger.Warn("skip query", "query", query)
-						return nil
+						return errors.Wrap(err, "checkObjectFitRegexp")
 					}
 
 					if b.skipQueryDDL(sql, realSchema, tableName) {
@@ -1301,7 +1300,11 @@ func (b *BinlogReader) checkObjectFitRegexp(patternTBS []*common.DataSource, sch
 		table := &common.Table{}
 		schema := &common.DataSource{}
 		if pdb.TableSchemaScope == "schemas" && pdb.TableSchema != schemaName {
-			reg := regexp.MustCompile(pdb.TableSchemaRegex)
+			// TODO check & compile one time
+			reg, err := regexp.Compile(pdb.TableSchemaRegex)
+			if err != nil {
+				return err
+			}
 			if reg.MatchString(schemaName) {
 				match := reg.FindStringSubmatchIndex(schemaName)
 				schema.TableSchemaRegex = pdb.TableSchemaRegex
@@ -1319,7 +1322,11 @@ func (b *BinlogReader) checkObjectFitRegexp(patternTBS []*common.DataSource, sch
 		}
 		for _, ptb := range pdb.Tables {
 			if pdb.TableSchemaScope == "tables" && ptb.TableName != tableName {
-				reg := regexp.MustCompile(ptb.TableRegex)
+				// TODO check & compile one time
+				reg, err := regexp.Compile(ptb.TableRegex)
+				if err != nil {
+					return err
+				}
 				if reg.MatchString(tableName) {
 					match := reg.FindStringSubmatchIndex(tableName)
 					table.TableRegex = ptb.TableRegex
