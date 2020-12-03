@@ -31,6 +31,7 @@ type dumper struct {
 	TableName          string
 	EscapedTableName   string
 	table              *common.Table
+	iteration          int64
 	columns            string
 	resultsChannel     chan *common.DumpEntry
 	shutdown           bool
@@ -129,7 +130,7 @@ func (d *dumper) buildQueryOldWay() string {
 		d.EscapedTableName,
 		d.table.GetWhere(),
 		d.chunkSize,
-		d.table.Iteration*d.chunkSize,
+		d.iteration * d.chunkSize,
 	)
 }
 
@@ -149,7 +150,7 @@ func (d *dumper) buildQueryOnUniqueKey() string {
 
 	var rangeStr string
 
-	if d.table.Iteration == 0 {
+	if d.iteration == 0 {
 		rangeStr = "true"
 	} else {
 		rangeItems := make([]string, nCol)
@@ -232,7 +233,7 @@ func (d *dumper) getChunkData() (nRows int64, err error) {
 	d.logger.Debug("getChunkData.", "query", query)
 
 	if d.doChecksum != 0 {
-		if d.doChecksum == 2 || (d.doChecksum == 1 && d.table.Iteration == 0) {
+		if d.doChecksum == 2 || (d.doChecksum == 1 && d.iteration == 0) {
 			row := d.db.QueryRow(fmt.Sprintf("checksum table %v.%v", d.TableSchema, d.TableName))
 			var table string
 			var cs int64
@@ -246,7 +247,7 @@ func (d *dumper) getChunkData() (nRows int64, err error) {
 	}
 
 	// this must be increased after building query
-	d.table.Iteration += 1
+	d.iteration += 1
 	rows, err := d.db.Query(query)
 	if err != nil {
 		d.logger.Debug("error at select chunk. query: ", query)

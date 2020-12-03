@@ -394,7 +394,8 @@ func ToColumnValuesV2(abstractValues []interface{}, table *common.TableContext) 
 	}
 
 	for i := 0; i < len(abstractValues); i++ {
-		if table != nil {
+		// TODO is this conversion necessary?
+		if table != nil && table.Table.OriginalTableColumns != nil {
 			columns := table.Table.OriginalTableColumns.Columns
 			if i < len(columns) && columns[i].IsUnsigned {
 				// len(columns) might less than len(abstractValues), esp on AliRDS. See #192.

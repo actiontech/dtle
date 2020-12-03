@@ -38,12 +38,9 @@ type Table struct {
 
 	OriginalTableColumns *ColumnList
 	UseUniqueKey         *UniqueKey
-	Iteration            int64
 	ColumnMap            []int
 
 	TableType    string
-	TableEngine  string
-	RowsEstimate int64
 
 	Where string // Call GetWhere() instead of directly accessing.
 }
@@ -60,7 +57,6 @@ func NewTable(schemaName string, tableName string) *Table {
 	return &Table{
 		TableSchema: schemaName,
 		TableName:   tableName,
-		Iteration:   0,
 		Where:       "true",
 	}
 }
