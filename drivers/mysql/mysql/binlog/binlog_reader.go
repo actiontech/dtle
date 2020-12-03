@@ -197,8 +197,6 @@ func NewMySQLReader(execCtx *common.ExecContext, cfg *common.MySQLDriverConfig, 
 		return nil, err
 	}
 	logger.Debug("got replication serverId", "id", binlogReader.serverId)
-	// support regex
-	binlogReader.genRegexMap()
 
 	if binlogReader.mysqlContext.BinlogRelay {
 		// init when connecting
@@ -1232,30 +1230,6 @@ func (b *BinlogReader) matchTable(patternTBS []*common.DataSource, schemaName st
 	return false
 }
 
-func (b *BinlogReader) genRegexMap() {
-	for _, db := range b.mysqlContext.ReplicateDoDb {
-		if db.TableSchemaScope != "tables" || db.TableSchemaScope != "schemas" {
-			continue
-		}
-		if _, ok := b.ReMap[db.TableSchema]; !ok {
-			b.ReMap[db.TableSchema] = regexp.MustCompile(db.TableSchema[1:])
-		}
-
-		for _, tb := range db.Tables {
-			/*if tb.TableName[0] == '~' {*/
-			if _, ok := b.ReMap[tb.TableName]; !ok {
-				b.ReMap[tb.TableName] = regexp.MustCompile(tb.TableName[1:])
-			}
-			/*}*/
-			/*if tb.TableSchema[0] == '~' {*/
-			if _, ok := b.ReMap[tb.TableSchema]; !ok {
-				b.ReMap[tb.TableSchema] = regexp.MustCompile(tb.TableSchema[1:])
-			}
-			/*	}*/
-		}
-	}
-}
-
 func (b *BinlogReader) Close() error {
 	b.logger.Debug("BinlogReader.Close")
 	b.shutdownLock.Lock()
@@ -1353,7 +1327,6 @@ func (b *BinlogReader) checkObjectFitRegexp(patternTBS []*common.DataSource, sch
 					table.TableRename = string(reg.ExpandString(nil, ptb.TableRenameRegex, tableName, match))
 					b.mysqlContext.ReplicateDoDb[i].Tables = append(b.mysqlContext.ReplicateDoDb[i].Tables, table)
 				}
-				//b.genRegexMap()
 				break
 			}
 		}
