@@ -77,7 +77,11 @@ func (c *Column) IsPk() bool {
 func (c *Column) ConvertArg(arg interface{}) interface{} {
 	switch v := arg.(type) {
 	case []byte:
-		if strings.Contains(c.ColumnType, "text") { // TODO make a flag
+		if len(v) == 0 {
+			return "" // If we return the empty slice, it will be inserted as NULL.
+		}
+		switch c.Type {
+		case TextColumnType, TinytextColumnType:
 			if encoding, ok := charsetEncodingMap[c.Charset]; ok {
 				arg, _, _ = transform.Bytes(encoding.NewDecoder(), v)
 			}
