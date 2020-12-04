@@ -387,31 +387,7 @@ func (b *BinlogReader) GetCurrentBinlogCoordinates() *common.BinlogCoordinateTx 
 	return &returnCoordinates
 }
 
-func ToColumnValuesV2(abstractValues []interface{}, table *common.TableContext) *common.ColumnValues {
-	for i := 0; i < len(abstractValues); i++ {
-		// TODO is this conversion necessary?
-		if table != nil && table.Table.OriginalTableColumns != nil {
-			columns := table.Table.OriginalTableColumns.Columns
-			if i < len(columns) && columns[i].IsUnsigned {
-				// len(columns) might less than len(abstractValues), esp on AliRDS. See #192.
-				switch v := abstractValues[i].(type) {
-				case int8:
-					abstractValues[i] = uint8(v)
-				case int16:
-					abstractValues[i] = uint16(v)
-				case int32:
-					if columns[i].Type == mysqlconfig.MediumIntColumnType {
-						abstractValues[i] = uint32(v) & 0x00FFFFFF
-					} else {
-						abstractValues[i] = uint32(v)
-					}
-				case int64:
-					abstractValues[i] = uint64(v)
-				}
-			}
-		}
-	}
-
+func ToColumnValuesV2(abstractValues []interface{}) *common.ColumnValues {
 	return &common.ColumnValues{
 		AbstractValues: abstractValues,
 	}
@@ -685,16 +661,16 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 				switch dml {
 				case common.InsertDML:
 					{
-						dmlEvent.NewColumnValues = ToColumnValuesV2(row, table)
+						dmlEvent.NewColumnValues = ToColumnValuesV2(row)
 					}
 				case common.UpdateDML:
 					{
-						dmlEvent.WhereColumnValues = ToColumnValuesV2(row, table)
-						dmlEvent.NewColumnValues = ToColumnValuesV2(rowsEvent.Rows[i+1], table)
+						dmlEvent.WhereColumnValues = ToColumnValuesV2(row)
+						dmlEvent.NewColumnValues = ToColumnValuesV2(rowsEvent.Rows[i+1])
 					}
 				case common.DeleteDML:
 					{
-						dmlEvent.WhereColumnValues = ToColumnValuesV2(row, table)
+						dmlEvent.WhereColumnValues = ToColumnValuesV2(row)
 					}
 				}
 
