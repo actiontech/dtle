@@ -764,10 +764,10 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *common.BinlogEntry)
 			var afterValue interface{}
 
 			if before != nil {
-				beforeValue = *dataEvent.WhereColumnValues.AbstractValues[i]
+				beforeValue = dataEvent.WhereColumnValues.AbstractValues[i]
 			}
 			if after != nil {
-				afterValue = *dataEvent.NewColumnValues.AbstractValues[i]
+				afterValue = dataEvent.NewColumnValues.AbstractValues[i]
 			}
 
 			switch colList[i].Type {

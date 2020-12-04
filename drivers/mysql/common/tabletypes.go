@@ -84,7 +84,7 @@ func (t *TableContext) WhereTrue(values *ColumnValues) (bool, error) {
 		}
 
 		//fmt.Printf("**** type of %v %T\n", field, *values.ValuesPointers[idx])
-		rawValue := *(values.AbstractValues[idx])
+		rawValue := values.AbstractValues[idx]
 		var value interface{}
 		if rawValue == nil {
 			value = rawValue

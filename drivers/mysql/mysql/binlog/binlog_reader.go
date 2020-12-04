@@ -388,10 +388,6 @@ func (b *BinlogReader) GetCurrentBinlogCoordinates() *common.BinlogCoordinateTx 
 }
 
 func ToColumnValuesV2(abstractValues []interface{}, table *common.TableContext) *common.ColumnValues {
-	result := &common.ColumnValues{
-		AbstractValues: make([]*interface{}, len(abstractValues)),
-	}
-
 	for i := 0; i < len(abstractValues); i++ {
 		// TODO is this conversion necessary?
 		if table != nil && table.Table.OriginalTableColumns != nil {
@@ -414,10 +410,11 @@ func ToColumnValuesV2(abstractValues []interface{}, table *common.TableContext) 
 				}
 			}
 		}
-		result.AbstractValues[i] = &abstractValues[i]
 	}
 
-	return result
+	return &common.ColumnValues{
+		AbstractValues: abstractValues,
+	}
 }
 
 // If isDDL, a sql correspond to a table item, aka len(tables) == len(sqls).
@@ -778,7 +775,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 					// In reality, reads will be synchronous
 					if table != nil && len(table.Table.ColumnMap) > 0 {
 						if dmlEvent.NewColumnValues != nil {
-							newRow := make([]*interface{}, len(table.Table.ColumnMap))
+							newRow := make([]interface{}, len(table.Table.ColumnMap))
 							for i := range table.Table.ColumnMap {
 								idx := table.Table.ColumnMap[i]
 								newRow[i] = dmlEvent.NewColumnValues.AbstractValues[idx]
@@ -787,7 +784,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 						}
 
 						if dmlEvent.WhereColumnValues != nil {
-							newRow := make([]*interface{}, len(table.Table.ColumnMap))
+							newRow := make([]interface{}, len(table.Table.ColumnMap))
 							for i := range table.Table.ColumnMap {
 								idx := table.Table.ColumnMap[i]
 								newRow[i] = dmlEvent.WhereColumnValues.AbstractValues[idx]

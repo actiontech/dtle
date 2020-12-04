@@ -22,7 +22,7 @@ struct BinlogCoordinateTx {
 }
 
 struct ColumnValues {
-    AbstractValues []*union {
+    AbstractValues []union {
         string
         int8
         int16

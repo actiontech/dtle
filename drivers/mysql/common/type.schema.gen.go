@@ -1057,7 +1057,7 @@ func (d *BinlogCoordinateTx) Unmarshal(buf []byte) (uint64, error) {
 }
 
 type ColumnValues struct {
-	AbstractValues []*interface{}
+	AbstractValues []interface{}
 }
 
 func (d *ColumnValues) Size() (s uint64) {
@@ -1079,56 +1079,70 @@ func (d *ColumnValues) Size() (s uint64) {
 		for k0 := range d.AbstractValues {
 
 			{
-				if d.AbstractValues[k0] != nil {
+				var v uint64
+				switch d.AbstractValues[k0].(type) {
+
+				case string:
+					v = 0 + 1
+
+				case int8:
+					v = 1 + 1
+
+				case int16:
+					v = 2 + 1
+
+				case int32:
+					v = 3 + 1
+
+				case int64:
+					v = 4 + 1
+
+				case uint8:
+					v = 5 + 1
+
+				case uint16:
+					v = 6 + 1
+
+				case uint32:
+					v = 7 + 1
+
+				case uint64:
+					v = 8 + 1
+
+				case []byte:
+					v = 9 + 1
+
+				case float32:
+					v = 10 + 1
+
+				case float64:
+					v = 11 + 1
+
+				case bool:
+					v = 12 + 1
+
+				}
+
+				{
+
+					t := v
+					for t >= 0x80 {
+						t >>= 7
+						s++
+					}
+					s++
+
+				}
+				switch tt := d.AbstractValues[k0].(type) {
+
+				case string:
 
 					{
-						var v uint64
-						switch (*d.AbstractValues[k0]).(type) {
-
-						case string:
-							v = 0 + 1
-
-						case int8:
-							v = 1 + 1
-
-						case int16:
-							v = 2 + 1
-
-						case int32:
-							v = 3 + 1
-
-						case int64:
-							v = 4 + 1
-
-						case uint8:
-							v = 5 + 1
-
-						case uint16:
-							v = 6 + 1
-
-						case uint32:
-							v = 7 + 1
-
-						case uint64:
-							v = 8 + 1
-
-						case []byte:
-							v = 9 + 1
-
-						case float32:
-							v = 10 + 1
-
-						case float64:
-							v = 11 + 1
-
-						case bool:
-							v = 12 + 1
-
-						}
+						l := uint64(len(tt))
 
 						{
 
-							t := v
+							t := l
 							for t >= 0x80 {
 								t >>= 7
 								s++
@@ -1136,95 +1150,73 @@ func (d *ColumnValues) Size() (s uint64) {
 							s++
 
 						}
-						switch tt := (*d.AbstractValues[k0]).(type) {
+						s += l
+					}
 
-						case string:
+				case int8:
 
-							{
-								l := uint64(len(tt))
+					s += 1
 
-								{
+				case int16:
 
-									t := l
-									for t >= 0x80 {
-										t >>= 7
-										s++
-									}
-									s++
+					s += 2
 
-								}
-								s += l
+				case int32:
+
+					s += 4
+
+				case int64:
+
+					s += 8
+
+				case uint8:
+
+					s += 1
+
+				case uint16:
+
+					s += 2
+
+				case uint32:
+
+					s += 4
+
+				case uint64:
+
+					s += 8
+
+				case []byte:
+
+					{
+						l := uint64(len(tt))
+
+						{
+
+							t := l
+							for t >= 0x80 {
+								t >>= 7
+								s++
 							}
-
-						case int8:
-
-							s += 1
-
-						case int16:
-
-							s += 2
-
-						case int32:
-
-							s += 4
-
-						case int64:
-
-							s += 8
-
-						case uint8:
-
-							s += 1
-
-						case uint16:
-
-							s += 2
-
-						case uint32:
-
-							s += 4
-
-						case uint64:
-
-							s += 8
-
-						case []byte:
-
-							{
-								l := uint64(len(tt))
-
-								{
-
-									t := l
-									for t >= 0x80 {
-										t >>= 7
-										s++
-									}
-									s++
-
-								}
-								s += l
-							}
-
-						case float32:
-
-							s += 4
-
-						case float64:
-
-							s += 8
-
-						case bool:
-
-							s += 1
+							s++
 
 						}
+						s += l
 					}
-					s += 0
+
+				case float32:
+
+					s += 4
+
+				case float64:
+
+					s += 8
+
+				case bool:
+
+					s += 1
+
 				}
 			}
-
-			s += 1
 
 		}
 
@@ -1261,302 +1253,291 @@ func (d *ColumnValues) Marshal(buf []byte) ([]byte, error) {
 		for k0 := range d.AbstractValues {
 
 			{
-				if d.AbstractValues[k0] == nil {
-					buf[i+0] = 0
-				} else {
-					buf[i+0] = 1
+				var v uint64
+				switch d.AbstractValues[k0].(type) {
+
+				case string:
+					v = 0 + 1
+
+				case int8:
+					v = 1 + 1
+
+				case int16:
+					v = 2 + 1
+
+				case int32:
+					v = 3 + 1
+
+				case int64:
+					v = 4 + 1
+
+				case uint8:
+					v = 5 + 1
+
+				case uint16:
+					v = 6 + 1
+
+				case uint32:
+					v = 7 + 1
+
+				case uint64:
+					v = 8 + 1
+
+				case []byte:
+					v = 9 + 1
+
+				case float32:
+					v = 10 + 1
+
+				case float64:
+					v = 11 + 1
+
+				case bool:
+					v = 12 + 1
+
+				}
+
+				{
+
+					t := uint64(v)
+
+					for t >= 0x80 {
+						buf[i+0] = byte(t) | 0x80
+						t >>= 7
+						i++
+					}
+					buf[i+0] = byte(t)
+					i++
+
+				}
+				switch tt := d.AbstractValues[k0].(type) {
+
+				case string:
 
 					{
-						var v uint64
-						switch (*d.AbstractValues[k0]).(type) {
-
-						case string:
-							v = 0 + 1
-
-						case int8:
-							v = 1 + 1
-
-						case int16:
-							v = 2 + 1
-
-						case int32:
-							v = 3 + 1
-
-						case int64:
-							v = 4 + 1
-
-						case uint8:
-							v = 5 + 1
-
-						case uint16:
-							v = 6 + 1
-
-						case uint32:
-							v = 7 + 1
-
-						case uint64:
-							v = 8 + 1
-
-						case []byte:
-							v = 9 + 1
-
-						case float32:
-							v = 10 + 1
-
-						case float64:
-							v = 11 + 1
-
-						case bool:
-							v = 12 + 1
-
-						}
+						l := uint64(len(tt))
 
 						{
 
-							t := uint64(v)
+							t := uint64(l)
 
 							for t >= 0x80 {
-								buf[i+1] = byte(t) | 0x80
+								buf[i+0] = byte(t) | 0x80
 								t >>= 7
 								i++
 							}
-							buf[i+1] = byte(t)
+							buf[i+0] = byte(t)
 							i++
 
 						}
-						switch tt := (*d.AbstractValues[k0]).(type) {
+						copy(buf[i+0:], tt)
+						i += l
+					}
 
-						case string:
+				case int8:
 
-							{
-								l := uint64(len(tt))
+					{
 
-								{
+						buf[i+0+0] = byte(tt >> 0)
 
-									t := uint64(l)
+					}
 
-									for t >= 0x80 {
-										buf[i+1] = byte(t) | 0x80
-										t >>= 7
-										i++
-									}
-									buf[i+1] = byte(t)
-									i++
+					i += 1
 
-								}
-								copy(buf[i+1:], tt)
-								i += l
+				case int16:
+
+					{
+
+						buf[i+0+0] = byte(tt >> 0)
+
+						buf[i+1+0] = byte(tt >> 8)
+
+					}
+
+					i += 2
+
+				case int32:
+
+					{
+
+						buf[i+0+0] = byte(tt >> 0)
+
+						buf[i+1+0] = byte(tt >> 8)
+
+						buf[i+2+0] = byte(tt >> 16)
+
+						buf[i+3+0] = byte(tt >> 24)
+
+					}
+
+					i += 4
+
+				case int64:
+
+					{
+
+						buf[i+0+0] = byte(tt >> 0)
+
+						buf[i+1+0] = byte(tt >> 8)
+
+						buf[i+2+0] = byte(tt >> 16)
+
+						buf[i+3+0] = byte(tt >> 24)
+
+						buf[i+4+0] = byte(tt >> 32)
+
+						buf[i+5+0] = byte(tt >> 40)
+
+						buf[i+6+0] = byte(tt >> 48)
+
+						buf[i+7+0] = byte(tt >> 56)
+
+					}
+
+					i += 8
+
+				case uint8:
+
+					{
+
+						buf[i+0+0] = byte(tt >> 0)
+
+					}
+
+					i += 1
+
+				case uint16:
+
+					{
+
+						buf[i+0+0] = byte(tt >> 0)
+
+						buf[i+1+0] = byte(tt >> 8)
+
+					}
+
+					i += 2
+
+				case uint32:
+
+					{
+
+						buf[i+0+0] = byte(tt >> 0)
+
+						buf[i+1+0] = byte(tt >> 8)
+
+						buf[i+2+0] = byte(tt >> 16)
+
+						buf[i+3+0] = byte(tt >> 24)
+
+					}
+
+					i += 4
+
+				case uint64:
+
+					{
+
+						buf[i+0+0] = byte(tt >> 0)
+
+						buf[i+1+0] = byte(tt >> 8)
+
+						buf[i+2+0] = byte(tt >> 16)
+
+						buf[i+3+0] = byte(tt >> 24)
+
+						buf[i+4+0] = byte(tt >> 32)
+
+						buf[i+5+0] = byte(tt >> 40)
+
+						buf[i+6+0] = byte(tt >> 48)
+
+						buf[i+7+0] = byte(tt >> 56)
+
+					}
+
+					i += 8
+
+				case []byte:
+
+					{
+						l := uint64(len(tt))
+
+						{
+
+							t := uint64(l)
+
+							for t >= 0x80 {
+								buf[i+0] = byte(t) | 0x80
+								t >>= 7
+								i++
 							}
-
-						case int8:
-
-							{
-
-								buf[i+0+1] = byte(tt >> 0)
-
-							}
-
-							i += 1
-
-						case int16:
-
-							{
-
-								buf[i+0+1] = byte(tt >> 0)
-
-								buf[i+1+1] = byte(tt >> 8)
-
-							}
-
-							i += 2
-
-						case int32:
-
-							{
-
-								buf[i+0+1] = byte(tt >> 0)
-
-								buf[i+1+1] = byte(tt >> 8)
-
-								buf[i+2+1] = byte(tt >> 16)
-
-								buf[i+3+1] = byte(tt >> 24)
-
-							}
-
-							i += 4
-
-						case int64:
-
-							{
-
-								buf[i+0+1] = byte(tt >> 0)
-
-								buf[i+1+1] = byte(tt >> 8)
-
-								buf[i+2+1] = byte(tt >> 16)
-
-								buf[i+3+1] = byte(tt >> 24)
-
-								buf[i+4+1] = byte(tt >> 32)
-
-								buf[i+5+1] = byte(tt >> 40)
-
-								buf[i+6+1] = byte(tt >> 48)
-
-								buf[i+7+1] = byte(tt >> 56)
-
-							}
-
-							i += 8
-
-						case uint8:
-
-							{
-
-								buf[i+0+1] = byte(tt >> 0)
-
-							}
-
-							i += 1
-
-						case uint16:
-
-							{
-
-								buf[i+0+1] = byte(tt >> 0)
-
-								buf[i+1+1] = byte(tt >> 8)
-
-							}
-
-							i += 2
-
-						case uint32:
-
-							{
-
-								buf[i+0+1] = byte(tt >> 0)
-
-								buf[i+1+1] = byte(tt >> 8)
-
-								buf[i+2+1] = byte(tt >> 16)
-
-								buf[i+3+1] = byte(tt >> 24)
-
-							}
-
-							i += 4
-
-						case uint64:
-
-							{
-
-								buf[i+0+1] = byte(tt >> 0)
-
-								buf[i+1+1] = byte(tt >> 8)
-
-								buf[i+2+1] = byte(tt >> 16)
-
-								buf[i+3+1] = byte(tt >> 24)
-
-								buf[i+4+1] = byte(tt >> 32)
-
-								buf[i+5+1] = byte(tt >> 40)
-
-								buf[i+6+1] = byte(tt >> 48)
-
-								buf[i+7+1] = byte(tt >> 56)
-
-							}
-
-							i += 8
-
-						case []byte:
-
-							{
-								l := uint64(len(tt))
-
-								{
-
-									t := uint64(l)
-
-									for t >= 0x80 {
-										buf[i+1] = byte(t) | 0x80
-										t >>= 7
-										i++
-									}
-									buf[i+1] = byte(t)
-									i++
-
-								}
-								copy(buf[i+1:], tt)
-								i += l
-							}
-
-						case float32:
-
-							{
-
-								v := *(*uint32)(unsafe.Pointer(&(tt)))
-
-								buf[i+0+1] = byte(v >> 0)
-
-								buf[i+1+1] = byte(v >> 8)
-
-								buf[i+2+1] = byte(v >> 16)
-
-								buf[i+3+1] = byte(v >> 24)
-
-							}
-
-							i += 4
-
-						case float64:
-
-							{
-
-								v := *(*uint64)(unsafe.Pointer(&(tt)))
-
-								buf[i+0+1] = byte(v >> 0)
-
-								buf[i+1+1] = byte(v >> 8)
-
-								buf[i+2+1] = byte(v >> 16)
-
-								buf[i+3+1] = byte(v >> 24)
-
-								buf[i+4+1] = byte(v >> 32)
-
-								buf[i+5+1] = byte(v >> 40)
-
-								buf[i+6+1] = byte(v >> 48)
-
-								buf[i+7+1] = byte(v >> 56)
-
-							}
-
-							i += 8
-
-						case bool:
-
-							{
-								if tt {
-									buf[i+1] = 1
-								} else {
-									buf[i+1] = 0
-								}
-							}
-
-							i += 1
+							buf[i+0] = byte(t)
+							i++
 
 						}
+						copy(buf[i+0:], tt)
+						i += l
 					}
-					i += 0
+
+				case float32:
+
+					{
+
+						v := *(*uint32)(unsafe.Pointer(&(tt)))
+
+						buf[i+0+0] = byte(v >> 0)
+
+						buf[i+1+0] = byte(v >> 8)
+
+						buf[i+2+0] = byte(v >> 16)
+
+						buf[i+3+0] = byte(v >> 24)
+
+					}
+
+					i += 4
+
+				case float64:
+
+					{
+
+						v := *(*uint64)(unsafe.Pointer(&(tt)))
+
+						buf[i+0+0] = byte(v >> 0)
+
+						buf[i+1+0] = byte(v >> 8)
+
+						buf[i+2+0] = byte(v >> 16)
+
+						buf[i+3+0] = byte(v >> 24)
+
+						buf[i+4+0] = byte(v >> 32)
+
+						buf[i+5+0] = byte(v >> 40)
+
+						buf[i+6+0] = byte(v >> 48)
+
+						buf[i+7+0] = byte(v >> 56)
+
+					}
+
+					i += 8
+
+				case bool:
+
+					{
+						if tt {
+							buf[i+0] = 1
+						} else {
+							buf[i+0] = 0
+						}
+					}
+
+					i += 1
+
 				}
 			}
-
-			i += 1
 
 		}
 	}
@@ -1586,246 +1567,233 @@ func (d *ColumnValues) Unmarshal(buf []byte) (uint64, error) {
 		if uint64(cap(d.AbstractValues)) >= l {
 			d.AbstractValues = d.AbstractValues[:l]
 		} else {
-			d.AbstractValues = make([]*interface{}, l)
+			d.AbstractValues = make([]interface{}, l)
 		}
 		for k0 := range d.AbstractValues {
 
 			{
-				if buf[i+0] == 1 {
-					if d.AbstractValues[k0] == nil {
-						d.AbstractValues[k0] = new(interface{})
+				v := uint64(0)
+
+				{
+
+					bs := uint8(7)
+					t := uint64(buf[i+0] & 0x7F)
+					for buf[i+0]&0x80 == 0x80 {
+						i++
+						t |= uint64(buf[i+0]&0x7F) << bs
+						bs += 7
 					}
+					i++
+
+					v = t
+
+				}
+				switch v {
+
+				case 0 + 1:
+					var tt string
 
 					{
-						v := uint64(0)
+						l := uint64(0)
 
 						{
 
 							bs := uint8(7)
-							t := uint64(buf[i+1] & 0x7F)
-							for buf[i+1]&0x80 == 0x80 {
+							t := uint64(buf[i+0] & 0x7F)
+							for buf[i+0]&0x80 == 0x80 {
 								i++
-								t |= uint64(buf[i+1]&0x7F) << bs
+								t |= uint64(buf[i+0]&0x7F) << bs
 								bs += 7
 							}
 							i++
 
-							v = t
+							l = t
 
 						}
-						switch v {
-
-						case 0 + 1:
-							var tt string
-
-							{
-								l := uint64(0)
-
-								{
-
-									bs := uint8(7)
-									t := uint64(buf[i+1] & 0x7F)
-									for buf[i+1]&0x80 == 0x80 {
-										i++
-										t |= uint64(buf[i+1]&0x7F) << bs
-										bs += 7
-									}
-									i++
-
-									l = t
-
-								}
-								tt = string(buf[i+1 : i+1+l])
-								i += l
-							}
-
-							(*d.AbstractValues[k0]) = tt
-
-						case 1 + 1:
-							var tt int8
-
-							{
-
-								tt = 0 | (int8(buf[i+0+1]) << 0)
-
-							}
-
-							i += 1
-
-							(*d.AbstractValues[k0]) = tt
-
-						case 2 + 1:
-							var tt int16
-
-							{
-
-								tt = 0 | (int16(buf[i+0+1]) << 0) | (int16(buf[i+1+1]) << 8)
-
-							}
-
-							i += 2
-
-							(*d.AbstractValues[k0]) = tt
-
-						case 3 + 1:
-							var tt int32
-
-							{
-
-								tt = 0 | (int32(buf[i+0+1]) << 0) | (int32(buf[i+1+1]) << 8) | (int32(buf[i+2+1]) << 16) | (int32(buf[i+3+1]) << 24)
-
-							}
-
-							i += 4
-
-							(*d.AbstractValues[k0]) = tt
-
-						case 4 + 1:
-							var tt int64
-
-							{
-
-								tt = 0 | (int64(buf[i+0+1]) << 0) | (int64(buf[i+1+1]) << 8) | (int64(buf[i+2+1]) << 16) | (int64(buf[i+3+1]) << 24) | (int64(buf[i+4+1]) << 32) | (int64(buf[i+5+1]) << 40) | (int64(buf[i+6+1]) << 48) | (int64(buf[i+7+1]) << 56)
-
-							}
-
-							i += 8
-
-							(*d.AbstractValues[k0]) = tt
-
-						case 5 + 1:
-							var tt uint8
-
-							{
-
-								tt = 0 | (uint8(buf[i+0+1]) << 0)
-
-							}
-
-							i += 1
-
-							(*d.AbstractValues[k0]) = tt
-
-						case 6 + 1:
-							var tt uint16
-
-							{
-
-								tt = 0 | (uint16(buf[i+0+1]) << 0) | (uint16(buf[i+1+1]) << 8)
-
-							}
-
-							i += 2
-
-							(*d.AbstractValues[k0]) = tt
-
-						case 7 + 1:
-							var tt uint32
-
-							{
-
-								tt = 0 | (uint32(buf[i+0+1]) << 0) | (uint32(buf[i+1+1]) << 8) | (uint32(buf[i+2+1]) << 16) | (uint32(buf[i+3+1]) << 24)
-
-							}
-
-							i += 4
-
-							(*d.AbstractValues[k0]) = tt
-
-						case 8 + 1:
-							var tt uint64
-
-							{
-
-								tt = 0 | (uint64(buf[i+0+1]) << 0) | (uint64(buf[i+1+1]) << 8) | (uint64(buf[i+2+1]) << 16) | (uint64(buf[i+3+1]) << 24) | (uint64(buf[i+4+1]) << 32) | (uint64(buf[i+5+1]) << 40) | (uint64(buf[i+6+1]) << 48) | (uint64(buf[i+7+1]) << 56)
-
-							}
-
-							i += 8
-
-							(*d.AbstractValues[k0]) = tt
-
-						case 9 + 1:
-							var tt []byte
-
-							{
-								l := uint64(0)
-
-								{
-
-									bs := uint8(7)
-									t := uint64(buf[i+1] & 0x7F)
-									for buf[i+1]&0x80 == 0x80 {
-										i++
-										t |= uint64(buf[i+1]&0x7F) << bs
-										bs += 7
-									}
-									i++
-
-									l = t
-
-								}
-								if uint64(cap(tt)) >= l {
-									tt = tt[:l]
-								} else {
-									tt = make([]byte, l)
-								}
-								copy(tt, buf[i+1:])
-								i += l
-							}
-
-							(*d.AbstractValues[k0]) = tt
-
-						case 10 + 1:
-							var tt float32
-
-							{
-
-								v := 0 | (uint32(buf[i+0+1]) << 0) | (uint32(buf[i+1+1]) << 8) | (uint32(buf[i+2+1]) << 16) | (uint32(buf[i+3+1]) << 24)
-								tt = *(*float32)(unsafe.Pointer(&v))
-
-							}
-
-							i += 4
-
-							(*d.AbstractValues[k0]) = tt
-
-						case 11 + 1:
-							var tt float64
-
-							{
-
-								v := 0 | (uint64(buf[i+0+1]) << 0) | (uint64(buf[i+1+1]) << 8) | (uint64(buf[i+2+1]) << 16) | (uint64(buf[i+3+1]) << 24) | (uint64(buf[i+4+1]) << 32) | (uint64(buf[i+5+1]) << 40) | (uint64(buf[i+6+1]) << 48) | (uint64(buf[i+7+1]) << 56)
-								tt = *(*float64)(unsafe.Pointer(&v))
-
-							}
-
-							i += 8
-
-							(*d.AbstractValues[k0]) = tt
-
-						case 12 + 1:
-							var tt bool
-
-							{
-								tt = buf[i+1] == 1
-							}
-
-							i += 1
-
-							(*d.AbstractValues[k0]) = tt
-
-						default:
-							(*d.AbstractValues[k0]) = nil
-						}
+						tt = string(buf[i+0 : i+0+l])
+						i += l
 					}
-					i += 0
-				} else {
+
+					d.AbstractValues[k0] = tt
+
+				case 1 + 1:
+					var tt int8
+
+					{
+
+						tt = 0 | (int8(buf[i+0+0]) << 0)
+
+					}
+
+					i += 1
+
+					d.AbstractValues[k0] = tt
+
+				case 2 + 1:
+					var tt int16
+
+					{
+
+						tt = 0 | (int16(buf[i+0+0]) << 0) | (int16(buf[i+1+0]) << 8)
+
+					}
+
+					i += 2
+
+					d.AbstractValues[k0] = tt
+
+				case 3 + 1:
+					var tt int32
+
+					{
+
+						tt = 0 | (int32(buf[i+0+0]) << 0) | (int32(buf[i+1+0]) << 8) | (int32(buf[i+2+0]) << 16) | (int32(buf[i+3+0]) << 24)
+
+					}
+
+					i += 4
+
+					d.AbstractValues[k0] = tt
+
+				case 4 + 1:
+					var tt int64
+
+					{
+
+						tt = 0 | (int64(buf[i+0+0]) << 0) | (int64(buf[i+1+0]) << 8) | (int64(buf[i+2+0]) << 16) | (int64(buf[i+3+0]) << 24) | (int64(buf[i+4+0]) << 32) | (int64(buf[i+5+0]) << 40) | (int64(buf[i+6+0]) << 48) | (int64(buf[i+7+0]) << 56)
+
+					}
+
+					i += 8
+
+					d.AbstractValues[k0] = tt
+
+				case 5 + 1:
+					var tt uint8
+
+					{
+
+						tt = 0 | (uint8(buf[i+0+0]) << 0)
+
+					}
+
+					i += 1
+
+					d.AbstractValues[k0] = tt
+
+				case 6 + 1:
+					var tt uint16
+
+					{
+
+						tt = 0 | (uint16(buf[i+0+0]) << 0) | (uint16(buf[i+1+0]) << 8)
+
+					}
+
+					i += 2
+
+					d.AbstractValues[k0] = tt
+
+				case 7 + 1:
+					var tt uint32
+
+					{
+
+						tt = 0 | (uint32(buf[i+0+0]) << 0) | (uint32(buf[i+1+0]) << 8) | (uint32(buf[i+2+0]) << 16) | (uint32(buf[i+3+0]) << 24)
+
+					}
+
+					i += 4
+
+					d.AbstractValues[k0] = tt
+
+				case 8 + 1:
+					var tt uint64
+
+					{
+
+						tt = 0 | (uint64(buf[i+0+0]) << 0) | (uint64(buf[i+1+0]) << 8) | (uint64(buf[i+2+0]) << 16) | (uint64(buf[i+3+0]) << 24) | (uint64(buf[i+4+0]) << 32) | (uint64(buf[i+5+0]) << 40) | (uint64(buf[i+6+0]) << 48) | (uint64(buf[i+7+0]) << 56)
+
+					}
+
+					i += 8
+
+					d.AbstractValues[k0] = tt
+
+				case 9 + 1:
+					var tt []byte
+
+					{
+						l := uint64(0)
+
+						{
+
+							bs := uint8(7)
+							t := uint64(buf[i+0] & 0x7F)
+							for buf[i+0]&0x80 == 0x80 {
+								i++
+								t |= uint64(buf[i+0]&0x7F) << bs
+								bs += 7
+							}
+							i++
+
+							l = t
+
+						}
+						if uint64(cap(tt)) >= l {
+							tt = tt[:l]
+						} else {
+							tt = make([]byte, l)
+						}
+						copy(tt, buf[i+0:])
+						i += l
+					}
+
+					d.AbstractValues[k0] = tt
+
+				case 10 + 1:
+					var tt float32
+
+					{
+
+						v := 0 | (uint32(buf[i+0+0]) << 0) | (uint32(buf[i+1+0]) << 8) | (uint32(buf[i+2+0]) << 16) | (uint32(buf[i+3+0]) << 24)
+						tt = *(*float32)(unsafe.Pointer(&v))
+
+					}
+
+					i += 4
+
+					d.AbstractValues[k0] = tt
+
+				case 11 + 1:
+					var tt float64
+
+					{
+
+						v := 0 | (uint64(buf[i+0+0]) << 0) | (uint64(buf[i+1+0]) << 8) | (uint64(buf[i+2+0]) << 16) | (uint64(buf[i+3+0]) << 24) | (uint64(buf[i+4+0]) << 32) | (uint64(buf[i+5+0]) << 40) | (uint64(buf[i+6+0]) << 48) | (uint64(buf[i+7+0]) << 56)
+						tt = *(*float64)(unsafe.Pointer(&v))
+
+					}
+
+					i += 8
+
+					d.AbstractValues[k0] = tt
+
+				case 12 + 1:
+					var tt bool
+
+					{
+						tt = buf[i+0] == 1
+					}
+
+					i += 1
+
+					d.AbstractValues[k0] = tt
+
+				default:
 					d.AbstractValues[k0] = nil
 				}
 			}
-
-			i += 1
 
 		}
 	}

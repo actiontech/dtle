@@ -6,12 +6,12 @@ import (
 	"strings"
 )
 
-func (c *ColumnValues) GetAbstractValues() []*interface{} {
+func (c *ColumnValues) GetAbstractValues() []interface{} {
 	return c.AbstractValues
 }
 
 func (c *ColumnValues) StringColumn(index int) string {
-	val := *c.GetAbstractValues()[index]
+	val := c.GetAbstractValues()[index]
 	if ints, ok := val.([]uint8); ok {
 		return string(ints)
 	}
