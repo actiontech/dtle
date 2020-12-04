@@ -7,8 +7,6 @@
 package mysqlconfig
 
 import (
-	"fmt"
-	"strconv"
 	"strings"
 
 	"golang.org/x/text/transform"
@@ -75,50 +73,49 @@ type Column struct {
 func (c *Column) IsPk() bool {
 	return c.Key == "PRI"
 }
+// type of arg: see type.schema
 func (c *Column) ConvertArg(arg interface{}) interface{} {
-	if fmt.Sprintf("%s", arg) == "" {
-		return ""
-	}
-
-	if strings.Contains(c.ColumnType, "text") {
-		if encoding, ok := charsetEncodingMap[c.Charset]; ok {
-			arg, _, _ = transform.String(encoding.NewDecoder(), fmt.Sprintf("%s", arg))
+	switch v := arg.(type) {
+	case []byte:
+		if strings.Contains(c.ColumnType, "text") { // TODO make a flag
+			if encoding, ok := charsetEncodingMap[c.Charset]; ok {
+				arg, _, _ = transform.Bytes(encoding.NewDecoder(), v)
+			}
+			return arg
 		}
-		return arg
-	}
-	if s, ok := arg.(string); ok {
-		// string, charset conversion
-		if encoding, ok := charsetEncodingMap[c.Charset]; ok {
-			arg, _, _ = transform.String(encoding.NewDecoder(), s)
+	case string:
+		if v == "" {
+			return ""
+		} else {
+			// string, charset conversion
+			if encoding, ok := charsetEncodingMap[c.Charset]; ok {
+				arg, _, _ = transform.String(encoding.NewDecoder(), v)
+			}
+			return arg
 		}
-		return arg
 	}
 
 	if c.IsUnsigned {
-		if i, ok := arg.(int8); ok {
+		switch i := arg.(type) {
+		case int8:
 			return uint8(i)
-		}
-		if i, ok := arg.(int16); ok {
+		case int16:
 			return uint16(i)
-		}
-		if i, ok := arg.(int32); ok {
+		case int32:
 			if c.Type == MediumIntColumnType {
-				// problem with mediumint is that it's a 3-byte type. There is no compatible golang type to match that.
-				// So to convert from negative to positive we'd need to convert the value manually
-				if i >= 0 {
-					return i
-				}
-				return uint32(maxMediumintUnsigned + i + 1)
+				return uint32(i) & 0x00FFFFFF
+			} else {
+				return uint32(i)
 			}
-			return uint32(i)
-		}
-		if i, ok := arg.(int64); ok {
-			return strconv.FormatUint(uint64(i), 10)
-		}
-		if i, ok := arg.(int); ok {
+		case int64:
+			return uint64(i)
+		case int:
 			return uint(i)
+		default:
+			return arg
 		}
 	}
+
 	return arg
 }
 
