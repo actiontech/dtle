@@ -373,10 +373,10 @@ func (e *Extractor) inspectTables() (err error) {
 	// Creates a MYSQL Dump based on the options supplied through the dumper.
 	if len(e.mysqlContext.ReplicateDoDb) > 0 {
 		var doDbs []*common.DataSource
-		// Get all db from  TableSchemaRegex regex and get all tableSchemaRename
+		// Get all db from TableSchemaRegex regex and get all tableSchemaRename
 		for _, doDb := range e.mysqlContext.ReplicateDoDb {
 			if doDb.TableSchema == "" && doDb.TableSchemaRegex == "" {
-				return fmt.Errorf("TableSchema or TableSchemaRegex can not both be blank. ")
+				return fmt.Errorf("TableSchema and TableSchemaRegex cannot both be blank")
 			}
 			var regex string
 			if doDb.TableSchemaRegex != "" && doDb.TableSchemaRename != "" && doDb.TableSchema == "" {
@@ -389,7 +389,10 @@ func (e *Extractor) inspectTables() (err error) {
 
 				for _, db := range dbs {
 					newdb := &common.DataSource{}
-					reg := regexp.MustCompile(regex)
+					reg, err := regexp.Compile(regex)
+					if err != nil {
+						return errors.Wrapf(err, "SchemaRegex %v", regex)
+					}
 					if !reg.MatchString(db) {
 						continue
 					}
@@ -404,15 +407,14 @@ func (e *Extractor) inspectTables() (err error) {
 					doDbs = append(doDbs, newdb)
 				}
 				if doDbs == nil {
-					return fmt.Errorf("src schmea  was nil")
+					return fmt.Errorf("src schmea was nil")
 				}
-			} else if doDb.TableSchemaRegex == "" {
+			} else if doDb.TableSchemaRegex == "" { // use doDb.TableSchema
 				doDb.TableSchemaScope = SCHEMA
 				doDbs = append(doDbs, doDb)
 			} else {
-				return fmt.Errorf("TableSchema  configuration error. ")
+				return fmt.Errorf("TableSchema configuration error")
 			}
-
 		}
 		for _, doDb := range doDbs {
 			db := &common.DataSource{
@@ -457,7 +459,10 @@ func (e *Extractor) inspectTables() (err error) {
 						}*/
 
 						for _, table := range tables {
-							reg := regexp.MustCompile(regex)
+							reg, err := regexp.Compile(regex)
+							if err != nil {
+								return errors.Wrapf(err, "TableRegex %v", regex)
+							}
 							if !reg.MatchString(table.TableName) {
 								continue
 							}
@@ -476,7 +481,7 @@ func (e *Extractor) inspectTables() (err error) {
 							db.Tables = append(db.Tables, newTable)
 						}
 						if db.Tables == nil {
-							return fmt.Errorf("src table  was nil")
+							return fmt.Errorf("src table was nil")
 						}
 
 					} else if doTb.TableRegex == "" && doTb.TableName != "" {
@@ -489,7 +494,7 @@ func (e *Extractor) inspectTables() (err error) {
 						db.Tables = append(db.Tables, newTable)
 						db.TableSchemaScope = TABLE
 					} else {
-						return fmt.Errorf("Table  configuration error. ")
+						return fmt.Errorf("table configuration error")
 					}
 
 				}

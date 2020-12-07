@@ -544,6 +544,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 								return err
 							}
 						}
+
 						if schema != nil && schema.TableSchemaRename != "" {
 							ddlInfo.table.Schema = schema.TableSchemaRename
 							b.logger.Debug("ddl schema mapping", "from", realSchema, "to", schema.TableSchemaRename)
