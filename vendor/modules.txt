@@ -253,7 +253,7 @@ github.com/outbrain/golib/tests
 # github.com/pierrec/lz4 v2.4.1+incompatible
 github.com/pierrec/lz4
 github.com/pierrec/lz4/internal/xxh32
-# github.com/pingcap/dm v0.0.0-00010101000000-000000000000 => /Users/fwh/pro1/dm
+# github.com/pingcap/dm v0.0.0-00010101000000-000000000000 => github.com/actiontech/dm v0.0.0-20201207121004-64b8d8152b3b
 github.com/pingcap/dm/dm/config
 github.com/pingcap/dm/dm/pb
 github.com/pingcap/dm/dm/unit
@@ -304,7 +304,7 @@ github.com/pingcap/kvproto/pkg/sharedbytes
 github.com/pingcap/kvproto/pkg/tikvpb
 # github.com/pingcap/log v0.0.0-20190307075452-bd41d9273596
 github.com/pingcap/log
-# github.com/pingcap/parser v3.0.11+incompatible => /Users/fwh/pro0/go/src/github.com/pingcap/parser
+# github.com/pingcap/parser v3.0.11+incompatible => github.com/actiontech/parser v0.0.0-20201207121314-9b2a278d3432
 github.com/pingcap/parser
 github.com/pingcap/parser/ast
 github.com/pingcap/parser/auth
@@ -318,7 +318,7 @@ github.com/pingcap/parser/terror
 github.com/pingcap/parser/types
 # github.com/pingcap/pd v2.1.12+incompatible
 github.com/pingcap/pd/client
-# github.com/pingcap/tidb v0.0.0-20190613131440-c59a108c28b7 => /Users/fwh/pro0/go/src/github.com/pingcap/tidb
+# github.com/pingcap/tidb v0.0.0-20190613131440-c59a108c28b7 => github.com/actiontech/tidb v0.0.0-20190910052938-5df091000377
 github.com/pingcap/tidb/config
 github.com/pingcap/tidb/ddl
 github.com/pingcap/tidb/ddl/util

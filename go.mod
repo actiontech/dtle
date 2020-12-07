@@ -60,7 +60,6 @@ require (
 	golang.org/x/net v0.0.0-20200320220750-118fecf932d8
 	golang.org/x/text v0.3.2
 	google.golang.org/grpc v1.28.0 // indirect
-	honnef.co/go/tools v0.0.0-20190523083050-ea95bdfd59fc // indirect
 )
 
 replace github.com/siddontang/go-mysql => github.com/ffffwh/go-mysql v0.0.0-20201125093656-67dc9957b4da
@@ -69,8 +68,8 @@ replace github.com/siddontang/go-mysql => github.com/ffffwh/go-mysql v0.0.0-2020
 
 replace github.com/araddon/qlbridge => github.com/ffffwh/qlbridge v0.0.0-20181026023605-fc2d5205
 
-replace github.com/pingcap/dm => /Users/fwh/pro1/dm
+replace github.com/pingcap/dm => github.com/actiontech/dm v0.0.0-20201207121004-64b8d8152b3b
 
-replace github.com/pingcap/parser => /Users/fwh/pro0/go/src/github.com/pingcap/parser
+replace github.com/pingcap/parser => github.com/actiontech/parser v0.0.0-20201207121314-9b2a278d3432
 
-replace github.com/pingcap/tidb => /Users/fwh/pro0/go/src/github.com/pingcap/tidb
+replace github.com/pingcap/tidb => github.com/actiontech/tidb v0.0.0-20190910052938-5df091000377
