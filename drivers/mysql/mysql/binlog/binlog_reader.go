@@ -9,6 +9,7 @@ package binlog
 import (
 	"bytes"
 	"github.com/actiontech/dtle/drivers/mysql/common"
+	"github.com/pingcap/parser/format"
 	"github.com/pkg/errors"
 	"github.com/shirou/gopsutil/mem"
 	"os"
@@ -463,7 +464,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 					}
 				}
 
-				ddlInfo, err := b.resolveDDLSQL(currentSchema, query)
+				ddlInfo, err := resolveDDLSQL(currentSchema, query, b.skipQueryDDL)
 				if err != nil {
 					b.logger.Debug("Parse query event failed", "query", query, "err", err)
 					if b.skipQueryDDL(currentSchema, "") {
@@ -919,7 +920,9 @@ func (b *BinlogReader) DataStreamEvents(entriesChannel chan<- *common.BinlogEntr
 //
 // schemaTables is the schema.table that the query has invalidated. For err or non-DDL, it is nil.
 // For DDL, it size equals len(sqls).
-func (b *BinlogReader) resolveDDLSQL(currentSchema string, sql string) (result parseDDLResult, err error) {
+func resolveDDLSQL(currentSchema string, sql string,
+	skipFunc func(schema string, tableName string) bool) (result parseDDLResult, err error) {
+
 	result.sql = sql
 
 	stmt, err := parser.New().ParseOneStmt(sql, "", "")
@@ -953,28 +956,32 @@ func (b *BinlogReader) resolveDDLSQL(currentSchema string, sql string) (result p
 	case *ast.AlterTableStmt:
 		setTable(v.Table.Schema.O, v.Table.Name.O)
 	case *ast.DropTableStmt:
-		bs := bytes.NewBufferString("drop table ")
-		if v.IfExists {
-			bs.WriteString("if exists ")
-		}
-
+		var newTables []*ast.TableName
 		for i, t := range v.Tables {
 			schema := common.StringElse(t.Schema.O, currentSchema)
-			if !b.skipQueryDDL(schema, t.Name.O) {
+			if !skipFunc(schema, t.Name.O) {
 				if i == 0 {
 					setTable(t.Schema.O, t.Name.O)
 				} else {
-					bs.WriteString(", ")
 					result.extraTables = append(result.extraTables,
 						common.SchemaTable{Schema: t.Schema.O, Table: t.Name.O})
 				}
-				if t.Schema.O != "" {
-					bs.WriteString(mysqlconfig.EscapeName(t.Schema.O))
-					bs.WriteString(".")
-				}
-				bs.WriteString(mysqlconfig.EscapeName(t.Name.O))
+				newTables = append(newTables, t)
 			}
 		}
+		v.Tables = newTables
+
+		bs := bytes.NewBuffer(nil)
+		r := &format.RestoreCtx{
+			Flags:     format.DefaultRestoreFlags,
+			In:        bs,
+			JoinLevel: 0,
+		}
+		err = v.Restore(r)
+		if err != nil {
+			return result, err
+		}
+		result.sql = bs.String()
 	case *ast.CreateUserStmt, *ast.GrantStmt:
 		setTable("mysql", "user")
 	default:
