@@ -8,6 +8,7 @@ import (
 	"github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/nomad/plugins"
 	"os"
+	"runtime"
 )
 
 func main() {
@@ -25,7 +26,7 @@ func main() {
 		g.Logger = logger
 
 		logger.Info("dtle starting", "version", versionStr, "pid", pid)
-		logger.Info("env", "GODEBUG", os.Getenv("GODEBUG"))
+		logger.Info("env", "GODEBUG", os.Getenv("GODEBUG"), "GOMAXPROCS", runtime.GOMAXPROCS(0))
 		logger.Debug("plugins.Serve Factory called.")
 		return dtle.NewDriver(logger)
 	})
