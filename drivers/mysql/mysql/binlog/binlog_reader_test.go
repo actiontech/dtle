@@ -1,6 +1,7 @@
 package binlog
 
 import (
+	"github.com/pingcap/parser"
 	"testing"
 )
 
@@ -23,11 +24,16 @@ func Test_loadMapping(t *testing.T) {
 			afterName:     "b",
 			mappingType:   "schemaRename",
 			currentSchema: "",
-		}, want: "drop table `b`.`c`"},
+		}, want: "DROP TABLE `b`.`c`"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := loadMapping(tt.args.sql, tt.args.beforeName, tt.args.afterName, tt.args.mappingType, tt.args.currentSchema); got != tt.want {
+			stmt, err := parser.New().ParseOneStmt(tt.args.sql, "", "")
+			if err != nil {
+				t.Error(err)
+			}
+
+			if got := loadMapping(tt.args.sql, tt.args.beforeName, tt.args.afterName, tt.args.mappingType, tt.args.currentSchema, stmt); got != tt.want {
 				t.Errorf("loadMapping() = %v, want %v", got, tt.want)
 			}
 		})

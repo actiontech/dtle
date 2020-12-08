@@ -550,7 +550,8 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 							ddlInfo.table.Schema = schema.TableSchemaRename
 							b.logger.Debug("ddl schema mapping", "from", realSchema, "to", schema.TableSchemaRename)
 							//sql = strings.Replace(sql, realSchema, schema.TableSchemaRename, 1)
-							sql = loadMapping(sql, realSchema, schema.TableSchemaRename, "schemaRename", " ")
+							sql = loadMapping(sql, realSchema, schema.TableSchemaRename, "schemaRename", " ",
+								ddlInfo.ast)
 							if currentSchema == realSchema {
 								currentSchema = schema.TableSchemaRename
 							}
@@ -563,7 +564,8 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 						if table != nil && table.TableRename != "" {
 							ddlInfo.table.Table = table.TableRename
 							//sql = strings.Replace(sql, tableName, table.TableRename, 1)
-							sql = loadMapping(sql, tableName, table.TableRename, "", currentSchema)
+							sql = loadMapping(sql, tableName, table.TableRename, "", currentSchema,
+								ddlInfo.ast)
 							b.logger.Debug("ddl table mapping", "from", tableName, "to", table.TableRename)
 						}
 
@@ -786,7 +788,33 @@ func (b *BinlogReader) sendEntry(entriesChannel chan<- *common.BinlogEntryContex
 	entriesChannel <- b.entryContext
 }
 
-func loadMapping(sql, beforeName, afterName, mappingType, currentSchema string) string {
+func loadMapping(sql, beforeName, afterName, mappingType, currentSchema string, stmt ast.StmtNode) string {
+	useOld := false
+	switch v := stmt.(type) {
+	case *ast.DropTableStmt:
+		if len(v.Tables) == 0 {
+			return sql
+		}
+		if mappingType == "schemaRename" {
+			v.Tables[0].Schema.O = afterName
+		} else {
+			v.Tables[0].Name.O = afterName
+		}
+	default:
+		useOld = true
+	}
+	if !useOld {
+		bs := bytes.NewBuffer(nil)
+		err := stmt.Restore(&format.RestoreCtx{
+			Flags: format.DefaultRestoreFlags,
+			In:    bs,
+		})
+		if err != nil {
+			return sql // TODO
+		}
+		return bs.String()
+	}
+
 	sqlType := strings.Split(sql, " ")[1]
 	newSql := ""
 	if mappingType == "schemaRename" {
