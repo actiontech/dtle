@@ -66,6 +66,17 @@ func Test_resolveDDLSQL(t *testing.T) {
 				sql:         "DROP TABLE `a`.`b`, `d`",
 			},
 			wantErr:    false,
+		}, {
+			name:       "drop-table-2",
+			args:       args{
+				currentSchema: "",
+				sql:           "drop table if exists skip.b, skip.c",
+				skipFunc:      skipFunc1,
+			},
+			wantResult: parseDDLResult{
+				sql:         "drop table if exists dtle-dummy-never-exists.dtle-dummy-never-exists",
+			},
+			wantErr:    false,
 		},
 	}
 	for _, tt := range tests {

@@ -499,8 +499,8 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 					skipEvent = true
 				}
 
-				{
-					sql := ddlInfo.sql
+				sql := ddlInfo.sql
+				if sql != "" {
 					realSchema := common.StringElse(ddlInfo.table.Schema, currentSchema)
 					tableName := ddlInfo.table.Table
 					err = b.checkObjectFitRegexp(b.mysqlContext.ReplicateDoDb, realSchema, tableName)
@@ -999,17 +999,22 @@ func resolveDDLSQL(currentSchema string, sql string,
 		}
 		v.Tables = newTables
 
-		bs := bytes.NewBuffer(nil)
-		r := &format.RestoreCtx{
-			Flags:     format.DefaultRestoreFlags,
-			In:        bs,
-			JoinLevel: 0,
+		if len(v.Tables) == 0 {
+			result.sql = "drop table if exists dtle-dummy-never-exists.dtle-dummy-never-exists"
+			setTable("dtle-dummy-never-exists", "dtle-dummy-never-exists")
+		} else {
+			bs := bytes.NewBuffer(nil)
+			r := &format.RestoreCtx{
+				Flags:     format.DefaultRestoreFlags,
+				In:        bs,
+				JoinLevel: 0,
+			}
+			err = v.Restore(r)
+			if err != nil {
+				return result, err
+			}
+			result.sql = bs.String()
 		}
-		err = v.Restore(r)
-		if err != nil {
-			return result, err
-		}
-		result.sql = bs.String()
 	case *ast.CreateUserStmt, *ast.GrantStmt:
 		setTable("mysql", "user")
 	default:
