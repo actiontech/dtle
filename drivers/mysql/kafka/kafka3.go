@@ -352,6 +352,7 @@ func (kr *KafkaRunner) handleFullCopy() {
 	}
 }
 func (kr *KafkaRunner) handleIncr() {
+	kr.logger.Debug("handleIncr")
 	var err error
 	bigEntries := &common.BinlogEntries{}
 	for !kr.shutdown {
@@ -696,6 +697,7 @@ func (kr *KafkaRunner) kafkaTransformSnapshotData(
 }
 
 func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *common.BinlogEntry) (err error) {
+	kr.logger.Debug("kafkaTransformDMLEventQuery", "gno", dmlEvent.Coordinates.GNO)
 	txSid := dmlEvent.Coordinates.GetSid()
 
 	for i, _ := range dmlEvent.Events {

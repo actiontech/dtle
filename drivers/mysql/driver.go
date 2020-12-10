@@ -495,7 +495,6 @@ func (d *Driver) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHandle, *drive
 				d.logger.Debug("found kafka", "KafkaConfig", driverConfig.KafkaConfig)
 				h.runner = kafka.NewKafkaRunner(ctx, driverConfig.KafkaConfig, d.logger,
 					d.storeManager, d.config.NatsAdvertise, h.waitCh)
-				go h.runner.Run()
 			} else {
 				h.runner, err = mysql.NewApplier(ctx, driverConfig, d.logger, d.storeManager,
 					d.config.NatsAdvertise, h.waitCh,d.eventer, h.taskConfig)
