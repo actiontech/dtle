@@ -1202,26 +1202,7 @@ func (b *BinlogReader) matchTable(patternTBS []*common.DataSource, schemaName st
 				return true
 			}
 		}
-		redb, okdb := b.ReMap[pdb.TableSchema]
 		for _, ptb := range pdb.Tables {
-			retb, oktb := b.ReMap[ptb.TableName]
-			if oktb && okdb {
-				if redb.MatchString(schemaName) && retb.MatchString(tableName) {
-					return true
-				}
-
-			}
-			if oktb {
-				if retb.MatchString(tableName) && schemaName == pdb.TableSchema {
-					return true
-				}
-			}
-			if okdb {
-				if redb.MatchString(schemaName) && tableName == ptb.TableName {
-					return true
-				}
-			}
-
 			//create database or drop database
 			if tableName == "" {
 				if schemaName == pdb.TableSchema {
