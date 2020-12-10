@@ -476,12 +476,7 @@ func (kr *KafkaRunner) initiateStreaming() error {
 	}
 
 	_, err = kr.natsConn.Subscribe(fmt.Sprintf("%s_incr_hete", kr.subject), func(m *gonats.Msg) {
-		kr.logger.Debug("recv a incr_hete msg")
-		if err := kr.natsConn.Publish(m.Reply, nil); err != nil {
-			kr.onError(TaskStateDead, errors.Wrap(err, "Publish"))
-			return
-		}
-		kr.logger.Debug("ack a incr_hete msg")
+		kr.logger.Debug("recv an incr_hete msg")
 
 		var binlogEntries common.BinlogEntries
 		if err := common.Decode(m.Data, &binlogEntries); err != nil {
@@ -491,12 +486,12 @@ func (kr *KafkaRunner) initiateStreaming() error {
 		t := time.NewTimer(common.DefaultConnectWait / 2)
 		select {
 		case kr.chBinlogEntries <-&binlogEntries:
-			atomic.AddInt64(kr.memory2, int64(binlogEntries.Size()))
 			if err := kr.natsConn.Publish(m.Reply, nil); err != nil {
 				kr.onError(TaskStateDead, errors.Wrap(err, "Publish"))
 				return
 			}
 			kr.logger.Debug("ack an incr_hete msg")
+			atomic.AddInt64(kr.memory2, int64(binlogEntries.Size()))
 		case <-t.C:
 			kr.logger.Debug("discard an incr_hete msg")
 			//kr.natsConn.Publish(m.Reply, "wait")
