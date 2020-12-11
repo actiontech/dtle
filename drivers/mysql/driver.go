@@ -453,7 +453,7 @@ func (d *Driver) RecoverTask(handle *drivers.TaskHandle) error {
 		return nil
 	}
 
-	return fmt.Errorf("dtle task is not recoverable")
+	return fmt.Errorf("dtle task is not recoverable. intended. NOT an error")
 }
 
 func (d *Driver) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHandle, *drivers.DriverNetwork, error) {

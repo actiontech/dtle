@@ -420,7 +420,7 @@ func (a *Applier) subscribeNats() error {
 		// Extract the span context from the request message.
 		sc, err := tracer.Extract(opentracing.Binary, t)
 		if err != nil {
-			a.logger.Debug("tracer.Extract error", "err", err)
+			a.logger.Trace("tracer.Extract error", "err", err)
 		}
 		// Setup a span referring to the span context of the incoming NATS message.
 		replySpan := tracer.StartSpan("Service Responder", ext.SpanKindRPCServer, ext.RPCServerOption(sc))
@@ -479,7 +479,7 @@ func (a *Applier) subscribeNats() error {
 		// Extract the span context from the request message.
 		spanContext, err := tracer.Extract(opentracing.Binary, t)
 		if err != nil {
-			a.logger.Debug("tracer.Extract error", "err", err)
+			a.logger.Trace("tracer.Extract error", "err", err)
 		}
 		// Setup a span referring to the span context of the incoming NATS message.
 		replySpan := tracer.StartSpan("nast : dest to get data  ", ext.SpanKindRPCServer, ext.RPCServerOption(spanContext))

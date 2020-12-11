@@ -236,7 +236,7 @@ func (e *Extractor) Run() {
 
 	if e.mysqlContext.Gtid == "" {
 		if e.mysqlContext.AutoGtid {
-			e.logger.Info("GetSelfBinlogCoordinates" )
+			e.logger.Info("using AutoGtid (latest position)")
 			coord, err := base.GetSelfBinlogCoordinates(e.db)
 			if err != nil {
 				e.onError(TaskStateDead, err)
@@ -248,17 +248,20 @@ func (e *Extractor) Run() {
 		}
 
 		if e.mysqlContext.GtidStart != "" {
+			e.logger.Info("calculating Gtid from GtidStart")
 			coord, err := base.GetSelfBinlogCoordinates(e.db)
 			if err != nil {
 				e.onError(TaskStateDead, err)
 				return
 			}
+			e.logger.Info("got mysql gtidset", "gtidset", coord.GtidSet)
 
 			e.mysqlContext.Gtid, err = base.GtidSetDiff(coord.GtidSet, e.mysqlContext.GtidStart)
 			if err != nil {
 				e.onError(TaskStateDead, err)
 				return
 			}
+			e.logger.Info("got Gtid", "Gtid", e.mysqlContext.Gtid)
 			fullCopy = false
 		}
 
@@ -1338,7 +1341,7 @@ func (e *Extractor) mysqlDump() error {
 					}
 				}()
 			} else {
-				e.logger.Warn("Failed got a consistenct TX with GTID. Will retry.", "gtidMatchRound", gtidMatchRound)
+				e.logger.Warn("Failed to get a consistenct TX with GTID. Will retry.", "gtidMatchRound", gtidMatchRound)
 				err = realTx.Rollback()
 				if err != nil {
 					return err

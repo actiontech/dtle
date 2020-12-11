@@ -121,7 +121,7 @@ func (h *taskHandle) run(d *Driver) {
 				} else {
 					h.stats = s
 					if d.config.PublishMetrics {
-						h.logger.Debug("emitStats")
+						h.logger.Trace("emitStats")
 						h.emitStats(s)
 					}
 				}
