@@ -68,6 +68,8 @@ var (
 			hclspec.NewLiteral(`15`)),
 		"publish_metrics": hclspec.NewDefault(hclspec.NewAttr("publish_metrics", "bool", false),
 			hclspec.NewLiteral(`false`)),
+		"log_level": hclspec.NewDefault(hclspec.NewAttr("log_level", "string", false),
+			hclspec.NewLiteral(`"Info"`)),
 	})
 
 	// taskConfigSpec is the hcl specification for the driver config section of
@@ -306,6 +308,7 @@ type DriverConfig struct {
 	DataDir       string   `codec:"data_dir"`
 	StatsCollectionInterval int `codec:"stats_collection_interval"`
 	PublishMetrics bool `codec:"publish_metrics"`
+	LogLevel       string `codec:"log_level"`
 }
 
 func (d *Driver) SetConfig(c *base.Config) (err error) {
@@ -323,6 +326,13 @@ func (d *Driver) SetConfig(c *base.Config) (err error) {
 
 	d.config = &dconfig
 	d.logger.Info("SetConfig 2", "config", d.config)
+
+	logLevel := hclog.LevelFromString(d.config.LogLevel)
+	if logLevel == hclog.NoLevel {
+		return fmt.Errorf("invalid log level %v", d.config.LogLevel)
+	}
+	d.logger.SetLevel(logLevel)
+	d.logger.Info("log level was set", "level", logLevel.String())
 
 	if d.config.ApiAddr != "" && d.config.NomadAddr == "" {
 		return fmt.Errorf("nomad_addr cannot be empty when api_addr is set")
