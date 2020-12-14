@@ -54,6 +54,7 @@ consul {
 
 plugin "dtle" {
   config {
+    log_level = "Info" # repeat nomad log level here
     data_dir = "INSTALL_PREFIX_MAGIC/var/lib/nomad"
     nats_bind = "127.0.0.1:8193"
     nats_advertise = "127.0.0.1:8193"

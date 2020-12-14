@@ -17,9 +17,9 @@ ports {
 }
 addresses {
   # Default to `bind_addr`. Or set individually here.
-  #http = "127.0.0.1:4646"
-  #rpc  = "127.0.0.1:4647"
-  #serf = "127.0.0.1:4648"
+  #http = "127.0.0.1"
+  #rpc  = "127.0.0.1"
+  #serf = "127.0.0.1"
 }
 advertise {
   http = "127.0.0.1:4646"
@@ -45,6 +45,7 @@ consul {
 
 plugin "dtle" {
   config {
+    log_level = "INFO"
     data_dir = "/dtle/var/lib/nomad"
     nats_bind = "127.0.0.1:8193"
     nats_advertise = "127.0.0.1:8193"
