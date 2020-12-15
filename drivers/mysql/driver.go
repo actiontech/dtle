@@ -334,10 +334,6 @@ func (d *Driver) SetConfig(c *base.Config) (err error) {
 	d.logger.SetLevel(logLevel)
 	d.logger.Info("log level was set", "level", logLevel.String())
 
-	if d.config.ApiAddr != "" && d.config.NomadAddr == "" {
-		return fmt.Errorf("nomad_addr cannot be empty when api_addr is set")
-	}
-
 	if d.storeManager != nil {
 		// PluginLoader.validatePluginConfig() will call SetConfig() twice.
 		// This test avoids extra setup.
@@ -350,12 +346,23 @@ func (d *Driver) SetConfig(c *base.Config) (err error) {
 
 		go func() {
 			if d.config.ApiAddr == "" {
-				d.logger.Info("ApiAddr is empty in config. Will not start compat API server.")
+				d.logger.Info("ApiAddr is empty in config. Will not start api_compat server.")
 			} else {
-				apiErr := d.SetupApiServer(d.logger)
-				if apiErr != nil {
-					d.logger.Error("error in SetupApiServer", "err", err)
-					// TODO mark driver unhealthy
+				if d.config.NomadAddr == "" {
+					d.logger.Info("NomadAddr is empty in config. Will not handle api_compat request.")
+					go func() {
+						// for pprof
+						err := http.ListenAndServe(d.config.ApiAddr, nil)
+						if err != nil {
+							d.logger.Error("ListenAndServe error", "err", err)
+						}
+					}()
+				} else {
+					apiErr := d.SetupApiServer(d.logger)
+					if apiErr != nil {
+						d.logger.Error("error in SetupApiServer", "err", err)
+						// TODO mark driver unhealthy
+					}
 				}
 			}
 
