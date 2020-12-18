@@ -213,7 +213,7 @@ type Applier struct {
 	mysqlContext       *config.MySQLDriverConfig
 	dbs                []*sql.Conn
 	db                 *gosql.DB
-	gtidExecuted       base.GtidSet
+	gtidItemMap        base.GtidItemMap
 	currentCoordinates *models.CurrentCoordinates
 	tableItems         mapSchemaTableItems
 
@@ -225,6 +225,8 @@ type Applier struct {
 	applyDataEntryQueue chan *binlog.BinlogEntry
 	// only TX can be executed should be put into this chan
 	applyBinlogMtsTxQueue chan *binlog.BinlogEntry
+
+	gtidCh chan *base.BinlogCoordinateTx
 
 	natsConn *gonats.Conn
 	waitCh   chan *models.WaitResult
@@ -272,6 +274,7 @@ func NewApplier(ctx *common.ExecContext, cfg *config.MySQLDriverConfig, logger *
 		waitCh:                make(chan *models.WaitResult, 1),
 		shutdownCh:            make(chan struct{}),
 		printTps:              os.Getenv(g.ENV_PRINT_TPS) != "",
+		gtidCh:                make(chan *base.BinlogCoordinateTx, 4096),
 	}
 	a.gtidSet, err = common.DtleParseMysqlGTIDSet(a.mysqlContext.Gtid)
 	if err != nil {
@@ -325,6 +328,7 @@ func (a *Applier) MtsWorker(workerIndex int) {
 
 // Run executes the complete apply logic.
 func (a *Applier) Run() {
+	var err error
 	if a.printTps {
 		go func() {
 			for {
@@ -335,12 +339,21 @@ func (a *Applier) Run() {
 		}()
 	}
 
+	go a.updateGtidLoop()
+
 	a.logger.Printf("mysql.applier: Apply binlog events to %s.%d", a.mysqlContext.ConnectionConfig.Host, a.mysqlContext.ConnectionConfig.Port)
 	a.mysqlContext.StartTime = time.Now()
 	if err := a.initDBConnections(); err != nil {
 		a.onError(TaskStateDead, err)
 		return
 	}
+
+	a.gtidItemMap, err = SelectAllGtidExecuted(a.db, a.subjectUUID, a.gtidSet)
+	if err != nil {
+		a.onError(TaskStateDead, err)
+		return
+	}
+
 	if err := a.initNatSubClient(); err != nil {
 		a.onError(TaskStateDead, err)
 		return
@@ -490,22 +503,15 @@ func (a *Applier) heterogeneousReplay() {
 				continue
 			}
 			// region TestIfExecuted
-			if a.gtidExecuted == nil {
-				// udup crash recovery or never executed
-				a.gtidExecuted, err = SelectAllGtidExecuted(a.db, a.subjectUUID)
-				if err != nil {
-					a.onError(TaskStateDead, err)
-					return
-				}
-			}
 			txSid := binlogEntry.Coordinates.GetSid()
 
-			gtidSetItem, hasSid := a.gtidExecuted[binlogEntry.Coordinates.SID]
+			gtidSetItem, hasSid := a.gtidItemMap[binlogEntry.Coordinates.SID]
 			if !hasSid {
-				gtidSetItem = &base.GtidExecutedItem{}
-				a.gtidExecuted[binlogEntry.Coordinates.SID] = gtidSetItem
+				gtidSetItem = &base.GtidItem{}
+				a.gtidItemMap[binlogEntry.Coordinates.SID] = gtidSetItem
 			}
-			if base.IntervalSlicesContainOne(gtidSetItem.Intervals, binlogEntry.Coordinates.GNO) {
+			intervals := a.gtidSet.Sets[binlogEntry.Coordinates.GetSid()].Intervals
+			if base.IntervalSlicesContainOne(intervals, binlogEntry.Coordinates.GNO) {
 				// entry executed
 				a.logger.Debugf("mysql.applier: skip an executed tx: %v:%v", txSid, binlogEntry.Coordinates.GNO)
 				continue
@@ -522,7 +528,7 @@ func (a *Applier) heterogeneousReplay() {
 
 			a.logger.Debugf("mysql.applier. gtidSetItem.NRow: %v", gtidSetItem.NRow)
 			if gtidSetItem.NRow >= cleanupGtidExecutedLimit {
-				err = a.cleanGtidExecuted(binlogEntry.Coordinates.SID, base.StringInterval(gtidSetItem.Intervals))
+				err = a.cleanGtidExecuted(binlogEntry.Coordinates.SID, base.StringInterval(intervals))
 				if err != nil {
 					a.onError(TaskStateDead, err)
 					return
@@ -530,13 +536,7 @@ func (a *Applier) heterogeneousReplay() {
 				gtidSetItem.NRow = 1
 			}
 
-			thisInterval := gomysql.Interval{Start: binlogEntry.Coordinates.GNO, Stop: binlogEntry.Coordinates.GNO + 1}
-
 			gtidSetItem.NRow += 1
-			// TODO normalize may affect oringinal intervals
-			newInterval := append(gtidSetItem.Intervals, thisInterval).Normalize()
-			// TODO this is assigned before real execution
-			gtidSetItem.Intervals = newInterval
 			if binlogEntry.Coordinates.SeqenceNumber == 0 {
 				// MySQL 5.6: non mts
 				err := a.setTableItemForBinlogEntry(binlogEntry)
@@ -603,15 +603,6 @@ func (a *Applier) heterogeneousReplay() {
 				a.applyBinlogMtsTxQueue <- binlogEntry
 			}
 			span.Finish()
-			if !a.shutdown {
-				common.UpdateGtidSet(a.gtidSet, txSid, binlogEntry.Coordinates.SID, binlogEntry.Coordinates.GNO)
-				a.updateGtidString()
-				if a.mysqlContext.BinlogFile != binlogEntry.Coordinates.LogFile {
-					a.mysqlContext.BinlogFile = binlogEntry.Coordinates.LogFile
-					a.publishProgress()
-				}
-				a.mysqlContext.BinlogPos = binlogEntry.Coordinates.LogPos
-			}
 		case <-time.After(10 * time.Second):
 			a.logger.Debugf("mysql.applier: no binlogEntry for 10s")
 		case <-a.shutdownCh:
@@ -1122,6 +1113,7 @@ func (a *Applier) ApplyBinlogEvent(ctx context.Context, workerIdx int, binlogEnt
 			a.onError(TaskStateDead, err)
 		} else {
 			a.mtsManager.Executed(binlogEntry)
+			a.gtidCh <- &binlogEntry.Coordinates
 		}
 		if a.printTps {
 			atomic.AddUint32(&a.txLastNSeconds, 1)
@@ -1449,11 +1441,6 @@ func (a *Applier) ID() string {
 	return string(data)
 }
 
-func (a *Applier) updateGtidString() {
-	a.mysqlContext.Gtid = a.gtidSet.String()
-	a.logger.Debugf("applier updateGtidString %v", a.mysqlContext.Gtid)
-}
-
 func (a *Applier) onError(state int, err error) {
 	a.logger.WithError(err).Error("mysql.applier: onError")
 
@@ -1510,4 +1497,44 @@ func (a *Applier) Shutdown() error {
 	//close(a.applyBinlogGroupTxQueue)
 	a.logger.Printf("mysql.applier: Shutting down")
 	return nil
+}
+
+func (a *Applier) updateGtidLoop() {
+	t0 := time.NewTicker(2 * time.Second)
+
+	var file string
+	var pos  int64
+
+	updated := false
+	doUpdate := func() {
+		if updated { // catch by reference
+			updated = false
+			a.mysqlContext.Gtid = a.gtidSet.String()
+			if file != "" {
+				if a.mysqlContext.BinlogFile != file {
+					a.mysqlContext.BinlogFile = file
+					a.publishProgress()
+				}
+				a.mysqlContext.BinlogPos = pos
+			}
+		}
+	}
+
+	for !a.shutdown {
+		select {
+		case <-a.shutdownCh:
+			return
+		case <-t0.C:
+			doUpdate()
+		case coord := <-a.gtidCh:
+			if coord == nil {
+				// coord == nil is a flag for update/upload gtid
+				doUpdate()
+			} else {
+				common.UpdateGtidSet(a.gtidSet, coord.SID, coord.GNO)
+				file = coord.LogFile
+				pos = coord.LogPos
+			}
+		}
+	}
 }
