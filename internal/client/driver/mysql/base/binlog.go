@@ -94,6 +94,27 @@ type GtidItemMap map[uuid.UUID]*GtidItem
 type GtidItem struct {
 	NRow      int
 }
+func (m *GtidItemMap) GetItem(u uuid.UUID) (item *GtidItem) {
+	item = (*m)[u]
+	if item != nil {
+		return item
+	} else {
+		item = &GtidItem{}
+		(*m)[u] = item
+		return item
+	}
+}
+func GetIntervals(set *gomysql.MysqlGTIDSet, u uuid.UUID) gomysql.IntervalSlice {
+	// TODO read lock
+	uuidStr := u.String()
+	item, ok := set.Sets[uuidStr]
+	if ok {
+		return item.Intervals
+	} else {
+		// Do not modify `set`.
+		return nil
+	}
+}
 
 func IntervalSlicesContainOne(intervals gomysql.IntervalSlice, gno int64) bool {
 	for i := range intervals {
