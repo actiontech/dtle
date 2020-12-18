@@ -385,8 +385,8 @@ func NewWhereCtx(where string, table *Table) (*WhereContext, error) {
 				// qlbridge limitation
 			} else if _, ok := fieldsMap[field]; !ok {
 				if _, ok := table.OriginalTableColumns.Ordinals[field]; !ok {
-					return nil, fmt.Errorf("bad 'where' for table %v.%v: field %v does not exist",
-						table.TableSchema, table.TableName, field)
+					return nil, fmt.Errorf("bad 'where' for table %v.%v: field %v does not exist. known fields: %v",
+						table.TableSchema, table.TableName, field, table.OriginalTableColumns.Ordinals)
 				} else {
 					fieldsMap[field] = table.OriginalTableColumns.Ordinals[field]
 				}

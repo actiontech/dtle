@@ -398,7 +398,7 @@ func GetTableColumnsSqle(sqleContext *sqle.Context, schema string, table string)
 
 	for _, col := range cStmt.Cols {
 		newColumn := umconf.Column{
-			RawName:  col.Name.String(),
+			RawName:  col.Name.Name.String(),
 			Nullable: true, // by default
 		}
 		newColumn.EscapedName = umconf.EscapeName(newColumn.RawName)
