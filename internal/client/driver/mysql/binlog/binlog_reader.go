@@ -489,15 +489,12 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 				}
 
 				ddlInfo, err := resolveDDLSQL(query)
-				if err != nil {
-					b.logger.Debugf("mysql.reader: Parse query [%v] event failed: %v", query, err)
-					if b.skipQueryDDL(query, currentSchema, "") {
-						b.logger.Debugf("mysql.reader: skip QueryEvent at schema: %s,sql: %s", currentSchema, query)
-						return nil
+				if err != nil || !ddlInfo.isDDL {
+					if err != nil {
+						b.logger.WithError(err).WithField("query", query).Warn("mysql.reader: failed to parse a query. will execute")
+					} else if !ddlInfo.isDDL {
+						b.logger.WithField("query", query).Debug("mysql.reader: QueryEvent is not a DDL")
 					}
-				}
-
-				if !ddlInfo.isDDL {
 					event := NewQueryEvent(
 						currentSchema,
 						query,
@@ -510,8 +507,6 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 					emitBinlogEntry()
 					b.LastAppliedRowsEventHint = b.currentCoordinates
 					return nil
-				} else {
-					// it is a ddl
 				}
 
 				skipEvent := false
@@ -526,17 +521,27 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 					skipEvent = true
 				}
 
+				b.logger.WithField("len", len(ddlInfo.sqls)).Debug("mysql.reader: DDL parsed and splitted")
 				for i, sql := range ddlInfo.sqls {
 					realSchema := utils.StringElse(ddlInfo.tables[i].Schema, currentSchema)
 					tableName := ddlInfo.tables[i].Table
 					err = b.checkObjectFitRegexp(b.mysqlContext.ReplicateDoDb, realSchema, tableName)
 					if err != nil {
-						b.logger.Warnf("mysql.reader: skip query %s", query)
+						b.logger.WithFields(logrus.Fields{
+							"gno": b.currentCoordinates.GNO,
+							"sql": query,
+						}).Warn("mysql.reader: skip query")
 						return nil
 					}
 
 					if b.skipQueryDDL(sql, realSchema, tableName) {
-						b.logger.Infof("mysql.reader: Skip QueryEvent currentSchema: %s, sql: %s, realSchema: %v, tableName: %v", currentSchema, sql, realSchema, tableName)
+						b.logger.WithFields(logrus.Fields{
+							"gno": b.currentCoordinates.GNO,
+							"use": currentSchema,
+							"schema": realSchema,
+							"table": tableName,
+							"sql": sql,
+						}).Info("mysql.reader: Skip QueryEvent")
 						return nil
 					}
 
@@ -989,6 +994,8 @@ func resolveDDLSQL(sql string) (result parseDDLResult, err error) {
 		appendSql(sql, v.Name, "")
 	case *ast.DropDatabaseStmt:
 		appendSql(sql, v.Name, "")
+	case *ast.AlterDatabaseStmt:
+		appendSql(sql, v.Name, "")
 	case *ast.CreateIndexStmt:
 		appendSql(sql, v.Table.Schema.O, v.Table.Name.O)
 	case *ast.DropIndexStmt:
@@ -1012,8 +1019,11 @@ func resolveDDLSQL(sql string) (result parseDDLResult, err error) {
 			s := fmt.Sprintf("drop table %s %s`%s`", ex, db, t.Name.O)
 			appendSql(s, t.Schema.O, t.Name.O)
 		}
-	case *ast.CreateUserStmt, *ast.GrantStmt:
+	case *ast.CreateUserStmt, *ast.GrantStmt, *ast.DropUserStmt, *ast.AlterUserStmt:
 		appendSql(sql, "mysql", "user")
+	case *ast.RenameTableStmt:
+		appendSql(sql, v.OldTable.Schema.O, v.OldTable.Name.O)
+		// TODO handle extra tables in v.TableToTables[1:]
 	default:
 		return result, fmt.Errorf("unknown DDL type")
 	}

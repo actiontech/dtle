@@ -1136,7 +1136,8 @@ func (a *Applier) ApplyBinlogEvent(ctx context.Context, workerIdx int, binlogEnt
 						a.logger.Errorf("mysql.applier: Exec sql error: %v", err)
 						return err
 					} else {
-						a.logger.Warnf("mysql.applier: Ignore error: %v", err)
+						a.logger.WithError(err).
+							WithField("query", query).Warn("mysql.applier: Ignore error")
 					}
 				}
 			}
@@ -1168,7 +1169,8 @@ func (a *Applier) ApplyBinlogEvent(ctx context.Context, workerIdx int, binlogEnt
 					a.logger.Errorf("mysql.applier: Exec sql error: %v", err)
 					return err
 				} else {
-					a.logger.Warnf("mysql.applier: Ignore error: %v", err)
+					a.logger.WithError(err).
+						WithField("query", event.Query).Warn("mysql.applier: Ignore error")
 				}
 			}
 			a.logger.Debugf("mysql.applier: Exec [%s]", event.Query)
@@ -1281,7 +1283,8 @@ func (a *Applier) ApplyEventQueries(db *gosql.DB, entry *common.DumpEntry) error
 				return err
 			}
 			if !sql.IgnoreExistsError(err) {
-				a.logger.Warnf("mysql.applier: Ignore error: %v", err)
+				a.logger.WithError(err).
+					WithField("query", query).Warn("mysql.applier: Ignore error")
 			}
 		}
 		return nil
