@@ -479,29 +479,30 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 		} else {
 			if strings.ToUpper(query) == "COMMIT" || !b.currentBinlogEntry.hasBeginQuery {
 				currentSchema := string(evt.Schema)
-				if !b.mysqlContext.ExpandSyntaxSupport {
-					if skipQueryEvent(query) {
-						b.logger.Warnf("mysql.reader: skip query %s", query)
-						return nil
-					}
-				}
+
+				skipExpandSyntax := !b.mysqlContext.ExpandSyntaxSupport && skipQueryEvent(query)
 
 				ddlInfo, err := resolveDDLSQL(query)
-				if err != nil || !ddlInfo.isDDL {
+				if skipExpandSyntax || err != nil || !ddlInfo.isDDL {
 					if err != nil {
 						b.logger.WithError(err).WithField("query", query).Warn("mysql.reader: failed to parse a query. will execute")
 					} else if !ddlInfo.isDDL {
 						b.logger.WithField("query", query).Debug("mysql.reader: QueryEvent is not a DDL")
 					}
-					event := NewQueryEvent(
-						currentSchema,
-						query,
-						NotDML,
-						ev.Header.Timestamp,
-					)
-					b.currentBinlogEntry.Events = append(b.currentBinlogEntry.Events, event)
-					b.currentBinlogEntry.SpanContext = span.Context()
-					b.currentBinlogEntry.OriginalSize += len(ev.RawData)
+
+					if skipExpandSyntax {
+						b.logger.Warnf("mysql.reader: skip query %s", query)
+					} else {
+						event := NewQueryEvent(
+							currentSchema,
+							query,
+							NotDML,
+							ev.Header.Timestamp,
+						)
+						b.currentBinlogEntry.Events = append(b.currentBinlogEntry.Events, event)
+						b.currentBinlogEntry.SpanContext = span.Context()
+						b.currentBinlogEntry.OriginalSize += len(ev.RawData)
+					}
 					emitBinlogEntry()
 					b.LastAppliedRowsEventHint = b.currentCoordinates
 					return nil
@@ -523,16 +524,9 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 				for i, sql := range ddlInfo.sqls {
 					realSchema := utils.StringElse(ddlInfo.tables[i].Schema, currentSchema)
 					tableName := ddlInfo.tables[i].Table
-					err = b.checkObjectFitRegexp(b.mysqlContext.ReplicateDoDb, realSchema, tableName)
-					if err != nil {
-						b.logger.WithFields(logrus.Fields{
-							"gno": b.currentCoordinates.GNO,
-							"sql": query,
-						}).Warn("mysql.reader: skip query")
-						return nil
-					}
+					checkObjectFitRegexpErr := b.checkObjectFitRegexp(b.mysqlContext.ReplicateDoDb, realSchema, tableName)
 
-					if b.skipQueryDDL(sql, realSchema, tableName) {
+					if checkObjectFitRegexpErr != nil || b.skipQueryDDL(sql, realSchema, tableName) {
 						b.logger.WithFields(logrus.Fields{
 							"gno": b.currentCoordinates.GNO,
 							"use": currentSchema,
