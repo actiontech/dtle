@@ -1523,6 +1523,7 @@ func (a *Applier) updateGtidLoop() {
 		case <-t0.C:
 			doUpdate()
 		case coord := <-a.gtidCh:
+			updated = true
 			if coord == nil {
 				// coord == nil is a flag for update/upload gtid
 				doUpdate()
