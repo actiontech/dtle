@@ -542,131 +542,130 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 							"table": tableName,
 							"sql": sql,
 						}).Info("mysql.reader: Skip QueryEvent")
-						return nil
-					}
-
-					var table *config.Table
-					var schema *config.DataSource
-					for i := range b.mysqlContext.ReplicateDoDb {
-						if b.mysqlContext.ReplicateDoDb[i].TableSchema == realSchema {
-							schema = b.mysqlContext.ReplicateDoDb[i]
-							for j := range b.mysqlContext.ReplicateDoDb[i].Tables {
-								if b.mysqlContext.ReplicateDoDb[i].Tables[j].TableName == tableName {
-									table = b.mysqlContext.ReplicateDoDb[i].Tables[j]
+					} else {
+						var table *config.Table
+						var schema *config.DataSource
+						for i := range b.mysqlContext.ReplicateDoDb {
+							if b.mysqlContext.ReplicateDoDb[i].TableSchema == realSchema {
+								schema = b.mysqlContext.ReplicateDoDb[i]
+								for j := range b.mysqlContext.ReplicateDoDb[i].Tables {
+									if b.mysqlContext.ReplicateDoDb[i].Tables[j].TableName == tableName {
+										table = b.mysqlContext.ReplicateDoDb[i].Tables[j]
+									}
 								}
 							}
 						}
-					}
 
-					switch realAst := ddlInfo.ast.(type) {
-					case *ast.CreateDatabaseStmt:
-						b.context.LoadTables(ddlInfo.tables[i].Schema, nil)
-					case *ast.CreateTableStmt:
-						b.logger.Debugf("mysql.reader: ddl is create table")
-						err := b.updateTableMeta(table, realSchema, tableName)
-						if err != nil {
-							return err
-						}
-
-						if b.sqlFilter.NoDDLCreateTable {
-							skipEvent = true
-						}
-					case *ast.DropTableStmt:
-						if b.sqlFilter.NoDDLDropTable {
-							skipEvent = true
-						}
-					case *ast.AlterTableStmt:
-						b.logger.Debugf("mysql.reader: ddl is alter table. specs: %v", realAst.Specs)
-
-						fromTable := table
-						tableNameX := tableName
-
-						for iSpec := range realAst.Specs {
-							switch realAst.Specs[iSpec].Tp {
-							case ast.AlterTableRenameTable:
-								fromTable = nil
-								tableNameX = realAst.Specs[iSpec].NewTable.Name.O
-							default:
-								// do nothing
+						switch realAst := ddlInfo.ast.(type) {
+						case *ast.CreateDatabaseStmt:
+							b.context.LoadTables(ddlInfo.tables[i].Schema, nil)
+						case *ast.CreateTableStmt:
+							b.logger.Debugf("mysql.reader: ddl is create table")
+							err := b.updateTableMeta(table, realSchema, tableName)
+							if err != nil {
+								return err
 							}
-						}
-						err := b.updateTableMeta(fromTable, realSchema, tableNameX)
-						if err != nil {
-							return err
-						}
 
-						if b.sqlFilter.NoDDLAlterTable {
-							skipEvent = true
-						} else {
-							for i := range realAst.Specs {
-								switch realAst.Specs[i].Tp {
-								case ast.AlterTableAddColumns:
-									if b.sqlFilter.NoDDLAlterTableAddColumn {
-										skipEvent = true
-									}
-								case ast.AlterTableDropColumn:
-									if b.sqlFilter.NoDDLAlterTableDropColumn {
-										skipEvent = true
-									}
-								case ast.AlterTableModifyColumn:
-									if b.sqlFilter.NoDDLAlterTableModifyColumn {
-										skipEvent = true
-									}
-								case ast.AlterTableChangeColumn:
-									if b.sqlFilter.NoDDLAlterTableChangeColumn {
-										skipEvent = true
-									}
-								case ast.AlterTableAlterColumn:
-									if b.sqlFilter.NoDDLAlterTableAlterColumn {
-										skipEvent = true
-									}
+							if b.sqlFilter.NoDDLCreateTable {
+								skipEvent = true
+							}
+						case *ast.DropTableStmt:
+							if b.sqlFilter.NoDDLDropTable {
+								skipEvent = true
+							}
+						case *ast.AlterTableStmt:
+							b.logger.Debugf("mysql.reader: ddl is alter table. specs: %v", realAst.Specs)
+
+							fromTable := table
+							tableNameX := tableName
+
+							for iSpec := range realAst.Specs {
+								switch realAst.Specs[iSpec].Tp {
+								case ast.AlterTableRenameTable:
+									fromTable = nil
+									tableNameX = realAst.Specs[iSpec].NewTable.Name.O
 								default:
-									// other case
+									// do nothing
+								}
+							}
+							err := b.updateTableMeta(fromTable, realSchema, tableNameX)
+							if err != nil {
+								return err
+							}
+
+							if b.sqlFilter.NoDDLAlterTable {
+								skipEvent = true
+							} else {
+								for i := range realAst.Specs {
+									switch realAst.Specs[i].Tp {
+									case ast.AlterTableAddColumns:
+										if b.sqlFilter.NoDDLAlterTableAddColumn {
+											skipEvent = true
+										}
+									case ast.AlterTableDropColumn:
+										if b.sqlFilter.NoDDLAlterTableDropColumn {
+											skipEvent = true
+										}
+									case ast.AlterTableModifyColumn:
+										if b.sqlFilter.NoDDLAlterTableModifyColumn {
+											skipEvent = true
+										}
+									case ast.AlterTableChangeColumn:
+										if b.sqlFilter.NoDDLAlterTableChangeColumn {
+											skipEvent = true
+										}
+									case ast.AlterTableAlterColumn:
+										if b.sqlFilter.NoDDLAlterTableAlterColumn {
+											skipEvent = true
+										}
+									default:
+										// other case
+									}
 								}
 							}
 						}
-					}
-					if schema != nil && schema.TableSchemaRename != "" {
-						ddlInfo.tables[i].Schema = schema.TableSchemaRename
-						b.logger.Debugf("mysql.reader. ddl schema mapping :from  %s to %s", realSchema, schema.TableSchemaRename)
-						//sql = strings.Replace(sql, realSchema, schema.TableSchemaRename, 1)
-						sql = loadMapping(sql, realSchema, schema.TableSchemaRename, "schemaRename", " ")
-						if currentSchema == realSchema {
-							currentSchema = schema.TableSchemaRename
+						if schema != nil && schema.TableSchemaRename != "" {
+							ddlInfo.tables[i].Schema = schema.TableSchemaRename
+							b.logger.Debugf("mysql.reader. ddl schema mapping :from  %s to %s", realSchema, schema.TableSchemaRename)
+							//sql = strings.Replace(sql, realSchema, schema.TableSchemaRename, 1)
+							sql = loadMapping(sql, realSchema, schema.TableSchemaRename, "schemaRename", " ")
+							if currentSchema == realSchema {
+								currentSchema = schema.TableSchemaRename
+							}
+							realSchema = schema.TableSchemaRename
+						} else {
+							// schema == nil means it is not explicit in ReplicateDoDb, thus no renaming
+							// or schema.TableSchemaRename == "" means no renaming
 						}
-						realSchema = schema.TableSchemaRename
-					} else {
-						// schema == nil means it is not explicit in ReplicateDoDb, thus no renaming
-						// or schema.TableSchemaRename == "" means no renaming
-					}
 
-					if table != nil && table.TableRename != "" {
-						ddlInfo.tables[i].Table = table.TableRename
-						//sql = strings.Replace(sql, tableName, table.TableRename, 1)
-						sql = loadMapping(sql, tableName, table.TableRename, "", currentSchema)
-						b.logger.Debugf("mysql.reader. ddl table mapping  :from %s to %s", tableName, table.TableRename)
-					}
-
-					if skipEvent {
-						b.logger.Debugf("mysql.reader. skipped a ddl event. query: %v", query)
-					} else {
-						ddlTable := ddlInfo.tables[i]
-						if realSchema == "" || ddlTable.Table == "" {
-							b.logger.WithFields(logrus.Fields{
-								"schema": realSchema,
-								"table":  ddlTable.Table,
-								"query":  sql,
-							}).Info("NewQueryEventAffectTable. found empty schema or table.")
+						if table != nil && table.TableRename != "" {
+							ddlInfo.tables[i].Table = table.TableRename
+							//sql = strings.Replace(sql, tableName, table.TableRename, 1)
+							sql = loadMapping(sql, tableName, table.TableRename, "", currentSchema)
+							b.logger.Debugf("mysql.reader. ddl table mapping  :from %s to %s", tableName, table.TableRename)
 						}
-						event := NewQueryEventAffectTable(
-							currentSchema,
-							sql,
-							NotDML,
-							ddlTable,
-							ev.Header.Timestamp,
-						)
-						event.Table = table
-						b.currentBinlogEntry.Events = append(b.currentBinlogEntry.Events, event)
+
+						if skipEvent {
+							b.logger.Debugf("mysql.reader. skipped a ddl event. query: %v", query)
+						} else {
+							ddlTable := ddlInfo.tables[i]
+							if realSchema == "" || ddlTable.Table == "" {
+								b.logger.WithFields(logrus.Fields{
+									"schema": realSchema,
+									"table":  ddlTable.Table,
+									"query":  sql,
+								}).Info("NewQueryEventAffectTable. found empty schema or table.")
+							}
+							event := NewQueryEventAffectTable(
+								currentSchema,
+								sql,
+								NotDML,
+								ddlTable,
+								ev.Header.Timestamp,
+							)
+							event.Table = table
+							b.currentBinlogEntry.Events = append(b.currentBinlogEntry.Events, event)
+						}
 					}
 				}
 				b.currentBinlogEntry.SpanContext = span.Context()
