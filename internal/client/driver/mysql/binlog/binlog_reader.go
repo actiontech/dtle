@@ -108,6 +108,7 @@ type SqlFilter struct {
 	NoDDLAlterTableModifyColumn bool
 	NoDDLAlterTableChangeColumn bool
 	NoDDLAlterTableAlterColumn  bool
+	NoDDLCreateSchema           bool
 }
 
 func parseSqlFilter(strs []string) (*SqlFilter, error) {
@@ -125,8 +126,12 @@ func parseSqlFilter(strs []string) (*SqlFilter, error) {
 
 		case "noddl":
 			s.NoDDL = true
+		case "noddlcreateschema":
+			s.NoDDLCreateSchema = true
+
 		case "noddlcreatetable":
 			s.NoDDLCreateTable = true
+
 		case "noddldroptable":
 			s.NoDDLDropTable = true
 		case "noddlaltertable":
@@ -474,13 +479,6 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 		} else {
 			if strings.ToUpper(query) == "COMMIT" || !b.currentBinlogEntry.hasBeginQuery {
 				currentSchema := string(evt.Schema)
-				if b.mysqlContext.SkipCreateDbTable {
-					if skipCreateDbTable(query) {
-						b.logger.Warnf("mysql.reader: skip create db/table %s", query)
-						return nil
-					}
-				}
-
 				if !b.mysqlContext.ExpandSyntaxSupport {
 					if skipQueryEvent(query) {
 						b.logger.Warnf("mysql.reader: skip query %s", query)
@@ -559,6 +557,9 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 						switch realAst := ddlInfo.ast.(type) {
 						case *ast.CreateDatabaseStmt:
 							b.context.LoadTables(ddlInfo.tables[i].Schema, nil)
+							if b.sqlFilter.NoDDLCreateSchema {
+								skipEvent = true
+							}
 						case *ast.CreateTableStmt:
 							b.logger.Debugf("mysql.reader: ddl is create table")
 							err := b.updateTableMeta(table, realSchema, tableName)
@@ -1049,19 +1050,6 @@ func (b *BinlogReader) skipQueryDDL(sql string, schema string, tableName string)
 		}
 		return false
 	}
-}
-
-func skipCreateDbTable(sql string) bool {
-	sql = strings.ToLower(sql)
-
-	if strings.HasPrefix(sql, "create database") {
-		return true
-	}
-	if strings.HasPrefix(sql, "create table") {
-		return true
-	}
-
-	return false
 }
 
 func skipQueryEvent(sql string) bool {
