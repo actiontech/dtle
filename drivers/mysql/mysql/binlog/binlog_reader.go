@@ -307,11 +307,11 @@ func (b *BinlogReader) ConnectBinlogStreamer(coordinates base.BinlogCoordinatesX
 		}
 		b.logger.Debug("AdjustWithStartPos.after", "changed", changed)
 
-		ch := make(chan pb.ProcessResult)
+		processResultCh := make(chan pb.ProcessResult)
 		var ctx context.Context
 		ctx, b.relayCancelF = context.WithCancel(context.Background())
 
-		go b.relay.Process(ctx, ch)
+		go b.relay.Process(ctx, processResultCh)
 
 		loc, err := time.LoadLocation("Local") // TODO
 
@@ -321,6 +321,20 @@ func (b *BinlogReader) ConnectBinlogStreamer(coordinates base.BinlogCoordinatesX
 		}
 		b.binlogReader = streamer.NewBinlogReader(brConfig)
 
+		go func() {
+			select {
+			case <-b.shutdownCh:
+			case pr := <-processResultCh:
+				b.logger.Warn("relay.Process stopped", "isCancelled", pr.IsCanceled, "deail", string(pr.Detail))
+				for _, prErr := range pr.Errors {
+					b.logger.Error("relay.Process error", "err", prErr)
+				}
+
+				_ = b.binlogReader.Close()
+				b.relay.Close()
+			}
+		}()
+
 		targetGtid, err := gtid.ParserGTID("mysql", coordinates.GtidSet)
 		if err != nil {
 			return err
@@ -328,26 +342,33 @@ func (b *BinlogReader) ConnectBinlogStreamer(coordinates base.BinlogCoordinatesX
 
 		chWait := make(chan struct{})
 		go func() {
-			waitForRelay := true
-			for !b.shutdown {
+			for {
+				if b.shutdown {
+					break
+				}
+				if b.relay.IsClosed() {
+					b.logger.Info("Relay: closed. stop waiting")
+					break
+				}
 				_, p := meta.Pos()
 				_, gs := meta.GTID()
 
-				if waitForRelay {
-					if targetGtid.Contain(gs) {
-						b.logger.Debug("Relay: keep waiting.", "pos", p, "gs", gs)
-					} else {
-						b.logger.Debug("Relay: stop waiting.", "pos", p, "gs", gs)
-						chWait <- struct{}{}
-						waitForRelay = false
-					}
+				if targetGtid.Contain(gs) {
+					b.logger.Debug("Relay: keep waiting.", "pos", p, "gs", gs)
+				} else {
+					b.logger.Debug("Relay: stop waiting.", "pos", p, "gs", gs)
+					break
 				}
 
 				time.Sleep(1 * time.Second)
 			}
+			close(chWait)
 		}()
 
 		<-chWait
+		if b.relay.IsClosed() {
+			return fmt.Errorf("relay has been closed")
+		}
 		b.binlogStreamer, err = b.binlogReader.StartSync(startPos)
 		if err != nil {
 			b.logger.Debug("err at StartSync", "err", err)
