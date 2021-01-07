@@ -15,6 +15,8 @@
                 "TableName": "tb1"
               }]
             }],
+            "GroupMaxSize": 1024,
+            "GroupTimeout": 100,
             "DropTableIfExists": true,
             "Gtid": "",
             "ChunkSize": 2000,
@@ -25,8 +27,13 @@
               "Password": "password"
             }
           }
+        }],
+        "RestartPolicy": {
+          "Attempts": 3,
+          "Interval": 600000000000,
+          "Delay": 15000000000,
+          "Mode": "delay"
         }
-        ]
       }, {
         "Name": "dest",
         "Tasks": [{
@@ -39,10 +46,16 @@
               "Converter": "json"
             }
           }
-        }]
+        }],
+        "RestartPolicy": {
+          "Attempts": 3,
+          "Interval": 600000000000,
+          "Delay": 15000000000,
+          "Mode": "delay"
+        }
       }
     ],
-    "Reschedule": {
+    "ReschedulePolicy": {
       "Attempts": 1,
       "Interval": 1800000000000,
       "Unlimited": false

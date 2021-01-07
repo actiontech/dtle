@@ -11,6 +11,8 @@ job "job1" {
             TableName = "tb1"
           }]
         }]
+        GroupMaxSize = 1024 # in bytes, not number of transactions
+        GroupTimeout = 100  # in ms
         DropTableIfExists = false
         Gtid = ""
         ChunkSize = 2000
@@ -21,6 +23,12 @@ job "job1" {
           Password = "password"
         }
       }
+    }
+    restart { # group or task level
+      interval = "10m"
+      attempts = 3
+      delay    = "15s"
+      mode     = "delay"
     }
   }
   group "dest" {
@@ -41,6 +49,12 @@ job "job1" {
         #  Converter = "json"
         #}
       }
+    }
+    restart { # group or task level
+      interval = "30m"
+      attempts = 3
+      delay    = "15s"
+      mode     = "delay"
     }
   }
 
