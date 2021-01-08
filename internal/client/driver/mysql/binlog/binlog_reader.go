@@ -9,6 +9,7 @@ package binlog
 import (
 	gosql "database/sql"
 	"github.com/cznic/mathutil"
+	"github.com/pkg/errors"
 	"os"
 	"path"
 	"path/filepath"
@@ -435,10 +436,6 @@ type parseDDLResult struct {
 
 // StreamEvents
 func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel chan<- *BinlogEntry) error {
-	emitBinlogEntry := func() {
-		b.logger.WithField("gno", b.currentBinlogEntry.Coordinates.GNO).Debug("emitBinlogEntry")
-		entriesChannel <- b.currentBinlogEntry
-	}
 	spanContext := ev.SpanContest
 	trace := opentracing.GlobalTracer()
 	span := trace.StartSpan("incremental  binlogEvent translation to  sql", opentracing.ChildOf(spanContext))
@@ -503,7 +500,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 						b.currentBinlogEntry.SpanContext = span.Context()
 						b.currentBinlogEntry.OriginalSize += len(ev.RawData)
 					}
-					emitBinlogEntry()
+					b.sendEntry(entriesChannel)
 					b.LastAppliedRowsEventHint = b.currentCoordinates
 					return nil
 				}
@@ -524,9 +521,12 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 				for i, sql := range ddlInfo.sqls {
 					realSchema := utils.StringElse(ddlInfo.tables[i].Schema, currentSchema)
 					tableName := ddlInfo.tables[i].Table
-					checkObjectFitRegexpErr := b.checkObjectFitRegexp(b.mysqlContext.ReplicateDoDb, realSchema, tableName)
+					err := b.checkObjectFitRegexp(b.mysqlContext.ReplicateDoDb, realSchema, tableName)
+					if err != nil {
+						return errors.Wrap(err, "checkObjectFitRegexp")
+					}
 
-					if checkObjectFitRegexpErr != nil || b.skipQueryDDL(sql, realSchema, tableName) {
+					if b.skipQueryDDL(sql, realSchema, tableName) {
 						b.logger.WithFields(logrus.Fields{
 							"gno": b.currentCoordinates.GNO,
 							"use": currentSchema,
@@ -665,7 +665,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 				}
 				b.currentBinlogEntry.SpanContext = span.Context()
 				b.currentBinlogEntry.OriginalSize += len(ev.RawData)
-				emitBinlogEntry()
+				b.sendEntry(entriesChannel)
 				b.LastAppliedRowsEventHint = b.currentCoordinates
 			}
 		}
@@ -675,7 +675,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 		// TODO is the pos the start or the end of a event?
 		// pos if which event should be use? Do we need +1?
 		b.currentBinlogEntry.Coordinates.LogPos = b.currentCoordinates.LogPos
-		emitBinlogEntry()
+		b.sendEntry(entriesChannel)
 		b.LastAppliedRowsEventHint = b.currentCoordinates
 	default:
 		if rowsEvent, ok := ev.Event.(*replication.RowsEvent); ok {
@@ -850,6 +850,11 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 		}
 	}
 	return nil
+}
+
+func (b *BinlogReader) sendEntry(entriesChannel chan<- *BinlogEntry) {
+	b.logger.WithField("gno", b.currentBinlogEntry.Coordinates.GNO).Debug("sendEntry")
+	entriesChannel <- b.currentBinlogEntry
 }
 
 func loadMapping(sql, beforeName, afterName, mappingType, currentSchema string) string {
@@ -1326,7 +1331,11 @@ func (b *BinlogReader) checkObjectFitRegexp(patternTBS []*config.DataSource, sch
 		table := &config.Table{}
 		schema := &config.DataSource{}
 		if pdb.TableSchemaScope == "schemas" && pdb.TableSchema != schemaName {
-			reg := regexp.MustCompile(pdb.TableSchemaRegex)
+			// TODO check & compile one time
+			reg, err := regexp.Compile(pdb.TableSchemaRegex)
+			if err != nil {
+				return err
+			}
 			if reg.MatchString(schemaName) {
 				match := reg.FindStringSubmatchIndex(schemaName)
 				schema.TableSchemaRegex = pdb.TableSchemaRegex
@@ -1344,7 +1353,11 @@ func (b *BinlogReader) checkObjectFitRegexp(patternTBS []*config.DataSource, sch
 		}
 		for _, ptb := range pdb.Tables {
 			if pdb.TableSchemaScope == "tables" && ptb.TableName != tableName {
-				reg := regexp.MustCompile(ptb.TableRegex)
+				// TODO check & compile one time
+				reg, err := regexp.Compile(ptb.TableRegex)
+				if err != nil {
+					return err
+				}
 				if reg.MatchString(tableName) {
 					match := reg.FindStringSubmatchIndex(tableName)
 					table.TableRegex = ptb.TableRegex
@@ -1352,7 +1365,6 @@ func (b *BinlogReader) checkObjectFitRegexp(patternTBS []*config.DataSource, sch
 					table.TableRename = string(reg.ExpandString(nil, ptb.TableRenameRegex, tableName, match))
 					b.mysqlContext.ReplicateDoDb[i].Tables = append(b.mysqlContext.ReplicateDoDb[i].Tables, table)
 				}
-				//b.genRegexMap()
 				break
 			}
 		}
