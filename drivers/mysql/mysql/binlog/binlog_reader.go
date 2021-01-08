@@ -474,31 +474,30 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 			b.hasBeginQuery = true
 		} else {
 			if strings.ToUpper(query) == "COMMIT" || !b.hasBeginQuery {
-				if !b.mysqlContext.ExpandSyntaxSupport {
-					if skipQueryEvent(query) {
-						b.logger.Warn("skip query", "query", query)
-						return nil
-					}
-				}
+				skipExpandSyntax := !b.mysqlContext.ExpandSyntaxSupport && skipQueryEvent(query)
 
 				ddlInfo, err := resolveDDLSQL(currentSchema, query, b.skipQueryDDL)
 
-				if err != nil || !ddlInfo.isDDL {
+				if skipExpandSyntax || err != nil || !ddlInfo.isDDL {
 					if err != nil {
-						b.logger.Warn("Parse query event failed. will execute", "query", query, "err", err)
+						b.logger.Warn("Parse query event failed. will execute", "query", query, "err", err, "gno", b.currentCoordinates.GNO)
 					} else if !ddlInfo.isDDL {
-						b.logger.Debug("mysql.reader: QueryEvent is not a DDL", "query", query)
+						b.logger.Debug("mysql.reader: QueryEvent is not a DDL", "query", query, "gno", b.currentCoordinates.GNO)
 					}
-					event := common.NewQueryEvent(
-						currentSchema,
-						query,
-						common.NotDML,
-						ev.Header.Timestamp,
-					)
+					if skipExpandSyntax {
+						b.logger.Warn("skip query", "query", query, "gno", b.currentCoordinates.GNO)
+					} else {
+						event := common.NewQueryEvent(
+							currentSchema,
+							query,
+							common.NotDML,
+							ev.Header.Timestamp,
+						)
 
-					b.currentBinlogEntry.Events = append(b.currentBinlogEntry.Events, event)
-					b.entryContext.SpanContext = span.Context()
-					b.entryContext.OriginalSize += len(ev.RawData)
+						b.currentBinlogEntry.Events = append(b.currentBinlogEntry.Events, event)
+						b.entryContext.SpanContext = span.Context()
+						b.entryContext.OriginalSize += len(ev.RawData)
+					}
 					b.sendEntry(entriesChannel)
 					b.LastAppliedRowsEventHint = b.currentCoordinates
 					return nil
@@ -797,6 +796,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 }
 
 func (b *BinlogReader) sendEntry(entriesChannel chan<- *common.BinlogEntryContext) {
+	b.logger.Debug("sendEntry", "gno", b.currentBinlogEntry.Coordinates.GNO)
 	atomic.AddInt64(b.memory, int64(b.entryContext.Entry.Size()))
 	entriesChannel <- b.entryContext
 }
