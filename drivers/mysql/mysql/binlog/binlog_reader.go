@@ -111,6 +111,7 @@ type SqlFilter struct {
 	NoDDLAlterTableModifyColumn bool
 	NoDDLAlterTableChangeColumn bool
 	NoDDLAlterTableAlterColumn  bool
+	NoDDLCreateSchema           bool
 }
 
 func parseSqlFilter(strs []string) (*SqlFilter, error) {
@@ -128,6 +129,8 @@ func parseSqlFilter(strs []string) (*SqlFilter, error) {
 
 		case "noddl":
 			s.NoDDL = true
+		case "noddlcreateschema":
+			s.NoDDLCreateSchema = true
 		case "noddlcreatetable":
 			s.NoDDLCreateTable = true
 		case "noddldroptable":
@@ -471,13 +474,6 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 			b.hasBeginQuery = true
 		} else {
 			if strings.ToUpper(query) == "COMMIT" || !b.hasBeginQuery {
-				if b.mysqlContext.SkipCreateDbTable {
-					if skipCreateDbTable(query) {
-						b.logger.Warn("skip create db/table", "query", query)
-						return nil
-					}
-				}
-
 				if !b.mysqlContext.ExpandSyntaxSupport {
 					if skipQueryEvent(query) {
 						b.logger.Warn("skip query", "query", query)
@@ -486,15 +482,13 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 				}
 
 				ddlInfo, err := resolveDDLSQL(currentSchema, query, b.skipQueryDDL)
-				if err != nil {
-					b.logger.Debug("Parse query event failed", "query", query, "err", err)
-					if b.skipQueryDDL(currentSchema, "") {
-						b.logger.Debug("skip QueryEvent", "schema", currentSchema, "query", query)
-						return nil
-					}
-				}
 
-				if !ddlInfo.isDDL {
+				if err != nil || !ddlInfo.isDDL {
+					if err != nil {
+						b.logger.Warn("Parse query event failed. will execute", "query", query, "err", err)
+					} else if !ddlInfo.isDDL {
+						b.logger.Debug("mysql.reader: QueryEvent is not a DDL", "query", query)
+					}
 					event := common.NewQueryEvent(
 						currentSchema,
 						query,
@@ -508,8 +502,6 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 					b.sendEntry(entriesChannel)
 					b.LastAppliedRowsEventHint = b.currentCoordinates
 					return nil
-				} else {
-					// it is a ddl
 				}
 
 				skipEvent := false
@@ -530,8 +522,8 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 					}
 
 					if b.skipQueryDDL(realSchema, tableName) {
-						b.logger.Debug("Skip QueryEvent", "currentSchema", currentSchema, "sql", sql,
-							"realSchema", realSchema, "tableName", tableName)
+						b.logger.Info("Skip QueryEvent", "currentSchema", currentSchema, "sql", sql,
+							"realSchema", realSchema, "tableName", tableName, "gno", b.currentCoordinates.GNO)
 					} else {
 						schema, table := b.findSchemaTable(realSchema, tableName)
 
@@ -994,6 +986,8 @@ func resolveDDLSQL(currentSchema string, sql string,
 		setTable(v.Name, "")
 	case *ast.DropDatabaseStmt:
 		setTable(v.Name, "")
+	case *ast.AlterDatabaseStmt:
+		setTable(v.Name, "")
 	case *ast.CreateIndexStmt:
 		setTable(v.Table.Schema.O, v.Table.Name.O)
 	case *ast.DropIndexStmt:
@@ -1036,8 +1030,11 @@ func resolveDDLSQL(currentSchema string, sql string,
 			}
 			result.sql = bs.String()
 		}
-	case *ast.CreateUserStmt, *ast.GrantStmt:
+	case *ast.CreateUserStmt, *ast.GrantStmt, *ast.DropUserStmt, *ast.AlterUserStmt:
 		setTable("mysql", "user")
+	case *ast.RenameTableStmt:
+		setTable(v.OldTable.Schema.O, v.OldTable.Name.O)
+		// TODO handle extra tables in v.TableToTables[1:]
 	default:
 		return result, fmt.Errorf("unknown DDL type")
 	}
@@ -1064,19 +1061,6 @@ func (b *BinlogReader) skipQueryDDL(schema string, tableName string) bool {
 		}
 		return false
 	}
-}
-
-func skipCreateDbTable(sql string) bool {
-	sql = strings.ToLower(sql)
-
-	if strings.HasPrefix(sql, "create database") {
-		return true
-	}
-	if strings.HasPrefix(sql, "create table") {
-		return true
-	}
-
-	return false
 }
 
 func skipQueryEvent(sql string) bool {
@@ -1473,6 +1457,10 @@ func (b *BinlogReader) findSchemaTable(realSchema string, tableName string) (sch
 
 func skipBySqlFilter(ddlAst ast.StmtNode, sqlFilter *SqlFilter) bool {
 	switch realAst := ddlAst.(type) {
+	case *ast.CreateDatabaseStmt:
+		if sqlFilter.NoDDLCreateSchema {
+			return true
+		}
 	case *ast.CreateTableStmt:
 		if sqlFilter.NoDDLCreateTable {
 			return true
