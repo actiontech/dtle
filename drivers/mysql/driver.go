@@ -133,6 +133,8 @@ var (
 				hclspec.NewLiteral(`"json"`)),
 			"TimeZone": hclspec.NewDefault(hclspec.NewAttr("TimeZone", "string", false),
 				hclspec.NewLiteral(`"UTC"`)),
+			"MessageGroupMaxSize": hclspec.NewAttr("MessageGroupMaxSize", "number", false),
+			"MessageGroupTimeout": hclspec.NewAttr("MessageGroupTimeout", "number", false),
 		})),
 	})
 
