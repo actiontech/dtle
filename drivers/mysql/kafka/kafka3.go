@@ -12,16 +12,19 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"github.com/actiontech/dtle/drivers/mysql/common"
-	"github.com/actiontech/dtle/drivers/mysql/mysql"
-	"github.com/hashicorp/nomad/plugins/drivers"
-	"github.com/pkg/errors"
-	gomysql "github.com/siddontang/go-mysql/mysql"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/actiontech/dtle/drivers/mysql/common"
+	"github.com/actiontech/dtle/drivers/mysql/mysql"
+	"github.com/actiontech/dtle/g"
+	"github.com/hashicorp/nomad/plugins/drivers"
+	"github.com/pkg/errors"
+	gomysql "github.com/siddontang/go-mysql/mysql"
 
 	"github.com/actiontech/dtle/drivers/mysql/mysql/mysqlconfig"
 	hclog "github.com/hashicorp/go-hclog"
@@ -78,6 +81,9 @@ type KafkaRunner struct {
 	timestampCtx *mysql.TimestampContext
 	memory1      *int64
 	memory2      *int64
+
+	printTps       bool
+	txLastNSeconds uint32
 }
 
 func NewKafkaRunner(execCtx *common.ExecContext, cfg *common.KafkaConfig, logger hclog.Logger,
@@ -96,8 +102,9 @@ func NewKafkaRunner(execCtx *common.ExecContext, cfg *common.KafkaConfig, logger
 		chDumpEntry:     make(chan *common.DumpEntry, 2),
 		chBinlogEntries: make(chan *common.BinlogEntries, 2),
 
-		memory1: new(int64),
-		memory2: new(int64),
+		memory1:  new(int64),
+		memory2:  new(int64),
+		printTps: os.Getenv(g.ENV_PRINT_TPS) != "",
 	}
 	kr.timestampCtx = mysql.NewTimestampContext(kr.shutdownCh, kr.logger, func() bool {
 		return len(kr.chBinlogEntries) == 0
@@ -365,11 +372,31 @@ func (kr *KafkaRunner) handleIncr() {
 			return errors.Wrap(err, "kafkaTransformDMLEventQueries")
 		}
 
+		if kr.printTps {
+			atomic.AddUint32(&kr.txLastNSeconds, uint32(len(entriesWillBeSent)))
+		}
+
 		entriesSize = 0
 		entriesWillBeSent = []*common.BinlogEntry{}
 
 		return nil
 	}
+	if kr.printTps {
+		go func() {
+			for {
+				select {
+				case <-kr.shutdownCh:
+					return
+				default:
+					// keep loop
+				}
+				time.Sleep(5 * time.Second)
+				n := atomic.SwapUint32(&kr.txLastNSeconds, 0)
+				kr.logger.Info("txLastNSeconds", "n", n)
+			}
+		}()
+	}
+
 	timer := time.NewTimer(groupTimeoutDuration)
 	defer timer.Stop()
 	for !kr.shutdown {
