@@ -1,8 +1,9 @@
 package common
 
 import (
-	"github.com/actiontech/dtle/drivers/mysql/mysql/mysqlconfig"
 	"time"
+
+	"github.com/actiontech/dtle/drivers/mysql/mysql/mysqlconfig"
 )
 
 const (
@@ -71,6 +72,15 @@ func (d *DtleTaskConfig) SetDefaultForEmpty() {
 	if d.ConnectionConfig.Charset == "" {
 		d.ConnectionConfig.Charset = "utf8mb4"
 	}
+
+	if d.KafkaConfig != nil {
+		if d.KafkaConfig.MessageGroupMaxSize == 0 {
+			d.KafkaConfig.MessageGroupMaxSize = 1
+		}
+		if d.KafkaConfig.MessageGroupTimeout == 0 {
+			d.KafkaConfig.MessageGroupTimeout = 100
+		}
+	}
 }
 
 type MySQLDriverConfig struct {
@@ -109,8 +119,10 @@ func (m *MySQLDriverConfig) ElapsedRowCopyTime() time.Duration {
 }
 
 type KafkaConfig struct {
-	Brokers   []string
-	Topic     string
-	Converter string
-	TimeZone  string
+	Brokers             []string
+	Topic               string
+	Converter           string
+	TimeZone            string
+	MessageGroupMaxSize uint64
+	MessageGroupTimeout uint64
 }
