@@ -355,12 +355,35 @@ func (kr *KafkaRunner) handleIncr() {
 	kr.logger.Debug("handleIncr")
 	var err error
 	bigEntries := &common.BinlogEntries{}
+	groupTimeoutDuration := time.Duration(kr.kafkaConfig.MessageGroupTimeout) * time.Millisecond
+	var entriesSize uint64
+	entriesWillBeSent := []*common.BinlogEntry{}
+
+	sendEntriesAndClear := func() error {
+		err = kr.kafkaTransformDMLEventQueries(entriesWillBeSent)
+		if err != nil {
+			return errors.Wrap(err, "kafkaTransformDMLEventQueries")
+		}
+
+		entriesSize = 0
+		entriesWillBeSent = []*common.BinlogEntry{}
+
+		return nil
+	}
+	timer := time.NewTimer(groupTimeoutDuration)
+	defer timer.Stop()
 	for !kr.shutdown {
 		var binlogEntries *common.BinlogEntries
 		select {
 		case binlogEntries = <-kr.chBinlogEntries:
 		case <-kr.shutdownCh:
 			return
+		case <-timer.C:
+			if err := sendEntriesAndClear(); nil != err {
+				kr.onError(TaskStateDead, err)
+			}
+			timer.Reset(groupTimeoutDuration)
+			continue
 		}
 		memSize := int64(binlogEntries.Size())
 
@@ -399,12 +422,14 @@ func (kr *KafkaRunner) handleIncr() {
 
 		if needCopy {
 			for _, binlogEntry := range binlogEntries.Entries {
-				err = kr.kafkaTransformDMLEventQuery(binlogEntry)
-				if err != nil {
-					kr.onError(TaskStateDead, errors.Wrap(err, "kafkaTransformDMLEventQuery"))
-					return
+				entriesWillBeSent = append(entriesWillBeSent, binlogEntry)
+				entriesSize = entriesSize + binlogEntry.Size()
+				if entriesSize >= kr.kafkaConfig.MessageGroupMaxSize {
+					if err := sendEntriesAndClear(); nil != err {
+						kr.onError(TaskStateDead, err)
+						return
+					}
 				}
-				kr.logger.Debug("kafka: after kafkaTransformDMLEventQuery")
 			}
 		}
 		atomic.AddInt64(kr.memory2, -memSize)
@@ -689,300 +714,314 @@ func (kr *KafkaRunner) kafkaTransformSnapshotData(
 		//vBs = []byte(strings.Replace(string(vBs), "\"field\":\"snapshot\"", "\"default\":false,\"field\":\"snapshot\"", -1))
 		err = kr.kafkaMgr.Send(tableIdent, kBs, vBs)
 		if err != nil {
-			return err
+			return fmt.Errorf("send msg failed: %v", err)
 		}
 		kr.logger.Debug("sent one msg")
 	}
 	return nil
 }
 
-func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *common.BinlogEntry) (err error) {
-	kr.logger.Debug("kafkaTransformDMLEventQuery", "gno", dmlEvent.Coordinates.GNO)
-	txSid := dmlEvent.Coordinates.GetSid()
+func (kr *KafkaRunner) kafkaTransformDMLEventQueries(dmlEntries []*common.BinlogEntry) (err error) {
+	if len(dmlEntries) <= 0 {
+		return nil
+	}
 
-	for i, _ := range dmlEvent.Events {
-		dataEvent := &dmlEvent.Events[i]
-		realSchema := common.StringElse(dataEvent.DatabaseName, dataEvent.CurrentSchema)
+	keysBs, valuesBs := make([][]byte, 0), make([][]byte, 0)
+	tableIdents := []string{}
+	curDmlEntry := dmlEntries[0]
 
-		var tableItem *KafkaTableItem
-		if dataEvent.TableName != "" {
-			// this must be executed before skipping DDL
-			table, err := decodeMaybeTable(dataEvent.Table)
-			tableItem, err = kr.getOrSetTable(realSchema, dataEvent.TableName, table)
-			if err != nil {
+	for i, dmlEvent := range dmlEntries {
+		curDmlEntry = dmlEntries[i]
+		kr.logger.Debug("kafkaTransformDMLEventQueries", "gno", dmlEvent.Coordinates.GNO)
+		txSid := dmlEvent.Coordinates.GetSid()
+
+		for i, _ := range dmlEvent.Events {
+			dataEvent := &dmlEvent.Events[i]
+			realSchema := common.StringElse(dataEvent.DatabaseName, dataEvent.CurrentSchema)
+
+			var tableItem *KafkaTableItem
+			if dataEvent.TableName != "" {
+				// this must be executed before skipping DDL
+				table, err := decodeMaybeTable(dataEvent.Table)
+				tableItem, err = kr.getOrSetTable(realSchema, dataEvent.TableName, table)
+				if err != nil {
+					return err
+				}
+			} else {
+				kr.logger.Debug("kafkaTransformDMLEventQueries: empty table name",
+					"query", dataEvent.Query, "type", dataEvent.DML)
+			}
+
+			// skipping DDL
+			if dataEvent.DML == common.NotDML {
+				continue
+			}
+
+			if tableItem == nil {
+				err = fmt.Errorf("DTLE_BUG: table meta is nil %v.%v", realSchema, dataEvent.TableName)
+				kr.logger.Error("table meta is nil", "err", err)
 				return err
 			}
-		} else {
-			kr.logger.Debug("kafkaTransformDMLEventQuery: empty table name",
-				"query", dataEvent.Query, "type", dataEvent.DML)
-		}
 
-		// skipping DDL
-		if dataEvent.DML == common.NotDML {
-			continue
-		}
+			table := tableItem.table
 
-		if tableItem == nil {
-			err = fmt.Errorf("DTLE_BUG: table meta is nil %v.%v", realSchema, dataEvent.TableName)
-			kr.logger.Error("table meta is nil", "err", err)
-			return err
-		}
+			var op string
+			var before *Row
+			var after *Row
 
-		table := tableItem.table
-
-		var op string
-		var before *Row
-		var after *Row
-
-		switch dataEvent.DML {
-		case common.InsertDML:
-			op = RECORD_OP_INSERT
-			before = nil
-			after = NewRow()
-		case common.DeleteDML:
-			op = RECORD_OP_DELETE
-			before = NewRow()
-			after = nil
-		case common.UpdateDML:
-			op = RECORD_OP_UPDATE
-			before = NewRow()
-			after = NewRow()
-		}
-
-		tableIdent := fmt.Sprintf("%v.%v.%v", kr.kafkaMgr.Cfg.Topic, table.TableSchema, table.TableName)
-
-		keyPayload := NewRow()
-		colList := table.OriginalTableColumns.ColumnList()
-
-		for i, _ := range colList {
-			colName := colList[i].RawName
-
-			var beforeValue interface{}
-			var afterValue interface{}
-
-			if before != nil {
-				beforeValue = colList[i].ConvertArg(dataEvent.WhereColumnValues.AbstractValues[i])
-			}
-			if after != nil {
-				afterValue = colList[i].ConvertArg(dataEvent.NewColumnValues.AbstractValues[i])
+			switch dataEvent.DML {
+			case common.InsertDML:
+				op = RECORD_OP_INSERT
+				before = nil
+				after = NewRow()
+			case common.DeleteDML:
+				op = RECORD_OP_DELETE
+				before = NewRow()
+				after = nil
+			case common.UpdateDML:
+				op = RECORD_OP_UPDATE
+				before = NewRow()
+				after = NewRow()
 			}
 
-			switch colList[i].Type {
-			case mysqlconfig.DecimalColumnType:
-				// nil: either entire row does not exist or this field is NULL
-				if beforeValue != nil {
-					beforeValue = DecimalValueFromStringMysql(beforeValue.(string))
+			tableIdents = append(tableIdents, fmt.Sprintf("%v.%v.%v", kr.kafkaMgr.Cfg.Topic, table.TableSchema, table.TableName))
+
+			keyPayload := NewRow()
+			colList := table.OriginalTableColumns.ColumnList()
+
+			for i, _ := range colList {
+				colName := colList[i].RawName
+
+				var beforeValue interface{}
+				var afterValue interface{}
+
+				if before != nil {
+					beforeValue = colList[i].ConvertArg(dataEvent.WhereColumnValues.AbstractValues[i])
 				}
-				if afterValue != nil {
-					afterValue = DecimalValueFromStringMysql(afterValue.(string))
+				if after != nil {
+					afterValue = colList[i].ConvertArg(dataEvent.NewColumnValues.AbstractValues[i])
 				}
-			case mysqlconfig.BigIntColumnType:
-				if colList[i].IsUnsigned {
+
+				switch colList[i].Type {
+				case mysqlconfig.DecimalColumnType:
+					// nil: either entire row does not exist or this field is NULL
 					if beforeValue != nil {
-						beforeValue = int64(beforeValue.(uint64))
+						beforeValue = DecimalValueFromStringMysql(beforeValue.(string))
 					}
 					if afterValue != nil {
-						afterValue = int64(afterValue.(uint64))
+						afterValue = DecimalValueFromStringMysql(afterValue.(string))
 					}
-				}
-			case mysqlconfig.TimeColumnType, mysqlconfig.TimestampColumnType:
-				if beforeValue != nil && colList[i].ColumnType == "timestamp" {
-					beforeValue = TimeStamp(beforeValue.(string), kr.kafkaConfig.TimeZone)
-				} else if beforeValue != nil {
-					beforeValue = TimeValue(beforeValue.(string))
-				}
-				if afterValue != nil && colList[i].ColumnType == "timestamp" {
-					afterValue = TimeStamp(afterValue.(string), kr.kafkaConfig.TimeZone)
-				} else if afterValue != nil {
-					afterValue = TimeValue(afterValue.(string))
-				}
-			case mysqlconfig.DateColumnType, mysqlconfig.DateTimeColumnType:
-				if beforeValue != nil && colList[i].ColumnType == "datetime" {
-					beforeValue = DateTimeValue(beforeValue.(string), kr.kafkaConfig.TimeZone)
-				} else if beforeValue != nil {
-					beforeValue = DateValue(beforeValue.(string))
-				}
-				if afterValue != nil && colList[i].ColumnType == "datetime" {
-					afterValue = DateTimeValue(afterValue.(string), kr.kafkaConfig.TimeZone)
-				} else if afterValue != nil {
-					afterValue = DateValue(afterValue.(string))
-				}
-			case mysqlconfig.VarbinaryColumnType:
-				if beforeValue != nil {
-					beforeValue = beforeValue.(string)
-				}
-				if afterValue != nil {
-					afterValue = afterValue.(string)
-				}
-			case mysqlconfig.BinaryColumnType:
+				case mysqlconfig.BigIntColumnType:
+					if colList[i].IsUnsigned {
+						if beforeValue != nil {
+							beforeValue = int64(beforeValue.(uint64))
+						}
+						if afterValue != nil {
+							afterValue = int64(afterValue.(uint64))
+						}
+					}
+				case mysqlconfig.TimeColumnType, mysqlconfig.TimestampColumnType:
+					if beforeValue != nil && colList[i].ColumnType == "timestamp" {
+						beforeValue = TimeStamp(beforeValue.(string), kr.kafkaConfig.TimeZone)
+					} else if beforeValue != nil {
+						beforeValue = TimeValue(beforeValue.(string))
+					}
+					if afterValue != nil && colList[i].ColumnType == "timestamp" {
+						afterValue = TimeStamp(afterValue.(string), kr.kafkaConfig.TimeZone)
+					} else if afterValue != nil {
+						afterValue = TimeValue(afterValue.(string))
+					}
+				case mysqlconfig.DateColumnType, mysqlconfig.DateTimeColumnType:
+					if beforeValue != nil && colList[i].ColumnType == "datetime" {
+						beforeValue = DateTimeValue(beforeValue.(string), kr.kafkaConfig.TimeZone)
+					} else if beforeValue != nil {
+						beforeValue = DateValue(beforeValue.(string))
+					}
+					if afterValue != nil && colList[i].ColumnType == "datetime" {
+						afterValue = DateTimeValue(afterValue.(string), kr.kafkaConfig.TimeZone)
+					} else if afterValue != nil {
+						afterValue = DateValue(afterValue.(string))
+					}
+				case mysqlconfig.VarbinaryColumnType:
+					if beforeValue != nil {
+						beforeValue = beforeValue.(string)
+					}
+					if afterValue != nil {
+						afterValue = afterValue.(string)
+					}
+				case mysqlconfig.BinaryColumnType:
 
-				if beforeValue != nil {
-					beforeValue = getBinaryValue(colList[i].ColumnType, beforeValue.(string))
-				}
-				if afterValue != nil {
-					afterValue = getBinaryValue(colList[i].ColumnType, afterValue.(string))
-				}
-			case mysqlconfig.TinytextColumnType:
-				//println("beforeValue:",string(beforeValue.([]uint8)))
-				if beforeValue != nil {
-					beforeValue = string(beforeValue.([]uint8))
-				}
-				if afterValue != nil {
-					afterValue = string(afterValue.([]uint8))
-				}
-			case mysqlconfig.FloatColumnType:
-				if beforeValue != nil {
-					beforeValue = beforeValue.(float32)
-				}
-				if afterValue != nil {
-					afterValue = afterValue.(float32)
-				}
-			case mysqlconfig.EnumColumnType:
-				enums := strings.Split(colList[i].ColumnType[5:len(colList[i].ColumnType)-1], ",")
-				if beforeValue != nil {
-					beforeValue = strings.Replace(enums[beforeValue.(int64)-1], "'", "", -1)
-				}
-				if afterValue != nil {
-					afterValue = strings.Replace(enums[afterValue.(int64)-1], "'", "", -1)
-				}
-			case mysqlconfig.SetColumnType:
-				columnType := colList[i].ColumnType
-				if beforeValue != nil {
-					beforeValue = getSetValue(beforeValue.(int64), columnType)
-				}
-				if afterValue != nil {
-					afterValue = getSetValue(afterValue.(int64), columnType)
-				}
-			case mysqlconfig.BlobColumnType:
-				if strings.Contains(colList[i].ColumnType, "text") {
+					if beforeValue != nil {
+						beforeValue = getBinaryValue(colList[i].ColumnType, beforeValue.(string))
+					}
+					if afterValue != nil {
+						afterValue = getBinaryValue(colList[i].ColumnType, afterValue.(string))
+					}
+				case mysqlconfig.TinytextColumnType:
+					//println("beforeValue:",string(beforeValue.([]uint8)))
+					if beforeValue != nil {
+						beforeValue = string(beforeValue.([]uint8))
+					}
+					if afterValue != nil {
+						afterValue = string(afterValue.([]uint8))
+					}
+				case mysqlconfig.FloatColumnType:
+					if beforeValue != nil {
+						beforeValue = beforeValue.(float32)
+					}
+					if afterValue != nil {
+						afterValue = afterValue.(float32)
+					}
+				case mysqlconfig.EnumColumnType:
+					enums := strings.Split(colList[i].ColumnType[5:len(colList[i].ColumnType)-1], ",")
+					if beforeValue != nil {
+						beforeValue = strings.Replace(enums[beforeValue.(int64)-1], "'", "", -1)
+					}
+					if afterValue != nil {
+						afterValue = strings.Replace(enums[afterValue.(int64)-1], "'", "", -1)
+					}
+				case mysqlconfig.SetColumnType:
+					columnType := colList[i].ColumnType
+					if beforeValue != nil {
+						beforeValue = getSetValue(beforeValue.(int64), columnType)
+					}
+					if afterValue != nil {
+						afterValue = getSetValue(afterValue.(int64), columnType)
+					}
+				case mysqlconfig.BlobColumnType:
+					if strings.Contains(colList[i].ColumnType, "text") {
+						if beforeValue != nil {
+							beforeValue = string(afterValue.([]byte))
+						}
+						if afterValue != nil {
+							afterValue = string(afterValue.([]byte))
+						}
+					}
+				case mysqlconfig.TextColumnType:
 					if beforeValue != nil {
 						beforeValue = string(afterValue.([]byte))
 					}
 					if afterValue != nil {
 						afterValue = string(afterValue.([]byte))
 					}
-				}
-			case mysqlconfig.TextColumnType:
-				if beforeValue != nil {
-					beforeValue =  string(afterValue.([]byte))
-				}
-				if afterValue != nil {
-					afterValue = string(afterValue.([]byte))
+
+				case mysqlconfig.BitColumnType:
+					if colList[i].ColumnType == "bit(1)" {
+						if beforeValue != nil {
+							beforeValue, _ = strconv.ParseBool(getBitValue(colList[i].ColumnType, beforeValue.(int64)))
+						}
+						if afterValue != nil {
+							afterValue, _ = strconv.ParseBool(getBitValue(colList[i].ColumnType, afterValue.(int64)))
+						}
+					} else {
+						if beforeValue != nil {
+							beforeValue = getBitValue(colList[i].ColumnType, beforeValue.(int64))
+						}
+						if afterValue != nil {
+							afterValue = getBitValue(colList[i].ColumnType, afterValue.(int64))
+						}
+					}
+				default:
+					// do nothing
 				}
 
-			case mysqlconfig.BitColumnType:
-				if colList[i].ColumnType=="bit(1)" {
-					if beforeValue != nil {
-						beforeValue ,_= strconv.ParseBool(getBitValue(colList[i].ColumnType, beforeValue.(int64)))
-					}
-					if afterValue != nil {
-						afterValue,_ = strconv.ParseBool(getBitValue(colList[i].ColumnType, afterValue.(int64)))
-					}
-				}else {
-					if beforeValue != nil {
-						beforeValue = getBitValue(colList[i].ColumnType, beforeValue.(int64))
-					}
-					if afterValue != nil {
-						afterValue = getBitValue(colList[i].ColumnType, afterValue.(int64))
+				if colList[i].IsPk() {
+					if before != nil {
+						// update/delete: use before
+						keyPayload.AddField(colName, beforeValue)
+					} else {
+						// insert: use after
+						keyPayload.AddField(colName, afterValue)
 					}
 				}
-			default:
-				// do nothing
-			}
 
-			if colList[i].IsPk() {
 				if before != nil {
-					// update/delete: use before
-					keyPayload.AddField(colName, beforeValue)
-				} else {
-					// insert: use after
-					keyPayload.AddField(colName, afterValue)
+					kr.logger.Trace("beforeValue", "v", beforeValue)
+					before.AddField(colName, beforeValue)
+				}
+				if after != nil {
+					kr.logger.Trace("afterValue", "v", afterValue)
+					after.AddField(colName, afterValue)
 				}
 			}
 
-			if before != nil {
-				kr.logger.Trace("beforeValue", "v", beforeValue)
-				before.AddField(colName, beforeValue)
+			valuePayload := NewValuePayload()
+			valuePayload.Before = before
+			valuePayload.After = after
+
+			valuePayload.Source.Version = "0.0.1"
+			valuePayload.Source.Name = kr.kafkaMgr.Cfg.Topic
+			valuePayload.Source.ServerID = 1 // TODO
+			valuePayload.Source.TsSec = time.Now().Unix()
+			valuePayload.Source.Gtid = fmt.Sprintf("%s:%d", txSid, dmlEvent.Coordinates.GNO)
+			valuePayload.Source.File = dmlEvent.Coordinates.LogFile
+			valuePayload.Source.Pos = dataEvent.LogPos
+			valuePayload.Source.Row = 0          // TODO "the row within the event (if there is more than one)".
+			valuePayload.Source.Snapshot = false // TODO "whether this event was part of a snapshot"
+
+			valuePayload.Source.Query = nil
+			// My guess: for full range, snapshot=true, else false
+			valuePayload.Source.Thread = nil // TODO
+			valuePayload.Source.Db = dataEvent.DatabaseName
+			valuePayload.Source.Table = dataEvent.TableName
+			valuePayload.Op = op
+			valuePayload.TsMs = common.CurrentTimeMillis()
+
+			k := DbzOutput{
+				Schema:  tableItem.keySchema,
+				Payload: keyPayload,
 			}
-			if after != nil {
-				kr.logger.Trace("afterValue", "v", afterValue)
-				after.AddField(colName, afterValue)
+			v := DbzOutput{
+				Schema:  tableItem.valueSchema,
+				Payload: valuePayload,
 			}
-		}
-
-		valuePayload := NewValuePayload()
-		valuePayload.Before = before
-		valuePayload.After = after
-
-		valuePayload.Source.Version = "0.0.1"
-		valuePayload.Source.Name = kr.kafkaMgr.Cfg.Topic
-		valuePayload.Source.ServerID = 1 // TODO
-		valuePayload.Source.TsSec = time.Now().Unix()
-		valuePayload.Source.Gtid = fmt.Sprintf("%s:%d", txSid, dmlEvent.Coordinates.GNO)
-		valuePayload.Source.File = dmlEvent.Coordinates.LogFile
-		valuePayload.Source.Pos = dataEvent.LogPos
-		valuePayload.Source.Row = 0          // TODO "the row within the event (if there is more than one)".
-		valuePayload.Source.Snapshot = false // TODO "whether this event was part of a snapshot"
-
-		valuePayload.Source.Query = nil
-		// My guess: for full range, snapshot=true, else false
-		valuePayload.Source.Thread = nil // TODO
-		valuePayload.Source.Db = dataEvent.DatabaseName
-		valuePayload.Source.Table = dataEvent.TableName
-		valuePayload.Op = op
-		valuePayload.TsMs = common.CurrentTimeMillis()
-
-		k := DbzOutput{
-			Schema:  tableItem.keySchema,
-			Payload: keyPayload,
-		}
-		v := DbzOutput{
-			Schema:  tableItem.valueSchema,
-			Payload: valuePayload,
-		}
-		kBs, err := json.Marshal(k)
-		if err != nil {
-			return err
-		}
-		vBs, err := json.Marshal(v)
-		if err != nil {
-			return err
-		}
-		//	vBs = []byte(strings.Replace(string(vBs), "\"field\":\"snapshot\"", "\"default\":false,\"field\":\"snapshot\"", -1))
-		err = kr.kafkaMgr.Send(tableIdent, kBs, vBs)
-		if err != nil {
-			return err
-		}
-		kr.logger.Debug("sent one msg")
-
-		// tombstone event for DELETE
-		if dataEvent.DML == common.DeleteDML {
-			v2 := DbzOutput{
-				Schema:  nil,
-				Payload: nil,
-			}
-			v2Bs, err := json.Marshal(v2)
+			kBs, err := json.Marshal(k)
 			if err != nil {
 				return err
 			}
-			err = kr.kafkaMgr.Send(tableIdent, kBs, v2Bs)
+			vBs, err := json.Marshal(v)
 			if err != nil {
 				return err
 			}
-			kr.logger.Debug("sent one msg")
+
+			keysBs = append(keysBs, kBs)
+			valuesBs = append(valuesBs, vBs)
+			vBs = []byte(strings.Replace(string(vBs), "\"field\":\"snapshot\"", "\"default\":false,\"field\":\"snapshot\"", -1))
+
+			// tombstone event for DELETE
+			if dataEvent.DML == common.DeleteDML {
+				v2 := DbzOutput{
+					Schema:  nil,
+					Payload: nil,
+				}
+				v2Bs, err := json.Marshal(v2)
+				if err != nil {
+					return err
+				}
+
+				keysBs = append(keysBs, kBs)
+				valuesBs = append(valuesBs, v2Bs)
+			}
 		}
 
-		if i == len(dmlEvent.Events) - 1 {
-			kr.timestampCtx.TimestampCh <- dmlEvent.Events[0].Timestamp
+		if i == len(dmlEntries)-1 {
+			kr.timestampCtx.TimestampCh <- curDmlEntry.Events[0].Timestamp
 		}
 	}
 
-	kr.BinlogFile = dmlEvent.Coordinates.LogFile
-	kr.BinlogPos = dmlEvent.Coordinates.LogPos
+	err = kr.kafkaMgr.SendMessages(kr.logger, tableIdents, keysBs, valuesBs)
+	if err != nil {
+		return fmt.Errorf("send msgs failed: %v", err)
+	}
+	kr.logger.Debug("sent msgs")
 
-	common.UpdateGtidSet(kr.gtidSet, dmlEvent.Coordinates.SID, dmlEvent.Coordinates.GNO)
+	kr.BinlogFile = curDmlEntry.Coordinates.LogFile
+	kr.BinlogPos = curDmlEntry.Coordinates.LogPos
+
+	common.UpdateGtidSet(kr.gtidSet, curDmlEntry.Coordinates.SID, curDmlEntry.Coordinates.GNO)
 	kr.updateGtidString()
 
+	kr.logger.Debug("kafka: after kafkaTransformDMLEventQueries")
 	return nil
 }
 
