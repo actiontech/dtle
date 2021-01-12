@@ -258,7 +258,6 @@ func (kr *KafkaRunner) Run() {
 		kr.onError(TaskStateDead, errors.Wrap(err, "WatchAndPutNats"))
 	})
 
-
 	go kr.updateGtidLoop()
 }
 
@@ -406,9 +405,16 @@ func (kr *KafkaRunner) handleIncr() {
 		case <-kr.shutdownCh:
 			return
 		case <-timer.C:
-			if err := sendEntriesAndClear(); nil != err {
-				kr.onError(TaskStateDead, err)
+			if len(entriesWillBeSent) > 0 {
+				kr.logger.Debug("kafka: incr. send by timeout.",
+					"timeout", kr.kafkaConfig.MessageGroupTimeout,
+					"entriesSize", entriesSize,
+					"Entries.len", len(entriesWillBeSent))
+				if err := sendEntriesAndClear(); nil != err {
+					kr.onError(TaskStateDead, err)
+				}
 			}
+
 			timer.Reset(groupTimeoutDuration)
 			continue
 		}
@@ -452,6 +458,10 @@ func (kr *KafkaRunner) handleIncr() {
 				entriesWillBeSent = append(entriesWillBeSent, binlogEntry)
 				entriesSize = entriesSize + binlogEntry.Size()
 				if entriesSize >= kr.kafkaConfig.MessageGroupMaxSize {
+					kr.logger.Debug("kafka: incr. send by GroupLimit",
+						"MessageGroupMaxSize", kr.kafkaConfig.MessageGroupMaxSize,
+						"entriesSize", entriesSize,
+						"Entries.len", len(entriesWillBeSent))
 					if err := sendEntriesAndClear(); nil != err {
 						kr.onError(TaskStateDead, err)
 						return
