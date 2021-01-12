@@ -2,6 +2,8 @@ package common
 
 import (
 	"time"
+
+	"github.com/actiontech/dtle/drivers/mysql/mysql/mysqlconfig"
 )
 
 const (
