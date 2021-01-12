@@ -1,7 +1,6 @@
 package common
 
 import (
-	"github.com/actiontech/dtle/drivers/mysql/mysql/mysqlconfig"
 	"time"
 )
 
@@ -72,14 +71,13 @@ func (d *DtleTaskConfig) SetDefaultForEmpty() {
 		d.ConnectionConfig.Charset = "utf8mb4"
 	}
 
-	if d.KafkaConfig == nil {
-		d.KafkaConfig = &KafkaConfig{}
-	}
-	if d.KafkaConfig.MessageGroupMaxSize == 0 {
-		d.KafkaConfig.MessageGroupMaxSize = 1
-	}
-	if d.KafkaConfig.MessageGroupTimeout == 0 {
-		d.KafkaConfig.MessageGroupTimeout = 100
+	if d.KafkaConfig != nil {
+		if d.KafkaConfig.MessageGroupMaxSize == 0 {
+			d.KafkaConfig.MessageGroupMaxSize = 1
+		}
+		if d.KafkaConfig.MessageGroupTimeout == 0 {
+			d.KafkaConfig.MessageGroupTimeout = 100
+		}
 	}
 }
 
