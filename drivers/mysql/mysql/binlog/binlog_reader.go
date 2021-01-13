@@ -505,7 +505,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 
 				skipEvent := false
 
-				b.sqleSwitchSchema(currentSchema, ddlInfo.ast)
+				b.sqleExecDDL(currentSchema, ddlInfo.ast)
 
 				if b.sqlFilter.NoDDL {
 					skipEvent = true
@@ -555,6 +555,22 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 							err := b.updateTableMeta(fromTable, realSchema, tableNameX)
 							if err != nil {
 								return err
+							}
+						case *ast.RenameTableStmt:
+							for _, tt := range realAst.TableToTables {
+								newSchemaName := common.StringElse(tt.NewTable.Schema.O, currentSchema)
+								tableName := tt.NewTable.Name.O
+								b.logger.Debug("updating meta for rename table", "newSchema", newSchemaName,
+									"newTable", tableName)
+								if !b.skipQueryDDL(newSchemaName, tableName) {
+									err := b.updateTableMeta(nil, newSchemaName, tableName)
+									if err != nil {
+										return err
+									}
+								} else {
+									b.logger.Debug("not updating meta for rename table", "newSchema", newSchemaName,
+										"newTable", tableName)
+								}
 							}
 						}
 
@@ -1424,7 +1440,7 @@ func (b *BinlogReader) GetQueueMem() int64 {
 	}
 }
 
-func (b *BinlogReader) sqleSwitchSchema(currentSchema string, ast ast.Node) {
+func (b *BinlogReader) sqleExecDDL(currentSchema string, ast ast.Node) {
 	if b.maybeSqleContext != nil {
 		b.maybeSqleContext.LoadSchemas(nil)
 		if currentSchema != "" {
