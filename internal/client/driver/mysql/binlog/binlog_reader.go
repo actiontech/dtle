@@ -526,7 +526,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 						return errors.Wrap(err, "checkObjectFitRegexp")
 					}
 
-					if b.skipQueryDDL(sql, realSchema, tableName) {
+					if b.skipQueryDDL(realSchema, tableName) {
 						b.logger.WithFields(logrus.Fields{
 							"gno": b.currentCoordinates.GNO,
 							"use": currentSchema,
@@ -616,6 +616,22 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 									default:
 										// other case
 									}
+								}
+							}
+						case *ast.RenameTableStmt:
+							for _, tt := range realAst.TableToTables {
+								newSchemaName := utils.StringElse(tt.NewTable.Schema.O, currentSchema)
+								tableName := tt.NewTable.Name.O
+								b.logger.Debug("updating meta for rename table", "newSchema", newSchemaName,
+									"newTable", tableName)
+								if !b.skipQueryDDL(newSchemaName, tableName) {
+									err := b.updateTableMeta(nil, newSchemaName, tableName)
+									if err != nil {
+										return err
+									}
+								} else {
+									b.logger.Debug("not updating meta for rename table", "newSchema", newSchemaName,
+										"newTable", tableName)
 								}
 							}
 						}
@@ -1030,7 +1046,7 @@ func resolveDDLSQL(sql string) (result parseDDLResult, err error) {
 	return result, nil
 }
 
-func (b *BinlogReader) skipQueryDDL(sql string, schema string, tableName string) bool {
+func (b *BinlogReader) skipQueryDDL(schema string, tableName string) bool {
 	switch strings.ToLower(schema) {
 	case "mysql":
 		if b.mysqlContext.ExpandSyntaxSupport {
