@@ -1224,6 +1224,7 @@ func (a *Applier) ApplyBinlogEvent(ctx context.Context, workerIdx int, binlogEnt
 			lastWarnTime1 = time.Now()
 		}
 	}
+	a.currentCoordinates.Position = binlogEntry.Coordinates.LogPos
 	return nil
 }
 
