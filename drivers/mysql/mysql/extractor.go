@@ -65,8 +65,7 @@ type Extractor struct {
 	// This is not exactly the same as the rows being iterated via chunks, but potentially close enough.
 	// TODO What is the difference between mysqlContext.RowsEstimate ?
 	TotalRowsCopied       int64
-	natsAddrCh            chan string
-	lastConnectedNatsAddr string
+	natsAddr              string
 
 	mysqlVersionDigit int
 	db                *gosql.DB
@@ -121,7 +120,6 @@ func NewExtractor(execCtx *common.ExecContext, cfg *common.MySQLDriverConfig, lo
 		dataChannel:     make(chan *common.BinlogEntryContext, cfg.ReplChanBufferSize),
 		rowCopyComplete: make(chan bool),
 		waitCh:          waitCh,
-		natsAddrCh:      make(chan string),
 		shutdownCh:      make(chan struct{}),
 		testStub1Delay:  0,
 		context:         sqle.NewContext(nil),
@@ -173,9 +171,14 @@ func (e *Extractor) Run() {
 		e.onError(TaskStateDead, err)
 		return
 	}
-	go func() {
-		for !e.shutdown {
-			kv := <-natsAddrKvCh
+
+
+	for !e.shutdown && e.natsAddr == "" {
+		select {
+		case <-e.shutdownCh:
+			e.logger.Info("consul WatchNats. extractor shutdown")
+			return
+		case kv := <-natsAddrKvCh:
 			if kv == nil {
 				e.onError(TaskStateDead, errors.Wrap(common.ErrNoConsul, "WatchNats"))
 				return
@@ -187,21 +190,25 @@ func (e *Extractor) Run() {
 					e.onError(TaskStateDead, fmt.Errorf("DTLE_BUG: got empty NatsAddr"))
 					return
 				} else {
-					e.natsAddrCh <- natsAddr
+					e.natsAddr = natsAddr
 					e.logger.Info("got NatsAddr", "addr", natsAddr)
 				}
 			}
+		}
+	}
+
+	go func() {
+		select {
+		case <-natsAddrKvCh:
+			e.onError(TaskStateDead, fmt.Errorf("new NatsAddr received. Extractor should stop and rerun"))
+		case <-e.shutdownCh:
+			// goroutine will return
 		}
 	}()
 
 	err = common.GetGtidFromConsul(e.storeManager, e.subject, e.logger, e.mysqlContext)
 	if err != nil {
 		e.onError(TaskStateDead, errors.Wrap(err, "GetGtidFromConsul"))
-		return
-	}
-
-	natsAddr := <- e.natsAddrCh
-	if e.shutdown {
 		return
 	}
 
@@ -221,7 +228,7 @@ func (e *Extractor) Run() {
 		return
 	}
 	e.logger.Info("initNatsPubClient")
-	if err := e.initNatsPubClient(natsAddr); err != nil {
+	if err := e.initNatsPubClient(e.natsAddr); err != nil {
 		e.onError(TaskStateDead, err)
 		return
 	}
@@ -608,7 +615,6 @@ func (e *Extractor) initNatsPubClient(natsAddr string) (err error) {
 		return err
 	}
 	e.logger.Info("Connect nats server", "natsAddr", natsAddr)
-	e.lastConnectedNatsAddr = natsAddr
 	e.natsConn = sc
 
 	_, err = e.natsConn.Subscribe(fmt.Sprintf("%s_restart", e.subject), func(m *gonats.Msg) {
@@ -1147,20 +1153,6 @@ func (e *Extractor) publish(ctx context.Context, subject string, txMsg []byte) (
 	t.Write(txMsg)
 	defer span.Finish()
 	for i := 1; ; i++ {
-		select {
-		case natsAddr := <-e.natsAddrCh:
-			if natsAddr != e.lastConnectedNatsAddr {
-				e.logger.Info("found updated NatsAddr. Reconnecting", "NatsAddr", natsAddr)
-				e.natsConn.Close()
-				e.natsConn = nil
-				err = e.initNatsPubClient(natsAddr)
-				if err != nil {
-					return errors.Wrap(err, "initNatsPubClient")
-				}
-			}
-		default:
-		}
-
 		e.logger.Debug("publish", "len", len(txMsg), "subject", subject)
 		_, err = e.natsConn.Request(subject, t.Bytes(), common.DefaultConnectWait)
 		if err == nil {
@@ -1627,7 +1619,7 @@ func (e *Extractor) onError(state int, err error) {
 		OOMKilled: false,
 		Err:       err,
 	}
-	e.Shutdown()
+	_ = e.Shutdown()
 }
 
 // Shutdown is used to tear down the extractor
