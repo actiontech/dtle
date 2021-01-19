@@ -94,6 +94,7 @@ func (mm *MtsManager) LcUpdater() {
 			} else {
 				heap.Push(&mm.m, seqNum)
 
+				// update LC to max-continuous-executed
 				for mm.m.Len() > 0 {
 					least := mm.m[0]
 					if least == mm.lastCommitted+1 {
