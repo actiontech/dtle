@@ -153,6 +153,8 @@ func (a *ApplierIncr) MtsWorker(workerIndex int) {
 	for keepLoop {
 		timer := time.NewTimer(pingInterval)
 		select {
+		case <-a.shutdownCh:
+			keepLoop = false
 		case entryContext := <-a.applyBinlogMtsTxQueue:
 			logger.Debug("a binlogEntry MTS dequeue", "gno", entryContext.Entry.Coordinates.GNO)
 			if err := a.ApplyBinlogEvent(nil, workerIndex, entryContext); err != nil {
@@ -162,8 +164,6 @@ func (a *ApplierIncr) MtsWorker(workerIndex int) {
 				// do nothing
 			}
 			logger.Debug("after ApplyBinlogEvent.", "gno", entryContext.Entry.Coordinates.GNO)
-		case <-a.shutdownCh:
-			keepLoop = false
 		case <-timer.C:
 			err := a.dbs[workerIndex].Db.PingContext(context.Background())
 			if err != nil {
@@ -184,6 +184,8 @@ func (a *ApplierIncr) heterogeneousReplay() {
 
 	for !stopSomeLoop {
 		select {
+		case <-a.shutdownCh:
+			stopSomeLoop = true
 		case entryCtx := <-a.applyDataEntryQueue:
 			if nil == entryCtx {
 				continue
@@ -299,8 +301,6 @@ func (a *ApplierIncr) heterogeneousReplay() {
 			span.Finish()
 		case <-time.After(10 * time.Second):
 			a.logger.Debug("no binlogEntry for 10s")
-		case <-a.shutdownCh:
-			stopSomeLoop = true
 		}
 	}
 }

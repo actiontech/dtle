@@ -291,6 +291,8 @@ func (a *Applier) doFullCopy() {
 		t10 := time.NewTimer(10 * time.Second)
 
 		select {
+		case <-a.shutdownCh:
+			stopLoop = true
 		case copyRows := <-a.copyRowsQueue:
 			if nil != copyRows {
 				//time.Sleep(20 * time.Second) // #348 stub
@@ -309,8 +311,6 @@ func (a *Applier) doFullCopy() {
 			}
 		case <-a.rowCopyComplete:
 			a.logger.Info("doFullCopy: loop: rowCopyComplete")
-			stopLoop = true
-		case <-a.shutdownCh:
 			stopLoop = true
 		case <-t10.C:
 			a.logger.Debug("no copyRows for 10s.")

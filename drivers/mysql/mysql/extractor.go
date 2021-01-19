@@ -199,10 +199,10 @@ func (e *Extractor) Run() {
 
 	go func() {
 		select {
-		case <-natsAddrKvCh:
-			e.onError(TaskStateDead, fmt.Errorf("new NatsAddr received. Extractor should stop and rerun"))
 		case <-e.shutdownCh:
 			// goroutine will return
+		case <-natsAddrKvCh:
+			e.onError(TaskStateDead, fmt.Errorf("new NatsAddr received. Extractor should stop and rerun"))
 		}
 	}()
 
@@ -925,6 +925,8 @@ func (tsc *TimestampContext) Handle() {
 	<-t.C
 	for {
 		select {
+		case <-tsc.stopCh:
+			return
 		case ts := <-tsc.TimestampCh:
 			tsc.logger.Debug("TimestampContext.Handle: got", "timestamp", ts)
 			tsc.delay = time.Now().Unix() - int64(ts)
@@ -941,8 +943,6 @@ func (tsc *TimestampContext) Handle() {
 		case <-t.C:
 			tsc.logger.Debug("delay: resetting timestamp")
 			tsc.delay = 0
-		case <-tsc.stopCh:
-			return
 		}
 	}
 }

@@ -53,10 +53,10 @@ func (mm *MtsManager) WaitForAllCommitted() bool {
 		}
 
 		select {
-		case <-mm.updated:
-			// continue
 		case <-mm.shutdownCh:
 			return false
+		case <-mm.updated:
+			// continue
 		}
 	}
 }
@@ -74,10 +74,10 @@ func (mm *MtsManager) WaitForExecution(binlogEntry *common.BinlogEntry) bool {
 
 		// block until lastCommitted updated
 		select {
-		case <-mm.updated:
-			// continue
 		case <-mm.shutdownCh:
 			return false
+		case <-mm.updated:
+			// continue
 		}
 	}
 }
@@ -85,6 +85,9 @@ func (mm *MtsManager) WaitForExecution(binlogEntry *common.BinlogEntry) bool {
 func (mm *MtsManager) LcUpdater() {
 	for {
 		select {
+		case <-mm.shutdownCh:
+			return
+
 		case seqNum := <-mm.chExecuted:
 			if seqNum <= mm.lastCommitted {
 				// ignore it
@@ -105,9 +108,6 @@ func (mm *MtsManager) LcUpdater() {
 					}
 				}
 			}
-
-		case <-mm.shutdownCh:
-			return
 		}
 	}
 }

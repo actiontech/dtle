@@ -103,6 +103,8 @@ func (sm *StoreManager) WatchAndPutNats(jobName string, natsAddr string, stopCh 
 	loop := true
 	for loop {
 		select {
+		case <-stopCh:
+			loop = false
 		case kv := <-natsCh:
 			if kv == nil {
 				loop = false
@@ -114,8 +116,6 @@ func (sm *StoreManager) WatchAndPutNats(jobName string, natsAddr string, stopCh 
 					return
 				}
 			}
-		case <-stopCh:
-			loop = false
 		}
 	}
 }

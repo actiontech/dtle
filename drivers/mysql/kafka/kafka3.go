@@ -326,9 +326,9 @@ func (kr *KafkaRunner) handleFullCopy() {
 	for !kr.shutdown {
 		var dumpData *common.DumpEntry
 		select {
-		case dumpData = <-kr.chDumpEntry:
 		case <-kr.shutdownCh:
 			return
+		case dumpData = <-kr.chDumpEntry:
 		}
 
 		if dumpData.DbSQL != "" || len(dumpData.TbSQL) > 0 {
@@ -401,9 +401,9 @@ func (kr *KafkaRunner) handleIncr() {
 	for !kr.shutdown {
 		var binlogEntries *common.BinlogEntries
 		select {
-		case binlogEntries = <-kr.chBinlogEntries:
 		case <-kr.shutdownCh:
 			return
+		case binlogEntries = <-kr.chBinlogEntries:
 		case <-timer.C:
 			if len(entriesWillBeSent) > 0 {
 				kr.logger.Debug("kafka: incr. send by timeout.",
