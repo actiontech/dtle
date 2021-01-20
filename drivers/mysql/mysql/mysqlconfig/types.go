@@ -94,6 +94,9 @@ func (c *Column) ConvertArg(arg interface{}) interface{} {
 			// string, charset conversion
 			if encoding, ok := charsetEncodingMap[c.Charset]; ok {
 				arg, _, _ = transform.String(encoding.NewDecoder(), v)
+				// converting to utf8 encoding
+			} else {
+				// no convertion
 			}
 			return arg
 		}

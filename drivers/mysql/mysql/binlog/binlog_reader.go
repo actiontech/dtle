@@ -474,7 +474,12 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 			b.hasBeginQuery = true
 		} else {
 			if strings.ToUpper(query) == "COMMIT" || !b.hasBeginQuery {
-				skipExpandSyntax := !b.mysqlContext.ExpandSyntaxSupport && skipQueryEvent(query)
+				var skipExpandSyntax bool
+				if b.mysqlContext.ExpandSyntaxSupport {
+					skipExpandSyntax = false
+				} else {
+					skipExpandSyntax = isExpandSyntaxQuery(query)
+				}
 
 				ddlInfo, err := resolveDDLSQL(currentSchema, query, b.skipQueryDDL)
 
@@ -1086,7 +1091,7 @@ func (b *BinlogReader) skipQueryDDL(schema string, tableName string) bool {
 	}
 }
 
-func skipQueryEvent(sql string) bool {
+func isExpandSyntaxQuery(sql string) bool {
 	sql = strings.ToLower(sql)
 
 	if strings.HasPrefix(sql, "flush privileges") {
