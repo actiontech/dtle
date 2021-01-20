@@ -420,11 +420,12 @@ func ToColumnValuesV2(abstractValues []interface{}) *common.ColumnValues {
 
 // If isDDL, a sql correspond to a table item, aka len(tables) == len(sqls).
 type parseDDLResult struct {
-	isDDL  bool
-	table  common.SchemaTable
+	isDDL       bool
+	table       common.SchemaTable
 	extraTables []common.SchemaTable
-	sql    string
-	ast    ast.StmtNode
+	sql         string
+	ast         ast.StmtNode
+	isExpand    bool
 }
 
 // StreamEvents
@@ -474,14 +475,14 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 			b.hasBeginQuery = true
 		} else {
 			if strings.ToUpper(query) == "COMMIT" || !b.hasBeginQuery {
+				ddlInfo, err := resolveDDLSQL(currentSchema, query, b.skipQueryDDL)
+
 				var skipExpandSyntax bool
 				if b.mysqlContext.ExpandSyntaxSupport {
 					skipExpandSyntax = false
 				} else {
-					skipExpandSyntax = isExpandSyntaxQuery(query)
+					skipExpandSyntax = isExpandSyntaxQuery(query) || ddlInfo.isExpand
 				}
-
-				ddlInfo, err := resolveDDLSQL(currentSchema, query, b.skipQueryDDL)
 
 				schema := b.findSchema(currentSchema)
 				currentSchemaRename := currentSchema
@@ -1026,6 +1027,15 @@ func resolveDDLSQL(currentSchema string, sql string,
 		setTable(v.Table.Schema.O, v.Table.Name.O)
 	case *ast.AlterTableStmt:
 		setTable(v.Table.Schema.O, v.Table.Name.O)
+	case *ast.RevokeStmt, *ast.RevokeRoleStmt:
+		result.isExpand = true
+	case *ast.SetPwdStmt:
+		result.isExpand = true
+	case *ast.FlushStmt:
+		switch v.Tp {
+		case ast.FlushPrivileges:
+			result.isExpand = true
+		}
 	case *ast.DropTableStmt:
 		var newTables []*ast.TableName
 		for i, t := range v.Tables {
@@ -1060,6 +1070,7 @@ func resolveDDLSQL(currentSchema string, sql string,
 		}
 	case *ast.CreateUserStmt, *ast.GrantStmt, *ast.DropUserStmt, *ast.AlterUserStmt:
 		setTable("mysql", "user")
+		result.isExpand = true
 	case *ast.RenameTableStmt:
 		setTable(v.OldTable.Schema.O, v.OldTable.Name.O)
 		// TODO handle extra tables in v.TableToTables[1:]
@@ -1094,37 +1105,15 @@ func (b *BinlogReader) skipQueryDDL(schema string, tableName string) bool {
 func isExpandSyntaxQuery(sql string) bool {
 	sql = strings.ToLower(sql)
 
-	if strings.HasPrefix(sql, "flush privileges") {
-		return true
-	}
-	if strings.HasPrefix(sql, "alter user") {
-		return true
-	}
-	if strings.HasPrefix(sql, "create user") {
-		return true
-	}
+	// TODO mod pingcap/parser to support these DDLs
+	//  and use ast instead of string-matching
 	if strings.HasPrefix(sql, "create function") {
 		return true
 	}
 	if strings.HasPrefix(sql, "create procedure") {
 		return true
 	}
-	if strings.HasPrefix(sql, "drop user") {
-		return true
-	}
-	if strings.HasPrefix(sql, "delete from mysql.user") {
-		return true
-	}
-	if strings.HasPrefix(sql, "grant") {
-		return true
-	}
 	if strings.HasPrefix(sql, "rename user") {
-		return true
-	}
-	if strings.HasPrefix(sql, "revoke") {
-		return true
-	}
-	if strings.HasPrefix(sql, "set password") {
 		return true
 	}
 
