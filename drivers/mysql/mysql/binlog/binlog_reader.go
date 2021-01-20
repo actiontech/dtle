@@ -478,6 +478,12 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 
 				ddlInfo, err := resolveDDLSQL(currentSchema, query, b.skipQueryDDL)
 
+				schema := b.findSchema(currentSchema)
+				currentSchemaRename := currentSchema
+				if schema.TableSchemaRename != "" {
+					currentSchemaRename = schema.TableSchemaRename
+				}
+
 				if skipExpandSyntax || err != nil || !ddlInfo.isDDL {
 					if err != nil {
 						b.logger.Warn("Parse query event failed. will execute", "query", query, "err", err, "gno", b.currentCoordinates.GNO)
@@ -488,7 +494,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 						b.logger.Warn("skip query", "query", query, "gno", b.currentCoordinates.GNO)
 					} else {
 						event := common.NewQueryEvent(
-							currentSchema,
+							currentSchemaRename,
 							query,
 							common.NotDML,
 							ev.Header.Timestamp,
@@ -524,7 +530,11 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 						b.logger.Info("Skip QueryEvent", "currentSchema", currentSchema, "sql", sql,
 							"realSchema", realSchema, "tableName", tableName, "gno", b.currentCoordinates.GNO)
 					} else {
-						schema, table := b.findSchemaTable(realSchema, tableName)
+						if realSchema != currentSchema {
+							schema = b.findSchema(realSchema)
+						}
+						table := b.findTable(schema, tableName)
+
 
 						skipEvent = skipBySqlFilter(ddlInfo.ast, b.sqlFilter)
 						switch realAst := ddlInfo.ast.(type) {
@@ -580,9 +590,6 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 							//sql = strings.Replace(sql, realSchema, schema.TableSchemaRename, 1)
 							sql = loadMapping(sql, realSchema, schema.TableSchemaRename, "schemaRename", " ",
 								ddlInfo.ast)
-							if currentSchema == realSchema {
-								currentSchema = schema.TableSchemaRename
-							}
 							realSchema = schema.TableSchemaRename
 						} else {
 							// schema == nil means it is not explicit in ReplicateDoDb, thus no renaming
@@ -592,7 +599,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 						if table != nil && table.TableRename != "" {
 							ddlInfo.table.Table = table.TableRename
 							//sql = strings.Replace(sql, tableName, table.TableRename, 1)
-							sql = loadMapping(sql, tableName, table.TableRename, "", currentSchema,
+							sql = loadMapping(sql, tableName, table.TableRename, "", currentSchemaRename,
 								ddlInfo.ast)
 							b.logger.Debug("ddl table mapping", "from", tableName, "to", table.TableRename)
 						}
@@ -606,7 +613,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 							}
 
 							event := common.NewQueryEventAffectTable(
-								currentSchema,
+								currentSchemaRename,
 								sql,
 								common.NotDML,
 								ddlInfo.table,
@@ -1455,20 +1462,25 @@ func (b *BinlogReader) sqleAfterCreateSchema(schema string) {
 		b.maybeSqleContext.LoadTables(schema, nil)
 	}
 }
-func (b *BinlogReader) findSchemaTable(realSchema string, tableName string) (schema *common.DataSource, table *common.Table) {
-	for i := range b.mysqlContext.ReplicateDoDb {
-		if b.mysqlContext.ReplicateDoDb[i].TableSchema == realSchema {
-			schema = b.mysqlContext.ReplicateDoDb[i]
-			for j := range b.mysqlContext.ReplicateDoDb[i].Tables {
-				if b.mysqlContext.ReplicateDoDb[i].Tables[j].TableName == tableName {
-					table = b.mysqlContext.ReplicateDoDb[i].Tables[j]
-					return schema, table
-				}
+func (b *BinlogReader) findSchema(schemaName string) *common.DataSource {
+	if schemaName != "" {
+		for i := range b.mysqlContext.ReplicateDoDb {
+			if b.mysqlContext.ReplicateDoDb[i].TableSchema == schemaName {
+				return b.mysqlContext.ReplicateDoDb[i]
 			}
-			return schema, nil
 		}
 	}
-	return nil, nil
+	return nil
+}
+func (b *BinlogReader) findTable(maybeSchema *common.DataSource, tableName string) *common.Table {
+	if maybeSchema != nil {
+		for j := range maybeSchema.Tables {
+			if maybeSchema.Tables[j].TableName == tableName {
+				return maybeSchema.Tables[j]
+			}
+		}
+	}
+	return nil
 }
 
 func skipBySqlFilter(ddlAst ast.StmtNode, sqlFilter *SqlFilter) bool {
