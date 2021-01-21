@@ -484,9 +484,9 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 					skipExpandSyntax = isExpandSyntaxQuery(query) || ddlInfo.isExpand
 				}
 
-				schema := b.findSchema(currentSchema)
 				currentSchemaRename := currentSchema
-				if schema.TableSchemaRename != "" {
+				schema := b.findSchema(currentSchema)
+				if schema != nil && schema.TableSchemaRename != "" {
 					currentSchemaRename = schema.TableSchemaRename
 				}
 
@@ -756,13 +756,8 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 					dmlEvent.TableName = table.Table.TableRename
 					b.logger.Debug("dml table mapping", "from", dmlEvent.TableName, "to", table.Table.TableRename)
 				}
-				for _, schema := range b.mysqlContext.ReplicateDoDb {
-					if schema.TableSchema != schemaName {
-						continue
-					}
-					if schema.TableSchemaRename == "" {
-						continue
-					}
+				schema := b.findSchema(schemaName)
+				if schema != nil && schema.TableSchemaRename != "" {
 					b.logger.Debug("dml schema mapping", "from", dmlEvent.DatabaseName, "to", schema.TableSchemaRename)
 					dmlEvent.DatabaseName = schema.TableSchemaRename
 				}
