@@ -15,6 +15,7 @@ import (
 	"github.com/satori/go.uuid"
 	gomysql "github.com/siddontang/go-mysql/mysql"
 	"os"
+	"sync"
 	"sync/atomic"
 	"time"
 )
@@ -43,6 +44,7 @@ type ApplierIncr struct {
 	TotalDeltaCopied  int64
 
 	gtidSet        *gomysql.MysqlGTIDSet
+	gtidSetLock    *sync.RWMutex
 	gtidItemMap    base.GtidItemMap
 	GtidUpdateHook func(*common.BinlogCoordinateTx)
 
@@ -53,7 +55,8 @@ type ApplierIncr struct {
 
 func NewApplierIncr(subject string, mysqlContext *common.MySQLDriverConfig,
 	logger hclog.Logger, gtidSet *gomysql.MysqlGTIDSet, memory2 *int64,
-	db *gosql.DB, dbs []*sql.Conn, shutdownCh chan struct{}) (*ApplierIncr, error) {
+	db *gosql.DB, dbs []*sql.Conn, shutdownCh chan struct{},
+	gtidSetLock *sync.RWMutex) (*ApplierIncr, error) {
 
 	a := &ApplierIncr{
 		logger:                logger,
@@ -67,6 +70,7 @@ func NewApplierIncr(subject string, mysqlContext *common.MySQLDriverConfig,
 		memory2:               memory2,
 		printTps:              os.Getenv(g.ENV_PRINT_TPS) != "",
 		gtidSet:               gtidSet,
+		gtidSetLock:           gtidSetLock,
 		tableItems:            make(mapSchemaTableItems),
 	}
 
@@ -206,11 +210,15 @@ func (a *ApplierIncr) heterogeneousReplay() {
 			txSid := binlogEntry.Coordinates.GetSid()
 
 			gtidSetItem := a.gtidItemMap.GetItem(binlogEntry.Coordinates.SID)
-			intervals := base.GetIntervals(a.gtidSet, txSid)
-			if base.IntervalSlicesContainOne(intervals, binlogEntry.Coordinates.GNO) {
-				// entry executed
-				a.logger.Info("skip an executed tx", "sid", txSid, "gno", binlogEntry.Coordinates.GNO)
-				continue
+			{
+				a.gtidSetLock.RLock()
+				intervals := base.GetIntervals(a.gtidSet, txSid)
+				if base.IntervalSlicesContainOne(intervals, binlogEntry.Coordinates.GNO) {
+					// entry executed
+					a.logger.Info("skip an executed tx", "sid", txSid, "gno", binlogEntry.Coordinates.GNO)
+					continue
+				}
+				a.gtidSetLock.RUnlock()
 			}
 			// endregion
 			// this must be after duplication check
@@ -224,7 +232,7 @@ func (a *ApplierIncr) heterogeneousReplay() {
 
 			a.logger.Debug("gtidSetItem", "NRow", gtidSetItem.NRow)
 			if gtidSetItem.NRow >= cleanupGtidExecutedLimit {
-				err = a.cleanGtidExecuted(binlogEntry.Coordinates.SID, base.StringInterval(intervals))
+				err = a.cleanGtidExecuted(binlogEntry.Coordinates.SID, txSid)
 				if err != nil {
 					a.OnError(TaskStateDead, err)
 					return
