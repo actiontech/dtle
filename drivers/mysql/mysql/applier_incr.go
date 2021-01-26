@@ -256,20 +256,10 @@ func (a *ApplierIncr) heterogeneousReplay() {
 						a.logger.Warn("DTLE_BUG: len(a.mtsManager.m) should be 0")
 					}
 				}
-				if binlogEntry.Coordinates.SeqenceNumber > a.mtsManager.lastEnqueue + 1 {
-					if a.mtsManager.lastEnqueue == 0 {
-						a.logger.Debug("first TX", "seq_num", binlogEntry.Coordinates.SeqenceNumber)
-						if binlogEntry.Coordinates.SeqenceNumber > 0 {
-							a.mtsManager.lastEnqueue = binlogEntry.Coordinates.SeqenceNumber - 1
-							a.mtsManager.lastCommitted = a.mtsManager.lastEnqueue
-						}
-					} else {
-						err := fmt.Errorf("found non-continuous tx seq_num. last %v this %v",
-							a.mtsManager.lastEnqueue, binlogEntry.Coordinates.SeqenceNumber)
-						a.logger.Error(err.Error())
-						a.OnError(TaskStateDead, err)
-						return
-					}
+				// If there are TXs skipped by udup source-side
+				for a.mtsManager.lastEnqueue+1 < binlogEntry.Coordinates.SeqenceNumber {
+					a.mtsManager.lastEnqueue += 1
+					a.mtsManager.chExecuted <- a.mtsManager.lastEnqueue
 				}
 				hasDDL := func() bool {
 					for i := range binlogEntry.Events {
