@@ -245,13 +245,20 @@ func (a *GtidExecutedCreater) createTableGtidExecutedV4() error {
 	}
 }
 
-func (a *ApplierIncr) cleanGtidExecuted(sid uuid.UUID, intervalStr string) error {
+func (a *ApplierIncr) cleanGtidExecuted(sid uuid.UUID, txSid string) error {
 	a.logger.Debug("incr. cleanup before WaitForExecution")
 	if !a.mtsManager.WaitForAllCommitted() {
 		return nil // shutdown
 	}
 	a.logger.Debug("incr. cleanup after WaitForExecution")
 
+	var intervalStr string
+	{
+		a.gtidSetLock.RLock()
+		intervals := base.GetIntervals(a.gtidSet, txSid)
+		intervalStr = base.StringInterval(intervals)
+		a.gtidSetLock.RUnlock()
+	}
 	// The TX is unnecessary if we first insert and then delete.
 	// However, consider `binlog_group_commit_sync_delay > 0`,
 	// `begin; delete; insert; commit;` (1 TX) is faster than `insert; delete;` (2 TX)

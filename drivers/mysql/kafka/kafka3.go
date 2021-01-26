@@ -112,10 +112,6 @@ func NewKafkaRunner(execCtx *common.ExecContext, cfg *common.KafkaConfig, logger
 	return kr
 }
 
-func (kr *KafkaRunner) updateGtidString() {
-	kr.Gtid = kr.gtidSet.String()
-	kr.logger.Debug("kafka. updateGtidString", "gtid", kr.Gtid)
-}
 func (kr *KafkaRunner) updateGtidLoop() {
 	updateGtidInterval := 15 * time.Second
 	for !kr.shutdown {
@@ -1056,7 +1052,8 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQueries(dmlEntries []*common.Binlog
 	kr.BinlogPos = curDmlEntry.Coordinates.LogPos
 
 	common.UpdateGtidSet(kr.gtidSet, curDmlEntry.Coordinates.SID, curDmlEntry.Coordinates.GNO)
-	kr.updateGtidString()
+	kr.Gtid = kr.gtidSet.String()
+	kr.logger.Debug("kafka. updateGtidString", "gtid", kr.Gtid)
 
 	kr.logger.Debug("kafka: after kafkaTransformDMLEventQueries")
 	return nil

@@ -84,6 +84,7 @@ type Applier struct {
 	stubFullApplyDelay time.Duration
 
 	gtidSet *gomysql.MysqlGTIDSet
+	gtidSetLock *sync.RWMutex
 
 	storeManager *common.StoreManager
 	gtidCh       chan *common.BinlogCoordinateTx
@@ -109,6 +110,7 @@ func NewApplier(
 		rowCopyComplete: make(chan struct{}),
 		copyRowsQueue:   make(chan *common.DumpEntry, 24),
 		waitCh:          waitCh,
+		gtidSetLock:     &sync.RWMutex{},
 		shutdownCh:      make(chan struct{}),
 		storeManager:    storeManager,
 		gtidCh:          make(chan *common.BinlogCoordinateTx, 4096),
@@ -191,7 +193,9 @@ func (a *Applier) updateGtidLoop() {
 				doUpdate()
 				doUpload()
 			} else {
+				a.gtidSetLock.Lock()
 				common.UpdateGtidSet(a.gtidSet, coord.SID, coord.GNO)
+				a.gtidSetLock.Unlock()
 				file = coord.LogFile
 				pos = coord.LogPos
 			}
@@ -241,7 +245,7 @@ func (a *Applier) Run() {
 	}
 
 	a.ai, err = NewApplierIncr(a.subject, a.mysqlContext, a.logger, a.gtidSet, a.memory2,
-		a.db, a.dbs, a.shutdownCh)
+		a.db, a.dbs, a.shutdownCh, a.gtidSetLock)
 	if err != nil {
 		a.onError(TaskStateDead, errors.Wrap(err, "NewApplierIncr"))
 		return

@@ -49,6 +49,17 @@ func NewBinlogEntryAt(coordinates BinlogCoordinateTx) *BinlogEntry {
 	return binlogEntry
 }
 
+func (b *BinlogEntry) HasDDL() bool {
+	for i := range b.Events {
+		switch b.Events[i].DML {
+		case NotDML:
+			return true
+		default:
+		}
+	}
+	return false
+}
+
 // Duplicate creates and returns a new binlog entry, with some of the attributes pre-assigned
 func (b *BinlogEntry) String() string {
 	return fmt.Sprintf("[BinlogEntry at %+v]", b.Coordinates)
