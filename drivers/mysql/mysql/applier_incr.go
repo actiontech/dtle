@@ -209,7 +209,7 @@ func (a *ApplierIncr) heterogeneousReplay() {
 			intervals := base.GetIntervals(a.gtidSet, txSid)
 			if base.IntervalSlicesContainOne(intervals, binlogEntry.Coordinates.GNO) {
 				// entry executed
-				a.logger.Debug("skip an executed tx", "sid", txSid, "gno", binlogEntry.Coordinates.GNO)
+				a.logger.Info("skip an executed tx", "sid", txSid, "gno", binlogEntry.Coordinates.GNO)
 				continue
 			}
 			// endregion
@@ -261,17 +261,7 @@ func (a *ApplierIncr) heterogeneousReplay() {
 					a.mtsManager.lastEnqueue += 1
 					a.mtsManager.chExecuted <- a.mtsManager.lastEnqueue
 				}
-				hasDDL := func() bool {
-					for i := range binlogEntry.Events {
-						dmlEvent := &binlogEntry.Events[i]
-						switch dmlEvent.DML {
-						case common.NotDML:
-							return true
-						default:
-						}
-					}
-					return false
-				}()
+				hasDDL := binlogEntry.HasDDL()
 				// DDL must be executed separatedly
 				if hasDDL || prevDDL {
 					a.logger.Debug("MTS found DDL. WaitForAllCommitted",
@@ -280,11 +270,7 @@ func (a *ApplierIncr) heterogeneousReplay() {
 						return // shutdown
 					}
 				}
-				if hasDDL {
-					prevDDL = true
-				} else {
-					prevDDL = false
-				}
+				prevDDL = hasDDL
 
 				if !a.mtsManager.WaitForExecution(binlogEntry) {
 					return // shutdown
