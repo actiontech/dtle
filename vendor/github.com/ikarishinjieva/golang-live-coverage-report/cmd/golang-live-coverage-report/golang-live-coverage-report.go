@@ -339,7 +339,7 @@ func getFilesByFilePath(path string) (tFiles, error) {
 }
 
 func goList(file string) (*GoListJson, error) {
-	cmd := exec.Command("go", "list", "-mod=vendor","-json", file)
+	cmd := exec.Command("go", "list", "-json", file)
 	out, err := cmd.CombinedOutput()
 	if nil != err {
 		return nil, fmt.Errorf("go list %v error: %v", file, string(out))

@@ -55,6 +55,7 @@ require (
 	github.com/shirou/gopsutil v2.20.2+incompatible
 	github.com/siddontang/go v0.0.0-20180604090527-bdc77568d726
 	github.com/siddontang/go-mysql v0.0.0-20200311002057-7a62847fcdb5
+	github.com/stretchr/testify v1.5.1
 	github.com/ugorji/go v1.1.7 // indirect
 	github.com/zclconf/go-cty v1.3.1 // indirect
 	golang.org/x/net v0.0.0-20200320220750-118fecf932d8

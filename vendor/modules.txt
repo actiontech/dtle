@@ -390,6 +390,8 @@ github.com/pingcap/tipb/go-tipb
 github.com/pingcap/tipb/sharedbytes
 # github.com/pkg/errors v0.9.1
 github.com/pkg/errors
+# github.com/pmezard/go-difflib v1.0.0
+github.com/pmezard/go-difflib/difflib
 # github.com/prometheus/client_golang v0.9.4
 github.com/prometheus/client_golang/prometheus
 github.com/prometheus/client_golang/prometheus/internal
@@ -437,6 +439,8 @@ github.com/siddontang/go-mysql/utils
 github.com/sirupsen/logrus
 # github.com/spaolacci/murmur3 v1.1.0
 github.com/spaolacci/murmur3
+# github.com/stretchr/testify v1.5.1
+github.com/stretchr/testify/assert
 # github.com/twinj/uuid v1.0.0
 github.com/twinj/uuid
 # github.com/uber/jaeger-client-go v2.16.0+incompatible
