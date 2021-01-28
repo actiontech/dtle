@@ -206,7 +206,7 @@ func (d *dumper) getChunkData() (nRows int64, err error) {
 			select {
 			case d.resultsChannel <- entry:
 				atomic.AddInt64(d.memory, int64(entry.Size()))
-				d.logger.Debug("*** memory", "memory", atomic.LoadInt64(d.memory))
+				//d.logger.Debug("*** memory", "memory", atomic.LoadInt64(d.memory))
 				if !timer.Stop() {
 					<-timer.C
 				}

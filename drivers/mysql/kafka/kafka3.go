@@ -1043,7 +1043,6 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQueries(dmlEntries []*common.Binlog
 			tableIdents = append(tableIdents, tableIdent)
 			keysBs = append(keysBs, kBs)
 			valuesBs = append(valuesBs, vBs)
-			vBs = []byte(strings.Replace(string(vBs), "\"field\":\"snapshot\"", "\"default\":false,\"field\":\"snapshot\"", -1))
 
 			// tombstone event for DELETE
 			if dataEvent.DML == common.DeleteDML {
