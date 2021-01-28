@@ -541,7 +541,6 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 						}
 						table := b.findTable(schema, tableName)
 
-
 						skipEvent = skipBySqlFilter(ddlInfo.ast, b.sqlFilter)
 						switch realAst := ddlInfo.ast.(type) {
 						case *ast.CreateDatabaseStmt:
@@ -592,10 +591,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 
 						if schema != nil && schema.TableSchemaRename != "" {
 							ddlInfo.table.Schema = schema.TableSchemaRename
-							b.logger.Debug("ddl schema mapping", "from", realSchema, "to", schema.TableSchemaRename)
 							//sql = strings.Replace(sql, realSchema, schema.TableSchemaRename, 1)
-							sql = loadMapping(sql, realSchema, schema.TableSchemaRename, "schemaRename", " ",
-								ddlInfo.ast)
 							realSchema = schema.TableSchemaRename
 						} else {
 							// schema == nil means it is not explicit in ReplicateDoDb, thus no renaming
@@ -605,9 +601,14 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 						if table != nil && table.TableRename != "" {
 							ddlInfo.table.Table = table.TableRename
 							//sql = strings.Replace(sql, tableName, table.TableRename, 1)
-							sql = loadMapping(sql, tableName, table.TableRename, "", currentSchemaRename,
-								ddlInfo.ast)
-							b.logger.Debug("ddl table mapping", "from", tableName, "to", table.TableRename)
+						}
+						// mapping
+						schemaRenameMap, schemaNameToTablesRenameMap := b.generateRenameMaps()
+						if len(schemaRenameMap) > 0 || len(schemaNameToTablesRenameMap) > 0 {
+							sql, err = b.loadMapping(sql, currentSchema, schemaRenameMap, schemaNameToTablesRenameMap, ddlInfo.ast)
+							if nil != err {
+								return fmt.Errorf("ddl mapping failed: %v", err)
+							}
 						}
 
 						if skipEvent {
@@ -825,65 +826,92 @@ func (b *BinlogReader) sendEntry(entriesChannel chan<- *common.BinlogEntryContex
 	entriesChannel <- b.entryContext
 }
 
-func loadMapping(sql, beforeName, afterName, mappingType, currentSchema string, stmt ast.StmtNode) string {
-	useOld := false
+func (b *BinlogReader) loadMapping(sql, currentSchema string,
+	schemasRenameMap map[string]string /* map[oldSchemaName]newSchemaName */, oldSchemaNameToTablesRenameMap map[string]map[string]string, /* map[oldSchemaName]map[oldTableName]newTableName */
+	stmt ast.StmtNode) (string, error) {
+
+	logMapping := func(oldName, newName, mappingType string) {
+		msg := fmt.Sprintf("ddl %s mapping", mappingType)
+		b.logger.Debug(msg, "from", oldName, "to", newName)
+	}
+
+	renameAstTableFn := func(table *ast.TableName) {
+		table.Schema.O = common.StringElse(table.Schema.O, currentSchema)
+		newSchemaName := schemasRenameMap[table.Schema.O]
+		tableNameMap := oldSchemaNameToTablesRenameMap[table.Schema.O]
+		newTableName := tableNameMap[table.Name.O]
+
+		if newSchemaName != "" {
+			logMapping(table.Schema.O, newSchemaName, "schema")
+			table.Schema.O = newSchemaName
+			table.Schema.L = strings.ToLower(table.Schema.O)
+		}
+
+		if newTableName != "" {
+			logMapping(table.Name.O, newTableName, "table")
+			table.Name.O = newTableName
+			table.Name.L = strings.ToLower(newTableName)
+		}
+
+	}
+
+	renameSchemaFn := func(oldSchema *string) {
+		newSchemaName := schemasRenameMap[*oldSchema]
+		if newSchemaName != "" {
+			logMapping(*oldSchema, newSchemaName, "schema")
+			*oldSchema = newSchemaName
+		}
+	}
+
 	switch v := stmt.(type) {
 	case *ast.DropTableStmt:
-		if len(v.Tables) == 0 {
-			return sql
+		for _, table := range v.Tables {
+			renameAstTableFn(table)
 		}
-		if mappingType == "schemaRename" {
-			v.Tables[0].Schema.O = afterName
-		} else {
-			v.Tables[0].Name.O = afterName
+	case *ast.RenameTableStmt:
+		for _, tt := range v.TableToTables {
+			renameAstTableFn(tt.OldTable)
+			renameAstTableFn(tt.NewTable)
+		}
+	case *ast.CreateDatabaseStmt:
+		renameSchemaFn(&v.Name)
+	case *ast.DropDatabaseStmt:
+		renameSchemaFn(&v.Name)
+	case *ast.AlterDatabaseStmt:
+		renameSchemaFn(&v.Name)
+	case *ast.CreateIndexStmt:
+		renameAstTableFn(v.Table)
+	case *ast.DropIndexStmt:
+		renameAstTableFn(v.Table)
+	case *ast.TruncateTableStmt:
+		renameAstTableFn(v.Table)
+	case *ast.CreateTableStmt:
+		renameAstTableFn(v.Table)
+	case *ast.AlterTableStmt:
+		renameAstTableFn(v.Table)
+	case *ast.FlushStmt:
+		if v.Tp != ast.FlushTables {
+			b.logger.Debug("skip mapping ddl", "sql", sql)
+			return sql, nil
+		}
+
+		for _, table := range v.Tables {
+			renameAstTableFn(table)
 		}
 	default:
-		useOld = true
-	}
-	if !useOld {
-		bs := bytes.NewBuffer(nil)
-		err := stmt.Restore(&format.RestoreCtx{
-			Flags: format.DefaultRestoreFlags,
-			In:    bs,
-		})
-		if err != nil {
-			return sql // TODO
-		}
-		return bs.String()
+		b.logger.Debug("skip mapping ddl", "sql", sql)
+		return sql, nil
 	}
 
-	sqlType := strings.Split(sql, " ")[1]
-	newSql := ""
-	if mappingType == "schemaRename" {
-		if sqlType == "DATABASE" || sqlType == "SCHEMA" || sqlType == "database" || sqlType == "schema" {
-			newSql = strings.Replace(sql, beforeName, afterName, 1)
-			return newSql
-		} else if sqlType == "TABLE" || sqlType == "table" {
-			strings.Contains(sql, "")
-			breakStats := strings.Split(sql, beforeName+".")
-			if len(breakStats) > 1 {
-				breakStats[0] = breakStats[0] + afterName + "."
-				for i := 0; i < len(breakStats); i++ {
-					newSql += breakStats[i]
-				}
-				return newSql
-			}
-
-			return sql
-		}
-	} else {
-		breakStats := strings.Split(sql, currentSchema+"."+beforeName)
-		if len(breakStats) > 1 {
-			breakStats[0] = breakStats[0] + currentSchema + "." + afterName
-			for i := 0; i < len(breakStats); i++ {
-				newSql += breakStats[i]
-			}
-			return newSql
-		} else {
-			return strings.Replace(sql, beforeName, afterName, 1)
-		}
+	bs := bytes.NewBuffer(nil)
+	err := stmt.Restore(&format.RestoreCtx{
+		Flags: format.DefaultRestoreFlags,
+		In:    bs,
+	})
+	if err != nil {
+		return "", fmt.Errorf("restore stmt failed: %v", err)
 	}
-	return sql
+	return bs.String(), nil
 }
 
 // StreamEvents
@@ -1470,6 +1498,29 @@ func (b *BinlogReader) findTable(maybeSchema *common.DataSource, tableName strin
 		}
 	}
 	return nil
+}
+
+func (b *BinlogReader) generateRenameMaps() (oldSchemaToNewSchema map[string]string, oldSchemaToTablesRenameMap map[string]map[string]string) {
+	oldSchemaToNewSchema = map[string]string{}
+	oldSchemaToTablesRenameMap = map[string]map[string]string{}
+
+	for _, db := range b.mysqlContext.ReplicateDoDb {
+		if db.TableSchemaRename != "" {
+			oldSchemaToNewSchema[db.TableSchema] = db.TableSchemaRename
+		}
+
+		tablesRenameMap := map[string]string{}
+		for _, tb := range db.Tables {
+			if tb.TableRename == "" {
+				continue
+			}
+			tablesRenameMap[tb.TableName] = tb.TableRename
+		}
+		if len(tablesRenameMap)>0{
+			oldSchemaToTablesRenameMap[db.TableSchema] = tablesRenameMap
+		}
+	}
+	return
 }
 
 func skipBySqlFilter(ddlAst ast.StmtNode, sqlFilter *SqlFilter) bool {
