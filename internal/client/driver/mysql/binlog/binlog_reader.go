@@ -468,16 +468,21 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 			b.logger.Errorf("DTLE_BUG: found query_event with error code, which is not handled. ec: %v, query: %v",
 				evt.ErrorCode, query)
 		}
+		currentSchema := string(evt.Schema)
 
-		b.logger.Debugf("mysql.reader: query event: schema: %s, query: %s", evt.Schema, query)
+		b.logger.Debugf("mysql.reader: query event: schema: %s, query: %s", currentSchema, query)
 
 		if strings.ToUpper(query) == "BEGIN" {
 			b.currentBinlogEntry.hasBeginQuery = true
 		} else {
 			if strings.ToUpper(query) == "COMMIT" || !b.currentBinlogEntry.hasBeginQuery {
-				currentSchema := string(evt.Schema)
-
 				skipExpandSyntax := !b.mysqlContext.ExpandSyntaxSupport && skipQueryEvent(query)
+
+				currentSchemaRename := currentSchema
+				schema := b.findSchema(currentSchema)
+				if schema != nil && schema.TableSchemaRename != "" {
+					currentSchemaRename = schema.TableSchemaRename
+				}
 
 				ddlInfo, err := resolveDDLSQL(query)
 				if skipExpandSyntax || err != nil || !ddlInfo.isDDL {
@@ -491,7 +496,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 						b.logger.Warnf("mysql.reader: skip query %s", query)
 					} else {
 						event := NewQueryEvent(
-							currentSchema,
+							currentSchemaRename,
 							query,
 							NotDML,
 							ev.Header.Timestamp,
@@ -535,18 +540,10 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 							"sql": sql,
 						}).Info("mysql.reader: Skip QueryEvent")
 					} else {
-						var table *config.Table
-						var schema *config.DataSource
-						for i := range b.mysqlContext.ReplicateDoDb {
-							if b.mysqlContext.ReplicateDoDb[i].TableSchema == realSchema {
-								schema = b.mysqlContext.ReplicateDoDb[i]
-								for j := range b.mysqlContext.ReplicateDoDb[i].Tables {
-									if b.mysqlContext.ReplicateDoDb[i].Tables[j].TableName == tableName {
-										table = b.mysqlContext.ReplicateDoDb[i].Tables[j]
-									}
-								}
-							}
+						if realSchema != currentSchema {
+							schema = b.findSchema(realSchema)
 						}
+						table := b.findTable(schema, tableName)
 
 						switch realAst := ddlInfo.ast.(type) {
 						case *ast.CreateDatabaseStmt:
@@ -640,9 +637,6 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 							b.logger.Debugf("mysql.reader. ddl schema mapping :from  %s to %s", realSchema, schema.TableSchemaRename)
 							//sql = strings.Replace(sql, realSchema, schema.TableSchemaRename, 1)
 							sql = loadMapping(sql, realSchema, schema.TableSchemaRename, "schemaRename", " ")
-							if currentSchema == realSchema {
-								currentSchema = schema.TableSchemaRename
-							}
 							realSchema = schema.TableSchemaRename
 						} else {
 							// schema == nil means it is not explicit in ReplicateDoDb, thus no renaming
@@ -652,7 +646,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 						if table != nil && table.TableRename != "" {
 							ddlInfo.tables[i].Table = table.TableRename
 							//sql = strings.Replace(sql, tableName, table.TableRename, 1)
-							sql = loadMapping(sql, tableName, table.TableRename, "", currentSchema)
+							sql = loadMapping(sql, tableName, table.TableRename, "", currentSchemaRename)
 							b.logger.Debugf("mysql.reader. ddl table mapping  :from %s to %s", tableName, table.TableRename)
 						}
 
@@ -668,7 +662,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 								}).Info("NewQueryEventAffectTable. found empty schema or table.")
 							}
 							event := NewQueryEventAffectTable(
-								currentSchema,
+								currentSchemaRename,
 								sql,
 								NotDML,
 								ddlTable,
@@ -806,13 +800,8 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 					dmlEvent.TableName = table.Table.TableRename
 					b.logger.Debugf("mysql.reader. dml  table mapping : from %s to %s", dmlEvent.TableName, table.Table.TableRename)
 				}
-				for _, schema := range b.mysqlContext.ReplicateDoDb {
-					if schema.TableSchema != schemaName {
-						continue
-					}
-					if schema.TableSchemaRename == "" {
-						continue
-					}
+				schema := b.findSchema(schemaName)
+				if schema != nil && schema.TableSchemaRename != "" {
 					b.logger.Debugf("mysql.reader. dml  schema mapping: from  %s to %s", dmlEvent.DatabaseName, schema.TableSchemaRename)
 					dmlEvent.DatabaseName = schema.TableSchemaRename
 				}
@@ -1442,6 +1431,27 @@ func (b *BinlogReader) OnApplierRotate(binlogFile string) {
 			b.logger.WithField("file", f).WithError(err).Errorf("OnApplierRotate error when removing binlog file")
 		}
 	}
+}
+
+func (b *BinlogReader) findSchema(schemaName string) *config.DataSource {
+	if schemaName != "" {
+		for i := range b.mysqlContext.ReplicateDoDb {
+			if b.mysqlContext.ReplicateDoDb[i].TableSchema == schemaName {
+				return b.mysqlContext.ReplicateDoDb[i]
+			}
+		}
+	}
+	return nil
+}
+func (b *BinlogReader) findTable(maybeSchema *config.DataSource, tableName string) *config.Table {
+	if maybeSchema != nil {
+		for j := range maybeSchema.Tables {
+			if maybeSchema.Tables[j].TableName == tableName {
+				return maybeSchema.Tables[j]
+			}
+		}
+	}
+	return nil
 }
 
 func normalizeBinlogFilename(name string) string {
