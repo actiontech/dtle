@@ -93,7 +93,7 @@ func (k *KafkaManager) SendMessages(logger hclog.Logger, topics []string, keys [
 	}
 	if errs := k.producer.SendMessages(msgs); errs != nil {
 		for _, err := range errs.(sarama.ProducerErrors) {
-			logger.Error("send messages to kafka failed: ", err)
+			logger.Error("SendMessages failed", "err", err)
 		}
 		return errs
 	}

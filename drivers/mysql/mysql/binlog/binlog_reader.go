@@ -591,7 +591,6 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 
 						if schema != nil && schema.TableSchemaRename != "" {
 							ddlInfo.table.Schema = schema.TableSchemaRename
-							//sql = strings.Replace(sql, realSchema, schema.TableSchemaRename, 1)
 							realSchema = schema.TableSchemaRename
 						} else {
 							// schema == nil means it is not explicit in ReplicateDoDb, thus no renaming
@@ -600,7 +599,6 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 
 						if table != nil && table.TableRename != "" {
 							ddlInfo.table.Table = table.TableRename
-							//sql = strings.Replace(sql, tableName, table.TableRename, 1)
 						}
 						// mapping
 						schemaRenameMap, schemaNameToTablesRenameMap := b.generateRenameMaps()
