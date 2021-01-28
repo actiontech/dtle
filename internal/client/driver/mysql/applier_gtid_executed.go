@@ -208,12 +208,19 @@ func (a *Applier) createTableGtidExecutedV3a() error {
 	}
 }
 
-func (a *Applier) cleanGtidExecuted(sid uuid.UUID, intervalStr string) error {
+func (a *Applier) cleanGtidExecuted(sid uuid.UUID, txSid string) error {
 	a.logger.Debug("mysql.applier. incr. cleanup before WaitForExecution")
 	if !a.mtsManager.WaitForAllCommitted() {
 		return nil // shutdown
 	}
 	a.logger.Debug("mysql.applier. incr. cleanup after WaitForExecution")
+
+	intervalStr := func() string {
+		a.gtidSetLock.RLock()
+		defer a.gtidSetLock.RUnlock()
+		intervals := base.GetIntervals(a.gtidSet, txSid)
+		return base.StringInterval(intervals)
+	}()
 
 	// The TX is unnecessary if we first insert and then delete.
 	// However, consider `binlog_group_commit_sync_delay > 0`,

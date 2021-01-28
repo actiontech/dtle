@@ -104,9 +104,7 @@ func (m *GtidItemMap) GetItem(u uuid.UUID) (item *GtidItem) {
 		return item
 	}
 }
-func GetIntervals(set *gomysql.MysqlGTIDSet, u uuid.UUID) gomysql.IntervalSlice {
-	// TODO read lock
-	uuidStr := u.String()
+func GetIntervals(set *gomysql.MysqlGTIDSet, uuidStr string) gomysql.IntervalSlice {
 	item, ok := set.Sets[uuidStr]
 	if ok {
 		return item.Intervals

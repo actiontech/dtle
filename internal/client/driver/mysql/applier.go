@@ -244,6 +244,7 @@ type Applier struct {
 	stubFullApplyDelay time.Duration
 
 	gtidSet *gomysql.MysqlGTIDSet
+	gtidSetLock    *sync.RWMutex
 
 	SrcBinlogTimestamp  int64
 	DescBinlogTimestamp time.Time
@@ -272,6 +273,7 @@ func NewApplier(ctx *common.ExecContext, cfg *config.MySQLDriverConfig, logger *
 		applyDataEntryQueue:   make(chan *binlog.BinlogEntry, cfg.ReplChanBufferSize*2),
 		applyBinlogMtsTxQueue: make(chan *binlog.BinlogEntry, cfg.ReplChanBufferSize*2),
 		waitCh:                make(chan *models.WaitResult, 1),
+		gtidSetLock:           &sync.RWMutex{},
 		shutdownCh:            make(chan struct{}),
 		printTps:              os.Getenv(g.ENV_PRINT_TPS) != "",
 		gtidCh:                make(chan *base.BinlogCoordinateTx, 4096),
@@ -506,10 +508,16 @@ func (a *Applier) heterogeneousReplay() {
 			txSid := binlogEntry.Coordinates.GetSid()
 
 			gtidSetItem := a.gtidItemMap.GetItem(binlogEntry.Coordinates.SID)
-			intervals := base.GetIntervals(a.gtidSet, binlogEntry.Coordinates.SID)
-			if base.IntervalSlicesContainOne(intervals, binlogEntry.Coordinates.GNO) {
+			txExecuted := func() bool {
+				a.gtidSetLock.RLock()
+				defer a.gtidSetLock.RUnlock()
+				intervals := base.GetIntervals(a.gtidSet, txSid)
+				return base.IntervalSlicesContainOne(intervals, binlogEntry.Coordinates.GNO)
+			}()
+			if txExecuted {
 				// entry executed
-				a.logger.Debugf("mysql.applier: skip an executed tx: %v:%v", txSid, binlogEntry.Coordinates.GNO)
+				a.logger.WithField("sid", txSid).WithField("gno", binlogEntry.Coordinates.GNO).
+					Info("mysql.applier: skip an executed tx")
 				continue
 			}
 			// endregion
@@ -524,7 +532,7 @@ func (a *Applier) heterogeneousReplay() {
 
 			a.logger.Debugf("mysql.applier. gtidSetItem.NRow: %v", gtidSetItem.NRow)
 			if gtidSetItem.NRow >= cleanupGtidExecutedLimit {
-				err = a.cleanGtidExecuted(binlogEntry.Coordinates.SID, base.StringInterval(intervals))
+				err = a.cleanGtidExecuted(binlogEntry.Coordinates.SID, txSid)
 				if err != nil {
 					a.onError(TaskStateDead, err)
 					return
@@ -561,17 +569,7 @@ func (a *Applier) heterogeneousReplay() {
 					a.mtsManager.lastEnqueue += 1
 					a.mtsManager.chExecuted <- a.mtsManager.lastEnqueue
 				}
-				hasDDL := func() bool {
-					for i := range binlogEntry.Events {
-						dmlEvent := &binlogEntry.Events[i]
-						switch dmlEvent.DML {
-						case binlog.NotDML:
-							return true
-						default:
-						}
-					}
-					return false
-				}()
+				hasDDL := binlogEntry.HasDDL()
 				// DDL must be executed separatedly
 				if hasDDL || prevDDL {
 					a.logger.Debugf("mysql.applier: gno: %v MTS found DDL(%v,%v). WaitForAllCommitted",
@@ -580,11 +578,7 @@ func (a *Applier) heterogeneousReplay() {
 						return // shutdown
 					}
 				}
-				if hasDDL {
-					prevDDL = true
-				} else {
-					prevDDL = false
-				}
+				prevDDL = hasDDL
 
 				if !a.mtsManager.WaitForExecution(binlogEntry) {
 					return // shutdown
@@ -1532,7 +1526,9 @@ func (a *Applier) updateGtidLoop() {
 				// coord == nil is a flag for update/upload gtid
 				doUpdate()
 			} else {
+				a.gtidSetLock.Lock()
 				common.UpdateGtidSet(a.gtidSet, coord.SID, coord.GNO)
+				a.gtidSetLock.Unlock()
 				file = coord.LogFile
 				pos = coord.LogPos
 			}

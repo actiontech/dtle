@@ -46,6 +46,7 @@ func DtleParseMysqlGTIDSet(gtidSetStr string) (*mysql.MysqlGTIDSet, error) {
 }
 
 func UpdateGtidSet(gtidSet *mysql.MysqlGTIDSet, sid uuid.UUID, txGno int64) {
+	
 	gtidSet.AddSet(mysql.NewUUIDSet(sid, mysql.Interval{
 		Start: txGno,
 		Stop:  txGno + 1,
