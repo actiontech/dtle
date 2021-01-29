@@ -2,6 +2,7 @@ package inspector
 
 import (
 	"github.com/pingcap/parser/ast"
+	"github.com/pingcap/parser/model"
 )
 
 type TableInfo struct {
@@ -231,6 +232,39 @@ func (ctx *Context) UpdateContext(node ast.Node, dbtype string) {
 				schemaName := ctx.getSchemaName(s.Table)
 				ctx.DelTable(schemaName, s.Table.Name.O)
 				ctx.AddTable(schemaName, info.MergedTable.Table.Name.O, info)
+			}
+		}
+	case *ast.RenameTableStmt:
+		for _, tt := range s.TableToTables {
+			info, exist := ctx.getTableInfo(tt.OldTable)
+			if exist {
+				var err error
+				if info.MergedTable == nil {
+					if info.OriginalTable != nil {
+						info.MergedTable, err = ParseCreateTableStmt(dbtype, info.OriginalTable.Text())
+						if err != nil {
+							return
+						}
+					} else {
+						// A bug
+						return
+					}
+				}
+
+				OldSchemaName := ctx.getSchemaName(tt.OldTable)
+				NewSchemaName := ctx.getSchemaName(tt.NewTable)
+
+				// Do not use tt.NewTable.Schema. It might be empty.
+				info.MergedTable.Table.Schema = model.NewCIStr(NewSchemaName)
+				info.MergedTable.Table.Name = tt.NewTable.Name
+
+				// TODO s is not an AlterTableStmt
+				//  plan: transform `rename table` to `alter table rename`
+				//info.AlterTables = append(info.AlterTables, s)
+
+				// Note: it is valid to `rename table from a.a to b.a`.
+				ctx.DelTable(OldSchemaName, tt.OldTable.Name.O)
+				ctx.AddTable(NewSchemaName, info.MergedTable.Table.Name.O, info)
 			}
 		}
 	default:

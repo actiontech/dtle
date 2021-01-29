@@ -15,9 +15,15 @@ import (
 
 type BinlogEntries struct {
 	Entries []*BinlogEntry
-	BigTx  bool
-	TxNum int
+	TxNum int // starts from 1 for a big TX
 	TxLen int
+}
+
+func (b *BinlogEntries) IsBigTx() bool {
+	return b.TxNum > 0
+}
+func (b *BinlogEntries) IsLastBigTxPart() bool {
+	return b.TxNum == b.TxLen
 }
 
 // BinlogEntry describes an entry in the binary log
@@ -37,6 +43,17 @@ func NewBinlogEntryAt(coordinates base.BinlogCoordinateTx) *BinlogEntry {
 		OriginalSize: 1, // GroupMaxSize is default to 1 and we send on EntriesSize >= GroupMaxSize
 	}
 	return binlogEntry
+}
+
+func (b *BinlogEntry) HasDDL() bool {
+	for i := range b.Events {
+		switch b.Events[i].DML {
+		case NotDML:
+			return true
+		default:
+		}
+	}
+	return false
 }
 
 // Duplicate creates and returns a new binlog entry, with some of the attributes pre-assigned

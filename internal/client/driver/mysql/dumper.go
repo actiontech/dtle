@@ -295,7 +295,7 @@ func (d *dumper) getChunkData() (nRows int64, err error) {
 			// lastVals must not be nil if len(data) > 0
 			for i, col := range d.table.UseUniqueKey.Columns.Columns {
 				// TODO save the idx
-				idx := d.table.OriginalTableColumns.Ordinals[strings.ToLower(col.RawName)]
+				idx := d.table.OriginalTableColumns.Ordinals[col.RawName]
 				if idx > len(lastVals) {
 					return entry.RowsCount, fmt.Errorf("getChunkData. GetLastMaxVal: column index %v > n_column %v", idx, len(lastVals))
 				} else {

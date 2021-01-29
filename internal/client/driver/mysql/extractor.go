@@ -52,10 +52,6 @@ import (
 )
 
 const (
-	// DefaultConnectWait is the default timeout used for the connect operation
-	DefaultConnectWaitSecond      = 180
-	DefaultConnectWait            = DefaultConnectWaitSecond * time.Second
-	DefaultBigTX                  = 1024 * 1024 * 100
 	ReconnectStreamerSleepSeconds = 5
 	SCHEMAS                       = "schemas"
 	SCHEMA                        = "schema"
@@ -200,6 +196,7 @@ func (e *Extractor) Run() {
 			fullCopy = false
 		}
 	} else {
+		e.logger.WithField("gtid", e.mysqlContext.Gtid).Info("mysql.extractor: from gtid")
 		fullCopy = false
 		if e.mysqlContext.BinlogRelay {
 			if e.mysqlContext.BinlogFile == "" {
@@ -216,12 +213,14 @@ func (e *Extractor) Run() {
 		e.onError(TaskStateDead, err)
 		return
 	}
+	e.logger.Debugf("sendSysVarAndSqlMode. after")
 
 	go func() {
-		if e.mysqlContext.SkipIncrementalCopy {
+		<-e.gotCoordinateCh
 
+		if e.mysqlContext.SkipIncrementalCopy {
+			// empty
 		} else {
-			<-e.gotCoordinateCh
 			if !e.mysqlContext.BinlogRelay {
 				// This must be after `<-e.gotCoordinateCh` or there will be a deadlock
 				<-e.fullCopyDone
@@ -248,6 +247,7 @@ func (e *Extractor) Run() {
 	}()
 
 	if fullCopy {
+		e.logger.Debugf("mysqlDump. before")
 		var ctx context.Context
 		span := opentracing.GlobalTracer().StartSpan("span_full_complete")
 		defer span.Finish()
@@ -257,17 +257,10 @@ func (e *Extractor) Run() {
 			e.onError(TaskStateDead, err)
 			return
 		}
-		dumpMsg, err := common.Encode(&DumpStatResult{
-			Gtid:       e.initialBinlogCoordinates.GtidSet,
-			LogFile:    e.initialBinlogCoordinates.LogFile,
-			LogPos:     e.initialBinlogCoordinates.LogPos,
-			TotalCount: e.mysqlContext.RowsEstimate,
-		})
+		err := e.sendFullComplete(ctx)
 		if err != nil {
-			e.onError(TaskStateDead, err)
-		}
-		if err := e.publish(ctx, fmt.Sprintf("%s_full_complete", e.subject), "", dumpMsg); err != nil {
-			e.onError(TaskStateDead, err)
+			e.onError(TaskStateDead, errors.Wrap(err, "sendFullComplete"))
+			return
 		}
 	} else { // no full copy
 		// Will not get consistent table meta-info for an incremental only job.
@@ -278,6 +271,11 @@ func (e *Extractor) Run() {
 		}
 		if err := e.setInitialBinlogCoordinates(); err != nil {
 			e.onError(TaskStateDead, err)
+			return
+		}
+		err := e.sendFullComplete(nil) // A nil ctx will be detected in `publish()`.
+		if err != nil {
+			e.onError(TaskStateDead, errors.Wrap(err, "sendFullComplete"))
 			return
 		}
 		e.gotCoordinateCh <- struct{}{}
@@ -843,7 +841,7 @@ func (e *Extractor) StreamEvents() error {
 			defer e.logger.Debugf("extractor. StreamEvents goroutine exited")
 			entries := binlog.BinlogEntries{}
 			entriesSize := 0
-			sendEntries := func() error {
+			sendEntriesAndClear := func() error {
 				var gno int64 = 0
 				if len(entries.Entries) > 0 {
 					gno = entries.Entries[0].Coordinates.GNO
@@ -861,138 +859,108 @@ func (e *Extractor) StreamEvents() error {
 				ctx = nil
 				entries.Entries = nil
 				entries.TxLen = 0
-				entries.BigTx = false
 				entries.TxNum = 0
 				entriesSize = 0
 				return nil
 			}
 
-			keepGoing := true
-
 			groupTimeoutDuration := time.Duration(e.mysqlContext.GroupTimeout) * time.Millisecond
 			timer := time.NewTimer(groupTimeoutDuration)
 			defer timer.Stop()
 
-			for keepGoing && !e.shutdown {
-				var err error
+			LOOP: for !e.shutdown {
 				select {
 				case binlogEntry := <-e.dataChannel:
+					e.logger.WithField("gno", binlogEntry.Coordinates.GNO).Trace("got an binlogEntry from dataChannel")
 					spanContext := binlogEntry.SpanContext
 					span := opentracing.GlobalTracer().StartSpan("nat send :begin  send binlogEntry from src dtle to desc dtle", opentracing.ChildOf(spanContext))
 					span.SetTag("time", time.Now().Unix())
 					ctx = opentracing.ContextWithSpan(ctx, span)
 					//span.SetTag("timetag", time.Now().Unix())
 					binlogEntry.SpanContext = nil
-					entries.Entries = append(entries.Entries, binlogEntry)
-					entriesSize += binlogEntry.OriginalSize
 
-					if entriesSize >= e.mysqlContext.GroupMaxSize ||
-						int64(len(entries.Entries)) == e.mysqlContext.ReplChanBufferSize {
-						e.logger.Debugf("extractor. incr. send by GroupLimit. entriesSize: %v , groupMaxSize: %v,Entries.len: %v", entriesSize, e.mysqlContext.GroupMaxSize, len(entries.Entries))
-						if entriesSize > DefaultBigTX {
-							bigEntrises := splitEntries(entries, entriesSize)
-							entries.Entries = nil
-							e.logger.Debugf("extractor. incr. big tx  section  : %v ", len(bigEntrises))
-							for i, entity := range bigEntrises {
-								entries = entity
-								entriesSize = DefaultBigTX
-								e.logger.Debugf("extractor. incr. send  big tx  fragment : %v ", i)
-								err = sendEntries()
+					hasSent := false
+					if entriesSize + binlogEntry.OriginalSize >= common.DefaultBigTX {
+						// send the EntryGroup before reaching BigTX
+						e.logger.WithFields(logrus.Fields{
+							"previousSize": entriesSize,
+							"entrySize": binlogEntry.OriginalSize,
+							"Entries.len": len(entries.Entries),
+						}).Debugf("extractor. incr. send pre-BigTX entries")
+
+						if len(entries.Entries) > 0 {
+							hasSent = true
+							err := sendEntriesAndClear()
+							if err != nil {
+								e.onError(TaskStateDead, err)
+								break LOOP
 							}
 						} else {
-							err = sendEntries()
+							// no before entries
 						}
+					}
 
+					if binlogEntry.OriginalSize >= common.DefaultBigTX {
+						bigEntrises := splitEntries(binlogEntry)
+						e.logger.Debugf("extractor. incr. big tx section: %v", len(bigEntrises))
+						for _, entity := range bigEntrises {
+							entries = entity
+							e.logger.Debugf("extractor. incr. send big tx fragment : %v", entries.TxNum)
+							hasSent = true
+							err := sendEntriesAndClear()
+							if err != nil {
+								e.onError(TaskStateDead, err)
+								break LOOP
+							}
+						}
+					} else {
+						entries.Entries = append(entries.Entries, binlogEntry)
+						entriesSize += binlogEntry.OriginalSize
+
+						if entriesSize >= e.mysqlContext.GroupMaxSize ||
+							int64(len(entries.Entries)) == e.mysqlContext.ReplChanBufferSize {
+
+							e.logger.WithFields(logrus.Fields{
+								"entriesSize": entriesSize,
+								"groupMaxSize": e.mysqlContext.GroupMaxSize,
+								"Entries.len": len(entries.Entries),
+							}).Debugf("extractor. incr. send by GroupLimit")
+
+							hasSent = true
+							err := sendEntriesAndClear()
+							if err != nil {
+								e.onError(TaskStateDead, err)
+								break LOOP
+							}
+						}
+					}
+
+					if hasSent {
 						if !timer.Stop() {
 							<-timer.C
 						}
 						timer.Reset(groupTimeoutDuration)
 					}
+
 					span.Finish()
 				case <-timer.C:
 					nEntries := len(entries.Entries)
-					if entriesSize > DefaultBigTX {
-						err = errors.Errorf("big tx not sent by timeout ,please change GroupTimeout . ")
-						break
-					}
 					if nEntries > 0 {
-						e.logger.Debugf("extractor. incr. send by timeout. entriesSize: %v,timeout time: %v", entriesSize, e.mysqlContext.GroupTimeout)
+						e.logger.Debugf("extractor. incr. send by timeout. entriesSize: %v, timeout time: %v",
+							entriesSize, e.mysqlContext.GroupTimeout)
 
-						err = sendEntries()
+						err := sendEntriesAndClear()
+						if err != nil {
+							e.onError(TaskStateDead, err)
+							break LOOP
+						}
 					}
 					timer.Reset(groupTimeoutDuration)
 				}
-				if err != nil {
-					e.onError(TaskStateDead, err)
-					keepGoing = false
-				} else {
-					e.mysqlContext.Stage = models.StageSendingBinlogEventToSlave
-					atomic.AddInt64(&e.mysqlContext.DeltaEstimate, 1)
-				}
+				e.mysqlContext.Stage = models.StageSendingBinlogEventToSlave
+				atomic.AddInt64(&e.mysqlContext.DeltaEstimate, 1)
 			} // end for keepGoing && !e.shutdown
 		}()
-		// region commented out
-		/*entryArray := make([]*binlog.BinlogEntry, 0)
-		subject := fmt.Sprintf("%s_incr_hete", e.subject)
-
-		go func() {
-		L:
-			for {
-				select {
-				case binlogEntry := <-e.dataChannel:
-					{
-						if nil == binlogEntry {
-							continue
-						}
-						entryArray = append(entryArray, binlogEntry)
-						txMsg, err := Encode(&entryArray)
-						if err != nil {
-							e.onError(TaskStateDead, err)
-							break L
-						}
-						if len(txMsg) > e.mysqlContext.MsgBytesLimit {
-							if len(txMsg) > e.maxPayload {
-								e.onError(TaskStateDead, gonats.ErrMaxPayload)
-							}
-							if err = e.publish(subject, fmt.Sprintf("%s:1-%d", binlogEntry.Coordinates.SID, binlogEntry.Coordinates.GNO), txMsg); err != nil {
-								e.onError(TaskStateDead, err)
-								break L
-							}
-							//send_by_size_full
-							e.sendBySizeFullCounter += len(entryArray)
-							entryArray = []*binlog.BinlogEntry{}
-						}
-					}
-				case <-time.After(100 * time.Millisecond):
-					{
-						if len(entryArray) != 0 {
-							txMsg, err := Encode(&entryArray)
-							if err != nil {
-								e.onError(TaskStateDead, err)
-								break L
-							}
-							if len(txMsg) > e.maxPayload {
-								e.onError(TaskStateDead, gonats.ErrMaxPayload)
-							}
-							if err = e.publish(subject,
-								fmt.Sprintf("%s:1-%d",
-									entryArray[len(entryArray)-1].Coordinates.SID,
-									entryArray[len(entryArray)-1].Coordinates.GNO),
-								txMsg); err != nil {
-								e.onError(TaskStateDead, err)
-								break L
-							}
-							//send_by_timeout
-							e.sendByTimeoutCounter += len(entryArray)
-							entryArray = []*binlog.BinlogEntry{}
-						}
-					}
-				case <-e.shutdownCh:
-					break L
-				}
-			}
-		}()*/
-		// endregion
 		// The next should block and execute forever, unless there's a serious error
 		if err := e.binlogReader.DataStreamEvents(e.dataChannel); err != nil {
 			if e.shutdown {
@@ -1004,34 +972,39 @@ func (e *Extractor) StreamEvents() error {
 	return nil
 }
 
-func splitEntries(entries binlog.BinlogEntries, entriseSize int) (entris []binlog.BinlogEntries) {
-	clientLen := math.Ceil(float64(entriseSize) / DefaultBigTX)
-	clientNum := math.Ceil(float64(len(entries.Entries[0].Events)) / clientLen)
-	for i := 1; i <= int(clientLen); i++ {
+func ceilDiv(a int, b int) (r int) {
+	r = a / b
+	if a % b != 0 {
+		r += 1
+	}
+	return r
+}
+
+func splitEntries(bigEntry *binlog.BinlogEntry) (splitted []binlog.BinlogEntries) {
+	clientLen := ceilDiv(bigEntry.OriginalSize, common.DefaultBigTX) // the number of natsMsg to send
+	clientNum := ceilDiv(len(bigEntry.Events), clientLen) // the number of events for each natsMsg
+	for i := 1; i <= clientLen; i++ {
 		var after int
-		if i == int(clientLen) {
-			after = len(entries.Entries[0].Events)
+		if i == clientLen { // last natsMsg
+			after = len(bigEntry.Events)
 		} else {
-			after = i * int(clientNum)
+			after = i * clientNum // stop limit for slicing Entries[0].Events
 		}
 		entry := &binlog.BinlogEntry{
-			OriginalSize: entries.Entries[0].OriginalSize,
-			SpanContext:  entries.Entries[0].SpanContext,
-			Coordinates:  entries.Entries[0].Coordinates,
-			Events:       entries.Entries[0].Events[(i-1)*int(clientNum) : after],
+			OriginalSize: bigEntry.OriginalSize,
+			SpanContext:  bigEntry.SpanContext,
+			Coordinates:  bigEntry.Coordinates,
+			Events:       bigEntry.Events[(i-1)*clientNum : after],
 		}
-		var entrys []*binlog.BinlogEntry
-		entrys = append(entrys, entry)
 		newEntries := binlog.BinlogEntries{
-			Entries: entrys,
-			BigTx:   true,
+			Entries: []*binlog.BinlogEntry{entry}, // For a big TX, a BinlogEntries (Group) has only 1 BinlogEntry (Tx)
 			TxNum:   i,
-			TxLen:   int(clientLen),
+			TxLen:   clientLen,
 		}
-		entris = append(entris, newEntries)
+		splitted = append(splitted, newEntries)
 	}
 
-	return entris
+	return splitted
 }
 
 // retryOperation attempts up to `count` attempts at running given function,
@@ -1059,9 +1032,9 @@ func (e *Extractor) publish(ctx context.Context, subject, gtid string, txMsg []b
 	// Add the payload.
 	t.Write(txMsg)
 	defer span.Finish()
-	for {
+	for i := 1; ; i++ {
 		e.logger.Debugf("mysql.extractor: publish. gtid: %v, msg_len: %v, subject: %v ", gtid, len(txMsg), subject)
-		_, err = e.natsConn.Request(subject, t.Bytes(), DefaultConnectWait)
+		_, err = e.natsConn.Request(subject, t.Bytes(), common.DefaultConnectWait)
 		if err == nil {
 			if gtid != "" {
 				e.mysqlContext.Gtid = gtid
@@ -1069,15 +1042,15 @@ func (e *Extractor) publish(ctx context.Context, subject, gtid string, txMsg []b
 			txMsg = nil
 			break
 		} else if err == gonats.ErrTimeout {
-			e.logger.Debugf("mysql.extractor: publish timeout, got %v", err)
-			continue
+			e.logger.WithError(err).Debugf("mysql.extractor: publish timeout")
+			if i % 20 == 0 {
+				e.logger.WithError(err).Warn("publish timeout for 20 times")
+			}
+			time.Sleep(1 * time.Second)
 		} else {
 			e.logger.Errorf("mysql.extractor: unexpected error on publish, got %v", err)
 			break
 		}
-		// there's an error. Let's try again.
-		e.logger.Debugf(fmt.Sprintf("mysql.extractor: there's an error [%v]. Let's try again", err))
-		time.Sleep(1 * time.Second)
 	}
 	return err
 }
@@ -1584,5 +1557,22 @@ func (e *Extractor) Shutdown() error {
 
 	//close(e.binlogChannel)
 	e.logger.Printf("mysql.extractor: Shutting down")
+	return nil
+}
+
+func (e *Extractor) sendFullComplete(ctx context.Context) error {
+	dumpMsg, err := common.Encode(&DumpStatResult{
+		Gtid:       e.initialBinlogCoordinates.GtidSet,
+		LogFile:    e.initialBinlogCoordinates.LogFile,
+		LogPos:     e.initialBinlogCoordinates.LogPos,
+		TotalCount: e.mysqlContext.RowsEstimate,
+	})
+	if err != nil {
+		return errors.Wrap(err, "Encode DumpStatResult")
+	}
+	if err := e.publish(ctx, fmt.Sprintf("%s_full_complete", e.subject), "", dumpMsg); err != nil {
+		e.onError(TaskStateDead, err)
+	}
+
 	return nil
 }

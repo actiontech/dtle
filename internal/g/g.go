@@ -16,6 +16,7 @@ const (
 	GtidExecutedTablePrefix     string = "gtid_executed_"
 	GtidExecutedTableV2         string = "gtid_executed_v2"
 	GtidExecutedTableV3         string = "gtid_executed_v3"
+	GtidExecutedTableV3a        string = "gtid_executed_v3a"
 
 	ENV_PRINT_TPS         = "UDUP_PRINT_TPS"
 	ENV_DUMP_CHECKSUM     = "DTLE_DUMP_CHECKSUM"
@@ -23,6 +24,7 @@ const (
 	ENV_TESTSTUB1_DELAY   = "UDUP_TESTSTUB1_DELAY"
 	ENV_FULL_APPLY_DELAY  = "DTLE_FULL_APPLY_DELAY"
 	ENV_COUNT_INFO_SCHEMA = "DTLE_COUNT_INFO_SCHEMA"
+	ENV_BIG_TX_1M         = "DTLE_BIG_TX_1M"
 
 	LONG_LOG_LIMIT = 256
 )

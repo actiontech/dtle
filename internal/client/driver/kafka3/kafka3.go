@@ -62,6 +62,11 @@ type KafkaRunner struct {
 	tables map[string](map[string]*KafkaTableItem)
 
 	gtidSet *gomysql.MysqlGTIDSet
+
+	chBinlogEntries chan *binlog.BinlogEntries
+
+	srcTimestamp int64
+	dstTimestamp time.Time
 }
 
 func NewKafkaRunner(execCtx *common.ExecContext, cfg *KafkaConfig, logger *logrus.Logger) *KafkaRunner {
@@ -75,6 +80,8 @@ func NewKafkaRunner(execCtx *common.ExecContext, cfg *KafkaConfig, logger *logru
 		waitCh:      make(chan *models.WaitResult, 1),
 		shutdownCh:  make(chan struct{}),
 		tables:      make(map[string](map[string]*KafkaTableItem)),
+
+		chBinlogEntries: make(chan *binlog.BinlogEntries, 2),
 	}
 }
 
@@ -124,7 +131,40 @@ func (kr *KafkaRunner) Shutdown() error {
 }
 
 func (kr *KafkaRunner) Stats() (*models.TaskStatistics, error) {
-	taskResUsage := &models.TaskStatistics{}
+	var delay int64
+
+	if time.Now().After(kr.dstTimestamp.Add(15 * time.Second)) {
+		// Reset delay after 15s inactivity.
+		delay = 0
+	} else {
+		delay = kr.dstTimestamp.Unix() - kr.srcTimestamp
+	}
+
+	taskResUsage := &models.TaskStatistics{
+		CurrentCoordinates: &models.CurrentCoordinates{
+			File:               "",
+			Position:           0,
+			GtidSet:            "",
+			RelayMasterLogFile: "",
+			ReadMasterLogPos:   0,
+			RetrievedGtidSet:   "",
+		},
+		TableStats:         nil,
+		DelayCount:         nil,
+		ProgressPct:        "",
+		ExecMasterRowCount: 0,
+		ExecMasterTxCount:  0,
+		ReadMasterRowCount: 0,
+		ReadMasterTxCount:  0,
+		ETA:                "",
+		Backlog:            "",
+		ThroughputStat:     nil,
+		MsgStat:            gonats.Statistics{},
+		BufferStat:         models.BufferStat{},
+		Stage:              "",
+		Timestamp:          0,
+		DelayTime:          delay,
+	}
 	return taskResUsage, nil
 }
 func (kr *KafkaRunner) initNatSubClient() (err error) {
@@ -236,11 +276,9 @@ func (kr *KafkaRunner) getOrSetTable(schemaName string, tableName string,
 func (kr *KafkaRunner) initiateStreaming() error {
 	var err error
 
-	hasFull := kr.kafkaConfig.Gtid == ""
 	afterFull := make(chan struct{})
 
-	// TODO We subscribe _full anyway to receive sendSysVarAndSqlMode.
-	//  Use a better method.
+	// We subscribe _full anyway to receive sendSysVarAndSqlMode.
 	_, err = kr.natsConn.Subscribe(fmt.Sprintf("%s_full", kr.subject), func(m *gonats.Msg) {
 		kr.logger.Debugf("kafka: recv a full msg")
 		if err := kr.natsConn.Publish(m.Reply, nil); err != nil {
@@ -290,6 +328,7 @@ func (kr *KafkaRunner) initiateStreaming() error {
 		return err
 	}
 
+	// An incr-only job will send Gtid via _full_complete.
 	_, err = kr.natsConn.Subscribe(fmt.Sprintf("%s_full_complete", kr.subject), func(m *gonats.Msg) {
 		kr.logger.Debugf("kafka: recv a full_complete msg")
 
@@ -297,6 +336,13 @@ func (kr *KafkaRunner) initiateStreaming() error {
 			kr.onError(TaskStateDead, err)
 		}
 		kr.logger.Debugf("kafka: ack a full_complete msg")
+
+		select {
+		case <-afterFull:
+			// repeated _full_complete
+			return
+		default:
+		}
 
 		dumpData := &mysqlDriver.DumpStatResult{}
 		if err := common.Decode(m.Data, dumpData); err != nil {
@@ -307,17 +353,19 @@ func (kr *KafkaRunner) initiateStreaming() error {
 		kr.kafkaConfig.BinlogPos = dumpData.LogPos
 		kr.kafkaConfig.Gtid = dumpData.Gtid
 
-		if hasFull {
-			afterFull <- struct{}{}
+		select {
+		case <-afterFull:
+			// already closed
+		default:
+			close(afterFull)
 		}
 	})
 	if err != nil {
 		return err
 	}
 
-	if hasFull {
-		<-afterFull
-	}
+	<-afterFull
+
 	kr.logger.WithField("gtid", kr.kafkaConfig.Gtid).Infof("kafka. starting incremental replication.")
 
 	kr.gtidSet, err = common.DtleParseMysqlGTIDSet(kr.kafkaConfig.Gtid)
@@ -325,44 +373,81 @@ func (kr *KafkaRunner) initiateStreaming() error {
 		return errors.Wrap(err, "DtleParseMysqlGTIDSet")
 	}
 
-	var bigEntries binlog.BinlogEntries
-	_, err = kr.natsConn.Subscribe(fmt.Sprintf("%s_incr_hete", kr.subject), func(m *gonats.Msg) {
-		kr.logger.Debugf("kafka: recv a incr_hete msg")
+	bigEntries := &binlog.BinlogEntries{}
+	go func() {
+		for !kr.shutdown {
+			var binlogEntries *binlog.BinlogEntries
+			select {
+			case binlogEntries = <-kr.chBinlogEntries:
+			case <-kr.shutdownCh:
+				return
+			}
 
-		if err := kr.natsConn.Publish(m.Reply, nil); err != nil {
-			kr.onError(TaskStateDead, errors.Wrap(err, "Publish"))
+			needCopy := true
+			if binlogEntries.IsBigTx() {
+				needCopy = false
+				if bigEntries.TxNum + 1 == binlogEntries.TxNum {
+					kr.logger.WithField("TxNum", binlogEntries.TxNum).Debug("kafka: big tx: get a fragment")
+					bigEntries.TxNum = binlogEntries.TxNum
+					if bigEntries.TxNum == 1 {
+						bigEntries.Entries = binlogEntries.Entries
+						bigEntries.TxLen = binlogEntries.TxLen
+					} else {
+						bigEntries.Entries[0].Events = append(bigEntries.Entries[0].Events, binlogEntries.Entries[0].Events...)
+					}
+					binlogEntries.Entries = nil
+
+					if binlogEntries.IsLastBigTxPart() {
+						needCopy = true
+						binlogEntries.TxNum = 0
+						binlogEntries.TxLen = 0
+						binlogEntries.Entries = bigEntries.Entries
+
+						bigEntries.TxNum = 0
+						bigEntries.TxLen = 0
+						bigEntries.Entries = nil
+					}
+				} else if bigEntries.TxNum == binlogEntries.TxNum ||
+					(bigEntries.TxNum ==0 && binlogEntries.IsLastBigTxPart()) {
+					// repeated msg. ignore it.
+				} else {
+					kr.logger.WithField("current", bigEntries.TxNum).WithField("got", binlogEntries.TxNum).Warn(
+						"DTLE_BUG big tx unexpected TxNum")
+				}
+			}
+
+			if needCopy {
+				for _, binlogEntry := range binlogEntries.Entries {
+					err = kr.kafkaTransformDMLEventQuery(binlogEntry)
+					if err != nil {
+						kr.onError(TaskStateDead, errors.Wrap(err, "kafkaTransformDMLEventQuery"))
+						return
+					}
+					kr.logger.Debugf("kafka: after kafkaTransformDMLEventQuery")
+				}
+			}
 		}
-		kr.logger.Debugf("kafka. ack a incr_hete msg")
+	}()
+
+	_, err = kr.natsConn.Subscribe(fmt.Sprintf("%s_incr_hete", kr.subject), func(m *gonats.Msg) {
+		kr.logger.Debugf("kafka: recv an incr_hete msg")
 
 		var binlogEntries binlog.BinlogEntries
 		if err := common.Decode(m.Data, &binlogEntries); err != nil {
 			kr.onError(TaskStateDead, err)
 		}
-		if binlogEntries.BigTx {
-			if binlogEntries.TxNum == 1 {
-				bigEntries = binlogEntries
-			} else {
-				bigEntries.Entries[0].Events = append(bigEntries.Entries[0].Events, binlogEntries.Entries[0].Events...)
-				bigEntries.TxNum = binlogEntries.TxNum
-				binlogEntries.Entries = nil
+		t := time.NewTimer(common.DefaultConnectWaitSecondAckLimit * time.Second)
+		select {
+		case kr.chBinlogEntries <-&binlogEntries:
+			if err := kr.natsConn.Publish(m.Reply, nil); err != nil {
+				kr.onError(TaskStateDead, errors.Wrap(err, "Publish"))
 			}
-			if binlogEntries.TxNum == binlogEntries.TxLen {
-				binlogEntries = bigEntries
-				bigEntries.Entries = nil
-			}
+			kr.logger.Debugf("kafka. ack an incr_hete msg")
+		case <-t.C:
+			kr.logger.Debugf("kafka. discard an incr_hete msg")
+			//kr.natsConn.Publish(m.Reply, "wait")
 		}
-
-		for _, binlogEntry := range binlogEntries.Entries {
-			if binlogEntries.BigTx && binlogEntries.TxNum < binlogEntries.TxLen {
-				continue
-			}
-			err = kr.kafkaTransformDMLEventQuery(binlogEntry)
-			if err != nil {
-				kr.onError(TaskStateDead, errors.Wrap(err, "kafkaTransformDMLEventQuery"))
-				return
-			}
-			kr.logger.Debugf("kafka: after kafkaTransformDMLEventQuery")
-		}
+		t.Stop()
 	})
 	if err != nil {
 		return errors.Wrap(err, "Subscribe")
@@ -489,6 +574,11 @@ func (kr *KafkaRunner) kafkaTransformSnapshotData(
 						value = base64.StdEncoding.EncodeToString([]byte(valueStr))
 					}
 				case mysql.VarbinaryColumnType:
+					value = base64.StdEncoding.EncodeToString([]byte(valueStr))
+				case mysql.CharColumnType:
+					if valueStr == "" {
+						valueStr = "char(255)"
+					}
 					value = base64.StdEncoding.EncodeToString([]byte(valueStr))
 				case mysql.DateColumnType, mysql.DateTimeColumnType:
 					if valueStr != "" && columnList[i].ColumnType == "datetime" {
@@ -818,12 +908,17 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry)
 			}
 			kr.logger.Debugf("kafka: sent one msg")
 		}
+
+		if i == len(dmlEvent.Events) - 1 {
+			kr.srcTimestamp = int64(dmlEvent.Events[0].Timestamp)
+			kr.dstTimestamp = time.Now()
+		}
 	}
 
 	kr.kafkaConfig.BinlogFile = dmlEvent.Coordinates.LogFile
 	kr.kafkaConfig.BinlogPos = dmlEvent.Coordinates.LogPos
 
-	common.UpdateGtidSet(kr.gtidSet, txSid, dmlEvent.Coordinates.SID, dmlEvent.Coordinates.GNO)
+	common.UpdateGtidSet(kr.gtidSet, dmlEvent.Coordinates.SID, dmlEvent.Coordinates.GNO)
 	kr.updateGtidString()
 
 	return nil

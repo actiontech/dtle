@@ -765,6 +765,9 @@ func (r *Worker) emitStats(ru *models.TaskStatistics) {
 		metrics.SetGaugeWithLabels([]string{"buffer", "send_by_timeout"}, float32(ru.BufferStat.SendByTimeout), labels)
 		metrics.SetGaugeWithLabels([]string{"buffer", "send_by_size_full"}, float32(ru.BufferStat.SendBySizeFull), labels)
 	}
+
+	metrics.SetGaugeWithLabels([]string{"delay", "time"}, float32(ru.DelayTime), labels)
+
 	if ru.TableStats != nil && r.config.PublishAllocationMetrics {
 		metrics.SetGaugeWithLabels([]string{"table", "insert"}, float32(ru.TableStats.InsertCount), labels)
 		metrics.SetGaugeWithLabels([]string{"table", "update"}, float32(ru.TableStats.UpdateCount), labels)
