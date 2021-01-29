@@ -171,7 +171,9 @@ func (a *ApplierIncr) MtsWorker(workerIndex int) {
 		case <-timer.C:
 			err := a.dbs[workerIndex].Db.PingContext(context.Background())
 			if err != nil {
-				logger.Error("bad connection for mts worker.", "err", err)
+				logger.Error("bad connection for mts worker.", "err", err, "index", workerIndex)
+				a.OnError(TaskStateDead, errors.Wrap(err, "mts worker"))
+				keepLoop = false
 			}
 		}
 		timer.Stop()
@@ -265,6 +267,11 @@ func (a *ApplierIncr) heterogeneousReplay() {
 					}
 				}
 				// If there are TXs skipped by udup source-side
+				if a.mtsManager.lastEnqueue + 1 < binlogEntry.Coordinates.SeqenceNumber {
+					a.logger.Info("found skipping seq_num",
+						"lastEnqueue", a.mtsManager.lastEnqueue, "seqNum", binlogEntry.Coordinates.SeqenceNumber,
+						"uuid", txSid, "gno", binlogEntry.Coordinates.GNO)
+				}
 				for a.mtsManager.lastEnqueue+1 < binlogEntry.Coordinates.SeqenceNumber {
 					a.mtsManager.lastEnqueue += 1
 					a.mtsManager.chExecuted <- a.mtsManager.lastEnqueue
