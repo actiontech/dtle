@@ -565,7 +565,15 @@ func (a *Applier) heterogeneousReplay() {
 					}
 				}
 				// If there are TXs skipped by udup source-side
-				for a.mtsManager.lastEnqueue+1 < binlogEntry.Coordinates.SeqenceNumber {
+				if a.mtsManager.lastEnqueue + 1 < binlogEntry.Coordinates.SeqenceNumber {
+					a.logger.WithFields(logrus.Fields{
+						"lastEnqueue": a.mtsManager.lastEnqueue,
+						"seqNum": binlogEntry.Coordinates.SeqenceNumber,
+						"uuid": txSid,
+						"gno": binlogEntry.Coordinates.GNO,
+					}).Info("found skipping seq_num")
+				}
+				for a.mtsManager.lastEnqueue + 1 < binlogEntry.Coordinates.SeqenceNumber {
 					a.mtsManager.lastEnqueue += 1
 					a.mtsManager.chExecuted <- a.mtsManager.lastEnqueue
 				}
