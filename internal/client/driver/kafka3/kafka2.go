@@ -11,6 +11,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"github.com/sirupsen/logrus"
 	"math/big"
 	"strings"
 
@@ -98,6 +99,30 @@ func (k *KafkaManager) Send(topic string, key []byte, value []byte) error {
 	}
 
 	// TODO partition? offset?
+	return nil
+}
+
+func (k *KafkaManager) SendMessages(logger *logrus.Entry, topics []string, keys [][]byte, values [][]byte) error {
+	if !(len(topics) == len(keys) && len(values) == len(keys)) {
+		return fmt.Errorf("length of topics, keys and values must be equal")
+	}
+	msgs := make([]*sarama.ProducerMessage, len(topics))
+	for i, topic := range topics {
+		msg := &sarama.ProducerMessage{
+			Topic:     topic,
+			Partition: int32(-1),
+			Key:       sarama.ByteEncoder(keys[i]),
+			Value:     sarama.ByteEncoder(values[i]),
+		}
+		msgs[i] = msg
+	}
+	if errs := k.producer.SendMessages(msgs); errs != nil {
+		for _, err := range errs.(sarama.ProducerErrors) {
+			logger.WithError(err).Error("send messages to kafka failed: ", err)
+		}
+		return errs
+	}
+
 	return nil
 }
 

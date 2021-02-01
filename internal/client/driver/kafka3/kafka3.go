@@ -638,6 +638,9 @@ func (kr *KafkaRunner) kafkaTransformSnapshotData(
 }
 
 func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry) (err error) {
+	keysBs, valuesBs := make([][]byte, 0), make([][]byte, 0)
+	tableIdents := []string{}
+
 	txSid := dmlEvent.Coordinates.GetSid()
 
 	for i, _ := range dmlEvent.Events {
@@ -690,7 +693,7 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry)
 			after = NewRow()
 		}
 
-		tableIdent := fmt.Sprintf("%v.%v.%v", kr.kafkaMgr.Cfg.Topic, table.TableSchema, table.TableName)
+		tableIdents = append(tableIdents, fmt.Sprintf("%v.%v.%v", kr.kafkaMgr.Cfg.Topic, table.TableSchema, table.TableName))
 
 		keyPayload := NewRow()
 		colList := table.OriginalTableColumns.ColumnList()
@@ -884,13 +887,9 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry)
 		if err != nil {
 			return err
 		}
-		//	vBs = []byte(strings.Replace(string(vBs), "\"field\":\"snapshot\"", "\"default\":false,\"field\":\"snapshot\"", -1))
-		err = kr.kafkaMgr.Send(tableIdent, kBs, vBs)
-		if err != nil {
-			return err
-		}
 
-		kr.logger.Debugf("kafka: sent one msg")
+		keysBs = append(keysBs, kBs)
+		valuesBs = append(valuesBs, vBs)
 
 		// tombstone event for DELETE
 		if dataEvent.DML == binlog.DeleteDML {
@@ -902,11 +901,9 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry)
 			if err != nil {
 				return err
 			}
-			err = kr.kafkaMgr.Send(tableIdent, kBs, v2Bs)
-			if err != nil {
-				return err
-			}
-			kr.logger.Debugf("kafka: sent one msg")
+
+			keysBs = append(keysBs, kBs)
+			valuesBs = append(valuesBs, v2Bs)
 		}
 
 		if i == len(dmlEvent.Events) - 1 {
@@ -914,6 +911,12 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQuery(dmlEvent *binlog.BinlogEntry)
 			kr.dstTimestamp = time.Now()
 		}
 	}
+
+	err = kr.kafkaMgr.SendMessages(kr.logger, tableIdents, keysBs, valuesBs)
+	if err != nil {
+		return fmt.Errorf("send msgs failed: %v", err)
+	}
+	kr.logger.Debug("sent msgs")
 
 	kr.kafkaConfig.BinlogFile = dmlEvent.Coordinates.LogFile
 	kr.kafkaConfig.BinlogPos = dmlEvent.Coordinates.LogPos
