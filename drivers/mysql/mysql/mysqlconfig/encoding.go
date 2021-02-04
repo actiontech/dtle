@@ -20,6 +20,7 @@ func init() {
 	charsetEncodingMap = make(map[string]encoding.Encoding)
 	// Begin mappings
 	charsetEncodingMap["latin1"] = charmap.Windows1252
+	charsetEncodingMap["latin2"] = charmap.Windows1250
 	charsetEncodingMap["gbk"] = simplifiedchinese.GBK
 	charsetEncodingMap["gb2312"] = simplifiedchinese.GB18030
 }
