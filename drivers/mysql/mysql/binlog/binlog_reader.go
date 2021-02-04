@@ -889,6 +889,11 @@ func (b *BinlogReader) loadMapping(sql, currentSchema string,
 		renameAstTableFn(v.Table)
 	case *ast.AlterTableStmt:
 		renameAstTableFn(v.Table)
+		for _, spec := range v.Specs {
+			if nil != spec.NewTable {
+				renameAstTableFn(spec.NewTable)
+			}
+		}
 	case *ast.FlushStmt:
 		if v.Tp != ast.FlushTables {
 			b.logger.Debug("skip mapping ddl", "sql", sql)

@@ -136,6 +136,16 @@ func Test_loadMapping(t *testing.T) {
 			currentSchema:   "db1",
 			replicationDoDB: replicateDoDbWithRename,
 		}, want: "ALTER TABLE `db1-rename`.`db1-tb1-rename` ADD COLUMN `a` INT"},
+		{name: "schema-rename-alter-table", args: args{
+			sql:             "alter table `db1`.`tb1` rename as `db2`.`tb1`",
+			currentSchema:   "db1",
+			replicationDoDB: replicateDoDbWithRename,
+		}, want: "ALTER TABLE `db1-rename`.`db1-tb1-rename` RENAME AS `db2-rename`.`db2-tb1-rename`"},
+		{name: "schema-rename-alter-table", args: args{
+			sql:             "alter table `db1`.`tb1` rename to `db2`.`tb1`",
+			currentSchema:   "db1",
+			replicationDoDB: replicateDoDbWithRename,
+		}, want: "ALTER TABLE `db1-rename`.`db1-tb1-rename` RENAME AS `db2-rename`.`db2-tb1-rename`"},
 		// flush tables
 		{name: "schema-rename-flush-tables", args: args{
 			sql:             "flush tables `tb1`,`db2`.tb1",
@@ -212,6 +222,16 @@ func Test_loadMapping(t *testing.T) {
 			currentSchema:   "db1",
 			replicationDoDB: replicateDoDbWithoutRename,
 		}, want: "ALTER TABLE `db1`.`tb1` ADD COLUMN `a` INT"},
+		{name: "schema-map-alter-table", args: args{
+			sql:             "alter table `db1`.`tb1` rename as `db2`.`tb1`",
+			currentSchema:   "db1",
+			replicationDoDB: replicateDoDbWithoutRename,
+		}, want: "ALTER TABLE `db1`.`tb1` RENAME AS `db2`.`tb1`"},
+		{name: "schema-map-alter-table", args: args{
+			sql:             "alter table `db1`.`tb1` rename to `db2`.`tb1`",
+			currentSchema:   "db1",
+			replicationDoDB: replicateDoDbWithoutRename,
+		}, want: "ALTER TABLE `db1`.`tb1` RENAME AS `db2`.`tb1`"},
 		// flush tables
 		{name: "schema-map-flush-tables", args: args{
 			sql:             "flush tables `tb1`,`db2`.tb1",
