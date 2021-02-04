@@ -103,12 +103,12 @@ func Test_loadMapping(t *testing.T) {
 		}, want: "DROP DATABASE `db1-rename`"},
 		// alter database
 		{name: "schema-rename-alter-database", args: args{
-			sql:             "alter database `db1` character set utf8 collate utf8_general_ci`",
+			sql:             "alter database `db1` character set utf8 collate utf8_general_ci",
 			currentSchema:   "db1",
 			replicationDoDB: replicateDoDbWithRename,
 		}, want: "ALTER DATABASE `db1-rename` CHARACTER SET = utf8 COLLATE = utf8_general_ci"},
 		{name: "schema-rename-alter-database", args: args{ // alter default database
-			sql:             "alter database character set utf8 collate utf8_general_ci`",
+			sql:             "alter database character set utf8 collate utf8_general_ci",
 			currentSchema:   "db1",
 			replicationDoDB: replicateDoDbWithRename,
 		}, want: "ALTER DATABASE CHARACTER SET = utf8 COLLATE = utf8_general_ci"},
@@ -190,11 +190,11 @@ func Test_loadMapping(t *testing.T) {
 		}, want: "DROP DATABASE `db1`"},
 		// alter database
 		{name: "schema-map-alter-database", args: args{
-			sql:           "alter database `db1` character set utf8 collate utf8_general_ci`",
+			sql:           "alter database `db1` character set utf8 collate utf8_general_ci",
 			currentSchema: "db1",
 		}, want: "ALTER DATABASE `db1` CHARACTER SET = utf8 COLLATE = utf8_general_ci"},
 		{name: "schema-map-alter-database", args: args{ // alter default database
-			sql:             "alter database character set utf8 collate utf8_general_ci`",
+			sql:             "alter database character set utf8 collate utf8_general_ci",
 			currentSchema:   "db1",
 			replicationDoDB: replicateDoDbWithoutRename,
 		}, want: "ALTER DATABASE CHARACTER SET = utf8 COLLATE = utf8_general_ci"},
