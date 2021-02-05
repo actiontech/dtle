@@ -84,40 +84,52 @@ func (sm *StoreManager) GetGtidForJob(jobName string) (string, error) {
 	// Get a non-existing KV
 	return string(p.Value), nil
 }
-
-func (sm *StoreManager) WatchAndPutNats(jobName string, natsAddr string, stopCh chan struct{},
+func NatsIsWait(natsAddr string) bool {
+	// "wait" or "waitdst"
+	return strings.HasPrefix(natsAddr, "wait")
+}
+func (sm *StoreManager) PutAndWatchNats(jobName string, natsAddr string, stopCh chan struct{},
 	onErrorF func(error)) {
 
+	var err error
 	natsKey := fmt.Sprintf("dtle/%v/NatsAddr", jobName)
-	err := sm.consulStore.Put(natsKey, []byte(natsAddr), nil)
+	err = sm.consulStore.Put(natsKey, []byte("waitdst"), nil)
 	if err != nil {
 		onErrorF(err)
 		return
 	}
 
-	natsCh, err := sm.consulStore.Watch(natsKey, stopCh)
+	err = sm.consulStore.Put(natsKey, []byte(natsAddr), nil)
 	if err != nil {
 		onErrorF(err)
 		return
 	}
-	loop := true
-	for loop {
-		select {
-		case <-stopCh:
-			loop = false
-		case kv := <-natsCh:
-			if kv == nil {
+
+	go func() {
+		natsCh, err := sm.consulStore.Watch(natsKey, stopCh)
+		if err != nil {
+			onErrorF(err)
+			return
+		}
+		loop := true
+		for loop {
+			select {
+			case <-stopCh:
 				loop = false
-				onErrorF(errors.Wrap(ErrNoConsul, "WatchAndPutNats"))
-			} else if string(kv.Value) == "wait" {
-				err = sm.consulStore.Put(natsKey, []byte(natsAddr), nil)
-				if err != nil {
-					onErrorF(err)
-					return
+			case kv := <-natsCh:
+				if kv == nil {
+					loop = false
+					onErrorF(errors.Wrap(ErrNoConsul, "PutAndWatchNats"))
+				} else if NatsIsWait(string(kv.Value)) {
+					err = sm.consulStore.Put(natsKey, []byte(natsAddr), nil)
+					if err != nil {
+						onErrorF(err)
+						return
+					}
 				}
 			}
 		}
-	}
+	}()
 }
 
 func (sm *StoreManager) WatchNats(jobName string, stopCh chan struct{}) (<-chan *store.KVPair, error) {

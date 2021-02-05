@@ -184,7 +184,7 @@ func (e *Extractor) Run() {
 				return
 			} else {
 				natsAddr := string(kv.Value)
-				if natsAddr == "wait" {
+				if common.NatsIsWait(natsAddr) {
 					// do nothing
 				} else if natsAddr == "" {
 					e.onError(TaskStateDead, fmt.Errorf("DTLE_BUG: got empty NatsAddr"))
