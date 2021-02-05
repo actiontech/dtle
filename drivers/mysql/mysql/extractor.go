@@ -1471,9 +1471,9 @@ func (e *Extractor) mysqlDump() error {
 					if !d.sentTableDef {
 						tableBs, err := common.GobEncode(d.table)
 						if err != nil {
-							realErr := fmt.Errorf(entry.Err)
-							e.onError(TaskStateDead, realErr)
-							return realErr
+							err = errors.Wrap(err, "full copy: GobEncode")
+							e.onError(TaskStateDead, err)
+							return err
 						} else {
 							entry.Table = tableBs
 							d.sentTableDef = true

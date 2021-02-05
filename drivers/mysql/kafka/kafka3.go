@@ -343,6 +343,14 @@ func (kr *KafkaRunner) handleFullCopy() {
 				return
 			}
 
+			if tableItem == nil {
+				err := fmt.Errorf("DTLE_BUG: kafkaTransformSnapshotData: tableItem is nil %v.%v TotalCount %v",
+					dumpData.TableSchema, dumpData.TableName, dumpData.TotalCount)
+				kr.logger.Error(err.Error())
+				kr.onError(TaskStateDead, err)
+				return
+			}
+
 			err = kr.kafkaTransformSnapshotData(tableItem, dumpData)
 			if err != nil {
 				kr.onError(TaskStateDead, err)
