@@ -260,15 +260,15 @@ func (a *Applier) Run() {
 		a.onError(TaskStateDead, err)
 		return
 	}
+	a.logger.Info("PutAndWatchNats")
+	a.storeManager.PutAndWatchNats(a.subject, a.NatsAddr, a.shutdownCh, func(err error) {
+		a.onError(TaskStateDead, errors.Wrap(err, "PutAndWatchNats"))
+	})
 	a.logger.Debug("subscribeNats")
 	if err := a.subscribeNats(); err != nil {
 		a.onError(TaskStateDead, err)
 		return
 	}
-	a.logger.Info("go WatchAndPutNats")
-	go a.storeManager.WatchAndPutNats(a.subject, a.NatsAddr, a.shutdownCh, func(err error) {
-		a.onError(TaskStateDead, errors.Wrap(err, "WatchAndPutNats"))
-	})
 
 	go a.updateGtidLoop()
 
