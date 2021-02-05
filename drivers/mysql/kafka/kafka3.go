@@ -611,9 +611,12 @@ func (kr *KafkaRunner) kafkaTransformSnapshotData(
 	var err error
 	table := tableItem.table
 
+	keysBs, valuesBs := make([][]byte, 0), make([][]byte, 0)
+	tableIdents := []string{}
+
 	tableIdent := fmt.Sprintf("%v.%v.%v", kr.kafkaMgr.Cfg.Topic, table.TableSchema, table.TableName)
 	kr.logger.Debug("kafkaTransformSnapshotData", "value", value.ValuesX)
-	for _, rowValues := range value.ValuesX {
+	for iValuesX, rowValues := range value.ValuesX {
 		keyPayload := NewRow()
 		valuePayload := NewValuePayload()
 		valuePayload.Source.Version = "0.0.1"
@@ -752,13 +755,25 @@ func (kr *KafkaRunner) kafkaTransformSnapshotData(
 		if err != nil {
 			return fmt.Errorf("serialization error: %v", err)
 		}
-		//vBs = []byte(strings.Replace(string(vBs), "\"field\":\"snapshot\"", "\"default\":false,\"field\":\"snapshot\"", -1))
-		err = kr.kafkaMgr.Send(tableIdent, kBs, vBs)
-		if err != nil {
-			return fmt.Errorf("send msg failed: %v", err)
+
+		keysBs = append(keysBs, kBs)
+		valuesBs = append(valuesBs, vBs)
+		tableIdents = append(tableIdents, tableIdent)
+
+		isLastPart := iValuesX == len(value.ValuesX) - 1
+		if len(keysBs) > 100 || isLastPart {
+			err := kr.kafkaMgr.SendMessages(kr.logger, tableIdents, keysBs, valuesBs)
+			if err != nil {
+				return fmt.Errorf("send msgs failed: %v", err)
+			}
+			kr.logger.Debug("sent a group of msgs")
+			keysBs = nil
+			valuesBs = nil
+			tableIdents = nil
 		}
-		kr.logger.Debug("sent one msg")
 	}
+
+
 	return nil
 }
 

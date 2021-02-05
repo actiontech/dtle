@@ -77,23 +77,6 @@ func NewKafkaManager(kcfg *common.KafkaConfig) (*KafkaManager, error) {
 	return k, nil
 }
 
-func (k *KafkaManager) Send(topic string, key []byte, value []byte) error {
-	msg := &sarama.ProducerMessage{
-		Topic:     topic,
-		Partition: int32(-1),
-		Key:       sarama.ByteEncoder(key),
-		Value:     sarama.ByteEncoder(value),
-	}
-
-	_, _, err := k.producer.SendMessage(msg)
-	if err != nil {
-		return err
-	}
-
-	// TODO partition? offset?
-	return nil
-}
-
 func (k *KafkaManager) SendMessages(logger hclog.Logger, topics []string, keys [][]byte, values [][]byte) error {
 	if !(len(topics) == len(keys) && len(values) == len(keys)) {
 		return fmt.Errorf("length of topics, keys and values must be equal")
