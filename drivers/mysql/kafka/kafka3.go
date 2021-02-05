@@ -817,8 +817,6 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQueries(dmlEntries []*common.Binlog
 				after = NewRow()
 			}
 
-			tableIdents = append(tableIdents, fmt.Sprintf("%v.%v.%v", kr.kafkaMgr.Cfg.Topic, table.TableSchema, table.TableName))
-
 			keyPayload := NewRow()
 			colList := table.OriginalTableColumns.ColumnList()
 
@@ -1017,6 +1015,8 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQueries(dmlEntries []*common.Binlog
 				return err
 			}
 
+			tableIdent := fmt.Sprintf("%v.%v.%v", kr.kafkaMgr.Cfg.Topic, table.TableSchema, table.TableName)
+			tableIdents = append(tableIdents, tableIdent)
 			keysBs = append(keysBs, kBs)
 			valuesBs = append(valuesBs, vBs)
 			vBs = []byte(strings.Replace(string(vBs), "\"field\":\"snapshot\"", "\"default\":false,\"field\":\"snapshot\"", -1))
@@ -1032,6 +1032,7 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQueries(dmlEntries []*common.Binlog
 					return err
 				}
 
+				tableIdents = append(tableIdents, tableIdent)
 				keysBs = append(keysBs, kBs)
 				valuesBs = append(valuesBs, v2Bs)
 			}
