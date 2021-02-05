@@ -759,6 +759,7 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQueries(dmlEntries []*common.Binlog
 		return nil
 	}
 
+	latestTimestamp := uint32(0)
 	keysBs, valuesBs := make([][]byte, 0), make([][]byte, 0)
 	tableIdents := []string{}
 	curDmlEntry := dmlEntries[0]
@@ -791,7 +792,7 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQueries(dmlEntries []*common.Binlog
 			}
 
 			if tableItem == nil {
-				err = fmt.Errorf("DTLE_BUG: table meta is nil %v.%v", realSchema, dataEvent.TableName)
+				err = fmt.Errorf("DTLE_BUG: table meta is nil %v.%v gno %v", realSchema, dataEvent.TableName, dmlEvent.Coordinates.GNO)
 				kr.logger.Error("table meta is nil", "err", err)
 				return err
 			}
@@ -1036,10 +1037,7 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQueries(dmlEntries []*common.Binlog
 				keysBs = append(keysBs, kBs)
 				valuesBs = append(valuesBs, v2Bs)
 			}
-		}
-
-		if i == len(dmlEntries)-1 {
-			kr.timestampCtx.TimestampCh <- curDmlEntry.Events[0].Timestamp
+			latestTimestamp = dataEvent.Timestamp
 		}
 	}
 
@@ -1048,6 +1046,10 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQueries(dmlEntries []*common.Binlog
 		return fmt.Errorf("send msgs failed: %v", err)
 	}
 	kr.logger.Debug("sent msgs")
+
+	if latestTimestamp != 0 {
+		kr.timestampCtx.TimestampCh <- latestTimestamp
+	}
 
 	kr.BinlogFile = curDmlEntry.Coordinates.LogFile
 	kr.BinlogPos = curDmlEntry.Coordinates.LogPos
