@@ -933,10 +933,10 @@ func (b *BinlogReader) DataStreamEvents(entriesChannel chan<- *common.BinlogEntr
 			} else {
 				if (float64(memory.Available)/float64(memory.Total) < 0.2) && (memory.Available < 1*1024*1024*1024) {
 					if i%30 == 0 { // suppress log
-						b.logger.Warn("memory is less than 20% or 1GiB. pause parsing binlog for 1s",
+						b.logger.Warn("memory is less than 20% and 1GiB. pause parsing binlog for 1s",
 							"available", memory.Available, "total", memory.Total)
 					} else {
-						b.logger.Debug("memory is less than 20% or 1GiB. pause parsing binlog for 1s",
+						b.logger.Debug("memory is less than 20% and 1GiB. pause parsing binlog for 1s",
 							"available", memory.Available, "total", memory.Total)
 					}
 					lowMemory = true
