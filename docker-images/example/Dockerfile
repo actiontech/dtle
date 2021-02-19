@@ -3,7 +3,7 @@ From centos:centos7
 #
 # Set the version, home directory.
 #
-ENV DTLE_VERSION=3.21.01.1 \
+ENV DTLE_VERSION=3.21.01.2 \
     DTLE_HOME=/dtle
 
 #
