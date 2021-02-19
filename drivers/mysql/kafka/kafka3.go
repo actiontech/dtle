@@ -785,10 +785,8 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQueries(dmlEntries []*common.Binlog
 	latestTimestamp := uint32(0)
 	keysBs, valuesBs := make([][]byte, 0), make([][]byte, 0)
 	tableIdents := []string{}
-	curDmlEntry := dmlEntries[0]
 
-	for i, dmlEvent := range dmlEntries {
-		curDmlEntry = dmlEntries[i]
+	for _, dmlEvent := range dmlEntries {
 		kr.logger.Debug("kafkaTransformDMLEventQueries", "gno", dmlEvent.Coordinates.GNO)
 		txSid := dmlEvent.Coordinates.GetSid()
 
@@ -1073,10 +1071,12 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQueries(dmlEntries []*common.Binlog
 		kr.timestampCtx.TimestampCh <- latestTimestamp
 	}
 
-	kr.BinlogFile = curDmlEntry.Coordinates.LogFile
-	kr.BinlogPos = curDmlEntry.Coordinates.LogPos
+	for _, entry := range dmlEntries {
+		kr.BinlogFile = entry.Coordinates.LogFile
+		kr.BinlogPos = entry.Coordinates.LogPos
 
-	common.UpdateGtidSet(kr.gtidSet, curDmlEntry.Coordinates.SID, curDmlEntry.Coordinates.GNO)
+		common.UpdateGtidSet(kr.gtidSet, entry.Coordinates.SID, entry.Coordinates.GNO)
+	}
 	kr.Gtid = kr.gtidSet.String()
 	kr.logger.Debug("kafka. updateGtidString", "gtid", kr.Gtid)
 
