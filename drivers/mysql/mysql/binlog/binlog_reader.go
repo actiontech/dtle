@@ -448,9 +448,11 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 		defer b.currentCoordinatesMutex.Unlock()
 		u, _ := uuid.FromBytes(evt.SID)
 		b.currentCoordinates.SID = u
+		b.currentCoordinates.OSID = ""
 		b.currentCoordinates.GNO = evt.GNO
 		b.currentCoordinates.LastCommitted = evt.LastCommitted
 		b.currentCoordinates.SeqenceNumber = evt.SequenceNumber
+
 		b.currentBinlogEntry = common.NewBinlogEntryAt(b.currentCoordinates)
 		b.hasBeginQuery = false
 		b.entryContext = &common.BinlogEntryContext{
@@ -475,6 +477,17 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 			b.hasBeginQuery = true
 		} else {
 			if strings.ToUpper(query) == "COMMIT" || !b.hasBeginQuery {
+				osid, err := checkDtleQuery(query)
+				if err != nil {
+					return errors.Wrap(err, "checkDtleQuery")
+				}
+				b.logger.Debug("query osid", "osid", osid)
+				b.currentBinlogEntry.Coordinates.OSID = osid
+
+				if osid == "" {
+					query = b.setDtleQuery(query)
+				}
+
 				ddlInfo, err := resolveDDLSQL(currentSchema, query, b.skipQueryDDL)
 
 				var skipExpandSyntax bool
@@ -816,6 +829,40 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 		}
 	}
 	return nil
+}
+
+const (
+	dtleQueryPrefix = "/*dtle_gtid1 "
+	dtleQuerySuffix = " dtle_gtid*/"
+)
+func checkDtleQuery(query string) (string, error) {
+
+	start := strings.Index(query, dtleQueryPrefix)
+	if start == -1 {
+		return "", nil
+	}
+	start += len(dtleQueryPrefix)
+
+	end := strings.Index(query, dtleQuerySuffix)
+	if end == -1 {
+		return "", fmt.Errorf("incomplete dtle_gtid for query %v", query)
+	}
+	if end < start {
+		return "", fmt.Errorf("bad dtle_gtid for query %v", query)
+	}
+
+	dtleItem := query[start:end]
+	ss := strings.Split(dtleItem, " ")
+	if len(ss) != 3 {
+		return "", fmt.Errorf("bad dtle_gtid splitted for query %v", query)
+	}
+
+	return ss[1], nil
+}
+func (b *BinlogReader) setDtleQuery(query string) string {
+	uuidStr := uuid.UUID(b.currentBinlogEntry.Coordinates.SID).String()
+
+	return fmt.Sprintf("/*dtle_gtid1 %v %v %v dtle_gtid*/ %v", b.execCtx.Subject, uuidStr, b.currentCoordinates.GNO, query)
 }
 
 func (b *BinlogReader) sendEntry(entriesChannel chan<- *common.BinlogEntryContext) {
