@@ -1589,13 +1589,12 @@ func (e *Extractor) Stats() (*common.TaskStatistics, error) {
 		}
 	}
 
-	currentBinlogCoordinates := &common.BinlogCoordinateTx{}
 	if e.binlogReader != nil {
-		currentBinlogCoordinates = e.binlogReader.GetCurrentBinlogCoordinates()
+		currentBinlogCoordinates := e.binlogReader.GetCurrentBinlogCoordinates()
 		taskResUsage.CurrentCoordinates = &common.CurrentCoordinates{
 			File:     currentBinlogCoordinates.LogFile,
 			Position: currentBinlogCoordinates.LogPos,
-			GtidSet:  fmt.Sprintf("%s:%d", currentBinlogCoordinates.GetSid(), currentBinlogCoordinates.GNO),
+			GtidSet:  currentBinlogCoordinates.GtidSet,
 		}
 	} else {
 		taskResUsage.CurrentCoordinates = &common.CurrentCoordinates{

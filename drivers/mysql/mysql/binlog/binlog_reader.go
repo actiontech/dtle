@@ -72,9 +72,9 @@ type BinlogReader struct {
 	binlogStreamer streamer.Streamer
 	// for relay
 	binlogReader             *streamer.BinlogReader
-	currentCoordinates       common.BinlogCoordinateTx
+	currentCoordinates       base.BinlogCoordinatesX
 	currentCoordinatesMutex  *sync.Mutex
-	LastAppliedRowsEventHint common.BinlogCoordinateTx
+	LastAppliedRowsEventHint base.BinlogCoordinatesX
 	// raw config, whose ReplicateDoDB is same as config file (empty-is-all & no dynamically created tables)
 	mysqlContext *common.MySQLDriverConfig
 	// dynamic config, include all tables (implicitly assigned or dynamically created)
@@ -168,7 +168,7 @@ func NewMySQLReader(execCtx *common.ExecContext, cfg *common.MySQLDriverConfig, 
 	binlogReader = &BinlogReader{
 		execCtx:                 execCtx,
 		logger:                  logger,
-		currentCoordinates:      common.BinlogCoordinateTx{},
+		currentCoordinates:      base.BinlogCoordinatesX{},
 		currentCoordinatesMutex: &sync.Mutex{},
 		mysqlContext:            cfg,
 		ReMap:                   make(map[string]*regexp.Regexp),
@@ -259,10 +259,7 @@ func (b *BinlogReader) ConnectBinlogStreamer(coordinates base.BinlogCoordinatesX
 		b.logger.Warn("Emptry coordinates at ConnectBinlogStreamer")
 	}
 
-	b.currentCoordinates = common.BinlogCoordinateTx{
-		LogFile: coordinates.LogFile,
-		LogPos:  coordinates.LogPos,
-	}
+	b.currentCoordinates = coordinates
 	b.logger.Info("Connecting binlog streamer",
 		"file", coordinates.LogFile, "pos", coordinates.LogPos, "gtid", coordinates.GtidSet)
 
@@ -405,7 +402,7 @@ func (b *BinlogReader) ConnectBinlogStreamer(coordinates base.BinlogCoordinatesX
 	return nil
 }
 
-func (b *BinlogReader) GetCurrentBinlogCoordinates() *common.BinlogCoordinateTx {
+func (b *BinlogReader) GetCurrentBinlogCoordinates() *base.BinlogCoordinatesX {
 	b.currentCoordinatesMutex.Lock()
 	defer b.currentCoordinatesMutex.Unlock()
 	returnCoordinates := b.currentCoordinates
@@ -447,13 +444,14 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 		// TODO this does not unlock until function return. wrap with func() if needed
 		defer b.currentCoordinatesMutex.Unlock()
 		u, _ := uuid.FromBytes(evt.SID)
-		b.currentCoordinates.SID = u
-		b.currentCoordinates.OSID = ""
-		b.currentCoordinates.GNO = evt.GNO
-		b.currentCoordinates.LastCommitted = evt.LastCommitted
-		b.currentCoordinates.SeqenceNumber = evt.SequenceNumber
 
-		b.currentBinlogEntry = common.NewBinlogEntryAt(b.currentCoordinates)
+		entry := common.NewBinlogEntry()
+		entry.Coordinates.SID = u
+		entry.Coordinates.GNO = evt.GNO
+		entry.Coordinates.LastCommitted = evt.LastCommitted
+		entry.Coordinates.SeqenceNumber = evt.SequenceNumber
+
+		b.currentBinlogEntry = entry
 		b.hasBeginQuery = false
 		b.entryContext = &common.BinlogEntryContext{
 			Entry:       b.currentBinlogEntry,
@@ -505,12 +503,12 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 
 				if skipExpandSyntax || err != nil || !ddlInfo.isDDL {
 					if err != nil {
-						b.logger.Warn("Parse query event failed. will execute", "query", query, "err", err, "gno", b.currentCoordinates.GNO)
+						b.logger.Warn("Parse query event failed. will execute", "query", query, "err", err, "gno", b.currentBinlogEntry.Coordinates.GNO)
 					} else if !ddlInfo.isDDL {
-						b.logger.Debug("mysql.reader: QueryEvent is not a DDL", "query", query, "gno", b.currentCoordinates.GNO)
+						b.logger.Debug("mysql.reader: QueryEvent is not a DDL", "query", query, "gno", b.currentBinlogEntry.Coordinates.GNO)
 					}
 					if skipExpandSyntax {
-						b.logger.Warn("skip query", "query", query, "gno", b.currentCoordinates.GNO)
+						b.logger.Warn("skip query", "query", query, "gno", b.currentBinlogEntry.Coordinates.GNO)
 					} else {
 						event := common.NewQueryEvent(
 							currentSchemaRename,
@@ -547,7 +545,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 
 					if b.skipQueryDDL(realSchema, tableName) {
 						b.logger.Info("Skip QueryEvent", "currentSchema", currentSchema, "sql", sql,
-							"realSchema", realSchema, "tableName", tableName, "gno", b.currentCoordinates.GNO)
+							"realSchema", realSchema, "tableName", tableName, "gno", b.currentBinlogEntry.Coordinates.GNO)
 					} else {
 						if realSchema != currentSchema {
 							schema = b.findSchema(realSchema)
@@ -655,11 +653,14 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 			}
 		}
 	case replication.XID_EVENT:
+		evt := ev.Event.(*replication.XIDEvent)
 		b.entryContext.SpanContext = span.Context()
 		b.currentCoordinates.LogPos = int64(ev.Header.LogPos)
+		b.currentCoordinates.GtidSet = evt.GSet.String()
 		// TODO is the pos the start or the end of a event?
 		// pos if which event should be use? Do we need +1?
 		b.currentBinlogEntry.Coordinates.LogPos = b.currentCoordinates.LogPos
+
 		b.sendEntry(entriesChannel)
 		b.LastAppliedRowsEventHint = b.currentCoordinates
 	default:
@@ -671,7 +672,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 			skip, table := b.skipRowEvent(rowsEvent, dml)
 			if skip {
 				b.logger.Debug("skip rowsEvent", "schema", schemaName, "table", tableName,
-					"gno", b.currentCoordinates.GNO)
+					"gno", b.currentBinlogEntry.Coordinates.GNO)
 				return nil
 			}
 
@@ -862,7 +863,7 @@ func checkDtleQuery(query string) (string, error) {
 func (b *BinlogReader) setDtleQuery(query string) string {
 	uuidStr := uuid.UUID(b.currentBinlogEntry.Coordinates.SID).String()
 
-	return fmt.Sprintf("/*dtle_gtid1 %v %v %v dtle_gtid*/ %v", b.execCtx.Subject, uuidStr, b.currentCoordinates.GNO, query)
+	return fmt.Sprintf("/*dtle_gtid1 %v %v %v dtle_gtid*/ %v", b.execCtx.Subject, uuidStr, b.currentBinlogEntry.Coordinates.GNO, query)
 }
 
 func (b *BinlogReader) sendEntry(entriesChannel chan<- *common.BinlogEntryContext) {

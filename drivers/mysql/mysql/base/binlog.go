@@ -42,6 +42,22 @@ func (b *BinlogCoordinatesX) IsEmpty() bool {
 	return b.GtidSet == "" && b.LogFile == ""
 }
 
+func (b *BinlogCoordinatesX) CompareFilePos(other *BinlogCoordinatesX) int {
+	if b.LogFile < other.LogFile {
+		return -1
+	} else if b.LogFile == other.LogFile {
+		if  b.LogPos < other.LogPos {
+			return -1
+		} else if b.LogPos == other.LogPos {
+			return 0
+		} else {
+			return 1
+		}
+	} else {
+		return 1
+	}
+}
+
 type GtidItemMap map[uuid.UUID]*GtidItem
 type GtidItem struct {
 	NRow      int

@@ -13,22 +13,6 @@ func (b *BinlogCoordinateTx) GetSid() string {
 	return uuid.UUID(b.SID).String()
 }
 
-func (b *BinlogCoordinateTx) CompareFilePos(other *BinlogCoordinateTx) int {
-	if b.LogFile < other.LogFile {
-		return -1
-	} else if b.LogFile == other.LogFile {
-		if  b.LogPos < other.LogPos {
-			return -1
-		} else if b.LogPos == other.LogPos {
-			return 0
-		} else {
-			return 1
-		}
-	} else {
-		return 1
-	}
-}
-
 func (b *BinlogCoordinateTx) GetGtidForThisTx() string {
 	return fmt.Sprintf("%s:%d", b.GetSid(), b.GNO)
 }
@@ -40,10 +24,8 @@ type BinlogEntryContext struct {
 	OriginalSize  int // size of binlog entry
 }
 
-// NewBinlogEntry creates an empty, ready to go BinlogEntry object
-func NewBinlogEntryAt(coordinates BinlogCoordinateTx) *BinlogEntry {
+func NewBinlogEntry() *BinlogEntry {
 	binlogEntry := &BinlogEntry{
-		Coordinates:  coordinates,
 		Events:       make([]DataEvent, 0),
 	}
 	return binlogEntry
