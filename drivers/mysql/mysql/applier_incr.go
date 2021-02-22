@@ -206,6 +206,7 @@ func (a *ApplierIncr) heterogeneousReplay() {
 
 			if binlogEntry.Coordinates.OSID == a.MySQLServerUuid {
 				a.logger.Debug("skipping a dtle tx.", "osid", binlogEntry.Coordinates.OSID)
+				a.GtidUpdateHook(&binlogEntry.Coordinates) // make gtid continuous
 				continue
 			}
 			// region TestIfExecuted

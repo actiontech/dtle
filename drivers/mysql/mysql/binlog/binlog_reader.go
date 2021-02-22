@@ -471,10 +471,11 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 
 		b.logger.Debug("query event", "schema", currentSchema, "query", query)
 
-		if strings.ToUpper(query) == "BEGIN" {
+		upperQuery := strings.ToUpper(query)
+		if upperQuery == "BEGIN" {
 			b.hasBeginQuery = true
 		} else {
-			if strings.ToUpper(query) == "COMMIT" || !b.hasBeginQuery {
+			if upperQuery == "COMMIT" || !b.hasBeginQuery {
 				osid, err := checkDtleQuery(query)
 				if err != nil {
 					return errors.Wrap(err, "checkDtleQuery")
@@ -483,7 +484,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 				b.currentBinlogEntry.Coordinates.OSID = osid
 
 				if osid == "" {
-					query = b.setDtleQuery(query)
+					query = b.setDtleQuery(query, upperQuery)
 				}
 
 				ddlInfo, err := resolveDDLSQL(currentSchema, query, b.skipQueryDDL)
@@ -860,10 +861,17 @@ func checkDtleQuery(query string) (string, error) {
 
 	return ss[1], nil
 }
-func (b *BinlogReader) setDtleQuery(query string) string {
+func (b *BinlogReader) setDtleQuery(query string, upperQuery string) string {
 	uuidStr := uuid.UUID(b.currentBinlogEntry.Coordinates.SID).String()
+	tag := fmt.Sprintf("/*dtle_gtid1 %v %v %v dtle_gtid*/", b.execCtx.Subject, uuidStr, b.currentBinlogEntry.Coordinates.GNO)
 
-	return fmt.Sprintf("/*dtle_gtid1 %v %v %v dtle_gtid*/ %v", b.execCtx.Subject, uuidStr, b.currentBinlogEntry.Coordinates.GNO, query)
+	if strings.HasPrefix(upperQuery, "CREATE DEFINER=") {
+		if strings.HasSuffix(upperQuery, "END") {
+			return fmt.Sprintf("%v %v END", query[:len(query)-3], tag)
+		}
+	}
+
+	return fmt.Sprintf("%v %v", query, tag)
 }
 
 func (b *BinlogReader) sendEntry(entriesChannel chan<- *common.BinlogEntryContext) {
