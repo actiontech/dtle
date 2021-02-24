@@ -399,6 +399,7 @@ func (e *Extractor) inspectTables() (err error) {
 				schemaRenameRegex := doDb.TableSchemaRename
 				for _, db := range dbs {
 					newdb := &common.DataSource{}
+					*newdb = *doDb
 					reg, err := regexp.Compile(regex)
 					if err != nil {
 						return errors.Wrapf(err, "SchemaRegex %v", regex)
@@ -406,10 +407,9 @@ func (e *Extractor) inspectTables() (err error) {
 					if !reg.MatchString(db) {
 						continue
 					}
-					doDb.TableSchema = db
-						match := reg.FindStringSubmatchIndex(db)
-						doDb.TableSchemaRename = string(reg.ExpandString(nil, schemaRenameRegex, db, match))
-					*newdb = *doDb
+					newdb.TableSchema = db
+					match := reg.FindStringSubmatchIndex(db)
+					newdb.TableSchemaRename = string(reg.ExpandString(nil, schemaRenameRegex, db, match))
 					doDbs = append(doDbs, newdb)
 				}
 				//if doDbs == nil {
@@ -462,13 +462,7 @@ func (e *Extractor) inspectTables() (err error) {
 					var regex string
 					if doTb.TableRegex != "" && doTb.TableRename != "" {
 						regex = doTb.TableRegex
-						/*	var tableRenameRegex string
-							if doTb.TableRenameRegex == "" {*/
 						tableRenameRegex := doTb.TableRename
-						/*} else {
-							tableRenameRegex = doTb.TableRenameRegex
-						}*/
-
 						for _, table := range existedTables {
 							reg, err := regexp.Compile(regex)
 							if err != nil {
