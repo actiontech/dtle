@@ -14,9 +14,7 @@ import (
 type DataSource struct {
 	TableSchema            string
 	TableSchemaRegex       string
-	TableSchemaRenameRegex string
 	TableSchemaRename      string
-	TableSchemaScope       string
 	Tables                 []*Table
 }
 
@@ -28,7 +26,6 @@ type Table struct {
 	TableName         string
 	TableRegex        string
 	TableRename       string
-	TableRenameRegex  string
 	TableSchema       string
 	TableSchemaRename string
 	Counter           int64
