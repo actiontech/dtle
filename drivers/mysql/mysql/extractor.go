@@ -411,9 +411,9 @@ func (e *Extractor) inspectTables() (err error) {
 					*newdb = *doDb
 					doDbs = append(doDbs, newdb)
 				}
-				if doDbs == nil {
-					return fmt.Errorf("src schmea was nil")
-				}
+				//if doDbs == nil {
+				//	return fmt.Errorf("src schmea was nil")
+				//}
 			} else if doDb.TableSchemaRegex == "" { // use doDb.TableSchema
 				doDbs = append(doDbs, doDb)
 			} else {
@@ -480,9 +480,9 @@ func (e *Extractor) inspectTables() (err error) {
 							}
 							db.Tables = append(db.Tables, newTable)
 						}
-						if db.Tables == nil {
-							return fmt.Errorf("src table was nil")
-						}
+						//if db.Tables == nil {
+						//	return fmt.Errorf("src table was nil")
+						//}
 
 					} else if doTb.TableRegex == "" && doTb.TableName != "" {
 						if err := e.inspector.ValidateOriginalTable(doDb.TableSchema, doTb.TableName, doTb); err != nil {
