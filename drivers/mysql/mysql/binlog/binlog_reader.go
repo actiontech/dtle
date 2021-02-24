@@ -541,9 +541,9 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 				if sql != "" {
 					realSchema := common.StringElse(ddlInfo.table.Schema, currentSchema)
 					tableName := ddlInfo.table.Table
-					err = b.checkObjectFitRegexp(b.mysqlContext.ReplicateDoDb, realSchema, tableName)
+					err = b.updateCurrentReplicateDoDb(realSchema, tableName)
 					if err != nil {
-						return errors.Wrap(err, "checkObjectFitRegexp")
+						return errors.Wrap(err, "updateCurrentReplicateDoDb")
 					}
 
 					if b.skipQueryDDL(realSchema, tableName) {
@@ -1389,55 +1389,119 @@ func (b *BinlogReader) updateTableMeta(table *common.Table, realSchema string, t
 	return nil
 }
 
-func (b *BinlogReader) checkObjectFitRegexp(patternTBS []*common.DataSource, schemaName string, tableName string) error {
-
-	for _, schema := range patternTBS {
-		if schema.TableSchema == schemaName && schema.TableSchemaScope == "schemas" {
-			return nil
-		}
+func (b *BinlogReader) updateCurrentReplicateDoDb(schemaName string, tableName string) error {
+	if "" == schemaName {
+		return fmt.Errorf("schema name should not be empty")
 	}
 
-	for i, pdb := range patternTBS {
-		table := &common.Table{}
-		schema := &common.DataSource{}
-		if pdb.TableSchemaScope == "schemas" && pdb.TableSchema != schemaName {
-			// TODO check & compile one time
-			reg, err := regexp.Compile(pdb.TableSchemaRegex)
-			if err != nil {
-				return err
-			}
-			if reg.MatchString(schemaName) {
-				match := reg.FindStringSubmatchIndex(schemaName)
-				schema.TableSchemaRegex = pdb.TableSchemaRegex
-				schema.TableSchema = schemaName
-				schema.TableSchemaScope = "schemas"
-				schema.TableSchemaRename = string(reg.ExpandString(nil, pdb.TableSchemaRenameRegex, schemaName, match))
-				b.mysqlContext.ReplicateDoDb = append(b.mysqlContext.ReplicateDoDb, schema)
-			}
-			break
-		}
-		for _, table := range pdb.Tables {
-			if schema.TableSchema == schemaName && schema.TableSchemaScope == "tables" && table.TableName == tableName {
+	var currentSchemaReplConfig *common.DataSource
+	currentSchema := b.findCurrentSchema(schemaName)
+	currentSchemaReplConfig = b.findSchemaConfig(schemaName)
+	if nil == currentSchema { // update current schema
+		if len(b.mysqlContext.ReplicateDoDb) > 0 {
+			if nil == currentSchemaReplConfig {
+				//  the schema doesn't need to be replicated
 				return nil
 			}
-		}
-		for _, ptb := range pdb.Tables {
-			if pdb.TableSchemaScope == "tables" && ptb.TableName != tableName {
+
+			schemaRename := ""
+			schemaRenameRegex := currentSchemaReplConfig.TableSchemaRename
+			if currentSchemaReplConfig.TableSchema != "" { // match currentSchemaReplConfig.TableSchema and currentSchemaReplConfig.TableSchemaRename
+				schemaRename = currentSchemaReplConfig.TableSchemaRename
+			} else if currentSchemaReplConfig.TableSchemaRegex != "" { // match currentSchemaReplConfig.TableSchemaRegex and currentSchemaReplConfig.TableSchemaRename
 				// TODO check & compile one time
-				reg, err := regexp.Compile(ptb.TableRegex)
+				schemaNameRegex, err := regexp.Compile(currentSchemaReplConfig.TableSchemaRegex)
 				if err != nil {
-					return err
+					return fmt.Errorf("compile TableSchemaRegex %v failed: %v", currentSchemaReplConfig.TableSchemaRegex, err)
 				}
-				if reg.MatchString(tableName) {
-					match := reg.FindStringSubmatchIndex(tableName)
-					table.TableRegex = ptb.TableRegex
-					table.TableName = tableName
-					table.TableRename = string(reg.ExpandString(nil, ptb.TableRenameRegex, tableName, match))
-					b.mysqlContext.ReplicateDoDb[i].Tables = append(b.mysqlContext.ReplicateDoDb[i].Tables, table)
-				}
-				break
+
+				match := schemaNameRegex.FindStringSubmatchIndex(schemaName)
+				schemaRename = string(schemaNameRegex.ExpandString(nil, schemaRenameRegex, schemaName, match))
+
+			} else {
+				return fmt.Errorf("schema configuration error. schemaName=%v ", schemaName)
+			}
+
+			// add schema to currentReplicateDoDb
+			currentSchema = &common.DataSource{
+				TableSchema:      schemaName,
+				TableSchemaRegex: currentSchemaReplConfig.TableSchemaRegex,
+				TableSchemaRename: schemaRename,
+			}
+		} else { // replicate all schemas and tables
+			currentSchema = &common.DataSource{
+				TableSchema: schemaName,
 			}
 		}
+		b.currentReplicateDoDb = append(b.currentReplicateDoDb, currentSchema)
+	}
+
+	if "" == tableName {
+		return nil
+	}
+
+	currentTable := b.findCurrentTable(currentSchema, tableName)
+	if nil != currentTable {
+		// table already exists
+		return nil
+	}
+
+	// update current table
+	var newTable *common.Table
+	if nil != currentSchemaReplConfig && len(currentSchemaReplConfig.Tables) > 0 {
+		currentTableConfig := b.findTableConfig(currentSchemaReplConfig, tableName)
+		if nil == currentTableConfig {
+			// the table doesn't need to be replicated
+			return nil
+		}
+
+		if currentTableConfig.TableName == tableName { // match tableConfig.TableName and tableConfig.TableRename
+			// TODO validateTable. refer to '(i *Inspector) ValidateOriginalTable'
+			newTable = &common.Table{
+				TableName:            tableName,
+				TableRegex:           currentTableConfig.TableRegex,
+				TableRename:          currentTableConfig.TableRename,
+				TableSchema:          schemaName,
+				TableSchemaRename:    currentSchema.TableSchemaRename,
+				ColumnMapFrom:        currentTableConfig.ColumnMapFrom,
+				OriginalTableColumns: nil, //todo
+				UseUniqueKey:         nil, //todo
+				ColumnMap:            nil, //todo
+				TableType:            "",  //todo
+				Where:                currentTableConfig.GetWhere(),
+			}
+		} else if currentTableConfig.TableRegex != "" { // match tableConfig.TableRegex and tableConfig.TableRename
+			// TODO check & compile one time
+			tableNameRegex, err := regexp.Compile(currentTableConfig.TableRegex)
+			if err != nil {
+				return fmt.Errorf("compile TableRegex %v failed: %v", currentTableConfig.TableRegex, err)
+			}
+			// TODO validateTable
+			match := tableNameRegex.FindStringSubmatchIndex(tableName)
+			newTable = &common.Table{
+				TableName:            tableName,
+				TableRegex:           currentTableConfig.TableRegex,
+				TableRename:          string(tableNameRegex.ExpandString(nil, currentTableConfig.TableRename, tableName, match)),
+				TableSchema:          schemaName,
+				TableSchemaRename:    currentSchema.TableSchemaRename,
+				ColumnMapFrom:        currentTableConfig.ColumnMapFrom,
+				OriginalTableColumns: nil, //todo
+				UseUniqueKey:         nil, //todo
+				ColumnMap:            nil, //todo
+				TableType:            "",  //todo
+				Where:                currentTableConfig.GetWhere(),
+			}
+		} else {
+			return fmt.Errorf("table configuration error. schemaName=%v tableName=%v", schemaName, tableName)
+		}
+	} else { // replicate all tables within current schema
+		// TODO validateTable
+		newTable = common.NewTable(schemaName, tableName)
+		newTable.TableSchemaRename = currentSchema.TableSchemaRename
+	}
+
+	if nil != newTable {
+		currentSchema.Tables = append(currentSchema.Tables, newTable)
 	}
 	return nil
 }
@@ -1550,6 +1614,22 @@ func (b *BinlogReader) findCurrentSchema(schemaName string) *common.DataSource {
 	}
 	return nil
 }
+
+func (b *BinlogReader) findSchemaConfig(schemaName string) *common.DataSource {
+	if schemaName == "" {
+		return nil
+	}
+
+	for i := range b.mysqlContext.ReplicateDoDb {
+		if b.mysqlContext.ReplicateDoDb[i].TableSchema == schemaName {
+			return b.mysqlContext.ReplicateDoDb[i]
+		} else if b.mysqlContext.ReplicateDoDb[i].TableSchemaRegex != "" {
+			reg, err := regexp.Compile(b.mysqlContext.ReplicateDoDb[i].TableSchemaRegex)
+			if nil != err {
+				b.logger.Warn("compile regexp failed", "schema", schemaName, "err", err)
+				continue
+			}
+			if reg.MatchString(schemaName) {
 				return b.mysqlContext.ReplicateDoDb[i]
 			}
 		}
@@ -1562,6 +1642,28 @@ func (b *BinlogReader) findCurrentTable(maybeSchema *common.DataSource, tableNam
 		for j := range maybeSchema.Tables {
 			if maybeSchema.Tables[j].TableName == tableName {
 				return maybeSchema.Tables[j]
+			}
+		}
+	}
+	return nil
+}
+
+func (b *BinlogReader) findTableConfig(maybeSchemaConfig *common.DataSource, tableName string) *common.Table {
+	if nil == maybeSchemaConfig {
+		return nil
+	}
+
+	for j := range maybeSchemaConfig.Tables {
+		if maybeSchemaConfig.Tables[j].TableName == tableName {
+			return maybeSchemaConfig.Tables[j]
+		} else if maybeSchemaConfig.Tables[j].TableRegex != "" {
+			reg, err := regexp.Compile(maybeSchemaConfig.Tables[j].TableRegex)
+			if nil != err {
+				b.logger.Warn("compile regexp failed", "schemaName", maybeSchemaConfig.TableSchema, "tableName", tableName, "err", err)
+				continue
+			}
+			if reg.MatchString(tableName) {
+				return maybeSchemaConfig.Tables[j]
 			}
 		}
 	}
