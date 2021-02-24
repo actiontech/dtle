@@ -378,6 +378,10 @@ func (e *Extractor) initiateInspector() (err error) {
 
 func (e *Extractor) inspectTables() (err error) {
 	// Creates a MYSQL Dump based on the options supplied through the dumper.
+	dbs, err := sql.ShowDatabases(e.db)
+	if err != nil {
+		return err
+	}
 	if len(e.mysqlContext.ReplicateDoDb) > 0 {
 		var doDbs []*common.DataSource
 		// Get all db from TableSchemaRegex regex and get all tableSchemaRename
@@ -388,12 +392,7 @@ func (e *Extractor) inspectTables() (err error) {
 			var regex string
 			if doDb.TableSchemaRegex != "" && doDb.TableSchemaRename != "" && doDb.TableSchema == "" {
 				regex = doDb.TableSchemaRegex
-				dbs, err := sql.ShowDatabases(e.db)
-				if err != nil {
-					return err
-				}
 				schemaRenameRegex := doDb.TableSchemaRename
-
 				for _, db := range dbs {
 					newdb := &common.DataSource{}
 					reg, err := regexp.Compile(regex)
@@ -415,7 +414,11 @@ func (e *Extractor) inspectTables() (err error) {
 				//	return fmt.Errorf("src schmea was nil")
 				//}
 			} else if doDb.TableSchemaRegex == "" { // use doDb.TableSchema
-				doDbs = append(doDbs, doDb)
+				for _, db := range dbs {
+					if db == doDb.TableSchema {
+						doDbs = append(doDbs, doDb)
+					}
+				}
 			} else {
 				return fmt.Errorf("TableSchema configuration error")
 			}
@@ -502,10 +505,6 @@ func (e *Extractor) inspectTables() (err error) {
 		}
 		//	e.mysqlContext.ReplicateDoDb = e.replicateDoDb
 	} else { // empty DoDB. replicate all db/tb
-		dbs, err := sql.ShowDatabases(e.db)
-		if err != nil {
-			return err
-		}
 		for _, dbName := range dbs {
 			ds := &common.DataSource{
 				TableSchema:      dbName,
