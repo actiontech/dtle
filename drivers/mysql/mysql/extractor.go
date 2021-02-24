@@ -512,7 +512,7 @@ func (e *Extractor) inspectTables() (err error) {
 			}
 			e.replicateDoDb = append(e.replicateDoDb, db)
 		}
-		e.mysqlContext.ReplicateDoDb = e.replicateDoDb
+		//	e.mysqlContext.ReplicateDoDb = e.replicateDoDb
 	} else { // empty DoDB. replicate all db/tb
 		dbs, err := sql.ShowDatabases(e.db)
 		if err != nil {

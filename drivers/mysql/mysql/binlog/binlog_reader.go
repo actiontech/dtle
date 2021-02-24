@@ -76,7 +76,8 @@ type BinlogReader struct {
 	currentCoordinatesMutex  *sync.Mutex
 	LastAppliedRowsEventHint base.BinlogCoordinatesX
 	// raw config, whose ReplicateDoDB is same as config file (empty-is-all & no dynamically created tables)
-	mysqlContext *common.MySQLDriverConfig
+	mysqlContext         *common.MySQLDriverConfig
+	currentReplicateDoDb []*common.DataSource
 	// dynamic config, include all tables (implicitly assigned or dynamically created)
 	tables map[string](map[string]*common.TableContext)
 
@@ -171,6 +172,7 @@ func NewMySQLReader(execCtx *common.ExecContext, cfg *common.MySQLDriverConfig, 
 		currentCoordinates:      base.BinlogCoordinatesX{},
 		currentCoordinatesMutex: &sync.Mutex{},
 		mysqlContext:            cfg,
+		currentReplicateDoDb:    replicateDoDb,
 		ReMap:                   make(map[string]*regexp.Regexp),
 		shutdownCh:              make(chan struct{}),
 		tables:                  make(map[string](map[string]*common.TableContext)),
@@ -497,7 +499,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 				}
 
 				currentSchemaRename := currentSchema
-				schema := b.findSchema(currentSchema)
+				schema := b.findCurrentSchema(currentSchema)
 				if schema != nil && schema.TableSchemaRename != "" {
 					currentSchemaRename = schema.TableSchemaRename
 				}
@@ -549,9 +551,9 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 							"realSchema", realSchema, "tableName", tableName, "gno", b.currentBinlogEntry.Coordinates.GNO)
 					} else {
 						if realSchema != currentSchema {
-							schema = b.findSchema(realSchema)
+							schema = b.findCurrentSchema(realSchema)
 						}
-						table := b.findTable(schema, tableName)
+						table := b.findCurrentTable(schema, tableName)
 
 						skipEvent = skipBySqlFilter(ddlInfo.ast, b.sqlFilter)
 						switch realAst := ddlInfo.ast.(type) {
@@ -770,7 +772,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 					dmlEvent.TableName = table.Table.TableRename
 					b.logger.Debug("dml table mapping", "from", dmlEvent.TableName, "to", table.Table.TableRename)
 				}
-				schema := b.findSchema(schemaName)
+				schema := b.findCurrentSchema(schemaName)
 				if schema != nil && schema.TableSchemaRename != "" {
 					b.logger.Debug("dml schema mapping", "from", dmlEvent.DatabaseName, "to", schema.TableSchemaRename)
 					dmlEvent.DatabaseName = schema.TableSchemaRename
@@ -1538,17 +1540,24 @@ func (b *BinlogReader) sqleAfterCreateSchema(schema string) {
 		b.maybeSqleContext.LoadTables(schema, nil)
 	}
 }
-func (b *BinlogReader) findSchema(schemaName string) *common.DataSource {
+func (b *BinlogReader) findCurrentSchema(schemaName string) *common.DataSource {
 	if schemaName != "" {
-		for i := range b.mysqlContext.ReplicateDoDb {
-			if b.mysqlContext.ReplicateDoDb[i].TableSchema == schemaName {
+		for i := range b.currentReplicateDoDb {
+			if b.currentReplicateDoDb[i].TableSchema == schemaName {
+				return b.currentReplicateDoDb[i]
+			}
+		}
+	}
+	return nil
+}
 				return b.mysqlContext.ReplicateDoDb[i]
 			}
 		}
 	}
 	return nil
 }
-func (b *BinlogReader) findTable(maybeSchema *common.DataSource, tableName string) *common.Table {
+
+func (b *BinlogReader) findCurrentTable(maybeSchema *common.DataSource, tableName string) *common.Table {
 	if maybeSchema != nil {
 		for j := range maybeSchema.Tables {
 			if maybeSchema.Tables[j].TableName == tableName {
@@ -1563,7 +1572,7 @@ func (b *BinlogReader) generateRenameMaps() (oldSchemaToNewSchema map[string]str
 	oldSchemaToNewSchema = map[string]string{}
 	oldSchemaToTablesRenameMap = map[string]map[string]string{}
 
-	for _, db := range b.mysqlContext.ReplicateDoDb {
+	for _, db := range b.currentReplicateDoDb {
 		if db.TableSchemaRename != "" {
 			oldSchemaToNewSchema[db.TableSchema] = db.TableSchemaRename
 		}
