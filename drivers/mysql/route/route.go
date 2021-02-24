@@ -33,12 +33,12 @@ func buildUrl(path string) string {
 }
 func UpdupJob(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	err := func() (err error) {
-		var oldJob Job
+		var oldJob OldJob
 		if err := decodeBody(r, &oldJob); err != nil {
 			return errors.Wrap(err, "decodeBody")
 		}
 
-		var nomadJobreq NomadJobRegisterRequest
+		var nomadJobreq api.JobRegisterRequest
 		nomadJobreq.Job, err = convertJob(&oldJob)
 		if err != nil {
 			return errors.Wrap(err, "convertJob")
@@ -338,7 +338,7 @@ func StatusPeersRequest(w http.ResponseWriter, r *http.Request, ps httprouter.Pa
 
 }
 
-func convertJob(oldJob *Job) (*api.Job, error) {
+func convertJob(oldJob *OldJob) (*api.Job, error) {
 	// oldJob: Name is optional (can be empty. repeatable). ID is optional (autogen if empty)
 	// newJob: Name is mandatory and unique
 	var jobName string
@@ -398,12 +398,12 @@ func convertJob(oldJob *Job) (*api.Job, error) {
 func ValidateJobRequest(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 
 	var err error
-	var oldJob Job
+	var oldJob OldJob
 	if err := decodeBody(r, &oldJob); err != nil {
 		hclog.Fmt("err ", err)
 	}
 
-	var nomadJobreq NomadJobRegisterRequest
+	var nomadJobreq api.JobRegisterRequest
 	nomadJobreq.Job, err = convertJob(&oldJob)
 	if err != nil {
 		//return errors.Wrap(err, "convertJob")

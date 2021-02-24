@@ -70,6 +70,8 @@ var (
 			hclspec.NewLiteral(`false`)),
 		"log_level": hclspec.NewDefault(hclspec.NewAttr("log_level", "string", false),
 			hclspec.NewLiteral(`"Info"`)),
+		"ui_dir": hclspec.NewDefault(hclspec.NewAttr("ui_dir", "string", false),
+			hclspec.NewLiteral(`""`)),
 	})
 
 	// taskConfigSpec is the hcl specification for the driver config section of
@@ -311,6 +313,7 @@ type DriverConfig struct {
 	StatsCollectionInterval int `codec:"stats_collection_interval"`
 	PublishMetrics bool `codec:"publish_metrics"`
 	LogLevel       string `codec:"log_level"`
+	UiDir          string `codec:"ui_dir"`
 }
 
 func (d *Driver) SetConfig(c *base.Config) (err error) {
