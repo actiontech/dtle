@@ -389,8 +389,12 @@ func (e *Extractor) inspectTables() (err error) {
 			if doDb.TableSchema == "" && doDb.TableSchemaRegex == "" {
 				return fmt.Errorf("TableSchema and TableSchemaRegex cannot both be blank")
 			}
+			if doDb.TableSchema != "" && doDb.TableSchemaRegex != "" {
+				return fmt.Errorf("TableSchema and TableSchemaRegex cannot both be used: doDb.TableSchema=%v, doDb.TableSchemaRegex=%v", doDb.TableSchema, doDb.TableSchemaRegex)
+			}
+
 			var regex string
-			if doDb.TableSchemaRegex != "" && doDb.TableSchemaRename != "" && doDb.TableSchema == "" {
+			if doDb.TableSchemaRegex != "" && doDb.TableSchemaRename != "" {
 				regex = doDb.TableSchemaRegex
 				schemaRenameRegex := doDb.TableSchemaRename
 				for _, db := range dbs {
@@ -403,10 +407,8 @@ func (e *Extractor) inspectTables() (err error) {
 						continue
 					}
 					doDb.TableSchema = db
-					if schemaRenameRegex != "" {
 						match := reg.FindStringSubmatchIndex(db)
 						doDb.TableSchemaRename = string(reg.ExpandString(nil, schemaRenameRegex, db, match))
-					}
 					*newdb = *doDb
 					doDbs = append(doDbs, newdb)
 				}
@@ -448,8 +450,15 @@ func (e *Extractor) inspectTables() (err error) {
 					doTb.TableSchema = doDb.TableSchema
 					doTb.TableSchemaRename = doDb.TableSchemaRename
 
+					if doTb.TableName == "" && doTb.TableRegex == "" {
+						return fmt.Errorf("TableName and TableRegex cannot both be empty")
+					}
+					if doTb.TableName != "" && doTb.TableRegex != "" {
+						return fmt.Errorf("TableName and TableRegex cannot both be used: doTb.TableName=%v, doTb.TableRegex=%v", doTb.TableName, doTb.TableRegex)
+					}
+
 					var regex string
-					if doTb.TableRegex != "" && doTb.TableName == "" && doTb.TableRename != "" {
+					if doTb.TableRegex != "" && doTb.TableRename != "" {
 						regex = doTb.TableRegex
 						tables, err := sql.ShowTables(e.db, doDb.TableSchema, e.mysqlContext.ExpandSyntaxSupport)
 						if err != nil {
@@ -473,12 +482,10 @@ func (e *Extractor) inspectTables() (err error) {
 							newTable := &common.Table{}
 							*newTable = *doTb
 							newTable.TableName = table.TableName
-							if tableRenameRegex != "" {
-								match := reg.FindStringSubmatchIndex(table.TableName)
-								newTable.TableRename = string(reg.ExpandString(nil, tableRenameRegex, table.TableName, match))
-							}
+							match := reg.FindStringSubmatchIndex(table.TableName)
+							newTable.TableRename = string(reg.ExpandString(nil, tableRenameRegex, table.TableName, match))
 							if err := e.inspector.ValidateOriginalTable(doDb.TableSchema, table.TableName, newTable); err != nil {
-								e.logger.Warn("ValidateOriginalTable error", "err", err)
+								e.logger.Warn("ValidateOriginalTable error", "TableSchema", doDb.TableSchema, "TableName", doTb.TableName, "err", err)
 								continue
 							}
 							db.Tables = append(db.Tables, newTable)
@@ -487,10 +494,10 @@ func (e *Extractor) inspectTables() (err error) {
 						//	return fmt.Errorf("src table was nil")
 						//}
 
-					} else if doTb.TableRegex == "" && doTb.TableName != "" {
 						if err := e.inspector.ValidateOriginalTable(doDb.TableSchema, doTb.TableName, doTb); err != nil {
 							e.logger.Warn("ValidateOriginalTable error", "err", err)
 							continue
+					} else if doTb.TableRegex == "" {
 						}
 						newTable := &common.Table{}
 						*newTable = *doTb
@@ -523,7 +530,7 @@ func (e *Extractor) inspectTables() (err error) {
 					continue
 				}
 				if err := e.inspector.ValidateOriginalTable(dbName, tb.TableName, tb); err != nil {
-					e.logger.Warn("ValidateOriginalTable error", "err", err)
+					e.logger.Warn("ValidateOriginalTable error", "TableSchema", dbName, "TableName", tb.TableName, "err", err)
 					continue
 				}
 
