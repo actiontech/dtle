@@ -44,10 +44,10 @@ import (
 
 const (
 	ReconnectStreamerSleepSeconds = 5
-	SCHEMAS                       = "schemas"
-	SCHEMA                        = "schema"
-	TABLES                        = "tables"
-	TABLE                         = "table"
+	//SCHEMAS                       = "schemas"
+	//SCHEMA                        = "schema"
+	//TABLES                        = "tables"
+	//TABLE                         = "table"
 )
 
 // Extractor is the main schema extract flow manager.
@@ -408,9 +408,7 @@ func (e *Extractor) inspectTables() (err error) {
 						continue
 					}
 					doDb.TableSchema = db
-					doDb.TableSchemaScope = SCHEMAS
 					if schemaRenameRegex != "" {
-						doDb.TableSchemaRenameRegex = schemaRenameRegex
 						match := reg.FindStringSubmatchIndex(db)
 						doDb.TableSchemaRename = string(reg.ExpandString(nil, schemaRenameRegex, db, match))
 					}
@@ -421,7 +419,6 @@ func (e *Extractor) inspectTables() (err error) {
 					return fmt.Errorf("src schmea was nil")
 				}
 			} else if doDb.TableSchemaRegex == "" { // use doDb.TableSchema
-				doDb.TableSchemaScope = SCHEMA
 				doDbs = append(doDbs, doDb)
 			} else {
 				return fmt.Errorf("TableSchema configuration error")
@@ -432,8 +429,6 @@ func (e *Extractor) inspectTables() (err error) {
 				TableSchema:            doDb.TableSchema,
 				TableSchemaRegex:       doDb.TableSchemaRegex,
 				TableSchemaRename:      doDb.TableSchemaRename,
-				TableSchemaScope:       doDb.TableSchemaScope,
-				TableSchemaRenameRegex: doDb.TableSchemaRenameRegex,
 			}
 			if len(doDb.Tables) == 0 { // replicate all tables
 				tbs, err := sql.ShowTables(e.db, doDb.TableSchema, e.mysqlContext.ExpandSyntaxSupport)
@@ -457,7 +452,6 @@ func (e *Extractor) inspectTables() (err error) {
 					var regex string
 					if doTb.TableRegex != "" && doTb.TableName == "" && doTb.TableRename != "" {
 						regex = doTb.TableRegex
-						db.TableSchemaScope = TABLES
 						tables, err := sql.ShowTables(e.db, doDb.TableSchema, e.mysqlContext.ExpandSyntaxSupport)
 						if err != nil {
 							return err
@@ -481,7 +475,6 @@ func (e *Extractor) inspectTables() (err error) {
 							*newTable = *doTb
 							newTable.TableName = table.TableName
 							if tableRenameRegex != "" {
-								newTable.TableRenameRegex = tableRenameRegex
 								match := reg.FindStringSubmatchIndex(table.TableName)
 								newTable.TableRename = string(reg.ExpandString(nil, tableRenameRegex, table.TableName, match))
 							}
@@ -503,7 +496,6 @@ func (e *Extractor) inspectTables() (err error) {
 						newTable := &common.Table{}
 						*newTable = *doTb
 						db.Tables = append(db.Tables, newTable)
-						db.TableSchemaScope = TABLE
 					} else {
 						return fmt.Errorf("table configuration error")
 					}
@@ -521,7 +513,6 @@ func (e *Extractor) inspectTables() (err error) {
 		for _, dbName := range dbs {
 			ds := &common.DataSource{
 				TableSchema:      dbName,
-				TableSchemaScope: SCHEMA,
 			}
 			if len(e.mysqlContext.ReplicateIgnoreDb) > 0 && e.ignoreDb(dbName) {
 				continue

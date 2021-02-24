@@ -1298,29 +1298,38 @@ func (b *BinlogReader) matchString(pattern string, t string) bool {
 }
 
 func (b *BinlogReader) matchTable(patternTBS []*common.DataSource, schemaName string, tableName string) bool {
+	if schemaName == "" {
+		return false
+	}
+
 	for _, pdb := range patternTBS {
-		if pdb.TableSchemaScope == "schema" && pdb.TableSchema == schemaName {
+		if pdb.TableSchema == "" && pdb.TableSchemaRegex == "" { // invalid pattern
+			continue
+		}
+		if pdb.TableSchema != "" && pdb.TableSchema != schemaName {
+			continue
+		}
+		if pdb.TableSchemaRegex != "" {
+			reg := regexp.MustCompile(pdb.TableSchemaRegex)
+			if !reg.MatchString(schemaName) {
+				continue
+			}
+		}
+
+		if tableName == "" {
 			return true
 		}
-		if pdb.TableSchemaScope == "schemas" {
-			reg := regexp.MustCompile(pdb.TableSchemaRegex)
-			if reg.MatchString(schemaName) {
-				return true
-			}
-		}
+
 		for _, ptb := range pdb.Tables {
-			//create database or drop database
-			if tableName == "" {
-				if schemaName == pdb.TableSchema {
-					return true
-				}
+			if ptb.TableName == "" && ptb.TableRegex == "" { // invalid pattern
+				continue
 			}
-			if ptb.TableSchema == schemaName && ptb.TableName == tableName {
+			if ptb.TableName != "" && ptb.TableName == tableName {
 				return true
 			}
-			if pdb.TableSchemaScope == "tables" {
+			if ptb.TableRegex != "" {
 				reg := regexp.MustCompile(ptb.TableRegex)
-				if reg.MatchString(tableName) && ptb.TableSchema == schemaName {
+				if reg.MatchString(tableName) {
 					return true
 				}
 			}
