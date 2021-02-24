@@ -431,16 +431,18 @@ func (e *Extractor) inspectTables() (err error) {
 		}
 		for _, doDb := range doDbs {
 			db := &common.DataSource{
-				TableSchema:            doDb.TableSchema,
-				TableSchemaRegex:       doDb.TableSchemaRegex,
-				TableSchemaRename:      doDb.TableSchemaRename,
+				TableSchema:       doDb.TableSchema,
+				TableSchemaRegex:  doDb.TableSchemaRegex,
+				TableSchemaRename: doDb.TableSchemaRename,
 			}
+
+			existedTables, err := sql.ShowTables(e.db, doDb.TableSchema, e.mysqlContext.ExpandSyntaxSupport)
+			if err != nil {
+				return err
+			}
+
 			if len(doDb.Tables) == 0 { // replicate all tables
-				tbs, err := sql.ShowTables(e.db, doDb.TableSchema, e.mysqlContext.ExpandSyntaxSupport)
-				if err != nil {
-					return err
-				}
-				for _, doTb := range tbs {
+				for _, doTb := range existedTables {
 					doTb.TableSchema = doDb.TableSchema
 					doTb.TableSchemaRename = doDb.TableSchemaRename
 					if err := e.inspector.ValidateOriginalTable(doDb.TableSchema, doTb.TableName, doTb); err != nil {
@@ -464,10 +466,6 @@ func (e *Extractor) inspectTables() (err error) {
 					var regex string
 					if doTb.TableRegex != "" && doTb.TableRename != "" {
 						regex = doTb.TableRegex
-						tables, err := sql.ShowTables(e.db, doDb.TableSchema, e.mysqlContext.ExpandSyntaxSupport)
-						if err != nil {
-							return err
-						}
 						/*	var tableRenameRegex string
 							if doTb.TableRenameRegex == "" {*/
 						tableRenameRegex := doTb.TableRename
@@ -475,7 +473,7 @@ func (e *Extractor) inspectTables() (err error) {
 							tableRenameRegex = doTb.TableRenameRegex
 						}*/
 
-						for _, table := range tables {
+						for _, table := range existedTables {
 							reg, err := regexp.Compile(regex)
 							if err != nil {
 								return errors.Wrapf(err, "TableRegex %v", regex)
@@ -498,14 +496,19 @@ func (e *Extractor) inspectTables() (err error) {
 						//	return fmt.Errorf("src table was nil")
 						//}
 
-						if err := e.inspector.ValidateOriginalTable(doDb.TableSchema, doTb.TableName, doTb); err != nil {
-							e.logger.Warn("ValidateOriginalTable error", "err", err)
-							continue
 					} else if doTb.TableRegex == "" {
+						for _, existedTable := range existedTables {
+							if existedTable.TableName != doTb.TableName {
+								continue
+							}
+							if err := e.inspector.ValidateOriginalTable(doDb.TableSchema, doTb.TableName, doTb); err != nil {
+								e.logger.Warn("ValidateOriginalTable error", "TableSchema", doDb.TableSchema, "TableName", doTb.TableName, "err", err)
+								continue
+							}
+							newTable := &common.Table{}
+							*newTable = *doTb
+							db.Tables = append(db.Tables, newTable)
 						}
-						newTable := &common.Table{}
-						*newTable = *doTb
-						db.Tables = append(db.Tables, newTable)
 					} else {
 						return fmt.Errorf("table configuration error")
 					}
@@ -518,7 +521,7 @@ func (e *Extractor) inspectTables() (err error) {
 	} else { // empty DoDB. replicate all db/tb
 		for _, dbName := range dbs {
 			ds := &common.DataSource{
-				TableSchema:      dbName,
+				TableSchema: dbName,
 			}
 			if len(e.mysqlContext.ReplicateIgnoreDb) > 0 && e.ignoreDb(dbName) {
 				continue
