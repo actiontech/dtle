@@ -26,6 +26,8 @@ import (
 	stand "github.com/nats-io/nats-streaming-server/server"
 	"net"
 	"net/http"
+
+	"github.com/NYTimes/gziphandler"
 )
 
 const (
@@ -267,8 +269,16 @@ func (d *Driver) SetupApiServer(logger hclog.Logger) (err error)  {
 	/*router.POST("/v1/job/renewal",updupJob)
 	router.POST("/v1/job/info",updupJob)
 	*/
+
+	mux := http.NewServeMux()
+	mux.Handle("/v1/", router)
+
+	if d.config.UiDir != "" {
+		d.logger.Info("found ui_dir", "dir", d.config.UiDir)
+		mux.Handle("/", http.StripPrefix("/", http.FileServer(http.Dir(d.config.UiDir))))
+	}
 	go func() {
-		err := http.ListenAndServe(d.config.ApiAddr, router)
+		err := http.ListenAndServe(d.config.ApiAddr, gziphandler.GzipHandler(mux))
 		if err != nil {
 			logger.Error("in SetupApiServer ListenAndServe", "err", err)
 			// TODO mark plugin unhealthy
