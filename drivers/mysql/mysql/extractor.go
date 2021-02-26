@@ -44,10 +44,6 @@ import (
 
 const (
 	ReconnectStreamerSleepSeconds = 5
-	SCHEMAS                       = "schemas"
-	SCHEMA                        = "schema"
-	TABLES                        = "tables"
-	TABLE                         = "table"
 )
 
 // Extractor is the main schema extract flow manager.
@@ -382,6 +378,10 @@ func (e *Extractor) initiateInspector() (err error) {
 
 func (e *Extractor) inspectTables() (err error) {
 	// Creates a MYSQL Dump based on the options supplied through the dumper.
+	dbs, err := sql.ShowDatabases(e.db)
+	if err != nil {
+		return err
+	}
 	if len(e.mysqlContext.ReplicateDoDb) > 0 {
 		var doDbs []*common.DataSource
 		// Get all db from TableSchemaRegex regex and get all tableSchemaRename
@@ -389,17 +389,17 @@ func (e *Extractor) inspectTables() (err error) {
 			if doDb.TableSchema == "" && doDb.TableSchemaRegex == "" {
 				return fmt.Errorf("TableSchema and TableSchemaRegex cannot both be blank")
 			}
-			var regex string
-			if doDb.TableSchemaRegex != "" && doDb.TableSchemaRename != "" && doDb.TableSchema == "" {
-				regex = doDb.TableSchemaRegex
-				dbs, err := sql.ShowDatabases(e.db)
-				if err != nil {
-					return err
-				}
-				schemaRenameRegex := doDb.TableSchemaRename
+			if doDb.TableSchema != "" && doDb.TableSchemaRegex != "" {
+				return fmt.Errorf("TableSchema and TableSchemaRegex cannot both be used: doDb.TableSchema=%v, doDb.TableSchemaRegex=%v", doDb.TableSchema, doDb.TableSchemaRegex)
+			}
 
+			var regex string
+			if doDb.TableSchemaRegex != "" && doDb.TableSchemaRename != "" {
+				regex = doDb.TableSchemaRegex
+				schemaRenameRegex := doDb.TableSchemaRename
 				for _, db := range dbs {
 					newdb := &common.DataSource{}
+					*newdb = *doDb
 					reg, err := regexp.Compile(regex)
 					if err != nil {
 						return errors.Wrapf(err, "SchemaRegex %v", regex)
@@ -407,40 +407,38 @@ func (e *Extractor) inspectTables() (err error) {
 					if !reg.MatchString(db) {
 						continue
 					}
-					doDb.TableSchema = db
-					doDb.TableSchemaScope = SCHEMAS
-					if schemaRenameRegex != "" {
-						doDb.TableSchemaRenameRegex = schemaRenameRegex
-						match := reg.FindStringSubmatchIndex(db)
-						doDb.TableSchemaRename = string(reg.ExpandString(nil, schemaRenameRegex, db, match))
-					}
-					*newdb = *doDb
+					newdb.TableSchema = db
+					match := reg.FindStringSubmatchIndex(db)
+					newdb.TableSchemaRename = string(reg.ExpandString(nil, schemaRenameRegex, db, match))
 					doDbs = append(doDbs, newdb)
 				}
-				if doDbs == nil {
-					return fmt.Errorf("src schmea was nil")
-				}
+				//if doDbs == nil {
+				//	return fmt.Errorf("src schmea was nil")
+				//}
 			} else if doDb.TableSchemaRegex == "" { // use doDb.TableSchema
-				doDb.TableSchemaScope = SCHEMA
-				doDbs = append(doDbs, doDb)
+				for _, db := range dbs {
+					if db == doDb.TableSchema {
+						doDbs = append(doDbs, doDb)
+					}
+				}
 			} else {
 				return fmt.Errorf("TableSchema configuration error")
 			}
 		}
 		for _, doDb := range doDbs {
 			db := &common.DataSource{
-				TableSchema:            doDb.TableSchema,
-				TableSchemaRegex:       doDb.TableSchemaRegex,
-				TableSchemaRename:      doDb.TableSchemaRename,
-				TableSchemaScope:       doDb.TableSchemaScope,
-				TableSchemaRenameRegex: doDb.TableSchemaRenameRegex,
+				TableSchema:       doDb.TableSchema,
+				TableSchemaRegex:  doDb.TableSchemaRegex,
+				TableSchemaRename: doDb.TableSchemaRename,
 			}
+
+			existedTables, err := sql.ShowTables(e.db, doDb.TableSchema, e.mysqlContext.ExpandSyntaxSupport)
+			if err != nil {
+				return err
+			}
+
 			if len(doDb.Tables) == 0 { // replicate all tables
-				tbs, err := sql.ShowTables(e.db, doDb.TableSchema, e.mysqlContext.ExpandSyntaxSupport)
-				if err != nil {
-					return err
-				}
-				for _, doTb := range tbs {
+				for _, doTb := range existedTables {
 					doTb.TableSchema = doDb.TableSchema
 					doTb.TableSchemaRename = doDb.TableSchemaRename
 					if err := e.inspector.ValidateOriginalTable(doDb.TableSchema, doTb.TableName, doTb); err != nil {
@@ -454,22 +452,18 @@ func (e *Extractor) inspectTables() (err error) {
 					doTb.TableSchema = doDb.TableSchema
 					doTb.TableSchemaRename = doDb.TableSchemaRename
 
-					var regex string
-					if doTb.TableRegex != "" && doTb.TableName == "" && doTb.TableRename != "" {
-						regex = doTb.TableRegex
-						db.TableSchemaScope = TABLES
-						tables, err := sql.ShowTables(e.db, doDb.TableSchema, e.mysqlContext.ExpandSyntaxSupport)
-						if err != nil {
-							return err
-						}
-						/*	var tableRenameRegex string
-							if doTb.TableRenameRegex == "" {*/
-						tableRenameRegex := doTb.TableRename
-						/*} else {
-							tableRenameRegex = doTb.TableRenameRegex
-						}*/
+					if doTb.TableName == "" && doTb.TableRegex == "" {
+						return fmt.Errorf("TableName and TableRegex cannot both be empty")
+					}
+					if doTb.TableName != "" && doTb.TableRegex != "" {
+						return fmt.Errorf("TableName and TableRegex cannot both be used: doTb.TableName=%v, doTb.TableRegex=%v", doTb.TableName, doTb.TableRegex)
+					}
 
-						for _, table := range tables {
+					var regex string
+					if doTb.TableRegex != "" && doTb.TableRename != "" {
+						regex = doTb.TableRegex
+						tableRenameRegex := doTb.TableRename
+						for _, table := range existedTables {
 							reg, err := regexp.Compile(regex)
 							if err != nil {
 								return errors.Wrapf(err, "TableRegex %v", regex)
@@ -480,30 +474,31 @@ func (e *Extractor) inspectTables() (err error) {
 							newTable := &common.Table{}
 							*newTable = *doTb
 							newTable.TableName = table.TableName
-							if tableRenameRegex != "" {
-								newTable.TableRenameRegex = tableRenameRegex
-								match := reg.FindStringSubmatchIndex(table.TableName)
-								newTable.TableRename = string(reg.ExpandString(nil, tableRenameRegex, table.TableName, match))
-							}
+							match := reg.FindStringSubmatchIndex(table.TableName)
+							newTable.TableRename = string(reg.ExpandString(nil, tableRenameRegex, table.TableName, match))
 							if err := e.inspector.ValidateOriginalTable(doDb.TableSchema, table.TableName, newTable); err != nil {
-								e.logger.Warn("ValidateOriginalTable error", "err", err)
+								e.logger.Warn("ValidateOriginalTable error", "TableSchema", doDb.TableSchema, "TableName", doTb.TableName, "err", err)
 								continue
 							}
 							db.Tables = append(db.Tables, newTable)
 						}
-						if db.Tables == nil {
-							return fmt.Errorf("src table was nil")
-						}
+						//if db.Tables == nil {
+						//	return fmt.Errorf("src table was nil")
+						//}
 
-					} else if doTb.TableRegex == "" && doTb.TableName != "" {
-						if err := e.inspector.ValidateOriginalTable(doDb.TableSchema, doTb.TableName, doTb); err != nil {
-							e.logger.Warn("ValidateOriginalTable error", "err", err)
-							continue
+					} else if doTb.TableRegex == "" {
+						for _, existedTable := range existedTables {
+							if existedTable.TableName != doTb.TableName {
+								continue
+							}
+							if err := e.inspector.ValidateOriginalTable(doDb.TableSchema, doTb.TableName, doTb); err != nil {
+								e.logger.Warn("ValidateOriginalTable error", "TableSchema", doDb.TableSchema, "TableName", doTb.TableName, "err", err)
+								continue
+							}
+							newTable := &common.Table{}
+							*newTable = *doTb
+							db.Tables = append(db.Tables, newTable)
 						}
-						newTable := &common.Table{}
-						*newTable = *doTb
-						db.Tables = append(db.Tables, newTable)
-						db.TableSchemaScope = TABLE
 					} else {
 						return fmt.Errorf("table configuration error")
 					}
@@ -512,16 +507,11 @@ func (e *Extractor) inspectTables() (err error) {
 			}
 			e.replicateDoDb = append(e.replicateDoDb, db)
 		}
-		e.mysqlContext.ReplicateDoDb = e.replicateDoDb
+		//	e.mysqlContext.ReplicateDoDb = e.replicateDoDb
 	} else { // empty DoDB. replicate all db/tb
-		dbs, err := sql.ShowDatabases(e.db)
-		if err != nil {
-			return err
-		}
 		for _, dbName := range dbs {
 			ds := &common.DataSource{
-				TableSchema:      dbName,
-				TableSchemaScope: SCHEMA,
+				TableSchema: dbName,
 			}
 			if len(e.mysqlContext.ReplicateIgnoreDb) > 0 && e.ignoreDb(dbName) {
 				continue
@@ -537,7 +527,7 @@ func (e *Extractor) inspectTables() (err error) {
 					continue
 				}
 				if err := e.inspector.ValidateOriginalTable(dbName, tb.TableName, tb); err != nil {
-					e.logger.Warn("ValidateOriginalTable error", "err", err)
+					e.logger.Warn("ValidateOriginalTable error", "TableSchema", dbName, "TableName", tb.TableName, "err", err)
 					continue
 				}
 
