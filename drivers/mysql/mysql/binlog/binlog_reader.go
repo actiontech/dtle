@@ -1316,7 +1316,7 @@ func (b *BinlogReader) matchTable(patternTBS []*common.DataSource, schemaName st
 			}
 		}
 
-		if tableName == "" {
+		if tableName == "" || len(pdb.Tables) == 0 { // match all tables within the db if length of pdb.Tables is 0
 			return true
 		}
 
@@ -1334,8 +1334,8 @@ func (b *BinlogReader) matchTable(patternTBS []*common.DataSource, schemaName st
 				}
 			}
 		}
+		return false
 	}
-
 	return false
 }
 
