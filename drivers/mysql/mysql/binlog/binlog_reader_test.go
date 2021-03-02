@@ -526,3 +526,119 @@ func Test_matchTable(t *testing.T) {
 		})
 	}
 }
+
+func Test_skipSchemaOrTable(t *testing.T) {
+	rawReplicateDoDb := []*common.DataSource{
+		{
+			TableSchema: "db1",
+			Tables: []*common.Table{
+				{
+					TableName: "tb1",
+				},
+			},
+		},
+		{
+			TableSchema: "db2",
+		},
+	}
+
+	rawReplicateIgnoreDb := []*common.DataSource{
+		{
+			TableSchema: "db1",
+			Tables: []*common.Table{
+				{
+					TableName: "tb1",
+				},
+			},
+		},
+		{
+			TableSchema: "db2",
+			Tables: []*common.Table{
+				{
+					TableName: "tb-skip",
+				},
+			},
+		},
+		{
+			TableSchema: "db3",
+		},
+	}
+
+	type args struct {
+		schemaName string
+		tableName  string
+	}
+	tests := []struct {
+		name       string
+		args       args
+		wantResult bool
+	}{
+		{
+			name: "match-schema",
+			args: args{
+				schemaName: "db1",
+			},
+			wantResult: false,
+		},
+		{
+			name: "match-schema",
+			args: args{
+				schemaName: "db2",
+			},
+			wantResult: false,
+		},
+		{
+			name: "skip-schema",
+			args: args{
+				schemaName: "db3",
+			},
+			wantResult: true,
+		},
+		{
+			name: "match-table",
+			args: args{
+				schemaName: "db1",
+				tableName:  "tb1",
+			},
+			wantResult: false,
+		},
+		{
+			name: "match-table",
+			args: args{
+				schemaName: "db2",
+				tableName:  "tb1",
+			},
+			wantResult: false,
+		},
+		{
+			name: "skip-table",
+			args: args{
+				schemaName: "db2",
+				tableName:  "tb-skip",
+			},
+			wantResult: true,
+		},
+		{
+			name: "skip-table",
+			args: args{
+				schemaName: "db3",
+				tableName:  "tb-skip",
+			},
+			wantResult: true,
+		},
+	}
+
+	binlogReader := &BinlogReader{
+		mysqlContext: &common.MySQLDriverConfig{},
+	}
+	binlogReader.mysqlContext.ReplicateIgnoreDb = rawReplicateIgnoreDb
+	binlogReader.mysqlContext.ReplicateDoDb = rawReplicateDoDb
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			res := binlogReader.skipSchemaOrTable(tt.args.schemaName, tt.args.tableName)
+			if res != tt.wantResult {
+				t.Errorf("skipSchemaOrTable() gotResult = %v, want %v", res, tt.wantResult)
+			}
+		})
+	}
+}
