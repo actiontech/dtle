@@ -1176,14 +1176,29 @@ func (b *BinlogReader) skipQueryDDL(schema string, tableName string) bool {
 	case "sys", "information_schema", "performance_schema", g.DtleSchemaName:
 		return true
 	default:
-		if len(b.mysqlContext.ReplicateDoDb) > 0 {
-			return !b.matchTable(b.mysqlContext.ReplicateDoDb, schema, tableName)
-		}
-		if len(b.mysqlContext.ReplicateIgnoreDb) > 0 {
-			return b.matchTable(b.mysqlContext.ReplicateIgnoreDb, schema, tableName)
-		}
-		return false
+		return b.skipSchemaOrTable(schema, tableName)
 	}
+}
+
+func (b *BinlogReader) skipSchemaOrTable(schemaName, tableName string) bool {
+	if len(b.mysqlContext.ReplicateDoDb) > 0 { // replicate specified schema
+		schemaConfig := b.findSchemaConfig(b.mysqlContext.ReplicateDoDb, schemaName)
+		if nil == schemaConfig {
+			return true
+		}
+		if tableName == "" { // match schema
+			return false
+		}
+
+		if len(schemaConfig.Tables) > 0 { // skip the table if it isn't specified in replicateDoDb config
+			return nil == b.findTableConfig(schemaConfig, tableName)
+		} else { // ignore table specified in ReplicateIgnoreDb if there is no table specified in replicateDoDb config
+			return b.matchTable(b.mysqlContext.ReplicateIgnoreDb, schemaName, tableName)
+		}
+	} else if len(b.mysqlContext.ReplicateIgnoreDb) > 0 { // replicate all schemas and tables except schema and table specified in ReplicateIgnoreDb
+		return b.matchTable(b.mysqlContext.ReplicateIgnoreDb, schemaName, tableName)
+	}
+	return false
 }
 
 func isExpandSyntaxQuery(sql string) bool {
@@ -1253,41 +1268,21 @@ func (b *BinlogReader) skipRowEvent(rowsEvent *replication.RowsEvent, dml int8) 
 	case "sys", "information_schema", "performance_schema":
 		return true, nil
 	default:
-		if len(b.tables) > 0 {
-			//if table in tartget Table, do this event
-			for schemaName, tableMap := range b.tables {
-				if b.matchString(schemaName, string(rowsEvent.Table.Schema)) || schemaName == "" {
-					if len(tableMap) == 0 {
-						return false, nil // TODO not skipping but TableContext
-					}
-					for tableName, tableCtx := range tableMap {
-						if b.matchString(tableName, tableOrigin) {
-							return false, tableCtx
-						}
+		//if table in tartget Table, do this event
+		for schemaName, tableMap := range b.tables {
+			if b.matchString(schemaName, string(rowsEvent.Table.Schema)) || schemaName == "" {
+				if len(tableMap) == 0 {
+					return false, nil // TODO not skipping but TableContext
+				}
+				for tableName, tableCtx := range tableMap {
+					if b.matchString(tableName, tableOrigin) {
+						return false, tableCtx
 					}
 				}
 			}
-			return true, nil
 		}
-		if len(b.mysqlContext.ReplicateIgnoreDb) > 0 {
-			table := strings.ToLower(string(rowsEvent.Table.Table))
-			//if table in tartget Table, do this event
-			for _, d := range b.mysqlContext.ReplicateIgnoreDb {
-				if b.matchString(d.TableSchema, string(rowsEvent.Table.Schema)) || d.TableSchema == "" {
-					if len(d.Tables) == 0 {
-						return true, nil
-					}
-					for _, dt := range d.Tables {
-						if b.matchString(dt.TableName, table) {
-							return true, nil
-						}
-					}
-				}
-			}
-			return false, nil
-		}
+		return true, nil
 	}
-	return false, nil
 }
 
 func (b *BinlogReader) matchString(pattern string, t string) bool {
@@ -1405,7 +1400,7 @@ func (b *BinlogReader) updateCurrentReplicateDoDb(schemaName string, tableName s
 
 	var currentSchemaReplConfig *common.DataSource
 	currentSchema := b.findCurrentSchema(schemaName)
-	currentSchemaReplConfig = b.findSchemaConfig(schemaName)
+	currentSchemaReplConfig = b.findSchemaConfig(b.mysqlContext.ReplicateDoDb, schemaName)
 	if nil == currentSchema { // update current schema
 		if len(b.mysqlContext.ReplicateDoDb) > 0 {
 			if nil == currentSchemaReplConfig {
@@ -1624,22 +1619,22 @@ func (b *BinlogReader) findCurrentSchema(schemaName string) *common.DataSource {
 	return nil
 }
 
-func (b *BinlogReader) findSchemaConfig(schemaName string) *common.DataSource {
+func (b *BinlogReader) findSchemaConfig(schemaConfigs []*common.DataSource, schemaName string) *common.DataSource {
 	if schemaName == "" {
 		return nil
 	}
 
-	for i := range b.mysqlContext.ReplicateDoDb {
-		if b.mysqlContext.ReplicateDoDb[i].TableSchema == schemaName {
-			return b.mysqlContext.ReplicateDoDb[i]
-		} else if b.mysqlContext.ReplicateDoDb[i].TableSchemaRegex != "" {
-			reg, err := regexp.Compile(b.mysqlContext.ReplicateDoDb[i].TableSchemaRegex)
+	for i := range schemaConfigs {
+		if schemaConfigs[i].TableSchema == schemaName {
+			return schemaConfigs[i]
+		} else if schemaConfigs[i].TableSchemaRegex != "" {
+			reg, err := regexp.Compile(schemaConfigs[i].TableSchemaRegex)
 			if nil != err {
 				b.logger.Warn("compile regexp failed", "schema", schemaName, "err", err)
 				continue
 			}
 			if reg.MatchString(schemaName) {
-				return b.mysqlContext.ReplicateDoDb[i]
+				return schemaConfigs[i]
 			}
 		}
 	}

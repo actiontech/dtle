@@ -445,6 +445,9 @@ func (e *Extractor) inspectTables() (err error) {
 						e.logger.Warn("ValidateOriginalTable error", "err", err)
 						continue
 					}
+					if len(e.mysqlContext.ReplicateIgnoreDb) > 0 && e.ignoreTb(doTb.TableSchema, doTb.TableName) {
+						continue
+					}
 					db.Tables = append(db.Tables, doTb)
 				}
 			} else { // replicate selected tables
