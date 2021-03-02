@@ -4,6 +4,7 @@ go 1.12
 
 require (
 	github.com/LK4D4/joincontext v0.0.0-20171026170139-1724345da6d5 // indirect
+	github.com/NYTimes/gziphandler v1.1.1
 	github.com/Shopify/sarama v1.26.4
 	github.com/araddon/dateparse v0.0.0-20190622164848-0fb0a474d195 // indirect
 	github.com/araddon/gou v0.0.0-20190110011759-c797efecbb61 // indirect
@@ -23,9 +24,9 @@ require (
 	github.com/hashicorp/consul/api v1.4.0 // indirect
 	github.com/hashicorp/go-hclog v0.12.1
 	github.com/hashicorp/go-immutable-radix v1.2.0 // indirect
-	github.com/hashicorp/go-multierror v1.0.0
+	github.com/hashicorp/go-multierror v1.0.0 // indirect
 	github.com/hashicorp/go-plugin v1.2.0 // indirect
-	github.com/hashicorp/go-version v1.2.0
+	github.com/hashicorp/go-version v1.2.0 // indirect
 	github.com/hashicorp/golang-lru v0.5.4 // indirect
 	github.com/hashicorp/hcl2 v0.0.0-20191002203319-fb75b3253c80 // indirect
 	github.com/hashicorp/nomad v0.10.4
@@ -36,7 +37,7 @@ require (
 	github.com/julienschmidt/httprouter v1.2.0
 	github.com/lytics/datemath v0.0.0-20180727225141-3ada1c10b5de // indirect
 	github.com/mb0/glob v0.0.0-20160210091149-1eb79d2de6c4 // indirect
-	github.com/mitchellh/copystructure v1.0.0
+	github.com/mitchellh/copystructure v1.0.0 // indirect
 	github.com/mitchellh/mapstructure v1.1.2 // indirect
 	github.com/nats-io/go-nats v1.7.2
 	github.com/nats-io/nats-server/v2 v2.1.6
