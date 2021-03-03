@@ -22,6 +22,28 @@ func (d *DataSource) String() string {
 	return fmt.Sprintf(d.TableSchema)
 }
 
+func IgnoreDbByReplicateIgnoreDb(replicateIgnoreDb []*DataSource, dbName string) bool {
+	for _, ignoreDb := range replicateIgnoreDb {
+		if ignoreDb.TableSchema == dbName && len(ignoreDb.Tables) == 0 {
+			return true
+		}
+	}
+	return false
+}
+
+func IgnoreTbByReplicateIgnoreDb(replicateIgnoreDb []*DataSource, dbName, tbName string) bool {
+	for _, ignoreDb := range replicateIgnoreDb {
+		if ignoreDb.TableSchema == dbName {
+			for _, ignoreTb := range ignoreDb.Tables {
+				if ignoreTb.TableName == tbName {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
 type Table struct {
 	TableName         string
 	TableRegex        string
