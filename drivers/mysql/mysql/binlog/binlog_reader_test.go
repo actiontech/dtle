@@ -273,7 +273,7 @@ func Test_loadMapping(t *testing.T) {
 				return
 			}
 
-			binlogReader.mysqlContext.ReplicateDoDb = tt.args.replicationDoDB
+			binlogReader.currentReplicateDoDb = tt.args.replicationDoDB
 			schemaRenameMap, schemaNameToTablesRenameMap := binlogReader.generateRenameMaps()
 			if got, err := binlogReader.loadMapping(tt.args.sql, tt.args.currentSchema, schemaRenameMap, schemaNameToTablesRenameMap, stmt); nil != err {
 				t.Errorf("loadMapping() failed: %v", err)
@@ -339,7 +339,7 @@ func Test_resolveDDLSQL(t *testing.T) {
 }
 
 func Test_generateRenameMaps(t *testing.T) {
-	replicateDoD := []*common.DataSource{
+	currentReplicateDoDb := []*common.DataSource{
 		{
 			TableSchema:       "db1",
 			TableSchemaRename: "db1-rename",
@@ -404,7 +404,7 @@ func Test_generateRenameMaps(t *testing.T) {
 		logger:       nil,
 		mysqlContext: &common.MySQLDriverConfig{},
 	}
-	binlogReader.mysqlContext.ReplicateDoDb = replicateDoD
+	binlogReader.currentReplicateDoDb = currentReplicateDoDb
 
 	schemaRenameMap, schemaToTablesRenameMap := binlogReader.generateRenameMaps()
 
