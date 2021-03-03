@@ -1176,29 +1176,14 @@ func (b *BinlogReader) skipQueryDDL(schema string, tableName string) bool {
 	case "sys", "information_schema", "performance_schema", g.DtleSchemaName:
 		return true
 	default:
-		return b.skipSchemaOrTable(schema, tableName)
+		if len(b.mysqlContext.ReplicateIgnoreDb) > 0 {
+			if common.IgnoreDbByReplicateIgnoreDb(b.mysqlContext.ReplicateIgnoreDb, schema) {
+				return true
+			}
+			return common.IgnoreTbByReplicateIgnoreDb(b.mysqlContext.ReplicateIgnoreDb, schema, tableName)
+		}
+		return b.matchTable(b.mysqlContext.ReplicateDoDb, schema, tableName)
 	}
-}
-
-func (b *BinlogReader) skipSchemaOrTable(schemaName, tableName string) bool {
-	if len(b.mysqlContext.ReplicateDoDb) > 0 { // replicate specified schema
-		schemaConfig := b.findSchemaConfig(b.mysqlContext.ReplicateDoDb, schemaName)
-		if nil == schemaConfig {
-			return true
-		}
-		if tableName == "" { // match schema
-			return false
-		}
-
-		if len(schemaConfig.Tables) > 0 { // skip the table if it isn't specified in replicateDoDb config
-			return nil == b.findTableConfig(schemaConfig, tableName)
-		} else { // ignore table specified in ReplicateIgnoreDb if there is no table specified in replicateDoDb config
-			return b.matchTable(b.mysqlContext.ReplicateIgnoreDb, schemaName, tableName)
-		}
-	} else if len(b.mysqlContext.ReplicateIgnoreDb) > 0 { // replicate all schemas and tables except schema and table specified in ReplicateIgnoreDb
-		return b.matchTable(b.mysqlContext.ReplicateIgnoreDb, schemaName, tableName)
-	}
-	return false
 }
 
 func isExpandSyntaxQuery(sql string) bool {
