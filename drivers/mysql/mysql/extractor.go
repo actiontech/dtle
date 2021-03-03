@@ -445,7 +445,7 @@ func (e *Extractor) inspectTables() (err error) {
 						e.logger.Warn("ValidateOriginalTable error", "err", err)
 						continue
 					}
-					if len(e.mysqlContext.ReplicateIgnoreDb) > 0 && e.ignoreTb(doTb.TableSchema, doTb.TableName) {
+					if len(e.mysqlContext.ReplicateIgnoreDb) > 0 && common.IgnoreTbByReplicateIgnoreDb(e.mysqlContext.ReplicateIgnoreDb, doTb.TableSchema, doTb.TableName) {
 						continue
 					}
 					db.Tables = append(db.Tables, doTb)
@@ -516,7 +516,7 @@ func (e *Extractor) inspectTables() (err error) {
 			ds := &common.DataSource{
 				TableSchema: dbName,
 			}
-			if len(e.mysqlContext.ReplicateIgnoreDb) > 0 && e.ignoreDb(dbName) {
+			if len(e.mysqlContext.ReplicateIgnoreDb) > 0 && common.IgnoreDbByReplicateIgnoreDb(e.mysqlContext.ReplicateIgnoreDb, dbName) {
 				continue
 			}
 
@@ -526,7 +526,7 @@ func (e *Extractor) inspectTables() (err error) {
 			}
 
 			for _, tb := range tbs {
-				if len(e.mysqlContext.ReplicateIgnoreDb) > 0 && e.ignoreTb(dbName, tb.TableName) {
+				if len(e.mysqlContext.ReplicateIgnoreDb) > 0 && common.IgnoreTbByReplicateIgnoreDb(e.mysqlContext.ReplicateIgnoreDb, dbName, tb.TableName) {
 					continue
 				}
 				if err := e.inspector.ValidateOriginalTable(dbName, tb.TableName, tb); err != nil {
@@ -561,27 +561,6 @@ func (e *Extractor) inspectTables() (err error) {
 	}*/
 
 	return nil
-}
-func (e *Extractor) ignoreDb(dbName string) bool {
-	for _, ignoreDb := range e.mysqlContext.ReplicateIgnoreDb {
-		if ignoreDb.TableSchema == dbName && len(ignoreDb.Tables) == 0 {
-			return true
-		}
-	}
-	return false
-}
-
-func (e *Extractor) ignoreTb(dbName, tbName string) bool {
-	for _, ignoreDb := range e.mysqlContext.ReplicateIgnoreDb {
-		if ignoreDb.TableSchema == dbName {
-			for _, ignoreTb := range ignoreDb.Tables {
-				if ignoreTb.TableName == tbName {
-					return true
-				}
-			}
-		}
-	}
-	return false
 }
 
 // readTableColumns reads table columns on applier

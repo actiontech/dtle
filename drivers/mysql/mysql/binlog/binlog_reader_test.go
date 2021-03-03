@@ -418,115 +418,6 @@ func Test_generateRenameMaps(t *testing.T) {
 
 }
 
-func Test_matchTable(t *testing.T) {
-	tableConfigs := []*common.Table{
-		{
-			TableName: "tb1",
-		},
-		{
-			TableRegex: "(\\w*)tb_rex",
-		},
-	}
-
-	rawReplicateDoDb := []*common.DataSource{
-		{
-			TableSchema: "db1",
-			Tables:      tableConfigs,
-		},
-		{
-			TableSchema: "db2",
-		},
-		{
-			TableSchemaRegex: "(\\w*)db_rex1",
-		},
-	}
-
-	type args struct {
-		schemaName string
-		tableName  string
-	}
-	tests := []struct {
-		name       string
-		args       args
-		wantResult bool
-	}{
-		{
-			name: "match_schema",
-			args: args{
-				schemaName: "db1",
-			},
-			wantResult: true,
-		},
-		{
-			name: "match_schema",
-			args: args{
-				schemaName: "db2",
-				tableName:  "",
-			},
-			wantResult: true,
-		},
-		{
-			name: "match_schema_rex",
-			args: args{
-				schemaName: "testdb_rex1",
-				tableName:  "",
-			},
-			wantResult: true,
-		},
-		{
-			name: "match_table",
-			args: args{
-				schemaName: "db1",
-				tableName:  "tb1",
-			},
-			wantResult: true,
-		},
-		{
-			name: "match_table_rex",
-			args: args{
-				schemaName: "db1",
-				tableName:  "testtb_rex",
-			},
-			wantResult: true,
-		},
-		{
-			name: "match_table",
-			args: args{
-				schemaName: "db2",
-				tableName:  "testtb",
-			},
-			wantResult: true,
-		},
-		{
-			name: "skip_schema",
-			args: args{
-				schemaName: "db_not_match",
-			},
-			wantResult: false,
-		},
-		{
-			name: "skip_table",
-			args: args{
-				schemaName: "db1",
-				tableName:  "tb2",
-			},
-			wantResult: false,
-		},
-	}
-
-	binlogReader := &BinlogReader{
-		mysqlContext: &common.MySQLDriverConfig{},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if res := binlogReader.matchTable(rawReplicateDoDb, tt.args.schemaName, tt.args.tableName); res != tt.wantResult {
-				t.Errorf("matchTable() gotResult = %v, want %v", res, tt.wantResult)
-			}
-		})
-	}
-}
-
 func Test_skipSchemaOrTable(t *testing.T) {
 	rawReplicateDoDb := []*common.DataSource{
 		{
@@ -569,30 +460,34 @@ func Test_skipSchemaOrTable(t *testing.T) {
 		tableName  string
 	}
 	tests := []struct {
-		name       string
-		args       args
-		wantResult bool
+		name                                 string
+		args                                 args
+		wantResult                           bool
+		wantResultWithEmptyReplicateIgnoreDb bool
 	}{
 		{
 			name: "match-schema",
 			args: args{
 				schemaName: "db1",
 			},
-			wantResult: false,
+			wantResult:                           false,
+			wantResultWithEmptyReplicateIgnoreDb: false,
 		},
 		{
 			name: "match-schema",
 			args: args{
 				schemaName: "db2",
 			},
-			wantResult: false,
+			wantResult:                           false,
+			wantResultWithEmptyReplicateIgnoreDb: false,
 		},
 		{
 			name: "skip-schema",
 			args: args{
 				schemaName: "db3",
 			},
-			wantResult: true,
+			wantResult:                           true,
+			wantResultWithEmptyReplicateIgnoreDb: true,
 		},
 		{
 			name: "match-table",
@@ -600,7 +495,8 @@ func Test_skipSchemaOrTable(t *testing.T) {
 				schemaName: "db1",
 				tableName:  "tb1",
 			},
-			wantResult: false,
+			wantResult:                           false,
+			wantResultWithEmptyReplicateIgnoreDb: true,
 		},
 		{
 			name: "match-table",
@@ -608,7 +504,8 @@ func Test_skipSchemaOrTable(t *testing.T) {
 				schemaName: "db2",
 				tableName:  "tb1",
 			},
-			wantResult: false,
+			wantResult:                           false,
+			wantResultWithEmptyReplicateIgnoreDb: false,
 		},
 		{
 			name: "skip-table",
@@ -616,7 +513,8 @@ func Test_skipSchemaOrTable(t *testing.T) {
 				schemaName: "db2",
 				tableName:  "tb-skip",
 			},
-			wantResult: true,
+			wantResult:                           true,
+			wantResultWithEmptyReplicateIgnoreDb: true,
 		},
 		{
 			name: "skip-table",
@@ -624,7 +522,8 @@ func Test_skipSchemaOrTable(t *testing.T) {
 				schemaName: "db3",
 				tableName:  "tb-skip",
 			},
-			wantResult: true,
+			wantResult:                           true,
+			wantResultWithEmptyReplicateIgnoreDb: true,
 		},
 	}
 
@@ -632,12 +531,18 @@ func Test_skipSchemaOrTable(t *testing.T) {
 		mysqlContext: &common.MySQLDriverConfig{},
 	}
 	binlogReader.mysqlContext.ReplicateIgnoreDb = rawReplicateIgnoreDb
-	binlogReader.mysqlContext.ReplicateDoDb = rawReplicateDoDb
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			binlogReader.mysqlContext.ReplicateDoDb = rawReplicateDoDb
 			res := binlogReader.skipSchemaOrTable(tt.args.schemaName, tt.args.tableName)
 			if res != tt.wantResult {
 				t.Errorf("skipSchemaOrTable() gotResult = %v, want %v", res, tt.wantResult)
+			}
+			binlogReader.mysqlContext.ReplicateDoDb = []*common.DataSource{}
+
+			res = binlogReader.skipSchemaOrTable(tt.args.schemaName, tt.args.tableName)
+			if res != tt.wantResultWithEmptyReplicateIgnoreDb {
+				t.Errorf("skipSchemaOrTable() with empty ReplicateDoDb gotResult = %v, want %v", res, tt.wantResultWithEmptyReplicateIgnoreDb)
 			}
 		})
 	}

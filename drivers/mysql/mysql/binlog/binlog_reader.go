@@ -1193,10 +1193,14 @@ func (b *BinlogReader) skipSchemaOrTable(schemaName, tableName string) bool {
 		if len(schemaConfig.Tables) > 0 { // skip the table if it isn't specified in replicateDoDb config
 			return nil == b.findTableConfig(schemaConfig, tableName)
 		} else { // ignore table specified in ReplicateIgnoreDb if there is no table specified in replicateDoDb config
-			return b.matchTable(b.mysqlContext.ReplicateIgnoreDb, schemaName, tableName)
+			return common.IgnoreTbByReplicateIgnoreDb(b.mysqlContext.ReplicateIgnoreDb, schemaName, tableName)
 		}
 	} else if len(b.mysqlContext.ReplicateIgnoreDb) > 0 { // replicate all schemas and tables except schema and table specified in ReplicateIgnoreDb
-		return b.matchTable(b.mysqlContext.ReplicateIgnoreDb, schemaName, tableName)
+		if common.IgnoreDbByReplicateIgnoreDb(b.mysqlContext.ReplicateIgnoreDb, schemaName) {
+			return true
+		} else {
+			return common.IgnoreTbByReplicateIgnoreDb(b.mysqlContext.ReplicateIgnoreDb, schemaName, tableName)
+		}
 	}
 	return false
 }
@@ -1290,48 +1294,6 @@ func (b *BinlogReader) matchString(pattern string, t string) bool {
 		return re.MatchString(t)
 	}*/
 	return pattern == t
-}
-
-func (b *BinlogReader) matchTable(patternTBS []*common.DataSource, schemaName string, tableName string) bool {
-	if schemaName == "" {
-		return false
-	}
-
-	for _, pdb := range patternTBS {
-		if pdb.TableSchema == "" && pdb.TableSchemaRegex == "" { // invalid pattern
-			continue
-		}
-		if pdb.TableSchema != "" && pdb.TableSchema != schemaName {
-			continue
-		}
-		if pdb.TableSchemaRegex != "" {
-			reg := regexp.MustCompile(pdb.TableSchemaRegex)
-			if !reg.MatchString(schemaName) {
-				continue
-			}
-		}
-
-		if tableName == "" || len(pdb.Tables) == 0 { // match all tables within the db if length of pdb.Tables is 0
-			return true
-		}
-
-		for _, ptb := range pdb.Tables {
-			if ptb.TableName == "" && ptb.TableRegex == "" { // invalid pattern
-				continue
-			}
-			if ptb.TableName != "" && ptb.TableName == tableName {
-				return true
-			}
-			if ptb.TableRegex != "" {
-				reg := regexp.MustCompile(ptb.TableRegex)
-				if reg.MatchString(tableName) {
-					return true
-				}
-			}
-		}
-		return false
-	}
-	return false
 }
 
 func (b *BinlogReader) Close() error {
