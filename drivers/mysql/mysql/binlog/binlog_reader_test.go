@@ -690,3 +690,511 @@ func Test_skipQueryDDL(t *testing.T) {
 		})
 	}
 }
+
+func Test_updateCurrentReplicateDoDb(t *testing.T) {
+	tableConfigs := []*common.Table{
+		{TableName: "tb1", TableRename: "tb1-rename"},
+		{TableName: "tb2", TableRename: ""},
+		{TableRegex: "(\\w*)tb-rex1", TableRename: "tb${1}-rex1-rename"},
+		{TableRegex: "(\\w*)tb-rex2", TableRename: "tb${1}-rex2-rename"},
+		{TableRegex: "(\\w*)tb-rex3", TableRename: ""},
+	}
+
+	rawReplicateDoDb := []*common.DataSource{
+		{TableSchema: "db1", TableSchemaRename: "db1-rename", Tables: tableConfigs},
+		{TableSchema: "db2", TableSchemaRename: "db2-rename", Tables: []*common.Table{}},
+		{TableSchema: "db3", TableSchemaRename: "", Tables: tableConfigs},
+		{TableSchemaRegex: "(\\w*)db-rex1", TableSchemaRename: "db${1}-rex1-rename", Tables: tableConfigs},
+		{TableSchemaRegex: "(\\w*)db-rex2", TableSchemaRename: "db${1}-rex2-rename", Tables: []*common.Table{}},
+		{TableSchemaRegex: "(\\w*)db-rex3", TableSchemaRename: "", Tables: tableConfigs},
+	}
+
+	type args struct {
+		schema    string
+		tableName string
+	}
+
+	tests := []struct {
+		name                 string
+		rawReplicateDoDb     []*common.DataSource
+		currentReplicateDoDb []*common.DataSource
+		args                 args
+		want                 []*common.DataSource
+	}{
+		{
+			name:                 "empty-rawReplicateDoDb/empty-currentReplicateDoDb/input-new-table",
+			rawReplicateDoDb:     []*common.DataSource{},
+			currentReplicateDoDb: []*common.DataSource{},
+			args:                 args{schema: "db1", tableName: "tb1"},
+			want: []*common.DataSource{
+				{
+					TableSchema: "db1",
+					Tables: []*common.Table{
+						{TableName: "tb1", TableSchema: "db1", Where: "true"},
+					},
+				},
+			},
+		},
+		{
+			name:             "empty-rawReplicateDoDb/exists-one-table/input-new-table",
+			rawReplicateDoDb: []*common.DataSource{},
+			currentReplicateDoDb: []*common.DataSource{
+				{
+					TableSchema: "db1",
+					Tables: []*common.Table{
+						{TableName: "tb1", TableSchema: "db1", Where: "true"},
+					},
+				}},
+			args: args{schema: "db1", tableName: "tb2"},
+			want: []*common.DataSource{
+				{
+					TableSchema: "db1",
+					Tables: []*common.Table{
+						{TableName: "tb1", TableSchema: "db1", Where: "true"},
+						{TableName: "tb2", TableSchema: "db1", Where: "true"},
+					},
+				},
+			},
+		},
+		{
+			name:             "empty-rawReplicateDoDb/exists-one-table/input-existed-table",
+			rawReplicateDoDb: []*common.DataSource{},
+			currentReplicateDoDb: []*common.DataSource{
+				{
+					TableSchema: "db1",
+					Tables: []*common.Table{
+						{TableName: "tb1", TableSchema: "db1", Where: "true"},
+					},
+				}},
+			args: args{schema: "db1", tableName: "tb1"},
+			want: []*common.DataSource{
+				{
+					TableSchema: "db1",
+					Tables: []*common.Table{
+						{TableName: "tb1", TableSchema: "db1", Where: "true"},
+					},
+				},
+			},
+		},
+		{
+			name:             "empty-rawReplicateDoDb/exists-one-schema/input-existed-schema",
+			rawReplicateDoDb: []*common.DataSource{},
+			currentReplicateDoDb: []*common.DataSource{
+				{
+					TableSchema: "db1",
+				},
+			},
+			args: args{schema: "db1", tableName: ""},
+			want: []*common.DataSource{
+				{
+					TableSchema: "db1",
+				},
+			},
+		},
+		{
+			name:             "empty-rawReplicateDoDb/exists-one-schema/input-new-table-to-existed-schema",
+			rawReplicateDoDb: []*common.DataSource{},
+			currentReplicateDoDb: []*common.DataSource{{
+				TableSchema: "db1",
+			}},
+			args: args{schema: "db1", tableName: "tb1"},
+			want: []*common.DataSource{
+				{
+					TableSchema: "db1",
+					Tables: []*common.Table{
+						{TableName: "tb1", TableSchema: "db1", Where: "true"},
+					},
+				},
+			},
+		},
+		{
+			name:                 "empty-currentReplicateDoDb/input-table",
+			rawReplicateDoDb:     rawReplicateDoDb,
+			currentReplicateDoDb: []*common.DataSource{},
+			args:                 args{schema: "db1", tableName: "tb1"},
+			want: []*common.DataSource{
+				{
+					TableSchema:       "db1",
+					TableSchemaRename: "db1-rename",
+					Tables: []*common.Table{
+						{TableName: "tb1", TableRename: "tb1-rename", TableSchema: "db1", TableSchemaRename: "db1-rename", Where: "true"},
+					},
+				},
+			},
+		},
+		{
+			name:                 "empty-currentReplicateDoDb/input-table-match-regex",
+			rawReplicateDoDb:     rawReplicateDoDb,
+			currentReplicateDoDb: []*common.DataSource{},
+			args:                 args{schema: "db1", tableName: "testtb-rex1"},
+			want: []*common.DataSource{
+				{
+					TableSchema:       "db1",
+					TableSchemaRename: "db1-rename",
+					Tables: []*common.Table{
+						{TableName: "testtb-rex1", TableRegex: "(\\w*)tb-rex1", TableRename: "tbtest-rex1-rename", TableSchema: "db1", TableSchemaRename: "db1-rename", Where: "true"},
+					},
+				},
+			},
+		},
+		{
+			name:                 "empty-currentReplicateDoDb/input-table-match-regex-without-rename",
+			rawReplicateDoDb:     rawReplicateDoDb,
+			currentReplicateDoDb: []*common.DataSource{},
+			args:                 args{schema: "testdb-rex3", tableName: "testtb-rex3"},
+			want: []*common.DataSource{
+				{
+					TableSchema:       "testdb-rex3",
+					TableSchemaRegex:  "(\\w*)db-rex3",
+					TableSchemaRename: "",
+					Tables: []*common.Table{
+						{TableName: "testtb-rex3", TableRegex: "(\\w*)tb-rex3", TableRename: "", TableSchema: "testdb-rex3", TableSchemaRename: "", Where: "true"},
+					},
+				},
+			},
+		},
+		{
+			name:                 "empty-currentReplicateDoDb/input-schema",
+			rawReplicateDoDb:     rawReplicateDoDb,
+			currentReplicateDoDb: []*common.DataSource{},
+			args:                 args{schema: "db1", tableName: ""},
+			want: []*common.DataSource{
+				{
+					TableSchema:       "db1",
+					TableSchemaRename: "db1-rename",
+				},
+			},
+		},
+		{
+			name:                 "empty-currentReplicateDoDb/input-not-match-table",
+			rawReplicateDoDb:     rawReplicateDoDb,
+			currentReplicateDoDb: []*common.DataSource{},
+			args:                 args{schema: "db1", tableName: "tb-not-match"},
+			want: []*common.DataSource{
+				{
+					TableSchema:       "db1",
+					TableSchemaRename: "db1-rename",
+				},
+			},
+		},
+		{
+			name:                 "empty-currentReplicateDoDb/input-not-match-schema",
+			rawReplicateDoDb:     rawReplicateDoDb,
+			currentReplicateDoDb: []*common.DataSource{},
+			args:                 args{schema: "db-not-match", tableName: "tb1"},
+			want:                 []*common.DataSource{},
+		},
+		{
+			name:             "input-existed-table",
+			rawReplicateDoDb: rawReplicateDoDb,
+			currentReplicateDoDb: []*common.DataSource{
+				{
+					TableSchema:       "db1",
+					TableSchemaRename: "db1-rename",
+					Tables: []*common.Table{
+						{TableName: "tb1", TableRename: "tb1-rename", TableSchema: "db1", TableSchemaRename: "db1-rename", Where: "true"},
+					},
+				},
+			},
+			args: args{schema: "db1", tableName: "tb1"},
+			want: []*common.DataSource{
+				{
+					TableSchema:       "db1",
+					TableSchemaRename: "db1-rename",
+					Tables: []*common.Table{
+						{TableName: "tb1", TableRename: "tb1-rename", TableSchema: "db1", TableSchemaRename: "db1-rename", Where: "true"},
+					},
+				},
+			},
+		},
+		{
+			name:             "input-existed-table-match-regex",
+			rawReplicateDoDb: rawReplicateDoDb,
+			currentReplicateDoDb: []*common.DataSource{
+				{
+					TableSchema:       "db1",
+					TableSchemaRename: "db1-rename",
+					Tables: []*common.Table{
+						{TableName: "testtb-rex1", TableRegex: "(\\w*)tb-rex1", TableRename: "tbtest-rex1-rename", TableSchema: "db1", TableSchemaRename: "db1-rename", Where: "true"},
+					},
+				},
+			},
+			args: args{schema: "db1", tableName: "testtb-rex1"},
+			want: []*common.DataSource{
+				{
+					TableSchema:       "db1",
+					TableSchemaRename: "db1-rename",
+					Tables: []*common.Table{
+						{TableName: "testtb-rex1", TableRegex: "(\\w*)tb-rex1", TableRename: "tbtest-rex1-rename", TableSchema: "db1", TableSchemaRename: "db1-rename", Where: "true"},
+					},
+				},
+			},
+		},
+		{
+			name:             "input-new-table",
+			rawReplicateDoDb: rawReplicateDoDb,
+			currentReplicateDoDb: []*common.DataSource{
+				{
+					TableSchema:       "db1",
+					TableSchemaRename: "db1-rename",
+					Tables: []*common.Table{
+						{TableName: "tb1", TableRename: "tb1-rename", TableSchema: "db1", TableSchemaRename: "db1-rename", Where: "true"},
+					},
+				},
+			},
+			args: args{schema: "db1", tableName: "tb2"},
+			want: []*common.DataSource{
+				{
+					TableSchema:       "db1",
+					TableSchemaRename: "db1-rename",
+					Tables: []*common.Table{
+						{TableName: "tb1", TableRename: "tb1-rename", TableSchema: "db1", TableSchemaRename: "db1-rename", Where: "true"},
+						{TableName: "tb2", TableSchema: "db1", TableSchemaRename: "db1-rename", Where: "true"},
+					},
+				},
+			},
+		},
+		{
+			// a table has existed and then add new table that match the same regex
+			name:             "input-new-table-match-regex",
+			rawReplicateDoDb: rawReplicateDoDb,
+			currentReplicateDoDb: []*common.DataSource{
+				{
+					TableSchema:       "db1",
+					TableSchemaRename: "db1-rename",
+					Tables: []*common.Table{
+						{TableName: "testtb-rex1", TableRegex: "(\\w*)tb-rex1", TableRename: "tbtest-rex1-rename", TableSchema: "db1", TableSchemaRename: "db1-rename", Where: "true"},
+					},
+				},
+			},
+			args: args{schema: "db1", tableName: "test2tb-rex1"},
+			want: []*common.DataSource{
+				{
+					TableSchema:       "db1",
+					TableSchemaRename: "db1-rename",
+					Tables: []*common.Table{
+						{TableName: "testtb-rex1", TableRegex: "(\\w*)tb-rex1", TableRename: "tbtest-rex1-rename", TableSchema: "db1", TableSchemaRename: "db1-rename", Where: "true"},
+						{TableName: "test2tb-rex1", TableRegex: "(\\w*)tb-rex1", TableRename: "tbtest2-rex1-rename", TableSchema: "db1", TableSchemaRename: "db1-rename", Where: "true"},
+					},
+				},
+			},
+		},
+		{
+			// a table has existed and then add new table that match the different regex
+			name:             "input-new-table-match-regex",
+			rawReplicateDoDb: rawReplicateDoDb,
+			currentReplicateDoDb: []*common.DataSource{
+				{
+					TableSchema:       "db1",
+					TableSchemaRename: "db1-rename",
+					Tables: []*common.Table{
+						{TableName: "testtb-rex1", TableRegex: "(\\w*)tb-rex1", TableRename: "tbtest-rex1-rename", TableSchema: "db1", TableSchemaRename: "db1-rename", Where: "true"},
+					},
+				},
+			},
+			args: args{schema: "db1", tableName: "testtb-rex2"},
+			want: []*common.DataSource{
+				{
+					TableSchema:       "db1",
+					TableSchemaRename: "db1-rename",
+					Tables: []*common.Table{
+						{TableName: "testtb-rex1", TableRegex: "(\\w*)tb-rex1", TableRename: "tbtest-rex1-rename", TableSchema: "db1", TableSchemaRename: "db1-rename", Where: "true"},
+						{TableName: "testtb-rex2", TableRegex: "(\\w*)tb-rex2", TableRename: "tbtest-rex2-rename", TableSchema: "db1", TableSchemaRename: "db1-rename", Where: "true"},
+					},
+				},
+			},
+		},
+		{
+			name:             "input-not-match-table",
+			rawReplicateDoDb: rawReplicateDoDb,
+			currentReplicateDoDb: []*common.DataSource{
+				{
+					TableSchema:       "db1",
+					TableSchemaRename: "db1-rename",
+					Tables: []*common.Table{
+						{TableName: "tb1", TableRename: "tb1-rename", TableSchema: "db1", TableSchemaRename: "db1-rename", Where: "true"},
+					},
+				},
+			},
+			args: args{schema: "db1", tableName: "tb-not-match"},
+			want: []*common.DataSource{
+				{
+					TableSchema:       "db1",
+					TableSchemaRename: "db1-rename",
+					Tables: []*common.Table{
+						{TableName: "tb1", TableRename: "tb1-rename", TableSchema: "db1", TableSchemaRename: "db1-rename", Where: "true"},
+					},
+				},
+			},
+		},
+		{
+			name:             "input-existed-schema",
+			rawReplicateDoDb: rawReplicateDoDb,
+			currentReplicateDoDb: []*common.DataSource{
+				{
+					TableSchema:       "db1",
+					TableSchemaRename: "db1-rename",
+				},
+			},
+			args: args{schema: "db1", tableName: ""},
+			want: []*common.DataSource{
+				{
+					TableSchema:       "db1",
+					TableSchemaRename: "db1-rename",
+				},
+			},
+		},
+		{
+			// regex
+			name:             "input-existed-schema-match-regex",
+			rawReplicateDoDb: rawReplicateDoDb,
+			currentReplicateDoDb: []*common.DataSource{
+				{
+					TableSchema:       "testdb-rex1",
+					TableSchemaRegex:  "(\\w*)db-rex1",
+					TableSchemaRename: "dbtest-rex1-rename",
+				},
+			},
+			args: args{schema: "testdb-rex1", tableName: ""},
+			want: []*common.DataSource{
+				{
+					TableSchema:       "testdb-rex1",
+					TableSchemaRegex:  "(\\w*)db-rex1",
+					TableSchemaRename: "dbtest-rex1-rename",
+				},
+			},
+		},
+		{
+			name:             "input-new-schema",
+			rawReplicateDoDb: rawReplicateDoDb,
+			currentReplicateDoDb: []*common.DataSource{
+				{
+					TableSchema:       "db1",
+					TableSchemaRename: "db1-rename",
+				},
+			},
+			args: args{schema: "db2"},
+			want: []*common.DataSource{
+				{
+					TableSchema:       "db1",
+					TableSchemaRename: "db1-rename",
+				},
+				{
+					TableSchema:       "db2",
+					TableSchemaRename: "db2-rename",
+				},
+			},
+		},
+		{
+			// a schema has existed and then add new schema that match the same regex
+			name:             "input-new-schema-match-regex",
+			rawReplicateDoDb: rawReplicateDoDb,
+			currentReplicateDoDb: []*common.DataSource{
+				{
+					TableSchema:       "test1db-rex1",
+					TableSchemaRegex:  "(\\w*)db-rex1",
+					TableSchemaRename: "dbtest1-rex1-rename",
+				},
+			},
+			args: args{schema: "test2db-rex1"},
+			want: []*common.DataSource{
+				{
+					TableSchema:       "test1db-rex1",
+					TableSchemaRegex:  "(\\w*)db-rex1",
+					TableSchemaRename: "dbtest1-rex1-rename",
+				},
+				{
+					TableSchema:       "test2db-rex1",
+					TableSchemaRegex:  "(\\w*)db-rex1",
+					TableSchemaRename: "dbtest2-rex1-rename",
+				},
+			},
+		},
+		{
+			// a schema has existed and then add new schema that match the different regex
+			name:             "input-new-schema-match-regex",
+			rawReplicateDoDb: rawReplicateDoDb,
+			currentReplicateDoDb: []*common.DataSource{
+				{
+					TableSchema:       "test1db-rex1",
+					TableSchemaRegex:  "(\\w*)db-rex1",
+					TableSchemaRename: "dbtest1-rex1-rename",
+				},
+			},
+			args: args{schema: "test1db-rex2"},
+			want: []*common.DataSource{
+				{
+					TableSchema:       "test1db-rex1",
+					TableSchemaRegex:  "(\\w*)db-rex1",
+					TableSchemaRename: "dbtest1-rex1-rename",
+				},
+				{
+					TableSchema:       "test1db-rex2",
+					TableSchemaRegex:  "(\\w*)db-rex2",
+					TableSchemaRename: "dbtest1-rex2-rename",
+				},
+			},
+		},
+		{
+			name:             "input-not-match-table",
+			rawReplicateDoDb: rawReplicateDoDb,
+			currentReplicateDoDb: []*common.DataSource{
+				{
+					TableSchema:       "db1",
+					TableSchemaRename: "db1-rename",
+					Tables: []*common.Table{
+						{TableName: "tb1", TableRename: "tb1-rename", TableSchema: "db1", TableSchemaRename: "db1-rename", Where: "true"},
+					},
+				},
+			},
+			args: args{schema: "db1", tableName: "tb-not-match"},
+			want: []*common.DataSource{
+				{
+					TableSchema:       "db1",
+					TableSchemaRename: "db1-rename",
+					Tables: []*common.Table{
+						{TableName: "tb1", TableRename: "tb1-rename", TableSchema: "db1", TableSchemaRename: "db1-rename", Where: "true"},
+					},
+				},
+			},
+		},
+	}
+
+	binlogReader := &BinlogReader{
+		logger: hclog.New(&hclog.LoggerOptions{
+			Level:      hclog.Debug,
+			JSONFormat: true,
+		}),
+		mysqlContext: &common.MySQLDriverConfig{},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			binlogReader.mysqlContext.ReplicateDoDb = test.rawReplicateDoDb
+			binlogReader.currentReplicateDoDb = test.currentReplicateDoDb
+			if err := binlogReader.updateCurrentReplicateDoDb(test.args.schema, test.args.tableName); nil != err {
+				t.Error(err)
+				return
+			}
+
+			if !assert.Equal(t, test.want, binlogReader.currentReplicateDoDb, "unexpected currentReplicateDoDb") {
+				printObject := func(db *common.DataSource, prefix string) {
+					t.Errorf("%v: &{TableSchema: %v TableSchemaRegex: %v TableSchemaRename: %v}\n", prefix, db.TableSchema, db.TableSchemaRegex, db.TableSchemaRename)
+					for _, tb := range db.Tables {
+						t.Errorf("table: %+v\n", tb)
+					}
+				}
+
+				for _, db := range binlogReader.currentReplicateDoDb {
+					printObject(db, "got current db")
+				}
+
+				for _, db := range test.want {
+					printObject(db, "want db")
+				}
+			}
+		})
+
+	}
+
+}
