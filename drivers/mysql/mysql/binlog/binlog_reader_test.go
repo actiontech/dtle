@@ -318,7 +318,7 @@ func Test_resolveDDLSQL(t *testing.T) {
 				skipFunc:      skipFunc1,
 			},
 			wantResult: parseDDLResult{
-				sql:         "drop table if exists dtle-dummy-never-exists.dtle-dummy-never-exists",
+				sql:         "drop table if exists dtle_dummy_never_exists.dtle_dummy_never_exists",
 			},
 			wantErr:    false,
 		},

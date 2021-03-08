@@ -1137,8 +1137,8 @@ func resolveDDLSQL(currentSchema string, sql string,
 		v.Tables = newTables
 
 		if len(v.Tables) == 0 {
-			result.sql = "drop table if exists dtle-dummy-never-exists.dtle-dummy-never-exists"
-			setTable("dtle-dummy-never-exists", "dtle-dummy-never-exists")
+			result.sql = "drop table if exists dtle_dummy_never_exists.dtle_dummy_never_exists"
+			setTable("dtle_dummy_never_exists", "dtle_dummy_never_exists")
 		} else {
 			bs := bytes.NewBuffer(nil)
 			r := &format.RestoreCtx{
