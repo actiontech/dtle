@@ -839,6 +839,7 @@ const (
 	dtleQueryPrefix = "/*dtle_gtid1 "
 	dtleQuerySuffix = " dtle_gtid*/"
 )
+
 func checkDtleQuery(query string) (string, error) {
 
 	start := strings.Index(query, dtleQueryPrefix)
@@ -1180,9 +1181,16 @@ func (b *BinlogReader) skipQueryDDL(schema string, tableName string) bool {
 			if common.IgnoreDbByReplicateIgnoreDb(b.mysqlContext.ReplicateIgnoreDb, schema) {
 				return true
 			}
-			return common.IgnoreTbByReplicateIgnoreDb(b.mysqlContext.ReplicateIgnoreDb, schema, tableName)
+			if common.IgnoreTbByReplicateIgnoreDb(b.mysqlContext.ReplicateIgnoreDb, schema, tableName) {
+				return true
+			}
 		}
-		return b.matchTable(b.mysqlContext.ReplicateDoDb, schema, tableName)
+		if len(b.mysqlContext.ReplicateDoDb) > 0 {
+			return !b.matchTable(b.mysqlContext.ReplicateDoDb, schema, tableName)
+		} else {
+			// replicate all dbs and tbs
+			return false
+		}
 	}
 }
 
