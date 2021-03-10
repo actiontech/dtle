@@ -599,83 +599,122 @@ func Test_skipQueryDDL(t *testing.T) {
 		name       string
 		args       args
 		wantResult bool
+		wantResultWithEmptyReplicateIgnoreDb bool
+		wantResultWithEmptyReplicateDoDb bool
 	}{
 		{
-			name: "replicateDoDb-tables/replicateIgnoreDb-table/match-schema",
+			name: "replicateDoDb-tables/replicateIgnoreDb-table/input-schema",
 			args: args{
 				schemaName: "db1",
 			},
 			wantResult: false,
+			wantResultWithEmptyReplicateDoDb: false,
+			wantResultWithEmptyReplicateIgnoreDb: false,
 		},
 		{
-			name: "replicateDoDb-tables/replicateIgnoreDb-table/skip-table",
+			name: "replicateDoDb-tables/replicateIgnoreDb-table/input-table",
 			args: args{
 				schemaName: "db1",
 				tableName:  "tb1",
 			},
 			wantResult: true,
+			wantResultWithEmptyReplicateDoDb: true,
+			wantResultWithEmptyReplicateIgnoreDb: false,
 		},
 		{
-			name: "replicateDoDb-tables/replicateIgnoreDb-table/match-table",
+			name: "replicateDoDb-tables/replicateIgnoreDb-table/input-table",
 			args: args{
 				schemaName: "db1",
 				tableName:  "tb2",
 			},
 			wantResult: false,
+			wantResultWithEmptyReplicateDoDb: false,
+			wantResultWithEmptyReplicateIgnoreDb: false,
 		},
 		{
-			name: "replicateDoDb-schema/replicateIgnoreDb-table/match-schema",
+			name: "replicateDoDb-schema/replicateIgnoreDb-table/input-schema",
 			args: args{
 				schemaName: "db2",
 			},
 			wantResult: false,
+			wantResultWithEmptyReplicateDoDb: false,
+			wantResultWithEmptyReplicateIgnoreDb: false,
 		},
 		{
-			name: "replicateDoDb-schema/replicateIgnoreDb-table/skip-table",
+			name: "replicateDoDb-schema/replicateIgnoreDb-table/input-table",
 			args: args{
 				schemaName: "db2",
 				tableName:  "tb-skip",
 			},
 			wantResult: true,
+			wantResultWithEmptyReplicateDoDb: true,
+			wantResultWithEmptyReplicateIgnoreDb: false,
 		},
 		{
-			name: "replicateDoDb-table/replicateIgnoreDb-schema/skip-schema",
+			name: "replicateDoDb-table/replicateIgnoreDb-schema/input-schema",
 			args: args{
 				schemaName: "db3",
 			},
 			wantResult: true,
+			wantResultWithEmptyReplicateDoDb: true,
+			wantResultWithEmptyReplicateIgnoreDb: false,
 		},
 		{
-			name: "replicateDoDb-table/replicateIgnoreDb-schema/skip-table",
+			name: "replicateDoDb-table/replicateIgnoreDb-schema/input-table",
 			args: args{
 				schemaName: "db3",
 				tableName:  "tb1",
 			},
 			wantResult: true,
+			wantResultWithEmptyReplicateDoDb: true,
+			wantResultWithEmptyReplicateIgnoreDb: false,
 		},
 		{
-			name: "replicateDoDb-table/replicateIgnoreDb-table/skip-table",
+			name: "replicateDoDb-table/replicateIgnoreDb-table/input-table",
 			args: args{
 				schemaName: "db4",
 				tableName:  "tb1",
 			},
 			wantResult: true,
+			wantResultWithEmptyReplicateDoDb: true,
+			wantResultWithEmptyReplicateIgnoreDb: false,
 		},
 		{
-			name: "replicateDoDb-table/replicateIgnoreDb-table/match-schema",
+			name: "replicateDoDb-table/replicateIgnoreDb-table/input-schema",
 			args: args{
 				schemaName: "db4",
 			},
 			wantResult: false,
+			wantResultWithEmptyReplicateDoDb: false,
+			wantResultWithEmptyReplicateIgnoreDb: false,
+		},
+		{
+			name: "not-defined-in-config/input-schema",
+			args: args{
+				schemaName: "db5",
+			},
+			wantResult: true,
+			wantResultWithEmptyReplicateDoDb: false,
+			wantResultWithEmptyReplicateIgnoreDb: true,
+		},
+		{
+			name: "not-defined-in-config/input-table",
+			args: args{
+				schemaName: "db5",
+				tableName: "tb1",
+			},
+			wantResult: true,
+			wantResultWithEmptyReplicateDoDb: false,
+			wantResultWithEmptyReplicateIgnoreDb: true,
 		},
 	}
 
 	binlogReader := &BinlogReader{
 		mysqlContext: &common.MySQLDriverConfig{},
 	}
-	binlogReader.mysqlContext.ReplicateIgnoreDb = rawReplicateIgnoreDb
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			binlogReader.mysqlContext.ReplicateIgnoreDb = rawReplicateIgnoreDb
 			binlogReader.mysqlContext.ReplicateDoDb = rawReplicateDoDb
 			res := binlogReader.skipQueryDDL(tt.args.schemaName, tt.args.tableName)
 			if res != tt.wantResult {
@@ -684,8 +723,20 @@ func Test_skipQueryDDL(t *testing.T) {
 
 			binlogReader.mysqlContext.ReplicateDoDb = []*common.DataSource{}
 			res = binlogReader.skipQueryDDL(tt.args.schemaName, tt.args.tableName)
-			if res != tt.wantResult {
+			if res != tt.wantResultWithEmptyReplicateDoDb {
 				t.Errorf("skipQueryDDL() with empty replicateDoDb gotResult = %v, want %v", res, tt.wantResult)
+			}
+
+			binlogReader.mysqlContext.ReplicateIgnoreDb = []*common.DataSource{}
+			res = binlogReader.skipQueryDDL(tt.args.schemaName, tt.args.tableName)
+			if res {
+				t.Errorf("skipQueryDDL() with empty replicateDoDb and ReplicateIgnoreDb gotResult = %v, want false", res)
+			}
+
+			binlogReader.mysqlContext.ReplicateDoDb = rawReplicateDoDb
+			res = binlogReader.skipQueryDDL(tt.args.schemaName, tt.args.tableName)
+			if res != tt.wantResultWithEmptyReplicateIgnoreDb {
+				t.Errorf("skipQueryDDL() with empty ReplicateIgnoreDb gotResult = %v, want %v", res, tt.wantResultWithEmptyReplicateIgnoreDb)
 			}
 		})
 	}
