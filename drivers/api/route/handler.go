@@ -3,19 +3,21 @@ package route
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/actiontech/dtle/g"
-	"github.com/hashicorp/go-hclog"
-	"github.com/hashicorp/nomad/api"
-	"github.com/hashicorp/nomad/nomad/structs"
-	"github.com/julienschmidt/httprouter"
-	"github.com/pkg/errors"
 	"io/ioutil"
 	"net/http"
 	"strings"
 	"time"
-	)
+
+	"github.com/actiontech/dtle/g"
+	hclog "github.com/hashicorp/go-hclog"
+	"github.com/hashicorp/nomad/api"
+	"github.com/hashicorp/nomad/nomad/structs"
+	"github.com/labstack/echo/v4"
+	"github.com/pkg/errors"
+)
 
 var logger = hclog.NewNullLogger()
+
 func SetLogger(theLogger hclog.Logger) {
 	logger = theLogger
 }
@@ -31,311 +33,369 @@ func decodeBody(req *http.Request, out interface{}) error {
 func buildUrl(path string) string {
 	return "http://" + NomadHost + path
 }
-func UpdupJob(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-	err := func() (err error) {
-		var oldJob OldJob
-		if err := decodeBody(r, &oldJob); err != nil {
-			return errors.Wrap(err, "decodeBody")
-		}
-
-		var nomadJobreq api.JobRegisterRequest
-		nomadJobreq.Job, err = convertJob(&oldJob)
-		if err != nil {
-			return errors.Wrap(err, "convertJob")
-		}
-
-		param, err := json.Marshal(nomadJobreq)
-		if err != nil {
-			return errors.Wrap(err, "json.Marshal")
-		}
-
-		//logger.Debug("*** json", "json", string(param))
-
-		url := buildUrl("/v1/jobs")
-		resp, err := http.Post(url, "application/x-www-form-urlencoded",
-			strings.NewReader(string(param)))
-		if err != nil {
-			return errors.Wrap(err, "forwarding")
-		}
-		defer resp.Body.Close()
-		body, err := ioutil.ReadAll(resp.Body)
-		if err != nil {
-			return errors.Wrap(err, "reading forwarded resp")
-		}
-		_, err = fmt.Fprintf(w, string(body))
-		if err != nil {
-			return errors.Wrap(err, "writing forwarded resp")
-		}
-
-		return nil
-	}()
-
+func UpdupJob(c echo.Context) error {
+	var oldJob OldJob
+	err := decodeBody(c.Request(), &oldJob)
 	if err != nil {
-		logger.Error("UpdupJob error", "err", err)
-		w.WriteHeader(http.StatusBadRequest)
-		_, _ = w.Write([]byte(err.Error()))
+		return errors.Wrap(err, "decodeBody")
 	}
 
+	var nomadJobreq api.JobRegisterRequest
+	nomadJobreq.Job, err = convertJob(&oldJob)
+	if err != nil {
+		return errors.Wrap(err, "convertJob")
+	}
+
+	param, err := json.Marshal(nomadJobreq)
+	if err != nil {
+		return errors.Wrap(err, "json.Marshal")
+	}
+
+	//logger.Debug("*** json", "json", string(param))
+
+	url := buildUrl("/v1/jobs")
+	resp, err := http.Post(url, "application/x-www-form-urlencoded",
+		strings.NewReader(string(param)))
+	if err != nil {
+		return errors.Wrap(err, "forwarding")
+	}
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return errors.Wrap(err, "reading forwarded resp")
+	}
+	return c.Blob(http.StatusOK,"text/html; charset=utf-8" ,body)
 }
 
-func JobListRequest(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+func JobListRequest(c echo.Context) error {
 
 	url := buildUrl("/v1/jobs")
 	resp, err := http.Get(url)
 	if err != nil {
-		w.Write([]byte(err.Error()))
+		return c.String(http.StatusInternalServerError, err.Error())
 	}
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
-	fmt.Fprintf(w, string(body))
+	if err != nil {
+		return errors.Wrap(err, "reading forwarded resp")
+	}
 
+	return c.Blob(http.StatusOK,"text/html; charset=utf-8" ,body)
 }
-func JobRequest(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+
+func JobRequest(c echo.Context) error {
 
 	//	path := strings.TrimPrefix(r.URL.Path, "/v1/node/")
-	jobId := ps.ByName("jobId")
-	path := ps.ByName("path")
+	jobId := c.Param("jobId")
+	path := c.Param("path")
 	if path == "allocations" {
 		url := buildUrl("/v1/job/" + jobId + "/allocations")
 		resp, err := http.Get(url)
 		if err != nil {
-			w.Write([]byte(err.Error()))
+			return c.String(http.StatusInternalServerError, err.Error())
 		}
 		defer resp.Body.Close()
 		body, err := ioutil.ReadAll(resp.Body)
-		fmt.Fprintf(w, string(body))
+		if nil != err {
+			return c.String(http.StatusInternalServerError, err.Error())
+		}
+
+		return c.Blob(http.StatusOK,"text/html; charset=utf-8" ,body)
 	} else if path == "evaluate" {
 		url := buildUrl("/v1/job/" + jobId + "/evaluate")
 		resp, err := http.Post(url, "application/x-www-form-urlencoded",
 			strings.NewReader(""))
 		if err != nil {
-			w.Write([]byte(err.Error()))
+			return c.String(http.StatusInternalServerError, err.Error())
 		}
 		defer resp.Body.Close()
 		body, err := ioutil.ReadAll(resp.Body)
-		fmt.Fprintf(w, string(body))
+		if nil != err {
+			return c.String(http.StatusInternalServerError, err.Error())
+		}
+
+		return c.Blob(http.StatusOK,"text/html; charset=utf-8" ,body)
 	} else if path == "resume" {
 		url := buildUrl("/v1/job/" + jobId + "/resume")
 		resp, err := http.Get(url)
 		if err != nil {
-			w.Write([]byte(err.Error()))
+			return c.String(http.StatusInternalServerError, err.Error())
 		}
 		defer resp.Body.Close()
 		body, err := ioutil.ReadAll(resp.Body)
-		fmt.Fprintf(w, string(body))
+		if nil != err {
+			return c.String(http.StatusInternalServerError, err.Error())
+		}
+
+		return c.Blob(http.StatusOK,"text/html; charset=utf-8" ,body)
 	} else if path == "pause" {
 		url := buildUrl("/v1/job/" + jobId + "/pause")
 		resp, err := http.Get(url)
 		if err != nil {
-			w.Write([]byte(err.Error()))
+			return c.String(http.StatusInternalServerError, err.Error())
 		}
 		defer resp.Body.Close()
 		body, err := ioutil.ReadAll(resp.Body)
-		fmt.Fprintf(w, string(body))
+		if nil != err {
+			return c.String(http.StatusInternalServerError, err.Error())
+		}
+
+		return c.Blob(http.StatusOK,"text/html; charset=utf-8" ,body)
 	}
+	return c.String(http.StatusInternalServerError, fmt.Sprintf("unknown url"))
 }
-func JobDetailRequest(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-	jobId := ps.ByName("jobId")
-	url := buildUrl("/v1/job/" + jobId )
+func JobDetailRequest(c echo.Context) error {
+	jobId := c.Param("jobId")
+	url := buildUrl("/v1/job/" + jobId)
 	resp, err := http.Get(url)
 	if err != nil {
-		w.Write([]byte(err.Error()))
+		return c.String(http.StatusInternalServerError, err.Error())
 	}
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
-	fmt.Fprintf(w, string(body))
+	if nil != err {
+		return c.String(http.StatusInternalServerError, err.Error())
+	}
+
+	return c.Blob(http.StatusOK,"text/html; charset=utf-8" ,body)
 }
-func JobDeleteRequest(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-	jobId := ps.ByName("jobId")
+func JobDeleteRequest(c echo.Context) error {
+	jobId := c.Param("jobId")
 	url := buildUrl("/v1/job/" + jobId + "?purge=true")
 	req, _ := http.NewRequest("DELETE", url, nil)
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
-		w.Write([]byte(err.Error()))
+		return c.String(http.StatusInternalServerError, err.Error())
 	}
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
-	fmt.Fprintf(w, string(body))
+	if nil != err {
+		return c.String(http.StatusInternalServerError, err.Error())
+	}
+
+	return c.Blob(http.StatusOK,"text/html; charset=utf-8" ,body)
 }
 
-func AllocsRequest(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+func AllocsRequest(c echo.Context) error {
 
 	url := buildUrl("/v1/allocations")
 	resp, err := http.Get(url)
 	if err != nil {
-		w.Write([]byte(err.Error()))
+		return c.String(http.StatusInternalServerError, err.Error())
 	}
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
-	fmt.Fprintf(w, string(body))
+	if nil != err {
+		return c.String(http.StatusInternalServerError, err.Error())
+	}
 
+	return c.Blob(http.StatusOK,"text/html; charset=utf-8" ,body)
 }
-func AllocSpecificRequest(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-	allocID := ps.ByName("allocID")
+func AllocSpecificRequest(c echo.Context) error {
+	allocID := c.Param("allocID")
 	url := buildUrl("/v1/allocation/" + allocID)
 	resp, err := http.Get(url)
 	if err != nil {
-		w.Write([]byte(err.Error()))
+		return c.String(http.StatusInternalServerError, err.Error())
 	}
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
-	fmt.Fprintf(w, string(body))
+	if nil != err {
+		return c.String(http.StatusInternalServerError, err.Error())
+	}
 
+	return c.Blob(http.StatusOK,"text/html; charset=utf-8" ,body)
 }
 
-func EvalsRequest(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+func EvalsRequest(c echo.Context) error {
 	url := buildUrl("/v1/evaluations")
 	resp, err := http.Get(url)
 	if err != nil {
-		w.Write([]byte(err.Error()))
+		return c.String(http.StatusInternalServerError, err.Error())
 	}
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
-	fmt.Fprintf(w, string(body))
+	if nil != err {
+		return c.String(http.StatusInternalServerError, err.Error())
+	}
 
+	return c.Blob(http.StatusOK,"text/html; charset=utf-8" ,body)
 }
 
-func EvalRequest(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+func EvalRequest(c echo.Context) error {
 	url := buildUrl("/v1/evaluation/")
-	evalID := ps.ByName("evalID")
-	changeType := ps.ByName("type")
+	evalID := c.Param("evalID")
+	changeType := c.Param("type")
 	if changeType == "evaluation" {
 		url = "http://" + NomadHost + "/v1/evaluation/"
 	}
 	resp, err := http.Get(url + evalID + "/allocations")
 	if err != nil {
-		w.Write([]byte(err.Error()))
+		return c.String(http.StatusInternalServerError, err.Error())
 	}
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
-	fmt.Fprintf(w, string(body))
+	if nil != err {
+		return c.String(http.StatusInternalServerError, err.Error())
+	}
 
+	return c.Blob(http.StatusOK,"text/html; charset=utf-8" ,body)
 }
 
-func AgentSelfRequest(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+func AgentSelfRequest(c echo.Context) error {
 	url := buildUrl("/v1/agent/self")
 	resp, err := http.Get(url)
 	if err != nil {
-		w.Write([]byte(err.Error()))
+		return c.String(http.StatusInternalServerError, err.Error())
 	}
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
-	fmt.Fprintf(w, string(body))
+	if nil != err {
+		return c.String(http.StatusInternalServerError, err.Error())
+	}
 
+	return c.Blob(http.StatusOK,"text/html; charset=utf-8" ,body)
 }
 
-func ClientAllocRequest(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-	url := buildUrl("/v1/client/allocation/" + ps.ByName("tokens") + "/stats")
+func ClientAllocRequest(c echo.Context) error {
+	url := buildUrl("/v1/client/allocation/" + c.Param("tokens") + "/stats")
 	resp, err := http.Get(url)
 	if err != nil {
-		w.Write([]byte(err.Error()))
+		return c.String(http.StatusInternalServerError, err.Error())
 	}
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
-	fmt.Fprintf(w, string(body))
+	if nil != err {
+		return c.String(http.StatusInternalServerError, err.Error())
+	}
 
+	return c.Blob(http.StatusOK,"text/html; charset=utf-8" ,body)
 }
 
-func AgentJoinRequest(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+func AgentJoinRequest(c echo.Context) error {
 	url := buildUrl("/v1/agent/join")
-	address := ps.ByName("address")
+	address := c.Param("address")
 	resp, err := http.Post(url, "application/x-www-form-urlencoded",
 		strings.NewReader(address))
 	if err != nil {
-		w.Write([]byte(err.Error()))
+		return c.String(http.StatusInternalServerError, err.Error())
 	}
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
-	fmt.Fprintf(w, string(body))
+	if nil != err {
+		return c.String(http.StatusInternalServerError, err.Error())
+	}
 
+	return c.Blob(http.StatusOK,"text/html; charset=utf-8" ,body)
 }
 
-func AgentForceLeaveRequest(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+func AgentForceLeaveRequest(c echo.Context) error {
 	url := buildUrl("/v1/agent/force-leave")
-	node := ps.ByName("node")
+	node := c.Param("node")
 	resp, err := http.Post(url, "application/x-www-form-urlencoded",
 		strings.NewReader(node))
 	if err != nil {
-		w.Write([]byte(err.Error()))
+		return c.String(http.StatusInternalServerError, err.Error())
 	}
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
-	fmt.Fprintf(w, string(body))
+	if nil != err {
+		return c.String(http.StatusInternalServerError, err.Error())
+	}
 
+	return c.Blob(http.StatusOK,"text/html; charset=utf-8" ,body)
 }
 
-func AgentMembersRequest(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+func AgentMembersRequest(c echo.Context) error {
 	url := buildUrl("/v1/agent/members")
 	resp, err := http.Get(url)
 	if err != nil {
-		w.Write([]byte(err.Error()))
+		return c.String(http.StatusInternalServerError, err.Error())
 	}
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
-	fmt.Fprintf(w, string(body))
+	if nil != err {
+		return c.String(http.StatusInternalServerError, err.Error())
+	}
 
+	return c.Blob(http.StatusOK,"text/html; charset=utf-8" ,body)
 }
 
-func UpdateServers(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+func UpdateServers(c echo.Context) error {
 	url := buildUrl("/v1/agent/servers")
-	address := ps.ByName("address")
+	address := c.Param("address")
 	resp, err := http.Post(url, "application/x-www-form-urlencoded",
 		strings.NewReader(address))
 	if err != nil {
-		w.Write([]byte(err.Error()))
+		return c.String(http.StatusInternalServerError, err.Error())
 	}
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
-	fmt.Fprintf(w, string(body))
+	if nil != err {
+		return c.String(http.StatusInternalServerError, err.Error())
+	}
 
+	return c.Blob(http.StatusOK,"text/html; charset=utf-8" ,body)
 }
 
-func ListServers(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+func ListServers(c echo.Context) error {
 	url := buildUrl("/v1/agent/servers")
 	resp, err := http.Get(url)
 	if err != nil {
-		w.Write([]byte(err.Error()))
+		return c.String(http.StatusInternalServerError, err.Error())
 	}
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
-	fmt.Fprintf(w, string(body))
+	if nil != err {
+		return c.String(http.StatusInternalServerError, err.Error())
+	}
 
+	return c.Blob(http.StatusOK,"text/html; charset=utf-8" ,body)
 }
-func RegionListRequest(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+func RegionListRequest(c echo.Context) error {
 	url := buildUrl("/v1/regions")
 	resp, err := http.Get(url)
 	if err != nil {
-		w.Write([]byte(err.Error()))
+		return c.String(http.StatusInternalServerError, err.Error())
 	}
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
-	fmt.Fprintf(w, string(body))
+	if nil != err {
+		return c.String(http.StatusInternalServerError, err.Error())
+	}
 
+	return c.Blob(http.StatusOK,"text/html; charset=utf-8" ,body)
 }
 
-func StatusLeaderRequest(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+func StatusLeaderRequest(c echo.Context) error {
 	url := buildUrl("/v1/status/leader")
 	resp, err := http.Get(url)
 	if err != nil {
-		w.Write([]byte(err.Error()))
+		return c.String(http.StatusInternalServerError, err.Error())
 	}
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
-	fmt.Fprintf(w, string(body))
+	if nil != err {
+		return c.String(http.StatusInternalServerError, err.Error())
+	}
 
+	return c.Blob(http.StatusOK,"text/html; charset=utf-8" ,body)
 }
 
-func StatusPeersRequest(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+func StatusPeersRequest(c echo.Context) error {
 	url := buildUrl("/v1/status/peers")
 	resp, err := http.Get(url)
 	if err != nil {
-		w.Write([]byte(err.Error()))
+		return c.String(http.StatusInternalServerError, err.Error())
 	}
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
-	fmt.Fprintf(w, string(body))
+	if nil != err {
+		return c.String(http.StatusInternalServerError, err.Error())
+	}
 
+	return c.Blob(http.StatusOK,"text/html; charset=utf-8" ,body)
 }
 
 func convertJob(oldJob *OldJob) (*api.Job, error) {
@@ -395,11 +455,11 @@ func convertJob(oldJob *OldJob) (*api.Job, error) {
 	return nomadJob, nil
 }
 
-func ValidateJobRequest(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+func ValidateJobRequest(c echo.Context) error {
 
 	var err error
 	var oldJob OldJob
-	if err := decodeBody(r, &oldJob); err != nil {
+	if err := decodeBody(c.Request(), &oldJob); err != nil {
 		hclog.Fmt("err ", err)
 	}
 
@@ -413,60 +473,72 @@ func ValidateJobRequest(w http.ResponseWriter, r *http.Request, ps httprouter.Pa
 	param, err := json.Marshal(nomadJobreq)
 
 	if err != nil {
-		fmt.Println("json.marshal failed, err:", err)
-		return
+		return c.String(http.StatusInternalServerError, fmt.Sprintf("json.marshal failed, err: %v", err))
 	}
 	url := buildUrl("/v1/validate/job")
 	resp, err := http.Post(url, "application/x-www-form-urlencoded",
 		strings.NewReader(string(param)))
 	if err != nil {
-		w.Write([]byte(err.Error()))
+		return c.String(http.StatusInternalServerError, err.Error())
 	}
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
-	fmt.Fprintf(w, string(body))
+	if nil != err {
+		return c.String(http.StatusInternalServerError, err.Error())
+	}
 
+	return c.Blob(http.StatusOK,"text/html; charset=utf-8" ,body)
 }
 
-func NodesRequest(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+func NodesRequest(c echo.Context) error {
 	url := buildUrl("/v1/nodes")
 	resp, err := http.Get(url)
 	if err != nil {
-		w.Write([]byte(err.Error()))
+		return c.String(http.StatusInternalServerError, err.Error())
 	}
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
 
 	result := string(body)
 	result = strings.Replace(result, "Address", "HTTPAddr", -1)
-	fmt.Fprintf(w, result)
+	if nil != err {
+		return c.String(http.StatusInternalServerError, err.Error())
+	}
 
+	return c.Blob(http.StatusOK,"text/html; charset=utf-8" ,body)
 }
 
-func NodeRequest(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-	nodeName := ps.ByName("nodeName")
-	changeType := ps.ByName("type")
+func NodeRequest(c echo.Context) error {
+	nodeName := c.Param("nodeName")
+	changeType := c.Param("type")
 	url := buildUrl("/v1/node/" + nodeName + "/evaluate")
 	if changeType == "evaluate" {
 		url = buildUrl("/v1/node/" + nodeName + "/evaluate")
 		resp, err := http.Post(url, "application/x-www-form-urlencoded",
 			strings.NewReader(""))
 		if err != nil {
-			w.Write([]byte(err.Error()))
+			return c.String(http.StatusInternalServerError, err.Error())
 		}
 		defer resp.Body.Close()
 		body, err := ioutil.ReadAll(resp.Body)
-		fmt.Fprintf(w, string(body))
+		if nil != err {
+			return c.String(http.StatusInternalServerError, err.Error())
+		}
 
+		return c.Blob(http.StatusOK,"text/html; charset=utf-8" ,body)
 	} else if changeType == "allocations" {
 		url = buildUrl("/v1/node/" + nodeName + "/allocations")
 		resp, err := http.Get(url)
 		if err != nil {
-			w.Write([]byte(err.Error()))
+			return c.String(http.StatusInternalServerError, err.Error())
 		}
 		defer resp.Body.Close()
 		body, err := ioutil.ReadAll(resp.Body)
-		fmt.Fprintf(w, string(body))
-	}
+		if nil != err {
+			return c.String(http.StatusInternalServerError, err.Error())
+		}
 
+		return c.Blob(http.StatusOK,"text/html; charset=utf-8" ,body)
+	}
+	return c.String(http.StatusInternalServerError, fmt.Sprintf("unknown change type: %v", changeType))
 }
