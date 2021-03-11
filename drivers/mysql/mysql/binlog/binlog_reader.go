@@ -659,7 +659,9 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 		evt := ev.Event.(*replication.XIDEvent)
 		b.entryContext.SpanContext = span.Context()
 		b.currentCoordinates.LogPos = int64(ev.Header.LogPos)
-		b.currentCoordinates.GtidSet = evt.GSet.String()
+		if evt.GSet != nil {
+			b.currentCoordinates.GtidSet = evt.GSet.String()
+		}
 		// TODO is the pos the start or the end of a event?
 		// pos if which event should be use? Do we need +1?
 		b.currentBinlogEntry.Coordinates.LogPos = b.currentCoordinates.LogPos
@@ -839,6 +841,7 @@ const (
 	dtleQueryPrefix = "/*dtle_gtid1 "
 	dtleQuerySuffix = " dtle_gtid*/"
 )
+
 func checkDtleQuery(query string) (string, error) {
 
 	start := strings.Index(query, dtleQueryPrefix)
@@ -1137,8 +1140,8 @@ func resolveDDLSQL(currentSchema string, sql string,
 		v.Tables = newTables
 
 		if len(v.Tables) == 0 {
-			result.sql = "drop table if exists dtle-dummy-never-exists.dtle-dummy-never-exists"
-			setTable("dtle-dummy-never-exists", "dtle-dummy-never-exists")
+			result.sql = "drop table if exists dtle_dummy_never_exists.dtle_dummy_never_exists"
+			setTable("dtle_dummy_never_exists", "dtle_dummy_never_exists")
 		} else {
 			bs := bytes.NewBuffer(nil)
 			r := &format.RestoreCtx{
@@ -1180,9 +1183,16 @@ func (b *BinlogReader) skipQueryDDL(schema string, tableName string) bool {
 			if common.IgnoreDbByReplicateIgnoreDb(b.mysqlContext.ReplicateIgnoreDb, schema) {
 				return true
 			}
-			return common.IgnoreTbByReplicateIgnoreDb(b.mysqlContext.ReplicateIgnoreDb, schema, tableName)
+			if common.IgnoreTbByReplicateIgnoreDb(b.mysqlContext.ReplicateIgnoreDb, schema, tableName) {
+				return true
+			}
 		}
-		return b.matchTable(b.mysqlContext.ReplicateDoDb, schema, tableName)
+		if len(b.mysqlContext.ReplicateDoDb) > 0 {
+			return !b.matchTable(b.mysqlContext.ReplicateDoDb, schema, tableName)
+		} else {
+			// replicate all dbs and tbs
+			return false
+		}
 	}
 }
 
