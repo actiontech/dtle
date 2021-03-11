@@ -659,7 +659,9 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 		evt := ev.Event.(*replication.XIDEvent)
 		b.entryContext.SpanContext = span.Context()
 		b.currentCoordinates.LogPos = int64(ev.Header.LogPos)
-		b.currentCoordinates.GtidSet = evt.GSet.String()
+		if evt.GSet != nil {
+			b.currentCoordinates.GtidSet = evt.GSet.String()
+		}
 		// TODO is the pos the start or the end of a event?
 		// pos if which event should be use? Do we need +1?
 		b.currentBinlogEntry.Coordinates.LogPos = b.currentCoordinates.LogPos
