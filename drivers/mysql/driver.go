@@ -4,17 +4,17 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
+
 	"github.com/actiontech/dtle/drivers/mysql/common"
 	"github.com/actiontech/dtle/drivers/mysql/kafka"
 	"github.com/actiontech/dtle/drivers/mysql/mysql"
 	"github.com/actiontech/dtle/g"
-	"github.com/armon/go-metrics"
-	"github.com/armon/go-metrics/prometheus"
 	"github.com/pkg/errors"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"time"
+	"net"
+	"net/http"
 
-	"github.com/actiontech/dtle/drivers/mysql/route"
+	"github.com/actiontech/dtle/drivers/api/route"
 	"github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/nomad/drivers/shared/eventer"
 	"github.com/hashicorp/nomad/plugins/base"
@@ -24,18 +24,14 @@ import (
 	"github.com/julienschmidt/httprouter"
 	gnatsd "github.com/nats-io/nats-server/v2/server"
 	stand "github.com/nats-io/nats-streaming-server/server"
-	"net"
-	"net/http"
-
-	"github.com/NYTimes/gziphandler"
 )
 
 const (
 	// fingerprintPeriod is the interval at which the driver will send fingerprint responses
 	fingerprintPeriod = 30 * time.Second
 
-	driverAttr        = "driver.dtle"
-	driverVersionAttr = "driver.dtle.version"
+	driverAttr            = "driver.dtle"
+	driverVersionAttr     = "driver.dtle.version"
 	driverFullVersionAttr = "driver.dtle.full_version"
 
 	// taskHandleVersion is the version of task handle which this driver sets
@@ -79,59 +75,59 @@ var (
 	// taskConfigSpec is the hcl specification for the driver config section of
 	// a taskConfig within a job. It is returned in the TaskConfigSchema RPC
 	taskConfigSpec = hclspec.NewObject(map[string]*hclspec.Spec{
-		"ReplicateDoDb" :hclspec.NewBlockList("ReplicateDoDb",  hclspec.NewObject(map[string]*hclspec.Spec{
-			"TableSchema": hclspec.NewAttr("TableSchema", "string", false),
-			"TableSchemaRegex": hclspec.NewAttr("TableSchemaRegex", "string", false),
+		"ReplicateDoDb": hclspec.NewBlockList("ReplicateDoDb", hclspec.NewObject(map[string]*hclspec.Spec{
+			"TableSchema":            hclspec.NewAttr("TableSchema", "string", false),
+			"TableSchemaRegex":       hclspec.NewAttr("TableSchemaRegex", "string", false),
 			"TableSchemaRenameRegex": hclspec.NewAttr("TableSchemaRenameRegex", "string", false),
-			"TableSchemaRename": hclspec.NewAttr("TableSchemaRename", "string", false),
-			"TableSchemaScope": hclspec.NewAttr("TableSchemaScope", "string", false),
-			"Tables" :hclspec.NewBlockList("Tables", hclspec.NewObject(map[string]*hclspec.Spec{
-				"TableName": hclspec.NewAttr("TableName", "string", false),
-				"TableRegex": hclspec.NewAttr("TableRegex", "string", false),
-				"TableRename": hclspec.NewAttr("TableRename", "string", false),
-				"TableRenameRegex": hclspec.NewAttr("TableRenameRegex", "string", false),
-				"TableSchema": hclspec.NewAttr("TableSchema", "string", false),
+			"TableSchemaRename":      hclspec.NewAttr("TableSchemaRename", "string", false),
+			"TableSchemaScope":       hclspec.NewAttr("TableSchemaScope", "string", false),
+			"Tables": hclspec.NewBlockList("Tables", hclspec.NewObject(map[string]*hclspec.Spec{
+				"TableName":         hclspec.NewAttr("TableName", "string", false),
+				"TableRegex":        hclspec.NewAttr("TableRegex", "string", false),
+				"TableRename":       hclspec.NewAttr("TableRename", "string", false),
+				"TableRenameRegex":  hclspec.NewAttr("TableRenameRegex", "string", false),
+				"TableSchema":       hclspec.NewAttr("TableSchema", "string", false),
 				"TableSchemaRename": hclspec.NewAttr("TableSchemaRename", "string", false),
-				"Where": hclspec.NewAttr("Where", "string", false),
-				"ColumnMapFrom": hclspec.NewAttr("ColumnMapFrom", "list(string)", false),
+				"Where":             hclspec.NewAttr("Where", "string", false),
+				"ColumnMapFrom":     hclspec.NewAttr("ColumnMapFrom", "list(string)", false),
 			})),
 		})),
-		"ReplicateIgnoreDb" :hclspec.NewBlockList("ReplicateIgnoreDb",  hclspec.NewObject(map[string]*hclspec.Spec{
+		"ReplicateIgnoreDb": hclspec.NewBlockList("ReplicateIgnoreDb", hclspec.NewObject(map[string]*hclspec.Spec{
 			"TableSchema": hclspec.NewAttr("TableSchema", "string", false),
-			"Tables" :hclspec.NewBlockList("Tables", hclspec.NewObject(map[string]*hclspec.Spec{
-				"TableName": hclspec.NewAttr("TableName", "string", false),
+			"Tables": hclspec.NewBlockList("Tables", hclspec.NewObject(map[string]*hclspec.Spec{
+				"TableName":   hclspec.NewAttr("TableName", "string", false),
 				"TableSchema": hclspec.NewAttr("TableSchema", "string", false),
 			})),
 		})),
-		"DropTableIfExists":hclspec.NewAttr("DropTableIfExists", "bool", false),
-		"ExpandSyntaxSupport":hclspec.NewAttr("ExpandSyntaxSupport", "bool", false),
-		"ReplChanBufferSize":hclspec.NewAttr("ReplChanBufferSize", "number", false),
-		"TrafficAgainstLimits":hclspec.NewAttr("TrafficAgainstLimits", "number", false),
-		"MaxRetries":hclspec.NewAttr("MaxRetries", "number", false),
-		"ChunkSize":hclspec.NewAttr("ChunkSize", "number", false),
-		"SqlFilter":hclspec.NewAttr("SqlFilter", "list(string)", false),
-		"GroupMaxSize":hclspec.NewAttr("GroupMaxSize", "number", false),
-		"GroupTimeout":hclspec.NewAttr("GroupTimeout", "number", false),
-		"Gtid":hclspec.NewAttr("Gtid", "string", false),
-		"BinlogFile":hclspec.NewAttr("BinlogFile", "string", false),
-		"BinlogPos":hclspec.NewAttr("BinlogPos", "number", false),
-		"GtidStart":hclspec.NewAttr("GtidStart", "string", false),
-		"AutoGtid":hclspec.NewAttr("AutoGtid", "bool", false),
-		"BinlogRelay":hclspec.NewAttr("BinlogRelay", "bool", false),
-		"ParallelWorkers":hclspec.NewAttr("ParallelWorkers", "number", false),
-		"SkipCreateDbTable":hclspec.NewAttr("SkipCreateDbTable", "bool", false),
-		"SkipPrivilegeCheck":hclspec.NewAttr("SkipPrivilegeCheck", "bool", false),
-		"SkipIncrementalCopy":hclspec.NewAttr("SkipIncrementalCopy", "bool", false),
+		"DropTableIfExists":    hclspec.NewAttr("DropTableIfExists", "bool", false),
+		"ExpandSyntaxSupport":  hclspec.NewAttr("ExpandSyntaxSupport", "bool", false),
+		"ReplChanBufferSize":   hclspec.NewAttr("ReplChanBufferSize", "number", false),
+		"TrafficAgainstLimits": hclspec.NewAttr("TrafficAgainstLimits", "number", false),
+		"MaxRetries":           hclspec.NewAttr("MaxRetries", "number", false),
+		"ChunkSize":            hclspec.NewAttr("ChunkSize", "number", false),
+		"SqlFilter":            hclspec.NewAttr("SqlFilter", "list(string)", false),
+		"GroupMaxSize":         hclspec.NewAttr("GroupMaxSize", "number", false),
+		"GroupTimeout":         hclspec.NewAttr("GroupTimeout", "number", false),
+		"Gtid":                 hclspec.NewAttr("Gtid", "string", false),
+		"BinlogFile":           hclspec.NewAttr("BinlogFile", "string", false),
+		"BinlogPos":            hclspec.NewAttr("BinlogPos", "number", false),
+		"GtidStart":            hclspec.NewAttr("GtidStart", "string", false),
+		"AutoGtid":             hclspec.NewAttr("AutoGtid", "bool", false),
+		"BinlogRelay":          hclspec.NewAttr("BinlogRelay", "bool", false),
+		"ParallelWorkers":      hclspec.NewAttr("ParallelWorkers", "number", false),
+		"SkipCreateDbTable":    hclspec.NewAttr("SkipCreateDbTable", "bool", false),
+		"SkipPrivilegeCheck":   hclspec.NewAttr("SkipPrivilegeCheck", "bool", false),
+		"SkipIncrementalCopy":  hclspec.NewAttr("SkipIncrementalCopy", "bool", false),
 		"ConnectionConfig": hclspec.NewBlock("ConnectionConfig", false, hclspec.NewObject(map[string]*hclspec.Spec{
-			"Host": hclspec.NewAttr("Host", "string", true),
-			"Port": hclspec.NewAttr("Port", "number", true),
-			"User": hclspec.NewAttr("User", "string", true),
+			"Host":     hclspec.NewAttr("Host", "string", true),
+			"Port":     hclspec.NewAttr("Port", "number", true),
+			"User":     hclspec.NewAttr("User", "string", true),
 			"Password": hclspec.NewAttr("Password", "string", true),
 			"Charset": hclspec.NewDefault(hclspec.NewAttr("Charset", "string", false),
 				hclspec.NewLiteral(`"utf8mb4"`)),
 		})),
 		"KafkaConfig": hclspec.NewBlock("KafkaConfig", false, hclspec.NewObject(map[string]*hclspec.Spec{
-			"Topic": hclspec.NewAttr("Topic", "string", true),
+			"Topic":   hclspec.NewAttr("Topic", "string", true),
 			"Brokers": hclspec.NewAttr("Brokers", "list(string)", true),
 			"Converter": hclspec.NewDefault(hclspec.NewAttr("Converter", "string", false),
 				hclspec.NewLiteral(`"json"`)),
@@ -187,8 +183,8 @@ type Driver struct {
 	// logger will log to the Nomad agent
 	logger hclog.Logger
 
-	stand *stand.StanServer
-	apiServer  *httprouter.Router
+	stand     *stand.StanServer
+	apiServer *httprouter.Router
 
 	config *DriverConfig
 
@@ -211,7 +207,7 @@ func NewDriver(logger hclog.Logger) drivers.DriverPlugin {
 	}
 }
 
-func (d *Driver) SetupNatsServer(logger hclog.Logger) (err error)  {
+func (d *Driver) SetupNatsServer(logger hclog.Logger) (err error) {
 	natsAddr, err := net.ResolveTCPAddr("tcp", d.config.NatsBind)
 	if err != nil {
 		return fmt.Errorf("failed to parse Nats address. addr %v err %v",
@@ -222,7 +218,7 @@ func (d *Driver) SetupNatsServer(logger hclog.Logger) (err error)  {
 		Port:       natsAddr.Port,
 		MaxPayload: 200 * 1024 * 1024,
 		//HTTPPort:   8199,
-		LogFile:"/opt/log",
+		LogFile: "/opt/log",
 		Debug:   true,
 	}
 	//logger.Debug("Starting nats streaming server", "addr", natsAddr)
@@ -239,72 +235,6 @@ func (d *Driver) SetupNatsServer(logger hclog.Logger) (err error)  {
 	return nil
 }
 
-func (d *Driver) SetupApiServer(logger hclog.Logger) (err error)  {
-	route.Host =  d.config.NomadAddr
-	logger.Debug("Begin Setup api server", "addr", d.config.ApiAddr)
-	router := httprouter.New()
-	router.GET("/v1/job/:jobId",route.JobDetailRequest)
-	router.DELETE("/v1/job/:jobId",route.JobDeleteRequest)
-	router.GET("/v1/job/:jobId/:path",route.JobRequest)
-	router.POST("/v1/jobs",route.UpdupJob)
-	router.GET("/v1/jobs",route.JobListRequest)
-	router.GET("/v1/allocations",route.AllocsRequest)
-	router.GET("/v1/allocation/:allocID", route.AllocSpecificRequest)
-	router.GET("/v1/evaluations",route.EvalsRequest)
-	router.GET("/v1/evaluation/:evalID/:type",route.EvalRequest)
-	router.GET("/v1/agent/allocation/:tokens",route.ClientAllocRequest)
-	router.GET("/v1/self",route.AgentSelfRequest)
-	router.POST("/v1/join",route.AgentJoinRequest)
-	router.POST("/v1/agent/force-leave",route.AgentForceLeaveRequest)
-	router.GET("/v1/members",route.AgentMembersRequest)
-	router.POST("/v1/managers",route.UpdateServers)
-	router.GET("/v1/managers",route.ListServers)
-	router.GET("/v1/regions",route.RegionListRequest)
-	router.GET("/v1/leader",route.StatusLeaderRequest)
-	router.GET("/v1/peers",route.StatusPeersRequest)
-	router.POST("/v1/validate/job",route.ValidateJobRequest)
-	router.GET("/v1/nodes", route.NodesRequest)
-	router.GET("/v1/node/:nodeName/:type",route.NodeRequest)
-	//router.POST("/v1/operator/",updupJob)
-	/*router.POST("/v1/job/renewal",updupJob)
-	router.POST("/v1/job/info",updupJob)
-	*/
-
-	mux := http.NewServeMux()
-	mux.Handle("/v1/", router)
-
-	if d.config.UiDir != "" {
-		d.logger.Info("found ui_dir", "dir", d.config.UiDir)
-		mux.Handle("/", http.StripPrefix("/", http.FileServer(http.Dir(d.config.UiDir))))
-	}
-	go func() {
-		err := http.ListenAndServe(d.config.ApiAddr, gziphandler.GzipHandler(mux))
-		if err != nil {
-			logger.Error("in SetupApiServer ListenAndServe", "err", err)
-			// TODO mark plugin unhealthy
-		}
-	}()
-	logger.Info("Setup api server succeeded", "addr", d.config.ApiAddr)
-
-	d.apiServer = router
-
-	router.Handler("GET", "/metrics", promhttp.Handler())
-
-	sink, err := prometheus.NewPrometheusSink()
-	if err != nil {
-		return err
-	}
-
-	metricsConfig := metrics.DefaultConfig("dtle")
-	_, err = metrics.NewGlobal(metricsConfig, sink)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-
 func (d *Driver) PluginInfo() (*base.PluginInfoResponse, error) {
 	return pluginInfo, nil
 }
@@ -314,16 +244,16 @@ func (d *Driver) ConfigSchema() (*hclspec.Spec, error) {
 }
 
 type DriverConfig struct {
-	NatsBind      string   `codec:"nats_bind"`
-	NatsAdvertise string   `codec:"nats_advertise"`
-	ApiAddr       string   `codec:"api_addr"`
-	NomadAddr     string   `codec:"nomad_addr"`
-	Consul        string `codec:"consul"`
-	DataDir       string   `codec:"data_dir"`
-	StatsCollectionInterval int `codec:"stats_collection_interval"`
-	PublishMetrics bool `codec:"publish_metrics"`
-	LogLevel       string `codec:"log_level"`
-	UiDir          string `codec:"ui_dir"`
+	NatsBind                string `codec:"nats_bind"`
+	NatsAdvertise           string `codec:"nats_advertise"`
+	ApiAddr                 string `codec:"api_addr"`
+	NomadAddr               string `codec:"nomad_addr"`
+	Consul                  string `codec:"consul"`
+	DataDir                 string `codec:"data_dir"`
+	StatsCollectionInterval int    `codec:"stats_collection_interval"`
+	PublishMetrics          bool   `codec:"publish_metrics"`
+	LogLevel                string `codec:"log_level"`
+	UiDir                   string `codec:"ui_dir"`
 }
 
 func (d *Driver) SetConfig(c *base.Config) (err error) {
@@ -373,7 +303,7 @@ func (d *Driver) SetConfig(c *base.Config) (err error) {
 						}
 					}()
 				} else {
-					apiErr := d.SetupApiServer(d.logger)
+					apiErr := route.SetupApiServer(d.logger, d.config.ApiAddr, d.config.NomadAddr, d.config.UiDir)
 					if apiErr != nil {
 						d.logger.Error("error in SetupApiServer", "err", err)
 						// TODO mark driver unhealthy
@@ -510,8 +440,8 @@ func (d *Driver) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHandle, *drive
 
 	{
 		ctx := &common.ExecContext{
-			Subject:    cfg.JobName,
-			StateDir:   d.config.DataDir,
+			Subject:  cfg.JobName,
+			StateDir: d.config.DataDir,
 		}
 		dtleTaskConfig.SetDefaultForEmpty()
 		driverConfig := &common.MySQLDriverConfig{DtleTaskConfig: dtleTaskConfig}
@@ -529,7 +459,7 @@ func (d *Driver) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHandle, *drive
 					d.storeManager, d.config.NatsAdvertise, h.waitCh)
 			} else {
 				h.runner, err = mysql.NewApplier(ctx, driverConfig, d.logger, d.storeManager,
-					d.config.NatsAdvertise, h.waitCh,d.eventer, h.taskConfig)
+					d.config.NatsAdvertise, h.waitCh, d.eventer, h.taskConfig)
 				if err != nil {
 					return nil, nil, errors.Wrap(err, "NewApplier")
 				}

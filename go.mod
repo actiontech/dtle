@@ -4,7 +4,7 @@ go 1.12
 
 require (
 	github.com/LK4D4/joincontext v0.0.0-20171026170139-1724345da6d5 // indirect
-	github.com/NYTimes/gziphandler v1.1.1
+	github.com/NYTimes/gziphandler v1.1.1 // indirect
 	github.com/Shopify/sarama v1.26.4
 	github.com/araddon/dateparse v0.0.0-20190622164848-0fb0a474d195 // indirect
 	github.com/araddon/gou v0.0.0-20190110011759-c797efecbb61 // indirect
@@ -35,6 +35,7 @@ require (
 	github.com/ikarishinjieva/golang-live-coverage-report v0.0.0-20190317040040-52af5b19c76c
 	github.com/issuj/gofaster v0.0.0-20170702192727-b08f1666d622 // indirect
 	github.com/julienschmidt/httprouter v1.2.0
+	github.com/labstack/echo/v4 v4.2.1
 	github.com/lytics/datemath v0.0.0-20180727225141-3ada1c10b5de // indirect
 	github.com/mb0/glob v0.0.0-20160210091149-1eb79d2de6c4 // indirect
 	github.com/mitchellh/copystructure v1.0.0 // indirect
@@ -59,8 +60,8 @@ require (
 	github.com/stretchr/testify v1.5.1
 	github.com/ugorji/go v1.1.7 // indirect
 	github.com/zclconf/go-cty v1.3.1 // indirect
-	golang.org/x/net v0.0.0-20200320220750-118fecf932d8
-	golang.org/x/text v0.3.2
+	golang.org/x/net v0.0.0-20200822124328-c89045814202
+	golang.org/x/text v0.3.3
 	google.golang.org/grpc v1.28.0 // indirect
 )
 
