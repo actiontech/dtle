@@ -20,7 +20,7 @@ func SetLogger(theLogger hclog.Logger) {
 	logger = theLogger
 }
 
-var Host string
+var NomadHost string
 
 // decodeBody is used to decode a JSON request body
 func decodeBody(req *http.Request, out interface{}) error {
@@ -29,7 +29,7 @@ func decodeBody(req *http.Request, out interface{}) error {
 }
 
 func buildUrl(path string) string {
-	return "http://" + Host + path
+	return "http://" + NomadHost + path
 }
 func UpdupJob(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	err := func() (err error) {
@@ -201,7 +201,7 @@ func EvalRequest(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	evalID := ps.ByName("evalID")
 	changeType := ps.ByName("type")
 	if changeType == "evaluation" {
-		url = "http://" + Host + "/v1/evaluation/"
+		url = "http://" + NomadHost + "/v1/evaluation/"
 	}
 	resp, err := http.Get(url + evalID + "/allocations")
 	if err != nil {
