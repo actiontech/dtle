@@ -672,6 +672,8 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 		if rowsEvent, ok := ev.Event.(*replication.RowsEvent); ok {
 			schemaName := string(rowsEvent.Table.Schema)
 			tableName := string(rowsEvent.Table.Table)
+			b.logger.Debug("got rowsEvent", "schema", schemaName, "table", tableName,
+				"gno", b.currentBinlogEntry.Coordinates.GNO)
 
 			dml := common.ToEventDML(ev.Header.EventType)
 			skip, table := b.skipRowEvent(rowsEvent, dml)
@@ -880,7 +882,7 @@ func (b *BinlogReader) setDtleQuery(query string, upperQuery string) string {
 }
 
 func (b *BinlogReader) sendEntry(entriesChannel chan<- *common.BinlogEntryContext) {
-	b.logger.Debug("sendEntry", "gno", b.currentBinlogEntry.Coordinates.GNO)
+	b.logger.Debug("sendEntry", "gno", b.currentBinlogEntry.Coordinates.GNO, "events", len(b.currentBinlogEntry.Events))
 	atomic.AddInt64(b.memory, int64(b.entryContext.Entry.Size()))
 	entriesChannel <- b.entryContext
 }
