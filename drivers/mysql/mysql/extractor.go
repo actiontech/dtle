@@ -946,7 +946,7 @@ func (e *Extractor) StreamEvents() error {
 				return err
 			}
 			e.logger.Debug("publish.before", "gno", gno, "n", len(entries.Entries))
-			if err = e.publish(ctx, fmt.Sprintf("%s_incr_hete", e.subject), txMsg); err != nil {
+			if err = e.publish(ctx, fmt.Sprintf("%s_incr_hete", e.subject), txMsg, gno); err != nil {
 				return err
 			}
 
@@ -1103,7 +1103,13 @@ func splitEntries(bigEntry *common.BinlogEntry, originalSize int) (splitted []co
 
 // retryOperation attempts up to `count` attempts at running given function,
 // exiting as soon as it returns with non-error.
-func (e *Extractor) publish(ctx context.Context, subject string, txMsg []byte) (err error) {
+// gno: only for logging
+func (e *Extractor) publish(ctx context.Context, subject string, txMsg []byte, gno int64) (err error) {
+	msgLen := len(txMsg)
+	if msgLen >= g.NatsMaxPayload {
+		e.logger.Warn("publish: msg exceeded NatsMaxPayload", "msgLen", msgLen)
+	}
+
 	tracer := opentracing.GlobalTracer()
 	var t not.TraceMsg
 	var spanctx opentracing.SpanContext
@@ -1127,15 +1133,16 @@ func (e *Extractor) publish(ctx context.Context, subject string, txMsg []byte) (
 	t.Write(txMsg)
 	defer span.Finish()
 	for i := 1; ; i++ {
-		e.logger.Debug("publish", "len", len(txMsg), "subject", subject)
+		e.logger.Debug("publish", "len", msgLen, "subject", subject, "gno", gno)
 		_, err = e.natsConn.Request(subject, t.Bytes(), common.DefaultConnectWait)
 		if err == nil {
 			txMsg = nil
 			break
 		} else if err == gonats.ErrTimeout {
-			e.logger.Debug("publish timeout", "err", err)
+			e.logger.Debug("publish timeout", "err", err, "i", i, "gno", gno)
 			if i % 20 == 0 {
-				e.logger.Warn("publish timeout for 20 times", "err", err)
+				e.logger.Warn("publish timeout for i times", "err", err, "i", i,
+					"len", msgLen, "subject", subject, "gno", gno)
 			}
 
 			time.Sleep(1 * time.Second)
@@ -1488,7 +1495,7 @@ func (e *Extractor) encodeDumpEntry(entry *common.DumpEntry) error {
 		return err
 	}
 	txMsg := snappy.Encode(nil, bs)
-	if err := e.publish(ctx, fmt.Sprintf("%s_full", e.subject), txMsg); err != nil {
+	if err := e.publish(ctx, fmt.Sprintf("%s_full", e.subject), txMsg, 0); err != nil {
 		return err
 	}
 	e.mysqlContext.Stage = common.StageSendingData
@@ -1648,7 +1655,7 @@ func (e *Extractor) sendFullComplete(ctx context.Context) (err error) {
 	if err != nil {
 		return err
 	}
-	if err := e.publish(ctx, fmt.Sprintf("%s_full_complete", e.subject), dumpMsg); err != nil {
+	if err := e.publish(ctx, fmt.Sprintf("%s_full_complete", e.subject), dumpMsg, 0); err != nil {
 		return err
 	}
 	return nil

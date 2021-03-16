@@ -715,6 +715,9 @@ func (a *Applier) validateGrants() error {
 }
 
 func (a *Applier) ApplyEventQueries(db *gosql.DB, entry *common.DumpEntry) error {
+	a.logger.Debug("ApplyEventQueries", "schema", entry.TableSchema, "table", entry.TableName,
+		"rows", len(entry.ValuesX))
+
 	if a.stubFullApplyDelay != 0 {
 		a.logger.Debug("stubFullApplyDelay start sleep")
 		time.Sleep(a.stubFullApplyDelay)
@@ -761,15 +764,15 @@ func (a *Applier) ApplyEventQueries(db *gosql.DB, entry *common.DumpEntry) error
 		return err
 	}
 	execQuery := func(query string) error {
-		a.logger.Debug("Exec", "query", common.StrLim(query, 256))
+		a.logger.Debug("ApplyEventQueries. exec", "query", common.StrLim(query, 256))
 		_, err := tx.Exec(query)
 		if err != nil {
 			if !sql.IgnoreError(err) {
-				a.logger.Error("Exec error", "query", common.StrLim(query, 10), "err", err)
+				a.logger.Error("ApplyEventQueries. exec error", "query", common.StrLim(query, 10), "err", err)
 				return err
 			}
 			if !sql.IgnoreExistsError(err) {
-				a.logger.Warn("Ignore error", "err", err)
+				a.logger.Warn("ApplyEventQueries. ignore error", "err", err)
 			}
 		}
 		return nil
