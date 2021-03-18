@@ -64,7 +64,7 @@ func UpdupJob(c echo.Context) error {
 	if err != nil {
 		return errors.Wrap(err, "reading forwarded resp")
 	}
-	return c.Blob(http.StatusOK,"text/html; charset=utf-8" ,body)
+	return c.Blob(http.StatusOK, "text/html; charset=utf-8", body)
 }
 
 func JobListRequest(c echo.Context) error {
@@ -80,7 +80,7 @@ func JobListRequest(c echo.Context) error {
 		return errors.Wrap(err, "reading forwarded resp")
 	}
 
-	return c.Blob(http.StatusOK,"text/html; charset=utf-8" ,body)
+	return c.Blob(http.StatusOK, "text/html; charset=utf-8", body)
 }
 
 func JobRequest(c echo.Context) error {
@@ -100,7 +100,7 @@ func JobRequest(c echo.Context) error {
 			return c.String(http.StatusInternalServerError, err.Error())
 		}
 
-		return c.Blob(http.StatusOK,"text/html; charset=utf-8" ,body)
+		return c.Blob(http.StatusOK, "text/html; charset=utf-8", body)
 	} else if path == "evaluate" {
 		url := buildUrl("/v1/job/" + jobId + "/evaluate")
 		resp, err := http.Post(url, "application/x-www-form-urlencoded",
@@ -114,7 +114,7 @@ func JobRequest(c echo.Context) error {
 			return c.String(http.StatusInternalServerError, err.Error())
 		}
 
-		return c.Blob(http.StatusOK,"text/html; charset=utf-8" ,body)
+		return c.Blob(http.StatusOK, "text/html; charset=utf-8", body)
 	} else if path == "resume" {
 		url := buildUrl("/v1/job/" + jobId + "/resume")
 		resp, err := http.Get(url)
@@ -127,7 +127,7 @@ func JobRequest(c echo.Context) error {
 			return c.String(http.StatusInternalServerError, err.Error())
 		}
 
-		return c.Blob(http.StatusOK,"text/html; charset=utf-8" ,body)
+		return c.Blob(http.StatusOK, "text/html; charset=utf-8", body)
 	} else if path == "pause" {
 		url := buildUrl("/v1/job/" + jobId + "/pause")
 		resp, err := http.Get(url)
@@ -140,7 +140,7 @@ func JobRequest(c echo.Context) error {
 			return c.String(http.StatusInternalServerError, err.Error())
 		}
 
-		return c.Blob(http.StatusOK,"text/html; charset=utf-8" ,body)
+		return c.Blob(http.StatusOK, "text/html; charset=utf-8", body)
 	}
 	return c.String(http.StatusInternalServerError, fmt.Sprintf("unknown url"))
 }
@@ -157,7 +157,7 @@ func JobDetailRequest(c echo.Context) error {
 		return c.String(http.StatusInternalServerError, err.Error())
 	}
 
-	return c.Blob(http.StatusOK,"text/html; charset=utf-8" ,body)
+	return c.Blob(http.StatusOK, "text/html; charset=utf-8", body)
 }
 func JobDeleteRequest(c echo.Context) error {
 	jobId := c.Param("jobId")
@@ -174,7 +174,7 @@ func JobDeleteRequest(c echo.Context) error {
 		return c.String(http.StatusInternalServerError, err.Error())
 	}
 
-	return c.Blob(http.StatusOK,"text/html; charset=utf-8" ,body)
+	return c.Blob(http.StatusOK, "text/html; charset=utf-8", body)
 }
 
 func AllocsRequest(c echo.Context) error {
@@ -190,7 +190,7 @@ func AllocsRequest(c echo.Context) error {
 		return c.String(http.StatusInternalServerError, err.Error())
 	}
 
-	return c.Blob(http.StatusOK,"text/html; charset=utf-8" ,body)
+	return c.Blob(http.StatusOK, "text/html; charset=utf-8", body)
 }
 func AllocSpecificRequest(c echo.Context) error {
 	allocID := c.Param("allocID")
@@ -205,7 +205,7 @@ func AllocSpecificRequest(c echo.Context) error {
 		return c.String(http.StatusInternalServerError, err.Error())
 	}
 
-	return c.Blob(http.StatusOK,"text/html; charset=utf-8" ,body)
+	return c.Blob(http.StatusOK, "text/html; charset=utf-8", body)
 }
 
 func EvalsRequest(c echo.Context) error {
@@ -220,7 +220,7 @@ func EvalsRequest(c echo.Context) error {
 		return c.String(http.StatusInternalServerError, err.Error())
 	}
 
-	return c.Blob(http.StatusOK,"text/html; charset=utf-8" ,body)
+	return c.Blob(http.StatusOK, "text/html; charset=utf-8", body)
 }
 
 func EvalRequest(c echo.Context) error {
@@ -240,7 +240,7 @@ func EvalRequest(c echo.Context) error {
 		return c.String(http.StatusInternalServerError, err.Error())
 	}
 
-	return c.Blob(http.StatusOK,"text/html; charset=utf-8" ,body)
+	return c.Blob(http.StatusOK, "text/html; charset=utf-8", body)
 }
 
 func AgentSelfRequest(c echo.Context) error {
@@ -255,7 +255,7 @@ func AgentSelfRequest(c echo.Context) error {
 		return c.String(http.StatusInternalServerError, err.Error())
 	}
 
-	return c.Blob(http.StatusOK,"text/html; charset=utf-8" ,body)
+	return c.Blob(http.StatusOK, "text/html; charset=utf-8", body)
 }
 
 func ClientAllocRequest(c echo.Context) error {
@@ -270,7 +270,7 @@ func ClientAllocRequest(c echo.Context) error {
 		return c.String(http.StatusInternalServerError, err.Error())
 	}
 
-	return c.Blob(http.StatusOK,"text/html; charset=utf-8" ,body)
+	return c.Blob(http.StatusOK, "text/html; charset=utf-8", body)
 }
 
 func AgentJoinRequest(c echo.Context) error {
@@ -287,7 +287,7 @@ func AgentJoinRequest(c echo.Context) error {
 		return c.String(http.StatusInternalServerError, err.Error())
 	}
 
-	return c.Blob(http.StatusOK,"text/html; charset=utf-8" ,body)
+	return c.Blob(http.StatusOK, "text/html; charset=utf-8", body)
 }
 
 func AgentForceLeaveRequest(c echo.Context) error {
@@ -304,7 +304,7 @@ func AgentForceLeaveRequest(c echo.Context) error {
 		return c.String(http.StatusInternalServerError, err.Error())
 	}
 
-	return c.Blob(http.StatusOK,"text/html; charset=utf-8" ,body)
+	return c.Blob(http.StatusOK, "text/html; charset=utf-8", body)
 }
 
 func AgentMembersRequest(c echo.Context) error {
@@ -319,7 +319,7 @@ func AgentMembersRequest(c echo.Context) error {
 		return c.String(http.StatusInternalServerError, err.Error())
 	}
 
-	return c.Blob(http.StatusOK,"text/html; charset=utf-8" ,body)
+	return c.Blob(http.StatusOK, "text/html; charset=utf-8", body)
 }
 
 func UpdateServers(c echo.Context) error {
@@ -336,7 +336,7 @@ func UpdateServers(c echo.Context) error {
 		return c.String(http.StatusInternalServerError, err.Error())
 	}
 
-	return c.Blob(http.StatusOK,"text/html; charset=utf-8" ,body)
+	return c.Blob(http.StatusOK, "text/html; charset=utf-8", body)
 }
 
 func ListServers(c echo.Context) error {
@@ -351,7 +351,7 @@ func ListServers(c echo.Context) error {
 		return c.String(http.StatusInternalServerError, err.Error())
 	}
 
-	return c.Blob(http.StatusOK,"text/html; charset=utf-8" ,body)
+	return c.Blob(http.StatusOK, "text/html; charset=utf-8", body)
 }
 func RegionListRequest(c echo.Context) error {
 	url := buildUrl("/v1/regions")
@@ -365,7 +365,7 @@ func RegionListRequest(c echo.Context) error {
 		return c.String(http.StatusInternalServerError, err.Error())
 	}
 
-	return c.Blob(http.StatusOK,"text/html; charset=utf-8" ,body)
+	return c.Blob(http.StatusOK, "text/html; charset=utf-8", body)
 }
 
 func StatusLeaderRequest(c echo.Context) error {
@@ -380,7 +380,7 @@ func StatusLeaderRequest(c echo.Context) error {
 		return c.String(http.StatusInternalServerError, err.Error())
 	}
 
-	return c.Blob(http.StatusOK,"text/html; charset=utf-8" ,body)
+	return c.Blob(http.StatusOK, "text/html; charset=utf-8", body)
 }
 
 func StatusPeersRequest(c echo.Context) error {
@@ -395,7 +395,7 @@ func StatusPeersRequest(c echo.Context) error {
 		return c.String(http.StatusInternalServerError, err.Error())
 	}
 
-	return c.Blob(http.StatusOK,"text/html; charset=utf-8" ,body)
+	return c.Blob(http.StatusOK, "text/html; charset=utf-8", body)
 }
 
 func convertJob(oldJob *OldJob) (*api.Job, error) {
@@ -487,7 +487,7 @@ func ValidateJobRequest(c echo.Context) error {
 		return c.String(http.StatusInternalServerError, err.Error())
 	}
 
-	return c.Blob(http.StatusOK,"text/html; charset=utf-8" ,body)
+	return c.Blob(http.StatusOK, "text/html; charset=utf-8", body)
 }
 
 func NodesRequest(c echo.Context) error {
@@ -505,7 +505,7 @@ func NodesRequest(c echo.Context) error {
 		return c.String(http.StatusInternalServerError, err.Error())
 	}
 
-	return c.Blob(http.StatusOK,"text/html; charset=utf-8" ,body)
+	return c.Blob(http.StatusOK, "text/html; charset=utf-8", body)
 }
 
 func NodeRequest(c echo.Context) error {
@@ -525,7 +525,7 @@ func NodeRequest(c echo.Context) error {
 			return c.String(http.StatusInternalServerError, err.Error())
 		}
 
-		return c.Blob(http.StatusOK,"text/html; charset=utf-8" ,body)
+		return c.Blob(http.StatusOK, "text/html; charset=utf-8", body)
 	} else if changeType == "allocations" {
 		url = buildUrl("/v1/node/" + nodeName + "/allocations")
 		resp, err := http.Get(url)
@@ -538,7 +538,7 @@ func NodeRequest(c echo.Context) error {
 			return c.String(http.StatusInternalServerError, err.Error())
 		}
 
-		return c.Blob(http.StatusOK,"text/html; charset=utf-8" ,body)
+		return c.Blob(http.StatusOK, "text/html; charset=utf-8", body)
 	}
 	return c.String(http.StatusInternalServerError, fmt.Sprintf("unknown change type: %v", changeType))
 }
