@@ -15,8 +15,6 @@ import (
 	"github.com/hashicorp/nomad/plugins/drivers"
 
 	"github.com/actiontech/dtle/g"
-	"github.com/opentracing/opentracing-go"
-	"github.com/opentracing/opentracing-go/ext"
 	"github.com/pkg/errors"
 
 	"bytes"
@@ -30,7 +28,6 @@ import (
 	gonats "github.com/nats-io/go-nats"
 	gomysql "github.com/siddontang/go-mysql/mysql"
 
-	"context"
 	"os"
 	"regexp"
 
@@ -40,7 +37,6 @@ import (
 	"github.com/actiontech/dtle/drivers/mysql/mysql/sql"
 	sqle "github.com/actiontech/dtle/drivers/mysql/mysql/sqle/inspector"
 	"github.com/hashicorp/go-hclog"
-	"github.com/nats-io/not.go"
 )
 
 // Extractor is the main schema extract flow manager.
@@ -305,16 +301,12 @@ func (e *Extractor) Run() {
 
 	if fullCopy {
 		e.logger.Debug("mysqlDump. before")
-		var ctx context.Context
-		span := opentracing.GlobalTracer().StartSpan("span_full_complete")
-		defer span.Finish()
-		ctx = opentracing.ContextWithSpan(ctx, span)
 		e.mysqlContext.MarkRowCopyStartTime()
 		if err := e.mysqlDump(); err != nil {
 			e.onError(TaskStateDead, err)
 			return
 		}
-		err = e.sendFullComplete(ctx)
+		err = e.sendFullComplete()
 		if err != nil {
 			e.onError(TaskStateDead, errors.Wrap(err, "sendFullComplete"))
 			return
@@ -330,7 +322,7 @@ func (e *Extractor) Run() {
 			e.onError(TaskStateDead, err)
 			return
 		}
-		err = e.sendFullComplete(nil) // TODO
+		err = e.sendFullComplete()
 		if err != nil {
 			e.onError(TaskStateDead, errors.Wrap(err, "sendFullComplete"))
 			return
@@ -915,9 +907,6 @@ func (tsc *TimestampContext) Handle() {
 // StreamEvents will begin streaming events. It will be blocking, so should be
 // executed by a goroutine
 func (e *Extractor) StreamEvents() error {
-	var ctx context.Context
-	//tracer := opentracing.GlobalTracer()
-
 	go func() {
 		defer e.logger.Debug("StreamEvents goroutine exited")
 		entries := common.BinlogEntries{}
@@ -937,7 +926,7 @@ func (e *Extractor) StreamEvents() error {
 				return err
 			}
 			e.logger.Debug("publish.before", "gno", gno, "n", len(entries.Entries))
-			if err = e.publish(ctx, fmt.Sprintf("%s_incr_hete", e.subject), txMsg, gno); err != nil {
+			if err = e.publish(fmt.Sprintf("%s_incr_hete", e.subject), txMsg, gno); err != nil {
 				return err
 			}
 
@@ -946,7 +935,6 @@ func (e *Extractor) StreamEvents() error {
 			}
 
 			e.logger.Debug("publish.after", "gno", gno, "n", len(entries.Entries))
-			ctx = nil
 			entries.Entries = nil
 			entriesSize = 0
 
@@ -962,12 +950,6 @@ func (e *Extractor) StreamEvents() error {
 			select {
 			case entryCtx := <-e.dataChannel:
 				binlogEntry := entryCtx.Entry
-				spanContext := entryCtx.SpanContext
-				span := opentracing.GlobalTracer().StartSpan("nat send :begin  send binlogEntry from src kafka to desc kafka", opentracing.ChildOf(spanContext))
-				span.SetTag("time", time.Now().Unix())
-				ctx = opentracing.ContextWithSpan(ctx, span)
-				//span.SetTag("timetag", time.Now().Unix())
-				entryCtx.SpanContext = nil
 
 				entries.Entries = append(entries.Entries, binlogEntry)
 				entriesSize += entryCtx.OriginalSize
@@ -991,7 +973,6 @@ func (e *Extractor) StreamEvents() error {
 					timer.Reset(groupTimeoutDuration)
 				}
 
-				span.Finish()
 			case <-timer.C:
 				nEntries := len(entries.Entries)
 				if nEntries > 0 {
@@ -1022,33 +1003,11 @@ func (e *Extractor) StreamEvents() error {
 // retryOperation attempts up to `count` attempts at running given function,
 // exiting as soon as it returns with non-error.
 // gno: only for logging
-func (e *Extractor) publish(ctx context.Context, subject string, txMsg []byte, gno int64) (err error) {
+func (e *Extractor) publish(subject string, txMsg []byte, gno int64) (err error) {
 	msgLen := len(txMsg)
 
-	tracer := opentracing.GlobalTracer()
-	var t not.TraceMsg
-	var spanctx opentracing.SpanContext
-	if ctx != nil {
-		spanctx = opentracing.SpanFromContext(ctx).Context()
-	} else {
-		parent := tracer.StartSpan("no parent ", ext.SpanKindProducer)
-		defer parent.Finish()
-		spanctx = parent.Context()
-	}
 
-	span := tracer.StartSpan("nat: src publish() to send  data ", ext.SpanKindProducer, opentracing.ChildOf(spanctx))
-
-	ext.MessageBusDestination.Set(span, subject)
-
-	// Inject span context into our traceMsg.
-	if err := tracer.Inject(span.Context(), opentracing.Binary, &t); err != nil {
-		e.logger.Debug("start tracer fail", "err", err)
-	}
-	// Add the payload.
-	t.Write(txMsg)
-	defer span.Finish()
-
-	data := t.Bytes()
+	data := txMsg
 	lenData := len(data)
 
 	// lenData < NatsMaxMsg: 1 msg
@@ -1432,11 +1391,6 @@ func (e *Extractor) mysqlDump() error {
 	return nil
 }
 func (e *Extractor) encodeAndSendDumpEntry(entry *common.DumpEntry) error {
-	var ctx context.Context
-	//tracer := opentracing.GlobalTracer()
-	span := opentracing.GlobalTracer().StartSpan("span_full")
-	defer span.Finish()
-	ctx = opentracing.ContextWithSpan(ctx, span)
 	bs, err := entry.Marshal(nil)
 	if err != nil {
 		return err
@@ -1445,7 +1399,7 @@ func (e *Extractor) encodeAndSendDumpEntry(entry *common.DumpEntry) error {
 	if err != nil {
 		return errors.Wrap(err, "common.Compress")
 	}
-	if err := e.publish(ctx, fmt.Sprintf("%s_full", e.subject), txMsg, 0); err != nil {
+	if err := e.publish(fmt.Sprintf("%s_full", e.subject), txMsg, 0); err != nil {
 		return err
 	}
 	e.mysqlContext.Stage = common.StageSendingData
@@ -1600,7 +1554,7 @@ func (e *Extractor) Shutdown() error {
 	e.logger.Info("Shutting down")
 	return nil
 }
-func (e *Extractor) sendFullComplete(ctx context.Context) (err error) {
+func (e *Extractor) sendFullComplete() (err error) {
 	dumpMsg, err := common.Encode(&common.DumpStatResult{
 		Gtid:       e.initialBinlogCoordinates.GtidSet,
 		LogFile:    e.initialBinlogCoordinates.LogFile,
@@ -1609,7 +1563,7 @@ func (e *Extractor) sendFullComplete(ctx context.Context) (err error) {
 	if err != nil {
 		return err
 	}
-	if err := e.publish(ctx, fmt.Sprintf("%s_full_complete", e.subject), dumpMsg, 0); err != nil {
+	if err := e.publish(fmt.Sprintf("%s_full_complete", e.subject), dumpMsg, 0); err != nil {
 		return err
 	}
 	return nil

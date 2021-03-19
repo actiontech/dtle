@@ -12,8 +12,6 @@ import (
 	"fmt"
 	"github.com/actiontech/dtle/drivers/mysql/common"
 	"github.com/hashicorp/nomad/plugins/drivers"
-	"github.com/opentracing/opentracing-go"
-	"github.com/opentracing/opentracing-go/ext"
 	"github.com/pkg/errors"
 	"math"
 	"strconv"
@@ -35,7 +33,6 @@ import (
 
 	hclog "github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/nomad/drivers/shared/eventer"
-	not "github.com/nats-io/not.go"
 )
 
 const (
@@ -353,7 +350,6 @@ func (a *Applier) sendEvent(status string) {
 func (a *Applier) subscribeNats() error {
 	a.mysqlContext.MarkRowCopyStartTime()
 	a.logger.Debug("nats subscribe")
-	tracer := opentracing.GlobalTracer()
 
 	fullNMM := common.NewNatsMsgMerger(a.logger.With("nmm", "full"))
 	var _, err = a.natsConn.Subscribe(fmt.Sprintf("%s_full", a.subject), func(m *gonats.Msg) {
@@ -381,19 +377,8 @@ func (a *Applier) subscribeNats() error {
 			}
 			a.logger.Debug("full. after publish nats reply")
 		} else {
-			t := &not.TraceMsg{Buffer: fullNMM.GetBuf()}
-
-			// Extract the span context from the request message.
-			sc, err := tracer.Extract(opentracing.Binary, t)
-			if err != nil {
-				a.logger.Debug("get data")
-			}
-			// Setup a span referring to the span context of the incoming NATS message.
-			replySpan := tracer.StartSpan("Service Responder", ext.SpanKindRPCServer, ext.RPCServerOption(sc))
-			ext.MessageBusDestination.Set(replySpan, m.Subject)
-			defer replySpan.Finish()
 			dumpData := &common.DumpEntry{}
-			err = common.Decode(t.Bytes(), dumpData) // TODO decode once for discarded-resent msg
+			err = common.Decode(fullNMM.GetBytes(), dumpData) // TODO decode once for discarded-resent msg
 			if err != nil {
 				a.onError(TaskStateDead, errors.Wrap(err, "DecodeDumpEntry"))
 				return
@@ -439,17 +424,7 @@ func (a *Applier) subscribeNats() error {
 		}
 
 		dumpData := &common.DumpStatResult{}
-		t := not.NewTraceMsg(m)
-		// Extract the span context from the request message.
-		sc, err := tracer.Extract(opentracing.Binary, t)
-		if err != nil {
-			a.logger.Trace("tracer.Extract error", "err", err)
-		}
-		// Setup a span referring to the span context of the incoming NATS message.
-		replySpan := tracer.StartSpan("Service Responder", ext.SpanKindRPCServer, ext.RPCServerOption(sc))
-		ext.MessageBusDestination.Set(replySpan, m.Subject)
-		defer replySpan.Finish()
-		if err := common.Decode(t.Bytes(), dumpData); err != nil {
+		if err := common.Decode(m.Data, dumpData); err != nil {
 			a.onError(TaskStateDead, errors.Wrap(err, "Decode"))
 			return
 		}
@@ -512,18 +487,8 @@ func (a *Applier) subscribeNats() error {
 			}
 			a.logger.Debug("incr. after publish nats reply.")
 		} else {
-			t := &not.TraceMsg{Buffer: incrNMM.GetBuf()}
-			// Extract the span context from the request message.
-			spanContext, err := tracer.Extract(opentracing.Binary, t)
-			if err != nil {
-				a.logger.Debug("tracer.Extract error", "err", err)
-			}
-			// Setup a span referring to the span context of the incoming NATS message.
-			replySpan := tracer.StartSpan("nast : dest to get data  ", ext.SpanKindRPCServer, ext.RPCServerOption(spanContext))
-			ext.MessageBusDestination.Set(replySpan, m.Subject)
-			defer replySpan.Finish()
 			binlogEntries := &common.BinlogEntries{}
-			if err := common.Decode(t.Bytes(), binlogEntries); err != nil {
+			if err := common.Decode(incrNMM.GetBytes(), binlogEntries); err != nil {
 				a.onError(TaskStateDead, err)
 				return
 			}
@@ -568,7 +533,6 @@ func (a *Applier) subscribeNats() error {
 					atomic.AddInt64(a.memory2, int64(binlogEntry.Size()))
 					a.ai.AddEvent(&common.BinlogEntryContext{
 						Entry:       binlogEntry,
-						SpanContext: replySpan.Context(),
 						TableItems:  nil,
 					})
 					//a.retrievedGtidSet = ""

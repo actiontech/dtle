@@ -19,8 +19,8 @@ func NewNatsMsgMerger(logger hclog.Logger) *NatsMsgMerger {
 		logger: logger,
 	}
 }
-func (nmm *NatsMsgMerger) GetBuf() bytes.Buffer {
-	return *nmm.buf
+func (nmm *NatsMsgMerger) GetBytes() []byte {
+	return nmm.buf.Bytes()
 }
 func (nmm *NatsMsgMerger) Handle(data []byte) (segmentFinished bool, err error) {
 	// non-big msg: < NatsMaxMsg

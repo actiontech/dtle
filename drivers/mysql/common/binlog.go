@@ -3,7 +3,6 @@ package common
 import (
 	"database/sql"
 	"fmt"
-	"github.com/opentracing/opentracing-go"
 	"github.com/satori/go.uuid"
 	"github.com/siddontang/go-mysql/replication"
 )
@@ -19,7 +18,6 @@ func (b *BinlogCoordinateTx) GetGtidForThisTx() string {
 
 type BinlogEntryContext struct {
 	Entry       *BinlogEntry
-	SpanContext opentracing.SpanContext
 	TableItems  []*ApplierTableItem
 	OriginalSize  int // size of binlog entry
 }

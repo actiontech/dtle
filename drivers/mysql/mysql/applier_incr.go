@@ -10,7 +10,6 @@ import (
 	sql "github.com/actiontech/dtle/drivers/mysql/mysql/sql"
 	"github.com/actiontech/dtle/g"
 	"github.com/hashicorp/go-hclog"
-	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/satori/go.uuid"
 	gomysql "github.com/siddontang/go-mysql/mysql"
@@ -162,7 +161,7 @@ func (a *ApplierIncr) MtsWorker(workerIndex int) {
 			keepLoop = false
 		case entryContext := <-a.applyBinlogMtsTxQueue:
 			logger.Debug("a binlogEntry MTS dequeue", "gno", entryContext.Entry.Coordinates.GNO)
-			if err := a.ApplyBinlogEvent(nil, workerIndex, entryContext); err != nil {
+			if err := a.ApplyBinlogEvent(workerIndex, entryContext); err != nil {
 				a.OnError(TaskStateDead, err) // TODO coordinate with other goroutine
 				keepLoop = false
 			} else {
@@ -185,7 +184,6 @@ func (a *ApplierIncr) heterogeneousReplay() {
 	var err error
 	stopSomeLoop := false
 	prevDDL := false
-	var ctx context.Context
 
 	replayingBinlogFile := ""
 
@@ -198,9 +196,6 @@ func (a *ApplierIncr) heterogeneousReplay() {
 				continue
 			}
 			binlogEntry := entryCtx.Entry
-			spanContext := entryCtx.SpanContext
-			span := opentracing.GlobalTracer().StartSpan("dest use binlogEntry  ", opentracing.FollowsFrom(spanContext))
-			ctx = opentracing.ContextWithSpan(ctx, span)
 			a.logger.Debug("a binlogEntry.", "remaining", len(a.applyDataEntryQueue),
 				"gno", binlogEntry.Coordinates.GNO, "lc", binlogEntry.Coordinates.LastCommitted,
 				"seq", binlogEntry.Coordinates.SeqenceNumber)
@@ -252,7 +247,7 @@ func (a *ApplierIncr) heterogeneousReplay() {
 					a.OnError(TaskStateDead, err)
 					return
 				}
-				if err := a.ApplyBinlogEvent(ctx, 0, entryCtx); err != nil {
+				if err := a.ApplyBinlogEvent(0, entryCtx); err != nil {
 					a.OnError(TaskStateDead, err)
 					return
 				}
@@ -298,10 +293,8 @@ func (a *ApplierIncr) heterogeneousReplay() {
 					a.OnError(TaskStateDead, err)
 					return
 				}
-				entryCtx.SpanContext = span.Context()
 				a.applyBinlogMtsTxQueue <- entryCtx
 			}
-			span.Finish()
 		case <-time.After(10 * time.Second):
 			a.logger.Debug("no binlogEntry for 10s")
 		}
@@ -310,12 +303,10 @@ func (a *ApplierIncr) heterogeneousReplay() {
 
 // buildDMLEventQuery creates a query to operate on the ghost table, based on an intercepted binlog
 // event entry on the original table.
-func (a *ApplierIncr) buildDMLEventQuery(dmlEvent common.DataEvent, workerIdx int, spanContext opentracing.SpanContext,
+func (a *ApplierIncr) buildDMLEventQuery(dmlEvent common.DataEvent, workerIdx int,
 	tableItem *common.ApplierTableItem) (stmt *gosql.Stmt, query string, args []interface{}, rowsDelta int64, err error) {
 	// Large piece of code deleted here. See git annotate.
 	var tableColumns = tableItem.Columns
-	span := opentracing.GlobalTracer().StartSpan("desc  buildDMLEventQuery ", opentracing.FollowsFrom(spanContext))
-	defer span.Finish()
 	doPrepareIfNil := func(stmts []*gosql.Stmt, query string) (*gosql.Stmt, error) {
 		var err error
 		if stmts[workerIdx] == nil {
@@ -383,7 +374,7 @@ func (a *ApplierIncr) buildDMLEventQuery(dmlEvent common.DataEvent, workerIdx in
 }
 
 // ApplyEventQueries applies multiple DML queries onto the dest table
-func (a *ApplierIncr) ApplyBinlogEvent(ctx context.Context, workerIdx int, binlogEntryCtx *common.BinlogEntryContext) error {
+func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.BinlogEntryContext) error {
 	logger := a.logger.Named("ApplyBinlogEvent")
 	binlogEntry := binlogEntryCtx.Entry
 
@@ -391,24 +382,7 @@ func (a *ApplierIncr) ApplyBinlogEvent(ctx context.Context, workerIdx int, binlo
 
 	var totalDelta int64
 	var err error
-	var spanContext opentracing.SpanContext
-	var span opentracing.Span
 	var timestamp uint32
-	if ctx != nil {
-		spanContext = opentracing.SpanFromContext(ctx).Context()
-		span = opentracing.GlobalTracer().StartSpan(" desc single binlogEvent transform to sql ",
-			opentracing.ChildOf(spanContext))
-		span.SetTag("start insert sql ", time.Now().UnixNano()/1e6)
-		defer span.Finish()
-
-	} else {
-		spanContext = binlogEntryCtx.SpanContext
-		span = opentracing.GlobalTracer().StartSpan("desc mts binlogEvent transform to sql ",
-			opentracing.ChildOf(spanContext))
-		span.SetTag("start insert sql ", time.Now().UnixNano()/1e6)
-		defer span.Finish()
-		spanContext = span.Context()
-	}
 	txSid := binlogEntry.Coordinates.GetSid()
 
 	dbApplier.DbMutex.Lock()
@@ -417,7 +391,6 @@ func (a *ApplierIncr) ApplyBinlogEvent(ctx context.Context, workerIdx int, binlo
 		return err
 	}
 	defer func() {
-		span.SetTag("begin commit sql ", time.Now().UnixNano()/1e6)
 		if err := tx.Commit(); err != nil {
 			a.OnError(TaskStateDead, err)
 		} else {
@@ -428,12 +401,10 @@ func (a *ApplierIncr) ApplyBinlogEvent(ctx context.Context, workerIdx int, binlo
 			atomic.AddUint32(&a.txLastNSeconds, 1)
 		}
 		atomic.AddUint32(&a.appliedTxCount, 1)
-		span.SetTag("after  commit sql ", time.Now().UnixNano()/1e6)
 
 		dbApplier.DbMutex.Unlock()
 		atomic.AddInt64(a.memory2, -int64(binlogEntry.Size()))
 	}()
-	span.SetTag("begin transform binlogEvent to sql time  ", time.Now().UnixNano()/1e6)
 	for i, event := range binlogEntry.Events {
 		logger.Debug("binlogEntry.Events", "gno", binlogEntry.Coordinates.GNO, "event", i)
 		switch event.DML {
@@ -488,7 +459,7 @@ func (a *ApplierIncr) ApplyBinlogEvent(ctx context.Context, workerIdx int, binlo
 			logger.Debug("Exec.after", "query", event.Query)
 		default:
 			logger.Debug("a dml event")
-			stmt, query, args, rowDelta, err := a.buildDMLEventQuery(event, workerIdx, spanContext,
+			stmt, query, args, rowDelta, err := a.buildDMLEventQuery(event, workerIdx,
 				binlogEntryCtx.TableItems[i])
 			if err != nil {
 				logger.Error("buildDMLEventQuery error", "err", err)
@@ -520,7 +491,6 @@ func (a *ApplierIncr) ApplyBinlogEvent(ctx context.Context, workerIdx int, binlo
 		timestamp = event.Timestamp
 	}
 
-	span.SetTag("after  transform  binlogEvent to sql  ", time.Now().UnixNano()/1e6)
 	logger.Debug("insert gno", "gno", binlogEntry.Coordinates.GNO)
 	_, err = dbApplier.PsInsertExecutedGtid.Exec(a.subject, uuid.UUID(binlogEntry.Coordinates.SID).Bytes(), binlogEntry.Coordinates.GNO)
 	if err != nil {
