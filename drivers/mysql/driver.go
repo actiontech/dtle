@@ -216,7 +216,7 @@ func (d *Driver) SetupNatsServer(logger hclog.Logger) (err error) {
 	nOpts := gnatsd.Options{
 		Host:       natsAddr.IP.String(),
 		Port:       natsAddr.Port,
-		MaxPayload: int32(g.NatsMaxPayload),
+		MaxPayload: g.NatsMaxPayload,
 		//HTTPPort:   8199,
 		LogFile: "/opt/log",
 		Debug:   true,

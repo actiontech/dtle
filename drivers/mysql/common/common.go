@@ -32,8 +32,8 @@ type GencodeType interface {
 
 func init() {
 	gob.Register(types.BinaryLiteral{})
-	if os.Getenv(g.ENV_BIG_MSG_1M) != "" {
-		g.NatsMaxPayload = 1024 * 1024
+	if os.Getenv(g.ENV_BIG_MSG_100K) != "" {
+		g.NatsMaxMsg = 100 * 1024 // TODO this does not works
 	}
 }
 

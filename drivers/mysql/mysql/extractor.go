@@ -8,8 +8,10 @@ package mysql
 
 import (
 	gosql "database/sql"
+	"encoding/binary"
 	"fmt"
 	"github.com/actiontech/dtle/drivers/mysql/common"
+	"github.com/cznic/mathutil"
 	"github.com/hashicorp/nomad/plugins/drivers"
 
 	"github.com/actiontech/dtle/g"
@@ -1040,9 +1042,6 @@ func (e *Extractor) StreamEvents() error {
 // gno: only for logging
 func (e *Extractor) publish(ctx context.Context, subject string, txMsg []byte, gno int64) (err error) {
 	msgLen := len(txMsg)
-	if msgLen >= g.NatsMaxPayload {
-		e.logger.Warn("publish: msg exceeded NatsMaxPayload", "msgLen", msgLen)
-	}
 
 	tracer := opentracing.GlobalTracer()
 	var t not.TraceMsg
@@ -1066,23 +1065,55 @@ func (e *Extractor) publish(ctx context.Context, subject string, txMsg []byte, g
 	// Add the payload.
 	t.Write(txMsg)
 	defer span.Finish()
-	for i := 1; ; i++ {
-		e.logger.Debug("publish", "len", msgLen, "subject", subject, "gno", gno)
-		_, err = e.natsConn.Request(subject, t.Bytes(), common.DefaultConnectWait)
-		if err == nil {
-			txMsg = nil
-			break
-		} else if err == gonats.ErrTimeout {
-			e.logger.Debug("publish timeout", "err", err, "i", i, "gno", gno)
-			if i % 20 == 0 {
-				e.logger.Warn("publish timeout for i times", "err", err, "i", i,
-					"len", msgLen, "subject", subject, "gno", gno)
-			}
 
-			time.Sleep(1 * time.Second)
+	data := t.Bytes()
+	lenData := len(data)
+
+	// lenData < NatsMaxMsg: 1 msg
+	// lenData = k * NatsMaxMsg + b, where k >= 1 && b >= 0: (k+1) msg
+	// b could be 0. we send a zero-len msg as a sign of termination.
+	nSeg := lenData/g.NatsMaxMsg + 1
+	e.logger.Debug("publish. msg", "subject", subject, "gno", gno, "nSeg", nSeg, "spanLen", lenData, "msgLen", msgLen)
+	bak := make([]byte, 4)
+	if nSeg > 1 {
+		// ensure there are 4 bytes to save iSeg
+		data = append(data, 0, 0, 0, 0)
+	}
+	for iSeg := 0; iSeg < nSeg; iSeg++ {
+		var part []byte
+		if nSeg == 1 { // not big msg
+			part = data
 		} else {
-			e.logger.Error("unexpected error on publish", "err", err)
-			break
+			begin := iSeg * g.NatsMaxMsg
+			end := mathutil.Min(lenData, (iSeg+1)*g.NatsMaxMsg)
+			// use extra 4 bytes to save iSeg
+			if iSeg > 0 {
+				copy(data[begin:begin+4], bak)
+			}
+			copy(bak, data[end:end+4])
+			part = data[begin : end+4]
+			binary.LittleEndian.PutUint32(data[end:], uint32(iSeg))
+		}
+
+		for i := 1; ; i++ {
+			e.logger.Debug("publish", "subject", subject, "gno", gno, "partLen", len(part), "iSeg", iSeg)
+
+			_, err = e.natsConn.Request(subject, part, common.DefaultConnectWait)
+			if err == nil {
+				txMsg = nil
+				break
+			} else if err == gonats.ErrTimeout {
+				e.logger.Debug("publish timeout", "err", err, "i", i, "gno", gno)
+				if i % 20 == 0 {
+					e.logger.Warn("publish timeout for i times", "err", err, "i", i,
+						"len", msgLen, "subject", subject, "gno", gno, "iSeg", iSeg, "nSeg", nSeg)
+				}
+
+				time.Sleep(1 * time.Second)
+			} else {
+				e.logger.Error("unexpected error on publish", "err", err)
+				break
+			}
 		}
 	}
 	return err
