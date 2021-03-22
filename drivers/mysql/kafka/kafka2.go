@@ -81,6 +81,7 @@ func (k *KafkaManager) SendMessages(logger hclog.Logger, topics []string, keys [
 	if !(len(topics) == len(keys) && len(values) == len(keys)) {
 		return fmt.Errorf("length of topics, keys and values must be equal")
 	}
+	logger.Debug("SendMessages", "n", len(keys))
 	msgs := make([]*sarama.ProducerMessage, len(topics))
 	for i, topic := range topics {
 		msg := &sarama.ProducerMessage{

@@ -1041,6 +1041,8 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQueries(dmlEntries []*common.Binlog
 			tableIdents = append(tableIdents, tableIdent)
 			keysBs = append(keysBs, kBs)
 			valuesBs = append(valuesBs, vBs)
+			kr.logger.Debug("appended an event", "schema", table.TableSchema, "table", table.TableName,
+				"gno", dmlEvent.Coordinates.GNO)
 
 			// tombstone event for DELETE
 			if dataEvent.DML == common.DeleteDML {

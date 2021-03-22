@@ -36,6 +36,8 @@ const (
 	LONG_LOG_LIMIT = 256
 
 	PluginName = "dtle"
+
+	NatsMaxPayload = 200 * 1024 * 1024
 )
 
 func StringPtrEmpty(p *string) bool {
