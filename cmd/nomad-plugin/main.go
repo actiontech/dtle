@@ -29,6 +29,8 @@ func main() {
 		logger.Info("dtle starting", "version", versionStr, "pid", pid)
 		logger.Info("env", "GODEBUG", os.Getenv("GODEBUG"), "GOMAXPROCS", runtime.GOMAXPROCS(0))
 		logger.Debug("plugins.Serve Factory called.")
+		go g.DumpLoop(logger)
+
 		return dtle.NewDriver(logger)
 	})
 }
