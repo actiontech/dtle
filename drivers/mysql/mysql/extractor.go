@@ -377,10 +377,18 @@ func (e *Extractor) initiateInspector() (err error) {
 
 func (e *Extractor) inspectTables() (err error) {
 	// Creates a MYSQL Dump based on the options supplied through the dumper.
-	dbs, err := sql.ShowDatabases(e.db)
+	dbsExisted, err := sql.ShowDatabases(e.db)
 	if err != nil {
 		return err
 	}
+	dbsFiltered := []string{}
+	for _, db := range dbsExisted {
+		if len(e.mysqlContext.ReplicateIgnoreDb) > 0 && common.IgnoreDbByReplicateIgnoreDb(e.mysqlContext.ReplicateIgnoreDb, db) {
+			continue
+		}
+		dbsFiltered = append(dbsFiltered, db)
+	}
+
 	if len(e.mysqlContext.ReplicateDoDb) > 0 {
 		var doDbs []*common.DataSource
 		// Get all db from TableSchemaRegex regex and get all tableSchemaRename
@@ -396,7 +404,7 @@ func (e *Extractor) inspectTables() (err error) {
 			if doDb.TableSchemaRegex != "" && doDb.TableSchemaRename != "" {
 				regex = doDb.TableSchemaRegex
 				schemaRenameRegex := doDb.TableSchemaRename
-				for _, db := range dbs {
+				for _, db := range dbsFiltered {
 					newdb := &common.DataSource{}
 					*newdb = *doDb
 					reg, err := regexp.Compile(regex)
@@ -415,7 +423,7 @@ func (e *Extractor) inspectTables() (err error) {
 				//	return fmt.Errorf("src schmea was nil")
 				//}
 			} else if doDb.TableSchemaRegex == "" { // use doDb.TableSchema
-				for _, db := range dbs {
+				for _, db := range dbsFiltered {
 					if db == doDb.TableSchema {
 						doDbs = append(doDbs, doDb)
 					}
@@ -435,14 +443,18 @@ func (e *Extractor) inspectTables() (err error) {
 			if err != nil {
 				return err
 			}
+			tbsFiltered := []*common.Table{}
+			for _, tb := range existedTables {
+				if len(e.mysqlContext.ReplicateIgnoreDb) > 0 && common.IgnoreTbByReplicateIgnoreDb(e.mysqlContext.ReplicateIgnoreDb, db.TableSchema, tb.TableName) {
+					continue
+				}
+				tbsFiltered = append(tbsFiltered, tb)
+			}
 
 			if len(doDb.Tables) == 0 { // replicate all tables
-				for _, doTb := range existedTables {
+				for _, doTb := range tbsFiltered {
 					doTb.TableSchema = doDb.TableSchema
 					doTb.TableSchemaRename = doDb.TableSchemaRename
-					if len(e.mysqlContext.ReplicateIgnoreDb) > 0 && common.IgnoreTbByReplicateIgnoreDb(e.mysqlContext.ReplicateIgnoreDb, doTb.TableSchema, doTb.TableName) {
-						continue
-					}
 					if err := e.inspector.ValidateOriginalTable(doDb.TableSchema, doTb.TableName, doTb); err != nil {
 						e.logger.Warn("ValidateOriginalTable error", "err", err)
 						continue
@@ -453,9 +465,6 @@ func (e *Extractor) inspectTables() (err error) {
 				for _, doTb := range doDb.Tables {
 					doTb.TableSchema = doDb.TableSchema
 					doTb.TableSchemaRename = doDb.TableSchemaRename
-					if len(e.mysqlContext.ReplicateIgnoreDb) > 0 && common.IgnoreTbByReplicateIgnoreDb(e.mysqlContext.ReplicateIgnoreDb, doTb.TableSchema, doTb.TableName) {
-						continue
-					}
 					if doTb.TableName == "" && doTb.TableRegex == "" {
 						return fmt.Errorf("TableName and TableRegex cannot both be empty")
 					}
@@ -467,7 +476,7 @@ func (e *Extractor) inspectTables() (err error) {
 					if doTb.TableRegex != "" && doTb.TableRename != "" {
 						regex = doTb.TableRegex
 						tableRenameRegex := doTb.TableRename
-						for _, table := range existedTables {
+						for _, table := range tbsFiltered {
 							reg, err := regexp.Compile(regex)
 							if err != nil {
 								return errors.Wrapf(err, "TableRegex %v", regex)
@@ -491,7 +500,7 @@ func (e *Extractor) inspectTables() (err error) {
 						//}
 
 					} else if doTb.TableRegex == "" {
-						for _, existedTable := range existedTables {
+						for _, existedTable := range tbsFiltered {
 							if existedTable.TableName != doTb.TableName {
 								continue
 							}
@@ -513,12 +522,9 @@ func (e *Extractor) inspectTables() (err error) {
 		}
 		//	e.mysqlContext.ReplicateDoDb = e.replicateDoDb
 	} else { // empty DoDB. replicate all db/tb
-		for _, dbName := range dbs {
+		for _, dbName := range dbsFiltered {
 			ds := &common.DataSource{
 				TableSchema: dbName,
-			}
-			if len(e.mysqlContext.ReplicateIgnoreDb) > 0 && common.IgnoreDbByReplicateIgnoreDb(e.mysqlContext.ReplicateIgnoreDb, dbName) {
-				continue
 			}
 
 			tbs, err := sql.ShowTables(e.db, dbName, e.mysqlContext.ExpandSyntaxSupport)
@@ -872,6 +878,7 @@ func (e *Extractor) setStatementFor() string {
 	}
 	return buffer.String()
 }
+
 type TimestampContext struct {
 	stopCh      chan struct{}
 	TimestampCh chan uint32
@@ -879,6 +886,7 @@ type TimestampContext struct {
 	f           func() bool
 	delay       int64
 }
+
 func NewTimestampContext(stopCh chan struct{}, logger hclog.Logger, f func() bool) *TimestampContext {
 	return &TimestampContext{
 		stopCh: stopCh,
@@ -967,7 +975,8 @@ func (e *Extractor) StreamEvents() error {
 		timer := time.NewTimer(groupTimeoutDuration)
 		defer timer.Stop()
 
-		LOOP: for !e.shutdown {
+	LOOP:
+		for !e.shutdown {
 			select {
 			case entryCtx := <-e.dataChannel:
 				binlogEntry := entryCtx.Entry
