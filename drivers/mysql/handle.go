@@ -181,10 +181,10 @@ func (h *taskHandle) emitStats(ru *common.TaskStatistics) {
 	}
 
 	if nil != ru.HandledTxCount.AppliedTxCount {
-		metrics.SetGaugeWithLabels([]string{"dest_applied_tx_count"}, float32(*ru.HandledTxCount.AppliedTxCount), labels)
+		metrics.SetGaugeWithLabels([]string{"dest_applied_incr_tx_count"}, float32(*ru.HandledTxCount.AppliedTxCount), labels)
 	}
 	if nil != ru.HandledTxCount.ExtractedTxCount {
-		metrics.SetGaugeWithLabels([]string{"src_extracted_tx_count"}, float32(*ru.HandledTxCount.ExtractedTxCount), labels)
+		metrics.SetGaugeWithLabels([]string{"src_extracted_incr_tx_count"}, float32(*ru.HandledTxCount.ExtractedTxCount), labels)
 	}
 }
 
