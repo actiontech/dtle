@@ -179,6 +179,10 @@ func (h *taskHandle) emitStats(ru *common.TaskStatistics) {
 		metrics.SetGaugeWithLabels([]string{"throughput", "num"}, float32(ru.ThroughputStat.Num), labels)
 		metrics.SetGaugeWithLabels([]string{"throughput", "time"}, float32(ru.ThroughputStat.Time), labels)
 	}
+
+	if nil != ru.HandledTxCount.AppliedTxCount {
+		metrics.SetGaugeWithLabels([]string{"dest_applied_tx_count"}, float32(*ru.HandledTxCount.AppliedTxCount), labels)
+	}
 }
 
 func (h *taskHandle) Destroy() bool {

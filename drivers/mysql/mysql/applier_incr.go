@@ -21,8 +21,8 @@ import (
 )
 
 type ApplierIncr struct {
-	logger hclog.Logger
-	subject string
+	logger       hclog.Logger
+	subject      string
 	mysqlContext *common.MySQLDriverConfig
 
 	applyDataEntryQueue chan *common.BinlogEntryContext
@@ -31,24 +31,25 @@ type ApplierIncr struct {
 
 	mtsManager *MtsManager
 
-	db     *gosql.DB
-	dbs    []*sql.Conn
-	MySQLServerUuid   string
+	db              *gosql.DB
+	dbs             []*sql.Conn
+	MySQLServerUuid string
 
 	shutdownCh chan struct{}
 
-	memory2    *int64
-	printTps       bool
-	txLastNSeconds uint32
-	timestampCtx       *TimestampContext
-	TotalDeltaCopied  int64
+	memory2          *int64
+	printTps         bool
+	txLastNSeconds   uint32
+	appliedTxCount   uint32
+	timestampCtx     *TimestampContext
+	TotalDeltaCopied int64
 
 	gtidSet        *gomysql.MysqlGTIDSet
 	gtidSetLock    *sync.RWMutex
 	gtidItemMap    base.GtidItemMap
 	GtidUpdateHook func(*common.BinlogCoordinateTx)
 
-	tableItems  mapSchemaTableItems
+	tableItems mapSchemaTableItems
 
 	OnError func(int, error)
 }
@@ -426,6 +427,7 @@ func (a *ApplierIncr) ApplyBinlogEvent(ctx context.Context, workerIdx int, binlo
 		if a.printTps {
 			atomic.AddUint32(&a.txLastNSeconds, 1)
 		}
+		atomic.AddUint32(&a.appliedTxCount, 1)
 		span.SetTag("after  commit sql ", time.Now().UnixNano()/1e6)
 
 		dbApplier.DbMutex.Unlock()

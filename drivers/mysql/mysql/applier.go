@@ -885,7 +885,11 @@ func (a *Applier) Stats() (*common.TaskStatistics, error) {
 		}
 	}
 
-	taskResUsage :=  common.TaskStatistics{
+	var txCount uint32
+	if a.ai != nil {
+		txCount = a.ai.appliedTxCount
+	}
+	taskResUsage := common.TaskStatistics{
 		ExecMasterRowCount: totalRowsReplay,
 		ExecMasterTxCount:  totalDeltaCopied,
 		ReadMasterRowCount: rowsEstimate,
@@ -902,8 +906,8 @@ func (a *Applier) Stats() (*common.TaskStatistics, error) {
 			ReadMasterLogPos:   0,
 			RetrievedGtidSet:   "",
 		},
-		BufferStat:  common.BufferStat{
-			ApplierTxQueueSize:      lenApplyDataEntryQueue,
+		BufferStat: common.BufferStat{
+			ApplierTxQueueSize: lenApplyDataEntryQueue,
 		},
 		Timestamp: time.Now().UTC().UnixNano(),
 		DelayCount: &common.DelayCount{
@@ -913,6 +917,9 @@ func (a *Applier) Stats() (*common.TaskStatistics, error) {
 		MemoryStat: common.MemoryStat{
 			Full: *a.memory1,
 			Incr: *a.memory2,
+		},
+		HandledTxCount: common.TxCount{
+			AppliedTxCount: &txCount,
 		},
 	}
 	if a.natsConn != nil {

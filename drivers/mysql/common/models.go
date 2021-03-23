@@ -54,6 +54,12 @@ type MemoryStat struct {
 	Full  int64
 	Incr  int64
 }
+
+type TxCount struct {
+	ExtractedTxCount *uint32
+	AppliedTxCount   *uint32
+}
+
 type TaskStatistics struct {
 	CurrentCoordinates *CurrentCoordinates
 	TableStats         *TableStats
@@ -71,4 +77,5 @@ type TaskStatistics struct {
 	Stage              string
 	Timestamp          int64
 	MemoryStat         MemoryStat
+	HandledTxCount     TxCount
 }
