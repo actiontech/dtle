@@ -377,10 +377,18 @@ func (e *Extractor) initiateInspector() (err error) {
 
 func (e *Extractor) inspectTables() (err error) {
 	// Creates a MYSQL Dump based on the options supplied through the dumper.
-	dbs, err := sql.ShowDatabases(e.db)
+	dbsExisted, err := sql.ShowDatabases(e.db)
 	if err != nil {
 		return err
 	}
+	dbsFiltered := []string{}
+	for _, db := range dbsExisted {
+		if len(e.mysqlContext.ReplicateIgnoreDb) > 0 && common.IgnoreDbByReplicateIgnoreDb(e.mysqlContext.ReplicateIgnoreDb, db) {
+			continue
+		}
+		dbsFiltered = append(dbsFiltered, db)
+	}
+
 	if len(e.mysqlContext.ReplicateDoDb) > 0 {
 		var doDbs []*common.DataSource
 		// Get all db from TableSchemaRegex regex and get all tableSchemaRename
@@ -396,7 +404,7 @@ func (e *Extractor) inspectTables() (err error) {
 			if doDb.TableSchemaRegex != "" && doDb.TableSchemaRename != "" {
 				regex = doDb.TableSchemaRegex
 				schemaRenameRegex := doDb.TableSchemaRename
-				for _, db := range dbs {
+				for _, db := range dbsFiltered {
 					newdb := &common.DataSource{}
 					*newdb = *doDb
 					reg, err := regexp.Compile(regex)
@@ -415,7 +423,7 @@ func (e *Extractor) inspectTables() (err error) {
 				//	return fmt.Errorf("src schmea was nil")
 				//}
 			} else if doDb.TableSchemaRegex == "" { // use doDb.TableSchema
-				for _, db := range dbs {
+				for _, db := range dbsFiltered {
 					if db == doDb.TableSchema {
 						doDbs = append(doDbs, doDb)
 					}
@@ -513,12 +521,9 @@ func (e *Extractor) inspectTables() (err error) {
 		}
 		//	e.mysqlContext.ReplicateDoDb = e.replicateDoDb
 	} else { // empty DoDB. replicate all db/tb
-		for _, dbName := range dbs {
+		for _, dbName := range dbsFiltered {
 			ds := &common.DataSource{
 				TableSchema: dbName,
-			}
-			if len(e.mysqlContext.ReplicateIgnoreDb) > 0 && common.IgnoreDbByReplicateIgnoreDb(e.mysqlContext.ReplicateIgnoreDb, dbName) {
-				continue
 			}
 
 			tbs, err := sql.ShowTables(e.db, dbName, e.mysqlContext.ExpandSyntaxSupport)
@@ -872,6 +877,7 @@ func (e *Extractor) setStatementFor() string {
 	}
 	return buffer.String()
 }
+
 type TimestampContext struct {
 	stopCh      chan struct{}
 	TimestampCh chan uint32
@@ -879,6 +885,7 @@ type TimestampContext struct {
 	f           func() bool
 	delay       int64
 }
+
 func NewTimestampContext(stopCh chan struct{}, logger hclog.Logger, f func() bool) *TimestampContext {
 	return &TimestampContext{
 		stopCh: stopCh,
