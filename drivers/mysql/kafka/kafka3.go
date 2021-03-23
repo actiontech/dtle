@@ -84,6 +84,7 @@ type KafkaRunner struct {
 
 	printTps       bool
 	txLastNSeconds uint32
+	appliedTxCount uint32
 }
 
 func NewKafkaRunner(execCtx *common.ExecContext, cfg *common.KafkaConfig, logger hclog.Logger,
@@ -160,8 +161,8 @@ func (kr *KafkaRunner) Stats() (*common.TaskStatistics, error) {
 			ReadMasterLogPos:   0,
 			RetrievedGtidSet:   "",
 		},
-		TableStats:         nil,
-		DelayCount:         &common.DelayCount{
+		TableStats: nil,
+		DelayCount: &common.DelayCount{
 			Num:  0,
 			Time: kr.timestampCtx.GetDelay(),
 		},
@@ -177,9 +178,12 @@ func (kr *KafkaRunner) Stats() (*common.TaskStatistics, error) {
 		BufferStat:         common.BufferStat{},
 		Stage:              "",
 		Timestamp:          time.Now().Unix(),
-		MemoryStat:         common.MemoryStat{
+		MemoryStat: common.MemoryStat{
 			Full: *kr.memory1,
 			Incr: *kr.memory2,
+		},
+		HandledTxCount: common.TxCount{
+			AppliedTxCount: &kr.appliedTxCount,
 		},
 	}
 	return taskResUsage, nil
@@ -378,7 +382,7 @@ func (kr *KafkaRunner) handleIncr() {
 		if kr.printTps {
 			atomic.AddUint32(&kr.txLastNSeconds, uint32(len(entriesWillBeSent)))
 		}
-
+		atomic.AddUint32(&kr.appliedTxCount, 1)
 		entriesSize = 0
 		entriesWillBeSent = []*common.BinlogEntry{}
 
@@ -772,7 +776,6 @@ func (kr *KafkaRunner) kafkaTransformSnapshotData(
 			tableIdents = nil
 		}
 	}
-
 
 	return nil
 }

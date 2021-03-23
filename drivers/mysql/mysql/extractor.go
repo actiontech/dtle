@@ -168,7 +168,6 @@ func (e *Extractor) Run() {
 		return
 	}
 
-
 	for !e.shutdown && e.natsAddr == "" {
 		select {
 		case <-e.shutdownCh:
@@ -1537,7 +1536,8 @@ func (e *Extractor) Stats() (*common.TaskStatistics, error) {
 		}
 	}
 
-	taskResUsage :=  common.TaskStatistics{
+	extractedTxCount := e.binlogReader.GetExtractedTxCount()
+	taskResUsage := common.TaskStatistics{
 		ExecMasterRowCount: totalRowsCopied,
 		ExecMasterTxCount:  deltaEstimate,
 		ReadMasterRowCount: rowsEstimate,
@@ -1560,6 +1560,9 @@ func (e *Extractor) Stats() (*common.TaskStatistics, error) {
 		MemoryStat: common.MemoryStat{
 			Full: *e.memory1,
 			Incr: *e.memory2 + e.binlogReader.GetQueueMem(),
+		},
+		HandledTxCount: common.TxCount{
+			ExtractedTxCount: &extractedTxCount,
 		},
 	}
 	if e.natsConn != nil {

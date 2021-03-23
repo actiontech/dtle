@@ -94,6 +94,7 @@ type BinlogReader struct {
 
 	maybeSqleContext *sqle.Context
 	memory           *int64
+	extractedTxCount uint32
 }
 
 type SqlFilter struct {
@@ -885,6 +886,7 @@ func (b *BinlogReader) sendEntry(entriesChannel chan<- *common.BinlogEntryContex
 	b.logger.Debug("sendEntry", "gno", b.currentBinlogEntry.Coordinates.GNO, "events", len(b.currentBinlogEntry.Events))
 	atomic.AddInt64(b.memory, int64(b.entryContext.Entry.Size()))
 	entriesChannel <- b.entryContext
+	atomic.AddUint32(&b.extractedTxCount, 1)
 }
 
 func (b *BinlogReader) loadMapping(sql, currentSchema string,
@@ -1577,6 +1579,14 @@ func normalizeBinlogFilename(name string) string {
 func (b *BinlogReader) GetQueueSize() int {
 	if b != nil && b.binlogStreamer0 != nil {
 		return b.binlogStreamer0.QueueSize()
+	} else {
+		return 0
+	}
+}
+
+func (b *BinlogReader) GetExtractedTxCount() uint32 {
+	if b != nil {
+		return b.extractedTxCount
 	} else {
 		return 0
 	}
