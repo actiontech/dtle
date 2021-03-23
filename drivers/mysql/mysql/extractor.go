@@ -443,14 +443,18 @@ func (e *Extractor) inspectTables() (err error) {
 			if err != nil {
 				return err
 			}
+			tbsFiltered := []*common.Table{}
+			for _, tb := range existedTables {
+				if len(e.mysqlContext.ReplicateIgnoreDb) > 0 && common.IgnoreTbByReplicateIgnoreDb(e.mysqlContext.ReplicateIgnoreDb, db.TableSchema, tb.TableName) {
+					continue
+				}
+				tbsFiltered = append(tbsFiltered, tb)
+			}
 
 			if len(doDb.Tables) == 0 { // replicate all tables
-				for _, doTb := range existedTables {
+				for _, doTb := range tbsFiltered {
 					doTb.TableSchema = doDb.TableSchema
 					doTb.TableSchemaRename = doDb.TableSchemaRename
-					if len(e.mysqlContext.ReplicateIgnoreDb) > 0 && common.IgnoreTbByReplicateIgnoreDb(e.mysqlContext.ReplicateIgnoreDb, doTb.TableSchema, doTb.TableName) {
-						continue
-					}
 					if err := e.inspector.ValidateOriginalTable(doDb.TableSchema, doTb.TableName, doTb); err != nil {
 						e.logger.Warn("ValidateOriginalTable error", "err", err)
 						continue
@@ -461,9 +465,6 @@ func (e *Extractor) inspectTables() (err error) {
 				for _, doTb := range doDb.Tables {
 					doTb.TableSchema = doDb.TableSchema
 					doTb.TableSchemaRename = doDb.TableSchemaRename
-					if len(e.mysqlContext.ReplicateIgnoreDb) > 0 && common.IgnoreTbByReplicateIgnoreDb(e.mysqlContext.ReplicateIgnoreDb, doTb.TableSchema, doTb.TableName) {
-						continue
-					}
 					if doTb.TableName == "" && doTb.TableRegex == "" {
 						return fmt.Errorf("TableName and TableRegex cannot both be empty")
 					}
@@ -475,7 +476,7 @@ func (e *Extractor) inspectTables() (err error) {
 					if doTb.TableRegex != "" && doTb.TableRename != "" {
 						regex = doTb.TableRegex
 						tableRenameRegex := doTb.TableRename
-						for _, table := range existedTables {
+						for _, table := range tbsFiltered {
 							reg, err := regexp.Compile(regex)
 							if err != nil {
 								return errors.Wrapf(err, "TableRegex %v", regex)
@@ -499,7 +500,7 @@ func (e *Extractor) inspectTables() (err error) {
 						//}
 
 					} else if doTb.TableRegex == "" {
-						for _, existedTable := range existedTables {
+						for _, existedTable := range tbsFiltered {
 							if existedTable.TableName != doTb.TableName {
 								continue
 							}
@@ -974,7 +975,8 @@ func (e *Extractor) StreamEvents() error {
 		timer := time.NewTimer(groupTimeoutDuration)
 		defer timer.Stop()
 
-		LOOP: for !e.shutdown {
+	LOOP:
+		for !e.shutdown {
 			select {
 			case entryCtx := <-e.dataChannel:
 				binlogEntry := entryCtx.Entry
