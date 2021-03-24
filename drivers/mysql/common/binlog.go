@@ -141,10 +141,3 @@ func (ait *ApplierTableItem) Reset() {
 
 	ait.Columns = nil
 }
-
-func (b *BinlogEntries) IsBigTx() bool {
-	return b.TxNum > 0
-}
-func (b *BinlogEntries) IsLastBigTxPart() bool {
-	return b.TxNum == b.TxLen
-}

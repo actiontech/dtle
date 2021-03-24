@@ -2570,8 +2570,6 @@ func (d *BinlogEntry) Unmarshal(buf []byte) (uint64, error) {
 
 type BinlogEntries struct {
 	Entries []*BinlogEntry
-	TxNum   int64
-	TxLen   int64
 }
 
 func (d *BinlogEntries) Size() (s uint64) {
@@ -2607,7 +2605,6 @@ func (d *BinlogEntries) Size() (s uint64) {
 		}
 
 	}
-	s += 16
 	return
 }
 func (d *BinlogEntries) Marshal(buf []byte) ([]byte, error) {
@@ -2660,45 +2657,7 @@ func (d *BinlogEntries) Marshal(buf []byte) ([]byte, error) {
 
 		}
 	}
-	{
-
-		buf[i+0+0] = byte(d.TxNum >> 0)
-
-		buf[i+1+0] = byte(d.TxNum >> 8)
-
-		buf[i+2+0] = byte(d.TxNum >> 16)
-
-		buf[i+3+0] = byte(d.TxNum >> 24)
-
-		buf[i+4+0] = byte(d.TxNum >> 32)
-
-		buf[i+5+0] = byte(d.TxNum >> 40)
-
-		buf[i+6+0] = byte(d.TxNum >> 48)
-
-		buf[i+7+0] = byte(d.TxNum >> 56)
-
-	}
-	{
-
-		buf[i+0+8] = byte(d.TxLen >> 0)
-
-		buf[i+1+8] = byte(d.TxLen >> 8)
-
-		buf[i+2+8] = byte(d.TxLen >> 16)
-
-		buf[i+3+8] = byte(d.TxLen >> 24)
-
-		buf[i+4+8] = byte(d.TxLen >> 32)
-
-		buf[i+5+8] = byte(d.TxLen >> 40)
-
-		buf[i+6+8] = byte(d.TxLen >> 48)
-
-		buf[i+7+8] = byte(d.TxLen >> 56)
-
-	}
-	return buf[:i+16], nil
+	return buf[:i+0], nil
 }
 
 func (d *BinlogEntries) Unmarshal(buf []byte) (uint64, error) {
@@ -2751,15 +2710,5 @@ func (d *BinlogEntries) Unmarshal(buf []byte) (uint64, error) {
 
 		}
 	}
-	{
-
-		d.TxNum = 0 | (int64(buf[i+0+0]) << 0) | (int64(buf[i+1+0]) << 8) | (int64(buf[i+2+0]) << 16) | (int64(buf[i+3+0]) << 24) | (int64(buf[i+4+0]) << 32) | (int64(buf[i+5+0]) << 40) | (int64(buf[i+6+0]) << 48) | (int64(buf[i+7+0]) << 56)
-
-	}
-	{
-
-		d.TxLen = 0 | (int64(buf[i+0+8]) << 0) | (int64(buf[i+1+8]) << 8) | (int64(buf[i+2+8]) << 16) | (int64(buf[i+3+8]) << 24) | (int64(buf[i+4+8]) << 32) | (int64(buf[i+5+8]) << 40) | (int64(buf[i+6+8]) << 48) | (int64(buf[i+7+8]) << 56)
-
-	}
-	return i + 16, nil
+	return i + 0, nil
 }

@@ -368,7 +368,6 @@ func (kr *KafkaRunner) handleFullCopy() {
 func (kr *KafkaRunner) handleIncr() {
 	kr.logger.Debug("handleIncr")
 	var err error
-	bigEntries := &common.BinlogEntries{}
 	groupTimeoutDuration := time.Duration(kr.kafkaConfig.MessageGroupTimeout) * time.Millisecond
 	var entriesSize uint64
 	entriesWillBeSent := []*common.BinlogEntry{}
@@ -428,52 +427,17 @@ func (kr *KafkaRunner) handleIncr() {
 		}
 		memSize := int64(binlogEntries.Size())
 
-		needCopy := true
-		if binlogEntries.IsBigTx() {
-			needCopy = false
-			if bigEntries.TxNum + 1 == binlogEntries.TxNum {
-				kr.logger.Debug("kafka: big tx: get a fragment", "TxNum", binlogEntries.TxNum)
-				bigEntries.TxNum = binlogEntries.TxNum
-				if bigEntries.TxNum == 1 {
-					bigEntries.Entries = binlogEntries.Entries
-					bigEntries.TxLen = binlogEntries.TxLen
-				} else {
-					bigEntries.Entries[0].Events = append(bigEntries.Entries[0].Events, binlogEntries.Entries[0].Events...)
-				}
-				binlogEntries.Entries = nil
-
-				if binlogEntries.IsLastBigTxPart() {
-					needCopy = true
-					binlogEntries.TxNum = 0
-					binlogEntries.TxLen = 0
-					binlogEntries.Entries = bigEntries.Entries
-
-					bigEntries.TxNum = 0
-					bigEntries.TxLen = 0
-					bigEntries.Entries = nil
-				}
-			} else if bigEntries.TxNum == binlogEntries.TxNum ||
-				(bigEntries.TxNum ==0 && binlogEntries.IsLastBigTxPart()) {
-				// repeated msg. ignore it.
-			} else {
-				kr.logger.Warn(
-					"DTLE_BUG big tx unexpected TxNum", "current", bigEntries.TxNum, "got", binlogEntries.TxNum)
-			}
-		}
-
-		if needCopy {
-			for _, binlogEntry := range binlogEntries.Entries {
-				entriesWillBeSent = append(entriesWillBeSent, binlogEntry)
-				entriesSize = entriesSize + binlogEntry.Size()
-				if entriesSize >= kr.kafkaConfig.MessageGroupMaxSize {
-					kr.logger.Debug("kafka: incr. send by GroupLimit",
-						"MessageGroupMaxSize", kr.kafkaConfig.MessageGroupMaxSize,
-						"entriesSize", entriesSize,
-						"Entries.len", len(entriesWillBeSent))
-					if err := sendEntriesAndClear(); nil != err {
-						kr.onError(TaskStateDead, err)
-						return
-					}
+		for _, binlogEntry := range binlogEntries.Entries {
+			entriesWillBeSent = append(entriesWillBeSent, binlogEntry)
+			entriesSize = entriesSize + binlogEntry.Size()
+			if entriesSize >= kr.kafkaConfig.MessageGroupMaxSize {
+				kr.logger.Debug("kafka: incr. send by GroupLimit",
+					"MessageGroupMaxSize", kr.kafkaConfig.MessageGroupMaxSize,
+					"entriesSize", entriesSize,
+					"Entries.len", len(entriesWillBeSent))
+				if err := sendEntriesAndClear(); nil != err {
+					kr.onError(TaskStateDead, err)
+					return
 				}
 			}
 		}

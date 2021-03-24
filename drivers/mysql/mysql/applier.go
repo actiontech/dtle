@@ -476,7 +476,6 @@ func (a *Applier) subscribeNats() error {
 		return err
 	}
 
-	var bigEntries common.BinlogEntries
 	_, err = a.natsConn.Subscribe(fmt.Sprintf("%s_incr_hete", a.subject), func(m *gonats.Msg) {
 		var binlogEntries common.BinlogEntries
 		t := not.NewTraceMsg(m)
@@ -528,57 +527,20 @@ func (a *Applier) subscribeNats() error {
 			}
 			a.logger.Debug("incr. ack-recv.", "nEntries", nEntries)
 
-			needCopy := true
-			if binlogEntries.IsBigTx() {
-				// For a big tx, we ensure there is the vacancy (for 1 TX) when seeing the first part.
-				// This is not the best practice for performance, but makes the logic (with kafka) unified.
-				needCopy = false
-				if bigEntries.TxNum + 1 == binlogEntries.TxNum {
-					a.logger.Debug("big tx: get a fragment", "TxNum", binlogEntries.TxNum)
-					bigEntries.TxNum = binlogEntries.TxNum
-					if bigEntries.TxNum == 1 {
-						bigEntries.Entries = binlogEntries.Entries
-						bigEntries.TxLen = binlogEntries.TxLen
-					} else {
-						bigEntries.Entries[0].Events = append(bigEntries.Entries[0].Events, binlogEntries.Entries[0].Events...)
-					}
-					binlogEntries.Entries = nil
-
-					if binlogEntries.IsLastBigTxPart() {
-						needCopy = true
-						binlogEntries.TxNum = 0
-						binlogEntries.TxLen = 0
-						binlogEntries.Entries = bigEntries.Entries
-
-						bigEntries.TxNum = 0
-						bigEntries.TxLen = 0
-						bigEntries.Entries = nil
-					}
-				} else if bigEntries.TxNum == binlogEntries.TxNum ||
-					(bigEntries.TxNum == 0 && binlogEntries.IsLastBigTxPart()) {
-					// repeated msg. ignore it.
-				} else {
-					a.logger.Warn("DTLE_BUG big tx unexpected TxNum",
-						"current", bigEntries.TxNum, "got", binlogEntries.TxNum)
-				}
+			for _, binlogEntry := range binlogEntries.Entries {
+				atomic.AddInt64(a.memory2, int64(binlogEntry.Size()))
+				a.ai.AddEvent(&common.BinlogEntryContext{
+					Entry:       binlogEntry,
+					SpanContext: replySpan.Context(),
+					TableItems:  nil,
+				})
+				//a.retrievedGtidSet = ""
+				// It costs quite a lot to maintain the set, and retrievedGtidSet is not
+				// as necessary as executedGtidSet. So I removed it.
+				// Union incoming TX gtid with current set if you want to set it.
+				atomic.AddInt64(&a.mysqlContext.DeltaEstimate, 1)
 			}
-
-			if needCopy {
-				for _, binlogEntry := range binlogEntries.Entries {
-					atomic.AddInt64(a.memory2, int64(binlogEntry.Size()))
-					a.ai.AddEvent(&common.BinlogEntryContext{
-						Entry:       binlogEntry,
-						SpanContext: replySpan.Context(),
-						TableItems:  nil,
-					})
-					//a.retrievedGtidSet = ""
-					// It costs quite a lot to maintain the set, and retrievedGtidSet is not
-					// as necessary as executedGtidSet. So I removed it.
-					// Union incoming TX gtid with current set if you want to set it.
-					atomic.AddInt64(&a.mysqlContext.DeltaEstimate, 1)
-				}
-				a.logger.Debug("incr. applyDataEntryQueue enqueued")
-			}
+			a.logger.Debug("incr. applyDataEntryQueue enqueued")
 			a.mysqlContext.Stage = common.StageWaitingForMasterToSendEvent
 		}
 	})

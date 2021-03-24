@@ -21,10 +21,6 @@ const (
 )
 
 var (
-	DefaultBigTX = 1024 * 1024 * 100
-)
-
-var (
 	ErrNoConsul = fmt.Errorf("consul return nil value. check if consul is started or reachable")
 )
 
@@ -36,8 +32,8 @@ type GencodeType interface {
 
 func init() {
 	gob.Register(types.BinaryLiteral{})
-	if os.Getenv(g.ENV_BIG_TX_1M) != "" {
-		DefaultBigTX = 1024 * 1024
+	if os.Getenv(g.ENV_BIG_MSG_1M) != "" {
+		g.NatsMaxPayload = 1024 * 1024
 	}
 }
 

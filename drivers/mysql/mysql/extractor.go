@@ -964,8 +964,6 @@ func (e *Extractor) StreamEvents() error {
 			e.logger.Debug("publish.after", "gno", gno, "n", len(entries.Entries))
 			ctx = nil
 			entries.Entries = nil
-			entries.TxLen = 0
-			entries.TxNum = 0
 			entriesSize = 0
 
 			return nil
@@ -987,61 +985,22 @@ func (e *Extractor) StreamEvents() error {
 				//span.SetTag("timetag", time.Now().Unix())
 				entryCtx.SpanContext = nil
 
-				hasSent := false
-				if entriesSize + entryCtx.OriginalSize >= common.DefaultBigTX {
-					// send the EntryGroup before reaching BigTX
-					e.logger.Debug("extractor. incr. send pre-BigTX entries",
-						"previousSize", entriesSize,
-						"entrySize", entryCtx.OriginalSize,
+				entries.Entries = append(entries.Entries, binlogEntry)
+				entriesSize += entryCtx.OriginalSize
+
+				if entriesSize >= e.mysqlContext.GroupMaxSize ||
+					int64(len(entries.Entries)) == e.mysqlContext.ReplChanBufferSize {
+
+					e.logger.Debug("extractor. incr. send by GroupLimit",
+						"entriesSize", entriesSize,
+						"groupMaxSize", e.mysqlContext.GroupMaxSize,
 						"Entries.len", len(entries.Entries))
 
-					if len(entries.Entries) > 0 {
-						hasSent = true
-						err := sendEntriesAndClear()
-						if err != nil {
-							e.onError(TaskStateDead, err)
-							break LOOP
-						}
-					} else {
-						// no before entries
+					err := sendEntriesAndClear()
+					if err != nil {
+						e.onError(TaskStateDead, err)
+						break LOOP
 					}
-				}
-
-				if entryCtx.OriginalSize >= common.DefaultBigTX {
-					bigEntrises := splitEntries(binlogEntry, entryCtx.OriginalSize)
-					e.logger.Debug("extractor. incr. big tx.", "len", len(bigEntrises))
-					for _, entity := range bigEntrises {
-						entries = entity
-						e.logger.Debug("extractor. incr. send big tx", "fragment", entries.TxNum)
-						hasSent = true
-						err := sendEntriesAndClear()
-						if err != nil {
-							e.onError(TaskStateDead, err)
-							break LOOP
-						}
-					}
-				} else {
-					entries.Entries = append(entries.Entries, binlogEntry)
-					entriesSize += entryCtx.OriginalSize
-
-					if entriesSize >= e.mysqlContext.GroupMaxSize ||
-						int64(len(entries.Entries)) == e.mysqlContext.ReplChanBufferSize {
-
-						e.logger.Debug("extractor. incr. send by GroupLimit",
-							"entriesSize", entriesSize,
-							"groupMaxSize", e.mysqlContext.GroupMaxSize,
-							"Entries.len", len(entries.Entries))
-
-						hasSent = true
-						err := sendEntriesAndClear()
-						if err != nil {
-							e.onError(TaskStateDead, err)
-							break LOOP
-						}
-					}
-				}
-
-				if hasSent {
 					if !timer.Stop() {
 						<-timer.C
 					}
@@ -1074,39 +1033,6 @@ func (e *Extractor) StreamEvents() error {
 		return fmt.Errorf("StreamEvents encountered unexpected error: %+v", err)
 	}
 	return nil
-}
-
-func ceilDiv(a int, b int) (r int) {
-	r = a / b
-	if a % b != 0 {
-		r += 1
-	}
-	return r
-}
-
-func splitEntries(bigEntry *common.BinlogEntry, originalSize int) (splitted []common.BinlogEntries) {
-	clientLen := ceilDiv(originalSize, common.DefaultBigTX) // the number of natsMsg to send
-	clientNum := ceilDiv(len(bigEntry.Events), clientLen) // the number of events for each natsMsg
-	for i := 1; i <= clientLen; i++ {
-		var after int
-		if i == clientLen { // last natsMsg
-			after = len(bigEntry.Events)
-		} else {
-			after = i * clientNum // stop limit for slicing Entries[0].Events
-		}
-		entry := &common.BinlogEntry{
-			Coordinates:  bigEntry.Coordinates,
-			Events:       bigEntry.Events[(i-1)*clientNum : after],
-		}
-		newEntries := common.BinlogEntries{
-			Entries: []*common.BinlogEntry{entry}, // For a big TX, a BinlogEntries (Group) has only 1 BinlogEntry (Tx)
-			TxNum:   int64(i),
-			TxLen:   int64(clientLen),
-		}
-		splitted = append(splitted, newEntries)
-	}
-
-	return splitted
 }
 
 // retryOperation attempts up to `count` attempts at running given function,
