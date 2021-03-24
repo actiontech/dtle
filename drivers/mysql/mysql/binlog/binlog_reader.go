@@ -922,6 +922,15 @@ func (b *BinlogReader) loadMapping(sql, currentSchema string,
 
 	}
 
+	renameTableFn := func(schemaName string, oldTableName *string) {
+		tableNameMap := oldSchemaNameToTablesRenameMap[schemaName]
+		newTableName := tableNameMap[*oldTableName]
+		if newTableName!=""{
+			logMapping(*oldTableName, newTableName, "table")
+			*oldTableName = newTableName
+		}
+	}
+
 	renameSchemaFn := func(oldSchema *string) {
 		newSchemaName := schemasRenameMap[*oldSchema]
 		if newSchemaName != "" {
@@ -970,6 +979,12 @@ func (b *BinlogReader) loadMapping(sql, currentSchema string,
 		for _, table := range v.Tables {
 			renameAstTableFn(table)
 		}
+	case *ast.GrantStmt:
+		renameTableFn(v.Level.DBName, &v.Level.TableName)
+		renameSchemaFn(&v.Level.DBName)
+	case *ast.RevokeStmt:
+		renameTableFn(v.Level.DBName, &v.Level.TableName)
+		renameSchemaFn(&v.Level.DBName)
 	default:
 		b.logger.Debug("skip mapping ddl", "sql", sql)
 		return sql, nil
