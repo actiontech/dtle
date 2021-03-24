@@ -490,13 +490,17 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 					query = b.setDtleQuery(query, upperQuery)
 				}
 
-				ddlInfo, err := resolveDDLSQL(currentSchema, query, b.skipQueryDDL)
+				ddlInfo := parseDDLResult{}
+				stmt, parseSqlErr := parser.New().ParseOneStmt(query, "", "")
+				if parseSqlErr == nil {
+					ddlInfo, parseSqlErr = resolveDDLSQL(currentSchema, query, stmt, b.skipQueryDDL)
+				}
 
 				var skipExpandSyntax bool
 				if b.mysqlContext.ExpandSyntaxSupport {
 					skipExpandSyntax = false
 				} else {
-					skipExpandSyntax = isExpandSyntaxQuery(query) || ddlInfo.isExpand
+					skipExpandSyntax = isExpandSyntaxQuery(query, stmt) || ddlInfo.isExpand
 				}
 
 				currentSchemaRename := currentSchema
@@ -1081,15 +1085,10 @@ func (b *BinlogReader) DataStreamEvents(entriesChannel chan<- *common.BinlogEntr
 //
 // schemaTables is the schema.table that the query has invalidated. For err or non-DDL, it is nil.
 // For DDL, it size equals len(sqls).
-func resolveDDLSQL(currentSchema string, sql string,
+func resolveDDLSQL(currentSchema string, sql string, stmt ast.StmtNode,
 	skipFunc func(schema string, tableName string) bool) (result parseDDLResult, err error) {
 
 	result.sql = sql
-
-	stmt, err := parser.New().ParseOneStmt(sql, "", "")
-	if err != nil {
-		return result, err
-	}
 	result.ast = stmt
 
 	_, result.isDDL = stmt.(ast.DDLNode)
@@ -1118,8 +1117,6 @@ func resolveDDLSQL(currentSchema string, sql string,
 		setTable(v.Table.Schema.O, v.Table.Name.O)
 	case *ast.AlterTableStmt:
 		setTable(v.Table.Schema.O, v.Table.Name.O)
-	case *ast.RevokeStmt, *ast.RevokeRoleStmt:
-		result.isExpand = true
 	case *ast.SetPwdStmt:
 		result.isExpand = true
 	case *ast.FlushStmt:
@@ -1159,7 +1156,7 @@ func resolveDDLSQL(currentSchema string, sql string,
 			}
 			result.sql = bs.String()
 		}
-	case *ast.CreateUserStmt, *ast.GrantStmt, *ast.DropUserStmt, *ast.AlterUserStmt:
+	case *ast.CreateUserStmt, *ast.DropUserStmt, *ast.AlterUserStmt:
 		setTable("mysql", "user")
 		result.isExpand = true
 	case *ast.RenameTableStmt:
@@ -1200,19 +1197,25 @@ func (b *BinlogReader) skipQueryDDL(schema string, tableName string) bool {
 	}
 }
 
-func isExpandSyntaxQuery(sql string) bool {
-	sql = strings.ToLower(sql)
+func isExpandSyntaxQuery(sql string, stmt ast.StmtNode) bool {
+	switch stmt.(type) {
+	// DCL
+	case *ast.GrantStmt, *ast.RevokeStmt,*ast.RevokeRoleStmt:
+		return true
+	default:
+		sql = strings.ToLower(sql)
 
-	// TODO mod pingcap/parser to support these DDLs
-	//  and use ast instead of string-matching
-	if strings.HasPrefix(sql, "create function") {
-		return true
-	}
-	if strings.HasPrefix(sql, "create procedure") {
-		return true
-	}
-	if strings.HasPrefix(sql, "rename user") {
-		return true
+		// TODO mod pingcap/parser to support these DDLs
+		//  and use ast instead of string-matching
+		if strings.HasPrefix(sql, "create function") {
+			return true
+		}
+		if strings.HasPrefix(sql, "create procedure") {
+			return true
+		}
+		if strings.HasPrefix(sql, "rename user") {
+			return true
+		}
 	}
 
 	return false
