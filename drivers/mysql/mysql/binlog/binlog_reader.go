@@ -507,12 +507,13 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 				}
 
 				if skipExpandSyntax || !queryInfo.isRecognized {
-					if !queryInfo.isRecognized {
-						b.logger.Debug("mysql.reader: QueryEvent is not recognized. will execute", "query", query, "gno", b.currentBinlogEntry.Coordinates.GNO)
-					}
 					if skipExpandSyntax {
-						b.logger.Warn("skip query", "query", query, "gno", b.currentBinlogEntry.Coordinates.GNO)
+						b.logger.Warn("skipExpandSyntax", "query", query, "gno", b.currentBinlogEntry.Coordinates.GNO)
 					} else {
+						if !queryInfo.isRecognized {
+							b.logger.Warn("mysql.reader: QueryEvent is not recognized. will still execute", "query", query, "gno", b.currentBinlogEntry.Coordinates.GNO)
+						}
+
 						event := common.NewQueryEvent(
 							currentSchemaRename,
 							query,
@@ -916,6 +917,15 @@ func (b *BinlogReader) loadMapping(sql, currentSchema string,
 
 	}
 
+	renameTableFn := func(schemaName string, oldTableName *string) {
+		tableNameMap := oldSchemaNameToTablesRenameMap[schemaName]
+		newTableName := tableNameMap[*oldTableName]
+		if newTableName!=""{
+			logMapping(*oldTableName, newTableName, "table")
+			*oldTableName = newTableName
+		}
+	}
+
 	renameSchemaFn := func(oldSchema *string) {
 		newSchemaName := schemasRenameMap[*oldSchema]
 		if newSchemaName != "" {
@@ -964,6 +974,12 @@ func (b *BinlogReader) loadMapping(sql, currentSchema string,
 		for _, table := range v.Tables {
 			renameAstTableFn(table)
 		}
+	case *ast.GrantStmt:
+		renameTableFn(v.Level.DBName, &v.Level.TableName)
+		renameSchemaFn(&v.Level.DBName)
+	case *ast.RevokeStmt:
+		renameTableFn(v.Level.DBName, &v.Level.TableName)
+		renameSchemaFn(&v.Level.DBName)
 	default:
 		b.logger.Debug("skip mapping ddl", "sql", sql)
 		return sql, nil
@@ -1074,7 +1090,7 @@ func (b *BinlogReader) DataStreamEvents(entriesChannel chan<- *common.BinlogEntr
 	return nil
 }
 
-// schemaTables is the schema.table that the query has invalidated. For err or non-DDL, it is nil.
+// schemaTables is the schema.table that the query has invalidated. For unrecognized query, it is nil.
 func resolveQuery(currentSchema string, sql string,
 	skipFunc func(schema string, tableName string) bool) (result parseQueryResult, err error) {
 

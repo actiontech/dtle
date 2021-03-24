@@ -169,6 +169,16 @@ func Test_loadMapping(t *testing.T) {
 			currentSchema:   "db1",
 			replicationDoDB: replicateDoDbWithRename,
 		}, want: "RENAME TABLE `db1-rename`.`db1-tb1-rename` TO `db1-rename`.`tb2`, `db2-rename`.`db2-tb1-rename` TO `db2-rename`.`tb2`"},
+		{name: "schema-rename-grant", args: args{
+			sql:             "grant ALL PRIVILEGES ON `db1`.`tb1` TO `test`@`%`",
+			currentSchema:   "db1",
+			replicationDoDB: replicateDoDbWithRename,
+		}, want: "GRANT ALL ON `db1-rename`.`db1-tb1-rename` TO `test`@`%`"},
+		{name: "schema-rename-revoke", args: args{
+			sql:             "REVOKE INSERT ON `db1`.`tb1` FROM `test`@`%`",
+			currentSchema:   "db1",
+			replicationDoDB: replicateDoDbWithRename,
+		}, want: "REVOKE INSERT ON `db1-rename`.`db1-tb1-rename` FROM `test`@`%`"},
 
 		// test without rename config
 		// drop table
@@ -255,6 +265,16 @@ func Test_loadMapping(t *testing.T) {
 			currentSchema:   "db1",
 			replicationDoDB: replicateDoDbWithoutRename,
 		}, want: "RENAME TABLE `db1`.`tb1` TO `db1`.`tb2`, `db2`.`tb1` TO `db2`.`tb2`"},
+		{name: "schema-map-grant", args: args{
+			sql:             "grant ALL PRIVILEGES ON `db1`.`tb1` TO `test`@`%`",
+			currentSchema:   "db1",
+			replicationDoDB: replicateDoDbWithoutRename,
+		}, want: "GRANT ALL ON `db1`.`tb1` TO `test`@`%`"},
+		{name: "schema-map-revoke", args: args{
+			sql:             "REVOKE INSERT ON `db1`.`tb1` FROM `test`@`%`",
+			currentSchema:   "db1",
+			replicationDoDB: replicateDoDbWithoutRename,
+		}, want: "REVOKE INSERT ON `db1`.`tb1` FROM `test`@`%`"},
 	}
 
 	binlogReader := &BinlogReader{
