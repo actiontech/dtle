@@ -296,7 +296,7 @@ func Test_resolveDDLSQL(t *testing.T) {
 	tests := []struct {
 		name       string
 		args       args
-		wantResult parseDDLResult
+		wantResult parseQueryResult
 		wantErr    bool
 	}{
 		{
@@ -306,7 +306,7 @@ func Test_resolveDDLSQL(t *testing.T) {
 				sql:           "drop table a.b, skip.c, d",
 				skipFunc:      skipFunc1,
 			},
-			wantResult: parseDDLResult{
+			wantResult: parseQueryResult{
 				sql:         "DROP TABLE `a`.`b`, `d`",
 			},
 			wantErr:    false,
@@ -317,7 +317,7 @@ func Test_resolveDDLSQL(t *testing.T) {
 				sql:           "drop table if exists skip.b, skip.c",
 				skipFunc:      skipFunc1,
 			},
-			wantResult: parseDDLResult{
+			wantResult: parseQueryResult{
 				sql:         "drop table if exists dtle_dummy_never_exists.dtle_dummy_never_exists",
 			},
 			wantErr:    false,
@@ -325,14 +325,14 @@ func Test_resolveDDLSQL(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			gotResult, err := resolveDDLSQL(tt.args.currentSchema, tt.args.sql, tt.args.skipFunc)
+			gotResult, err := resolveQuery(tt.args.currentSchema, tt.args.sql, tt.args.skipFunc)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("resolveDDLSQL() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("resolveQuery() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
 
 			if gotResult.sql != tt.wantResult.sql {
-				t.Errorf("resolveDDLSQL() gotResult = %v, want %v", gotResult, tt.wantResult)
+				t.Errorf("resolveQuery() gotResult = %v, want %v", gotResult, tt.wantResult)
 			}
 		})
 	}
