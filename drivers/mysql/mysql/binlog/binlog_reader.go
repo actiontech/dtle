@@ -417,14 +417,13 @@ func ToColumnValuesV2(abstractValues []interface{}) *common.ColumnValues {
 	}
 }
 
-// If isDDL, a sql correspond to a table item, aka len(tables) == len(sqls).
-type parseDDLResult struct {
-	isDDL       bool
-	table       common.SchemaTable
-	extraTables []common.SchemaTable
-	sql         string
-	ast         ast.StmtNode
-	isExpand    bool
+type parseQueryResult struct {
+	isRecognized bool
+	table        common.SchemaTable
+	extraTables  []common.SchemaTable
+	sql          string
+	ast          ast.StmtNode
+	isExpand     bool
 }
 
 // StreamEvents
@@ -489,13 +488,16 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 					query = b.setDtleQuery(query, upperQuery)
 				}
 
-				ddlInfo, err := resolveDDLSQL(currentSchema, query, b.skipQueryDDL)
+				queryInfo, err := resolveQuery(currentSchema, query, b.skipQueryDDL)
+				if err != nil {
+					return errors.Wrap(err, "resolveQuery")
+				}
 
 				var skipExpandSyntax bool
 				if b.mysqlContext.ExpandSyntaxSupport {
 					skipExpandSyntax = false
 				} else {
-					skipExpandSyntax = isExpandSyntaxQuery(query) || ddlInfo.isExpand
+					skipExpandSyntax = isExpandSyntaxQuery(query) || queryInfo.isExpand
 				}
 
 				currentSchemaRename := currentSchema
@@ -504,11 +506,9 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 					currentSchemaRename = schema.TableSchemaRename
 				}
 
-				if skipExpandSyntax || err != nil || !ddlInfo.isDDL {
-					if err != nil {
-						b.logger.Warn("Parse query event failed. will execute", "query", query, "err", err, "gno", b.currentBinlogEntry.Coordinates.GNO)
-					} else if !ddlInfo.isDDL {
-						b.logger.Debug("mysql.reader: QueryEvent is not a DDL", "query", query, "gno", b.currentBinlogEntry.Coordinates.GNO)
+				if skipExpandSyntax || !queryInfo.isRecognized {
+					if !queryInfo.isRecognized {
+						b.logger.Debug("mysql.reader: QueryEvent is not recognized. will execute", "query", query, "gno", b.currentBinlogEntry.Coordinates.GNO)
 					}
 					if skipExpandSyntax {
 						b.logger.Warn("skip query", "query", query, "gno", b.currentBinlogEntry.Coordinates.GNO)
@@ -531,16 +531,16 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 
 				skipEvent := false
 
-				b.sqleExecDDL(currentSchema, ddlInfo.ast)
+				b.sqleExecDDL(currentSchema, queryInfo.ast)
 
 				if b.sqlFilter.NoDDL {
 					skipEvent = true
 				}
 
-				sql := ddlInfo.sql
+				sql := queryInfo.sql
 				if sql != "" {
-					realSchema := common.StringElse(ddlInfo.table.Schema, currentSchema)
-					tableName := ddlInfo.table.Table
+					realSchema := common.StringElse(queryInfo.table.Schema, currentSchema)
+					tableName := queryInfo.table.Table
 					err = b.updateCurrentReplicateDoDb(realSchema, tableName)
 					if err != nil {
 						return errors.Wrap(err, "updateCurrentReplicateDoDb")
@@ -555,10 +555,10 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 						}
 						table := b.findCurrentTable(schema, tableName)
 
-						skipEvent = skipBySqlFilter(ddlInfo.ast, b.sqlFilter)
-						switch realAst := ddlInfo.ast.(type) {
+						skipEvent = skipBySqlFilter(queryInfo.ast, b.sqlFilter)
+						switch realAst := queryInfo.ast.(type) {
 						case *ast.CreateDatabaseStmt:
-							b.sqleAfterCreateSchema(ddlInfo.table.Schema)
+							b.sqleAfterCreateSchema(queryInfo.table.Schema)
 						case *ast.CreateTableStmt:
 							b.logger.Debug("ddl is create table")
 							err := b.updateTableMeta(table, realSchema, tableName)
@@ -604,7 +604,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 						}
 
 						if schema != nil && schema.TableSchemaRename != "" {
-							ddlInfo.table.Schema = schema.TableSchemaRename
+							queryInfo.table.Schema = schema.TableSchemaRename
 							realSchema = schema.TableSchemaRename
 						} else {
 							// schema == nil means it is not explicit in ReplicateDoDb, thus no renaming
@@ -612,12 +612,12 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 						}
 
 						if table != nil && table.TableRename != "" {
-							ddlInfo.table.Table = table.TableRename
+							queryInfo.table.Table = table.TableRename
 						}
 						// mapping
 						schemaRenameMap, schemaNameToTablesRenameMap := b.generateRenameMaps()
 						if len(schemaRenameMap) > 0 || len(schemaNameToTablesRenameMap) > 0 {
-							sql, err = b.loadMapping(sql, currentSchema, schemaRenameMap, schemaNameToTablesRenameMap, ddlInfo.ast)
+							sql, err = b.loadMapping(sql, currentSchema, schemaRenameMap, schemaNameToTablesRenameMap, queryInfo.ast)
 							if nil != err {
 								return fmt.Errorf("ddl mapping failed: %v", err)
 							}
@@ -626,16 +626,16 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 						if skipEvent {
 							b.logger.Debug("skipped a ddl event.", "query", query)
 						} else {
-							if realSchema == "" || ddlInfo.table.Table == "" {
+							if realSchema == "" || queryInfo.table.Table == "" {
 								b.logger.Info("NewQueryEventAffectTable. found empty schema or table.",
-									"schema", realSchema, "table", ddlInfo.table.Table, "query", sql)
+									"schema", realSchema, "table", queryInfo.table.Table, "query", sql)
 							}
 
 							event := common.NewQueryEventAffectTable(
 								currentSchemaRename,
 								sql,
 								common.NotDML,
-								ddlInfo.table,
+								queryInfo.table,
 								ev.Header.Timestamp,
 							)
 							if table != nil {
@@ -1074,26 +1074,19 @@ func (b *BinlogReader) DataStreamEvents(entriesChannel chan<- *common.BinlogEntr
 	return nil
 }
 
-// resolveDDLSQL resolve to one ddl sql
-// example: drop table test.a,test2.b -> drop table test.a; drop table test2.b;
-//
 // schemaTables is the schema.table that the query has invalidated. For err or non-DDL, it is nil.
-// For DDL, it size equals len(sqls).
-func resolveDDLSQL(currentSchema string, sql string,
-	skipFunc func(schema string, tableName string) bool) (result parseDDLResult, err error) {
+func resolveQuery(currentSchema string, sql string,
+	skipFunc func(schema string, tableName string) bool) (result parseQueryResult, err error) {
 
 	result.sql = sql
+	result.isRecognized = true
 
 	stmt, err := parser.New().ParseOneStmt(sql, "", "")
 	if err != nil {
-		return result, err
-	}
-	result.ast = stmt
-
-	_, result.isDDL = stmt.(ast.DDLNode)
-	if !result.isDDL {
+		result.isRecognized = false
 		return result, nil
 	}
+	result.ast = stmt
 
 	setTable := func(schema string, table string) {
 		result.table = common.SchemaTable{Schema: schema, Table: table}
@@ -1164,7 +1157,7 @@ func resolveDDLSQL(currentSchema string, sql string,
 		setTable(v.OldTable.Schema.O, v.OldTable.Name.O)
 		// TODO handle extra tables in v.TableToTables[1:]
 	default:
-		return result, fmt.Errorf("unknown DDL type")
+		result.isRecognized = false
 	}
 
 	return result, nil
