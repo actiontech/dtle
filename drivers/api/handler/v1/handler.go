@@ -1,18 +1,13 @@
-package route
+package v1
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/actiontech/dtle/drivers/api/handler"
 	"io/ioutil"
 	"net/http"
-	"os"
-	"os/exec"
-	"strconv"
 	"strings"
 	"time"
-
-	"github.com/shirou/gopsutil/process"
 
 	"github.com/actiontech/dtle/g"
 	hclog "github.com/hashicorp/go-hclog"
@@ -28,20 +23,9 @@ func SetLogger(theLogger hclog.Logger) {
 	logger = theLogger
 }
 
-var NomadHost string
-
-// decodeBody is used to decode a JSON request body
-func decodeBody(req *http.Request, out interface{}) error {
-	dec := json.NewDecoder(req.Body)
-	return dec.Decode(&out)
-}
-
-func buildUrl(path string) string {
-	return "http://" + NomadHost + path
-}
 func UpdupJob(c echo.Context) error {
 	var oldJob OldJob
-	err := decodeBody(c.Request(), &oldJob)
+	err := handler.DecodeBody(c.Request(), &oldJob)
 	if err != nil {
 		return errors.Wrap(err, "decodeBody")
 	}
@@ -59,7 +43,7 @@ func UpdupJob(c echo.Context) error {
 
 	//logger.Debug("*** json", "json", string(param))
 
-	url := buildUrl("/v1/jobs")
+	url := handler.BuildUrl("/v1/jobs")
 	resp, err := http.Post(url, "application/x-www-form-urlencoded",
 		strings.NewReader(string(param)))
 	if err != nil {
@@ -75,7 +59,7 @@ func UpdupJob(c echo.Context) error {
 
 func JobListRequest(c echo.Context) error {
 
-	url := buildUrl("/v1/jobs")
+	url := handler.BuildUrl("/v1/jobs")
 	resp, err := http.Get(url)
 	if err != nil {
 		return c.String(http.StatusInternalServerError, err.Error())
@@ -95,7 +79,7 @@ func JobRequest(c echo.Context) error {
 	jobId := c.Param("jobId")
 	path := c.Param("path")
 	if path == "allocations" {
-		url := buildUrl("/v1/job/" + jobId + "/allocations")
+		url := handler.BuildUrl("/v1/job/" + jobId + "/allocations")
 		resp, err := http.Get(url)
 		if err != nil {
 			return c.String(http.StatusInternalServerError, err.Error())
@@ -108,7 +92,7 @@ func JobRequest(c echo.Context) error {
 
 		return c.Blob(http.StatusOK, "text/html; charset=utf-8", body)
 	} else if path == "evaluate" {
-		url := buildUrl("/v1/job/" + jobId + "/evaluate")
+		url := handler.BuildUrl("/v1/job/" + jobId + "/evaluate")
 		resp, err := http.Post(url, "application/x-www-form-urlencoded",
 			strings.NewReader(""))
 		if err != nil {
@@ -122,7 +106,7 @@ func JobRequest(c echo.Context) error {
 
 		return c.Blob(http.StatusOK, "text/html; charset=utf-8", body)
 	} else if path == "resume" {
-		url := buildUrl("/v1/job/" + jobId + "/resume")
+		url := handler.BuildUrl("/v1/job/" + jobId + "/resume")
 		resp, err := http.Get(url)
 		if err != nil {
 			return c.String(http.StatusInternalServerError, err.Error())
@@ -135,7 +119,7 @@ func JobRequest(c echo.Context) error {
 
 		return c.Blob(http.StatusOK, "text/html; charset=utf-8", body)
 	} else if path == "pause" {
-		url := buildUrl("/v1/job/" + jobId + "/pause")
+		url := handler.BuildUrl("/v1/job/" + jobId + "/pause")
 		resp, err := http.Get(url)
 		if err != nil {
 			return c.String(http.StatusInternalServerError, err.Error())
@@ -152,7 +136,7 @@ func JobRequest(c echo.Context) error {
 }
 func JobDetailRequest(c echo.Context) error {
 	jobId := c.Param("jobId")
-	url := buildUrl("/v1/job/" + jobId)
+	url := handler.BuildUrl("/v1/job/" + jobId)
 	resp, err := http.Get(url)
 	if err != nil {
 		return c.String(http.StatusInternalServerError, err.Error())
@@ -167,7 +151,7 @@ func JobDetailRequest(c echo.Context) error {
 }
 func JobDeleteRequest(c echo.Context) error {
 	jobId := c.Param("jobId")
-	url := buildUrl("/v1/job/" + jobId + "?purge=true")
+	url := handler.BuildUrl("/v1/job/" + jobId + "?purge=true")
 	req, _ := http.NewRequest("DELETE", url, nil)
 	client := &http.Client{}
 	resp, err := client.Do(req)
@@ -185,7 +169,7 @@ func JobDeleteRequest(c echo.Context) error {
 
 func AllocsRequest(c echo.Context) error {
 
-	url := buildUrl("/v1/allocations")
+	url := handler.BuildUrl("/v1/allocations")
 	resp, err := http.Get(url)
 	if err != nil {
 		return c.String(http.StatusInternalServerError, err.Error())
@@ -200,7 +184,7 @@ func AllocsRequest(c echo.Context) error {
 }
 func AllocSpecificRequest(c echo.Context) error {
 	allocID := c.Param("allocID")
-	url := buildUrl("/v1/allocation/" + allocID)
+	url := handler.BuildUrl("/v1/allocation/" + allocID)
 	resp, err := http.Get(url)
 	if err != nil {
 		return c.String(http.StatusInternalServerError, err.Error())
@@ -215,7 +199,7 @@ func AllocSpecificRequest(c echo.Context) error {
 }
 
 func EvalsRequest(c echo.Context) error {
-	url := buildUrl("/v1/evaluations")
+	url := handler.BuildUrl("/v1/evaluations")
 	resp, err := http.Get(url)
 	if err != nil {
 		return c.String(http.StatusInternalServerError, err.Error())
@@ -230,11 +214,11 @@ func EvalsRequest(c echo.Context) error {
 }
 
 func EvalRequest(c echo.Context) error {
-	url := buildUrl("/v1/evaluation/")
+	url := handler.BuildUrl("/v1/evaluation/")
 	evalID := c.Param("evalID")
 	changeType := c.Param("type")
 	if changeType == "evaluation" {
-		url = "http://" + NomadHost + "/v1/evaluation/"
+		url = "http://" + handler.NomadHost + "/v1/evaluation/"
 	}
 	resp, err := http.Get(url + evalID + "/allocations")
 	if err != nil {
@@ -250,7 +234,7 @@ func EvalRequest(c echo.Context) error {
 }
 
 func AgentSelfRequest(c echo.Context) error {
-	url := buildUrl("/v1/agent/self")
+	url := handler.BuildUrl("/v1/agent/self")
 	resp, err := http.Get(url)
 	if err != nil {
 		return c.String(http.StatusInternalServerError, err.Error())
@@ -265,7 +249,7 @@ func AgentSelfRequest(c echo.Context) error {
 }
 
 func ClientAllocRequest(c echo.Context) error {
-	url := buildUrl("/v1/client/allocation/" + c.Param("tokens") + "/stats")
+	url := handler.BuildUrl("/v1/client/allocation/" + c.Param("tokens") + "/stats")
 	resp, err := http.Get(url)
 	if err != nil {
 		return c.String(http.StatusInternalServerError, err.Error())
@@ -280,7 +264,7 @@ func ClientAllocRequest(c echo.Context) error {
 }
 
 func AgentJoinRequest(c echo.Context) error {
-	url := buildUrl("/v1/agent/join")
+	url := handler.BuildUrl("/v1/agent/join")
 	address := c.Param("address")
 	resp, err := http.Post(url, "application/x-www-form-urlencoded",
 		strings.NewReader(address))
@@ -297,7 +281,7 @@ func AgentJoinRequest(c echo.Context) error {
 }
 
 func AgentForceLeaveRequest(c echo.Context) error {
-	url := buildUrl("/v1/agent/force-leave")
+	url := handler.BuildUrl("/v1/agent/force-leave")
 	node := c.Param("node")
 	resp, err := http.Post(url, "application/x-www-form-urlencoded",
 		strings.NewReader(node))
@@ -314,7 +298,7 @@ func AgentForceLeaveRequest(c echo.Context) error {
 }
 
 func AgentMembersRequest(c echo.Context) error {
-	url := buildUrl("/v1/agent/members")
+	url := handler.BuildUrl("/v1/agent/members")
 	resp, err := http.Get(url)
 	if err != nil {
 		return c.String(http.StatusInternalServerError, err.Error())
@@ -329,7 +313,7 @@ func AgentMembersRequest(c echo.Context) error {
 }
 
 func UpdateServers(c echo.Context) error {
-	url := buildUrl("/v1/agent/servers")
+	url := handler.BuildUrl("/v1/agent/servers")
 	address := c.Param("address")
 	resp, err := http.Post(url, "application/x-www-form-urlencoded",
 		strings.NewReader(address))
@@ -346,7 +330,7 @@ func UpdateServers(c echo.Context) error {
 }
 
 func ListServers(c echo.Context) error {
-	url := buildUrl("/v1/agent/servers")
+	url := handler.BuildUrl("/v1/agent/servers")
 	resp, err := http.Get(url)
 	if err != nil {
 		return c.String(http.StatusInternalServerError, err.Error())
@@ -360,7 +344,7 @@ func ListServers(c echo.Context) error {
 	return c.Blob(http.StatusOK, "text/html; charset=utf-8", body)
 }
 func RegionListRequest(c echo.Context) error {
-	url := buildUrl("/v1/regions")
+	url := handler.BuildUrl("/v1/regions")
 	resp, err := http.Get(url)
 	if err != nil {
 		return c.String(http.StatusInternalServerError, err.Error())
@@ -375,7 +359,7 @@ func RegionListRequest(c echo.Context) error {
 }
 
 func StatusLeaderRequest(c echo.Context) error {
-	url := buildUrl("/v1/status/leader")
+	url := handler.BuildUrl("/v1/status/leader")
 	resp, err := http.Get(url)
 	if err != nil {
 		return c.String(http.StatusInternalServerError, err.Error())
@@ -390,7 +374,7 @@ func StatusLeaderRequest(c echo.Context) error {
 }
 
 func StatusPeersRequest(c echo.Context) error {
-	url := buildUrl("/v1/status/peers")
+	url := handler.BuildUrl("/v1/status/peers")
 	resp, err := http.Get(url)
 	if err != nil {
 		return c.String(http.StatusInternalServerError, err.Error())
@@ -465,7 +449,7 @@ func ValidateJobRequest(c echo.Context) error {
 
 	var err error
 	var oldJob OldJob
-	if err := decodeBody(c.Request(), &oldJob); err != nil {
+	if err := handler.DecodeBody(c.Request(), &oldJob); err != nil {
 		hclog.Fmt("err ", err)
 	}
 
@@ -481,7 +465,7 @@ func ValidateJobRequest(c echo.Context) error {
 	if err != nil {
 		return c.String(http.StatusInternalServerError, fmt.Sprintf("json.marshal failed, err: %v", err))
 	}
-	url := buildUrl("/v1/validate/job")
+	url := handler.BuildUrl("/v1/validate/job")
 	resp, err := http.Post(url, "application/x-www-form-urlencoded",
 		strings.NewReader(string(param)))
 	if err != nil {
@@ -497,7 +481,7 @@ func ValidateJobRequest(c echo.Context) error {
 }
 
 func NodesRequest(c echo.Context) error {
-	url := buildUrl("/v1/nodes")
+	url := handler.BuildUrl("/v1/nodes")
 	resp, err := http.Get(url)
 	if err != nil {
 		return c.String(http.StatusInternalServerError, err.Error())
@@ -517,9 +501,9 @@ func NodesRequest(c echo.Context) error {
 func NodeRequest(c echo.Context) error {
 	nodeName := c.Param("nodeName")
 	changeType := c.Param("type")
-	url := buildUrl("/v1/node/" + nodeName + "/evaluate")
+	url := handler.BuildUrl("/v1/node/" + nodeName + "/evaluate")
 	if changeType == "evaluate" {
-		url = buildUrl("/v1/node/" + nodeName + "/evaluate")
+		url = handler.BuildUrl("/v1/node/" + nodeName + "/evaluate")
 		resp, err := http.Post(url, "application/x-www-form-urlencoded",
 			strings.NewReader(""))
 		if err != nil {
@@ -533,7 +517,7 @@ func NodeRequest(c echo.Context) error {
 
 		return c.Blob(http.StatusOK, "text/html; charset=utf-8", body)
 	} else if changeType == "allocations" {
-		url = buildUrl("/v1/node/" + nodeName + "/allocations")
+		url = handler.BuildUrl("/v1/node/" + nodeName + "/allocations")
 		resp, err := http.Get(url)
 		if err != nil {
 			return c.String(http.StatusInternalServerError, err.Error())
@@ -547,49 +531,4 @@ func NodeRequest(c echo.Context) error {
 		return c.Blob(http.StatusOK, "text/html; charset=utf-8", body)
 	}
 	return c.String(http.StatusInternalServerError, fmt.Sprintf("unknown change type: %v", changeType))
-}
-
-type UpdataLogLevelResp struct {
-	Message      string `json:"message"`
-	DtleLogLevel string `json:"dtle_log_level"`
-}
-
-func UpdateLogLevelV2(c echo.Context) error {
-	// verify
-	logLevelStr := c.QueryParam("dtle_log_level")
-	logLevel := hclog.LevelFromString(logLevelStr)
-	if logLevel == hclog.NoLevel {
-		return c.String(http.StatusInternalServerError, fmt.Sprintf("dtle log level should be one of these value[\"trace\",\"debug\",\"info\",\"warn\",\"error\"], got %v", logLevelStr))
-	}
-
-	// reload nomad log level
-	ppid := os.Getppid()
-	p, err := process.NewProcess(int32(ppid))
-	if nil != err {
-		return c.String(http.StatusInternalServerError, fmt.Sprintf("failed to get parent(pid=%v) process info: %v", ppid, err))
-	}
-	pn, err := p.Name()
-	if nil != err {
-		return c.String(http.StatusInternalServerError, fmt.Sprintf("failed to get parent(pid=%v) process name: %v", ppid, err))
-	}
-
-	if pn != "nomad" {
-		return c.String(http.StatusInternalServerError, fmt.Sprintf("canot reload log level because the parent(pid=%v) process is not nomad", ppid))
-	}
-
-	cmd := exec.Command("kill", "-SIGHUP", strconv.Itoa(ppid))
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); nil != err {
-		return c.String(http.StatusInternalServerError, fmt.Sprintf("failed to reload log level of nomad(pid=%v): %v stderr: %v", ppid, err, stderr.String()))
-	}
-
-	// reload dtle log level
-	g.Logger.SetLevel(logLevel)
-	logger.Info("update log level", "dtle log_level", logLevelStr)
-
-	return c.JSON(http.StatusOK, &UpdataLogLevelResp{
-		Message:      "reload log level successfully",
-		DtleLogLevel: logLevelStr,
-	})
 }
