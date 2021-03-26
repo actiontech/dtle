@@ -66,6 +66,4 @@ struct BinlogEntry {
 
 struct BinlogEntries {
 	Entries []*BinlogEntry
-	TxNum   int64
-	TxLen   int64
 }

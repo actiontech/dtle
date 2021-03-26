@@ -31,13 +31,17 @@ const (
 	ENV_TESTSTUB1_DELAY   = "UDUP_TESTSTUB1_DELAY"
 	ENV_FULL_APPLY_DELAY  = "DTLE_FULL_APPLY_DELAY"
 	ENV_COUNT_INFO_SCHEMA = "DTLE_COUNT_INFO_SCHEMA"
-	ENV_BIG_TX_1M         = "DTLE_BIG_TX_1M"
+	ENV_BIG_MSG_100K        = "DTLE_BIG_MSG_100K"
+	NatsMaxPayload        = 64 * 1024 * 1024
 
 	LONG_LOG_LIMIT = 256
 
 	PluginName = "dtle"
+)
 
-	NatsMaxPayload = 200 * 1024 * 1024
+var (
+	// slightly smaller than NatsMaxPayload
+	NatsMaxMsg = 64 * 1024 * 1024 - 4096
 )
 
 func StringPtrEmpty(p *string) bool {

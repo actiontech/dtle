@@ -354,7 +354,9 @@ func (a *Applier) subscribeNats() error {
 	a.mysqlContext.MarkRowCopyStartTime()
 	a.logger.Debug("nats subscribe")
 	tracer := opentracing.GlobalTracer()
-	_, err := a.natsConn.Subscribe(fmt.Sprintf("%s_full", a.subject), func(m *gonats.Msg) {
+
+	fullNMM := common.NewNatsMsgMerger(a.logger.With("nmm", "full"))
+	var _, err = a.natsConn.Subscribe(fmt.Sprintf("%s_full", a.subject), func(m *gonats.Msg) {
 		a.logger.Debug("full. recv a msg.", "copyRowsQueue", len(a.copyRowsQueue))
 
 		select {
@@ -362,50 +364,67 @@ func (a *Applier) subscribeNats() error {
 			if err := a.natsConn.Publish(m.Reply, nil); err != nil {
 				a.onError(TaskStateDead, err)
 			}
+			a.logger.Debug("full. after publish nats reply")
 			return
 		default:
 		}
 
-		t := not.NewTraceMsg(m)
-		// Extract the span context from the request message.
-		sc, err := tracer.Extract(opentracing.Binary, t)
+		segmentFinished, err := fullNMM.Handle(m.Data)
 		if err != nil {
-			a.logger.Debug("get data")
-		}
-		// Setup a span referring to the span context of the incoming NATS message.
-		replySpan := tracer.StartSpan("Service Responder", ext.SpanKindRPCServer, ext.RPCServerOption(sc))
-		ext.MessageBusDestination.Set(replySpan, m.Subject)
-		defer replySpan.Finish()
-		dumpData := &common.DumpEntry{}
-		err = common.Decode(t.Bytes(), dumpData)
-		if err != nil {
-			a.onError(TaskStateDead, errors.Wrap(err, "DecodeDumpEntry"))
+			a.onError(TaskStateDead, errors.Wrap(err, "fullNMM.Handle"))
 			return
 		}
 
-		timer := time.NewTimer(common.DefaultConnectWait / 2)
-		atomic.AddInt64(&a.nDumpEntry, 1) // this must be increased before enqueuing
-		select {
-		case a.copyRowsQueue <- dumpData:
-			atomic.AddInt64(a.memory1, int64(dumpData.Size()))
-			a.logger.Debug("full. enqueue", "nDumpEntry", a.nDumpEntry)
-			timer.Stop()
-			a.mysqlContext.Stage = common.StageSlaveWaitingForWorkersToProcessQueue
+		if !segmentFinished {
 			if err := a.natsConn.Publish(m.Reply, nil); err != nil {
 				a.onError(TaskStateDead, err)
 			}
 			a.logger.Debug("full. after publish nats reply")
-			atomic.AddInt64(&a.mysqlContext.RowsEstimate, dumpData.TotalCount)
-		case <-timer.C:
-			atomic.AddInt64(&a.nDumpEntry, -1)
-			a.logger.Debug("full. discarding entries", "nDumpEntry", a.nDumpEntry)
+		} else {
+			t := &not.TraceMsg{Buffer: fullNMM.GetBuf()}
 
-			a.mysqlContext.Stage = common.StageSlaveWaitingForWorkersToProcessQueue
+			// Extract the span context from the request message.
+			sc, err := tracer.Extract(opentracing.Binary, t)
+			if err != nil {
+				a.logger.Debug("get data")
+			}
+			// Setup a span referring to the span context of the incoming NATS message.
+			replySpan := tracer.StartSpan("Service Responder", ext.SpanKindRPCServer, ext.RPCServerOption(sc))
+			ext.MessageBusDestination.Set(replySpan, m.Subject)
+			defer replySpan.Finish()
+			dumpData := &common.DumpEntry{}
+			err = common.Decode(t.Bytes(), dumpData) // TODO decode once for discarded-resent msg
+			if err != nil {
+				a.onError(TaskStateDead, errors.Wrap(err, "DecodeDumpEntry"))
+				return
+			}
+
+			timer := time.NewTimer(common.DefaultConnectWait / 2)
+			atomic.AddInt64(&a.nDumpEntry, 1) // this must be increased before enqueuing
+			select {
+			case a.copyRowsQueue <- dumpData:
+				atomic.AddInt64(a.memory1, int64(dumpData.Size()))
+				a.logger.Debug("full. enqueue", "nDumpEntry", a.nDumpEntry)
+				timer.Stop()
+				a.mysqlContext.Stage = common.StageSlaveWaitingForWorkersToProcessQueue
+
+				if err := a.natsConn.Publish(m.Reply, nil); err != nil {
+					a.onError(TaskStateDead, err)
+					return
+				}
+				a.logger.Debug("full. after publish nats reply")
+
+				fullNMM.Reset()
+
+				atomic.AddInt64(&a.mysqlContext.RowsEstimate, dumpData.TotalCount)
+			case <-timer.C:
+				atomic.AddInt64(&a.nDumpEntry, -1)
+				a.logger.Debug("full. discarding entries", "nDumpEntry", a.nDumpEntry)
+
+				a.mysqlContext.Stage = common.StageSlaveWaitingForWorkersToProcessQueue
+			}
 		}
 	})
-	/*if err := sub.SetPendingLimits(a.mysqlContext.MsgsLimit, a.mysqlContext.BytesLimit); err != nil {
-		return err
-	}*/
 
 	_, err = a.natsConn.Subscribe(fmt.Sprintf("%s_full_complete", a.subject), func(m *gonats.Msg) {
 		a.logger.Debug("recv _full_complete.")
@@ -476,94 +495,75 @@ func (a *Applier) subscribeNats() error {
 		return err
 	}
 
-	var bigEntries common.BinlogEntries
+	incrNMM := common.NewNatsMsgMerger(a.logger.With("nmm", "incr"))
 	_, err = a.natsConn.Subscribe(fmt.Sprintf("%s_incr_hete", a.subject), func(m *gonats.Msg) {
-		var binlogEntries common.BinlogEntries
-		t := not.NewTraceMsg(m)
-		// Extract the span context from the request message.
-		spanContext, err := tracer.Extract(opentracing.Binary, t)
+		a.logger.Debug("incr. recv a msg.")
+
+		segmentFinished, err := incrNMM.Handle(m.Data)
 		if err != nil {
-			a.logger.Trace("tracer.Extract error", "err", err)
-		}
-		// Setup a span referring to the span context of the incoming NATS message.
-		replySpan := tracer.StartSpan("nast : dest to get data  ", ext.SpanKindRPCServer, ext.RPCServerOption(spanContext))
-		ext.MessageBusDestination.Set(replySpan, m.Subject)
-		defer replySpan.Finish()
-		if err := common.Decode(t.Bytes(), &binlogEntries); err != nil {
-			a.onError(TaskStateDead, err)
+			a.onError(TaskStateDead, errors.Wrap(err, "incrNMM.Handle"))
 			return
 		}
 
-		nEntries := len(binlogEntries.Entries)
-		if nEntries > cap(a.ai.applyDataEntryQueue) {
-			err := fmt.Errorf("DTLE_BUG nEntries is greater than cap(queue) %v %v",
-				nEntries, cap(a.ai.applyDataEntryQueue))
-			a.logger.Error(err.Error())
-			a.onError(TaskStateDead, err)
-			return
-		}
-
-		hasVacancy := false
-		for i := 0; i < common.DefaultConnectWaitSecondAckLimit; i++ {
-			if i != 0 {
-				a.logger.Debug("incr. wait 1s for applyDataEntryQueue")
-				time.Sleep(1 * time.Second)
-			}
-			vacancy := cap(a.ai.applyDataEntryQueue) - len(a.ai.applyDataEntryQueue)
-			a.logger.Debug("incr.", "nEntries", nEntries, "vacancy", vacancy)
-			if vacancy >= nEntries {
-				hasVacancy = true
-				break
-			}
-		}
-
-		if !hasVacancy {
-			// no vacancy. discard these entries
-			a.logger.Debug("incr. discarding entries")
-			a.mysqlContext.Stage = common.StageWaitingForMasterToSendEvent
-		} else {
+		if !segmentFinished {
 			if err := a.natsConn.Publish(m.Reply, nil); err != nil {
 				a.onError(TaskStateDead, err)
 				return
 			}
-			a.logger.Debug("incr. ack-recv.", "nEntries", nEntries)
+			a.logger.Debug("incr. after publish nats reply.")
+		} else {
+			t := &not.TraceMsg{Buffer: incrNMM.GetBuf()}
+			// Extract the span context from the request message.
+			spanContext, err := tracer.Extract(opentracing.Binary, t)
+			if err != nil {
+				a.logger.Debug("tracer.Extract error", "err", err)
+			}
+			// Setup a span referring to the span context of the incoming NATS message.
+			replySpan := tracer.StartSpan("nast : dest to get data  ", ext.SpanKindRPCServer, ext.RPCServerOption(spanContext))
+			ext.MessageBusDestination.Set(replySpan, m.Subject)
+			defer replySpan.Finish()
+			binlogEntries := &common.BinlogEntries{}
+			if err := common.Decode(t.Bytes(), binlogEntries); err != nil {
+				a.onError(TaskStateDead, err)
+				return
+			}
 
-			needCopy := true
-			if binlogEntries.IsBigTx() {
-				// For a big tx, we ensure there is the vacancy (for 1 TX) when seeing the first part.
-				// This is not the best practice for performance, but makes the logic (with kafka) unified.
-				needCopy = false
-				if bigEntries.TxNum + 1 == binlogEntries.TxNum {
-					a.logger.Debug("big tx: get a fragment", "TxNum", binlogEntries.TxNum)
-					bigEntries.TxNum = binlogEntries.TxNum
-					if bigEntries.TxNum == 1 {
-						bigEntries.Entries = binlogEntries.Entries
-						bigEntries.TxLen = binlogEntries.TxLen
-					} else {
-						bigEntries.Entries[0].Events = append(bigEntries.Entries[0].Events, binlogEntries.Entries[0].Events...)
-					}
-					binlogEntries.Entries = nil
+			nEntries := len(binlogEntries.Entries)
+			if nEntries > cap(a.ai.applyDataEntryQueue) {
+				err := fmt.Errorf("DTLE_BUG nEntries is greater than cap(queue) %v %v",
+					nEntries, cap(a.ai.applyDataEntryQueue))
+				a.logger.Error(err.Error())
+				a.onError(TaskStateDead, err)
+				return
+			}
 
-					if binlogEntries.IsLastBigTxPart() {
-						needCopy = true
-						binlogEntries.TxNum = 0
-						binlogEntries.TxLen = 0
-						binlogEntries.Entries = bigEntries.Entries
-
-						bigEntries.TxNum = 0
-						bigEntries.TxLen = 0
-						bigEntries.Entries = nil
-					}
-				} else if bigEntries.TxNum == binlogEntries.TxNum ||
-					(bigEntries.TxNum == 0 && binlogEntries.IsLastBigTxPart()) {
-					// repeated msg. ignore it.
-				} else {
-					a.logger.Warn("DTLE_BUG big tx unexpected TxNum",
-						"current", bigEntries.TxNum, "got", binlogEntries.TxNum)
+			hasVacancy := false
+			for i := 0; i < common.DefaultConnectWaitSecondAckLimit; i++ {
+				if i != 0 {
+					a.logger.Debug("incr. wait 1s for applyDataEntryQueue")
+					time.Sleep(1 * time.Second)
+				}
+				vacancy := cap(a.ai.applyDataEntryQueue) - len(a.ai.applyDataEntryQueue)
+				a.logger.Debug("incr.", "nEntries", nEntries, "vacancy", vacancy)
+				if vacancy >= nEntries {
+					hasVacancy = true
+					break
 				}
 			}
 
-			if needCopy {
+			if !hasVacancy {
+				// no vacancy. discard these entries
+				a.logger.Debug("incr. discarding entries")
+				a.mysqlContext.Stage = common.StageWaitingForMasterToSendEvent
+			} else {
+				if err := a.natsConn.Publish(m.Reply, nil); err != nil {
+					a.onError(TaskStateDead, err)
+					return
+				}
+				a.logger.Debug("incr. after publish nats reply.", "nEntries", nEntries)
+
+				incrNMM.Reset()
+
 				for _, binlogEntry := range binlogEntries.Entries {
 					atomic.AddInt64(a.memory2, int64(binlogEntry.Size()))
 					a.ai.AddEvent(&common.BinlogEntryContext{
@@ -578,8 +578,8 @@ func (a *Applier) subscribeNats() error {
 					atomic.AddInt64(&a.mysqlContext.DeltaEstimate, 1)
 				}
 				a.logger.Debug("incr. applyDataEntryQueue enqueued")
+				a.mysqlContext.Stage = common.StageWaitingForMasterToSendEvent
 			}
-			a.mysqlContext.Stage = common.StageWaitingForMasterToSendEvent
 		}
 	})
 	if err != nil {

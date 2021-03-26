@@ -495,7 +495,7 @@ func (a *ApplierIncr) ApplyBinlogEvent(ctx context.Context, workerIdx int, binlo
 				return err
 			}
 
-			logger.Debug("buildDMLEventQuery.after", "args", args)
+			logger.Debug("buildDMLEventQuery.after", "nArgs", len(args))
 
 			var r gosql.Result
 			if stmt != nil {
