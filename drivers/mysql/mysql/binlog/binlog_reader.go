@@ -1268,9 +1268,6 @@ func (b *BinlogReader) skipRowEvent(rowsEvent *replication.RowsEvent, dml int8) 
 		//if table in tartget Table, do this event
 		for schemaName, tableMap := range b.tables {
 			if b.matchString(schemaName, string(rowsEvent.Table.Schema)) || schemaName == "" {
-				if len(tableMap) == 0 {
-					return false, nil // TODO not skipping but TableContext
-				}
 				for tableName, tableCtx := range tableMap {
 					if b.matchString(tableName, tableOrigin) {
 						return false, tableCtx
