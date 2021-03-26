@@ -1,6 +1,7 @@
-package route
+package v1
 
 import (
+	"github.com/actiontech/dtle/g"
 	uuid "github.com/satori/go.uuid"
 )
 
@@ -28,34 +29,34 @@ type OldJob struct {
 
 func (j *OldJob) Canonicalize() {
 	if j.ID == nil {
-		j.ID = StringToPtr(uuid.NewV4().String())
+		j.ID = g.StringToPtr(uuid.NewV4().String())
 	}
 	if j.Name == nil {
-		j.Name = StringToPtr(*j.ID)
+		j.Name = g.StringToPtr(*j.ID)
 	}
 	if j.Region == nil {
-		j.Region = StringToPtr("global")
+		j.Region = g.StringToPtr("global")
 	}
 	if len(j.Datacenters) == 0 {
 		j.Datacenters = []string{"dc1"}
 	}
 	if j.Type == nil {
-		j.Type = StringToPtr(JobTypeSync)
+		j.Type = g.StringToPtr(JobTypeSync)
 	}
 	if j.Status == nil {
-		j.Status = StringToPtr("")
+		j.Status = g.StringToPtr("")
 	}
 	if j.StatusDescription == nil {
-		j.StatusDescription = StringToPtr("")
+		j.StatusDescription = g.StringToPtr("")
 	}
 	if j.CreateIndex == nil {
-		j.CreateIndex = Uint64ToPtr(0)
+		j.CreateIndex = g.Uint64ToPtr(0)
 	}
 	if j.ModifyIndex == nil {
-		j.ModifyIndex = Uint64ToPtr(0)
+		j.ModifyIndex = g.Uint64ToPtr(0)
 	}
 	if j.JobModifyIndex == nil {
-		j.JobModifyIndex = Uint64ToPtr(0)
+		j.JobModifyIndex = g.Uint64ToPtr(0)
 	}
 }
 
