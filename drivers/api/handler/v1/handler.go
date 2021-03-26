@@ -17,12 +17,6 @@ import (
 	"github.com/pkg/errors"
 )
 
-var logger = hclog.NewNullLogger()
-
-func SetLogger(theLogger hclog.Logger) {
-	logger = theLogger
-}
-
 func UpdupJob(c echo.Context) error {
 	var oldJob OldJob
 	err := handler.DecodeBody(c.Request(), &oldJob)
@@ -406,7 +400,7 @@ func convertJob(oldJob *OldJob) (*api.Job, error) {
 		taskGroup := api.NewTaskGroup(oldTask.Type, 1)
 		newTask := api.NewTask(oldTask.Type, g.PluginName)
 
-		logger.Debug("task config", "config", oldTask.Config)
+		g.Logger.Debug("task config", "config", oldTask.Config)
 
 		switch strings.ToUpper(oldTask.Driver) {
 		case "MYSQL", "":

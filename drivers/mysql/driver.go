@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/actiontech/dtle/drivers/api"
-	"github.com/actiontech/dtle/drivers/api/handler/v1"
 	"strings"
 	"time"
 
@@ -198,8 +197,6 @@ type Driver struct {
 func NewDriver(logger hclog.Logger) drivers.DriverPlugin {
 	logger = logger.Named(g.PluginName)
 	logger.Info("dtle NewDriver")
-
-	v1.SetLogger(logger)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	return &Driver{
