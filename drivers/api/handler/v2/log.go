@@ -51,7 +51,7 @@ func UpdateLogLevelV2(c echo.Context) error {
 
 	// reload dtle log level
 	g.Logger.SetLevel(logLevel)
-	logger.Info("update log level", "dtle log_level", logLevelStr)
+	g.Logger.Info("update log level", "dtle log_level", logLevelStr)
 
 	return c.JSON(http.StatusOK, &UpdataLogLevelResp{
 		Message:      "reload log level successfully",
