@@ -8,8 +8,10 @@ package mysql
 
 import (
 	gosql "database/sql"
+	"encoding/binary"
 	"fmt"
 	"github.com/actiontech/dtle/drivers/mysql/common"
+	"github.com/cznic/mathutil"
 	"github.com/hashicorp/nomad/plugins/drivers"
 
 	"github.com/actiontech/dtle/g"
@@ -952,8 +954,6 @@ func (e *Extractor) StreamEvents() error {
 			e.logger.Debug("publish.after", "gno", gno, "n", len(entries.Entries))
 			ctx = nil
 			entries.Entries = nil
-			entries.TxLen = 0
-			entries.TxNum = 0
 			entriesSize = 0
 
 			return nil
@@ -975,61 +975,22 @@ func (e *Extractor) StreamEvents() error {
 				//span.SetTag("timetag", time.Now().Unix())
 				entryCtx.SpanContext = nil
 
-				hasSent := false
-				if entriesSize + entryCtx.OriginalSize >= common.DefaultBigTX {
-					// send the EntryGroup before reaching BigTX
-					e.logger.Debug("extractor. incr. send pre-BigTX entries",
-						"previousSize", entriesSize,
-						"entrySize", entryCtx.OriginalSize,
+				entries.Entries = append(entries.Entries, binlogEntry)
+				entriesSize += entryCtx.OriginalSize
+
+				if entriesSize >= e.mysqlContext.GroupMaxSize ||
+					int64(len(entries.Entries)) == e.mysqlContext.ReplChanBufferSize {
+
+					e.logger.Debug("extractor. incr. send by GroupLimit",
+						"entriesSize", entriesSize,
+						"groupMaxSize", e.mysqlContext.GroupMaxSize,
 						"Entries.len", len(entries.Entries))
 
-					if len(entries.Entries) > 0 {
-						hasSent = true
-						err := sendEntriesAndClear()
-						if err != nil {
-							e.onError(TaskStateDead, err)
-							break LOOP
-						}
-					} else {
-						// no before entries
+					err := sendEntriesAndClear()
+					if err != nil {
+						e.onError(TaskStateDead, err)
+						break LOOP
 					}
-				}
-
-				if entryCtx.OriginalSize >= common.DefaultBigTX {
-					bigEntrises := splitEntries(binlogEntry, entryCtx.OriginalSize)
-					e.logger.Debug("extractor. incr. big tx.", "len", len(bigEntrises))
-					for _, entity := range bigEntrises {
-						entries = entity
-						e.logger.Debug("extractor. incr. send big tx", "fragment", entries.TxNum)
-						hasSent = true
-						err := sendEntriesAndClear()
-						if err != nil {
-							e.onError(TaskStateDead, err)
-							break LOOP
-						}
-					}
-				} else {
-					entries.Entries = append(entries.Entries, binlogEntry)
-					entriesSize += entryCtx.OriginalSize
-
-					if entriesSize >= e.mysqlContext.GroupMaxSize ||
-						int64(len(entries.Entries)) == e.mysqlContext.ReplChanBufferSize {
-
-						e.logger.Debug("extractor. incr. send by GroupLimit",
-							"entriesSize", entriesSize,
-							"groupMaxSize", e.mysqlContext.GroupMaxSize,
-							"Entries.len", len(entries.Entries))
-
-						hasSent = true
-						err := sendEntriesAndClear()
-						if err != nil {
-							e.onError(TaskStateDead, err)
-							break LOOP
-						}
-					}
-				}
-
-				if hasSent {
 					if !timer.Stop() {
 						<-timer.C
 					}
@@ -1064,43 +1025,12 @@ func (e *Extractor) StreamEvents() error {
 	return nil
 }
 
-func ceilDiv(a int, b int) (r int) {
-	r = a / b
-	if a % b != 0 {
-		r += 1
-	}
-	return r
-}
-
-func splitEntries(bigEntry *common.BinlogEntry, originalSize int) (splitted []common.BinlogEntries) {
-	clientLen := ceilDiv(originalSize, common.DefaultBigTX) // the number of natsMsg to send
-	clientNum := ceilDiv(len(bigEntry.Events), clientLen) // the number of events for each natsMsg
-	for i := 1; i <= clientLen; i++ {
-		var after int
-		if i == clientLen { // last natsMsg
-			after = len(bigEntry.Events)
-		} else {
-			after = i * clientNum // stop limit for slicing Entries[0].Events
-		}
-		entry := &common.BinlogEntry{
-			Coordinates:  bigEntry.Coordinates,
-			Events:       bigEntry.Events[(i-1)*clientNum : after],
-		}
-		newEntries := common.BinlogEntries{
-			Entries: []*common.BinlogEntry{entry}, // For a big TX, a BinlogEntries (Group) has only 1 BinlogEntry (Tx)
-			TxNum:   int64(i),
-			TxLen:   int64(clientLen),
-		}
-		splitted = append(splitted, newEntries)
-	}
-
-	return splitted
-}
-
 // retryOperation attempts up to `count` attempts at running given function,
 // exiting as soon as it returns with non-error.
 // gno: only for logging
 func (e *Extractor) publish(ctx context.Context, subject string, txMsg []byte, gno int64) (err error) {
+	msgLen := len(txMsg)
+
 	tracer := opentracing.GlobalTracer()
 	var t not.TraceMsg
 	var spanctx opentracing.SpanContext
@@ -1123,23 +1053,55 @@ func (e *Extractor) publish(ctx context.Context, subject string, txMsg []byte, g
 	// Add the payload.
 	t.Write(txMsg)
 	defer span.Finish()
-	for i := 1; ; i++ {
-		e.logger.Debug("publish", "len", len(txMsg), "subject", subject, "gno", gno)
-		_, err = e.natsConn.Request(subject, t.Bytes(), common.DefaultConnectWait)
-		if err == nil {
-			txMsg = nil
-			break
-		} else if err == gonats.ErrTimeout {
-			e.logger.Debug("publish timeout", "err", err, "i", i, "gno", gno)
-			if i % 20 == 0 {
-				e.logger.Warn("publish timeout for i times", "err", err, "i", i,
-					"len", len(txMsg), "subject", subject, "gno", gno)
-			}
 
-			time.Sleep(1 * time.Second)
+	data := t.Bytes()
+	lenData := len(data)
+
+	// lenData < NatsMaxMsg: 1 msg
+	// lenData = k * NatsMaxMsg + b, where k >= 1 && b >= 0: (k+1) msg
+	// b could be 0. we send a zero-len msg as a sign of termination.
+	nSeg := lenData/g.NatsMaxMsg + 1
+	e.logger.Debug("publish. msg", "subject", subject, "gno", gno, "nSeg", nSeg, "spanLen", lenData, "msgLen", msgLen)
+	bak := make([]byte, 4)
+	if nSeg > 1 {
+		// ensure there are 4 bytes to save iSeg
+		data = append(data, 0, 0, 0, 0)
+	}
+	for iSeg := 0; iSeg < nSeg; iSeg++ {
+		var part []byte
+		if nSeg == 1 { // not big msg
+			part = data
 		} else {
-			e.logger.Error("unexpected error on publish", "err", err)
-			break
+			begin := iSeg * g.NatsMaxMsg
+			end := mathutil.Min(lenData, (iSeg+1)*g.NatsMaxMsg)
+			// use extra 4 bytes to save iSeg
+			if iSeg > 0 {
+				copy(data[begin:begin+4], bak)
+			}
+			copy(bak, data[end:end+4])
+			part = data[begin : end+4]
+			binary.LittleEndian.PutUint32(data[end:], uint32(iSeg))
+		}
+
+		for i := 1; ; i++ {
+			e.logger.Debug("publish", "subject", subject, "gno", gno, "partLen", len(part), "iSeg", iSeg)
+
+			_, err = e.natsConn.Request(subject, part, common.DefaultConnectWait)
+			if err == nil {
+				txMsg = nil
+				break
+			} else if err == gonats.ErrTimeout {
+				e.logger.Debug("publish timeout", "err", err, "i", i, "gno", gno)
+				if i % 20 == 0 {
+					e.logger.Warn("publish timeout for i times", "err", err, "i", i,
+						"len", msgLen, "subject", subject, "gno", gno, "iSeg", iSeg, "nSeg", nSeg)
+				}
+
+				time.Sleep(1 * time.Second)
+			} else {
+				e.logger.Error("unexpected error on publish", "err", err)
+				break
+			}
 		}
 	}
 	return err
