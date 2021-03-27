@@ -125,4 +125,6 @@ type KafkaConfig struct {
 	TimeZone            string
 	MessageGroupMaxSize uint64
 	MessageGroupTimeout uint64
+
+	TopicWithSchemaTable bool
 }
