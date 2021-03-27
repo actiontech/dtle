@@ -580,9 +580,14 @@ func (kr *KafkaRunner) kafkaTransformSnapshotData(
 	table := tableItem.table
 
 	keysBs, valuesBs := make([][]byte, 0), make([][]byte, 0)
-	tableIdents := []string{}
+	realTopics := []string{}
 
-	tableIdent := fmt.Sprintf("%v.%v.%v", kr.kafkaMgr.Cfg.Topic, table.TableSchema, table.TableName)
+	var realTopic string
+	if kr.kafkaConfig.TopicWithSchemaTable {
+		realTopic = fmt.Sprintf("%v.%v.%v", kr.kafkaMgr.Cfg.Topic, table.TableSchema, table.TableName)
+	} else {
+		realTopic = kr.kafkaMgr.Cfg.Topic
+	}
 	kr.logger.Debug("kafkaTransformSnapshotData", "value", value.ValuesX)
 	for iValuesX, rowValues := range value.ValuesX {
 		keyPayload := NewRow()
@@ -726,18 +731,18 @@ func (kr *KafkaRunner) kafkaTransformSnapshotData(
 
 		keysBs = append(keysBs, kBs)
 		valuesBs = append(valuesBs, vBs)
-		tableIdents = append(tableIdents, tableIdent)
+		realTopics = append(realTopics, realTopic)
 
 		isLastPart := iValuesX == len(value.ValuesX) - 1
 		if len(keysBs) > 100 || isLastPart {
-			err := kr.kafkaMgr.SendMessages(kr.logger, tableIdents, keysBs, valuesBs)
+			err := kr.kafkaMgr.SendMessages(kr.logger, realTopics, keysBs, valuesBs)
 			if err != nil {
 				return fmt.Errorf("send msgs failed: %v", err)
 			}
 			kr.logger.Debug("sent a group of msgs")
 			keysBs = nil
 			valuesBs = nil
-			tableIdents = nil
+			realTopics = nil
 		}
 	}
 
@@ -751,7 +756,7 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQueries(dmlEntries []*common.Binlog
 
 	latestTimestamp := uint32(0)
 	keysBs, valuesBs := make([][]byte, 0), make([][]byte, 0)
-	tableIdents := []string{}
+	realTopics := []string{}
 
 	for _, dmlEvent := range dmlEntries {
 		kr.logger.Debug("kafkaTransformDMLEventQueries", "gno", dmlEvent.Coordinates.GNO)
@@ -1004,8 +1009,13 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQueries(dmlEntries []*common.Binlog
 				return err
 			}
 
-			tableIdent := fmt.Sprintf("%v.%v.%v", kr.kafkaMgr.Cfg.Topic, table.TableSchema, table.TableName)
-			tableIdents = append(tableIdents, tableIdent)
+			var realTopic string
+			if kr.kafkaConfig.TopicWithSchemaTable {
+				realTopic = fmt.Sprintf("%v.%v.%v", kr.kafkaMgr.Cfg.Topic, table.TableSchema, table.TableName)
+			} else {
+				realTopic = kr.kafkaMgr.Cfg.Topic
+			}
+			realTopics = append(realTopics, realTopic)
 			keysBs = append(keysBs, kBs)
 			valuesBs = append(valuesBs, vBs)
 			kr.logger.Debug("appended an event", "schema", table.TableSchema, "table", table.TableName,
@@ -1022,7 +1032,7 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQueries(dmlEntries []*common.Binlog
 					return err
 				}
 
-				tableIdents = append(tableIdents, tableIdent)
+				realTopics = append(realTopics, realTopic)
 				keysBs = append(keysBs, kBs)
 				valuesBs = append(valuesBs, v2Bs)
 			}
@@ -1030,7 +1040,7 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQueries(dmlEntries []*common.Binlog
 		}
 	}
 
-	err = kr.kafkaMgr.SendMessages(kr.logger, tableIdents, keysBs, valuesBs)
+	err = kr.kafkaMgr.SendMessages(kr.logger, realTopics, keysBs, valuesBs)
 	if err != nil {
 		return fmt.Errorf("send msgs failed: %v", err)
 	}

@@ -136,6 +136,8 @@ var (
 				hclspec.NewLiteral(`"UTC"`)),
 			"MessageGroupMaxSize": hclspec.NewAttr("MessageGroupMaxSize", "number", false),
 			"MessageGroupTimeout": hclspec.NewAttr("MessageGroupTimeout", "number", false),
+			"TopicWithSchemaTable": hclspec.NewDefault(hclspec.NewAttr("TopicWithSchemaTable", "bool", false),
+				hclspec.NewLiteral(`true`)),
 		})),
 	})
 
