@@ -1,0 +1,35 @@
+definitions:
+  v2.UpdataLogLevelRespV2:
+    properties:
+      dtle_log_level:
+        type: string
+      message:
+        type: string
+    type: object
+info:
+  contact: {}
+paths:
+  /v2/log_level:
+    post:
+      consumes:
+      - application/x-www-form-urlencoded
+      description: reload log level dynamically.
+      parameters:
+      - description: dtle log level
+        enum:
+        - TRACE
+        - DEBUG
+        - INFO
+        - WARN
+        - ERROR
+        in: formData
+        name: dtle_log_level
+        type: string
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/v2.UpdataLogLevelRespV2'
+      tags:
+      - log
+swagger: "2.0"
