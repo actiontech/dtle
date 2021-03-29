@@ -1,0 +1,55 @@
+{
+    "swagger": "2.0",
+    "info": {
+        "contact": {}
+    },
+    "paths": {
+        "/v2/log_level": {
+            "post": {
+                "description": "reload log level dynamically.",
+                "consumes": [
+                    "application/x-www-form-urlencoded"
+                ],
+                "tags": [
+                    "log"
+                ],
+                "parameters": [
+                    {
+                        "enum": [
+                            "TRACE",
+                            "DEBUG",
+                            "INFO",
+                            "WARN",
+                            "ERROR"
+                        ],
+                        "type": "string",
+                        "description": "dtle log level",
+                        "name": "dtle_log_level",
+                        "in": "formData"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/v2.UpdataLogLevelRespV2"
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "definitions": {
+        "v2.UpdataLogLevelRespV2": {
+            "type": "object",
+            "properties": {
+                "dtle_log_level": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        }
+    }
+}

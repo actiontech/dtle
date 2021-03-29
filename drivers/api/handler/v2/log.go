@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"strconv"
+	"strings"
 
 	"github.com/actiontech/dtle/g"
 	hclog "github.com/hashicorp/go-hclog"
@@ -14,17 +15,23 @@ import (
 	"github.com/shirou/gopsutil/process"
 )
 
-type UpdataLogLevelResp struct {
+type UpdataLogLevelRespV2 struct {
 	Message      string `json:"message"`
 	DtleLogLevel string `json:"dtle_log_level"`
 }
 
+// @Description reload log level dynamically.
+// @Tags log
+// @accept application/x-www-form-urlencoded
+// @Param dtle_log_level formData string false "dtle log level" Enums(TRACE, DEBUG, INFO, WARN, ERROR)
+// @Success 200 {object} UpdataLogLevelRespV2
+// @router /v2/log_level [post]
 func UpdateLogLevelV2(c echo.Context) error {
 	// verify
-	logLevelStr := c.QueryParam("dtle_log_level")
+	logLevelStr := c.FormValue("dtle_log_level")
 	logLevel := hclog.LevelFromString(logLevelStr)
 	if logLevel == hclog.NoLevel {
-		return c.String(http.StatusInternalServerError, fmt.Sprintf("dtle log level should be one of these value[\"trace\",\"debug\",\"info\",\"warn\",\"error\"], got %v", logLevelStr))
+		return c.String(http.StatusInternalServerError, fmt.Sprintf("dtle log level should be one of these value[\"TRACE\",\"DEBUG\",\"INFO\",\"WARN\",\"ERROR\"], got %v", logLevelStr))
 	}
 
 	// reload nomad log level
@@ -53,8 +60,8 @@ func UpdateLogLevelV2(c echo.Context) error {
 	g.Logger.SetLevel(logLevel)
 	g.Logger.Info("update log level", "dtle log_level", logLevelStr)
 
-	return c.JSON(http.StatusOK, &UpdataLogLevelResp{
+	return c.JSON(http.StatusOK, &UpdataLogLevelRespV2{
 		Message:      "reload log level successfully",
-		DtleLogLevel: logLevelStr,
+		DtleLogLevel: strings.ToUpper(logLevelStr),
 	})
 }
