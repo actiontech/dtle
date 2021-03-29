@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/actiontech/dtle/drivers/mysql/common"
@@ -419,9 +420,8 @@ func (d *Driver) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHandle, *drive
 		return nil, nil, errors.Wrap(err, "DecodeDriverConfig")
 	}
 
-	if (dtleTaskConfig.ConnectionConfig == nil && dtleTaskConfig.KafkaConfig == nil) ||
-		(dtleTaskConfig.ConnectionConfig != nil && dtleTaskConfig.KafkaConfig != nil) {
-		return nil, nil, fmt.Errorf("one and only one of ConnectionConfig or KafkaConfig should be set")
+	if err := d.verifyDriverConfig(dtleTaskConfig); nil != err {
+		return nil, nil, fmt.Errorf("invalide driver config, errors: %v", err)
 	}
 
 	handle := drivers.NewTaskHandle(taskHandleVersion)
@@ -472,6 +472,49 @@ func (d *Driver) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHandle, *drive
 	go h.run(d)
 
 	return handle, nil, nil
+}
+
+func (d *Driver) verifyDriverConfig(config common.DtleTaskConfig) error {
+	errMsgs := []string{}
+	addErrMsgs := func(msg string) {
+		errMsgs = append(errMsgs, fmt.Sprintf("	* %v", msg))
+	}
+
+	if (config.ConnectionConfig == nil && config.KafkaConfig == nil) ||
+		(config.ConnectionConfig != nil && config.KafkaConfig != nil) {
+		addErrMsgs("one and only one of ConnectionConfig or KafkaConfig should be set")
+	}
+
+	for _, doDb := range config.ReplicateDoDb {
+		if doDb.TableSchema == "" && doDb.TableSchemaRegex == "" {
+			addErrMsgs("TableSchema and TableSchemaRegex in ReplicateDoDb cannot both be blank")
+		}
+		if doDb.TableSchema != "" && doDb.TableSchemaRegex != "" {
+			addErrMsgs(fmt.Sprintf("TableSchema and TableSchemaRegex in ReplicateDoDb cannot both be used. TableSchema=%v, TableSchemaRegex=%v", doDb.TableSchema, doDb.TableSchemaRegex))
+		}
+		if doDb.TableSchemaRegex != "" && doDb.TableSchemaRename == "" {
+			addErrMsgs(fmt.Sprintf("TableSchemaRename in ReplicateDoDb is required while using TableSchemaRegex in ReplicateDoDb. TableSchemaRegex=%v", doDb.TableSchemaRegex))
+		}
+
+		for _, doTb := range doDb.Tables {
+			if doTb.TableName == "" && doTb.TableRegex == "" {
+				addErrMsgs("TableName and TableRegex in ReplicateDoDb cannot both be empty")
+			}
+			if doTb.TableName != "" && doTb.TableRegex != "" {
+				addErrMsgs(fmt.Sprintf("TableName and TableRegex in ReplicateDoDb cannot both be used. TableSchema=%v, TableName=%v, TableRegex=%v", doDb.TableSchema, doTb.TableName, doTb.TableRegex))
+			}
+			if doTb.TableRegex != "" && doTb.TableRename == "" {
+				addErrMsgs(fmt.Sprintf("TableRename in ReplicateDoDb is required while using TableRegex in ReplicateDoDb. TableSchema=%v, TableRegex=%v", doDb.TableSchema, doTb.TableRegex))
+			}
+		}
+	}
+
+
+	if len(errMsgs) > 0 {
+		return fmt.Errorf("\n%v", strings.Join(errMsgs, "\n"))
+	} else {
+		return nil
+	}
 }
 
 func (d *Driver) WaitTask(ctx context.Context, taskID string) (<-chan *drivers.ExitResult, error) {

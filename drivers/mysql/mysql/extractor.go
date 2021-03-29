@@ -395,13 +395,6 @@ func (e *Extractor) inspectTables() (err error) {
 		var doDbs []*common.DataSource
 		// Get all db from TableSchemaRegex regex and get all tableSchemaRename
 		for _, doDb := range e.mysqlContext.ReplicateDoDb {
-			if doDb.TableSchema == "" && doDb.TableSchemaRegex == "" {
-				return fmt.Errorf("TableSchema and TableSchemaRegex cannot both be blank")
-			}
-			if doDb.TableSchema != "" && doDb.TableSchemaRegex != "" {
-				return fmt.Errorf("TableSchema and TableSchemaRegex cannot both be used: doDb.TableSchema=%v, doDb.TableSchemaRegex=%v", doDb.TableSchema, doDb.TableSchemaRegex)
-			}
-
 			var regex string
 			if doDb.TableSchemaRegex != "" && doDb.TableSchemaRename != "" {
 				regex = doDb.TableSchemaRegex
@@ -467,12 +460,6 @@ func (e *Extractor) inspectTables() (err error) {
 				for _, doTb := range doDb.Tables {
 					doTb.TableSchema = doDb.TableSchema
 					doTb.TableSchemaRename = doDb.TableSchemaRename
-					if doTb.TableName == "" && doTb.TableRegex == "" {
-						return fmt.Errorf("TableName and TableRegex cannot both be empty")
-					}
-					if doTb.TableName != "" && doTb.TableRegex != "" {
-						return fmt.Errorf("TableName and TableRegex cannot both be used: doTb.TableName=%v, doTb.TableRegex=%v", doTb.TableName, doTb.TableRegex)
-					}
 
 					var regex string
 					if doTb.TableRegex != "" && doTb.TableRename != "" {
