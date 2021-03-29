@@ -6,6 +6,7 @@ require (
 	github.com/LK4D4/joincontext v0.0.0-20171026170139-1724345da6d5 // indirect
 	github.com/NYTimes/gziphandler v1.1.1 // indirect
 	github.com/Shopify/sarama v1.26.4
+	github.com/alecthomas/template v0.0.0-20190718012654-fb15b899a751
 	github.com/araddon/dateparse v0.0.0-20190622164848-0fb0a474d195 // indirect
 	github.com/araddon/gou v0.0.0-20190110011759-c797efecbb61 // indirect
 	github.com/araddon/qlbridge v0.0.0-00010101000000-000000000000
@@ -57,11 +58,13 @@ require (
 	github.com/shirou/gopsutil v2.20.2+incompatible
 	github.com/siddontang/go v0.0.0-20180604090527-bdc77568d726
 	github.com/siddontang/go-mysql v0.0.0-20200311002057-7a62847fcdb5
-	github.com/stretchr/testify v1.5.1
+	github.com/stretchr/testify v1.6.1
+	github.com/swaggo/echo-swagger v1.1.0
+	github.com/swaggo/swag v1.7.0
 	github.com/ugorji/go v1.1.7 // indirect
 	github.com/zclconf/go-cty v1.3.1 // indirect
-	golang.org/x/net v0.0.0-20200822124328-c89045814202
-	golang.org/x/text v0.3.3
+	golang.org/x/net v0.0.0-20201202161906-c7110b5ffcbb
+	golang.org/x/text v0.3.4
 	google.golang.org/grpc v1.28.0 // indirect
 )
 

@@ -1,6 +1,7 @@
 package api
 
 import (
+	_ "github.com/actiontech/dtle/drivers/api/docs"
 	"github.com/actiontech/dtle/drivers/api/handler"
 	"github.com/actiontech/dtle/drivers/api/handler/v1"
 	v2 "github.com/actiontech/dtle/drivers/api/handler/v2"
@@ -9,12 +10,17 @@ import (
 	hclog "github.com/hashicorp/go-hclog"
 	"github.com/labstack/echo/v4"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	echoSwagger "github.com/swaggo/echo-swagger"
 )
 
 func SetupApiServer(logger hclog.Logger, apiAddr, nomadAddr, uiDir string) (err error) {
 	e := echo.New()
 	handler.NomadHost = nomadAddr
 	logger.Debug("Begin Setup api server", "addr", apiAddr)
+
+	e.GET("/swagger/*", echoSwagger.WrapHandler)
+
+	// api v1
 	e.GET("/v1/job/:jobId", v1.JobDetailRequest)
 	e.DELETE("/v1/job/:jobId", v1.JobDeleteRequest)
 	e.GET("/v1/job/:jobId/:path", v1.JobRequest)
@@ -37,12 +43,8 @@ func SetupApiServer(logger hclog.Logger, apiAddr, nomadAddr, uiDir string) (err 
 	e.POST("/v1/validate/job", v1.ValidateJobRequest)
 	e.GET("/v1/nodes", v1.NodesRequest)
 	e.GET("/v1/node/:nodeName/:type", v1.NodeRequest)
-	e.GET("/metrics", echo.WrapHandler(promhttp.Handler()))
-	//router.POST("/v1/operator/",updupJob)
-	/*router.POST("/v1/job/renewal",updupJob)
-	router.POST("/v1/job/info",updupJob)
-	*/
 
+	// api v2
 	e.POST("/v2/log_level", v2.UpdateLogLevelV2)
 
 	if uiDir != "" {
@@ -59,6 +61,7 @@ func SetupApiServer(logger hclog.Logger, apiAddr, nomadAddr, uiDir string) (err 
 	logger.Info("Setup api server succeeded", "addr", apiAddr)
 
 	//d.apiServer = router
+	e.GET("/metrics", echo.WrapHandler(promhttp.Handler()))
 	sink, err := prometheus.NewPrometheusSink()
 	if err != nil {
 		return err

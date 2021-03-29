@@ -14,11 +14,16 @@ import (
 	"github.com/shirou/gopsutil/process"
 )
 
-type UpdataLogLevelResp struct {
+type UpdataLogLevelRespV2 struct {
 	Message      string `json:"message"`
 	DtleLogLevel string `json:"dtle_log_level"`
 }
 
+// @Description reload log level dynamically.
+// @Tags log
+// @Param dtle_log_level query string false "dtle log level" Enums(TRACE, DEBUG, INFO, WARN, ERROR)
+// @Success 200 {object} UpdataLogLevelRespV2
+// @router /v2/log_level [post]
 func UpdateLogLevelV2(c echo.Context) error {
 	// verify
 	logLevelStr := c.QueryParam("dtle_log_level")
@@ -53,7 +58,7 @@ func UpdateLogLevelV2(c echo.Context) error {
 	g.Logger.SetLevel(logLevel)
 	g.Logger.Info("update log level", "dtle log_level", logLevelStr)
 
-	return c.JSON(http.StatusOK, &UpdataLogLevelResp{
+	return c.JSON(http.StatusOK, &UpdataLogLevelRespV2{
 		Message:      "reload log level successfully",
 		DtleLogLevel: logLevelStr,
 	})
