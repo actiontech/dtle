@@ -1,11 +1,20 @@
 # github.com/BurntSushi/toml v0.3.1
 github.com/BurntSushi/toml
+# github.com/KyleBanks/depth v1.2.1
+github.com/KyleBanks/depth
 # github.com/LK4D4/joincontext v0.0.0-20171026170139-1724345da6d5
 github.com/LK4D4/joincontext
+# github.com/PuerkitoBio/purell v1.1.1
+github.com/PuerkitoBio/purell
+# github.com/PuerkitoBio/urlesc v0.0.0-20170810143723-de5bf2ad4578
+github.com/PuerkitoBio/urlesc
 # github.com/Shopify/sarama v1.26.4
 github.com/Shopify/sarama
 # github.com/StackExchange/wmi v0.0.0-20190523213315-cbe66965904d
 github.com/StackExchange/wmi
+# github.com/alecthomas/template v0.0.0-20190718012654-fb15b899a751
+github.com/alecthomas/template
+github.com/alecthomas/template/parse
 # github.com/araddon/dateparse v0.0.0-20190622164848-0fb0a474d195
 github.com/araddon/dateparse
 # github.com/araddon/gou v0.0.0-20190110011759-c797efecbb61
@@ -63,6 +72,14 @@ github.com/fatih/color
 # github.com/go-ole/go-ole v1.2.4
 github.com/go-ole/go-ole
 github.com/go-ole/go-ole/oleutil
+# github.com/go-openapi/jsonpointer v0.19.5
+github.com/go-openapi/jsonpointer
+# github.com/go-openapi/jsonreference v0.19.5
+github.com/go-openapi/jsonreference
+# github.com/go-openapi/spec v0.20.0
+github.com/go-openapi/spec
+# github.com/go-openapi/swag v0.19.12
+github.com/go-openapi/swag
 # github.com/go-sql-driver/mysql v1.5.0
 github.com/go-sql-driver/mysql
 # github.com/gogo/protobuf v1.3.1
@@ -175,6 +192,8 @@ github.com/ikarishinjieva/golang-live-coverage-report/cmd/golang-live-coverage-r
 # github.com/jcmturner/gofork v1.0.0
 github.com/jcmturner/gofork/encoding/asn1
 github.com/jcmturner/gofork/x/crypto/pbkdf2
+# github.com/josharian/intern v1.0.0
+github.com/josharian/intern
 # github.com/julienschmidt/httprouter v1.2.0
 github.com/julienschmidt/httprouter
 # github.com/klauspost/compress v1.9.8
@@ -194,6 +213,10 @@ github.com/labstack/gommon/color
 github.com/labstack/gommon/log
 # github.com/lytics/datemath v0.0.0-20180727225141-3ada1c10b5de
 github.com/lytics/datemath
+# github.com/mailru/easyjson v0.7.6
+github.com/mailru/easyjson/buffer
+github.com/mailru/easyjson/jlexer
+github.com/mailru/easyjson/jwriter
 # github.com/mattn/go-colorable v0.1.7
 github.com/mattn/go-colorable
 # github.com/mattn/go-isatty v0.0.12
@@ -444,8 +467,14 @@ github.com/siddontang/go-mysql/utils
 github.com/sirupsen/logrus
 # github.com/spaolacci/murmur3 v1.1.0
 github.com/spaolacci/murmur3
-# github.com/stretchr/testify v1.5.1
+# github.com/stretchr/testify v1.6.1
 github.com/stretchr/testify/assert
+# github.com/swaggo/echo-swagger v1.1.0
+github.com/swaggo/echo-swagger
+# github.com/swaggo/files v0.0.0-20190704085106-630677cd5c14
+github.com/swaggo/files
+# github.com/swaggo/swag v1.7.0
+github.com/swaggo/swag
 # github.com/twinj/uuid v1.0.0
 github.com/twinj/uuid
 # github.com/uber/jaeger-client-go v2.16.0+incompatible
@@ -509,7 +538,7 @@ golang.org/x/crypto/internal/subtle
 golang.org/x/crypto/md4
 golang.org/x/crypto/pbkdf2
 golang.org/x/crypto/poly1305
-# golang.org/x/net v0.0.0-20200822124328-c89045814202
+# golang.org/x/net v0.0.0-20201202161906-c7110b5ffcbb
 golang.org/x/net/context
 golang.org/x/net/http/httpguts
 golang.org/x/net/http2
@@ -520,7 +549,9 @@ golang.org/x/net/internal/socks
 golang.org/x/net/internal/timeseries
 golang.org/x/net/proxy
 golang.org/x/net/trace
-# golang.org/x/sys v0.0.0-20200826173525-f9321e4c35a6
+golang.org/x/net/webdav
+golang.org/x/net/webdav/internal/xml
+# golang.org/x/sys v0.0.0-20200930185726-fdedc70b468f
 golang.org/x/sys/cpu
 golang.org/x/sys/internal/unsafeheader
 golang.org/x/sys/unix
@@ -530,7 +561,7 @@ golang.org/x/sys/windows/svc
 golang.org/x/sys/windows/svc/debug
 golang.org/x/sys/windows/svc/eventlog
 golang.org/x/sys/windows/svc/mgr
-# golang.org/x/text v0.3.3
+# golang.org/x/text v0.3.4
 golang.org/x/text/encoding
 golang.org/x/text/encoding/charmap
 golang.org/x/text/encoding/internal
@@ -546,8 +577,13 @@ golang.org/x/text/secure/bidirule
 golang.org/x/text/transform
 golang.org/x/text/unicode/bidi
 golang.org/x/text/unicode/norm
-# golang.org/x/tools v0.0.0-20190624222133-a101b041ded4
+golang.org/x/text/width
+# golang.org/x/tools v0.0.0-20201207182000-5679438983bd
 golang.org/x/tools/container/intsets
+golang.org/x/tools/go/ast/astutil
+golang.org/x/tools/go/buildutil
+golang.org/x/tools/go/internal/cgo
+golang.org/x/tools/go/loader
 # google.golang.org/appengine v1.4.0
 google.golang.org/appengine
 google.golang.org/appengine/datastore
@@ -647,5 +683,7 @@ gopkg.in/jcmturner/rpc.v1/ndr
 gopkg.in/natefinch/lumberjack.v2
 # gopkg.in/tomb.v1 v1.0.0-20141024135613-dd632973f1e7
 gopkg.in/tomb.v1
-# gopkg.in/yaml.v2 v2.2.8
+# gopkg.in/yaml.v2 v2.4.0
 gopkg.in/yaml.v2
+# gopkg.in/yaml.v3 v3.0.0-20200615113413-eeeca48fe776
+gopkg.in/yaml.v3
