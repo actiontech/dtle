@@ -509,6 +509,16 @@ func (d *Driver) verifyDriverConfig(config common.DtleTaskConfig) error {
 		}
 	}
 
+	for _, db := range config.ReplicateIgnoreDb {
+		if db.TableSchema == "" {
+			addErrMsgs("TableSchema in ReplicateIgnoreDb should not be empty")
+		}
+		for _, tb := range db.Tables {
+			if tb.TableName == "" {
+				addErrMsgs(fmt.Sprintf("TableName in ReplicateIgnoreDb should not be empty. TableSchema=%v", db.TableSchema))
+			}
+		}
+	}
 
 	if len(errMsgs) > 0 {
 		return fmt.Errorf("\n%v", strings.Join(errMsgs, "\n"))
