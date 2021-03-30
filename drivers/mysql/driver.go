@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/actiontech/dtle/drivers/api"
 	"strings"
 	"time"
 
@@ -15,7 +16,6 @@ import (
 	"net"
 	"net/http"
 
-	"github.com/actiontech/dtle/drivers/api/route"
 	"github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/nomad/drivers/shared/eventer"
 	"github.com/hashicorp/nomad/plugins/base"
@@ -198,8 +198,6 @@ func NewDriver(logger hclog.Logger) drivers.DriverPlugin {
 	logger = logger.Named(g.PluginName)
 	logger.Info("dtle NewDriver")
 
-	route.SetLogger(logger)
-
 	ctx, cancel := context.WithCancel(context.Background())
 	return &Driver{
 		eventer:        eventer.NewEventer(ctx, logger),
@@ -306,7 +304,7 @@ func (d *Driver) SetConfig(c *base.Config) (err error) {
 						}
 					}()
 				} else {
-					apiErr := route.SetupApiServer(d.logger, d.config.ApiAddr, d.config.NomadAddr, d.config.UiDir)
+					apiErr := api.SetupApiServer(d.logger, d.config.ApiAddr, d.config.NomadAddr, d.config.UiDir)
 					if apiErr != nil {
 						d.logger.Error("error in SetupApiServer", "err", err)
 						// TODO mark driver unhealthy
