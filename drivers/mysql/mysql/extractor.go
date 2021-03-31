@@ -27,7 +27,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/golang/snappy"
 	gonats "github.com/nats-io/go-nats"
 	gomysql "github.com/siddontang/go-mysql/mysql"
 
@@ -1447,7 +1446,10 @@ func (e *Extractor) encodeAndSendDumpEntry(entry *common.DumpEntry) error {
 	if err != nil {
 		return err
 	}
-	txMsg := snappy.Encode(nil, bs)
+	txMsg, err := common.Compress(bs)
+	if err != nil {
+		return errors.Wrap(err, "common.Compress")
+	}
 	if err := e.publish(ctx, fmt.Sprintf("%s_full", e.subject), txMsg, 0); err != nil {
 		return err
 	}
