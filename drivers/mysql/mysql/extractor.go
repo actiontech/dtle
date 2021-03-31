@@ -1130,7 +1130,7 @@ func (e *Extractor) sendSysVarAndSqlMode() error {
 		SystemVariablesStatement: setSystemVariablesStatement,
 		SqlMode:                  setSqlMode,
 	}
-	if err := e.encodeDumpEntry(entry); err != nil {
+	if err := e.encodeAndSendDumpEntry(entry); err != nil {
 		e.onError(TaskStateRestart, err)
 	}
 
@@ -1324,7 +1324,7 @@ func (e *Extractor) mysqlDump() error {
 			}
 			atomic.AddInt64(&e.mysqlContext.RowsEstimate, 1)
 			atomic.AddInt64(&e.TotalRowsCopied, 1)
-			if err := e.encodeDumpEntry(entry); err != nil {
+			if err := e.encodeAndSendDumpEntry(entry); err != nil {
 				e.onError(TaskStateRestart, err)
 			}
 
@@ -1363,7 +1363,7 @@ func (e *Extractor) mysqlDump() error {
 				}
 				atomic.AddInt64(&e.mysqlContext.RowsEstimate, 1)
 				atomic.AddInt64(&e.TotalRowsCopied, 1)
-				if err := e.encodeDumpEntry(entry); err != nil {
+				if err := e.encodeAndSendDumpEntry(entry); err != nil {
 					e.onError(TaskStateRestart, err)
 				}
 			}
@@ -1402,9 +1402,9 @@ func (e *Extractor) mysqlDump() error {
 				} else {
 					memSize := int64(entry.Size())
 					if !d.sentTableDef {
-						tableBs, err := common.GobEncode(d.table)
+						tableBs, err := common.EncodeTable(d.table)
 						if err != nil {
-							err = errors.Wrap(err, "full copy: GobEncode")
+							err = errors.Wrap(err, "full copy: EncodeTable")
 							e.onError(TaskStateDead, err)
 							return err
 						} else {
@@ -1412,7 +1412,7 @@ func (e *Extractor) mysqlDump() error {
 							d.sentTableDef = true
 						}
 					}
-					if err = e.encodeDumpEntry(entry); err != nil {
+					if err = e.encodeAndSendDumpEntry(entry); err != nil {
 						e.onError(TaskStateRestart, err)
 					}
 					atomic.AddInt64(&e.TotalRowsCopied, int64(len(entry.ValuesX)))
@@ -1436,7 +1436,7 @@ func (e *Extractor) mysqlDump() error {
 
 	return nil
 }
-func (e *Extractor) encodeDumpEntry(entry *common.DumpEntry) error {
+func (e *Extractor) encodeAndSendDumpEntry(entry *common.DumpEntry) error {
 	var ctx context.Context
 	//tracer := opentracing.GlobalTracer()
 	span := opentracing.GlobalTracer().StartSpan("span_full")

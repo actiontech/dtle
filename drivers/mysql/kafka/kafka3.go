@@ -309,19 +309,6 @@ func (kr *KafkaRunner) getOrSetTable(schemaName string, tableName string,
 	}
 }
 
-func decodeMaybeTable(tableBs []byte) (*common.Table, error) {
-	if len(tableBs) > 0 {
-		var r *common.Table
-		r = &common.Table{}
-		err := common.GobDecode(tableBs, r)
-		if err != nil {
-			return nil, errors.Wrap(err, "GobDecode")
-		}
-		return r, nil
-	} else {
-		return nil, nil
-	}
-}
 func (kr *KafkaRunner) handleFullCopy() {
 	for !kr.shutdown {
 		var dumpData *common.DumpEntry
@@ -336,7 +323,7 @@ func (kr *KafkaRunner) handleFullCopy() {
 		} else if dumpData.TableSchema == "" && dumpData.TableName == "" {
 			kr.logger.Debug("skip apply sqlMode and SystemVariablesStatement")
 		} else {
-			tableFromDumpData, err := decodeMaybeTable(dumpData.Table)
+			tableFromDumpData, err := common.DecodeMaybeTable(dumpData.Table)
 			if err != nil {
 				kr.onError(TaskStateDead, errors.Wrap(err, "decodeMaybeTable"))
 				return
@@ -769,7 +756,7 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQueries(dmlEntries []*common.Binlog
 			var tableItem *KafkaTableItem
 			if dataEvent.TableName != "" {
 				// this must be executed before skipping DDL
-				table, err := decodeMaybeTable(dataEvent.Table)
+				table, err := common.DecodeMaybeTable(dataEvent.Table)
 				tableItem, err = kr.getOrSetTable(realSchema, dataEvent.TableName, table)
 				if err != nil {
 					return err

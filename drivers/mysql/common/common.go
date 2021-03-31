@@ -49,7 +49,7 @@ func ValidateJobName(name string) error {
 	return nil
 }
 
-func GobEncode(v interface{}) ([]byte, error) {
+func EncodeTable(v *Table) ([]byte, error) {
 	b := new(bytes.Buffer)
 	if err := gob.NewEncoder(b).Encode(v); err != nil {
 		return nil, err
@@ -80,8 +80,17 @@ func Decode(data []byte, out GencodeType) (err error) {
 	}
 	return nil
 }
-func GobDecode(data []byte, vPtr interface{}) (err error) {
-	return gob.NewDecoder(bytes.NewBuffer(data)).Decode(vPtr)
+func DecodeMaybeTable(data []byte) (*Table, error) {
+	if len(data) > 0 {
+		r := &Table{}
+		err := gob.NewDecoder(bytes.NewBuffer(data)).Decode(r)
+		if err != nil {
+			return nil, err
+		}
+		return r, nil
+	} else {
+		return nil, nil
+	}
 }
 
 func DtleParseMysqlGTIDSet(gtidSetStr string) (*mysql.MysqlGTIDSet, error) {
