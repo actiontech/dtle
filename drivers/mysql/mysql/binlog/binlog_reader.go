@@ -640,9 +640,9 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 								ev.Header.Timestamp,
 							)
 							if table != nil {
-								tableBs, err := common.GobEncode(table)
+								tableBs, err := common.EncodeTable(table)
 								if err != nil {
-									return errors.Wrap(err, "GobEncode(table)")
+									return errors.Wrap(err, "EncodeTable(table)")
 								}
 								event.Table = tableBs
 							}
@@ -789,9 +789,9 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 						b.logger.Warn("DTLE_BUG binlog_reader: table.Table is nil",
 							"schema", schemaName, "table", tableName)
 					} else {
-						tableBs, err := common.GobEncode(table.Table)
+						tableBs, err := common.EncodeTable(table.Table)
 						if err != nil {
-							return errors.Wrap(err, "GobEncode(table)")
+							return errors.Wrap(err, "EncodeTable(table)")
 						}
 						dmlEvent.Table = tableBs
 					}
