@@ -2,13 +2,14 @@ package common
 
 import (
 	"bytes"
+	compress "compress/gzip"
 	"encoding/gob"
 	"fmt"
 	"github.com/actiontech/dtle/g"
-	"github.com/golang/snappy"
 	"github.com/pingcap/tidb/types"
 	"github.com/satori/go.uuid"
 	"github.com/siddontang/go-mysql/mysql"
+	"io/ioutil"
 	"os"
 	"time"
 )
@@ -56,16 +57,34 @@ func EncodeTable(v *Table) ([]byte, error) {
 	}
 	return b.Bytes(), nil
 }
+func Compress(bs []byte) (outBs []byte, err error) {
+	var buf bytes.Buffer
+	w, _ := compress.NewWriterLevel(&buf, compress.BestSpeed)
+	_, err = w.Write(bs)
+	if err != nil {
+		return nil, err
+	}
+	err = w.Close()
+	if err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
 func Encode(v GencodeType) ([]byte, error) {
 	bs, err := v.Marshal(nil)
 	if err != nil {
 		return nil, err
 	}
-	return snappy.Encode(nil, bs), nil
+
+	return Compress(bs)
 }
 
 func Decode(data []byte, out GencodeType) (err error) {
-	msg, err := snappy.Decode(nil, data)
+	r, err := compress.NewReader(bytes.NewReader(data))
+	if err != nil {
+		return err
+	}
+	msg, err := ioutil.ReadAll(r)
 	if err != nil {
 		return err
 	}
