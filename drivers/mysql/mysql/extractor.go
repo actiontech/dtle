@@ -43,10 +43,6 @@ import (
 	"github.com/nats-io/not.go"
 )
 
-const (
-	ReconnectStreamerSleepSeconds = 5
-)
-
 // Extractor is the main schema extract flow manager.
 type Extractor struct {
 	execCtx      *common.ExecContext
@@ -1101,11 +1097,11 @@ func (e *Extractor) publish(ctx context.Context, subject string, txMsg []byte, g
 				time.Sleep(1 * time.Second)
 			} else {
 				e.logger.Error("unexpected error on publish", "err", err)
-				break
+				return err
 			}
 		}
 	}
-	return err
+	return nil
 }
 
 func (e *Extractor) testStub1() {
