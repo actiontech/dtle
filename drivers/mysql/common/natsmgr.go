@@ -12,6 +12,8 @@ type NatsMsgMerger struct {
 	buf    *bytes.Buffer
 	iSeg   uint32 // index of segment
 	logger hclog.Logger
+	lastLen int
+	lastiSeg uint32
 }
 
 func NewNatsMsgMerger(logger hclog.Logger) *NatsMsgMerger {
@@ -27,7 +29,18 @@ func (nmm *NatsMsgMerger) Handle(data []byte) (segmentFinished bool, err error) 
 	// non-last big msg segment: NatsMaxMsg + 4
 	// last big msg segment: 4 ~ NatsMaxMsg + 3
 	lenData := len(data)
+
 	if nmm.iSeg == 0 {
+		if lenData == nmm.lastLen {
+			if lenData >= 4 {
+				iSeg := binary.LittleEndian.Uint32(data[lenData-4 : lenData])
+				if iSeg != 0 && iSeg == nmm.lastiSeg {
+					// a repeat msg. Take it as a zero-len prefix for next msg.
+					return false, nil
+				}
+			}
+		}
+
 		if lenData < g.NatsMaxMsg {
 			nmm.logger.Debug("NatsMsgMerger.Handle found ordinary msg", "lenData", lenData)
 			segmentFinished = true
@@ -40,6 +53,7 @@ func (nmm *NatsMsgMerger) Handle(data []byte) (segmentFinished bool, err error) 
 			}
 			nmm.logger.Debug("NatsMsgMerger.Handle found big msg segment", "iSeg", iSeg, "lenData", lenData)
 			nmm.buf = bytes.NewBuffer(data[:lenData-4])
+			nmm.lastiSeg = iSeg
 		}
 		nmm.iSeg += 1
 	} else {
@@ -58,7 +72,7 @@ func (nmm *NatsMsgMerger) Handle(data []byte) (segmentFinished bool, err error) 
 			nmm.buf.Write(data[:lenData-4])
 			nmm.iSeg += 1
 		}
-
+		nmm.lastiSeg = iSeg
 		if lenData < g.NatsMaxMsg+4 {
 			segmentFinished = true
 		} else {
@@ -67,6 +81,7 @@ func (nmm *NatsMsgMerger) Handle(data []byte) (segmentFinished bool, err error) 
 		nmm.logger.Debug("NatsMsgMerger.Handle found big msg segment", "iSeg", iSeg, "lenData", lenData,
 			"isLast", segmentFinished)
 	}
+	nmm.lastLen = len(data)
 	return segmentFinished, nil
 }
 
