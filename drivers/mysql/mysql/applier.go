@@ -503,61 +503,23 @@ func (a *Applier) subscribeNats() error {
 			}
 			a.logger.Debug("incr. after publish nats reply.")
 		} else {
-			binlogEntries := &common.BinlogEntries{}
-			if err := common.Decode(incrNMM.GetBytes(), binlogEntries); err != nil {
-				a.onError(TaskStateDead, err)
-				return
-			}
-
-			nEntries := len(binlogEntries.Entries)
-			if nEntries > cap(a.ai.applyDataEntryQueue) {
-				err := fmt.Errorf("DTLE_BUG nEntries is greater than cap(queue) %v %v",
-					nEntries, cap(a.ai.applyDataEntryQueue))
-				a.logger.Error(err.Error())
-				a.onError(TaskStateDead, err)
-				return
-			}
-
-			hasVacancy := false
-			for i := 0; i < common.DefaultConnectWaitAckLimitSecond; i++ {
-				if i != 0 {
-					a.logger.Debug("incr. wait 1s for applyDataEntryQueue")
-					time.Sleep(1 * time.Second)
-				}
-				vacancy := cap(a.ai.applyDataEntryQueue) - len(a.ai.applyDataEntryQueue)
-				a.logger.Debug("incr.", "nEntries", nEntries, "vacancy", vacancy)
-				if vacancy >= nEntries {
-					hasVacancy = true
-					break
-				}
-			}
-
-			if !hasVacancy {
-				// no vacancy. discard these entries
-				a.logger.Debug("incr. discarding entries")
-				a.mysqlContext.Stage = common.StageWaitingForMasterToSendEvent
-			} else {
+			timer := time.NewTimer(common.DefaultConnectWaitAckLimit)
+			select {
+			case a.ai.incrBytesQueue <- incrNMM.GetBytes():
+				timer.Stop()
 				if err := a.natsConn.Publish(m.Reply, nil); err != nil {
 					a.onError(TaskStateDead, err)
 					return
 				}
-				a.logger.Debug("incr. after publish nats reply.", "nEntries", nEntries)
+				a.logger.Debug("incr. after publish nats reply.")
 
 				incrNMM.Reset()
+				a.mysqlContext.Stage = common.StageWaitingForMasterToSendEvent
+				a.logger.Debug("incr. incrBytesQueue enqueued")
 
-				for _, binlogEntry := range binlogEntries.Entries {
-					atomic.AddInt64(a.memory2, int64(binlogEntry.Size()))
-					a.ai.AddEvent(&common.BinlogEntryContext{
-						Entry:       binlogEntry,
-						TableItems:  nil,
-					})
-					//a.retrievedGtidSet = ""
-					// It costs quite a lot to maintain the set, and retrievedGtidSet is not
-					// as necessary as executedGtidSet. So I removed it.
-					// Union incoming TX gtid with current set if you want to set it.
-					atomic.AddInt64(&a.mysqlContext.DeltaEstimate, 1)
-				}
-				a.logger.Debug("incr. applyDataEntryQueue enqueued")
+			case <-timer.C:
+				// no vacancy. discard these entries
+				a.logger.Debug("incr. discarding entries")
 				a.mysqlContext.Stage = common.StageWaitingForMasterToSendEvent
 			}
 		}
@@ -822,8 +784,8 @@ func (a *Applier) Stats() (*common.TaskStatistics, error) {
 	var delay int64
 	if a.ai != nil {
 		totalDeltaCopied = a.ai.TotalDeltaCopied
-		lenApplyDataEntryQueue = len(a.ai.applyDataEntryQueue)
-		capApplyDataEntryQueue = cap(a.ai.applyDataEntryQueue)
+		lenApplyDataEntryQueue = len(a.ai.incrBytesQueue)
+		capApplyDataEntryQueue = cap(a.ai.incrBytesQueue)
 		delay = a.ai.timestampCtx.GetDelay()
 	}
 	totalRowsReplay := a.TotalRowsReplayed

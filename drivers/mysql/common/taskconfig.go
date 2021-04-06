@@ -7,7 +7,7 @@ import (
 )
 
 const (
-	channelBufferSize = 180
+	channelBufferSize = 32
 	defaultChunkSize  = 2000
 	defaultNumWorkers = 1
 	DefaultClusterID  = "dtle-nats"

@@ -106,7 +106,7 @@ func NewExtractor(execCtx *common.ExecContext, cfg *common.MySQLDriverConfig, lo
 		execCtx:         execCtx,
 		subject:         execCtx.Subject,
 		mysqlContext:    cfg,
-		dataChannel:     make(chan *common.BinlogEntryContext, cfg.ReplChanBufferSize),
+		dataChannel:     make(chan *common.BinlogEntryContext, cfg.ReplChanBufferSize * 4),
 		rowCopyComplete: make(chan bool),
 		waitCh:          waitCh,
 		shutdownCh:      make(chan struct{}),
