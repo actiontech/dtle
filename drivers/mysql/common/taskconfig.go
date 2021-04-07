@@ -7,11 +7,9 @@ import (
 )
 
 const (
-	channelBufferSize = 180
-	defaultNumRetries = 5
+	channelBufferSize = 32
 	defaultChunkSize  = 2000
 	defaultNumWorkers = 1
-	defaultMsgBytes   = 20 * 1024
 	DefaultClusterID  = "dtle-nats"
 )
 
@@ -22,10 +20,7 @@ type DtleTaskConfig struct {
 	DropTableIfExists   bool          `codec:"DropTableIfExists"`
 	ExpandSyntaxSupport bool          `codec:"ExpandSyntaxSupport"`
 	ReplChanBufferSize  int64         `codec:"ReplChanBufferSize"`
-	// removed in BigTx commit
-	//MsgBytesLimit        int                       `codec:"MsgBytesLimit"`
 	TrafficAgainstLimits int      `codec:"TrafficAgainstLimits"`
-	MaxRetries           int64    `codec:"MaxRetries"`
 	ChunkSize            int64    `codec:"ChunkSize"`
 	SqlFilter            []string `codec:"SqlFilter"`
 	GroupMaxSize         int      `codec:"GroupMaxSize"`
@@ -47,9 +42,6 @@ type DtleTaskConfig struct {
 }
 
 func (d *DtleTaskConfig) SetDefaultForEmpty() {
-	if d.MaxRetries <= 0 {
-		d.MaxRetries = defaultNumRetries
-	}
 	if d.ChunkSize <= 0 {
 		d.ChunkSize = defaultChunkSize
 	}
