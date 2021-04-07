@@ -12,8 +12,6 @@ import (
 	"fmt"
 	"github.com/actiontech/dtle/drivers/mysql/common"
 	"github.com/hashicorp/nomad/plugins/drivers"
-	"github.com/opentracing/opentracing-go"
-	"github.com/opentracing/opentracing-go/ext"
 	"github.com/pkg/errors"
 	"math"
 	"strconv"
@@ -35,7 +33,6 @@ import (
 
 	hclog "github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/nomad/drivers/shared/eventer"
-	not "github.com/nats-io/not.go"
 )
 
 const (
@@ -62,14 +59,13 @@ type Applier struct {
 	MySQLVersion      string
 	TotalRowsReplayed int64
 
-	dbs         []*sql.Conn
-	db          *gosql.DB
+	dbs []*sql.Conn
+	db  *gosql.DB
 
 	rowCopyComplete chan struct{}
-	// copyRowsQueue should not be buffered; if buffered some non-damaging but
-	//  excessive work happens at the end of the iteration as new copy-jobs arrive befroe realizing the copy is complete
-	copyRowsQueue       chan *common.DumpEntry
-	ai *ApplierIncr
+	fullBytesQueue  chan []byte
+	dumpEntryQueue  chan *common.DumpEntry
+	ai              *ApplierIncr
 
 	natsConn *gonats.Conn
 	waitCh   chan *drivers.ExitResult
@@ -79,21 +75,21 @@ type Applier struct {
 	shutdownCh   chan struct{}
 	shutdownLock sync.Mutex
 
-	nDumpEntry     int64
+	nDumpEntry int64
 
 	stubFullApplyDelay time.Duration
 
-	gtidSet *gomysql.MysqlGTIDSet
+	gtidSet     *gomysql.MysqlGTIDSet
 	gtidSetLock *sync.RWMutex
 
 	storeManager *common.StoreManager
 	gtidCh       chan *common.BinlogCoordinateTx
 
-	stage      string
-	memory1    *int64
-	memory2    *int64
-	event      *eventer.Eventer
-	taskConfig *drivers.TaskConfig
+	stage          string
+	memory1        *int64
+	memory2        *int64
+	event          *eventer.Eventer
+	taskConfig     *drivers.TaskConfig
 }
 
 func NewApplier(
@@ -108,7 +104,8 @@ func NewApplier(
 		mysqlContext:    cfg,
 		NatsAddr:        natsAddr,
 		rowCopyComplete: make(chan struct{}),
-		copyRowsQueue:   make(chan *common.DumpEntry, 24),
+		fullBytesQueue:  make(chan []byte, 16),
+		dumpEntryQueue:  make(chan *common.DumpEntry, 8),
 		waitCh:          waitCh,
 		gtidSetLock:     &sync.RWMutex{},
 		shutdownCh:      make(chan struct{}),
@@ -116,7 +113,7 @@ func NewApplier(
 		gtidCh:          make(chan *common.BinlogCoordinateTx, 4096),
 		memory1:         new(int64),
 		memory2:         new(int64),
-		event:			 event,
+		event:           event,
 		taskConfig:      taskConfig,
 	}
 
@@ -290,6 +287,31 @@ func (a *Applier) doFullCopy() {
 	a.mysqlContext.Stage = common.StageSlaveWaitingForWorkersToProcessQueue
 	a.logger.Info("Operating until row copy is complete")
 
+	go func() {
+		for {
+			select {
+			case <-a.shutdownCh:
+				return
+			case copyRows := <-a.dumpEntryQueue:
+				//time.Sleep(20 * time.Second) // #348 stub
+				if err := a.ApplyEventQueries(a.db, copyRows); err != nil {
+					a.onError(TaskStateDead, err)
+					return
+				}
+				atomic.AddInt64(a.memory1, -int64(copyRows.Size()))
+				if atomic.LoadInt64(&a.nDumpEntry) <= 0 {
+					err := fmt.Errorf("DTLE_BUG a.nDumpEntry <= 0")
+					a.logger.Error(err.Error())
+					a.onError(TaskStateDead, err)
+					return
+				} else {
+					atomic.AddInt64(&a.nDumpEntry, -1)
+					a.logger.Debug("ApplyEventQueries. after", "nDumpEntry", a.nDumpEntry)
+				}
+			}
+		}
+	}()
+
 	var stopLoop = false
 	for !stopLoop && !a.shutdown {
 		t10 := time.NewTimer(10 * time.Second)
@@ -297,22 +319,21 @@ func (a *Applier) doFullCopy() {
 		select {
 		case <-a.shutdownCh:
 			stopLoop = true
-		case copyRows := <-a.copyRowsQueue:
-			if nil != copyRows {
-				//time.Sleep(20 * time.Second) // #348 stub
-				if err := a.ApplyEventQueries(a.db, copyRows); err != nil {
-					a.onError(TaskStateDead, err)
-				}
-				atomic.AddInt64(a.memory1, -int64(copyRows.Size()))
+
+		case bs := <-a.fullBytesQueue:
+			atomic.AddInt64(a.memory1, -int64(len(bs)))
+
+			copyRows := &common.DumpEntry{}
+			err := common.Decode(bs, copyRows) // TODO decode once for discarded-resent msg
+			if err != nil {
+				a.onError(TaskStateDead, errors.Wrap(err, "DecodeDumpEntry"))
+				return
 			}
-			if atomic.LoadInt64(&a.nDumpEntry) <= 0 {
-				err := fmt.Errorf("DTLE_BUG a.nDumpEntry <= 0")
-				a.logger.Error(err.Error())
-				a.onError(TaskStateDead, err)
-			} else {
-				atomic.AddInt64(&a.nDumpEntry, -1)
-				a.logger.Debug("ApplyEventQueries. after", "nDumpEntry", a.nDumpEntry)
-			}
+			a.dumpEntryQueue <- copyRows
+			atomic.AddInt64(a.memory1, int64(copyRows.Size()))
+
+			atomic.AddInt64(&a.mysqlContext.RowsEstimate, copyRows.TotalCount)
+
 		case <-a.rowCopyComplete:
 			a.logger.Info("doFullCopy: loop: rowCopyComplete")
 			stopLoop = true
@@ -353,11 +374,10 @@ func (a *Applier) sendEvent(status string) {
 func (a *Applier) subscribeNats() error {
 	a.mysqlContext.MarkRowCopyStartTime()
 	a.logger.Debug("nats subscribe")
-	tracer := opentracing.GlobalTracer()
 
 	fullNMM := common.NewNatsMsgMerger(a.logger.With("nmm", "full"))
 	var _, err = a.natsConn.Subscribe(fmt.Sprintf("%s_full", a.subject), func(m *gonats.Msg) {
-		a.logger.Debug("full. recv a msg.", "copyRowsQueue", len(a.copyRowsQueue))
+		a.logger.Debug("full. recv a msg.", "len", len(m.Data), "fullBytesQueue", len(a.fullBytesQueue))
 
 		select {
 		case <-a.rowCopyComplete: // full complete. Maybe src task restart.
@@ -381,31 +401,14 @@ func (a *Applier) subscribeNats() error {
 			}
 			a.logger.Debug("full. after publish nats reply")
 		} else {
-			t := &not.TraceMsg{Buffer: fullNMM.GetBuf()}
-
-			// Extract the span context from the request message.
-			sc, err := tracer.Extract(opentracing.Binary, t)
-			if err != nil {
-				a.logger.Debug("get data")
-			}
-			// Setup a span referring to the span context of the incoming NATS message.
-			replySpan := tracer.StartSpan("Service Responder", ext.SpanKindRPCServer, ext.RPCServerOption(sc))
-			ext.MessageBusDestination.Set(replySpan, m.Subject)
-			defer replySpan.Finish()
-			dumpData := &common.DumpEntry{}
-			err = common.Decode(t.Bytes(), dumpData) // TODO decode once for discarded-resent msg
-			if err != nil {
-				a.onError(TaskStateDead, errors.Wrap(err, "DecodeDumpEntry"))
-				return
-			}
-
-			timer := time.NewTimer(common.DefaultConnectWait / 2)
+			timer := time.NewTimer(common.DefaultConnectWaitAckLimit)
 			atomic.AddInt64(&a.nDumpEntry, 1) // this must be increased before enqueuing
+			bs := fullNMM.GetBytes()
 			select {
-			case a.copyRowsQueue <- dumpData:
-				atomic.AddInt64(a.memory1, int64(dumpData.Size()))
-				a.logger.Debug("full. enqueue", "nDumpEntry", a.nDumpEntry)
+			case a.fullBytesQueue <- bs:
 				timer.Stop()
+				atomic.AddInt64(a.memory1, int64(len(bs)))
+				a.logger.Debug("full. enqueue", "nDumpEntry", a.nDumpEntry)
 				a.mysqlContext.Stage = common.StageSlaveWaitingForWorkersToProcessQueue
 
 				if err := a.natsConn.Publish(m.Reply, nil); err != nil {
@@ -415,8 +418,6 @@ func (a *Applier) subscribeNats() error {
 				a.logger.Debug("full. after publish nats reply")
 
 				fullNMM.Reset()
-
-				atomic.AddInt64(&a.mysqlContext.RowsEstimate, dumpData.TotalCount)
 			case <-timer.C:
 				atomic.AddInt64(&a.nDumpEntry, -1)
 				a.logger.Debug("full. discarding entries", "nDumpEntry", a.nDumpEntry)
@@ -439,17 +440,7 @@ func (a *Applier) subscribeNats() error {
 		}
 
 		dumpData := &common.DumpStatResult{}
-		t := not.NewTraceMsg(m)
-		// Extract the span context from the request message.
-		sc, err := tracer.Extract(opentracing.Binary, t)
-		if err != nil {
-			a.logger.Trace("tracer.Extract error", "err", err)
-		}
-		// Setup a span referring to the span context of the incoming NATS message.
-		replySpan := tracer.StartSpan("Service Responder", ext.SpanKindRPCServer, ext.RPCServerOption(sc))
-		ext.MessageBusDestination.Set(replySpan, m.Subject)
-		defer replySpan.Finish()
-		if err := common.Decode(t.Bytes(), dumpData); err != nil {
+		if err := common.Decode(m.Data, dumpData); err != nil {
 			a.onError(TaskStateDead, errors.Wrap(err, "Decode"))
 			return
 		}
@@ -512,72 +503,23 @@ func (a *Applier) subscribeNats() error {
 			}
 			a.logger.Debug("incr. after publish nats reply.")
 		} else {
-			t := &not.TraceMsg{Buffer: incrNMM.GetBuf()}
-			// Extract the span context from the request message.
-			spanContext, err := tracer.Extract(opentracing.Binary, t)
-			if err != nil {
-				a.logger.Debug("tracer.Extract error", "err", err)
-			}
-			// Setup a span referring to the span context of the incoming NATS message.
-			replySpan := tracer.StartSpan("nast : dest to get data  ", ext.SpanKindRPCServer, ext.RPCServerOption(spanContext))
-			ext.MessageBusDestination.Set(replySpan, m.Subject)
-			defer replySpan.Finish()
-			binlogEntries := &common.BinlogEntries{}
-			if err := common.Decode(t.Bytes(), binlogEntries); err != nil {
-				a.onError(TaskStateDead, err)
-				return
-			}
-
-			nEntries := len(binlogEntries.Entries)
-			if nEntries > cap(a.ai.applyDataEntryQueue) {
-				err := fmt.Errorf("DTLE_BUG nEntries is greater than cap(queue) %v %v",
-					nEntries, cap(a.ai.applyDataEntryQueue))
-				a.logger.Error(err.Error())
-				a.onError(TaskStateDead, err)
-				return
-			}
-
-			hasVacancy := false
-			for i := 0; i < common.DefaultConnectWaitSecondAckLimit; i++ {
-				if i != 0 {
-					a.logger.Debug("incr. wait 1s for applyDataEntryQueue")
-					time.Sleep(1 * time.Second)
-				}
-				vacancy := cap(a.ai.applyDataEntryQueue) - len(a.ai.applyDataEntryQueue)
-				a.logger.Debug("incr.", "nEntries", nEntries, "vacancy", vacancy)
-				if vacancy >= nEntries {
-					hasVacancy = true
-					break
-				}
-			}
-
-			if !hasVacancy {
-				// no vacancy. discard these entries
-				a.logger.Debug("incr. discarding entries")
-				a.mysqlContext.Stage = common.StageWaitingForMasterToSendEvent
-			} else {
+			timer := time.NewTimer(common.DefaultConnectWaitAckLimit)
+			select {
+			case a.ai.incrBytesQueue <- incrNMM.GetBytes():
+				timer.Stop()
 				if err := a.natsConn.Publish(m.Reply, nil); err != nil {
 					a.onError(TaskStateDead, err)
 					return
 				}
-				a.logger.Debug("incr. after publish nats reply.", "nEntries", nEntries)
+				a.logger.Debug("incr. after publish nats reply.")
 
 				incrNMM.Reset()
+				a.mysqlContext.Stage = common.StageWaitingForMasterToSendEvent
+				a.logger.Debug("incr. incrBytesQueue enqueued")
 
-				for _, binlogEntry := range binlogEntries.Entries {
-					atomic.AddInt64(a.memory2, int64(binlogEntry.Size()))
-					a.ai.AddEvent(&common.BinlogEntryContext{
-						Entry:       binlogEntry,
-						SpanContext: replySpan.Context(),
-						TableItems:  nil,
-					})
-					//a.retrievedGtidSet = ""
-					// It costs quite a lot to maintain the set, and retrievedGtidSet is not
-					// as necessary as executedGtidSet. So I removed it.
-					// Union incoming TX gtid with current set if you want to set it.
-					atomic.AddInt64(&a.mysqlContext.DeltaEstimate, 1)
-				}
-				a.logger.Debug("incr. applyDataEntryQueue enqueued")
+			case <-timer.C:
+				// no vacancy. discard these entries
+				a.logger.Debug("incr. discarding entries")
 				a.mysqlContext.Stage = common.StageWaitingForMasterToSendEvent
 			}
 		}
@@ -839,8 +781,8 @@ func (a *Applier) Stats() (*common.TaskStatistics, error) {
 	var delay int64
 	if a.ai != nil {
 		totalDeltaCopied = a.ai.TotalDeltaCopied
-		lenApplyDataEntryQueue = len(a.ai.applyDataEntryQueue)
-		capApplyDataEntryQueue = cap(a.ai.applyDataEntryQueue)
+		lenApplyDataEntryQueue = len(a.ai.incrBytesQueue)
+		capApplyDataEntryQueue = cap(a.ai.incrBytesQueue)
 		delay = a.ai.timestampCtx.GetDelay()
 	}
 	totalRowsReplay := a.TotalRowsReplayed
@@ -858,7 +800,7 @@ func (a *Applier) Stats() (*common.TaskStatistics, error) {
 			// and there is no further need to keep updating the value.
 			backlog = fmt.Sprintf("%d/%d", lenApplyDataEntryQueue, capApplyDataEntryQueue)
 		} else {
-			backlog = fmt.Sprintf("%d/%d", len(a.copyRowsQueue), cap(a.copyRowsQueue))
+			backlog = fmt.Sprintf("%d/%d", len(a.fullBytesQueue), cap(a.fullBytesQueue))
 		}
 	}
 
