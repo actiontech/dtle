@@ -960,7 +960,7 @@ func (e *Extractor) StreamEvents() error {
 				if entriesSize >= e.mysqlContext.GroupMaxSize ||
 					int64(len(entries.Entries)) == e.mysqlContext.ReplChanBufferSize {
 
-					e.logger.Debug("extractor. incr. send by GroupLimit",
+					e.logger.Debug("incr. send by GroupLimit",
 						"entriesSize", entriesSize,
 						"groupMaxSize", e.mysqlContext.GroupMaxSize,
 						"Entries.len", len(entries.Entries))

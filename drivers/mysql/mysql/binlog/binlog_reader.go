@@ -55,8 +55,6 @@ const (
 
 )
 
-// BinlogReader is a general interface whose implementations can choose their methods of reading
-// a binary log file and parsing it into binlog entries
 type BinlogReader struct {
 	serverId         uint64
 	execCtx          *common.ExecContext
@@ -71,8 +69,8 @@ type BinlogReader struct {
 	binlogStreamer streamer.Streamer
 	// for relay
 	binlogReader             *streamer.BinlogReader
-	currentCoordinates       base.BinlogCoordinatesX
-	currentCoordinatesMutex  *sync.Mutex
+	currentCoord             base.BinlogCoordinatesX
+	currentCoordMutex        *sync.Mutex
 	LastAppliedRowsEventHint base.BinlogCoordinatesX
 	// raw config, whose ReplicateDoDB is same as config file (empty-is-all & no dynamically created tables)
 	mysqlContext         *common.MySQLDriverConfig
@@ -166,18 +164,18 @@ func NewMySQLReader(execCtx *common.ExecContext, cfg *common.MySQLDriverConfig, 
 	}
 
 	binlogReader = &BinlogReader{
-		execCtx:                 execCtx,
-		logger:                  logger,
-		currentCoordinates:      base.BinlogCoordinatesX{},
-		currentCoordinatesMutex: &sync.Mutex{},
-		mysqlContext:            cfg,
-		currentReplicateDoDb:    replicateDoDb,
-		ReMap:                   make(map[string]*regexp.Regexp),
-		shutdownCh:              make(chan struct{}),
-		tables:                  make(map[string](map[string]*common.TableContext)),
-		sqlFilter:               sqlFilter,
-		maybeSqleContext:        sqleContext,
-		memory:                  memory,
+		execCtx:              execCtx,
+		logger:               logger,
+		currentCoord:         base.BinlogCoordinatesX{},
+		currentCoordMutex:    &sync.Mutex{},
+		mysqlContext:         cfg,
+		currentReplicateDoDb: replicateDoDb,
+		ReMap:                make(map[string]*regexp.Regexp),
+		shutdownCh:           make(chan struct{}),
+		tables:               make(map[string](map[string]*common.TableContext)),
+		sqlFilter:            sqlFilter,
+		maybeSqleContext:     sqleContext,
+		memory:               memory,
 	}
 
 	for _, db := range replicateDoDb {
@@ -254,13 +252,12 @@ func (b *BinlogReader) getBinlogDir() string {
 	return path.Join(b.execCtx.StateDir, "binlog", b.execCtx.Subject)
 }
 
-// ConnectBinlogStreamer
 func (b *BinlogReader) ConnectBinlogStreamer(coordinates base.BinlogCoordinatesX) (err error) {
 	if coordinates.IsEmpty() {
 		b.logger.Warn("Emptry coordinates at ConnectBinlogStreamer")
 	}
 
-	b.currentCoordinates = coordinates
+	b.currentCoord = coordinates
 	b.logger.Info("Connecting binlog streamer",
 		"file", coordinates.LogFile, "pos", coordinates.LogPos, "gtid", coordinates.GtidSet)
 
@@ -404,9 +401,9 @@ func (b *BinlogReader) ConnectBinlogStreamer(coordinates base.BinlogCoordinatesX
 }
 
 func (b *BinlogReader) GetCurrentBinlogCoordinates() *base.BinlogCoordinatesX {
-	b.currentCoordinatesMutex.Lock()
-	defer b.currentCoordinatesMutex.Unlock()
-	returnCoordinates := b.currentCoordinates
+	b.currentCoordMutex.Lock()
+	defer b.currentCoordMutex.Unlock()
+	returnCoordinates := b.currentCoord
 	return &returnCoordinates
 }
 
@@ -425,19 +422,18 @@ type parseQueryResult struct {
 	isExpand     bool
 }
 
-// StreamEvents
 func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel chan<- *common.BinlogEntryContext) error {
-	if b.currentCoordinates.CompareFilePos(&b.LastAppliedRowsEventHint) <= 0 {
-		b.logger.Debug("Skipping handled query", "coordinate", b.currentCoordinates)
+	if b.currentCoord.CompareFilePos(&b.LastAppliedRowsEventHint) <= 0 {
+		b.logger.Debug("Skipping handled query", "coordinate", b.currentCoord)
 		return nil
 	}
 
 	switch ev.Header.EventType {
 	case replication.GTID_EVENT:
 		evt := ev.Event.(*replication.GTIDEvent)
-		b.currentCoordinatesMutex.Lock()
+		b.currentCoordMutex.Lock()
 		// TODO this does not unlock until function return. wrap with func() if needed
-		defer b.currentCoordinatesMutex.Unlock()
+		defer b.currentCoordMutex.Unlock()
 		u, _ := uuid.FromBytes(evt.SID)
 
 		entry := common.NewBinlogEntry()
@@ -518,7 +514,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 						b.entryContext.OriginalSize += len(ev.RawData)
 					}
 					b.sendEntry(entriesChannel)
-					b.LastAppliedRowsEventHint = b.currentCoordinates
+					b.LastAppliedRowsEventHint = b.currentCoord
 					return nil
 				}
 
@@ -644,21 +640,21 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 				}
 				b.entryContext.OriginalSize += len(ev.RawData)
 				b.sendEntry(entriesChannel)
-				b.LastAppliedRowsEventHint = b.currentCoordinates
+				b.LastAppliedRowsEventHint = b.currentCoord
 			}
 		}
 	case replication.XID_EVENT:
 		evt := ev.Event.(*replication.XIDEvent)
-		b.currentCoordinates.LogPos = int64(ev.Header.LogPos)
+		b.currentCoord.LogPos = int64(ev.Header.LogPos)
 		if evt.GSet != nil {
-			b.currentCoordinates.GtidSet = evt.GSet.String()
+			b.currentCoord.GtidSet = evt.GSet.String()
 		}
 		// TODO is the pos the start or the end of a event?
 		// pos if which event should be use? Do we need +1?
-		b.currentBinlogEntry.Coordinates.LogPos = b.currentCoordinates.LogPos
+		b.currentBinlogEntry.Coordinates.LogPos = b.currentCoord.LogPos
 
 		b.sendEntry(entriesChannel)
-		b.LastAppliedRowsEventHint = b.currentCoordinates
+		b.LastAppliedRowsEventHint = b.currentCoord
 	default:
 		if rowsEvent, ok := ev.Event.(*replication.RowsEvent); ok {
 			schemaName := string(rowsEvent.Table.Schema)
@@ -986,7 +982,6 @@ func (b *BinlogReader) loadMapping(sql, currentSchema string,
 	return bs.String(), nil
 }
 
-// StreamEvents
 func (b *BinlogReader) DataStreamEvents(entriesChannel chan<- *common.BinlogEntryContext) error {
 	lowMemory := false // TODO atomicity?
 	go func() {
@@ -1043,26 +1038,19 @@ func (b *BinlogReader) DataStreamEvents(entriesChannel chan<- *common.BinlogEntr
 		if ev.Header.EventType == replication.HEARTBEAT_EVENT {
 			continue
 		}
-		//ev.Dump(os.Stdout)
 
-		func() {
-			b.currentCoordinatesMutex.Lock()
-			defer b.currentCoordinatesMutex.Unlock()
-			b.currentCoordinates.LogPos = int64(ev.Header.LogPos)
-		}()
+		b.currentCoordMutex.Lock()
+		b.currentCoord.LogPos = int64(ev.Header.LogPos)
+		b.currentCoordMutex.Unlock()
 
 		if ev.Header.EventType == replication.ROTATE_EVENT {
-			if rotateEvent, ok := ev.Event.(*replication.RotateEvent); ok {
-				func() {
-					b.currentCoordinatesMutex.Lock()
-					defer b.currentCoordinatesMutex.Unlock()
-					b.currentCoordinates.LogFile = string(rotateEvent.NextLogName)
-				}()
-				b.mysqlContext.Stage = StageFinishedReadingOneBinlogSwitchingToNextBinlog
-				b.logger.Info("Rotate to next binlog", "name", string(rotateEvent.NextLogName))
-			} else {
-				b.logger.Warn("fake rotate_event.")
-			}
+			rotateEvent := ev.Event.(*replication.RotateEvent)
+			nextLogName := string(rotateEvent.NextLogName)
+			b.currentCoordMutex.Lock()
+			b.currentCoord.LogFile = nextLogName
+			b.currentCoordMutex.Unlock()
+			b.mysqlContext.Stage = StageFinishedReadingOneBinlogSwitchingToNextBinlog
+			b.logger.Info("Rotate to next binlog", "name", nextLogName)
 		} else {
 			if err := b.handleEvent(ev, entriesChannel); err != nil {
 				return err
