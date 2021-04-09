@@ -29,7 +29,8 @@ type MtsManager struct {
 	lastEnqueue   int64
 	updated       chan struct{}
 	shutdownCh    chan struct{}
-	// SeqNum executed but not added to LC
+	// We cannot update LC to a seqNum until all its predecessors has been executed.
+	// We put the pending seqNums here.
 	m          Int64PriQueue
 	chExecuted chan int64
 }

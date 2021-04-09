@@ -300,13 +300,14 @@ func (d *Driver) SetConfig(c *base.Config) (err error) {
 						// for pprof
 						err := http.ListenAndServe(d.config.ApiAddr, nil)
 						if err != nil {
-							d.logger.Error("ListenAndServe error", "err", err)
+							d.logger.Error("ListenAndServe error", "err", err, "addr", d.config.ApiAddr)
 						}
 					}()
 				} else {
 					apiErr := api.SetupApiServer(d.logger, d.config.ApiAddr, d.config.NomadAddr, d.config.UiDir)
 					if apiErr != nil {
-						d.logger.Error("error in SetupApiServer", "err", err)
+						d.logger.Error("error in SetupApiServer", "err", err,
+							"apiAddr", d.config.ApiAddr, "nomadAddr", d.config.NomadAddr)
 						// TODO mark driver unhealthy
 					}
 				}
@@ -315,7 +316,7 @@ func (d *Driver) SetConfig(c *base.Config) (err error) {
 			// Have to put this in a goroutine, or it will fail.
 			err := d.SetupNatsServer(d.logger)
 			if err != nil {
-				d.logger.Error("error in SetupNatsServer", "err", err)
+				d.logger.Error("error in SetupNatsServer", "err", err, "natsAddr", d.config.NatsBind)
 				// TODO mark driver unhealthy
 			}
 

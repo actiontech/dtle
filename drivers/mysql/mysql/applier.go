@@ -366,7 +366,7 @@ func (a *Applier) sendEvent(status string) {
 		Err:         nil,
 	})
 	if err != nil {
-		a.logger.Error("error at sending task event", "err", err)
+		a.logger.Error("error at sending task event", "err", err, "status", status)
 	}
 }
 
@@ -709,8 +709,10 @@ func (a *Applier) ApplyEventQueries(db *gosql.DB, entry *common.DumpEntry) error
 		a.logger.Debug("ApplyEventQueries. exec", "query", common.StrLim(query, 256))
 		_, err := tx.Exec(query)
 		if err != nil {
+			queryStart := common.StrLim(query, 10) // avoid printing sensitive information
+			err = errors.Wrapf(err, "tx.Exec. queryStart %v seq %v", queryStart, entry.Seq)
 			if !sql.IgnoreError(err) {
-				a.logger.Error("ApplyEventQueries. exec error", "query", common.StrLim(query, 10), "err", err)
+				a.logger.Error("ApplyEventQueries. exec error", "err", err)
 				return err
 			}
 			if !sql.IgnoreExistsError(err) {
@@ -885,13 +887,13 @@ func (a *Applier) onError(state int, err error) {
 	case TaskStateRestart:
 		if a.natsConn != nil {
 			if err := a.natsConn.Publish(fmt.Sprintf("%s_restart", a.subject), bs); err != nil {
-				a.logger.Error("Trigger restart extractor", "err", err)
+				a.logger.Error("when triggering extractor restart", "err", err, "state", state)
 			}
 		}
 	default:
 		if a.natsConn != nil {
 			if err := a.natsConn.Publish(fmt.Sprintf("%s_error", a.subject), bs); err != nil {
-				a.logger.Error("Trigger extractor shutdown", "err", err)
+				a.logger.Error("when triggering extractor shutdown", "err", err, "state", state)
 			}
 		}
 	}

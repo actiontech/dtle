@@ -241,7 +241,8 @@ func (b *BinlogReader) getDbTableMap(schemaName string) map[string]*common.Table
 func (b *BinlogReader) addTableToTableMap(tableMap map[string]*common.TableContext, table *common.Table) error {
 	whereCtx, err := common.NewWhereCtx(table.GetWhere(), table)
 	if err != nil {
-		b.logger.Error("Error parsing where", "where", table.GetWhere(), "err", err)
+		err = errors.Wrapf(err, "parsing where %v %v where %v", table.TableSchema, table.TableName, table.GetWhere())
+		b.logger.Error(err.Error())
 		return err
 	}
 
@@ -384,7 +385,8 @@ func (b *BinlogReader) ConnectBinlogStreamer(coordinates base.BinlogCoordinatesX
 		} else {
 			gtidSet, err := gomysql.ParseMysqlGTIDSet(coordinates.GtidSet)
 			if err != nil {
-				b.logger.Error("ParseMysqlGTIDSet error", "err", err)
+				err = errors.Wrapf(err, "ParseMysqlGTIDSet. %v", coordinates.GtidSet)
+				b.logger.Error(err.Error())
 				return err
 			}
 
@@ -451,12 +453,13 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 			OriginalSize: 1, // GroupMaxSize is default to 1 and we send on EntriesSize >= GroupMaxSize
 		}
 	case replication.QUERY_EVENT:
+		gno := b.currentBinlogEntry.Coordinates.GNO
 		evt := ev.Event.(*replication.QueryEvent)
 		query := string(evt.Query)
 
 		if evt.ErrorCode != 0 {
 			b.logger.Error("DTLE_BUG: found query_event with error code, which is not handled.",
-				"ErrorCode", evt.ErrorCode, "query", query)
+				"ErrorCode", evt.ErrorCode, "query", query, "gno", gno)
 		}
 		currentSchema := string(evt.Schema)
 
@@ -498,10 +501,10 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 
 				if skipExpandSyntax || !queryInfo.isRecognized {
 					if skipExpandSyntax {
-						b.logger.Warn("skipExpandSyntax", "query", query, "gno", b.currentBinlogEntry.Coordinates.GNO)
+						b.logger.Warn("skipExpandSyntax", "query", query, "gno", gno)
 					} else {
 						if !queryInfo.isRecognized {
-							b.logger.Warn("mysql.reader: QueryEvent is not recognized. will still execute", "query", query, "gno", b.currentBinlogEntry.Coordinates.GNO)
+							b.logger.Warn("mysql.reader: QueryEvent is not recognized. will still execute", "query", query, "gno", gno)
 						}
 
 						event := common.NewQueryEvent(
@@ -538,7 +541,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 
 					if b.skipQueryDDL(realSchema, tableName) {
 						b.logger.Info("Skip QueryEvent", "currentSchema", currentSchema, "sql", sql,
-							"realSchema", realSchema, "tableName", tableName, "gno", b.currentBinlogEntry.Coordinates.GNO)
+							"realSchema", realSchema, "tableName", tableName, "gno", gno)
 					} else {
 						if realSchema != currentSchema {
 							schema = b.findCurrentSchema(realSchema)
@@ -551,7 +554,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 							b.sqleAfterCreateSchema(queryInfo.table.Schema)
 						case *ast.CreateTableStmt:
 							b.logger.Debug("ddl is create table")
-							err := b.updateTableMeta(table, realSchema, tableName)
+							err := b.updateTableMeta(table, realSchema, tableName, gno, query)
 							if err != nil {
 								return err
 							}
@@ -571,7 +574,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 									// do nothing
 								}
 							}
-							err := b.updateTableMeta(fromTable, realSchema, tableNameX)
+							err := b.updateTableMeta(fromTable, realSchema, tableNameX, gno, query)
 							if err != nil {
 								return err
 							}
@@ -582,7 +585,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 								b.logger.Debug("updating meta for rename table", "newSchema", newSchemaName,
 									"newTable", tableName)
 								if !b.skipQueryDDL(newSchemaName, tableName) {
-									err := b.updateTableMeta(nil, newSchemaName, tableName)
+									err := b.updateTableMeta(nil, newSchemaName, tableName, gno, query)
 									if err != nil {
 										return err
 									}
@@ -998,7 +1001,8 @@ func (b *BinlogReader) DataStreamEvents(entriesChannel chan<- *common.BinlogEntr
 				if (float64(memory.Available)/float64(memory.Total) < 0.2) && (memory.Available < 1*1024*1024*1024) {
 					if i%30 == 0 { // suppress log
 						b.logger.Warn("memory is less than 20% and 1GiB. pause parsing binlog for 1s",
-							"available", memory.Available, "total", memory.Total)
+							"available", memory.Available, "total", memory.Total,
+							"file", b.currentCoord.LogFile, "pos", b.currentCoord.LogPos)
 					} else {
 						b.logger.Debug("memory is less than 20% and 1GiB. pause parsing binlog for 1s",
 							"available", memory.Available, "total", memory.Total)
@@ -1225,7 +1229,7 @@ func (b *BinlogReader) skipRowEvent(rowsEvent *replication.RowsEvent, dml int8) 
 					} else {
 						sid, err := uuid.FromBytes([]byte(sidByte))
 						if err != nil {
-							b.logger.Error("cycle-prevention: cannot convert sid to uuid", "err", err)
+							b.logger.Error("cycle-prevention: cannot convert sid to uuid", "err", err, "sid", sidByte)
 						} else {
 							b.currentBinlogEntry.Coordinates.OSID = sid.String()
 							b.logger.Debug("found an osid", "osid", b.currentBinlogEntry.Coordinates.OSID)
@@ -1334,7 +1338,10 @@ func (b *BinlogReader) Close() error {
 	// This is the year 2017. Let's see what year these comments get deleted.
 	return nil
 }
-func (b *BinlogReader) updateTableMeta(table *common.Table, realSchema string, tableName string) error {
+// gno, query: for debug use
+func (b *BinlogReader) updateTableMeta(table *common.Table, realSchema string, tableName string,
+	gno int64, query string) error {
+
 	var err error
 
 	if b.maybeSqleContext == nil {
@@ -1344,7 +1351,8 @@ func (b *BinlogReader) updateTableMeta(table *common.Table, realSchema string, t
 
 	columns, err := base.GetTableColumnsSqle(b.maybeSqleContext, realSchema, tableName)
 	if err != nil {
-		b.logger.Warn("updateTableMeta: cannot get table info after ddl.", "err", err, "realSchema", realSchema, "tableName", tableName)
+		b.logger.Warn("updateTableMeta: cannot get table info after ddl.", "err", err,
+			"realSchema", realSchema, "tableName", tableName, "gno", gno, "query", query)
 		return err
 	}
 	b.logger.Debug("binlog_reader. new columns.",
@@ -1362,6 +1370,7 @@ func (b *BinlogReader) updateTableMeta(table *common.Table, realSchema string, t
 	tableMap := b.getDbTableMap(realSchema)
 	err = b.addTableToTableMap(tableMap, table)
 	if err != nil {
+		err = errors.Wrapf(err, "addTableToTableMap. gno %v query %v", gno, query)
 		b.logger.Error("failed to make table context", "err", err)
 		return err
 	}
@@ -1521,7 +1530,7 @@ func (b *BinlogReader) OnApplierRotate(binlogFile string) {
 	}
 
 	if dir == "" {
-		logger.Warn("empty dir")
+		logger.Warn("OnApplierRotate: no sub dir", "wrappingDir", wrappingDir)
 		return
 	}
 
@@ -1611,10 +1620,11 @@ func (b *BinlogReader) findSchemaConfig(schemaConfigs []*common.DataSource, sche
 	for i := range schemaConfigs {
 		if schemaConfigs[i].TableSchema == schemaName {
 			return schemaConfigs[i]
-		} else if schemaConfigs[i].TableSchemaRegex != "" {
-			reg, err := regexp.Compile(schemaConfigs[i].TableSchemaRegex)
+		} else if regStr := schemaConfigs[i].TableSchemaRegex; regStr != "" {
+			reg, err := regexp.Compile(regStr)
 			if nil != err {
-				b.logger.Warn("compile regexp failed", "schema", schemaName, "err", err)
+				b.logger.Warn("compile regexp failed", "regex", regStr,
+					"schema", schemaName, "err", err)
 				continue
 			}
 			if reg.MatchString(schemaName) {
@@ -1644,10 +1654,11 @@ func (b *BinlogReader) findTableConfig(maybeSchemaConfig *common.DataSource, tab
 	for j := range maybeSchemaConfig.Tables {
 		if maybeSchemaConfig.Tables[j].TableName == tableName {
 			return maybeSchemaConfig.Tables[j]
-		} else if maybeSchemaConfig.Tables[j].TableRegex != "" {
-			reg, err := regexp.Compile(maybeSchemaConfig.Tables[j].TableRegex)
+		} else if regStr := maybeSchemaConfig.Tables[j].TableRegex; regStr != "" {
+			reg, err := regexp.Compile(regStr)
 			if nil != err {
-				b.logger.Warn("compile regexp failed", "schemaName", maybeSchemaConfig.TableSchema, "tableName", tableName, "err", err)
+				b.logger.Warn("compile regexp failed", "regex", regStr,
+					"schemaName", maybeSchemaConfig.TableSchema, "tableName", tableName, "err", err)
 				continue
 			}
 			if reg.MatchString(tableName) {

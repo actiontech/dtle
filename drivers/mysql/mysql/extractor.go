@@ -438,7 +438,8 @@ func (e *Extractor) inspectTables() (err error) {
 					doTb.TableSchema = doDb.TableSchema
 					doTb.TableSchemaRename = doDb.TableSchemaRename
 					if err := e.inspector.ValidateOriginalTable(doDb.TableSchema, doTb.TableName, doTb); err != nil {
-						e.logger.Warn("ValidateOriginalTable error", "err", err)
+						e.logger.Warn("ValidateOriginalTable error", "err", err,
+							"schema", doDb.TableSchema, "table", doTb.TableName)
 						continue
 					}
 					db.Tables = append(db.Tables, doTb)
@@ -1052,7 +1053,8 @@ func (e *Extractor) publish(subject string, txMsg []byte, gno int64) (err error)
 
 				time.Sleep(1 * time.Second)
 			} else {
-				e.logger.Error("unexpected error on publish", "err", err)
+				e.logger.Error("unexpected error on publish", "err", err, "i", i,
+					"len", msgLen, "subject", subject, "gno", gno, "iSeg", iSeg, "nSeg", nSeg)
 				return err
 			}
 		}

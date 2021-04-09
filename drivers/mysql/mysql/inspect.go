@@ -141,7 +141,7 @@ func (i *Inspector) ValidateOriginalTable(databaseName, tableName string, table 
 	}
 	if table.UseUniqueKey == nil {
 		i.logger.Warn("No valid unique key found. It will be slow on large table.",
-			"schema", table.TableSchema, "table", table.TableName)
+			"schema", table.TableSchema, "table", table.TableName, "nKey", len(uniqueKeys))
 	} else {
 		i.logger.Info("chosen unique key",
 			"schema", table.TableSchema, "table", table.TableName, "uk", table.UseUniqueKey.String())

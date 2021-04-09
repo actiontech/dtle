@@ -66,7 +66,8 @@ func (nmm *NatsMsgMerger) Handle(data []byte) (segmentFinished bool, err error) 
 			if iSeg == nmm.iSeg-1 {
 				nmm.logger.Debug("full. ignore resent segment", "expect", nmm.iSeg, "got", iSeg)
 			} else {
-				nmm.logger.Warn("DTLE_BUG: full. bad segment", "expect", nmm.iSeg, "got", iSeg)
+				nmm.logger.Warn("DTLE_BUG: full. bad segment", "expect", nmm.iSeg, "got", iSeg,
+					"currentLen", nmm.buf.Len(), "dataLen", len(data))
 			}
 		} else {
 			nmm.buf.Write(data[:lenData-4])

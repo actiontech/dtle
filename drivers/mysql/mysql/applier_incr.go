@@ -247,8 +247,10 @@ func (a *ApplierIncr) handleEntry(entryCtx *common.BinlogEntryContext) (err erro
 			}
 			a.mtsManager.lastCommitted = 0
 			a.mtsManager.lastEnqueue = 0
-			if len(a.mtsManager.m) != 0 {
-				a.logger.Warn("DTLE_BUG: len(a.mtsManager.m) should be 0")
+			nPending := len(a.mtsManager.m)
+			if nPending != 0 {
+				a.logger.Warn("DTLE_BUG: lcPendingTx should be 0", "nPending", nPending,
+					"file", a.replayingBinlogFile, "gno", binlogEntry.Coordinates.GNO)
 			}
 		}
 		// If there are TXs skipped by udup source-side
@@ -446,17 +448,28 @@ func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.Bin
 			var err error
 			logger.Debug("not dml", "query", event.Query)
 
+			execQuery := func(query string) error {
+				_, err = tx.Exec(query)
+				if err != nil {
+					err = errors.Wrapf(err, "tx.Exec. gno %v iEvent %v queryBegin %v workerIdx %v",
+						binlogEntry.Coordinates.GNO, i, common.StrLim(query, 10), workerIdx)
+					if sql.IgnoreError(err) {
+						logger.Warn("Ignore error", "err", err)
+						return nil
+					} else {
+						logger.Error("Exec sql error", "err", err)
+						return err
+					}
+				}
+				return nil
+			}
+
 			if event.CurrentSchema != "" {
 				query := fmt.Sprintf("USE %s", mysqlconfig.EscapeName(event.CurrentSchema))
 				logger.Debug("use", "query", query)
-				_, err = tx.Exec(query)
+				err := execQuery(query)
 				if err != nil {
-					if !sql.IgnoreError(err) {
-						logger.Error("Exec sql error", "err", err)
-						return err
-					} else {
-						logger.Warn("Ignore error", "err", err)
-					}
+					return err
 				}
 			}
 
@@ -481,14 +494,9 @@ func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.Bin
 				}
 			}
 
-			_, err = tx.Exec(event.Query)
+			err = execQuery(event.Query)
 			if err != nil {
-				if !sql.IgnoreError(err) {
-					logger.Error("Exec sql error", "err", err)
-					return err
-				} else {
-					logger.Warn("Ignore error", "err", err)
-				}
+				return err
 			}
 			logger.Debug("Exec.after", "query", event.Query)
 		default:
@@ -572,12 +580,14 @@ func (a *ApplierIncr) setTableItemForBinlogEntry(binlogEntry *common.BinlogEntry
 				a.logger.Debug("get tableColumns", "schema", dmlEvent.DatabaseName, "table", dmlEvent.TableName)
 				tableItem.Columns, err = base.GetTableColumns(a.db, dmlEvent.DatabaseName, dmlEvent.TableName)
 				if err != nil {
-					a.logger.Error("GetTableColumns error.", "err", err)
+					err = errors.Wrapf(err, "GetTableColumns. %v %v", dmlEvent.DatabaseName, dmlEvent.TableName)
+					a.logger.Error(err.Error())
 					return err
 				}
 				err = base.ApplyColumnTypes(a.db, dmlEvent.DatabaseName, dmlEvent.TableName, tableItem.Columns)
 				if err != nil {
-					a.logger.Error("ApplyColumnTypes error.", "err", err)
+					err = errors.Wrapf(err, "ApplyColumnTypes. %v %v", dmlEvent.DatabaseName, dmlEvent.TableName)
+					a.logger.Error(err.Error())
 					return err
 				}
 			} else {
