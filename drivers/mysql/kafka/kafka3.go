@@ -400,7 +400,7 @@ func (kr *KafkaRunner) handleIncr() {
 		case binlogEntries = <-kr.chBinlogEntries:
 		case <-timer.C:
 			if len(entriesWillBeSent) > 0 {
-				kr.logger.Debug("kafka: incr. send by timeout.",
+				kr.logger.Debug("incr. send by timeout.",
 					"timeout", kr.kafkaConfig.MessageGroupTimeout,
 					"entriesSize", entriesSize,
 					"Entries.len", len(entriesWillBeSent))
@@ -418,7 +418,7 @@ func (kr *KafkaRunner) handleIncr() {
 			entriesWillBeSent = append(entriesWillBeSent, binlogEntry)
 			entriesSize = entriesSize + binlogEntry.Size()
 			if entriesSize >= kr.kafkaConfig.MessageGroupMaxSize {
-				kr.logger.Debug("kafka: incr. send by GroupLimit",
+				kr.logger.Debug("incr. send by GroupLimit",
 					"MessageGroupMaxSize", kr.kafkaConfig.MessageGroupMaxSize,
 					"entriesSize", entriesSize,
 					"Entries.len", len(entriesWillBeSent))
