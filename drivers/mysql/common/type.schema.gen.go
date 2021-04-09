@@ -23,6 +23,7 @@ type DumpEntry struct {
 	TotalCount               int64
 	Err                      string
 	Table                    []byte
+	Seq                      uint64
 }
 
 func (d *DumpEntry) Size() (s uint64) {
@@ -230,7 +231,7 @@ func (d *DumpEntry) Size() (s uint64) {
 		}
 		s += l
 	}
-	s += 8
+	s += 16
 	return
 }
 func (d *DumpEntry) Marshal(buf []byte) ([]byte, error) {
@@ -508,7 +509,26 @@ func (d *DumpEntry) Marshal(buf []byte) ([]byte, error) {
 		copy(buf[i+8:], d.Table)
 		i += l
 	}
-	return buf[:i+8], nil
+	{
+
+		buf[i+0+8] = byte(d.Seq >> 0)
+
+		buf[i+1+8] = byte(d.Seq >> 8)
+
+		buf[i+2+8] = byte(d.Seq >> 16)
+
+		buf[i+3+8] = byte(d.Seq >> 24)
+
+		buf[i+4+8] = byte(d.Seq >> 32)
+
+		buf[i+5+8] = byte(d.Seq >> 40)
+
+		buf[i+6+8] = byte(d.Seq >> 48)
+
+		buf[i+7+8] = byte(d.Seq >> 56)
+
+	}
+	return buf[:i+16], nil
 }
 
 func (d *DumpEntry) Unmarshal(buf []byte) (uint64, error) {
@@ -803,7 +823,12 @@ func (d *DumpEntry) Unmarshal(buf []byte) (uint64, error) {
 		copy(d.Table, buf[i+8:])
 		i += l
 	}
-	return i + 8, nil
+	{
+
+		d.Seq = 0 | (uint64(buf[i+0+8]) << 0) | (uint64(buf[i+1+8]) << 8) | (uint64(buf[i+2+8]) << 16) | (uint64(buf[i+3+8]) << 24) | (uint64(buf[i+4+8]) << 32) | (uint64(buf[i+5+8]) << 40) | (uint64(buf[i+6+8]) << 48) | (uint64(buf[i+7+8]) << 56)
+
+	}
+	return i + 16, nil
 }
 
 type BinlogCoordinateTx struct {
