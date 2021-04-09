@@ -9,6 +9,7 @@ struct DumpEntry {
 	TotalCount int64
 	Err        string
 	Table      []byte
+	Seq        uint64
 }
 
 struct BinlogCoordinateTx {
