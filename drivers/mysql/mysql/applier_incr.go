@@ -451,14 +451,14 @@ func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.Bin
 			execQuery := func(query string) error {
 				_, err = tx.Exec(query)
 				if err != nil {
-					err = errors.Wrapf(err, "tx.Exec. gno %v iEvent %v queryBegin %v workerIdx %v",
+					errCtx := errors.Wrapf(err, "tx.Exec. gno %v iEvent %v queryBegin %v workerIdx %v",
 						binlogEntry.Coordinates.GNO, i, common.StrLim(query, 10), workerIdx)
 					if sql.IgnoreError(err) {
-						logger.Warn("Ignore error", "err", err)
+						logger.Warn("Ignore error", "err", errCtx)
 						return nil
 					} else {
-						logger.Error("Exec sql error", "err", err)
-						return err
+						logger.Error("Exec sql error", "err", errCtx)
+						return errCtx
 					}
 				}
 				return nil
