@@ -1,4 +1,24 @@
 definitions:
+  models.JobListItemV2:
+    properties:
+      job_id:
+        type: string
+      job_name:
+        type: string
+      job_status:
+        type: string
+      job_status_description:
+        type: string
+    type: object
+  models.JobListRespV2:
+    properties:
+      jobs:
+        items:
+          $ref: '#/definitions/models.JobListItemV2'
+        type: array
+      message:
+        type: string
+    type: object
   v2.UpdataLogLevelRespV2:
     properties:
       dtle_log_level:
@@ -9,6 +29,21 @@ definitions:
 info:
   contact: {}
 paths:
+  /v2/jobs/migration:
+    get:
+      description: get job list.
+      parameters:
+      - description: filter job type
+        in: query
+        name: filter_job_type
+        type: string
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.JobListRespV2'
+      tags:
+      - job
   /v2/log_level:
     post:
       consumes:
@@ -24,6 +59,7 @@ paths:
         - ERROR
         in: formData
         name: dtle_log_level
+        required: true
         type: string
       responses:
         "200":
