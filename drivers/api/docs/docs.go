@@ -24,6 +24,30 @@ var doc = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
+        "/v2/jobs": {
+            "get": {
+                "description": "get job list.",
+                "tags": [
+                    "job"
+                ],
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "filter job type",
+                        "name": "filter_job_type",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.JobListRespV2"
+                        }
+                    }
+                }
+            }
+        },
         "/v2/log_level": {
             "post": {
                 "description": "reload log level dynamically.",
@@ -60,6 +84,37 @@ var doc = `{
         }
     },
     "definitions": {
+        "models.JobListItemV2": {
+            "type": "object",
+            "properties": {
+                "job_id": {
+                    "type": "string"
+                },
+                "job_name": {
+                    "type": "string"
+                },
+                "job_status": {
+                    "type": "string"
+                },
+                "job_status_description": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.JobListRespV2": {
+            "type": "object",
+            "properties": {
+                "jobs": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.JobListItemV2"
+                    }
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
         "v2.UpdataLogLevelRespV2": {
             "type": "object",
             "properties": {
