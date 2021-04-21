@@ -270,9 +270,12 @@ func (d *Driver) SetupApiServer(logger hclog.Logger) (err error)  {
 	/*router.POST("/v1/job/renewal",updupJob)
 	router.POST("/v1/job/info",updupJob)
 	*/
+	promHandler:= httprouter.New()
+	promHandler.Handler("GET", "/metrics", promhttp.Handler())
 
 	mux := http.NewServeMux()
 	mux.Handle("/v1/", router)
+	mux.Handle("/metrics", promHandler)
 
 	if d.config.UiDir != "" {
 		d.logger.Info("found ui_dir", "dir", d.config.UiDir)
@@ -288,8 +291,6 @@ func (d *Driver) SetupApiServer(logger hclog.Logger) (err error)  {
 	logger.Info("Setup api server succeeded", "addr", d.config.ApiAddr)
 
 	d.apiServer = router
-
-	router.Handler("GET", "/metrics", promhttp.Handler())
 
 	sink, err := prometheus.NewPrometheusSink()
 	if err != nil {
