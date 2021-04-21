@@ -4,6 +4,31 @@
         "contact": {}
     },
     "paths": {
+        "/v2/job/detail": {
+            "get": {
+                "description": "get job detail.",
+                "tags": [
+                    "job"
+                ],
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "job id",
+                        "name": "job_id",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.JobDetailRespV2"
+                        }
+                    }
+                }
+            }
+        },
         "/v2/jobs": {
             "get": {
                 "description": "get job list.",
@@ -64,6 +89,30 @@
         }
     },
     "definitions": {
+        "models.JobDetailRespV2": {
+            "type": "object",
+            "properties": {
+                "dest_task_detail": {
+                    "$ref": "#/definitions/models.MysqlDestTaskDetail"
+                },
+                "failover": {
+                    "description": "TODO:to find out the usage of it",
+                    "type": "boolean"
+                },
+                "job_id": {
+                    "type": "string"
+                },
+                "job_name": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "src_task_detail": {
+                    "$ref": "#/definitions/models.MysqlSrcTaskDetail"
+                }
+            }
+        },
         "models.JobListItemV2": {
             "type": "object",
             "properties": {
@@ -92,6 +141,200 @@
                 },
                 "message": {
                     "type": "string"
+                }
+            }
+        },
+        "models.MysqlConnectionConfig": {
+            "type": "object",
+            "required": [
+                "mysql_host",
+                "mysql_password",
+                "mysql_port",
+                "mysql_user"
+            ],
+            "properties": {
+                "mysql_host": {
+                    "type": "string"
+                },
+                "mysql_password": {
+                    "type": "string"
+                },
+                "mysql_port": {
+                    "type": "integer"
+                },
+                "mysql_user": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.MysqlDataSourceConfig": {
+            "type": "object",
+            "required": [
+                "table_schema"
+            ],
+            "properties": {
+                "table_schema": {
+                    "type": "string"
+                },
+                "table_schema_rename": {
+                    "type": "string"
+                },
+                "tables": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.MysqlTableConfig"
+                    }
+                }
+            }
+        },
+        "models.MysqlDestTaskConfig": {
+            "type": "object",
+            "required": [
+                "mysql_connection_config",
+                "task_name"
+            ],
+            "properties": {
+                "mysql_connection_config": {
+                    "$ref": "#/definitions/models.MysqlConnectionConfig"
+                },
+                "node_id": {
+                    "type": "string"
+                },
+                "parallel_workers": {
+                    "type": "integer"
+                },
+                "task_name": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.MysqlDestTaskDetail": {
+            "type": "object",
+            "properties": {
+                "task_config": {
+                    "$ref": "#/definitions/models.MysqlDestTaskConfig"
+                },
+                "task_status": {
+                    "$ref": "#/definitions/models.TaskStatus"
+                }
+            }
+        },
+        "models.MysqlSrcTaskConfig": {
+            "type": "object",
+            "required": [
+                "mysql_connection_config",
+                "task_name"
+            ],
+            "properties": {
+                "chunk_size": {
+                    "type": "integer"
+                },
+                "drop_table_if_exists": {
+                    "type": "boolean"
+                },
+                "group_max_size": {
+                    "type": "integer"
+                },
+                "gtid": {
+                    "type": "string"
+                },
+                "mysql_connection_config": {
+                    "$ref": "#/definitions/models.MysqlConnectionConfig"
+                },
+                "node_id": {
+                    "type": "string"
+                },
+                "repl_chan_buffer_size": {
+                    "type": "integer"
+                },
+                "replicate_do_db": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.MysqlDataSourceConfig"
+                    }
+                },
+                "replicate_ignore_db": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.MysqlDataSourceConfig"
+                    }
+                },
+                "skip_create_dbTable": {
+                    "type": "boolean"
+                },
+                "task_name": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.MysqlSrcTaskDetail": {
+            "type": "object",
+            "properties": {
+                "task_config": {
+                    "$ref": "#/definitions/models.MysqlSrcTaskConfig"
+                },
+                "task_status": {
+                    "$ref": "#/definitions/models.TaskStatus"
+                }
+            }
+        },
+        "models.MysqlTableConfig": {
+            "type": "object",
+            "required": [
+                "table_name"
+            ],
+            "properties": {
+                "column_map_from": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "table_name": {
+                    "type": "string"
+                },
+                "table_rename": {
+                    "type": "string"
+                },
+                "where": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.TaskEvent": {
+            "type": "object",
+            "properties": {
+                "event_type": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "setup_error": {
+                    "type": "string"
+                },
+                "time": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.TaskStatus": {
+            "type": "object",
+            "properties": {
+                "finished_at": {
+                    "type": "string"
+                },
+                "started_at": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "task_events": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.TaskEvent"
+                    }
                 }
             }
         },

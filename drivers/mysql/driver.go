@@ -447,13 +447,13 @@ func (d *Driver) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHandle, *drive
 		dtleTaskConfig.SetDefaultForEmpty()
 		driverConfig := &common.MySQLDriverConfig{DtleTaskConfig: dtleTaskConfig}
 
-		switch taskTypeFromString(cfg.TaskGroupName) {
-		case taskTypeSrc:
+		switch common.TaskTypeFromString(cfg.TaskGroupName) {
+		case common.TaskTypeSrc:
 			h.runner, err = mysql.NewExtractor(ctx, driverConfig, d.logger, d.storeManager, h.waitCh)
 			if err != nil {
 				return nil, nil, errors.Wrap(err, "NewExtractor")
 			}
-		case taskTypeDest:
+		case common.TaskTypeDest:
 			if driverConfig.KafkaConfig != nil {
 				d.logger.Debug("found kafka", "KafkaConfig", driverConfig.KafkaConfig)
 				h.runner = kafka.NewKafkaRunner(ctx, driverConfig.KafkaConfig, d.logger,
@@ -465,7 +465,7 @@ func (d *Driver) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHandle, *drive
 					return nil, nil, errors.Wrap(err, "NewApplier")
 				}
 			}
-		case taskTypeUnknown:
+		case common.TaskTypeUnknown:
 			return nil, nil, fmt.Errorf("unknown processor type: %+v", cfg.TaskGroupName)
 		}
 

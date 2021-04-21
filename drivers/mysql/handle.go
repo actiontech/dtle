@@ -6,31 +6,12 @@ import (
 	"github.com/actiontech/dtle/drivers/mysql/common"
 	"github.com/armon/go-metrics"
 	"github.com/pkg/errors"
-	"strings"
 	"sync"
 	"time"
 
 	hclog "github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/nomad/plugins/drivers"
 )
-
-type taskType int
-const (
-	taskTypeUnknown taskType = iota
-	taskTypeSrc
-	taskTypeDest
-)
-
-func taskTypeFromString(s string) taskType {
-	switch strings.ToLower(s) {
-	case "src", "source":
-		return taskTypeSrc
-	case "dst", "dest", "destination":
-		return taskTypeDest
-	default:
-		return taskTypeUnknown
-	}
-}
 
 type taskHandle struct {
 	logger hclog.Logger
@@ -143,8 +124,8 @@ func (h *taskHandle) emitStats(ru *common.TaskStatistics) {
 	metrics.SetGaugeWithLabels([]string{"network", "out_msgs"}, float32(ru.MsgStat.OutMsgs), labels)
 	metrics.SetGaugeWithLabels([]string{"network", "in_bytes"}, float32(ru.MsgStat.InBytes), labels)
 	metrics.SetGaugeWithLabels([]string{"network", "out_bytes"}, float32(ru.MsgStat.OutBytes), labels)
-	switch taskTypeFromString(h.taskConfig.TaskGroupName) {
-	case taskTypeSrc:
+	switch common.TaskTypeFromString(h.taskConfig.TaskGroupName) {
+	case common.TaskTypeSrc:
 		metrics.SetGaugeWithLabels([]string{"buffer", "event_queue_size"}, float32(ru.BufferStat.BinlogEventQueueSize), labels)
 		metrics.SetGaugeWithLabels([]string{"buffer", "src_queue_size"}, float32(ru.BufferStat.ExtractorTxQueueSize), labels)
 		metrics.SetGaugeWithLabels([]string{"buffer", "send_by_timeout"}, float32(ru.BufferStat.SendByTimeout), labels)
@@ -152,12 +133,12 @@ func (h *taskHandle) emitStats(ru *common.TaskStatistics) {
 
 		metrics.SetGaugeWithLabels([]string{"memory.full_kb_est"}, float32(ru.MemoryStat.Full) * srcFullFactor / 1024, labels)
 		metrics.SetGaugeWithLabels([]string{"memory.incr_kb_est"}, float32(ru.MemoryStat.Incr) * srcIncrFactor / 1024, labels)
-	case taskTypeDest:
+	case common.TaskTypeDest:
 		metrics.SetGaugeWithLabels([]string{"buffer", "dest_queue_size"}, float32(ru.BufferStat.ApplierTxQueueSize), labels)
 
 		metrics.SetGaugeWithLabels([]string{"memory.full_kb_est"}, float32(ru.MemoryStat.Full) * dstFullFactor / 1024, labels)
 		metrics.SetGaugeWithLabels([]string{"memory.incr_kb_est"}, float32(ru.MemoryStat.Incr) * dstIncrFactor / 1024, labels)
-	case taskTypeUnknown:
+	case common.TaskTypeUnknown:
 	}
 
 	metrics.SetGaugeWithLabels([]string{"memory.full_kb_count"}, float32(ru.MemoryStat.Full) / 1024, labels)

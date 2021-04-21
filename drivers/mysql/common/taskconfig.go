@@ -1,6 +1,7 @@
 package common
 
 import (
+	"strings"
 	"time"
 
 	"github.com/actiontech/dtle/drivers/mysql/mysql/mysqlconfig"
@@ -11,7 +12,23 @@ const (
 	defaultChunkSize  = 2000
 	defaultNumWorkers = 1
 	DefaultClusterID  = "dtle-nats"
+
+	TaskTypeUnknown taskType = iota
+	TaskTypeSrc
+	TaskTypeDest
 )
+
+type taskType int
+func TaskTypeFromString(s string) taskType {
+	switch strings.ToLower(s) {
+	case "src", "source":
+		return TaskTypeSrc
+	case "dst", "dest", "destination":
+		return TaskTypeDest
+	default:
+		return TaskTypeUnknown
+	}
+}
 
 type DtleTaskConfig struct {
 	//Ref:http://dev.mysql.com/doc/refman/5.7/en/replication-options-slave.html#option_mysqld_replicate-do-table

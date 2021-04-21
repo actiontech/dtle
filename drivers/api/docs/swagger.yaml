@@ -1,4 +1,20 @@
 definitions:
+  models.JobDetailRespV2:
+    properties:
+      dest_task_detail:
+        $ref: '#/definitions/models.MysqlDestTaskDetail'
+      failover:
+        description: TODO:to find out the usage of it
+        type: boolean
+      job_id:
+        type: string
+      job_name:
+        type: string
+      message:
+        type: string
+      src_task_detail:
+        $ref: '#/definitions/models.MysqlSrcTaskDetail'
+    type: object
   models.JobListItemV2:
     properties:
       job_id:
@@ -19,6 +35,134 @@ definitions:
       message:
         type: string
     type: object
+  models.MysqlConnectionConfig:
+    properties:
+      mysql_host:
+        type: string
+      mysql_password:
+        type: string
+      mysql_port:
+        type: integer
+      mysql_user:
+        type: string
+    required:
+    - mysql_host
+    - mysql_password
+    - mysql_port
+    - mysql_user
+    type: object
+  models.MysqlDataSourceConfig:
+    properties:
+      table_schema:
+        type: string
+      table_schema_rename:
+        type: string
+      tables:
+        items:
+          $ref: '#/definitions/models.MysqlTableConfig'
+        type: array
+    required:
+    - table_schema
+    type: object
+  models.MysqlDestTaskConfig:
+    properties:
+      mysql_connection_config:
+        $ref: '#/definitions/models.MysqlConnectionConfig'
+      node_id:
+        type: string
+      parallel_workers:
+        type: integer
+      task_name:
+        type: string
+    required:
+    - mysql_connection_config
+    - task_name
+    type: object
+  models.MysqlDestTaskDetail:
+    properties:
+      task_config:
+        $ref: '#/definitions/models.MysqlDestTaskConfig'
+      task_status:
+        $ref: '#/definitions/models.TaskStatus'
+    type: object
+  models.MysqlSrcTaskConfig:
+    properties:
+      chunk_size:
+        type: integer
+      drop_table_if_exists:
+        type: boolean
+      group_max_size:
+        type: integer
+      gtid:
+        type: string
+      mysql_connection_config:
+        $ref: '#/definitions/models.MysqlConnectionConfig'
+      node_id:
+        type: string
+      repl_chan_buffer_size:
+        type: integer
+      replicate_do_db:
+        items:
+          $ref: '#/definitions/models.MysqlDataSourceConfig'
+        type: array
+      replicate_ignore_db:
+        items:
+          $ref: '#/definitions/models.MysqlDataSourceConfig'
+        type: array
+      skip_create_dbTable:
+        type: boolean
+      task_name:
+        type: string
+    required:
+    - mysql_connection_config
+    - task_name
+    type: object
+  models.MysqlSrcTaskDetail:
+    properties:
+      task_config:
+        $ref: '#/definitions/models.MysqlSrcTaskConfig'
+      task_status:
+        $ref: '#/definitions/models.TaskStatus'
+    type: object
+  models.MysqlTableConfig:
+    properties:
+      column_map_from:
+        items:
+          type: string
+        type: array
+      table_name:
+        type: string
+      table_rename:
+        type: string
+      where:
+        type: string
+    required:
+    - table_name
+    type: object
+  models.TaskEvent:
+    properties:
+      event_type:
+        type: string
+      message:
+        type: string
+      setup_error:
+        type: string
+      time:
+        type: string
+    type: object
+  models.TaskStatus:
+    properties:
+      finished_at:
+        type: string
+      started_at:
+        type: string
+      status:
+        type: string
+      task_events:
+        items:
+          $ref: '#/definitions/models.TaskEvent'
+        type: array
+    type: object
   v2.UpdataLogLevelRespV2:
     properties:
       dtle_log_level:
@@ -29,6 +173,22 @@ definitions:
 info:
   contact: {}
 paths:
+  /v2/job/detail:
+    get:
+      description: get job detail.
+      parameters:
+      - description: job id
+        in: query
+        name: job_id
+        required: true
+        type: string
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.JobDetailRespV2'
+      tags:
+      - job
   /v2/jobs:
     get:
       description: get job list.
