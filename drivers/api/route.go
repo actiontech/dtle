@@ -48,6 +48,7 @@ func SetupApiServer(logger hclog.Logger, apiAddr, nomadAddr, uiDir string) (err 
 	e.POST("/v2/log_level", v2.UpdateLogLevelV2)
 	e.GET("/v2/jobs", v2.JobListV2)
 	e.GET("/v2/job/detail", v2.GetJobDetailV2)
+	e.POST("/v2/job/migration", v2.CreateOrUpdateMigrationJobV2)
 	e.GET("/v2/nodes", v2.NodeListV2)
 
 	if uiDir != "" {

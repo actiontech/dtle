@@ -1,7 +1,9 @@
 package v2
 
 import (
+	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -92,6 +94,159 @@ func getJobTypeFromJobId(jobId string) DtleJobType {
 	}
 }
 
+// @Description create or update migration job.
+// @Tags job
+// @Accept application/json
+// @Param migration_job_config body models.CreateOrUpdateMysqlToMysqlJobParamV2 true "migration job config"
+// @Success 200 {object} models.CreateOrUpdateMysqlToMysqlJobRespV2
+// @Router /v2/job/migration [post]
+func CreateOrUpdateMigrationJobV2(c echo.Context) error {
+	jobParam := new(models.CreateOrUpdateMysqlToMysqlJobParamV2)
+	if err := c.Bind(jobParam); nil != err {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("bind req param failed, error: %v", err)))
+	}
+
+	nomadJob, err := convertMysqlToMysqlJobToNomadJobReq(jobParam)
+	if nil != err {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("convert job param to nomad job request failed, error: %v", err)))
+	}
+
+	nomadJobreq := nomadApi.JobRegisterRequest{
+		Job: nomadJob,
+	}
+	nomadJobReqByte, err := json.Marshal(nomadJobreq)
+	if nil != err {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("marshal nomad job request failed, error: %v", err)))
+	}
+
+	url := handler.BuildUrl("/v1/jobs")
+	resp, err := http.Post(url, "application/x-www-form-urlencoded", bytes.NewReader(nomadJobReqByte))
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invoke /v1/jobs of nomad failed, error: %v", err)))
+	}
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("reading forwarded resp faile: %v", err)))
+	}
+
+	nomadResp := nomadApi.JobRegisterResponse{}
+	if err := json.Unmarshal(body, &nomadResp); nil != err {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("forwarded faile: %s", string(body))))
+	}
+
+	return c.JSON(http.StatusOK, &models.CreateOrUpdateMysqlToMysqlJobRespV2{
+		CreateOrUpdateMysqlToMysqlJobParamV2: *jobParam,
+		EvalCreateIndex:                      nomadResp.EvalCreateIndex,
+		JobModifyIndex:                       nomadResp.JobModifyIndex,
+		BaseResp:                             models.BuildBaseResp(errors.New(nomadResp.Warnings)),
+	})
+}
+
+func convertMysqlToMysqlJobToNomadJobReq(jobParam *models.CreateOrUpdateMysqlToMysqlJobParamV2) (*nomadApi.Job, error) {
+	buildTaskGroupItem := func(dtleTaskconfig map[string]interface{}, taskName, nodeId string) (*nomadApi.TaskGroup, error) {
+		task := nomadApi.NewTask(taskName, g.PluginName)
+		task.Config = dtleTaskconfig
+		if nodeId != "" {
+			// https://www.nomadproject.io/docs/runtime/interpolation
+			newConstraint := nomadApi.NewConstraint("${node.unique.id}", "=", nodeId)
+			task.Constraints = append(task.Constraints, newConstraint)
+		}
+
+		taskGroup := nomadApi.NewTaskGroup(taskName, 1)
+		taskGroup.Tasks = append(taskGroup.Tasks, task)
+		return taskGroup, nil
+	}
+
+	srcTask, err := buildTaskGroupItem(buildMysqlSrcTaskConfigMap(jobParam.SrcTask), jobParam.SrcTask.TaskName, jobParam.SrcTask.NodeId)
+	if nil != err {
+		return nil, fmt.Errorf("build src task failed: %v", err)
+	}
+
+	destTask, err := buildTaskGroupItem(buildMysqlDestTaskConfigMap(jobParam.DestTask), jobParam.DestTask.TaskName, jobParam.DestTask.NodeId)
+	if nil != err {
+		return nil, fmt.Errorf("build dest task failed: %v", err)
+	}
+
+	jobId := addJobTypeToJobId(g.PtrToString(jobParam.JobId, jobParam.JobName), DtleJobTypeMigration)
+	return &nomadApi.Job{
+		ID:          &jobId,
+		Name:        &jobParam.JobName,
+		Datacenters: []string{"dc1"},
+		TaskGroups:  []*nomadApi.TaskGroup{srcTask, destTask},
+	}, nil
+}
+
+func buildMysqlDestTaskConfigMap(config models.MysqlDestTaskConfig) map[string]interface{} {
+	taskConfigInNomadFormat := make(map[string]interface{})
+
+	addNotRequiredParamToMap(taskConfigInNomadFormat, config.ParallelWorkers, "ParallelWorkers")
+	taskConfigInNomadFormat["ConnectionConfig"] = buildMysqlConnectionConfigMap(config.MysqlConnectionConfig)
+
+	return taskConfigInNomadFormat
+}
+
+func buildMysqlSrcTaskConfigMap(config models.MysqlSrcTaskConfig) map[string]interface{} {
+	taskConfigInNomadFormat := make(map[string]interface{})
+
+	addNotRequiredParamToMap(taskConfigInNomadFormat, config.DropTableIfExists, "DropTableIfExists")
+	addNotRequiredParamToMap(taskConfigInNomadFormat, config.ReplChanBufferSize, "ReplChanBufferSize")
+	addNotRequiredParamToMap(taskConfigInNomadFormat, config.ChunkSize, "ChunkSize")
+	addNotRequiredParamToMap(taskConfigInNomadFormat, config.GroupMaxSize, "GroupMaxSize")
+	addNotRequiredParamToMap(taskConfigInNomadFormat, config.Gtid, "Gtid")
+	addNotRequiredParamToMap(taskConfigInNomadFormat, config.SkipCreateDbTable, "SkipCreateDbTable")
+
+	taskConfigInNomadFormat["ConnectionConfig"] = buildMysqlConnectionConfigMap(config.MysqlConnectionConfig)
+	taskConfigInNomadFormat["ReplicateDoDb"] = buildMysqlDataSourceConfigMap(config.ReplicateDoDb)
+	taskConfigInNomadFormat["ReplicateIgnoreDb"] = buildMysqlDataSourceConfigMap(config.ReplicateIgnoreDb)
+
+	return taskConfigInNomadFormat
+}
+
+func buildMysqlDataSourceConfigMap(configs []models.MysqlDataSourceConfig) []map[string]interface{} {
+	res := []map[string]interface{}{}
+
+	for _, c := range configs {
+		configMap := make(map[string]interface{})
+		configMap["TableSchema"] = c.TableSchema
+		addNotRequiredParamToMap(configMap, c.TableSchemaRename, "TableSchemaRename")
+		configMap["Tables"] = buildMysqlTableConfigMap(c.Tables)
+
+		res = append(res, configMap)
+	}
+	return res
+}
+
+func buildMysqlTableConfigMap(configs []models.MysqlTableConfig) []map[string]interface{} {
+	res := []map[string]interface{}{}
+
+	for _, c := range configs {
+		configMap := make(map[string]interface{})
+		configMap["TableName"] = c.TableName
+		configMap["ColumnMapFrom"] = c.ColumnMapFrom
+		addNotRequiredParamToMap(configMap, c.TableRename, "TableRename")
+		addNotRequiredParamToMap(configMap, c.Where, "Where")
+
+		res = append(res, configMap)
+	}
+	return res
+}
+
+func buildMysqlConnectionConfigMap(config models.MysqlConnectionConfig) map[string]interface{} {
+	res := make(map[string]interface{})
+	res["Host"] = config.MysqlHost
+	res["Port"] = config.MysqlPort
+	res["User"] = config.MysqlUser
+	res["Password"] = config.MysqlPassword
+	return res
+}
+
+func addNotRequiredParamToMap(target map[string]interface{}, value interface{}, fieldName string) {
+	if nil != value {
+		target[fieldName] = value
+	}
+}
+
 // @Description get job detail.
 // @Tags job
 // @Success 200 {object} models.JobDetailRespV2
@@ -113,7 +268,7 @@ func GetJobDetailV2(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invoke nomad api %v failed: %v", url, err)))
 	}
 
-	url = handler.BuildUrl(fmt.Sprintf("/v1/job/%v/allocations",*nomadJob.ID))
+	url = handler.BuildUrl(fmt.Sprintf("/v1/job/%v/allocations", *nomadJob.ID))
 	allocations := []nomadApi.Allocation{}
 	if err := handler.InvokeNomadGetApi(url, &allocations); nil != err {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invoke nomad api %v failed: %v", url, err)))

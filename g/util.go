@@ -87,3 +87,11 @@ func CopySliceString(s []string) []string {
 	}
 	return c
 }
+
+func PtrToString(ptr *string, defaultValue string) string {
+	if nil == ptr {
+		return defaultValue
+	} else {
+		return *ptr
+	}
+}
