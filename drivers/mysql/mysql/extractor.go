@@ -887,7 +887,9 @@ func (tsc *TimestampContext) Handle() {
 			return
 		case ts := <-tsc.TimestampCh:
 			tsc.logger.Debug("TimestampContext.Handle: got", "timestamp", ts)
-			tsc.delay = time.Now().Unix() - int64(ts)
+			if ts != 0 {
+				tsc.delay = time.Now().Unix() - int64(ts)
+			}
 			if !t.Stop() {
 				select {
 				case <-t.C:
