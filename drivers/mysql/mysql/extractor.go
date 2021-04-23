@@ -1039,26 +1039,11 @@ func (e *Extractor) publish(subject string, txMsg []byte, gno int64) (err error)
 			binary.LittleEndian.PutUint32(data[end:], uint32(iSeg))
 		}
 
-		for i := 1; ; i++ {
-			e.logger.Debug("publish", "subject", subject, "gno", gno, "partLen", len(part), "iSeg", iSeg)
-
-			_, err = e.natsConn.Request(subject, part, common.DefaultConnectWait)
-			if err == nil {
-				txMsg = nil
-				break
-			} else if err == gonats.ErrTimeout {
-				e.logger.Debug("publish timeout", "err", err, "i", i, "gno", gno)
-				if i % 20 == 0 {
-					e.logger.Warn("publish timeout for i times", "err", err, "i", i,
-						"len", msgLen, "subject", subject, "gno", gno, "iSeg", iSeg, "nSeg", nSeg)
-				}
-
-				time.Sleep(1 * time.Second)
-			} else {
-				e.logger.Error("unexpected error on publish", "err", err, "i", i,
-					"len", msgLen, "subject", subject, "gno", gno, "iSeg", iSeg, "nSeg", nSeg)
-				return err
-			}
+		e.logger.Debug("publish", "subject", subject, "gno", gno, "partLen", len(part), "iSeg", iSeg)
+		_, err := e.natsConn.Request(subject, part, 24 * time.Hour)
+		if err != nil {
+			e.logger.Error("unexpected error on publish", "err", err)
+			return err
 		}
 	}
 	return nil
