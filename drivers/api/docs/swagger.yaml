@@ -1,4 +1,42 @@
 definitions:
+  models.CreateOrUpdateMysqlToMysqlJobParamV2:
+    properties:
+      dest_task:
+        $ref: '#/definitions/models.MysqlDestTaskConfig'
+      failover:
+        description: TODO:to find out the usage of it
+        type: boolean
+      job_id:
+        type: string
+      job_name:
+        type: string
+      src_task:
+        $ref: '#/definitions/models.MysqlSrcTaskConfig'
+    required:
+    - job_name
+    type: object
+  models.CreateOrUpdateMysqlToMysqlJobRespV2:
+    properties:
+      dest_task:
+        $ref: '#/definitions/models.MysqlDestTaskConfig'
+      eval_create_index:
+        type: integer
+      failover:
+        description: TODO:to find out the usage of it
+        type: boolean
+      job_id:
+        type: string
+      job_modify_index:
+        type: integer
+      job_name:
+        type: string
+      message:
+        type: string
+      src_task:
+        $ref: '#/definitions/models.MysqlSrcTaskConfig'
+    required:
+    - job_name
+    type: object
   models.JobDetailRespV2:
     properties:
       dest_task_detail:
@@ -40,6 +78,7 @@ definitions:
       mysql_host:
         type: string
       mysql_password:
+        description: 'TODO: encrypt'
         type: string
       mysql_port:
         type: integer
@@ -139,6 +178,30 @@ definitions:
     required:
     - table_name
     type: object
+  models.NodeListItemV2:
+    properties:
+      datacenter:
+        type: string
+      node_address:
+        type: string
+      node_id:
+        type: string
+      node_name:
+        type: string
+      node_status:
+        type: string
+      node_status_description:
+        type: string
+    type: object
+  models.NodeListRespV2:
+    properties:
+      message:
+        type: string
+      nodes:
+        items:
+          $ref: '#/definitions/models.NodeListItemV2'
+        type: array
+    type: object
   models.TaskEvent:
     properties:
       event_type:
@@ -189,6 +252,25 @@ paths:
             $ref: '#/definitions/models.JobDetailRespV2'
       tags:
       - job
+  /v2/job/migration:
+    post:
+      consumes:
+      - application/json
+      description: create or update migration job.
+      parameters:
+      - description: migration job config
+        in: body
+        name: migration_job_config
+        required: true
+        schema:
+          $ref: '#/definitions/models.CreateOrUpdateMysqlToMysqlJobParamV2'
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.CreateOrUpdateMysqlToMysqlJobRespV2'
+      tags:
+      - job
   /v2/jobs:
     get:
       description: get job list.
@@ -219,6 +301,7 @@ paths:
         - ERROR
         in: formData
         name: dtle_log_level
+        required: true
         type: string
       responses:
         "200":
@@ -227,4 +310,14 @@ paths:
             $ref: '#/definitions/v2.UpdataLogLevelRespV2'
       tags:
       - log
+  /v2/nodes:
+    get:
+      description: get node list.
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.NodeListRespV2'
+      tags:
+      - node
 swagger: "2.0"

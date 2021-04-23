@@ -95,5 +95,20 @@ type MysqlConnectionConfig struct {
 	MysqlHost     string `json:"mysql_host" validate:"required"`
 	MysqlPort     int    `json:"mysql_port" validate:"required"`
 	MysqlUser     string `json:"mysql_user" validate:"required"`
-	MysqlPassword string `json:"mysql_password" validate:"required"`
+	MysqlPassword string `json:"mysql_password" validate:"required"` //TODO: encrypt
+}
+
+type CreateOrUpdateMysqlToMysqlJobParamV2 struct {
+	JobName  string              `json:"job_name" validate:"required"`
+	JobId    *string             `json:"job_id"`
+	Failover bool                `json:"failover"` //TODO:to find out the usage of it
+	SrcTask  MysqlSrcTaskConfig  `json:"src_task"`
+	DestTask MysqlDestTaskConfig `json:"dest_task"`
+}
+
+type CreateOrUpdateMysqlToMysqlJobRespV2 struct {
+	CreateOrUpdateMysqlToMysqlJobParamV2 `json:"job"`
+	EvalCreateIndex                      uint64 `json:"eval_create_index"`
+	JobModifyIndex                       uint64 `json:"job_modify_index"`
+	BaseResp
 }

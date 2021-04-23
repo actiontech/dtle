@@ -3,7 +3,7 @@ package api
 import (
 	_ "github.com/actiontech/dtle/drivers/api/docs"
 	"github.com/actiontech/dtle/drivers/api/handler"
-	"github.com/actiontech/dtle/drivers/api/handler/v1"
+	v1 "github.com/actiontech/dtle/drivers/api/handler/v1"
 	v2 "github.com/actiontech/dtle/drivers/api/handler/v2"
 	metrics "github.com/armon/go-metrics"
 	"github.com/armon/go-metrics/prometheus"
@@ -48,6 +48,8 @@ func SetupApiServer(logger hclog.Logger, apiAddr, nomadAddr, uiDir string) (err 
 	e.POST("/v2/log_level", v2.UpdateLogLevelV2)
 	e.GET("/v2/jobs", v2.JobListV2)
 	e.GET("/v2/job/detail", v2.GetJobDetailV2)
+	e.POST("/v2/job/migration", v2.CreateOrUpdateMigrationJobV2)
+	e.GET("/v2/nodes", v2.NodeListV2)
 
 	if uiDir != "" {
 		logger.Info("found ui_dir", "dir", uiDir)

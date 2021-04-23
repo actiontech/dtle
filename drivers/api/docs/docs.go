@@ -49,6 +49,36 @@ var doc = `{
                 }
             }
         },
+        "/v2/job/migration": {
+            "post": {
+                "description": "create or update migration job.",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "job"
+                ],
+                "parameters": [
+                    {
+                        "description": "migration job config",
+                        "name": "migration_job_config",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.CreateOrUpdateMysqlToMysqlJobParamV2"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.CreateOrUpdateMysqlToMysqlJobRespV2"
+                        }
+                    }
+                }
+            }
+        },
         "/v2/jobs": {
             "get": {
                 "description": "get job list.",
@@ -94,7 +124,8 @@ var doc = `{
                         "type": "string",
                         "description": "dtle log level",
                         "name": "dtle_log_level",
-                        "in": "formData"
+                        "in": "formData",
+                        "required": true
                     }
                 ],
                 "responses": {
@@ -106,9 +137,82 @@ var doc = `{
                     }
                 }
             }
+        },
+        "/v2/nodes": {
+            "get": {
+                "description": "get node list.",
+                "tags": [
+                    "node"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.NodeListRespV2"
+                        }
+                    }
+                }
+            }
         }
     },
     "definitions": {
+        "models.CreateOrUpdateMysqlToMysqlJobParamV2": {
+            "type": "object",
+            "required": [
+                "job_name"
+            ],
+            "properties": {
+                "dest_task": {
+                    "$ref": "#/definitions/models.MysqlDestTaskConfig"
+                },
+                "failover": {
+                    "description": "TODO:to find out the usage of it",
+                    "type": "boolean"
+                },
+                "job_id": {
+                    "type": "string"
+                },
+                "job_name": {
+                    "type": "string"
+                },
+                "src_task": {
+                    "$ref": "#/definitions/models.MysqlSrcTaskConfig"
+                }
+            }
+        },
+        "models.CreateOrUpdateMysqlToMysqlJobRespV2": {
+            "type": "object",
+            "required": [
+                "job_name"
+            ],
+            "properties": {
+                "dest_task": {
+                    "$ref": "#/definitions/models.MysqlDestTaskConfig"
+                },
+                "eval_create_index": {
+                    "type": "integer"
+                },
+                "failover": {
+                    "description": "TODO:to find out the usage of it",
+                    "type": "boolean"
+                },
+                "job_id": {
+                    "type": "string"
+                },
+                "job_modify_index": {
+                    "type": "integer"
+                },
+                "job_name": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "src_task": {
+                    "$ref": "#/definitions/models.MysqlSrcTaskConfig"
+                }
+            }
+        },
         "models.JobDetailRespV2": {
             "type": "object",
             "properties": {
@@ -177,6 +281,7 @@ var doc = `{
                     "type": "string"
                 },
                 "mysql_password": {
+                    "description": "TODO: encrypt",
                     "type": "string"
                 },
                 "mysql_port": {
@@ -318,6 +423,43 @@ var doc = `{
                 },
                 "where": {
                     "type": "string"
+                }
+            }
+        },
+        "models.NodeListItemV2": {
+            "type": "object",
+            "properties": {
+                "datacenter": {
+                    "type": "string"
+                },
+                "node_address": {
+                    "type": "string"
+                },
+                "node_id": {
+                    "type": "string"
+                },
+                "node_name": {
+                    "type": "string"
+                },
+                "node_status": {
+                    "type": "string"
+                },
+                "node_status_description": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.NodeListRespV2": {
+            "type": "object",
+            "properties": {
+                "message": {
+                    "type": "string"
+                },
+                "nodes": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.NodeListItemV2"
+                    }
                 }
             }
         },
