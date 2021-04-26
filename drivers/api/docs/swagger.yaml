@@ -97,6 +97,15 @@ definitions:
       message:
         type: string
     type: object
+  models.ListDatabaseSchemasRespV2:
+    properties:
+      message:
+        type: string
+      schemas:
+        items:
+          $ref: '#/definitions/models.SchemaItem'
+        type: array
+    type: object
   models.MysqlConnectionConfig:
     properties:
       mysql_host:
@@ -249,6 +258,15 @@ definitions:
       validated:
         type: boolean
     type: object
+  models.SchemaItem:
+    properties:
+      schema_name:
+        type: string
+      tables:
+        items:
+          $ref: '#/definitions/models.TableItem'
+        type: array
+    type: object
   models.ServerIDValidation:
     properties:
       error:
@@ -256,6 +274,11 @@ definitions:
         type: string
       validated:
         type: boolean
+    type: object
+  models.TableItem:
+    properties:
+      table_name:
+        type: string
     type: object
   models.TaskEvent:
     properties:
@@ -324,6 +347,41 @@ definitions:
 info:
   contact: {}
 paths:
+  /v2/database/schemas:
+    get:
+      description: list schemas of datasource.
+      parameters:
+      - description: mysql host
+        in: query
+        name: mysql_host
+        required: true
+        type: string
+      - description: mysql port
+        in: query
+        name: mysql_port
+        required: true
+        type: string
+      - description: mysql user
+        in: query
+        name: mysql_user
+        required: true
+        type: string
+      - description: mysql password
+        in: query
+        name: mysql_password
+        required: true
+        type: string
+      - description: mysql character set
+        in: query
+        name: mysql_character_set
+        type: string
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.ListDatabaseSchemasRespV2'
+      tags:
+      - datasource
   /v2/job/detail:
     get:
       description: get job detail.

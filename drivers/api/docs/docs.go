@@ -24,6 +24,58 @@ var doc = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
+        "/v2/database/schemas": {
+            "get": {
+                "description": "list schemas of datasource.",
+                "tags": [
+                    "datasource"
+                ],
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "mysql host",
+                        "name": "mysql_host",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "mysql port",
+                        "name": "mysql_port",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "mysql user",
+                        "name": "mysql_user",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "mysql password",
+                        "name": "mysql_password",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "mysql character set",
+                        "name": "mysql_character_set",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.ListDatabaseSchemasRespV2"
+                        }
+                    }
+                }
+            }
+        },
         "/v2/job/detail": {
             "get": {
                 "description": "get job detail.",
@@ -333,6 +385,20 @@ var doc = `{
                 }
             }
         },
+        "models.ListDatabaseSchemasRespV2": {
+            "type": "object",
+            "properties": {
+                "message": {
+                    "type": "string"
+                },
+                "schemas": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.SchemaItem"
+                    }
+                }
+            }
+        },
         "models.MysqlConnectionConfig": {
             "type": "object",
             "required": [
@@ -563,6 +629,20 @@ var doc = `{
                 }
             }
         },
+        "models.SchemaItem": {
+            "type": "object",
+            "properties": {
+                "schema_name": {
+                    "type": "string"
+                },
+                "tables": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.TableItem"
+                    }
+                }
+            }
+        },
         "models.ServerIDValidation": {
             "type": "object",
             "properties": {
@@ -572,6 +652,14 @@ var doc = `{
                 },
                 "validated": {
                     "type": "boolean"
+                }
+            }
+        },
+        "models.TableItem": {
+            "type": "object",
+            "properties": {
+                "table_name": {
+                    "type": "string"
                 }
             }
         },
