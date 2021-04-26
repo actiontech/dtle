@@ -27,7 +27,7 @@ type JobDetailReqV2 struct {
 type JobDetailRespV2 struct {
 	JobId          string              `json:"job_id"`
 	JobName        string              `json:"job_name"`
-	Failover       bool                `json:"failover"` //TODO:to find out the usage of it
+	Failover       bool                `json:"failover"`
 	SrcTaskDetail  MysqlSrcTaskDetail  `json:"src_task_detail"`
 	DestTaskDetail MysqlDestTaskDetail `json:"dest_task_detail"`
 	BaseResp

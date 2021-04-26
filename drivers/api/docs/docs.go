@@ -335,7 +335,6 @@ var doc = `{
                     "$ref": "#/definitions/models.MysqlDestTaskDetail"
                 },
                 "failover": {
-                    "description": "TODO:to find out the usage of it",
                     "type": "boolean"
                 },
                 "job_id": {
