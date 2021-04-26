@@ -101,7 +101,7 @@ type MysqlConnectionConfig struct {
 type CreateOrUpdateMysqlToMysqlJobParamV2 struct {
 	JobName  string              `json:"job_name" validate:"required"`
 	JobId    *string             `json:"job_id"`
-	Failover bool                `json:"failover"` //TODO:to find out the usage of it
+	Failover bool                `json:"failover"` 
 	SrcTask  MysqlSrcTaskConfig  `json:"src_task"`
 	DestTask MysqlDestTaskConfig `json:"dest_task"`
 }
