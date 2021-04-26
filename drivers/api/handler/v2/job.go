@@ -106,7 +106,8 @@ func CreateOrUpdateMigrationJobV2(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("bind req param failed, error: %v", err)))
 	}
 
-	nomadJob, err := convertMysqlToMysqlJobToNomadJobReq(jobParam)
+	jobId := g.PtrToString(jobParam.JobId, jobParam.JobName)
+	nomadJob, err := convertMysqlToMysqlJobToNomadJob(jobId, jobParam.JobName, &jobParam.SrcTask, &jobParam.DestTask)
 	if nil != err {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("convert job param to nomad job request failed, error: %v", err)))
 	}
@@ -143,7 +144,7 @@ func CreateOrUpdateMigrationJobV2(c echo.Context) error {
 	})
 }
 
-func convertMysqlToMysqlJobToNomadJobReq(jobParam *models.CreateOrUpdateMysqlToMysqlJobParamV2) (*nomadApi.Job, error) {
+func convertMysqlToMysqlJobToNomadJob(apiJobId, apiJobName string, apiSrcTask *models.MysqlSrcTaskConfig, apiDestTask *models.MysqlDestTaskConfig) (*nomadApi.Job, error) {
 	buildTaskGroupItem := func(dtleTaskconfig map[string]interface{}, taskName, nodeId string) (*nomadApi.TaskGroup, error) {
 		task := nomadApi.NewTask(taskName, g.PluginName)
 		task.Config = dtleTaskconfig
@@ -158,26 +159,26 @@ func convertMysqlToMysqlJobToNomadJobReq(jobParam *models.CreateOrUpdateMysqlToM
 		return taskGroup, nil
 	}
 
-	srcTask, err := buildTaskGroupItem(buildMysqlSrcTaskConfigMap(jobParam.SrcTask), jobParam.SrcTask.TaskName, jobParam.SrcTask.NodeId)
+	srcTask, err := buildTaskGroupItem(buildMysqlSrcTaskConfigMap(apiSrcTask), apiSrcTask.TaskName, apiSrcTask.NodeId)
 	if nil != err {
 		return nil, fmt.Errorf("build src task failed: %v", err)
 	}
 
-	destTask, err := buildTaskGroupItem(buildMysqlDestTaskConfigMap(jobParam.DestTask), jobParam.DestTask.TaskName, jobParam.DestTask.NodeId)
+	destTask, err := buildTaskGroupItem(buildMysqlDestTaskConfigMap(apiDestTask), apiDestTask.TaskName, apiDestTask.NodeId)
 	if nil != err {
 		return nil, fmt.Errorf("build dest task failed: %v", err)
 	}
 
-	jobId := addJobTypeToJobId(g.PtrToString(jobParam.JobId, jobParam.JobName), DtleJobTypeMigration)
+	jobId := addJobTypeToJobId(apiJobId, DtleJobTypeMigration)
 	return &nomadApi.Job{
 		ID:          &jobId,
-		Name:        &jobParam.JobName,
+		Name:        &apiJobName,
 		Datacenters: []string{"dc1"},
 		TaskGroups:  []*nomadApi.TaskGroup{srcTask, destTask},
 	}, nil
 }
 
-func buildMysqlDestTaskConfigMap(config models.MysqlDestTaskConfig) map[string]interface{} {
+func buildMysqlDestTaskConfigMap(config *models.MysqlDestTaskConfig) map[string]interface{} {
 	taskConfigInNomadFormat := make(map[string]interface{})
 
 	addNotRequiredParamToMap(taskConfigInNomadFormat, config.ParallelWorkers, "ParallelWorkers")
@@ -186,7 +187,7 @@ func buildMysqlDestTaskConfigMap(config models.MysqlDestTaskConfig) map[string]i
 	return taskConfigInNomadFormat
 }
 
-func buildMysqlSrcTaskConfigMap(config models.MysqlSrcTaskConfig) map[string]interface{} {
+func buildMysqlSrcTaskConfigMap(config *models.MysqlSrcTaskConfig) map[string]interface{} {
 	taskConfigInNomadFormat := make(map[string]interface{})
 
 	addNotRequiredParamToMap(taskConfigInNomadFormat, config.DropTableIfExists, "DropTableIfExists")

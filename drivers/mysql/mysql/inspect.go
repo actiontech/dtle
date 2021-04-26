@@ -42,16 +42,24 @@ func (i *Inspector) Close() {
 		i.db.Close()
 	}
 }
-func (i *Inspector) InitDBConnections() (err error) {
+
+func (i *Inspector) InitDB() (err error) {
 	inspectorUri := i.mysqlContext.ConnectionConfig.GetDBUri()
-	i.logger.Debug("CreateDB", "inspectorUri", inspectorUri)
 	if i.db, err = usql.CreateDB(inspectorUri); err != nil {
 		return err
 	}
+	return nil
+}
 
-	i.logger.Debug("validateGrants", "SkipPrivilegeCheck", i.mysqlContext.SkipPrivilegeCheck)
-	if err := i.validateGrants(); err != nil {
-		i.logger.Error("Unexpected error on validateGrants", "err", err)
+func (i *Inspector) InitDBConnections() (err error) {
+	i.logger.Debug("CreateDB", "inspectorUri", i.mysqlContext.ConnectionConfig.GetDBUri())
+	if err := i.InitDB(); nil != err {
+		return err
+	}
+
+	i.logger.Debug("ValidateGrants", "SkipPrivilegeCheck", i.mysqlContext.SkipPrivilegeCheck)
+	if err := i.ValidateGrants(); err != nil {
+		i.logger.Error("Unexpected error on ValidateGrants", "err", err)
 		return err
 	}
 	/*for _, doDb := range i.mysqlContext.ReplicateDoDb {
@@ -64,11 +72,11 @@ func (i *Inspector) InitDBConnections() (err error) {
 		}
 	}*/
 	i.logger.Debug("validateGTIDMode")
-	if err = i.validateGTIDMode(); err != nil {
+	if err = i.ValidateGTIDMode(); err != nil {
 		return err
 	}
-	i.logger.Debug("validateBinlogs", "inspectorUri", inspectorUri)
-	if err := i.validateBinlogs(); err != nil {
+	i.logger.Debug("validateBinlogs", "inspectorUri", i.mysqlContext.ConnectionConfig.GetDBUri())
+	if err := i.ValidateBinlogs(); err != nil {
 		return err
 	}
 	i.logger.Info("Initiated", "on",
@@ -181,9 +189,9 @@ func (i *Inspector) InspectTableColumnsAndUniqueKeys(databaseName, tableName str
 	return columns, uniqueKeys, nil
 }
 
-// validateGrants verifies the user by which we're executing has necessary grants
+// ValidateGrants verifies the user by which we're executing has necessary grants
 // to do its thang.
-func (i *Inspector) validateGrants() error {
+func (i *Inspector) ValidateGrants() error {
 	if i.mysqlContext.SkipPrivilegeCheck {
 		i.logger.Debug("skipping priv check")
 		return nil
@@ -239,7 +247,7 @@ func (i *Inspector) validateGrants() error {
 		" Needed: SUPER|REPLICATION CLIENT, REPLICATION SLAVE and ALL on *.*")
 }
 
-func (i *Inspector) validateGTIDMode() error {
+func (i *Inspector) ValidateGTIDMode() error {
 	query := `SELECT @@GTID_MODE`
 	var gtidMode string
 	if err := i.db.QueryRow(query).Scan(&gtidMode); err != nil {
@@ -251,8 +259,8 @@ func (i *Inspector) validateGTIDMode() error {
 	return nil
 }
 
-// validateBinlogs checks that binary log configuration is good to go
-func (i *Inspector) validateBinlogs() error {
+// ValidateBinlogs checks that binary log configuration is good to go
+func (i *Inspector) ValidateBinlogs() error {
 	query := `select @@log_bin, @@binlog_format`
 	var hasBinaryLogs bool
 	var binlogFormat string
