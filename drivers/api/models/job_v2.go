@@ -64,7 +64,7 @@ type MysqlSrcTaskConfig struct {
 	GroupMaxSize          *int                    `json:"group_max_size"`
 	ChunkSize             *int64                  `json:"chunk_size"`
 	DropTableIfExists     *bool                   `json:"drop_table_if_exists"`
-	SkipCreateDbTable     *bool                   `json:"skip_create_dbTable"`
+	SkipCreateDbTable     *bool                   `json:"skip_create_db_table"`
 	ReplChanBufferSize    *int64                  `json:"repl_chan_buffer_size"`
 	ReplicateDoDb         []MysqlDataSourceConfig `json:"replicate_do_db"`
 	ReplicateIgnoreDb     []MysqlDataSourceConfig `json:"replicate_ignore_db"`

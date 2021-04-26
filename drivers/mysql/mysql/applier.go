@@ -558,9 +558,16 @@ func (a *Applier) publishProgress() {
 	}
 }
 
-func (a *Applier) initDBConnections() (err error) {
+func (a *Applier) InitDB() (err error) {
 	applierUri := a.mysqlContext.ConnectionConfig.GetDBUri()
 	if a.db, err = sql.CreateDB(applierUri); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (a *Applier) initDBConnections() (err error) {
+	if err := a.InitDB(); nil != err {
 		return err
 	}
 	a.db.SetMaxOpenConns(10 + a.mysqlContext.ParallelWorkers)
@@ -569,15 +576,15 @@ func (a *Applier) initDBConnections() (err error) {
 		return err
 	}
 
-	if err := a.validateConnection(a.db); err != nil {
+	if err := a.ValidateConnection(); err != nil {
 		return err
 	}
 	a.logger.Debug("beging connetion mysql 5 validate  grants")
-	if err := a.validateGrants(); err != nil {
-		a.logger.Error("Unexpected error on validateGrants", "err", err)
+	if err := a.ValidateGrants(); err != nil {
+		a.logger.Error("Unexpected error on ValidateGrants", "err", err)
 		return err
 	}
-	a.logger.Debug("after validateGrants")
+	a.logger.Debug("after ValidateGrants")
 
 	if timezone, err := base.ValidateAndReadTimeZone(a.db); err != nil {
 		return err
@@ -589,10 +596,10 @@ func (a *Applier) initDBConnections() (err error) {
 	return nil
 }
 
-// validateConnection issues a simple can-connect to MySQL
-func (a *Applier) validateConnection(db *gosql.DB) error {
+// ValidateConnection issues a simple can-connect to MySQL
+func (a *Applier) ValidateConnection() error {
 	query := `select @@version`
-	if err := db.QueryRow(query).Scan(&a.MySQLVersion); err != nil {
+	if err := a.db.QueryRow(query).Scan(&a.MySQLVersion); err != nil {
 		return err
 	}
 	// Match the version string (from SELECT VERSION()).
@@ -604,9 +611,9 @@ func (a *Applier) validateConnection(db *gosql.DB) error {
 	return nil
 }
 
-// validateGrants verifies the user by which we're executing has necessary grants
+// ValidateGrants verifies the user by which we're executing has necessary grants
 // to do its thang.
-func (a *Applier) validateGrants() error {
+func (a *Applier) ValidateGrants() error {
 	if a.mysqlContext.SkipPrivilegeCheck {
 		a.logger.Debug("skipping priv check")
 		return nil
@@ -643,6 +650,15 @@ func (a *Applier) validateGrants() error {
 		a.logger.Info("User has ALL privileges")
 		return nil
 	}
+
+	if a.mysqlContext.ExpandSyntaxSupport {
+		if _, err := a.db.Query(`use mysql`); err != nil {
+			msg := fmt.Sprintf(`"mysql" schema is expected to be access when ExpandSyntaxSupport=true`)
+			a.logger.Info(msg, "error", err)
+			return fmt.Errorf("%v. error: %v", msg, err)
+		}
+	}
+
 	if foundSuper {
 		a.logger.Info("User has SUPER privileges")
 		return nil
@@ -652,8 +668,7 @@ func (a *Applier) validateGrants() error {
 		return nil
 	}
 	a.logger.Debug("Privileges", "Super", foundSuper, "All", foundAll)
-	//return fmt.Error("user has insufficient privileges for applier. Needed: SUPER|ALL on *.*")
-	return nil
+	return fmt.Errorf("user has insufficient privileges for applier. Needed: SUPER|ALL on *.*")
 }
 
 func (a *Applier) ApplyEventQueries(db *gosql.DB, entry *common.DumpEntry) error {

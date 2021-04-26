@@ -50,6 +50,7 @@ func SetupApiServer(logger hclog.Logger, apiAddr, nomadAddr, uiDir string) (err 
 	e.GET("/v2/job/detail", v2.GetJobDetailV2)
 	e.POST("/v2/job/migration", v2.CreateOrUpdateMigrationJobV2)
 	e.GET("/v2/nodes", v2.NodeListV2)
+	e.POST("/v2/validation/job", v2.ValidateJobV2)
 
 	if uiDir != "" {
 		logger.Info("found ui_dir", "dir", uiDir)

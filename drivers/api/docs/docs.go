@@ -124,8 +124,7 @@ var doc = `{
                         "type": "string",
                         "description": "dtle log level",
                         "name": "dtle_log_level",
-                        "in": "formData",
-                        "required": true
+                        "in": "formData"
                     }
                 ],
                 "responses": {
@@ -153,9 +152,63 @@ var doc = `{
                     }
                 }
             }
+        },
+        "/v2/validation/job": {
+            "post": {
+                "description": "validate job config.",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "validation"
+                ],
+                "parameters": [
+                    {
+                        "description": "validate job config",
+                        "name": "job_config",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.ValidateJobReqV2"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.ValidateJobRespV2"
+                        }
+                    }
+                }
+            }
         }
     },
     "definitions": {
+        "models.BinlogValidation": {
+            "type": "object",
+            "properties": {
+                "error": {
+                    "description": "Error is a string version of any error that may have occured",
+                    "type": "string"
+                },
+                "validated": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "models.ConnectionValidation": {
+            "type": "object",
+            "properties": {
+                "error": {
+                    "description": "Error is a string version of any error that may have occured",
+                    "type": "string"
+                },
+                "validated": {
+                    "type": "boolean"
+                }
+            }
+        },
         "models.CreateOrUpdateMysqlToMysqlJobParamV2": {
             "type": "object",
             "required": [
@@ -210,6 +263,18 @@ var doc = `{
                 },
                 "src_task": {
                     "$ref": "#/definitions/models.MysqlSrcTaskConfig"
+                }
+            }
+        },
+        "models.GtidModeValidation": {
+            "type": "object",
+            "properties": {
+                "error": {
+                    "description": "Error is a string version of any error that may have occured",
+                    "type": "string"
+                },
+                "validated": {
+                    "type": "boolean"
                 }
             }
         },
@@ -384,7 +449,7 @@ var doc = `{
                         "$ref": "#/definitions/models.MysqlDataSourceConfig"
                     }
                 },
-                "skip_create_dbTable": {
+                "skip_create_db_table": {
                     "type": "boolean"
                 },
                 "task_name": {
@@ -426,6 +491,29 @@ var doc = `{
                 }
             }
         },
+        "models.MysqlTaskValidationReport": {
+            "type": "object",
+            "properties": {
+                "binlog_validation": {
+                    "$ref": "#/definitions/models.BinlogValidation"
+                },
+                "connection_validation": {
+                    "$ref": "#/definitions/models.ConnectionValidation"
+                },
+                "gtid_mode_validation": {
+                    "$ref": "#/definitions/models.GtidModeValidation"
+                },
+                "privileges_validation": {
+                    "$ref": "#/definitions/models.PrivilegesValidation"
+                },
+                "server_id_validation": {
+                    "$ref": "#/definitions/models.ServerIDValidation"
+                },
+                "task_name": {
+                    "type": "string"
+                }
+            }
+        },
         "models.NodeListItemV2": {
             "type": "object",
             "properties": {
@@ -463,6 +551,30 @@ var doc = `{
                 }
             }
         },
+        "models.PrivilegesValidation": {
+            "type": "object",
+            "properties": {
+                "error": {
+                    "description": "Error is a string version of any error that may have occured",
+                    "type": "string"
+                },
+                "validated": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "models.ServerIDValidation": {
+            "type": "object",
+            "properties": {
+                "error": {
+                    "description": "Error is a string version of any error that may have occured",
+                    "type": "string"
+                },
+                "validated": {
+                    "type": "boolean"
+                }
+            }
+        },
         "models.TaskEvent": {
             "type": "object",
             "properties": {
@@ -496,6 +608,53 @@ var doc = `{
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/models.TaskEvent"
+                    }
+                }
+            }
+        },
+        "models.ValidateJobReqV2": {
+            "type": "object",
+            "required": [
+                "dest_task",
+                "job_name",
+                "src_task"
+            ],
+            "properties": {
+                "dest_task": {
+                    "$ref": "#/definitions/models.MysqlDestTaskConfig"
+                },
+                "job_id": {
+                    "type": "string"
+                },
+                "job_name": {
+                    "type": "string"
+                },
+                "src_task": {
+                    "$ref": "#/definitions/models.MysqlSrcTaskConfig"
+                }
+            }
+        },
+        "models.ValidateJobRespV2": {
+            "type": "object",
+            "properties": {
+                "driver_config_validated": {
+                    "description": "DriverConfigValidated indicates whether the agent validated the driver",
+                    "type": "boolean"
+                },
+                "job_validation_error": {
+                    "type": "string"
+                },
+                "job_validation_warning": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "mysql_task_validation_report": {
+                    "description": "config",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.MysqlTaskValidationReport"
                     }
                 }
             }
