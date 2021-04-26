@@ -95,7 +95,7 @@ type MysqlConnectionConfig struct {
 	MysqlHost     string `json:"mysql_host" validate:"required"`
 	MysqlPort     int    `json:"mysql_port" validate:"required"`
 	MysqlUser     string `json:"mysql_user" validate:"required"`
-	MysqlPassword string `json:"mysql_password" validate:"required"` //TODO: encrypt
+	MysqlPassword string `json:"mysql_password" validate:"required"`
 }
 
 type CreateOrUpdateMysqlToMysqlJobParamV2 struct {

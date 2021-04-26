@@ -106,6 +106,18 @@ func CreateOrUpdateMigrationJobV2(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("bind req param failed, error: %v", err)))
 	}
 
+	realPwd, err := handler.DecryptMysqlPassword(jobParam.SrcTask.MysqlConnectionConfig.MysqlPassword)
+	if nil != err {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("decrypt src mysql password failed: %v", err)))
+	}
+	jobParam.SrcTask.MysqlConnectionConfig.MysqlPassword = realPwd
+
+	realPwd, err = handler.DecryptMysqlPassword(jobParam.DestTask.MysqlConnectionConfig.MysqlPassword)
+	if nil != err {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("decrypt dest mysql password failed: %v", err)))
+	}
+	jobParam.DestTask.MysqlConnectionConfig.MysqlPassword = realPwd
+
 	jobId := g.PtrToString(jobParam.JobId, jobParam.JobName)
 	nomadJob, err := convertMysqlToMysqlJobToNomadJob(jobId, jobParam.JobName, &jobParam.SrcTask, &jobParam.DestTask)
 	if nil != err {
