@@ -233,6 +233,15 @@ func (i *Inspector) ValidateGrants() error {
 		i.logger.Info("User has ALL privileges")
 		return nil
 	}
+
+	if i.mysqlContext.ExpandSyntaxSupport {
+		if _, err := i.db.Query(`use mysql`); err != nil {
+			msg := fmt.Sprintf(`"mysql" schema is expected to be access when ExpandSyntaxSupport=true`)
+			i.logger.Info(msg, "error", err)
+			return fmt.Errorf("%v. error: %v", msg, err)
+		}
+	}
+
 	if foundSuper && foundReplicationSlave && foundDBAll {
 		i.logger.Info("User has SUPER, REPLICATION SLAVE privileges, and has SELECT privileges")
 		return nil
@@ -282,6 +291,29 @@ func (i *Inspector) ValidateBinlogs() error {
 
 	i.logger.Info("Binary logs validated", "mysql",
 		hclog.Fmt("%v:%v", i.mysqlContext.ConnectionConfig.Host, i.mysqlContext.ConnectionConfig.Port))
+	return nil
+}
+
+func (i *Inspector) ValidateConnection() error {
+	query := `select @@global.version`
+	var mysqlVersion string
+	if err := i.db.QueryRow(query).Scan(&mysqlVersion); err != nil {
+		return err
+	} else {
+		return nil
+	}
+}
+
+func (i *Inspector) ValidateServerId() error {
+	query := `SELECT @@SERVER_ID`
+	var serverID string
+	if err := i.db.QueryRow(query).Scan(&serverID); err != nil {
+		return err
+	}
+
+	if serverID == "0" {
+		return fmt.Errorf("master - server_id is not set")
+	}
 	return nil
 }
 

@@ -650,6 +650,15 @@ func (a *Applier) ValidateGrants() error {
 		a.logger.Info("User has ALL privileges")
 		return nil
 	}
+
+	if a.mysqlContext.ExpandSyntaxSupport {
+		if _, err := a.db.Query(`use mysql`); err != nil {
+			msg := fmt.Sprintf(`"mysql" schema is expected to be access when ExpandSyntaxSupport=true`)
+			a.logger.Info(msg, "error", err)
+			return fmt.Errorf("%v. error: %v", msg, err)
+		}
+	}
+
 	if foundSuper {
 		a.logger.Info("User has SUPER privileges")
 		return nil
@@ -659,8 +668,7 @@ func (a *Applier) ValidateGrants() error {
 		return nil
 	}
 	a.logger.Debug("Privileges", "Super", foundSuper, "All", foundAll)
-	//return fmt.Error("user has insufficient privileges for applier. Needed: SUPER|ALL on *.*")
-	return nil
+	return fmt.Errorf("user has insufficient privileges for applier. Needed: SUPER|ALL on *.*")
 }
 
 func (a *Applier) ApplyEventQueries(db *gosql.DB, entry *common.DumpEntry) error {
