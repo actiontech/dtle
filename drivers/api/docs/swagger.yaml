@@ -1,4 +1,20 @@
 definitions:
+  models.BinlogValidation:
+    properties:
+      error:
+        description: Error is a string version of any error that may have occured
+        type: string
+      validated:
+        type: boolean
+    type: object
+  models.ConnectionValidation:
+    properties:
+      error:
+        description: Error is a string version of any error that may have occured
+        type: string
+      validated:
+        type: boolean
+    type: object
   models.CreateOrUpdateMysqlToMysqlJobParamV2:
     properties:
       dest_task:
@@ -36,6 +52,14 @@ definitions:
         $ref: '#/definitions/models.MysqlSrcTaskConfig'
     required:
     - job_name
+    type: object
+  models.GtidModeValidation:
+    properties:
+      error:
+        description: Error is a string version of any error that may have occured
+        type: string
+      validated:
+        type: boolean
     type: object
   models.JobDetailRespV2:
     properties:
@@ -148,7 +172,7 @@ definitions:
         items:
           $ref: '#/definitions/models.MysqlDataSourceConfig'
         type: array
-      skip_create_dbTable:
+      skip_create_db_table:
         type: boolean
       task_name:
         type: string
@@ -178,6 +202,21 @@ definitions:
     required:
     - table_name
     type: object
+  models.MysqlTaskValidationReport:
+    properties:
+      binlog_validation:
+        $ref: '#/definitions/models.BinlogValidation'
+      connection_validation:
+        $ref: '#/definitions/models.ConnectionValidation'
+      gtid_mode_validation:
+        $ref: '#/definitions/models.GtidModeValidation'
+      privileges_validation:
+        $ref: '#/definitions/models.PrivilegesValidation'
+      server_id_validation:
+        $ref: '#/definitions/models.ServerIDValidation'
+      task_name:
+        type: string
+    type: object
   models.NodeListItemV2:
     properties:
       datacenter:
@@ -202,6 +241,22 @@ definitions:
           $ref: '#/definitions/models.NodeListItemV2'
         type: array
     type: object
+  models.PrivilegesValidation:
+    properties:
+      error:
+        description: Error is a string version of any error that may have occured
+        type: string
+      validated:
+        type: boolean
+    type: object
+  models.ServerIDValidation:
+    properties:
+      error:
+        description: Error is a string version of any error that may have occured
+        type: string
+      validated:
+        type: boolean
+    type: object
   models.TaskEvent:
     properties:
       event_type:
@@ -224,6 +279,39 @@ definitions:
       task_events:
         items:
           $ref: '#/definitions/models.TaskEvent'
+        type: array
+    type: object
+  models.ValidateJobReqV2:
+    properties:
+      dest_task:
+        $ref: '#/definitions/models.MysqlDestTaskConfig'
+      job_id:
+        type: string
+      job_name:
+        type: string
+      src_task:
+        $ref: '#/definitions/models.MysqlSrcTaskConfig'
+    required:
+    - dest_task
+    - job_name
+    - src_task
+    type: object
+  models.ValidateJobRespV2:
+    properties:
+      driver_config_validated:
+        description: DriverConfigValidated indicates whether the agent validated the
+          driver
+        type: boolean
+      job_validation_error:
+        type: string
+      job_validation_warning:
+        type: string
+      message:
+        type: string
+      mysql_task_validation_report:
+        description: config
+        items:
+          $ref: '#/definitions/models.MysqlTaskValidationReport'
         type: array
     type: object
   v2.UpdataLogLevelRespV2:
@@ -301,7 +389,6 @@ paths:
         - ERROR
         in: formData
         name: dtle_log_level
-        required: true
         type: string
       responses:
         "200":
@@ -320,4 +407,23 @@ paths:
             $ref: '#/definitions/models.NodeListRespV2'
       tags:
       - node
+  /v2/validation/job:
+    post:
+      consumes:
+      - application/json
+      description: validate job config.
+      parameters:
+      - description: validate job config
+        in: body
+        name: job_config
+        required: true
+        schema:
+          $ref: '#/definitions/models.ValidateJobReqV2'
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.ValidateJobRespV2'
+      tags:
+      - validation
 swagger: "2.0"
