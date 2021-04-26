@@ -271,7 +271,6 @@ var doc = `{
                     "$ref": "#/definitions/models.MysqlDestTaskConfig"
                 },
                 "failover": {
-                    "description": "TODO:to find out the usage of it",
                     "type": "boolean"
                 },
                 "job_id": {
@@ -298,7 +297,6 @@ var doc = `{
                     "type": "integer"
                 },
                 "failover": {
-                    "description": "TODO:to find out the usage of it",
                     "type": "boolean"
                 },
                 "job_id": {
@@ -412,7 +410,6 @@ var doc = `{
                     "type": "string"
                 },
                 "mysql_password": {
-                    "description": "TODO: encrypt",
                     "type": "string"
                 },
                 "mysql_port": {
@@ -710,6 +707,9 @@ var doc = `{
             "properties": {
                 "dest_task": {
                     "$ref": "#/definitions/models.MysqlDestTaskConfig"
+                },
+                "failover": {
+                    "type": "boolean"
                 },
                 "job_id": {
                     "type": "string"
