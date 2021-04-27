@@ -31,6 +31,10 @@ func JobListV2(c echo.Context) error {
 	if err := c.Bind(reqParam); nil != err {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("bind req param failed, error: %v", err)))
 	}
+	if err := c.Validate(reqParam); nil != err {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invalid params:\n%v", err)))
+	}
+
 	jobs := []models.JobListItemV2{}
 	url := handler.BuildUrl("/v1/jobs")
 	resp, err := http.Get(url)
@@ -104,6 +108,9 @@ func CreateOrUpdateMigrationJobV2(c echo.Context) error {
 	jobParam := new(models.CreateOrUpdateMysqlToMysqlJobParamV2)
 	if err := c.Bind(jobParam); nil != err {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("bind req param failed, error: %v", err)))
+	}
+	if err := c.Validate(jobParam); nil != err {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invalid params:\n%v", err)))
 	}
 
 	realPwd, err := handler.DecryptMysqlPassword(jobParam.SrcTask.MysqlConnectionConfig.MysqlPassword)
@@ -278,6 +285,9 @@ func GetJobDetailV2(c echo.Context) error {
 	reqParam := new(models.JobDetailReqV2)
 	if err := c.Bind(reqParam); nil != err {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("bind req param failed, error: %v", err)))
+	}
+	if err := c.Validate(reqParam); nil != err {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invalid params:\n%v", err)))
 	}
 
 	jobId := reqParam.JobId

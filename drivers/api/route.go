@@ -53,6 +53,8 @@ func SetupApiServer(logger hclog.Logger, apiAddr, nomadAddr, uiDir string) (err 
 	e.POST("/v2/validation/job", v2.ValidateJobV2)
 	e.GET("/v2/database/schemas", v2.ListDatabaseSchemasV2)
 
+	e.Validator = handler.NewValidator()
+
 	if uiDir != "" {
 		logger.Info("found ui_dir", "dir", uiDir)
 		e.Static("/", uiDir)

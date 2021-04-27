@@ -27,6 +27,9 @@ func ValidateJobV2(c echo.Context) error {
 	if err := c.Bind(jobConfig); nil != err {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("bind req param failed, error: %v", err)))
 	}
+	if err := c.Validate(jobConfig); nil != err {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invalid params:\n%v", err)))
+	}
 
 	reqJson, err := apiJobConfigToNomadJobJson(jobConfig)
 	if nil != err {
