@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/actiontech/dtle/drivers/api/handler"
+
 	"github.com/actiontech/dtle/drivers/mysql/mysql/mysqlconfig"
 	"github.com/actiontech/dtle/drivers/mysql/mysql/sql"
 	"github.com/mitchellh/mapstructure"
@@ -43,8 +45,13 @@ func ListDatabaseSchemasV2(c echo.Context) error {
 		mysqlConnectionConfig.Charset = "utf8"
 	}
 	if "" != mysqlConnectionConfig.Password {
-		//todo: encrypt
+		realPwd, err := handler.DecryptMysqlPassword(mysqlConnectionConfig.Password)
+		if nil != err {
+			return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("DecryptMysqlPassword failed: %v", err)))
+		}
+		mysqlConnectionConfig.Password = realPwd
 	}
+
 	uri := mysqlConnectionConfig.GetDBUri()
 	db, err := sql.CreateDB(uri)
 	if err != nil {

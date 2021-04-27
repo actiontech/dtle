@@ -55,7 +55,7 @@ func ValidateJobV2(c echo.Context) error {
 
 func apiJobConfigToNomadJobJson(apiJobConfig *models.ValidateJobReqV2) (resJson []byte, err error) {
 	jobId := g.PtrToString(apiJobConfig.JobId, apiJobConfig.JobName)
-	nomadJob, err := convertMysqlToMysqlJobToNomadJob(jobId, apiJobConfig.JobName, apiJobConfig.SrcTaskConfig, apiJobConfig.DestTaskConfig)
+	nomadJob, err := convertMysqlToMysqlJobToNomadJob(apiJobConfig.Failover, jobId, apiJobConfig.JobName, apiJobConfig.SrcTaskConfig, apiJobConfig.DestTaskConfig)
 	if nil != err {
 		return nil, fmt.Errorf("convert mysql-to-mysql job to nomad job struct faild: %v", err)
 	}
@@ -161,7 +161,6 @@ func validateTaskConfig(apiSrcTask *models.MysqlSrcTaskConfig, apiDestTask *mode
 		if err := destTaskInspector.ValidateGrants(); nil != err {
 			validationRes.ConnectionValidation.Error = err.Error()
 		}
-
 
 	endDestTaskValidation:
 		taskValidationRes = append(taskValidationRes, validationRes)

@@ -106,8 +106,20 @@ func CreateOrUpdateMigrationJobV2(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("bind req param failed, error: %v", err)))
 	}
 
+	realPwd, err := handler.DecryptMysqlPassword(jobParam.SrcTask.MysqlConnectionConfig.MysqlPassword)
+	if nil != err {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("decrypt src mysql password failed: %v", err)))
+	}
+	jobParam.SrcTask.MysqlConnectionConfig.MysqlPassword = realPwd
+
+	realPwd, err = handler.DecryptMysqlPassword(jobParam.DestTask.MysqlConnectionConfig.MysqlPassword)
+	if nil != err {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("decrypt dest mysql password failed: %v", err)))
+	}
+	jobParam.DestTask.MysqlConnectionConfig.MysqlPassword = realPwd
+
 	jobId := g.PtrToString(jobParam.JobId, jobParam.JobName)
-	nomadJob, err := convertMysqlToMysqlJobToNomadJob(jobId, jobParam.JobName, &jobParam.SrcTask, &jobParam.DestTask)
+	nomadJob, err := convertMysqlToMysqlJobToNomadJob(jobParam.Failover, jobId, jobParam.JobName, &jobParam.SrcTask, &jobParam.DestTask)
 	if nil != err {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("convert job param to nomad job request failed, error: %v", err)))
 	}
@@ -144,14 +156,20 @@ func CreateOrUpdateMigrationJobV2(c echo.Context) error {
 	})
 }
 
-func convertMysqlToMysqlJobToNomadJob(apiJobId, apiJobName string, apiSrcTask *models.MysqlSrcTaskConfig, apiDestTask *models.MysqlDestTaskConfig) (*nomadApi.Job, error) {
+func convertMysqlToMysqlJobToNomadJob(failover bool, apiJobId, apiJobName string, apiSrcTask *models.MysqlSrcTaskConfig, apiDestTask *models.MysqlDestTaskConfig) (*nomadApi.Job, error) {
 	buildTaskGroupItem := func(dtleTaskconfig map[string]interface{}, taskName, nodeId string) (*nomadApi.TaskGroup, error) {
 		task := nomadApi.NewTask(taskName, g.PluginName)
 		task.Config = dtleTaskconfig
 		if nodeId != "" {
-			// https://www.nomadproject.io/docs/runtime/interpolation
-			newConstraint := nomadApi.NewConstraint("${node.unique.id}", "=", nodeId)
-			task.Constraints = append(task.Constraints, newConstraint)
+			if failover {
+				// https://www.nomadproject.io/docs/runtime/interpolation
+				newAff := nomadApi.NewAffinity("${node.unique.id}", "=", nodeId, 100)
+				task.Affinities = append(task.Affinities, newAff)
+			} else {
+				// https://www.nomadproject.io/docs/runtime/interpolation
+				newConstraint := nomadApi.NewConstraint("${node.unique.id}", "=", nodeId)
+				task.Constraints = append(task.Constraints, newConstraint)
+			}
 		}
 
 		taskGroup := nomadApi.NewTaskGroup(taskName, 1)

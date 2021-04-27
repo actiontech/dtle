@@ -20,7 +20,6 @@ definitions:
       dest_task:
         $ref: '#/definitions/models.MysqlDestTaskConfig'
       failover:
-        description: TODO:to find out the usage of it
         type: boolean
       job_id:
         type: string
@@ -38,7 +37,6 @@ definitions:
       eval_create_index:
         type: integer
       failover:
-        description: TODO:to find out the usage of it
         type: boolean
       job_id:
         type: string
@@ -66,7 +64,6 @@ definitions:
       dest_task_detail:
         $ref: '#/definitions/models.MysqlDestTaskDetail'
       failover:
-        description: TODO:to find out the usage of it
         type: boolean
       job_id:
         type: string
@@ -111,7 +108,6 @@ definitions:
       mysql_host:
         type: string
       mysql_password:
-        description: 'TODO: encrypt'
         type: string
       mysql_port:
         type: integer
@@ -308,6 +304,8 @@ definitions:
     properties:
       dest_task:
         $ref: '#/definitions/models.MysqlDestTaskConfig'
+      failover:
+        type: boolean
       job_id:
         type: string
       job_name:

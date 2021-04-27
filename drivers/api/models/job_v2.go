@@ -27,7 +27,7 @@ type JobDetailReqV2 struct {
 type JobDetailRespV2 struct {
 	JobId          string              `json:"job_id"`
 	JobName        string              `json:"job_name"`
-	Failover       bool                `json:"failover"` //TODO:to find out the usage of it
+	Failover       bool                `json:"failover"`
 	SrcTaskDetail  MysqlSrcTaskDetail  `json:"src_task_detail"`
 	DestTaskDetail MysqlDestTaskDetail `json:"dest_task_detail"`
 	BaseResp
@@ -95,13 +95,13 @@ type MysqlConnectionConfig struct {
 	MysqlHost     string `json:"mysql_host" validate:"required"`
 	MysqlPort     int    `json:"mysql_port" validate:"required"`
 	MysqlUser     string `json:"mysql_user" validate:"required"`
-	MysqlPassword string `json:"mysql_password" validate:"required"` //TODO: encrypt
+	MysqlPassword string `json:"mysql_password" validate:"required"`
 }
 
 type CreateOrUpdateMysqlToMysqlJobParamV2 struct {
 	JobName  string              `json:"job_name" validate:"required"`
 	JobId    *string             `json:"job_id"`
-	Failover bool                `json:"failover"` //TODO:to find out the usage of it
+	Failover bool                `json:"failover"` 
 	SrcTask  MysqlSrcTaskConfig  `json:"src_task"`
 	DestTask MysqlDestTaskConfig `json:"dest_task"`
 }

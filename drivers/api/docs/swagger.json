@@ -251,7 +251,6 @@
                     "$ref": "#/definitions/models.MysqlDestTaskConfig"
                 },
                 "failover": {
-                    "description": "TODO:to find out the usage of it",
                     "type": "boolean"
                 },
                 "job_id": {
@@ -278,7 +277,6 @@
                     "type": "integer"
                 },
                 "failover": {
-                    "description": "TODO:to find out the usage of it",
                     "type": "boolean"
                 },
                 "job_id": {
@@ -317,7 +315,6 @@
                     "$ref": "#/definitions/models.MysqlDestTaskDetail"
                 },
                 "failover": {
-                    "description": "TODO:to find out the usage of it",
                     "type": "boolean"
                 },
                 "job_id": {
@@ -392,7 +389,6 @@
                     "type": "string"
                 },
                 "mysql_password": {
-                    "description": "TODO: encrypt",
                     "type": "string"
                 },
                 "mysql_port": {
@@ -690,6 +686,9 @@
             "properties": {
                 "dest_task": {
                     "$ref": "#/definitions/models.MysqlDestTaskConfig"
+                },
+                "failover": {
+                    "type": "boolean"
                 },
                 "job_id": {
                     "type": "string"
