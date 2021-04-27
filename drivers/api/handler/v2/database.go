@@ -29,6 +29,10 @@ func ListDatabaseSchemasV2(c echo.Context) error {
 	if err := c.Bind(reqParam); nil != err {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("bind req param failed, error: %v", err)))
 	}
+	if err := c.Validate(reqParam); nil != err {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invalid params:\n%v", err)))
+	}
+
 	mysqlConnectionConfig := mysqlconfig.ConnectionConfig{}
 	connectionConfigMap := map[string]interface{}{
 		"Host":     reqParam.MysqlHost,

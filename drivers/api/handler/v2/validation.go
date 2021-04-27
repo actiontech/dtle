@@ -27,6 +27,9 @@ func ValidateJobV2(c echo.Context) error {
 	if err := c.Bind(jobConfig); nil != err {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("bind req param failed, error: %v", err)))
 	}
+	if err := c.Validate(jobConfig); nil != err {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invalid params:\n%v", err)))
+	}
 
 	reqJson, err := apiJobConfigToNomadJobJson(jobConfig)
 	if nil != err {
@@ -54,7 +57,7 @@ func ValidateJobV2(c echo.Context) error {
 }
 
 func apiJobConfigToNomadJobJson(apiJobConfig *models.ValidateJobReqV2) (resJson []byte, err error) {
-	jobId := g.PtrToString(apiJobConfig.JobId, apiJobConfig.JobName)
+	jobId := g.StringElse(apiJobConfig.JobId, apiJobConfig.JobName)
 	nomadJob, err := convertMysqlToMysqlJobToNomadJob(apiJobConfig.Failover, jobId, apiJobConfig.JobName, apiJobConfig.SrcTaskConfig, apiJobConfig.DestTaskConfig)
 	if nil != err {
 		return nil, fmt.Errorf("convert mysql-to-mysql job to nomad job struct faild: %v", err)

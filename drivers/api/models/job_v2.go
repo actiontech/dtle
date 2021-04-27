@@ -5,7 +5,7 @@ import (
 )
 
 type JobListReqV2 struct {
-	FilterJobType *string `query:"filter_job_type"`
+	FilterJobType string `query:"filter_job_type"`
 }
 
 type JobListItemV2 struct {
@@ -58,52 +58,52 @@ type TaskEvent struct {
 }
 
 type MysqlSrcTaskConfig struct {
-	TaskName              string                  `json:"task_name" validate:"required"`
-	NodeId                string                  `json:"node_id"`
-	Gtid                  *string                 `json:"gtid"`
-	GroupMaxSize          *int                    `json:"group_max_size"`
-	ChunkSize             *int64                  `json:"chunk_size"`
-	DropTableIfExists     *bool                   `json:"drop_table_if_exists"`
-	SkipCreateDbTable     *bool                   `json:"skip_create_db_table"`
-	ReplChanBufferSize    *int64                  `json:"repl_chan_buffer_size"`
-	ReplicateDoDb         []MysqlDataSourceConfig `json:"replicate_do_db"`
-	ReplicateIgnoreDb     []MysqlDataSourceConfig `json:"replicate_ignore_db"`
-	MysqlConnectionConfig MysqlConnectionConfig   `json:"mysql_connection_config" validate:"required"`
+	TaskName              string                   `json:"task_name" validate:"required"`
+	NodeId                string                   `json:"node_id"`
+	Gtid                  string                   `json:"gtid"`
+	GroupMaxSize          int                      `json:"group_max_size"`
+	ChunkSize             int64                    `json:"chunk_size"`
+	DropTableIfExists     bool                     `json:"drop_table_if_exists"`
+	SkipCreateDbTable     bool                     `json:"skip_create_db_table"`
+	ReplChanBufferSize    int64                    `json:"repl_chan_buffer_size"`
+	ReplicateDoDb         []*MysqlDataSourceConfig `json:"replicate_do_db"`
+	ReplicateIgnoreDb     []*MysqlDataSourceConfig `json:"replicate_ignore_db"`
+	MysqlConnectionConfig *MysqlConnectionConfig   `json:"mysql_connection_config" validate:"required"`
 }
 
 type MysqlDestTaskConfig struct {
-	TaskName              string                `json:"task_name" validate:"required"`
-	NodeId                string                `json:"node_id"`
-	ParallelWorkers       *int                  `json:"parallel_workers"`
-	MysqlConnectionConfig MysqlConnectionConfig `json:"mysql_connection_config" validate:"required"`
+	TaskName              string                 `json:"task_name" validate:"required"`
+	NodeId                string                 `json:"node_id"`
+	ParallelWorkers       int                    `json:"parallel_workers"`
+	MysqlConnectionConfig *MysqlConnectionConfig `json:"mysql_connection_config" validate:"required"`
 }
 
 type MysqlDataSourceConfig struct {
-	TableSchema       string             `json:"table_schema" validate:"required"`
-	TableSchemaRename *string            `json:"table_schema_rename"`
-	Tables            []MysqlTableConfig `json:"tables"`
+	TableSchema       string              `json:"table_schema"`
+	TableSchemaRename *string             `json:"table_schema_rename"`
+	Tables            []*MysqlTableConfig `json:"tables"`
 }
 
 type MysqlTableConfig struct {
-	TableName     string   `json:"table_name" validate:"required"`
-	TableRename   *string  `json:"table_rename"`
+	TableName     string   `json:"table_name"`
+	TableRename   string   `json:"table_rename"`
 	ColumnMapFrom []string `json:"column_map_from"`
-	Where         *string  `json:"where"`
+	Where         string   `json:"where"`
 }
 
 type MysqlConnectionConfig struct {
 	MysqlHost     string `json:"mysql_host" validate:"required"`
-	MysqlPort     int    `json:"mysql_port" validate:"required"`
+	MysqlPort     uint32 `json:"mysql_port" validate:"required"`
 	MysqlUser     string `json:"mysql_user" validate:"required"`
 	MysqlPassword string `json:"mysql_password" validate:"required"`
 }
 
 type CreateOrUpdateMysqlToMysqlJobParamV2 struct {
-	JobName  string              `json:"job_name" validate:"required"`
-	JobId    *string             `json:"job_id"`
-	Failover bool                `json:"failover"` 
-	SrcTask  MysqlSrcTaskConfig  `json:"src_task"`
-	DestTask MysqlDestTaskConfig `json:"dest_task"`
+	JobName  string               `json:"job_name" validate:"required"`
+	JobId    string               `json:"job_id"`
+	Failover bool                 `json:"failover"`
+	SrcTask  *MysqlSrcTaskConfig  `json:"src_task" validate:"required"`
+	DestTask *MysqlDestTaskConfig `json:"dest_task" validate:"required"`
 }
 
 type CreateOrUpdateMysqlToMysqlJobRespV2 struct {

@@ -452,7 +452,7 @@ func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.Bin
 				_, err = tx.Exec(query)
 				if err != nil {
 					errCtx := errors.Wrapf(err, "tx.Exec. gno %v iEvent %v queryBegin %v workerIdx %v",
-						binlogEntry.Coordinates.GNO, i, common.StrLim(query, 10), workerIdx)
+						binlogEntry.Coordinates.GNO, i, g.StrLim(query, 10), workerIdx)
 					if sql.IgnoreError(err) {
 						logger.Warn("Ignore error", "err", errCtx)
 						return nil

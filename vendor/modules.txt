@@ -80,6 +80,13 @@ github.com/go-openapi/jsonreference
 github.com/go-openapi/spec
 # github.com/go-openapi/swag v0.19.12
 github.com/go-openapi/swag
+# github.com/go-playground/locales v0.13.0
+github.com/go-playground/locales
+github.com/go-playground/locales/currency
+# github.com/go-playground/universal-translator v0.17.0
+github.com/go-playground/universal-translator
+# github.com/go-playground/validator v9.31.0+incompatible
+github.com/go-playground/validator
 # github.com/go-sql-driver/mysql v1.5.0
 github.com/go-sql-driver/mysql
 # github.com/gogo/protobuf v1.3.1
@@ -211,6 +218,8 @@ github.com/labstack/echo/v4
 # github.com/labstack/gommon v0.3.0
 github.com/labstack/gommon/color
 github.com/labstack/gommon/log
+# github.com/leodido/go-urn v1.2.1
+github.com/leodido/go-urn
 # github.com/lytics/datemath v0.0.0-20180727225141-3ada1c10b5de
 github.com/lytics/datemath
 # github.com/mailru/easyjson v0.7.6
@@ -260,8 +269,6 @@ github.com/nats-io/nats.go/encoders/builtin
 github.com/nats-io/nats.go/util
 # github.com/nats-io/nkeys v0.1.4
 github.com/nats-io/nkeys
-# github.com/nats-io/not.go v0.0.0-20190215212113-f31ff89f78fd
-github.com/nats-io/not.go
 # github.com/nats-io/nuid v1.0.1
 github.com/nats-io/nuid
 # github.com/nats-io/stan.go v0.6.0

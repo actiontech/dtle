@@ -31,6 +31,10 @@ func JobListV2(c echo.Context) error {
 	if err := c.Bind(reqParam); nil != err {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("bind req param failed, error: %v", err)))
 	}
+	if err := c.Validate(reqParam); nil != err {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invalid params:\n%v", err)))
+	}
+
 	jobs := []models.JobListItemV2{}
 	url := handler.BuildUrl("/v1/jobs")
 	resp, err := http.Get(url)
@@ -50,7 +54,7 @@ func JobListV2(c echo.Context) error {
 
 	for _, nomadJob := range nomadJobs {
 		jobType := getJobTypeFromJobId(nomadJob.ID)
-		if nil != reqParam.FilterJobType && *reqParam.FilterJobType != string(jobType) {
+		if "" != reqParam.FilterJobType && reqParam.FilterJobType != string(jobType) {
 			continue
 		}
 		jobs = append(jobs, models.JobListItemV2{
@@ -105,6 +109,9 @@ func CreateOrUpdateMigrationJobV2(c echo.Context) error {
 	if err := c.Bind(jobParam); nil != err {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("bind req param failed, error: %v", err)))
 	}
+	if err := c.Validate(jobParam); nil != err {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invalid params:\n%v", err)))
+	}
 
 	realPwd, err := handler.DecryptMysqlPassword(jobParam.SrcTask.MysqlConnectionConfig.MysqlPassword)
 	if nil != err {
@@ -118,8 +125,8 @@ func CreateOrUpdateMigrationJobV2(c echo.Context) error {
 	}
 	jobParam.DestTask.MysqlConnectionConfig.MysqlPassword = realPwd
 
-	jobId := g.PtrToString(jobParam.JobId, jobParam.JobName)
-	nomadJob, err := convertMysqlToMysqlJobToNomadJob(jobParam.Failover, jobId, jobParam.JobName, &jobParam.SrcTask, &jobParam.DestTask)
+	jobId := g.StringElse(jobParam.JobId, jobParam.JobName)
+	nomadJob, err := convertMysqlToMysqlJobToNomadJob(jobParam.Failover, jobId, jobParam.JobName, jobParam.SrcTask, jobParam.DestTask)
 	if nil != err {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("convert job param to nomad job request failed, error: %v", err)))
 	}
@@ -222,7 +229,7 @@ func buildMysqlSrcTaskConfigMap(config *models.MysqlSrcTaskConfig) map[string]in
 	return taskConfigInNomadFormat
 }
 
-func buildMysqlDataSourceConfigMap(configs []models.MysqlDataSourceConfig) []map[string]interface{} {
+func buildMysqlDataSourceConfigMap(configs []*models.MysqlDataSourceConfig) []map[string]interface{} {
 	res := []map[string]interface{}{}
 
 	for _, c := range configs {
@@ -236,7 +243,7 @@ func buildMysqlDataSourceConfigMap(configs []models.MysqlDataSourceConfig) []map
 	return res
 }
 
-func buildMysqlTableConfigMap(configs []models.MysqlTableConfig) []map[string]interface{} {
+func buildMysqlTableConfigMap(configs []*models.MysqlTableConfig) []map[string]interface{} {
 	res := []map[string]interface{}{}
 
 	for _, c := range configs {
@@ -251,7 +258,10 @@ func buildMysqlTableConfigMap(configs []models.MysqlTableConfig) []map[string]in
 	return res
 }
 
-func buildMysqlConnectionConfigMap(config models.MysqlConnectionConfig) map[string]interface{} {
+func buildMysqlConnectionConfigMap(config *models.MysqlConnectionConfig) map[string]interface{} {
+	if nil == config {
+		return nil
+	}
 	res := make(map[string]interface{})
 	res["Host"] = config.MysqlHost
 	res["Port"] = config.MysqlPort
@@ -275,6 +285,9 @@ func GetJobDetailV2(c echo.Context) error {
 	reqParam := new(models.JobDetailReqV2)
 	if err := c.Bind(reqParam); nil != err {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("bind req param failed, error: %v", err)))
+	}
+	if err := c.Validate(reqParam); nil != err {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invalid params:\n%v", err)))
 	}
 
 	jobId := reqParam.JobId
@@ -318,19 +331,19 @@ func buildMysqlToMysqlJobDetailResp(nomadJob nomadApi.Job, nomadAllocations []no
 		}
 		return internalConfig, nil
 	}
-	convertInternalMysqlDataSourceToApi := func(internalDataSource []*common.DataSource) []models.MysqlDataSourceConfig {
-		apiMysqlDataSource := []models.MysqlDataSourceConfig{}
+	convertInternalMysqlDataSourceToApi := func(internalDataSource []*common.DataSource) []*models.MysqlDataSourceConfig {
+		apiMysqlDataSource := []*models.MysqlDataSourceConfig{}
 		for _, db := range internalDataSource {
-			tables := []models.MysqlTableConfig{}
+			tables := []*models.MysqlTableConfig{}
 			for _, tb := range db.Tables {
-				tables = append(tables, models.MysqlTableConfig{
+				tables = append(tables, &models.MysqlTableConfig{
 					TableName:     tb.TableName,
-					TableRename:   &tb.TableRename,
+					TableRename:   tb.TableRename,
 					ColumnMapFrom: tb.ColumnMapFrom,
-					Where:         &tb.Where,
+					Where:         tb.Where,
 				})
 			}
-			apiMysqlDataSource = append(apiMysqlDataSource, models.MysqlDataSourceConfig{
+			apiMysqlDataSource = append(apiMysqlDataSource, &models.MysqlDataSourceConfig{
 				TableSchema:       db.TableSchema,
 				TableSchemaRename: &db.TableSchemaRename,
 				Tables:            tables,
@@ -384,17 +397,17 @@ func buildMysqlToMysqlJobDetailResp(nomadJob nomadApi.Job, nomadAllocations []no
 				dtleTaskConfigForApi := models.MysqlSrcTaskConfig{
 					TaskName:           t.Name,
 					NodeId:             nodeId,
-					Gtid:               &internalTaskConfig.Gtid,
-					GroupMaxSize:       &internalTaskConfig.GroupMaxSize,
-					ChunkSize:          &internalTaskConfig.ChunkSize,
-					DropTableIfExists:  &internalTaskConfig.DropTableIfExists,
-					SkipCreateDbTable:  &internalTaskConfig.SkipCreateDbTable,
-					ReplChanBufferSize: &internalTaskConfig.ReplChanBufferSize,
+					Gtid:               internalTaskConfig.Gtid,
+					GroupMaxSize:       internalTaskConfig.GroupMaxSize,
+					ChunkSize:          internalTaskConfig.ChunkSize,
+					DropTableIfExists:  internalTaskConfig.DropTableIfExists,
+					SkipCreateDbTable:  internalTaskConfig.SkipCreateDbTable,
+					ReplChanBufferSize: internalTaskConfig.ReplChanBufferSize,
 					ReplicateDoDb:      replicateDoDb,
 					ReplicateIgnoreDb:  replicateIgnoreDb,
-					MysqlConnectionConfig: models.MysqlConnectionConfig{
+					MysqlConnectionConfig: &models.MysqlConnectionConfig{
 						MysqlHost:     internalTaskConfig.ConnectionConfig.Host,
-						MysqlPort:     internalTaskConfig.ConnectionConfig.Port,
+						MysqlPort:     uint32(internalTaskConfig.ConnectionConfig.Port),
 						MysqlUser:     internalTaskConfig.ConnectionConfig.User,
 						MysqlPassword: "*",
 					},
@@ -408,10 +421,10 @@ func buildMysqlToMysqlJobDetailResp(nomadJob nomadApi.Job, nomadAllocations []no
 				dtleTaskConfigForApi := models.MysqlDestTaskConfig{
 					TaskName:        t.Name,
 					NodeId:          nodeId,
-					ParallelWorkers: &internalTaskConfig.ParallelWorkers,
-					MysqlConnectionConfig: models.MysqlConnectionConfig{
+					ParallelWorkers: internalTaskConfig.ParallelWorkers,
+					MysqlConnectionConfig: &models.MysqlConnectionConfig{
 						MysqlHost:     internalTaskConfig.ConnectionConfig.Host,
-						MysqlPort:     internalTaskConfig.ConnectionConfig.Port,
+						MysqlPort:     uint32(internalTaskConfig.ConnectionConfig.Port),
 						MysqlUser:     internalTaskConfig.ConnectionConfig.User,
 						MysqlPassword: "*",
 					},

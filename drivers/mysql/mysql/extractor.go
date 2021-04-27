@@ -1333,7 +1333,7 @@ func (e *Extractor) mysqlDump() error {
 	// ------
 	// Dump all of the tables and generate source records ...
 	e.logger.Info("Step: scanning contents of x tables", "n", step, "x", e.tableCount)
-	startScan := common.CurrentTimeMillis()
+	startScan := g.CurrentTimeMillis()
 	counter := 0
 	//pool := models.NewPool(10)
 	for _, db := range e.replicateDoDb {
@@ -1385,7 +1385,7 @@ func (e *Extractor) mysqlDump() error {
 
 	// We've copied all of the tables, but our buffer holds onto the very last record.
 	// First mark the snapshot as complete and then apply the updated offset to the buffered record ...
-	stop := common.CurrentTimeMillis()
+	stop := g.CurrentTimeMillis()
 	e.logger.Info("Step: scanned x rows in y tables in t",
 		"n", step, "x", e.TotalRowsCopied, "y", e.tableCount, "t", time.Duration(stop-startScan))
 	step++

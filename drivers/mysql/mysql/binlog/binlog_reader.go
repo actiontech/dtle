@@ -532,7 +532,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 
 				sql := queryInfo.sql
 				if sql != "" {
-					realSchema := common.StringElse(queryInfo.table.Schema, currentSchema)
+					realSchema := g.StringElse(queryInfo.table.Schema, currentSchema)
 					tableName := queryInfo.table.Table
 					err = b.updateCurrentReplicateDoDb(realSchema, tableName)
 					if err != nil {
@@ -580,7 +580,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 							}
 						case *ast.RenameTableStmt:
 							for _, tt := range realAst.TableToTables {
-								newSchemaName := common.StringElse(tt.NewTable.Schema.O, currentSchema)
+								newSchemaName := g.StringElse(tt.NewTable.Schema.O, currentSchema)
 								tableName := tt.NewTable.Name.O
 								b.logger.Debug("updating meta for rename table", "newSchema", newSchemaName,
 									"newTable", tableName)
@@ -889,7 +889,7 @@ func (b *BinlogReader) loadMapping(sql, currentSchema string,
 	}
 
 	renameAstTableFn := func(table *ast.TableName) {
-		table.Schema.O = common.StringElse(table.Schema.O, currentSchema)
+		table.Schema.O = g.StringElse(table.Schema.O, currentSchema)
 		newSchemaName := schemasRenameMap[table.Schema.O]
 		tableNameMap := oldSchemaNameToTablesRenameMap[table.Schema.O]
 		newTableName := tableNameMap[table.Name.O]
@@ -1114,7 +1114,7 @@ func resolveQuery(currentSchema string, sql string,
 	case *ast.DropTableStmt:
 		var newTables []*ast.TableName
 		for i, t := range v.Tables {
-			schema := common.StringElse(t.Schema.O, currentSchema)
+			schema := g.StringElse(t.Schema.O, currentSchema)
 			if !skipFunc(schema, t.Name.O) {
 				if i == 0 {
 					setTable(t.Schema.O, t.Name.O)

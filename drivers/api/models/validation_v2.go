@@ -2,7 +2,7 @@ package models
 
 type ValidateJobReqV2 struct {
 	JobName        string               `json:"job_name" validate:"required"`
-	JobId          *string              `json:"job_id"`
+	JobId          string               `json:"job_id"`
 	Failover       bool                 `json:"failover"`
 	SrcTaskConfig  *MysqlSrcTaskConfig  `json:"src_task" validate:"required"`
 	DestTaskConfig *MysqlDestTaskConfig `json:"dest_task" validate:"required"`
@@ -19,12 +19,12 @@ type ValidateJobRespV2 struct {
 }
 
 type MysqlTaskValidationReport struct {
-	TaskName             string               `json:"task_name"`
-	ConnectionValidation ConnectionValidation `json:"connection_validation"`
-	PrivilegesValidation PrivilegesValidation `json:"privileges_validation"`
-	GtidModeValidation   GtidModeValidation   `json:"gtid_mode_validation"`
-	ServerIdValidation   ServerIDValidation   `json:"server_id_validation"`
-	BinlogValidation     BinlogValidation     `json:"binlog_validation"`
+	TaskName             string                `json:"task_name"`
+	ConnectionValidation *ConnectionValidation `json:"connection_validation"`
+	PrivilegesValidation *PrivilegesValidation `json:"privileges_validation"`
+	GtidModeValidation   *GtidModeValidation   `json:"gtid_mode_validation"`
+	ServerIdValidation   *ServerIDValidation   `json:"server_id_validation"`
+	BinlogValidation     *BinlogValidation     `json:"binlog_validation"`
 }
 
 type BinlogValidation struct {

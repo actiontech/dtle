@@ -3,8 +3,8 @@ package main
 import (
 	"context"
 	"fmt"
+	"github.com/actiontech/dtle/g"
 	. "github.com/actiontech/dtle/helper/u"
-	"github.com/actiontech/dtle/drivers/mysql/common"
 	"github.com/siddontang/go-mysql/mysql"
 	rep "github.com/siddontang/go-mysql/replication"
 	"math/rand"
@@ -143,7 +143,7 @@ func main() {
 					if query == "BEGIN" {
 						// normal TX
 					} else {
-						Printlnf("2 QUERY_EVENT_not_begin %v", common.StrLim(query, 20))
+						Printlnf("2 QUERY_EVENT_not_begin %v", g.StrLim(query, 20))
 						state = WAIT_TX2
 					}
 				case rep.TABLE_MAP_EVENT:
