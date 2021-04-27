@@ -593,7 +593,7 @@ func (kr *KafkaRunner) kafkaTransformSnapshotData(
 		valuePayload.Source.Table = table.TableName
 		valuePayload.Op = RECORD_OP_INSERT
 		valuePayload.Source.Query = nil
-		valuePayload.TsMs = common.CurrentTimeMillis()
+		valuePayload.TsMs = g.CurrentTimeMillis()
 
 		valuePayload.Before = nil
 		valuePayload.After = NewRow()
@@ -751,7 +751,7 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQueries(dmlEntries []*common.Binlog
 
 		for i, _ := range dmlEvent.Events {
 			dataEvent := &dmlEvent.Events[i]
-			realSchema := common.StringElse(dataEvent.DatabaseName, dataEvent.CurrentSchema)
+			realSchema := g.StringElse(dataEvent.DatabaseName, dataEvent.CurrentSchema)
 
 			var tableItem *KafkaTableItem
 			if dataEvent.TableName != "" {
@@ -977,7 +977,7 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQueries(dmlEntries []*common.Binlog
 			valuePayload.Source.Db = dataEvent.DatabaseName
 			valuePayload.Source.Table = dataEvent.TableName
 			valuePayload.Op = op
-			valuePayload.TsMs = common.CurrentTimeMillis()
+			valuePayload.TsMs = g.CurrentTimeMillis()
 
 			k := DbzOutput{
 				Schema:  tableItem.keySchema,

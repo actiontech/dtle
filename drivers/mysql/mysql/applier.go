@@ -721,10 +721,10 @@ func (a *Applier) ApplyEventQueries(db *gosql.DB, entry *common.DumpEntry) error
 		return err
 	}
 	execQuery := func(query string) error {
-		a.logger.Debug("ApplyEventQueries. exec", "query", common.StrLim(query, 256))
+		a.logger.Debug("ApplyEventQueries. exec", "query", g.StrLim(query, 256))
 		_, err := tx.Exec(query)
 		if err != nil {
-			queryStart := common.StrLim(query, 10) // avoid printing sensitive information
+			queryStart := g.StrLim(query, 10) // avoid printing sensitive information
 			errCtx := errors.Wrapf(err, "tx.Exec. queryStart %v seq %v", queryStart, entry.Seq)
 			if !sql.IgnoreError(err) {
 				a.logger.Error("ApplyEventQueries. exec error", "err", errCtx)
