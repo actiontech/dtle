@@ -383,10 +383,11 @@ func buildMysqlToMysqlJobDetailResp(nomadJob nomadApi.Job, nomadAllocations []no
 				return models.MysqlDestTaskDetail{}, models.MysqlSrcTaskDetail{}, fmt.Errorf("convert task config failed: %v", err)
 			}
 
-			nodeId := ""
+			var allocId, nodeId string
 			alloc, allocExisted := taskGroupToNomadAlloc[*tg.Name]
 			if allocExisted {
 				nodeId = alloc.NodeID
+				allocId = alloc.ID
 			}
 
 			replicateDoDb := convertInternalMysqlDataSourceToApi(internalTaskConfig.ReplicateDoDb)
@@ -413,6 +414,7 @@ func buildMysqlToMysqlJobDetailResp(nomadJob nomadApi.Job, nomadAllocations []no
 					},
 				}
 				srcTaskDetail.TaskConfig = dtleTaskConfigForApi
+				srcTaskDetail.AllocationId = allocId
 				if allocExisted {
 					getTaskStatusFromAllocInfo(alloc, &srcTaskDetail.TaskStatus, t)
 				}
@@ -430,6 +432,7 @@ func buildMysqlToMysqlJobDetailResp(nomadJob nomadApi.Job, nomadAllocations []no
 					},
 				}
 				destTaskDetail.TaskConfig = dtleTaskConfigForApi
+				destTaskDetail.AllocationId = allocId
 				if allocExisted {
 					getTaskStatusFromAllocInfo(alloc, &destTaskDetail.TaskStatus, t)
 				}
