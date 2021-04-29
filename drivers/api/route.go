@@ -46,7 +46,7 @@ func SetupApiServer(logger hclog.Logger, apiAddr, nomadAddr, uiDir string) (err 
 	e.GET("/v1/node/:nodeName/:type", v1.NodeRequest)
 
 	// api v2
-	e.POST("/v2/log_level", v2.UpdateLogLevelV2)
+	e.POST("/v2/log/level", v2.UpdateLogLevelV2)
 	e.GET("/v2/jobs", v2.JobListV2)
 	e.GET("/v2/job/detail", v2.GetJobDetailV2)
 	e.POST("/v2/job/migration", v2.CreateOrUpdateMigrationJobV2)
