@@ -12,9 +12,12 @@ import (
 	"io"
 	"io/ioutil"
 	"net/http"
+	"net/url"
+	"strings"
 )
 
 var NomadHost string
+var ApiAddr string
 
 // decodeBody is used to decode a JSON request body
 func DecodeBody(req *http.Request, out interface{}) error {
@@ -35,6 +38,46 @@ func InvokeNomadGetApi(url string, respStruct interface{}) error {
 	if err := handleNomadResponse(resp.Body, resp.StatusCode, &respStruct); nil != err {
 		return fmt.Errorf("parse response failed: %v", err)
 	}
+	return nil
+}
+
+func InvokeApiWithFormData(method, uri string, args map[string]string, respStruct interface{}) (err error) {
+	var req *http.Request
+	switch method {
+	case http.MethodGet:
+		req, err = http.NewRequest(method, uri, nil)
+		if err != nil {
+			return fmt.Errorf("NewRequest failed: %v", err)
+		}
+		param := req.URL.Query()
+		for k, v := range args {
+			param.Add(k, v)
+		}
+		req.URL.RawQuery = param.Encode()
+	case http.MethodPost:
+		formData := url.Values{}
+		for k, v := range args {
+			formData.Add(k, v)
+		}
+		req, err = http.NewRequest(method, uri, strings.NewReader(formData.Encode()))
+		if err != nil {
+			return fmt.Errorf("NewRequest failed: %v", err)
+		}
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	default:
+		return fmt.Errorf("unsupported method: %v", method)
+	}
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("send request failed: %v", err)
+	}
+	defer resp.Body.Close()
+	if err := handleNomadResponse(resp.Body, resp.StatusCode, &respStruct); nil != err {
+		return fmt.Errorf("parse response failed: %v", err)
+	}
+
 	return nil
 }
 

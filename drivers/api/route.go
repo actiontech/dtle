@@ -16,6 +16,7 @@ import (
 func SetupApiServer(logger hclog.Logger, apiAddr, nomadAddr, uiDir string) (err error) {
 	e := echo.New()
 	handler.NomadHost = nomadAddr
+	handler.ApiAddr = apiAddr
 	logger.Debug("Begin Setup api server", "addr", apiAddr)
 
 	e.GET("/swagger/*", echoSwagger.WrapHandler)
@@ -52,6 +53,7 @@ func SetupApiServer(logger hclog.Logger, apiAddr, nomadAddr, uiDir string) (err 
 	e.GET("/v2/nodes", v2.NodeListV2)
 	e.POST("/v2/validation/job", v2.ValidateJobV2)
 	e.GET("/v2/database/schemas", v2.ListDatabaseSchemasV2)
+	e.GET("/v2/monitor/task", v2.GetTaskProgressV2)
 
 	e.Validator = handler.NewValidator()
 
