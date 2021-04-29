@@ -298,13 +298,13 @@ func GetJobDetailV2(c echo.Context) error {
 	}
 	url := handler.BuildUrl(fmt.Sprintf("/v1/job/%v", jobId))
 	nomadJob := nomadApi.Job{}
-	if err := handler.InvokeNomadGetApi(url, &nomadJob); nil != err {
+	if err := handler.InvokeApiWithFormData(http.MethodGet, url, nil, &nomadJob); nil != err {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invoke nomad api %v failed: %v", url, err)))
 	}
 
 	url = handler.BuildUrl(fmt.Sprintf("/v1/job/%v/allocations", *nomadJob.ID))
 	allocations := []nomadApi.Allocation{}
-	if err := handler.InvokeNomadGetApi(url, &allocations); nil != err {
+	if err := handler.InvokeApiWithFormData(http.MethodGet, url, nil, &allocations); nil != err {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invoke nomad api %v failed: %v", url, err)))
 	}
 

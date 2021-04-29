@@ -34,7 +34,7 @@ func GetTaskProgressV2(c echo.Context) error {
 		// find out the node that the task is running
 		url := handler.BuildUrl("/v1/allocations")
 		nomadAllocs := []nomadApi.Allocation{}
-		if err := handler.InvokeNomadGetApi(url, &nomadAllocs); nil != err {
+		if err := handler.InvokeApiWithFormData(http.MethodGet, url, nil, &nomadAllocs); nil != err {
 			return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invoke nomad api %v failed: %v", url, err)))
 		}
 
@@ -52,7 +52,7 @@ func GetTaskProgressV2(c echo.Context) error {
 
 		url = handler.BuildUrl(fmt.Sprintf("/v1/node/%v", nodeId))
 		nomadNode := nomadApi.Node{}
-		if err := handler.InvokeNomadGetApi(url, &nomadNode); nil != err {
+		if err := handler.InvokeApiWithFormData(http.MethodGet, url, nil, &nomadNode); nil != err {
 			return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invoke nomad api %v failed: %v", url, err)))
 		}
 
@@ -76,7 +76,7 @@ func GetTaskProgressV2(c echo.Context) error {
 		// invoke http://%v/v1/agent/self to get api_addr
 		url := fmt.Sprintf("http://%v/v1/agent/self", targetNomadAddr)
 		nomadAgentSelf := nomadApi.AgentSelf{}
-		if err := handler.InvokeNomadGetApi(url, &nomadAgentSelf); nil != err {
+		if err := handler.InvokeApiWithFormData(http.MethodGet, url, nil, &nomadAgentSelf); nil != err {
 			return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invoke nomad api %v failed: %v", url, err)))
 		}
 
