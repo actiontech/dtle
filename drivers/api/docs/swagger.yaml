@@ -7,6 +7,19 @@ definitions:
       validated:
         type: boolean
     type: object
+  models.BufferStat:
+    properties:
+      applier_tx_queue_size:
+        type: integer
+      binlog_event_queue_size:
+        type: integer
+      extractor_tx_queue_size:
+        type: integer
+      send_by_size_full:
+        type: integer
+      send_by_timeout:
+        type: integer
+    type: object
   models.ConnectionValidation:
     properties:
       error:
@@ -28,7 +41,9 @@ definitions:
       src_task:
         $ref: '#/definitions/models.MysqlSrcTaskConfig'
     required:
+    - dest_task
     - job_name
+    - src_task
     type: object
   models.CreateOrUpdateMysqlToMysqlJobRespV2:
     properties:
@@ -49,7 +64,38 @@ definitions:
       src_task:
         $ref: '#/definitions/models.MysqlSrcTaskConfig'
     required:
+    - dest_task
     - job_name
+    - src_task
+    type: object
+  models.CurrentCoordinates:
+    properties:
+      file:
+        type: string
+      gtid_set:
+        type: string
+      position:
+        type: integer
+      read_master_log_pos:
+        type: integer
+      relay_master_log_file:
+        type: string
+      retrieved_gtid_set:
+        type: string
+    type: object
+  models.DelayCount:
+    properties:
+      num:
+        type: integer
+      time:
+        type: integer
+    type: object
+  models.GetTaskProgressRespV2:
+    properties:
+      message:
+        type: string
+      tasks_status:
+        $ref: '#/definitions/models.TaskProgress'
     type: object
   models.GtidModeValidation:
     properties:
@@ -129,8 +175,6 @@ definitions:
         items:
           $ref: '#/definitions/models.MysqlTableConfig'
         type: array
-    required:
-    - table_schema
     type: object
   models.MysqlDestTaskConfig:
     properties:
@@ -148,6 +192,8 @@ definitions:
     type: object
   models.MysqlDestTaskDetail:
     properties:
+      allocation_id:
+        type: string
       task_config:
         $ref: '#/definitions/models.MysqlDestTaskConfig'
       task_status:
@@ -187,6 +233,8 @@ definitions:
     type: object
   models.MysqlSrcTaskDetail:
     properties:
+      allocation_id:
+        type: string
       task_config:
         $ref: '#/definitions/models.MysqlSrcTaskConfig'
       task_status:
@@ -204,8 +252,6 @@ definitions:
         type: string
       where:
         type: string
-    required:
-    - table_name
     type: object
   models.MysqlTaskValidationReport:
     properties:
@@ -221,6 +267,19 @@ definitions:
         $ref: '#/definitions/models.ServerIDValidation'
       task_name:
         type: string
+    type: object
+  models.NatsMessageStatistics:
+    properties:
+      in_bytes:
+        type: integer
+      in_messages:
+        type: integer
+      out_bytes:
+        type: integer
+      out_messages:
+        type: integer
+      reconnects:
+        type: integer
     type: object
   models.NodeListItemV2:
     properties:
@@ -287,6 +346,37 @@ definitions:
       time:
         type: string
     type: object
+  models.TaskProgress:
+    properties:
+      ETA:
+        type: string
+      backlog:
+        type: string
+      buffer_status:
+        $ref: '#/definitions/models.BufferStat'
+      current_coordinates:
+        $ref: '#/definitions/models.CurrentCoordinates'
+      delay_count:
+        $ref: '#/definitions/models.DelayCount'
+      exec_master_row_count:
+        type: integer
+      exec_master_tx_count:
+        type: integer
+      nats_message_status:
+        $ref: '#/definitions/models.NatsMessageStatistics'
+      progress_PCT:
+        type: string
+      read_master_row_count:
+        type: integer
+      read_master_tx_count:
+        type: integer
+      stage:
+        type: string
+      throughput_status:
+        $ref: '#/definitions/models.ThroughputStat'
+      timestamp:
+        type: integer
+    type: object
   models.TaskStatus:
     properties:
       finished_at:
@@ -299,6 +389,13 @@ definitions:
         items:
           $ref: '#/definitions/models.TaskEvent'
         type: array
+    type: object
+  models.ThroughputStat:
+    properties:
+      num:
+        type: integer
+      time:
+        type: integer
     type: object
   models.ValidateJobReqV2:
     properties:
@@ -453,6 +550,32 @@ paths:
             $ref: '#/definitions/v2.UpdataLogLevelRespV2'
       tags:
       - log
+  /v2/monitor/task:
+    get:
+      description: get progress of tasks within an allocation.
+      parameters:
+      - description: allocation id
+        in: query
+        name: allocation_id
+        required: true
+        type: string
+      - description: task name
+        in: query
+        name: task_name
+        required: true
+        type: string
+      - description: nomad_http_address is the http address of the nomad that the
+          target dtle is running with. ignore it if you are not sure what to provide
+        in: query
+        name: nomad_http_address
+        type: string
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.GetTaskProgressRespV2'
+      tags:
+      - monitor
   /v2/nodes:
     get:
       description: get node list.
