@@ -17,7 +17,7 @@ import (
 func NodeListV2(c echo.Context) error {
 	url := handler.BuildUrl("/v1/nodes")
 	nomadNodes := []nomadApi.Node{}
-	if err := handler.InvokeNomadGetApi(url, &nomadNodes); nil != err {
+	if err := handler.InvokeApiWithFormData(http.MethodGet, url, nil, &nomadNodes); nil != err {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invoke nomad api %v failed: %v", url, err)))
 	}
 

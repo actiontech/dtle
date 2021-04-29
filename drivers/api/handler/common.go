@@ -29,18 +29,6 @@ func BuildUrl(path string) string {
 	return "http://" + NomadHost + path
 }
 
-func InvokeNomadGetApi(url string, respStruct interface{}) error {
-	resp, err := http.Get(url)
-	if err != nil {
-		return fmt.Errorf("invoke nomad failed, error: %v", err)
-	}
-	defer resp.Body.Close()
-	if err := handleNomadResponse(resp.Body, resp.StatusCode, &respStruct); nil != err {
-		return fmt.Errorf("parse response failed: %v", err)
-	}
-	return nil
-}
-
 func InvokeApiWithFormData(method, uri string, args map[string]string, respStruct interface{}) (err error) {
 	var req *http.Request
 	switch method {
