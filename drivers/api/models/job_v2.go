@@ -34,13 +34,15 @@ type JobDetailRespV2 struct {
 }
 
 type MysqlDestTaskDetail struct {
-	TaskConfig MysqlDestTaskConfig `json:"task_config"`
-	TaskStatus TaskStatus          `json:"task_status"`
+	AllocationId string              `json:"allocation_id"`
+	TaskConfig   MysqlDestTaskConfig `json:"task_config"`
+	TaskStatus   TaskStatus          `json:"task_status"`
 }
 
 type MysqlSrcTaskDetail struct {
-	TaskConfig MysqlSrcTaskConfig `json:"task_config"`
-	TaskStatus TaskStatus         `json:"task_status"`
+	AllocationId string             `json:"allocation_id"`
+	TaskConfig   MysqlSrcTaskConfig `json:"task_config"`
+	TaskStatus   TaskStatus         `json:"task_status"`
 }
 
 type TaskStatus struct {

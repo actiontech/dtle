@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/actiontech/dtle/drivers/api"
 	"strings"
 	"time"
 
@@ -199,6 +198,7 @@ func NewDriver(logger hclog.Logger) drivers.DriverPlugin {
 	logger.Info("dtle NewDriver")
 
 	ctx, cancel := context.WithCancel(context.Background())
+	AllocIdTaskNameToTaskHandler = newTaskStoreForApi()
 	return &Driver{
 		eventer:        eventer.NewEventer(ctx, logger),
 		tasks:          newTaskStore(),
@@ -304,7 +304,7 @@ func (d *Driver) SetConfig(c *base.Config) (err error) {
 						}
 					}()
 				} else {
-					apiErr := api.SetupApiServer(d.logger, d.config.ApiAddr, d.config.NomadAddr, d.config.UiDir)
+					apiErr := setupApiServerFn(d.logger, d.config.ApiAddr, d.config.NomadAddr, d.config.UiDir)
 					if apiErr != nil {
 						d.logger.Error("error in SetupApiServer", "err", err,
 							"apiAddr", d.config.ApiAddr, "nomadAddr", d.config.NomadAddr)
@@ -323,6 +323,12 @@ func (d *Driver) SetConfig(c *base.Config) (err error) {
 		}()
 	}
 	return nil
+}
+
+var setupApiServerFn func(logger hclog.Logger, apiAddr, nomadAddr, uiDir string) error
+
+func RegisterSetupApiServerFn(fn func(logger hclog.Logger, apiAddr, nomadAddr, uiDir string) error) {
+	setupApiServerFn = fn
 }
 
 func (d *Driver) TaskConfigSchema() (*hclspec.Spec, error) {
@@ -438,6 +444,7 @@ func (d *Driver) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHandle, *drive
 		return nil, nil, errors.Wrap(err, "SetDriverState")
 	}
 	d.tasks.Set(cfg.ID, h)
+	AllocIdTaskNameToTaskHandler.Set(cfg.AllocID, cfg.Name, cfg.ID, h)
 
 	{
 		ctx := &common.ExecContext{
@@ -588,6 +595,7 @@ func (d *Driver) DestroyTask(taskID string, force bool) error {
 	handle.Destroy()
 
 	d.tasks.Delete(taskID)
+	AllocIdTaskNameToTaskHandler.Delete(taskID)
 
 	return nil
 }

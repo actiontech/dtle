@@ -189,6 +189,44 @@ var doc = `{
                 }
             }
         },
+        "/v2/monitor/task": {
+            "get": {
+                "description": "get progress of tasks within an allocation.",
+                "tags": [
+                    "monitor"
+                ],
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "allocation id",
+                        "name": "allocation_id",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "task name",
+                        "name": "task_name",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "nomad_http_address is the http address of the nomad that the target dtle is running with. ignore it if you are not sure what to provide",
+                        "name": "nomad_http_address",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.GetTaskProgressRespV2"
+                        }
+                    }
+                }
+            }
+        },
         "/v2/nodes": {
             "get": {
                 "description": "get node list.",
@@ -249,6 +287,26 @@ var doc = `{
                 }
             }
         },
+        "models.BufferStat": {
+            "type": "object",
+            "properties": {
+                "applier_tx_queue_size": {
+                    "type": "integer"
+                },
+                "binlog_event_queue_size": {
+                    "type": "integer"
+                },
+                "extractor_tx_queue_size": {
+                    "type": "integer"
+                },
+                "send_by_size_full": {
+                    "type": "integer"
+                },
+                "send_by_timeout": {
+                    "type": "integer"
+                }
+            }
+        },
         "models.ConnectionValidation": {
             "type": "object",
             "properties": {
@@ -264,7 +322,9 @@ var doc = `{
         "models.CreateOrUpdateMysqlToMysqlJobParamV2": {
             "type": "object",
             "required": [
-                "job_name"
+                "dest_task",
+                "job_name",
+                "src_task"
             ],
             "properties": {
                 "dest_task": {
@@ -287,7 +347,9 @@ var doc = `{
         "models.CreateOrUpdateMysqlToMysqlJobRespV2": {
             "type": "object",
             "required": [
-                "job_name"
+                "dest_task",
+                "job_name",
+                "src_task"
             ],
             "properties": {
                 "dest_task": {
@@ -313,6 +375,51 @@ var doc = `{
                 },
                 "src_task": {
                     "$ref": "#/definitions/models.MysqlSrcTaskConfig"
+                }
+            }
+        },
+        "models.CurrentCoordinates": {
+            "type": "object",
+            "properties": {
+                "file": {
+                    "type": "string"
+                },
+                "gtid_set": {
+                    "type": "string"
+                },
+                "position": {
+                    "type": "integer"
+                },
+                "read_master_log_pos": {
+                    "type": "integer"
+                },
+                "relay_master_log_file": {
+                    "type": "string"
+                },
+                "retrieved_gtid_set": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.DelayCount": {
+            "type": "object",
+            "properties": {
+                "num": {
+                    "type": "integer"
+                },
+                "time": {
+                    "type": "integer"
+                }
+            }
+        },
+        "models.GetTaskProgressRespV2": {
+            "type": "object",
+            "properties": {
+                "message": {
+                    "type": "string"
+                },
+                "tasks_status": {
+                    "$ref": "#/definitions/models.TaskProgress"
                 }
             }
         },
@@ -421,9 +528,6 @@ var doc = `{
         },
         "models.MysqlDataSourceConfig": {
             "type": "object",
-            "required": [
-                "table_schema"
-            ],
             "properties": {
                 "table_schema": {
                     "type": "string"
@@ -463,6 +567,9 @@ var doc = `{
         "models.MysqlDestTaskDetail": {
             "type": "object",
             "properties": {
+                "allocation_id": {
+                    "type": "string"
+                },
                 "task_config": {
                     "$ref": "#/definitions/models.MysqlDestTaskConfig"
                 },
@@ -522,6 +629,9 @@ var doc = `{
         "models.MysqlSrcTaskDetail": {
             "type": "object",
             "properties": {
+                "allocation_id": {
+                    "type": "string"
+                },
                 "task_config": {
                     "$ref": "#/definitions/models.MysqlSrcTaskConfig"
                 },
@@ -532,9 +642,6 @@ var doc = `{
         },
         "models.MysqlTableConfig": {
             "type": "object",
-            "required": [
-                "table_name"
-            ],
             "properties": {
                 "column_map_from": {
                     "type": "array",
@@ -573,6 +680,26 @@ var doc = `{
                 },
                 "task_name": {
                     "type": "string"
+                }
+            }
+        },
+        "models.NatsMessageStatistics": {
+            "type": "object",
+            "properties": {
+                "in_bytes": {
+                    "type": "integer"
+                },
+                "in_messages": {
+                    "type": "integer"
+                },
+                "out_bytes": {
+                    "type": "integer"
+                },
+                "out_messages": {
+                    "type": "integer"
+                },
+                "reconnects": {
+                    "type": "integer"
                 }
             }
         },
@@ -676,6 +803,53 @@ var doc = `{
                 }
             }
         },
+        "models.TaskProgress": {
+            "type": "object",
+            "properties": {
+                "ETA": {
+                    "type": "string"
+                },
+                "backlog": {
+                    "type": "string"
+                },
+                "buffer_status": {
+                    "$ref": "#/definitions/models.BufferStat"
+                },
+                "current_coordinates": {
+                    "$ref": "#/definitions/models.CurrentCoordinates"
+                },
+                "delay_count": {
+                    "$ref": "#/definitions/models.DelayCount"
+                },
+                "exec_master_row_count": {
+                    "type": "integer"
+                },
+                "exec_master_tx_count": {
+                    "type": "integer"
+                },
+                "nats_message_status": {
+                    "$ref": "#/definitions/models.NatsMessageStatistics"
+                },
+                "progress_PCT": {
+                    "type": "string"
+                },
+                "read_master_row_count": {
+                    "type": "integer"
+                },
+                "read_master_tx_count": {
+                    "type": "integer"
+                },
+                "stage": {
+                    "type": "string"
+                },
+                "throughput_status": {
+                    "$ref": "#/definitions/models.ThroughputStat"
+                },
+                "timestamp": {
+                    "type": "integer"
+                }
+            }
+        },
         "models.TaskStatus": {
             "type": "object",
             "properties": {
@@ -693,6 +867,17 @@ var doc = `{
                     "items": {
                         "$ref": "#/definitions/models.TaskEvent"
                     }
+                }
+            }
+        },
+        "models.ThroughputStat": {
+            "type": "object",
+            "properties": {
+                "num": {
+                    "type": "integer"
+                },
+                "time": {
+                    "type": "integer"
                 }
             }
         },
