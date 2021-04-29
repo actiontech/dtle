@@ -9,26 +9,31 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/actiontech/dtle/drivers/api/models"
+
 	"github.com/actiontech/dtle/g"
 	hclog "github.com/hashicorp/go-hclog"
 	"github.com/labstack/echo/v4"
 	"github.com/shirou/gopsutil/process"
 )
 
-type UpdataLogLevelRespV2 struct {
-	Message      string `json:"message"`
-	DtleLogLevel string `json:"dtle_log_level"`
-}
-
 // @Description reload log level dynamically.
 // @Tags log
 // @accept application/x-www-form-urlencoded
-// @Param dtle_log_level formData string false "dtle log level" Enums(TRACE, DEBUG, INFO, WARN, ERROR)
-// @Success 200 {object} UpdataLogLevelRespV2
-// @router /v2/log_level [post]
+// @Param dtle_log_level formData string true "dtle log level" Enums(TRACE, DEBUG, INFO, WARN, ERROR)
+// @Success 200 {object} models.UpdataLogLevelRespV2
+// @router /v2/log/level [post]
 func UpdateLogLevelV2(c echo.Context) error {
+	reqParam := new(models.UpdataLogLevelReqV2)
+	if err := c.Bind(reqParam); nil != err {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("bind req param failed, error: %v", err)))
+	}
+	if err := c.Validate(reqParam); nil != err {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invalid params:\n%v", err)))
+	}
+
 	// verify
-	logLevelStr := c.FormValue("dtle_log_level")
+	logLevelStr := reqParam.DtleLogLevel
 	logLevel := hclog.LevelFromString(logLevelStr)
 	if logLevel == hclog.NoLevel {
 		return c.String(http.StatusInternalServerError, fmt.Sprintf("dtle log level should be one of these value[\"TRACE\",\"DEBUG\",\"INFO\",\"WARN\",\"ERROR\"], got %v", logLevelStr))
@@ -60,8 +65,8 @@ func UpdateLogLevelV2(c echo.Context) error {
 	g.Logger.SetLevel(logLevel)
 	g.Logger.Info("update log level", "dtle log_level", logLevelStr)
 
-	return c.JSON(http.StatusOK, &UpdataLogLevelRespV2{
-		Message:      "reload log level successfully",
+	return c.JSON(http.StatusOK, &models.UpdataLogLevelRespV2{
 		DtleLogLevel: strings.ToUpper(logLevelStr),
+		BaseResp:     models.BuildBaseResp(nil),
 	})
 }

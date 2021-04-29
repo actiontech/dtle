@@ -155,7 +155,7 @@ var doc = `{
                 }
             }
         },
-        "/v2/log_level": {
+        "/v2/log/level": {
             "post": {
                 "description": "reload log level dynamically.",
                 "consumes": [
@@ -176,14 +176,15 @@ var doc = `{
                         "type": "string",
                         "description": "dtle log level",
                         "name": "dtle_log_level",
-                        "in": "formData"
+                        "in": "formData",
+                        "required": true
                     }
                 ],
                 "responses": {
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/v2.UpdataLogLevelRespV2"
+                            "$ref": "#/definitions/models.UpdataLogLevelRespV2"
                         }
                     }
                 }
@@ -881,6 +882,17 @@ var doc = `{
                 }
             }
         },
+        "models.UpdataLogLevelRespV2": {
+            "type": "object",
+            "properties": {
+                "dtle_log_level": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
         "models.ValidateJobReqV2": {
             "type": "object",
             "required": [
@@ -928,17 +940,6 @@ var doc = `{
                     "items": {
                         "$ref": "#/definitions/models.MysqlTaskValidationReport"
                     }
-                }
-            }
-        },
-        "v2.UpdataLogLevelRespV2": {
-            "type": "object",
-            "properties": {
-                "dtle_log_level": {
-                    "type": "string"
-                },
-                "message": {
-                    "type": "string"
                 }
             }
         }

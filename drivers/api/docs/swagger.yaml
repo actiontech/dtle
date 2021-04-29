@@ -397,6 +397,13 @@ definitions:
       time:
         type: integer
     type: object
+  models.UpdataLogLevelRespV2:
+    properties:
+      dtle_log_level:
+        type: string
+      message:
+        type: string
+    type: object
   models.ValidateJobReqV2:
     properties:
       dest_task:
@@ -431,13 +438,6 @@ definitions:
         items:
           $ref: '#/definitions/models.MysqlTaskValidationReport'
         type: array
-    type: object
-  v2.UpdataLogLevelRespV2:
-    properties:
-      dtle_log_level:
-        type: string
-      message:
-        type: string
     type: object
 info:
   contact: {}
@@ -527,7 +527,7 @@ paths:
             $ref: '#/definitions/models.JobListRespV2'
       tags:
       - job
-  /v2/log_level:
+  /v2/log/level:
     post:
       consumes:
       - application/x-www-form-urlencoded
@@ -542,12 +542,13 @@ paths:
         - ERROR
         in: formData
         name: dtle_log_level
+        required: true
         type: string
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/v2.UpdataLogLevelRespV2'
+            $ref: '#/definitions/models.UpdataLogLevelRespV2'
       tags:
       - log
   /v2/monitor/task:
