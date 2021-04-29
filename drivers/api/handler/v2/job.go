@@ -155,6 +155,8 @@ func CreateOrUpdateMigrationJobV2(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("forwarded faile: %s", string(body))))
 	}
 
+	jobParam.SrcTask.MysqlConnectionConfig.MysqlPassword = "*"
+	jobParam.DestTask.MysqlConnectionConfig.MysqlPassword = "*"
 	return c.JSON(http.StatusOK, &models.CreateOrUpdateMysqlToMysqlJobRespV2{
 		CreateOrUpdateMysqlToMysqlJobParamV2: *jobParam,
 		EvalCreateIndex:                      nomadResp.EvalCreateIndex,
