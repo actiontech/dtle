@@ -81,7 +81,7 @@ func InvokeApiWithFormData(method, uri string, args map[string]string, respStruc
 	return nil
 }
 
-func InvokeNomadPostApiWithJson(url string, reqJson []byte, respStruct interface{}) error {
+func InvokePostApiWithJson(url string, reqJson []byte, respStruct interface{}) error {
 	resp, err := http.Post(url, "application/json", bytes.NewReader(reqJson))
 	if err != nil {
 		return fmt.Errorf("invoke nomad api failed, error: %v", err)
