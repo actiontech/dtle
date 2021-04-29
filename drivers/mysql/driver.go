@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/actiontech/dtle/drivers/api"
 	"strings"
 	"time"
 
@@ -305,7 +304,7 @@ func (d *Driver) SetConfig(c *base.Config) (err error) {
 						}
 					}()
 				} else {
-					apiErr := api.SetupApiServer(d.logger, d.config.ApiAddr, d.config.NomadAddr, d.config.UiDir)
+					apiErr := setupApiServerFn(d.logger, d.config.ApiAddr, d.config.NomadAddr, d.config.UiDir)
 					if apiErr != nil {
 						d.logger.Error("error in SetupApiServer", "err", err,
 							"apiAddr", d.config.ApiAddr, "nomadAddr", d.config.NomadAddr)
@@ -324,6 +323,12 @@ func (d *Driver) SetConfig(c *base.Config) (err error) {
 		}()
 	}
 	return nil
+}
+
+var setupApiServerFn func(logger hclog.Logger, apiAddr, nomadAddr, uiDir string) error
+
+func RegisterSetupApiServerFn(fn func(logger hclog.Logger, apiAddr, nomadAddr, uiDir string) error) {
+	setupApiServerFn = fn
 }
 
 func (d *Driver) TaskConfigSchema() (*hclspec.Spec, error) {
