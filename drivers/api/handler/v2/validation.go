@@ -38,7 +38,7 @@ func ValidateJobV2(c echo.Context) error {
 
 	url := handler.BuildUrl("/v1/validate/job")
 	nomadValidateResp := nomadApi.JobValidateResponse{}
-	if err := handler.InvokeNomadPostApiWithJson(url, reqJson, &nomadValidateResp); nil != err {
+	if err := handler.InvokePostApiWithJson(url, reqJson, &nomadValidateResp); nil != err {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invoke nomad api %v failed: %v", url, err)))
 	}
 
