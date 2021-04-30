@@ -16,7 +16,7 @@ import (
 // @Router /v2/nodes [get]
 func NodeListV2(c echo.Context) error {
 	url := handler.BuildUrl("/v1/nodes")
-	nomadNodes := []nomadApi.Node{}
+	nomadNodes := []nomadApi.NodeListStub{}
 	if err := handler.InvokeApiWithFormData(http.MethodGet, url, nil, &nomadNodes); nil != err {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invoke nomad api %v failed: %v", url, err)))
 	}
@@ -24,7 +24,7 @@ func NodeListV2(c echo.Context) error {
 	nodes := []models.NodeListItemV2{}
 	for _, nomadNode := range nomadNodes {
 		nodes = append(nodes, models.NodeListItemV2{
-			NodeAddress:           nomadNode.HTTPAddr,
+			NodeAddress:           nomadNode.Address,
 			NodeName:              nomadNode.Name,
 			NodeId:                nomadNode.ID,
 			NodeStatus:            nomadNode.Status,
