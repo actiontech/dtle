@@ -3,6 +3,7 @@ package v2
 import (
 	"bytes"
 	"fmt"
+	"github.com/actiontech/dtle/drivers/api/handler"
 	"net/http"
 	"os"
 	"os/exec"
@@ -24,6 +25,8 @@ import (
 // @Success 200 {object} models.UpdataLogLevelRespV2
 // @router /v2/log/level [post]
 func UpdateLogLevelV2(c echo.Context) error {
+	logger := handler.NewLogger().Named("UpdateLogLevelV2")
+	logger.Info("validate params")
 	reqParam := new(models.UpdataLogLevelReqV2)
 	if err := c.Bind(reqParam); nil != err {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("bind req param failed, error: %v", err)))
@@ -40,6 +43,7 @@ func UpdateLogLevelV2(c echo.Context) error {
 	}
 
 	// reload nomad log level
+	logger.Info("reload nomad log level")
 	ppid := os.Getppid()
 	p, err := process.NewProcess(int32(ppid))
 	if nil != err {
@@ -62,8 +66,10 @@ func UpdateLogLevelV2(c echo.Context) error {
 	}
 
 	// reload dtle log level
+	logger.Info("reload dtle log level")
 	g.Logger.SetLevel(logLevel)
-	g.Logger.Info("update log level", "dtle log_level", logLevelStr)
+
+	logger.Info("update log level", "dtle log_level", logLevelStr)
 
 	return c.JSON(http.StatusOK, &models.UpdataLogLevelRespV2{
 		DtleLogLevel: strings.ToUpper(logLevelStr),

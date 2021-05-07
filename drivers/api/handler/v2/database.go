@@ -25,6 +25,8 @@ import (
 // @Success 200 {object} models.ListDatabaseSchemasRespV2
 // @Router /v2/database/schemas [get]
 func ListDatabaseSchemasV2(c echo.Context) error {
+	logger := handler.NewLogger().Named("ListDatabaseSchemasV2")
+	logger.Info("validate params")
 	reqParam := new(models.ListDatabaseSchemasReqV2)
 	if err := c.Bind(reqParam); nil != err {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("bind req param failed, error: %v", err)))
@@ -55,7 +57,7 @@ func ListDatabaseSchemasV2(c echo.Context) error {
 		}
 		mysqlConnectionConfig.Password = realPwd
 	}
-
+	logger.Info("get schemas and tables from mysql")
 	uri := mysqlConnectionConfig.GetDBUri()
 	db, err := sql.CreateDB(uri)
 	if err != nil {
