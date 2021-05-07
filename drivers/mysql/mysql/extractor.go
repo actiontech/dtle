@@ -147,13 +147,6 @@ func (e *Extractor) Run() {
 		return
 	}
 
-	e.logger.Debug("consul PutNatsWait")
-	err = e.storeManager.PutNatsWait(e.subject)
-	if err != nil {
-		e.onError(TaskStateDead, errors.Wrap(err, "PutNatsWait"))
-		return
-	}
-
 	e.logger.Debug("consul WatchNats")
 	natsAddrKvCh, err := e.storeManager.WatchNats(e.subject, e.shutdownCh)
 	if err != nil {
@@ -161,25 +154,44 @@ func (e *Extractor) Run() {
 		return
 	}
 
-	for !e.shutdown && e.natsAddr == "" {
+	hasPutWait := false
+	for e.natsAddr == "" {
 		select {
 		case <-e.shutdownCh:
-			e.logger.Info("consul WatchNats. extractor shutdown")
+			e.logger.Info("shutdown when watching NatsAddr")
 			return
 		case kv := <-natsAddrKvCh:
 			if kv == nil {
 				e.onError(TaskStateDead, errors.Wrap(common.ErrNoConsul, "WatchNats"))
 				return
-			} else {
-				natsAddr := string(kv.Value)
-				if common.NatsIsWait(natsAddr) {
-					// do nothing
-				} else if natsAddr == "" {
-					e.onError(TaskStateDead, fmt.Errorf("DTLE_BUG: got empty NatsAddr"))
+			}
+			got := string(kv.Value)
+			if got == "waitdst" {
+				e.logger.Debug("NatsAddr. got waitdst")
+				err = e.storeManager.PutNatsWait(e.subject)
+				if err != nil {
+					e.onError(TaskStateDead, errors.Wrap(err, "PutNatsWait"))
 					return
+				}
+			} else if got == "wait" {
+				// Put by this round or previous round of src.
+				e.logger.Debug("NatsAddr. got wait")
+				hasPutWait = true
+			} else {
+				// an addr
+				if hasPutWait {
+					e.natsAddr = got
+					e.logger.Info("NatsAddr. got addr", "addr", got)
 				} else {
-					e.natsAddr = natsAddr
-					e.logger.Info("got NatsAddr", "addr", natsAddr)
+					// Got an addr before src asks for it.
+					// An addr of previous round.
+					// Put wait to trigger dst restart.
+					e.logger.Debug("NatsAddr. got addr before having put wait", "addr", got)
+					err = e.storeManager.PutNatsWait(e.subject)
+					if err != nil {
+						e.onError(TaskStateDead, errors.Wrap(err, "PutNatsWait"))
+						return
+					}
 				}
 			}
 		}
@@ -1039,26 +1051,11 @@ func (e *Extractor) publish(subject string, txMsg []byte, gno int64) (err error)
 			binary.LittleEndian.PutUint32(data[end:], uint32(iSeg))
 		}
 
-		for i := 1; ; i++ {
-			e.logger.Debug("publish", "subject", subject, "gno", gno, "partLen", len(part), "iSeg", iSeg)
-
-			_, err = e.natsConn.Request(subject, part, common.DefaultConnectWait)
-			if err == nil {
-				txMsg = nil
-				break
-			} else if err == gonats.ErrTimeout {
-				e.logger.Debug("publish timeout", "err", err, "i", i, "gno", gno)
-				if i % 20 == 0 {
-					e.logger.Warn("publish timeout for i times", "err", err, "i", i,
-						"len", msgLen, "subject", subject, "gno", gno, "iSeg", iSeg, "nSeg", nSeg)
-				}
-
-				time.Sleep(1 * time.Second)
-			} else {
-				e.logger.Error("unexpected error on publish", "err", err, "i", i,
-					"len", msgLen, "subject", subject, "gno", gno, "iSeg", iSeg, "nSeg", nSeg)
-				return err
-			}
+		e.logger.Debug("publish", "subject", subject, "gno", gno, "partLen", len(part), "iSeg", iSeg)
+		_, err := e.natsConn.Request(subject, part, 24 * time.Hour)
+		if err != nil {
+			e.logger.Error("unexpected error on publish", "err", err)
+			return err
 		}
 	}
 	return nil

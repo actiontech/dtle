@@ -15,11 +15,8 @@ import (
 )
 
 const (
-	// DefaultConnectWait is the default timeout used for the connect operation
 	DefaultConnectWaitSecond         = 10
-	DefaultConnectWaitAckLimitSecond = 8
 	DefaultConnectWait               = DefaultConnectWaitSecond * time.Second
-	DefaultConnectWaitAckLimit       = DefaultConnectWaitAckLimitSecond * time.Second
 )
 
 var (
