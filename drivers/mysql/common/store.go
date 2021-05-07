@@ -19,13 +19,17 @@ func init() {
 
 type StoreManager struct {
 	consulStore store.Store
+	logger      hclog.Logger
 }
-func NewStoreManager(consulAddr []string) (*StoreManager, error) {
+func NewStoreManager(consulAddr []string, logger hclog.Logger) (*StoreManager, error) {
 	consulStore, err := libkv.NewStore(store.CONSUL, consulAddr, nil)
 	if err != nil {
 		return nil, err
 	}
-	return &StoreManager{consulStore:consulStore}, nil
+	return &StoreManager{
+		consulStore: consulStore,
+		logger:      logger,
+	}, nil
 }
 func (sm *StoreManager) DestroyJob(jobName string) error {
 	key := fmt.Sprintf("dtle/%v", jobName)
