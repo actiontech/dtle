@@ -23,6 +23,8 @@ import (
 // @Success 200 {object} models.ValidateJobRespV2
 // @Router /v2/validation/job [post]
 func ValidateJobV2(c echo.Context) error {
+	logger := handler.NewLogger().Named("ValidateJobV2")
+	logger.Info("validate params")
 	jobConfig := new(models.ValidateJobReqV2)
 	if err := c.Bind(jobConfig); nil != err {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("bind req param failed, error: %v", err)))
@@ -37,11 +39,13 @@ func ValidateJobV2(c echo.Context) error {
 	}
 
 	url := handler.BuildUrl("/v1/validate/job")
+	logger.Info("invoke nomad api begin", "url", url)
 	nomadValidateResp := nomadApi.JobValidateResponse{}
 	if err := handler.InvokePostApiWithJson(url, reqJson, &nomadValidateResp); nil != err {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invoke nomad api %v failed: %v", url, err)))
 	}
-
+	logger.Info("invoke nomad api finished")
+	logger.Info("validate task config")
 	validationTasks, err := validateTaskConfig(jobConfig.SrcTaskConfig, jobConfig.DestTaskConfig)
 	if nil != err {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("validate task config failed: %v", err)))

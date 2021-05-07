@@ -21,6 +21,8 @@ import (
 // @Success 200 {object} models.GetTaskProgressRespV2
 // @Router /v2/monitor/task [get]
 func GetTaskProgressV2(c echo.Context) error {
+	logger := handler.NewLogger().Named("GetTaskProgressV2")
+	logger.Info("validate params")
 	reqParam := new(models.GetTaskProgressReqV2)
 	if err := c.Bind(reqParam); nil != err {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("bind req param failed, error: %v", err)))
@@ -32,12 +34,14 @@ func GetTaskProgressV2(c echo.Context) error {
 	targetNomadAddr := reqParam.NomadHttpAddress
 	if "" == targetNomadAddr {
 		// find out the node that the task is running
+		logger.Info("find out the node that the task is running")
 		url := handler.BuildUrl("/v1/allocations")
+		logger.Info("invoke nomad api begin", "url", url)
 		nomadAllocs := []nomadApi.Allocation{}
 		if err := handler.InvokeApiWithFormData(http.MethodGet, url, nil, &nomadAllocs); nil != err {
 			return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invoke nomad api %v failed: %v", url, err)))
 		}
-
+		logger.Info("invoke nomad api finished")
 		nodeId := ""
 		for _, alloc := range nomadAllocs {
 			if alloc.ID != reqParam.AllocationId {
@@ -49,13 +53,13 @@ func GetTaskProgressV2(c echo.Context) error {
 		if "" == nodeId {
 			return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("can not find out which node the allocation is running on")))
 		}
-
 		url = handler.BuildUrl(fmt.Sprintf("/v1/node/%v", nodeId))
+		logger.Info("invoke nomad api begin", "url", url)
 		nomadNode := nomadApi.Node{}
 		if err := handler.InvokeApiWithFormData(http.MethodGet, url, nil, &nomadNode); nil != err {
 			return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invoke nomad api %v failed: %v", url, err)))
 		}
-
+		logger.Info("invoke nomad api finished")
 		targetNomadAddr = nomadNode.HTTPAddr
 	}
 
@@ -63,6 +67,7 @@ func GetTaskProgressV2(c echo.Context) error {
 	if nil != err {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("get target host failed: %v", err)))
 	}
+	logger.Info("got target host", "targetHost", targetHost)
 	selfApiHost, _, err := net.SplitHostPort(handler.ApiAddr)
 	if nil != err {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("get self api host failed: %v", err)))
@@ -72,6 +77,7 @@ func GetTaskProgressV2(c echo.Context) error {
 		BaseResp: models.BuildBaseResp(nil),
 	}
 	if targetHost != selfApiHost {
+		logger.Info("forwarding...", "targetHost", targetHost)
 		// forward
 		// invoke http://%v/v1/agent/self to get api_addr
 		url := fmt.Sprintf("http://%v/v1/agent/self", targetNomadAddr)
@@ -91,9 +97,11 @@ func GetTaskProgressV2(c echo.Context) error {
 			"task_name":     reqParam.TaskName,
 			"nomad_address": targetNomadAddr,
 		}
+		logger.Info("forwarding... invoke target dtle api begin", "url", url)
 		if err := handler.InvokeApiWithFormData(http.MethodGet, url, args, &res); nil != err {
 			return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("forward api %v failed: %v", url, err)))
 		}
+		logger.Info("forwarding... invoke target dtle api finished")
 	} else {
 		taskStatus, ok, err := mysql.AllocIdTaskNameToTaskHandler.GetTaskStatistics(reqParam.AllocationId, reqParam.TaskName)
 		if nil != err {

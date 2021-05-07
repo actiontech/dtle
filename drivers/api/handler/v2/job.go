@@ -27,6 +27,8 @@ import (
 // @Param filter_job_type query string false "filter job type"
 // @Router /v2/jobs [get]
 func JobListV2(c echo.Context) error {
+	logger := handler.NewLogger().Named("JobListV2")
+	logger.Info("validate params")
 	reqParam := new(models.JobListReqV2)
 	if err := c.Bind(reqParam); nil != err {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("bind req param failed, error: %v", err)))
@@ -37,6 +39,7 @@ func JobListV2(c echo.Context) error {
 
 	jobs := []models.JobListItemV2{}
 	url := handler.BuildUrl("/v1/jobs")
+	logger.Info("invoke nomad api begin", "url", url)
 	resp, err := http.Get(url)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invoke /v1/jobs of nomad failed, error: %v", err)))
@@ -46,6 +49,7 @@ func JobListV2(c echo.Context) error {
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("read response body failed, error: %v", err)))
 	}
+	logger.Info("invoke nomad api finished", "url", url)
 
 	nomadJobs := []nomadApi.JobListStub{}
 	if err := json.Unmarshal(body, &nomadJobs); nil != err {
@@ -105,6 +109,8 @@ func getJobTypeFromJobId(jobId string) DtleJobType {
 // @Success 200 {object} models.CreateOrUpdateMysqlToMysqlJobRespV2
 // @Router /v2/job/migration [post]
 func CreateOrUpdateMigrationJobV2(c echo.Context) error {
+	logger := handler.NewLogger().Named("CreateOrUpdateMigrationJobV2")
+	logger.Info("validate params")
 	jobParam := new(models.CreateOrUpdateMysqlToMysqlJobParamV2)
 	if err := c.Bind(jobParam); nil != err {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("bind req param failed, error: %v", err)))
@@ -138,8 +144,8 @@ func CreateOrUpdateMigrationJobV2(c echo.Context) error {
 	if nil != err {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("marshal nomad job request failed, error: %v", err)))
 	}
-
 	url := handler.BuildUrl("/v1/jobs")
+	logger.Info("invoke nomad api begin", "url", url)
 	resp, err := http.Post(url, "application/x-www-form-urlencoded", bytes.NewReader(nomadJobReqByte))
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invoke /v1/jobs of nomad failed, error: %v", err)))
@@ -149,7 +155,7 @@ func CreateOrUpdateMigrationJobV2(c echo.Context) error {
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("reading forwarded resp faile: %v", err)))
 	}
-
+	logger.Info("invoke nomad api finished")
 	nomadResp := nomadApi.JobRegisterResponse{}
 	if err := json.Unmarshal(body, &nomadResp); nil != err {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("forwarded faile: %s", string(body))))
@@ -284,6 +290,8 @@ func addNotRequiredParamToMap(target map[string]interface{}, value interface{}, 
 // @Param job_id query string true "job id"
 // @Router /v2/job/detail [get]
 func GetJobDetailV2(c echo.Context) error {
+	logger := handler.NewLogger().Named("GetJobDetailV2")
+	logger.Info("validate params")
 	reqParam := new(models.JobDetailReqV2)
 	if err := c.Bind(reqParam); nil != err {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("bind req param failed, error: %v", err)))
@@ -297,17 +305,20 @@ func GetJobDetailV2(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("job_id is required")))
 	}
 	url := handler.BuildUrl(fmt.Sprintf("/v1/job/%v", jobId))
+	logger.Info("invoke nomad api begin", "url", url)
 	nomadJob := nomadApi.Job{}
 	if err := handler.InvokeApiWithFormData(http.MethodGet, url, nil, &nomadJob); nil != err {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invoke nomad api %v failed: %v", url, err)))
 	}
+	logger.Info("invoke nomad api finished")
 
 	url = handler.BuildUrl(fmt.Sprintf("/v1/job/%v/allocations", *nomadJob.ID))
+	logger.Info("invoke nomad api begin", "url", url)
 	allocations := []nomadApi.Allocation{}
 	if err := handler.InvokeApiWithFormData(http.MethodGet, url, nil, &allocations); nil != err {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invoke nomad api %v failed: %v", url, err)))
 	}
-
+	logger.Info("invoke nomad api finished")
 	destTaskDetail, srcTaskDetail, err := buildMysqlToMysqlJobDetailResp(nomadJob, allocations)
 	if nil != err {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("build job detail response failed: %v", err)))

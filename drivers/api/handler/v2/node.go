@@ -15,12 +15,15 @@ import (
 // @Success 200 {object} models.NodeListRespV2
 // @Router /v2/nodes [get]
 func NodeListV2(c echo.Context) error {
+	logger := handler.NewLogger().Named("NodeListV2")
+	logger.Info("validate params")
 	url := handler.BuildUrl("/v1/nodes")
+	logger.Info("invoke nomad api begin", "url", url)
 	nomadNodes := []nomadApi.NodeListStub{}
 	if err := handler.InvokeApiWithFormData(http.MethodGet, url, nil, &nomadNodes); nil != err {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invoke nomad api %v failed: %v", url, err)))
 	}
-
+	logger.Info("invoke nomad api finished")
 	nodes := []models.NodeListItemV2{}
 	for _, nomadNode := range nomadNodes {
 		nodes = append(nodes, models.NodeListItemV2{
