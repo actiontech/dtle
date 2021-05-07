@@ -247,16 +247,15 @@ func (kr *KafkaRunner) Run() {
 
 	go kr.timestampCtx.Handle()
 
-	kr.logger.Info("PutAndWatchNats")
-	kr.storeManager.PutAndWatchNats(kr.subject, kr.natsAddr, kr.shutdownCh, func(err error) {
-		kr.onError(TaskStateDead, errors.Wrap(err, "PutAndWatchNats"))
-	})
-
 	err = kr.initiateStreaming()
 	if err != nil {
 		kr.onError(TaskStateDead, err)
 		return
 	}
+
+	kr.storeManager.PutAndWatchNats(kr.subject, kr.natsAddr, kr.shutdownCh, func(err error) {
+		kr.onError(TaskStateDead, errors.Wrap(err, "PutAndWatchNats"))
+	})
 
 	go kr.updateGtidLoop()
 }

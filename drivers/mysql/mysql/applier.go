@@ -262,7 +262,6 @@ func (a *Applier) Run() {
 		a.onError(TaskStateDead, err)
 		return
 	}
-	a.logger.Info("PutAndWatchNats")
 	a.storeManager.PutAndWatchNats(a.subject, a.NatsAddr, a.shutdownCh, func(err error) {
 		a.onError(TaskStateDead, errors.Wrap(err, "PutAndWatchNats"))
 	})
