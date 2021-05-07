@@ -257,15 +257,14 @@ func (a *Applier) Run() {
 		a.onError(TaskStateDead, err)
 		return
 	}
-	a.logger.Info("PutAndWatchNats")
-	a.storeManager.PutAndWatchNats(a.subject, a.NatsAddr, a.shutdownCh, func(err error) {
-		a.onError(TaskStateDead, errors.Wrap(err, "PutAndWatchNats"))
-	})
 	a.logger.Debug("subscribeNats")
 	if err := a.subscribeNats(); err != nil {
 		a.onError(TaskStateDead, err)
 		return
 	}
+	a.storeManager.PutAndWatchNats(a.subject, a.NatsAddr, a.shutdownCh, func(err error) {
+		a.onError(TaskStateDead, errors.Wrap(err, "PutAndWatchNats"))
+	})
 
 	go a.updateGtidLoop()
 
@@ -371,12 +370,12 @@ func (a *Applier) sendEvent(status string) {
 }
 
 // initiateStreaming begins treaming of binary log events and registers listeners for such events
-func (a *Applier) subscribeNats() error {
+func (a *Applier) subscribeNats() (err error) {
 	a.mysqlContext.MarkRowCopyStartTime()
 	a.logger.Debug("nats subscribe")
 
 	fullNMM := common.NewNatsMsgMerger(a.logger.With("nmm", "full"))
-	var _, err = a.natsConn.Subscribe(fmt.Sprintf("%s_full", a.subject), func(m *gonats.Msg) {
+	_, err = a.natsConn.Subscribe(fmt.Sprintf("%s_full", a.subject), func(m *gonats.Msg) {
 		a.logger.Debug("full. recv a msg.", "len", len(m.Data), "fullBytesQueue", len(a.fullBytesQueue))
 
 		select {
@@ -401,28 +400,24 @@ func (a *Applier) subscribeNats() error {
 			}
 			a.logger.Debug("full. after publish nats reply")
 		} else {
-			timer := time.NewTimer(common.DefaultConnectWaitAckLimit)
 			atomic.AddInt64(&a.nDumpEntry, 1) // this must be increased before enqueuing
 			bs := fullNMM.GetBytes()
 			select {
+			case <-a.shutdownCh:
+				return
 			case a.fullBytesQueue <- bs:
-				timer.Stop()
 				atomic.AddInt64(a.memory1, int64(len(bs)))
 				a.logger.Debug("full. enqueue", "nDumpEntry", a.nDumpEntry)
 				a.mysqlContext.Stage = common.StageSlaveWaitingForWorkersToProcessQueue
+				fullNMM.Reset()
 
-				if err := a.natsConn.Publish(m.Reply, nil); err != nil {
+				vacancy := cap(a.fullBytesQueue) - len(a.fullBytesQueue)
+				err := a.natsConn.Publish(m.Reply, nil)
+				if err != nil {
 					a.onError(TaskStateDead, err)
 					return
 				}
-				a.logger.Debug("full. after publish nats reply")
-
-				fullNMM.Reset()
-			case <-timer.C:
-				atomic.AddInt64(&a.nDumpEntry, -1)
-				a.logger.Debug("full. discarding entries", "nDumpEntry", a.nDumpEntry)
-
-				a.mysqlContext.Stage = common.StageSlaveWaitingForWorkersToProcessQueue
+				a.logger.Debug("full. after publish nats reply", "vacancy", vacancy)
 			}
 		}
 	})
@@ -503,23 +498,19 @@ func (a *Applier) subscribeNats() error {
 			}
 			a.logger.Debug("incr. after publish nats reply.")
 		} else {
-			timer := time.NewTimer(common.DefaultConnectWaitAckLimit)
 			select {
+			case <-a.shutdownCh:
+				return
 			case a.ai.incrBytesQueue <- incrNMM.GetBytes():
-				timer.Stop()
+				incrNMM.Reset()
+				a.logger.Debug("incr. incrBytesQueue enqueued")
+
 				if err := a.natsConn.Publish(m.Reply, nil); err != nil {
 					a.onError(TaskStateDead, err)
 					return
 				}
 				a.logger.Debug("incr. after publish nats reply.")
 
-				incrNMM.Reset()
-				a.mysqlContext.Stage = common.StageWaitingForMasterToSendEvent
-				a.logger.Debug("incr. incrBytesQueue enqueued")
-
-			case <-timer.C:
-				// no vacancy. discard these entries
-				a.logger.Debug("incr. discarding entries")
 				a.mysqlContext.Stage = common.StageWaitingForMasterToSendEvent
 			}
 		}

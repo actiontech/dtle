@@ -243,16 +243,15 @@ func (kr *KafkaRunner) Run() {
 
 	go kr.timestampCtx.Handle()
 
-	kr.logger.Info("PutAndWatchNats")
-	kr.storeManager.PutAndWatchNats(kr.subject, kr.natsAddr, kr.shutdownCh, func(err error) {
-		kr.onError(TaskStateDead, errors.Wrap(err, "PutAndWatchNats"))
-	})
-
 	err = kr.initiateStreaming()
 	if err != nil {
 		kr.onError(TaskStateDead, err)
 		return
 	}
+
+	kr.storeManager.PutAndWatchNats(kr.subject, kr.natsAddr, kr.shutdownCh, func(err error) {
+		kr.onError(TaskStateDead, errors.Wrap(err, "PutAndWatchNats"))
+	})
 
 	go kr.updateGtidLoop()
 }
@@ -444,8 +443,9 @@ func (kr *KafkaRunner) initiateStreaming() error {
 			return
 		}
 
-		t := time.NewTimer(common.DefaultConnectWait / 2)
 		select {
+		case <-kr.shutdownCh:
+			return
 		case kr.chDumpEntry <- dumpData:
 			atomic.AddInt64(kr.memory1, int64(dumpData.Size()))
 			if err := kr.natsConn.Publish(m.Reply, nil); err != nil {
@@ -453,11 +453,7 @@ func (kr *KafkaRunner) initiateStreaming() error {
 				return
 			}
 			kr.logger.Debug("ack a full msg")
-		case <-t.C:
-			kr.fullWg.Done()
-			kr.logger.Debug("discard a full msg")
 		}
-		t.Stop()
 	})
 	if err != nil {
 		return err
@@ -501,8 +497,9 @@ func (kr *KafkaRunner) initiateStreaming() error {
 			kr.onError(TaskStateDead, err)
 			return
 		}
-		t := time.NewTimer(common.DefaultConnectWait / 2)
 		select {
+		case <-kr.shutdownCh:
+			return
 		case kr.chBinlogEntries <-&binlogEntries:
 			if err := kr.natsConn.Publish(m.Reply, nil); err != nil {
 				kr.onError(TaskStateDead, errors.Wrap(err, "Publish"))
@@ -510,11 +507,7 @@ func (kr *KafkaRunner) initiateStreaming() error {
 			}
 			kr.logger.Debug("ack an incr_hete msg")
 			atomic.AddInt64(kr.memory2, int64(binlogEntries.Size()))
-		case <-t.C:
-			kr.logger.Debug("discard an incr_hete msg")
-			//kr.natsConn.Publish(m.Reply, "wait")
 		}
-		t.Stop()
 	})
 	if err != nil {
 		return errors.Wrap(err, "Subscribe")

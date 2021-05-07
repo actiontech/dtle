@@ -358,7 +358,7 @@ func (d *Driver) SetConfig(c *base.Config) (err error) {
 		// This test avoids extra setup.
 		return nil
 	} else {
-		d.storeManager, err = common.NewStoreManager([]string{d.config.Consul})
+		d.storeManager, err = common.NewStoreManager([]string{d.config.Consul}, d.logger)
 		if err != nil {
 			return err
 		}

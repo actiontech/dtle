@@ -31,16 +31,6 @@ func (nmm *NatsMsgMerger) Handle(data []byte) (segmentFinished bool, err error) 
 	lenData := len(data)
 
 	if nmm.iSeg == 0 {
-		if lenData == nmm.lastLen {
-			if lenData >= 4 {
-				iSeg := binary.LittleEndian.Uint32(data[lenData-4 : lenData])
-				if iSeg != 0 && iSeg == nmm.lastiSeg {
-					// a repeat msg. Take it as a zero-len prefix for next msg.
-					return false, nil
-				}
-			}
-		}
-
 		if lenData < g.NatsMaxMsg {
 			nmm.logger.Debug("NatsMsgMerger.Handle found ordinary msg", "lenData", lenData)
 			segmentFinished = true
@@ -63,11 +53,8 @@ func (nmm *NatsMsgMerger) Handle(data []byte) (segmentFinished bool, err error) 
 		}
 		iSeg := binary.LittleEndian.Uint32(data[lenData-4 : lenData])
 		if iSeg != nmm.iSeg {
-			if iSeg == nmm.iSeg-1 {
-				nmm.logger.Debug("full. ignore resent segment", "expect", nmm.iSeg, "got", iSeg)
-			} else {
-				nmm.logger.Warn("DTLE_BUG: full. bad segment", "expect", nmm.iSeg, "got", iSeg)
-			}
+			nmm.logger.Warn("DTLE_BUG: full. bad segment", "expect", nmm.iSeg, "got", iSeg,
+				"currentLen", nmm.buf.Len(), "dataLen", len(data))
 		} else {
 			nmm.buf.Write(data[:lenData-4])
 			nmm.iSeg += 1
