@@ -101,28 +101,28 @@ func validateTaskConfig(apiSrcTask *models.MysqlSrcTaskConfig, apiDestTask *mode
 			return nil, fmt.Errorf("init src task inspector failed: %v", err)
 		}
 
-		validationRes.ConnectionValidation.Validated = true
+		validationRes.ConnectionValidation = &models.ConnectionValidation{Validated: true}
 		if err := srcTaskInspector.ValidateConnection(); nil != err {
 			validationRes.ConnectionValidation.Error = err.Error()
 			goto endSrcTaskValidation
 		}
 
-		validationRes.GtidModeValidation.Validated = true
+		validationRes.GtidModeValidation = &models.GtidModeValidation{Validated: true}
 		if err := srcTaskInspector.ValidateGTIDMode(); nil != err {
 			validationRes.GtidModeValidation.Error = err.Error()
 		}
 
-		validationRes.ServerIdValidation.Validated = true
+		validationRes.ServerIdValidation = &models.ServerIDValidation{Validated: true}
 		if err := srcTaskInspector.ValidateServerId(); nil != err {
 			validationRes.ServerIdValidation.Error = err.Error()
 		}
 
-		validationRes.BinlogValidation.Validated = true
+		validationRes.BinlogValidation = &models.BinlogValidation{Validated: true}
 		if err := srcTaskInspector.ValidateBinlogs(); nil != err {
 			validationRes.BinlogValidation.Error = err.Error()
 		}
 
-		validationRes.PrivilegesValidation.Validated = true
+		validationRes.PrivilegesValidation = &models.PrivilegesValidation{Validated: true}
 		if err := srcTaskInspector.ValidateGrants(); nil != err {
 			validationRes.PrivilegesValidation.Error = err.Error()
 		}
@@ -158,13 +158,13 @@ func validateTaskConfig(apiSrcTask *models.MysqlSrcTaskConfig, apiDestTask *mode
 		}
 		defer destTaskInspector.Shutdown()
 
-		validationRes.ConnectionValidation.Validated = true
+		validationRes.ConnectionValidation = &models.ConnectionValidation{Validated: true}
 		if err := destTaskInspector.ValidateConnection(); nil != err {
 			validationRes.ConnectionValidation.Error = err.Error()
 			goto endDestTaskValidation
 		}
 
-		validationRes.PrivilegesValidation.Validated = true
+		validationRes.PrivilegesValidation = &models.PrivilegesValidation{Validated: true}
 		if err := destTaskInspector.ValidateGrants(); nil != err {
 			validationRes.ConnectionValidation.Error = err.Error()
 		}
