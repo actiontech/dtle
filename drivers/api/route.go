@@ -20,7 +20,7 @@ func SetupApiServer(logger hclog.Logger, apiAddr, nomadAddr, uiDir string) (err 
 	// adapt to stdout
 	e.StdLogger = handler.NewLogger().StandardLogger(&hclog.StandardLoggerOptions{
 		InferLevels: false,
-		ForceLevel:  hclog.Error,
+		ForceLevel:  hclog.Debug,
 	})
 
 	handler.NomadHost = nomadAddr

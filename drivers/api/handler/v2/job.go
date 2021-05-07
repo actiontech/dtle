@@ -1,11 +1,9 @@
 package v2
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"net/http"
 	"strings"
 	"time"
@@ -37,25 +35,15 @@ func JobListV2(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invalid params:\n%v", err)))
 	}
 
-	jobs := []models.JobListItemV2{}
 	url := handler.BuildUrl("/v1/jobs")
 	logger.Info("invoke nomad api begin", "url", url)
-	resp, err := http.Get(url)
-	if err != nil {
-		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invoke /v1/jobs of nomad failed, error: %v", err)))
-	}
-	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("read response body failed, error: %v", err)))
-	}
-	logger.Info("invoke nomad api finished", "url", url)
-
 	nomadJobs := []nomadApi.JobListStub{}
-	if err := json.Unmarshal(body, &nomadJobs); nil != err {
-		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("unmarshel response body failed, error: %v", err)))
+	if err := handler.InvokeApiWithFormData(http.MethodGet, url, nil, &nomadJobs); nil != err {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invoke nomad api %v failed: %v", url, err)))
 	}
+	logger.Info("invoke nomad api finished")
 
+	jobs := []models.JobListItemV2{}
 	for _, nomadJob := range nomadJobs {
 		jobType := getJobTypeFromJobId(nomadJob.ID)
 		if "" != reqParam.FilterJobType && reqParam.FilterJobType != string(jobType) {
@@ -146,20 +134,11 @@ func CreateOrUpdateMigrationJobV2(c echo.Context) error {
 	}
 	url := handler.BuildUrl("/v1/jobs")
 	logger.Info("invoke nomad api begin", "url", url)
-	resp, err := http.Post(url, "application/x-www-form-urlencoded", bytes.NewReader(nomadJobReqByte))
-	if err != nil {
-		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invoke /v1/jobs of nomad failed, error: %v", err)))
-	}
-	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("reading forwarded resp faile: %v", err)))
+	nomadResp := nomadApi.JobRegisterResponse{}
+	if err := handler.InvokePostApiWithJson(url, nomadJobReqByte, &nomadResp); nil != err {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invoke nomad api %v failed: %v", url, err)))
 	}
 	logger.Info("invoke nomad api finished")
-	nomadResp := nomadApi.JobRegisterResponse{}
-	if err := json.Unmarshal(body, &nomadResp); nil != err {
-		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("forwarded faile: %s", string(body))))
-	}
 
 	jobParam.SrcTask.MysqlConnectionConfig.MysqlPassword = "*"
 	jobParam.DestTask.MysqlConnectionConfig.MysqlPassword = "*"
