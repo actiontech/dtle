@@ -14,10 +14,17 @@ import (
 )
 
 func SetupApiServer(logger hclog.Logger, apiAddr, nomadAddr, uiDir string) (err error) {
+	logger.Debug("Begin Setup api server", "addr", apiAddr)
 	e := echo.New()
+
+	// adapt to stdout
+	e.StdLogger = handler.NewLogger().StandardLogger(&hclog.StandardLoggerOptions{
+		InferLevels: false,
+		ForceLevel:  hclog.Error,
+	})
+
 	handler.NomadHost = nomadAddr
 	handler.ApiAddr = apiAddr
-	logger.Debug("Begin Setup api server", "addr", apiAddr)
 
 	e.GET("/swagger/*", echoSwagger.WrapHandler)
 
