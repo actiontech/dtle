@@ -101,9 +101,10 @@ type MysqlConnectionConfig struct {
 }
 
 type CreateOrUpdateMysqlToMysqlJobParamV2 struct {
-	JobName                  string               `json:"job_name" validate:"required"`
-	JobId                    string               `json:"job_id"`
-	Failover                 bool                 `json:"failover"`
+	JobName string `json:"job_name" validate:"required"`
+	JobId   string `json:"job_id"`
+	// failover default:true
+	Failover                 *bool                `json:"failover" example:"true"`
 	IsMysqlPasswordEncrypted bool                 `json:"is_mysql_password_encrypted"`
 	SrcTask                  *MysqlSrcTaskConfig  `json:"src_task" validate:"required"`
 	DestTask                 *MysqlDestTaskConfig `json:"dest_task" validate:"required"`

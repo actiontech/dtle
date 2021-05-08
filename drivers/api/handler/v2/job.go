@@ -106,6 +106,7 @@ func CreateOrUpdateMigrationJobV2(c echo.Context) error {
 	if err := c.Validate(jobParam); nil != err {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invalid params:\n%v", err)))
 	}
+	failover := g.PtrToBool(jobParam.Failover, true)
 
 	if jobParam.IsMysqlPasswordEncrypted {
 		realPwd, err := handler.DecryptMysqlPassword(jobParam.SrcTask.MysqlConnectionConfig.MysqlPassword, g.RsaPrivateKey)
@@ -122,7 +123,7 @@ func CreateOrUpdateMigrationJobV2(c echo.Context) error {
 	}
 
 	jobId := g.StringElse(jobParam.JobId, jobParam.JobName)
-	nomadJob, err := convertMysqlToMysqlJobToNomadJob(jobParam.Failover, jobId, jobParam.JobName, jobParam.SrcTask, jobParam.DestTask)
+	nomadJob, err := convertMysqlToMysqlJobToNomadJob(failover, jobId, jobParam.JobName, jobParam.SrcTask, jobParam.DestTask)
 	if nil != err {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("convert job param to nomad job request failed, error: %v", err)))
 	}
@@ -156,6 +157,9 @@ func convertMysqlToMysqlJobToNomadJob(failover bool, apiJobId, apiJobName string
 	buildTaskGroupItem := func(dtleTaskconfig map[string]interface{}, taskName, nodeId string) (*nomadApi.TaskGroup, error) {
 		task := nomadApi.NewTask(taskName, g.PluginName)
 		task.Config = dtleTaskconfig
+		if !failover && "" == nodeId {
+			return nil, fmt.Errorf("node id should be provided if failover is false. task_name=%v", taskName)
+		}
 		if nodeId != "" {
 			if failover {
 				// https://www.nomadproject.io/docs/runtime/interpolation
