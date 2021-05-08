@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/actiontech/dtle/g"
+
 	"github.com/actiontech/dtle/drivers/api/handler"
 
 	"github.com/actiontech/dtle/drivers/mysql/mysql/mysqlconfig"
@@ -22,6 +24,7 @@ import (
 // @Param mysql_user query string true "mysql user"
 // @Param mysql_password query string true "mysql password"
 // @Param mysql_character_set query string false "mysql character set"
+// @Param is_mysql_password_encrypted query bool false "indecate that mysql password is encrypted or not"
 // @Success 200 {object} models.ListDatabaseSchemasRespV2
 // @Router /v2/database/schemas [get]
 func ListDatabaseSchemasV2(c echo.Context) error {
@@ -50,8 +53,8 @@ func ListDatabaseSchemasV2(c echo.Context) error {
 	if "" == mysqlConnectionConfig.Charset {
 		mysqlConnectionConfig.Charset = "utf8"
 	}
-	if "" != mysqlConnectionConfig.Password {
-		realPwd, err := handler.DecryptMysqlPassword(mysqlConnectionConfig.Password)
+	if "" != mysqlConnectionConfig.Password && reqParam.IsMysqlPasswordEncrypted {
+		realPwd, err := handler.DecryptMysqlPassword(mysqlConnectionConfig.Password, g.RsaPrivateKey)
 		if nil != err {
 			return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("DecryptMysqlPassword failed: %v", err)))
 		}
