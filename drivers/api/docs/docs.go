@@ -64,6 +64,12 @@ var doc = `{
                         "description": "mysql character set",
                         "name": "mysql_character_set",
                         "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "indecate that mysql password is encrypted or not",
+                        "name": "is_mysql_password_encrypted",
+                        "in": "query"
                     }
                 ],
                 "responses": {
@@ -334,6 +340,9 @@ var doc = `{
                 "failover": {
                     "type": "boolean"
                 },
+                "is_mysql_password_encrypted": {
+                    "type": "boolean"
+                },
                 "job_id": {
                     "type": "string"
                 },
@@ -360,6 +369,9 @@ var doc = `{
                     "type": "integer"
                 },
                 "failover": {
+                    "type": "boolean"
+                },
+                "is_mysql_password_encrypted": {
                     "type": "boolean"
                 },
                 "job_id": {
@@ -905,6 +917,9 @@ var doc = `{
                     "$ref": "#/definitions/models.MysqlDestTaskConfig"
                 },
                 "failover": {
+                    "type": "boolean"
+                },
+                "is_mysql_password_encrypted": {
                     "type": "boolean"
                 },
                 "job_id": {

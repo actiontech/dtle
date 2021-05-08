@@ -34,6 +34,8 @@ definitions:
         $ref: '#/definitions/models.MysqlDestTaskConfig'
       failover:
         type: boolean
+      is_mysql_password_encrypted:
+        type: boolean
       job_id:
         type: string
       job_name:
@@ -52,6 +54,8 @@ definitions:
       eval_create_index:
         type: integer
       failover:
+        type: boolean
+      is_mysql_password_encrypted:
         type: boolean
       job_id:
         type: string
@@ -410,6 +414,8 @@ definitions:
         $ref: '#/definitions/models.MysqlDestTaskConfig'
       failover:
         type: boolean
+      is_mysql_password_encrypted:
+        type: boolean
       job_id:
         type: string
       job_name:
@@ -470,6 +476,10 @@ paths:
         in: query
         name: mysql_character_set
         type: string
+      - description: indecate that mysql password is encrypted or not
+        in: query
+        name: is_mysql_password_encrypted
+        type: boolean
       responses:
         "200":
           description: OK

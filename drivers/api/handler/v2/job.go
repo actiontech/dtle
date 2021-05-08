@@ -107,17 +107,19 @@ func CreateOrUpdateMigrationJobV2(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invalid params:\n%v", err)))
 	}
 
-	realPwd, err := handler.DecryptMysqlPassword(jobParam.SrcTask.MysqlConnectionConfig.MysqlPassword)
-	if nil != err {
-		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("decrypt src mysql password failed: %v", err)))
-	}
-	jobParam.SrcTask.MysqlConnectionConfig.MysqlPassword = realPwd
+	if jobParam.IsMysqlPasswordEncrypted {
+		realPwd, err := handler.DecryptMysqlPassword(jobParam.SrcTask.MysqlConnectionConfig.MysqlPassword, g.RsaPrivateKey)
+		if nil != err {
+			return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("decrypt src mysql password failed: %v", err)))
+		}
+		jobParam.SrcTask.MysqlConnectionConfig.MysqlPassword = realPwd
 
-	realPwd, err = handler.DecryptMysqlPassword(jobParam.DestTask.MysqlConnectionConfig.MysqlPassword)
-	if nil != err {
-		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("decrypt dest mysql password failed: %v", err)))
+		realPwd, err = handler.DecryptMysqlPassword(jobParam.DestTask.MysqlConnectionConfig.MysqlPassword, g.RsaPrivateKey)
+		if nil != err {
+			return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("decrypt dest mysql password failed: %v", err)))
+		}
+		jobParam.DestTask.MysqlConnectionConfig.MysqlPassword = realPwd
 	}
-	jobParam.DestTask.MysqlConnectionConfig.MysqlPassword = realPwd
 
 	jobId := g.StringElse(jobParam.JobId, jobParam.JobName)
 	nomadJob, err := convertMysqlToMysqlJobToNomadJob(jobParam.Failover, jobId, jobParam.JobName, jobParam.SrcTask, jobParam.DestTask)

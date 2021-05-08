@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"strings"
 	"time"
 
@@ -69,6 +70,8 @@ var (
 		"log_level": hclspec.NewDefault(hclspec.NewAttr("log_level", "string", false),
 			hclspec.NewLiteral(`"Info"`)),
 		"ui_dir": hclspec.NewDefault(hclspec.NewAttr("ui_dir", "string", false),
+			hclspec.NewLiteral(`""`)),
+		"rsa_private_key_path": hclspec.NewDefault(hclspec.NewAttr("rsa_private_key_path", "string", false),
 			hclspec.NewLiteral(`""`)),
 	})
 
@@ -255,6 +258,7 @@ type DriverConfig struct {
 	PublishMetrics          bool   `codec:"publish_metrics"`
 	LogLevel                string `codec:"log_level"`
 	UiDir                   string `codec:"ui_dir"`
+	RsaPrivateKeyPath       string `codec:"rsa_private_key_path"`
 }
 
 func (d *Driver) SetConfig(c *base.Config) (err error) {
@@ -279,6 +283,14 @@ func (d *Driver) SetConfig(c *base.Config) (err error) {
 	}
 	d.logger.SetLevel(logLevel)
 	d.logger.Info("log level was set", "level", logLevel.String())
+
+	if "" != d.config.RsaPrivateKeyPath {
+		b, err := ioutil.ReadFile(d.config.RsaPrivateKeyPath)
+		if nil != err {
+			return fmt.Errorf("read rsa private key file failed: %v", err)
+		}
+		g.RsaPrivateKey = string(b)
+	}
 
 	if d.storeManager != nil {
 		// PluginLoader.validatePluginConfig() will call SetConfig() twice.

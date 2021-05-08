@@ -1,11 +1,12 @@
 package models
 
 type ListDatabaseSchemasReqV2 struct {
-	MysqlHost         string `query:"mysql_host" validate:"required"`
-	MysqlPort         uint32 `query:"mysql_port" validate:"required"`
-	MysqlUser         string `query:"mysql_user" validate:"required"`
-	MysqlPassword     string `query:"mysql_password" validate:"required"`
-	MysqlCharacterSet string `query:"mysql_character_set"`
+	MysqlHost                string `query:"mysql_host" validate:"required"`
+	MysqlPort                uint32 `query:"mysql_port" validate:"required"`
+	MysqlUser                string `query:"mysql_user" validate:"required"`
+	MysqlPassword            string `query:"mysql_password" validate:"required"`
+	MysqlCharacterSet        string `query:"mysql_character_set"`
+	IsMysqlPasswordEncrypted bool   `query:"is_mysql_password_encrypted"`
 }
 
 type ListDatabaseSchemasRespV2 struct {
