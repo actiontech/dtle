@@ -89,47 +89,42 @@ func (sm *StoreManager) GetGtidForJob(jobName string) (string, error) {
 	return string(p.Value), nil
 }
 
-func (sm *StoreManager) PutAndWatchNats(jobName string, natsAddr string, stopCh chan struct{}, onErrorF func(error)) {
-	sm.logger.Info("PutAndWatchNats")
+func (sm *StoreManager) DstPutNats(jobName string, natsAddr string, stopCh chan struct{}, onWatchError func(error)) error {
+	sm.logger.Debug("DstPutNats")
 
 	var err error
 	natsKey := fmt.Sprintf("dtle/%v/NatsAddr", jobName)
 	err = sm.consulStore.Put(natsKey, []byte("waitdst"), nil)
 	if err != nil {
-		onErrorF(err)
-		return
+		return err
 	}
 
 	natsCh, err := sm.consulStore.Watch(natsKey, stopCh)
 	if err != nil {
-		onErrorF(err)
-		return
+		return err
 	}
 
 	loop := true
 	for loop {
 		select {
 		case <-stopCh:
-			return
+			return err
 		case kv := <-natsCh:
 			if kv == nil {
-				onErrorF(errors.Wrap(ErrNoConsul, "PutAndWatchNats"))
-				return
+				return errors.Wrap(ErrNoConsul, "DstPutNats")
 			}
 			s := string(kv.Value)
-			sm.logger.Debug("NatsAddr. got", "value", s)
+			sm.logger.Info("NatsAddr. got", "value", s)
 			if s == "waitdst" {
 				// keep watching
 			} else if s == "wait" {
 				err = sm.consulStore.Put(natsKey, []byte(natsAddr), nil)
 				if err != nil {
-					onErrorF(err)
-					return
+					return err
 				}
 				loop = false
 			} else {
-				onErrorF(fmt.Errorf("PutAndWatchNats. unexpected value %v", s))
-				return
+				return fmt.Errorf("DstPutNats. unexpected value %v", s)
 			}
 		}
 	}
@@ -141,32 +136,88 @@ func (sm *StoreManager) PutAndWatchNats(jobName string, natsAddr string, stopCh 
 				return
 			case kv := <-natsCh:
 				if kv == nil {
-					onErrorF(errors.Wrap(ErrNoConsul, "PutAndWatchNats"))
+					onWatchError(errors.Wrap(ErrNoConsul, "DstPutNats"))
 					return
 				}
 				s := string(kv.Value)
+				sm.logger.Info("NatsAddr. got after put addr", "value", s)
 				if s == "wait" {
-					onErrorF(fmt.Errorf("NatsAddr changed to %v. will restart dst", s))
+					onWatchError(fmt.Errorf("NatsAddr changed to %v. will restart dst", s))
 					return
 				}
 			}
 		}
 	}()
+
+	return nil
 }
 
-func (sm *StoreManager) WatchNats(jobName string, stopCh chan struct{}) (<-chan *store.KVPair, error) {
+func (sm *StoreManager) SrcWatchNats(jobName string, stopCh chan struct{},
+	onWatchError func(error)) (natsAddr string, err error) {
+
+	sm.logger.Debug("SrcWatchNats")
+
 	natsKey := fmt.Sprintf("dtle/%v/NatsAddr", jobName)
 	natsCh, err := sm.consulStore.Watch(natsKey, stopCh)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
-	return natsCh, nil
-}
 
-func (sm *StoreManager) PutNatsWait(jobName string) error {
-	sm.logger.Debug("consul PutNatsWait")
-	key := fmt.Sprintf("dtle/%v/NatsAddr", jobName)
-	return sm.consulStore.Put(key, []byte("wait"), nil)
+	hasPutWait := false
+	for natsAddr == "" {
+		select {
+		case <-stopCh:
+			sm.logger.Info("shutdown when watching NatsAddr")
+			return
+		case kv := <-natsCh:
+			if kv == nil {
+				return "", errors.Wrap(ErrNoConsul, "SrcWatchNats")
+			}
+			s := string(kv.Value)
+			if s == "waitdst" {
+				sm.logger.Info("NatsAddr. got waitdst. will put wait")
+				err = sm.consulStore.Put(natsKey, []byte("wait"), nil)
+				if err != nil {
+					return "", errors.Wrap(err, "PutNatsWait")
+				}
+			} else if s == "wait" {
+				// Put by this round or previous round of src.
+				sm.logger.Info("NatsAddr. got wait")
+				hasPutWait = true
+			} else {
+				// an addr
+				if hasPutWait {
+					natsAddr = s
+					sm.logger.Info("NatsAddr. got addr", "addr", s)
+				} else {
+					// Got an addr before src asks for it.
+					// An addr of previous round.
+					// Put wait to trigger dst restart.
+					sm.logger.Info("NatsAddr. got addr before having put wait", "addr", s)
+					err = sm.consulStore.Put(natsKey, []byte("wait"), nil)
+					if err != nil {
+						return "", errors.Wrap(err, "PutNatsWait")
+					}
+				}
+			}
+		}
+	}
+
+	go func() {
+		select {
+		case <-stopCh:
+			return
+		case kv := <-natsCh:
+			if kv == nil {
+				onWatchError(errors.Wrap(ErrNoConsul, "SrcWatchNats"))
+				return
+			}
+			s := string(kv.Value)
+			onWatchError(fmt.Errorf("NatsAddr changed to %v. will restart src", s))
+		}
+	}()
+
+	return natsAddr, nil
 }
 
 func (sm *StoreManager) PutKey(subject string, key string, value []byte) error {

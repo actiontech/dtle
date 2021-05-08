@@ -249,9 +249,13 @@ func (kr *KafkaRunner) Run() {
 		return
 	}
 
-	kr.storeManager.PutAndWatchNats(kr.subject, kr.natsAddr, kr.shutdownCh, func(err error) {
-		kr.onError(TaskStateDead, errors.Wrap(err, "PutAndWatchNats"))
+	err = kr.storeManager.DstPutNats(kr.subject, kr.natsAddr, kr.shutdownCh, func(err error) {
+		kr.onError(TaskStateDead, errors.Wrap(err, "DstPutNats"))
 	})
+	if err != nil {
+		kr.onError(TaskStateDead, errors.Wrap(err, "DstPutNats"))
+		return
+	}
 
 	go kr.updateGtidLoop()
 }
