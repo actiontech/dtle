@@ -46,6 +46,18 @@ func ValidateJobV2(c echo.Context) error {
 	}
 	logger.Info("invoke nomad api finished")
 	logger.Info("validate task config")
+	// decrypt mysql password
+	if jobConfig.IsMysqlPasswordEncrypted {
+		jobConfig.SrcTaskConfig.MysqlConnectionConfig.MysqlPassword, err = handler.DecryptMysqlPassword(jobConfig.SrcTaskConfig.MysqlConnectionConfig.MysqlPassword, g.RsaPrivateKey)
+		if nil != err {
+			return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("decrypt src mysql password failed: %v", err)))
+		}
+		jobConfig.DestTaskConfig.MysqlConnectionConfig.MysqlPassword, err = handler.DecryptMysqlPassword(jobConfig.DestTaskConfig.MysqlConnectionConfig.MysqlPassword, g.RsaPrivateKey)
+		if nil != err {
+			return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("decrypt src mysql password failed: %v", err)))
+		}
+	}
+
 	validationTasks, err := validateTaskConfig(jobConfig.SrcTaskConfig, jobConfig.DestTaskConfig)
 	if nil != err {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("validate task config failed: %v", err)))
