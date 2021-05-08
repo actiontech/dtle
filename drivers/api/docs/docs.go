@@ -338,7 +338,9 @@ var doc = `{
                     "$ref": "#/definitions/models.MysqlDestTaskConfig"
                 },
                 "failover": {
-                    "type": "boolean"
+                    "description": "failover default:true",
+                    "type": "boolean",
+                    "example": true
                 },
                 "is_mysql_password_encrypted": {
                     "type": "boolean"
@@ -369,7 +371,9 @@ var doc = `{
                     "type": "integer"
                 },
                 "failover": {
-                    "type": "boolean"
+                    "description": "failover default:true",
+                    "type": "boolean",
+                    "example": true
                 },
                 "is_mysql_password_encrypted": {
                     "type": "boolean"
@@ -915,9 +919,6 @@ var doc = `{
             "properties": {
                 "dest_task": {
                     "$ref": "#/definitions/models.MysqlDestTaskConfig"
-                },
-                "failover": {
-                    "type": "boolean"
                 },
                 "is_mysql_password_encrypted": {
                     "type": "boolean"
