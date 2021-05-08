@@ -262,9 +262,13 @@ func (a *Applier) Run() {
 		a.onError(TaskStateDead, err)
 		return
 	}
-	a.storeManager.PutAndWatchNats(a.subject, a.NatsAddr, a.shutdownCh, func(err error) {
-		a.onError(TaskStateDead, errors.Wrap(err, "PutAndWatchNats"))
+	err = a.storeManager.DstPutNats(a.subject, a.NatsAddr, a.shutdownCh, func(err error) {
+		a.onError(TaskStateDead, errors.Wrap(err, "DstPutNats"))
 	})
+	if err != nil {
+		a.onError(TaskStateDead, errors.Wrap(err, "DstPutNats"))
+		return
+	}
 
 	go a.updateGtidLoop()
 
