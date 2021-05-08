@@ -309,9 +309,30 @@ func GetJobDetailV2(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("build job detail response failed: %v", err)))
 	}
 
+	failover := true
+	for _, tg := range nomadJob.TaskGroups {
+		for _, t := range tg.Tasks {
+			taskType := common.TaskTypeFromString(t.Name)
+			if taskType != common.TaskTypeSrc && taskType != common.TaskTypeDest {
+				continue
+			}
+			for _, constraint := range t.Constraints {
+				if constraint.LTarget == "${node.unique.id}" && constraint.Operand == "=" {
+					failover = false
+					// the "failover" was set when created job using api v2
+					// all task within the job will have a constraint to specify unique node if "failover" was set as false
+					// so we consider the job is set as "failover"=false if there is a task has constraint specifying unique node
+					goto endLoop
+				}
+			}
+		}
+	}
+endLoop:
+
 	return c.JSON(http.StatusOK, &models.JobDetailRespV2{
 		JobId:          jobId,
 		JobName:        *nomadJob.Name,
+		Failover:       failover,
 		SrcTaskDetail:  srcTaskDetail,
 		DestTaskDetail: destTaskDetail,
 		BaseResp:       models.BuildBaseResp(nil),
