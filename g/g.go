@@ -12,6 +12,7 @@ var (
 )
 
 var Logger hclog.Logger
+var RsaPrivateKey string
 
 const (
 	DtleSchemaName string = "dtle"
