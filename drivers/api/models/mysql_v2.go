@@ -9,7 +9,7 @@ type ListDatabaseSchemasReqV2 struct {
 	IsMysqlPasswordEncrypted bool   `query:"is_mysql_password_encrypted"`
 }
 
-type ListDatabaseSchemasRespV2 struct {
+type ListMysqlSchemasRespV2 struct {
 	Schemas []*SchemaItem `json:"schemas"`
 	BaseResp
 }

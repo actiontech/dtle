@@ -17,18 +17,18 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
-// @Description list schemas of datasource.
-// @Tags datasource
+// @Description list schemas of mysql source instance.
+// @Tags mysql
 // @Param mysql_host query string true "mysql host"
 // @Param mysql_port query string true "mysql port"
 // @Param mysql_user query string true "mysql user"
 // @Param mysql_password query string true "mysql password"
 // @Param mysql_character_set query string false "mysql character set"
 // @Param is_mysql_password_encrypted query bool false "indecate that mysql password is encrypted or not"
-// @Success 200 {object} models.ListDatabaseSchemasRespV2
-// @Router /v2/database/schemas [get]
-func ListDatabaseSchemasV2(c echo.Context) error {
-	logger := handler.NewLogger().Named("ListDatabaseSchemasV2")
+// @Success 200 {object} models.ListMysqlSchemasRespV2
+// @Router /v2/mysql/schemas [get]
+func ListMysqlSchemasV2(c echo.Context) error {
+	logger := handler.NewLogger().Named("ListMysqlSchemasV2")
 	logger.Info("validate params")
 	reqParam := new(models.ListDatabaseSchemasReqV2)
 	if err := c.Bind(reqParam); nil != err {
@@ -98,7 +98,7 @@ func ListDatabaseSchemasV2(c echo.Context) error {
 		replicateDoDb = append(replicateDoDb, schema)
 	}
 
-	return c.JSON(http.StatusOK, &models.ListDatabaseSchemasRespV2{
+	return c.JSON(http.StatusOK, &models.ListMysqlSchemasRespV2{
 		Schemas:  replicateDoDb,
 		BaseResp: models.BuildBaseResp(nil),
 	})
