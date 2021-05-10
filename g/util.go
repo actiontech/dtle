@@ -35,6 +35,16 @@ func TimeToPtr(t time.Duration) *time.Duration {
 	return &t
 }
 
+// PtrToBool returns a boolean
+// it will return the defaultValue if pointer is nil
+func PtrToBool(b *bool, defaultValue bool) bool {
+	if nil == b {
+		return defaultValue
+	} else {
+		return *b
+	}
+}
+
 // Helpers for copying generic structures.
 func CopyMapStringString(m map[string]string) map[string]string {
 	l := len(m)
@@ -117,4 +127,3 @@ func StringElse(s1 string, s2 string) string {
 func CurrentTimeMillis() int64 {
 	return time.Now().UnixNano() / 1000000
 }
-

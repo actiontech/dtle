@@ -106,6 +106,7 @@ func CreateOrUpdateMigrationJobV2(c echo.Context) error {
 	if err := c.Validate(jobParam); nil != err {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invalid params:\n%v", err)))
 	}
+	failover := g.PtrToBool(jobParam.Failover, true)
 
 	if jobParam.IsMysqlPasswordEncrypted {
 		realPwd, err := handler.DecryptMysqlPassword(jobParam.SrcTask.MysqlConnectionConfig.MysqlPassword, g.RsaPrivateKey)
@@ -122,7 +123,7 @@ func CreateOrUpdateMigrationJobV2(c echo.Context) error {
 	}
 
 	jobId := g.StringElse(jobParam.JobId, jobParam.JobName)
-	nomadJob, err := convertMysqlToMysqlJobToNomadJob(jobParam.Failover, jobId, jobParam.JobName, jobParam.SrcTask, jobParam.DestTask)
+	nomadJob, err := convertMysqlToMysqlJobToNomadJob(failover, jobId, jobParam.JobName, jobParam.SrcTask, jobParam.DestTask)
 	if nil != err {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("convert job param to nomad job request failed, error: %v", err)))
 	}
@@ -156,6 +157,9 @@ func convertMysqlToMysqlJobToNomadJob(failover bool, apiJobId, apiJobName string
 	buildTaskGroupItem := func(dtleTaskconfig map[string]interface{}, taskName, nodeId string) (*nomadApi.TaskGroup, error) {
 		task := nomadApi.NewTask(taskName, g.PluginName)
 		task.Config = dtleTaskconfig
+		if !failover && "" == nodeId {
+			return nil, fmt.Errorf("node id should be provided if failover is false. task_name=%v", taskName)
+		}
 		if nodeId != "" {
 			if failover {
 				// https://www.nomadproject.io/docs/runtime/interpolation
@@ -305,9 +309,30 @@ func GetJobDetailV2(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("build job detail response failed: %v", err)))
 	}
 
+	failover := true
+	for _, tg := range nomadJob.TaskGroups {
+		for _, t := range tg.Tasks {
+			taskType := common.TaskTypeFromString(t.Name)
+			if taskType != common.TaskTypeSrc && taskType != common.TaskTypeDest {
+				continue
+			}
+			for _, constraint := range t.Constraints {
+				if constraint.LTarget == "${node.unique.id}" && constraint.Operand == "=" {
+					failover = false
+					// the "failover" was set when created job using api v2
+					// all task within the job will have a constraint to specify unique node if "failover" was set as false
+					// so we consider the job is set as "failover"=false if there is a task has constraint specifying unique node
+					goto endLoop
+				}
+			}
+		}
+	}
+endLoop:
+
 	return c.JSON(http.StatusOK, &models.JobDetailRespV2{
 		JobId:          jobId,
 		JobName:        *nomadJob.Name,
+		Failover:       failover,
 		SrcTaskDetail:  srcTaskDetail,
 		DestTaskDetail: destTaskDetail,
 		BaseResp:       models.BuildBaseResp(nil),
