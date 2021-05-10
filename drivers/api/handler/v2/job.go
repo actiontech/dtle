@@ -271,13 +271,13 @@ func addNotRequiredParamToMap(target map[string]interface{}, value interface{}, 
 
 // @Description get job detail.
 // @Tags job
-// @Success 200 {object} models.JobDetailRespV2
+// @Success 200 {object} models.MysqlToMysqlJobDetailRespV2
 // @Param job_id query string true "job id"
-// @Router /v2/job/detail [get]
-func GetJobDetailV2(c echo.Context) error {
-	logger := handler.NewLogger().Named("GetJobDetailV2")
+// @Router /v2/job/migration/detail [get]
+func GetMysqlToMysqlJobDetailV2(c echo.Context) error {
+	logger := handler.NewLogger().Named("GetMysqlToMysqlJobDetailV2")
 	logger.Info("validate params")
-	reqParam := new(models.JobDetailReqV2)
+	reqParam := new(models.MysqlToMysqlJobDetailReqV2)
 	if err := c.Bind(reqParam); nil != err {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("bind req param failed, error: %v", err)))
 	}
@@ -329,7 +329,7 @@ func GetJobDetailV2(c echo.Context) error {
 	}
 endLoop:
 
-	return c.JSON(http.StatusOK, &models.JobDetailRespV2{
+	return c.JSON(http.StatusOK, &models.MysqlToMysqlJobDetailRespV2{
 		JobId:          jobId,
 		JobName:        *nomadJob.Name,
 		Failover:       failover,

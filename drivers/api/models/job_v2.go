@@ -20,11 +20,11 @@ type JobListRespV2 struct {
 	BaseResp
 }
 
-type JobDetailReqV2 struct {
+type MysqlToMysqlJobDetailReqV2 struct {
 	JobId string `query:"job_id" validate:"required"`
 }
 
-type JobDetailRespV2 struct {
+type MysqlToMysqlJobDetailRespV2 struct {
 	JobId          string              `json:"job_id"`
 	JobName        string              `json:"job_name"`
 	Failover       bool                `json:"failover"`

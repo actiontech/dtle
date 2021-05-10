@@ -24,89 +24,6 @@ var doc = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
-        "/v2/database/schemas": {
-            "get": {
-                "description": "list schemas of datasource.",
-                "tags": [
-                    "datasource"
-                ],
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "mysql host",
-                        "name": "mysql_host",
-                        "in": "query",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "mysql port",
-                        "name": "mysql_port",
-                        "in": "query",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "mysql user",
-                        "name": "mysql_user",
-                        "in": "query",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "mysql password",
-                        "name": "mysql_password",
-                        "in": "query",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "mysql character set",
-                        "name": "mysql_character_set",
-                        "in": "query"
-                    },
-                    {
-                        "type": "boolean",
-                        "description": "indecate that mysql password is encrypted or not",
-                        "name": "is_mysql_password_encrypted",
-                        "in": "query"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/models.ListDatabaseSchemasRespV2"
-                        }
-                    }
-                }
-            }
-        },
-        "/v2/job/detail": {
-            "get": {
-                "description": "get job detail.",
-                "tags": [
-                    "job"
-                ],
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "job id",
-                        "name": "job_id",
-                        "in": "query",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/models.JobDetailRespV2"
-                        }
-                    }
-                }
-            }
-        },
         "/v2/job/migration": {
             "post": {
                 "description": "create or update migration job.",
@@ -132,6 +49,31 @@ var doc = `{
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/models.CreateOrUpdateMysqlToMysqlJobRespV2"
+                        }
+                    }
+                }
+            }
+        },
+        "/v2/job/migration/detail": {
+            "get": {
+                "description": "get job detail.",
+                "tags": [
+                    "job"
+                ],
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "job id",
+                        "name": "job_id",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.MysqlToMysqlJobDetailRespV2"
                         }
                     }
                 }
@@ -229,6 +171,64 @@ var doc = `{
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/models.GetTaskProgressRespV2"
+                        }
+                    }
+                }
+            }
+        },
+        "/v2/mysql/schemas": {
+            "get": {
+                "description": "list schemas of mysql source instance.",
+                "tags": [
+                    "mysql"
+                ],
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "mysql host",
+                        "name": "mysql_host",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "mysql port",
+                        "name": "mysql_port",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "mysql user",
+                        "name": "mysql_user",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "mysql password",
+                        "name": "mysql_password",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "mysql character set",
+                        "name": "mysql_character_set",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "indecate that mysql password is encrypted or not",
+                        "name": "is_mysql_password_encrypted",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.ListMysqlSchemasRespV2"
                         }
                     }
                 }
@@ -452,29 +452,6 @@ var doc = `{
                 }
             }
         },
-        "models.JobDetailRespV2": {
-            "type": "object",
-            "properties": {
-                "dest_task_detail": {
-                    "$ref": "#/definitions/models.MysqlDestTaskDetail"
-                },
-                "failover": {
-                    "type": "boolean"
-                },
-                "job_id": {
-                    "type": "string"
-                },
-                "job_name": {
-                    "type": "string"
-                },
-                "message": {
-                    "type": "string"
-                },
-                "src_task_detail": {
-                    "$ref": "#/definitions/models.MysqlSrcTaskDetail"
-                }
-            }
-        },
         "models.JobListItemV2": {
             "type": "object",
             "properties": {
@@ -506,7 +483,7 @@ var doc = `{
                 }
             }
         },
-        "models.ListDatabaseSchemasRespV2": {
+        "models.ListMysqlSchemasRespV2": {
             "type": "object",
             "properties": {
                 "message": {
@@ -697,6 +674,29 @@ var doc = `{
                 },
                 "task_name": {
                     "type": "string"
+                }
+            }
+        },
+        "models.MysqlToMysqlJobDetailRespV2": {
+            "type": "object",
+            "properties": {
+                "dest_task_detail": {
+                    "$ref": "#/definitions/models.MysqlDestTaskDetail"
+                },
+                "failover": {
+                    "type": "boolean"
+                },
+                "job_id": {
+                    "type": "string"
+                },
+                "job_name": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "src_task_detail": {
+                    "$ref": "#/definitions/models.MysqlSrcTaskDetail"
                 }
             }
         },
