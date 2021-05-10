@@ -113,21 +113,6 @@ definitions:
       validated:
         type: boolean
     type: object
-  models.JobDetailRespV2:
-    properties:
-      dest_task_detail:
-        $ref: '#/definitions/models.MysqlDestTaskDetail'
-      failover:
-        type: boolean
-      job_id:
-        type: string
-      job_name:
-        type: string
-      message:
-        type: string
-      src_task_detail:
-        $ref: '#/definitions/models.MysqlSrcTaskDetail'
-    type: object
   models.JobListItemV2:
     properties:
       job_id:
@@ -148,7 +133,7 @@ definitions:
       message:
         type: string
     type: object
-  models.ListDatabaseSchemasRespV2:
+  models.ListMysqlSchemasRespV2:
     properties:
       message:
         type: string
@@ -275,6 +260,21 @@ definitions:
         $ref: '#/definitions/models.ServerIDValidation'
       task_name:
         type: string
+    type: object
+  models.MysqlToMysqlJobDetailRespV2:
+    properties:
+      dest_task_detail:
+        $ref: '#/definitions/models.MysqlDestTaskDetail'
+      failover:
+        type: boolean
+      job_id:
+        type: string
+      job_name:
+        type: string
+      message:
+        type: string
+      src_task_detail:
+        $ref: '#/definitions/models.MysqlSrcTaskDetail'
     type: object
   models.NatsMessageStatistics:
     properties:
@@ -450,61 +450,6 @@ definitions:
 info:
   contact: {}
 paths:
-  /v2/database/schemas:
-    get:
-      description: list schemas of datasource.
-      parameters:
-      - description: mysql host
-        in: query
-        name: mysql_host
-        required: true
-        type: string
-      - description: mysql port
-        in: query
-        name: mysql_port
-        required: true
-        type: string
-      - description: mysql user
-        in: query
-        name: mysql_user
-        required: true
-        type: string
-      - description: mysql password
-        in: query
-        name: mysql_password
-        required: true
-        type: string
-      - description: mysql character set
-        in: query
-        name: mysql_character_set
-        type: string
-      - description: indecate that mysql password is encrypted or not
-        in: query
-        name: is_mysql_password_encrypted
-        type: boolean
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/models.ListDatabaseSchemasRespV2'
-      tags:
-      - datasource
-  /v2/job/detail:
-    get:
-      description: get job detail.
-      parameters:
-      - description: job id
-        in: query
-        name: job_id
-        required: true
-        type: string
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/models.JobDetailRespV2'
-      tags:
-      - job
   /v2/job/migration:
     post:
       consumes:
@@ -522,6 +467,22 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/models.CreateOrUpdateMysqlToMysqlJobRespV2'
+      tags:
+      - job
+  /v2/job/migration/detail:
+    get:
+      description: get job detail.
+      parameters:
+      - description: job id
+        in: query
+        name: job_id
+        required: true
+        type: string
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.MysqlToMysqlJobDetailRespV2'
       tags:
       - job
   /v2/jobs:
@@ -589,6 +550,45 @@ paths:
             $ref: '#/definitions/models.GetTaskProgressRespV2'
       tags:
       - monitor
+  /v2/mysql/schemas:
+    get:
+      description: list schemas of mysql source instance.
+      parameters:
+      - description: mysql host
+        in: query
+        name: mysql_host
+        required: true
+        type: string
+      - description: mysql port
+        in: query
+        name: mysql_port
+        required: true
+        type: string
+      - description: mysql user
+        in: query
+        name: mysql_user
+        required: true
+        type: string
+      - description: mysql password
+        in: query
+        name: mysql_password
+        required: true
+        type: string
+      - description: mysql character set
+        in: query
+        name: mysql_character_set
+        type: string
+      - description: indecate that mysql password is encrypted or not
+        in: query
+        name: is_mysql_password_encrypted
+        type: boolean
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.ListMysqlSchemasRespV2'
+      tags:
+      - mysql
   /v2/nodes:
     get:
       description: get node list.
