@@ -59,7 +59,7 @@ func SetupApiServer(logger hclog.Logger, apiAddr, nomadAddr, uiDir string) (err 
 	e.POST("/v2/job/migration", v2.CreateOrUpdateMigrationJobV2)
 	e.GET("/v2/nodes", v2.NodeListV2)
 	e.POST("/v2/validation/job", v2.ValidateJobV2)
-	e.GET("/v2/database/schemas", v2.ListDatabaseSchemasV2)
+	e.GET("/v2/mysql/schemas", v2.ListMysqlSchemasV2)
 	e.GET("/v2/monitor/task", v2.GetTaskProgressV2)
 
 	e.Validator = handler.NewValidator()
