@@ -622,7 +622,8 @@ import (
 	BinlogStmt			"Binlog base64 statement"
 	CommitStmt			"COMMIT statement"
 	CreateTableStmt			"CREATE TABLE statement"
-	CreateViewStmt			"CREATE VIEW  stetement"
+	DropTriggerStmt	    	"DROP TRIGGER statement"
+	CreateViewStmt			"CREATE VIEW  statement"
 	CreateUserStmt			"CREATE User statement"
 	CreateRoleStmt			"CREATE Role statement"
 	CreateDatabaseStmt		"Create Database Statement"
@@ -2165,6 +2166,15 @@ DatabaseOptionList:
 	{
 		$$ = append($1.([]*ast.DatabaseOption), $2.(*ast.DatabaseOption))
 	}
+
+DropTriggerStmt:
+    "DROP" "TRIGGER" IfExists TableName /* use TableName for schema.trigge_name */
+    {
+        $$ = &ast.DropTriggerStmt{
+            IfExists: $3.(bool),
+            TriggerName: $4.(*ast.TableName),
+        }
+    }
 
 /*******************************************************************
  *
@@ -7004,6 +7014,7 @@ Statement:
 |	CreateDatabaseStmt
 |	CreateIndexStmt
 |	CreateTableStmt
+|   DropTriggerStmt
 |	CreateViewStmt
 |	CreateUserStmt
 |	CreateRoleStmt
