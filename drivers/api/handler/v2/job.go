@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	hclog "github.com/hashicorp/go-hclog"
+
 	"github.com/actiontech/dtle/drivers/mysql/common"
 
 	"github.com/actiontech/dtle/g"
@@ -99,6 +101,10 @@ func getJobTypeFromJobId(jobId string) DtleJobType {
 func CreateOrUpdateMigrationJobV2(c echo.Context) error {
 	logger := handler.NewLogger().Named("CreateOrUpdateMigrationJobV2")
 	logger.Info("validate params")
+	return createOrUpdateMysqlToMysqlJob(c, logger, DtleJobTypeMigration)
+}
+
+func createOrUpdateMysqlToMysqlJob(c echo.Context, logger hclog.Logger, jobType DtleJobType) error {
 	jobParam := new(models.CreateOrUpdateMysqlToMysqlJobParamV2)
 	if err := c.Bind(jobParam); nil != err {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("bind req param failed, error: %v", err)))
@@ -123,6 +129,7 @@ func CreateOrUpdateMigrationJobV2(c echo.Context) error {
 	}
 
 	jobId := g.StringElse(jobParam.JobId, jobParam.JobName)
+	jobId = addJobTypeToJobId(jobId, jobType)
 	nomadJob, err := convertMysqlToMysqlJobToNomadJob(failover, jobId, jobParam.JobName, jobParam.SrcTask, jobParam.DestTask)
 	if nil != err {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("convert job param to nomad job request failed, error: %v", err)))
@@ -187,7 +194,7 @@ func convertMysqlToMysqlJobToNomadJob(failover bool, apiJobId, apiJobName string
 		return nil, fmt.Errorf("build dest task failed: %v", err)
 	}
 
-	jobId := addJobTypeToJobId(apiJobId, DtleJobTypeMigration)
+	jobId := apiJobId
 	return &nomadApi.Job{
 		ID:          &jobId,
 		Name:        &apiJobName,
@@ -463,4 +470,16 @@ func buildMysqlToMysqlJobDetailResp(nomadJob nomadApi.Job, nomadAllocations []no
 	}
 
 	return destTaskDetail, srcTaskDetail, nil
+}
+
+// @Description create or update sync job.
+// @Tags job
+// @Accept application/json
+// @Param sync_job_config body models.CreateOrUpdateMysqlToMysqlJobParamV2 true "sync job config"
+// @Success 200 {object} models.CreateOrUpdateMysqlToMysqlJobRespV2
+// @Router /v2/job/sync [post]
+func CreateOrUpdateSyncJobV2(c echo.Context) error {
+	logger := handler.NewLogger().Named("CreateOrUpdateSyncJobV2")
+	logger.Info("validate params")
+	return createOrUpdateMysqlToMysqlJob(c, logger, DtleJobTypeSync)
 }

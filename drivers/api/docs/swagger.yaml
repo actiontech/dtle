@@ -485,6 +485,25 @@ paths:
             $ref: '#/definitions/models.MysqlToMysqlJobDetailRespV2'
       tags:
       - job
+  /v2/job/sync:
+    post:
+      consumes:
+      - application/json
+      description: create or update sync job.
+      parameters:
+      - description: sync job config
+        in: body
+        name: sync_job_config
+        required: true
+        schema:
+          $ref: '#/definitions/models.CreateOrUpdateMysqlToMysqlJobParamV2'
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.CreateOrUpdateMysqlToMysqlJobRespV2'
+      tags:
+      - job
   /v2/jobs:
     get:
       description: get job list.

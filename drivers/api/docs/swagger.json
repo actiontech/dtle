@@ -59,6 +59,36 @@
                 }
             }
         },
+        "/v2/job/sync": {
+            "post": {
+                "description": "create or update sync job.",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "job"
+                ],
+                "parameters": [
+                    {
+                        "description": "sync job config",
+                        "name": "sync_job_config",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.CreateOrUpdateMysqlToMysqlJobParamV2"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.CreateOrUpdateMysqlToMysqlJobRespV2"
+                        }
+                    }
+                }
+            }
+        },
         "/v2/jobs": {
             "get": {
                 "description": "get job list.",
