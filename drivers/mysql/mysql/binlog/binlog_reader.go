@@ -1149,6 +1149,8 @@ func resolveQuery(currentSchema string, sql string,
 	case *ast.RenameTableStmt:
 		setTable(v.OldTable.Schema.O, v.OldTable.Name.O)
 		// TODO handle extra tables in v.TableToTables[1:]
+	case *ast.DropTriggerStmt:
+		result.isExpand = true
 	default:
 		result.isRecognized = false
 	}
@@ -1184,6 +1186,11 @@ func (b *BinlogReader) skipQueryDDL(schema string, tableName string) bool {
 	}
 }
 
+var (
+	// > A Regexp is safe for concurrent use by multiple goroutines...
+	regexCreateTrigger = regexp.MustCompile(`(?is)CREATE\b.+?TRIGGER\b.+?(?:BEFORE|AFTER)\b.+?(?:INSERT|UPDATE|DELETE)\b.+?ON\b.+?FOR\b.+?EACH\b.+?ROW\b`)
+)
+
 func isExpandSyntaxQuery(sql string) bool {
 	sql = strings.ToLower(sql)
 
@@ -1196,6 +1203,10 @@ func isExpandSyntaxQuery(sql string) bool {
 		return true
 	}
 	if strings.HasPrefix(sql, "rename user") {
+		return true
+	}
+
+	if regexCreateTrigger.MatchString(sql) {
 		return true
 	}
 

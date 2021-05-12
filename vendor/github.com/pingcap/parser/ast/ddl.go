@@ -32,6 +32,7 @@ var (
 	_ DDLNode = &DropTableStmt{}
 	_ DDLNode = &RenameTableStmt{}
 	_ DDLNode = &TruncateTableStmt{}
+	_ DDLNode = &DropTriggerStmt{}
 
 	_ Node = &AlterTableSpec{}
 	_ Node = &ColumnDef{}
@@ -862,6 +863,41 @@ func (n *CreateTableStmt) Accept(v Visitor) (Node, bool) {
 		}
 		n.Select = node.(ResultSetNode)
 	}
+
+	return v.Leave(n)
+}
+
+type DropTriggerStmt struct {
+	ddlNode
+
+	IfExists    bool
+	TriggerName *TableName
+}
+
+func (n *DropTriggerStmt) Restore(ctx *RestoreCtx) error {
+	ctx.WriteKeyWord("DROP TRIGGER ")
+	if n.IfExists {
+		ctx.WriteKeyWord("IF EXISTS ")
+	}
+
+	err := n.TriggerName.Restore(ctx)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (n *DropTriggerStmt) Accept(v Visitor) (Node, bool) {
+	newNode, skipChildren := v.Enter(n)
+	if skipChildren {
+		return v.Leave(newNode)
+	}
+	n = newNode.(*DropTriggerStmt)
+	node, ok := n.TriggerName.Accept(v)
+	if !ok {
+		return n, false
+	}
+	n.TriggerName = node.(*TableName)
 
 	return v.Leave(n)
 }
