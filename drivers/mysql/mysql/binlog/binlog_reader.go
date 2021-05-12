@@ -1149,6 +1149,8 @@ func resolveQuery(currentSchema string, sql string,
 	case *ast.RenameTableStmt:
 		setTable(v.OldTable.Schema.O, v.OldTable.Name.O)
 		// TODO handle extra tables in v.TableToTables[1:]
+	case *ast.DropTriggerStmt:
+		result.isExpand = true
 	default:
 		result.isRecognized = false
 	}
