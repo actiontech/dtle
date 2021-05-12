@@ -152,11 +152,16 @@ func createOrUpdateMysqlToMysqlJob(c echo.Context, logger hclog.Logger, jobType 
 
 	jobParam.SrcTask.MysqlConnectionConfig.MysqlPassword = "*"
 	jobParam.DestTask.MysqlConnectionConfig.MysqlPassword = "*"
+
+	var respErr error
+	if "" != nomadResp.Warnings {
+		respErr = errors.New(nomadResp.Warnings)
+	}
 	return c.JSON(http.StatusOK, &models.CreateOrUpdateMysqlToMysqlJobRespV2{
 		CreateOrUpdateMysqlToMysqlJobParamV2: *jobParam,
 		EvalCreateIndex:                      nomadResp.EvalCreateIndex,
 		JobModifyIndex:                       nomadResp.JobModifyIndex,
-		BaseResp:                             models.BuildBaseResp(errors.New(nomadResp.Warnings)),
+		BaseResp:                             models.BuildBaseResp(respErr),
 	})
 }
 
