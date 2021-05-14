@@ -6,7 +6,7 @@ DOCKER        := $(shell which docker)
 DOCKER_IMAGE  := docker-registry:5000/actiontech/universe-compiler-udup:v4
 
 PROJECT_NAME  = dtle
-VERSION       = 3.21.04.0
+VERSION       = 3.21.04.1
 
 ifdef GOBIN
 PATH := $(GOBIN):$(PATH)
