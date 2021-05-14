@@ -818,18 +818,19 @@ func (e *Extractor) setStatementFor() string {
 }
 
 type TimestampContext struct {
-	stopCh      chan struct{}
-	TimestampCh chan uint32
-	logger      hclog.Logger
-	f           func() bool
-	delay       int64
+	stopCh         chan struct{}
+	// Do not pass 0 to the chan.
+	TimestampCh    chan uint32
+	logger         hclog.Logger
+	emptyQueueFunc func() bool
+	delay          int64
 }
 
-func NewTimestampContext(stopCh chan struct{}, logger hclog.Logger, f func() bool) *TimestampContext {
+func NewTimestampContext(stopCh chan struct{}, logger hclog.Logger, emptyQueueFunc func() bool) *TimestampContext {
 	return &TimestampContext{
-		stopCh: stopCh,
-		logger: logger,
-		f:      f,
+		stopCh:         stopCh,
+		logger:         logger,
+		emptyQueueFunc: emptyQueueFunc,
 
 		TimestampCh: make(chan uint32, 16),
 	}
@@ -840,30 +841,26 @@ func (tsc *TimestampContext) GetDelay() (d int64) {
 }
 func (tsc *TimestampContext) Handle() {
 	interval := 15 * time.Second
-	t := time.NewTimer(0)
-	<-t.C
+	t := time.NewTicker(interval)
+	hasTs := false
 	for {
 		select {
 		case <-tsc.stopCh:
+			t.Stop()
 			return
 		case ts := <-tsc.TimestampCh:
 			tsc.logger.Debug("TimestampContext.Handle: got", "timestamp", ts)
-			if ts != 0 {
-				tsc.delay = time.Now().Unix() - int64(ts)
-			}
-			if !t.Stop() {
-				select {
-				case <-t.C:
-				default:
-					// Stop a stopped timer, nothing to read from t.C.
+			tsc.delay = time.Now().Unix() - int64(ts)
+			hasTs = true
+		case <-t.C:
+			if hasTs {
+				hasTs = false
+			} else if tsc.delay != 0 {
+				if tsc.emptyQueueFunc() {
+					tsc.logger.Debug("delay: resetting timestamp")
+					tsc.delay = 0
 				}
 			}
-			if tsc.f() {
-				t.Reset(interval)
-			}
-		case <-t.C:
-			tsc.logger.Debug("delay: resetting timestamp")
-			tsc.delay = 0
 		}
 	}
 }

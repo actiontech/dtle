@@ -543,7 +543,9 @@ func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.Bin
 	a.mysqlContext.Stage = common.StageWaitingForGtidToBeCommitted
 	atomic.AddInt64(&a.TotalDeltaCopied, 1)
 	logger.Debug("event delay time", "timestamp", timestamp)
-	a.timestampCtx.TimestampCh <- timestamp
+	if timestamp != 0 {
+		a.timestampCtx.TimestampCh <- timestamp
+	}
 	return nil
 }
 
