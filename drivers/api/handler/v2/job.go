@@ -100,11 +100,11 @@ func getJobTypeFromJobId(jobId string) DtleJobType {
 // @Router /v2/job/migration [post]
 func CreateOrUpdateMigrationJobV2(c echo.Context) error {
 	logger := handler.NewLogger().Named("CreateOrUpdateMigrationJobV2")
-	logger.Info("validate params")
 	return createOrUpdateMysqlToMysqlJob(c, logger, DtleJobTypeMigration)
 }
 
 func createOrUpdateMysqlToMysqlJob(c echo.Context, logger hclog.Logger, jobType DtleJobType) error {
+	logger.Info("validate params")
 	jobParam := new(models.CreateOrUpdateMysqlToMysqlJobParamV2)
 	if err := c.Bind(jobParam); nil != err {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("bind req param failed, error: %v", err)))
@@ -281,13 +281,17 @@ func addNotRequiredParamToMap(target map[string]interface{}, value interface{}, 
 	}
 }
 
-// @Description get job detail.
+// @Description get migration job detail.
 // @Tags job
 // @Success 200 {object} models.MysqlToMysqlJobDetailRespV2
 // @Param job_id query string true "job id"
 // @Router /v2/job/migration/detail [get]
-func GetMysqlToMysqlJobDetailV2(c echo.Context) error {
-	logger := handler.NewLogger().Named("GetMysqlToMysqlJobDetailV2")
+func GetMigrationJobDetailV2(c echo.Context) error {
+	logger := handler.NewLogger().Named("GetMigrationJobDetailV2")
+	return getMysqlToMysqlJobDetail(c, logger)
+}
+
+func getMysqlToMysqlJobDetail(c echo.Context, logger hclog.Logger) error {
 	logger.Info("validate params")
 	reqParam := new(models.MysqlToMysqlJobDetailReqV2)
 	if err := c.Bind(reqParam); nil != err {
@@ -309,6 +313,10 @@ func GetMysqlToMysqlJobDetailV2(c echo.Context) error {
 	}
 	logger.Info("invoke nomad api finished")
 
+	jobType := getJobTypeFromJobId(g.PtrToString(nomadJob.ID, ""))
+	if jobType == DtleJobTypeKafka {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("this API is for MySQL-to-MySQL job. but got job type=%v by the provided job id", jobType)))
+	}
 	url = handler.BuildUrl(fmt.Sprintf("/v1/job/%v/allocations", *nomadJob.ID))
 	logger.Info("invoke nomad api begin", "url", url)
 	allocations := []nomadApi.Allocation{}
@@ -485,6 +493,15 @@ func buildMysqlToMysqlJobDetailResp(nomadJob nomadApi.Job, nomadAllocations []no
 // @Router /v2/job/sync [post]
 func CreateOrUpdateSyncJobV2(c echo.Context) error {
 	logger := handler.NewLogger().Named("CreateOrUpdateSyncJobV2")
-	logger.Info("validate params")
 	return createOrUpdateMysqlToMysqlJob(c, logger, DtleJobTypeSync)
+}
+
+// @Description get sync job detail.
+// @Tags job
+// @Success 200 {object} models.MysqlToMysqlJobDetailRespV2
+// @Param job_id query string true "job id"
+// @Router /v2/job/sync/detail [get]
+func GetSyncJobDetailV2(c echo.Context) error {
+	logger := handler.NewLogger().Named("GetSyncJobDetailV2")
+	return getMysqlToMysqlJobDetail(c, logger)
 }

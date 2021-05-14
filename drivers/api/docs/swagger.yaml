@@ -471,7 +471,7 @@ paths:
       - job
   /v2/job/migration/detail:
     get:
-      description: get job detail.
+      description: get migration job detail.
       parameters:
       - description: job id
         in: query
@@ -502,6 +502,22 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/models.CreateOrUpdateMysqlToMysqlJobRespV2'
+      tags:
+      - job
+  /v2/job/sync/detail:
+    get:
+      description: get sync job detail.
+      parameters:
+      - description: job id
+        in: query
+        name: job_id
+        required: true
+        type: string
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.MysqlToMysqlJobDetailRespV2'
       tags:
       - job
   /v2/jobs:

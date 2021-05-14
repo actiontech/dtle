@@ -45,6 +45,16 @@ func PtrToBool(b *bool, defaultValue bool) bool {
 	}
 }
 
+// PtrToString returns a string
+// it will return the defaultValue if pointer is nil
+func PtrToString(ptr *string, defaultValue string) string {
+	if nil == ptr {
+		return defaultValue
+	} else {
+		return *ptr
+	}
+}
+
 // Helpers for copying generic structures.
 func CopyMapStringString(m map[string]string) map[string]string {
 	l := len(m)
@@ -96,14 +106,6 @@ func CopySliceString(s []string) []string {
 		c[i] = v
 	}
 	return c
-}
-
-func PtrToString(ptr *string, defaultValue string) string {
-	if nil == ptr {
-		return defaultValue
-	} else {
-		return *ptr
-	}
 }
 
 // Return a substring of limited lenth.

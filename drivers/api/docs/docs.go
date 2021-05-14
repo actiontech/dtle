@@ -56,7 +56,7 @@ var doc = `{
         },
         "/v2/job/migration/detail": {
             "get": {
-                "description": "get job detail.",
+                "description": "get migration job detail.",
                 "tags": [
                     "job"
                 ],
@@ -104,6 +104,31 @@ var doc = `{
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/models.CreateOrUpdateMysqlToMysqlJobRespV2"
+                        }
+                    }
+                }
+            }
+        },
+        "/v2/job/sync/detail": {
+            "get": {
+                "description": "get sync job detail.",
+                "tags": [
+                    "job"
+                ],
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "job id",
+                        "name": "job_id",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.MysqlToMysqlJobDetailRespV2"
                         }
                     }
                 }
