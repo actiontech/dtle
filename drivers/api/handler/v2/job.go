@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/actiontech/dtle/drivers/mysql/kafka"
+
 	hclog "github.com/hashicorp/go-hclog"
 
 	"github.com/actiontech/dtle/drivers/mysql/common"
@@ -67,10 +69,10 @@ func JobListV2(c echo.Context) error {
 type DtleJobType string
 
 const (
-	DtleJobTypeMigration = DtleJobType("migration")
-	DtleJobTypeSync      = DtleJobType("sync")
-	DtleJobTypeKafka     = DtleJobType("kafka")
-	DtleJobTypeUnknown   = DtleJobType("unknown")
+	DtleJobTypeMigration    = DtleJobType("migration")
+	DtleJobTypeSync         = DtleJobType("sync")
+	DtleJobTypeSubscription = DtleJobType("subscription")
+	DtleJobTypeUnknown      = DtleJobType("unknown")
 )
 
 func addJobTypeToJobId(raw string, jobType DtleJobType) string {
@@ -85,7 +87,7 @@ func getJobTypeFromJobId(jobId string) DtleJobType {
 
 	jobType := DtleJobType(segs[len(segs)-1])
 	switch jobType {
-	case DtleJobTypeMigration, DtleJobTypeSync, DtleJobTypeKafka:
+	case DtleJobTypeMigration, DtleJobTypeSync, DtleJobTypeSubscription:
 		return jobType
 	default:
 		return DtleJobTypeUnknown
@@ -167,35 +169,12 @@ func createOrUpdateMysqlToMysqlJob(c echo.Context, logger hclog.Logger, jobType 
 }
 
 func convertMysqlToMysqlJobToNomadJob(failover bool, apiJobId, apiJobName string, apiSrcTask *models.MysqlSrcTaskConfig, apiDestTask *models.MysqlDestTaskConfig) (*nomadApi.Job, error) {
-	buildTaskGroupItem := func(dtleTaskconfig map[string]interface{}, taskName, nodeId string) (*nomadApi.TaskGroup, error) {
-		task := nomadApi.NewTask(taskName, g.PluginName)
-		task.Config = dtleTaskconfig
-		if !failover && "" == nodeId {
-			return nil, fmt.Errorf("node id should be provided if failover is false. task_name=%v", taskName)
-		}
-		if nodeId != "" {
-			if failover {
-				// https://www.nomadproject.io/docs/runtime/interpolation
-				newAff := nomadApi.NewAffinity("${node.unique.id}", "=", nodeId, 100)
-				task.Affinities = append(task.Affinities, newAff)
-			} else {
-				// https://www.nomadproject.io/docs/runtime/interpolation
-				newConstraint := nomadApi.NewConstraint("${node.unique.id}", "=", nodeId)
-				task.Constraints = append(task.Constraints, newConstraint)
-			}
-		}
-
-		taskGroup := nomadApi.NewTaskGroup(taskName, 1)
-		taskGroup.Tasks = append(taskGroup.Tasks, task)
-		return taskGroup, nil
-	}
-
-	srcTask, err := buildTaskGroupItem(buildMysqlSrcTaskConfigMap(apiSrcTask), apiSrcTask.TaskName, apiSrcTask.NodeId)
+	srcTask, err := buildNomadTaskGroupItem(buildMysqlSrcTaskConfigMap(apiSrcTask), apiSrcTask.TaskName, apiSrcTask.NodeId, failover)
 	if nil != err {
 		return nil, fmt.Errorf("build src task failed: %v", err)
 	}
 
-	destTask, err := buildTaskGroupItem(buildMysqlDestTaskConfigMap(apiDestTask), apiDestTask.TaskName, apiDestTask.NodeId)
+	destTask, err := buildNomadTaskGroupItem(buildMysqlDestTaskConfigMap(apiDestTask), apiDestTask.TaskName, apiDestTask.NodeId, failover)
 	if nil != err {
 		return nil, fmt.Errorf("build dest task failed: %v", err)
 	}
@@ -207,6 +186,29 @@ func convertMysqlToMysqlJobToNomadJob(failover bool, apiJobId, apiJobName string
 		Datacenters: []string{"dc1"},
 		TaskGroups:  []*nomadApi.TaskGroup{srcTask, destTask},
 	}, nil
+}
+
+func buildNomadTaskGroupItem(dtleTaskconfig map[string]interface{}, taskName, nodeId string, failover bool) (*nomadApi.TaskGroup, error) {
+	task := nomadApi.NewTask(taskName, g.PluginName)
+	task.Config = dtleTaskconfig
+	if !failover && "" == nodeId {
+		return nil, fmt.Errorf("node id should be provided if failover is false. task_name=%v", taskName)
+	}
+	if nodeId != "" {
+		if failover {
+			// https://www.nomadproject.io/docs/runtime/interpolation
+			newAff := nomadApi.NewAffinity("${node.unique.id}", "=", nodeId, 100)
+			task.Affinities = append(task.Affinities, newAff)
+		} else {
+			// https://www.nomadproject.io/docs/runtime/interpolation
+			newConstraint := nomadApi.NewConstraint("${node.unique.id}", "=", nodeId)
+			task.Constraints = append(task.Constraints, newConstraint)
+		}
+	}
+
+	taskGroup := nomadApi.NewTaskGroup(taskName, 1)
+	taskGroup.Tasks = append(taskGroup.Tasks, task)
+	return taskGroup, nil
 }
 
 func buildMysqlDestTaskConfigMap(config *models.MysqlDestTaskConfig) map[string]interface{} {
@@ -315,7 +317,7 @@ func getMysqlToMysqlJobDetail(c echo.Context, logger hclog.Logger) error {
 	logger.Info("invoke nomad api finished")
 
 	jobType := getJobTypeFromJobId(g.PtrToString(nomadJob.ID, ""))
-	if jobType == DtleJobTypeKafka {
+	if jobType == DtleJobTypeSubscription {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("this API is for MySQL-to-MySQL job. but got job type=%v by the provided job id", jobType)))
 	}
 	url = handler.BuildUrl(fmt.Sprintf("/v1/job/%v/allocations", *nomadJob.ID))
@@ -505,4 +507,105 @@ func CreateOrUpdateSyncJobV2(c echo.Context) error {
 func GetSyncJobDetailV2(c echo.Context) error {
 	logger := handler.NewLogger().Named("GetSyncJobDetailV2")
 	return getMysqlToMysqlJobDetail(c, logger)
+}
+
+// @Description create or update subscription job.
+// @Tags job
+// @Accept application/json
+// @Param subscription_job_config body models.CreateOrUpdateMysqlToKafkaJobParamV2 true "subscription job config"
+// @Success 200 {object} models.CreateOrUpdateMysqlToKafkaJobRespV2
+// @Router /v2/job/subscription [post]
+func CreateOrUpdateSubscriptionJobV2(c echo.Context) error {
+	logger := handler.NewLogger().Named("CreateOrUpdateSubscriptionJobV2")
+	return createOrUpdateMysqlToKafkaJob(c, logger, DtleJobTypeSubscription)
+}
+
+func createOrUpdateMysqlToKafkaJob(c echo.Context, logger hclog.Logger, jobType DtleJobType) error {
+	logger.Info("validate params")
+	jobParam := new(models.CreateOrUpdateMysqlToKafkaJobParamV2)
+	if err := c.Bind(jobParam); nil != err {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("bind req param failed, error: %v", err)))
+	}
+	if err := c.Validate(jobParam); nil != err {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invalid params:\n%v", err)))
+	}
+	failover := g.PtrToBool(jobParam.Failover, true)
+
+	if jobParam.IsMysqlPasswordEncrypted {
+		realPwd, err := handler.DecryptMysqlPassword(jobParam.SrcTask.MysqlConnectionConfig.MysqlPassword, g.RsaPrivateKey)
+		if nil != err {
+			return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("decrypt src mysql password failed: %v", err)))
+		}
+		jobParam.SrcTask.MysqlConnectionConfig.MysqlPassword = realPwd
+	}
+
+	jobId := g.StringElse(jobParam.JobId, jobParam.JobName)
+	jobId = addJobTypeToJobId(jobId, jobType)
+	nomadJob, err := convertMysqlToKafkaJobToNomadJob(failover, jobId, jobParam.JobName, jobParam.SrcTask, jobParam.DestTask)
+	if nil != err {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("convert job param to nomad job request failed, error: %v", err)))
+	}
+
+	nomadJobreq := nomadApi.JobRegisterRequest{
+		Job: nomadJob,
+	}
+	nomadJobReqByte, err := json.Marshal(nomadJobreq)
+	if nil != err {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("marshal nomad job request failed, error: %v", err)))
+	}
+	url := handler.BuildUrl("/v1/jobs")
+	logger.Info("invoke nomad api begin", "url", url)
+	nomadResp := nomadApi.JobRegisterResponse{}
+	if err := handler.InvokePostApiWithJson(url, nomadJobReqByte, &nomadResp); nil != err {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invoke nomad api %v failed: %v", url, err)))
+	}
+	logger.Info("invoke nomad api finished")
+
+	jobParam.SrcTask.MysqlConnectionConfig.MysqlPassword = "*"
+	jobParam.JobId = jobId
+
+	var respErr error
+	if "" != nomadResp.Warnings {
+		respErr = errors.New(nomadResp.Warnings)
+	}
+	return c.JSON(http.StatusOK, &models.CreateOrUpdateMysqlToKafkaJobRespV2{
+		CreateOrUpdateMysqlToKafkaJobParamV2: *jobParam,
+		EvalCreateIndex:                      nomadResp.EvalCreateIndex,
+		JobModifyIndex:                       nomadResp.JobModifyIndex,
+		BaseResp:                             models.BuildBaseResp(respErr),
+	})
+}
+
+func convertMysqlToKafkaJobToNomadJob(failover bool, apiJobId, apiJobName string, apiSrcTask *models.MysqlSrcTaskConfig, apiDestTask *models.KafkaDestTaskConfig) (*nomadApi.Job, error) {
+	srcTask, err := buildNomadTaskGroupItem(buildMysqlSrcTaskConfigMap(apiSrcTask), apiSrcTask.TaskName, apiSrcTask.NodeId, failover)
+	if nil != err {
+		return nil, fmt.Errorf("build src task failed: %v", err)
+	}
+
+	destTask, err := buildNomadTaskGroupItem(buildKafkaDestTaskConfigMap(apiDestTask), apiDestTask.TaskName, apiDestTask.NodeId, failover)
+	if nil != err {
+		return nil, fmt.Errorf("build dest task failed: %v", err)
+	}
+
+	jobId := apiJobId
+	return &nomadApi.Job{
+		ID:          &jobId,
+		Name:        &apiJobName,
+		Datacenters: []string{"dc1"},
+		TaskGroups:  []*nomadApi.TaskGroup{srcTask, destTask},
+	}, nil
+}
+
+func buildKafkaDestTaskConfigMap(config *models.KafkaDestTaskConfig) map[string]interface{} {
+	kafkaConfig := make(map[string]interface{})
+	taskConfigInNomadFormat := make(map[string]interface{})
+
+	kafkaConfig["Brokers"] = config.BrokerAddrs
+	kafkaConfig["Topic"] = config.Topic
+	kafkaConfig["MessageGroupMaxSize"] = config.MessageGroupMaxSize
+	kafkaConfig["MessageGroupTimeout"] = config.MessageGroupTimeout
+	kafkaConfig["Converter"] = kafka.CONVERTER_JSON
+	taskConfigInNomadFormat["KafkaConfig"] = kafkaConfig
+
+	return taskConfigInNomadFormat
 }

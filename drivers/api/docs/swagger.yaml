@@ -28,6 +28,54 @@ definitions:
       validated:
         type: boolean
     type: object
+  models.CreateOrUpdateMysqlToKafkaJobParamV2:
+    properties:
+      dest_task:
+        $ref: '#/definitions/models.KafkaDestTaskConfig'
+      failover:
+        description: failover default:true
+        example: true
+        type: boolean
+      is_mysql_password_encrypted:
+        type: boolean
+      job_id:
+        type: string
+      job_name:
+        type: string
+      src_task:
+        $ref: '#/definitions/models.MysqlSrcTaskConfig'
+    required:
+    - dest_task
+    - job_name
+    - src_task
+    type: object
+  models.CreateOrUpdateMysqlToKafkaJobRespV2:
+    properties:
+      dest_task:
+        $ref: '#/definitions/models.KafkaDestTaskConfig'
+      eval_create_index:
+        type: integer
+      failover:
+        description: failover default:true
+        example: true
+        type: boolean
+      is_mysql_password_encrypted:
+        type: boolean
+      job_id:
+        type: string
+      job_modify_index:
+        type: integer
+      job_name:
+        type: string
+      message:
+        type: string
+      src_task:
+        $ref: '#/definitions/models.MysqlSrcTaskConfig'
+    required:
+    - dest_task
+    - job_name
+    - src_task
+    type: object
   models.CreateOrUpdateMysqlToMysqlJobParamV2:
     properties:
       dest_task:
@@ -132,6 +180,29 @@ definitions:
         type: array
       message:
         type: string
+    type: object
+  models.KafkaDestTaskConfig:
+    properties:
+      kafka_broker_addrs:
+        example:
+        - 127.0.0.1:9092
+        items:
+          type: string
+        type: array
+      kafka_topic:
+        type: string
+      message_group_max_size:
+        type: integer
+      message_group_timeout:
+        type: integer
+      node_id:
+        type: string
+      task_name:
+        type: string
+    required:
+    - kafka_broker_addrs
+    - kafka_topic
+    - task_name
     type: object
   models.ListMysqlSchemasRespV2:
     properties:
@@ -483,6 +554,25 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/models.MysqlToMysqlJobDetailRespV2'
+      tags:
+      - job
+  /v2/job/subscription:
+    post:
+      consumes:
+      - application/json
+      description: create or update subscription job.
+      parameters:
+      - description: subscription job config
+        in: body
+        name: subscription_job_config
+        required: true
+        schema:
+          $ref: '#/definitions/models.CreateOrUpdateMysqlToKafkaJobParamV2'
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.CreateOrUpdateMysqlToKafkaJobRespV2'
       tags:
       - job
   /v2/job/sync:
