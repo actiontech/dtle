@@ -71,7 +71,6 @@ type BinlogReader struct {
 	binlogReader             *streamer.BinlogReader
 	currentCoord             base.BinlogCoordinatesX
 	currentCoordMutex        *sync.Mutex
-	LastAppliedRowsEventHint base.BinlogCoordinatesX
 	// raw config, whose ReplicateDoDB is same as config file (empty-is-all & no dynamically created tables)
 	mysqlContext         *common.MySQLDriverConfig
 	currentReplicateDoDb []*common.DataSource
@@ -426,11 +425,6 @@ type parseQueryResult struct {
 }
 
 func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel chan<- *common.BinlogEntryContext) error {
-	if b.currentCoord.CompareFilePos(&b.LastAppliedRowsEventHint) <= 0 {
-		b.logger.Debug("Skipping handled query", "coordinate", b.currentCoord)
-		return nil
-	}
-
 	switch ev.Header.EventType {
 	case replication.GTID_EVENT:
 		evt := ev.Event.(*replication.GTIDEvent)
@@ -518,7 +512,6 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 						b.entryContext.OriginalSize += len(ev.RawData)
 					}
 					b.sendEntry(entriesChannel)
-					b.LastAppliedRowsEventHint = b.currentCoord
 					return nil
 				}
 
@@ -644,7 +637,6 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 				}
 				b.entryContext.OriginalSize += len(ev.RawData)
 				b.sendEntry(entriesChannel)
-				b.LastAppliedRowsEventHint = b.currentCoord
 			}
 		}
 	case replication.XID_EVENT:
@@ -658,7 +650,6 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 		b.currentBinlogEntry.Coordinates.LogPos = b.currentCoord.LogPos
 
 		b.sendEntry(entriesChannel)
-		b.LastAppliedRowsEventHint = b.currentCoord
 	default:
 		if rowsEvent, ok := ev.Event.(*replication.RowsEvent); ok {
 			schemaName := string(rowsEvent.Table.Schema)
