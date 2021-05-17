@@ -12,8 +12,6 @@ type NatsMsgMerger struct {
 	buf    *bytes.Buffer
 	iSeg   uint32 // index of segment
 	logger hclog.Logger
-	lastLen int
-	lastiSeg uint32
 }
 
 func NewNatsMsgMerger(logger hclog.Logger) *NatsMsgMerger {
@@ -43,7 +41,6 @@ func (nmm *NatsMsgMerger) Handle(data []byte) (segmentFinished bool, err error) 
 			}
 			nmm.logger.Debug("NatsMsgMerger.Handle found big msg segment", "iSeg", iSeg, "lenData", lenData)
 			nmm.buf = bytes.NewBuffer(data[:lenData-4])
-			nmm.lastiSeg = iSeg
 		}
 		nmm.iSeg += 1
 	} else {
@@ -59,7 +56,6 @@ func (nmm *NatsMsgMerger) Handle(data []byte) (segmentFinished bool, err error) 
 			nmm.buf.Write(data[:lenData-4])
 			nmm.iSeg += 1
 		}
-		nmm.lastiSeg = iSeg
 		if lenData < g.NatsMaxMsg+4 {
 			segmentFinished = true
 		} else {
@@ -68,7 +64,6 @@ func (nmm *NatsMsgMerger) Handle(data []byte) (segmentFinished bool, err error) 
 		nmm.logger.Debug("NatsMsgMerger.Handle found big msg segment", "iSeg", iSeg, "lenData", lenData,
 			"isLast", segmentFinished)
 	}
-	nmm.lastLen = len(data)
 	return segmentFinished, nil
 }
 

@@ -1,5 +1,5 @@
-name = "nomad0" # rename for each node
-datacenter = "dc1"
+name = "nomad0" # Rename for each node.
+datacenter = "dc1" # Do NOT change. Unused nomad feature.
 data_dir  = "INSTALL_PREFIX_MAGIC/var/lib/nomad"
 plugin_dir = "INSTALL_PREFIX_MAGIC/usr/share/dtle/nomad-plugin"
 
@@ -9,7 +9,7 @@ log_file = "INSTALL_PREFIX_MAGIC/var/log/nomad/"
 disable_update_check = true
 
 bind_addr = "0.0.0.0"
-# change ports if multiple nodes run on a same machine
+# Change ports if multiple nodes run on the same machine.
 ports {
   http = 4646
   rpc  = 4647
@@ -54,7 +54,7 @@ consul {
 
 plugin "dtle" {
   config {
-    log_level = "Info" # repeat nomad log level here
+    log_level = "Info" # Repeat nomad log level here.
     data_dir = "INSTALL_PREFIX_MAGIC/var/lib/nomad"
     nats_bind = "127.0.0.1:8193"
     nats_advertise = "127.0.0.1:8193"
