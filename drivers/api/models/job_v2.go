@@ -118,12 +118,12 @@ type CreateOrUpdateMysqlToMysqlJobRespV2 struct {
 }
 
 type KafkaDestTaskConfig struct {
-	TaskName    string   `json:"task_name" validate:"required"`
-	NodeId      string   `json:"node_id"`
-	BrokerAddrs []string `json:"kafka_broker_addrs" validate:"required" example:"127.0.0.1:9092"`
-	Topic       string   `json:"kafka_topic" validate:"required"`
-	MessageGroupMaxSize uint64 `json:"message_group_max_size"`
-	MessageGroupTimeout uint64 `json:"message_group_timeout"`
+	TaskName            string   `json:"task_name" validate:"required"`
+	NodeId              string   `json:"node_id"`
+	BrokerAddrs         []string `json:"kafka_broker_addrs" validate:"required" example:"127.0.0.1:9092"`
+	Topic               string   `json:"kafka_topic" validate:"required"`
+	MessageGroupMaxSize uint64   `json:"message_group_max_size"`
+	MessageGroupTimeout uint64   `json:"message_group_timeout"`
 }
 
 type CreateOrUpdateMysqlToKafkaJobParamV2 struct {
@@ -141,4 +141,23 @@ type CreateOrUpdateMysqlToKafkaJobRespV2 struct {
 	EvalCreateIndex                      uint64 `json:"eval_create_index"`
 	JobModifyIndex                       uint64 `json:"job_modify_index"`
 	BaseResp
+}
+
+type MysqlToKafkaJobDetailReqV2 struct {
+	JobId string `query:"job_id" validate:"required"`
+}
+
+type MysqlToKafkaJobDetailRespV2 struct {
+	JobId          string              `json:"job_id"`
+	JobName        string              `json:"job_name"`
+	Failover       bool                `json:"failover"`
+	SrcTaskDetail  MysqlSrcTaskDetail  `json:"src_task_detail"`
+	DestTaskDetail KafkaDestTaskDetail `json:"dest_task_detail"`
+	BaseResp
+}
+
+type KafkaDestTaskDetail struct {
+	AllocationId string              `json:"allocation_id"`
+	TaskConfig   KafkaDestTaskConfig `json:"task_config"`
+	TaskStatus   TaskStatus          `json:"task_status"`
 }
