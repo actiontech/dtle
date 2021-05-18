@@ -617,3 +617,92 @@ func buildKafkaDestTaskConfigMap(config *models.KafkaDestTaskConfig) map[string]
 
 	return taskConfigInNomadFormat
 }
+
+// @Description get subscription job detail.
+// @Tags job
+// @Success 200 {object} models.MysqlToKafkaJobDetailRespV2
+// @Param job_id query string true "job id"
+// @Router /v2/job/subscription/detail [get]
+func GetSubscriptionJobDetailV2(c echo.Context) error {
+	logger := handler.NewLogger().Named("GetSubscriptionJobDetailV2")
+	logger.Info("validate params")
+	reqParam := new(models.MysqlToKafkaJobDetailReqV2)
+	if err := c.Bind(reqParam); nil != err {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("bind req param failed, error: %v", err)))
+	}
+	if err := c.Validate(reqParam); nil != err {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invalid params:\n%v", err)))
+	}
+
+	failover, nomadJob, allocations, err := getJobDetailFromNomad(logger, reqParam.JobId, DtleJobTypeSubscription)
+	if nil != err {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
+	}
+
+	destTaskDetail, srcTaskDetail, err := buildMysqlToKafkaJobDetailResp(nomadJob, allocations)
+	if nil != err {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("build job detail response failed: %v", err)))
+	}
+
+	return c.JSON(http.StatusOK, &models.MysqlToKafkaJobDetailRespV2{
+		JobId:          reqParam.JobId,
+		JobName:        *nomadJob.Name,
+		Failover:       failover,
+		SrcTaskDetail:  srcTaskDetail,
+		DestTaskDetail: destTaskDetail,
+		BaseResp:       models.BuildBaseResp(nil),
+	})
+}
+
+func buildMysqlToKafkaJobDetailResp(nomadJob nomadApi.Job, nomadAllocations []nomadApi.Allocation) (destTaskDetail models.KafkaDestTaskDetail, srcTaskDetail models.MysqlSrcTaskDetail, err error) {
+	taskGroupToNomadAlloc := make(map[string]*nomadApi.Allocation)
+	for _, a := range nomadAllocations {
+		cloneAlloc := a
+		taskGroupToNomadAlloc[a.TaskGroup] = &cloneAlloc
+	}
+
+	for _, tg := range nomadJob.TaskGroups {
+		for _, t := range tg.Tasks {
+			internalTaskConfig, err := convertTaskConfigMapToInternalTaskConfig(t.Config)
+			if nil != err {
+				return models.KafkaDestTaskDetail{}, models.MysqlSrcTaskDetail{}, fmt.Errorf("convert task config failed: %v", err)
+			}
+
+			taskType := common.TaskTypeFromString(t.Name)
+			switch taskType {
+			case common.TaskTypeSrc:
+				srcTaskDetail = buildMysqlSrcTaskDetail(t.Name, internalTaskConfig, taskGroupToNomadAlloc[*tg.Name])
+				break
+			case common.TaskTypeDest:
+				if nil == internalTaskConfig.KafkaConfig {
+					return models.KafkaDestTaskDetail{}, models.MysqlSrcTaskDetail{}, fmt.Errorf("can not find kafka task config from nomad")
+				}
+				destTaskDetail = buildKafkaDestTaskDetail(t.Name, *internalTaskConfig.KafkaConfig, taskGroupToNomadAlloc[*tg.Name])
+				break
+			case common.TaskTypeUnknown:
+				continue
+			}
+		}
+	}
+
+	return destTaskDetail, srcTaskDetail, nil
+}
+
+func buildKafkaDestTaskDetail(taskName string, internalTaskKafkaConfig common.KafkaConfig, alloc *nomadApi.Allocation) (destTaskDetail models.KafkaDestTaskDetail) {
+	dtleTaskConfigForApi := models.KafkaDestTaskConfig{
+		TaskName:            taskName,
+		BrokerAddrs:         internalTaskKafkaConfig.Brokers,
+		Topic:               internalTaskKafkaConfig.Topic,
+		MessageGroupMaxSize: internalTaskKafkaConfig.MessageGroupMaxSize,
+		MessageGroupTimeout: internalTaskKafkaConfig.MessageGroupTimeout,
+	}
+
+	if nil != alloc {
+		dtleTaskConfigForApi.NodeId = alloc.NodeID
+		destTaskDetail.AllocationId = alloc.ID
+		getTaskDetailStatusFromAllocInfo(alloc, &destTaskDetail.TaskStatus, taskName)
+	}
+	destTaskDetail.TaskConfig = dtleTaskConfigForApi
+
+	return destTaskDetail
+}

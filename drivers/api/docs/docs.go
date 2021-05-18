@@ -109,6 +109,31 @@ var doc = `{
                 }
             }
         },
+        "/v2/job/subscription/detail": {
+            "get": {
+                "description": "get subscription job detail.",
+                "tags": [
+                    "job"
+                ],
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "job id",
+                        "name": "job_id",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.MysqlToKafkaJobDetailRespV2"
+                        }
+                    }
+                }
+            }
+        },
         "/v2/job/sync": {
             "post": {
                 "description": "create or update sync job.",
@@ -671,6 +696,20 @@ var doc = `{
                 }
             }
         },
+        "models.KafkaDestTaskDetail": {
+            "type": "object",
+            "properties": {
+                "allocation_id": {
+                    "type": "string"
+                },
+                "task_config": {
+                    "$ref": "#/definitions/models.KafkaDestTaskConfig"
+                },
+                "task_status": {
+                    "$ref": "#/definitions/models.TaskStatus"
+                }
+            }
+        },
         "models.ListMysqlSchemasRespV2": {
             "type": "object",
             "properties": {
@@ -862,6 +901,29 @@ var doc = `{
                 },
                 "task_name": {
                     "type": "string"
+                }
+            }
+        },
+        "models.MysqlToKafkaJobDetailRespV2": {
+            "type": "object",
+            "properties": {
+                "dest_task_detail": {
+                    "$ref": "#/definitions/models.KafkaDestTaskDetail"
+                },
+                "failover": {
+                    "type": "boolean"
+                },
+                "job_id": {
+                    "type": "string"
+                },
+                "job_name": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "src_task_detail": {
+                    "$ref": "#/definitions/models.MysqlSrcTaskDetail"
                 }
             }
         },

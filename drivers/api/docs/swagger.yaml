@@ -204,6 +204,15 @@ definitions:
     - kafka_topic
     - task_name
     type: object
+  models.KafkaDestTaskDetail:
+    properties:
+      allocation_id:
+        type: string
+      task_config:
+        $ref: '#/definitions/models.KafkaDestTaskConfig'
+      task_status:
+        $ref: '#/definitions/models.TaskStatus'
+    type: object
   models.ListMysqlSchemasRespV2:
     properties:
       message:
@@ -331,6 +340,21 @@ definitions:
         $ref: '#/definitions/models.ServerIDValidation'
       task_name:
         type: string
+    type: object
+  models.MysqlToKafkaJobDetailRespV2:
+    properties:
+      dest_task_detail:
+        $ref: '#/definitions/models.KafkaDestTaskDetail'
+      failover:
+        type: boolean
+      job_id:
+        type: string
+      job_name:
+        type: string
+      message:
+        type: string
+      src_task_detail:
+        $ref: '#/definitions/models.MysqlSrcTaskDetail'
     type: object
   models.MysqlToMysqlJobDetailRespV2:
     properties:
@@ -573,6 +597,22 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/models.CreateOrUpdateMysqlToKafkaJobRespV2'
+      tags:
+      - job
+  /v2/job/subscription/detail:
+    get:
+      description: get subscription job detail.
+      parameters:
+      - description: job id
+        in: query
+        name: job_id
+        required: true
+        type: string
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.MysqlToKafkaJobDetailRespV2'
       tags:
       - job
   /v2/job/sync:
