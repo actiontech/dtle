@@ -152,6 +152,7 @@ func createOrUpdateMysqlToMysqlJob(c echo.Context, logger hclog.Logger, jobType 
 
 	jobParam.SrcTask.MysqlConnectionConfig.MysqlPassword = "*"
 	jobParam.DestTask.MysqlConnectionConfig.MysqlPassword = "*"
+	jobParam.JobId = jobId
 
 	var respErr error
 	if "" != nomadResp.Warnings {
