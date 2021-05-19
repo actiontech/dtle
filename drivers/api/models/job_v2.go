@@ -172,3 +172,11 @@ type PauseJobReqV2 struct {
 type PauseJobRespV2 struct {
 	BaseResp
 }
+
+type ResumeJobReqV2 struct {
+	JobId string `form:"job_id" validate:"required"`
+}
+
+type ResumeJobRespV2 struct {
+	BaseResp
+}

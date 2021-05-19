@@ -975,6 +975,18 @@ func (a *Applier) Shutdown() error {
 	return nil
 }
 
+func (a *Applier) Resume() {
+	a.logger.Info("resume task")
+	if !a.shutdown {
+		return
+	}
+	a.shutdown = false
+	a.shutdownCh = make(chan struct{})
+	go a.Run()
+	a.isPaused = false
+	return
+}
+
 func (a *Applier) Pause() error {
 	a.logger.Info("pause task")
 	if err := a.Shutdown(); nil != err {

@@ -1514,6 +1514,18 @@ func (e *Extractor) Shutdown() error {
 	return nil
 }
 
+func (e *Extractor) Resume() {
+	e.logger.Info("resume task")
+	if !e.shutdown {
+		return
+	}
+	e.shutdown = false
+	e.shutdownCh = make(chan struct{})
+	go e.Run()
+	e.isPaused = false
+	return
+}
+
 func (e *Extractor) Pause() error {
 	e.logger.Info("pause task")
 	if err := e.Shutdown(); nil != err {
