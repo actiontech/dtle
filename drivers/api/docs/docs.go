@@ -24,6 +24,41 @@ var doc = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
+        "/v2/job/delete": {
+            "post": {
+                "description": "delete job.",
+                "consumes": [
+                    "application/x-www-form-urlencoded"
+                ],
+                "tags": [
+                    "job"
+                ],
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "job id",
+                        "name": "job_id",
+                        "in": "formData",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "job name",
+                        "name": "job_name",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.DeleteJobRespV2"
+                        }
+                    }
+                }
+            }
+        },
         "/v2/job/migration": {
             "post": {
                 "description": "create or update migration job.",
@@ -661,6 +696,14 @@ var doc = `{
                 },
                 "time": {
                     "type": "integer"
+                }
+            }
+        },
+        "models.DeleteJobRespV2": {
+            "type": "object",
+            "properties": {
+                "message": {
+                    "type": "string"
                 }
             }
         },

@@ -177,3 +177,12 @@ type ResumeJobReqV2 struct {
 type ResumeJobRespV2 struct {
 	BaseResp
 }
+
+type DeleteJobReqV2 struct {
+	JobId   string `form:"job_id" validate:"required"`
+	JobName string `form:"job_name" validate:"required"`
+}
+
+type DeleteJobRespV2 struct {
+	BaseResp
+}

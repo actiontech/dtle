@@ -146,6 +146,11 @@ definitions:
       time:
         type: integer
     type: object
+  models.DeleteJobRespV2:
+    properties:
+      message:
+        type: string
+    type: object
   models.GetTaskProgressRespV2:
     properties:
       message:
@@ -555,6 +560,29 @@ definitions:
 info:
   contact: {}
 paths:
+  /v2/job/delete:
+    post:
+      consumes:
+      - application/x-www-form-urlencoded
+      description: delete job.
+      parameters:
+      - description: job id
+        in: formData
+        name: job_id
+        required: true
+        type: string
+      - description: job name
+        in: formData
+        name: job_name
+        required: true
+        type: string
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.DeleteJobRespV2'
+      tags:
+      - job
   /v2/job/migration:
     post:
       consumes:

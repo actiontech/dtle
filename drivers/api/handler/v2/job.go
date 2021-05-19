@@ -759,7 +759,7 @@ func ResumeJobV2(c echo.Context) error {
 	url := handler.BuildUrl(fmt.Sprintf("/v1/job/%v", reqParam.JobId))
 	logger.Info("invoke nomad api begin", "url", url, "method", "GET")
 	nomadJob := nomadApi.Job{}
-	if err := handler.InvokeApiWithFormData(http.MethodGet, url, nil, &nomadJob); nil != err {
+	if err := handler.InvokeApiWithKvData(http.MethodGet, url, nil, &nomadJob); nil != err {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invoke nomad api %v failed: %v", url, err)))
 	}
 	logger.Info("invoke nomad api finished")
@@ -784,6 +784,48 @@ func ResumeJobV2(c echo.Context) error {
 	logger.Info("invoke nomad api finished")
 
 	return c.JSON(http.StatusOK, &models.ResumeJobRespV2{
+		BaseResp: models.BuildBaseResp(nil),
+	})
+}
+
+// @Description delete job.
+// @Tags job
+// @accept application/x-www-form-urlencoded
+// @Param job_id formData string true "job id"
+// @Param job_name formData string true "job name"
+// @Success 200 {object} models.DeleteJobRespV2
+// @Router /v2/job/delete [post]
+func DeleteJobV2(c echo.Context) error {
+	logger := handler.NewLogger().Named("DeleteJobV2")
+	logger.Info("validate params")
+	reqParam := new(models.DeleteJobReqV2)
+	if err := c.Bind(reqParam); nil != err {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("bind req param failed, error: %v", err)))
+	}
+	if err := c.Validate(reqParam); nil != err {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invalid params:\n%v", err)))
+	}
+
+	logger.Info("delete job from nomad", "job_id", reqParam.JobId, "job_name", reqParam.JobName)
+	url := handler.BuildUrl(fmt.Sprintf("/v1/job/%v?purge=true", reqParam.JobId))
+	logger.Info("invoke nomad api begin", "url", url, "method", "DELETE")
+	nomadResp := nomadApi.JobDeregisterResponse{}
+	if err := handler.InvokeHttpUrlWithBody(http.MethodDelete, url, nil, &nomadResp); nil != err {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invoke nomad api failed: %v", err)))
+	}
+
+	logger.Info("invoke nomad api finished")
+
+	logger.Info("delete metadata of job from consul", "job_name", reqParam.JobName)
+	storeManager, err := common.NewStoreManager([]string{handler.ConsulAddr}, logger)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("get consul client failed: %v", err)))
+	}
+	if err := storeManager.DestroyJob(reqParam.JobName); nil != err {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("delete metadata of job[job name=%v] from consul failed: %v", reqParam.JobName, err)))
+	}
+
+	return c.JSON(http.StatusOK, &models.DeleteJobRespV2{
 		BaseResp: models.BuildBaseResp(nil),
 	})
 }
