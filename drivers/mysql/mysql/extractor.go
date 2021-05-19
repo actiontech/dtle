@@ -1502,6 +1502,16 @@ func (e *Extractor) Shutdown() error {
 	return nil
 }
 
+func (e *Extractor) Resume() {
+	if !e.shutdown {
+		return
+	}
+	e.shutdown = false
+	e.shutdownCh = make(chan struct{})
+	go e.Run()
+	return
+}
+
 func (e *Extractor) Pause() error {
 	return e.Shutdown()
 }

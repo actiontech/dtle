@@ -151,6 +151,16 @@ func (kr *KafkaRunner) Shutdown() error {
 	return nil
 }
 
+func (kr *KafkaRunner) Resume() {
+	if !kr.shutdown {
+		return
+	}
+	kr.shutdown = false
+	kr.shutdownCh = make(chan struct{})
+	go kr.Run()
+	return
+}
+
 func (kr *KafkaRunner) Pause() error {
 	return kr.Shutdown()
 }

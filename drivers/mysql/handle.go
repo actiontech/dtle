@@ -192,4 +192,6 @@ type DriverHandle interface {
 	Stats() (*common.TaskStatistics, error)
 
 	Pause() error
+
+	Resume()
 }

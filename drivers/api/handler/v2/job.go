@@ -753,6 +753,48 @@ func PauseJobV2(c echo.Context) error {
 	})
 }
 
+// @Description resume job.
+// @Tags job
+// @accept application/x-www-form-urlencoded
+// @Param job_id formData string true "job id"
+// @Success 200 {object} models.ResumeJobRespV2
+// @Router /v2/job/resume [post]
+func ResumeJobV2(c echo.Context) error {
+	logger := handler.NewLogger().Named("ResumeJobV2")
+	logger.Info("validate params")
+	reqParam := new(models.ResumeJobReqV2)
+	if err := c.Bind(reqParam); nil != err {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("bind req param failed, error: %v", err)))
+	}
+	if err := c.Validate(reqParam); nil != err {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invalid params:\n%v", err)))
+	}
+
+	logger.Info("get allocations of job", "job_id", reqParam.JobId)
+	url := handler.BuildUrl("/v1/allocations")
+	logger.Info("invoke nomad api begin", "url", url)
+	nomadAllocs := []nomadApi.Allocation{}
+	if err := handler.InvokeApiWithKvData(http.MethodGet, url, nil, &nomadAllocs); nil != err {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invoke nomad api %v failed: %v", url, err)))
+	}
+	logger.Info("invoke nomad api finished")
+
+	for _, a := range nomadAllocs {
+		url = handler.BuildUrl(fmt.Sprintf("/v1/client/allocation/%v/signal", a.ID))
+		for taskName, state := range a.TaskStates {
+			if state.State == string(drivers.TaskStateRunning) { // the status of paused task is 'running'
+				if err := sentSignalToTask(logger, a.ID, taskName, "resume"); nil != err {
+					return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("task_name=%v, allocation_id=%v; resume task failed:  %v", taskName, a.ID, err)))
+				}
+			}
+		}
+	}
+
+	return c.JSON(http.StatusOK, &models.ResumeJobRespV2{
+		BaseResp: models.BuildBaseResp(nil),
+	})
+}
+
 func sentSignalToTask(logger hclog.Logger, allocId, taskName, signal string) error {
 	logger.Debug("sentSignalToTask")
 	if "" == allocId {

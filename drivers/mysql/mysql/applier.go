@@ -944,6 +944,16 @@ func (a *Applier) Shutdown() error {
 	return nil
 }
 
+func (a *Applier) Resume() {
+	if !a.shutdown{
+		return
+	}
+	a.shutdown = false
+	a.shutdownCh = make(chan struct{})
+	go a.Run()
+	return
+}
+
 func (a *Applier) Pause() error {
 	return a.Shutdown()
 }
