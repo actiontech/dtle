@@ -421,6 +421,11 @@ definitions:
       validated:
         type: boolean
     type: object
+  models.ResumeJobRespV2:
+    properties:
+      message:
+        type: string
+    type: object
   models.SchemaItem:
     properties:
       schema_name:
@@ -601,6 +606,24 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/models.PauseJobRespV2'
+      tags:
+      - job
+  /v2/job/resume:
+    post:
+      consumes:
+      - application/x-www-form-urlencoded
+      description: resume job.
+      parameters:
+      - description: job id
+        in: formData
+        name: job_id
+        required: true
+        type: string
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.ResumeJobRespV2'
       tags:
       - job
   /v2/job/subscription:

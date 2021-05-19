@@ -62,6 +62,7 @@ func SetupApiServer(logger hclog.Logger, apiAddr, nomadAddr, uiDir string) (err 
 	e.GET("/v2/job/subscription/detail", v2.GetSubscriptionJobDetailV2)
 	e.POST("/v2/job/subscription", v2.CreateOrUpdateSubscriptionJobV2)
 	e.POST("/v2/job/pause", v2.PauseJobV2)
+	e.POST("/v2/job/resume", v2.ResumeJobV2)
 	e.GET("/v2/nodes", v2.NodeListV2)
 	e.POST("/v2/validation/job", v2.ValidateJobV2)
 	e.GET("/v2/mysql/schemas", v2.ListMysqlSchemasV2)

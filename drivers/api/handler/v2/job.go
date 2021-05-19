@@ -737,3 +737,53 @@ func PauseJobV2(c echo.Context) error {
 		BaseResp: models.BuildBaseResp(nil),
 	})
 }
+
+// @Description resume job.
+// @Tags job
+// @accept application/x-www-form-urlencoded
+// @Param job_id formData string true "job id"
+// @Success 200 {object} models.ResumeJobRespV2
+// @Router /v2/job/resume [post]
+func ResumeJobV2(c echo.Context) error {
+	logger := handler.NewLogger().Named("ResumeJobV2")
+	logger.Info("validate params")
+	reqParam := new(models.ResumeJobReqV2)
+	if err := c.Bind(reqParam); nil != err {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("bind req param failed, error: %v", err)))
+	}
+	if err := c.Validate(reqParam); nil != err {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invalid params:\n%v", err)))
+	}
+
+	logger.Info("get job detail", "job id", reqParam.JobId)
+	url := handler.BuildUrl(fmt.Sprintf("/v1/job/%v", reqParam.JobId))
+	logger.Info("invoke nomad api begin", "url", url, "method", "GET")
+	nomadJob := nomadApi.Job{}
+	if err := handler.InvokeApiWithFormData(http.MethodGet, url, nil, &nomadJob); nil != err {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invoke nomad api %v failed: %v", url, err)))
+	}
+	logger.Info("invoke nomad api finished")
+
+	stop := false
+	nomadJob.Stop = &stop
+	nomadJobreq := nomadApi.JobRegisterRequest{
+		Job: &nomadJob,
+	}
+	nomadJobReqByte, err := json.Marshal(nomadJobreq)
+	if nil != err {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("marshal nomad job request failed, error: %v", err)))
+	}
+
+	logger.Info("resume job", "job id", reqParam.JobId)
+	url = handler.BuildUrl(fmt.Sprintf("/v1/job/%v", reqParam.JobId))
+	logger.Info("invoke nomad api begin", "url", url)
+	nomadResp := nomadApi.JobRegisterResponse{}
+	if err := handler.InvokePostApiWithJson(url, nomadJobReqByte, &nomadResp); nil != err {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invoke nomad api %v failed: %v", url, err)))
+	}
+	logger.Info("invoke nomad api finished")
+
+	return c.JSON(http.StatusOK, &models.ResumeJobRespV2{
+		BaseResp: models.BuildBaseResp(nil),
+	})
+}

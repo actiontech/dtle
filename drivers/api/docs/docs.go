@@ -107,6 +107,34 @@ var doc = `{
                 }
             }
         },
+        "/v2/job/resume": {
+            "post": {
+                "description": "resume job.",
+                "consumes": [
+                    "application/x-www-form-urlencoded"
+                ],
+                "tags": [
+                    "job"
+                ],
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "job id",
+                        "name": "job_id",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.ResumeJobRespV2"
+                        }
+                    }
+                }
+            }
+        },
         "/v2/job/subscription": {
             "post": {
                 "description": "create or update subscription job.",
@@ -1052,6 +1080,14 @@ var doc = `{
                 },
                 "validated": {
                     "type": "boolean"
+                }
+            }
+        },
+        "models.ResumeJobRespV2": {
+            "type": "object",
+            "properties": {
+                "message": {
+                    "type": "string"
                 }
             }
         },
