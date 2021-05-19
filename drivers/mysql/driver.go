@@ -704,6 +704,9 @@ func (d *Driver) SignalTask(taskID string, signal string) error {
 		}
 	case "pause":
 		return d.tasks.store[taskID].runner.Pause()
+	case "resume":
+		go d.tasks.store[taskID].runner.Resume()
+		return nil
 	default:
 		return nil
 	}
