@@ -15,8 +15,11 @@ import (
 )
 
 const (
-	DefaultConnectWaitSecond         = 10
-	DefaultConnectWait               = DefaultConnectWaitSecond * time.Second
+	DefaultConnectWaitSecond = 10
+	DefaultConnectWait       = DefaultConnectWaitSecond * time.Second
+
+	DtleJobStatusNonPaused = "non-paused"
+	DtleJobStatusPaused    = "paused"
 )
 
 var (

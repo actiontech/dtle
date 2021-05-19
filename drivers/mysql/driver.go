@@ -489,6 +489,16 @@ func (d *Driver) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHandle, *drive
 			return nil, nil, fmt.Errorf("unknown processor type: %+v", cfg.TaskGroupName)
 		}
 
+		existed, _, err := d.storeManager.GetJobPauseStatusIfExist(ctx.Subject)
+		if nil != err {
+			return nil, nil, fmt.Errorf("get pause status from consul failed : %v", err)
+		}
+		if !existed {
+			d.logger.Debug("can not find pause status from consul. insert it")
+			if err := d.storeManager.PutJobPauseStatus(ctx.Subject, false); nil != err {
+				return nil, nil, fmt.Errorf("update pause status from consul failed : %v", err)
+			}
+		}
 	}
 	go h.run(d)
 
@@ -683,8 +693,8 @@ func (d *Driver) SignalTask(taskID string, signal string) error {
 	//if h.exitResult == nil {
 	//	return nil
 	//}
-
-	if signal == "stats" {
+	switch signal {
+	case "stats":
 		if h.stats != nil {
 			bs, err := json.Marshal(h.stats)
 			if err != nil {
@@ -692,6 +702,10 @@ func (d *Driver) SignalTask(taskID string, signal string) error {
 			}
 			return errors.New(string(bs))
 		}
+	case "pause":
+		return d.tasks.store[taskID].runner.Pause()
+	default:
+		return nil
 	}
 	return nil
 }

@@ -81,6 +81,25 @@ func InvokePostApiWithJson(url string, reqJson []byte, respStruct interface{}) e
 	return nil
 }
 
+func InvokeHttpUrlWithBody(method, url string, body []byte, respStruct interface{}) error {
+	req, err := http.NewRequest(method, url, bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("NewRequest failed: %v", err)
+	}
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("send request failed: %v", err)
+	}
+	defer resp.Body.Close()
+	if err := handleNomadResponse(resp.Body, resp.StatusCode, &respStruct); nil != err {
+		return fmt.Errorf("parse response failed: %v", err)
+	}
+
+	return nil
+}
+
 func handleNomadResponse(respBody io.ReadCloser, statusCode int, respStruct interface{}) error {
 	body, err := ioutil.ReadAll(respBody)
 	if err != nil {
