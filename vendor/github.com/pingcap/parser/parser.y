@@ -623,6 +623,7 @@ import (
 	CommitStmt			"COMMIT statement"
 	CreateTableStmt			"CREATE TABLE statement"
 	DropTriggerStmt	    	"DROP TRIGGER statement"
+	DropProcedureStmt	   	"DROP PROCEDURE or FUNCTION statement"
 	CreateViewStmt			"CREATE VIEW  statement"
 	CreateUserStmt			"CREATE User statement"
 	CreateRoleStmt			"CREATE Role statement"
@@ -753,6 +754,8 @@ import (
 	HandleRange			"handle range"
 	HandleRangeList			"handle range list"
 	IfExists			"If Exists"
+	ProcedureOrFunction "Procedure or Function"
+	TriggerOrEvent      "Trigger or Event"
 	IfNotExists			"If Not Exists"
 	IgnoreOptional			"IGNORE or empty"
 	IndexColName			"Index column name"
@@ -2167,15 +2170,45 @@ DatabaseOptionList:
 		$$ = append($1.([]*ast.DatabaseOption), $2.(*ast.DatabaseOption))
 	}
 
+DropProcedureStmt:
+    "DROP" ProcedureOrFunction IfExists TableName
+    {
+        $$ = &ast.DropProcedureStmt{
+            IsFunction: $2.(bool),
+            IfExists: $3.(bool),
+            SpName: $4.(*ast.TableName),
+        }
+    }
+
+ProcedureOrFunction:
+    "PROCEDURE"
+    {
+        $$ = false
+    }
+|   "FUNCTION"
+    {
+        $$ = true
+    }
+
 DropTriggerStmt:
-    "DROP" "TRIGGER" IfExists TableName /* use TableName for schema.trigge_name */
+    "DROP" TriggerOrEvent IfExists TableName /* use TableName for schema.trigge_name */
     {
         $$ = &ast.DropTriggerStmt{
+            IsEvent: $2.(bool),
             IfExists: $3.(bool),
             TriggerName: $4.(*ast.TableName),
         }
     }
 
+TriggerOrEvent:
+    "TRIGGER"
+    {
+        $$ = false
+    }
+|   "EVENT"
+    {
+        $$ = true
+    }
 /*******************************************************************
  *
  *  Create Table Statement
@@ -7015,6 +7048,7 @@ Statement:
 |	CreateIndexStmt
 |	CreateTableStmt
 |   DropTriggerStmt
+|   DropProcedureStmt
 |	CreateViewStmt
 |	CreateUserStmt
 |	CreateRoleStmt

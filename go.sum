@@ -33,6 +33,9 @@ github.com/actiontech/parser v0.0.0-20201207121314-9b2a278d3432 h1:vqCwMZFMxRkgy
 github.com/actiontech/parser v0.0.0-20201207121314-9b2a278d3432/go.mod h1:A4Fcg6z6UL4FQakfiLm22nkJg/DyiQWaIRPjnxLzLKw=
 github.com/actiontech/parser v0.0.0-20210511095710-43226507076c h1:buqEaE0W9XSHhNc49hAYI8agVE8oOwcKCw3a/nCNQQI=
 github.com/actiontech/parser v0.0.0-20210511095710-43226507076c/go.mod h1:FoWozr4C5Pt0cVXnHVrm9CS9tS+4Xe2ykaAlz/MrqXw=
+github.com/actiontech/parser v0.0.0-20210511095710-d17de82967b8/go.mod h1:FoWozr4C5Pt0cVXnHVrm9CS9tS+4Xe2ykaAlz/MrqXw=
+github.com/actiontech/parser v0.0.0-20210519114308-d17de82967b8 h1:ndlG5NTaqlOWSC72zkCOqQUvIaSFS0zfQNCa0SXHT3A=
+github.com/actiontech/parser v0.0.0-20210519114308-d17de82967b8/go.mod h1:FoWozr4C5Pt0cVXnHVrm9CS9tS+4Xe2ykaAlz/MrqXw=
 github.com/actiontech/tidb v0.0.0-20190910052938-5df091000377 h1:HJktoh73SF0roaSOMraq5+0g1FemBG3BMJMhTVzSRgk=
 github.com/actiontech/tidb v0.0.0-20190910052938-5df091000377/go.mod h1:XP4fom+NWxpH/5Tj6pyresAtr+2YemgJSxdQ8JlVWBw=
 github.com/actiontech/tidb v0.0.0-20201207120349-5df091000377/go.mod h1:XP4fom+NWxpH/5Tj6pyresAtr+2YemgJSxdQ8JlVWBw=

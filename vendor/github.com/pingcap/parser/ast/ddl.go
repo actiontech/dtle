@@ -33,6 +33,7 @@ var (
 	_ DDLNode = &RenameTableStmt{}
 	_ DDLNode = &TruncateTableStmt{}
 	_ DDLNode = &DropTriggerStmt{}
+	_ DDLNode = &DropProcedureStmt{}
 
 	_ Node = &AlterTableSpec{}
 	_ Node = &ColumnDef{}
@@ -867,15 +868,60 @@ func (n *CreateTableStmt) Accept(v Visitor) (Node, bool) {
 	return v.Leave(n)
 }
 
+type DropProcedureStmt struct {
+	ddlNode
+
+	IsFunction bool
+	IfExists   bool
+	SpName     *TableName
+}
+
+func (n *DropProcedureStmt) Restore(ctx *RestoreCtx) error {
+	if n.IsFunction {
+		ctx.WriteKeyWord("DROP FUNCTION ")
+	} else {
+		ctx.WriteKeyWord("DROP PROCEDURE ")
+	}
+	if n.IfExists {
+		ctx.WriteKeyWord("IF EXISTS ")
+	}
+
+	err := n.SpName.Restore(ctx)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (n *DropProcedureStmt) Accept(v Visitor) (Node, bool) {
+	newNode, skipChildren := v.Enter(n)
+	if skipChildren {
+		return v.Leave(newNode)
+	}
+	n = newNode.(*DropProcedureStmt)
+	node, ok := n.SpName.Accept(v)
+	if !ok {
+		return n, false
+	}
+	n.SpName = node.(*TableName)
+
+	return v.Leave(n)
+}
+
 type DropTriggerStmt struct {
 	ddlNode
 
+	IsEvent     bool
 	IfExists    bool
 	TriggerName *TableName
 }
 
 func (n *DropTriggerStmt) Restore(ctx *RestoreCtx) error {
-	ctx.WriteKeyWord("DROP TRIGGER ")
+	if n.IsEvent {
+		ctx.WriteKeyWord("DROP EVENT ")
+	} else {
+		ctx.WriteKeyWord("DROP TRIGGER ")
+	}
 	if n.IfExists {
 		ctx.WriteKeyWord("IF EXISTS ")
 	}
