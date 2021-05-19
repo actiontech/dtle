@@ -42,7 +42,7 @@ func JobListV2(c echo.Context) error {
 	url := handler.BuildUrl("/v1/jobs")
 	logger.Info("invoke nomad api begin", "url", url)
 	nomadJobs := []nomadApi.JobListStub{}
-	if err := handler.InvokeApiWithFormData(http.MethodGet, url, nil, &nomadJobs); nil != err {
+	if err := handler.InvokeApiWithKvData(http.MethodGet, url, nil, &nomadJobs); nil != err {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invoke nomad api %v failed: %v", url, err)))
 	}
 	logger.Info("invoke nomad api finished")
@@ -329,7 +329,7 @@ func getJobDetailFromNomad(logger hclog.Logger, jobId string, jobType DtleJobTyp
 	url := handler.BuildUrl(fmt.Sprintf("/v1/job/%v", jobId))
 	logger.Info("invoke nomad api begin", "url", url)
 
-	if err := handler.InvokeApiWithFormData(http.MethodGet, url, nil, &nomadJob); nil != err {
+	if err := handler.InvokeApiWithKvData(http.MethodGet, url, nil, &nomadJob); nil != err {
 		return false, nomadApi.Job{}, nil, fmt.Errorf("invoke nomad api %v failed: %v", url, err)
 	}
 	logger.Info("invoke nomad api finished")
@@ -340,7 +340,7 @@ func getJobDetailFromNomad(logger hclog.Logger, jobId string, jobType DtleJobTyp
 	url = handler.BuildUrl(fmt.Sprintf("/v1/job/%v/allocations", *nomadJob.ID))
 	logger.Info("invoke nomad api begin", "url", url)
 	allocations := []nomadApi.Allocation{}
-	if err := handler.InvokeApiWithFormData(http.MethodGet, url, nil, &allocations); nil != err {
+	if err := handler.InvokeApiWithKvData(http.MethodGet, url, nil, &allocations); nil != err {
 		return false, nomadApi.Job{}, nil, fmt.Errorf("invoke nomad api %v failed: %v", url, err)
 	}
 	logger.Info("invoke nomad api finished")

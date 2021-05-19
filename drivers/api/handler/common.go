@@ -29,7 +29,7 @@ func BuildUrl(path string) string {
 	return "http://" + NomadHost + path
 }
 
-func InvokeApiWithFormData(method, uri string, args map[string]string, respStruct interface{}) (err error) {
+func InvokeApiWithKvData(method, uri string, args map[string]string, respStruct interface{}) (err error) {
 	var req *http.Request
 	switch method {
 	case http.MethodGet:

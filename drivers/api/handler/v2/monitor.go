@@ -38,7 +38,7 @@ func GetTaskProgressV2(c echo.Context) error {
 		url := handler.BuildUrl("/v1/allocations")
 		logger.Info("invoke nomad api begin", "url", url)
 		nomadAllocs := []nomadApi.Allocation{}
-		if err := handler.InvokeApiWithFormData(http.MethodGet, url, nil, &nomadAllocs); nil != err {
+		if err := handler.InvokeApiWithKvData(http.MethodGet, url, nil, &nomadAllocs); nil != err {
 			return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invoke nomad api %v failed: %v", url, err)))
 		}
 		logger.Info("invoke nomad api finished")
@@ -56,7 +56,7 @@ func GetTaskProgressV2(c echo.Context) error {
 		url = handler.BuildUrl(fmt.Sprintf("/v1/node/%v", nodeId))
 		logger.Info("invoke nomad api begin", "url", url)
 		nomadNode := nomadApi.Node{}
-		if err := handler.InvokeApiWithFormData(http.MethodGet, url, nil, &nomadNode); nil != err {
+		if err := handler.InvokeApiWithKvData(http.MethodGet, url, nil, &nomadNode); nil != err {
 			return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invoke nomad api %v failed: %v", url, err)))
 		}
 		logger.Info("invoke nomad api finished")
@@ -82,7 +82,7 @@ func GetTaskProgressV2(c echo.Context) error {
 		// invoke http://%v/v1/agent/self to get api_addr
 		url := fmt.Sprintf("http://%v/v1/agent/self", targetNomadAddr)
 		nomadAgentSelf := nomadApi.AgentSelf{}
-		if err := handler.InvokeApiWithFormData(http.MethodGet, url, nil, &nomadAgentSelf); nil != err {
+		if err := handler.InvokeApiWithKvData(http.MethodGet, url, nil, &nomadAgentSelf); nil != err {
 			return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invoke nomad api %v failed: %v", url, err)))
 		}
 
@@ -98,7 +98,7 @@ func GetTaskProgressV2(c echo.Context) error {
 			"nomad_address": targetNomadAddr,
 		}
 		logger.Info("forwarding... invoke target dtle api begin", "url", url)
-		if err := handler.InvokeApiWithFormData(http.MethodGet, url, args, &res); nil != err {
+		if err := handler.InvokeApiWithKvData(http.MethodGet, url, args, &res); nil != err {
 			return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("forward api %v failed: %v", url, err)))
 		}
 		logger.Info("forwarding... invoke target dtle api finished")
