@@ -797,6 +797,86 @@ func PauseJobV2(c echo.Context) error {
 	})
 }
 
+// @Description resume job.
+// @Tags job
+// @accept application/x-www-form-urlencoded
+// @Param job_id formData string true "job id"
+// @Success 200 {object} models.ResumeJobRespV2
+// @Router /v2/job/resume [post]
+func ResumeJobV2(c echo.Context) error {
+	logger := handler.NewLogger().Named("ResumeJobV2")
+	logger.Info("validate params")
+	reqParam := new(models.ResumeJobReqV2)
+	if err := c.Bind(reqParam); nil != err {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("bind req param failed, error: %v", err)))
+	}
+	if err := c.Validate(reqParam); nil != err {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invalid params:\n%v", err)))
+	}
+
+	logger.Info("get allocations of job", "job_id", reqParam.JobId)
+	url := handler.BuildUrl(fmt.Sprintf("/v1/job/%v/allocations", reqParam.JobId))
+	logger.Info("invoke nomad api begin", "url", url)
+	nomadAllocs := []nomadApi.Allocation{}
+	if err := handler.InvokeApiWithKvData(http.MethodGet, url, nil, &nomadAllocs); nil != err {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invoke nomad api %v failed: %v", url, err)))
+	}
+	logger.Info("invoke nomad api finished")
+
+	if len(nomadAllocs) == 0 {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("job_id=%v; can not find allocations of the job", reqParam.JobId)))
+	}
+	// get job name
+	jobName, err := getJobNameFromJobId(reqParam.JobId)
+	if nil != err {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("get job name failed: %v", err)))
+	}
+
+	// update metadata first
+	storeManager, err := common.NewStoreManager([]string{handler.ConsulAddr}, logger)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("consul_addr=%v; connect to consul failed: %v", handler.ConsulAddr, err)))
+	}
+	_, isPaused, err := storeManager.GetJobPauseStatusIfExist(jobName)
+	if nil != err {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("job_name=%v; get job status failed: %v", jobName, err)))
+	}
+
+	if !isPaused {
+		return c.JSON(http.StatusOK, &models.PauseJobRespV2{
+			BaseResp: models.BuildBaseResp(nil),
+		})
+	}
+
+	if err := storeManager.PutJobPauseStatus(jobName, false); nil != err {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("job_name=%v; update job from consul failed: %v", jobName, err)))
+	}
+
+	needRollbackMetadata := false
+	defer func() {
+		if needRollbackMetadata {
+			logger.Info("resume job failed, rollback metadata")
+			if err := storeManager.PutJobPauseStatus(jobName, isPaused); nil != err {
+				logger.Info("rollback metadata failed", "error", err)
+			}
+		}
+	}()
+
+	// resume job
+	for _, a := range nomadAllocs {
+		if a.DesiredStatus == "run" { // the allocations will be stop by nomad if it is not desired to run. and there is no need to pause these allocations
+			if err := sentSignalToTask(logger, a.ID, "resume"); nil != err {
+				return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("allocation_id=%v; resume task failed:  %v", a.ID, err)))
+			}
+		}
+
+	}
+
+	return c.JSON(http.StatusOK, &models.ResumeJobRespV2{
+		BaseResp: models.BuildBaseResp(nil),
+	})
+}
+
 func sentSignalToTask(logger hclog.Logger, allocId, signal string) error {
 	logger.Debug("sentSignalToTask")
 	if "" == allocId {
