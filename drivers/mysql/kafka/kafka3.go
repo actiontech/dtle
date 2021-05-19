@@ -54,6 +54,7 @@ type KafkaRunner struct {
 
 	shutdown   bool
 	shutdownCh chan struct{}
+	isPaused   bool
 
 	kafkaConfig *common.KafkaConfig
 	kafkaMgr    *KafkaManager
@@ -151,6 +152,16 @@ func (kr *KafkaRunner) Shutdown() error {
 	return nil
 }
 
+func (kr *KafkaRunner) Pause() error {
+	kr.logger.Info("pause task")
+	if err := kr.Shutdown(); nil != err {
+		kr.onError(TaskStateDead, errors.Wrap(err, "pause task, shutdown failed"))
+		return err
+	}
+	kr.isPaused = true
+	return nil
+}
+
 func (kr *KafkaRunner) Stats() (*common.TaskStatistics, error) {
 	taskResUsage := &common.TaskStatistics{
 		CurrentCoordinates: &common.CurrentCoordinates{
@@ -200,6 +211,24 @@ func (kr *KafkaRunner) initNatSubClient() (err error) {
 	return nil
 }
 func (kr *KafkaRunner) Run() {
+	// when nomad reschedule job, the job should run if it is paused
+	{
+		isPaused, err := common.GetPausedStatusFromConsul(kr.storeManager, kr.subject)
+		if nil != err {
+			kr.onError(TaskStateDead, errors.Wrap(err, "GetJobPauseStatusIfExist"))
+			return
+		}
+		kr.isPaused = isPaused
+
+		if kr.isPaused {
+			kr.logger.Info("the task will be paused", "jobName", kr.subject)
+			if err := kr.Pause(); nil != err {
+				kr.onError(TaskStateDead, errors.Wrap(err, "pause task failed"))
+			}
+			return
+		}
+	}
+
 	kr.logger.Debug("Run", "brokers", kr.kafkaConfig.Brokers)
 	var err error
 

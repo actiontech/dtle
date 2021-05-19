@@ -74,6 +74,7 @@ type Applier struct {
 	shutdown     bool
 	shutdownCh   chan struct{}
 	shutdownLock sync.Mutex
+	isPaused     bool
 
 	nDumpEntry int64
 
@@ -202,6 +203,24 @@ func (a *Applier) updateGtidLoop() {
 
 // Run executes the complete apply logic.
 func (a *Applier) Run() {
+	// when nomad reschedule job, the job should run if it is paused
+	{
+		isPaused, err := common.GetPausedStatusFromConsul(a.storeManager, a.subject)
+		if nil != err {
+			a.onError(TaskStateDead, errors.Wrap(err, "GetJobPauseStatusIfExist"))
+			return
+		}
+		a.isPaused = isPaused
+
+		if a.isPaused {
+			a.logger.Info("the task will be paused", "jobName", a.subject)
+			if err := a.Pause(); nil != err {
+				a.onError(TaskStateDead, errors.Wrap(err, "pause task failed"))
+			}
+			return
+		}
+	}
+
 	var err error
 
 	{
@@ -947,5 +966,15 @@ func (a *Applier) Shutdown() error {
 	//close(a.applyBinlogTxQueue)
 	//close(a.applyBinlogGroupTxQueue)
 	a.logger.Info("Shutting down")
+	return nil
+}
+
+func (a *Applier) Pause() error {
+	a.logger.Info("pause task")
+	if err := a.Shutdown(); nil != err {
+		a.onError(TaskStateDead, errors.Wrap(err, "pause task, shutdown failed"))
+		return err
+	}
+	a.isPaused = true
 	return nil
 }
