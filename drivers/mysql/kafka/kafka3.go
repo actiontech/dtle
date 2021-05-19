@@ -151,6 +151,10 @@ func (kr *KafkaRunner) Shutdown() error {
 	return nil
 }
 
+func (kr *KafkaRunner) Pause() error {
+	return kr.Shutdown()
+}
+
 func (kr *KafkaRunner) Stats() (*common.TaskStatistics, error) {
 	taskResUsage := &common.TaskStatistics{
 		CurrentCoordinates: &common.CurrentCoordinates{

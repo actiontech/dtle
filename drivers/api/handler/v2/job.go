@@ -8,6 +8,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/hashicorp/nomad/nomad/structs"
+
+	"github.com/hashicorp/nomad/plugins/drivers"
+
 	"github.com/actiontech/dtle/drivers/mysql/kafka"
 
 	hclog "github.com/hashicorp/go-hclog"
@@ -705,4 +709,65 @@ func buildKafkaDestTaskDetail(taskName string, internalTaskKafkaConfig common.Ka
 	}
 
 	return destTaskDetail
+}
+
+// @Description pause job.
+// @Tags job
+// @accept application/x-www-form-urlencoded
+// @Param job_id formData string true "job id"
+// @Success 200 {object} models.PauseJobRespV2
+// @Router /v2/job/pause [post]
+func PauseJobV2(c echo.Context) error {
+	logger := handler.NewLogger().Named("PauseJobV2")
+	logger.Info("validate params")
+	reqParam := new(models.PauseJobReqV2)
+	if err := c.Bind(reqParam); nil != err {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("bind req param failed, error: %v", err)))
+	}
+	if err := c.Validate(reqParam); nil != err {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invalid params:\n%v", err)))
+	}
+
+	logger.Info("get allocations of job", "job_id", reqParam.JobId)
+	url := handler.BuildUrl("/v1/allocations")
+	logger.Info("invoke nomad api begin", "url", url)
+	nomadAllocs := []nomadApi.Allocation{}
+	if err := handler.InvokeApiWithKvData(http.MethodGet, url, nil, &nomadAllocs); nil != err {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invoke nomad api %v failed: %v", url, err)))
+	}
+	logger.Info("invoke nomad api finished")
+
+	for _, a := range nomadAllocs {
+		url = handler.BuildUrl(fmt.Sprintf("/v1/client/allocation/%v/signal", a.ID))
+		for taskName, state := range a.TaskStates {
+			if state.State == string(drivers.TaskStateRunning) {
+				if err := sentSignalToTask(logger, a.ID, taskName, "pause"); nil != err {
+					return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("task_name=%v, allocation_id=%v; pause task failed:  %v", taskName, a.ID, err)))
+				}
+			}
+		}
+	}
+
+	return c.JSON(http.StatusOK, &models.PauseJobRespV2{
+		BaseResp: models.BuildBaseResp(nil),
+	})
+}
+
+func sentSignalToTask(logger hclog.Logger, allocId, taskName, signal string) error {
+	logger.Debug("sentSignalToTask")
+	if "" == allocId {
+		return fmt.Errorf("allocation id is required")
+	}
+	param := ""
+	if "" == taskName {
+		param = fmt.Sprintf(`{"Signal":"%v"}`, signal)
+	} else {
+		param = fmt.Sprintf(`{"Signal":"%v","Task":"%v"}`, signal, taskName)
+	}
+	resp := structs.GenericResponse{}
+	url := handler.BuildUrl(fmt.Sprintf("/v1/client/allocation/%v/signal", allocId))
+	if err := handler.InvokePostApiWithJson(url, []byte(param), &resp); nil != err {
+		return fmt.Errorf("invoke nomad api %v failed: %v", url, err)
+	}
+	return nil
 }

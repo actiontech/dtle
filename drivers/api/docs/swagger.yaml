@@ -417,6 +417,11 @@ definitions:
           $ref: '#/definitions/models.NodeListItemV2'
         type: array
     type: object
+  models.PauseJobRespV2:
+    properties:
+      message:
+        type: string
+    type: object
   models.PrivilegesValidation:
     properties:
       error:
@@ -587,6 +592,24 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/models.MysqlToMysqlJobDetailRespV2'
+      tags:
+      - job
+  /v2/job/pause:
+    post:
+      consumes:
+      - application/x-www-form-urlencoded
+      description: pause job.
+      parameters:
+      - description: job id
+        in: formData
+        name: job_id
+        required: true
+        type: string
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.PauseJobRespV2'
       tags:
       - job
   /v2/job/subscription:

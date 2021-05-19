@@ -943,3 +943,7 @@ func (a *Applier) Shutdown() error {
 	a.logger.Info("Shutting down")
 	return nil
 }
+
+func (a *Applier) Pause() error {
+	return a.Shutdown()
+}

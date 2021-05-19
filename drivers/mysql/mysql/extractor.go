@@ -1501,6 +1501,11 @@ func (e *Extractor) Shutdown() error {
 	e.logger.Info("Shutting down")
 	return nil
 }
+
+func (e *Extractor) Pause() error {
+	return e.Shutdown()
+}
+
 func (e *Extractor) sendFullComplete() (err error) {
 	dumpMsg, err := common.Encode(&common.DumpStatResult{
 		Gtid:       e.initialBinlogCoordinates.GtidSet,
