@@ -706,3 +706,34 @@ func buildKafkaDestTaskDetail(taskName string, internalTaskKafkaConfig common.Ka
 
 	return destTaskDetail
 }
+
+// @Description pause job.
+// @Tags job
+// @accept application/x-www-form-urlencoded
+// @Param job_id formData string true "job id"
+// @Success 200 {object} models.PauseJobRespV2
+// @Router /v2/job/pause [post]
+func PauseJobV2(c echo.Context) error {
+	logger := handler.NewLogger().Named("PauseJobV2")
+	logger.Info("validate params")
+	reqParam := new(models.PauseJobReqV2)
+	if err := c.Bind(reqParam); nil != err {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("bind req param failed, error: %v", err)))
+	}
+	if err := c.Validate(reqParam); nil != err {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invalid params:\n%v", err)))
+	}
+
+	url := handler.BuildUrl(fmt.Sprintf("/v1/job/%v", reqParam.JobId))
+	logger.Info("invoke nomad api begin", "url", url, "method", "DELETE")
+	nomadResp := nomadApi.JobDeregisterResponse{}
+	if err := handler.InvokeHttpUrlWithBody(http.MethodDelete, url, nil, &nomadResp); nil != err {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invoke nomad api failed: %v", err)))
+	}
+
+	logger.Info("invoke nomad api finished")
+
+	return c.JSON(http.StatusOK, &models.PauseJobRespV2{
+		BaseResp: models.BuildBaseResp(nil),
+	})
+}

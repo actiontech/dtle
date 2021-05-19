@@ -161,3 +161,11 @@ type KafkaDestTaskDetail struct {
 	TaskConfig   KafkaDestTaskConfig `json:"task_config"`
 	TaskStatus   TaskStatus          `json:"task_status"`
 }
+
+type PauseJobReqV2 struct {
+	JobId string `form:"job_id" validate:"required"`
+}
+
+type PauseJobRespV2 struct {
+	BaseResp
+}
