@@ -152,6 +152,18 @@ func (kr *KafkaRunner) Shutdown() error {
 	return nil
 }
 
+func (kr *KafkaRunner) Resume() {
+	kr.logger.Info("resume task")
+	if !kr.shutdown {
+		return
+	}
+	kr.shutdown = false
+	kr.shutdownCh = make(chan struct{})
+	go kr.Run()
+	kr.isPaused = false
+	return
+}
+
 func (kr *KafkaRunner) Pause() error {
 	kr.logger.Info("pause task")
 	if err := kr.Shutdown(); nil != err {
