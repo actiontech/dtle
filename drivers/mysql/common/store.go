@@ -21,6 +21,7 @@ type StoreManager struct {
 	consulStore store.Store
 	logger      hclog.Logger
 }
+
 func NewStoreManager(consulAddr []string, logger hclog.Logger) (*StoreManager, error) {
 	consulStore, err := libkv.NewStore(store.CONSUL, consulAddr, nil)
 	if err != nil {
@@ -34,18 +35,24 @@ func NewStoreManager(consulAddr []string, logger hclog.Logger) (*StoreManager, e
 func (sm *StoreManager) DestroyJob(jobName string) error {
 	key := fmt.Sprintf("dtle/%v", jobName)
 	err := sm.consulStore.DeleteTree(key)
-	if err == store.ErrKeyNotFound {
-		return nil
-	} else {
+	if nil != err && store.ErrKeyNotFound != err {
 		return err
 	}
+	key = fmt.Sprintf("dtleJobStatus/%v", jobName)
+	err = sm.consulStore.DeleteTree(key)
+	if nil != err && store.ErrKeyNotFound != err {
+		return err
+	}
+	return nil
 }
 func (sm *StoreManager) SaveGtidForJob(jobName string, gtid string) error {
 	key := fmt.Sprintf("dtle/%v/Gtid", jobName)
 	err := sm.consulStore.Put(key, []byte(gtid), nil)
 	return err
 }
+
 const binlogFilePosSeparator = "//dtle//"
+
 func (sm *StoreManager) SaveBinlogFilePosForJob(jobName string, file string, pos int) error {
 	key := fmt.Sprintf("dtle/%v/BinlogFilePos", jobName)
 	s := fmt.Sprintf("%v%v%v", file, binlogFilePosSeparator, pos)
