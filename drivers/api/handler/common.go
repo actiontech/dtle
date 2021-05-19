@@ -16,8 +16,7 @@ import (
 	"strings"
 )
 
-var NomadHost string
-var ApiAddr string
+var NomadHost, ApiAddr, ConsulAddr string
 
 // decodeBody is used to decode a JSON request body
 func DecodeBody(req *http.Request, out interface{}) error {
