@@ -180,3 +180,11 @@ type ResumeJobReqV2 struct {
 type ResumeJobRespV2 struct {
 	BaseResp
 }
+
+type DeleteJobReqV2 struct {
+	JobId   string `form:"job_id" validate:"required"`
+}
+
+type DeleteJobRespV2 struct {
+	BaseResp
+}
