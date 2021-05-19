@@ -81,6 +81,7 @@ type Extractor struct {
 	shutdown     bool
 	shutdownCh   chan struct{}
 	shutdownLock sync.Mutex
+	isPaused     bool
 
 	testStub1Delay int64
 
@@ -137,6 +138,24 @@ func NewExtractor(execCtx *common.ExecContext, cfg *common.MySQLDriverConfig, lo
 
 // Run executes the complete extract logic.
 func (e *Extractor) Run() {
+	// when nomad reschedule job, the job should run if it is paused
+	{
+		isPaused, err := common.GetPausedStatusFromConsul(e.storeManager, e.subject)
+		if nil != err {
+			e.onError(TaskStateDead, errors.Wrap(err, "GetJobPauseStatusIfExist"))
+			return
+		}
+		e.isPaused = isPaused
+
+		if e.isPaused {
+			e.logger.Info("the task will be paused", "jobName", e.subject)
+			if err := e.Pause(); nil != err {
+				e.onError(TaskStateDead, errors.Wrap(err, "pause task failed"))
+			}
+			return
+		}
+	}
+
 	var err error
 
 	e.logger.Debug("consul put ReplChanBufferSize")
@@ -1494,6 +1513,17 @@ func (e *Extractor) Shutdown() error {
 	e.logger.Info("Shutting down")
 	return nil
 }
+
+func (e *Extractor) Pause() error {
+	e.logger.Info("pause task")
+	if err := e.Shutdown(); nil != err {
+		e.onError(TaskStateDead, errors.Wrap(err, "pause task, shutdown failed"))
+		return err
+	}
+	e.isPaused = true
+	return nil
+}
+
 func (e *Extractor) sendFullComplete() (err error) {
 	dumpMsg, err := common.Encode(&common.DumpStatResult{
 		Coord: e.initialBinlogCoordinates,
