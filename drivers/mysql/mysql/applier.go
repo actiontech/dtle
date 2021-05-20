@@ -791,13 +791,17 @@ func (a *Applier) ApplyEventQueries(db *gosql.DB, entry *common.DumpEntry) error
 func (a *Applier) Stats() (*common.TaskStatistics, error) {
 	a.logger.Debug("Stats")
 	var totalDeltaCopied int64
-	var lenApplyDataEntryQueue int
-	var capApplyDataEntryQueue int
+	var lenApplierMsgQueue int
+	var capApplierMsgQueue int
+	var lenApplierTxQueue int
+	var capApplierTxQueue int
 	var delay int64
 	if a.ai != nil {
 		totalDeltaCopied = a.ai.TotalDeltaCopied
-		lenApplyDataEntryQueue = len(a.ai.incrBytesQueue)
-		capApplyDataEntryQueue = cap(a.ai.incrBytesQueue)
+		lenApplierMsgQueue = len(a.ai.incrBytesQueue)
+		capApplierMsgQueue = cap(a.ai.incrBytesQueue)
+		lenApplierTxQueue = len(a.ai.binlogEntryQueue)
+		capApplierTxQueue = cap(a.ai.binlogEntryQueue)
 		delay = a.ai.timestampCtx.GetDelay()
 	}
 	totalRowsReplay := a.TotalRowsReplayed
@@ -813,7 +817,8 @@ func (a *Applier) Stats() (*common.TaskStatistics, error) {
 		if a.mysqlContext.Gtid != "" {
 			// Done copying rows. The totalRowsCopied value is the de-facto number of rows,
 			// and there is no further need to keep updating the value.
-			backlog = fmt.Sprintf("%d/%d", lenApplyDataEntryQueue, capApplyDataEntryQueue)
+			backlog = fmt.Sprintf("%d/%d", lenApplierMsgQueue + lenApplierTxQueue,
+				capApplierMsgQueue + capApplierTxQueue)
 		} else {
 			backlog = fmt.Sprintf("%d/%d", len(a.fullBytesQueue), cap(a.fullBytesQueue))
 		}
@@ -861,7 +866,8 @@ func (a *Applier) Stats() (*common.TaskStatistics, error) {
 			RetrievedGtidSet:   "",
 		},
 		BufferStat: common.BufferStat{
-			ApplierTxQueueSize: lenApplyDataEntryQueue,
+			ApplierMsgQueueSize: lenApplierMsgQueue,
+			ApplierTxQueueSize:  lenApplierTxQueue,
 		},
 		Timestamp: time.Now().UTC().UnixNano(),
 		DelayCount: &common.DelayCount{

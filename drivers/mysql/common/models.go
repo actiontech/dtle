@@ -46,6 +46,7 @@ type ThroughputStat struct {
 type BufferStat struct {
 	BinlogEventQueueSize    int
 	ExtractorTxQueueSize    int
+	ApplierMsgQueueSize     int
 	ApplierTxQueueSize      int
 	SendByTimeout           int
 	SendBySizeFull          int
