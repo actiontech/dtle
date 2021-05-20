@@ -507,7 +507,7 @@ func (a *Applier) subscribeNats() (err error) {
 				return
 			case a.ai.incrBytesQueue <- incrNMM.GetBytes():
 				incrNMM.Reset()
-				a.logger.Debug("incr. incrBytesQueue enqueued")
+				a.logger.Debug("incr. incrBytesQueue enqueued", "vacancy", cap(a.ai.incrBytesQueue) - len(a.ai.incrBytesQueue))
 
 				if err := a.natsConn.Publish(m.Reply, nil); err != nil {
 					a.onError(TaskStateDead, err)

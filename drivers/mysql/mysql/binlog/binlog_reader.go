@@ -422,6 +422,7 @@ type parseQueryResult struct {
 	sql          string
 	ast          ast.StmtNode
 	isExpand     bool
+	isSkip       bool
 }
 
 func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel chan<- *common.BinlogEntryContext) error {
@@ -480,11 +481,13 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 					return errors.Wrap(err, "resolveQuery")
 				}
 
-				var skipExpandSyntax bool
-				if b.mysqlContext.ExpandSyntaxSupport {
-					skipExpandSyntax = false
+				skipSql := false
+				if queryInfo.isSkip || isSkipQuery(query) {
+					skipSql = true
 				} else {
-					skipExpandSyntax = isExpandSyntaxQuery(query) || queryInfo.isExpand
+					if !b.mysqlContext.ExpandSyntaxSupport {
+						skipSql = queryInfo.isExpand || isExpandSyntaxQuery(query)
+					}
 				}
 
 				currentSchemaRename := currentSchema
@@ -493,9 +496,9 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 					currentSchemaRename = schema.TableSchemaRename
 				}
 
-				if skipExpandSyntax || !queryInfo.isRecognized {
-					if skipExpandSyntax {
-						b.logger.Warn("skipExpandSyntax", "query", query, "gno", gno)
+				if skipSql || !queryInfo.isRecognized {
+					if skipSql {
+						b.logger.Warn("skipQuery", "query", query, "gno", gno)
 					} else {
 						if !queryInfo.isRecognized {
 							b.logger.Warn("mysql.reader: QueryEvent is not recognized. will still execute", "query", query, "gno", gno)
@@ -1064,6 +1067,7 @@ func resolveQuery(currentSchema string, sql string,
 
 	result.sql = sql
 	result.isRecognized = true
+	result.isSkip = false
 
 	stmt, err := parser.New().ParseOneStmt(sql, "", "")
 	if err != nil {
@@ -1141,7 +1145,7 @@ func resolveQuery(currentSchema string, sql string,
 		setTable(v.OldTable.Schema.O, v.OldTable.Name.O)
 		// TODO handle extra tables in v.TableToTables[1:]
 	case *ast.DropTriggerStmt:
-		result.isExpand = true
+		result.isSkip = true
 	default:
 		result.isRecognized = false
 	}
@@ -1180,8 +1184,20 @@ func (b *BinlogReader) skipQueryDDL(schema string, tableName string) bool {
 var (
 	// > A Regexp is safe for concurrent use by multiple goroutines...
 	regexCreateTrigger = regexp.MustCompile(`(?is)CREATE\b.+?TRIGGER\b.+?(?:BEFORE|AFTER)\b.+?(?:INSERT|UPDATE|DELETE)\b.+?ON\b.+?FOR\b.+?EACH\b.+?ROW\b`)
-)
 
+	regexCreateEvent = regexp.MustCompile(`(?is)CREATE\b.+?EVENT\b.+?ON\b.+?SCHEDULE\b.+?(?:AT|EVERY)\b.+?DO\b`)
+)
+func isSkipQuery(sql string) bool {
+	if regexCreateTrigger.MatchString(sql) {
+		return true
+	}
+
+	if regexCreateEvent.MatchString(sql) {
+		return true
+	}
+
+	return false
+}
 func isExpandSyntaxQuery(sql string) bool {
 	sql = strings.ToLower(sql)
 
@@ -1194,10 +1210,6 @@ func isExpandSyntaxQuery(sql string) bool {
 		return true
 	}
 	if strings.HasPrefix(sql, "rename user") {
-		return true
-	}
-
-	if regexCreateTrigger.MatchString(sql) {
 		return true
 	}
 

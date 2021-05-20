@@ -1269,3 +1269,36 @@ func Test_updateCurrentReplicateDoDb(t *testing.T) {
 	}
 
 }
+
+func Test_isExpandSyntaxQuery(t *testing.T) {
+	type args struct {
+		sql string
+	}
+	tests := []struct {
+		name string
+		args args
+		want bool
+	}{
+		{
+			name: "create-event",
+			args: args{sql: "create event if not exists a.event1 on schedule every 5 second on completion preserve do insert into a.a values (0);"},
+			want: true,
+		}, {
+			name: "create-trigger", args: args{sql: `CREATE TRIGGER before_employee_update
+	BEFORE UPDATE ON employees FOR EACH ROW
+	INSERT INTO employees_audit
+	SET action = 'update',
+		employeeNumber = OLD.employeeNumber,
+		lastname = OLD.lastname,
+		changedat = NOW();`},
+			want: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := isExpandSyntaxQuery(tt.args.sql); got != tt.want {
+				t.Errorf("isExpandSyntaxQuery() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
