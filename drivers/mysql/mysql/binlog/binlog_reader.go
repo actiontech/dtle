@@ -8,7 +8,9 @@ package binlog
 
 import (
 	"bytes"
+	gosql "database/sql"
 	"github.com/actiontech/dtle/drivers/mysql/common"
+	"github.com/actiontech/dtle/drivers/mysql/mysql/sql"
 	"github.com/pingcap/parser/format"
 	"github.com/pkg/errors"
 	"github.com/shirou/gopsutil/mem"
@@ -91,6 +93,8 @@ type BinlogReader struct {
 	maybeSqleContext *sqle.Context
 	memory           *int64
 	extractedTxCount uint32
+	db               *gosql.DB
+	serverUUID       string
 }
 
 type SqlFilter struct {
@@ -154,9 +158,7 @@ func parseSqlFilter(strs []string) (*SqlFilter, error) {
 	return s, nil
 }
 
-func NewMySQLReader(execCtx *common.ExecContext, cfg *common.MySQLDriverConfig, logger hclog.Logger,
-	replicateDoDb []*common.DataSource, sqleContext *sqle.Context, memory *int64,
-) (binlogReader *BinlogReader, err error) {
+func NewMySQLReader(execCtx *common.ExecContext, cfg *common.MySQLDriverConfig, logger hclog.Logger, replicateDoDb []*common.DataSource, sqleContext *sqle.Context, memory *int64, db *gosql.DB) (binlogReader *BinlogReader, err error) {
 
 	sqlFilter, err := parseSqlFilter(cfg.SqlFilter)
 	if err != nil {
@@ -176,6 +178,12 @@ func NewMySQLReader(execCtx *common.ExecContext, cfg *common.MySQLDriverConfig, 
 		sqlFilter:            sqlFilter,
 		maybeSqleContext:     sqleContext,
 		memory:               memory,
+		db:                   db,
+	}
+
+	binlogReader.serverUUID, err = sql.GetServerUUID(db)
+	if err != nil {
+		return nil, err
 	}
 
 	for _, db := range replicateDoDb {
@@ -1041,6 +1049,15 @@ func (b *BinlogReader) DataStreamEvents(entriesChannel chan<- *common.BinlogEntr
 		b.currentCoordMutex.Unlock()
 
 		if ev.Header.EventType == replication.ROTATE_EVENT {
+			serverUUID, err := sql.GetServerUUID(b.db)
+			if err != nil {
+				return errors.Wrap(err, "on rotate_event. GetServerUUID")
+			}
+			if serverUUID != b.serverUUID {
+				return fmt.Errorf("serverUUID changed from %v to %v. job should restart",
+					b.serverUUID, serverUUID)
+			}
+
 			rotateEvent := ev.Event.(*replication.RotateEvent)
 			nextLogName := string(rotateEvent.NextLogName)
 			b.currentCoordMutex.Lock()

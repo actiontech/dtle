@@ -242,6 +242,14 @@ type QueryAble interface {
 	QueryRow(query string, args ...interface{}) *gosql.Row
 }
 
+func GetServerUUID(db QueryAble) (result string, err error) {
+	err = db.QueryRow(`SELECT @@SERVER_UUID /*dtle*/`).Scan(&result)
+	if err != nil {
+		return "", err
+	}
+	return result, nil
+}
+
 // queryResultData returns a raw array of rows for a given query, optionally reading and returning column names
 func queryResultData(db *gosql.DB, query string, retrieveColumns bool, args ...interface{}) (ResultData, []string, error) {
 	var err error
