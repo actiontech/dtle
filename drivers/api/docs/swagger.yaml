@@ -1,4 +1,13 @@
 definitions:
+  models.AllocationDetail:
+    properties:
+      allocation_id:
+        type: string
+      node_id:
+        type: string
+      task_status:
+        $ref: '#/definitions/models.TaskStatus'
+    type: object
   models.BinlogValidation:
     properties:
       error:
@@ -206,12 +215,12 @@ definitions:
     type: object
   models.KafkaDestTaskDetail:
     properties:
-      allocation_id:
-        type: string
+      allocations:
+        items:
+          $ref: '#/definitions/models.AllocationDetail'
+        type: array
       task_config:
         $ref: '#/definitions/models.KafkaDestTaskConfig'
-      task_status:
-        $ref: '#/definitions/models.TaskStatus'
     type: object
   models.ListMysqlSchemasRespV2:
     properties:
@@ -265,12 +274,12 @@ definitions:
     type: object
   models.MysqlDestTaskDetail:
     properties:
-      allocation_id:
-        type: string
+      allocations:
+        items:
+          $ref: '#/definitions/models.AllocationDetail'
+        type: array
       task_config:
         $ref: '#/definitions/models.MysqlDestTaskConfig'
-      task_status:
-        $ref: '#/definitions/models.TaskStatus'
     type: object
   models.MysqlSrcTaskConfig:
     properties:
@@ -306,12 +315,12 @@ definitions:
     type: object
   models.MysqlSrcTaskDetail:
     properties:
-      allocation_id:
-        type: string
+      allocations:
+        items:
+          $ref: '#/definitions/models.AllocationDetail'
+        type: array
       task_config:
         $ref: '#/definitions/models.MysqlSrcTaskConfig'
-      task_status:
-        $ref: '#/definitions/models.TaskStatus'
     type: object
   models.MysqlTableConfig:
     properties:

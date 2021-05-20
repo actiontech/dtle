@@ -392,6 +392,20 @@ var doc = `{
         }
     },
     "definitions": {
+        "models.AllocationDetail": {
+            "type": "object",
+            "properties": {
+                "allocation_id": {
+                    "type": "string"
+                },
+                "node_id": {
+                    "type": "string"
+                },
+                "task_status": {
+                    "$ref": "#/definitions/models.TaskStatus"
+                }
+            }
+        },
         "models.BinlogValidation": {
             "type": "object",
             "properties": {
@@ -699,14 +713,14 @@ var doc = `{
         "models.KafkaDestTaskDetail": {
             "type": "object",
             "properties": {
-                "allocation_id": {
-                    "type": "string"
+                "allocations": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.AllocationDetail"
+                    }
                 },
                 "task_config": {
                     "$ref": "#/definitions/models.KafkaDestTaskConfig"
-                },
-                "task_status": {
-                    "$ref": "#/definitions/models.TaskStatus"
                 }
             }
         },
@@ -788,14 +802,14 @@ var doc = `{
         "models.MysqlDestTaskDetail": {
             "type": "object",
             "properties": {
-                "allocation_id": {
-                    "type": "string"
+                "allocations": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.AllocationDetail"
+                    }
                 },
                 "task_config": {
                     "$ref": "#/definitions/models.MysqlDestTaskConfig"
-                },
-                "task_status": {
-                    "$ref": "#/definitions/models.TaskStatus"
                 }
             }
         },
@@ -850,14 +864,14 @@ var doc = `{
         "models.MysqlSrcTaskDetail": {
             "type": "object",
             "properties": {
-                "allocation_id": {
-                    "type": "string"
+                "allocations": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.AllocationDetail"
+                    }
                 },
                 "task_config": {
                     "$ref": "#/definitions/models.MysqlSrcTaskConfig"
-                },
-                "task_status": {
-                    "$ref": "#/definitions/models.TaskStatus"
                 }
             }
         },

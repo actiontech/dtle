@@ -34,15 +34,19 @@ type MysqlToMysqlJobDetailRespV2 struct {
 }
 
 type MysqlDestTaskDetail struct {
-	AllocationId string              `json:"allocation_id"`
-	TaskConfig   MysqlDestTaskConfig `json:"task_config"`
-	TaskStatus   TaskStatus          `json:"task_status"`
+	Allocations []AllocationDetail  `json:"allocations"`
+	TaskConfig  MysqlDestTaskConfig `json:"task_config"`
 }
 
 type MysqlSrcTaskDetail struct {
-	AllocationId string             `json:"allocation_id"`
-	TaskConfig   MysqlSrcTaskConfig `json:"task_config"`
-	TaskStatus   TaskStatus         `json:"task_status"`
+	Allocations []AllocationDetail `json:"allocations"`
+	TaskConfig  MysqlSrcTaskConfig `json:"task_config"`
+}
+
+type AllocationDetail struct {
+	NodeId       string     `json:"node_id"`
+	AllocationId string     `json:"allocation_id"`
+	TaskStatus   TaskStatus `json:"task_status"`
 }
 
 type TaskStatus struct {
@@ -61,7 +65,7 @@ type TaskEvent struct {
 
 type MysqlSrcTaskConfig struct {
 	TaskName              string                   `json:"task_name" validate:"required"`
-	NodeId                string                   `json:"node_id"`
+	NodeId                string                   `json:"node_id,omitempty"`
 	Gtid                  string                   `json:"gtid"`
 	GroupMaxSize          int                      `json:"group_max_size"`
 	ChunkSize             int64                    `json:"chunk_size"`
@@ -75,7 +79,7 @@ type MysqlSrcTaskConfig struct {
 
 type MysqlDestTaskConfig struct {
 	TaskName              string                 `json:"task_name" validate:"required"`
-	NodeId                string                 `json:"node_id"`
+	NodeId                string                 `json:"node_id,omitempty"`
 	ParallelWorkers       int                    `json:"parallel_workers"`
 	MysqlConnectionConfig *MysqlConnectionConfig `json:"mysql_connection_config" validate:"required"`
 }
@@ -119,7 +123,7 @@ type CreateOrUpdateMysqlToMysqlJobRespV2 struct {
 
 type KafkaDestTaskConfig struct {
 	TaskName            string   `json:"task_name" validate:"required"`
-	NodeId              string   `json:"node_id"`
+	NodeId              string   `json:"node_id,omitempty"`
 	BrokerAddrs         []string `json:"kafka_broker_addrs" validate:"required" example:"127.0.0.1:9092"`
 	Topic               string   `json:"kafka_topic" validate:"required"`
 	MessageGroupMaxSize uint64   `json:"message_group_max_size"`
@@ -157,7 +161,6 @@ type MysqlToKafkaJobDetailRespV2 struct {
 }
 
 type KafkaDestTaskDetail struct {
-	AllocationId string              `json:"allocation_id"`
-	TaskConfig   KafkaDestTaskConfig `json:"task_config"`
-	TaskStatus   TaskStatus          `json:"task_status"`
+	Allocations []AllocationDetail  `json:"allocations"`
+	TaskConfig  KafkaDestTaskConfig `json:"task_config"`
 }

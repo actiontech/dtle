@@ -364,7 +364,7 @@ func getJobDetailFromNomad(logger hclog.Logger, jobId string, jobType DtleJobTyp
 	return true, nomadJob, allocations, nil
 }
 
-func buildMysqlSrcTaskDetail(taskName string, internalTaskConfig common.DtleTaskConfig, alloc *nomadApi.Allocation) (srcTaskDetail models.MysqlSrcTaskDetail) {
+func buildMysqlSrcTaskDetail(taskName string, internalTaskConfig common.DtleTaskConfig, allocsFromNomad []nomadApi.Allocation) (srcTaskDetail models.MysqlSrcTaskDetail) {
 	convertInternalMysqlDataSourceToApi := func(internalDataSource []*common.DataSource) []*models.MysqlDataSourceConfig {
 		apiMysqlDataSource := []*models.MysqlDataSourceConfig{}
 		for _, db := range internalDataSource {
@@ -389,7 +389,7 @@ func buildMysqlSrcTaskDetail(taskName string, internalTaskConfig common.DtleTask
 	replicateDoDb := convertInternalMysqlDataSourceToApi(internalTaskConfig.ReplicateDoDb)
 	replicateIgnoreDb := convertInternalMysqlDataSourceToApi(internalTaskConfig.ReplicateIgnoreDb)
 
-	dtleTaskConfigForApi := models.MysqlSrcTaskConfig{
+	srcTaskDetail.TaskConfig = models.MysqlSrcTaskConfig{
 		TaskName:           taskName,
 		Gtid:               internalTaskConfig.Gtid,
 		GroupMaxSize:       internalTaskConfig.GroupMaxSize,
@@ -406,18 +406,18 @@ func buildMysqlSrcTaskDetail(taskName string, internalTaskConfig common.DtleTask
 			MysqlPassword: "*",
 		},
 	}
-	if nil != alloc {
-		dtleTaskConfigForApi.NodeId = alloc.NodeID
-		srcTaskDetail.AllocationId = alloc.ID
-		getTaskDetailStatusFromAllocInfo(alloc, &srcTaskDetail.TaskStatus, taskName)
-	}
-	srcTaskDetail.TaskConfig = dtleTaskConfigForApi
 
+	allocs := []models.AllocationDetail{}
+	for _, a := range allocsFromNomad {
+		newAlloc := getTaskDetailStatusFromAllocInfo(a, taskName)
+		allocs = append(allocs, newAlloc)
+	}
+	srcTaskDetail.Allocations = allocs
 	return srcTaskDetail
 }
 
-func buildMysqlDestTaskDetail(taskName string, internalTaskConfig common.DtleTaskConfig, alloc *nomadApi.Allocation) (destTaskDetail models.MysqlDestTaskDetail) {
-	dtleTaskConfigForApi := models.MysqlDestTaskConfig{
+func buildMysqlDestTaskDetail(taskName string, internalTaskConfig common.DtleTaskConfig, allocsFromNomad []nomadApi.Allocation) (destTaskDetail models.MysqlDestTaskDetail) {
+	destTaskDetail.TaskConfig = models.MysqlDestTaskConfig{
 		TaskName:        taskName,
 		ParallelWorkers: internalTaskConfig.ParallelWorkers,
 		MysqlConnectionConfig: &models.MysqlConnectionConfig{
@@ -428,30 +428,34 @@ func buildMysqlDestTaskDetail(taskName string, internalTaskConfig common.DtleTas
 		},
 	}
 
-	if nil != alloc {
-		dtleTaskConfigForApi.NodeId = alloc.NodeID
-		destTaskDetail.AllocationId = alloc.ID
-		getTaskDetailStatusFromAllocInfo(alloc, &destTaskDetail.TaskStatus, taskName)
+	allocs := []models.AllocationDetail{}
+	for _, a := range allocsFromNomad {
+		newAlloc := getTaskDetailStatusFromAllocInfo(a, taskName)
+		allocs = append(allocs, newAlloc)
 	}
-	destTaskDetail.TaskConfig = dtleTaskConfigForApi
+	destTaskDetail.Allocations = allocs
 
 	return destTaskDetail
 }
 
-func getTaskDetailStatusFromAllocInfo(nomadAllocation *nomadApi.Allocation, apiTaskStatus *models.TaskStatus, taskName string) {
+func getTaskDetailStatusFromAllocInfo(nomadAllocation nomadApi.Allocation, taskName string) models.AllocationDetail {
+	newAlloc := models.AllocationDetail{}
 	if nomadTaskState, ok := nomadAllocation.TaskStates[taskName]; ok {
+		newAlloc.AllocationId = nomadAllocation.ID
+		newAlloc.NodeId = nomadAllocation.NodeID
 		for _, e := range nomadTaskState.Events {
-			apiTaskStatus.TaskEvents = append(apiTaskStatus.TaskEvents, models.TaskEvent{
+			newAlloc.TaskStatus.TaskEvents = append(newAlloc.TaskStatus.TaskEvents, models.TaskEvent{
 				EventType:  e.Type,
 				SetupError: e.SetupError,
 				Message:    e.Message,
 				Time:       time.Unix(0, e.Time).In(time.Local).Format(time.RFC3339),
 			})
 		}
-		apiTaskStatus.Status = nomadTaskState.State
-		apiTaskStatus.StartedAt = nomadTaskState.StartedAt.In(time.Local)
-		apiTaskStatus.FinishedAt = nomadTaskState.FinishedAt.In(time.Local)
+		newAlloc.TaskStatus.Status = nomadTaskState.State
+		newAlloc.TaskStatus.StartedAt = nomadTaskState.StartedAt.In(time.Local)
+		newAlloc.TaskStatus.FinishedAt = nomadTaskState.FinishedAt.In(time.Local)
 	}
+	return newAlloc
 }
 
 func convertTaskConfigMapToInternalTaskConfig(m map[string]interface{}) (internalConfig common.DtleTaskConfig, err error) {
@@ -466,10 +470,9 @@ func convertTaskConfigMapToInternalTaskConfig(m map[string]interface{}) (interna
 }
 
 func buildMysqlToMysqlJobDetailResp(nomadJob nomadApi.Job, nomadAllocations []nomadApi.Allocation) (destTaskDetail models.MysqlDestTaskDetail, srcTaskDetail models.MysqlSrcTaskDetail, err error) {
-	taskGroupToNomadAlloc := make(map[string]*nomadApi.Allocation)
+	taskGroupToNomadAlloc := make(map[string][]nomadApi.Allocation)
 	for _, a := range nomadAllocations {
-		cloneAlloc := a
-		taskGroupToNomadAlloc[a.TaskGroup] = &cloneAlloc
+		taskGroupToNomadAlloc[a.TaskGroup] = append(taskGroupToNomadAlloc[a.TaskGroup], a)
 	}
 
 	for _, tg := range nomadJob.TaskGroups {
@@ -655,10 +658,9 @@ func GetSubscriptionJobDetailV2(c echo.Context) error {
 }
 
 func buildMysqlToKafkaJobDetailResp(nomadJob nomadApi.Job, nomadAllocations []nomadApi.Allocation) (destTaskDetail models.KafkaDestTaskDetail, srcTaskDetail models.MysqlSrcTaskDetail, err error) {
-	taskGroupToNomadAlloc := make(map[string]*nomadApi.Allocation)
+	taskGroupToNomadAlloc := make(map[string][]nomadApi.Allocation)
 	for _, a := range nomadAllocations {
-		cloneAlloc := a
-		taskGroupToNomadAlloc[a.TaskGroup] = &cloneAlloc
+		taskGroupToNomadAlloc[a.TaskGroup] = append(taskGroupToNomadAlloc[a.TaskGroup], a)
 	}
 
 	for _, tg := range nomadJob.TaskGroups {
@@ -688,8 +690,8 @@ func buildMysqlToKafkaJobDetailResp(nomadJob nomadApi.Job, nomadAllocations []no
 	return destTaskDetail, srcTaskDetail, nil
 }
 
-func buildKafkaDestTaskDetail(taskName string, internalTaskKafkaConfig common.KafkaConfig, alloc *nomadApi.Allocation) (destTaskDetail models.KafkaDestTaskDetail) {
-	dtleTaskConfigForApi := models.KafkaDestTaskConfig{
+func buildKafkaDestTaskDetail(taskName string, internalTaskKafkaConfig common.KafkaConfig, allocsFromNomad []nomadApi.Allocation) (destTaskDetail models.KafkaDestTaskDetail) {
+	destTaskDetail.TaskConfig = models.KafkaDestTaskConfig{
 		TaskName:            taskName,
 		BrokerAddrs:         internalTaskKafkaConfig.Brokers,
 		Topic:               internalTaskKafkaConfig.Topic,
@@ -697,12 +699,10 @@ func buildKafkaDestTaskDetail(taskName string, internalTaskKafkaConfig common.Ka
 		MessageGroupTimeout: internalTaskKafkaConfig.MessageGroupTimeout,
 	}
 
-	if nil != alloc {
-		dtleTaskConfigForApi.NodeId = alloc.NodeID
-		destTaskDetail.AllocationId = alloc.ID
-		getTaskDetailStatusFromAllocInfo(alloc, &destTaskDetail.TaskStatus, taskName)
+	for _, a := range allocsFromNomad {
+		alloc := getTaskDetailStatusFromAllocInfo(a, taskName)
+		destTaskDetail.Allocations = append(destTaskDetail.Allocations, alloc)
 	}
-	destTaskDetail.TaskConfig = dtleTaskConfigForApi
 
 	return destTaskDetail
 }
