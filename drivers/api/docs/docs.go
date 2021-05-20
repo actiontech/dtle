@@ -40,13 +40,6 @@ var doc = `{
                         "name": "job_id",
                         "in": "formData",
                         "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "job name",
-                        "name": "job_name",
-                        "in": "formData",
-                        "required": true
                     }
                 ],
                 "responses": {

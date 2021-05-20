@@ -571,11 +571,6 @@ paths:
         name: job_id
         required: true
         type: string
-      - description: job name
-        in: formData
-        name: job_name
-        required: true
-        type: string
       responses:
         "200":
           description: OK
