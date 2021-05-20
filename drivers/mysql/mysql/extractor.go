@@ -669,7 +669,7 @@ func (e *Extractor) getSchemaTablesAndMeta() error {
 // Cooperate with `initiateStreaming()` using `e.streamerReadyCh`. Any err will be sent thru the chan.
 func (e *Extractor) initBinlogReader(binlogCoordinates *base.BinlogCoordinatesX) {
 	binlogReader, err := binlog.NewMySQLReader(e.execCtx, e.mysqlContext, e.logger.ResetNamed("reader"),
-		e.replicateDoDb, e.context, e.memory2)
+		e.replicateDoDb, e.context, e.memory2, e.db)
 	if err != nil {
 		e.logger.Error("err at initBinlogReader: NewMySQLReader", "err", err)
 		e.streamerReadyCh <- err

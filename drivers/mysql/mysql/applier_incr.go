@@ -91,8 +91,9 @@ func NewApplierIncr(subject string, mysqlContext *common.MySQLDriverConfig,
 }
 
 func (a *ApplierIncr) Run() (err error) {
-	a.logger.Debug("beging connetion mysql 4 validate  serverid")
-	if err := a.validateServerUUID(); err != nil {
+	a.logger.Debug("Run. GetServerUUID. before")
+	a.MySQLServerUuid, err = sql.GetServerUUID(a.db)
+	if err != nil {
 		return err
 	}
 
@@ -597,14 +598,6 @@ func (a *ApplierIncr) setTableItemForBinlogEntry(binlogEntry *common.BinlogEntry
 			}
 			binlogEntry.TableItems[i] = tableItem
 		}
-	}
-	return nil
-}
-
-func (a *ApplierIncr) validateServerUUID() error {
-	query := `SELECT @@SERVER_UUID`
-	if err := a.db.QueryRow(query).Scan(&a.MySQLServerUuid); err != nil {
-		return err
 	}
 	return nil
 }
