@@ -923,6 +923,8 @@ func (e *Extractor) StreamEvents() error {
 						"groupMaxSize", e.mysqlContext.GroupMaxSize,
 						"Entries.len", len(entries.Entries))
 
+					e.sendBySizeFullCounter += 1
+
 					err := sendEntriesAndClear()
 					if err != nil {
 						e.onError(TaskStateDead, err)
@@ -939,6 +941,7 @@ func (e *Extractor) StreamEvents() error {
 				if nEntries > 0 {
 					e.logger.Debug("incr. send by timeout.", "entriesSize", entriesSize,
 						"timeout", e.mysqlContext.GroupTimeout)
+					e.sendByTimeoutCounter += 1
 					err := sendEntriesAndClear()
 					if err != nil {
 						e.onError(TaskStateDead, err)
