@@ -48,6 +48,7 @@ struct BinlogCoordinatesX {
 
 struct DumpStatResult {
     Coord *BinlogCoordinatesX
+    Type  int32
 }
 
 struct DataEvent {

@@ -1990,6 +1990,7 @@ func (d *BinlogCoordinatesX) Unmarshal(buf []byte) (uint64, error) {
 
 type DumpStatResult struct {
 	Coord *BinlogCoordinatesX
+	Type  int32
 }
 
 func (d *DumpStatResult) Size() (s uint64) {
@@ -2003,7 +2004,7 @@ func (d *DumpStatResult) Size() (s uint64) {
 			s += 0
 		}
 	}
-	s += 1
+	s += 5
 	return
 }
 func (d *DumpStatResult) Marshal(buf []byte) ([]byte, error) {
@@ -2033,7 +2034,18 @@ func (d *DumpStatResult) Marshal(buf []byte) ([]byte, error) {
 			i += 0
 		}
 	}
-	return buf[:i+1], nil
+	{
+
+		buf[i+0+1] = byte(d.Type >> 0)
+
+		buf[i+1+1] = byte(d.Type >> 8)
+
+		buf[i+2+1] = byte(d.Type >> 16)
+
+		buf[i+3+1] = byte(d.Type >> 24)
+
+	}
+	return buf[:i+5], nil
 }
 
 func (d *DumpStatResult) Unmarshal(buf []byte) (uint64, error) {
@@ -2057,7 +2069,12 @@ func (d *DumpStatResult) Unmarshal(buf []byte) (uint64, error) {
 			d.Coord = nil
 		}
 	}
-	return i + 1, nil
+	{
+
+		d.Type = 0 | (int32(buf[i+0+1]) << 0) | (int32(buf[i+1+1]) << 8) | (int32(buf[i+2+1]) << 16) | (int32(buf[i+3+1]) << 24)
+
+	}
+	return i + 5, nil
 }
 
 type DataEvent struct {

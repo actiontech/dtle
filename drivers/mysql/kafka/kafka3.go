@@ -85,6 +85,10 @@ type KafkaRunner struct {
 	appliedTxCount uint32
 }
 
+func (kr *KafkaRunner) Finish1() error {
+	return nil
+}
+
 func NewKafkaRunner(execCtx *common.ExecContext, cfg *common.KafkaConfig, logger hclog.Logger,
 	storeManager *common.StoreManager, natsAddr string, waitCh chan *drivers.ExitResult) *KafkaRunner {
 

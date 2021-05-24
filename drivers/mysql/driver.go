@@ -657,6 +657,7 @@ func (d *Driver) SignalTask(taskID string, signal string) error {
 	//if h.exitResult == nil {
 	//	return nil
 	//}
+
 	switch signal {
 	case "stats":
 		if h.stats != nil {
@@ -666,6 +667,8 @@ func (d *Driver) SignalTask(taskID string, signal string) error {
 			}
 			return errors.New(string(bs))
 		}
+	case "finish":
+		return h.runner.Finish1()
 	case "pause":
 		d.logger.Info("pause a task", "taskID", taskID)
 		h := d.tasks.store[taskID]
@@ -688,6 +691,7 @@ func (d *Driver) SignalTask(taskID string, signal string) error {
 	default:
 		return nil
 	}
+
 	return nil
 }
 
