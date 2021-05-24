@@ -1093,11 +1093,7 @@ func (e *Extractor) mysqlDump() error {
 			gtidMatchRound += 1
 
 			// 1
-			rows1, err := e.singletonDB.Query("show master status")
-			if err != nil {
-				e.logger.Error("get gtid 1 error", "round", gtidMatchRound, "err", err)
-				return err
-			}
+			row1 := sql.ShowMasterStatus(e.singletonDB)
 
 			e.testStub1()
 
@@ -1119,14 +1115,14 @@ func (e *Extractor) mysqlDump() error {
 			e.testStub1()
 
 			// 3
-			rows2, err := realTx.Query("show master status")
+			row2 := sql.ShowMasterStatus(realTx)
 
 			// 4
-			binlogCoordinates1, err := base.ParseBinlogCoordinatesFromRows(rows1)
+			binlogCoordinates1, err := base.ParseBinlogCoordinatesFromRow(row1)
 			if err != nil {
 				return err
 			}
-			binlogCoordinates2, err := base.ParseBinlogCoordinatesFromRows(rows2)
+			binlogCoordinates2, err := base.ParseBinlogCoordinatesFromRow(row2)
 			if err != nil {
 				return err
 			}
@@ -1179,11 +1175,7 @@ func (e *Extractor) mysqlDump() error {
 	} else {
 		e.logger.Debug("no need to get consistent snapshot")
 		tx = e.singletonDB
-		rows1, err := tx.Query("show master status")
-		if err != nil {
-			return err
-		}
-		e.initialBinlogCoordinates, err = base.ParseBinlogCoordinatesFromRows(rows1)
+		e.initialBinlogCoordinates, err = base.GetSelfBinlogCoordinates(tx)
 		if err != nil {
 			return err
 		}

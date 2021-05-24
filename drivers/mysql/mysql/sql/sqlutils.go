@@ -250,6 +250,10 @@ func GetServerUUID(db QueryAble) (result string, err error) {
 	return result, nil
 }
 
+func ShowMasterStatus(db QueryAble) *gosql.Row {
+	return db.QueryRow("show master status /*dtle*/")
+}
+
 // queryResultData returns a raw array of rows for a given query, optionally reading and returning column names
 func queryResultData(db *gosql.DB, query string, retrieveColumns bool, args ...interface{}) (ResultData, []string, error) {
 	var err error

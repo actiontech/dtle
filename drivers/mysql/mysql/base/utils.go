@@ -59,28 +59,18 @@ func StringContainsAll(s string, substrings ...string) bool {
 	return nonEmptyStringsFound
 }
 
-func GetSelfBinlogCoordinates(db *gosql.DB) (selfBinlogCoordinates *BinlogCoordinatesX, err error) {
-	err = usql.QueryRowsMap(db, `show master status`, func(m usql.RowMap) error {
-		selfBinlogCoordinates = &BinlogCoordinatesX{
-			LogFile: m.GetString("File"),
-			LogPos:  m.GetInt64("Position"),
-			GtidSet: m.GetString("Executed_Gtid_Set"),
-		}
-		return nil
-	})
-	return selfBinlogCoordinates, err
+func GetSelfBinlogCoordinates(db usql.QueryAble) (selfBinlogCoordinates *BinlogCoordinatesX, err error) {
+	return ParseBinlogCoordinatesFromRow(usql.ShowMasterStatus(db))
 }
 
-func ParseBinlogCoordinatesFromRows(rows *sql.Rows) (selfBinlogCoordinates *BinlogCoordinatesX, err error) {
-	err = usql.ScanRowsToMaps(rows, func(m usql.RowMap) error {
-		selfBinlogCoordinates = &BinlogCoordinatesX{
-			LogFile: m.GetString("File"),
-			LogPos:  m.GetInt64("Position"),
-			GtidSet: m.GetString("Executed_Gtid_Set"),
-		}
-		return nil
-	})
-	return selfBinlogCoordinates, err
+func ParseBinlogCoordinatesFromRow(row *sql.Row) (r *BinlogCoordinatesX, err error) {
+	r = &BinlogCoordinatesX{}
+	var dummy interface{}
+	err = row.Scan(&r.LogFile, &r.LogPos, &dummy, &dummy, &r.GtidSet)
+	if err != nil {
+		return nil, err
+	}
+	return r, nil
 }
 
 // GetTableColumns reads column list from given table
