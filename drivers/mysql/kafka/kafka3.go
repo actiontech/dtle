@@ -40,8 +40,8 @@ const (
 )
 
 type KafkaTableItem struct {
-	table *common.Table
-	keySchema *SchemaJson
+	table       *common.Table
+	keySchema   *SchemaJson
 	valueSchema *SchemaJson
 }
 
@@ -508,7 +508,7 @@ func (kr *KafkaRunner) initiateStreaming() error {
 		select {
 		case <-kr.shutdownCh:
 			return
-		case kr.chBinlogEntries <-&binlogEntries:
+		case kr.chBinlogEntries <- &binlogEntries:
 			if err := kr.natsConn.Publish(m.Reply, nil); err != nil {
 				kr.onError(TaskStateDead, errors.Wrap(err, "Publish"))
 				return
@@ -644,9 +644,12 @@ func (kr *KafkaRunner) kafkaTransformSnapshotData(
 				case mysqlconfig.BinaryColumnType:
 					value = base64.StdEncoding.EncodeToString([]byte(valueStr))
 				case mysqlconfig.BitColumnType:
-					if columnList[i].ColumnType=="bit(1)"{
-						value,_ = strconv.ParseBool( base64.StdEncoding.EncodeToString([]byte(valueStr)))
-					}else{
+					if columnList[i].ColumnType == "bit(1)" {
+						value = false
+						if types.BinaryLiteral(valueStr).Compare(types.BinaryLiteral("\x01")) == 0 {
+							value = true
+						}
+					} else {
 						value = base64.StdEncoding.EncodeToString([]byte(valueStr))
 					}
 				case mysqlconfig.BlobColumnType:
@@ -717,7 +720,7 @@ func (kr *KafkaRunner) kafkaTransformSnapshotData(
 		valuesBs = append(valuesBs, vBs)
 		realTopics = append(realTopics, realTopic)
 
-		isLastPart := iValuesX == len(value.ValuesX) - 1
+		isLastPart := iValuesX == len(value.ValuesX)-1
 		if len(keysBs) > 100 || isLastPart {
 			err := kr.kafkaMgr.SendMessages(kr.logger, realTopics, keysBs, valuesBs)
 			if err != nil {
@@ -917,10 +920,10 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQueries(dmlEntries []*common.Binlog
 				case mysqlconfig.BitColumnType:
 					if colList[i].ColumnType == "bit(1)" {
 						if beforeValue != nil {
-							beforeValue, _ = strconv.ParseBool(getBitValue(colList[i].ColumnType, beforeValue.(int64)))
+							beforeValue, _ = strconv.ParseBool(strconv.Itoa(int(beforeValue.(int64))))
 						}
 						if afterValue != nil {
-							afterValue, _ = strconv.ParseBool(getBitValue(colList[i].ColumnType, afterValue.(int64)))
+							afterValue, _ = strconv.ParseBool(strconv.Itoa(int(afterValue.(int64))))
 						}
 					} else {
 						if beforeValue != nil {
@@ -1107,10 +1110,13 @@ func kafkaColumnListToColDefs(colList *common.ColumnList, timeZone string) (valC
 			field = NewSimpleSchemaWithDefaultField("", optional, fieldName, defaultValue)
 
 		case mysqlconfig.BitColumnType:
-			if cols[i].ColumnType=="bit(1)"{
-				value,_ := strconv.ParseBool( defaultValue.(types.BinaryLiteral).ToString())
+			if cols[i].ColumnType == "bit(1)" {
+				value := false
+				if defaultValue.(types.BinaryLiteral).Compare(types.BinaryLiteral("\x01")) == 0 {
+					value = true
+				}
 				field = NewSimpleSchemaWithDefaultField(SCHEMA_TYPE_BOOLEAN, optional, fieldName, value)
-			}else{
+			} else {
 				field = NewBitsField(optional, fieldName, cols[i].ColumnType[4:len(cols[i].ColumnType)-1], defaultValue)
 			}
 		case mysqlconfig.BlobColumnType:
