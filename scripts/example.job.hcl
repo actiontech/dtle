@@ -9,6 +9,8 @@ job "job1" {
           TableSchema = "db1"
           Tables = [{
             TableName = "tb1"
+          }, {
+            TableName = "tb2"
           }]
         }]
         GroupMaxSize = 1024 # in bytes, not number of transactions

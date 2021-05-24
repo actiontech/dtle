@@ -126,11 +126,13 @@ func (t *TableContext) WhereTrue(values *ColumnValues) (bool, error) {
 	ctx := datasource.NewContextSimpleNative(m)
 	val, ok := vm.Eval(ctx, t.WhereCtx.Ast)
 	if !ok {
-		return false, fmt.Errorf("cannot eval 'where' predicate with the row value")
+		return false, fmt.Errorf("cannot eval 'where' predicate with the row value. %v.%v %v",
+			t.Table.TableSchema, t.Table.TableName, t.WhereCtx.Where)
 	}
 	r, ok := val.Value().(bool)
 	if !ok {
-		return false, fmt.Errorf("'where' predicate does not eval to bool")
+		return false, fmt.Errorf("'where' predicate does not eval to bool. %v.%v %v",
+			t.Table.TableSchema, t.Table.TableName, t.WhereCtx.Where)
 	}
 
 	return r, nil
