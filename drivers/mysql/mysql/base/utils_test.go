@@ -8,17 +8,11 @@ package base
 
 import (
 	gosql "database/sql"
-	"github.com/actiontech/dtle/drivers/mysql/common"
-	"github.com/actiontech/dtle/drivers/mysql/mysql/sql"
 	"reflect"
 	"testing"
 	"time"
 
-	//umconf "github.com/actiontech/dtle/olddtle/internal/config/mysql"
-
-	"fmt"
-
-	//"github.com/actiontech/dtle/olddtle/internal/client/driver/mysql/sql"
+	"github.com/actiontech/dtle/drivers/mysql/common"
 
 	test "github.com/outbrain/golib/tests"
 	gomysql "github.com/siddontang/go-mysql/mysql"
@@ -45,7 +39,13 @@ func TestPrettifyDurationOutput(t *testing.T) {
 		args args
 		want string
 	}{
-	// TODO: Add test cases.
+		{"ZeroNumber", args{0}, "0s"},
+		{"negativeNum", args{-10}, "0s"},
+		{"lessOneSecond", args{1011212}, "0s"},
+		{"oneSecond", args{time.Second}, "1s"},
+		{"oneMin", args{time.Minute}, "1m0s"},
+		{"oneHour", args{time.Hour}, "1h0m0s"},
+		{"1h17m6s", args{time.Hour*1 + time.Minute*17 + time.Second*6}, "1h17m6s"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -56,22 +56,32 @@ func TestPrettifyDurationOutput(t *testing.T) {
 	}
 }
 
+//var userAndPwd = "root:pass"
+//var testAddr = "127.0.0.1:33061"
+
 func TestGetSelfBinlogCoordinates(t *testing.T) {
 	type args struct {
 		db *gosql.DB
 	}
-	db, err := sql.CreateDB(fmt.Sprintf("root:rootroot@tcp(192.168.99.100:13307)/?timeout=5s&tls=false&autocommit=true&charset=utf8mb4,utf8,latin1&multiStatements=true"))
-	if err != nil {
-		return
-	}
+	//db, err := sql.CreateDB(fmt.Sprintf("%s@(%s)/?timeout=5s&tls=false&autocommit=true&charset=utf8mb4,utf8,latin1&multiStatements=true", userAndPwd, testAddr))
+	//if err != nil {
+	//	return
+	//}
 	tests := []struct {
 		name                      string
 		args                      args
-		wantSelfBinlogCoordinates *BinlogCoordinateTx
+		wantSelfBinlogCoordinates *BinlogCoordinatesX
 		wantErr                   bool
 	}{
+		//{name: "T1",
+		//	args: args{db},
+		//	wantSelfBinlogCoordinates: &BinlogCoordinatesX{
+		//		LogFile: "bin.000003",
+		//		LogPos:  1110,
+		//		GtidSet: "09bceaee-bd29-11eb-8837-0242ac120002:1-9",
+		//	},
+		//	wantErr: false},
 		// TODO: Add test cases.
-		{"T1", args{db}, nil, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -87,19 +97,66 @@ func TestGetSelfBinlogCoordinates(t *testing.T) {
 	}
 }
 
+//docker run --name mysql-src -e MYSQL_ROOT_PASSWORD=pass -p 33061:3306 --network=dtle-net -d mysql:5.7 --gtid-mode=ON --enforce-gtid-consistency=1 --log-bin=bin --server-id=1
+//mysql -h 127.0.0.1 -P 33061 -uroot -ppass -e "CREATE DATABASE demo; CREATE TABLE demo.demo_tbl(a int primary key,c_bit_1 bit(1) DEFAULT 1)ENGINE=InnoDB DEFAULT CHARSET=utf8;"
+//mysql -h 127.0.0.1 -P 33061 -uroot -ppass -e "insert into demo.demo_tbl values(0,1)"
+//mysql -h 127.0.0.1 -P 33061 -uroot -ppass -e "insert into demo.demo_tbl values(1,0)”
+
 func TestGetTableColumns(t *testing.T) {
 	type args struct {
 		db           *gosql.DB
 		databaseName string
 		tableName    string
 	}
+	//db, err := sql.CreateDB(fmt.Sprintf("%s@(%s)/?timeout=5s&tls=false&autocommit=true&charset=utf8mb4,utf8,latin1&multiStatements=true", userAndPwd, testAddr))
+	//if err != nil {
+	//	return
+	//}
 	tests := []struct {
 		name    string
 		args    args
 		want    *common.ColumnList
 		wantErr bool
 	}{
-	// TODO: Add test cases.
+		//{name: "T", args: args{
+		//	db:           db,
+		//	databaseName: "demo",
+		//	tableName:    "demo_tbl"},
+		//	want: &common.ColumnList{
+		//		Columns: []mysqlconfig.Column{
+		//			mysqlconfig.Column{
+		//				RawName:            "a",
+		//				EscapedName:        "`a`",
+		//				IsUnsigned:         false,
+		//				Charset:            "",
+		//				Type:               0,
+		//				Default:            "",
+		//				ColumnType:         "int(11)",
+		//				Key:                "PRI",
+		//				TimezoneConversion: nil,
+		//				Nullable:           false,
+		//				Precision:          0,
+		//				Scale:              0},
+		//			mysqlconfig.Column{
+		//				RawName:            "c_bit_1",
+		//				EscapedName:        "`c_bit_1`",
+		//				IsUnsigned:         false,
+		//				Charset:            "",
+		//				Type:               0,
+		//				Default:            "b'1'",
+		//				ColumnType:         "bit(1)",
+		//				Key:                "",
+		//				TimezoneConversion: nil,
+		//				Nullable:           true,
+		//				Precision:          0,
+		//				Scale:              0},
+		//		},
+		//		Ordinals: mysqlconfig.ColumnsMap{
+		//			"a":       0,
+		//			"c_bit_1": 1,
+		//		}},
+		//	wantErr: false},
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -128,7 +185,7 @@ func TestApplyColumnTypes(t *testing.T) {
 		want    []*common.ColumnList
 		wantErr bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -150,6 +207,7 @@ func TestShowCreateTable(t *testing.T) {
 		databaseName      string
 		tableName         string
 		dropTableIfExists bool
+		addUse            bool
 	}
 	tests := []struct {
 		name                     string
@@ -157,59 +215,27 @@ func TestShowCreateTable(t *testing.T) {
 		wantCreateTableStatement string
 		wantErr                  bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			gotCreateTableStatement, err := ShowCreateTable(tt.args.db, tt.args.databaseName, tt.args.tableName, tt.args.dropTableIfExists)
+			gotCreateTableStatement, err := ShowCreateTable(tt.args.db, tt.args.databaseName, tt.args.tableName, tt.args.dropTableIfExists, tt.args.addUse)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("ShowCreateTable() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
-			if gotCreateTableStatement != tt.wantCreateTableStatement {
+			exist := false
+			for _, createTableStatement := range gotCreateTableStatement {
+				if createTableStatement == tt.wantCreateTableStatement {
+					exist = true
+				}
+			}
+			if !exist {
 				t.Errorf("ShowCreateTable() = %v, want %v", gotCreateTableStatement, tt.wantCreateTableStatement)
 			}
 		})
 	}
 }
-
-/* NB: SelectGtidExecuted modified. Test case should be changed as well.
-func TestSelectGtidExecuted(t *testing.T) {
-	uri := "root:rootroot@tcp(192.168.99.100:13309)/?timeout=5s&tls=false&autocommit=true&charset=utf8mb4,utf8,latin1&multiStatements=true"
-	db, err := sql.CreateDB(uri)
-	if err != nil {
-		fmt.Errorf(err.Error())
-	}
-	type args struct {
-		db  *gosql.DB
-		sid string
-		gno int64
-	}
-	tests := []struct {
-		name        string
-		args        args
-		wantGtidset string
-		wantErr     bool
-	}{
-		// TODO: Add test cases.
-		{"t1", args{db, "96fda9dc-7cbf-11e7-9340-0242ac110002", 1}, "", false}, //96fda9dc-7cbf-11e7-9340-0242ac110002:10116-10120:10126
-		{"t2", args{db, "96fda9dc-7cbf-11e7-9340-0242ac110002", 10}, "", false},
-		{"t3", args{db, "96fda9dc-7cbf-11e7-9340-0242ac110002", 36678}, "", false},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			gotGtidset, err := SelectGtidExecuted(tt.args.db, tt.args.sid, tt.args.gno)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("SelectGtidExecuted() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
-			if gotGtidset != tt.wantGtidset {
-				t.Errorf("SelectGtidExecuted() = %v, want %v", gotGtidset, tt.wantGtidset)
-			}
-		})
-	}
-}
-*/
 
 func Test_stringInterval(t *testing.T) {
 	type args struct {
@@ -220,7 +246,15 @@ func Test_stringInterval(t *testing.T) {
 		args args
 		want string
 	}{
-	// TODO: Add test cases.
+		{name: "T1", args: args{
+			intervals: gomysql.IntervalSlice{},
+		}, want: ""},
+		{name: "T1", args: args{
+			intervals: gomysql.IntervalSlice{gomysql.Interval{1, 11}, gomysql.Interval{9, 89}},
+		}, want: "1-10:9-88"},
+		{name: "T1", args: args{
+			intervals: gomysql.IntervalSlice{gomysql.Interval{1, 31}, gomysql.Interval{33, 89}},
+		}, want: "1-30:33-88"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
