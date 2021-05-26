@@ -8,13 +8,14 @@ import (
 	"strings"
 	"time"
 
+	"net"
+	"net/http"
+
 	"github.com/actiontech/dtle/drivers/mysql/common"
 	"github.com/actiontech/dtle/drivers/mysql/kafka"
 	"github.com/actiontech/dtle/drivers/mysql/mysql"
 	"github.com/actiontech/dtle/g"
 	"github.com/pkg/errors"
-	"net"
-	"net/http"
 
 	"github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/nomad/drivers/shared/eventer"
@@ -310,7 +311,7 @@ func (d *Driver) SetConfig(c *base.Config) (err error) {
 					d.logger.Info("NomadAddr is empty in config. Will not handle api_compat request.")
 					go func() {
 						// for pprof
-						err := http.ListenAndServe(d.config.ApiAddr, nil)
+						err := http.ListenAndServe(d.config.ApiAddr, http.DefaultServeMux)
 						if err != nil {
 							d.logger.Error("ListenAndServe error", "err", err, "addr", d.config.ApiAddr)
 						}

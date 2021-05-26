@@ -1,6 +1,8 @@
 package api
 
 import (
+	"net/http"
+
 	_ "github.com/actiontech/dtle/drivers/api/docs"
 	"github.com/actiontech/dtle/drivers/api/handler"
 	v1 "github.com/actiontech/dtle/drivers/api/handler/v1"
@@ -66,6 +68,8 @@ func SetupApiServer(logger hclog.Logger, apiAddr, nomadAddr, uiDir string) (err 
 	e.GET("/v2/mysql/schemas", v2.ListMysqlSchemasV2)
 	e.GET("/v2/monitor/task", v2.GetTaskProgressV2)
 
+	// for pprof
+	e.GET("/debug/pprof/*", echo.WrapHandler(http.DefaultServeMux))
 	e.Validator = handler.NewValidator()
 
 	if uiDir != "" {
