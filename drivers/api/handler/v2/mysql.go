@@ -9,11 +9,9 @@ import (
 
 	"github.com/actiontech/dtle/drivers/api/handler"
 
+	"github.com/actiontech/dtle/drivers/api/models"
 	"github.com/actiontech/dtle/drivers/mysql/mysql/mysqlconfig"
 	"github.com/actiontech/dtle/drivers/mysql/mysql/sql"
-	"github.com/mitchellh/mapstructure"
-
-	"github.com/actiontech/dtle/drivers/api/models"
 	"github.com/labstack/echo/v4"
 )
 
@@ -32,22 +30,18 @@ func ListMysqlSchemasV2(c echo.Context) error {
 	logger.Info("validate params")
 	reqParam := new(models.ListDatabaseSchemasReqV2)
 	if err := c.Bind(reqParam); nil != err {
-		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("bind req param failed, error: %v", err)))
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("convert request param failed. you should check the param format, error: %v", err)))
 	}
 	if err := c.Validate(reqParam); nil != err {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invalid params:\n%v", err)))
 	}
 
-	mysqlConnectionConfig := mysqlconfig.ConnectionConfig{}
-	connectionConfigMap := map[string]interface{}{
-		"Host":     reqParam.MysqlHost,
-		"Port":     reqParam.MysqlPort,
-		"User":     reqParam.MysqlUser,
-		"Password": reqParam.MysqlPassword,
-		"Charset":  reqParam.MysqlCharacterSet,
-	}
-	if err := mapstructure.WeakDecode(connectionConfigMap, &mysqlConnectionConfig); err != nil {
-		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("convert connection config failed: %v", err)))
+	mysqlConnectionConfig := mysqlconfig.ConnectionConfig{
+		Host:     reqParam.MysqlHost,
+		Port:     int(reqParam.MysqlPort),
+		User:     reqParam.MysqlUser,
+		Password: reqParam.MysqlPassword,
+		Charset:  reqParam.MysqlCharacterSet,
 	}
 
 	if "" == mysqlConnectionConfig.Charset {
