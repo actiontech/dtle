@@ -30,7 +30,7 @@ func ListMysqlSchemasV2(c echo.Context) error {
 	logger.Info("validate params")
 	reqParam := new(models.ListDatabaseSchemasReqV2)
 	if err := c.Bind(reqParam); nil != err {
-		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("bind req param failed, error: %v", err)))
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("convert request param failed. you should check the param format, error: %v", err)))
 	}
 	if err := c.Validate(reqParam); nil != err {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invalid params:\n%v", err)))
