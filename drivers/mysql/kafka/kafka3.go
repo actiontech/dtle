@@ -646,7 +646,7 @@ func (kr *KafkaRunner) kafkaTransformSnapshotData(
 				case mysqlconfig.BitColumnType:
 					if columnList[i].ColumnType == "bit(1)" {
 						value = false
-						if types.BinaryLiteral(valueStr).Compare(types.BinaryLiteral("\x01")) == 0 {
+						if &valueStr != nil && types.BinaryLiteral(valueStr).Compare(types.BinaryLiteral("\x01")) == 0 {
 							value = true
 						}
 					} else {
@@ -689,6 +689,9 @@ func (kr *KafkaRunner) kafkaTransformSnapshotData(
 				}
 			} else {
 				value = nil
+				if columnList[i].Type == mysqlconfig.BitColumnType && columnList[i].ColumnType == "bit(1)" {
+					value = false
+				}
 			}
 
 			if columnList[i].IsPk() {
@@ -921,9 +924,13 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQueries(dmlEntries []*common.Binlog
 					if colList[i].ColumnType == "bit(1)" {
 						if beforeValue != nil {
 							beforeValue, _ = strconv.ParseBool(strconv.Itoa(int(beforeValue.(int64))))
+						} else {
+							beforeValue = false
 						}
 						if afterValue != nil {
 							afterValue, _ = strconv.ParseBool(strconv.Itoa(int(afterValue.(int64))))
+						} else {
+							afterValue = false
 						}
 					} else {
 						if beforeValue != nil {
@@ -1112,7 +1119,7 @@ func kafkaColumnListToColDefs(colList *common.ColumnList, timeZone string) (valC
 		case mysqlconfig.BitColumnType:
 			if cols[i].ColumnType == "bit(1)" {
 				value := false
-				if defaultValue.(types.BinaryLiteral).Compare(types.BinaryLiteral("\x01")) == 0 {
+				if defaultValue != nil && defaultValue.(types.BinaryLiteral).Compare(types.BinaryLiteral("\x01")) == 0 {
 					value = true
 				}
 				field = NewSimpleSchemaWithDefaultField(SCHEMA_TYPE_BOOLEAN, optional, fieldName, value)
