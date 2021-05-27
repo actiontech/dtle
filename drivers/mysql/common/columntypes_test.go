@@ -1,16 +1,8 @@
-/*
- * Copyright (C) 2016-2018. ActionTech.
- * Based on: github.com/hashicorp/nomad, github.com/github/gh-ost .
- * License: MPL version 2: https://www.mozilla.org/en-US/MPL/2.0 .
- */
-
-package mysqlconfig
+package common
 
 import (
-	"github.com/actiontech/dtle/drivers/mysql/common"
-	"testing"
-
 	"reflect"
+	"testing"
 
 	test "github.com/outbrain/golib/tests"
 )
@@ -18,7 +10,7 @@ import (
 func TestParseColumnList(t *testing.T) {
 	names := "id,category,max_len"
 
-	columnList := common.ParseColumnList(names)
+	columnList := ParseColumnList(names)
 	test.S(t).ExpectEquals(columnList.Len(), 3)
 	test.S(t).ExpectTrue(reflect.DeepEqual(columnList.Names(), []string{"id", "category", "max_len"}))
 	test.S(t).ExpectEquals(columnList.Ordinals["id"], 0)
@@ -28,7 +20,7 @@ func TestParseColumnList(t *testing.T) {
 
 func TestGetColumn(t *testing.T) {
 	names := "id,category,max_len"
-	columnList := common.ParseColumnList(names)
+	columnList := ParseColumnList(names)
 	{
 		column := columnList.GetColumn("category")
 		test.S(t).ExpectTrue(column != nil)
