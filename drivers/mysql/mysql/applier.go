@@ -452,9 +452,9 @@ func (a *Applier) subscribeNats() (err error) {
 		}
 		a.logger.Info("Rows copy complete.", "TotalRowsReplayed", a.TotalRowsReplayed)
 
-		a.logger.Info("got gtid from extractor", "gtid", dumpData.Gtid)
+		a.logger.Info("got gtid from extractor", "gtid", dumpData.Coord.GtidSet)
 		// Do not re-assign a.gtidSet (#538). Update it.
-		gs0, err := gomysql.ParseMysqlGTIDSet(dumpData.Gtid)
+		gs0, err := gomysql.ParseMysqlGTIDSet(dumpData.Coord.GtidSet)
 		if err != nil {
 			a.onError(TaskStateDead, errors.Wrap(err, "ParseMysqlGTIDSet"))
 			return
@@ -463,9 +463,9 @@ func (a *Applier) subscribeNats() (err error) {
 		for _, uuidSet := range gs.Sets {
 			a.gtidSet.AddSet(uuidSet)
 		}
-		a.mysqlContext.Gtid = dumpData.Gtid
-		a.mysqlContext.BinlogFile = dumpData.LogFile
-		a.mysqlContext.BinlogPos = dumpData.LogPos
+		a.mysqlContext.Gtid = dumpData.Coord.GtidSet
+		a.mysqlContext.BinlogFile = dumpData.Coord.LogFile
+		a.mysqlContext.BinlogPos = dumpData.Coord.LogPos
 		a.gtidCh <- nil // coord == nil is a flag for update/upload gtid
 
 		a.mysqlContext.Stage = common.StageSlaveWaitingForWorkersToProcessQueue

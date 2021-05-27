@@ -40,10 +40,14 @@ struct ColumnValues {
     }
 }
 
-struct DumpStatResult {
-	Gtid    string
+struct BinlogCoordinatesX {
 	LogFile string
 	LogPos  int64
+	GtidSet string
+}
+
+struct DumpStatResult {
+    Coord *BinlogCoordinatesX
 }
 
 struct DataEvent {

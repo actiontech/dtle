@@ -139,3 +139,30 @@ func (ait *ApplierTableItem) Reset() {
 
 	ait.Columns = nil
 }
+
+// String returns a user-friendly string representation of these coordinates
+func (b BinlogCoordinatesX) String() string {
+	return fmt.Sprintf("%v", b.GtidSet)
+}
+
+// IsEmpty returns true if the log file is empty, unnamed
+func (b *BinlogCoordinatesX) IsEmpty() bool {
+	return b.GtidSet == "" && b.LogFile == ""
+}
+
+func (b *BinlogCoordinatesX) CompareFilePos(other *BinlogCoordinatesX) int {
+	if b.LogFile < other.LogFile {
+		return -1
+	} else if b.LogFile == other.LogFile {
+		if b.LogPos < other.LogPos {
+			return -1
+		} else if b.LogPos == other.LogPos {
+			return 0
+		} else {
+			return 1
+		}
+	} else {
+		return 1
+	}
+}
+

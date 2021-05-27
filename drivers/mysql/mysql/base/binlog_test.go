@@ -7,18 +7,19 @@
 package base
 
 import (
+	"github.com/actiontech/dtle/drivers/mysql/common"
 	"testing"
 
 	test "github.com/outbrain/golib/tests"
 )
 
 func TestBinlogCoordinates(t *testing.T) {
-	c1 := BinlogCoordinatesX{LogFile: "mysql-bin.00017", LogPos: 104}
-	c2 := BinlogCoordinatesX{LogFile: "mysql-bin.00017", LogPos: 104}
-	c3 := BinlogCoordinatesX{LogFile: "mysql-bin.00017", LogPos: 5000}
-	c4 := BinlogCoordinatesX{LogFile: "mysql-bin.00099", LogPos: 104}
-	c5 := BinlogCoordinatesX{LogFile: "mysql-bin.00012", LogPos: 5000}
-	c6 := BinlogCoordinatesX{LogFile: "mysql-bin.00012", LogPos: 104}
+	c1 := common.BinlogCoordinatesX{LogFile: "mysql-bin.00017", LogPos: 104}
+	c2 := common.BinlogCoordinatesX{LogFile: "mysql-bin.00017", LogPos: 104}
+	c3 := common.BinlogCoordinatesX{LogFile: "mysql-bin.00017", LogPos: 5000}
+	c4 := common.BinlogCoordinatesX{LogFile: "mysql-bin.00099", LogPos: 104}
+	c5 := common.BinlogCoordinatesX{LogFile: "mysql-bin.00012", LogPos: 5000}
+	c6 := common.BinlogCoordinatesX{LogFile: "mysql-bin.00012", LogPos: 104}
 
 	// equal
 
@@ -42,12 +43,12 @@ func TestBinlogCoordinates(t *testing.T) {
 }
 
 func TestBinlogCoordinatesAsKey(t *testing.T) {
-	m := make(map[BinlogCoordinatesX]bool)
+	m := make(map[common.BinlogCoordinatesX]bool)
 
-	c1 := BinlogCoordinatesX{LogFile: "mysql-bin.00017", LogPos: 104}
-	c2 := BinlogCoordinatesX{LogFile: "mysql-bin.00022", LogPos: 104}
-	c3 := BinlogCoordinatesX{LogFile: "mysql-bin.00017", LogPos: 104}
-	c4 := BinlogCoordinatesX{LogFile: "mysql-bin.00017", LogPos: 222}
+	c1 := common.BinlogCoordinatesX{LogFile: "mysql-bin.00017", LogPos: 104}
+	c2 := common.BinlogCoordinatesX{LogFile: "mysql-bin.00022", LogPos: 104}
+	c3 := common.BinlogCoordinatesX{LogFile: "mysql-bin.00017", LogPos: 104}
+	c4 := common.BinlogCoordinatesX{LogFile: "mysql-bin.00017", LogPos: 222}
 
 	m[c1] = true
 	m[c2] = true
@@ -75,7 +76,7 @@ func TestBinlogCoordinates_String(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			b := BinlogCoordinatesX{
+			b := common.BinlogCoordinatesX{
 				LogFile: tt.fields.LogFile,
 				LogPos:  tt.fields.LogPos,
 				GtidSet: tt.fields.GtidSet,
@@ -106,7 +107,7 @@ func TestBinlogCoordinates_IsEmpty(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			b := &BinlogCoordinatesX{
+			b := &common.BinlogCoordinatesX{
 				LogFile: tt.fields.LogFile,
 				LogPos:  tt.fields.LogPos,
 				GtidSet: tt.fields.GtidSet,

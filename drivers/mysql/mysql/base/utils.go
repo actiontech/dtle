@@ -59,12 +59,12 @@ func StringContainsAll(s string, substrings ...string) bool {
 	return nonEmptyStringsFound
 }
 
-func GetSelfBinlogCoordinates(db usql.QueryAble) (selfBinlogCoordinates *BinlogCoordinatesX, err error) {
+func GetSelfBinlogCoordinates(db usql.QueryAble) (selfBinlogCoordinates *common.BinlogCoordinatesX, err error) {
 	return ParseBinlogCoordinatesFromRow(usql.ShowMasterStatus(db))
 }
 
-func ParseBinlogCoordinatesFromRow(row *sql.Row) (r *BinlogCoordinatesX, err error) {
-	r = &BinlogCoordinatesX{}
+func ParseBinlogCoordinatesFromRow(row *sql.Row) (r *common.BinlogCoordinatesX, err error) {
+	r = &common.BinlogCoordinatesX{}
 	var dummy interface{}
 	err = row.Scan(&r.LogFile, &r.LogPos, &dummy, &dummy, &r.GtidSet)
 	if err != nil {

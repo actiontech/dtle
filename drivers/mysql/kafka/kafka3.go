@@ -478,14 +478,14 @@ func (kr *KafkaRunner) initiateStreaming() error {
 
 		kr.fullWg.Wait()
 
-		kr.gtidSet, err = common.DtleParseMysqlGTIDSet(dumpData.Gtid)
+		kr.gtidSet, err = common.DtleParseMysqlGTIDSet(dumpData.Coord.GtidSet)
 		if err != nil {
 			kr.onError(TaskStateDead, errors.Wrap(err, "DtleParseMysqlGTIDSet"))
 			return
 		}
-		kr.Gtid = dumpData.Gtid
-		kr.BinlogFile = dumpData.LogFile
-		kr.BinlogPos = dumpData.LogPos
+		kr.Gtid = dumpData.Coord.GtidSet
+		kr.BinlogFile = dumpData.Coord.LogFile
+		kr.BinlogPos = dumpData.Coord.LogPos
 
 		if err := kr.natsConn.Publish(m.Reply, nil); err != nil {
 			kr.onError(TaskStateDead, err)

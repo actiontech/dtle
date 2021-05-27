@@ -70,7 +70,7 @@ func TestGetSelfBinlogCoordinates(t *testing.T) {
 	tests := []struct {
 		name                      string
 		args                      args
-		wantSelfBinlogCoordinates *BinlogCoordinatesX
+		wantSelfBinlogCoordinates *common.BinlogCoordinatesX
 		wantErr                   bool
 	}{
 		//{name: "T1",

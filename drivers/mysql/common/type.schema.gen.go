@@ -1825,16 +1825,16 @@ func (d *ColumnValues) Unmarshal(buf []byte) (uint64, error) {
 	return i + 0, nil
 }
 
-type DumpStatResult struct {
-	Gtid    string
+type BinlogCoordinatesX struct {
 	LogFile string
 	LogPos  int64
+	GtidSet string
 }
 
-func (d *DumpStatResult) Size() (s uint64) {
+func (d *BinlogCoordinatesX) Size() (s uint64) {
 
 	{
-		l := uint64(len(d.Gtid))
+		l := uint64(len(d.LogFile))
 
 		{
 
@@ -1849,7 +1849,7 @@ func (d *DumpStatResult) Size() (s uint64) {
 		s += l
 	}
 	{
-		l := uint64(len(d.LogFile))
+		l := uint64(len(d.GtidSet))
 
 		{
 
@@ -1866,7 +1866,7 @@ func (d *DumpStatResult) Size() (s uint64) {
 	s += 8
 	return
 }
-func (d *DumpStatResult) Marshal(buf []byte) ([]byte, error) {
+func (d *BinlogCoordinatesX) Marshal(buf []byte) ([]byte, error) {
 	size := d.Size()
 	{
 		if uint64(cap(buf)) >= size {
@@ -1877,25 +1877,6 @@ func (d *DumpStatResult) Marshal(buf []byte) ([]byte, error) {
 	}
 	i := uint64(0)
 
-	{
-		l := uint64(len(d.Gtid))
-
-		{
-
-			t := uint64(l)
-
-			for t >= 0x80 {
-				buf[i+0] = byte(t) | 0x80
-				t >>= 7
-				i++
-			}
-			buf[i+0] = byte(t)
-			i++
-
-		}
-		copy(buf[i+0:], d.Gtid)
-		i += l
-	}
 	{
 		l := uint64(len(d.LogFile))
 
@@ -1934,32 +1915,31 @@ func (d *DumpStatResult) Marshal(buf []byte) ([]byte, error) {
 		buf[i+7+0] = byte(d.LogPos >> 56)
 
 	}
-	return buf[:i+8], nil
-}
-
-func (d *DumpStatResult) Unmarshal(buf []byte) (uint64, error) {
-	i := uint64(0)
-
 	{
-		l := uint64(0)
+		l := uint64(len(d.GtidSet))
 
 		{
 
-			bs := uint8(7)
-			t := uint64(buf[i+0] & 0x7F)
-			for buf[i+0]&0x80 == 0x80 {
+			t := uint64(l)
+
+			for t >= 0x80 {
+				buf[i+8] = byte(t) | 0x80
+				t >>= 7
 				i++
-				t |= uint64(buf[i+0]&0x7F) << bs
-				bs += 7
 			}
+			buf[i+8] = byte(t)
 			i++
 
-			l = t
-
 		}
-		d.Gtid = string(buf[i+0 : i+0+l])
+		copy(buf[i+8:], d.GtidSet)
 		i += l
 	}
+	return buf[:i+8], nil
+}
+
+func (d *BinlogCoordinatesX) Unmarshal(buf []byte) (uint64, error) {
+	i := uint64(0)
+
 	{
 		l := uint64(0)
 
@@ -1985,7 +1965,99 @@ func (d *DumpStatResult) Unmarshal(buf []byte) (uint64, error) {
 		d.LogPos = 0 | (int64(buf[i+0+0]) << 0) | (int64(buf[i+1+0]) << 8) | (int64(buf[i+2+0]) << 16) | (int64(buf[i+3+0]) << 24) | (int64(buf[i+4+0]) << 32) | (int64(buf[i+5+0]) << 40) | (int64(buf[i+6+0]) << 48) | (int64(buf[i+7+0]) << 56)
 
 	}
+	{
+		l := uint64(0)
+
+		{
+
+			bs := uint8(7)
+			t := uint64(buf[i+8] & 0x7F)
+			for buf[i+8]&0x80 == 0x80 {
+				i++
+				t |= uint64(buf[i+8]&0x7F) << bs
+				bs += 7
+			}
+			i++
+
+			l = t
+
+		}
+		d.GtidSet = string(buf[i+8 : i+8+l])
+		i += l
+	}
 	return i + 8, nil
+}
+
+type DumpStatResult struct {
+	Coord *BinlogCoordinatesX
+}
+
+func (d *DumpStatResult) Size() (s uint64) {
+
+	{
+		if d.Coord != nil {
+
+			{
+				s += (*d.Coord).Size()
+			}
+			s += 0
+		}
+	}
+	s += 1
+	return
+}
+func (d *DumpStatResult) Marshal(buf []byte) ([]byte, error) {
+	size := d.Size()
+	{
+		if uint64(cap(buf)) >= size {
+			buf = buf[:size]
+		} else {
+			buf = make([]byte, size)
+		}
+	}
+	i := uint64(0)
+
+	{
+		if d.Coord == nil {
+			buf[i+0] = 0
+		} else {
+			buf[i+0] = 1
+
+			{
+				nbuf, err := (*d.Coord).Marshal(buf[1:])
+				if err != nil {
+					return nil, err
+				}
+				i += uint64(len(nbuf))
+			}
+			i += 0
+		}
+	}
+	return buf[:i+1], nil
+}
+
+func (d *DumpStatResult) Unmarshal(buf []byte) (uint64, error) {
+	i := uint64(0)
+
+	{
+		if buf[i+0] == 1 {
+			if d.Coord == nil {
+				d.Coord = new(BinlogCoordinatesX)
+			}
+
+			{
+				ni, err := (*d.Coord).Unmarshal(buf[i+1:])
+				if err != nil {
+					return 0, err
+				}
+				i += ni
+			}
+			i += 0
+		} else {
+			d.Coord = nil
+		}
+	}
+	return i + 1, nil
 }
 
 type DataEvent struct {
