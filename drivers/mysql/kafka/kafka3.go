@@ -1111,11 +1111,14 @@ func kafkaColumnListToColDefs(colList *common.ColumnList, timeZone string) (valC
 
 		case mysqlconfig.BitColumnType:
 			if cols[i].ColumnType == "bit(1)" {
-				value := false
-				if defaultValue.(types.BinaryLiteral).Compare(types.BinaryLiteral("\x01")) == 0 {
-					value = true
+				if defaultValue != nil {
+					if defaultValue.(types.BinaryLiteral).Compare(types.BinaryLiteral("\x01")) == 0 {
+						defaultValue = true
+					} else {
+						defaultValue = false
+					}
 				}
-				field = NewSimpleSchemaWithDefaultField(SCHEMA_TYPE_BOOLEAN, optional, fieldName, value)
+				field = NewSimpleSchemaWithDefaultField(SCHEMA_TYPE_BOOLEAN, optional, fieldName, defaultValue)
 			} else {
 				field = NewBitsField(optional, fieldName, cols[i].ColumnType[4:len(cols[i].ColumnType)-1], defaultValue)
 			}
