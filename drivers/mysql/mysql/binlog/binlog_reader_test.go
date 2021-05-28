@@ -320,27 +320,27 @@ func Test_resolveDDLSQL(t *testing.T) {
 		wantErr    bool
 	}{
 		{
-			name:       "drop-table-1",
-			args:       args{
+			name: "drop-table-1",
+			args: args{
 				currentSchema: "",
 				sql:           "drop table a.b, skip.c, d",
 				skipFunc:      skipFunc1,
 			},
 			wantResult: parseQueryResult{
-				sql:         "DROP TABLE `a`.`b`, `d`",
+				sql: "DROP TABLE `a`.`b`, `d`",
 			},
-			wantErr:    false,
+			wantErr: false,
 		}, {
-			name:       "drop-table-2",
-			args:       args{
+			name: "drop-table-2",
+			args: args{
 				currentSchema: "",
 				sql:           "drop table if exists skip.b, skip.c",
 				skipFunc:      skipFunc1,
 			},
 			wantResult: parseQueryResult{
-				sql:         "drop table if exists dtle_dummy_never_exists.dtle_dummy_never_exists",
+				sql: "drop table if exists dtle_dummy_never_exists.dtle_dummy_never_exists",
 			},
-			wantErr:    false,
+			wantErr: false,
 		},
 	}
 	for _, tt := range tests {
@@ -616,19 +616,19 @@ func Test_skipQueryDDL(t *testing.T) {
 		tableName  string
 	}
 	tests := []struct {
-		name       string
-		args       args
-		wantResult bool
+		name                                 string
+		args                                 args
+		wantResult                           bool
 		wantResultWithEmptyReplicateIgnoreDb bool
-		wantResultWithEmptyReplicateDoDb bool
+		wantResultWithEmptyReplicateDoDb     bool
 	}{
 		{
 			name: "replicateDoDb-tables/replicateIgnoreDb-table/input-schema",
 			args: args{
 				schemaName: "db1",
 			},
-			wantResult: false,
-			wantResultWithEmptyReplicateDoDb: false,
+			wantResult:                           false,
+			wantResultWithEmptyReplicateDoDb:     false,
 			wantResultWithEmptyReplicateIgnoreDb: false,
 		},
 		{
@@ -637,8 +637,8 @@ func Test_skipQueryDDL(t *testing.T) {
 				schemaName: "db1",
 				tableName:  "tb1",
 			},
-			wantResult: true,
-			wantResultWithEmptyReplicateDoDb: true,
+			wantResult:                           true,
+			wantResultWithEmptyReplicateDoDb:     true,
 			wantResultWithEmptyReplicateIgnoreDb: false,
 		},
 		{
@@ -647,8 +647,8 @@ func Test_skipQueryDDL(t *testing.T) {
 				schemaName: "db1",
 				tableName:  "tb2",
 			},
-			wantResult: false,
-			wantResultWithEmptyReplicateDoDb: false,
+			wantResult:                           false,
+			wantResultWithEmptyReplicateDoDb:     false,
 			wantResultWithEmptyReplicateIgnoreDb: false,
 		},
 		{
@@ -656,8 +656,8 @@ func Test_skipQueryDDL(t *testing.T) {
 			args: args{
 				schemaName: "db2",
 			},
-			wantResult: false,
-			wantResultWithEmptyReplicateDoDb: false,
+			wantResult:                           false,
+			wantResultWithEmptyReplicateDoDb:     false,
 			wantResultWithEmptyReplicateIgnoreDb: false,
 		},
 		{
@@ -666,8 +666,8 @@ func Test_skipQueryDDL(t *testing.T) {
 				schemaName: "db2",
 				tableName:  "tb-skip",
 			},
-			wantResult: true,
-			wantResultWithEmptyReplicateDoDb: true,
+			wantResult:                           true,
+			wantResultWithEmptyReplicateDoDb:     true,
 			wantResultWithEmptyReplicateIgnoreDb: false,
 		},
 		{
@@ -675,8 +675,8 @@ func Test_skipQueryDDL(t *testing.T) {
 			args: args{
 				schemaName: "db3",
 			},
-			wantResult: true,
-			wantResultWithEmptyReplicateDoDb: true,
+			wantResult:                           true,
+			wantResultWithEmptyReplicateDoDb:     true,
 			wantResultWithEmptyReplicateIgnoreDb: false,
 		},
 		{
@@ -685,8 +685,8 @@ func Test_skipQueryDDL(t *testing.T) {
 				schemaName: "db3",
 				tableName:  "tb1",
 			},
-			wantResult: true,
-			wantResultWithEmptyReplicateDoDb: true,
+			wantResult:                           true,
+			wantResultWithEmptyReplicateDoDb:     true,
 			wantResultWithEmptyReplicateIgnoreDb: false,
 		},
 		{
@@ -695,8 +695,8 @@ func Test_skipQueryDDL(t *testing.T) {
 				schemaName: "db4",
 				tableName:  "tb1",
 			},
-			wantResult: true,
-			wantResultWithEmptyReplicateDoDb: true,
+			wantResult:                           true,
+			wantResultWithEmptyReplicateDoDb:     true,
 			wantResultWithEmptyReplicateIgnoreDb: false,
 		},
 		{
@@ -704,8 +704,8 @@ func Test_skipQueryDDL(t *testing.T) {
 			args: args{
 				schemaName: "db4",
 			},
-			wantResult: false,
-			wantResultWithEmptyReplicateDoDb: false,
+			wantResult:                           false,
+			wantResultWithEmptyReplicateDoDb:     false,
 			wantResultWithEmptyReplicateIgnoreDb: false,
 		},
 		{
@@ -713,18 +713,18 @@ func Test_skipQueryDDL(t *testing.T) {
 			args: args{
 				schemaName: "db5",
 			},
-			wantResult: true,
-			wantResultWithEmptyReplicateDoDb: false,
+			wantResult:                           true,
+			wantResultWithEmptyReplicateDoDb:     false,
 			wantResultWithEmptyReplicateIgnoreDb: true,
 		},
 		{
 			name: "not-defined-in-config/input-table",
 			args: args{
 				schemaName: "db5",
-				tableName: "tb1",
+				tableName:  "tb1",
 			},
-			wantResult: true,
-			wantResultWithEmptyReplicateDoDb: false,
+			wantResult:                           true,
+			wantResultWithEmptyReplicateDoDb:     false,
 			wantResultWithEmptyReplicateIgnoreDb: true,
 		},
 	}
@@ -1282,7 +1282,7 @@ func Test_isExpandSyntaxQuery(t *testing.T) {
 		{
 			name: "create-event",
 			args: args{sql: "create event if not exists a.event1 on schedule every 5 second on completion preserve do insert into a.a values (0);"},
-			want: true,
+			want: false,
 		}, {
 			name: "create-trigger", args: args{sql: `CREATE TRIGGER before_employee_update
 	BEFORE UPDATE ON employees FOR EACH ROW
@@ -1291,7 +1291,7 @@ func Test_isExpandSyntaxQuery(t *testing.T) {
 		employeeNumber = OLD.employeeNumber,
 		lastname = OLD.lastname,
 		changedat = NOW();`},
-			want: true,
+			want: false,
 		},
 	}
 	for _, tt := range tests {

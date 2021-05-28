@@ -7,14 +7,13 @@
 package sql
 
 import (
-	"testing"
-
-	//"github.com/actiontech/dtle/olddtle/internal/config/mysql"
-
 	"reflect"
 	"regexp"
 	"strings"
+	"testing"
 
+	"github.com/actiontech/dtle/drivers/mysql/common"
+	"github.com/actiontech/dtle/drivers/mysql/mysql/mysqlconfig"
 	test "github.com/outbrain/golib/tests"
 )
 
@@ -29,227 +28,311 @@ func normalizeQuery(name string) string {
 	return name
 }
 
-func TestEscapeName(t *testing.T) {
-	names := []string{"my_table", `"my_table"`, "`my_table`"}
-	for _, name := range names {
-		escaped := mysql.EscapeName(name)
-		test.S(t).ExpectEquals(escaped, "`my_table`")
-	}
-}
-
 func TestBuildSetPreparedClause(t *testing.T) {
 	{
-		columns := NewColumnList([]string{"c1"})
+		columns := common.NewColumnList([]mysqlconfig.Column{{RawName: "c1", EscapedName: "c1"}})
 		clause, err := BuildSetPreparedClause(columns)
 		test.S(t).ExpectNil(err)
-		test.S(t).ExpectEquals(clause, "`c1`=?")
+		test.S(t).ExpectEquals(clause, "c1=?")
 	}
 	{
-		columns := NewColumnList([]string{"c1", "c2"})
+		columns := common.NewColumnList([]mysqlconfig.Column{{RawName: "c1", EscapedName: "c1"}, {RawName: "c2", EscapedName: "c2"}})
 		clause, err := BuildSetPreparedClause(columns)
 		test.S(t).ExpectNil(err)
-		test.S(t).ExpectEquals(clause, "`c1`=?, `c2`=?")
+		test.S(t).ExpectEquals(clause, "c1=?, c2=?")
 	}
 	{
-		columns := NewColumnList([]string{})
+		columns := common.NewColumnList([]mysqlconfig.Column{})
 		_, err := BuildSetPreparedClause(columns)
 		test.S(t).ExpectNotNil(err)
 	}
 }
 
-func TestBuildRangeInsertQuery(t *testing.T) {
+func TestBuildDMLInsertQuery(t *testing.T) {
 	databaseName := "mydb"
-	originalTableName := "tbl"
-	ghostTableName := "ghost"
-	sharedColumns := []string{"id", "name", "position"}
+	tableName := "tbl"
 	{
-		uniqueKey := "PRIMARY"
-		uniqueKeyColumns := NewColumnList([]string{"id"})
-		rangeStartValues := []string{"@v1s"}
-		rangeEndValues := []string{"@v1e"}
-		rangeStartArgs := []interface{}{3}
-		rangeEndArgs := []interface{}{103}
+		uniqueKeyColumns := common.NewColumnList([]mysqlconfig.Column{
+			{
+				RawName:            "id",
+				EscapedName:        "id",
+				IsUnsigned:         false,
+				Charset:            "",
+				Type:               0,
+				Default:            nil,
+				ColumnType:         "",
+				Key:                "",
+				TimezoneConversion: nil,
+				Nullable:           false,
+				Precision:          0,
+				Scale:              0,
+			}, {
+				RawName:            "name",
+				EscapedName:        "name",
+				IsUnsigned:         false,
+				Charset:            "",
+				Type:               0,
+				Default:            nil,
+				ColumnType:         "",
+				Key:                "",
+				TimezoneConversion: nil,
+				Nullable:           false,
+				Precision:          0,
+				Scale:              0,
+			}, {
+				RawName:            "rank",
+				EscapedName:        "rank",
+				IsUnsigned:         false,
+				Charset:            "",
+				Type:               0,
+				Default:            nil,
+				ColumnType:         "",
+				Key:                "",
+				TimezoneConversion: nil,
+				Nullable:           false,
+				Precision:          0,
+				Scale:              0,
+			}, {
+				RawName:            "position",
+				EscapedName:        "position",
+				IsUnsigned:         false,
+				Charset:            "",
+				Type:               0,
+				Default:            nil,
+				ColumnType:         "",
+				Key:                "PRI",
+				TimezoneConversion: nil,
+				Nullable:           false,
+				Precision:          0,
+				Scale:              0,
+			}, {
+				RawName:            "age",
+				EscapedName:        "age",
+				IsUnsigned:         false,
+				Charset:            "",
+				Type:               0,
+				Default:            nil,
+				ColumnType:         "",
+				Key:                "",
+				TimezoneConversion: nil,
+				Nullable:           false,
+				Precision:          0,
+				Scale:              0,
+			},
+		})
+		args := []interface{}{3, "testName", "first", 17, 23}
 
-		query, explodedArgs, err := BuildRangeInsertQuery(databaseName, originalTableName, ghostTableName, sharedColumns, sharedColumns, uniqueKey, uniqueKeyColumns, rangeStartValues, rangeEndValues, rangeStartArgs, rangeEndArgs, true, false)
+		query, explodedArgs, err := BuildDMLInsertQuery(databaseName, tableName, uniqueKeyColumns, uniqueKeyColumns, uniqueKeyColumns, args)
 		test.S(t).ExpectNil(err)
 		expected := `
-				insert /* udup mydb.tbl */ ignore into mydb.ghost (id, name, position)
-				(select id, name, position from mydb.tbl force index (PRIMARY)
-					where (((id > @v1s) or ((id = @v1s))) and ((id < @v1e) or ((id = @v1e))))
-				)
+				replace into
+					mydb.tbl
+					(id, name, rank, position, age) 
+				values (?, ?, ?, ?, ?)
 		`
 		test.S(t).ExpectEquals(normalizeQuery(query), normalizeQuery(expected))
-		test.S(t).ExpectTrue(reflect.DeepEqual(explodedArgs, []interface{}{3, 3, 103, 103}))
-	}
-	{
-		uniqueKey := "name_position_uidx"
-		uniqueKeyColumns := NewColumnList([]string{"name", "position"})
-		rangeStartValues := []string{"@v1s", "@v2s"}
-		rangeEndValues := []string{"@v1e", "@v2e"}
-		rangeStartArgs := []interface{}{3, 17}
-		rangeEndArgs := []interface{}{103, 117}
-
-		query, explodedArgs, err := BuildRangeInsertQuery(databaseName, originalTableName, ghostTableName, sharedColumns, sharedColumns, uniqueKey, uniqueKeyColumns, rangeStartValues, rangeEndValues, rangeStartArgs, rangeEndArgs, true, false)
-		test.S(t).ExpectNil(err)
-		expected := `
-				insert /* udup mydb.tbl */ ignore into mydb.ghost (id, name, position)
-				(select id, name, position from mydb.tbl force index (name_position_uidx)
-				  where (((name > @v1s) or (((name = @v1s)) AND (position > @v2s)) or ((name = @v1s) and (position = @v2s))) and ((name < @v1e) or (((name = @v1e)) AND (position < @v2e)) or ((name = @v1e) and (position = @v2e))))
-				)
-		`
-		test.S(t).ExpectEquals(normalizeQuery(query), normalizeQuery(expected))
-		test.S(t).ExpectTrue(reflect.DeepEqual(explodedArgs, []interface{}{3, 3, 17, 3, 17, 103, 103, 117, 103, 117}))
+		test.S(t).ExpectTrue(reflect.DeepEqual(explodedArgs, []interface{}{3, "testName", "first", 17, 23}))
 	}
 }
 
-func TestBuildRangeInsertQueryRenameMap(t *testing.T) {
+func TestBuildDMLInsertQuerySignedUnsigned(t *testing.T) {
 	databaseName := "mydb"
-	originalTableName := "tbl"
-	ghostTableName := "ghost"
-	sharedColumns := []string{"id", "name", "position"}
-	mappedSharedColumns := []string{"id", "name", "location"}
+	tableName := "tbl"
+	tableColumns := common.NewColumnList([]mysqlconfig.Column{{
+		RawName:            "id",
+		EscapedName:        "id",
+		IsUnsigned:         false,
+		Charset:            "",
+		Type:               0,
+		Default:            nil,
+		ColumnType:         "",
+		Key:                "",
+		TimezoneConversion: nil,
+		Nullable:           false,
+		Precision:          0,
+		Scale:              0,
+	}, {
+		RawName:            "name",
+		EscapedName:        "name",
+		IsUnsigned:         false,
+		Charset:            "",
+		Type:               0,
+		Default:            nil,
+		ColumnType:         "",
+		Key:                "",
+		TimezoneConversion: nil,
+		Nullable:           false,
+		Precision:          0,
+		Scale:              0,
+	}, {
+		RawName:            "rank",
+		EscapedName:        "rank",
+		IsUnsigned:         false,
+		Charset:            "",
+		Type:               0,
+		Default:            nil,
+		ColumnType:         "",
+		Key:                "",
+		TimezoneConversion: nil,
+		Nullable:           false,
+		Precision:          0,
+		Scale:              0,
+	}, {
+		RawName:            "position",
+		EscapedName:        "position",
+		IsUnsigned:         false,
+		Charset:            "",
+		Type:               0,
+		Default:            nil,
+		ColumnType:         "",
+		Key:                "PRI",
+		TimezoneConversion: nil,
+		Nullable:           false,
+		Precision:          0,
+		Scale:              0,
+	}, {
+		RawName:            "age",
+		EscapedName:        "age",
+		IsUnsigned:         false,
+		Charset:            "",
+		Type:               0,
+		Default:            nil,
+		ColumnType:         "",
+		Key:                "",
+		TimezoneConversion: nil,
+		Nullable:           false,
+		Precision:          0,
+		Scale:              0,
+	},
+	})
 	{
-		uniqueKey := "PRIMARY"
-		uniqueKeyColumns := NewColumnList([]string{"id"})
-		rangeStartValues := []string{"@v1s"}
-		rangeEndValues := []string{"@v1e"}
-		rangeStartArgs := []interface{}{3}
-		rangeEndArgs := []interface{}{103}
-
-		query, explodedArgs, err := BuildRangeInsertQuery(databaseName, originalTableName, ghostTableName, sharedColumns, mappedSharedColumns, uniqueKey, uniqueKeyColumns, rangeStartValues, rangeEndValues, rangeStartArgs, rangeEndArgs, true, false)
+		// testing signed
+		args := []interface{}{3, "testname", "first", int8(-1), 23}
+		query, sharedArgs, err := BuildDMLInsertQuery(databaseName, tableName, tableColumns, tableColumns, tableColumns, args)
 		test.S(t).ExpectNil(err)
 		expected := `
-				insert /* udup mydb.tbl */ ignore into mydb.ghost (id, name, location)
-				(select id, name, position from mydb.tbl force index (PRIMARY)
-					where (((id > @v1s) or ((id = @v1s))) and ((id < @v1e) or ((id = @v1e))))
-				)
+			replace 	
+				into mydb.tbl
+					(id, name, rank, position, age)
+				values
+					(?, ?, ?, ?, ?)
 		`
 		test.S(t).ExpectEquals(normalizeQuery(query), normalizeQuery(expected))
-		test.S(t).ExpectTrue(reflect.DeepEqual(explodedArgs, []interface{}{3, 3, 103, 103}))
+		test.S(t).ExpectTrue(reflect.DeepEqual(sharedArgs, []interface{}{3, "testname", "first", int8(-1), 23}))
 	}
 	{
-		uniqueKey := "name_position_uidx"
-		uniqueKeyColumns := NewColumnList([]string{"name", "position"})
-		rangeStartValues := []string{"@v1s", "@v2s"}
-		rangeEndValues := []string{"@v1e", "@v2e"}
-		rangeStartArgs := []interface{}{3, 17}
-		rangeEndArgs := []interface{}{103, 117}
-
-		query, explodedArgs, err := BuildRangeInsertQuery(databaseName, originalTableName, ghostTableName, sharedColumns, mappedSharedColumns, uniqueKey, uniqueKeyColumns, rangeStartValues, rangeEndValues, rangeStartArgs, rangeEndArgs, true, false)
+		// testing unsigned
+		args := []interface{}{3, "testname", "first", int8(-1), 23}
+		tableColumns.SetUnsigned("position")
+		query, sharedArgs, err := BuildDMLInsertQuery(databaseName, tableName, tableColumns, tableColumns, tableColumns, args)
 		test.S(t).ExpectNil(err)
 		expected := `
-				insert /* udup mydb.tbl */ ignore into mydb.ghost (id, name, location)
-				(select id, name, position from mydb.tbl force index (name_position_uidx)
-				  where (((name > @v1s) or (((name = @v1s)) AND (position > @v2s)) or ((name = @v1s) and (position = @v2s))) and ((name < @v1e) or (((name = @v1e)) AND (position < @v2e)) or ((name = @v1e) and (position = @v2e))))
-				)
+			replace 
+				into mydb.tbl
+					(id, name, rank, position, age)
+				values
+					(?, ?, ?, ?, ?)
 		`
 		test.S(t).ExpectEquals(normalizeQuery(query), normalizeQuery(expected))
-		test.S(t).ExpectTrue(reflect.DeepEqual(explodedArgs, []interface{}{3, 3, 17, 3, 17, 103, 103, 117, 103, 117}))
-	}
-}
-
-func TestBuildRangeInsertPreparedQuery(t *testing.T) {
-	databaseName := "mydb"
-	originalTableName := "tbl"
-	ghostTableName := "ghost"
-	sharedColumns := []string{"id", "name", "position"}
-	{
-		uniqueKey := "name_position_uidx"
-		uniqueKeyColumns := NewColumnList([]string{"name", "position"})
-		rangeStartArgs := []interface{}{3, 17}
-		rangeEndArgs := []interface{}{103, 117}
-
-		query, explodedArgs, err := BuildRangeInsertPreparedQuery(databaseName, originalTableName, ghostTableName, sharedColumns, sharedColumns, uniqueKey, uniqueKeyColumns, rangeStartArgs, rangeEndArgs, true, true)
-		test.S(t).ExpectNil(err)
-		expected := `
-				insert /* udup mydb.tbl */ ignore into mydb.ghost (id, name, position)
-				(select id, name, position from mydb.tbl force index (name_position_uidx)
-				  where (((name > ?) or (((name = ?)) AND (position > ?)) or ((name = ?) and (position = ?))) and ((name < ?) or (((name = ?)) AND (position < ?)) or ((name = ?) and (position = ?))))
-				lock in share mode )
-		`
-		test.S(t).ExpectEquals(normalizeQuery(query), normalizeQuery(expected))
-		test.S(t).ExpectTrue(reflect.DeepEqual(explodedArgs, []interface{}{3, 3, 17, 3, 17, 103, 103, 117, 103, 117}))
-	}
-}
-
-func TestBuildUniqueKeyRangeEndPreparedQuery(t *testing.T) {
-	databaseName := "mydb"
-	originalTableName := "tbl"
-	var chunkSize int64 = 500
-	{
-		uniqueKeyColumns := NewColumnList([]string{"name", "position"})
-		rangeStartArgs := []interface{}{3, 17}
-		rangeEndArgs := []interface{}{103, 117}
-
-		query, explodedArgs, err := BuildUniqueKeyRangeEndPreparedQuery(databaseName, originalTableName, uniqueKeyColumns, rangeStartArgs, rangeEndArgs, chunkSize, false, "test")
-		test.S(t).ExpectNil(err)
-		expected := `
-				select /* udup mydb.tbl test */ name, position
-				  from (
-				    select
-				        name, position
-				      from
-				        mydb.tbl
-				      where ((name > ?) or (((name = ?)) AND (position > ?))) and ((name < ?) or (((name = ?)) AND (position < ?)) or ((name = ?) and (position = ?)))
-				      order by
-				        name asc, position asc
-				      limit 500
-				  ) select_osc_chunk
-				order by
-				  name desc, position desc
-				limit 1
-		`
-		test.S(t).ExpectEquals(normalizeQuery(query), normalizeQuery(expected))
-		test.S(t).ExpectTrue(reflect.DeepEqual(explodedArgs, []interface{}{3, 3, 17, 103, 103, 117, 103, 117}))
-	}
-}
-
-func TestBuildUniqueKeyMinValuesPreparedQuery(t *testing.T) {
-	databaseName := "mydb"
-	originalTableName := "tbl"
-	uniqueKeyColumns := NewColumnList([]string{"name", "position"})
-	{
-		query, err := BuildUniqueKeyMinValuesPreparedQuery(databaseName, originalTableName, uniqueKeyColumns)
-		test.S(t).ExpectNil(err)
-		expected := `
-			select /* udup mydb.tbl */ name, position
-			  from
-			    mydb.tbl
-			  order by
-			    name asc, position asc
-			  limit 1
-		`
-		test.S(t).ExpectEquals(normalizeQuery(query), normalizeQuery(expected))
+		test.S(t).ExpectTrue(reflect.DeepEqual(sharedArgs, []interface{}{3, "testname", "first", uint8(255), 23}))
 	}
 	{
-		query, err := BuildUniqueKeyMaxValuesPreparedQuery(databaseName, originalTableName, uniqueKeyColumns)
+		// testing unsigned
+		args := []interface{}{3, "testname", "first", int32(-1), 23}
+		tableColumns.SetUnsigned("position")
+		query, sharedArgs, err := BuildDMLInsertQuery(databaseName, tableName, tableColumns, tableColumns, tableColumns, args)
 		test.S(t).ExpectNil(err)
 		expected := `
-			select /* udup mydb.tbl */ name, position
-			  from
-			    mydb.tbl
-			  order by
-			    name desc, position desc
-			  limit 1
+			replace 
+				into mydb.tbl
+					(id, name, rank, position, age)
+				values
+					(?, ?, ?, ?, ?)
 		`
 		test.S(t).ExpectEquals(normalizeQuery(query), normalizeQuery(expected))
+		test.S(t).ExpectTrue(reflect.DeepEqual(sharedArgs, []interface{}{3, "testname", "first", uint32(4294967295), 23}))
 	}
 }
 
 func TestBuildDMLDeleteQuery(t *testing.T) {
 	databaseName := "mydb"
 	tableName := "tbl"
-	tableColumns := NewColumnList([]string{"id", "name", "rank", "position", "age"})
-	args := []interface{}{3, "testname", "first", 17, 23}
-	{
-		uniqueKeyColumns := NewColumnList([]string{"position"})
 
-		query, uniqueKeyArgs, err := BuildDMLDeleteQuery(databaseName, tableName, tableColumns, uniqueKeyColumns, args)
+	args := []interface{}{3, "testname", "first", 17, 23}
+	tableColumns := common.NewColumnList([]mysqlconfig.Column{
+		{
+			RawName:            "id",
+			EscapedName:        "id",
+			IsUnsigned:         false,
+			Charset:            "",
+			Type:               0,
+			Default:            nil,
+			ColumnType:         "",
+			Key:                "",
+			TimezoneConversion: nil,
+			Nullable:           false,
+			Precision:          0,
+			Scale:              0,
+		}, {
+			RawName:            "name",
+			EscapedName:        "name",
+			IsUnsigned:         false,
+			Charset:            "",
+			Type:               0,
+			Default:            nil,
+			ColumnType:         "",
+			Key:                "",
+			TimezoneConversion: nil,
+			Nullable:           false,
+			Precision:          0,
+			Scale:              0,
+		}, {
+			RawName:            "rank",
+			EscapedName:        "rank",
+			IsUnsigned:         false,
+			Charset:            "",
+			Type:               0,
+			Default:            nil,
+			ColumnType:         "",
+			Key:                "",
+			TimezoneConversion: nil,
+			Nullable:           false,
+			Precision:          0,
+			Scale:              0,
+		}, {
+			RawName:            "position",
+			EscapedName:        "position",
+			IsUnsigned:         false,
+			Charset:            "",
+			Type:               0,
+			Default:            nil,
+			ColumnType:         "",
+			Key:                "PRI",
+			TimezoneConversion: nil,
+			Nullable:           false,
+			Precision:          0,
+			Scale:              0,
+		}, {
+			RawName:            "age",
+			EscapedName:        "age",
+			IsUnsigned:         false,
+			Charset:            "",
+			Type:               0,
+			Default:            nil,
+			ColumnType:         "",
+			Key:                "",
+			TimezoneConversion: nil,
+			Nullable:           false,
+			Precision:          0,
+			Scale:              0,
+		},
+	})
+	{
+		query, uniqueKeyArgs, _, err := BuildDMLDeleteQuery(databaseName, tableName, tableColumns, args)
 		test.S(t).ExpectNil(err)
 		expected := `
-			delete /* udup mydb.tbl */
-				from
-					mydb.tbl
+			delete  from
+				mydb.tbl
 				where
 					((position = ?))
 		`
@@ -257,14 +340,79 @@ func TestBuildDMLDeleteQuery(t *testing.T) {
 		test.S(t).ExpectTrue(reflect.DeepEqual(uniqueKeyArgs, []interface{}{17}))
 	}
 	{
-		uniqueKeyColumns := NewColumnList([]string{"name", "position"})
-
-		query, uniqueKeyArgs, err := BuildDMLDeleteQuery(databaseName, tableName, tableColumns, uniqueKeyColumns, args)
+		tableColumns := common.NewColumnList([]mysqlconfig.Column{
+			{
+				RawName:            "id",
+				EscapedName:        "id",
+				IsUnsigned:         false,
+				Charset:            "",
+				Type:               0,
+				Default:            nil,
+				ColumnType:         "",
+				Key:                "",
+				TimezoneConversion: nil,
+				Nullable:           false,
+				Precision:          0,
+				Scale:              0,
+			}, {
+				RawName:            "name",
+				EscapedName:        "name",
+				IsUnsigned:         false,
+				Charset:            "",
+				Type:               0,
+				Default:            nil,
+				ColumnType:         "",
+				Key:                "PRI",
+				TimezoneConversion: nil,
+				Nullable:           false,
+				Precision:          0,
+				Scale:              0,
+			}, {
+				RawName:            "rank",
+				EscapedName:        "rank",
+				IsUnsigned:         false,
+				Charset:            "",
+				Type:               0,
+				Default:            nil,
+				ColumnType:         "",
+				Key:                "",
+				TimezoneConversion: nil,
+				Nullable:           false,
+				Precision:          0,
+				Scale:              0,
+			}, {
+				RawName:            "position",
+				EscapedName:        "position",
+				IsUnsigned:         false,
+				Charset:            "",
+				Type:               0,
+				Default:            nil,
+				ColumnType:         "",
+				Key:                "PRI",
+				TimezoneConversion: nil,
+				Nullable:           false,
+				Precision:          0,
+				Scale:              0,
+			}, {
+				RawName:            "age",
+				EscapedName:        "age",
+				IsUnsigned:         false,
+				Charset:            "",
+				Type:               0,
+				Default:            nil,
+				ColumnType:         "",
+				Key:                "",
+				TimezoneConversion: nil,
+				Nullable:           false,
+				Precision:          0,
+				Scale:              0,
+			},
+		})
+		query, uniqueKeyArgs, _, err := BuildDMLDeleteQuery(databaseName, tableName, tableColumns, args)
 		test.S(t).ExpectNil(err)
 		expected := `
-			delete /* udup mydb.tbl */
-				from
-					mydb.tbl
+			delete	from
+				mydb.tbl
 				where
 					((name = ?) and (position = ?))
 		`
@@ -272,25 +420,90 @@ func TestBuildDMLDeleteQuery(t *testing.T) {
 		test.S(t).ExpectTrue(reflect.DeepEqual(uniqueKeyArgs, []interface{}{"testname", 17}))
 	}
 	{
-		uniqueKeyColumns := NewColumnList([]string{"position", "name"})
-
-		query, uniqueKeyArgs, err := BuildDMLDeleteQuery(databaseName, tableName, tableColumns, uniqueKeyColumns, args)
+		tableColumns := common.NewColumnList([]mysqlconfig.Column{
+			{
+				RawName:            "position",
+				EscapedName:        "position",
+				IsUnsigned:         false,
+				Charset:            "",
+				Type:               0,
+				Default:            nil,
+				ColumnType:         "",
+				Key:                "PRI",
+				TimezoneConversion: nil,
+				Nullable:           false,
+				Precision:          0,
+				Scale:              0,
+			}, {
+				RawName:            "name",
+				EscapedName:        "name",
+				IsUnsigned:         false,
+				Charset:            "",
+				Type:               0,
+				Default:            nil,
+				ColumnType:         "",
+				Key:                "PRI",
+				TimezoneConversion: nil,
+				Nullable:           false,
+				Precision:          0,
+				Scale:              0,
+			}, {
+				RawName:            "id",
+				EscapedName:        "id",
+				IsUnsigned:         false,
+				Charset:            "",
+				Type:               0,
+				Default:            nil,
+				ColumnType:         "",
+				Key:                "",
+				TimezoneConversion: nil,
+				Nullable:           false,
+				Precision:          0,
+				Scale:              0,
+			}, {
+				RawName:            "rank",
+				EscapedName:        "rank",
+				IsUnsigned:         false,
+				Charset:            "",
+				Type:               0,
+				Default:            nil,
+				ColumnType:         "",
+				Key:                "",
+				TimezoneConversion: nil,
+				Nullable:           false,
+				Precision:          0,
+				Scale:              0,
+			}, {
+				RawName:            "age",
+				EscapedName:        "age",
+				IsUnsigned:         false,
+				Charset:            "",
+				Type:               0,
+				Default:            nil,
+				ColumnType:         "",
+				Key:                "",
+				TimezoneConversion: nil,
+				Nullable:           false,
+				Precision:          0,
+				Scale:              0,
+			},
+		})
+		query, uniqueKeyArgs, _, err := BuildDMLDeleteQuery(databaseName, tableName, tableColumns, args)
 		test.S(t).ExpectNil(err)
 		expected := `
-			delete /* udup mydb.tbl */
-				from
+			delete
+					from
 					mydb.tbl
 				where
 					((position = ?) and (name = ?))
 		`
 		test.S(t).ExpectEquals(normalizeQuery(query), normalizeQuery(expected))
-		test.S(t).ExpectTrue(reflect.DeepEqual(uniqueKeyArgs, []interface{}{17, "testname"}))
+		test.S(t).ExpectTrue(reflect.DeepEqual(uniqueKeyArgs, []interface{}{3, "testname"}))
 	}
 	{
-		uniqueKeyColumns := NewColumnList([]string{"position", "name"})
 		args := []interface{}{"first", 17}
 
-		_, _, err := BuildDMLDeleteQuery(databaseName, tableName, tableColumns, uniqueKeyColumns, args)
+		_, _, _, err := BuildDMLDeleteQuery(databaseName, tableName, tableColumns, args)
 		test.S(t).ExpectNotNil(err)
 	}
 }
@@ -298,15 +511,81 @@ func TestBuildDMLDeleteQuery(t *testing.T) {
 func TestBuildDMLDeleteQuerySignedUnsigned(t *testing.T) {
 	databaseName := "mydb"
 	tableName := "tbl"
-	tableColumns := NewColumnList([]string{"id", "name", "rank", "position", "age"})
-	uniqueKeyColumns := NewColumnList([]string{"position"})
+	tableColumns := common.NewColumnList([]mysqlconfig.Column{
+		{
+			RawName:            "position",
+			EscapedName:        "position",
+			IsUnsigned:         false,
+			Charset:            "",
+			Type:               0,
+			Default:            nil,
+			ColumnType:         "",
+			Key:                "PRI",
+			TimezoneConversion: nil,
+			Nullable:           false,
+			Precision:          0,
+			Scale:              0,
+		}, {
+			RawName:            "name",
+			EscapedName:        "name",
+			IsUnsigned:         false,
+			Charset:            "",
+			Type:               0,
+			Default:            nil,
+			ColumnType:         "",
+			Key:                "",
+			TimezoneConversion: nil,
+			Nullable:           false,
+			Precision:          0,
+			Scale:              0,
+		}, {
+			RawName:            "id",
+			EscapedName:        "id",
+			IsUnsigned:         false,
+			Charset:            "",
+			Type:               0,
+			Default:            nil,
+			ColumnType:         "",
+			Key:                "",
+			TimezoneConversion: nil,
+			Nullable:           false,
+			Precision:          0,
+			Scale:              0,
+		}, {
+			RawName:            "rank",
+			EscapedName:        "rank",
+			IsUnsigned:         false,
+			Charset:            "",
+			Type:               0,
+			Default:            nil,
+			ColumnType:         "",
+			Key:                "",
+			TimezoneConversion: nil,
+			Nullable:           false,
+			Precision:          0,
+			Scale:              0,
+		}, {
+			RawName:            "age",
+			EscapedName:        "age",
+			IsUnsigned:         false,
+			Charset:            "",
+			Type:               0,
+			Default:            nil,
+			ColumnType:         "",
+			Key:                "",
+			TimezoneConversion: nil,
+			Nullable:           false,
+			Precision:          0,
+			Scale:              0,
+		},
+	})
 	{
 		// test signed (expect no change)
-		args := []interface{}{3, "testname", "first", -1, 23}
-		query, uniqueKeyArgs, err := BuildDMLDeleteQuery(databaseName, tableName, tableColumns, uniqueKeyColumns, args)
+		args := []interface{}{-1, "testname", "first", 3, 23}
+		query, uniqueKeyArgs, _, err := BuildDMLDeleteQuery(databaseName, tableName, tableColumns, args)
 		test.S(t).ExpectNil(err)
 		expected := `
-			delete /* udup mydb.tbl */
+			delete
 				from
 					mydb.tbl
 				where
@@ -317,12 +596,12 @@ func TestBuildDMLDeleteQuerySignedUnsigned(t *testing.T) {
 	}
 	{
 		// test unsigned
-		args := []interface{}{3, "testname", "first", int8(-1), 23}
-		uniqueKeyColumns.SetUnsigned("position")
-		query, uniqueKeyArgs, err := BuildDMLDeleteQuery(databaseName, tableName, tableColumns, uniqueKeyColumns, args)
+		args := []interface{}{int8(-1), "testname", "first", 3, 23}
+		tableColumns.SetUnsigned("position")
+		query, uniqueKeyArgs, _, err := BuildDMLDeleteQuery(databaseName, tableName, tableColumns, args)
 		test.S(t).ExpectNil(err)
 		expected := `
-			delete /* udup mydb.tbl */
+			delete 
 				from
 					mydb.tbl
 				where
@@ -333,245 +612,348 @@ func TestBuildDMLDeleteQuerySignedUnsigned(t *testing.T) {
 	}
 }
 
-func TestBuildDMLInsertQuery(t *testing.T) {
-	databaseName := "mydb"
-	tableName := "tbl"
-	tableColumns := NewColumnList([]string{"id", "name", "rank", "position", "age"})
-	args := []interface{}{3, "testname", "first", 17, 23}
-	{
-		sharedColumns := NewColumnList([]string{"id", "name", "position", "age"})
-		query, sharedArgs, err := BuildDMLInsertQuery(databaseName, tableName, tableColumns, sharedColumns, sharedColumns, args)
-		test.S(t).ExpectNil(err)
-		expected := `
-			replace /* udup mydb.tbl */
-				into mydb.tbl
-					(id, name, position, age)
-				values
-					(?, ?, ?, ?)
-		`
-		test.S(t).ExpectEquals(normalizeQuery(query), normalizeQuery(expected))
-		test.S(t).ExpectTrue(reflect.DeepEqual(sharedArgs, []interface{}{3, "testname", 17, 23}))
-	}
-	{
-		sharedColumns := NewColumnList([]string{"position", "name", "age", "id"})
-		query, sharedArgs, err := BuildDMLInsertQuery(databaseName, tableName, tableColumns, sharedColumns, sharedColumns, args)
-		test.S(t).ExpectNil(err)
-		expected := `
-			replace /* udup mydb.tbl */
-				into mydb.tbl
-					(position, name, age, id)
-				values
-					(?, ?, ?, ?)
-		`
-		test.S(t).ExpectEquals(normalizeQuery(query), normalizeQuery(expected))
-		test.S(t).ExpectTrue(reflect.DeepEqual(sharedArgs, []interface{}{17, "testname", 23, 3}))
-	}
-	{
-		sharedColumns := NewColumnList([]string{"position", "name", "surprise", "id"})
-		_, _, err := BuildDMLInsertQuery(databaseName, tableName, tableColumns, sharedColumns, sharedColumns, args)
-		test.S(t).ExpectNotNil(err)
-	}
-	{
-		sharedColumns := NewColumnList([]string{})
-		_, _, err := BuildDMLInsertQuery(databaseName, tableName, tableColumns, sharedColumns, sharedColumns, args)
-		test.S(t).ExpectNotNil(err)
-	}
-}
-
-func TestBuildDMLInsertQuerySignedUnsigned(t *testing.T) {
-	databaseName := "mydb"
-	tableName := "tbl"
-	tableColumns := NewColumnList([]string{"id", "name", "rank", "position", "age"})
-	sharedColumns := NewColumnList([]string{"id", "name", "position", "age"})
-	{
-		// testing signed
-		args := []interface{}{3, "testname", "first", int8(-1), 23}
-		sharedColumns := NewColumnList([]string{"id", "name", "position", "age"})
-		query, sharedArgs, err := BuildDMLInsertQuery(databaseName, tableName, tableColumns, sharedColumns, sharedColumns, args)
-		test.S(t).ExpectNil(err)
-		expected := `
-			replace /* udup mydb.tbl */
-				into mydb.tbl
-					(id, name, position, age)
-				values
-					(?, ?, ?, ?)
-		`
-		test.S(t).ExpectEquals(normalizeQuery(query), normalizeQuery(expected))
-		test.S(t).ExpectTrue(reflect.DeepEqual(sharedArgs, []interface{}{3, "testname", int8(-1), 23}))
-	}
-	{
-		// testing unsigned
-		args := []interface{}{3, "testname", "first", int8(-1), 23}
-		sharedColumns.SetUnsigned("position")
-		query, sharedArgs, err := BuildDMLInsertQuery(databaseName, tableName, tableColumns, sharedColumns, sharedColumns, args)
-		test.S(t).ExpectNil(err)
-		expected := `
-			replace /* udup mydb.tbl */
-				into mydb.tbl
-					(id, name, position, age)
-				values
-					(?, ?, ?, ?)
-		`
-		test.S(t).ExpectEquals(normalizeQuery(query), normalizeQuery(expected))
-		test.S(t).ExpectTrue(reflect.DeepEqual(sharedArgs, []interface{}{3, "testname", uint8(255), 23}))
-	}
-	{
-		// testing unsigned
-		args := []interface{}{3, "testname", "first", int32(-1), 23}
-		sharedColumns.SetUnsigned("position")
-		query, sharedArgs, err := BuildDMLInsertQuery(databaseName, tableName, tableColumns, sharedColumns, sharedColumns, args)
-		test.S(t).ExpectNil(err)
-		expected := `
-			replace /* udup mydb.tbl */
-				into mydb.tbl
-					(id, name, position, age)
-				values
-					(?, ?, ?, ?)
-		`
-		test.S(t).ExpectEquals(normalizeQuery(query), normalizeQuery(expected))
-		test.S(t).ExpectTrue(reflect.DeepEqual(sharedArgs, []interface{}{3, "testname", uint32(4294967295), 23}))
-	}
-}
-
 func TestBuildDMLUpdateQuery(t *testing.T) {
 	databaseName := "mydb"
 	tableName := "tbl"
-	tableColumns := NewColumnList([]string{"id", "name", "rank", "position", "age"})
+	tableColumns := common.NewColumnList([]mysqlconfig.Column{
+		{
+			RawName:            "id",
+			EscapedName:        "id",
+			IsUnsigned:         false,
+			Charset:            "",
+			Type:               0,
+			Default:            nil,
+			ColumnType:         "",
+			Key:                "",
+			TimezoneConversion: nil,
+			Nullable:           false,
+			Precision:          0,
+			Scale:              0,
+		}, {
+			RawName:            "name",
+			EscapedName:        "name",
+			IsUnsigned:         false,
+			Charset:            "",
+			Type:               0,
+			Default:            nil,
+			ColumnType:         "",
+			Key:                "",
+			TimezoneConversion: nil,
+			Nullable:           false,
+			Precision:          0,
+			Scale:              0,
+		}, {
+			RawName:            "rank",
+			EscapedName:        "rank",
+			IsUnsigned:         false,
+			Charset:            "",
+			Type:               0,
+			Default:            nil,
+			ColumnType:         "",
+			Key:                "",
+			TimezoneConversion: nil,
+			Nullable:           false,
+			Precision:          0,
+			Scale:              0,
+		}, {
+			RawName:            "position",
+			EscapedName:        "position",
+			IsUnsigned:         false,
+			Charset:            "",
+			Type:               0,
+			Default:            nil,
+			ColumnType:         "",
+			Key:                "PRI",
+			TimezoneConversion: nil,
+			Nullable:           false,
+			Precision:          0,
+			Scale:              0,
+		}, {
+			RawName:            "age",
+			EscapedName:        "age",
+			IsUnsigned:         false,
+			Charset:            "",
+			Type:               0,
+			Default:            nil,
+			ColumnType:         "",
+			Key:                "",
+			TimezoneConversion: nil,
+			Nullable:           false,
+			Precision:          0,
+			Scale:              0,
+		},
+	})
 	valueArgs := []interface{}{3, "testname", "newval", 17, 23}
 	whereArgs := []interface{}{3, "testname", "findme", 17, 56}
 	{
-		sharedColumns := NewColumnList([]string{"id", "name", "position", "age"})
-		uniqueKeyColumns := NewColumnList([]string{"position"})
-		query, sharedArgs, uniqueKeyArgs, err := BuildDMLUpdateQuery(databaseName, tableName, tableColumns, sharedColumns, sharedColumns, uniqueKeyColumns, valueArgs, whereArgs)
+		query, sharedArgs, uniqueKeyArgs, _, err := BuildDMLUpdateQuery(databaseName, tableName, tableColumns, tableColumns, tableColumns, tableColumns, valueArgs, whereArgs)
 		test.S(t).ExpectNil(err)
 		expected := `
-			update /* udup mydb.tbl */
+			update 
 			  mydb.tbl
-					set id=?, name=?, position=?, age=?
+					set id=?, name=?, rank=?, position=?, age=?
 				where
 					((position = ?))
+				limit 1
 		`
 		test.S(t).ExpectEquals(normalizeQuery(query), normalizeQuery(expected))
-		test.S(t).ExpectTrue(reflect.DeepEqual(sharedArgs, []interface{}{3, "testname", 17, 23}))
+		test.S(t).ExpectTrue(reflect.DeepEqual(sharedArgs, []interface{}{3, "testname", "newval", 17, 23}))
 		test.S(t).ExpectTrue(reflect.DeepEqual(uniqueKeyArgs, []interface{}{17}))
 	}
-	{
-		sharedColumns := NewColumnList([]string{"id", "name", "position", "age"})
-		uniqueKeyColumns := NewColumnList([]string{"position", "name"})
-		query, sharedArgs, uniqueKeyArgs, err := BuildDMLUpdateQuery(databaseName, tableName, tableColumns, sharedColumns, sharedColumns, uniqueKeyColumns, valueArgs, whereArgs)
-		test.S(t).ExpectNil(err)
-		expected := `
-			update /* udup mydb.tbl */
-			  mydb.tbl
-					set id=?, name=?, position=?, age=?
-				where
-					((position = ?) and (name = ?))
-		`
-		test.S(t).ExpectEquals(normalizeQuery(query), normalizeQuery(expected))
-		test.S(t).ExpectTrue(reflect.DeepEqual(sharedArgs, []interface{}{3, "testname", 17, 23}))
-		test.S(t).ExpectTrue(reflect.DeepEqual(uniqueKeyArgs, []interface{}{17, "testname"}))
-	}
-	{
-		sharedColumns := NewColumnList([]string{"id", "name", "position", "age"})
-		uniqueKeyColumns := NewColumnList([]string{"age"})
-		query, sharedArgs, uniqueKeyArgs, err := BuildDMLUpdateQuery(databaseName, tableName, tableColumns, sharedColumns, sharedColumns, uniqueKeyColumns, valueArgs, whereArgs)
-		test.S(t).ExpectNil(err)
-		expected := `
-			update /* udup mydb.tbl */
-			  mydb.tbl
-					set id=?, name=?, position=?, age=?
-				where
-					((age = ?))
-		`
-		test.S(t).ExpectEquals(normalizeQuery(query), normalizeQuery(expected))
-		test.S(t).ExpectTrue(reflect.DeepEqual(sharedArgs, []interface{}{3, "testname", 17, 23}))
-		test.S(t).ExpectTrue(reflect.DeepEqual(uniqueKeyArgs, []interface{}{56}))
-	}
-	{
-		sharedColumns := NewColumnList([]string{"id", "name", "position", "age"})
-		uniqueKeyColumns := NewColumnList([]string{"age", "position", "id", "name"})
-		query, sharedArgs, uniqueKeyArgs, err := BuildDMLUpdateQuery(databaseName, tableName, tableColumns, sharedColumns, sharedColumns, uniqueKeyColumns, valueArgs, whereArgs)
-		test.S(t).ExpectNil(err)
-		expected := `
-			update /* udup mydb.tbl */
-			  mydb.tbl
-					set id=?, name=?, position=?, age=?
-				where
-					((age = ?) and (position = ?) and (id = ?) and (name = ?))
-		`
-		test.S(t).ExpectEquals(normalizeQuery(query), normalizeQuery(expected))
-		test.S(t).ExpectTrue(reflect.DeepEqual(sharedArgs, []interface{}{3, "testname", 17, 23}))
-		test.S(t).ExpectTrue(reflect.DeepEqual(uniqueKeyArgs, []interface{}{56, 17, 3, "testname"}))
-	}
-	{
-		sharedColumns := NewColumnList([]string{"id", "name", "position", "age"})
-		uniqueKeyColumns := NewColumnList([]string{"age", "surprise"})
-		_, _, _, err := BuildDMLUpdateQuery(databaseName, tableName, tableColumns, sharedColumns, sharedColumns, uniqueKeyColumns, valueArgs, whereArgs)
-		test.S(t).ExpectNotNil(err)
-	}
-	{
-		sharedColumns := NewColumnList([]string{"id", "name", "position", "age"})
-		uniqueKeyColumns := NewColumnList([]string{})
-		_, _, _, err := BuildDMLUpdateQuery(databaseName, tableName, tableColumns, sharedColumns, sharedColumns, uniqueKeyColumns, valueArgs, whereArgs)
-		test.S(t).ExpectNotNil(err)
-	}
-	{
-		sharedColumns := NewColumnList([]string{"id", "name", "position", "age"})
-		mappedColumns := NewColumnList([]string{"id", "name", "role", "age"})
-		uniqueKeyColumns := NewColumnList([]string{"id"})
-		query, sharedArgs, uniqueKeyArgs, err := BuildDMLUpdateQuery(databaseName, tableName, tableColumns, sharedColumns, mappedColumns, uniqueKeyColumns, valueArgs, whereArgs)
-		test.S(t).ExpectNil(err)
-		expected := `
-			update /* udup mydb.tbl */
-			  mydb.tbl
-					set id=?, name=?, role=?, age=?
-				where
-					((id = ?))
-		`
-		test.S(t).ExpectEquals(normalizeQuery(query), normalizeQuery(expected))
-		test.S(t).ExpectTrue(reflect.DeepEqual(sharedArgs, []interface{}{3, "testname", 17, 23}))
-		test.S(t).ExpectTrue(reflect.DeepEqual(uniqueKeyArgs, []interface{}{3}))
-	}
+	//{
+	//	sharedColumns := common.NewColumnList([]string{"id", "name", "position", "age"})
+	//	uniqueKeyColumns := common.NewColumnList([]string{"position", "name"})
+	//	query, sharedArgs, uniqueKeyArgs, err := BuildDMLUpdateQuery(databaseName, tableName, tableColumns, sharedColumns, sharedColumns, uniqueKeyColumns, valueArgs, whereArgs)
+	//	test.S(t).ExpectNil(err)
+	//	expected := `
+	//		update /* udup mydb.tbl */
+	//		  mydb.tbl
+	//				set id=?, name=?, position=?, age=?
+	//			where
+	//				((position = ?) and (name = ?))
+	//	`
+	//	test.S(t).ExpectEquals(normalizeQuery(query), normalizeQuery(expected))
+	//	test.S(t).ExpectTrue(reflect.DeepEqual(sharedArgs, []interface{}{3, "testname", 17, 23}))
+	//	test.S(t).ExpectTrue(reflect.DeepEqual(uniqueKeyArgs, []interface{}{17, "testname"}))
+	//}
+	//{
+	//	sharedColumns := common.NewColumnList([]string{"id", "name", "position", "age"})
+	//	uniqueKeyColumns := common.NewColumnList([]string{"age"})
+	//	query, sharedArgs, uniqueKeyArgs, err := BuildDMLUpdateQuery(databaseName, tableName, tableColumns, sharedColumns, sharedColumns, uniqueKeyColumns, valueArgs, whereArgs)
+	//	test.S(t).ExpectNil(err)
+	//	expected := `
+	//		update /* udup mydb.tbl */
+	//		  mydb.tbl
+	//				set id=?, name=?, position=?, age=?
+	//			where
+	//				((age = ?))
+	//	`
+	//	test.S(t).ExpectEquals(normalizeQuery(query), normalizeQuery(expected))
+	//	test.S(t).ExpectTrue(reflect.DeepEqual(sharedArgs, []interface{}{3, "testname", 17, 23}))
+	//	test.S(t).ExpectTrue(reflect.DeepEqual(uniqueKeyArgs, []interface{}{56}))
+	//}
+	//{
+	//	sharedColumns := common.NewColumnList([]string{"id", "name", "position", "age"})
+	//	uniqueKeyColumns := common.NewColumnList([]string{"age", "position", "id", "name"})
+	//	query, sharedArgs, uniqueKeyArgs, err := BuildDMLUpdateQuery(databaseName, tableName, tableColumns, sharedColumns, sharedColumns, uniqueKeyColumns, valueArgs, whereArgs)
+	//	test.S(t).ExpectNil(err)
+	//	expected := `
+	//		update /* udup mydb.tbl */
+	//		  mydb.tbl
+	//				set id=?, name=?, position=?, age=?
+	//			where
+	//				((age = ?) and (position = ?) and (id = ?) and (name = ?))
+	//	`
+	//	test.S(t).ExpectEquals(normalizeQuery(query), normalizeQuery(expected))
+	//	test.S(t).ExpectTrue(reflect.DeepEqual(sharedArgs, []interface{}{3, "testname", 17, 23}))
+	//	test.S(t).ExpectTrue(reflect.DeepEqual(uniqueKeyArgs, []interface{}{56, 17, 3, "testname"}))
+	//}
+	//{
+	//	sharedColumns := common.NewColumnList([]string{"id", "name", "position", "age"})
+	//	uniqueKeyColumns := common.NewColumnList([]string{"age", "surprise"})
+	//	_, _, _, err := BuildDMLUpdateQuery(databaseName, tableName, tableColumns, sharedColumns, sharedColumns, uniqueKeyColumns, valueArgs, whereArgs)
+	//	test.S(t).ExpectNotNil(err)
+	//}
+	//{
+	//	sharedColumns := common.NewColumnList([]string{"id", "name", "position", "age"})
+	//	uniqueKeyColumns := common.NewColumnList([]string{})
+	//	_, _, _, err := BuildDMLUpdateQuery(databaseName, tableName, tableColumns, sharedColumns, sharedColumns, uniqueKeyColumns, valueArgs, whereArgs)
+	//	test.S(t).ExpectNotNil(err)
+	//}
+	//{
+	//	sharedColumns := common.NewColumnList([]string{"id", "name", "position", "age"})
+	//	mappedColumns := common.NewColumnList([]string{"id", "name", "role", "age"})
+	//	uniqueKeyColumns := common.NewColumnList([]string{"id"})
+	//	query, sharedArgs, uniqueKeyArgs, err := BuildDMLUpdateQuery(databaseName, tableName, tableColumns, sharedColumns, mappedColumns, uniqueKeyColumns, valueArgs, whereArgs)
+	//	test.S(t).ExpectNil(err)
+	//	expected := `
+	//		update /* udup mydb.tbl */
+	//		  mydb.tbl
+	//				set id=?, name=?, role=?, age=?
+	//			where
+	//				((id = ?))
+	//	`
+	//	test.S(t).ExpectEquals(normalizeQuery(query), normalizeQuery(expected))
+	//	test.S(t).ExpectTrue(reflect.DeepEqual(sharedArgs, []interface{}{3, "testname", 17, 23}))
+	//	test.S(t).ExpectTrue(reflect.DeepEqual(uniqueKeyArgs, []interface{}{3}))
+	//}
 }
 
 func TestBuildDMLUpdateQuerySignedUnsigned(t *testing.T) {
 	databaseName := "mydb"
 	tableName := "tbl"
-	tableColumns := NewColumnList([]string{"id", "name", "rank", "position", "age"})
+
 	valueArgs := []interface{}{3, "testname", "newval", int8(-17), int8(-2)}
 	whereArgs := []interface{}{3, "testname", "findme", int8(-3), 56}
-	sharedColumns := NewColumnList([]string{"id", "name", "position", "age"})
-	uniqueKeyColumns := NewColumnList([]string{"position"})
 	{
-		// test signed
-		query, sharedArgs, uniqueKeyArgs, err := BuildDMLUpdateQuery(databaseName, tableName, tableColumns, sharedColumns, sharedColumns, uniqueKeyColumns, valueArgs, whereArgs)
+		tableColumns := common.NewColumnList([]mysqlconfig.Column{
+			{
+				RawName:            "id",
+				EscapedName:        "id",
+				IsUnsigned:         false,
+				Charset:            "",
+				Type:               0,
+				Default:            nil,
+				ColumnType:         "",
+				Key:                "",
+				TimezoneConversion: nil,
+				Nullable:           false,
+				Precision:          0,
+				Scale:              0,
+			}, {
+				RawName:            "name",
+				EscapedName:        "name",
+				IsUnsigned:         false,
+				Charset:            "",
+				Type:               0,
+				Default:            nil,
+				ColumnType:         "",
+				Key:                "",
+				TimezoneConversion: nil,
+				Nullable:           false,
+				Precision:          0,
+				Scale:              0,
+			}, {
+				RawName:            "rank",
+				EscapedName:        "rank",
+				IsUnsigned:         false,
+				Charset:            "",
+				Type:               0,
+				Default:            nil,
+				ColumnType:         "",
+				Key:                "",
+				TimezoneConversion: nil,
+				Nullable:           false,
+				Precision:          0,
+				Scale:              0,
+			}, {
+				RawName:            "position",
+				EscapedName:        "position",
+				IsUnsigned:         false,
+				Charset:            "",
+				Type:               0,
+				Default:            nil,
+				ColumnType:         "",
+				Key:                "PRI",
+				TimezoneConversion: nil,
+				Nullable:           false,
+				Precision:          0,
+				Scale:              0,
+			}, {
+				RawName:            "age",
+				EscapedName:        "age",
+				IsUnsigned:         false,
+				Charset:            "",
+				Type:               0,
+				Default:            nil,
+				ColumnType:         "",
+				Key:                "",
+				TimezoneConversion: nil,
+				Nullable:           false,
+				Precision:          0,
+				Scale:              0,
+			},
+		})
+		query, sharedArgs, uniqueKeyArgs, _, err := BuildDMLUpdateQuery(databaseName, tableName, tableColumns, tableColumns, tableColumns, tableColumns, valueArgs, whereArgs)
 		test.S(t).ExpectNil(err)
 		expected := `
-			update /* udup mydb.tbl */
-			  mydb.tbl
-					set id=?, name=?, position=?, age=?
+			update
+					mydb.tbl
+				set
+					id=?, name=?, rank=?, position=?, age=?
 				where
 					((position = ?))
+				limit 1
 		`
 		test.S(t).ExpectEquals(normalizeQuery(query), normalizeQuery(expected))
-		test.S(t).ExpectTrue(reflect.DeepEqual(sharedArgs, []interface{}{3, "testname", int8(-17), int8(-2)}))
+		test.S(t).ExpectTrue(reflect.DeepEqual(sharedArgs, []interface{}{3, "testname", "newval", int8(-17), int8(-2)}))
 		test.S(t).ExpectTrue(reflect.DeepEqual(uniqueKeyArgs, []interface{}{int8(-3)}))
 	}
 	{
+		tableColumns := common.NewColumnList([]mysqlconfig.Column{
+			{
+				RawName:            "id",
+				EscapedName:        "id",
+				IsUnsigned:         false,
+				Charset:            "",
+				Type:               0,
+				Default:            nil,
+				ColumnType:         "",
+				Key:                "",
+				TimezoneConversion: nil,
+				Nullable:           false,
+				Precision:          0,
+				Scale:              0,
+			}, {
+				RawName:            "name",
+				EscapedName:        "name",
+				IsUnsigned:         false,
+				Charset:            "",
+				Type:               0,
+				Default:            nil,
+				ColumnType:         "",
+				Key:                "",
+				TimezoneConversion: nil,
+				Nullable:           false,
+				Precision:          0,
+				Scale:              0,
+			}, {
+				RawName:            "rank",
+				EscapedName:        "rank",
+				IsUnsigned:         false,
+				Charset:            "",
+				Type:               0,
+				Default:            nil,
+				ColumnType:         "",
+				Key:                "",
+				TimezoneConversion: nil,
+				Nullable:           false,
+				Precision:          0,
+				Scale:              0,
+			}, {
+				RawName:            "position",
+				EscapedName:        "position",
+				IsUnsigned:         false,
+				Charset:            "",
+				Type:               0,
+				Default:            nil,
+				ColumnType:         "",
+				Key:                "PRI",
+				TimezoneConversion: nil,
+				Nullable:           false,
+				Precision:          0,
+				Scale:              0,
+			}, {
+				RawName:            "age",
+				EscapedName:        "age",
+				IsUnsigned:         false,
+				Charset:            "",
+				Type:               0,
+				Default:            nil,
+				ColumnType:         "",
+				Key:                "",
+				TimezoneConversion: nil,
+				Nullable:           false,
+				Precision:          0,
+				Scale:              0,
+			},
+		})
 		// test unsigned
-		sharedColumns.SetUnsigned("age")
-		uniqueKeyColumns.SetUnsigned("position")
-		query, sharedArgs, uniqueKeyArgs, err := BuildDMLUpdateQuery(databaseName, tableName, tableColumns, sharedColumns, sharedColumns, uniqueKeyColumns, valueArgs, whereArgs)
+		tableColumns.SetUnsigned("age")
+		tableColumns.SetUnsigned("position")
+		query, sharedArgs, uniqueKeyArgs, _, err := BuildDMLUpdateQuery(databaseName, tableName, tableColumns, tableColumns, tableColumns, tableColumns, valueArgs, whereArgs)
 		test.S(t).ExpectNil(err)
 		expected := `
-			update /* udup mydb.tbl */
+			update
 			  mydb.tbl
-					set id=?, name=?, position=?, age=?
+				set
+					id=?, name=?, rank=?, position=?, age=?
 				where
 					((position = ?))
+				limit 1
 		`
 		test.S(t).ExpectEquals(normalizeQuery(query), normalizeQuery(expected))
-		test.S(t).ExpectTrue(reflect.DeepEqual(sharedArgs, []interface{}{3, "testname", int8(-17), uint8(254)}))
+		test.S(t).ExpectTrue(reflect.DeepEqual(sharedArgs, []interface{}{3, "testname", "newval", uint8(239), uint8(254)}))
 		test.S(t).ExpectTrue(reflect.DeepEqual(uniqueKeyArgs, []interface{}{uint8(253)}))
 	}
 }
