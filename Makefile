@@ -64,6 +64,8 @@ package: package-common
       --after-install ../misc/post-install.sh \
       --before-remove ../misc/pre-remove.sh \
       --after-remove ../misc/post-remove.sh \
+      --before-upgrade ../misc/pre-upgrade.sh \
+      --after-upgrade ../misc/post-upgrade.sh \
       --depends iproute
 	cd dist && md5sum $(PROJECT_NAME)-$(VERSION)-1.x86_64.rpm > $(PROJECT_NAME)-$(VERSION).x86_64.rpm.md5
 
