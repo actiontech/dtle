@@ -447,7 +447,7 @@ func getTaskDetailStatusFromAllocInfo(nomadAllocation nomadApi.Allocation, taskN
 			newAlloc.TaskStatus.TaskEvents = append(newAlloc.TaskStatus.TaskEvents, models.TaskEvent{
 				EventType:  e.Type,
 				SetupError: e.SetupError,
-				Message:    e.Message,
+				Message:    e.DisplayMessage,
 				Time:       time.Unix(0, e.Time).In(time.Local).Format(time.RFC3339),
 			})
 		}
