@@ -329,6 +329,7 @@ func (a *ApplierIncr) heterogeneousReplay() {
 
 			for _, entry := range binlogEntries.Entries {
 				a.binlogEntryQueue <- entry
+				atomic.AddInt64(a.memory2, int64(entry.Size()))
 			}
 
 		case <-t.C:

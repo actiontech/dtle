@@ -502,11 +502,14 @@ func (a *Applier) subscribeNats() (err error) {
 			}
 			a.logger.Debug("incr. after publish nats reply.")
 		} else {
+			bs := incrNMM.GetBytes()
 			select {
 			case <-a.shutdownCh:
 				return
-			case a.ai.incrBytesQueue <- incrNMM.GetBytes():
+			case a.ai.incrBytesQueue <- bs:
+				atomic.AddInt64(a.memory2, int64(len(bs)))
 				incrNMM.Reset()
+
 				a.logger.Debug("incr. incrBytesQueue enqueued", "vacancy", cap(a.ai.incrBytesQueue) - len(a.ai.incrBytesQueue))
 
 				if err := a.natsConn.Publish(m.Reply, nil); err != nil {
