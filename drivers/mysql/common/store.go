@@ -38,7 +38,7 @@ func (sm *StoreManager) DestroyJob(jobName string) error {
 	if nil != err && store.ErrKeyNotFound != err {
 		return err
 	}
-	key = fmt.Sprintf("dtle/JobStatus/%v", jobName)
+	key = fmt.Sprintf("dtleJobStatus/%v", jobName)
 	err = sm.consulStore.DeleteTree(key)
 	if nil != err && store.ErrKeyNotFound != err {
 		return err
@@ -247,7 +247,7 @@ func (sm *StoreManager) WaitKv(subject string, key string, stopCh chan struct{})
 }
 
 func (sm *StoreManager) PutJobPauseStatus(jobName string, isPaused bool) error {
-	url := fmt.Sprintf("dtle/JobStatus/%v", jobName)
+	url := fmt.Sprintf("dtleJobStatus/%v", jobName)
 	status := ""
 	if isPaused {
 		status = DtleJobStatusPaused
@@ -258,7 +258,7 @@ func (sm *StoreManager) PutJobPauseStatus(jobName string, isPaused bool) error {
 }
 
 func (sm *StoreManager) GetJobPauseStatusIfExist(jobName string) (isExisted, isPaused bool, err error) {
-	key := fmt.Sprintf("dtle/JobStatus/%v", jobName)
+	key := fmt.Sprintf("dtleJobStatus/%v", jobName)
 	isExisted, err = sm.consulStore.Exists(key)
 	if nil != err {
 		return false, false, fmt.Errorf("verify key %v from consul failed: %v", key, err)
