@@ -459,6 +459,7 @@ func (d *Driver) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHandle, *drive
 	d.tasks.Set(cfg.ID, h)
 	AllocIdTaskNameToTaskHandler.Set(cfg.AllocID, cfg.Name, cfg.ID, h)
 
+	isPaused := false
 	{
 		ctx := &common.ExecContext{
 			Subject:  cfg.JobName,
@@ -489,7 +490,8 @@ func (d *Driver) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHandle, *drive
 			return nil, nil, fmt.Errorf("unknown processor type: %+v", cfg.TaskGroupName)
 		}
 
-		existed, _, err := d.storeManager.GetJobPauseStatusIfExist(ctx.Subject)
+		existed := false
+		existed, isPaused, err = d.storeManager.GetJobPauseStatusIfExist(ctx.Subject)
 		if nil != err {
 			return nil, nil, fmt.Errorf("get pause status from consul failed : %v", err)
 		}
@@ -500,7 +502,7 @@ func (d *Driver) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHandle, *drive
 			}
 		}
 	}
-	go h.run(d)
+	go h.run(d, isPaused, cfg.Name)
 
 	return handle, nil, nil
 }
@@ -703,9 +705,10 @@ func (d *Driver) SignalTask(taskID string, signal string) error {
 			return errors.New(string(bs))
 		}
 	case "pause":
-		return d.tasks.store[taskID].runner.Pause()
+		d.tasks.store[taskID].runner.Pause()
+		return nil
 	case "resume":
-		go d.tasks.store[taskID].runner.Resume()
+		d.tasks.store[taskID].runner.Resume()
 		return nil
 	default:
 		return nil

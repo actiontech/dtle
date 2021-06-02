@@ -138,24 +138,6 @@ func NewExtractor(execCtx *common.ExecContext, cfg *common.MySQLDriverConfig, lo
 
 // Run executes the complete extract logic.
 func (e *Extractor) Run() {
-	// when nomad reschedule job, the job should run if it is paused
-	{
-		isPaused, err := common.GetPausedStatusFromConsul(e.storeManager, e.subject)
-		if nil != err {
-			e.onError(TaskStateDead, errors.Wrap(err, "GetJobPauseStatusIfExist"))
-			return
-		}
-		e.isPaused = isPaused
-
-		if e.isPaused {
-			e.logger.Info("the task will be paused", "jobName", e.subject)
-			if err := e.Pause(); nil != err {
-				e.onError(TaskStateDead, errors.Wrap(err, "pause task failed"))
-			}
-			return
-		}
-	}
-
 	var err error
 
 	e.logger.Debug("consul put ReplChanBufferSize")
@@ -1526,14 +1508,14 @@ func (e *Extractor) Resume() {
 	return
 }
 
-func (e *Extractor) Pause() error {
+func (e *Extractor) Pause() {
 	e.logger.Info("pause task")
 	if err := e.Shutdown(); nil != err {
 		e.onError(TaskStateDead, errors.Wrap(err, "pause task, shutdown failed"))
-		return err
+		return
 	}
 	e.isPaused = true
-	return nil
+	return
 }
 
 func (e *Extractor) sendFullComplete() (err error) {
