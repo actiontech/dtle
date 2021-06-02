@@ -50,7 +50,9 @@ func (sm *StoreManager) SaveGtidForJob(jobName string, gtid string) error {
 	err := sm.consulStore.Put(key, []byte(gtid), nil)
 	return err
 }
+
 const binlogFilePosSeparator = "//dtle//"
+
 func (sm *StoreManager) SaveBinlogFilePosForJob(jobName string, file string, pos int) error {
 	key := fmt.Sprintf("dtle/%v/BinlogFilePos", jobName)
 	s := fmt.Sprintf("%v%v%v", file, binlogFilePosSeparator, pos)
@@ -245,12 +247,18 @@ func (sm *StoreManager) WaitKv(subject string, key string, stopCh chan struct{})
 }
 
 func (sm *StoreManager) PutJobPauseStatus(jobName string, isPaused bool) error {
-	url := fmt.Sprintf("dtle/JobStatus/%v/IsPaused", jobName)
-	return sm.consulStore.Put(url, []byte(strconv.FormatBool(isPaused)), nil)
+	url := fmt.Sprintf("dtle/JobStatus/%v", jobName)
+	status := ""
+	if isPaused {
+		status = DtleJobStatusPaused
+	} else {
+		status = DtleJobStatusNonPaused
+	}
+	return sm.consulStore.Put(url, []byte(status), nil)
 }
 
 func (sm *StoreManager) GetJobPauseStatusIfExist(jobName string) (isExisted, isPaused bool, err error) {
-	key := fmt.Sprintf("dtle/JobStatus/%v/IsPaused", jobName)
+	key := fmt.Sprintf("dtle/JobStatus/%v", jobName)
 	isExisted, err = sm.consulStore.Exists(key)
 	if nil != err {
 		return false, false, fmt.Errorf("verify key %v from consul failed: %v", key, err)
@@ -264,9 +272,11 @@ func (sm *StoreManager) GetJobPauseStatusIfExist(jobName string) (isExisted, isP
 	if nil != err {
 		return false, false, fmt.Errorf("get %v from consul failed: %v", key, err)
 	}
-	isPaused, err = strconv.ParseBool(string(kp.Value))
-	if nil != err {
-		return false, false, fmt.Errorf("parse value of key %v from consul failed: %v", key, err)
+	jobStatus := string(kp.Value)
+	if jobStatus == DtleJobStatusPaused {
+		isPaused = true
+	} else {
+		isPaused = false
 	}
 	return true, isPaused, nil
 }
