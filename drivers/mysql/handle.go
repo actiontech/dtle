@@ -78,7 +78,7 @@ func (h *taskHandle) IsRunning() bool {
 	return h.procState == drivers.TaskStateRunning
 }
 
-func (h *taskHandle) run(d *Driver) {
+func (h *taskHandle) run(d *Driver, isPaused bool, jobName string) {
 	h.stateLock.Lock()
 	if h.exitResult == nil {
 		h.exitResult = &drivers.ExitResult{}
@@ -86,7 +86,13 @@ func (h *taskHandle) run(d *Driver) {
 	h.procState = drivers.TaskStateRunning
 	h.stateLock.Unlock()
 
-	go h.runner.Run()
+	if isPaused {
+		// when nomad reschedule job, the job should run if it is paused
+		h.logger.Info("the job will be paused", "jobName", jobName)
+		h.runner.Pause()
+	} else {
+		go h.runner.Run()
+	}
 
 	go func() {
 		duration := time.Duration(d.config.StatsCollectionInterval) * time.Second

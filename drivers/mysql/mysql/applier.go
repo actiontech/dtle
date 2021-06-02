@@ -203,24 +203,6 @@ func (a *Applier) updateGtidLoop() {
 
 // Run executes the complete apply logic.
 func (a *Applier) Run() {
-	// when nomad reschedule job, the job should run if it is paused
-	{
-		isPaused, err := common.GetPausedStatusFromConsul(a.storeManager, a.subject)
-		if nil != err {
-			a.onError(TaskStateDead, errors.Wrap(err, "GetJobPauseStatusIfExist"))
-			return
-		}
-		a.isPaused = isPaused
-
-		if a.isPaused {
-			a.logger.Info("the task will be paused", "jobName", a.subject)
-			if err := a.Pause(); nil != err {
-				a.onError(TaskStateDead, errors.Wrap(err, "pause task failed"))
-			}
-			return
-		}
-	}
-
 	var err error
 
 	{
@@ -987,12 +969,12 @@ func (a *Applier) Resume() {
 	return
 }
 
-func (a *Applier) Pause() error {
+func (a *Applier) Pause() {
 	a.logger.Info("pause task")
 	if err := a.Shutdown(); nil != err {
 		a.onError(TaskStateDead, errors.Wrap(err, "pause task, shutdown failed"))
-		return err
+		return
 	}
 	a.isPaused = true
-	return nil
+	return
 }
