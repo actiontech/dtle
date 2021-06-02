@@ -316,14 +316,15 @@ func (a *Applier) doFullCopy() {
 	}()
 
 	var stopLoop = false
+	t10 := time.NewTicker(10 * time.Second)
+	defer t10.Stop()
+	hasEntry := false
 	for !stopLoop && !a.shutdown {
-		t10 := time.NewTimer(10 * time.Second)
-
 		select {
 		case <-a.shutdownCh:
 			stopLoop = true
-
 		case bs := <-a.fullBytesQueue:
+			hasEntry = true
 			atomic.AddInt64(a.memory1, -int64(len(bs)))
 
 			copyRows := &common.DumpEntry{}
@@ -341,9 +342,11 @@ func (a *Applier) doFullCopy() {
 			a.logger.Info("doFullCopy: loop: rowCopyComplete")
 			stopLoop = true
 		case <-t10.C:
-			a.logger.Debug("no copyRows for 10s.")
+			if !hasEntry {
+				a.logger.Debug("no copyRows for 10s.")
+			}
+			hasEntry = false
 		}
-		t10.Stop()
 	}
 }
 

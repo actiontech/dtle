@@ -160,12 +160,16 @@ func (a *ApplierIncr) MtsWorker(workerIndex int) {
 	keepLoop := true
 
 	logger := a.logger.With("worker", workerIndex)
+
+	t := time.NewTicker(pingInterval)
+	defer t.Stop()
+	hasEntry := false
 	for keepLoop {
-		timer := time.NewTimer(pingInterval)
 		select {
 		case <-a.shutdownCh:
 			keepLoop = false
 		case entryContext := <-a.applyBinlogMtsTxQueue:
+			hasEntry = true
 			logger.Debug("a binlogEntry MTS dequeue", "gno", entryContext.Entry.Coordinates.GNO)
 			if err := a.ApplyBinlogEvent(workerIndex, entryContext); err != nil {
 				a.OnError(TaskStateDead, err) // TODO coordinate with other goroutine
@@ -174,15 +178,17 @@ func (a *ApplierIncr) MtsWorker(workerIndex int) {
 				// do nothing
 			}
 			logger.Debug("after ApplyBinlogEvent.", "gno", entryContext.Entry.Coordinates.GNO)
-		case <-timer.C:
-			err := a.dbs[workerIndex].Db.PingContext(context.Background())
-			if err != nil {
-				logger.Error("bad connection for mts worker.", "err", err, "index", workerIndex)
-				a.OnError(TaskStateDead, errors.Wrap(err, "mts worker"))
-				keepLoop = false
+		case <-t.C:
+			if !hasEntry {
+				err := a.dbs[workerIndex].Db.PingContext(context.Background())
+				if err != nil {
+					logger.Error("bad connection for mts worker.", "err", err, "index", workerIndex)
+					a.OnError(TaskStateDead, errors.Wrap(err, "mts worker"))
+					keepLoop = false
+				}
 			}
+			hasEntry = false
 		}
-		timer.Stop()
 	}
 }
 
@@ -308,18 +314,17 @@ func (a *ApplierIncr) heterogeneousReplay() {
 		}
 	}()
 
-	t := time.NewTimer(10 * time.Second)
+	t := time.NewTicker(10 * time.Second)
+	defer t.Stop()
+	hasEntry := false
 	for {
 		select {
 		case <-a.shutdownCh:
 			return
 
 		case bs := <-a.incrBytesQueue:
-			if !t.Stop() {
-				<-t.C
-			}
-
 			atomic.AddInt64(a.memory2, -int64(len(bs)))
+			hasEntry = true
 
 			binlogEntries := &common.BinlogEntries{}
 			if err := common.Decode(bs, binlogEntries); err != nil {
@@ -333,9 +338,11 @@ func (a *ApplierIncr) heterogeneousReplay() {
 			}
 
 		case <-t.C:
-			a.logger.Debug("no binlogEntry for 10s")
+			if !hasEntry {
+				a.logger.Debug("no binlogEntry for 10s")
+			}
+			hasEntry = false
 		}
-		t.Reset(10 * time.Second)
 	}
 }
 

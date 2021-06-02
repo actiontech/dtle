@@ -201,18 +201,17 @@ func (d *dumper) getChunkData() (nRows int64, err error) {
 		}
 
 		keepGoing := true
-		timer := time.NewTimer(pingInterval)
+		timer := time.NewTicker(pingInterval)
+		defer timer.Stop()
 		for keepGoing {
 			select {
+			case <-d.shutdownCh:
+				keepGoing = false
 			case d.resultsChannel <- entry:
 				atomic.AddInt64(d.memory, int64(entry.Size()))
 				//d.logger.Debug("*** memory", "memory", atomic.LoadInt64(d.memory))
-				if !timer.Stop() {
-					<-timer.C
-				}
 				keepGoing = false
 			case <-timer.C:
-				timer.Reset(pingInterval)
 				d.logger.Debug("resultsChannel full. waiting and ping conn")
 				var dummy int
 				errPing := d.db.QueryRow("select 1").Scan(&dummy)

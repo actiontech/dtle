@@ -99,7 +99,8 @@ func (t *TableContext) WhereTrue(values *ColumnValues) (bool, error) {
 	for field, idx := range t.WhereCtx.FieldsMap {
 		nCols := len(values.AbstractValues)
 		if idx >= nCols {
-			return false, fmt.Errorf("cannot eval 'where' predicate: no enough columns (%v < %v)", nCols, idx)
+			return false, fmt.Errorf("cannot eval 'where' predicate: no enough columns (%v < %v). table %v.%v",
+				nCols, idx, t.Table.TableSchema, t.Table.TableName)
 		}
 
 		//fmt.Printf("**** type of %v %T\n", field, *values.ValuesPointers[idx])
@@ -113,7 +114,8 @@ func (t *TableContext) WhereTrue(values *ColumnValues) (bool, error) {
 				bs, ok := rawValue.([]byte)
 				if !ok {
 					return false,
-						fmt.Errorf("where_predicate. expect []byte for TextColumnType, but got %T", rawValue)
+						fmt.Errorf("where_predicate. expect []byte for TextColumnType, but got %T. table %v.%v",
+							rawValue, t.Table.TableSchema, t.Table.TableName)
 				}
 				value = string(bs)
 			default:
