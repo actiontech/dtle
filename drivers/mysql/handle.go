@@ -198,7 +198,7 @@ type DriverHandle interface {
 	// Stats returns aggregated stats of the driver
 	Stats() (*common.TaskStatistics, error)
 
-	Pause() error
+	Pause()
 
 	Resume()
 }

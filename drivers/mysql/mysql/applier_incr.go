@@ -55,6 +55,8 @@ type ApplierIncr struct {
 
 	prevDDL             bool
 	replayingBinlogFile string
+
+	wg sync.WaitGroup
 }
 
 func NewApplierIncr(subject string, mysqlContext *common.MySQLDriverConfig,
@@ -289,7 +291,12 @@ func (a *ApplierIncr) handleEntry(entryCtx *common.BinlogEntryContext) (err erro
 }
 
 func (a *ApplierIncr) heterogeneousReplay() {
+	a.wg.Add(1)
+	defer a.wg.Done()
+
+	a.wg.Add(1)
 	go func() {
+		defer a.wg.Done()
 		for {
 			select {
 			case <-a.shutdownCh:
