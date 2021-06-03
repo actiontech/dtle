@@ -79,6 +79,10 @@ type KafkaRunner struct {
 	// might send _full_complete before the entry has been executed.
 	fullWg sync.WaitGroup
 
+	// we need to close all data channel while pausing task runner. and these data channel will be recreate when restart the runner.
+	// to avoid writing empty channel, we need to wait for all goroutines that deal with data channels finishing. processWg is used for the waiting.
+	processWg sync.WaitGroup
+
 	timestampCtx *mysql.TimestampContext
 	memory1      *int64
 	memory2      *int64
@@ -101,13 +105,12 @@ func NewKafkaRunner(execCtx *common.ExecContext, cfg *common.KafkaConfig, logger
 		tables:       make(map[string](map[string]*KafkaTableItem)),
 		storeManager: storeManager,
 
-		chDumpEntry:     make(chan *common.DumpEntry, 2),
-		chBinlogEntries: make(chan *common.BinlogEntries, 2),
-
 		memory1:  new(int64),
 		memory2:  new(int64),
 		printTps: os.Getenv(g.ENV_PRINT_TPS) != "",
 	}
+
+	kr.chDumpEntry, kr.chBinlogEntries = kr.newDataChannel()
 	kr.timestampCtx = mysql.NewTimestampContext(kr.shutdownCh, kr.logger, func() bool {
 		return len(kr.chBinlogEntries) == 0
 	})
@@ -148,6 +151,12 @@ func (kr *KafkaRunner) Shutdown() error {
 	kr.shutdown = true
 	close(kr.shutdownCh)
 
+	// close data channel
+	{
+		close(kr.chDumpEntry)
+		close(kr.chBinlogEntries)
+	}
+
 	kr.logger.Info("Shutting down")
 	return nil
 }
@@ -159,6 +168,10 @@ func (kr *KafkaRunner) Resume() {
 	}
 	kr.shutdown = false
 	kr.shutdownCh = make(chan struct{})
+
+	// reset data channel to make sure the task begin with empty channel
+	kr.chDumpEntry, kr.chBinlogEntries = kr.newDataChannel()
+
 	go kr.Run()
 	kr.isPaused = false
 	return
@@ -336,6 +349,8 @@ func (kr *KafkaRunner) getOrSetTable(schemaName string, tableName string,
 }
 
 func (kr *KafkaRunner) handleFullCopy() {
+	kr.processWg.Add(1)
+	defer kr.processWg.Done()
 	for !kr.shutdown {
 		var dumpData *common.DumpEntry
 		select {
@@ -380,6 +395,10 @@ func (kr *KafkaRunner) handleFullCopy() {
 }
 func (kr *KafkaRunner) handleIncr() {
 	kr.logger.Debug("handleIncr")
+
+	kr.processWg.Add(1)
+	defer kr.processWg.Done()
+
 	var err error
 	groupTimeoutDuration := time.Duration(kr.kafkaConfig.MessageGroupTimeout) * time.Millisecond
 	var entriesSize uint64
@@ -1071,6 +1090,12 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQueries(dmlEntries []*common.Binlog
 
 	kr.logger.Debug("kafka: after kafkaTransformDMLEventQueries")
 	return nil
+}
+
+func (kr *KafkaRunner) newDataChannel() (chDumpEntry chan *common.DumpEntry, chBinlogEntries chan *common.BinlogEntries) {
+	chDumpEntry = make(chan *common.DumpEntry, 2)
+	chBinlogEntries = make(chan *common.BinlogEntries, 2)
+	return
 }
 
 func getSetValue(num int64, set string) string {
