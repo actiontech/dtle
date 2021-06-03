@@ -69,6 +69,8 @@ type Applier struct {
 
 	natsConn *gonats.Conn
 	waitCh   chan *drivers.ExitResult
+	// we need to close all data channel while pausing task runner. and these data channel will be recreate when restart the runner.
+	// to avoid writing empty channel, we need to wait for all goroutines that deal with data channels finishing. wg is used for the waiting.
 	wg       sync.WaitGroup
 
 	shutdown     bool
@@ -99,15 +101,12 @@ func NewApplier(
 
 	logger.Info("NewApplier", "job", ctx.Subject)
 
-	fullBytesQueue, dumpEntryQueue := newDataChannel()
 	a = &Applier{
 		logger:          logger.Named("applier").With("job", ctx.Subject),
 		subject:         ctx.Subject,
 		mysqlContext:    cfg,
 		NatsAddr:        natsAddr,
 		rowCopyComplete: make(chan struct{}),
-		fullBytesQueue:  fullBytesQueue,
-		dumpEntryQueue:  dumpEntryQueue,
 		waitCh:          waitCh,
 		gtidSetLock:     &sync.RWMutex{},
 		shutdownCh:      make(chan struct{}),
@@ -119,6 +118,7 @@ func NewApplier(
 		taskConfig:      taskConfig,
 	}
 
+	a.fullBytesQueue, a.dumpEntryQueue = a.newDataChannel()
 	stubFullApplyDelayStr := os.Getenv(g.ENV_FULL_APPLY_DELAY)
 	if stubFullApplyDelayStr == "" {
 		a.stubFullApplyDelay = 0
@@ -974,8 +974,8 @@ func (a *Applier) Resume() {
 	a.shutdown = false
 	a.shutdownCh = make(chan struct{})
 
-	// reset data channel
-	a.fullBytesQueue, a.dumpEntryQueue = newDataChannel()
+	// reset data channel to make sure the task begin with empty channel
+	a.fullBytesQueue, a.dumpEntryQueue = a.newDataChannel()
 
 	go a.Run()
 	a.isPaused = false
@@ -992,7 +992,7 @@ func (a *Applier) Pause() {
 	return
 }
 
-func newDataChannel() (fullBytesQueue chan []byte, dumpEntryQueue chan *common.DumpEntry) {
+func (a *Applier) newDataChannel() (fullBytesQueue chan []byte, dumpEntryQueue chan *common.DumpEntry) {
 	fullBytesQueue = make(chan []byte, 16)
 	dumpEntryQueue = make(chan *common.DumpEntry, 8)
 	return
