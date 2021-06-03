@@ -99,14 +99,15 @@ func NewApplier(
 
 	logger.Info("NewApplier", "job", ctx.Subject)
 
+	fullBytesQueue, dumpEntryQueue := newDataChannel()
 	a = &Applier{
 		logger:          logger.Named("applier").With("job", ctx.Subject),
 		subject:         ctx.Subject,
 		mysqlContext:    cfg,
 		NatsAddr:        natsAddr,
 		rowCopyComplete: make(chan struct{}),
-		fullBytesQueue:  make(chan []byte, 16),
-		dumpEntryQueue:  make(chan *common.DumpEntry, 8),
+		fullBytesQueue:  fullBytesQueue,
+		dumpEntryQueue:  dumpEntryQueue,
 		waitCh:          waitCh,
 		gtidSetLock:     &sync.RWMutex{},
 		shutdownCh:      make(chan struct{}),
@@ -133,6 +134,8 @@ func NewApplier(
 }
 
 func (a *Applier) updateGtidLoop() {
+	a.wg.Add(1)
+	defer a.wg.Done()
 	updateGtidInterval := 15 * time.Second
 	t0 := time.NewTicker(2 * time.Second)
 	t := time.NewTicker(updateGtidInterval)
@@ -288,10 +291,15 @@ func (a *Applier) Run() {
 }
 
 func (a *Applier) doFullCopy() {
+	a.wg.Add(1)
+	defer a.wg.Done()
+
 	a.mysqlContext.Stage = common.StageSlaveWaitingForWorkersToProcessQueue
 	a.logger.Info("Operating until row copy is complete")
 
+	a.wg.Add(1)
 	go func() {
+		defer a.wg.Done()
 		for {
 			select {
 			case <-a.shutdownCh:
@@ -944,6 +952,9 @@ func (a *Applier) Shutdown() error {
 	a.shutdown = true
 	close(a.shutdownCh)
 
+	a.ai.wg.Wait()
+	a.wg.Wait()
+
 	if err := sql.CloseDB(a.db); err != nil {
 		return err
 	}
@@ -951,8 +962,12 @@ func (a *Applier) Shutdown() error {
 		return err
 	}
 
-	//close(a.applyBinlogTxQueue)
-	//close(a.applyBinlogGroupTxQueue)
+	// close data channel
+	{
+		close(a.fullBytesQueue)
+		close(a.dumpEntryQueue)
+	}
+
 	a.logger.Info("Shutting down")
 	return nil
 }
@@ -964,6 +979,10 @@ func (a *Applier) Resume() {
 	}
 	a.shutdown = false
 	a.shutdownCh = make(chan struct{})
+
+	// reset data channel
+	a.fullBytesQueue, a.dumpEntryQueue = newDataChannel()
+
 	go a.Run()
 	a.isPaused = false
 	return
@@ -976,5 +995,11 @@ func (a *Applier) Pause() {
 		return
 	}
 	a.isPaused = true
+	return
+}
+
+func newDataChannel() (fullBytesQueue chan []byte, dumpEntryQueue chan *common.DumpEntry) {
+	fullBytesQueue = make(chan []byte, 16)
+	dumpEntryQueue = make(chan *common.DumpEntry, 8)
 	return
 }
