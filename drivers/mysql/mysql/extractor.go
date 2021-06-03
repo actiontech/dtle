@@ -97,7 +97,8 @@ type Extractor struct {
 
 	memory1 *int64
 	memory2 *int64
-
+	// we need to close all data channel while pausing task runner. and these data channel will be recreate when restart the runner.
+	// to avoid writing empty channel, we need to wait for all goroutines that deal with data channels finishing. wg is used for the waiting.
 	wg sync.WaitGroup
 }
 
@@ -109,7 +110,6 @@ func NewExtractor(execCtx *common.ExecContext, cfg *common.MySQLDriverConfig, lo
 		execCtx:         execCtx,
 		subject:         execCtx.Subject,
 		mysqlContext:    cfg,
-		dataChannel:     newExtractorDataChannel(cfg),
 		rowCopyComplete: make(chan bool),
 		waitCh:          waitCh,
 		shutdownCh:      make(chan struct{}),
@@ -122,7 +122,7 @@ func NewExtractor(execCtx *common.ExecContext, cfg *common.MySQLDriverConfig, lo
 		memory1:         new(int64),
 		memory2:         new(int64),
 	}
-
+	e.dataChannel = e.newDataChannel(cfg)
 	e.timestampCtx = NewTimestampContext(e.shutdownCh, e.logger, func() bool {
 		return len(e.dataChannel) == 0
 		// TODO need a more reliable method to determine queue.empty.
@@ -1519,8 +1519,8 @@ func (e *Extractor) Resume() {
 	e.shutdown = false
 	e.shutdownCh = make(chan struct{})
 
-	// reset data channel
-	e.dataChannel = newExtractorDataChannel(e.mysqlContext)
+	// reset data channel to make sure the task begin with empty channel
+	e.dataChannel = e.newDataChannel(e.mysqlContext)
 
 	go e.Run()
 	e.isPaused = false
@@ -1550,6 +1550,6 @@ func (e *Extractor) sendFullComplete() (err error) {
 	return nil
 }
 
-func newExtractorDataChannel(cfg *common.MySQLDriverConfig) chan *common.BinlogEntryContext {
+func (e *Extractor) newDataChannel(cfg *common.MySQLDriverConfig) chan *common.BinlogEntryContext {
 	return make(chan *common.BinlogEntryContext, cfg.ReplChanBufferSize*4)
 }
