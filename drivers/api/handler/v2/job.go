@@ -141,6 +141,20 @@ func createOrUpdateMysqlToMysqlJob(c echo.Context, logger hclog.Logger, jobType 
 		jobParam.DestTask.MysqlConnectionConfig.MysqlPassword = realPwd
 	}
 
+	// set default
+	if jobParam.SrcTask.ReplChanBufferSize == 0 {
+		jobParam.SrcTask.ReplChanBufferSize = common.DefaultChannelBufferSize
+	}
+	if jobParam.SrcTask.GroupMaxSize == 0 {
+		jobParam.SrcTask.GroupMaxSize = common.DefaultSrcGroupMaxSize
+	}
+	if jobParam.SrcTask.ChunkSize == 0 {
+		jobParam.SrcTask.ChunkSize = common.DefaultChunkSize
+	}
+	if jobParam.DestTask.ParallelWorkers == 0 {
+		jobParam.DestTask.ParallelWorkers = common.DefaultNumWorkers
+	}
+
 	jobId := g.StringElse(jobParam.JobId, jobParam.JobName)
 	jobId = addJobTypeToJobId(jobId, jobType)
 	nomadJob, err := convertMysqlToMysqlJobToNomadJob(failover, jobId, jobParam.JobName, jobParam.SrcTask, jobParam.DestTask)
@@ -559,6 +573,23 @@ func createOrUpdateMysqlToKafkaJob(c echo.Context, logger hclog.Logger, jobType 
 			return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("decrypt src mysql password failed: %v", err)))
 		}
 		jobParam.SrcTask.MysqlConnectionConfig.MysqlPassword = realPwd
+	}
+
+	// set default
+	if jobParam.SrcTask.ReplChanBufferSize == 0 {
+		jobParam.SrcTask.ReplChanBufferSize = common.DefaultChannelBufferSize
+	}
+	if jobParam.SrcTask.GroupMaxSize == 0 {
+		jobParam.SrcTask.GroupMaxSize = common.DefaultSrcGroupMaxSize
+	}
+	if jobParam.SrcTask.ChunkSize == 0 {
+		jobParam.SrcTask.ChunkSize = common.DefaultChunkSize
+	}
+	if jobParam.DestTask.MessageGroupMaxSize == 0 {
+		jobParam.DestTask.MessageGroupMaxSize = common.DefaultKafkaMessageGroupMaxSize
+	}
+	if jobParam.DestTask.MessageGroupTimeout == 0 {
+		jobParam.DestTask.MessageGroupTimeout = common.DefaultKafkaMessageGroupTimeout
 	}
 
 	jobId := g.StringElse(jobParam.JobId, jobParam.JobName)

@@ -8,10 +8,14 @@ import (
 )
 
 const (
-	channelBufferSize = 32
-	defaultChunkSize  = 2000
-	defaultNumWorkers = 1
-	DefaultClusterID  = "dtle-nats"
+	DefaultChannelBufferSize        = 32
+	DefaultChunkSize                = 2000
+	DefaultNumWorkers               = 1
+	DefaultClusterID                = "dtle-nats"
+	DefaultSrcGroupMaxSize          = 1
+	DefaultSrcGroupTimeout          = 100
+	DefaultKafkaMessageGroupMaxSize = 1
+	DefaultKafkaMessageGroupTimeout = 100
 
 	TaskTypeUnknown taskType = iota
 	TaskTypeSrc
@@ -60,19 +64,19 @@ type DtleTaskConfig struct {
 
 func (d *DtleTaskConfig) SetDefaultForEmpty() {
 	if d.ChunkSize <= 0 {
-		d.ChunkSize = defaultChunkSize
+		d.ChunkSize = DefaultChunkSize
 	}
 	if d.ReplChanBufferSize <= 0 {
-		d.ReplChanBufferSize = channelBufferSize
+		d.ReplChanBufferSize = DefaultChannelBufferSize
 	}
 	if d.ParallelWorkers <= 0 {
-		d.ParallelWorkers = defaultNumWorkers
+		d.ParallelWorkers = DefaultNumWorkers
 	}
 	if d.GroupMaxSize == 0 {
-		d.GroupMaxSize = 1
+		d.GroupMaxSize = DefaultSrcGroupMaxSize
 	}
 	if d.GroupTimeout == 0 {
-		d.GroupTimeout = 100
+		d.GroupTimeout = DefaultSrcGroupTimeout
 	}
 
 	if d.ConnectionConfig == nil {
@@ -84,10 +88,10 @@ func (d *DtleTaskConfig) SetDefaultForEmpty() {
 
 	if d.KafkaConfig != nil {
 		if d.KafkaConfig.MessageGroupMaxSize == 0 {
-			d.KafkaConfig.MessageGroupMaxSize = 1
+			d.KafkaConfig.MessageGroupMaxSize = DefaultKafkaMessageGroupMaxSize
 		}
 		if d.KafkaConfig.MessageGroupTimeout == 0 {
-			d.KafkaConfig.MessageGroupTimeout = 100
+			d.KafkaConfig.MessageGroupTimeout = DefaultKafkaMessageGroupTimeout
 		}
 	}
 }
