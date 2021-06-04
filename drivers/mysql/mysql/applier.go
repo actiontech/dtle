@@ -69,11 +69,14 @@ type Applier struct {
 
 	natsConn *gonats.Conn
 	waitCh   chan *drivers.ExitResult
+	// we need to close all data channel while pausing task runner. and these data channel will be recreate when restart the runner.
+	// to avoid writing closed channel, we need to wait for all goroutines that deal with data channels finishing. wg is used for the waiting.
 	wg       sync.WaitGroup
 
 	shutdown     bool
 	shutdownCh   chan struct{}
 	shutdownLock sync.Mutex
+	isPaused     bool
 
 	nDumpEntry int64
 
@@ -104,8 +107,6 @@ func NewApplier(
 		mysqlContext:    cfg,
 		NatsAddr:        natsAddr,
 		rowCopyComplete: make(chan struct{}),
-		fullBytesQueue:  make(chan []byte, 16),
-		dumpEntryQueue:  make(chan *common.DumpEntry, 8),
 		waitCh:          waitCh,
 		gtidSetLock:     &sync.RWMutex{},
 		shutdownCh:      make(chan struct{}),
@@ -117,6 +118,7 @@ func NewApplier(
 		taskConfig:      taskConfig,
 	}
 
+	a.fullBytesQueue, a.dumpEntryQueue = a.newDataChannel()
 	stubFullApplyDelayStr := os.Getenv(g.ENV_FULL_APPLY_DELAY)
 	if stubFullApplyDelayStr == "" {
 		a.stubFullApplyDelay = 0
@@ -132,6 +134,8 @@ func NewApplier(
 }
 
 func (a *Applier) updateGtidLoop() {
+	a.wg.Add(1)
+	defer a.wg.Done()
 	updateGtidInterval := 15 * time.Second
 	t0 := time.NewTicker(2 * time.Second)
 	t := time.NewTicker(updateGtidInterval)
@@ -287,10 +291,15 @@ func (a *Applier) Run() {
 }
 
 func (a *Applier) doFullCopy() {
+	a.wg.Add(1)
+	defer a.wg.Done()
+
 	a.mysqlContext.Stage = common.StageSlaveWaitingForWorkersToProcessQueue
 	a.logger.Info("Operating until row copy is complete")
 
+	a.wg.Add(1)
 	go func() {
+		defer a.wg.Done()
 		for {
 			select {
 			case <-a.shutdownCh:
@@ -383,6 +392,9 @@ func (a *Applier) subscribeNats() (err error) {
 
 	fullNMM := common.NewNatsMsgMerger(a.logger.With("nmm", "full"))
 	_, err = a.natsConn.Subscribe(fmt.Sprintf("%s_full", a.subject), func(m *gonats.Msg) {
+		a.wg.Add(1)
+		defer a.wg.Done()
+
 		a.logger.Debug("full. recv a msg.", "len", len(m.Data), "fullBytesQueue", len(a.fullBytesQueue))
 
 		select {
@@ -943,6 +955,9 @@ func (a *Applier) Shutdown() error {
 	a.shutdown = true
 	close(a.shutdownCh)
 
+	a.ai.wg.Wait()
+	a.wg.Wait()
+
 	if err := sql.CloseDB(a.db); err != nil {
 		return err
 	}
@@ -950,8 +965,44 @@ func (a *Applier) Shutdown() error {
 		return err
 	}
 
-	//close(a.applyBinlogTxQueue)
-	//close(a.applyBinlogGroupTxQueue)
+	// close data channel
+	{
+		close(a.fullBytesQueue)
+		close(a.dumpEntryQueue)
+	}
+
 	a.logger.Info("Shutting down")
 	return nil
+}
+
+func (a *Applier) Resume() {
+	a.logger.Info("resume task")
+	if !a.shutdown {
+		return
+	}
+	a.shutdown = false
+	a.shutdownCh = make(chan struct{})
+
+	// reset data channel to make sure the task begin with empty channel
+	a.fullBytesQueue, a.dumpEntryQueue = a.newDataChannel()
+
+	go a.Run()
+	a.isPaused = false
+	return
+}
+
+func (a *Applier) Pause() {
+	a.logger.Info("pause task")
+	if err := a.Shutdown(); nil != err {
+		a.onError(TaskStateDead, errors.Wrap(err, "pause task, shutdown failed"))
+		return
+	}
+	a.isPaused = true
+	return
+}
+
+func (a *Applier) newDataChannel() (fullBytesQueue chan []byte, dumpEntryQueue chan *common.DumpEntry) {
+	fullBytesQueue = make(chan []byte, 16)
+	dumpEntryQueue = make(chan *common.DumpEntry, 8)
+	return
 }

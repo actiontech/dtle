@@ -155,6 +155,11 @@ definitions:
       time:
         type: integer
     type: object
+  models.DeleteJobRespV2:
+    properties:
+      message:
+        type: string
+    type: object
   models.GetTaskProgressRespV2:
     properties:
       message:
@@ -417,6 +422,11 @@ definitions:
           $ref: '#/definitions/models.NodeListItemV2'
         type: array
     type: object
+  models.PauseJobRespV2:
+    properties:
+      message:
+        type: string
+    type: object
   models.PrivilegesValidation:
     properties:
       error:
@@ -424,6 +434,11 @@ definitions:
         type: string
       validated:
         type: boolean
+    type: object
+  models.ResumeJobRespV2:
+    properties:
+      message:
+        type: string
     type: object
   models.SchemaItem:
     properties:
@@ -554,6 +569,24 @@ definitions:
 info:
   contact: {}
 paths:
+  /v2/job/delete:
+    post:
+      consumes:
+      - application/x-www-form-urlencoded
+      description: delete job.
+      parameters:
+      - description: job id
+        in: formData
+        name: job_id
+        required: true
+        type: string
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.DeleteJobRespV2'
+      tags:
+      - job
   /v2/job/migration:
     post:
       consumes:
@@ -587,6 +620,42 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/models.MysqlToMysqlJobDetailRespV2'
+      tags:
+      - job
+  /v2/job/pause:
+    post:
+      consumes:
+      - application/x-www-form-urlencoded
+      description: pause job.
+      parameters:
+      - description: job id
+        in: formData
+        name: job_id
+        required: true
+        type: string
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.PauseJobRespV2'
+      tags:
+      - job
+  /v2/job/resume:
+    post:
+      consumes:
+      - application/x-www-form-urlencoded
+      description: resume job.
+      parameters:
+      - description: job id
+        in: formData
+        name: job_id
+        required: true
+        type: string
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.ResumeJobRespV2'
       tags:
       - job
   /v2/job/subscription:

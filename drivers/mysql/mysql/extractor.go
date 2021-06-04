@@ -81,6 +81,7 @@ type Extractor struct {
 	shutdown     bool
 	shutdownCh   chan struct{}
 	shutdownLock sync.Mutex
+	isPaused     bool
 
 	testStub1Delay int64
 
@@ -96,6 +97,9 @@ type Extractor struct {
 
 	memory1 *int64
 	memory2 *int64
+	// we need to close all data channel while pausing task runner. and these data channel will be recreate when restart the runner.
+	// to avoid writing closed channel, we need to wait for all goroutines that deal with data channels finishing. wg is used for the waiting.
+	wg sync.WaitGroup
 }
 
 func NewExtractor(execCtx *common.ExecContext, cfg *common.MySQLDriverConfig, logger hclog.Logger, storeManager *common.StoreManager, waitCh chan *drivers.ExitResult) (*Extractor, error) {
@@ -106,7 +110,6 @@ func NewExtractor(execCtx *common.ExecContext, cfg *common.MySQLDriverConfig, lo
 		execCtx:         execCtx,
 		subject:         execCtx.Subject,
 		mysqlContext:    cfg,
-		dataChannel:     make(chan *common.BinlogEntryContext, cfg.ReplChanBufferSize * 4),
 		rowCopyComplete: make(chan bool),
 		waitCh:          waitCh,
 		shutdownCh:      make(chan struct{}),
@@ -119,7 +122,7 @@ func NewExtractor(execCtx *common.ExecContext, cfg *common.MySQLDriverConfig, lo
 		memory1:         new(int64),
 		memory2:         new(int64),
 	}
-
+	e.dataChannel = e.newDataChannel(cfg)
 	e.timestampCtx = NewTimestampContext(e.shutdownCh, e.logger, func() bool {
 		return len(e.dataChannel) == 0
 		// TODO need a more reliable method to determine queue.empty.
@@ -572,7 +575,9 @@ func (e *Extractor) initNatsPubClient(natsAddr string) (err error) {
 
 // initiateStreaming begins treaming of binary log events and registers listeners for such events
 func (e *Extractor) initiateStreaming() error {
+	e.wg.Add(1)
 	go func() {
+		e.wg.Done()
 		e.logger.Info("Beginning streaming")
 		err := e.StreamEvents()
 		if err != nil {
@@ -868,8 +873,12 @@ func (tsc *TimestampContext) Handle() {
 // StreamEvents will begin streaming events. It will be blocking, so should be
 // executed by a goroutine
 func (e *Extractor) StreamEvents() error {
+	e.wg.Add(1)
 	go func() {
-		defer e.logger.Debug("StreamEvents goroutine exited")
+		defer func() {
+			e.wg.Done()
+			e.logger.Debug("StreamEvents goroutine exited")
+		}()
 		entries := common.BinlogEntries{}
 		entriesSize := 0
 		sendEntriesAndClear := func() error {
@@ -1486,14 +1495,48 @@ func (e *Extractor) Shutdown() error {
 		}
 	}
 
+	e.wg.Wait()
+
 	if err := sql.CloseDB(e.db); err != nil {
 		e.logger.Error("Shutdown error close e.db.", "err", err)
+	}
+
+	// close data channel
+	{
+		close(e.dataChannel)
 	}
 
 	//close(e.binlogChannel)
 	e.logger.Info("Shutting down")
 	return nil
 }
+
+func (e *Extractor) Resume() {
+	e.logger.Info("resume task")
+	if !e.shutdown {
+		return
+	}
+	e.shutdown = false
+	e.shutdownCh = make(chan struct{})
+
+	// reset data channel to make sure the task begin with empty channel
+	e.dataChannel = e.newDataChannel(e.mysqlContext)
+
+	go e.Run()
+	e.isPaused = false
+	return
+}
+
+func (e *Extractor) Pause() {
+	e.logger.Info("pause task")
+	if err := e.Shutdown(); nil != err {
+		e.onError(TaskStateDead, errors.Wrap(err, "pause task, shutdown failed"))
+		return
+	}
+	e.isPaused = true
+	return
+}
+
 func (e *Extractor) sendFullComplete() (err error) {
 	dumpMsg, err := common.Encode(&common.DumpStatResult{
 		Coord: e.initialBinlogCoordinates,
@@ -1505,4 +1548,8 @@ func (e *Extractor) sendFullComplete() (err error) {
 		return err
 	}
 	return nil
+}
+
+func (e *Extractor) newDataChannel(cfg *common.MySQLDriverConfig) chan *common.BinlogEntryContext {
+	return make(chan *common.BinlogEntryContext, cfg.ReplChanBufferSize*4)
 }

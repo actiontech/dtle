@@ -24,6 +24,34 @@ var doc = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
+        "/v2/job/delete": {
+            "post": {
+                "description": "delete job.",
+                "consumes": [
+                    "application/x-www-form-urlencoded"
+                ],
+                "tags": [
+                    "job"
+                ],
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "job id",
+                        "name": "job_id",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.DeleteJobRespV2"
+                        }
+                    }
+                }
+            }
+        },
         "/v2/job/migration": {
             "post": {
                 "description": "create or update migration job.",
@@ -74,6 +102,62 @@ var doc = `{
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/models.MysqlToMysqlJobDetailRespV2"
+                        }
+                    }
+                }
+            }
+        },
+        "/v2/job/pause": {
+            "post": {
+                "description": "pause job.",
+                "consumes": [
+                    "application/x-www-form-urlencoded"
+                ],
+                "tags": [
+                    "job"
+                ],
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "job id",
+                        "name": "job_id",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.PauseJobRespV2"
+                        }
+                    }
+                }
+            }
+        },
+        "/v2/job/resume": {
+            "post": {
+                "description": "resume job.",
+                "consumes": [
+                    "application/x-www-form-urlencoded"
+                ],
+                "tags": [
+                    "job"
+                ],
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "job id",
+                        "name": "job_id",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.ResumeJobRespV2"
                         }
                     }
                 }
@@ -622,6 +706,14 @@ var doc = `{
                 }
             }
         },
+        "models.DeleteJobRespV2": {
+            "type": "object",
+            "properties": {
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
         "models.GetTaskProgressRespV2": {
             "type": "object",
             "properties": {
@@ -1021,6 +1113,14 @@ var doc = `{
                 }
             }
         },
+        "models.PauseJobRespV2": {
+            "type": "object",
+            "properties": {
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
         "models.PrivilegesValidation": {
             "type": "object",
             "properties": {
@@ -1030,6 +1130,14 @@ var doc = `{
                 },
                 "validated": {
                     "type": "boolean"
+                }
+            }
+        },
+        "models.ResumeJobRespV2": {
+            "type": "object",
+            "properties": {
+                "message": {
+                    "type": "string"
                 }
             }
         },

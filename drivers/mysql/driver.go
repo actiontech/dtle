@@ -317,7 +317,7 @@ func (d *Driver) SetConfig(c *base.Config) (err error) {
 						}
 					}()
 				} else {
-					apiErr := setupApiServerFn(d.logger, d.config.ApiAddr, d.config.NomadAddr, d.config.UiDir)
+					apiErr := setupApiServerFn(d.logger, d.config.ApiAddr, d.config.NomadAddr, d.config.Consul, d.config.UiDir)
 					if apiErr != nil {
 						d.logger.Error("error in SetupApiServer", "err", err,
 							"apiAddr", d.config.ApiAddr, "nomadAddr", d.config.NomadAddr)
@@ -338,9 +338,9 @@ func (d *Driver) SetConfig(c *base.Config) (err error) {
 	return nil
 }
 
-var setupApiServerFn func(logger hclog.Logger, apiAddr, nomadAddr, uiDir string) error
+var setupApiServerFn func(logger hclog.Logger, apiAddr, nomadAddr, consulAddr, uiDir string) error
 
-func RegisterSetupApiServerFn(fn func(logger hclog.Logger, apiAddr, nomadAddr, uiDir string) error) {
+func RegisterSetupApiServerFn(fn func(logger hclog.Logger, apiAddr, nomadAddr, consulAddr, uiDir string) error) {
 	setupApiServerFn = fn
 }
 
@@ -459,6 +459,7 @@ func (d *Driver) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHandle, *drive
 	d.tasks.Set(cfg.ID, h)
 	AllocIdTaskNameToTaskHandler.Set(cfg.AllocID, cfg.Name, cfg.ID, h)
 
+	isPaused := false
 	{
 		ctx := &common.ExecContext{
 			Subject:  cfg.JobName,
@@ -489,8 +490,19 @@ func (d *Driver) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHandle, *drive
 			return nil, nil, fmt.Errorf("unknown processor type: %+v", cfg.TaskGroupName)
 		}
 
+		existed := false
+		existed, isPaused, err = d.storeManager.GetJobPauseStatusIfExist(ctx.Subject)
+		if nil != err {
+			return nil, nil, fmt.Errorf("get pause status from consul failed : %v", err)
+		}
+		if !existed {
+			d.logger.Debug("can not find pause status from consul. insert it")
+			if err := d.storeManager.PutJobPauseStatus(ctx.Subject, false); nil != err {
+				return nil, nil, fmt.Errorf("update pause status from consul failed : %v", err)
+			}
+		}
 	}
-	go h.run(d)
+	go h.run(d, isPaused, cfg.Name)
 
 	return handle, nil, nil
 }
@@ -683,8 +695,8 @@ func (d *Driver) SignalTask(taskID string, signal string) error {
 	//if h.exitResult == nil {
 	//	return nil
 	//}
-
-	if signal == "stats" {
+	switch signal {
+	case "stats":
 		if h.stats != nil {
 			bs, err := json.Marshal(h.stats)
 			if err != nil {
@@ -692,6 +704,14 @@ func (d *Driver) SignalTask(taskID string, signal string) error {
 			}
 			return errors.New(string(bs))
 		}
+	case "pause":
+		d.tasks.store[taskID].runner.Pause()
+		return nil
+	case "resume":
+		d.tasks.store[taskID].runner.Resume()
+		return nil
+	default:
+		return nil
 	}
 	return nil
 }
