@@ -80,7 +80,7 @@ type KafkaRunner struct {
 	fullWg sync.WaitGroup
 
 	// we need to close all data channel while pausing task runner. and these data channel will be recreate when restart the runner.
-	// to avoid writing empty channel, we need to wait for all goroutines that deal with data channels finishing. processWg is used for the waiting.
+	// to avoid writing closed channel, we need to wait for all goroutines that deal with data channels finishing. processWg is used for the waiting.
 	processWg sync.WaitGroup
 
 	timestampCtx *mysql.TimestampContext
@@ -483,6 +483,8 @@ func (kr *KafkaRunner) initiateStreaming() error {
 	go kr.handleIncr()
 
 	_, err = kr.natsConn.Subscribe(fmt.Sprintf("%s_full", kr.subject), func(m *gonats.Msg) {
+		kr.processWg.Add(1)
+		defer kr.processWg.Done()
 		kr.logger.Debug("recv a full msg")
 
 		kr.fullWg.Add(1)
@@ -540,6 +542,9 @@ func (kr *KafkaRunner) initiateStreaming() error {
 	}
 
 	_, err = kr.natsConn.Subscribe(fmt.Sprintf("%s_incr_hete", kr.subject), func(m *gonats.Msg) {
+		kr.processWg.Add(1)
+		defer kr.processWg.Done()
+
 		kr.logger.Debug("recv an incr_hete msg")
 
 		var binlogEntries common.BinlogEntries
