@@ -98,7 +98,7 @@ type Extractor struct {
 	memory1 *int64
 	memory2 *int64
 	// we need to close all data channel while pausing task runner. and these data channel will be recreate when restart the runner.
-	// to avoid writing empty channel, we need to wait for all goroutines that deal with data channels finishing. wg is used for the waiting.
+	// to avoid writing closed channel, we need to wait for all goroutines that deal with data channels finishing. wg is used for the waiting.
 	wg sync.WaitGroup
 }
 

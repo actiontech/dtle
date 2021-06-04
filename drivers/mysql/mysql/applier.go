@@ -70,7 +70,7 @@ type Applier struct {
 	natsConn *gonats.Conn
 	waitCh   chan *drivers.ExitResult
 	// we need to close all data channel while pausing task runner. and these data channel will be recreate when restart the runner.
-	// to avoid writing empty channel, we need to wait for all goroutines that deal with data channels finishing. wg is used for the waiting.
+	// to avoid writing closed channel, we need to wait for all goroutines that deal with data channels finishing. wg is used for the waiting.
 	wg       sync.WaitGroup
 
 	shutdown     bool
@@ -389,6 +389,9 @@ func (a *Applier) subscribeNats() (err error) {
 
 	fullNMM := common.NewNatsMsgMerger(a.logger.With("nmm", "full"))
 	_, err = a.natsConn.Subscribe(fmt.Sprintf("%s_full", a.subject), func(m *gonats.Msg) {
+		a.wg.Add(1)
+		defer a.wg.Done()
+
 		a.logger.Debug("full. recv a msg.", "len", len(m.Data), "fullBytesQueue", len(a.fullBytesQueue))
 
 		select {
