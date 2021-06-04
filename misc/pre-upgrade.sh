@@ -2,6 +2,11 @@
 
 which systemctl &>/dev/null
 if [[ $? -eq 0 ]]; then
-    systemctl stop dtle-consul
-    systemctl stop dtle-nomad
+    if [[ -f /lib/systemd/system/dtle-consul.service ]];then
+      systemctl stop dtle-consul
+    fi
+
+    if [[ -f /lib/systemd/system/dtle-consul.service ]];then
+      systemctl stop dtle-nomad
+    fi
 fi
