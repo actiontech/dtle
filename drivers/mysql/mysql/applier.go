@@ -946,21 +946,24 @@ func (a *Applier) onError(state int, err error) {
 		return
 	}
 
-	bs := []byte(err.Error())
-
 	switch state {
 	case common.TaskStateComplete:
 		a.logger.Info("Done migrating")
-	case common.TaskStateRestart:
-		if a.natsConn != nil {
-			if err := a.natsConn.Publish(fmt.Sprintf("%s_restart", a.subject), bs); err != nil {
-				a.logger.Error("when triggering extractor restart", "err", err, "state", state)
-			}
+	case common.TaskStateRestart, common.TaskStateDead:
+		msg := &common.ControlMsg{
+			Msg:  err.Error(),
+			Type: common.ControlMsgError,
 		}
-	default:
+
+		bs, err1 := msg.Marshal(nil)
+		if err1 != nil {
+			bs = nil // send zero bytes
+			a.logger.Error("onError. Marshal", "err", err1)
+		}
+
 		if a.natsConn != nil {
-			if err := a.natsConn.Publish(fmt.Sprintf("%s_error", a.subject), bs); err != nil {
-				a.logger.Error("when triggering extractor shutdown", "err", err, "state", state)
+			if err := a.natsConn.Publish(fmt.Sprintf("%s_control2", a.subject), bs); err != nil {
+				a.logger.Error("when sending control2 msg", "err", err, "state", state, "type", msg.Type)
 			}
 		}
 	}

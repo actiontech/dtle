@@ -547,21 +547,24 @@ func (kr *KafkaRunner) onError(state int, err error) {
 		return
 	}
 
-	bs := []byte(err.Error())
-
 	switch state {
 	case common.TaskStateComplete:
 		kr.logger.Info("Done migrating")
-	case common.TaskStateRestart:
-		if kr.natsConn != nil {
-			if err := kr.natsConn.Publish(fmt.Sprintf("%s_restart", kr.subject), bs); err != nil {
-				kr.logger.Error("Trigger restart", "err", err)
-			}
+	case common.TaskStateRestart, common.TaskStateDead:
+		msg := &common.ControlMsg{
+			Msg:  err.Error(),
+			Type: common.ControlMsgError,
 		}
-	default:
+
+		bs, err1 := msg.Marshal(nil)
+		if err1 != nil {
+			bs = nil // send zero bytes
+			kr.logger.Error("onError. Marshal", "err", err1)
+		}
+
 		if kr.natsConn != nil {
-			if err := kr.natsConn.Publish(fmt.Sprintf("%s_error", kr.subject), bs); err != nil {
-				kr.logger.Error("Trigger shutdown", "err", err)
+			if err := kr.natsConn.Publish(fmt.Sprintf("%s_control2", kr.subject), bs); err != nil {
+				kr.logger.Error("when sending control2 msg", "err", err)
 			}
 		}
 	}

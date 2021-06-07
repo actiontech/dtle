@@ -73,3 +73,8 @@ struct BinlogEntry {
 struct BinlogEntries {
 	Entries []*BinlogEntry
 }
+
+struct ControlMsg {
+    Type int32
+    Msg  string
+}
