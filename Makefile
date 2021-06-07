@@ -75,6 +75,12 @@ vet:
 fmt:
 	gofmt -s -w .
 
+docker_test:
+	$(DOCKER) run -v $(shell pwd)/:/universe/src/github.com/actiontech/dtle --rm $(DOCKER_IMAGE) -c "cd /universe/src/github.com/actiontech/dtle/drivers && go test -cover -v -mod=vendor ./..."
+
+test:
+	cd drivers && go test -cover -v -mod=vendor ./...
+
 mtswatcher: helper/mtswatcher/mtswatcher.go
 	GO111MODULE=on go build $(GOFLAGS) -o dist/mtswatcher ./helper/mtswatcher/mtswatcher.go
 
