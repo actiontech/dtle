@@ -22,6 +22,12 @@ const (
 	DtleJobStatusPaused    = "paused"
 )
 
+const (
+	TaskStateComplete int = iota
+	TaskStateRestart
+	TaskStateDead
+)
+
 var (
 	ErrNoConsul = fmt.Errorf("consul return nil value. check if consul is started or reachable")
 )
@@ -128,4 +134,3 @@ func UpdateGtidSet(gtidSet *mysql.MysqlGTIDSet, sid uuid.UUID, txGno int64) {
 		Stop:  txGno + 1,
 	}))
 }
-

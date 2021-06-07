@@ -41,11 +41,6 @@ const (
 	jobIncrCopy              = "job_stage_incr"
 	jobFullCopy              = "job_stage_full"
 )
-const (
-	TaskStateComplete int = iota
-	TaskStateRestart
-	TaskStateDead
-)
 
 // Applier connects and writes the the applier-server, which is the server where
 // write row data and apply binlog events onto the dest table.
@@ -165,14 +160,14 @@ func (a *Applier) updateGtidLoop() {
 			a.logger.Debug("SaveGtidForJob", "job", a.subject, "gtid", a.mysqlContext.Gtid)
 			err := a.storeManager.SaveGtidForJob(a.subject, a.mysqlContext.Gtid)
 			if err != nil {
-				a.onError(TaskStateDead, errors.Wrap(err, "SaveGtidForJob"))
+				a.onError(common.TaskStateDead, errors.Wrap(err, "SaveGtidForJob"))
 				return
 			}
 
 			err = a.storeManager.SaveBinlogFilePosForJob(a.subject,
 				a.mysqlContext.BinlogFile, int(a.mysqlContext.BinlogPos))
 			if err != nil {
-				a.onError(TaskStateDead, errors.Wrap(err, "SaveBinlogFilePosForJob"))
+				a.onError(common.TaskStateDead, errors.Wrap(err, "SaveBinlogFilePosForJob"))
 				return
 			}
 		}
@@ -211,12 +206,12 @@ func (a *Applier) Run() {
 	{
 		v, err := a.storeManager.WaitKv(a.subject, "ReplChanBufferSize", a.shutdownCh)
 		if err != nil {
-			a.onError(TaskStateDead, errors.Wrap(err, "WaitKv ReplChanBufferSize"))
+			a.onError(common.TaskStateDead, errors.Wrap(err, "WaitKv ReplChanBufferSize"))
 			return
 		}
 		i, err := strconv.Atoi(string(v))
 		if err != nil {
-			a.onError(TaskStateDead, errors.Wrap(err, "Atoi ReplChanBufferSize"))
+			a.onError(common.TaskStateDead, errors.Wrap(err, "Atoi ReplChanBufferSize"))
 			return
 		}
 		a.logger.Debug("got ReplChanBufferSize from consul", "i", i)
@@ -228,27 +223,27 @@ func (a *Applier) Run() {
 
 	err = common.GetGtidFromConsul(a.storeManager, a.subject, a.logger, a.mysqlContext)
 	if err != nil {
-		a.onError(TaskStateDead, errors.Wrap(err, "GetGtidFromConsul"))
+		a.onError(common.TaskStateDead, errors.Wrap(err, "GetGtidFromConsul"))
 		return
 	}
 
 	a.gtidSet, err = common.DtleParseMysqlGTIDSet(a.mysqlContext.Gtid)
 	if err != nil {
-		a.onError(TaskStateDead, errors.Wrap(err, "DtleParseMysqlGTIDSet"))
+		a.onError(common.TaskStateDead, errors.Wrap(err, "DtleParseMysqlGTIDSet"))
 		return
 	}
 
 	//a.logger.Debug("the connectionconfi host is ",a.mysqlContext.ConnectionConfig.Host)
 //	a.logger.Info("Apply binlog events to %s.%d", a.mysqlContext.ConnectionConfig.Host, a.mysqlContext.ConnectionConfig.Port)
 	if err := a.initDBConnections(); err != nil {
-		a.onError(TaskStateDead, err)
+		a.onError(common.TaskStateDead, err)
 		return
 	}
 
 	a.ai, err = NewApplierIncr(a.subject, a.mysqlContext, a.logger, a.gtidSet, a.memory2,
 		a.db, a.dbs, a.shutdownCh, a.gtidSetLock)
 	if err != nil {
-		a.onError(TaskStateDead, errors.Wrap(err, "NewApplierIncr"))
+		a.onError(common.TaskStateDead, errors.Wrap(err, "NewApplierIncr"))
 		return
 	}
 	a.ai.GtidUpdateHook = func(coord *common.BinlogCoordinateTx) {
@@ -258,19 +253,19 @@ func (a *Applier) Run() {
 
 	a.logger.Debug("initNatSubClient")
 	if err := a.initNatSubClient(); err != nil {
-		a.onError(TaskStateDead, err)
+		a.onError(common.TaskStateDead, err)
 		return
 	}
 	a.logger.Debug("subscribeNats")
 	if err := a.subscribeNats(); err != nil {
-		a.onError(TaskStateDead, err)
+		a.onError(common.TaskStateDead, err)
 		return
 	}
 	err = a.storeManager.DstPutNats(a.subject, a.NatsAddr, a.shutdownCh, func(err error) {
-		a.onError(TaskStateDead, errors.Wrap(err, "DstPutNats"))
+		a.onError(common.TaskStateDead, errors.Wrap(err, "DstPutNats"))
 	})
 	if err != nil {
-		a.onError(TaskStateDead, errors.Wrap(err, "DstPutNats"))
+		a.onError(common.TaskStateDead, errors.Wrap(err, "DstPutNats"))
 		return
 	}
 
@@ -285,7 +280,7 @@ func (a *Applier) Run() {
 	go func() {
 		err := a.ai.Run()
 		if err != nil {
-			a.onError(TaskStateDead, err)
+			a.onError(common.TaskStateDead, err)
 		}
 	}()
 }
@@ -307,14 +302,14 @@ func (a *Applier) doFullCopy() {
 			case copyRows := <-a.dumpEntryQueue:
 				//time.Sleep(20 * time.Second) // #348 stub
 				if err := a.ApplyEventQueries(a.db, copyRows); err != nil {
-					a.onError(TaskStateDead, err)
+					a.onError(common.TaskStateDead, err)
 					return
 				}
 				atomic.AddInt64(a.memory1, -int64(copyRows.Size()))
 				if atomic.LoadInt64(&a.nDumpEntry) <= 0 {
 					err := fmt.Errorf("DTLE_BUG a.nDumpEntry <= 0")
 					a.logger.Error(err.Error())
-					a.onError(TaskStateDead, err)
+					a.onError(common.TaskStateDead, err)
 					return
 				} else {
 					atomic.AddInt64(&a.nDumpEntry, -1)
@@ -339,7 +334,7 @@ func (a *Applier) doFullCopy() {
 			copyRows := &common.DumpEntry{}
 			err := common.Decode(bs, copyRows) // TODO decode once for discarded-resent msg
 			if err != nil {
-				a.onError(TaskStateDead, errors.Wrap(err, "DecodeDumpEntry"))
+				a.onError(common.TaskStateDead, errors.Wrap(err, "DecodeDumpEntry"))
 				return
 			}
 			a.dumpEntryQueue <- copyRows
@@ -400,7 +395,7 @@ func (a *Applier) subscribeNats() (err error) {
 		select {
 		case <-a.rowCopyComplete: // full complete. Maybe src task restart.
 			if err := a.natsConn.Publish(m.Reply, nil); err != nil {
-				a.onError(TaskStateDead, err)
+				a.onError(common.TaskStateDead, err)
 			}
 			a.logger.Debug("full. after publish nats reply")
 			return
@@ -409,13 +404,13 @@ func (a *Applier) subscribeNats() (err error) {
 
 		segmentFinished, err := fullNMM.Handle(m.Data)
 		if err != nil {
-			a.onError(TaskStateDead, errors.Wrap(err, "fullNMM.Handle"))
+			a.onError(common.TaskStateDead, errors.Wrap(err, "fullNMM.Handle"))
 			return
 		}
 
 		if !segmentFinished {
 			if err := a.natsConn.Publish(m.Reply, nil); err != nil {
-				a.onError(TaskStateDead, err)
+				a.onError(common.TaskStateDead, err)
 			}
 			a.logger.Debug("full. after publish nats reply")
 		} else {
@@ -433,7 +428,7 @@ func (a *Applier) subscribeNats() (err error) {
 				vacancy := cap(a.fullBytesQueue) - len(a.fullBytesQueue)
 				err := a.natsConn.Publish(m.Reply, nil)
 				if err != nil {
-					a.onError(TaskStateDead, err)
+					a.onError(common.TaskStateDead, err)
 					return
 				}
 				a.logger.Debug("full. after publish nats reply", "vacancy", vacancy)
@@ -447,7 +442,7 @@ func (a *Applier) subscribeNats() (err error) {
 		select {
 		case <-a.rowCopyComplete: // already full complete. Maybe src task restart.
 			if err := a.natsConn.Publish(m.Reply, nil); err != nil {
-				a.onError(TaskStateDead, err)
+				a.onError(common.TaskStateDead, err)
 			}
 			return
 		default:
@@ -455,7 +450,7 @@ func (a *Applier) subscribeNats() (err error) {
 
 		dumpData := &common.DumpStatResult{}
 		if err := common.Decode(m.Data, dumpData); err != nil {
-			a.onError(TaskStateDead, errors.Wrap(err, "Decode"))
+			a.onError(common.TaskStateDead, errors.Wrap(err, "Decode"))
 			return
 		}
 		for atomic.LoadInt64(&a.nDumpEntry) != 0 {
@@ -471,7 +466,7 @@ func (a *Applier) subscribeNats() (err error) {
 		// Do not re-assign a.gtidSet (#538). Update it.
 		gs0, err := gomysql.ParseMysqlGTIDSet(dumpData.Coord.GtidSet)
 		if err != nil {
-			a.onError(TaskStateDead, errors.Wrap(err, "ParseMysqlGTIDSet"))
+			a.onError(common.TaskStateDead, errors.Wrap(err, "ParseMysqlGTIDSet"))
 			return
 		}
 		gs := gs0.(*gomysql.MysqlGTIDSet)
@@ -492,7 +487,7 @@ func (a *Applier) subscribeNats() (err error) {
 
 		a.logger.Debug("ack _full_complete")
 		if err := a.natsConn.Publish(m.Reply, nil); err != nil {
-			a.onError(TaskStateDead, errors.Wrap(err, "Publish"))
+			a.onError(common.TaskStateDead, errors.Wrap(err, "Publish"))
 			return
 		}
 	})
@@ -506,13 +501,13 @@ func (a *Applier) subscribeNats() (err error) {
 
 		segmentFinished, err := incrNMM.Handle(m.Data)
 		if err != nil {
-			a.onError(TaskStateDead, errors.Wrap(err, "incrNMM.Handle"))
+			a.onError(common.TaskStateDead, errors.Wrap(err, "incrNMM.Handle"))
 			return
 		}
 
 		if !segmentFinished {
 			if err := a.natsConn.Publish(m.Reply, nil); err != nil {
-				a.onError(TaskStateDead, err)
+				a.onError(common.TaskStateDead, err)
 				return
 			}
 			a.logger.Debug("incr. after publish nats reply.")
@@ -528,7 +523,7 @@ func (a *Applier) subscribeNats() (err error) {
 				a.logger.Debug("incr. incrBytesQueue enqueued", "vacancy", cap(a.ai.incrBytesQueue) - len(a.ai.incrBytesQueue))
 
 				if err := a.natsConn.Publish(m.Reply, nil); err != nil {
-					a.onError(TaskStateDead, err)
+					a.onError(common.TaskStateDead, err)
 					return
 				}
 				a.logger.Debug("incr. after publish nats reply.")
@@ -725,7 +720,7 @@ func (a *Applier) ApplyEventQueries(db *gosql.DB, entry *common.DumpEntry) error
 	nRows := int64(len(entry.ValuesX))
 	defer func() {
 		if err := tx.Commit(); err != nil {
-			a.onError(TaskStateDead, err)
+			a.onError(common.TaskStateDead, err)
 		}
 		atomic.AddInt64(&a.TotalRowsReplayed, nRows)
 	}()
@@ -916,9 +911,9 @@ func (a *Applier) onError(state int, err error) {
 	bs := []byte(err.Error())
 
 	switch state {
-	case TaskStateComplete:
+	case common.TaskStateComplete:
 		a.logger.Info("Done migrating")
-	case TaskStateRestart:
+	case common.TaskStateRestart:
 		if a.natsConn != nil {
 			if err := a.natsConn.Publish(fmt.Sprintf("%s_restart", a.subject), bs); err != nil {
 				a.logger.Error("when triggering extractor restart", "err", err, "state", state)
@@ -994,7 +989,7 @@ func (a *Applier) Resume() {
 func (a *Applier) Pause() {
 	a.logger.Info("pause task")
 	if err := a.Shutdown(); nil != err {
-		a.onError(TaskStateDead, errors.Wrap(err, "pause task, shutdown failed"))
+		a.onError(common.TaskStateDead, errors.Wrap(err, "pause task, shutdown failed"))
 		return
 	}
 	a.isPaused = true

@@ -146,21 +146,21 @@ func (e *Extractor) Run() {
 	err = e.storeManager.PutKey(e.subject, "ReplChanBufferSize",
 		[]byte(strconv.Itoa(int(e.mysqlContext.ReplChanBufferSize))))
 	if err != nil {
-		e.onError(TaskStateDead, errors.Wrap(err, "PutKey ReplChanBufferSize"))
+		e.onError(common.TaskStateDead, errors.Wrap(err, "PutKey ReplChanBufferSize"))
 		return
 	}
 
 	e.natsAddr, err = e.storeManager.SrcWatchNats(e.subject, e.shutdownCh, func(err error) {
-		e.onError(TaskStateDead, err)
+		e.onError(common.TaskStateDead, err)
 	})
 	if err != nil {
-		e.onError(TaskStateDead, errors.Wrap(err, "SrcWatchNats"))
+		e.onError(common.TaskStateDead, errors.Wrap(err, "SrcWatchNats"))
 		return
 	}
 
 	err = common.GetGtidFromConsul(e.storeManager, e.subject, e.logger, e.mysqlContext)
 	if err != nil {
-		e.onError(TaskStateDead, errors.Wrap(err, "GetGtidFromConsul"))
+		e.onError(common.TaskStateDead, errors.Wrap(err, "GetGtidFromConsul"))
 		return
 	}
 
@@ -176,18 +176,18 @@ func (e *Extractor) Run() {
 	}*/
 	e.logger.Info("initiateInspector")
 	if err := e.initiateInspector(); err != nil {
-		e.onError(TaskStateDead, err)
+		e.onError(common.TaskStateDead, err)
 		return
 	}
 	e.logger.Info("initNatsPubClient")
 	if err := e.initNatsPubClient(e.natsAddr); err != nil {
-		e.onError(TaskStateDead, err)
+		e.onError(common.TaskStateDead, err)
 		return
 	}
 	e.logger.Info("initDBConnections")
 	if err := e.initDBConnections(); err != nil {
 		e.logger.Error("initiateInspector error", "err", err)
-		e.onError(TaskStateDead, err)
+		e.onError(common.TaskStateDead, err)
 		return
 	}
 
@@ -198,7 +198,7 @@ func (e *Extractor) Run() {
 			e.logger.Info("using AutoGtid (latest position)")
 			coord, err := base.GetSelfBinlogCoordinates(e.db)
 			if err != nil {
-				e.onError(TaskStateDead, err)
+				e.onError(common.TaskStateDead, err)
 				return
 			}
 			e.mysqlContext.Gtid = coord.GtidSet
@@ -210,14 +210,14 @@ func (e *Extractor) Run() {
 			e.logger.Info("calculating Gtid from GtidStart")
 			coord, err := base.GetSelfBinlogCoordinates(e.db)
 			if err != nil {
-				e.onError(TaskStateDead, err)
+				e.onError(common.TaskStateDead, err)
 				return
 			}
 			e.logger.Info("got mysql gtidset", "gtidset", coord.GtidSet)
 
 			e.mysqlContext.Gtid, err = base.GtidSetDiff(coord.GtidSet, e.mysqlContext.GtidStart)
 			if err != nil {
-				e.onError(TaskStateDead, err)
+				e.onError(common.TaskStateDead, err)
 				return
 			}
 			e.logger.Info("got Gtid", "Gtid", e.mysqlContext.Gtid)
@@ -234,14 +234,14 @@ func (e *Extractor) Run() {
 				err := fmt.Errorf("the a job is incr-only (with GTID) and has BinlogRelay enabled," +
 					" but BinlogFile,Pos is not provided")
 				e.logger.Error("job config error")
-				e.onError(TaskStateDead, err)
+				e.onError(common.TaskStateDead, err)
 				return
 			}
 		}
 	}
 
 	if err := e.sendSysVarAndSqlMode(); err != nil {
-		e.onError(TaskStateDead, err)
+		e.onError(common.TaskStateDead, err)
 		return
 	}
 	e.logger.Debug("sendSysVarAndSqlMode. after")
@@ -267,28 +267,28 @@ func (e *Extractor) Run() {
 		e.logger.Debug("mysqlDump. before")
 		e.mysqlContext.MarkRowCopyStartTime()
 		if err := e.mysqlDump(); err != nil {
-			e.onError(TaskStateDead, err)
+			e.onError(common.TaskStateDead, err)
 			return
 		}
 		err = e.sendFullComplete()
 		if err != nil {
-			e.onError(TaskStateDead, errors.Wrap(err, "sendFullComplete"))
+			e.onError(common.TaskStateDead, errors.Wrap(err, "sendFullComplete"))
 			return
 		}
 	} else { // no full copy
 		// Will not get consistent table meta-info for an incremental only job.
 		// https://github.com/actiontech/dtle/issues/321#issuecomment-441191534
 		if err := e.getSchemaTablesAndMeta(); err != nil {
-			e.onError(TaskStateDead, err)
+			e.onError(common.TaskStateDead, err)
 			return
 		}
 		if err := e.setInitialBinlogCoordinates(); err != nil {
-			e.onError(TaskStateDead, err)
+			e.onError(common.TaskStateDead, err)
 			return
 		}
 		err = e.sendFullComplete()
 		if err != nil {
-			e.onError(TaskStateDead, errors.Wrap(err, "sendFullComplete"))
+			e.onError(common.TaskStateDead, errors.Wrap(err, "sendFullComplete"))
 			return
 		}
 		e.gotCoordinateCh <- struct{}{}
@@ -303,12 +303,12 @@ func (e *Extractor) Run() {
 		err := <-e.streamerReadyCh
 		if err != nil {
 			e.logger.Error("error after streamerReadyCh", "err", err)
-			e.onError(TaskStateDead, err)
+			e.onError(common.TaskStateDead, err)
 			return
 		}
 		if err := e.initiateStreaming(); err != nil {
 			e.logger.Error("error at initiateStreaming", "err", err)
-			e.onError(TaskStateDead, err)
+			e.onError(common.TaskStateDead, err)
 			return
 		}
 	}
@@ -538,17 +538,17 @@ func (e *Extractor) initNatsPubClient(natsAddr string) (err error) {
 	e.natsConn = sc
 
 	_, err = e.natsConn.Subscribe(fmt.Sprintf("%s_restart", e.subject), func(m *gonats.Msg) {
-		e.onError(TaskStateRestart, fmt.Errorf("applier restart: %v", string(m.Data)))
+		e.onError(common.TaskStateRestart, fmt.Errorf("applier restart: %v", string(m.Data)))
 	})
 	if err != nil {
-		e.onError(TaskStateDead, errors.Wrap(err, "Subscribe restart"))
+		e.onError(common.TaskStateDead, errors.Wrap(err, "Subscribe restart"))
 		return
 	}
 	_, err = e.natsConn.Subscribe(fmt.Sprintf("%s_error", e.subject), func(m *gonats.Msg) {
-		e.onError(TaskStateDead, fmt.Errorf("applier error: %v", string(m.Data)))
+		e.onError(common.TaskStateDead, fmt.Errorf("applier error: %v", string(m.Data)))
 	})
 	if err != nil {
-		e.onError(TaskStateDead, errors.Wrap(err, "Subscribe error"))
+		e.onError(common.TaskStateDead, errors.Wrap(err, "Subscribe error"))
 		return
 	}
 
@@ -566,7 +566,7 @@ func (e *Extractor) initNatsPubClient(natsAddr string) (err error) {
 		}
 	})
 	if err != nil {
-		e.onError(TaskStateDead, errors.Wrap(err, "Subscribe progress"))
+		e.onError(common.TaskStateDead, errors.Wrap(err, "Subscribe progress"))
 		return
 	}
 
@@ -581,7 +581,7 @@ func (e *Extractor) initiateStreaming() error {
 		e.logger.Info("Beginning streaming")
 		err := e.StreamEvents()
 		if err != nil {
-			e.onError(TaskStateDead, err)
+			e.onError(common.TaskStateDead, err)
 		}
 	}()
 
@@ -934,7 +934,7 @@ func (e *Extractor) StreamEvents() error {
 
 					err := sendEntriesAndClear()
 					if err != nil {
-						e.onError(TaskStateDead, err)
+						e.onError(common.TaskStateDead, err)
 						break LOOP
 					}
 					if !timer.Stop() {
@@ -951,7 +951,7 @@ func (e *Extractor) StreamEvents() error {
 					e.sendByTimeoutCounter += 1
 					err := sendEntriesAndClear()
 					if err != nil {
-						e.onError(TaskStateDead, err)
+						e.onError(common.TaskStateDead, err)
 						break LOOP
 					}
 				}
@@ -1042,7 +1042,7 @@ func (e *Extractor) sendSysVarAndSqlMode() error {
 		SqlMode:                  setSqlMode,
 	}
 	if err := e.encodeAndSendDumpEntry(entry); err != nil {
-		e.onError(TaskStateRestart, err)
+		e.onError(common.TaskStateRestart, err)
 	}
 
 	return nil
@@ -1169,7 +1169,7 @@ func (e *Extractor) mysqlDump() error {
 					step++*/
 					e.logger.Info("Step: committing transaction", "n", step)
 					if err := realTx.Commit(); err != nil {
-						e.onError(TaskStateDead, err)
+						e.onError(common.TaskStateDead, err)
 					}
 				}()
 			} else {
@@ -1228,7 +1228,7 @@ func (e *Extractor) mysqlDump() error {
 			atomic.AddInt64(&e.mysqlContext.RowsEstimate, 1)
 			atomic.AddInt64(&e.TotalRowsCopied, 1)
 			if err := e.encodeAndSendDumpEntry(entry); err != nil {
-				e.onError(TaskStateRestart, err)
+				e.onError(common.TaskStateRestart, err)
 			}
 
 			for _, tb := range db.Tables {
@@ -1267,7 +1267,7 @@ func (e *Extractor) mysqlDump() error {
 				atomic.AddInt64(&e.mysqlContext.RowsEstimate, 1)
 				atomic.AddInt64(&e.TotalRowsCopied, 1)
 				if err := e.encodeAndSendDumpEntry(entry); err != nil {
-					e.onError(TaskStateRestart, err)
+					e.onError(common.TaskStateRestart, err)
 				}
 			}
 			e.tableCount += len(db.Tables)
@@ -1295,20 +1295,20 @@ func (e *Extractor) mysqlDump() error {
 
 			d := NewDumper(tx, t, e.mysqlContext.ChunkSize, e.logger.ResetNamed("dumper"), e.memory1)
 			if err := d.Dump(); err != nil {
-				e.onError(TaskStateDead, err)
+				e.onError(common.TaskStateDead, err)
 			}
 			e.dumpers = append(e.dumpers, d)
 			// Scan the rows in the table ...
 			for entry := range d.resultsChannel {
 				if entry.Err != "" {
-					e.onError(TaskStateDead, fmt.Errorf(entry.Err))
+					e.onError(common.TaskStateDead, fmt.Errorf(entry.Err))
 				} else {
 					memSize := int64(entry.Size())
 					if !d.sentTableDef {
 						tableBs, err := common.EncodeTable(d.table)
 						if err != nil {
 							err = errors.Wrap(err, "full copy: EncodeTable")
-							e.onError(TaskStateDead, err)
+							e.onError(common.TaskStateDead, err)
 							return err
 						} else {
 							entry.Table = tableBs
@@ -1316,7 +1316,7 @@ func (e *Extractor) mysqlDump() error {
 						}
 					}
 					if err = e.encodeAndSendDumpEntry(entry); err != nil {
-						e.onError(TaskStateRestart, err)
+						e.onError(common.TaskStateRestart, err)
 					}
 					atomic.AddInt64(&e.TotalRowsCopied, int64(len(entry.ValuesX)))
 					atomic.AddInt64(d.memory, -memSize)
@@ -1423,7 +1423,7 @@ func (e *Extractor) Stats() (*common.TaskStatistics, error) {
 		taskResUsage.MsgStat = e.natsConn.Statistics
 		e.TotalTransferredBytes = int(taskResUsage.MsgStat.OutBytes)
 		if e.mysqlContext.TrafficAgainstLimits > 0 && int(taskResUsage.MsgStat.OutBytes)/1024/1024/1024 >= e.mysqlContext.TrafficAgainstLimits {
-			e.onError(TaskStateDead, fmt.Errorf("traffic limit exceeded : %d/%d", e.mysqlContext.TrafficAgainstLimits, int(taskResUsage.MsgStat.OutBytes)/1024/1024/1024))
+			e.onError(common.TaskStateDead, fmt.Errorf("traffic limit exceeded : %d/%d", e.mysqlContext.TrafficAgainstLimits, int(taskResUsage.MsgStat.OutBytes)/1024/1024/1024))
 		}
 	}
 
@@ -1530,7 +1530,7 @@ func (e *Extractor) Resume() {
 func (e *Extractor) Pause() {
 	e.logger.Info("pause task")
 	if err := e.Shutdown(); nil != err {
-		e.onError(TaskStateDead, errors.Wrap(err, "pause task, shutdown failed"))
+		e.onError(common.TaskStateDead, errors.Wrap(err, "pause task, shutdown failed"))
 		return
 	}
 	e.isPaused = true

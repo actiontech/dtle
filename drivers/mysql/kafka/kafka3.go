@@ -33,12 +33,6 @@ import (
 	uuid "github.com/satori/go.uuid"
 )
 
-const (
-	TaskStateComplete int = iota
-	TaskStateRestart
-	TaskStateDead
-)
-
 type KafkaTableItem struct {
 	table       *common.Table
 	keySchema   *SchemaJson
@@ -126,7 +120,7 @@ func (kr *KafkaRunner) updateGtidLoop() {
 			kr.logger.Debug("SaveGtidForJob", "job", kr.subject, "gtid", kr.Gtid)
 			err := kr.storeManager.SaveGtidForJob(kr.subject, kr.Gtid)
 			if err != nil {
-				kr.onError(TaskStateDead, errors.Wrap(err, "SaveGtidForJob"))
+				kr.onError(common.TaskStateDead, errors.Wrap(err, "SaveGtidForJob"))
 				return
 			}
 			kr.lastSavedGtid = kr.Gtid
@@ -134,7 +128,7 @@ func (kr *KafkaRunner) updateGtidLoop() {
 			err = kr.storeManager.SaveBinlogFilePosForJob(kr.subject,
 				kr.BinlogFile, int(kr.BinlogPos))
 			if err != nil {
-				kr.onError(TaskStateDead, errors.Wrap(err, "SaveBinlogFilePosForJob"))
+				kr.onError(common.TaskStateDead, errors.Wrap(err, "SaveBinlogFilePosForJob"))
 				return
 			}
 		}
@@ -180,7 +174,7 @@ func (kr *KafkaRunner) Resume() {
 func (kr *KafkaRunner) Pause() {
 	kr.logger.Info("pause task")
 	if err := kr.Shutdown(); nil != err {
-		kr.onError(TaskStateDead, errors.Wrap(err, "pause task, shutdown failed"))
+		kr.onError(common.TaskStateDead, errors.Wrap(err, "pause task, shutdown failed"))
 		return
 	}
 	kr.isPaused = true
@@ -242,14 +236,14 @@ func (kr *KafkaRunner) Run() {
 	{
 		gtid, err := kr.storeManager.GetGtidForJob(kr.subject)
 		if err != nil {
-			kr.onError(TaskStateDead, errors.Wrap(err, "GetGtidForJob"))
+			kr.onError(common.TaskStateDead, errors.Wrap(err, "GetGtidForJob"))
 			return
 		}
 		if gtid != "" {
 			kr.logger.Info("Got gtid from consul", "gtid", gtid)
 			kr.gtidSet, err = common.DtleParseMysqlGTIDSet(gtid)
 			if err != nil {
-				kr.onError(TaskStateDead, errors.Wrap(err, "DtleParseMysqlGTIDSet"))
+				kr.onError(common.TaskStateDead, errors.Wrap(err, "DtleParseMysqlGTIDSet"))
 				return
 			}
 			kr.Gtid = gtid
@@ -257,7 +251,7 @@ func (kr *KafkaRunner) Run() {
 
 		pos, err := kr.storeManager.GetBinlogFilePosForJob(kr.subject)
 		if err != nil {
-			kr.onError(TaskStateDead, errors.Wrap(err, "GetBinlogFilePosForJob"))
+			kr.onError(common.TaskStateDead, errors.Wrap(err, "GetBinlogFilePosForJob"))
 			return
 		}
 		if pos.Name != "" {
@@ -269,7 +263,7 @@ func (kr *KafkaRunner) Run() {
 	kr.kafkaMgr, err = NewKafkaManager(kr.kafkaConfig)
 	if err != nil {
 		kr.logger.Error("failed to initialize kafka", "err", err)
-		kr.onError(TaskStateDead, err)
+		kr.onError(common.TaskStateDead, err)
 		return
 	}
 
@@ -277,7 +271,7 @@ func (kr *KafkaRunner) Run() {
 	if err != nil {
 		kr.logger.Error("initNatSubClient", "err", err)
 
-		kr.onError(TaskStateDead, err)
+		kr.onError(common.TaskStateDead, err)
 		return
 	}
 
@@ -285,15 +279,15 @@ func (kr *KafkaRunner) Run() {
 
 	err = kr.initiateStreaming()
 	if err != nil {
-		kr.onError(TaskStateDead, err)
+		kr.onError(common.TaskStateDead, err)
 		return
 	}
 
 	err = kr.storeManager.DstPutNats(kr.subject, kr.natsAddr, kr.shutdownCh, func(err error) {
-		kr.onError(TaskStateDead, errors.Wrap(err, "DstPutNats"))
+		kr.onError(common.TaskStateDead, errors.Wrap(err, "DstPutNats"))
 	})
 	if err != nil {
-		kr.onError(TaskStateDead, errors.Wrap(err, "DstPutNats"))
+		kr.onError(common.TaskStateDead, errors.Wrap(err, "DstPutNats"))
 		return
 	}
 
@@ -366,12 +360,12 @@ func (kr *KafkaRunner) handleFullCopy() {
 		} else {
 			tableFromDumpData, err := common.DecodeMaybeTable(dumpData.Table)
 			if err != nil {
-				kr.onError(TaskStateDead, errors.Wrap(err, "decodeMaybeTable"))
+				kr.onError(common.TaskStateDead, errors.Wrap(err, "decodeMaybeTable"))
 				return
 			}
 			tableItem, err := kr.getOrSetTable(dumpData.TableSchema, dumpData.TableName, tableFromDumpData)
 			if err != nil {
-				kr.onError(TaskStateDead, err)
+				kr.onError(common.TaskStateDead, err)
 				return
 			}
 
@@ -379,13 +373,13 @@ func (kr *KafkaRunner) handleFullCopy() {
 				err := fmt.Errorf("DTLE_BUG: kafkaTransformSnapshotData: tableItem is nil %v.%v TotalCount %v",
 					dumpData.TableSchema, dumpData.TableName, dumpData.TotalCount)
 				kr.logger.Error(err.Error())
-				kr.onError(TaskStateDead, err)
+				kr.onError(common.TaskStateDead, err)
 				return
 			}
 
 			err = kr.kafkaTransformSnapshotData(tableItem, dumpData)
 			if err != nil {
-				kr.onError(TaskStateDead, err)
+				kr.onError(common.TaskStateDead, err)
 				return
 			}
 			atomic.AddInt64(kr.memory1, -int64(dumpData.Size()))
@@ -450,7 +444,7 @@ func (kr *KafkaRunner) handleIncr() {
 					"entriesSize", entriesSize,
 					"Entries.len", len(entriesWillBeSent))
 				if err := sendEntriesAndClear(); nil != err {
-					kr.onError(TaskStateDead, err)
+					kr.onError(common.TaskStateDead, err)
 				}
 			}
 
@@ -468,7 +462,7 @@ func (kr *KafkaRunner) handleIncr() {
 					"entriesSize", entriesSize,
 					"Entries.len", len(entriesWillBeSent))
 				if err := sendEntriesAndClear(); nil != err {
-					kr.onError(TaskStateDead, err)
+					kr.onError(common.TaskStateDead, err)
 					return
 				}
 			}
@@ -491,7 +485,7 @@ func (kr *KafkaRunner) initiateStreaming() error {
 		dumpData := &common.DumpEntry{}
 		err = common.Decode(m.Data, dumpData)
 		if err != nil {
-			kr.onError(TaskStateDead, err)
+			kr.onError(common.TaskStateDead, err)
 			return
 		}
 
@@ -501,7 +495,7 @@ func (kr *KafkaRunner) initiateStreaming() error {
 		case kr.chDumpEntry <- dumpData:
 			atomic.AddInt64(kr.memory1, int64(dumpData.Size()))
 			if err := kr.natsConn.Publish(m.Reply, nil); err != nil {
-				kr.onError(TaskStateDead, err)
+				kr.onError(common.TaskStateDead, err)
 				return
 			}
 			kr.logger.Debug("ack a full msg")
@@ -516,7 +510,7 @@ func (kr *KafkaRunner) initiateStreaming() error {
 
 		dumpData := &common.DumpStatResult{}
 		if err := common.Decode(m.Data, dumpData); err != nil {
-			kr.onError(TaskStateDead, err)
+			kr.onError(common.TaskStateDead, err)
 			return
 		}
 
@@ -524,7 +518,7 @@ func (kr *KafkaRunner) initiateStreaming() error {
 
 		kr.gtidSet, err = common.DtleParseMysqlGTIDSet(dumpData.Coord.GtidSet)
 		if err != nil {
-			kr.onError(TaskStateDead, errors.Wrap(err, "DtleParseMysqlGTIDSet"))
+			kr.onError(common.TaskStateDead, errors.Wrap(err, "DtleParseMysqlGTIDSet"))
 			return
 		}
 		kr.Gtid = dumpData.Coord.GtidSet
@@ -532,7 +526,7 @@ func (kr *KafkaRunner) initiateStreaming() error {
 		kr.BinlogPos = dumpData.Coord.LogPos
 
 		if err := kr.natsConn.Publish(m.Reply, nil); err != nil {
-			kr.onError(TaskStateDead, err)
+			kr.onError(common.TaskStateDead, err)
 			return
 		}
 		kr.logger.Debug("ack a full_complete msg")
@@ -549,7 +543,7 @@ func (kr *KafkaRunner) initiateStreaming() error {
 
 		var binlogEntries common.BinlogEntries
 		if err := common.Decode(m.Data, &binlogEntries); err != nil {
-			kr.onError(TaskStateDead, err)
+			kr.onError(common.TaskStateDead, err)
 			return
 		}
 		select {
@@ -557,7 +551,7 @@ func (kr *KafkaRunner) initiateStreaming() error {
 			return
 		case kr.chBinlogEntries <- &binlogEntries:
 			if err := kr.natsConn.Publish(m.Reply, nil); err != nil {
-				kr.onError(TaskStateDead, errors.Wrap(err, "Publish"))
+				kr.onError(common.TaskStateDead, errors.Wrap(err, "Publish"))
 				return
 			}
 			kr.logger.Debug("ack an incr_hete msg")
@@ -579,9 +573,9 @@ func (kr *KafkaRunner) onError(state int, err error) {
 	bs := []byte(err.Error())
 
 	switch state {
-	case TaskStateComplete:
+	case common.TaskStateComplete:
 		kr.logger.Info("Done migrating")
-	case TaskStateRestart:
+	case common.TaskStateRestart:
 		if kr.natsConn != nil {
 			if err := kr.natsConn.Publish(fmt.Sprintf("%s_restart", kr.subject), bs); err != nil {
 				kr.logger.Error("Trigger restart", "err", err)

@@ -174,7 +174,7 @@ func (a *ApplierIncr) MtsWorker(workerIndex int) {
 			hasEntry = true
 			logger.Debug("a binlogEntry MTS dequeue", "gno", entryContext.Entry.Coordinates.GNO)
 			if err := a.ApplyBinlogEvent(workerIndex, entryContext); err != nil {
-				a.OnError(TaskStateDead, err) // TODO coordinate with other goroutine
+				a.OnError(common.TaskStateDead, err) // TODO coordinate with other goroutine
 				keepLoop = false
 			} else {
 				// do nothing
@@ -185,7 +185,7 @@ func (a *ApplierIncr) MtsWorker(workerIndex int) {
 				err := a.dbs[workerIndex].Db.PingContext(context.Background())
 				if err != nil {
 					logger.Error("bad connection for mts worker.", "err", err, "index", workerIndex)
-					a.OnError(TaskStateDead, errors.Wrap(err, "mts worker"))
+					a.OnError(common.TaskStateDead, errors.Wrap(err, "mts worker"))
 					keepLoop = false
 				}
 			}
@@ -313,7 +313,7 @@ func (a *ApplierIncr) heterogeneousReplay() {
 					TableItems:  nil,
 				})
 				if err != nil {
-					a.OnError(TaskStateDead, err)
+					a.OnError(common.TaskStateDead, err)
 					return
 				}
 				atomic.AddInt64(&a.mysqlContext.DeltaEstimate, 1)
@@ -335,7 +335,7 @@ func (a *ApplierIncr) heterogeneousReplay() {
 
 			binlogEntries := &common.BinlogEntries{}
 			if err := common.Decode(bs, binlogEntries); err != nil {
-				a.OnError(TaskStateDead, err)
+				a.OnError(common.TaskStateDead, err)
 				return
 			}
 
@@ -444,7 +444,7 @@ func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.Bin
 	}
 	defer func() {
 		if err := tx.Commit(); err != nil {
-			a.OnError(TaskStateDead, err)
+			a.OnError(common.TaskStateDead, err)
 		} else {
 			a.mtsManager.Executed(binlogEntry)
 			a.GtidUpdateHook(&binlogEntry.Coordinates)
