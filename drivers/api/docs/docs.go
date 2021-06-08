@@ -649,6 +649,9 @@ var doc = `{
                 },
                 "src_task": {
                     "$ref": "#/definitions/models.MysqlSrcTaskConfig"
+                },
+                "task_step_name": {
+                    "type": "string"
                 }
             }
         },
@@ -688,6 +691,9 @@ var doc = `{
                 },
                 "src_task": {
                     "$ref": "#/definitions/models.MysqlSrcTaskConfig"
+                },
+                "task_step_name": {
+                    "type": "string"
                 }
             }
         },
@@ -718,6 +724,9 @@ var doc = `{
                 },
                 "src_task": {
                     "$ref": "#/definitions/models.MysqlSrcTaskConfig"
+                },
+                "task_step_name": {
+                    "type": "string"
                 }
             }
         },
@@ -757,6 +766,9 @@ var doc = `{
                 },
                 "src_task": {
                     "$ref": "#/definitions/models.MysqlSrcTaskConfig"
+                },
+                "task_step_name": {
+                    "type": "string"
                 }
             }
         },

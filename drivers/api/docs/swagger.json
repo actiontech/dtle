@@ -629,6 +629,9 @@
                 },
                 "src_task": {
                     "$ref": "#/definitions/models.MysqlSrcTaskConfig"
+                },
+                "task_step_name": {
+                    "type": "string"
                 }
             }
         },
@@ -668,6 +671,9 @@
                 },
                 "src_task": {
                     "$ref": "#/definitions/models.MysqlSrcTaskConfig"
+                },
+                "task_step_name": {
+                    "type": "string"
                 }
             }
         },
@@ -698,6 +704,9 @@
                 },
                 "src_task": {
                     "$ref": "#/definitions/models.MysqlSrcTaskConfig"
+                },
+                "task_step_name": {
+                    "type": "string"
                 }
             }
         },
@@ -737,6 +746,9 @@
                 },
                 "src_task": {
                     "$ref": "#/definitions/models.MysqlSrcTaskConfig"
+                },
+                "task_step_name": {
+                    "type": "string"
                 }
             }
         },

@@ -89,6 +89,8 @@ definitions:
         type: string
       src_task:
         $ref: '#/definitions/models.MysqlSrcTaskConfig'
+      task_step_name:
+        type: string
     required:
     - dest_task
     - job_name
@@ -116,6 +118,8 @@ definitions:
         type: string
       src_task:
         $ref: '#/definitions/models.MysqlSrcTaskConfig'
+      task_step_name:
+        type: string
     required:
     - dest_task
     - job_name
@@ -137,6 +141,8 @@ definitions:
         type: string
       src_task:
         $ref: '#/definitions/models.MysqlSrcTaskConfig'
+      task_step_name:
+        type: string
     required:
     - dest_task
     - job_name
@@ -164,6 +170,8 @@ definitions:
         type: string
       src_task:
         $ref: '#/definitions/models.MysqlSrcTaskConfig'
+      task_step_name:
+        type: string
     required:
     - dest_task
     - job_name

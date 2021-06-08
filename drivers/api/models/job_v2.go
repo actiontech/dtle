@@ -91,11 +91,11 @@ type TaskLog struct {
 }
 
 type MysqlToMysqlJobDetailRespV2 struct {
-	JobId          string              `json:"job_id"`           // 兼容上个版本
-	JobName        string              `json:"job_name"`         // 兼容上个版本
-	Failover       bool                `json:"failover"`         // 兼容上个版本
-	SrcTaskDetail  MysqlSrcTaskDetail  `json:"src_task_detail"`  // 兼容上个版本
-	DestTaskDetail MysqlDestTaskDetail `json:"dest_task_detail"` // 兼容上个版本
+	JobId          string              `json:"job_id"`           // Compatible with old version v2 interface
+	JobName        string              `json:"job_name"`         // Compatible with old version v2 interface
+	Failover       bool                `json:"failover"`         // Compatible with old version v2 interface
+	SrcTaskDetail  MysqlSrcTaskDetail  `json:"src_task_detail"`  // Compatible with old version v2 interface
+	DestTaskDetail MysqlDestTaskDetail `json:"dest_task_detail"` // Compatible with old version v2 interface
 
 	BasicTaskProfile BasicTaskProfile `json:"basic_task_profile"`
 	TaskLogs         []TaskLog        `json:"task_logs"`
@@ -174,8 +174,9 @@ type MysqlConnectionConfig struct {
 }
 
 type CreateOrUpdateMysqlToMysqlJobParamV2 struct {
-	JobName string `json:"job_name" validate:"required"`
-	JobId   string `json:"job_id"`
+	JobName      string `json:"job_name" validate:"required"`
+	JobId        string `json:"job_id"`
+	TaskStepName string `json:"task_step_name"`
 	// failover default:true
 	Failover                 *bool                `json:"failover" example:"true"`
 	IsMysqlPasswordEncrypted bool                 `json:"is_mysql_password_encrypted"`
@@ -200,8 +201,9 @@ type KafkaDestTaskConfig struct {
 }
 
 type CreateOrUpdateMysqlToKafkaJobParamV2 struct {
-	JobName string `json:"job_name" validate:"required"`
-	JobId   string `json:"job_id"`
+	JobName      string `json:"job_name" validate:"required"`
+	JobId        string `json:"job_id"`
+	TaskStepName string `json:"task_step_name"`
 	// failover default:true
 	Failover                 *bool                `json:"failover" example:"true"`
 	IsMysqlPasswordEncrypted bool                 `json:"is_mysql_password_encrypted"`
@@ -221,11 +223,11 @@ type MysqlToKafkaJobDetailReqV2 struct {
 }
 
 type MysqlToKafkaJobDetailRespV2 struct {
-	JobId          string              `json:"job_id"`           // 兼容上个版本
-	JobName        string              `json:"job_name"`         // 兼容上个版本
-	Failover       bool                `json:"failover"`         // 兼容上个版本
-	SrcTaskDetail  MysqlSrcTaskDetail  `json:"src_task_detail"`  // 兼容上个版本
-	DestTaskDetail KafkaDestTaskDetail `json:"dest_task_detail"` // 兼容上个版本
+	JobId          string              `json:"job_id"`           // Compatible with old version v2 interface
+	JobName        string              `json:"job_name"`         // Compatible with old version v2 interface
+	Failover       bool                `json:"failover"`         // Compatible with old version v2 interface
+	SrcTaskDetail  MysqlSrcTaskDetail  `json:"src_task_detail"`  // Compatible with old version v2 interface
+	DestTaskDetail KafkaDestTaskDetail `json:"dest_task_detail"` // Compatible with old version v2 interface
 
 	BasicTaskProfile BasicTaskProfile `json:"basic_task_profile"`
 	TaskLogs         []TaskLog        `json:"task_logs"`
