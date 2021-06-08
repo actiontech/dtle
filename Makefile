@@ -55,8 +55,8 @@ package-plugin-only: package-common
 
 package: package-common
 	mkdir -p dist/install/usr/bin
-	curl -o dist/nomad.zip "ftp://ftp:ftp@10.186.18.20/binary/nomad_0.11.1_linux_amd64.zip"
-	curl -o dist/consul.zip "ftp://ftp:ftp@10.186.18.20/binary/consul_1.7.2_linux_amd64.zip"
+	curl -o dist/nomad.zip "ftp://${RELEASE_FTPD_HOST}/binary/nomad_0.11.1_linux_amd64.zip"
+	curl -o dist/consul.zip "ftp://${RELEASE_FTPD_HOST}/binary/consul_1.7.2_linux_amd64.zip"
 	mkdir -p dist/install/usr/bin
 	cd dist/install/usr/bin && unzip ../../../nomad.zip && unzip ../../../consul.zip
 	cd dist && fpm --force -s dir -t rpm -n $(PROJECT_NAME) -v $(VERSION) -C install \
@@ -95,12 +95,12 @@ generate_swagger_docs:
 	swag init -g ./drivers/api/route.go -o ./drivers/api/docs
 
 upload:
-	curl --ftp-create-dirs -T $(shell pwd)/dist/*.rpm -u admin:ftpadmin ftp://release-ftpd/actiontech-${PROJECT_NAME}/qa/${VERSION}/${PROJECT_NAME}-${VERSION}-qa.x86_64.rpm
-	curl --ftp-create-dirs -T $(shell pwd)/dist/*.rpm.md5 -u admin:ftpadmin ftp://release-ftpd/actiontech-${PROJECT_NAME}/qa/${VERSION}/${PROJECT_NAME}-${VERSION}-qa.x86_64.rpm.md5
+	curl --ftp-create-dirs -T $(shell pwd)/dist/*.rpm ftp://${RELEASE_FTPD_HOST}/actiontech-${PROJECT_NAME}/qa/${VERSION}/${PROJECT_NAME}-${VERSION}-qa.x86_64.rpm
+	curl --ftp-create-dirs -T $(shell pwd)/dist/*.rpm.md5 ftp://${RELEASE_FTPD_HOST}/actiontech-${PROJECT_NAME}/qa/${VERSION}/${PROJECT_NAME}-${VERSION}-qa.x86_64.rpm.md5
 
 upload_with_coverage_report:
-	#curl --ftp-create-dirs -T $(shell pwd)/dist/*.rpm -u admin:ftpadmin ftp://release-ftpd/actiontech-${PROJECT_NAME}/qa/${VERSION}/${PROJECT_NAME}-${VERSION}-qa.coverage.x86_64.rpm
-	#curl --ftp-create-dirs -T $(shell pwd)/dist/*.rpm.md5 -u admin:ftpadmin ftp://release-ftpd/actiontech-${PROJECT_NAME}/qa/${VERSION}/${PROJECT_NAME}-${VERSION}-qa.coverage.x86_64.rpm.md5
+	#curl --ftp-create-dirs -T $(shell pwd)/dist/*.rpm ftp://${RELEASE_FTPD_HOST}/actiontech-${PROJECT_NAME}/qa/${VERSION}/${PROJECT_NAME}-${VERSION}-qa.coverage.x86_64.rpm
+	#curl --ftp-create-dirs -T $(shell pwd)/dist/*.rpm.md5 ftp://${RELEASE_FTPD_HOST}/actiontech-${PROJECT_NAME}/qa/${VERSION}/${PROJECT_NAME}-${VERSION}-qa.coverage.x86_64.rpm.md5
 	echo TODO
 
 .PHONY: vet fmt build default driver
