@@ -5,14 +5,29 @@ import (
 )
 
 type JobListReqV2 struct {
-	FilterJobType string `query:"filter_job_type"`
+	FilterJobType   string `query:"filter_job_type"`
+	FilterJobName   string `json:"filter_job_name"`
+	FilterJobStatus string `json:"filter_job_status"`
+	OrderBy         string `json:"order_by"`
 }
 
 type JobListItemV2 struct {
-	JobId                string `json:"job_id"`
-	JobName              string `json:"job_name"`
-	JobStatus            string `json:"job_status"`
-	JobStatusDescription string `json:"job_status_description"`
+	JobId                string    `json:"job_id"`
+	JobName              string    `json:"job_name"`
+	JobStatus            string    `json:"job_status"`
+	JobStatusDescription string    `json:"job_status_description"`
+	JobCreateTime        string    `json:"job_create_time"`
+	SrcAddrList          []string  `json:"src_addr_list"`
+	DstAddrList          []string  `json:"dst_addr_list"`
+	User                 string    `json:"user"`
+	JobSteps             []JobStep `json:"job_steps"`
+}
+
+type JobStep struct {
+	StepName      string  `json:"step_name"`
+	StepStatus    string  `json:"step_status"`
+	StepSchedule  float64 `json:"step_schedule"`
+	JobCreateTime string  `json:"job_create_time"`
 }
 
 type JobListRespV2 struct {
@@ -182,7 +197,7 @@ type ResumeJobRespV2 struct {
 }
 
 type DeleteJobReqV2 struct {
-	JobId   string `form:"job_id" validate:"required"`
+	JobId string `form:"job_id" validate:"required"`
 }
 
 type DeleteJobRespV2 struct {

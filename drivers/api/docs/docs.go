@@ -285,6 +285,34 @@ var doc = `{
                         "description": "filter job type",
                         "name": "filter_job_type",
                         "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "filter job name",
+                        "name": "filter_job_name",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "filter job status",
+                        "name": "filter_job_status",
+                        "in": "query"
+                    },
+                    {
+                        "enum": [
+                            "job_create_time"
+                        ],
+                        "type": "string",
+                        "default": "job_create_time",
+                        "description": "order by",
+                        "name": "order_by",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "filter job type",
+                        "name": "filter_job_type",
+                        "in": "query"
                     }
                 ],
                 "responses": {
@@ -740,6 +768,15 @@ var doc = `{
         "models.JobListItemV2": {
             "type": "object",
             "properties": {
+                "dst_addr_list": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "job_create_time": {
+                    "type": "string"
+                },
                 "job_id": {
                     "type": "string"
                 },
@@ -750,6 +787,21 @@ var doc = `{
                     "type": "string"
                 },
                 "job_status_description": {
+                    "type": "string"
+                },
+                "job_steps": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.JobStep"
+                    }
+                },
+                "src_addr_list": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "user": {
                     "type": "string"
                 }
             }
@@ -764,6 +816,23 @@ var doc = `{
                     }
                 },
                 "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.JobStep": {
+            "type": "object",
+            "properties": {
+                "job_create_time": {
+                    "type": "string"
+                },
+                "step_name": {
+                    "type": "string"
+                },
+                "step_schedule": {
+                    "type": "number"
+                },
+                "step_status": {
                     "type": "string"
                 }
             }

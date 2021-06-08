@@ -29,6 +29,10 @@ import (
 // @Tags job
 // @Success 200 {object} models.JobListRespV2
 // @Param filter_job_type query string false "filter job type"
+// @Param filter_job_name query string false "filter job name"
+// @Param filter_job_status query string false "filter job status"
+// @Param order_by query string false "order by" default(job_create_time) Enums(job_create_time)
+// @Param filter_job_type query string false "filter job type"
 // @Router /v2/jobs [get]
 func JobListV2(c echo.Context) error {
 	logger := handler.NewLogger().Named("JobListV2")
