@@ -11,6 +11,13 @@ type JobListReqV2 struct {
 	OrderBy         string `json:"order_by"`
 }
 
+type JobStep struct {
+	StepName      string  `json:"step_name"`
+	StepStatus    string  `json:"step_status"`
+	StepSchedule  float64 `json:"step_schedule"`
+	JobCreateTime string  `json:"job_create_time"`
+}
+
 type JobListItemV2 struct {
 	JobId                string    `json:"job_id"`
 	JobName              string    `json:"job_name"`
@@ -23,13 +30,6 @@ type JobListItemV2 struct {
 	JobSteps             []JobStep `json:"job_steps"`
 }
 
-type JobStep struct {
-	StepName      string  `json:"step_name"`
-	StepStatus    string  `json:"step_status"`
-	StepSchedule  float64 `json:"step_schedule"`
-	JobCreateTime string  `json:"job_create_time"`
-}
-
 type JobListRespV2 struct {
 	Jobs []JobListItemV2 `json:"jobs"`
 	BaseResp
@@ -39,12 +39,66 @@ type MysqlToMysqlJobDetailReqV2 struct {
 	JobId string `query:"job_id" validate:"required"`
 }
 
+type JobBaseInfo struct {
+	JobId                string    `json:"job_id"`
+	JobName              string    `json:"job_name"`
+	SubscriptionTopic    string    `json:"subscription_topic"`
+	JobStatus            string    `json:"job_status"`
+	JobStatusDescription string    `json:"job_status_description"`
+	JobCreateTime        string    `json:"job_create_time"`
+	JobSteps             []JobStep `json:"job_steps"`
+	Delay                int64     `json:"delay"`
+}
+
+type DtleNodeInfo struct {
+	NodeAddr   string   `json:"node_addr"`
+	NodeId     string   `json:"node_id"`
+	DataSource []string `json:"data_source"`
+}
+
+type DataBase struct {
+	Addr     string `json:"addr"`
+	User     string `json:"user"`
+	PassWord string `json:"pass_word"`
+}
+
+type ConnectionInfo struct {
+	SrcDataBaseList []MysqlConnectionConfig
+	DstDataBaseList []MysqlConnectionConfig
+}
+
+type Configuration struct {
+	RelayMechanism         bool `json:"relay_mechanism"`
+	FailOver               bool `json:"fail_over"`
+	RetryTime              int  `json:"retry_time"`
+	ConcurrentPlayback     int  `json:"concurrent_playback"`
+	MessageQueueBufferSize int  `json:"message_queue_buffer_size"`
+	SourcePacketSize       int  `json:"source_packet_size"`
+	ChunkSize              int  `json:"chunk_size"`
+}
+
+type BasicTaskProfile struct {
+	JobBaseInfo     JobBaseInfo        `json:"job_base_info"`
+	DtleNodeInfos   []DtleNodeInfo     `json:"dtle_node_infos"`
+	ConnectionInfo  ConnectionInfo     `json:"connection_info"`
+	Configuration   Configuration      `json:"configuration"`
+	OperationObject []MysqlTableConfig `json:"operation_object"`
+}
+
+type TaskLog struct {
+	StartTime    time.Time `json:"start_time"`
+	SpecificTask string    `json:"specific_task"`
+}
+
 type MysqlToMysqlJobDetailRespV2 struct {
-	JobId          string              `json:"job_id"`
-	JobName        string              `json:"job_name"`
-	Failover       bool                `json:"failover"`
-	SrcTaskDetail  MysqlSrcTaskDetail  `json:"src_task_detail"`
-	DestTaskDetail MysqlDestTaskDetail `json:"dest_task_detail"`
+	JobId          string              `json:"job_id"`           // 兼容上个版本
+	JobName        string              `json:"job_name"`         // 兼容上个版本
+	Failover       bool                `json:"failover"`         // 兼容上个版本
+	SrcTaskDetail  MysqlSrcTaskDetail  `json:"src_task_detail"`  // 兼容上个版本
+	DestTaskDetail MysqlDestTaskDetail `json:"dest_task_detail"` // 兼容上个版本
+
+	BasicTaskProfile BasicTaskProfile `json:"basic_task_profile"`
+	TaskLogs         []TaskLog        `json:"task_logs"`
 	BaseResp
 }
 
@@ -167,11 +221,14 @@ type MysqlToKafkaJobDetailReqV2 struct {
 }
 
 type MysqlToKafkaJobDetailRespV2 struct {
-	JobId          string              `json:"job_id"`
-	JobName        string              `json:"job_name"`
-	Failover       bool                `json:"failover"`
-	SrcTaskDetail  MysqlSrcTaskDetail  `json:"src_task_detail"`
-	DestTaskDetail KafkaDestTaskDetail `json:"dest_task_detail"`
+	JobId          string              `json:"job_id"`           // 兼容上个版本
+	JobName        string              `json:"job_name"`         // 兼容上个版本
+	Failover       bool                `json:"failover"`         // 兼容上个版本
+	SrcTaskDetail  MysqlSrcTaskDetail  `json:"src_task_detail"`  // 兼容上个版本
+	DestTaskDetail KafkaDestTaskDetail `json:"dest_task_detail"` // 兼容上个版本
+
+	BasicTaskProfile BasicTaskProfile `json:"basic_task_profile"`
+	TaskLogs         []TaskLog        `json:"task_logs"`
 	BaseResp
 }
 

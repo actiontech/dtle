@@ -281,6 +281,11 @@ var doc = `{
                 ],
                 "parameters": [
                     {
+                        "enum": [
+                            "migration",
+                            "sync",
+                            "subscription"
+                        ],
                         "type": "string",
                         "description": "filter job type",
                         "name": "filter_job_type",
@@ -504,17 +509,29 @@ var doc = `{
         }
     },
     "definitions": {
-        "models.AllocationDetail": {
+        "models.BasicTaskProfile": {
             "type": "object",
             "properties": {
-                "allocation_id": {
-                    "type": "string"
+                "configuration": {
+                    "$ref": "#/definitions/models.Configuration"
                 },
-                "node_id": {
-                    "type": "string"
+                "connection_info": {
+                    "$ref": "#/definitions/models.ConnectionInfo"
                 },
-                "task_status": {
-                    "$ref": "#/definitions/models.TaskStatus"
+                "dtle_node_infos": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.DtleNodeInfo"
+                    }
+                },
+                "job_base_info": {
+                    "$ref": "#/definitions/models.JobBaseInfo"
+                },
+                "operation_object": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.MysqlTableConfig"
+                    }
                 }
             }
         },
@@ -547,6 +564,49 @@ var doc = `{
                 },
                 "send_by_timeout": {
                     "type": "integer"
+                }
+            }
+        },
+        "models.Configuration": {
+            "type": "object",
+            "properties": {
+                "chunk_size": {
+                    "type": "integer"
+                },
+                "concurrent_playback": {
+                    "type": "integer"
+                },
+                "fail_over": {
+                    "type": "boolean"
+                },
+                "message_queue_buffer_size": {
+                    "type": "integer"
+                },
+                "relay_mechanism": {
+                    "type": "boolean"
+                },
+                "retry_time": {
+                    "type": "integer"
+                },
+                "source_packet_size": {
+                    "type": "integer"
+                }
+            }
+        },
+        "models.ConnectionInfo": {
+            "type": "object",
+            "properties": {
+                "dstDataBaseList": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.MysqlConnectionConfig"
+                    }
+                },
+                "srcDataBaseList": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.MysqlConnectionConfig"
+                    }
                 }
             }
         },
@@ -742,6 +802,23 @@ var doc = `{
                 }
             }
         },
+        "models.DtleNodeInfo": {
+            "type": "object",
+            "properties": {
+                "data_source": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "node_addr": {
+                    "type": "string"
+                },
+                "node_id": {
+                    "type": "string"
+                }
+            }
+        },
         "models.GetTaskProgressRespV2": {
             "type": "object",
             "properties": {
@@ -762,6 +839,38 @@ var doc = `{
                 },
                 "validated": {
                     "type": "boolean"
+                }
+            }
+        },
+        "models.JobBaseInfo": {
+            "type": "object",
+            "properties": {
+                "delay": {
+                    "type": "integer"
+                },
+                "job_create_time": {
+                    "type": "string"
+                },
+                "job_id": {
+                    "type": "string"
+                },
+                "job_name": {
+                    "type": "string"
+                },
+                "job_status": {
+                    "type": "string"
+                },
+                "job_status_description": {
+                    "type": "string"
+                },
+                "job_steps": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.JobStep"
+                    }
+                },
+                "subscription_topic": {
+                    "type": "string"
                 }
             }
         },
@@ -871,20 +980,6 @@ var doc = `{
                 }
             }
         },
-        "models.KafkaDestTaskDetail": {
-            "type": "object",
-            "properties": {
-                "allocations": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/models.AllocationDetail"
-                    }
-                },
-                "task_config": {
-                    "$ref": "#/definitions/models.KafkaDestTaskConfig"
-                }
-            }
-        },
         "models.ListMysqlSchemasRespV2": {
             "type": "object",
             "properties": {
@@ -960,20 +1055,6 @@ var doc = `{
                 }
             }
         },
-        "models.MysqlDestTaskDetail": {
-            "type": "object",
-            "properties": {
-                "allocations": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/models.AllocationDetail"
-                    }
-                },
-                "task_config": {
-                    "$ref": "#/definitions/models.MysqlDestTaskConfig"
-                }
-            }
-        },
         "models.MysqlSrcTaskConfig": {
             "type": "object",
             "required": [
@@ -1019,20 +1100,6 @@ var doc = `{
                 },
                 "task_name": {
                     "type": "string"
-                }
-            }
-        },
-        "models.MysqlSrcTaskDetail": {
-            "type": "object",
-            "properties": {
-                "allocations": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/models.AllocationDetail"
-                    }
-                },
-                "task_config": {
-                    "$ref": "#/definitions/models.MysqlSrcTaskConfig"
                 }
             }
         },
@@ -1082,46 +1149,34 @@ var doc = `{
         "models.MysqlToKafkaJobDetailRespV2": {
             "type": "object",
             "properties": {
-                "dest_task_detail": {
-                    "$ref": "#/definitions/models.KafkaDestTaskDetail"
-                },
-                "failover": {
-                    "type": "boolean"
-                },
-                "job_id": {
-                    "type": "string"
-                },
-                "job_name": {
-                    "type": "string"
+                "basic_task_profile": {
+                    "$ref": "#/definitions/models.BasicTaskProfile"
                 },
                 "message": {
                     "type": "string"
                 },
-                "src_task_detail": {
-                    "$ref": "#/definitions/models.MysqlSrcTaskDetail"
+                "task_logs": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.TaskLog"
+                    }
                 }
             }
         },
         "models.MysqlToMysqlJobDetailRespV2": {
             "type": "object",
             "properties": {
-                "dest_task_detail": {
-                    "$ref": "#/definitions/models.MysqlDestTaskDetail"
-                },
-                "failover": {
-                    "type": "boolean"
-                },
-                "job_id": {
-                    "type": "string"
-                },
-                "job_name": {
-                    "type": "string"
+                "basic_task_profile": {
+                    "$ref": "#/definitions/models.BasicTaskProfile"
                 },
                 "message": {
                     "type": "string"
                 },
-                "src_task_detail": {
-                    "$ref": "#/definitions/models.MysqlSrcTaskDetail"
+                "task_logs": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.TaskLog"
+                    }
                 }
             }
         },
@@ -1244,19 +1299,13 @@ var doc = `{
                 }
             }
         },
-        "models.TaskEvent": {
+        "models.TaskLog": {
             "type": "object",
             "properties": {
-                "event_type": {
+                "specific_task": {
                     "type": "string"
                 },
-                "message": {
-                    "type": "string"
-                },
-                "setup_error": {
-                    "type": "string"
-                },
-                "time": {
+                "start_time": {
                     "type": "string"
                 }
             }
@@ -1305,26 +1354,6 @@ var doc = `{
                 },
                 "timestamp": {
                     "type": "integer"
-                }
-            }
-        },
-        "models.TaskStatus": {
-            "type": "object",
-            "properties": {
-                "finished_at": {
-                    "type": "string"
-                },
-                "started_at": {
-                    "type": "string"
-                },
-                "status": {
-                    "type": "string"
-                },
-                "task_events": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/models.TaskEvent"
-                    }
                 }
             }
         },
