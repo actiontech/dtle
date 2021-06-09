@@ -513,6 +513,10 @@ func (d *Driver) verifyDriverConfig(config common.DtleTaskConfig) error {
 		errMsgs = append(errMsgs, fmt.Sprintf("	* %v", msg))
 	}
 
+	if config.BinlogRelay {
+		addErrMsgs("BinlogRelay is BUGGY and should not be used in this version.")
+	}
+
 	if (config.ConnectionConfig == nil && config.KafkaConfig == nil) ||
 		(config.ConnectionConfig != nil && config.KafkaConfig != nil) {
 		addErrMsgs("one and only one of ConnectionConfig or KafkaConfig should be set")
