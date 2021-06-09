@@ -1,12 +1,20 @@
 definitions:
-  models.AllocationDetail:
+  models.BasicTaskProfile:
     properties:
-      allocation_id:
-        type: string
-      node_id:
-        type: string
-      task_status:
-        $ref: '#/definitions/models.TaskStatus'
+      configuration:
+        $ref: '#/definitions/models.Configuration'
+      connection_info:
+        $ref: '#/definitions/models.ConnectionInfo'
+      dtle_node_infos:
+        items:
+          $ref: '#/definitions/models.DtleNodeInfo'
+        type: array
+      job_base_info:
+        $ref: '#/definitions/models.JobBaseInfo'
+      operation_object:
+        items:
+          $ref: '#/definitions/models.MysqlTableConfig'
+        type: array
     type: object
   models.BinlogValidation:
     properties:
@@ -28,6 +36,34 @@ definitions:
         type: integer
       send_by_timeout:
         type: integer
+    type: object
+  models.Configuration:
+    properties:
+      chunk_size:
+        type: integer
+      concurrent_playback:
+        type: integer
+      fail_over:
+        type: boolean
+      message_queue_buffer_size:
+        type: integer
+      relay_mechanism:
+        type: boolean
+      retry_time:
+        type: integer
+      source_packet_size:
+        type: integer
+    type: object
+  models.ConnectionInfo:
+    properties:
+      dstDataBaseList:
+        items:
+          $ref: '#/definitions/models.MysqlConnectionConfig'
+        type: array
+      srcDataBaseList:
+        items:
+          $ref: '#/definitions/models.MysqlConnectionConfig'
+        type: array
     type: object
   models.ConnectionValidation:
     properties:
@@ -53,6 +89,8 @@ definitions:
         type: string
       src_task:
         $ref: '#/definitions/models.MysqlSrcTaskConfig'
+      task_step_name:
+        type: string
     required:
     - dest_task
     - job_name
@@ -80,6 +118,8 @@ definitions:
         type: string
       src_task:
         $ref: '#/definitions/models.MysqlSrcTaskConfig'
+      task_step_name:
+        type: string
     required:
     - dest_task
     - job_name
@@ -101,6 +141,8 @@ definitions:
         type: string
       src_task:
         $ref: '#/definitions/models.MysqlSrcTaskConfig'
+      task_step_name:
+        type: string
     required:
     - dest_task
     - job_name
@@ -128,6 +170,8 @@ definitions:
         type: string
       src_task:
         $ref: '#/definitions/models.MysqlSrcTaskConfig'
+      task_step_name:
+        type: string
     required:
     - dest_task
     - job_name
@@ -160,6 +204,17 @@ definitions:
       message:
         type: string
     type: object
+  models.DtleNodeInfo:
+    properties:
+      data_source:
+        items:
+          type: string
+        type: array
+      node_addr:
+        type: string
+      node_id:
+        type: string
+    type: object
   models.GetTaskProgressRespV2:
     properties:
       message:
@@ -175,8 +230,12 @@ definitions:
       validated:
         type: boolean
     type: object
-  models.JobListItemV2:
+  models.JobBaseInfo:
     properties:
+      delay:
+        type: integer
+      job_create_time:
+        type: string
       job_id:
         type: string
       job_name:
@@ -184,6 +243,39 @@ definitions:
       job_status:
         type: string
       job_status_description:
+        type: string
+      job_steps:
+        items:
+          $ref: '#/definitions/models.JobStep'
+        type: array
+      subscription_topic:
+        type: string
+    type: object
+  models.JobListItemV2:
+    properties:
+      dst_addr_list:
+        items:
+          type: string
+        type: array
+      job_create_time:
+        type: string
+      job_id:
+        type: string
+      job_name:
+        type: string
+      job_status:
+        type: string
+      job_status_description:
+        type: string
+      job_steps:
+        items:
+          $ref: '#/definitions/models.JobStep'
+        type: array
+      src_addr_list:
+        items:
+          type: string
+        type: array
+      user:
         type: string
     type: object
   models.JobListRespV2:
@@ -193,6 +285,17 @@ definitions:
           $ref: '#/definitions/models.JobListItemV2'
         type: array
       message:
+        type: string
+    type: object
+  models.JobStep:
+    properties:
+      job_create_time:
+        type: string
+      step_name:
+        type: string
+      step_schedule:
+        type: number
+      step_status:
         type: string
     type: object
   models.KafkaDestTaskConfig:
@@ -217,15 +320,6 @@ definitions:
     - kafka_broker_addrs
     - kafka_topic
     - task_name
-    type: object
-  models.KafkaDestTaskDetail:
-    properties:
-      allocations:
-        items:
-          $ref: '#/definitions/models.AllocationDetail'
-        type: array
-      task_config:
-        $ref: '#/definitions/models.KafkaDestTaskConfig'
     type: object
   models.ListMysqlSchemasRespV2:
     properties:
@@ -277,15 +371,6 @@ definitions:
     - mysql_connection_config
     - task_name
     type: object
-  models.MysqlDestTaskDetail:
-    properties:
-      allocations:
-        items:
-          $ref: '#/definitions/models.AllocationDetail'
-        type: array
-      task_config:
-        $ref: '#/definitions/models.MysqlDestTaskConfig'
-    type: object
   models.MysqlSrcTaskConfig:
     properties:
       chunk_size:
@@ -318,15 +403,6 @@ definitions:
     - mysql_connection_config
     - task_name
     type: object
-  models.MysqlSrcTaskDetail:
-    properties:
-      allocations:
-        items:
-          $ref: '#/definitions/models.AllocationDetail'
-        type: array
-      task_config:
-        $ref: '#/definitions/models.MysqlSrcTaskConfig'
-    type: object
   models.MysqlTableConfig:
     properties:
       column_map_from:
@@ -357,33 +433,25 @@ definitions:
     type: object
   models.MysqlToKafkaJobDetailRespV2:
     properties:
-      dest_task_detail:
-        $ref: '#/definitions/models.KafkaDestTaskDetail'
-      failover:
-        type: boolean
-      job_id:
-        type: string
-      job_name:
-        type: string
+      basic_task_profile:
+        $ref: '#/definitions/models.BasicTaskProfile'
       message:
         type: string
-      src_task_detail:
-        $ref: '#/definitions/models.MysqlSrcTaskDetail'
+      task_logs:
+        items:
+          $ref: '#/definitions/models.TaskLog'
+        type: array
     type: object
   models.MysqlToMysqlJobDetailRespV2:
     properties:
-      dest_task_detail:
-        $ref: '#/definitions/models.MysqlDestTaskDetail'
-      failover:
-        type: boolean
-      job_id:
-        type: string
-      job_name:
-        type: string
+      basic_task_profile:
+        $ref: '#/definitions/models.BasicTaskProfile'
       message:
         type: string
-      src_task_detail:
-        $ref: '#/definitions/models.MysqlSrcTaskDetail'
+      task_logs:
+        items:
+          $ref: '#/definitions/models.TaskLog'
+        type: array
     type: object
   models.NatsMessageStatistics:
     properties:
@@ -462,15 +530,11 @@ definitions:
       table_name:
         type: string
     type: object
-  models.TaskEvent:
+  models.TaskLog:
     properties:
-      event_type:
+      specific_task:
         type: string
-      message:
-        type: string
-      setup_error:
-        type: string
-      time:
+      start_time:
         type: string
     type: object
   models.TaskProgress:
@@ -503,19 +567,6 @@ definitions:
         $ref: '#/definitions/models.ThroughputStat'
       timestamp:
         type: integer
-    type: object
-  models.TaskStatus:
-    properties:
-      finished_at:
-        type: string
-      started_at:
-        type: string
-      status:
-        type: string
-      task_events:
-        items:
-          $ref: '#/definitions/models.TaskEvent'
-        type: array
     type: object
   models.ThroughputStat:
     properties:
@@ -732,6 +783,29 @@ paths:
     get:
       description: get job list.
       parameters:
+      - description: filter job type
+        enum:
+        - migration
+        - sync
+        - subscription
+        in: query
+        name: filter_job_type
+        type: string
+      - description: filter job name
+        in: query
+        name: filter_job_name
+        type: string
+      - description: filter job status
+        in: query
+        name: filter_job_status
+        type: string
+      - default: job_create_time
+        description: order by
+        enum:
+        - job_create_time
+        in: query
+        name: order_by
+        type: string
       - description: filter job type
         in: query
         name: filter_job_type
