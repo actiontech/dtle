@@ -48,11 +48,6 @@ package-common: driver
 	cp -R scripts dist/install/usr/share/dtle/
 	cp -R etc dist/install/
 
-# run package script
-package-plugin-only: package-common
-	cd dist && fpm --force -s dir -t rpm -n $(PROJECT_NAME) -v $(VERSION) -C install
-	cd dist && md5sum $(PROJECT_NAME)-$(VERSION).x86_64.rpm > $(PROJECT_NAME)-$(VERSION).x86_64.rpm.md5
-
 package: package-common
 	mkdir -p dist/install/usr/bin
 	curl -o dist/nomad.zip "ftp://${RELEASE_FTPD_HOST}/binary/nomad_0.11.1_linux_amd64.zip"
@@ -66,6 +61,7 @@ package: package-common
       --after-remove ../misc/post-remove.sh \
       --before-upgrade ../misc/pre-upgrade.sh \
       --after-upgrade ../misc/post-upgrade.sh \
+      --config-files etc \
       --depends iproute
 	cd dist && md5sum $(PROJECT_NAME)-$(VERSION)-1.x86_64.rpm > $(PROJECT_NAME)-$(VERSION).x86_64.rpm.md5
 
