@@ -1270,7 +1270,7 @@ func Test_updateCurrentReplicateDoDb(t *testing.T) {
 
 }
 
-func Test_isExpandSyntaxQuery(t *testing.T) {
+func Test_isSkipQuery(t *testing.T) {
 	type args struct {
 		sql string
 	}
@@ -1281,23 +1281,32 @@ func Test_isExpandSyntaxQuery(t *testing.T) {
 	}{
 		{
 			name: "create-event",
-			args: args{sql: "create event if not exists a.event1 on schedule every 5 second on completion preserve do insert into a.a values (0);"},
-			want: false,
+			args: args{"create event if not exists a.event1 on schedule every 5 second on completion preserve do insert into a.a values (0);"},
+			want: true,
 		}, {
-			name: "create-trigger", args: args{sql: `CREATE TRIGGER before_employee_update
+			name: "create-trigger",
+			args: args{`CREATE TRIGGER before_employee_update
 	BEFORE UPDATE ON employees FOR EACH ROW
 	INSERT INTO employees_audit
 	SET action = 'update',
 		employeeNumber = OLD.employeeNumber,
 		lastname = OLD.lastname,
 		changedat = NOW();`},
-			want: false,
+			want: true,
+		}, {
+			name: "alter-event",
+			args: args{`ALTER EVENT no_such_event ON SCHEDULE EVERY '2:3' DAY_HOUR;`},
+			want: true,
+		}, {
+			name: "create-table",
+			args: args{"create table a.`create event on schedule at do insert` (id int)"},
+			want: true, // TODO It should be false. Regex cannot handle such a case.
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := isExpandSyntaxQuery(tt.args.sql); got != tt.want {
-				t.Errorf("isExpandSyntaxQuery() = %v, want %v", got, tt.want)
+			if got := isSkipQuery(tt.args.sql); got != tt.want {
+				t.Errorf("isSkipQuery() = %v, want %v", got, tt.want)
 			}
 		})
 	}
