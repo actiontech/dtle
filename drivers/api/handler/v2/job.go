@@ -45,25 +45,30 @@ func JobListV2(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invalid params:\n%v", err)))
 	}
 
-	url := handler.BuildUrl("/v1/jobs")
-	logger.Info("invoke nomad api begin", "url", url)
-	nomadJobs := []nomadApi.JobListStub{}
-	if err := handler.InvokeApiWithKvData(http.MethodGet, url, nil, &nomadJobs); nil != err {
-		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invoke nomad api %v failed: %v", url, err)))
+	storeManager, err := common.NewStoreManager([]string{handler.ConsulAddr}, logger)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("consul_addr=%v; connect to consul failed: %v", handler.ConsulAddr, err)))
 	}
-	logger.Info("invoke nomad api finished")
-
-	jobs := []models.JobListItemV2{}
-	for _, nomadJob := range nomadJobs {
-		jobType := getJobTypeFromJobId(nomadJob.ID)
+	jobList, err := storeManager.FindJobList()
+	if nil != err {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("consul_addr=%v ; get job status list failed: %v", handler.ConsulAddr, err)))
+	}
+	logger.Info("invoke consul find job list finished")
+	jobs := make([]models.JobListItemV2, 0)
+	for _, consuleJob := range jobList {
+		jobType := getJobTypeFromJobId(consuleJob.JobId)
 		if "" != reqParam.FilterJobType && reqParam.FilterJobType != string(jobType) {
 			continue
 		}
 		jobs = append(jobs, models.JobListItemV2{
-			JobId:                nomadJob.ID,
-			JobName:              nomadJob.Name,
-			JobStatus:            nomadJob.Status,
-			JobStatusDescription: nomadJob.StatusDescription,
+			JobId:         consuleJob.JobId,
+			JobName:       consuleJob.JobName,
+			JobStatus:     consuleJob.JobStatus,
+			JobCreateTime: consuleJob.JobCreateTime,
+			SrcAddrList:   consuleJob.SrcAddrList,
+			DstAddrList:   consuleJob.DstAddrList,
+			User:          consuleJob.User,
+			JobSteps:      consuleJob.JobSteps,
 		})
 	}
 	return c.JSON(http.StatusOK, &models.JobListRespV2{
