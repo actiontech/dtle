@@ -97,11 +97,11 @@ type Extractor struct {
 	memory1   *int64
 	memory2   *int64
 	finishing bool
-	finishCh  chan struct{}
 
 	// we need to close all data channel while pausing task runner. and these data channel will be recreate when restart the runner.
 	// to avoid writing closed channel, we need to wait for all goroutines that deal with data channels finishing. wg is used for the waiting.
-	wg sync.WaitGroup
+	wg          sync.WaitGroup
+	finishCoord *common.BinlogCoordinatesX
 }
 
 func NewExtractor(execCtx *common.ExecContext, cfg *common.MySQLDriverConfig, logger hclog.Logger, storeManager *common.StoreManager, waitCh chan *drivers.ExitResult) (*Extractor, error) {
@@ -123,7 +123,6 @@ func NewExtractor(execCtx *common.ExecContext, cfg *common.MySQLDriverConfig, lo
 		storeManager:    storeManager,
 		memory1:         new(int64),
 		memory2:         new(int64),
-		finishCh:        make(chan struct{}),
 	}
 	e.dataChannel = e.newDataChannel(cfg)
 	e.timestampCtx = NewTimestampContext(e.shutdownCh, e.logger, func() bool {
@@ -1559,22 +1558,19 @@ func (e *Extractor) sendFullComplete() (err error) {
 
 func (e *Extractor) Finish1() (err error) {
 	if e.finishing {
-		<- e.finishCh
 		return nil
 	}
 	e.finishing = true
 
-	// TODO close chan on error?
-
-	finishCoord, err := base.GetSelfBinlogCoordinates(e.db)
+	e.finishCoord, err = base.GetSelfBinlogCoordinates(e.db)
 	if err != nil {
 		return errors.Wrap(err, "GetSelfBinlogCoordinates")
 	}
 
-	e.logger.Info("Finish. got target GTIDSet", "gs", finishCoord.GtidSet)
+	e.logger.Info("Finish. got target GTIDSet", "gs", e.finishCoord.GtidSet)
 
 	bs, err := common.Encode(&common.DumpStatResult{
-		Coord: finishCoord,
+		Coord: e.finishCoord,
 		Type: CommandTypeJobFinish,
 	})
 	if err != nil {
@@ -1588,7 +1584,6 @@ func (e *Extractor) Finish1() (err error) {
 		} else if err != nil {
 			return err
 		} else {
-			close(e.finishCh)
 			return nil
 		}
 	}

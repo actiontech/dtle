@@ -364,3 +364,7 @@ func (sm *StoreManager) IsAfterWait(subject string) (bool, error) {
 	key := fmt.Sprintf("dtle/%v/afterwait", subject)
 	return sm.consulStore.Exists(key)
 }
+
+func (sm *StoreManager) PutFinished(subject string) error {
+	return sm.PutKey(subject, "finished", []byte("1"))
+}

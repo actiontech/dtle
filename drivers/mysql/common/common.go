@@ -30,6 +30,7 @@ const (
 
 const (
 	ControlMsgError int32 = 1
+	ControlMsgFinish int32 = 2
 )
 
 var (

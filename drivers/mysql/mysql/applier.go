@@ -181,7 +181,12 @@ func (a *Applier) updateGtidLoop() {
 
 	testTargetGtid := func() {
 		if a.gtidSet.Contain(a.targetGtid) {
-			a.logger.Info("*** meet target gtid")
+			a.logger.Info("meet target gtid", "gtidSet", a.targetGtid.String())
+			err := a.storeManager.PutFinished(a.subject)
+			if err != nil {
+				a.onError(common.TaskStateDead, errors.Wrap(err, "PutKey"))
+			}
+			_ = a.Shutdown()
 		}
 	}
 
