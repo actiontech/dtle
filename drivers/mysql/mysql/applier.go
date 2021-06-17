@@ -10,15 +10,16 @@ import (
 	"bytes"
 	gosql "database/sql"
 	"fmt"
-	"github.com/actiontech/dtle/drivers/mysql/common"
-	"github.com/hashicorp/nomad/plugins/drivers"
-	"github.com/pkg/errors"
 	"math"
 	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/actiontech/dtle/drivers/mysql/common"
+	"github.com/hashicorp/nomad/plugins/drivers"
+	"github.com/pkg/errors"
 
 	gonats "github.com/nats-io/go-nats"
 	gomysql "github.com/siddontang/go-mysql/mysql"
@@ -38,8 +39,8 @@ import (
 const (
 	cleanupGtidExecutedLimit = 2048
 	pingInterval             = 10 * time.Second
-	jobIncrCopy              = "job_stage_incr"
-	jobFullCopy              = "job_stage_full"
+	JobIncrCopy              = "job_stage_incr"
+	JobFullCopy              = "job_stage_full"
 )
 
 // Applier connects and writes the the applier-server, which is the server where
@@ -66,7 +67,7 @@ type Applier struct {
 	waitCh   chan *drivers.ExitResult
 	// we need to close all data channel while pausing task runner. and these data channel will be recreate when restart the runner.
 	// to avoid writing closed channel, we need to wait for all goroutines that deal with data channels finishing. wg is used for the waiting.
-	wg       sync.WaitGroup
+	wg sync.WaitGroup
 
 	shutdown     bool
 	shutdownCh   chan struct{}
@@ -83,11 +84,11 @@ type Applier struct {
 	storeManager *common.StoreManager
 	gtidCh       chan *common.BinlogCoordinateTx
 
-	stage          string
-	memory1        *int64
-	memory2        *int64
-	event          *eventer.Eventer
-	taskConfig     *drivers.TaskConfig
+	stage      string
+	memory1    *int64
+	memory2    *int64
+	event      *eventer.Eventer
+	taskConfig *drivers.TaskConfig
 }
 
 func NewApplier(
@@ -136,7 +137,7 @@ func (a *Applier) updateGtidLoop() {
 	t := time.NewTicker(updateGtidInterval)
 
 	var file string
-	var pos  int64
+	var pos int64
 
 	updated := false
 	doUpdate := func() {
@@ -234,7 +235,7 @@ func (a *Applier) Run() {
 	}
 
 	//a.logger.Debug("the connectionconfi host is ",a.mysqlContext.ConnectionConfig.Host)
-//	a.logger.Info("Apply binlog events to %s.%d", a.mysqlContext.ConnectionConfig.Host, a.mysqlContext.ConnectionConfig.Port)
+	//	a.logger.Info("Apply binlog events to %s.%d", a.mysqlContext.ConnectionConfig.Host, a.mysqlContext.ConnectionConfig.Port)
 	if err := a.initDBConnections(); err != nil {
 		a.onError(common.TaskStateDead, err)
 		return
@@ -271,9 +272,9 @@ func (a *Applier) Run() {
 
 	go a.updateGtidLoop()
 
-	if a.stage != jobFullCopy {
-		a.stage = jobFullCopy
-		a.sendEvent(jobFullCopy)
+	if a.stage != JobFullCopy {
+		a.stage = JobFullCopy
+		a.sendEvent(JobFullCopy)
 	}
 
 	go a.doFullCopy()
@@ -479,9 +480,9 @@ func (a *Applier) subscribeNats() (err error) {
 		a.gtidCh <- nil // coord == nil is a flag for update/upload gtid
 
 		a.mysqlContext.Stage = common.StageSlaveWaitingForWorkersToProcessQueue
-		if a.stage != jobIncrCopy {
-			a.stage = jobIncrCopy
-			a.sendEvent(jobIncrCopy)
+		if a.stage != JobIncrCopy {
+			a.stage = JobIncrCopy
+			a.sendEvent(JobIncrCopy)
 		}
 		close(a.rowCopyComplete)
 
@@ -520,7 +521,7 @@ func (a *Applier) subscribeNats() (err error) {
 				atomic.AddInt64(a.memory2, int64(len(bs)))
 				incrNMM.Reset()
 
-				a.logger.Debug("incr. incrBytesQueue enqueued", "vacancy", cap(a.ai.incrBytesQueue) - len(a.ai.incrBytesQueue))
+				a.logger.Debug("incr. incrBytesQueue enqueued", "vacancy", cap(a.ai.incrBytesQueue)-len(a.ai.incrBytesQueue))
 
 				if err := a.natsConn.Publish(m.Reply, nil); err != nil {
 					a.onError(common.TaskStateDead, err)
@@ -830,8 +831,8 @@ func (a *Applier) Stats() (*common.TaskStatistics, error) {
 		if a.mysqlContext.Gtid != "" {
 			// Done copying rows. The totalRowsCopied value is the de-facto number of rows,
 			// and there is no further need to keep updating the value.
-			backlog = fmt.Sprintf("%d/%d", lenApplierMsgQueue + lenApplierTxQueue,
-				capApplierMsgQueue + capApplierTxQueue)
+			backlog = fmt.Sprintf("%d/%d", lenApplierMsgQueue+lenApplierTxQueue,
+				capApplierMsgQueue+capApplierTxQueue)
 		} else {
 			backlog = fmt.Sprintf("%d/%d", len(a.fullBytesQueue), cap(a.fullBytesQueue))
 		}
