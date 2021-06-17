@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/actiontech/dtle/drivers/mysql/mysql"
+
 	"github.com/hashicorp/nomad/nomad/structs"
 
 	"github.com/actiontech/dtle/drivers/mysql/kafka"
@@ -193,8 +195,12 @@ func createOrUpdateMysqlToMysqlJob(c echo.Context, logger hclog.Logger, jobType 
 	var respErr error
 	if "" != nomadResp.Warnings {
 		respErr = errors.New(nomadResp.Warnings)
+	} else {
+		err = buildJobListItem(logger, jobParam)
+		if err != nil {
+			return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
+		}
 	}
-
 	return c.JSON(http.StatusOK, &models.CreateOrUpdateMysqlToMysqlJobRespV2{
 		CreateOrUpdateMysqlToMysqlJobParamV2: *jobParam,
 		EvalCreateIndex:                      nomadResp.EvalCreateIndex,
@@ -221,6 +227,37 @@ func convertMysqlToMysqlJobToNomadJob(failover bool, apiJobId, apiJobName string
 		Datacenters: []string{"dc1"},
 		TaskGroups:  []*nomadApi.TaskGroup{srcTask, destTask},
 	}, nil
+}
+func buildJobListItem(logger hclog.Logger, jobParam *models.CreateOrUpdateMysqlToMysqlJobParamV2) error {
+	// add data to consul
+	storeManager, err := common.NewStoreManager([]string{handler.ConsulAddr}, logger)
+	if err != nil {
+		return fmt.Errorf("consul_addr=%v; connect to consul failed: %v", handler.ConsulAddr, err)
+	}
+	jobInfo := models.JobListItemV2{
+		JobId:                jobParam.JobId,
+		JobName:              jobParam.JobName,
+		JobStatus:            "running",
+		JobStatusDescription: "",
+		JobCreateTime:        time.Now().String(),
+		SrcAddrList:          []string{jobParam.SrcTask.MysqlConnectionConfig.MysqlHost},
+		DstAddrList:          []string{jobParam.DestTask.MysqlConnectionConfig.MysqlHost},
+		// todo
+		User:     "root",
+		JobSteps: nil,
+	}
+	if jobParam.TaskStepName == "all" {
+		jobInfo.JobSteps = append(jobInfo.JobSteps, models.NewJobStep(mysql.JobFullCopy), models.NewJobStep(mysql.JobIncrCopy))
+	} else if jobParam.TaskStepName == mysql.JobFullCopy {
+		jobInfo.JobSteps = append(jobInfo.JobSteps, models.NewJobStep(mysql.JobFullCopy))
+	} else if jobParam.TaskStepName == mysql.JobIncrCopy {
+		jobInfo.JobSteps = append(jobInfo.JobSteps, models.NewJobStep(mysql.JobIncrCopy))
+	}
+	err = storeManager.SaveJobInfo(jobInfo)
+	if nil != err {
+		return fmt.Errorf("consul_addr=%v ; sava job info list failed: %v", handler.ConsulAddr, err)
+	}
+	return nil
 }
 
 func buildNomadTaskGroupItem(dtleTaskconfig map[string]interface{}, taskName, nodeId string, failover bool) (*nomadApi.TaskGroup, error) {

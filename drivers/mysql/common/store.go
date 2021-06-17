@@ -321,7 +321,7 @@ func GetPausedStatusFromConsul(storeManager *StoreManager, subject string) (bool
 func (sm *StoreManager) FindJobList() ([]*models.JobListItemV2, error) {
 	key := "dtleJobList/"
 	kps, err := sm.consulStore.List(key)
-	if nil != err {
+	if nil != err && err != store.ErrKeyNotFound {
 		return nil, fmt.Errorf("get %v value from consul failed: %v", key, err)
 	}
 	jobList := make([]*models.JobListItemV2, 0)
@@ -337,4 +337,14 @@ func (sm *StoreManager) FindJobList() ([]*models.JobListItemV2, error) {
 		jobList = append(jobList, job)
 	}
 	return jobList, nil
+}
+
+func (sm *StoreManager) SaveJobInfo(job models.JobListItemV2) error {
+	key := fmt.Sprintf("dtleJobList/%v", job.JobId)
+	jobBytes, err := json.Marshal(job)
+	if err != nil {
+		fmt.Errorf("save %v to consul, marshal err : %v", key, err)
+	}
+	err = sm.consulStore.Put(key, jobBytes, nil)
+	return err
 }

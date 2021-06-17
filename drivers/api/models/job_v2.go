@@ -18,6 +18,15 @@ type JobStep struct {
 	JobCreateTime string  `json:"job_create_time"`
 }
 
+func NewJobStep(stepName string) JobStep {
+	return JobStep{
+		StepName:      stepName,
+		StepStatus:    "start",
+		StepSchedule:  0,
+		JobCreateTime: time.Now().String(),
+	}
+}
+
 type JobListItemV2 struct {
 	JobId                string    `json:"job_id"`
 	JobName              string    `json:"job_name"`
