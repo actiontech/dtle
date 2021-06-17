@@ -33,6 +33,7 @@ var doc = `{
                 "tags": [
                     "job"
                 ],
+                "operationId": "DeleteJobV2",
                 "parameters": [
                     {
                         "type": "string",
@@ -61,6 +62,7 @@ var doc = `{
                 "tags": [
                     "job"
                 ],
+                "operationId": "CreateOrUpdateMigrationJobV2",
                 "parameters": [
                     {
                         "description": "migration job config",
@@ -88,6 +90,7 @@ var doc = `{
                 "tags": [
                     "job"
                 ],
+                "operationId": "GetMigrationJobDetailV2",
                 "parameters": [
                     {
                         "type": "string",
@@ -116,6 +119,7 @@ var doc = `{
                 "tags": [
                     "job"
                 ],
+                "operationId": "PauseJobV2",
                 "parameters": [
                     {
                         "type": "string",
@@ -144,6 +148,7 @@ var doc = `{
                 "tags": [
                     "job"
                 ],
+                "operationId": "ResumeJobV2",
                 "parameters": [
                     {
                         "type": "string",
@@ -172,6 +177,7 @@ var doc = `{
                 "tags": [
                     "job"
                 ],
+                "operationId": "CreateOrUpdateSubscriptionJobV2",
                 "parameters": [
                     {
                         "description": "subscription job config",
@@ -199,6 +205,7 @@ var doc = `{
                 "tags": [
                     "job"
                 ],
+                "operationId": "GetSubscriptionJobDetailV2",
                 "parameters": [
                     {
                         "type": "string",
@@ -227,6 +234,7 @@ var doc = `{
                 "tags": [
                     "job"
                 ],
+                "operationId": "CreateOrUpdateSyncJobV2",
                 "parameters": [
                     {
                         "description": "sync job config",
@@ -254,6 +262,7 @@ var doc = `{
                 "tags": [
                     "job"
                 ],
+                "operationId": "GetSyncJobDetailV2",
                 "parameters": [
                     {
                         "type": "string",
@@ -279,6 +288,7 @@ var doc = `{
                 "tags": [
                     "job"
                 ],
+                "operationId": "JobListV2",
                 "parameters": [
                     {
                         "enum": [
@@ -339,6 +349,7 @@ var doc = `{
                 "tags": [
                     "log"
                 ],
+                "operationId": "UpdateLogLevelV2",
                 "parameters": [
                     {
                         "enum": [
@@ -371,6 +382,7 @@ var doc = `{
                 "tags": [
                     "monitor"
                 ],
+                "operationId": "GetTaskProgressV2",
                 "parameters": [
                     {
                         "type": "string",
@@ -409,6 +421,7 @@ var doc = `{
                 "tags": [
                     "mysql"
                 ],
+                "operationId": "ListMysqlSchemasV2",
                 "parameters": [
                     {
                         "type": "string",
@@ -467,6 +480,7 @@ var doc = `{
                 "tags": [
                     "node"
                 ],
+                "operationId": "NodeListV2",
                 "responses": {
                     "200": {
                         "description": "OK",
@@ -486,6 +500,7 @@ var doc = `{
                 "tags": [
                     "validation"
                 ],
+                "operationId": "ValidateJobV2",
                 "parameters": [
                     {
                         "description": "validate job config",

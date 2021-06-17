@@ -27,6 +27,7 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
+// @Id JobListV2
 // @Description get job list.
 // @Tags job
 // @Success 200 {object} models.JobListRespV2
@@ -106,6 +107,7 @@ func getJobTypeFromJobId(jobId string) DtleJobType {
 	}
 }
 
+// @Id CreateOrUpdateMigrationJobV2
 // @Description create or update migration job.
 // @Tags job
 // @Accept application/json
@@ -342,6 +344,7 @@ func addNotRequiredParamToMap(target map[string]interface{}, value interface{}, 
 	}
 }
 
+// @Id GetMigrationJobDetailV2
 // @Description get migration job detail.
 // @Tags job
 // @Success 200 {object} models.MysqlToMysqlJobDetailRespV2
@@ -555,6 +558,7 @@ func buildMysqlToMysqlJobDetailResp(nomadJob nomadApi.Job, nomadAllocations []no
 	return destTaskDetail, srcTaskDetail, nil
 }
 
+// @Id CreateOrUpdateSyncJobV2
 // @Description create or update sync job.
 // @Tags job
 // @Accept application/json
@@ -566,6 +570,7 @@ func CreateOrUpdateSyncJobV2(c echo.Context) error {
 	return createOrUpdateMysqlToMysqlJob(c, logger, DtleJobTypeSync)
 }
 
+// @Id GetSyncJobDetailV2
 // @Description get sync job detail.
 // @Tags job
 // @Success 200 {object} models.MysqlToMysqlJobDetailRespV2
@@ -576,6 +581,7 @@ func GetSyncJobDetailV2(c echo.Context) error {
 	return getMysqlToMysqlJobDetail(c, logger, DtleJobTypeSync)
 }
 
+// @Id CreateOrUpdateSubscriptionJobV2
 // @Description create or update subscription job.
 // @Tags job
 // @Accept application/json
@@ -691,6 +697,7 @@ func buildKafkaDestTaskConfigMap(config *models.KafkaDestTaskConfig) map[string]
 	return taskConfigInNomadFormat
 }
 
+// @Id GetSubscriptionJobDetailV2
 // @Description get subscription job detail.
 // @Tags job
 // @Success 200 {object} models.MysqlToKafkaJobDetailRespV2
@@ -776,6 +783,7 @@ func buildKafkaDestTaskDetail(taskName string, internalTaskKafkaConfig common.Ka
 	return destTaskDetail
 }
 
+// @Id PauseJobV2
 // @Description pause job.
 // @Tags job
 // @accept application/x-www-form-urlencoded
@@ -850,6 +858,7 @@ func PauseJobV2(c echo.Context) error {
 	})
 }
 
+// @Id ResumeJobV2
 // @Description resume job.
 // @Tags job
 // @accept application/x-www-form-urlencoded
@@ -941,6 +950,7 @@ func sentSignalToTask(logger hclog.Logger, allocId, signal string) error {
 	return nil
 }
 
+// @Id DeleteJobV2
 // @Description delete job.
 // @Tags job
 // @accept application/x-www-form-urlencoded

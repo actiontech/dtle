@@ -16,6 +16,7 @@ import (
 	"github.com/mitchellh/mapstructure"
 )
 
+// @Id ValidateJobV2
 // @Description validate job config.
 // @Tags validation
 // @Accept application/json

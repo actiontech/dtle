@@ -13,6 +13,7 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
+// @Id GetTaskProgressV2
 // @Description get progress of tasks within an allocation.
 // @Tags monitor
 // @Param allocation_id query string true "allocation id"

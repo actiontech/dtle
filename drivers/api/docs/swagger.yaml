@@ -625,6 +625,7 @@ paths:
       consumes:
       - application/x-www-form-urlencoded
       description: delete job.
+      operationId: DeleteJobV2
       parameters:
       - description: job id
         in: formData
@@ -643,6 +644,7 @@ paths:
       consumes:
       - application/json
       description: create or update migration job.
+      operationId: CreateOrUpdateMigrationJobV2
       parameters:
       - description: migration job config
         in: body
@@ -660,6 +662,7 @@ paths:
   /v2/job/migration/detail:
     get:
       description: get migration job detail.
+      operationId: GetMigrationJobDetailV2
       parameters:
       - description: job id
         in: query
@@ -678,6 +681,7 @@ paths:
       consumes:
       - application/x-www-form-urlencoded
       description: pause job.
+      operationId: PauseJobV2
       parameters:
       - description: job id
         in: formData
@@ -696,6 +700,7 @@ paths:
       consumes:
       - application/x-www-form-urlencoded
       description: resume job.
+      operationId: ResumeJobV2
       parameters:
       - description: job id
         in: formData
@@ -714,6 +719,7 @@ paths:
       consumes:
       - application/json
       description: create or update subscription job.
+      operationId: CreateOrUpdateSubscriptionJobV2
       parameters:
       - description: subscription job config
         in: body
@@ -731,6 +737,7 @@ paths:
   /v2/job/subscription/detail:
     get:
       description: get subscription job detail.
+      operationId: GetSubscriptionJobDetailV2
       parameters:
       - description: job id
         in: query
@@ -749,6 +756,7 @@ paths:
       consumes:
       - application/json
       description: create or update sync job.
+      operationId: CreateOrUpdateSyncJobV2
       parameters:
       - description: sync job config
         in: body
@@ -766,6 +774,7 @@ paths:
   /v2/job/sync/detail:
     get:
       description: get sync job detail.
+      operationId: GetSyncJobDetailV2
       parameters:
       - description: job id
         in: query
@@ -782,6 +791,7 @@ paths:
   /v2/jobs:
     get:
       description: get job list.
+      operationId: JobListV2
       parameters:
       - description: filter job type
         enum:
@@ -822,6 +832,7 @@ paths:
       consumes:
       - application/x-www-form-urlencoded
       description: reload log level dynamically.
+      operationId: UpdateLogLevelV2
       parameters:
       - description: dtle log level
         enum:
@@ -844,6 +855,7 @@ paths:
   /v2/monitor/task:
     get:
       description: get progress of tasks within an allocation.
+      operationId: GetTaskProgressV2
       parameters:
       - description: allocation id
         in: query
@@ -870,6 +882,7 @@ paths:
   /v2/mysql/schemas:
     get:
       description: list schemas of mysql source instance.
+      operationId: ListMysqlSchemasV2
       parameters:
       - description: mysql host
         in: query
@@ -909,6 +922,7 @@ paths:
   /v2/nodes:
     get:
       description: get node list.
+      operationId: NodeListV2
       responses:
         "200":
           description: OK
@@ -921,6 +935,7 @@ paths:
       consumes:
       - application/json
       description: validate job config.
+      operationId: ValidateJobV2
       parameters:
       - description: validate job config
         in: body

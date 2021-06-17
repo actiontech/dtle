@@ -10,6 +10,7 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
+// @Id NodeListV2
 // @Description get node list.
 // @Tags node
 // @Success 200 {object} models.NodeListRespV2
