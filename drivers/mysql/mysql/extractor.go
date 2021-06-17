@@ -81,7 +81,6 @@ type Extractor struct {
 	shutdown     bool
 	shutdownCh   chan struct{}
 	shutdownLock sync.Mutex
-	isPaused     bool
 
 	testStub1Delay int64
 
@@ -1509,32 +1508,6 @@ func (e *Extractor) Shutdown() error {
 	//close(e.binlogChannel)
 	e.logger.Info("Shutting down")
 	return nil
-}
-
-func (e *Extractor) Resume() {
-	e.logger.Info("resume task")
-	if !e.shutdown {
-		return
-	}
-	e.shutdown = false
-	e.shutdownCh = make(chan struct{})
-
-	// reset data channel to make sure the task begin with empty channel
-	e.dataChannel = e.newDataChannel(e.mysqlContext)
-
-	go e.Run()
-	e.isPaused = false
-	return
-}
-
-func (e *Extractor) Pause() {
-	e.logger.Info("pause task")
-	if err := e.Shutdown(); nil != err {
-		e.onError(common.TaskStateDead, errors.Wrap(err, "pause task, shutdown failed"))
-		return
-	}
-	e.isPaused = true
-	return
 }
 
 func (e *Extractor) sendFullComplete() (err error) {

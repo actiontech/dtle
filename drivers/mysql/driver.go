@@ -703,10 +703,15 @@ func (d *Driver) SignalTask(taskID string, signal string) error {
 			return errors.New(string(bs))
 		}
 	case "pause":
-		d.tasks.store[taskID].runner.Pause()
+		h := d.tasks.store[taskID]
+		err := h.runner.Shutdown()
+		if err != nil {
+			d.logger.Error("error when pausing a task", "taskID", taskID, "err", err)
+		}
+		h.runner = nil
 		return nil
 	case "resume":
-		d.tasks.store[taskID].runner.Resume()
+		// TODO
 		return nil
 	default:
 		return nil

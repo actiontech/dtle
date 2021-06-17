@@ -72,7 +72,6 @@ type Applier struct {
 	shutdown     bool
 	shutdownCh   chan struct{}
 	shutdownLock sync.Mutex
-	isPaused     bool
 
 	nDumpEntry int64
 
@@ -969,32 +968,6 @@ func (a *Applier) Shutdown() error {
 
 	a.logger.Info("Shutting down")
 	return nil
-}
-
-func (a *Applier) Resume() {
-	a.logger.Info("resume task")
-	if !a.shutdown {
-		return
-	}
-	a.shutdown = false
-	a.shutdownCh = make(chan struct{})
-
-	// reset data channel to make sure the task begin with empty channel
-	a.fullBytesQueue, a.dumpEntryQueue = a.newDataChannel()
-
-	go a.Run()
-	a.isPaused = false
-	return
-}
-
-func (a *Applier) Pause() {
-	a.logger.Info("pause task")
-	if err := a.Shutdown(); nil != err {
-		a.onError(common.TaskStateDead, errors.Wrap(err, "pause task, shutdown failed"))
-		return
-	}
-	a.isPaused = true
-	return
 }
 
 func (a *Applier) newDataChannel() (fullBytesQueue chan []byte, dumpEntryQueue chan *common.DumpEntry) {

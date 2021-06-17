@@ -89,7 +89,6 @@ func (h *taskHandle) run(d *Driver, isPaused bool, jobName string) {
 	if isPaused {
 		// when nomad reschedule job, the job should run if it is paused
 		h.logger.Info("the job will be paused", "jobName", jobName)
-		h.runner.Pause()
 	} else {
 		go h.runner.Run()
 	}
@@ -197,8 +196,4 @@ type DriverHandle interface {
 
 	// Stats returns aggregated stats of the driver
 	Stats() (*common.TaskStatistics, error)
-
-	Pause()
-
-	Resume()
 }
