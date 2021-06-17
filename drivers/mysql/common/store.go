@@ -249,39 +249,23 @@ func (sm *StoreManager) WaitKv(subject string, key string, stopCh chan struct{})
 	}
 }
 
-func (sm *StoreManager) PutJobStatus(jobName string, isPaused bool) error {
+func (sm *StoreManager) PutJobStatus(jobName string, status string) error {
 	url := fmt.Sprintf("dtleJobStatus/%v", jobName)
-	status := ""
-	if isPaused {
-		status = DtleJobStatusPaused
-	} else {
-		status = DtleJobStatusNonPaused
-	}
 	return sm.consulStore.Put(url, []byte(status), nil)
 }
 
-func (sm *StoreManager) GetJobStatus(jobName string) (isExisted, isPaused bool, err error) {
+func (sm *StoreManager) GetJobStatus(jobName string) (status string, err error) {
 	key := fmt.Sprintf("dtleJobStatus/%v", jobName)
-	isExisted, err = sm.consulStore.Exists(key)
-	if nil != err {
-		return false, false, fmt.Errorf("verify key %v from consul failed: %v", key, err)
-	}
-
-	if !isExisted {
-		return false, false, nil
-	}
-
 	kp, err := sm.consulStore.Get(key)
+	if err == store.ErrKeyNotFound {
+		return DtleJobStatusNonPaused, nil
+	}
+
 	if nil != err {
-		return false, false, fmt.Errorf("get %v from consul failed: %v", key, err)
+		return "", fmt.Errorf("get %v from consul failed: %v", key, err)
 	}
-	jobStatus := string(kp.Value)
-	if jobStatus == DtleJobStatusPaused {
-		isPaused = true
-	} else {
-		isPaused = false
-	}
-	return true, isPaused, nil
+
+	return string(kp.Value), nil
 }
 
 func GetGtidFromConsul(sm *StoreManager, subject string, logger hclog.Logger, mysqlContext *MySQLDriverConfig) error {

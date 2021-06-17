@@ -824,18 +824,18 @@ func PauseJobV2(c echo.Context) error {
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("consul_addr=%v; connect to consul failed: %v", handler.ConsulAddr, err)))
 	}
-	_, isPaused, err := storeManager.GetJobStatus(jobName)
+	jobStatus, err := storeManager.GetJobStatus(jobName)
 	if nil != err {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("job_name=%v; get job status failed: %v", jobName, err)))
 	}
-	if isPaused {
+	if jobStatus == common.DtleJobStatusPaused {
 		return c.JSON(http.StatusOK, &models.PauseJobRespV2{
 			BaseResp: models.BuildBaseResp(nil),
 		})
 	}
 
 	// update metadata first
-	if err := storeManager.PutJobStatus(jobName, true); nil != err {
+	if err := storeManager.PutJobStatus(jobName, common.DtleJobStatusPaused); nil != err {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("job_name=%v; update job from consul failed: %v", jobName, err)))
 	}
 
@@ -843,7 +843,7 @@ func PauseJobV2(c echo.Context) error {
 	defer func() {
 		if needRollbackMetadata {
 			logger.Info("pause job failed, rollback metadata")
-			if err := storeManager.PutJobStatus(jobName, isPaused); nil != err {
+			if err := storeManager.PutJobStatus(jobName, jobStatus); nil != err {
 				logger.Info("rollback metadata failed", "error", err)
 			}
 		}
@@ -904,18 +904,18 @@ func ResumeJobV2(c echo.Context) error {
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("consul_addr=%v; connect to consul failed: %v", handler.ConsulAddr, err)))
 	}
-	_, isPaused, err := storeManager.GetJobStatus(jobName)
+	jobStatus, err := storeManager.GetJobStatus(jobName)
 	if nil != err {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("job_name=%v; get job status failed: %v", jobName, err)))
 	}
 
-	if !isPaused {
+	if jobStatus != common.DtleJobStatusPaused {
 		return c.JSON(http.StatusOK, &models.PauseJobRespV2{
 			BaseResp: models.BuildBaseResp(nil),
 		})
 	}
 
-	if err := storeManager.PutJobStatus(jobName, false); nil != err {
+	if err := storeManager.PutJobStatus(jobName, common.DtleJobStatusNonPaused); nil != err {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("job_name=%v; update job from consul failed: %v", jobName, err)))
 	}
 
@@ -923,7 +923,7 @@ func ResumeJobV2(c echo.Context) error {
 	defer func() {
 		if needRollbackMetadata {
 			logger.Info("resume job failed, rollback metadata")
-			if err := storeManager.PutJobStatus(jobName, isPaused); nil != err {
+			if err := storeManager.PutJobStatus(jobName, jobStatus); nil != err {
 				logger.Info("rollback metadata failed", "error", err)
 			}
 		}

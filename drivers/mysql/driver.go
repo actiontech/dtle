@@ -490,17 +490,11 @@ func (d *Driver) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHandle, *drive
 			return nil, nil, fmt.Errorf("unknown processor type: %+v", cfg.Name)
 		}
 
-		existed := false
-		existed, isPaused, err = d.storeManager.GetJobStatus(ctx.Subject)
+		jobStatus, err := d.storeManager.GetJobStatus(ctx.Subject)
 		if nil != err {
 			return nil, nil, fmt.Errorf("get pause status from consul failed : %v", err)
 		}
-		if !existed {
-			d.logger.Debug("can not find pause status from consul. insert it")
-			if err := d.storeManager.PutJobStatus(ctx.Subject, false); nil != err {
-				return nil, nil, fmt.Errorf("update pause status from consul failed : %v", err)
-			}
-		}
+		isPaused = jobStatus == common.DtleJobStatusPaused
 	}
 	go h.run(d, isPaused, cfg.Name)
 
