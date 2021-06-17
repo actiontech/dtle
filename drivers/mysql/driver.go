@@ -491,13 +491,13 @@ func (d *Driver) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHandle, *drive
 		}
 
 		existed := false
-		existed, isPaused, err = d.storeManager.GetJobPauseStatusIfExist(ctx.Subject)
+		existed, isPaused, err = d.storeManager.GetJobStatus(ctx.Subject)
 		if nil != err {
 			return nil, nil, fmt.Errorf("get pause status from consul failed : %v", err)
 		}
 		if !existed {
 			d.logger.Debug("can not find pause status from consul. insert it")
-			if err := d.storeManager.PutJobPauseStatus(ctx.Subject, false); nil != err {
+			if err := d.storeManager.PutJobStatus(ctx.Subject, false); nil != err {
 				return nil, nil, fmt.Errorf("update pause status from consul failed : %v", err)
 			}
 		}

@@ -249,7 +249,7 @@ func (sm *StoreManager) WaitKv(subject string, key string, stopCh chan struct{})
 	}
 }
 
-func (sm *StoreManager) PutJobPauseStatus(jobName string, isPaused bool) error {
+func (sm *StoreManager) PutJobStatus(jobName string, isPaused bool) error {
 	url := fmt.Sprintf("dtleJobStatus/%v", jobName)
 	status := ""
 	if isPaused {
@@ -260,7 +260,7 @@ func (sm *StoreManager) PutJobPauseStatus(jobName string, isPaused bool) error {
 	return sm.consulStore.Put(url, []byte(status), nil)
 }
 
-func (sm *StoreManager) GetJobPauseStatusIfExist(jobName string) (isExisted, isPaused bool, err error) {
+func (sm *StoreManager) GetJobStatus(jobName string) (isExisted, isPaused bool, err error) {
 	key := fmt.Sprintf("dtleJobStatus/%v", jobName)
 	isExisted, err = sm.consulStore.Exists(key)
 	if nil != err {
@@ -307,15 +307,6 @@ func GetGtidFromConsul(sm *StoreManager, subject string, logger hclog.Logger, my
 			"file", mysqlContext.BinlogFile, "pos", mysqlContext.BinlogPos)
 	}
 	return nil
-}
-
-func GetPausedStatusFromConsul(storeManager *StoreManager, subject string) (bool, error) {
-	_, isPaused, err := storeManager.GetJobPauseStatusIfExist(subject)
-	if nil != err {
-		return false, err
-	}
-
-	return isPaused, nil
 }
 
 func (sm *StoreManager) FindJobList() ([]*models.JobListItemV2, error) {
