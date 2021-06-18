@@ -1,12 +1,15 @@
 package common
 
 import (
+	"encoding/json"
 	"fmt"
+	"strconv"
+	"strings"
+
+	"github.com/actiontech/dtle/drivers/api/models"
 	"github.com/hashicorp/go-hclog"
 	"github.com/pkg/errors"
 	"github.com/siddontang/go-mysql/mysql"
-	"strconv"
-	"strings"
 
 	"github.com/docker/libkv"
 	"github.com/docker/libkv/store"
@@ -313,4 +316,35 @@ func GetPausedStatusFromConsul(storeManager *StoreManager, subject string) (bool
 	}
 
 	return isPaused, nil
+}
+
+func (sm *StoreManager) FindJobList() ([]*models.JobListItemV2, error) {
+	key := "dtleJobList/"
+	kps, err := sm.consulStore.List(key)
+	if nil != err && err != store.ErrKeyNotFound {
+		return nil, fmt.Errorf("get %v value from consul failed: %v", key, err)
+	}
+	jobList := make([]*models.JobListItemV2, 0)
+	job := new(models.JobListItemV2)
+	for _, kp := range kps {
+		if kp.Key == key {
+			continue
+		}
+		err = json.Unmarshal(kp.Value, job)
+		if err != nil {
+			return nil, fmt.Errorf("get %v from consul, unmarshal err : %v", key, err)
+		}
+		jobList = append(jobList, job)
+	}
+	return jobList, nil
+}
+
+func (sm *StoreManager) SaveJobInfo(job models.JobListItemV2) error {
+	key := fmt.Sprintf("dtleJobList/%v", job.JobId)
+	jobBytes, err := json.Marshal(job)
+	if err != nil {
+		fmt.Errorf("save %v to consul, marshal err : %v", key, err)
+	}
+	err = sm.consulStore.Put(key, jobBytes, nil)
+	return err
 }
