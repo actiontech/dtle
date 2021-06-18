@@ -1123,6 +1123,8 @@ func resolveQuery(currentSchema string, sql string,
 		case ast.FlushPrivileges:
 			result.isExpand = true
 		}
+	case *ast.DropProcedureStmt:
+		result.isExpand = true
 	case *ast.DropTableStmt:
 		var newTables []*ast.TableName
 		for i, t := range v.Tables {
@@ -1203,6 +1205,7 @@ var (
 	regexCreateTrigger = regexp.MustCompile(`(?is)CREATE\b.+?TRIGGER\b.+?(?:BEFORE|AFTER)\b.+?(?:INSERT|UPDATE|DELETE)\b.+?ON\b.+?FOR\b.+?EACH\b.+?ROW\b`)
 	regexCreateEvent = regexp.MustCompile(`(?is)CREATE\b.+?EVENT\b.+?ON\b.+?SCHEDULE\b.+?(?:AT|EVERY)\b.+?DO\b`)
 	regexAlterEvent = regexp.MustCompile(`(?is)ALTER\b.+?EVENT\b.+?(?:ON SCHEDULE|ON COMPLETION|RENAME TO|ENABLE|DISABLE|COMMENT|DO)\b`)
+	regexCreateProcedure = regexp.MustCompile(`(?is)CREATE DEFINER=\b.+?(?:PROCEDURE|FUNCTION)\b.+?`)
 )
 func isSkipQuery(sql string) bool {
 	if regexCreateTrigger.MatchString(sql) {
@@ -1224,13 +1227,11 @@ func isExpandSyntaxQuery(sql string) bool {
 
 	// TODO mod pingcap/parser to support these DDLs
 	//  and use ast instead of string-matching
-	if strings.HasPrefix(sql, "create function") {
-		return true
-	}
-	if strings.HasPrefix(sql, "create procedure") {
-		return true
-	}
 	if strings.HasPrefix(sql, "rename user") {
+		return true
+	}
+
+	if regexCreateTrigger.MatchString(sql) {
 		return true
 	}
 
