@@ -64,7 +64,6 @@ func JobListV2(c echo.Context) error {
 		}
 		jobs = append(jobs, models.JobListItemV2{
 			JobId:         consulJob.JobId,
-			JobName:       consulJob.JobName,
 			JobStatus:     consulJob.JobStatus,
 			JobCreateTime: consulJob.JobCreateTime,
 			SrcAddrList:   consulJob.SrcAddrList,
@@ -166,9 +165,8 @@ func createOrUpdateMysqlToMysqlJob(c echo.Context, logger hclog.Logger, jobType 
 		jobParam.DestTask.ParallelWorkers = common.DefaultNumWorkers
 	}
 
-	jobId := g.StringElse(jobParam.JobId, jobParam.JobName)
-	jobId = addJobTypeToJobId(jobId, jobType)
-	nomadJob, err := convertMysqlToMysqlJobToNomadJob(failover, jobId, jobParam.JobName, jobParam.SrcTask, jobParam.DestTask)
+	jobParam.JobId = addJobTypeToJobId(jobParam.JobId, jobType)
+	nomadJob, err := convertMysqlToMysqlJobToNomadJob(failover, jobParam.JobId, jobParam.SrcTask, jobParam.DestTask)
 	if nil != err {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("convert job param to nomad job request failed, error: %v", err)))
 	}
@@ -190,7 +188,6 @@ func createOrUpdateMysqlToMysqlJob(c echo.Context, logger hclog.Logger, jobType 
 
 	jobParam.SrcTask.MysqlConnectionConfig.MysqlPassword = "*"
 	jobParam.DestTask.MysqlConnectionConfig.MysqlPassword = "*"
-	jobParam.JobId = jobId
 
 	var respErr error
 	if "" != nomadResp.Warnings {
@@ -209,7 +206,7 @@ func createOrUpdateMysqlToMysqlJob(c echo.Context, logger hclog.Logger, jobType 
 	})
 }
 
-func convertMysqlToMysqlJobToNomadJob(failover bool, apiJobId, apiJobName string, apiSrcTask *models.MysqlSrcTaskConfig, apiDestTask *models.MysqlDestTaskConfig) (*nomadApi.Job, error) {
+func convertMysqlToMysqlJobToNomadJob(failover bool, apiJobId string, apiSrcTask *models.MysqlSrcTaskConfig, apiDestTask *models.MysqlDestTaskConfig) (*nomadApi.Job, error) {
 	srcTask, err := buildNomadTaskGroupItem(buildMysqlSrcTaskConfigMap(apiSrcTask), apiSrcTask.TaskName, apiSrcTask.NodeId, failover)
 	if nil != err {
 		return nil, fmt.Errorf("build src task failed: %v", err)
@@ -223,7 +220,6 @@ func convertMysqlToMysqlJobToNomadJob(failover bool, apiJobId, apiJobName string
 	jobId := apiJobId
 	return &nomadApi.Job{
 		ID:          &jobId,
-		Name:        &apiJobName,
 		Datacenters: []string{"dc1"},
 		TaskGroups:  []*nomadApi.TaskGroup{srcTask, destTask},
 	}, nil
@@ -236,7 +232,6 @@ func buildJobListItem(logger hclog.Logger, jobParam *models.CreateOrUpdateMysqlT
 	}
 	jobInfo := models.JobListItemV2{
 		JobId:                jobParam.JobId,
-		JobName:              jobParam.JobName,
 		JobStatus:            "running",
 		JobStatusDescription: "",
 		JobCreateTime:        time.Now().String(),
@@ -388,7 +383,6 @@ func getMysqlToMysqlJobDetail(c echo.Context, logger hclog.Logger, jobType DtleJ
 
 	return c.JSON(http.StatusOK, &models.MysqlToMysqlJobDetailRespV2{
 		JobId:          reqParam.JobId,
-		JobName:        *nomadJob.Name,
 		Failover:       failover,
 		SrcTaskDetail:  srcTaskDetail,
 		DestTaskDetail: destTaskDetail,
@@ -638,9 +632,8 @@ func createOrUpdateMysqlToKafkaJob(c echo.Context, logger hclog.Logger, jobType 
 		jobParam.DestTask.MessageGroupTimeout = common.DefaultKafkaMessageGroupTimeout
 	}
 
-	jobId := g.StringElse(jobParam.JobId, jobParam.JobName)
-	jobId = addJobTypeToJobId(jobId, jobType)
-	nomadJob, err := convertMysqlToKafkaJobToNomadJob(failover, jobId, jobParam.JobName, jobParam.SrcTask, jobParam.DestTask)
+	jobParam.JobId = addJobTypeToJobId(jobParam.JobId, jobType)
+	nomadJob, err := convertMysqlToKafkaJobToNomadJob(failover, jobParam.JobId, jobParam.SrcTask, jobParam.DestTask)
 	if nil != err {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("convert job param to nomad job request failed, error: %v", err)))
 	}
@@ -661,7 +654,6 @@ func createOrUpdateMysqlToKafkaJob(c echo.Context, logger hclog.Logger, jobType 
 	logger.Info("invoke nomad api finished")
 
 	jobParam.SrcTask.MysqlConnectionConfig.MysqlPassword = "*"
-	jobParam.JobId = jobId
 
 	var respErr error
 	if "" != nomadResp.Warnings {
@@ -675,7 +667,7 @@ func createOrUpdateMysqlToKafkaJob(c echo.Context, logger hclog.Logger, jobType 
 	})
 }
 
-func convertMysqlToKafkaJobToNomadJob(failover bool, apiJobId, apiJobName string, apiSrcTask *models.MysqlSrcTaskConfig, apiDestTask *models.KafkaDestTaskConfig) (*nomadApi.Job, error) {
+func convertMysqlToKafkaJobToNomadJob(failover bool, apiJobId string, apiSrcTask *models.MysqlSrcTaskConfig, apiDestTask *models.KafkaDestTaskConfig) (*nomadApi.Job, error) {
 	srcTask, err := buildNomadTaskGroupItem(buildMysqlSrcTaskConfigMap(apiSrcTask), apiSrcTask.TaskName, apiSrcTask.NodeId, failover)
 	if nil != err {
 		return nil, fmt.Errorf("build src task failed: %v", err)
@@ -689,7 +681,6 @@ func convertMysqlToKafkaJobToNomadJob(failover bool, apiJobId, apiJobName string
 	jobId := apiJobId
 	return &nomadApi.Job{
 		ID:          &jobId,
-		Name:        &apiJobName,
 		Datacenters: []string{"dc1"},
 		TaskGroups:  []*nomadApi.TaskGroup{srcTask, destTask},
 	}, nil
@@ -737,7 +728,6 @@ func GetSubscriptionJobDetailV2(c echo.Context) error {
 
 	return c.JSON(http.StatusOK, &models.MysqlToKafkaJobDetailRespV2{
 		JobId:          reqParam.JobId,
-		JobName:        *nomadJob.Name,
 		Failover:       failover,
 		SrcTaskDetail:  srcTaskDetail,
 		DestTaskDetail: destTaskDetail,

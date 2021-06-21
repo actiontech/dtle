@@ -29,7 +29,6 @@ func NewJobStep(stepName string) JobStep {
 
 type JobListItemV2 struct {
 	JobId                string    `json:"job_id"`
-	JobName              string    `json:"job_name"`
 	JobStatus            string    `json:"job_status"`
 	JobStatusDescription string    `json:"job_status_description"`
 	JobCreateTime        string    `json:"job_create_time"`
@@ -50,7 +49,6 @@ type MysqlToMysqlJobDetailReqV2 struct {
 
 type JobBaseInfo struct {
 	JobId                string    `json:"job_id"`
-	JobName              string    `json:"job_name"`
 	SubscriptionTopic    string    `json:"subscription_topic"`
 	JobStatus            string    `json:"job_status"`
 	JobStatusDescription string    `json:"job_status_description"`
@@ -101,7 +99,6 @@ type TaskLog struct {
 
 type MysqlToMysqlJobDetailRespV2 struct {
 	JobId          string              `json:"job_id"`           // Compatible with old version v2 interface
-	JobName        string              `json:"job_name"`         // Compatible with old version v2 interface
 	Failover       bool                `json:"failover"`         // Compatible with old version v2 interface
 	SrcTaskDetail  MysqlSrcTaskDetail  `json:"src_task_detail"`  // Compatible with old version v2 interface
 	DestTaskDetail MysqlDestTaskDetail `json:"dest_task_detail"` // Compatible with old version v2 interface
@@ -183,8 +180,7 @@ type MysqlConnectionConfig struct {
 }
 
 type CreateOrUpdateMysqlToMysqlJobParamV2 struct {
-	JobName      string `json:"job_name" validate:"required"`
-	JobId        string `json:"job_id"`
+	JobId        string `json:"job_id" validate:"required"`
 	TaskStepName string `json:"task_step_name"`
 	// failover default:true
 	Failover                 *bool                `json:"failover" example:"true"`
@@ -210,8 +206,7 @@ type KafkaDestTaskConfig struct {
 }
 
 type CreateOrUpdateMysqlToKafkaJobParamV2 struct {
-	JobName      string `json:"job_name" validate:"required"`
-	JobId        string `json:"job_id"`
+	JobId        string `json:"job_id" validate:"required"`
 	TaskStepName string `json:"task_step_name"`
 	// failover default:true
 	Failover                 *bool                `json:"failover" example:"true"`
@@ -233,7 +228,6 @@ type MysqlToKafkaJobDetailReqV2 struct {
 
 type MysqlToKafkaJobDetailRespV2 struct {
 	JobId          string              `json:"job_id"`           // Compatible with old version v2 interface
-	JobName        string              `json:"job_name"`         // Compatible with old version v2 interface
 	Failover       bool                `json:"failover"`         // Compatible with old version v2 interface
 	SrcTaskDetail  MysqlSrcTaskDetail  `json:"src_task_detail"`  // Compatible with old version v2 interface
 	DestTaskDetail KafkaDestTaskDetail `json:"dest_task_detail"` // Compatible with old version v2 interface
