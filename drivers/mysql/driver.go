@@ -468,7 +468,7 @@ func (d *Driver) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHandle, *drive
 		dtleTaskConfig.SetDefaultForEmpty()
 		driverConfig := &common.MySQLDriverConfig{DtleTaskConfig: dtleTaskConfig}
 
-		switch common.TaskTypeFromString(cfg.TaskGroupName) {
+		switch common.TaskTypeFromString(cfg.Name) {
 		case common.TaskTypeSrc:
 			h.runner, err = mysql.NewExtractor(ctx, driverConfig, d.logger, d.storeManager, h.waitCh)
 			if err != nil {
@@ -487,7 +487,7 @@ func (d *Driver) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHandle, *drive
 				}
 			}
 		case common.TaskTypeUnknown:
-			return nil, nil, fmt.Errorf("unknown processor type: %+v", cfg.TaskGroupName)
+			return nil, nil, fmt.Errorf("unknown processor type: %+v", cfg.Name)
 		}
 
 		existed := false
