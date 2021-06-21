@@ -421,7 +421,7 @@ func (d *Driver) RecoverTask(handle *drivers.TaskHandle) error {
 }
 
 func (d *Driver) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHandle, *drivers.DriverNetwork, error) {
-	d.logger.Info("StartTask", "ID", cfg.ID, "allocID", cfg.AllocID)
+	d.logger.Info("StartTask", "ID", cfg.ID, "allocID", cfg.AllocID, "jobName", cfg.JobName, "taskName", cfg.Name)
 
 	err := common.ValidateJobName(cfg.JobName)
 	if err != nil {

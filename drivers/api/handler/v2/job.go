@@ -106,15 +106,6 @@ func getJobTypeFromJobId(jobId string) DtleJobType {
 	}
 }
 
-func getJobNameFromJobId(jobId string) (string, error) {
-	segs := strings.Split(jobId, "-")
-	if len(segs) < 2 {
-		return "", fmt.Errorf("invalid job id format. job_id=%v", jobId)
-	}
-
-	return segs[0], nil
-}
-
 // @Description create or update migration job.
 // @Tags job
 // @Accept application/json
@@ -814,19 +805,14 @@ func PauseJobV2(c echo.Context) error {
 	if len(nomadAllocs) == 0 {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("can not find allocations of the job[%v]", reqParam.JobId)))
 	}
-	// get job name
-	jobName, err := getJobNameFromJobId(reqParam.JobId)
-	if nil != err {
-		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("get job name failed: %v", err)))
-	}
 
 	storeManager, err := common.NewStoreManager([]string{handler.ConsulAddr}, logger)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("consul_addr=%v; connect to consul failed: %v", handler.ConsulAddr, err)))
 	}
-	jobStatus, err := storeManager.GetJobStatus(jobName)
+	jobStatus, err := storeManager.GetJobStatus(reqParam.JobId)
 	if nil != err {
-		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("job_name=%v; get job status failed: %v", jobName, err)))
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("job_name=%v; get job status failed: %v", reqParam.JobId, err)))
 	}
 	if jobStatus == common.DtleJobStatusPaused {
 		return c.JSON(http.StatusOK, &models.PauseJobRespV2{
@@ -835,15 +821,15 @@ func PauseJobV2(c echo.Context) error {
 	}
 
 	// update metadata first
-	if err := storeManager.PutJobStatus(jobName, common.DtleJobStatusPaused); nil != err {
-		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("job_name=%v; update job from consul failed: %v", jobName, err)))
+	if err := storeManager.PutJobStatus(reqParam.JobId, common.DtleJobStatusPaused); nil != err {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("job_name=%v; update job from consul failed: %v", reqParam.JobId, err)))
 	}
 
 	needRollbackMetadata := false
 	defer func() {
 		if needRollbackMetadata {
 			logger.Info("pause job failed, rollback metadata")
-			if err := storeManager.PutJobStatus(jobName, jobStatus); nil != err {
+			if err := storeManager.PutJobStatus(reqParam.JobId, jobStatus); nil != err {
 				logger.Info("rollback metadata failed", "error", err)
 			}
 		}
@@ -893,20 +879,16 @@ func ResumeJobV2(c echo.Context) error {
 	if len(nomadAllocs) == 0 {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("job_id=%v; can not find allocations of the job", reqParam.JobId)))
 	}
-	// get job name
-	jobName, err := getJobNameFromJobId(reqParam.JobId)
-	if nil != err {
-		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("get job name failed: %v", err)))
-	}
 
 	// update metadata first
 	storeManager, err := common.NewStoreManager([]string{handler.ConsulAddr}, logger)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("consul_addr=%v; connect to consul failed: %v", handler.ConsulAddr, err)))
 	}
-	jobStatus, err := storeManager.GetJobStatus(jobName)
+	jobStatus, err := storeManager.GetJobStatus(reqParam.JobId)
 	if nil != err {
-		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("job_name=%v; get job status failed: %v", jobName, err)))
+		return c.JSON(http.StatusInternalServerError,
+			models.BuildBaseResp(fmt.Errorf("job_id=%v; get job status failed: %v", reqParam.JobId, err)))
 	}
 
 	if jobStatus != common.DtleJobStatusPaused {
@@ -915,15 +897,16 @@ func ResumeJobV2(c echo.Context) error {
 		})
 	}
 
-	if err := storeManager.PutJobStatus(jobName, common.DtleJobStatusNonPaused); nil != err {
-		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("job_name=%v; update job from consul failed: %v", jobName, err)))
+	if err := storeManager.PutJobStatus(reqParam.JobId, common.DtleJobStatusNonPaused); nil != err {
+		return c.JSON(http.StatusInternalServerError,
+			models.BuildBaseResp(fmt.Errorf("job_id=%v; update job from consul failed: %v", reqParam.JobId, err)))
 	}
 
 	needRollbackMetadata := false
 	defer func() {
 		if needRollbackMetadata {
 			logger.Info("resume job failed, rollback metadata")
-			if err := storeManager.PutJobStatus(jobName, jobStatus); nil != err {
+			if err := storeManager.PutJobStatus(reqParam.JobId, jobStatus); nil != err {
 				logger.Info("rollback metadata failed", "error", err)
 			}
 		}
@@ -975,11 +958,7 @@ func DeleteJobV2(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invalid params:\n%v", err)))
 	}
 
-	jobName, err := getJobNameFromJobId(reqParam.JobId)
-	if nil != err {
-		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("get job name failed: %v", err)))
-	}
-	logger.Info("delete job from nomad", "job_id", reqParam.JobId, "job_name", jobName)
+	logger.Info("delete job from nomad", "job_id", reqParam.JobId)
 	url := handler.BuildUrl(fmt.Sprintf("/v1/job/%v?purge=true", reqParam.JobId))
 	logger.Info("invoke nomad api begin", "url", url, "method", "DELETE")
 	nomadResp := nomadApi.JobDeregisterResponse{}
@@ -988,13 +967,14 @@ func DeleteJobV2(c echo.Context) error {
 	}
 	logger.Info("invoke nomad api finished")
 
-	logger.Info("delete metadata of job from consul", "job_name", jobName)
+	logger.Info("delete metadata of job from consul", "job_id", reqParam.JobId)
 	storeManager, err := common.NewStoreManager([]string{handler.ConsulAddr}, logger)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("get consul client failed: %v", err)))
 	}
-	if err := storeManager.DestroyJob(jobName); nil != err {
-		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("delete metadata of job[job name=%v] from consul failed: %v", jobName, err)))
+	if err := storeManager.DestroyJob(reqParam.JobId); nil != err {
+		return c.JSON(http.StatusInternalServerError,
+			models.BuildBaseResp(fmt.Errorf("delete metadata of job[job_id=%v] from consul failed: %v", reqParam.JobId, err)))
 	}
 
 	return c.JSON(http.StatusOK, &models.DeleteJobRespV2{
