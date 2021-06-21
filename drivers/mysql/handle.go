@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"github.com/actiontech/dtle/drivers/mysql/common"
+	"github.com/actiontech/dtle/drivers/mysql/kafka"
+	"github.com/actiontech/dtle/drivers/mysql/mysql"
 	"github.com/armon/go-metrics"
 	"github.com/pkg/errors"
 	"sync"
@@ -31,6 +33,8 @@ type taskHandle struct {
 	cancelFunc context.CancelFunc
 	waitCh     chan *drivers.ExitResult
 	stats      *common.TaskStatistics
+
+	driverConfig *common.MySQLDriverConfig
 }
 
 func newDtleTaskHandle(logger hclog.Logger, cfg *drivers.TaskConfig, state drivers.TaskState, started time.Time) *taskHandle {
@@ -54,11 +58,14 @@ func (h *taskHandle) TaskStatus() (*drivers.TaskStatus, error) {
 
 	m := map[string]string{}
 
-	stat, err := h.runner.Stats()
-	if err != nil {
-		return nil, errors.Wrap(err, "runner.Stats")
+	if h.runner != nil {
+		stat, err := h.runner.Stats()
+		if err != nil {
+			return nil, errors.Wrap(err, "runner.Stats")
+		}
+		m["GtidSet"] = stat.CurrentCoordinates.GtidSet
 	}
-	m["GtidSet"] = stat.CurrentCoordinates.GtidSet
+
 	// TODO Cannot get InspectTask -> TaskStatus called by any API.
 	// See https://github.com/hashicorp/nomad/issues/4848
 	return &drivers.TaskStatus{
@@ -72,13 +79,32 @@ func (h *taskHandle) TaskStatus() (*drivers.TaskStatus, error) {
 	}, nil
 }
 
+func (h *taskHandle) onError(err error) {
+	h.waitCh <- &drivers.ExitResult{
+		ExitCode:  common.TaskStateDead,
+		Signal:    0,
+		OOMKilled: false,
+		Err:       err,
+	}
+}
+
 func (h *taskHandle) IsRunning() bool {
 	h.stateLock.RLock()
 	defer h.stateLock.RUnlock()
 	return h.procState == drivers.TaskStateRunning
 }
 
-func (h *taskHandle) run(d *Driver, isPaused bool, jobName string) {
+func (h *taskHandle) resumeTask(d *Driver) error {
+	var err error
+	h.runner, err = h.NewRunner(d)
+	if err != nil {
+		return err
+	}
+	go h.runner.Run()
+	return nil
+}
+
+func (h *taskHandle) run(d *Driver) {
 	h.stateLock.Lock()
 	if h.exitResult == nil {
 		h.exitResult = &drivers.ExitResult{}
@@ -86,12 +112,20 @@ func (h *taskHandle) run(d *Driver, isPaused bool, jobName string) {
 	h.procState = drivers.TaskStateRunning
 	h.stateLock.Unlock()
 
-	if isPaused {
-		// when nomad reschedule job, the job should run if it is paused
-		h.logger.Info("the job will be paused", "jobName", jobName)
-		h.runner.Pause()
+	jobStatus, err := d.storeManager.GetJobStatus(h.taskConfig.JobName)
+	if nil != err {
+		h.onError(errors.Wrap(err, "get pause status from consul failed"))
+		return
+	}
+
+	if jobStatus == common.DtleJobStatusPaused {
+		h.logger.Info("job is paused. not starting the runner")
 	} else {
-		go h.runner.Run()
+		err = h.resumeTask(d)
+		if err != nil {
+			h.onError(err)
+			return
+		}
 	}
 
 	go func() {
@@ -102,20 +136,52 @@ func (h *taskHandle) run(d *Driver, isPaused bool, jobName string) {
 			case <-h.ctx.Done():
 				return
 			case <-t.C:
-				s, err := h.runner.Stats()
-				if err != nil {
-					// ignore
-				} else {
-					h.stats = s
-					if d.config.PublishMetrics {
-						h.logger.Trace("emitStats")
-						h.emitStats(s)
+				if h.runner != nil {
+					s, err := h.runner.Stats()
+					if err != nil {
+						// ignore
+					} else {
+						h.stats = s
+						if d.config.PublishMetrics {
+							h.logger.Trace("emitStats")
+							h.emitStats(s)
+						}
 					}
 				}
 				t.Reset(duration)
 			}
 		}
 	}()
+}
+
+func (h *taskHandle) NewRunner(d *Driver) (runner DriverHandle, err error) {
+	ctx := &common.ExecContext{
+		Subject:  h.taskConfig.JobName,
+		StateDir: d.config.DataDir,
+	}
+
+	switch common.TaskTypeFromString(h.taskConfig.Name) {
+	case common.TaskTypeSrc:
+		runner, err = mysql.NewExtractor(ctx, h.driverConfig, h.logger, d.storeManager, h.waitCh)
+		if err != nil {
+			return nil, errors.Wrap(err, "NewExtractor")
+		}
+	case common.TaskTypeDest:
+		if h.driverConfig.KafkaConfig != nil {
+			h.logger.Debug("found kafka", "KafkaConfig", h.driverConfig.KafkaConfig)
+			runner = kafka.NewKafkaRunner(ctx, h.driverConfig.KafkaConfig, h.logger,
+				d.storeManager, d.config.NatsAdvertise, h.waitCh)
+		} else {
+			runner, err = mysql.NewApplier(ctx, h.driverConfig, h.logger, d.storeManager,
+				d.config.NatsAdvertise, h.waitCh, d.eventer, h.taskConfig)
+			if err != nil {
+				return nil, errors.Wrap(err, "NewApplier")
+			}
+		}
+	case common.TaskTypeUnknown:
+		return nil, fmt.Errorf("unknown processor type: %+v", h.taskConfig.Name)
+	}
+	return runner, err
 }
 
 func (h *taskHandle) emitStats(ru *common.TaskStatistics) {
@@ -197,8 +263,4 @@ type DriverHandle interface {
 
 	// Stats returns aggregated stats of the driver
 	Stats() (*common.TaskStatistics, error)
-
-	Pause()
-
-	Resume()
 }

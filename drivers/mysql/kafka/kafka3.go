@@ -48,7 +48,6 @@ type KafkaRunner struct {
 
 	shutdown   bool
 	shutdownCh chan struct{}
-	isPaused   bool
 
 	kafkaConfig *common.KafkaConfig
 	kafkaMgr    *KafkaManager
@@ -153,32 +152,6 @@ func (kr *KafkaRunner) Shutdown() error {
 
 	kr.logger.Info("Shutting down")
 	return nil
-}
-
-func (kr *KafkaRunner) Resume() {
-	kr.logger.Info("resume task")
-	if !kr.shutdown {
-		return
-	}
-	kr.shutdown = false
-	kr.shutdownCh = make(chan struct{})
-
-	// reset data channel to make sure the task begin with empty channel
-	kr.chDumpEntry, kr.chBinlogEntries = kr.newDataChannel()
-
-	go kr.Run()
-	kr.isPaused = false
-	return
-}
-
-func (kr *KafkaRunner) Pause() {
-	kr.logger.Info("pause task")
-	if err := kr.Shutdown(); nil != err {
-		kr.onError(common.TaskStateDead, errors.Wrap(err, "pause task, shutdown failed"))
-		return
-	}
-	kr.isPaused = true
-	return
 }
 
 func (kr *KafkaRunner) Stats() (*common.TaskStatistics, error) {

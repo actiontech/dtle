@@ -12,8 +12,6 @@ import (
 	"net/http"
 
 	"github.com/actiontech/dtle/drivers/mysql/common"
-	"github.com/actiontech/dtle/drivers/mysql/kafka"
-	"github.com/actiontech/dtle/drivers/mysql/mysql"
 	"github.com/actiontech/dtle/g"
 	"github.com/pkg/errors"
 
@@ -423,7 +421,7 @@ func (d *Driver) RecoverTask(handle *drivers.TaskHandle) error {
 }
 
 func (d *Driver) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHandle, *drivers.DriverNetwork, error) {
-	d.logger.Info("StartTask", "ID", cfg.ID, "allocID", cfg.AllocID)
+	d.logger.Info("StartTask", "ID", cfg.ID, "allocID", cfg.AllocID, "jobName", cfg.JobName, "taskName", cfg.Name)
 
 	err := common.ValidateJobName(cfg.JobName)
 	if err != nil {
@@ -443,10 +441,10 @@ func (d *Driver) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHandle, *drive
 	if err := d.verifyDriverConfig(dtleTaskConfig); nil != err {
 		return nil, nil, fmt.Errorf("invalide driver config, errors: %v", err)
 	}
+	dtleTaskConfig.SetDefaultForEmpty()
 
 	handle := drivers.NewTaskHandle(taskHandleVersion)
 	handle.Config = cfg
-	h := newDtleTaskHandle(d.logger, cfg, drivers.TaskStateRunning, time.Now().Round(time.Millisecond))
 	driverState := TaskState{
 		TaskConfig:     cfg,
 		DtleTaskConfig: &dtleTaskConfig,
@@ -456,53 +454,13 @@ func (d *Driver) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHandle, *drive
 		d.logger.Error("failed to start task, error setting driver state", "error", err)
 		return nil, nil, errors.Wrap(err, "SetDriverState")
 	}
+
+	h := newDtleTaskHandle(d.logger, cfg, drivers.TaskStateRunning, time.Now().Round(time.Millisecond))
+	h.driverConfig = &common.MySQLDriverConfig{DtleTaskConfig: dtleTaskConfig}
 	d.tasks.Set(cfg.ID, h)
 	AllocIdTaskNameToTaskHandler.Set(cfg.AllocID, cfg.Name, cfg.ID, h)
 
-	isPaused := false
-	{
-		ctx := &common.ExecContext{
-			Subject:  cfg.JobName,
-			StateDir: d.config.DataDir,
-		}
-		dtleTaskConfig.SetDefaultForEmpty()
-		driverConfig := &common.MySQLDriverConfig{DtleTaskConfig: dtleTaskConfig}
-
-		switch common.TaskTypeFromString(cfg.Name) {
-		case common.TaskTypeSrc:
-			h.runner, err = mysql.NewExtractor(ctx, driverConfig, d.logger, d.storeManager, h.waitCh)
-			if err != nil {
-				return nil, nil, errors.Wrap(err, "NewExtractor")
-			}
-		case common.TaskTypeDest:
-			if driverConfig.KafkaConfig != nil {
-				d.logger.Debug("found kafka", "KafkaConfig", driverConfig.KafkaConfig)
-				h.runner = kafka.NewKafkaRunner(ctx, driverConfig.KafkaConfig, d.logger,
-					d.storeManager, d.config.NatsAdvertise, h.waitCh)
-			} else {
-				h.runner, err = mysql.NewApplier(ctx, driverConfig, d.logger, d.storeManager,
-					d.config.NatsAdvertise, h.waitCh, d.eventer, h.taskConfig)
-				if err != nil {
-					return nil, nil, errors.Wrap(err, "NewApplier")
-				}
-			}
-		case common.TaskTypeUnknown:
-			return nil, nil, fmt.Errorf("unknown processor type: %+v", cfg.Name)
-		}
-
-		existed := false
-		existed, isPaused, err = d.storeManager.GetJobPauseStatusIfExist(ctx.Subject)
-		if nil != err {
-			return nil, nil, fmt.Errorf("get pause status from consul failed : %v", err)
-		}
-		if !existed {
-			d.logger.Debug("can not find pause status from consul. insert it")
-			if err := d.storeManager.PutJobPauseStatus(ctx.Subject, false); nil != err {
-				return nil, nil, fmt.Errorf("update pause status from consul failed : %v", err)
-			}
-		}
-	}
-	go h.run(d, isPaused, cfg.Name)
+	go h.run(d)
 
 	return handle, nil, nil
 }
@@ -709,10 +667,23 @@ func (d *Driver) SignalTask(taskID string, signal string) error {
 			return errors.New(string(bs))
 		}
 	case "pause":
-		d.tasks.store[taskID].runner.Pause()
+		d.logger.Info("pause a task", "taskID", taskID)
+		h := d.tasks.store[taskID]
+		err := h.runner.Shutdown()
+		if err != nil {
+			d.logger.Error("error when pausing a task", "taskID", taskID, "err", err)
+		}
+		// Keep old runner for stats()
+		//h.runner = nil
 		return nil
 	case "resume":
-		d.tasks.store[taskID].runner.Resume()
+		d.logger.Info("resume a task", "taskID", taskID)
+		h := d.tasks.store[taskID]
+		err := h.resumeTask(d)
+		if err != nil {
+			d.logger.Error("error when resuming a task", "taskID", taskID, "err", err)
+			h.onError(err)
+		}
 		return nil
 	default:
 		return nil

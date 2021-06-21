@@ -68,9 +68,15 @@ func (ts *TaskStoreForApi) GetTaskStatistics(allocId, taskName string) (*common.
 		if strings.HasPrefix(k, prefix) {
 			t, ok := ts.store[k]
 
-			stats, err := t.runner.Stats()
-			if nil != err {
-				return nil, false, fmt.Errorf("get stats from taskHandle failed: %v", err)
+			var stats *common.TaskStatistics
+			if t.runner != nil {
+				var err error
+				stats, err = t.runner.Stats()
+				if nil != err {
+					return nil, false, fmt.Errorf("get stats from taskHandle failed: %v", err)
+				}
+			} else {
+				stats = &common.TaskStatistics{}
 			}
 			return stats, ok, nil
 		}
