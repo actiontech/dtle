@@ -300,11 +300,9 @@ func (sm *StoreManager) FindJobList() ([]*models.JobListItemV2, error) {
 		return nil, fmt.Errorf("get %v value from consul failed: %v", key, err)
 	}
 	jobList := make([]*models.JobListItemV2, 0)
-	job := new(models.JobListItemV2)
+
 	for _, kp := range kps {
-		if kp.Key == key {
-			continue
-		}
+		job := new(models.JobListItemV2)
 		err = json.Unmarshal(kp.Value, job)
 		if err != nil {
 			return nil, fmt.Errorf("get %v from consul, unmarshal err : %v", key, err)
