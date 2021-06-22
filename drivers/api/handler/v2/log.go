@@ -3,12 +3,13 @@ package v2
 import (
 	"bytes"
 	"fmt"
-	"github.com/actiontech/dtle/drivers/api/handler"
 	"net/http"
 	"os"
 	"os/exec"
 	"strconv"
 	"strings"
+
+	"github.com/actiontech/dtle/drivers/api/handler"
 
 	"github.com/actiontech/dtle/drivers/api/models"
 
@@ -18,6 +19,7 @@ import (
 	"github.com/shirou/gopsutil/process"
 )
 
+// @Id UpdateLogLevelV2
 // @Description reload log level dynamically.
 // @Tags log
 // @accept application/x-www-form-urlencoded

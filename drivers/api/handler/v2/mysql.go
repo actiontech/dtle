@@ -15,6 +15,7 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
+// @Id ListMysqlSchemasV2
 // @Description list schemas of mysql source instance.
 // @Tags mysql
 // @Param mysql_host query string true "mysql host"
