@@ -35,13 +35,18 @@ func NewStoreManager(consulAddr []string, logger hclog.Logger) (*StoreManager, e
 		logger:      logger,
 	}, nil
 }
-func (sm *StoreManager) DestroyJob(jobName string) error {
-	key := fmt.Sprintf("dtle/%v", jobName)
+func (sm *StoreManager) DestroyJob(jobId string) error {
+	key := fmt.Sprintf("dtle/%v", jobId)
 	err := sm.consulStore.DeleteTree(key)
 	if nil != err && store.ErrKeyNotFound != err {
 		return err
 	}
-	key = fmt.Sprintf("dtleJobStatus/%v", jobName)
+	key = fmt.Sprintf("dtleJobStatus/%v", jobId)
+	err = sm.consulStore.DeleteTree(key)
+	if nil != err && store.ErrKeyNotFound != err {
+		return err
+	}
+	key = fmt.Sprintf("dtleJobList/%v", jobId)
 	err = sm.consulStore.DeleteTree(key)
 	if nil != err && store.ErrKeyNotFound != err {
 		return err
@@ -300,11 +305,9 @@ func (sm *StoreManager) FindJobList() ([]*models.JobListItemV2, error) {
 		return nil, fmt.Errorf("get %v value from consul failed: %v", key, err)
 	}
 	jobList := make([]*models.JobListItemV2, 0)
-	job := new(models.JobListItemV2)
+
 	for _, kp := range kps {
-		if kp.Key == key {
-			continue
-		}
+		job := new(models.JobListItemV2)
 		err = json.Unmarshal(kp.Value, job)
 		if err != nil {
 			return nil, fmt.Errorf("get %v from consul, unmarshal err : %v", key, err)
