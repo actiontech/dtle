@@ -37,31 +37,19 @@ func ListMysqlSchemasV2(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invalid params:\n%v", err)))
 	}
 
-	mysqlConnectionConfig := mysqlconfig.ConnectionConfig{
-		Host:     reqParam.MysqlHost,
-		Port:     int(reqParam.MysqlPort),
-		User:     reqParam.MysqlUser,
-		Password: reqParam.MysqlPassword,
-		Charset:  reqParam.MysqlCharacterSet,
+	uri, err := buildMysqlUri(reqParam.MysqlHost, reqParam.MysqlUser, reqParam.MysqlPassword,
+		reqParam.MysqlCharacterSet, int(reqParam.MysqlPort), reqParam.IsMysqlPasswordEncrypted)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("build mysql Uri failed: %v", err)))
 	}
 
-	if "" == mysqlConnectionConfig.Charset {
-		mysqlConnectionConfig.Charset = "utf8"
-	}
-	if "" != mysqlConnectionConfig.Password && reqParam.IsMysqlPasswordEncrypted {
-		realPwd, err := handler.DecryptMysqlPassword(mysqlConnectionConfig.Password, g.RsaPrivateKey)
-		if nil != err {
-			return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("DecryptMysqlPassword failed: %v", err)))
-		}
-		mysqlConnectionConfig.Password = realPwd
-	}
-	logger.Info("get schemas and tables from mysql")
-	uri := mysqlConnectionConfig.GetDBUri()
 	db, err := sql.CreateDB(uri)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("create db failed: %v", err)))
 	}
 	defer db.Close()
+
+	logger.Info("get schemas and tables from mysql")
 
 	dbs, err := sql.ShowDatabases(db)
 	if err != nil {
@@ -97,4 +85,76 @@ func ListMysqlSchemasV2(c echo.Context) error {
 		Schemas:  replicateDoDb,
 		BaseResp: models.BuildBaseResp(nil),
 	})
+}
+
+// @Id ListMysqlColumnsV2
+// @Description list columns of mysql source instance.
+// @Tags mysql
+// @Param mysql_host query string true "mysql host"
+// @Param mysql_port query string true "mysql port"
+// @Param mysql_user query string true "mysql user"
+// @Param mysql_password query string true "mysql password"
+// @Param mysql_schema query string true "mysql schema"
+// @Param mysql_table query string true "mysql table"
+// @Param mysql_character_set query string false "mysql character set"
+// @Param is_mysql_password_encrypted query bool false "indecate that mysql password is encrypted or not"
+// @Success 200 {object} models.ListMysqlSchemasRespV2
+// @Router /v2/mysql/columns [get]
+func ListMysqlColumnsV2(c echo.Context) error {
+	logger := handler.NewLogger().Named("ListMysqlColumnsV2")
+	logger.Info("validate params")
+	reqParam := new(models.ListColumnsReqV2)
+	if err := c.Bind(reqParam); nil != err {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("convert request param failed. you should check the param format, error: %v", err)))
+	}
+	if err := c.Validate(reqParam); nil != err {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invalid params:\n%v", err)))
+	}
+	uri, err := buildMysqlUri(reqParam.MysqlHost, reqParam.MysqlUser, reqParam.MysqlPassword,
+		reqParam.MysqlCharacterSet, int(reqParam.MysqlPort), reqParam.IsMysqlPasswordEncrypted)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("build mysql Uri failed: %v", err)))
+	}
+
+	db, err := sql.CreateDB(uri)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("create db failed: %v", err)))
+	}
+	defer db.Close()
+
+	logger.Info("get columns")
+
+	columns, err := sql.ListColumns(db, reqParam.MysqlSchema, reqParam.MysqlTable)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("find db columns failed: %v", err)))
+
+	}
+	return c.JSON(http.StatusOK, &models.ListColumnsRespV2{
+		Columns:  columns,
+		BaseResp: models.BuildBaseResp(nil),
+	})
+}
+
+func buildMysqlUri(host, user, pwd, characterSet string, port int, isMysqlPasswordEncrypted bool) (string, error) {
+	mysqlConnectionConfig := mysqlconfig.ConnectionConfig{
+		Host:     host,
+		Port:     port,
+		User:     user,
+		Password: pwd,
+		Charset:  characterSet,
+	}
+
+	if "" == mysqlConnectionConfig.Charset {
+		mysqlConnectionConfig.Charset = "utf8"
+	}
+	if "" != mysqlConnectionConfig.Password && isMysqlPasswordEncrypted {
+		realPwd, err := handler.DecryptMysqlPassword(mysqlConnectionConfig.Password, g.RsaPrivateKey)
+		if nil != err {
+			return "", fmt.Errorf("DecryptMysqlPassword failed: %v", err)
+		}
+		mysqlConnectionConfig.Password = realPwd
+	}
+
+	uri := mysqlConnectionConfig.GetDBUri()
+	return uri, nil
 }

@@ -415,6 +415,79 @@ var doc = `{
                 }
             }
         },
+        "/v2/mysql/columns": {
+            "get": {
+                "description": "list columns of mysql source instance.",
+                "tags": [
+                    "mysql"
+                ],
+                "operationId": "ListMysqlColumnsV2",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "mysql host",
+                        "name": "mysql_host",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "mysql port",
+                        "name": "mysql_port",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "mysql user",
+                        "name": "mysql_user",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "mysql password",
+                        "name": "mysql_password",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "mysql schema",
+                        "name": "mysql_schema",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "mysql table",
+                        "name": "mysql_table",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "mysql character set",
+                        "name": "mysql_character_set",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "indecate that mysql password is encrypted or not",
+                        "name": "is_mysql_password_encrypted",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.ListMysqlSchemasRespV2"
+                        }
+                    }
+                }
+            }
+        },
         "/v2/mysql/schemas": {
             "get": {
                 "description": "list schemas of mysql source instance.",
@@ -545,7 +618,7 @@ var doc = `{
                 "operation_object": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/models.MysqlTableConfig"
+                        "$ref": "#/definitions/models.MysqlDataSourceConfig"
                     }
                 }
             }
@@ -585,25 +658,25 @@ var doc = `{
         "models.Configuration": {
             "type": "object",
             "properties": {
-                "chunk_size": {
-                    "type": "integer"
+                "binlog_relay": {
+                    "type": "boolean"
                 },
-                "concurrent_playback": {
+                "chunk_size": {
                     "type": "integer"
                 },
                 "fail_over": {
                     "type": "boolean"
                 },
-                "message_queue_buffer_size": {
+                "group_max_size": {
                     "type": "integer"
                 },
-                "relay_mechanism": {
-                    "type": "boolean"
+                "parallel_workers": {
+                    "type": "integer"
+                },
+                "repl_chan_buffer_size": {
+                    "type": "integer"
                 },
                 "retry_time": {
-                    "type": "integer"
-                },
-                "source_packet_size": {
                     "type": "integer"
                 }
             }
@@ -611,13 +684,13 @@ var doc = `{
         "models.ConnectionInfo": {
             "type": "object",
             "properties": {
-                "dstDataBaseList": {
+                "dst_data_base_list": {
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/models.MysqlConnectionConfig"
                     }
                 },
-                "srcDataBaseList": {
+                "src_data_base_list": {
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/models.MysqlConnectionConfig"
@@ -641,7 +714,7 @@ var doc = `{
             "type": "object",
             "required": [
                 "dest_task",
-                "job_name",
+                "job_id",
                 "src_task"
             ],
             "properties": {
@@ -659,9 +732,6 @@ var doc = `{
                 "job_id": {
                     "type": "string"
                 },
-                "job_name": {
-                    "type": "string"
-                },
                 "src_task": {
                     "$ref": "#/definitions/models.MysqlSrcTaskConfig"
                 },
@@ -674,7 +744,7 @@ var doc = `{
             "type": "object",
             "required": [
                 "dest_task",
-                "job_name",
+                "job_id",
                 "src_task"
             ],
             "properties": {
@@ -697,9 +767,6 @@ var doc = `{
                 },
                 "job_modify_index": {
                     "type": "integer"
-                },
-                "job_name": {
-                    "type": "string"
                 },
                 "message": {
                     "type": "string"
@@ -716,7 +783,7 @@ var doc = `{
             "type": "object",
             "required": [
                 "dest_task",
-                "job_name",
+                "job_id",
                 "src_task"
             ],
             "properties": {
@@ -734,9 +801,6 @@ var doc = `{
                 "job_id": {
                     "type": "string"
                 },
-                "job_name": {
-                    "type": "string"
-                },
                 "src_task": {
                     "$ref": "#/definitions/models.MysqlSrcTaskConfig"
                 },
@@ -749,7 +813,7 @@ var doc = `{
             "type": "object",
             "required": [
                 "dest_task",
-                "job_name",
+                "job_id",
                 "src_task"
             ],
             "properties": {
@@ -772,9 +836,6 @@ var doc = `{
                 },
                 "job_modify_index": {
                     "type": "integer"
-                },
-                "job_name": {
-                    "type": "string"
                 },
                 "message": {
                     "type": "string"
@@ -833,10 +894,7 @@ var doc = `{
             "type": "object",
             "properties": {
                 "data_source": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
+                    "type": "string"
                 },
                 "node_addr": {
                     "type": "string"
@@ -881,9 +939,6 @@ var doc = `{
                 "job_id": {
                     "type": "string"
                 },
-                "job_name": {
-                    "type": "string"
-                },
                 "job_status": {
                     "type": "string"
                 },
@@ -914,9 +969,6 @@ var doc = `{
                     "type": "string"
                 },
                 "job_id": {
-                    "type": "string"
-                },
-                "job_name": {
                     "type": "string"
                 },
                 "job_status": {
@@ -1089,6 +1141,9 @@ var doc = `{
                 "task_name"
             ],
             "properties": {
+                "binlog_relay": {
+                    "type": "boolean"
+                },
                 "chunk_size": {
                     "type": "integer"
                 },
@@ -1326,14 +1381,43 @@ var doc = `{
                 }
             }
         },
+        "models.TaskEvent": {
+            "type": "object",
+            "properties": {
+                "event_type": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "setup_error": {
+                    "type": "string"
+                },
+                "time": {
+                    "type": "string"
+                }
+            }
+        },
         "models.TaskLog": {
             "type": "object",
             "properties": {
-                "specific_task": {
+                "address": {
                     "type": "string"
                 },
-                "start_time": {
+                "allocation_id": {
                     "type": "string"
+                },
+                "node_id": {
+                    "type": "string"
+                },
+                "target": {
+                    "type": "string"
+                },
+                "task_events": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.TaskEvent"
+                    }
                 }
             }
         },
@@ -1410,7 +1494,7 @@ var doc = `{
             "type": "object",
             "required": [
                 "dest_task",
-                "job_name",
+                "job_id",
                 "src_task"
             ],
             "properties": {
@@ -1421,9 +1505,6 @@ var doc = `{
                     "type": "boolean"
                 },
                 "job_id": {
-                    "type": "string"
-                },
-                "job_name": {
                     "type": "string"
                 },
                 "src_task": {
