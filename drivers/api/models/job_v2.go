@@ -23,7 +23,7 @@ func NewJobStep(stepName string) JobStep {
 		StepName:      stepName,
 		StepStatus:    "start",
 		StepSchedule:  0,
-		JobCreateTime: time.Now().String(),
+		JobCreateTime: time.Now().In(time.Local).Format(time.RFC3339),
 	}
 }
 
@@ -58,9 +58,9 @@ type JobBaseInfo struct {
 }
 
 type DtleNodeInfo struct {
-	NodeAddr   string   `json:"node_addr"`
-	NodeId     string   `json:"node_id"`
-	DataSource []string `json:"data_source"`
+	NodeAddr   string `json:"node_addr"`
+	NodeId     string `json:"node_id"`
+	DataSource string `json:"data_source"`
 }
 
 type DataBase struct {
@@ -70,39 +70,37 @@ type DataBase struct {
 }
 
 type ConnectionInfo struct {
-	SrcDataBaseList []MysqlConnectionConfig
-	DstDataBaseList []MysqlConnectionConfig
+	SrcDataBaseList []MysqlConnectionConfig `json:"src_data_base_list"`
+	DstDataBaseList []MysqlConnectionConfig `json:"dst_data_base_list"`
 }
 
 type Configuration struct {
-	RelayMechanism         bool `json:"relay_mechanism"`
-	FailOver               bool `json:"fail_over"`
-	RetryTime              int  `json:"retry_time"`
-	ConcurrentPlayback     int  `json:"concurrent_playback"`
-	MessageQueueBufferSize int  `json:"message_queue_buffer_size"`
-	SourcePacketSize       int  `json:"source_packet_size"`
-	ChunkSize              int  `json:"chunk_size"`
+	BinlogRelay        bool `json:"binlog_relay"`
+	FailOver           bool `json:"fail_over"`
+	RetryTime          int  `json:"retry_time"`
+	ParallelWorkers    int  `json:"parallel_workers"`
+	ReplChanBufferSize int  `json:"repl_chan_buffer_size"`
+	GroupMaxSize       int  `json:"group_max_size"`
+	ChunkSize          int  `json:"chunk_size"`
 }
 
 type BasicTaskProfile struct {
-	JobBaseInfo     JobBaseInfo        `json:"job_base_info"`
-	DtleNodeInfos   []DtleNodeInfo     `json:"dtle_node_infos"`
-	ConnectionInfo  ConnectionInfo     `json:"connection_info"`
-	Configuration   Configuration      `json:"configuration"`
-	OperationObject []MysqlTableConfig `json:"operation_object"`
+	JobBaseInfo     JobBaseInfo              `json:"job_base_info"`
+	DtleNodeInfos   []DtleNodeInfo           `json:"dtle_node_infos"`
+	ConnectionInfo  ConnectionInfo           `json:"connection_info"`
+	Configuration   Configuration            `json:"configuration"`
+	OperationObject []*MysqlDataSourceConfig `json:"operation_object"`
 }
 
 type TaskLog struct {
-	StartTime    time.Time `json:"start_time"`
-	SpecificTask string    `json:"specific_task"`
+	TaskEvents   []TaskEvent `json:"task_events"`
+	NodeId       string      `json:"node_id"`
+	AllocationId string      `json:"allocation_id"`
+	Address      string      `json:"address"`
+	Target       string      `json:"target"`
 }
 
 type MysqlToMysqlJobDetailRespV2 struct {
-	JobId          string              `json:"job_id"`           // Compatible with old version v2 interface
-	Failover       bool                `json:"failover"`         // Compatible with old version v2 interface
-	SrcTaskDetail  MysqlSrcTaskDetail  `json:"src_task_detail"`  // Compatible with old version v2 interface
-	DestTaskDetail MysqlDestTaskDetail `json:"dest_task_detail"` // Compatible with old version v2 interface
-
 	BasicTaskProfile BasicTaskProfile `json:"basic_task_profile"`
 	TaskLogs         []TaskLog        `json:"task_logs"`
 	BaseResp
@@ -150,6 +148,7 @@ type MysqlSrcTaskConfig struct {
 	ReplicateDoDb         []*MysqlDataSourceConfig `json:"replicate_do_db"`
 	ReplicateIgnoreDb     []*MysqlDataSourceConfig `json:"replicate_ignore_db"`
 	MysqlConnectionConfig *MysqlConnectionConfig   `json:"mysql_connection_config" validate:"required"`
+	BinlogRelay           bool                     `json:"binlog_relay"`
 }
 
 type MysqlDestTaskConfig struct {

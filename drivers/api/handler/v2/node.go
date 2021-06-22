@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/hashicorp/go-hclog"
+
 	"github.com/actiontech/dtle/drivers/api/handler"
 	"github.com/actiontech/dtle/drivers/api/models"
 	nomadApi "github.com/hashicorp/nomad/api"
@@ -17,12 +19,24 @@ import (
 // @Router /v2/nodes [get]
 func NodeListV2(c echo.Context) error {
 	logger := handler.NewLogger().Named("NodeListV2")
+	nodes, err := FindNomadNodes(logger)
+	if nil != err {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invoke nomad api failed: %v", err)))
+	}
+
+	return c.JSON(http.StatusOK, &models.NodeListRespV2{
+		Nodes:    nodes,
+		BaseResp: models.BuildBaseResp(nil),
+	})
+}
+
+func FindNomadNodes(logger hclog.Logger) ([]models.NodeListItemV2, error) {
 	logger.Info("validate params")
 	url := handler.BuildUrl("/v1/nodes")
 	logger.Info("invoke nomad api begin", "url", url)
 	nomadNodes := []nomadApi.NodeListStub{}
 	if err := handler.InvokeApiWithKvData(http.MethodGet, url, nil, &nomadNodes); nil != err {
-		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invoke nomad api %v failed: %v", url, err)))
+		return nil, err
 	}
 	logger.Info("invoke nomad api finished")
 	nodes := []models.NodeListItemV2{}
@@ -36,9 +50,5 @@ func NodeListV2(c echo.Context) error {
 			Datacenter:            nomadNode.Datacenter,
 		})
 	}
-
-	return c.JSON(http.StatusOK, &models.NodeListRespV2{
-		Nodes:    nodes,
-		BaseResp: models.BuildBaseResp(nil),
-	})
+	return nodes, nil
 }
