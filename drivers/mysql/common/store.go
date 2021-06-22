@@ -35,13 +35,18 @@ func NewStoreManager(consulAddr []string, logger hclog.Logger) (*StoreManager, e
 		logger:      logger,
 	}, nil
 }
-func (sm *StoreManager) DestroyJob(jobName string) error {
-	key := fmt.Sprintf("dtle/%v", jobName)
+func (sm *StoreManager) DestroyJob(jobId string) error {
+	key := fmt.Sprintf("dtle/%v", jobId)
 	err := sm.consulStore.DeleteTree(key)
 	if nil != err && store.ErrKeyNotFound != err {
 		return err
 	}
-	key = fmt.Sprintf("dtleJobStatus/%v", jobName)
+	key = fmt.Sprintf("dtleJobStatus/%v", jobId)
+	err = sm.consulStore.DeleteTree(key)
+	if nil != err && store.ErrKeyNotFound != err {
+		return err
+	}
+	key = fmt.Sprintf("dtleJobList/%v", jobId)
 	err = sm.consulStore.DeleteTree(key)
 	if nil != err && store.ErrKeyNotFound != err {
 		return err
