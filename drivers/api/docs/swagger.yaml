@@ -13,7 +13,7 @@ definitions:
         $ref: '#/definitions/models.JobBaseInfo'
       operation_object:
         items:
-          $ref: '#/definitions/models.MysqlTableConfig'
+          $ref: '#/definitions/models.MysqlDataSourceConfig'
         type: array
     type: object
   models.BinlogValidation:
@@ -39,28 +39,28 @@ definitions:
     type: object
   models.Configuration:
     properties:
+      binlog_relay:
+        type: boolean
       chunk_size:
-        type: integer
-      concurrent_playback:
         type: integer
       fail_over:
         type: boolean
-      message_queue_buffer_size:
+      group_max_size:
         type: integer
-      relay_mechanism:
-        type: boolean
+      parallel_workers:
+        type: integer
+      repl_chan_buffer_size:
+        type: integer
       retry_time:
-        type: integer
-      source_packet_size:
         type: integer
     type: object
   models.ConnectionInfo:
     properties:
-      dstDataBaseList:
+      dst_data_base_list:
         items:
           $ref: '#/definitions/models.MysqlConnectionConfig'
         type: array
-      srcDataBaseList:
+      src_data_base_list:
         items:
           $ref: '#/definitions/models.MysqlConnectionConfig'
         type: array
@@ -85,15 +85,13 @@ definitions:
         type: boolean
       job_id:
         type: string
-      job_name:
-        type: string
       src_task:
         $ref: '#/definitions/models.MysqlSrcTaskConfig'
       task_step_name:
         type: string
     required:
     - dest_task
-    - job_name
+    - job_id
     - src_task
     type: object
   models.CreateOrUpdateMysqlToKafkaJobRespV2:
@@ -112,8 +110,6 @@ definitions:
         type: string
       job_modify_index:
         type: integer
-      job_name:
-        type: string
       message:
         type: string
       src_task:
@@ -122,7 +118,7 @@ definitions:
         type: string
     required:
     - dest_task
-    - job_name
+    - job_id
     - src_task
     type: object
   models.CreateOrUpdateMysqlToMysqlJobParamV2:
@@ -137,15 +133,13 @@ definitions:
         type: boolean
       job_id:
         type: string
-      job_name:
-        type: string
       src_task:
         $ref: '#/definitions/models.MysqlSrcTaskConfig'
       task_step_name:
         type: string
     required:
     - dest_task
-    - job_name
+    - job_id
     - src_task
     type: object
   models.CreateOrUpdateMysqlToMysqlJobRespV2:
@@ -164,8 +158,6 @@ definitions:
         type: string
       job_modify_index:
         type: integer
-      job_name:
-        type: string
       message:
         type: string
       src_task:
@@ -174,7 +166,7 @@ definitions:
         type: string
     required:
     - dest_task
-    - job_name
+    - job_id
     - src_task
     type: object
   models.CurrentCoordinates:
@@ -207,9 +199,7 @@ definitions:
   models.DtleNodeInfo:
     properties:
       data_source:
-        items:
-          type: string
-        type: array
+        type: string
       node_addr:
         type: string
       node_id:
@@ -238,8 +228,6 @@ definitions:
         type: string
       job_id:
         type: string
-      job_name:
-        type: string
       job_status:
         type: string
       job_status_description:
@@ -260,8 +248,6 @@ definitions:
       job_create_time:
         type: string
       job_id:
-        type: string
-      job_name:
         type: string
       job_status:
         type: string
@@ -373,6 +359,8 @@ definitions:
     type: object
   models.MysqlSrcTaskConfig:
     properties:
+      binlog_relay:
+        type: boolean
       chunk_size:
         type: integer
       drop_table_if_exists:
@@ -530,12 +518,31 @@ definitions:
       table_name:
         type: string
     type: object
+  models.TaskEvent:
+    properties:
+      event_type:
+        type: string
+      message:
+        type: string
+      setup_error:
+        type: string
+      time:
+        type: string
+    type: object
   models.TaskLog:
     properties:
-      specific_task:
+      address:
         type: string
-      start_time:
+      allocation_id:
         type: string
+      node_id:
+        type: string
+      target:
+        type: string
+      task_events:
+        items:
+          $ref: '#/definitions/models.TaskEvent'
+        type: array
     type: object
   models.TaskProgress:
     properties:
@@ -590,13 +597,11 @@ definitions:
         type: boolean
       job_id:
         type: string
-      job_name:
-        type: string
       src_task:
         $ref: '#/definitions/models.MysqlSrcTaskConfig'
     required:
     - dest_task
-    - job_name
+    - job_id
     - src_task
     type: object
   models.ValidateJobRespV2:
@@ -879,6 +884,56 @@ paths:
             $ref: '#/definitions/models.GetTaskProgressRespV2'
       tags:
       - monitor
+  /v2/mysql/columns:
+    get:
+      description: list columns of mysql source instance.
+      operationId: ListMysqlColumnsV2
+      parameters:
+      - description: mysql host
+        in: query
+        name: mysql_host
+        required: true
+        type: string
+      - description: mysql port
+        in: query
+        name: mysql_port
+        required: true
+        type: string
+      - description: mysql user
+        in: query
+        name: mysql_user
+        required: true
+        type: string
+      - description: mysql password
+        in: query
+        name: mysql_password
+        required: true
+        type: string
+      - description: mysql schema
+        in: query
+        name: mysql_schema
+        required: true
+        type: string
+      - description: mysql table
+        in: query
+        name: mysql_table
+        required: true
+        type: string
+      - description: mysql character set
+        in: query
+        name: mysql_character_set
+        type: string
+      - description: indecate that mysql password is encrypted or not
+        in: query
+        name: is_mysql_password_encrypted
+        type: boolean
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.ListMysqlSchemasRespV2'
+      tags:
+      - mysql
   /v2/mysql/schemas:
     get:
       description: list schemas of mysql source instance.

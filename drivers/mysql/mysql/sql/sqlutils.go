@@ -12,11 +12,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/actiontech/dtle/drivers/mysql/common"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/actiontech/dtle/drivers/mysql/common"
 
 	"github.com/actiontech/dtle/drivers/mysql/mysql/mysqlconfig"
 	"github.com/actiontech/dtle/g"
@@ -353,6 +354,28 @@ func ShowTables(db *gosql.DB, dbName string, showType bool) (tables []*common.Ta
 		tables = append(tables, tb)
 	}
 	return tables, rows.Err()
+}
+
+func ListColumns(db *gosql.DB, dbName, tableName string) (columns []string, err error) {
+	// Get table columns name
+	var query string
+	query = fmt.Sprintf("use %s;select COLUMN_NAME from information_schema.columns where table_name='%s';", dbName, tableName)
+	rows, err := db.Query(query)
+	if err != nil {
+		return columns, err
+	}
+	defer rows.Close()
+
+	// Read result
+	for rows.Next() {
+		var column gosql.NullString
+		err = rows.Scan(&column)
+		if err != nil {
+			return columns, err
+		}
+		columns = append(columns, column.String)
+	}
+	return columns, rows.Err()
 }
 
 func CloseDB(db *gosql.DB) error {
