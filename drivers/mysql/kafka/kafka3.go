@@ -916,16 +916,18 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQueries(dmlEntries []*common.Binlog
 					}
 				case mysqlconfig.BlobColumnType:
 					if strings.Contains(colList[i].ColumnType, "text") {
+						// already string value
+					} else {
 						if beforeValue != nil {
-							beforeValue = string(afterValue.([]byte))
+							beforeValue = base64.StdEncoding.EncodeToString([]byte(beforeValue.(string)))
 						}
 						if afterValue != nil {
-							afterValue = string(afterValue.([]byte))
+							afterValue = base64.StdEncoding.EncodeToString([]byte(afterValue.(string)))
 						}
 					}
 				case mysqlconfig.TextColumnType:
 					if beforeValue != nil {
-						beforeValue = string(afterValue.([]byte))
+						beforeValue = string(beforeValue.([]byte))
 					}
 					if afterValue != nil {
 						afterValue = string(afterValue.([]byte))
