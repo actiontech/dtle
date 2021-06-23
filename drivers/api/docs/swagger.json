@@ -650,6 +650,9 @@
                 "group_max_size": {
                     "type": "integer"
                 },
+                "group_timeout": {
+                    "type": "integer"
+                },
                 "parallel_workers": {
                     "type": "integer"
                 },
@@ -922,9 +925,6 @@
                 "job_status": {
                     "type": "string"
                 },
-                "job_status_description": {
-                    "type": "string"
-                },
                 "job_steps": {
                     "type": "array",
                     "items": {
@@ -954,9 +954,6 @@
                 "job_status": {
                     "type": "string"
                 },
-                "job_status_description": {
-                    "type": "string"
-                },
                 "job_steps": {
                     "type": "array",
                     "items": {
@@ -968,6 +965,9 @@
                     "items": {
                         "type": "string"
                     }
+                },
+                "topic": {
+                    "type": "string"
                 },
                 "user": {
                     "type": "string"
@@ -1082,6 +1082,9 @@
                 "table_schema": {
                     "type": "string"
                 },
+                "table_schema_regex": {
+                    "type": "string"
+                },
                 "table_schema_rename": {
                     "type": "string"
                 },
@@ -1133,6 +1136,9 @@
                 "group_max_size": {
                     "type": "integer"
                 },
+                "group_timeout": {
+                    "type": "integer"
+                },
                 "gtid": {
                     "type": "string"
                 },
@@ -1175,6 +1181,9 @@
                     }
                 },
                 "table_name": {
+                    "type": "string"
+                },
+                "table_regex": {
                     "type": "string"
                 },
                 "table_rename": {
