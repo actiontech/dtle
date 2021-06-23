@@ -157,6 +157,9 @@ func createOrUpdateMysqlToMysqlJob(c echo.Context, logger hclog.Logger, jobType 
 	if jobParam.DestTask.ParallelWorkers == 0 {
 		jobParam.DestTask.ParallelWorkers = common.DefaultNumWorkers
 	}
+	if jobParam.SrcTask.GroupTimeout == 0 {
+		jobParam.SrcTask.GroupTimeout = common.DefaultSrcGroupTimeout
+	}
 
 	jobParam.JobId = addJobTypeToJobId(jobParam.JobId, jobType)
 	nomadJob, err := convertMysqlToMysqlJobToNomadJob(failover, jobParam.JobId, jobParam.SrcTask, jobParam.DestTask)
@@ -287,6 +290,7 @@ func buildMysqlSrcTaskConfigMap(config *models.MysqlSrcTaskConfig) map[string]in
 	addNotRequiredParamToMap(taskConfigInNomadFormat, config.ReplChanBufferSize, "ReplChanBufferSize")
 	addNotRequiredParamToMap(taskConfigInNomadFormat, config.ChunkSize, "ChunkSize")
 	addNotRequiredParamToMap(taskConfigInNomadFormat, config.GroupMaxSize, "GroupMaxSize")
+	addNotRequiredParamToMap(taskConfigInNomadFormat, config.GroupTimeout, "GroupTimeout")
 	addNotRequiredParamToMap(taskConfigInNomadFormat, config.Gtid, "Gtid")
 	addNotRequiredParamToMap(taskConfigInNomadFormat, config.SkipCreateDbTable, "SkipCreateDbTable")
 	addNotRequiredParamToMap(taskConfigInNomadFormat, config.BinlogRelay, "BinlogRelay")
@@ -424,10 +428,11 @@ func buildBasicTaskProfile(logger hclog.Logger, jobId string,
 		ReplChanBufferSize: srcTaskDetail.TaskConfig.GroupMaxSize,
 		GroupMaxSize:       int(srcTaskDetail.TaskConfig.ReplChanBufferSize),
 		ChunkSize:          int(srcTaskDetail.TaskConfig.ChunkSize),
+		GroupTimeout:       srcTaskDetail.TaskConfig.GroupTimeout,
 	}
 	basicTaskProfile.ConnectionInfo = models.ConnectionInfo{
-		SrcDataBaseList: []models.MysqlConnectionConfig{*destTaskDetail.TaskConfig.MysqlConnectionConfig},
-		DstDataBaseList: []models.MysqlConnectionConfig{*srcTaskDetail.TaskConfig.MysqlConnectionConfig},
+		SrcDataBaseList: []models.MysqlConnectionConfig{*srcTaskDetail.TaskConfig.MysqlConnectionConfig},
+		DstDataBaseList: []models.MysqlConnectionConfig{*destTaskDetail.TaskConfig.MysqlConnectionConfig},
 	}
 	basicTaskProfile.OperationObject = srcTaskDetail.TaskConfig.ReplicateDoDb
 
