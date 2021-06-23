@@ -82,6 +82,7 @@ type Configuration struct {
 	ReplChanBufferSize int  `json:"repl_chan_buffer_size"`
 	GroupMaxSize       int  `json:"group_max_size"`
 	ChunkSize          int  `json:"chunk_size"`
+	GroupTimeout       int  `json:"group_timeout"`
 }
 
 type BasicTaskProfile struct {
@@ -149,6 +150,7 @@ type MysqlSrcTaskConfig struct {
 	ReplicateIgnoreDb     []*MysqlDataSourceConfig `json:"replicate_ignore_db"`
 	MysqlConnectionConfig *MysqlConnectionConfig   `json:"mysql_connection_config" validate:"required"`
 	BinlogRelay           bool                     `json:"binlog_relay"`
+	GroupTimeout          int                      `json:"group_timeout"`
 }
 
 type MysqlDestTaskConfig struct {
