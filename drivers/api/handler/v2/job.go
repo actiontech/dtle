@@ -303,8 +303,9 @@ func buildMysqlDataSourceConfigMap(configs []*models.MysqlDataSourceConfig) []ma
 
 	for _, c := range configs {
 		configMap := make(map[string]interface{})
-		configMap["TableSchema"] = c.TableSchema
+		addNotRequiredParamToMap(configMap, c.TableSchema, "TableSchema")
 		addNotRequiredParamToMap(configMap, c.TableSchemaRename, "TableSchemaRename")
+		addNotRequiredParamToMap(configMap, c.TableSchemaRegex, "TableSchemaRegex")
 		configMap["Tables"] = buildMysqlTableConfigMap(c.Tables)
 
 		res = append(res, configMap)
@@ -317,8 +318,9 @@ func buildMysqlTableConfigMap(configs []*models.MysqlTableConfig) []map[string]i
 
 	for _, c := range configs {
 		configMap := make(map[string]interface{})
-		configMap["TableName"] = c.TableName
 		configMap["ColumnMapFrom"] = c.ColumnMapFrom
+		addNotRequiredParamToMap(configMap, c.TableName, "TableName")
+		addNotRequiredParamToMap(configMap, c.TableRegex, "TableRegex")
 		addNotRequiredParamToMap(configMap, c.TableRename, "TableRename")
 		addNotRequiredParamToMap(configMap, c.Where, "Where")
 
@@ -521,6 +523,7 @@ func buildMysqlSrcTaskDetail(taskName string, internalTaskConfig common.DtleTask
 			for _, tb := range db.Tables {
 				tables = append(tables, &models.MysqlTableConfig{
 					TableName:     tb.TableName,
+					TableRegex:    tb.TableRegex,
 					TableRename:   tb.TableRename,
 					ColumnMapFrom: tb.ColumnMapFrom,
 					Where:         tb.Where,
@@ -528,6 +531,7 @@ func buildMysqlSrcTaskDetail(taskName string, internalTaskConfig common.DtleTask
 			}
 			apiMysqlDataSource = append(apiMysqlDataSource, &models.MysqlDataSourceConfig{
 				TableSchema:       db.TableSchema,
+				TableSchemaRegex:  db.TableSchemaRegex,
 				TableSchemaRename: &db.TableSchemaRename,
 				Tables:            tables,
 			})

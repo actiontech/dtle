@@ -160,12 +160,14 @@ type MysqlDestTaskConfig struct {
 
 type MysqlDataSourceConfig struct {
 	TableSchema       string              `json:"table_schema"`
+	TableSchemaRegex  string              `json:"table_schema_regex"`
 	TableSchemaRename *string             `json:"table_schema_rename"`
 	Tables            []*MysqlTableConfig `json:"tables"`
 }
 
 type MysqlTableConfig struct {
 	TableName     string   `json:"table_name"`
+	TableRegex    string   `json:"table_regex"`
 	TableRename   string   `json:"table_rename"`
 	ColumnMapFrom []string `json:"column_map_from"`
 	Where         string   `json:"where"`
