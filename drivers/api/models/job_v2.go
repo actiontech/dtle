@@ -28,14 +28,14 @@ func NewJobStep(stepName string) JobStep {
 }
 
 type JobListItemV2 struct {
-	JobId                string    `json:"job_id"`
-	JobStatus            string    `json:"job_status"`
-	JobStatusDescription string    `json:"job_status_description"`
-	JobCreateTime        string    `json:"job_create_time"`
-	SrcAddrList          []string  `json:"src_addr_list"`
-	DstAddrList          []string  `json:"dst_addr_list"`
-	User                 string    `json:"user"`
-	JobSteps             []JobStep `json:"job_steps"`
+	JobId         string    `json:"job_id"`
+	JobStatus     string    `json:"job_status"`
+	Topic         string    `json:"topic"`
+	JobCreateTime string    `json:"job_create_time"`
+	SrcAddrList   []string  `json:"src_addr_list"`
+	DstAddrList   []string  `json:"dst_addr_list"`
+	User          string    `json:"user"`
+	JobSteps      []JobStep `json:"job_steps"`
 }
 
 type JobListRespV2 struct {
@@ -48,13 +48,12 @@ type MysqlToMysqlJobDetailReqV2 struct {
 }
 
 type JobBaseInfo struct {
-	JobId                string    `json:"job_id"`
-	SubscriptionTopic    string    `json:"subscription_topic"`
-	JobStatus            string    `json:"job_status"`
-	JobStatusDescription string    `json:"job_status_description"`
-	JobCreateTime        string    `json:"job_create_time"`
-	JobSteps             []JobStep `json:"job_steps"`
-	Delay                int64     `json:"delay"`
+	JobId             string    `json:"job_id"`
+	SubscriptionTopic string    `json:"subscription_topic"`
+	JobStatus         string    `json:"job_status"`
+	JobCreateTime     string    `json:"job_create_time"`
+	JobSteps          []JobStep `json:"job_steps"`
+	Delay             int64     `json:"delay"`
 }
 
 type DtleNodeInfo struct {
@@ -230,11 +229,6 @@ type MysqlToKafkaJobDetailReqV2 struct {
 }
 
 type MysqlToKafkaJobDetailRespV2 struct {
-	JobId          string              `json:"job_id"`           // Compatible with old version v2 interface
-	Failover       bool                `json:"failover"`         // Compatible with old version v2 interface
-	SrcTaskDetail  MysqlSrcTaskDetail  `json:"src_task_detail"`  // Compatible with old version v2 interface
-	DestTaskDetail KafkaDestTaskDetail `json:"dest_task_detail"` // Compatible with old version v2 interface
-
 	BasicTaskProfile BasicTaskProfile `json:"basic_task_profile"`
 	TaskLogs         []TaskLog        `json:"task_logs"`
 	BaseResp
