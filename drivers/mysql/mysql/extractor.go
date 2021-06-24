@@ -145,6 +145,22 @@ func NewExtractor(execCtx *common.ExecContext, cfg *common.MySQLDriverConfig, lo
 func (e *Extractor) Run() {
 	var err error
 
+	if e.mysqlContext.WaitOnJob != "" {
+		afterWait, err := e.storeManager.IsAfterWait(e.subject)
+		if err != nil {
+			e.onError(common.TaskStateDead, err)
+		}
+		if !afterWait {
+			// the first time to wait
+			e.logger.Info("waiting for another job to finish", "job2", e.mysqlContext.WaitOnJob)
+			err = e.storeManager.WaitOnJob(e.subject, e.mysqlContext.WaitOnJob, e.shutdownCh)
+			if err != nil {
+				e.onError(common.TaskStateDead, err)
+			}
+		}
+		e.logger.Info("after WaitOnJob", "job2", e.mysqlContext.WaitOnJob, "firstWait", !afterWait)
+	}
+
 	e.logger.Debug("consul put ReplChanBufferSize")
 	err = e.storeManager.PutKey(e.subject, "ReplChanBufferSize",
 		[]byte(strconv.Itoa(int(e.mysqlContext.ReplChanBufferSize))))
@@ -229,6 +245,11 @@ func (e *Extractor) Run() {
 
 		if e.mysqlContext.BinlogFile != "" {
 			fullCopy = false
+		}
+
+		err = e.storeManager.SaveGtidForJob(e.subject, e.mysqlContext.Gtid)
+		if err != nil {
+			e.onError(common.TaskStateDead, err)
 		}
 	} else {
 		fullCopy = false

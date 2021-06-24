@@ -52,6 +52,7 @@ type DtleTaskConfig struct {
 	GtidStart            string   `codec:"GtidStart"`
 	AutoGtid             bool     `codec:"AutoGtid"`
 	BinlogRelay          bool     `codec:"BinlogRelay"`
+	WaitOnJob            string   `codec:"WaitOnJob"`
 
 	ParallelWorkers int `codec:"ParallelWorkers"`
 

@@ -128,6 +128,7 @@ var (
 			"Charset": hclspec.NewDefault(hclspec.NewAttr("Charset", "string", false),
 				hclspec.NewLiteral(`"utf8mb4"`)),
 		})),
+		"WaitOnJob":   hclspec.NewAttr("WaitOnJob", "string", false),
 		"KafkaConfig": hclspec.NewBlock("KafkaConfig", false, hclspec.NewObject(map[string]*hclspec.Spec{
 			"Topic":   hclspec.NewAttr("Topic", "string", true),
 			"Brokers": hclspec.NewAttr("Brokers", "list(string)", true),
