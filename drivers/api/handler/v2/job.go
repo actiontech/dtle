@@ -474,8 +474,8 @@ func buildBasicTaskProfile(logger hclog.Logger, jobId string, srcTaskDetail *mod
 			DataSource: fmt.Sprintf("%v:%v", srcTaskDetail.TaskConfig.MysqlConnectionConfig.MysqlHost,
 				srcTaskDetail.TaskConfig.MysqlConnectionConfig.MysqlPort),
 		}
-		if _, ok := dtleNodeInfosMap[fmt.Sprintf("%s:%s:%s", dtleNode.NodeId, dtleNode.DataSource)]; !ok {
-			dtleNodeInfosMap[fmt.Sprintf("%s:%s:%s", dtleNode.NodeId, dtleNode.DataSource)] = dtleNode
+		if _, ok := dtleNodeInfosMap[fmt.Sprintf("%s:%s", dtleNode.NodeId, dtleNode.DataSource)]; !ok {
+			dtleNodeInfosMap[fmt.Sprintf("%s:%s", dtleNode.NodeId, dtleNode.DataSource)] = dtleNode
 		}
 		taskLogs = append(taskLogs, models.TaskLog{
 			TaskEvents:   srcAllocation.TaskStatus.TaskEvents,
@@ -496,8 +496,8 @@ func buildBasicTaskProfile(logger hclog.Logger, jobId string, srcTaskDetail *mod
 				DataSource: fmt.Sprintf("%v:%v", destMySqlTaskDetail.TaskConfig.MysqlConnectionConfig.MysqlHost,
 					destMySqlTaskDetail.TaskConfig.MysqlConnectionConfig.MysqlPort),
 			}
-			if _, ok := dtleNodeInfosMap[fmt.Sprintf("%s:%s:%s", dtleNode.NodeId, dtleNode.DataSource)]; !ok {
-				dtleNodeInfosMap[fmt.Sprintf("%s:%s:%s", dtleNode.NodeId, dtleNode.DataSource)] = dtleNode
+			if _, ok := dtleNodeInfosMap[fmt.Sprintf("%s:%s", dtleNode.NodeId, dtleNode.DataSource)]; !ok {
+				dtleNodeInfosMap[fmt.Sprintf("%s:%s", dtleNode.NodeId, dtleNode.DataSource)] = dtleNode
 			}
 			taskLogs = append(taskLogs, models.TaskLog{
 				TaskEvents:   destAllocation.TaskStatus.TaskEvents,
@@ -513,10 +513,10 @@ func buildBasicTaskProfile(logger hclog.Logger, jobId string, srcTaskDetail *mod
 			dtleNode := models.DtleNodeInfo{
 				NodeId:     destAllocation.NodeId,
 				NodeAddr:   nodeId2Addr[destAllocation.NodeId],
-				DataSource: fmt.Sprintf("%v:%v", destKafkaTaskDetail.TaskConfig.BrokerAddrs),
+				DataSource: fmt.Sprintf("%s", destKafkaTaskDetail.TaskConfig.BrokerAddrs),
 			}
-			if _, ok := dtleNodeInfosMap[fmt.Sprintf("%s:%s:%s", dtleNode.NodeId, dtleNode.DataSource)]; !ok {
-				dtleNodeInfosMap[fmt.Sprintf("%s:%s:%s", dtleNode.NodeId, dtleNode.DataSource)] = dtleNode
+			if _, ok := dtleNodeInfosMap[fmt.Sprintf("%s:%s", dtleNode.NodeId, dtleNode.DataSource)]; !ok {
+				dtleNodeInfosMap[fmt.Sprintf("%s:%s", dtleNode.NodeId, dtleNode.DataSource)] = dtleNode
 			}
 			taskLogs = append(taskLogs, models.TaskLog{
 				TaskEvents:   destAllocation.TaskStatus.TaskEvents,
