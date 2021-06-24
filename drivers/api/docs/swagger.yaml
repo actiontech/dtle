@@ -47,6 +47,8 @@ definitions:
         type: boolean
       group_max_size:
         type: integer
+      group_timeout:
+        type: integer
       parallel_workers:
         type: integer
       repl_chan_buffer_size:
@@ -230,8 +232,6 @@ definitions:
         type: string
       job_status:
         type: string
-      job_status_description:
-        type: string
       job_steps:
         items:
           $ref: '#/definitions/models.JobStep'
@@ -251,8 +251,6 @@ definitions:
         type: string
       job_status:
         type: string
-      job_status_description:
-        type: string
       job_steps:
         items:
           $ref: '#/definitions/models.JobStep'
@@ -261,6 +259,8 @@ definitions:
         items:
           type: string
         type: array
+      topic:
+        type: string
       user:
         type: string
     type: object
@@ -336,6 +336,8 @@ definitions:
     properties:
       table_schema:
         type: string
+      table_schema_regex:
+        type: string
       table_schema_rename:
         type: string
       tables:
@@ -366,6 +368,8 @@ definitions:
       drop_table_if_exists:
         type: boolean
       group_max_size:
+        type: integer
+      group_timeout:
         type: integer
       gtid:
         type: string
@@ -398,6 +402,8 @@ definitions:
           type: string
         type: array
       table_name:
+        type: string
+      table_regex:
         type: string
       table_rename:
         type: string

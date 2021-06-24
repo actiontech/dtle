@@ -157,6 +157,9 @@ func createOrUpdateMysqlToMysqlJob(c echo.Context, logger hclog.Logger, jobType 
 	if jobParam.DestTask.ParallelWorkers == 0 {
 		jobParam.DestTask.ParallelWorkers = common.DefaultNumWorkers
 	}
+	if jobParam.SrcTask.GroupTimeout == 0 {
+		jobParam.SrcTask.GroupTimeout = common.DefaultSrcGroupTimeout
+	}
 
 	jobParam.JobId = addJobTypeToJobId(jobParam.JobId, jobType)
 	nomadJob, err := convertMysqlToMysqlJobToNomadJob(failover, jobParam.JobId, jobParam.SrcTask, jobParam.DestTask)
@@ -186,7 +189,7 @@ func createOrUpdateMysqlToMysqlJob(c echo.Context, logger hclog.Logger, jobType 
 	if "" != nomadResp.Warnings {
 		respErr = errors.New(nomadResp.Warnings)
 	} else {
-		err = buildJobListItem(logger, jobParam)
+		err = buildMySQLJobListItem(logger, jobParam)
 		if err != nil {
 			return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
 		}
@@ -217,19 +220,50 @@ func convertMysqlToMysqlJobToNomadJob(failover bool, apiJobId string, apiSrcTask
 		TaskGroups:  []*nomadApi.TaskGroup{srcTask, destTask},
 	}, nil
 }
-func buildJobListItem(logger hclog.Logger, jobParam *models.CreateOrUpdateMysqlToMysqlJobParamV2) error {
+
+func buildMySQLJobListItem(logger hclog.Logger, jobParam *models.CreateOrUpdateMysqlToMysqlJobParamV2) error {
 	// add data to consul
 	storeManager, err := common.NewStoreManager([]string{handler.ConsulAddr}, logger)
 	if err != nil {
 		return fmt.Errorf("consul_addr=%v; connect to consul failed: %v", handler.ConsulAddr, err)
 	}
 	jobInfo := models.JobListItemV2{
-		JobId:                jobParam.JobId,
-		JobStatus:            "running",
-		JobStatusDescription: "",
-		JobCreateTime:        time.Now().In(time.Local).Format(time.RFC3339),
-		SrcAddrList:          []string{jobParam.SrcTask.MysqlConnectionConfig.MysqlHost},
-		DstAddrList:          []string{jobParam.DestTask.MysqlConnectionConfig.MysqlHost},
+		JobId:         jobParam.JobId,
+		JobStatus:     "running",
+		JobCreateTime: time.Now().In(time.Local).Format(time.RFC3339),
+		SrcAddrList:   []string{jobParam.SrcTask.MysqlConnectionConfig.MysqlHost},
+		DstAddrList:   []string{jobParam.DestTask.MysqlConnectionConfig.MysqlHost},
+		// todo
+		User:     "root",
+		JobSteps: nil,
+	}
+	if jobParam.TaskStepName == "all" {
+		jobInfo.JobSteps = append(jobInfo.JobSteps, models.NewJobStep(mysql.JobFullCopy), models.NewJobStep(mysql.JobIncrCopy))
+	} else if jobParam.TaskStepName == mysql.JobFullCopy {
+		jobInfo.JobSteps = append(jobInfo.JobSteps, models.NewJobStep(mysql.JobFullCopy))
+	} else if jobParam.TaskStepName == mysql.JobIncrCopy {
+		jobInfo.JobSteps = append(jobInfo.JobSteps, models.NewJobStep(mysql.JobIncrCopy))
+	}
+	err = storeManager.SaveJobInfo(jobInfo)
+	if nil != err {
+		return fmt.Errorf("consul_addr=%v ; sava job info list failed: %v", handler.ConsulAddr, err)
+	}
+	return nil
+}
+
+func buildKafkaJobListItem(logger hclog.Logger, jobParam *models.CreateOrUpdateMysqlToKafkaJobParamV2) error {
+	// add data to consul
+	storeManager, err := common.NewStoreManager([]string{handler.ConsulAddr}, logger)
+	if err != nil {
+		return fmt.Errorf("consul_addr=%v; connect to consul failed: %v", handler.ConsulAddr, err)
+	}
+	jobInfo := models.JobListItemV2{
+		JobId:         jobParam.JobId,
+		JobStatus:     "running",
+		Topic:         jobParam.DestTask.Topic,
+		JobCreateTime: time.Now().In(time.Local).Format(time.RFC3339),
+		SrcAddrList:   []string{jobParam.SrcTask.MysqlConnectionConfig.MysqlHost},
+		DstAddrList:   jobParam.DestTask.BrokerAddrs,
 		// todo
 		User:     "root",
 		JobSteps: nil,
@@ -287,6 +321,7 @@ func buildMysqlSrcTaskConfigMap(config *models.MysqlSrcTaskConfig) map[string]in
 	addNotRequiredParamToMap(taskConfigInNomadFormat, config.ReplChanBufferSize, "ReplChanBufferSize")
 	addNotRequiredParamToMap(taskConfigInNomadFormat, config.ChunkSize, "ChunkSize")
 	addNotRequiredParamToMap(taskConfigInNomadFormat, config.GroupMaxSize, "GroupMaxSize")
+	addNotRequiredParamToMap(taskConfigInNomadFormat, config.GroupTimeout, "GroupTimeout")
 	addNotRequiredParamToMap(taskConfigInNomadFormat, config.Gtid, "Gtid")
 	addNotRequiredParamToMap(taskConfigInNomadFormat, config.SkipCreateDbTable, "SkipCreateDbTable")
 	addNotRequiredParamToMap(taskConfigInNomadFormat, config.BinlogRelay, "BinlogRelay")
@@ -303,8 +338,9 @@ func buildMysqlDataSourceConfigMap(configs []*models.MysqlDataSourceConfig) []ma
 
 	for _, c := range configs {
 		configMap := make(map[string]interface{})
-		configMap["TableSchema"] = c.TableSchema
+		addNotRequiredParamToMap(configMap, c.TableSchema, "TableSchema")
 		addNotRequiredParamToMap(configMap, c.TableSchemaRename, "TableSchemaRename")
+		addNotRequiredParamToMap(configMap, c.TableSchemaRegex, "TableSchemaRegex")
 		configMap["Tables"] = buildMysqlTableConfigMap(c.Tables)
 
 		res = append(res, configMap)
@@ -317,8 +353,9 @@ func buildMysqlTableConfigMap(configs []*models.MysqlTableConfig) []map[string]i
 
 	for _, c := range configs {
 		configMap := make(map[string]interface{})
-		configMap["TableName"] = c.TableName
 		configMap["ColumnMapFrom"] = c.ColumnMapFrom
+		addNotRequiredParamToMap(configMap, c.TableName, "TableName")
+		addNotRequiredParamToMap(configMap, c.TableRegex, "TableRegex")
 		addNotRequiredParamToMap(configMap, c.TableRename, "TableRename")
 		addNotRequiredParamToMap(configMap, c.Where, "Where")
 
@@ -375,7 +412,7 @@ func getMysqlToMysqlJobDetail(c echo.Context, logger hclog.Logger, jobType DtleJ
 	if nil != err {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("build job detail response failed: %v", err)))
 	}
-	basicTaskProfile, taskLog, err := buildBasicTaskProfile(logger, reqParam.JobId, destTaskDetail, srcTaskDetail)
+	basicTaskProfile, taskLog, err := buildBasicTaskProfile(logger, reqParam.JobId, &srcTaskDetail, &destTaskDetail, nil)
 	if nil != err {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("build job basic task profile failed: %v", err)))
 	}
@@ -387,8 +424,8 @@ func getMysqlToMysqlJobDetail(c echo.Context, logger hclog.Logger, jobType DtleJ
 	})
 }
 
-func buildBasicTaskProfile(logger hclog.Logger, jobId string,
-	destTaskDetail models.MysqlDestTaskDetail, srcTaskDetail models.MysqlSrcTaskDetail) (models.BasicTaskProfile, []models.TaskLog, error) {
+func buildBasicTaskProfile(logger hclog.Logger, jobId string, srcTaskDetail *models.MysqlSrcTaskDetail,
+	destMySqlTaskDetail *models.MysqlDestTaskDetail, destKafkaTaskDetail *models.KafkaDestTaskDetail) (models.BasicTaskProfile, []models.TaskLog, error) {
 	nodes, err := FindNomadNodes(logger)
 	if nil != err {
 		return models.BasicTaskProfile{}, nil, fmt.Errorf("find nodes info response failed: %v", err)
@@ -407,24 +444,23 @@ func buildBasicTaskProfile(logger hclog.Logger, jobId string,
 	}
 	basicTaskProfile := models.BasicTaskProfile{}
 	basicTaskProfile.JobBaseInfo = models.JobBaseInfo{
-		JobId:                jobId,
-		JobStatus:            jobItem.JobStatus,
-		JobStatusDescription: jobItem.JobStatusDescription,
-		JobCreateTime:        jobItem.JobCreateTime,
-		JobSteps:             jobItem.JobSteps,
-		Delay:                0,
+		JobId:             jobId,
+		SubscriptionTopic: jobItem.Topic,
+		JobStatus:         jobItem.JobStatus,
+		JobCreateTime:     jobItem.JobCreateTime,
+		JobSteps:          jobItem.JobSteps,
+		Delay:             0,
 	}
 	basicTaskProfile.Configuration = models.Configuration{
 		BinlogRelay:        srcTaskDetail.TaskConfig.BinlogRelay,
 		FailOver:           false,
 		RetryTime:          0,
-		ParallelWorkers:    destTaskDetail.TaskConfig.ParallelWorkers,
 		ReplChanBufferSize: srcTaskDetail.TaskConfig.GroupMaxSize,
 		GroupMaxSize:       int(srcTaskDetail.TaskConfig.ReplChanBufferSize),
 		ChunkSize:          int(srcTaskDetail.TaskConfig.ChunkSize),
+		GroupTimeout:       srcTaskDetail.TaskConfig.GroupTimeout,
 	}
 	basicTaskProfile.ConnectionInfo = models.ConnectionInfo{
-		SrcDataBaseList: []models.MysqlConnectionConfig{*destTaskDetail.TaskConfig.MysqlConnectionConfig},
 		DstDataBaseList: []models.MysqlConnectionConfig{*srcTaskDetail.TaskConfig.MysqlConnectionConfig},
 	}
 	basicTaskProfile.OperationObject = srcTaskDetail.TaskConfig.ReplicateDoDb
@@ -449,23 +485,47 @@ func buildBasicTaskProfile(logger hclog.Logger, jobId string,
 			Target:       "src",
 		})
 	}
-	for _, destAllocation := range destTaskDetail.Allocations {
-		dtleNode := models.DtleNodeInfo{
-			NodeId:   destAllocation.NodeId,
-			NodeAddr: nodeId2Addr[destAllocation.NodeId],
-			DataSource: fmt.Sprintf("%v:%v", destTaskDetail.TaskConfig.MysqlConnectionConfig.MysqlHost,
-				destTaskDetail.TaskConfig.MysqlConnectionConfig.MysqlPort),
+	if destMySqlTaskDetail != nil {
+		basicTaskProfile.ConnectionInfo.SrcDataBaseList = []models.MysqlConnectionConfig{*destMySqlTaskDetail.TaskConfig.MysqlConnectionConfig}
+		basicTaskProfile.Configuration.ParallelWorkers = destMySqlTaskDetail.TaskConfig.ParallelWorkers
+
+		for _, destAllocation := range destMySqlTaskDetail.Allocations {
+			dtleNode := models.DtleNodeInfo{
+				NodeId:   destAllocation.NodeId,
+				NodeAddr: nodeId2Addr[destAllocation.NodeId],
+				DataSource: fmt.Sprintf("%v:%v", destMySqlTaskDetail.TaskConfig.MysqlConnectionConfig.MysqlHost,
+					destMySqlTaskDetail.TaskConfig.MysqlConnectionConfig.MysqlPort),
+			}
+			if _, ok := dtleNodeInfosMap[fmt.Sprintf("%s:%s:%s", dtleNode.NodeId, dtleNode.DataSource)]; !ok {
+				dtleNodeInfosMap[fmt.Sprintf("%s:%s:%s", dtleNode.NodeId, dtleNode.DataSource)] = dtleNode
+			}
+			taskLogs = append(taskLogs, models.TaskLog{
+				TaskEvents:   destAllocation.TaskStatus.TaskEvents,
+				NodeId:       destAllocation.NodeId,
+				AllocationId: destAllocation.AllocationId,
+				Address:      nodeId2Addr[destAllocation.NodeId],
+				Target:       "dst",
+			})
 		}
-		if _, ok := dtleNodeInfosMap[fmt.Sprintf("%s:%s:%s", dtleNode.NodeId, dtleNode.DataSource)]; !ok {
-			dtleNodeInfosMap[fmt.Sprintf("%s:%s:%s", dtleNode.NodeId, dtleNode.DataSource)] = dtleNode
+	}
+	if destKafkaTaskDetail != nil {
+		for _, destAllocation := range destKafkaTaskDetail.Allocations {
+			dtleNode := models.DtleNodeInfo{
+				NodeId:     destAllocation.NodeId,
+				NodeAddr:   nodeId2Addr[destAllocation.NodeId],
+				DataSource: fmt.Sprintf("%v:%v", destKafkaTaskDetail.TaskConfig.BrokerAddrs),
+			}
+			if _, ok := dtleNodeInfosMap[fmt.Sprintf("%s:%s:%s", dtleNode.NodeId, dtleNode.DataSource)]; !ok {
+				dtleNodeInfosMap[fmt.Sprintf("%s:%s:%s", dtleNode.NodeId, dtleNode.DataSource)] = dtleNode
+			}
+			taskLogs = append(taskLogs, models.TaskLog{
+				TaskEvents:   destAllocation.TaskStatus.TaskEvents,
+				NodeId:       destAllocation.NodeId,
+				AllocationId: destAllocation.AllocationId,
+				Address:      nodeId2Addr[destAllocation.NodeId],
+				Target:       "dst",
+			})
 		}
-		taskLogs = append(taskLogs, models.TaskLog{
-			TaskEvents:   destAllocation.TaskStatus.TaskEvents,
-			NodeId:       destAllocation.NodeId,
-			AllocationId: destAllocation.AllocationId,
-			Address:      nodeId2Addr[destAllocation.NodeId],
-			Target:       "dst",
-		})
 	}
 	for _, dtleNode := range dtleNodeInfosMap {
 		basicTaskProfile.DtleNodeInfos = append(basicTaskProfile.DtleNodeInfos, dtleNode)
@@ -521,6 +581,7 @@ func buildMysqlSrcTaskDetail(taskName string, internalTaskConfig common.DtleTask
 			for _, tb := range db.Tables {
 				tables = append(tables, &models.MysqlTableConfig{
 					TableName:     tb.TableName,
+					TableRegex:    tb.TableRegex,
 					TableRename:   tb.TableRename,
 					ColumnMapFrom: tb.ColumnMapFrom,
 					Where:         tb.Where,
@@ -528,6 +589,7 @@ func buildMysqlSrcTaskDetail(taskName string, internalTaskConfig common.DtleTask
 			}
 			apiMysqlDataSource = append(apiMysqlDataSource, &models.MysqlDataSourceConfig{
 				TableSchema:       db.TableSchema,
+				TableSchemaRegex:  db.TableSchemaRegex,
 				TableSchemaRename: &db.TableSchemaRename,
 				Tables:            tables,
 			})
@@ -710,6 +772,9 @@ func createOrUpdateMysqlToKafkaJob(c echo.Context, logger hclog.Logger, jobType 
 	if jobParam.SrcTask.GroupMaxSize == 0 {
 		jobParam.SrcTask.GroupMaxSize = common.DefaultSrcGroupMaxSize
 	}
+	if jobParam.SrcTask.GroupTimeout == 0 {
+		jobParam.SrcTask.GroupTimeout = common.DefaultSrcGroupTimeout
+	}
 	if jobParam.SrcTask.ChunkSize == 0 {
 		jobParam.SrcTask.ChunkSize = common.DefaultChunkSize
 	}
@@ -746,6 +811,11 @@ func createOrUpdateMysqlToKafkaJob(c echo.Context, logger hclog.Logger, jobType 
 	var respErr error
 	if "" != nomadResp.Warnings {
 		respErr = errors.New(nomadResp.Warnings)
+	} else {
+		err = buildKafkaJobListItem(logger, jobParam)
+		if err != nil {
+			return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
+		}
 	}
 	return c.JSON(http.StatusOK, &models.CreateOrUpdateMysqlToKafkaJobRespV2{
 		CreateOrUpdateMysqlToKafkaJobParamV2: *jobParam,
@@ -815,12 +885,16 @@ func GetSubscriptionJobDetailV2(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("build job detail response failed: %v", err)))
 	}
 
+	basicTaskProfile, taskLog, err := buildBasicTaskProfile(logger, reqParam.JobId, &srcTaskDetail, nil, &destTaskDetail)
+	if nil != err {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("build job basic task profile failed: %v", err)))
+	}
+
+	basicTaskProfile.Configuration.FailOver = failover
 	return c.JSON(http.StatusOK, &models.MysqlToKafkaJobDetailRespV2{
-		JobId:          reqParam.JobId,
-		Failover:       failover,
-		SrcTaskDetail:  srcTaskDetail,
-		DestTaskDetail: destTaskDetail,
-		BaseResp:       models.BuildBaseResp(nil),
+		BasicTaskProfile: basicTaskProfile,
+		TaskLogs:         taskLog,
+		BaseResp:         models.BuildBaseResp(nil),
 	})
 }
 
