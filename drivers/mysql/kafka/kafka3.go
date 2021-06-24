@@ -870,13 +870,12 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQueries(dmlEntries []*common.Binlog
 					}
 				case mysqlconfig.VarbinaryColumnType:
 					if beforeValue != nil {
-						beforeValue = beforeValue.(string)
+						beforeValue = base64.StdEncoding.EncodeToString([]byte(beforeValue.(string)))
 					}
 					if afterValue != nil {
-						afterValue = afterValue.(string)
+						afterValue = base64.StdEncoding.EncodeToString([]byte(afterValue.(string)))
 					}
 				case mysqlconfig.BinaryColumnType:
-
 					if beforeValue != nil {
 						beforeValue = getBinaryValue(colList[i].ColumnType, beforeValue.(string))
 					}
@@ -915,22 +914,13 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQueries(dmlEntries []*common.Binlog
 						afterValue = getSetValue(afterValue.(int64), columnType)
 					}
 				case mysqlconfig.BlobColumnType:
-					if strings.Contains(colList[i].ColumnType, "text") {
-						// already string value
-					} else {
-						if beforeValue != nil {
-							beforeValue = base64.StdEncoding.EncodeToString([]byte(beforeValue.(string)))
-						}
-						if afterValue != nil {
-							afterValue = base64.StdEncoding.EncodeToString([]byte(afterValue.(string)))
-						}
-					}
+					// do nothing. just keep the string value.
 				case mysqlconfig.TextColumnType:
 					if beforeValue != nil {
-						beforeValue = string(beforeValue.([]byte))
+						beforeValue = castBytesOrStringToString(beforeValue)
 					}
 					if afterValue != nil {
-						afterValue = string(afterValue.([]byte))
+						afterValue = castBytesOrStringToString(afterValue)
 					}
 
 				case mysqlconfig.BitColumnType:
@@ -1223,4 +1213,15 @@ func kafkaColumnListToColDefs(colList *common.ColumnList, timeZone string) (valC
 		valColDefs = append(valColDefs, field)
 	}
 	return valColDefs, keyColDefs
+}
+
+func castBytesOrStringToString(v interface{}) string {
+	switch x := v.(type) {
+	case []byte:
+		return string(x)
+	case string:
+		return x
+	default:
+		panic("only []byte or string is allowed")
+	}
 }
