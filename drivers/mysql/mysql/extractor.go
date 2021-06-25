@@ -53,8 +53,8 @@ type Extractor struct {
 	// Original comment: TotalRowsCopied returns the accurate number of rows being copied (affected)
 	// This is not exactly the same as the rows being iterated via chunks, but potentially close enough.
 	// TODO What is the difference between mysqlContext.RowsEstimate ?
-	TotalRowsCopied       int64
-	natsAddr              string
+	TotalRowsCopied int64
+	natsAddr        string
 
 	mysqlVersionDigit int
 	db                *gosql.DB
@@ -94,11 +94,14 @@ type Extractor struct {
 
 	timestampCtx *TimestampContext
 
-	memory1 *int64
-	memory2 *int64
+	memory1   *int64
+	memory2   *int64
+	finishing bool
+
 	// we need to close all data channel while pausing task runner. and these data channel will be recreate when restart the runner.
 	// to avoid writing closed channel, we need to wait for all goroutines that deal with data channels finishing. wg is used for the waiting.
-	wg sync.WaitGroup
+	wg          sync.WaitGroup
+	finishCoord *common.BinlogCoordinatesX
 }
 
 func NewExtractor(execCtx *common.ExecContext, cfg *common.MySQLDriverConfig, logger hclog.Logger, storeManager *common.StoreManager, waitCh chan *drivers.ExitResult) (*Extractor, error) {
@@ -140,6 +143,22 @@ func NewExtractor(execCtx *common.ExecContext, cfg *common.MySQLDriverConfig, lo
 // Run executes the complete extract logic.
 func (e *Extractor) Run() {
 	var err error
+
+	if e.mysqlContext.WaitOnJob != "" {
+		afterWait, err := e.storeManager.IsAfterWait(e.subject)
+		if err != nil {
+			e.onError(common.TaskStateDead, err)
+		}
+		if !afterWait {
+			// the first time to wait
+			e.logger.Info("waiting for another job to finish", "job2", e.mysqlContext.WaitOnJob)
+			err = e.storeManager.WaitOnJob(e.subject, e.mysqlContext.WaitOnJob, e.shutdownCh)
+			if err != nil {
+				e.onError(common.TaskStateDead, err)
+			}
+		}
+		e.logger.Info("after WaitOnJob", "job2", e.mysqlContext.WaitOnJob, "firstWait", !afterWait)
+	}
 
 	e.logger.Debug("consul put ReplChanBufferSize")
 	err = e.storeManager.PutKey(e.subject, "ReplChanBufferSize",
@@ -225,6 +244,11 @@ func (e *Extractor) Run() {
 
 		if e.mysqlContext.BinlogFile != "" {
 			fullCopy = false
+		}
+
+		err = e.storeManager.SaveGtidForJob(e.subject, e.mysqlContext.Gtid)
+		if err != nil {
+			e.onError(common.TaskStateDead, err)
 		}
 	} else {
 		fullCopy = false
@@ -536,18 +560,27 @@ func (e *Extractor) initNatsPubClient(natsAddr string) (err error) {
 	e.logger.Info("Connect nats server", "natsAddr", natsAddr)
 	e.natsConn = sc
 
-	_, err = e.natsConn.Subscribe(fmt.Sprintf("%s_restart", e.subject), func(m *gonats.Msg) {
-		e.onError(common.TaskStateRestart, fmt.Errorf("applier restart: %v", string(m.Data)))
+	_, err = e.natsConn.Subscribe(fmt.Sprintf("%s_control2", e.subject), func(m *gonats.Msg) {
+		if m.Data == nil {
+			e.onError(common.TaskStateDead, fmt.Errorf("zero-byte control msg"))
+			return
+		}
+
+		ctrlMsg := &common.ControlMsg{}
+		_, err := ctrlMsg.Unmarshal(m.Data)
+		if err != nil {
+			e.onError(common.TaskStateDead, fmt.Errorf("failed to unmarshal a control msg"))
+			return
+		}
+
+		switch ctrlMsg.Type {
+		case common.ControlMsgError:
+			e.onError(common.TaskStateDead, fmt.Errorf("applier error/restart: %v", ctrlMsg.Msg))
+			return
+		}
 	})
 	if err != nil {
-		e.onError(common.TaskStateDead, errors.Wrap(err, "Subscribe restart"))
-		return
-	}
-	_, err = e.natsConn.Subscribe(fmt.Sprintf("%s_error", e.subject), func(m *gonats.Msg) {
-		e.onError(common.TaskStateDead, fmt.Errorf("applier error: %v", string(m.Data)))
-	})
-	if err != nil {
-		e.onError(common.TaskStateDead, errors.Wrap(err, "Subscribe error"))
+		e.onError(common.TaskStateDead, errors.Wrap(err, "Subscribe control2"))
 		return
 	}
 
@@ -1521,6 +1554,39 @@ func (e *Extractor) sendFullComplete() (err error) {
 		return err
 	}
 	return nil
+}
+
+func (e *Extractor) Finish1() (err error) {
+	if e.finishing {
+		return nil
+	}
+	e.finishing = true
+
+	e.finishCoord, err = base.GetSelfBinlogCoordinates(e.db)
+	if err != nil {
+		return errors.Wrap(err, "GetSelfBinlogCoordinates")
+	}
+
+	e.logger.Info("Finish. got target GTIDSet", "gs", e.finishCoord.GtidSet)
+
+	bs, err := common.Encode(&common.DumpStatResult{
+		Coord: e.finishCoord,
+		Type: CommandTypeJobFinish,
+	})
+	if err != nil {
+		return errors.Wrap(err, "common.Encode")
+	}
+	for {
+		// TODO use a queue?
+		_, err = e.natsConn.Request(fmt.Sprintf("%v_full_complete", e.subject), bs, 10 * time.Second)
+		if err == gonats.ErrTimeout {
+			time.Sleep(1 * time.Second)
+		} else if err != nil {
+			return err
+		} else {
+			return nil
+		}
+	}
 }
 
 func (e *Extractor) newDataChannel(cfg *common.MySQLDriverConfig) chan *common.BinlogEntryContext {

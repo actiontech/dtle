@@ -88,6 +88,12 @@ type Applier struct {
 	memory2    *int64
 	event      *eventer.Eventer
 	taskConfig *drivers.TaskConfig
+
+	targetGtid gomysql.GTIDSet
+}
+
+func (a *Applier) Finish1() error {
+	return nil
 }
 
 func NewApplier(
@@ -172,6 +178,18 @@ func (a *Applier) updateGtidLoop() {
 			}
 		}
 	}
+
+	testTargetGtid := func() {
+		if a.gtidSet.Contain(a.targetGtid) {
+			a.logger.Info("meet target gtid", "gtidSet", a.targetGtid.String())
+			err := a.storeManager.PutFinished(a.subject)
+			if err != nil {
+				a.onError(common.TaskStateDead, errors.Wrap(err, "PutKey"))
+			}
+			_ = a.Shutdown()
+		}
+	}
+
 	for !a.shutdown {
 		select {
 		case <-a.shutdownCh:
@@ -188,9 +206,17 @@ func (a *Applier) updateGtidLoop() {
 				// coord == nil is a flag for update/upload gtid
 				doUpdate()
 				doUpload()
+				if a.targetGtid != nil {
+					a.gtidSetLock.RLock()
+					testTargetGtid()
+					a.gtidSetLock.RUnlock()
+				}
 			} else {
 				a.gtidSetLock.Lock()
 				common.UpdateGtidSet(a.gtidSet, coord.SID, coord.GNO)
+				if a.targetGtid != nil {
+					testTargetGtid()
+				}
 				a.gtidSetLock.Unlock()
 				file = coord.LogFile
 				pos = coord.LogPos
@@ -380,6 +406,11 @@ func (a *Applier) sendEvent(status string) {
 	}
 }
 
+const (
+	CommandTypeFullComplete = int32(0)
+	CommandTypeJobFinish    = int32(1)
+)
+
 // initiateStreaming begins treaming of binary log events and registers listeners for such events
 func (a *Applier) subscribeNats() (err error) {
 	a.mysqlContext.MarkRowCopyStartTime()
@@ -439,20 +470,32 @@ func (a *Applier) subscribeNats() (err error) {
 	_, err = a.natsConn.Subscribe(fmt.Sprintf("%s_full_complete", a.subject), func(m *gonats.Msg) {
 		a.logger.Debug("recv _full_complete.")
 
-		select {
-		case <-a.rowCopyComplete: // already full complete. Maybe src task restart.
-			if err := a.natsConn.Publish(m.Reply, nil); err != nil {
-				a.onError(common.TaskStateDead, err)
-			}
-			return
-		default:
-		}
-
 		dumpData := &common.DumpStatResult{}
 		if err := common.Decode(m.Data, dumpData); err != nil {
 			a.onError(common.TaskStateDead, errors.Wrap(err, "Decode"))
 			return
 		}
+
+		select {
+		case <-a.rowCopyComplete: // already full complete. Maybe src task restart.
+			if err := a.natsConn.Publish(m.Reply, nil); err != nil {
+				a.onError(common.TaskStateDead, err)
+			}
+
+			if dumpData.Type == CommandTypeJobFinish {
+				a.logger.Info("got target GTIDSet", "gs", dumpData.Coord.GtidSet)
+				gs, err := gomysql.ParseMysqlGTIDSet(dumpData.Coord.GtidSet)
+				if err != nil {
+					a.onError(common.TaskStateDead, errors.Wrap(err, "CommandTypeJobFinish. ParseMysqlGTIDSet"))
+				}
+				a.targetGtid = gs
+				a.gtidCh <- nil
+			}
+
+			return
+		default:
+		}
+
 		for atomic.LoadInt64(&a.nDumpEntry) != 0 {
 			a.logger.Debug("nDumpEntry is not zero, waiting", "nDumpEntry", a.nDumpEntry)
 			time.Sleep(1 * time.Second)
@@ -908,21 +951,24 @@ func (a *Applier) onError(state int, err error) {
 		return
 	}
 
-	bs := []byte(err.Error())
-
 	switch state {
 	case common.TaskStateComplete:
 		a.logger.Info("Done migrating")
-	case common.TaskStateRestart:
-		if a.natsConn != nil {
-			if err := a.natsConn.Publish(fmt.Sprintf("%s_restart", a.subject), bs); err != nil {
-				a.logger.Error("when triggering extractor restart", "err", err, "state", state)
-			}
+	case common.TaskStateRestart, common.TaskStateDead:
+		msg := &common.ControlMsg{
+			Msg:  err.Error(),
+			Type: common.ControlMsgError,
 		}
-	default:
+
+		bs, err1 := msg.Marshal(nil)
+		if err1 != nil {
+			bs = nil // send zero bytes
+			a.logger.Error("onError. Marshal", "err", err1)
+		}
+
 		if a.natsConn != nil {
-			if err := a.natsConn.Publish(fmt.Sprintf("%s_error", a.subject), bs); err != nil {
-				a.logger.Error("when triggering extractor shutdown", "err", err, "state", state)
+			if err := a.natsConn.Publish(fmt.Sprintf("%s_control2", a.subject), bs); err != nil {
+				a.logger.Error("when sending control2 msg", "err", err, "state", state, "type", msg.Type)
 			}
 		}
 	}

@@ -1990,6 +1990,7 @@ func (d *BinlogCoordinatesX) Unmarshal(buf []byte) (uint64, error) {
 
 type DumpStatResult struct {
 	Coord *BinlogCoordinatesX
+	Type  int32
 }
 
 func (d *DumpStatResult) Size() (s uint64) {
@@ -2003,7 +2004,7 @@ func (d *DumpStatResult) Size() (s uint64) {
 			s += 0
 		}
 	}
-	s += 1
+	s += 5
 	return
 }
 func (d *DumpStatResult) Marshal(buf []byte) ([]byte, error) {
@@ -2033,7 +2034,18 @@ func (d *DumpStatResult) Marshal(buf []byte) ([]byte, error) {
 			i += 0
 		}
 	}
-	return buf[:i+1], nil
+	{
+
+		buf[i+0+1] = byte(d.Type >> 0)
+
+		buf[i+1+1] = byte(d.Type >> 8)
+
+		buf[i+2+1] = byte(d.Type >> 16)
+
+		buf[i+3+1] = byte(d.Type >> 24)
+
+	}
+	return buf[:i+5], nil
 }
 
 func (d *DumpStatResult) Unmarshal(buf []byte) (uint64, error) {
@@ -2057,7 +2069,12 @@ func (d *DumpStatResult) Unmarshal(buf []byte) (uint64, error) {
 			d.Coord = nil
 		}
 	}
-	return i + 1, nil
+	{
+
+		d.Type = 0 | (int32(buf[i+0+1]) << 0) | (int32(buf[i+1+1]) << 8) | (int32(buf[i+2+1]) << 16) | (int32(buf[i+3+1]) << 24)
+
+	}
+	return i + 5, nil
 }
 
 type DataEvent struct {
@@ -2808,4 +2825,104 @@ func (d *BinlogEntries) Unmarshal(buf []byte) (uint64, error) {
 		}
 	}
 	return i + 0, nil
+}
+
+type ControlMsg struct {
+	Type int32
+	Msg  string
+}
+
+func (d *ControlMsg) Size() (s uint64) {
+
+	{
+		l := uint64(len(d.Msg))
+
+		{
+
+			t := l
+			for t >= 0x80 {
+				t >>= 7
+				s++
+			}
+			s++
+
+		}
+		s += l
+	}
+	s += 4
+	return
+}
+func (d *ControlMsg) Marshal(buf []byte) ([]byte, error) {
+	size := d.Size()
+	{
+		if uint64(cap(buf)) >= size {
+			buf = buf[:size]
+		} else {
+			buf = make([]byte, size)
+		}
+	}
+	i := uint64(0)
+
+	{
+
+		buf[0+0] = byte(d.Type >> 0)
+
+		buf[1+0] = byte(d.Type >> 8)
+
+		buf[2+0] = byte(d.Type >> 16)
+
+		buf[3+0] = byte(d.Type >> 24)
+
+	}
+	{
+		l := uint64(len(d.Msg))
+
+		{
+
+			t := uint64(l)
+
+			for t >= 0x80 {
+				buf[i+4] = byte(t) | 0x80
+				t >>= 7
+				i++
+			}
+			buf[i+4] = byte(t)
+			i++
+
+		}
+		copy(buf[i+4:], d.Msg)
+		i += l
+	}
+	return buf[:i+4], nil
+}
+
+func (d *ControlMsg) Unmarshal(buf []byte) (uint64, error) {
+	i := uint64(0)
+
+	{
+
+		d.Type = 0 | (int32(buf[i+0+0]) << 0) | (int32(buf[i+1+0]) << 8) | (int32(buf[i+2+0]) << 16) | (int32(buf[i+3+0]) << 24)
+
+	}
+	{
+		l := uint64(0)
+
+		{
+
+			bs := uint8(7)
+			t := uint64(buf[i+4] & 0x7F)
+			for buf[i+4]&0x80 == 0x80 {
+				i++
+				t |= uint64(buf[i+4]&0x7F) << bs
+				bs += 7
+			}
+			i++
+
+			l = t
+
+		}
+		d.Msg = string(buf[i+4 : i+4+l])
+		i += l
+	}
+	return i + 4, nil
 }

@@ -340,3 +340,31 @@ func (sm *StoreManager) SaveJobInfo(job models.JobListItemV2) error {
 	err = sm.consulStore.Put(key, jobBytes, nil)
 	return err
 }
+
+func (sm *StoreManager) WaitOnJob(currentJob string, waitJob string, stopCh chan struct{}) error {
+	key1 := fmt.Sprintf("dtle/%v/finished", waitJob)
+	// NB: it is OK to watch on non-existing keys.
+	ch, err := sm.consulStore.Watch(key1, stopCh)
+	if err != nil {
+		return err
+	}
+	for {
+		kv := <-ch
+		if kv == nil {
+			return fmt.Errorf("WaitOnJob get nil kv. current task might have been shutdown")
+		}
+		break
+	}
+
+	err = sm.PutKey(currentJob, "afterwait", []byte("1"))
+	return err
+}
+
+func (sm *StoreManager) IsAfterWait(subject string) (bool, error) {
+	key := fmt.Sprintf("dtle/%v/afterwait", subject)
+	return sm.consulStore.Exists(key)
+}
+
+func (sm *StoreManager) PutFinished(subject string) error {
+	return sm.PutKey(subject, "finished", []byte("1"))
+}

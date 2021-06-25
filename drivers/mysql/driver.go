@@ -128,6 +128,7 @@ var (
 			"Charset": hclspec.NewDefault(hclspec.NewAttr("Charset", "string", false),
 				hclspec.NewLiteral(`"utf8mb4"`)),
 		})),
+		"WaitOnJob":   hclspec.NewAttr("WaitOnJob", "string", false),
 		"KafkaConfig": hclspec.NewBlock("KafkaConfig", false, hclspec.NewObject(map[string]*hclspec.Spec{
 			"Topic":   hclspec.NewAttr("Topic", "string", true),
 			"Brokers": hclspec.NewAttr("Brokers", "list(string)", true),
@@ -657,6 +658,7 @@ func (d *Driver) SignalTask(taskID string, signal string) error {
 	//if h.exitResult == nil {
 	//	return nil
 	//}
+
 	switch signal {
 	case "stats":
 		if h.stats != nil {
@@ -666,6 +668,8 @@ func (d *Driver) SignalTask(taskID string, signal string) error {
 			}
 			return errors.New(string(bs))
 		}
+	case "finish":
+		return h.runner.Finish1()
 	case "pause":
 		d.logger.Info("pause a task", "taskID", taskID)
 		h := d.tasks.store[taskID]
@@ -688,6 +692,7 @@ func (d *Driver) SignalTask(taskID string, signal string) error {
 	default:
 		return nil
 	}
+
 	return nil
 }
 

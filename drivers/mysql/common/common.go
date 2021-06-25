@@ -28,6 +28,11 @@ const (
 	TaskStateDead
 )
 
+const (
+	ControlMsgError int32 = 1
+	ControlMsgFinish int32 = 2
+)
+
 var (
 	ErrNoConsul = fmt.Errorf("consul return nil value. check if consul is started or reachable")
 )
