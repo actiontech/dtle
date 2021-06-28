@@ -877,10 +877,10 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQueries(dmlEntries []*common.Binlog
 					}
 				case mysqlconfig.VarbinaryColumnType:
 					if beforeValue != nil {
-						beforeValue = base64.StdEncoding.EncodeToString([]byte(beforeValue.(string)))
+						beforeValue = encodeStringInterfaceToBase64String(beforeValue)
 					}
 					if afterValue != nil {
-						afterValue = base64.StdEncoding.EncodeToString([]byte(afterValue.(string)))
+						afterValue = encodeStringInterfaceToBase64String(afterValue)
 					}
 				case mysqlconfig.BinaryColumnType:
 					if beforeValue != nil {
@@ -921,7 +921,28 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQueries(dmlEntries []*common.Binlog
 						afterValue = getSetValue(afterValue.(int64), columnType)
 					}
 				case mysqlconfig.BlobColumnType:
-					// do nothing. just keep the string value.
+					if strings.Contains(colList[i].ColumnType, "text") {
+						// already string value
+					} else {
+						if beforeValue != nil {
+							beforeValue = encodeStringInterfaceToBase64String(beforeValue)
+						}
+						if afterValue != nil {
+							afterValue = encodeStringInterfaceToBase64String(afterValue)
+						}
+					}
+				case mysqlconfig.VarcharColumnType:
+					// workaround of #717
+					if strings.Contains(colList[i].ColumnType, "binary") {
+						if beforeValue != nil {
+							beforeValue = encodeStringInterfaceToBase64String(beforeValue)
+						}
+						if afterValue != nil {
+							afterValue = encodeStringInterfaceToBase64String(afterValue)
+						}
+					} else {
+						// keep as is
+					}
 				case mysqlconfig.TextColumnType:
 					if beforeValue != nil {
 						beforeValue = castBytesOrStringToString(beforeValue)
@@ -1087,6 +1108,7 @@ func getSetValue(num int64, set string) string {
 }
 
 func getBinaryValue(binary string, value string) string {
+	// binary = "binary(64)"
 	binaryLen := binary[7 : len(binary)-1]
 	lens, err := strconv.Atoi(binaryLen)
 	if err != nil {
@@ -1231,4 +1253,8 @@ func castBytesOrStringToString(v interface{}) string {
 	default:
 		panic("only []byte or string is allowed")
 	}
+}
+
+func encodeStringInterfaceToBase64String(v interface{}) string {
+	return base64.StdEncoding.EncodeToString([]byte(v.(string)))
 }

@@ -8,6 +8,9 @@ package base
 
 import (
 	gosql "database/sql"
+	"fmt"
+	sqle "github.com/actiontech/dtle/drivers/mysql/mysql/sqle/inspector"
+	"github.com/pingcap/parser"
 	"reflect"
 	"testing"
 	"time"
@@ -260,6 +263,69 @@ func Test_stringInterval(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := StringInterval(tt.args.intervals); got != tt.want {
 				t.Errorf("stringInterval() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestGetTableColumnsSqle(t *testing.T) {
+	// Not a real test. Just printing intermediate result.
+	sqleCtx := sqle.NewContext(nil)
+	sqleCtx.AddSchema("a"); sqleCtx.LoadSchemas(nil); sqleCtx.LoadTables("a", nil)
+	p := parser.New()
+	sqls := []string{
+		"create table a.text_columns(id int(11) not null primary key,c_text longtext)",
+		"create table a.binary_columns(id int(11) not null primary key, c_binary varbinary(255))",
+	}
+	for i := range sqls {
+		stmt, err := p.ParseOneStmt(sqls[i], "", "")
+		if err != nil {
+			t.Error(err)
+		}
+		sqleCtx.UpdateContext(stmt, "mysql")
+	}
+
+	type args struct {
+		sqleContext *sqle.Context
+		schema      string
+		table       string
+	}
+	tests := []struct {
+		name    string
+		args    args
+		want    *common.ColumnList
+		wantErr bool
+	}{
+		{
+			name:    "column-text",
+			args:    args{
+				sqleContext: sqleCtx,
+				schema:      "a",
+				table:       "text_columns",
+			},
+			want:    nil,
+			wantErr: false,
+		}, {
+			name:    "column-binary",
+			args:    args{
+				sqleContext: sqleCtx,
+				schema:      "a",
+				table:       "binary_columns",
+			},
+			want:    nil,
+			wantErr: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := GetTableColumnsSqle(tt.args.sqleContext, tt.args.schema, tt.args.table)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("GetTableColumnsSqle() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			fmt.Printf("table %v\n", tt.args.table)
+			for i := range got.Columns {
+				println(got.Columns[i].Type)
 			}
 		})
 	}
