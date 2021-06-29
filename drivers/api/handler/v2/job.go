@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"strings"
 	"time"
@@ -57,26 +58,68 @@ func JobListV2(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("consul_addr=%v ; get job status list failed: %v", handler.ConsulAddr, err)))
 	}
 	logger.Info("invoke consul find job list finished")
+	nomadJobMap, err := findJobsFromNomad()
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("find job err %v", err)))
+	}
+	logger.Info("invoke nomad find job list finished")
 	jobs := make([]models.JobListItemV2, 0)
 	for _, consulJob := range jobList {
 		jobType := getJobTypeFromJobId(consulJob.JobId)
 		if "" != reqParam.FilterJobType && reqParam.FilterJobType != string(jobType) {
 			continue
 		}
-		jobs = append(jobs, models.JobListItemV2{
+		jobItem := models.JobListItemV2{
 			JobId:         consulJob.JobId,
 			JobStatus:     consulJob.JobStatus,
+			Topic:         consulJob.Topic,
 			JobCreateTime: consulJob.JobCreateTime,
 			SrcAddrList:   consulJob.SrcAddrList,
 			DstAddrList:   consulJob.DstAddrList,
 			User:          consulJob.User,
 			JobSteps:      consulJob.JobSteps,
-		})
+		}
+		if nomadItem, ok := nomadJobMap[jobItem.JobId]; !ok {
+			jobItem.JobStatus = common.DtleJobStatusUndefined
+		} else if consulJob.JobStatus == common.DtleJobStatusNonPaused {
+			jobItem.JobStatus = nomadItem.Status
+		}
+		if reqParam.FilterJobStatus != "" && reqParam.FilterJobStatus != jobItem.JobStatus {
+			continue
+		}
+		if reqParam.FilterJobName != "" && !strings.HasPrefix(jobItem.JobId, reqParam.FilterJobName) {
+			continue
+		}
+		jobs = append(jobs, jobItem)
 	}
+
 	return c.JSON(http.StatusOK, &models.JobListRespV2{
 		Jobs:     jobs,
 		BaseResp: models.BuildBaseResp(nil),
 	})
+}
+func findJobsFromNomad() (map[string]nomadApi.JobListStub, error) {
+	url := handler.BuildUrl("/v1/jobs")
+	resp, err := http.Get(url)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	nomadJobs := []nomadApi.JobListStub{}
+	if err := json.Unmarshal(body, &nomadJobs); nil != err {
+		return nil, err
+	}
+
+	nomadJobMap := make(map[string]nomadApi.JobListStub, 0)
+	for _, nomadJob := range nomadJobs {
+		nomadJobMap[nomadJob.ID] = nomadJob
+	}
+	return nomadJobMap, nil
 }
 
 type DtleJobType string
@@ -229,7 +272,7 @@ func buildMySQLJobListItem(logger hclog.Logger, jobParam *models.CreateOrUpdateM
 	}
 	jobInfo := models.JobListItemV2{
 		JobId:         jobParam.JobId,
-		JobStatus:     "running",
+		JobStatus:     common.DtleJobStatusNonPaused,
 		JobCreateTime: time.Now().In(time.Local).Format(time.RFC3339),
 		SrcAddrList:   []string{jobParam.SrcTask.MysqlConnectionConfig.MysqlHost},
 		DstAddrList:   []string{jobParam.DestTask.MysqlConnectionConfig.MysqlHost},
@@ -259,7 +302,7 @@ func buildKafkaJobListItem(logger hclog.Logger, jobParam *models.CreateOrUpdateM
 	}
 	jobInfo := models.JobListItemV2{
 		JobId:         jobParam.JobId,
-		JobStatus:     "running",
+		JobStatus:     common.DtleJobStatusNonPaused,
 		Topic:         jobParam.DestTask.Topic,
 		JobCreateTime: time.Now().In(time.Local).Format(time.RFC3339),
 		SrcAddrList:   []string{jobParam.SrcTask.MysqlConnectionConfig.MysqlHost},
@@ -438,18 +481,26 @@ func buildBasicTaskProfile(logger hclog.Logger, jobId string, srcTaskDetail *mod
 	if err != nil {
 		return models.BasicTaskProfile{}, nil, fmt.Errorf("consul_addr=%v; connect to consul failed: %v", handler.ConsulAddr, err)
 	}
-	jobItem, err := storeManager.GetJobItem(jobId)
+	consulJobItem, err := storeManager.GetJobInfo(jobId)
 	if err != nil {
 		return models.BasicTaskProfile{}, nil, fmt.Errorf("consul_addr=%v; get ket %v Job Item failed: %v", jobId, handler.ConsulAddr, err)
+	}
+
+	nomadJobMap, err := findJobsFromNomad()
+	if err != nil {
+		return models.BasicTaskProfile{}, nil, fmt.Errorf("find nomad job list err %v", err)
 	}
 	basicTaskProfile := models.BasicTaskProfile{}
 	basicTaskProfile.JobBaseInfo = models.JobBaseInfo{
 		JobId:             jobId,
-		SubscriptionTopic: jobItem.Topic,
-		JobStatus:         jobItem.JobStatus,
-		JobCreateTime:     jobItem.JobCreateTime,
-		JobSteps:          jobItem.JobSteps,
+		SubscriptionTopic: consulJobItem.Topic,
+		JobStatus:         consulJobItem.JobStatus,
+		JobCreateTime:     consulJobItem.JobCreateTime,
+		JobSteps:          consulJobItem.JobSteps,
 		Delay:             0,
+	}
+	if nomadJobItem, ok := nomadJobMap[consulJobItem.JobId]; ok && basicTaskProfile.JobBaseInfo.JobStatus == common.DtleJobStatusNonPaused {
+		basicTaskProfile.JobBaseInfo.JobStatus = nomadJobItem.Status
 	}
 	basicTaskProfile.Configuration = models.Configuration{
 		BinlogRelay:        srcTaskDetail.TaskConfig.BinlogRelay,
@@ -983,18 +1034,19 @@ func PauseJobV2(c echo.Context) error {
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("consul_addr=%v; connect to consul failed: %v", handler.ConsulAddr, err)))
 	}
-	jobStatus, err := storeManager.GetJobStatus(reqParam.JobId)
+	consulJobItem, err := storeManager.GetJobInfo(reqParam.JobId)
 	if nil != err {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("job_name=%v; get job status failed: %v", reqParam.JobId, err)))
 	}
-	if jobStatus == common.DtleJobStatusPaused {
+	if consulJobItem.JobStatus == common.DtleJobStatusPaused {
 		return c.JSON(http.StatusOK, &models.PauseJobRespV2{
 			BaseResp: models.BuildBaseResp(nil),
 		})
 	}
 
+	consulJobItem.JobStatus = common.DtleJobStatusPaused
 	// update metadata first
-	if err := storeManager.PutJobStatus(reqParam.JobId, common.DtleJobStatusPaused); nil != err {
+	if err := storeManager.SaveJobInfo(*consulJobItem); nil != err {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("job_name=%v; update job from consul failed: %v", reqParam.JobId, err)))
 	}
 
@@ -1002,8 +1054,9 @@ func PauseJobV2(c echo.Context) error {
 	defer func() {
 		if needRollbackMetadata {
 			logger.Info("pause job failed, rollback metadata")
-			if err := storeManager.PutJobStatus(reqParam.JobId, jobStatus); nil != err {
-				logger.Info("rollback metadata failed", "error", err)
+			consulJobItem.JobStatus = common.DtleJobStatusNonPaused
+			if err := storeManager.SaveJobInfo(*consulJobItem); nil != err {
+				logger.Error("rollback metadata failed", "error", err)
 			}
 		}
 	}()
@@ -1059,19 +1112,20 @@ func ResumeJobV2(c echo.Context) error {
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("consul_addr=%v; connect to consul failed: %v", handler.ConsulAddr, err)))
 	}
-	jobStatus, err := storeManager.GetJobStatus(reqParam.JobId)
+	consulJobItem, err := storeManager.GetJobInfo(reqParam.JobId)
 	if nil != err {
 		return c.JSON(http.StatusInternalServerError,
 			models.BuildBaseResp(fmt.Errorf("job_id=%v; get job status failed: %v", reqParam.JobId, err)))
 	}
 
-	if jobStatus != common.DtleJobStatusPaused {
+	if consulJobItem.JobStatus == common.DtleJobStatusNonPaused {
 		return c.JSON(http.StatusOK, &models.PauseJobRespV2{
 			BaseResp: models.BuildBaseResp(nil),
 		})
 	}
 
-	if err := storeManager.PutJobStatus(reqParam.JobId, common.DtleJobStatusNonPaused); nil != err {
+	consulJobItem.JobStatus = common.DtleJobStatusNonPaused
+	if err := storeManager.SaveJobInfo(*consulJobItem); nil != err {
 		return c.JSON(http.StatusInternalServerError,
 			models.BuildBaseResp(fmt.Errorf("job_id=%v; update job from consul failed: %v", reqParam.JobId, err)))
 	}
@@ -1080,8 +1134,9 @@ func ResumeJobV2(c echo.Context) error {
 	defer func() {
 		if needRollbackMetadata {
 			logger.Info("resume job failed, rollback metadata")
-			if err := storeManager.PutJobStatus(reqParam.JobId, jobStatus); nil != err {
-				logger.Info("rollback metadata failed", "error", err)
+			consulJobItem.JobStatus = common.DtleJobStatusPaused
+			if err := storeManager.SaveJobInfo(*consulJobItem); nil != err {
+				logger.Error("rollback metadata failed", "error", err)
 			}
 		}
 	}()

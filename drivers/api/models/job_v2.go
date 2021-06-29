@@ -6,9 +6,9 @@ import (
 
 type JobListReqV2 struct {
 	FilterJobType   string `query:"filter_job_type"`
-	FilterJobName   string `json:"filter_job_name"`
-	FilterJobStatus string `json:"filter_job_status"`
-	OrderBy         string `json:"order_by"`
+	FilterJobName   string `query:"filter_job_name"`
+	FilterJobStatus string `query:"filter_job_status"`
+	OrderBy         string `query:"order_by"`
 }
 
 type JobStep struct {
