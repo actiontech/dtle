@@ -18,7 +18,7 @@ RUN groupadd -r dtle -g 1001 && useradd -u 1001 -r -g dtle -m -d $DTLE_HOME -s /
 #
 RUN yum install -y iproute && \
     yum clean all && \
-    curl -fSL -O -u ftp:ftp ftp://10.186.18.20/actiontech-dtle/qa/$DTLE_VERSION/dtle-$DTLE_VERSION-qa.x86_64.rpm && \
+    curl -fSL -O -u ftpuser:ftpuser ftp://10.186.18.90/actiontech-dtle/qa/$DTLE_VERSION/dtle-$DTLE_VERSION-qa.x86_64.rpm && \
     rpm -ivh --prefix=/dtle dtle-$DTLE_VERSION-qa.x86_64.rpm && \
     rm dtle-$DTLE_VERSION-qa.x86_64.rpm
 
