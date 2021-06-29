@@ -2,6 +2,7 @@ package api
 
 import (
 	"net/http"
+	"path"
 
 	_ "github.com/actiontech/dtle/drivers/api/docs"
 	"github.com/actiontech/dtle/drivers/api/handler"
@@ -79,7 +80,12 @@ func SetupApiServer(logger hclog.Logger, apiAddr, nomadAddr, consulAddr, uiDir s
 
 	if uiDir != "" {
 		logger.Info("found ui_dir", "dir", uiDir)
-		e.Static("/", uiDir)
+		e.File("/", path.Join(uiDir, "index.html"))
+		e.Static("/static", path.Join(uiDir, "static"))
+		e.File("/favicon.png", path.Join(uiDir, "favicon.png"))
+		e.GET("/*", func(c echo.Context) error {
+			return c.File(path.Join(uiDir, "index.html"))
+		})
 	}
 	go func() {
 		err := e.Start(apiAddr)
