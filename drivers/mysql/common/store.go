@@ -41,11 +41,6 @@ func (sm *StoreManager) DestroyJob(jobId string) error {
 	if nil != err && store.ErrKeyNotFound != err {
 		return err
 	}
-	key = fmt.Sprintf("dtleJobStatus/%v", jobId)
-	err = sm.consulStore.DeleteTree(key)
-	if nil != err && store.ErrKeyNotFound != err {
-		return err
-	}
 	key = fmt.Sprintf("dtleJobList/%v", jobId)
 	err = sm.consulStore.DeleteTree(key)
 	if nil != err && store.ErrKeyNotFound != err {
@@ -254,25 +249,6 @@ func (sm *StoreManager) WaitKv(subject string, key string, stopCh chan struct{})
 	}
 }
 
-func (sm *StoreManager) PutJobStatus(jobName string, status string) error {
-	url := fmt.Sprintf("dtleJobStatus/%v", jobName)
-	return sm.consulStore.Put(url, []byte(status), nil)
-}
-
-func (sm *StoreManager) GetJobStatus(jobName string) (status string, err error) {
-	key := fmt.Sprintf("dtleJobStatus/%v", jobName)
-	kp, err := sm.consulStore.Get(key)
-	if err == store.ErrKeyNotFound {
-		return DtleJobStatusNonPaused, nil
-	}
-
-	if nil != err {
-		return "", fmt.Errorf("get %v from consul failed: %v", key, err)
-	}
-
-	return string(kp.Value), nil
-}
-
 func GetGtidFromConsul(sm *StoreManager, subject string, logger hclog.Logger, mysqlContext *MySQLDriverConfig) error {
 	gtid, err := sm.GetGtidForJob(subject)
 	if err != nil {
@@ -297,7 +273,7 @@ func GetGtidFromConsul(sm *StoreManager, subject string, logger hclog.Logger, my
 	}
 	return nil
 }
-func (sm *StoreManager) GetJobItem(jobId string) (*models.JobListItemV2, error) {
+func (sm *StoreManager) GetJobInfo(jobId string) (*models.JobListItemV2, error) {
 	key := fmt.Sprintf("dtleJobList/%v", jobId)
 	kp, err := sm.consulStore.Get(key)
 	if nil != err && err != store.ErrKeyNotFound {
