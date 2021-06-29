@@ -100,8 +100,8 @@ type Extractor struct {
 
 	// we need to close all data channel while pausing task runner. and these data channel will be recreate when restart the runner.
 	// to avoid writing closed channel, we need to wait for all goroutines that deal with data channels finishing. wg is used for the waiting.
-	wg          sync.WaitGroup
-	finishCoord *common.BinlogCoordinatesX
+	wg         sync.WaitGroup
+	targetGtid string
 }
 
 func NewExtractor(execCtx *common.ExecContext, cfg *common.MySQLDriverConfig, logger hclog.Logger, storeManager *common.StoreManager, waitCh chan *drivers.ExitResult) (*Extractor, error) {
@@ -144,10 +144,24 @@ func NewExtractor(execCtx *common.ExecContext, cfg *common.MySQLDriverConfig, lo
 func (e *Extractor) Run() {
 	var err error
 
+	{
+		target, err := e.storeManager.GetTargetGtid(e.subject)
+		if err != nil {
+			e.onError(common.TaskStateDead, err)
+			return
+		}
+		if target == common.TargetGtidFinished {
+			_ = e.Shutdown()
+		} else {
+			e.targetGtid = target
+		}
+	}
+
 	if e.mysqlContext.WaitOnJob != "" {
 		afterWait, err := e.storeManager.IsAfterWait(e.subject)
 		if err != nil {
 			e.onError(common.TaskStateDead, err)
+			return
 		}
 		if !afterWait {
 			// the first time to wait
@@ -155,6 +169,7 @@ func (e *Extractor) Run() {
 			err = e.storeManager.WaitOnJob(e.subject, e.mysqlContext.WaitOnJob, e.shutdownCh)
 			if err != nil {
 				e.onError(common.TaskStateDead, err)
+				return
 			}
 		}
 		e.logger.Info("after WaitOnJob", "job2", e.mysqlContext.WaitOnJob, "firstWait", !afterWait)
@@ -706,7 +721,7 @@ func (e *Extractor) getSchemaTablesAndMeta() error {
 // Cooperate with `initiateStreaming()` using `e.streamerReadyCh`. Any err will be sent thru the chan.
 func (e *Extractor) initBinlogReader(binlogCoordinates *common.BinlogCoordinatesX) {
 	binlogReader, err := binlog.NewMySQLReader(e.execCtx, e.mysqlContext, e.logger.ResetNamed("reader"),
-		e.replicateDoDb, e.context, e.memory2, e.db)
+		e.replicateDoDb, e.context, e.memory2, e.db, e.targetGtid)
 	if err != nil {
 		e.logger.Error("err at initBinlogReader: NewMySQLReader", "err", err)
 		e.streamerReadyCh <- err
@@ -1557,21 +1572,29 @@ func (e *Extractor) sendFullComplete() (err error) {
 }
 
 func (e *Extractor) Finish1() (err error) {
+	// TODO shutdown job on error
+
 	if e.finishing {
 		return nil
 	}
 	e.finishing = true
 
-	e.finishCoord, err = base.GetSelfBinlogCoordinates(e.db)
+	coord, err := base.GetSelfBinlogCoordinates(e.db)
 	if err != nil {
 		return errors.Wrap(err, "GetSelfBinlogCoordinates")
 	}
+	e.targetGtid = coord.GtidSet
 
-	e.logger.Info("Finish. got target GTIDSet", "gs", e.finishCoord.GtidSet)
+	e.logger.Info("Finish. got target GTIDSet", "gs", e.targetGtid)
 
-	err = e.storeManager.PutTargetGtid(e.subject, e.finishCoord.GtidSet)
+	err = e.storeManager.PutTargetGtid(e.subject, e.targetGtid)
 	if err != nil {
 		return errors.Wrap(err, "PutTargetGtid")
+	}
+
+	err = e.binlogReader.SetTargetGtid(e.targetGtid)
+	if err != nil {
+		return errors.Wrap(err, "afterGetTargetGtid")
 	}
 
 	return nil

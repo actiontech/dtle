@@ -371,6 +371,18 @@ func (sm *StoreManager) WatchTargetGtid(subject string, stopCh chan struct{}) (s
 	return valStr, nil
 }
 
+func (sm *StoreManager) GetTargetGtid(subject string) (string, error) {
+	key := fmt.Sprintf("dtle/%v/targetGtid", subject)
+	kv, err := sm.consulStore.Get(key)
+	if err == store.ErrKeyNotFound {
+		return "", nil
+	} else if err != nil {
+		return "", err
+	}
+
+	return string(kv.Value), nil
+}
+
 const (
 	TargetGtidFinished = "finished"
 )

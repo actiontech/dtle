@@ -56,14 +56,14 @@ const (
 )
 
 type BinlogReader struct {
-	serverId         uint64
-	execCtx          *common.ExecContext
-	logger           hclog.Logger
+	serverId uint64
+	execCtx  *common.ExecContext
+	logger   hclog.Logger
 
-	relay            dmrelay.Process
-	relayCancelF     context.CancelFunc
+	relay        dmrelay.Process
+	relayCancelF context.CancelFunc
 	// for direct streaming
-	binlogSyncer *replication.BinlogSyncer
+	binlogSyncer    *replication.BinlogSyncer
 	binlogStreamer0 *replication.BinlogStreamer // for the functions added by us.
 	// for relay & streaming
 	binlogStreamer streamer.Streamer
@@ -93,6 +93,10 @@ type BinlogReader struct {
 	extractedTxCount uint32
 	db               *gosql.DB
 	serverUUID       string
+
+	targetGtid     gomysql.GTIDSet
+	currentGtidSet gomysql.GTIDSet
+	currentGtidSetMutex sync.RWMutex
 }
 
 type SqlFilter struct {
@@ -156,7 +160,7 @@ func parseSqlFilter(strs []string) (*SqlFilter, error) {
 	return s, nil
 }
 
-func NewMySQLReader(execCtx *common.ExecContext, cfg *common.MySQLDriverConfig, logger hclog.Logger, replicateDoDb []*common.DataSource, sqleContext *sqle.Context, memory *int64, db *gosql.DB) (binlogReader *BinlogReader, err error) {
+func NewMySQLReader(execCtx *common.ExecContext, cfg *common.MySQLDriverConfig, logger hclog.Logger, replicateDoDb []*common.DataSource, sqleContext *sqle.Context, memory *int64, db *gosql.DB, targetGtid string) (binlogReader *BinlogReader, err error) {
 
 	sqlFilter, err := parseSqlFilter(cfg.SqlFilter)
 	if err != nil {
@@ -182,6 +186,14 @@ func NewMySQLReader(execCtx *common.ExecContext, cfg *common.MySQLDriverConfig, 
 	binlogReader.serverUUID, err = sql.GetServerUUID(db)
 	if err != nil {
 		return nil, err
+	}
+
+	binlogReader.currentGtidSet, _ = gomysql.ParseMysqlGTIDSet("")
+	if targetGtid != "" {
+		binlogReader.targetGtid, err = gomysql.ParseMysqlGTIDSet(targetGtid)
+		if err != nil {
+			return nil, errors.Wrap(err, "ParseMysqlGTIDSet")
+		}
 	}
 
 	for _, db := range replicateDoDb {
@@ -651,14 +663,24 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 	case replication.XID_EVENT:
 		evt := ev.Event.(*replication.XIDEvent)
 		b.currentCoord.LogPos = int64(ev.Header.LogPos)
+		meetTarget := false
 		if evt.GSet != nil {
 			b.currentCoord.GtidSet = evt.GSet.String()
+			b.currentGtidSet = evt.GSet
+			if b.targetGtid != nil {
+				if b.currentGtidSet.Contain(b.targetGtid) {
+					meetTarget = true
+				}
+			}
 		}
 		// TODO is the pos the start or the end of a event?
 		// pos if which event should be use? Do we need +1?
 		b.currentBinlogEntry.Coordinates.LogPos = b.currentCoord.LogPos
 
 		b.sendEntry(entriesChannel)
+		if meetTarget {
+			b.onMeetTarget()
+		}
 	default:
 		if rowsEvent, ok := ev.Event.(*replication.RowsEvent); ok {
 			schemaName := string(rowsEvent.Table.Schema)
@@ -1739,4 +1761,23 @@ func skipBySqlFilter(ddlAst ast.StmtNode, sqlFilter *SqlFilter) bool {
 	}
 
 	return false
+}
+
+func (b *BinlogReader) SetTargetGtid(gtid string) (err error) {
+	b.targetGtid, err = gomysql.ParseMysqlGTIDSet(gtid)
+	if err != nil {
+		return errors.Wrap(err, "ParseMysqlGTIDSet")
+	}
+
+	b.currentGtidSetMutex.RLock()
+	defer b.currentGtidSetMutex.RUnlock()
+	if b.currentGtidSet.Contain(b.targetGtid) {
+		b.onMeetTarget()
+	}
+	return nil
+}
+
+func (b *BinlogReader) onMeetTarget() {
+	b.logger.Info("onMeetTarget", "target", b.targetGtid.String(), "current", b.currentGtidSet.String())
+	_ = b.Close()
 }
