@@ -3,13 +3,14 @@ package mysql
 import (
 	"context"
 	"fmt"
+	"sync"
+	"time"
+
 	"github.com/actiontech/dtle/drivers/mysql/common"
 	"github.com/actiontech/dtle/drivers/mysql/kafka"
 	"github.com/actiontech/dtle/drivers/mysql/mysql"
 	"github.com/armon/go-metrics"
 	"github.com/pkg/errors"
-	"sync"
-	"time"
 
 	hclog "github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/nomad/plugins/drivers"
@@ -69,12 +70,12 @@ func (h *taskHandle) TaskStatus() (*drivers.TaskStatus, error) {
 	// TODO Cannot get InspectTask -> TaskStatus called by any API.
 	// See https://github.com/hashicorp/nomad/issues/4848
 	return &drivers.TaskStatus{
-		ID:          h.taskConfig.ID,
-		Name:        h.taskConfig.Name,
-		State:       h.procState,
-		StartedAt:   h.startedAt,
-		CompletedAt: h.completedAt,
-		ExitResult:  h.exitResult,
+		ID:               h.taskConfig.ID,
+		Name:             h.taskConfig.Name,
+		State:            h.procState,
+		StartedAt:        h.startedAt,
+		CompletedAt:      h.completedAt,
+		ExitResult:       h.exitResult,
 		DriverAttributes: m,
 	}, nil
 }
@@ -112,13 +113,13 @@ func (h *taskHandle) run(d *Driver) {
 	h.procState = drivers.TaskStateRunning
 	h.stateLock.Unlock()
 
-	jobStatus, err := d.storeManager.GetJobStatus(h.taskConfig.JobName)
+	consulJobInfo, err := d.storeManager.GetJobInfo(h.taskConfig.JobName)
 	if nil != err {
 		h.onError(errors.Wrap(err, "get pause status from consul failed"))
 		return
 	}
 
-	if jobStatus == common.DtleJobStatusPaused {
+	if consulJobInfo.JobStatus == common.DtleJobStatusPaused {
 		h.logger.Info("job is paused. not starting the runner")
 	} else {
 		err = h.resumeTask(d)
@@ -203,19 +204,19 @@ func (h *taskHandle) emitStats(ru *common.TaskStatistics) {
 		metrics.SetGaugeWithLabels([]string{"buffer", "send_by_timeout"}, float32(ru.BufferStat.SendByTimeout), labels)
 		metrics.SetGaugeWithLabels([]string{"buffer", "send_by_size_full"}, float32(ru.BufferStat.SendBySizeFull), labels)
 
-		metrics.SetGaugeWithLabels([]string{"memory.full_kb_est"}, float32(ru.MemoryStat.Full) * srcFullFactor / 1024, labels)
-		metrics.SetGaugeWithLabels([]string{"memory.incr_kb_est"}, float32(ru.MemoryStat.Incr) * srcIncrFactor / 1024, labels)
+		metrics.SetGaugeWithLabels([]string{"memory.full_kb_est"}, float32(ru.MemoryStat.Full)*srcFullFactor/1024, labels)
+		metrics.SetGaugeWithLabels([]string{"memory.incr_kb_est"}, float32(ru.MemoryStat.Incr)*srcIncrFactor/1024, labels)
 	case common.TaskTypeDest:
 		metrics.SetGaugeWithLabels([]string{"buffer", "dest_queue_size"}, float32(ru.BufferStat.ApplierMsgQueueSize), labels)
 		metrics.SetGaugeWithLabels([]string{"buffer", "dest_queue2_size"}, float32(ru.BufferStat.ApplierTxQueueSize), labels)
 
-		metrics.SetGaugeWithLabels([]string{"memory.full_kb_est"}, float32(ru.MemoryStat.Full) * dstFullFactor / 1024, labels)
-		metrics.SetGaugeWithLabels([]string{"memory.incr_kb_est"}, float32(ru.MemoryStat.Incr) * dstIncrFactor / 1024, labels)
+		metrics.SetGaugeWithLabels([]string{"memory.full_kb_est"}, float32(ru.MemoryStat.Full)*dstFullFactor/1024, labels)
+		metrics.SetGaugeWithLabels([]string{"memory.incr_kb_est"}, float32(ru.MemoryStat.Incr)*dstIncrFactor/1024, labels)
 	case common.TaskTypeUnknown:
 	}
 
-	metrics.SetGaugeWithLabels([]string{"memory.full_kb_count"}, float32(ru.MemoryStat.Full) / 1024, labels)
-	metrics.SetGaugeWithLabels([]string{"memory.incr_kb_count"}, float32(ru.MemoryStat.Incr) / 1024, labels)
+	metrics.SetGaugeWithLabels([]string{"memory.full_kb_count"}, float32(ru.MemoryStat.Full)/1024, labels)
+	metrics.SetGaugeWithLabels([]string{"memory.incr_kb_count"}, float32(ru.MemoryStat.Incr)/1024, labels)
 
 	if ru.TableStats != nil {
 		metrics.SetGaugeWithLabels([]string{"table", "insert"}, float32(ru.TableStats.InsertCount), labels)

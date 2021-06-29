@@ -5,13 +5,14 @@ import (
 	compress "compress/gzip"
 	"encoding/gob"
 	"fmt"
-	"github.com/actiontech/dtle/g"
-	"github.com/pingcap/tidb/types"
-	"github.com/satori/go.uuid"
-	"github.com/siddontang/go-mysql/mysql"
 	"io/ioutil"
 	"os"
 	"time"
+
+	"github.com/actiontech/dtle/g"
+	"github.com/pingcap/tidb/types"
+	uuid "github.com/satori/go.uuid"
+	"github.com/siddontang/go-mysql/mysql"
 )
 
 const (
@@ -20,6 +21,7 @@ const (
 
 	DtleJobStatusNonPaused = "non-paused"
 	DtleJobStatusPaused    = "paused"
+	DtleJobStatusUndefined = "undefined"
 )
 
 const (
@@ -29,7 +31,7 @@ const (
 )
 
 const (
-	ControlMsgError int32 = 1
+	ControlMsgError  int32 = 1
 	ControlMsgFinish int32 = 2
 )
 
@@ -51,8 +53,8 @@ func init() {
 }
 
 type ExecContext struct {
-	Subject    string
-	StateDir   string
+	Subject  string
+	StateDir string
 }
 
 func ValidateJobName(name string) error {
