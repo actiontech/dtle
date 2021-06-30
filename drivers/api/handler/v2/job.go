@@ -1045,6 +1045,7 @@ func PauseJobV2(c echo.Context) error {
 	}
 
 	consulJobItem.JobStatus = common.DtleJobStatusPaused
+	consulJobItem.JobId = reqParam.JobId
 	// update metadata first
 	if err := storeManager.SaveJobInfo(*consulJobItem); nil != err {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("job_name=%v; update job from consul failed: %v", reqParam.JobId, err)))
@@ -1118,7 +1119,7 @@ func ResumeJobV2(c echo.Context) error {
 			models.BuildBaseResp(fmt.Errorf("job_id=%v; get job status failed: %v", reqParam.JobId, err)))
 	}
 
-	if consulJobItem.JobStatus == common.DtleJobStatusNonPaused {
+	if consulJobItem.JobStatus != common.DtleJobStatusPaused {
 		return c.JSON(http.StatusOK, &models.PauseJobRespV2{
 			BaseResp: models.BuildBaseResp(nil),
 		})
