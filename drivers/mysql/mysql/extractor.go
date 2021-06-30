@@ -1569,9 +1569,9 @@ func (e *Extractor) Finish1() (err error) {
 
 	e.logger.Info("Finish. got target GTIDSet", "gs", e.finishCoord.GtidSet)
 
-	err = e.storeManager.PutFinished(e.subject, e.finishCoord.GtidSet)
+	err = e.storeManager.PutTargetGtid(e.subject, e.finishCoord.GtidSet)
 	if err != nil {
-		return errors.Wrap(err, "PutFinished")
+		return errors.Wrap(err, "PutTargetGtid")
 	}
 
 	return nil

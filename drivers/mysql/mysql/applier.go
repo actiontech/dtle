@@ -182,7 +182,7 @@ func (a *Applier) updateGtidLoop() {
 	testTargetGtid := func() {
 		if a.gtidSet.Contain(a.targetGtid) {
 			a.logger.Info("meet target gtid", "gtidSet", a.targetGtid.String())
-			err := a.storeManager.PutFinished(a.subject, "finished")
+			err := a.storeManager.PutTargetGtid(a.subject, "finished")
 			if err != nil {
 				a.onError(common.TaskStateDead, errors.Wrap(err, "PutKey"))
 			}
@@ -1012,7 +1012,7 @@ func (a *Applier) newDataChannel() (fullBytesQueue chan []byte, dumpEntryQueue c
 func (a *Applier) watchTargetGtid() {
 	target, err := a.storeManager.WatchTargetGtid(a.subject, a.shutdownCh)
 
-	if target == common.JobFinish {
+	if target == common.TargetGtidFinished {
 		a.logger.Info("job finish. shutting down")
 		_ = a.Shutdown()
 	}
