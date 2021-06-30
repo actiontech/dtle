@@ -1569,24 +1569,12 @@ func (e *Extractor) Finish1() (err error) {
 
 	e.logger.Info("Finish. got target GTIDSet", "gs", e.finishCoord.GtidSet)
 
-	bs, err := common.Encode(&common.DumpStatResult{
-		Coord: e.finishCoord,
-		Type: CommandTypeJobFinish,
-	})
+	err = e.storeManager.PutFinished(e.subject, e.finishCoord.GtidSet)
 	if err != nil {
-		return errors.Wrap(err, "common.Encode")
+		return errors.Wrap(err, "PutFinished")
 	}
-	for {
-		// TODO use a queue?
-		_, err = e.natsConn.Request(fmt.Sprintf("%v_full_complete", e.subject), bs, 10 * time.Second)
-		if err == gonats.ErrTimeout {
-			time.Sleep(1 * time.Second)
-		} else if err != nil {
-			return err
-		} else {
-			return nil
-		}
-	}
+
+	return nil
 }
 
 func (e *Extractor) newDataChannel(cfg *common.MySQLDriverConfig) chan *common.BinlogEntryContext {

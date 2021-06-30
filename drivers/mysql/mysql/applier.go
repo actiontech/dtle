@@ -182,7 +182,7 @@ func (a *Applier) updateGtidLoop() {
 	testTargetGtid := func() {
 		if a.gtidSet.Contain(a.targetGtid) {
 			a.logger.Info("meet target gtid", "gtidSet", a.targetGtid.String())
-			err := a.storeManager.PutFinished(a.subject)
+			err := a.storeManager.PutFinished(a.subject, "finished")
 			if err != nil {
 				a.onError(common.TaskStateDead, errors.Wrap(err, "PutKey"))
 			}
@@ -228,6 +228,8 @@ func (a *Applier) updateGtidLoop() {
 // Run executes the complete apply logic.
 func (a *Applier) Run() {
 	var err error
+
+	go a.watchTargetGtid()
 
 	{
 		v, err := a.storeManager.WaitKv(a.subject, "ReplChanBufferSize", a.shutdownCh)
@@ -406,11 +408,6 @@ func (a *Applier) sendEvent(status string) {
 	}
 }
 
-const (
-	CommandTypeFullComplete = int32(0)
-	CommandTypeJobFinish    = int32(1)
-)
-
 // initiateStreaming begins treaming of binary log events and registers listeners for such events
 func (a *Applier) subscribeNats() (err error) {
 	a.mysqlContext.MarkRowCopyStartTime()
@@ -480,16 +477,6 @@ func (a *Applier) subscribeNats() (err error) {
 		case <-a.rowCopyComplete: // already full complete. Maybe src task restart.
 			if err := a.natsConn.Publish(m.Reply, nil); err != nil {
 				a.onError(common.TaskStateDead, err)
-			}
-
-			if dumpData.Type == CommandTypeJobFinish {
-				a.logger.Info("got target GTIDSet", "gs", dumpData.Coord.GtidSet)
-				gs, err := gomysql.ParseMysqlGTIDSet(dumpData.Coord.GtidSet)
-				if err != nil {
-					a.onError(common.TaskStateDead, errors.Wrap(err, "CommandTypeJobFinish. ParseMysqlGTIDSet"))
-				}
-				a.targetGtid = gs
-				a.gtidCh <- nil
 			}
 
 			return
@@ -1020,4 +1007,25 @@ func (a *Applier) newDataChannel() (fullBytesQueue chan []byte, dumpEntryQueue c
 	fullBytesQueue = make(chan []byte, 16)
 	dumpEntryQueue = make(chan *common.DumpEntry, 8)
 	return
+}
+
+func (a *Applier) watchTargetGtid() {
+	target, err := a.storeManager.WatchTargetGtid(a.subject, a.shutdownCh)
+
+	if target == common.JobFinish {
+		a.logger.Info("job finish. shutting down")
+		_ = a.Shutdown()
+	}
+
+	if err != nil {
+		a.onError(common.TaskStateDead, err)
+	}
+	a.logger.Info("got target GTIDSet", "gs", target)
+
+	gs, err := gomysql.ParseMysqlGTIDSet(target)
+	if err != nil {
+		a.onError(common.TaskStateDead, errors.Wrap(err, "CommandTypeJobFinish. ParseMysqlGTIDSet"))
+	}
+	a.targetGtid = gs
+	a.gtidCh <- nil
 }
