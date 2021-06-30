@@ -276,7 +276,10 @@ func GetGtidFromConsul(sm *StoreManager, subject string, logger hclog.Logger, my
 func (sm *StoreManager) GetJobInfo(jobId string) (*models.JobListItemV2, error) {
 	key := fmt.Sprintf("dtleJobList/%v", jobId)
 	kp, err := sm.consulStore.Get(key)
-	if nil != err && err != store.ErrKeyNotFound {
+	if err == store.ErrKeyNotFound {
+		return &models.JobListItemV2{}, nil
+	}
+	if nil != err {
 		return nil, fmt.Errorf("get %v value from consul failed: %v", key, err)
 	}
 	job := new(models.JobListItemV2)
