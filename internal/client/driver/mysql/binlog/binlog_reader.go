@@ -52,8 +52,6 @@ import (
 	"github.com/opentracing/opentracing-go"
 
 	dmrelay "github.com/pingcap/dm/relay"
-	"github.com/shirou/gopsutil/mem"
-	"runtime/debug"
 )
 
 // BinlogReader is a general interface whose implementations can choose their methods of reading
@@ -897,38 +895,25 @@ func loadMapping(sql, beforeName, afterName, mappingType, currentSchema string) 
 	return sql
 }
 
-
-
-
-
-// StreamEvents
 func (b *BinlogReader) DataStreamEvents(entriesChannel chan<- *BinlogEntry) error {
-	ticker1 := time.NewTicker(1 * time.Second)
-	memory,_:=mem.VirtualMemory()
-	go func(t *time.Ticker) {
-		for {
-			<-t.C
-			memory, _ = mem.VirtualMemory()
-		}
-	}(ticker1)
 	for {
-		// Check for shutdown
 		if b.shutdown {
 			break
 		}
-		trace := opentracing.GlobalTracer()
 		ev, err := b.binlogStreamer.GetEvent(context.Background())
 		if err != nil {
 			b.logger.Errorf("mysql.reader error GetEvent. err: %v", err)
 			return err
 		}
-		for float64(memory.Available) / float64(memory.Total) < 0.2 {
-			b.logger.Warnf("available memory is lower than 20%% (%v/%v), pause binlog parsing 1s for memory",
-				memory.Available, memory.Total)
-			debug.FreeOSMemory()
-			time.Sleep(1 * time.Second)
+		for g.IsLowMemory() {
+			time.Sleep(900 * time.Millisecond)
 		}
+		if b.shutdown {
+			return nil
+		}
+
 		spanContext := ev.SpanContest
+		trace := opentracing.GlobalTracer()
 		span := trace.StartSpan("DataStreamEvents()  get binlogEvent  from mysql-go ", opentracing.FollowsFrom(spanContext))
 		span.SetTag("time", time.Now().Unix())
 		ev.SpanContest = span.Context()
