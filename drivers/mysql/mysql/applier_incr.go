@@ -56,7 +56,8 @@ type ApplierIncr struct {
 	prevDDL             bool
 	replayingBinlogFile string
 
-	wg sync.WaitGroup
+	wg                    sync.WaitGroup
+	SkipGtidExecutedTable bool
 }
 
 func NewApplierIncr(subject string, mysqlContext *common.MySQLDriverConfig,
@@ -79,6 +80,10 @@ func NewApplierIncr(subject string, mysqlContext *common.MySQLDriverConfig,
 		gtidSet:               gtidSet,
 		gtidSetLock:           gtidSetLock,
 		tableItems:            make(mapSchemaTableItems),
+	}
+
+	if os.Getenv(g.ENV_SKIP_GTID_EXECUTED_TABLE) != "" {
+		a.SkipGtidExecutedTable = true
 	}
 
 	a.timestampCtx = NewTimestampContext(a.shutdownCh, a.logger, func() bool {
@@ -549,10 +554,12 @@ func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.Bin
 		timestamp = event.Timestamp
 	}
 
-	logger.Debug("insert gno", "gno", binlogEntry.Coordinates.GNO)
-	_, err = dbApplier.PsInsertExecutedGtid.Exec(a.subject, uuid.UUID(binlogEntry.Coordinates.SID).Bytes(), binlogEntry.Coordinates.GNO)
-	if err != nil {
-		return errors.Wrap(err, "insert gno")
+	if !a.SkipGtidExecutedTable {
+		logger.Debug("insert gno", "gno", binlogEntry.Coordinates.GNO)
+		_, err = dbApplier.PsInsertExecutedGtid.Exec(a.subject, uuid.UUID(binlogEntry.Coordinates.SID).Bytes(), binlogEntry.Coordinates.GNO)
+		if err != nil {
+			return errors.Wrap(err, "insert gno")
+		}
 	}
 
 	// no error
