@@ -33,7 +33,7 @@ import (
 	"github.com/actiontech/dtle/internal"
 	"github.com/actiontech/dtle/internal/client/driver"
 	"github.com/actiontech/dtle/internal/config"
-	. "github.com/actiontech/dtle/internal/g"
+	"github.com/actiontech/dtle/internal/g"
 	"github.com/actiontech/dtle/internal/models"
 	"github.com/actiontech/dtle/internal/server"
 )
@@ -242,7 +242,8 @@ func NewClient(cfg *config.ClientConfig, logger *logrus.Logger) (*Client, error)
 	go c.run()
 
 	//go c.setMemoryMonitor()
-	go MemoryFreer()
+	go g.MemoryFreer()
+	go g.MemoryMonitor(c.logger)
 	c.logger.Printf("agent: Node ID %q", c.Node().ID)
 	return c, nil
 }

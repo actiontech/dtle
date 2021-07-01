@@ -2,7 +2,10 @@
 package g
 
 import (
+	"github.com/shirou/gopsutil/mem"
+	"github.com/sirupsen/logrus"
 	"runtime/debug"
+	"sync/atomic"
 	"time"
 )
 
@@ -30,7 +33,10 @@ const (
 )
 
 
-var freeMemoryChan = make(chan struct{}, 0)
+var (
+	freeMemoryChan = make(chan struct{}, 0)
+	lowMemory = int32(0)
+)
 
 func MemoryFreer() {
 	for {
@@ -43,10 +49,40 @@ func MemoryFreer() {
 	}
 }
 
-
 func TriggerFreeMemory() {
 	select {
 	case freeMemoryChan <- struct{}{}:
 	default:
+	}
+}
+
+func IsLowMemory() bool {
+	return atomic.LoadInt32(&lowMemory) == 1
+}
+
+func MemoryMonitor(logger *logrus.Logger) {
+	t := time.NewTicker(1 * time.Second)
+
+	for {
+		<-t.C
+		memory, err := mem.VirtualMemory()
+		if err != nil {
+			lowMemory = 0
+		} else {
+			if (float64(memory.Available)/float64(memory.Total) < 0.2) && (memory.Available < 1*1024*1024*1024) {
+				if lowMemory == 0 {
+					logger.Warn("memory is less than 20% and 1GB. pause parsing binlog",
+						"available", memory.Available, "total", memory.Total)
+				}
+				lowMemory = 1
+				TriggerFreeMemory()
+			} else {
+				if lowMemory == 1 {
+					logger.Info("memory is greater than 20% or 1GB. continue parsing binlog",
+						"available", memory.Available, "total", memory.Total)
+				}
+				lowMemory = 0
+			}
+		}
 	}
 }
