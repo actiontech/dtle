@@ -3,6 +3,10 @@ package g
 
 import (
 	hclog "github.com/hashicorp/go-hclog"
+	"github.com/shirou/gopsutil/mem"
+	"runtime/debug"
+	"sync/atomic"
+	"time"
 )
 
 var (
@@ -51,5 +55,65 @@ func StringPtrEmpty(p *string) bool {
 		return true
 	} else {
 		return *p == ""
+	}
+}
+
+var (
+	freeMemoryCh = make(chan struct{})
+	freeMemoryWorkerCount = int32(0)
+	lowMemory = int32(0)
+	memoryMonitorCount = int32(0)
+)
+
+func FreeMemoryWorker() {
+	if !atomic.CompareAndSwapInt32(&freeMemoryWorkerCount, 0, 1) {
+		return
+	}
+	for {
+		select {
+		case <-freeMemoryCh:
+			debug.FreeOSMemory()
+			time.Sleep(10 * time.Second)
+		}
+	}
+}
+
+func TriggerFreeMemory() {
+	select {
+	case freeMemoryCh <- struct{}{}:
+	default:
+	}
+}
+
+func IsLowMemory() bool {
+	return atomic.LoadInt32(&lowMemory) == 1
+}
+
+func MemoryMonitor(logger hclog.Logger) {
+	if !atomic.CompareAndSwapInt32(&memoryMonitorCount, 0, 1) {
+		return
+	}
+
+	t := time.NewTicker(1 * time.Second)
+
+	for {
+		<-t.C
+		memory, err := mem.VirtualMemory()
+		if err != nil {
+			lowMemory = 0
+		} else {
+			if (float64(memory.Available)/float64(memory.Total) < 0.2) && (memory.Available < 1*1024*1024*1024) {
+				if lowMemory == 0 {
+					logger.Warn("memory is less than 20% and 1GB. pause parsing binlog",
+						"available", memory.Available, "total", memory.Total)
+				}
+				lowMemory = 1
+				TriggerFreeMemory()
+			} else {
+				lowMemory = 0
+				logger.Info("memory is greater than 20% or 1GB. continue parsing binlog",
+					"available", memory.Available, "total", memory.Total)
+			}
+		}
 	}
 }

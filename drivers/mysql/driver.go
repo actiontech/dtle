@@ -202,6 +202,10 @@ func NewDriver(logger hclog.Logger) drivers.DriverPlugin {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	AllocIdTaskNameToTaskHandler = newTaskStoreForApi()
+
+	go g.FreeMemoryWorker()
+	go g.MemoryMonitor(logger)
+
 	return &Driver{
 		eventer:        eventer.NewEventer(ctx, logger),
 		tasks:          newTaskStore(),

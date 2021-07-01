@@ -13,11 +13,9 @@ import (
 	"github.com/actiontech/dtle/drivers/mysql/mysql/sql"
 	"github.com/pingcap/parser/format"
 	"github.com/pkg/errors"
-	"github.com/shirou/gopsutil/mem"
 	"os"
 	"path"
 	"path/filepath"
-	"runtime/debug"
 	"sync/atomic"
 	"time"
 
@@ -990,41 +988,6 @@ func (b *BinlogReader) loadMapping(sql, currentSchema string,
 }
 
 func (b *BinlogReader) DataStreamEvents(entriesChannel chan<- *common.BinlogEntryContext) error {
-	lowMemory := false // TODO atomicity?
-	go func() {
-		t := time.NewTicker(1 * time.Second)
-		i := 0
-		for !b.shutdown {
-			<-t.C
-			memory, err := mem.VirtualMemory()
-			if err != nil {
-				lowMemory = false
-			} else {
-				if (float64(memory.Available)/float64(memory.Total) < 0.2) && (memory.Available < 1*1024*1024*1024) {
-					if i%30 == 0 { // suppress log
-						b.logger.Warn("memory is less than 20% and 1GiB. pause parsing binlog for 1s",
-							"available", memory.Available, "total", memory.Total,
-							"file", b.currentCoord.LogFile, "pos", b.currentCoord.LogPos)
-					} else {
-						b.logger.Debug("memory is less than 20% and 1GiB. pause parsing binlog for 1s",
-							"available", memory.Available, "total", memory.Total)
-					}
-					lowMemory = true
-					debug.FreeOSMemory()
-					i += 1
-				} else {
-					lowMemory = false
-					if i != 0 {
-						b.logger.Info("memory is greater than 20%. continue parsing binlog",
-							"available", memory.Available, "total", memory.Total)
-					}
-					i = 0
-				}
-			}
-		}
-		t.Stop()
-	}()
-
 	for {
 		// Check for shutdown
 		if b.shutdown {
@@ -1036,7 +999,7 @@ func (b *BinlogReader) DataStreamEvents(entriesChannel chan<- *common.BinlogEntr
 			b.logger.Error("error GetEvent.", "err", err)
 			return err
 		}
-		for lowMemory {
+		for g.IsLowMemory() {
 			time.Sleep(900 * time.Millisecond)
 		}
 		if b.shutdown {
