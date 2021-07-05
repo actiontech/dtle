@@ -47,6 +47,8 @@ package-common: driver
 	cp -R dist/dtle dist/install/usr/share/dtle/nomad-plugin
 	cp -R scripts dist/install/usr/share/dtle/
 	cp -R etc dist/install/
+	-mkdir -p dist/install/ui
+	-cp -R  ui dist/install
 
 package: package-common
 	mkdir -p dist/install/usr/bin
