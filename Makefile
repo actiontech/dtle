@@ -7,7 +7,7 @@ DOCKER_IMAGE  := docker-registry:5000/actiontech/universe-compiler-udup:v4
 
 VERSION       = 9.9.9.9
 
-PROJECT_NAME  := $(da)
+PROJECT_NAME  := $(PROJECT_NAME_ENV)
 
 ifndef PROJECT_NAME
 PROJECT_NAME = dtle
