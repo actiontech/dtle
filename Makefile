@@ -48,7 +48,13 @@ package-common: driver
 	cp -R scripts dist/install/usr/share/dtle/
 	cp -R etc dist/install/
 
-package: package-common
+
+ui:
+	-mkdir -p dist/install/ui
+	-cp -R  ui dist/install
+
+
+package: package-common ui
 	mkdir -p dist/install/usr/bin
 	curl -o dist/nomad.zip "ftp://${RELEASE_FTPD_HOST}/binary/nomad_0.11.1_linux_amd64.zip"
 	curl -o dist/consul.zip "ftp://${RELEASE_FTPD_HOST}/binary/consul_1.7.2_linux_amd64.zip"
