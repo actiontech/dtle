@@ -7,9 +7,9 @@ DOCKER_IMAGE  := docker-registry:5000/actiontech/universe-compiler-udup:v4
 
 VERSION       = 9.9.9.9
 
-PROJECT_NAME_ENV  = $(PROJECT_NAME_ENV)
+PROJECT_NAME  := $(da)
 
-ifndef PROJECT_NAME_ENV
+ifndef PROJECT_NAME
 PROJECT_NAME = dtle
 endif
 
@@ -24,6 +24,7 @@ GOFLAGS := -mod=vendor
 default: driver
 
 driver:
+	echo $(PROJECT_NAME)
 	GO111MODULE=on go build $(GOFLAGS) -o dist/dtle -ldflags \
 "-X github.com/actiontech/dtle/g.Version=$(VERSION) \
 -X github.com/actiontech/dtle/g.GitCommit=$(COMMIT) \
