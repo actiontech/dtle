@@ -5,8 +5,13 @@ COMMIT := $(shell sh -c 'git rev-parse --short HEAD')
 DOCKER        := $(shell which docker)
 DOCKER_IMAGE  := docker-registry:5000/actiontech/universe-compiler-udup:v4
 
-PROJECT_NAME  = dtle
 VERSION       = 9.9.9.9
+
+PROJECT_NAME_ENV  = $(PROJECT_NAME_ENV)
+
+ifndef PROJECT_NAME_ENV
+PROJECT_NAME = dtle
+endif
 
 ifdef GOBIN
 PATH := $(GOBIN):$(PATH)
