@@ -86,7 +86,8 @@ func TriggerFreeMemory() {
 }
 
 func IsLowMemory() bool {
-	return atomic.LoadInt32(&lowMemory) == 1
+	//return atomic.LoadInt32(&lowMemory) == 1
+	return lowMemory == 1
 }
 
 func MemoryMonitor(logger hclog.Logger) {
@@ -110,9 +111,11 @@ func MemoryMonitor(logger hclog.Logger) {
 				lowMemory = 1
 				TriggerFreeMemory()
 			} else {
+				if lowMemory == 1 {
+					logger.Info("memory is greater than 20% or 1GB. continue parsing binlog",
+						"available", memory.Available, "total", memory.Total)
+				}
 				lowMemory = 0
-				logger.Info("memory is greater than 20% or 1GB. continue parsing binlog",
-					"available", memory.Available, "total", memory.Total)
 			}
 		}
 	}
