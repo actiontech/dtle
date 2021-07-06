@@ -69,5 +69,6 @@ plugin "dtle" {
 
     publish_metrics = false
     stats_collection_interval = 15
+    #ui_dir = "PATH_TO_UI_DIR"
   }
 }
