@@ -983,7 +983,9 @@ func (a *Applier) Shutdown() error {
 	a.shutdown = true
 	close(a.shutdownCh)
 
-	a.ai.wg.Wait()
+	if a.ai != nil {
+		a.ai.wg.Wait()
+	}
 	a.wg.Wait()
 
 	if err := sql.CloseDB(a.db); err != nil {
