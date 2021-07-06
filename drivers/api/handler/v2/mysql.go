@@ -98,7 +98,7 @@ func ListMysqlSchemasV2(c echo.Context) error {
 // @Param mysql_table query string true "mysql table"
 // @Param mysql_character_set query string false "mysql character set"
 // @Param is_mysql_password_encrypted query bool false "indecate that mysql password is encrypted or not"
-// @Success 200 {object} models.ListMysqlSchemasRespV2
+// @Success 200 {object} models.ListColumnsRespV2
 // @Router /v2/mysql/columns [get]
 func ListMysqlColumnsV2(c echo.Context) error {
 	logger := handler.NewLogger().Named("ListMysqlColumnsV2")

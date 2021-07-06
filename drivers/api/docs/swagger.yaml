@@ -11,7 +11,11 @@ definitions:
         type: array
       job_base_info:
         $ref: '#/definitions/models.JobBaseInfo'
-      operation_object:
+      replicate_do_db:
+        items:
+          $ref: '#/definitions/models.MysqlDataSourceConfig'
+        type: array
+      replicate_ignore_db:
         items:
           $ref: '#/definitions/models.MysqlDataSourceConfig'
         type: array
@@ -306,6 +310,15 @@ definitions:
     - kafka_broker_addrs
     - kafka_topic
     - task_name
+    type: object
+  models.ListColumnsRespV2:
+    properties:
+      columns:
+        items:
+          type: string
+        type: array
+      message:
+        type: string
     type: object
   models.ListMysqlSchemasRespV2:
     properties:
@@ -812,9 +825,9 @@ paths:
         in: query
         name: filter_job_type
         type: string
-      - description: filter job name
+      - description: filter job id
         in: query
-        name: filter_job_name
+        name: filter_job_id
         type: string
       - description: filter job status
         in: query
@@ -937,7 +950,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/models.ListMysqlSchemasRespV2'
+            $ref: '#/definitions/models.ListColumnsRespV2'
       tags:
       - mysql
   /v2/mysql/schemas:

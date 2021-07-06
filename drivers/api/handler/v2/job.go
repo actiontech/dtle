@@ -33,7 +33,7 @@ import (
 // @Tags job
 // @Success 200 {object} models.JobListRespV2
 // @Param filter_job_type query string false "filter job type" Enums(migration,sync,subscription)
-// @Param filter_job_name query string false "filter job name"
+// @Param filter_job_id query string false "filter job id"
 // @Param filter_job_status query string false "filter job status"
 // @Param order_by query string false "order by" default(job_create_time) Enums(job_create_time)
 // @Param filter_job_type query string false "filter job type"
@@ -87,7 +87,7 @@ func JobListV2(c echo.Context) error {
 		if reqParam.FilterJobStatus != "" && reqParam.FilterJobStatus != jobItem.JobStatus {
 			continue
 		}
-		if reqParam.FilterJobName != "" && !strings.HasPrefix(jobItem.JobId, reqParam.FilterJobName) {
+		if reqParam.FilterJobId != "" && !strings.HasPrefix(jobItem.JobId, reqParam.FilterJobId) {
 			continue
 		}
 		jobs = append(jobs, jobItem)
@@ -204,8 +204,8 @@ func createOrUpdateMysqlToMysqlJob(c echo.Context, logger hclog.Logger, jobType 
 		jobParam.SrcTask.GroupTimeout = common.DefaultSrcGroupTimeout
 	}
 
-	jobParam.JobId = addJobTypeToJobId(jobParam.JobId, jobType)
-	nomadJob, err := convertMysqlToMysqlJobToNomadJob(failover, jobParam.JobId, jobParam.SrcTask, jobParam.DestTask)
+	jobID := addJobTypeToJobId(jobParam.JobId, jobType)
+	nomadJob, err := convertMysqlToMysqlJobToNomadJob(failover, jobID, jobParam.SrcTask, jobParam.DestTask)
 	if nil != err {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("convert job param to nomad job request failed, error: %v", err)))
 	}
@@ -512,9 +512,10 @@ func buildBasicTaskProfile(logger hclog.Logger, jobId string, srcTaskDetail *mod
 		GroupTimeout:       srcTaskDetail.TaskConfig.GroupTimeout,
 	}
 	basicTaskProfile.ConnectionInfo = models.ConnectionInfo{
-		DstDataBaseList: []models.MysqlConnectionConfig{*srcTaskDetail.TaskConfig.MysqlConnectionConfig},
+		SrcDataBaseList: []models.MysqlConnectionConfig{*srcTaskDetail.TaskConfig.MysqlConnectionConfig},
 	}
-	basicTaskProfile.OperationObject = srcTaskDetail.TaskConfig.ReplicateDoDb
+	basicTaskProfile.ReplicateDoDb = srcTaskDetail.TaskConfig.ReplicateDoDb
+	basicTaskProfile.ReplicateIgnoreDb = srcTaskDetail.TaskConfig.ReplicateIgnoreDb
 
 	dtleNodeInfosMap := make(map[string]models.DtleNodeInfo, 0)
 	taskLogs := make([]models.TaskLog, 0)
@@ -537,7 +538,7 @@ func buildBasicTaskProfile(logger hclog.Logger, jobId string, srcTaskDetail *mod
 		})
 	}
 	if destMySqlTaskDetail != nil {
-		basicTaskProfile.ConnectionInfo.SrcDataBaseList = []models.MysqlConnectionConfig{*destMySqlTaskDetail.TaskConfig.MysqlConnectionConfig}
+		basicTaskProfile.ConnectionInfo.DstDataBaseList = []models.MysqlConnectionConfig{*destMySqlTaskDetail.TaskConfig.MysqlConnectionConfig}
 		basicTaskProfile.Configuration.ParallelWorkers = destMySqlTaskDetail.TaskConfig.ParallelWorkers
 
 		for _, destAllocation := range destMySqlTaskDetail.Allocations {
@@ -1036,7 +1037,7 @@ func PauseJobV2(c echo.Context) error {
 	}
 	consulJobItem, err := storeManager.GetJobInfo(reqParam.JobId)
 	if nil != err {
-		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("job_name=%v; get job status failed: %v", reqParam.JobId, err)))
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("job_id=%v; get job status failed: %v", reqParam.JobId, err)))
 	}
 	if consulJobItem.JobStatus == common.DtleJobStatusPaused {
 		return c.JSON(http.StatusOK, &models.PauseJobRespV2{
@@ -1048,7 +1049,7 @@ func PauseJobV2(c echo.Context) error {
 	consulJobItem.JobId = reqParam.JobId
 	// update metadata first
 	if err := storeManager.SaveJobInfo(*consulJobItem); nil != err {
-		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("job_name=%v; update job from consul failed: %v", reqParam.JobId, err)))
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("job_id=%v; update job from consul failed: %v", reqParam.JobId, err)))
 	}
 
 	needRollbackMetadata := false

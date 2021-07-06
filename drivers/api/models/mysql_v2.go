@@ -15,8 +15,8 @@ type ListMysqlSchemasRespV2 struct {
 }
 
 type SchemaItem struct {
-	SchemaName string `json:"schema_name"`
-	Tables     []*TableItem
+	SchemaName string       `json:"schema_name"`
+	Tables     []*TableItem `json:"tables"`
 }
 
 type TableItem struct {

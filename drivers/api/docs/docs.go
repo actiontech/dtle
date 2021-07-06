@@ -303,8 +303,8 @@ var doc = `{
                     },
                     {
                         "type": "string",
-                        "description": "filter job name",
-                        "name": "filter_job_name",
+                        "description": "filter job id",
+                        "name": "filter_job_id",
                         "in": "query"
                     },
                     {
@@ -482,7 +482,7 @@ var doc = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/models.ListMysqlSchemasRespV2"
+                            "$ref": "#/definitions/models.ListColumnsRespV2"
                         }
                     }
                 }
@@ -615,7 +615,13 @@ var doc = `{
                 "job_base_info": {
                     "$ref": "#/definitions/models.JobBaseInfo"
                 },
-                "operation_object": {
+                "replicate_do_db": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.MysqlDataSourceConfig"
+                    }
+                },
+                "replicate_ignore_db": {
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/models.MysqlDataSourceConfig"
@@ -1055,6 +1061,20 @@ var doc = `{
                     "type": "string"
                 },
                 "task_name": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.ListColumnsRespV2": {
+            "type": "object",
+            "properties": {
+                "columns": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "message": {
                     "type": "string"
                 }
             }
