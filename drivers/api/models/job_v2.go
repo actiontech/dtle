@@ -6,7 +6,7 @@ import (
 
 type JobListReqV2 struct {
 	FilterJobType   string `query:"filter_job_type"`
-	FilterJobName   string `query:"filter_job_name"`
+	FilterJobId     string `query:"filter_job_id"`
 	FilterJobStatus string `query:"filter_job_status"`
 	OrderBy         string `query:"order_by"`
 }
@@ -85,11 +85,12 @@ type Configuration struct {
 }
 
 type BasicTaskProfile struct {
-	JobBaseInfo     JobBaseInfo              `json:"job_base_info"`
-	DtleNodeInfos   []DtleNodeInfo           `json:"dtle_node_infos"`
-	ConnectionInfo  ConnectionInfo           `json:"connection_info"`
-	Configuration   Configuration            `json:"configuration"`
-	OperationObject []*MysqlDataSourceConfig `json:"operation_object"`
+	JobBaseInfo       JobBaseInfo              `json:"job_base_info"`
+	DtleNodeInfos     []DtleNodeInfo           `json:"dtle_node_infos"`
+	ConnectionInfo    ConnectionInfo           `json:"connection_info"`
+	Configuration     Configuration            `json:"configuration"`
+	ReplicateDoDb     []*MysqlDataSourceConfig `json:"replicate_do_db"`
+	ReplicateIgnoreDb []*MysqlDataSourceConfig `json:"replicate_ignore_db"`
 }
 
 type TaskLog struct {
