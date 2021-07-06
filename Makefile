@@ -5,7 +5,8 @@ COMMIT := $(shell sh -c 'git rev-parse --short HEAD')
 DOCKER        := $(shell which docker)
 DOCKER_IMAGE  := docker-registry:5000/actiontech/universe-compiler-udup:v4
 
-PROJECT_NAME  = dtle
+
+PROJECT_NAME  ?= dtle
 VERSION       = 9.9.9.9
 
 ifdef GOBIN
@@ -47,6 +48,8 @@ package-common: driver
 	cp -R dist/dtle dist/install/usr/share/dtle/nomad-plugin
 	cp -R scripts dist/install/usr/share/dtle/
 	cp -R etc dist/install/
+	-mkdir -p dist/install/usr/share/dtle/ui
+	-cp -R  ui dist/install/usr/share/dtle
 
 package: package-common
 	mkdir -p dist/install/usr/bin
