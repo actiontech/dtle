@@ -321,7 +321,7 @@ func (sm *StoreManager) SaveJobInfo(job models.JobListItemV2) error {
 }
 
 func (sm *StoreManager) WaitOnJob(currentJob string, waitJob string, stopCh chan struct{}) error {
-	key1 := fmt.Sprintf("dtle/%v/finished", waitJob)
+	key1 := fmt.Sprintf("dtle/%v/targetGtid", waitJob)
 	// NB: it is OK to watch on non-existing keys.
 	ch, err := sm.consulStore.Watch(key1, stopCh)
 	if err != nil {
@@ -332,7 +332,10 @@ func (sm *StoreManager) WaitOnJob(currentJob string, waitJob string, stopCh chan
 		if kv == nil {
 			return fmt.Errorf("WaitOnJob get nil kv. current task might have been shutdown")
 		}
-		break
+		valStr := string(kv.Value)
+		if valStr == TargetGtidFinished {
+			break
+		}
 	}
 
 	err = sm.PutKey(currentJob, "afterwait", []byte("1"))
@@ -344,6 +347,42 @@ func (sm *StoreManager) IsAfterWait(subject string) (bool, error) {
 	return sm.consulStore.Exists(key)
 }
 
-func (sm *StoreManager) PutFinished(subject string) error {
-	return sm.PutKey(subject, "finished", []byte("1"))
+func (sm *StoreManager) PutTargetGtid(subject string, value string) error {
+	return sm.PutKey(subject, "targetGtid", []byte(value))
 }
+
+func (sm *StoreManager) WatchTargetGtid(subject string, stopCh chan struct{}) (string, error) {
+	key := fmt.Sprintf("dtle/%v/targetGtid", subject)
+	ch, err := sm.consulStore.Watch(key, stopCh)
+	if err != nil {
+		return "", err
+	}
+
+	kv := <-ch
+	if kv == nil {
+		return "", fmt.Errorf("WatchTargetGtid. got nil kv. might have been shutdown")
+	}
+
+	valStr := string(kv.Value)
+	if valStr == TargetGtidFinished {
+		return "", fmt.Errorf("WatchTargetGtid. got finished")
+	}
+
+	return valStr, nil
+}
+
+func (sm *StoreManager) GetTargetGtid(subject string) (string, error) {
+	key := fmt.Sprintf("dtle/%v/targetGtid", subject)
+	kv, err := sm.consulStore.Get(key)
+	if err == store.ErrKeyNotFound {
+		return "", nil
+	} else if err != nil {
+		return "", err
+	}
+
+	return string(kv.Value), nil
+}
+
+const (
+	TargetGtidFinished = "finished"
+)
