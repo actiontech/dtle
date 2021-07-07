@@ -204,8 +204,8 @@ func createOrUpdateMysqlToMysqlJob(c echo.Context, logger hclog.Logger, jobType 
 		jobParam.SrcTask.GroupTimeout = common.DefaultSrcGroupTimeout
 	}
 
-	jobID := addJobTypeToJobId(jobParam.JobId, jobType)
-	nomadJob, err := convertMysqlToMysqlJobToNomadJob(failover, jobID, jobParam.SrcTask, jobParam.DestTask)
+	jobParam.JobId = addJobTypeToJobId(jobParam.JobId, jobType)
+	nomadJob, err := convertMysqlToMysqlJobToNomadJob(failover, jobParam.JobId, jobParam.SrcTask, jobParam.DestTask)
 	if nil != err {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("convert job param to nomad job request failed, error: %v", err)))
 	}
