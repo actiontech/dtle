@@ -322,12 +322,6 @@ var doc = `{
                         "description": "order by",
                         "name": "order_by",
                         "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "filter job type",
-                        "name": "filter_job_type",
-                        "in": "query"
                     }
                 ],
                 "responses": {
