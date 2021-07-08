@@ -36,7 +36,6 @@ import (
 // @Param filter_job_id query string false "filter job id"
 // @Param filter_job_status query string false "filter job status"
 // @Param order_by query string false "order by" default(job_create_time) Enums(job_create_time)
-// @Param filter_job_type query string false "filter job type"
 // @Router /v2/jobs [get]
 func JobListV2(c echo.Context) error {
 	logger := handler.NewLogger().Named("JobListV2")
@@ -204,8 +203,8 @@ func createOrUpdateMysqlToMysqlJob(c echo.Context, logger hclog.Logger, jobType 
 		jobParam.SrcTask.GroupTimeout = common.DefaultSrcGroupTimeout
 	}
 
-	jobID := addJobTypeToJobId(jobParam.JobId, jobType)
-	nomadJob, err := convertMysqlToMysqlJobToNomadJob(failover, jobID, jobParam.SrcTask, jobParam.DestTask)
+	jobParam.JobId = addJobTypeToJobId(jobParam.JobId, jobType)
+	nomadJob, err := convertMysqlToMysqlJobToNomadJob(failover, jobParam.JobId, jobParam.SrcTask, jobParam.DestTask)
 	if nil != err {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("convert job param to nomad job request failed, error: %v", err)))
 	}
@@ -396,7 +395,9 @@ func buildMysqlTableConfigMap(configs []*models.MysqlTableConfig) []map[string]i
 
 	for _, c := range configs {
 		configMap := make(map[string]interface{})
-		configMap["ColumnMapFrom"] = c.ColumnMapFrom
+		if len(c.ColumnMapFrom) != 0 {
+			configMap["ColumnMapFrom"] = c.ColumnMapFrom
+		}
 		addNotRequiredParamToMap(configMap, c.TableName, "TableName")
 		addNotRequiredParamToMap(configMap, c.TableRegex, "TableRegex")
 		addNotRequiredParamToMap(configMap, c.TableRename, "TableRename")
@@ -420,9 +421,10 @@ func buildMysqlConnectionConfigMap(config *models.MysqlConnectionConfig) map[str
 }
 
 func addNotRequiredParamToMap(target map[string]interface{}, value interface{}, fieldName string) {
-	if nil != value {
-		target[fieldName] = value
+	if handler.IsEmpty(value) {
+		return
 	}
+	target[fieldName] = value
 }
 
 // @Id GetMigrationJobDetailV2
@@ -642,7 +644,7 @@ func buildMysqlSrcTaskDetail(taskName string, internalTaskConfig common.DtleTask
 			apiMysqlDataSource = append(apiMysqlDataSource, &models.MysqlDataSourceConfig{
 				TableSchema:       db.TableSchema,
 				TableSchemaRegex:  db.TableSchemaRegex,
-				TableSchemaRename: &db.TableSchemaRename,
+				TableSchemaRename: db.TableSchemaRename,
 				Tables:            tables,
 			})
 		}

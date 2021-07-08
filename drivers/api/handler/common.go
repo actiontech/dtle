@@ -143,3 +143,17 @@ func DecryptMysqlPassword(password string, rsaPrivateKey string) (realPwd string
 	realPwd = string(realPwdByte)
 	return realPwd, nil
 }
+
+func IsEmpty(value interface{}) bool {
+	switch value.(type) {
+	case string:
+		if value.(string) == "" {
+			return true
+		}
+	case int64:
+		if value.(int64) == 0 {
+			return true
+		}
+	}
+	return false
+}

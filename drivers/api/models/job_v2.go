@@ -163,7 +163,7 @@ type MysqlDestTaskConfig struct {
 type MysqlDataSourceConfig struct {
 	TableSchema       string              `json:"table_schema"`
 	TableSchemaRegex  string              `json:"table_schema_regex"`
-	TableSchemaRename *string             `json:"table_schema_rename"`
+	TableSchemaRename string              `json:"table_schema_rename"`
 	Tables            []*MysqlTableConfig `json:"tables"`
 }
 

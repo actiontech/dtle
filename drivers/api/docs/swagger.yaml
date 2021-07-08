@@ -840,10 +840,6 @@ paths:
         in: query
         name: order_by
         type: string
-      - description: filter job type
-        in: query
-        name: filter_job_type
-        type: string
       responses:
         "200":
           description: OK
