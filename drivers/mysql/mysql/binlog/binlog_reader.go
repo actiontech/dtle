@@ -457,6 +457,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 		entry.Coordinates.GNO = evt.GNO
 		entry.Coordinates.LastCommitted = evt.LastCommitted
 		entry.Coordinates.SeqenceNumber = evt.SequenceNumber
+		entry.Coordinates.LogFile = b.currentCoord.LogFile
 
 		b.currentBinlogEntry = entry
 		b.hasBeginQuery = false
