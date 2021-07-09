@@ -158,10 +158,6 @@ func getJobTypeFromJobId(jobId string) DtleJobType {
 // @Router /v2/job/migration [post]
 func CreateOrUpdateMigrationJobV2(c echo.Context) error {
 	logger := handler.NewLogger().Named("CreateOrUpdateMigrationJobV2")
-	return createOrUpdateMysqlToMysqlJob(c, logger, DtleJobTypeMigration)
-}
-
-func createOrUpdateMysqlToMysqlJob(c echo.Context, logger hclog.Logger, jobType DtleJobType) error {
 	logger.Info("validate params")
 	jobParam := new(models.CreateOrUpdateMysqlToMysqlJobParamV2)
 	if err := c.Bind(jobParam); nil != err {
@@ -170,18 +166,27 @@ func createOrUpdateMysqlToMysqlJob(c echo.Context, logger hclog.Logger, jobType 
 	if err := c.Validate(jobParam); nil != err {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invalid params:\n%v", err)))
 	}
-	failover := g.PtrToBool(jobParam.Failover, true)
+	resp, err := createOrUpdateMysqlToMysqlJob(jobParam, logger, DtleJobTypeMigration)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
+	}
+	return c.JSON(http.StatusOK, resp)
+}
 
+func createOrUpdateMysqlToMysqlJob(jobParam *models.CreateOrUpdateMysqlToMysqlJobParamV2,
+	logger hclog.Logger, jobType DtleJobType) (*models.CreateOrUpdateMysqlToMysqlJobRespV2, error) {
+
+	failover := g.PtrToBool(jobParam.Failover, true)
 	if jobParam.IsMysqlPasswordEncrypted {
 		realPwd, err := handler.DecryptMysqlPassword(jobParam.SrcTask.MysqlConnectionConfig.MysqlPassword, g.RsaPrivateKey)
 		if nil != err {
-			return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("decrypt src mysql password failed: %v", err)))
+			return nil, fmt.Errorf("decrypt src mysql password failed: %v", err)
 		}
 		jobParam.SrcTask.MysqlConnectionConfig.MysqlPassword = realPwd
 
 		realPwd, err = handler.DecryptMysqlPassword(jobParam.DestTask.MysqlConnectionConfig.MysqlPassword, g.RsaPrivateKey)
 		if nil != err {
-			return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("decrypt dest mysql password failed: %v", err)))
+			return nil, fmt.Errorf("decrypt dest mysql password failed: %v", err)
 		}
 		jobParam.DestTask.MysqlConnectionConfig.MysqlPassword = realPwd
 	}
@@ -206,7 +211,7 @@ func createOrUpdateMysqlToMysqlJob(c echo.Context, logger hclog.Logger, jobType 
 	jobParam.JobId = addJobTypeToJobId(jobParam.JobId, jobType)
 	nomadJob, err := convertMysqlToMysqlJobToNomadJob(failover, jobParam.JobId, jobParam.SrcTask, jobParam.DestTask)
 	if nil != err {
-		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("convert job param to nomad job request failed, error: %v", err)))
+		return nil, fmt.Errorf("convert job param to nomad job request failed, error: %v", err)
 	}
 
 	nomadJobreq := nomadApi.JobRegisterRequest{
@@ -214,13 +219,13 @@ func createOrUpdateMysqlToMysqlJob(c echo.Context, logger hclog.Logger, jobType 
 	}
 	nomadJobReqByte, err := json.Marshal(nomadJobreq)
 	if nil != err {
-		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("marshal nomad job request failed, error: %v", err)))
+		return nil, fmt.Errorf("marshal nomad job request failed, error: %v", err)
 	}
 	url := handler.BuildUrl("/v1/jobs")
 	logger.Info("invoke nomad api begin", "url", url)
 	nomadResp := nomadApi.JobRegisterResponse{}
 	if err := handler.InvokePostApiWithJson(url, nomadJobReqByte, &nomadResp); nil != err {
-		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invoke nomad api %v failed: %v", url, err)))
+		return nil, fmt.Errorf("invoke nomad api %v failed: %v", url, err)
 	}
 	logger.Info("invoke nomad api finished")
 
@@ -233,15 +238,15 @@ func createOrUpdateMysqlToMysqlJob(c echo.Context, logger hclog.Logger, jobType 
 	} else {
 		err = buildMySQLJobListItem(logger, jobParam)
 		if err != nil {
-			return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
+			return nil, err
 		}
 	}
-	return c.JSON(http.StatusOK, &models.CreateOrUpdateMysqlToMysqlJobRespV2{
+	return &models.CreateOrUpdateMysqlToMysqlJobRespV2{
 		CreateOrUpdateMysqlToMysqlJobParamV2: *jobParam,
 		EvalCreateIndex:                      nomadResp.EvalCreateIndex,
 		JobModifyIndex:                       nomadResp.JobModifyIndex,
 		BaseResp:                             models.BuildBaseResp(respErr),
-	})
+	}, nil
 }
 
 func convertMysqlToMysqlJobToNomadJob(failover bool, apiJobId string, apiSrcTask *models.MysqlSrcTaskConfig, apiDestTask *models.MysqlDestTaskConfig) (*nomadApi.Job, error) {
@@ -367,6 +372,8 @@ func buildMysqlSrcTaskConfigMap(config *models.MysqlSrcTaskConfig) map[string]in
 	addNotRequiredParamToMap(taskConfigInNomadFormat, config.Gtid, "Gtid")
 	addNotRequiredParamToMap(taskConfigInNomadFormat, config.SkipCreateDbTable, "SkipCreateDbTable")
 	addNotRequiredParamToMap(taskConfigInNomadFormat, config.BinlogRelay, "BinlogRelay")
+	addNotRequiredParamToMap(taskConfigInNomadFormat, config.WaitOnJob, "WaitOnJob")
+	addNotRequiredParamToMap(taskConfigInNomadFormat, config.AutoGtid, "AutoGtid")
 
 	taskConfigInNomadFormat["ConnectionConfig"] = buildMysqlConnectionConfigMap(config.MysqlConnectionConfig)
 	taskConfigInNomadFormat["ReplicateDoDb"] = buildMysqlDataSourceConfigMap(config.ReplicateDoDb)
@@ -435,10 +442,10 @@ func addNotRequiredParamToMap(target map[string]interface{}, value interface{}, 
 // @Router /v2/job/migration/detail [get]
 func GetMigrationJobDetailV2(c echo.Context) error {
 	logger := handler.NewLogger().Named("GetMigrationJobDetailV2")
-	return getMysqlToMysqlJobDetail(c, logger, DtleJobTypeMigration)
+	return GetMysqlToMysqlJobDetail(c, logger, DtleJobTypeMigration)
 }
 
-func getMysqlToMysqlJobDetail(c echo.Context, logger hclog.Logger, jobType DtleJobType) error {
+func GetMysqlToMysqlJobDetail(c echo.Context, logger hclog.Logger, jobType DtleJobType) error {
 	logger.Info("validate params")
 	reqParam := new(models.MysqlToMysqlJobDetailReqV2)
 	if err := c.Bind(reqParam); nil != err {
@@ -447,26 +454,36 @@ func getMysqlToMysqlJobDetail(c echo.Context, logger hclog.Logger, jobType DtleJ
 	if err := c.Validate(reqParam); nil != err {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invalid params:\n%v", err)))
 	}
-
-	failover, nomadJob, allocations, err := getJobDetailFromNomad(logger, reqParam.JobId, jobType)
-	if nil != err {
+	resp, err := getMysqlToMysqlJobDetail(logger, reqParam.JobId, jobType)
+	if err != nil {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
 	}
 
+	resp.BasicTaskProfile.ConnectionInfo.SrcDataBase.MysqlPassword = "*"
+	resp.BasicTaskProfile.ConnectionInfo.DstDataBase.MysqlPassword = "*"
+
+	return c.JSON(http.StatusOK, resp)
+}
+
+func getMysqlToMysqlJobDetail(logger hclog.Logger, jobId string, jobType DtleJobType) (*models.MysqlToMysqlJobDetailRespV2, error) {
+	failover, nomadJob, allocations, err := getJobDetailFromNomad(logger, jobId, jobType)
+	if nil != err {
+		return nil, err
+	}
 	destTaskDetail, srcTaskDetail, err := buildMysqlToMysqlJobDetailResp(nomadJob, allocations)
 	if nil != err {
-		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("build job detail response failed: %v", err)))
+		return nil, fmt.Errorf("build job detail response failed: %v", err)
 	}
-	basicTaskProfile, taskLog, err := buildBasicTaskProfile(logger, reqParam.JobId, &srcTaskDetail, &destTaskDetail, nil)
+	basicTaskProfile, taskLog, err := buildBasicTaskProfile(logger, jobId, &srcTaskDetail, &destTaskDetail, nil)
 	if nil != err {
-		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("build job basic task profile failed: %v", err)))
+		return nil, fmt.Errorf("build job basic task profile failed: %v", err)
 	}
 	basicTaskProfile.Configuration.FailOver = failover
-	return c.JSON(http.StatusOK, &models.MysqlToMysqlJobDetailRespV2{
+	return &models.MysqlToMysqlJobDetailRespV2{
 		BasicTaskProfile: basicTaskProfile,
 		TaskLogs:         taskLog,
 		BaseResp:         models.BuildBaseResp(nil),
-	})
+	}, nil
 }
 
 func buildBasicTaskProfile(logger hclog.Logger, jobId string, srcTaskDetail *models.MysqlSrcTaskDetail,
@@ -514,7 +531,7 @@ func buildBasicTaskProfile(logger hclog.Logger, jobId string, srcTaskDetail *mod
 		GroupTimeout:       srcTaskDetail.TaskConfig.GroupTimeout,
 	}
 	basicTaskProfile.ConnectionInfo = models.ConnectionInfo{
-		SrcDataBaseList: []models.MysqlConnectionConfig{*srcTaskDetail.TaskConfig.MysqlConnectionConfig},
+		SrcDataBase: *srcTaskDetail.TaskConfig.MysqlConnectionConfig,
 	}
 	basicTaskProfile.ReplicateDoDb = srcTaskDetail.TaskConfig.ReplicateDoDb
 	basicTaskProfile.ReplicateIgnoreDb = srcTaskDetail.TaskConfig.ReplicateIgnoreDb
@@ -527,6 +544,7 @@ func buildBasicTaskProfile(logger hclog.Logger, jobId string, srcTaskDetail *mod
 			NodeAddr: nodeId2Addr[srcAllocation.NodeId],
 			DataSource: fmt.Sprintf("%v:%v", srcTaskDetail.TaskConfig.MysqlConnectionConfig.MysqlHost,
 				srcTaskDetail.TaskConfig.MysqlConnectionConfig.MysqlPort),
+			Source: "src",
 		}
 		if _, ok := dtleNodeInfosMap[fmt.Sprintf("%s:%s", dtleNode.NodeId, dtleNode.DataSource)]; !ok {
 			dtleNodeInfosMap[fmt.Sprintf("%s:%s", dtleNode.NodeId, dtleNode.DataSource)] = dtleNode
@@ -540,7 +558,7 @@ func buildBasicTaskProfile(logger hclog.Logger, jobId string, srcTaskDetail *mod
 		})
 	}
 	if destMySqlTaskDetail != nil {
-		basicTaskProfile.ConnectionInfo.DstDataBaseList = []models.MysqlConnectionConfig{*destMySqlTaskDetail.TaskConfig.MysqlConnectionConfig}
+		basicTaskProfile.ConnectionInfo.DstDataBase = *destMySqlTaskDetail.TaskConfig.MysqlConnectionConfig
 		basicTaskProfile.Configuration.ParallelWorkers = destMySqlTaskDetail.TaskConfig.ParallelWorkers
 
 		for _, destAllocation := range destMySqlTaskDetail.Allocations {
@@ -549,6 +567,7 @@ func buildBasicTaskProfile(logger hclog.Logger, jobId string, srcTaskDetail *mod
 				NodeAddr: nodeId2Addr[destAllocation.NodeId],
 				DataSource: fmt.Sprintf("%v:%v", destMySqlTaskDetail.TaskConfig.MysqlConnectionConfig.MysqlHost,
 					destMySqlTaskDetail.TaskConfig.MysqlConnectionConfig.MysqlPort),
+				Source: "dst",
 			}
 			if _, ok := dtleNodeInfosMap[fmt.Sprintf("%s:%s", dtleNode.NodeId, dtleNode.DataSource)]; !ok {
 				dtleNodeInfosMap[fmt.Sprintf("%s:%s", dtleNode.NodeId, dtleNode.DataSource)] = dtleNode
@@ -568,6 +587,7 @@ func buildBasicTaskProfile(logger hclog.Logger, jobId string, srcTaskDetail *mod
 				NodeId:     destAllocation.NodeId,
 				NodeAddr:   nodeId2Addr[destAllocation.NodeId],
 				DataSource: fmt.Sprintf("%s", destKafkaTaskDetail.TaskConfig.BrokerAddrs),
+				Source:     "dst",
 			}
 			if _, ok := dtleNodeInfosMap[fmt.Sprintf("%s:%s", dtleNode.NodeId, dtleNode.DataSource)]; !ok {
 				dtleNodeInfosMap[fmt.Sprintf("%s:%s", dtleNode.NodeId, dtleNode.DataSource)] = dtleNode
@@ -668,7 +688,7 @@ func buildMysqlSrcTaskDetail(taskName string, internalTaskConfig common.DtleTask
 			MysqlHost:     internalTaskConfig.ConnectionConfig.Host,
 			MysqlPort:     uint32(internalTaskConfig.ConnectionConfig.Port),
 			MysqlUser:     internalTaskConfig.ConnectionConfig.User,
-			MysqlPassword: "*",
+			MysqlPassword: internalTaskConfig.ConnectionConfig.Password,
 		},
 		BinlogRelay: internalTaskConfig.BinlogRelay,
 	}
@@ -690,7 +710,7 @@ func buildMysqlDestTaskDetail(taskName string, internalTaskConfig common.DtleTas
 			MysqlHost:     internalTaskConfig.ConnectionConfig.Host,
 			MysqlPort:     uint32(internalTaskConfig.ConnectionConfig.Port),
 			MysqlUser:     internalTaskConfig.ConnectionConfig.User,
-			MysqlPassword: "*",
+			MysqlPassword: internalTaskConfig.ConnectionConfig.Password,
 		},
 	}
 
@@ -774,7 +794,18 @@ func buildMysqlToMysqlJobDetailResp(nomadJob nomadApi.Job, nomadAllocations []no
 // @Router /v2/job/sync [post]
 func CreateOrUpdateSyncJobV2(c echo.Context) error {
 	logger := handler.NewLogger().Named("CreateOrUpdateSyncJobV2")
-	return createOrUpdateMysqlToMysqlJob(c, logger, DtleJobTypeSync)
+	jobParam := new(models.CreateOrUpdateMysqlToMysqlJobParamV2)
+	if err := c.Bind(jobParam); nil != err {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("bind req param failed, error: %v", err)))
+	}
+	if err := c.Validate(jobParam); nil != err {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invalid params:\n%v", err)))
+	}
+	resp, err := createOrUpdateMysqlToMysqlJob(jobParam, logger, DtleJobTypeSync)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
+	}
+	return c.JSON(http.StatusOK, resp)
 }
 
 // @Id GetSyncJobDetailV2
@@ -785,7 +816,7 @@ func CreateOrUpdateSyncJobV2(c echo.Context) error {
 // @Router /v2/job/sync/detail [get]
 func GetSyncJobDetailV2(c echo.Context) error {
 	logger := handler.NewLogger().Named("GetSyncJobDetailV2")
-	return getMysqlToMysqlJobDetail(c, logger, DtleJobTypeSync)
+	return GetMysqlToMysqlJobDetail(c, logger, DtleJobTypeSync)
 }
 
 // @Id CreateOrUpdateSubscriptionJobV2
@@ -1212,6 +1243,181 @@ func DeleteJobV2(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, &models.DeleteJobRespV2{
+		BaseResp: models.BuildBaseResp(nil),
+	})
+}
+
+// @Id GetJobGtid
+// @Description get src task current gtid.
+// @Tags job
+// @Success 200 {object} models.JobGtidResp
+// @Param job_id query string true "job id"
+// @Router /v2/job/gtid [get]
+func GetJobGtid(c echo.Context) error {
+	logger := handler.NewLogger().Named("GetJobGtid")
+
+	reqParam := new(models.GetJobGtidReqV2)
+	if err := c.Bind(reqParam); nil != err {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("bind req param failed, error: %v", err)))
+	}
+	if err := c.Validate(reqParam); nil != err {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invalid params:\n%v", err)))
+	}
+
+	storeManager, err := common.NewStoreManager([]string{handler.ConsulAddr}, logger)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("consul_addr=%v; connect to consul failed: %v", handler.ConsulAddr, err)))
+	}
+	Gtid, err := storeManager.GetGtidForJob(reqParam.JobId)
+	if nil != err {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("consul_addr=%v ; get job status list failed: %v", handler.ConsulAddr, err)))
+	}
+
+	return c.JSON(http.StatusOK, &models.JobGtidResp{
+		Gtid:     Gtid,
+		BaseResp: models.BaseResp{},
+	})
+}
+
+// @Id FinishJob
+// @Tags job
+// @Description Finish Job.
+// @accept application/x-www-form-urlencoded
+// @Param job_id formData string true "job id"
+// @Success 200 {object} models.FinishJobResp
+// @Router /v2/job/finish [post]
+func FinishJob(c echo.Context) error {
+	logger := handler.NewLogger().Named("FinishJobV2")
+	logger.Info("validate params")
+	reqParam := new(models.FinishJobReq)
+	if err := c.Bind(reqParam); nil != err {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("bind req param failed, error: %v", err)))
+	}
+	if err := c.Validate(reqParam); nil != err {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invalid params:\n%v", err)))
+	}
+
+	logger.Info("get allocations of job", "job_id", reqParam.JobId)
+	url := handler.BuildUrl(fmt.Sprintf("/v1/job/%v/allocations", reqParam.JobId))
+	logger.Info("invoke nomad api begin", "url", url)
+	nomadAllocs := []nomadApi.Allocation{}
+	if err := handler.InvokeApiWithKvData(http.MethodGet, url, nil, &nomadAllocs); nil != err {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invoke nomad api %v failed: %v", url, err)))
+	}
+	logger.Info("invoke nomad api finished")
+
+	if len(nomadAllocs) == 0 {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("can not find allocations of the job[%v]", reqParam.JobId)))
+	}
+
+	storeManager, err := common.NewStoreManager([]string{handler.ConsulAddr}, logger)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("consul_addr=%v; connect to consul failed: %v", handler.ConsulAddr, err)))
+	}
+	consulJobItem, err := storeManager.GetJobInfo(reqParam.JobId)
+	if nil != err {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("job_id=%v; get job status failed: %v", reqParam.JobId, err)))
+	}
+	if consulJobItem.JobStatus == common.DtleJobStatusPaused {
+		return c.JSON(http.StatusInternalServerError, &models.PauseJobRespV2{
+			BaseResp: models.BuildBaseResp(errors.New("job was paused")),
+		})
+	}
+
+	// finish job
+	for _, a := range nomadAllocs {
+		if a.DesiredStatus == "run" && a.TaskGroup == "src" { // the allocations will be stop by nomad if it is not desired to run. and there is no need to finish these allocations
+			if err := sentSignalToTask(logger, a.ID, "finish"); nil != err {
+				return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("allocation_id=%v; finish task failed:  %v", a.ID, err)))
+			}
+		}
+	}
+
+	return c.JSON(http.StatusOK, &models.FinishJobResp{
+		BaseResp: models.BuildBaseResp(nil),
+	})
+}
+
+// @Id ReverseJob
+// @Description returnJob
+// @Tags job
+// @accept application/x-www-form-urlencoded
+// @Param job_id formData string true "job id"
+// @Success 200 {object} models.ReverseJobResp
+// @Router /v2/job/reverse [post]
+func ReverseJob(c echo.Context) error {
+	logger := handler.NewLogger().Named("ReverseJob")
+	logger.Info("validate params")
+	reqParam := new(models.ReverseJobReq)
+	if err := c.Bind(reqParam); nil != err {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("bind req param failed, error: %v", err)))
+	}
+	if err := c.Validate(reqParam); nil != err {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invalid params:\n%v", err)))
+	}
+
+	storeManager, err := common.NewStoreManager([]string{handler.ConsulAddr}, logger)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("consul_addr=%v; connect to consul failed: %v", handler.ConsulAddr, err)))
+	}
+	consulJobItem, err := storeManager.GetJobInfo(reqParam.JobId)
+	if nil != err {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("job_id=%v; get job status failed: %v", reqParam.JobId, err)))
+	}
+
+	// job name
+	jobType := getJobTypeFromJobId(consulJobItem.JobId)
+	switch jobType {
+	case DtleJobTypeMigration, DtleJobTypeSync:
+		originalJob, err := getMysqlToMysqlJobDetail(logger, consulJobItem.JobId, jobType)
+		if err != nil {
+			return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
+		}
+
+		NewjobParam := new(models.CreateOrUpdateMysqlToMysqlJobParamV2)
+		NewjobParam.JobId = fmt.Sprintf("%s-%s", "reverse", strings.Replace(consulJobItem.JobId, fmt.Sprintf("-%s", jobType), "", -1))
+		NewjobParam.TaskStepName = mysql.JobIncrCopy
+		NewjobParam.Failover = &originalJob.BasicTaskProfile.Configuration.FailOver
+		NewjobParam.IsMysqlPasswordEncrypted = false
+		NewjobParam.SrcTask = &models.MysqlSrcTaskConfig{
+			TaskName:     "src",
+			GroupMaxSize: originalJob.BasicTaskProfile.Configuration.GroupMaxSize,
+			ChunkSize:    int64(originalJob.BasicTaskProfile.Configuration.ChunkSize),
+			//DropTableIfExists:      originalJob.BasicTaskProfile.Configuration.
+			//SkipCreateDbTable:      originalJob.BasicTaskProfile.Configuration,
+			ReplChanBufferSize:    int64(originalJob.BasicTaskProfile.Configuration.ReplChanBufferSize),
+			ReplicateDoDb:         originalJob.BasicTaskProfile.ReplicateDoDb,
+			ReplicateIgnoreDb:     originalJob.BasicTaskProfile.ReplicateIgnoreDb,
+			MysqlConnectionConfig: &originalJob.BasicTaskProfile.ConnectionInfo.DstDataBase,
+			BinlogRelay:           originalJob.BasicTaskProfile.Configuration.BinlogRelay,
+			GroupTimeout:          originalJob.BasicTaskProfile.Configuration.GroupTimeout,
+			AutoGtid:              true,
+			WaitOnJob:             consulJobItem.JobId,
+		}
+		NewjobParam.DestTask = &models.MysqlDestTaskConfig{
+			TaskName:              "dest",
+			ParallelWorkers:       originalJob.BasicTaskProfile.Configuration.ParallelWorkers,
+			MysqlConnectionConfig: &originalJob.BasicTaskProfile.ConnectionInfo.SrcDataBase,
+		}
+
+		if !*NewjobParam.Failover {
+			for _, node := range originalJob.BasicTaskProfile.DtleNodeInfos {
+				if node.Source == "src" {
+					NewjobParam.SrcTask.NodeId = node.NodeId
+				} else if node.Source == "dst" {
+					NewjobParam.DestTask.NodeId = node.NodeId
+				}
+			}
+		}
+		_, err = createOrUpdateMysqlToMysqlJob(NewjobParam, logger, jobType)
+		if err != nil {
+			return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
+		}
+	default:
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(errors.New("job type is not supported")))
+	}
+
+	return c.JSON(http.StatusOK, &models.ReverseJobResp{
 		BaseResp: models.BuildBaseResp(nil),
 	})
 }

@@ -62,14 +62,10 @@ definitions:
     type: object
   models.ConnectionInfo:
     properties:
-      dst_data_base_list:
-        items:
-          $ref: '#/definitions/models.MysqlConnectionConfig'
-        type: array
-      src_data_base_list:
-        items:
-          $ref: '#/definitions/models.MysqlConnectionConfig'
-        type: array
+      dst_data_base:
+        $ref: '#/definitions/models.MysqlConnectionConfig'
+      src_data_base:
+        $ref: '#/definitions/models.MysqlConnectionConfig'
     type: object
   models.ConnectionValidation:
     properties:
@@ -210,6 +206,13 @@ definitions:
         type: string
       node_id:
         type: string
+      source:
+        type: string
+    type: object
+  models.FinishJobResp:
+    properties:
+      message:
+        type: string
     type: object
   models.GetTaskProgressRespV2:
     properties:
@@ -241,6 +244,13 @@ definitions:
           $ref: '#/definitions/models.JobStep'
         type: array
       subscription_topic:
+        type: string
+    type: object
+  models.JobGtidResp:
+    properties:
+      gtid:
+        type: string
+      message:
         type: string
     type: object
   models.JobListItemV2:
@@ -374,6 +384,8 @@ definitions:
     type: object
   models.MysqlSrcTaskConfig:
     properties:
+      auto_gtid:
+        type: boolean
       binlog_relay:
         type: boolean
       chunk_size:
@@ -403,6 +415,8 @@ definitions:
       skip_create_db_table:
         type: boolean
       task_name:
+        type: string
+      wait_on_job:
         type: string
     required:
     - mysql_connection_config
@@ -511,6 +525,11 @@ definitions:
         type: boolean
     type: object
   models.ResumeJobRespV2:
+    properties:
+      message:
+        type: string
+    type: object
+  models.ReverseJobResp:
     properties:
       message:
         type: string
@@ -663,6 +682,42 @@ paths:
             $ref: '#/definitions/models.DeleteJobRespV2'
       tags:
       - job
+  /v2/job/finish:
+    post:
+      consumes:
+      - application/x-www-form-urlencoded
+      description: Finish Job.
+      operationId: FinishJob
+      parameters:
+      - description: job id
+        in: formData
+        name: job_id
+        required: true
+        type: string
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.FinishJobResp'
+      tags:
+      - job
+  /v2/job/gtid:
+    get:
+      description: get src task current gtid.
+      operationId: GetJobGtid
+      parameters:
+      - description: job id
+        in: query
+        name: job_id
+        required: true
+        type: string
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.JobGtidResp'
+      tags:
+      - job
   /v2/job/migration:
     post:
       consumes:
@@ -736,6 +791,25 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/models.ResumeJobRespV2'
+      tags:
+      - job
+  /v2/job/reverse:
+    post:
+      consumes:
+      - application/x-www-form-urlencoded
+      description: returnJob
+      operationId: ReverseJob
+      parameters:
+      - description: job id
+        in: formData
+        name: job_id
+        required: true
+        type: string
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.ReverseJobResp'
       tags:
       - job
   /v2/job/subscription:

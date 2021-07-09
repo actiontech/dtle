@@ -60,6 +60,7 @@ type DtleNodeInfo struct {
 	NodeAddr   string `json:"node_addr"`
 	NodeId     string `json:"node_id"`
 	DataSource string `json:"data_source"`
+	Source     string `json:"source"`
 }
 
 type DataBase struct {
@@ -69,8 +70,8 @@ type DataBase struct {
 }
 
 type ConnectionInfo struct {
-	SrcDataBaseList []MysqlConnectionConfig `json:"src_data_base_list"`
-	DstDataBaseList []MysqlConnectionConfig `json:"dst_data_base_list"`
+	SrcDataBase MysqlConnectionConfig `json:"src_data_base"`
+	DstDataBase MysqlConnectionConfig `json:"dst_data_base"`
 }
 
 type Configuration struct {
@@ -151,6 +152,8 @@ type MysqlSrcTaskConfig struct {
 	MysqlConnectionConfig *MysqlConnectionConfig   `json:"mysql_connection_config" validate:"required"`
 	BinlogRelay           bool                     `json:"binlog_relay"`
 	GroupTimeout          int                      `json:"group_timeout"`
+	WaitOnJob             string                   `json:"wait_on_job"`
+	AutoGtid              bool                     `json:"auto_gtid"`
 }
 
 type MysqlDestTaskConfig struct {
@@ -261,5 +264,30 @@ type DeleteJobReqV2 struct {
 }
 
 type DeleteJobRespV2 struct {
+	BaseResp
+}
+
+type GetJobGtidReqV2 struct {
+	JobId string `query:"job_id" validate:"required"`
+}
+
+type JobGtidResp struct {
+	Gtid string `json:"gtid"`
+	BaseResp
+}
+
+type FinishJobReq struct {
+	JobId string `form:"job_id" validate:"required"`
+}
+
+type FinishJobResp struct {
+	BaseResp
+}
+
+type ReverseJobReq struct {
+	JobId string `form:"job_id" validate:"required"`
+}
+
+type ReverseJobResp struct {
 	BaseResp
 }

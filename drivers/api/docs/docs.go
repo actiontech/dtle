@@ -53,6 +53,61 @@ var doc = `{
                 }
             }
         },
+        "/v2/job/finish": {
+            "post": {
+                "description": "Finish Job.",
+                "consumes": [
+                    "application/x-www-form-urlencoded"
+                ],
+                "tags": [
+                    "job"
+                ],
+                "operationId": "FinishJob",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "job id",
+                        "name": "job_id",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.FinishJobResp"
+                        }
+                    }
+                }
+            }
+        },
+        "/v2/job/gtid": {
+            "get": {
+                "description": "get src task current gtid.",
+                "tags": [
+                    "job"
+                ],
+                "operationId": "GetJobGtid",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "job id",
+                        "name": "job_id",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.JobGtidResp"
+                        }
+                    }
+                }
+            }
+        },
         "/v2/job/migration": {
             "post": {
                 "description": "create or update migration job.",
@@ -163,6 +218,35 @@ var doc = `{
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/models.ResumeJobRespV2"
+                        }
+                    }
+                }
+            }
+        },
+        "/v2/job/reverse": {
+            "post": {
+                "description": "returnJob",
+                "consumes": [
+                    "application/x-www-form-urlencoded"
+                ],
+                "tags": [
+                    "job"
+                ],
+                "operationId": "ReverseJob",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "job id",
+                        "name": "job_id",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.ReverseJobResp"
                         }
                     }
                 }
@@ -687,17 +771,11 @@ var doc = `{
         "models.ConnectionInfo": {
             "type": "object",
             "properties": {
-                "dst_data_base_list": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/models.MysqlConnectionConfig"
-                    }
+                "dst_data_base": {
+                    "$ref": "#/definitions/models.MysqlConnectionConfig"
                 },
-                "src_data_base_list": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/models.MysqlConnectionConfig"
-                    }
+                "src_data_base": {
+                    "$ref": "#/definitions/models.MysqlConnectionConfig"
                 }
             }
         },
@@ -904,6 +982,17 @@ var doc = `{
                 },
                 "node_id": {
                     "type": "string"
+                },
+                "source": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.FinishJobResp": {
+            "type": "object",
+            "properties": {
+                "message": {
+                    "type": "string"
                 }
             }
         },
@@ -952,6 +1041,17 @@ var doc = `{
                     }
                 },
                 "subscription_topic": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.JobGtidResp": {
+            "type": "object",
+            "properties": {
+                "gtid": {
+                    "type": "string"
+                },
+                "message": {
                     "type": "string"
                 }
             }
@@ -1158,6 +1258,9 @@ var doc = `{
                 "task_name"
             ],
             "properties": {
+                "auto_gtid": {
+                    "type": "boolean"
+                },
                 "binlog_relay": {
                     "type": "boolean"
                 },
@@ -1201,6 +1304,9 @@ var doc = `{
                     "type": "boolean"
                 },
                 "task_name": {
+                    "type": "string"
+                },
+                "wait_on_job": {
                     "type": "string"
                 }
             }
@@ -1363,6 +1469,14 @@ var doc = `{
             }
         },
         "models.ResumeJobRespV2": {
+            "type": "object",
+            "properties": {
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.ReverseJobResp": {
             "type": "object",
             "properties": {
                 "message": {

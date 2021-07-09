@@ -73,6 +73,9 @@ func SetupApiServer(logger hclog.Logger, apiAddr, nomadAddr, consulAddr, uiDir s
 	e.GET("/v2/mysql/schemas", v2.ListMysqlSchemasV2)
 	e.GET("/v2/mysql/columns", v2.ListMysqlColumnsV2)
 	e.GET("/v2/monitor/task", v2.GetTaskProgressV2)
+	e.GET("/v2/job/gtid", v2.GetJobGtid)
+	e.POST("/v2/job/finish", v2.FinishJob)
+	e.POST("/v2/job/reverse", v2.ReverseJob)
 
 	// for pprof
 	e.GET("/debug/pprof/*", echo.WrapHandler(http.DefaultServeMux))
