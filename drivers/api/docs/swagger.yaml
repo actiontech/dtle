@@ -171,6 +171,30 @@ definitions:
     - job_id
     - src_task
     type: object
+  models.CreateOrUpdateUserReq:
+    properties:
+      contact_info:
+        type: string
+      pass_word:
+        type: string
+      principal:
+        type: string
+      role:
+        type: string
+      user_group:
+        type: string
+      user_name:
+        type: string
+    required:
+    - role
+    - user_group
+    - user_name
+    type: object
+  models.CreateOrUpdateUserResp:
+    properties:
+      message:
+        type: string
+    type: object
   models.CurrentCoordinates:
     properties:
       file:
@@ -194,6 +218,11 @@ definitions:
         type: integer
     type: object
   models.DeleteJobRespV2:
+    properties:
+      message:
+        type: string
+    type: object
+  models.DeleteUserResp:
     properties:
       message:
         type: string
@@ -626,6 +655,32 @@ definitions:
         type: string
       message:
         type: string
+    type: object
+  models.User:
+    properties:
+      contact_info:
+        type: string
+      create_time:
+        type: string
+      pass_word:
+        type: string
+      principal:
+        type: string
+      role:
+        type: string
+      user_group:
+        type: string
+      user_name:
+        type: string
+    type: object
+  models.UserListResp:
+    properties:
+      message:
+        type: string
+      user_list:
+        items:
+          $ref: '#/definitions/models.User'
+        type: array
     type: object
   models.ValidateJobReqV2:
     properties:
@@ -1074,6 +1129,70 @@ paths:
             $ref: '#/definitions/models.NodeListRespV2'
       tags:
       - node
+  /v2/user/delete:
+    post:
+      consumes:
+      - application/x-www-form-urlencoded
+      description: delete user.
+      operationId: DeleteUser
+      parameters:
+      - description: user group name
+        in: formData
+        name: user_group
+        required: true
+        type: string
+      - description: user name
+        in: formData
+        name: user_name
+        required: true
+        type: string
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.DeleteUserResp'
+      tags:
+      - user
+  /v2/user/list:
+    get:
+      description: get user list.
+      operationId: UserList
+      parameters:
+      - description: filter user name
+        in: query
+        name: filter_user_name
+        type: string
+      - description: filter user group
+        in: query
+        name: filter_user_group
+        type: string
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.UserListResp'
+      tags:
+      - user
+  /v2/user/update:
+    post:
+      consumes:
+      - application/json
+      description: create or update user.
+      operationId: CreateOrUpdateUser
+      parameters:
+      - description: user info
+        in: body
+        name: user
+        required: true
+        schema:
+          $ref: '#/definitions/models.CreateOrUpdateUserReq'
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.CreateOrUpdateUserResp'
+      tags:
+      - user
   /v2/validation/job:
     post:
       consumes:

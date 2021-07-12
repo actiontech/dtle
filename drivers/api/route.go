@@ -76,6 +76,9 @@ func SetupApiServer(logger hclog.Logger, apiAddr, nomadAddr, consulAddr, uiDir s
 	e.GET("/v2/job/gtid", v2.GetJobGtid)
 	e.POST("/v2/job/finish", v2.FinishJob)
 	e.POST("/v2/job/reverse", v2.ReverseJob)
+	e.GET("/v2/user/list", v2.UserList)
+	e.POST("/v2/user/update", v2.CreateOrUpdateUser)
+	e.POST("/v2/user/delete", v2.DeleteUser)
 
 	// for pprof
 	e.GET("/debug/pprof/*", echo.WrapHandler(http.DefaultServeMux))
