@@ -448,29 +448,46 @@ func (kr *KafkaRunner) initiateStreaming() error {
 	go kr.handleFullCopy()
 	go kr.handleIncr()
 
+	fullNMM := common.NewNatsMsgMerger(kr.logger.With("nmm", "full"))
 	_, err = kr.natsConn.Subscribe(fmt.Sprintf("%s_full", kr.subject), func(m *gonats.Msg) {
 		kr.processWg.Add(1)
 		defer kr.processWg.Done()
 		kr.logger.Debug("recv a full msg")
 
-		kr.fullWg.Add(1)
-		dumpData := &common.DumpEntry{}
-		err = common.Decode(m.Data, dumpData)
+		segmentFinished, err := fullNMM.Handle(m.Data)
 		if err != nil {
-			kr.onError(common.TaskStateDead, err)
+			kr.onError(common.TaskStateDead, errors.Wrap(err, "fullNMM.Handle"))
 			return
 		}
 
-		select {
-		case <-kr.shutdownCh:
-			return
-		case kr.chDumpEntry <- dumpData:
-			atomic.AddInt64(kr.memory1, int64(dumpData.Size()))
+		if !segmentFinished {
 			if err := kr.natsConn.Publish(m.Reply, nil); err != nil {
 				kr.onError(common.TaskStateDead, err)
 				return
 			}
-			kr.logger.Debug("ack a full msg")
+			kr.logger.Debug("full. after publish nats reply. intermediate")
+		} else {
+			kr.fullWg.Add(1)
+			dumpData := &common.DumpEntry{}
+			err = common.Decode(fullNMM.GetBytes(), dumpData)
+			if err != nil {
+				kr.onError(common.TaskStateDead, err)
+				return
+			}
+
+			select {
+			case <-kr.shutdownCh:
+				return
+			case kr.chDumpEntry <- dumpData:
+				fullNMM.Reset()
+
+				atomic.AddInt64(kr.memory1, int64(dumpData.Size()))
+				if err := kr.natsConn.Publish(m.Reply, nil); err != nil {
+					kr.onError(common.TaskStateDead, err)
+					return
+				}
+				kr.logger.Debug("full. after publish nats reply.")
+			}
 		}
 	})
 	if err != nil {
@@ -507,27 +524,43 @@ func (kr *KafkaRunner) initiateStreaming() error {
 		return err
 	}
 
+	incrNMM := common.NewNatsMsgMerger(kr.logger.With("nmm", "incr"))
 	_, err = kr.natsConn.Subscribe(fmt.Sprintf("%s_incr_hete", kr.subject), func(m *gonats.Msg) {
 		kr.processWg.Add(1)
 		defer kr.processWg.Done()
 
 		kr.logger.Debug("recv an incr_hete msg")
 
-		var binlogEntries common.BinlogEntries
-		if err := common.Decode(m.Data, &binlogEntries); err != nil {
-			kr.onError(common.TaskStateDead, err)
+		segmentFinished, err := incrNMM.Handle(m.Data)
+		if err != nil {
+			kr.onError(common.TaskStateDead, errors.Wrap(err, "incrNMM.Handle"))
 			return
 		}
-		select {
-		case <-kr.shutdownCh:
-			return
-		case kr.chBinlogEntries <- &binlogEntries:
+
+		if !segmentFinished {
 			if err := kr.natsConn.Publish(m.Reply, nil); err != nil {
 				kr.onError(common.TaskStateDead, errors.Wrap(err, "Publish"))
 				return
 			}
-			kr.logger.Debug("ack an incr_hete msg")
-			atomic.AddInt64(kr.memory2, int64(binlogEntries.Size()))
+			kr.logger.Debug("incr. after publish nats reply. intermediate")
+		} else {
+			var binlogEntries common.BinlogEntries
+			if err := common.Decode(incrNMM.GetBytes(), &binlogEntries); err != nil {
+				kr.onError(common.TaskStateDead, err)
+				return
+			}
+			select {
+			case <-kr.shutdownCh:
+				return
+			case kr.chBinlogEntries <- &binlogEntries:
+				incrNMM.Reset()
+				if err := kr.natsConn.Publish(m.Reply, nil); err != nil {
+					kr.onError(common.TaskStateDead, errors.Wrap(err, "Publish"))
+					return
+				}
+				kr.logger.Debug("incr. after publish nats reply.")
+				atomic.AddInt64(kr.memory2, int64(binlogEntries.Size()))
+			}
 		}
 	})
 	if err != nil {
