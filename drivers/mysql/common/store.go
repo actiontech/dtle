@@ -388,7 +388,7 @@ const (
 )
 
 func (sm *StoreManager) FindUserList(userKey string) ([]*models.User, error) {
-	userKey = fmt.Sprintf("%s/%s", "user", userKey)
+	userKey = fmt.Sprintf("%s/%s", "dtleUser", userKey)
 	storeUsers, err := sm.consulStore.List(userKey)
 	if nil != err && err != store.ErrKeyNotFound {
 		return nil, fmt.Errorf("get %v value from consul failed: %v", userKey, err)
@@ -408,7 +408,7 @@ func (sm *StoreManager) FindUserList(userKey string) ([]*models.User, error) {
 }
 
 func (sm *StoreManager) DeleteUser(userGroup, user string) error {
-	key := fmt.Sprintf("user/%v/%v", userGroup, user)
+	key := fmt.Sprintf("dtleUser/%v/%v", userGroup, user)
 	err := sm.consulStore.Delete(key)
 	if nil != err && store.ErrKeyNotFound != err {
 		return err
@@ -417,7 +417,7 @@ func (sm *StoreManager) DeleteUser(userGroup, user string) error {
 }
 
 func (sm *StoreManager) GetUser(userGroup, userName string) (*models.User, error) {
-	key := fmt.Sprintf("user/%v/%v", userGroup, userName)
+	key := fmt.Sprintf("dtleUser/%v/%v", userGroup, userName)
 	kp, err := sm.consulStore.Get(key)
 	if nil != err {
 		return nil, err
@@ -430,7 +430,7 @@ func (sm *StoreManager) GetUser(userGroup, userName string) (*models.User, error
 	return user, nil
 }
 func (sm *StoreManager) SaveUser(user *models.User) error {
-	key := fmt.Sprintf("user/%v/%v", user.UserGroup, user.UserName)
+	key := fmt.Sprintf("dtleUser/%v/%v", user.UserGroup, user.UserName)
 	jobBytes, err := json.Marshal(user)
 	if err != nil {
 		return fmt.Errorf("save %v to consul, marshal err : %v", key, err)
