@@ -102,12 +102,13 @@ func NewKafkaRunner(execCtx *common.ExecContext, cfg *common.KafkaConfig, logger
 		tables:       make(map[string](map[string]*KafkaTableItem)),
 		storeManager: storeManager,
 
+		chDumpEntry:     make(chan *common.DumpEntry, 2),
+		chBinlogEntries: make(chan *common.BinlogEntries, 2),
+
 		memory1:  new(int64),
 		memory2:  new(int64),
 		printTps: os.Getenv(g.ENV_PRINT_TPS) != "",
 	}
-
-	kr.chDumpEntry, kr.chBinlogEntries = kr.newDataChannel()
 	kr.timestampCtx = mysql.NewTimestampContext(kr.shutdownCh, kr.logger, func() bool {
 		return len(kr.chBinlogEntries) == 0
 	})
@@ -147,12 +148,6 @@ func (kr *KafkaRunner) Shutdown() error {
 	}
 	kr.shutdown = true
 	close(kr.shutdownCh)
-
-	// close data channel
-	{
-		close(kr.chDumpEntry)
-		close(kr.chBinlogEntries)
-	}
 
 	kr.logger.Info("Shutting down")
 	return nil
@@ -1082,12 +1077,6 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQueries(dmlEntries []*common.Binlog
 
 	kr.logger.Debug("kafka: after kafkaTransformDMLEventQueries")
 	return nil
-}
-
-func (kr *KafkaRunner) newDataChannel() (chDumpEntry chan *common.DumpEntry, chBinlogEntries chan *common.BinlogEntries) {
-	chDumpEntry = make(chan *common.DumpEntry, 2)
-	chBinlogEntries = make(chan *common.BinlogEntries, 2)
-	return
 }
 
 func getSetValue(num int64, set string) string {

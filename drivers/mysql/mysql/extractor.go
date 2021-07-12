@@ -124,7 +124,7 @@ func NewExtractor(execCtx *common.ExecContext, cfg *common.MySQLDriverConfig, lo
 		memory1:         new(int64),
 		memory2:         new(int64),
 	}
-	e.dataChannel = e.newDataChannel(cfg)
+	e.dataChannel = make(chan *common.BinlogEntryContext, cfg.ReplChanBufferSize*4)
 	e.timestampCtx = NewTimestampContext(e.shutdownCh, e.logger, func() bool {
 		return len(e.dataChannel) == 0
 		// TODO need a more reliable method to determine queue.empty.
@@ -1548,11 +1548,6 @@ func (e *Extractor) Shutdown() error {
 		e.logger.Error("Shutdown error close e.db.", "err", err)
 	}
 
-	// close data channel
-	{
-		close(e.dataChannel)
-	}
-
 	//close(e.binlogChannel)
 	e.logger.Info("Shutting down")
 	return nil
@@ -1598,8 +1593,4 @@ func (e *Extractor) Finish1() (err error) {
 	}
 
 	return nil
-}
-
-func (e *Extractor) newDataChannel(cfg *common.MySQLDriverConfig) chan *common.BinlogEntryContext {
-	return make(chan *common.BinlogEntryContext, cfg.ReplChanBufferSize*4)
 }

@@ -108,6 +108,8 @@ func NewApplier(
 		mysqlContext:    cfg,
 		NatsAddr:        natsAddr,
 		rowCopyComplete: make(chan struct{}),
+		fullBytesQueue:  make(chan []byte, 16),
+		dumpEntryQueue:  make(chan *common.DumpEntry, 8),
 		waitCh:          waitCh,
 		gtidSetLock:     &sync.RWMutex{},
 		shutdownCh:      make(chan struct{}),
@@ -119,7 +121,6 @@ func NewApplier(
 		taskConfig:      taskConfig,
 	}
 
-	a.fullBytesQueue, a.dumpEntryQueue = a.newDataChannel()
 	stubFullApplyDelayStr := os.Getenv(g.ENV_FULL_APPLY_DELAY)
 	if stubFullApplyDelayStr == "" {
 		a.stubFullApplyDelay = 0
@@ -995,20 +996,8 @@ func (a *Applier) Shutdown() error {
 		return err
 	}
 
-	// close data channel
-	{
-		close(a.fullBytesQueue)
-		close(a.dumpEntryQueue)
-	}
-
 	a.logger.Info("Shutting down")
 	return nil
-}
-
-func (a *Applier) newDataChannel() (fullBytesQueue chan []byte, dumpEntryQueue chan *common.DumpEntry) {
-	fullBytesQueue = make(chan []byte, 16)
-	dumpEntryQueue = make(chan *common.DumpEntry, 8)
-	return
 }
 
 func (a *Applier) watchTargetGtid() {
