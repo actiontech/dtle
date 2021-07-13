@@ -642,6 +642,104 @@ var doc = `{
                 }
             }
         },
+        "/v2/user/delete": {
+            "post": {
+                "description": "delete user.",
+                "consumes": [
+                    "application/x-www-form-urlencoded"
+                ],
+                "tags": [
+                    "user"
+                ],
+                "operationId": "DeleteUser",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "user group name",
+                        "name": "user_group",
+                        "in": "formData",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "user name",
+                        "name": "user_name",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.DeleteUserResp"
+                        }
+                    }
+                }
+            }
+        },
+        "/v2/user/list": {
+            "get": {
+                "description": "get user list.",
+                "tags": [
+                    "user"
+                ],
+                "operationId": "UserList",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "filter user name",
+                        "name": "filter_user_name",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "filter user group",
+                        "name": "filter_user_group",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.UserListResp"
+                        }
+                    }
+                }
+            }
+        },
+        "/v2/user/update": {
+            "post": {
+                "description": "create or update user.",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "user"
+                ],
+                "operationId": "CreateOrUpdateUser",
+                "parameters": [
+                    {
+                        "description": "user info",
+                        "name": "user",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.CreateOrUpdateUserReq"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.CreateOrUpdateUserResp"
+                        }
+                    }
+                }
+            }
+        },
         "/v2/validation/job": {
             "post": {
                 "description": "validate job config.",
@@ -929,6 +1027,42 @@ var doc = `{
                 }
             }
         },
+        "models.CreateOrUpdateUserReq": {
+            "type": "object",
+            "required": [
+                "role",
+                "user_group",
+                "user_name"
+            ],
+            "properties": {
+                "contact_info": {
+                    "type": "string"
+                },
+                "pass_word": {
+                    "type": "string"
+                },
+                "principal": {
+                    "type": "string"
+                },
+                "role": {
+                    "type": "string"
+                },
+                "user_group": {
+                    "type": "string"
+                },
+                "user_name": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.CreateOrUpdateUserResp": {
+            "type": "object",
+            "properties": {
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
         "models.CurrentCoordinates": {
             "type": "object",
             "properties": {
@@ -964,6 +1098,14 @@ var doc = `{
             }
         },
         "models.DeleteJobRespV2": {
+            "type": "object",
+            "properties": {
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.DeleteUserResp": {
             "type": "object",
             "properties": {
                 "message": {
@@ -1624,6 +1766,46 @@ var doc = `{
                 },
                 "message": {
                     "type": "string"
+                }
+            }
+        },
+        "models.User": {
+            "type": "object",
+            "properties": {
+                "contact_info": {
+                    "type": "string"
+                },
+                "create_time": {
+                    "type": "string"
+                },
+                "pass_word": {
+                    "type": "string"
+                },
+                "principal": {
+                    "type": "string"
+                },
+                "role": {
+                    "type": "string"
+                },
+                "user_group": {
+                    "type": "string"
+                },
+                "user_name": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.UserListResp": {
+            "type": "object",
+            "properties": {
+                "message": {
+                    "type": "string"
+                },
+                "user_list": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.User"
+                    }
                 }
             }
         },
