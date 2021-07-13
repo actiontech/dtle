@@ -338,6 +338,30 @@ func (sm *StoreManager) WaitOnJob(currentJob string, waitJob string, stopCh chan
 		}
 	}
 
+	// update reverse job status
+	currentJobInfo, err := sm.GetJobInfo(currentJob)
+	if err != nil {
+		sm.logger.Error("job_id=%v; get job info failed: %v", currentJob, err)
+	} else {
+		currentJobInfo.JobId = currentJob
+		currentJobInfo.JobStatus = DtleJobStatusNonPaused
+		err = sm.SaveJobInfo(*currentJobInfo)
+		if err != nil {
+			sm.logger.Error("job_id=%v; save job info failed: %v", currentJob, err)
+		}
+	}
+
+	waitJobInfo, err := sm.GetJobInfo(waitJob)
+	if err != nil {
+		sm.logger.Error("job_id=%v; get job info failed: %v", waitJob, err)
+	} else {
+		waitJobInfo.JobId = waitJob
+		waitJobInfo.JobStatus = TargetGtidFinished
+		err = sm.SaveJobInfo(*waitJobInfo)
+		if err != nil {
+			sm.logger.Error("job_id=%v; save job info failed: %v", waitJob, err)
+		}
+	}
 	err = sm.PutKey(currentJob, "afterwait", []byte("1"))
 	return err
 }
@@ -382,10 +406,6 @@ func (sm *StoreManager) GetTargetGtid(subject string) (string, error) {
 
 	return string(kv.Value), nil
 }
-
-const (
-	TargetGtidFinished = "finished"
-)
 
 func (sm *StoreManager) FindUserList(userKey string) ([]*models.User, error) {
 	userKey = fmt.Sprintf("%s/%s", "dtleUser", userKey)
