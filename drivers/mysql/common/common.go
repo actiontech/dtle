@@ -18,9 +18,11 @@ const (
 	DefaultConnectWaitSecond = 10
 	DefaultConnectWait       = DefaultConnectWaitSecond * time.Second
 
-	DtleJobStatusNonPaused = "non-paused"
-	DtleJobStatusPaused    = "paused"
-	DtleJobStatusUndefined = "undefined"
+	DtleJobStatusNonPaused   = "non-paused"
+	DtleJobStatusPaused      = "paused"
+	DtleJobStatusUndefined   = "undefined"
+	DtleJobStatusReverseInit = "reverse-init"
+	TargetGtidFinished       = "finished"
 )
 
 const (

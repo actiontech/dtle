@@ -284,6 +284,9 @@ func buildMySQLJobListItem(logger hclog.Logger, jobParam *models.CreateOrUpdateM
 		User:     "root",
 		JobSteps: nil,
 	}
+	if jobParam.Reverse {
+		jobInfo.JobStatus = common.DtleJobStatusReverseInit
+	}
 	if jobParam.TaskStepName == "all" {
 		jobInfo.JobSteps = append(jobInfo.JobSteps, models.NewJobStep(mysql.JobFullCopy), models.NewJobStep(mysql.JobIncrCopy))
 	} else if jobParam.TaskStepName == mysql.JobFullCopy {
@@ -1384,6 +1387,7 @@ func ReverseJob(c echo.Context) error {
 		NewjobParam.TaskStepName = mysql.JobIncrCopy
 		NewjobParam.Failover = &originalJob.BasicTaskProfile.Configuration.FailOver
 		NewjobParam.IsMysqlPasswordEncrypted = false
+		NewjobParam.Reverse = true
 		NewjobParam.SrcTask = &models.MysqlSrcTaskConfig{
 			TaskName:     "src",
 			GroupMaxSize: originalJob.BasicTaskProfile.Configuration.GroupMaxSize,
