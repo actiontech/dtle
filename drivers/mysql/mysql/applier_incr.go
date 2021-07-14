@@ -90,7 +90,7 @@ func NewApplierIncr(subject string, mysqlContext *common.MySQLDriverConfig,
 		// TODO need a more reliable method to determine queue.empty.
 	})
 
-	a.mtsManager = NewMtsManager(a.shutdownCh)
+	a.mtsManager = NewMtsManager(a.shutdownCh, a.logger)
 	go a.mtsManager.LcUpdater()
 
 	return a, nil

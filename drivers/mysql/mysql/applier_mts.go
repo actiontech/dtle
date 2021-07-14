@@ -3,6 +3,8 @@ package mysql
 import (
 	"container/heap"
 	"github.com/actiontech/dtle/drivers/mysql/common"
+	"github.com/actiontech/dtle/g"
+	hclog "github.com/hashicorp/go-hclog"
 	"sync/atomic"
 )
 
@@ -33,17 +35,23 @@ type MtsManager struct {
 	// We put the pending seqNums here.
 	m          Int64PriQueue
 	chExecuted chan int64
+	forceMts   bool
 }
 
 //  shutdownCh: close to indicate a shutdown
-func NewMtsManager(shutdownCh chan struct{}) *MtsManager {
-	return &MtsManager{
+func NewMtsManager(shutdownCh chan struct{}, logger hclog.Logger) *MtsManager {
+	mm := &MtsManager{
 		lastCommitted: 0,
 		updated:       make(chan struct{}, 1), // 1-buffered, see #211-7.1
 		shutdownCh:    shutdownCh,
 		m:             nil,
 		chExecuted:    make(chan int64),
+		forceMts:      g.EnvIsTrue(g.ENV_FORCE_MTS),
 	}
+	if mm.forceMts {
+		logger.Warn("force mts enabled")
+	}
+	return mm
 }
 
 //  This function must be called sequentially.
@@ -66,6 +74,10 @@ func (mm *MtsManager) WaitForAllCommitted() bool {
 //  This function must be called sequentially.
 func (mm *MtsManager) WaitForExecution(binlogEntry *common.BinlogEntry) bool {
 	mm.lastEnqueue = binlogEntry.Coordinates.SeqenceNumber
+
+	if mm.forceMts {
+		return true
+	}
 
 	for {
 		currentLC := atomic.LoadInt64(&mm.lastCommitted)
