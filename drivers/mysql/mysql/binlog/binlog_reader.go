@@ -773,11 +773,16 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 						if err != nil {
 							return err
 						}
-						if before != after {
-							return fmt.Errorf("update on 'where columns' cause inconsistency")
-							// TODO split it to delete + insert to allow such update
+						if !before && !after {
+							whereTrue = false
+						} else if !before {
+							dmlEvent.DML = common.InsertDML
+							dmlEvent.WhereColumnValues = nil
+						} else if !after {
+							dmlEvent.DML = common.DeleteDML
+							dmlEvent.NewColumnValues = nil
 						} else {
-							whereTrue = before
+							// before == after == true
 						}
 					case common.DeleteDML:
 						whereTrue, err = table.WhereTrue(dmlEvent.WhereColumnValues)
