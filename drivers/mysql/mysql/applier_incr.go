@@ -13,7 +13,6 @@ import (
 	"github.com/pkg/errors"
 	"github.com/satori/go.uuid"
 	gomysql "github.com/siddontang/go-mysql/mysql"
-	"os"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -76,13 +75,13 @@ func NewApplierIncr(subject string, mysqlContext *common.MySQLDriverConfig,
 		dbs:                   dbs,
 		shutdownCh:            shutdownCh,
 		memory2:               memory2,
-		printTps:              os.Getenv(g.ENV_PRINT_TPS) != "",
+		printTps:              g.EnvIsTrue(g.ENV_PRINT_TPS),
 		gtidSet:               gtidSet,
 		gtidSetLock:           gtidSetLock,
 		tableItems:            make(mapSchemaTableItems),
 	}
 
-	if os.Getenv(g.ENV_SKIP_GTID_EXECUTED_TABLE) != "" {
+	if g.EnvIsTrue(g.ENV_SKIP_GTID_EXECUTED_TABLE) {
 		a.SkipGtidExecutedTable = true
 	}
 

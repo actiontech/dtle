@@ -6,7 +6,6 @@ import (
 	"encoding/gob"
 	"fmt"
 	"io/ioutil"
-	"os"
 	"time"
 
 	"github.com/actiontech/dtle/g"
@@ -47,7 +46,7 @@ type GencodeType interface {
 
 func init() {
 	gob.Register(types.BinaryLiteral{})
-	if os.Getenv(g.ENV_BIG_MSG_100K) != "" {
+	if g.EnvIsTrue(g.ENV_BIG_MSG_100K) {
 		g.NatsMaxMsg = 100 * 1024 // TODO this does not works
 	}
 }

@@ -76,7 +76,7 @@ func NewDumper(db usql.QueryAble, table *common.Table, chunkSize int64,
 	default:
 		dumper.doChecksum = 0
 	}
-	if os.Getenv(g.ENV_DUMP_OLDWAY) != "" {
+	if g.EnvIsTrue(g.ENV_DUMP_OLDWAY) {
 		dumper.oldWayDump = true
 	}
 

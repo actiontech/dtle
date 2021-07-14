@@ -4,6 +4,7 @@ package g
 import (
 	hclog "github.com/hashicorp/go-hclog"
 	"github.com/shirou/gopsutil/mem"
+	"os"
 	"runtime/debug"
 	"sync/atomic"
 	"time"
@@ -36,7 +37,7 @@ const (
 	ENV_TESTSTUB1_DELAY   = "UDUP_TESTSTUB1_DELAY"
 	ENV_FULL_APPLY_DELAY  = "DTLE_FULL_APPLY_DELAY"
 	ENV_COUNT_INFO_SCHEMA = "DTLE_COUNT_INFO_SCHEMA"
-	ENV_BIG_MSG_100K        = "DTLE_BIG_MSG_100K"
+	ENV_BIG_MSG_100K      = "DTLE_BIG_MSG_100K"
 	ENV_SKIP_GTID_EXECUTED_TABLE = "DTLE_SKIP_GTID_EXECUTED_TABLE"
 	NatsMaxPayload        = 64 * 1024 * 1024
 
@@ -49,6 +50,15 @@ var (
 	// slightly smaller than NatsMaxPayload
 	NatsMaxMsg = 64 * 1024 * 1024 - 4096
 )
+
+// EnvIsTrue returns true if the env exists and is not "0".
+func EnvIsTrue(env string) bool {
+	val, exist := os.LookupEnv(env)
+	if !exist {
+		return false
+	}
+	return val != "0"
+}
 
 func StringPtrEmpty(p *string) bool {
 	if p == nil {

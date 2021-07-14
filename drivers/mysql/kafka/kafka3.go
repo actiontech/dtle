@@ -12,7 +12,6 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -107,7 +106,7 @@ func NewKafkaRunner(execCtx *common.ExecContext, cfg *common.KafkaConfig, logger
 
 		memory1:  new(int64),
 		memory2:  new(int64),
-		printTps: os.Getenv(g.ENV_PRINT_TPS) != "",
+		printTps: g.EnvIsTrue(g.ENV_PRINT_TPS),
 	}
 	kr.timestampCtx = mysql.NewTimestampContext(kr.shutdownCh, kr.logger, func() bool {
 		return len(kr.chBinlogEntries) == 0
