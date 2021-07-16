@@ -169,13 +169,8 @@ func BuildDMLDeleteQuery(databaseName, tableName string, tableColumns *common.Co
 
 	databaseName = umconf.EscapeName(databaseName)
 	tableName = umconf.EscapeName(tableName)
-	result = fmt.Sprintf(`
-			delete
-				from
-					%s.%s
-				where
-					%s
-		`, databaseName, tableName,
+	result = fmt.Sprintf(`delete from %s.%s where
+%s limit 1`, databaseName, tableName,
 		fmt.Sprintf("(%s)", strings.Join(comparisons, " and ")),
 	)
 	return result, columnArgs, hasUK, nil
@@ -209,13 +204,9 @@ func BuildDMLInsertQuery(databaseName, tableName string, tableColumns, sharedCol
 	mappedSharedColumnNames := duplicateNames(tableColumns.EscapedNames())
 	preparedValues := buildColumnsPreparedValues(tableColumns)
 
-	result = fmt.Sprintf(`
-			replace into
-				%s.%s
-					(%s)
-				values
-					(%s)
-		`, databaseName, tableName,
+	result = fmt.Sprintf(`replace into %s.%s
+(%s) values
+(%s)`, databaseName, tableName,
 		strings.Join(mappedSharedColumnNames, ", "),
 		strings.Join(preparedValues, ", "),
 	)
@@ -298,15 +289,10 @@ func BuildDMLUpdateQuery(databaseName, tableName string, tableColumns, sharedCol
 
 	setClause, err := BuildSetPreparedClause(mappedSharedColumns)
 
-	result = fmt.Sprintf(`
- 			update
- 					%s.%s
-				set
-					%s
-				where
- 					%s
- 				limit 1
- 		`, databaseName, tableName,
+	result = fmt.Sprintf(`update %s.%s set
+%s
+where
+%s limit 1`, databaseName, tableName,
 		setClause,
 		fmt.Sprintf("(%s)", strings.Join(comparisons, " and ")),
 	)
