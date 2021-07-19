@@ -182,10 +182,15 @@ func (a *Applier) updateGtidLoop() {
 
 	testTargetGtid := func() {
 		if a.gtidSet.Contain(a.targetGtid) {
-			a.logger.Info("meet target gtid", "gtidSet", a.targetGtid.String())
-			err := a.storeManager.PutTargetGtid(a.subject, "finished")
+			a.logger.Info("meet target gtid , update job status", "gtidSet", a.targetGtid.String())
+			jobInfo, err := a.storeManager.GetJobInfo(a.subject)
 			if err != nil {
-				a.onError(common.TaskStateDead, errors.Wrap(err, "PutKey"))
+				a.onError(common.TaskStateDead, errors.Wrap(err, "GetJobInfo"))
+			}
+			jobInfo.JobStatus = common.TargetGtidFinished
+			err = a.storeManager.SaveJobInfo(*jobInfo)
+			if err != nil {
+				a.onError(common.TaskStateDead, errors.Wrap(err, "SaveJobInfo"))
 			}
 			_ = a.Shutdown()
 		}
@@ -230,6 +235,7 @@ func (a *Applier) updateGtidLoop() {
 func (a *Applier) Run() {
 	var err error
 
+	a.checkJobFinish()
 	go a.watchTargetGtid()
 
 	{
@@ -1001,13 +1007,8 @@ func (a *Applier) Shutdown() error {
 }
 
 func (a *Applier) watchTargetGtid() {
+
 	target, err := a.storeManager.WatchTargetGtid(a.subject, a.shutdownCh)
-
-	if target == common.TargetGtidFinished {
-		a.logger.Info("job finish. shutting down")
-		_ = a.Shutdown()
-	}
-
 	if err != nil {
 		a.onError(common.TaskStateDead, err)
 	}
@@ -1019,4 +1020,15 @@ func (a *Applier) watchTargetGtid() {
 	}
 	a.targetGtid = gs
 	a.gtidCh <- nil
+}
+
+func (a *Applier) checkJobFinish() {
+	jobStatus, err := a.storeManager.GetJobStatus(a.subject)
+	if err != nil {
+		a.onError(common.TaskStateDead, err)
+	}
+	if jobStatus == common.TargetGtidFinished {
+		a.logger.Info("job finish. shutting down")
+		_ = a.Shutdown()
+	}
 }
