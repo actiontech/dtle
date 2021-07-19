@@ -335,6 +335,7 @@ func TestBuildDMLDeleteQuery(t *testing.T) {
 				mydb.tbl
 				where
 					((position = ?))
+				limit 1
 		`
 		test.S(t).ExpectEquals(normalizeQuery(query), normalizeQuery(expected))
 		test.S(t).ExpectTrue(reflect.DeepEqual(uniqueKeyArgs, []interface{}{17}))
@@ -415,6 +416,7 @@ func TestBuildDMLDeleteQuery(t *testing.T) {
 				mydb.tbl
 				where
 					((name = ?) and (position = ?))
+				limit 1
 		`
 		test.S(t).ExpectEquals(normalizeQuery(query), normalizeQuery(expected))
 		test.S(t).ExpectTrue(reflect.DeepEqual(uniqueKeyArgs, []interface{}{"testname", 17}))
@@ -496,6 +498,7 @@ func TestBuildDMLDeleteQuery(t *testing.T) {
 					mydb.tbl
 				where
 					((position = ?) and (name = ?))
+				limit 1
 		`
 		test.S(t).ExpectEquals(normalizeQuery(query), normalizeQuery(expected))
 		test.S(t).ExpectTrue(reflect.DeepEqual(uniqueKeyArgs, []interface{}{3, "testname"}))
@@ -590,6 +593,7 @@ func TestBuildDMLDeleteQuerySignedUnsigned(t *testing.T) {
 					mydb.tbl
 				where
 					((position = ?))
+ 				limit 1
 		`
 		test.S(t).ExpectEquals(normalizeQuery(query), normalizeQuery(expected))
 		test.S(t).ExpectTrue(reflect.DeepEqual(uniqueKeyArgs, []interface{}{-1}))
@@ -606,6 +610,7 @@ func TestBuildDMLDeleteQuerySignedUnsigned(t *testing.T) {
 					mydb.tbl
 				where
 					((position = ?))
+ 				limit 1
 		`
 		test.S(t).ExpectEquals(normalizeQuery(query), normalizeQuery(expected))
 		test.S(t).ExpectTrue(reflect.DeepEqual(uniqueKeyArgs, []interface{}{uint8(255)}))
