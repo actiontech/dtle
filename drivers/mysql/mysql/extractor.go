@@ -10,6 +10,9 @@ import (
 	gosql "database/sql"
 	"encoding/binary"
 	"fmt"
+
+	"github.com/actiontech/dtle/drivers/api/models"
+
 	"github.com/actiontech/dtle/drivers/mysql/common"
 	"github.com/cznic/mathutil"
 	"github.com/hashicorp/nomad/plugins/drivers"
@@ -145,25 +148,35 @@ func (e *Extractor) Run() {
 	var err error
 
 	{
+		jobStatus, _ := e.storeManager.GetJobStatus(e.subject)
+		if jobStatus == common.TargetGtidFinished {
+			_ = e.Shutdown()
+		}
+	}
+
+	{
 		target, err := e.storeManager.GetTargetGtid(e.subject)
 		if err != nil {
 			e.onError(common.TaskStateDead, err)
 			return
 		}
-		if target == common.TargetGtidFinished {
-			_ = e.Shutdown()
-		} else {
-			e.targetGtid = target
-		}
+		e.targetGtid = target
+
 	}
 
 	if e.mysqlContext.WaitOnJob != "" {
-		afterWait, err := e.storeManager.IsAfterWait(e.subject)
+		jobStatus, err := e.storeManager.GetJobStatus(e.subject)
 		if err != nil {
 			e.onError(common.TaskStateDead, err)
 			return
 		}
-		if !afterWait {
+		// ensure job status exist when first time to start a reverse task
+		if jobStatus == "" {
+			jobStatus = common.DtleJobStatusReverseInit
+			e.storeManager.SaveJobInfo(models.JobListItemV2{JobId: e.subject, JobStatus: jobStatus})
+		}
+		firstWait := jobStatus == common.DtleJobStatusReverseInit
+		if firstWait {
 			// the first time to wait
 			e.logger.Info("waiting for another job to finish", "job2", e.mysqlContext.WaitOnJob)
 			err = e.storeManager.WaitOnJob(e.subject, e.mysqlContext.WaitOnJob, e.shutdownCh)
@@ -172,7 +185,7 @@ func (e *Extractor) Run() {
 				return
 			}
 		}
-		e.logger.Info("after WaitOnJob", "job2", e.mysqlContext.WaitOnJob, "firstWait", !afterWait)
+		e.logger.Info("after WaitOnJob", "job2", e.mysqlContext.WaitOnJob, "firstWait", firstWait)
 	}
 
 	e.logger.Debug("consul put ReplChanBufferSize")
@@ -200,7 +213,7 @@ func (e *Extractor) Run() {
 	e.logger.Info("Extract binlog events", "mysql", e.mysqlContext.ConnectionConfig.GetAddr())
 
 	// Validate job arguments
-/*	{
+	/*	{
 		if e.mysqlContext.SkipCreateDbTable && e.mysqlContext.DropTableIfExists {
 			e.onError(TaskStateDead,
 				fmt.Errorf("conflicting job argument: SkipCreateDbTable=true and DropTableIfExists=true"))
@@ -870,7 +883,7 @@ func (e *Extractor) setStatementFor() string {
 }
 
 type TimestampContext struct {
-	stopCh         chan struct{}
+	stopCh chan struct{}
 	// Do not pass 0 to the chan.
 	TimestampCh    chan uint32
 	logger         hclog.Logger
@@ -1024,7 +1037,6 @@ func (e *Extractor) StreamEvents() error {
 func (e *Extractor) publish(subject string, txMsg []byte, gno int64) (err error) {
 	msgLen := len(txMsg)
 
-
 	data := txMsg
 	lenData := len(data)
 
@@ -1055,7 +1067,7 @@ func (e *Extractor) publish(subject string, txMsg []byte, gno int64) (err error)
 		}
 
 		e.logger.Debug("publish", "subject", subject, "gno", gno, "partLen", len(part), "iSeg", iSeg)
-		_, err := e.natsConn.Request(subject, part, 24 * time.Hour)
+		_, err := e.natsConn.Request(subject, part, 24*time.Hour)
 		if err != nil {
 			e.logger.Error("unexpected error on publish", "err", err)
 			return err
@@ -1270,7 +1282,7 @@ func (e *Extractor) mysqlDump() error {
 
 			}
 			entry := &common.DumpEntry{
-				DbSQL:      dbSQL,
+				DbSQL: dbSQL,
 			}
 			atomic.AddInt64(&e.mysqlContext.RowsEstimate, 1)
 			atomic.AddInt64(&e.TotalRowsCopied, 1)

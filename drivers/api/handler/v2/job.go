@@ -284,6 +284,9 @@ func buildMySQLJobListItem(logger hclog.Logger, jobParam *models.CreateOrUpdateM
 		User:     "root",
 		JobSteps: nil,
 	}
+	if jobParam.Reverse {
+		jobInfo.JobStatus = common.DtleJobStatusReverseInit
+	}
 	if jobParam.TaskStepName == "all" {
 		jobInfo.JobSteps = append(jobInfo.JobSteps, models.NewJobStep(mysql.JobFullCopy), models.NewJobStep(mysql.JobIncrCopy))
 	} else if jobParam.TaskStepName == mysql.JobFullCopy {
@@ -1323,14 +1326,19 @@ func FinishJob(c echo.Context) error {
 			BaseResp: models.BuildBaseResp(errors.New("job was paused")),
 		})
 	}
-
+	noRunJob := true
 	// finish job
 	for _, a := range nomadAllocs {
 		if a.DesiredStatus == "run" && a.TaskGroup == "src" { // the allocations will be stop by nomad if it is not desired to run. and there is no need to finish these allocations
+			noRunJob = false
 			if err := sentSignalToTask(logger, a.ID, "finish"); nil != err {
 				return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("allocation_id=%v; finish task failed:  %v", a.ID, err)))
 			}
 		}
+	}
+	if noRunJob {
+		return c.JSON(http.StatusInternalServerError,
+			models.BuildBaseResp(fmt.Errorf("cannot find a src allocation task whose desired status is run")))
 	}
 
 	return c.JSON(http.StatusOK, &models.FinishJobResp{
@@ -1379,6 +1387,7 @@ func ReverseJob(c echo.Context) error {
 		NewjobParam.TaskStepName = mysql.JobIncrCopy
 		NewjobParam.Failover = &originalJob.BasicTaskProfile.Configuration.FailOver
 		NewjobParam.IsMysqlPasswordEncrypted = false
+		NewjobParam.Reverse = true
 		NewjobParam.SrcTask = &models.MysqlSrcTaskConfig{
 			TaskName:     "src",
 			GroupMaxSize: originalJob.BasicTaskProfile.Configuration.GroupMaxSize,
