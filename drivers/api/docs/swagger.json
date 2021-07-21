@@ -17,6 +17,12 @@
                 "parameters": [
                     {
                         "type": "string",
+                        "description": "authorization",
+                        "name": "Authorization",
+                        "in": "header"
+                    },
+                    {
+                        "type": "string",
                         "description": "job id",
                         "name": "job_id",
                         "in": "formData",
@@ -46,6 +52,12 @@
                 "parameters": [
                     {
                         "type": "string",
+                        "description": "authorization",
+                        "name": "Authorization",
+                        "in": "header"
+                    },
+                    {
+                        "type": "string",
                         "description": "job id",
                         "name": "job_id",
                         "in": "formData",
@@ -70,6 +82,12 @@
                 ],
                 "operationId": "GetJobGtid",
                 "parameters": [
+                    {
+                        "type": "string",
+                        "description": "authorization",
+                        "name": "Authorization",
+                        "in": "header"
+                    },
                     {
                         "type": "string",
                         "description": "job id",
@@ -100,6 +118,12 @@
                 "operationId": "CreateOrUpdateMigrationJobV2",
                 "parameters": [
                     {
+                        "type": "string",
+                        "description": "authorization",
+                        "name": "Authorization",
+                        "in": "header"
+                    },
+                    {
                         "description": "migration job config",
                         "name": "migration_job_config",
                         "in": "body",
@@ -127,6 +151,12 @@
                 ],
                 "operationId": "GetMigrationJobDetailV2",
                 "parameters": [
+                    {
+                        "type": "string",
+                        "description": "authorization",
+                        "name": "Authorization",
+                        "in": "header"
+                    },
                     {
                         "type": "string",
                         "description": "job id",
@@ -158,6 +188,12 @@
                 "parameters": [
                     {
                         "type": "string",
+                        "description": "authorization",
+                        "name": "Authorization",
+                        "in": "header"
+                    },
+                    {
+                        "type": "string",
                         "description": "job id",
                         "name": "job_id",
                         "in": "formData",
@@ -185,6 +221,12 @@
                 ],
                 "operationId": "ResumeJobV2",
                 "parameters": [
+                    {
+                        "type": "string",
+                        "description": "authorization",
+                        "name": "Authorization",
+                        "in": "header"
+                    },
                     {
                         "type": "string",
                         "description": "job id",
@@ -216,6 +258,12 @@
                 "parameters": [
                     {
                         "type": "string",
+                        "description": "authorization",
+                        "name": "Authorization",
+                        "in": "header"
+                    },
+                    {
+                        "type": "string",
                         "description": "job id",
                         "name": "job_id",
                         "in": "formData",
@@ -243,6 +291,12 @@
                 ],
                 "operationId": "CreateOrUpdateSubscriptionJobV2",
                 "parameters": [
+                    {
+                        "type": "string",
+                        "description": "authorization",
+                        "name": "Authorization",
+                        "in": "header"
+                    },
                     {
                         "description": "subscription job config",
                         "name": "subscription_job_config",
@@ -273,6 +327,12 @@
                 "parameters": [
                     {
                         "type": "string",
+                        "description": "authorization",
+                        "name": "Authorization",
+                        "in": "header"
+                    },
+                    {
+                        "type": "string",
                         "description": "job id",
                         "name": "job_id",
                         "in": "query",
@@ -300,6 +360,12 @@
                 ],
                 "operationId": "CreateOrUpdateSyncJobV2",
                 "parameters": [
+                    {
+                        "type": "string",
+                        "description": "authorization",
+                        "name": "Authorization",
+                        "in": "header"
+                    },
                     {
                         "description": "sync job config",
                         "name": "sync_job_config",
@@ -330,6 +396,12 @@
                 "parameters": [
                     {
                         "type": "string",
+                        "description": "authorization",
+                        "name": "Authorization",
+                        "in": "header"
+                    },
+                    {
+                        "type": "string",
                         "description": "job id",
                         "name": "job_id",
                         "in": "query",
@@ -354,6 +426,12 @@
                 ],
                 "operationId": "JobListV2",
                 "parameters": [
+                    {
+                        "type": "string",
+                        "description": "authorization",
+                        "name": "Authorization",
+                        "in": "header"
+                    },
                     {
                         "enum": [
                             "migration",
@@ -410,6 +488,12 @@
                 "operationId": "UpdateLogLevelV2",
                 "parameters": [
                     {
+                        "type": "string",
+                        "description": "authorization",
+                        "name": "Authorization",
+                        "in": "header"
+                    },
+                    {
                         "enum": [
                             "TRACE",
                             "DEBUG",
@@ -434,6 +518,35 @@
                 }
             }
         },
+        "/v2/login": {
+            "post": {
+                "description": "user login",
+                "tags": [
+                    "user"
+                ],
+                "summary": "用户登录",
+                "operationId": "loginV2",
+                "parameters": [
+                    {
+                        "description": "user login request",
+                        "name": "user",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.UserLoginReqV2"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.GetUserLoginResV2"
+                        }
+                    }
+                }
+            }
+        },
         "/v2/monitor/task": {
             "get": {
                 "description": "get progress of tasks within an allocation.",
@@ -442,6 +555,12 @@
                 ],
                 "operationId": "GetTaskProgressV2",
                 "parameters": [
+                    {
+                        "type": "string",
+                        "description": "authorization",
+                        "name": "Authorization",
+                        "in": "header"
+                    },
                     {
                         "type": "string",
                         "description": "allocation id",
@@ -481,6 +600,12 @@
                 ],
                 "operationId": "ListMysqlColumnsV2",
                 "parameters": [
+                    {
+                        "type": "string",
+                        "description": "authorization",
+                        "name": "Authorization",
+                        "in": "header"
+                    },
                     {
                         "type": "string",
                         "description": "mysql host",
@@ -556,6 +681,12 @@
                 "parameters": [
                     {
                         "type": "string",
+                        "description": "authorization",
+                        "name": "Authorization",
+                        "in": "header"
+                    },
+                    {
+                        "type": "string",
                         "description": "mysql host",
                         "name": "mysql_host",
                         "in": "query",
@@ -612,6 +743,14 @@
                     "node"
                 ],
                 "operationId": "NodeListV2",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "authorization",
+                        "name": "Authorization",
+                        "in": "header"
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "OK",
@@ -633,6 +772,12 @@
                 ],
                 "operationId": "DeleteUser",
                 "parameters": [
+                    {
+                        "type": "string",
+                        "description": "authorization",
+                        "name": "Authorization",
+                        "in": "header"
+                    },
                     {
                         "type": "string",
                         "description": "user group name",
@@ -668,6 +813,12 @@
                 "parameters": [
                     {
                         "type": "string",
+                        "description": "authorization",
+                        "name": "Authorization",
+                        "in": "header"
+                    },
+                    {
+                        "type": "string",
                         "description": "filter user name",
                         "name": "filter_user_name",
                         "in": "query"
@@ -701,6 +852,12 @@
                 "operationId": "CreateOrUpdateUser",
                 "parameters": [
                     {
+                        "type": "string",
+                        "description": "authorization",
+                        "name": "Authorization",
+                        "in": "header"
+                    },
+                    {
                         "description": "user info",
                         "name": "user",
                         "in": "body",
@@ -731,6 +888,12 @@
                 ],
                 "operationId": "ValidateJobV2",
                 "parameters": [
+                    {
+                        "type": "string",
+                        "description": "authorization",
+                        "name": "Authorization",
+                        "in": "header"
+                    },
                     {
                         "description": "validate job config",
                         "name": "job_config",
@@ -950,7 +1113,6 @@
                     "$ref": "#/definitions/models.MysqlDestTaskConfig"
                 },
                 "failover": {
-                    "description": "failover default:true",
                     "type": "boolean",
                     "example": true
                 },
@@ -959,6 +1121,9 @@
                 },
                 "job_id": {
                     "type": "string"
+                },
+                "reverse": {
+                    "type": "boolean"
                 },
                 "src_task": {
                     "$ref": "#/definitions/models.MysqlSrcTaskConfig"
@@ -983,7 +1148,6 @@
                     "type": "integer"
                 },
                 "failover": {
-                    "description": "failover default:true",
                     "type": "boolean",
                     "example": true
                 },
@@ -998,6 +1162,9 @@
                 },
                 "message": {
                     "type": "string"
+                },
+                "reverse": {
+                    "type": "boolean"
                 },
                 "src_task": {
                     "$ref": "#/definitions/models.MysqlSrcTaskConfig"
@@ -1126,6 +1293,17 @@
                 },
                 "tasks_status": {
                     "$ref": "#/definitions/models.TaskProgress"
+                }
+            }
+        },
+        "models.GetUserLoginResV2": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/models.UserLoginResV2"
+                },
+                "message": {
+                    "type": "string"
                 }
             }
         },
@@ -1786,6 +1964,32 @@
                     "items": {
                         "$ref": "#/definitions/models.User"
                     }
+                }
+            }
+        },
+        "models.UserLoginReqV2": {
+            "type": "object",
+            "properties": {
+                "password": {
+                    "type": "string",
+                    "example": "123456"
+                },
+                "user_group": {
+                    "type": "string",
+                    "example": "test"
+                },
+                "username": {
+                    "type": "string",
+                    "example": "test"
+                }
+            }
+        },
+        "models.UserLoginResV2": {
+            "type": "object",
+            "properties": {
+                "token": {
+                    "type": "string",
+                    "example": "this is a jwt token string"
                 }
             }
         },

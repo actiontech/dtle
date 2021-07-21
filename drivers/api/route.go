@@ -1,8 +1,16 @@
 package api
 
 import (
+	"fmt"
 	"net/http"
 	"path"
+	"strings"
+
+	middleware "github.com/labstack/echo/v4/middleware"
+
+	"github.com/actiontech/dtle/drivers/mysql/common"
+
+	"github.com/dgrijalva/jwt-go"
 
 	_ "github.com/actiontech/dtle/drivers/api/docs"
 	"github.com/actiontech/dtle/drivers/api/handler"
@@ -57,28 +65,31 @@ func SetupApiServer(logger hclog.Logger, apiAddr, nomadAddr, consulAddr, uiDir s
 	e.GET("/v1/node/:nodeName/:type", v1.NodeRequest)
 
 	// api v2
-	e.POST("/v2/log/level", v2.UpdateLogLevelV2)
-	e.GET("/v2/jobs", v2.JobListV2)
-	e.GET("/v2/job/migration/detail", v2.GetMigrationJobDetailV2)
-	e.POST("/v2/job/migration", v2.CreateOrUpdateMigrationJobV2)
-	e.GET("/v2/job/sync/detail", v2.GetSyncJobDetailV2)
-	e.POST("/v2/job/sync", v2.CreateOrUpdateSyncJobV2)
-	e.GET("/v2/job/subscription/detail", v2.GetSubscriptionJobDetailV2)
-	e.POST("/v2/job/subscription", v2.CreateOrUpdateSubscriptionJobV2)
-	e.POST("/v2/job/pause", v2.PauseJobV2)
-	e.POST("/v2/job/resume", v2.ResumeJobV2)
-	e.POST("/v2/job/delete", v2.DeleteJobV2)
-	e.GET("/v2/nodes", v2.NodeListV2)
-	e.POST("/v2/validation/job", v2.ValidateJobV2)
-	e.GET("/v2/mysql/schemas", v2.ListMysqlSchemasV2)
-	e.GET("/v2/mysql/columns", v2.ListMysqlColumnsV2)
-	e.GET("/v2/monitor/task", v2.GetTaskProgressV2)
-	e.GET("/v2/job/gtid", v2.GetJobGtid)
-	e.POST("/v2/job/finish", v2.FinishJob)
-	e.POST("/v2/job/reverse", v2.ReverseJob)
-	e.GET("/v2/user/list", v2.UserList)
-	e.POST("/v2/user/update", v2.CreateOrUpdateUser)
-	e.POST("/v2/user/delete", v2.DeleteUser)
+	v2Router := e.Group("/v2")
+	v2Router.Use(JWTTokenAdapter(), middleware.JWT([]byte(common.JWTSecret)))
+	e.POST("/v2/login", v2.Login)
+	v2Router.POST("/log/level", v2.UpdateLogLevelV2)
+	v2Router.GET("/jobs", v2.JobListV2)
+	v2Router.GET("/job/migration/detail", v2.GetMigrationJobDetailV2)
+	v2Router.POST("/job/migration", v2.CreateOrUpdateMigrationJobV2)
+	v2Router.GET("/job/sync/detail", v2.GetSyncJobDetailV2)
+	v2Router.POST("/job/sync", v2.CreateOrUpdateSyncJobV2)
+	v2Router.GET("/job/subscription/detail", v2.GetSubscriptionJobDetailV2)
+	v2Router.POST("/job/subscription", v2.CreateOrUpdateSubscriptionJobV2)
+	v2Router.POST("/job/pause", v2.PauseJobV2)
+	v2Router.POST("/job/resume", v2.ResumeJobV2)
+	v2Router.POST("/job/delete", v2.DeleteJobV2)
+	v2Router.GET("/nodes", v2.NodeListV2, AdminUserAllowed())
+	v2Router.POST("/validation/job", v2.ValidateJobV2)
+	v2Router.GET("/mysql/schemas", v2.ListMysqlSchemasV2)
+	v2Router.GET("/mysql/columns", v2.ListMysqlColumnsV2)
+	v2Router.GET("/monitor/task", v2.GetTaskProgressV2)
+	v2Router.GET("/job/gtid", v2.GetJobGtid)
+	v2Router.POST("/job/finish", v2.FinishJob)
+	v2Router.POST("/job/reverse", v2.ReverseJob)
+	v2Router.GET("/user/list", v2.UserList)
+	v2Router.POST("/user/update", v2.CreateOrUpdateUser)
+	v2Router.POST("/user/delete", v2.DeleteUser)
 
 	// for pprof
 	e.GET("/debug/pprof/*", echo.WrapHandler(http.DefaultServeMux))
@@ -116,4 +127,38 @@ func SetupApiServer(logger hclog.Logger, apiAddr, nomadAddr, consulAddr, uiDir s
 	}
 
 	return nil
+}
+
+func GetUserName(c echo.Context) (string, string) {
+	user := c.Get("user").(*jwt.Token)
+	claims := user.Claims.(jwt.MapClaims)
+	return claims["group"].(string), claims["name"].(string)
+}
+
+// JWTTokenAdapter is a `echo` middleware,　by rewriting the header, the jwt token support header
+// "Authorization: {token}" and "Authorization: Bearer {token}".
+func JWTTokenAdapter() echo.MiddlewareFunc {
+	return func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
+			auth := c.Request().Header.Get(echo.HeaderAuthorization)
+			if auth != "" && !strings.HasPrefix(auth, middleware.DefaultJWTConfig.AuthScheme) {
+				c.Request().Header.Set(echo.HeaderAuthorization,
+					fmt.Sprintf("%s %s", middleware.DefaultJWTConfig.AuthScheme, auth))
+			}
+			return next(c)
+		}
+	}
+}
+
+//AdminUserAllowed is a `echo` middleware, only allow admin user to access next.
+func AdminUserAllowed() echo.MiddlewareFunc {
+	return func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
+			userGroup, user := GetUserName(c)
+			if userGroup == common.DefaultAdminGroup && user == common.DefaultAdminUser {
+				return next(c)
+			}
+			return echo.NewHTTPError(http.StatusForbidden)
+		}
+	}
 }

@@ -17,6 +17,7 @@ import (
 // @Description get user list.
 // @Tags user
 // @Success 200 {object} models.UserListResp
+// @param Authorization header string false "authorization"
 // @Param filter_user_name query string false "filter user name"
 // @Param filter_user_group query string false "filter user group"
 // @Router /v2/user/list [get]
@@ -59,6 +60,7 @@ func UserList(c echo.Context) error {
 // @Description create or update user.
 // @Tags user
 // @Accept application/json
+// @param Authorization header string false "authorization"
 // @Param user body models.CreateOrUpdateUserReq true "user info"
 // @Success 200 {object} models.CreateOrUpdateUserResp
 // @Router /v2/user/update [post]
@@ -117,6 +119,7 @@ func CreateOrUpdateUser(c echo.Context) error {
 // @Description delete user.
 // @Tags user
 // @accept application/x-www-form-urlencoded
+// @param Authorization header string false "authorization"
 // @Param user_group formData string true "user group name"
 // @Param user_name formData string true "user name"
 // @Success 200 {object} models.DeleteUserResp

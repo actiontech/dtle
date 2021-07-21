@@ -128,13 +128,14 @@ definitions:
       dest_task:
         $ref: '#/definitions/models.MysqlDestTaskConfig'
       failover:
-        description: failover default:true
         example: true
         type: boolean
       is_mysql_password_encrypted:
         type: boolean
       job_id:
         type: string
+      reverse:
+        type: boolean
       src_task:
         $ref: '#/definitions/models.MysqlSrcTaskConfig'
       task_step_name:
@@ -151,7 +152,6 @@ definitions:
       eval_create_index:
         type: integer
       failover:
-        description: failover default:true
         example: true
         type: boolean
       is_mysql_password_encrypted:
@@ -162,6 +162,8 @@ definitions:
         type: integer
       message:
         type: string
+      reverse:
+        type: boolean
       src_task:
         $ref: '#/definitions/models.MysqlSrcTaskConfig'
       task_step_name:
@@ -249,6 +251,13 @@ definitions:
         type: string
       tasks_status:
         $ref: '#/definitions/models.TaskProgress'
+    type: object
+  models.GetUserLoginResV2:
+    properties:
+      data:
+        $ref: '#/definitions/models.UserLoginResV2'
+      message:
+        type: string
     type: object
   models.GtidModeValidation:
     properties:
@@ -682,6 +691,24 @@ definitions:
           $ref: '#/definitions/models.User'
         type: array
     type: object
+  models.UserLoginReqV2:
+    properties:
+      password:
+        example: "123456"
+        type: string
+      user_group:
+        example: test
+        type: string
+      username:
+        example: test
+        type: string
+    type: object
+  models.UserLoginResV2:
+    properties:
+      token:
+        example: this is a jwt token string
+        type: string
+    type: object
   models.ValidateJobReqV2:
     properties:
       dest_task:
@@ -725,6 +752,10 @@ paths:
       description: delete job.
       operationId: DeleteJobV2
       parameters:
+      - description: authorization
+        in: header
+        name: Authorization
+        type: string
       - description: job id
         in: formData
         name: job_id
@@ -744,6 +775,10 @@ paths:
       description: Finish Job.
       operationId: FinishJob
       parameters:
+      - description: authorization
+        in: header
+        name: Authorization
+        type: string
       - description: job id
         in: formData
         name: job_id
@@ -761,6 +796,10 @@ paths:
       description: get src task current gtid.
       operationId: GetJobGtid
       parameters:
+      - description: authorization
+        in: header
+        name: Authorization
+        type: string
       - description: job id
         in: query
         name: job_id
@@ -780,6 +819,10 @@ paths:
       description: create or update migration job.
       operationId: CreateOrUpdateMigrationJobV2
       parameters:
+      - description: authorization
+        in: header
+        name: Authorization
+        type: string
       - description: migration job config
         in: body
         name: migration_job_config
@@ -798,6 +841,10 @@ paths:
       description: get migration job detail.
       operationId: GetMigrationJobDetailV2
       parameters:
+      - description: authorization
+        in: header
+        name: Authorization
+        type: string
       - description: job id
         in: query
         name: job_id
@@ -817,6 +864,10 @@ paths:
       description: pause job.
       operationId: PauseJobV2
       parameters:
+      - description: authorization
+        in: header
+        name: Authorization
+        type: string
       - description: job id
         in: formData
         name: job_id
@@ -836,6 +887,10 @@ paths:
       description: resume job.
       operationId: ResumeJobV2
       parameters:
+      - description: authorization
+        in: header
+        name: Authorization
+        type: string
       - description: job id
         in: formData
         name: job_id
@@ -855,6 +910,10 @@ paths:
       description: returnJob
       operationId: ReverseJob
       parameters:
+      - description: authorization
+        in: header
+        name: Authorization
+        type: string
       - description: job id
         in: formData
         name: job_id
@@ -874,6 +933,10 @@ paths:
       description: create or update subscription job.
       operationId: CreateOrUpdateSubscriptionJobV2
       parameters:
+      - description: authorization
+        in: header
+        name: Authorization
+        type: string
       - description: subscription job config
         in: body
         name: subscription_job_config
@@ -892,6 +955,10 @@ paths:
       description: get subscription job detail.
       operationId: GetSubscriptionJobDetailV2
       parameters:
+      - description: authorization
+        in: header
+        name: Authorization
+        type: string
       - description: job id
         in: query
         name: job_id
@@ -911,6 +978,10 @@ paths:
       description: create or update sync job.
       operationId: CreateOrUpdateSyncJobV2
       parameters:
+      - description: authorization
+        in: header
+        name: Authorization
+        type: string
       - description: sync job config
         in: body
         name: sync_job_config
@@ -929,6 +1000,10 @@ paths:
       description: get sync job detail.
       operationId: GetSyncJobDetailV2
       parameters:
+      - description: authorization
+        in: header
+        name: Authorization
+        type: string
       - description: job id
         in: query
         name: job_id
@@ -946,6 +1021,10 @@ paths:
       description: get job list.
       operationId: JobListV2
       parameters:
+      - description: authorization
+        in: header
+        name: Authorization
+        type: string
       - description: filter job type
         enum:
         - migration
@@ -983,6 +1062,10 @@ paths:
       description: reload log level dynamically.
       operationId: UpdateLogLevelV2
       parameters:
+      - description: authorization
+        in: header
+        name: Authorization
+        type: string
       - description: dtle log level
         enum:
         - TRACE
@@ -1001,11 +1084,34 @@ paths:
             $ref: '#/definitions/models.UpdataLogLevelRespV2'
       tags:
       - log
+  /v2/login:
+    post:
+      description: user login
+      operationId: loginV2
+      parameters:
+      - description: user login request
+        in: body
+        name: user
+        required: true
+        schema:
+          $ref: '#/definitions/models.UserLoginReqV2'
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.GetUserLoginResV2'
+      summary: 用户登录
+      tags:
+      - user
   /v2/monitor/task:
     get:
       description: get progress of tasks within an allocation.
       operationId: GetTaskProgressV2
       parameters:
+      - description: authorization
+        in: header
+        name: Authorization
+        type: string
       - description: allocation id
         in: query
         name: allocation_id
@@ -1033,6 +1139,10 @@ paths:
       description: list columns of mysql source instance.
       operationId: ListMysqlColumnsV2
       parameters:
+      - description: authorization
+        in: header
+        name: Authorization
+        type: string
       - description: mysql host
         in: query
         name: mysql_host
@@ -1083,6 +1193,10 @@ paths:
       description: list schemas of mysql source instance.
       operationId: ListMysqlSchemasV2
       parameters:
+      - description: authorization
+        in: header
+        name: Authorization
+        type: string
       - description: mysql host
         in: query
         name: mysql_host
@@ -1122,6 +1236,11 @@ paths:
     get:
       description: get node list.
       operationId: NodeListV2
+      parameters:
+      - description: authorization
+        in: header
+        name: Authorization
+        type: string
       responses:
         "200":
           description: OK
@@ -1136,6 +1255,10 @@ paths:
       description: delete user.
       operationId: DeleteUser
       parameters:
+      - description: authorization
+        in: header
+        name: Authorization
+        type: string
       - description: user group name
         in: formData
         name: user_group
@@ -1158,6 +1281,10 @@ paths:
       description: get user list.
       operationId: UserList
       parameters:
+      - description: authorization
+        in: header
+        name: Authorization
+        type: string
       - description: filter user name
         in: query
         name: filter_user_name
@@ -1180,6 +1307,10 @@ paths:
       description: create or update user.
       operationId: CreateOrUpdateUser
       parameters:
+      - description: authorization
+        in: header
+        name: Authorization
+        type: string
       - description: user info
         in: body
         name: user
@@ -1200,6 +1331,10 @@ paths:
       description: validate job config.
       operationId: ValidateJobV2
       parameters:
+      - description: authorization
+        in: header
+        name: Authorization
+        type: string
       - description: validate job config
         in: body
         name: job_config

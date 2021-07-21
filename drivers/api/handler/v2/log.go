@@ -23,6 +23,7 @@ import (
 // @Description reload log level dynamically.
 // @Tags log
 // @accept application/x-www-form-urlencoded
+// @param Authorization header string false "authorization"
 // @Param dtle_log_level formData string true "dtle log level" Enums(TRACE, DEBUG, INFO, WARN, ERROR)
 // @Success 200 {object} models.UpdataLogLevelRespV2
 // @router /v2/log/level [post]
