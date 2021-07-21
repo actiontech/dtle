@@ -41,3 +41,8 @@ type DeleteUserReq struct {
 type DeleteUserResp struct {
 	BaseResp
 }
+
+type CurrentUserResp struct {
+	CurrentUser *User `json:"current_user"`
+	BaseResp
+}

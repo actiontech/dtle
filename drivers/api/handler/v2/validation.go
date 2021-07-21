@@ -20,7 +20,7 @@ import (
 // @Description validate job config.
 // @Tags validation
 // @Accept application/json
-// @param Authorization header string false "authorization"
+// @Security ApiKeyAuth
 // @Param job_config body models.ValidateJobReqV2 true "validate job config"
 // @Success 200 {object} models.ValidateJobRespV2
 // @Router /v2/validation/job [post]

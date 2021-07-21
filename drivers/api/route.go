@@ -10,8 +10,6 @@ import (
 
 	"github.com/actiontech/dtle/drivers/mysql/common"
 
-	"github.com/dgrijalva/jwt-go"
-
 	_ "github.com/actiontech/dtle/drivers/api/docs"
 	"github.com/actiontech/dtle/drivers/api/handler"
 	v1 "github.com/actiontech/dtle/drivers/api/handler/v1"
@@ -23,6 +21,14 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	echoSwagger "github.com/swaggo/echo-swagger"
 )
+
+// @title dtle API Docs
+// @version 2.0
+// @description This is a sample server for dev.
+// @securityDefinitions.apikey ApiKeyAuth
+// @in header
+// @name Authorization
+// @BasePath /
 
 func SetupApiServer(logger hclog.Logger, apiAddr, nomadAddr, consulAddr, uiDir string) (err error) {
 	logger.Debug("Begin Setup api server", "addr", apiAddr)
@@ -90,6 +96,7 @@ func SetupApiServer(logger hclog.Logger, apiAddr, nomadAddr, consulAddr, uiDir s
 	v2Router.GET("/user/list", v2.UserList)
 	v2Router.POST("/user/update", v2.CreateOrUpdateUser)
 	v2Router.POST("/user/delete", v2.DeleteUser)
+	v2Router.GET("/user/current_user", v2.GetCurrentUser)
 
 	// for pprof
 	e.GET("/debug/pprof/*", echo.WrapHandler(http.DefaultServeMux))
@@ -129,12 +136,6 @@ func SetupApiServer(logger hclog.Logger, apiAddr, nomadAddr, consulAddr, uiDir s
 	return nil
 }
 
-func GetUserName(c echo.Context) (string, string) {
-	user := c.Get("user").(*jwt.Token)
-	claims := user.Claims.(jwt.MapClaims)
-	return claims["group"].(string), claims["name"].(string)
-}
-
 // JWTTokenAdapter is a `echo` middleware,　by rewriting the header, the jwt token support header
 // "Authorization: {token}" and "Authorization: Bearer {token}".
 func JWTTokenAdapter() echo.MiddlewareFunc {
@@ -154,7 +155,7 @@ func JWTTokenAdapter() echo.MiddlewareFunc {
 func AdminUserAllowed() echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
-			userGroup, user := GetUserName(c)
+			userGroup, user := v2.GetUserName(c)
 			if userGroup == common.DefaultAdminGroup && user == common.DefaultAdminUser {
 				return next(c)
 			}

@@ -15,7 +15,7 @@ import (
 // @Id NodeListV2
 // @Description get node list.
 // @Tags node
-// @param Authorization header string false "authorization"
+// @Security ApiKeyAuth
 // @Success 200 {object} models.NodeListRespV2
 // @Router /v2/nodes [get]
 func NodeListV2(c echo.Context) error {

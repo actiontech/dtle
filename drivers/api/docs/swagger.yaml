@@ -1,3 +1,4 @@
+basePath: /
 definitions:
   models.BasicTaskProfile:
     properties:
@@ -210,6 +211,13 @@ definitions:
       relay_master_log_file:
         type: string
       retrieved_gtid_set:
+        type: string
+    type: object
+  models.CurrentUserResp:
+    properties:
+      current_user:
+        $ref: '#/definitions/models.User'
+      message:
         type: string
     type: object
   models.DelayCount:
@@ -744,6 +752,9 @@ definitions:
     type: object
 info:
   contact: {}
+  description: This is a sample server for dev.
+  title: dtle API Docs
+  version: "2.0"
 paths:
   /v2/job/delete:
     post:
@@ -752,10 +763,6 @@ paths:
       description: delete job.
       operationId: DeleteJobV2
       parameters:
-      - description: authorization
-        in: header
-        name: Authorization
-        type: string
       - description: job id
         in: formData
         name: job_id
@@ -766,6 +773,8 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/models.DeleteJobRespV2'
+      security:
+      - ApiKeyAuth: []
       tags:
       - job
   /v2/job/finish:
@@ -775,10 +784,6 @@ paths:
       description: Finish Job.
       operationId: FinishJob
       parameters:
-      - description: authorization
-        in: header
-        name: Authorization
-        type: string
       - description: job id
         in: formData
         name: job_id
@@ -789,6 +794,8 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/models.FinishJobResp'
+      security:
+      - ApiKeyAuth: []
       tags:
       - job
   /v2/job/gtid:
@@ -796,10 +803,6 @@ paths:
       description: get src task current gtid.
       operationId: GetJobGtid
       parameters:
-      - description: authorization
-        in: header
-        name: Authorization
-        type: string
       - description: job id
         in: query
         name: job_id
@@ -810,6 +813,8 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/models.JobGtidResp'
+      security:
+      - ApiKeyAuth: []
       tags:
       - job
   /v2/job/migration:
@@ -819,10 +824,6 @@ paths:
       description: create or update migration job.
       operationId: CreateOrUpdateMigrationJobV2
       parameters:
-      - description: authorization
-        in: header
-        name: Authorization
-        type: string
       - description: migration job config
         in: body
         name: migration_job_config
@@ -834,6 +835,8 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/models.CreateOrUpdateMysqlToMysqlJobRespV2'
+      security:
+      - ApiKeyAuth: []
       tags:
       - job
   /v2/job/migration/detail:
@@ -841,10 +844,6 @@ paths:
       description: get migration job detail.
       operationId: GetMigrationJobDetailV2
       parameters:
-      - description: authorization
-        in: header
-        name: Authorization
-        type: string
       - description: job id
         in: query
         name: job_id
@@ -855,6 +854,8 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/models.MysqlToMysqlJobDetailRespV2'
+      security:
+      - ApiKeyAuth: []
       tags:
       - job
   /v2/job/pause:
@@ -864,10 +865,6 @@ paths:
       description: pause job.
       operationId: PauseJobV2
       parameters:
-      - description: authorization
-        in: header
-        name: Authorization
-        type: string
       - description: job id
         in: formData
         name: job_id
@@ -878,6 +875,8 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/models.PauseJobRespV2'
+      security:
+      - ApiKeyAuth: []
       tags:
       - job
   /v2/job/resume:
@@ -887,10 +886,6 @@ paths:
       description: resume job.
       operationId: ResumeJobV2
       parameters:
-      - description: authorization
-        in: header
-        name: Authorization
-        type: string
       - description: job id
         in: formData
         name: job_id
@@ -901,6 +896,8 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/models.ResumeJobRespV2'
+      security:
+      - ApiKeyAuth: []
       tags:
       - job
   /v2/job/reverse:
@@ -910,10 +907,6 @@ paths:
       description: returnJob
       operationId: ReverseJob
       parameters:
-      - description: authorization
-        in: header
-        name: Authorization
-        type: string
       - description: job id
         in: formData
         name: job_id
@@ -924,6 +917,8 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/models.ReverseJobResp'
+      security:
+      - ApiKeyAuth: []
       tags:
       - job
   /v2/job/subscription:
@@ -933,10 +928,6 @@ paths:
       description: create or update subscription job.
       operationId: CreateOrUpdateSubscriptionJobV2
       parameters:
-      - description: authorization
-        in: header
-        name: Authorization
-        type: string
       - description: subscription job config
         in: body
         name: subscription_job_config
@@ -948,6 +939,8 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/models.CreateOrUpdateMysqlToKafkaJobRespV2'
+      security:
+      - ApiKeyAuth: []
       tags:
       - job
   /v2/job/subscription/detail:
@@ -955,10 +948,6 @@ paths:
       description: get subscription job detail.
       operationId: GetSubscriptionJobDetailV2
       parameters:
-      - description: authorization
-        in: header
-        name: Authorization
-        type: string
       - description: job id
         in: query
         name: job_id
@@ -969,6 +958,8 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/models.MysqlToKafkaJobDetailRespV2'
+      security:
+      - ApiKeyAuth: []
       tags:
       - job
   /v2/job/sync:
@@ -978,10 +969,6 @@ paths:
       description: create or update sync job.
       operationId: CreateOrUpdateSyncJobV2
       parameters:
-      - description: authorization
-        in: header
-        name: Authorization
-        type: string
       - description: sync job config
         in: body
         name: sync_job_config
@@ -993,6 +980,8 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/models.CreateOrUpdateMysqlToMysqlJobRespV2'
+      security:
+      - ApiKeyAuth: []
       tags:
       - job
   /v2/job/sync/detail:
@@ -1000,10 +989,6 @@ paths:
       description: get sync job detail.
       operationId: GetSyncJobDetailV2
       parameters:
-      - description: authorization
-        in: header
-        name: Authorization
-        type: string
       - description: job id
         in: query
         name: job_id
@@ -1014,6 +999,8 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/models.MysqlToMysqlJobDetailRespV2'
+      security:
+      - ApiKeyAuth: []
       tags:
       - job
   /v2/jobs:
@@ -1021,10 +1008,6 @@ paths:
       description: get job list.
       operationId: JobListV2
       parameters:
-      - description: authorization
-        in: header
-        name: Authorization
-        type: string
       - description: filter job type
         enum:
         - migration
@@ -1053,6 +1036,8 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/models.JobListRespV2'
+      security:
+      - ApiKeyAuth: []
       tags:
       - job
   /v2/log/level:
@@ -1062,10 +1047,6 @@ paths:
       description: reload log level dynamically.
       operationId: UpdateLogLevelV2
       parameters:
-      - description: authorization
-        in: header
-        name: Authorization
-        type: string
       - description: dtle log level
         enum:
         - TRACE
@@ -1082,6 +1063,8 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/models.UpdataLogLevelRespV2'
+      security:
+      - ApiKeyAuth: []
       tags:
       - log
   /v2/login:
@@ -1108,10 +1091,6 @@ paths:
       description: get progress of tasks within an allocation.
       operationId: GetTaskProgressV2
       parameters:
-      - description: authorization
-        in: header
-        name: Authorization
-        type: string
       - description: allocation id
         in: query
         name: allocation_id
@@ -1132,6 +1111,8 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/models.GetTaskProgressRespV2'
+      security:
+      - ApiKeyAuth: []
       tags:
       - monitor
   /v2/mysql/columns:
@@ -1139,10 +1120,6 @@ paths:
       description: list columns of mysql source instance.
       operationId: ListMysqlColumnsV2
       parameters:
-      - description: authorization
-        in: header
-        name: Authorization
-        type: string
       - description: mysql host
         in: query
         name: mysql_host
@@ -1186,6 +1163,8 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/models.ListColumnsRespV2'
+      security:
+      - ApiKeyAuth: []
       tags:
       - mysql
   /v2/mysql/schemas:
@@ -1193,10 +1172,6 @@ paths:
       description: list schemas of mysql source instance.
       operationId: ListMysqlSchemasV2
       parameters:
-      - description: authorization
-        in: header
-        name: Authorization
-        type: string
       - description: mysql host
         in: query
         name: mysql_host
@@ -1230,24 +1205,36 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/models.ListMysqlSchemasRespV2'
+      security:
+      - ApiKeyAuth: []
       tags:
       - mysql
   /v2/nodes:
     get:
       description: get node list.
       operationId: NodeListV2
-      parameters:
-      - description: authorization
-        in: header
-        name: Authorization
-        type: string
       responses:
         "200":
           description: OK
           schema:
             $ref: '#/definitions/models.NodeListRespV2'
+      security:
+      - ApiKeyAuth: []
       tags:
       - node
+  /v2/user/current_user:
+    get:
+      description: get current user.
+      operationId: GetCurrentUser
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.CurrentUserResp'
+      security:
+      - ApiKeyAuth: []
+      tags:
+      - user
   /v2/user/delete:
     post:
       consumes:
@@ -1255,10 +1242,6 @@ paths:
       description: delete user.
       operationId: DeleteUser
       parameters:
-      - description: authorization
-        in: header
-        name: Authorization
-        type: string
       - description: user group name
         in: formData
         name: user_group
@@ -1274,6 +1257,8 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/models.DeleteUserResp'
+      security:
+      - ApiKeyAuth: []
       tags:
       - user
   /v2/user/list:
@@ -1281,10 +1266,6 @@ paths:
       description: get user list.
       operationId: UserList
       parameters:
-      - description: authorization
-        in: header
-        name: Authorization
-        type: string
       - description: filter user name
         in: query
         name: filter_user_name
@@ -1298,6 +1279,8 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/models.UserListResp'
+      security:
+      - ApiKeyAuth: []
       tags:
       - user
   /v2/user/update:
@@ -1307,10 +1290,6 @@ paths:
       description: create or update user.
       operationId: CreateOrUpdateUser
       parameters:
-      - description: authorization
-        in: header
-        name: Authorization
-        type: string
       - description: user info
         in: body
         name: user
@@ -1322,6 +1301,8 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/models.CreateOrUpdateUserResp'
+      security:
+      - ApiKeyAuth: []
       tags:
       - user
   /v2/validation/job:
@@ -1331,10 +1312,6 @@ paths:
       description: validate job config.
       operationId: ValidateJobV2
       parameters:
-      - description: authorization
-        in: header
-        name: Authorization
-        type: string
       - description: validate job config
         in: body
         name: job_config
@@ -1346,6 +1323,13 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/models.ValidateJobRespV2'
+      security:
+      - ApiKeyAuth: []
       tags:
       - validation
+securityDefinitions:
+  ApiKeyAuth:
+    in: header
+    name: Authorization
+    type: apiKey
 swagger: "2.0"
