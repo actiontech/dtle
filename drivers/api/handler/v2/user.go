@@ -43,8 +43,16 @@ func UserList(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("consul_addr=%v ; get job status list failed: %v", handler.ConsulAddr, err)))
 	}
 
+	currentUser, err := getCurrentUser(c)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
+	}
 	i := 0
 	for _, user := range userList {
+		if currentUser.UserGroup != common.DefaultAdminGroup &&
+			currentUser.UserGroup != user.UserGroup {
+			continue
+		}
 		if strings.HasPrefix(user.UserName, reqParam.FilterUserName) {
 			userList[i] = user
 			i++
@@ -80,6 +88,10 @@ func CreateOrUpdateUser(c echo.Context) error {
 	storeManager, err := common.NewStoreManager([]string{handler.ConsulAddr}, logger)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("get consul client failed: %v", err)))
+	}
+
+	if hasAccess, err := checkUserAccess(c, reqParam.UserGroup); err != nil || !hasAccess {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("current user has no access to operate group %v ; err : %v", reqParam.UserGroup, err)))
 	}
 
 	user, err := storeManager.GetUser(reqParam.UserGroup, reqParam.UserName)
@@ -135,6 +147,9 @@ func DeleteUser(c echo.Context) error {
 	}
 	if err := c.Validate(reqParam); nil != err {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invalid params:\n%v", err)))
+	}
+	if hasAccess, err := checkUserAccess(c, reqParam.UserGroup); err != nil || !hasAccess {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("current user has no access to operate group %v ; err : %v", reqParam.UserGroup, err)))
 	}
 
 	storeManager, err := common.NewStoreManager([]string{handler.ConsulAddr}, logger)
@@ -198,4 +213,15 @@ func GetUserName(c echo.Context) (string, string) {
 	user := c.Get("user").(*jwt.Token)
 	claims := user.Claims.(jwt.MapClaims)
 	return claims["group"].(string), claims["name"].(string)
+}
+
+func checkUserAccess(c echo.Context, group string) (bool, error) {
+	currentUser, err := getCurrentUser(c)
+	if err != nil {
+		return false, err
+	}
+	if currentUser.UserGroup != common.DefaultAdminGroup && currentUser.UserGroup != group {
+		return false, nil
+	}
+	return true, nil
 }

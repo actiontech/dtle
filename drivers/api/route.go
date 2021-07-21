@@ -74,7 +74,7 @@ func SetupApiServer(logger hclog.Logger, apiAddr, nomadAddr, consulAddr, uiDir s
 	v2Router := e.Group("/v2")
 	v2Router.Use(JWTTokenAdapter(), middleware.JWT([]byte(common.JWTSecret)))
 	e.POST("/v2/login", v2.Login)
-	v2Router.POST("/log/level", v2.UpdateLogLevelV2)
+	v2Router.POST("/log/level", v2.UpdateLogLevelV2, AdminUserAllowed())
 	v2Router.GET("/jobs", v2.JobListV2)
 	v2Router.GET("/job/migration/detail", v2.GetMigrationJobDetailV2)
 	v2Router.POST("/job/migration", v2.CreateOrUpdateMigrationJobV2)
@@ -85,7 +85,7 @@ func SetupApiServer(logger hclog.Logger, apiAddr, nomadAddr, consulAddr, uiDir s
 	v2Router.POST("/job/pause", v2.PauseJobV2)
 	v2Router.POST("/job/resume", v2.ResumeJobV2)
 	v2Router.POST("/job/delete", v2.DeleteJobV2)
-	v2Router.GET("/nodes", v2.NodeListV2, AdminUserAllowed())
+	v2Router.GET("/nodes", v2.NodeListV2)
 	v2Router.POST("/validation/job", v2.ValidateJobV2)
 	v2Router.GET("/mysql/schemas", v2.ListMysqlSchemasV2)
 	v2Router.GET("/mysql/columns", v2.ListMysqlColumnsV2)
@@ -155,8 +155,8 @@ func JWTTokenAdapter() echo.MiddlewareFunc {
 func AdminUserAllowed() echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
-			userGroup, user := v2.GetUserName(c)
-			if userGroup == common.DefaultAdminGroup && user == common.DefaultAdminUser {
+			userGroup, _ := v2.GetUserName(c)
+			if userGroup == common.DefaultAdminGroup {
 				return next(c)
 			}
 			return echo.NewHTTPError(http.StatusForbidden)

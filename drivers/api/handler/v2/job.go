@@ -49,6 +49,11 @@ func JobListV2(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invalid params:\n%v", err)))
 	}
 
+	user, err := getCurrentUser(c)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
+	}
+
 	storeManager, err := common.NewStoreManager([]string{handler.ConsulAddr}, logger)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("consul_addr=%v; connect to consul failed: %v", handler.ConsulAddr, err)))
@@ -67,6 +72,10 @@ func JobListV2(c echo.Context) error {
 	for _, consulJob := range jobList {
 		jobType := getJobTypeFromJobId(consulJob.JobId)
 		if "" != reqParam.FilterJobType && reqParam.FilterJobType != string(jobType) {
+			continue
+		}
+		if user.UserGroup != common.DefaultAdminGroup &&
+			consulJob.User != fmt.Sprintf("%s:%s", user.UserGroup, user.UserName) {
 			continue
 		}
 		jobItem := models.JobListItemV2{
@@ -168,15 +177,24 @@ func CreateOrUpdateMigrationJobV2(c echo.Context) error {
 	if err := c.Validate(jobParam); nil != err {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invalid params:\n%v", err)))
 	}
-	resp, err := createOrUpdateMysqlToMysqlJob(jobParam, logger, DtleJobTypeMigration)
+
+	if err := checkUpdateJobInfo(c, jobParam.JobId); err != nil {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
+	}
+
+	user, err := getCurrentUser(c)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
+	}
+	resp, err := createOrUpdateMysqlToMysqlJob(logger, jobParam, user, DtleJobTypeMigration)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
 	}
 	return c.JSON(http.StatusOK, resp)
 }
 
-func createOrUpdateMysqlToMysqlJob(jobParam *models.CreateOrUpdateMysqlToMysqlJobParamV2,
-	logger hclog.Logger, jobType DtleJobType) (*models.CreateOrUpdateMysqlToMysqlJobRespV2, error) {
+func createOrUpdateMysqlToMysqlJob(logger hclog.Logger, jobParam *models.CreateOrUpdateMysqlToMysqlJobParamV2,
+	user *models.User, jobType DtleJobType) (*models.CreateOrUpdateMysqlToMysqlJobRespV2, error) {
 
 	failover := g.PtrToBool(jobParam.Failover, true)
 	if jobParam.IsMysqlPasswordEncrypted {
@@ -238,7 +256,7 @@ func createOrUpdateMysqlToMysqlJob(jobParam *models.CreateOrUpdateMysqlToMysqlJo
 	if "" != nomadResp.Warnings {
 		respErr = errors.New(nomadResp.Warnings)
 	} else {
-		err = buildMySQLJobListItem(logger, jobParam)
+		err = buildMySQLJobListItem(logger, jobParam, user)
 		if err != nil {
 			return nil, err
 		}
@@ -270,7 +288,8 @@ func convertMysqlToMysqlJobToNomadJob(failover bool, apiJobId string, apiSrcTask
 	}, nil
 }
 
-func buildMySQLJobListItem(logger hclog.Logger, jobParam *models.CreateOrUpdateMysqlToMysqlJobParamV2) error {
+func buildMySQLJobListItem(logger hclog.Logger, jobParam *models.CreateOrUpdateMysqlToMysqlJobParamV2,
+	user *models.User) error {
 	// add data to consul
 	storeManager, err := common.NewStoreManager([]string{handler.ConsulAddr}, logger)
 	if err != nil {
@@ -282,9 +301,8 @@ func buildMySQLJobListItem(logger hclog.Logger, jobParam *models.CreateOrUpdateM
 		JobCreateTime: time.Now().In(time.Local).Format(time.RFC3339),
 		SrcAddrList:   []string{jobParam.SrcTask.MysqlConnectionConfig.MysqlHost},
 		DstAddrList:   []string{jobParam.DestTask.MysqlConnectionConfig.MysqlHost},
-		// todo
-		User:     "root",
-		JobSteps: nil,
+		User:          fmt.Sprintf("%s:%s", user.UserGroup, user.UserName),
+		JobSteps:      nil,
 	}
 	if jobParam.Reverse {
 		jobInfo.JobStatus = common.DtleJobStatusReverseInit
@@ -303,7 +321,8 @@ func buildMySQLJobListItem(logger hclog.Logger, jobParam *models.CreateOrUpdateM
 	return nil
 }
 
-func buildKafkaJobListItem(logger hclog.Logger, jobParam *models.CreateOrUpdateMysqlToKafkaJobParamV2) error {
+func buildKafkaJobListItem(logger hclog.Logger, jobParam *models.CreateOrUpdateMysqlToKafkaJobParamV2,
+	user *models.User) error {
 	// add data to consul
 	storeManager, err := common.NewStoreManager([]string{handler.ConsulAddr}, logger)
 	if err != nil {
@@ -316,9 +335,8 @@ func buildKafkaJobListItem(logger hclog.Logger, jobParam *models.CreateOrUpdateM
 		JobCreateTime: time.Now().In(time.Local).Format(time.RFC3339),
 		SrcAddrList:   []string{jobParam.SrcTask.MysqlConnectionConfig.MysqlHost},
 		DstAddrList:   jobParam.DestTask.BrokerAddrs,
-		// todo
-		User:     "root",
-		JobSteps: nil,
+		User:          fmt.Sprintf("%s:%s", user.UserGroup, user.UserName),
+		JobSteps:      nil,
 	}
 	if jobParam.TaskStepName == "all" {
 		jobInfo.JobSteps = append(jobInfo.JobSteps, models.NewJobStep(mysql.JobFullCopy), models.NewJobStep(mysql.JobIncrCopy))
@@ -459,6 +477,10 @@ func GetMysqlToMysqlJobDetail(c echo.Context, logger hclog.Logger, jobType DtleJ
 	}
 	if err := c.Validate(reqParam); nil != err {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invalid params:\n%v", err)))
+	}
+	err := checkJobAccess(c, reqParam.JobId)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
 	}
 	resp, err := getMysqlToMysqlJobDetail(logger, reqParam.JobId, jobType)
 	if err != nil {
@@ -808,7 +830,14 @@ func CreateOrUpdateSyncJobV2(c echo.Context) error {
 	if err := c.Validate(jobParam); nil != err {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invalid params:\n%v", err)))
 	}
-	resp, err := createOrUpdateMysqlToMysqlJob(jobParam, logger, DtleJobTypeSync)
+	if err := checkUpdateJobInfo(c, jobParam.JobId); err != nil {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
+	}
+	user, err := getCurrentUser(c)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
+	}
+	resp, err := createOrUpdateMysqlToMysqlJob(logger, jobParam, user, DtleJobTypeSync)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
 	}
@@ -849,6 +878,11 @@ func createOrUpdateMysqlToKafkaJob(c echo.Context, logger hclog.Logger, jobType 
 	if err := c.Validate(jobParam); nil != err {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invalid params:\n%v", err)))
 	}
+
+	if err := checkUpdateJobInfo(c, jobParam.JobId); err != nil {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
+	}
+
 	failover := g.PtrToBool(jobParam.Failover, true)
 
 	if jobParam.IsMysqlPasswordEncrypted {
@@ -906,7 +940,11 @@ func createOrUpdateMysqlToKafkaJob(c echo.Context, logger hclog.Logger, jobType 
 	if "" != nomadResp.Warnings {
 		respErr = errors.New(nomadResp.Warnings)
 	} else {
-		err = buildKafkaJobListItem(logger, jobParam)
+		user, err := getCurrentUser(c)
+		if err != nil {
+			return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
+		}
+		err = buildKafkaJobListItem(logger, jobParam, user)
 		if err != nil {
 			return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
 		}
@@ -968,6 +1006,11 @@ func GetSubscriptionJobDetailV2(c echo.Context) error {
 	}
 	if err := c.Validate(reqParam); nil != err {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invalid params:\n%v", err)))
+	}
+
+	err := checkJobAccess(c, reqParam.JobId)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
 	}
 
 	failover, nomadJob, allocations, err := getJobDetailFromNomad(logger, reqParam.JobId, DtleJobTypeSubscription)
@@ -1062,6 +1105,11 @@ func PauseJobV2(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invalid params:\n%v", err)))
 	}
 
+	err := checkJobAccess(c, reqParam.JobId)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
+	}
+
 	logger.Info("get allocations of job", "job_id", reqParam.JobId)
 	url := handler.BuildUrl(fmt.Sprintf("/v1/job/%v/allocations", reqParam.JobId))
 	logger.Info("invoke nomad api begin", "url", url)
@@ -1139,6 +1187,11 @@ func ResumeJobV2(c echo.Context) error {
 	}
 	if err := c.Validate(reqParam); nil != err {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invalid params:\n%v", err)))
+	}
+
+	err := checkJobAccess(c, reqParam.JobId)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
 	}
 
 	logger.Info("get allocations of job", "job_id", reqParam.JobId)
@@ -1235,6 +1288,10 @@ func DeleteJobV2(c echo.Context) error {
 	if err := c.Validate(reqParam); nil != err {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invalid params:\n%v", err)))
 	}
+	err := checkJobAccess(c, reqParam.JobId)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
+	}
 
 	logger.Info("delete job from nomad", "job_id", reqParam.JobId)
 	url := handler.BuildUrl(fmt.Sprintf("/v1/job/%v?purge=true", reqParam.JobId))
@@ -1278,6 +1335,11 @@ func GetJobGtid(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invalid params:\n%v", err)))
 	}
 
+	err := checkJobAccess(c, reqParam.JobId)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
+	}
+
 	storeManager, err := common.NewStoreManager([]string{handler.ConsulAddr}, logger)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("consul_addr=%v; connect to consul failed: %v", handler.ConsulAddr, err)))
@@ -1310,6 +1372,11 @@ func FinishJob(c echo.Context) error {
 	}
 	if err := c.Validate(reqParam); nil != err {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invalid params:\n%v", err)))
+	}
+
+	err := checkJobAccess(c, reqParam.JobId)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
 	}
 
 	logger.Info("get allocations of job", "job_id", reqParam.JobId)
@@ -1377,6 +1444,11 @@ func ReverseJob(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invalid params:\n%v", err)))
 	}
 
+	err := checkJobAccess(c, reqParam.JobId)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
+	}
+
 	storeManager, err := common.NewStoreManager([]string{handler.ConsulAddr}, logger)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("consul_addr=%v; connect to consul failed: %v", handler.ConsulAddr, err)))
@@ -1431,7 +1503,11 @@ func ReverseJob(c echo.Context) error {
 				}
 			}
 		}
-		_, err = createOrUpdateMysqlToMysqlJob(NewjobParam, logger, jobType)
+		user, err := getCurrentUser(c)
+		if err != nil {
+			return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
+		}
+		_, err = createOrUpdateMysqlToMysqlJob(logger, NewjobParam, user, jobType)
 		if err != nil {
 			return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
 		}
@@ -1442,4 +1518,51 @@ func ReverseJob(c echo.Context) error {
 	return c.JSON(http.StatusOK, &models.ReverseJobResp{
 		BaseResp: models.BuildBaseResp(nil),
 	})
+}
+
+func checkJobAccess(c echo.Context, jobId string) error {
+	logger := handler.NewLogger().Named("checkJobAccess")
+	logger.Info("start checkJobAccess")
+	user, err := getCurrentUser(c)
+	if err != nil {
+		return fmt.Errorf("consul_addr=%v; connect to consul failed: %v", handler.ConsulAddr, err)
+	}
+
+	if user.UserGroup == common.DefaultAdminGroup && user.UserName == common.DefaultAdminUser {
+		return nil
+	}
+
+	storeManager, err := common.NewStoreManager([]string{handler.ConsulAddr}, logger)
+	if err != nil {
+		return fmt.Errorf("consul_addr=%v; connect to consul failed: %v", handler.ConsulAddr, err)
+	}
+	job, err := storeManager.GetJobInfo(jobId)
+	if nil != err {
+		return fmt.Errorf("consul_addr=%v ; get job status list failed: %v", handler.ConsulAddr, err)
+	}
+
+	if job.User != fmt.Sprintf("%s:%s", user.UserGroup, user.UserName) {
+		return fmt.Errorf("current user %v:%v has not access to operate  job job_id=%v", user.UserGroup, user.UserName, jobId)
+	}
+
+	return nil
+}
+
+func checkUpdateJobInfo(c echo.Context, jobId string) error {
+	logger := handler.NewLogger().Named("checkUpdateJobInfo")
+	logger.Info("start checkUpdateJobInfo")
+	storeManager, err := common.NewStoreManager([]string{handler.ConsulAddr}, logger)
+	if err != nil {
+		return fmt.Errorf("consul_addr=%v; connect to consul failed: %v", handler.ConsulAddr, err)
+	}
+	jobInfo, err := storeManager.GetJobInfo(jobId)
+	if nil != err {
+		return fmt.Errorf("job_id=%v; get job status failed: %v", jobId, err)
+	} else if jobInfo.User != "" {
+		err = checkJobAccess(c, jobId)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
