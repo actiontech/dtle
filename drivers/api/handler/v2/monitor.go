@@ -16,6 +16,7 @@ import (
 // @Id GetTaskProgressV2
 // @Description get progress of tasks within an allocation.
 // @Tags monitor
+// @Security ApiKeyAuth
 // @Param allocation_id query string true "allocation id"
 // @Param task_name query string true "task name"
 // @Param nomad_http_address query string false "nomad_http_address is the http address of the nomad that the target dtle is running with. ignore it if you are not sure what to provide"

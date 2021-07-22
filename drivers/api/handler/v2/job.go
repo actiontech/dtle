@@ -32,6 +32,7 @@ import (
 // @Description get job list.
 // @Tags job
 // @Success 200 {object} models.JobListRespV2
+// @Security ApiKeyAuth
 // @Param filter_job_type query string false "filter job type" Enums(migration,sync,subscription)
 // @Param filter_job_id query string false "filter job id"
 // @Param filter_job_status query string false "filter job status"
@@ -153,6 +154,7 @@ func getJobTypeFromJobId(jobId string) DtleJobType {
 // @Description create or update migration job.
 // @Tags job
 // @Accept application/json
+// @Security ApiKeyAuth
 // @Param migration_job_config body models.CreateOrUpdateMysqlToMysqlJobParamV2 true "migration job config"
 // @Success 200 {object} models.CreateOrUpdateMysqlToMysqlJobRespV2
 // @Router /v2/job/migration [post]
@@ -441,6 +443,7 @@ func addNotRequiredParamToMap(target map[string]interface{}, value interface{}, 
 // @Description get migration job detail.
 // @Tags job
 // @Success 200 {object} models.MysqlToMysqlJobDetailRespV2
+// @Security ApiKeyAuth
 // @Param job_id query string true "job id"
 // @Router /v2/job/migration/detail [get]
 func GetMigrationJobDetailV2(c echo.Context) error {
@@ -792,6 +795,7 @@ func buildMysqlToMysqlJobDetailResp(nomadJob nomadApi.Job, nomadAllocations []no
 // @Description create or update sync job.
 // @Tags job
 // @Accept application/json
+// @Security ApiKeyAuth
 // @Param sync_job_config body models.CreateOrUpdateMysqlToMysqlJobParamV2 true "sync job config"
 // @Success 200 {object} models.CreateOrUpdateMysqlToMysqlJobRespV2
 // @Router /v2/job/sync [post]
@@ -815,6 +819,7 @@ func CreateOrUpdateSyncJobV2(c echo.Context) error {
 // @Description get sync job detail.
 // @Tags job
 // @Success 200 {object} models.MysqlToMysqlJobDetailRespV2
+// @Security ApiKeyAuth
 // @Param job_id query string true "job id"
 // @Router /v2/job/sync/detail [get]
 func GetSyncJobDetailV2(c echo.Context) error {
@@ -826,6 +831,7 @@ func GetSyncJobDetailV2(c echo.Context) error {
 // @Description create or update subscription job.
 // @Tags job
 // @Accept application/json
+// @Security ApiKeyAuth
 // @Param subscription_job_config body models.CreateOrUpdateMysqlToKafkaJobParamV2 true "subscription job config"
 // @Success 200 {object} models.CreateOrUpdateMysqlToKafkaJobRespV2
 // @Router /v2/job/subscription [post]
@@ -950,6 +956,7 @@ func buildKafkaDestTaskConfigMap(config *models.KafkaDestTaskConfig) map[string]
 // @Description get subscription job detail.
 // @Tags job
 // @Success 200 {object} models.MysqlToKafkaJobDetailRespV2
+// @Security ApiKeyAuth
 // @Param job_id query string true "job id"
 // @Router /v2/job/subscription/detail [get]
 func GetSubscriptionJobDetailV2(c echo.Context) error {
@@ -1040,6 +1047,7 @@ func buildKafkaDestTaskDetail(taskName string, internalTaskKafkaConfig common.Ka
 // @Description pause job.
 // @Tags job
 // @accept application/x-www-form-urlencoded
+// @Security ApiKeyAuth
 // @Param job_id formData string true "job id"
 // @Success 200 {object} models.PauseJobRespV2
 // @Router /v2/job/pause [post]
@@ -1118,6 +1126,7 @@ func PauseJobV2(c echo.Context) error {
 // @Description resume job.
 // @Tags job
 // @accept application/x-www-form-urlencoded
+// @Security ApiKeyAuth
 // @Param job_id formData string true "job id"
 // @Success 200 {object} models.ResumeJobRespV2
 // @Router /v2/job/resume [post]
@@ -1212,6 +1221,7 @@ func sentSignalToTask(logger hclog.Logger, allocId, signal string) error {
 // @Description delete job.
 // @Tags job
 // @accept application/x-www-form-urlencoded
+// @Security ApiKeyAuth
 // @Param job_id formData string true "job id"
 // @Success 200 {object} models.DeleteJobRespV2
 // @Router /v2/job/delete [post]
@@ -1254,6 +1264,7 @@ func DeleteJobV2(c echo.Context) error {
 // @Description get src task current gtid.
 // @Tags job
 // @Success 200 {object} models.JobGtidResp
+// @Security ApiKeyAuth
 // @Param job_id query string true "job id"
 // @Router /v2/job/gtid [get]
 func GetJobGtid(c echo.Context) error {
@@ -1286,6 +1297,7 @@ func GetJobGtid(c echo.Context) error {
 // @Tags job
 // @Description Finish Job.
 // @accept application/x-www-form-urlencoded
+// @Security ApiKeyAuth
 // @Param job_id formData string true "job id"
 // @Success 200 {object} models.FinishJobResp
 // @Router /v2/job/finish [post]
@@ -1350,6 +1362,7 @@ func FinishJob(c echo.Context) error {
 // @Description returnJob
 // @Tags job
 // @accept application/x-www-form-urlencoded
+// @Security ApiKeyAuth
 // @Param job_id formData string true "job id"
 // @Success 200 {object} models.ReverseJobResp
 // @Router /v2/job/reverse [post]

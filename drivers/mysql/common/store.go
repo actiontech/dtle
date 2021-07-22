@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/actiontech/dtle/drivers/api/models"
 	"github.com/hashicorp/go-hclog"
@@ -430,7 +431,22 @@ func (sm *StoreManager) DeleteUser(userGroup, user string) error {
 	return nil
 }
 
+var once sync.Once
+
 func (sm *StoreManager) GetUser(userGroup, userName string) (*models.User, error) {
+	once.Do(func() {
+		user := &models.User{
+			UserName:  DefaultAdminUser,
+			UserGroup: DefaultAdminGroup,
+			Role:      DefaultRole,
+			PassWord:  DefaultAdminPwd,
+		}
+		err := sm.SaveUser(user)
+		if err != nil {
+			sm.logger.Error("create default user failed", "err :", err)
+		}
+	})
+
 	key := fmt.Sprintf("dtleUser/%v/%v", userGroup, userName)
 	kp, err := sm.consulStore.Get(key)
 	if nil != err {

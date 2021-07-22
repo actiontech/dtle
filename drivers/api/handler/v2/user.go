@@ -6,6 +6,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dgrijalva/jwt-go"
+
 	"github.com/actiontech/dtle/drivers/api/handler"
 	"github.com/actiontech/dtle/drivers/api/models"
 	"github.com/actiontech/dtle/drivers/mysql/common"
@@ -17,6 +19,7 @@ import (
 // @Description get user list.
 // @Tags user
 // @Success 200 {object} models.UserListResp
+// @Security ApiKeyAuth
 // @Param filter_user_name query string false "filter user name"
 // @Param filter_user_group query string false "filter user group"
 // @Router /v2/user/list [get]
@@ -59,6 +62,7 @@ func UserList(c echo.Context) error {
 // @Description create or update user.
 // @Tags user
 // @Accept application/json
+// @Security ApiKeyAuth
 // @Param user body models.CreateOrUpdateUserReq true "user info"
 // @Success 200 {object} models.CreateOrUpdateUserResp
 // @Router /v2/user/update [post]
@@ -117,6 +121,7 @@ func CreateOrUpdateUser(c echo.Context) error {
 // @Description delete user.
 // @Tags user
 // @accept application/x-www-form-urlencoded
+// @Security ApiKeyAuth
 // @Param user_group formData string true "user group name"
 // @Param user_name formData string true "user name"
 // @Success 200 {object} models.DeleteUserResp
@@ -144,4 +149,53 @@ func DeleteUser(c echo.Context) error {
 	return c.JSON(http.StatusOK, &models.DeleteUserResp{
 		BaseResp: models.BuildBaseResp(nil),
 	})
+}
+
+// @Id GetCurrentUser
+// @Description get current user.
+// @Tags user
+// @Security ApiKeyAuth
+// @Success 200 {object} models.CurrentUserResp
+// @Router /v2/user/current_user [get]
+func GetCurrentUser(c echo.Context) error {
+	user, err := getCurrentUser(c)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invalid params:\n%v", err)))
+	}
+	user.PassWord = "*"
+	return c.JSON(http.StatusOK, &models.CurrentUserResp{
+		CurrentUser: user,
+		BaseResp:    models.BuildBaseResp(nil),
+	})
+}
+
+func getCurrentUser(c echo.Context) (*models.User, error) {
+	logger := handler.NewLogger().Named("getCurrentUser")
+	logger.Info("getCurrentUser")
+	key := "current_user"
+	currentUser := c.Get(key)
+	if currentUser != nil {
+		if user, ok := currentUser.(*models.User); ok {
+			return user, nil
+		}
+	}
+	storeManager, err := common.NewStoreManager([]string{handler.ConsulAddr}, logger)
+	if err != nil {
+		return nil, err
+	}
+	user, err := storeManager.GetUser(GetUserName(c))
+	if err == store.ErrKeyNotFound {
+		return nil, fmt.Errorf("current user is not exist")
+	} else if err != nil {
+		return nil, err
+	}
+
+	c.Set(key, user)
+	return user, nil
+}
+
+func GetUserName(c echo.Context) (string, string) {
+	user := c.Get("user").(*jwt.Token)
+	claims := user.Claims.(jwt.MapClaims)
+	return claims["group"].(string), claims["name"].(string)
 }

@@ -32,6 +32,16 @@ const (
 )
 
 const (
+	DefaultAdminGroup = "platform"
+	DefaultAdminUser  = "admin"
+	DefaultAdminPwd   = "admin"
+	DefaultRole       = "admin"
+
+	// TODO: Using configuration to set jwt secret
+	JWTSecret = "secret"
+)
+
+const (
 	ControlMsgError  int32 = 1
 	ControlMsgFinish int32 = 2
 )

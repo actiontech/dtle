@@ -18,6 +18,7 @@ import (
 // @Id ListMysqlSchemasV2
 // @Description list schemas of mysql source instance.
 // @Tags mysql
+// @Security ApiKeyAuth
 // @Param mysql_host query string true "mysql host"
 // @Param mysql_port query string true "mysql port"
 // @Param mysql_user query string true "mysql user"
@@ -90,6 +91,7 @@ func ListMysqlSchemasV2(c echo.Context) error {
 // @Id ListMysqlColumnsV2
 // @Description list columns of mysql source instance.
 // @Tags mysql
+// @Security ApiKeyAuth
 // @Param mysql_host query string true "mysql host"
 // @Param mysql_port query string true "mysql port"
 // @Param mysql_user query string true "mysql user"

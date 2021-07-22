@@ -26,6 +26,11 @@ var doc = `{
     "paths": {
         "/v2/job/delete": {
             "post": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
                 "description": "delete job.",
                 "consumes": [
                     "application/x-www-form-urlencoded"
@@ -55,6 +60,11 @@ var doc = `{
         },
         "/v2/job/finish": {
             "post": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
                 "description": "Finish Job.",
                 "consumes": [
                     "application/x-www-form-urlencoded"
@@ -84,6 +94,11 @@ var doc = `{
         },
         "/v2/job/gtid": {
             "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
                 "description": "get src task current gtid.",
                 "tags": [
                     "job"
@@ -110,6 +125,11 @@ var doc = `{
         },
         "/v2/job/migration": {
             "post": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
                 "description": "create or update migration job.",
                 "consumes": [
                     "application/json"
@@ -141,6 +161,11 @@ var doc = `{
         },
         "/v2/job/migration/detail": {
             "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
                 "description": "get migration job detail.",
                 "tags": [
                     "job"
@@ -167,6 +192,11 @@ var doc = `{
         },
         "/v2/job/pause": {
             "post": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
                 "description": "pause job.",
                 "consumes": [
                     "application/x-www-form-urlencoded"
@@ -196,6 +226,11 @@ var doc = `{
         },
         "/v2/job/resume": {
             "post": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
                 "description": "resume job.",
                 "consumes": [
                     "application/x-www-form-urlencoded"
@@ -225,6 +260,11 @@ var doc = `{
         },
         "/v2/job/reverse": {
             "post": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
                 "description": "returnJob",
                 "consumes": [
                     "application/x-www-form-urlencoded"
@@ -254,6 +294,11 @@ var doc = `{
         },
         "/v2/job/subscription": {
             "post": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
                 "description": "create or update subscription job.",
                 "consumes": [
                     "application/json"
@@ -285,6 +330,11 @@ var doc = `{
         },
         "/v2/job/subscription/detail": {
             "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
                 "description": "get subscription job detail.",
                 "tags": [
                     "job"
@@ -311,6 +361,11 @@ var doc = `{
         },
         "/v2/job/sync": {
             "post": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
                 "description": "create or update sync job.",
                 "consumes": [
                     "application/json"
@@ -342,6 +397,11 @@ var doc = `{
         },
         "/v2/job/sync/detail": {
             "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
                 "description": "get sync job detail.",
                 "tags": [
                     "job"
@@ -368,6 +428,11 @@ var doc = `{
         },
         "/v2/jobs": {
             "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
                 "description": "get job list.",
                 "tags": [
                     "job"
@@ -420,6 +485,11 @@ var doc = `{
         },
         "/v2/log/level": {
             "post": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
                 "description": "reload log level dynamically.",
                 "consumes": [
                     "application/x-www-form-urlencoded"
@@ -454,8 +524,42 @@ var doc = `{
                 }
             }
         },
+        "/v2/login": {
+            "post": {
+                "description": "user login",
+                "tags": [
+                    "user"
+                ],
+                "summary": "用户登录",
+                "operationId": "loginV2",
+                "parameters": [
+                    {
+                        "description": "user login request",
+                        "name": "user",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.UserLoginReqV2"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.GetUserLoginResV2"
+                        }
+                    }
+                }
+            }
+        },
         "/v2/monitor/task": {
             "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
                 "description": "get progress of tasks within an allocation.",
                 "tags": [
                     "monitor"
@@ -495,6 +599,11 @@ var doc = `{
         },
         "/v2/mysql/columns": {
             "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
                 "description": "list columns of mysql source instance.",
                 "tags": [
                     "mysql"
@@ -568,6 +677,11 @@ var doc = `{
         },
         "/v2/mysql/schemas": {
             "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
                 "description": "list schemas of mysql source instance.",
                 "tags": [
                     "mysql"
@@ -627,6 +741,11 @@ var doc = `{
         },
         "/v2/nodes": {
             "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
                 "description": "get node list.",
                 "tags": [
                     "node"
@@ -642,8 +761,35 @@ var doc = `{
                 }
             }
         },
+        "/v2/user/current_user": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "get current user.",
+                "tags": [
+                    "user"
+                ],
+                "operationId": "GetCurrentUser",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.CurrentUserResp"
+                        }
+                    }
+                }
+            }
+        },
         "/v2/user/delete": {
             "post": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
                 "description": "delete user.",
                 "consumes": [
                     "application/x-www-form-urlencoded"
@@ -680,6 +826,11 @@ var doc = `{
         },
         "/v2/user/list": {
             "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
                 "description": "get user list.",
                 "tags": [
                     "user"
@@ -711,6 +862,11 @@ var doc = `{
         },
         "/v2/user/update": {
             "post": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
                 "description": "create or update user.",
                 "consumes": [
                     "application/json"
@@ -742,6 +898,11 @@ var doc = `{
         },
         "/v2/validation/job": {
             "post": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
                 "description": "validate job config.",
                 "consumes": [
                     "application/json"
@@ -970,7 +1131,6 @@ var doc = `{
                     "$ref": "#/definitions/models.MysqlDestTaskConfig"
                 },
                 "failover": {
-                    "description": "failover default:true",
                     "type": "boolean",
                     "example": true
                 },
@@ -979,6 +1139,9 @@ var doc = `{
                 },
                 "job_id": {
                     "type": "string"
+                },
+                "reverse": {
+                    "type": "boolean"
                 },
                 "src_task": {
                     "$ref": "#/definitions/models.MysqlSrcTaskConfig"
@@ -1003,7 +1166,6 @@ var doc = `{
                     "type": "integer"
                 },
                 "failover": {
-                    "description": "failover default:true",
                     "type": "boolean",
                     "example": true
                 },
@@ -1018,6 +1180,9 @@ var doc = `{
                 },
                 "message": {
                     "type": "string"
+                },
+                "reverse": {
+                    "type": "boolean"
                 },
                 "src_task": {
                     "$ref": "#/definitions/models.MysqlSrcTaskConfig"
@@ -1086,6 +1251,17 @@ var doc = `{
                 }
             }
         },
+        "models.CurrentUserResp": {
+            "type": "object",
+            "properties": {
+                "current_user": {
+                    "$ref": "#/definitions/models.User"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
         "models.DelayCount": {
             "type": "object",
             "properties": {
@@ -1146,6 +1322,17 @@ var doc = `{
                 },
                 "tasks_status": {
                     "$ref": "#/definitions/models.TaskProgress"
+                }
+            }
+        },
+        "models.GetUserLoginResV2": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/models.UserLoginResV2"
+                },
+                "message": {
+                    "type": "string"
                 }
             }
         },
@@ -1809,6 +1996,32 @@ var doc = `{
                 }
             }
         },
+        "models.UserLoginReqV2": {
+            "type": "object",
+            "properties": {
+                "password": {
+                    "type": "string",
+                    "example": "123456"
+                },
+                "user_group": {
+                    "type": "string",
+                    "example": "test"
+                },
+                "username": {
+                    "type": "string",
+                    "example": "test"
+                }
+            }
+        },
+        "models.UserLoginResV2": {
+            "type": "object",
+            "properties": {
+                "token": {
+                    "type": "string",
+                    "example": "this is a jwt token string"
+                }
+            }
+        },
         "models.ValidateJobReqV2": {
             "type": "object",
             "required": [
@@ -1856,6 +2069,13 @@ var doc = `{
                 }
             }
         }
+    },
+    "securityDefinitions": {
+        "ApiKeyAuth": {
+            "type": "apiKey",
+            "name": "Authorization",
+            "in": "header"
+        }
     }
 }`
 
@@ -1870,12 +2090,12 @@ type swaggerInfo struct {
 
 // SwaggerInfo holds exported Swagger Info so clients can modify it
 var SwaggerInfo = swaggerInfo{
-	Version:     "",
+	Version:     "2.0",
 	Host:        "",
-	BasePath:    "",
+	BasePath:    "/",
 	Schemes:     []string{},
-	Title:       "",
-	Description: "",
+	Title:       "dtle API Docs",
+	Description: "This is a sample server for dev.",
 }
 
 type s struct{}
