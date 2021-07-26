@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"net/http"
+	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
@@ -48,39 +49,30 @@ func rewriteRulesRegex(rewrite map[string]string) map[*regexp.Regexp]string {
 	return rulesRegex
 }
 
-func rewriteURL(rewriteRegex map[*regexp.Regexp]string, req *http.Request) error {
-	if len(rewriteRegex) == 0 {
-		return nil
-	}
-
-	// Depending how HTTP request is sent RequestURI could contain Scheme://Host/path or be just /path.
-	// We only want to use path part for rewriting and therefore trim prefix if it exists
-	rawURI := req.RequestURI
-	if rawURI != "" && rawURI[0] != '/' {
-		prefix := ""
-		if req.URL.Scheme != "" {
-			prefix = req.URL.Scheme + "://"
-		}
-		if req.URL.Host != "" {
-			prefix += req.URL.Host // host or host:port
-		}
-		if prefix != "" {
-			rawURI = strings.TrimPrefix(rawURI, prefix)
-		}
-	}
-
+func rewritePath(rewriteRegex map[*regexp.Regexp]string, req *http.Request) {
 	for k, v := range rewriteRegex {
-		if replacer := captureTokens(k, rawURI); replacer != nil {
-			url, err := req.URL.Parse(replacer.Replace(v))
-			if err != nil {
-				return err
-			}
-			req.URL = url
+		rawPath := req.URL.RawPath
+		if rawPath != "" {
+			// RawPath is only set when there has been escaping done. In that case Path must be deduced from rewritten RawPath
+			// because encoded Path could match rules that RawPath did not
+			if replacer := captureTokens(k, rawPath); replacer != nil {
+				rawPath = replacer.Replace(v)
 
-			return nil // rewrite only once
+				req.URL.RawPath = rawPath
+				req.URL.Path, _ = url.PathUnescape(rawPath)
+
+				return // rewrite only once
+			}
+
+			continue
+		}
+
+		if replacer := captureTokens(k, req.URL.Path); replacer != nil {
+			req.URL.Path = replacer.Replace(v)
+
+			return // rewrite only once
 		}
 	}
-	return nil
 }
 
 // DefaultSkipper returns false which processes the middleware.

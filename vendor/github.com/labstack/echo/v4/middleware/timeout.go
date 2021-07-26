@@ -1,11 +1,12 @@
+// +build go1.13
+
 package middleware
 
 import (
 	"context"
+	"github.com/labstack/echo/v4"
 	"net/http"
 	"time"
-
-	"github.com/labstack/echo/v4"
 )
 
 type (
@@ -41,8 +42,8 @@ var (
 	}
 )
 
-// Timeout returns a middleware which returns error (503 Service Unavailable error) to client immediately when handler
-// call runs for longer than its time limit. NB: timeout does not stop handler execution.
+// Timeout returns a middleware which recovers from panics anywhere in the chain
+// and handles the control to the centralized HTTPErrorHandler.
 func Timeout() echo.MiddlewareFunc {
 	return TimeoutWithConfig(DefaultTimeoutConfig)
 }
@@ -88,23 +89,10 @@ type echoHandlerFuncWrapper struct {
 }
 
 func (t echoHandlerFuncWrapper) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
-	// replace echo.Context Request with the one provided by TimeoutHandler to let later middlewares/handler on the chain
-	// handle properly it's cancellation
-	t.ctx.SetRequest(r)
-
 	// replace writer with TimeoutHandler custom one. This will guarantee that
 	// `writes by h to its ResponseWriter will return ErrHandlerTimeout.`
 	originalWriter := t.ctx.Response().Writer
 	t.ctx.Response().Writer = rw
-
-	// in case of panic we restore original writer and call panic again
-	// so it could be handled with global middleware Recover()
-	defer func() {
-		if err := recover(); err != nil {
-			t.ctx.Response().Writer = originalWriter
-			panic(err)
-		}
-	}()
 
 	err := t.handler(t.ctx)
 	if ctxErr := r.Context().Err(); ctxErr == context.DeadlineExceeded {
@@ -118,11 +106,6 @@ func (t echoHandlerFuncWrapper) ServeHTTP(rw http.ResponseWriter, r *http.Reques
 	// so on timeout writer stays what http.TimeoutHandler uses and prevents writing headers/body
 	t.ctx.Response().Writer = originalWriter
 	if err != nil {
-		// call global error handler to write error to the client. This is needed or `http.TimeoutHandler` will send status code by itself
-		// and after that our tries to write status code will not work anymore
-		t.ctx.Error(err)
-		// we pass error from handler to middlewares up in handler chain to act on it if needed. But this means that
-		// global error handler is probably be called twice as `t.ctx.Error` already does that.
 		t.errChan <- err
 	}
 }

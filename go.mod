@@ -16,6 +16,7 @@ require (
 	github.com/cznic/parser v0.0.0-20181122101858-d773202d5b1f // indirect
 	github.com/cznic/strutil v0.0.0-20181122101858-275e90344537 // indirect
 	github.com/cznic/y v0.0.0-20181122101901-b05e8c2e8d7b // indirect
+	github.com/dgrijalva/jwt-go v3.2.0+incompatible
 	github.com/docker/go-units v0.4.0 // indirect
 	github.com/docker/libkv v0.2.1
 	github.com/go-playground/universal-translator v0.17.0 // indirect

@@ -55,6 +55,8 @@ github.com/cznic/strutil
 github.com/cznic/y
 # github.com/davecgh/go-spew v1.1.1
 github.com/davecgh/go-spew/spew
+# github.com/dgrijalva/jwt-go v3.2.0+incompatible
+github.com/dgrijalva/jwt-go
 # github.com/dgryski/go-farm v0.0.0-20190423205320-6a90982ecee2
 github.com/dgryski/go-farm
 # github.com/docker/libkv v0.2.1
@@ -215,9 +217,12 @@ github.com/klauspost/cpuid
 github.com/konsorten/go-windows-terminal-sequences
 # github.com/labstack/echo/v4 v4.2.1
 github.com/labstack/echo/v4
+github.com/labstack/echo/v4/middleware
 # github.com/labstack/gommon v0.3.0
+github.com/labstack/gommon/bytes
 github.com/labstack/gommon/color
 github.com/labstack/gommon/log
+github.com/labstack/gommon/random
 # github.com/leodido/go-urn v1.2.1
 github.com/leodido/go-urn
 # github.com/lytics/datemath v0.0.0-20180727225141-3ada1c10b5de
@@ -585,6 +590,8 @@ golang.org/x/text/transform
 golang.org/x/text/unicode/bidi
 golang.org/x/text/unicode/norm
 golang.org/x/text/width
+# golang.org/x/time v0.0.0-20201208040808-7e3f01d25324
+golang.org/x/time/rate
 # golang.org/x/tools v0.0.0-20201207182000-5679438983bd
 golang.org/x/tools/container/intsets
 golang.org/x/tools/go/ast/astutil
