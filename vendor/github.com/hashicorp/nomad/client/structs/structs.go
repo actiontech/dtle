@@ -1,6 +1,6 @@
 package structs
 
-//go:generate codecgen -d 102 -t codec_generated -o structs.generated.go structs.go
+//go:generate codecgen -c github.com/hashicorp/go-msgpack/codec -st codec -d 102 -t codegen_generated -o structs.generated.go structs.go
 
 import (
 	"errors"
@@ -331,7 +331,7 @@ type HealthCheckIntervalResponse struct {
 func (h *HealthCheckResponse) AddDriverInfo(name string, driverInfo *structs.DriverInfo) {
 	// initialize Drivers if it has not been already
 	if h.Drivers == nil {
-		h.Drivers = make(map[string]*structs.DriverInfo, 0)
+		h.Drivers = make(map[string]*structs.DriverInfo)
 	}
 
 	h.Drivers[name] = driverInfo

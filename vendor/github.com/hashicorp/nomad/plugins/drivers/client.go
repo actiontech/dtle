@@ -71,6 +71,9 @@ func (d *driverPluginClient) Capabilities() (*Capabilities, error) {
 		default:
 			caps.FSIsolation = FSIsolationNone
 		}
+
+		caps.MountConfigs = MountConfigSupport(resp.Capabilities.MountConfigs)
+		caps.RemoteTasks = resp.Capabilities.RemoteTasks
 	}
 
 	return caps, nil

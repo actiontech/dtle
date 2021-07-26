@@ -84,16 +84,9 @@ func (r *Resources) Merge(other *Resources) {
 }
 
 type Port struct {
-	Label       string
-	Value       int    `mapstructure:"static"`
-	To          int    `mapstructure:"to"`
-	HostNetwork string `mapstructure:"host_network"`
-}
-
-type DNSConfig struct {
-	Servers  []string `mapstructure:"servers"`
-	Searches []string `mapstructure:"searches"`
-	Options  []string `mapstructure:"options"`
+	Label string
+	Value int `mapstructure:"static"`
+	To    int `mapstructure:"to"`
 }
 
 // NetworkResource is used to describe required network
@@ -104,7 +97,6 @@ type NetworkResource struct {
 	CIDR          string
 	IP            string
 	MBits         *int
-	DNS           *DNSConfig
 	ReservedPorts []Port
 	DynamicPorts  []Port
 }

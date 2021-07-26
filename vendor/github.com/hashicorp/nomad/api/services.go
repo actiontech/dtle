@@ -110,7 +110,6 @@ type Service struct {
 	Connect           *ConsulConnect
 	Meta              map[string]string
 	CanaryMeta        map[string]string
-	TaskName          string `mapstructure:"task"`
 }
 
 // Canonicalize the Service by ensuring its name and address mode are set. Task

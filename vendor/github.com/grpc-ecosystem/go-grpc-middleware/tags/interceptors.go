@@ -4,10 +4,12 @@
 package grpc_ctxtags
 
 import (
-	"github.com/grpc-ecosystem/go-grpc-middleware"
-	"golang.org/x/net/context"
+	"context"
+
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/peer"
+
+	"github.com/grpc-ecosystem/go-grpc-middleware"
 )
 
 // UnaryServerInterceptor returns a new unary server interceptors that sets the values for request tags.
@@ -66,11 +68,11 @@ func (w *wrappedStream) RecvMsg(m interface{}) error {
 }
 
 func newTagsForCtx(ctx context.Context) context.Context {
-	t := newTags()
+	t := NewTags()
 	if peer, ok := peer.FromContext(ctx); ok {
 		t.Set("peer.address", peer.Addr.String())
 	}
-	return setInContext(ctx, t)
+	return SetInContext(ctx, t)
 }
 
 func setRequestFieldTags(ctx context.Context, f RequestFieldExtractorFunc, fullMethodName string, req interface{}) {

@@ -10,8 +10,7 @@ require (
 	github.com/araddon/dateparse v0.0.0-20190622164848-0fb0a474d195 // indirect
 	github.com/araddon/gou v0.0.0-20190110011759-c797efecbb61 // indirect
 	github.com/araddon/qlbridge v0.0.0-00010101000000-000000000000
-	github.com/armon/go-metrics v0.0.0-20190430140413-ec5e00d3c878
-	github.com/aws/aws-sdk-go v1.29.29 // indirect
+	github.com/armon/go-metrics v0.3.4
 	github.com/cznic/mathutil v0.0.0-20181122101859-297441e03548
 	github.com/cznic/parser v0.0.0-20181122101858-d773202d5b1f // indirect
 	github.com/cznic/strutil v0.0.0-20181122101858-275e90344537 // indirect
@@ -24,18 +23,11 @@ require (
 	github.com/go-sql-driver/mysql v1.5.0
 	github.com/golang/snappy v0.0.1 // indirect
 	github.com/gorhill/cronexpr v0.0.0-20180427100037-88b0669f7d75 // indirect
-	github.com/hashicorp/consul-template v0.24.1 // indirect
-	github.com/hashicorp/consul/api v1.4.0 // indirect
-	github.com/hashicorp/go-hclog v0.12.1
-	github.com/hashicorp/go-immutable-radix v1.2.0 // indirect
-	github.com/hashicorp/go-multierror v1.0.0 // indirect
-	github.com/hashicorp/go-plugin v1.2.0 // indirect
-	github.com/hashicorp/go-version v1.2.0 // indirect
+	github.com/hashicorp/go-hclog v0.14.1
 	github.com/hashicorp/golang-lru v0.5.4 // indirect
 	github.com/hashicorp/hcl2 v0.0.0-20191002203319-fb75b3253c80 // indirect
-	github.com/hashicorp/nomad v0.10.4
-	github.com/hashicorp/nomad/api v0.0.0-20200709025555-f35405485151
-	github.com/hashicorp/raft v1.1.2 // indirect
+	github.com/hashicorp/nomad v1.1.2
+	github.com/hashicorp/nomad/api v0.0.0-20200529203653-c4416b26d3eb
 	github.com/ikarishinjieva/golang-live-coverage-report v0.0.0-20190317040040-52af5b19c76c
 	github.com/issuj/gofaster v0.0.0-20170702192727-b08f1666d622 // indirect
 	github.com/julienschmidt/httprouter v1.2.0
@@ -44,7 +36,7 @@ require (
 	github.com/lytics/datemath v0.0.0-20180727225141-3ada1c10b5de // indirect
 	github.com/mb0/glob v0.0.0-20160210091149-1eb79d2de6c4 // indirect
 	github.com/mitchellh/copystructure v1.0.0 // indirect
-	github.com/mitchellh/mapstructure v1.1.2
+	github.com/mitchellh/mapstructure v1.3.3
 	github.com/nats-io/go-nats v1.7.2
 	github.com/nats-io/nats-server/v2 v2.1.6
 	github.com/nats-io/nats-streaming-server v0.17.0
@@ -56,7 +48,7 @@ require (
 	github.com/pingcap/parser v3.0.11+incompatible
 	github.com/pingcap/tidb v0.0.0-20190613131440-c59a108c28b7
 	github.com/pkg/errors v0.9.1
-	github.com/prometheus/client_golang v0.9.4
+	github.com/prometheus/client_golang v1.4.0
 	github.com/remyoudompheng/bigfft v0.0.0-20190728182440-6a916e37a237 // indirect
 	github.com/satori/go.uuid v1.2.0
 	github.com/shirou/gopsutil v2.20.2+incompatible
@@ -66,9 +58,8 @@ require (
 	github.com/swaggo/echo-swagger v1.1.0
 	github.com/swaggo/swag v1.7.0
 	github.com/ugorji/go v1.1.7 // indirect
-	github.com/zclconf/go-cty v1.3.1 // indirect
-	golang.org/x/net v0.0.0-20201202161906-c7110b5ffcbb
-	golang.org/x/text v0.3.4
+	golang.org/x/net v0.0.0-20201224014010-6772e930b67b
+	golang.org/x/text v0.3.5
 	google.golang.org/grpc v1.28.0 // indirect
 )
 

@@ -56,7 +56,7 @@ type ScalingPolicy struct {
 	Namespace   string
 	Target      map[string]string
 	Min         *int64
-	Max         *int64
+	Max         int64
 	Policy      map[string]interface{}
 	Enabled     *bool
 	CreateIndex uint64
@@ -92,12 +92,11 @@ type TaskGroupScaleStatus struct {
 }
 
 type ScalingEvent struct {
-	Count         *int64
-	PreviousCount int64
-	Error         bool
-	Message       string
-	Meta          map[string]interface{}
-	EvalID        *string
-	Time          uint64
-	CreateIndex   uint64
+	Count       *int64
+	Error       bool
+	Message     string
+	Meta        map[string]interface{}
+	EvalID      *string
+	Time        uint64
+	CreateIndex uint64
 }
