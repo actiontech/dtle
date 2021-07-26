@@ -50,6 +50,7 @@ const (
 var (
 	// slightly smaller than NatsMaxPayload
 	NatsMaxMsg = 64 * 1024 * 1024 - 4096
+	HASH_STRING_SEPARATOR_BYTES = []byte{'½'} // from mysql-server rpl_write_set_handler.cc
 )
 
 // EnvIsTrue returns true if the env exists and is not "0".

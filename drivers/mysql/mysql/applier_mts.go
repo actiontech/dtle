@@ -5,6 +5,7 @@ import (
 	"github.com/actiontech/dtle/drivers/mysql/common"
 	"github.com/actiontech/dtle/g"
 	hclog "github.com/hashicorp/go-hclog"
+	"hash/fnv"
 	"sync/atomic"
 )
 
@@ -128,4 +129,92 @@ func (mm *MtsManager) LcUpdater() {
 
 func (mm *MtsManager) Executed(binlogEntry *common.BinlogEntry) {
 	mm.chExecuted <- binlogEntry.Coordinates.SeqenceNumber
+}
+
+// HashTx returns an empty slice if there is no row events (DDL TX),
+// or there is a row event refering to a no-PK table.
+func HashTx(entryCtx *common.BinlogEntryContext) (hashes []uint64) {
+	entry := entryCtx.Entry
+	for i := range entry.Events {
+		event := &entry.Events[i]
+		cols := entryCtx.TableItems[i].Columns
+
+		if len(cols.PKIndex()) == 0 {
+			return []uint64{}
+		}
+
+		addHash := func(values *common.ColumnValues) {
+			h := fnv.New64()
+			// hash.WriteXXX never fails
+			_, _ = h.Write([]byte(event.DatabaseName))
+			_, _ = h.Write(g.HASH_STRING_SEPARATOR_BYTES)
+			_, _ = h.Write([]byte(event.TableName))
+
+			for _, pki := range cols.PKIndex() {
+				_, _ = h.Write(g.HASH_STRING_SEPARATOR_BYTES)
+				_, _ = h.Write(values.BytesColumn(pki))
+			}
+
+			hashVal := h.Sum64()
+			hashes = append(hashes, hashVal)
+		}
+
+		if event.WhereColumnValues != nil {
+			addHash(event.WhereColumnValues)
+		}
+		if event.NewColumnValues != nil {
+			addHash(event.NewColumnValues)
+		}
+	}
+
+	return hashes
+}
+type WritesetManager struct {
+	history          map[uint64]int64
+	lastCommonParent int64
+}
+const (
+	// Since each job has its own history, this should be smaller than MySQL default.
+	DependencyHistorySize = 2500
+)
+func NewWritesetManager() *WritesetManager {
+	return &WritesetManager{
+		history: make(map[uint64]int64),
+		lastCommonParent: 0,
+	}
+}
+func (wm *WritesetManager) GatLastCommit(entryCtx *common.BinlogEntryContext) int64 {
+	lastCommit := wm.lastCommonParent
+	hashes := HashTx(entryCtx)
+
+	entry := entryCtx.Entry
+
+	exceedsCapacity := false
+	canUseWritesets := len(hashes) != 0
+
+	if canUseWritesets {
+		exceedsCapacity = len(wm.history)+len(hashes) > DependencyHistorySize
+		for _, hash := range hashes {
+			if seq, exist := wm.history[hash]; exist {
+				if seq > lastCommit {
+					lastCommit = seq
+				}
+			}
+			// It might be a big-TX. We strictly limit the size of history.
+			if !exceedsCapacity {
+				wm.history[hash] = entry.Coordinates.SeqenceNumber
+			}
+		}
+	}
+	if exceedsCapacity || !canUseWritesets {
+		wm.history = make(map[uint64]int64)
+		wm.lastCommonParent = entry.Coordinates.SeqenceNumber
+	}
+
+	return lastCommit
+}
+
+func (wm *WritesetManager) onRotate() {
+	wm.history = make(map[uint64]int64)
+	wm.lastCommonParent = 0
 }

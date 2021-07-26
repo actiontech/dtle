@@ -1,9 +1,11 @@
 package common
 
 import (
+	"bytes"
 	"fmt"
 	"github.com/actiontech/dtle/drivers/mysql/mysql/mysqlconfig"
 	"strings"
+	"encoding/binary"
 )
 
 func (c *ColumnValues) GetAbstractValues() []interface{} {
@@ -16,6 +18,19 @@ func (c *ColumnValues) StringColumn(index int) string {
 		return string(ints)
 	}
 	return fmt.Sprintf("%+v", val)
+}
+func (c *ColumnValues) BytesColumn(index int) []byte {
+	val := c.GetAbstractValues()[index]
+	switch v := val.(type) {
+	case []byte:
+		return v
+	case string:
+		return []byte(v)
+	default:
+		buf := bytes.NewBuffer(nil)
+		_ = binary.Write(buf, binary.LittleEndian, v)
+		return buf.Bytes()
+	}
 }
 
 func (c *ColumnValues) String() string {

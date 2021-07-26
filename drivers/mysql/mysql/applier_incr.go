@@ -28,7 +28,8 @@ type ApplierIncr struct {
 	// only TX can be executed should be put into this chan
 	applyBinlogMtsTxQueue chan *common.BinlogEntryContext
 
-	mtsManager *MtsManager
+	mtsManager  *MtsManager
+	wsManager   *WritesetManager
 
 	db              *gosql.DB
 	dbs             []*sql.Conn
@@ -91,6 +92,8 @@ func NewApplierIncr(subject string, mysqlContext *common.MySQLDriverConfig,
 	})
 
 	a.mtsManager = NewMtsManager(a.shutdownCh, a.logger)
+	a.wsManager = NewWritesetManager()
+
 	go a.mtsManager.LcUpdater()
 
 	return a, nil
@@ -260,12 +263,23 @@ func (a *ApplierIncr) handleEntry(entryCtx *common.BinlogEntryContext) (err erro
 			}
 			a.mtsManager.lastCommitted = 0
 			a.mtsManager.lastEnqueue = 0
+			a.wsManager.onRotate()
 			nPending := len(a.mtsManager.m)
 			if nPending != 0 {
 				a.logger.Warn("DTLE_BUG: lcPendingTx should be 0", "nPending", nPending,
 					"file", a.replayingBinlogFile, "gno", binlogEntry.Coordinates.GNO)
 			}
 		}
+
+		err = a.setTableItemForBinlogEntry(entryCtx)
+		if err != nil {
+			return err
+		}
+
+		newLC := a.wsManager.GatLastCommit(entryCtx)
+		binlogEntry.Coordinates.LastCommitted = newLC
+		a.logger.Debug("***", "lc", newLC)
+
 		// If there are TXs skipped by udup source-side
 		if a.mtsManager.lastEnqueue + 1 < binlogEntry.Coordinates.SeqenceNumber {
 			a.logger.Info("found skipping seq_num",
@@ -291,10 +305,6 @@ func (a *ApplierIncr) handleEntry(entryCtx *common.BinlogEntryContext) (err erro
 			return nil // shutdown
 		}
 		a.logger.Debug("a binlogEntry MTS enqueue.", "gno", binlogEntry.Coordinates.GNO)
-		err = a.setTableItemForBinlogEntry(entryCtx)
-		if err != nil {
-			return err
-		}
 		a.applyBinlogMtsTxQueue <- entryCtx
 	}
 	return nil
