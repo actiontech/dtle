@@ -87,7 +87,6 @@ type RegisterOptions struct {
 	EnforceIndex   bool
 	ModifyIndex    uint64
 	PolicyOverride bool
-	PreserveCounts bool
 }
 
 // Register is used to register a new job. It returns the ID
@@ -106,7 +105,7 @@ func (j *Jobs) EnforceRegister(job *Job, modifyIndex uint64, q *WriteOptions) (*
 // of the evaluation, along with any errors encountered.
 func (j *Jobs) RegisterOpts(job *Job, opts *RegisterOptions, q *WriteOptions) (*JobRegisterResponse, *WriteMeta, error) {
 	// Format the request
-	req := &JobRegisterRequest{
+	req := &RegisterJobRequest{
 		Job: job,
 	}
 	if opts != nil {
@@ -114,8 +113,9 @@ func (j *Jobs) RegisterOpts(job *Job, opts *RegisterOptions, q *WriteOptions) (*
 			req.EnforceIndex = true
 			req.JobModifyIndex = opts.ModifyIndex
 		}
-		req.PolicyOverride = opts.PolicyOverride
-		req.PreserveCounts = opts.PreserveCounts
+		if opts.PolicyOverride {
+			req.PolicyOverride = true
+		}
 	}
 
 	var resp JobRegisterResponse
@@ -615,78 +615,6 @@ func (u *UpdateStrategy) Empty() bool {
 	return true
 }
 
-type Multiregion struct {
-	Strategy *MultiregionStrategy
-	Regions  []*MultiregionRegion
-}
-
-func (m *Multiregion) Canonicalize() {
-	if m.Strategy == nil {
-		m.Strategy = &MultiregionStrategy{
-			MaxParallel: intToPtr(0),
-			OnFailure:   stringToPtr(""),
-		}
-	} else {
-		if m.Strategy.MaxParallel == nil {
-			m.Strategy.MaxParallel = intToPtr(0)
-		}
-		if m.Strategy.OnFailure == nil {
-			m.Strategy.OnFailure = stringToPtr("")
-		}
-	}
-	if m.Regions == nil {
-		m.Regions = []*MultiregionRegion{}
-	}
-	for _, region := range m.Regions {
-		if region.Count == nil {
-			region.Count = intToPtr(1)
-		}
-		if region.Datacenters == nil {
-			region.Datacenters = []string{}
-		}
-		if region.Meta == nil {
-			region.Meta = map[string]string{}
-		}
-	}
-}
-
-func (m *Multiregion) Copy() *Multiregion {
-	if m == nil {
-		return nil
-	}
-	copy := new(Multiregion)
-	if m.Strategy != nil {
-		copy.Strategy = new(MultiregionStrategy)
-		copy.Strategy.MaxParallel = intToPtr(*m.Strategy.MaxParallel)
-		copy.Strategy.OnFailure = stringToPtr(*m.Strategy.OnFailure)
-	}
-	for _, region := range m.Regions {
-		copyRegion := new(MultiregionRegion)
-		copyRegion.Name = region.Name
-		copyRegion.Count = intToPtr(*region.Count)
-		for _, dc := range region.Datacenters {
-			copyRegion.Datacenters = append(copyRegion.Datacenters, dc)
-		}
-		for k, v := range region.Meta {
-			copyRegion.Meta[k] = v
-		}
-		copy.Regions = append(copy.Regions, copyRegion)
-	}
-	return copy
-}
-
-type MultiregionStrategy struct {
-	MaxParallel *int    `mapstructure:"max_parallel"`
-	OnFailure   *string `mapstructure:"on_failure"`
-}
-
-type MultiregionRegion struct {
-	Name        string
-	Count       *int
-	Datacenters []string
-	Meta        map[string]string
-}
-
 // PeriodicConfig is for serializing periodic config for a job.
 type PeriodicConfig struct {
 	Enabled         *bool
@@ -776,7 +704,6 @@ type Job struct {
 	Affinities        []*Affinity
 	TaskGroups        []*TaskGroup
 	Update            *UpdateStrategy
-	Multiregion       *Multiregion
 	Spreads           []*Spread
 	Periodic          *PeriodicConfig
 	ParameterizedJob  *ParameterizedJobConfig
@@ -787,7 +714,6 @@ type Job struct {
 	Meta              map[string]string
 	ConsulToken       *string `mapstructure:"consul_token"`
 	VaultToken        *string `mapstructure:"vault_token"`
-	NomadTokenID      *string `mapstructure:"nomad_token_id"`
 	Status            *string
 	StatusDescription *string
 	Stable            *bool
@@ -806,11 +732,6 @@ func (j *Job) IsPeriodic() bool {
 // IsParameterized returns whether a job is parameterized job.
 func (j *Job) IsParameterized() bool {
 	return j.ParameterizedJob != nil && !j.Dispatched
-}
-
-// IsMultiregion returns whether a job is a multiregion job
-func (j *Job) IsMultiregion() bool {
-	return j.Multiregion != nil && j.Multiregion.Regions != nil && len(j.Multiregion.Regions) > 0
 }
 
 func (j *Job) Canonicalize() {
@@ -850,9 +771,6 @@ func (j *Job) Canonicalize() {
 	if j.VaultToken == nil {
 		j.VaultToken = stringToPtr("")
 	}
-	if j.NomadTokenID == nil {
-		j.NomadTokenID = stringToPtr("")
-	}
 	if j.Status == nil {
 		j.Status = stringToPtr("")
 	}
@@ -881,9 +799,6 @@ func (j *Job) Canonicalize() {
 		j.Update.Canonicalize()
 	} else if *j.Type == JobTypeService {
 		j.Update = DefaultUpdateStrategy()
-	}
-	if j.Multiregion != nil {
-		j.Multiregion.Canonicalize()
 	}
 
 	for _, tg := range j.TaskGroups {
@@ -952,7 +867,6 @@ type JobListStub struct {
 	ID                string
 	ParentID          string
 	Name              string
-	Namespace         string `json:",omitempty"`
 	Datacenters       []string
 	Type              string
 	Priority          int
@@ -1113,18 +1027,25 @@ type JobRevertRequest struct {
 	WriteRequest
 }
 
-// JobRegisterRequest is used to update a job
+// JobUpdateRequest is used to update a job
 type JobRegisterRequest struct {
 	Job *Job
 	// If EnforceIndex is set then the job will only be registered if the passed
 	// JobModifyIndex matches the current Jobs index. If the index is zero, the
 	// register only occurs if the job is new.
+	EnforceIndex   bool
+	JobModifyIndex uint64
+	PolicyOverride bool
+
+	WriteRequest
+}
+
+// RegisterJobRequest is used to serialize a job registration
+type RegisterJobRequest struct {
+	Job            *Job
 	EnforceIndex   bool   `json:",omitempty"`
 	JobModifyIndex uint64 `json:",omitempty"`
 	PolicyOverride bool   `json:",omitempty"`
-	PreserveCounts bool   `json:",omitempty"`
-
-	WriteRequest
 }
 
 // JobRegisterResponse is used to respond to a job registration

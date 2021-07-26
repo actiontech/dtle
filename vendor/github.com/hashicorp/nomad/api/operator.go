@@ -1,10 +1,7 @@
 package api
 
 import (
-	"io"
-	"io/ioutil"
 	"strconv"
-	"strings"
 	"time"
 )
 
@@ -197,43 +194,6 @@ func (op *Operator) SchedulerCASConfiguration(conf *SchedulerConfiguration, q *W
 	return &out, wm, nil
 }
 
-// Snapshot is used to capture a snapshot state of a running cluster.
-// The returned reader that must be consumed fully
-func (op *Operator) Snapshot(q *QueryOptions) (io.ReadCloser, error) {
-	r, err := op.c.newRequest("GET", "/v1/operator/snapshot")
-	if err != nil {
-		return nil, err
-	}
-	r.setQueryOptions(q)
-	_, resp, err := requireOK(op.c.doRequest(r))
-	if err != nil {
-		return nil, err
-	}
-
-	digest := resp.Header.Get("Digest")
-
-	cr, err := newChecksumValidatingReader(resp.Body, digest)
-	if err != nil {
-		io.Copy(ioutil.Discard, resp.Body)
-		resp.Body.Close()
-
-		return nil, err
-	}
-
-	return cr, nil
-}
-
-// SnapshotRestore is used to restore a running nomad cluster to an original
-// state.
-func (op *Operator) SnapshotRestore(in io.Reader, q *WriteOptions) (*WriteMeta, error) {
-	wm, err := op.c.write("/v1/operator/snapshot", in, nil, q)
-	if err != nil {
-		return nil, err
-	}
-
-	return wm, nil
-}
-
 type License struct {
 	// The unique identifier of the license
 	LicenseID string
@@ -277,22 +237,10 @@ type LicenseReply struct {
 }
 
 func (op *Operator) LicensePut(license string, q *WriteOptions) (*WriteMeta, error) {
-	r, err := op.c.newRequest("PUT", "/v1/operator/license")
+	wm, err := op.c.write("/v1/operator/license", license, nil, q)
 	if err != nil {
 		return nil, err
 	}
-	r.setWriteOptions(q)
-	r.body = strings.NewReader(license)
-
-	rtt, resp, err := requireOK(op.c.doRequest(r))
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	wm := &WriteMeta{RequestTime: rtt}
-	parseWriteMeta(resp, wm)
-
 	return wm, nil
 }
 

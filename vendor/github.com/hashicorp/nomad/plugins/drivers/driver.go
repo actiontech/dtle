@@ -31,6 +31,13 @@ const (
 	// handle is from a driver that existed before driver plugins (v0.9). The
 	// driver should take appropriate action to handle the old driver state.
 	Pre09TaskHandleVersion = 0
+
+	// DetachSignal is a special signal sent to remote task drivers when a
+	// task should be detached instead of killed. This allows a remote task
+	// to be left running and transferred to a replacement allocation in
+	// cases like down or drained nodes causing the original allocation to
+	// be terminal.
+	DetachSignal = "DETACH"
 )
 
 // DriverPlugin is the interface with drivers will implement. It is also
@@ -85,14 +92,6 @@ type ExecOptions struct {
 type DriverNetworkManager interface {
 	CreateNetwork(allocID string) (*NetworkIsolationSpec, bool, error)
 	DestroyNetwork(allocID string, spec *NetworkIsolationSpec) error
-}
-
-// InternalDriverPlugin is an interface that exposes functions that are only
-// implemented by internal driver plugins.
-type InternalDriverPlugin interface {
-	// Shutdown allows the plugin to cleanup any running state to avoid leaking
-	// resources. It should not block.
-	Shutdown()
 }
 
 // DriverSignalTaskNotSupported can be embedded by drivers which don't support
@@ -163,6 +162,15 @@ type Capabilities struct {
 	// MustInitiateNetwork tells Nomad that the driver must create the network
 	// namespace and that the CreateNetwork and DestroyNetwork RPCs are implemented.
 	MustInitiateNetwork bool
+
+	// MountConfigs tells Nomad which mounting config options the driver supports.
+	MountConfigs MountConfigSupport
+
+	// RemoteTasks indicates this driver runs tasks on remote systems
+	// instead of locally. The Nomad client can use this information to
+	// adjust behavior such as propogating task handles between allocations
+	// to avoid downtime when a client is lost.
+	RemoteTasks bool
 }
 
 func (c *Capabilities) HasNetIsolationMode(m NetIsolationMode) bool {
@@ -187,26 +195,73 @@ var (
 	NetIsolationModeTask = NetIsolationMode("task")
 
 	// NetIsolationModeNone indicates that there is no network to isolate and is
-	// inteded to be used for tasks that the client manages remotely
+	// intended to be used for tasks that the client manages remotely
 	NetIsolationModeNone = NetIsolationMode("none")
 )
 
 type NetworkIsolationSpec struct {
-	Mode   NetIsolationMode
-	Path   string
-	Labels map[string]string
+	Mode        NetIsolationMode
+	Path        string
+	Labels      map[string]string
+	HostsConfig *HostsConfig
 }
+
+type HostsConfig struct {
+	Hostname string
+	Address  string
+}
+
+// MountConfigSupport is an enum that defaults to "all" for backwards
+// compatibility with community drivers.
+type MountConfigSupport int32
+
+const (
+	MountConfigSupportAll MountConfigSupport = iota
+	MountConfigSupportNone
+)
 
 type TerminalSize struct {
 	Height int
 	Width  int
 }
 
+type DNSConfig struct {
+	Servers  []string
+	Searches []string
+	Options  []string
+}
+
+func (c *DNSConfig) Copy() *DNSConfig {
+	if c == nil {
+		return nil
+	}
+
+	cfg := new(DNSConfig)
+	if len(c.Servers) > 0 {
+		cfg.Servers = make([]string, len(c.Servers))
+		copy(cfg.Servers, c.Servers)
+	}
+	if len(c.Searches) > 0 {
+		cfg.Searches = make([]string, len(c.Searches))
+		copy(cfg.Searches, c.Searches)
+	}
+	if len(c.Options) > 0 {
+		cfg.Options = make([]string, len(c.Options))
+		copy(cfg.Options, c.Options)
+	}
+
+	return cfg
+}
+
 type TaskConfig struct {
 	ID               string
 	JobName          string
+	JobID            string
 	TaskGroupName    string
 	Name             string
+	Namespace        string
+	NodeName         string
+	NodeID           string
 	Env              map[string]string
 	DeviceEnv        map[string]string
 	Resources        *Resources
@@ -219,6 +274,7 @@ type TaskConfig struct {
 	StderrPath       string
 	AllocID          string
 	NetworkIsolation *NetworkIsolationSpec
+	DNS              *DNSConfig
 }
 
 func (tc *TaskConfig) Copy() *TaskConfig {
@@ -230,6 +286,7 @@ func (tc *TaskConfig) Copy() *TaskConfig {
 	c.Env = helper.CopyMapStringString(c.Env)
 	c.DeviceEnv = helper.CopyMapStringString(c.DeviceEnv)
 	c.Resources = tc.Resources.Copy()
+	c.DNS = tc.DNS.Copy()
 
 	if c.Devices != nil {
 		dc := make([]*DeviceConfig, len(c.Devices))
@@ -297,9 +354,12 @@ func (tc *TaskConfig) EncodeConcreteDriverConfig(t interface{}) error {
 	return nil
 }
 
+type MemoryResources = structs.AllocatedMemoryResources
+
 type Resources struct {
 	NomadResources *structs.AllocatedTaskResources
 	LinuxResources *LinuxResources
+	Ports          *structs.AllocatedPorts
 }
 
 func (r *Resources) Copy() *Resources {
@@ -313,6 +373,11 @@ func (r *Resources) Copy() *Resources {
 	if r.LinuxResources != nil {
 		res.LinuxResources = r.LinuxResources.Copy()
 	}
+
+	if r.Ports != nil {
+		ports := structs.AllocatedPorts(append(make([]structs.AllocatedPortMapping, 0, len(*r.Ports)), *r.Ports...))
+		res.Ports = &ports
+	}
 	return res
 }
 
@@ -322,8 +387,9 @@ type LinuxResources struct {
 	CPUShares        int64
 	MemoryLimitBytes int64
 	OOMScoreAdj      int64
-	CpusetCPUs       string
-	CpusetMems       string
+
+	CpusetCpus       string
+	CpusetCgroupPath string
 
 	// PrecentTicks is used to calculate the CPUQuota, currently the docker
 	// driver exposes cpu period and quota through the driver configuration

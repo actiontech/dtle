@@ -4,9 +4,9 @@
 package metautils
 
 import (
+	"context"
 	"strings"
 
-	"golang.org/x/net/context"
 	"google.golang.org/grpc/metadata"
 )
 
@@ -49,7 +49,7 @@ func (m NiceMD) Clone(copiedKeys ...string) NiceMD {
 			found = true
 		} else {
 			for _, allowedKey := range copiedKeys {
-				if strings.ToLower(allowedKey) == strings.ToLower(k) {
+				if strings.EqualFold(allowedKey, k) {
 					found = true
 					break
 				}
