@@ -1022,7 +1022,7 @@ var doc = `{
                 "repl_chan_buffer_size": {
                     "type": "integer"
                 },
-                "retry_time": {
+                "retry_times": {
                     "type": "integer"
                 }
             }
@@ -1072,6 +1072,9 @@ var doc = `{
                 "job_id": {
                     "type": "string"
                 },
+                "retry": {
+                    "type": "integer"
+                },
                 "src_task": {
                     "$ref": "#/definitions/models.MysqlSrcTaskConfig"
                 },
@@ -1111,6 +1114,9 @@ var doc = `{
                 "message": {
                     "type": "string"
                 },
+                "retry": {
+                    "type": "integer"
+                },
                 "src_task": {
                     "$ref": "#/definitions/models.MysqlSrcTaskConfig"
                 },
@@ -1139,6 +1145,9 @@ var doc = `{
                 },
                 "job_id": {
                     "type": "string"
+                },
+                "retry": {
+                    "type": "integer"
                 },
                 "reverse": {
                     "type": "boolean"
@@ -1180,6 +1189,9 @@ var doc = `{
                 },
                 "message": {
                     "type": "string"
+                },
+                "retry": {
+                    "type": "integer"
                 },
                 "reverse": {
                     "type": "boolean"

@@ -229,7 +229,7 @@ func createOrUpdateMysqlToMysqlJob(logger hclog.Logger, jobParam *models.CreateO
 	}
 
 	jobParam.JobId = addJobTypeToJobId(jobParam.JobId, jobType)
-	nomadJob, err := convertMysqlToMysqlJobToNomadJob(failover, jobParam.JobId, jobParam.SrcTask, jobParam.DestTask)
+	nomadJob, err := convertMysqlToMysqlJobToNomadJob(failover, jobParam)
 	if nil != err {
 		return nil, fmt.Errorf("convert job param to nomad job request failed, error: %v", err)
 	}
@@ -269,18 +269,18 @@ func createOrUpdateMysqlToMysqlJob(logger hclog.Logger, jobParam *models.CreateO
 	}, nil
 }
 
-func convertMysqlToMysqlJobToNomadJob(failover bool, apiJobId string, apiSrcTask *models.MysqlSrcTaskConfig, apiDestTask *models.MysqlDestTaskConfig) (*nomadApi.Job, error) {
-	srcTask, err := buildNomadTaskGroupItem(buildMysqlSrcTaskConfigMap(apiSrcTask), apiSrcTask.TaskName, apiSrcTask.NodeId, failover)
+func convertMysqlToMysqlJobToNomadJob(failover bool, jobParams *models.CreateOrUpdateMysqlToMysqlJobParamV2) (*nomadApi.Job, error) {
+	srcTask, err := buildNomadTaskGroupItem(buildMysqlSrcTaskConfigMap(jobParams.SrcTask), jobParams.SrcTask.TaskName, jobParams.SrcTask.NodeId, failover, jobParams.Retry)
 	if nil != err {
 		return nil, fmt.Errorf("build src task failed: %v", err)
 	}
 
-	destTask, err := buildNomadTaskGroupItem(buildMysqlDestTaskConfigMap(apiDestTask), apiDestTask.TaskName, apiDestTask.NodeId, failover)
+	destTask, err := buildNomadTaskGroupItem(buildMysqlDestTaskConfigMap(jobParams.DestTask), jobParams.DestTask.TaskName, jobParams.DestTask.NodeId, failover, jobParams.Retry)
 	if nil != err {
 		return nil, fmt.Errorf("build dest task failed: %v", err)
 	}
 
-	jobId := apiJobId
+	jobId := jobParams.JobId
 	return &nomadApi.Job{
 		ID:          &jobId,
 		Datacenters: []string{"dc1"},
@@ -352,7 +352,7 @@ func buildKafkaJobListItem(logger hclog.Logger, jobParam *models.CreateOrUpdateM
 	return nil
 }
 
-func buildNomadTaskGroupItem(dtleTaskconfig map[string]interface{}, taskName, nodeId string, failover bool) (*nomadApi.TaskGroup, error) {
+func buildNomadTaskGroupItem(dtleTaskconfig map[string]interface{}, taskName, nodeId string, failover bool, retryTimes int) (*nomadApi.TaskGroup, error) {
 	task := nomadApi.NewTask(taskName, g.PluginName)
 	task.Config = dtleTaskconfig
 	if !failover && "" == nodeId {
@@ -371,8 +371,32 @@ func buildNomadTaskGroupItem(dtleTaskconfig map[string]interface{}, taskName, no
 	}
 
 	taskGroup := nomadApi.NewTaskGroup(taskName, 1)
+	reschedulePolicy, restartPolicy := buildRestartPolicy(retryTimes)
+	taskGroup.ReschedulePolicy = reschedulePolicy
+	taskGroup.RestartPolicy = restartPolicy
 	taskGroup.Tasks = append(taskGroup.Tasks, task)
 	return taskGroup, nil
+}
+
+func buildRestartPolicy(RestartAttempts int) (*nomadApi.ReschedulePolicy, *nomadApi.RestartPolicy) {
+	// set default ReschedulePolicy and default RestartPolicy interval
+	// https://github.com/actiontech/dtle-docs-cn/blob/master/4/4.3_job_configuration.md#restart--reschedule
+	defaultRescheduleAttempts := 1
+	defaultRescheduleInterval := time.Duration(1800000000000)
+	defaultRescheduleUnlimited := false
+
+	defaultRestartInterval := time.Duration(1800000000000)
+	defaultRestartMode := "fail"
+
+	return &nomadApi.ReschedulePolicy{
+			Attempts:  &defaultRescheduleAttempts,
+			Interval:  &defaultRescheduleInterval,
+			Unlimited: &defaultRescheduleUnlimited,
+		}, &nomadApi.RestartPolicy{
+			Interval: &defaultRestartInterval,
+			Attempts: &RestartAttempts,
+			Mode:     &defaultRestartMode,
+		}
 }
 
 func buildMysqlDestTaskConfigMap(config *models.MysqlDestTaskConfig) map[string]interface{} {
@@ -507,6 +531,9 @@ func getMysqlToMysqlJobDetail(logger hclog.Logger, jobId string, jobType DtleJob
 		return nil, fmt.Errorf("build job basic task profile failed: %v", err)
 	}
 	basicTaskProfile.Configuration.FailOver = failover
+	if len(nomadJob.TaskGroups) != 0 {
+		basicTaskProfile.Configuration.RetryTimes = *nomadJob.TaskGroups[0].RestartPolicy.Attempts
+	}
 	return &models.MysqlToMysqlJobDetailRespV2{
 		BasicTaskProfile: basicTaskProfile,
 		TaskLogs:         taskLog,
@@ -552,7 +579,6 @@ func buildBasicTaskProfile(logger hclog.Logger, jobId string, srcTaskDetail *mod
 	basicTaskProfile.Configuration = models.Configuration{
 		BinlogRelay:        srcTaskDetail.TaskConfig.BinlogRelay,
 		FailOver:           false,
-		RetryTime:          0,
 		ReplChanBufferSize: srcTaskDetail.TaskConfig.GroupMaxSize,
 		GroupMaxSize:       int(srcTaskDetail.TaskConfig.ReplChanBufferSize),
 		ChunkSize:          int(srcTaskDetail.TaskConfig.ChunkSize),
@@ -914,7 +940,7 @@ func createOrUpdateMysqlToKafkaJob(c echo.Context, logger hclog.Logger, jobType 
 	}
 
 	jobParam.JobId = addJobTypeToJobId(jobParam.JobId, jobType)
-	nomadJob, err := convertMysqlToKafkaJobToNomadJob(failover, jobParam.JobId, jobParam.SrcTask, jobParam.DestTask)
+	nomadJob, err := convertMysqlToKafkaJobToNomadJob(failover, jobParam)
 	if nil != err {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("convert job param to nomad job request failed, error: %v", err)))
 	}
@@ -957,20 +983,19 @@ func createOrUpdateMysqlToKafkaJob(c echo.Context, logger hclog.Logger, jobType 
 	})
 }
 
-func convertMysqlToKafkaJobToNomadJob(failover bool, apiJobId string, apiSrcTask *models.MysqlSrcTaskConfig, apiDestTask *models.KafkaDestTaskConfig) (*nomadApi.Job, error) {
-	srcTask, err := buildNomadTaskGroupItem(buildMysqlSrcTaskConfigMap(apiSrcTask), apiSrcTask.TaskName, apiSrcTask.NodeId, failover)
+func convertMysqlToKafkaJobToNomadJob(failover bool, apiJobParams *models.CreateOrUpdateMysqlToKafkaJobParamV2) (*nomadApi.Job, error) {
+	srcTask, err := buildNomadTaskGroupItem(buildMysqlSrcTaskConfigMap(apiJobParams.SrcTask), apiJobParams.SrcTask.TaskName, apiJobParams.SrcTask.NodeId, failover, apiJobParams.Retry)
 	if nil != err {
 		return nil, fmt.Errorf("build src task failed: %v", err)
 	}
 
-	destTask, err := buildNomadTaskGroupItem(buildKafkaDestTaskConfigMap(apiDestTask), apiDestTask.TaskName, apiDestTask.NodeId, failover)
+	destTask, err := buildNomadTaskGroupItem(buildKafkaDestTaskConfigMap(apiJobParams.DestTask), apiJobParams.DestTask.TaskName, apiJobParams.DestTask.NodeId, failover, apiJobParams.Retry)
 	if nil != err {
 		return nil, fmt.Errorf("build dest task failed: %v", err)
 	}
 
-	jobId := apiJobId
 	return &nomadApi.Job{
-		ID:          &jobId,
+		ID:          &apiJobParams.JobId,
 		Datacenters: []string{"dc1"},
 		TaskGroups:  []*nomadApi.TaskGroup{srcTask, destTask},
 	}, nil
@@ -1027,8 +1052,10 @@ func GetSubscriptionJobDetailV2(c echo.Context) error {
 	if nil != err {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("build job basic task profile failed: %v", err)))
 	}
-
 	basicTaskProfile.Configuration.FailOver = failover
+	if len(nomadJob.TaskGroups) != 0 {
+		basicTaskProfile.Configuration.RetryTimes = *nomadJob.TaskGroups[0].RestartPolicy.Attempts
+	}
 	return c.JSON(http.StatusOK, &models.MysqlToKafkaJobDetailRespV2{
 		BasicTaskProfile: basicTaskProfile,
 		TaskLogs:         taskLog,
@@ -1503,6 +1530,7 @@ func ReverseJob(c echo.Context) error {
 				}
 			}
 		}
+		NewjobParam.Retry = originalJob.BasicTaskProfile.Configuration.RetryTimes
 		user, err := getCurrentUser(c)
 		if err != nil {
 			return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
