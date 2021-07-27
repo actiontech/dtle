@@ -77,7 +77,7 @@ type ConnectionInfo struct {
 type Configuration struct {
 	BinlogRelay        bool `json:"binlog_relay"`
 	FailOver           bool `json:"fail_over"`
-	RetryTime          int  `json:"retry_time"`
+	RetryTimes         int  `json:"retry_times"`
 	ParallelWorkers    int  `json:"parallel_workers"`
 	ReplChanBufferSize int  `json:"repl_chan_buffer_size"`
 	GroupMaxSize       int  `json:"group_max_size"`
@@ -193,6 +193,7 @@ type CreateOrUpdateMysqlToMysqlJobParamV2 struct {
 	IsMysqlPasswordEncrypted bool                 `json:"is_mysql_password_encrypted"`
 	SrcTask                  *MysqlSrcTaskConfig  `json:"src_task" validate:"required"`
 	DestTask                 *MysqlDestTaskConfig `json:"dest_task" validate:"required"`
+	Retry                    int                  `json:"retry"`
 }
 
 type CreateOrUpdateMysqlToMysqlJobRespV2 struct {
@@ -219,6 +220,7 @@ type CreateOrUpdateMysqlToKafkaJobParamV2 struct {
 	IsMysqlPasswordEncrypted bool                 `json:"is_mysql_password_encrypted"`
 	SrcTask                  *MysqlSrcTaskConfig  `json:"src_task" validate:"required"`
 	DestTask                 *KafkaDestTaskConfig `json:"dest_task" validate:"required"`
+	Retry                    int                  `json:"retry"`
 }
 
 type CreateOrUpdateMysqlToKafkaJobRespV2 struct {

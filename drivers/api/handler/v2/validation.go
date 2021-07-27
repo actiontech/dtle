@@ -75,7 +75,7 @@ func ValidateJobV2(c echo.Context) error {
 }
 
 func apiJobConfigToNomadJobJson(apiJobConfig *models.ValidateJobReqV2) (resJson []byte, err error) {
-	nomadJob, err := convertMysqlToMysqlJobToNomadJob(true, apiJobConfig.JobId, apiJobConfig.SrcTaskConfig, apiJobConfig.DestTaskConfig)
+	nomadJob, err := convertMysqlToMysqlJobToNomadJob(true, &models.CreateOrUpdateMysqlToMysqlJobParamV2{JobId: apiJobConfig.JobId, SrcTask: apiJobConfig.SrcTaskConfig, DestTask: apiJobConfig.DestTaskConfig})
 	if nil != err {
 		return nil, fmt.Errorf("convert mysql-to-mysql job to nomad job struct faild: %v", err)
 	}

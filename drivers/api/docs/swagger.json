@@ -1006,7 +1006,7 @@
                 "repl_chan_buffer_size": {
                     "type": "integer"
                 },
-                "retry_time": {
+                "retry_times": {
                     "type": "integer"
                 }
             }
@@ -1056,6 +1056,9 @@
                 "job_id": {
                     "type": "string"
                 },
+                "retry": {
+                    "type": "integer"
+                },
                 "src_task": {
                     "$ref": "#/definitions/models.MysqlSrcTaskConfig"
                 },
@@ -1095,6 +1098,9 @@
                 "message": {
                     "type": "string"
                 },
+                "retry": {
+                    "type": "integer"
+                },
                 "src_task": {
                     "$ref": "#/definitions/models.MysqlSrcTaskConfig"
                 },
@@ -1123,6 +1129,9 @@
                 },
                 "job_id": {
                     "type": "string"
+                },
+                "retry": {
+                    "type": "integer"
                 },
                 "reverse": {
                     "type": "boolean"
@@ -1164,6 +1173,9 @@
                 },
                 "message": {
                     "type": "string"
+                },
+                "retry": {
+                    "type": "integer"
                 },
                 "reverse": {
                     "type": "boolean"
