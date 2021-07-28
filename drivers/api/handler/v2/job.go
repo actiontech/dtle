@@ -579,8 +579,8 @@ func buildBasicTaskProfile(logger hclog.Logger, jobId string, srcTaskDetail *mod
 	basicTaskProfile.Configuration = models.Configuration{
 		BinlogRelay:        srcTaskDetail.TaskConfig.BinlogRelay,
 		FailOver:           false,
-		ReplChanBufferSize: srcTaskDetail.TaskConfig.GroupMaxSize,
-		GroupMaxSize:       int(srcTaskDetail.TaskConfig.ReplChanBufferSize),
+		ReplChanBufferSize: int(srcTaskDetail.TaskConfig.ReplChanBufferSize),
+		GroupMaxSize:       srcTaskDetail.TaskConfig.GroupMaxSize,
 		ChunkSize:          int(srcTaskDetail.TaskConfig.ChunkSize),
 		GroupTimeout:       srcTaskDetail.TaskConfig.GroupTimeout,
 	}
@@ -744,7 +744,8 @@ func buildMysqlSrcTaskDetail(taskName string, internalTaskConfig common.DtleTask
 			MysqlUser:     internalTaskConfig.ConnectionConfig.User,
 			MysqlPassword: internalTaskConfig.ConnectionConfig.Password,
 		},
-		BinlogRelay: internalTaskConfig.BinlogRelay,
+		BinlogRelay:  internalTaskConfig.BinlogRelay,
+		GroupTimeout: internalTaskConfig.GroupTimeout,
 	}
 
 	allocs := []models.AllocationDetail{}
