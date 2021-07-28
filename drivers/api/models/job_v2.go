@@ -287,9 +287,17 @@ type FinishJobResp struct {
 }
 
 type ReverseJobReq struct {
-	JobId string `form:"job_id" validate:"required"`
+	JobId         string         `json:"job_id" validate:"required"`
+	ReverseConfig *ReverseConfig `json:"reverse_config"`
 }
 
+type ReverseConfig struct {
+	SrcUser                  string `json:"src_user"`
+	SrcPwd                   string `json:"src_pwd"`
+	DestUser                 string `json:"dest_user"`
+	DstPwd                   string `json:"dst_pwd"`
+	IsMysqlPasswordEncrypted bool   `json:"is_mysql_password_encrypted"`
+}
 type ReverseJobResp struct {
 	BaseResp
 }

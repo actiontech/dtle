@@ -583,6 +583,28 @@ definitions:
       message:
         type: string
     type: object
+  models.ReverseConfig:
+    properties:
+      dest_user:
+        type: string
+      dst_pwd:
+        type: string
+      is_mysql_password_encrypted:
+        type: boolean
+      src_pwd:
+        type: string
+      src_user:
+        type: string
+    type: object
+  models.ReverseJobReq:
+    properties:
+      job_id:
+        type: string
+      reverse_config:
+        $ref: '#/definitions/models.ReverseConfig'
+    required:
+    - job_id
+    type: object
   models.ReverseJobResp:
     properties:
       message:
@@ -911,15 +933,16 @@ paths:
   /v2/job/reverse:
     post:
       consumes:
-      - application/x-www-form-urlencoded
+      - application/json
       description: returnJob
       operationId: ReverseJob
       parameters:
-      - description: job id
-        in: formData
-        name: job_id
+      - description: reverse config config
+        in: body
+        name: reverse_config
         required: true
-        type: string
+        schema:
+          $ref: '#/definitions/models.ReverseJobReq'
       responses:
         "200":
           description: OK

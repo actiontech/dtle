@@ -504,7 +504,7 @@ func GetMysqlToMysqlJobDetail(c echo.Context, logger hclog.Logger, jobType DtleJ
 	}
 	err := checkJobAccess(c, reqParam.JobId)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
 	}
 	resp, err := getMysqlToMysqlJobDetail(logger, reqParam.JobId, jobType)
 	if err != nil {
@@ -1035,7 +1035,7 @@ func GetSubscriptionJobDetailV2(c echo.Context) error {
 
 	err := checkJobAccess(c, reqParam.JobId)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
 	}
 
 	failover, nomadJob, allocations, err := getJobDetailFromNomad(logger, reqParam.JobId, DtleJobTypeSubscription)
@@ -1134,7 +1134,7 @@ func PauseJobV2(c echo.Context) error {
 
 	err := checkJobAccess(c, reqParam.JobId)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
 	}
 
 	logger.Info("get allocations of job", "job_id", reqParam.JobId)
@@ -1218,7 +1218,7 @@ func ResumeJobV2(c echo.Context) error {
 
 	err := checkJobAccess(c, reqParam.JobId)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
 	}
 
 	logger.Info("get allocations of job", "job_id", reqParam.JobId)
@@ -1317,7 +1317,7 @@ func DeleteJobV2(c echo.Context) error {
 	}
 	err := checkJobAccess(c, reqParam.JobId)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
 	}
 
 	logger.Info("delete job from nomad", "job_id", reqParam.JobId)
@@ -1364,7 +1364,7 @@ func GetJobGtid(c echo.Context) error {
 
 	err := checkJobAccess(c, reqParam.JobId)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
 	}
 
 	storeManager, err := common.NewStoreManager([]string{handler.ConsulAddr}, logger)
@@ -1403,7 +1403,7 @@ func FinishJob(c echo.Context) error {
 
 	err := checkJobAccess(c, reqParam.JobId)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
 	}
 
 	logger.Info("get allocations of job", "job_id", reqParam.JobId)
@@ -1455,9 +1455,9 @@ func FinishJob(c echo.Context) error {
 // @Id ReverseJob
 // @Description returnJob
 // @Tags job
-// @accept application/x-www-form-urlencoded
+// @Accept application/json
 // @Security ApiKeyAuth
-// @Param job_id formData string true "job id"
+// @Param reverse_config body models.ReverseJobReq true "reverse config config"
 // @Success 200 {object} models.ReverseJobResp
 // @Router /v2/job/reverse [post]
 func ReverseJob(c echo.Context) error {
@@ -1470,10 +1470,9 @@ func ReverseJob(c echo.Context) error {
 	if err := c.Validate(reqParam); nil != err {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invalid params:\n%v", err)))
 	}
-
 	err := checkJobAccess(c, reqParam.JobId)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
 	}
 
 	storeManager, err := common.NewStoreManager([]string{handler.ConsulAddr}, logger)
@@ -1494,13 +1493,12 @@ func ReverseJob(c echo.Context) error {
 			return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
 		}
 
-		NewjobParam := new(models.CreateOrUpdateMysqlToMysqlJobParamV2)
-		NewjobParam.JobId = fmt.Sprintf("%s-%s", "reverse", strings.Replace(consulJobItem.JobId, fmt.Sprintf("-%s", jobType), "", -1))
-		NewjobParam.TaskStepName = mysql.JobIncrCopy
-		NewjobParam.Failover = &originalJob.BasicTaskProfile.Configuration.FailOver
-		NewjobParam.IsMysqlPasswordEncrypted = false
-		NewjobParam.Reverse = true
-		NewjobParam.SrcTask = &models.MysqlSrcTaskConfig{
+		reverseJobParam := new(models.CreateOrUpdateMysqlToMysqlJobParamV2)
+		reverseJobParam.JobId = fmt.Sprintf("%s-%s", "reverse", strings.Replace(consulJobItem.JobId, fmt.Sprintf("-%s", jobType), "", -1))
+		reverseJobParam.TaskStepName = mysql.JobIncrCopy
+		reverseJobParam.Failover = &originalJob.BasicTaskProfile.Configuration.FailOver
+		reverseJobParam.Reverse = true
+		reverseJobParam.SrcTask = &models.MysqlSrcTaskConfig{
 			TaskName:     "src",
 			GroupMaxSize: originalJob.BasicTaskProfile.Configuration.GroupMaxSize,
 			ChunkSize:    int64(originalJob.BasicTaskProfile.Configuration.ChunkSize),
@@ -1515,27 +1513,47 @@ func ReverseJob(c echo.Context) error {
 			AutoGtid:              true,
 			WaitOnJob:             consulJobItem.JobId,
 		}
-		NewjobParam.DestTask = &models.MysqlDestTaskConfig{
+		reverseJobParam.DestTask = &models.MysqlDestTaskConfig{
 			TaskName:              "dest",
 			ParallelWorkers:       originalJob.BasicTaskProfile.Configuration.ParallelWorkers,
 			MysqlConnectionConfig: &originalJob.BasicTaskProfile.ConnectionInfo.SrcDataBase,
 		}
 
-		if !*NewjobParam.Failover {
+		if !*reverseJobParam.Failover {
 			for _, node := range originalJob.BasicTaskProfile.DtleNodeInfos {
 				if node.Source == "src" {
-					NewjobParam.SrcTask.NodeId = node.NodeId
+					reverseJobParam.SrcTask.NodeId = node.NodeId
 				} else if node.Source == "dst" {
-					NewjobParam.DestTask.NodeId = node.NodeId
+					reverseJobParam.DestTask.NodeId = node.NodeId
 				}
 			}
 		}
-		NewjobParam.Retry = originalJob.BasicTaskProfile.Configuration.RetryTimes
+		if reqParam.ReverseConfig != nil {
+			reverseJobParam.SrcTask.MysqlConnectionConfig.MysqlUser = reqParam.ReverseConfig.SrcUser
+			reverseJobParam.SrcTask.MysqlConnectionConfig.MysqlPassword = reqParam.ReverseConfig.SrcPwd
+			reverseJobParam.DestTask.MysqlConnectionConfig.MysqlUser = reqParam.ReverseConfig.DestUser
+			reverseJobParam.DestTask.MysqlConnectionConfig.MysqlPassword = reqParam.ReverseConfig.DstPwd
+			reverseJobParam.IsMysqlPasswordEncrypted = reqParam.ReverseConfig.IsMysqlPasswordEncrypted
+		}
+		reverseJobParam.Retry = originalJob.BasicTaskProfile.Configuration.RetryTimes
+
+		// validate job
+		validationTasks, err := validateTaskConfig(reverseJobParam.SrcTask, reverseJobParam.DestTask)
+		if nil != err {
+			return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("validate task config failed: %v", err)))
+		}
+		for i := range validationTasks {
+			if validationTasks[i].PrivilegesValidation.Error != "" ||
+				validationTasks[i].ConnectionValidation.Error != "" {
+				return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("validate task config fail,check Mysql connection info")))
+			}
+		}
+
 		user, err := getCurrentUser(c)
 		if err != nil {
 			return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
 		}
-		_, err = createOrUpdateMysqlToMysqlJob(logger, NewjobParam, user, jobType)
+		_, err = createOrUpdateMysqlToMysqlJob(logger, reverseJobParam, user, jobType)
 		if err != nil {
 			return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
 		}
