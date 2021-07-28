@@ -267,7 +267,7 @@ var doc = `{
                 ],
                 "description": "returnJob",
                 "consumes": [
-                    "application/x-www-form-urlencoded"
+                    "application/json"
                 ],
                 "tags": [
                     "job"
@@ -275,11 +275,13 @@ var doc = `{
                 "operationId": "ReverseJob",
                 "parameters": [
                     {
-                        "type": "string",
-                        "description": "job id",
-                        "name": "job_id",
-                        "in": "formData",
-                        "required": true
+                        "description": "reverse config config",
+                        "name": "reverse_config",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.ReverseJobReq"
+                        }
                     }
                 ],
                 "responses": {
@@ -1814,6 +1816,40 @@ var doc = `{
             "properties": {
                 "message": {
                     "type": "string"
+                }
+            }
+        },
+        "models.ReverseConfig": {
+            "type": "object",
+            "properties": {
+                "dest_user": {
+                    "type": "string"
+                },
+                "dst_pwd": {
+                    "type": "string"
+                },
+                "is_mysql_password_encrypted": {
+                    "type": "boolean"
+                },
+                "src_pwd": {
+                    "type": "string"
+                },
+                "src_user": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.ReverseJobReq": {
+            "type": "object",
+            "required": [
+                "job_id"
+            ],
+            "properties": {
+                "job_id": {
+                    "type": "string"
+                },
+                "reverse_config": {
+                    "$ref": "#/definitions/models.ReverseConfig"
                 }
             }
         },
