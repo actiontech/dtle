@@ -140,7 +140,7 @@ func BuildDMLDeleteQuery(databaseName, tableName string, tableColumns *common.Co
 				if err != nil {
 					return result, columnArgs, hasUK, err
 				}
-				if strings.ToUpper(column.Key) == "PRI" {
+				if column.IsPk() {
 					uniqueKeyComparisons = append(uniqueKeyComparisons, comparison)
 				} else {
 					comparisons = append(comparisons, comparison)
@@ -151,7 +151,7 @@ func BuildDMLDeleteQuery(databaseName, tableName string, tableColumns *common.Co
 				if err != nil {
 					return result, columnArgs, hasUK, err
 				}
-				if strings.ToUpper(column.Key) == "PRI" {
+				if column.IsPk() {
 					uniqueKeyArgs = append(uniqueKeyArgs, arg)
 					uniqueKeyComparisons = append(uniqueKeyComparisons, comparison)
 				} else {
@@ -260,7 +260,7 @@ func BuildDMLUpdateQuery(databaseName, tableName string, tableColumns, sharedCol
 				if err != nil {
 					return result, sharedArgs, columnArgs, hasUK, err
 				}
-				if strings.ToUpper(column.Key) == "PRI" {
+				if column.IsPk() {
 					uniqueKeyComparisons = append(uniqueKeyComparisons, comparison)
 				} else {
 					comparisons = append(comparisons, comparison)
@@ -271,7 +271,7 @@ func BuildDMLUpdateQuery(databaseName, tableName string, tableColumns, sharedCol
 				if err != nil {
 					return result, sharedArgs, columnArgs, hasUK, err
 				}
-				if strings.ToUpper(column.Key) == "PRI" {
+				if column.IsPk() {
 					uniqueKeyArgs = append(uniqueKeyArgs, arg)
 					uniqueKeyComparisons = append(uniqueKeyComparisons, comparison)
 				} else {

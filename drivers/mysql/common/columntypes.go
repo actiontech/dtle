@@ -30,6 +30,7 @@ func (c *ColumnValues) String() string {
 type ColumnList struct {
 	Columns  []mysqlconfig.Column
 	Ordinals mysqlconfig.ColumnsMap
+	pkIndex  []int
 }
 
 // NewColumnList creates an object given ordered list of column names
@@ -38,6 +39,12 @@ func NewColumnList(columns []mysqlconfig.Column) *ColumnList {
 		Columns: columns,
 	}
 	result.Ordinals = mysqlconfig.NewColumnsMap(result.Columns)
+	for i := range columns {
+		if columns[i].IsPk() {
+			result.pkIndex = append(result.pkIndex, i)
+		}
+	}
+
 	return result
 }
 
@@ -52,6 +59,10 @@ func ParseColumnList(names string) *ColumnList {
 
 func (c *ColumnList) ColumnList() []mysqlconfig.Column {
 	return c.Columns
+}
+
+func (c *ColumnList) PKIndex() []int {
+	return c.pkIndex
 }
 
 func (c *ColumnList) Names() []string {
