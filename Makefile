@@ -66,7 +66,8 @@ package: package-common
       --after-upgrade ../misc/post-upgrade.sh \
       --config-files etc \
       --depends iproute
-	cd dist && md5sum $(PROJECT_NAME)-$(VERSION)-1.x86_64.rpm > $(PROJECT_NAME)-$(VERSION).x86_64.rpm.md5
+	cd dist && mv $(PROJECT_NAME)-$(VERSION)-1.x86_64.rpm $(PROJECT_NAME)-$(VERSION).x86_64.rpm && \
+	md5sum $(PROJECT_NAME)-$(VERSION).x86_64.rpm > $(PROJECT_NAME)-$(VERSION).x86_64.rpm.md5
 
 vet:
 	go vet ./...
