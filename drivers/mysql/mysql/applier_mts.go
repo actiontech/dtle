@@ -172,15 +172,13 @@ func HashTx(entryCtx *common.BinlogEntryContext) (hashes []uint64) {
 type WritesetManager struct {
 	history          map[uint64]int64
 	lastCommonParent int64
+	dependencyHistorySize int
 }
-const (
-	// Since each job has its own history, this should be smaller than MySQL default.
-	DependencyHistorySize = 2500
-)
-func NewWritesetManager() *WritesetManager {
+func NewWritesetManager(historySize int) *WritesetManager {
 	return &WritesetManager{
-		history: make(map[uint64]int64),
+		history:          make(map[uint64]int64),
 		lastCommonParent: 0,
+		dependencyHistorySize: historySize,
 	}
 }
 func (wm *WritesetManager) GatLastCommit(entryCtx *common.BinlogEntryContext) int64 {
@@ -193,7 +191,7 @@ func (wm *WritesetManager) GatLastCommit(entryCtx *common.BinlogEntryContext) in
 	canUseWritesets := len(hashes) != 0
 
 	if canUseWritesets {
-		exceedsCapacity = len(wm.history)+len(hashes) > DependencyHistorySize
+		exceedsCapacity = len(wm.history)+len(hashes) > wm.dependencyHistorySize
 		for _, hash := range hashes {
 			if seq, exist := wm.history[hash]; exist {
 				if seq > lastCommit {

@@ -54,7 +54,9 @@ type DtleTaskConfig struct {
 	BinlogRelay          bool     `codec:"BinlogRelay"`
 	WaitOnJob            string   `codec:"WaitOnJob"`
 
-	ParallelWorkers int `codec:"ParallelWorkers"`
+	ParallelWorkers       int `codec:"ParallelWorkers"`
+	DependencyHistorySize int `codec:"DependencyHistorySize"`
+	UseMySQLDependency    bool `codec:"UseMySQLDependency"`
 
 	SkipCreateDbTable   bool                          `codec:"SkipCreateDbTable"`
 	SkipPrivilegeCheck  bool                          `codec:"SkipPrivilegeCheck"`

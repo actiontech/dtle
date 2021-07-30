@@ -92,7 +92,7 @@ func NewApplierIncr(subject string, mysqlContext *common.MySQLDriverConfig,
 	})
 
 	a.mtsManager = NewMtsManager(a.shutdownCh, a.logger)
-	a.wsManager = NewWritesetManager()
+	a.wsManager = NewWritesetManager(a.mysqlContext.DependencyHistorySize)
 
 	go a.mtsManager.LcUpdater()
 
@@ -276,9 +276,12 @@ func (a *ApplierIncr) handleEntry(entryCtx *common.BinlogEntryContext) (err erro
 			return err
 		}
 
-		newLC := a.wsManager.GatLastCommit(entryCtx)
-		binlogEntry.Coordinates.LastCommitted = newLC
-		a.logger.Debug("***", "lc", newLC)
+		if !a.mysqlContext.UseMySQLDependency {
+			newLC := a.wsManager.GatLastCommit(entryCtx)
+			binlogEntry.Coordinates.LastCommitted = newLC
+			a.logger.Debug("WritesetManager", "lc", newLC, "seq", binlogEntry.Coordinates.SeqenceNumber,
+				"gno", binlogEntry.Coordinates.GNO)
+		}
 
 		// If there are TXs skipped by udup source-side
 		if a.mtsManager.lastEnqueue + 1 < binlogEntry.Coordinates.SeqenceNumber {

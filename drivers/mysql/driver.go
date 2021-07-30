@@ -125,7 +125,7 @@ var (
 			"Port":     hclspec.NewAttr("Port", "number", true),
 			"User":     hclspec.NewAttr("User", "string", true),
 			"Password": hclspec.NewAttr("Password", "string", true),
-			"Charset": hclspec.NewDefault(hclspec.NewAttr("Charset", "string", false),
+			"Charset":  hclspec.NewDefault(hclspec.NewAttr("Charset", "string", false),
 				hclspec.NewLiteral(`"utf8mb4"`)),
 		})),
 		"WaitOnJob":   hclspec.NewAttr("WaitOnJob", "string", false),
@@ -141,6 +141,11 @@ var (
 			"TopicWithSchemaTable": hclspec.NewDefault(hclspec.NewAttr("TopicWithSchemaTable", "bool", false),
 				hclspec.NewLiteral(`true`)),
 		})),
+		// Since each job has its own history, this should be smaller than MySQL default (25000).
+		"DependencyHistorySize": hclspec.NewDefault(hclspec.NewAttr("DependencyHistorySize", "number", false),
+			hclspec.NewLiteral(`2500`)),
+		"UseMySQLDependency": hclspec.NewDefault(hclspec.NewAttr("UseMySQLDependency", "bool", false),
+			hclspec.NewLiteral(`false`)),
 	})
 
 	// capabilities is returned by the Capabilities RPC and indicates what
