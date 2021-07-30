@@ -27,6 +27,7 @@ type CreateOrUpdateUserReq struct {
 	ContactInfo string `json:"contact_info"`
 	Principal   string `json:"principal"`
 	PassWord    string `json:"pass_word"`
+	OldPassWord string `json:"old_pass_word"`
 }
 
 type CreateOrUpdateUserResp struct {
