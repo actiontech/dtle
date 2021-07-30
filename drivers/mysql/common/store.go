@@ -433,7 +433,7 @@ func (sm *StoreManager) DeleteUser(userGroup, user string) error {
 
 var once sync.Once
 
-func (sm *StoreManager) GetUser(userGroup, userName string) (*models.User, error) {
+func (sm *StoreManager) GetUser(userGroup, userName string) (*models.User, bool, error) {
 	once.Do(func() {
 		user := &models.User{
 			UserName:  DefaultAdminUser,
@@ -448,16 +448,23 @@ func (sm *StoreManager) GetUser(userGroup, userName string) (*models.User, error
 	})
 
 	key := fmt.Sprintf("dtleUser/%v/%v", userGroup, userName)
+	exists, err := sm.consulStore.Exists(key)
+	if err != nil {
+		return nil, exists, err
+	} else if !exists {
+		return nil, exists, nil
+	}
+
 	kp, err := sm.consulStore.Get(key)
 	if nil != err {
-		return nil, err
+		return nil, false, err
 	}
 	user := new(models.User)
 	err = json.Unmarshal(kp.Value, user)
 	if err != nil {
-		return nil, fmt.Errorf("get %v from consul, unmarshal err : %v", key, err)
+		return nil, false, fmt.Errorf("get %v from consul, unmarshal err : %v", key, err)
 	}
-	return user, nil
+	return user, true, nil
 }
 func (sm *StoreManager) SaveUser(user *models.User) error {
 	key := fmt.Sprintf("dtleUser/%v/%v", user.UserGroup, user.UserName)

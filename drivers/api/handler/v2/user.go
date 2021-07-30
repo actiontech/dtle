@@ -11,7 +11,6 @@ import (
 	"github.com/actiontech/dtle/drivers/api/handler"
 	"github.com/actiontech/dtle/drivers/api/models"
 	"github.com/actiontech/dtle/drivers/mysql/common"
-	"github.com/docker/libkv/store"
 	"github.com/labstack/echo/v4"
 )
 
@@ -94,16 +93,26 @@ func CreateOrUpdateUser(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("current user has no access to operate group %v ; err : %v", reqParam.UserGroup, err)))
 	}
 
-	user, err := storeManager.GetUser(reqParam.UserGroup, reqParam.UserName)
-	if err == nil {
+	user, exist, err := storeManager.GetUser(reqParam.UserGroup, reqParam.UserName)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
+	}
+	if exist {
 		// update
 		if reqParam.PassWord != "" {
+			if leftMinute, exist := BL.blackListExist(fmt.Sprintf("%v:%v:%v", reqParam.UserGroup, reqParam.UserName, "update_pwd")); exist {
+				return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("the password cannot be changed temporarily, please try again after %v minute", leftMinute)))
+			}
+			if reqParam.OldPassWord != user.PassWord {
+				BL.setBlackList(fmt.Sprintf("%v:%v:%v", reqParam.UserGroup, reqParam.UserName, "update_pwd"), time.Minute*30)
+				return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("please check old password")))
+			}
 			user.PassWord = reqParam.PassWord
 		}
 		user.Role = reqParam.Role
 		user.ContactInfo = reqParam.ContactInfo
 		user.Principal = reqParam.Principal
-	} else if store.ErrKeyNotFound == err {
+	} else {
 		// create
 		if reqParam.PassWord == "" {
 			return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("password is forbidden to be empty")))
@@ -117,8 +126,10 @@ func CreateOrUpdateUser(c echo.Context) error {
 			Principal:   reqParam.Principal,
 			PassWord:    reqParam.PassWord,
 		}
-	} else {
-		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
+	}
+
+	if !VerifyPassword(user.PassWord) {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("password does not meet the rules")))
 	}
 
 	if err := storeManager.SaveUser(user); nil != err {
@@ -198,11 +209,11 @@ func getCurrentUser(c echo.Context) (*models.User, error) {
 	if err != nil {
 		return nil, err
 	}
-	user, err := storeManager.GetUser(GetUserName(c))
-	if err == store.ErrKeyNotFound {
-		return nil, fmt.Errorf("current user is not exist")
-	} else if err != nil {
+	user, exist, err := storeManager.GetUser(GetUserName(c))
+	if err != nil {
 		return nil, err
+	} else if !exist {
+		return nil, fmt.Errorf("current user is not exist")
 	}
 
 	c.Set(key, user)

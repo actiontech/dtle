@@ -1217,6 +1217,9 @@ var doc = `{
                 "contact_info": {
                     "type": "string"
                 },
+                "old_pass_word": {
+                    "type": "string"
+                },
                 "pass_word": {
                     "type": "string"
                 },
