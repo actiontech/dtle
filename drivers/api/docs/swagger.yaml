@@ -68,6 +68,11 @@ definitions:
       src_data_base:
         $ref: '#/definitions/models.MysqlConnectionConfig'
     type: object
+  models.ConnectionRespV2:
+    properties:
+      message:
+        type: string
+    type: object
   models.ConnectionValidation:
     properties:
       error:
@@ -1196,6 +1201,44 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/models.ListColumnsRespV2'
+      security:
+      - ApiKeyAuth: []
+      tags:
+      - mysql
+  /v2/mysql/instance_connection:
+    get:
+      description: connect to  mysql instance.
+      operationId: Connection
+      parameters:
+      - description: mysql host
+        in: query
+        name: mysql_host
+        required: true
+        type: string
+      - description: mysql port
+        in: query
+        name: mysql_port
+        required: true
+        type: string
+      - description: mysql user
+        in: query
+        name: mysql_user
+        required: true
+        type: string
+      - description: mysql password
+        in: query
+        name: mysql_password
+        required: true
+        type: string
+      - description: indecate that mysql password is encrypted or not
+        in: query
+        name: is_mysql_password_encrypted
+        type: boolean
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.ConnectionRespV2'
       security:
       - ApiKeyAuth: []
       tags:
