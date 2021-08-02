@@ -18,6 +18,7 @@ func (b *BinlogCoordinateTx) GetGtidForThisTx() string {
 
 type BinlogEntryContext struct {
 	Entry       *BinlogEntry
+	// Only a DML has a tableItem. For a DDL, its tableItem is nil.
 	TableItems  []*ApplierTableItem
 	OriginalSize  int // size of binlog entry
 }

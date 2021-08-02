@@ -137,6 +137,9 @@ func HashTx(entryCtx *common.BinlogEntryContext) (hashes []uint64) {
 	entry := entryCtx.Entry
 	for i := range entry.Events {
 		event := &entry.Events[i]
+		if event.DML == common.NotDML {
+			continue
+		}
 		cols := entryCtx.TableItems[i].Columns
 
 		if len(cols.PKIndex()) == 0 {
