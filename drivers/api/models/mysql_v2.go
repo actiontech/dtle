@@ -38,3 +38,15 @@ type ListColumnsRespV2 struct {
 	Columns []string `json:"columns"`
 	BaseResp
 }
+
+type ConnectionReqV2 struct {
+	MysqlHost                string `query:"mysql_host" validate:"required"`
+	MysqlPort                uint32 `query:"mysql_port" validate:"required"`
+	MysqlUser                string `query:"mysql_user" validate:"required"`
+	MysqlPassword            string `query:"mysql_password" validate:"required"`
+	IsMysqlPasswordEncrypted bool   `query:"is_mysql_password_encrypted"`
+}
+
+type ConnectionRespV2 struct {
+	BaseResp
+}

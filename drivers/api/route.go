@@ -89,6 +89,7 @@ func SetupApiServer(logger hclog.Logger, apiAddr, nomadAddr, consulAddr, uiDir s
 	v2Router.POST("/validation/job", v2.ValidateJobV2)
 	v2Router.GET("/mysql/schemas", v2.ListMysqlSchemasV2)
 	v2Router.GET("/mysql/columns", v2.ListMysqlColumnsV2)
+	v2Router.GET("/mysql/instance_connection", v2.Connection)
 	v2Router.GET("/monitor/task", v2.GetTaskProgressV2)
 	v2Router.GET("/job/gtid", v2.GetJobGtid)
 	v2Router.POST("/job/finish", v2.FinishJob)
