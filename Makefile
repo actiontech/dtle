@@ -85,7 +85,7 @@ mtswatcher: helper/mtswatcher/mtswatcher.go
 	GO111MODULE=on go build $(GOFLAGS) -o dist/mtswatcher ./helper/mtswatcher/mtswatcher.go
 
 docker_rpm:
-	$(DOCKER) run -v $(shell pwd)/:/universe/src/github.com/actiontech/dtle --rm $(DOCKER_IMAGE) -c "cd /universe/src/github.com/actiontech/dtle; GOPATH=/universe make RELEASE_FTPD_HOST=${RELEASE_FTPD_HOST} package ;chmod -R ugo+rw dist;"
+	$(DOCKER) run -v $(shell pwd)/:/universe/src/github.com/actiontech/dtle --rm -e PROJECT_NAME=$(PROJECT_NAME) $(DOCKER_IMAGE) -c "cd /universe/src/github.com/actiontech/dtle; GOPATH=/universe make RELEASE_FTPD_HOST=${RELEASE_FTPD_HOST} package ;chmod -R ugo+rw dist;"
 
 docker_rpm_with_coverage_report:
 	#$(DOCKER) run -v $(shell pwd)/:/universe/src/github.com/actiontech/dtle --rm $(DOCKER_IMAGE) -c "cd /universe/src/github.com/actiontech/dtle; GOPATH=/universe make prepare build-coverage-report-tool coverage-report-pre-build package coverage-report-post-build ;chmod -R ugo+rw dist;"
@@ -95,8 +95,8 @@ generate_swagger_docs:
 	swag init -g ./drivers/api/route.go -o ./drivers/api/docs
 
 upload:
-	curl --ftp-create-dirs -T $(shell pwd)/dist/*.rpm ftp://${RELEASE_FTPD_HOST}/actiontech-${PROJECT_NAME}/qa/${VERSION}/${PROJECT_NAME}-${VERSION}-qa.x86_64.rpm
-	curl --ftp-create-dirs -T $(shell pwd)/dist/*.rpm.md5 ftp://${RELEASE_FTPD_HOST}/actiontech-${PROJECT_NAME}/qa/${VERSION}/${PROJECT_NAME}-${VERSION}-qa.x86_64.rpm.md5
+	curl --ftp-create-dirs -T $(shell pwd)/dist/*.rpm ftp://${RELEASE_FTPD_HOST}/actiontech-${PROJECT_NAME}/qa/${VERSION}/${PROJECT_NAME}-${VERSION}.x86_64.rpm
+	curl --ftp-create-dirs -T $(shell pwd)/dist/*.rpm.md5 ftp://${RELEASE_FTPD_HOST}/actiontech-${PROJECT_NAME}/qa/${VERSION}/${PROJECT_NAME}-${VERSION}.x86_64.rpm.md5
 
 upload_with_coverage_report:
 	#curl --ftp-create-dirs -T $(shell pwd)/dist/*.rpm ftp://${RELEASE_FTPD_HOST}/actiontech-${PROJECT_NAME}/qa/${VERSION}/${PROJECT_NAME}-${VERSION}-qa.coverage.x86_64.rpm
