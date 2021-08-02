@@ -271,6 +271,28 @@ func (a *ApplierIncr) handleEntry(entryCtx *common.BinlogEntryContext) (err erro
 			}
 		}
 
+		// If there are TXs skipped by udup source-side
+		if a.mtsManager.lastEnqueue + 1 < binlogEntry.Coordinates.SeqenceNumber {
+			a.logger.Info("found skipping seq_num",
+				"lastEnqueue", a.mtsManager.lastEnqueue, "seqNum", binlogEntry.Coordinates.SeqenceNumber,
+				"uuid", txSid, "gno", binlogEntry.Coordinates.GNO)
+		}
+		for a.mtsManager.lastEnqueue+1 < binlogEntry.Coordinates.SeqenceNumber {
+			a.mtsManager.lastEnqueue += 1
+			a.mtsManager.chExecuted <- a.mtsManager.lastEnqueue
+		}
+
+		hasDDL := binlogEntry.HasDDL()
+		// DDL must be executed separatedly
+		if hasDDL || a.prevDDL {
+			a.logger.Debug("MTS found DDL. WaitForAllCommitted",
+				"gno", binlogEntry.Coordinates.GNO, "hasDDL", hasDDL, "prevDDL", a.prevDDL)
+			if !a.mtsManager.WaitForAllCommitted() {
+				return nil // shutdown
+			}
+		}
+		a.prevDDL = hasDDL
+
 		err = a.setTableItemForBinlogEntry(entryCtx)
 		if err != nil {
 			return err
@@ -282,27 +304,6 @@ func (a *ApplierIncr) handleEntry(entryCtx *common.BinlogEntryContext) (err erro
 			a.logger.Debug("WritesetManager", "lc", newLC, "seq", binlogEntry.Coordinates.SeqenceNumber,
 				"gno", binlogEntry.Coordinates.GNO)
 		}
-
-		// If there are TXs skipped by udup source-side
-		if a.mtsManager.lastEnqueue + 1 < binlogEntry.Coordinates.SeqenceNumber {
-			a.logger.Info("found skipping seq_num",
-				"lastEnqueue", a.mtsManager.lastEnqueue, "seqNum", binlogEntry.Coordinates.SeqenceNumber,
-				"uuid", txSid, "gno", binlogEntry.Coordinates.GNO)
-		}
-		for a.mtsManager.lastEnqueue+1 < binlogEntry.Coordinates.SeqenceNumber {
-			a.mtsManager.lastEnqueue += 1
-			a.mtsManager.chExecuted <- a.mtsManager.lastEnqueue
-		}
-		hasDDL := binlogEntry.HasDDL()
-		// DDL must be executed separatedly
-		if hasDDL || a.prevDDL {
-			a.logger.Debug("MTS found DDL. WaitForAllCommitted",
-				"gno", binlogEntry.Coordinates.GNO, "hasDDL", hasDDL, "prevDDL", a.prevDDL)
-			if !a.mtsManager.WaitForAllCommitted() {
-				return nil // shutdown
-			}
-		}
-		a.prevDDL = hasDDL
 
 		if !a.mtsManager.WaitForExecution(binlogEntry) {
 			return nil // shutdown
