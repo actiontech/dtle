@@ -197,7 +197,7 @@ func (wm *WritesetManager) GatLastCommit(entryCtx *common.BinlogEntryContext) in
 		exceedsCapacity = len(wm.history)+len(hashes) > wm.dependencyHistorySize
 		for _, hash := range hashes {
 			if seq, exist := wm.history[hash]; exist {
-				if seq > lastCommit {
+				if seq > lastCommit && seq < entry.Coordinates.SeqenceNumber {
 					lastCommit = seq
 				}
 			}
