@@ -821,6 +821,42 @@ var doc = `{
                 }
             }
         },
+        "/v2/user/create": {
+            "post": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "create user.",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "user"
+                ],
+                "operationId": "CreateUser",
+                "parameters": [
+                    {
+                        "description": "user info",
+                        "name": "user",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.CreateUserReqV2"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.CreateUserRespV2"
+                        }
+                    }
+                }
+            }
+        },
         "/v2/user/current_user": {
             "get": {
                 "security": [
@@ -861,15 +897,15 @@ var doc = `{
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "user group name",
-                        "name": "user_group",
+                        "description": "tenant",
+                        "name": "tenant",
                         "in": "formData",
                         "required": true
                     },
                     {
                         "type": "string",
                         "description": "user name",
-                        "name": "user_name",
+                        "name": "username",
                         "in": "formData",
                         "required": true
                     }
@@ -878,7 +914,7 @@ var doc = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/models.DeleteUserResp"
+                            "$ref": "#/definitions/models.DeleteUserRespV2"
                         }
                     }
                 }
@@ -905,8 +941,8 @@ var doc = `{
                     },
                     {
                         "type": "string",
-                        "description": "filter user group",
-                        "name": "filter_user_group",
+                        "description": "filter tenant",
+                        "name": "filter_tenant",
                         "in": "query"
                     }
                 ],
@@ -920,29 +956,29 @@ var doc = `{
                 }
             }
         },
-        "/v2/user/update": {
+        "/v2/user/reset_password": {
             "post": {
                 "security": [
                     {
                         "ApiKeyAuth": []
                     }
                 ],
-                "description": "create or update user.",
+                "description": "reset user password.",
                 "consumes": [
                     "application/json"
                 ],
                 "tags": [
                     "user"
                 ],
-                "operationId": "CreateOrUpdateUser",
+                "operationId": "ResetPassword",
                 "parameters": [
                     {
-                        "description": "user info",
+                        "description": "reset user password",
                         "name": "user",
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/models.CreateOrUpdateUserReq"
+                            "$ref": "#/definitions/models.ResetPasswordReqV2"
                         }
                     }
                 ],
@@ -950,7 +986,43 @@ var doc = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/models.CreateOrUpdateUserResp"
+                            "$ref": "#/definitions/models.ResetPasswordRespV2"
+                        }
+                    }
+                }
+            }
+        },
+        "/v2/user/update": {
+            "post": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "update user info.",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "user"
+                ],
+                "operationId": "UpdateUser",
+                "parameters": [
+                    {
+                        "description": "user info",
+                        "name": "user",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.UpdateUserReqV2"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.UpdateUserRespV2"
                         }
                     }
                 }
@@ -994,6 +1066,84 @@ var doc = `{
         }
     },
     "definitions": {
+        "common.JobListItemV2": {
+            "type": "object",
+            "properties": {
+                "dst_addr_list": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "job_create_time": {
+                    "type": "string"
+                },
+                "job_id": {
+                    "type": "string"
+                },
+                "job_status": {
+                    "type": "string"
+                },
+                "job_steps": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/common.JobStep"
+                    }
+                },
+                "src_addr_list": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "topic": {
+                    "type": "string"
+                },
+                "user": {
+                    "type": "string"
+                }
+            }
+        },
+        "common.JobStep": {
+            "type": "object",
+            "properties": {
+                "job_create_time": {
+                    "type": "string"
+                },
+                "step_name": {
+                    "type": "string"
+                },
+                "step_schedule": {
+                    "type": "number"
+                },
+                "step_status": {
+                    "type": "string"
+                }
+            }
+        },
+        "common.User": {
+            "type": "object",
+            "properties": {
+                "create_time": {
+                    "type": "string"
+                },
+                "password": {
+                    "type": "string"
+                },
+                "remark": {
+                    "type": "string"
+                },
+                "role": {
+                    "type": "string"
+                },
+                "tenant": {
+                    "type": "string"
+                },
+                "username": {
+                    "type": "string"
+                }
+            }
+        },
         "models.BasicTaskProfile": {
             "type": "object",
             "properties": {
@@ -1272,38 +1422,32 @@ var doc = `{
                 }
             }
         },
-        "models.CreateOrUpdateUserReq": {
+        "models.CreateUserReqV2": {
             "type": "object",
             "required": [
                 "role",
-                "user_group",
-                "user_name"
+                "tenant",
+                "username"
             ],
             "properties": {
-                "contact_info": {
-                    "type": "string"
-                },
-                "old_pass_word": {
-                    "type": "string"
-                },
                 "pass_word": {
                     "type": "string"
                 },
-                "principal": {
+                "remark": {
                     "type": "string"
                 },
                 "role": {
                     "type": "string"
                 },
-                "user_group": {
+                "tenant": {
                     "type": "string"
                 },
-                "user_name": {
+                "username": {
                     "type": "string"
                 }
             }
         },
-        "models.CreateOrUpdateUserResp": {
+        "models.CreateUserRespV2": {
             "type": "object",
             "properties": {
                 "message": {
@@ -1338,7 +1482,7 @@ var doc = `{
             "type": "object",
             "properties": {
                 "current_user": {
-                    "$ref": "#/definitions/models.User"
+                    "$ref": "#/definitions/common.User"
                 },
                 "message": {
                     "type": "string"
@@ -1364,7 +1508,7 @@ var doc = `{
                 }
             }
         },
-        "models.DeleteUserResp": {
+        "models.DeleteUserRespV2": {
             "type": "object",
             "properties": {
                 "message": {
@@ -1449,7 +1593,7 @@ var doc = `{
                 "job_steps": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/models.JobStep"
+                        "$ref": "#/definitions/common.JobStep"
                     }
                 },
                 "subscription_topic": {
@@ -1468,71 +1612,16 @@ var doc = `{
                 }
             }
         },
-        "models.JobListItemV2": {
-            "type": "object",
-            "properties": {
-                "dst_addr_list": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                },
-                "job_create_time": {
-                    "type": "string"
-                },
-                "job_id": {
-                    "type": "string"
-                },
-                "job_status": {
-                    "type": "string"
-                },
-                "job_steps": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/models.JobStep"
-                    }
-                },
-                "src_addr_list": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                },
-                "topic": {
-                    "type": "string"
-                },
-                "user": {
-                    "type": "string"
-                }
-            }
-        },
         "models.JobListRespV2": {
             "type": "object",
             "properties": {
                 "jobs": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/models.JobListItemV2"
+                        "$ref": "#/definitions/common.JobListItemV2"
                     }
                 },
                 "message": {
-                    "type": "string"
-                }
-            }
-        },
-        "models.JobStep": {
-            "type": "object",
-            "properties": {
-                "job_create_time": {
-                    "type": "string"
-                },
-                "step_name": {
-                    "type": "string"
-                },
-                "step_schedule": {
-                    "type": "number"
-                },
-                "step_status": {
                     "type": "string"
                 }
             }
@@ -1880,6 +1969,35 @@ var doc = `{
                 }
             }
         },
+        "models.ResetPasswordReqV2": {
+            "type": "object",
+            "required": [
+                "tenant",
+                "username"
+            ],
+            "properties": {
+                "old_pass_word": {
+                    "type": "string"
+                },
+                "pass_word": {
+                    "type": "string"
+                },
+                "tenant": {
+                    "type": "string"
+                },
+                "username": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.ResetPasswordRespV2": {
+            "type": "object",
+            "properties": {
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
         "models.ResumeJobRespV2": {
             "type": "object",
             "properties": {
@@ -2073,28 +2191,32 @@ var doc = `{
                 }
             }
         },
-        "models.User": {
+        "models.UpdateUserReqV2": {
             "type": "object",
+            "required": [
+                "role",
+                "tenant",
+                "username"
+            ],
             "properties": {
-                "contact_info": {
-                    "type": "string"
-                },
-                "create_time": {
-                    "type": "string"
-                },
-                "pass_word": {
-                    "type": "string"
-                },
-                "principal": {
+                "remark": {
                     "type": "string"
                 },
                 "role": {
                     "type": "string"
                 },
-                "user_group": {
+                "tenant": {
                     "type": "string"
                 },
-                "user_name": {
+                "username": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.UpdateUserRespV2": {
+            "type": "object",
+            "properties": {
+                "message": {
                     "type": "string"
                 }
             }
@@ -2108,7 +2230,7 @@ var doc = `{
                 "user_list": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/models.User"
+                        "$ref": "#/definitions/common.User"
                     }
                 }
             }
@@ -2120,7 +2242,7 @@ var doc = `{
                     "type": "string",
                     "example": "123456"
                 },
-                "user_group": {
+                "tenant": {
                     "type": "string",
                     "example": "test"
                 },

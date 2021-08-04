@@ -11,8 +11,6 @@ import (
 	"encoding/binary"
 	"fmt"
 
-	"github.com/actiontech/dtle/drivers/api/models"
-
 	"github.com/actiontech/dtle/drivers/mysql/common"
 	"github.com/cznic/mathutil"
 	"github.com/hashicorp/nomad/plugins/drivers"
@@ -173,7 +171,7 @@ func (e *Extractor) Run() {
 		// ensure job status exist when first time to start a reverse task
 		if jobStatus == "" {
 			jobStatus = common.DtleJobStatusReverseInit
-			e.storeManager.SaveJobInfo(models.JobListItemV2{JobId: e.subject, JobStatus: jobStatus})
+			e.storeManager.SaveJobInfo(common.JobListItemV2{JobId: e.subject, JobStatus: jobStatus})
 		}
 		firstWait := jobStatus == common.DtleJobStatusReverseInit
 		if firstWait {

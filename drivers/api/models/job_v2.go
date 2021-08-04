@@ -2,6 +2,8 @@ package models
 
 import (
 	"time"
+
+	"github.com/actiontech/dtle/drivers/mysql/common"
 )
 
 type JobListReqV2 struct {
@@ -11,35 +13,8 @@ type JobListReqV2 struct {
 	OrderBy         string `query:"order_by"`
 }
 
-type JobStep struct {
-	StepName      string  `json:"step_name"`
-	StepStatus    string  `json:"step_status"`
-	StepSchedule  float64 `json:"step_schedule"`
-	JobCreateTime string  `json:"job_create_time"`
-}
-
-func NewJobStep(stepName string) JobStep {
-	return JobStep{
-		StepName:      stepName,
-		StepStatus:    "start",
-		StepSchedule:  0,
-		JobCreateTime: time.Now().In(time.Local).Format(time.RFC3339),
-	}
-}
-
-type JobListItemV2 struct {
-	JobId         string    `json:"job_id"`
-	JobStatus     string    `json:"job_status"`
-	Topic         string    `json:"topic"`
-	JobCreateTime string    `json:"job_create_time"`
-	SrcAddrList   []string  `json:"src_addr_list"`
-	DstAddrList   []string  `json:"dst_addr_list"`
-	User          string    `json:"user"`
-	JobSteps      []JobStep `json:"job_steps"`
-}
-
 type JobListRespV2 struct {
-	Jobs []JobListItemV2 `json:"jobs"`
+	Jobs []common.JobListItemV2 `json:"jobs"`
 	BaseResp
 }
 
@@ -48,12 +23,12 @@ type MysqlToMysqlJobDetailReqV2 struct {
 }
 
 type JobBaseInfo struct {
-	JobId             string    `json:"job_id"`
-	SubscriptionTopic string    `json:"subscription_topic"`
-	JobStatus         string    `json:"job_status"`
-	JobCreateTime     string    `json:"job_create_time"`
-	JobSteps          []JobStep `json:"job_steps"`
-	Delay             int64     `json:"delay"`
+	JobId             string           `json:"job_id"`
+	SubscriptionTopic string           `json:"subscription_topic"`
+	JobStatus         string           `json:"job_status"`
+	JobCreateTime     string           `json:"job_create_time"`
+	JobSteps          []common.JobStep `json:"job_steps"`
+	Delay             int64            `json:"delay"`
 }
 
 type DtleNodeInfo struct {

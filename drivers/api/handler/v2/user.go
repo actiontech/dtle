@@ -20,7 +20,7 @@ import (
 // @Success 200 {object} models.UserListResp
 // @Security ApiKeyAuth
 // @Param filter_user_name query string false "filter user name"
-// @Param filter_user_group query string false "filter user group"
+// @Param filter_tenant query string false "filter tenant"
 // @Router /v2/user/list [get]
 func UserList(c echo.Context) error {
 	logger := handler.NewLogger().Named("UserList")
@@ -37,7 +37,7 @@ func UserList(c echo.Context) error {
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("consul_addr=%v; connect to consul failed: %v", handler.ConsulAddr, err)))
 	}
-	userList, err := storeManager.FindUserList(reqParam.FilterUserGroup)
+	userList, err := storeManager.FindUserList(reqParam.FilterTenant)
 	if nil != err {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("consul_addr=%v ; get job status list failed: %v", handler.ConsulAddr, err)))
 	}
@@ -46,37 +46,35 @@ func UserList(c echo.Context) error {
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
 	}
-	i := 0
+	users := make([]*common.User, 0)
 	for _, user := range userList {
-		if currentUser.UserGroup != common.DefaultAdminGroup &&
-			currentUser.UserGroup != user.UserGroup {
+		if currentUser.Tenant != common.DefaultAdminGroup &&
+			currentUser.Tenant != user.Tenant {
 			continue
 		}
-		if strings.HasPrefix(user.UserName, reqParam.FilterUserName) {
-			userList[i] = user
-			i++
+		if strings.HasPrefix(user.Username, reqParam.FilterUsername) {
+			users = append(users, user)
 		}
 	}
-	userList = userList[:i]
 
 	return c.JSON(http.StatusOK, &models.UserListResp{
-		UserList: userList,
+		UserList: users,
 		BaseResp: models.BuildBaseResp(nil),
 	})
 }
 
-// @Id CreateOrUpdateUser
-// @Description create or update user.
+// @Id CreateUser
+// @Description create user.
 // @Tags user
 // @Accept application/json
 // @Security ApiKeyAuth
-// @Param user body models.CreateOrUpdateUserReq true "user info"
-// @Success 200 {object} models.CreateOrUpdateUserResp
-// @Router /v2/user/update [post]
-func CreateOrUpdateUser(c echo.Context) error {
-	logger := handler.NewLogger().Named("CreateOrUpdateUser")
+// @Param user body models.CreateUserReqV2 true "user info"
+// @Success 200 {object} models.CreateUserRespV2
+// @Router /v2/user/create [post]
+func CreateUser(c echo.Context) error {
+	logger := handler.NewLogger().Named("CreateUser")
 	logger.Info("validate params")
-	reqParam := new(models.CreateOrUpdateUserReq)
+	reqParam := new(models.CreateUserReqV2)
 	if err := c.Bind(reqParam); nil != err {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("bind req param failed, error: %v", err)))
 	}
@@ -89,55 +87,138 @@ func CreateOrUpdateUser(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("get consul client failed: %v", err)))
 	}
 
-	if hasAccess, err := checkUserAccess(c, reqParam.UserGroup); err != nil || !hasAccess {
-		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("current user has no access to operate group %v ; err : %v", reqParam.UserGroup, err)))
+	if hasAccess, err := checkUserAccess(c, reqParam.Tenant); err != nil || !hasAccess {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("current user has no access to operate group %v ; err : %v", reqParam.Tenant, err)))
 	}
 
-	user, exist, err := storeManager.GetUser(reqParam.UserGroup, reqParam.UserName)
+	user, exist, err := storeManager.GetUser(reqParam.Tenant, reqParam.Username)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
 	}
 	if exist {
-		// update
-		if reqParam.PassWord != "" {
-			if leftMinute, exist := BL.blackListExist(fmt.Sprintf("%v:%v:%v", reqParam.UserGroup, reqParam.UserName, "update_pwd")); exist {
-				return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("the password cannot be changed temporarily, please try again after %v minute", leftMinute)))
-			}
-			if reqParam.OldPassWord != user.PassWord {
-				BL.setBlackList(fmt.Sprintf("%v:%v:%v", reqParam.UserGroup, reqParam.UserName, "update_pwd"), time.Minute*30)
-				return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("please check old password")))
-			}
-			user.PassWord = reqParam.PassWord
-		}
-		user.Role = reqParam.Role
-		user.ContactInfo = reqParam.ContactInfo
-		user.Principal = reqParam.Principal
-	} else {
-		// create
-		if reqParam.PassWord == "" {
-			return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("password is forbidden to be empty")))
-		}
-		user = &models.User{
-			UserName:    reqParam.UserName,
-			UserGroup:   reqParam.UserGroup,
-			Role:        reqParam.Role,
-			CreateTime:  time.Now().In(time.Local).Format(time.RFC3339),
-			ContactInfo: reqParam.ContactInfo,
-			Principal:   reqParam.Principal,
-			PassWord:    reqParam.PassWord,
-		}
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("user already exists")))
 	}
 
-	if !VerifyPassword(user.PassWord) {
+	if !VerifyPassword(user.Password) {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("password does not meet the rules")))
+	}
+	user = &common.User{
+		Username:   reqParam.Username,
+		Tenant:     reqParam.Tenant,
+		Role:       reqParam.Role,
+		CreateTime: time.Now().In(time.Local).Format(time.RFC3339),
+		Password:   reqParam.PassWord,
+		Remark:     reqParam.Remark,
+	}
+	if err := storeManager.SaveUser(user); nil != err {
+		return c.JSON(http.StatusInternalServerError,
+			models.BuildBaseResp(fmt.Errorf("create metadata of user[userName=%v,Tenant=%v] from consul failed: %v", reqParam.Username, reqParam.Tenant, err)))
+	}
+
+	return c.JSON(http.StatusOK, models.CreateUserRespV2{BaseResp: models.BuildBaseResp(nil)})
+}
+
+// @Id UpdateUser
+// @Description update user info.
+// @Tags user
+// @Accept application/json
+// @Security ApiKeyAuth
+// @Param user body models.UpdateUserReqV2 true "user info"
+// @Success 200 {object} models.UpdateUserRespV2
+// @Router /v2/user/update [post]
+func UpdateUser(c echo.Context) error {
+	logger := handler.NewLogger().Named("CreateOrUpdateUser")
+	logger.Info("validate params")
+	reqParam := new(models.UpdateUserReqV2)
+	if err := c.Bind(reqParam); nil != err {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("bind req param failed, error: %v", err)))
+	}
+	if err := c.Validate(reqParam); nil != err {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invalid params:\n%v", err)))
+	}
+
+	storeManager, err := common.NewStoreManager([]string{handler.ConsulAddr}, logger)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("get consul client failed: %v", err)))
+	}
+
+	if hasAccess, err := checkUserAccess(c, reqParam.Tenant); err != nil || !hasAccess {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("current user has no access to operate group %v ; err : %v", reqParam.Tenant, err)))
+	}
+
+	user, exist, err := storeManager.GetUser(reqParam.Tenant, reqParam.Username)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
+	}
+	if !exist {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("user %v:%v does not exist", reqParam.Tenant, reqParam.Username)))
+	}
+
+	user.Role = reqParam.Role
+	user.Remark = reqParam.Remark
+
+	if !VerifyPassword(user.Password) {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("password does not meet the rules")))
 	}
 
 	if err := storeManager.SaveUser(user); nil != err {
 		return c.JSON(http.StatusInternalServerError,
-			models.BuildBaseResp(fmt.Errorf("delete metadata of user[userName=%v,userGroup=%v] from consul failed: %v", reqParam.UserName, reqParam.UserGroup, err)))
+			models.BuildBaseResp(fmt.Errorf("delete metadata of user[userName=%v,Tenant=%v] from consul failed: %v", reqParam.Username, reqParam.Tenant, err)))
 	}
 
-	return c.JSON(http.StatusOK, models.CreateOrUpdateUserResp{BaseResp: models.BuildBaseResp(nil)})
+	return c.JSON(http.StatusOK, models.UpdateUserRespV2{BaseResp: models.BuildBaseResp(nil)})
+}
+
+// @Id ResetPassword
+// @Description reset user password.
+// @Tags user
+// @Accept application/json
+// @Security ApiKeyAuth
+// @Param user body models.ResetPasswordReqV2 true "reset user password"
+// @Success 200 {object} models.ResetPasswordRespV2
+// @Router /v2/user/reset_password [post]
+func ResetPassword(c echo.Context) error {
+	logger := handler.NewLogger().Named("CreateOrUpdateUser")
+	logger.Info("validate params")
+	reqParam := new(models.ResetPasswordReqV2)
+	if err := c.Bind(reqParam); nil != err {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("bind req param failed, error: %v", err)))
+	}
+	if err := c.Validate(reqParam); nil != err {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invalid params:\n%v", err)))
+	}
+
+	if hasAccess, err := checkUserAccess(c, reqParam.Tenant); err != nil || !hasAccess {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("current user has no access to operate group %v ; err : %v", reqParam.Tenant, err)))
+	}
+
+	storeManager, err := common.NewStoreManager([]string{handler.ConsulAddr}, logger)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("get consul client failed: %v", err)))
+	}
+
+	user, exist, err := storeManager.GetUser(reqParam.Tenant, reqParam.Username)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
+	}
+	if !exist {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("user does not exist")))
+	}
+
+	if err := ValidateBlackList(fmt.Sprintf("%s:%s", reqParam.Tenant, reqParam.Username), "reset_pwd", user.Password, reqParam.OldPassWord); err != nil {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
+	}
+
+	user.Password = reqParam.PassWord
+	if !VerifyPassword(user.Password) {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("password does not meet the rules")))
+	}
+	if err := storeManager.SaveUser(user); nil != err {
+		return c.JSON(http.StatusInternalServerError,
+			models.BuildBaseResp(fmt.Errorf("delete metadata of user[userName=%v,Tenant=%v] from consul failed: %v", reqParam.Username, reqParam.Tenant, err)))
+	}
+
+	return c.JSON(http.StatusOK, models.ResetPasswordRespV2{BaseResp: models.BuildBaseResp(nil)})
 }
 
 // @Id DeleteUser
@@ -145,34 +226,34 @@ func CreateOrUpdateUser(c echo.Context) error {
 // @Tags user
 // @accept application/x-www-form-urlencoded
 // @Security ApiKeyAuth
-// @Param user_group formData string true "user group name"
-// @Param user_name formData string true "user name"
-// @Success 200 {object} models.DeleteUserResp
+// @Param tenant formData string true "tenant"
+// @Param username formData string true "user name"
+// @Success 200 {object} models.DeleteUserRespV2
 // @Router /v2/user/delete [post]
 func DeleteUser(c echo.Context) error {
 	logger := handler.NewLogger().Named("DeleteUser")
 	logger.Info("validate params")
-	reqParam := new(models.DeleteUserReq)
+	reqParam := new(models.DeleteUserReqV2)
 	if err := c.Bind(reqParam); nil != err {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("bind req param failed, error: %v", err)))
 	}
 	if err := c.Validate(reqParam); nil != err {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invalid params:\n%v", err)))
 	}
-	if hasAccess, err := checkUserAccess(c, reqParam.UserGroup); err != nil || !hasAccess {
-		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("current user has no access to operate group %v ; err : %v", reqParam.UserGroup, err)))
+	if hasAccess, err := checkUserAccess(c, reqParam.Tenant); err != nil || !hasAccess {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("current user has no access to operate group %v ; err : %v", reqParam.Tenant, err)))
 	}
 
 	storeManager, err := common.NewStoreManager([]string{handler.ConsulAddr}, logger)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("get consul client failed: %v", err)))
 	}
-	if err := storeManager.DeleteUser(reqParam.UserGroup, reqParam.UserName); nil != err {
+	if err := storeManager.DeleteUser(reqParam.Tenant, reqParam.Username); nil != err {
 		return c.JSON(http.StatusInternalServerError,
-			models.BuildBaseResp(fmt.Errorf("delete metadata of user[userName=%v,userGroup=%v] from consul failed: %v", reqParam.UserName, reqParam.UserGroup, err)))
+			models.BuildBaseResp(fmt.Errorf("delete metadata of user[userName=%v,userGroup=%v] from consul failed: %v", reqParam.Username, reqParam.Tenant, err)))
 	}
 
-	return c.JSON(http.StatusOK, &models.DeleteUserResp{
+	return c.JSON(http.StatusOK, &models.DeleteUserRespV2{
 		BaseResp: models.BuildBaseResp(nil),
 	})
 }
@@ -188,20 +269,20 @@ func GetCurrentUser(c echo.Context) error {
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invalid params:\n%v", err)))
 	}
-	user.PassWord = "*"
+	user.Password = "*"
 	return c.JSON(http.StatusOK, &models.CurrentUserResp{
 		CurrentUser: user,
 		BaseResp:    models.BuildBaseResp(nil),
 	})
 }
 
-func getCurrentUser(c echo.Context) (*models.User, error) {
+func getCurrentUser(c echo.Context) (*common.User, error) {
 	logger := handler.NewLogger().Named("getCurrentUser")
 	logger.Info("getCurrentUser")
 	key := "current_user"
 	currentUser := c.Get(key)
 	if currentUser != nil {
-		if user, ok := currentUser.(*models.User); ok {
+		if user, ok := currentUser.(*common.User); ok {
 			return user, nil
 		}
 	}
@@ -231,7 +312,7 @@ func checkUserAccess(c echo.Context, group string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	if currentUser.UserGroup != common.DefaultAdminGroup && currentUser.UserGroup != group {
+	if currentUser.Tenant != common.DefaultAdminGroup && currentUser.Tenant != group {
 		return false, nil
 	}
 	return true, nil

@@ -68,17 +68,17 @@ func JobListV2(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("find job err %v", err)))
 	}
 	logger.Info("invoke nomad find job list finished")
-	jobs := make([]models.JobListItemV2, 0)
+	jobs := make([]common.JobListItemV2, 0)
 	for _, consulJob := range jobList {
 		jobType := getJobTypeFromJobId(consulJob.JobId)
 		if "" != reqParam.FilterJobType && reqParam.FilterJobType != string(jobType) {
 			continue
 		}
-		if user.UserGroup != common.DefaultAdminGroup &&
-			consulJob.User != fmt.Sprintf("%s:%s", user.UserGroup, user.UserName) {
+		if user.Tenant != common.DefaultAdminGroup &&
+			consulJob.User != fmt.Sprintf("%s:%s", user.Tenant, user.Username) {
 			continue
 		}
-		jobItem := models.JobListItemV2{
+		jobItem := common.JobListItemV2{
 			JobId:         consulJob.JobId,
 			JobStatus:     consulJob.JobStatus,
 			Topic:         consulJob.Topic,
@@ -194,7 +194,7 @@ func CreateOrUpdateMigrationJobV2(c echo.Context) error {
 }
 
 func createOrUpdateMysqlToMysqlJob(logger hclog.Logger, jobParam *models.CreateOrUpdateMysqlToMysqlJobParamV2,
-	user *models.User, jobType DtleJobType) (*models.CreateOrUpdateMysqlToMysqlJobRespV2, error) {
+	user *common.User, jobType DtleJobType) (*models.CreateOrUpdateMysqlToMysqlJobRespV2, error) {
 
 	failover := g.PtrToBool(jobParam.Failover, true)
 	if jobParam.IsMysqlPasswordEncrypted {
@@ -289,30 +289,30 @@ func convertMysqlToMysqlJobToNomadJob(failover bool, jobParams *models.CreateOrU
 }
 
 func buildMySQLJobListItem(logger hclog.Logger, jobParam *models.CreateOrUpdateMysqlToMysqlJobParamV2,
-	user *models.User) error {
+	user *common.User) error {
 	// add data to consul
 	storeManager, err := common.NewStoreManager([]string{handler.ConsulAddr}, logger)
 	if err != nil {
 		return fmt.Errorf("consul_addr=%v; connect to consul failed: %v", handler.ConsulAddr, err)
 	}
-	jobInfo := models.JobListItemV2{
+	jobInfo := common.JobListItemV2{
 		JobId:         jobParam.JobId,
 		JobStatus:     common.DtleJobStatusNonPaused,
 		JobCreateTime: time.Now().In(time.Local).Format(time.RFC3339),
 		SrcAddrList:   []string{jobParam.SrcTask.MysqlConnectionConfig.MysqlHost},
 		DstAddrList:   []string{jobParam.DestTask.MysqlConnectionConfig.MysqlHost},
-		User:          fmt.Sprintf("%s:%s", user.UserGroup, user.UserName),
+		User:          fmt.Sprintf("%s:%s", user.Tenant, user.Username),
 		JobSteps:      nil,
 	}
 	if jobParam.Reverse {
 		jobInfo.JobStatus = common.DtleJobStatusReverseInit
 	}
 	if jobParam.TaskStepName == "all" {
-		jobInfo.JobSteps = append(jobInfo.JobSteps, models.NewJobStep(mysql.JobFullCopy), models.NewJobStep(mysql.JobIncrCopy))
+		jobInfo.JobSteps = append(jobInfo.JobSteps, common.NewJobStep(mysql.JobFullCopy), common.NewJobStep(mysql.JobIncrCopy))
 	} else if jobParam.TaskStepName == mysql.JobFullCopy {
-		jobInfo.JobSteps = append(jobInfo.JobSteps, models.NewJobStep(mysql.JobFullCopy))
+		jobInfo.JobSteps = append(jobInfo.JobSteps, common.NewJobStep(mysql.JobFullCopy))
 	} else if jobParam.TaskStepName == mysql.JobIncrCopy {
-		jobInfo.JobSteps = append(jobInfo.JobSteps, models.NewJobStep(mysql.JobIncrCopy))
+		jobInfo.JobSteps = append(jobInfo.JobSteps, common.NewJobStep(mysql.JobIncrCopy))
 	}
 	err = storeManager.SaveJobInfo(jobInfo)
 	if nil != err {
@@ -322,28 +322,28 @@ func buildMySQLJobListItem(logger hclog.Logger, jobParam *models.CreateOrUpdateM
 }
 
 func buildKafkaJobListItem(logger hclog.Logger, jobParam *models.CreateOrUpdateMysqlToKafkaJobParamV2,
-	user *models.User) error {
+	user *common.User) error {
 	// add data to consul
 	storeManager, err := common.NewStoreManager([]string{handler.ConsulAddr}, logger)
 	if err != nil {
 		return fmt.Errorf("consul_addr=%v; connect to consul failed: %v", handler.ConsulAddr, err)
 	}
-	jobInfo := models.JobListItemV2{
+	jobInfo := common.JobListItemV2{
 		JobId:         jobParam.JobId,
 		JobStatus:     common.DtleJobStatusNonPaused,
 		Topic:         jobParam.DestTask.Topic,
 		JobCreateTime: time.Now().In(time.Local).Format(time.RFC3339),
 		SrcAddrList:   []string{jobParam.SrcTask.MysqlConnectionConfig.MysqlHost},
 		DstAddrList:   jobParam.DestTask.BrokerAddrs,
-		User:          fmt.Sprintf("%s:%s", user.UserGroup, user.UserName),
+		User:          fmt.Sprintf("%s:%s", user.Tenant, user.Username),
 		JobSteps:      nil,
 	}
 	if jobParam.TaskStepName == "all" {
-		jobInfo.JobSteps = append(jobInfo.JobSteps, models.NewJobStep(mysql.JobFullCopy), models.NewJobStep(mysql.JobIncrCopy))
+		jobInfo.JobSteps = append(jobInfo.JobSteps, common.NewJobStep(mysql.JobFullCopy), common.NewJobStep(mysql.JobIncrCopy))
 	} else if jobParam.TaskStepName == mysql.JobFullCopy {
-		jobInfo.JobSteps = append(jobInfo.JobSteps, models.NewJobStep(mysql.JobFullCopy))
+		jobInfo.JobSteps = append(jobInfo.JobSteps, common.NewJobStep(mysql.JobFullCopy))
 	} else if jobParam.TaskStepName == mysql.JobIncrCopy {
-		jobInfo.JobSteps = append(jobInfo.JobSteps, models.NewJobStep(mysql.JobIncrCopy))
+		jobInfo.JobSteps = append(jobInfo.JobSteps, common.NewJobStep(mysql.JobIncrCopy))
 	}
 	err = storeManager.SaveJobInfo(jobInfo)
 	if nil != err {
@@ -1575,7 +1575,7 @@ func checkJobAccess(c echo.Context, jobId string) error {
 		return fmt.Errorf("consul_addr=%v; connect to consul failed: %v", handler.ConsulAddr, err)
 	}
 
-	if user.UserGroup == common.DefaultAdminGroup && user.UserName == common.DefaultAdminUser {
+	if user.Tenant == common.DefaultAdminGroup && user.Username == common.DefaultAdminUser {
 		return nil
 	}
 
@@ -1588,8 +1588,8 @@ func checkJobAccess(c echo.Context, jobId string) error {
 		return fmt.Errorf("consul_addr=%v ; get job status list failed: %v", handler.ConsulAddr, err)
 	}
 
-	if job.User != fmt.Sprintf("%s:%s", user.UserGroup, user.UserName) {
-		return fmt.Errorf("current user %v:%v has not access to operate  job job_id=%v", user.UserGroup, user.UserName, jobId)
+	if job.User != fmt.Sprintf("%s:%s", user.Tenant, user.Username) {
+		return fmt.Errorf("current user %v:%v has not access to operate  job job_id=%v", user.Tenant, user.Username, jobId)
 	}
 
 	return nil

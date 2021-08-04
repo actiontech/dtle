@@ -1,5 +1,56 @@
 basePath: /
 definitions:
+  common.JobListItemV2:
+    properties:
+      dst_addr_list:
+        items:
+          type: string
+        type: array
+      job_create_time:
+        type: string
+      job_id:
+        type: string
+      job_status:
+        type: string
+      job_steps:
+        items:
+          $ref: '#/definitions/common.JobStep'
+        type: array
+      src_addr_list:
+        items:
+          type: string
+        type: array
+      topic:
+        type: string
+      user:
+        type: string
+    type: object
+  common.JobStep:
+    properties:
+      job_create_time:
+        type: string
+      step_name:
+        type: string
+      step_schedule:
+        type: number
+      step_status:
+        type: string
+    type: object
+  common.User:
+    properties:
+      create_time:
+        type: string
+      password:
+        type: string
+      remark:
+        type: string
+      role:
+        type: string
+      tenant:
+        type: string
+      username:
+        type: string
+    type: object
   models.BasicTaskProfile:
     properties:
       configuration:
@@ -187,28 +238,24 @@ definitions:
     - job_id
     - src_task
     type: object
-  models.CreateOrUpdateUserReq:
+  models.CreateUserReqV2:
     properties:
-      contact_info:
-        type: string
-      old_pass_word:
-        type: string
       pass_word:
         type: string
-      principal:
+      remark:
         type: string
       role:
         type: string
-      user_group:
+      tenant:
         type: string
-      user_name:
+      username:
         type: string
     required:
     - role
-    - user_group
-    - user_name
+    - tenant
+    - username
     type: object
-  models.CreateOrUpdateUserResp:
+  models.CreateUserRespV2:
     properties:
       message:
         type: string
@@ -231,7 +278,7 @@ definitions:
   models.CurrentUserResp:
     properties:
       current_user:
-        $ref: '#/definitions/models.User'
+        $ref: '#/definitions/common.User'
       message:
         type: string
     type: object
@@ -247,7 +294,7 @@ definitions:
       message:
         type: string
     type: object
-  models.DeleteUserResp:
+  models.DeleteUserRespV2:
     properties:
       message:
         type: string
@@ -302,7 +349,7 @@ definitions:
         type: string
       job_steps:
         items:
-          $ref: '#/definitions/models.JobStep'
+          $ref: '#/definitions/common.JobStep'
         type: array
       subscription_topic:
         type: string
@@ -314,49 +361,13 @@ definitions:
       message:
         type: string
     type: object
-  models.JobListItemV2:
-    properties:
-      dst_addr_list:
-        items:
-          type: string
-        type: array
-      job_create_time:
-        type: string
-      job_id:
-        type: string
-      job_status:
-        type: string
-      job_steps:
-        items:
-          $ref: '#/definitions/models.JobStep'
-        type: array
-      src_addr_list:
-        items:
-          type: string
-        type: array
-      topic:
-        type: string
-      user:
-        type: string
-    type: object
   models.JobListRespV2:
     properties:
       jobs:
         items:
-          $ref: '#/definitions/models.JobListItemV2'
+          $ref: '#/definitions/common.JobListItemV2'
         type: array
       message:
-        type: string
-    type: object
-  models.JobStep:
-    properties:
-      job_create_time:
-        type: string
-      step_name:
-        type: string
-      step_schedule:
-        type: number
-      step_status:
         type: string
     type: object
   models.KafkaDestTaskConfig:
@@ -585,6 +596,25 @@ definitions:
       validated:
         type: boolean
     type: object
+  models.ResetPasswordReqV2:
+    properties:
+      old_pass_word:
+        type: string
+      pass_word:
+        type: string
+      tenant:
+        type: string
+      username:
+        type: string
+    required:
+    - tenant
+    - username
+    type: object
+  models.ResetPasswordRespV2:
+    properties:
+      message:
+        type: string
+    type: object
   models.ResumeJobRespV2:
     properties:
       message:
@@ -710,21 +740,24 @@ definitions:
       message:
         type: string
     type: object
-  models.User:
+  models.UpdateUserReqV2:
     properties:
-      contact_info:
-        type: string
-      create_time:
-        type: string
-      pass_word:
-        type: string
-      principal:
+      remark:
         type: string
       role:
         type: string
-      user_group:
+      tenant:
         type: string
-      user_name:
+      username:
+        type: string
+    required:
+    - role
+    - tenant
+    - username
+    type: object
+  models.UpdateUserRespV2:
+    properties:
+      message:
         type: string
     type: object
   models.UserListResp:
@@ -733,7 +766,7 @@ definitions:
         type: string
       user_list:
         items:
-          $ref: '#/definitions/models.User'
+          $ref: '#/definitions/common.User'
         type: array
     type: object
   models.UserLoginReqV2:
@@ -741,7 +774,7 @@ definitions:
       password:
         example: "123456"
         type: string
-      user_group:
+      tenant:
         example: test
         type: string
       username:
@@ -1298,6 +1331,28 @@ paths:
       - ApiKeyAuth: []
       tags:
       - node
+  /v2/user/create:
+    post:
+      consumes:
+      - application/json
+      description: create user.
+      operationId: CreateUser
+      parameters:
+      - description: user info
+        in: body
+        name: user
+        required: true
+        schema:
+          $ref: '#/definitions/models.CreateUserReqV2'
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.CreateUserRespV2'
+      security:
+      - ApiKeyAuth: []
+      tags:
+      - user
   /v2/user/current_user:
     get:
       description: get current user.
@@ -1318,21 +1373,21 @@ paths:
       description: delete user.
       operationId: DeleteUser
       parameters:
-      - description: user group name
+      - description: tenant
         in: formData
-        name: user_group
+        name: tenant
         required: true
         type: string
       - description: user name
         in: formData
-        name: user_name
+        name: username
         required: true
         type: string
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/models.DeleteUserResp'
+            $ref: '#/definitions/models.DeleteUserRespV2'
       security:
       - ApiKeyAuth: []
       tags:
@@ -1346,9 +1401,9 @@ paths:
         in: query
         name: filter_user_name
         type: string
-      - description: filter user group
+      - description: filter tenant
         in: query
-        name: filter_user_group
+        name: filter_tenant
         type: string
       responses:
         "200":
@@ -1359,24 +1414,46 @@ paths:
       - ApiKeyAuth: []
       tags:
       - user
+  /v2/user/reset_password:
+    post:
+      consumes:
+      - application/json
+      description: reset user password.
+      operationId: ResetPassword
+      parameters:
+      - description: reset user password
+        in: body
+        name: user
+        required: true
+        schema:
+          $ref: '#/definitions/models.ResetPasswordReqV2'
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.ResetPasswordRespV2'
+      security:
+      - ApiKeyAuth: []
+      tags:
+      - user
   /v2/user/update:
     post:
       consumes:
       - application/json
-      description: create or update user.
-      operationId: CreateOrUpdateUser
+      description: update user info.
+      operationId: UpdateUser
       parameters:
       - description: user info
         in: body
         name: user
         required: true
         schema:
-          $ref: '#/definitions/models.CreateOrUpdateUserReq'
+          $ref: '#/definitions/models.UpdateUserReqV2'
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/models.CreateOrUpdateUserResp'
+            $ref: '#/definitions/models.UpdateUserRespV2'
       security:
       - ApiKeyAuth: []
       tags:
