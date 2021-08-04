@@ -98,8 +98,7 @@ func CreateUser(c echo.Context) error {
 	if exist {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("user already exists")))
 	}
-
-	if !VerifyPassword(user.Password) {
+	if !VerifyPassword(reqParam.PassWord) {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("password does not meet the rules")))
 	}
 	user = &common.User{
