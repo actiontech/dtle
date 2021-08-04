@@ -95,7 +95,9 @@ func SetupApiServer(logger hclog.Logger, apiAddr, nomadAddr, consulAddr, uiDir s
 	v2Router.POST("/job/finish", v2.FinishJob)
 	v2Router.POST("/job/reverse", v2.ReverseJob)
 	v2Router.GET("/user/list", v2.UserList)
-	v2Router.POST("/user/update", v2.CreateOrUpdateUser)
+	v2Router.POST("/user/create", v2.CreateUser)
+	v2Router.POST("/user/update", v2.UpdateUser)
+	v2Router.POST("/user/reset_password", v2.ResetPassword)
 	v2Router.POST("/user/delete", v2.DeleteUser)
 	v2Router.GET("/user/current_user", v2.GetCurrentUser)
 

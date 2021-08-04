@@ -6,8 +6,8 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
-	"github.com/actiontech/dtle/drivers/api/models"
 	"github.com/hashicorp/go-hclog"
 	"github.com/pkg/errors"
 	"github.com/siddontang/go-mysql/mysql"
@@ -274,16 +274,16 @@ func GetGtidFromConsul(sm *StoreManager, subject string, logger hclog.Logger, my
 	}
 	return nil
 }
-func (sm *StoreManager) GetJobInfo(jobId string) (*models.JobListItemV2, error) {
+func (sm *StoreManager) GetJobInfo(jobId string) (*JobListItemV2, error) {
 	key := fmt.Sprintf("dtleJobList/%v", jobId)
 	kp, err := sm.consulStore.Get(key)
 	if err == store.ErrKeyNotFound {
-		return &models.JobListItemV2{}, nil
+		return &JobListItemV2{}, nil
 	}
 	if nil != err {
 		return nil, fmt.Errorf("get %v value from consul failed: %v", key, err)
 	}
-	job := new(models.JobListItemV2)
+	job := new(JobListItemV2)
 	err = json.Unmarshal(kp.Value, job)
 	if err != nil {
 		return nil, fmt.Errorf("get %v from consul, unmarshal err : %v", key, err)
@@ -302,16 +302,16 @@ func (sm *StoreManager) GetJobStatus(jobId string) (string, error) {
 	return jobInfo.JobStatus, nil
 }
 
-func (sm *StoreManager) FindJobList() ([]*models.JobListItemV2, error) {
+func (sm *StoreManager) FindJobList() ([]*JobListItemV2, error) {
 	key := "dtleJobList/"
 	kps, err := sm.consulStore.List(key)
 	if nil != err && err != store.ErrKeyNotFound {
 		return nil, fmt.Errorf("get %v value from consul failed: %v", key, err)
 	}
-	jobList := make([]*models.JobListItemV2, 0)
+	jobList := make([]*JobListItemV2, 0)
 
 	for _, kp := range kps {
-		job := new(models.JobListItemV2)
+		job := new(JobListItemV2)
 		err = json.Unmarshal(kp.Value, job)
 		if err != nil {
 			return nil, fmt.Errorf("get %v from consul, unmarshal err : %v", key, err)
@@ -321,7 +321,7 @@ func (sm *StoreManager) FindJobList() ([]*models.JobListItemV2, error) {
 	return jobList, nil
 }
 
-func (sm *StoreManager) SaveJobInfo(job models.JobListItemV2) error {
+func (sm *StoreManager) SaveJobInfo(job JobListItemV2) error {
 	key := fmt.Sprintf("dtleJobList/%v", job.JobId)
 	jobBytes, err := json.Marshal(job)
 	if err != nil {
@@ -343,7 +343,7 @@ func (sm *StoreManager) WaitOnJob(currentJob string, waitJob string, stopCh chan
 		if kv == nil {
 			return fmt.Errorf("WaitOnJob get nil kv. current task might have been shutdown")
 		}
-		job := new(models.JobListItemV2)
+		job := new(JobListItemV2)
 		err = json.Unmarshal(kv.Value, job)
 		if err != nil {
 			return fmt.Errorf("watch %v from consul, unmarshal err : %v", key1, err)
@@ -402,20 +402,20 @@ func (sm *StoreManager) GetTargetGtid(subject string) (string, error) {
 	return string(kv.Value), nil
 }
 
-func (sm *StoreManager) FindUserList(userKey string) ([]*models.User, error) {
+func (sm *StoreManager) FindUserList(userKey string) ([]*User, error) {
 	userKey = fmt.Sprintf("%s/%s", "dtleUser", userKey)
 	storeUsers, err := sm.consulStore.List(userKey)
 	if nil != err && err != store.ErrKeyNotFound {
 		return nil, fmt.Errorf("get %v value from consul failed: %v", userKey, err)
 	}
-	userList := make([]*models.User, 0)
+	userList := make([]*User, 0)
 	for _, storeUser := range storeUsers {
-		user := new(models.User)
+		user := new(User)
 		err = json.Unmarshal(storeUser.Value, user)
 		if err != nil {
 			return nil, fmt.Errorf("get %v from consul, unmarshal err : %v", storeUser, err)
 		}
-		user.PassWord = "*"
+		user.Password = "*"
 		userList = append(userList, user)
 	}
 
@@ -433,13 +433,13 @@ func (sm *StoreManager) DeleteUser(userGroup, user string) error {
 
 var once sync.Once
 
-func (sm *StoreManager) GetUser(userGroup, userName string) (*models.User, bool, error) {
+func (sm *StoreManager) GetUser(userGroup, userName string) (*User, bool, error) {
 	once.Do(func() {
-		user := &models.User{
-			UserName:  DefaultAdminUser,
-			UserGroup: DefaultAdminGroup,
-			Role:      DefaultRole,
-			PassWord:  DefaultAdminPwd,
+		user := &User{
+			Username: DefaultAdminUser,
+			Tenant:   DefaultAdminGroup,
+			Role:     DefaultRole,
+			Password: DefaultAdminPwd,
 		}
 		err := sm.SaveUser(user)
 		if err != nil {
@@ -459,19 +459,55 @@ func (sm *StoreManager) GetUser(userGroup, userName string) (*models.User, bool,
 	if nil != err {
 		return nil, false, err
 	}
-	user := new(models.User)
+	user := new(User)
 	err = json.Unmarshal(kp.Value, user)
 	if err != nil {
 		return nil, false, fmt.Errorf("get %v from consul, unmarshal err : %v", key, err)
 	}
 	return user, true, nil
 }
-func (sm *StoreManager) SaveUser(user *models.User) error {
-	key := fmt.Sprintf("dtleUser/%v/%v", user.UserGroup, user.UserName)
+func (sm *StoreManager) SaveUser(user *User) error {
+	key := fmt.Sprintf("dtleUser/%v/%v", user.Tenant, user.Username)
 	jobBytes, err := json.Marshal(user)
 	if err != nil {
 		return fmt.Errorf("save %v to consul, marshal err : %v", key, err)
 	}
 	err = sm.consulStore.Put(key, jobBytes, nil)
 	return err
+}
+
+type User struct {
+	Username   string `json:"username"`
+	Tenant     string `json:"tenant"`
+	Role       string `json:"role"`
+	Password   string `json:"password"`
+	CreateTime string `json:"create_time"`
+	Remark     string `json:"remark"`
+}
+
+type JobListItemV2 struct {
+	JobId         string    `json:"job_id"`
+	JobStatus     string    `json:"job_status"`
+	Topic         string    `json:"topic"`
+	JobCreateTime string    `json:"job_create_time"`
+	SrcAddrList   []string  `json:"src_addr_list"`
+	DstAddrList   []string  `json:"dst_addr_list"`
+	User          string    `json:"user"`
+	JobSteps      []JobStep `json:"job_steps"`
+}
+
+type JobStep struct {
+	StepName      string  `json:"step_name"`
+	StepStatus    string  `json:"step_status"`
+	StepSchedule  float64 `json:"step_schedule"`
+	JobCreateTime string  `json:"job_create_time"`
+}
+
+func NewJobStep(stepName string) JobStep {
+	return JobStep{
+		StepName:      stepName,
+		StepStatus:    "start",
+		StepSchedule:  0,
+		JobCreateTime: time.Now().In(time.Local).Format(time.RFC3339),
+	}
 }
