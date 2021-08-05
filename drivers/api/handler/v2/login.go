@@ -12,7 +12,7 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
-// @Summary 用户登录
+// @Summary user login
 // @Description user login
 // @Tags user
 // @Id loginV2
@@ -40,7 +40,7 @@ func Login(c echo.Context) error {
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
 	} else if !exist {
-		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("user %s:%s is not exist or password is wrong", reqParam.Tenant, reqParam.Username)))
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("user or password is wrong")))
 	}
 
 	if err := ValidateBlackList(fmt.Sprintf("%s:%s", reqParam.Tenant, reqParam.Username), "login", reqParam.Password, user.Password); err != nil {

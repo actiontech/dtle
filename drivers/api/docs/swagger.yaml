@@ -310,11 +310,6 @@ definitions:
       source:
         type: string
     type: object
-  models.FinishJobResp:
-    properties:
-      message:
-        type: string
-    type: object
   models.GetTaskProgressRespV2:
     properties:
       message:
@@ -647,6 +642,11 @@ definitions:
       message:
         type: string
     type: object
+  models.ReverseStartRespV2:
+    properties:
+      message:
+        type: string
+    type: object
   models.SchemaItem:
     properties:
       schema_name:
@@ -847,27 +847,6 @@ paths:
       - ApiKeyAuth: []
       tags:
       - job
-  /v2/job/finish:
-    post:
-      consumes:
-      - application/x-www-form-urlencoded
-      description: Finish Job.
-      operationId: FinishJob
-      parameters:
-      - description: job id
-        in: formData
-        name: job_id
-        required: true
-        type: string
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/models.FinishJobResp'
-      security:
-      - ApiKeyAuth: []
-      tags:
-      - job
   /v2/job/gtid:
     get:
       description: get src task current gtid.
@@ -990,6 +969,28 @@ paths:
             $ref: '#/definitions/models.ReverseJobResp'
       security:
       - ApiKeyAuth: []
+      tags:
+      - job
+  /v2/job/reverse_start:
+    post:
+      consumes:
+      - application/x-www-form-urlencoded
+      description: Finish Job.
+      operationId: ReverseStartJob
+      parameters:
+      - description: job id
+        in: formData
+        name: job_id
+        required: true
+        type: string
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.ReverseStartRespV2'
+      security:
+      - ApiKeyAuth: []
+      summary: start reverse-init job
       tags:
       - job
   /v2/job/subscription:
@@ -1154,7 +1155,7 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/models.GetUserLoginResV2'
-      summary: 用户登录
+      summary: user login
       tags:
       - user
   /v2/monitor/task:

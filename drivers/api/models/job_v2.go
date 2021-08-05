@@ -253,11 +253,11 @@ type JobGtidResp struct {
 	BaseResp
 }
 
-type FinishJobReq struct {
+type ReverseStartReqV2 struct {
 	JobId string `form:"job_id" validate:"required"`
 }
 
-type FinishJobResp struct {
+type ReverseStartRespV2 struct {
 	BaseResp
 }
 
