@@ -58,6 +58,8 @@ type Configuration struct {
 	GroupMaxSize       int  `json:"group_max_size"`
 	ChunkSize          int  `json:"chunk_size"`
 	GroupTimeout       int  `json:"group_timeout"`
+	DropTableIfExists  bool `json:"drop_table_if_exists"`
+	SkipCreateDbTable  bool `json:"skip_create_db_table"`
 }
 
 type BasicTaskProfile struct {

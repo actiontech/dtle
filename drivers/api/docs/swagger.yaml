@@ -99,6 +99,8 @@ definitions:
         type: boolean
       chunk_size:
         type: integer
+      drop_table_if_exists:
+        type: boolean
       fail_over:
         type: boolean
       group_max_size:
@@ -111,6 +113,8 @@ definitions:
         type: integer
       retry_times:
         type: integer
+      skip_create_db_table:
+        type: boolean
     type: object
   models.ConnectionInfo:
     properties:
@@ -1400,7 +1404,7 @@ paths:
       parameters:
       - description: filter user name
         in: query
-        name: filter_user_name
+        name: filter_username
         type: string
       - description: filter tenant
         in: query

@@ -92,7 +92,6 @@ func SetupApiServer(logger hclog.Logger, apiAddr, nomadAddr, consulAddr, uiDir s
 	v2Router.GET("/mysql/instance_connection", v2.Connection)
 	v2Router.GET("/monitor/task", v2.GetTaskProgressV2)
 	v2Router.GET("/job/gtid", v2.GetJobGtid)
-	v2Router.POST("/job/finish", v2.ReverseStartJob)
 	v2Router.POST("/job/reverse_start", v2.ReverseStartJob)
 	v2Router.POST("/job/reverse", v2.ReverseJob)
 	v2Router.GET("/user/list", v2.UserList)
@@ -166,4 +165,10 @@ func AdminUserAllowed() echo.MiddlewareFunc {
 			return echo.NewHTTPError(http.StatusForbidden)
 		}
 	}
+}
+
+func init() {
+	middleware.ErrJWTMissing.Code = http.StatusUnauthorized
+	middleware.ErrJWTMissing.Message = "permission denied,please login again!"
+	middleware.ErrJWTInvalid.Message = "permission denied,please login again!"
 }
