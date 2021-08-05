@@ -58,40 +58,6 @@ var doc = `{
                 }
             }
         },
-        "/v2/job/finish": {
-            "post": {
-                "security": [
-                    {
-                        "ApiKeyAuth": []
-                    }
-                ],
-                "description": "Finish Job.",
-                "consumes": [
-                    "application/x-www-form-urlencoded"
-                ],
-                "tags": [
-                    "job"
-                ],
-                "operationId": "FinishJob",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "job id",
-                        "name": "job_id",
-                        "in": "formData",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/models.FinishJobResp"
-                        }
-                    }
-                }
-            }
-        },
         "/v2/job/gtid": {
             "get": {
                 "security": [
@@ -289,6 +255,41 @@ var doc = `{
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/models.ReverseJobResp"
+                        }
+                    }
+                }
+            }
+        },
+        "/v2/job/reverse_start": {
+            "post": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "Finish Job.",
+                "consumes": [
+                    "application/x-www-form-urlencoded"
+                ],
+                "tags": [
+                    "job"
+                ],
+                "summary": "start reverse-init job",
+                "operationId": "ReverseStartJob",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "job id",
+                        "name": "job_id",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.ReverseStartRespV2"
                         }
                     }
                 }
@@ -532,7 +533,7 @@ var doc = `{
                 "tags": [
                     "user"
                 ],
-                "summary": "用户登录",
+                "summary": "user login",
                 "operationId": "loginV2",
                 "parameters": [
                     {
@@ -1533,14 +1534,6 @@ var doc = `{
                 }
             }
         },
-        "models.FinishJobResp": {
-            "type": "object",
-            "properties": {
-                "message": {
-                    "type": "string"
-                }
-            }
-        },
         "models.GetTaskProgressRespV2": {
             "type": "object",
             "properties": {
@@ -2041,6 +2034,14 @@ var doc = `{
             }
         },
         "models.ReverseJobResp": {
+            "type": "object",
+            "properties": {
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.ReverseStartRespV2": {
             "type": "object",
             "properties": {
                 "message": {

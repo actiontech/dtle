@@ -63,7 +63,7 @@ func ValidateBlackList(user, operation, currentPwd, verifiedPwd string) error {
 	}
 	if currentPwd != verifiedPwd {
 		BL.setBlackList(fmt.Sprintf("%s:%s", user, operation), time.Minute*30)
-		return fmt.Errorf("please confirm your password")
+		return fmt.Errorf("user or password is wrong")
 	}
 	return nil
 }

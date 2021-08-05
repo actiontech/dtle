@@ -746,6 +746,7 @@ func buildMysqlSrcTaskDetail(taskName string, internalTaskConfig common.DtleTask
 		},
 		BinlogRelay:  internalTaskConfig.BinlogRelay,
 		GroupTimeout: internalTaskConfig.GroupTimeout,
+		WaitOnJob:    internalTaskConfig.WaitOnJob,
 	}
 
 	allocs := []models.AllocationDetail{}
@@ -1383,32 +1384,44 @@ func GetJobGtid(c echo.Context) error {
 	})
 }
 
-// @Id FinishJob
+// @Summary start reverse-init job
+// @Id ReverseStartJob
 // @Tags job
 // @Description Finish Job.
 // @accept application/x-www-form-urlencoded
 // @Security ApiKeyAuth
 // @Param job_id formData string true "job id"
-// @Success 200 {object} models.FinishJobResp
-// @Router /v2/job/finish [post]
-func FinishJob(c echo.Context) error {
-	logger := handler.NewLogger().Named("FinishJobV2")
+// @Success 200 {object} models.ReverseStartRespV2
+// @Router /v2/job/reverse_start [post]
+func ReverseStartJob(c echo.Context) error {
+	logger := handler.NewLogger().Named("ReverseStartJobV2")
 	logger.Info("validate params")
-	reqParam := new(models.FinishJobReq)
+	reqParam := new(models.ReverseStartReqV2)
 	if err := c.Bind(reqParam); nil != err {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("bind req param failed, error: %v", err)))
 	}
 	if err := c.Validate(reqParam); nil != err {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invalid params:\n%v", err)))
 	}
-
 	err := checkJobAccess(c, reqParam.JobId)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
 	}
 
-	logger.Info("get allocations of job", "job_id", reqParam.JobId)
-	url := handler.BuildUrl(fmt.Sprintf("/v1/job/%v/allocations", reqParam.JobId))
+	// get wait on job from current job detail info
+	_, nomadJob, allocations, err := getJobDetailFromNomad(logger, reqParam.JobId, getJobTypeFromJobId(reqParam.JobId))
+	if nil != err {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
+	}
+	_, srcTaskDetail, err := buildMysqlToMysqlJobDetailResp(nomadJob, allocations)
+	if nil != err {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("build job detail response failed: %v", err)))
+	}
+
+	// finish wait on job
+	waitOnJob := srcTaskDetail.TaskConfig.WaitOnJob
+	logger.Info("get allocations of job", "job_id", waitOnJob)
+	url := handler.BuildUrl(fmt.Sprintf("/v1/job/%v/allocations", waitOnJob))
 	logger.Info("invoke nomad api begin", "url", url)
 	nomadAllocs := []nomadApi.Allocation{}
 	if err := handler.InvokeApiWithKvData(http.MethodGet, url, nil, &nomadAllocs); nil != err {
@@ -1424,12 +1437,12 @@ func FinishJob(c echo.Context) error {
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("consul_addr=%v; connect to consul failed: %v", handler.ConsulAddr, err)))
 	}
-	consulJobItem, err := storeManager.GetJobInfo(reqParam.JobId)
+	consulJobItem, err := storeManager.GetJobInfo(waitOnJob)
 	if nil != err {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("job_id=%v; get job status failed: %v", reqParam.JobId, err)))
 	}
 	if consulJobItem.JobStatus == common.DtleJobStatusPaused {
-		return c.JSON(http.StatusInternalServerError, &models.PauseJobRespV2{
+		return c.JSON(http.StatusInternalServerError, &models.ReverseStartRespV2{
 			BaseResp: models.BuildBaseResp(errors.New("job was paused")),
 		})
 	}
@@ -1448,7 +1461,7 @@ func FinishJob(c echo.Context) error {
 			models.BuildBaseResp(fmt.Errorf("cannot find a src allocation task whose desired status is run")))
 	}
 
-	return c.JSON(http.StatusOK, &models.FinishJobResp{
+	return c.JSON(http.StatusOK, &models.ReverseStartRespV2{
 		BaseResp: models.BuildBaseResp(nil),
 	})
 }
