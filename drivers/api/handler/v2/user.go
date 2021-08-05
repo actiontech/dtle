@@ -316,3 +316,12 @@ func checkUserAccess(c echo.Context, group string) (bool, error) {
 	}
 	return true, nil
 }
+
+// name value like dba:dba1(tenant:username)
+func GetUserTenant(name string) (string, string) {
+	nameSlice := strings.Split(name, ":")
+	if len(nameSlice) != 2 {
+		return "", ""
+	}
+	return nameSlice[0], nameSlice[1]
+}

@@ -74,8 +74,8 @@ func JobListV2(c echo.Context) error {
 		if "" != reqParam.FilterJobType && reqParam.FilterJobType != string(jobType) {
 			continue
 		}
-		if user.Tenant != common.DefaultAdminGroup &&
-			consulJob.User != fmt.Sprintf("%s:%s", user.Tenant, user.Username) {
+		tenant, _ := GetUserTenant(consulJob.User)
+		if user.Tenant != common.DefaultAdminGroup && tenant != user.Tenant {
 			continue
 		}
 		jobItem := common.JobListItemV2{
