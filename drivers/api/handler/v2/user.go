@@ -19,7 +19,7 @@ import (
 // @Tags user
 // @Success 200 {object} models.UserListResp
 // @Security ApiKeyAuth
-// @Param filter_user_name query string false "filter user name"
+// @Param filter_username query string false "filter user name"
 // @Param filter_tenant query string false "filter tenant"
 // @Router /v2/user/list [get]
 func UserList(c echo.Context) error {

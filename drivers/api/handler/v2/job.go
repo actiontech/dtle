@@ -583,6 +583,8 @@ func buildBasicTaskProfile(logger hclog.Logger, jobId string, srcTaskDetail *mod
 		GroupMaxSize:       srcTaskDetail.TaskConfig.GroupMaxSize,
 		ChunkSize:          int(srcTaskDetail.TaskConfig.ChunkSize),
 		GroupTimeout:       srcTaskDetail.TaskConfig.GroupTimeout,
+		DropTableIfExists:  srcTaskDetail.TaskConfig.DropTableIfExists,
+		SkipCreateDbTable:  srcTaskDetail.TaskConfig.SkipCreateDbTable,
 	}
 	basicTaskProfile.ConnectionInfo = models.ConnectionInfo{
 		SrcDataBase: *srcTaskDetail.TaskConfig.MysqlConnectionConfig,
@@ -1513,19 +1515,19 @@ func ReverseJob(c echo.Context) error {
 		reverseJobParam.Failover = &originalJob.BasicTaskProfile.Configuration.FailOver
 		reverseJobParam.Reverse = true
 		reverseJobParam.SrcTask = &models.MysqlSrcTaskConfig{
-			TaskName:     "src",
-			GroupMaxSize: originalJob.BasicTaskProfile.Configuration.GroupMaxSize,
-			ChunkSize:    int64(originalJob.BasicTaskProfile.Configuration.ChunkSize),
-			//DropTableIfExists:      originalJob.BasicTaskProfile.Configuration.
-			//SkipCreateDbTable:      originalJob.BasicTaskProfile.Configuration,
+			TaskName:              "src",
+			GroupMaxSize:          originalJob.BasicTaskProfile.Configuration.GroupMaxSize,
+			ChunkSize:             int64(originalJob.BasicTaskProfile.Configuration.ChunkSize),
+			DropTableIfExists:     originalJob.BasicTaskProfile.Configuration.DropTableIfExists,
+			SkipCreateDbTable:     originalJob.BasicTaskProfile.Configuration.SkipCreateDbTable,
 			ReplChanBufferSize:    int64(originalJob.BasicTaskProfile.Configuration.ReplChanBufferSize),
 			ReplicateDoDb:         originalJob.BasicTaskProfile.ReplicateDoDb,
 			ReplicateIgnoreDb:     originalJob.BasicTaskProfile.ReplicateIgnoreDb,
 			MysqlConnectionConfig: &originalJob.BasicTaskProfile.ConnectionInfo.DstDataBase,
 			BinlogRelay:           originalJob.BasicTaskProfile.Configuration.BinlogRelay,
 			GroupTimeout:          originalJob.BasicTaskProfile.Configuration.GroupTimeout,
-			AutoGtid:              true,
 			WaitOnJob:             consulJobItem.JobId,
+			AutoGtid:              true,
 		}
 		reverseJobParam.DestTask = &models.MysqlDestTaskConfig{
 			TaskName:              "dest",
@@ -1533,15 +1535,14 @@ func ReverseJob(c echo.Context) error {
 			MysqlConnectionConfig: &originalJob.BasicTaskProfile.ConnectionInfo.SrcDataBase,
 		}
 
-		if !*reverseJobParam.Failover {
-			for _, node := range originalJob.BasicTaskProfile.DtleNodeInfos {
-				if node.Source == "src" {
-					reverseJobParam.SrcTask.NodeId = node.NodeId
-				} else if node.Source == "dst" {
-					reverseJobParam.DestTask.NodeId = node.NodeId
-				}
+		for _, node := range originalJob.BasicTaskProfile.DtleNodeInfos {
+			if node.Source == "src" {
+				reverseJobParam.SrcTask.NodeId = node.NodeId
+			} else if node.Source == "dst" {
+				reverseJobParam.DestTask.NodeId = node.NodeId
 			}
 		}
+
 		if reqParam.ReverseConfig != nil {
 			reverseJobParam.SrcTask.MysqlConnectionConfig.MysqlUser = reqParam.ReverseConfig.SrcUser
 			reverseJobParam.SrcTask.MysqlConnectionConfig.MysqlPassword = reqParam.ReverseConfig.SrcPwd

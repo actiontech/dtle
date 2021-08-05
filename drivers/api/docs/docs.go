@@ -937,7 +937,7 @@ var doc = `{
                     {
                         "type": "string",
                         "description": "filter user name",
-                        "name": "filter_user_name",
+                        "name": "filter_username",
                         "in": "query"
                     },
                     {
@@ -1218,6 +1218,9 @@ var doc = `{
                 "chunk_size": {
                     "type": "integer"
                 },
+                "drop_table_if_exists": {
+                    "type": "boolean"
+                },
                 "fail_over": {
                     "type": "boolean"
                 },
@@ -1235,6 +1238,9 @@ var doc = `{
                 },
                 "retry_times": {
                     "type": "integer"
+                },
+                "skip_create_db_table": {
+                    "type": "boolean"
                 }
             }
         },
