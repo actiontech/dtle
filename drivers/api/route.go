@@ -131,6 +131,11 @@ func SetupApiServer(logger hclog.Logger, apiAddr, nomadAddr, consulAddr, uiDir s
 	}
 
 	metricsConfig := metrics.DefaultConfig("dtle")
+
+	// adding hostname to labels, and don't set it as a prefix to gauge values.
+	metricsConfig.EnableHostname = false
+	metricsConfig.EnableHostnameLabel = true
+
 	_, err = metrics.NewGlobal(metricsConfig, sink)
 	if err != nil {
 		return err
