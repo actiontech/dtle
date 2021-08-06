@@ -145,7 +145,7 @@ var (
 		"DependencyHistorySize": hclspec.NewDefault(hclspec.NewAttr("DependencyHistorySize", "number", false),
 			hclspec.NewLiteral(`2500`)),
 		"UseMySQLDependency": hclspec.NewDefault(hclspec.NewAttr("UseMySQLDependency", "bool", false),
-			hclspec.NewLiteral(`false`)),
+			hclspec.NewLiteral(`true`)),
 	})
 
 	// capabilities is returned by the Capabilities RPC and indicates what
