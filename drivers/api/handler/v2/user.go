@@ -1,10 +1,13 @@
 package v2
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/hashicorp/go-hclog"
 
 	"github.com/dgrijalva/jwt-go"
 
@@ -48,8 +51,7 @@ func UserList(c echo.Context) error {
 	}
 	users := make([]*common.User, 0)
 	for _, user := range userList {
-		if currentUser.Tenant != common.DefaultAdminGroup &&
-			currentUser.Tenant != user.Tenant {
+		if !userHasAccess(storeManager, fmt.Sprintf("%s:%s", user.Tenant, user.Username), currentUser) {
 			continue
 		}
 		if strings.HasPrefix(user.Username, reqParam.FilterUsername) {
@@ -60,6 +62,39 @@ func UserList(c echo.Context) error {
 	return c.JSON(http.StatusOK, &models.UserListResp{
 		UserList: users,
 		BaseResp: models.BuildBaseResp(nil),
+	})
+}
+
+// @Id TenantList
+// @Description get tenant list.
+// @Tags user
+// @Success 200 {object} models.TenantListResp
+// @Security ApiKeyAuth
+// @Router /v2/tenant/list [get]
+func TenantList(c echo.Context) error {
+	logger := handler.NewLogger().Named("TenantList")
+
+	currentUser, err := getCurrentUser(c)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
+	}
+	tenants := make([]string, 0)
+	if currentUser.Tenant != common.DefaultAdminTenant {
+		tenants = append(tenants, currentUser.Tenant)
+	} else {
+		storeManager, err := common.NewStoreManager([]string{handler.ConsulAddr}, logger)
+		if err != nil {
+			return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("consul_addr=%v; connect to consul failed: %v", handler.ConsulAddr, err)))
+		}
+		tenants, err = storeManager.FindTenantList()
+		if nil != err {
+			return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("consul_addr=%v ; get job status list failed: %v", handler.ConsulAddr, err)))
+		}
+	}
+
+	return c.JSON(http.StatusOK, &models.TenantListResp{
+		TenantList: tenants,
+		BaseResp:   models.BuildBaseResp(nil),
 	})
 }
 
@@ -82,26 +117,13 @@ func CreateUser(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invalid params:\n%v", err)))
 	}
 
-	storeManager, err := common.NewStoreManager([]string{handler.ConsulAddr}, logger)
-	if err != nil {
-		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("get consul client failed: %v", err)))
-	}
-
-	if hasAccess, err := checkUserAccess(c, reqParam.Tenant); err != nil || !hasAccess {
+	if hasAccess, err := checkUserAccess(logger, c, fmt.Sprintf("%s:%s", reqParam.Tenant, reqParam.Username)); err != nil || !hasAccess {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("current user has no access to operate group %v ; err : %v", reqParam.Tenant, err)))
-	}
-
-	user, exist, err := storeManager.GetUser(reqParam.Tenant, reqParam.Username)
-	if err != nil {
-		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
-	}
-	if exist {
-		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("user already exists")))
 	}
 	if !VerifyPassword(reqParam.PassWord) {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("password does not meet the rules")))
 	}
-	user = &common.User{
+	user := &common.User{
 		Username:   reqParam.Username,
 		Tenant:     reqParam.Tenant,
 		Role:       reqParam.Role,
@@ -109,12 +131,39 @@ func CreateUser(c echo.Context) error {
 		Password:   reqParam.PassWord,
 		Remark:     reqParam.Remark,
 	}
-	if err := storeManager.SaveUser(user); nil != err {
-		return c.JSON(http.StatusInternalServerError,
-			models.BuildBaseResp(fmt.Errorf("create metadata of user[userName=%v,Tenant=%v] from consul failed: %v", reqParam.Username, reqParam.Tenant, err)))
+	return c.JSON(http.StatusOK, models.CreateUserRespV2{BaseResp: models.BuildBaseResp(createUser(logger, user))})
+}
+
+func createUser(logger hclog.Logger, user *common.User) error {
+	storeManager, err := common.NewStoreManager([]string{handler.ConsulAddr}, logger)
+	if err != nil {
+		return fmt.Errorf("get consul client failed: %v", err)
 	}
 
-	return c.JSON(http.StatusOK, models.CreateUserRespV2{BaseResp: models.BuildBaseResp(nil)})
+	_, exist, err := storeManager.GetUser(user.Tenant, user.Username)
+	if err != nil {
+		return err
+	}
+	if exist {
+		return fmt.Errorf("user already exists")
+	}
+	// create default admin role before first tenant user register
+	if user.Role == common.DefaultRole {
+		_, exists, err := storeManager.GetRole(user.Tenant, common.DefaultRole)
+		if err != nil {
+			return fmt.Errorf("create tenant admin role fail %v", err)
+		}
+		if !exists {
+			role := common.NewDefaultRole(user.Tenant)
+			if err := storeManager.SaveRole(role); nil != err {
+				return fmt.Errorf("create metadata of user[userName=%v,Tenant=%v] from consul failed: %v", user.Username, user.Tenant, err)
+			}
+		}
+	}
+	if err := storeManager.SaveUser(user); nil != err {
+		return fmt.Errorf("create metadata of user[userName=%v,Tenant=%v] from consul failed: %v", user.Username, user.Tenant, err)
+	}
+	return nil
 }
 
 // @Id UpdateUser
@@ -141,7 +190,7 @@ func UpdateUser(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("get consul client failed: %v", err)))
 	}
 
-	if hasAccess, err := checkUserAccess(c, reqParam.Tenant); err != nil || !hasAccess {
+	if hasAccess, err := checkUserAccess(logger, c, fmt.Sprintf("%s:%s", reqParam.Tenant, reqParam.Username)); err != nil || !hasAccess {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("current user has no access to operate group %v ; err : %v", reqParam.Tenant, err)))
 	}
 
@@ -187,7 +236,7 @@ func ResetPassword(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invalid params:\n%v", err)))
 	}
 
-	if hasAccess, err := checkUserAccess(c, reqParam.Tenant); err != nil || !hasAccess {
+	if hasAccess, err := checkUserAccess(logger, c, fmt.Sprintf("%s:%s", reqParam.Tenant, reqParam.Username)); err != nil || !hasAccess {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("current user has no access to operate group %v ; err : %v", reqParam.Tenant, err)))
 	}
 
@@ -239,7 +288,12 @@ func DeleteUser(c echo.Context) error {
 	if err := c.Validate(reqParam); nil != err {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invalid params:\n%v", err)))
 	}
-	if hasAccess, err := checkUserAccess(c, reqParam.Tenant); err != nil || !hasAccess {
+	// cannot delete default supper user
+	if reqParam.Tenant == common.DefaultAdminTenant && reqParam.Username == common.DefaultAdminUser {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("cannot delete superuser")))
+	}
+
+	if hasAccess, err := checkUserAccess(logger, c, fmt.Sprintf("%s:%s", reqParam.Tenant, reqParam.Username)); err != nil || !hasAccess {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("current user has no access to operate group %v ; err : %v", reqParam.Tenant, err)))
 	}
 
@@ -306,22 +360,82 @@ func GetUserName(c echo.Context) (string, string) {
 	return claims["group"].(string), claims["name"].(string)
 }
 
-func checkUserAccess(c echo.Context, group string) (bool, error) {
+// @Id ListAction
+// @Description list user action.
+// @Tags user
+// @Security ApiKeyAuth
+// @Success 200 {object} models.ListActionRespV2
+// @Router /v2/user/list_action [get]
+func ListAction(c echo.Context) error {
+	logger := handler.NewLogger().Named("DeleteUser")
+	logger.Info("validate params")
+	user, err := getCurrentUser(c)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
+	}
+	storeManager, err := common.NewStoreManager([]string{handler.ConsulAddr}, logger)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("consul_addr=%v; connect to consul failed: %v", handler.ConsulAddr, err)))
+	}
+	role, exists, err := storeManager.GetRole(user.Tenant, user.Role)
+	if nil != err {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("consul_addr=%v ; get role failed: %v", handler.ConsulAddr, err)))
+	}
+	if !exists {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("current user does not belong to any role")))
+	}
+	authority := make(map[string][]*models.ActionItem, 0)
+	err = json.Unmarshal([]byte(role.Authority), &authority)
+	if nil != err {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
+	}
+	return c.JSON(http.StatusOK, &models.ListActionRespV2{
+		Authority: authority,
+		BaseResp:  models.BuildBaseResp(nil),
+	})
+}
+
+func checkUserAccess(logger hclog.Logger, c echo.Context, operationUser string) (bool, error) {
+	storeManager, err := common.NewStoreManager([]string{handler.ConsulAddr}, logger)
+	if err != nil {
+		return false, fmt.Errorf("consul_addr=%v; connect to consul failed: %v", handler.ConsulAddr, err)
+	}
 	currentUser, err := getCurrentUser(c)
 	if err != nil {
 		return false, err
 	}
-	if currentUser.Tenant != common.DefaultAdminGroup && currentUser.Tenant != group {
-		return false, nil
-	}
-	return true, nil
+	access := userHasAccess(storeManager, operationUser, currentUser)
+	return access, nil
 }
 
-// name value like dba:dba1(tenant:username)
-func GetUserTenant(name string) (string, string) {
-	nameSlice := strings.Split(name, ":")
-	if len(nameSlice) != 2 {
-		return "", ""
+func userHasAccess(storeManager *common.StoreManager, operationUser string, currentUser *common.User) bool {
+	// get current role
+	role, exists, err := storeManager.GetRole(currentUser.Tenant, currentUser.Role)
+	if err != nil || !exists {
+		return false
 	}
-	return nameSlice[0], nameSlice[1]
+	// currentUser name and tenant
+	// operationUser  =  tenant:username
+	operationUserInfo := strings.Split(operationUser, ":")
+	if len(operationUserInfo) < 2 {
+		return false
+	}
+	tenant, username := operationUserInfo[0], operationUserInfo[1]
+
+	// platform can operation all user data
+	// tenant only operation current tenant user
+	if currentUser.Tenant != common.DefaultAdminTenant && currentUser.Tenant != tenant {
+		return false
+	}
+	if (role.ObjectType == "all") || (currentUser.Tenant == tenant && currentUser.Username == username) {
+		return true
+	}
+	// operation user is managed by role(object users: tenant:user)
+	for _, enableUser := range role.ObjectUsers {
+		if operationUser == enableUser {
+			return true
+		}
+	}
+	return false
+
 }

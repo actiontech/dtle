@@ -1,10 +1,13 @@
 package api
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"path"
 	"strings"
+
+	"github.com/actiontech/dtle/drivers/api/models"
 
 	middleware "github.com/labstack/echo/v4/middleware"
 
@@ -72,7 +75,7 @@ func SetupApiServer(logger hclog.Logger, apiAddr, nomadAddr, consulAddr, uiDir s
 
 	// api v2
 	v2Router := e.Group("/v2")
-	v2Router.Use(JWTTokenAdapter(), middleware.JWT([]byte(common.JWTSecret)))
+	v2Router.Use(JWTTokenAdapter(), middleware.JWT([]byte(common.JWTSecret)), AuthFilter())
 	e.POST("/v2/login", v2.Login)
 	e.POST("/v2/login/captcha", v2.CaptchaV2)
 	v2Router.POST("/log/level", v2.UpdateLogLevelV2, AdminUserAllowed())
@@ -100,7 +103,13 @@ func SetupApiServer(logger hclog.Logger, apiAddr, nomadAddr, consulAddr, uiDir s
 	v2Router.POST("/user/update", v2.UpdateUser)
 	v2Router.POST("/user/reset_password", v2.ResetPassword)
 	v2Router.POST("/user/delete", v2.DeleteUser)
+	v2Router.GET("/tenant/list", v2.TenantList)
 	v2Router.GET("/user/current_user", v2.GetCurrentUser)
+	v2Router.GET("/user/list_action", v2.ListAction)
+	v2Router.GET("/role/list", v2.RoleList, AdminUserAllowed())
+	v2Router.POST("/role/create", v2.CreateRole, AdminUserAllowed())
+	v2Router.POST("/role/delete", v2.DeleteRole, AdminUserAllowed())
+	v2Router.POST("/role/update", v2.UpdateRole, AdminUserAllowed())
 
 	// for pprof
 	e.GET("/debug/pprof/*", echo.WrapHandler(http.DefaultServeMux))
@@ -160,12 +169,50 @@ func JWTTokenAdapter() echo.MiddlewareFunc {
 	}
 }
 
+func AuthFilter() echo.MiddlewareFunc {
+	return func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
+			logger := handler.NewLogger().Named("AuthFilter")
+			storeManager, err := common.NewStoreManager([]string{handler.ConsulAddr}, logger)
+			if err != nil {
+				return echo.NewHTTPError(http.StatusForbidden)
+			}
+			user, exists, err := storeManager.GetUser(v2.GetUserName(c))
+			if err != nil || !exists {
+				return echo.NewHTTPError(http.StatusForbidden)
+			}
+
+			// admin  has the maximum authority
+			if user.Role == common.DefaultRole {
+				return next(c)
+			}
+			role, exists, err := storeManager.GetRole(user.Tenant, user.Role)
+			if err != nil || !exists {
+				return echo.NewHTTPError(http.StatusForbidden)
+			}
+			authority := make(map[string][]models.ActionItem, 0)
+			err = json.Unmarshal([]byte(role.Authority), &authority)
+			if err != nil {
+				return echo.NewHTTPError(http.StatusForbidden, "please check your authority")
+			}
+			for _, actionItems := range authority {
+				for _, item := range actionItems {
+					if c.Request().URL.Path == item.Uri {
+						return next(c)
+					}
+				}
+			}
+			return echo.NewHTTPError(http.StatusForbidden)
+		}
+	}
+}
+
 //AdminUserAllowed is a `echo` middleware, only allow admin user to access next.
 func AdminUserAllowed() echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
-			userGroup, _ := v2.GetUserName(c)
-			if userGroup == common.DefaultAdminGroup {
+			_, user := v2.GetUserName(c)
+			if user == common.DefaultAdminUser {
 				return next(c)
 			}
 			return echo.NewHTTPError(http.StatusForbidden)
