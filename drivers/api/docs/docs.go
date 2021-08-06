@@ -853,6 +853,171 @@ var doc = `{
                 }
             }
         },
+        "/v2/role/create": {
+            "post": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "create Role.",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Role"
+                ],
+                "operationId": "CreateRole",
+                "parameters": [
+                    {
+                        "description": "Role info",
+                        "name": "Role",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.CreateRoleReqV2"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.CreateRoleRespV2"
+                        }
+                    }
+                }
+            }
+        },
+        "/v2/role/delete": {
+            "post": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "delete Role.",
+                "consumes": [
+                    "application/x-www-form-urlencoded"
+                ],
+                "tags": [
+                    "Role"
+                ],
+                "operationId": "DeleteRole",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "tenant",
+                        "name": "tenant",
+                        "in": "formData",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "role name",
+                        "name": "name",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.DeleteRoleRespV2"
+                        }
+                    }
+                }
+            }
+        },
+        "/v2/role/list": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "get role list.",
+                "tags": [
+                    "Role"
+                ],
+                "operationId": "RoleList",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "filter tenant",
+                        "name": "filter_tenant",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.RoleListResp"
+                        }
+                    }
+                }
+            }
+        },
+        "/v2/role/update": {
+            "post": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "update Role info.",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Role"
+                ],
+                "operationId": "UpdateRole",
+                "parameters": [
+                    {
+                        "description": "Role info",
+                        "name": "Role",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.UpdateRoleReqV2"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.UpdateRoleRespV2"
+                        }
+                    }
+                }
+            }
+        },
+        "/v2/tenant/list": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "get tenant list.",
+                "tags": [
+                    "user"
+                ],
+                "operationId": "TenantList",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.TenantListResp"
+                        }
+                    }
+                }
+            }
+        },
         "/v2/user/create": {
             "post": {
                 "security": [
@@ -983,6 +1148,28 @@ var doc = `{
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/models.UserListResp"
+                        }
+                    }
+                }
+            }
+        },
+        "/v2/user/list_action": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "list user action.",
+                "tags": [
+                    "user"
+                ],
+                "operationId": "ListAction",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.ListActionRespV2"
                         }
                     }
                 }
@@ -1153,6 +1340,29 @@ var doc = `{
                 }
             }
         },
+        "common.Role": {
+            "type": "object",
+            "properties": {
+                "authority": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "object_type": {
+                    "type": "string"
+                },
+                "object_users": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "tenant": {
+                    "type": "string"
+                }
+            }
+        },
         "common.User": {
             "type": "object",
             "properties": {
@@ -1172,6 +1382,17 @@ var doc = `{
                     "type": "string"
                 },
                 "username": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.ActionItem": {
+            "type": "object",
+            "properties": {
+                "action": {
+                    "type": "string"
+                },
+                "uri": {
                     "type": "string"
                 }
             }
@@ -1474,9 +1695,41 @@ var doc = `{
                 }
             }
         },
+        "models.CreateRoleReqV2": {
+            "type": "object",
+            "properties": {
+                "authority": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "operation_object_type": {
+                    "type": "string"
+                },
+                "operation_users": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "tenant": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.CreateRoleRespV2": {
+            "type": "object",
+            "properties": {
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
         "models.CreateUserReqV2": {
             "type": "object",
             "required": [
+                "pass_word",
                 "role",
                 "tenant",
                 "username"
@@ -1553,6 +1806,14 @@ var doc = `{
             }
         },
         "models.DeleteJobRespV2": {
+            "type": "object",
+            "properties": {
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.DeleteRoleRespV2": {
             "type": "object",
             "properties": {
                 "message": {
@@ -1700,6 +1961,23 @@ var doc = `{
                     "type": "string"
                 },
                 "task_name": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.ListActionRespV2": {
+            "type": "object",
+            "properties": {
+                "authority": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/definitions/models.ActionItem"
+                        }
+                    }
+                },
+                "message": {
                     "type": "string"
                 }
             }
@@ -2100,6 +2378,20 @@ var doc = `{
                 }
             }
         },
+        "models.RoleListResp": {
+            "type": "object",
+            "properties": {
+                "message": {
+                    "type": "string"
+                },
+                "role_list": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/common.Role"
+                    }
+                }
+            }
+        },
         "models.SchemaItem": {
             "type": "object",
             "properties": {
@@ -2221,6 +2513,20 @@ var doc = `{
                 }
             }
         },
+        "models.TenantListResp": {
+            "type": "object",
+            "properties": {
+                "message": {
+                    "type": "string"
+                },
+                "tenant_list": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
         "models.ThroughputStat": {
             "type": "object",
             "properties": {
@@ -2238,6 +2544,37 @@ var doc = `{
                 "dtle_log_level": {
                     "type": "string"
                 },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.UpdateRoleReqV2": {
+            "type": "object",
+            "properties": {
+                "authority": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "operation_object_type": {
+                    "type": "string"
+                },
+                "operation_users": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "tenant": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.UpdateRoleRespV2": {
+            "type": "object",
+            "properties": {
                 "message": {
                     "type": "string"
                 }

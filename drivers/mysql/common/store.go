@@ -422,8 +422,29 @@ func (sm *StoreManager) FindUserList(userKey string) ([]*User, error) {
 	return userList, nil
 }
 
-func (sm *StoreManager) DeleteUser(userGroup, user string) error {
-	key := fmt.Sprintf("dtleUser/%v/%v", userGroup, user)
+func (sm *StoreManager) FindTenantList() (tenants []string, err error) {
+	tenantKey := "dtleUser"
+	storeUsers, err := sm.consulStore.List(tenantKey)
+	if nil != err && err != store.ErrKeyNotFound {
+		return tenants, fmt.Errorf("get %v value from consul failed: %v", tenantKey, err)
+	}
+	tenantMap := make(map[string]struct{}, 0)
+	for _, storeUser := range storeUsers {
+		user := new(User)
+		err = json.Unmarshal(storeUser.Value, user)
+		if err != nil {
+			return tenants, fmt.Errorf("get %v from consul, unmarshal err : %v", storeUser, err)
+		}
+		tenantMap[user.Tenant] = struct{}{}
+	}
+	for tenant, _ := range tenantMap {
+		tenants = append(tenants, tenant)
+	}
+	return
+}
+
+func (sm *StoreManager) DeleteUser(tenant, user string) error {
+	key := fmt.Sprintf("dtleUser/%v/%v", tenant, user)
 	err := sm.consulStore.Delete(key)
 	if nil != err && store.ErrKeyNotFound != err {
 		return err
@@ -433,21 +454,8 @@ func (sm *StoreManager) DeleteUser(userGroup, user string) error {
 
 var once sync.Once
 
-func (sm *StoreManager) GetUser(userGroup, userName string) (*User, bool, error) {
-	once.Do(func() {
-		user := &User{
-			Username: DefaultAdminUser,
-			Tenant:   DefaultAdminGroup,
-			Role:     DefaultRole,
-			Password: DefaultAdminPwd,
-		}
-		err := sm.SaveUser(user)
-		if err != nil {
-			sm.logger.Error("create default user failed", "err :", err)
-		}
-	})
-
-	key := fmt.Sprintf("dtleUser/%v/%v", userGroup, userName)
+func (sm *StoreManager) GetUser(tenant, username string) (*User, bool, error) {
+	key := fmt.Sprintf("dtleUser/%v/%v", tenant, username)
 	exists, err := sm.consulStore.Exists(key)
 	if err != nil {
 		return nil, exists, err
@@ -474,6 +482,85 @@ func (sm *StoreManager) SaveUser(user *User) error {
 	}
 	err = sm.consulStore.Put(key, jobBytes, nil)
 	return err
+}
+
+func (sm *StoreManager) FindRoleList(tenant string) ([]*Role, error) {
+	key := fmt.Sprintf("%s/%s", "dtleRole", tenant)
+	storeUsers, err := sm.consulStore.List(key)
+	if nil != err && err != store.ErrKeyNotFound {
+		return nil, fmt.Errorf("get %v value from consul failed: %v", key, err)
+	}
+	roleList := make([]*Role, 0)
+	for _, storeUser := range storeUsers {
+		role := new(Role)
+		err = json.Unmarshal(storeUser.Value, role)
+		if err != nil {
+			return nil, fmt.Errorf("get %v from consul, unmarshal err : %v", storeUser, err)
+		}
+		roleList = append(roleList, role)
+	}
+
+	return roleList, nil
+}
+
+func (sm *StoreManager) GetRole(tenant, name string) (*Role, bool, error) {
+	key := fmt.Sprintf("dtleRole/%s/%s", tenant, name)
+	exists, err := sm.consulStore.Exists(key)
+	if err != nil {
+		return nil, exists, err
+	} else if !exists {
+		return nil, exists, nil
+	}
+
+	kp, err := sm.consulStore.Get(key)
+	if nil != err {
+		return nil, false, err
+	}
+	role := new(Role)
+	err = json.Unmarshal(kp.Value, role)
+	if err != nil {
+		return nil, false, fmt.Errorf("get %v from consul, unmarshal err : %v", key, err)
+	}
+	return role, true, nil
+}
+
+func (sm *StoreManager) SaveRole(role *Role) error {
+	key := fmt.Sprintf("dtleRole/%v/%v", role.Tenant, role.Name)
+	jobBytes, err := json.Marshal(role)
+	if err != nil {
+		return fmt.Errorf("save %v to consul, marshal err : %v", key, err)
+	}
+	err = sm.consulStore.Put(key, jobBytes, nil)
+	return err
+}
+
+func (sm *StoreManager) DeleteRole(tenant, name string) error {
+	key := fmt.Sprintf("dtleRole/%v/%v", tenant, name)
+	err := sm.consulStore.Delete(key)
+	if nil != err && store.ErrKeyNotFound != err {
+		return err
+	}
+	return nil
+}
+
+// consul store item
+
+func NewDefaultRole(tenant string) *Role {
+	return &Role{
+		Tenant:      tenant,
+		Name:        DefaultRole,
+		ObjectUsers: nil,
+		ObjectType:  "all",
+		Authority:   DefaultAdminAuth,
+	}
+}
+
+type Role struct {
+	Tenant      string   `json:"tenant"`
+	Name        string   `json:"name"`
+	ObjectUsers []string `json:"object_users"`
+	ObjectType  string   `json:"object_type"`
+	Authority   string   `json:"authority"`
 }
 
 type User struct {

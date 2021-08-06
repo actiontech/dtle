@@ -12,12 +12,17 @@ type UserListResp struct {
 	BaseResp
 }
 
+type TenantListResp struct {
+	TenantList []string `json:"tenant_list"`
+	BaseResp
+}
+
 type CreateUserReqV2 struct {
 	Username string `json:"username" validate:"required"`
 	Tenant   string `json:"tenant" validate:"required"`
 	Role     string `json:"role" validate:"required"`
 	Remark   string `json:"remark"`
-	PassWord string `json:"pass_word"`
+	PassWord string `json:"pass_word" validate:"required"`
 }
 
 type CreateUserRespV2 struct {
@@ -57,5 +62,10 @@ type DeleteUserRespV2 struct {
 
 type CurrentUserResp struct {
 	CurrentUser *common.User `json:"current_user"`
+	BaseResp
+}
+
+type ListActionRespV2 struct {
+	Authority map[string][]*ActionItem `json:"authority"`
 	BaseResp
 }

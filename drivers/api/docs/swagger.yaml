@@ -36,6 +36,21 @@ definitions:
       step_status:
         type: string
     type: object
+  common.Role:
+    properties:
+      authority:
+        type: string
+      name:
+        type: string
+      object_type:
+        type: string
+      object_users:
+        items:
+          type: string
+        type: array
+      tenant:
+        type: string
+    type: object
   common.User:
     properties:
       create_time:
@@ -49,6 +64,13 @@ definitions:
       tenant:
         type: string
       username:
+        type: string
+    type: object
+  models.ActionItem:
+    properties:
+      action:
+        type: string
+      uri:
         type: string
     type: object
   models.BasicTaskProfile:
@@ -251,6 +273,26 @@ definitions:
     - job_id
     - src_task
     type: object
+  models.CreateRoleReqV2:
+    properties:
+      authority:
+        type: string
+      name:
+        type: string
+      operation_object_type:
+        type: string
+      operation_users:
+        items:
+          type: string
+        type: array
+      tenant:
+        type: string
+    type: object
+  models.CreateRoleRespV2:
+    properties:
+      message:
+        type: string
+    type: object
   models.CreateUserReqV2:
     properties:
       pass_word:
@@ -264,6 +306,7 @@ definitions:
       username:
         type: string
     required:
+    - pass_word
     - role
     - tenant
     - username
@@ -303,6 +346,11 @@ definitions:
         type: integer
     type: object
   models.DeleteJobRespV2:
+    properties:
+      message:
+        type: string
+    type: object
+  models.DeleteRoleRespV2:
     properties:
       message:
         type: string
@@ -400,6 +448,17 @@ definitions:
     - kafka_broker_addrs
     - kafka_topic
     - task_name
+    type: object
+  models.ListActionRespV2:
+    properties:
+      authority:
+        additionalProperties:
+          items:
+            $ref: '#/definitions/models.ActionItem'
+          type: array
+        type: object
+      message:
+        type: string
     type: object
   models.ListColumnsRespV2:
     properties:
@@ -660,6 +719,15 @@ definitions:
       message:
         type: string
     type: object
+  models.RoleListResp:
+    properties:
+      message:
+        type: string
+      role_list:
+        items:
+          $ref: '#/definitions/common.Role'
+        type: array
+    type: object
   models.SchemaItem:
     properties:
       schema_name:
@@ -739,6 +807,15 @@ definitions:
       timestamp:
         type: integer
     type: object
+  models.TenantListResp:
+    properties:
+      message:
+        type: string
+      tenant_list:
+        items:
+          type: string
+        type: array
+    type: object
   models.ThroughputStat:
     properties:
       num:
@@ -750,6 +827,26 @@ definitions:
     properties:
       dtle_log_level:
         type: string
+      message:
+        type: string
+    type: object
+  models.UpdateRoleReqV2:
+    properties:
+      authority:
+        type: string
+      name:
+        type: string
+      operation_object_type:
+        type: string
+      operation_users:
+        items:
+          type: string
+        type: array
+      tenant:
+        type: string
+    type: object
+  models.UpdateRoleRespV2:
+    properties:
       message:
         type: string
     type: object
@@ -1372,6 +1469,107 @@ paths:
       - ApiKeyAuth: []
       tags:
       - node
+  /v2/role/create:
+    post:
+      consumes:
+      - application/json
+      description: create Role.
+      operationId: CreateRole
+      parameters:
+      - description: Role info
+        in: body
+        name: Role
+        required: true
+        schema:
+          $ref: '#/definitions/models.CreateRoleReqV2'
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.CreateRoleRespV2'
+      security:
+      - ApiKeyAuth: []
+      tags:
+      - Role
+  /v2/role/delete:
+    post:
+      consumes:
+      - application/x-www-form-urlencoded
+      description: delete Role.
+      operationId: DeleteRole
+      parameters:
+      - description: tenant
+        in: formData
+        name: tenant
+        required: true
+        type: string
+      - description: role name
+        in: formData
+        name: name
+        required: true
+        type: string
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.DeleteRoleRespV2'
+      security:
+      - ApiKeyAuth: []
+      tags:
+      - Role
+  /v2/role/list:
+    get:
+      description: get role list.
+      operationId: RoleList
+      parameters:
+      - description: filter tenant
+        in: query
+        name: filter_tenant
+        type: string
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.RoleListResp'
+      security:
+      - ApiKeyAuth: []
+      tags:
+      - Role
+  /v2/role/update:
+    post:
+      consumes:
+      - application/json
+      description: update Role info.
+      operationId: UpdateRole
+      parameters:
+      - description: Role info
+        in: body
+        name: Role
+        required: true
+        schema:
+          $ref: '#/definitions/models.UpdateRoleReqV2'
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.UpdateRoleRespV2'
+      security:
+      - ApiKeyAuth: []
+      tags:
+      - Role
+  /v2/tenant/list:
+    get:
+      description: get tenant list.
+      operationId: TenantList
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.TenantListResp'
+      security:
+      - ApiKeyAuth: []
+      tags:
+      - user
   /v2/user/create:
     post:
       consumes:
@@ -1451,6 +1649,19 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/models.UserListResp'
+      security:
+      - ApiKeyAuth: []
+      tags:
+      - user
+  /v2/user/list_action:
+    get:
+      description: list user action.
+      operationId: ListAction
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.ListActionRespV2'
       security:
       - ApiKeyAuth: []
       tags:
