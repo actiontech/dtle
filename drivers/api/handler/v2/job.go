@@ -1535,11 +1535,12 @@ func ReverseJob(c echo.Context) error {
 			MysqlConnectionConfig: &originalJob.BasicTaskProfile.ConnectionInfo.SrcDataBase,
 		}
 
+		// the node must be bound to a fixed data source
 		for _, node := range originalJob.BasicTaskProfile.DtleNodeInfos {
 			if node.Source == "src" {
-				reverseJobParam.SrcTask.NodeId = node.NodeId
-			} else if node.Source == "dst" {
 				reverseJobParam.DestTask.NodeId = node.NodeId
+			} else if node.Source == "dst" {
+				reverseJobParam.SrcTask.NodeId = node.NodeId
 			}
 		}
 
