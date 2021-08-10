@@ -1549,19 +1549,28 @@ func ReverseJob(c echo.Context) error {
 			reverseJobParam.SrcTask.MysqlConnectionConfig.MysqlPassword = reqParam.ReverseConfig.SrcPwd
 			reverseJobParam.DestTask.MysqlConnectionConfig.MysqlUser = reqParam.ReverseConfig.DestUser
 			reverseJobParam.DestTask.MysqlConnectionConfig.MysqlPassword = reqParam.ReverseConfig.DstPwd
-			reverseJobParam.IsMysqlPasswordEncrypted = reqParam.ReverseConfig.IsMysqlPasswordEncrypted
 		}
 		reverseJobParam.Retry = originalJob.BasicTaskProfile.Configuration.RetryTimes
 
+		// IsMysqlPasswordEncrypted is set to default false then decrypt pwd
+		if reqParam.ReverseConfig.IsMysqlPasswordEncrypted {
+			err := decryptPwd(reverseJobParam.SrcTask, reverseJobParam.DestTask)
+			if nil != err {
+				return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
+			}
+			reverseJobParam.IsMysqlPasswordEncrypted = false
+		}
 		// validate job
 		validationTasks, err := validateTaskConfig(reverseJobParam.SrcTask, reverseJobParam.DestTask)
 		if nil != err {
 			return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("validate task config failed: %v", err)))
 		}
 		for i := range validationTasks {
-			if validationTasks[i].PrivilegesValidation.Error != "" ||
-				validationTasks[i].ConnectionValidation.Error != "" {
+			if validationTasks[i].ConnectionValidation.Error != "" {
 				return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("validate task config fail,check Mysql connection info")))
+			}
+			if validationTasks[i].PrivilegesValidation.Error != "" {
+				return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("validate task config fail,check Mysql privileges info")))
 			}
 		}
 
