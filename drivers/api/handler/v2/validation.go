@@ -50,13 +50,9 @@ func ValidateJobV2(c echo.Context) error {
 	logger.Info("validate task config")
 	// decrypt mysql password
 	if jobConfig.IsMysqlPasswordEncrypted {
-		jobConfig.SrcTaskConfig.MysqlConnectionConfig.MysqlPassword, err = handler.DecryptMysqlPassword(jobConfig.SrcTaskConfig.MysqlConnectionConfig.MysqlPassword, g.RsaPrivateKey)
+		err := decryptPwd(jobConfig.SrcTaskConfig, jobConfig.DestTaskConfig)
 		if nil != err {
-			return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("decrypt src mysql password failed: %v", err)))
-		}
-		jobConfig.DestTaskConfig.MysqlConnectionConfig.MysqlPassword, err = handler.DecryptMysqlPassword(jobConfig.DestTaskConfig.MysqlConnectionConfig.MysqlPassword, g.RsaPrivateKey)
-		if nil != err {
-			return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("decrypt src mysql password failed: %v", err)))
+			return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
 		}
 	}
 
@@ -89,6 +85,19 @@ func apiJobConfigToNomadJobJson(apiJobConfig *models.ValidateJobReqV2) (resJson 
 	}
 
 	return resJson, nil
+}
+
+func decryptPwd(apiSrcTask *models.MysqlSrcTaskConfig, apiDestTask *models.MysqlDestTaskConfig) (err error) {
+	// decrypt mysql password
+	apiSrcTask.MysqlConnectionConfig.MysqlPassword, err = handler.DecryptMysqlPassword(apiSrcTask.MysqlConnectionConfig.MysqlPassword, g.RsaPrivateKey)
+	if nil != err {
+		return fmt.Errorf("decrypt src mysql password failed: %v", err)
+	}
+	apiDestTask.MysqlConnectionConfig.MysqlPassword, err = handler.DecryptMysqlPassword(apiDestTask.MysqlConnectionConfig.MysqlPassword, g.RsaPrivateKey)
+	if nil != err {
+		return fmt.Errorf("decrypt src mysql password failed: %v", err)
+	}
+	return
 }
 
 func validateTaskConfig(apiSrcTask *models.MysqlSrcTaskConfig, apiDestTask *models.MysqlDestTaskConfig) ([]*models.MysqlTaskValidationReport, error) {
