@@ -1,11 +1,11 @@
 package models
 
 type UserLoginReqV2 struct {
-	Tenant    string `json:"tenant" form:"tenant" example:"test" valid:"required"`
-	Username  string `json:"username" form:"username" example:"test" valid:"required"`
-	Password  string `json:"password" form:"password" example:"123456" valid:"required"`
-	Captcha   string `json:"captcha" form:"captcha" example:"01722" valid:"required"`
-	CaptchaId string `json:"captcha_id" form:"captcha_id" example:"Md9kzZQn9xohumhOTc81" valid:"required"`
+	Tenant    string `json:"tenant" form:"tenant" example:"test" validate:"required"`
+	Username  string `json:"username" form:"username" example:"test" validate:"required"`
+	Password  string `json:"password" form:"password" example:"123456" validate:"required"`
+	Captcha   string `json:"captcha" form:"captcha" example:"01722" validate:"required"`
+	CaptchaId string `json:"captcha_id" form:"captcha_id" example:"Md9kzZQn9xohumhOTc81" validate:"required"`
 }
 
 type GetUserLoginResV2 struct {

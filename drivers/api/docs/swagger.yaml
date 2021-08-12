@@ -896,6 +896,12 @@ definitions:
       username:
         example: test
         type: string
+    required:
+    - captcha
+    - captcha_id
+    - password
+    - tenant
+    - username
     type: object
   models.UserLoginResV2:
     properties:

@@ -2626,6 +2626,13 @@ var doc = `{
         },
         "models.UserLoginReqV2": {
             "type": "object",
+            "required": [
+                "captcha",
+                "captcha_id",
+                "password",
+                "tenant",
+                "username"
+            ],
             "properties": {
                 "captcha": {
                     "type": "string",
