@@ -101,6 +101,10 @@ github.com/go-sql-driver/mysql
 github.com/gogo/protobuf/gogoproto
 github.com/gogo/protobuf/proto
 github.com/gogo/protobuf/protoc-gen-gogo/descriptor
+# github.com/golang/freetype v0.0.0-20170609003504-e2365dfdc4a0
+github.com/golang/freetype
+github.com/golang/freetype/raster
+github.com/golang/freetype/truetype
 # github.com/golang/protobuf v1.4.3
 github.com/golang/protobuf/proto
 github.com/golang/protobuf/protoc-gen-go/descriptor
@@ -265,6 +269,8 @@ github.com/mitchellh/hashstructure
 github.com/mitchellh/mapstructure
 # github.com/mitchellh/reflectwalk v1.0.1
 github.com/mitchellh/reflectwalk
+# github.com/mojocn/base64Captcha v1.3.4
+github.com/mojocn/base64Captcha
 # github.com/nats-io/go-nats v1.7.2
 github.com/nats-io/go-nats
 github.com/nats-io/go-nats/encoders/builtin
@@ -577,6 +583,9 @@ golang.org/x/crypto/internal/subtle
 golang.org/x/crypto/md4
 golang.org/x/crypto/pbkdf2
 golang.org/x/crypto/poly1305
+# golang.org/x/image v0.0.0-20190802002840-cff245a6509b
+golang.org/x/image/font
+golang.org/x/image/math/fixed
 # golang.org/x/net v0.0.0-20201224014010-6772e930b67b
 golang.org/x/net/context
 golang.org/x/net/http/httpguts

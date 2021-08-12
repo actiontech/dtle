@@ -74,6 +74,7 @@ func SetupApiServer(logger hclog.Logger, apiAddr, nomadAddr, consulAddr, uiDir s
 	v2Router := e.Group("/v2")
 	v2Router.Use(JWTTokenAdapter(), middleware.JWT([]byte(common.JWTSecret)))
 	e.POST("/v2/login", v2.Login)
+	e.POST("/v2/login/captcha", v2.CaptchaV2)
 	v2Router.POST("/log/level", v2.UpdateLogLevelV2, AdminUserAllowed())
 	v2Router.GET("/jobs", v2.JobListV2)
 	v2Router.GET("/job/migration/detail", v2.GetMigrationJobDetailV2)
