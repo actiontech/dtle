@@ -37,6 +37,7 @@ require (
 	github.com/mb0/glob v0.0.0-20160210091149-1eb79d2de6c4 // indirect
 	github.com/mitchellh/copystructure v1.0.0 // indirect
 	github.com/mitchellh/mapstructure v1.3.3
+	github.com/mojocn/base64Captcha v1.3.4
 	github.com/nats-io/go-nats v1.7.2
 	github.com/nats-io/nats-server/v2 v2.1.6
 	github.com/nats-io/nats-streaming-server v0.17.0

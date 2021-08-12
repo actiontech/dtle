@@ -93,6 +93,15 @@ definitions:
       send_by_timeout:
         type: integer
     type: object
+  models.CaptchaRespV2:
+    properties:
+      data_scheme:
+        type: string
+      id:
+        type: string
+      message:
+        type: string
+    type: object
   models.Configuration:
     properties:
       binlog_relay:
@@ -775,6 +784,12 @@ definitions:
     type: object
   models.UserLoginReqV2:
     properties:
+      captcha:
+        example: "01722"
+        type: string
+      captcha_id:
+        example: Md9kzZQn9xohumhOTc81
+        type: string
       password:
         example: "123456"
         type: string
@@ -1160,6 +1175,27 @@ paths:
           schema:
             $ref: '#/definitions/models.GetUserLoginResV2'
       summary: user login
+      tags:
+      - user
+  /v2/login/captcha:
+    post:
+      description: create base64Captcha
+      operationId: CaptchaV2
+      parameters:
+      - description: captcha type
+        enum:
+        - default
+        - audio
+        in: formData
+        name: captcha_type
+        required: true
+        type: string
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.CaptchaRespV2'
+      summary: create base64Captcha
       tags:
       - user
   /v2/monitor/task:

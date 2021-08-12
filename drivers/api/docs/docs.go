@@ -556,6 +556,37 @@ var doc = `{
                 }
             }
         },
+        "/v2/login/captcha": {
+            "post": {
+                "description": "create base64Captcha",
+                "tags": [
+                    "user"
+                ],
+                "summary": "create base64Captcha",
+                "operationId": "CaptchaV2",
+                "parameters": [
+                    {
+                        "enum": [
+                            "default",
+                            "audio"
+                        ],
+                        "type": "string",
+                        "description": "captcha type",
+                        "name": "captcha_type",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.CaptchaRespV2"
+                        }
+                    }
+                }
+            }
+        },
         "/v2/monitor/task": {
             "get": {
                 "security": [
@@ -1206,6 +1237,20 @@ var doc = `{
                 },
                 "send_by_timeout": {
                     "type": "integer"
+                }
+            }
+        },
+        "models.CaptchaRespV2": {
+            "type": "object",
+            "properties": {
+                "data_scheme": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
                 }
             }
         },
@@ -2245,6 +2290,14 @@ var doc = `{
         "models.UserLoginReqV2": {
             "type": "object",
             "properties": {
+                "captcha": {
+                    "type": "string",
+                    "example": "01722"
+                },
+                "captcha_id": {
+                    "type": "string",
+                    "example": "Md9kzZQn9xohumhOTc81"
+                },
                 "password": {
                     "type": "string",
                     "example": "123456"

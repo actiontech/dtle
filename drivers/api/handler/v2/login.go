@@ -10,6 +10,7 @@ import (
 	"github.com/actiontech/dtle/drivers/mysql/common"
 	"github.com/dgrijalva/jwt-go"
 	"github.com/labstack/echo/v4"
+	"github.com/mojocn/base64Captcha"
 )
 
 // @Summary user login
@@ -30,7 +31,9 @@ func Login(c echo.Context) error {
 	if err := c.Validate(reqParam); nil != err {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invalid params:\n%v", err)))
 	}
-
+	if !store.Verify(reqParam.CaptchaId, reqParam.Captcha, true) {
+		return c.JSON(http.StatusBadRequest, models.BuildBaseResp(fmt.Errorf("verfied failed")))
+	}
 	storeManager, err := common.NewStoreManager([]string{handler.ConsulAddr}, logger)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("consul_addr=%v; connect to consul failed: %v", handler.ConsulAddr, err)))
@@ -62,4 +65,40 @@ func Login(c echo.Context) error {
 		Data:     models.UserLoginResV2{Token: t},
 		BaseResp: models.BuildBaseResp(nil),
 	})
+}
+
+var store = base64Captcha.DefaultMemStore
+
+// @Summary create base64Captcha
+// @Description create base64Captcha
+// @Tags user
+// @Id CaptchaV2
+// @Param captcha_type formData string true "captcha type" Enums(default,audio)
+// @Success 200 {object} models.CaptchaRespV2
+// @router /v2/login/captcha [post]
+func CaptchaV2(c echo.Context) error {
+	//parse request parameters
+	reqParam := new(models.VerifyCodeReqV2)
+	if err := c.Bind(reqParam); nil != err {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("bind reqParam reqParam failed, error: %v", err)))
+	}
+	if err := c.Validate(reqParam); nil != err {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invalid params:\n%v", err)))
+	}
+
+	//create base64 encoding captcha
+	var driver base64Captcha.Driver
+
+	switch reqParam.CaptchaType {
+	case "audio":
+		driver = base64Captcha.DefaultDriverAudio
+	default:
+		driver = base64Captcha.DefaultDriverDigit
+	}
+	captcha := base64Captcha.NewCaptcha(driver, store)
+	id, b64s, err := captcha.Generate()
+	if err != nil {
+		return c.JSON(http.StatusOK, models.BuildBaseResp(err))
+	}
+	return c.JSON(http.StatusOK, models.CaptchaRespV2{Id: id, DataScheme: b64s})
 }
