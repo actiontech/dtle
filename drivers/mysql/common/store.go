@@ -462,7 +462,6 @@ func (sm *StoreManager) GetUser(tenant, username string) (*User, bool, error) {
 	} else if !exists {
 		return nil, exists, nil
 	}
-
 	kp, err := sm.consulStore.Get(key)
 	if nil != err {
 		return nil, false, err

@@ -197,13 +197,13 @@ func createOrUpdateMysqlToMysqlJob(logger hclog.Logger, jobParam *models.CreateO
 
 	failover := g.PtrToBool(jobParam.Failover, true)
 	if jobParam.IsMysqlPasswordEncrypted {
-		realPwd, err := handler.DecryptMysqlPassword(jobParam.SrcTask.MysqlConnectionConfig.MysqlPassword, g.RsaPrivateKey)
+		realPwd, err := handler.DecryptPassword(jobParam.SrcTask.MysqlConnectionConfig.MysqlPassword, g.RsaPrivateKey)
 		if nil != err {
 			return nil, fmt.Errorf("decrypt src mysql password failed: %v", err)
 		}
 		jobParam.SrcTask.MysqlConnectionConfig.MysqlPassword = realPwd
 
-		realPwd, err = handler.DecryptMysqlPassword(jobParam.DestTask.MysqlConnectionConfig.MysqlPassword, g.RsaPrivateKey)
+		realPwd, err = handler.DecryptPassword(jobParam.DestTask.MysqlConnectionConfig.MysqlPassword, g.RsaPrivateKey)
 		if nil != err {
 			return nil, fmt.Errorf("decrypt dest mysql password failed: %v", err)
 		}
@@ -915,7 +915,7 @@ func createOrUpdateMysqlToKafkaJob(c echo.Context, logger hclog.Logger, jobType 
 	failover := g.PtrToBool(jobParam.Failover, true)
 
 	if jobParam.IsMysqlPasswordEncrypted {
-		realPwd, err := handler.DecryptMysqlPassword(jobParam.SrcTask.MysqlConnectionConfig.MysqlPassword, g.RsaPrivateKey)
+		realPwd, err := handler.DecryptPassword(jobParam.SrcTask.MysqlConnectionConfig.MysqlPassword, g.RsaPrivateKey)
 		if nil != err {
 			return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("decrypt src mysql password failed: %v", err)))
 		}
@@ -1553,7 +1553,7 @@ func ReverseJob(c echo.Context) error {
 
 		// IsMysqlPasswordEncrypted is set to default false then decrypt pwd
 		if reqParam.ReverseConfig.IsMysqlPasswordEncrypted {
-			err := decryptPwd(reverseJobParam.SrcTask, reverseJobParam.DestTask)
+			err := decryptMySQLPwd(reverseJobParam.SrcTask, reverseJobParam.DestTask)
 			if nil != err {
 				return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
 			}
