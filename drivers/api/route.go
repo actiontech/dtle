@@ -106,7 +106,7 @@ func SetupApiServer(logger hclog.Logger, apiAddr, nomadAddr, consulAddr, uiDir s
 	v2Router.GET("/tenant/list", v2.TenantList)
 	v2Router.GET("/user/current_user", v2.GetCurrentUser)
 	v2Router.GET("/user/list_action", v2.ListAction)
-	v2Router.GET("/role/list", v2.RoleList, AdminUserAllowed())
+	v2Router.GET("/role/list", v2.RoleList)
 	v2Router.POST("/role/create", v2.CreateRole, AdminUserAllowed())
 	v2Router.POST("/role/delete", v2.DeleteRole, AdminUserAllowed())
 	v2Router.POST("/role/update", v2.UpdateRole, AdminUserAllowed())
@@ -211,8 +211,14 @@ func AuthFilter() echo.MiddlewareFunc {
 func AdminUserAllowed() echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
-			_, user := v2.GetUserName(c)
-			if user == common.DefaultAdminUser {
+			logger := handler.NewLogger().Named("ResumeJobV2")
+			tenant, user := v2.GetUserName(c)
+			storeManager, err := common.NewStoreManager([]string{handler.ConsulAddr}, logger)
+			if err != nil {
+				return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("consul_addr=%v; connect to consul failed: %v", handler.ConsulAddr, err)))
+			}
+			role, _, _ := storeManager.GetRole(tenant, user)
+			if role != nil && role.Name == common.DefaultAdminUser {
 				return next(c)
 			}
 			return echo.NewHTTPError(http.StatusForbidden)

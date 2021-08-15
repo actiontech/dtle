@@ -5,6 +5,9 @@ import (
 	"regexp"
 	"sync"
 	"time"
+
+	"github.com/actiontech/dtle/drivers/api/handler"
+	"github.com/actiontech/dtle/g"
 )
 
 var BL *BlackList
@@ -57,11 +60,19 @@ func (b *BlackList) blackListExist(key string) (int, bool) {
 }
 
 // validate current user in blacklist and update blacklist
-func ValidateBlackList(user, operation, currentPwd, verifiedPwd string) error {
+func ValidatePassword(user, operation, currentPwd, verifiedPwd string) error {
 	if leftMinute, exist := BL.blackListExist(fmt.Sprintf("%s:%s", user, operation)); exist {
 		return fmt.Errorf("the password cannot be changed temporarily, please try again after %v minute", leftMinute)
 	}
-	if currentPwd != verifiedPwd {
+	realCurrentPwd, err := handler.DecryptPasswordSupportNoRsaKey(currentPwd, g.RsaPrivateKey)
+	if err != nil {
+		return fmt.Errorf("decrypt current password err")
+	}
+	realVerifiedPwd, err := handler.DecryptPasswordSupportNoRsaKey(verifiedPwd, g.RsaPrivateKey)
+	if err != nil {
+		return fmt.Errorf("decrypt verified password err")
+	}
+	if realCurrentPwd != realVerifiedPwd {
 		BL.setBlackList(fmt.Sprintf("%s:%s", user, operation), time.Minute*30)
 		return fmt.Errorf("user or password is wrong")
 	}
@@ -69,7 +80,11 @@ func ValidateBlackList(user, operation, currentPwd, verifiedPwd string) error {
 }
 
 // there are at least three types of uppercase letters, lowercase characters, numbers, and special characters
-func VerifyPassword(pwd string) bool {
+func VerifyPassword(encryptPwd string) bool {
+	realPassword, err := handler.DecryptPasswordSupportNoRsaKey(encryptPwd, g.RsaPrivateKey)
+	if err != nil {
+		return false
+	}
 	matchTimes := 0
 	regexpSlice := []*regexp.Regexp{
 		regexp.MustCompile(`[a-z]`),
@@ -78,11 +93,11 @@ func VerifyPassword(pwd string) bool {
 		regexp.MustCompile(`[@#$%^&*()]`),
 	}
 	for i := range regexpSlice {
-		if regexpSlice[i].MatchString(pwd) {
+		if regexpSlice[i].MatchString(realPassword) {
 			matchTimes += 1
 		}
 	}
-	if matchTimes >= 3 && len(pwd) >= 8 {
+	if matchTimes >= 3 && len(realPassword) >= 8 {
 		return true
 	}
 	return false

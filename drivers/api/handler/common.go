@@ -125,7 +125,14 @@ func rsaDecrypt(ciphertext []byte, privateKey string) ([]byte, error) {
 	return rsa.DecryptPKCS1v15(rand.Reader, priv, ciphertext)
 }
 
-func DecryptMysqlPassword(password string, rsaPrivateKey string) (realPwd string, err error) {
+func DecryptPasswordSupportNoRsaKey(password string, rsaPrivateKey string) (realPwd string, err error) {
+	if "" == rsaPrivateKey {
+		return password, nil
+	}
+	return DecryptPassword(password, rsaPrivateKey)
+}
+
+func DecryptPassword(password string, rsaPrivateKey string) (realPwd string, err error) {
 	if "" == rsaPrivateKey {
 		return "", fmt.Errorf("rsa private key should not be empty")
 	}

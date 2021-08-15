@@ -252,8 +252,7 @@ func ResetPassword(c echo.Context) error {
 	if !exist {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("user does not exist")))
 	}
-
-	if err := ValidateBlackList(fmt.Sprintf("%s:%s", reqParam.Tenant, reqParam.Username), "reset_pwd", user.Password, reqParam.OldPassWord); err != nil {
+	if err := ValidatePassword(fmt.Sprintf("%s:%s", reqParam.Tenant, reqParam.Username), "reset_pwd", user.Password, reqParam.OldPassWord); err != nil {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
 	}
 

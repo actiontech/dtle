@@ -150,9 +150,9 @@ func buildMysqlUri(host, user, pwd, characterSet string, port int, isMysqlPasswo
 		mysqlConnectionConfig.Charset = "utf8"
 	}
 	if "" != mysqlConnectionConfig.Password && isMysqlPasswordEncrypted {
-		realPwd, err := handler.DecryptMysqlPassword(mysqlConnectionConfig.Password, g.RsaPrivateKey)
+		realPwd, err := handler.DecryptPassword(mysqlConnectionConfig.Password, g.RsaPrivateKey)
 		if nil != err {
-			return "", fmt.Errorf("DecryptMysqlPassword failed: %v", err)
+			return "", fmt.Errorf("DecryptPassword failed: %v", err)
 		}
 		mysqlConnectionConfig.Password = realPwd
 	}

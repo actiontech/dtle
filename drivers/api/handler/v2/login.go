@@ -6,6 +6,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/actiontech/dtle/g"
+
 	"github.com/actiontech/dtle/drivers/api/handler"
 	"github.com/actiontech/dtle/drivers/api/models"
 	"github.com/actiontech/dtle/drivers/mysql/common"
@@ -49,7 +51,7 @@ func Login(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("user or password is wrong")))
 	}
 
-	if err := ValidateBlackList(fmt.Sprintf("%s:%s", reqParam.Tenant, reqParam.Username), "login", reqParam.Password, user.Password); err != nil {
+	if err := ValidatePassword(fmt.Sprintf("%s:%s", reqParam.Tenant, reqParam.Username), "login", reqParam.Password, user.Password); err != nil {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
 	}
 
@@ -103,7 +105,7 @@ func CaptchaV2(c echo.Context) error {
 	if err != nil {
 		return c.JSON(http.StatusOK, models.BuildBaseResp(err))
 	}
-	return c.JSON(http.StatusOK, models.CaptchaRespV2{Id: id, DataScheme: b64s})
+	return c.JSON(http.StatusOK, models.CaptchaRespV2{Id: id, DataScheme: b64s, BaseResp: models.BuildBaseResp(nil)})
 }
 
 func createPlatformUser() {
@@ -114,6 +116,9 @@ func createPlatformUser() {
 		Role:       common.DefaultRole,
 		Password:   common.DefaultAdminPwd,
 		CreateTime: time.Now().In(time.Local).Format(time.RFC3339),
+	}
+	if g.RsaPrivateKey != "" {
+		user.Password = common.DefaultEncryptAdminPwd
 	}
 	_ = createUser(logger, user)
 }
