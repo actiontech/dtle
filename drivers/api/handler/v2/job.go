@@ -1548,17 +1548,17 @@ func ReverseJob(c echo.Context) error {
 			reverseJobParam.SrcTask.MysqlConnectionConfig.MysqlPassword = reqParam.ReverseConfig.SrcPwd
 			reverseJobParam.DestTask.MysqlConnectionConfig.MysqlUser = reqParam.ReverseConfig.DestUser
 			reverseJobParam.DestTask.MysqlConnectionConfig.MysqlPassword = reqParam.ReverseConfig.DstPwd
+			// IsMysqlPasswordEncrypted is set to default false then decrypt pwd
+			if reqParam.ReverseConfig.IsMysqlPasswordEncrypted {
+				err := decryptMySQLPwd(reverseJobParam.SrcTask, reverseJobParam.DestTask)
+				if nil != err {
+					return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
+				}
+				reverseJobParam.IsMysqlPasswordEncrypted = false
+			}
 		}
 		reverseJobParam.Retry = originalJob.BasicTaskProfile.Configuration.RetryTimes
 
-		// IsMysqlPasswordEncrypted is set to default false then decrypt pwd
-		if reqParam.ReverseConfig.IsMysqlPasswordEncrypted {
-			err := decryptMySQLPwd(reverseJobParam.SrcTask, reverseJobParam.DestTask)
-			if nil != err {
-				return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
-			}
-			reverseJobParam.IsMysqlPasswordEncrypted = false
-		}
 		// validate job
 		validationTasks, err := validateTaskConfig(reverseJobParam.SrcTask, reverseJobParam.DestTask)
 		if nil != err {
