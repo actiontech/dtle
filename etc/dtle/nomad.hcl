@@ -52,6 +52,12 @@ consul {
   address = "127.0.0.1:8500"
 }
 
+# nomad metics
+telemetry {
+  prometheus_metrics         = true
+  use_node_name              = true
+}
+
 plugin "dtle" {
   config {
     log_level = "Info" # Repeat nomad log level here.
