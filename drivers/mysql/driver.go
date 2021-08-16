@@ -72,6 +72,10 @@ var (
 			hclspec.NewLiteral(`""`)),
 		"rsa_private_key_path": hclspec.NewDefault(hclspec.NewAttr("rsa_private_key_path", "string", false),
 			hclspec.NewLiteral(`""`)),
+		"cert_file_path": hclspec.NewDefault(hclspec.NewAttr("cert_file_path", "string", false),
+			hclspec.NewLiteral(`""`)),
+		"key_file_path": hclspec.NewDefault(hclspec.NewAttr("key_file_path", "string", false),
+			hclspec.NewLiteral(`""`)),
 	})
 
 	// taskConfigSpec is the hcl specification for the driver config section of
@@ -268,6 +272,8 @@ type DriverConfig struct {
 	LogLevel                string `codec:"log_level"`
 	UiDir                   string `codec:"ui_dir"`
 	RsaPrivateKeyPath       string `codec:"rsa_private_key_path"`
+	CertFilePath            string `codec:"cert_file_path"`
+	KeyFilePath             string `codec:"key_file_path"`
 }
 
 func (d *Driver) SetConfig(c *base.Config) (err error) {
@@ -325,7 +331,7 @@ func (d *Driver) SetConfig(c *base.Config) (err error) {
 						}
 					}()
 				} else {
-					apiErr := setupApiServerFn(d.logger, d.config.ApiAddr, d.config.NomadAddr, d.config.Consul, d.config.UiDir)
+					apiErr := setupApiServerFn(d.logger, d.config)
 					if apiErr != nil {
 						d.logger.Error("error in SetupApiServer", "err", err,
 							"apiAddr", d.config.ApiAddr, "nomadAddr", d.config.NomadAddr)
@@ -346,9 +352,9 @@ func (d *Driver) SetConfig(c *base.Config) (err error) {
 	return nil
 }
 
-var setupApiServerFn func(logger hclog.Logger, apiAddr, nomadAddr, consulAddr, uiDir string) error
+var setupApiServerFn func(logger hclog.Logger, driverConfig *DriverConfig) error
 
-func RegisterSetupApiServerFn(fn func(logger hclog.Logger, apiAddr, nomadAddr, consulAddr, uiDir string) error) {
+func RegisterSetupApiServerFn(fn func(logger hclog.Logger, driverConfig *DriverConfig) error) {
 	setupApiServerFn = fn
 }
 

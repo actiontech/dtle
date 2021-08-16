@@ -7,6 +7,8 @@ import (
 	"path"
 	"strings"
 
+	"github.com/actiontech/dtle/drivers/mysql"
+
 	"github.com/actiontech/dtle/drivers/api/models"
 
 	middleware "github.com/labstack/echo/v4/middleware"
@@ -33,8 +35,8 @@ import (
 // @name Authorization
 // @BasePath /
 
-func SetupApiServer(logger hclog.Logger, apiAddr, nomadAddr, consulAddr, uiDir string) (err error) {
-	logger.Debug("Begin Setup api server", "addr", apiAddr)
+func SetupApiServer(logger hclog.Logger, driverConfig *mysql.DriverConfig) (err error) {
+	logger.Debug("Begin Setup api server", "addr", driverConfig.ApiAddr)
 	e := echo.New()
 
 	// adapt to stdout
@@ -43,9 +45,9 @@ func SetupApiServer(logger hclog.Logger, apiAddr, nomadAddr, consulAddr, uiDir s
 		ForceLevel:  hclog.Debug,
 	})
 
-	handler.NomadHost = nomadAddr
-	handler.ApiAddr = apiAddr
-	handler.ConsulAddr = consulAddr
+	handler.NomadHost = driverConfig.NomadAddr
+	handler.ApiAddr = driverConfig.ApiAddr
+	handler.ConsulAddr = driverConfig.Consul
 
 	e.GET("/swagger/*", echoSwagger.WrapHandler)
 
@@ -115,6 +117,7 @@ func SetupApiServer(logger hclog.Logger, apiAddr, nomadAddr, consulAddr, uiDir s
 	e.GET("/debug/pprof/*", echo.WrapHandler(http.DefaultServeMux))
 	e.Validator = handler.NewValidator()
 
+	uiDir := driverConfig.UiDir
 	if uiDir != "" {
 		logger.Info("found ui_dir", "dir", uiDir)
 		e.File("/", path.Join(uiDir, "index.html"))
@@ -124,8 +127,15 @@ func SetupApiServer(logger hclog.Logger, apiAddr, nomadAddr, consulAddr, uiDir s
 			return c.File(path.Join(uiDir, "index.html"))
 		})
 	}
+
+	apiAddr := driverConfig.ApiAddr
 	go func() {
-		err := e.Start(apiAddr)
+		var err error
+		if driverConfig.CertFilePath != "" && driverConfig.KeyFilePath != "" {
+			err = e.StartTLS(apiAddr, driverConfig.CertFilePath, driverConfig.KeyFilePath)
+		} else {
+			err = e.Start(apiAddr)
+		}
 		if err != nil {
 			logger.Error("in SetupApiServer ListenAndServe", "err", err)
 			// TODO mark plugin unhealthy

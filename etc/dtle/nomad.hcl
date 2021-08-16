@@ -72,6 +72,8 @@ plugin "dtle" {
     nomad_addr = "127.0.0.1:4646" # compatibility API need to access a nomad server
     # rsa_private_key_path indicate the file containing the private key for decrypting mysql password that got through http api
     # rsa_private_key_path = "xxx"
+    # cert_file_path = "PATH_TO_CERT_FILE"
+    # key_file_path = "PATH_TO_KEY_FILE"
 
     publish_metrics = false
     stats_collection_interval = 15
