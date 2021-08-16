@@ -74,8 +74,7 @@ func JobListV2(c echo.Context) error {
 		if "" != reqParam.FilterJobType && reqParam.FilterJobType != string(jobType) {
 			continue
 		}
-		tenant, _ := GetUserTenant(consulJob.User)
-		if user.Tenant != common.DefaultAdminGroup && tenant != user.Tenant {
+		if !userHasAccess(storeManager, consulJob.User, user) {
 			continue
 		}
 		jobItem := common.JobListItemV2{
@@ -1598,11 +1597,6 @@ func checkJobAccess(c echo.Context, jobId string) error {
 	if err != nil {
 		return fmt.Errorf("consul_addr=%v; connect to consul failed: %v", handler.ConsulAddr, err)
 	}
-
-	if user.Tenant == common.DefaultAdminGroup && user.Username == common.DefaultAdminUser {
-		return nil
-	}
-
 	storeManager, err := common.NewStoreManager([]string{handler.ConsulAddr}, logger)
 	if err != nil {
 		return fmt.Errorf("consul_addr=%v; connect to consul failed: %v", handler.ConsulAddr, err)
@@ -1612,10 +1606,9 @@ func checkJobAccess(c echo.Context, jobId string) error {
 		return fmt.Errorf("consul_addr=%v ; get job status list failed: %v", handler.ConsulAddr, err)
 	}
 
-	if job.User != fmt.Sprintf("%s:%s", user.Tenant, user.Username) {
+	if !userHasAccess(storeManager, job.User, user) {
 		return fmt.Errorf("current user %v:%v has not access to operate  job job_id=%v", user.Tenant, user.Username, jobId)
 	}
-
 	return nil
 }
 
