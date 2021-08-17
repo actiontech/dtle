@@ -70,7 +70,7 @@ func GetTaskProgressV2(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("get target host failed: %v", err)))
 	}
 	logger.Info("got target host", "targetHost", targetHost)
-	selfApiHost, _, err := net.SplitHostPort(handler.ApiAddr)
+	selfNomadHost, _, err := net.SplitHostPort(handler.NomadHost)
 	if nil != err {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("get self api host failed: %v", err)))
 	}
@@ -78,7 +78,7 @@ func GetTaskProgressV2(c echo.Context) error {
 	res := models.GetTaskProgressRespV2{
 		BaseResp: models.BuildBaseResp(nil),
 	}
-	if targetHost != selfApiHost {
+	if targetHost != selfNomadHost {
 		logger.Info("forwarding...", "targetHost", targetHost)
 		// forward
 		// invoke http://%v/v1/agent/self to get api_addr
@@ -100,7 +100,7 @@ func GetTaskProgressV2(c echo.Context) error {
 			"nomad_address": targetNomadAddr,
 		}
 		logger.Info("forwarding... invoke target dtle api begin", "url", url)
-		if err := handler.InvokeApiWithKvData(http.MethodGet, url, args, &res); nil != err {
+		if err := handler.InvokeApiWithKvData(http.MethodGet, url, args, &res, c.Request().Header); nil != err {
 			return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("forward api %v failed: %v", url, err)))
 		}
 		logger.Info("forwarding... invoke target dtle api finished")

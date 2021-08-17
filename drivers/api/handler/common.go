@@ -28,8 +28,11 @@ func BuildUrl(path string) string {
 	return "http://" + NomadHost + path
 }
 
-func InvokeApiWithKvData(method, uri string, args map[string]string, respStruct interface{}) (err error) {
+func InvokeApiWithKvData(method, uri string, args map[string]string, respStruct interface{}, header ...http.Header) (err error) {
 	var req *http.Request
+	if len(header) != 0 {
+		req.Header = header[0]
+	}
 	switch method {
 	case http.MethodGet:
 		req, err = http.NewRequest(method, uri, nil)
