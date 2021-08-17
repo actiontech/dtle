@@ -28,7 +28,7 @@ func BuildUrl(path string) string {
 	return "http://" + NomadHost + path
 }
 
-func InvokeApiWithKvData(method, uri string, args map[string]string, respStruct interface{}) (err error) {
+func InvokeApiWithKvData(method, uri string, args map[string]string, respStruct interface{}, header ...http.Header) (err error) {
 	var req *http.Request
 	switch method {
 	case http.MethodGet:
@@ -54,7 +54,11 @@ func InvokeApiWithKvData(method, uri string, args map[string]string, respStruct 
 	default:
 		return fmt.Errorf("unsupported method: %v", method)
 	}
-
+	if len(header) != 0 {
+		for k, s := range header[0] {
+			req.Header[k] = s
+		}
+	}
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
