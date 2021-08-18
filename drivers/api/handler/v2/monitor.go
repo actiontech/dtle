@@ -5,10 +5,11 @@ import (
 	"net"
 	"net/http"
 
+	"github.com/actiontech/dtle/g"
+
 	"github.com/actiontech/dtle/drivers/api/handler"
 	"github.com/actiontech/dtle/drivers/api/models"
 	"github.com/actiontech/dtle/drivers/mysql"
-	"github.com/actiontech/dtle/g"
 	nomadApi "github.com/hashicorp/nomad/api"
 	"github.com/labstack/echo/v4"
 )
@@ -70,15 +71,15 @@ func GetTaskProgressV2(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("get target host failed: %v", err)))
 	}
 	logger.Info("got target host", "targetHost", targetHost)
-	selfApiHost, _, err := net.SplitHostPort(handler.ApiAddr)
+	selfNomadHost, _, err := net.SplitHostPort(handler.NomadHost)
 	if nil != err {
-		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("get self api host failed: %v", err)))
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("get self nomad host failed: %v", err)))
 	}
 
 	res := models.GetTaskProgressRespV2{
 		BaseResp: models.BuildBaseResp(nil),
 	}
-	if targetHost != selfApiHost {
+	if targetHost != selfNomadHost {
 		logger.Info("forwarding...", "targetHost", targetHost)
 		// forward
 		// invoke http://%v/v1/agent/self to get api_addr
@@ -88,10 +89,12 @@ func GetTaskProgressV2(c echo.Context) error {
 			return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invoke nomad api %v failed: %v", url, err)))
 		}
 
-		forwardAddr, err := getApiAddrFromAgentConfig(nomadAgentSelf.Config)
+		_, targetPort, err := getApiAddrFromAgentConfig(nomadAgentSelf.Config)
 		if nil != err {
-			return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("getApiAddrFromAgentConfig failed: %v", err)))
+			return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("get target host failed: %v", err)))
 		}
+		forwardAddr := fmt.Sprintf("%s:%s", targetHost, targetPort)
+		logger.Info("forwarding...", "forwardAddr", forwardAddr)
 
 		url = fmt.Sprintf("http://%v/v2/monitor/task", forwardAddr)
 		args := map[string]string{
@@ -100,7 +103,7 @@ func GetTaskProgressV2(c echo.Context) error {
 			"nomad_address": targetNomadAddr,
 		}
 		logger.Info("forwarding... invoke target dtle api begin", "url", url)
-		if err := handler.InvokeApiWithKvData(http.MethodGet, url, args, &res); nil != err {
+		if err := handler.InvokeApiWithKvData(http.MethodGet, url, args, &res, c.Request().Header); nil != err {
 			return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("forward api %v failed: %v", url, err)))
 		}
 		logger.Info("forwarding... invoke target dtle api finished")
@@ -174,10 +177,10 @@ func GetTaskProgressV2(c echo.Context) error {
 	return c.JSON(http.StatusOK, &res)
 }
 
-func getApiAddrFromAgentConfig(agentConfig map[string]interface{}) (addr string, err error) {
+func getApiAddrFromAgentConfig(agentConfig map[string]interface{}) (ip, port string, err error) {
 	plugins, ok := agentConfig["Plugins"].([]interface{})
 	if !ok {
-		return "", fmt.Errorf("can not find plugin config")
+		return "", "", fmt.Errorf("can not find plugin config")
 	}
 
 	for _, p := range plugins {
@@ -185,18 +188,17 @@ func getApiAddrFromAgentConfig(agentConfig map[string]interface{}) (addr string,
 		if plugin["Name"] == g.PluginName {
 			driverConfig, ok := plugin["Config"].(map[string]interface{})
 			if !ok {
-				return "", fmt.Errorf("can not find driver config within dtle plugin config")
+				return "", "", fmt.Errorf("can not find driver config within dtle plugin config")
+			}
+			addr := driverConfig["api_addr"].(string)
+			if ip, port, err = net.SplitHostPort(addr); nil != err {
+				return "", "", fmt.Errorf("api_addr=%v is invalid: %v", addr, err)
 			}
 
-			addr = driverConfig["api_addr"].(string)
-			if _, _, err = net.SplitHostPort(addr); nil != err {
-				return "", fmt.Errorf("api_addr=%v is invalid: %v", addr, err)
-			}
-
-			return addr, nil
+			return ip, port, nil
 
 		}
 	}
 
-	return "", fmt.Errorf("can not find dtle config")
+	return "", "", fmt.Errorf("can not find dtle config")
 }

@@ -9,9 +9,10 @@ package mysql
 import (
 	gosql "database/sql"
 	"fmt"
-	"github.com/actiontech/dtle/drivers/mysql/common"
 	"strings"
 	"time"
+
+	"github.com/actiontech/dtle/drivers/mysql/common"
 
 	ubase "github.com/actiontech/dtle/drivers/mysql/mysql/base"
 	uconf "github.com/actiontech/dtle/drivers/mysql/mysql/mysqlconfig"
@@ -52,7 +53,6 @@ func (i *Inspector) InitDB() (err error) {
 }
 
 func (i *Inspector) InitDBConnections() (err error) {
-	i.logger.Debug("CreateDB", "inspectorUri", i.mysqlContext.ConnectionConfig.GetDBUri())
 	if err := i.InitDB(); nil != err {
 		return err
 	}
@@ -75,7 +75,7 @@ func (i *Inspector) InitDBConnections() (err error) {
 	if err = i.ValidateGTIDMode(); err != nil {
 		return err
 	}
-	i.logger.Debug("validateBinlogs", "inspectorUri", i.mysqlContext.ConnectionConfig.GetDBUri())
+
 	if err := i.ValidateBinlogs(); err != nil {
 		return err
 	}
