@@ -29,13 +29,9 @@ import (
 // @Router /v2/mysql/schemas [get]
 func ListMysqlSchemasV2(c echo.Context) error {
 	logger := handler.NewLogger().Named("ListMysqlSchemasV2")
-	logger.Info("validate params")
 	reqParam := new(models.ListDatabaseSchemasReqV2)
-	if err := c.Bind(reqParam); nil != err {
-		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("convert request param failed. you should check the param format, error: %v", err)))
-	}
-	if err := c.Validate(reqParam); nil != err {
-		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invalid params:\n%v", err)))
+	if err := handler.BindAndValidate(logger, c, reqParam); err != nil {
+		return err
 	}
 
 	uri, err := buildMysqlUri(reqParam.MysqlHost, reqParam.MysqlUser, reqParam.MysqlPassword,
@@ -104,13 +100,9 @@ func ListMysqlSchemasV2(c echo.Context) error {
 // @Router /v2/mysql/columns [get]
 func ListMysqlColumnsV2(c echo.Context) error {
 	logger := handler.NewLogger().Named("ListMysqlColumnsV2")
-	logger.Info("validate params")
 	reqParam := new(models.ListColumnsReqV2)
-	if err := c.Bind(reqParam); nil != err {
-		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("convert request param failed. you should check the param format, error: %v", err)))
-	}
-	if err := c.Validate(reqParam); nil != err {
-		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invalid params:\n%v", err)))
+	if err := handler.BindAndValidate(logger, c, reqParam); err != nil {
+		return err
 	}
 	uri, err := buildMysqlUri(reqParam.MysqlHost, reqParam.MysqlUser, reqParam.MysqlPassword,
 		reqParam.MysqlCharacterSet, int(reqParam.MysqlPort), reqParam.IsMysqlPasswordEncrypted)
@@ -161,7 +153,7 @@ func buildMysqlUri(host, user, pwd, characterSet string, port int, isMysqlPasswo
 	return uri, nil
 }
 
-// @Id Connection
+// @Id ConnectionV2
 // @Description connect to  mysql instance.
 // @Tags mysql
 // @Security ApiKeyAuth
@@ -172,15 +164,11 @@ func buildMysqlUri(host, user, pwd, characterSet string, port int, isMysqlPasswo
 // @Param is_mysql_password_encrypted query bool false "indecate that mysql password is encrypted or not"
 // @Success 200 {object} models.ConnectionRespV2
 // @Router /v2/mysql/instance_connection [get]
-func Connection(c echo.Context) error {
-	logger := handler.NewLogger().Named("Connection")
-	logger.Info("validate params")
+func ConnectionV2(c echo.Context) error {
+	logger := handler.NewLogger().Named("ConnectionV2")
 	reqParam := new(models.ConnectionReqV2)
-	if err := c.Bind(reqParam); nil != err {
-		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("convert request param failed. you should check the param format, error: %v", err)))
-	}
-	if err := c.Validate(reqParam); nil != err {
-		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invalid params:\n%v", err)))
+	if err := handler.BindAndValidate(logger, c, reqParam); err != nil {
+		return err
 	}
 
 	uri, err := buildMysqlUri(reqParam.MysqlHost, reqParam.MysqlUser, reqParam.MysqlPassword,

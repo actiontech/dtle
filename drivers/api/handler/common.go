@@ -14,6 +14,10 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+
+	"github.com/hashicorp/go-hclog"
+
+	"github.com/labstack/echo/v4"
 )
 
 var NomadHost, ApiAddr, ConsulAddr string
@@ -113,6 +117,17 @@ func handleNomadResponse(respBody io.ReadCloser, statusCode int, respStruct inte
 	}
 	if err := json.Unmarshal(body, &respStruct); nil != err {
 		return fmt.Errorf("parse response failed. got response: %v", string(body))
+	}
+	return nil
+}
+
+func BindAndValidate(logger hclog.Logger, c echo.Context, reqParam interface{}) error {
+	logger.Info("validate params")
+	if err := c.Bind(reqParam); nil != err {
+		return fmt.Errorf("bind reqParam param failed, error: %v", err)
+	}
+	if err := c.Validate(reqParam); nil != err {
+		return fmt.Errorf("invalid params:\n%v", err)
 	}
 	return nil
 }

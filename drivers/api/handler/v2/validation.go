@@ -26,16 +26,12 @@ import (
 // @Router /v2/validation/job [post]
 func ValidateJobV2(c echo.Context) error {
 	logger := handler.NewLogger().Named("ValidateJobV2")
-	logger.Info("validate params")
-	jobConfig := new(models.ValidateJobReqV2)
-	if err := c.Bind(jobConfig); nil != err {
-		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("bind req param failed, error: %v", err)))
-	}
-	if err := c.Validate(jobConfig); nil != err {
-		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invalid params:\n%v", err)))
+	reqParam := new(models.ValidateJobReqV2)
+	if err := handler.BindAndValidate(logger, c, reqParam); err != nil {
+		return err
 	}
 
-	reqJson, err := apiJobConfigToNomadJobJson(jobConfig)
+	reqJson, err := apiJobConfigToNomadJobJson(reqParam)
 	if nil != err {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("convert param failed: %v", err)))
 	}
@@ -49,14 +45,14 @@ func ValidateJobV2(c echo.Context) error {
 	logger.Info("invoke nomad api finished")
 	logger.Info("validate task config")
 	// decrypt mysql password
-	if jobConfig.IsMysqlPasswordEncrypted {
-		err := decryptMySQLPwd(jobConfig.SrcTaskConfig, jobConfig.DestTaskConfig)
+	if reqParam.IsMysqlPasswordEncrypted {
+		err := decryptMySQLPwd(reqParam.SrcTaskConfig, reqParam.DestTaskConfig)
 		if nil != err {
 			return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
 		}
 	}
 
-	validationTasks, err := validateTaskConfig(jobConfig.SrcTaskConfig, jobConfig.DestTaskConfig)
+	validationTasks, err := validateTaskConfig(reqParam.SrcTaskConfig, reqParam.DestTaskConfig)
 	if nil != err {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("validate task config failed: %v", err)))
 	}

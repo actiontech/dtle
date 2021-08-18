@@ -40,13 +40,9 @@ import (
 // @Router /v2/jobs [get]
 func JobListV2(c echo.Context) error {
 	logger := handler.NewLogger().Named("JobListV2")
-	logger.Info("validate params")
 	reqParam := new(models.JobListReqV2)
-	if err := c.Bind(reqParam); nil != err {
-		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("bind req param failed, error: %v", err)))
-	}
-	if err := c.Validate(reqParam); nil != err {
-		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invalid params:\n%v", err)))
+	if err := handler.BindAndValidate(logger, c, reqParam); err != nil {
+		return err
 	}
 
 	user, err := getCurrentUser(c)
@@ -168,16 +164,15 @@ func getJobTypeFromJobId(jobId string) DtleJobType {
 // @Router /v2/job/migration [post]
 func CreateOrUpdateMigrationJobV2(c echo.Context) error {
 	logger := handler.NewLogger().Named("CreateOrUpdateMigrationJobV2")
-	logger.Info("validate params")
-	jobParam := new(models.CreateOrUpdateMysqlToMysqlJobParamV2)
-	if err := c.Bind(jobParam); nil != err {
-		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("bind req param failed, error: %v", err)))
+	reqParam := new(models.CreateOrUpdateMysqlToMysqlJobParamV2)
+	if err := handler.BindAndValidate(logger, c, reqParam); err != nil {
+		return err
 	}
-	if err := c.Validate(jobParam); nil != err {
+	if err := c.Validate(reqParam); nil != err {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invalid params:\n%v", err)))
 	}
 
-	if err := checkUpdateJobInfo(c, jobParam.JobId); err != nil {
+	if err := checkUpdateJobInfo(c, reqParam.JobId); err != nil {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
 	}
 
@@ -185,7 +180,7 @@ func CreateOrUpdateMigrationJobV2(c echo.Context) error {
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
 	}
-	resp, err := createOrUpdateMysqlToMysqlJob(logger, jobParam, user, DtleJobTypeMigration)
+	resp, err := createOrUpdateMysqlToMysqlJob(logger, reqParam, user, DtleJobTypeMigration)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
 	}
@@ -493,13 +488,10 @@ func GetMigrationJobDetailV2(c echo.Context) error {
 }
 
 func GetMysqlToMysqlJobDetail(c echo.Context, logger hclog.Logger, jobType DtleJobType) error {
-	logger.Info("validate params")
+
 	reqParam := new(models.MysqlToMysqlJobDetailReqV2)
-	if err := c.Bind(reqParam); nil != err {
-		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("bind req param failed, error: %v", err)))
-	}
-	if err := c.Validate(reqParam); nil != err {
-		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invalid params:\n%v", err)))
+	if err := handler.BindAndValidate(logger, c, reqParam); err != nil {
+		return err
 	}
 	err := checkJobAccess(c, reqParam.JobId)
 	if err != nil {
@@ -853,11 +845,8 @@ func buildMysqlToMysqlJobDetailResp(nomadJob nomadApi.Job, nomadAllocations []no
 func CreateOrUpdateSyncJobV2(c echo.Context) error {
 	logger := handler.NewLogger().Named("CreateOrUpdateSyncJobV2")
 	jobParam := new(models.CreateOrUpdateMysqlToMysqlJobParamV2)
-	if err := c.Bind(jobParam); nil != err {
-		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("bind req param failed, error: %v", err)))
-	}
-	if err := c.Validate(jobParam); nil != err {
-		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invalid params:\n%v", err)))
+	if err := handler.BindAndValidate(logger, c, jobParam); err != nil {
+		return err
 	}
 	if err := checkUpdateJobInfo(c, jobParam.JobId); err != nil {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
@@ -899,13 +888,10 @@ func CreateOrUpdateSubscriptionJobV2(c echo.Context) error {
 }
 
 func createOrUpdateMysqlToKafkaJob(c echo.Context, logger hclog.Logger, jobType DtleJobType) error {
-	logger.Info("validate params")
+
 	jobParam := new(models.CreateOrUpdateMysqlToKafkaJobParamV2)
-	if err := c.Bind(jobParam); nil != err {
-		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("bind req param failed, error: %v", err)))
-	}
-	if err := c.Validate(jobParam); nil != err {
-		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invalid params:\n%v", err)))
+	if err := handler.BindAndValidate(logger, c, jobParam); err != nil {
+		return err
 	}
 
 	if err := checkUpdateJobInfo(c, jobParam.JobId); err != nil {
@@ -1027,13 +1013,9 @@ func buildKafkaDestTaskConfigMap(config *models.KafkaDestTaskConfig) map[string]
 // @Router /v2/job/subscription/detail [get]
 func GetSubscriptionJobDetailV2(c echo.Context) error {
 	logger := handler.NewLogger().Named("GetSubscriptionJobDetailV2")
-	logger.Info("validate params")
 	reqParam := new(models.MysqlToKafkaJobDetailReqV2)
-	if err := c.Bind(reqParam); nil != err {
-		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("bind req param failed, error: %v", err)))
-	}
-	if err := c.Validate(reqParam); nil != err {
-		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invalid params:\n%v", err)))
+	if err := handler.BindAndValidate(logger, c, reqParam); err != nil {
+		return err
 	}
 
 	err := checkJobAccess(c, reqParam.JobId)
@@ -1126,13 +1108,9 @@ func buildKafkaDestTaskDetail(taskName string, internalTaskKafkaConfig common.Ka
 // @Router /v2/job/pause [post]
 func PauseJobV2(c echo.Context) error {
 	logger := handler.NewLogger().Named("PauseJobV2")
-	logger.Info("validate params")
 	reqParam := new(models.PauseJobReqV2)
-	if err := c.Bind(reqParam); nil != err {
-		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("bind req param failed, error: %v", err)))
-	}
-	if err := c.Validate(reqParam); nil != err {
-		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invalid params:\n%v", err)))
+	if err := handler.BindAndValidate(logger, c, reqParam); err != nil {
+		return err
 	}
 
 	err := checkJobAccess(c, reqParam.JobId)
@@ -1210,13 +1188,9 @@ func PauseJobV2(c echo.Context) error {
 // @Router /v2/job/resume [post]
 func ResumeJobV2(c echo.Context) error {
 	logger := handler.NewLogger().Named("ResumeJobV2")
-	logger.Info("validate params")
 	reqParam := new(models.ResumeJobReqV2)
-	if err := c.Bind(reqParam); nil != err {
-		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("bind req param failed, error: %v", err)))
-	}
-	if err := c.Validate(reqParam); nil != err {
-		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invalid params:\n%v", err)))
+	if err := handler.BindAndValidate(logger, c, reqParam); err != nil {
+		return err
 	}
 
 	err := checkJobAccess(c, reqParam.JobId)
@@ -1310,13 +1284,9 @@ func sentSignalToTask(logger hclog.Logger, allocId, signal string) error {
 // @Router /v2/job/delete [post]
 func DeleteJobV2(c echo.Context) error {
 	logger := handler.NewLogger().Named("DeleteJobV2")
-	logger.Info("validate params")
 	reqParam := new(models.DeleteJobReqV2)
-	if err := c.Bind(reqParam); nil != err {
-		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("bind req param failed, error: %v", err)))
-	}
-	if err := c.Validate(reqParam); nil != err {
-		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invalid params:\n%v", err)))
+	if err := handler.BindAndValidate(logger, c, reqParam); err != nil {
+		return err
 	}
 	err := checkJobAccess(c, reqParam.JobId)
 	if err != nil {
@@ -1347,22 +1317,18 @@ func DeleteJobV2(c echo.Context) error {
 	})
 }
 
-// @Id GetJobGtid
+// @Id GetJobGtidV2
 // @Description get src task current gtid.
 // @Tags job
 // @Success 200 {object} models.JobGtidResp
 // @Security ApiKeyAuth
 // @Param job_id query string true "job id"
 // @Router /v2/job/gtid [get]
-func GetJobGtid(c echo.Context) error {
-	logger := handler.NewLogger().Named("GetJobGtid")
-
+func GetJobGtidV2(c echo.Context) error {
+	logger := handler.NewLogger().Named("GetJobGtidV2")
 	reqParam := new(models.GetJobGtidReqV2)
-	if err := c.Bind(reqParam); nil != err {
-		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("bind req param failed, error: %v", err)))
-	}
-	if err := c.Validate(reqParam); nil != err {
-		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invalid params:\n%v", err)))
+	if err := handler.BindAndValidate(logger, c, reqParam); err != nil {
+		return err
 	}
 
 	err := checkJobAccess(c, reqParam.JobId)
@@ -1386,7 +1352,7 @@ func GetJobGtid(c echo.Context) error {
 }
 
 // @Summary start reverse-init job
-// @Id ReverseStartJob
+// @Id ReverseStartJobV2
 // @Tags job
 // @Description Finish Job.
 // @accept application/x-www-form-urlencoded
@@ -1394,15 +1360,11 @@ func GetJobGtid(c echo.Context) error {
 // @Param job_id formData string true "job id"
 // @Success 200 {object} models.ReverseStartRespV2
 // @Router /v2/job/reverse_start [post]
-func ReverseStartJob(c echo.Context) error {
+func ReverseStartJobV2(c echo.Context) error {
 	logger := handler.NewLogger().Named("ReverseStartJobV2")
-	logger.Info("validate params")
 	reqParam := new(models.ReverseStartReqV2)
-	if err := c.Bind(reqParam); nil != err {
-		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("bind req param failed, error: %v", err)))
-	}
-	if err := c.Validate(reqParam); nil != err {
-		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invalid params:\n%v", err)))
+	if err := handler.BindAndValidate(logger, c, reqParam); err != nil {
+		return err
 	}
 	err := checkJobAccess(c, reqParam.JobId)
 	if err != nil {
@@ -1467,7 +1429,7 @@ func ReverseStartJob(c echo.Context) error {
 	})
 }
 
-// @Id ReverseJob
+// @Id ReverseJobV2
 // @Description returnJob
 // @Tags job
 // @Accept application/json
@@ -1475,15 +1437,12 @@ func ReverseStartJob(c echo.Context) error {
 // @Param reverse_config body models.ReverseJobReq true "reverse config config"
 // @Success 200 {object} models.ReverseJobResp
 // @Router /v2/job/reverse [post]
-func ReverseJob(c echo.Context) error {
-	logger := handler.NewLogger().Named("ReverseJob")
-	logger.Info("validate params")
+func ReverseJobV2(c echo.Context) error {
+	logger := handler.NewLogger().Named("ReverseJobV2")
+
 	reqParam := new(models.ReverseJobReq)
-	if err := c.Bind(reqParam); nil != err {
-		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("bind req param failed, error: %v", err)))
-	}
-	if err := c.Validate(reqParam); nil != err {
-		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invalid params:\n%v", err)))
+	if err := handler.BindAndValidate(logger, c, reqParam); err != nil {
+		return err
 	}
 	err := checkJobAccess(c, reqParam.JobId)
 	if err != nil {

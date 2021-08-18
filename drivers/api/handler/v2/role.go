@@ -12,22 +12,18 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
-// @Id RoleList
+// @Id RoleListV2
 // @Description get role list.
 // @Tags Role
 // @Success 200 {object} models.RoleListResp
 // @Security ApiKeyAuth
 // @Param filter_tenant query string false "filter tenant"
 // @Router /v2/role/list [get]
-func RoleList(c echo.Context) error {
-	logger := handler.NewLogger().Named("RoleList")
-	logger.Info("validate params")
+func RoleListV2(c echo.Context) error {
+	logger := handler.NewLogger().Named("RoleListV2")
 	reqParam := new(models.RoleListReq)
-	if err := c.Bind(reqParam); nil != err {
-		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("bind req param failed, error: %v", err)))
-	}
-	if err := c.Validate(reqParam); nil != err {
-		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invalid params:\n%v", err)))
+	if err := handler.BindAndValidate(logger, c, reqParam); err != nil {
+		return err
 	}
 
 	storeManager, err := common.NewStoreManager([]string{handler.ConsulAddr}, logger)
@@ -57,7 +53,7 @@ func RoleList(c echo.Context) error {
 	})
 }
 
-// @Id CreateRole
+// @Id CreateRoleV2
 // @Description create Role.
 // @Tags Role
 // @Accept application/json
@@ -65,15 +61,11 @@ func RoleList(c echo.Context) error {
 // @Param Role body models.CreateRoleReqV2 true "Role info"
 // @Success 200 {object} models.CreateRoleRespV2
 // @Router /v2/role/create [post]
-func CreateRole(c echo.Context) error {
-	logger := handler.NewLogger().Named("CreateRole")
-	logger.Info("validate params")
+func CreateRoleV2(c echo.Context) error {
+	logger := handler.NewLogger().Named("CreateRoleV2")
 	reqParam := new(models.CreateRoleReqV2)
-	if err := c.Bind(reqParam); nil != err {
-		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("bind req param failed, error: %v", err)))
-	}
-	if err := c.Validate(reqParam); nil != err {
-		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invalid params:\n%v", err)))
+	if err := handler.BindAndValidate(logger, c, reqParam); err != nil {
+		return err
 	}
 
 	err := UpdateRoleInfo(logger, &common.Role{
@@ -87,7 +79,7 @@ func CreateRole(c echo.Context) error {
 	return c.JSON(http.StatusOK, models.CreateRoleRespV2{BaseResp: models.BuildBaseResp(err)})
 }
 
-// @Id UpdateRole
+// @Id UpdateRoleV2
 // @Description update Role info.
 // @Tags Role
 // @Accept application/json
@@ -95,15 +87,11 @@ func CreateRole(c echo.Context) error {
 // @Param Role body models.UpdateRoleReqV2 true "Role info"
 // @Success 200 {object} models.UpdateRoleRespV2
 // @Router /v2/role/update [post]
-func UpdateRole(c echo.Context) error {
-	logger := handler.NewLogger().Named("CreateOrUpdateRole")
-	logger.Info("validate params")
+func UpdateRoleV2(c echo.Context) error {
+	logger := handler.NewLogger().Named("UpdateRoleV2")
 	reqParam := new(models.UpdateRoleReqV2)
-	if err := c.Bind(reqParam); nil != err {
-		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("bind req param failed, error: %v", err)))
-	}
-	if err := c.Validate(reqParam); nil != err {
-		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invalid params:\n%v", err)))
+	if err := handler.BindAndValidate(logger, c, reqParam); err != nil {
+		return err
 	}
 	if reqParam.Name == common.DefaultRole {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("admin role does not support modification")))
@@ -142,7 +130,7 @@ func UpdateRoleInfo(logger hclog.Logger, role *common.Role, create bool) error {
 	return nil
 }
 
-// @Id DeleteRole
+// @Id DeleteRoleV2
 // @Description delete Role.
 // @Tags Role
 // @accept application/x-www-form-urlencoded
@@ -151,15 +139,11 @@ func UpdateRoleInfo(logger hclog.Logger, role *common.Role, create bool) error {
 // @Param name formData string true "role name"
 // @Success 200 {object} models.DeleteRoleRespV2
 // @Router /v2/role/delete [post]
-func DeleteRole(c echo.Context) error {
-	logger := handler.NewLogger().Named("DeleteRole")
-	logger.Info("validate params")
+func DeleteRoleV2(c echo.Context) error {
+	logger := handler.NewLogger().Named("DeleteRoleV2")
 	reqParam := new(models.DeleteRoleReqV2)
-	if err := c.Bind(reqParam); nil != err {
-		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("bind req param failed, error: %v", err)))
-	}
-	if err := c.Validate(reqParam); nil != err {
-		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invalid params:\n%v", err)))
+	if err := handler.BindAndValidate(logger, c, reqParam); err != nil {
+		return err
 	}
 	// cannot delete default supper role
 	if reqParam.Tenant == common.DefaultAdminTenant && reqParam.Name == common.DefaultAdminUser {
