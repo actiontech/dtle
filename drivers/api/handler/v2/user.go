@@ -17,7 +17,7 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
-// @Id UserList
+// @Id UserListV2
 // @Description get user list.
 // @Tags user
 // @Success 200 {object} models.UserListResp
@@ -25,15 +25,11 @@ import (
 // @Param filter_username query string false "filter user name"
 // @Param filter_tenant query string false "filter tenant"
 // @Router /v2/user/list [get]
-func UserList(c echo.Context) error {
-	logger := handler.NewLogger().Named("UserList")
-	logger.Info("validate params")
+func UserListV2(c echo.Context) error {
+	logger := handler.NewLogger().Named("UserListV2")
 	reqParam := new(models.UserListReq)
-	if err := c.Bind(reqParam); nil != err {
-		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("bind req param failed, error: %v", err)))
-	}
-	if err := c.Validate(reqParam); nil != err {
-		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invalid params:\n%v", err)))
+	if err := handler.BindAndValidate(logger, c, reqParam); err != nil {
+		return err
 	}
 
 	storeManager, err := common.NewStoreManager([]string{handler.ConsulAddr}, logger)
@@ -65,14 +61,14 @@ func UserList(c echo.Context) error {
 	})
 }
 
-// @Id TenantList
+// @Id TenantListV2
 // @Description get tenant list.
 // @Tags user
 // @Success 200 {object} models.TenantListResp
 // @Security ApiKeyAuth
 // @Router /v2/tenant/list [get]
-func TenantList(c echo.Context) error {
-	logger := handler.NewLogger().Named("TenantList")
+func TenantListV2(c echo.Context) error {
+	logger := handler.NewLogger().Named("TenantListV2")
 
 	currentUser, err := getCurrentUser(c)
 	if err != nil {
@@ -98,7 +94,7 @@ func TenantList(c echo.Context) error {
 	})
 }
 
-// @Id CreateUser
+// @Id CreateUserV2
 // @Description create user.
 // @Tags user
 // @Accept application/json
@@ -106,15 +102,11 @@ func TenantList(c echo.Context) error {
 // @Param user body models.CreateUserReqV2 true "user info"
 // @Success 200 {object} models.CreateUserRespV2
 // @Router /v2/user/create [post]
-func CreateUser(c echo.Context) error {
-	logger := handler.NewLogger().Named("CreateUser")
-	logger.Info("validate params")
+func CreateUserV2(c echo.Context) error {
+	logger := handler.NewLogger().Named("CreateUserV2")
 	reqParam := new(models.CreateUserReqV2)
-	if err := c.Bind(reqParam); nil != err {
-		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("bind req param failed, error: %v", err)))
-	}
-	if err := c.Validate(reqParam); nil != err {
-		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invalid params:\n%v", err)))
+	if err := handler.BindAndValidate(logger, c, reqParam); err != nil {
+		return err
 	}
 
 	if hasAccess, err := checkUserAccess(logger, c, fmt.Sprintf("%s:%s", reqParam.Tenant, reqParam.Username)); err != nil || !hasAccess {
@@ -166,7 +158,7 @@ func createUser(logger hclog.Logger, user *common.User) error {
 	return nil
 }
 
-// @Id UpdateUser
+// @Id UpdateUserV2
 // @Description update user info.
 // @Tags user
 // @Accept application/json
@@ -174,15 +166,11 @@ func createUser(logger hclog.Logger, user *common.User) error {
 // @Param user body models.UpdateUserReqV2 true "user info"
 // @Success 200 {object} models.UpdateUserRespV2
 // @Router /v2/user/update [post]
-func UpdateUser(c echo.Context) error {
-	logger := handler.NewLogger().Named("CreateOrUpdateUser")
-	logger.Info("validate params")
+func UpdateUserV2(c echo.Context) error {
+	logger := handler.NewLogger().Named("UpdateUserV2")
 	reqParam := new(models.UpdateUserReqV2)
-	if err := c.Bind(reqParam); nil != err {
-		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("bind req param failed, error: %v", err)))
-	}
-	if err := c.Validate(reqParam); nil != err {
-		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invalid params:\n%v", err)))
+	if err := handler.BindAndValidate(logger, c, reqParam); err != nil {
+		return err
 	}
 
 	storeManager, err := common.NewStoreManager([]string{handler.ConsulAddr}, logger)
@@ -217,7 +205,7 @@ func UpdateUser(c echo.Context) error {
 	return c.JSON(http.StatusOK, models.UpdateUserRespV2{BaseResp: models.BuildBaseResp(nil)})
 }
 
-// @Id ResetPassword
+// @Id ResetPasswordV2
 // @Description reset user password.
 // @Tags user
 // @Accept application/json
@@ -225,15 +213,11 @@ func UpdateUser(c echo.Context) error {
 // @Param user body models.ResetPasswordReqV2 true "reset user password"
 // @Success 200 {object} models.ResetPasswordRespV2
 // @Router /v2/user/reset_password [post]
-func ResetPassword(c echo.Context) error {
-	logger := handler.NewLogger().Named("CreateOrUpdateUser")
-	logger.Info("validate params")
+func ResetPasswordV2(c echo.Context) error {
+	logger := handler.NewLogger().Named("ResetPasswordV2")
 	reqParam := new(models.ResetPasswordReqV2)
-	if err := c.Bind(reqParam); nil != err {
-		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("bind req param failed, error: %v", err)))
-	}
-	if err := c.Validate(reqParam); nil != err {
-		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invalid params:\n%v", err)))
+	if err := handler.BindAndValidate(logger, c, reqParam); err != nil {
+		return err
 	}
 
 	if hasAccess, err := checkUserAccess(logger, c, fmt.Sprintf("%s:%s", reqParam.Tenant, reqParam.Username)); err != nil || !hasAccess {
@@ -268,7 +252,7 @@ func ResetPassword(c echo.Context) error {
 	return c.JSON(http.StatusOK, models.ResetPasswordRespV2{BaseResp: models.BuildBaseResp(nil)})
 }
 
-// @Id DeleteUser
+// @Id DeleteUserV2
 // @Description delete user.
 // @Tags user
 // @accept application/x-www-form-urlencoded
@@ -277,15 +261,11 @@ func ResetPassword(c echo.Context) error {
 // @Param username formData string true "user name"
 // @Success 200 {object} models.DeleteUserRespV2
 // @Router /v2/user/delete [post]
-func DeleteUser(c echo.Context) error {
-	logger := handler.NewLogger().Named("DeleteUser")
-	logger.Info("validate params")
+func DeleteUserV2(c echo.Context) error {
+	logger := handler.NewLogger().Named("DeleteUserV2")
 	reqParam := new(models.DeleteUserReqV2)
-	if err := c.Bind(reqParam); nil != err {
-		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("bind req param failed, error: %v", err)))
-	}
-	if err := c.Validate(reqParam); nil != err {
-		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invalid params:\n%v", err)))
+	if err := handler.BindAndValidate(logger, c, reqParam); err != nil {
+		return err
 	}
 	// cannot delete default supper user
 	if reqParam.Tenant == common.DefaultAdminTenant && reqParam.Username == common.DefaultAdminUser {
@@ -310,13 +290,13 @@ func DeleteUser(c echo.Context) error {
 	})
 }
 
-// @Id GetCurrentUser
+// @Id GetCurrentUserV2
 // @Description get current user.
 // @Tags user
 // @Security ApiKeyAuth
 // @Success 200 {object} models.CurrentUserResp
 // @Router /v2/user/current_user [get]
-func GetCurrentUser(c echo.Context) error {
+func GetCurrentUserV2(c echo.Context) error {
 	user, err := getCurrentUser(c)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invalid params:\n%v", err)))
@@ -359,15 +339,15 @@ func GetUserName(c echo.Context) (string, string) {
 	return claims["group"].(string), claims["name"].(string)
 }
 
-// @Id ListAction
+// @Id ListActionV2
 // @Description list user action.
 // @Tags user
 // @Security ApiKeyAuth
 // @Success 200 {object} models.ListActionRespV2
 // @Router /v2/user/list_action [get]
-func ListAction(c echo.Context) error {
-	logger := handler.NewLogger().Named("DeleteUser")
-	logger.Info("validate params")
+func ListActionV2(c echo.Context) error {
+	logger := handler.NewLogger().Named("ListActionV2")
+
 	user, err := getCurrentUser(c)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))

@@ -18,23 +18,20 @@ import (
 
 var once sync.Once
 
-// @Summary user login
+// @Summary user loginV2
 // @Description user login
 // @Tags user
 // @Id loginV2
 // @Param user body models.UserLoginReqV2 true "user login request"
 // @Success 200 {object} models.GetUserLoginResV2
 // @router /v2/login [post]
-func Login(c echo.Context) error {
-	logger := handler.NewLogger().Named("UserList")
-	logger.Info("validate params")
+func LoginV2(c echo.Context) error {
+	logger := handler.NewLogger().Named("LoginV2")
+
 	once.Do(createPlatformUser)
 	reqParam := new(models.UserLoginReqV2)
-	if err := c.Bind(reqParam); nil != err {
-		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("bind reqParam param failed, error: %v", err)))
-	}
-	if err := c.Validate(reqParam); nil != err {
-		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invalid params:\n%v", err)))
+	if err := handler.BindAndValidate(logger, c, reqParam); err != nil {
+		return err
 	}
 	if !store.Verify(reqParam.CaptchaId, reqParam.Captcha, true) {
 		return c.JSON(http.StatusBadRequest, models.BuildBaseResp(fmt.Errorf("verfied failed")))
@@ -82,13 +79,10 @@ var store = base64Captcha.DefaultMemStore
 // @Success 200 {object} models.CaptchaRespV2
 // @router /v2/login/captcha [post]
 func CaptchaV2(c echo.Context) error {
-	//parse request parameters
+	logger := handler.NewLogger().Named("CaptchaV2")
 	reqParam := new(models.VerifyCodeReqV2)
-	if err := c.Bind(reqParam); nil != err {
-		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("bind reqParam reqParam failed, error: %v", err)))
-	}
-	if err := c.Validate(reqParam); nil != err {
-		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invalid params:\n%v", err)))
+	if err := handler.BindAndValidate(logger, c, reqParam); err != nil {
+		return err
 	}
 
 	//create base64 encoding captcha

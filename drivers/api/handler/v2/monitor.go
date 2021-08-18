@@ -25,13 +25,9 @@ import (
 // @Router /v2/monitor/task [get]
 func GetTaskProgressV2(c echo.Context) error {
 	logger := handler.NewLogger().Named("GetTaskProgressV2")
-	logger.Info("validate params")
 	reqParam := new(models.GetTaskProgressReqV2)
-	if err := c.Bind(reqParam); nil != err {
-		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("bind req param failed, error: %v", err)))
-	}
-	if err := c.Validate(reqParam); nil != err {
-		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invalid params:\n%v", err)))
+	if err := handler.BindAndValidate(logger, c, reqParam); err != nil {
+		return err
 	}
 
 	targetNomadAddr := reqParam.NomadHttpAddress

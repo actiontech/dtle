@@ -32,7 +32,6 @@ func NodeListV2(c echo.Context) error {
 }
 
 func FindNomadNodes(logger hclog.Logger) ([]models.NodeListItemV2, error) {
-	logger.Info("validate params")
 	url := handler.BuildUrl("/v1/nodes")
 	logger.Info("invoke nomad api begin", "url", url)
 	nomadNodes := []nomadApi.NodeListStub{}

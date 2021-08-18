@@ -69,7 +69,7 @@ var doc = `{
                 "tags": [
                     "job"
                 ],
-                "operationId": "GetJobGtid",
+                "operationId": "GetJobGtidV2",
                 "parameters": [
                     {
                         "type": "string",
@@ -238,7 +238,7 @@ var doc = `{
                 "tags": [
                     "job"
                 ],
-                "operationId": "ReverseJob",
+                "operationId": "ReverseJobV2",
                 "parameters": [
                     {
                         "description": "reverse config config",
@@ -275,7 +275,7 @@ var doc = `{
                     "job"
                 ],
                 "summary": "start reverse-init job",
-                "operationId": "ReverseStartJob",
+                "operationId": "ReverseStartJobV2",
                 "parameters": [
                     {
                         "type": "string",
@@ -533,7 +533,7 @@ var doc = `{
                 "tags": [
                     "user"
                 ],
-                "summary": "user login",
+                "summary": "user loginV2",
                 "operationId": "loginV2",
                 "parameters": [
                     {
@@ -720,7 +720,7 @@ var doc = `{
                 "tags": [
                     "mysql"
                 ],
-                "operationId": "Connection",
+                "operationId": "ConnectionV2",
                 "parameters": [
                     {
                         "type": "string",
@@ -867,7 +867,7 @@ var doc = `{
                 "tags": [
                     "Role"
                 ],
-                "operationId": "CreateRole",
+                "operationId": "CreateRoleV2",
                 "parameters": [
                     {
                         "description": "Role info",
@@ -903,7 +903,7 @@ var doc = `{
                 "tags": [
                     "Role"
                 ],
-                "operationId": "DeleteRole",
+                "operationId": "DeleteRoleV2",
                 "parameters": [
                     {
                         "type": "string",
@@ -941,7 +941,7 @@ var doc = `{
                 "tags": [
                     "Role"
                 ],
-                "operationId": "RoleList",
+                "operationId": "RoleListV2",
                 "parameters": [
                     {
                         "type": "string",
@@ -974,7 +974,7 @@ var doc = `{
                 "tags": [
                     "Role"
                 ],
-                "operationId": "UpdateRole",
+                "operationId": "UpdateRoleV2",
                 "parameters": [
                     {
                         "description": "Role info",
@@ -1007,7 +1007,7 @@ var doc = `{
                 "tags": [
                     "user"
                 ],
-                "operationId": "TenantList",
+                "operationId": "TenantListV2",
                 "responses": {
                     "200": {
                         "description": "OK",
@@ -1032,7 +1032,7 @@ var doc = `{
                 "tags": [
                     "user"
                 ],
-                "operationId": "CreateUser",
+                "operationId": "CreateUserV2",
                 "parameters": [
                     {
                         "description": "user info",
@@ -1065,7 +1065,7 @@ var doc = `{
                 "tags": [
                     "user"
                 ],
-                "operationId": "GetCurrentUser",
+                "operationId": "GetCurrentUserV2",
                 "responses": {
                     "200": {
                         "description": "OK",
@@ -1090,7 +1090,7 @@ var doc = `{
                 "tags": [
                     "user"
                 ],
-                "operationId": "DeleteUser",
+                "operationId": "DeleteUserV2",
                 "parameters": [
                     {
                         "type": "string",
@@ -1128,7 +1128,7 @@ var doc = `{
                 "tags": [
                     "user"
                 ],
-                "operationId": "UserList",
+                "operationId": "UserListV2",
                 "parameters": [
                     {
                         "type": "string",
@@ -1164,7 +1164,7 @@ var doc = `{
                 "tags": [
                     "user"
                 ],
-                "operationId": "ListAction",
+                "operationId": "ListActionV2",
                 "responses": {
                     "200": {
                         "description": "OK",
@@ -1189,7 +1189,7 @@ var doc = `{
                 "tags": [
                     "user"
                 ],
-                "operationId": "ResetPassword",
+                "operationId": "ResetPasswordV2",
                 "parameters": [
                     {
                         "description": "reset user password",
@@ -1225,7 +1225,7 @@ var doc = `{
                 "tags": [
                     "user"
                 ],
-                "operationId": "UpdateUser",
+                "operationId": "UpdateUserV2",
                 "parameters": [
                     {
                         "description": "user info",

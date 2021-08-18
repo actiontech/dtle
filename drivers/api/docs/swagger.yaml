@@ -972,7 +972,7 @@ paths:
   /v2/job/gtid:
     get:
       description: get src task current gtid.
-      operationId: GetJobGtid
+      operationId: GetJobGtidV2
       parameters:
       - description: job id
         in: query
@@ -1076,7 +1076,7 @@ paths:
       consumes:
       - application/json
       description: returnJob
-      operationId: ReverseJob
+      operationId: ReverseJobV2
       parameters:
       - description: reverse config config
         in: body
@@ -1098,7 +1098,7 @@ paths:
       consumes:
       - application/x-www-form-urlencoded
       description: Finish Job.
-      operationId: ReverseStartJob
+      operationId: ReverseStartJobV2
       parameters:
       - description: job id
         in: formData
@@ -1277,7 +1277,7 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/models.GetUserLoginResV2'
-      summary: user login
+      summary: user loginV2
       tags:
       - user
   /v2/login/captcha:
@@ -1385,7 +1385,7 @@ paths:
   /v2/mysql/instance_connection:
     get:
       description: connect to  mysql instance.
-      operationId: Connection
+      operationId: ConnectionV2
       parameters:
       - description: mysql host
         in: query
@@ -1480,7 +1480,7 @@ paths:
       consumes:
       - application/json
       description: create Role.
-      operationId: CreateRole
+      operationId: CreateRoleV2
       parameters:
       - description: Role info
         in: body
@@ -1502,7 +1502,7 @@ paths:
       consumes:
       - application/x-www-form-urlencoded
       description: delete Role.
-      operationId: DeleteRole
+      operationId: DeleteRoleV2
       parameters:
       - description: tenant
         in: formData
@@ -1526,7 +1526,7 @@ paths:
   /v2/role/list:
     get:
       description: get role list.
-      operationId: RoleList
+      operationId: RoleListV2
       parameters:
       - description: filter tenant
         in: query
@@ -1546,7 +1546,7 @@ paths:
       consumes:
       - application/json
       description: update Role info.
-      operationId: UpdateRole
+      operationId: UpdateRoleV2
       parameters:
       - description: Role info
         in: body
@@ -1566,7 +1566,7 @@ paths:
   /v2/tenant/list:
     get:
       description: get tenant list.
-      operationId: TenantList
+      operationId: TenantListV2
       responses:
         "200":
           description: OK
@@ -1581,7 +1581,7 @@ paths:
       consumes:
       - application/json
       description: create user.
-      operationId: CreateUser
+      operationId: CreateUserV2
       parameters:
       - description: user info
         in: body
@@ -1601,7 +1601,7 @@ paths:
   /v2/user/current_user:
     get:
       description: get current user.
-      operationId: GetCurrentUser
+      operationId: GetCurrentUserV2
       responses:
         "200":
           description: OK
@@ -1616,7 +1616,7 @@ paths:
       consumes:
       - application/x-www-form-urlencoded
       description: delete user.
-      operationId: DeleteUser
+      operationId: DeleteUserV2
       parameters:
       - description: tenant
         in: formData
@@ -1640,7 +1640,7 @@ paths:
   /v2/user/list:
     get:
       description: get user list.
-      operationId: UserList
+      operationId: UserListV2
       parameters:
       - description: filter user name
         in: query
@@ -1662,7 +1662,7 @@ paths:
   /v2/user/list_action:
     get:
       description: list user action.
-      operationId: ListAction
+      operationId: ListActionV2
       responses:
         "200":
           description: OK
@@ -1677,7 +1677,7 @@ paths:
       consumes:
       - application/json
       description: reset user password.
-      operationId: ResetPassword
+      operationId: ResetPasswordV2
       parameters:
       - description: reset user password
         in: body
@@ -1699,7 +1699,7 @@ paths:
       consumes:
       - application/json
       description: update user info.
-      operationId: UpdateUser
+      operationId: UpdateUserV2
       parameters:
       - description: user info
         in: body
