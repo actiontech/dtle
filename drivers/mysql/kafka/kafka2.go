@@ -445,9 +445,9 @@ func TimeValue(value string) int64 {
 
 	return timeValueHelper(h, m, s, microsec, isNeg)
 }
-func NewDateTimeField(optional bool, field string, defaultValue interface{}, timeZone string) *Schema {
+func NewDateTimeField(optional bool, field string, defaultValue interface{}, loc *time.Location) *Schema {
 	if defaultValue != nil {
-		defaultValue = DateTimeValue(defaultValue.(string), timeZone)
+		defaultValue = DateTimeValue(defaultValue.(string), loc)
 	}
 	return &Schema{
 		Default:  defaultValue,
@@ -458,11 +458,7 @@ func NewDateTimeField(optional bool, field string, defaultValue interface{}, tim
 		Version:  1,
 	}
 }
-func DateTimeValue(dateTime string, timeZone string) int64 {
-	if timeZone == "" {
-		timeZone = "UTC"
-	}
-	loc, _ := time.LoadLocation(timeZone)
+func DateTimeValue(dateTime string, loc *time.Location) int64 {
 	tm2, err := time.ParseInLocation(LAYOUT, dateTime, loc)
 	if err != nil {
 		return 0
@@ -481,15 +477,9 @@ func DateValue(date string) int64 {
 	}
 	return tm2.Unix() / 60 / 60 / 24
 }
-func TimeStamp(timestamp string, timeZone string) string {
-
-	if timeZone == "" {
-		timeZone = "UTC"
-	}
-	loc, _ := time.LoadLocation(timeZone)
+func TimeStamp(timestamp string, loc *time.Location) string {
 	tm2, _ := time.ParseInLocation(LAYOUT, timestamp, loc)
-	defaultTimeZone, _ := time.LoadLocation("UTC")
-	value := tm2.In(defaultTimeZone).Format(LAYOUT)
+	value := tm2.In(time.UTC).Format(LAYOUT)
 	timestamp = value[:10] + "T" + value[11:] + "Z"
 	return timestamp
 }
@@ -561,17 +551,12 @@ func NewSetField(theType SchemaType, optional bool, field string, allowed string
 		Version: 1,
 	}
 }
-func NewTimeStampField(optional bool, field string, defaultValue interface{}, timeZone string) *Schema {
+func NewTimeStampField(optional bool, field string, defaultValue interface{}, loc *time.Location) *Schema {
 	if defaultValue == "CURRENT_TIMESTAMP" {
 		defaultValue = "1970-01-01T00:00:00Z"
 	} else if defaultValue != nil {
-		if timeZone == "" {
-			timeZone = "UTC"
-		}
-		loc, _ := time.LoadLocation(timeZone)
 		tm2, _ := time.ParseInLocation(LAYOUT, defaultValue.(string), loc)
-		defaultTimeZone, _ := time.LoadLocation("UTC")
-		value := tm2.In(defaultTimeZone).Format(LAYOUT)
+		value := tm2.In(time.UTC).Format(LAYOUT)
 		defaultValue = value[:10] + "T" + value[11:] + "Z"
 	}
 	return &Schema{

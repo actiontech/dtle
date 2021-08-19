@@ -61,6 +61,8 @@ type KafkaRunner struct {
 	BinlogFile string
 	BinlogPos  int64
 
+	location *time.Location
+
 	chBinlogEntries chan *common.BinlogEntries
 	chDumpEntry     chan *common.DumpEntry
 
@@ -89,9 +91,17 @@ func (kr *KafkaRunner) Finish1() error {
 }
 
 func NewKafkaRunner(execCtx *common.ExecContext, cfg *common.KafkaConfig, logger hclog.Logger,
-	storeManager *common.StoreManager, natsAddr string, waitCh chan *drivers.ExitResult) *KafkaRunner {
+	storeManager *common.StoreManager, natsAddr string, waitCh chan *drivers.ExitResult) (kr *KafkaRunner, err error) {
 
-	kr := &KafkaRunner{
+	loc := time.UTC
+	if cfg.TimeZone != "" {
+		loc, err = time.LoadLocation(cfg.TimeZone)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	kr = &KafkaRunner{
 		subject:      execCtx.Subject,
 		kafkaConfig:  cfg,
 		logger:       logger.Named("kafka").With("job", execCtx.Subject),
@@ -104,6 +114,8 @@ func NewKafkaRunner(execCtx *common.ExecContext, cfg *common.KafkaConfig, logger
 		chDumpEntry:     make(chan *common.DumpEntry, 2),
 		chBinlogEntries: make(chan *common.BinlogEntries, 2),
 
+		location: loc,
+
 		memory1:  new(int64),
 		memory2:  new(int64),
 		printTps: g.EnvIsTrue(g.ENV_PRINT_TPS),
@@ -111,7 +123,7 @@ func NewKafkaRunner(execCtx *common.ExecContext, cfg *common.KafkaConfig, logger
 	kr.timestampCtx = mysql.NewTimestampContext(kr.shutdownCh, kr.logger, func() bool {
 		return len(kr.chBinlogEntries) == 0
 	})
-	return kr
+	return kr, nil
 }
 
 func (kr *KafkaRunner) updateGtidLoop() {
@@ -286,7 +298,7 @@ func (kr *KafkaRunner) getOrSetTable(schemaName string, tableName string,
 	} else {
 		kr.logger.Debug("new table info", "schemaName", schemaName, "tableName", tableName)
 		tableIdent := fmt.Sprintf("%v.%v.%v", kr.kafkaMgr.Cfg.Topic, table.TableSchema, table.TableName)
-		colDefs, keyColDefs := kafkaColumnListToColDefs(table.OriginalTableColumns, kr.kafkaConfig.TimeZone)
+		colDefs, keyColDefs := kafkaColumnListToColDefs(table.OriginalTableColumns, kr.location)
 		keySchema := &SchemaJson{
 			schema: NewKeySchema(tableIdent, keyColDefs),
 		}
@@ -685,7 +697,7 @@ func (kr *KafkaRunner) kafkaTransformSnapshotData(
 					value = TimeValue(valueStr)
 				case mysqlconfig.TimestampColumnType:
 					if valueStr != "" {
-						value = TimeStamp(valueStr, kr.kafkaConfig.TimeZone)
+						value = TimeStamp(valueStr, kr.location)
 					} else {
 						value = TimeValue(valueStr)
 					}
@@ -715,7 +727,7 @@ func (kr *KafkaRunner) kafkaTransformSnapshotData(
 					value = base64.StdEncoding.EncodeToString([]byte(valueStr))
 				case mysqlconfig.DateColumnType, mysqlconfig.DateTimeColumnType:
 					if valueStr != "" && columnList[i].ColumnType == "datetime" {
-						value = DateTimeValue(valueStr, kr.kafkaConfig.TimeZone)
+						value = DateTimeValue(valueStr, kr.location)
 					} else if valueStr != "" {
 						value = DateValue(valueStr)
 					}
@@ -882,23 +894,23 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQueries(dmlEntries []*common.Binlog
 					}
 				case mysqlconfig.TimeColumnType, mysqlconfig.TimestampColumnType:
 					if beforeValue != nil && colList[i].ColumnType == "timestamp" {
-						beforeValue = TimeStamp(beforeValue.(string), kr.kafkaConfig.TimeZone)
+						beforeValue = TimeStamp(beforeValue.(string), kr.location)
 					} else if beforeValue != nil {
 						beforeValue = TimeValue(beforeValue.(string))
 					}
 					if afterValue != nil && colList[i].ColumnType == "timestamp" {
-						afterValue = TimeStamp(afterValue.(string), kr.kafkaConfig.TimeZone)
+						afterValue = TimeStamp(afterValue.(string), kr.location)
 					} else if afterValue != nil {
 						afterValue = TimeValue(afterValue.(string))
 					}
 				case mysqlconfig.DateColumnType, mysqlconfig.DateTimeColumnType:
 					if beforeValue != nil && colList[i].ColumnType == "datetime" {
-						beforeValue = DateTimeValue(beforeValue.(string), kr.kafkaConfig.TimeZone)
+						beforeValue = DateTimeValue(beforeValue.(string), kr.location)
 					} else if beforeValue != nil {
 						beforeValue = DateValue(beforeValue.(string))
 					}
 					if afterValue != nil && colList[i].ColumnType == "datetime" {
-						afterValue = DateTimeValue(afterValue.(string), kr.kafkaConfig.TimeZone)
+						afterValue = DateTimeValue(afterValue.(string), kr.location)
 					} else if afterValue != nil {
 						afterValue = DateValue(afterValue.(string))
 					}
@@ -1156,7 +1168,7 @@ func getBitValue(bit string, value int64) string {
 	return base64.StdEncoding.EncodeToString(buf[8-bitNumber:])
 }
 
-func kafkaColumnListToColDefs(colList *common.ColumnList, timeZone string) (valColDefs ColDefs, keyColDefs ColDefs) {
+func kafkaColumnListToColDefs(colList *common.ColumnList, loc *time.Location) (valColDefs ColDefs, keyColDefs ColDefs) {
 	cols := colList.ColumnList()
 	for i, _ := range cols {
 		var field *Schema
@@ -1236,18 +1248,18 @@ func kafkaColumnListToColDefs(colList *common.ColumnList, timeZone string) (valC
 			field = NewDecimalField(cols[i].Precision, cols[i].Scale, optional, fieldName, defaultValue)
 		case mysqlconfig.DateColumnType:
 			if cols[i].ColumnType == "datetime" {
-				field = NewDateTimeField(optional, fieldName, defaultValue, timeZone)
+				field = NewDateTimeField(optional, fieldName, defaultValue, loc)
 			} else {
 				field = NewDateField(SCHEMA_TYPE_INT32, optional, fieldName, defaultValue)
 			}
 		case mysqlconfig.YearColumnType:
 			field = NewYearField(SCHEMA_TYPE_INT32, optional, fieldName, defaultValue)
 		case mysqlconfig.DateTimeColumnType:
-			field = NewDateTimeField(optional, fieldName, defaultValue, timeZone)
+			field = NewDateTimeField(optional, fieldName, defaultValue, loc)
 		case mysqlconfig.TimeColumnType:
 			field = NewTimeField(optional, fieldName, defaultValue)
 		case mysqlconfig.TimestampColumnType:
-			field = NewTimeStampField(optional, fieldName, defaultValue, timeZone)
+			field = NewTimeStampField(optional, fieldName, defaultValue, loc)
 		case mysqlconfig.JSONColumnType:
 			field = NewJsonField(optional, fieldName)
 		default:

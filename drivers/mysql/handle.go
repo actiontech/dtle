@@ -170,8 +170,11 @@ func (h *taskHandle) NewRunner(d *Driver) (runner DriverHandle, err error) {
 	case common.TaskTypeDest:
 		if h.driverConfig.KafkaConfig != nil {
 			h.logger.Debug("found kafka", "KafkaConfig", h.driverConfig.KafkaConfig)
-			runner = kafka.NewKafkaRunner(ctx, h.driverConfig.KafkaConfig, h.logger,
+			runner, err = kafka.NewKafkaRunner(ctx, h.driverConfig.KafkaConfig, h.logger,
 				d.storeManager, d.config.NatsAdvertise, h.waitCh)
+			if err != nil {
+				return nil, errors.Wrap(err, "NewKafkaRunner")
+			}
 		} else {
 			runner, err = mysql.NewApplier(ctx, h.driverConfig, h.logger, d.storeManager,
 				d.config.NatsAdvertise, h.waitCh, d.eventer, h.taskConfig)
