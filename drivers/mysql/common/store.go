@@ -292,6 +292,12 @@ func (sm *StoreManager) GetJobInfo(jobId string) (*JobListItemV2, error) {
 	return job, nil
 }
 
+func (sm *StoreManager) CheckJobExists(jobId string) bool {
+	key := fmt.Sprintf("dtleJobList/%v", jobId)
+	exists, _ := sm.consulStore.Exists(key)
+	return exists
+}
+
 func (sm *StoreManager) GetJobStatus(jobId string) (string, error) {
 	jobInfo, err := sm.GetJobInfo(jobId)
 	if err == store.ErrKeyNotFound {

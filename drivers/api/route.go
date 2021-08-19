@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"path"
 	"strings"
@@ -83,14 +84,17 @@ func SetupApiServer(logger hclog.Logger, driverConfig *mysql.DriverConfig) (err 
 	e.POST("/v2/login", v2.LoginV2)
 	e.POST("/v2/login/captcha", v2.CaptchaV2)
 	e.GET("/v2/monitor/task", v2.GetTaskProgressV2)
-	v2Router.POST("/log/level", v2.UpdateLogLevelV2, AdminUserAllowed())
+	v2Router.POST("/log/level", v2.UpdateLogLevelV2)
 	v2Router.GET("/jobs", v2.JobListV2)
 	v2Router.GET("/job/migration/detail", v2.GetMigrationJobDetailV2)
-	v2Router.POST("/job/migration", v2.CreateOrUpdateMigrationJobV2)
+	v2Router.POST("/job/migration/create", v2.CreateMigrationJobV2)
+	v2Router.POST("/job/migration/update", v2.UpdateMigrationJobV2)
 	v2Router.GET("/job/sync/detail", v2.GetSyncJobDetailV2)
-	v2Router.POST("/job/sync", v2.CreateOrUpdateSyncJobV2)
+	v2Router.POST("/job/sync/create", v2.CreateSyncJobV2)
+	v2Router.POST("/job/sync/update", v2.UpdateSyncJobV2)
 	v2Router.GET("/job/subscription/detail", v2.GetSubscriptionJobDetailV2)
-	v2Router.POST("/job/subscription", v2.CreateOrUpdateSubscriptionJobV2)
+	v2Router.POST("/job/subscription/create", v2.CreateSubscriptionJobV2)
+	v2Router.POST("/job/subscription/update", v2.UpdateSubscriptionJobV2)
 	v2Router.POST("/job/pause", v2.PauseJobV2)
 	v2Router.POST("/job/resume", v2.ResumeJobV2)
 	v2Router.POST("/job/delete", v2.DeleteJobV2)
@@ -102,18 +106,18 @@ func SetupApiServer(logger hclog.Logger, driverConfig *mysql.DriverConfig) (err 
 	v2Router.GET("/job/gtid", v2.GetJobGtidV2)
 	v2Router.POST("/job/reverse_start", v2.ReverseStartJobV2)
 	v2Router.POST("/job/reverse", v2.ReverseJobV2)
-	v2Router.GET("/user/list", v2.UserListV2, AdminUserAllowed())
-	v2Router.POST("/user/create", v2.CreateUserV2, AdminUserAllowed())
+	v2Router.GET("/user/list", v2.UserListV2)
+	v2Router.POST("/user/create", v2.CreateUserV2)
 	v2Router.POST("/user/update", v2.UpdateUserV2)
 	v2Router.POST("/user/reset_password", v2.ResetPasswordV2)
-	v2Router.POST("/user/delete", v2.DeleteUserV2, AdminUserAllowed())
-	v2Router.GET("/tenant/list", v2.TenantListV2, AdminUserAllowed())
+	v2Router.POST("/user/delete", v2.DeleteUserV2)
+	v2Router.GET("/tenant/list", v2.TenantListV2)
 	v2Router.GET("/user/current_user", v2.GetCurrentUserV2)
 	v2Router.GET("/user/list_action", v2.ListActionV2)
-	v2Router.GET("/role/list", v2.RoleListV2, AdminUserAllowed())
-	v2Router.POST("/role/create", v2.CreateRoleV2, AdminUserAllowed())
-	v2Router.POST("/role/delete", v2.DeleteRoleV2, AdminUserAllowed())
-	v2Router.POST("/role/update", v2.UpdateRoleV2, AdminUserAllowed())
+	v2Router.GET("/role/list", v2.RoleListV2)
+	v2Router.POST("/role/create", v2.CreateRoleV2)
+	v2Router.POST("/role/delete", v2.DeleteRoleV2)
+	v2Router.POST("/role/update", v2.UpdateRoleV2)
 
 	// for pprof
 	e.GET("/debug/pprof/*", echo.WrapHandler(http.DefaultServeMux))
@@ -205,14 +209,17 @@ func AuthFilter() echo.MiddlewareFunc {
 			if err != nil || !exists {
 				return echo.NewHTTPError(http.StatusForbidden)
 			}
-			authority := make(map[string][]models.ActionItem, 0)
+			authority := make([]models.MenuItem, 0)
 			err = json.Unmarshal([]byte(role.Authority), &authority)
 			if err != nil {
 				return echo.NewHTTPError(http.StatusForbidden, "please check your authority")
 			}
-			for _, actionItems := range authority {
-				for _, item := range actionItems {
-					if c.Request().URL.Path == item.Uri {
+			for _, menuItem := range authority {
+				for _, buttonItem := range menuItem.Operations {
+					if c.Request().URL.Path == buttonItem.Uri {
+						if !checkForJob(c, menuItem.Name, buttonItem.Uri) {
+							continue
+						}
 						return next(c)
 					}
 				}
@@ -222,23 +229,64 @@ func AuthFilter() echo.MiddlewareFunc {
 	}
 }
 
-//AdminUserAllowed is a `echo` middleware, only allow admin user to access next.
-func AdminUserAllowed() echo.MiddlewareFunc {
-	return func(next echo.HandlerFunc) echo.HandlerFunc {
-		return func(c echo.Context) error {
-			logger := handler.NewLogger().Named("AdminUserAllowed")
-			tenant, user := v2.GetUserName(c)
-			storeManager, err := common.NewStoreManager([]string{handler.ConsulAddr}, logger)
-			if err != nil {
-				return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("consul_addr=%v; connect to consul failed: %v", handler.ConsulAddr, err)))
-			}
-			role, _, _ := storeManager.GetRole(tenant, user)
-			if role != nil && role.Name == common.DefaultAdminUser {
-				return next(c)
-			}
-			return echo.NewHTTPError(http.StatusForbidden)
+func checkForJob(c echo.Context, menuType, uri string) bool {
+	logger := handler.NewLogger().Named("checkForJob")
+	logger.Error("before", "uri", uri, "menuType", menuType)
+	var jobType v2.DtleJobType
+	switch uri {
+	case "/v2/jobs":
+		reqParam := new(models.JobListReqV2)
+		if err := c.Bind(reqParam); nil != err {
+			return false
 		}
+		jobType = v2.DtleJobType(reqParam.FilterJobType)
+	case "/v2/job/pause":
+		reqParam := new(models.PauseJobReqV2)
+		if err := c.Bind(reqParam); nil != err {
+			return false
+		}
+		jobType = v2.GetJobTypeFromJobId(reqParam.JobId)
+	case "/v2/job/resume":
+		reqParam := new(models.ResumeJobReqV2)
+		if err := c.Bind(reqParam); nil != err {
+			return false
+		}
+		jobType = v2.GetJobTypeFromJobId(reqParam.JobId)
+	case "/v2/job/delete":
+		reqParam := new(models.DeleteJobReqV2)
+		if err := c.Bind(reqParam); nil != err {
+			return false
+		}
+		jobType = v2.GetJobTypeFromJobId(reqParam.JobId)
+	case "/v2/job/reverse":
+		body, err := c.Request().GetBody()
+		if err != nil {
+			return false
+		}
+		bytes, err := ioutil.ReadAll(body)
+		if err != nil {
+			return false
+		}
+		reqParam := new(models.ReverseJobReq)
+		err = json.Unmarshal(bytes, reqParam)
+		if err != nil {
+			return false
+		}
+		jobType = v2.GetJobTypeFromJobId(reqParam.JobId)
+	case "/v2/job/reverse_start":
+		reqParam := new(models.ReverseStartReqV2)
+		if err := c.Bind(reqParam); nil != err {
+			return false
+		}
+		jobType = v2.GetJobTypeFromJobId(reqParam.JobId)
+	default:
+		return true
 	}
+	logger.Error("after", "jobType", jobType, "menuType", menuType)
+	if string(jobType) == menuType {
+		return true
+	}
+	return false
 }
 
 var whiteList = []string{

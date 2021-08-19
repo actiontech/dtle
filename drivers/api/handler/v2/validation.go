@@ -28,7 +28,7 @@ func ValidateJobV2(c echo.Context) error {
 	logger := handler.NewLogger().Named("ValidateJobV2")
 	reqParam := new(models.ValidateJobReqV2)
 	if err := handler.BindAndValidate(logger, c, reqParam); err != nil {
-		return err
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
 	}
 
 	reqJson, err := apiJobConfigToNomadJobJson(reqParam)

@@ -89,21 +89,21 @@ var doc = `{
                 }
             }
         },
-        "/v2/job/migration": {
+        "/v2/job/migration/create": {
             "post": {
                 "security": [
                     {
                         "ApiKeyAuth": []
                     }
                 ],
-                "description": "create or update migration job.",
+                "description": "create migration job.",
                 "consumes": [
                     "application/json"
                 ],
                 "tags": [
                     "job"
                 ],
-                "operationId": "CreateOrUpdateMigrationJobV2",
+                "operationId": "CreateMigrationJobV2",
                 "parameters": [
                     {
                         "description": "migration job config",
@@ -151,6 +151,42 @@ var doc = `{
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/models.MysqlToMysqlJobDetailRespV2"
+                        }
+                    }
+                }
+            }
+        },
+        "/v2/job/migration/update": {
+            "post": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "update migration job.",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "job"
+                ],
+                "operationId": "UpdateMigrationJobV2",
+                "parameters": [
+                    {
+                        "description": "migration job config",
+                        "name": "migration_job_config",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.CreateOrUpdateMysqlToMysqlJobParamV2"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.CreateOrUpdateMysqlToMysqlJobRespV2"
                         }
                     }
                 }
@@ -331,6 +367,42 @@ var doc = `{
                 }
             }
         },
+        "/v2/job/subscription/create": {
+            "post": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "create subscription job.",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "job"
+                ],
+                "operationId": "CreateSubscriptionJobV2",
+                "parameters": [
+                    {
+                        "description": "subscription job config",
+                        "name": "subscription_job_config",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.CreateOrUpdateMysqlToKafkaJobParamV2"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.CreateOrUpdateMysqlToKafkaJobRespV2"
+                        }
+                    }
+                }
+            }
+        },
         "/v2/job/subscription/detail": {
             "get": {
                 "security": [
@@ -362,21 +434,21 @@ var doc = `{
                 }
             }
         },
-        "/v2/job/sync": {
+        "/v2/job/sync/create": {
             "post": {
                 "security": [
                     {
                         "ApiKeyAuth": []
                     }
                 ],
-                "description": "create or update sync job.",
+                "description": "create sync job.",
                 "consumes": [
                     "application/json"
                 ],
                 "tags": [
                     "job"
                 ],
-                "operationId": "CreateOrUpdateSyncJobV2",
+                "operationId": "CreateSyncJobV2",
                 "parameters": [
                     {
                         "description": "sync job config",
@@ -424,6 +496,42 @@ var doc = `{
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/models.MysqlToMysqlJobDetailRespV2"
+                        }
+                    }
+                }
+            }
+        },
+        "/v2/job/sync/update": {
+            "post": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "update sync job.",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "job"
+                ],
+                "operationId": "UpdateSyncJobV2",
+                "parameters": [
+                    {
+                        "description": "sync job config",
+                        "name": "sync_job_config",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.CreateOrUpdateMysqlToMysqlJobParamV2"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.CreateOrUpdateMysqlToMysqlJobRespV2"
                         }
                     }
                 }
@@ -1386,17 +1494,6 @@ var doc = `{
                 }
             }
         },
-        "models.ActionItem": {
-            "type": "object",
-            "properties": {
-                "action": {
-                    "type": "string"
-                },
-                "uri": {
-                    "type": "string"
-                }
-            }
-        },
         "models.BasicTaskProfile": {
             "type": "object",
             "properties": {
@@ -1458,6 +1555,23 @@ var doc = `{
                 },
                 "send_by_timeout": {
                     "type": "integer"
+                }
+            }
+        },
+        "models.ButtonItem": {
+            "type": "object",
+            "properties": {
+                "action": {
+                    "type": "string"
+                },
+                "text_cn": {
+                    "type": "string"
+                },
+                "text_en": {
+                    "type": "string"
+                },
+                "uri": {
+                    "type": "string"
                 }
             }
         },
@@ -1969,12 +2083,9 @@ var doc = `{
             "type": "object",
             "properties": {
                 "authority": {
-                    "type": "object",
-                    "additionalProperties": {
-                        "type": "array",
-                        "items": {
-                            "$ref": "#/definitions/models.ActionItem"
-                        }
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.MenuItem"
                     }
                 },
                 "message": {
@@ -2007,6 +2118,41 @@ var doc = `{
                     "items": {
                         "$ref": "#/definitions/models.SchemaItem"
                     }
+                }
+            }
+        },
+        "models.MenuItem": {
+            "type": "object",
+            "properties": {
+                "admin_only": {
+                    "type": "boolean"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "menu_level": {
+                    "type": "integer"
+                },
+                "menu_url": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "operations": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.ButtonItem"
+                    }
+                },
+                "parent_id": {
+                    "type": "integer"
+                },
+                "text_cn": {
+                    "type": "string"
+                },
+                "text_en": {
+                    "type": "string"
                 }
             }
         },

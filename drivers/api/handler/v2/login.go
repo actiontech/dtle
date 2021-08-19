@@ -31,7 +31,7 @@ func LoginV2(c echo.Context) error {
 	once.Do(createPlatformUser)
 	reqParam := new(models.UserLoginReqV2)
 	if err := handler.BindAndValidate(logger, c, reqParam); err != nil {
-		return err
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
 	}
 	if !store.Verify(reqParam.CaptchaId, reqParam.Captcha, true) {
 		return c.JSON(http.StatusBadRequest, models.BuildBaseResp(fmt.Errorf("verfied failed")))
@@ -82,7 +82,7 @@ func CaptchaV2(c echo.Context) error {
 	logger := handler.NewLogger().Named("CaptchaV2")
 	reqParam := new(models.VerifyCodeReqV2)
 	if err := handler.BindAndValidate(logger, c, reqParam); err != nil {
-		return err
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
 	}
 
 	//create base64 encoding captcha

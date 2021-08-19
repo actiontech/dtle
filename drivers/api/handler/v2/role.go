@@ -23,7 +23,7 @@ func RoleListV2(c echo.Context) error {
 	logger := handler.NewLogger().Named("RoleListV2")
 	reqParam := new(models.RoleListReq)
 	if err := handler.BindAndValidate(logger, c, reqParam); err != nil {
-		return err
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
 	}
 
 	storeManager, err := common.NewStoreManager([]string{handler.ConsulAddr}, logger)
@@ -65,7 +65,7 @@ func CreateRoleV2(c echo.Context) error {
 	logger := handler.NewLogger().Named("CreateRoleV2")
 	reqParam := new(models.CreateRoleReqV2)
 	if err := handler.BindAndValidate(logger, c, reqParam); err != nil {
-		return err
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
 	}
 	tenant, _ := GetUserName(c)
 	if !roleAccess(tenant, reqParam.Tenant) {
@@ -94,7 +94,7 @@ func UpdateRoleV2(c echo.Context) error {
 	logger := handler.NewLogger().Named("UpdateRoleV2")
 	reqParam := new(models.UpdateRoleReqV2)
 	if err := handler.BindAndValidate(logger, c, reqParam); err != nil {
-		return err
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
 	}
 	if reqParam.Name == common.DefaultRole {
 		return c.JSON(http.StatusForbidden, models.BuildBaseResp(fmt.Errorf("admin role does not support modification")))
@@ -150,7 +150,7 @@ func DeleteRoleV2(c echo.Context) error {
 	logger := handler.NewLogger().Named("DeleteRoleV2")
 	reqParam := new(models.DeleteRoleReqV2)
 	if err := handler.BindAndValidate(logger, c, reqParam); err != nil {
-		return err
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
 	}
 	// cannot delete default supper role
 	if reqParam.Tenant == common.DefaultAdminTenant && reqParam.Name == common.DefaultRole {

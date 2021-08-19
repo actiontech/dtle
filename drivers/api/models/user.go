@@ -66,6 +66,6 @@ type CurrentUserResp struct {
 }
 
 type ListActionRespV2 struct {
-	Authority map[string][]*ActionItem `json:"authority"`
+	Authority []MenuItem `json:"authority"`
 	BaseResp
 }

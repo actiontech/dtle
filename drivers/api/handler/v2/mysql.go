@@ -31,7 +31,7 @@ func ListMysqlSchemasV2(c echo.Context) error {
 	logger := handler.NewLogger().Named("ListMysqlSchemasV2")
 	reqParam := new(models.ListDatabaseSchemasReqV2)
 	if err := handler.BindAndValidate(logger, c, reqParam); err != nil {
-		return err
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
 	}
 
 	uri, err := buildMysqlUri(reqParam.MysqlHost, reqParam.MysqlUser, reqParam.MysqlPassword,
@@ -102,7 +102,7 @@ func ListMysqlColumnsV2(c echo.Context) error {
 	logger := handler.NewLogger().Named("ListMysqlColumnsV2")
 	reqParam := new(models.ListColumnsReqV2)
 	if err := handler.BindAndValidate(logger, c, reqParam); err != nil {
-		return err
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
 	}
 	uri, err := buildMysqlUri(reqParam.MysqlHost, reqParam.MysqlUser, reqParam.MysqlPassword,
 		reqParam.MysqlCharacterSet, int(reqParam.MysqlPort), reqParam.IsMysqlPasswordEncrypted)
@@ -168,7 +168,7 @@ func ConnectionV2(c echo.Context) error {
 	logger := handler.NewLogger().Named("ConnectionV2")
 	reqParam := new(models.ConnectionReqV2)
 	if err := handler.BindAndValidate(logger, c, reqParam); err != nil {
-		return err
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
 	}
 
 	uri, err := buildMysqlUri(reqParam.MysqlHost, reqParam.MysqlUser, reqParam.MysqlPassword,
