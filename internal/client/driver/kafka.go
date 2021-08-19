@@ -26,9 +26,12 @@ func (kd *KafkaDriver) Start(ctx *common.ExecContext, task *models.Task) (Driver
 
 	switch task.Type {
 	case models.TaskTypeSrc:
-		return nil, fmt.Errorf("afka can only be used on 'Dest'")
+		return nil, fmt.Errorf("kafka can only be used on 'Dest'")
 	case models.TaskTypeDest:
-		runner := kafka3.NewKafkaRunner(ctx, &driverConfig, kd.logger)
+		runner, err := kafka3.NewKafkaRunner(ctx, &driverConfig, kd.logger)
+		if err != nil {
+			return nil, err
+		}
 		go runner.Run()
 		return runner, nil
 	default:
