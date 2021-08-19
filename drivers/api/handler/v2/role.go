@@ -67,7 +67,10 @@ func CreateRoleV2(c echo.Context) error {
 	if err := handler.BindAndValidate(logger, c, reqParam); err != nil {
 		return err
 	}
-
+	tenant, _ := GetUserName(c)
+	if !roleAccess(tenant, reqParam.Tenant) {
+		return c.JSON(http.StatusForbidden, models.BuildBaseResp(fmt.Errorf("current user cannot create tenant [ %v ] role [ %v ]", reqParam.Tenant, reqParam.Name)))
+	}
 	err := UpdateRoleInfo(logger, &common.Role{
 		Tenant:      reqParam.Tenant,
 		Name:        reqParam.Name,
@@ -94,7 +97,11 @@ func UpdateRoleV2(c echo.Context) error {
 		return err
 	}
 	if reqParam.Name == common.DefaultRole {
-		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("admin role does not support modification")))
+		return c.JSON(http.StatusForbidden, models.BuildBaseResp(fmt.Errorf("admin role does not support modification")))
+	}
+	tenant, _ := GetUserName(c)
+	if !roleAccess(tenant, reqParam.Tenant) {
+		return c.JSON(http.StatusForbidden, models.BuildBaseResp(fmt.Errorf("current user cannot update tenant [ %v ] role [ %v ]", reqParam.Tenant, reqParam.Name)))
 	}
 	err := UpdateRoleInfo(logger, &common.Role{
 		Tenant:      reqParam.Tenant,
@@ -146,12 +153,27 @@ func DeleteRoleV2(c echo.Context) error {
 		return err
 	}
 	// cannot delete default supper role
-	if reqParam.Tenant == common.DefaultAdminTenant && reqParam.Name == common.DefaultAdminUser {
-		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("cannot delete current role")))
+	if reqParam.Tenant == common.DefaultAdminTenant && reqParam.Name == common.DefaultRole {
+		return c.JSON(http.StatusForbidden, models.BuildBaseResp(fmt.Errorf("cannot delete tenant [ %v ] role [ %v ]", reqParam.Tenant, reqParam.Name)))
+	}
+	tenant, _ := GetUserName(c)
+	if !roleAccess(tenant, reqParam.Tenant) {
+		return c.JSON(http.StatusForbidden, models.BuildBaseResp(fmt.Errorf("cannot delete tenant [ %v ] role [ %v ]", reqParam.Tenant, reqParam.Name)))
 	}
 	storeManager, err := common.NewStoreManager([]string{handler.ConsulAddr}, logger)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("get consul client failed: %v", err)))
+	}
+	// make sure there is no user in the current role
+	users, err := storeManager.FindUserList(reqParam.Tenant)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError,
+			models.BuildBaseResp(fmt.Errorf("find tenant [ %v ] user list from consul failed: %v", reqParam.Tenant, err)))
+	}
+	for _, user := range users {
+		if user.Role == reqParam.Name {
+			return c.JSON(http.StatusOK, models.BuildBaseResp(fmt.Errorf("there are users in the current tenant [ %v ] role [ %v ]", reqParam.Tenant, reqParam.Name)))
+		}
 	}
 	if err := storeManager.DeleteRole(reqParam.Tenant, reqParam.Name); nil != err {
 		return c.JSON(http.StatusInternalServerError,
@@ -161,4 +183,13 @@ func DeleteRoleV2(c echo.Context) error {
 	return c.JSON(http.StatusOK, &models.DeleteRoleRespV2{
 		BaseResp: models.BuildBaseResp(nil),
 	})
+}
+
+// The platform administrator can operate all roles
+// the tenant administrator can only operate the roles under the current tenant
+func roleAccess(currentTenant, operationTenant string) bool {
+	if currentTenant == common.DefaultAdminTenant || currentTenant == operationTenant {
+		return true
+	}
+	return false
 }

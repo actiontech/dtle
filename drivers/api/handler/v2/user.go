@@ -271,6 +271,11 @@ func DeleteUserV2(c echo.Context) error {
 	if reqParam.Tenant == common.DefaultAdminTenant && reqParam.Username == common.DefaultAdminUser {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("cannot delete superuser")))
 	}
+	tenant, user := GetUserName(c)
+	// cannot delete self
+	if reqParam.Tenant == tenant && reqParam.Username == user {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("cannot delete self")))
+	}
 
 	if hasAccess, err := checkUserAccess(logger, c, fmt.Sprintf("%s:%s", reqParam.Tenant, reqParam.Username)); err != nil || !hasAccess {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("current user has no access to operate group %v ; err : %v", reqParam.Tenant, err)))

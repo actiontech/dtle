@@ -82,6 +82,7 @@ func SetupApiServer(logger hclog.Logger, driverConfig *mysql.DriverConfig) (err 
 	v2Router.Use(JWTTokenAdapter(), middleware.JWT([]byte(common.JWTSecret)), AuthFilter())
 	e.POST("/v2/login", v2.LoginV2)
 	e.POST("/v2/login/captcha", v2.CaptchaV2)
+	e.GET("/v2/monitor/task", v2.GetTaskProgressV2)
 	v2Router.POST("/log/level", v2.UpdateLogLevelV2, AdminUserAllowed())
 	v2Router.GET("/jobs", v2.JobListV2)
 	v2Router.GET("/job/migration/detail", v2.GetMigrationJobDetailV2)
@@ -98,19 +99,18 @@ func SetupApiServer(logger hclog.Logger, driverConfig *mysql.DriverConfig) (err 
 	v2Router.GET("/mysql/schemas", v2.ListMysqlSchemasV2)
 	v2Router.GET("/mysql/columns", v2.ListMysqlColumnsV2)
 	v2Router.GET("/mysql/instance_connection", v2.ConnectionV2)
-	v2Router.GET("/monitor/task", v2.GetTaskProgressV2)
 	v2Router.GET("/job/gtid", v2.GetJobGtidV2)
 	v2Router.POST("/job/reverse_start", v2.ReverseStartJobV2)
 	v2Router.POST("/job/reverse", v2.ReverseJobV2)
-	v2Router.GET("/user/list", v2.UserListV2)
-	v2Router.POST("/user/create", v2.CreateUserV2)
+	v2Router.GET("/user/list", v2.UserListV2, AdminUserAllowed())
+	v2Router.POST("/user/create", v2.CreateUserV2, AdminUserAllowed())
 	v2Router.POST("/user/update", v2.UpdateUserV2)
 	v2Router.POST("/user/reset_password", v2.ResetPasswordV2)
-	v2Router.POST("/user/delete", v2.DeleteUserV2)
-	v2Router.GET("/tenant/list", v2.TenantListV2)
+	v2Router.POST("/user/delete", v2.DeleteUserV2, AdminUserAllowed())
+	v2Router.GET("/tenant/list", v2.TenantListV2, AdminUserAllowed())
 	v2Router.GET("/user/current_user", v2.GetCurrentUserV2)
 	v2Router.GET("/user/list_action", v2.ListActionV2)
-	v2Router.GET("/role/list", v2.RoleListV2)
+	v2Router.GET("/role/list", v2.RoleListV2, AdminUserAllowed())
 	v2Router.POST("/role/create", v2.CreateRoleV2, AdminUserAllowed())
 	v2Router.POST("/role/delete", v2.DeleteRoleV2, AdminUserAllowed())
 	v2Router.POST("/role/update", v2.UpdateRoleV2, AdminUserAllowed())
@@ -184,6 +184,9 @@ func JWTTokenAdapter() echo.MiddlewareFunc {
 func AuthFilter() echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
+			if inWhiteList(c.Request().URL.Path) {
+				return next(c)
+			}
 			logger := handler.NewLogger().Named("AuthFilter")
 			storeManager, err := common.NewStoreManager([]string{handler.ConsulAddr}, logger)
 			if err != nil {
@@ -223,7 +226,7 @@ func AuthFilter() echo.MiddlewareFunc {
 func AdminUserAllowed() echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
-			logger := handler.NewLogger().Named("ResumeJobV2")
+			logger := handler.NewLogger().Named("AdminUserAllowed")
 			tenant, user := v2.GetUserName(c)
 			storeManager, err := common.NewStoreManager([]string{handler.ConsulAddr}, logger)
 			if err != nil {
@@ -238,6 +241,25 @@ func AdminUserAllowed() echo.MiddlewareFunc {
 	}
 }
 
+var whiteList = []string{
+	"/v2/nodes",
+	"/v2/validation/job",
+	"/v2/mysql/schemas",
+	"/v2/mysql/columns",
+	"/v2/mysql/instance_connection",
+	"/v2/job/gtid",
+	"/v2/user/list_action",
+	"/v2/user/current_user",
+}
+
+func inWhiteList(uri string) bool {
+	for _, whiteUri := range whiteList {
+		if uri == whiteUri {
+			return true
+		}
+	}
+	return false
+}
 func init() {
 	middleware.ErrJWTMissing.Code = http.StatusUnauthorized
 	middleware.ErrJWTMissing.Message = "permission denied,please login again!"
