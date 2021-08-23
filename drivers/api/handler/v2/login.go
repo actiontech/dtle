@@ -33,7 +33,12 @@ func LoginV2(c echo.Context) error {
 	if err := handler.BindAndValidate(logger, c, reqParam); err != nil {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
 	}
+	blackListKey := fmt.Sprintf("%s:%s:%s", reqParam.Tenant, reqParam.Username, "login")
+	if leftMinute, exist := BL.blackListExist(blackListKey); exist {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("the password cannot be changed temporarily, please try again after %v minute", leftMinute)))
+	}
 	if !store.Verify(reqParam.CaptchaId, reqParam.Captcha, true) {
+		BL.setBlackList(fmt.Sprintf("%s:%s:%s", reqParam.Tenant, reqParam.Username, "login"), time.Minute*30)
 		return c.JSON(http.StatusBadRequest, models.BuildBaseResp(fmt.Errorf("verfied failed")))
 	}
 	storeManager, err := common.NewStoreManager([]string{handler.ConsulAddr}, logger)
@@ -48,7 +53,7 @@ func LoginV2(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("user or password is wrong")))
 	}
 
-	if err := ValidatePassword(fmt.Sprintf("%s:%s", reqParam.Tenant, reqParam.Username), "login", reqParam.Password, user.Password); err != nil {
+	if err := ValidatePassword(blackListKey, reqParam.Password, user.Password); err != nil {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
 	}
 

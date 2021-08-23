@@ -24,40 +24,6 @@ var doc = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
-        "/v2/job/delete": {
-            "post": {
-                "security": [
-                    {
-                        "ApiKeyAuth": []
-                    }
-                ],
-                "description": "delete job.",
-                "consumes": [
-                    "application/x-www-form-urlencoded"
-                ],
-                "tags": [
-                    "job"
-                ],
-                "operationId": "DeleteJobV2",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "job id",
-                        "name": "job_id",
-                        "in": "formData",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/models.DeleteJobRespV2"
-                        }
-                    }
-                }
-            }
-        },
         "/v2/job/gtid": {
             "get": {
                 "security": [
@@ -125,6 +91,40 @@ var doc = `{
                 }
             }
         },
+        "/v2/job/migration/delete": {
+            "post": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "delete migration job.",
+                "consumes": [
+                    "application/x-www-form-urlencoded"
+                ],
+                "tags": [
+                    "job"
+                ],
+                "operationId": "DeleteMigrationJobV2",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "job id",
+                        "name": "job_id",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.DeleteJobRespV2"
+                        }
+                    }
+                }
+            }
+        },
         "/v2/job/migration/detail": {
             "get": {
                 "security": [
@@ -151,6 +151,145 @@ var doc = `{
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/models.MysqlToMysqlJobDetailRespV2"
+                        }
+                    }
+                }
+            }
+        },
+        "/v2/job/migration/pause": {
+            "post": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "pause migration job.",
+                "consumes": [
+                    "application/x-www-form-urlencoded"
+                ],
+                "tags": [
+                    "job"
+                ],
+                "operationId": "PauseMigrationJobV2",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "job id",
+                        "name": "job_id",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.PauseJobRespV2"
+                        }
+                    }
+                }
+            }
+        },
+        "/v2/job/migration/resume": {
+            "post": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "resume migration job.",
+                "consumes": [
+                    "application/x-www-form-urlencoded"
+                ],
+                "tags": [
+                    "job"
+                ],
+                "operationId": "ResumeMigrationJobV2",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "job id",
+                        "name": "job_id",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.ResumeJobRespV2"
+                        }
+                    }
+                }
+            }
+        },
+        "/v2/job/migration/reverse": {
+            "post": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "reverse migration Job",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "job"
+                ],
+                "operationId": "ReverseMigrationJobV2",
+                "parameters": [
+                    {
+                        "description": "reverse config config",
+                        "name": "reverse_config",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.ReverseJobReq"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.ReverseJobResp"
+                        }
+                    }
+                }
+            }
+        },
+        "/v2/job/migration/reverse_start": {
+            "post": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "Start Reverse Job.",
+                "consumes": [
+                    "application/x-www-form-urlencoded"
+                ],
+                "tags": [
+                    "job"
+                ],
+                "summary": "start reverse-init job",
+                "operationId": "ReverseStartMigrationJobV2",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "job id",
+                        "name": "job_id",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.ReverseStartRespV2"
                         }
                     }
                 }
@@ -187,110 +326,6 @@ var doc = `{
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/models.CreateOrUpdateMysqlToMysqlJobRespV2"
-                        }
-                    }
-                }
-            }
-        },
-        "/v2/job/pause": {
-            "post": {
-                "security": [
-                    {
-                        "ApiKeyAuth": []
-                    }
-                ],
-                "description": "pause job.",
-                "consumes": [
-                    "application/x-www-form-urlencoded"
-                ],
-                "tags": [
-                    "job"
-                ],
-                "operationId": "PauseJobV2",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "job id",
-                        "name": "job_id",
-                        "in": "formData",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/models.PauseJobRespV2"
-                        }
-                    }
-                }
-            }
-        },
-        "/v2/job/resume": {
-            "post": {
-                "security": [
-                    {
-                        "ApiKeyAuth": []
-                    }
-                ],
-                "description": "resume job.",
-                "consumes": [
-                    "application/x-www-form-urlencoded"
-                ],
-                "tags": [
-                    "job"
-                ],
-                "operationId": "ResumeJobV2",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "job id",
-                        "name": "job_id",
-                        "in": "formData",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/models.ResumeJobRespV2"
-                        }
-                    }
-                }
-            }
-        },
-        "/v2/job/reverse": {
-            "post": {
-                "security": [
-                    {
-                        "ApiKeyAuth": []
-                    }
-                ],
-                "description": "returnJob",
-                "consumes": [
-                    "application/json"
-                ],
-                "tags": [
-                    "job"
-                ],
-                "operationId": "ReverseJobV2",
-                "parameters": [
-                    {
-                        "description": "reverse config config",
-                        "name": "reverse_config",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/models.ReverseJobReq"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/models.ReverseJobResp"
                         }
                     }
                 }
@@ -403,6 +438,40 @@ var doc = `{
                 }
             }
         },
+        "/v2/job/subscription/delete": {
+            "post": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "delete subscription job.",
+                "consumes": [
+                    "application/x-www-form-urlencoded"
+                ],
+                "tags": [
+                    "job"
+                ],
+                "operationId": "DeleteSubscriptionJobV2",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "job id",
+                        "name": "job_id",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.DeleteJobRespV2"
+                        }
+                    }
+                }
+            }
+        },
         "/v2/job/subscription/detail": {
             "get": {
                 "security": [
@@ -429,6 +498,74 @@ var doc = `{
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/models.MysqlToKafkaJobDetailRespV2"
+                        }
+                    }
+                }
+            }
+        },
+        "/v2/job/subscription/pause": {
+            "post": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "pause subscription job.",
+                "consumes": [
+                    "application/x-www-form-urlencoded"
+                ],
+                "tags": [
+                    "job"
+                ],
+                "operationId": "PauseSubscriptionJobV2",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "job id",
+                        "name": "job_id",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.PauseJobRespV2"
+                        }
+                    }
+                }
+            }
+        },
+        "/v2/job/subscription/resume": {
+            "post": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "resume subscription job.",
+                "consumes": [
+                    "application/x-www-form-urlencoded"
+                ],
+                "tags": [
+                    "job"
+                ],
+                "operationId": "ResumeSubscriptionJobV2",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "job id",
+                        "name": "job_id",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.ResumeJobRespV2"
                         }
                     }
                 }
@@ -470,6 +607,40 @@ var doc = `{
                 }
             }
         },
+        "/v2/job/sync/delete": {
+            "post": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "delete sync job.",
+                "consumes": [
+                    "application/x-www-form-urlencoded"
+                ],
+                "tags": [
+                    "job"
+                ],
+                "operationId": "DeleteSyncJobV2",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "job id",
+                        "name": "job_id",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.DeleteJobRespV2"
+                        }
+                    }
+                }
+            }
+        },
         "/v2/job/sync/detail": {
             "get": {
                 "security": [
@@ -496,6 +667,145 @@ var doc = `{
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/models.MysqlToMysqlJobDetailRespV2"
+                        }
+                    }
+                }
+            }
+        },
+        "/v2/job/sync/pause": {
+            "post": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "pause sync job.",
+                "consumes": [
+                    "application/x-www-form-urlencoded"
+                ],
+                "tags": [
+                    "job"
+                ],
+                "operationId": "PauseSyncJobV2",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "job id",
+                        "name": "job_id",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.PauseJobRespV2"
+                        }
+                    }
+                }
+            }
+        },
+        "/v2/job/sync/resume": {
+            "post": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "resume sync job.",
+                "consumes": [
+                    "application/x-www-form-urlencoded"
+                ],
+                "tags": [
+                    "job"
+                ],
+                "operationId": "ResumeSyncJobV2",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "job id",
+                        "name": "job_id",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.ResumeJobRespV2"
+                        }
+                    }
+                }
+            }
+        },
+        "/v2/job/sync/reverse": {
+            "post": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "reverse sync Job",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "job"
+                ],
+                "operationId": "ReverseSyncJobV2",
+                "parameters": [
+                    {
+                        "description": "reverse config config",
+                        "name": "reverse_config",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.ReverseJobReq"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.ReverseJobResp"
+                        }
+                    }
+                }
+            }
+        },
+        "/v2/job/sync/reverse_start": {
+            "post": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "Start Reverse Job.",
+                "consumes": [
+                    "application/x-www-form-urlencoded"
+                ],
+                "tags": [
+                    "job"
+                ],
+                "summary": "start reverse-init job",
+                "operationId": "ReverseStartSyncJobV2",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "job id",
+                        "name": "job_id",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.ReverseStartRespV2"
                         }
                     }
                 }
@@ -537,7 +847,7 @@ var doc = `{
                 }
             }
         },
-        "/v2/jobs": {
+        "/v2/jobs/migration": {
             "get": {
                 "security": [
                     {
@@ -548,19 +858,100 @@ var doc = `{
                 "tags": [
                     "job"
                 ],
-                "operationId": "JobListV2",
+                "operationId": "MigrationJobListV2",
                 "parameters": [
                     {
-                        "enum": [
-                            "migration",
-                            "sync",
-                            "subscription"
-                        ],
                         "type": "string",
-                        "description": "filter job type",
-                        "name": "filter_job_type",
+                        "description": "filter job id",
+                        "name": "filter_job_id",
                         "in": "query"
                     },
+                    {
+                        "type": "string",
+                        "description": "filter job status",
+                        "name": "filter_job_status",
+                        "in": "query"
+                    },
+                    {
+                        "enum": [
+                            "job_create_time"
+                        ],
+                        "type": "string",
+                        "default": "job_create_time",
+                        "description": "order by",
+                        "name": "order_by",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.JobListRespV2"
+                        }
+                    }
+                }
+            }
+        },
+        "/v2/jobs/subscription": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "get subscription job list.",
+                "tags": [
+                    "job"
+                ],
+                "operationId": "SubscriptionJobListV2",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "filter job id",
+                        "name": "filter_job_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "filter job status",
+                        "name": "filter_job_status",
+                        "in": "query"
+                    },
+                    {
+                        "enum": [
+                            "job_create_time"
+                        ],
+                        "type": "string",
+                        "default": "job_create_time",
+                        "description": "order by",
+                        "name": "order_by",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.JobListRespV2"
+                        }
+                    }
+                }
+            }
+        },
+        "/v2/jobs/sync": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "get sync job list.",
+                "tags": [
+                    "job"
+                ],
+                "operationId": "SyncJobListV2",
+                "parameters": [
                     {
                         "type": "string",
                         "description": "filter job id",

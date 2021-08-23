@@ -60,10 +60,7 @@ func (b *BlackList) blackListExist(key string) (int, bool) {
 }
 
 // validate current user in blacklist and update blacklist
-func ValidatePassword(user, operation, currentPwd, verifiedPwd string) error {
-	if leftMinute, exist := BL.blackListExist(fmt.Sprintf("%s:%s", user, operation)); exist {
-		return fmt.Errorf("the password cannot be changed temporarily, please try again after %v minute", leftMinute)
-	}
+func ValidatePassword(blackListKey, currentPwd, verifiedPwd string) error {
 	realCurrentPwd, err := handler.DecryptPasswordSupportNoRsaKey(currentPwd, g.RsaPrivateKey)
 	if err != nil {
 		return fmt.Errorf("decrypt current password err")
@@ -73,7 +70,7 @@ func ValidatePassword(user, operation, currentPwd, verifiedPwd string) error {
 		return fmt.Errorf("decrypt verified password err")
 	}
 	if realCurrentPwd != realVerifiedPwd {
-		BL.setBlackList(fmt.Sprintf("%s:%s", user, operation), time.Minute*30)
+		BL.setBlackList(blackListKey, time.Minute*30)
 		return fmt.Errorf("user or password is wrong")
 	}
 	return nil

@@ -3,7 +3,6 @@ package api
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"net/http"
 	"path"
 	"strings"
@@ -85,27 +84,40 @@ func SetupApiServer(logger hclog.Logger, driverConfig *mysql.DriverConfig) (err 
 	e.POST("/v2/login/captcha", v2.CaptchaV2)
 	e.GET("/v2/monitor/task", v2.GetTaskProgressV2)
 	v2Router.POST("/log/level", v2.UpdateLogLevelV2)
-	v2Router.GET("/jobs", v2.JobListV2)
+	v2Router.GET("/jobs/migration", v2.MigrationJobListV2)
 	v2Router.GET("/job/migration/detail", v2.GetMigrationJobDetailV2)
 	v2Router.POST("/job/migration/create", v2.CreateMigrationJobV2)
 	v2Router.POST("/job/migration/update", v2.UpdateMigrationJobV2)
+	v2Router.POST("/job/migration/reverse", v2.ReverseMigrationJobV2)
+	v2Router.POST("/job/migration/pause", v2.PauseMigrationJobV2)
+	v2Router.POST("/job/migration/resume", v2.ResumeMigrationJobV2)
+	v2Router.POST("/job/migration/delete", v2.DeleteMigrationJobV2)
+	v2Router.POST("/job/migration/reverse_start", v2.ReverseStartMigrationJobV2)
+
+	v2Router.GET("/jobs/sync", v2.SyncJobListV2)
 	v2Router.GET("/job/sync/detail", v2.GetSyncJobDetailV2)
 	v2Router.POST("/job/sync/create", v2.CreateSyncJobV2)
 	v2Router.POST("/job/sync/update", v2.UpdateSyncJobV2)
+	v2Router.POST("/job/sync/reverse", v2.ReverseSyncJobV2)
+	v2Router.POST("/job/sync/pause", v2.PauseSyncJobV2)
+	v2Router.POST("/job/sync/resume", v2.ResumeSyncJobV2)
+	v2Router.POST("/job/sync/delete", v2.DeleteSyncJobV2)
+	v2Router.POST("/job/sync/reverse_start", v2.ReverseStartSyncJobV2)
+
+	v2Router.GET("/jobs/subscription", v2.SubscriptionJobListV2)
 	v2Router.GET("/job/subscription/detail", v2.GetSubscriptionJobDetailV2)
 	v2Router.POST("/job/subscription/create", v2.CreateSubscriptionJobV2)
 	v2Router.POST("/job/subscription/update", v2.UpdateSubscriptionJobV2)
-	v2Router.POST("/job/pause", v2.PauseJobV2)
-	v2Router.POST("/job/resume", v2.ResumeJobV2)
-	v2Router.POST("/job/delete", v2.DeleteJobV2)
+	v2Router.POST("/job/subscription/pause", v2.PauseSubscriptionJobV2)
+	v2Router.POST("/job/subscription/resume", v2.ResumeSubscriptionJobV2)
+	v2Router.POST("/job/subscription/delete", v2.DeleteSubscriptionJobV2)
+
 	v2Router.GET("/nodes", v2.NodeListV2)
 	v2Router.POST("/validation/job", v2.ValidateJobV2)
 	v2Router.GET("/mysql/schemas", v2.ListMysqlSchemasV2)
 	v2Router.GET("/mysql/columns", v2.ListMysqlColumnsV2)
 	v2Router.GET("/mysql/instance_connection", v2.ConnectionV2)
 	v2Router.GET("/job/gtid", v2.GetJobGtidV2)
-	v2Router.POST("/job/reverse_start", v2.ReverseStartJobV2)
-	v2Router.POST("/job/reverse", v2.ReverseJobV2)
 	v2Router.GET("/user/list", v2.UserListV2)
 	v2Router.POST("/user/create", v2.CreateUserV2)
 	v2Router.POST("/user/update", v2.UpdateUserV2)
@@ -212,14 +224,11 @@ func AuthFilter() echo.MiddlewareFunc {
 			authority := make([]models.MenuItem, 0)
 			err = json.Unmarshal([]byte(role.Authority), &authority)
 			if err != nil {
-				return echo.NewHTTPError(http.StatusForbidden, "please check your authority")
+				return echo.NewHTTPError(http.StatusForbidden, fmt.Sprintf("check your authority fail : %v", err))
 			}
 			for _, menuItem := range authority {
 				for _, buttonItem := range menuItem.Operations {
 					if c.Request().URL.Path == buttonItem.Uri {
-						if !checkForJob(c, menuItem.Name, buttonItem.Uri) {
-							continue
-						}
 						return next(c)
 					}
 				}
@@ -227,66 +236,6 @@ func AuthFilter() echo.MiddlewareFunc {
 			return echo.NewHTTPError(http.StatusForbidden)
 		}
 	}
-}
-
-func checkForJob(c echo.Context, menuType, uri string) bool {
-	logger := handler.NewLogger().Named("checkForJob")
-	logger.Error("before", "uri", uri, "menuType", menuType)
-	var jobType v2.DtleJobType
-	switch uri {
-	case "/v2/jobs":
-		reqParam := new(models.JobListReqV2)
-		if err := c.Bind(reqParam); nil != err {
-			return false
-		}
-		jobType = v2.DtleJobType(reqParam.FilterJobType)
-	case "/v2/job/pause":
-		reqParam := new(models.PauseJobReqV2)
-		if err := c.Bind(reqParam); nil != err {
-			return false
-		}
-		jobType = v2.GetJobTypeFromJobId(reqParam.JobId)
-	case "/v2/job/resume":
-		reqParam := new(models.ResumeJobReqV2)
-		if err := c.Bind(reqParam); nil != err {
-			return false
-		}
-		jobType = v2.GetJobTypeFromJobId(reqParam.JobId)
-	case "/v2/job/delete":
-		reqParam := new(models.DeleteJobReqV2)
-		if err := c.Bind(reqParam); nil != err {
-			return false
-		}
-		jobType = v2.GetJobTypeFromJobId(reqParam.JobId)
-	case "/v2/job/reverse":
-		body, err := c.Request().GetBody()
-		if err != nil {
-			return false
-		}
-		bytes, err := ioutil.ReadAll(body)
-		if err != nil {
-			return false
-		}
-		reqParam := new(models.ReverseJobReq)
-		err = json.Unmarshal(bytes, reqParam)
-		if err != nil {
-			return false
-		}
-		jobType = v2.GetJobTypeFromJobId(reqParam.JobId)
-	case "/v2/job/reverse_start":
-		reqParam := new(models.ReverseStartReqV2)
-		if err := c.Bind(reqParam); nil != err {
-			return false
-		}
-		jobType = v2.GetJobTypeFromJobId(reqParam.JobId)
-	default:
-		return true
-	}
-	logger.Error("after", "jobType", jobType, "menuType", menuType)
-	if string(jobType) == menuType {
-		return true
-	}
-	return false
 }
 
 var whiteList = []string{
