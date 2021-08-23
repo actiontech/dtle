@@ -1788,7 +1788,7 @@ func checkUpdateJobInfo(c echo.Context, jobId string, create bool) error {
 	if err != nil {
 		return fmt.Errorf("consul_addr=%v; connect to consul failed: %v", handler.ConsulAddr, err)
 	}
-	if storeManager.CheckJobExists(jobId) != create {
+	if storeManager.CheckJobExists(jobId) == create {
 		return fmt.Errorf("please confirm whether the job [ %v ] already exists", jobId)
 	}
 	jobInfo, err := storeManager.GetJobInfo(jobId)
