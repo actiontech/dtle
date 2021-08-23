@@ -35,7 +35,7 @@ func LoginV2(c echo.Context) error {
 	}
 	blackListKey := fmt.Sprintf("%s:%s:%s", reqParam.Tenant, reqParam.Username, "login")
 	if leftMinute, exist := BL.blackListExist(blackListKey); exist {
-		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("the password cannot be changed temporarily, please try again after %v minute", leftMinute)))
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("you cannot be login temporarily, please try again after %v minute", leftMinute)))
 	}
 	if !store.Verify(reqParam.CaptchaId, reqParam.Captcha, true) {
 		BL.setBlackList(fmt.Sprintf("%s:%s:%s", reqParam.Tenant, reqParam.Username, "login"), time.Minute*30)

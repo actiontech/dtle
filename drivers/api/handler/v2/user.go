@@ -219,6 +219,10 @@ func ResetPasswordV2(c echo.Context) error {
 	if err := handler.BindAndValidate(logger, c, reqParam); err != nil {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
 	}
+	blackListKey := fmt.Sprintf("%s:%s:%s", reqParam.Tenant, reqParam.Username, "reset_pwd")
+	if leftMinute, exist := BL.blackListExist(blackListKey); exist {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("you cannot be login temporarily, please try again after %v minute", leftMinute)))
+	}
 
 	if hasAccess, err := checkUserAccess(logger, c, fmt.Sprintf("%s:%s", reqParam.Tenant, reqParam.Username)); err != nil || !hasAccess {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("current user has no access to operate group %v ; err : %v", reqParam.Tenant, err)))
@@ -236,7 +240,7 @@ func ResetPasswordV2(c echo.Context) error {
 	if !exist {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("user does not exist")))
 	}
-	if err := ValidatePassword(fmt.Sprintf("%s:%s:%s", reqParam.Tenant, reqParam.Username, "reset_pwd"), user.Password, reqParam.OldPassWord); err != nil {
+	if err := ValidatePassword(blackListKey, user.Password, reqParam.OldPassWord); err != nil {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
 	}
 
