@@ -29,7 +29,7 @@ func UserListV2(c echo.Context) error {
 	logger := handler.NewLogger().Named("UserListV2")
 	reqParam := new(models.UserListReq)
 	if err := handler.BindAndValidate(logger, c, reqParam); err != nil {
-		return err
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
 	}
 
 	storeManager, err := common.NewStoreManager([]string{handler.ConsulAddr}, logger)
@@ -106,7 +106,7 @@ func CreateUserV2(c echo.Context) error {
 	logger := handler.NewLogger().Named("CreateUserV2")
 	reqParam := new(models.CreateUserReqV2)
 	if err := handler.BindAndValidate(logger, c, reqParam); err != nil {
-		return err
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
 	}
 
 	if hasAccess, err := checkUserAccess(logger, c, fmt.Sprintf("%s:%s", reqParam.Tenant, reqParam.Username)); err != nil || !hasAccess {
@@ -170,7 +170,7 @@ func UpdateUserV2(c echo.Context) error {
 	logger := handler.NewLogger().Named("UpdateUserV2")
 	reqParam := new(models.UpdateUserReqV2)
 	if err := handler.BindAndValidate(logger, c, reqParam); err != nil {
-		return err
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
 	}
 
 	storeManager, err := common.NewStoreManager([]string{handler.ConsulAddr}, logger)
@@ -217,7 +217,11 @@ func ResetPasswordV2(c echo.Context) error {
 	logger := handler.NewLogger().Named("ResetPasswordV2")
 	reqParam := new(models.ResetPasswordReqV2)
 	if err := handler.BindAndValidate(logger, c, reqParam); err != nil {
-		return err
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
+	}
+	blackListKey := fmt.Sprintf("%s:%s:%s", reqParam.Tenant, reqParam.Username, "reset_pwd")
+	if leftMinute, exist := BL.blackListExist(blackListKey); exist {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("you cannot be login temporarily, please try again after %v minute", leftMinute)))
 	}
 
 	if hasAccess, err := checkUserAccess(logger, c, fmt.Sprintf("%s:%s", reqParam.Tenant, reqParam.Username)); err != nil || !hasAccess {
@@ -236,7 +240,7 @@ func ResetPasswordV2(c echo.Context) error {
 	if !exist {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("user does not exist")))
 	}
-	if err := ValidatePassword(fmt.Sprintf("%s:%s", reqParam.Tenant, reqParam.Username), "reset_pwd", user.Password, reqParam.OldPassWord); err != nil {
+	if err := ValidatePassword(blackListKey, user.Password, reqParam.OldPassWord); err != nil {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
 	}
 
@@ -265,11 +269,16 @@ func DeleteUserV2(c echo.Context) error {
 	logger := handler.NewLogger().Named("DeleteUserV2")
 	reqParam := new(models.DeleteUserReqV2)
 	if err := handler.BindAndValidate(logger, c, reqParam); err != nil {
-		return err
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
 	}
 	// cannot delete default supper user
 	if reqParam.Tenant == common.DefaultAdminTenant && reqParam.Username == common.DefaultAdminUser {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("cannot delete superuser")))
+	}
+	tenant, user := GetUserName(c)
+	// cannot delete self
+	if reqParam.Tenant == tenant && reqParam.Username == user {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("cannot delete self")))
 	}
 
 	if hasAccess, err := checkUserAccess(logger, c, fmt.Sprintf("%s:%s", reqParam.Tenant, reqParam.Username)); err != nil || !hasAccess {
@@ -363,7 +372,7 @@ func ListActionV2(c echo.Context) error {
 	if !exists {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("current user does not belong to any role")))
 	}
-	authority := make(map[string][]*models.ActionItem, 0)
+	authority := make([]models.MenuItem, 0)
 	err = json.Unmarshal([]byte(role.Authority), &authority)
 	if nil != err {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))

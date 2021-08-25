@@ -66,13 +66,6 @@ definitions:
       username:
         type: string
     type: object
-  models.ActionItem:
-    properties:
-      action:
-        type: string
-      uri:
-        type: string
-    type: object
   models.BasicTaskProfile:
     properties:
       configuration:
@@ -114,6 +107,17 @@ definitions:
         type: integer
       send_by_timeout:
         type: integer
+    type: object
+  models.ButtonItem:
+    properties:
+      action:
+        type: string
+      text_cn:
+        type: string
+      text_en:
+        type: string
+      uri:
+        type: string
     type: object
   models.CaptchaRespV2:
     properties:
@@ -452,11 +456,9 @@ definitions:
   models.ListActionRespV2:
     properties:
       authority:
-        additionalProperties:
-          items:
-            $ref: '#/definitions/models.ActionItem'
-          type: array
-        type: object
+        items:
+          $ref: '#/definitions/models.MenuItem'
+        type: array
       message:
         type: string
     type: object
@@ -477,6 +479,29 @@ definitions:
         items:
           $ref: '#/definitions/models.SchemaItem'
         type: array
+    type: object
+  models.MenuItem:
+    properties:
+      admin_only:
+        type: boolean
+      id:
+        type: integer
+      menu_level:
+        type: integer
+      menu_url:
+        type: string
+      name:
+        type: string
+      operations:
+        items:
+          $ref: '#/definitions/models.ButtonItem'
+        type: array
+      parent_id:
+        type: integer
+      text_cn:
+        type: string
+      text_en:
+        type: string
     type: object
   models.MysqlConnectionConfig:
     properties:
@@ -948,27 +973,6 @@ info:
   title: dtle API Docs
   version: "2.0"
 paths:
-  /v2/job/delete:
-    post:
-      consumes:
-      - application/x-www-form-urlencoded
-      description: delete job.
-      operationId: DeleteJobV2
-      parameters:
-      - description: job id
-        in: formData
-        name: job_id
-        required: true
-        type: string
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/models.DeleteJobRespV2'
-      security:
-      - ApiKeyAuth: []
-      tags:
-      - job
   /v2/job/gtid:
     get:
       description: get src task current gtid.
@@ -988,12 +992,12 @@ paths:
       - ApiKeyAuth: []
       tags:
       - job
-  /v2/job/migration:
+  /v2/job/migration/create:
     post:
       consumes:
       - application/json
-      description: create or update migration job.
-      operationId: CreateOrUpdateMigrationJobV2
+      description: create migration job.
+      operationId: CreateMigrationJobV2
       parameters:
       - description: migration job config
         in: body
@@ -1006,6 +1010,27 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/models.CreateOrUpdateMysqlToMysqlJobRespV2'
+      security:
+      - ApiKeyAuth: []
+      tags:
+      - job
+  /v2/job/migration/delete:
+    post:
+      consumes:
+      - application/x-www-form-urlencoded
+      description: delete migration job.
+      operationId: DeleteMigrationJobV2
+      parameters:
+      - description: job id
+        in: formData
+        name: job_id
+        required: true
+        type: string
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.DeleteJobRespV2'
       security:
       - ApiKeyAuth: []
       tags:
@@ -1029,12 +1054,12 @@ paths:
       - ApiKeyAuth: []
       tags:
       - job
-  /v2/job/pause:
+  /v2/job/migration/pause:
     post:
       consumes:
       - application/x-www-form-urlencoded
-      description: pause job.
-      operationId: PauseJobV2
+      description: pause migration job.
+      operationId: PauseMigrationJobV2
       parameters:
       - description: job id
         in: formData
@@ -1050,12 +1075,12 @@ paths:
       - ApiKeyAuth: []
       tags:
       - job
-  /v2/job/resume:
+  /v2/job/migration/resume:
     post:
       consumes:
       - application/x-www-form-urlencoded
-      description: resume job.
-      operationId: ResumeJobV2
+      description: resume migration job.
+      operationId: ResumeMigrationJobV2
       parameters:
       - description: job id
         in: formData
@@ -1071,12 +1096,12 @@ paths:
       - ApiKeyAuth: []
       tags:
       - job
-  /v2/job/reverse:
+  /v2/job/migration/reverse:
     post:
       consumes:
       - application/json
-      description: returnJob
-      operationId: ReverseJobV2
+      description: reverse migration Job
+      operationId: ReverseMigrationJobV2
       parameters:
       - description: reverse config config
         in: body
@@ -1089,6 +1114,50 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/models.ReverseJobResp'
+      security:
+      - ApiKeyAuth: []
+      tags:
+      - job
+  /v2/job/migration/reverse_start:
+    post:
+      consumes:
+      - application/x-www-form-urlencoded
+      description: Start Reverse Job.
+      operationId: ReverseStartMigrationJobV2
+      parameters:
+      - description: job id
+        in: formData
+        name: job_id
+        required: true
+        type: string
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.ReverseStartRespV2'
+      security:
+      - ApiKeyAuth: []
+      summary: start reverse-init job
+      tags:
+      - job
+  /v2/job/migration/update:
+    post:
+      consumes:
+      - application/json
+      description: update migration job.
+      operationId: UpdateMigrationJobV2
+      parameters:
+      - description: migration job config
+        in: body
+        name: migration_job_config
+        required: true
+        schema:
+          $ref: '#/definitions/models.CreateOrUpdateMysqlToMysqlJobParamV2'
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.CreateOrUpdateMysqlToMysqlJobRespV2'
       security:
       - ApiKeyAuth: []
       tags:
@@ -1137,6 +1206,49 @@ paths:
       - ApiKeyAuth: []
       tags:
       - job
+  /v2/job/subscription/create:
+    post:
+      consumes:
+      - application/json
+      description: create subscription job.
+      operationId: CreateSubscriptionJobV2
+      parameters:
+      - description: subscription job config
+        in: body
+        name: subscription_job_config
+        required: true
+        schema:
+          $ref: '#/definitions/models.CreateOrUpdateMysqlToKafkaJobParamV2'
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.CreateOrUpdateMysqlToKafkaJobRespV2'
+      security:
+      - ApiKeyAuth: []
+      tags:
+      - job
+  /v2/job/subscription/delete:
+    post:
+      consumes:
+      - application/x-www-form-urlencoded
+      description: delete subscription job.
+      operationId: DeleteSubscriptionJobV2
+      parameters:
+      - description: job id
+        in: formData
+        name: job_id
+        required: true
+        type: string
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.DeleteJobRespV2'
+      security:
+      - ApiKeyAuth: []
+      tags:
+      - job
   /v2/job/subscription/detail:
     get:
       description: get subscription job detail.
@@ -1156,12 +1268,54 @@ paths:
       - ApiKeyAuth: []
       tags:
       - job
-  /v2/job/sync:
+  /v2/job/subscription/pause:
+    post:
+      consumes:
+      - application/x-www-form-urlencoded
+      description: pause subscription job.
+      operationId: PauseSubscriptionJobV2
+      parameters:
+      - description: job id
+        in: formData
+        name: job_id
+        required: true
+        type: string
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.PauseJobRespV2'
+      security:
+      - ApiKeyAuth: []
+      tags:
+      - job
+  /v2/job/subscription/resume:
+    post:
+      consumes:
+      - application/x-www-form-urlencoded
+      description: resume subscription job.
+      operationId: ResumeSubscriptionJobV2
+      parameters:
+      - description: job id
+        in: formData
+        name: job_id
+        required: true
+        type: string
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.ResumeJobRespV2'
+      security:
+      - ApiKeyAuth: []
+      tags:
+      - job
+  /v2/job/sync/create:
     post:
       consumes:
       - application/json
-      description: create or update sync job.
-      operationId: CreateOrUpdateSyncJobV2
+      description: create sync job.
+      operationId: CreateSyncJobV2
       parameters:
       - description: sync job config
         in: body
@@ -1174,6 +1328,27 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/models.CreateOrUpdateMysqlToMysqlJobRespV2'
+      security:
+      - ApiKeyAuth: []
+      tags:
+      - job
+  /v2/job/sync/delete:
+    post:
+      consumes:
+      - application/x-www-form-urlencoded
+      description: delete sync job.
+      operationId: DeleteSyncJobV2
+      parameters:
+      - description: job id
+        in: formData
+        name: job_id
+        required: true
+        type: string
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.DeleteJobRespV2'
       security:
       - ApiKeyAuth: []
       tags:
@@ -1197,19 +1372,177 @@ paths:
       - ApiKeyAuth: []
       tags:
       - job
-  /v2/jobs:
+  /v2/job/sync/pause:
+    post:
+      consumes:
+      - application/x-www-form-urlencoded
+      description: pause sync job.
+      operationId: PauseSyncJobV2
+      parameters:
+      - description: job id
+        in: formData
+        name: job_id
+        required: true
+        type: string
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.PauseJobRespV2'
+      security:
+      - ApiKeyAuth: []
+      tags:
+      - job
+  /v2/job/sync/resume:
+    post:
+      consumes:
+      - application/x-www-form-urlencoded
+      description: resume sync job.
+      operationId: ResumeSyncJobV2
+      parameters:
+      - description: job id
+        in: formData
+        name: job_id
+        required: true
+        type: string
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.ResumeJobRespV2'
+      security:
+      - ApiKeyAuth: []
+      tags:
+      - job
+  /v2/job/sync/reverse:
+    post:
+      consumes:
+      - application/json
+      description: reverse sync Job
+      operationId: ReverseSyncJobV2
+      parameters:
+      - description: reverse config config
+        in: body
+        name: reverse_config
+        required: true
+        schema:
+          $ref: '#/definitions/models.ReverseJobReq'
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.ReverseJobResp'
+      security:
+      - ApiKeyAuth: []
+      tags:
+      - job
+  /v2/job/sync/reverse_start:
+    post:
+      consumes:
+      - application/x-www-form-urlencoded
+      description: Start Reverse Job.
+      operationId: ReverseStartSyncJobV2
+      parameters:
+      - description: job id
+        in: formData
+        name: job_id
+        required: true
+        type: string
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.ReverseStartRespV2'
+      security:
+      - ApiKeyAuth: []
+      summary: start reverse-init job
+      tags:
+      - job
+  /v2/job/sync/update:
+    post:
+      consumes:
+      - application/json
+      description: update sync job.
+      operationId: UpdateSyncJobV2
+      parameters:
+      - description: sync job config
+        in: body
+        name: sync_job_config
+        required: true
+        schema:
+          $ref: '#/definitions/models.CreateOrUpdateMysqlToMysqlJobParamV2'
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.CreateOrUpdateMysqlToMysqlJobRespV2'
+      security:
+      - ApiKeyAuth: []
+      tags:
+      - job
+  /v2/jobs/migration:
     get:
       description: get job list.
-      operationId: JobListV2
+      operationId: MigrationJobListV2
       parameters:
-      - description: filter job type
-        enum:
-        - migration
-        - sync
-        - subscription
+      - description: filter job id
         in: query
-        name: filter_job_type
+        name: filter_job_id
         type: string
+      - description: filter job status
+        in: query
+        name: filter_job_status
+        type: string
+      - default: job_create_time
+        description: order by
+        enum:
+        - job_create_time
+        in: query
+        name: order_by
+        type: string
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.JobListRespV2'
+      security:
+      - ApiKeyAuth: []
+      tags:
+      - job
+  /v2/jobs/subscription:
+    get:
+      description: get subscription job list.
+      operationId: SubscriptionJobListV2
+      parameters:
+      - description: filter job id
+        in: query
+        name: filter_job_id
+        type: string
+      - description: filter job status
+        in: query
+        name: filter_job_status
+        type: string
+      - default: job_create_time
+        description: order by
+        enum:
+        - job_create_time
+        in: query
+        name: order_by
+        type: string
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.JobListRespV2'
+      security:
+      - ApiKeyAuth: []
+      tags:
+      - job
+  /v2/jobs/sync:
+    get:
+      description: get sync job list.
+      operationId: SyncJobListV2
+      parameters:
       - description: filter job id
         in: query
         name: filter_job_id

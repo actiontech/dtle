@@ -32,7 +32,7 @@ func UpdateLogLevelV2(c echo.Context) error {
 
 	reqParam := new(models.UpdataLogLevelReqV2)
 	if err := handler.BindAndValidate(logger, c, reqParam); err != nil {
-		return err
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
 	}
 
 	// verify

@@ -28,21 +28,50 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
-// @Id JobListV2
+// @Id MigrationJobListV2
 // @Description get job list.
 // @Tags job
 // @Success 200 {object} models.JobListRespV2
 // @Security ApiKeyAuth
-// @Param filter_job_type query string false "filter job type" Enums(migration,sync,subscription)
 // @Param filter_job_id query string false "filter job id"
 // @Param filter_job_status query string false "filter job status"
 // @Param order_by query string false "order by" default(job_create_time) Enums(job_create_time)
-// @Router /v2/jobs [get]
-func JobListV2(c echo.Context) error {
+// @Router /v2/jobs/migration [get]
+func MigrationJobListV2(c echo.Context) error {
+	return JobListV2(c, DtleJobTypeMigration)
+}
+
+// @Id SyncJobListV2
+// @Description get sync job list.
+// @Tags job
+// @Success 200 {object} models.JobListRespV2
+// @Security ApiKeyAuth
+// @Param filter_job_id query string false "filter job id"
+// @Param filter_job_status query string false "filter job status"
+// @Param order_by query string false "order by" default(job_create_time) Enums(job_create_time)
+// @Router /v2/jobs/sync [get]
+func SyncJobListV2(c echo.Context) error {
+	return JobListV2(c, DtleJobTypeSync)
+}
+
+// @Id SubscriptionJobListV2
+// @Description get subscription job list.
+// @Tags job
+// @Success 200 {object} models.JobListRespV2
+// @Security ApiKeyAuth
+// @Param filter_job_id query string false "filter job id"
+// @Param filter_job_status query string false "filter job status"
+// @Param order_by query string false "order by" default(job_create_time) Enums(job_create_time)
+// @Router /v2/jobs/subscription [get]
+func SubscriptionJobListV2(c echo.Context) error {
+	return JobListV2(c, DtleJobTypeSubscription)
+}
+
+func JobListV2(c echo.Context, filterJobType DtleJobType) error {
 	logger := handler.NewLogger().Named("JobListV2")
 	reqParam := new(models.JobListReqV2)
 	if err := handler.BindAndValidate(logger, c, reqParam); err != nil {
-		return err
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
 	}
 
 	user, err := getCurrentUser(c)
@@ -66,8 +95,8 @@ func JobListV2(c echo.Context) error {
 	logger.Info("invoke nomad find job list finished")
 	jobs := make([]common.JobListItemV2, 0)
 	for _, consulJob := range jobList {
-		jobType := getJobTypeFromJobId(consulJob.JobId)
-		if "" != reqParam.FilterJobType && reqParam.FilterJobType != string(jobType) {
+		jobType := GetJobTypeFromJobId(consulJob.JobId)
+		if filterJobType != jobType {
 			continue
 		}
 		if !userHasAccess(storeManager, consulJob.User, user) {
@@ -139,7 +168,7 @@ func addJobTypeToJobId(raw string, jobType DtleJobType) string {
 	return fmt.Sprintf(`%v-%v`, raw, jobType)
 }
 
-func getJobTypeFromJobId(jobId string) DtleJobType {
+func GetJobTypeFromJobId(jobId string) DtleJobType {
 	segs := strings.Split(jobId, "-")
 	if len(segs) < 2 {
 		return DtleJobTypeUnknown
@@ -154,25 +183,14 @@ func getJobTypeFromJobId(jobId string) DtleJobType {
 	}
 }
 
-// @Id CreateOrUpdateMigrationJobV2
-// @Description create or update migration job.
-// @Tags job
-// @Accept application/json
-// @Security ApiKeyAuth
-// @Param migration_job_config body models.CreateOrUpdateMysqlToMysqlJobParamV2 true "migration job config"
-// @Success 200 {object} models.CreateOrUpdateMysqlToMysqlJobRespV2
-// @Router /v2/job/migration [post]
-func CreateOrUpdateMigrationJobV2(c echo.Context) error {
-	logger := handler.NewLogger().Named("CreateOrUpdateMigrationJobV2")
+func CreateOrUpdateMigrationJobV2(c echo.Context, create bool) error {
+	logger := handler.NewLogger().Named("CreateMigrationJobV2")
 	reqParam := new(models.CreateOrUpdateMysqlToMysqlJobParamV2)
 	if err := handler.BindAndValidate(logger, c, reqParam); err != nil {
-		return err
-	}
-	if err := c.Validate(reqParam); nil != err {
-		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invalid params:\n%v", err)))
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
 	}
 
-	if err := checkUpdateJobInfo(c, reqParam.JobId); err != nil {
+	if err := checkUpdateJobInfo(c, reqParam.JobId, create); err != nil {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
 	}
 
@@ -185,6 +203,30 @@ func CreateOrUpdateMigrationJobV2(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
 	}
 	return c.JSON(http.StatusOK, resp)
+}
+
+// @Id CreateMigrationJobV2
+// @Description create migration job.
+// @Tags job
+// @Accept application/json
+// @Security ApiKeyAuth
+// @Param migration_job_config body models.CreateOrUpdateMysqlToMysqlJobParamV2 true "migration job config"
+// @Success 200 {object} models.CreateOrUpdateMysqlToMysqlJobRespV2
+// @Router /v2/job/migration/create [post]
+func CreateMigrationJobV2(c echo.Context) error {
+	return CreateOrUpdateMigrationJobV2(c, true)
+}
+
+// @Id UpdateMigrationJobV2
+// @Description update migration job.
+// @Tags job
+// @Accept application/json
+// @Security ApiKeyAuth
+// @Param migration_job_config body models.CreateOrUpdateMysqlToMysqlJobParamV2 true "migration job config"
+// @Success 200 {object} models.CreateOrUpdateMysqlToMysqlJobRespV2
+// @Router /v2/job/migration/update [post]
+func UpdateMigrationJobV2(c echo.Context) error {
+	return CreateOrUpdateMigrationJobV2(c, false)
 }
 
 func createOrUpdateMysqlToMysqlJob(logger hclog.Logger, jobParam *models.CreateOrUpdateMysqlToMysqlJobParamV2,
@@ -491,7 +533,7 @@ func GetMysqlToMysqlJobDetail(c echo.Context, logger hclog.Logger, jobType DtleJ
 
 	reqParam := new(models.MysqlToMysqlJobDetailReqV2)
 	if err := handler.BindAndValidate(logger, c, reqParam); err != nil {
-		return err
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
 	}
 	err := checkJobAccess(c, reqParam.JobId)
 	if err != nil {
@@ -664,8 +706,8 @@ func getJobDetailFromNomad(logger hclog.Logger, jobId string, jobType DtleJobTyp
 	}
 	logger.Info("invoke nomad api finished")
 
-	if jobType != getJobTypeFromJobId(g.PtrToString(nomadJob.ID, "")) {
-		return false, nomadApi.Job{}, nil, fmt.Errorf("this API is for %v job. but got job type=%v by the provided job id", jobType, getJobTypeFromJobId(g.PtrToString(nomadJob.ID, "")))
+	if jobType != GetJobTypeFromJobId(g.PtrToString(nomadJob.ID, "")) {
+		return false, nomadApi.Job{}, nil, fmt.Errorf("this API is for %v job. but got job type=%v by the provided job id", jobType, GetJobTypeFromJobId(g.PtrToString(nomadJob.ID, "")))
 	}
 	url = handler.BuildUrl(fmt.Sprintf("/v1/job/%v/allocations", *nomadJob.ID))
 	logger.Info("invoke nomad api begin", "url", url)
@@ -834,21 +876,13 @@ func buildMysqlToMysqlJobDetailResp(nomadJob nomadApi.Job, nomadAllocations []no
 	return destTaskDetail, srcTaskDetail, nil
 }
 
-// @Id CreateOrUpdateSyncJobV2
-// @Description create or update sync job.
-// @Tags job
-// @Accept application/json
-// @Security ApiKeyAuth
-// @Param sync_job_config body models.CreateOrUpdateMysqlToMysqlJobParamV2 true "sync job config"
-// @Success 200 {object} models.CreateOrUpdateMysqlToMysqlJobRespV2
-// @Router /v2/job/sync [post]
-func CreateOrUpdateSyncJobV2(c echo.Context) error {
+func CreateOrUpdateSyncJobV2(c echo.Context, create bool) error {
 	logger := handler.NewLogger().Named("CreateOrUpdateSyncJobV2")
 	jobParam := new(models.CreateOrUpdateMysqlToMysqlJobParamV2)
 	if err := handler.BindAndValidate(logger, c, jobParam); err != nil {
-		return err
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
 	}
-	if err := checkUpdateJobInfo(c, jobParam.JobId); err != nil {
+	if err := checkUpdateJobInfo(c, jobParam.JobId, create); err != nil {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
 	}
 	user, err := getCurrentUser(c)
@@ -860,6 +894,30 @@ func CreateOrUpdateSyncJobV2(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
 	}
 	return c.JSON(http.StatusOK, resp)
+}
+
+// @Id CreateSyncJobV2
+// @Description create sync job.
+// @Tags job
+// @Accept application/json
+// @Security ApiKeyAuth
+// @Param sync_job_config body models.CreateOrUpdateMysqlToMysqlJobParamV2 true "sync job config"
+// @Success 200 {object} models.CreateOrUpdateMysqlToMysqlJobRespV2
+// @Router /v2/job/sync/create [post]
+func CreateSyncJobV2(c echo.Context) error {
+	return CreateOrUpdateSyncJobV2(c, true)
+}
+
+// @Id UpdateSyncJobV2
+// @Description update sync job.
+// @Tags job
+// @Accept application/json
+// @Security ApiKeyAuth
+// @Param sync_job_config body models.CreateOrUpdateMysqlToMysqlJobParamV2 true "sync job config"
+// @Success 200 {object} models.CreateOrUpdateMysqlToMysqlJobRespV2
+// @Router /v2/job/sync/update [post]
+func UpdateSyncJobV2(c echo.Context) error {
+	return CreateOrUpdateSyncJobV2(c, false)
 }
 
 // @Id GetSyncJobDetailV2
@@ -874,6 +932,19 @@ func GetSyncJobDetailV2(c echo.Context) error {
 	return GetMysqlToMysqlJobDetail(c, logger, DtleJobTypeSync)
 }
 
+// @Id CreateSubscriptionJobV2
+// @Description create subscription job.
+// @Tags job
+// @Accept application/json
+// @Security ApiKeyAuth
+// @Param subscription_job_config body models.CreateOrUpdateMysqlToKafkaJobParamV2 true "subscription job config"
+// @Success 200 {object} models.CreateOrUpdateMysqlToKafkaJobRespV2
+// @Router /v2/job/subscription/create [post]
+func CreateSubscriptionJobV2(c echo.Context) error {
+	logger := handler.NewLogger().Named("CreateSubscriptionJobV2")
+	return createOrUpdateMysqlToKafkaJob(c, logger, DtleJobTypeSubscription, true)
+}
+
 // @Id CreateOrUpdateSubscriptionJobV2
 // @Description create or update subscription job.
 // @Tags job
@@ -882,19 +953,19 @@ func GetSyncJobDetailV2(c echo.Context) error {
 // @Param subscription_job_config body models.CreateOrUpdateMysqlToKafkaJobParamV2 true "subscription job config"
 // @Success 200 {object} models.CreateOrUpdateMysqlToKafkaJobRespV2
 // @Router /v2/job/subscription [post]
-func CreateOrUpdateSubscriptionJobV2(c echo.Context) error {
-	logger := handler.NewLogger().Named("CreateOrUpdateSubscriptionJobV2")
-	return createOrUpdateMysqlToKafkaJob(c, logger, DtleJobTypeSubscription)
+func UpdateSubscriptionJobV2(c echo.Context) error {
+	logger := handler.NewLogger().Named("UpdateSubscriptionJobV2")
+	return createOrUpdateMysqlToKafkaJob(c, logger, DtleJobTypeSubscription, false)
 }
 
-func createOrUpdateMysqlToKafkaJob(c echo.Context, logger hclog.Logger, jobType DtleJobType) error {
+func createOrUpdateMysqlToKafkaJob(c echo.Context, logger hclog.Logger, jobType DtleJobType, create bool) error {
 
 	jobParam := new(models.CreateOrUpdateMysqlToKafkaJobParamV2)
 	if err := handler.BindAndValidate(logger, c, jobParam); err != nil {
-		return err
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
 	}
 
-	if err := checkUpdateJobInfo(c, jobParam.JobId); err != nil {
+	if err := checkUpdateJobInfo(c, jobParam.JobId, create); err != nil {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
 	}
 
@@ -1015,7 +1086,7 @@ func GetSubscriptionJobDetailV2(c echo.Context) error {
 	logger := handler.NewLogger().Named("GetSubscriptionJobDetailV2")
 	reqParam := new(models.MysqlToKafkaJobDetailReqV2)
 	if err := handler.BindAndValidate(logger, c, reqParam); err != nil {
-		return err
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
 	}
 
 	err := checkJobAccess(c, reqParam.JobId)
@@ -1098,21 +1169,51 @@ func buildKafkaDestTaskDetail(taskName string, internalTaskKafkaConfig common.Ka
 	return destTaskDetail
 }
 
-// @Id PauseJobV2
-// @Description pause job.
+// @Id PauseMigrationJobV2
+// @Description pause migration job.
 // @Tags job
 // @accept application/x-www-form-urlencoded
 // @Security ApiKeyAuth
 // @Param job_id formData string true "job id"
 // @Success 200 {object} models.PauseJobRespV2
-// @Router /v2/job/pause [post]
-func PauseJobV2(c echo.Context) error {
+// @Router /v2/job/migration/pause [post]
+func PauseMigrationJobV2(c echo.Context) error {
+	return PauseJobV2(c, DtleJobTypeMigration)
+}
+
+// @Id PauseSyncJobV2
+// @Description pause sync job.
+// @Tags job
+// @accept application/x-www-form-urlencoded
+// @Security ApiKeyAuth
+// @Param job_id formData string true "job id"
+// @Success 200 {object} models.PauseJobRespV2
+// @Router /v2/job/sync/pause [post]
+func PauseSyncJobV2(c echo.Context) error {
+	return PauseJobV2(c, DtleJobTypeSync)
+}
+
+// @Id PauseSubscriptionJobV2
+// @Description pause subscription job.
+// @Tags job
+// @accept application/x-www-form-urlencoded
+// @Security ApiKeyAuth
+// @Param job_id formData string true "job id"
+// @Success 200 {object} models.PauseJobRespV2
+// @Router /v2/job/subscription/pause [post]
+func PauseSubscriptionJobV2(c echo.Context) error {
+	return PauseJobV2(c, DtleJobTypeSubscription)
+}
+
+func PauseJobV2(c echo.Context, filterJobType DtleJobType) error {
 	logger := handler.NewLogger().Named("PauseJobV2")
 	reqParam := new(models.PauseJobReqV2)
 	if err := handler.BindAndValidate(logger, c, reqParam); err != nil {
-		return err
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
 	}
-
+	if filterJobType != GetJobTypeFromJobId(reqParam.JobId) {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("only supports job of type %v", filterJobType)))
+	}
 	err := checkJobAccess(c, reqParam.JobId)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
@@ -1178,21 +1279,51 @@ func PauseJobV2(c echo.Context) error {
 	})
 }
 
-// @Id ResumeJobV2
-// @Description resume job.
+// @Id ResumeMigrationJobV2
+// @Description resume migration job.
 // @Tags job
 // @accept application/x-www-form-urlencoded
 // @Security ApiKeyAuth
 // @Param job_id formData string true "job id"
 // @Success 200 {object} models.ResumeJobRespV2
-// @Router /v2/job/resume [post]
-func ResumeJobV2(c echo.Context) error {
+// @Router /v2/job/migration/resume [post]
+func ResumeMigrationJobV2(c echo.Context) error {
+	return ResumeJobV2(c, DtleJobTypeMigration)
+}
+
+// @Id ResumeSyncJobV2
+// @Description resume sync job.
+// @Tags job
+// @accept application/x-www-form-urlencoded
+// @Security ApiKeyAuth
+// @Param job_id formData string true "job id"
+// @Success 200 {object} models.ResumeJobRespV2
+// @Router /v2/job/sync/resume [post]
+func ResumeSyncJobV2(c echo.Context) error {
+	return ResumeJobV2(c, DtleJobTypeSync)
+}
+
+// @Id ResumeSubscriptionJobV2
+// @Description resume subscription job.
+// @Tags job
+// @accept application/x-www-form-urlencoded
+// @Security ApiKeyAuth
+// @Param job_id formData string true "job id"
+// @Success 200 {object} models.ResumeJobRespV2
+// @Router /v2/job/subscription/resume [post]
+func ResumeSubscriptionJobV2(c echo.Context) error {
+	return ResumeJobV2(c, DtleJobTypeSubscription)
+}
+
+func ResumeJobV2(c echo.Context, filterJobType DtleJobType) error {
 	logger := handler.NewLogger().Named("ResumeJobV2")
 	reqParam := new(models.ResumeJobReqV2)
 	if err := handler.BindAndValidate(logger, c, reqParam); err != nil {
-		return err
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
 	}
-
+	if filterJobType != GetJobTypeFromJobId(reqParam.JobId) {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("only supports job of type %v", filterJobType)))
+	}
 	err := checkJobAccess(c, reqParam.JobId)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
@@ -1274,19 +1405,50 @@ func sentSignalToTask(logger hclog.Logger, allocId, signal string) error {
 	return nil
 }
 
-// @Id DeleteJobV2
-// @Description delete job.
+// @Id DeleteMigrationJobV2
+// @Description delete migration job.
 // @Tags job
 // @accept application/x-www-form-urlencoded
 // @Security ApiKeyAuth
 // @Param job_id formData string true "job id"
 // @Success 200 {object} models.DeleteJobRespV2
-// @Router /v2/job/delete [post]
-func DeleteJobV2(c echo.Context) error {
+// @Router /v2/job/migration/delete [post]
+func DeleteMigrationJobV2(c echo.Context) error {
+	return DeleteJobV2(c, DtleJobTypeMigration)
+}
+
+// @Id DeleteSyncJobV2
+// @Description delete sync job.
+// @Tags job
+// @accept application/x-www-form-urlencoded
+// @Security ApiKeyAuth
+// @Param job_id formData string true "job id"
+// @Success 200 {object} models.DeleteJobRespV2
+// @Router /v2/job/sync/delete [post]
+func DeleteSyncJobV2(c echo.Context) error {
+	return DeleteJobV2(c, DtleJobTypeSync)
+}
+
+// @Id DeleteSubscriptionJobV2
+// @Description delete subscription job.
+// @Tags job
+// @accept application/x-www-form-urlencoded
+// @Security ApiKeyAuth
+// @Param job_id formData string true "job id"
+// @Success 200 {object} models.DeleteJobRespV2
+// @Router /v2/job/subscription/delete [post]
+func DeleteSubscriptionJobV2(c echo.Context) error {
+	return DeleteJobV2(c, DtleJobTypeSubscription)
+}
+
+func DeleteJobV2(c echo.Context, filterJobType DtleJobType) error {
 	logger := handler.NewLogger().Named("DeleteJobV2")
 	reqParam := new(models.DeleteJobReqV2)
 	if err := handler.BindAndValidate(logger, c, reqParam); err != nil {
-		return err
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
+	}
+	if filterJobType != GetJobTypeFromJobId(reqParam.JobId) {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("only supports job of type %v", filterJobType)))
 	}
 	err := checkJobAccess(c, reqParam.JobId)
 	if err != nil {
@@ -1328,7 +1490,7 @@ func GetJobGtidV2(c echo.Context) error {
 	logger := handler.NewLogger().Named("GetJobGtidV2")
 	reqParam := new(models.GetJobGtidReqV2)
 	if err := handler.BindAndValidate(logger, c, reqParam); err != nil {
-		return err
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
 	}
 
 	err := checkJobAccess(c, reqParam.JobId)
@@ -1352,6 +1514,32 @@ func GetJobGtidV2(c echo.Context) error {
 }
 
 // @Summary start reverse-init job
+// @Id ReverseStartMigrationJobV2
+// @Tags job
+// @Description Start Reverse Job.
+// @accept application/x-www-form-urlencoded
+// @Security ApiKeyAuth
+// @Param job_id formData string true "job id"
+// @Success 200 {object} models.ReverseStartRespV2
+// @Router /v2/job/migration/reverse_start [post]
+func ReverseStartMigrationJobV2(c echo.Context) error {
+	return ReverseStartJobV2(c, DtleJobTypeMigration)
+}
+
+// @Summary start reverse-init job
+// @Id ReverseStartSyncJobV2
+// @Tags job
+// @Description Start Reverse Job.
+// @accept application/x-www-form-urlencoded
+// @Security ApiKeyAuth
+// @Param job_id formData string true "job id"
+// @Success 200 {object} models.ReverseStartRespV2
+// @Router /v2/job/sync/reverse_start [post]
+func ReverseStartSyncJobV2(c echo.Context) error {
+	return ReverseStartJobV2(c, DtleJobTypeSync)
+}
+
+// @Summary start reverse-init job
 // @Id ReverseStartJobV2
 // @Tags job
 // @Description Finish Job.
@@ -1360,11 +1548,14 @@ func GetJobGtidV2(c echo.Context) error {
 // @Param job_id formData string true "job id"
 // @Success 200 {object} models.ReverseStartRespV2
 // @Router /v2/job/reverse_start [post]
-func ReverseStartJobV2(c echo.Context) error {
+func ReverseStartJobV2(c echo.Context, filterJobType DtleJobType) error {
 	logger := handler.NewLogger().Named("ReverseStartJobV2")
 	reqParam := new(models.ReverseStartReqV2)
 	if err := handler.BindAndValidate(logger, c, reqParam); err != nil {
-		return err
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
+	}
+	if filterJobType != GetJobTypeFromJobId(reqParam.JobId) {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("only supports job of type %v", filterJobType)))
 	}
 	err := checkJobAccess(c, reqParam.JobId)
 	if err != nil {
@@ -1372,7 +1563,7 @@ func ReverseStartJobV2(c echo.Context) error {
 	}
 
 	// get wait on job from current job detail info
-	_, nomadJob, allocations, err := getJobDetailFromNomad(logger, reqParam.JobId, getJobTypeFromJobId(reqParam.JobId))
+	_, nomadJob, allocations, err := getJobDetailFromNomad(logger, reqParam.JobId, GetJobTypeFromJobId(reqParam.JobId))
 	if nil != err {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
 	}
@@ -1429,20 +1620,39 @@ func ReverseStartJobV2(c echo.Context) error {
 	})
 }
 
-// @Id ReverseJobV2
-// @Description returnJob
+// @Id ReverseMigrationJobV2
+// @Description reverse migration Job
 // @Tags job
 // @Accept application/json
 // @Security ApiKeyAuth
 // @Param reverse_config body models.ReverseJobReq true "reverse config config"
 // @Success 200 {object} models.ReverseJobResp
-// @Router /v2/job/reverse [post]
-func ReverseJobV2(c echo.Context) error {
+// @Router /v2/job/migration/reverse [post]
+func ReverseMigrationJobV2(c echo.Context) error {
+	return ReverseJobV2(c, DtleJobTypeMigration)
+}
+
+// @Id ReverseSyncJobV2
+// @Description reverse sync Job
+// @Tags job
+// @Accept application/json
+// @Security ApiKeyAuth
+// @Param reverse_config body models.ReverseJobReq true "reverse config config"
+// @Success 200 {object} models.ReverseJobResp
+// @Router /v2/job/sync/reverse [post]
+func ReverseSyncJobV2(c echo.Context) error {
+	return ReverseJobV2(c, DtleJobTypeSync)
+}
+
+func ReverseJobV2(c echo.Context, filterJobType DtleJobType) error {
 	logger := handler.NewLogger().Named("ReverseJobV2")
 
 	reqParam := new(models.ReverseJobReq)
 	if err := handler.BindAndValidate(logger, c, reqParam); err != nil {
-		return err
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
+	}
+	if GetJobTypeFromJobId(reqParam.JobId) != filterJobType {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("cannot operate job of type %v", filterJobType)))
 	}
 	err := checkJobAccess(c, reqParam.JobId)
 	if err != nil {
@@ -1459,7 +1669,7 @@ func ReverseJobV2(c echo.Context) error {
 	}
 
 	// job name
-	jobType := getJobTypeFromJobId(consulJobItem.JobId)
+	jobType := GetJobTypeFromJobId(consulJobItem.JobId)
 	switch jobType {
 	case DtleJobTypeMigration, DtleJobTypeSync:
 		originalJob, err := getMysqlToMysqlJobDetail(logger, consulJobItem.JobId, jobType)
@@ -1571,12 +1781,15 @@ func checkJobAccess(c echo.Context, jobId string) error {
 	return nil
 }
 
-func checkUpdateJobInfo(c echo.Context, jobId string) error {
+func checkUpdateJobInfo(c echo.Context, jobId string, create bool) error {
 	logger := handler.NewLogger().Named("checkUpdateJobInfo")
 	logger.Info("start checkUpdateJobInfo")
 	storeManager, err := common.NewStoreManager([]string{handler.ConsulAddr}, logger)
 	if err != nil {
 		return fmt.Errorf("consul_addr=%v; connect to consul failed: %v", handler.ConsulAddr, err)
+	}
+	if storeManager.CheckJobExists(jobId) == create {
+		return fmt.Errorf("please confirm whether the job [ %v ] already exists", jobId)
 	}
 	jobInfo, err := storeManager.GetJobInfo(jobId)
 	if nil != err {

@@ -82,26 +82,42 @@ func SetupApiServer(logger hclog.Logger, driverConfig *mysql.DriverConfig) (err 
 	v2Router.Use(JWTTokenAdapter(), middleware.JWT([]byte(common.JWTSecret)), AuthFilter())
 	e.POST("/v2/login", v2.LoginV2)
 	e.POST("/v2/login/captcha", v2.CaptchaV2)
-	v2Router.POST("/log/level", v2.UpdateLogLevelV2, AdminUserAllowed())
-	v2Router.GET("/jobs", v2.JobListV2)
+	e.GET("/v2/monitor/task", v2.GetTaskProgressV2)
+	v2Router.POST("/log/level", v2.UpdateLogLevelV2)
+	v2Router.GET("/jobs/migration", v2.MigrationJobListV2)
 	v2Router.GET("/job/migration/detail", v2.GetMigrationJobDetailV2)
-	v2Router.POST("/job/migration", v2.CreateOrUpdateMigrationJobV2)
+	v2Router.POST("/job/migration/create", v2.CreateMigrationJobV2)
+	v2Router.POST("/job/migration/update", v2.UpdateMigrationJobV2)
+	v2Router.POST("/job/migration/reverse", v2.ReverseMigrationJobV2)
+	v2Router.POST("/job/migration/pause", v2.PauseMigrationJobV2)
+	v2Router.POST("/job/migration/resume", v2.ResumeMigrationJobV2)
+	v2Router.POST("/job/migration/delete", v2.DeleteMigrationJobV2)
+	v2Router.POST("/job/migration/reverse_start", v2.ReverseStartMigrationJobV2)
+
+	v2Router.GET("/jobs/sync", v2.SyncJobListV2)
 	v2Router.GET("/job/sync/detail", v2.GetSyncJobDetailV2)
-	v2Router.POST("/job/sync", v2.CreateOrUpdateSyncJobV2)
+	v2Router.POST("/job/sync/create", v2.CreateSyncJobV2)
+	v2Router.POST("/job/sync/update", v2.UpdateSyncJobV2)
+	v2Router.POST("/job/sync/reverse", v2.ReverseSyncJobV2)
+	v2Router.POST("/job/sync/pause", v2.PauseSyncJobV2)
+	v2Router.POST("/job/sync/resume", v2.ResumeSyncJobV2)
+	v2Router.POST("/job/sync/delete", v2.DeleteSyncJobV2)
+	v2Router.POST("/job/sync/reverse_start", v2.ReverseStartSyncJobV2)
+
+	v2Router.GET("/jobs/subscription", v2.SubscriptionJobListV2)
 	v2Router.GET("/job/subscription/detail", v2.GetSubscriptionJobDetailV2)
-	v2Router.POST("/job/subscription", v2.CreateOrUpdateSubscriptionJobV2)
-	v2Router.POST("/job/pause", v2.PauseJobV2)
-	v2Router.POST("/job/resume", v2.ResumeJobV2)
-	v2Router.POST("/job/delete", v2.DeleteJobV2)
+	v2Router.POST("/job/subscription/create", v2.CreateSubscriptionJobV2)
+	v2Router.POST("/job/subscription/update", v2.UpdateSubscriptionJobV2)
+	v2Router.POST("/job/subscription/pause", v2.PauseSubscriptionJobV2)
+	v2Router.POST("/job/subscription/resume", v2.ResumeSubscriptionJobV2)
+	v2Router.POST("/job/subscription/delete", v2.DeleteSubscriptionJobV2)
+
 	v2Router.GET("/nodes", v2.NodeListV2)
 	v2Router.POST("/validation/job", v2.ValidateJobV2)
 	v2Router.GET("/mysql/schemas", v2.ListMysqlSchemasV2)
 	v2Router.GET("/mysql/columns", v2.ListMysqlColumnsV2)
 	v2Router.GET("/mysql/instance_connection", v2.ConnectionV2)
-	v2Router.GET("/monitor/task", v2.GetTaskProgressV2)
 	v2Router.GET("/job/gtid", v2.GetJobGtidV2)
-	v2Router.POST("/job/reverse_start", v2.ReverseStartJobV2)
-	v2Router.POST("/job/reverse", v2.ReverseJobV2)
 	v2Router.GET("/user/list", v2.UserListV2)
 	v2Router.POST("/user/create", v2.CreateUserV2)
 	v2Router.POST("/user/update", v2.UpdateUserV2)
@@ -111,9 +127,9 @@ func SetupApiServer(logger hclog.Logger, driverConfig *mysql.DriverConfig) (err 
 	v2Router.GET("/user/current_user", v2.GetCurrentUserV2)
 	v2Router.GET("/user/list_action", v2.ListActionV2)
 	v2Router.GET("/role/list", v2.RoleListV2)
-	v2Router.POST("/role/create", v2.CreateRoleV2, AdminUserAllowed())
-	v2Router.POST("/role/delete", v2.DeleteRoleV2, AdminUserAllowed())
-	v2Router.POST("/role/update", v2.UpdateRoleV2, AdminUserAllowed())
+	v2Router.POST("/role/create", v2.CreateRoleV2)
+	v2Router.POST("/role/delete", v2.DeleteRoleV2)
+	v2Router.POST("/role/update", v2.UpdateRoleV2)
 
 	// for pprof
 	e.GET("/debug/pprof/*", echo.WrapHandler(http.DefaultServeMux))
@@ -184,6 +200,9 @@ func JWTTokenAdapter() echo.MiddlewareFunc {
 func AuthFilter() echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
+			if inWhiteList(c.Request().URL.Path) {
+				return next(c)
+			}
 			logger := handler.NewLogger().Named("AuthFilter")
 			storeManager, err := common.NewStoreManager([]string{handler.ConsulAddr}, logger)
 			if err != nil {
@@ -202,14 +221,14 @@ func AuthFilter() echo.MiddlewareFunc {
 			if err != nil || !exists {
 				return echo.NewHTTPError(http.StatusForbidden)
 			}
-			authority := make(map[string][]models.ActionItem, 0)
+			authority := make([]models.MenuItem, 0)
 			err = json.Unmarshal([]byte(role.Authority), &authority)
 			if err != nil {
-				return echo.NewHTTPError(http.StatusForbidden, "please check your authority")
+				return echo.NewHTTPError(http.StatusForbidden, fmt.Sprintf("check your authority fail : %v", err))
 			}
-			for _, actionItems := range authority {
-				for _, item := range actionItems {
-					if c.Request().URL.Path == item.Uri {
+			for _, menuItem := range authority {
+				for _, buttonItem := range menuItem.Operations {
+					if c.Request().URL.Path == buttonItem.Uri {
 						return next(c)
 					}
 				}
@@ -219,25 +238,25 @@ func AuthFilter() echo.MiddlewareFunc {
 	}
 }
 
-//AdminUserAllowed is a `echo` middleware, only allow admin user to access next.
-func AdminUserAllowed() echo.MiddlewareFunc {
-	return func(next echo.HandlerFunc) echo.HandlerFunc {
-		return func(c echo.Context) error {
-			logger := handler.NewLogger().Named("ResumeJobV2")
-			tenant, user := v2.GetUserName(c)
-			storeManager, err := common.NewStoreManager([]string{handler.ConsulAddr}, logger)
-			if err != nil {
-				return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("consul_addr=%v; connect to consul failed: %v", handler.ConsulAddr, err)))
-			}
-			role, _, _ := storeManager.GetRole(tenant, user)
-			if role != nil && role.Name == common.DefaultAdminUser {
-				return next(c)
-			}
-			return echo.NewHTTPError(http.StatusForbidden)
-		}
-	}
+var whiteList = []string{
+	"/v2/nodes",
+	"/v2/validation/job",
+	"/v2/mysql/schemas",
+	"/v2/mysql/columns",
+	"/v2/mysql/instance_connection",
+	"/v2/job/gtid",
+	"/v2/user/list_action",
+	"/v2/user/current_user",
 }
 
+func inWhiteList(uri string) bool {
+	for _, whiteUri := range whiteList {
+		if uri == whiteUri {
+			return true
+		}
+	}
+	return false
+}
 func init() {
 	middleware.ErrJWTMissing.Code = http.StatusUnauthorized
 	middleware.ErrJWTMissing.Message = "permission denied,please login again!"

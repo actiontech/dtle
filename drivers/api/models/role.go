@@ -43,8 +43,21 @@ type DeleteRoleReqV2 struct {
 type DeleteRoleRespV2 struct {
 	BaseResp
 }
+type MenuItem struct {
+	Name       string       `json:"name"`
+	TextCn     string       `json:"text_cn"`
+	TextEn     string       `json:"text_en"`
+	MenuLevel  int          `json:"menu_level"`
+	MenuUrl    string       `json:"menu_url"`
+	Id         int          `json:"id"`
+	ParentId   int          `json:"parent_id"`
+	Operations []ButtonItem `json:"operations"`
+	AdminOnly  bool         `json:"admin_only"`
+}
 
-type ActionItem struct {
+type ButtonItem struct {
 	Action string `json:"action"`
 	Uri    string `json:"uri"`
+	TextCn string `json:"text_cn"`
+	TextEn string `json:"text_en"`
 }
