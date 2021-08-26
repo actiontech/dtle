@@ -350,42 +350,6 @@
                 }
             }
         },
-        "/v2/job/subscription": {
-            "post": {
-                "security": [
-                    {
-                        "ApiKeyAuth": []
-                    }
-                ],
-                "description": "create or update subscription job.",
-                "consumes": [
-                    "application/json"
-                ],
-                "tags": [
-                    "job"
-                ],
-                "operationId": "CreateOrUpdateSubscriptionJobV2",
-                "parameters": [
-                    {
-                        "description": "subscription job config",
-                        "name": "subscription_job_config",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/models.CreateOrUpdateMysqlToKafkaJobParamV2"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/models.CreateOrUpdateMysqlToKafkaJobRespV2"
-                        }
-                    }
-                }
-            }
-        },
         "/v2/job/subscription/create": {
             "post": {
                 "security": [
@@ -550,6 +514,42 @@
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/models.ResumeJobRespV2"
+                        }
+                    }
+                }
+            }
+        },
+        "/v2/job/subscription/update": {
+            "post": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "update subscription job.",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "job"
+                ],
+                "operationId": "CreateOrUpdateSubscriptionJobV2",
+                "parameters": [
+                    {
+                        "description": "subscription job config",
+                        "name": "subscription_job_config",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.CreateOrUpdateMysqlToKafkaJobParamV2"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.CreateOrUpdateMysqlToKafkaJobRespV2"
                         }
                     }
                 }
@@ -2004,6 +2004,9 @@
             "properties": {
                 "dst_data_base": {
                     "$ref": "#/definitions/models.MysqlConnectionConfig"
+                },
+                "dst_kafka": {
+                    "$ref": "#/definitions/models.KafkaDestTaskConfig"
                 },
                 "src_data_base": {
                     "$ref": "#/definitions/models.MysqlConnectionConfig"
