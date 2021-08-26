@@ -47,6 +47,7 @@ type DataBase struct {
 type ConnectionInfo struct {
 	SrcDataBase MysqlConnectionConfig `json:"src_data_base"`
 	DstDataBase MysqlConnectionConfig `json:"dst_data_base"`
+	DstKafka    KafkaDestTaskConfig   `json:"dst_kafka"`
 }
 
 type Configuration struct {

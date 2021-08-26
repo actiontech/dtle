@@ -189,7 +189,10 @@ func CreateOrUpdateMigrationJobV2(c echo.Context, create bool) error {
 	if err := handler.BindAndValidate(logger, c, reqParam); err != nil {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
 	}
-
+	// create need add job type
+	if create {
+		reqParam.JobId = addJobTypeToJobId(reqParam.JobId, DtleJobTypeMigration)
+	}
 	if err := checkUpdateJobInfo(c, reqParam.JobId, create); err != nil {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
 	}
@@ -671,11 +674,12 @@ func buildBasicTaskProfile(logger hclog.Logger, jobId string, srcTaskDetail *mod
 		}
 	}
 	if destKafkaTaskDetail != nil {
+		basicTaskProfile.ConnectionInfo.DstKafka = destKafkaTaskDetail.TaskConfig
 		for _, destAllocation := range destKafkaTaskDetail.Allocations {
 			dtleNode := models.DtleNodeInfo{
 				NodeId:     destAllocation.NodeId,
 				NodeAddr:   nodeId2Addr[destAllocation.NodeId],
-				DataSource: fmt.Sprintf("%s", destKafkaTaskDetail.TaskConfig.BrokerAddrs),
+				DataSource: strings.Join(destKafkaTaskDetail.TaskConfig.BrokerAddrs, ","),
 				Source:     "dst",
 			}
 			if _, ok := dtleNodeInfosMap[fmt.Sprintf("%s:%s", dtleNode.NodeId, dtleNode.DataSource)]; !ok {
@@ -882,6 +886,10 @@ func CreateOrUpdateSyncJobV2(c echo.Context, create bool) error {
 	if err := handler.BindAndValidate(logger, c, jobParam); err != nil {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
 	}
+	// create need add job type
+	if create {
+		jobParam.JobId = addJobTypeToJobId(jobParam.JobId, DtleJobTypeSync)
+	}
 	if err := checkUpdateJobInfo(c, jobParam.JobId, create); err != nil {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
 	}
@@ -946,13 +954,13 @@ func CreateSubscriptionJobV2(c echo.Context) error {
 }
 
 // @Id CreateOrUpdateSubscriptionJobV2
-// @Description create or update subscription job.
+// @Description update subscription job.
 // @Tags job
 // @Accept application/json
 // @Security ApiKeyAuth
 // @Param subscription_job_config body models.CreateOrUpdateMysqlToKafkaJobParamV2 true "subscription job config"
 // @Success 200 {object} models.CreateOrUpdateMysqlToKafkaJobRespV2
-// @Router /v2/job/subscription [post]
+// @Router /v2/job/subscription/update [post]
 func UpdateSubscriptionJobV2(c echo.Context) error {
 	logger := handler.NewLogger().Named("UpdateSubscriptionJobV2")
 	return createOrUpdateMysqlToKafkaJob(c, logger, DtleJobTypeSubscription, false)
@@ -967,6 +975,10 @@ func createOrUpdateMysqlToKafkaJob(c echo.Context, logger hclog.Logger, jobType 
 
 	if err := checkUpdateJobInfo(c, jobParam.JobId, create); err != nil {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
+	}
+	// create need add job type
+	if create {
+		jobParam.JobId = addJobTypeToJobId(jobParam.JobId, jobType)
 	}
 
 	failover := g.PtrToBool(jobParam.Failover, true)
@@ -999,7 +1011,6 @@ func createOrUpdateMysqlToKafkaJob(c echo.Context, logger hclog.Logger, jobType 
 		jobParam.DestTask.MessageGroupTimeout = common.DefaultKafkaMessageGroupTimeout
 	}
 
-	jobParam.JobId = addJobTypeToJobId(jobParam.JobId, jobType)
 	nomadJob, err := convertMysqlToKafkaJobToNomadJob(failover, jobParam)
 	if nil != err {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("convert job param to nomad job request failed, error: %v", err)))
@@ -1109,6 +1120,7 @@ func GetSubscriptionJobDetailV2(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("build job basic task profile failed: %v", err)))
 	}
 	basicTaskProfile.Configuration.FailOver = failover
+	basicTaskProfile.ConnectionInfo.SrcDataBase.MysqlPassword = "*"
 	if len(nomadJob.TaskGroups) != 0 {
 		basicTaskProfile.Configuration.RetryTimes = *nomadJob.TaskGroups[0].RestartPolicy.Attempts
 	}
