@@ -240,17 +240,22 @@ func ResetPasswordV2(c echo.Context) error {
 	if !exist {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("user does not exist")))
 	}
-	if err := ValidatePassword(blackListKey, user.Password, reqParam.OldPassWord); err != nil {
+
+	currentUser, err := getCurrentUser(c)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
+	}
+	if err := ValidatePassword(blackListKey, currentUser.Password, reqParam.CurrentUserPassword); err != nil {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
 	}
 
-	user.Password = reqParam.PassWord
+	user.Password = reqParam.Password
 	if !VerifyPassword(user.Password) {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("password does not meet the rules")))
 	}
 	if err := storeManager.SaveUser(user); nil != err {
 		return c.JSON(http.StatusInternalServerError,
-			models.BuildBaseResp(fmt.Errorf("delete metadata of user[userName=%v,Tenant=%v] from consul failed: %v", reqParam.Username, reqParam.Tenant, err)))
+			models.BuildBaseResp(fmt.Errorf("save metadata of user[userName=%v,Tenant=%v] from consul failed: %v", reqParam.Username, reqParam.Tenant, err)))
 	}
 
 	return c.JSON(http.StatusOK, models.ResetPasswordRespV2{BaseResp: models.BuildBaseResp(nil)})
