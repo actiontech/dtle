@@ -247,6 +247,7 @@ var whiteList = []string{
 	"/v2/job/gtid",
 	"/v2/user/list_action",
 	"/v2/user/current_user",
+	"/v2/user/reset_password",
 }
 
 func inWhiteList(uri string) bool {

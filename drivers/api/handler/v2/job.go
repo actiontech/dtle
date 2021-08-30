@@ -201,7 +201,7 @@ func CreateOrUpdateMigrationJobV2(c echo.Context, create bool) error {
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
 	}
-	resp, err := createOrUpdateMysqlToMysqlJob(logger, reqParam, user, DtleJobTypeMigration)
+	resp, err := createOrUpdateMysqlToMysqlJob(logger, reqParam, user)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
 	}
@@ -233,7 +233,7 @@ func UpdateMigrationJobV2(c echo.Context) error {
 }
 
 func createOrUpdateMysqlToMysqlJob(logger hclog.Logger, jobParam *models.CreateOrUpdateMysqlToMysqlJobParamV2,
-	user *common.User, jobType DtleJobType) (*models.CreateOrUpdateMysqlToMysqlJobRespV2, error) {
+	user *common.User) (*models.CreateOrUpdateMysqlToMysqlJobRespV2, error) {
 
 	failover := g.PtrToBool(jobParam.Failover, true)
 	if jobParam.IsMysqlPasswordEncrypted {
@@ -267,7 +267,6 @@ func createOrUpdateMysqlToMysqlJob(logger hclog.Logger, jobParam *models.CreateO
 		jobParam.SrcTask.GroupTimeout = common.DefaultSrcGroupTimeout
 	}
 
-	jobParam.JobId = addJobTypeToJobId(jobParam.JobId, jobType)
 	nomadJob, err := convertMysqlToMysqlJobToNomadJob(failover, jobParam)
 	if nil != err {
 		return nil, fmt.Errorf("convert job param to nomad job request failed, error: %v", err)
@@ -897,7 +896,7 @@ func CreateOrUpdateSyncJobV2(c echo.Context, create bool) error {
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
 	}
-	resp, err := createOrUpdateMysqlToMysqlJob(logger, jobParam, user, DtleJobTypeSync)
+	resp, err := createOrUpdateMysqlToMysqlJob(logger, jobParam, user)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
 	}
@@ -1690,7 +1689,7 @@ func ReverseJobV2(c echo.Context, filterJobType DtleJobType) error {
 		}
 
 		reverseJobParam := new(models.CreateOrUpdateMysqlToMysqlJobParamV2)
-		reverseJobParam.JobId = fmt.Sprintf("%s-%s", "reverse", strings.Replace(consulJobItem.JobId, fmt.Sprintf("-%s", jobType), "", -1))
+		reverseJobParam.JobId = fmt.Sprintf("%s-%s", "reverse", consulJobItem.JobId)
 		reverseJobParam.TaskStepName = mysql.JobIncrCopy
 		reverseJobParam.Failover = &originalJob.BasicTaskProfile.Configuration.FailOver
 		reverseJobParam.Reverse = true
@@ -1758,7 +1757,7 @@ func ReverseJobV2(c echo.Context, filterJobType DtleJobType) error {
 		if err != nil {
 			return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
 		}
-		_, err = createOrUpdateMysqlToMysqlJob(logger, reverseJobParam, user, jobType)
+		_, err = createOrUpdateMysqlToMysqlJob(logger, reverseJobParam, user)
 		if err != nil {
 			return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
 		}

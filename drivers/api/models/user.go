@@ -41,10 +41,10 @@ type UpdateUserRespV2 struct {
 }
 
 type ResetPasswordReqV2 struct {
-	Username    string `json:"username" validate:"required"`
-	Tenant      string `json:"tenant" validate:"required"`
-	PassWord    string `json:"pass_word"`
-	OldPassWord string `json:"old_pass_word"`
+	Username            string `json:"username" validate:"required"`
+	Tenant              string `json:"tenant" validate:"required"`
+	Password            string `json:"password" validate:"required"`
+	CurrentUserPassword string `json:"current_user_password" validate:"required"`
 }
 
 type ResetPasswordRespV2 struct {
