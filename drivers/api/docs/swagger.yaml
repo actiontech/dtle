@@ -692,15 +692,17 @@ definitions:
     type: object
   models.ResetPasswordReqV2:
     properties:
-      old_pass_word:
+      current_user_password:
         type: string
-      pass_word:
+      password:
         type: string
       tenant:
         type: string
       username:
         type: string
     required:
+    - current_user_password
+    - password
     - tenant
     - username
     type: object
