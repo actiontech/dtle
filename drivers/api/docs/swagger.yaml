@@ -134,6 +134,8 @@ definitions:
         type: boolean
       chunk_size:
         type: integer
+      dependency_history_size:
+        type: integer
       drop_table_if_exists:
         type: boolean
       fail_over:
@@ -149,6 +151,8 @@ definitions:
       retry_times:
         type: integer
       skip_create_db_table:
+        type: boolean
+      use_my_sql_dependency:
         type: boolean
     type: object
   models.ConnectionInfo:
@@ -536,6 +540,8 @@ definitions:
     type: object
   models.MysqlDestTaskConfig:
     properties:
+      dependency_history_size:
+        type: integer
       mysql_connection_config:
         $ref: '#/definitions/models.MysqlConnectionConfig'
       node_id:
@@ -544,6 +550,8 @@ definitions:
         type: integer
       task_name:
         type: string
+      use_my_sql_dependency:
+        type: boolean
     required:
     - mysql_connection_config
     - task_name

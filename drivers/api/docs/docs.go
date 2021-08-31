@@ -1989,6 +1989,9 @@ var doc = `{
                 "chunk_size": {
                     "type": "integer"
                 },
+                "dependency_history_size": {
+                    "type": "integer"
+                },
                 "drop_table_if_exists": {
                     "type": "boolean"
                 },
@@ -2011,6 +2014,9 @@ var doc = `{
                     "type": "integer"
                 },
                 "skip_create_db_table": {
+                    "type": "boolean"
+                },
+                "use_my_sql_dependency": {
                     "type": "boolean"
                 }
             }
@@ -2600,6 +2606,9 @@ var doc = `{
                 "task_name"
             ],
             "properties": {
+                "dependency_history_size": {
+                    "type": "integer"
+                },
                 "mysql_connection_config": {
                     "$ref": "#/definitions/models.MysqlConnectionConfig"
                 },
@@ -2611,6 +2620,9 @@ var doc = `{
                 },
                 "task_name": {
                     "type": "string"
+                },
+                "use_my_sql_dependency": {
+                    "type": "boolean"
                 }
             }
         },

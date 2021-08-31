@@ -266,6 +266,9 @@ func createOrUpdateMysqlToMysqlJob(logger hclog.Logger, jobParam *models.CreateO
 	if jobParam.SrcTask.GroupTimeout == 0 {
 		jobParam.SrcTask.GroupTimeout = common.DefaultSrcGroupTimeout
 	}
+	if !jobParam.DestTask.UseMySQLDependency && jobParam.DestTask.DependencyHistorySize == 0 {
+		jobParam.DestTask.DependencyHistorySize = common.DefaultDependencyHistorySize
+	}
 
 	nomadJob, err := convertMysqlToMysqlJobToNomadJob(failover, jobParam)
 	if nil != err {
@@ -441,6 +444,8 @@ func buildMysqlDestTaskConfigMap(config *models.MysqlDestTaskConfig) map[string]
 	taskConfigInNomadFormat := make(map[string]interface{})
 
 	addNotRequiredParamToMap(taskConfigInNomadFormat, config.ParallelWorkers, "ParallelWorkers")
+	addNotRequiredParamToMap(taskConfigInNomadFormat, config.UseMySQLDependency, "UseMySQLDependency")
+	addNotRequiredParamToMap(taskConfigInNomadFormat, config.DependencyHistorySize, "DependencyHistorySize")
 	taskConfigInNomadFormat["ConnectionConfig"] = buildMysqlConnectionConfigMap(config.MysqlConnectionConfig)
 
 	return taskConfigInNomadFormat
@@ -651,7 +656,8 @@ func buildBasicTaskProfile(logger hclog.Logger, jobId string, srcTaskDetail *mod
 	if destMySqlTaskDetail != nil {
 		basicTaskProfile.ConnectionInfo.DstDataBase = *destMySqlTaskDetail.TaskConfig.MysqlConnectionConfig
 		basicTaskProfile.Configuration.ParallelWorkers = destMySqlTaskDetail.TaskConfig.ParallelWorkers
-
+		basicTaskProfile.Configuration.UseMySQLDependency = destMySqlTaskDetail.TaskConfig.UseMySQLDependency
+		basicTaskProfile.Configuration.DependencyHistorySize = destMySqlTaskDetail.TaskConfig.DependencyHistorySize
 		for _, destAllocation := range destMySqlTaskDetail.Allocations {
 			dtleNode := models.DtleNodeInfo{
 				NodeId:   destAllocation.NodeId,
@@ -806,6 +812,8 @@ func buildMysqlDestTaskDetail(taskName string, internalTaskConfig common.DtleTas
 			MysqlUser:     internalTaskConfig.ConnectionConfig.User,
 			MysqlPassword: internalTaskConfig.ConnectionConfig.Password,
 		},
+		UseMySQLDependency:    internalTaskConfig.UseMySQLDependency,
+		DependencyHistorySize: internalTaskConfig.DependencyHistorySize,
 	}
 
 	allocs := []models.AllocationDetail{}
@@ -1712,6 +1720,8 @@ func ReverseJobV2(c echo.Context, filterJobType DtleJobType) error {
 			TaskName:              "dest",
 			ParallelWorkers:       originalJob.BasicTaskProfile.Configuration.ParallelWorkers,
 			MysqlConnectionConfig: &originalJob.BasicTaskProfile.ConnectionInfo.SrcDataBase,
+			DependencyHistorySize: originalJob.BasicTaskProfile.Configuration.DependencyHistorySize,
+			UseMySQLDependency:    originalJob.BasicTaskProfile.Configuration.UseMySQLDependency,
 		}
 
 		// the node must be bound to a fixed data source
