@@ -2834,14 +2834,16 @@ var doc = `{
         "models.ResetPasswordReqV2": {
             "type": "object",
             "required": [
+                "current_user_password",
+                "password",
                 "tenant",
                 "username"
             ],
             "properties": {
-                "old_pass_word": {
+                "current_user_password": {
                     "type": "string"
                 },
-                "pass_word": {
+                "password": {
                     "type": "string"
                 },
                 "tenant": {
