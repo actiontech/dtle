@@ -4,8 +4,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"path"
+	"path/filepath"
 	"strings"
+
+	report "github.com/actiontech/golang-live-coverage-report/pkg"
 
 	"github.com/actiontech/dtle/drivers/mysql"
 
@@ -131,6 +135,18 @@ func SetupApiServer(logger hclog.Logger, driverConfig *mysql.DriverConfig) (err 
 	v2Router.POST("/role/delete", v2.DeleteRoleV2)
 	v2Router.POST("/role/update", v2.UpdateRoleV2)
 
+	// for coverage report
+	e.GET("/coverage_report", echo.WrapHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		dir, err := filepath.Abs(filepath.Dir(os.Args[0]))
+		if err != nil {
+			logger.Error("get current path err", "err :", err)
+		}
+		coverageReportRawCodeDir := strings.Replace(dir, "\\", "/", -1)
+		err = report.GenerateHtmlReport2(w, coverageReportRawCodeDir)
+		if nil != err {
+			logger.Error("generate failed ", "err : ", err)
+		}
+	})))
 	// for pprof
 	e.GET("/debug/pprof/*", echo.WrapHandler(http.DefaultServeMux))
 	e.Validator = handler.NewValidator()
