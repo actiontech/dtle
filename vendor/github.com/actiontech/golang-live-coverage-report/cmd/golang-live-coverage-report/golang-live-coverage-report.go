@@ -250,7 +250,7 @@ var bootstrapGolangCodeTpl = template.Must(
 var bootstrapGolangCodeTplText = `package {{.PackageName}}
 
 import (
-	report "github.com/ikarishinjieva/golang-live-coverage-report/pkg"
+	report "github.com/actiontech/golang-live-coverage-report/pkg"
 	{{range $i, $f := .ImportLines}}
 	{{$f}}
 	{{end}}
