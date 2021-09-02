@@ -80,6 +80,8 @@ github.com/abdullin/seq v0.0.0-20160510034733-d5467c17e7af/go.mod h1:5Jv4cbFiHJM
 github.com/actiontech/dm v0.0.0-20181026023605-64b8d8152b3b/go.mod h1:6Asuw82iAuvtRRUZxpl0I20eKcRU8JP0MCb/WywKTlc=
 github.com/actiontech/dm v0.0.0-20201207121004-64b8d8152b3b h1:hGfD95pt0awl0bjFBVYv3Zt/kuGRWcvYFpE3RWkoC3Q=
 github.com/actiontech/dm v0.0.0-20201207121004-64b8d8152b3b/go.mod h1:6Asuw82iAuvtRRUZxpl0I20eKcRU8JP0MCb/WywKTlc=
+github.com/actiontech/golang-live-coverage-report v0.0.0-20190317040040-52af5b19c76c h1:/we+ykaHak+le1vDZjOgTI/Ne5SzaTosI3WgNk5lJUA=
+github.com/actiontech/golang-live-coverage-report v0.0.0-20190317040040-52af5b19c76c/go.mod h1:HrlppUkZZFRbGKdtH3eN2RTzGioB0cf0QMTMg+Bm6Q8=
 github.com/actiontech/parser v0.0.0-20201207115816-0cae7fee60aa/go.mod h1:A4Fcg6z6UL4FQakfiLm22nkJg/DyiQWaIRPjnxLzLKw=
 github.com/actiontech/parser v0.0.0-20201207115816-f8da1b806e86 h1:vfQUhef/yUL2APUAhr2lODqql/CR7vtEelO2W3Brkwk=
 github.com/actiontech/parser v0.0.0-20201207115816-f8da1b806e86/go.mod h1:vQdbJqobJAgFyiRNNtXahpMoGWwPEuWciVEK5A20NS0=
@@ -307,6 +309,8 @@ github.com/ffffwh/go-mysql v0.0.0-20201125093656-67dc9957b4da h1:xRPnR5h12OGa4Gz
 github.com/ffffwh/go-mysql v0.0.0-20201125093656-67dc9957b4da/go.mod h1:+W4RCzesQDI11HvIkaDjS8yM36SpAnGNQ7jmTLn5BnU=
 github.com/ffffwh/qlbridge v0.0.0-20181026023605-fc2d5205 h1:FmRxc/ePtu+IAPDxRhHIOwzAbBRwIIcJHiC9ra6fraI=
 github.com/ffffwh/qlbridge v0.0.0-20181026023605-fc2d5205/go.mod h1:OcgDZHkJGBiiCpy241ZbouFjd+7oU9qUf7ZXbwBQMWE=
+github.com/ffffwh/qlbridge v0.0.0-20181026023605-fc2d5205dad3 h1:aQDDUNvnvhWw7pD8Bl33tBUAp5uDsFSPPMXijWr5fI0=
+github.com/ffffwh/qlbridge v0.0.0-20181026023605-fc2d5205dad3/go.mod h1:OcgDZHkJGBiiCpy241ZbouFjd+7oU9qUf7ZXbwBQMWE=
 github.com/fortytw2/leaktest v1.3.0 h1:u8491cBMTQ8ft8aeV+adlcytMZylmA5nnwwkRZjI8vw=
 github.com/fortytw2/leaktest v1.3.0/go.mod h1:jDsjWgpAGjm2CA7WthBh/CdZYEPF31XHquHwclZch5g=
 github.com/frankban/quicktest v1.4.0/go.mod h1:36zfPVQyHxymz4cH7wlDmVwDrJuljRB60qkgn7rorfQ=

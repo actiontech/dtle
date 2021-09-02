@@ -6,6 +6,7 @@ require (
 	github.com/LK4D4/joincontext v0.0.0-20171026170139-1724345da6d5 // indirect
 	github.com/NYTimes/gziphandler v1.1.1 // indirect
 	github.com/Shopify/sarama v1.26.4
+	github.com/actiontech/golang-live-coverage-report v0.0.0-20190317040040-52af5b19c76c
 	github.com/alecthomas/template v0.0.0-20190718012654-fb15b899a751
 	github.com/araddon/dateparse v0.0.0-20190622164848-0fb0a474d195 // indirect
 	github.com/araddon/gou v0.0.0-20190110011759-c797efecbb61 // indirect
@@ -28,7 +29,6 @@ require (
 	github.com/hashicorp/hcl2 v0.0.0-20191002203319-fb75b3253c80 // indirect
 	github.com/hashicorp/nomad v1.1.2
 	github.com/hashicorp/nomad/api v0.0.0-20200529203653-c4416b26d3eb
-	github.com/ikarishinjieva/golang-live-coverage-report v0.0.0-20190317040040-52af5b19c76c
 	github.com/issuj/gofaster v0.0.0-20170702192727-b08f1666d622 // indirect
 	github.com/julienschmidt/httprouter v1.2.0
 	github.com/labstack/echo/v4 v4.2.1
@@ -68,7 +68,7 @@ replace github.com/siddontang/go-mysql => github.com/ffffwh/go-mysql v0.0.0-2020
 
 //replace github.com/Sirupsen/logrus => github.com/sirupsen/logrus v1.4.2
 
-replace github.com/araddon/qlbridge => github.com/ffffwh/qlbridge v0.0.0-20181026023605-fc2d5205
+replace github.com/araddon/qlbridge => github.com/ffffwh/qlbridge v0.0.0-20181026023605-fc2d5205dad3
 
 replace github.com/pingcap/dm => github.com/actiontech/dm v0.0.0-20201207121004-64b8d8152b3b
 

@@ -12,6 +12,8 @@ github.com/PuerkitoBio/urlesc
 github.com/Shopify/sarama
 # github.com/StackExchange/wmi v0.0.0-20190523213315-cbe66965904d
 github.com/StackExchange/wmi
+# github.com/actiontech/golang-live-coverage-report v0.0.0-20190317040040-52af5b19c76c
+github.com/actiontech/golang-live-coverage-report/cmd/golang-live-coverage-report
 # github.com/alecthomas/template v0.0.0-20190718012654-fb15b899a751
 github.com/alecthomas/template
 github.com/alecthomas/template/parse
@@ -19,7 +21,7 @@ github.com/alecthomas/template/parse
 github.com/araddon/dateparse
 # github.com/araddon/gou v0.0.0-20190110011759-c797efecbb61
 github.com/araddon/gou
-# github.com/araddon/qlbridge v0.0.0-00010101000000-000000000000 => github.com/ffffwh/qlbridge v0.0.0-20181026023605-fc2d5205
+# github.com/araddon/qlbridge v0.0.0-00010101000000-000000000000 => github.com/ffffwh/qlbridge v0.0.0-20181026023605-fc2d5205dad3
 github.com/araddon/qlbridge/datasource
 github.com/araddon/qlbridge/expr
 github.com/araddon/qlbridge/lex
@@ -216,8 +218,6 @@ github.com/hashicorp/yamux
 # github.com/hpcloud/tail v1.0.1-0.20170814160653-37f427138745
 github.com/hpcloud/tail/util
 github.com/hpcloud/tail/watch
-# github.com/ikarishinjieva/golang-live-coverage-report v0.0.0-20190317040040-52af5b19c76c
-github.com/ikarishinjieva/golang-live-coverage-report/cmd/golang-live-coverage-report
 # github.com/jcmturner/gofork v1.0.0
 github.com/jcmturner/gofork/encoding/asn1
 github.com/jcmturner/gofork/x/crypto/pbkdf2
