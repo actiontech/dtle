@@ -6,7 +6,7 @@ require (
 	github.com/LK4D4/joincontext v0.0.0-20171026170139-1724345da6d5 // indirect
 	github.com/NYTimes/gziphandler v1.1.1 // indirect
 	github.com/Shopify/sarama v1.26.4
-	github.com/actiontech/golang-live-coverage-report v0.0.0-20190317040040-52af5b19c76c
+	github.com/actiontech/golang-live-coverage-report v0.0.0-20210902061359-f36dd8593d96
 	github.com/alecthomas/template v0.0.0-20190718012654-fb15b899a751
 	github.com/araddon/dateparse v0.0.0-20190622164848-0fb0a474d195 // indirect
 	github.com/araddon/gou v0.0.0-20190110011759-c797efecbb61 // indirect

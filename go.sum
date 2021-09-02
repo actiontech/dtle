@@ -82,6 +82,8 @@ github.com/actiontech/dm v0.0.0-20201207121004-64b8d8152b3b h1:hGfD95pt0awl0bjFB
 github.com/actiontech/dm v0.0.0-20201207121004-64b8d8152b3b/go.mod h1:6Asuw82iAuvtRRUZxpl0I20eKcRU8JP0MCb/WywKTlc=
 github.com/actiontech/golang-live-coverage-report v0.0.0-20190317040040-52af5b19c76c h1:/we+ykaHak+le1vDZjOgTI/Ne5SzaTosI3WgNk5lJUA=
 github.com/actiontech/golang-live-coverage-report v0.0.0-20190317040040-52af5b19c76c/go.mod h1:HrlppUkZZFRbGKdtH3eN2RTzGioB0cf0QMTMg+Bm6Q8=
+github.com/actiontech/golang-live-coverage-report v0.0.0-20210902061359-f36dd8593d96 h1:PuA/v6deTLo3qkTeS76X6sLqbVLdGGLJU0ndyxEJXYs=
+github.com/actiontech/golang-live-coverage-report v0.0.0-20210902061359-f36dd8593d96/go.mod h1:HrlppUkZZFRbGKdtH3eN2RTzGioB0cf0QMTMg+Bm6Q8=
 github.com/actiontech/parser v0.0.0-20201207115816-0cae7fee60aa/go.mod h1:A4Fcg6z6UL4FQakfiLm22nkJg/DyiQWaIRPjnxLzLKw=
 github.com/actiontech/parser v0.0.0-20201207115816-f8da1b806e86 h1:vfQUhef/yUL2APUAhr2lODqql/CR7vtEelO2W3Brkwk=
 github.com/actiontech/parser v0.0.0-20201207115816-f8da1b806e86/go.mod h1:vQdbJqobJAgFyiRNNtXahpMoGWwPEuWciVEK5A20NS0=
