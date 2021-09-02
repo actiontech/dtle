@@ -26,7 +26,7 @@ driver:
 -X github.com/actiontech/dtle/g.GitBranch=$(BRANCH)" \
 		./cmd/nomad-plugin/main.go
 
-build_with_coverage_report: build-coverage-report-tool coverage-report-pre-build build coverage-report-post-build
+build_with_coverage_report: build-coverage-report-tool coverage-report-pre-build package coverage-report-post-build
 
 build-coverage-report-tool:
 	GO111MODULE=on go install $(GOFLAGS) github.com/actiontech/dtle/vendor/github.com/actiontech/golang-live-coverage-report/cmd/golang-live-coverage-report
@@ -34,13 +34,13 @@ build-coverage-report-tool:
 coverage-report-pre-build:
 	PATH=${GOPATH}/bin:$$PATH golang-live-coverage-report \
 	    -pre-build -raw-code-build-dir ./coverage-report-raw-code -raw-code-deploy-dir ./coverage-report-raw-code \
-	    -bootstrap-outfile ./cmd/dtle/coverage_report_bootstrap.go -bootstrap-package-name main \
-	    ./agent ./api ./utils ./cmd/dtle/command ./internal ./internal/g  ./internal/logger ./internal/models  ./internal/server ./internal/server/scheduler ./internal/server/store ./internal/client/driver ./internal/client/driver/kafka3 ./internal/client/driver/mysql ./internal/client/driver/mysql/base ./internal/client/driver/mysql/binlog ./internal/client/driver/mysql/sql ./internal/client/driver/mysql/util ./internal/client/driver/mysql/sqle/g ./internal/client/driver/mysql/sqle/inspector
+	    -bootstrap-outfile ./drivers/api/coverage_report_bootstrap.go -bootstrap-package-name api \
+	   ./drivers/api ./drivers/api/handler ./drivers/api/handler/v1 ./drivers/api/handler/v2 ./drivers/api/models ./drivers/mysql ./drivers/mysql/common ./drivers/mysql/kafka ./drivers/mysql/mysql ./drivers/mysql/mysql/base ./drivers/mysql/mysql/binlog ./drivers/mysql/mysql/mysqlconfig ./drivers/mysql/mysql/sql ./drivers/mysql/mysql/sqle/g ./drivers/mysql/mysql/sqle/inspector ./drivers/mysql/mysql/util ./g
 
 coverage-report-post-build:
 	PATH=${GOPATH}/bin:$$PATH golang-live-coverage-report \
-	    -post-build -raw-code-build-dir ./coverage-report-raw-code -bootstrap-outfile ./cmd/dtle/coverage_report_bootstrap.go \
-	    ./agent ./api ./utils ./cmd/dtle/command  ./internal ./internal/g  ./internal/logger ./internal/models  ./internal/server ./internal/server/scheduler ./internal/server/store ./internal/client/driver ./internal/client/driver/kafka3 ./internal/client/driver/mysql ./internal/client/driver/mysql/base ./internal/client/driver/mysql/binlog ./internal/client/driver/mysql/sql ./internal/client/driver/mysql/util ./internal/client/driver/mysql/sqle/g ./internal/client/driver/mysql/sqle/inspector
+	    -post-build -raw-code-build-dir ./coverage-report-raw-code -bootstrap-outfile ./drivers/api/coverage_report_bootstrap.go \
+	    ./drivers/api ./drivers/api/handler ./drivers/api/handler/v1 ./drivers/api/handler/v2 ./drivers/api/models ./drivers/mysql ./drivers/mysql/common ./drivers/mysql/kafka ./drivers/mysql/mysql ./drivers/mysql/mysql/base ./drivers/mysql/mysql/binlog ./drivers/mysql/mysql/mysqlconfig ./drivers/mysql/mysql/sql ./drivers/mysql/mysql/sqle/g ./drivers/mysql/mysql/sqle/inspector ./drivers/mysql/mysql/util ./g
 
 package-common: driver
 	rm -rf dist/install
@@ -50,6 +50,7 @@ package-common: driver
 	cp -R etc dist/install/
 	-mkdir -p dist/install/usr/share/dtle/ui
 	-cp -R  ui dist/install/usr/share/dtle
+	-cp -R ./coverage-report-raw-code dist/install/usr/share/dtle/nomad-plugin/coverage-report-raw-code
 
 package: package-common
 	mkdir -p dist/install/usr/bin
@@ -88,8 +89,7 @@ docker_rpm:
 	$(DOCKER) run -v $(shell pwd)/:/universe/src/github.com/actiontech/dtle --rm -e PROJECT_NAME=$(PROJECT_NAME) $(DOCKER_IMAGE) -c "cd /universe/src/github.com/actiontech/dtle; GOPATH=/universe make RELEASE_FTPD_HOST=${RELEASE_FTPD_HOST} package ;chmod -R ugo+rw dist;"
 
 docker_rpm_with_coverage_report:
-	#$(DOCKER) run -v $(shell pwd)/:/universe/src/github.com/actiontech/dtle --rm $(DOCKER_IMAGE) -c "cd /universe/src/github.com/actiontech/dtle; GOPATH=/universe make prepare build-coverage-report-tool coverage-report-pre-build package coverage-report-post-build ;chmod -R ugo+rw dist;"
-	echo TODO
+	$(DOCKER) run -v $(shell pwd)/:/universe/src/github.com/actiontech/dtle --rm $(DOCKER_IMAGE) -c "cd /universe/src/github.com/actiontech/dtle; GOPATH=/universe make build_with_coverage_report ;chmod -R ugo+rw dist;"
 
 generate_swagger_docs:
 	swag init -g ./drivers/api/route.go -o ./drivers/api/docs
@@ -99,8 +99,8 @@ upload:
 	curl --ftp-create-dirs -T $(shell pwd)/dist/*.rpm.md5 ftp://${RELEASE_FTPD_HOST}/actiontech-${PROJECT_NAME}/qa/${VERSION}/${PROJECT_NAME}-${VERSION}.x86_64.rpm.md5
 
 upload_with_coverage_report:
-	#curl --ftp-create-dirs -T $(shell pwd)/dist/*.rpm ftp://${RELEASE_FTPD_HOST}/actiontech-${PROJECT_NAME}/qa/${VERSION}/${PROJECT_NAME}-${VERSION}-qa.coverage.x86_64.rpm
-	#curl --ftp-create-dirs -T $(shell pwd)/dist/*.rpm.md5 ftp://${RELEASE_FTPD_HOST}/actiontech-${PROJECT_NAME}/qa/${VERSION}/${PROJECT_NAME}-${VERSION}-qa.coverage.x86_64.rpm.md5
-	echo TODO
+	curl --ftp-create-dirs -T $(shell pwd)/dist/*.rpm ftp://${RELEASE_FTPD_HOST}/actiontech-${PROJECT_NAME}/qa/${VERSION}/${PROJECT_NAME}-${VERSION}.coverage.x86_64.rpm
+	curl --ftp-create-dirs -T $(shell pwd)/dist/*.rpm.md5 ftp://${RELEASE_FTPD_HOST}/actiontech-${PROJECT_NAME}/qa/${VERSION}/${PROJECT_NAME}-${VERSION}.coverage.x86_64.rpm.md5
+
 
 .PHONY: vet fmt build default driver

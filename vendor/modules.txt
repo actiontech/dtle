@@ -14,6 +14,7 @@ github.com/Shopify/sarama
 github.com/StackExchange/wmi
 # github.com/actiontech/golang-live-coverage-report v0.0.0-20210902074032-43aa91afdc2c
 github.com/actiontech/golang-live-coverage-report/cmd/golang-live-coverage-report
+github.com/actiontech/golang-live-coverage-report/pkg
 # github.com/alecthomas/template v0.0.0-20190718012654-fb15b899a751
 github.com/alecthomas/template
 github.com/alecthomas/template/parse
