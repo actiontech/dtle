@@ -184,7 +184,7 @@ func validateTaskConfig(apiSrcTask *models.MysqlSrcTaskConfig, apiDestTask *mode
 
 		validationRes.PrivilegesValidation = &models.PrivilegesValidation{Validated: true}
 		if err := destTaskInspector.ValidateGrants(); nil != err {
-			validationRes.ConnectionValidation.Error = err.Error()
+			validationRes.PrivilegesValidation.Error = err.Error()
 		}
 
 	endDestTaskValidation:

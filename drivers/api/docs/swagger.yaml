@@ -665,6 +665,8 @@ definitions:
     properties:
       datacenter:
         type: string
+      dtle_version:
+        type: string
       node_address:
         type: string
       node_id:
@@ -674,6 +676,8 @@ definitions:
       node_status:
         type: string
       node_status_description:
+        type: string
+      nomad_version:
         type: string
     type: object
   models.NodeListRespV2:

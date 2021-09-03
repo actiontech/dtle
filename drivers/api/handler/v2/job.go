@@ -642,7 +642,7 @@ func buildBasicTaskProfile(logger hclog.Logger, jobId string, srcTaskDetail *mod
 			Address:      nodeId2Addr[srcAllocation.NodeId],
 			Target:       "src",
 		})
-		if srcAllocation.TaskStatus.Status == nomadApi.AllocClientStatusRunning {
+		if srcAllocation.DesiredStatus == nomadApi.AllocDesiredStatusRun {
 			dtleNode := models.DtleNodeInfo{
 				NodeId:   srcAllocation.NodeId,
 				NodeAddr: nodeId2Addr[srcAllocation.NodeId],
@@ -666,7 +666,7 @@ func buildBasicTaskProfile(logger hclog.Logger, jobId string, srcTaskDetail *mod
 				Address:      nodeId2Addr[destAllocation.NodeId],
 				Target:       "dst",
 			})
-			if destAllocation.TaskStatus.Status == nomadApi.AllocClientStatusRunning {
+			if destAllocation.DesiredStatus == nomadApi.AllocDesiredStatusRun {
 				dtleNode := models.DtleNodeInfo{
 					NodeId:   destAllocation.NodeId,
 					NodeAddr: nodeId2Addr[destAllocation.NodeId],
@@ -688,7 +688,7 @@ func buildBasicTaskProfile(logger hclog.Logger, jobId string, srcTaskDetail *mod
 				Address:      nodeId2Addr[destAllocation.NodeId],
 				Target:       "dst",
 			})
-			if destAllocation.TaskStatus.Status == nomadApi.AllocClientStatusRunning {
+			if destAllocation.DesiredStatus == nomadApi.AllocDesiredStatusRun {
 				dtleNode := models.DtleNodeInfo{
 					NodeId:     destAllocation.NodeId,
 					NodeAddr:   nodeId2Addr[destAllocation.NodeId],
@@ -836,6 +836,7 @@ func getTaskDetailStatusFromAllocInfo(nomadAllocation nomadApi.Allocation, taskN
 			})
 		}
 		newAlloc.TaskStatus.Status = nomadTaskState.State
+		newAlloc.DesiredStatus = nomadAllocation.DesiredStatus
 		newAlloc.TaskStatus.StartedAt = nomadTaskState.StartedAt.In(time.Local)
 		newAlloc.TaskStatus.FinishedAt = nomadTaskState.FinishedAt.In(time.Local)
 	}

@@ -7,6 +7,8 @@ type NodeListItemV2 struct {
 	NodeStatus            string `json:"node_status"`
 	NodeStatusDescription string `json:"node_status_description"`
 	Datacenter            string `json:"datacenter"`
+	NomadVersion          string `json:"nomad_version"`
+	DtleVersion           string `json:"dtle_version"`
 }
 
 type NodeListRespV2 struct {

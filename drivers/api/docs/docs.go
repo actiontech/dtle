@@ -2792,6 +2792,9 @@ var doc = `{
                 "datacenter": {
                     "type": "string"
                 },
+                "dtle_version": {
+                    "type": "string"
+                },
                 "node_address": {
                     "type": "string"
                 },
@@ -2805,6 +2808,9 @@ var doc = `{
                     "type": "string"
                 },
                 "node_status_description": {
+                    "type": "string"
+                },
+                "nomad_version": {
                     "type": "string"
                 }
             }
