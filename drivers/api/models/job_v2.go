@@ -99,9 +99,10 @@ type MysqlSrcTaskDetail struct {
 }
 
 type AllocationDetail struct {
-	NodeId       string     `json:"node_id"`
-	AllocationId string     `json:"allocation_id"`
-	TaskStatus   TaskStatus `json:"task_status"`
+	NodeId        string     `json:"node_id"`
+	AllocationId  string     `json:"allocation_id"`
+	TaskStatus    TaskStatus `json:"task_status"`
+	DesiredStatus string     `json:"desired_status"`
 }
 
 type TaskStatus struct {
