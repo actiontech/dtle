@@ -41,14 +41,20 @@ func FindNomadNodes(logger hclog.Logger) ([]models.NodeListItemV2, error) {
 	logger.Info("invoke nomad api finished")
 	nodes := []models.NodeListItemV2{}
 	for _, nomadNode := range nomadNodes {
-		nodes = append(nodes, models.NodeListItemV2{
+		node := models.NodeListItemV2{
 			NodeAddress:           nomadNode.Address,
 			NodeName:              nomadNode.Name,
 			NodeId:                nomadNode.ID,
 			NodeStatus:            nomadNode.Status,
 			NodeStatusDescription: nomadNode.StatusDescription,
 			Datacenter:            nomadNode.Datacenter,
-		})
+			NomadVersion:          nomadNode.Version,
+			DtleVersion:           nomadNode.Drivers["dtle"].Attributes["driver.dtle.full_version"],
+		}
+		if nomadNode.Drivers["dtle"] != nil {
+			node.DtleVersion = nomadNode.Drivers["dtle"].Attributes["driver.dtle.full_version"]
+		}
+		nodes = append(nodes, node)
 	}
 	return nodes, nil
 }
