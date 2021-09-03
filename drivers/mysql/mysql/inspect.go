@@ -253,7 +253,7 @@ func (i *Inspector) ValidateGrants() error {
 	i.logger.Debug("Privileges", "Super", foundSuper, "ReplicationClient", foundReplicationClient,
 		"ReplicationSlave", foundReplicationSlave, "All", foundAll, "DBAll", foundDBAll)
 	return fmt.Errorf("user has insufficient privileges for extractor." +
-		" Needed: SUPER|REPLICATION CLIENT, REPLICATION SLAVE and ALL on *.*")
+		" Needed: SELECT , REPLICATION CLIENT, REPLICATION SLAVE and ALL on *.*")
 }
 
 func (i *Inspector) ValidateGTIDMode() error {

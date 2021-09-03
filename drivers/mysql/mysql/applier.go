@@ -713,7 +713,7 @@ func (a *Applier) ValidateGrants() error {
 		return nil
 	}
 	a.logger.Debug("Privileges", "Super", foundSuper, "All", foundAll)
-	return fmt.Errorf("user has insufficient privileges for applier. Needed: SUPER|ALL on *.*")
+	return fmt.Errorf("user has insufficient privileges for applier. Needed:ALTER, CREATE, DROP, INDEX, REFERENCES, INSERT, DELETE, UPDATE, SELECT, TRIGGER ON *.*")
 }
 
 func (a *Applier) ApplyEventQueries(db *gosql.DB, entry *common.DumpEntry) error {
