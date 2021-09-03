@@ -250,7 +250,7 @@ var bootstrapGolangCodeTpl = template.Must(
 var bootstrapGolangCodeTplText = `package {{.PackageName}}
 
 import (
-	report "github.com/ikarishinjieva/golang-live-coverage-report/pkg"
+	report "github.com/actiontech/golang-live-coverage-report/pkg"
 	{{range $i, $f := .ImportLines}}
 	{{$f}}
 	{{end}}
@@ -339,7 +339,7 @@ func getFilesByFilePath(path string) (tFiles, error) {
 }
 
 func goList(file string) (*GoListJson, error) {
-	cmd := exec.Command("go", "list", "-json", file)
+	cmd := exec.Command("go", "list", "-json", "-mod=vendor", file)
 	out, err := cmd.CombinedOutput()
 	if nil != err {
 		return nil, fmt.Errorf("go list %v error: %v", file, string(out))

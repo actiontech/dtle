@@ -29,7 +29,7 @@ driver:
 build_with_coverage_report: build-coverage-report-tool coverage-report-pre-build build coverage-report-post-build
 
 build-coverage-report-tool:
-	GO111MODULE=on go install $(GOFLAGS) github.com/actiontech/dtle/vendor/github.com/ikarishinjieva/golang-live-coverage-report/cmd/golang-live-coverage-report
+	GO111MODULE=on go install $(GOFLAGS) github.com/actiontech/dtle/vendor/github.com/actiontech/golang-live-coverage-report/cmd/golang-live-coverage-report
 
 coverage-report-pre-build:
 	PATH=${GOPATH}/bin:$$PATH golang-live-coverage-report \

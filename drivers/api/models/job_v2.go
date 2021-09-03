@@ -51,16 +51,18 @@ type ConnectionInfo struct {
 }
 
 type Configuration struct {
-	BinlogRelay        bool `json:"binlog_relay"`
-	FailOver           bool `json:"fail_over"`
-	RetryTimes         int  `json:"retry_times"`
-	ParallelWorkers    int  `json:"parallel_workers"`
-	ReplChanBufferSize int  `json:"repl_chan_buffer_size"`
-	GroupMaxSize       int  `json:"group_max_size"`
-	ChunkSize          int  `json:"chunk_size"`
-	GroupTimeout       int  `json:"group_timeout"`
-	DropTableIfExists  bool `json:"drop_table_if_exists"`
-	SkipCreateDbTable  bool `json:"skip_create_db_table"`
+	BinlogRelay           bool `json:"binlog_relay"`
+	FailOver              bool `json:"fail_over"`
+	RetryTimes            int  `json:"retry_times"`
+	ParallelWorkers       int  `json:"parallel_workers"`
+	ReplChanBufferSize    int  `json:"repl_chan_buffer_size"`
+	GroupMaxSize          int  `json:"group_max_size"`
+	ChunkSize             int  `json:"chunk_size"`
+	GroupTimeout          int  `json:"group_timeout"`
+	DropTableIfExists     bool `json:"drop_table_if_exists"`
+	SkipCreateDbTable     bool `json:"skip_create_db_table"`
+	UseMySQLDependency    bool `json:"use_my_sql_dependency"`
+	DependencyHistorySize int  `json:"dependency_history_size"`
 }
 
 type BasicTaskProfile struct {
@@ -139,6 +141,8 @@ type MysqlDestTaskConfig struct {
 	NodeId                string                 `json:"node_id,omitempty"`
 	ParallelWorkers       int                    `json:"parallel_workers"`
 	MysqlConnectionConfig *MysqlConnectionConfig `json:"mysql_connection_config" validate:"required"`
+	UseMySQLDependency    bool                   `json:"use_my_sql_dependency"`
+	DependencyHistorySize int                    `json:"dependency_history_size"`
 }
 
 type MysqlDataSourceConfig struct {

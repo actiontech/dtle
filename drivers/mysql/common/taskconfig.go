@@ -16,6 +16,7 @@ const (
 	DefaultSrcGroupTimeout          = 100
 	DefaultKafkaMessageGroupMaxSize = 1
 	DefaultKafkaMessageGroupTimeout = 100
+	DefaultDependencyHistorySize    = 2500
 
 	TaskTypeUnknown taskType = iota
 	TaskTypeSrc
@@ -23,6 +24,7 @@ const (
 )
 
 type taskType int
+
 func TaskTypeFromString(s string) taskType {
 	switch strings.ToLower(s) {
 	case "src", "source":
@@ -36,26 +38,26 @@ func TaskTypeFromString(s string) taskType {
 
 type DtleTaskConfig struct {
 	//Ref:http://dev.mysql.com/doc/refman/5.7/en/replication-options-slave.html#option_mysqld_replicate-do-table
-	ReplicateDoDb       []*DataSource `codec:"ReplicateDoDb"`
-	ReplicateIgnoreDb   []*DataSource `codec:"ReplicateIgnoreDb"`
-	DropTableIfExists   bool          `codec:"DropTableIfExists"`
-	ExpandSyntaxSupport bool          `codec:"ExpandSyntaxSupport"`
-	ReplChanBufferSize  int64         `codec:"ReplChanBufferSize"`
-	TrafficAgainstLimits int      `codec:"TrafficAgainstLimits"`
-	ChunkSize            int64    `codec:"ChunkSize"`
-	SqlFilter            []string `codec:"SqlFilter"`
-	GroupMaxSize         int      `codec:"GroupMaxSize"`
-	GroupTimeout         int      `codec:"GroupTimeout"`
-	Gtid                 string   `codec:"Gtid"`
-	BinlogFile           string   `codec:"BinlogFile"`
-	BinlogPos            int64    `codec:"BinlogPos"`
-	GtidStart            string   `codec:"GtidStart"`
-	AutoGtid             bool     `codec:"AutoGtid"`
-	BinlogRelay          bool     `codec:"BinlogRelay"`
-	WaitOnJob            string   `codec:"WaitOnJob"`
+	ReplicateDoDb        []*DataSource `codec:"ReplicateDoDb"`
+	ReplicateIgnoreDb    []*DataSource `codec:"ReplicateIgnoreDb"`
+	DropTableIfExists    bool          `codec:"DropTableIfExists"`
+	ExpandSyntaxSupport  bool          `codec:"ExpandSyntaxSupport"`
+	ReplChanBufferSize   int64         `codec:"ReplChanBufferSize"`
+	TrafficAgainstLimits int           `codec:"TrafficAgainstLimits"`
+	ChunkSize            int64         `codec:"ChunkSize"`
+	SqlFilter            []string      `codec:"SqlFilter"`
+	GroupMaxSize         int           `codec:"GroupMaxSize"`
+	GroupTimeout         int           `codec:"GroupTimeout"`
+	Gtid                 string        `codec:"Gtid"`
+	BinlogFile           string        `codec:"BinlogFile"`
+	BinlogPos            int64         `codec:"BinlogPos"`
+	GtidStart            string        `codec:"GtidStart"`
+	AutoGtid             bool          `codec:"AutoGtid"`
+	BinlogRelay          bool          `codec:"BinlogRelay"`
+	WaitOnJob            string        `codec:"WaitOnJob"`
 
-	ParallelWorkers       int `codec:"ParallelWorkers"`
-	DependencyHistorySize int `codec:"DependencyHistorySize"`
+	ParallelWorkers       int  `codec:"ParallelWorkers"`
+	DependencyHistorySize int  `codec:"DependencyHistorySize"`
 	UseMySQLDependency    bool `codec:"UseMySQLDependency"`
 
 	SkipCreateDbTable   bool                          `codec:"SkipCreateDbTable"`

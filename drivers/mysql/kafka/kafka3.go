@@ -1289,5 +1289,13 @@ func castBytesOrStringToString(v interface{}) string {
 }
 
 func encodeStringInterfaceToBase64String(v interface{}) string {
-	return base64.StdEncoding.EncodeToString([]byte(v.(string)))
+	switch x := v.(type) {
+	case []byte:
+		return base64.StdEncoding.EncodeToString(x)
+	case string:
+		return base64.StdEncoding.EncodeToString([]byte(x))
+	default:
+		g.Logger.Warn(fmt.Sprintf("DTLE_BUG encodeStringInterfaceToBase64String. got type %T", v))
+		return "" // TODO
+	}
 }
