@@ -2529,6 +2529,8 @@ func (d *DataEvent) Unmarshal(buf []byte) (uint64, error) {
 type BinlogEntry struct {
 	Coordinates BinlogCoordinateTx
 	Events      []DataEvent
+	Index       int32
+	Final       bool
 }
 
 func (d *BinlogEntry) Size() (s uint64) {
@@ -2559,6 +2561,7 @@ func (d *BinlogEntry) Size() (s uint64) {
 		}
 
 	}
+	s += 5
 	return
 }
 func (d *BinlogEntry) Marshal(buf []byte) ([]byte, error) {
@@ -2607,7 +2610,25 @@ func (d *BinlogEntry) Marshal(buf []byte) ([]byte, error) {
 
 		}
 	}
-	return buf[:i+0], nil
+	{
+
+		buf[i+0+0] = byte(d.Index >> 0)
+
+		buf[i+1+0] = byte(d.Index >> 8)
+
+		buf[i+2+0] = byte(d.Index >> 16)
+
+		buf[i+3+0] = byte(d.Index >> 24)
+
+	}
+	{
+		if d.Final {
+			buf[i+4] = 1
+		} else {
+			buf[i+4] = 0
+		}
+	}
+	return buf[:i+5], nil
 }
 
 func (d *BinlogEntry) Unmarshal(buf []byte) (uint64, error) {
@@ -2654,7 +2675,15 @@ func (d *BinlogEntry) Unmarshal(buf []byte) (uint64, error) {
 
 		}
 	}
-	return i + 0, nil
+	{
+
+		d.Index = 0 | (int32(buf[i+0+0]) << 0) | (int32(buf[i+1+0]) << 8) | (int32(buf[i+2+0]) << 16) | (int32(buf[i+3+0]) << 24)
+
+	}
+	{
+		d.Final = buf[i+4] == 1
+	}
+	return i + 5, nil
 }
 
 type BinlogEntries struct {

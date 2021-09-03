@@ -65,8 +65,10 @@ struct DataEvent {
 }
 
 struct BinlogEntry {
-	Coordinates   BinlogCoordinateTx
-	Events        []DataEvent
+	Coordinates BinlogCoordinateTx
+	Events      []DataEvent
+	Index       int32
+    Final       bool
 }
 
 struct BinlogEntries {
