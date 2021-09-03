@@ -583,26 +583,14 @@ func getMysqlToMysqlJobDetail(logger hclog.Logger, jobId string, jobType DtleJob
 
 func buildBasicTaskProfile(logger hclog.Logger, jobId string, srcTaskDetail *models.MysqlSrcTaskDetail,
 	destMySqlTaskDetail *models.MysqlDestTaskDetail, destKafkaTaskDetail *models.KafkaDestTaskDetail) (models.BasicTaskProfile, []models.TaskLog, error) {
-	nodes, err := FindNomadNodes(logger)
-	if nil != err {
-		return models.BasicTaskProfile{}, nil, fmt.Errorf("find nodes info response failed: %v", err)
-	}
-	nodeId2Addr := make(map[string]string, 0)
-	for _, node := range nodes {
-		nodeId2Addr[node.NodeId] = node.NodeAddress
-	}
 	storeManager, err := common.NewStoreManager([]string{handler.ConsulAddr}, logger)
 	if err != nil {
 		return models.BasicTaskProfile{}, nil, fmt.Errorf("consul_addr=%v; connect to consul failed: %v", handler.ConsulAddr, err)
 	}
+
 	consulJobItem, err := storeManager.GetJobInfo(jobId)
 	if err != nil {
 		return models.BasicTaskProfile{}, nil, fmt.Errorf("consul_addr=%v; get ket %v Job Item failed: %v", jobId, handler.ConsulAddr, err)
-	}
-
-	nomadJobMap, err := findJobsFromNomad()
-	if err != nil {
-		return models.BasicTaskProfile{}, nil, fmt.Errorf("find nomad job list err %v", err)
 	}
 	basicTaskProfile := models.BasicTaskProfile{}
 	basicTaskProfile.JobBaseInfo = models.JobBaseInfo{
@@ -612,6 +600,11 @@ func buildBasicTaskProfile(logger hclog.Logger, jobId string, srcTaskDetail *mod
 		JobCreateTime:     consulJobItem.JobCreateTime,
 		JobSteps:          consulJobItem.JobSteps,
 		Delay:             0,
+	}
+
+	nomadJobMap, err := findJobsFromNomad()
+	if err != nil {
+		return models.BasicTaskProfile{}, nil, fmt.Errorf("find nomad job list err %v", err)
 	}
 	if nomadJobItem, ok := nomadJobMap[consulJobItem.JobId]; ok && basicTaskProfile.JobBaseInfo.JobStatus == common.DtleJobStatusNonPaused {
 		basicTaskProfile.JobBaseInfo.JobStatus = nomadJobItem.Status
@@ -632,19 +625,16 @@ func buildBasicTaskProfile(logger hclog.Logger, jobId string, srcTaskDetail *mod
 	basicTaskProfile.ReplicateDoDb = srcTaskDetail.TaskConfig.ReplicateDoDb
 	basicTaskProfile.ReplicateIgnoreDb = srcTaskDetail.TaskConfig.ReplicateIgnoreDb
 
-	dtleNodeInfosMap := make(map[string]models.DtleNodeInfo, 0)
+	nodes, err := FindNomadNodes(logger)
+	if nil != err {
+		return models.BasicTaskProfile{}, nil, fmt.Errorf("find nodes info response failed: %v", err)
+	}
+	nodeId2Addr := make(map[string]string, 0)
+	for _, node := range nodes {
+		nodeId2Addr[node.NodeId] = node.NodeAddress
+	}
 	taskLogs := make([]models.TaskLog, 0)
 	for _, srcAllocation := range srcTaskDetail.Allocations {
-		dtleNode := models.DtleNodeInfo{
-			NodeId:   srcAllocation.NodeId,
-			NodeAddr: nodeId2Addr[srcAllocation.NodeId],
-			DataSource: fmt.Sprintf("%v:%v", srcTaskDetail.TaskConfig.MysqlConnectionConfig.MysqlHost,
-				srcTaskDetail.TaskConfig.MysqlConnectionConfig.MysqlPort),
-			Source: "src",
-		}
-		if _, ok := dtleNodeInfosMap[fmt.Sprintf("%s:%s", dtleNode.NodeId, dtleNode.DataSource)]; !ok {
-			dtleNodeInfosMap[fmt.Sprintf("%s:%s", dtleNode.NodeId, dtleNode.DataSource)] = dtleNode
-		}
 		taskLogs = append(taskLogs, models.TaskLog{
 			TaskEvents:   srcAllocation.TaskStatus.TaskEvents,
 			NodeId:       srcAllocation.NodeId,
@@ -652,6 +642,16 @@ func buildBasicTaskProfile(logger hclog.Logger, jobId string, srcTaskDetail *mod
 			Address:      nodeId2Addr[srcAllocation.NodeId],
 			Target:       "src",
 		})
+		if srcAllocation.TaskStatus.Status == nomadApi.AllocClientStatusRunning {
+			dtleNode := models.DtleNodeInfo{
+				NodeId:   srcAllocation.NodeId,
+				NodeAddr: nodeId2Addr[srcAllocation.NodeId],
+				DataSource: fmt.Sprintf("%v:%v", srcTaskDetail.TaskConfig.MysqlConnectionConfig.MysqlHost,
+					srcTaskDetail.TaskConfig.MysqlConnectionConfig.MysqlPort),
+				Source: "src",
+			}
+			basicTaskProfile.DtleNodeInfos = append(basicTaskProfile.DtleNodeInfos, dtleNode)
+		}
 	}
 	if destMySqlTaskDetail != nil {
 		basicTaskProfile.ConnectionInfo.DstDataBase = *destMySqlTaskDetail.TaskConfig.MysqlConnectionConfig
@@ -659,16 +659,6 @@ func buildBasicTaskProfile(logger hclog.Logger, jobId string, srcTaskDetail *mod
 		basicTaskProfile.Configuration.UseMySQLDependency = destMySqlTaskDetail.TaskConfig.UseMySQLDependency
 		basicTaskProfile.Configuration.DependencyHistorySize = destMySqlTaskDetail.TaskConfig.DependencyHistorySize
 		for _, destAllocation := range destMySqlTaskDetail.Allocations {
-			dtleNode := models.DtleNodeInfo{
-				NodeId:   destAllocation.NodeId,
-				NodeAddr: nodeId2Addr[destAllocation.NodeId],
-				DataSource: fmt.Sprintf("%v:%v", destMySqlTaskDetail.TaskConfig.MysqlConnectionConfig.MysqlHost,
-					destMySqlTaskDetail.TaskConfig.MysqlConnectionConfig.MysqlPort),
-				Source: "dst",
-			}
-			if _, ok := dtleNodeInfosMap[fmt.Sprintf("%s:%s", dtleNode.NodeId, dtleNode.DataSource)]; !ok {
-				dtleNodeInfosMap[fmt.Sprintf("%s:%s", dtleNode.NodeId, dtleNode.DataSource)] = dtleNode
-			}
 			taskLogs = append(taskLogs, models.TaskLog{
 				TaskEvents:   destAllocation.TaskStatus.TaskEvents,
 				NodeId:       destAllocation.NodeId,
@@ -676,20 +666,21 @@ func buildBasicTaskProfile(logger hclog.Logger, jobId string, srcTaskDetail *mod
 				Address:      nodeId2Addr[destAllocation.NodeId],
 				Target:       "dst",
 			})
+			if destAllocation.TaskStatus.Status == nomadApi.AllocClientStatusRunning {
+				dtleNode := models.DtleNodeInfo{
+					NodeId:   destAllocation.NodeId,
+					NodeAddr: nodeId2Addr[destAllocation.NodeId],
+					DataSource: fmt.Sprintf("%v:%v", destMySqlTaskDetail.TaskConfig.MysqlConnectionConfig.MysqlHost,
+						destMySqlTaskDetail.TaskConfig.MysqlConnectionConfig.MysqlPort),
+					Source: "dst",
+				}
+				basicTaskProfile.DtleNodeInfos = append(basicTaskProfile.DtleNodeInfos, dtleNode)
+			}
 		}
 	}
 	if destKafkaTaskDetail != nil {
 		basicTaskProfile.ConnectionInfo.DstKafka = destKafkaTaskDetail.TaskConfig
 		for _, destAllocation := range destKafkaTaskDetail.Allocations {
-			dtleNode := models.DtleNodeInfo{
-				NodeId:     destAllocation.NodeId,
-				NodeAddr:   nodeId2Addr[destAllocation.NodeId],
-				DataSource: strings.Join(destKafkaTaskDetail.TaskConfig.BrokerAddrs, ","),
-				Source:     "dst",
-			}
-			if _, ok := dtleNodeInfosMap[fmt.Sprintf("%s:%s", dtleNode.NodeId, dtleNode.DataSource)]; !ok {
-				dtleNodeInfosMap[fmt.Sprintf("%s:%s", dtleNode.NodeId, dtleNode.DataSource)] = dtleNode
-			}
 			taskLogs = append(taskLogs, models.TaskLog{
 				TaskEvents:   destAllocation.TaskStatus.TaskEvents,
 				NodeId:       destAllocation.NodeId,
@@ -697,12 +688,17 @@ func buildBasicTaskProfile(logger hclog.Logger, jobId string, srcTaskDetail *mod
 				Address:      nodeId2Addr[destAllocation.NodeId],
 				Target:       "dst",
 			})
+			if destAllocation.TaskStatus.Status == nomadApi.AllocClientStatusRunning {
+				dtleNode := models.DtleNodeInfo{
+					NodeId:     destAllocation.NodeId,
+					NodeAddr:   nodeId2Addr[destAllocation.NodeId],
+					DataSource: strings.Join(destKafkaTaskDetail.TaskConfig.BrokerAddrs, ","),
+					Source:     "dst",
+				}
+				basicTaskProfile.DtleNodeInfos = append(basicTaskProfile.DtleNodeInfos, dtleNode)
+			}
 		}
 	}
-	for _, dtleNode := range dtleNodeInfosMap {
-		basicTaskProfile.DtleNodeInfos = append(basicTaskProfile.DtleNodeInfos, dtleNode)
-	}
-
 	return basicTaskProfile, taskLogs, nil
 }
 
