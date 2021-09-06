@@ -78,7 +78,6 @@ type BinlogReader struct {
 	// dynamic config, include all tables (implicitly assigned or dynamically created)
 	tables map[string](map[string]*common.TableContext)
 
-	currentBinlogEntry *common.BinlogEntry
 	hasBeginQuery      bool
 	entryContext       *common.BinlogEntryContext
 	ReMap              map[string]*regexp.Regexp // This is a cache for regexp.
@@ -460,21 +459,23 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 		u, _ := uuid.FromBytes(evt.SID)
 
 		entry := common.NewBinlogEntry()
-		entry.Coordinates.SID = u
-		entry.Coordinates.GNO = evt.GNO
-		entry.Coordinates.LastCommitted = evt.LastCommitted
-		entry.Coordinates.SeqenceNumber = evt.SequenceNumber
-		entry.Coordinates.LogFile = b.currentCoord.LogFile
+		entry.Coordinates = common.BinlogCoordinateTx{
+			LogFile:       b.currentCoord.LogFile,
+			LogPos:        int64(ev.Header.LogPos),
+			SID:           u,
+			GNO:           evt.GNO,
+			LastCommitted: evt.LastCommitted,
+			SeqenceNumber: evt.SequenceNumber,
+		}
 
-		b.currentBinlogEntry = entry
 		b.hasBeginQuery = false
 		b.entryContext = &common.BinlogEntryContext{
-			Entry:       b.currentBinlogEntry,
+			Entry:       entry,
 			TableItems:  nil,
 			OriginalSize: 1, // GroupMaxSize is default to 1 and we send on EntriesSize >= GroupMaxSize
 		}
 	case replication.QUERY_EVENT:
-		gno := b.currentBinlogEntry.Coordinates.GNO
+		gno := b.entryContext.Entry.Coordinates.GNO
 		evt := ev.Event.(*replication.QueryEvent)
 		query := string(evt.Query)
 
@@ -532,7 +533,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 							ev.Header.Timestamp,
 						)
 
-						b.currentBinlogEntry.Events = append(b.currentBinlogEntry.Events, event)
+						b.entryContext.Entry.Events = append(b.entryContext.Entry.Events, event)
 						b.entryContext.OriginalSize += len(ev.RawData)
 					}
 					b.sendEntry(entriesChannel)
@@ -655,7 +656,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 								}
 								event.Table = tableBs
 							}
-							b.currentBinlogEntry.Events = append(b.currentBinlogEntry.Events, event)
+							b.entryContext.Entry.Events = append(b.entryContext.Entry.Events, event)
 						}
 					}
 				}
@@ -678,7 +679,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 		}
 		// TODO is the pos the start or the end of a event?
 		// pos if which event should be use? Do we need +1?
-		b.currentBinlogEntry.Coordinates.LogPos = b.currentCoord.LogPos
+		b.entryContext.Entry.Coordinates.LogPos = b.currentCoord.LogPos
 
 		b.sendEntry(entriesChannel)
 		if meetTarget {
@@ -689,13 +690,13 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 			schemaName := string(rowsEvent.Table.Schema)
 			tableName := string(rowsEvent.Table.Table)
 			b.logger.Debug("got rowsEvent", "schema", schemaName, "table", tableName,
-				"gno", b.currentBinlogEntry.Coordinates.GNO)
+				"gno", b.entryContext.Entry.Coordinates.GNO)
 
 			dml := common.ToEventDML(ev.Header.EventType)
 			skip, table := b.skipRowEvent(rowsEvent, dml)
 			if skip {
 				b.logger.Debug("skip rowsEvent", "schema", schemaName, "table", tableName,
-					"gno", b.currentBinlogEntry.Coordinates.GNO)
+					"gno", b.entryContext.Entry.Coordinates.GNO)
 				return nil
 			}
 
@@ -849,7 +850,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 							dmlEvent.WhereColumnValues.AbstractValues = newRow
 						}
 					}
-					b.currentBinlogEntry.Events = append(b.currentBinlogEntry.Events, dmlEvent)
+					b.entryContext.Entry.Events = append(b.entryContext.Entry.Events, dmlEvent)
 				} else {
 					b.logger.Debug("event has not passed 'where'")
 				}
@@ -887,15 +888,15 @@ func (b *BinlogReader) checkDtleQueryOSID(query string) error {
 		return fmt.Errorf("bad dtle_gtid splitted for query %v", query)
 	}
 
-	b.logger.Debug("query osid", "osid", ss[1], "gno", b.currentBinlogEntry.Coordinates.GNO)
+	b.logger.Debug("query osid", "osid", ss[1], "gno", b.entryContext.Entry.Coordinates.GNO)
 
-	b.currentBinlogEntry.Coordinates.OSID = ss[1]
+	b.entryContext.Entry.Coordinates.OSID = ss[1]
 	return nil
 }
 func (b *BinlogReader) setDtleQuery(query string) string {
-	if b.currentBinlogEntry.Coordinates.OSID == "" {
-		uuidStr := uuid.UUID(b.currentBinlogEntry.Coordinates.SID).String()
-		tag := fmt.Sprintf("/*dtle_gtid1 %v %v %v dtle_gtid*/", b.execCtx.Subject, uuidStr, b.currentBinlogEntry.Coordinates.GNO)
+	if b.entryContext.Entry.Coordinates.OSID == "" {
+		uuidStr := uuid.UUID(b.entryContext.Entry.Coordinates.SID).String()
+		tag := fmt.Sprintf("/*dtle_gtid1 %v %v %v dtle_gtid*/", b.execCtx.Subject, uuidStr, b.entryContext.Entry.Coordinates.GNO)
 
 		upperQuery := strings.ToUpper(query)
 		if strings.HasPrefix(upperQuery, "CREATE DEFINER=") {
@@ -911,7 +912,7 @@ func (b *BinlogReader) setDtleQuery(query string) string {
 }
 
 func (b *BinlogReader) sendEntry(entriesChannel chan<- *common.BinlogEntryContext) {
-	b.logger.Debug("sendEntry", "gno", b.currentBinlogEntry.Coordinates.GNO, "events", len(b.currentBinlogEntry.Events))
+	b.logger.Debug("sendEntry", "gno", b.entryContext.Entry.Coordinates.GNO, "events", len(b.entryContext.Entry.Events))
 	atomic.AddInt64(b.memory, int64(b.entryContext.Entry.Size()))
 	entriesChannel <- b.entryContext
 	atomic.AddUint32(&b.extractedTxCount, 1)
@@ -1309,8 +1310,8 @@ func (b *BinlogReader) skipRowEvent(rowsEvent *replication.RowsEvent, dml int8) 
 						if err != nil {
 							b.logger.Error("cycle-prevention: cannot convert sid to uuid", "err", err, "sid", sidByte)
 						} else {
-							b.currentBinlogEntry.Coordinates.OSID = sid.String()
-							b.logger.Debug("found an osid", "osid", b.currentBinlogEntry.Coordinates.OSID)
+							b.entryContext.Entry.Coordinates.OSID = sid.String()
+							b.logger.Debug("found an osid", "osid", b.entryContext.Entry.Coordinates.OSID)
 						}
 					}
 				}
