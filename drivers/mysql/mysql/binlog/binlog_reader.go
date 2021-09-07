@@ -243,6 +243,8 @@ func NewBinlogReader(execCtx *common.ExecContext, cfg *common.MySQLDriverConfig,
 			ReadTimeout:          12 * time.Second,
 
 			ParseTime: false, // must be false, or gencode will complain.
+
+			MemLimitSize: int64(g.MemAvailable * 10 / 2),
 		}
 		binlogReader.binlogSyncer = replication.NewBinlogSyncer(binlogSyncerConfig)
 	}
@@ -467,6 +469,8 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 			LastCommitted: evt.LastCommitted,
 			SeqenceNumber: evt.SequenceNumber,
 		}
+		entry.Index = 0
+		entry.Final = true
 
 		b.hasBeginQuery = false
 		b.entryContext = &common.BinlogEntryContext{
@@ -854,6 +858,21 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 				} else {
 					b.logger.Debug("event has not passed 'where'")
 				}
+
+				if b.entryContext.OriginalSize >= bigTxSplittingSize {
+					b.logger.Debug("splitting big tx", "index", b.entryContext.Entry.Index)
+					b.entryContext.Entry.Final = false
+					b.sendEntry(entriesChannel)
+					entry := common.NewBinlogEntry()
+					entry.Coordinates = b.entryContext.Entry.Coordinates
+					entry.Index = b.entryContext.Entry.Index + 1
+					entry.Final = true
+					b.entryContext = &common.BinlogEntryContext{
+						Entry:        entry,
+						TableItems:   nil,
+						OriginalSize: 1,
+					}
+				}
 			}
 			return nil
 		}
@@ -864,6 +883,8 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 const (
 	dtleQueryPrefix = "/*dtle_gtid1 "
 	dtleQuerySuffix = " dtle_gtid*/"
+
+	bigTxSplittingSize = 64 * 1024 * 1024
 )
 
 func (b *BinlogReader) checkDtleQueryOSID(query string) error {

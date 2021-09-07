@@ -563,6 +563,10 @@ func (a *Applier) subscribeNats() (err error) {
 			a.logger.Debug("incr. after publish nats reply.")
 		} else {
 			bs := incrNMM.GetBytes()
+			for g.IsLowMemory() {
+				a.logger.Debug("incr. low mem. waiting")
+				time.Sleep(900 * time.Millisecond)
+			}
 			select {
 			case <-a.shutdownCh:
 				return
