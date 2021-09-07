@@ -784,7 +784,7 @@ func (a *Applier) ApplyEventQueries(db *gosql.DB, entry *common.DumpEntry) error
 		_, err := tx.ExecContext(a.ctx, query)
 		if err != nil {
 			queryStart := g.StrLim(query, 10) // avoid printing sensitive information
-			errCtx := errors.Wrapf(err, "tx.Exec. queryStart %v seq %v", queryStart, entry.Seq)
+			errCtx := errors.Wrapf(err, "tx.Exec. queryStart %v seq", queryStart)
 			if !sql.IgnoreError(err) {
 				a.logger.Error("ApplyEventQueries. exec error", "err", errCtx)
 				return errCtx

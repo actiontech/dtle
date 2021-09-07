@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/actiontech/dtle/g"
-	"github.com/pingcap/tidb/types"
 	uuid "github.com/satori/go.uuid"
 	"github.com/siddontang/go-mysql/mysql"
 )
@@ -58,7 +57,6 @@ type GencodeType interface {
 }
 
 func init() {
-	gob.Register(types.BinaryLiteral{})
 	if g.EnvIsTrue(g.ENV_BIG_MSG_100K) {
 		g.NatsMaxMsg = 100 * 1024 // TODO this does not works
 	}
@@ -111,6 +109,7 @@ func Decode(data []byte, out GencodeType) (err error) {
 		return err
 	}
 	msg, err := ioutil.ReadAll(r)
+	_ = r.Close()
 	if err != nil {
 		return err
 	}
