@@ -89,7 +89,7 @@ docker_rpm:
 	$(DOCKER) run -v $(shell pwd)/:/universe/src/github.com/actiontech/dtle --rm -e PROJECT_NAME=$(PROJECT_NAME) $(DOCKER_IMAGE) -c "cd /universe/src/github.com/actiontech/dtle; GOPATH=/universe make RELEASE_FTPD_HOST=${RELEASE_FTPD_HOST} package ;chmod -R ugo+rw dist;"
 
 docker_rpm_with_coverage_report:
-	$(DOCKER) run -v $(shell pwd)/:/universe/src/github.com/actiontech/dtle --rm $(DOCKER_IMAGE) -c "cd /universe/src/github.com/actiontech/dtle; GOPATH=/universe make build_with_coverage_report ;chmod -R ugo+rw dist;"
+	$(DOCKER) run -v $(shell pwd)/:/universe/src/github.com/actiontech/dtle --rm -e PROJECT_NAME=$(PROJECT_NAME) $(DOCKER_IMAGE) -c "cd /universe/src/github.com/actiontech/dtle; GOPATH=/universe make RELEASE_FTPD_HOST=${RELEASE_FTPD_HOST} build_with_coverage_report ;chmod -R ugo+rw dist;"
 
 generate_swagger_docs:
 	swag init -g ./drivers/api/route.go -o ./drivers/api/docs
