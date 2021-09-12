@@ -78,6 +78,7 @@ var (
 	freeMemoryWorkerCount = int32(0)
 	lowMemory = int32(0)
 	memoryMonitorCount = int32(0)
+	MemAvailable = uint64(0)
 )
 
 func FreeMemoryWorker() {

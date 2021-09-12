@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"github.com/shirou/gopsutil/v3/mem"
 	_ "net/http/pprof"
 	"os"
 	"runtime"
@@ -28,6 +29,14 @@ func main() {
 	pid := os.Getpid()
 	plugins.Serve(func(logger hclog.Logger) interface{} {
 		g.Logger = logger
+
+		vmStat, err := mem.VirtualMemory()
+		if err != nil {
+			logger.Warn("cannot get available memory. assuming 4096MB")
+			g.MemAvailable = 4096 * 1024 * 1024
+		}
+		logger.Info("available memory in MB", "size", vmStat.Available / 1024 / 1024)
+		g.MemAvailable = vmStat.Available
 
 		logger.Info("dtle starting", "version", versionStr, "pid", pid)
 		logger.Info("env", "GODEBUG", os.Getenv("GODEBUG"), "GOMAXPROCS", runtime.GOMAXPROCS(0))

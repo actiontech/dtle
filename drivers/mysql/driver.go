@@ -76,6 +76,7 @@ var (
 			hclspec.NewLiteral(`""`)),
 		"key_file_path": hclspec.NewDefault(hclspec.NewAttr("key_file_path", "string", false),
 			hclspec.NewLiteral(`""`)),
+		"memory": hclspec.NewAttr("memory", "string", false),
 	})
 
 	// taskConfigSpec is the hcl specification for the driver config section of
@@ -274,6 +275,7 @@ type DriverConfig struct {
 	RsaPrivateKeyPath       string `codec:"rsa_private_key_path"`
 	CertFilePath            string `codec:"cert_file_path"`
 	KeyFilePath             string `codec:"key_file_path"`
+	Memory                  string `codec:"memory"`
 }
 
 func (d *Driver) SetConfig(c *base.Config) (err error) {
