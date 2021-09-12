@@ -335,7 +335,7 @@ func (p *BinlogParser) Parse(data []byte) (*BinlogEvent, error) {
 		return nil, err
 	}
 
-	return &BinlogEvent{RawData: rawData, Header: h, Event: e, SpanContest: nil}, nil
+	return &BinlogEvent{RawData: rawData, Header: h, Event: e}, nil
 }
 
 func (p *BinlogParser) verifyCrc32Checksum(rawData []byte) error {
