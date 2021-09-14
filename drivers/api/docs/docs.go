@@ -2795,6 +2795,12 @@ var doc = `{
                 "dtle_version": {
                     "type": "string"
                 },
+                "leader": {
+                    "type": "boolean"
+                },
+                "member": {
+                    "type": "boolean"
+                },
                 "node_address": {
                     "type": "string"
                 },

@@ -3,6 +3,7 @@ package v2
 import (
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/hashicorp/go-hclog"
 
@@ -32,14 +33,33 @@ func NodeListV2(c echo.Context) error {
 }
 
 func FindNomadNodes(logger hclog.Logger) ([]models.NodeListItemV2, error) {
-	url := handler.BuildUrl("/v1/nodes")
-	logger.Info("invoke nomad api begin", "url", url)
-	nomadNodes := []nomadApi.NodeListStub{}
-	if err := handler.InvokeApiWithKvData(http.MethodGet, url, nil, &nomadNodes); nil != err {
+	nodesUrl := handler.BuildUrl("/v1/nodes")
+	logger.Info("invoke nomad api begin", "nodesUrl", nodesUrl)
+	nomadNodes := make([]nomadApi.NodeListStub, 0)
+	if err := handler.InvokeApiWithKvData(http.MethodGet, nodesUrl, nil, &nomadNodes); nil != err {
+		return nil, err
+	}
+
+	membersUrl := handler.BuildUrl("/v1/agent/members")
+	logger.Info("invoke nomad api begin", "membersUrl", membersUrl)
+	nomadMembers := new(nomadApi.ServerMembers)
+	if err := handler.InvokeApiWithKvData(http.MethodGet, membersUrl, nil, nomadMembers); nil != err {
+		return nil, err
+	}
+	membersMap := make(map[string]struct{}, len(nomadMembers.Members))
+	for _, agentMember := range nomadMembers.Members {
+		membersMap[agentMember.Addr] = struct{}{}
+	}
+
+	leaderUrl := handler.BuildUrl("/v1/status/leader")
+	logger.Info("invoke nomad api begin", "leaderUrl", leaderUrl)
+	leader := new(string)
+	if err := handler.InvokeApiWithKvData(http.MethodGet, leaderUrl, nil, leader); nil != err {
 		return nil, err
 	}
 	logger.Info("invoke nomad api finished")
-	nodes := []models.NodeListItemV2{}
+
+	nodes := make([]models.NodeListItemV2, 0)
 	for _, nomadNode := range nomadNodes {
 		node := models.NodeListItemV2{
 			NodeAddress:           nomadNode.Address,
@@ -53,6 +73,12 @@ func FindNomadNodes(logger hclog.Logger) ([]models.NodeListItemV2, error) {
 		}
 		if nomadNode.Drivers["dtle"] != nil {
 			node.DtleVersion = nomadNode.Drivers["dtle"].Attributes["driver.dtle.full_version"]
+		}
+		if strings.Split(*leader, ":")[0] == node.NodeAddress {
+			node.Leader = true
+		}
+		if _, ok := membersMap[node.NodeAddress]; ok {
+			node.Member = true
 		}
 		nodes = append(nodes, node)
 	}

@@ -9,6 +9,8 @@ type NodeListItemV2 struct {
 	Datacenter            string `json:"datacenter"`
 	NomadVersion          string `json:"nomad_version"`
 	DtleVersion           string `json:"dtle_version"`
+	Leader                bool   `json:"leader"`
+	Member                bool   `json:"member"`
 }
 
 type NodeListRespV2 struct {
