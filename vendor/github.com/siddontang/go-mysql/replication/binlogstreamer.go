@@ -91,7 +91,7 @@ func (s *BinlogStreamer) closeWithError(err error) {
 func newBinlogStreamer() *BinlogStreamer {
 	s := new(BinlogStreamer)
 
-	s.ch = make(chan *BinlogEvent, 5120)
+	s.ch = make(chan *BinlogEvent, 2560)
 	s.ech = make(chan error, 4)
 
 	return s

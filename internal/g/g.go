@@ -42,7 +42,6 @@ func MemoryFreer() {
 	for {
 		select {
 		case <-freeMemoryChan:
-			println("menory over limit ,begin to receicer")
 			debug.FreeOSMemory()
 			time.Sleep(10 * time.Second)
 		}
@@ -71,15 +70,17 @@ func MemoryMonitor(logger *logrus.Logger) {
 		} else {
 			if (float64(memory.Available)/float64(memory.Total) < 0.2) && (memory.Available < 1*1024*1024*1024) {
 				if lowMemory == 0 {
-					logger.Warn("memory is less than 20% and 1GB. pause parsing binlog",
-						"available", memory.Available, "total", memory.Total)
+					logger.WithField("available", memory.Available).
+						WithField("total", memory.Total).
+						Warn("memory is less than 20% and 1GB. pause parsing binlog")
 				}
 				lowMemory = 1
 				TriggerFreeMemory()
 			} else {
 				if lowMemory == 1 {
-					logger.Info("memory is greater than 20% or 1GB. continue parsing binlog",
-						"available", memory.Available, "total", memory.Total)
+					logger.WithField("available", memory.Available).
+						WithField("total", memory.Total).
+						Info("memory is greater than 20% or 1GB. continue to parse binlog")
 				}
 				lowMemory = 0
 			}
