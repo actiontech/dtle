@@ -281,8 +281,8 @@ func (a *Applier) Run() {
 		a.onError(common.TaskStateDead, errors.Wrap(err, "NewApplierIncr"))
 		return
 	}
-	a.ai.GtidUpdateHook = func(coord *common.BinlogCoordinateTx) {
-		a.gtidCh <- coord
+	a.ai.EntryCommittedHook = func(entry *common.BinlogEntry) {
+		a.gtidCh <- &entry.Coordinates
 	}
 	a.ai.OnError = a.onError
 
@@ -616,6 +616,7 @@ func (a *Applier) initDBConnections() (err error) {
 		return err
 	}
 	a.db.SetMaxOpenConns(10 + a.mysqlContext.ParallelWorkers)
+	a.logger.Debug("CreateConns", "ParallelWorkers", a.mysqlContext.ParallelWorkers)
 	if a.dbs, err = sql.CreateConns(a.db, a.mysqlContext.ParallelWorkers); err != nil {
 		a.logger.Debug("beging connetion mysql 2 create conns err")
 		return err

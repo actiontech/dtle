@@ -215,7 +215,7 @@ func (wm *WritesetManager) GatLastCommit(entryCtx *common.BinlogEntryContext) in
 	return lastCommit
 }
 
-func (wm *WritesetManager) onRotate() {
+func (wm *WritesetManager) resetCommonParent(seq int64) {
 	wm.history = make(map[uint64]int64)
-	wm.lastCommonParent = 0
+	wm.lastCommonParent = seq
 }
