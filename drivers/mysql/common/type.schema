@@ -79,3 +79,8 @@ struct ControlMsg {
     Type int32
     Msg  string
 }
+
+struct BigTxAck {
+	GNO int64
+	Index int32
+}

@@ -47,8 +47,8 @@ type ApplierIncr struct {
 
 	gtidSet        *gomysql.MysqlGTIDSet
 	gtidSetLock    *sync.RWMutex
-	gtidItemMap        base.GtidItemMap
-	EntryCommittedHook func(entry *common.BinlogEntry)
+	gtidItemMap       base.GtidItemMap
+	EntryExecutedHook func(entry *common.BinlogEntry)
 
 	tableItems mapSchemaTableItems
 
@@ -212,7 +212,7 @@ func (a *ApplierIncr) handleEntry(entryCtx *common.BinlogEntryContext) (err erro
 
 	if binlogEntry.Coordinates.OSID == a.MySQLServerUuid {
 		a.logger.Debug("skipping a dtle tx.", "osid", binlogEntry.Coordinates.OSID)
-		a.EntryCommittedHook(binlogEntry) // make gtid continuous
+		a.EntryExecutedHook(binlogEntry) // make gtid continuous
 		return nil
 	}
 	txSid := binlogEntry.Coordinates.GetSid()
@@ -379,6 +379,7 @@ func (a *ApplierIncr) heterogeneousReplay() {
 
 			for _, entry := range binlogEntries.Entries {
 				a.binlogEntryQueue <- entry
+				a.logger.Debug("")
 				atomic.AddInt64(a.memory2, int64(entry.Size()))
 			}
 
@@ -589,10 +590,9 @@ func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.Bin
 		}
 
 		if err := dbApplier.Tx.Commit(); err != nil {
-			a.OnError(common.TaskStateDead, err)
+			return errors.Wrap(err, "dbApplier.Tx.Commit")
 		} else {
 			a.mtsManager.Executed(binlogEntry)
-			a.EntryCommittedHook(binlogEntry)
 		}
 		dbApplier.Tx = nil
 		if a.printTps {
@@ -600,6 +600,7 @@ func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.Bin
 		}
 		atomic.AddUint32(&a.appliedTxCount, 1)
 	}
+	a.EntryExecutedHook(binlogEntry)
 
 	// no error
 	a.mysqlContext.Stage = common.StageWaitingForGtidToBeCommitted

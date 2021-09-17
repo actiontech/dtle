@@ -99,6 +99,8 @@ type BinlogReader struct {
 	targetGtid     gomysql.GTIDSet
 	currentGtidSet gomysql.GTIDSet
 	currentGtidSetMutex sync.RWMutex
+
+	HasBigTx sync.WaitGroup
 }
 
 type SqlFilter struct {
@@ -933,6 +935,9 @@ func (b *BinlogReader) setDtleQuery(query string) string {
 }
 
 func (b *BinlogReader) sendEntry(entriesChannel chan<- *common.BinlogEntryContext) {
+	if b.entryContext.Entry.IsPartOfBigTx() {
+		b.HasBigTx.Add(1)
+	}
 	b.logger.Debug("sendEntry", "gno", b.entryContext.Entry.Coordinates.GNO, "events", len(b.entryContext.Entry.Events))
 	atomic.AddInt64(b.memory, int64(b.entryContext.Entry.Size()))
 	entriesChannel <- b.entryContext
@@ -1053,6 +1058,10 @@ func (b *BinlogReader) DataStreamEvents(entriesChannel chan<- *common.BinlogEntr
 		if b.shutdown {
 			break
 		}
+
+		b.logger.Trace("b.HasBigTx.Wait. before")
+		b.HasBigTx.Wait()
+		b.logger.Trace("b.HasBigTx.Wait. after")
 
 		ev, err := b.binlogStreamer.GetEvent(context.Background())
 		if err != nil {
