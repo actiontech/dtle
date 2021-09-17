@@ -46,8 +46,8 @@ type ApplierIncr struct {
 
 	gtidSet        *gomysql.MysqlGTIDSet
 	gtidSetLock    *sync.RWMutex
-	gtidItemMap    base.GtidItemMap
-	GtidUpdateHook func(*common.BinlogCoordinateTx)
+	gtidItemMap        base.GtidItemMap
+	EntryCommittedHook func(entry *common.BinlogEntry)
 
 	tableItems mapSchemaTableItems
 
@@ -165,6 +165,7 @@ func (a *ApplierIncr) Run() (err error) {
 
 	return nil
 }
+
 func (a *ApplierIncr) MtsWorker(workerIndex int) {
 	keepLoop := true
 
@@ -209,7 +210,7 @@ func (a *ApplierIncr) handleEntry(entryCtx *common.BinlogEntryContext) (err erro
 
 	if binlogEntry.Coordinates.OSID == a.MySQLServerUuid {
 		a.logger.Debug("skipping a dtle tx.", "osid", binlogEntry.Coordinates.OSID)
-		a.GtidUpdateHook(&binlogEntry.Coordinates) // make gtid continuous
+		a.EntryCommittedHook(binlogEntry) // make gtid continuous
 		return nil
 	}
 	// region TestIfExecuted
@@ -263,7 +264,7 @@ func (a *ApplierIncr) handleEntry(entryCtx *common.BinlogEntryContext) (err erro
 			}
 			a.mtsManager.lastCommitted = 0
 			a.mtsManager.lastEnqueue = 0
-			a.wsManager.onRotate()
+			a.wsManager.resetCommonParent(0)
 			nPending := len(a.mtsManager.m)
 			if nPending != 0 {
 				a.logger.Warn("DTLE_BUG: lcPendingTx should be 0", "nPending", nPending,
@@ -456,22 +457,13 @@ func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.Bin
 	txSid := binlogEntry.Coordinates.GetSid()
 
 	dbApplier.DbMutex.Lock()
-	tx, err := dbApplier.Db.BeginTx(context.Background(), &gosql.TxOptions{})
-	if err != nil {
-		return err
+	if dbApplier.Tx == nil {
+		dbApplier.Tx, err = dbApplier.Db.BeginTx(context.Background(), &gosql.TxOptions{})
+		if err != nil {
+			return err
+		}
 	}
 	defer func() {
-		if err := tx.Commit(); err != nil {
-			a.OnError(common.TaskStateDead, err)
-		} else {
-			a.mtsManager.Executed(binlogEntry)
-			a.GtidUpdateHook(&binlogEntry.Coordinates)
-		}
-		if a.printTps {
-			atomic.AddUint32(&a.txLastNSeconds, 1)
-		}
-		atomic.AddUint32(&a.appliedTxCount, 1)
-
 		dbApplier.DbMutex.Unlock()
 		atomic.AddInt64(a.memory2, -int64(binlogEntry.Size()))
 	}()
@@ -483,7 +475,7 @@ func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.Bin
 			logger.Debug("not dml", "query", event.Query)
 
 			execQuery := func(query string) error {
-				_, err = tx.Exec(query)
+				_, err = dbApplier.Tx.Exec(query)
 				if err != nil {
 					errCtx := errors.Wrapf(err, "tx.Exec. gno %v iEvent %v queryBegin %v workerIdx %v",
 						binlogEntry.Coordinates.GNO, i, g.StrLim(query, 10), workerIdx)
@@ -574,6 +566,18 @@ func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.Bin
 			return errors.Wrap(err, "insert gno")
 		}
 	}
+
+	if err := dbApplier.Tx.Commit(); err != nil {
+		a.OnError(common.TaskStateDead, err)
+	} else {
+		a.mtsManager.Executed(binlogEntry)
+		a.EntryCommittedHook(binlogEntry)
+	}
+	dbApplier.Tx = nil
+	if a.printTps {
+		atomic.AddUint32(&a.txLastNSeconds, 1)
+	}
+	atomic.AddUint32(&a.appliedTxCount, 1)
 
 	// no error
 	a.mysqlContext.Stage = common.StageWaitingForGtidToBeCommitted
