@@ -1110,10 +1110,12 @@ func resolveQuery(currentSchema string, sql string,
 	case *ast.SetPwdStmt:
 		result.isExpand = true
 	case *ast.FlushStmt:
-		switch v.Tp {
-		case ast.FlushPrivileges:
-			result.isExpand = true
-		}
+		result.isExpand = true
+		//switch v.Tp {
+		//case ast.FlushPrivileges:
+		//case ast.FlushTables:
+		//case ast.FlushStatus:
+		//}
 	case *ast.DropProcedureStmt:
 		result.isExpand = true
 	case *ast.DropTableStmt:
