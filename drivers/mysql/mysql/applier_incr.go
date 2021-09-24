@@ -35,6 +35,7 @@ type ApplierIncr struct {
 	dbs             []*sql.Conn
 	MySQLServerUuid string
 
+	ctx        context.Context
 	shutdownCh chan struct{}
 
 	memory2          *int64
@@ -60,12 +61,13 @@ type ApplierIncr struct {
 	SkipGtidExecutedTable bool
 }
 
-func NewApplierIncr(subject string, mysqlContext *common.MySQLDriverConfig,
+func NewApplierIncr(ctx context.Context, subject string, mysqlContext *common.MySQLDriverConfig,
 	logger hclog.Logger, gtidSet *gomysql.MysqlGTIDSet, memory2 *int64,
 	db *gosql.DB, dbs []*sql.Conn, shutdownCh chan struct{},
 	gtidSetLock *sync.RWMutex) (*ApplierIncr, error) {
 
 	a := &ApplierIncr{
+		ctx:                   ctx,
 		logger:                logger,
 		subject:               subject,
 		mysqlContext:          mysqlContext,
@@ -116,13 +118,13 @@ func (a *ApplierIncr) Run() (err error) {
 	a.logger.Debug("after createTableGtidExecutedV4")
 
 	for i := range a.dbs {
-		a.dbs[i].PsDeleteExecutedGtid, err = a.dbs[i].Db.PrepareContext(context.Background(),
+		a.dbs[i].PsDeleteExecutedGtid, err = a.dbs[i].Db.PrepareContext(a.ctx,
 			fmt.Sprintf("delete from %v.%v where job_name = ? and source_uuid = ?",
 				g.DtleSchemaName, g.GtidExecutedTableV4))
 		if err != nil {
 			return err
 		}
-		a.dbs[i].PsInsertExecutedGtid, err = a.dbs[i].Db.PrepareContext(context.Background(),
+		a.dbs[i].PsInsertExecutedGtid, err = a.dbs[i].Db.PrepareContext(a.ctx,
 			fmt.Sprintf("replace into %v.%v (job_name,source_uuid,gtid,gtid_set) values (?, ?, ?, null)",
 				g.DtleSchemaName, g.GtidExecutedTableV4))
 		if err != nil {
@@ -190,7 +192,7 @@ func (a *ApplierIncr) MtsWorker(workerIndex int) {
 			logger.Debug("after ApplyBinlogEvent.", "gno", entryContext.Entry.Coordinates.GNO)
 		case <-t.C:
 			if !hasEntry {
-				err := a.dbs[workerIndex].Db.PingContext(context.Background())
+				err := a.dbs[workerIndex].Db.PingContext(a.ctx)
 				if err != nil {
 					logger.Error("bad connection for mts worker.", "err", err, "index", workerIndex)
 					a.OnError(common.TaskStateDead, errors.Wrap(err, "mts worker"))
@@ -382,7 +384,7 @@ func (a *ApplierIncr) buildDMLEventQuery(dmlEvent common.DataEvent, workerIdx in
 		var err error
 		if stmts[workerIdx] == nil {
 			a.logger.Debug("buildDMLEventQuery prepare query", "query", query)
-			stmts[workerIdx], err = a.dbs[workerIdx].Db.PrepareContext(context.Background(), query)
+			stmts[workerIdx], err = a.dbs[workerIdx].Db.PrepareContext(a.ctx, query)
 			if err != nil {
 				a.logger.Error("buildDMLEventQuery prepare query", "query", query, "err", err)
 			}
@@ -458,7 +460,7 @@ func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.Bin
 
 	dbApplier.DbMutex.Lock()
 	if dbApplier.Tx == nil {
-		dbApplier.Tx, err = dbApplier.Db.BeginTx(context.Background(), &gosql.TxOptions{})
+		dbApplier.Tx, err = dbApplier.Db.BeginTx(a.ctx, &gosql.TxOptions{})
 		if err != nil {
 			return err
 		}
@@ -475,7 +477,7 @@ func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.Bin
 			logger.Debug("not dml", "query", event.Query)
 
 			execQuery := func(query string) error {
-				_, err = dbApplier.Tx.Exec(query)
+				_, err = dbApplier.Tx.ExecContext(a.ctx, query)
 				if err != nil {
 					errCtx := errors.Wrapf(err, "tx.Exec. gno %v iEvent %v queryBegin %v workerIdx %v",
 						binlogEntry.Coordinates.GNO, i, g.StrLim(query, 10), workerIdx)
@@ -538,9 +540,9 @@ func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.Bin
 
 			var r gosql.Result
 			if stmt != nil {
-				r, err = stmt.Exec(args...)
+				r, err = stmt.ExecContext(a.ctx, args...)
 			} else {
-				r, err = a.dbs[workerIdx].Db.ExecContext(context.Background(), query, args...)
+				r, err = a.dbs[workerIdx].Db.ExecContext(a.ctx, query, args...)
 			}
 
 			if err != nil {
@@ -561,7 +563,8 @@ func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.Bin
 
 	if !a.SkipGtidExecutedTable {
 		logger.Debug("insert gno", "gno", binlogEntry.Coordinates.GNO)
-		_, err = dbApplier.PsInsertExecutedGtid.Exec(a.subject, uuid.UUID(binlogEntry.Coordinates.SID).Bytes(), binlogEntry.Coordinates.GNO)
+		_, err = dbApplier.PsInsertExecutedGtid.ExecContext(a.ctx,
+			a.subject, uuid.UUID(binlogEntry.Coordinates.SID).Bytes(), binlogEntry.Coordinates.GNO)
 		if err != nil {
 			return errors.Wrap(err, "insert gno")
 		}

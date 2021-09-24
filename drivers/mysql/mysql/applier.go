@@ -72,6 +72,8 @@ type Applier struct {
 	shutdown     bool
 	shutdownCh   chan struct{}
 	shutdownLock sync.Mutex
+	ctx          context.Context
+	cancelFunc context.CancelFunc
 
 	nDumpEntry int64
 
@@ -97,14 +99,14 @@ func (a *Applier) Finish1() error {
 }
 
 func NewApplier(
-	ctx *common.ExecContext, cfg *common.MySQLDriverConfig, logger hclog.Logger,
+	execCtx *common.ExecContext, cfg *common.MySQLDriverConfig, logger hclog.Logger,
 	storeManager *common.StoreManager, natsAddr string, waitCh chan *drivers.ExitResult, event *eventer.Eventer, taskConfig *drivers.TaskConfig) (a *Applier, err error) {
 
-	logger.Info("NewApplier", "job", ctx.Subject)
+	logger.Info("NewApplier", "job", execCtx.Subject)
 
 	a = &Applier{
-		logger:          logger.Named("applier").With("job", ctx.Subject),
-		subject:         ctx.Subject,
+		logger:          logger.Named("applier").With("job", execCtx.Subject),
+		subject:         execCtx.Subject,
 		mysqlContext:    cfg,
 		NatsAddr:        natsAddr,
 		rowCopyComplete: make(chan struct{}),
@@ -120,6 +122,7 @@ func NewApplier(
 		event:           event,
 		taskConfig:      taskConfig,
 	}
+	a.ctx, a.cancelFunc = context.WithCancel(context.TODO())
 
 	stubFullApplyDelayStr := os.Getenv(g.ENV_FULL_APPLY_DELAY)
 	if stubFullApplyDelayStr == "" {
@@ -275,7 +278,7 @@ func (a *Applier) Run() {
 		return
 	}
 
-	a.ai, err = NewApplierIncr(a.subject, a.mysqlContext, a.logger, a.gtidSet, a.memory2,
+	a.ai, err = NewApplierIncr(a.ctx, a.subject, a.mysqlContext, a.logger, a.gtidSet, a.memory2,
 		a.db, a.dbs, a.shutdownCh, a.gtidSetLock)
 	if err != nil {
 		a.onError(common.TaskStateDead, errors.Wrap(err, "NewApplierIncr"))
@@ -698,7 +701,7 @@ func (a *Applier) ValidateGrants() error {
 	}
 
 	if a.mysqlContext.ExpandSyntaxSupport {
-		if _, err := a.db.Query(`use mysql`); err != nil {
+		if _, err := a.db.ExecContext(a.ctx, `use mysql`); err != nil {
 			msg := fmt.Sprintf(`"mysql" schema is expected to be access when ExpandSyntaxSupport=true`)
 			a.logger.Info(msg, "error", err)
 			return fmt.Errorf("%v. error: %v", msg, err)
@@ -730,7 +733,7 @@ func (a *Applier) ApplyEventQueries(db *gosql.DB, entry *common.DumpEntry) error
 	if entry.SystemVariablesStatement != "" {
 		for i := range a.dbs {
 			a.logger.Debug("exec sysvar query", "query", entry.SystemVariablesStatement)
-			_, err := a.dbs[i].Db.ExecContext(context.Background(), entry.SystemVariablesStatement)
+			_, err := a.dbs[i].Db.ExecContext(a.ctx, entry.SystemVariablesStatement)
 			if err != nil {
 				a.logger.Error("err exec sysvar query.", "err", err)
 				return err
@@ -740,7 +743,7 @@ func (a *Applier) ApplyEventQueries(db *gosql.DB, entry *common.DumpEntry) error
 	if entry.SqlMode != "" {
 		for i := range a.dbs {
 			a.logger.Debug("exec sqlmode query", "query", entry.SqlMode)
-			_, err := a.dbs[i].Db.ExecContext(context.Background(), entry.SqlMode)
+			_, err := a.dbs[i].Db.ExecContext(a.ctx, entry.SqlMode)
 			if err != nil {
 				a.logger.Error("err exec sysvar query.", "err", err)
 				return err
@@ -751,7 +754,7 @@ func (a *Applier) ApplyEventQueries(db *gosql.DB, entry *common.DumpEntry) error
 	queries := []string{}
 	queries = append(queries, entry.SystemVariablesStatement, entry.SqlMode, entry.DbSQL)
 	queries = append(queries, entry.TbSQL...)
-	tx, err := db.Begin()
+	tx, err := db.BeginTx(a.ctx, &gosql.TxOptions{})
 	if err != nil {
 		return err
 	}
@@ -763,12 +766,12 @@ func (a *Applier) ApplyEventQueries(db *gosql.DB, entry *common.DumpEntry) error
 		atomic.AddInt64(&a.TotalRowsReplayed, nRows)
 	}()
 	sessionQuery := `SET @@session.foreign_key_checks = 0`
-	if _, err := tx.Exec(sessionQuery); err != nil {
+	if _, err := tx.ExecContext(a.ctx, sessionQuery); err != nil {
 		return err
 	}
 	execQuery := func(query string) error {
 		a.logger.Debug("ApplyEventQueries. exec", "query", g.StrLim(query, 256))
-		_, err := tx.Exec(query)
+		_, err := tx.ExecContext(a.ctx, query)
 		if err != nil {
 			queryStart := g.StrLim(query, 10) // avoid printing sensitive information
 			errCtx := errors.Wrapf(err, "tx.Exec. queryStart %v seq %v", queryStart, entry.Seq)
@@ -968,16 +971,21 @@ func (a *Applier) onError(state int, err error) {
 		}
 	}
 
+	a.logger.Debug("onError. nats published")
+	// Do not send ExitResult in Shutdown().
+	// pause API will call Shutdown and the task should not exit.
 	a.waitCh <- &drivers.ExitResult{
 		ExitCode:  state,
 		Signal:    0,
 		OOMKilled: false,
 		Err:       err,
 	}
-	a.Shutdown()
+	_ = a.Shutdown()
 }
 
 func (a *Applier) Shutdown() error {
+	a.logger.Info("Shutting down")
+
 	a.shutdownLock.Lock()
 	defer a.shutdownLock.Unlock()
 	if a.shutdown {
@@ -994,16 +1002,17 @@ func (a *Applier) Shutdown() error {
 	if a.ai != nil {
 		a.ai.wg.Wait()
 	}
+	a.logger.Debug("Shutdown. a.ai.wg.Wait. after")
 	a.wg.Wait()
+	a.logger.Debug("Shutdown. a.wg.Wait. after")
 
-	if err := sql.CloseDB(a.db); err != nil {
-		return err
-	}
-	if err := sql.CloseConns(a.dbs...); err != nil {
-		return err
-	}
+	a.cancelFunc()
+	_ = sql.CloseDB(a.db)
+	a.logger.Debug("Shutdown. CloseDB. after")
+	_ = sql.CloseConns(a.dbs...)
+	a.logger.Debug("Shutdown. CloseConns. after")
 
-	a.logger.Info("Shutting down")
+	a.logger.Info("Shutdown")
 	return nil
 }
 
