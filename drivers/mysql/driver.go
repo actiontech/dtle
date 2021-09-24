@@ -726,5 +726,6 @@ func (d *Driver) ExecTask(taskID string, cmd []string, timeout time.Duration) (*
 }
 
 func (d *Driver) Shutdown() {
+	d.logger.Info("Driver.Shutdown")
 	d.signalShutdown()
 }

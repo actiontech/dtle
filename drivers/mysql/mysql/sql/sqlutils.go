@@ -390,10 +390,7 @@ func CloseDB(db *gosql.DB) error {
 func CloseConns(dbs ...*Conn) error {
 	for _, db := range dbs {
 		if db.Db != nil {
-			err := db.Db.Close()
-			if err != nil {
-				return fmt.Errorf("close db failed - %v", err)
-			}
+			_ = db.Db.Close()
 		}
 	}
 	return nil
