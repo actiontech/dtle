@@ -6,6 +6,7 @@ import (
 	"github.com/shirou/gopsutil/mem"
 	"os"
 	"runtime/debug"
+	"strings"
 	"sync/atomic"
 	"time"
 )
@@ -131,4 +132,8 @@ func MemoryMonitor(logger hclog.Logger) {
 			}
 		}
 	}
+}
+
+func UUIDStrToMySQLHex(u string) string {
+	return strings.ToUpper(strings.ReplaceAll(u, "-", ""))
 }

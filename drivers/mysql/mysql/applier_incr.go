@@ -119,7 +119,7 @@ func (a *ApplierIncr) Run() (err error) {
 
 	for i := range a.dbs {
 		a.dbs[i].PsDeleteExecutedGtid, err = a.dbs[i].Db.PrepareContext(a.ctx,
-			fmt.Sprintf("delete from %v.%v where job_name = ? and source_uuid = ?",
+			fmt.Sprintf("delete from %v.%v where job_name = ? and hex(source_uuid) = ?",
 				g.DtleSchemaName, g.GtidExecutedTableV4))
 		if err != nil {
 			return err
