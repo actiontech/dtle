@@ -276,7 +276,7 @@ func (a *ApplierIncr) cleanGtidExecuted(sid uuid.UUID, txSid string) error {
 		}
 	}()
 
-	_, err = dbApplier.PsDeleteExecutedGtid.Exec(a.subject, sid.Bytes())
+	_, err = dbApplier.PsDeleteExecutedGtid.Exec(a.subject, g.UUIDStrToMySQLHex(txSid))
 	if err != nil {
 		return err
 	}
