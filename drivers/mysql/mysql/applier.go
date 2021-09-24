@@ -73,7 +73,7 @@ type Applier struct {
 	shutdownCh   chan struct{}
 	shutdownLock sync.Mutex
 	ctx          context.Context
-	cancelFunc context.CancelFunc
+	cancelFunc   context.CancelFunc
 
 	nDumpEntry int64
 
@@ -271,24 +271,6 @@ func (a *Applier) Run() {
 		return
 	}
 
-	//a.logger.Debug("the connectionconfi host is ",a.mysqlContext.ConnectionConfig.Host)
-	//	a.logger.Info("Apply binlog events to %s.%d", a.mysqlContext.ConnectionConfig.Host, a.mysqlContext.ConnectionConfig.Port)
-	if err := a.initDBConnections(); err != nil {
-		a.onError(common.TaskStateDead, err)
-		return
-	}
-
-	a.ai, err = NewApplierIncr(a.ctx, a.subject, a.mysqlContext, a.logger, a.gtidSet, a.memory2,
-		a.db, a.dbs, a.shutdownCh, a.gtidSetLock)
-	if err != nil {
-		a.onError(common.TaskStateDead, errors.Wrap(err, "NewApplierIncr"))
-		return
-	}
-	a.ai.EntryCommittedHook = func(entry *common.BinlogEntry) {
-		a.gtidCh <- &entry.Coordinates
-	}
-	a.ai.OnError = a.onError
-
 	a.logger.Debug("initNatSubClient")
 	if err := a.initNatSubClient(); err != nil {
 		a.onError(common.TaskStateDead, err)
@@ -306,6 +288,24 @@ func (a *Applier) Run() {
 		a.onError(common.TaskStateDead, errors.Wrap(err, "DstPutNats"))
 		return
 	}
+
+	//a.logger.Debug("the connectionconfi host is ",a.mysqlContext.ConnectionConfig.Host)
+	//	a.logger.Info("Apply binlog events to %s.%d", a.mysqlContext.ConnectionConfig.Host, a.mysqlContext.ConnectionConfig.Port)
+	if err := a.initDBConnections(); err != nil {
+		a.onError(common.TaskStateDead, err)
+		return
+	}
+
+	a.ai, err = NewApplierIncr(a.ctx, a.subject, a.mysqlContext, a.logger, a.gtidSet, a.memory2,
+		a.db, a.dbs, a.shutdownCh, a.gtidSetLock)
+	if err != nil {
+		a.onError(common.TaskStateDead, errors.Wrap(err, "NewApplierIncr"))
+		return
+	}
+	a.ai.EntryCommittedHook = func(entry *common.BinlogEntry) {
+		a.gtidCh <- &entry.Coordinates
+	}
+	a.ai.OnError = a.onError
 
 	go a.updateGtidLoop()
 
