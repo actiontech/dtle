@@ -149,6 +149,7 @@ func (e *Extractor) Run() {
 		jobStatus, _ := e.storeManager.GetJobStatus(e.subject)
 		if jobStatus == common.TargetGtidFinished {
 			_ = e.Shutdown()
+			return
 		}
 	}
 
