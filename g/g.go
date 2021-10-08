@@ -17,7 +17,9 @@ var (
 	GitCommit string
 )
 
-var Logger hclog.Logger
+type LoggerType hclog.Logger
+
+var Logger LoggerType
 var RsaPrivateKey string
 
 const (
@@ -103,7 +105,7 @@ func IsLowMemory() bool {
 	return lowMemory == 1
 }
 
-func MemoryMonitor(logger hclog.Logger) {
+func MemoryMonitor(logger LoggerType) {
 	if !atomic.CompareAndSwapInt32(&memoryMonitorCount, 0, 1) {
 		return
 	}

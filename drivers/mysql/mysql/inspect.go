@@ -9,6 +9,7 @@ package mysql
 import (
 	gosql "database/sql"
 	"fmt"
+	"github.com/actiontech/dtle/g"
 	"strings"
 	"time"
 
@@ -26,12 +27,12 @@ const startSlavePostWaitMilliseconds = 500 * time.Millisecond
 // Inspector reads data from the read-MySQL-server (typically a replica, but can be the master)
 // It is used for gaining initial status and structure, and later also follow up on progress and changelog
 type Inspector struct {
-	logger       hclog.Logger
+	logger       g.LoggerType
 	db           *gosql.DB
 	mysqlContext *common.MySQLDriverConfig
 }
 
-func NewInspector(ctx *common.MySQLDriverConfig, logger hclog.Logger) *Inspector {
+func NewInspector(ctx *common.MySQLDriverConfig, logger g.LoggerType) *Inspector {
 	return &Inspector{
 		logger:       logger,
 		mysqlContext: ctx,

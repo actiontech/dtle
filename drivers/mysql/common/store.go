@@ -3,12 +3,12 @@ package common
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/actiontech/dtle/g"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/hashicorp/go-hclog"
 	"github.com/pkg/errors"
 	"github.com/siddontang/go-mysql/mysql"
 
@@ -23,10 +23,10 @@ func init() {
 
 type StoreManager struct {
 	consulStore store.Store
-	logger      hclog.Logger
+	logger      g.LoggerType
 }
 
-func NewStoreManager(consulAddr []string, logger hclog.Logger) (*StoreManager, error) {
+func NewStoreManager(consulAddr []string, logger g.LoggerType) (*StoreManager, error) {
 	consulStore, err := libkv.NewStore(store.CONSUL, consulAddr, nil)
 	if err != nil {
 		return nil, err
@@ -250,7 +250,7 @@ func (sm *StoreManager) WaitKv(subject string, key string, stopCh chan struct{})
 	}
 }
 
-func GetGtidFromConsul(sm *StoreManager, subject string, logger hclog.Logger, mysqlContext *MySQLDriverConfig) error {
+func GetGtidFromConsul(sm *StoreManager, subject string, logger g.LoggerType, mysqlContext *MySQLDriverConfig) error {
 	gtid, err := sm.GetGtidForJob(subject)
 	if err != nil {
 		return errors.Wrap(err, "GetGtidForJob")

@@ -15,8 +15,6 @@ import (
 
 	"github.com/actiontech/dtle/drivers/mysql/kafka"
 
-	hclog "github.com/hashicorp/go-hclog"
-
 	"github.com/actiontech/dtle/drivers/mysql/common"
 
 	"github.com/actiontech/dtle/g"
@@ -232,7 +230,7 @@ func UpdateMigrationJobV2(c echo.Context) error {
 	return CreateOrUpdateMigrationJobV2(c, false)
 }
 
-func createOrUpdateMysqlToMysqlJob(logger hclog.Logger, jobParam *models.CreateOrUpdateMysqlToMysqlJobParamV2,
+func createOrUpdateMysqlToMysqlJob(logger g.LoggerType, jobParam *models.CreateOrUpdateMysqlToMysqlJobParamV2,
 	user *common.User) (*models.CreateOrUpdateMysqlToMysqlJobRespV2, error) {
 
 	failover := g.PtrToBool(jobParam.Failover, true)
@@ -329,7 +327,7 @@ func convertMysqlToMysqlJobToNomadJob(failover bool, jobParams *models.CreateOrU
 	}, nil
 }
 
-func buildMySQLJobListItem(logger hclog.Logger, jobParam *models.CreateOrUpdateMysqlToMysqlJobParamV2,
+func buildMySQLJobListItem(logger g.LoggerType, jobParam *models.CreateOrUpdateMysqlToMysqlJobParamV2,
 	user *common.User) error {
 	// add data to consul
 	storeManager, err := common.NewStoreManager([]string{handler.ConsulAddr}, logger)
@@ -362,7 +360,7 @@ func buildMySQLJobListItem(logger hclog.Logger, jobParam *models.CreateOrUpdateM
 	return nil
 }
 
-func buildKafkaJobListItem(logger hclog.Logger, jobParam *models.CreateOrUpdateMysqlToKafkaJobParamV2,
+func buildKafkaJobListItem(logger g.LoggerType, jobParam *models.CreateOrUpdateMysqlToKafkaJobParamV2,
 	user *common.User) error {
 	// add data to consul
 	storeManager, err := common.NewStoreManager([]string{handler.ConsulAddr}, logger)
@@ -536,7 +534,7 @@ func GetMigrationJobDetailV2(c echo.Context) error {
 	return GetMysqlToMysqlJobDetail(c, logger, DtleJobTypeMigration)
 }
 
-func GetMysqlToMysqlJobDetail(c echo.Context, logger hclog.Logger, jobType DtleJobType) error {
+func GetMysqlToMysqlJobDetail(c echo.Context, logger g.LoggerType, jobType DtleJobType) error {
 
 	reqParam := new(models.MysqlToMysqlJobDetailReqV2)
 	if err := handler.BindAndValidate(logger, c, reqParam); err != nil {
@@ -557,7 +555,7 @@ func GetMysqlToMysqlJobDetail(c echo.Context, logger hclog.Logger, jobType DtleJ
 	return c.JSON(http.StatusOK, resp)
 }
 
-func getMysqlToMysqlJobDetail(logger hclog.Logger, jobId string, jobType DtleJobType) (*models.MysqlToMysqlJobDetailRespV2, error) {
+func getMysqlToMysqlJobDetail(logger g.LoggerType, jobId string, jobType DtleJobType) (*models.MysqlToMysqlJobDetailRespV2, error) {
 	failover, nomadJob, allocations, err := getJobDetailFromNomad(logger, jobId, jobType)
 	if nil != err {
 		return nil, err
@@ -581,7 +579,7 @@ func getMysqlToMysqlJobDetail(logger hclog.Logger, jobId string, jobType DtleJob
 	}, nil
 }
 
-func buildBasicTaskProfile(logger hclog.Logger, jobId string, srcTaskDetail *models.MysqlSrcTaskDetail,
+func buildBasicTaskProfile(logger g.LoggerType, jobId string, srcTaskDetail *models.MysqlSrcTaskDetail,
 	destMySqlTaskDetail *models.MysqlDestTaskDetail, destKafkaTaskDetail *models.KafkaDestTaskDetail) (models.BasicTaskProfile, []models.TaskLog, error) {
 	storeManager, err := common.NewStoreManager([]string{handler.ConsulAddr}, logger)
 	if err != nil {
@@ -702,7 +700,7 @@ func buildBasicTaskProfile(logger hclog.Logger, jobId string, srcTaskDetail *mod
 	return basicTaskProfile, taskLogs, nil
 }
 
-func getJobDetailFromNomad(logger hclog.Logger, jobId string, jobType DtleJobType) (failover bool, nomadJob nomadApi.Job, nomadAllocations []nomadApi.Allocation, err error) {
+func getJobDetailFromNomad(logger g.LoggerType, jobId string, jobType DtleJobType) (failover bool, nomadJob nomadApi.Job, nomadAllocations []nomadApi.Allocation, err error) {
 	url := handler.BuildUrl(fmt.Sprintf("/v1/job/%v", jobId))
 	logger.Info("invoke nomad api begin", "url", url)
 
@@ -970,7 +968,7 @@ func UpdateSubscriptionJobV2(c echo.Context) error {
 	return createOrUpdateMysqlToKafkaJob(c, logger, DtleJobTypeSubscription, false)
 }
 
-func createOrUpdateMysqlToKafkaJob(c echo.Context, logger hclog.Logger, jobType DtleJobType, create bool) error {
+func createOrUpdateMysqlToKafkaJob(c echo.Context, logger g.LoggerType, jobType DtleJobType, create bool) error {
 
 	jobParam := new(models.CreateOrUpdateMysqlToKafkaJobParamV2)
 	if err := handler.BindAndValidate(logger, c, jobParam); err != nil {
@@ -1407,7 +1405,7 @@ func ResumeJobV2(c echo.Context, filterJobType DtleJobType) error {
 	})
 }
 
-func sentSignalToTask(logger hclog.Logger, allocId, signal string) error {
+func sentSignalToTask(logger g.LoggerType, allocId, signal string) error {
 	logger.Debug("sentSignalToTask")
 	if "" == allocId {
 		return fmt.Errorf("allocation id is required")

@@ -47,7 +47,7 @@ const (
 // write row data and apply binlog events onto the dest table.
 
 type Applier struct {
-	logger       hclog.Logger
+	logger       g.LoggerType
 	subject      string
 	mysqlContext *common.MySQLDriverConfig
 
@@ -99,7 +99,7 @@ func (a *Applier) Finish1() error {
 }
 
 func NewApplier(
-	execCtx *common.ExecContext, cfg *common.MySQLDriverConfig, logger hclog.Logger,
+	execCtx *common.ExecContext, cfg *common.MySQLDriverConfig, logger g.LoggerType,
 	storeManager *common.StoreManager, natsAddr string, waitCh chan *drivers.ExitResult, event *eventer.Eventer, taskConfig *drivers.TaskConfig) (a *Applier, err error) {
 
 	logger.Info("NewApplier", "job", execCtx.Subject)

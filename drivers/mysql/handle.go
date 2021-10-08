@@ -3,6 +3,7 @@ package mysql
 import (
 	"context"
 	"fmt"
+	"github.com/actiontech/dtle/g"
 	"sync"
 	"time"
 
@@ -12,12 +13,11 @@ import (
 	"github.com/armon/go-metrics"
 	"github.com/pkg/errors"
 
-	hclog "github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/nomad/plugins/drivers"
 )
 
 type taskHandle struct {
-	logger hclog.Logger
+	logger g.LoggerType
 
 	// stateLock syncs access to all fields below
 	stateLock sync.RWMutex
@@ -38,7 +38,7 @@ type taskHandle struct {
 	driverConfig *common.MySQLDriverConfig
 }
 
-func newDtleTaskHandle(logger hclog.Logger, cfg *drivers.TaskConfig, state drivers.TaskState, started time.Time) *taskHandle {
+func newDtleTaskHandle(logger g.LoggerType, cfg *drivers.TaskConfig, state drivers.TaskState, started time.Time) *taskHandle {
 	h := &taskHandle{
 		logger:      logger,
 		stateLock:   sync.RWMutex{},

@@ -3,11 +3,10 @@ package v2
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/actiontech/dtle/g"
 	"net/http"
 	"strings"
 	"time"
-
-	"github.com/hashicorp/go-hclog"
 
 	"github.com/dgrijalva/jwt-go"
 
@@ -126,7 +125,7 @@ func CreateUserV2(c echo.Context) error {
 	return c.JSON(http.StatusOK, models.CreateUserRespV2{BaseResp: models.BuildBaseResp(createUser(logger, user))})
 }
 
-func createUser(logger hclog.Logger, user *common.User) error {
+func createUser(logger g.LoggerType, user *common.User) error {
 	storeManager, err := common.NewStoreManager([]string{handler.ConsulAddr}, logger)
 	if err != nil {
 		return fmt.Errorf("get consul client failed: %v", err)
@@ -388,7 +387,7 @@ func ListActionV2(c echo.Context) error {
 	})
 }
 
-func checkUserAccess(logger hclog.Logger, c echo.Context, operationUser string) (bool, error) {
+func checkUserAccess(logger g.LoggerType, c echo.Context, operationUser string) (bool, error) {
 	storeManager, err := common.NewStoreManager([]string{handler.ConsulAddr}, logger)
 	if err != nil {
 		return false, fmt.Errorf("consul_addr=%v; connect to consul failed: %v", handler.ConsulAddr, err)

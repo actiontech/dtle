@@ -5,16 +5,15 @@ import (
 	"encoding/binary"
 	"fmt"
 	"github.com/actiontech/dtle/g"
-	"github.com/hashicorp/go-hclog"
 )
 
 type NatsMsgMerger struct {
 	buf    *bytes.Buffer
 	iSeg   uint32 // index of segment
-	logger hclog.Logger
+	logger g.LoggerType
 }
 
-func NewNatsMsgMerger(logger hclog.Logger) *NatsMsgMerger {
+func NewNatsMsgMerger(logger g.LoggerType) *NatsMsgMerger {
 	return &NatsMsgMerger{
 		logger: logger,
 	}

@@ -9,13 +9,12 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
+	"github.com/actiontech/dtle/g"
 	"io"
 	"io/ioutil"
 	"net/http"
 	"net/url"
 	"strings"
-
-	"github.com/hashicorp/go-hclog"
 
 	"github.com/labstack/echo/v4"
 )
@@ -121,7 +120,7 @@ func handleNomadResponse(respBody io.ReadCloser, statusCode int, respStruct inte
 	return nil
 }
 
-func BindAndValidate(logger hclog.Logger, c echo.Context, reqParam interface{}) error {
+func BindAndValidate(logger g.LoggerType, c echo.Context, reqParam interface{}) error {
 	logger.Info("validate params")
 	if err := c.Bind(reqParam); nil != err {
 		return fmt.Errorf("bind reqParam param failed, error: %v", err)
