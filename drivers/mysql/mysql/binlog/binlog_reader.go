@@ -92,7 +92,9 @@ type BinlogReader struct {
 	memory           *int64
 	extractedTxCount uint32
 	db               *gosql.DB
-	serverUUID       string
+
+	serverUUID          string
+	lowerCaseTableNames mysqlconfig.LowerCaseTableNamesValue
 
 	targetGtid     gomysql.GTIDSet
 	currentGtidSet gomysql.GTIDSet
@@ -160,7 +162,9 @@ func parseSqlFilter(strs []string) (*SqlFilter, error) {
 	return s, nil
 }
 
-func NewMySQLReader(execCtx *common.ExecContext, cfg *common.MySQLDriverConfig, logger g.LoggerType, replicateDoDb []*common.DataSource, sqleContext *sqle.Context, memory *int64, db *gosql.DB, targetGtid string) (binlogReader *BinlogReader, err error) {
+func NewBinlogReader(execCtx *common.ExecContext, cfg *common.MySQLDriverConfig, logger g.LoggerType,
+	replicateDoDb []*common.DataSource, sqleContext *sqle.Context, memory *int64, db *gosql.DB,
+	targetGtid string, lctn mysqlconfig.LowerCaseTableNamesValue) (binlogReader *BinlogReader, err error) {
 
 	sqlFilter, err := parseSqlFilter(cfg.SqlFilter)
 	if err != nil {
@@ -181,6 +185,7 @@ func NewMySQLReader(execCtx *common.ExecContext, cfg *common.MySQLDriverConfig, 
 		maybeSqleContext:     sqleContext,
 		memory:               memory,
 		db:                   db,
+		lowerCaseTableNames:  lctn,
 	}
 
 	binlogReader.serverUUID, err = sql.GetServerUUID(db)

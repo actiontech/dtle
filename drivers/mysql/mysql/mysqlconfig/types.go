@@ -12,6 +12,14 @@ import (
 	"golang.org/x/text/transform"
 )
 
+type LowerCaseTableNamesValue int
+
+const (
+	LowerCaseTableNames0 LowerCaseTableNamesValue = iota
+	LowerCaseTableNames1
+	LowerCaseTableNames2
+)
+
 type ColumnType int
 
 const (
