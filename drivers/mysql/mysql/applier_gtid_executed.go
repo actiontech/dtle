@@ -7,7 +7,6 @@ import (
 	"github.com/actiontech/dtle/drivers/mysql/mysql/base"
 	"github.com/actiontech/dtle/drivers/mysql/mysql/sql"
 	"github.com/actiontech/dtle/g"
-	"github.com/hashicorp/go-hclog"
 	"github.com/satori/go.uuid"
 	mysql "github.com/siddontang/go-mysql/mysql"
 	"strconv"
@@ -180,7 +179,7 @@ func (a *GtidExecutedCreater) migrateGtidExecutedV3atoV4() (err error) {
 }
 type GtidExecutedCreater struct {
 	db *gosql.DB
-	logger hclog.Logger
+	logger g.LoggerType
 }
 
 func (a *GtidExecutedCreater) createTableGtidExecutedV4() error {

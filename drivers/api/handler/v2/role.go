@@ -2,9 +2,8 @@ package v2
 
 import (
 	"fmt"
+	"github.com/actiontech/dtle/g"
 	"net/http"
-
-	"github.com/hashicorp/go-hclog"
 
 	"github.com/actiontech/dtle/drivers/api/handler"
 	"github.com/actiontech/dtle/drivers/api/models"
@@ -114,7 +113,7 @@ func UpdateRoleV2(c echo.Context) error {
 	return c.JSON(http.StatusOK, models.UpdateRoleRespV2{BaseResp: models.BuildBaseResp(err)})
 }
 
-func UpdateRoleInfo(logger hclog.Logger, role *common.Role, create bool) error {
+func UpdateRoleInfo(logger g.LoggerType, role *common.Role, create bool) error {
 	storeManager, err := common.NewStoreManager([]string{handler.ConsulAddr}, logger)
 	if err != nil {
 		return fmt.Errorf("get consul client failed: %v", err)

@@ -4,7 +4,6 @@ import (
 	"container/heap"
 	"github.com/actiontech/dtle/drivers/mysql/common"
 	"github.com/actiontech/dtle/g"
-	hclog "github.com/hashicorp/go-hclog"
 	"hash/fnv"
 	"sync/atomic"
 )
@@ -40,7 +39,7 @@ type MtsManager struct {
 }
 
 //  shutdownCh: close to indicate a shutdown
-func NewMtsManager(shutdownCh chan struct{}, logger hclog.Logger) *MtsManager {
+func NewMtsManager(shutdownCh chan struct{}, logger g.LoggerType) *MtsManager {
 	mm := &MtsManager{
 		lastCommitted: 0,
 		updated:       make(chan struct{}, 1), // 1-buffered, see #211-7.1

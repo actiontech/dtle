@@ -58,7 +58,7 @@ const (
 type BinlogReader struct {
 	serverId uint64
 	execCtx  *common.ExecContext
-	logger   hclog.Logger
+	logger   g.LoggerType
 
 	relay        dmrelay.Process
 	relayCancelF context.CancelFunc
@@ -160,7 +160,7 @@ func parseSqlFilter(strs []string) (*SqlFilter, error) {
 	return s, nil
 }
 
-func NewMySQLReader(execCtx *common.ExecContext, cfg *common.MySQLDriverConfig, logger hclog.Logger, replicateDoDb []*common.DataSource, sqleContext *sqle.Context, memory *int64, db *gosql.DB, targetGtid string) (binlogReader *BinlogReader, err error) {
+func NewMySQLReader(execCtx *common.ExecContext, cfg *common.MySQLDriverConfig, logger g.LoggerType, replicateDoDb []*common.DataSource, sqleContext *sqle.Context, memory *int64, db *gosql.DB, targetGtid string) (binlogReader *BinlogReader, err error) {
 
 	sqlFilter, err := parseSqlFilter(cfg.SqlFilter)
 	if err != nil {

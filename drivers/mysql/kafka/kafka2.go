@@ -11,10 +11,9 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"github.com/actiontech/dtle/g"
 	"math/big"
 	"strings"
-
-	hclog "github.com/hashicorp/go-hclog"
 
 	"github.com/actiontech/dtle/drivers/mysql/common"
 	"github.com/pingcap/tidb/types"
@@ -77,7 +76,7 @@ func NewKafkaManager(kcfg *common.KafkaConfig) (*KafkaManager, error) {
 	return k, nil
 }
 
-func (k *KafkaManager) SendMessages(logger hclog.Logger, topics []string, keys [][]byte, values [][]byte) error {
+func (k *KafkaManager) SendMessages(logger g.LoggerType, topics []string, keys [][]byte, values [][]byte) error {
 	if !(len(topics) == len(keys) && len(values) == len(keys)) {
 		return fmt.Errorf("length of topics, keys and values must be equal")
 	}

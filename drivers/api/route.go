@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/actiontech/dtle/g"
 	"net/http"
 	"os"
 	"path"
@@ -39,7 +40,7 @@ import (
 // @name Authorization
 // @BasePath /
 
-func SetupApiServer(logger hclog.Logger, driverConfig *mysql.DriverConfig) (err error) {
+func SetupApiServer(logger g.LoggerType, driverConfig *mysql.DriverConfig) (err error) {
 	logger.Debug("Begin Setup api server", "addr", driverConfig.ApiAddr)
 	e := echo.New()
 

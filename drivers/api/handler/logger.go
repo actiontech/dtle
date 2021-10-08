@@ -2,10 +2,9 @@ package handler
 
 import (
 	"github.com/actiontech/dtle/g"
-	hclog "github.com/hashicorp/go-hclog"
 )
 
-func NewLogger() hclog.Logger {
+func NewLogger() g.LoggerType {
 	newLogger := g.Logger.Named("http_api")
 	return newLogger
 }

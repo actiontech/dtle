@@ -195,7 +195,7 @@ type Driver struct {
 	signalShutdown context.CancelFunc
 
 	// logger will log to the Nomad agent
-	logger hclog.Logger
+	logger g.LoggerType
 
 	stand     *stand.StanServer
 	apiServer *httprouter.Router
@@ -205,7 +205,7 @@ type Driver struct {
 	storeManager *common.StoreManager
 }
 
-func NewDriver(logger hclog.Logger) drivers.DriverPlugin {
+func NewDriver(logger g.LoggerType) drivers.DriverPlugin {
 	logger = logger.Named(g.PluginName)
 	logger.Info("dtle NewDriver")
 
@@ -224,7 +224,7 @@ func NewDriver(logger hclog.Logger) drivers.DriverPlugin {
 	}
 }
 
-func (d *Driver) SetupNatsServer(logger hclog.Logger) (err error) {
+func (d *Driver) SetupNatsServer(logger g.LoggerType) (err error) {
 	natsAddr, err := net.ResolveTCPAddr("tcp", d.config.NatsBind)
 	if err != nil {
 		return fmt.Errorf("failed to parse Nats address. addr %v err %v",
@@ -352,9 +352,9 @@ func (d *Driver) SetConfig(c *base.Config) (err error) {
 	return nil
 }
 
-var setupApiServerFn func(logger hclog.Logger, driverConfig *DriverConfig) error
+var setupApiServerFn func(logger g.LoggerType, driverConfig *DriverConfig) error
 
-func RegisterSetupApiServerFn(fn func(logger hclog.Logger, driverConfig *DriverConfig) error) {
+func RegisterSetupApiServerFn(fn func(logger g.LoggerType, driverConfig *DriverConfig) error) {
 	setupApiServerFn = fn
 }
 

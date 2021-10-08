@@ -19,7 +19,7 @@ import (
 )
 
 type ApplierIncr struct {
-	logger       hclog.Logger
+	logger       g.LoggerType
 	subject      string
 	mysqlContext *common.MySQLDriverConfig
 
@@ -62,7 +62,7 @@ type ApplierIncr struct {
 }
 
 func NewApplierIncr(ctx context.Context, subject string, mysqlContext *common.MySQLDriverConfig,
-	logger hclog.Logger, gtidSet *gomysql.MysqlGTIDSet, memory2 *int64,
+	logger g.LoggerType, gtidSet *gomysql.MysqlGTIDSet, memory2 *int64,
 	db *gosql.DB, dbs []*sql.Conn, shutdownCh chan struct{},
 	gtidSetLock *sync.RWMutex) (*ApplierIncr, error) {
 

@@ -43,7 +43,7 @@ import (
 // Extractor is the main schema extract flow manager.
 type Extractor struct {
 	execCtx      *common.ExecContext
-	logger       hclog.Logger
+	logger       g.LoggerType
 	subject      string
 	mysqlContext *common.MySQLDriverConfig
 
@@ -105,7 +105,7 @@ type Extractor struct {
 	targetGtid string
 }
 
-func NewExtractor(execCtx *common.ExecContext, cfg *common.MySQLDriverConfig, logger hclog.Logger, storeManager *common.StoreManager, waitCh chan *drivers.ExitResult) (*Extractor, error) {
+func NewExtractor(execCtx *common.ExecContext, cfg *common.MySQLDriverConfig, logger g.LoggerType, storeManager *common.StoreManager, waitCh chan *drivers.ExitResult) (*Extractor, error) {
 	logger.Info("NewExtractor", "job", execCtx.Subject)
 
 	e := &Extractor{
@@ -884,12 +884,12 @@ type TimestampContext struct {
 	stopCh chan struct{}
 	// Do not pass 0 to the chan.
 	TimestampCh    chan uint32
-	logger         hclog.Logger
+	logger         g.LoggerType
 	emptyQueueFunc func() bool
 	delay          int64
 }
 
-func NewTimestampContext(stopCh chan struct{}, logger hclog.Logger, emptyQueueFunc func() bool) *TimestampContext {
+func NewTimestampContext(stopCh chan struct{}, logger g.LoggerType, emptyQueueFunc func() bool) *TimestampContext {
 	return &TimestampContext{
 		stopCh:         stopCh,
 		logger:         logger,

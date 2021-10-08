@@ -26,7 +26,6 @@ import (
 	gomysql "github.com/siddontang/go-mysql/mysql"
 
 	"github.com/actiontech/dtle/drivers/mysql/mysql/mysqlconfig"
-	hclog "github.com/hashicorp/go-hclog"
 	gonats "github.com/nats-io/go-nats"
 	"github.com/pingcap/tidb/types"
 	uuid "github.com/satori/go.uuid"
@@ -39,7 +38,7 @@ type KafkaTableItem struct {
 }
 
 type KafkaRunner struct {
-	logger      hclog.Logger
+	logger      g.LoggerType
 	subject     string
 	subjectUUID uuid.UUID
 	natsConn    *gonats.Conn
@@ -90,7 +89,7 @@ func (kr *KafkaRunner) Finish1() error {
 	return nil
 }
 
-func NewKafkaRunner(execCtx *common.ExecContext, cfg *common.KafkaConfig, logger hclog.Logger,
+func NewKafkaRunner(execCtx *common.ExecContext, cfg *common.KafkaConfig, logger g.LoggerType,
 	storeManager *common.StoreManager, natsAddr string, waitCh chan *drivers.ExitResult) (kr *KafkaRunner, err error) {
 
 	loc := time.UTC

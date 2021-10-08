@@ -2,9 +2,8 @@ package v2
 
 import (
 	"fmt"
+	"github.com/actiontech/dtle/g"
 	"net/http"
-
-	"github.com/hashicorp/go-hclog"
 
 	"github.com/actiontech/dtle/drivers/api/handler"
 	"github.com/actiontech/dtle/drivers/api/models"
@@ -31,7 +30,7 @@ func NodeListV2(c echo.Context) error {
 	})
 }
 
-func FindNomadNodes(logger hclog.Logger) ([]models.NodeListItemV2, error) {
+func FindNomadNodes(logger g.LoggerType) ([]models.NodeListItemV2, error) {
 	url := handler.BuildUrl("/v1/nodes")
 	logger.Info("invoke nomad api begin", "url", url)
 	nomadNodes := []nomadApi.NodeListStub{}

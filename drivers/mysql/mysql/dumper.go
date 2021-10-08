@@ -15,8 +15,6 @@ import (
 	"sync/atomic"
 
 	"github.com/actiontech/dtle/g"
-	hclog "github.com/hashicorp/go-hclog"
-
 	"time"
 
 	umconf "github.com/actiontech/dtle/drivers/mysql/mysql/mysqlconfig"
@@ -24,7 +22,7 @@ import (
 )
 
 type dumper struct {
-	logger             hclog.Logger
+	logger             g.LoggerType
 	chunkSize          int64
 	TableSchema        string
 	EscapedTableSchema string
@@ -52,7 +50,7 @@ type dumper struct {
 }
 
 func NewDumper(db usql.QueryAble, table *common.Table, chunkSize int64,
-	logger hclog.Logger, memory *int64) *dumper {
+	logger g.LoggerType, memory *int64) *dumper {
 
 	dumper := &dumper{
 		logger:             logger,
