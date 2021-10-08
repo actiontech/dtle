@@ -502,6 +502,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 
 				skipSql := false
 				if queryInfo.isSkip || isSkipQuery(query) {
+					// queries that should be skipped regardless of ExpandSyntaxSupport
 					skipSql = true
 				} else {
 					if !b.mysqlContext.ExpandSyntaxSupport {
@@ -1224,7 +1225,7 @@ func isExpandSyntaxQuery(sql string) bool {
 		return true
 	}
 
-	if regexCreateTrigger.MatchString(sql) {
+	if regexCreateProcedure.MatchString(sql) {
 		return true
 	}
 
