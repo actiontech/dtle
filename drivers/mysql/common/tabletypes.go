@@ -48,8 +48,8 @@ type Table struct {
 	TableName         string
 	TableRegex        string
 	TableRename       string
-	TableSchema       string
-	TableSchemaRename string
+	TableSchema       string // not user assigned
+	TableSchemaRename string // not user assigned
 	Counter           int64
 	ColumnMapFrom     []string
 	//ColumnMapTo       []string

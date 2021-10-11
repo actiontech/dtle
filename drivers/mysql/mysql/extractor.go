@@ -237,6 +237,8 @@ func (e *Extractor) Run() {
 		return
 	}
 
+	e.CheckAndApplyLowerCaseTableNames()
+
 	fullCopy := true
 
 	if e.mysqlContext.Gtid == "" {
@@ -1594,4 +1596,23 @@ func (e *Extractor) Finish1() (err error) {
 	}
 
 	return nil
+}
+
+func (e *Extractor) CheckAndApplyLowerCaseTableNames() {
+	if e.lowerCaseTableNames != mysqlconfig.LowerCaseTableNames0 {
+		lowerConfigItem := func(configItem []*common.DataSource) {
+			for _, d := range configItem {
+				g.LowerString(&d.TableSchemaRename)
+				g.LowerString(&d.TableSchemaRegex)
+				g.LowerString(&d.TableSchemaRename)
+				for _, table := range d.Tables {
+					g.LowerString(&table.TableName)
+					g.LowerString(&table.TableRegex)
+					g.LowerString(&table.TableRename)
+				}
+			}
+		}
+		lowerConfigItem(e.mysqlContext.ReplicateDoDb)
+		lowerConfigItem(e.mysqlContext.ReplicateIgnoreDb)
+	}
 }

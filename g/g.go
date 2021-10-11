@@ -139,3 +139,7 @@ func MemoryMonitor(logger LoggerType) {
 func UUIDStrToMySQLHex(u string) string {
 	return strings.ToUpper(strings.ReplaceAll(u, "-", ""))
 }
+
+func LowerString(s *string) {
+	*s = strings.ToLower(*s)
+}
