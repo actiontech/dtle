@@ -491,15 +491,9 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 			b.hasBeginQuery = true
 		} else {
 			if upperQuery == "COMMIT" || !b.hasBeginQuery {
-				osid, err := checkDtleQuery(query)
+				err := b.checkDtleQueryOSID(query)
 				if err != nil {
-					return errors.Wrap(err, "checkDtleQuery")
-				}
-				b.logger.Debug("query osid", "osid", osid)
-				b.currentBinlogEntry.Coordinates.OSID = osid
-
-				if osid == "" {
-					query = b.setDtleQuery(query, upperQuery)
+					return errors.Wrap(err, "checkDtleQueryOSID")
 				}
 
 				queryInfo, err := b.resolveQuery(currentSchema, query, b.skipQueryDDL)
@@ -533,7 +527,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 
 						event := common.NewQueryEvent(
 							currentSchemaRename,
-							query,
+							b.setDtleQuery(query),
 							common.NotDML,
 							ev.Header.Timestamp,
 						)
@@ -649,7 +643,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 
 							event := common.NewQueryEventAffectTable(
 								currentSchemaRename,
-								sql,
+								b.setDtleQuery(sql),
 								common.NotDML,
 								queryInfo.table,
 								ev.Header.Timestamp,
@@ -871,41 +865,49 @@ const (
 	dtleQuerySuffix = " dtle_gtid*/"
 )
 
-func checkDtleQuery(query string) (string, error) {
+func (b *BinlogReader) checkDtleQueryOSID(query string) error {
 
 	start := strings.Index(query, dtleQueryPrefix)
 	if start == -1 {
-		return "", nil
+		return nil
 	}
 	start += len(dtleQueryPrefix)
 
 	end := strings.Index(query, dtleQuerySuffix)
 	if end == -1 {
-		return "", fmt.Errorf("incomplete dtle_gtid for query %v", query)
+		return fmt.Errorf("incomplete dtle_gtid for query %v", query)
 	}
 	if end < start {
-		return "", fmt.Errorf("bad dtle_gtid for query %v", query)
+		return fmt.Errorf("bad dtle_gtid for query %v", query)
 	}
 
 	dtleItem := query[start:end]
 	ss := strings.Split(dtleItem, " ")
 	if len(ss) != 3 {
-		return "", fmt.Errorf("bad dtle_gtid splitted for query %v", query)
+		return fmt.Errorf("bad dtle_gtid splitted for query %v", query)
 	}
 
-	return ss[1], nil
+	b.logger.Debug("query osid", "osid", ss[1], "gno", b.currentBinlogEntry.Coordinates.GNO)
+
+	b.currentBinlogEntry.Coordinates.OSID = ss[1]
+	return nil
 }
-func (b *BinlogReader) setDtleQuery(query string, upperQuery string) string {
-	uuidStr := uuid.UUID(b.currentBinlogEntry.Coordinates.SID).String()
-	tag := fmt.Sprintf("/*dtle_gtid1 %v %v %v dtle_gtid*/", b.execCtx.Subject, uuidStr, b.currentBinlogEntry.Coordinates.GNO)
+func (b *BinlogReader) setDtleQuery(query string) string {
+	if b.currentBinlogEntry.Coordinates.OSID == "" {
+		uuidStr := uuid.UUID(b.currentBinlogEntry.Coordinates.SID).String()
+		tag := fmt.Sprintf("/*dtle_gtid1 %v %v %v dtle_gtid*/", b.execCtx.Subject, uuidStr, b.currentBinlogEntry.Coordinates.GNO)
 
-	if strings.HasPrefix(upperQuery, "CREATE DEFINER=") {
-		if strings.HasSuffix(upperQuery, "END") {
-			return fmt.Sprintf("%v %v END", query[:len(query)-3], tag)
+		upperQuery := strings.ToUpper(query)
+		if strings.HasPrefix(upperQuery, "CREATE DEFINER=") {
+			if strings.HasSuffix(upperQuery, "END") {
+				return fmt.Sprintf("%v %v END", query[:len(query)-3], tag)
+			}
 		}
-	}
 
-	return fmt.Sprintf("%v %v", query, tag)
+		return fmt.Sprintf("%v %v", query, tag)
+	} else {
+		return query
+	}
 }
 
 func (b *BinlogReader) sendEntry(entriesChannel chan<- *common.BinlogEntryContext) {
