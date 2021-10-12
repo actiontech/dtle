@@ -1,6 +1,7 @@
 package binlog
 
 import (
+	"github.com/actiontech/dtle/drivers/mysql/mysql/mysqlconfig"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -304,14 +305,18 @@ func Test_loadMapping(t *testing.T) {
 	}
 }
 
-func Test_resolveDDLSQL(t *testing.T) {
+func TestBinlogReader_resolveQuery(t *testing.T) {
 	skipFunc1 := func(schema string, tableName string) bool {
 		return schema == "skip" || tableName == "skip"
 	}
+	b := &BinlogReader{
+		lowerCaseTableNames: mysqlconfig.LowerCaseTableNames0,
+		logger: hclog.Default(),
+	}
+
 	type args struct {
 		currentSchema string
 		sql           string
-		skipFunc      func(schema string, tableName string) bool
 	}
 	tests := []struct {
 		name       string
@@ -324,7 +329,6 @@ func Test_resolveDDLSQL(t *testing.T) {
 			args: args{
 				currentSchema: "",
 				sql:           "drop table a.b, skip.c, d",
-				skipFunc:      skipFunc1,
 			},
 			wantResult: parseQueryResult{
 				sql: "DROP TABLE `a`.`b`, `d`",
@@ -335,17 +339,16 @@ func Test_resolveDDLSQL(t *testing.T) {
 			args: args{
 				currentSchema: "",
 				sql:           "drop table if exists skip.b, skip.c",
-				skipFunc:      skipFunc1,
 			},
 			wantResult: parseQueryResult{
-				sql: "drop table if exists dtle_dummy_never_exists.dtle_dummy_never_exists",
+				sql: "DROP TABLE IF EXISTS `skip`.`b`",
 			},
 			wantErr: false,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			gotResult, err := resolveQuery(tt.args.currentSchema, tt.args.sql, tt.args.skipFunc)
+			gotResult, err := b.resolveQuery(tt.args.currentSchema, tt.args.sql, skipFunc1)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("resolveQuery() error = %v, wantErr %v", err, tt.wantErr)
 				return
