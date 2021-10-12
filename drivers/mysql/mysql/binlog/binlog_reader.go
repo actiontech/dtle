@@ -11,7 +11,8 @@ import (
 	gosql "database/sql"
 	"github.com/actiontech/dtle/drivers/mysql/common"
 	"github.com/actiontech/dtle/drivers/mysql/mysql/sql"
-	"github.com/pingcap/parser/format"
+	parserformat "github.com/pingcap/parser/format"
+	"github.com/pingcap/parser/model"
 	"github.com/pkg/errors"
 	"os"
 	"path"
@@ -92,7 +93,9 @@ type BinlogReader struct {
 	memory           *int64
 	extractedTxCount uint32
 	db               *gosql.DB
-	serverUUID       string
+
+	serverUUID          string
+	lowerCaseTableNames mysqlconfig.LowerCaseTableNamesValue
 
 	targetGtid     gomysql.GTIDSet
 	currentGtidSet gomysql.GTIDSet
@@ -160,7 +163,9 @@ func parseSqlFilter(strs []string) (*SqlFilter, error) {
 	return s, nil
 }
 
-func NewMySQLReader(execCtx *common.ExecContext, cfg *common.MySQLDriverConfig, logger g.LoggerType, replicateDoDb []*common.DataSource, sqleContext *sqle.Context, memory *int64, db *gosql.DB, targetGtid string) (binlogReader *BinlogReader, err error) {
+func NewBinlogReader(execCtx *common.ExecContext, cfg *common.MySQLDriverConfig, logger g.LoggerType,
+	replicateDoDb []*common.DataSource, sqleContext *sqle.Context, memory *int64, db *gosql.DB,
+	targetGtid string, lctn mysqlconfig.LowerCaseTableNamesValue) (binlogReader *BinlogReader, err error) {
 
 	sqlFilter, err := parseSqlFilter(cfg.SqlFilter)
 	if err != nil {
@@ -181,6 +186,7 @@ func NewMySQLReader(execCtx *common.ExecContext, cfg *common.MySQLDriverConfig, 
 		maybeSqleContext:     sqleContext,
 		memory:               memory,
 		db:                   db,
+		lowerCaseTableNames:  lctn,
 	}
 
 	binlogReader.serverUUID, err = sql.GetServerUUID(db)
@@ -436,6 +442,7 @@ func ToColumnValuesV2(abstractValues []interface{}) *common.ColumnValues {
 type parseQueryResult struct {
 	isRecognized bool
 	table        common.SchemaTable
+	// for multi-table DDL, i.e. drop table. Not really used yet.
 	extraTables  []common.SchemaTable
 	sql          string
 	ast          ast.StmtNode
@@ -484,18 +491,12 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 			b.hasBeginQuery = true
 		} else {
 			if upperQuery == "COMMIT" || !b.hasBeginQuery {
-				osid, err := checkDtleQuery(query)
+				err := b.checkDtleQueryOSID(query)
 				if err != nil {
-					return errors.Wrap(err, "checkDtleQuery")
-				}
-				b.logger.Debug("query osid", "osid", osid)
-				b.currentBinlogEntry.Coordinates.OSID = osid
-
-				if osid == "" {
-					query = b.setDtleQuery(query, upperQuery)
+					return errors.Wrap(err, "checkDtleQueryOSID")
 				}
 
-				queryInfo, err := resolveQuery(currentSchema, query, b.skipQueryDDL)
+				queryInfo, err := b.resolveQuery(currentSchema, query, b.skipQueryDDL)
 				if err != nil {
 					return errors.Wrap(err, "resolveQuery")
 				}
@@ -526,7 +527,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 
 						event := common.NewQueryEvent(
 							currentSchemaRename,
-							query,
+							b.setDtleQuery(query),
 							common.NotDML,
 							ev.Header.Timestamp,
 						)
@@ -642,7 +643,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 
 							event := common.NewQueryEventAffectTable(
 								currentSchemaRename,
-								sql,
+								b.setDtleQuery(sql),
 								common.NotDML,
 								queryInfo.table,
 								ev.Header.Timestamp,
@@ -864,41 +865,49 @@ const (
 	dtleQuerySuffix = " dtle_gtid*/"
 )
 
-func checkDtleQuery(query string) (string, error) {
+func (b *BinlogReader) checkDtleQueryOSID(query string) error {
 
 	start := strings.Index(query, dtleQueryPrefix)
 	if start == -1 {
-		return "", nil
+		return nil
 	}
 	start += len(dtleQueryPrefix)
 
 	end := strings.Index(query, dtleQuerySuffix)
 	if end == -1 {
-		return "", fmt.Errorf("incomplete dtle_gtid for query %v", query)
+		return fmt.Errorf("incomplete dtle_gtid for query %v", query)
 	}
 	if end < start {
-		return "", fmt.Errorf("bad dtle_gtid for query %v", query)
+		return fmt.Errorf("bad dtle_gtid for query %v", query)
 	}
 
 	dtleItem := query[start:end]
 	ss := strings.Split(dtleItem, " ")
 	if len(ss) != 3 {
-		return "", fmt.Errorf("bad dtle_gtid splitted for query %v", query)
+		return fmt.Errorf("bad dtle_gtid splitted for query %v", query)
 	}
 
-	return ss[1], nil
+	b.logger.Debug("query osid", "osid", ss[1], "gno", b.currentBinlogEntry.Coordinates.GNO)
+
+	b.currentBinlogEntry.Coordinates.OSID = ss[1]
+	return nil
 }
-func (b *BinlogReader) setDtleQuery(query string, upperQuery string) string {
-	uuidStr := uuid.UUID(b.currentBinlogEntry.Coordinates.SID).String()
-	tag := fmt.Sprintf("/*dtle_gtid1 %v %v %v dtle_gtid*/", b.execCtx.Subject, uuidStr, b.currentBinlogEntry.Coordinates.GNO)
+func (b *BinlogReader) setDtleQuery(query string) string {
+	if b.currentBinlogEntry.Coordinates.OSID == "" {
+		uuidStr := uuid.UUID(b.currentBinlogEntry.Coordinates.SID).String()
+		tag := fmt.Sprintf("/*dtle_gtid1 %v %v %v dtle_gtid*/", b.execCtx.Subject, uuidStr, b.currentBinlogEntry.Coordinates.GNO)
 
-	if strings.HasPrefix(upperQuery, "CREATE DEFINER=") {
-		if strings.HasSuffix(upperQuery, "END") {
-			return fmt.Sprintf("%v %v END", query[:len(query)-3], tag)
+		upperQuery := strings.ToUpper(query)
+		if strings.HasPrefix(upperQuery, "CREATE DEFINER=") {
+			if strings.HasSuffix(upperQuery, "END") {
+				return fmt.Sprintf("%v %v END", query[:len(query)-3], tag)
+			}
 		}
-	}
 
-	return fmt.Sprintf("%v %v", query, tag)
+		return fmt.Sprintf("%v %v", query, tag)
+	} else {
+		return query
+	}
 }
 
 func (b *BinlogReader) sendEntry(entriesChannel chan<- *common.BinlogEntryContext) {
@@ -1006,8 +1015,8 @@ func (b *BinlogReader) loadMapping(sql, currentSchema string,
 	}
 
 	bs := bytes.NewBuffer(nil)
-	err := stmt.Restore(&format.RestoreCtx{
-		Flags: format.DefaultRestoreFlags,
+	err := stmt.Restore(&parserformat.RestoreCtx{
+		Flags: parserformat.DefaultRestoreFlags,
 		In:    bs,
 	})
 	if err != nil {
@@ -1071,12 +1080,18 @@ func (b *BinlogReader) DataStreamEvents(entriesChannel chan<- *common.BinlogEntr
 }
 
 // schemaTables is the schema.table that the query has invalidated. For unrecognized query, it is nil.
-func resolveQuery(currentSchema string, sql string,
+func (b *BinlogReader) resolveQuery(currentSchema string, sql string,
 	skipFunc func(schema string, tableName string) bool) (result parseQueryResult, err error) {
+
+	rewrite := false
 
 	result.sql = sql
 	result.isRecognized = true
 	result.isSkip = false
+
+	if b.lowerCaseTableNames != mysqlconfig.LowerCaseTableNames0 {
+		rewrite = true
+	}
 
 	stmt, err := parser.New().ParseOneStmt(sql, "", "")
 	if err != nil {
@@ -1085,27 +1100,45 @@ func resolveQuery(currentSchema string, sql string,
 	}
 	result.ast = stmt
 
-	setTable := func(schema string, table string) {
-		result.table = common.SchemaTable{Schema: schema, Table: table}
+	setSchema := func(schema *string) {
+		if b.lowerCaseTableNames != mysqlconfig.LowerCaseTableNames0 {
+			g.LowerString(schema)
+		}
+		result.table = common.SchemaTable{Schema: *schema, Table: ""}
+	}
+	mayLowerTable := func(tn *ast.TableName) {
+		if b.lowerCaseTableNames != mysqlconfig.LowerCaseTableNames0 {
+			g.LowerString(&tn.Schema.O)
+			g.LowerString(&tn.Name.O)
+		}
+	}
+	setTable := func(tn *ast.TableName, extra bool) {
+		mayLowerTable(tn)
+		item := common.SchemaTable{Schema: tn.Schema.O, Table: tn.Name.O}
+		if extra {
+			result.extraTables = append(result.extraTables, item)
+		} else {
+			result.table = item
+		}
 	}
 
 	switch v := stmt.(type) {
 	case *ast.CreateDatabaseStmt:
-		setTable(v.Name, "")
+		setSchema(&v.Name)
 	case *ast.DropDatabaseStmt:
-		setTable(v.Name, "")
+		setSchema(&v.Name)
 	case *ast.AlterDatabaseStmt:
-		setTable(v.Name, "")
+		setSchema(&v.Name)
 	case *ast.CreateIndexStmt:
-		setTable(v.Table.Schema.O, v.Table.Name.O)
+		setTable(v.Table, false)
 	case *ast.DropIndexStmt:
-		setTable(v.Table.Schema.O, v.Table.Name.O)
+		setTable(v.Table, false)
 	case *ast.TruncateTableStmt:
-		setTable(v.Table.Schema.O, v.Table.Name.O)
+		setTable(v.Table, false)
 	case *ast.CreateTableStmt:
-		setTable(v.Table.Schema.O, v.Table.Name.O)
+		setTable(v.Table, false)
 	case *ast.AlterTableStmt:
-		setTable(v.Table.Schema.O, v.Table.Name.O)
+		setTable(v.Table, false)
 	case *ast.RevokeStmt, *ast.RevokeRoleStmt:
 		result.isExpand = true
 	case *ast.SetPwdStmt:
@@ -1121,53 +1154,68 @@ func resolveQuery(currentSchema string, sql string,
 		result.isExpand = true
 	case *ast.DropTableStmt:
 		var newTables []*ast.TableName
-		for i, t := range v.Tables {
+		for _, t := range v.Tables {
+			mayLowerTable(t)
 			schema := g.StringElse(t.Schema.O, currentSchema)
 			if !skipFunc(schema, t.Name.O) {
-				if i == 0 {
-					setTable(t.Schema.O, t.Name.O)
-				} else {
-					result.extraTables = append(result.extraTables,
-						common.SchemaTable{Schema: t.Schema.O, Table: t.Name.O})
-				}
+				isExtraTable := len(newTables) > 0
+				setTable(t, isExtraTable)
 				newTables = append(newTables, t)
+				b.logger.Debug("resolveQuery. DropTableStmt. include", "schema", t.Schema.O, "table", t.Name.O,
+					"use", currentSchema)
 			}
 		}
-		v.Tables = newTables
 
-		if len(v.Tables) == 0 {
-			result.sql = "drop table if exists dtle_dummy_never_exists.dtle_dummy_never_exists"
-			setTable("dtle_dummy_never_exists", "dtle_dummy_never_exists")
-		} else {
-			bs := bytes.NewBuffer(nil)
-			r := &format.RestoreCtx{
-				Flags:     format.DefaultRestoreFlags,
-				In:        bs,
-				JoinLevel: 0,
-			}
-			err = v.Restore(r)
-			if err != nil {
-				return result, err
-			}
-			result.sql = bs.String()
+		if len(newTables) == 0 {
+			newTables = v.Tables[:1]
+			setTable(v.Tables[0], false)
+		}
+
+		if len(newTables) != len(v.Tables) {
+			v.Tables = newTables
+			rewrite = true
 		}
 	case *ast.CreateUserStmt, *ast.GrantStmt, *ast.DropUserStmt, *ast.AlterUserStmt:
-		setTable("mysql", "user")
+		setTable(&ast.TableName{
+			Schema: model.NewCIStr("mysql"),
+			Name:   model.NewCIStr("user"),
+		}, false)
 		result.isExpand = true
 	case *ast.RenameTableStmt:
-		setTable(v.OldTable.Schema.O, v.OldTable.Name.O)
-		// TODO handle extra tables in v.TableToTables[1:]
+		setTable(v.OldTable, false)
+		mayLowerTable(v.NewTable)
+		for _, t2t := range v.TableToTables {
+			// TODO handle extra tables in v.TableToTables[1:]
+			mayLowerTable(t2t.OldTable)
+			mayLowerTable(t2t.NewTable)
+		}
 	case *ast.DropTriggerStmt:
 		result.isSkip = true
 	default:
 		result.isRecognized = false
 	}
 
+	if rewrite {
+		bs := bytes.NewBuffer(nil)
+		r := &parserformat.RestoreCtx{
+			Flags:     parserformat.DefaultRestoreFlags,
+			In:        bs,
+			JoinLevel: 0,
+		}
+		err = stmt.Restore(r)
+		if err != nil {
+			return result, err
+		}
+		result.sql = bs.String()
+		b.logger.Debug("resolveQuery. rewrite", "sql", result.sql)
+	}
+
 	return result, nil
 }
 
+// schema and tableName should be processed according to lower_case_table_names in advance
 func (b *BinlogReader) skipQueryDDL(schema string, tableName string) bool {
-	switch strings.ToLower(schema) {
+	switch schema {
 	case "mysql":
 		if b.mysqlContext.ExpandSyntaxSupport {
 			return false
@@ -1410,7 +1458,7 @@ func (b *BinlogReader) updateTableMeta(table *common.Table, realSchema string, t
 
 func (b *BinlogReader) updateCurrentReplicateDoDb(schemaName string, tableName string) error {
 	if "" == schemaName {
-		return fmt.Errorf("schema name should not be empty")
+		return fmt.Errorf("schema name should not be empty. table %v", tableName)
 	}
 
 	var currentSchemaReplConfig *common.DataSource

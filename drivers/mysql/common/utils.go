@@ -7,28 +7,30 @@
 package common
 
 import (
+	"fmt"
 	"regexp"
 	"strconv"
 )
 
-func MysqlVersionInDigit(v string) int {
+func MysqlVersionInDigit(v string) (int, error) {
+	maybeErr := fmt.Errorf("bad format of MySQL version %v", v)
 	re := regexp.MustCompile(`^((\d)\.(\d\d?)\.(\d\d?)).*`)
 	ss := re.FindStringSubmatch(v)
 	if len(ss) != 5 {
-		return 0
+		return 0, maybeErr
 	}
 	m0, err := strconv.Atoi(ss[2])
 	if err != nil {
-		return 0
+		return 0, maybeErr
 	}
 	m1, err := strconv.Atoi(ss[3])
 	if err != nil {
-		return 0
+		return 0, maybeErr
 	}
 	m2, err := strconv.Atoi(ss[4])
 	if err != nil {
-		return 0
+		return 0, maybeErr
 	}
 
-	return m0*10000 + m1*100 + m2
+	return m0*10000 + m1*100 + m2, nil
 }

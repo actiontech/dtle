@@ -11,6 +11,7 @@ import (
 	gosql "database/sql"
 	"fmt"
 	"github.com/actiontech/dtle/drivers/mysql/common"
+	"github.com/actiontech/dtle/g"
 	"regexp"
 	"strings"
 	"time"
@@ -104,14 +105,28 @@ func GetTableColumns(db usql.QueryAble, databaseName, tableName string) (*common
 	return common.NewColumnList(columns), nil
 }
 
-// ValidateAndReadTimeZone potentially reads server time-zone
-func ValidateAndReadTimeZone(db usql.QueryAble) (tz string, err error) {
-	query := `select @@time_zone`
-	if err := db.QueryRow(query).Scan(&tz); err != nil {
-		return "", err
+func GetSomeSysVars(db usql.QueryAble, logger g.LoggerType) (r struct {
+	Err                 error
+	Version             string
+	TimeZome            string
+	LowerCaseTableNames umconf.LowerCaseTableNamesValue
+}) {
+	query := `select @@version, @@time_zone, @@lower_case_table_names`
+	r.Err = db.QueryRow(query).Scan(&r.Version, &r.TimeZome, &r.LowerCaseTableNames)
+	if r.Err != nil {
+		return
 	}
 
-	return tz, nil
+	if r.LowerCaseTableNames == umconf.LowerCaseTableNames2 {
+		r.Err = fmt.Errorf("MySQL lower_case_table_names = 2 is not supported")
+		return
+	}
+
+	logger.Info("got sys_var version", "value", r.Version)
+	logger.Info("got sys_var timezone", "value", r.TimeZome)
+	logger.Info("got sys_var lower_case_table_names", "value", r.LowerCaseTableNames)
+
+	return r
 }
 
 func ShowCreateTable(db *gosql.DB, databaseName, tableName string, dropTableIfExists bool, addUse bool) (statement []string, err error) {
