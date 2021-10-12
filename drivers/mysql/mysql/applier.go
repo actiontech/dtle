@@ -51,9 +51,10 @@ type Applier struct {
 	subject      string
 	mysqlContext *common.MySQLDriverConfig
 
-	NatsAddr          string
-	MySQLVersion      string
-	TotalRowsReplayed int64
+	NatsAddr           string
+	MySQLVersion        string
+	lowerCaseTableNames umconf.LowerCaseTableNamesValue
+	TotalRowsReplayed   int64
 
 	dbs []*sql.Conn
 	db  *gosql.DB
@@ -625,9 +626,20 @@ func (a *Applier) initDBConnections() (err error) {
 		return err
 	}
 
-	if err := a.ValidateConnection(); err != nil {
-		return err
+	someSysVars := base.GetSomeSysVars(a.db, a.logger)
+	if someSysVars.Err != nil {
+		return someSysVars.Err
 	}
+	a.logger.Debug("Connection validated", "on",
+		hclog.Fmt("%s:%d", a.mysqlContext.ConnectionConfig.Host, a.mysqlContext.ConnectionConfig.Port))
+
+	a.MySQLVersion = someSysVars.Version
+	a.lowerCaseTableNames = someSysVars.LowerCaseTableNames
+
+	if strings.HasPrefix(a.MySQLVersion, "5.6") {
+		a.mysqlContext.ParallelWorkers = 1
+	}
+
 	a.logger.Debug("beging connetion mysql 5 validate  grants")
 	if err := a.ValidateGrants(); err != nil {
 		a.logger.Error("Unexpected error on ValidateGrants", "err", err)
@@ -635,28 +647,17 @@ func (a *Applier) initDBConnections() (err error) {
 	}
 	a.logger.Debug("after ValidateGrants")
 
-	if timezone, err := base.ValidateAndReadTimeZone(a.db); err != nil {
-		return err
-	} else {
-		a.logger.Info("got timezone", "timezone", timezone)
-	}
-
 	a.logger.Info("Initiated", "mysql", a.mysqlContext.ConnectionConfig.GetAddr(), "version", a.MySQLVersion)
+
 	return nil
 }
 
-// ValidateConnection issues a simple can-connect to MySQL
+// for compatibility
 func (a *Applier) ValidateConnection() error {
-	query := `select @@version`
-	if err := a.db.QueryRow(query).Scan(&a.MySQLVersion); err != nil {
-		return err
+	r := base.GetSomeSysVars(a.db, a.logger)
+	if r.Err != nil {
+		return r.Err
 	}
-	// Match the version string (from SELECT VERSION()).
-	if strings.HasPrefix(a.MySQLVersion, "5.6") {
-		a.mysqlContext.ParallelWorkers = 1
-	}
-	a.logger.Debug("Connection validated", "on",
-		hclog.Fmt("%s:%d", a.mysqlContext.ConnectionConfig.Host, a.mysqlContext.ConnectionConfig.Port))
 	return nil
 }
 

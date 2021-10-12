@@ -48,8 +48,9 @@ type Extractor struct {
 	mysqlContext *common.MySQLDriverConfig
 
 	systemVariables       map[string]string
-	sqlMode               string
-	MySQLVersion          string
+	sqlMode             string
+	lowerCaseTableNames mysqlconfig.LowerCaseTableNamesValue
+	MySQLVersion        string
 	TotalTransferredBytes int
 	// Original comment: TotalRowsCopied returns the accurate number of rows being copied (affected)
 	// This is not exactly the same as the rows being iterated via chunks, but potentially close enough.
@@ -235,6 +236,8 @@ func (e *Extractor) Run() {
 		e.onError(common.TaskStateDead, err)
 		return
 	}
+
+	e.CheckAndApplyLowerCaseTableNames()
 
 	fullCopy := true
 
@@ -654,7 +657,17 @@ func (e *Extractor) initDBConnections() (err error) {
 		return err
 	}
 
-	if err := e.validateConnectionAndGetVersion(); err != nil {
+	someSysVars := base.GetSomeSysVars(e.db, e.logger)
+	if someSysVars.Err != nil {
+		return someSysVars.Err
+	}
+	e.logger.Info("Connection validated", "on",
+		hclog.Fmt("%s:%d", e.mysqlContext.ConnectionConfig.Host, e.mysqlContext.ConnectionConfig.Port))
+
+	e.MySQLVersion = someSysVars.Version
+	e.lowerCaseTableNames = someSysVars.LowerCaseTableNames
+	e.mysqlVersionDigit, err = common.MysqlVersionInDigit(e.MySQLVersion)
+	if err != nil {
 		return err
 	}
 
@@ -672,12 +685,6 @@ func (e *Extractor) initDBConnections() (err error) {
 		if e.singletonDB, err = sql.CreateDB(dumpUri); err != nil {
 			return err
 		}
-	}
-
-	if timezone, err := base.ValidateAndReadTimeZone(e.db); err != nil {
-		return err
-	} else {
-		e.logger.Info("got timezone", "timezone", timezone)
 	}
 
 	return nil
@@ -732,10 +739,10 @@ func (e *Extractor) getSchemaTablesAndMeta() error {
 // initBinlogReader creates and connects the reader: we hook up to a MySQL server as a replica
 // Cooperate with `initiateStreaming()` using `e.streamerReadyCh`. Any err will be sent thru the chan.
 func (e *Extractor) initBinlogReader(binlogCoordinates *common.BinlogCoordinatesX) {
-	binlogReader, err := binlog.NewMySQLReader(e.execCtx, e.mysqlContext, e.logger.ResetNamed("reader"),
-		e.replicateDoDb, e.context, e.memory2, e.db, e.targetGtid)
+	binlogReader, err := binlog.NewBinlogReader(e.execCtx, e.mysqlContext, e.logger.ResetNamed("reader"),
+		e.replicateDoDb, e.context, e.memory2, e.db, e.targetGtid, e.lowerCaseTableNames)
 	if err != nil {
-		e.logger.Error("err at initBinlogReader: NewMySQLReader", "err", err)
+		e.logger.Error("err at initBinlogReader: NewBinlogReader", "err", err)
 		e.streamerReadyCh <- err
 		return
 	}
@@ -750,21 +757,6 @@ func (e *Extractor) initBinlogReader(binlogCoordinates *common.BinlogCoordinates
 		}
 		e.streamerReadyCh <- nil
 	}()
-}
-
-// validateConnection issues a simple can-connect to MySQL
-func (e *Extractor) validateConnectionAndGetVersion() error {
-	query := `select @@version`
-	if err := e.db.QueryRow(query).Scan(&e.MySQLVersion); err != nil {
-		return err
-	}
-	e.mysqlVersionDigit = common.MysqlVersionInDigit(e.MySQLVersion)
-	if e.mysqlVersionDigit == 0 {
-		return fmt.Errorf("cannot parse mysql version string to digit. string %v", e.MySQLVersion)
-	}
-	e.logger.Info("Connection validated", "on",
-		hclog.Fmt("%s:%d", e.mysqlContext.ConnectionConfig.Host, e.mysqlContext.ConnectionConfig.Port))
-	return nil
 }
 
 func (e *Extractor) selectSqlMode() error {
@@ -1604,4 +1596,23 @@ func (e *Extractor) Finish1() (err error) {
 	}
 
 	return nil
+}
+
+func (e *Extractor) CheckAndApplyLowerCaseTableNames() {
+	if e.lowerCaseTableNames != mysqlconfig.LowerCaseTableNames0 {
+		lowerConfigItem := func(configItem []*common.DataSource) {
+			for _, d := range configItem {
+				g.LowerString(&d.TableSchemaRename)
+				g.LowerString(&d.TableSchemaRegex)
+				g.LowerString(&d.TableSchemaRename)
+				for _, table := range d.Tables {
+					g.LowerString(&table.TableName)
+					g.LowerString(&table.TableRegex)
+					g.LowerString(&table.TableRename)
+				}
+			}
+		}
+		lowerConfigItem(e.mysqlContext.ReplicateDoDb)
+		lowerConfigItem(e.mysqlContext.ReplicateIgnoreDb)
+	}
 }
