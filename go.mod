@@ -72,6 +72,6 @@ replace github.com/araddon/qlbridge => github.com/ffffwh/qlbridge v0.0.0-2018102
 
 replace github.com/pingcap/dm => github.com/actiontech/dm v0.0.0-20201207121004-64b8d8152b3b
 
-replace github.com/pingcap/parser => github.com/actiontech/parser v0.0.0-20210519114308-d17de82967b8
+replace github.com/pingcap/parser => github.com/actiontech/parser v0.0.0-20211013104136-b3376f831346
 
 replace github.com/pingcap/tidb => github.com/actiontech/tidb v0.0.0-20190910052938-5df091000377

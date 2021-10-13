@@ -365,7 +365,7 @@ github.com/pingcap/kvproto/pkg/sharedbytes
 github.com/pingcap/kvproto/pkg/tikvpb
 # github.com/pingcap/log v0.0.0-20190307075452-bd41d9273596
 github.com/pingcap/log
-# github.com/pingcap/parser v3.0.11+incompatible => github.com/actiontech/parser v0.0.0-20210519114308-d17de82967b8
+# github.com/pingcap/parser v3.0.11+incompatible => github.com/actiontech/parser v0.0.0-20211013104136-b3376f831346
 github.com/pingcap/parser
 github.com/pingcap/parser/ast
 github.com/pingcap/parser/auth
