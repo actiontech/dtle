@@ -503,6 +503,15 @@ func (a *Applier) subscribeNats() (err error) {
 		}
 		a.logger.Info("Rows copy complete.", "TotalRowsReplayed", a.TotalRowsReplayed)
 
+		if a.mysqlContext.ParallelWorkers <= 1 {
+			a.logger.Warn("ParallelWorkers > 1. disabling MySQL session.foreign_key_checks")
+			err = a.enableForeignKeyChecks()
+			if err != nil {
+				a.onError(common.TaskStateDead, errors.Wrap(err, "enableForeignKeyChecks"))
+				return
+			}
+		}
+
 		a.logger.Info("got gtid from extractor", "gtid", dumpData.Coord.GtidSet)
 		// Do not re-assign a.gtidSet (#538). Update it.
 		gs0, err := gomysql.ParseMysqlGTIDSet(dumpData.Coord.GtidSet)
@@ -1042,4 +1051,19 @@ func (a *Applier) checkJobFinish() {
 		a.logger.Info("job finish. shutting down")
 		_ = a.Shutdown()
 	}
+}
+
+func (a *Applier) enableForeignKeyChecks() error {
+	query := "set @@session.foreign_key_checks = 1"
+	_, err := a.db.ExecContext(a.ctx, query)
+	if err != nil {
+		return err
+	}
+	for _, conn := range a.dbs {
+		_, err = conn.Db.ExecContext(a.ctx, query)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
