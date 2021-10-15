@@ -11,7 +11,6 @@ import (
 	"unicode"
 
 	"github.com/pingcap/errors"
-	"github.com/opentracing/opentracing-go"
 	"github.com/satori/go.uuid"
 	. "github.com/siddontang/go-mysql/mysql"
 )
@@ -31,7 +30,6 @@ type BinlogEvent struct {
 
 	Header      *EventHeader
 	Event       Event
-	SpanContest opentracing.SpanContext
 }
 
 func (e *BinlogEvent) Dump(w io.Writer) {

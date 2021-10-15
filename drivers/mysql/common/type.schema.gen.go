@@ -2529,6 +2529,8 @@ func (d *DataEvent) Unmarshal(buf []byte) (uint64, error) {
 type BinlogEntry struct {
 	Coordinates BinlogCoordinateTx
 	Events      []DataEvent
+	Index       int32
+	Final       bool
 }
 
 func (d *BinlogEntry) Size() (s uint64) {
@@ -2559,6 +2561,7 @@ func (d *BinlogEntry) Size() (s uint64) {
 		}
 
 	}
+	s += 5
 	return
 }
 func (d *BinlogEntry) Marshal(buf []byte) ([]byte, error) {
@@ -2607,7 +2610,25 @@ func (d *BinlogEntry) Marshal(buf []byte) ([]byte, error) {
 
 		}
 	}
-	return buf[:i+0], nil
+	{
+
+		buf[i+0+0] = byte(d.Index >> 0)
+
+		buf[i+1+0] = byte(d.Index >> 8)
+
+		buf[i+2+0] = byte(d.Index >> 16)
+
+		buf[i+3+0] = byte(d.Index >> 24)
+
+	}
+	{
+		if d.Final {
+			buf[i+4] = 1
+		} else {
+			buf[i+4] = 0
+		}
+	}
+	return buf[:i+5], nil
 }
 
 func (d *BinlogEntry) Unmarshal(buf []byte) (uint64, error) {
@@ -2654,7 +2675,15 @@ func (d *BinlogEntry) Unmarshal(buf []byte) (uint64, error) {
 
 		}
 	}
-	return i + 0, nil
+	{
+
+		d.Index = 0 | (int32(buf[i+0+0]) << 0) | (int32(buf[i+1+0]) << 8) | (int32(buf[i+2+0]) << 16) | (int32(buf[i+3+0]) << 24)
+
+	}
+	{
+		d.Final = buf[i+4] == 1
+	}
+	return i + 5, nil
 }
 
 type BinlogEntries struct {
@@ -2900,4 +2929,74 @@ func (d *ControlMsg) Unmarshal(buf []byte) (uint64, error) {
 		i += l
 	}
 	return i + 4, nil
+}
+
+type BigTxAck struct {
+	GNO   int64
+	Index int32
+}
+
+func (d *BigTxAck) Size() (s uint64) {
+
+	s += 12
+	return
+}
+func (d *BigTxAck) Marshal(buf []byte) ([]byte, error) {
+	size := d.Size()
+	{
+		if uint64(cap(buf)) >= size {
+			buf = buf[:size]
+		} else {
+			buf = make([]byte, size)
+		}
+	}
+	i := uint64(0)
+
+	{
+
+		buf[0+0] = byte(d.GNO >> 0)
+
+		buf[1+0] = byte(d.GNO >> 8)
+
+		buf[2+0] = byte(d.GNO >> 16)
+
+		buf[3+0] = byte(d.GNO >> 24)
+
+		buf[4+0] = byte(d.GNO >> 32)
+
+		buf[5+0] = byte(d.GNO >> 40)
+
+		buf[6+0] = byte(d.GNO >> 48)
+
+		buf[7+0] = byte(d.GNO >> 56)
+
+	}
+	{
+
+		buf[0+8] = byte(d.Index >> 0)
+
+		buf[1+8] = byte(d.Index >> 8)
+
+		buf[2+8] = byte(d.Index >> 16)
+
+		buf[3+8] = byte(d.Index >> 24)
+
+	}
+	return buf[:i+12], nil
+}
+
+func (d *BigTxAck) Unmarshal(buf []byte) (uint64, error) {
+	i := uint64(0)
+
+	{
+
+		d.GNO = 0 | (int64(buf[0+0]) << 0) | (int64(buf[1+0]) << 8) | (int64(buf[2+0]) << 16) | (int64(buf[3+0]) << 24) | (int64(buf[4+0]) << 32) | (int64(buf[5+0]) << 40) | (int64(buf[6+0]) << 48) | (int64(buf[7+0]) << 56)
+
+	}
+	{
+
+		d.Index = 0 | (int32(buf[0+8]) << 0) | (int32(buf[1+8]) << 8) | (int32(buf[2+8]) << 16) | (int32(buf[3+8]) << 24)
+
+	}
+	return i + 12, nil
 }

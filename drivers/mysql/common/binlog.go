@@ -41,6 +41,10 @@ func (b *BinlogEntry) HasDDL() bool {
 	return false
 }
 
+func (b *BinlogEntry) IsPartOfBigTx() bool {
+	return !(b.Index == 0 && b.Final)
+}
+
 // Duplicate creates and returns a new binlog entry, with some of the attributes pre-assigned
 func (b *BinlogEntry) String() string {
 	return fmt.Sprintf("[BinlogEntry at %+v]", b.Coordinates)

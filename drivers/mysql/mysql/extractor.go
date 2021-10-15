@@ -614,6 +614,18 @@ func (e *Extractor) initNatsPubClient(natsAddr string) (err error) {
 		return
 	}
 
+	_, err = e.natsConn.Subscribe(fmt.Sprintf("%s_bigtx_ack", e.subject), func(m *gonats.Msg) {
+		err := e.natsConn.Publish(m.Reply, nil)
+		if err != nil {
+			e.onError(common.TaskStateDead, errors.Wrap(err, "bigtx_ack. reply"))
+		}
+
+		ack := &common.BigTxAck{}
+		_, err = ack.Unmarshal(m.Data)
+		e.logger.Debug("bigtx_ack", "gno", ack.GNO, "index", ack.Index)
+		e.binlogReader.HasBigTx.Add(-1)
+	})
+
 	_, err = e.natsConn.Subscribe(fmt.Sprintf("%s_progress", e.subject), func(m *gonats.Msg) {
 		binlogFile := string(m.Data)
 		e.logger.Debug("progress", "binlogFile", binlogFile)

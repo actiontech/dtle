@@ -47,8 +47,8 @@ type ApplierIncr struct {
 
 	gtidSet        *gomysql.MysqlGTIDSet
 	gtidSetLock    *sync.RWMutex
-	gtidItemMap        base.GtidItemMap
-	EntryCommittedHook func(entry *common.BinlogEntry)
+	gtidItemMap       base.GtidItemMap
+	EntryExecutedHook func(entry *common.BinlogEntry)
 
 	tableItems mapSchemaTableItems
 
@@ -212,12 +212,15 @@ func (a *ApplierIncr) handleEntry(entryCtx *common.BinlogEntryContext) (err erro
 
 	if binlogEntry.Coordinates.OSID == a.MySQLServerUuid {
 		a.logger.Debug("skipping a dtle tx.", "osid", binlogEntry.Coordinates.OSID)
-		a.EntryCommittedHook(binlogEntry) // make gtid continuous
+		a.EntryExecutedHook(binlogEntry) // make gtid continuous
 		return nil
 	}
-	// region TestIfExecuted
 	txSid := binlogEntry.Coordinates.GetSid()
 
+	// Note: the gtidExecuted will be updated after commit. For a big-tx, we determine
+	// whether to skip for each parts.
+
+	// region TestIfExecuted
 	gtidSetItem := a.gtidItemMap.GetItem(binlogEntry.Coordinates.SID)
 	txExecuted := func() bool {
 		a.gtidSetLock.RLock()
@@ -259,60 +262,74 @@ func (a *ApplierIncr) handleEntry(entryCtx *common.BinlogEntryContext) (err erro
 			return err
 		}
 	} else {
-		if rotated {
-			a.logger.Debug("binlog rotated", "file", a.replayingBinlogFile)
-			if !a.mtsManager.WaitForAllCommitted() {
-				return nil // TODO shutdown
+		if binlogEntry.Index == 0 {
+			if rotated {
+				a.logger.Debug("binlog rotated", "file", a.replayingBinlogFile)
+				if !a.mtsManager.WaitForAllCommitted() {
+					return nil // TODO shutdown
+				}
+				a.mtsManager.lastCommitted = 0
+				a.mtsManager.lastEnqueue = 0
+				a.wsManager.resetCommonParent(0)
+				nPending := len(a.mtsManager.m)
+				if nPending != 0 {
+					a.logger.Warn("DTLE_BUG: lcPendingTx should be 0", "nPending", nPending,
+						"file", a.replayingBinlogFile, "gno", binlogEntry.Coordinates.GNO)
+				}
 			}
-			a.mtsManager.lastCommitted = 0
-			a.mtsManager.lastEnqueue = 0
-			a.wsManager.resetCommonParent(0)
-			nPending := len(a.mtsManager.m)
-			if nPending != 0 {
-				a.logger.Warn("DTLE_BUG: lcPendingTx should be 0", "nPending", nPending,
-					"file", a.replayingBinlogFile, "gno", binlogEntry.Coordinates.GNO)
-			}
-		}
 
-		// If there are TXs skipped by udup source-side
-		if a.mtsManager.lastEnqueue + 1 < binlogEntry.Coordinates.SeqenceNumber {
-			a.logger.Info("found skipping seq_num",
-				"lastEnqueue", a.mtsManager.lastEnqueue, "seqNum", binlogEntry.Coordinates.SeqenceNumber,
-				"uuid", txSid, "gno", binlogEntry.Coordinates.GNO)
-		}
-		for a.mtsManager.lastEnqueue+1 < binlogEntry.Coordinates.SeqenceNumber {
-			a.mtsManager.lastEnqueue += 1
-			a.mtsManager.chExecuted <- a.mtsManager.lastEnqueue
-		}
+			// If there are TXs skipped by udup source-side
+			if a.mtsManager.lastEnqueue+1 < binlogEntry.Coordinates.SeqenceNumber {
+				a.logger.Info("found skipping seq_num",
+					"lastEnqueue", a.mtsManager.lastEnqueue, "seqNum", binlogEntry.Coordinates.SeqenceNumber,
+					"uuid", txSid, "gno", binlogEntry.Coordinates.GNO)
+			}
+			for a.mtsManager.lastEnqueue+1 < binlogEntry.Coordinates.SeqenceNumber {
+				a.mtsManager.lastEnqueue += 1
+				a.mtsManager.chExecuted <- a.mtsManager.lastEnqueue
+			}
 
-		hasDDL := binlogEntry.HasDDL()
-		// DDL must be executed separatedly
-		if hasDDL || a.prevDDL {
-			a.logger.Debug("MTS found DDL. WaitForAllCommitted",
-				"gno", binlogEntry.Coordinates.GNO, "hasDDL", hasDDL, "prevDDL", a.prevDDL)
-			if !a.mtsManager.WaitForAllCommitted() {
-				return nil // shutdown
+			hasDDL := binlogEntry.HasDDL()
+			// DDL must be executed separatedly
+			if hasDDL || a.prevDDL {
+				a.logger.Debug("MTS found DDL. WaitForAllCommitted",
+					"gno", binlogEntry.Coordinates.GNO, "hasDDL", hasDDL, "prevDDL", a.prevDDL)
+				if !a.mtsManager.WaitForAllCommitted() {
+					return nil // shutdown
+				}
+			}
+			a.prevDDL = hasDDL
+
+			if binlogEntry.IsPartOfBigTx() {
+				if !a.mtsManager.WaitForAllCommitted() {
+					return nil // shutdown
+				}
+				a.wsManager.resetCommonParent(binlogEntry.Coordinates.SeqenceNumber)
+			} else if !a.mysqlContext.UseMySQLDependency {
+				newLC := a.wsManager.GatLastCommit(entryCtx)
+				binlogEntry.Coordinates.LastCommitted = newLC
+				a.logger.Debug("WritesetManager", "lc", newLC, "seq", binlogEntry.Coordinates.SeqenceNumber,
+					"gno", binlogEntry.Coordinates.GNO)
 			}
 		}
-		a.prevDDL = hasDDL
 
 		err = a.setTableItemForBinlogEntry(entryCtx)
 		if err != nil {
 			return err
 		}
 
-		if !a.mysqlContext.UseMySQLDependency {
-			newLC := a.wsManager.GatLastCommit(entryCtx)
-			binlogEntry.Coordinates.LastCommitted = newLC
-			a.logger.Debug("WritesetManager", "lc", newLC, "seq", binlogEntry.Coordinates.SeqenceNumber,
-				"gno", binlogEntry.Coordinates.GNO)
+		if binlogEntry.IsPartOfBigTx() {
+			err = a.ApplyBinlogEvent(0, entryCtx)
+			if err != nil {
+				return err
+			}
+		} else {
+			if !a.mtsManager.WaitForExecution(binlogEntry) {
+				return nil // shutdown
+			}
+			a.logger.Debug("a binlogEntry MTS enqueue.", "gno", binlogEntry.Coordinates.GNO)
+			a.applyBinlogMtsTxQueue <- entryCtx
 		}
-
-		if !a.mtsManager.WaitForExecution(binlogEntry) {
-			return nil // shutdown
-		}
-		a.logger.Debug("a binlogEntry MTS enqueue.", "gno", binlogEntry.Coordinates.GNO)
-		a.applyBinlogMtsTxQueue <- entryCtx
 	}
 	return nil
 }
@@ -362,6 +379,7 @@ func (a *ApplierIncr) heterogeneousReplay() {
 
 			for _, entry := range binlogEntries.Entries {
 				a.binlogEntryQueue <- entry
+				a.logger.Debug("")
 				atomic.AddInt64(a.memory2, int64(entry.Size()))
 			}
 
@@ -561,26 +579,28 @@ func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.Bin
 		timestamp = event.Timestamp
 	}
 
-	if !a.SkipGtidExecutedTable {
-		logger.Debug("insert gno", "gno", binlogEntry.Coordinates.GNO)
-		_, err = dbApplier.PsInsertExecutedGtid.ExecContext(a.ctx,
+	if binlogEntry.Final {
+		if !a.SkipGtidExecutedTable {
+			logger.Debug("insert gno", "gno", binlogEntry.Coordinates.GNO)
+			_, err = dbApplier.PsInsertExecutedGtid.ExecContext(a.ctx,
 			a.subject, uuid.UUID(binlogEntry.Coordinates.SID).Bytes(), binlogEntry.Coordinates.GNO)
-		if err != nil {
-			return errors.Wrap(err, "insert gno")
+			if err != nil {
+				return errors.Wrap(err, "insert gno")
+			}
 		}
-	}
 
-	if err := dbApplier.Tx.Commit(); err != nil {
-		a.OnError(common.TaskStateDead, err)
-	} else {
-		a.mtsManager.Executed(binlogEntry)
-		a.EntryCommittedHook(binlogEntry)
+		if err := dbApplier.Tx.Commit(); err != nil {
+			return errors.Wrap(err, "dbApplier.Tx.Commit")
+		} else {
+			a.mtsManager.Executed(binlogEntry)
+		}
+		dbApplier.Tx = nil
+		if a.printTps {
+			atomic.AddUint32(&a.txLastNSeconds, 1)
+		}
+		atomic.AddUint32(&a.appliedTxCount, 1)
 	}
-	dbApplier.Tx = nil
-	if a.printTps {
-		atomic.AddUint32(&a.txLastNSeconds, 1)
-	}
-	atomic.AddUint32(&a.appliedTxCount, 1)
+	a.EntryExecutedHook(binlogEntry)
 
 	// no error
 	a.mysqlContext.Stage = common.StageWaitingForGtidToBeCommitted

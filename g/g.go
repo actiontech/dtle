@@ -76,8 +76,9 @@ func StringPtrEmpty(p *string) bool {
 var (
 	freeMemoryCh = make(chan struct{})
 	freeMemoryWorkerCount = int32(0)
-	lowMemory = int32(0)
+	lowMemory = false
 	memoryMonitorCount = int32(0)
+	MemAvailable = uint64(0)
 )
 
 func FreeMemoryWorker() {
@@ -102,7 +103,25 @@ func TriggerFreeMemory() {
 
 func IsLowMemory() bool {
 	//return atomic.LoadInt32(&lowMemory) == 1
-	return lowMemory == 1
+	memory, err := mem.VirtualMemory()
+	if err != nil {
+		return false
+	}
+	if ((memory.Available * 10) < (memory.Total * 2)) && (memory.Available < 1*1024*1024*1024) {
+		if !lowMemory {
+			Logger.Warn("memory is less than 20% and 1GB. pause parsing binlog",
+				"available", memory.Available, "total", memory.Total)
+		}
+		lowMemory = true
+		return true
+	} else {
+		if lowMemory {
+			Logger.Info("memory is greater than 20% or 1GB. continue parsing binlog",
+				"available", memory.Available, "total", memory.Total)
+		}
+		lowMemory = false
+		return false
+	}
 }
 
 func MemoryMonitor(logger LoggerType) {
@@ -114,24 +133,10 @@ func MemoryMonitor(logger LoggerType) {
 
 	for {
 		<-t.C
-		memory, err := mem.VirtualMemory()
-		if err != nil {
-			lowMemory = 0
+		if IsLowMemory() {
+			TriggerFreeMemory()
 		} else {
-			if (float64(memory.Available)/float64(memory.Total) < 0.2) && (memory.Available < 1*1024*1024*1024) {
-				if lowMemory == 0 {
-					logger.Warn("memory is less than 20% and 1GB. pause parsing binlog",
-						"available", memory.Available, "total", memory.Total)
-				}
-				lowMemory = 1
-				TriggerFreeMemory()
-			} else {
-				if lowMemory == 1 {
-					logger.Info("memory is greater than 20% or 1GB. continue parsing binlog",
-						"available", memory.Available, "total", memory.Total)
-				}
-				lowMemory = 0
-			}
+
 		}
 	}
 }

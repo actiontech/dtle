@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/pingcap/errors"
-	"github.com/opentracing/opentracing-go"
 	uuid "github.com/satori/go.uuid"
 	"github.com/siddontang/go-log/log"
 	"github.com/siddontang/go-mysql/client"
@@ -106,6 +105,13 @@ type BinlogSyncerConfig struct {
 	// https://mariadb.com/kb/en/library/com_binlog_dump/
 	// https://mariadb.com/kb/en/library/annotate_rows_event/
 	DumpCommandFlag uint16
+
+	// When streamer.QueueMem() is reaching the size, pause handling events until QueueMem()
+	// has decreased. 0 for no limit.
+	MemLimitSize    int64
+	// When having paused for MemLimitSeconds, force to handle a event to prevent MySQL
+	// net_write_timeout.
+	MemLimitSeconds int
 }
 
 // BinlogSyncer syncs binlog event from server.
@@ -647,10 +653,7 @@ func (b *BinlogSyncer) onStream(s *BinlogStreamer) {
 	}()
 
 	for {
-		span := opentracing.StartSpan("data source: get incremental data from  ReadPacket()")
-		span.SetTag("before get incremental data  time:", time.Now().Unix())
 		data, err := b.c.ReadPacket()
-		span.SetTag("after  get incremental data time:", time.Now().Unix())
 		select {
 		case <-b.ctx.Done():
 			s.close()
@@ -709,7 +712,7 @@ func (b *BinlogSyncer) onStream(s *BinlogStreamer) {
 
 		switch data[0] {
 		case OK_HEADER:
-			if err = b.parseEvent(span.Context(), s, data); err != nil {
+			if err = b.parseEvent(s, data); err != nil {
 				s.closeWithError(err)
 				return
 			}
@@ -728,16 +731,12 @@ func (b *BinlogSyncer) onStream(s *BinlogStreamer) {
 			log.Errorf("invalid stream header %c", data[0])
 			continue
 		}
-		span.Finish()
 	}
 }
 
-func (b *BinlogSyncer) parseEvent(spanContext opentracing.SpanContext, s *BinlogStreamer, data []byte) error {
+func (b *BinlogSyncer) parseEvent(s *BinlogStreamer, data []byte) error {
 	//skip OK byte, 0x00
 	data = data[1:]
-	span := opentracing.GlobalTracer().StartSpan("  incremental data are  conversion to  BinlogEvent", opentracing.ChildOf(spanContext))
-	span.SetTag("time", time.Now().Unix())
-	defer span.Finish()
 	needACK := false
 	if b.cfg.SemiSyncEnabled && (data[0] == SemiSyncIndicator) {
 		needACK = (data[1] == 0x01)
@@ -746,8 +745,6 @@ func (b *BinlogSyncer) parseEvent(spanContext opentracing.SpanContext, s *Binlog
 	}
 
 	e, err := b.parser.Parse(data)
-	e.SpanContest = span.Context()
-	span.SetTag("tx timestap", e.Header.Timestamp)
 	if err != nil {
 		return errors.Trace(err)
 	}
@@ -806,6 +803,40 @@ func (b *BinlogSyncer) parseEvent(spanContext opentracing.SpanContext, s *Binlog
 		event.GSet = getCurrentGtidSet()
 	case *QueryEvent:
 		event.GSet = getCurrentGtidSet()
+	}
+
+	reachingMemLimit := func() bool {
+		if b.cfg.MemLimitSize <= 0 {
+			return false
+		}
+		if s.QueueSize() == 0 {
+			return false
+		}
+		if s.QueueMem() + int64(len(e.RawData)) > b.cfg.MemLimitSize {
+			return true
+		} else {
+			return false
+		}
+	}
+	for i := 0; ; i++ {
+		if !b.running {
+			break
+		}
+		if !reachingMemLimit() {
+			if i > 0 {
+				log.Infof("reachingMemLimit. continue. %v %v", s.QueueMem(), i)
+			}
+			break
+		}
+		if i >= 2 * b.cfg.MemLimitSeconds {
+			log.Infof("reachingMemLimit. force continue. %v", s.QueueMem())
+			// To prevent MySQL net_write_timeout
+			break
+		}
+		if i == 0 {
+			log.Infof("reachingMemLimit. sleep. %v %v", s.QueueMem(), i)
+		}
+		time.Sleep(500 * time.Millisecond)
 	}
 
 	needStop := false

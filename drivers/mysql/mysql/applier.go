@@ -303,8 +303,24 @@ func (a *Applier) Run() {
 		a.onError(common.TaskStateDead, errors.Wrap(err, "NewApplierIncr"))
 		return
 	}
-	a.ai.EntryCommittedHook = func(entry *common.BinlogEntry) {
-		a.gtidCh <- &entry.Coordinates
+	a.ai.EntryExecutedHook = func(entry *common.BinlogEntry) {
+		if entry.Final {
+			a.gtidCh <- &entry.Coordinates
+		}
+		if entry.IsPartOfBigTx() {
+			bs, err := (&common.BigTxAck{
+				GNO:   entry.Coordinates.GNO,
+				Index: entry.Index,
+			}).Marshal(nil)
+			if err != nil {
+				a.onError(common.TaskStateDead, errors.Wrap(err, "bigtx_ack. Marshal"))
+			}
+			_, err = a.natsConn.Request(fmt.Sprintf("%s_bigtx_ack", a.subject),
+				bs, 1 * time.Minute)
+			if err != nil {
+				a.onError(common.TaskStateDead, errors.Wrap(err, "bigtx_ack. Request"))
+			}
+		}
 	}
 	a.ai.OnError = a.onError
 
