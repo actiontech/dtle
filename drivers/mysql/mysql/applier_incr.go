@@ -305,17 +305,19 @@ func (a *ApplierIncr) handleEntry(entryCtx *common.BinlogEntryContext) (err erro
 					return nil // shutdown
 				}
 				a.wsManager.resetCommonParent(binlogEntry.Coordinates.SeqenceNumber)
-			} else if !a.mysqlContext.UseMySQLDependency {
-				newLC := a.wsManager.GatLastCommit(entryCtx)
-				binlogEntry.Coordinates.LastCommitted = newLC
-				a.logger.Debug("WritesetManager", "lc", newLC, "seq", binlogEntry.Coordinates.SeqenceNumber,
-					"gno", binlogEntry.Coordinates.GNO)
 			}
 		}
 
 		err = a.setTableItemForBinlogEntry(entryCtx)
 		if err != nil {
 			return err
+		}
+
+		if !binlogEntry.IsPartOfBigTx() && !a.mysqlContext.UseMySQLDependency {
+			newLC := a.wsManager.GatLastCommit(entryCtx)
+			binlogEntry.Coordinates.LastCommitted = newLC
+			a.logger.Debug("WritesetManager", "lc", newLC, "seq", binlogEntry.Coordinates.SeqenceNumber,
+				"gno", binlogEntry.Coordinates.GNO)
 		}
 
 		if binlogEntry.IsPartOfBigTx() {
