@@ -519,13 +519,14 @@ func (a *Applier) subscribeNats() (err error) {
 		}
 		a.logger.Info("Rows copy complete.", "TotalRowsReplayed", a.TotalRowsReplayed)
 
-		if a.mysqlContext.ParallelWorkers <= 1 {
-			a.logger.Warn("ParallelWorkers > 1. disabling MySQL session.foreign_key_checks")
+		if a.mysqlContext.ParallelWorkers <= 1 || a.mysqlContext.UseMySQLDependency {
 			err = a.enableForeignKeyChecks()
 			if err != nil {
 				a.onError(common.TaskStateDead, errors.Wrap(err, "enableForeignKeyChecks"))
 				return
 			}
+		} else {
+			a.logger.Warn("ParallelWorkers > 1 and UseMySQLDependency = false. disabling MySQL session.foreign_key_checks")
 		}
 
 		a.logger.Info("got gtid from extractor", "gtid", dumpData.Coord.GtidSet)
