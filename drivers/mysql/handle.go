@@ -3,9 +3,11 @@ package mysql
 import (
 	"context"
 	"fmt"
-	"github.com/actiontech/dtle/g"
 	"sync"
 	"time"
+
+	"github.com/actiontech/dtle/drivers/mysql/mysql/oracle"
+	"github.com/actiontech/dtle/g"
 
 	"github.com/actiontech/dtle/drivers/mysql/common"
 	"github.com/actiontech/dtle/drivers/mysql/kafka"
@@ -175,12 +177,15 @@ func (h *taskHandle) NewRunner(d *Driver) (runner DriverHandle, err error) {
 			if err != nil {
 				return nil, errors.Wrap(err, "NewKafkaRunner")
 			}
-		} else {
+		} else if false {
 			runner, err = mysql.NewApplier(ctx, h.driverConfig, h.logger, d.storeManager,
 				d.config.NatsAdvertise, h.waitCh, d.eventer, h.taskConfig)
 			if err != nil {
 				return nil, errors.Wrap(err, "NewApplier")
 			}
+		} else {
+			runner, err = oracle.NewApplierOracle(ctx, h.driverConfig, h.logger, d.storeManager,
+				d.config.NatsAdvertise, h.waitCh, d.eventer, h.taskConfig)
 		}
 	case common.TaskTypeUnknown:
 		return nil, fmt.Errorf("unknown processor type: %+v", h.taskConfig.Name)
