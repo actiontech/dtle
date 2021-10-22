@@ -167,13 +167,14 @@ func (e *ExtractorOracle) Run() {
 		//	return
 		//}
 	}
-	err = e.sendFullComplete()
+	//err = e.sendFullComplete()
 	{
-		if err != nil {
-			e.logger.Error("error after streamerReadyCh", "err", err)
-			e.onError(common.TaskStateDead, err)
-			return
-		}
+		//if err != nil {
+		//	e.logger.Error("error after streamerReadyCh", "err", err)
+		//	e.onError(common.TaskStateDead, err)
+		//	return
+		//}
+		e.logger.Debug("start .initiateStreaming before")
 		if err := e.initiateStreaming(); err != nil {
 			e.logger.Error("error at initiateStreaming", "err", err)
 			e.onError(common.TaskStateDead, err)
@@ -474,7 +475,7 @@ func (e *ExtractorOracle) StreamEvents() error {
 		} // end for keepGoing && !e.shutdown
 	}()
 	// The next should block and execute forever, unless there's a serious error
-	if err := DataStreamEvents(e.dataChannel); err != nil {
+	if err := e.DataStreamEvents(e.dataChannel); err != nil {
 		if e.shutdown {
 			return nil
 		}

@@ -417,7 +417,8 @@ func (o *OracleDB) currentRedoLogSequenceFp() (string, error) {
 
 var db *OracleDB
 
-func DataStreamEvents(entriesChannel chan<- *common.BinlogEntryContext) error {
+func (e *ExtractorOracle) DataStreamEvents(entriesChannel chan<- *common.BinlogEntryContext) error {
+	e.logger.Debug("start oracle. DataStreamEvents")
 	if db != nil {
 		oracleDb, err := NewDB(&OracleDBMeta{
 			User:        "roma_logminer",
@@ -456,7 +457,7 @@ func DataStreamEvents(entriesChannel chan<- *common.BinlogEntryContext) error {
 		fmt.Println(err)
 		return err
 	}
-	fmt.Println(scn)
+	e.logger.Debug("current scn", "scn", scn)
 
 	ls := NewLogMinerStream(db, scn, 100000)
 	err = ls.start()
@@ -472,14 +473,17 @@ func DataStreamEvents(entriesChannel chan<- *common.BinlogEntryContext) error {
 		if err != nil {
 			return err
 		}
+		for _, r := range rs {
+			e.logger.Debug("r SQL", "REDOSQL", r.SQLRedo)
+		}
+
 		Entry := handleSQLs(rs)
+		e.logger.Debug("handle SQLs", "Entry", Entry)
 		entriesChannel <- &common.BinlogEntryContext{
 			Entry:        Entry,
 			TableItems:   nil,
 			OriginalSize: 0,
 		}
-		//fmt.Println(r)
-		//}
 	}
 }
 
