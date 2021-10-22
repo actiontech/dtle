@@ -27,8 +27,8 @@ type Stmt struct {
 // WARNING: sql parser Format() has be discrepancy ,be is instead of Restore()
 func (v *Stmt) Enter(in ast.Node) (ast.Node, bool) {
 	if node, ok := in.(*ast.TableName); ok {
-		v.Schema = StringsBuilder("`", strings.ToUpper(node.Schema.String()), "`")
-		v.Table = StringsBuilder("`", strings.ToUpper(node.Name.String()), "`")
+		v.Schema = node.Schema.String()
+		v.Table = node.Name.String()
 	}
 
 	if node, ok := in.(*ast.UpdateStmt); ok {
