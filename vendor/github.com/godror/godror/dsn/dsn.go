@@ -6,7 +6,6 @@
 package dsn
 
 import (
-	"context"
 	"database/sql/driver"
 	"encoding/base64"
 	"fmt"
@@ -19,6 +18,7 @@ import (
 	"time"
 
 	"github.com/go-logfmt/logfmt"
+	errors "golang.org/x/xerrors"
 )
 
 const (
@@ -51,14 +51,12 @@ type CommonParams struct {
 	Password                Password
 	ConfigDir, LibDir       string
 	// OnInit is executed on session init. Overrides AlterSession and OnInitStmts!
-	OnInit func(context.Context, driver.ConnPrepareContext) error
+	OnInit func(driver.Conn) error
 	// OnInitStmts are executed on session init, iff OnInit is nil.
 	OnInitStmts []string
 	// AlterSession key-values are set with "ALTER SESSION SET key=value" on session init, iff OnInit is nil.
-	AlterSession [][2]string
-	Timezone     *time.Location
-	// StmtCacheSize of 0 means the default, -1 to disable the stmt cache completely
-	StmtCacheSize           int
+	AlterSession            [][2]string
+	Timezone                *time.Location
 	EnableEvents, NoTZCheck bool
 }
 
@@ -89,9 +87,6 @@ func (P CommonParams) String() string {
 	}
 	if P.NoTZCheck {
 		q.Add("noTimezoneCheck", "1")
-	}
-	if P.StmtCacheSize != 0 {
-		q.Add("stmtCacheSize", strconv.Itoa(int(P.StmtCacheSize)))
 	}
 
 	return q.String()
@@ -135,9 +130,7 @@ func (P ConnParams) String() string {
 // PoolParams holds the configuration of the Oracle Session Pool.
 type PoolParams struct {
 	MinSessions, MaxSessions, SessionIncrement int
-	MaxSessionsPerShard                        int
 	WaitTimeout, MaxLifeTime, SessionTimeout   time.Duration
-	PingInterval                               time.Duration
 	Heterogeneous, ExternalAuth                bool
 }
 
@@ -146,9 +139,6 @@ func (P PoolParams) String() string {
 	q := newParamsArray(8)
 	q.Add("poolMinSessions", strconv.Itoa(P.MinSessions))
 	q.Add("poolMaxSessions", strconv.Itoa(P.MaxSessions))
-	if P.MaxSessionsPerShard != 0 {
-		q.Add("poolMasSessionsPerShard", strconv.Itoa(P.MaxSessionsPerShard))
-	}
 	q.Add("poolIncrement", strconv.Itoa(P.SessionIncrement))
 	if P.Heterogeneous {
 		q.Add("heterogeneousPool", "1")
@@ -158,9 +148,6 @@ func (P PoolParams) String() string {
 	q.Add("poolSessionTimeout", P.SessionTimeout.String())
 	if P.ExternalAuth {
 		q.Add("externalAuth", "1")
-	}
-	if P.PingInterval != 0 {
-		q.Add("pingInterval", P.PingInterval.String())
 	}
 	return q.String()
 }
@@ -256,14 +243,8 @@ func (P ConnectionParams) string(class, withPassword bool) string {
 		return "0"
 	}
 	q.Add("noTimezoneCheck", B(P.NoTZCheck))
-	if P.StmtCacheSize != 0 {
-		q.Add("stmtCacheSize", strconv.Itoa(int(P.StmtCacheSize)))
-	}
 	q.Add("poolMinSessions", strconv.Itoa(P.MinSessions))
 	q.Add("poolMaxSessions", strconv.Itoa(P.MaxSessions))
-	if P.MaxSessionsPerShard != 0 {
-		q.Add("poolMasSessionsPerShard", strconv.Itoa(P.MaxSessionsPerShard))
-	}
 	q.Add("poolIncrement", strconv.Itoa(P.SessionIncrement))
 	q.Add("sysdba", B(P.IsSysDBA))
 	q.Add("sysoper", B(P.IsSysOper))
@@ -319,7 +300,7 @@ func Parse(dataSourceName string) (ConnectionParams, error) {
 		// URL
 		u, err := url.Parse(dataSourceName)
 		if err != nil {
-			return P, fmt.Errorf("%s: %w", dataSourceName, err)
+			return P, errors.Errorf("%s: %w", dataSourceName, err)
 		}
 		if usr := u.User; usr != nil {
 			P.Username = usr.Username()
@@ -387,7 +368,7 @@ func Parse(dataSourceName string) (ConnectionParams, error) {
 			}
 		}
 		if err := d.Err(); err != nil {
-			return P, fmt.Errorf("parsing parameters %q: %w", paramsString, err)
+			return P, errors.Errorf("parsing parameters %q: %w", paramsString, err)
 		}
 	}
 	//fmt.Printf("cs0=%q\n", P.ConnectString)
@@ -419,7 +400,7 @@ func Parse(dataSourceName string) (ConnectionParams, error) {
 		}
 		var err error
 		if *task.Dest, err = strconv.ParseBool(s); err != nil {
-			return P, fmt.Errorf("%s=%q: %w", task.Key, s, err)
+			return P, errors.Errorf("%s=%q: %w", task.Key, s, err)
 		}
 		if task.Key == "heterogeneousPool" {
 			P.StandaloneConnection = !P.Heterogeneous
@@ -432,7 +413,7 @@ func Parse(dataSourceName string) (ConnectionParams, error) {
 			P.Timezone = time.Local
 		} else if strings.Contains(tz, "/") {
 			if P.Timezone, err = time.LoadLocation(tz); err != nil {
-				return P, fmt.Errorf("%s: %w", tz, err)
+				return P, errors.Errorf("%s: %w", tz, err)
 			}
 		} else if off, err := ParseTZ(tz); err == nil {
 			if off == 0 {
@@ -441,22 +422,21 @@ func Parse(dataSourceName string) (ConnectionParams, error) {
 				P.Timezone = time.FixedZone(tz, off)
 			}
 		} else {
-			return P, fmt.Errorf("%s: %w", tz, err)
+			return P, errors.Errorf("%s: %w", tz, err)
 		}
 		if P.Timezone == nil {
 			P.Timezone = time.UTC
 		}
 	}
+
 	for _, task := range []struct {
 		Dest *int
 		Key  string
 	}{
 		{&P.MinSessions, "poolMinSessions"},
 		{&P.MaxSessions, "poolMaxSessions"},
-		{&P.MaxSessionsPerShard, "poolMasSessionsPerShard"},
 		{&P.SessionIncrement, "poolIncrement"},
 		{&P.SessionIncrement, "sessionIncrement"},
-		{&P.StmtCacheSize, "stmtCacheSize"},
 	} {
 		s := q.Get(task.Key)
 		if s == "" {
@@ -465,10 +445,9 @@ func Parse(dataSourceName string) (ConnectionParams, error) {
 		var err error
 		*task.Dest, err = strconv.Atoi(s)
 		if err != nil {
-			return P, fmt.Errorf("%s: %w", task.Key+"="+s, err)
+			return P, errors.Errorf("%s: %w", task.Key+"="+s, err)
 		}
 	}
-
 	for _, task := range []struct {
 		Dest *time.Duration
 		Key  string
@@ -476,7 +455,6 @@ func Parse(dataSourceName string) (ConnectionParams, error) {
 		{&P.SessionTimeout, "poolSessionTimeout"},
 		{&P.WaitTimeout, "poolWaitTimeout"},
 		{&P.MaxLifeTime, "poolSessionMaxLifetime"},
-		{&P.PingInterval, "pingInterval"},
 	} {
 		s := q.Get(task.Key)
 		if s == "" {
@@ -486,11 +464,11 @@ func Parse(dataSourceName string) (ConnectionParams, error) {
 		*task.Dest, err = time.ParseDuration(s)
 		if err != nil {
 			if !strings.Contains(err.Error(), "time: missing unit in duration") {
-				return P, fmt.Errorf("%s: %w", task.Key+"="+s, err)
+				return P, errors.Errorf("%s: %w", task.Key+"="+s, err)
 			}
 			i, err := strconv.Atoi(s)
 			if err != nil {
-				return P, fmt.Errorf("%s: %w", task.Key+"="+s, err)
+				return P, errors.Errorf("%s: %w", task.Key+"="+s, err)
 			}
 			base := time.Second
 			if task.Key == "poolWaitTimeout" {
@@ -515,7 +493,7 @@ func Parse(dataSourceName string) (ConnectionParams, error) {
 			}
 		}
 		if err := d.Err(); err != nil {
-			return P, fmt.Errorf("%q: %w", s, err)
+			return P, errors.Errorf("%q: %w", s, err)
 		}
 	}
 	P.OnInitStmts = q["onInit"]
@@ -765,7 +743,7 @@ func ParseTZ(s string) (int, error) {
 	if i := strings.IndexByte(s, ':'); i >= 0 {
 		u64, err := strconv.ParseUint(s[i+1:], 10, 6)
 		if err != nil {
-			return tz, fmt.Errorf("%s: %w", s, err)
+			return tz, errors.Errorf("%s: %w", s, err)
 		}
 		tz = int(u64 * 60)
 		s = s[:i]
@@ -775,7 +753,7 @@ func ParseTZ(s string) (int, error) {
 		if i := strings.IndexByte(s, '/'); i >= 0 {
 			targetLoc, err := time.LoadLocation(s)
 			if err != nil {
-				return tz, fmt.Errorf("%s: %w", s, err)
+				return tz, errors.Errorf("%s: %w", s, err)
 			}
 			if targetLoc == nil {
 				targetLoc = time.UTC
@@ -789,7 +767,7 @@ func ParseTZ(s string) (int, error) {
 	}
 	i64, err := strconv.ParseInt(s, 10, 5)
 	if err != nil {
-		return tz, fmt.Errorf("%s: %w", s, err)
+		return tz, errors.Errorf("%s: %w", s, err)
 	}
 	if i64 < 0 {
 		tz = -tz

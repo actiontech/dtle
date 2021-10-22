@@ -12,7 +12,6 @@ package godror
 import "C"
 import (
 	"context"
-	"errors"
 	"fmt"
 	"runtime"
 	"sync"
@@ -204,14 +203,8 @@ func (Q *Queue) Dequeue(messages []Message) (int, error) {
 	}
 	if rc == C.DPI_FAILURE {
 		err := Q.conn.getError()
-		var ec interface{ Code() int }
-		if errors.As(err, &ec) {
-			switch ec.Code() {
-			case 3156:
-				return 0, nil
-			case 24010: // 0RA-24010: Queue does not exist
-				Q.Close()
-			}
+		if code := err.(interface{ Code() int }).Code(); code == 3156 {
+			return 0, nil
 		}
 		return 0, fmt.Errorf("dequeue: %w", err)
 	}
@@ -271,12 +264,7 @@ func (Q *Queue) Enqueue(messages []Message) error {
 		rc = C.dpiQueue_enqMany(Q.dpiQueue, C.uint(len(props)), &props[0])
 	}
 	if rc == C.DPI_FAILURE {
-		err := Q.conn.getError()
-		var ec interface{ Code() int }
-		if errors.As(err, &ec) && ec.Code() == 24010 { // 0RA-24010: Queue does not exist
-			Q.Close()
-		}
-		return fmt.Errorf("enqueue %#v: %w", messages, err)
+		return fmt.Errorf("enqueue %#v: %w", messages, Q.conn.getError())
 	}
 
 	return nil
@@ -447,7 +435,7 @@ func (M *Message) fromOra(c *conn, props *C.dpiMsgProps, objType *ObjectType) er
 			M.Raw = C.GoBytes(unsafe.Pointer(value), C.int(length))
 		} else {
 			if C.dpiObject_addRef(obj) == C.DPI_FAILURE {
-				return objType.drv.getError()
+				return objType.conn.getError()
 			}
 			M.Object = &Object{dpiObject: obj, ObjectType: objType}
 		}

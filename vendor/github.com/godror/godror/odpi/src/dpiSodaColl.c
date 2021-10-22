@@ -83,12 +83,6 @@ static int dpiSodaColl__createOperOptions(dpiSodaColl *coll,
     if (!options) {
         dpiContext__initSodaOperOptions(&localOptions);
         options = &localOptions;
-
-    // size changed in version 4.2; this can be removed in version 5
-    } else if (coll->env->context->dpiMinorVersion < 2) {
-        dpiContext__initSodaOperOptions(&localOptions);
-        memcpy(&localOptions, options, sizeof(dpiSodaOperOptions__v41));
-        options = &localOptions;
     }
 
     // allocate new handle
@@ -221,15 +215,15 @@ static int dpiSodaColl__getDocCount(dpiSodaColl *coll,
 //-----------------------------------------------------------------------------
 static int dpiSodaColl__insertMany(dpiSodaColl *coll, uint32_t numDocs,
         void **docHandles, uint32_t flags, dpiSodaDoc **insertedDocs,
-        void *operOptionsHandle, dpiError *error)
+        dpiError *error)
 {
-    void *outputOptionsHandle;
+    void *optionsHandle;
     uint32_t i, j, mode;
     uint64_t docCount;
     int status;
 
     // create OCI output options handle
-    if (dpiOci__handleAlloc(coll->env->handle, &outputOptionsHandle,
+    if (dpiOci__handleAlloc(coll->env->handle, &optionsHandle,
             DPI_OCI_HTYPE_SODA_OUTPUT_OPTIONS,
             "allocate SODA output options handle", error) < 0)
         return DPI_FAILURE;
@@ -240,27 +234,23 @@ static int dpiSodaColl__insertMany(dpiSodaColl *coll, uint32_t numDocs,
         mode |= DPI_OCI_SODA_ATOMIC_COMMIT;
 
     // perform actual bulk insert
-    if (operOptionsHandle) {
-        status = dpiOci__sodaBulkInsertAndGetWithOpts(coll, docHandles,
-                numDocs, operOptionsHandle, outputOptionsHandle, mode, error);
-        dpiOci__handleFree(operOptionsHandle, DPI_OCI_HTYPE_SODA_OPER_OPTIONS);
-    } else if (insertedDocs) {
+    if (insertedDocs) {
         status = dpiOci__sodaBulkInsertAndGet(coll, docHandles, numDocs,
-                outputOptionsHandle, mode, error);
+                optionsHandle, mode, error);
     } else {
         status = dpiOci__sodaBulkInsert(coll, docHandles, numDocs,
-                outputOptionsHandle, mode, error);
+                optionsHandle, mode, error);
     }
 
     // on failure, determine the number of documents that were successfully
     // inserted and store that information in the error buffer
     if (status < 0) {
-        dpiOci__attrGet(outputOptionsHandle, DPI_OCI_HTYPE_SODA_OUTPUT_OPTIONS,
+        dpiOci__attrGet(optionsHandle, DPI_OCI_HTYPE_SODA_OUTPUT_OPTIONS,
                 (void*) &docCount, 0, DPI_OCI_ATTR_SODA_DOC_COUNT,
                 NULL, error);
         error->buffer->offset = (uint32_t) docCount;
     }
-    dpiOci__handleFree(outputOptionsHandle, DPI_OCI_HTYPE_SODA_OUTPUT_OPTIONS);
+    dpiOci__handleFree(optionsHandle, DPI_OCI_HTYPE_SODA_OUTPUT_OPTIONS);
 
     // on failure, if using the "AndGet" variant, any document handles that
     // were created need to be freed
@@ -363,17 +353,6 @@ static int dpiSodaColl__populateOperOptions(dpiSodaColl *coll,
             return DPI_FAILURE;
     }
 
-    // set hint, if applicable (only available in 19.11+/21.3+ client)
-    if (options->hintLength > 0) {
-        if (dpiUtils__checkClientVersionMulti(coll->env->versionInfo, 19, 11,
-                21, 3, error) < 0)
-            return DPI_FAILURE;
-        if (dpiOci__attrSet(handle, DPI_OCI_HTYPE_SODA_OPER_OPTIONS,
-                (void*) options->hint, options->hintLength,
-                DPI_OCI_ATTR_SODA_HINT, "set hint", error) < 0)
-            return DPI_FAILURE;
-    }
-
     return DPI_SUCCESS;
 }
 
@@ -461,8 +440,7 @@ static int dpiSodaColl__replace(dpiSodaColl *coll,
 //   Internal method for saving a document in the collection.
 //-----------------------------------------------------------------------------
 static int dpiSodaColl__save(dpiSodaColl *coll, dpiSodaDoc *doc,
-        uint32_t flags, dpiSodaDoc **savedDoc, void *optionsHandle,
-        dpiError *error)
+        uint32_t flags, dpiSodaDoc **savedDoc, dpiError *error)
 {
     void *docHandle;
     uint32_t mode;
@@ -480,13 +458,7 @@ static int dpiSodaColl__save(dpiSodaColl *coll, dpiSodaDoc *doc,
         status = dpiOci__sodaSave(coll, docHandle, mode, error);
     } else {
         *savedDoc = NULL;
-        if (optionsHandle) {
-            status = dpiOci__sodaSaveAndGetWithOpts(coll, &docHandle,
-                    optionsHandle, mode, error);
-            dpiOci__handleFree(optionsHandle, DPI_OCI_HTYPE_SODA_OPER_OPTIONS);
-        } else {
-            status = dpiOci__sodaSaveAndGet(coll, &docHandle, mode, error);
-        }
+        status = dpiOci__sodaSaveAndGet(coll, &docHandle, mode, error);
         if (status == 0 && docHandle) {
             status = dpiSodaDoc__allocate(coll->db, docHandle, savedDoc,
                     error);
@@ -752,26 +724,13 @@ int dpiSodaColl_getName(dpiSodaColl *coll, const char **value,
 
 //-----------------------------------------------------------------------------
 // dpiSodaColl_insertMany() [PUBLIC]
-//   Similar to dpiSodaColl_insertManyWithOptions() but passing NULL options.
+//   Insert multiple documents into the collection and return handles to the
+// newly created documents, if desired.
 //-----------------------------------------------------------------------------
 int dpiSodaColl_insertMany(dpiSodaColl *coll, uint32_t numDocs,
         dpiSodaDoc **docs, uint32_t flags, dpiSodaDoc **insertedDocs)
 {
-    return dpiSodaColl_insertManyWithOptions(coll, numDocs, docs, NULL, flags,
-            insertedDocs);
-}
-
-
-//-----------------------------------------------------------------------------
-// dpiSodaColl_insertManyWithOptions() [PUBLIC]
-//   Insert multiple documents into the collection and return handles to the
-// newly created documents, if desired.
-//-----------------------------------------------------------------------------
-int dpiSodaColl_insertManyWithOptions(dpiSodaColl *coll, uint32_t numDocs,
-        dpiSodaDoc **docs, dpiSodaOperOptions *options, uint32_t flags,
-        dpiSodaDoc **insertedDocs)
-{
-    void **docHandles, *optionsHandle = NULL;
+    void **docHandles;
     dpiError error;
     uint32_t i;
     int status;
@@ -795,30 +754,16 @@ int dpiSodaColl_insertManyWithOptions(dpiSodaColl *coll, uint32_t numDocs,
             &error) < 0)
         return dpiGen__endPublicFn(coll, DPI_FAILURE, &error);
 
-    // if options specified and the newly created document is to be returned,
-    // create the operation options handle
-    if (insertedDocs && options) {
-        if (dpiUtils__checkClientVersionMulti(coll->env->versionInfo, 19, 11,
-                21, 3, &error) < 0)
-            return dpiGen__endPublicFn(coll, DPI_FAILURE, &error);
-        if (dpiSodaColl__createOperOptions(coll, options, &optionsHandle,
-                &error) < 0)
-            return dpiGen__endPublicFn(coll, DPI_FAILURE, &error);
-    }
-
     // create and populate array to hold document handles
     if (dpiUtils__allocateMemory(numDocs, sizeof(void*), 1,
-            "allocate document handles", (void**) &docHandles, &error) < 0) {
-        if (optionsHandle)
-            dpiOci__handleFree(optionsHandle, DPI_OCI_HTYPE_SODA_OPER_OPTIONS);
+            "allocate document handles", (void**) &docHandles, &error) < 0)
         return dpiGen__endPublicFn(coll, DPI_FAILURE, &error);
-    }
     for (i = 0; i < numDocs; i++)
         docHandles[i] = docs[i]->handle;
 
     // perform bulk insert
     status = dpiSodaColl__insertMany(coll, numDocs, docHandles, flags,
-            insertedDocs, optionsHandle, &error);
+            insertedDocs, &error);
     dpiUtils__freeMemory(docHandles);
     return dpiGen__endPublicFn(coll, status, &error);
 }
@@ -826,25 +771,13 @@ int dpiSodaColl_insertManyWithOptions(dpiSodaColl *coll, uint32_t numDocs,
 
 //-----------------------------------------------------------------------------
 // dpiSodaColl_insertOne() [PUBLIC]
-//   Similar to dpiSodaColl_insertOneWithOptions() but passing NULL options.
+//   Insert a document into the collection and return a handle to the newly
+// created document, if desired.
 //-----------------------------------------------------------------------------
 int dpiSodaColl_insertOne(dpiSodaColl *coll, dpiSodaDoc *doc, uint32_t flags,
         dpiSodaDoc **insertedDoc)
 {
-    return dpiSodaColl_insertOneWithOptions(coll, doc, NULL, flags,
-            insertedDoc);
-}
-
-
-//-----------------------------------------------------------------------------
-// dpiSodaColl_insertOneWithOptions() [PUBLIC]
-//   Insert a document into the collection and return a handle to the newly
-// created document, if desired.
-//-----------------------------------------------------------------------------
-int dpiSodaColl_insertOneWithOptions(dpiSodaColl *coll, dpiSodaDoc *doc,
-        dpiSodaOperOptions *options, uint32_t flags, dpiSodaDoc **insertedDoc)
-{
-    void *docHandle, *optionsHandle = NULL;
+    void *docHandle;
     dpiError error;
     uint32_t mode;
     int status;
@@ -856,35 +789,18 @@ int dpiSodaColl_insertOneWithOptions(dpiSodaColl *coll, dpiSodaDoc *doc,
             &error) < 0)
         return dpiGen__endPublicFn(coll, DPI_FAILURE, &error);
 
-    // if options specified and the newly created document is to be returned,
-    // create the operation options handle
-    if (insertedDoc && options) {
-        if (dpiUtils__checkClientVersionMulti(coll->env->versionInfo, 19, 11,
-                21, 3, &error) < 0)
-            return dpiGen__endPublicFn(coll, DPI_FAILURE, &error);
-        if (dpiSodaColl__createOperOptions(coll, options, &optionsHandle,
-                &error) < 0)
-            return dpiGen__endPublicFn(coll, DPI_FAILURE, &error);
-    }
-
     // determine OCI mode to use
     mode = DPI_OCI_DEFAULT;
     if (flags & DPI_SODA_FLAGS_ATOMIC_COMMIT)
         mode |= DPI_OCI_SODA_ATOMIC_COMMIT;
 
     // insert document into collection
-    // use "AndGet" variants if the inserted document is requested
+    // use "AndGet" variant if the inserted document is requested
     docHandle = doc->handle;
     if (!insertedDoc)
         status = dpiOci__sodaInsert(coll, docHandle, mode, &error);
     else {
-        if (options) {
-            status = dpiOci__sodaInsertAndGetWithOpts(coll, &docHandle,
-                    optionsHandle, mode, &error);
-            dpiOci__handleFree(optionsHandle, DPI_OCI_HTYPE_SODA_OPER_OPTIONS);
-        } else {
-            status = dpiOci__sodaInsertAndGet(coll, &docHandle, mode, &error);
-        }
+        status = dpiOci__sodaInsertAndGet(coll, &docHandle, mode, &error);
         if (status == 0) {
             status = dpiSodaDoc__allocate(coll->db, docHandle, insertedDoc,
                     &error);
@@ -957,27 +873,15 @@ int dpiSodaColl_replaceOne(dpiSodaColl *coll,
 
 //-----------------------------------------------------------------------------
 // dpiSodaColl_save() [PUBLIC]
-//   Similar to dpiSodaColl_saveWithOptions() but passing NULL options.
-//-----------------------------------------------------------------------------
-int dpiSodaColl_save(dpiSodaColl *coll, dpiSodaDoc *doc, uint32_t flags,
-        dpiSodaDoc **savedDoc)
-{
-    return dpiSodaColl_saveWithOptions(coll, doc, NULL, flags, savedDoc);
-}
-
-
-//-----------------------------------------------------------------------------
-// dpiSodaColl_saveWithOptions() [PUBLIC]
 //   Save the document into the collection. This method is equivalent to
 // dpiSodaColl_insertOne() except that if client-assigned keys are used, and
 // the document with the specified key already exists in the collection, it
 // will be replaced with the input document. Returns a handle to the new
 // document, if desired.
 //-----------------------------------------------------------------------------
-int dpiSodaColl_saveWithOptions(dpiSodaColl *coll, dpiSodaDoc *doc,
-        dpiSodaOperOptions *options, uint32_t flags, dpiSodaDoc **savedDoc)
+int dpiSodaColl_save(dpiSodaColl *coll, dpiSodaDoc *doc, uint32_t flags,
+        dpiSodaDoc **savedDoc)
 {
-    void *optionsHandle = NULL;
     dpiError error;
     int status;
 
@@ -993,20 +897,8 @@ int dpiSodaColl_saveWithOptions(dpiSodaColl *coll, dpiSodaDoc *doc,
             &error) < 0)
         return dpiGen__endPublicFn(coll, DPI_FAILURE, &error);
 
-    // if options specified and the newly created document is to be returned,
-    // create the operation options handle
-    if (savedDoc && options) {
-        if (dpiUtils__checkClientVersionMulti(coll->env->versionInfo, 19, 11,
-                21, 3, &error) < 0)
-            return dpiGen__endPublicFn(coll, DPI_FAILURE, &error);
-        if (dpiSodaColl__createOperOptions(coll, options, &optionsHandle,
-                &error) < 0)
-            return dpiGen__endPublicFn(coll, DPI_FAILURE, &error);
-    }
-
     // perform save
-    status = dpiSodaColl__save(coll, doc, flags, savedDoc, optionsHandle,
-            &error);
+    status = dpiSodaColl__save(coll, doc, flags, savedDoc, &error);
     return dpiGen__endPublicFn(coll, status, &error);
 }
 

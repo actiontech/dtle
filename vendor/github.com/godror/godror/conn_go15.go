@@ -1,4 +1,3 @@
-//go:build go1.15
 // +build go1.15
 
 // Copyright 2019, 2020 The Godror Authors

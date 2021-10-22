@@ -287,9 +287,8 @@ func (s *Subscription) Register(qry string, params ...interface{}) error {
 	if C.dpiStmt_getSubscrQueryId(dpiStmt, &queryID) == C.DPI_FAILURE {
 		return fmt.Errorf("getSubscrQueryId: %w", s.conn.getError())
 	}
-    logger := getLogger()
-	if logger != nil {
-		logger.Log("msg", "subscribed", "query", qry, "id", queryID)
+	if Log != nil {
+		Log("msg", "subscribed", "query", qry, "id", queryID)
 	}
 
 	return nil

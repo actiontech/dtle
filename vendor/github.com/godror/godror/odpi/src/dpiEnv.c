@@ -126,7 +126,7 @@ int dpiEnv__getEncodingInfo(dpiEnv *env, dpiEncodingInfo *info)
 //-----------------------------------------------------------------------------
 int dpiEnv__init(dpiEnv *env, const dpiContext *context,
         const dpiCommonCreateParams *params, void *externalHandle,
-        dpiCreateMode createMode, dpiError *error)
+        dpiError *error)
 {
     int temp;
 
@@ -170,7 +170,8 @@ int dpiEnv__init(dpiEnv *env, const dpiContext *context,
         }
 
         // create new environment handle
-        if (dpiOci__envNlsCreate(&env->handle, createMode | DPI_OCI_OBJECT,
+        if (dpiOci__envNlsCreate(&env->handle,
+                params->createMode | DPI_OCI_OBJECT,
                 env->charsetId, env->ncharsetId, error) < 0)
             return DPI_FAILURE;
 
@@ -182,7 +183,7 @@ int dpiEnv__init(dpiEnv *env, const dpiContext *context,
     error->env = env;
 
     // if threaded, create mutex for reference counts
-    if (createMode & DPI_OCI_THREADED)
+    if (params->createMode & DPI_OCI_THREADED)
         dpiMutex__initialize(env->mutex);
 
     // determine encodings in use
@@ -205,11 +206,11 @@ int dpiEnv__init(dpiEnv *env, const dpiContext *context,
     else env->nmaxBytesPerCharacter = 4;
 
     // set whether or not we are threaded
-    if (createMode & DPI_MODE_CREATE_THREADED)
+    if (params->createMode & DPI_MODE_CREATE_THREADED)
         env->threaded = 1;
 
     // set whether or not events mode has been set
-    if (createMode & DPI_MODE_CREATE_EVENTS)
+    if (params->createMode & DPI_MODE_CREATE_EVENTS)
         env->events = 1;
 
     // enable SODA metadata cache, if applicable

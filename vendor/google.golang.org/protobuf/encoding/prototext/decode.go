@@ -6,13 +6,14 @@ package prototext
 
 import (
 	"fmt"
+	"strings"
 	"unicode/utf8"
 
 	"google.golang.org/protobuf/internal/encoding/messageset"
 	"google.golang.org/protobuf/internal/encoding/text"
 	"google.golang.org/protobuf/internal/errors"
+	"google.golang.org/protobuf/internal/fieldnum"
 	"google.golang.org/protobuf/internal/flags"
-	"google.golang.org/protobuf/internal/genid"
 	"google.golang.org/protobuf/internal/pragma"
 	"google.golang.org/protobuf/internal/set"
 	"google.golang.org/protobuf/internal/strs"
@@ -22,7 +23,6 @@ import (
 )
 
 // Unmarshal reads the given []byte into the given proto.Message.
-// The provided message must be mutable (e.g., a non-nil pointer to a message).
 func Unmarshal(b []byte, m proto.Message) error {
 	return UnmarshalOptions{}.Unmarshal(b, m)
 }
@@ -51,17 +51,9 @@ type UnmarshalOptions struct {
 	}
 }
 
-// Unmarshal reads the given []byte and populates the given proto.Message
-// using options in the UnmarshalOptions object.
-// The provided message must be mutable (e.g., a non-nil pointer to a message).
+// Unmarshal reads the given []byte and populates the given proto.Message using options in
+// UnmarshalOptions object.
 func (o UnmarshalOptions) Unmarshal(b []byte, m proto.Message) error {
-	return o.unmarshal(b, m)
-}
-
-// unmarshal is a centralized function that all unmarshal operations go through.
-// For profiling purposes, avoid changing the name of this function or
-// introducing other code paths for unmarshal that do not go through this.
-func (o UnmarshalOptions) unmarshal(b []byte, m proto.Message) error {
 	proto.Reset(m)
 
 	if o.Resolver == nil {
@@ -109,7 +101,7 @@ func (d decoder) unmarshalMessage(m pref.Message, checkDelims bool) error {
 		return errors.New("no support for proto1 MessageSets")
 	}
 
-	if messageDesc.FullName() == genid.Any_message_fullname {
+	if messageDesc.FullName() == "google.protobuf.Any" {
 		return d.unmarshalAny(m, checkDelims)
 	}
 
@@ -159,11 +151,21 @@ func (d decoder) unmarshalMessage(m pref.Message, checkDelims bool) error {
 		switch tok.NameKind() {
 		case text.IdentName:
 			name = pref.Name(tok.IdentName())
-			fd = fieldDescs.ByTextName(string(name))
+			fd = fieldDescs.ByName(name)
+			if fd == nil {
+				// The proto name of a group field is in all lowercase,
+				// while the textproto field name is the group message name.
+				gd := fieldDescs.ByName(pref.Name(strings.ToLower(string(name))))
+				if gd != nil && gd.Kind() == pref.GroupKind && gd.Message().Name() == name {
+					fd = gd
+				}
+			} else if fd.Kind() == pref.GroupKind && fd.Message().Name() != name {
+				fd = nil // reset since field name is actually the message name
+			}
 
 		case text.TypeName:
 			// Handle extensions only. This code path is not for Any.
-			xt, xtErr = d.opts.Resolver.FindExtensionByName(pref.FullName(tok.TypeName()))
+			xt, xtErr = d.findExtension(pref.FullName(tok.TypeName()))
 
 		case text.FieldNumber:
 			isFieldNumberName = true
@@ -258,6 +260,15 @@ func (d decoder) unmarshalMessage(m pref.Message, checkDelims bool) error {
 	}
 
 	return nil
+}
+
+// findExtension returns protoreflect.ExtensionType from the Resolver if found.
+func (d decoder) findExtension(xtName pref.FullName) (pref.ExtensionType, error) {
+	xt, err := d.opts.Resolver.FindExtensionByName(xtName)
+	if err == nil {
+		return xt, nil
+	}
+	return messageset.FindMessageSetExtension(d.opts.Resolver, xtName)
 }
 
 // unmarshalSingular unmarshals a non-repeated field value specified by the
@@ -520,13 +531,14 @@ Loop:
 			return d.unexpectedTokenError(tok)
 		}
 
-		switch name := pref.Name(tok.IdentName()); name {
-		case genid.MapEntry_Key_field_name:
+		name := tok.IdentName()
+		switch name {
+		case "key":
 			if !tok.HasSeparator() {
 				return d.syntaxError(tok.Pos(), "missing field separator :")
 			}
 			if key.IsValid() {
-				return d.newError(tok.Pos(), "map entry %q cannot be repeated", name)
+				return d.newError(tok.Pos(), `map entry "key" cannot be repeated`)
 			}
 			val, err := d.unmarshalScalar(fd.MapKey())
 			if err != nil {
@@ -534,14 +546,14 @@ Loop:
 			}
 			key = val.MapKey()
 
-		case genid.MapEntry_Value_field_name:
+		case "value":
 			if kind := fd.MapValue().Kind(); (kind != pref.MessageKind) && (kind != pref.GroupKind) {
 				if !tok.HasSeparator() {
 					return d.syntaxError(tok.Pos(), "missing field separator :")
 				}
 			}
 			if pval.IsValid() {
-				return d.newError(tok.Pos(), "map entry %q cannot be repeated", name)
+				return d.newError(tok.Pos(), `map entry "value" cannot be repeated`)
 			}
 			pval, err = unmarshalMapValue()
 			if err != nil {
@@ -578,9 +590,13 @@ Loop:
 func (d decoder) unmarshalAny(m pref.Message, checkDelims bool) error {
 	var typeURL string
 	var bValue []byte
-	var seenTypeUrl bool
-	var seenValue bool
-	var isExpanded bool
+
+	// hasFields tracks which valid fields have been seen in the loop below in
+	// order to flag an error if there are duplicates or conflicts. It may
+	// contain the strings "type_url", "value" and "expanded".  The literal
+	// "expanded" is used to indicate that the expanded form has been
+	// encountered already.
+	hasFields := map[string]bool{}
 
 	if checkDelims {
 		tok, err := d.Read()
@@ -619,12 +635,12 @@ Loop:
 				return d.syntaxError(tok.Pos(), "missing field separator :")
 			}
 
-			switch name := pref.Name(tok.IdentName()); name {
-			case genid.Any_TypeUrl_field_name:
-				if seenTypeUrl {
-					return d.newError(tok.Pos(), "duplicate %v field", genid.Any_TypeUrl_field_fullname)
+			switch tok.IdentName() {
+			case "type_url":
+				if hasFields["type_url"] {
+					return d.newError(tok.Pos(), "duplicate Any type_url field")
 				}
-				if isExpanded {
+				if hasFields["expanded"] {
 					return d.newError(tok.Pos(), "conflict with [%s] field", typeURL)
 				}
 				tok, err := d.Read()
@@ -634,15 +650,15 @@ Loop:
 				var ok bool
 				typeURL, ok = tok.String()
 				if !ok {
-					return d.newError(tok.Pos(), "invalid %v field value: %v", genid.Any_TypeUrl_field_fullname, tok.RawString())
+					return d.newError(tok.Pos(), "invalid Any type_url: %v", tok.RawString())
 				}
-				seenTypeUrl = true
+				hasFields["type_url"] = true
 
-			case genid.Any_Value_field_name:
-				if seenValue {
-					return d.newError(tok.Pos(), "duplicate %v field", genid.Any_Value_field_fullname)
+			case "value":
+				if hasFields["value"] {
+					return d.newError(tok.Pos(), "duplicate Any value field")
 				}
-				if isExpanded {
+				if hasFields["expanded"] {
 					return d.newError(tok.Pos(), "conflict with [%s] field", typeURL)
 				}
 				tok, err := d.Read()
@@ -651,22 +667,22 @@ Loop:
 				}
 				s, ok := tok.String()
 				if !ok {
-					return d.newError(tok.Pos(), "invalid %v field value: %v", genid.Any_Value_field_fullname, tok.RawString())
+					return d.newError(tok.Pos(), "invalid Any value: %v", tok.RawString())
 				}
 				bValue = []byte(s)
-				seenValue = true
+				hasFields["value"] = true
 
 			default:
 				if !d.opts.DiscardUnknown {
-					return d.newError(tok.Pos(), "invalid field name %q in %v message", tok.RawString(), genid.Any_message_fullname)
+					return d.newError(tok.Pos(), "invalid field name %q in google.protobuf.Any message", tok.RawString())
 				}
 			}
 
 		case text.TypeName:
-			if isExpanded {
+			if hasFields["expanded"] {
 				return d.newError(tok.Pos(), "cannot have more than one type")
 			}
-			if seenTypeUrl {
+			if hasFields["type_url"] {
 				return d.newError(tok.Pos(), "conflict with type_url field")
 			}
 			typeURL = tok.TypeName()
@@ -675,21 +691,21 @@ Loop:
 			if err != nil {
 				return err
 			}
-			isExpanded = true
+			hasFields["expanded"] = true
 
 		default:
 			if !d.opts.DiscardUnknown {
-				return d.newError(tok.Pos(), "invalid field name %q in %v message", tok.RawString(), genid.Any_message_fullname)
+				return d.newError(tok.Pos(), "invalid field name %q in google.protobuf.Any message", tok.RawString())
 			}
 		}
 	}
 
 	fds := m.Descriptor().Fields()
 	if len(typeURL) > 0 {
-		m.Set(fds.ByNumber(genid.Any_TypeUrl_field_number), pref.ValueOfString(typeURL))
+		m.Set(fds.ByNumber(fieldnum.Any_TypeUrl), pref.ValueOfString(typeURL))
 	}
 	if len(bValue) > 0 {
-		m.Set(fds.ByNumber(genid.Any_Value_field_number), pref.ValueOfBytes(bValue))
+		m.Set(fds.ByNumber(fieldnum.Any_Value), pref.ValueOfBytes(bValue))
 	}
 	return nil
 }
@@ -744,6 +760,9 @@ func (d decoder) skipValue() error {
 				// Skip items. This will not validate whether skipped values are
 				// of the same type or not, same behavior as C++
 				// TextFormat::Parser::AllowUnknownField(true) version 3.8.0.
+				if err := d.skipValue(); err != nil {
+					return err
+				}
 			}
 		}
 	}

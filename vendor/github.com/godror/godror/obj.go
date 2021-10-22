@@ -55,14 +55,13 @@ func (O *Object) GetAttribute(data *Data, name string) error {
 	}
 
 	//fmt.Printf("getAttributeValue(%p, %p, %d, %+v)\n", O.dpiObject, attr.dpiObjectAttr, data.NativeTypeNum, data.dpiData)
-	if err := O.drv.checkExec(func() C.int {
+	if err := O.conn.checkExec(func() C.int {
 		return C.dpiObject_getAttributeValue(O.dpiObject, attr.dpiObjectAttr, data.NativeTypeNum, &data.dpiData)
 	}); err != nil {
 		return fmt.Errorf("getAttributeValue(%q, obj=%+v, attr=%+v, typ=%d): %w", name, O, attr.dpiObjectAttr, data.NativeTypeNum, err)
 	}
-	logger := getLogger()
-	if logger != nil {
-		logger.Log("msg", "getAttributeValue", "dpiObject", fmt.Sprintf("%p", O.dpiObject),
+	if Log != nil {
+		Log("msg", "getAttributeValue", "dpiObject", fmt.Sprintf("%p", O.dpiObject),
 			attr.Name, fmt.Sprintf("%p", attr.dpiObjectAttr),
 			"nativeType", data.NativeTypeNum, "oracleType", attr.OracleTypeNum,
 			"data", data.dpiData, "p", fmt.Sprintf("%p", data))
@@ -80,7 +79,7 @@ func (O *Object) SetAttribute(name string, data *Data) error {
 		data.NativeTypeNum = attr.NativeTypeNum
 		data.ObjectType = attr.ObjectType
 	}
-	return O.drv.checkExec(func() C.int {
+	return O.conn.checkExec(func() C.int {
 		return C.dpiObject_setAttributeValue(O.dpiObject, attr.dpiObjectAttr, data.NativeTypeNum, &data.dpiData)
 	})
 }
@@ -113,7 +112,7 @@ func (O *Object) ResetAttributes() error {
 			C.dpiData_setBytes(&data.dpiData, (*C.char)(unsafe.Pointer(&a[0])), C.uint32_t(attr.Precision))
 		}
 		if C.dpiObject_setAttributeValue(O.dpiObject, attr.dpiObjectAttr, data.NativeTypeNum, &data.dpiData) == C.DPI_FAILURE {
-			return O.drv.getError()
+			return O.conn.getError()
 		}
 	}
 
@@ -166,11 +165,10 @@ func (O *Object) Close() error {
 	if obj == nil {
 		return nil
 	}
-	logger := getLogger()
-	if logger != nil {
-		logger.Log("msg", "Object.Close", "object", obj)
+	if Log != nil {
+		Log("msg", "Object.Close", "object", obj)
 	}
-	if err := O.drv.checkExec(func() C.int { return C.dpiObject_release(obj) }); err != nil {
+	if err := O.conn.checkExec(func() C.int { return C.dpiObject_release(obj) }); err != nil {
 		return fmt.Errorf("error on close object: %w", err)
 	}
 
@@ -220,7 +218,7 @@ func (O ObjectCollection) AsSlice(dest interface{}) (interface{}, error) {
 
 // AppendData to the collection.
 func (O ObjectCollection) AppendData(data *Data) error {
-	if err := O.drv.checkExec(func() C.int {
+	if err := O.conn.checkExec(func() C.int {
 		return C.dpiObject_appendElement(O.dpiObject, data.NativeTypeNum, &data.dpiData)
 	}); err != nil {
 		return fmt.Errorf("append(%d): %w", data.NativeTypeNum, err)
@@ -253,7 +251,7 @@ func (O ObjectCollection) AppendObject(obj *Object) error {
 
 // Delete i-th element of the collection.
 func (O ObjectCollection) Delete(i int) error {
-	if err := O.drv.checkExec(func() C.int {
+	if err := O.conn.checkExec(func() C.int {
 		return C.dpiObject_deleteElementByIndex(O.dpiObject, C.int32_t(i))
 	}); err != nil {
 		return fmt.Errorf("delete(%d): %w", i, err)
@@ -273,7 +271,7 @@ func (O ObjectCollection) GetItem(data *Data, i int) error {
 	idx := C.int32_t(i)
 	var exists C.int
 	if C.dpiObject_getElementExistsByIndex(O.dpiObject, idx, &exists) == C.DPI_FAILURE {
-		return fmt.Errorf("exists(%d): %w", idx, O.drv.getError())
+		return fmt.Errorf("exists(%d): %w", idx, O.conn.getError())
 	}
 	if exists == 0 {
 		return ErrNotExist
@@ -283,7 +281,7 @@ func (O ObjectCollection) GetItem(data *Data, i int) error {
 	data.ObjectType = O.CollectionOf
 	data.implicitObj = true
 	if C.dpiObject_getElementValueByIndex(O.dpiObject, idx, data.NativeTypeNum, &data.dpiData) == C.DPI_FAILURE {
-		return fmt.Errorf("get(%d[%d]): %w", idx, data.NativeTypeNum, O.drv.getError())
+		return fmt.Errorf("get(%d[%d]): %w", idx, data.NativeTypeNum, O.conn.getError())
 	}
 	return nil
 }
@@ -297,7 +295,7 @@ func (O ObjectCollection) Get(i int) (interface{}, error) {
 
 // SetItem sets the i-th element of the collection with data.
 func (O ObjectCollection) SetItem(i int, data *Data) error {
-	if err := O.drv.checkExec(func() C.int {
+	if err := O.conn.checkExec(func() C.int {
 		return C.dpiObject_setElementValueByIndex(O.dpiObject, C.int32_t(i), data.NativeTypeNum, &data.dpiData)
 	}); err != nil {
 		return fmt.Errorf("set(%d[%d]): %w", i, data.NativeTypeNum, err)
@@ -322,7 +320,7 @@ func (O ObjectCollection) Set(i int, v interface{}) error {
 func (O ObjectCollection) First() (int, error) {
 	var exists C.int
 	var idx C.int32_t
-	if err := O.drv.checkExec(func() C.int {
+	if err := O.conn.checkExec(func() C.int {
 		return C.dpiObject_getFirstIndex(O.dpiObject, &idx, &exists)
 	}); err != nil {
 		return 0, fmt.Errorf("first: %w", err)
@@ -337,7 +335,7 @@ func (O ObjectCollection) First() (int, error) {
 func (O ObjectCollection) Last() (int, error) {
 	var exists C.int
 	var idx C.int32_t
-	if err := O.drv.checkExec(func() C.int {
+	if err := O.conn.checkExec(func() C.int {
 		return C.dpiObject_getLastIndex(O.dpiObject, &idx, &exists)
 	}); err != nil {
 		return 0, fmt.Errorf("last: %w", err)
@@ -352,7 +350,7 @@ func (O ObjectCollection) Last() (int, error) {
 func (O ObjectCollection) Next(i int) (int, error) {
 	var exists C.int
 	var idx C.int32_t
-	if err := O.drv.checkExec(func() C.int {
+	if err := O.conn.checkExec(func() C.int {
 		return C.dpiObject_getNextIndex(O.dpiObject, C.int32_t(i), &idx, &exists)
 	}); err != nil {
 		return 0, fmt.Errorf("next(%d): %w", i, err)
@@ -366,7 +364,7 @@ func (O ObjectCollection) Next(i int) (int, error) {
 // Len returns the length of the collection.
 func (O ObjectCollection) Len() (int, error) {
 	var size C.int32_t
-	if err := O.drv.checkExec(func() C.int { return C.dpiObject_getSize(O.dpiObject, &size) }); err != nil {
+	if err := O.conn.checkExec(func() C.int { return C.dpiObject_getSize(O.dpiObject, &size) }); err != nil {
 		return 0, fmt.Errorf("len: %w", err)
 	}
 	return int(size), nil
@@ -374,14 +372,14 @@ func (O ObjectCollection) Len() (int, error) {
 
 // Trim the collection to n.
 func (O ObjectCollection) Trim(n int) error {
-	return O.drv.checkExec(func() C.int { return C.dpiObject_trim(O.dpiObject, C.uint32_t(n)) })
+	return O.conn.checkExec(func() C.int { return C.dpiObject_trim(O.dpiObject, C.uint32_t(n)) })
 }
 
 // ObjectType holds type info of an Object.
 type ObjectType struct {
 	CollectionOf                        *ObjectType
 	Attributes                          map[string]ObjectAttribute
-	drv                                 *drv
+	conn                                *conn
 	dpiObjectType                       *C.dpiObjectType
 	Schema, Name                        string
 	DBSize, ClientSizeInBytes, CharSize int
@@ -391,6 +389,11 @@ type ObjectType struct {
 	Precision                           int16
 	Scale                               int8
 	FsPrecision                         uint8
+}
+
+// NewData returns Data for input parameters on Object/ObjectCollection.
+func (t *ObjectType) NewData(baseType interface{}, sliceLen, bufSize int) ([]*Data, error) {
+	return t.conn.NewData(baseType, sliceLen, bufSize)
 }
 
 func (t *ObjectType) String() string {
@@ -416,15 +419,14 @@ func (c *conn) GetObjectType(name string) (*ObjectType, error) {
 	if !strings.Contains(name, "\"") {
 		name = strings.ToUpper(name)
 	}
-	logger := getLogger()
-	if logger != nil {
-		logger.Log("msg", "GetObjectType", "name", name)
+	if Log != nil {
+		Log("msg", "GetObjectType", "name", name)
 	}
 	cName := C.CString(name)
 	defer func() { C.free(unsafe.Pointer(cName)) }()
 	objType := (*C.dpiObjectType)(C.malloc(C.sizeof_void))
-	c.mu.RLock()
-	defer c.mu.RUnlock()
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	if c.dpiConn == nil {
 		return nil, driver.ErrBadConn
 	}
@@ -439,7 +441,7 @@ func (c *conn) GetObjectType(name string) (*ObjectType, error) {
 		}
 		return nil, fmt.Errorf("getObjectType(%q) conn=%p: %w", name, c.dpiConn, err)
 	}
-	t := &ObjectType{drv: c.drv, dpiObjectType: objType}
+	t := &ObjectType{conn: c, dpiObjectType: objType}
 	err := t.init()
 	return t, err
 }
@@ -448,13 +450,12 @@ func (c *conn) GetObjectType(name string) (*ObjectType, error) {
 //
 // As with all Objects, you MUST call Close on it when not needed anymore!
 func (t *ObjectType) NewObject() (*Object, error) {
-	logger := getLogger()
-	if logger != nil {
-		logger.Log("msg", "NewObject", "name", t.Name)
+	if Log != nil {
+		Log("msg", "NewObject", "name", t.Name)
 	}
 	obj := (*C.dpiObject)(C.malloc(C.sizeof_void))
 	t.mu.RLock()
-	err := t.drv.checkExec(func() C.int { return C.dpiObjectType_createObject(t.dpiObjectType, &obj) })
+	err := t.conn.checkExec(func() C.int { return C.dpiObjectType_createObject(t.dpiObjectType, &obj) })
 	t.mu.RUnlock()
 	if err != nil {
 		C.free(unsafe.Pointer(obj))
@@ -485,30 +486,30 @@ func (t *ObjectType) Close() error {
 	}
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	attributes, cof, d, conn := t.Attributes, t.CollectionOf, t.dpiObjectType, t.drv
-	t.Attributes, t.CollectionOf, t.dpiObjectType, t.drv = nil, nil, nil, nil
+	attributes, cof, d := t.Attributes, t.CollectionOf, t.dpiObjectType
+	t.Attributes, t.CollectionOf, t.dpiObjectType = nil, nil, nil
 
 	if d == nil {
 		return nil
 	}
 
-	logger := getLogger()
 	if cof != nil {
-		if err := cof.Close(); err != nil && logger != nil {
-			logger.Log("msg", "ObjectType.Close CollectionOf.Close", "name", t.Name, "collectionOf", cof.Name, "error", err)
+		if err := cof.Close(); err != nil && Log != nil {
+			Log("msg", "ObjectType.Close CollectionOf.Close", "name", t.Name, "collectionOf", cof.Name, "error", err)
 		}
 	}
 
 	for _, attr := range attributes {
-		if err := attr.Close(); err != nil && logger != nil {
-			logger.Log("msg", "ObjectType.Close attr.Close", "name", t.Name, "attr", attr.Name, "error", err)
+		if err := attr.Close(); err != nil && Log != nil {
+			Log("msg", "ObjectType.Close attr.Close", "name", t.Name, "attr", attr.Name, "error", err)
 		}
 	}
+	t.conn = nil
 
-	if logger != nil {
-		logger.Log("msg", "ObjectType.Close", "name", t.Name)
+	if Log != nil {
+		Log("msg", "ObjectType.Close", "name", t.Name)
 	}
-	if err := conn.checkExec(func() C.int { return C.dpiObjectType_release(d) }); err != nil {
+	if err := t.conn.checkExec(func() C.int { return C.dpiObjectType_release(d) }); err != nil {
 		return fmt.Errorf("error on close object type: %w", err)
 	}
 
@@ -523,14 +524,14 @@ func wrapObject(c *conn, objectType *C.dpiObjectType, object *C.dpiObject) (*Obj
 		return nil, err
 	}
 	o := &Object{
-		ObjectType: &ObjectType{dpiObjectType: objectType, drv: c.drv},
+		ObjectType: &ObjectType{dpiObjectType: objectType, conn: c},
 		dpiObject:  object,
 	}
 	return o, o.init()
 }
 
 func (t *ObjectType) init() error {
-	if t.drv == nil {
+	if t.conn == nil {
 		panic("conn is nil")
 	}
 	if t.Name != "" && t.Attributes != nil {
@@ -548,7 +549,7 @@ func (t *ObjectType) init() error {
 	}
 	var info C.dpiObjectTypeInfo
 	if C.dpiObjectType_getInfo(d, &info) == C.DPI_FAILURE {
-		return fmt.Errorf("%v.getInfo: %w", t, t.drv.getError())
+		return fmt.Errorf("%v.getInfo: %w", t, t.conn.getError())
 	}
 	t.Schema = C.GoStringN(info.schema, C.int(info.schemaLength))
 	t.Name = C.GoStringN(info.name, C.int(info.nameLength))
@@ -556,7 +557,7 @@ func (t *ObjectType) init() error {
 
 	numAttributes := int(info.numAttributes)
 	if info.isCollection == 1 {
-		t.CollectionOf = &ObjectType{drv: t.drv}
+		t.CollectionOf = &ObjectType{conn: t.conn}
 		if err := t.CollectionOf.fromDataTypeInfo(info.elementTypeInfo); err != nil {
 			return err
 		}
@@ -578,19 +579,18 @@ func (t *ObjectType) init() error {
 		C.uint16_t(len(attrs)),
 		(**C.dpiObjectAttr)(unsafe.Pointer(&attrs[0])),
 	) == C.DPI_FAILURE {
-		return fmt.Errorf("%v.getAttributes: %w", t, t.drv.getError())
+		return fmt.Errorf("%v.getAttributes: %w", t, t.conn.getError())
 	}
-	logger := getLogger()
 	for i, attr := range attrs {
 		var attrInfo C.dpiObjectAttrInfo
 		if C.dpiObjectAttr_getInfo(attr, &attrInfo) == C.DPI_FAILURE {
-			return fmt.Errorf("%v.attr_getInfo: %w", attr, t.drv.getError())
+			return fmt.Errorf("%v.attr_getInfo: %w", attr, t.conn.getError())
 		}
-		if logger != nil {
-			logger.Log("i", i, "attrInfo", attrInfo)
+		if Log != nil {
+			Log("i", i, "attrInfo", attrInfo)
 		}
 		typ := attrInfo.typeInfo
-		sub, err := objectTypeFromDataTypeInfo(t.drv, typ)
+		sub, err := objectTypeFromDataTypeInfo(t.conn, typ)
 		if err != nil {
 			return err
 		}
@@ -598,9 +598,6 @@ func (t *ObjectType) init() error {
 			dpiObjectAttr: attr,
 			Name:          C.GoStringN(attrInfo.name, C.int(attrInfo.nameLength)),
 			ObjectType:    sub,
-		}
-		if sub.dpiObjectType != nil {
-			C.dpiObjectType_addRef(sub.dpiObjectType)
 		}
 		//fmt.Printf("%d=%q. typ=%+v sub=%+v\n", i, objAttr.Name, typ, sub)
 		t.Attributes[objAttr.Name] = objAttr
@@ -625,14 +622,14 @@ func (t *ObjectType) fromDataTypeInfo(typ C.dpiDataTypeInfo) error {
 	t.FsPrecision = uint8(typ.fsPrecision)
 	return t.init()
 }
-func objectTypeFromDataTypeInfo(d *drv, typ C.dpiDataTypeInfo) (*ObjectType, error) {
-	if d == nil {
-		panic("drv is nil")
+func objectTypeFromDataTypeInfo(conn *conn, typ C.dpiDataTypeInfo) (*ObjectType, error) {
+	if conn == nil {
+		panic("conn is nil")
 	}
 	if typ.oracleTypeNum == 0 {
 		panic("typ is nil")
 	}
-	t := &ObjectType{drv: d}
+	t := &ObjectType{conn: conn}
 	err := t.fromDataTypeInfo(typ)
 	return t, err
 }
@@ -646,14 +643,16 @@ type ObjectAttribute struct {
 
 // Close the ObjectAttribute.
 func (A ObjectAttribute) Close() error {
-	if A.dpiObjectAttr == nil {
+	attr := A.dpiObjectAttr
+	A.dpiObjectAttr = nil
+
+	if attr == nil {
 		return nil
 	}
-	logger := getLogger()
-	if logger != nil {
-		logger.Log("msg", "ObjectAttribute.Close", "name", A.Name)
+	if Log != nil {
+		Log("msg", "ObjectAttribute.Close", "name", A.Name)
 	}
-	if err := A.ObjectType.drv.checkExec(func() C.int { return C.dpiObjectAttr_release(A.dpiObjectAttr) }); err != nil {
+	if err := A.ObjectType.conn.checkExec(func() C.int { return C.dpiObjectAttr_release(attr) }); err != nil {
 		return err
 	}
 	return A.ObjectType.Close()

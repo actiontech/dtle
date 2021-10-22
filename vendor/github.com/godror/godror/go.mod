@@ -1,10 +1,11 @@
 module github.com/godror/godror
 
-go 1.14
+go 1.13
 
 require (
 	github.com/go-logfmt/logfmt v0.5.0
-	github.com/google/go-cmp v0.5.5
+	github.com/google/go-cmp v0.4.0
+	github.com/kortschak/utter v1.0.1
 	golang.org/x/sync v0.0.0-20190911185100-cd5d95a43a6e
-	google.golang.org/protobuf v1.27.1
+	golang.org/x/xerrors v0.0.0-20191204190536-9bdfabe68543
 )

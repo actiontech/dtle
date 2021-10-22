@@ -36,9 +36,8 @@ type intType struct{}
 
 func (intType) String() string { return "Int64" }
 func (intType) ConvertValue(v interface{}) (driver.Value, error) {
-	logger := getLogger()
-	if logger != nil {
-		logger.Log("ConvertValue", "Int64", "value", v)
+	if Log != nil {
+		Log("ConvertValue", "Int64", "value", v)
 	}
 	switch x := v.(type) {
 	case int8:
@@ -89,9 +88,8 @@ type floatType struct{}
 
 func (floatType) String() string { return "Float64" }
 func (floatType) ConvertValue(v interface{}) (driver.Value, error) {
-	logger := getLogger()
-	if logger != nil {
-		logger.Log("ConvertValue", "Float64", "value", v)
+	if Log != nil {
+		Log("ConvertValue", "Float64", "value", v)
 	}
 	switch x := v.(type) {
 	case int8:
@@ -136,9 +134,8 @@ type numType struct{}
 
 func (numType) String() string { return "Num" }
 func (numType) ConvertValue(v interface{}) (driver.Value, error) {
-	logger := getLogger()
-	if logger != nil {
-		logger.Log("ConvertValue", "Num", "value", v)
+	if Log != nil {
+		Log("ConvertValue", "Num", "value", v)
 	}
 	switch x := v.(type) {
 	case string:
@@ -390,10 +387,6 @@ func MapToSlice(qry string, metParam func(string) interface{}) (string, []interf
 			if prev == '*' && r == '/' {
 				state = 0
 			}
-		case 4:
-			if r == '\'' {
-				state = 0
-			}
 		case 0:
 			switch r {
 			case '-':
@@ -404,8 +397,6 @@ func MapToSlice(qry string, metParam func(string) interface{}) (string, []interf
 				if prev == '/' {
 					state = 3
 				}
-			case '\'':
-				state = 4
 			case ':':
 				state = 1
 				p = i
@@ -432,10 +423,6 @@ func MapToSlice(qry string, metParam func(string) interface{}) (string, []interf
 
 // EnableDbmsOutput enables DBMS_OUTPUT buffering on the given connection.
 // This is required if you want to retrieve the output with ReadDbmsOutput later.
-//
-// Warning! EnableDbmsOutput, the code that uses DBMS_OUTPUT and ReadDbmsOutput
-// must all execute on the same session - for example by using the same *sql.Tx,
-// or *sql.Conn. A *sql.DB connection pool won't work!
 func EnableDbmsOutput(ctx context.Context, conn Execer) error {
 	qry := "BEGIN DBMS_OUTPUT.enable(NULL); END;"
 	_, err := conn.ExecContext(ctx, qry)
@@ -448,10 +435,6 @@ func EnableDbmsOutput(ctx context.Context, conn Execer) error {
 // ReadDbmsOutput copies the DBMS_OUTPUT buffer into the given io.Writer.
 //
 // Be sure that you enable it beforehand (either with EnableDbmsOutput or with DBMS_OUTPUT.enable(NULL))
-//
-// Warning! EnableDbmsOutput, the code that uses DBMS_OUTPUT and ReadDbmsOutput
-// must all execute on the same session - for example by using the same *sql.Tx,
-// or *sql.Conn. A *sql.DB connection pool won't work!
 func ReadDbmsOutput(ctx context.Context, w io.Writer, conn preparer) error {
 	const maxNumLines = 128
 	bw := bufio.NewWriterSize(w, maxNumLines*(32<<10))
@@ -476,7 +459,7 @@ func ReadDbmsOutput(ctx context.Context, w io.Writer, conn preparer) error {
 			return fmt.Errorf("%s: %w", qry, err)
 		}
 		if numLines == 0 {
-			break
+			continue
 		}
 		for i := 0; i < int(numLines); i++ {
 			_, _ = bw.WriteString(lines[i])
@@ -486,10 +469,9 @@ func ReadDbmsOutput(ctx context.Context, w io.Writer, conn preparer) error {
 			}
 		}
 		if int(numLines) < len(lines) {
-			break
+			return bw.Flush()
 		}
 	}
-	return bw.Flush()
 }
 
 // ClientVersion returns the VersionInfo from the DB.
