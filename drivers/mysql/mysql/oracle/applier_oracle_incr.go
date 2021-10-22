@@ -93,23 +93,6 @@ func (a *ApplierOracleIncr) Run() (err error) {
 	}
 
 	go a.heterogeneousReplay()
-
-	if a.printTps {
-		go func() {
-			for {
-				select {
-				case <-a.shutdownCh:
-					return
-				default:
-					// keep loop
-				}
-				time.Sleep(5 * time.Second)
-				n := atomic.SwapUint32(&a.txLastNSeconds, 0)
-				a.logger.Info("txLastNSeconds", "n", n)
-			}
-		}()
-	}
-
 	return nil
 }
 
@@ -183,6 +166,7 @@ func (a *ApplierOracleIncr) heterogeneousReplay() {
 			if !hasEntry {
 				a.logger.Debug("no binlogEntry for 10s")
 			}
+			//a.handleEntry(NewTestEntryContext())
 			hasEntry = false
 		}
 	}
@@ -285,27 +269,27 @@ func (a *ApplierOracleIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *comm
 		atomic.AddInt64(a.memory2, -int64(binlogEntry.Size()))
 	}()
 
-	once.Do(func() {
-		newColumnValues := &common.ColumnValues{
-			AbstractValues: nil,
-		}
-		for i, v := range []string{"Id1", "Name1"} {
-			newColumnValues.AbstractValues[i] = v
-		}
-		binlogEntry.Events = append(binlogEntry.Events, common.DataEvent{
-			Query:             "",
-			CurrentSchema:     "TEST",
-			DatabaseName:      "TEST",
-			TableName:         "T1",
-			DML:               common.InsertDML,
-			ColumnCount:       2,
-			WhereColumnValues: nil,
-			NewColumnValues:   newColumnValues,
-			Table:             nil,
-			LogPos:            0,
-			Timestamp:         0,
-		})
-	})
+	//once.Do(func() {
+	//	newColumnValues := &common.ColumnValues{
+	//		AbstractValues: nil,
+	//	}
+	//	for i, v := range []string{"Id1", "Name1"} {
+	//		newColumnValues.AbstractValues[i] = v
+	//	}
+	//	binlogEntry.Events = append(binlogEntry.Events, common.DataEvent{
+	//		Query:             "",
+	//		CurrentSchema:     "TEST",
+	//		DatabaseName:      "TEST",
+	//		TableName:         "T1",
+	//		DML:               common.InsertDML,
+	//		ColumnCount:       2,
+	//		WhereColumnValues: nil,
+	//		NewColumnValues:   newColumnValues,
+	//		Table:             nil,
+	//		LogPos:            0,
+	//		Timestamp:         0,
+	//	})
+	//})
 
 	for i, event := range binlogEntry.Events {
 		logger.Debug("binlogEntry.Events", "gno", binlogEntry.Coordinates.GNO, "event", i)
@@ -340,6 +324,9 @@ func (a *ApplierOracleIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *comm
 				logger.Error("RowsAffected error", "gno", binlogEntry.Coordinates.GNO, "event", i, "err", err)
 			} else {
 				logger.Debug("RowsAffected.after", "gno", binlogEntry.Coordinates.GNO, "event", i, "nr", nr)
+			}
+			if nr > 0 {
+				dbApplier.Tx.Commit()
 			}
 			totalDelta += rowDelta
 		}
@@ -397,4 +384,36 @@ func (a *ApplierOracleIncr) setTableItemForBinlogEntry(binlogEntry *common.Binlo
 		}
 	}
 	return nil
+}
+
+func NewTestEntryContext() *common.BinlogEntryContext {
+	abstractValues := make([]interface{}, 0)
+	for _, v := range []string{time.Now().String(), time.Now().String()} {
+		abstractValues = append(abstractValues, v)
+	}
+	newColumnValues := &common.ColumnValues{
+		AbstractValues: abstractValues,
+	}
+	entryContex := &common.BinlogEntryContext{
+		Entry: &common.BinlogEntry{
+			//Coordinates: common.BinlogCoordinateTx{},
+			Events: []common.DataEvent{{
+				Query:             "",
+				CurrentSchema:     "TEST",
+				DatabaseName:      "TEST",
+				TableName:         "T1",
+				DML:               common.InsertDML,
+				ColumnCount:       2,
+				WhereColumnValues: nil,
+				NewColumnValues:   newColumnValues,
+				Table:             nil,
+				LogPos:            0,
+				Timestamp:         0,
+			}},
+			//Index:       0,
+			//Final:       false,
+		},
+		TableItems: nil,
+	}
+	return entryContex
 }

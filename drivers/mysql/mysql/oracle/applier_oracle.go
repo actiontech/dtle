@@ -7,7 +7,6 @@
 package oracle
 
 import (
-	"bytes"
 	gosql "database/sql"
 	"fmt"
 	"math"
@@ -157,7 +156,6 @@ func (a *ApplierOracle) Run() {
 		return
 	}
 
-	//go a.doFullCopy()
 	go func() {
 		err := a.ai.Run()
 		if err != nil {
@@ -177,147 +175,33 @@ func (a *ApplierOracle) initNatSubClient() (err error) {
 	return nil
 }
 
-func (a *ApplierOracle) sendEvent(status string) {
-	err := a.event.EmitEvent(&drivers.TaskEvent{
-		TaskID:      a.taskConfig.ID,
-		TaskName:    a.taskConfig.Name,
-		AllocID:     a.taskConfig.AllocID,
-		Timestamp:   time.Now(),
-		Message:     status,
-		Annotations: nil,
-		Err:         nil,
-	})
-	if err != nil {
-		a.logger.Error("error at sending task event", "err", err, "status", status)
-	}
-}
-
 // initiateStreaming begins treaming of binary log events and registers listeners for such events
 func (a *ApplierOracle) subscribeNats() (err error) {
 	a.mysqlContext.MarkRowCopyStartTime()
 	a.logger.Debug("nats subscribe")
 
 	//fullNMM := common.NewNatsMsgMerger(a.logger.With("nmm", "full"))
-	//_, err = a.natsConn.Subscribe(fmt.Sprintf("%s_full", a.subject), func(m *gonats.Msg) {
-	//	a.wg.Add(1)
-	//	defer a.wg.Done()
-	//
-	//	a.logger.Debug("full. recv a msg.", "len", len(m.Data), "fullBytesQueue", len(a.fullBytesQueue))
-	//
-	//	select {
-	//	case <-a.rowCopyComplete: // full complete. Maybe src task restart.
-	//		if err := a.natsConn.Publish(m.Reply, nil); err != nil {
-	//			a.onError(common.TaskStateDead, err)
-	//		}
-	//		a.logger.Debug("full. after publish nats reply")
-	//		return
-	//	default:
-	//	}
-	//
-	//	segmentFinished, err := fullNMM.Handle(m.Data)
-	//	if err != nil {
-	//		a.onError(common.TaskStateDead, errors.Wrap(err, "fullNMM.Handle"))
-	//		return
-	//	}
-	//
-	//	if !segmentFinished {
-	//		if err := a.natsConn.Publish(m.Reply, nil); err != nil {
-	//			a.onError(common.TaskStateDead, err)
-	//		}
-	//		a.logger.Debug("full. after publish nats reply")
-	//	} else {
-	//		atomic.AddInt64(&a.nDumpEntry, 1) // this must be increased before enqueuing
-	//		bs := fullNMM.GetBytes()
-	//		select {
-	//		case <-a.shutdownCh:
-	//			return
-	//		case a.fullBytesQueue <- bs:
-	//			atomic.AddInt64(a.memory1, int64(len(bs)))
-	//			a.logger.Debug("full. enqueue", "nDumpEntry", a.nDumpEntry)
-	//			a.mysqlContext.Stage = common.StageSlaveWaitingForWorkersToProcessQueue
-	//			fullNMM.Reset()
-	//
-	//			vacancy := cap(a.fullBytesQueue) - len(a.fullBytesQueue)
-	//			err := a.natsConn.Publish(m.Reply, nil)
-	//			if err != nil {
-	//				a.onError(common.TaskStateDead, err)
-	//				return
-	//			}
-	//			a.logger.Debug("full. after publish nats reply", "vacancy", vacancy)
-	//		}
-	//	}
-	//})
+	_, err = a.natsConn.Subscribe(fmt.Sprintf("%s_full", a.subject), func(m *gonats.Msg) {
+		a.wg.Add(1)
+		defer a.wg.Done()
+		if err := a.natsConn.Publish(m.Reply, nil); err != nil {
+			a.onError(common.TaskStateDead, err)
+		}
+		a.logger.Debug("full. after publish nats reply")
+	})
 
-	//_, err = a.natsConn.Subscribe(fmt.Sprintf("%s_full_complete", a.subject), func(m *gonats.Msg) {
-	//	a.logger.Debug("recv _full_complete.")
-	//
-	//	dumpData := &common.DumpStatResult{}
-	//	if err := common.Decode(m.Data, dumpData); err != nil {
-	//		a.onError(common.TaskStateDead, errors.Wrap(err, "Decode"))
-	//		return
-	//	}
-	//
-	//	select {
-	//	case <-a.rowCopyComplete: // already full complete. Maybe src task restart.
-	//		if err := a.natsConn.Publish(m.Reply, nil); err != nil {
-	//			a.onError(common.TaskStateDead, err)
-	//		}
-	//
-	//		return
-	//	default:
-	//	}
-	//
-	//	for atomic.LoadInt64(&a.nDumpEntry) != 0 {
-	//		a.logger.Debug("nDumpEntry is not zero, waiting", "nDumpEntry", a.nDumpEntry)
-	//		time.Sleep(1 * time.Second)
-	//		if a.shutdown {
-	//			return
-	//		}
-	//	}
-	//	a.logger.Info("Rows copy complete.", "TotalRowsReplayed", a.TotalRowsReplayed)
-	//
-	//	if a.mysqlContext.ParallelWorkers <= 1 || a.mysqlContext.UseMySQLDependency {
-	//		err = a.enableForeignKeyChecks()
-	//		if err != nil {
-	//			a.onError(common.TaskStateDead, errors.Wrap(err, "enableForeignKeyChecks"))
-	//			return
-	//		}
-	//	} else {
-	//		a.logger.Warn("ParallelWorkers > 1 and UseMySQLDependency = false. disabling MySQL session.foreign_key_checks")
-	//	}
-	//
-	//	a.logger.Info("got gtid from extractor", "gtid", dumpData.Coord.GtidSet)
-	//	// Do not re-assign a.gtidSet (#538). Update it.
-	//	gs0, err := gomysql.ParseMysqlGTIDSet(dumpData.Coord.GtidSet)
-	//	if err != nil {
-	//		a.onError(common.TaskStateDead, errors.Wrap(err, "ParseMysqlGTIDSet"))
-	//		return
-	//	}
-	//	gs := gs0.(*gomysql.MysqlGTIDSet)
-	//	for _, uuidSet := range gs.Sets {
-	//		a.gtidSet.AddSet(uuidSet)
-	//	}
-	//	a.mysqlContext.Gtid = dumpData.Coord.GtidSet
-	//	a.mysqlContext.BinlogFile = dumpData.Coord.LogFile
-	//	a.mysqlContext.BinlogPos = dumpData.Coord.LogPos
-	//	a.gtidCh <- nil // coord == nil is a flag for update/upload gtid
-	//
-	//	a.mysqlContext.Stage = common.StageSlaveWaitingForWorkersToProcessQueue
-	//	if a.stage != mysql.JobIncrCopy {
-	//		a.stage = mysql.JobIncrCopy
-	//		a.sendEvent(mysql.JobIncrCopy)
-	//	}
-	//	close(a.rowCopyComplete)
-	//
-	//	a.logger.Debug("ack _full_complete")
-	//	if err := a.natsConn.Publish(m.Reply, nil); err != nil {
-	//		a.onError(common.TaskStateDead, errors.Wrap(err, "Publish"))
-	//		return
-	//	}
-	//})
-	//if err != nil {
-	//	return err
-	//}
+	_, err = a.natsConn.Subscribe(fmt.Sprintf("%s_full_complete", a.subject), func(m *gonats.Msg) {
+		a.logger.Debug("recv _full_complete.")
+
+		if err := a.natsConn.Publish(m.Reply, nil); err != nil {
+			a.onError(common.TaskStateDead, errors.Wrap(err, "Publish"))
+			return
+		}
+		a.logger.Debug("ack _full_complete END")
+	})
+	if err != nil {
+		return err
+	}
 
 	incrNMM := common.NewNatsMsgMerger(a.logger.With("nmm", "incr"))
 	_, err = a.natsConn.Subscribe(fmt.Sprintf("%s_incr_hete", a.subject), func(m *gonats.Msg) {
@@ -363,33 +247,6 @@ func (a *ApplierOracle) subscribeNats() (err error) {
 	return nil
 }
 
-//func (a *ApplierOracle) publishProgress() {
-//	logger := a.logger.Named("publishProgress")
-//	retry := 0
-//	keep := true
-//	for keep {
-//		logger.Debug("Request.before", "retry", retry, "file", a.mysqlContext.BinlogFile)
-//		_, err := a.natsConn.Request(fmt.Sprintf("%s_progress", a.subject), []byte(a.mysqlContext.BinlogFile), 10*time.Second)
-//		if err == nil {
-//			keep = false
-//		} else {
-//			if err == gonats.ErrTimeout {
-//				logger.Debug("timeout", "retry", retry, "file", a.mysqlContext.BinlogFile)
-//				break
-//			} else {
-//				a.logger.Debug("unknown error", "retry", retry, "file", a.mysqlContext.BinlogFile, "err", err)
-//
-//			}
-//			retry += 1
-//			if retry < 5 {
-//				time.Sleep(1 * time.Second)
-//			} else {
-//				keep = false
-//			}
-//		}
-//	}
-//}
-
 func (a *ApplierOracle) InitDB() (err error) {
 	ApplierOracleUri := a.mysqlContext.ConnectionConfig.GetDBUri()
 	if a.db, err = sql.CreateDB(ApplierOracleUri); err != nil {
@@ -432,15 +289,6 @@ func (a *ApplierOracle) initDBConnections() (err error) {
 
 	a.logger.Info("Initiated", "mysql", a.mysqlContext.ConnectionConfig.GetAddr(), "version", a.MySQLVersion)
 
-	return nil
-}
-
-// for compatibility
-func (a *ApplierOracle) ValidateConnection() error {
-	r := base.GetSomeSysVars(a.db, a.logger)
-	if r.Err != nil {
-		return r.Err
-	}
 	return nil
 }
 
@@ -502,128 +350,6 @@ func (a *ApplierOracle) ValidateGrants() error {
 	}
 	a.logger.Debug("Privileges", "Super", foundSuper, "All", foundAll)
 	return fmt.Errorf("user has insufficient privileges for ApplierOracle. Needed:ALTER, CREATE, DROP, INDEX, REFERENCES, INSERT, DELETE, UPDATE, SELECT, TRIGGER ON *.*")
-}
-
-func (a *ApplierOracle) ApplyEventQueries(db *gosql.DB, entry *common.DumpEntry) error {
-	a.logger.Debug("ApplyEventQueries", "schema", entry.TableSchema, "table", entry.TableName,
-		"rows", len(entry.ValuesX))
-
-	if a.stubFullApplyDelay != 0 {
-		a.logger.Debug("stubFullApplyDelay start sleep")
-		time.Sleep(a.stubFullApplyDelay)
-		a.logger.Debug("stubFullApplyDelay end sleep")
-	}
-
-	if entry.SystemVariablesStatement != "" {
-		for i := range a.dbs {
-			a.logger.Debug("exec sysvar query", "query", entry.SystemVariablesStatement)
-			_, err := a.dbs[i].Db.ExecContext(a.ctx, entry.SystemVariablesStatement)
-			if err != nil {
-				a.logger.Error("err exec sysvar query.", "err", err)
-				return err
-			}
-		}
-	}
-	if entry.SqlMode != "" {
-		for i := range a.dbs {
-			a.logger.Debug("exec sqlmode query", "query", entry.SqlMode)
-			_, err := a.dbs[i].Db.ExecContext(a.ctx, entry.SqlMode)
-			if err != nil {
-				a.logger.Error("err exec sysvar query.", "err", err)
-				return err
-			}
-		}
-	}
-
-	queries := []string{}
-	queries = append(queries, entry.SystemVariablesStatement, entry.SqlMode, entry.DbSQL)
-	queries = append(queries, entry.TbSQL...)
-	tx, err := db.BeginTx(a.ctx, &gosql.TxOptions{})
-	if err != nil {
-		return err
-	}
-	nRows := int64(len(entry.ValuesX))
-	defer func() {
-		if err := tx.Commit(); err != nil {
-			a.onError(common.TaskStateDead, err)
-		}
-		atomic.AddInt64(&a.TotalRowsReplayed, nRows)
-	}()
-	sessionQuery := `SET @@session.foreign_key_checks = 0`
-	if _, err := tx.ExecContext(a.ctx, sessionQuery); err != nil {
-		return err
-	}
-	execQuery := func(query string) error {
-		a.logger.Debug("ApplyEventQueries. exec", "query", g.StrLim(query, 256))
-		_, err := tx.ExecContext(a.ctx, query)
-		if err != nil {
-			queryStart := g.StrLim(query, 10) // avoid printing sensitive information
-			errCtx := errors.Wrapf(err, "tx.Exec. queryStart %v seq", queryStart)
-			if !sql.IgnoreError(err) {
-				a.logger.Error("ApplyEventQueries. exec error", "err", errCtx)
-				return errCtx
-			}
-			if !sql.IgnoreExistsError(err) {
-				a.logger.Warn("ApplyEventQueries. ignore error", "err", errCtx)
-			}
-		}
-		return nil
-	}
-
-	for _, query := range queries {
-		if query == "" {
-			continue
-		}
-		err := execQuery(query)
-		if err != nil {
-			return err
-		}
-	}
-
-	var buf bytes.Buffer
-	BufSizeLimit := 1 * 1024 * 1024 // 1MB. TODO parameterize it
-	BufSizeLimitDelta := 1024
-	buf.Grow(BufSizeLimit + BufSizeLimitDelta)
-	for i, _ := range entry.ValuesX {
-		if buf.Len() == 0 {
-			buf.WriteString(fmt.Sprintf(`replace into %s.%s values (`,
-				umconf.EscapeName(entry.TableSchema), umconf.EscapeName(entry.TableName)))
-		} else {
-			buf.WriteString(",(")
-		}
-
-		firstCol := true
-		for j := range entry.ValuesX[i] {
-			if firstCol {
-				firstCol = false
-			} else {
-				buf.WriteByte(',')
-			}
-
-			colData := entry.ValuesX[i][j]
-			if colData != nil {
-				buf.WriteByte('\'')
-				buf.WriteString(sql.EscapeValue(string(*colData)))
-				buf.WriteByte('\'')
-			} else {
-				buf.WriteString("NULL")
-			}
-		}
-		buf.WriteByte(')')
-
-		needInsert := (i == len(entry.ValuesX)-1) || (buf.Len() >= BufSizeLimit)
-		// last rows or sql too large
-
-		if needInsert {
-			err := execQuery(buf.String())
-			buf.Reset()
-			if err != nil {
-				return err
-			}
-		}
-	}
-
-	return nil
 }
 
 func (a *ApplierOracle) Stats() (*common.TaskStatistics, error) {

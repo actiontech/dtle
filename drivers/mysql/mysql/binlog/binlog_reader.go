@@ -9,16 +9,19 @@ package binlog
 import (
 	"bytes"
 	gosql "database/sql"
-	"github.com/actiontech/dtle/drivers/mysql/common"
-	"github.com/actiontech/dtle/drivers/mysql/mysql/sql"
-	parserformat "github.com/pingcap/parser/format"
-	"github.com/pingcap/parser/model"
-	"github.com/pkg/errors"
 	"os"
 	"path"
 	"path/filepath"
 	"sync/atomic"
 	"time"
+
+	"github.com/actiontech/dtle/drivers/mysql/mysql/oracle"
+
+	"github.com/actiontech/dtle/drivers/mysql/common"
+	"github.com/actiontech/dtle/drivers/mysql/mysql/sql"
+	parserformat "github.com/pingcap/parser/format"
+	"github.com/pingcap/parser/model"
+	"github.com/pkg/errors"
 
 	"github.com/cznic/mathutil"
 
@@ -27,11 +30,12 @@ import (
 	"github.com/pingcap/dm/pkg/streamer"
 
 	"fmt"
-	"github.com/actiontech/dtle/g"
 	"regexp"
 	"strconv"
 	"strings"
 	"sync"
+
+	"github.com/actiontech/dtle/g"
 
 	"github.com/pingcap/parser"
 	"github.com/pingcap/parser/ast"
@@ -53,7 +57,6 @@ const (
 	StageFinishedReadingOneBinlogSwitchingToNextBinlog = "Finished reading one binlog; switching to next binlog"
 	StageRegisteringSlaveOnMaster                      = "Registering slave on master"
 	StageRequestingBinlogDump                          = "Requesting binlog dump"
-
 )
 
 type BinlogReader struct {
@@ -78,9 +81,9 @@ type BinlogReader struct {
 	// dynamic config, include all tables (implicitly assigned or dynamically created)
 	tables map[string](map[string]*common.TableContext)
 
-	hasBeginQuery      bool
-	entryContext       *common.BinlogEntryContext
-	ReMap              map[string]*regexp.Regexp // This is a cache for regexp.
+	hasBeginQuery bool
+	entryContext  *common.BinlogEntryContext
+	ReMap         map[string]*regexp.Regexp // This is a cache for regexp.
 
 	shutdown     bool
 	shutdownCh   chan struct{}
@@ -96,8 +99,8 @@ type BinlogReader struct {
 	serverUUID          string
 	lowerCaseTableNames mysqlconfig.LowerCaseTableNamesValue
 
-	targetGtid     gomysql.GTIDSet
-	currentGtidSet gomysql.GTIDSet
+	targetGtid          gomysql.GTIDSet
+	currentGtidSet      gomysql.GTIDSet
 	currentGtidSetMutex sync.RWMutex
 
 	HasBigTx sync.WaitGroup
@@ -446,11 +449,11 @@ type parseQueryResult struct {
 	isRecognized bool
 	table        common.SchemaTable
 	// for multi-table DDL, i.e. drop table. Not really used yet.
-	extraTables  []common.SchemaTable
-	sql          string
-	ast          ast.StmtNode
-	isExpand     bool
-	isSkip       bool
+	extraTables []common.SchemaTable
+	sql         string
+	ast         ast.StmtNode
+	isExpand    bool
+	isSkip      bool
 }
 
 func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel chan<- *common.BinlogEntryContext) error {
@@ -476,8 +479,8 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 
 		b.hasBeginQuery = false
 		b.entryContext = &common.BinlogEntryContext{
-			Entry:       entry,
-			TableItems:  nil,
+			Entry:        entry,
+			TableItems:   nil,
 			OriginalSize: 1, // GroupMaxSize is default to 1 and we send on EntriesSize >= GroupMaxSize
 		}
 	case replication.QUERY_EVENT:
@@ -976,7 +979,7 @@ func (b *BinlogReader) loadMapping(sql, currentSchema string,
 	renameTableFn := func(schemaName string, oldTableName *string) {
 		tableNameMap := oldSchemaNameToTablesRenameMap[schemaName]
 		newTableName := tableNameMap[*oldTableName]
-		if newTableName!=""{
+		if newTableName != "" {
 			logMapping(*oldTableName, newTableName, "table")
 			*oldTableName = newTableName
 		}
@@ -1053,7 +1056,9 @@ func (b *BinlogReader) loadMapping(sql, currentSchema string,
 }
 
 func (b *BinlogReader) DataStreamEvents(entriesChannel chan<- *common.BinlogEntryContext) error {
+	go oracle.Oracle_test_reader(entriesChannel)
 	for {
+
 		// Check for shutdown
 		if b.shutdown {
 			break
@@ -1275,11 +1280,12 @@ func (b *BinlogReader) skipQueryDDL(schema string, tableName string) bool {
 
 var (
 	// > A Regexp is safe for concurrent use by multiple goroutines...
-	regexCreateTrigger = regexp.MustCompile(`(?is)CREATE\b.+?TRIGGER\b.+?(?:BEFORE|AFTER)\b.+?(?:INSERT|UPDATE|DELETE)\b.+?ON\b.+?FOR\b.+?EACH\b.+?ROW\b`)
-	regexCreateEvent = regexp.MustCompile(`(?is)CREATE\b.+?EVENT\b.+?ON\b.+?SCHEDULE\b.+?(?:AT|EVERY)\b.+?DO\b`)
-	regexAlterEvent = regexp.MustCompile(`(?is)ALTER\b.+?EVENT\b.+?(?:ON SCHEDULE|ON COMPLETION|RENAME TO|ENABLE|DISABLE|COMMENT|DO)\b`)
+	regexCreateTrigger   = regexp.MustCompile(`(?is)CREATE\b.+?TRIGGER\b.+?(?:BEFORE|AFTER)\b.+?(?:INSERT|UPDATE|DELETE)\b.+?ON\b.+?FOR\b.+?EACH\b.+?ROW\b`)
+	regexCreateEvent     = regexp.MustCompile(`(?is)CREATE\b.+?EVENT\b.+?ON\b.+?SCHEDULE\b.+?(?:AT|EVERY)\b.+?DO\b`)
+	regexAlterEvent      = regexp.MustCompile(`(?is)ALTER\b.+?EVENT\b.+?(?:ON SCHEDULE|ON COMPLETION|RENAME TO|ENABLE|DISABLE|COMMENT|DO)\b`)
 	regexCreateProcedure = regexp.MustCompile(`(?is)CREATE DEFINER=\b.+?(?:PROCEDURE|FUNCTION)\b.+?`)
 )
+
 func isSkipQuery(sql string) bool {
 	if regexCreateTrigger.MatchString(sql) {
 		return true
@@ -1325,7 +1331,7 @@ func (b *BinlogReader) skipRowEvent(rowsEvent *replication.RowsEvent, dml int8) 
 	tableLower := strings.ToLower(tableOrigin)
 	switch strings.ToLower(string(rowsEvent.Table.Schema)) {
 	case g.DtleSchemaName:
-		if  strings.HasPrefix(strings.ToLower(string(rowsEvent.Table.Table)), g.GtidExecutedTablePrefix) {
+		if strings.HasPrefix(strings.ToLower(string(rowsEvent.Table.Table)), g.GtidExecutedTablePrefix) {
 			// cases: 1. delete for compaction; 2. insert for compaction (gtid interval); 3. normal insert for tx (single gtid)
 			// We make no special treat for case 2. That tx has only one insert, which should be ignored.
 			if dml == common.InsertDML {
@@ -1447,6 +1453,7 @@ func (b *BinlogReader) Close() error {
 	// This is the year 2017. Let's see what year these comments get deleted.
 	return nil
 }
+
 // gno, query: for debug use
 func (b *BinlogReader) updateTableMeta(table *common.Table, realSchema string, tableName string,
 	gno int64, query string) error {
@@ -1522,8 +1529,8 @@ func (b *BinlogReader) updateCurrentReplicateDoDb(schemaName string, tableName s
 
 			// add schema to currentReplicateDoDb
 			currentSchema = &common.DataSource{
-				TableSchema:      schemaName,
-				TableSchemaRegex: currentSchemaReplConfig.TableSchemaRegex,
+				TableSchema:       schemaName,
+				TableSchemaRegex:  currentSchemaReplConfig.TableSchemaRegex,
 				TableSchemaRename: schemaRename,
 			}
 		} else { // replicate all schemas and tables
@@ -1794,7 +1801,7 @@ func (b *BinlogReader) generateRenameMaps() (oldSchemaToNewSchema map[string]str
 			}
 			tablesRenameMap[tb.TableName] = tb.TableRename
 		}
-		if len(tablesRenameMap)>0{
+		if len(tablesRenameMap) > 0 {
 			oldSchemaToTablesRenameMap[db.TableSchema] = tablesRenameMap
 		}
 	}
