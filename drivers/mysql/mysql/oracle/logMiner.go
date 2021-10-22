@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/actiontech/dtle/g"
+
 	"github.com/pingcap/parser"
 
 	"github.com/actiontech/dtle/drivers/mysql/common"
@@ -441,9 +443,7 @@ func (e *ExtractorOracle) DataStreamEvents(entriesChannel chan<- *common.BinlogE
 		return err
 	}
 	for _, table := range tables {
-		fmt.Println("===============================")
-		fmt.Printf("get table \"%s\" column\n", table)
-		fmt.Println("===============================")
+		e.logger.Debug("get table \"%s\" column\n", "table", table)
 		columns, err := db.getTableColumn(schema, table)
 		if err != nil {
 			fmt.Println(err)
@@ -469,7 +469,7 @@ func (e *ExtractorOracle) DataStreamEvents(entriesChannel chan<- *common.BinlogE
 
 	for {
 		time.Sleep(5 * time.Second)
-		rs, err := ls.queue()
+		rs, err := ls.queue(e.logger)
 		if err != nil {
 			return err
 		}
@@ -583,7 +583,7 @@ func (l *LogMinerStream) getEndScn() (int64, error) {
 	}
 }
 
-func (l *LogMinerStream) queue() ([]*LogMinerRecord, error) {
+func (l *LogMinerStream) queue(log g.LoggerType) ([]*LogMinerRecord, error) {
 	changed, err := l.checkRedoLogChanged()
 	if err != nil {
 		return nil, err
@@ -605,17 +605,17 @@ func (l *LogMinerStream) queue() ([]*LogMinerRecord, error) {
 	if endScn == l.currentScn {
 		return nil, err
 	}
-	fmt.Println("start logminer")
+	log.Info("start logminer")
 	err = l.db.StartLogMinerBySCN2(l.currentScn, endScn)
 	if err != nil {
-		fmt.Println("StartLMBySCN ", err)
+		log.Info("StartLMBySCN ", "err", err)
 		return nil, err
 	}
 
-	fmt.Printf("get logminer recore form scn %d to %d\n", l.currentScn, endScn)
+	log.Info("get logminer recore form scn %d to %d\n", l.currentScn, endScn)
 	records, err := l.db.GetLogMinerRecord("TEST", []string{"t1"}, l.currentScn, endScn)
 	if err != nil {
-		fmt.Println("GetLogMinerRecord ", err)
+		log.Error("GetLogMinerRecord ", "err", err)
 		return nil, err
 	}
 	l.currentScn = endScn
