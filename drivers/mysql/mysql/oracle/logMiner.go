@@ -419,7 +419,7 @@ var db *OracleDB
 
 func (e *ExtractorOracle) DataStreamEvents(entriesChannel chan<- *common.BinlogEntryContext) error {
 	e.logger.Debug("start oracle. DataStreamEvents")
-	if db != nil {
+	if db == nil {
 		oracleDb, err := NewDB(&OracleDBMeta{
 			User:        "roma_logminer",
 			Password:    "oracle",
