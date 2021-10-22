@@ -489,16 +489,6 @@ func (e *ExtractorOracle) DataStreamEvents(entriesChannel chan<- *common.BinlogE
 
 func handleSQLs(rows []*LogMinerRecord) *common.BinlogEntry {
 	entry := common.NewBinlogEntry()
-	entry.Coordinates = common.BinlogCoordinateTx{
-		LogFile: "",
-		LogPos:  0,
-		//SID:           [16]byte(0),
-		GNO:           0,
-		LastCommitted: 0,
-		SeqenceNumber: 0,
-	}
-	entry.Index = 0
-	entry.Final = true
 	for _, row := range rows {
 		dataEvent, _ := parseToDataEvent(row)
 		entry.Events = append(entry.Events, dataEvent)

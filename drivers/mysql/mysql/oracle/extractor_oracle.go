@@ -150,6 +150,18 @@ func (e *ExtractorOracle) Run() {
 		e.onError(common.TaskStateDead, errors.Wrap(err, "SrcWatchNats"))
 		return
 	}
+	// init nats
+	e.logger.Info("initNatsPubClient")
+	e.logger.Debug("begin Connect nats server", "NatAddr", e.natsAddr)
+	sc, err := gonats.Connect(e.natsAddr)
+	if err != nil {
+		e.logger.Error("cannot connect nats server", "natsAddr", e.natsAddr, "err", err)
+		e.onError(common.TaskStateDead, errors.Wrap(err, "Connect Nats"))
+		return
+	}
+	e.logger.Info("Connect nats server", "natsAddr", e.natsAddr)
+	e.natsConn = sc
+
 	//e.logger.Info("CheckAndApplyLowerCaseTableNames")
 	//e.CheckAndApplyLowerCaseTableNames()
 	// 字符集同步 todo
