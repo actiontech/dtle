@@ -15,8 +15,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/actiontech/dtle/drivers/mysql/mysql/oracle"
-
 	"github.com/actiontech/dtle/drivers/mysql/common"
 	"github.com/actiontech/dtle/drivers/mysql/mysql/sql"
 	parserformat "github.com/pingcap/parser/format"
@@ -1056,7 +1054,6 @@ func (b *BinlogReader) loadMapping(sql, currentSchema string,
 }
 
 func (b *BinlogReader) DataStreamEvents(entriesChannel chan<- *common.BinlogEntryContext) error {
-	go oracle.Oracle_test_reader(entriesChannel)
 	for {
 
 		// Check for shutdown

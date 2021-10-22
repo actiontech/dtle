@@ -20,6 +20,7 @@ require (
 	github.com/go-playground/universal-translator v0.17.0 // indirect
 	github.com/go-playground/validator v9.31.0+incompatible
 	github.com/go-sql-driver/mysql v1.5.0
+	github.com/godror/godror v0.28.0
 	github.com/hashicorp/go-hclog v0.14.1
 	github.com/hashicorp/nomad v1.1.2
 	github.com/hashicorp/nomad/api v0.0.0-20200529203653-c4416b26d3eb
@@ -54,6 +55,7 @@ require (
 	github.com/stretchr/testify v1.6.1
 	github.com/swaggo/echo-swagger v1.1.0
 	github.com/swaggo/swag v1.7.0
+	github.com/thinkeridea/go-extend v1.3.2
 	golang.org/x/net v0.0.0-20201224014010-6772e930b67b
 	golang.org/x/text v0.3.5
 	google.golang.org/grpc v1.28.0 // indirect

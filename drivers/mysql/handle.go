@@ -165,9 +165,16 @@ func (h *taskHandle) NewRunner(d *Driver) (runner DriverHandle, err error) {
 
 	switch common.TaskTypeFromString(h.taskConfig.Name) {
 	case common.TaskTypeSrc:
-		runner, err = mysql.NewExtractor(ctx, h.driverConfig, h.logger, d.storeManager, h.waitCh)
-		if err != nil {
-			return nil, errors.Wrap(err, "NewExtractor")
+		if false {
+			runner, err = mysql.NewExtractor(ctx, h.driverConfig, h.logger, d.storeManager, h.waitCh)
+			if err != nil {
+				return nil, errors.Wrap(err, "NewExtractor")
+			}
+		} else {
+			runner, err = oracle.NewExtractorOracle(ctx, h.driverConfig, h.logger, d.storeManager, h.waitCh)
+			if err != nil {
+				return nil, errors.Wrap(err, "NewExtractor")
+			}
 		}
 	case common.TaskTypeDest:
 		if h.driverConfig.KafkaConfig != nil {
