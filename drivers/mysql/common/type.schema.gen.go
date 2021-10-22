@@ -2064,6 +2064,7 @@ type DataEvent struct {
 	Table             []byte
 	LogPos            int64
 	Timestamp         uint32
+	Flags             []byte
 }
 
 func (d *DataEvent) Size() (s uint64) {
@@ -2148,6 +2149,21 @@ func (d *DataEvent) Size() (s uint64) {
 	}
 	{
 		l := uint64(len(d.Table))
+
+		{
+
+			t := l
+			for t >= 0x80 {
+				t >>= 7
+				s++
+			}
+			s++
+
+		}
+		s += l
+	}
+	{
+		l := uint64(len(d.Flags))
 
 		{
 
@@ -2356,6 +2372,25 @@ func (d *DataEvent) Marshal(buf []byte) ([]byte, error) {
 		buf[i+3+19] = byte(d.Timestamp >> 24)
 
 	}
+	{
+		l := uint64(len(d.Flags))
+
+		{
+
+			t := uint64(l)
+
+			for t >= 0x80 {
+				buf[i+23] = byte(t) | 0x80
+				t >>= 7
+				i++
+			}
+			buf[i+23] = byte(t)
+			i++
+
+		}
+		copy(buf[i+23:], d.Flags)
+		i += l
+	}
 	return buf[:i+23], nil
 }
 
@@ -2522,6 +2557,31 @@ func (d *DataEvent) Unmarshal(buf []byte) (uint64, error) {
 
 		d.Timestamp = 0 | (uint32(buf[i+0+19]) << 0) | (uint32(buf[i+1+19]) << 8) | (uint32(buf[i+2+19]) << 16) | (uint32(buf[i+3+19]) << 24)
 
+	}
+	{
+		l := uint64(0)
+
+		{
+
+			bs := uint8(7)
+			t := uint64(buf[i+23] & 0x7F)
+			for buf[i+23]&0x80 == 0x80 {
+				i++
+				t |= uint64(buf[i+23]&0x7F) << bs
+				bs += 7
+			}
+			i++
+
+			l = t
+
+		}
+		if uint64(cap(d.Flags)) >= l {
+			d.Flags = d.Flags[:l]
+		} else {
+			d.Flags = make([]byte, l)
+		}
+		copy(d.Flags, buf[i+23:])
+		i += l
 	}
 	return i + 23, nil
 }

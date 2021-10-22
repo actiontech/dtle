@@ -62,6 +62,7 @@ struct DataEvent {
 	Table             []byte
 	LogPos            int64
 	Timestamp         uint32
+	Flags             []byte
 }
 
 struct BinlogEntry {

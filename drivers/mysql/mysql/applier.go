@@ -51,7 +51,7 @@ type Applier struct {
 	subject      string
 	mysqlContext *common.MySQLDriverConfig
 
-	NatsAddr           string
+	NatsAddr            string
 	MySQLVersion        string
 	lowerCaseTableNames umconf.LowerCaseTableNamesValue
 	TotalRowsReplayed   int64
@@ -92,7 +92,8 @@ type Applier struct {
 	event      *eventer.Eventer
 	taskConfig *drivers.TaskConfig
 
-	targetGtid gomysql.GTIDSet
+	targetGtid       gomysql.GTIDSet
+	ForeignKeyChecks bool
 }
 
 func (a *Applier) Finish1() error {
@@ -123,6 +124,9 @@ func NewApplier(
 		event:           event,
 		taskConfig:      taskConfig,
 	}
+
+	a.ForeignKeyChecks = a.mysqlContext.ParallelWorkers <= 1 || a.mysqlContext.UseMySQLDependency
+
 	a.ctx, a.cancelFunc = context.WithCancel(context.TODO())
 
 	stubFullApplyDelayStr := os.Getenv(g.ENV_FULL_APPLY_DELAY)
@@ -303,6 +307,7 @@ func (a *Applier) Run() {
 		a.onError(common.TaskStateDead, errors.Wrap(err, "NewApplierIncr"))
 		return
 	}
+	a.ai.ForeignKeyChecks = a.ForeignKeyChecks
 	a.ai.EntryExecutedHook = func(entry *common.BinlogEntry) {
 		if entry.Final {
 			a.gtidCh <- &entry.Coordinates
@@ -519,7 +524,7 @@ func (a *Applier) subscribeNats() (err error) {
 		}
 		a.logger.Info("Rows copy complete.", "TotalRowsReplayed", a.TotalRowsReplayed)
 
-		if a.mysqlContext.ParallelWorkers <= 1 || a.mysqlContext.UseMySQLDependency {
+		if a.ForeignKeyChecks {
 			err = a.enableForeignKeyChecks()
 			if err != nil {
 				a.onError(common.TaskStateDead, errors.Wrap(err, "enableForeignKeyChecks"))
@@ -792,8 +797,7 @@ func (a *Applier) ApplyEventQueries(db *gosql.DB, entry *common.DumpEntry) error
 		}
 		atomic.AddInt64(&a.TotalRowsReplayed, nRows)
 	}()
-	sessionQuery := `SET @@session.foreign_key_checks = 0`
-	if _, err := tx.ExecContext(a.ctx, sessionQuery); err != nil {
+	if _, err := tx.ExecContext(a.ctx, querySetFKChecksOff); err != nil {
 		return err
 	}
 	execQuery := func(query string) error {
@@ -1071,13 +1075,12 @@ func (a *Applier) checkJobFinish() {
 }
 
 func (a *Applier) enableForeignKeyChecks() error {
-	query := "set @@session.foreign_key_checks = 1"
-	_, err := a.db.ExecContext(a.ctx, query)
+	_, err := a.db.ExecContext(a.ctx, querySetFKChecksOn)
 	if err != nil {
 		return err
 	}
 	for _, conn := range a.dbs {
-		_, err = conn.Db.ExecContext(a.ctx, query)
+		_, err = conn.Db.ExecContext(a.ctx, querySetFKChecksOn)
 		if err != nil {
 			return err
 		}

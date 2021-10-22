@@ -9,6 +9,7 @@ package binlog
 import (
 	"bytes"
 	gosql "database/sql"
+	"encoding/binary"
 	"github.com/actiontech/dtle/drivers/mysql/common"
 	"github.com/actiontech/dtle/drivers/mysql/mysql/sql"
 	parserformat "github.com/pingcap/parser/format"
@@ -53,7 +54,6 @@ const (
 	StageFinishedReadingOneBinlogSwitchingToNextBinlog = "Finished reading one binlog; switching to next binlog"
 	StageRegisteringSlaveOnMaster                      = "Registering slave on master"
 	StageRequestingBinlogDump                          = "Requesting binlog dump"
-
 )
 
 type BinlogReader struct {
@@ -570,6 +570,7 @@ func (b *BinlogReader) handleQueryEvent(ev *replication.BinlogEvent,
 						b.setDtleQuery(query),
 						common.NotDML,
 						ev.Header.Timestamp,
+						evt.StatusVars,
 					)
 
 					b.entryContext.Entry.Events = append(b.entryContext.Entry.Events, event)
@@ -687,6 +688,7 @@ func (b *BinlogReader) handleQueryEvent(ev *replication.BinlogEvent,
 							common.NotDML,
 							queryInfo.table,
 							ev.Header.Timestamp,
+							evt.StatusVars,
 						)
 						if table != nil {
 							tableBs, err := common.EncodeTable(table)
@@ -1700,7 +1702,8 @@ func (b *BinlogReader) handleRowsEvent(ev *replication.BinlogEvent, rowsEvent *r
 	schemaName := string(rowsEvent.Table.Schema)
 	tableName := string(rowsEvent.Table.Table)
 	b.logger.Debug("got rowsEvent", "schema", schemaName, "table", tableName,
-		"gno", b.entryContext.Entry.Coordinates.GNO)
+		"gno", b.entryContext.Entry.Coordinates.GNO,
+		"flags", rowsEvent.Flags, "tableFlags", rowsEvent.Table.Flags)
 
 	dml := common.ToEventDML(ev.Header.EventType)
 	skip, table := b.skipRowEvent(rowsEvent, dml)
@@ -1729,6 +1732,8 @@ func (b *BinlogReader) handleRowsEvent(ev *replication.BinlogEvent, rowsEvent *r
 		rowsEvent.ColumnCount,
 		ev.Header.Timestamp,
 	)
+	dmlEvent.Flags = make([]byte, 2)
+	binary.LittleEndian.PutUint16(dmlEvent.Flags, rowsEvent.Flags)
 	dmlEvent.LogPos = int64(ev.Header.LogPos - ev.Header.EventSize)
 
 	/*originalTableColumns, _, err := b.InspectTableColumnsAndUniqueKeys(string(rowsEvent.Table.Schema), string(rowsEvent.Table.Table))

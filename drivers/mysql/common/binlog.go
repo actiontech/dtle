@@ -86,17 +86,17 @@ func NewDataEvent(databaseName, tableName string, dml int8, columnCount uint64, 
 	return event
 }
 
-func NewQueryEvent(currentSchema, query string, dml int8, timestamp uint32) DataEvent {
+func NewQueryEvent(currentSchema, query string, dml int8, timestamp uint32, flags []byte) DataEvent {
 	event := DataEvent{
 		CurrentSchema: currentSchema,
 		Query:         query,
 		DML:           dml,
 		Timestamp:     timestamp,
+		Flags:         flags,
 	}
 	return event
 }
-func NewQueryEventAffectTable(currentSchema, query string, dml int8, affectedTable SchemaTable,
-	timestamp uint32) DataEvent {
+func NewQueryEventAffectTable(currentSchema, query string, dml int8, affectedTable SchemaTable, timestamp uint32, flags []byte) DataEvent {
 
 	event := DataEvent{
 		CurrentSchema: currentSchema,
@@ -105,6 +105,7 @@ func NewQueryEventAffectTable(currentSchema, query string, dml int8, affectedTab
 		Query:         query,
 		DML:           dml,
 		Timestamp:     timestamp,
+		Flags:         flags,
 	}
 	return event
 }

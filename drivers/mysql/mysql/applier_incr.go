@@ -3,6 +3,7 @@ package mysql
 import (
 	"context"
 	gosql "database/sql"
+	"encoding/binary"
 	"fmt"
 	"github.com/actiontech/dtle/drivers/mysql/common"
 	"github.com/actiontech/dtle/drivers/mysql/mysql/base"
@@ -18,6 +19,36 @@ import (
 	"time"
 )
 
+const (
+	RowsEventFlagEndOfStatement     uint16 = 1
+	RowsEventFlagNoForeignKeyChecks uint16 = 2
+	RowsEventFlagNoUniqueKeyChecks  uint16 = 4
+	RowsEventFlagRowHasAColumns     uint16 = 8
+
+	Q_FLAGS2_CODE               byte = 0x0  // 4
+	Q_SQL_MODE_CODE             byte = 0x01 // 8
+	Q_CATALOG                   byte = 0x02 // 1 + n + 1
+	Q_AUTO_INCREMENT            byte = 0x03 // 2 + 2
+	Q_CHARSET_CODE              byte = 0x04 // 2 + 2 + 2
+	Q_TIME_ZONE_CODE            byte = 0x05 // 1 + n
+	Q_CATALOG_NZ_CODE           byte = 0x06 // 1 + n
+	Q_LC_TIME_NAMES_CODE        byte = 0x07 // 2
+	Q_CHARSET_DATABASE_CODE     byte = 0x08 // 2
+	Q_TABLE_MAP_FOR_UPDATE_CODE byte = 0x09 // 8
+	Q_MASTER_DATA_WRITTEN_CODE  byte = 0x0a // 4
+	Q_INVOKERS                  byte = 0x0b // 1 + n + 1 + n
+	Q_UPDATED_DB_NAMES          byte = 0x0c // 1 + n*nul-term-string
+	Q_MICROSECONDS              byte = 0x0d // 3
+
+	OPTION_AUTO_IS_NULL          uint32 = 0x00004000
+	OPTION_NOT_AUTOCOMMIT        uint32 = 0x00080000
+	OPTION_NO_FOREIGN_KEY_CHECKS uint32 = 0x04000000
+	OPTION_RELAXED_UNIQUE_CHECKS uint32 = 0x08000000
+
+	querySetFKChecksOff = "set @@session.foreign_key_checks = 0"
+	querySetFKChecksOn  = "set @@session.foreign_key_checks = 1"
+)
+
 type ApplierIncr struct {
 	logger       g.LoggerType
 	subject      string
@@ -28,8 +59,8 @@ type ApplierIncr struct {
 	// only TX can be executed should be put into this chan
 	applyBinlogMtsTxQueue chan *common.BinlogEntryContext
 
-	mtsManager  *MtsManager
-	wsManager   *WritesetManager
+	mtsManager *MtsManager
+	wsManager  *WritesetManager
 
 	db              *gosql.DB
 	dbs             []*sql.Conn
@@ -45,8 +76,8 @@ type ApplierIncr struct {
 	timestampCtx     *TimestampContext
 	TotalDeltaCopied int64
 
-	gtidSet        *gomysql.MysqlGTIDSet
-	gtidSetLock    *sync.RWMutex
+	gtidSet           *gomysql.MysqlGTIDSet
+	gtidSetLock       *sync.RWMutex
 	gtidItemMap       base.GtidItemMap
 	EntryExecutedHook func(entry *common.BinlogEntry)
 
@@ -59,6 +90,7 @@ type ApplierIncr struct {
 
 	wg                    sync.WaitGroup
 	SkipGtidExecutedTable bool
+	ForeignKeyChecks      bool
 }
 
 func NewApplierIncr(ctx context.Context, subject string, mysqlContext *common.MySQLDriverConfig,
@@ -82,6 +114,7 @@ func NewApplierIncr(ctx context.Context, subject string, mysqlContext *common.My
 		gtidSet:               gtidSet,
 		gtidSetLock:           gtidSetLock,
 		tableItems:            make(mapSchemaTableItems),
+		ForeignKeyChecks:      true,
 	}
 
 	if g.EnvIsTrue(g.ENV_SKIP_GTID_EXECUTED_TABLE) {
@@ -497,6 +530,7 @@ func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.Bin
 			logger.Debug("not dml", "query", event.Query)
 
 			execQuery := func(query string) error {
+				a.logger.Debug("execQuery", "query", query)
 				_, err = dbApplier.Tx.ExecContext(a.ctx, query)
 				if err != nil {
 					errCtx := errors.Wrapf(err, "tx.Exec. gno %v iEvent %v queryBegin %v workerIdx %v",
@@ -514,7 +548,6 @@ func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.Bin
 
 			if event.CurrentSchema != "" {
 				query := fmt.Sprintf("USE %s", mysqlconfig.EscapeName(event.CurrentSchema))
-				logger.Debug("use", "query", query)
 				err := execQuery(query)
 				if err != nil {
 					return err
@@ -542,12 +575,35 @@ func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.Bin
 				}
 			}
 
+			flag := ParseQueryEventFlags(event.Flags)
+			if flag.NoForeignKeyChecks && a.ForeignKeyChecks {
+				err = execQuery(querySetFKChecksOff)
+				if err != nil {
+					return err
+				}
+			}
+
 			err = execQuery(event.Query)
 			if err != nil {
 				return err
 			}
 			logger.Debug("Exec.after", "query", event.Query)
+
+			if flag.NoForeignKeyChecks && a.ForeignKeyChecks {
+				err = execQuery(querySetFKChecksOn)
+				if err != nil {
+					return err
+				}
+			}
 		default:
+			flag := binary.LittleEndian.Uint16(event.Flags)
+			noFKCheckFlag := flag & RowsEventFlagNoForeignKeyChecks != 0
+			if noFKCheckFlag && a.ForeignKeyChecks {
+				_, err = a.dbs[workerIdx].Db.ExecContext(a.ctx, querySetFKChecksOff)
+				if err != nil {
+					return errors.Wrap(err, "querySetFKChecksOff")
+				}
+			}
 			logger.Debug("a dml event")
 			stmt, query, args, rowDelta, err := a.buildDMLEventQuery(event, workerIdx,
 				binlogEntryCtx.TableItems[i])
@@ -570,6 +626,7 @@ func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.Bin
 					"err", err)
 				return err
 			}
+
 			nr, err := r.RowsAffected()
 			if err != nil {
 				logger.Error("RowsAffected error", "gno", binlogEntry.Coordinates.GNO, "event", i, "err", err)
@@ -577,6 +634,13 @@ func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.Bin
 				logger.Debug("RowsAffected.after", "gno", binlogEntry.Coordinates.GNO, "event", i, "nr", nr)
 			}
 			totalDelta += rowDelta
+
+			if noFKCheckFlag && a.ForeignKeyChecks {
+				_, err = a.dbs[workerIdx].Db.ExecContext(a.ctx, querySetFKChecksOn)
+				if err != nil {
+					return errors.Wrap(err, "querySetFKChecksOn")
+				}
+			}
 		}
 		timestamp = event.Timestamp
 	}
@@ -664,4 +728,82 @@ func (a *ApplierIncr) setTableItemForBinlogEntry(binlogEntry *common.BinlogEntry
 		}
 	}
 	return nil
+}
+
+type QueryEventFlags struct {
+	NoForeignKeyChecks bool
+}
+
+func ParseQueryEventFlags(bs []byte) (r QueryEventFlags) {
+	for i := 0; i < len(bs); {
+		flag := bs[i]
+		i += 1
+		switch flag {
+		case Q_FLAGS2_CODE: // Q_FLAGS2_CODE
+			v := binary.LittleEndian.Uint32(bs[i:i+4])
+			i += 4
+			if v & OPTION_AUTO_IS_NULL != 0 {
+				//log.Printf("OPTION_AUTO_IS_NULL")
+			}
+			if v & OPTION_NOT_AUTOCOMMIT != 0 {
+				//log.Printf("OPTION_NOT_AUTOCOMMIT")
+			}
+			if v & OPTION_NO_FOREIGN_KEY_CHECKS != 0 {
+				r.NoForeignKeyChecks = true
+			}
+			if v & OPTION_RELAXED_UNIQUE_CHECKS != 0 {
+				//log.Printf("OPTION_RELAXED_UNIQUE_CHECKS")
+			}
+		case Q_SQL_MODE_CODE:
+			_ = binary.LittleEndian.Uint64(bs[i:i+8])
+			i += 8
+		case Q_CATALOG:
+			n := int(bs[i])
+			i += 1
+			i += n
+			i += 1 // TODO What does 'only written length > 0' mean?
+		case Q_AUTO_INCREMENT:
+			i += 2 + 2
+		case Q_CHARSET_CODE:
+			i += 2 + 2 + 2
+		case Q_TIME_ZONE_CODE:
+			n := int(bs[i])
+			i += 1
+			i += n
+		case Q_CATALOG_NZ_CODE:
+			length := int(bs[i])
+			i += 1
+			_ = string(bs[i:i+length])
+		case Q_LC_TIME_NAMES_CODE:
+			i += 2
+		case Q_CHARSET_DATABASE_CODE:
+			i += 2
+		case Q_TABLE_MAP_FOR_UPDATE_CODE:
+			i += 8
+		case Q_MASTER_DATA_WRITTEN_CODE:
+			i += 4
+		case Q_INVOKERS:
+			n := int(bs[i])
+			i += 1
+			_ = string(bs[i:i+n])
+			i += n
+			n = int(bs[i])
+			_ = string(bs[i:i+n])
+		case Q_UPDATED_DB_NAMES:
+			count := int(bs[i])
+			i += 1
+			for j := 0; j < count; j++ {
+				i0 := i
+				for bs[i] != 0 {
+					i += 1
+				}
+				_ = string(bs[i0:i])
+				i += 1 // nul-terminated
+			}
+		case Q_MICROSECONDS:
+			i += 3
+		}
+	}
+
+	return r
 }
