@@ -180,28 +180,28 @@ func (a *ApplierOracle) subscribeNats() (err error) {
 	a.mysqlContext.MarkRowCopyStartTime()
 	a.logger.Debug("nats subscribe")
 
-	//fullNMM := common.NewNatsMsgMerger(a.logger.With("nmm", "full"))
-	_, err = a.natsConn.Subscribe(fmt.Sprintf("%s_full", a.subject), func(m *gonats.Msg) {
-		a.wg.Add(1)
-		defer a.wg.Done()
-		if err := a.natsConn.Publish(m.Reply, nil); err != nil {
-			a.onError(common.TaskStateDead, err)
-		}
-		a.logger.Debug("full. after publish nats reply")
-	})
-
-	_, err = a.natsConn.Subscribe(fmt.Sprintf("%s_full_complete", a.subject), func(m *gonats.Msg) {
-		a.logger.Debug("recv _full_complete.")
-
-		if err := a.natsConn.Publish(m.Reply, nil); err != nil {
-			a.onError(common.TaskStateDead, errors.Wrap(err, "Publish"))
-			return
-		}
-		a.logger.Debug("ack _full_complete END")
-	})
-	if err != nil {
-		return err
-	}
+	////fullNMM := common.NewNatsMsgMerger(a.logger.With("nmm", "full"))
+	//_, err = a.natsConn.Subscribe(fmt.Sprintf("%s_full", a.subject), func(m *gonats.Msg) {
+	//	a.wg.Add(1)
+	//	defer a.wg.Done()
+	//	if err := a.natsConn.Publish(m.Reply, nil); err != nil {
+	//		a.onError(common.TaskStateDead, err)
+	//	}
+	//	a.logger.Debug("full. after publish nats reply")
+	//})
+	//
+	//_, err = a.natsConn.Subscribe(fmt.Sprintf("%s_full_complete", a.subject), func(m *gonats.Msg) {
+	//	a.logger.Debug("recv _full_complete.")
+	//
+	//	if err := a.natsConn.Publish(m.Reply, nil); err != nil {
+	//		a.onError(common.TaskStateDead, errors.Wrap(err, "Publish"))
+	//		return
+	//	}
+	a.logger.Debug("ack _full_complete END")
+	//})
+	//if err != nil {
+	//	return err
+	//}
 
 	incrNMM := common.NewNatsMsgMerger(a.logger.With("nmm", "incr"))
 	_, err = a.natsConn.Subscribe(fmt.Sprintf("%s_incr_hete", a.subject), func(m *gonats.Msg) {
