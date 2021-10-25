@@ -63,6 +63,7 @@ type Configuration struct {
 	SkipCreateDbTable     bool `json:"skip_create_db_table"`
 	UseMySQLDependency    bool `json:"use_my_sql_dependency"`
 	DependencyHistorySize int  `json:"dependency_history_size"`
+	ExpandSyntaxSupport   bool `json:"expand_syntax_support"`
 }
 
 type BasicTaskProfile struct {
@@ -135,6 +136,7 @@ type MysqlSrcTaskConfig struct {
 	GroupTimeout          int                      `json:"group_timeout"`
 	WaitOnJob             string                   `json:"wait_on_job"`
 	AutoGtid              bool                     `json:"auto_gtid"`
+	ExpandSyntaxSupport   bool                     `json:"expand_syntax_support"`
 }
 
 type MysqlDestTaskConfig struct {

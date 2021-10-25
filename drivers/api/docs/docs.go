@@ -1995,6 +1995,9 @@ var doc = `{
                 "drop_table_if_exists": {
                     "type": "boolean"
                 },
+                "expand_syntax_support": {
+                    "type": "boolean"
+                },
                 "fail_over": {
                     "type": "boolean"
                 },
@@ -2643,6 +2646,9 @@ var doc = `{
                     "type": "integer"
                 },
                 "drop_table_if_exists": {
+                    "type": "boolean"
+                },
+                "expand_syntax_support": {
                     "type": "boolean"
                 },
                 "group_max_size": {
