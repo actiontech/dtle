@@ -462,6 +462,7 @@ func buildMysqlSrcTaskConfigMap(config *models.MysqlSrcTaskConfig) map[string]in
 	addNotRequiredParamToMap(taskConfigInNomadFormat, config.BinlogRelay, "BinlogRelay")
 	addNotRequiredParamToMap(taskConfigInNomadFormat, config.WaitOnJob, "WaitOnJob")
 	addNotRequiredParamToMap(taskConfigInNomadFormat, config.AutoGtid, "AutoGtid")
+	addNotRequiredParamToMap(taskConfigInNomadFormat, config.ExpandSyntaxSupport, "ExpandSyntaxSupport")
 
 	taskConfigInNomadFormat["ConnectionConfig"] = buildMysqlConnectionConfigMap(config.MysqlConnectionConfig)
 	taskConfigInNomadFormat["ReplicateDoDb"] = buildMysqlDataSourceConfigMap(config.ReplicateDoDb)
@@ -608,14 +609,15 @@ func buildBasicTaskProfile(logger g.LoggerType, jobId string, srcTaskDetail *mod
 		basicTaskProfile.JobBaseInfo.JobStatus = nomadJobItem.Status
 	}
 	basicTaskProfile.Configuration = models.Configuration{
-		BinlogRelay:        srcTaskDetail.TaskConfig.BinlogRelay,
-		FailOver:           false,
-		ReplChanBufferSize: int(srcTaskDetail.TaskConfig.ReplChanBufferSize),
-		GroupMaxSize:       srcTaskDetail.TaskConfig.GroupMaxSize,
-		ChunkSize:          int(srcTaskDetail.TaskConfig.ChunkSize),
-		GroupTimeout:       srcTaskDetail.TaskConfig.GroupTimeout,
-		DropTableIfExists:  srcTaskDetail.TaskConfig.DropTableIfExists,
-		SkipCreateDbTable:  srcTaskDetail.TaskConfig.SkipCreateDbTable,
+		BinlogRelay:         srcTaskDetail.TaskConfig.BinlogRelay,
+		FailOver:            false,
+		ReplChanBufferSize:  int(srcTaskDetail.TaskConfig.ReplChanBufferSize),
+		GroupMaxSize:        srcTaskDetail.TaskConfig.GroupMaxSize,
+		ChunkSize:           int(srcTaskDetail.TaskConfig.ChunkSize),
+		GroupTimeout:        srcTaskDetail.TaskConfig.GroupTimeout,
+		DropTableIfExists:   srcTaskDetail.TaskConfig.DropTableIfExists,
+		SkipCreateDbTable:   srcTaskDetail.TaskConfig.SkipCreateDbTable,
+		ExpandSyntaxSupport: srcTaskDetail.TaskConfig.ExpandSyntaxSupport,
 	}
 	basicTaskProfile.ConnectionInfo = models.ConnectionInfo{
 		SrcDataBase: *srcTaskDetail.TaskConfig.MysqlConnectionConfig,
@@ -782,9 +784,10 @@ func buildMysqlSrcTaskDetail(taskName string, internalTaskConfig common.DtleTask
 			MysqlUser:     internalTaskConfig.ConnectionConfig.User,
 			MysqlPassword: internalTaskConfig.ConnectionConfig.Password,
 		},
-		BinlogRelay:  internalTaskConfig.BinlogRelay,
-		GroupTimeout: internalTaskConfig.GroupTimeout,
-		WaitOnJob:    internalTaskConfig.WaitOnJob,
+		BinlogRelay:         internalTaskConfig.BinlogRelay,
+		GroupTimeout:        internalTaskConfig.GroupTimeout,
+		WaitOnJob:           internalTaskConfig.WaitOnJob,
+		ExpandSyntaxSupport: internalTaskConfig.ExpandSyntaxSupport,
 	}
 
 	allocs := []models.AllocationDetail{}
@@ -1710,6 +1713,7 @@ func ReverseJobV2(c echo.Context, filterJobType DtleJobType) error {
 			GroupTimeout:          originalJob.BasicTaskProfile.Configuration.GroupTimeout,
 			WaitOnJob:             consulJobItem.JobId,
 			AutoGtid:              true,
+			ExpandSyntaxSupport:   originalJob.BasicTaskProfile.Configuration.ExpandSyntaxSupport,
 		}
 		reverseJobParam.DestTask = &models.MysqlDestTaskConfig{
 			TaskName:              "dest",
