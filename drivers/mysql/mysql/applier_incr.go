@@ -735,6 +735,7 @@ type QueryEventFlags struct {
 }
 
 func ParseQueryEventFlags(bs []byte) (r QueryEventFlags) {
+	// https://dev.mysql.com/doc/internals/en/query-event.html
 	for i := 0; i < len(bs); {
 		flag := bs[i]
 		i += 1
@@ -774,6 +775,7 @@ func ParseQueryEventFlags(bs []byte) (r QueryEventFlags) {
 			length := int(bs[i])
 			i += 1
 			_ = string(bs[i:i+length])
+			i += length
 		case Q_LC_TIME_NAMES_CODE:
 			i += 2
 		case Q_CHARSET_DATABASE_CODE:
@@ -789,6 +791,7 @@ func ParseQueryEventFlags(bs []byte) (r QueryEventFlags) {
 			i += n
 			n = int(bs[i])
 			_ = string(bs[i:i+n])
+			i += n
 		case Q_UPDATED_DB_NAMES:
 			count := int(bs[i])
 			i += 1
