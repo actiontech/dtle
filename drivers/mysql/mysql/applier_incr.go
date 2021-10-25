@@ -90,7 +90,6 @@ type ApplierIncr struct {
 
 	wg                    sync.WaitGroup
 	SkipGtidExecutedTable bool
-	ForeignKeyChecks      bool
 }
 
 func NewApplierIncr(ctx context.Context, subject string, mysqlContext *common.MySQLDriverConfig,
@@ -114,7 +113,6 @@ func NewApplierIncr(ctx context.Context, subject string, mysqlContext *common.My
 		gtidSet:               gtidSet,
 		gtidSetLock:           gtidSetLock,
 		tableItems:            make(mapSchemaTableItems),
-		ForeignKeyChecks:      true,
 	}
 
 	if g.EnvIsTrue(g.ENV_SKIP_GTID_EXECUTED_TABLE) {
@@ -576,7 +574,7 @@ func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.Bin
 			}
 
 			flag := ParseQueryEventFlags(event.Flags)
-			if flag.NoForeignKeyChecks && a.ForeignKeyChecks {
+			if flag.NoForeignKeyChecks && a.mysqlContext.ForeignKeyChecks {
 				err = execQuery(querySetFKChecksOff)
 				if err != nil {
 					return err
@@ -589,7 +587,7 @@ func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.Bin
 			}
 			logger.Debug("Exec.after", "query", event.Query)
 
-			if flag.NoForeignKeyChecks && a.ForeignKeyChecks {
+			if flag.NoForeignKeyChecks && a.mysqlContext.ForeignKeyChecks {
 				err = execQuery(querySetFKChecksOn)
 				if err != nil {
 					return err
@@ -598,7 +596,7 @@ func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.Bin
 		default:
 			flag := binary.LittleEndian.Uint16(event.Flags)
 			noFKCheckFlag := flag & RowsEventFlagNoForeignKeyChecks != 0
-			if noFKCheckFlag && a.ForeignKeyChecks {
+			if noFKCheckFlag && a.mysqlContext.ForeignKeyChecks {
 				_, err = a.dbs[workerIdx].Db.ExecContext(a.ctx, querySetFKChecksOff)
 				if err != nil {
 					return errors.Wrap(err, "querySetFKChecksOff")
@@ -635,7 +633,7 @@ func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.Bin
 			}
 			totalDelta += rowDelta
 
-			if noFKCheckFlag && a.ForeignKeyChecks {
+			if noFKCheckFlag && a.mysqlContext.ForeignKeyChecks {
 				_, err = a.dbs[workerIdx].Db.ExecContext(a.ctx, querySetFKChecksOn)
 				if err != nil {
 					return errors.Wrap(err, "querySetFKChecksOn")

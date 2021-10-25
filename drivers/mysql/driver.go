@@ -151,6 +151,8 @@ var (
 			hclspec.NewLiteral(`2500`)),
 		"UseMySQLDependency": hclspec.NewDefault(hclspec.NewAttr("UseMySQLDependency", "bool", false),
 			hclspec.NewLiteral(`true`)),
+		"ForeignKeyChecks": hclspec.NewDefault(hclspec.NewAttr("ForeignKeyChecks", "bool", false),
+			hclspec.NewLiteral(`true`)),
 	})
 
 	// capabilities is returned by the Capabilities RPC and indicates what

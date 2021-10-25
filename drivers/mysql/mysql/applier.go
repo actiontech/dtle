@@ -93,7 +93,6 @@ type Applier struct {
 	taskConfig *drivers.TaskConfig
 
 	targetGtid       gomysql.GTIDSet
-	ForeignKeyChecks bool
 }
 
 func (a *Applier) Finish1() error {
@@ -124,8 +123,6 @@ func NewApplier(
 		event:           event,
 		taskConfig:      taskConfig,
 	}
-
-	a.ForeignKeyChecks = a.mysqlContext.ParallelWorkers <= 1 || a.mysqlContext.UseMySQLDependency
 
 	a.ctx, a.cancelFunc = context.WithCancel(context.TODO())
 
@@ -307,7 +304,6 @@ func (a *Applier) Run() {
 		a.onError(common.TaskStateDead, errors.Wrap(err, "NewApplierIncr"))
 		return
 	}
-	a.ai.ForeignKeyChecks = a.ForeignKeyChecks
 	a.ai.EntryExecutedHook = func(entry *common.BinlogEntry) {
 		if entry.Final {
 			a.gtidCh <- &entry.Coordinates
@@ -524,7 +520,7 @@ func (a *Applier) subscribeNats() (err error) {
 		}
 		a.logger.Info("Rows copy complete.", "TotalRowsReplayed", a.TotalRowsReplayed)
 
-		if a.ForeignKeyChecks {
+		if a.mysqlContext.ForeignKeyChecks {
 			err = a.enableForeignKeyChecks()
 			if err != nil {
 				a.onError(common.TaskStateDead, errors.Wrap(err, "enableForeignKeyChecks"))
