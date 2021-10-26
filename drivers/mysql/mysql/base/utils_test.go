@@ -318,7 +318,7 @@ func TestGetTableColumnsSqle(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := GetTableColumnsSqle(tt.args.sqleContext, tt.args.schema, tt.args.table)
+			got, _, err := GetTableColumnsSqle(tt.args.sqleContext, tt.args.schema, tt.args.table)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("GetTableColumnsSqle() error = %v, wantErr %v", err, tt.wantErr)
 				return

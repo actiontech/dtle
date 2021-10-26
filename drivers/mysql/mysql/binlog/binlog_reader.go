@@ -1284,7 +1284,7 @@ func (b *BinlogReader) updateTableMeta(table *common.Table, realSchema string, t
 		return nil
 	}
 
-	columns, err := base.GetTableColumnsSqle(b.maybeSqleContext, realSchema, tableName)
+	columns, _, err := base.GetTableColumnsSqle(b.maybeSqleContext, realSchema, tableName)
 	if err != nil {
 		b.logger.Warn("updateTableMeta: cannot get table info after ddl.", "err", err,
 			"realSchema", realSchema, "tableName", tableName, "gno", gno, "query", query)
@@ -1732,6 +1732,9 @@ func (b *BinlogReader) handleRowsEvent(ev *replication.BinlogEvent, rowsEvent *r
 		rowsEvent.ColumnCount,
 		ev.Header.Timestamp,
 	)
+	if table != nil {
+		dmlEvent.FKParent = len(table.Table.FKParent) > 0
+	}
 	dmlEvent.Flags = make([]byte, 2)
 	binary.LittleEndian.PutUint16(dmlEvent.Flags, rowsEvent.Flags)
 	dmlEvent.LogPos = int64(ev.Header.LogPos - ev.Header.EventSize)

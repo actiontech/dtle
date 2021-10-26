@@ -395,10 +395,11 @@ func GtidSetDiff(set1 string, set2 string) (string, error) {
 	return gExecuted.String(), nil
 }
 
-func GetTableColumnsSqle(sqleContext *sqle.Context, schema string, table string) (*common.ColumnList, error) {
+func GetTableColumnsSqle(sqleContext *sqle.Context, schema string,
+	table string) (r *common.ColumnList, fkParents []*ast.TableName, err error) {
 	tableInfo, exists := sqleContext.GetTable(schema, table)
 	if !exists {
-		return nil, fmt.Errorf("table does not exists in sqle context. table: %v.%v", schema, table)
+		return nil, nil, fmt.Errorf("table does not exists in sqle context. table: %v.%v", schema, table)
 	}
 
 	cStmt := tableInfo.MergedTable
@@ -528,11 +529,16 @@ func GetTableColumnsSqle(sqleContext *sqle.Context, schema string, table string)
 		case ast.ConstraintUniqKey:
 		case ast.ConstraintUniqIndex:
 		case ast.ConstraintForeignKey:
+			fkParents = append(fkParents, cons.Refer.Table)
 		case ast.ConstraintFulltext:
 		}
 	}
 
-	r := common.NewColumnList(columns)
+	r = common.NewColumnList(columns)
 	//r.SetCharset() // TODO
-	return r, nil
+	return r, fkParents, nil
+}
+
+func HashSchemaTable(schema string, table string) string {
+	return fmt.Sprintf("%vDTLE_MAGICK_CONNECTOR%v", schema, table)
 }

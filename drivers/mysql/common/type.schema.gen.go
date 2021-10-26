@@ -2065,6 +2065,7 @@ type DataEvent struct {
 	LogPos            int64
 	Timestamp         uint32
 	Flags             []byte
+	FKParent          bool
 }
 
 func (d *DataEvent) Size() (s uint64) {
@@ -2177,7 +2178,7 @@ func (d *DataEvent) Size() (s uint64) {
 		}
 		s += l
 	}
-	s += 23
+	s += 24
 	return
 }
 func (d *DataEvent) Marshal(buf []byte) ([]byte, error) {
@@ -2391,7 +2392,14 @@ func (d *DataEvent) Marshal(buf []byte) ([]byte, error) {
 		copy(buf[i+23:], d.Flags)
 		i += l
 	}
-	return buf[:i+23], nil
+	{
+		if d.FKParent {
+			buf[i+23] = 1
+		} else {
+			buf[i+23] = 0
+		}
+	}
+	return buf[:i+24], nil
 }
 
 func (d *DataEvent) Unmarshal(buf []byte) (uint64, error) {
@@ -2583,7 +2591,10 @@ func (d *DataEvent) Unmarshal(buf []byte) (uint64, error) {
 		copy(d.Flags, buf[i+23:])
 		i += l
 	}
-	return i + 23, nil
+	{
+		d.FKParent = buf[i+23] == 1
+	}
+	return i + 24, nil
 }
 
 type BinlogEntry struct {

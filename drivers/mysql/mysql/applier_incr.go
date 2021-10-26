@@ -345,7 +345,7 @@ func (a *ApplierIncr) handleEntry(entryCtx *common.BinlogEntryContext) (err erro
 		}
 
 		if !binlogEntry.IsPartOfBigTx() && !a.mysqlContext.UseMySQLDependency {
-			newLC := a.wsManager.GatLastCommit(entryCtx)
+			newLC := a.wsManager.GatLastCommit(entryCtx, a.logger)
 			binlogEntry.Coordinates.LastCommitted = newLC
 			a.logger.Debug("WritesetManager", "lc", newLC, "seq", binlogEntry.Coordinates.SeqenceNumber,
 				"gno", binlogEntry.Coordinates.GNO)

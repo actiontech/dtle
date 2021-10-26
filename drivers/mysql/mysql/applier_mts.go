@@ -183,7 +183,7 @@ func NewWritesetManager(historySize int) *WritesetManager {
 		dependencyHistorySize: historySize,
 	}
 }
-func (wm *WritesetManager) GatLastCommit(entryCtx *common.BinlogEntryContext) int64 {
+func (wm *WritesetManager) GatLastCommit(entryCtx *common.BinlogEntryContext, logger g.LoggerType) int64 {
 	entry := entryCtx.Entry
 	lastCommit := entry.Coordinates.LastCommitted
 
@@ -191,6 +191,16 @@ func (wm *WritesetManager) GatLastCommit(entryCtx *common.BinlogEntryContext) in
 
 	exceedsCapacity := false
 	canUseWritesets := len(hashes) != 0
+
+	if canUseWritesets {
+		for i := range entry.Events {
+			if entry.Events[i].FKParent {
+				canUseWritesets = false
+				logger.Debug("found fk parent", "gno", entryCtx.Entry.Coordinates.GNO)
+				break
+			}
+		}
+	}
 
 	if canUseWritesets {
 		exceedsCapacity = len(wm.history)+len(hashes) > wm.dependencyHistorySize

@@ -62,6 +62,7 @@ type Table struct {
 	TableType    string
 
 	Where string // Call GetWhere() instead of directly accessing.
+	FKParent map[string]struct{}
 }
 
 func (t *Table) GetWhere() string {
