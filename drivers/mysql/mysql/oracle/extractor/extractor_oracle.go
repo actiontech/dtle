@@ -4,13 +4,15 @@
  * License: MPL version 2: https://www.mozilla.org/en-US/MPL/2.0 .
  */
 
-package oracle
+package extractor
 
 import (
 	gosql "database/sql"
 	"encoding/binary"
 	"fmt"
 	"math"
+
+	"github.com/actiontech/dtle/drivers/mysql/mysql/oracle/config"
 
 	"github.com/actiontech/dtle/drivers/mysql/mysql"
 
@@ -63,11 +65,12 @@ type ExtractorOracle struct {
 	dataChannel              chan *common.BinlogEntryContext
 	inspector                *mysql.Inspector
 	binlogReader             *binlog.BinlogReader
+	LogMinerStream           *LogMinerStream
 	initialBinlogCoordinates *common.BinlogCoordinatesX
 	currentBinlogCoordinates *common.BinlogCoordinateTx
-	rowCopyComplete          chan bool
-	rowCopyCompleteFlag      int64
-	tableCount               int
+	//rowCopyComplete          chan bool
+	rowCopyCompleteFlag int64
+	tableCount          int
 
 	sendByTimeoutCounter  int
 	sendBySizeFullCounter int
@@ -105,11 +108,11 @@ func NewExtractorOracle(execCtx *common.ExecContext, cfg *common.MySQLDriverConf
 	logger.Info("NewExtractorOracle", "job", execCtx.Subject)
 
 	e := &ExtractorOracle{
-		logger:          logger.Named("ExtractorOracle").With("job", execCtx.Subject),
-		execCtx:         execCtx,
-		subject:         execCtx.Subject,
-		mysqlContext:    cfg,
-		rowCopyComplete: make(chan bool),
+		logger:       logger.Named("ExtractorOracle").With("job", execCtx.Subject),
+		execCtx:      execCtx,
+		subject:      execCtx.Subject,
+		mysqlContext: cfg,
+		//rowCopyComplete: make(chan bool),
 		waitCh:          waitCh,
 		shutdownCh:      make(chan struct{}),
 		testStub1Delay:  0,
@@ -162,6 +165,9 @@ func (e *ExtractorOracle) Run() {
 	e.logger.Info("Connect nats server", "natsAddr", e.natsAddr)
 	e.natsConn = sc
 
+	e.initDBConnections()
+	e.LogMinerStream = NewLogMinerStream(e.db, e.logger, e.mysqlContext.ReplicateDoDb,
+		e.mysqlContext.OracleConfig.SCN, 100000)
 	//e.logger.Info("CheckAndApplyLowerCaseTableNames")
 	//e.CheckAndApplyLowerCaseTableNames()
 	// 字符集同步 todo
@@ -376,6 +382,14 @@ func (e *ExtractorOracle) initiateStreaming() error {
 	return nil
 }
 
+func (e *ExtractorOracle) initDBConnections() {
+	db, err := config.NewDB(e.mysqlContext.OracleConfig)
+	if err != nil {
+		e.onError(common.TaskStateDead, err)
+	}
+	e.db = db
+}
+
 type TimestampContext struct {
 	stopCh chan struct{}
 	// Do not pass 0 to the chan.
@@ -538,29 +552,6 @@ func (e *ExtractorOracle) publish(subject string, txMsg []byte, gno int64) (err 
 			return err
 		}
 	}
-	return nil
-}
-
-func (e *ExtractorOracle) sendSysVarAndSqlMode() error {
-	//// Generate the DDL statements that set the charset-related system variables ...
-	//if err := e.readMySqlCharsetSystemVariables(); err != nil {
-	//	return err
-	//}
-	//setSystemVariablesStatement := e.setStatementFor()
-	//e.logger.Debug("set sysvar query", "query", setSystemVariablesStatement)
-	//if err := e.selectSqlMode(); err != nil {
-	//	return err
-	//}
-	//setSqlMode := fmt.Sprintf("SET @@session.sql_mode = '%s'", e.sqlMode)
-	//
-	//entry := &common.DumpEntry{
-	//	SystemVariablesStatement: setSystemVariablesStatement,
-	//	SqlMode:                  setSqlMode,
-	//}
-	//if err := e.encodeAndSendDumpEntry(entry); err != nil {
-	//	e.onError(common.TaskStateRestart, err)
-	//}
-	//
 	return nil
 }
 

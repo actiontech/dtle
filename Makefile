@@ -20,12 +20,14 @@ GOFLAGS := -mod=vendor
 default: driver
 
 driver:
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GO111MODULE=on go build $(GOFLAGS) -o dist/dtle -ldflags \
+	GO111MODULE=on go build $(GOFLAGS) -o dist/dtle -ldflags \
 "-X github.com/actiontech/dtle/g.Version=$(VERSION) \
 -X github.com/actiontech/dtle/g.GitCommit=$(COMMIT) \
 -X github.com/actiontech/dtle/g.GitBranch=$(BRANCH)" \
 		./cmd/nomad-plugin/main.go
-		# bash ../../workspace/quickStart/dtle/upload.sh
+
+docker_build:
+	$(DOCKER) run -v $(shell pwd)/:/universe/src/github.com/actiontech/dtle --rm $(DOCKER_IMAGE)  -c "cd /universe/src/github.com/actiontech/dtle; GOPATH=/universe make driver"
 	scp ./dist/dtle root@10.186.63.15:~/dtle
 
 build_with_coverage_report: build-coverage-report-tool coverage-report-pre-build package coverage-report-post-build

@@ -4,7 +4,7 @@
  * License: MPL version 2: https://www.mozilla.org/en-US/MPL/2.0 .
  */
 
-package oracle
+package applier
 
 import (
 	gosql "database/sql"

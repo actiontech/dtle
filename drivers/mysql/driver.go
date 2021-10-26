@@ -151,6 +151,14 @@ var (
 			hclspec.NewLiteral(`2500`)),
 		"UseMySQLDependency": hclspec.NewDefault(hclspec.NewAttr("UseMySQLDependency", "bool", false),
 			hclspec.NewLiteral(`true`)),
+		"OracleConfig": hclspec.NewBlock("OracleConfig", false, hclspec.NewObject(map[string]*hclspec.Spec{
+			"ServiceName": hclspec.NewAttr("ServiceName", "string", true),
+			"Host":        hclspec.NewAttr("Host", "string", true),
+			"Port":        hclspec.NewAttr("Port", "number", true),
+			"User":        hclspec.NewAttr("User", "string", true),
+			"Password":    hclspec.NewAttr("Password", "string", true),
+			"SCN":         hclspec.NewAttr("SCN", "number", true),
+		})),
 	})
 
 	// capabilities is returned by the Capabilities RPC and indicates what
@@ -453,12 +461,14 @@ func (d *Driver) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHandle, *drive
 	var dtleTaskConfig common.DtleTaskConfig
 
 	if err := cfg.DecodeDriverConfig(&dtleTaskConfig); err != nil {
+		d.logger.Debug("start dtle task err")
 		return nil, nil, errors.Wrap(err, "DecodeDriverConfig")
 	}
 
-	if err := d.verifyDriverConfig(dtleTaskConfig); nil != err {
-		return nil, nil, fmt.Errorf("invalide driver config, errors: %v", err)
-	}
+	// todo
+	//if err := d.verifyDriverConfig(dtleTaskConfig); nil != err {
+	//	return nil, nil, fmt.Errorf("invalide driver config, errors: %v", err)
+	//}
 	dtleTaskConfig.SetDefaultForEmpty()
 
 	handle := drivers.NewTaskHandle(taskHandleVersion)

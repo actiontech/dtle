@@ -1,4 +1,4 @@
-package oracle
+package applier
 
 import (
 	"context"
@@ -269,28 +269,6 @@ func (a *ApplierOracleIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *comm
 		atomic.AddInt64(a.memory2, -int64(binlogEntry.Size()))
 	}()
 
-	//once.Do(func() {
-	//	newColumnValues := &common.ColumnValues{
-	//		AbstractValues: nil,
-	//	}
-	//	for i, v := range []string{"Id1", "Name1"} {
-	//		newColumnValues.AbstractValues[i] = v
-	//	}
-	//	binlogEntry.Events = append(binlogEntry.Events, common.DataEvent{
-	//		Query:             "",
-	//		CurrentSchema:     "TEST",
-	//		DatabaseName:      "TEST",
-	//		TableName:         "T1",
-	//		DML:               common.InsertDML,
-	//		ColumnCount:       2,
-	//		WhereColumnValues: nil,
-	//		NewColumnValues:   newColumnValues,
-	//		Table:             nil,
-	//		LogPos:            0,
-	//		Timestamp:         0,
-	//	})
-	//})
-
 	for i, event := range binlogEntry.Events {
 		logger.Debug("binlogEntry.Events", "gno", binlogEntry.Coordinates.GNO, "event", i)
 		switch event.DML {
@@ -384,36 +362,4 @@ func (a *ApplierOracleIncr) setTableItemForBinlogEntry(binlogEntry *common.Binlo
 		}
 	}
 	return nil
-}
-
-func NewTestEntryContext() *common.BinlogEntryContext {
-	abstractValues := make([]interface{}, 0)
-	for _, v := range []string{time.Now().String(), time.Now().String()} {
-		abstractValues = append(abstractValues, v)
-	}
-	newColumnValues := &common.ColumnValues{
-		AbstractValues: abstractValues,
-	}
-	entryContex := &common.BinlogEntryContext{
-		Entry: &common.BinlogEntry{
-			//Coordinates: common.BinlogCoordinateTx{},
-			Events: []common.DataEvent{{
-				Query:             "",
-				CurrentSchema:     "TEST",
-				DatabaseName:      "TEST",
-				TableName:         "T1",
-				DML:               common.InsertDML,
-				ColumnCount:       2,
-				WhereColumnValues: nil,
-				NewColumnValues:   newColumnValues,
-				Table:             nil,
-				LogPos:            0,
-				Timestamp:         0,
-			}},
-			//Index:       0,
-			//Final:       false,
-		},
-		TableItems: nil,
-	}
-	return entryContex
 }

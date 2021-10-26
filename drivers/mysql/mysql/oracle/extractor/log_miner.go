@@ -1,9 +1,10 @@
-package oracle
+package extractor
 
 import (
 	"bytes"
 	"context"
 	"database/sql"
+	gosql "database/sql"
 	"fmt"
 	"strconv"
 	"time"
@@ -17,95 +18,12 @@ import (
 
 	"strings"
 
-	"github.com/godror/godror"
-	"github.com/godror/godror/dsn"
 	_ "github.com/pingcap/tidb/types/parser_driver"
 )
 
-type OracleDBMeta struct {
-	User        string
-	Password    string
-	Host        string
-	Port        uint32
-	ServiceName string
-}
-
-func (m *OracleDBMeta) ConnectString() string {
-	return fmt.Sprintf("%s:%d/%s", m.Host, m.Port, m.ServiceName)
-}
-
-type OracleDB struct {
-	db *sql.DB
-}
-
-func NewDB(meta *OracleDBMeta) (*OracleDB, error) {
-	oraDsn := godror.ConnectionParams{
-		CommonParams: godror.CommonParams{
-			Username:      meta.User,
-			ConnectString: meta.ConnectString(),
-			Password:      godror.NewPassword(meta.Password),
-		},
-		PoolParams: godror.PoolParams{
-			MinSessions:    dsn.DefaultPoolMinSessions,
-			MaxSessions:    dsn.DefaultPoolMaxSessions,
-			WaitTimeout:    dsn.DefaultWaitTimeout,
-			MaxLifeTime:    dsn.DefaultMaxLifeTime,
-			SessionTimeout: dsn.DefaultSessionTimeout,
-		},
-	}
-	sqlDB := sql.OpenDB(godror.NewConnector(oraDsn))
-
-	err := sqlDB.Ping()
-	if err != nil {
-		return nil, fmt.Errorf("error on ping oracle database connection:%v", err)
-	}
-	return &OracleDB{db: sqlDB}, nil
-}
-
-func (o *OracleDB) Query(querySQL string, args ...interface{}) ([]map[string]string, error) {
-	var (
-		cols []string
-		res  []map[string]string
-	)
-	rows, err := o.db.Query(querySQL, args...)
-	if err != nil {
-		return nil, fmt.Errorf("[%v] error on general query SQL [%v] failed", err.Error(), querySQL)
-	}
-	defer rows.Close()
-
-	//不确定字段通用查询，自动获取字段名称
-	cols, err = rows.Columns()
-	if err != nil {
-		return nil, fmt.Errorf("[%v] error on general query rows.Columns failed", err.Error())
-	}
-
-	values := make([][]byte, len(cols))
-	scans := make([]interface{}, len(cols))
-	for i := range values {
-		scans[i] = &values[i]
-	}
-	for rows.Next() {
-		err = rows.Scan(scans...)
-		if err != nil {
-			return nil, fmt.Errorf("[%v] error on general query rows.Scan failed", err.Error())
-		}
-		row := make(map[string]string)
-		for k, v := range values {
-			key := cols[k]
-			if v == nil {
-				row[key] = ""
-			} else {
-				row[key] = string(v)
-			}
-		}
-		res = append(res, row)
-	}
-	return res, nil
-}
-
-func (o *OracleDB) GetCurrentSnapshotSCN() (int64, error) {
+func (l *LogMinerStream) GetCurrentSnapshotSCN() (int64, error) {
 	// 获取当前 SCN 号
-	res, err := o.Query("select min(current_scn) CURRENT_SCN from gv$database")
+	res, err := Query(l.db, "select min(current_scn) CURRENT_SCN from gv$database")
 	var globalSCN int64
 	if err != nil {
 		return globalSCN, err
@@ -122,7 +40,7 @@ type LogFile struct {
 	FirstChange int64
 }
 
-func (o *OracleDB) GetLogFileBySCN(scn int64) ([]*LogFile, error) {
+func (l *LogMinerStream) GetLogFileBySCN(scn int64) ([]*LogFile, error) {
 	query := fmt.Sprintf(`
 SELECT
     MIN(name) name,
@@ -158,7 +76,7 @@ ORDER BY
     first_change#
 `, scn, scn)
 
-	rows, err := o.db.QueryContext(context.TODO(), query)
+	rows, err := l.db.QueryContext(context.TODO(), query)
 	if err != nil {
 		return nil, err
 	}
@@ -176,7 +94,7 @@ ORDER BY
 	return fs, nil
 }
 
-func (o *OracleDB) AddLogMinerFile(fs []*LogFile) error {
+func (l *LogMinerStream) AddLogMinerFile(fs []*LogFile) error {
 	for i, f := range fs {
 		var query string
 		if i == 0 {
@@ -188,7 +106,7 @@ END;`, f.Name)
 DBMS_LOGMNR.add_logfile ( '%s' );
 END;`, f.Name)
 		}
-		_, err := o.db.ExecContext(context.TODO(), query)
+		_, err := l.db.ExecContext(context.TODO(), query)
 		if err != nil {
 			return err
 		}
@@ -196,15 +114,15 @@ END;`, f.Name)
 	return nil
 }
 
-func (o *OracleDB) BuildLogMiner() error {
+func (l *LogMinerStream) BuildLogMiner() error {
 	query := `BEGIN 
 DBMS_LOGMNR_D.build (options => DBMS_LOGMNR_D.STORE_IN_REDO_LOGS);
 END;`
-	_, err := o.db.ExecContext(context.TODO(), query)
+	_, err := l.db.ExecContext(context.TODO(), query)
 	return err
 }
 
-func (o *OracleDB) StartLogMinerBySCN2(startScn, endScn int64) error {
+func (l *LogMinerStream) StartLogMinerBySCN2(startScn, endScn int64) error {
 	query := fmt.Sprintf(`
 BEGIN
 DBMS_LOGMNR.start_logmnr (
@@ -217,11 +135,12 @@ SYS.DBMS_LOGMNR.DICT_FROM_REDO_LOGS +
 SYS.DBMS_LOGMNR.DDL_DICT_TRACKING 
 );
 END;`, startScn, endScn)
-	_, err := o.db.ExecContext(context.TODO(), query)
+	l.logger.Debug("startLogMiner2", "query", query)
+	_, err := l.db.ExecContext(context.TODO(), query)
 	return err
 }
 
-func (o *OracleDB) StartLogMinerBySCN(scn int64) error {
+func (l *LogMinerStream) StartLogMinerBySCN(scn int64) error {
 	query := fmt.Sprintf(`
 BEGIN
 DBMS_LOGMNR.start_logmnr (
@@ -233,16 +152,16 @@ SYS.DBMS_LOGMNR.dict_from_online_catalog +
 SYS.DBMS_LOGMNR.string_literals_in_stmt 
 );
 END;`, scn)
-	_, err := o.db.ExecContext(context.TODO(), query)
+	_, err := l.db.ExecContext(context.TODO(), query)
 	return err
 }
 
-func (o *OracleDB) EndLogMiner() error {
+func (l *LogMinerStream) EndLogMiner() error {
 	query := `
 BEGIN
 DBMS_LOGMNR.end_logmnr ();
 END;`
-	_, err := o.db.ExecContext(context.TODO(), query)
+	_, err := l.db.ExecContext(context.TODO(), query)
 	return err
 }
 
@@ -260,8 +179,35 @@ scn: %d, seg_owner: %s, table_name: %s, op: %s
 sql: %s`, r.SCN, r.SegOwner, r.TableName, r.Operation, r.SQLRedo,
 	)
 }
+func (l *LogMinerStream) buildFilterSchemaTable() (filterSchemaTable string) {
+	// demo :
+	// AND(
+	//    ( seg_owner = 'TEST1' AND table_name in ('t1','t2'))
+	//OR  ( seg_owner = 'TEST2' AND table_name in ('t3','t4'))
+	//OR  ( seg_owner = 'test')
+	//    )
 
-func (o *OracleDB) GetLogMinerRecord(schemaName string, sourceTableNames []string, startScn, endScn int64) ([]*LogMinerRecord, error) {
+	for _, dataSource := range l.dataSources {
+		if len(dataSource.Tables) == 0 {
+			filterSchemaTable = fmt.Sprintf(`%s OR ( seg_owner = '%s')`, filterSchemaTable, dataSource.TableSchema)
+		} else {
+			tables := make([]string, 0)
+			for _, table := range dataSource.Tables {
+				tables = append(tables, fmt.Sprintf("'%s'", table.TableName))
+			}
+			filterSchemaTable = fmt.Sprintf(`%s OR ( seg_owner = '%s' AND table_name in (%s))`, filterSchemaTable, dataSource.TableSchema, strings.Join(tables, ","))
+		}
+	}
+
+	if len(filterSchemaTable) > 0 {
+		filterSchemaTable = strings.Replace(filterSchemaTable, "OR", "AND(", 1)
+		filterSchemaTable = fmt.Sprintf("%s%s", filterSchemaTable, ")")
+	}
+	return
+}
+
+func (l *LogMinerStream) GetLogMinerRecord(startScn, endScn int64) ([]*LogMinerRecord, error) {
+	l.logger.Debug("Get logMiner record", "QuerySql", "")
 	// AND table_name IN ('%s')
 	// strings.Join(sourceTableNames, `','`),
 	query := fmt.Sprintf(`
@@ -273,13 +219,13 @@ SELECT
 	operation
 FROM 
 	V$LOGMNR_CONTENTS
-WHERE 
-	seg_owner = '%s'
-	AND SCN > %d
+WHERE
+	SCN > %d
     AND SCN <= %d
-`, schemaName, startScn, endScn)
-
-	rows, err := o.db.QueryContext(context.TODO(), query)
+    %s
+`, startScn, endScn, l.buildFilterSchemaTable())
+	l.logger.Debug("Get logMiner record", "QuerySql", query)
+	rows, err := l.db.QueryContext(context.TODO(), query)
 	if err != nil {
 		return nil, err
 	}
@@ -297,7 +243,7 @@ WHERE
 	return lrs, nil
 }
 
-func (o *OracleDB) getTables(schema string) ([]string, error) {
+func (o *ExtractorOracle) getTables(schema string) ([]string, error) {
 	query := fmt.Sprintf(`
 SELECT 
 	table_name
@@ -357,7 +303,7 @@ func (o *OracleBoolean) Scan(value interface{}) error {
 	return nil
 }
 
-func (o *OracleDB) getTableColumn(schema, table string) ([]*ColumnDefinition, error) {
+func (o *ExtractorOracle) getTableColumn(schema, table string) ([]*ColumnDefinition, error) {
 	query := fmt.Sprintf(`
 SELECT 
 	column_name,
@@ -402,9 +348,9 @@ WHERE
 	return columns, nil
 }
 
-func (o *OracleDB) currentRedoLogSequenceFp() (string, error) {
+func (l *LogMinerStream) currentRedoLogSequenceFp() (string, error) {
 	query := fmt.Sprintf(`SELECT GROUP#, THREAD#, SEQUENCE# FROM V$LOG WHERE STATUS = 'CURRENT'`)
-	rows, err := o.Query(query)
+	rows, err := Query(l.db, query)
 	if err != nil {
 		return "", err
 	}
@@ -417,59 +363,44 @@ func (o *OracleDB) currentRedoLogSequenceFp() (string, error) {
 	return buf.String(), nil
 }
 
-var db *OracleDB
-
 func (e *ExtractorOracle) DataStreamEvents(entriesChannel chan<- *common.BinlogEntryContext) error {
 	e.logger.Debug("start oracle. DataStreamEvents")
-	if db == nil {
-		oracleDb, err := NewDB(&OracleDBMeta{
-			User:        "roma_logminer",
-			Password:    "oracle",
-			Host:        "10.186.63.15",
-			Port:        1521,
-			ServiceName: "XE",
-		})
+	//schema := "TEST"
+	//tables, err := e.getTables(schema)
+	//if err != nil {
+	//	fmt.Println(err)
+	//	return err
+	//}
+	//for _, table := range tables {
+	//	e.logger.Debug("get table \"%s\" column\n", "table", table)
+	//	columns, err := e.getTableColumn(schema, table)
+	//	if err != nil {
+	//		fmt.Println(err)
+	//		return err
+	//	}
+	//	fmt.Println(columns)
+	//}
+
+	if e.mysqlContext.OracleConfig.SCN == 0 {
+		scn, err := e.LogMinerStream.GetCurrentSnapshotSCN()
 		if err != nil {
 			fmt.Println(err)
 			return err
 		}
-		db = oracleDb
+		e.logger.Debug("current scn", "scn", scn)
+		e.LogMinerStream.currentScn = scn
 	}
 
-	schema := "TEST"
-	tables, err := db.getTables(schema)
+	err := e.LogMinerStream.start()
 	if err != nil {
 		fmt.Println(err)
 		return err
 	}
-	for _, table := range tables {
-		e.logger.Debug("get table \"%s\" column\n", "table", table)
-		columns, err := db.getTableColumn(schema, table)
-		if err != nil {
-			fmt.Println(err)
-			return err
-		}
-		fmt.Println(columns)
-	}
-
-	scn, err := db.GetCurrentSnapshotSCN()
-	if err != nil {
-		fmt.Println(err)
-		return err
-	}
-	e.logger.Debug("current scn", "scn", scn)
-
-	ls := NewLogMinerStream(db, scn, 100000)
-	err = ls.start()
-	if err != nil {
-		fmt.Println(err)
-		return err
-	}
-	defer ls.stop()
+	defer e.LogMinerStream.stop()
 
 	for {
 		time.Sleep(5 * time.Second)
-		rs, err := ls.queue(e.logger)
+		rs, err := e.LogMinerStream.queue()
 		if err != nil {
 			return err
 		}
@@ -497,23 +428,28 @@ func handleSQLs(rows []*LogMinerRecord) *common.BinlogEntry {
 }
 
 type LogMinerStream struct {
-	db                       *OracleDB
+	db                       *gosql.DB
 	currentScn               int64
 	interval                 int64
 	initialized              bool
 	currentRedoLogSequenceFP string
+	logger                   g.LoggerType
+	dataSources              []*common.DataSource
 }
 
-func NewLogMinerStream(db *OracleDB, startScn, interval int64) *LogMinerStream {
+func NewLogMinerStream(db *gosql.DB, logger g.LoggerType, dataSource []*common.DataSource,
+	startScn, interval int64) *LogMinerStream {
 	return &LogMinerStream{
-		db:         db,
-		currentScn: startScn,
-		interval:   interval,
+		db:          db,
+		logger:      logger,
+		dataSources: dataSource,
+		currentScn:  startScn,
+		interval:    interval,
 	}
 }
 
 func (l *LogMinerStream) checkRedoLogChanged() (bool, error) {
-	fp, err := l.db.currentRedoLogSequenceFp()
+	fp, err := l.currentRedoLogSequenceFp()
 	if err != nil {
 		return false, err
 	}
@@ -526,13 +462,13 @@ func (l *LogMinerStream) checkRedoLogChanged() (bool, error) {
 
 func (l *LogMinerStream) start() error {
 	fmt.Println("build logminer")
-	err := l.db.BuildLogMiner()
+	err := l.BuildLogMiner()
 	if err != nil {
 		fmt.Println("BuildLogMiner ", err)
 		return err
 	}
 
-	fs, err := l.db.GetLogFileBySCN(l.currentScn)
+	fs, err := l.GetLogFileBySCN(l.currentScn)
 	if err != nil {
 		fmt.Println(err)
 		return err
@@ -542,12 +478,12 @@ func (l *LogMinerStream) start() error {
 	}
 
 	fmt.Println("add logminer file")
-	err = l.db.AddLogMinerFile(fs)
+	err = l.AddLogMinerFile(fs)
 	if err != nil {
 		fmt.Println("AddLogMinerFile ", err)
 		return err
 	}
-	fp, err := l.db.currentRedoLogSequenceFp()
+	fp, err := l.currentRedoLogSequenceFp()
 	if err != nil {
 		return err
 	}
@@ -556,11 +492,11 @@ func (l *LogMinerStream) start() error {
 }
 
 func (l *LogMinerStream) stop() error {
-	return l.db.EndLogMiner()
+	return l.EndLogMiner()
 }
 
 func (l *LogMinerStream) getEndScn() (int64, error) {
-	latestScn, err := l.db.GetCurrentSnapshotSCN()
+	latestScn, err := l.GetCurrentSnapshotSCN()
 	if err != nil {
 		fmt.Println(err)
 		return 0, err
@@ -573,7 +509,7 @@ func (l *LogMinerStream) getEndScn() (int64, error) {
 	}
 }
 
-func (l *LogMinerStream) queue(log g.LoggerType) ([]*LogMinerRecord, error) {
+func (l *LogMinerStream) queue() ([]*LogMinerRecord, error) {
 	changed, err := l.checkRedoLogChanged()
 	if err != nil {
 		return nil, err
@@ -595,17 +531,17 @@ func (l *LogMinerStream) queue(log g.LoggerType) ([]*LogMinerRecord, error) {
 	if endScn == l.currentScn {
 		return nil, err
 	}
-	log.Info("start logminer")
-	err = l.db.StartLogMinerBySCN2(l.currentScn, endScn)
+	l.logger.Info("Start logminer")
+	err = l.StartLogMinerBySCN2(l.currentScn, endScn)
 	if err != nil {
-		log.Info("StartLMBySCN ", "err", err)
+		l.logger.Error("StartLMBySCN ", "err", err)
 		return nil, err
 	}
 
-	log.Info("get logminer recore form scn %d to %d\n", l.currentScn, endScn)
-	records, err := l.db.GetLogMinerRecord("TEST", []string{"t1"}, l.currentScn, endScn)
+	l.logger.Info("Get log miner record form", "StartScn", l.currentScn, "EndScn", endScn)
+	records, err := l.GetLogMinerRecord(l.currentScn, endScn)
 	if err != nil {
-		log.Error("GetLogMinerRecord ", "err", err)
+		l.logger.Error("GetLogMinerRecord ", "err", err)
 		return nil, err
 	}
 	l.currentScn = endScn
@@ -623,23 +559,67 @@ func parseToDataEvent(row *LogMinerRecord) (common.DataEvent, error) {
 		return dataEvent, err
 	}
 	visitor := &Stmt{}
+	if len(stmt) <= 0 {
+		return dataEvent, nil
+	}
 	(stmt[0]).Accept(visitor)
 	fmt.Println(stmt, warns, err)
 
 	dataEvent = common.DataEvent{
-		Query:         "",
-		CurrentSchema: visitor.Schema,
-		DatabaseName:  visitor.Schema,
-		TableName:     visitor.Table,
-		DML:           visitor.Operation,
-		ColumnCount:   uint64(len(visitor.Columns)),
-		//WhereColumnValues: visitor.WhereColumnValues,
-		NewColumnValues: visitor.NewColumnValues,
-		Table:           nil,
-		LogPos:          0,
-		Timestamp:       0,
+		Query:             "",
+		CurrentSchema:     visitor.Schema,
+		DatabaseName:      visitor.Schema,
+		TableName:         visitor.Table,
+		DML:               visitor.Operation,
+		ColumnCount:       uint64(len(visitor.Columns)),
+		WhereColumnValues: visitor.WhereColumnValues,
+		NewColumnValues:   visitor.NewColumnValues,
+		Table:             nil,
+		LogPos:            0,
+		Timestamp:         0,
 	}
 	return dataEvent, nil
+}
+
+func Query(db *gosql.DB, querySQL string, args ...interface{}) ([]map[string]string, error) {
+	var (
+		cols []string
+		res  []map[string]string
+	)
+	rows, err := db.Query(querySQL, args...)
+	if err != nil {
+		return nil, fmt.Errorf("[%v] error on general query SQL [%v] failed", err.Error(), querySQL)
+	}
+	defer rows.Close()
+
+	//不确定字段通用查询，自动获取字段名称
+	cols, err = rows.Columns()
+	if err != nil {
+		return nil, fmt.Errorf("[%v] error on general query rows.Columns failed", err.Error())
+	}
+
+	values := make([][]byte, len(cols))
+	scans := make([]interface{}, len(cols))
+	for i := range values {
+		scans[i] = &values[i]
+	}
+	for rows.Next() {
+		err = rows.Scan(scans...)
+		if err != nil {
+			return nil, fmt.Errorf("[%v] error on general query rows.Scan failed", err.Error())
+		}
+		row := make(map[string]string)
+		for k, v := range values {
+			key := cols[k]
+			if v == nil {
+				row[key] = ""
+			} else {
+				row[key] = string(v)
+			}
+		}
+		res = append(res, row)
+	}
+	return res, nil
 }
 
 // 替换字符串引号字符

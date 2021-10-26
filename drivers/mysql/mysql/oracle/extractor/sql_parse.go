@@ -1,4 +1,4 @@
-package oracle
+package extractor
 
 import (
 	"encoding/json"
@@ -82,7 +82,8 @@ func (v *Stmt) Enter(in ast.Node) (ast.Node, bool) {
 				}
 				//v.Data[StringsBuilder("`", strings.ToUpper(col.String()), "`")] = sb.String()
 				//ColumnsTypeOracle2MySQL()
-				v.NewColumnValues.AbstractValues = append(v.NewColumnValues.AbstractValues, sb.String())
+				data := strings.TrimLeft(strings.TrimRight(sb.String(), "'"), "'")
+				v.NewColumnValues.AbstractValues = append(v.NewColumnValues.AbstractValues, data)
 			}
 		}
 	}
@@ -139,8 +140,4 @@ func beforeData(where ast.ExprNode, before map[string]interface{}) {
 			before[strings.ToUpper(column.String())] = value.String()
 		}
 	}
-}
-
-func ColumnsTypeOracle2MySQL() {
-
 }
