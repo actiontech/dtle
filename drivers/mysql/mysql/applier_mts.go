@@ -184,16 +184,18 @@ func NewWritesetManager(historySize int) *WritesetManager {
 	}
 }
 func (wm *WritesetManager) GatLastCommit(entryCtx *common.BinlogEntryContext) int64 {
-	lastCommit := wm.lastCommonParent
-	hashes := HashTx(entryCtx)
-
 	entry := entryCtx.Entry
+	lastCommit := entry.Coordinates.LastCommitted
+
+	hashes := HashTx(entryCtx)
 
 	exceedsCapacity := false
 	canUseWritesets := len(hashes) != 0
 
 	if canUseWritesets {
 		exceedsCapacity = len(wm.history)+len(hashes) > wm.dependencyHistorySize
+
+		lastCommit = wm.lastCommonParent
 		for _, hash := range hashes {
 			if seq, exist := wm.history[hash]; exist {
 				if seq > lastCommit && seq < entry.Coordinates.SeqenceNumber {
