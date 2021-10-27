@@ -218,9 +218,11 @@ func NewBinlogReader(execCtx *common.ExecContext, cfg *common.MySQLDriverConfig,
 		binlogReader.tables[db.TableSchema] = schemaContext
 		for _, table := range db.Tables {
 			logger.Debug("add table", "table", table.TableName)
-			if err := binlogReader.addTableToTableMap(schemaContext.TableMap, table); err != nil {
+			tableCtx, err := common.NewTableContext(table)
+			if err != nil {
 				return nil, err
 			}
+			schemaContext.TableMap[table.TableName] = tableCtx
 		}
 	}
 
@@ -266,18 +268,6 @@ func NewBinlogReader(execCtx *common.ExecContext, cfg *common.MySQLDriverConfig,
 	binlogReader.mysqlContext.Stage = StageRegisteringSlaveOnMaster
 
 	return binlogReader, err
-}
-
-func (b *BinlogReader) addTableToTableMap(tableMap map[string]*common.TableContext, table *common.Table) error {
-	whereCtx, err := common.NewWhereCtx(table.GetWhere(), table)
-	if err != nil {
-		err = errors.Wrapf(err, "parsing where %v %v where %v", table.TableSchema, table.TableName, table.GetWhere())
-		b.logger.Error(err.Error())
-		return err
-	}
-
-	tableMap[table.TableName] = common.NewTableContext(table, whereCtx)
-	return nil
 }
 
 func (b *BinlogReader) getBinlogDir() string {
@@ -614,29 +604,52 @@ func (b *BinlogReader) handleQueryEvent(ev *replication.BinlogEvent,
 				switch realAst := queryInfo.ast.(type) {
 				case *ast.CreateDatabaseStmt:
 					b.sqleAfterCreateSchema(queryInfo.table.Schema)
+				case *ast.DropDatabaseStmt:
+					b.removeFKChildSchema(realAst.Name)
 				case *ast.CreateTableStmt:
 					b.logger.Debug("ddl is create table")
-					err := b.updateTableMeta(table, realSchema, tableName, gno, query)
+					tableCtx, err := b.updateTableMeta(table, realSchema, tableName, gno, query)
 					if err != nil {
 						return err
 					}
-				//case *ast.DropTableStmt:
+					for _, fkp := range tableCtx.FKParent {
+						b.addFKChild(fkp.Schema.O, fkp.Name.O,
+							common.SchemaTable{realSchema, tableName})
+					}
+				case *ast.DropTableStmt:
+					if realAst.IsView {
+						// do nothing
+					} else {
+						for _, t := range realAst.Tables {
+							dropTableSchema := g.StringElse(t.Schema.O, currentSchema)
+							b.removeFKChild(common.SchemaTable{dropTableSchema, t.Name.O})
+						}
+					}
 				case *ast.AlterTableStmt:
 					b.logger.Debug("ddl is alter table.", "specs", realAst.Specs)
 
 					fromTable := table
 					tableNameX := tableName
 
-					for iSpec := range realAst.Specs {
-						switch realAst.Specs[iSpec].Tp {
+					for _, spec := range realAst.Specs {
+						switch spec.Tp {
 						case ast.AlterTableRenameTable:
 							fromTable = nil
-							tableNameX = realAst.Specs[iSpec].NewTable.Name.O
+							tableNameX = spec.NewTable.Name.O
+						case ast.AlterTableAddConstraint:
+							switch spec.Constraint.Tp {
+							case ast.ConstraintForeignKey:
+								b.addFKChild(spec.Constraint.Refer.Table.Schema.O,
+									spec.Constraint.Refer.Table.Name.O,
+									common.SchemaTable{realSchema, fromTable.TableName})
+							}
+						case ast.AlterTableDropForeignKey:
+							b.removeFKChild(common.SchemaTable{realSchema, fromTable.TableName})
 						default:
 							// do nothing
 						}
 					}
-					err := b.updateTableMeta(fromTable, realSchema, tableNameX, gno, query)
+					_, err := b.updateTableMeta(fromTable, realSchema, tableNameX, gno, query)
 					if err != nil {
 						return err
 					}
@@ -647,7 +660,7 @@ func (b *BinlogReader) handleQueryEvent(ev *replication.BinlogEvent,
 						b.logger.Debug("updating meta for rename table", "newSchema", newSchemaName,
 							"newTable", tableName)
 						if !b.skipQueryDDL(newSchemaName, tableName) {
-							err := b.updateTableMeta(nil, newSchemaName, tableName, gno, query)
+							_, err := b.updateTableMeta(nil, newSchemaName, tableName, gno, query)
 							if err != nil {
 								return err
 							}
@@ -1270,22 +1283,23 @@ func (b *BinlogReader) Close() error {
 	// This is the year 2017. Let's see what year these comments get deleted.
 	return nil
 }
+
 // gno, query: for debug use
 func (b *BinlogReader) updateTableMeta(table *common.Table, realSchema string, tableName string,
-	gno int64, query string) error {
+	gno int64, query string) (*common.TableContext, error) {
 
 	var err error
 
 	if b.maybeSqleContext == nil {
 		b.logger.Debug("ignore updating table meta", "schema", realSchema, "table", tableName)
-		return nil
+		return nil, nil
 	}
 
-	columns, _, err := base.GetTableColumnsSqle(b.maybeSqleContext, realSchema, tableName)
+	columns, fkParent, err := base.GetTableColumnsSqle(b.maybeSqleContext, realSchema, tableName)
 	if err != nil {
 		b.logger.Warn("updateTableMeta: cannot get table info after ddl.", "err", err,
 			"realSchema", realSchema, "tableName", tableName, "gno", gno, "query", query)
-		return err
+		return nil, err
 	}
 	b.logger.Debug("binlog_reader. new columns.",
 		"schema", realSchema, "table", tableName, "columns", columns.String())
@@ -1299,15 +1313,16 @@ func (b *BinlogReader) updateTableMeta(table *common.Table, realSchema string, t
 	}
 	table.OriginalTableColumns = columns
 	table.ColumnMap = mysqlconfig.BuildColumnMapIndex(table.ColumnMapFrom, table.OriginalTableColumns.Ordinals)
-	schemaContext := b.findCurrentSchema(realSchema)
-	err = b.addTableToTableMap(schemaContext.TableMap, table)
-	if err != nil {
-		err = errors.Wrapf(err, "addTableToTableMap. gno %v query %v", gno, query)
-		b.logger.Error("failed to make table context", "err", err)
-		return err
-	}
 
-	return nil
+	schemaContext := b.findCurrentSchema(realSchema)
+	tableCtx, err := common.NewTableContext(table)
+	if err != nil {
+		return nil, err
+	}
+	tableCtx.FKParent = fkParent
+	schemaContext.TableMap[table.TableName] = tableCtx
+
+	return tableCtx, nil
 }
 
 func (b *BinlogReader) updateCurrentReplicateDoDb(schemaName string, tableName string) error {
@@ -1425,10 +1440,11 @@ func (b *BinlogReader) updateCurrentReplicateDoDb(schemaName string, tableName s
 	}
 
 	if newTable != nil {
-		err := b.addTableToTableMap(currentSchema.TableMap, newTable)
+		tableCtx, err := common.NewTableContext(newTable)
 		if err != nil {
 			return err
 		}
+		currentSchema.TableMap[tableName] = tableCtx
 	}
 	return nil
 }
@@ -1893,4 +1909,51 @@ func (b *BinlogReader) handleRowsEvent(ev *replication.BinlogEvent, rowsEvent *r
 		}
 	}
 	return nil
+}
+
+
+func (b *BinlogReader) removeFKChildSchema(schema string) {
+	for _, schemaContext := range b.tables {
+		for _, tableContext := range schemaContext.TableMap {
+			for k, _ := range tableContext.Table.FKParent {
+				if k.Schema == schema {
+					delete(tableContext.Table.FKParent, k)
+				}
+			}
+
+		}
+	}
+}
+func (b *BinlogReader) removeFKChild(table common.SchemaTable) {
+	for _, schemaContext := range b.tables {
+		for _, tableContext := range schemaContext.TableMap {
+			// NOTE it is ok to delete not existing items
+			delete(tableContext.Table.FKParent, table)
+		}
+	}
+}
+
+func (b *BinlogReader) renameFKChild(oldHash common.SchemaTable, newHash common.SchemaTable) {
+	for _, schemaContext := range b.tables {
+		for _, tableContext := range schemaContext.TableMap {
+			if _, ok := tableContext.Table.FKParent[oldHash]; ok {
+				delete(tableContext.Table.FKParent, oldHash)
+				tableContext.Table.FKParent[newHash] = struct{}{}
+			}
+		}
+	}
+}
+
+func (b *BinlogReader) addFKChild(parentSchema string, parentTable string, childST common.SchemaTable) {
+	schemaContext := b.findCurrentSchema(parentSchema)
+	if schemaContext == nil {
+		b.logger.Warn("FK parent not found 1", "schema", parentSchema, "table", parentTable)
+		return
+	}
+	tableContext := b.findCurrentTable(schemaContext, parentTable)
+	if tableContext == nil {
+		b.logger.Warn("FK parent not found 2", "schema", parentSchema, "table", parentTable)
+		return
+	}
+	tableContext.FKParent[childST] = struct{}{}
 }

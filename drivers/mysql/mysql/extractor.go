@@ -569,7 +569,7 @@ func (e *Extractor) readTableColumns() (err error) {
 	e.logger.Info("Examining table structure on extractor")
 
 	// map parent -> child
-	fkParentMap := make(map[string]map[string]struct{})
+	fkParentMap := make(map[common.SchemaTable]map[common.SchemaTable]struct{})
 
 	for _, doDb := range e.replicateDoDb {
 		for _, doTb := range doDb.Tables {
@@ -580,15 +580,15 @@ func (e *Extractor) readTableColumns() (err error) {
 			doTb.OriginalTableColumns = tableColumns
 			doTb.ColumnMap = mysqlconfig.BuildColumnMapIndex(doTb.ColumnMapFrom, doTb.OriginalTableColumns.Ordinals)
 
-			childTableHash := base.HashSchemaTable(doTb.TableSchema, doTb.TableName)
+			childST := common.SchemaTable{doTb.TableSchema, doTb.TableName}
 			for _, fkpt := range fkParentTables {
 				schema := g.StringElse(fkpt.Schema.O, doTb.TableSchema)
-				parentHash := base.HashSchemaTable(schema, fkpt.Name.O)
-				if m, ok := fkParentMap[parentHash]; ok {
-					m[childTableHash] = struct{}{}
+				parentST := common.SchemaTable{schema, fkpt.Name.O}
+				if m, ok := fkParentMap[parentST]; ok {
+					m[childST] = struct{}{}
 				} else {
-					fkParentMap[parentHash] = map[string]struct{}{
-						childTableHash: {},
+					fkParentMap[parentST] = map[common.SchemaTable]struct{}{
+						childST: {},
 					}
 				}
 			}
@@ -597,8 +597,8 @@ func (e *Extractor) readTableColumns() (err error) {
 
 	for _, db := range e.replicateDoDb {
 		for _, tb := range db.Tables {
-			hash := base.HashSchemaTable(tb.TableSchema, tb.TableName)
-			if m, ok := fkParentMap[hash]; ok {
+			st := common.SchemaTable{tb.TableSchema, tb.TableName}
+			if m, ok := fkParentMap[st]; ok {
 				tb.FKParent = m
 				e.logger.Info("fk parent", "len", len(m), "schema", tb.TableSchema, "table", tb.TableName)
 			}

@@ -538,7 +538,3 @@ func GetTableColumnsSqle(sqleContext *sqle.Context, schema string,
 	//r.SetCharset() // TODO
 	return r, fkParents, nil
 }
-
-func HashSchemaTable(schema string, table string) string {
-	return fmt.Sprintf("%vDTLE_MAGICK_CONNECTOR%v", schema, table)
-}
