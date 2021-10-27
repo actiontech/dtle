@@ -309,22 +309,34 @@ func createOrUpdateMysqlToMysqlJob(logger g.LoggerType, jobParam *models.CreateO
 }
 
 func convertMysqlToMysqlJobToNomadJob(failover bool, jobParams *models.CreateOrUpdateMysqlToMysqlJobParamV2) (*nomadApi.Job, error) {
-	srcTask, err := buildNomadTaskGroupItem(buildMysqlSrcTaskConfigMap(jobParams.SrcTask), jobParams.SrcTask.TaskName, jobParams.SrcTask.NodeId, failover, jobParams.Retry)
+	srcTask, srcDataCenter, err := buildNomadTaskGroupItem(buildMysqlSrcTaskConfigMap(jobParams.SrcTask), jobParams.SrcTask.TaskName, jobParams.SrcTask.NodeId, failover, jobParams.Retry)
 	if nil != err {
 		return nil, fmt.Errorf("build src task failed: %v", err)
 	}
-
-	destTask, err := buildNomadTaskGroupItem(buildMysqlDestTaskConfigMap(jobParams.DestTask), jobParams.DestTask.TaskName, jobParams.DestTask.NodeId, failover, jobParams.Retry)
+	destTask, destDataCenter, err := buildNomadTaskGroupItem(buildMysqlDestTaskConfigMap(jobParams.DestTask), jobParams.DestTask.TaskName, jobParams.DestTask.NodeId, failover, jobParams.Retry)
 	if nil != err {
 		return nil, fmt.Errorf("build dest task failed: %v", err)
 	}
 
-	jobId := jobParams.JobId
 	return &nomadApi.Job{
-		ID:          &jobId,
-		Datacenters: []string{"dc1"},
+		ID:          &jobParams.JobId,
+		Datacenters: buildDataCenters(srcDataCenter, destDataCenter),
 		TaskGroups:  []*nomadApi.TaskGroup{srcTask, destTask},
 	}, nil
+}
+
+func buildDataCenters(srcDataCenter, destDataCenter string) []string {
+	dataCenters := make([]string, 0)
+	if srcDataCenter != "" {
+		dataCenters = append(dataCenters, srcDataCenter)
+	}
+	if destDataCenter != "" {
+		dataCenters = append(dataCenters, destDataCenter)
+	}
+	if len(destDataCenter) == 0 {
+		dataCenters = []string{"dc1"}
+	}
+	return dataCenters
 }
 
 func buildMySQLJobListItem(logger g.LoggerType, jobParam *models.CreateOrUpdateMysqlToMysqlJobParamV2,
@@ -391,17 +403,25 @@ func buildKafkaJobListItem(logger g.LoggerType, jobParam *models.CreateOrUpdateM
 	return nil
 }
 
-func buildNomadTaskGroupItem(dtleTaskconfig map[string]interface{}, taskName, nodeId string, failover bool, retryTimes int) (*nomadApi.TaskGroup, error) {
+func buildNomadTaskGroupItem(dtleTaskconfig map[string]interface{}, taskName, nodeId string, failover bool, retryTimes int) (*nomadApi.TaskGroup, string, error) {
+	dataCenter := ""
 	task := nomadApi.NewTask(taskName, g.PluginName)
 	task.Config = dtleTaskconfig
 	if !failover && "" == nodeId {
-		return nil, fmt.Errorf("node id should be provided if failover is false. task_name=%v", taskName)
+		return nil, dataCenter, fmt.Errorf("node id should be provided if failover is false. task_name=%v", taskName)
 	}
 	if nodeId != "" {
 		if failover {
 			// https://www.nomadproject.io/docs/runtime/interpolation
 			newAff := nomadApi.NewAffinity("${node.unique.id}", "=", nodeId, 100)
 			task.Affinities = append(task.Affinities, newAff)
+			if node, err := GetNodeInfo(nodeId); err != nil {
+				return nil, dataCenter, err
+			} else if node.Datacenter != "" {
+				newConstraint := nomadApi.NewConstraint("${node.datacenter}", "=", node.Datacenter)
+				task.Constraints = append(task.Constraints, newConstraint)
+				dataCenter = node.Datacenter
+			}
 		} else {
 			// https://www.nomadproject.io/docs/runtime/interpolation
 			newConstraint := nomadApi.NewConstraint("${node.unique.id}", "=", nodeId)
@@ -414,7 +434,7 @@ func buildNomadTaskGroupItem(dtleTaskconfig map[string]interface{}, taskName, no
 	taskGroup.ReschedulePolicy = reschedulePolicy
 	taskGroup.RestartPolicy = restartPolicy
 	taskGroup.Tasks = append(taskGroup.Tasks, task)
-	return taskGroup, nil
+	return taskGroup, dataCenter, nil
 }
 
 func buildRestartPolicy(RestartAttempts int) (*nomadApi.ReschedulePolicy, *nomadApi.RestartPolicy) {
@@ -1060,19 +1080,19 @@ func createOrUpdateMysqlToKafkaJob(c echo.Context, logger g.LoggerType, jobType 
 }
 
 func convertMysqlToKafkaJobToNomadJob(failover bool, apiJobParams *models.CreateOrUpdateMysqlToKafkaJobParamV2) (*nomadApi.Job, error) {
-	srcTask, err := buildNomadTaskGroupItem(buildMysqlSrcTaskConfigMap(apiJobParams.SrcTask), apiJobParams.SrcTask.TaskName, apiJobParams.SrcTask.NodeId, failover, apiJobParams.Retry)
+	srcTask, srcDataCenter, err := buildNomadTaskGroupItem(buildMysqlSrcTaskConfigMap(apiJobParams.SrcTask), apiJobParams.SrcTask.TaskName, apiJobParams.SrcTask.NodeId, failover, apiJobParams.Retry)
 	if nil != err {
 		return nil, fmt.Errorf("build src task failed: %v", err)
 	}
 
-	destTask, err := buildNomadTaskGroupItem(buildKafkaDestTaskConfigMap(apiJobParams.DestTask), apiJobParams.DestTask.TaskName, apiJobParams.DestTask.NodeId, failover, apiJobParams.Retry)
+	destTask, destDataCenter, err := buildNomadTaskGroupItem(buildKafkaDestTaskConfigMap(apiJobParams.DestTask), apiJobParams.DestTask.TaskName, apiJobParams.DestTask.NodeId, failover, apiJobParams.Retry)
 	if nil != err {
 		return nil, fmt.Errorf("build dest task failed: %v", err)
 	}
 
 	return &nomadApi.Job{
 		ID:          &apiJobParams.JobId,
-		Datacenters: []string{"dc1"},
+		Datacenters: buildDataCenters(srcDataCenter, destDataCenter),
 		TaskGroups:  []*nomadApi.TaskGroup{srcTask, destTask},
 	}, nil
 }
