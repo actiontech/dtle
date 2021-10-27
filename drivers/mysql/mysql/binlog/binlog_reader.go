@@ -1186,25 +1186,19 @@ func (b *BinlogReader) skipRowEvent(rowsEvent *replication.RowsEvent, dml int8) 
 	case "sys", "information_schema", "performance_schema":
 		return true, nil
 	default:
-		//if table in tartget Table, do this event
-		for schemaName, tableMap := range b.tables {
-			if b.matchString(schemaName, string(rowsEvent.Table.Schema)) || schemaName == "" {
-				for tableName, tableCtx := range tableMap {
-					if b.matchString(tableName, tableOrigin) {
-						return false, tableCtx
-					}
-				}
+		if tableMap, ok := b.tables[string(rowsEvent.Table.Schema)]; ok {
+			if tableCtx, ok := tableMap[tableOrigin]; ok {
+				return false, tableCtx
+			}
+		}
+		// TODO when will schemaName be empty?
+		if tableMap, ok := b.tables[""]; ok {
+			if tableCtx, ok := tableMap[tableOrigin]; ok {
+				return false, tableCtx
 			}
 		}
 		return true, nil
 	}
-}
-
-func (b *BinlogReader) matchString(pattern string, t string) bool {
-	/*if re, ok := b.ReMap[pattern]; ok {
-		return re.MatchString(t)
-	}*/
-	return pattern == t
 }
 
 func (b *BinlogReader) matchTable(patternTBS []*common.DataSource, schemaName string, tableName string) bool {
@@ -1314,25 +1308,27 @@ func (b *BinlogReader) updateTableMeta(table *common.Table, realSchema string, t
 }
 
 func (b *BinlogReader) updateCurrentReplicateDoDb(schemaName string, tableName string) error {
-	if "" == schemaName {
+	if schemaName == "" {
 		return fmt.Errorf("schema name should not be empty. table %v", tableName)
 	}
 
 	var currentSchemaReplConfig *common.DataSource
 	currentSchema := b.findCurrentSchema(schemaName)
 	currentSchemaReplConfig = b.findSchemaConfig(b.mysqlContext.ReplicateDoDb, schemaName)
-	if nil == currentSchema { // update current schema
+	if currentSchema == nil { // update current schema
 		if len(b.mysqlContext.ReplicateDoDb) > 0 {
-			if nil == currentSchemaReplConfig {
+			if currentSchemaReplConfig == nil {
 				//  the schema doesn't need to be replicated
 				return nil
 			}
 
 			schemaRename := ""
 			schemaRenameRegex := currentSchemaReplConfig.TableSchemaRename
-			if currentSchemaReplConfig.TableSchema != "" { // match currentSchemaReplConfig.TableSchema and currentSchemaReplConfig.TableSchemaRename
+			if currentSchemaReplConfig.TableSchema != "" {
+				// match currentSchemaReplConfig.TableSchema and currentSchemaReplConfig.TableSchemaRename
 				schemaRename = currentSchemaReplConfig.TableSchemaRename
-			} else if currentSchemaReplConfig.TableSchemaRegex != "" { // match currentSchemaReplConfig.TableSchemaRegex and currentSchemaReplConfig.TableSchemaRename
+			} else if currentSchemaReplConfig.TableSchemaRegex != "" {
+				// match currentSchemaReplConfig.TableSchemaRegex and currentSchemaReplConfig.TableSchemaRename
 				// TODO check & compile one time
 				schemaNameRegex, err := regexp.Compile(currentSchemaReplConfig.TableSchemaRegex)
 				if err != nil {
@@ -1360,21 +1356,21 @@ func (b *BinlogReader) updateCurrentReplicateDoDb(schemaName string, tableName s
 		b.currentReplicateDoDb = append(b.currentReplicateDoDb, currentSchema)
 	}
 
-	if "" == tableName {
+	if tableName == "" {
 		return nil
 	}
 
 	currentTable := b.findCurrentTable(currentSchema, tableName)
-	if nil != currentTable {
+	if currentTable != nil {
 		// table already exists
 		return nil
 	}
 
 	// update current table
 	var newTable *common.Table
-	if nil != currentSchemaReplConfig && len(currentSchemaReplConfig.Tables) > 0 {
+	if currentSchemaReplConfig != nil && len(currentSchemaReplConfig.Tables) > 0 {
 		currentTableConfig := b.findTableConfig(currentSchemaReplConfig, tableName)
-		if nil == currentTableConfig {
+		if currentTableConfig == nil {
 			// the table doesn't need to be replicated
 			return nil
 		}
@@ -1424,7 +1420,7 @@ func (b *BinlogReader) updateCurrentReplicateDoDb(schemaName string, tableName s
 		newTable.TableSchemaRename = currentSchema.TableSchemaRename
 	}
 
-	if nil != newTable {
+	if newTable != nil {
 		currentSchema.Tables = append(currentSchema.Tables, newTable)
 	}
 	return nil
