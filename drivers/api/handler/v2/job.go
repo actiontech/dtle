@@ -317,26 +317,44 @@ func convertMysqlToMysqlJobToNomadJob(failover bool, jobParams *models.CreateOrU
 	if nil != err {
 		return nil, fmt.Errorf("build dest task failed: %v", err)
 	}
-
+	dataCenters, err := buildDataCenters(srcDataCenter, destDataCenter)
+	if nil != err {
+		return nil, fmt.Errorf("build job dada center failed: %v", err)
+	}
 	return &nomadApi.Job{
 		ID:          &jobParams.JobId,
-		Datacenters: buildDataCenters(srcDataCenter, destDataCenter),
+		Datacenters: dataCenters,
 		TaskGroups:  []*nomadApi.TaskGroup{srcTask, destTask},
 	}, nil
 }
 
-func buildDataCenters(srcDataCenter, destDataCenter string) []string {
+func buildDataCenters(srcDataCenter, destDataCenter string) ([]string, error) {
 	dataCenters := make([]string, 0)
-	if srcDataCenter != "" {
-		dataCenters = append(dataCenters, srcDataCenter)
+	if srcDataCenter != "" && destDataCenter != "" {
+		dataCenters = append(dataCenters, srcDataCenter, destDataCenter)
+	} else {
+		nodes, err := findJobsFromNomad()
+		if err != nil {
+			return dataCenters, err
+		}
+		for _, node := range nodes {
+			dataCenters = append(dataCenters, node.Datacenters...)
+		}
 	}
-	if destDataCenter != "" {
-		dataCenters = append(dataCenters, destDataCenter)
+	dataCenters = removeDuplicateElement(dataCenters)
+	return dataCenters, nil
+}
+
+func removeDuplicateElement(datas []string) []string {
+	result := make([]string, 0, len(datas))
+	temp := map[string]struct{}{}
+	for _, item := range datas {
+		if _, ok := temp[item]; !ok {
+			temp[item] = struct{}{}
+			result = append(result, item)
+		}
 	}
-	if len(destDataCenter) == 0 {
-		dataCenters = []string{"dc1"}
-	}
-	return dataCenters
+	return result
 }
 
 func buildMySQLJobListItem(logger g.LoggerType, jobParam *models.CreateOrUpdateMysqlToMysqlJobParamV2,
@@ -1089,10 +1107,13 @@ func convertMysqlToKafkaJobToNomadJob(failover bool, apiJobParams *models.Create
 	if nil != err {
 		return nil, fmt.Errorf("build dest task failed: %v", err)
 	}
-
+	dataCenters, err := buildDataCenters(srcDataCenter, destDataCenter)
+	if nil != err {
+		return nil, fmt.Errorf("build job dada center failed: %v", err)
+	}
 	return &nomadApi.Job{
 		ID:          &apiJobParams.JobId,
-		Datacenters: buildDataCenters(srcDataCenter, destDataCenter),
+		Datacenters: dataCenters,
 		TaskGroups:  []*nomadApi.TaskGroup{srcTask, destTask},
 	}, nil
 }
