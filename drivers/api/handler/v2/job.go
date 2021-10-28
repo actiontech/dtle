@@ -333,12 +333,12 @@ func buildDataCenters(srcDataCenter, destDataCenter string) ([]string, error) {
 	if srcDataCenter != "" && destDataCenter != "" {
 		dataCenters = append(dataCenters, srcDataCenter, destDataCenter)
 	} else {
-		nodes, err := findJobsFromNomad()
+		nodes, err := FindNodeList()
 		if err != nil {
-			return dataCenters, err
+			return nil, err
 		}
 		for _, node := range nodes {
-			dataCenters = append(dataCenters, node.Datacenters...)
+			dataCenters = append(dataCenters, node.Datacenter)
 		}
 	}
 	dataCenters = removeDuplicateElement(dataCenters)
