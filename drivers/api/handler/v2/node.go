@@ -2,9 +2,10 @@ package v2
 
 import (
 	"fmt"
-	"github.com/actiontech/dtle/g"
 	"net/http"
 	"strings"
+
+	"github.com/actiontech/dtle/g"
 
 	"github.com/actiontech/dtle/drivers/api/handler"
 	"github.com/actiontech/dtle/drivers/api/models"
@@ -82,4 +83,13 @@ func FindNomadNodes(logger g.LoggerType) ([]models.NodeListItemV2, error) {
 		nodes = append(nodes, node)
 	}
 	return nodes, nil
+}
+
+func GetNodeInfo(nodeId string) (nomadApi.Node, error) {
+	url := handler.BuildUrl(fmt.Sprintf("/v1/node/%s", nodeId))
+	nomadNode := nomadApi.Node{}
+	if err := handler.InvokeApiWithKvData(http.MethodGet, url, nil, &nomadNode); nil != err {
+		return nomadNode, err
+	}
+	return nomadNode, nil
 }
