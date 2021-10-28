@@ -56,6 +56,13 @@ const (
 	StageRequestingBinlogDump                          = "Requesting binlog dump"
 )
 
+type SchemaContext struct {
+	TableSchema            string
+	TableSchemaRename      string
+
+	TableMap map[string]*common.TableContext
+}
+
 type BinlogReader struct {
 	serverId uint64
 	execCtx  *common.ExecContext
@@ -74,9 +81,8 @@ type BinlogReader struct {
 	currentCoordMutex *sync.Mutex
 	// raw config, whose ReplicateDoDB is same as config file (empty-is-all & no dynamically created tables)
 	mysqlContext         *common.MySQLDriverConfig
-	currentReplicateDoDb []*common.DataSource
 	// dynamic config, include all tables (implicitly assigned or dynamically created)
-	tables map[string](map[string]*common.TableContext)
+	tables map[string]*SchemaContext
 
 	hasBeginQuery      bool
 	entryContext       *common.BinlogEntryContext
@@ -179,10 +185,9 @@ func NewBinlogReader(execCtx *common.ExecContext, cfg *common.MySQLDriverConfig,
 		currentCoord:         common.BinlogCoordinatesX{},
 		currentCoordMutex:    &sync.Mutex{},
 		mysqlContext:         cfg,
-		currentReplicateDoDb: replicateDoDb,
 		ReMap:                make(map[string]*regexp.Regexp),
 		shutdownCh:           make(chan struct{}),
-		tables:               make(map[string](map[string]*common.TableContext)),
+		tables:               make(map[string]*SchemaContext),
 		sqlFilter:            sqlFilter,
 		maybeSqleContext:     sqleContext,
 		memory:               memory,
@@ -204,9 +209,14 @@ func NewBinlogReader(execCtx *common.ExecContext, cfg *common.MySQLDriverConfig,
 	}
 
 	for _, db := range replicateDoDb {
-		tableMap := binlogReader.getDbTableMap(db.TableSchema)
+		schemaContext := &SchemaContext{
+			TableSchema:       db.TableSchema,
+			TableSchemaRename: db.TableSchemaRename,
+			TableMap:          make(map[string]*common.TableContext),
+		}
+		binlogReader.tables[db.TableSchema] = schemaContext
 		for _, table := range db.Tables {
-			if err := binlogReader.addTableToTableMap(tableMap, table); err != nil {
+			if err := binlogReader.addTableToTableMap(schemaContext.TableMap, table); err != nil {
 				return nil, err
 			}
 		}
@@ -256,14 +266,6 @@ func NewBinlogReader(execCtx *common.ExecContext, cfg *common.MySQLDriverConfig,
 	return binlogReader, err
 }
 
-func (b *BinlogReader) getDbTableMap(schemaName string) map[string]*common.TableContext {
-	tableMap, ok := b.tables[schemaName]
-	if !ok {
-		tableMap = make(map[string]*common.TableContext)
-		b.tables[schemaName] = tableMap
-	}
-	return tableMap
-}
 func (b *BinlogReader) addTableToTableMap(tableMap map[string]*common.TableContext, table *common.Table) error {
 	whereCtx, err := common.NewWhereCtx(table.GetWhere(), table)
 	if err != nil {
@@ -1186,14 +1188,14 @@ func (b *BinlogReader) skipRowEvent(rowsEvent *replication.RowsEvent, dml int8) 
 	case "sys", "information_schema", "performance_schema":
 		return true, nil
 	default:
-		if tableMap, ok := b.tables[string(rowsEvent.Table.Schema)]; ok {
-			if tableCtx, ok := tableMap[tableOrigin]; ok {
+		if schemaContext, ok := b.tables[string(rowsEvent.Table.Schema)]; ok {
+			if tableCtx, ok := schemaContext.TableMap[tableOrigin]; ok {
 				return false, tableCtx
 			}
 		}
 		// TODO when will schemaName be empty?
-		if tableMap, ok := b.tables[""]; ok {
-			if tableCtx, ok := tableMap[tableOrigin]; ok {
+		if schemaContext, ok := b.tables[""]; ok {
+			if tableCtx, ok := schemaContext.TableMap[tableOrigin]; ok {
 				return false, tableCtx
 			}
 		}
@@ -1296,8 +1298,8 @@ func (b *BinlogReader) updateTableMeta(table *common.Table, realSchema string, t
 	}
 	table.OriginalTableColumns = columns
 	table.ColumnMap = mysqlconfig.BuildColumnMapIndex(table.ColumnMapFrom, table.OriginalTableColumns.Ordinals)
-	tableMap := b.getDbTableMap(realSchema)
-	err = b.addTableToTableMap(tableMap, table)
+	schemaContext := b.findCurrentSchema(realSchema)
+	err = b.addTableToTableMap(schemaContext.TableMap, table)
 	if err != nil {
 		err = errors.Wrapf(err, "addTableToTableMap. gno %v query %v", gno, query)
 		b.logger.Error("failed to make table context", "err", err)
@@ -1343,17 +1345,18 @@ func (b *BinlogReader) updateCurrentReplicateDoDb(schemaName string, tableName s
 			}
 
 			// add schema to currentReplicateDoDb
-			currentSchema = &common.DataSource{
-				TableSchema:      schemaName,
-				TableSchemaRegex: currentSchemaReplConfig.TableSchemaRegex,
+			currentSchema = &SchemaContext{
+				TableSchema:       schemaName,
 				TableSchemaRename: schemaRename,
+				TableMap:          make(map[string]*common.TableContext),
 			}
 		} else { // replicate all schemas and tables
-			currentSchema = &common.DataSource{
-				TableSchema: schemaName,
+			currentSchema = &SchemaContext{
+				TableSchema:       schemaName,
+				TableMap:          make(map[string]*common.TableContext),
 			}
 		}
-		b.currentReplicateDoDb = append(b.currentReplicateDoDb, currentSchema)
+		b.tables[schemaName] = currentSchema
 	}
 
 	if tableName == "" {
@@ -1421,7 +1424,10 @@ func (b *BinlogReader) updateCurrentReplicateDoDb(schemaName string, tableName s
 	}
 
 	if newTable != nil {
-		currentSchema.Tables = append(currentSchema.Tables, newTable)
+		err := b.addTableToTableMap(currentSchema.TableMap, newTable)
+		if err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -1532,15 +1538,16 @@ func (b *BinlogReader) sqleAfterCreateSchema(schema string) {
 		b.maybeSqleContext.LoadTables(schema, nil)
 	}
 }
-func (b *BinlogReader) findCurrentSchema(schemaName string) *common.DataSource {
-	if schemaName != "" {
-		for i := range b.currentReplicateDoDb {
-			if b.currentReplicateDoDb[i].TableSchema == schemaName {
-				return b.currentReplicateDoDb[i]
-			}
-		}
+func (b *BinlogReader) findCurrentSchema(schemaName string) *SchemaContext {
+	if schemaName == "" {
+		return nil
 	}
-	return nil
+	schemaContext, ok := b.tables[schemaName]
+	if !ok {
+		return nil
+	}
+
+	return schemaContext
 }
 
 func (b *BinlogReader) findSchemaConfig(schemaConfigs []*common.DataSource, schemaName string) *common.DataSource {
@@ -1566,15 +1573,15 @@ func (b *BinlogReader) findSchemaConfig(schemaConfigs []*common.DataSource, sche
 	return nil
 }
 
-func (b *BinlogReader) findCurrentTable(maybeSchema *common.DataSource, tableName string) *common.Table {
-	if maybeSchema != nil {
-		for j := range maybeSchema.Tables {
-			if maybeSchema.Tables[j].TableName == tableName {
-				return maybeSchema.Tables[j]
-			}
-		}
+func (b *BinlogReader) findCurrentTable(maybeSchema *SchemaContext, tableName string) *common.Table {
+	if maybeSchema == nil {
+		return nil
 	}
-	return nil
+	table, ok := maybeSchema.TableMap[tableName]
+	if !ok {
+		return nil
+	}
+	return table.Table
 }
 
 func (b *BinlogReader) findTableConfig(maybeSchemaConfig *common.DataSource, tableName string) *common.Table {
@@ -1604,17 +1611,17 @@ func (b *BinlogReader) generateRenameMaps() (oldSchemaToNewSchema map[string]str
 	oldSchemaToNewSchema = map[string]string{}
 	oldSchemaToTablesRenameMap = map[string]map[string]string{}
 
-	for _, db := range b.currentReplicateDoDb {
+	for _, db := range b.tables {
 		if db.TableSchemaRename != "" {
 			oldSchemaToNewSchema[db.TableSchema] = db.TableSchemaRename
 		}
 
 		tablesRenameMap := map[string]string{}
-		for _, tb := range db.Tables {
-			if tb.TableRename == "" {
+		for _, tb := range db.TableMap {
+			if tb.Table.TableRename == "" {
 				continue
 			}
-			tablesRenameMap[tb.TableName] = tb.TableRename
+			tablesRenameMap[tb.Table.TableName] = tb.Table.TableRename
 		}
 		if len(tablesRenameMap)>0{
 			oldSchemaToTablesRenameMap[db.TableSchema] = tablesRenameMap
@@ -1812,10 +1819,10 @@ func (b *BinlogReader) handleRowsEvent(ev *replication.BinlogEvent, rowsEvent *r
 			dmlEvent.TableName = table.Table.TableRename
 			b.logger.Debug("dml table mapping", "from", dmlEvent.TableName, "to", table.Table.TableRename)
 		}
-		schema := b.findCurrentSchema(schemaName)
-		if schema != nil && schema.TableSchemaRename != "" {
-			b.logger.Debug("dml schema mapping", "from", dmlEvent.DatabaseName, "to", schema.TableSchemaRename)
-			dmlEvent.DatabaseName = schema.TableSchemaRename
+		schemaContext := b.findCurrentSchema(schemaName)
+		if schemaContext != nil && schemaContext.TableSchemaRename != "" {
+			b.logger.Debug("dml schema mapping", "from", dmlEvent.DatabaseName, "to", schemaContext.TableSchemaRename)
+			dmlEvent.DatabaseName = schemaContext.TableSchemaRename
 		}
 
 		if table != nil && !table.DefChangedSent {
