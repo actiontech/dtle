@@ -270,7 +270,7 @@ func (a *ApplierOracleIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *comm
 	}()
 
 	for i, event := range binlogEntry.Events {
-		logger.Debug("binlogEntry.Events", "gno", binlogEntry.Coordinates.GNO, "event", i)
+		logger.Debug("binlogEntry.Events", "gno", binlogEntry.Coordinates.GNO, "event", event)
 		switch event.DML {
 		case common.NotDML:
 			logger.Debug("Exec.after", "query", event.Query)
@@ -282,6 +282,7 @@ func (a *ApplierOracleIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *comm
 				logger.Error("buildDMLEventQuery error", "err", err)
 				return err
 			}
+			logger.Debug("a dml query", "query", query, args)
 
 			logger.Debug("buildDMLEventQuery.after", "nArgs", len(args))
 

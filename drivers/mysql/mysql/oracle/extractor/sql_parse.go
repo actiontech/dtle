@@ -33,40 +33,18 @@ func (v *Stmt) Enter(in ast.Node) (ast.Node, bool) {
 
 	if node, ok := in.(*ast.UpdateStmt); ok {
 		v.Operation = common.UpdateDML
-		v.Data = make(map[string]interface{}, 1)
 		v.Before = make(map[string]interface{}, 1)
-
-		// Set 修改值 -> data
-		for _, val := range node.List {
-			var sb strings.Builder
-			flags := format.DefaultRestoreFlags
-			err := val.Expr.Restore(format.NewRestoreCtx(flags, &sb))
-			if err != nil {
-			}
-		}
-
-		// 如果存在 WHERE 条件 -> before
+		v.WhereColumnValues = new(common.ColumnValues)
 		if node.Where != nil {
-			if node, ok := node.Where.Accept(v); ok {
-				if exprNode, ok := node.(ast.ExprNode); ok {
-					var sb strings.Builder
-					sb.WriteString("WHERE ")
-					flags := format.DefaultRestoreFlags
-					err := exprNode.Restore(format.NewRestoreCtx(flags, &sb))
-					if err != nil {
-						//service.Logger.Error("sql parser failed",
-						//	zap.String("stmt", v.Marshal()))
-					}
-					v.WhereExpr = sb.String()
-				}
-			}
 			beforeData(node.Where, v.Before)
+			for _, data := range v.Before {
+				data = strings.TrimLeft(strings.TrimRight(data.(string), "'"), "'")
+				v.WhereColumnValues.AbstractValues = append(v.WhereColumnValues.AbstractValues, data)
+			}
 		}
-
 	}
 
 	if node, ok := in.(*ast.InsertStmt); ok {
-		v.WhereColumnValues = new(common.ColumnValues)
 		v.NewColumnValues = new(common.ColumnValues)
 		v.Operation = common.InsertDML
 		v.Data = make(map[string]interface{}, 1)
@@ -80,8 +58,6 @@ func (v *Stmt) Enter(in ast.Node) (ast.Node, bool) {
 					//service.Logger.Error("sql parser failed",
 					//	zap.String("stmt", v.Marshal()))
 				}
-				//v.Data[StringsBuilder("`", strings.ToUpper(col.String()), "`")] = sb.String()
-				//ColumnsTypeOracle2MySQL()
 				data := strings.TrimLeft(strings.TrimRight(sb.String(), "'"), "'")
 				v.NewColumnValues.AbstractValues = append(v.NewColumnValues.AbstractValues, data)
 			}
@@ -91,20 +67,13 @@ func (v *Stmt) Enter(in ast.Node) (ast.Node, bool) {
 	if node, ok := in.(*ast.DeleteStmt); ok {
 		v.Operation = common.DeleteDML
 		v.Before = make(map[string]interface{}, 1)
-		// 如果存在 WHERE 条件 -> before
+		v.WhereColumnValues = new(common.ColumnValues)
 		if node.Where != nil {
-			if node, ok := node.Where.Accept(v); ok {
-				if exprNode, ok := node.(ast.ExprNode); ok {
-					var sb strings.Builder
-					sb.WriteString("WHERE ")
-					flags := format.DefaultRestoreFlags
-					err := exprNode.Restore(format.NewRestoreCtx(flags, &sb))
-					if err != nil {
-					}
-					v.WhereExpr = sb.String()
-				}
-			}
 			beforeData(node.Where, v.Before)
+			for _, data := range v.Before {
+				data = strings.TrimLeft(strings.TrimRight(data.(string), "'"), "'")
+				v.WhereColumnValues.AbstractValues = append(v.WhereColumnValues.AbstractValues, data)
+			}
 		}
 	}
 	return in, false

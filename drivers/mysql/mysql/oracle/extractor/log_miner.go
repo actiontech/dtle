@@ -89,6 +89,7 @@ ORDER BY
 		if err != nil {
 			return nil, err
 		}
+		l.logger.Debug("logFileName", "name", f.Name)
 		fs = append(fs, f)
 	}
 	return fs, nil
@@ -170,6 +171,7 @@ type LogMinerRecord struct {
 	SegOwner  string
 	TableName string
 	SQLRedo   string
+	SQLUndo   string
 	Operation string
 }
 
@@ -216,6 +218,7 @@ SELECT
 	seg_owner,
 	table_name,
 	sql_redo,
+ 	sql_undo,
 	operation
 FROM 
 	V$LOGMNR_CONTENTS
@@ -234,10 +237,11 @@ WHERE
 	var lrs []*LogMinerRecord
 	for rows.Next() {
 		lr := &LogMinerRecord{}
-		err = rows.Scan(&lr.SCN, &lr.SegOwner, &lr.TableName, &lr.SQLRedo, &lr.Operation)
+		err = rows.Scan(&lr.SCN, &lr.SegOwner, &lr.TableName, &lr.SQLRedo, &lr.SQLUndo, &lr.Operation)
 		if err != nil {
 			return nil, err
 		}
+		l.logger.Debug("Get logMiner record", "RedoSQL", lr.SQLRedo, "UndoSQL", lr.SQLUndo)
 		lrs = append(lrs, lr)
 	}
 	return lrs, nil
@@ -384,7 +388,7 @@ func (e *ExtractorOracle) DataStreamEvents(entriesChannel chan<- *common.BinlogE
 	if e.mysqlContext.OracleConfig.SCN == 0 {
 		scn, err := e.LogMinerStream.GetCurrentSnapshotSCN()
 		if err != nil {
-			fmt.Println(err)
+			e.logger.Error("GetCurrentSnapshotSCN", "err", err)
 			return err
 		}
 		e.logger.Debug("current scn", "scn", scn)
@@ -393,7 +397,7 @@ func (e *ExtractorOracle) DataStreamEvents(entriesChannel chan<- *common.BinlogE
 
 	err := e.LogMinerStream.start()
 	if err != nil {
-		fmt.Println(err)
+		e.logger.Error("StartLogMiner", "err", err)
 		return err
 	}
 	defer e.LogMinerStream.stop()
@@ -403,9 +407,6 @@ func (e *ExtractorOracle) DataStreamEvents(entriesChannel chan<- *common.BinlogE
 		rs, err := e.LogMinerStream.queue()
 		if err != nil {
 			return err
-		}
-		for _, r := range rs {
-			e.logger.Debug("r SQL", "REDOSQL", r.SQLRedo)
 		}
 
 		Entry := handleSQLs(rs)
@@ -453,7 +454,7 @@ func (l *LogMinerStream) checkRedoLogChanged() (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	fmt.Printf("cur fp: %s\nlatest fp: %s\n", l.currentRedoLogSequenceFP, fp)
+	l.logger.Info("getRedoLogFp:", "currentRedoLogSequenceFP", l.currentRedoLogSequenceFP, "lastFp", fp)
 	if l.currentRedoLogSequenceFP == fp {
 		return false, nil
 	}
@@ -461,30 +462,28 @@ func (l *LogMinerStream) checkRedoLogChanged() (bool, error) {
 }
 
 func (l *LogMinerStream) start() error {
-	fmt.Println("build logminer")
+	l.logger.Debug("build logminer")
 	err := l.BuildLogMiner()
 	if err != nil {
-		fmt.Println("BuildLogMiner ", err)
+		l.logger.Error("BuildLogMiner ", "err", err)
 		return err
 	}
 
 	fs, err := l.GetLogFileBySCN(l.currentScn)
 	if err != nil {
-		fmt.Println(err)
+		l.logger.Error("GetLogFileBySCN", "err", err)
 		return err
 	}
-	for _, f := range fs {
-		fmt.Println(f.Name)
-	}
 
-	fmt.Println("add logminer file")
+	l.logger.Debug("add logminer file")
 	err = l.AddLogMinerFile(fs)
 	if err != nil {
-		fmt.Println("AddLogMinerFile ", err)
+		l.logger.Error("AddLogMinerFile ", "err", err)
 		return err
 	}
 	fp, err := l.currentRedoLogSequenceFp()
 	if err != nil {
+		l.logger.Error("currentRedoLogSequenceFp ", "err", err)
 		return err
 	}
 	l.currentRedoLogSequenceFP = fp
@@ -498,7 +497,7 @@ func (l *LogMinerStream) stop() error {
 func (l *LogMinerStream) getEndScn() (int64, error) {
 	latestScn, err := l.GetCurrentSnapshotSCN()
 	if err != nil {
-		fmt.Println(err)
+		l.logger.Error("GetCurrentSnapshotSCN", "err", err)
 		return 0, err
 	}
 	endScn := l.currentScn + l.interval
@@ -553,8 +552,9 @@ func parseToDataEvent(row *LogMinerRecord) (common.DataEvent, error) {
 	row.SQLRedo = ReplaceQuotesString(row.SQLRedo)
 	row.SQLRedo = ReplaceSpecifiedString(row.SQLRedo, ";", "")
 
+	// redoSQL parse
 	p := parser.New()
-	stmt, warns, err := p.Parse(row.SQLRedo, "", "")
+	stmt, _, err := p.Parse(row.SQLRedo, "", "")
 	if err != nil {
 		return dataEvent, err
 	}
@@ -563,8 +563,6 @@ func parseToDataEvent(row *LogMinerRecord) (common.DataEvent, error) {
 		return dataEvent, nil
 	}
 	(stmt[0]).Accept(visitor)
-	fmt.Println(stmt, warns, err)
-
 	dataEvent = common.DataEvent{
 		Query:             "",
 		CurrentSchema:     visitor.Schema,
@@ -578,6 +576,23 @@ func parseToDataEvent(row *LogMinerRecord) (common.DataEvent, error) {
 		LogPos:            0,
 		Timestamp:         0,
 	}
+	if visitor.Operation == common.UpdateDML {
+		row.SQLUndo = ReplaceQuotesString(row.SQLUndo)
+		row.SQLUndo = ReplaceSpecifiedString(row.SQLUndo, ";", "")
+		undoP := parser.New()
+		stmtP, _, err := undoP.Parse(row.SQLUndo, "", "")
+		if err != nil {
+			return dataEvent, err
+		}
+		undoVisitor := &Stmt{}
+		if len(stmtP) <= 0 {
+			return dataEvent, nil
+		}
+		(stmtP[0]).Accept(undoVisitor)
+		dataEvent.NewColumnValues = undoVisitor.WhereColumnValues
+		dataEvent.Query = undoVisitor.WhereColumnValues.String()
+	}
+
 	return dataEvent, nil
 }
 
