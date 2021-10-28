@@ -4,6 +4,7 @@ import (
 	"context"
 	gosql "database/sql"
 	"encoding/binary"
+	"encoding/hex"
 	"fmt"
 	"github.com/actiontech/dtle/drivers/mysql/common"
 	"github.com/actiontech/dtle/drivers/mysql/mysql/base"
@@ -573,7 +574,10 @@ func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.Bin
 				}
 			}
 
-			flag := ParseQueryEventFlags(event.Flags)
+			flag, err := ParseQueryEventFlags(event.Flags, logger)
+			if err != nil {
+				return err
+			}
 			if flag.NoForeignKeyChecks && a.mysqlContext.ForeignKeyChecks {
 				err = execQuery(querySetFKChecksOff)
 				if err != nil {
@@ -732,7 +736,13 @@ type QueryEventFlags struct {
 	NoForeignKeyChecks bool
 }
 
-func ParseQueryEventFlags(bs []byte) (r QueryEventFlags) {
+func ParseQueryEventFlags(bs []byte, logger g.LoggerType) (r QueryEventFlags, err error) {
+	logger = logger.Named("ParseQueryEventFlags")
+
+	if logger.IsDebug() {
+		logger.Debug("ParseQueryEventFlags", "bytes", hex.EncodeToString(bs))
+	}
+
 	// https://dev.mysql.com/doc/internals/en/query-event.html
 	for i := 0; i < len(bs); {
 		flag := bs[i]
@@ -785,11 +795,13 @@ func ParseQueryEventFlags(bs []byte) (r QueryEventFlags) {
 		case Q_INVOKERS:
 			n := int(bs[i])
 			i += 1
-			_ = string(bs[i:i+n])
+			username := string(bs[i:i+n])
 			i += n
 			n = int(bs[i])
-			_ = string(bs[i:i+n])
+			i += 1
+			hostname := string(bs[i:i+n])
 			i += n
+			logger.Debug("Q_INVOKERS", "username", username, "hostname", hostname)
 		case Q_UPDATED_DB_NAMES:
 			count := int(bs[i])
 			i += 1
@@ -803,8 +815,11 @@ func ParseQueryEventFlags(bs []byte) (r QueryEventFlags) {
 			}
 		case Q_MICROSECONDS:
 			i += 3
+		default:
+			return r, fmt.Errorf("ParseQueryEventFlags. unknown flag 0x%x bytes %v",
+				flag, hex.EncodeToString(bs))
 		}
 	}
 
-	return r
+	return r, nil
 }
