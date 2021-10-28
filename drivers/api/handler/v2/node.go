@@ -33,10 +33,14 @@ func NodeListV2(c echo.Context) error {
 }
 
 func FindNomadNodes(logger g.LoggerType) ([]models.NodeListItemV2, error) {
+	logger.Info("invoke nomad api begin : nodesUrl")
 	nodesUrl := handler.BuildUrl("/v1/nodes")
-	logger.Info("invoke nomad api begin", "nodesUrl", nodesUrl)
 	nomadNodes := make([]nomadApi.NodeListStub, 0)
 	if err := handler.InvokeApiWithKvData(http.MethodGet, nodesUrl, nil, &nomadNodes); nil != err {
+		return nil, err
+	}
+	nomadNodes, err := FindNodeList()
+	if err != nil {
 		return nil, err
 	}
 
@@ -92,4 +96,13 @@ func GetNodeInfo(nodeId string) (nomadApi.Node, error) {
 		return nomadNode, err
 	}
 	return nomadNode, nil
+}
+
+func FindNodeList() ([]nomadApi.NodeListStub, error) {
+	nodesUrl := handler.BuildUrl("/v1/nodes")
+	nomadNodes := make([]nomadApi.NodeListStub, 0)
+	if err := handler.InvokeApiWithKvData(http.MethodGet, nodesUrl, nil, &nomadNodes); nil != err {
+		return nil, err
+	}
+	return nomadNodes, nil
 }
