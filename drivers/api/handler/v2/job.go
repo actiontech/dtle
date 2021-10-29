@@ -32,6 +32,10 @@ import (
 // @Success 200 {object} models.JobListRespV2
 // @Security ApiKeyAuth
 // @Param filter_job_id query string false "filter job id"
+// @Param filter_job_src_ip query string false "filter job src ip"
+// @Param filter_job_src_port query string false "filter job src port"
+// @Param filter_job_dest_ip query string false "filter job dest ip"
+// @Param filter_job_dest_port query string false "filter job dest port"
 // @Param filter_job_status query string false "filter job status"
 // @Param order_by query string false "order by" default(job_create_time) Enums(job_create_time)
 // @Router /v2/jobs/migration [get]
@@ -45,6 +49,10 @@ func MigrationJobListV2(c echo.Context) error {
 // @Success 200 {object} models.JobListRespV2
 // @Security ApiKeyAuth
 // @Param filter_job_id query string false "filter job id"
+// @Param filter_job_src_ip query string false "filter job src ip"
+// @Param filter_job_src_port query string false "filter job src port"
+// @Param filter_job_dest_ip query string false "filter job dest ip"
+// @Param filter_job_dest_port query string false "filter job dest port"
 // @Param filter_job_status query string false "filter job status"
 // @Param order_by query string false "order by" default(job_create_time) Enums(job_create_time)
 // @Router /v2/jobs/sync [get]
@@ -58,6 +66,10 @@ func SyncJobListV2(c echo.Context) error {
 // @Success 200 {object} models.JobListRespV2
 // @Security ApiKeyAuth
 // @Param filter_job_id query string false "filter job id"
+// @Param filter_job_src_ip query string false "filter job src ip"
+// @Param filter_job_src_port query string false "filter job src port"
+// @Param filter_job_dest_ip query string false "filter job dest ip"
+// @Param filter_job_dest_port query string false "filter job dest port"
 // @Param filter_job_status query string false "filter job status"
 // @Param order_by query string false "order by" default(job_create_time) Enums(job_create_time)
 // @Router /v2/jobs/subscription [get]
@@ -121,6 +133,11 @@ func JobListV2(c echo.Context, filterJobType DtleJobType) error {
 		if reqParam.FilterJobId != "" && !strings.HasPrefix(jobItem.JobId, reqParam.FilterJobId) {
 			continue
 		}
+		if !(filterJobAddr(jobItem.SrcAddrList, reqParam.FilterJobSrcIP, reqParam.FilterJobSrcPort) &&
+			filterJobAddr(jobItem.DstAddrList, reqParam.FilterJobDestIP, reqParam.FilterJobDestPort)) {
+			continue
+		}
+
 		jobs = append(jobs, jobItem)
 	}
 
@@ -128,6 +145,41 @@ func JobListV2(c echo.Context, filterJobType DtleJobType) error {
 		Jobs:     jobs,
 		BaseResp: models.BuildBaseResp(nil),
 	})
+}
+
+func filterJobAddr(addrList []string, ip, port string) bool {
+	if ip == "" && port == "" {
+		return true
+	}
+
+	for _, addr := range addrList {
+		// database addr =  ip:port
+		// kafka addr    =  ip
+		addrList := strings.Split(addr, ":")
+
+		if len(addrList) == 2 {
+			// ip port filter
+			if ip != "" && port != "" {
+				if addrList[0] == ip && addrList[1] == port {
+					return true
+				}
+			}
+			// port filter
+			if port != "" && ip == "" {
+				if addrList[1] == port {
+					return true
+				}
+			}
+		}
+		// ip filter
+		if ip != "" && port == "" {
+			if addrList[0] == ip {
+				return true
+			}
+		}
+
+	}
+	return false
 }
 func findJobsFromNomad() (map[string]nomadApi.JobListStub, error) {
 	url := handler.BuildUrl("/v1/jobs")
@@ -338,8 +390,8 @@ func buildMySQLJobListItem(logger g.LoggerType, jobParam *models.CreateOrUpdateM
 		JobId:         jobParam.JobId,
 		JobStatus:     common.DtleJobStatusNonPaused,
 		JobCreateTime: time.Now().In(time.Local).Format(time.RFC3339),
-		SrcAddrList:   []string{jobParam.SrcTask.MysqlConnectionConfig.MysqlHost},
-		DstAddrList:   []string{jobParam.DestTask.MysqlConnectionConfig.MysqlHost},
+		SrcAddrList:   []string{fmt.Sprintf("%s:%d", jobParam.SrcTask.MysqlConnectionConfig.MysqlHost, jobParam.SrcTask.MysqlConnectionConfig.MysqlPort)},
+		DstAddrList:   []string{fmt.Sprintf("%s:%d", jobParam.DestTask.MysqlConnectionConfig.MysqlHost, jobParam.DestTask.MysqlConnectionConfig.MysqlPort)},
 		User:          fmt.Sprintf("%s:%s", user.Tenant, user.Username),
 		JobSteps:      nil,
 	}

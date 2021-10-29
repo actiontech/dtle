@@ -868,6 +868,30 @@ var doc = `{
                     },
                     {
                         "type": "string",
+                        "description": "filter job src ip",
+                        "name": "filter_job_src_ip",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "filter job src port",
+                        "name": "filter_job_src_port",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "filter job dest ip",
+                        "name": "filter_job_dest_ip",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "filter job dest port",
+                        "name": "filter_job_dest_port",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
                         "description": "filter job status",
                         "name": "filter_job_status",
                         "in": "query"
@@ -914,6 +938,30 @@ var doc = `{
                     },
                     {
                         "type": "string",
+                        "description": "filter job src ip",
+                        "name": "filter_job_src_ip",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "filter job src port",
+                        "name": "filter_job_src_port",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "filter job dest ip",
+                        "name": "filter_job_dest_ip",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "filter job dest port",
+                        "name": "filter_job_dest_port",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
                         "description": "filter job status",
                         "name": "filter_job_status",
                         "in": "query"
@@ -956,6 +1004,30 @@ var doc = `{
                         "type": "string",
                         "description": "filter job id",
                         "name": "filter_job_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "filter job src ip",
+                        "name": "filter_job_src_ip",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "filter job src port",
+                        "name": "filter_job_src_port",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "filter job dest ip",
+                        "name": "filter_job_dest_ip",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "filter job dest port",
+                        "name": "filter_job_dest_port",
                         "in": "query"
                     },
                     {

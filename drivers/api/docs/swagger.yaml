@@ -1509,6 +1509,22 @@ paths:
         in: query
         name: filter_job_id
         type: string
+      - description: filter job src ip
+        in: query
+        name: filter_job_src_ip
+        type: string
+      - description: filter job src port
+        in: query
+        name: filter_job_src_port
+        type: string
+      - description: filter job dest ip
+        in: query
+        name: filter_job_dest_ip
+        type: string
+      - description: filter job dest port
+        in: query
+        name: filter_job_dest_port
+        type: string
       - description: filter job status
         in: query
         name: filter_job_status
@@ -1538,6 +1554,22 @@ paths:
         in: query
         name: filter_job_id
         type: string
+      - description: filter job src ip
+        in: query
+        name: filter_job_src_ip
+        type: string
+      - description: filter job src port
+        in: query
+        name: filter_job_src_port
+        type: string
+      - description: filter job dest ip
+        in: query
+        name: filter_job_dest_ip
+        type: string
+      - description: filter job dest port
+        in: query
+        name: filter_job_dest_port
+        type: string
       - description: filter job status
         in: query
         name: filter_job_status
@@ -1566,6 +1598,22 @@ paths:
       - description: filter job id
         in: query
         name: filter_job_id
+        type: string
+      - description: filter job src ip
+        in: query
+        name: filter_job_src_ip
+        type: string
+      - description: filter job src port
+        in: query
+        name: filter_job_src_port
+        type: string
+      - description: filter job dest ip
+        in: query
+        name: filter_job_dest_ip
+        type: string
+      - description: filter job dest port
+        in: query
+        name: filter_job_dest_port
         type: string
       - description: filter job status
         in: query
