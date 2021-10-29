@@ -21,25 +21,36 @@ import (
 )
 
 const (
+	// see mysql-server/libbinlogevents/include/statement_events.h
+	Q_FLAGS2_CODE byte = iota
+	Q_SQL_MODE_CODE
+	Q_CATALOG
+	Q_AUTO_INCREMENT
+	Q_CHARSET_CODE
+	Q_TIME_ZONE_CODE
+	Q_CATALOG_NZ_CODE
+	Q_LC_TIME_NAMES_CODE
+	Q_CHARSET_DATABASE_CODE
+	Q_TABLE_MAP_FOR_UPDATE_CODE
+	Q_MASTER_DATA_WRITTEN_CODE
+	Q_INVOKERS
+	Q_UPDATED_DB_NAMES
+	Q_MICROSECONDS
+	Q_COMMIT_TS
+	Q_COMMIT_TS2
+	Q_EXPLICIT_DEFAULTS_FOR_TIMESTAMP
+	Q_DDL_LOGGED_WITH_XID
+	Q_DEFAULT_COLLATION_FOR_UTF8MB4
+	Q_SQL_REQUIRE_PRIMARY_KEY
+	Q_DEFAULT_TABLE_ENCRYPTION
+)
+
+const (
 	RowsEventFlagEndOfStatement     uint16 = 1
 	RowsEventFlagNoForeignKeyChecks uint16 = 2
 	RowsEventFlagNoUniqueKeyChecks  uint16 = 4
 	RowsEventFlagRowHasAColumns     uint16 = 8
 
-	Q_FLAGS2_CODE               byte = 0x0  // 4
-	Q_SQL_MODE_CODE             byte = 0x01 // 8
-	Q_CATALOG                   byte = 0x02 // 1 + n + 1
-	Q_AUTO_INCREMENT            byte = 0x03 // 2 + 2
-	Q_CHARSET_CODE              byte = 0x04 // 2 + 2 + 2
-	Q_TIME_ZONE_CODE            byte = 0x05 // 1 + n
-	Q_CATALOG_NZ_CODE           byte = 0x06 // 1 + n
-	Q_LC_TIME_NAMES_CODE        byte = 0x07 // 2
-	Q_CHARSET_DATABASE_CODE     byte = 0x08 // 2
-	Q_TABLE_MAP_FOR_UPDATE_CODE byte = 0x09 // 8
-	Q_MASTER_DATA_WRITTEN_CODE  byte = 0x0a // 4
-	Q_INVOKERS                  byte = 0x0b // 1 + n + 1 + n
-	Q_UPDATED_DB_NAMES          byte = 0x0c // 1 + n*nul-term-string
-	Q_MICROSECONDS              byte = 0x0d // 3
 
 	OPTION_AUTO_IS_NULL          uint32 = 0x00004000
 	OPTION_NOT_AUTOCOMMIT        uint32 = 0x00080000
@@ -810,11 +821,26 @@ func ParseQueryEventFlags(bs []byte, logger g.LoggerType) (r QueryEventFlags, er
 				for bs[i] != 0 {
 					i += 1
 				}
-				_ = string(bs[i0:i])
+				schemaName := string(bs[i0:i])
+				logger.Debug("Q_UPDATED_DB_NAMES", "schema", schemaName, "i", i, "j", j)
 				i += 1 // nul-terminated
 			}
 		case Q_MICROSECONDS:
 			i += 3
+		case Q_COMMIT_TS:
+			// not used in mysql
+		case Q_COMMIT_TS2:
+			// not used in mysql
+		case Q_EXPLICIT_DEFAULTS_FOR_TIMESTAMP:
+			i += 1
+		case Q_DDL_LOGGED_WITH_XID:
+			i += 8
+		case Q_DEFAULT_COLLATION_FOR_UTF8MB4:
+			i += 2
+		case Q_SQL_REQUIRE_PRIMARY_KEY:
+			i += 1
+		case Q_DEFAULT_TABLE_ENCRYPTION:
+			i += 1
 		default:
 			return r, fmt.Errorf("ParseQueryEventFlags. unknown flag 0x%x bytes %v",
 				flag, hex.EncodeToString(bs))
