@@ -7,10 +7,14 @@ import (
 )
 
 type JobListReqV2 struct {
-	FilterJobType   string `query:"filter_job_type"`
-	FilterJobId     string `query:"filter_job_id"`
-	FilterJobStatus string `query:"filter_job_status"`
-	OrderBy         string `query:"order_by"`
+	FilterJobType     string `query:"filter_job_type"`
+	FilterJobId       string `query:"filter_job_id"`
+	FilterJobStatus   string `query:"filter_job_status"`
+	FilterJobSrcIP    string `query:"filter_job_src_ip"`
+	FilterJobSrcPort  string `query:"filter_job_src_port"`
+	FilterJobDestIP   string `query:"filter_job_dest_ip"`
+	FilterJobDestPort string `query:"filter_job_dest_port"`
+	OrderBy           string `query:"order_by"`
 }
 
 type JobListRespV2 struct {
