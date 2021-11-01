@@ -70,12 +70,12 @@ type Configuration struct {
 }
 
 type BasicTaskProfile struct {
-	JobBaseInfo       JobBaseInfo              `json:"job_base_info"`
-	DtleNodeInfos     []DtleNodeInfo           `json:"dtle_node_infos"`
-	ConnectionInfo    ConnectionInfo           `json:"connection_info"`
-	Configuration     Configuration            `json:"configuration"`
-	ReplicateDoDb     []*MysqlDataSourceConfig `json:"replicate_do_db"`
-	ReplicateIgnoreDb []*MysqlDataSourceConfig `json:"replicate_ignore_db"`
+	JobBaseInfo       JobBaseInfo         `json:"job_base_info"`
+	DtleNodeInfos     []DtleNodeInfo      `json:"dtle_node_infos"`
+	ConnectionInfo    ConnectionInfo      `json:"connection_info"`
+	Configuration     Configuration       `json:"configuration"`
+	ReplicateDoDb     []*DataSourceConfig `json:"replicate_do_db"`
+	ReplicateIgnoreDb []*DataSourceConfig `json:"replicate_ignore_db"`
 }
 
 type TaskLog struct {
@@ -93,13 +93,13 @@ type MysqlToMysqlJobDetailRespV2 struct {
 }
 
 type MysqlDestTaskDetail struct {
-	Allocations []AllocationDetail  `json:"allocations"`
-	TaskConfig  MysqlDestTaskConfig `json:"task_config"`
+	Allocations []AllocationDetail `json:"allocations"`
+	TaskConfig  DestTaskConfig     `json:"task_config"`
 }
 
 type MysqlSrcTaskDetail struct {
 	Allocations []AllocationDetail `json:"allocations"`
-	TaskConfig  MysqlSrcTaskConfig `json:"task_config"`
+	TaskConfig  SrcTaskConfig      `json:"task_config"`
 }
 
 type AllocationDetail struct {
@@ -123,64 +123,100 @@ type TaskEvent struct {
 	Time       string `json:"time"`
 }
 
-type MysqlSrcTaskConfig struct {
-	TaskName              string                   `json:"task_name" validate:"required"`
-	NodeId                string                   `json:"node_id,omitempty"`
-	Gtid                  string                   `json:"gtid"`
-	GroupMaxSize          int                      `json:"group_max_size"`
-	ChunkSize             int64                    `json:"chunk_size"`
-	DropTableIfExists     bool                     `json:"drop_table_if_exists"`
-	SkipCreateDbTable     bool                     `json:"skip_create_db_table"`
-	ReplChanBufferSize    int64                    `json:"repl_chan_buffer_size"`
-	ReplicateDoDb         []*MysqlDataSourceConfig `json:"replicate_do_db"`
-	ReplicateIgnoreDb     []*MysqlDataSourceConfig `json:"replicate_ignore_db"`
-	MysqlConnectionConfig *MysqlConnectionConfig   `json:"mysql_connection_config" validate:"required"`
-	BinlogRelay           bool                     `json:"binlog_relay"`
-	GroupTimeout          int                      `json:"group_timeout"`
-	WaitOnJob             string                   `json:"wait_on_job"`
-	AutoGtid              bool                     `json:"auto_gtid"`
+type SrcTaskConfig struct {
+	TaskName            string              `json:"task_name" validate:"required"`
+	NodeId              string              `json:"node_id,omitempty"`
+	DatabaseType        string              `json:"database_type"`
+	ReplicateDoDb       []*DataSourceConfig `json:"replicate_do_db"`
+	ReplicateIgnoreDb   []*DataSourceConfig `json:"replicate_ignore_db"`
+	SkipCreateDbTable   bool                `json:"skip_create_db_table"`
+	DropTableIfExists   bool                `json:"drop_table_if_exists"`
+	MysqlSrcTaskConfig  MysqlSrcTaskConfig  `json:"mysql_src_task_config"`
+	OracleSrcTaskConfig OracleSrcTaskConfig `json:"oracle_src_task_config"`
+	GroupMaxSize        int                 `json:"group_max_size"`
+	GroupTimeout        int                 `json:"group_timeout"`
+	ReplChanBufferSize  int64               `json:"repl_chan_buffer_size"`
+	ChunkSize           int64               `json:"chunk_size"`
+
+	// todo 代码梳理后删除以下字段
+	Gtid                  string                 `json:"gtid"`
+	MysqlConnectionConfig *MysqlConnectionConfig `json:"mysql_connection_config" validate:"required"`
+	BinlogRelay           bool                   `json:"binlog_relay"`
+	WaitOnJob             string                 `json:"wait_on_job"`
+	AutoGtid              bool                   `json:"auto_gtid"`
 }
 
-type MysqlDestTaskConfig struct {
-	TaskName              string                 `json:"task_name" validate:"required"`
-	NodeId                string                 `json:"node_id,omitempty"`
-	ParallelWorkers       int                    `json:"parallel_workers"`
+type MysqlSrcTaskConfig struct {
+	Gtid                  string                 `json:"gtid"`
+	MysqlConnectionConfig *MysqlConnectionConfig `json:"mysql_connection_config"`
+	BinlogRelay           bool                   `json:"binlog_relay"`
+	WaitOnJob             string                 `json:"wait_on_job"`
+	AutoGtid              bool                   `json:"auto_gtid"`
+}
+
+type OracleSrcTaskConfig struct {
+	Scn                    int                     `json:"scn"`
+	ServiceName            string                  `json:"service_name"`
+	OracleConnectionConfig *OracleConnectionConfig `json:"oracle_connection_config"`
+}
+
+type DestTaskConfig struct {
+	TaskName            string              `json:"task_name" validate:"required"`
+	NodeId              string              `json:"node_id,omitempty"`
+	DatabaseType        string              `json:"database_type"`
+	MysqlDestTaskConfig MysqlDestTaskConfig `json:"mysql_dest_task_config"`
+
+	// todo 代码梳理后删除以下字段
 	MysqlConnectionConfig *MysqlConnectionConfig `json:"mysql_connection_config" validate:"required"`
+	ParallelWorkers       int                    `json:"parallel_workers"`
 	UseMySQLDependency    bool                   `json:"use_my_sql_dependency"`
 	DependencyHistorySize int                    `json:"dependency_history_size"`
 }
 
-type MysqlDataSourceConfig struct {
-	TableSchema       string              `json:"table_schema"`
-	TableSchemaRegex  string              `json:"table_schema_regex"`
-	TableSchemaRename string              `json:"table_schema_rename"`
-	Tables            []*MysqlTableConfig `json:"tables"`
+type MysqlDestTaskConfig struct {
+	ParallelWorkers       int  `json:"parallel_workers"`
+	UseMySQLDependency    bool `json:"use_my_sql_dependency"`
+	DependencyHistorySize int  `json:"dependency_history_size"`
 }
 
-type MysqlTableConfig struct {
+type DataSourceConfig struct {
+	TableSchema       string         `json:"table_schema"`
+	TableSchemaRegex  string         `json:"table_schema_regex"`
+	TableSchemaRename string         `json:"table_schema_rename"`
+	Tables            []*TableConfig `json:"tables"`
+}
+
+type TableConfig struct {
 	TableName     string   `json:"table_name"`
 	TableRegex    string   `json:"table_regex"`
 	TableRename   string   `json:"table_rename"`
 	ColumnMapFrom []string `json:"column_map_from"`
 	Where         string   `json:"where"`
 }
-
+type DataBaseConnectionConfig struct {
+	Host     string `json:"host"`
+	Port     uint32 `json:"port"`
+	User     string `json:"user"`
+	Password string `json:"password"`
+}
 type MysqlConnectionConfig struct {
-	MysqlHost     string `json:"mysql_host" validate:"required"`
-	MysqlPort     uint32 `json:"mysql_port" validate:"required"`
-	MysqlUser     string `json:"mysql_user" validate:"required"`
-	MysqlPassword string `json:"mysql_password" validate:"required"`
+	DataBaseConnectionConfig
+}
+
+type OracleConnectionConfig struct {
+	DataBaseConnectionConfig
+	Scn int64 `json:"scn"`
 }
 
 type CreateOrUpdateMysqlToMysqlJobParamV2 struct {
-	JobId                    string               `json:"job_id" validate:"required"`
-	TaskStepName             string               `json:"task_step_name"`
-	Reverse                  bool                 `json:"reverse"`
-	Failover                 *bool                `json:"failover" example:"true"`
-	IsMysqlPasswordEncrypted bool                 `json:"is_mysql_password_encrypted"`
-	SrcTask                  *MysqlSrcTaskConfig  `json:"src_task" validate:"required"`
-	DestTask                 *MysqlDestTaskConfig `json:"dest_task" validate:"required"`
-	Retry                    int                  `json:"retry"`
+	JobId               string          `json:"job_id" validate:"required"`
+	TaskStepName        string          `json:"task_step_name"`
+	Reverse             bool            `json:"reverse"`
+	Failover            *bool           `json:"failover" example:"true"`
+	IsPasswordEncrypted bool            `json:"is_password_encrypted"`
+	SrcTask             *SrcTaskConfig  `json:"src_task" validate:"required"`
+	DestTask            *DestTaskConfig `json:"dest_task" validate:"required"`
+	Retry               int             `json:"retry"`
 }
 
 type CreateOrUpdateMysqlToMysqlJobRespV2 struct {
@@ -205,7 +241,7 @@ type CreateOrUpdateMysqlToKafkaJobParamV2 struct {
 	// failover default:true
 	Failover                 *bool                `json:"failover" example:"true"`
 	IsMysqlPasswordEncrypted bool                 `json:"is_mysql_password_encrypted"`
-	SrcTask                  *MysqlSrcTaskConfig  `json:"src_task" validate:"required"`
+	SrcTask                  *SrcTaskConfig       `json:"src_task" validate:"required"`
 	DestTask                 *KafkaDestTaskConfig `json:"dest_task" validate:"required"`
 	Retry                    int                  `json:"retry"`
 }

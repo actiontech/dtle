@@ -1984,13 +1984,13 @@ var doc = `{
                 "replicate_do_db": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/models.MysqlDataSourceConfig"
+                        "$ref": "#/definitions/models.DataSourceConfig"
                     }
                 },
                 "replicate_ignore_db": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/models.MysqlDataSourceConfig"
+                        "$ref": "#/definitions/models.DataSourceConfig"
                     }
                 }
             }
@@ -2159,7 +2159,7 @@ var doc = `{
                     "type": "integer"
                 },
                 "src_task": {
-                    "$ref": "#/definitions/models.MysqlSrcTaskConfig"
+                    "$ref": "#/definitions/models.SrcTaskConfig"
                 },
                 "task_step_name": {
                     "type": "string"
@@ -2201,7 +2201,7 @@ var doc = `{
                     "type": "integer"
                 },
                 "src_task": {
-                    "$ref": "#/definitions/models.MysqlSrcTaskConfig"
+                    "$ref": "#/definitions/models.SrcTaskConfig"
                 },
                 "task_step_name": {
                     "type": "string"
@@ -2217,13 +2217,13 @@ var doc = `{
             ],
             "properties": {
                 "dest_task": {
-                    "$ref": "#/definitions/models.MysqlDestTaskConfig"
+                    "$ref": "#/definitions/models.DestTaskConfig"
                 },
                 "failover": {
                     "type": "boolean",
                     "example": true
                 },
-                "is_mysql_password_encrypted": {
+                "is_password_encrypted": {
                     "type": "boolean"
                 },
                 "job_id": {
@@ -2236,7 +2236,7 @@ var doc = `{
                     "type": "boolean"
                 },
                 "src_task": {
-                    "$ref": "#/definitions/models.MysqlSrcTaskConfig"
+                    "$ref": "#/definitions/models.SrcTaskConfig"
                 },
                 "task_step_name": {
                     "type": "string"
@@ -2252,7 +2252,7 @@ var doc = `{
             ],
             "properties": {
                 "dest_task": {
-                    "$ref": "#/definitions/models.MysqlDestTaskConfig"
+                    "$ref": "#/definitions/models.DestTaskConfig"
                 },
                 "eval_create_index": {
                     "type": "integer"
@@ -2261,7 +2261,7 @@ var doc = `{
                     "type": "boolean",
                     "example": true
                 },
-                "is_mysql_password_encrypted": {
+                "is_password_encrypted": {
                     "type": "boolean"
                 },
                 "job_id": {
@@ -2280,7 +2280,7 @@ var doc = `{
                     "type": "boolean"
                 },
                 "src_task": {
-                    "$ref": "#/definitions/models.MysqlSrcTaskConfig"
+                    "$ref": "#/definitions/models.SrcTaskConfig"
                 },
                 "task_step_name": {
                     "type": "string"
@@ -2386,6 +2386,26 @@ var doc = `{
                 }
             }
         },
+        "models.DataSourceConfig": {
+            "type": "object",
+            "properties": {
+                "table_schema": {
+                    "type": "string"
+                },
+                "table_schema_regex": {
+                    "type": "string"
+                },
+                "table_schema_rename": {
+                    "type": "string"
+                },
+                "tables": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.TableConfig"
+                    }
+                }
+            }
+        },
         "models.DelayCount": {
             "type": "object",
             "properties": {
@@ -2418,6 +2438,40 @@ var doc = `{
             "properties": {
                 "message": {
                     "type": "string"
+                }
+            }
+        },
+        "models.DestTaskConfig": {
+            "type": "object",
+            "required": [
+                "mysql_connection_config",
+                "task_name"
+            ],
+            "properties": {
+                "database_type": {
+                    "type": "string"
+                },
+                "dependency_history_size": {
+                    "type": "integer"
+                },
+                "mysql_connection_config": {
+                    "description": "todo 代码梳理后删除以下字段",
+                    "$ref": "#/definitions/models.MysqlConnectionConfig"
+                },
+                "mysql_dest_task_config": {
+                    "$ref": "#/definitions/models.MysqlDestTaskConfig"
+                },
+                "node_id": {
+                    "type": "string"
+                },
+                "parallel_workers": {
+                    "type": "integer"
+                },
+                "task_name": {
+                    "type": "string"
+                },
+                "use_my_sql_dependency": {
+                    "type": "boolean"
                 }
             }
         },
@@ -2636,68 +2690,29 @@ var doc = `{
         },
         "models.MysqlConnectionConfig": {
             "type": "object",
-            "required": [
-                "mysql_host",
-                "mysql_password",
-                "mysql_port",
-                "mysql_user"
-            ],
             "properties": {
-                "mysql_host": {
+                "host": {
                     "type": "string"
                 },
-                "mysql_password": {
+                "password": {
                     "type": "string"
                 },
-                "mysql_port": {
+                "port": {
                     "type": "integer"
                 },
-                "mysql_user": {
+                "user": {
                     "type": "string"
-                }
-            }
-        },
-        "models.MysqlDataSourceConfig": {
-            "type": "object",
-            "properties": {
-                "table_schema": {
-                    "type": "string"
-                },
-                "table_schema_regex": {
-                    "type": "string"
-                },
-                "table_schema_rename": {
-                    "type": "string"
-                },
-                "tables": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/models.MysqlTableConfig"
-                    }
                 }
             }
         },
         "models.MysqlDestTaskConfig": {
             "type": "object",
-            "required": [
-                "mysql_connection_config",
-                "task_name"
-            ],
             "properties": {
                 "dependency_history_size": {
                     "type": "integer"
                 },
-                "mysql_connection_config": {
-                    "$ref": "#/definitions/models.MysqlConnectionConfig"
-                },
-                "node_id": {
-                    "type": "string"
-                },
                 "parallel_workers": {
                     "type": "integer"
-                },
-                "task_name": {
-                    "type": "string"
                 },
                 "use_my_sql_dependency": {
                     "type": "boolean"
@@ -2706,10 +2721,6 @@ var doc = `{
         },
         "models.MysqlSrcTaskConfig": {
             "type": "object",
-            "required": [
-                "mysql_connection_config",
-                "task_name"
-            ],
             "properties": {
                 "auto_gtid": {
                     "type": "boolean"
@@ -2717,72 +2728,13 @@ var doc = `{
                 "binlog_relay": {
                     "type": "boolean"
                 },
-                "chunk_size": {
-                    "type": "integer"
-                },
-                "drop_table_if_exists": {
-                    "type": "boolean"
-                },
-                "group_max_size": {
-                    "type": "integer"
-                },
-                "group_timeout": {
-                    "type": "integer"
-                },
                 "gtid": {
                     "type": "string"
                 },
                 "mysql_connection_config": {
                     "$ref": "#/definitions/models.MysqlConnectionConfig"
                 },
-                "node_id": {
-                    "type": "string"
-                },
-                "repl_chan_buffer_size": {
-                    "type": "integer"
-                },
-                "replicate_do_db": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/models.MysqlDataSourceConfig"
-                    }
-                },
-                "replicate_ignore_db": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/models.MysqlDataSourceConfig"
-                    }
-                },
-                "skip_create_db_table": {
-                    "type": "boolean"
-                },
-                "task_name": {
-                    "type": "string"
-                },
                 "wait_on_job": {
-                    "type": "string"
-                }
-            }
-        },
-        "models.MysqlTableConfig": {
-            "type": "object",
-            "properties": {
-                "column_map_from": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                },
-                "table_name": {
-                    "type": "string"
-                },
-                "table_regex": {
-                    "type": "string"
-                },
-                "table_rename": {
-                    "type": "string"
-                },
-                "where": {
                     "type": "string"
                 }
             }
@@ -2910,6 +2862,40 @@ var doc = `{
                     "items": {
                         "$ref": "#/definitions/models.NodeListItemV2"
                     }
+                }
+            }
+        },
+        "models.OracleConnectionConfig": {
+            "type": "object",
+            "properties": {
+                "host": {
+                    "type": "string"
+                },
+                "password": {
+                    "type": "string"
+                },
+                "port": {
+                    "type": "integer"
+                },
+                "scn": {
+                    "type": "integer"
+                },
+                "user": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.OracleSrcTaskConfig": {
+            "type": "object",
+            "properties": {
+                "oracle_connection_config": {
+                    "$ref": "#/definitions/models.OracleConnectionConfig"
+                },
+                "scn": {
+                    "type": "integer"
+                },
+                "service_name": {
+                    "type": "string"
                 }
             }
         },
@@ -3059,6 +3045,99 @@ var doc = `{
                 },
                 "validated": {
                     "type": "boolean"
+                }
+            }
+        },
+        "models.SrcTaskConfig": {
+            "type": "object",
+            "required": [
+                "mysql_connection_config",
+                "task_name"
+            ],
+            "properties": {
+                "auto_gtid": {
+                    "type": "boolean"
+                },
+                "binlog_relay": {
+                    "type": "boolean"
+                },
+                "chunk_size": {
+                    "type": "integer"
+                },
+                "database_type": {
+                    "type": "string"
+                },
+                "drop_table_if_exists": {
+                    "type": "boolean"
+                },
+                "group_max_size": {
+                    "type": "integer"
+                },
+                "group_timeout": {
+                    "type": "integer"
+                },
+                "gtid": {
+                    "description": "todo 代码梳理后删除以下字段",
+                    "type": "string"
+                },
+                "mysql_connection_config": {
+                    "$ref": "#/definitions/models.MysqlConnectionConfig"
+                },
+                "mysql_src_task_config": {
+                    "$ref": "#/definitions/models.MysqlSrcTaskConfig"
+                },
+                "node_id": {
+                    "type": "string"
+                },
+                "oracle_src_task_config": {
+                    "$ref": "#/definitions/models.OracleSrcTaskConfig"
+                },
+                "repl_chan_buffer_size": {
+                    "type": "integer"
+                },
+                "replicate_do_db": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.DataSourceConfig"
+                    }
+                },
+                "replicate_ignore_db": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.DataSourceConfig"
+                    }
+                },
+                "skip_create_db_table": {
+                    "type": "boolean"
+                },
+                "task_name": {
+                    "type": "string"
+                },
+                "wait_on_job": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.TableConfig": {
+            "type": "object",
+            "properties": {
+                "column_map_from": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "table_name": {
+                    "type": "string"
+                },
+                "table_regex": {
+                    "type": "string"
+                },
+                "table_rename": {
+                    "type": "string"
+                },
+                "where": {
+                    "type": "string"
                 }
             }
         },
@@ -3318,16 +3397,16 @@ var doc = `{
             ],
             "properties": {
                 "dest_task": {
-                    "$ref": "#/definitions/models.MysqlDestTaskConfig"
+                    "$ref": "#/definitions/models.DestTaskConfig"
                 },
-                "is_mysql_password_encrypted": {
+                "is_password_encrypted": {
                     "type": "boolean"
                 },
                 "job_id": {
                     "type": "string"
                 },
                 "src_task": {
-                    "$ref": "#/definitions/models.MysqlSrcTaskConfig"
+                    "$ref": "#/definitions/models.SrcTaskConfig"
                 }
             }
         },

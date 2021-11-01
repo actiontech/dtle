@@ -84,11 +84,11 @@ definitions:
         $ref: '#/definitions/models.JobBaseInfo'
       replicate_do_db:
         items:
-          $ref: '#/definitions/models.MysqlDataSourceConfig'
+          $ref: '#/definitions/models.DataSourceConfig'
         type: array
       replicate_ignore_db:
         items:
-          $ref: '#/definitions/models.MysqlDataSourceConfig'
+          $ref: '#/definitions/models.DataSourceConfig'
         type: array
     type: object
   models.BinlogValidation:
@@ -196,7 +196,7 @@ definitions:
       retry:
         type: integer
       src_task:
-        $ref: '#/definitions/models.MysqlSrcTaskConfig'
+        $ref: '#/definitions/models.SrcTaskConfig'
       task_step_name:
         type: string
     required:
@@ -225,7 +225,7 @@ definitions:
       retry:
         type: integer
       src_task:
-        $ref: '#/definitions/models.MysqlSrcTaskConfig'
+        $ref: '#/definitions/models.SrcTaskConfig'
       task_step_name:
         type: string
     required:
@@ -236,11 +236,11 @@ definitions:
   models.CreateOrUpdateMysqlToMysqlJobParamV2:
     properties:
       dest_task:
-        $ref: '#/definitions/models.MysqlDestTaskConfig'
+        $ref: '#/definitions/models.DestTaskConfig'
       failover:
         example: true
         type: boolean
-      is_mysql_password_encrypted:
+      is_password_encrypted:
         type: boolean
       job_id:
         type: string
@@ -249,7 +249,7 @@ definitions:
       reverse:
         type: boolean
       src_task:
-        $ref: '#/definitions/models.MysqlSrcTaskConfig'
+        $ref: '#/definitions/models.SrcTaskConfig'
       task_step_name:
         type: string
     required:
@@ -260,13 +260,13 @@ definitions:
   models.CreateOrUpdateMysqlToMysqlJobRespV2:
     properties:
       dest_task:
-        $ref: '#/definitions/models.MysqlDestTaskConfig'
+        $ref: '#/definitions/models.DestTaskConfig'
       eval_create_index:
         type: integer
       failover:
         example: true
         type: boolean
-      is_mysql_password_encrypted:
+      is_password_encrypted:
         type: boolean
       job_id:
         type: string
@@ -279,7 +279,7 @@ definitions:
       reverse:
         type: boolean
       src_task:
-        $ref: '#/definitions/models.MysqlSrcTaskConfig'
+        $ref: '#/definitions/models.SrcTaskConfig'
       task_step_name:
         type: string
     required:
@@ -352,6 +352,19 @@ definitions:
       message:
         type: string
     type: object
+  models.DataSourceConfig:
+    properties:
+      table_schema:
+        type: string
+      table_schema_regex:
+        type: string
+      table_schema_rename:
+        type: string
+      tables:
+        items:
+          $ref: '#/definitions/models.TableConfig'
+        type: array
+    type: object
   models.DelayCount:
     properties:
       num:
@@ -373,6 +386,29 @@ definitions:
     properties:
       message:
         type: string
+    type: object
+  models.DestTaskConfig:
+    properties:
+      database_type:
+        type: string
+      dependency_history_size:
+        type: integer
+      mysql_connection_config:
+        $ref: '#/definitions/models.MysqlConnectionConfig'
+        description: todo 代码梳理后删除以下字段
+      mysql_dest_task_config:
+        $ref: '#/definitions/models.MysqlDestTaskConfig'
+      node_id:
+        type: string
+      parallel_workers:
+        type: integer
+      task_name:
+        type: string
+      use_my_sql_dependency:
+        type: boolean
+    required:
+    - mysql_connection_config
+    - task_name
     type: object
   models.DtleNodeInfo:
     properties:
@@ -515,50 +551,23 @@ definitions:
     type: object
   models.MysqlConnectionConfig:
     properties:
-      mysql_host:
+      host:
         type: string
-      mysql_password:
+      password:
         type: string
-      mysql_port:
+      port:
         type: integer
-      mysql_user:
+      user:
         type: string
-    required:
-    - mysql_host
-    - mysql_password
-    - mysql_port
-    - mysql_user
-    type: object
-  models.MysqlDataSourceConfig:
-    properties:
-      table_schema:
-        type: string
-      table_schema_regex:
-        type: string
-      table_schema_rename:
-        type: string
-      tables:
-        items:
-          $ref: '#/definitions/models.MysqlTableConfig'
-        type: array
     type: object
   models.MysqlDestTaskConfig:
     properties:
       dependency_history_size:
         type: integer
-      mysql_connection_config:
-        $ref: '#/definitions/models.MysqlConnectionConfig'
-      node_id:
-        type: string
       parallel_workers:
         type: integer
-      task_name:
-        type: string
       use_my_sql_dependency:
         type: boolean
-    required:
-    - mysql_connection_config
-    - task_name
     type: object
   models.MysqlSrcTaskConfig:
     properties:
@@ -566,53 +575,11 @@ definitions:
         type: boolean
       binlog_relay:
         type: boolean
-      chunk_size:
-        type: integer
-      drop_table_if_exists:
-        type: boolean
-      group_max_size:
-        type: integer
-      group_timeout:
-        type: integer
       gtid:
         type: string
       mysql_connection_config:
         $ref: '#/definitions/models.MysqlConnectionConfig'
-      node_id:
-        type: string
-      repl_chan_buffer_size:
-        type: integer
-      replicate_do_db:
-        items:
-          $ref: '#/definitions/models.MysqlDataSourceConfig'
-        type: array
-      replicate_ignore_db:
-        items:
-          $ref: '#/definitions/models.MysqlDataSourceConfig'
-        type: array
-      skip_create_db_table:
-        type: boolean
-      task_name:
-        type: string
       wait_on_job:
-        type: string
-    required:
-    - mysql_connection_config
-    - task_name
-    type: object
-  models.MysqlTableConfig:
-    properties:
-      column_map_from:
-        items:
-          type: string
-        type: array
-      table_name:
-        type: string
-      table_regex:
-        type: string
-      table_rename:
-        type: string
-      where:
         type: string
     type: object
   models.MysqlTaskValidationReport:
@@ -696,6 +663,28 @@ definitions:
         items:
           $ref: '#/definitions/models.NodeListItemV2'
         type: array
+    type: object
+  models.OracleConnectionConfig:
+    properties:
+      host:
+        type: string
+      password:
+        type: string
+      port:
+        type: integer
+      scn:
+        type: integer
+      user:
+        type: string
+    type: object
+  models.OracleSrcTaskConfig:
+    properties:
+      oracle_connection_config:
+        $ref: '#/definitions/models.OracleConnectionConfig'
+      scn:
+        type: integer
+      service_name:
+        type: string
     type: object
   models.PauseJobRespV2:
     properties:
@@ -793,6 +782,68 @@ definitions:
         type: string
       validated:
         type: boolean
+    type: object
+  models.SrcTaskConfig:
+    properties:
+      auto_gtid:
+        type: boolean
+      binlog_relay:
+        type: boolean
+      chunk_size:
+        type: integer
+      database_type:
+        type: string
+      drop_table_if_exists:
+        type: boolean
+      group_max_size:
+        type: integer
+      group_timeout:
+        type: integer
+      gtid:
+        description: todo 代码梳理后删除以下字段
+        type: string
+      mysql_connection_config:
+        $ref: '#/definitions/models.MysqlConnectionConfig'
+      mysql_src_task_config:
+        $ref: '#/definitions/models.MysqlSrcTaskConfig'
+      node_id:
+        type: string
+      oracle_src_task_config:
+        $ref: '#/definitions/models.OracleSrcTaskConfig'
+      repl_chan_buffer_size:
+        type: integer
+      replicate_do_db:
+        items:
+          $ref: '#/definitions/models.DataSourceConfig'
+        type: array
+      replicate_ignore_db:
+        items:
+          $ref: '#/definitions/models.DataSourceConfig'
+        type: array
+      skip_create_db_table:
+        type: boolean
+      task_name:
+        type: string
+      wait_on_job:
+        type: string
+    required:
+    - mysql_connection_config
+    - task_name
+    type: object
+  models.TableConfig:
+    properties:
+      column_map_from:
+        items:
+          type: string
+        type: array
+      table_name:
+        type: string
+      table_regex:
+        type: string
+      table_rename:
+        type: string
+      where:
+        type: string
     type: object
   models.TableItem:
     properties:
@@ -961,13 +1012,13 @@ definitions:
   models.ValidateJobReqV2:
     properties:
       dest_task:
-        $ref: '#/definitions/models.MysqlDestTaskConfig'
-      is_mysql_password_encrypted:
+        $ref: '#/definitions/models.DestTaskConfig'
+      is_password_encrypted:
         type: boolean
       job_id:
         type: string
       src_task:
-        $ref: '#/definitions/models.MysqlSrcTaskConfig'
+        $ref: '#/definitions/models.SrcTaskConfig'
     required:
     - dest_task
     - job_id

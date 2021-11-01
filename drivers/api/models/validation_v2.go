@@ -1,10 +1,10 @@
 package models
 
 type ValidateJobReqV2 struct {
-	JobId                    string               `json:"job_id" validate:"required"`
-	IsMysqlPasswordEncrypted bool                 `json:"is_mysql_password_encrypted"`
-	SrcTaskConfig            *MysqlSrcTaskConfig  `json:"src_task" validate:"required"`
-	DestTaskConfig           *MysqlDestTaskConfig `json:"dest_task" validate:"required"`
+	JobId               string          `json:"job_id" validate:"required"`
+	IsPasswordEncrypted bool            `json:"is_password_encrypted"`
+	SrcTaskConfig       *SrcTaskConfig  `json:"src_task" validate:"required"`
+	DestTaskConfig      *DestTaskConfig `json:"dest_task" validate:"required"`
 }
 
 type ValidateJobRespV2 struct {
