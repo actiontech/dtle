@@ -6,6 +6,8 @@ definitions:
         items:
           type: string
         type: array
+      dst_database_type:
+        type: string
       job_create_time:
         type: string
       job_id:
@@ -20,6 +22,8 @@ definitions:
         items:
           type: string
         type: array
+      src_database_type:
+        type: string
       topic:
         type: string
       user:

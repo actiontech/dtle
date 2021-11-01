@@ -1865,6 +1865,9 @@ var doc = `{
                         "type": "string"
                     }
                 },
+                "dst_database_type": {
+                    "type": "string"
+                },
                 "job_create_time": {
                     "type": "string"
                 },
@@ -1885,6 +1888,9 @@ var doc = `{
                     "items": {
                         "type": "string"
                     }
+                },
+                "src_database_type": {
+                    "type": "string"
                 },
                 "topic": {
                     "type": "string"

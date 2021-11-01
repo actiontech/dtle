@@ -3,11 +3,12 @@ package common
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/actiontech/dtle/g"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/actiontech/dtle/g"
 
 	"github.com/pkg/errors"
 	"github.com/siddontang/go-mysql/mysql"
@@ -578,14 +579,16 @@ type User struct {
 }
 
 type JobListItemV2 struct {
-	JobId         string    `json:"job_id"`
-	JobStatus     string    `json:"job_status"`
-	Topic         string    `json:"topic"`
-	JobCreateTime string    `json:"job_create_time"`
-	SrcAddrList   []string  `json:"src_addr_list"`
-	DstAddrList   []string  `json:"dst_addr_list"`
-	User          string    `json:"user"`
-	JobSteps      []JobStep `json:"job_steps"`
+	JobId           string    `json:"job_id"`
+	JobStatus       string    `json:"job_status"`
+	Topic           string    `json:"topic"`
+	JobCreateTime   string    `json:"job_create_time"`
+	SrcDatabaseType string    `json:"src_database_type"`
+	DstDatabaseType string    `json:"dst_database_type"`
+	SrcAddrList     []string  `json:"src_addr_list"`
+	DstAddrList     []string  `json:"dst_addr_list"`
+	User            string    `json:"user"`
+	JobSteps        []JobStep `json:"job_steps"`
 }
 
 type JobStep struct {
