@@ -513,9 +513,13 @@ github.com/siddontang/go-mysql/replication
 github.com/siddontang/go-mysql/utils
 # github.com/sirupsen/logrus v1.7.0
 github.com/sirupsen/logrus
+# github.com/sjjian/oracle-sql-parser v0.0.0-20211031162207-7a9c5413da3a
+github.com/sjjian/oracle-sql-parser
+github.com/sjjian/oracle-sql-parser/ast
+github.com/sjjian/oracle-sql-parser/ast/element
 # github.com/spaolacci/murmur3 v1.1.0
 github.com/spaolacci/murmur3
-# github.com/stretchr/testify v1.6.1
+# github.com/stretchr/testify v1.7.0
 github.com/stretchr/testify/assert
 # github.com/swaggo/echo-swagger v1.1.0
 github.com/swaggo/echo-swagger
@@ -526,6 +530,23 @@ github.com/swaggo/swag
 # github.com/thinkeridea/go-extend v1.3.2
 github.com/thinkeridea/go-extend/exbytes
 github.com/thinkeridea/go-extend/exunicode/exutf8
+# github.com/timtadh/data-structures v0.5.3
+github.com/timtadh/data-structures/errors
+github.com/timtadh/data-structures/hashtable
+github.com/timtadh/data-structures/linked
+github.com/timtadh/data-structures/list
+github.com/timtadh/data-structures/rand
+github.com/timtadh/data-structures/set
+github.com/timtadh/data-structures/tree
+github.com/timtadh/data-structures/tree/avl
+github.com/timtadh/data-structures/types
+# github.com/timtadh/lexmachine v0.2.2
+github.com/timtadh/lexmachine
+github.com/timtadh/lexmachine/dfa
+github.com/timtadh/lexmachine/frontend
+github.com/timtadh/lexmachine/inst
+github.com/timtadh/lexmachine/machines
+github.com/timtadh/lexmachine/queue
 # github.com/tklauser/go-sysconf v0.3.6
 github.com/tklauser/go-sysconf
 # github.com/tklauser/numcpus v0.2.2

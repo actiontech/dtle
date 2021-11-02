@@ -11,6 +11,9 @@ import (
 	"encoding/binary"
 	"fmt"
 	"math"
+	"strings"
+
+	"github.com/sjjian/oracle-sql-parser/ast"
 
 	"github.com/actiontech/dtle/drivers/mysql/mysql/oracle/config"
 
@@ -29,6 +32,7 @@ import (
 	"time"
 
 	gonats "github.com/nats-io/go-nats"
+	oracleParser "github.com/sjjian/oracle-sql-parser"
 
 	"github.com/actiontech/dtle/drivers/mysql/mysql/base"
 	"github.com/actiontech/dtle/drivers/mysql/mysql/binlog"
@@ -56,6 +60,7 @@ type ExtractorOracle struct {
 	natsAddr        string
 
 	mysqlVersionDigit int
+	oracleDB          *config.OracleDB
 	db                *gosql.DB
 	singletonDB       *gosql.DB
 	//dumpers           []*mysql.dumper
@@ -102,6 +107,19 @@ type ExtractorOracle struct {
 	// to avoid writing closed channel, we need to wait for all goroutines that deal with data channels finishing. wg is used for the waiting.
 	wg         sync.WaitGroup
 	targetGtid string
+
+	OracleContext *OracleContext
+}
+type OracleContext struct {
+	// currentSchema will change after sql "use database"
+	currentSchema string
+
+	schemas map[string]*OracleSchemaInfo
+	// if schemas info has collected, set true
+	schemaHasLoad bool
+}
+type OracleSchemaInfo struct {
+	Tables map[string]*ast.CreateTableStmt
 }
 
 func NewExtractorOracle(execCtx *common.ExecContext, cfg *common.MySQLDriverConfig, logger g.LoggerType, storeManager *common.StoreManager, waitCh chan *drivers.ExitResult) (*ExtractorOracle, error) {
@@ -123,6 +141,7 @@ func NewExtractorOracle(execCtx *common.ExecContext, cfg *common.MySQLDriverConf
 		storeManager:    storeManager,
 		memory1:         new(int64),
 		memory2:         new(int64),
+		OracleContext:   new(OracleContext),
 	}
 	e.dataChannel = make(chan *common.BinlogEntryContext, cfg.ReplChanBufferSize*4)
 	e.timestampCtx = NewTimestampContext(e.shutdownCh, e.logger, func() bool {
@@ -166,13 +185,14 @@ func (e *ExtractorOracle) Run() {
 	e.natsConn = sc
 
 	e.initDBConnections()
-	e.LogMinerStream = NewLogMinerStream(e.db, e.logger, e.mysqlContext.ReplicateDoDb,
+	e.LogMinerStream = NewLogMinerStream(e.oracleDB, e.logger, e.mysqlContext.ReplicateDoDb,
 		e.mysqlContext.OracleConfig.SCN, 100000)
 	//e.logger.Info("CheckAndApplyLowerCaseTableNames")
 	//e.CheckAndApplyLowerCaseTableNames()
 	// 字符集同步 todo
 
-	// 获取表结构数据
+	// 获取表结构数据 DDL
+	//e.getSchemaTablesAndMeta()
 	fullCopy := false
 	if fullCopy {
 		e.logger.Debug("mysqlDump. before")
@@ -330,7 +350,7 @@ func (e *ExtractorOracle) Shutdown() error {
 	e.wg.Wait()
 
 	if err := sql.CloseDB(e.db); err != nil {
-		e.logger.Error("Shutdown error close e.db.", "err", err)
+		e.logger.Error("Shutdown error close e.oracleDB.", "err", err)
 	}
 
 	//close(e.binlogChannel)
@@ -367,6 +387,122 @@ func (e *ExtractorOracle) Finish1() (err error) {
 	return nil
 }
 
+func (e *ExtractorOracle) getSchemaTablesAndMeta() error {
+	// todo 支持正则/改名
+	//if err := e.inspectTables(); err != nil {
+	//	return err
+	//}
+
+	// todo DDL准备
+	//for _, db := range e.replicateDoDb {
+	//	e.context.AddSchema(db.TableSchema)
+	//	e.context.LoadTables(db.TableSchema, nil)
+	//
+	//	if strings.ToLower(db.TableSchema) == "mysql" {
+	//		continue
+	//	}
+	//	e.context.UseSchema(db.TableSchema)
+	//
+	//	for _, tb := range db.Tables {
+	//		if strings.ToLower(tb.TableType) == "view" {
+	//			// TODO what to do?
+	//			continue
+	//		}
+	//
+	//		stmt, err := e.LogMinerStream.oracleDB.GetTableDDL(db.TableSchema, tb.TableName)
+	//		if err != nil {
+	//			e.logger.Error("error at ShowCreateTable.", "err", err)
+	//			return err
+	//		}
+	//
+	//		ast, err := sqle.ParseCreateTableStmt("mysql", stmt)
+	//		if err != nil {
+	//			e.logger.Error("error at ParseCreateTableStmt.", "err", err)
+	//			return err
+	//		}
+	//		e.context.UpdateContext(ast, "mysql")
+	//		if !e.context.HasTable(tb.TableSchema, tb.TableName) {
+	//			err := fmt.Errorf("failed to add table to sqle context. table: %v.%v", db.TableSchema, tb.TableName)
+	//			e.logger.Error(err.Error())
+	//			return err
+	//		}
+	//	}
+	//}
+	//if err := e.readTableColumns(); err != nil {
+	//	return err
+	//}
+
+	for _, db := range e.mysqlContext.ReplicateDoDb {
+		for _, tb := range db.Tables {
+			query, err := e.LogMinerStream.oracleDB.GetTableDDL(db.TableSchema, tb.TableName)
+			asts, err := oracleParser.Parser(query)
+			if err != nil {
+				e.logger.Error(err.Error())
+				return nil
+			}
+			e.logger.Debug("============= stmt ===============")
+			switch s := asts[0].(type) {
+			case *ast.CreateTableStmt:
+				e.logger.Debug("schema: , table: ", "schema", s.TableName.Schema.Value, "table", s.TableName.Table.Value)
+				//todo 与MySQL使用context数据结构（ast.createTableStmt）
+				e.context.AddSchema(db.TableSchema)
+				//e.context.AddTable(db.TableSchema,tb.TableName,&sqle.TableInfo{
+				//	Size:          0, // table is empty after create
+				//	//sizeLoad:      true,
+				//	OriginalTable: s,
+				//	//AlterTables:   []*ast.AlterTableStmt{},
+				//})
+				schema, ok := e.OracleContext.schemas[db.TableSchema]
+				if !ok {
+					e.OracleContext.schemas[db.TableSchema] = new(OracleSchemaInfo)
+				}
+				schema.Tables[tb.TableName] = s
+				for _, ts := range s.RelTable.TableStructs {
+					switch td := ts.(type) {
+					case *ast.ColumnDef:
+						//	newColumn := umconf.Column{
+						//		RawName:  td.ColumnName.Value,
+						//		Nullable: true, // by default
+						//	}
+						//
+						e.logger.Debug("column: , type: ", "column: ", td.ColumnName.Value, "type: ", td.Datatype.DataDef())
+					case *ast.OutOfLineConstraint:
+						columns := []string{}
+						for _, c := range td.Columns {
+							columns = append(columns, c.Value)
+						}
+						e.logger.Debug("constraint: _, type:, column: ", "type", td.Type,
+							"column", strings.Join(columns, ","))
+					}
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
+func (e *ExtractorOracle) inspectTables() (err error) {
+
+	return nil
+}
+
+// readTableColumns reads table columns on applier
+func (e *ExtractorOracle) readTableColumns() (err error) {
+	e.logger.Info("Examining table structure on extractor")
+	for _, doDb := range e.replicateDoDb {
+		for _, doTb := range doDb.Tables {
+			doTb.OriginalTableColumns, err = base.GetTableColumnsSqle(e.context, doTb.TableSchema, doTb.TableName)
+			if err != nil {
+				return err
+			}
+			doTb.ColumnMap = mysqlconfig.BuildColumnMapIndex(doTb.ColumnMapFrom, doTb.OriginalTableColumns.Ordinals)
+
+		}
+	}
+	return nil
+}
+
 // initiateStreaming begins treaming of binary log events and registers listeners for such events
 func (e *ExtractorOracle) initiateStreaming() error {
 	e.wg.Add(1)
@@ -383,11 +519,11 @@ func (e *ExtractorOracle) initiateStreaming() error {
 }
 
 func (e *ExtractorOracle) initDBConnections() {
-	db, err := config.NewDB(e.mysqlContext.OracleConfig)
+	oracleDB, err := config.NewDB(e.mysqlContext.OracleConfig)
 	if err != nil {
 		e.onError(common.TaskStateDead, err)
 	}
-	e.db = db
+	e.oracleDB = oracleDB
 }
 
 type TimestampContext struct {

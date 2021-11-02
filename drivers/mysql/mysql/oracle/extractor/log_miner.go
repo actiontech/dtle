@@ -1,13 +1,13 @@
 package extractor
 
 import (
-	"bytes"
 	"context"
 	"database/sql"
 	gosql "database/sql"
 	"fmt"
-	"strconv"
 	"time"
+
+	"github.com/actiontech/dtle/drivers/mysql/mysql/oracle/config"
 
 	"github.com/actiontech/dtle/g"
 
@@ -22,15 +22,11 @@ import (
 )
 
 func (l *LogMinerStream) GetCurrentSnapshotSCN() (int64, error) {
-	// 获取当前 SCN 号
-	res, err := Query(l.db, "select min(current_scn) CURRENT_SCN from gv$database")
 	var globalSCN int64
+	// 获取当前 SCN 号
+	err := l.oracleDB.LogMinerConn.QueryRowContext(context.TODO(), "SELECT CURRENT_SCN FROM V$DATABASE").Scan(&globalSCN)
 	if err != nil {
-		return globalSCN, err
-	}
-	globalSCN, err = strconv.ParseInt(res[0]["CURRENT_SCN"], 10, 64)
-	if err != nil {
-		return globalSCN, err
+		return 0, err
 	}
 	return globalSCN, nil
 }
@@ -76,7 +72,7 @@ ORDER BY
     first_change#
 `, scn, scn)
 
-	rows, err := l.db.QueryContext(context.TODO(), query)
+	rows, err := l.oracleDB.LogMinerConn.QueryContext(context.TODO(), query)
 	if err != nil {
 		return nil, err
 	}
@@ -107,7 +103,7 @@ END;`, f.Name)
 DBMS_LOGMNR.add_logfile ( '%s' );
 END;`, f.Name)
 		}
-		_, err := l.db.ExecContext(context.TODO(), query)
+		_, err := l.oracleDB.LogMinerConn.ExecContext(context.TODO(), query)
 		if err != nil {
 			return err
 		}
@@ -119,7 +115,7 @@ func (l *LogMinerStream) BuildLogMiner() error {
 	query := `BEGIN 
 DBMS_LOGMNR_D.build (options => DBMS_LOGMNR_D.STORE_IN_REDO_LOGS);
 END;`
-	_, err := l.db.ExecContext(context.TODO(), query)
+	_, err := l.oracleDB.LogMinerConn.ExecContext(context.TODO(), query)
 	return err
 }
 
@@ -137,7 +133,7 @@ SYS.DBMS_LOGMNR.DDL_DICT_TRACKING
 );
 END;`, startScn, endScn)
 	l.logger.Debug("startLogMiner2", "query", query)
-	_, err := l.db.ExecContext(context.TODO(), query)
+	_, err := l.oracleDB.LogMinerConn.ExecContext(context.TODO(), query)
 	return err
 }
 
@@ -153,7 +149,7 @@ SYS.DBMS_LOGMNR.dict_from_online_catalog +
 SYS.DBMS_LOGMNR.string_literals_in_stmt 
 );
 END;`, scn)
-	_, err := l.db.ExecContext(context.TODO(), query)
+	_, err := l.oracleDB.LogMinerConn.ExecContext(context.TODO(), query)
 	return err
 }
 
@@ -162,7 +158,7 @@ func (l *LogMinerStream) EndLogMiner() error {
 BEGIN
 DBMS_LOGMNR.end_logmnr ();
 END;`
-	_, err := l.db.ExecContext(context.TODO(), query)
+	_, err := l.oracleDB.LogMinerConn.ExecContext(context.TODO(), query)
 	return err
 }
 
@@ -226,9 +222,11 @@ WHERE
 	SCN > %d
     AND SCN <= %d
     %s
+ORDER BY
+	scn DESC
 `, startScn, endScn, l.buildFilterSchemaTable())
 	l.logger.Debug("Get logMiner record", "QuerySql", query)
-	rows, err := l.db.QueryContext(context.TODO(), query)
+	rows, err := l.oracleDB.LogMinerConn.QueryContext(context.TODO(), query)
 	if err != nil {
 		return nil, err
 	}
@@ -352,38 +350,23 @@ WHERE
 	return columns, nil
 }
 
-func (l *LogMinerStream) currentRedoLogSequenceFp() (string, error) {
-	query := fmt.Sprintf(`SELECT GROUP#, THREAD#, SEQUENCE# FROM V$LOG WHERE STATUS = 'CURRENT'`)
-	rows, err := Query(l.db, query)
-	if err != nil {
-		return "", err
-	}
-	buf := bytes.Buffer{}
-	for _, row := range rows {
-		buf.WriteString(fmt.Sprintf("group:%s,thread:%s,sequence:%s",
-			row["GROUP#"], row["THREAD#"], row["SEQUENCE#"]))
-		buf.WriteString(";")
-	}
-	return buf.String(), nil
-}
+//func (l *LogMinerStream) currentRedoLogSequenceFp() (string, error) {
+//	query := fmt.Sprintf(`SELECT GROUP#, THREAD#, SEQUENCE# FROM V$LOG WHERE STATUS = 'CURRENT'`)
+//	rows, err := Query(l.oracleDB.LogMinerConn, query)
+//	if err != nil {
+//		return "", err
+//	}
+//	buf := bytes.Buffer{}
+//	for _, row := range rows {
+//		buf.WriteString(fmt.Sprintf("group:%s,thread:%s,sequence:%s",
+//			row["GROUP#"], row["THREAD#"], row["SEQUENCE#"]))
+//		buf.WriteString(";")
+//	}
+//	return buf.String(), nil
+//}
 
 func (e *ExtractorOracle) DataStreamEvents(entriesChannel chan<- *common.BinlogEntryContext) error {
 	e.logger.Debug("start oracle. DataStreamEvents")
-	//schema := "TEST"
-	//tables, err := e.getTables(schema)
-	//if err != nil {
-	//	fmt.Println(err)
-	//	return err
-	//}
-	//for _, table := range tables {
-	//	e.logger.Debug("get table \"%s\" column\n", "table", table)
-	//	columns, err := e.getTableColumn(schema, table)
-	//	if err != nil {
-	//		fmt.Println(err)
-	//		return err
-	//	}
-	//	fmt.Println(columns)
-	//}
 
 	if e.mysqlContext.OracleConfig.SCN == 0 {
 		scn, err := e.LogMinerStream.GetCurrentSnapshotSCN()
@@ -409,7 +392,7 @@ func (e *ExtractorOracle) DataStreamEvents(entriesChannel chan<- *common.BinlogE
 			return err
 		}
 
-		Entry := handleSQLs(rs)
+		Entry := e.handleSQLs(rs)
 		e.logger.Debug("handle SQLs", "Entry", Entry)
 		entriesChannel <- &common.BinlogEntryContext{
 			Entry:        Entry,
@@ -419,29 +402,30 @@ func (e *ExtractorOracle) DataStreamEvents(entriesChannel chan<- *common.BinlogE
 	}
 }
 
-func handleSQLs(rows []*LogMinerRecord) *common.BinlogEntry {
+func (e *ExtractorOracle) handleSQLs(rows []*LogMinerRecord) *common.BinlogEntry {
 	entry := common.NewBinlogEntry()
 	for _, row := range rows {
-		dataEvent, _ := parseToDataEvent(row)
+		dataEvent, _ := e.parseToDataEvent(row)
 		entry.Events = append(entry.Events, dataEvent)
 	}
 	return entry
 }
 
 type LogMinerStream struct {
-	db                       *gosql.DB
+	oracleDB                 *config.OracleDB
 	currentScn               int64
 	interval                 int64
 	initialized              bool
 	currentRedoLogSequenceFP string
 	logger                   g.LoggerType
+	Handler                  func()
 	dataSources              []*common.DataSource
 }
 
-func NewLogMinerStream(db *gosql.DB, logger g.LoggerType, dataSource []*common.DataSource,
+func NewLogMinerStream(db *config.OracleDB, logger g.LoggerType, dataSource []*common.DataSource,
 	startScn, interval int64) *LogMinerStream {
 	return &LogMinerStream{
-		db:          db,
+		oracleDB:    db,
 		logger:      logger,
 		dataSources: dataSource,
 		currentScn:  startScn,
@@ -450,7 +434,7 @@ func NewLogMinerStream(db *gosql.DB, logger g.LoggerType, dataSource []*common.D
 }
 
 func (l *LogMinerStream) checkRedoLogChanged() (bool, error) {
-	fp, err := l.currentRedoLogSequenceFp()
+	fp, err := l.oracleDB.CurrentRedoLogSequenceFp()
 	if err != nil {
 		return false, err
 	}
@@ -481,7 +465,7 @@ func (l *LogMinerStream) start() error {
 		l.logger.Error("AddLogMinerFile ", "err", err)
 		return err
 	}
-	fp, err := l.currentRedoLogSequenceFp()
+	fp, err := l.oracleDB.CurrentRedoLogSequenceFp()
 	if err != nil {
 		l.logger.Error("currentRedoLogSequenceFp ", "err", err)
 		return err
@@ -547,7 +531,7 @@ func (l *LogMinerStream) queue() ([]*LogMinerRecord, error) {
 	return records, nil
 }
 
-func parseToDataEvent(row *LogMinerRecord) (common.DataEvent, error) {
+func (e *ExtractorOracle) parseToDataEvent(row *LogMinerRecord) (common.DataEvent, error) {
 	dataEvent := common.DataEvent{}
 	row.SQLRedo = ReplaceQuotesString(row.SQLRedo)
 	row.SQLRedo = ReplaceSpecifiedString(row.SQLRedo, ";", "")
@@ -563,6 +547,28 @@ func parseToDataEvent(row *LogMinerRecord) (common.DataEvent, error) {
 		return dataEvent, nil
 	}
 	(stmt[0]).Accept(visitor)
+	//tableStruct := e.OracleContext.schemas[visitor.Schema].Tables[visitor.Table].RelTable.TableStructs
+	//for _, ts := range tableStruct {
+	//	var data interface{}
+	//	switch td := ts.(type) {
+	//	case *ast.ColumnDef:
+	//		fmt.Printf("column: %s, type: %d\n", td.ColumnName.Value, td.Datatype.DataDef())
+	//		Strvalue := visitor.Before[td.ColumnName.Value].(string)
+	//		switch td.Datatype.(type) {
+	//		case element.BinaryDouble:
+	//			data, _ = strconv.ParseInt(Strvalue, 10, 0)
+	//		}
+	//		visitor.WhereColumnValues.AbstractValues = append(visitor.WhereColumnValues.AbstractValues, data)
+	//		//case *ast.OutOfLineConstraint:
+	//		//	columns := []string{}
+	//		//	for _, c := range td.Columns {
+	//		//		columns = append(columns, c.Value)
+	//		//	}
+	//		//	fmt.Printf("constraint: _, type:%d, column: (%s)\n", td.Type,
+	//		//		strings.Join(columns, ","))
+	//	}
+	//
+	//}
 	dataEvent = common.DataEvent{
 		Query:             "",
 		CurrentSchema:     visitor.Schema,
@@ -589,6 +595,9 @@ func parseToDataEvent(row *LogMinerRecord) (common.DataEvent, error) {
 			return dataEvent, nil
 		}
 		(stmtP[0]).Accept(undoVisitor)
+		for _, data := range undoVisitor.Before {
+			undoVisitor.WhereColumnValues.AbstractValues = append(undoVisitor.WhereColumnValues.AbstractValues, data)
+		}
 		dataEvent.NewColumnValues = undoVisitor.WhereColumnValues
 		dataEvent.Query = undoVisitor.WhereColumnValues.String()
 	}

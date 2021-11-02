@@ -37,10 +37,6 @@ func (v *Stmt) Enter(in ast.Node) (ast.Node, bool) {
 		v.WhereColumnValues = new(common.ColumnValues)
 		if node.Where != nil {
 			beforeData(node.Where, v.Before)
-			for _, data := range v.Before {
-				data = strings.TrimLeft(strings.TrimRight(data.(string), "'"), "'")
-				v.WhereColumnValues.AbstractValues = append(v.WhereColumnValues.AbstractValues, data)
-			}
 		}
 	}
 
@@ -70,10 +66,6 @@ func (v *Stmt) Enter(in ast.Node) (ast.Node, bool) {
 		v.WhereColumnValues = new(common.ColumnValues)
 		if node.Where != nil {
 			beforeData(node.Where, v.Before)
-			for _, data := range v.Before {
-				data = strings.TrimLeft(strings.TrimRight(data.(string), "'"), "'")
-				v.WhereColumnValues.AbstractValues = append(v.WhereColumnValues.AbstractValues, data)
-			}
 		}
 	}
 	return in, false
@@ -106,7 +98,7 @@ func beforeData(where ast.ExprNode, before map[string]interface{}) {
 			err = binaryNode.L.Restore(format.NewRestoreCtx(flags, &column))
 			if err != nil {
 			}
-			before[strings.ToUpper(column.String())] = value.String()
+			before[strings.TrimLeft(strings.TrimRight(strings.ToUpper(column.String()), "'"), "'")] = value.String()
 		}
 	}
 }
