@@ -214,8 +214,10 @@ func NewBinlogReader(execCtx *common.ExecContext, cfg *common.MySQLDriverConfig,
 			TableSchemaRename: db.TableSchemaRename,
 			TableMap:          make(map[string]*common.TableContext),
 		}
+		logger.Debug("add schema", "schema", db.TableSchema)
 		binlogReader.tables[db.TableSchema] = schemaContext
 		for _, table := range db.Tables {
+			logger.Debug("add table", "table", table.TableName)
 			if err := binlogReader.addTableToTableMap(schemaContext.TableMap, table); err != nil {
 				return nil, err
 			}
@@ -594,15 +596,16 @@ func (b *BinlogReader) handleQueryEvent(ev *replication.BinlogEvent,
 			if sql != "" {
 				realSchema := g.StringElse(queryInfo.table.Schema, currentSchema)
 				tableName := queryInfo.table.Table
-				err = b.updateCurrentReplicateDoDb(realSchema, tableName)
-				if err != nil {
-					return errors.Wrap(err, "updateCurrentReplicateDoDb")
-				}
 
 				if b.skipQueryDDL(realSchema, tableName) {
 					b.logger.Info("Skip QueryEvent", "currentSchema", currentSchema, "sql", sql,
 						"realSchema", realSchema, "tableName", tableName, "gno", gno)
 				} else {
+					err = b.updateCurrentReplicateDoDb(realSchema, tableName)
+					if err != nil {
+						return errors.Wrap(err, "updateCurrentReplicateDoDb")
+					}
+
 					if realSchema != currentSchema {
 						schema = b.findCurrentSchema(realSchema)
 					}
