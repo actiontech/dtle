@@ -85,11 +85,11 @@ func apiJobConfigToNomadJobJson(apiJobConfig *models.ValidateJobReqV2) (resJson 
 
 func decryptMySQLPwd(apiSrcTask *models.SrcTaskConfig, apiDestTask *models.DestTaskConfig) (err error) {
 	// decrypt mysql password
-	apiSrcTask.MysqlConnectionConfig.Password, err = handler.DecryptPassword(apiSrcTask.MysqlConnectionConfig.Password, g.RsaPrivateKey)
+	apiSrcTask.ConnectionConfig.Password, err = handler.DecryptPassword(apiSrcTask.ConnectionConfig.Password, g.RsaPrivateKey)
 	if nil != err {
 		return fmt.Errorf("decrypt src mysql password failed: %v", err)
 	}
-	apiDestTask.MysqlConnectionConfig.Password, err = handler.DecryptPassword(apiDestTask.MysqlConnectionConfig.Password, g.RsaPrivateKey)
+	apiDestTask.ConnectionConfig.Password, err = handler.DecryptPassword(apiDestTask.ConnectionConfig.Password, g.RsaPrivateKey)
 	if nil != err {
 		return fmt.Errorf("decrypt src mysql password failed: %v", err)
 	}
@@ -101,7 +101,7 @@ func validateTaskConfig(apiSrcTask *models.SrcTaskConfig, apiDestTask *models.De
 	// validate src task
 	{
 		srcTaskConfig := common.DtleTaskConfig{}
-		srcTaskMap := buildMysqlSrcTaskConfigMap(apiSrcTask)
+		srcTaskMap := buildDatabaseSrcTaskConfigMap(apiSrcTask)
 		if err := mapstructure.WeakDecode(srcTaskMap, &srcTaskConfig); err != nil {
 			return nil, fmt.Errorf("convert src task config failed: %v", err)
 		}
@@ -152,7 +152,7 @@ func validateTaskConfig(apiSrcTask *models.SrcTaskConfig, apiDestTask *models.De
 	// validate dest task
 	{
 		destTaskConfig := common.DtleTaskConfig{}
-		destTaskMap := buildMysqlDestTaskConfigMap(apiDestTask)
+		destTaskMap := buildDatabaseDestTaskConfigMap(apiDestTask)
 		if err := mapstructure.WeakDecode(destTaskMap, &destTaskConfig); err != nil {
 			return nil, fmt.Errorf("convert dest task config failed: %v", err)
 		}

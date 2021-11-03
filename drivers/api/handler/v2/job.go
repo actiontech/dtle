@@ -113,14 +113,16 @@ func JobListV2(c echo.Context, filterJobType DtleJobType) error {
 			continue
 		}
 		jobItem := common.JobListItemV2{
-			JobId:         consulJob.JobId,
-			JobStatus:     consulJob.JobStatus,
-			Topic:         consulJob.Topic,
-			JobCreateTime: consulJob.JobCreateTime,
-			SrcAddrList:   consulJob.SrcAddrList,
-			DstAddrList:   consulJob.DstAddrList,
-			User:          consulJob.User,
-			JobSteps:      consulJob.JobSteps,
+			JobId:           consulJob.JobId,
+			JobStatus:       consulJob.JobStatus,
+			Topic:           consulJob.Topic,
+			JobCreateTime:   consulJob.JobCreateTime,
+			SrcAddrList:     consulJob.SrcAddrList,
+			DstAddrList:     consulJob.DstAddrList,
+			User:            consulJob.User,
+			JobSteps:        consulJob.JobSteps,
+			DstDatabaseType: consulJob.DstDatabaseType,
+			SrcDatabaseType: consulJob.SrcDatabaseType,
 		}
 		if nomadItem, ok := nomadJobMap[jobItem.JobId]; !ok {
 			jobItem.JobStatus = common.DtleJobStatusUndefined
@@ -287,17 +289,17 @@ func createOrUpdateMysqlToMysqlJob(logger g.LoggerType, jobParam *models.CreateO
 
 	failover := g.PtrToBool(jobParam.Failover, true)
 	if jobParam.IsPasswordEncrypted {
-		realPwd, err := handler.DecryptPassword(jobParam.SrcTask.MysqlConnectionConfig.Password, g.RsaPrivateKey)
+		realPwd, err := handler.DecryptPassword(jobParam.SrcTask.ConnectionConfig.Password, g.RsaPrivateKey)
 		if nil != err {
-			return nil, fmt.Errorf("decrypt src mysql password failed: %v", err)
+			return nil, fmt.Errorf("decrypt src password failed: %v", err)
 		}
-		jobParam.SrcTask.MysqlConnectionConfig.Password = realPwd
+		jobParam.SrcTask.ConnectionConfig.Password = realPwd
 
-		realPwd, err = handler.DecryptPassword(jobParam.DestTask.MysqlConnectionConfig.Password, g.RsaPrivateKey)
+		realPwd, err = handler.DecryptPassword(jobParam.DestTask.ConnectionConfig.Password, g.RsaPrivateKey)
 		if nil != err {
-			return nil, fmt.Errorf("decrypt dest mysql password failed: %v", err)
+			return nil, fmt.Errorf("decrypt dest password failed: %v", err)
 		}
-		jobParam.DestTask.MysqlConnectionConfig.Password = realPwd
+		jobParam.DestTask.ConnectionConfig.Password = realPwd
 	}
 
 	// set default
@@ -310,14 +312,17 @@ func createOrUpdateMysqlToMysqlJob(logger g.LoggerType, jobParam *models.CreateO
 	if jobParam.SrcTask.ChunkSize == 0 {
 		jobParam.SrcTask.ChunkSize = common.DefaultChunkSize
 	}
-	if jobParam.DestTask.ParallelWorkers == 0 {
-		jobParam.DestTask.ParallelWorkers = common.DefaultNumWorkers
-	}
 	if jobParam.SrcTask.GroupTimeout == 0 {
 		jobParam.SrcTask.GroupTimeout = common.DefaultSrcGroupTimeout
 	}
-	if !jobParam.DestTask.UseMySQLDependency && jobParam.DestTask.DependencyHistorySize == 0 {
-		jobParam.DestTask.DependencyHistorySize = common.DefaultDependencyHistorySize
+	logger.Info("MysqlDestTaskConfig", jobParam.DestTask.MysqlDestTaskConfig)
+	if jobParam.DestTask.MysqlDestTaskConfig != nil {
+		if jobParam.DestTask.MysqlDestTaskConfig.ParallelWorkers == 0 {
+			jobParam.DestTask.MysqlDestTaskConfig.ParallelWorkers = common.DefaultNumWorkers
+		}
+		if !jobParam.DestTask.MysqlDestTaskConfig.UseMySQLDependency && jobParam.DestTask.MysqlDestTaskConfig.DependencyHistorySize == 0 {
+			jobParam.DestTask.MysqlDestTaskConfig.DependencyHistorySize = common.DefaultDependencyHistorySize
+		}
 	}
 
 	nomadJob, err := convertMysqlToMysqlJobToNomadJob(failover, jobParam)
@@ -340,8 +345,8 @@ func createOrUpdateMysqlToMysqlJob(logger g.LoggerType, jobParam *models.CreateO
 	}
 	logger.Info("invoke nomad api finished")
 
-	jobParam.SrcTask.MysqlConnectionConfig.Password = "*"
-	jobParam.DestTask.MysqlConnectionConfig.Password = "*"
+	jobParam.SrcTask.ConnectionConfig.Password = "*"
+	jobParam.DestTask.ConnectionConfig.Password = "*"
 
 	var respErr error
 	if "" != nomadResp.Warnings {
@@ -361,12 +366,12 @@ func createOrUpdateMysqlToMysqlJob(logger g.LoggerType, jobParam *models.CreateO
 }
 
 func convertMysqlToMysqlJobToNomadJob(failover bool, jobParams *models.CreateOrUpdateMysqlToMysqlJobParamV2) (*nomadApi.Job, error) {
-	srcTask, err := buildNomadTaskGroupItem(buildMysqlSrcTaskConfigMap(jobParams.SrcTask), jobParams.SrcTask.TaskName, jobParams.SrcTask.NodeId, failover, jobParams.Retry)
+	srcTask, err := buildNomadTaskGroupItem(buildDatabaseSrcTaskConfigMap(jobParams.SrcTask), jobParams.SrcTask.TaskName, jobParams.SrcTask.NodeId, failover, jobParams.Retry)
 	if nil != err {
 		return nil, fmt.Errorf("build src task failed: %v", err)
 	}
 
-	destTask, err := buildNomadTaskGroupItem(buildMysqlDestTaskConfigMap(jobParams.DestTask), jobParams.DestTask.TaskName, jobParams.DestTask.NodeId, failover, jobParams.Retry)
+	destTask, err := buildNomadTaskGroupItem(buildDatabaseDestTaskConfigMap(jobParams.DestTask), jobParams.DestTask.TaskName, jobParams.DestTask.NodeId, failover, jobParams.Retry)
 	if nil != err {
 		return nil, fmt.Errorf("build dest task failed: %v", err)
 	}
@@ -386,14 +391,17 @@ func buildMySQLJobListItem(logger g.LoggerType, jobParam *models.CreateOrUpdateM
 	if err != nil {
 		return fmt.Errorf("consul_addr=%v; connect to consul failed: %v", handler.ConsulAddr, err)
 	}
+	logger.Debug("buildJob", "database", jobParam.SrcTask.ConnectionConfig, "database2", jobParam.DestTask.ConnectionConfig)
 	jobInfo := common.JobListItemV2{
-		JobId:         jobParam.JobId,
-		JobStatus:     common.DtleJobStatusNonPaused,
-		JobCreateTime: time.Now().In(time.Local).Format(time.RFC3339),
-		SrcAddrList:   []string{fmt.Sprintf("%s:%d", jobParam.SrcTask.MysqlConnectionConfig.Host, jobParam.SrcTask.MysqlConnectionConfig.Port)},
-		DstAddrList:   []string{fmt.Sprintf("%s:%d", jobParam.DestTask.MysqlConnectionConfig.Host, jobParam.DestTask.MysqlConnectionConfig.Port)},
-		User:          fmt.Sprintf("%s:%s", user.Tenant, user.Username),
-		JobSteps:      nil,
+		JobId:           jobParam.JobId,
+		JobStatus:       common.DtleJobStatusNonPaused,
+		JobCreateTime:   time.Now().In(time.Local).Format(time.RFC3339),
+		SrcDatabaseType: jobParam.SrcTask.ConnectionConfig.DatabaseType,
+		DstDatabaseType: jobParam.DestTask.ConnectionConfig.DatabaseType,
+		SrcAddrList:     []string{fmt.Sprintf("%s:%d", jobParam.SrcTask.ConnectionConfig.Host, jobParam.SrcTask.ConnectionConfig.Port)},
+		DstAddrList:     []string{fmt.Sprintf("%s:%d", jobParam.DestTask.ConnectionConfig.Host, jobParam.DestTask.ConnectionConfig.Port)},
+		User:            fmt.Sprintf("%s:%s", user.Tenant, user.Username),
+		JobSteps:        nil,
 	}
 	if jobParam.Reverse {
 		jobInfo.JobStatus = common.DtleJobStatusReverseInit
@@ -424,7 +432,7 @@ func buildKafkaJobListItem(logger g.LoggerType, jobParam *models.CreateOrUpdateM
 		JobStatus:     common.DtleJobStatusNonPaused,
 		Topic:         jobParam.DestTask.Topic,
 		JobCreateTime: time.Now().In(time.Local).Format(time.RFC3339),
-		SrcAddrList:   []string{jobParam.SrcTask.MysqlConnectionConfig.Host},
+		SrcAddrList:   []string{jobParam.SrcTask.ConnectionConfig.Host},
 		DstAddrList:   jobParam.DestTask.BrokerAddrs,
 		User:          fmt.Sprintf("%s:%s", user.Tenant, user.Username),
 		JobSteps:      nil,
@@ -490,18 +498,30 @@ func buildRestartPolicy(RestartAttempts int) (*nomadApi.ReschedulePolicy, *nomad
 		}
 }
 
-func buildMysqlDestTaskConfigMap(config *models.DestTaskConfig) map[string]interface{} {
+func buildDatabaseDestTaskConfigMap(config *models.DestTaskConfig) map[string]interface{} {
 	taskConfigInNomadFormat := make(map[string]interface{})
 
-	addNotRequiredParamToMap(taskConfigInNomadFormat, config.ParallelWorkers, "ParallelWorkers")
-	addNotRequiredParamToMap(taskConfigInNomadFormat, config.UseMySQLDependency, "UseMySQLDependency")
-	addNotRequiredParamToMap(taskConfigInNomadFormat, config.DependencyHistorySize, "DependencyHistorySize")
-	taskConfigInNomadFormat["ConnectionConfig"] = buildMysqlConnectionConfigMap(config.MysqlConnectionConfig)
+	if config.MysqlDestTaskConfig != nil {
+		addNotRequiredParamToMap(taskConfigInNomadFormat, config.MysqlDestTaskConfig.ParallelWorkers, "ParallelWorkers")
+		addNotRequiredParamToMap(taskConfigInNomadFormat, config.MysqlDestTaskConfig.UseMySQLDependency, "UseMySQLDependency")
+		addNotRequiredParamToMap(taskConfigInNomadFormat, config.MysqlDestTaskConfig.DependencyHistorySize, "DependencyHistorySize")
+	} else {
+		// todo for oracle->MySQL applier
+		oracleConfig := make(map[string]interface{})
+		oracleConfig["Host"] = config.ConnectionConfig.Host
+		oracleConfig["Port"] = config.ConnectionConfig.Port
+		oracleConfig["User"] = config.ConnectionConfig.User
+		oracleConfig["Password"] = config.ConnectionConfig.Password
+		oracleConfig["Scn"] = 0
+		oracleConfig["ServiceName"] = config.ConnectionConfig.ServiceName
+		taskConfigInNomadFormat["OracleConfig"] = oracleConfig
+	}
+	taskConfigInNomadFormat["ConnectionConfig"] = buildMysqlConnectionConfigMap(config.ConnectionConfig)
 
 	return taskConfigInNomadFormat
 }
 
-func buildMysqlSrcTaskConfigMap(config *models.SrcTaskConfig) map[string]interface{} {
+func buildDatabaseSrcTaskConfigMap(config *models.SrcTaskConfig) map[string]interface{} {
 	taskConfigInNomadFormat := make(map[string]interface{})
 
 	addNotRequiredParamToMap(taskConfigInNomadFormat, config.DropTableIfExists, "DropTableIfExists")
@@ -509,13 +529,28 @@ func buildMysqlSrcTaskConfigMap(config *models.SrcTaskConfig) map[string]interfa
 	addNotRequiredParamToMap(taskConfigInNomadFormat, config.ChunkSize, "ChunkSize")
 	addNotRequiredParamToMap(taskConfigInNomadFormat, config.GroupMaxSize, "GroupMaxSize")
 	addNotRequiredParamToMap(taskConfigInNomadFormat, config.GroupTimeout, "GroupTimeout")
-	addNotRequiredParamToMap(taskConfigInNomadFormat, config.Gtid, "Gtid")
 	addNotRequiredParamToMap(taskConfigInNomadFormat, config.SkipCreateDbTable, "SkipCreateDbTable")
-	addNotRequiredParamToMap(taskConfigInNomadFormat, config.BinlogRelay, "BinlogRelay")
-	addNotRequiredParamToMap(taskConfigInNomadFormat, config.WaitOnJob, "WaitOnJob")
-	addNotRequiredParamToMap(taskConfigInNomadFormat, config.AutoGtid, "AutoGtid")
 
-	taskConfigInNomadFormat["ConnectionConfig"] = buildMysqlConnectionConfigMap(config.MysqlConnectionConfig)
+	// for MySQL
+	if config.MysqlSrcTaskConfig != nil {
+		addNotRequiredParamToMap(taskConfigInNomadFormat, config.MysqlSrcTaskConfig.WaitOnJob, "WaitOnJob")
+		addNotRequiredParamToMap(taskConfigInNomadFormat, config.MysqlSrcTaskConfig.AutoGtid, "AutoGtid")
+		addNotRequiredParamToMap(taskConfigInNomadFormat, config.MysqlSrcTaskConfig.BinlogRelay, "BinlogRelay")
+		addNotRequiredParamToMap(taskConfigInNomadFormat, config.MysqlSrcTaskConfig.Gtid, "Gtid")
+		taskConfigInNomadFormat["ConnectionConfig"] = buildMysqlConnectionConfigMap(config.ConnectionConfig)
+	}
+	// for Oracle
+	if config.OracleSrcTaskConfig != nil {
+		oracleConfig := make(map[string]interface{})
+		oracleConfig["Host"] = config.ConnectionConfig.Host
+		oracleConfig["Port"] = config.ConnectionConfig.Port
+		oracleConfig["User"] = config.ConnectionConfig.User
+		oracleConfig["Password"] = config.ConnectionConfig.Password
+		oracleConfig["Scn"] = config.OracleSrcTaskConfig.Scn
+		oracleConfig["ServiceName"] = config.ConnectionConfig.ServiceName
+		taskConfigInNomadFormat["OracleConfig"] = oracleConfig
+	}
+
 	taskConfigInNomadFormat["ReplicateDoDb"] = buildMysqlDataSourceConfigMap(config.ReplicateDoDb)
 	taskConfigInNomadFormat["ReplicateIgnoreDb"] = buildMysqlDataSourceConfigMap(config.ReplicateIgnoreDb)
 
@@ -631,46 +666,68 @@ func getMysqlToMysqlJobDetail(logger g.LoggerType, jobId string, jobType DtleJob
 	}, nil
 }
 
-func buildBasicTaskProfile(logger g.LoggerType, jobId string, srcTaskDetail *models.MysqlSrcTaskDetail,
+func buildBasicTaskProfile(logger g.LoggerType, jobId string, srcTaskDetail *models.SrcTaskDetail,
 	destMySqlTaskDetail *models.MysqlDestTaskDetail, destKafkaTaskDetail *models.KafkaDestTaskDetail) (models.BasicTaskProfile, []models.TaskLog, error) {
 	storeManager, err := common.NewStoreManager([]string{handler.ConsulAddr}, logger)
 	if err != nil {
 		return models.BasicTaskProfile{}, nil, fmt.Errorf("consul_addr=%v; connect to consul failed: %v", handler.ConsulAddr, err)
 	}
-
-	consulJobItem, err := storeManager.GetJobInfo(jobId)
-	if err != nil {
-		return models.BasicTaskProfile{}, nil, fmt.Errorf("consul_addr=%v; get ket %v Job Item failed: %v", jobId, handler.ConsulAddr, err)
-	}
 	basicTaskProfile := models.BasicTaskProfile{}
-	basicTaskProfile.JobBaseInfo = models.JobBaseInfo{
-		JobId:             jobId,
-		SubscriptionTopic: consulJobItem.Topic,
-		JobStatus:         consulJobItem.JobStatus,
-		JobCreateTime:     consulJobItem.JobCreateTime,
-		JobSteps:          consulJobItem.JobSteps,
-		Delay:             0,
-	}
+	// base info
+	{
+		consulJobItem, err := storeManager.GetJobInfo(jobId)
+		if err != nil {
+			return models.BasicTaskProfile{}, nil, fmt.Errorf("consul_addr=%v; get ket %v Job Item failed: %v", jobId, handler.ConsulAddr, err)
+		}
 
-	nomadJobMap, err := findJobsFromNomad()
-	if err != nil {
-		return models.BasicTaskProfile{}, nil, fmt.Errorf("find nomad job list err %v", err)
+		basicTaskProfile.JobBaseInfo = models.JobBaseInfo{
+			JobId:             jobId,
+			SubscriptionTopic: consulJobItem.Topic,
+			JobStatus:         consulJobItem.JobStatus,
+			JobCreateTime:     consulJobItem.JobCreateTime,
+			JobSteps:          consulJobItem.JobSteps,
+			Delay:             0,
+		}
+
+		nomadJobMap, err := findJobsFromNomad()
+		if err != nil {
+			return models.BasicTaskProfile{}, nil, fmt.Errorf("find nomad job list err %v", err)
+		}
+		if nomadJobItem, ok := nomadJobMap[consulJobItem.JobId]; ok && basicTaskProfile.JobBaseInfo.JobStatus == common.DtleJobStatusNonPaused {
+			basicTaskProfile.JobBaseInfo.JobStatus = nomadJobItem.Status
+		}
+
 	}
-	if nomadJobItem, ok := nomadJobMap[consulJobItem.JobId]; ok && basicTaskProfile.JobBaseInfo.JobStatus == common.DtleJobStatusNonPaused {
-		basicTaskProfile.JobBaseInfo.JobStatus = nomadJobItem.Status
-	}
-	basicTaskProfile.Configuration = models.Configuration{
-		BinlogRelay:        srcTaskDetail.TaskConfig.BinlogRelay,
-		FailOver:           false,
-		ReplChanBufferSize: int(srcTaskDetail.TaskConfig.ReplChanBufferSize),
-		GroupMaxSize:       srcTaskDetail.TaskConfig.GroupMaxSize,
-		ChunkSize:          int(srcTaskDetail.TaskConfig.ChunkSize),
-		GroupTimeout:       srcTaskDetail.TaskConfig.GroupTimeout,
-		DropTableIfExists:  srcTaskDetail.TaskConfig.DropTableIfExists,
-		SkipCreateDbTable:  srcTaskDetail.TaskConfig.SkipCreateDbTable,
+	// configuration
+	{
+		srcConfig := models.SrcConfig{
+			SkipCreateDbTable:  srcTaskDetail.TaskConfig.SkipCreateDbTable,
+			DropTableIfExists:  srcTaskDetail.TaskConfig.DropTableIfExists,
+			GroupMaxSize:       srcTaskDetail.TaskConfig.GroupMaxSize,
+			GroupTimeout:       srcTaskDetail.TaskConfig.GroupTimeout,
+			ReplChanBufferSize: srcTaskDetail.TaskConfig.ReplChanBufferSize,
+			ChunkSize:          srcTaskDetail.TaskConfig.ChunkSize,
+		}
+		if srcTaskDetail.TaskConfig.MysqlSrcTaskConfig != nil {
+			srcConfig.MysqlSrcTaskConfig = &models.MysqlSrcTaskConfig{
+				Gtid:        srcTaskDetail.TaskConfig.MysqlSrcTaskConfig.Gtid,
+				BinlogRelay: srcTaskDetail.TaskConfig.MysqlSrcTaskConfig.BinlogRelay,
+				WaitOnJob:   srcTaskDetail.TaskConfig.MysqlSrcTaskConfig.WaitOnJob,
+				AutoGtid:    srcTaskDetail.TaskConfig.MysqlSrcTaskConfig.AutoGtid,
+			}
+		} else if srcTaskDetail.TaskConfig.OracleSrcTaskConfig != nil {
+			srcConfig.OracleSrcTaskConfig = &models.OracleSrcTaskConfig{
+				Scn: srcTaskDetail.TaskConfig.OracleSrcTaskConfig.Scn,
+			}
+		}
+
+		basicTaskProfile.Configuration = models.Configuration{
+			FailOver:  false,
+			SrcConfig: srcConfig,
+		}
 	}
 	basicTaskProfile.ConnectionInfo = models.ConnectionInfo{
-		SrcDataBase: *srcTaskDetail.TaskConfig.MysqlConnectionConfig,
+		SrcDataBase: *srcTaskDetail.TaskConfig.ConnectionConfig,
 	}
 	basicTaskProfile.ReplicateDoDb = srcTaskDetail.TaskConfig.ReplicateDoDb
 	basicTaskProfile.ReplicateIgnoreDb = srcTaskDetail.TaskConfig.ReplicateIgnoreDb
@@ -696,18 +753,23 @@ func buildBasicTaskProfile(logger g.LoggerType, jobId string, srcTaskDetail *mod
 			dtleNode := models.DtleNodeInfo{
 				NodeId:   srcAllocation.NodeId,
 				NodeAddr: nodeId2Addr[srcAllocation.NodeId],
-				DataSource: fmt.Sprintf("%v:%v", srcTaskDetail.TaskConfig.MysqlConnectionConfig.Host,
-					srcTaskDetail.TaskConfig.MysqlConnectionConfig.Port),
+				DataSource: fmt.Sprintf("%v:%v", srcTaskDetail.TaskConfig.ConnectionConfig.Host,
+					srcTaskDetail.TaskConfig.ConnectionConfig.Port),
 				Source: "src",
 			}
 			basicTaskProfile.DtleNodeInfos = append(basicTaskProfile.DtleNodeInfos, dtleNode)
 		}
 	}
 	if destMySqlTaskDetail != nil {
-		basicTaskProfile.ConnectionInfo.DstDataBase = *destMySqlTaskDetail.TaskConfig.MysqlConnectionConfig
-		basicTaskProfile.Configuration.ParallelWorkers = destMySqlTaskDetail.TaskConfig.ParallelWorkers
-		basicTaskProfile.Configuration.UseMySQLDependency = destMySqlTaskDetail.TaskConfig.UseMySQLDependency
-		basicTaskProfile.Configuration.DependencyHistorySize = destMySqlTaskDetail.TaskConfig.DependencyHistorySize
+		if destMySqlTaskDetail.TaskConfig.ConnectionConfig != nil {
+			mysqlDstConfig := &models.MysqlDestTaskConfig{
+				ParallelWorkers:       destMySqlTaskDetail.TaskConfig.MysqlDestTaskConfig.ParallelWorkers,
+				UseMySQLDependency:    destMySqlTaskDetail.TaskConfig.MysqlDestTaskConfig.UseMySQLDependency,
+				DependencyHistorySize: destMySqlTaskDetail.TaskConfig.MysqlDestTaskConfig.DependencyHistorySize,
+			}
+			basicTaskProfile.Configuration.DstConfig = models.DstConfig{MysqlDestTaskConfig: mysqlDstConfig}
+			basicTaskProfile.ConnectionInfo.DstDataBase = *destMySqlTaskDetail.TaskConfig.ConnectionConfig
+		}
 		for _, destAllocation := range destMySqlTaskDetail.Allocations {
 			taskLogs = append(taskLogs, models.TaskLog{
 				TaskEvents:   destAllocation.TaskStatus.TaskEvents,
@@ -720,8 +782,8 @@ func buildBasicTaskProfile(logger g.LoggerType, jobId string, srcTaskDetail *mod
 				dtleNode := models.DtleNodeInfo{
 					NodeId:   destAllocation.NodeId,
 					NodeAddr: nodeId2Addr[destAllocation.NodeId],
-					DataSource: fmt.Sprintf("%v:%v", destMySqlTaskDetail.TaskConfig.MysqlConnectionConfig.Host,
-						destMySqlTaskDetail.TaskConfig.MysqlConnectionConfig.Port),
+					DataSource: fmt.Sprintf("%v:%v", destMySqlTaskDetail.TaskConfig.ConnectionConfig.Host,
+						destMySqlTaskDetail.TaskConfig.ConnectionConfig.Port),
 					Source: "dst",
 				}
 				basicTaskProfile.DtleNodeInfos = append(basicTaskProfile.DtleNodeInfos, dtleNode)
@@ -791,7 +853,7 @@ func getJobDetailFromNomad(logger g.LoggerType, jobId string, jobType DtleJobTyp
 	return true, nomadJob, allocations, nil
 }
 
-func buildMysqlSrcTaskDetail(taskName string, internalTaskConfig common.DtleTaskConfig, allocsFromNomad []nomadApi.Allocation) (srcTaskDetail models.MysqlSrcTaskDetail) {
+func buildSrcTaskDetail(taskName string, internalTaskConfig common.DtleTaskConfig, allocsFromNomad []nomadApi.Allocation) (srcTaskDetail models.SrcTaskDetail) {
 	convertInternalMysqlDataSourceToApi := func(internalDataSource []*common.DataSource) []*models.DataSourceConfig {
 		apiMysqlDataSource := []*models.DataSourceConfig{}
 		for _, db := range internalDataSource {
@@ -817,27 +879,40 @@ func buildMysqlSrcTaskDetail(taskName string, internalTaskConfig common.DtleTask
 
 	replicateDoDb := convertInternalMysqlDataSourceToApi(internalTaskConfig.ReplicateDoDb)
 	replicateIgnoreDb := convertInternalMysqlDataSourceToApi(internalTaskConfig.ReplicateIgnoreDb)
-	mysqlConnectionConfig := new(models.DatabaseConnectionConfig)
-	mysqlConnectionConfig.Host = internalTaskConfig.ConnectionConfig.Host
-	mysqlConnectionConfig.Port = uint32(internalTaskConfig.ConnectionConfig.Port)
-	mysqlConnectionConfig.User = internalTaskConfig.ConnectionConfig.User
-	mysqlConnectionConfig.Password = internalTaskConfig.ConnectionConfig.Password
-
 	srcTaskDetail.TaskConfig = models.SrcTaskConfig{
-		TaskName:              taskName,
-		Gtid:                  internalTaskConfig.Gtid,
-		GroupMaxSize:          internalTaskConfig.GroupMaxSize,
-		ChunkSize:             internalTaskConfig.ChunkSize,
-		DropTableIfExists:     internalTaskConfig.DropTableIfExists,
-		SkipCreateDbTable:     internalTaskConfig.SkipCreateDbTable,
-		ReplChanBufferSize:    internalTaskConfig.ReplChanBufferSize,
-		ReplicateDoDb:         replicateDoDb,
-		ReplicateIgnoreDb:     replicateIgnoreDb,
-		MysqlConnectionConfig: mysqlConnectionConfig,
-		BinlogRelay:           internalTaskConfig.BinlogRelay,
-		GroupTimeout:          internalTaskConfig.GroupTimeout,
-		WaitOnJob:             internalTaskConfig.WaitOnJob,
+		TaskName:           taskName,
+		GroupMaxSize:       internalTaskConfig.GroupMaxSize,
+		ChunkSize:          internalTaskConfig.ChunkSize,
+		DropTableIfExists:  internalTaskConfig.DropTableIfExists,
+		SkipCreateDbTable:  internalTaskConfig.SkipCreateDbTable,
+		ReplChanBufferSize: internalTaskConfig.ReplChanBufferSize,
+		ReplicateDoDb:      replicateDoDb,
+		ReplicateIgnoreDb:  replicateIgnoreDb,
+		GroupTimeout:       internalTaskConfig.GroupTimeout,
 	}
+
+	connectionConfig := new(models.DatabaseConnectionConfig)
+	if internalTaskConfig.OracleConfig != nil {
+		connectionConfig.DatabaseType = "Oracle"
+		connectionConfig.Host = internalTaskConfig.OracleConfig.Host
+		connectionConfig.Port = uint32(internalTaskConfig.OracleConfig.Port)
+		connectionConfig.User = internalTaskConfig.OracleConfig.User
+		connectionConfig.Password = internalTaskConfig.OracleConfig.Password
+		connectionConfig.ServiceName = internalTaskConfig.OracleConfig.ServiceName
+	} else if internalTaskConfig.ConnectionConfig != nil {
+		connectionConfig.DatabaseType = "MySQL"
+		connectionConfig.Host = internalTaskConfig.ConnectionConfig.Host
+		connectionConfig.Port = uint32(internalTaskConfig.ConnectionConfig.Port)
+		connectionConfig.User = internalTaskConfig.ConnectionConfig.User
+		connectionConfig.Password = internalTaskConfig.ConnectionConfig.Password
+		srcTaskDetail.TaskConfig.MysqlSrcTaskConfig = &models.MysqlSrcTaskConfig{
+			AutoGtid:    internalTaskConfig.AutoGtid,
+			Gtid:        internalTaskConfig.Gtid,
+			BinlogRelay: internalTaskConfig.BinlogRelay,
+			WaitOnJob:   internalTaskConfig.WaitOnJob,
+		}
+	}
+	srcTaskDetail.TaskConfig.ConnectionConfig = connectionConfig
 
 	allocs := []models.AllocationDetail{}
 	for _, a := range allocsFromNomad {
@@ -849,17 +924,22 @@ func buildMysqlSrcTaskDetail(taskName string, internalTaskConfig common.DtleTask
 }
 
 func buildMysqlDestTaskDetail(taskName string, internalTaskConfig common.DtleTaskConfig, allocsFromNomad []nomadApi.Allocation) (destTaskDetail models.MysqlDestTaskDetail) {
-	mysqlConnectionConfig := new(models.DatabaseConnectionConfig)
-	mysqlConnectionConfig.Host = internalTaskConfig.ConnectionConfig.Host
-	mysqlConnectionConfig.Port = uint32(internalTaskConfig.ConnectionConfig.Port)
-	mysqlConnectionConfig.User = internalTaskConfig.ConnectionConfig.User
-	mysqlConnectionConfig.Password = internalTaskConfig.ConnectionConfig.Password
-	destTaskDetail.TaskConfig = models.DestTaskConfig{
-		TaskName:              taskName,
+	mysqlConnectionConfig := &models.DatabaseConnectionConfig{
+		Host:         internalTaskConfig.ConnectionConfig.Host,
+		Port:         uint32(internalTaskConfig.ConnectionConfig.Port),
+		User:         internalTaskConfig.ConnectionConfig.User,
+		Password:     internalTaskConfig.ConnectionConfig.Password,
+		DatabaseType: "MySQL",
+	}
+	mysqlDestTaskConfig := &models.MysqlDestTaskConfig{
 		ParallelWorkers:       internalTaskConfig.ParallelWorkers,
-		MysqlConnectionConfig: mysqlConnectionConfig,
 		UseMySQLDependency:    internalTaskConfig.UseMySQLDependency,
 		DependencyHistorySize: internalTaskConfig.DependencyHistorySize,
+	}
+	destTaskDetail.TaskConfig = models.DestTaskConfig{
+		TaskName:            taskName,
+		ConnectionConfig:    mysqlConnectionConfig,
+		MysqlDestTaskConfig: mysqlDestTaskConfig,
 	}
 
 	allocs := []models.AllocationDetail{}
@@ -904,7 +984,7 @@ func convertTaskConfigMapToInternalTaskConfig(m map[string]interface{}) (interna
 	return internalConfig, nil
 }
 
-func buildMysqlToMysqlJobDetailResp(nomadJob nomadApi.Job, nomadAllocations []nomadApi.Allocation) (destTaskDetail models.MysqlDestTaskDetail, srcTaskDetail models.MysqlSrcTaskDetail, err error) {
+func buildMysqlToMysqlJobDetailResp(nomadJob nomadApi.Job, nomadAllocations []nomadApi.Allocation) (destTaskDetail models.MysqlDestTaskDetail, srcTaskDetail models.SrcTaskDetail, err error) {
 	taskGroupToNomadAlloc := make(map[string][]nomadApi.Allocation)
 	for _, a := range nomadAllocations {
 		taskGroupToNomadAlloc[a.TaskGroup] = append(taskGroupToNomadAlloc[a.TaskGroup], a)
@@ -914,13 +994,13 @@ func buildMysqlToMysqlJobDetailResp(nomadJob nomadApi.Job, nomadAllocations []no
 		for _, t := range tg.Tasks {
 			internalTaskConfig, err := convertTaskConfigMapToInternalTaskConfig(t.Config)
 			if nil != err {
-				return models.MysqlDestTaskDetail{}, models.MysqlSrcTaskDetail{}, fmt.Errorf("convert task config failed: %v", err)
+				return models.MysqlDestTaskDetail{}, models.SrcTaskDetail{}, fmt.Errorf("convert task config failed: %v", err)
 			}
 
 			taskType := common.TaskTypeFromString(t.Name)
 			switch taskType {
 			case common.TaskTypeSrc:
-				srcTaskDetail = buildMysqlSrcTaskDetail(t.Name, internalTaskConfig, taskGroupToNomadAlloc[*tg.Name])
+				srcTaskDetail = buildSrcTaskDetail(t.Name, internalTaskConfig, taskGroupToNomadAlloc[*tg.Name])
 				break
 			case common.TaskTypeDest:
 				destTaskDetail = buildMysqlDestTaskDetail(t.Name, internalTaskConfig, taskGroupToNomadAlloc[*tg.Name])
@@ -1037,12 +1117,12 @@ func createOrUpdateMysqlToKafkaJob(c echo.Context, logger g.LoggerType, jobType 
 
 	failover := g.PtrToBool(jobParam.Failover, true)
 
-	if jobParam.IsMysqlPasswordEncrypted {
-		realPwd, err := handler.DecryptPassword(jobParam.SrcTask.MysqlConnectionConfig.Password, g.RsaPrivateKey)
+	if jobParam.IsPasswordEncrypted {
+		realPwd, err := handler.DecryptPassword(jobParam.SrcTask.ConnectionConfig.Password, g.RsaPrivateKey)
 		if nil != err {
 			return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("decrypt src mysql password failed: %v", err)))
 		}
-		jobParam.SrcTask.MysqlConnectionConfig.Password = realPwd
+		jobParam.SrcTask.ConnectionConfig.Password = realPwd
 	}
 
 	// set default
@@ -1085,7 +1165,7 @@ func createOrUpdateMysqlToKafkaJob(c echo.Context, logger g.LoggerType, jobType 
 	}
 	logger.Info("invoke nomad api finished")
 
-	jobParam.SrcTask.MysqlConnectionConfig.Password = "*"
+	jobParam.SrcTask.ConnectionConfig.Password = "*"
 
 	var respErr error
 	if "" != nomadResp.Warnings {
@@ -1109,7 +1189,7 @@ func createOrUpdateMysqlToKafkaJob(c echo.Context, logger g.LoggerType, jobType 
 }
 
 func convertMysqlToKafkaJobToNomadJob(failover bool, apiJobParams *models.CreateOrUpdateMysqlToKafkaJobParamV2) (*nomadApi.Job, error) {
-	srcTask, err := buildNomadTaskGroupItem(buildMysqlSrcTaskConfigMap(apiJobParams.SrcTask), apiJobParams.SrcTask.TaskName, apiJobParams.SrcTask.NodeId, failover, apiJobParams.Retry)
+	srcTask, err := buildNomadTaskGroupItem(buildDatabaseSrcTaskConfigMap(apiJobParams.SrcTask), apiJobParams.SrcTask.TaskName, apiJobParams.SrcTask.NodeId, failover, apiJobParams.Retry)
 	if nil != err {
 		return nil, fmt.Errorf("build src task failed: %v", err)
 	}
@@ -1185,7 +1265,7 @@ func GetSubscriptionJobDetailV2(c echo.Context) error {
 	})
 }
 
-func buildMysqlToKafkaJobDetailResp(nomadJob nomadApi.Job, nomadAllocations []nomadApi.Allocation) (destTaskDetail models.KafkaDestTaskDetail, srcTaskDetail models.MysqlSrcTaskDetail, err error) {
+func buildMysqlToKafkaJobDetailResp(nomadJob nomadApi.Job, nomadAllocations []nomadApi.Allocation) (destTaskDetail models.KafkaDestTaskDetail, srcTaskDetail models.SrcTaskDetail, err error) {
 	taskGroupToNomadAlloc := make(map[string][]nomadApi.Allocation)
 	for _, a := range nomadAllocations {
 		taskGroupToNomadAlloc[a.TaskGroup] = append(taskGroupToNomadAlloc[a.TaskGroup], a)
@@ -1195,17 +1275,17 @@ func buildMysqlToKafkaJobDetailResp(nomadJob nomadApi.Job, nomadAllocations []no
 		for _, t := range tg.Tasks {
 			internalTaskConfig, err := convertTaskConfigMapToInternalTaskConfig(t.Config)
 			if nil != err {
-				return models.KafkaDestTaskDetail{}, models.MysqlSrcTaskDetail{}, fmt.Errorf("convert task config failed: %v", err)
+				return models.KafkaDestTaskDetail{}, models.SrcTaskDetail{}, fmt.Errorf("convert task config failed: %v", err)
 			}
 
 			taskType := common.TaskTypeFromString(t.Name)
 			switch taskType {
 			case common.TaskTypeSrc:
-				srcTaskDetail = buildMysqlSrcTaskDetail(t.Name, internalTaskConfig, taskGroupToNomadAlloc[*tg.Name])
+				srcTaskDetail = buildSrcTaskDetail(t.Name, internalTaskConfig, taskGroupToNomadAlloc[*tg.Name])
 				break
 			case common.TaskTypeDest:
 				if nil == internalTaskConfig.KafkaConfig {
-					return models.KafkaDestTaskDetail{}, models.MysqlSrcTaskDetail{}, fmt.Errorf("can not find kafka task config from nomad")
+					return models.KafkaDestTaskDetail{}, models.SrcTaskDetail{}, fmt.Errorf("can not find kafka task config from nomad")
 				}
 				destTaskDetail = buildKafkaDestTaskDetail(t.Name, *internalTaskConfig.KafkaConfig, taskGroupToNomadAlloc[*tg.Name])
 				break
@@ -1639,7 +1719,7 @@ func ReverseStartJobV2(c echo.Context, filterJobType DtleJobType) error {
 	}
 
 	// finish wait on job
-	waitOnJob := srcTaskDetail.TaskConfig.WaitOnJob
+	waitOnJob := srcTaskDetail.TaskConfig.MysqlSrcTaskConfig.WaitOnJob
 	logger.Info("get allocations of job", "job_id", waitOnJob)
 	url := handler.BuildUrl(fmt.Sprintf("/v1/job/%v/allocations", waitOnJob))
 	logger.Info("invoke nomad api begin", "url", url)
@@ -1734,6 +1814,9 @@ func ReverseJobV2(c echo.Context, filterJobType DtleJobType) error {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("job_id=%v; get job status failed: %v", reqParam.JobId, err)))
 	}
 
+	if consulJobItem.SrcDatabaseType != "MySQL" || consulJobItem.DstDatabaseType != "MySQL" {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("job_id=%v; job can't be reversed with src : %v dst : %v", reqParam.JobId, consulJobItem.SrcDatabaseType, consulJobItem.DstDatabaseType)))
+	}
 	// job name
 	jobType := GetJobTypeFromJobId(consulJobItem.JobId)
 	switch jobType {
@@ -1749,26 +1832,31 @@ func ReverseJobV2(c echo.Context, filterJobType DtleJobType) error {
 		reverseJobParam.Failover = &originalJob.BasicTaskProfile.Configuration.FailOver
 		reverseJobParam.Reverse = true
 		reverseJobParam.SrcTask = &models.SrcTaskConfig{
-			TaskName:              "src",
-			GroupMaxSize:          originalJob.BasicTaskProfile.Configuration.GroupMaxSize,
-			ChunkSize:             int64(originalJob.BasicTaskProfile.Configuration.ChunkSize),
-			DropTableIfExists:     originalJob.BasicTaskProfile.Configuration.DropTableIfExists,
-			SkipCreateDbTable:     originalJob.BasicTaskProfile.Configuration.SkipCreateDbTable,
-			ReplChanBufferSize:    int64(originalJob.BasicTaskProfile.Configuration.ReplChanBufferSize),
-			ReplicateDoDb:         originalJob.BasicTaskProfile.ReplicateDoDb,
-			ReplicateIgnoreDb:     originalJob.BasicTaskProfile.ReplicateIgnoreDb,
-			MysqlConnectionConfig: &originalJob.BasicTaskProfile.ConnectionInfo.DstDataBase,
-			BinlogRelay:           originalJob.BasicTaskProfile.Configuration.BinlogRelay,
-			GroupTimeout:          originalJob.BasicTaskProfile.Configuration.GroupTimeout,
-			WaitOnJob:             consulJobItem.JobId,
-			AutoGtid:              true,
+			TaskName:           "src",
+			GroupMaxSize:       originalJob.BasicTaskProfile.Configuration.SrcConfig.GroupMaxSize,
+			ChunkSize:          originalJob.BasicTaskProfile.Configuration.SrcConfig.ChunkSize,
+			DropTableIfExists:  originalJob.BasicTaskProfile.Configuration.SrcConfig.DropTableIfExists,
+			SkipCreateDbTable:  originalJob.BasicTaskProfile.Configuration.SrcConfig.SkipCreateDbTable,
+			ReplChanBufferSize: originalJob.BasicTaskProfile.Configuration.SrcConfig.ReplChanBufferSize,
+			ReplicateDoDb:      originalJob.BasicTaskProfile.ReplicateDoDb,
+			ReplicateIgnoreDb:  originalJob.BasicTaskProfile.ReplicateIgnoreDb,
+			ConnectionConfig:   &originalJob.BasicTaskProfile.ConnectionInfo.DstDataBase,
+
+			GroupTimeout: originalJob.BasicTaskProfile.Configuration.SrcConfig.GroupTimeout,
+			MysqlSrcTaskConfig: &models.MysqlSrcTaskConfig{
+				BinlogRelay: originalJob.BasicTaskProfile.Configuration.SrcConfig.MysqlSrcTaskConfig.BinlogRelay,
+				WaitOnJob:   consulJobItem.JobId,
+				AutoGtid:    true,
+			},
 		}
 		reverseJobParam.DestTask = &models.DestTaskConfig{
-			TaskName:              "dest",
-			ParallelWorkers:       originalJob.BasicTaskProfile.Configuration.ParallelWorkers,
-			MysqlConnectionConfig: &originalJob.BasicTaskProfile.ConnectionInfo.SrcDataBase,
-			DependencyHistorySize: originalJob.BasicTaskProfile.Configuration.DependencyHistorySize,
-			UseMySQLDependency:    originalJob.BasicTaskProfile.Configuration.UseMySQLDependency,
+			TaskName:         "dest",
+			ConnectionConfig: &originalJob.BasicTaskProfile.ConnectionInfo.SrcDataBase,
+			MysqlDestTaskConfig: &models.MysqlDestTaskConfig{
+				ParallelWorkers:       originalJob.BasicTaskProfile.Configuration.DstConfig.MysqlDestTaskConfig.ParallelWorkers,
+				UseMySQLDependency:    originalJob.BasicTaskProfile.Configuration.DstConfig.MysqlDestTaskConfig.UseMySQLDependency,
+				DependencyHistorySize: originalJob.BasicTaskProfile.Configuration.DstConfig.MysqlDestTaskConfig.DependencyHistorySize,
+			},
 		}
 
 		// the node must be bound to a fixed data source
@@ -1781,10 +1869,10 @@ func ReverseJobV2(c echo.Context, filterJobType DtleJobType) error {
 		}
 
 		if reqParam.ReverseConfig != nil {
-			reverseJobParam.SrcTask.MysqlConnectionConfig.User = reqParam.ReverseConfig.SrcUser
-			reverseJobParam.SrcTask.MysqlConnectionConfig.Password = reqParam.ReverseConfig.SrcPwd
-			reverseJobParam.DestTask.MysqlConnectionConfig.User = reqParam.ReverseConfig.DestUser
-			reverseJobParam.DestTask.MysqlConnectionConfig.Password = reqParam.ReverseConfig.DstPwd
+			reverseJobParam.SrcTask.ConnectionConfig.User = reqParam.ReverseConfig.SrcUser
+			reverseJobParam.SrcTask.ConnectionConfig.Password = reqParam.ReverseConfig.SrcPwd
+			reverseJobParam.DestTask.ConnectionConfig.User = reqParam.ReverseConfig.DestUser
+			reverseJobParam.DestTask.ConnectionConfig.Password = reqParam.ReverseConfig.DstPwd
 			// IsPasswordEncrypted is set to default false then decrypt pwd
 			if reqParam.ReverseConfig.IsMysqlPasswordEncrypted {
 				err := decryptMySQLPwd(reverseJobParam.SrcTask, reverseJobParam.DestTask)

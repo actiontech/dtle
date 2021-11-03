@@ -134,33 +134,14 @@ definitions:
     type: object
   models.Configuration:
     properties:
-      binlog_relay:
-        description: todo oracle逻辑实现后删除
-        type: boolean
-      chunk_size:
-        type: integer
-      dependency_history_size:
-        type: integer
-      drop_table_if_exists:
-        type: boolean
+      dst_config:
+        $ref: '#/definitions/models.DstConfig'
       fail_over:
         type: boolean
-      group_max_size:
-        type: integer
-      group_timeout:
-        type: integer
-      my_sql_config:
-        $ref: '#/definitions/models.MySQLConfig'
-      parallel_workers:
-        type: integer
-      repl_chan_buffer_size:
-        type: integer
       retry_times:
         type: integer
-      skip_create_db_table:
-        type: boolean
-      use_my_sql_dependency:
-        type: boolean
+      src_config:
+        $ref: '#/definitions/models.SrcConfig'
     type: object
   models.ConnectionInfo:
     properties:
@@ -192,7 +173,7 @@ definitions:
         description: failover default:true
         example: true
         type: boolean
-      is_mysql_password_encrypted:
+      is_password_encrypted:
         type: boolean
       job_id:
         type: string
@@ -217,7 +198,7 @@ definitions:
         description: failover default:true
         example: true
         type: boolean
-      is_mysql_password_encrypted:
+      is_password_encrypted:
         type: boolean
       job_id:
         type: string
@@ -382,6 +363,12 @@ definitions:
         type: string
       user:
         type: string
+    required:
+    - database_type
+    - host
+    - password
+    - port
+    - user
     type: object
   models.DelayCount:
     properties:
@@ -407,26 +394,24 @@ definitions:
     type: object
   models.DestTaskConfig:
     properties:
+      connection_config:
+        $ref: '#/definitions/models.DatabaseConnectionConfig'
       database_type:
         type: string
-      dependency_history_size:
-        type: integer
-      mysql_connection_config:
-        $ref: '#/definitions/models.DatabaseConnectionConfig'
-        description: todo 代码梳理后删除以下字段
       mysql_dest_task_config:
         $ref: '#/definitions/models.MysqlDestTaskConfig'
       node_id:
         type: string
-      parallel_workers:
-        type: integer
       task_name:
         type: string
-      use_my_sql_dependency:
-        type: boolean
     required:
-    - mysql_connection_config
+    - connection_config
     - task_name
+    type: object
+  models.DstConfig:
+    properties:
+      mysql_dest_task_config:
+        $ref: '#/definitions/models.MysqlDestTaskConfig'
     type: object
   models.DtleNodeInfo:
     properties:
@@ -567,17 +552,6 @@ definitions:
       text_en:
         type: string
     type: object
-  models.MySQLConfig:
-    properties:
-      binlog_relay:
-        type: boolean
-      dependency_history_size:
-        type: integer
-      parallel_workers:
-        type: integer
-      use_my_sql_dependency:
-        type: boolean
-    type: object
   models.MysqlDestTaskConfig:
     properties:
       dependency_history_size:
@@ -595,8 +569,6 @@ definitions:
         type: boolean
       gtid:
         type: string
-      mysql_connection_config:
-        $ref: '#/definitions/models.DatabaseConnectionConfig'
       wait_on_job:
         type: string
     type: object
@@ -684,8 +656,6 @@ definitions:
     type: object
   models.OracleSrcTaskConfig:
     properties:
-      oracle_connection_config:
-        $ref: '#/definitions/models.DatabaseConnectionConfig'
       scn:
         type: integer
     type: object
@@ -786,27 +756,37 @@ definitions:
       validated:
         type: boolean
     type: object
-  models.SrcTaskConfig:
+  models.SrcConfig:
     properties:
-      auto_gtid:
-        type: boolean
-      binlog_relay:
-        type: boolean
       chunk_size:
         type: integer
-      database_type:
-        type: string
       drop_table_if_exists:
         type: boolean
       group_max_size:
         type: integer
       group_timeout:
         type: integer
-      gtid:
-        description: todo 代码梳理后删除以下字段
-        type: string
-      mysql_connection_config:
+      mysql_src_task_config:
+        $ref: '#/definitions/models.MysqlSrcTaskConfig'
+      oracle_src_task_config:
+        $ref: '#/definitions/models.OracleSrcTaskConfig'
+      repl_chan_buffer_size:
+        type: integer
+      skip_create_db_table:
+        type: boolean
+    type: object
+  models.SrcTaskConfig:
+    properties:
+      chunk_size:
+        type: integer
+      connection_config:
         $ref: '#/definitions/models.DatabaseConnectionConfig'
+      drop_table_if_exists:
+        type: boolean
+      group_max_size:
+        type: integer
+      group_timeout:
+        type: integer
       mysql_src_task_config:
         $ref: '#/definitions/models.MysqlSrcTaskConfig'
       node_id:
@@ -827,10 +807,8 @@ definitions:
         type: boolean
       task_name:
         type: string
-      wait_on_job:
-        type: string
     required:
-    - mysql_connection_config
+    - connection_config
     - task_name
     type: object
   models.TableConfig:

@@ -2061,45 +2061,17 @@ var doc = `{
         "models.Configuration": {
             "type": "object",
             "properties": {
-                "binlog_relay": {
-                    "description": "todo oracle逻辑实现后删除",
-                    "type": "boolean"
-                },
-                "chunk_size": {
-                    "type": "integer"
-                },
-                "dependency_history_size": {
-                    "type": "integer"
-                },
-                "drop_table_if_exists": {
-                    "type": "boolean"
+                "dst_config": {
+                    "$ref": "#/definitions/models.DstConfig"
                 },
                 "fail_over": {
                     "type": "boolean"
                 },
-                "group_max_size": {
-                    "type": "integer"
-                },
-                "group_timeout": {
-                    "type": "integer"
-                },
-                "my_sql_config": {
-                    "$ref": "#/definitions/models.MySQLConfig"
-                },
-                "parallel_workers": {
-                    "type": "integer"
-                },
-                "repl_chan_buffer_size": {
-                    "type": "integer"
-                },
                 "retry_times": {
                     "type": "integer"
                 },
-                "skip_create_db_table": {
-                    "type": "boolean"
-                },
-                "use_my_sql_dependency": {
-                    "type": "boolean"
+                "src_config": {
+                    "$ref": "#/definitions/models.SrcConfig"
                 }
             }
         },
@@ -2153,7 +2125,7 @@ var doc = `{
                     "type": "boolean",
                     "example": true
                 },
-                "is_mysql_password_encrypted": {
+                "is_password_encrypted": {
                     "type": "boolean"
                 },
                 "job_id": {
@@ -2189,7 +2161,7 @@ var doc = `{
                     "type": "boolean",
                     "example": true
                 },
-                "is_mysql_password_encrypted": {
+                "is_password_encrypted": {
                     "type": "boolean"
                 },
                 "job_id": {
@@ -2412,6 +2384,13 @@ var doc = `{
         },
         "models.DatabaseConnectionConfig": {
             "type": "object",
+            "required": [
+                "database_type",
+                "host",
+                "password",
+                "port",
+                "user"
+            ],
             "properties": {
                 "database_type": {
                     "type": "string"
@@ -2471,19 +2450,15 @@ var doc = `{
         "models.DestTaskConfig": {
             "type": "object",
             "required": [
-                "mysql_connection_config",
+                "connection_config",
                 "task_name"
             ],
             "properties": {
+                "connection_config": {
+                    "$ref": "#/definitions/models.DatabaseConnectionConfig"
+                },
                 "database_type": {
                     "type": "string"
-                },
-                "dependency_history_size": {
-                    "type": "integer"
-                },
-                "mysql_connection_config": {
-                    "description": "todo 代码梳理后删除以下字段",
-                    "$ref": "#/definitions/models.DatabaseConnectionConfig"
                 },
                 "mysql_dest_task_config": {
                     "$ref": "#/definitions/models.MysqlDestTaskConfig"
@@ -2491,14 +2466,16 @@ var doc = `{
                 "node_id": {
                     "type": "string"
                 },
-                "parallel_workers": {
-                    "type": "integer"
-                },
                 "task_name": {
                     "type": "string"
-                },
-                "use_my_sql_dependency": {
-                    "type": "boolean"
+                }
+            }
+        },
+        "models.DstConfig": {
+            "type": "object",
+            "properties": {
+                "mysql_dest_task_config": {
+                    "$ref": "#/definitions/models.MysqlDestTaskConfig"
                 }
             }
         },
@@ -2715,23 +2692,6 @@ var doc = `{
                 }
             }
         },
-        "models.MySQLConfig": {
-            "type": "object",
-            "properties": {
-                "binlog_relay": {
-                    "type": "boolean"
-                },
-                "dependency_history_size": {
-                    "type": "integer"
-                },
-                "parallel_workers": {
-                    "type": "integer"
-                },
-                "use_my_sql_dependency": {
-                    "type": "boolean"
-                }
-            }
-        },
         "models.MysqlDestTaskConfig": {
             "type": "object",
             "properties": {
@@ -2757,9 +2717,6 @@ var doc = `{
                 },
                 "gtid": {
                     "type": "string"
-                },
-                "mysql_connection_config": {
-                    "$ref": "#/definitions/models.DatabaseConnectionConfig"
                 },
                 "wait_on_job": {
                     "type": "string"
@@ -2895,9 +2852,6 @@ var doc = `{
         "models.OracleSrcTaskConfig": {
             "type": "object",
             "properties": {
-                "oracle_connection_config": {
-                    "$ref": "#/definitions/models.DatabaseConnectionConfig"
-                },
                 "scn": {
                     "type": "integer"
                 }
@@ -3052,24 +3006,11 @@ var doc = `{
                 }
             }
         },
-        "models.SrcTaskConfig": {
+        "models.SrcConfig": {
             "type": "object",
-            "required": [
-                "mysql_connection_config",
-                "task_name"
-            ],
             "properties": {
-                "auto_gtid": {
-                    "type": "boolean"
-                },
-                "binlog_relay": {
-                    "type": "boolean"
-                },
                 "chunk_size": {
                     "type": "integer"
-                },
-                "database_type": {
-                    "type": "string"
                 },
                 "drop_table_if_exists": {
                     "type": "boolean"
@@ -3080,12 +3021,41 @@ var doc = `{
                 "group_timeout": {
                     "type": "integer"
                 },
-                "gtid": {
-                    "description": "todo 代码梳理后删除以下字段",
-                    "type": "string"
+                "mysql_src_task_config": {
+                    "$ref": "#/definitions/models.MysqlSrcTaskConfig"
                 },
-                "mysql_connection_config": {
+                "oracle_src_task_config": {
+                    "$ref": "#/definitions/models.OracleSrcTaskConfig"
+                },
+                "repl_chan_buffer_size": {
+                    "type": "integer"
+                },
+                "skip_create_db_table": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "models.SrcTaskConfig": {
+            "type": "object",
+            "required": [
+                "connection_config",
+                "task_name"
+            ],
+            "properties": {
+                "chunk_size": {
+                    "type": "integer"
+                },
+                "connection_config": {
                     "$ref": "#/definitions/models.DatabaseConnectionConfig"
+                },
+                "drop_table_if_exists": {
+                    "type": "boolean"
+                },
+                "group_max_size": {
+                    "type": "integer"
+                },
+                "group_timeout": {
+                    "type": "integer"
                 },
                 "mysql_src_task_config": {
                     "$ref": "#/definitions/models.MysqlSrcTaskConfig"
@@ -3115,9 +3085,6 @@ var doc = `{
                     "type": "boolean"
                 },
                 "task_name": {
-                    "type": "string"
-                },
-                "wait_on_job": {
                     "type": "string"
                 }
             }
