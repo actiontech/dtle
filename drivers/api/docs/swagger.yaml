@@ -135,6 +135,7 @@ definitions:
   models.Configuration:
     properties:
       binlog_relay:
+        description: todo oracle逻辑实现后删除
         type: boolean
       chunk_size:
         type: integer
@@ -148,6 +149,8 @@ definitions:
         type: integer
       group_timeout:
         type: integer
+      my_sql_config:
+        $ref: '#/definitions/models.MySQLConfig'
       parallel_workers:
         type: integer
       repl_chan_buffer_size:
@@ -162,11 +165,11 @@ definitions:
   models.ConnectionInfo:
     properties:
       dst_data_base:
-        $ref: '#/definitions/models.MysqlConnectionConfig'
+        $ref: '#/definitions/models.DatabaseConnectionConfig'
       dst_kafka:
         $ref: '#/definitions/models.KafkaDestTaskConfig'
       src_data_base:
-        $ref: '#/definitions/models.MysqlConnectionConfig'
+        $ref: '#/definitions/models.DatabaseConnectionConfig'
     type: object
   models.ConnectionRespV2:
     properties:
@@ -365,6 +368,21 @@ definitions:
           $ref: '#/definitions/models.TableConfig'
         type: array
     type: object
+  models.DatabaseConnectionConfig:
+    properties:
+      database_type:
+        type: string
+      host:
+        type: string
+      password:
+        type: string
+      port:
+        type: integer
+      service_name:
+        type: string
+      user:
+        type: string
+    type: object
   models.DelayCount:
     properties:
       num:
@@ -394,7 +412,7 @@ definitions:
       dependency_history_size:
         type: integer
       mysql_connection_config:
-        $ref: '#/definitions/models.MysqlConnectionConfig'
+        $ref: '#/definitions/models.DatabaseConnectionConfig'
         description: todo 代码梳理后删除以下字段
       mysql_dest_task_config:
         $ref: '#/definitions/models.MysqlDestTaskConfig'
@@ -549,16 +567,16 @@ definitions:
       text_en:
         type: string
     type: object
-  models.MysqlConnectionConfig:
+  models.MySQLConfig:
     properties:
-      host:
-        type: string
-      password:
-        type: string
-      port:
+      binlog_relay:
+        type: boolean
+      dependency_history_size:
         type: integer
-      user:
-        type: string
+      parallel_workers:
+        type: integer
+      use_my_sql_dependency:
+        type: boolean
     type: object
   models.MysqlDestTaskConfig:
     properties:
@@ -578,7 +596,7 @@ definitions:
       gtid:
         type: string
       mysql_connection_config:
-        $ref: '#/definitions/models.MysqlConnectionConfig'
+        $ref: '#/definitions/models.DatabaseConnectionConfig'
       wait_on_job:
         type: string
     type: object
@@ -664,27 +682,12 @@ definitions:
           $ref: '#/definitions/models.NodeListItemV2'
         type: array
     type: object
-  models.OracleConnectionConfig:
-    properties:
-      host:
-        type: string
-      password:
-        type: string
-      port:
-        type: integer
-      scn:
-        type: integer
-      user:
-        type: string
-    type: object
   models.OracleSrcTaskConfig:
     properties:
       oracle_connection_config:
-        $ref: '#/definitions/models.OracleConnectionConfig'
+        $ref: '#/definitions/models.DatabaseConnectionConfig'
       scn:
         type: integer
-      service_name:
-        type: string
     type: object
   models.PauseJobRespV2:
     properties:
@@ -803,7 +806,7 @@ definitions:
         description: todo 代码梳理后删除以下字段
         type: string
       mysql_connection_config:
-        $ref: '#/definitions/models.MysqlConnectionConfig'
+        $ref: '#/definitions/models.DatabaseConnectionConfig'
       mysql_src_task_config:
         $ref: '#/definitions/models.MysqlSrcTaskConfig'
       node_id:

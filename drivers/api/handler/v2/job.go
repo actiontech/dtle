@@ -555,7 +555,7 @@ func buildMysqlTableConfigMap(configs []*models.TableConfig) []map[string]interf
 	return res
 }
 
-func buildMysqlConnectionConfigMap(config *models.MysqlConnectionConfig) map[string]interface{} {
+func buildMysqlConnectionConfigMap(config *models.DatabaseConnectionConfig) map[string]interface{} {
 	if nil == config {
 		return nil
 	}
@@ -817,7 +817,7 @@ func buildMysqlSrcTaskDetail(taskName string, internalTaskConfig common.DtleTask
 
 	replicateDoDb := convertInternalMysqlDataSourceToApi(internalTaskConfig.ReplicateDoDb)
 	replicateIgnoreDb := convertInternalMysqlDataSourceToApi(internalTaskConfig.ReplicateIgnoreDb)
-	mysqlConnectionConfig := new(models.MysqlConnectionConfig)
+	mysqlConnectionConfig := new(models.DatabaseConnectionConfig)
 	mysqlConnectionConfig.Host = internalTaskConfig.ConnectionConfig.Host
 	mysqlConnectionConfig.Port = uint32(internalTaskConfig.ConnectionConfig.Port)
 	mysqlConnectionConfig.User = internalTaskConfig.ConnectionConfig.User
@@ -849,7 +849,7 @@ func buildMysqlSrcTaskDetail(taskName string, internalTaskConfig common.DtleTask
 }
 
 func buildMysqlDestTaskDetail(taskName string, internalTaskConfig common.DtleTaskConfig, allocsFromNomad []nomadApi.Allocation) (destTaskDetail models.MysqlDestTaskDetail) {
-	mysqlConnectionConfig := new(models.MysqlConnectionConfig)
+	mysqlConnectionConfig := new(models.DatabaseConnectionConfig)
 	mysqlConnectionConfig.Host = internalTaskConfig.ConnectionConfig.Host
 	mysqlConnectionConfig.Port = uint32(internalTaskConfig.ConnectionConfig.Port)
 	mysqlConnectionConfig.User = internalTaskConfig.ConnectionConfig.User

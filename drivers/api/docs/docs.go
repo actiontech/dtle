@@ -2062,6 +2062,7 @@ var doc = `{
             "type": "object",
             "properties": {
                 "binlog_relay": {
+                    "description": "todo oracle逻辑实现后删除",
                     "type": "boolean"
                 },
                 "chunk_size": {
@@ -2081,6 +2082,9 @@ var doc = `{
                 },
                 "group_timeout": {
                     "type": "integer"
+                },
+                "my_sql_config": {
+                    "$ref": "#/definitions/models.MySQLConfig"
                 },
                 "parallel_workers": {
                     "type": "integer"
@@ -2103,13 +2107,13 @@ var doc = `{
             "type": "object",
             "properties": {
                 "dst_data_base": {
-                    "$ref": "#/definitions/models.MysqlConnectionConfig"
+                    "$ref": "#/definitions/models.DatabaseConnectionConfig"
                 },
                 "dst_kafka": {
                     "$ref": "#/definitions/models.KafkaDestTaskConfig"
                 },
                 "src_data_base": {
-                    "$ref": "#/definitions/models.MysqlConnectionConfig"
+                    "$ref": "#/definitions/models.DatabaseConnectionConfig"
                 }
             }
         },
@@ -2406,6 +2410,29 @@ var doc = `{
                 }
             }
         },
+        "models.DatabaseConnectionConfig": {
+            "type": "object",
+            "properties": {
+                "database_type": {
+                    "type": "string"
+                },
+                "host": {
+                    "type": "string"
+                },
+                "password": {
+                    "type": "string"
+                },
+                "port": {
+                    "type": "integer"
+                },
+                "service_name": {
+                    "type": "string"
+                },
+                "user": {
+                    "type": "string"
+                }
+            }
+        },
         "models.DelayCount": {
             "type": "object",
             "properties": {
@@ -2456,7 +2483,7 @@ var doc = `{
                 },
                 "mysql_connection_config": {
                     "description": "todo 代码梳理后删除以下字段",
-                    "$ref": "#/definitions/models.MysqlConnectionConfig"
+                    "$ref": "#/definitions/models.DatabaseConnectionConfig"
                 },
                 "mysql_dest_task_config": {
                     "$ref": "#/definitions/models.MysqlDestTaskConfig"
@@ -2688,20 +2715,20 @@ var doc = `{
                 }
             }
         },
-        "models.MysqlConnectionConfig": {
+        "models.MySQLConfig": {
             "type": "object",
             "properties": {
-                "host": {
-                    "type": "string"
+                "binlog_relay": {
+                    "type": "boolean"
                 },
-                "password": {
-                    "type": "string"
-                },
-                "port": {
+                "dependency_history_size": {
                     "type": "integer"
                 },
-                "user": {
-                    "type": "string"
+                "parallel_workers": {
+                    "type": "integer"
+                },
+                "use_my_sql_dependency": {
+                    "type": "boolean"
                 }
             }
         },
@@ -2732,7 +2759,7 @@ var doc = `{
                     "type": "string"
                 },
                 "mysql_connection_config": {
-                    "$ref": "#/definitions/models.MysqlConnectionConfig"
+                    "$ref": "#/definitions/models.DatabaseConnectionConfig"
                 },
                 "wait_on_job": {
                     "type": "string"
@@ -2865,37 +2892,14 @@ var doc = `{
                 }
             }
         },
-        "models.OracleConnectionConfig": {
-            "type": "object",
-            "properties": {
-                "host": {
-                    "type": "string"
-                },
-                "password": {
-                    "type": "string"
-                },
-                "port": {
-                    "type": "integer"
-                },
-                "scn": {
-                    "type": "integer"
-                },
-                "user": {
-                    "type": "string"
-                }
-            }
-        },
         "models.OracleSrcTaskConfig": {
             "type": "object",
             "properties": {
                 "oracle_connection_config": {
-                    "$ref": "#/definitions/models.OracleConnectionConfig"
+                    "$ref": "#/definitions/models.DatabaseConnectionConfig"
                 },
                 "scn": {
                     "type": "integer"
-                },
-                "service_name": {
-                    "type": "string"
                 }
             }
         },
@@ -3081,7 +3085,7 @@ var doc = `{
                     "type": "string"
                 },
                 "mysql_connection_config": {
-                    "$ref": "#/definitions/models.MysqlConnectionConfig"
+                    "$ref": "#/definitions/models.DatabaseConnectionConfig"
                 },
                 "mysql_src_task_config": {
                     "$ref": "#/definitions/models.MysqlSrcTaskConfig"

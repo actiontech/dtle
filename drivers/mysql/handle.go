@@ -188,7 +188,7 @@ func (h *taskHandle) NewRunner(d *Driver) (runner DriverHandle, err error) {
 			if err != nil {
 				return nil, errors.Wrap(err, "NewKafkaRunner")
 			}
-		} else if true {
+		} else if h.driverConfig.OracleConfig != nil {
 			h.logger.Debug("found oracle dest", "OracleConfig", h.driverConfig.OracleConfig)
 			runner, err = applier.NewApplierOracle(ctx, h.driverConfig, h.logger, d.storeManager,
 				d.config.NatsAdvertise, h.waitCh, d.eventer, h.taskConfig)

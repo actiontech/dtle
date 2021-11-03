@@ -42,31 +42,45 @@ type DtleNodeInfo struct {
 	Source     string `json:"source"`
 }
 
-type DataBase struct {
-	Addr     string `json:"addr"`
-	User     string `json:"user"`
-	PassWord string `json:"pass_word"`
-}
-
 type ConnectionInfo struct {
-	SrcDataBase MysqlConnectionConfig `json:"src_data_base"`
-	DstDataBase MysqlConnectionConfig `json:"dst_data_base"`
-	DstKafka    KafkaDestTaskConfig   `json:"dst_kafka"`
+	SrcDataBase DatabaseConnectionConfig `json:"src_data_base"`
+	DstDataBase DatabaseConnectionConfig `json:"dst_data_base"`
+	DstKafka    KafkaDestTaskConfig      `json:"dst_kafka"`
 }
 
 type Configuration struct {
+	FailOver           bool          `json:"fail_over"`
+	RetryTimes         int           `json:"retry_times"`
+	ReplChanBufferSize int           `json:"repl_chan_buffer_size"`
+	GroupMaxSize       int           `json:"group_max_size"`
+	ChunkSize          int           `json:"chunk_size"`
+	GroupTimeout       int           `json:"group_timeout"`
+	DropTableIfExists  bool          `json:"drop_table_if_exists"`
+	SkipCreateDbTable  bool          `json:"skip_create_db_table"`
+	MySQLConfig        *MySQLConfig  `json:"my_sql_config,omitempty"`
+	OracleConfig       *OracleConfig `json:"oracle_config"`
+	// todo oracle逻辑实现后删除
 	BinlogRelay           bool `json:"binlog_relay"`
-	FailOver              bool `json:"fail_over"`
-	RetryTimes            int  `json:"retry_times"`
 	ParallelWorkers       int  `json:"parallel_workers"`
-	ReplChanBufferSize    int  `json:"repl_chan_buffer_size"`
-	GroupMaxSize          int  `json:"group_max_size"`
-	ChunkSize             int  `json:"chunk_size"`
-	GroupTimeout          int  `json:"group_timeout"`
-	DropTableIfExists     bool `json:"drop_table_if_exists"`
-	SkipCreateDbTable     bool `json:"skip_create_db_table"`
 	UseMySQLDependency    bool `json:"use_my_sql_dependency"`
 	DependencyHistorySize int  `json:"dependency_history_size"`
+}
+
+type MySQLConfig struct {
+	BinlogRelay           bool `json:"binlog_relay"`
+	ParallelWorkers       int  `json:"parallel_workers"`
+	UseMySQLDependency    bool `json:"use_my_sql_dependency"`
+	DependencyHistorySize int  `json:"dependency_history_size"`
+}
+type OracleConfig struct {
+}
+
+type TaskLog struct {
+	TaskEvents   []TaskEvent `json:"task_events"`
+	NodeId       string      `json:"node_id"`
+	AllocationId string      `json:"allocation_id"`
+	Address      string      `json:"address"`
+	Target       string      `json:"target"`
 }
 
 type BasicTaskProfile struct {
@@ -76,14 +90,6 @@ type BasicTaskProfile struct {
 	Configuration     Configuration       `json:"configuration"`
 	ReplicateDoDb     []*DataSourceConfig `json:"replicate_do_db"`
 	ReplicateIgnoreDb []*DataSourceConfig `json:"replicate_ignore_db"`
-}
-
-type TaskLog struct {
-	TaskEvents   []TaskEvent `json:"task_events"`
-	NodeId       string      `json:"node_id"`
-	AllocationId string      `json:"allocation_id"`
-	Address      string      `json:"address"`
-	Target       string      `json:"target"`
 }
 
 type MysqlToMysqlJobDetailRespV2 struct {
@@ -139,25 +145,24 @@ type SrcTaskConfig struct {
 	ChunkSize           int64               `json:"chunk_size"`
 
 	// todo 代码梳理后删除以下字段
-	Gtid                  string                 `json:"gtid"`
-	MysqlConnectionConfig *MysqlConnectionConfig `json:"mysql_connection_config" validate:"required"`
-	BinlogRelay           bool                   `json:"binlog_relay"`
-	WaitOnJob             string                 `json:"wait_on_job"`
-	AutoGtid              bool                   `json:"auto_gtid"`
+	Gtid                  string                    `json:"gtid"`
+	MysqlConnectionConfig *DatabaseConnectionConfig `json:"mysql_connection_config" validate:"required"`
+	BinlogRelay           bool                      `json:"binlog_relay"`
+	WaitOnJob             string                    `json:"wait_on_job"`
+	AutoGtid              bool                      `json:"auto_gtid"`
 }
 
 type MysqlSrcTaskConfig struct {
-	Gtid                  string                 `json:"gtid"`
-	MysqlConnectionConfig *MysqlConnectionConfig `json:"mysql_connection_config"`
-	BinlogRelay           bool                   `json:"binlog_relay"`
-	WaitOnJob             string                 `json:"wait_on_job"`
-	AutoGtid              bool                   `json:"auto_gtid"`
+	Gtid                  string                    `json:"gtid"`
+	MysqlConnectionConfig *DatabaseConnectionConfig `json:"mysql_connection_config"`
+	BinlogRelay           bool                      `json:"binlog_relay"`
+	WaitOnJob             string                    `json:"wait_on_job"`
+	AutoGtid              bool                      `json:"auto_gtid"`
 }
 
 type OracleSrcTaskConfig struct {
-	Scn                    int                     `json:"scn"`
-	ServiceName            string                  `json:"service_name"`
-	OracleConnectionConfig *OracleConnectionConfig `json:"oracle_connection_config"`
+	Scn                    int                       `json:"scn"`
+	OracleConnectionConfig *DatabaseConnectionConfig `json:"oracle_connection_config"`
 }
 
 type DestTaskConfig struct {
@@ -167,10 +172,10 @@ type DestTaskConfig struct {
 	MysqlDestTaskConfig MysqlDestTaskConfig `json:"mysql_dest_task_config"`
 
 	// todo 代码梳理后删除以下字段
-	MysqlConnectionConfig *MysqlConnectionConfig `json:"mysql_connection_config" validate:"required"`
-	ParallelWorkers       int                    `json:"parallel_workers"`
-	UseMySQLDependency    bool                   `json:"use_my_sql_dependency"`
-	DependencyHistorySize int                    `json:"dependency_history_size"`
+	MysqlConnectionConfig *DatabaseConnectionConfig `json:"mysql_connection_config" validate:"required"`
+	ParallelWorkers       int                       `json:"parallel_workers"`
+	UseMySQLDependency    bool                      `json:"use_my_sql_dependency"`
+	DependencyHistorySize int                       `json:"dependency_history_size"`
 }
 
 type MysqlDestTaskConfig struct {
@@ -193,19 +198,13 @@ type TableConfig struct {
 	ColumnMapFrom []string `json:"column_map_from"`
 	Where         string   `json:"where"`
 }
-type DataBaseConnectionConfig struct {
-	Host     string `json:"host"`
-	Port     uint32 `json:"port"`
-	User     string `json:"user"`
-	Password string `json:"password"`
-}
-type MysqlConnectionConfig struct {
-	DataBaseConnectionConfig
-}
-
-type OracleConnectionConfig struct {
-	DataBaseConnectionConfig
-	Scn int64 `json:"scn"`
+type DatabaseConnectionConfig struct {
+	Host         string `json:"host"`
+	Port         uint32 `json:"port"`
+	User         string `json:"user"`
+	Password     string `json:"password"`
+	ServiceName  string `json:"service_name"`
+	DatabaseType string `json:"database_type"`
 }
 
 type CreateOrUpdateMysqlToMysqlJobParamV2 struct {
