@@ -593,117 +593,115 @@ func (b *BinlogReader) handleQueryEvent(ev *replication.BinlogEvent,
 			}
 
 			sql := queryInfo.sql
-			if sql != "" {
-				realSchema := g.StringElse(queryInfo.table.Schema, currentSchema)
-				tableName := queryInfo.table.Table
+			realSchema := g.StringElse(queryInfo.table.Schema, currentSchema)
+			tableName := queryInfo.table.Table
 
-				if b.skipQueryDDL(realSchema, tableName) {
-					b.logger.Info("Skip QueryEvent", "currentSchema", currentSchema, "sql", sql,
-						"realSchema", realSchema, "tableName", tableName, "gno", gno)
-				} else {
-					err = b.updateCurrentReplicateDoDb(realSchema, tableName)
+			if b.skipQueryDDL(realSchema, tableName) {
+				b.logger.Info("Skip QueryEvent", "currentSchema", currentSchema, "sql", sql,
+					"realSchema", realSchema, "tableName", tableName, "gno", gno)
+			} else {
+				err = b.updateCurrentReplicateDoDb(realSchema, tableName)
+				if err != nil {
+					return errors.Wrap(err, "updateCurrentReplicateDoDb")
+				}
+
+				if realSchema != currentSchema {
+					schema = b.findCurrentSchema(realSchema)
+				}
+				table := b.findCurrentTable(schema, tableName)
+
+				skipEvent = skipBySqlFilter(queryInfo.ast, b.sqlFilter)
+				switch realAst := queryInfo.ast.(type) {
+				case *ast.CreateDatabaseStmt:
+					b.sqleAfterCreateSchema(queryInfo.table.Schema)
+				case *ast.CreateTableStmt:
+					b.logger.Debug("ddl is create table")
+					err := b.updateTableMeta(table, realSchema, tableName, gno, query)
 					if err != nil {
-						return errors.Wrap(err, "updateCurrentReplicateDoDb")
+						return err
 					}
+				//case *ast.DropTableStmt:
+				case *ast.AlterTableStmt:
+					b.logger.Debug("ddl is alter table.", "specs", realAst.Specs)
 
-					if realSchema != currentSchema {
-						schema = b.findCurrentSchema(realSchema)
-					}
-					table := b.findCurrentTable(schema, tableName)
+					fromTable := table
+					tableNameX := tableName
 
-					skipEvent = skipBySqlFilter(queryInfo.ast, b.sqlFilter)
-					switch realAst := queryInfo.ast.(type) {
-					case *ast.CreateDatabaseStmt:
-						b.sqleAfterCreateSchema(queryInfo.table.Schema)
-					case *ast.CreateTableStmt:
-						b.logger.Debug("ddl is create table")
-						err := b.updateTableMeta(table, realSchema, tableName, gno, query)
-						if err != nil {
-							return err
-						}
-					//case *ast.DropTableStmt:
-					case *ast.AlterTableStmt:
-						b.logger.Debug("ddl is alter table.", "specs", realAst.Specs)
-
-						fromTable := table
-						tableNameX := tableName
-
-						for iSpec := range realAst.Specs {
-							switch realAst.Specs[iSpec].Tp {
-							case ast.AlterTableRenameTable:
-								fromTable = nil
-								tableNameX = realAst.Specs[iSpec].NewTable.Name.O
-							default:
-								// do nothing
-							}
-						}
-						err := b.updateTableMeta(fromTable, realSchema, tableNameX, gno, query)
-						if err != nil {
-							return err
-						}
-					case *ast.RenameTableStmt:
-						for _, tt := range realAst.TableToTables {
-							newSchemaName := g.StringElse(tt.NewTable.Schema.O, currentSchema)
-							tableName := tt.NewTable.Name.O
-							b.logger.Debug("updating meta for rename table", "newSchema", newSchemaName,
-								"newTable", tableName)
-							if !b.skipQueryDDL(newSchemaName, tableName) {
-								err := b.updateTableMeta(nil, newSchemaName, tableName, gno, query)
-								if err != nil {
-									return err
-								}
-							} else {
-								b.logger.Debug("not updating meta for rename table", "newSchema", newSchemaName,
-									"newTable", tableName)
-							}
+					for iSpec := range realAst.Specs {
+						switch realAst.Specs[iSpec].Tp {
+						case ast.AlterTableRenameTable:
+							fromTable = nil
+							tableNameX = realAst.Specs[iSpec].NewTable.Name.O
+						default:
+							// do nothing
 						}
 					}
-
-					if schema != nil && schema.TableSchemaRename != "" {
-						queryInfo.table.Schema = schema.TableSchemaRename
-						realSchema = schema.TableSchemaRename
-					} else {
-						// schema == nil means it is not explicit in ReplicateDoDb, thus no renaming
-						// or schema.TableSchemaRename == "" means no renaming
+					err := b.updateTableMeta(fromTable, realSchema, tableNameX, gno, query)
+					if err != nil {
+						return err
 					}
-
-					if table != nil && table.TableRename != "" {
-						queryInfo.table.Table = table.TableRename
-					}
-					// mapping
-					schemaRenameMap, schemaNameToTablesRenameMap := b.generateRenameMaps()
-					if len(schemaRenameMap) > 0 || len(schemaNameToTablesRenameMap) > 0 {
-						sql, err = b.loadMapping(sql, currentSchema, schemaRenameMap, schemaNameToTablesRenameMap, queryInfo.ast)
-						if nil != err {
-							return fmt.Errorf("ddl mapping failed: %v", err)
-						}
-					}
-
-					if skipEvent {
-						b.logger.Debug("skipped a ddl event.", "query", query)
-					} else {
-						if realSchema == "" || queryInfo.table.Table == "" {
-							b.logger.Info("NewQueryEventAffectTable. found empty schema or table.",
-								"schema", realSchema, "table", queryInfo.table.Table, "query", sql)
-						}
-
-						event := common.NewQueryEventAffectTable(
-							currentSchemaRename,
-							b.setDtleQuery(sql),
-							common.NotDML,
-							queryInfo.table,
-							ev.Header.Timestamp,
-							evt.StatusVars,
-						)
-						if table != nil {
-							tableBs, err := common.EncodeTable(table)
+				case *ast.RenameTableStmt:
+					for _, tt := range realAst.TableToTables {
+						newSchemaName := g.StringElse(tt.NewTable.Schema.O, currentSchema)
+						tableName := tt.NewTable.Name.O
+						b.logger.Debug("updating meta for rename table", "newSchema", newSchemaName,
+							"newTable", tableName)
+						if !b.skipQueryDDL(newSchemaName, tableName) {
+							err := b.updateTableMeta(nil, newSchemaName, tableName, gno, query)
 							if err != nil {
-								return errors.Wrap(err, "EncodeTable(table)")
+								return err
 							}
-							event.Table = tableBs
+						} else {
+							b.logger.Debug("not updating meta for rename table", "newSchema", newSchemaName,
+								"newTable", tableName)
 						}
-						b.entryContext.Entry.Events = append(b.entryContext.Entry.Events, event)
 					}
+				}
+
+				if schema != nil && schema.TableSchemaRename != "" {
+					queryInfo.table.Schema = schema.TableSchemaRename
+					realSchema = schema.TableSchemaRename
+				} else {
+					// schema == nil means it is not explicit in ReplicateDoDb, thus no renaming
+					// or schema.TableSchemaRename == "" means no renaming
+				}
+
+				if table != nil && table.TableRename != "" {
+					queryInfo.table.Table = table.TableRename
+				}
+				// mapping
+				schemaRenameMap, schemaNameToTablesRenameMap := b.generateRenameMaps()
+				if len(schemaRenameMap) > 0 || len(schemaNameToTablesRenameMap) > 0 {
+					sql, err = b.loadMapping(sql, currentSchema, schemaRenameMap, schemaNameToTablesRenameMap, queryInfo.ast)
+					if nil != err {
+						return fmt.Errorf("ddl mapping failed: %v", err)
+					}
+				}
+
+				if skipEvent {
+					b.logger.Debug("skipped a ddl event.", "query", query)
+				} else {
+					if realSchema == "" || queryInfo.table.Table == "" {
+						b.logger.Info("NewQueryEventAffectTable. found empty schema or table.",
+							"schema", realSchema, "table", queryInfo.table.Table, "query", sql)
+					}
+
+					event := common.NewQueryEventAffectTable(
+						currentSchemaRename,
+						b.setDtleQuery(sql),
+						common.NotDML,
+						queryInfo.table,
+						ev.Header.Timestamp,
+						evt.StatusVars,
+					)
+					if table != nil {
+						tableBs, err := common.EncodeTable(table)
+						if err != nil {
+							return errors.Wrap(err, "EncodeTable(table)")
+						}
+						event.Table = tableBs
+					}
+					b.entryContext.Entry.Events = append(b.entryContext.Entry.Events, event)
 				}
 			}
 			b.entryContext.OriginalSize += len(ev.RawData)

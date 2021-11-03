@@ -340,6 +340,17 @@ func TestBinlogReader_resolveQuery(t *testing.T) {
 				sql: "DROP TABLE IF EXISTS `skip`.`b`",
 			},
 			wantErr: false,
+		}, {
+			name:       "empty",
+			args:       args{
+				currentSchema: "",
+				sql:           "",
+			},
+			wantResult: parseQueryResult{
+				isRecognized: false,
+				sql:          "",
+			},
+			wantErr:    false,
 		},
 	}
 	for _, tt := range tests {

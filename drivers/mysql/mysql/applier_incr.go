@@ -424,7 +424,6 @@ func (a *ApplierIncr) heterogeneousReplay() {
 
 			for _, entry := range binlogEntries.Entries {
 				a.binlogEntryQueue <- entry
-				a.logger.Debug("")
 				atomic.AddInt64(a.memory2, int64(entry.Size()))
 			}
 
