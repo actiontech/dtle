@@ -1753,7 +1753,7 @@ func (b *BinlogReader) handleRowsEvent(ev *replication.BinlogEvent, rowsEvent *r
 		ev.Header.Timestamp,
 	)
 	if table != nil {
-		dmlEvent.FKParent = len(table.Table.FKParent) > 0
+		dmlEvent.FKParent = len(table.Table.FKChildren) > 0
 	}
 	dmlEvent.Flags = make([]byte, 2)
 	binary.LittleEndian.PutUint16(dmlEvent.Flags, rowsEvent.Flags)
@@ -1915,9 +1915,9 @@ func (b *BinlogReader) handleRowsEvent(ev *replication.BinlogEvent, rowsEvent *r
 func (b *BinlogReader) removeFKChildSchema(schema string) {
 	for _, schemaContext := range b.tables {
 		for _, tableContext := range schemaContext.TableMap {
-			for k, _ := range tableContext.Table.FKParent {
+			for k, _ := range tableContext.Table.FKChildren {
 				if k.Schema == schema {
-					delete(tableContext.Table.FKParent, k)
+					delete(tableContext.Table.FKChildren, k)
 				}
 			}
 
@@ -1928,7 +1928,7 @@ func (b *BinlogReader) removeFKChild(table common.SchemaTable) {
 	for _, schemaContext := range b.tables {
 		for _, tableContext := range schemaContext.TableMap {
 			// NOTE it is ok to delete not existing items
-			delete(tableContext.Table.FKParent, table)
+			delete(tableContext.Table.FKChildren, table)
 		}
 	}
 }
@@ -1936,9 +1936,9 @@ func (b *BinlogReader) removeFKChild(table common.SchemaTable) {
 func (b *BinlogReader) renameFKChild(oldHash common.SchemaTable, newHash common.SchemaTable) {
 	for _, schemaContext := range b.tables {
 		for _, tableContext := range schemaContext.TableMap {
-			if _, ok := tableContext.Table.FKParent[oldHash]; ok {
-				delete(tableContext.Table.FKParent, oldHash)
-				tableContext.Table.FKParent[newHash] = struct{}{}
+			if _, ok := tableContext.Table.FKChildren[oldHash]; ok {
+				delete(tableContext.Table.FKChildren, oldHash)
+				tableContext.Table.FKChildren[newHash] = struct{}{}
 			}
 		}
 	}
@@ -1955,5 +1955,5 @@ func (b *BinlogReader) addFKChild(parentSchema string, parentTable string, child
 		b.logger.Warn("FK parent not found 2", "schema", parentSchema, "table", parentTable)
 		return
 	}
-	tableContext.FKParent[childST] = struct{}{}
+	tableContext.FKChildren[childST] = struct{}{}
 }
