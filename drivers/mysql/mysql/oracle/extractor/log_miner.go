@@ -1,9 +1,12 @@
 package extractor
 
 import (
+	"container/list"
 	"context"
+	"crypto/md5"
 	"database/sql"
 	gosql "database/sql"
+	"encoding/hex"
 	"fmt"
 	"time"
 
@@ -168,15 +171,32 @@ type LogMinerRecord struct {
 	TableName string
 	SQLRedo   string
 	SQLUndo   string
-	Operation string
+	Operation int
+	XId       []byte
+	Csf       int
+	RowId     string
+	Rollback  int
+	RsId      string
+	StartTime string
+	Username  string
+}
+
+func (r *LogMinerRecord) TxId() string {
+	h := md5.New()
+	h.Write(r.XId)
+	return hex.EncodeToString(h.Sum(nil))
 }
 
 func (r *LogMinerRecord) String() string {
 	return fmt.Sprintf(`
-scn: %d, seg_owner: %s, table_name: %s, op: %s
-sql: %s`, r.SCN, r.SegOwner, r.TableName, r.Operation, r.SQLRedo,
+scn: %d, seg_owner: %s, table_name: %s, op: %d, xid: %s, rb: %d
+row_id: %s, username: %s,
+sql: %s`, r.SCN, r.SegOwner, r.TableName, r.Operation, r.TxId(), r.Rollback,
+		r.RowId, r.Username,
+		r.SQLRedo,
 	)
 }
+
 func (l *LogMinerStream) buildFilterSchemaTable() (filterSchemaTable string) {
 	// demo :
 	// AND(
@@ -214,17 +234,30 @@ SELECT
 	seg_owner,
 	table_name,
 	sql_redo,
- 	sql_undo,
-	operation
+	sql_undo,
+	operation_code,
+	xid,
+	csf,
+	row_id,
+	rollback,
+	rs_id,
+	timestamp,
+	username
 FROM 
 	V$LOGMNR_CONTENTS
 WHERE
 	SCN > %d
     AND SCN <= %d
-    %s
-ORDER BY
-	scn DESC
+	AND (
+		(operation_code IN (6,7,34,36))
+		OR 
+		(operation_code IN (1,2,3) AND seg_owner not in ('SYS','SYSTEM','APPQOSSYS','AUDSYS','CTXSYS','DVSYS','DBSFWUSER',
+		'DBSNMP','GSMADMIN_INTERNAL','LBACSYS','MDSYS','OJVMSYS','OLAPSYS','ORDDATA',
+    	'ORDSYS','OUTLN','WMSYS','XDB') %s
+		)
+	)
 `, startScn, endScn, l.buildFilterSchemaTable())
+
 	l.logger.Debug("Get logMiner record", "QuerySql", query)
 	rows, err := l.oracleDB.LogMinerConn.QueryContext(context.TODO(), query)
 	if err != nil {
@@ -232,12 +265,41 @@ ORDER BY
 	}
 	defer rows.Close()
 
-	var lrs []*LogMinerRecord
-	for rows.Next() {
+	scan := func (rows *sql.Rows) (*LogMinerRecord, error) {
 		lr := &LogMinerRecord{}
-		err = rows.Scan(&lr.SCN, &lr.SegOwner, &lr.TableName, &lr.SQLRedo, &lr.SQLUndo, &lr.Operation)
+		err = rows.Scan(&lr.SCN, &lr.SegOwner, &lr.TableName, &lr.SQLRedo,&lr.SQLUndo, &lr.Operation, &lr.XId,
+			&lr.Csf, &lr.RowId, &lr.Rollback, &lr.RsId, &lr.StartTime, &lr.Username)
 		if err != nil {
 			return nil, err
+		}
+		return lr, nil
+	}
+	var lrs []*LogMinerRecord
+	for rows.Next() {
+		lr, err := scan(rows)
+		if err != nil {
+			return nil, err
+		}
+		// 1 = indicates that either SQL_REDO or SQL_UNDO is greater than 4000 bytes in size
+		// and is continued in the next row returned by the view
+		if lr.Csf == 1 {
+			redoLog := strings.Builder{}
+			undoLog := strings.Builder{}
+			redoLog.WriteString(lr.SQLRedo)
+			undoLog.WriteString(lr.SQLUndo)
+			for rows.Next() {
+				lr2,err := scan(rows)
+				if err != nil {
+					return nil, err
+				}
+				redoLog.WriteString(lr2.SQLRedo)
+				undoLog.WriteString(lr2.SQLUndo)
+				if lr2.Csf != 1 {
+					break
+				}
+			}
+			lr.SQLRedo = redoLog.String()
+			lr.SQLUndo = undoLog.String()
 		}
 		l.logger.Debug("Get logMiner record", "RedoSQL", lr.SQLRedo, "UndoSQL", lr.SQLUndo)
 		lrs = append(lrs, lr)
@@ -365,6 +427,106 @@ WHERE
 //	return buf.String(), nil
 //}
 
+type LogMinerTx struct {
+	transactionId string
+	startScn      int64
+	endScn        int64
+	records       []*LogMinerRecord
+}
+
+func (l *LogMinerTx) String() string {
+	if len(l.records) == 0 {
+		return ""
+	}
+	d := strings.Builder{}
+	d.WriteString("================\n")
+	for _, r := range l.records {
+		d.WriteString(r.String())
+		d.WriteString("\n")
+	}
+	d.WriteString("================\n")
+	return fmt.Sprintf(`transaction id: %s, start scn: %d, end scn: %d
+%s`, l.transactionId, l.startScn, l.endScn, d.String())
+}
+
+type LogMinerTxCache struct {
+	index   map[string] /*transaction id */ *list.Element
+	cache   *list.List
+	Handler func(tx *LogMinerTx) error
+}
+
+func NewLogMinerTxCache() *LogMinerTxCache {
+	return &LogMinerTxCache{
+		index: map[string]*list.Element{},
+		cache: list.New(),
+		Handler: func(tx *LogMinerTx) error {
+			return nil
+		},// default empty handler
+	}
+}
+
+func (lc *LogMinerTxCache) getFirstActiveTx() *LogMinerTx {
+	el := lc.cache.Front()
+	if el == nil {
+		return nil
+	}
+	return el.Value.(*LogMinerTx)
+}
+
+func (lc *LogMinerTxCache) startTx(txId string, startScn int64) {
+	if _, ok := lc.index[txId]; !ok {
+		tx := &LogMinerTx{
+			transactionId: txId,
+			startScn:      startScn,
+			records:       []*LogMinerRecord{},
+		}
+		el := lc.cache.PushBack(tx)
+		lc.index[txId] = el
+	}
+}
+
+func (lc *LogMinerTxCache) commitTx(txId string, endScn int64) {
+	if el, ok := lc.index[txId]; ok {
+		tx := el.Value.(*LogMinerTx)
+		tx.endScn = endScn
+		if len(tx.records) != 0 {
+			lc.Handler(tx)
+			//l.ProcessedScn = t.endScn // TODO: support restart, no data lose or no data repeat exec.
+		} else {
+			fmt.Printf("empty transaction %s, start scn: %d, end scn: %d\n",
+				tx.transactionId, tx.startScn, tx.endScn)
+		}
+		delete(lc.index, txId)
+		lc.cache.Remove(el)
+	}
+}
+
+func (lc *LogMinerTxCache) rollbackTx(txId string, endScn int64) {
+	if el, ok := lc.index[txId]; ok {
+		tx := el.Value.(*LogMinerTx)
+		tx.endScn = endScn
+		delete(lc.index, txId)
+		lc.cache.Remove(el)
+	}
+}
+
+func (lc *LogMinerTxCache) addTxRecord(newRecord *LogMinerRecord) {
+	if el, ok := lc.index[newRecord.TxId()]; ok {
+		tx := el.Value.(*LogMinerTx)
+		// 1 = if the redo record was generated because of a partial or a full rollback of the associated transaction
+		if newRecord.Rollback == 1 {
+			for i, r := range tx.records {
+				if r.RowId == newRecord.RowId {
+					// delete record
+					tx.records = append(tx.records[:i], tx.records[i+1:]...)
+				}
+			}
+		} else {
+			tx.records = append(tx.records, newRecord)
+		}
+	}
+}
+
 func (e *ExtractorOracle) DataStreamEvents(entriesChannel chan<- *common.BinlogEntryContext) error {
 	e.logger.Debug("start oracle. DataStreamEvents")
 
@@ -375,36 +537,54 @@ func (e *ExtractorOracle) DataStreamEvents(entriesChannel chan<- *common.BinlogE
 			return err
 		}
 		e.logger.Debug("current scn", "scn", scn)
-		e.LogMinerStream.currentScn = scn
+		e.LogMinerStream.CollectedScn = scn
 	}
 
-	err := e.LogMinerStream.start()
-	if err != nil {
-		e.logger.Error("StartLogMiner", "err", err)
-		return err
-	}
-	defer e.LogMinerStream.stop()
-
-	for {
-		time.Sleep(5 * time.Second)
-		rs, err := e.LogMinerStream.queue()
-		if err != nil {
-			return err
-		}
-
-		Entry := e.handleSQLs(rs)
+	e.LogMinerStream.txCache.Handler = func(tx *LogMinerTx) error {
+		Entry := e.handleSQLs(tx)
 		e.logger.Debug("handle SQLs", "Entry", Entry)
 		entriesChannel <- &common.BinlogEntryContext{
 			Entry:        Entry,
 			TableItems:   nil,
 			OriginalSize: 0,
 		}
+		return nil
 	}
+
+	err := e.LogMinerStream.Loop()
+	if err != nil {
+		e.logger.Error("LogMinerStreamLoop", "err", err)
+		return err
+	}
+	return nil
+
+	//err := e.LogMinerStream.start()
+	//if err != nil {
+	//	e.logger.Error("StartLogMiner", "err", err)
+	//	return err
+	//}
+	//defer e.LogMinerStream.stop()
+	//
+	//for {
+	//	time.Sleep(5 * time.Second)
+	//	rs, err := e.LogMinerStream.queue()
+	//	if err != nil {
+	//		return err
+	//	}
+	//
+	//	Entry := e.handleSQLs(rs)
+	//	e.logger.Debug("handle SQLs", "Entry", Entry)
+	//	entriesChannel <- &common.BinlogEntryContext{
+	//		Entry:        Entry,
+	//		TableItems:   nil,
+	//		OriginalSize: 0,
+	//	}
+	//}
 }
 
-func (e *ExtractorOracle) handleSQLs(rows []*LogMinerRecord) *common.BinlogEntry {
+func (e *ExtractorOracle) handleSQLs(tx *LogMinerTx) *common.BinlogEntry {
 	entry := common.NewBinlogEntry()
-	for _, row := range rows {
+	for _, row := range tx.records {
 		dataEvent, _ := e.parseToDataEvent(row)
 		entry.Events = append(entry.Events, dataEvent)
 	}
@@ -413,23 +593,25 @@ func (e *ExtractorOracle) handleSQLs(rows []*LogMinerRecord) *common.BinlogEntry
 
 type LogMinerStream struct {
 	oracleDB                 *config.OracleDB
-	currentScn               int64
+	CollectedScn             int64
+	ProcessedScn             int64
 	interval                 int64
 	initialized              bool
 	currentRedoLogSequenceFP string
 	logger                   g.LoggerType
-	Handler                  func()
+	txCache                  *LogMinerTxCache
 	dataSources              []*common.DataSource
 }
 
 func NewLogMinerStream(db *config.OracleDB, logger g.LoggerType, dataSource []*common.DataSource,
 	startScn, interval int64) *LogMinerStream {
 	return &LogMinerStream{
-		oracleDB:    db,
-		logger:      logger,
-		dataSources: dataSource,
-		currentScn:  startScn,
-		interval:    interval,
+		oracleDB:    	db,
+		logger:      	logger,
+		dataSources: 	dataSource,
+		CollectedScn:  	startScn,
+		interval:    	interval,
+		txCache: 		NewLogMinerTxCache(),
 	}
 }
 
@@ -445,7 +627,7 @@ func (l *LogMinerStream) checkRedoLogChanged() (bool, error) {
 	return true, nil
 }
 
-func (l *LogMinerStream) start() error {
+func (l *LogMinerStream) initLogMiner() error {
 	l.logger.Debug("build logminer")
 	err := l.BuildLogMiner()
 	if err != nil {
@@ -453,7 +635,7 @@ func (l *LogMinerStream) start() error {
 		return err
 	}
 
-	fs, err := l.GetLogFileBySCN(l.currentScn)
+	fs, err := l.GetLogFileBySCN(l.CollectedScn)
 	if err != nil {
 		l.logger.Error("GetLogFileBySCN", "err", err)
 		return err
@@ -462,7 +644,7 @@ func (l *LogMinerStream) start() error {
 	l.logger.Debug("add logminer file")
 	err = l.AddLogMinerFile(fs)
 	if err != nil {
-		l.logger.Error("AddLogMinerFile ", "err", err)
+		fmt.Println("AddLogMinerFile ", err)
 		return err
 	}
 	fp, err := l.oracleDB.CurrentRedoLogSequenceFp()
@@ -474,9 +656,42 @@ func (l *LogMinerStream) start() error {
 	return nil
 }
 
-func (l *LogMinerStream) stop() error {
+func (l *LogMinerStream) stopLogMiner() error {
 	return l.EndLogMiner()
 }
+
+//func (l *LogMinerStream) start() error {
+//	l.logger.Debug("build logminer")
+//	err := l.BuildLogMiner()
+//	if err != nil {
+//		l.logger.Error("BuildLogMiner ", "err", err)
+//		return err
+//	}
+//
+//	fs, err := l.GetLogFileBySCN(l.currentScn)
+//	if err != nil {
+//		l.logger.Error("GetLogFileBySCN", "err", err)
+//		return err
+//	}
+//
+//	l.logger.Debug("add logminer file")
+//	err = l.AddLogMinerFile(fs)
+//	if err != nil {
+//		l.logger.Error("AddLogMinerFile ", "err", err)
+//		return err
+//	}
+//	fp, err := l.oracleDB.CurrentRedoLogSequenceFp()
+//	if err != nil {
+//		l.logger.Error("currentRedoLogSequenceFp ", "err", err)
+//		return err
+//	}
+//	l.currentRedoLogSequenceFP = fp
+//	return nil
+//}
+
+//func (l *LogMinerStream) stop() error {
+//	return l.EndLogMiner()
+//}
 
 func (l *LogMinerStream) getEndScn() (int64, error) {
 	latestScn, err := l.GetCurrentSnapshotSCN()
@@ -484,7 +699,7 @@ func (l *LogMinerStream) getEndScn() (int64, error) {
 		l.logger.Error("GetCurrentSnapshotSCN", "err", err)
 		return 0, err
 	}
-	endScn := l.currentScn + l.interval
+	endScn := l.CollectedScn + l.interval
 	if endScn < latestScn {
 		return endScn, nil
 	} else {
@@ -492,44 +707,123 @@ func (l *LogMinerStream) getEndScn() (int64, error) {
 	}
 }
 
-func (l *LogMinerStream) queue() ([]*LogMinerRecord, error) {
-	changed, err := l.checkRedoLogChanged()
+func (l *LogMinerStream) Loop() error {
+	err := l.initLogMiner()
 	if err != nil {
-		return nil, err
+		fmt.Println(err)
+		return err
 	}
-	if changed {
-		err := l.stop()
-		if err != nil {
-			return nil, err
-		}
-		err = l.start()
-		if err != nil {
-			return nil, err
-		}
-	}
-	endScn, err := l.getEndScn()
-	if err != nil {
-		return nil, err
-	}
-	if endScn == l.currentScn {
-		return nil, err
-	}
-	l.logger.Info("Start logminer")
-	err = l.StartLogMinerBySCN2(l.currentScn, endScn)
-	if err != nil {
-		l.logger.Error("StartLMBySCN ", "err", err)
-		return nil, err
-	}
+	defer l.stopLogMiner()
 
-	l.logger.Info("Get log miner record form", "StartScn", l.currentScn, "EndScn", endScn)
-	records, err := l.GetLogMinerRecord(l.currentScn, endScn)
-	if err != nil {
-		l.logger.Error("GetLogMinerRecord ", "err", err)
-		return nil, err
+	for {
+		time.Sleep(5 * time.Second)
+		changed, err := l.checkRedoLogChanged()
+		if err != nil {
+			return err
+		}
+		if changed {
+			err := l.stopLogMiner()
+			if err != nil {
+				return err
+			}
+			err = l.initLogMiner()
+			if err != nil {
+				return err
+			}
+		}
+		endScn, err := l.getEndScn()
+		if err != nil {
+			return err
+		}
+		if endScn == l.CollectedScn {
+			continue
+		}
+
+		err = l.StartLogMinerBySCN2(l.CollectedScn, endScn)
+		if err != nil {
+			fmt.Println("StartLMBySCN ", err)
+			return err
+		}
+		l.logger.Info("Get log miner record form", "StartScn", l.CollectedScn, "EndScn", endScn)
+		records, err := l.GetLogMinerRecord(l.CollectedScn, endScn)
+		if err != nil {
+			l.logger.Error("GetLogMinerRecord ", "err", err)
+			return err
+		}
+		err = l.HandlerRecords(records)
+		if err != nil {
+			return err
+		}
 	}
-	l.currentScn = endScn
-	return records, nil
 }
+
+const (
+	OperationCodeInsert   = 1
+	OperationCodeDelete   = 2
+	OperationCodeUpdate   = 3
+	OperationCodeDDL      = 5
+	OperationCodeStart    = 6
+	OperationCodeCommit   = 7
+	OperationCodeMissScn  = 34
+	OperationCodeRollback = 36
+)
+
+func (l *LogMinerStream) HandlerRecords(records []*LogMinerRecord) error {
+	for _, r := range records {
+		switch r.Operation {
+		case OperationCodeStart:
+			l.txCache.startTx(r.TxId(), r.SCN)
+		case OperationCodeCommit:
+			l.txCache.commitTx(r.TxId(), r.SCN)
+		case OperationCodeRollback:
+			l.txCache.rollbackTx(r.TxId(), r.SCN)
+		case OperationCodeDDL:
+		case OperationCodeInsert, OperationCodeDelete, OperationCodeUpdate:
+			l.txCache.addTxRecord(r)
+		}
+		l.CollectedScn = r.SCN
+	}
+	return nil
+}
+
+//func (l *LogMinerStream) queue() ([]*LogMinerRecord, error) {
+//	changed, err := l.checkRedoLogChanged()
+//	if err != nil {
+//		return nil, err
+//	}
+//	if changed {
+//		err := l.stop()
+//		if err != nil {
+//			return nil, err
+//		}
+//		err = l.start()
+//		if err != nil {
+//			return nil, err
+//		}
+//	}
+//	endScn, err := l.getEndScn()
+//	if err != nil {
+//		return nil, err
+//	}
+//	if endScn == l.currentScn {
+//		return nil, err
+//	}
+//	l.logger.Info("Start logminer")
+//	err = l.StartLogMinerBySCN2(l.currentScn, endScn)
+//	if err != nil {
+//		l.logger.Error("StartLMBySCN ", "err", err)
+//		return nil, err
+//	}
+//
+//	l.logger.Info("Get log miner record form", "StartScn", l.currentScn, "EndScn", endScn)
+//	records, err := l.GetLogMinerRecord(l.currentScn, endScn)
+//	if err != nil {
+//		l.logger.Error("GetLogMinerRecord ", "err", err)
+//		return nil, err
+//	}
+//	l.currentScn = endScn
+//	return records, nil
+//}
 
 func (e *ExtractorOracle) parseToDataEvent(row *LogMinerRecord) (common.DataEvent, error) {
 	dataEvent := common.DataEvent{}
