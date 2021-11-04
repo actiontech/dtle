@@ -282,7 +282,7 @@ func (a *ApplierOracleIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *comm
 				logger.Error("buildDMLEventQuery error", "err", err)
 				return err
 			}
-			logger.Debug("a dml query", "query", query, args)
+			logger.Debug("a dml query", "query", query, "args", args)
 
 			logger.Debug("buildDMLEventQuery.after", "nArgs", len(args))
 

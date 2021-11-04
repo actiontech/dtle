@@ -265,9 +265,9 @@ WHERE
 	}
 	defer rows.Close()
 
-	scan := func (rows *sql.Rows) (*LogMinerRecord, error) {
+	scan := func(rows *sql.Rows) (*LogMinerRecord, error) {
 		lr := &LogMinerRecord{}
-		err = rows.Scan(&lr.SCN, &lr.SegOwner, &lr.TableName, &lr.SQLRedo,&lr.SQLUndo, &lr.Operation, &lr.XId,
+		err = rows.Scan(&lr.SCN, &lr.SegOwner, &lr.TableName, &lr.SQLRedo, &lr.SQLUndo, &lr.Operation, &lr.XId,
 			&lr.Csf, &lr.RowId, &lr.Rollback, &lr.RsId, &lr.StartTime, &lr.Username)
 		if err != nil {
 			return nil, err
@@ -288,7 +288,7 @@ WHERE
 			redoLog.WriteString(lr.SQLRedo)
 			undoLog.WriteString(lr.SQLUndo)
 			for rows.Next() {
-				lr2,err := scan(rows)
+				lr2, err := scan(rows)
 				if err != nil {
 					return nil, err
 				}
@@ -461,7 +461,7 @@ func NewLogMinerTxCache() *LogMinerTxCache {
 		cache: list.New(),
 		Handler: func(tx *LogMinerTx) error {
 			return nil
-		},// default empty handler
+		}, // default empty handler
 	}
 }
 
@@ -606,12 +606,12 @@ type LogMinerStream struct {
 func NewLogMinerStream(db *config.OracleDB, logger g.LoggerType, dataSource []*common.DataSource,
 	startScn, interval int64) *LogMinerStream {
 	return &LogMinerStream{
-		oracleDB:    	db,
-		logger:      	logger,
-		dataSources: 	dataSource,
-		CollectedScn:  	startScn,
-		interval:    	interval,
-		txCache: 		NewLogMinerTxCache(),
+		oracleDB:     db,
+		logger:       logger,
+		dataSources:  dataSource,
+		CollectedScn: startScn,
+		interval:     interval,
+		txCache:      NewLogMinerTxCache(),
 	}
 }
 
