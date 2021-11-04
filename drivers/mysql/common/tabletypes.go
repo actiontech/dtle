@@ -6,6 +6,8 @@ import (
 	"github.com/araddon/qlbridge/datasource"
 	"github.com/araddon/qlbridge/expr"
 	"github.com/araddon/qlbridge/vm"
+	"github.com/pingcap/parser/ast"
+	"github.com/pkg/errors"
 	"strings"
 )
 
@@ -62,7 +64,7 @@ type Table struct {
 	TableType    string
 
 	Where string // Call GetWhere() instead of directly accessing.
-	FKParent map[string]struct{}
+	FKChildren map[SchemaTable]struct{}
 }
 
 func (t *Table) GetWhere() string {
@@ -78,6 +80,7 @@ func NewTable(schemaName string, tableName string) *Table {
 		TableSchema: schemaName,
 		TableName:   tableName,
 		Where:       "true",
+		FKChildren:  map[SchemaTable]struct{}{},
 	}
 }
 
@@ -85,14 +88,20 @@ type TableContext struct {
 	Table          *Table
 	WhereCtx       *WhereContext
 	DefChangedSent bool
+	FKParent       []*ast.TableName
 }
 
-func NewTableContext(table *Table, whereCtx *WhereContext) *TableContext {
+func NewTableContext(table *Table) (*TableContext, error) {
+	whereCtx, err := NewWhereCtx(table.GetWhere(), table)
+	if err != nil {
+		err = errors.Wrapf(err, "parsing where %v %v where %v", table.TableSchema, table.TableName, table.GetWhere())
+		return nil, err
+	}
 	return &TableContext{
 		Table:          table,
 		WhereCtx:       whereCtx,
 		DefChangedSent: false,
-	}
+	}, nil
 }
 
 func (t *TableContext) WhereTrue(values *ColumnValues) (bool, error) {
