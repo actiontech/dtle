@@ -56,13 +56,6 @@ const (
 	StageRequestingBinlogDump                          = "Requesting binlog dump"
 )
 
-type SchemaContext struct {
-	TableSchema            string
-	TableSchemaRename      string
-
-	TableMap map[string]*common.TableContext
-}
-
 type BinlogReader struct {
 	serverId uint64
 	execCtx  *common.ExecContext
@@ -82,7 +75,7 @@ type BinlogReader struct {
 	// raw config, whose ReplicateDoDB is same as config file (empty-is-all & no dynamically created tables)
 	mysqlContext         *common.MySQLDriverConfig
 	// dynamic config, include all tables (implicitly assigned or dynamically created)
-	tables map[string]*SchemaContext
+	tables map[string]*common.SchemaContext
 
 	hasBeginQuery      bool
 	entryContext       *common.BinlogEntryContext
@@ -187,7 +180,7 @@ func NewBinlogReader(execCtx *common.ExecContext, cfg *common.MySQLDriverConfig,
 		mysqlContext:         cfg,
 		ReMap:                make(map[string]*regexp.Regexp),
 		shutdownCh:           make(chan struct{}),
-		tables:               make(map[string]*SchemaContext),
+		tables:               make(map[string]*common.SchemaContext),
 		sqlFilter:            sqlFilter,
 		maybeSqleContext:     sqleContext,
 		memory:               memory,
@@ -209,11 +202,8 @@ func NewBinlogReader(execCtx *common.ExecContext, cfg *common.MySQLDriverConfig,
 	}
 
 	for _, db := range replicateDoDb {
-		schemaContext := &SchemaContext{
-			TableSchema:       db.TableSchema,
-			TableSchemaRename: db.TableSchemaRename,
-			TableMap:          make(map[string]*common.TableContext),
-		}
+		schemaContext := common.NewSchemaContext(db.TableSchema)
+		schemaContext.TableSchemaRename = db.TableSchemaRename
 		logger.Debug("add schema", "schema", db.TableSchema)
 		binlogReader.tables[db.TableSchema] = schemaContext
 		for _, table := range db.Tables {
@@ -1361,16 +1351,10 @@ func (b *BinlogReader) updateCurrentReplicateDoDb(schemaName string, tableName s
 			}
 
 			// add schema to currentReplicateDoDb
-			currentSchema = &SchemaContext{
-				TableSchema:       schemaName,
-				TableSchemaRename: schemaRename,
-				TableMap:          make(map[string]*common.TableContext),
-			}
+			currentSchema = common.NewSchemaContext(schemaName)
+			currentSchema.TableSchemaRename = schemaRename
 		} else { // replicate all schemas and tables
-			currentSchema = &SchemaContext{
-				TableSchema:       schemaName,
-				TableMap:          make(map[string]*common.TableContext),
-			}
+			currentSchema = common.NewSchemaContext(schemaName)
 		}
 		b.tables[schemaName] = currentSchema
 	}
@@ -1555,7 +1539,7 @@ func (b *BinlogReader) sqleAfterCreateSchema(schema string) {
 		b.maybeSqleContext.LoadTables(schema, nil)
 	}
 }
-func (b *BinlogReader) findCurrentSchema(schemaName string) *SchemaContext {
+func (b *BinlogReader) findCurrentSchema(schemaName string) *common.SchemaContext {
 	if schemaName == "" {
 		return nil
 	}
@@ -1590,7 +1574,7 @@ func (b *BinlogReader) findSchemaConfig(schemaConfigs []*common.DataSource, sche
 	return nil
 }
 
-func (b *BinlogReader) findCurrentTable(maybeSchema *SchemaContext, tableName string) *common.Table {
+func (b *BinlogReader) findCurrentTable(maybeSchema *common.SchemaContext, tableName string) *common.Table {
 	if maybeSchema == nil {
 		return nil
 	}

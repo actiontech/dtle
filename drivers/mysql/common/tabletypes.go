@@ -11,6 +11,19 @@ import (
 	"strings"
 )
 
+type SchemaContext struct {
+	TableSchema            string
+	TableSchemaRename      string
+
+	TableMap map[string]*TableContext
+}
+func NewSchemaContext(name string) *SchemaContext {
+	return &SchemaContext{
+		TableSchema: name,
+		TableMap: map[string]*TableContext{},
+	}
+}
+
 // TableName is the table configuration
 // slave restrict replication to a given table
 type DataSource struct {
