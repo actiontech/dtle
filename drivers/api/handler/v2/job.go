@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"net"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -147,37 +149,17 @@ func JobListV2(c echo.Context, filterJobType DtleJobType) error {
 	})
 }
 
-func filterJobAddr(addrList []string, ip, port string) bool {
-	if ip == "" && port == "" {
-		return true
-	}
-
+func filterJobAddr(addrList []string, filterHost, filterPort string) bool {
 	for _, addr := range addrList {
-		// database addr =  ip:port
-		// kafka addr    =  ip
-		addrList := strings.Split(addr, ":")
-
-		if len(addrList) == 2 {
-			// ip port filter
-			if ip != "" && port != "" {
-				if addrList[0] == ip && addrList[1] == port {
-					return true
-				}
-			}
-			// port filter
-			if port != "" && ip == "" {
-				if addrList[1] == port {
-					return true
-				}
-			}
+		host, portStr, err := net.SplitHostPort(addr)
+		if err != nil {
+			return false
 		}
-		// ip filter
-		if ip != "" && port == "" {
-			if addrList[0] == ip {
+		if filterHost == host || filterHost == "" {
+			if filterPort == portStr || filterPort == "" {
 				return true
 			}
 		}
-
 	}
 	return false
 }
@@ -420,10 +402,12 @@ func buildMySQLJobListItem(logger g.LoggerType, jobParam *models.CreateOrUpdateM
 		JobId:         jobParam.JobId,
 		JobStatus:     common.DtleJobStatusNonPaused,
 		JobCreateTime: time.Now().In(time.Local).Format(time.RFC3339),
-		SrcAddrList:   []string{fmt.Sprintf("%s:%d", jobParam.SrcTask.MysqlConnectionConfig.MysqlHost, jobParam.SrcTask.MysqlConnectionConfig.MysqlPort)},
-		DstAddrList:   []string{fmt.Sprintf("%s:%d", jobParam.DestTask.MysqlConnectionConfig.MysqlHost, jobParam.DestTask.MysqlConnectionConfig.MysqlPort)},
-		User:          fmt.Sprintf("%s:%s", user.Tenant, user.Username),
-		JobSteps:      nil,
+		SrcAddrList: []string{net.JoinHostPort(jobParam.SrcTask.MysqlConnectionConfig.MysqlHost,
+			strconv.Itoa(int(jobParam.SrcTask.MysqlConnectionConfig.MysqlPort)))},
+		DstAddrList: []string{net.JoinHostPort(jobParam.DestTask.MysqlConnectionConfig.MysqlHost,
+			strconv.Itoa(int(jobParam.DestTask.MysqlConnectionConfig.MysqlPort)))},
+		User:     fmt.Sprintf("%s:%s", user.Tenant, user.Username),
+		JobSteps: nil,
 	}
 	if jobParam.Reverse {
 		jobInfo.JobStatus = common.DtleJobStatusReverseInit
@@ -454,10 +438,11 @@ func buildKafkaJobListItem(logger g.LoggerType, jobParam *models.CreateOrUpdateM
 		JobStatus:     common.DtleJobStatusNonPaused,
 		Topic:         jobParam.DestTask.Topic,
 		JobCreateTime: time.Now().In(time.Local).Format(time.RFC3339),
-		SrcAddrList:   []string{jobParam.SrcTask.MysqlConnectionConfig.MysqlHost},
-		DstAddrList:   jobParam.DestTask.BrokerAddrs,
-		User:          fmt.Sprintf("%s:%s", user.Tenant, user.Username),
-		JobSteps:      nil,
+		SrcAddrList: []string{net.JoinHostPort(jobParam.SrcTask.MysqlConnectionConfig.MysqlHost,
+			strconv.Itoa(int(jobParam.SrcTask.MysqlConnectionConfig.MysqlPort)))},
+		DstAddrList: jobParam.DestTask.BrokerAddrs,
+		User:        fmt.Sprintf("%s:%s", user.Tenant, user.Username),
+		JobSteps:    nil,
 	}
 	if jobParam.TaskStepName == "all" {
 		jobInfo.JobSteps = append(jobInfo.JobSteps, common.NewJobStep(mysql.JobFullCopy), common.NewJobStep(mysql.JobIncrCopy))
