@@ -1726,7 +1726,7 @@ func (b *BinlogReader) handleRowsEvent(ev *replication.BinlogEvent, rowsEvent *r
 		ev.Header.Timestamp,
 	)
 	if table != nil {
-		dmlEvent.FKParent = len(table.Table.FKChildren) > 0
+		dmlEvent.FKParent = len(table.FKChildren) > 0
 	}
 	dmlEvent.Flags = make([]byte, 2)
 	binary.LittleEndian.PutUint16(dmlEvent.Flags, rowsEvent.Flags)
@@ -1888,9 +1888,9 @@ func (b *BinlogReader) handleRowsEvent(ev *replication.BinlogEvent, rowsEvent *r
 func (b *BinlogReader) removeFKChildSchema(schema string) {
 	for _, schemaContext := range b.tables {
 		for _, tableContext := range schemaContext.TableMap {
-			for k, _ := range tableContext.Table.FKChildren {
+			for k, _ := range tableContext.FKChildren {
 				if k.Schema == schema {
-					delete(tableContext.Table.FKChildren, k)
+					delete(tableContext.FKChildren, k)
 				}
 			}
 
@@ -1901,7 +1901,7 @@ func (b *BinlogReader) removeFKChild(table common.SchemaTable) {
 	for _, schemaContext := range b.tables {
 		for _, tableContext := range schemaContext.TableMap {
 			// NOTE it is ok to delete not existing items
-			delete(tableContext.Table.FKChildren, table)
+			delete(tableContext.FKChildren, table)
 		}
 	}
 }
@@ -1909,9 +1909,9 @@ func (b *BinlogReader) removeFKChild(table common.SchemaTable) {
 func (b *BinlogReader) renameFKChild(oldHash common.SchemaTable, newHash common.SchemaTable) {
 	for _, schemaContext := range b.tables {
 		for _, tableContext := range schemaContext.TableMap {
-			if _, ok := tableContext.Table.FKChildren[oldHash]; ok {
-				delete(tableContext.Table.FKChildren, oldHash)
-				tableContext.Table.FKChildren[newHash] = struct{}{}
+			if _, ok := tableContext.FKChildren[oldHash]; ok {
+				delete(tableContext.FKChildren, oldHash)
+				tableContext.FKChildren[newHash] = struct{}{}
 			}
 		}
 	}

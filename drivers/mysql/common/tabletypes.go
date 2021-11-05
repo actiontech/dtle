@@ -86,7 +86,6 @@ type Table struct {
 	TableType    string
 
 	Where string // Call GetWhere() instead of directly accessing.
-	FKChildren map[SchemaTable]struct{}
 }
 
 func (t *Table) GetWhere() string {
@@ -102,7 +101,6 @@ func NewTable(schemaName string, tableName string) *Table {
 		TableSchema: schemaName,
 		TableName:   tableName,
 		Where:       "true",
-		FKChildren:  map[SchemaTable]struct{}{},
 	}
 }
 
@@ -110,6 +108,7 @@ type TableContext struct {
 	Table          *Table
 	WhereCtx       *WhereContext
 	DefChangedSent bool
+	FKChildren     map[SchemaTable]struct{}
 	FKParent       []*ast.TableName
 }
 
@@ -123,6 +122,7 @@ func NewTableContext(table *Table) (*TableContext, error) {
 		Table:          table,
 		WhereCtx:       whereCtx,
 		DefChangedSent: false,
+		FKChildren:     map[SchemaTable]struct{}{},
 	}, nil
 }
 

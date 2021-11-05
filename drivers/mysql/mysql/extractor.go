@@ -612,7 +612,7 @@ func (e *Extractor) readTableColumns() (err error) {
 			tb := tbCtx.Table
 			st := common.SchemaTable{tb.TableSchema, tb.TableName}
 			if m, ok := fkParentMap[st]; ok {
-				tb.FKChildren = m
+				tbCtx.FKChildren = m
 				e.logger.Info("fk parent", "len", len(m), "schema", tb.TableSchema, "table", tb.TableName)
 			}
 		}
