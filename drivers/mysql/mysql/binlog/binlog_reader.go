@@ -573,7 +573,11 @@ func (b *BinlogReader) handleQueryEvent(ev *replication.BinlogEvent,
 				if realSchema != currentSchema {
 					schema = b.findCurrentSchema(realSchema)
 				}
-				table := b.findCurrentTable(schema, tableName)
+				tableCtx := b.findCurrentTable(schema, tableName)
+				var table *common.Table
+				if tableCtx != nil {
+					table = tableCtx.Table
+				}
 
 				skipEvent = skipBySqlFilter(queryInfo.ast, b.sqlFilter)
 				switch realAst := queryInfo.ast.(type) {
@@ -1559,7 +1563,7 @@ func (b *BinlogReader) findSchemaConfig(schemaConfigs []*common.DataSource, sche
 	return nil
 }
 
-func (b *BinlogReader) findCurrentTable(maybeSchema *common.SchemaContext, tableName string) *common.Table {
+func (b *BinlogReader) findCurrentTable(maybeSchema *common.SchemaContext, tableName string) *common.TableContext {
 	if maybeSchema == nil {
 		return nil
 	}
@@ -1567,7 +1571,7 @@ func (b *BinlogReader) findCurrentTable(maybeSchema *common.SchemaContext, table
 	if !ok {
 		return nil
 	}
-	return table.Table
+	return table
 }
 
 func (b *BinlogReader) findTableConfig(maybeSchemaConfig *common.DataSource, tableName string) *common.Table {
