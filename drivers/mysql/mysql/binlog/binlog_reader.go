@@ -163,9 +163,7 @@ func parseSqlFilter(strs []string) (*SqlFilter, error) {
 	return s, nil
 }
 
-func NewBinlogReader(execCtx *common.ExecContext, cfg *common.MySQLDriverConfig, logger g.LoggerType,
-	replicateDoDb []*common.DataSource, sqleContext *sqle.Context, memory *int64, db *gosql.DB,
-	targetGtid string, lctn mysqlconfig.LowerCaseTableNamesValue) (binlogReader *BinlogReader, err error) {
+func NewBinlogReader(execCtx *common.ExecContext, cfg *common.MySQLDriverConfig, logger g.LoggerType, replicateDoDb map[string]*common.SchemaContext, sqleContext *sqle.Context, memory *int64, db *gosql.DB, targetGtid string, lctn mysqlconfig.LowerCaseTableNamesValue) (binlogReader *BinlogReader, err error) {
 
 	sqlFilter, err := parseSqlFilter(cfg.SqlFilter)
 	if err != nil {
@@ -201,20 +199,7 @@ func NewBinlogReader(execCtx *common.ExecContext, cfg *common.MySQLDriverConfig,
 		}
 	}
 
-	for _, db := range replicateDoDb {
-		schemaContext := common.NewSchemaContext(db.TableSchema)
-		schemaContext.TableSchemaRename = db.TableSchemaRename
-		logger.Debug("add schema", "schema", db.TableSchema)
-		binlogReader.tables[db.TableSchema] = schemaContext
-		for _, table := range db.Tables {
-			logger.Debug("add table", "table", table.TableName)
-			tableCtx, err := common.NewTableContext(table)
-			if err != nil {
-				return nil, err
-			}
-			schemaContext.TableMap[table.TableName] = tableCtx
-		}
-	}
+	binlogReader.tables = replicateDoDb
 
 	id, err := util.NewIdWorker(2, 3, util.SnsEpoch)
 	if err != nil {

@@ -64,7 +64,7 @@ type Extractor struct {
 	dumpers           []*dumper
 	// db.tb exists when creating the job, for full-copy.
 	// vs e.mysqlContext.ReplicateDoDb: all user assigned db.tb
-	replicateDoDb            []*common.DataSource
+	replicateDoDb            map[string]*common.SchemaContext
 	dataChannel              chan *common.BinlogEntryContext
 	inspector                *Inspector
 	binlogReader             *binlog.BinlogReader
@@ -125,6 +125,7 @@ func NewExtractor(execCtx *common.ExecContext, cfg *common.MySQLDriverConfig, lo
 		storeManager:    storeManager,
 		memory1:         new(int64),
 		memory2:         new(int64),
+		replicateDoDb:   map[string]*common.SchemaContext{},
 	}
 	e.dataChannel = make(chan *common.BinlogEntryContext, cfg.ReplChanBufferSize*4)
 	e.timestampCtx = NewTimestampContext(e.shutdownCh, e.logger, func() bool {
@@ -512,7 +513,12 @@ func (e *Extractor) inspectTables() (err error) {
 
 				}
 			}
-			e.replicateDoDb = append(e.replicateDoDb, db)
+			schemaCtx := common.NewSchemaContext(db.TableSchema)
+			err = schemaCtx.AddTables(db.Tables)
+			if err != nil {
+				return err
+			}
+			e.replicateDoDb[db.TableSchema] = schemaCtx
 		}
 		//	e.mysqlContext.ReplicateDoDb = e.replicateDoDb
 	} else { // empty DoDB. replicate all db/tb
@@ -537,7 +543,12 @@ func (e *Extractor) inspectTables() (err error) {
 
 				ds.Tables = append(ds.Tables, tb)
 			}
-			e.replicateDoDb = append(e.replicateDoDb, ds)
+			schemaCtx := common.NewSchemaContext(ds.TableSchema)
+			err = schemaCtx.AddTables(ds.Tables)
+			if err != nil {
+				return err
+			}
+			e.replicateDoDb[ds.TableSchema] = schemaCtx
 		}
 	}
 	/*if e.mysqlContext.ExpandSyntaxSupport {
@@ -572,7 +583,8 @@ func (e *Extractor) readTableColumns() (err error) {
 	fkParentMap := make(map[common.SchemaTable]map[common.SchemaTable]struct{})
 
 	for _, doDb := range e.replicateDoDb {
-		for _, doTb := range doDb.Tables {
+		for _, tbCtx := range doDb.TableMap {
+			doTb := tbCtx.Table
 			tableColumns, fkParentTables, err := base.GetTableColumnsSqle(e.context, doTb.TableSchema, doTb.TableName)
 			if err != nil {
 				return err
@@ -596,7 +608,8 @@ func (e *Extractor) readTableColumns() (err error) {
 	}
 
 	for _, db := range e.replicateDoDb {
-		for _, tb := range db.Tables {
+		for _, tbCtx := range db.TableMap {
+			tb := tbCtx.Table
 			st := common.SchemaTable{tb.TableSchema, tb.TableName}
 			if m, ok := fkParentMap[st]; ok {
 				tb.FKChildren = m
@@ -744,7 +757,8 @@ func (e *Extractor) getSchemaTablesAndMeta() error {
 		}
 		e.context.UseSchema(db.TableSchema)
 
-		for _, tb := range db.Tables {
+		for _, tbCtx := range db.TableMap {
+			tb := tbCtx.Table
 			if strings.ToLower(tb.TableType) == "view" {
 				// TODO what to do?
 				continue
@@ -1301,7 +1315,8 @@ func (e *Extractor) mysqlDump() error {
 	// Transform the current schema so that it reflects the *current* state of the MySQL server's contents.
 	// First, get the DROP TABLE and CREATE TABLE statement (with keys and constraint definitions) for our tables ...
 	if !e.mysqlContext.SkipCreateDbTable {
-		e.logger.Info("generating DROP and CREATE statements to reflect current database schemas", "replicateDoDb", e.replicateDoDb)
+		e.logger.Info("generating DROP and CREATE statements to reflect current database schemas",
+			"replicateDoDb", e.replicateDoDb)
 
 		for _, db := range e.replicateDoDb {
 			var dbSQL string
@@ -1322,7 +1337,8 @@ func (e *Extractor) mysqlDump() error {
 				e.onError(common.TaskStateRestart, err)
 			}
 
-			for _, tb := range db.Tables {
+			for _, tbCtx := range db.TableMap {
+				tb := tbCtx.Table
 				if tb.TableSchema != db.TableSchema {
 					continue
 				}
@@ -1361,7 +1377,7 @@ func (e *Extractor) mysqlDump() error {
 					e.onError(common.TaskStateRestart, err)
 				}
 			}
-			e.tableCount += len(db.Tables)
+			e.tableCount += len(db.TableMap)
 		}
 	}
 	step++
@@ -1375,7 +1391,8 @@ func (e *Extractor) mysqlDump() error {
 	counter := 0
 	//pool := models.NewPool(10)
 	for _, db := range e.replicateDoDb {
-		for _, t := range db.Tables {
+		for _, tbCtx := range db.TableMap {
+			t := tbCtx.Table
 			//pool.Add(1)
 			//go func(t *config.Table) {
 			counter++
