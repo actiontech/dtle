@@ -11,6 +11,28 @@ import (
 	"strings"
 )
 
+type SchemaContext struct {
+	TableSchema            string
+	TableSchemaRename      string
+
+	TableMap map[string]*TableContext
+}
+func NewSchemaContext(name string) *SchemaContext {
+	return &SchemaContext{
+		TableSchema: name,
+		TableMap: map[string]*TableContext{},
+	}
+}
+func (sc *SchemaContext) AddTables(tables []*Table) (err error) {
+	for _, table := range tables {
+		sc.TableMap[table.TableName], err = NewTableContext(table)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // TableName is the table configuration
 // slave restrict replication to a given table
 type DataSource struct {
@@ -64,7 +86,6 @@ type Table struct {
 	TableType    string
 
 	Where string // Call GetWhere() instead of directly accessing.
-	FKChildren map[SchemaTable]struct{}
 }
 
 func (t *Table) GetWhere() string {
@@ -80,7 +101,6 @@ func NewTable(schemaName string, tableName string) *Table {
 		TableSchema: schemaName,
 		TableName:   tableName,
 		Where:       "true",
-		FKChildren:  map[SchemaTable]struct{}{},
 	}
 }
 
@@ -88,6 +108,7 @@ type TableContext struct {
 	Table          *Table
 	WhereCtx       *WhereContext
 	DefChangedSent bool
+	FKChildren     map[SchemaTable]struct{}
 	FKParent       []*ast.TableName
 }
 
@@ -101,6 +122,7 @@ func NewTableContext(table *Table) (*TableContext, error) {
 		Table:          table,
 		WhereCtx:       whereCtx,
 		DefChangedSent: false,
+		FKChildren:     map[SchemaTable]struct{}{},
 	}, nil
 }
 

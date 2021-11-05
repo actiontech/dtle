@@ -56,13 +56,6 @@ const (
 	StageRequestingBinlogDump                          = "Requesting binlog dump"
 )
 
-type SchemaContext struct {
-	TableSchema            string
-	TableSchemaRename      string
-
-	TableMap map[string]*common.TableContext
-}
-
 type BinlogReader struct {
 	serverId uint64
 	execCtx  *common.ExecContext
@@ -82,7 +75,7 @@ type BinlogReader struct {
 	// raw config, whose ReplicateDoDB is same as config file (empty-is-all & no dynamically created tables)
 	mysqlContext         *common.MySQLDriverConfig
 	// dynamic config, include all tables (implicitly assigned or dynamically created)
-	tables map[string]*SchemaContext
+	tables map[string]*common.SchemaContext
 
 	hasBeginQuery      bool
 	entryContext       *common.BinlogEntryContext
@@ -170,9 +163,7 @@ func parseSqlFilter(strs []string) (*SqlFilter, error) {
 	return s, nil
 }
 
-func NewBinlogReader(execCtx *common.ExecContext, cfg *common.MySQLDriverConfig, logger g.LoggerType,
-	replicateDoDb []*common.DataSource, sqleContext *sqle.Context, memory *int64, db *gosql.DB,
-	targetGtid string, lctn mysqlconfig.LowerCaseTableNamesValue) (binlogReader *BinlogReader, err error) {
+func NewBinlogReader(execCtx *common.ExecContext, cfg *common.MySQLDriverConfig, logger g.LoggerType, replicateDoDb map[string]*common.SchemaContext, sqleContext *sqle.Context, memory *int64, db *gosql.DB, targetGtid string, lctn mysqlconfig.LowerCaseTableNamesValue) (binlogReader *BinlogReader, err error) {
 
 	sqlFilter, err := parseSqlFilter(cfg.SqlFilter)
 	if err != nil {
@@ -187,7 +178,7 @@ func NewBinlogReader(execCtx *common.ExecContext, cfg *common.MySQLDriverConfig,
 		mysqlContext:         cfg,
 		ReMap:                make(map[string]*regexp.Regexp),
 		shutdownCh:           make(chan struct{}),
-		tables:               make(map[string]*SchemaContext),
+		tables:               make(map[string]*common.SchemaContext),
 		sqlFilter:            sqlFilter,
 		maybeSqleContext:     sqleContext,
 		memory:               memory,
@@ -208,23 +199,7 @@ func NewBinlogReader(execCtx *common.ExecContext, cfg *common.MySQLDriverConfig,
 		}
 	}
 
-	for _, db := range replicateDoDb {
-		schemaContext := &SchemaContext{
-			TableSchema:       db.TableSchema,
-			TableSchemaRename: db.TableSchemaRename,
-			TableMap:          make(map[string]*common.TableContext),
-		}
-		logger.Debug("add schema", "schema", db.TableSchema)
-		binlogReader.tables[db.TableSchema] = schemaContext
-		for _, table := range db.Tables {
-			logger.Debug("add table", "table", table.TableName)
-			tableCtx, err := common.NewTableContext(table)
-			if err != nil {
-				return nil, err
-			}
-			schemaContext.TableMap[table.TableName] = tableCtx
-		}
-	}
+	binlogReader.tables = replicateDoDb
 
 	id, err := util.NewIdWorker(2, 3, util.SnsEpoch)
 	if err != nil {
@@ -598,7 +573,11 @@ func (b *BinlogReader) handleQueryEvent(ev *replication.BinlogEvent,
 				if realSchema != currentSchema {
 					schema = b.findCurrentSchema(realSchema)
 				}
-				table := b.findCurrentTable(schema, tableName)
+				tableCtx := b.findCurrentTable(schema, tableName)
+				var table *common.Table
+				if tableCtx != nil {
+					table = tableCtx.Table
+				}
 
 				skipEvent = skipBySqlFilter(queryInfo.ast, b.sqlFilter)
 				switch realAst := queryInfo.ast.(type) {
@@ -1361,16 +1340,10 @@ func (b *BinlogReader) updateCurrentReplicateDoDb(schemaName string, tableName s
 			}
 
 			// add schema to currentReplicateDoDb
-			currentSchema = &SchemaContext{
-				TableSchema:       schemaName,
-				TableSchemaRename: schemaRename,
-				TableMap:          make(map[string]*common.TableContext),
-			}
+			currentSchema = common.NewSchemaContext(schemaName)
+			currentSchema.TableSchemaRename = schemaRename
 		} else { // replicate all schemas and tables
-			currentSchema = &SchemaContext{
-				TableSchema:       schemaName,
-				TableMap:          make(map[string]*common.TableContext),
-			}
+			currentSchema = common.NewSchemaContext(schemaName)
 		}
 		b.tables[schemaName] = currentSchema
 	}
@@ -1555,7 +1528,7 @@ func (b *BinlogReader) sqleAfterCreateSchema(schema string) {
 		b.maybeSqleContext.LoadTables(schema, nil)
 	}
 }
-func (b *BinlogReader) findCurrentSchema(schemaName string) *SchemaContext {
+func (b *BinlogReader) findCurrentSchema(schemaName string) *common.SchemaContext {
 	if schemaName == "" {
 		return nil
 	}
@@ -1590,7 +1563,7 @@ func (b *BinlogReader) findSchemaConfig(schemaConfigs []*common.DataSource, sche
 	return nil
 }
 
-func (b *BinlogReader) findCurrentTable(maybeSchema *SchemaContext, tableName string) *common.Table {
+func (b *BinlogReader) findCurrentTable(maybeSchema *common.SchemaContext, tableName string) *common.TableContext {
 	if maybeSchema == nil {
 		return nil
 	}
@@ -1598,7 +1571,7 @@ func (b *BinlogReader) findCurrentTable(maybeSchema *SchemaContext, tableName st
 	if !ok {
 		return nil
 	}
-	return table.Table
+	return table
 }
 
 func (b *BinlogReader) findTableConfig(maybeSchemaConfig *common.DataSource, tableName string) *common.Table {
@@ -1753,7 +1726,7 @@ func (b *BinlogReader) handleRowsEvent(ev *replication.BinlogEvent, rowsEvent *r
 		ev.Header.Timestamp,
 	)
 	if table != nil {
-		dmlEvent.FKParent = len(table.Table.FKChildren) > 0
+		dmlEvent.FKParent = len(table.FKChildren) > 0
 	}
 	dmlEvent.Flags = make([]byte, 2)
 	binary.LittleEndian.PutUint16(dmlEvent.Flags, rowsEvent.Flags)
@@ -1915,9 +1888,9 @@ func (b *BinlogReader) handleRowsEvent(ev *replication.BinlogEvent, rowsEvent *r
 func (b *BinlogReader) removeFKChildSchema(schema string) {
 	for _, schemaContext := range b.tables {
 		for _, tableContext := range schemaContext.TableMap {
-			for k, _ := range tableContext.Table.FKChildren {
+			for k, _ := range tableContext.FKChildren {
 				if k.Schema == schema {
-					delete(tableContext.Table.FKChildren, k)
+					delete(tableContext.FKChildren, k)
 				}
 			}
 
@@ -1928,7 +1901,7 @@ func (b *BinlogReader) removeFKChild(table common.SchemaTable) {
 	for _, schemaContext := range b.tables {
 		for _, tableContext := range schemaContext.TableMap {
 			// NOTE it is ok to delete not existing items
-			delete(tableContext.Table.FKChildren, table)
+			delete(tableContext.FKChildren, table)
 		}
 	}
 }
@@ -1936,9 +1909,9 @@ func (b *BinlogReader) removeFKChild(table common.SchemaTable) {
 func (b *BinlogReader) renameFKChild(oldHash common.SchemaTable, newHash common.SchemaTable) {
 	for _, schemaContext := range b.tables {
 		for _, tableContext := range schemaContext.TableMap {
-			if _, ok := tableContext.Table.FKChildren[oldHash]; ok {
-				delete(tableContext.Table.FKChildren, oldHash)
-				tableContext.Table.FKChildren[newHash] = struct{}{}
+			if _, ok := tableContext.FKChildren[oldHash]; ok {
+				delete(tableContext.FKChildren, oldHash)
+				tableContext.FKChildren[newHash] = struct{}{}
 			}
 		}
 	}
