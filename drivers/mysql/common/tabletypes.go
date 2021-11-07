@@ -6,7 +6,6 @@ import (
 	"github.com/araddon/qlbridge/datasource"
 	"github.com/araddon/qlbridge/expr"
 	"github.com/araddon/qlbridge/vm"
-	"github.com/pingcap/parser/ast"
 	"github.com/pkg/errors"
 	"strings"
 )
@@ -109,7 +108,6 @@ type TableContext struct {
 	WhereCtx       *WhereContext
 	DefChangedSent bool
 	FKChildren     map[SchemaTable]struct{}
-	FKParent       []*ast.TableName
 }
 
 func NewTableContext(table *Table) (*TableContext, error) {

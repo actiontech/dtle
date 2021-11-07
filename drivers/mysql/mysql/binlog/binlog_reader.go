@@ -587,13 +587,9 @@ func (b *BinlogReader) handleQueryEvent(ev *replication.BinlogEvent,
 					b.removeFKChildSchema(realAst.Name)
 				case *ast.CreateTableStmt:
 					b.logger.Debug("ddl is create table")
-					tableCtx, err := b.updateTableMeta(table, realSchema, tableName, gno, query)
+					_, err := b.updateTableMeta(currentSchema, table, realSchema, tableName, gno, query)
 					if err != nil {
 						return err
-					}
-					for _, fkp := range tableCtx.FKParent {
-						b.addFKChild(fkp.Schema.O, fkp.Name.O,
-							common.SchemaTable{realSchema, tableName})
 					}
 				case *ast.DropTableStmt:
 					if realAst.IsView {
@@ -601,7 +597,7 @@ func (b *BinlogReader) handleQueryEvent(ev *replication.BinlogEvent,
 					} else {
 						for _, t := range realAst.Tables {
 							dropTableSchema := g.StringElse(t.Schema.O, currentSchema)
-							b.removeFKChild(common.SchemaTable{dropTableSchema, t.Name.O})
+							b.removeFKChild(dropTableSchema, t.Name.O)
 						}
 					}
 				case *ast.AlterTableStmt:
@@ -615,37 +611,30 @@ func (b *BinlogReader) handleQueryEvent(ev *replication.BinlogEvent,
 						case ast.AlterTableRenameTable:
 							fromTable = nil
 							tableNameX = spec.NewTable.Name.O
-						case ast.AlterTableAddConstraint:
-							switch spec.Constraint.Tp {
-							case ast.ConstraintForeignKey:
-								b.addFKChild(spec.Constraint.Refer.Table.Schema.O,
-									spec.Constraint.Refer.Table.Name.O,
-									common.SchemaTable{realSchema, fromTable.TableName})
-							}
-						case ast.AlterTableDropForeignKey:
-							b.removeFKChild(common.SchemaTable{realSchema, fromTable.TableName})
+						case ast.AlterTableAddConstraint, ast.AlterTableDropForeignKey:
+							b.removeFKChild(realSchema, fromTable.TableName)
 						default:
 							// do nothing
 						}
 					}
-					_, err := b.updateTableMeta(fromTable, realSchema, tableNameX, gno, query)
+					_, err := b.updateTableMeta(currentSchema, fromTable, realSchema, tableNameX, gno, query)
 					if err != nil {
 						return err
 					}
 				case *ast.RenameTableStmt:
 					for _, tt := range realAst.TableToTables {
 						newSchemaName := g.StringElse(tt.NewTable.Schema.O, currentSchema)
-						tableName := tt.NewTable.Name.O
+						newTableName := tt.NewTable.Name.O
 						b.logger.Debug("updating meta for rename table", "newSchema", newSchemaName,
-							"newTable", tableName)
-						if !b.skipQueryDDL(newSchemaName, tableName) {
-							_, err := b.updateTableMeta(nil, newSchemaName, tableName, gno, query)
+							"newTable", newTableName)
+						if !b.skipQueryDDL(newSchemaName, newTableName) {
+							_, err := b.updateTableMeta(currentSchema, nil, newSchemaName, newTableName, gno, query)
 							if err != nil {
 								return err
 							}
 						} else {
 							b.logger.Debug("not updating meta for rename table", "newSchema", newSchemaName,
-								"newTable", tableName)
+								"newTable", newTableName)
 						}
 					}
 				}
@@ -1264,7 +1253,7 @@ func (b *BinlogReader) Close() error {
 }
 
 // gno, query: for debug use
-func (b *BinlogReader) updateTableMeta(table *common.Table, realSchema string, tableName string,
+func (b *BinlogReader) updateTableMeta(currentSchema string, table *common.Table, realSchema string, tableName string,
 	gno int64, query string) (*common.TableContext, error) {
 
 	var err error
@@ -1298,8 +1287,8 @@ func (b *BinlogReader) updateTableMeta(table *common.Table, realSchema string, t
 	if err != nil {
 		return nil, err
 	}
-	tableCtx.FKParent = fkParent
 	schemaContext.TableMap[table.TableName] = tableCtx
+	b.addFKChildren(currentSchema, fkParent, realSchema, tableName)
 
 	return tableCtx, nil
 }
@@ -1897,36 +1886,36 @@ func (b *BinlogReader) removeFKChildSchema(schema string) {
 		}
 	}
 }
-func (b *BinlogReader) removeFKChild(table common.SchemaTable) {
+func (b *BinlogReader) removeFKChild(childSchema string, childTable string) {
 	for _, schemaContext := range b.tables {
 		for _, tableContext := range schemaContext.TableMap {
 			// NOTE it is ok to delete not existing items
-			delete(tableContext.FKChildren, table)
-		}
-	}
-}
-
-func (b *BinlogReader) renameFKChild(oldHash common.SchemaTable, newHash common.SchemaTable) {
-	for _, schemaContext := range b.tables {
-		for _, tableContext := range schemaContext.TableMap {
-			if _, ok := tableContext.FKChildren[oldHash]; ok {
-				delete(tableContext.FKChildren, oldHash)
-				tableContext.FKChildren[newHash] = struct{}{}
+			st := common.SchemaTable{childSchema, childTable}
+			if _, ok := tableContext.FKChildren[st]; ok {
+				b.logger.Debug("remove fk child", "parent", tableContext.Table.TableName, "child", st.Table)
+				delete(tableContext.FKChildren, st)
 			}
 		}
 	}
 }
 
-func (b *BinlogReader) addFKChild(parentSchema string, parentTable string, childST common.SchemaTable) {
-	schemaContext := b.findCurrentSchema(parentSchema)
-	if schemaContext == nil {
-		b.logger.Warn("FK parent not found 1", "schema", parentSchema, "table", parentTable)
-		return
+func (b *BinlogReader) addFKChildren(currentSchema string, fkParents []*ast.TableName,
+	childSchema string, childTable string) {
+
+	childST := common.SchemaTable{childSchema, childTable}
+	for _, fkp := range fkParents {
+		parentSchema := g.StringElse(fkp.Schema.O, currentSchema)
+		parentTable := fkp.Name.O
+		schemaContext := b.findCurrentSchema(parentSchema)
+		if schemaContext == nil {
+			b.logger.Warn("FK parent not found 1", "schema", parentSchema, "table", parentTable)
+			return
+		}
+		tableContext := b.findCurrentTable(schemaContext, parentTable)
+		if tableContext == nil {
+			b.logger.Warn("FK parent not found 2", "schema", parentSchema, "table", parentTable)
+			return
+		}
+		tableContext.FKChildren[childST] = struct{}{}
 	}
-	tableContext := b.findCurrentTable(schemaContext, parentTable)
-	if tableContext == nil {
-		b.logger.Warn("FK parent not found 2", "schema", parentSchema, "table", parentTable)
-		return
-	}
-	tableContext.FKChildren[childST] = struct{}{}
 }

@@ -1,6 +1,8 @@
 package main
 
 import (
+	"github.com/actiontech/dtle/drivers/mysql/mysql/base"
+	"github.com/actiontech/dtle/drivers/mysql/mysql/sqle/inspector"
 	//"github.com/actiontech/dtle/internal/client/driver/mysql/base"
 	//"github.com/actiontech/dtle/internal/client/driver/mysql/sqle/inspector"
 	"github.com/pingcap/parser"
@@ -26,7 +28,8 @@ func main() {
 	//ctx.LoadTables("a", nil)
 	//ctx.UseSchema("a")
 
-	case6()
+	case7()
+	//case6()
 	//case5()
 	//case4()
 	//case1()
@@ -37,6 +40,37 @@ func main() {
 func panicIfErr(err interface{}, args ...interface{}) {
 	if err != nil {
 		log.Panicf("will panic. err %v, args: %v", err, args)
+	}
+}
+
+func case7() {
+	do("create schema fk")
+	ctx.LoadTables("fk", nil)
+	ctx.UseSchema("fk")
+
+	do("create table fk.a (id int primary key)")
+	do("create table fk.a1 (id int primary key)")
+//	do(`create table fk.b (id int primary key, val int,
+//constraint b_ibfk_1 foreign key b_ibfk_1 (val) references fk.a (id) on update cascade,
+//constraint b_ibfk_2 foreign key b_ibfk_2 (val) references fk.a1 (id) on update cascade)`)
+	do(`create table fk.b (id int primary key)`)
+	do(`alter table fk.b add column val int`)
+	//do(`alter table fk.b add constraint foreign key (val) references fk.a (id)`)
+	//do(`alter table fk.b add constraint foreign key (val) references fk.a1 (id)`)
+	//do(`alter table fk.b drop foreign key b_ibfk_2`)
+	ti, exist := ctx.GetTable("fk", "b")
+	if !exist {
+		panic("shoud exist")
+	}
+
+	if ti.MergedTable == nil {
+		log.Printf("ti.MergedTable is nil")
+	}
+	for _, constraint := range ti.MergedTable.Constraints {
+		switch constraint.Tp {
+		case ast.ConstraintForeignKey:
+			log.Printf("fk parent table %v", constraint.Refer.Table)
+		}
 	}
 }
 func case6() {
@@ -71,7 +105,7 @@ func case5() {
 		cStmt = tableInfo.OriginalTable
 	}
 
-	colList, err := base.GetTableColumnsSqle(ctx, schemaName, tableName)
+	colList, _, err := base.GetTableColumnsSqle(ctx, schemaName, tableName)
 	if err != nil {
 		panicIfErr(err, "at GetTableColumnsSqle")
 	}
@@ -121,7 +155,7 @@ func case4() {
 		cStmt = tableInfo.OriginalTable
 	}
 
-	colList, err := base.GetTableColumnsSqle(ctx, "a", "aaa")
+	colList, _, err := base.GetTableColumnsSqle(ctx, "a", "aaa")
 	if err != nil {
 		panicIfErr(err, "at GetTableColumnsSqle")
 	}
@@ -171,7 +205,7 @@ func case1() {
 		cStmt = tableInfo.OriginalTable
 	}
 
-	colList, err := base.GetTableColumnsSqle(ctx, "a", "a")
+	colList, _, err := base.GetTableColumnsSqle(ctx, "a", "a")
 	if err != nil {
 		panicIfErr(err, "at GetTableColumnsSqle")
 	}
@@ -220,7 +254,7 @@ func case2() {
 		cStmt = tableInfo.OriginalTable
 	}
 
-	colList, err := base.GetTableColumnsSqle(ctx, "a", "b")
+	colList, _, err := base.GetTableColumnsSqle(ctx, "a", "b")
 	if err != nil {
 		panicIfErr(err, "at GetTableColumnsSqle")
 	}
@@ -245,7 +279,7 @@ func case3() {
 		cStmt = tableInfo.OriginalTable
 	}
 
-	colList, err := base.GetTableColumnsSqle(ctx, "a", "c")
+	colList, _, err := base.GetTableColumnsSqle(ctx, "a", "c")
 	if err != nil {
 		panicIfErr(err, "at GetTableColumnsSqle")
 	}
