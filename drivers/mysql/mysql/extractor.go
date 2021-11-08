@@ -764,12 +764,11 @@ func (e *Extractor) getSchemaTablesAndMeta() error {
 				continue
 			}
 
-			stmts, err := base.ShowCreateTable(e.db, db.TableSchema, tb.TableName, false, false)
+			stmt, err := base.ShowCreateTable(e.db, db.TableSchema, tb.TableName)
 			if err != nil {
 				e.logger.Error("error at ShowCreateTable.", "err", err)
 				return err
 			}
-			stmt := stmts[0]
 			ast, err := sqle.ParseCreateTableStmt("mysql", stmt)
 			if err != nil {
 				e.logger.Error("error at ParseCreateTableStmt.", "err", err)
@@ -1354,18 +1353,19 @@ func (e *Extractor) mysqlDump() error {
 						return err
 					}*/
 				} else if strings.ToLower(tb.TableSchema) != "mysql" {
-					tbSQL, err = base.ShowCreateTable(e.singletonDB, tb.TableSchema, tb.TableName, e.mysqlContext.DropTableIfExists, true)
-					for num, sql := range tbSQL {
-						if db.TableSchemaRename != "" && strings.Contains(sql, fmt.Sprintf("USE %s", mysqlconfig.EscapeName(tb.TableSchema))) {
-							tbSQL[num] = strings.Replace(sql, tb.TableSchema, db.TableSchemaRename, 1)
-						}
-						if tb.TableRename != "" && (strings.Contains(sql, fmt.Sprintf("DROP TABLE IF EXISTS %s", mysqlconfig.EscapeName(tb.TableName))) || strings.Contains(sql, "CREATE TABLE")) {
-							tbSQL[num] = strings.Replace(sql, mysqlconfig.EscapeName(tb.TableName), tb.TableRename, 1)
-						}
+					targetSchemaEscaped := mysqlconfig.EscapeName(g.StringElse(db.TableSchemaRename, tb.TableSchema))
+					targetTableEscaped  := mysqlconfig.EscapeName(g.StringElse(tb.TableRename, tb.TableName))
+					tbSQL = append(tbSQL, fmt.Sprintf("USE %s", targetSchemaEscaped))
+					if e.mysqlContext.DropTableIfExists {
+						tbSQL = append(tbSQL, fmt.Sprintf("DROP TABLE IF EXISTS %s", targetTableEscaped))
 					}
+					ctStmt, err := base.ShowCreateTable(e.singletonDB, tb.TableSchema, tb.TableName)
 					if err != nil {
 						return err
 					}
+					// TODO do not use string replace
+					ctStmt = strings.Replace(ctStmt, mysqlconfig.EscapeName(tb.TableName), targetTableEscaped, 1)
+					tbSQL = append(tbSQL, ctStmt)
 				}
 				entry := &common.DumpEntry{
 					TbSQL:      tbSQL,
