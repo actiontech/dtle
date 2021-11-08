@@ -600,6 +600,11 @@ func (b *BinlogReader) handleQueryEvent(ev *replication.BinlogEvent,
 							b.removeFKChild(dropTableSchema, t.Name.O)
 						}
 					}
+				case *ast.DropIndexStmt:
+					_, err := b.updateTableMeta(currentSchema, table, realSchema, tableName, gno, query)
+					if err != nil {
+						return err
+					}
 				case *ast.AlterTableStmt:
 					b.logger.Debug("ddl is alter table.", "specs", realAst.Specs)
 
