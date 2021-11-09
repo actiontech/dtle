@@ -8,6 +8,245 @@
     },
     "basePath": "/",
     "paths": {
+        "/v2/database/columns": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "list columns of database source instance.",
+                "tags": [
+                    "database"
+                ],
+                "operationId": "ListDatabaseColumnsV2",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "database host",
+                        "name": "host",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "database port",
+                        "name": "port",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "database user",
+                        "name": "user",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "database password",
+                        "name": "password",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "database_type",
+                        "name": "database_type",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "database service_name",
+                        "name": "service_name",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "database schema",
+                        "name": "schema",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "database table",
+                        "name": "table",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "database character set",
+                        "name": "character_set",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "indecate that database password is encrypted or not",
+                        "name": "is_password_encrypted",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.ListColumnsRespV2"
+                        }
+                    }
+                }
+            }
+        },
+        "/v2/database/instance_connection": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "connect to  database instance.",
+                "tags": [
+                    "database"
+                ],
+                "operationId": "ConnectionV2",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "database host",
+                        "name": "host",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "database port",
+                        "name": "port",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "database user",
+                        "name": "user",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "database password",
+                        "name": "password",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "database_type",
+                        "name": "database_type",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "database service_name",
+                        "name": "service_name",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "indecate that database password is encrypted or not",
+                        "name": "is_password_encrypted",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.ConnectionRespV2"
+                        }
+                    }
+                }
+            }
+        },
+        "/v2/database/schemas": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "list schemas of database source instance.",
+                "tags": [
+                    "database"
+                ],
+                "operationId": "ListDatabaseSchemasV2",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "database_type",
+                        "name": "database_type",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "database host",
+                        "name": "host",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "database port",
+                        "name": "port",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "database user",
+                        "name": "user",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "database password",
+                        "name": "password",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "database service_name",
+                        "name": "service_name",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "database character set",
+                        "name": "character_set",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "indecate that database password is encrypted or not",
+                        "name": "is_password_encrypted",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.ListSchemasRespV2"
+                        }
+                    }
+                }
+            }
+        },
         "/v2/job/gtid": {
             "get": {
                 "security": [
@@ -1181,206 +1420,6 @@
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/models.GetTaskProgressRespV2"
-                        }
-                    }
-                }
-            }
-        },
-        "/v2/mysql/columns": {
-            "get": {
-                "security": [
-                    {
-                        "ApiKeyAuth": []
-                    }
-                ],
-                "description": "list columns of mysql source instance.",
-                "tags": [
-                    "mysql"
-                ],
-                "operationId": "ListMysqlColumnsV2",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "mysql host",
-                        "name": "mysql_host",
-                        "in": "query",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "mysql port",
-                        "name": "mysql_port",
-                        "in": "query",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "mysql user",
-                        "name": "mysql_user",
-                        "in": "query",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "mysql password",
-                        "name": "mysql_password",
-                        "in": "query",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "mysql schema",
-                        "name": "mysql_schema",
-                        "in": "query",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "mysql table",
-                        "name": "mysql_table",
-                        "in": "query",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "mysql character set",
-                        "name": "mysql_character_set",
-                        "in": "query"
-                    },
-                    {
-                        "type": "boolean",
-                        "description": "indecate that mysql password is encrypted or not",
-                        "name": "is_mysql_password_encrypted",
-                        "in": "query"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/models.ListColumnsRespV2"
-                        }
-                    }
-                }
-            }
-        },
-        "/v2/mysql/instance_connection": {
-            "get": {
-                "security": [
-                    {
-                        "ApiKeyAuth": []
-                    }
-                ],
-                "description": "connect to  mysql instance.",
-                "tags": [
-                    "mysql"
-                ],
-                "operationId": "ConnectionV2",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "mysql host",
-                        "name": "mysql_host",
-                        "in": "query",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "mysql port",
-                        "name": "mysql_port",
-                        "in": "query",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "mysql user",
-                        "name": "mysql_user",
-                        "in": "query",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "mysql password",
-                        "name": "mysql_password",
-                        "in": "query",
-                        "required": true
-                    },
-                    {
-                        "type": "boolean",
-                        "description": "indecate that mysql password is encrypted or not",
-                        "name": "is_mysql_password_encrypted",
-                        "in": "query"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/models.ConnectionRespV2"
-                        }
-                    }
-                }
-            }
-        },
-        "/v2/mysql/schemas": {
-            "get": {
-                "security": [
-                    {
-                        "ApiKeyAuth": []
-                    }
-                ],
-                "description": "list schemas of mysql source instance.",
-                "tags": [
-                    "mysql"
-                ],
-                "operationId": "ListMysqlSchemasV2",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "mysql host",
-                        "name": "mysql_host",
-                        "in": "query",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "mysql port",
-                        "name": "mysql_port",
-                        "in": "query",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "mysql user",
-                        "name": "mysql_user",
-                        "in": "query",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "mysql password",
-                        "name": "mysql_password",
-                        "in": "query",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "mysql character set",
-                        "name": "mysql_character_set",
-                        "in": "query"
-                    },
-                    {
-                        "type": "boolean",
-                        "description": "indecate that mysql password is encrypted or not",
-                        "name": "is_mysql_password_encrypted",
-                        "in": "query"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/models.ListMysqlSchemasRespV2"
                         }
                     }
                 }
@@ -2627,7 +2666,7 @@
                 }
             }
         },
-        "models.ListMysqlSchemasRespV2": {
+        "models.ListSchemasRespV2": {
             "type": "object",
             "properties": {
                 "message": {

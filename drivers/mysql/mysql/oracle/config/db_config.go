@@ -14,7 +14,7 @@ type OracleConfig struct {
 	User        string
 	Password    string
 	Host        string
-	Port        uint32
+	Port        int
 	ServiceName string
 	SCN         int64
 }
@@ -63,6 +63,16 @@ func NewDB(meta *OracleConfig) (*OracleDB, error) {
 	return oracleDB, nil
 }
 
+func (o *OracleDB) Close() error {
+	if o.MetaDataConn != nil {
+		o.MetaDataConn.Close()
+	}
+	if o.LogMinerConn != nil {
+		o.LogMinerConn.Close()
+	}
+	return o._db.Close()
+}
+
 func (o *OracleDB) CurrentRedoLogSequenceFp() (string, error) {
 	query := fmt.Sprintf(`SELECT GROUP#, THREAD#, SEQUENCE# FROM V$LOG WHERE STATUS = 'CURRENT'`)
 	rows, err := o.LogMinerConn.QueryContext(context.TODO(), query)
@@ -85,6 +95,84 @@ func (o *OracleDB) CurrentRedoLogSequenceFp() (string, error) {
 		buf.WriteString(";")
 	}
 	return buf.String(), nil
+}
+
+func (o *OracleDB) GetTables(schema string) ([]string, error) {
+	query := fmt.Sprintf(`
+SELECT 
+	table_name
+FROM 
+	all_tables 
+WHERE 
+	owner = '%s'`, schema)
+
+	rows, err := o.MetaDataConn.QueryContext(context.TODO(), query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var tables []string
+	for rows.Next() {
+		var table string
+		err = rows.Scan(&table)
+		if err != nil {
+			return nil, err
+		}
+		tables = append(tables, table)
+	}
+	return tables, nil
+}
+
+func (o *OracleDB) GetSchemas() ([]string, error) {
+	query := `SELECT
+	USERNAME
+	FROM
+	DBA_USERS
+	WHERE
+	USERNAME NOT IN ( 'SYS', 'SYSTEM', 'ANONYMOUS', 'APEX_PUBLIC_USER', 'APEX_040000', 'OUTLN', 'XS$NULL', 'FLOWS_FILES', 'MDSYS', 'CTXSYS', 'XDB', 'HR' )`
+
+	rows, err := o.MetaDataConn.QueryContext(context.TODO(), query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var schemas []string
+	for rows.Next() {
+		var schema string
+		err = rows.Scan(&schema)
+		if err != nil {
+			return nil, err
+		}
+		schemas = append(schemas, schema)
+	}
+	return schemas, nil
+}
+
+func (o *OracleDB) GetColumns(schema, table string) ([]string, error) {
+	query := fmt.Sprintf(`SELECT column_name
+	FROM all_tab_cols
+	WHERE table_name = '%s'
+	AND owner = '%s'
+	AND column_name NOT IN ( 'PASSWORD', 'VERSION', 'ID' )`, table, schema)
+
+	rows, err := o.MetaDataConn.QueryContext(context.TODO(), query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var columns []string
+	for rows.Next() {
+		var column string
+		err = rows.Scan(&column)
+		if err != nil {
+			return nil, err
+		}
+		columns = append(columns, column)
+	}
+	return columns, nil
 }
 
 func (o *OracleDB) GetTableDDL(schema, table string) (string, error) {

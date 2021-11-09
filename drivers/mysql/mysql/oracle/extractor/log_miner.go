@@ -307,33 +307,6 @@ WHERE
 	return lrs, nil
 }
 
-func (o *ExtractorOracle) getTables(schema string) ([]string, error) {
-	query := fmt.Sprintf(`
-SELECT 
-	table_name
-FROM 
-	all_tables 
-WHERE 
-	owner = '%s'`, schema)
-
-	rows, err := o.db.QueryContext(context.TODO(), query)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var tables []string
-	for rows.Next() {
-		var table string
-		err = rows.Scan(&table)
-		if err != nil {
-			return nil, err
-		}
-		tables = append(tables, table)
-	}
-	return tables, nil
-}
-
 type ColumnDefinition struct {
 	Name          string
 	Datatype      string

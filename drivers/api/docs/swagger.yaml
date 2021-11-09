@@ -520,7 +520,7 @@ definitions:
       message:
         type: string
     type: object
-  models.ListMysqlSchemasRespV2:
+  models.ListSchemasRespV2:
     properties:
       message:
         type: string
@@ -1029,6 +1029,165 @@ info:
   title: dtle API Docs
   version: "2.0"
 paths:
+  /v2/database/columns:
+    get:
+      description: list columns of database source instance.
+      operationId: ListDatabaseColumnsV2
+      parameters:
+      - description: database host
+        in: query
+        name: host
+        required: true
+        type: string
+      - description: database port
+        in: query
+        name: port
+        required: true
+        type: integer
+      - description: database user
+        in: query
+        name: user
+        required: true
+        type: string
+      - description: database password
+        in: query
+        name: password
+        required: true
+        type: string
+      - description: database_type
+        in: query
+        name: database_type
+        required: true
+        type: string
+      - description: database service_name
+        in: query
+        name: service_name
+        type: string
+      - description: database schema
+        in: query
+        name: schema
+        required: true
+        type: string
+      - description: database table
+        in: query
+        name: table
+        required: true
+        type: string
+      - description: database character set
+        in: query
+        name: character_set
+        type: string
+      - description: indecate that database password is encrypted or not
+        in: query
+        name: is_password_encrypted
+        type: boolean
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.ListColumnsRespV2'
+      security:
+      - ApiKeyAuth: []
+      tags:
+      - database
+  /v2/database/instance_connection:
+    get:
+      description: connect to  database instance.
+      operationId: ConnectionV2
+      parameters:
+      - description: database host
+        in: query
+        name: host
+        required: true
+        type: string
+      - description: database port
+        in: query
+        name: port
+        required: true
+        type: integer
+      - description: database user
+        in: query
+        name: user
+        required: true
+        type: string
+      - description: database password
+        in: query
+        name: password
+        required: true
+        type: string
+      - description: database_type
+        in: query
+        name: database_type
+        required: true
+        type: string
+      - description: database service_name
+        in: query
+        name: service_name
+        type: string
+      - description: indecate that database password is encrypted or not
+        in: query
+        name: is_password_encrypted
+        type: boolean
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.ConnectionRespV2'
+      security:
+      - ApiKeyAuth: []
+      tags:
+      - database
+  /v2/database/schemas:
+    get:
+      description: list schemas of database source instance.
+      operationId: ListDatabaseSchemasV2
+      parameters:
+      - description: database_type
+        in: query
+        name: database_type
+        required: true
+        type: string
+      - description: database host
+        in: query
+        name: host
+        required: true
+        type: string
+      - description: database port
+        in: query
+        name: port
+        required: true
+        type: integer
+      - description: database user
+        in: query
+        name: user
+        required: true
+        type: string
+      - description: database password
+        in: query
+        name: password
+        required: true
+        type: string
+      - description: database service_name
+        in: query
+        name: service_name
+        type: string
+      - description: database character set
+        in: query
+        name: character_set
+        type: string
+      - description: indecate that database password is encrypted or not
+        in: query
+        name: is_password_encrypted
+        type: boolean
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.ListSchemasRespV2'
+      security:
+      - ApiKeyAuth: []
+      tags:
+      - database
   /v2/job/gtid:
     get:
       description: get src task current gtid.
@@ -1767,138 +1926,6 @@ paths:
       - ApiKeyAuth: []
       tags:
       - monitor
-  /v2/mysql/columns:
-    get:
-      description: list columns of mysql source instance.
-      operationId: ListMysqlColumnsV2
-      parameters:
-      - description: mysql host
-        in: query
-        name: mysql_host
-        required: true
-        type: string
-      - description: mysql port
-        in: query
-        name: mysql_port
-        required: true
-        type: string
-      - description: mysql user
-        in: query
-        name: mysql_user
-        required: true
-        type: string
-      - description: mysql password
-        in: query
-        name: mysql_password
-        required: true
-        type: string
-      - description: mysql schema
-        in: query
-        name: mysql_schema
-        required: true
-        type: string
-      - description: mysql table
-        in: query
-        name: mysql_table
-        required: true
-        type: string
-      - description: mysql character set
-        in: query
-        name: mysql_character_set
-        type: string
-      - description: indecate that mysql password is encrypted or not
-        in: query
-        name: is_mysql_password_encrypted
-        type: boolean
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/models.ListColumnsRespV2'
-      security:
-      - ApiKeyAuth: []
-      tags:
-      - mysql
-  /v2/mysql/instance_connection:
-    get:
-      description: connect to  mysql instance.
-      operationId: ConnectionV2
-      parameters:
-      - description: mysql host
-        in: query
-        name: mysql_host
-        required: true
-        type: string
-      - description: mysql port
-        in: query
-        name: mysql_port
-        required: true
-        type: string
-      - description: mysql user
-        in: query
-        name: mysql_user
-        required: true
-        type: string
-      - description: mysql password
-        in: query
-        name: mysql_password
-        required: true
-        type: string
-      - description: indecate that mysql password is encrypted or not
-        in: query
-        name: is_mysql_password_encrypted
-        type: boolean
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/models.ConnectionRespV2'
-      security:
-      - ApiKeyAuth: []
-      tags:
-      - mysql
-  /v2/mysql/schemas:
-    get:
-      description: list schemas of mysql source instance.
-      operationId: ListMysqlSchemasV2
-      parameters:
-      - description: mysql host
-        in: query
-        name: mysql_host
-        required: true
-        type: string
-      - description: mysql port
-        in: query
-        name: mysql_port
-        required: true
-        type: string
-      - description: mysql user
-        in: query
-        name: mysql_user
-        required: true
-        type: string
-      - description: mysql password
-        in: query
-        name: mysql_password
-        required: true
-        type: string
-      - description: mysql character set
-        in: query
-        name: mysql_character_set
-        type: string
-      - description: indecate that mysql password is encrypted or not
-        in: query
-        name: is_mysql_password_encrypted
-        type: boolean
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/models.ListMysqlSchemasRespV2'
-      security:
-      - ApiKeyAuth: []
-      tags:
-      - mysql
   /v2/nodes:
     get:
       description: get node list.

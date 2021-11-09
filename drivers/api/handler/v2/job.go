@@ -895,14 +895,14 @@ func buildSrcTaskDetail(taskName string, internalTaskConfig common.DtleTaskConfi
 	if internalTaskConfig.OracleConfig != nil {
 		connectionConfig.DatabaseType = "Oracle"
 		connectionConfig.Host = internalTaskConfig.OracleConfig.Host
-		connectionConfig.Port = uint32(internalTaskConfig.OracleConfig.Port)
+		connectionConfig.Port = internalTaskConfig.OracleConfig.Port
 		connectionConfig.User = internalTaskConfig.OracleConfig.User
 		connectionConfig.Password = internalTaskConfig.OracleConfig.Password
 		connectionConfig.ServiceName = internalTaskConfig.OracleConfig.ServiceName
 	} else if internalTaskConfig.ConnectionConfig != nil {
 		connectionConfig.DatabaseType = "MySQL"
 		connectionConfig.Host = internalTaskConfig.ConnectionConfig.Host
-		connectionConfig.Port = uint32(internalTaskConfig.ConnectionConfig.Port)
+		connectionConfig.Port = internalTaskConfig.ConnectionConfig.Port
 		connectionConfig.User = internalTaskConfig.ConnectionConfig.User
 		connectionConfig.Password = internalTaskConfig.ConnectionConfig.Password
 		srcTaskDetail.TaskConfig.MysqlSrcTaskConfig = &models.MysqlSrcTaskConfig{
@@ -926,7 +926,7 @@ func buildSrcTaskDetail(taskName string, internalTaskConfig common.DtleTaskConfi
 func buildMysqlDestTaskDetail(taskName string, internalTaskConfig common.DtleTaskConfig, allocsFromNomad []nomadApi.Allocation) (destTaskDetail models.MysqlDestTaskDetail) {
 	mysqlConnectionConfig := &models.DatabaseConnectionConfig{
 		Host:         internalTaskConfig.ConnectionConfig.Host,
-		Port:         uint32(internalTaskConfig.ConnectionConfig.Port),
+		Port:         internalTaskConfig.ConnectionConfig.Port,
 		User:         internalTaskConfig.ConnectionConfig.User,
 		Password:     internalTaskConfig.ConnectionConfig.Password,
 		DatabaseType: "MySQL",

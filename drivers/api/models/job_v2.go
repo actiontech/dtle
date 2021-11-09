@@ -184,7 +184,7 @@ type TableConfig struct {
 }
 type DatabaseConnectionConfig struct {
 	Host         string `json:"host" validate:"required"`
-	Port         uint32 `json:"port" validate:"required"`
+	Port         int    `json:"port" validate:"required"`
 	User         string `json:"user" validate:"required"`
 	Password     string `json:"password" validate:"required"`
 	ServiceName  string `json:"service_name"`
