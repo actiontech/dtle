@@ -1,5 +1,5 @@
 name = "nomad0" # Rename for each node.
-datacenter = "dc1" # Do NOT change. Unused nomad feature.
+datacenter = "dc1" # Rename for each data center.
 data_dir  = "INSTALL_PREFIX_MAGIC/var/lib/nomad"
 plugin_dir = "INSTALL_PREFIX_MAGIC/usr/share/dtle/nomad-plugin"
 
@@ -52,7 +52,7 @@ consul {
   address = "127.0.0.1:8500"
 }
 
-# nomad metics
+# nomad metrics
 telemetry {
   prometheus_metrics         = true
   use_node_name              = true
