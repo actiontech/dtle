@@ -836,6 +836,21 @@ func (e *ExtractorOracle) parseToDataEvent(row *LogMinerRecord) (common.DataEven
 	//	}
 	//
 	//}
+	e.logger.Debug("SchemaTable", "schema", visitor.Schema, "table", visitor.Table)
+	// todo 转换成通用格式
+	columns, err := e.oracleDB.GetColumns(visitor.Schema, visitor.Table)
+	if err != nil {
+		return dataEvent, err
+	}
+	e.logger.Debug("columns", "columns", columns, "visitorBefore", visitor.Before)
+	for _, column := range columns {
+		data, ok := visitor.Before[column]
+		if !ok {
+			continue
+		}
+		data = strings.TrimLeft(strings.TrimRight(data.(string), "'"), "'")
+		visitor.WhereColumnValues.AbstractValues = append(visitor.WhereColumnValues.AbstractValues, data)
+	}
 	dataEvent = common.DataEvent{
 		Query:             "",
 		CurrentSchema:     visitor.Schema,
@@ -862,7 +877,12 @@ func (e *ExtractorOracle) parseToDataEvent(row *LogMinerRecord) (common.DataEven
 			return dataEvent, nil
 		}
 		(stmtP[0]).Accept(undoVisitor)
-		for _, data := range undoVisitor.Before {
+		for _, column := range columns {
+			data, ok := undoVisitor.Before[column]
+			if !ok {
+				continue
+			}
+			data = strings.TrimLeft(strings.TrimRight(data.(string), "'"), "'")
 			undoVisitor.WhereColumnValues.AbstractValues = append(undoVisitor.WhereColumnValues.AbstractValues, data)
 		}
 		dataEvent.NewColumnValues = undoVisitor.WhereColumnValues
