@@ -99,7 +99,7 @@ func decryptMySQLPwd(apiSrcTask *models.SrcTaskConfig, apiDestTask *models.DestT
 func validateTaskConfig(apiSrcTask *models.SrcTaskConfig, apiDestTask *models.DestTaskConfig) ([]*models.MysqlTaskValidationReport, error) {
 	taskValidationRes := []*models.MysqlTaskValidationReport{}
 	// validate src task
-	if apiSrcTask.OracleSrcTaskConfig != nil {
+	if apiSrcTask.OracleSrcTaskConfig == nil {
 		srcTaskConfig := common.DtleTaskConfig{}
 		srcTaskMap := buildDatabaseSrcTaskConfigMap(apiSrcTask)
 		if err := mapstructure.WeakDecode(srcTaskMap, &srcTaskConfig); err != nil {
