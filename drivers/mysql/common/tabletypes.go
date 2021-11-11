@@ -22,6 +22,13 @@ func NewSchemaContext(name string) *SchemaContext {
 		TableMap: map[string]*TableContext{},
 	}
 }
+func (sc *SchemaContext) AddTable(table *Table) (err error) {
+	sc.TableMap[table.TableName], err = NewTableContext(table)
+	if err != nil {
+		return err
+	}
+	return nil
+}
 func (sc *SchemaContext) AddTables(tables []*Table) (err error) {
 	for _, table := range tables {
 		sc.TableMap[table.TableName], err = NewTableContext(table)

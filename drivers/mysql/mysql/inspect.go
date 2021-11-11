@@ -174,8 +174,10 @@ func (i *Inspector) ValidateOriginalTable(databaseName, tableName string, table 
 	return nil
 }
 
-func (i *Inspector) InspectTableColumnsAndUniqueKeys(databaseName, tableName string) (columns *common.ColumnList, uniqueKeys [](*common.UniqueKey), err error) {
-	uniqueKeys, err = i.getCandidateUniqueKeys(databaseName, tableName)
+func (i *Inspector) InspectTableColumnsAndUniqueKeys(databaseName, tableName string) (
+	columns *common.ColumnList, uniqueKeys []*common.UniqueKey, err error) {
+
+	uniqueKeys, err = ubase.GetCandidateUniqueKeys(i.logger, i.db, databaseName, tableName)
 	if err != nil {
 		return columns, uniqueKeys, err
 	}
@@ -367,102 +369,4 @@ func (i *Inspector) validateTableTriggers(databaseName, tableName string) error 
 		return fmt.Errorf("Found triggers on %s.%s. Triggers are not supported at this time. Bailing out", umconf.EscapeName(databaseName), umconf.EscapeName(tableName))
 	}
 	return nil
-}
-
-// getCandidateUniqueKeys investigates a table and returns the list of unique keys
-// candidate for chunking
-func (i *Inspector) getCandidateUniqueKeys(databaseName, tableName string) (uniqueKeys [](*common.UniqueKey), err error) {
-	query := `SELECT
-      UNIQUES.INDEX_NAME,UNIQUES.COLUMN_NAMES,LOCATE('auto_increment', EXTRA) > 0 as is_auto_increment,has_nullable
-    FROM INFORMATION_SCHEMA.COLUMNS INNER JOIN (
-      SELECT
-        TABLE_SCHEMA,TABLE_NAME,INDEX_NAME,GROUP_CONCAT(COLUMN_NAME ORDER BY SEQ_IN_INDEX ASC) AS COLUMN_NAMES,
-        SUBSTRING_INDEX(GROUP_CONCAT(COLUMN_NAME ORDER BY SEQ_IN_INDEX ASC), ',', 1) AS FIRST_COLUMN_NAME,
-        SUM(NULLABLE='YES') > 0 AS has_nullable
-      FROM INFORMATION_SCHEMA.STATISTICS
-      WHERE
-			NON_UNIQUE=0 AND TABLE_SCHEMA = ? AND TABLE_NAME = ?
-      GROUP BY TABLE_SCHEMA,TABLE_NAME,INDEX_NAME
-    ) AS UNIQUES
-    ON (
-      COLUMNS.TABLE_SCHEMA = UNIQUES.TABLE_SCHEMA AND COLUMNS.TABLE_NAME = UNIQUES.TABLE_NAME AND COLUMNS.COLUMN_NAME = UNIQUES.FIRST_COLUMN_NAME
-    )
-    WHERE
-      COLUMNS.TABLE_SCHEMA = ? AND COLUMNS.TABLE_NAME = ?`
-	/*query := `
-	    SELECT
-	      COLUMNS.TABLE_SCHEMA,
-	      COLUMNS.TABLE_NAME,
-	      COLUMNS.COLUMN_NAME,
-	      UNIQUES.INDEX_NAME,
-	      UNIQUES.COLUMN_NAMES,
-	      UNIQUES.COUNT_COLUMN_IN_INDEX,
-	      COLUMNS.DATA_TYPE,
-	      COLUMNS.CHARACTER_SET_NAME,
-				LOCATE('auto_increment', EXTRA) > 0 as is_auto_increment,
-	      has_nullable
-	    FROM INFORMATION_SCHEMA.COLUMNS INNER JOIN (
-	      SELECT
-	        TABLE_SCHEMA,
-	        TABLE_NAME,
-	        INDEX_NAME,
-	        COUNT(*) AS COUNT_COLUMN_IN_INDEX,
-	        GROUP_CONCAT(COLUMN_NAME ORDER BY SEQ_IN_INDEX ASC) AS COLUMN_NAMES,
-	        SUBSTRING_INDEX(GROUP_CONCAT(COLUMN_NAME ORDER BY SEQ_IN_INDEX ASC), ',', 1) AS FIRST_COLUMN_NAME,
-	        SUM(NULLABLE='YES') > 0 AS has_nullable
-	      FROM INFORMATION_SCHEMA.STATISTICS
-	      WHERE
-					NON_UNIQUE=0
-					AND TABLE_SCHEMA = ?
-	      	AND TABLE_NAME = ?
-	      GROUP BY TABLE_SCHEMA, TABLE_NAME, INDEX_NAME
-	    ) AS UNIQUES
-	    ON (
-	      COLUMNS.TABLE_SCHEMA = UNIQUES.TABLE_SCHEMA AND
-	      COLUMNS.TABLE_NAME = UNIQUES.TABLE_NAME AND
-	      COLUMNS.COLUMN_NAME = UNIQUES.FIRST_COLUMN_NAME
-	    )
-	    WHERE
-	      COLUMNS.TABLE_SCHEMA = ?
-	      AND COLUMNS.TABLE_NAME = ?
-	    ORDER BY
-	      COLUMNS.TABLE_SCHEMA, COLUMNS.TABLE_NAME,
-	      CASE UNIQUES.INDEX_NAME
-	        WHEN 'PRIMARY' THEN 0
-	        ELSE 1
-	      END,
-	      CASE has_nullable
-	        WHEN 0 THEN 0
-	        ELSE 1
-	      END,
-	      CASE IFNULL(CHARACTER_SET_NAME, '')
-	          WHEN '' THEN 0
-	          ELSE 1
-	      END,
-	      CASE DATA_TYPE
-	        WHEN 'tinyint' THEN 0
-	        WHEN 'smallint' THEN 1
-	        WHEN 'int' THEN 2
-	        WHEN 'bigint' THEN 3
-	        ELSE 100
-	      END,
-	      COUNT_COLUMN_IN_INDEX
-	  `*/
-	err = usql.QueryRowsMap(i.db, query, func(m usql.RowMap) error {
-		columns := common.ParseColumnList(m.GetString("COLUMN_NAMES"))
-		uniqueKey := &common.UniqueKey{
-			Name:            m.GetString("INDEX_NAME"),
-			Columns:         *columns,
-			HasNullable:     m.GetBool("has_nullable"),
-			IsAutoIncrement: m.GetBool("is_auto_increment"),
-			LastMaxVals:     make([]string, len(columns.Columns)),
-		}
-		uniqueKeys = append(uniqueKeys, uniqueKey)
-		return nil
-	}, databaseName, tableName, databaseName, tableName)
-	if err != nil {
-		return uniqueKeys, err
-	}
-	i.logger.Debug("Potential unique keys.", "schema", databaseName, "table", tableName, "uniqueKeys", uniqueKeys)
-	return uniqueKeys, nil
 }

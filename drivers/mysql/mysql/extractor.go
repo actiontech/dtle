@@ -400,9 +400,8 @@ func (e *Extractor) inspectTables() (err error) {
 		var doDbs []*common.DataSource
 		// Get all db from TableSchemaRegex regex and get all tableSchemaRename
 		for _, doDb := range e.mysqlContext.ReplicateDoDb {
-			var regex string
 			if doDb.TableSchemaRegex != "" && doDb.TableSchemaRename != "" {
-				regex = doDb.TableSchemaRegex
+				regex := doDb.TableSchemaRegex
 				schemaRenameRegex := doDb.TableSchemaRename
 				for _, db := range dbsFiltered {
 					newdb := &common.DataSource{}
@@ -433,11 +432,8 @@ func (e *Extractor) inspectTables() (err error) {
 			}
 		}
 		for _, doDb := range doDbs {
-			db := &common.DataSource{
-				TableSchema:       doDb.TableSchema,
-				TableSchemaRegex:  doDb.TableSchemaRegex,
-				TableSchemaRename: doDb.TableSchemaRename,
-			}
+			schemaCtx := common.NewSchemaContext(doDb.TableSchema)
+			e.replicateDoDb[doDb.TableSchema] = schemaCtx
 
 			existedTables, err := sql.ShowTables(e.db, doDb.TableSchema, e.mysqlContext.ExpandSyntaxSupport)
 			if err != nil {
@@ -445,7 +441,8 @@ func (e *Extractor) inspectTables() (err error) {
 			}
 			tbsFiltered := []*common.Table{}
 			for _, tb := range existedTables {
-				if len(e.mysqlContext.ReplicateIgnoreDb) > 0 && common.IgnoreTbByReplicateIgnoreDb(e.mysqlContext.ReplicateIgnoreDb, db.TableSchema, tb.TableName) {
+				if len(e.mysqlContext.ReplicateIgnoreDb) > 0 &&
+					common.IgnoreTbByReplicateIgnoreDb(e.mysqlContext.ReplicateIgnoreDb, doDb.TableSchema, tb.TableName) {
 					continue
 				}
 				tbsFiltered = append(tbsFiltered, tb)
@@ -460,7 +457,10 @@ func (e *Extractor) inspectTables() (err error) {
 							"schema", doDb.TableSchema, "table", doTb.TableName)
 						continue
 					}
-					db.Tables = append(db.Tables, doTb)
+					err = schemaCtx.AddTable(doTb)
+					if err != nil {
+						return err
+					}
 				}
 			} else { // replicate selected tables
 				for _, doTb := range doDb.Tables {
@@ -488,7 +488,10 @@ func (e *Extractor) inspectTables() (err error) {
 								e.logger.Warn("ValidateOriginalTable error", "TableSchema", doDb.TableSchema, "TableName", doTb.TableName, "err", err)
 								continue
 							}
-							db.Tables = append(db.Tables, newTable)
+							err = schemaCtx.AddTable(newTable)
+							if err != nil {
+								return err
+							}
 						}
 						//if db.Tables == nil {
 						//	return fmt.Errorf("src table was nil")
@@ -505,22 +508,17 @@ func (e *Extractor) inspectTables() (err error) {
 							}
 							newTable := &common.Table{}
 							*newTable = *doTb
-							db.Tables = append(db.Tables, newTable)
+							err = schemaCtx.AddTable(newTable)
+							if err != nil {
+								return err
+							}
 						}
 					} else {
 						return fmt.Errorf("table configuration error")
 					}
-
 				}
 			}
-			schemaCtx := common.NewSchemaContext(db.TableSchema)
-			err = schemaCtx.AddTables(db.Tables)
-			if err != nil {
-				return err
-			}
-			e.replicateDoDb[db.TableSchema] = schemaCtx
 		}
-		//	e.mysqlContext.ReplicateDoDb = e.replicateDoDb
 	} else { // empty DoDB. replicate all db/tb
 		for _, dbName := range dbsFiltered {
 			ds := &common.DataSource{
@@ -551,26 +549,6 @@ func (e *Extractor) inspectTables() (err error) {
 			e.replicateDoDb[ds.TableSchema] = schemaCtx
 		}
 	}
-	/*if e.mysqlContext.ExpandSyntaxSupport {
-		db_mysql := &config.DataSource{
-			TableSchema: "mysql",
-		}
-		db_mysql.Tables = append(db_mysql.Tables,
-			&config.Table{
-				TableSchema: "mysql",
-				TableName:   "user",
-			},
-			&config.Table{
-				TableSchema: "mysql",
-				TableName:   "proc",
-			},
-			&config.Table{
-				TableSchema: "mysql",
-				TableName:   "func",
-			},
-		)
-		e.replicateDoDb = append(e.replicateDoDb, db_mysql)
-	}*/
 
 	return nil
 }
