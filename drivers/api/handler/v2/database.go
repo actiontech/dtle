@@ -114,6 +114,13 @@ func listMySQLSchema(logger hclog.Logger, reqParam *models.ListDatabaseSchemasRe
 }
 
 func listOracleSchema(logger hclog.Logger, reqParam *models.ListDatabaseSchemasReqV2) ([]*models.SchemaItem, error) {
+	if reqParam.IsPasswordEncrypted && reqParam.Password != "" {
+		realPwd, err := handler.DecryptPassword(reqParam.Password, g.RsaPrivateKey)
+		if nil != err {
+			return nil, err
+		}
+		reqParam.Password = realPwd
+	}
 	oracleDb, err := config.NewDB(&config.OracleConfig{
 		User:        reqParam.User,
 		Password:    reqParam.Password,
@@ -188,6 +195,15 @@ func ListDatabaseColumnsV2(c echo.Context) error {
 			return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
 		}
 	case DB_TYPE_ORACLE:
+		if reqParam.IsPasswordEncrypted && reqParam.Password != "" {
+			realPwd, err := handler.DecryptPassword(reqParam.Password, g.RsaPrivateKey)
+			if nil != err {
+				return c.JSON(http.StatusOK, &models.ConnectionRespV2{
+					BaseResp: models.BuildBaseResp(err),
+				})
+			}
+			reqParam.Password = realPwd
+		}
 		oracleDb, err := config.NewDB(&config.OracleConfig{
 			User:        reqParam.User,
 			Password:    reqParam.Password,
@@ -297,6 +313,15 @@ func ConnectionV2(c echo.Context) error {
 			})
 		}
 	case DB_TYPE_ORACLE:
+		if reqParam.IsPasswordEncrypted && reqParam.Password != "" {
+			realPwd, err := handler.DecryptPassword(reqParam.Password, g.RsaPrivateKey)
+			if nil != err {
+				return c.JSON(http.StatusOK, &models.ConnectionRespV2{
+					BaseResp: models.BuildBaseResp(err),
+				})
+			}
+			reqParam.Password = realPwd
+		}
 		oracleDb, err := config.NewDB(&config.OracleConfig{
 			User:        reqParam.User,
 			Password:    reqParam.Password,
