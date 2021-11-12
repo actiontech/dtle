@@ -371,7 +371,19 @@ func convertMysqlToMysqlJobToNomadJob(failover bool, jobParams *models.CreateOrU
 		return nil, fmt.Errorf("build src task failed: %v", err)
 	}
 
-	destTask, err := buildNomadTaskGroupItem(buildDatabaseDestTaskConfigMap(jobParams.DestTask), jobParams.DestTask.TaskName, jobParams.DestTask.NodeId, failover, jobParams.Retry)
+	destTaskConfigInNomadFormat := buildDatabaseDestTaskConfigMap(jobParams.DestTask)
+	if jobParams.SrcTask.OracleSrcTaskConfig != nil {
+		// todo for oracle->MySQL applier
+		oracleConfig := make(map[string]interface{})
+		oracleConfig["Host"] = jobParams.SrcTask.ConnectionConfig.Host
+		oracleConfig["Port"] = jobParams.SrcTask.ConnectionConfig.Port
+		oracleConfig["User"] = jobParams.SrcTask.ConnectionConfig.User
+		oracleConfig["Password"] = jobParams.SrcTask.ConnectionConfig.Password
+		oracleConfig["Scn"] = 0
+		oracleConfig["ServiceName"] = jobParams.SrcTask.ConnectionConfig.ServiceName
+		destTaskConfigInNomadFormat["OracleConfig"] = oracleConfig
+	}
+	destTask, err := buildNomadTaskGroupItem(destTaskConfigInNomadFormat, jobParams.DestTask.TaskName, jobParams.DestTask.NodeId, failover, jobParams.Retry)
 	if nil != err {
 		return nil, fmt.Errorf("build dest task failed: %v", err)
 	}
@@ -501,21 +513,9 @@ func buildRestartPolicy(RestartAttempts int) (*nomadApi.ReschedulePolicy, *nomad
 func buildDatabaseDestTaskConfigMap(config *models.DestTaskConfig) map[string]interface{} {
 	taskConfigInNomadFormat := make(map[string]interface{})
 
-	if config.MysqlDestTaskConfig != nil {
-		addNotRequiredParamToMap(taskConfigInNomadFormat, config.MysqlDestTaskConfig.ParallelWorkers, "ParallelWorkers")
-		addNotRequiredParamToMap(taskConfigInNomadFormat, config.MysqlDestTaskConfig.UseMySQLDependency, "UseMySQLDependency")
-		addNotRequiredParamToMap(taskConfigInNomadFormat, config.MysqlDestTaskConfig.DependencyHistorySize, "DependencyHistorySize")
-	} else {
-		// todo for oracle->MySQL applier
-		oracleConfig := make(map[string]interface{})
-		oracleConfig["Host"] = config.ConnectionConfig.Host
-		oracleConfig["Port"] = config.ConnectionConfig.Port
-		oracleConfig["User"] = config.ConnectionConfig.User
-		oracleConfig["Password"] = config.ConnectionConfig.Password
-		oracleConfig["Scn"] = 0
-		oracleConfig["ServiceName"] = config.ConnectionConfig.ServiceName
-		taskConfigInNomadFormat["OracleConfig"] = oracleConfig
-	}
+	addNotRequiredParamToMap(taskConfigInNomadFormat, config.MysqlDestTaskConfig.ParallelWorkers, "ParallelWorkers")
+	addNotRequiredParamToMap(taskConfigInNomadFormat, config.MysqlDestTaskConfig.UseMySQLDependency, "UseMySQLDependency")
+	addNotRequiredParamToMap(taskConfigInNomadFormat, config.MysqlDestTaskConfig.DependencyHistorySize, "DependencyHistorySize")
 	taskConfigInNomadFormat["ConnectionConfig"] = buildMysqlConnectionConfigMap(config.ConnectionConfig)
 
 	return taskConfigInNomadFormat
