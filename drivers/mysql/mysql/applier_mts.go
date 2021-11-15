@@ -141,31 +141,38 @@ func HashTx(entryCtx *common.BinlogEntryContext) (hashes []uint64) {
 		}
 		cols := entryCtx.TableItems[i].Columns
 
-		if len(cols.PKIndex()) == 0 {
-			return []uint64{}
+		if len(cols.UniqueKeys) == 0 {
+			g.Logger.Debug("found an event without writesets", "gno", entry.Coordinates.GNO, "i", i)
 		}
 
-		addHash := func(values *common.ColumnValues) {
-			h := fnv.New64()
-			// hash.WriteXXX never fails
-			_, _ = h.Write([]byte(event.DatabaseName))
-			_, _ = h.Write(g.HASH_STRING_SEPARATOR_BYTES)
-			_, _ = h.Write([]byte(event.TableName))
-
-			for _, pki := range cols.PKIndex() {
+		for _, uk := range cols.UniqueKeys {
+			addPKE := func(values *common.ColumnValues) {
+				g.Logger.Debug("writeset use key", "name", uk.Name, "columns", uk.Columns.Ordinals)
+				h := fnv.New64()
+				// hash.WriteXXX never fails
+				_, _ = h.Write([]byte(uk.Name))
+				_, _ = h.Write([]byte(event.DatabaseName))
 				_, _ = h.Write(g.HASH_STRING_SEPARATOR_BYTES)
-				_, _ = h.Write(values.BytesColumn(pki))
+				_, _ = h.Write([]byte(event.TableName))
+
+				for _, colIndex := range uk.Columns.Ordinals {
+					if values.IsNull(colIndex) {
+						return // do not add
+					}
+					_, _ = h.Write(g.HASH_STRING_SEPARATOR_BYTES)
+					_, _ = h.Write(values.BytesColumn(colIndex))
+				}
+
+				hashVal := h.Sum64()
+				hashes = append(hashes, hashVal)
+
 			}
-
-			hashVal := h.Sum64()
-			hashes = append(hashes, hashVal)
-		}
-
-		if event.WhereColumnValues != nil {
-			addHash(event.WhereColumnValues)
-		}
-		if event.NewColumnValues != nil {
-			addHash(event.NewColumnValues)
+			if event.WhereColumnValues != nil {
+				addPKE(event.WhereColumnValues)
+			}
+			if event.NewColumnValues != nil {
+				addPKE(event.NewColumnValues)
+			}
 		}
 	}
 

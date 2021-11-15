@@ -530,7 +530,17 @@ func GetTableColumnsSqle(sqleContext *sqle.Context, schema string,
 	return r, fkParents, nil
 }
 
-func GetCandidateUniqueKeys(logger g.LoggerType, db usql.QueryAble, databaseName, tableName string) (uniqueKeys [](*common.UniqueKey), err error) {
+func GetCandidateUniqueKeys(logger g.LoggerType, db usql.QueryAble, databaseName, tableName string,
+	columns *common.ColumnList) (uniqueKeys []*common.UniqueKey, err error) {
+
+	/* example query result:
+	+------------+--------------+-------------------+--------------+
+	| INDEX_NAME | COLUMN_NAMES | is_auto_increment | has_nullable |
+	+------------+--------------+-------------------+--------------+
+	| PRIMARY    | id           |                 1 |            0 |
+	| val1       | val1,val2    |                 0 |            0 |
+	+------------+--------------+-------------------+--------------+
+	*/
 	query := `
 SELECT UNIQUES.INDEX_NAME, UNIQUES.COLUMN_NAMES, LOCATE('auto_increment', EXTRA) > 0 as is_auto_increment, has_nullable
 FROM INFORMATION_SCHEMA.COLUMNS
@@ -606,7 +616,7 @@ WHERE COLUMNS.TABLE_SCHEMA = ? AND COLUMNS.TABLE_NAME = ?`
 	      COUNT_COLUMN_IN_INDEX
 	  `*/
 	err = usql.QueryRowsMap(db, query, func(m usql.RowMap) error {
-		columns := common.ParseColumnList(m.GetString("COLUMN_NAMES"))
+		columns := common.ParseColumnList(m.GetString("COLUMN_NAMES"), columns)
 		uniqueKey := &common.UniqueKey{
 			Name:            m.GetString("INDEX_NAME"),
 			Columns:         *columns,

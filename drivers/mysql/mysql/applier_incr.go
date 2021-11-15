@@ -727,6 +727,11 @@ func (a *ApplierIncr) setTableItemForBinlogEntry(binlogEntry *common.BinlogEntry
 					a.logger.Error(err.Error())
 					return err
 				}
+				uk, err := base.GetCandidateUniqueKeys(a.logger, a.db, dmlEvent.DatabaseName, dmlEvent.TableName, tableItem.Columns)
+				if err != nil {
+					return err
+				}
+				tableItem.Columns.UniqueKeys = uk
 				err = base.ApplyColumnTypes(a.db, dmlEvent.DatabaseName, dmlEvent.TableName, tableItem.Columns)
 				if err != nil {
 					err = errors.Wrapf(err, "ApplyColumnTypes. %v %v", dmlEvent.DatabaseName, dmlEvent.TableName)
