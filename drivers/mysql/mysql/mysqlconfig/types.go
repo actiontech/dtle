@@ -151,13 +151,8 @@ func ParseColumns(names string) []Column {
 // ColumnsMap maps a column name onto its ordinal position
 type ColumnsMap map[string]int
 
-func NewEmptyColumnsMap() ColumnsMap {
-	columnsMap := make(map[string]int)
-	return ColumnsMap(columnsMap)
-}
-
 func NewColumnsMap(orderedColumns []Column) ColumnsMap {
-	columnsMap := NewEmptyColumnsMap()
+	columnsMap := make(ColumnsMap)
 	for i, column := range orderedColumns {
 		columnsMap[column.RawName] = i
 	}

@@ -727,7 +727,7 @@ func (a *ApplierIncr) setTableItemForBinlogEntry(binlogEntry *common.BinlogEntry
 					a.logger.Error(err.Error())
 					return err
 				}
-				uk, err := base.GetCandidateUniqueKeys(a.logger, a.db, dmlEvent.DatabaseName, dmlEvent.TableName)
+				uk, err := base.GetCandidateUniqueKeys(a.logger, a.db, dmlEvent.DatabaseName, dmlEvent.TableName, tableItem.Columns)
 				if err != nil {
 					return err
 				}

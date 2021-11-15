@@ -156,6 +156,9 @@ func HashTx(entryCtx *common.BinlogEntryContext) (hashes []uint64) {
 				_, _ = h.Write([]byte(event.TableName))
 
 				for _, colIndex := range uk.Columns.Ordinals {
+					if values.IsNull(colIndex) {
+						return // do not add
+					}
 					_, _ = h.Write(g.HASH_STRING_SEPARATOR_BYTES)
 					_, _ = h.Write(values.BytesColumn(colIndex))
 				}

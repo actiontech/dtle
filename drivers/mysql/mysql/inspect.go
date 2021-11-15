@@ -177,14 +177,12 @@ func (i *Inspector) ValidateOriginalTable(databaseName, tableName string, table 
 func (i *Inspector) InspectTableColumnsAndUniqueKeys(databaseName, tableName string) (
 	columns *common.ColumnList, uniqueKeys []*common.UniqueKey, err error) {
 
-	uniqueKeys, err = ubase.GetCandidateUniqueKeys(i.logger, i.db, databaseName, tableName)
+	columns, err = ubase.GetTableColumns(i.db, databaseName, tableName)
 	if err != nil {
 		return columns, uniqueKeys, err
 	}
-	/*if len(uniqueKeys) == 0 {
-		return columns, uniqueKeys, fmt.Error("No PRIMARY nor UNIQUE key found in table! Bailing out")
-	}*/
-	columns, err = ubase.GetTableColumns(i.db, databaseName, tableName)
+
+	uniqueKeys, err = ubase.GetCandidateUniqueKeys(i.logger, i.db, databaseName, tableName, columns)
 	if err != nil {
 		return columns, uniqueKeys, err
 	}

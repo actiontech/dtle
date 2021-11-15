@@ -19,6 +19,9 @@ func (c *ColumnValues) StringColumn(index int) string {
 	}
 	return fmt.Sprintf("%+v", val)
 }
+func (c *ColumnValues) IsNull(index int) bool {
+	return c.GetAbstractValues()[index] == nil
+}
 func (c *ColumnValues) BytesColumn(index int) []byte {
 	val := c.GetAbstractValues()[index]
 	switch v := val.(type) {
@@ -58,12 +61,16 @@ func NewColumnList(columns []mysqlconfig.Column) *ColumnList {
 }
 
 // ParseColumnList parses a comma delimited list of column names
-func ParseColumnList(names string) *ColumnList {
-	result := &ColumnList{
+func ParseColumnList(names string, tableColumns *ColumnList) *ColumnList {
+	r := &ColumnList{
 		Columns: mysqlconfig.ParseColumns(names),
 	}
-	result.Ordinals = mysqlconfig.NewColumnsMap(result.Columns)
-	return result
+	r.Ordinals = make(mysqlconfig.ColumnsMap)
+	for i := range r.Columns {
+		colName := r.Columns[i].RawName
+		r.Ordinals[colName] = tableColumns.Ordinals[colName]
+	}
+	return r
 }
 
 func (c *ColumnList) ColumnList() []mysqlconfig.Column {
