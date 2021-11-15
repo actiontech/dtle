@@ -155,7 +155,6 @@ func (o *OracleDB) GetColumns(schema, table string) ([]string, error) {
 	FROM all_tab_cols
 	WHERE table_name = '%s'
 	AND owner = '%s'
-	AND column_name NOT IN ( 'PASSWORD', 'VERSION', 'ID' )
 	ORDER BY COLUMN_ID`, table, schema)
 
 	rows, err := o.MetaDataConn.QueryContext(context.TODO(), query)

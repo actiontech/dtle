@@ -180,7 +180,7 @@ func (h *taskHandle) NewRunner(d *Driver) (runner DriverHandle, err error) {
 			}
 		}
 	case common.TaskTypeDest:
-		h.logger.Debug("found oracle dest", "OracleConfig", h.driverConfig.OracleConfig, "allConfig", h.driverConfig)
+		h.logger.Debug("found dest", "allConfig", h.driverConfig)
 		if h.driverConfig.KafkaConfig != nil {
 			h.logger.Debug("found kafka", "KafkaConfig", h.driverConfig.KafkaConfig)
 			runner, err = kafka.NewKafkaRunner(ctx, h.driverConfig.KafkaConfig, h.logger,

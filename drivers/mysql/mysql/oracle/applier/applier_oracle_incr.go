@@ -273,6 +273,59 @@ func (a *ApplierOracleIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *comm
 		logger.Debug("binlogEntry.Events", "gno", binlogEntry.Coordinates.GNO, "event", event)
 		switch event.DML {
 		case common.NotDML:
+			var err error
+			logger.Debug("not dml", "query", event.Query)
+
+			execQuery := func(query string) error {
+				_, err = dbApplier.Tx.ExecContext(a.ctx, query)
+				if err != nil {
+					errCtx := errors.Wrapf(err, "tx.Exec. gno %v iEvent %v queryBegin %v workerIdx %v",
+						binlogEntry.Coordinates.GNO, i, g.StrLim(query, 10), workerIdx)
+					if sql.IgnoreError(err) {
+						logger.Warn("Ignore error", "err", errCtx)
+						return nil
+					} else {
+						logger.Error("Exec sql error", "err", errCtx)
+						return errCtx
+					}
+				}
+				return nil
+			}
+
+			//if event.CurrentSchema != "" {
+			//	query := fmt.Sprintf("USE %s", mysqlconfig.EscapeName(event.CurrentSchema))
+			//	logger.Debug("use", "query", query)
+			//	err := execQuery(query)
+			//	if err != nil {
+			//		return err
+			//	}
+			//}
+
+			if event.TableName != "" {
+				var schema string
+				if event.DatabaseName != "" {
+					schema = event.DatabaseName
+				} else {
+					//schema = event.CurrentSchema
+				}
+				logger.Debug("reset tableItem", "schema", schema, "table", event.TableName)
+				a.getTableItem(schema, event.TableName).Reset()
+			} else { // TableName == ""
+				if event.DatabaseName != "" {
+					if schemaItem, ok := a.tableItems[event.DatabaseName]; ok {
+						for tableName, v := range schemaItem {
+							logger.Debug("reset tableItem", "schema", event.DatabaseName, "table", tableName)
+							v.Reset()
+						}
+					}
+					delete(a.tableItems, event.DatabaseName)
+				}
+			}
+
+			err = execQuery(event.Query)
+			if err != nil {
+				return err
+			}
 			logger.Debug("Exec.after", "query", event.Query)
 		default:
 			logger.Debug("a dml event")
@@ -304,12 +357,17 @@ func (a *ApplierOracleIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *comm
 			} else {
 				logger.Debug("RowsAffected.after", "gno", binlogEntry.Coordinates.GNO, "event", i, "nr", nr)
 			}
-			if nr > 0 {
-				dbApplier.Tx.Commit()
-			}
+			//if nr > 0 {
+			//	dbApplier.Tx.Commit()
+			//}
 			totalDelta += rowDelta
 		}
 	}
+	if true { // todo commit
+		dbApplier.Tx.Commit()
+		dbApplier.Tx = nil
+	}
+
 	return nil
 }
 

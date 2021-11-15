@@ -10,6 +10,11 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/hashicorp/go-hclog"
+
+	oracleParser "github.com/sjjian/oracle-sql-parser"
+	"github.com/sjjian/oracle-sql-parser/ast"
+
 	"github.com/actiontech/dtle/drivers/mysql/mysql/oracle/config"
 
 	"github.com/actiontech/dtle/g"
@@ -251,14 +256,14 @@ WHERE
 	AND (
 		(operation_code IN (6,7,34,36))
 		OR 
-		(operation_code IN (1,2,3) AND seg_owner not in ('SYS','SYSTEM','APPQOSSYS','AUDSYS','CTXSYS','DVSYS','DBSFWUSER',
+		(operation_code IN (1,2,3,5) AND seg_owner not in ('SYS','SYSTEM','APPQOSSYS','AUDSYS','CTXSYS','DVSYS','DBSFWUSER',
 		'DBSNMP','GSMADMIN_INTERNAL','LBACSYS','MDSYS','OJVMSYS','OLAPSYS','ORDDATA',
     	'ORDSYS','OUTLN','WMSYS','XDB') %s
 		)
 	)
 `, startScn, endScn, l.buildFilterSchemaTable())
 
-	l.logger.Debug("Get logMiner record", "QuerySql", query)
+	//l.logger.Debug("Get logMiner record", "QuerySql", query)
 	rows, err := l.oracleDB.LogMinerConn.QueryContext(context.TODO(), query)
 	if err != nil {
 		return nil, err
@@ -301,7 +306,9 @@ WHERE
 			lr.SQLRedo = redoLog.String()
 			lr.SQLUndo = undoLog.String()
 		}
-		l.logger.Debug("Get logMiner record", "RedoSQL", lr.SQLRedo, "UndoSQL", lr.SQLUndo)
+
+		//l.logger.Debug("Get logMiner record", "RedoSQL", lr.SQLRedo, "UndoSQL", lr.SQLUndo, "opretation", lr.Operation)
+
 		lrs = append(lrs, lr)
 	}
 	return lrs, nil
@@ -558,7 +565,10 @@ func (e *ExtractorOracle) DataStreamEvents(entriesChannel chan<- *common.BinlogE
 func (e *ExtractorOracle) handleSQLs(tx *LogMinerTx) *common.BinlogEntry {
 	entry := common.NewBinlogEntry()
 	for _, row := range tx.records {
-		dataEvent, _ := e.parseToDataEvent(row)
+		dataEvent, err := e.parseToDataEvent(row)
+		if err != nil {
+			e.logger.Error("parseOracleToMySQL", "err", err)
+		}
 		entry.Events = append(entry.Events, dataEvent)
 	}
 	return entry
@@ -751,6 +761,12 @@ func (l *LogMinerStream) HandlerRecords(records []*LogMinerRecord) error {
 		case OperationCodeRollback:
 			l.txCache.rollbackTx(r.TxId(), r.SCN)
 		case OperationCodeDDL:
+			l.txCache.Handler(&LogMinerTx{
+				transactionId: "",
+				startScn:      r.SCN,
+				endScn:        r.SCN,
+				records:       []*LogMinerRecord{r},
+			})
 		case OperationCodeInsert, OperationCodeDelete, OperationCodeUpdate:
 			l.txCache.addTxRecord(r)
 		}
@@ -799,97 +815,136 @@ func (l *LogMinerStream) HandlerRecords(records []*LogMinerRecord) error {
 //}
 
 func (e *ExtractorOracle) parseToDataEvent(row *LogMinerRecord) (common.DataEvent, error) {
+	e.logger.Debug("============= parse To DataEvent===============", "redoSQL", row.SQLRedo)
 	dataEvent := common.DataEvent{}
-	row.SQLRedo = ReplaceQuotesString(row.SQLRedo)
-	row.SQLRedo = ReplaceSpecifiedString(row.SQLRedo, ";", "")
 
-	// redoSQL parse
-	p := parser.New()
-	stmt, _, err := p.Parse(row.SQLRedo, "", "")
-	if err != nil {
-		return dataEvent, err
-	}
-	visitor := &Stmt{}
-	if len(stmt) <= 0 {
-		return dataEvent, nil
-	}
-	(stmt[0]).Accept(visitor)
-	//tableStruct := e.OracleContext.schemas[visitor.Schema].Tables[visitor.Table].RelTable.TableStructs
-	//for _, ts := range tableStruct {
-	//	var data interface{}
-	//	switch td := ts.(type) {
-	//	case *ast.ColumnDef:
-	//		fmt.Printf("column: %s, type: %d\n", td.ColumnName.Value, td.Datatype.DataDef())
-	//		Strvalue := visitor.Before[td.ColumnName.Value].(string)
-	//		switch td.Datatype.(type) {
-	//		case element.BinaryDouble:
-	//			data, _ = strconv.ParseInt(Strvalue, 10, 0)
-	//		}
-	//		visitor.WhereColumnValues.AbstractValues = append(visitor.WhereColumnValues.AbstractValues, data)
-	//		//case *ast.OutOfLineConstraint:
-	//		//	columns := []string{}
-	//		//	for _, c := range td.Columns {
-	//		//		columns = append(columns, c.Value)
-	//		//	}
-	//		//	fmt.Printf("constraint: _, type:%d, column: (%s)\n", td.Type,
-	//		//		strings.Join(columns, ","))
-	//	}
-	//
-	//}
-	e.logger.Debug("SchemaTable", "schema", visitor.Schema, "table", visitor.Table)
-	// todo 转换成通用格式
-	columns, err := e.oracleDB.GetColumns(visitor.Schema, visitor.Table)
-	if err != nil {
-		return dataEvent, err
-	}
-	e.logger.Debug("columns", "columns", columns, "visitorBefore", visitor.Before)
-	for _, column := range columns {
-		data, ok := visitor.Before[column]
-		if !ok {
-			continue
+	// parse ddl and dml
+	if row.Operation == OperationCodeDDL {
+		//dataEvent.Query = "CREATE TABLE IF NOT EXISTS `runoob_tbl`(\n   `runoob_id` INT UNSIGNED AUTO_INCREMENT,\n   `runoob_title` VARCHAR(100) NOT NULL,\n   `runoob_author` VARCHAR(40) NOT NULL,\n   `submission_date` DATE,\n   PRIMARY KEY ( `runoob_id` )\n)ENGINE=InnoDB DEFAULT CHARSET=utf8"
+		e.logger.Debug("============= ddl stmt parse start===============", "redoSQL", row.SQLRedo)
+		//tableStruct := e.OracleContext.schemas[visitor.Schema].Tables[visitor.Table].RelTable.TableStructs
+		// 列排序问题
+		// 字符集问题
+		dataEvent, err := parseDDLSQL(e.logger, row.SQLRedo)
+		if err != nil {
+			return common.DataEvent{}, err
 		}
-		data = strings.TrimLeft(strings.TrimRight(data.(string), "'"), "'")
-		visitor.WhereColumnValues.AbstractValues = append(visitor.WhereColumnValues.AbstractValues, data)
-	}
-	dataEvent = common.DataEvent{
-		Query:             "",
-		CurrentSchema:     visitor.Schema,
-		DatabaseName:      visitor.Schema,
-		TableName:         visitor.Table,
-		DML:               visitor.Operation,
-		ColumnCount:       uint64(len(visitor.Columns)),
-		WhereColumnValues: visitor.WhereColumnValues,
-		NewColumnValues:   visitor.NewColumnValues,
-		Table:             nil,
-		LogPos:            0,
-		Timestamp:         0,
-	}
-	if visitor.Operation == common.UpdateDML {
-		row.SQLUndo = ReplaceQuotesString(row.SQLUndo)
-		row.SQLUndo = ReplaceSpecifiedString(row.SQLUndo, ";", "")
-		undoP := parser.New()
-		stmtP, _, err := undoP.Parse(row.SQLUndo, "", "")
+		e.logger.Debug("============= ddl stmt parse end =========", "ddl", dataEvent.Query)
+		return dataEvent, nil
+	} else if row.Operation == OperationCodeDelete || row.Operation == OperationCodeUpdate ||
+		row.Operation == OperationCodeInsert { // insert delete update
+		// dml
+		// redoSQL parse
+		// todo 大小写问题
+		row.SQLRedo = ReplaceQuotesString(row.SQLRedo)
+		row.SQLRedo = ReplaceSpecifiedString(row.SQLRedo, ";", "")
+		p := parser.New()
+		stmt, _, err := p.Parse(row.SQLRedo, "", "")
 		if err != nil {
 			return dataEvent, err
 		}
-		undoVisitor := &Stmt{}
-		if len(stmtP) <= 0 {
-			return dataEvent, nil
+		visitor := &Stmt{}
+		if len(stmt) <= 0 {
+			return dataEvent, fmt.Errorf("parse dml err,stmt lens %d", len(stmt))
 		}
-		(stmtP[0]).Accept(undoVisitor)
+		(stmt[0]).Accept(visitor)
+		dataEvent = common.DataEvent{
+			CurrentSchema: visitor.Schema,
+			DatabaseName:  visitor.Schema,
+			TableName:     visitor.Table,
+			DML:           visitor.Operation,
+		}
+		e.logger.Debug("SchemaTable", "schema", visitor.Schema, "table", visitor.Table)
+		// todo 转换成通用格式
+		columns, err := e.oracleDB.GetColumns(visitor.Schema, visitor.Table)
+		if err != nil {
+			return dataEvent, err
+		}
+		e.logger.Debug("columns", "columns", columns, "visitorBefore", visitor.Before)
 		for _, column := range columns {
-			data, ok := undoVisitor.Before[column]
+			data, ok := visitor.Before[column]
 			if !ok {
 				continue
 			}
 			data = strings.TrimLeft(strings.TrimRight(data.(string), "'"), "'")
-			undoVisitor.WhereColumnValues.AbstractValues = append(undoVisitor.WhereColumnValues.AbstractValues, data)
+			visitor.WhereColumnValues.AbstractValues = append(visitor.WhereColumnValues.AbstractValues, data)
 		}
-		dataEvent.NewColumnValues = undoVisitor.WhereColumnValues
-		dataEvent.Query = undoVisitor.WhereColumnValues.String()
+		dataEvent = common.DataEvent{
+			CurrentSchema:     visitor.Schema,
+			DatabaseName:      visitor.Schema,
+			TableName:         visitor.Table,
+			DML:               visitor.Operation,
+			ColumnCount:       uint64(len(visitor.Columns)),
+			WhereColumnValues: visitor.WhereColumnValues,
+			NewColumnValues:   visitor.NewColumnValues,
+			Table:             nil,
+		}
+		if visitor.Operation == common.UpdateDML {
+			row.SQLUndo = ReplaceQuotesString(row.SQLUndo)
+			row.SQLUndo = ReplaceSpecifiedString(row.SQLUndo, ";", "")
+			undoP := parser.New()
+			stmtP, _, err := undoP.Parse(row.SQLUndo, "", "")
+			if err != nil {
+				return dataEvent, err
+			}
+			undoVisitor := &Stmt{}
+			if len(stmtP) <= 0 {
+				return dataEvent, nil
+			}
+			(stmtP[0]).Accept(undoVisitor)
+			for _, column := range columns {
+				data, ok := undoVisitor.Before[column]
+				if !ok {
+					continue
+				}
+				data = strings.TrimLeft(strings.TrimRight(data.(string), "'"), "'")
+				undoVisitor.WhereColumnValues.AbstractValues = append(undoVisitor.WhereColumnValues.AbstractValues, data)
+			}
+			dataEvent.NewColumnValues = undoVisitor.WhereColumnValues
+			dataEvent.Query = undoVisitor.WhereColumnValues.String()
+		}
+		e.logger.Debug("============= ddl stmt parse end =========", "dml")
+		return dataEvent, nil
 	}
 
-	return dataEvent, nil
+	return dataEvent, fmt.Errorf("parese dateEvent fail")
+}
+
+func parseDDLSQL(logger hclog.Logger, redoSQL string) (dataEvent common.DataEvent, err error) {
+	stmt, err := oracleParser.Parser(redoSQL)
+	if err != nil {
+		logger.Error("============= ddl parse err===============", "redoSQL", redoSQL)
+		return dataEvent, err
+	}
+	switch s := stmt[0].(type) {
+	case *ast.CreateTableStmt:
+		var columns []string
+		logger.Debug("CreateTableStmt", "schema:", s.TableName.Schema.Value, " table", s.TableName.Table.Value)
+		for _, ts := range s.RelTable.TableStructs {
+			switch td := ts.(type) {
+			case *ast.ColumnDef:
+				logger.Debug("caseColumnDef", "column:", td.ColumnName.Value, " type: ", td.Datatype.DataDef())
+				columns = append(columns, OracleTypeParse(td))
+			case *ast.OutOfLineConstraint:
+				columns := []string{}
+				for _, c := range td.Columns {
+					columns = append(columns, c.Value)
+				}
+				logger.Debug("caseOutOfLineConstraint", "constraint type: ", td.Type, "constraint value :",
+					strings.Join(columns, ","))
+			}
+		}
+		schemaName := IdentifierToString(s.TableName.Schema)
+		tableName := IdentifierToString(s.TableName.Table)
+		dataEvent = common.DataEvent{
+			Query:         fmt.Sprintf(`CREATE TABLE %s.%s (%s)`, schemaName, tableName, strings.Join(columns, ",")),
+			CurrentSchema: schemaName,
+			DatabaseName:  schemaName,
+			TableName:     tableName,
+			DML:           common.NotDML,
+		}
+	}
+	return
 }
 
 func Query(db *gosql.DB, querySQL string, args ...interface{}) ([]map[string]string, error) {
