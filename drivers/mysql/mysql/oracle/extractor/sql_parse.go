@@ -127,6 +127,7 @@ const (
 	MySQLColTypeBIGINT    = "BIGINT"
 	MySQLColTypeNUMERIC   = "NUMERIC"
 	MySQLColTypeVARBINARY = "VARBINARY"
+	MySQLColTypeTEXT      = "TEXT"
 )
 
 // colDefinetione = column type
@@ -148,15 +149,21 @@ func OracleTypeParse(td *oracle_ast.ColumnDef) string {
 		} else if *td.Datatype.(*element.Char).Size >= 256 && *td.Datatype.(*element.Char).Size <= 2000 {
 			colDefinition = fmt.Sprintf("%s %s(%d)%s", IdentifierToString(td.ColumnName), MySQLColTypeVARCHAR, *td.Datatype.(*element.Char).Size, colDefaultString(td.Default))
 		}
+	case element.DataDefCharacter:
+		if *td.Datatype.(*element.Char).Size >= 1 && *td.Datatype.(*element.Char).Size <= 255 {
+			colDefinition = fmt.Sprintf("%s %s(%d)%s", IdentifierToString(td.ColumnName), MySQLColTypeCHAR, *td.Datatype.(*element.Char).Size, colDefaultString(td.Default))
+		} else if *td.Datatype.(*element.Char).Size >= 256 && *td.Datatype.(*element.Char).Size <= 2000 {
+			colDefinition = fmt.Sprintf("%s %s(%d)%s", IdentifierToString(td.ColumnName), MySQLColTypeVARCHAR, *td.Datatype.(*element.Char).Size, colDefaultString(td.Default))
+		}
 	case element.DataDefClob:
 		colDefinition = fmt.Sprintf("%s %s%s", IdentifierToString(td.ColumnName), MySQLColTypeLONGTEXT, colDefaultString(td.Default))
 	case element.DataDefDate:
 		colDefinition = fmt.Sprintf("%s %s%s", IdentifierToString(td.ColumnName), MySQLColTypeDATETIME, colDefaultString(td.Default))
 	case element.DataDefDecimal:
-		colDefinition = fmt.Sprintf("%s %s(%d,%d) %s", IdentifierToString(td.ColumnName), MySQLColTypeDECIMAL,
+		colDefinition = fmt.Sprintf("%s %s(%d,%d)%s", IdentifierToString(td.ColumnName), MySQLColTypeDECIMAL,
 			td.Datatype.(*element.Number).Precision.Number, *td.Datatype.(*element.Number).Scale, colDefaultString(td.Default))
 	case element.DataDefDec:
-		colDefinition = fmt.Sprintf("%s %s(%d,%d) %s", IdentifierToString(td.ColumnName), MySQLColTypeDEC,
+		colDefinition = fmt.Sprintf("%s %s(%d,%d)%s", IdentifierToString(td.ColumnName), MySQLColTypeDEC,
 			td.Datatype.(*element.Number).Precision.Number, *td.Datatype.(*element.Number).Scale, colDefaultString(td.Default))
 	case element.DataDefDoublePrecision:
 		colDefinition = fmt.Sprintf("%s %s%s", IdentifierToString(td.ColumnName), MySQLColTypeDOUBLE, colDefaultString(td.Default))
@@ -175,15 +182,15 @@ func OracleTypeParse(td *oracle_ast.ColumnDef) string {
 	case element.DataDefLongRaw:
 		colDefinition = fmt.Sprintf("%s %s%s", IdentifierToString(td.ColumnName), MySQLColTypeLONGBLOB, colDefaultString(td.Default))
 	case element.DataDefNChar:
-		if *td.Datatype.(*element.Char).Size >= 1 && *td.Datatype.(*element.NChar).Size <= 255 {
+		if *td.Datatype.(*element.NChar).Size >= 1 && *td.Datatype.(*element.NChar).Size <= 255 {
 			colDefinition = fmt.Sprintf("%s %s(%d)%s", IdentifierToString(td.ColumnName), MySQLColTypeNCHAR, *td.Datatype.(*element.NChar).Size, colDefaultString(td.Default))
-		} else if *td.Datatype.(*element.Char).Size >= 256 && *td.Datatype.(*element.NChar).Size <= 2000 {
+		} else if *td.Datatype.(*element.NChar).Size >= 256 && *td.Datatype.(*element.NChar).Size <= 2000 {
 			colDefinition = fmt.Sprintf("%s %s(%d)%s", IdentifierToString(td.ColumnName), MySQLColTypeNVARCHAR, *td.Datatype.(*element.NChar).Size, colDefaultString(td.Default))
 		}
 	case element.DataDefNCharVarying:
 		colDefinition = fmt.Sprintf("%s %s(%d)%s", IdentifierToString(td.ColumnName), MySQLColTypeNVARCHAR, *td.Datatype.(*element.NVarchar2).Size, colDefaultString(td.Default))
 	case element.DataDefNClob:
-		colDefinition = fmt.Sprintf("%s %s(%s) %s", IdentifierToString(td.ColumnName), MySQLColTypeNVARCHAR, "max", colDefaultString(td.Default))
+		colDefinition = fmt.Sprintf("%s %s%s", IdentifierToString(td.ColumnName), MySQLColTypeTEXT, colDefaultString(td.Default))
 	case element.DataDefNumber:
 		var mysqlNumberType string
 		num := td.Datatype.(*element.Number)
@@ -195,22 +202,24 @@ func OracleTypeParse(td *oracle_ast.ColumnDef) string {
 				mysqlNumberType = fmt.Sprintf("%s(%d,%d)", MySQLColTypeDECIMAL, p, *num.Scale)
 			} else { // p != nil s != nil
 				switch {
-				case p > 1 && p < 3:
+				case p <= 0:
+					mysqlNumberType = MySQLColTypeDOUBLE
+				case p < 3:
 					mysqlNumberType = MySQLColTypeTINYINT
-				case p >= 3 && p < 5:
+				case p < 5:
 					mysqlNumberType = MySQLColTypeSMALLINT
-				case p >= 5 && p < 9:
+				case p < 9:
 					mysqlNumberType = MySQLColTypeINT
-				case p >= 9 && p < 19:
+				case p < 19:
 					mysqlNumberType = MySQLColTypeBIGINT
-				case p >= 19 && p <= 38:
+				case p <= 38:
 					mysqlNumberType = fmt.Sprintf("%s(%d)", MySQLColTypeDECIMAL, p)
 				}
 			}
 		}
 		colDefinition = fmt.Sprintf("%s %s%s", IdentifierToString(td.ColumnName), mysqlNumberType, colDefaultString(td.Default))
 	case element.DataDefNumeric:
-		colDefinition = fmt.Sprintf("%s %s(%d,%d) %s", IdentifierToString(td.ColumnName), MySQLColTypeNUMERIC,
+		colDefinition = fmt.Sprintf("%s %s(%d,%d)%s", IdentifierToString(td.ColumnName), MySQLColTypeNUMERIC,
 			td.Datatype.(*element.Number).Precision.Number, *td.Datatype.(*element.Number).Scale, colDefaultString(td.Default))
 	case element.DataDefNVarChar2:
 		colDefinition = fmt.Sprintf("%s %s(%d)%s", IdentifierToString(td.ColumnName), MySQLColTypeNVARCHAR, *td.Datatype.(*element.NVarchar2).Size, colDefaultString(td.Default))
