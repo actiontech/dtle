@@ -568,6 +568,7 @@ func (e *ExtractorOracle) handleSQLs(tx *LogMinerTx) *common.BinlogEntry {
 		dataEvent, err := e.parseToDataEvent(row)
 		if err != nil {
 			e.logger.Error("parseOracleToMySQL", "err", err)
+			continue
 		}
 		entry.Events = append(entry.Events, dataEvent)
 	}
@@ -938,6 +939,63 @@ func parseDDLSQL(logger hclog.Logger, redoSQL string) (dataEvent common.DataEven
 		tableName := IdentifierToString(s.TableName.Table)
 		dataEvent = common.DataEvent{
 			Query:         fmt.Sprintf(`CREATE TABLE %s.%s (%s)`, schemaName, tableName, strings.Join(columns, ",")),
+			CurrentSchema: schemaName,
+			DatabaseName:  schemaName,
+			TableName:     tableName,
+			DML:           common.NotDML,
+		}
+	case *ast.AlterTableStmt:
+		schemaName := IdentifierToString(s.TableName.Schema)
+		tableName := IdentifierToString(s.TableName.Table)
+		alterOptions := make([]string, 0)
+		for _, alter := range s.AlterTableClauses {
+			switch a := alter.(type) {
+			case *ast.AddColumnClause:
+				colDefinitions := make([]string, 0)
+				for _, column := range a.Columns {
+					colDefinitions = append(colDefinitions, OracleTypeParse(column))
+				}
+				alterOptions = append(alterOptions, fmt.Sprintf("ADD COLUMN(%s)", strings.Join(colDefinitions, ",")))
+			case *ast.ModifyColumnClause:
+				colDefinitions := make([]string, 0)
+				for _, column := range a.Columns {
+					colDefinitions = append(colDefinitions, OracleTypeParse(column))
+				}
+				alterOptions = append(alterOptions, fmt.Sprintf("MODIFY COLUMN(%s)", strings.Join(colDefinitions, ",")))
+			case *ast.DropColumnClause:
+				colDefinitions := make([]string, 0)
+				for _, column := range a.Columns {
+					colDefinitions = append(colDefinitions, IdentifierToString(column))
+				}
+				alterOptions = append(alterOptions, fmt.Sprintf("DROP COLUMN(%s)", strings.Join(colDefinitions, ",")))
+			case *ast.RenameColumnClause:
+				oldName := IdentifierToString(a.OldName)
+				newName := IdentifierToString(a.NewName)
+				alterOptions = append(alterOptions, fmt.Sprintf("RENAME COLUMN %s TO %s", oldName, newName))
+			case *ast.AddConstraintClause:
+				// todo
+			case *ast.ModifyConstraintClause:
+				// todo
+			case *ast.RenameConstraintClause:
+				// todo
+			case *ast.DropConstraintClause:
+				// todo
+			}
+		}
+		ddl := fmt.Sprintf("ALTER TABLE %s.%s %s", schemaName, tableName, strings.Join(alterOptions, ","))
+		dataEvent = common.DataEvent{
+			Query:         ddl,
+			CurrentSchema: schemaName,
+			DatabaseName:  schemaName,
+			TableName:     tableName,
+			DML:           common.NotDML,
+		}
+	case *ast.DropTableStmt:
+		schemaName := IdentifierToString(s.TableName.Schema)
+		tableName := IdentifierToString(s.TableName.Table)
+		ddl := fmt.Sprintf("DROP TABLE %s.%s", schemaName, tableName)
+		dataEvent = common.DataEvent{
+			Query:         ddl,
 			CurrentSchema: schemaName,
 			DatabaseName:  schemaName,
 			TableName:     tableName,

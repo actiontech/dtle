@@ -513,7 +513,7 @@ github.com/siddontang/go-mysql/replication
 github.com/siddontang/go-mysql/utils
 # github.com/sirupsen/logrus v1.7.0
 github.com/sirupsen/logrus
-# github.com/sjjian/oracle-sql-parser v0.0.0-20211031162207-7a9c5413da3a
+# github.com/sjjian/oracle-sql-parser v0.0.0-20211116095133-b7ec35b1db5b
 github.com/sjjian/oracle-sql-parser
 github.com/sjjian/oracle-sql-parser/ast
 github.com/sjjian/oracle-sql-parser/ast/element

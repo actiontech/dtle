@@ -69,7 +69,7 @@ func nextQuery(yylex interface{}) string {
     _numeric
     _decimal
     _dec
-    _interger
+    _integer
     _int
     _smallInt
     _double
@@ -255,6 +255,7 @@ func nextQuery(yylex interface{}) string {
     _usable
     _unusable
     _invalidation
+    _purge
 
 %token <i>
     _intNumber 		"int number"
@@ -288,6 +289,7 @@ func nextQuery(yylex interface{}) string {
     AlterTableStmt	"*ast.AlterTableStmt"
     CreateTableStmt
     CreateIndexStmt
+    DropTableStmt
 
 %type <anything>
     StatementList
@@ -373,6 +375,7 @@ Statement:
 |   AlterTableStmt
 |   CreateTableStmt
 |   CreateIndexStmt
+|   DropTableStmt
 
 EmptyStmt:
     {
@@ -1444,6 +1447,29 @@ CreateIndexInvalidation:
 |   _deferred _invalidation
 |   _immediate _invalidation
 
+/* ++++++++++++++++++++++++++++++++++++++++++++ drop table +++++++++++++++++++++++++++++++++++++++++++ */
+
+// see: https://docs.oracle.com/en/database/oracle/oracle-database/21/sqlrf/DROP-TABLE.html#GUID-39D89EDC-155D-4A24-837E-D45DDA757B45
+DropTableStmt:
+    _drop _table TableName CascadeConstraintsOrEmpty PurgeOrEmpty
+    {
+        $$ = &ast.DropTableStmt{
+            TableName:  $3.(*ast.TableName),
+        }
+    }
+
+CascadeConstraintsOrEmpty:
+    {
+        // empty
+    }
+|   _cascade _constraints
+
+PurgeOrEmpty:
+    {
+        // empty
+    }
+|   _purge
+
 /* +++++++++++++++++++++++++++++++++++++++++++++ datatype ++++++++++++++++++++++++++++++++++++++++++++ */
 
 // see: https://docs.oracle.com/en/database/oracle/oracle-database/21/sqlrf/Data-Types.html#GUID-A3C0D836-BADB-44E5-A5D4-265BA5968483
@@ -1878,7 +1904,7 @@ AnsiSupportDataTypes:
         d.SetDataDef(element.DataDefNumeric)
         $$ = d
     }
-|   _numeric '(' NumberOrAsterisk '.' _intNumber ')'
+|   _numeric '(' NumberOrAsterisk ',' _intNumber ')'
     {
         precision := $3.(*element.NumberOrAsterisk)
         scale := $5
@@ -1899,7 +1925,7 @@ AnsiSupportDataTypes:
         d.SetDataDef(element.DataDefDecimal)
         $$ = d
     }
-|   _decimal '(' NumberOrAsterisk '.' _intNumber ')'
+|   _decimal '(' NumberOrAsterisk ',' _intNumber ')'
     {
         precision := $3.(*element.NumberOrAsterisk)
         scale := $5
@@ -1920,7 +1946,7 @@ AnsiSupportDataTypes:
         d.SetDataDef(element.DataDefDec)
         $$ = d
     }
-|   _dec '(' NumberOrAsterisk '.' _intNumber ')'
+|   _dec '(' NumberOrAsterisk ',' _intNumber ')'
     {
         precision := $3.(*element.NumberOrAsterisk)
         scale := $5
@@ -1928,7 +1954,7 @@ AnsiSupportDataTypes:
         d.SetDataDef(element.DataDefDec)
         $$ = d
     }
-|   _interger
+|   _integer
     {
         precision := &element.NumberOrAsterisk{Number: 38}
         d := &element.Number{Precision: precision}

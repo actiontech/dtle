@@ -119,7 +119,7 @@ var keywordMap = map[string]int{
 	"numeric":                 _numeric,
 	"decimal":                 _decimal,
 	"dec":                     _dec,
-	"interger":                _interger,
+	"integer":                 _integer,
 	"int":                     _int,
 	"smallint":                _smallInt,
 	"double":                  _double,
@@ -301,6 +301,7 @@ var keywordMap = map[string]int{
 	"usable":                  _usable,
 	"unusable":                _unusable,
 	"invalidation":            _invalidation,
+	"purge":                   _purge,
 }
 
 func init() {
