@@ -30,7 +30,7 @@ func TestParseDDLSQL(t *testing.T) {
 					INT_NAME  INT,
 					SMALLINT_NAME SMALLINT
 				 );`,
-			want: "CREATE TABLE TEST.persons (first_name DECIMAL(15,2),SECOND_NAME BIGINT,THREE_NAME DECIMAL(5,0),LAST_NAME DOUBLE)"},
+			want: "CREATE TABLE TEST.persons (first_num DECIMAL(15,2),SECOND_NUM BIGINT,THREE_NUM DECIMAL(5,0),LAST_NAME DOUBLE,INT_NAME INT,SMALLINT_NAME DECIMAL(38))"},
 	}
 	logger := hclog.NewNullLogger()
 	for _, tt := range tests {
