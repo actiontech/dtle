@@ -11,7 +11,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"math"
-	"strings"
+	"regexp"
 
 	"github.com/sjjian/oracle-sql-parser/ast"
 
@@ -31,14 +31,12 @@ import (
 	"sync/atomic"
 	"time"
 
-	gonats "github.com/nats-io/go-nats"
-	oracleParser "github.com/sjjian/oracle-sql-parser"
-
 	"github.com/actiontech/dtle/drivers/mysql/mysql/base"
 	"github.com/actiontech/dtle/drivers/mysql/mysql/binlog"
 	"github.com/actiontech/dtle/drivers/mysql/mysql/mysqlconfig"
 	"github.com/actiontech/dtle/drivers/mysql/mysql/sql"
 	sqle "github.com/actiontech/dtle/drivers/mysql/mysql/sqle/inspector"
+	gonats "github.com/nats-io/go-nats"
 )
 
 // ExtractorOracle is the main schema extract flow manager.
@@ -185,14 +183,12 @@ func (e *ExtractorOracle) Run() {
 	e.natsConn = sc
 
 	e.initDBConnections()
-	e.LogMinerStream = NewLogMinerStream(e.oracleDB, e.logger, e.mysqlContext.ReplicateDoDb,
+	e.getSchemaTablesAndMeta()
+	e.LogMinerStream = NewLogMinerStream(e.oracleDB, e.logger, e.replicateDoDb,
 		e.mysqlContext.OracleConfig.SCN, 100000)
 	//e.logger.Info("CheckAndApplyLowerCaseTableNames")
 	//e.CheckAndApplyLowerCaseTableNames()
 	// 字符集同步 todo
-
-	// 获取表结构数据 DDL
-	//e.getSchemaTablesAndMeta()
 	fullCopy := false
 	if fullCopy {
 		e.logger.Debug("mysqlDump. before")
@@ -388,93 +384,17 @@ func (e *ExtractorOracle) Finish1() (err error) {
 }
 
 func (e *ExtractorOracle) getSchemaTablesAndMeta() error {
-	// todo 支持正则/改名
-	//if err := e.inspectTables(); err != nil {
-	//	return err
-	//}
-
-	// todo DDL准备
-	//for _, db := range e.replicateDoDb {
-	//	e.context.AddSchema(db.TableSchema)
-	//	e.context.LoadTables(db.TableSchema, nil)
-	//
-	//	if strings.ToLower(db.TableSchema) == "mysql" {
-	//		continue
-	//	}
-	//	e.context.UseSchema(db.TableSchema)
-	//
-	//	for _, tb := range db.Tables {
-	//		if strings.ToLower(tb.TableType) == "view" {
-	//			// TODO what to do?
-	//			continue
-	//		}
-	//
-	//		stmt, err := e.LogMinerStream.oracleDB.GetTableDDL(db.TableSchema, tb.TableName)
-	//		if err != nil {
-	//			e.logger.Error("error at ShowCreateTable.", "err", err)
-	//			return err
-	//		}
-	//
-	//		ast, err := sqle.ParseCreateTableStmt("mysql", stmt)
-	//		if err != nil {
-	//			e.logger.Error("error at ParseCreateTableStmt.", "err", err)
-	//			return err
-	//		}
-	//		e.context.UpdateContext(ast, "mysql")
-	//		if !e.context.HasTable(tb.TableSchema, tb.TableName) {
-	//			err := fmt.Errorf("failed to add table to sqle context. table: %v.%v", db.TableSchema, tb.TableName)
-	//			e.logger.Error(err.Error())
-	//			return err
-	//		}
-	//	}
-	//}
-	//if err := e.readTableColumns(); err != nil {
-	//	return err
-	//}
-
-	for _, db := range e.mysqlContext.ReplicateDoDb {
+	if err := e.inspectTables(); err != nil {
+		return err
+	}
+	for _, db := range e.replicateDoDb {
 		for _, tb := range db.Tables {
-			query, err := e.LogMinerStream.oracleDB.GetTableDDL(db.TableSchema, tb.TableName)
-			asts, err := oracleParser.Parser(query)
+			columns, err := e.getTableColumn(db.TableSchema, tb.TableName)
 			if err != nil {
-				e.logger.Error(err.Error())
-				return nil
+				return err
 			}
-			e.logger.Debug("============= stmt ===============")
-			switch s := asts[0].(type) {
-			case *ast.CreateTableStmt:
-				e.logger.Debug("schema: , table: ", "schema", s.TableName.Schema.Value, "table", s.TableName.Table.Value)
-				//todo 与MySQL使用context数据结构（ast.createTableStmt）
-				e.context.AddSchema(db.TableSchema)
-				//e.context.AddTable(db.TableSchema,tb.TableName,&sqle.TableInfo{
-				//	Size:          0, // table is empty after create
-				//	//sizeLoad:      true,
-				//	OriginalTable: s,
-				//	//AlterTables:   []*ast.AlterTableStmt{},
-				//})
-				schema, ok := e.OracleContext.schemas[db.TableSchema]
-				if !ok {
-					e.OracleContext.schemas[db.TableSchema] = new(OracleSchemaInfo)
-				}
-				schema.Tables[tb.TableName] = s
-				for _, ts := range s.RelTable.TableStructs {
-					switch td := ts.(type) {
-					case *ast.ColumnDef:
-						//	newColumn := umconf.Column{
-						//		RawName:  td.ColumnName.Value,
-						//		Nullable: true, // by default
-						//	}
-						//
-						e.logger.Debug("column: , type: ", "column: ", td.ColumnName.Value, "type: ", td.Datatype.DataDef())
-					case *ast.OutOfLineConstraint:
-						columns := []string{}
-						for _, c := range td.Columns {
-							columns = append(columns, c.Value)
-						}
-						e.logger.Debug("constraint: _, type:, column: ", "type", td.Type,
-							"column", strings.Join(columns, ","))
-					}
-				}
+			for i, column := range columns {
+				tb.OriginalTableColumns.Ordinals[column.Name] = i
 			}
 		}
 	}
@@ -483,6 +403,190 @@ func (e *ExtractorOracle) getSchemaTablesAndMeta() error {
 }
 
 func (e *ExtractorOracle) inspectTables() (err error) {
+	// Creates a MYSQL Dump based on the options supplied through the dumper.
+	dbsExisted, err := e.LogMinerStream.oracleDB.GetSchemas() // todo merged
+	if err != nil {
+		return err
+	}
+	dbsFiltered := []string{}
+	for _, db := range dbsExisted {
+		if len(e.mysqlContext.ReplicateIgnoreDb) > 0 && common.IgnoreDbByReplicateIgnoreDb(e.mysqlContext.ReplicateIgnoreDb, db) {
+			continue
+		}
+		dbsFiltered = append(dbsFiltered, db)
+	}
+
+	if len(e.mysqlContext.ReplicateDoDb) > 0 {
+		var doDbs []*common.DataSource
+		// Get all db from TableSchemaRegex regex and get all tableSchemaRename
+		for _, doDb := range e.mysqlContext.ReplicateDoDb {
+			var regex string
+			if doDb.TableSchemaRegex != "" && doDb.TableSchemaRename != "" {
+				regex = doDb.TableSchemaRegex
+				schemaRenameRegex := doDb.TableSchemaRename
+				for _, db := range dbsFiltered {
+					newdb := &common.DataSource{}
+					*newdb = *doDb
+					reg, err := regexp.Compile(regex)
+					if err != nil {
+						return errors.Wrapf(err, "SchemaRegex %v", regex)
+					}
+					if !reg.MatchString(db) {
+						continue
+					}
+					newdb.TableSchema = db
+					match := reg.FindStringSubmatchIndex(db)
+					newdb.TableSchemaRename = string(reg.ExpandString(nil, schemaRenameRegex, db, match))
+					doDbs = append(doDbs, newdb)
+				}
+				//if doDbs == nil {
+				//	return fmt.Errorf("src schmea was nil")
+				//}
+			} else if doDb.TableSchemaRegex == "" { // use doDb.TableSchema
+				for _, db := range dbsFiltered {
+					if db == doDb.TableSchema {
+						doDbs = append(doDbs, doDb)
+					}
+				}
+			} else {
+				return fmt.Errorf("TableSchema configuration error")
+			}
+		}
+		for _, doDb := range doDbs {
+			db := &common.DataSource{
+				TableSchema:       doDb.TableSchema,
+				TableSchemaRegex:  doDb.TableSchemaRegex,
+				TableSchemaRename: doDb.TableSchemaRename,
+			}
+
+			existedTables, err := e.oracleDB.GetTables(doDb.TableSchema)
+			if err != nil {
+				return err
+			}
+			tbsFiltered := []*common.Table{}
+			for _, tb := range existedTables {
+				if len(e.mysqlContext.ReplicateIgnoreDb) > 0 && common.IgnoreTbByReplicateIgnoreDb(e.mysqlContext.ReplicateIgnoreDb, db.TableSchema, tb) {
+					continue
+				}
+				tbsFiltered = append(tbsFiltered, &common.Table{
+					TableName:   tb,
+					TableSchema: db.TableSchema,
+				})
+			}
+
+			if len(doDb.Tables) == 0 { // replicate all tables
+				for _, doTb := range tbsFiltered {
+					doTb.TableSchema = doDb.TableSchema
+					doTb.TableSchemaRename = doDb.TableSchemaRename
+					//if err := e.inspector.ValidateOriginalTable(doDb.TableSchema, doTb.TableName, doTb); err != nil {
+					//	e.logger.Warn("ValidateOriginalTable error", "err", err,
+					//		"schema", doDb.TableSchema, "table", doTb.TableName)
+					//	continue
+					//}
+					db.Tables = append(db.Tables, doTb)
+				}
+			} else { // replicate selected tables
+				for _, doTb := range doDb.Tables {
+					doTb.TableSchema = doDb.TableSchema
+					doTb.TableSchemaRename = doDb.TableSchemaRename
+
+					var regex string
+					if doTb.TableRegex != "" && doTb.TableRename != "" {
+						regex = doTb.TableRegex
+						tableRenameRegex := doTb.TableRename
+						for _, table := range tbsFiltered {
+							reg, err := regexp.Compile(regex)
+							if err != nil {
+								return errors.Wrapf(err, "TableRegex %v", regex)
+							}
+							if !reg.MatchString(table.TableName) {
+								continue
+							}
+							newTable := &common.Table{}
+							*newTable = *doTb
+							newTable.TableName = table.TableName
+							match := reg.FindStringSubmatchIndex(table.TableName)
+							newTable.TableRename = string(reg.ExpandString(nil, tableRenameRegex, table.TableName, match))
+							//if err := e.inspector.ValidateOriginalTable(doDb.TableSchema, table.TableName, newTable); err != nil {
+							//	e.logger.Warn("ValidateOriginalTable error", "TableSchema", doDb.TableSchema, "TableName", doTb.TableName, "err", err)
+							//	continue
+							//}
+							db.Tables = append(db.Tables, newTable)
+						}
+						//if db.Tables == nil {
+						//	return fmt.Errorf("src table was nil")
+						//}
+
+					} else if doTb.TableRegex == "" {
+						for _, existedTable := range tbsFiltered {
+							if existedTable.TableName != doTb.TableName {
+								continue
+							}
+							//if err := e.inspector.ValidateOriginalTable(doDb.TableSchema, doTb.TableName, doTb); err != nil {
+							//	e.logger.Warn("ValidateOriginalTable error", "TableSchema", doDb.TableSchema, "TableName", doTb.TableName, "err", err)
+							//	continue
+							//}
+							newTable := &common.Table{}
+							*newTable = *doTb
+							db.Tables = append(db.Tables, newTable)
+						}
+					} else {
+						return fmt.Errorf("table configuration error")
+					}
+
+				}
+			}
+			e.replicateDoDb = append(e.replicateDoDb, db)
+		}
+		//	e.mysqlContext.ReplicateDoDb = e.replicateDoDb
+	} else { // empty DoDB. replicate all db/tb
+		for _, dbName := range dbsFiltered {
+			ds := &common.DataSource{
+				TableSchema: dbName,
+			}
+
+			tbs, err := e.oracleDB.GetTables(dbName)
+			if err != nil {
+				return err
+			}
+
+			for _, tb := range tbs {
+				if len(e.mysqlContext.ReplicateIgnoreDb) > 0 && common.IgnoreTbByReplicateIgnoreDb(e.mysqlContext.ReplicateIgnoreDb, dbName, tb) {
+					continue
+				}
+				//if err := e.inspector.ValidateOriginalTable(dbName, tb.TableName, tb); err != nil {
+				//	e.logger.Warn("ValidateOriginalTable error", "TableSchema", dbName, "TableName", tb.TableName, "err", err)
+				//	continue
+				//}
+
+				ds.Tables = append(ds.Tables, &common.Table{
+					TableName:   tb,
+					TableSchema: dbName,
+				})
+			}
+			e.replicateDoDb = append(e.replicateDoDb, ds)
+		}
+	}
+	/*if e.mysqlContext.ExpandSyntaxSupport {
+		db_mysql := &config.DataSource{
+			TableSchema: "mysql",
+		}
+		db_mysql.Tables = append(db_mysql.Tables,
+			&config.Table{
+				TableSchema: "mysql",
+				TableName:   "user",
+			},
+			&config.Table{
+				TableSchema: "mysql",
+				TableName:   "proc",
+			},
+			&config.Table{
+				TableSchema: "mysql",
+				TableName:   "func",
+			},
+		)
+		e.replicateDoDb = append(e.replicateDoDb, db_mysql)
+	}*/
 
 	return nil
 }
