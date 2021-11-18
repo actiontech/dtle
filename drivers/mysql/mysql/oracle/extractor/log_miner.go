@@ -919,7 +919,7 @@ func parseDDLSQL(logger hclog.Logger, redoSQL string) (dataEvent common.DataEven
 	}
 	switch s := stmt[0].(type) {
 	case *ast.CreateTableStmt:
-		columnsMap := make(map[string]int, 0)
+		//columnsMap := make(map[string]int, 0)
 		var columns []string
 		logger.Debug("CreateTableStmt", "schema:", s.TableName.Schema.Value, " table", s.TableName.Table.Value)
 		for _, ts := range s.RelTable.TableStructs {

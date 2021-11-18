@@ -27,243 +27,246 @@ func nextQuery(yylex interface{}) string {
     anything    interface{}
 }
 
-%token <nothing>
-    _select
-    _from
-    _alter
-    _table
+%token <str>
+/* reserved keyword */
     _add
-    _char
-    _byte
-    _varchar2
-    _nchar
-    _nvarchar2
-    _number
-    _float
-    _binaryFloat
-    _binaryDouble
-    _long
-    _raw
-    _date
-    _timestamp
-    _with
-    _local
-    _time
-    _zone
-    _interval
-    _year
-    _to
-    _mouth
-    _day
-    _second
-    _blob
-    _clob
-    _nclob
-    _bfile
-    _rowid
-    _urowid
-    _character
-    _varying
-    _varchar
-    _national
-    _numeric
-    _decimal
-    _dec
-    _integer
-    _int
-    _smallInt
-    _double
-    _precision
-    _real
-    _collate
-    _sort
-    _invisible
-    _visible
-    _encrypt
-    _using
-    _identified
+    _all
+    _alter
+    _as
+    _asc
     _by
-    _no
-    _salt
-    _constraint
-    _key
+    _char
+    _cluster
+    _column
+    _compress
+    _create
+    _date
+    _decimal
+    _default
+    _delete
+    _desc
+    _drop
+    _float
+    _for
+    _from
+    _identified
+    _immediate
+    _increment
+    _index
+    _initial
+    _integer
+    _into
+    _is
+    _level
+    _long
+    _maxextents
+    _modify
+    _nocompress
     _not
     _null
-    _primary
-    _unique
-    _references
-    _cascade
-    _delete
+    _number
     _on
+    _online
+    _optimal
+    _order
+    _pctfree
+    _raw
+    _rename
+    _row
+    _rowid
+    _rows
+    _select
     _set
+    _smallInt
+    _start
+    _table
+    _to
+    _unique
+    _validate
+    _varchar
+    _varchar2
+    _with
+
+/* unreserved keyword */
+    _advanced
+    _always
+    _archive
+    _at
+    _attributes
+    _auto
+    _basic
+    _bfile
+    _binaryDouble
+    _binaryFloat
+    _bitmap
+    _blob
+    _blockchain
+    _buffer_pool
+    _byte
+    _cache
+    _capacity
+    _cascade
+    _cell_flash_cache
+    _character
+    _checkpoint
+    _clob
+    _collate
+    _columns
+    _commit
+    _constraint
+    _constraints
+    _continue
+    _creation
+    _critical
+    _cycle
+    _data
+    _day
+    _dec
+    _decrypt
     _deferrable
     _deferred
-    _immediate
-    _initially
-    _norely
-    _rely
-    _is
-    _scope
-    _default
-    _always
-    _as
-    _generated
-    _identity
-    _cache
-    _cycle
-    _increment
-    _limit
-    _maxvalue
-    _minvalue
-    _nocache
-    _nocycle
-    _nomaxvalue
-    _nominvalue
-    _noorder
-    _order
-    _start
-    _value
-    _modify
-    _drop
-    _decrypt
-    _all
-    _at
-    _column
-    _levels
-    _substitutable
-    _force
-    _columns
-    _continue
-    _unused
-    _constraints
-    _invalidate
-    _online
-    _checkpoint
-    _rename
-    _create
-    _blockchain
-    _duplicated
-    _global
-    _immutable
-    _private
-    _sharded
-    _temporary
-    _data
-    _extended
-    _metadata
-    _none
-    _sharding
-    _parent
-    _commit
     _definition
-    _preserve
-    _rows
-    _for
-    _memoptimize
-    _read
-    _write
-    _cluster
-    _organization
-    _creation
-    _segment
-    _tablespace
-    _initrans
-    _maxtrans
-    _pctfree
-    _pctused
-    _storage
-    _buffer_pool
-    _cell_flash_cache
-    _flash_cache
-    _freelist
-    _freelists
-    _initial
-    _keep
-    _maxextents
-    _maxsize
-    _minextents
-    _next
-    _optimal
-    _pctincrease
-    _recycle
-    _unlimited
-    _groups
-    _E
-    _G
-    _K
-    _M
-    _P
-    _T
-    _filesystem_like_logging
-    _logging
-    _nologging
-    _advanced
-    _basic
-    _compress
-    _nocompress
-    _row
-    _store
-    _archive
-    _query
-    _level
-    _locking
-    _inmemory
-    _auto
-    _capacity
-    _dml
-    _high
-    _low
-    _memcompress
-    _critical
-    _medium
-    _priority
-    _distribute
-    _partition
-    _range
-    _subpartition
-    _service
-    _duplicate
-    _spatial
     _delete_all
     _disable
     _disable_all
+    _distribute
+    _dml
+    _double
+    _duplicate
+    _duplicated
+    _E
     _enable
     _enable_all
-    _ilm
-    _policy
-    _external
-    _heap
-    _index
-    _attributes
-    _reject
-    _foreign
-    _novalidate
-    _validate
+    _encrypt
     _exceptions
-    _into
-    _bitmap
-    _multivalue
-    _nosort
-    _peverse
+    _extended
+    _external
+    _filesystem_like_logging
+    _flash_cache
+    _force
+    _foreign
+    _freelist
+    _freelists
     _full
+    _G
+    _generated
+    _global
+    _groups
+    _heap
+    _high
+    _identity
+    _ilm
+    _immutable
     _indexing
-    _partial
-    _noparallel
-    _parallel
-    _asc
-    _desc
-    _usable
-    _unusable
+    _initially
+    _initrans
+    _inmemory
+    _int
+    _interval
+    _invalidate
     _invalidation
+    _invisible
+    _K
+    _keep
+    _key
+    _levels
+    _limit
+    _local
+    _locking
+    _logging
+    _low
+    _M
+    _maxsize
+    _maxtrans
+    _maxvalue
+    _medium
+    _memcompress
+    _memoptimize
+    _metadata
+    _minextents
+    _minvalue
+    _month
+    _multivalue
+    _national
+    _nchar
+    _nclob
+    _next
+    _no
+    _nocache
+    _nocycle
+    _nologging
+    _nomaxvalue
+    _nominvalue
+    _none
+    _noorder
+    _noparallel
+    _norely
+    _nosort
+    _novalidate
+    _numeric
+    _nvarchar2
+    _organization
+    _P
+    _parallel
+    _parent
+    _partial
+    _partition
+    _pctincrease
+    _pctused
+    _peverse
+    _policy
+    _precision
+    _preserve
+    _primary
+    _priority
+    _private
     _purge
+    _query
+    _range
+    _read
+    _real
+    _recycle
+    _references
+    _reject
+    _rely
+    _salt
+    _scope
+    _second
+    _segment
+    _service
+    _sharded
+    _sharding
+    _sort
+    _spatial
+    _storage
+    _store
+    _subpartition
+    _substitutable
+    _T
+    _tablespace
+    _temporary
+    _time
+    _timestamp
+    _unlimited
+    _unusable
+    _unused
+    _urowid
+    _usable
+    _using
+    _value
+    _varying
+    _visible
+    _write
+    _year
+    _zone
 
-%token <i>
-    _intNumber 		"int number"
-
-%token <str>
+/* identifier */
     _singleQuoteStr 	"single quotes string"
     _doubleQuoteStr 	"double quotes string"
     _nonquotedIdentifier    "nonquoted identifier"
+
+%token <i>
+    _intNumber 		"int number"
 
 // define type for all structure
 %type <i>
@@ -279,9 +282,7 @@ func nextQuery(yylex interface{}) string {
     IsForce
 
 %type <str>
-    _singleQuoteStr
-    _doubleQuoteStr
-    _nonquotedIdentifier
+    UnReservedKeyword
 
 %type <node>
     EmptyStmt
@@ -415,6 +416,10 @@ ColumnName:
         $$ = $1
     }
 
+ClusterName:
+    Identifier
+|   Identifier '.' Identifier
+
 Identifier:
     _nonquotedIdentifier
     {
@@ -430,10 +435,186 @@ Identifier:
             Value: $1,
         }
     }
+|   UnReservedKeyword
+    {
+        $$ = &element.Identifier{
+            Typ: element.IdentifierTypeNonQuoted,
+            Value: $1,
+        }
+    }
 
-ClusterName:
-    Identifier
-|   Identifier '.' Identifier
+UnReservedKeyword:
+    _advanced
+|   _always
+|   _archive
+|   _at
+|   _attributes
+|   _auto
+|   _basic
+|   _bfile
+|   _binaryDouble
+|   _binaryFloat
+|   _bitmap
+|   _blob
+|   _blockchain
+|   _buffer_pool
+|   _byte
+|   _cache
+|   _capacity
+|   _cascade
+|   _cell_flash_cache
+|   _character
+|   _checkpoint
+|   _clob
+|   _collate
+|   _columns
+|   _commit
+|   _constraint
+|   _constraints
+|   _continue
+|   _creation
+|   _critical
+|   _cycle
+|   _data
+|   _day
+|   _dec
+|   _decrypt
+|   _deferrable
+|   _deferred
+|   _definition
+|   _delete_all
+|   _disable
+|   _disable_all
+|   _distribute
+|   _dml
+|   _double
+|   _duplicate
+|   _duplicated
+|   _E
+|   _enable
+|   _enable_all
+|   _encrypt
+|   _exceptions
+|   _extended
+|   _external
+|   _filesystem_like_logging
+|   _flash_cache
+|   _force
+//|   _foreign TODO: fix conflict
+|   _freelist
+|   _freelists
+|   _full
+|   _G
+|   _generated
+|   _global
+|   _groups
+|   _heap
+|   _high
+|   _identity
+|   _ilm
+|   _immutable
+|   _indexing
+|   _initially
+|   _initrans
+|   _inmemory
+|   _int
+|   _interval
+|   _invalidate
+|   _invalidation
+|   _invisible
+|   _K
+|   _keep
+|   _key
+|   _levels
+|   _limit
+|   _local
+|   _locking
+|   _logging
+|   _low
+|   _M
+|   _maxsize
+|   _maxtrans
+|   _maxvalue
+|   _medium
+|   _memcompress
+|   _memoptimize
+|   _metadata
+|   _minextents
+|   _minvalue
+|   _month
+|   _multivalue
+|   _national
+|   _nchar
+|   _nclob
+|   _next
+|   _no
+|   _nocache
+|   _nocycle
+|   _nologging
+|   _nomaxvalue
+|   _nominvalue
+|   _none
+|   _noorder
+|   _noparallel
+|   _norely
+|   _nosort
+|   _novalidate
+|   _numeric
+|   _nvarchar2
+|   _organization
+|   _P
+|   _parallel
+|   _parent
+|   _partial
+|   _partition
+|   _pctincrease
+|   _pctused
+|   _peverse
+|   _policy
+|   _precision
+|   _preserve
+//|   _primary TODO: fix conflict
+|   _priority
+|   _private
+|   _purge
+|   _query
+|   _range
+|   _read
+|   _real
+|   _recycle
+|   _references
+|   _reject
+|   _rely
+|   _salt
+|   _scope
+|   _second
+|   _segment
+|   _service
+|   _sharded
+|   _sharding
+|   _sort
+|   _spatial
+|   _storage
+|   _store
+|   _subpartition
+|   _substitutable
+|   _T
+|   _tablespace
+|   _temporary
+|   _time
+|   _timestamp
+|   _unlimited
+|   _unusable
+|   _unused
+|   _urowid
+|   _usable
+|   _using
+|   _value
+|   _varying
+|   _visible
+|   _write
+|   _year
+|   _zone
 
 /* +++++++++++++++++++++++++++++++++++++++++++++ alter table ++++++++++++++++++++++++++++++++++++++++++++ */
 
@@ -604,7 +785,6 @@ DefaultClause:
 
 IdentityClause:
     _generated  _as _identity IdentityOptionsOrEmpty
-|   _generated _always _as _identity IdentityOptionsOrEmpty
 |   _generated _always _as _identity IdentityOptionsOrEmpty
 |   _generated _by _default _as _identity IdentityOptionsOrEmpty
 |   _generated _by _default _on _null _as _identity IdentityOptionsOrEmpty
@@ -1021,7 +1201,7 @@ OnlineOrEmpty:
 
 // see: https://docs.oracle.com/en/database/oracle/oracle-database/21/sqlrf/CREATE-TABLE.html#GUID-F9CE0CC3-13AE-4744-A43C-EAC7A71AAAB6
 CreateTableStmt:
-    _create _table TableType TableName ShardingType TableDef Memoptimize ParentTable
+    _create TableType _table TableName ShardingType TableDef Memoptimize ParentTable
     {
     	$$ = &ast.CreateTableStmt{
             TableName:  $4.(*ast.TableName),
@@ -1728,13 +1908,13 @@ DatetimeDataTypes:
         d.SetDataDef(element.DataDefTimestamp)
         $$ = d
     }
-|   _interval _year _to _mouth
+|   _interval _year _to _month
     {
         d := &element.IntervalYear{}
         d.SetDataDef(element.DataDefIntervalYear)
         $$ = d
     }
-|   _interval _year '(' _intNumber ')' _to _mouth
+|   _interval _year '(' _intNumber ')' _to _month
     {
         precision := $4
         d := &element.IntervalYear{Precision: &precision}
@@ -1825,7 +2005,9 @@ RowIdDataTypes:
 AnsiSupportDataTypes:
     _character '(' _intNumber ')'
     {
+        size := $3
         d := &element.Char{}
+        d.Size = &size
         d.SetDataDef(element.DataDefCharacter)
         $$ = d
     }
