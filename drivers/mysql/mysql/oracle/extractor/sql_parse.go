@@ -30,6 +30,7 @@ type Stmt struct {
 
 // WARNING: sql parser Format() has be discrepancy ,be is instead of Restore()
 func (v *Stmt) Enter(in ast.Node) (ast.Node, bool) {
+	v.WhereColumnValues = new(common.ColumnValues)
 	if node, ok := in.(*ast.TableName); ok {
 		v.Schema = node.Schema.String()
 		v.Table = node.Name.String()
@@ -38,7 +39,6 @@ func (v *Stmt) Enter(in ast.Node) (ast.Node, bool) {
 	if node, ok := in.(*ast.UpdateStmt); ok {
 		v.Operation = common.UpdateDML
 		v.Before = make(map[string]interface{}, 1)
-		v.WhereColumnValues = new(common.ColumnValues)
 		if node.Where != nil {
 			beforeData(node.Where, v.Before)
 		}
@@ -67,7 +67,6 @@ func (v *Stmt) Enter(in ast.Node) (ast.Node, bool) {
 	if node, ok := in.(*ast.DeleteStmt); ok {
 		v.Operation = common.DeleteDML
 		v.Before = make(map[string]interface{}, 1)
-		v.WhereColumnValues = new(common.ColumnValues)
 		if node.Where != nil {
 			beforeData(node.Where, v.Before)
 		}

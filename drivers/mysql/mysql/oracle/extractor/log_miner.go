@@ -8,6 +8,7 @@ import (
 	gosql "database/sql"
 	"encoding/hex"
 	"fmt"
+	"regexp"
 	"time"
 
 	"github.com/hashicorp/go-hclog"
@@ -209,22 +210,35 @@ func (l *LogMinerStream) buildFilterSchemaTable() (filterSchemaTable string) {
 	//OR  ( seg_owner = 'TEST2' AND table_name in ('t3','t4'))
 	//OR  ( seg_owner = 'test')
 	//    )
+	// AND ( seg_owner = 'TEST3')
+	// AND ( seg_owner = 'TEST4' AND table_name in ('t3','t4'))
 
-	for _, dataSource := range l.dataSources {
-		if len(dataSource.Tables) == 0 {
-			filterSchemaTable = fmt.Sprintf(`%s OR ( seg_owner = '%s')`, filterSchemaTable, dataSource.TableSchema)
+	for _, replicateDataSource := range l.replicateDB {
+		if len(replicateDataSource.Tables) == 0 {
+			filterSchemaTable = fmt.Sprintf(`%s OR ( seg_owner = '%s')`, filterSchemaTable, replicateDataSource.TableSchema)
 		} else {
 			tables := make([]string, 0)
-			for _, table := range dataSource.Tables {
+			for _, table := range replicateDataSource.Tables {
 				tables = append(tables, fmt.Sprintf("'%s'", table.TableName))
 			}
-			filterSchemaTable = fmt.Sprintf(`%s OR ( seg_owner = '%s' AND table_name in (%s))`, filterSchemaTable, dataSource.TableSchema, strings.Join(tables, ","))
+			filterSchemaTable = fmt.Sprintf(`%s OR ( seg_owner = '%s' AND table_name in (%s))`, filterSchemaTable, replicateDataSource.TableSchema, strings.Join(tables, ","))
 		}
 	}
-
 	if len(filterSchemaTable) > 0 {
 		filterSchemaTable = strings.Replace(filterSchemaTable, "OR", "AND(", 1)
 		filterSchemaTable = fmt.Sprintf("%s%s", filterSchemaTable, ")")
+	}
+
+	for _, ignoreDataSource := range l.ignoreReplicateDB {
+		if len(ignoreDataSource.Tables) == 0 {
+			filterSchemaTable = fmt.Sprintf(`%s AND ( seg_owner <> '%s')`, filterSchemaTable, ignoreDataSource.TableSchema)
+		} else {
+			tables := make([]string, 0)
+			for _, table := range ignoreDataSource.Tables {
+				tables = append(tables, fmt.Sprintf("'%s'", table.TableName))
+			}
+			filterSchemaTable = fmt.Sprintf(`%s AND ( seg_owner = '%s' AND table_name not in (%s))`, filterSchemaTable, ignoreDataSource.TableSchema, strings.Join(tables, ","))
+		}
 	}
 	return
 }
@@ -345,51 +359,6 @@ func (o *OracleBoolean) Scan(value interface{}) error {
 		*o = false
 	}
 	return nil
-}
-
-func (o *ExtractorOracle) getTableColumn(schema, table string) ([]*ColumnDefinition, error) {
-	query := fmt.Sprintf(`
-SELECT 
-	column_name,
-	data_type,
-	data_length,
-	data_precision,
-	data_scale,
-	default_length,
-	CHAR_LENGTH,
-	nullable,
-	data_default
-FROM 
-	ALL_TAB_COLUMNS 
-WHERE 
-	owner = '%s' AND table_name='%s'`, schema, table)
-
-	rows, err := o.db.QueryContext(context.TODO(), query)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var columns []*ColumnDefinition
-	for rows.Next() {
-		column := &ColumnDefinition{}
-		err = rows.Scan(
-			&column.Name,
-			&column.Datatype,
-			&column.DataLength,
-			&column.DataPrecision,
-			&column.DataScale,
-			&column.DefaultLength,
-			&column.CharLength,
-			&column.Nullable,
-			&column.DataDefault,
-		)
-		if err != nil {
-			return nil, err
-		}
-		columns = append(columns, column)
-	}
-	return columns, nil
 }
 
 //func (l *LogMinerStream) currentRedoLogSequenceFp() (string, error) {
@@ -584,18 +553,20 @@ type LogMinerStream struct {
 	currentRedoLogSequenceFP string
 	logger                   g.LoggerType
 	txCache                  *LogMinerTxCache
-	dataSources              []*common.DataSource
+	replicateDB              []*common.DataSource
+	ignoreReplicateDB        []*common.DataSource
 }
 
-func NewLogMinerStream(db *config.OracleDB, logger g.LoggerType, dataSource []*common.DataSource,
+func NewLogMinerStream(db *config.OracleDB, logger g.LoggerType, replicateDB, ignoreReplicateDB []*common.DataSource,
 	startScn, interval int64) *LogMinerStream {
 	return &LogMinerStream{
-		oracleDB:     db,
-		logger:       logger,
-		dataSources:  dataSource,
-		CollectedScn: startScn,
-		interval:     interval,
-		txCache:      NewLogMinerTxCache(),
+		oracleDB:          db,
+		logger:            logger,
+		replicateDB:       replicateDB,
+		ignoreReplicateDB: ignoreReplicateDB,
+		CollectedScn:      startScn,
+		interval:          interval,
+		txCache:           NewLogMinerTxCache(),
 	}
 }
 
@@ -826,7 +797,7 @@ func (e *ExtractorOracle) parseToDataEvent(row *LogMinerRecord) (common.DataEven
 		//tableStruct := e.OracleContext.schemas[visitor.Schema].Tables[visitor.Table].RelTable.TableStructs
 		// 列排序问题
 		// 字符集问题
-		dataEvent, err := parseDDLSQL(e.logger, row.SQLRedo)
+		dataEvent, err := e.parseDDLSQL(e.logger, row.SQLRedo)
 		if err != nil {
 			return common.DataEvent{}, err
 		}
@@ -856,19 +827,18 @@ func (e *ExtractorOracle) parseToDataEvent(row *LogMinerRecord) (common.DataEven
 			DML:           visitor.Operation,
 		}
 		e.logger.Debug("SchemaTable", "schema", visitor.Schema, "table", visitor.Table)
-		// todo 转换成通用格式
-		columns, err := e.oracleDB.GetColumns(visitor.Schema, visitor.Table)
-		if err != nil {
-			return dataEvent, err
-		}
-		e.logger.Debug("columns", "columns", columns, "visitorBefore", visitor.Before)
-		for _, column := range columns {
+		schemaConfig := e.findSchemaConfig(visitor.Schema)
+		tableConfig := findTableConfig(schemaConfig, visitor.Table)
+		ordinals := tableConfig.OriginalTableColumns.Ordinals
+		e.logger.Debug("columns", "columns", ordinals, "visitorBefore", visitor.Before)
+		visitor.WhereColumnValues.AbstractValues = make([]interface{}, len(ordinals))
+		for column, index := range ordinals {
 			data, ok := visitor.Before[column]
 			if !ok {
 				continue
 			}
 			data = strings.TrimLeft(strings.TrimRight(data.(string), "'"), "'")
-			visitor.WhereColumnValues.AbstractValues = append(visitor.WhereColumnValues.AbstractValues, data)
+			visitor.WhereColumnValues.AbstractValues[index] = data
 		}
 		dataEvent = common.DataEvent{
 			CurrentSchema:     visitor.Schema,
@@ -893,25 +863,26 @@ func (e *ExtractorOracle) parseToDataEvent(row *LogMinerRecord) (common.DataEven
 				return dataEvent, nil
 			}
 			(stmtP[0]).Accept(undoVisitor)
-			for _, column := range columns {
+			undoVisitor.WhereColumnValues.AbstractValues = make([]interface{}, len(ordinals))
+			for column, index := range ordinals {
 				data, ok := undoVisitor.Before[column]
 				if !ok {
 					continue
 				}
 				data = strings.TrimLeft(strings.TrimRight(data.(string), "'"), "'")
-				undoVisitor.WhereColumnValues.AbstractValues = append(undoVisitor.WhereColumnValues.AbstractValues, data)
+				undoVisitor.WhereColumnValues.AbstractValues[index] = data
 			}
 			dataEvent.NewColumnValues = undoVisitor.WhereColumnValues
 			dataEvent.Query = undoVisitor.WhereColumnValues.String()
 		}
-		e.logger.Debug("============= ddl stmt parse end =========", "dml")
+		e.logger.Debug("============= dml stmt parse end =========", "dml", dataEvent)
 		return dataEvent, nil
 	}
 
 	return dataEvent, fmt.Errorf("parese dateEvent fail")
 }
 
-func parseDDLSQL(logger hclog.Logger, redoSQL string) (dataEvent common.DataEvent, err error) {
+func (e *ExtractorOracle) parseDDLSQL(logger hclog.Logger, redoSQL string) (dataEvent common.DataEvent, err error) {
 	stmt, err := oracleParser.Parser(redoSQL)
 	if err != nil {
 		logger.Error("============= ddl parse err===============", "redoSQL", redoSQL)
@@ -919,7 +890,12 @@ func parseDDLSQL(logger hclog.Logger, redoSQL string) (dataEvent common.DataEven
 	}
 	switch s := stmt[0].(type) {
 	case *ast.CreateTableStmt:
-		//columnsMap := make(map[string]int, 0)
+		schemaName := IdentifierToString(s.TableName.Schema)
+		tableName := IdentifierToString(s.TableName.Table)
+		schemaConfig := e.findSchemaConfig(schemaName)
+		tableConfig := findTableConfig(schemaConfig, tableName)
+		ordinals := make(map[string]int, 0)
+		tableConfig.OriginalTableColumns = &common.ColumnList{Ordinals: ordinals}
 		var columns []string
 		logger.Debug("CreateTableStmt", "schema:", s.TableName.Schema.Value, " table", s.TableName.Table.Value)
 		for _, ts := range s.RelTable.TableStructs {
@@ -927,6 +903,7 @@ func parseDDLSQL(logger hclog.Logger, redoSQL string) (dataEvent common.DataEven
 			case *ast.ColumnDef:
 				logger.Debug("caseColumnDef", "column:", td.ColumnName.Value, " type: ", td.Datatype.DataDef())
 				columns = append(columns, OracleTypeParse(td))
+				ordinals[IdentifierToString(td.ColumnName)] = len(ordinals)
 			case *ast.OutOfLineConstraint:
 				columns := []string{}
 				for _, c := range td.Columns {
@@ -936,8 +913,7 @@ func parseDDLSQL(logger hclog.Logger, redoSQL string) (dataEvent common.DataEven
 					strings.Join(columns, ","))
 			}
 		}
-		schemaName := IdentifierToString(s.TableName.Schema)
-		tableName := IdentifierToString(s.TableName.Table)
+
 		dataEvent = common.DataEvent{
 			Query:         fmt.Sprintf(`CREATE TABLE %s.%s (%s)`, schemaName, tableName, strings.Join(columns, ",")),
 			CurrentSchema: schemaName,
@@ -948,6 +924,10 @@ func parseDDLSQL(logger hclog.Logger, redoSQL string) (dataEvent common.DataEven
 	case *ast.AlterTableStmt:
 		schemaName := IdentifierToString(s.TableName.Schema)
 		tableName := IdentifierToString(s.TableName.Table)
+		schemaConfig := e.findSchemaConfig(schemaName)
+		tableConfig := findTableConfig(schemaConfig, tableName)
+		ordinals := make(map[string]int, 0)
+		tableConfig.OriginalTableColumns = &common.ColumnList{Ordinals: ordinals}
 		alterOptions := make([]string, 0)
 		for _, alter := range s.AlterTableClauses {
 			switch a := alter.(type) {
@@ -955,24 +935,31 @@ func parseDDLSQL(logger hclog.Logger, redoSQL string) (dataEvent common.DataEven
 				colDefinitions := make([]string, 0)
 				for _, column := range a.Columns {
 					colDefinitions = append(colDefinitions, OracleTypeParse(column))
+					ordinals[IdentifierToString(column.ColumnName)] = len(ordinals)
 				}
 				alterOptions = append(alterOptions, fmt.Sprintf("ADD COLUMN(%s)", strings.Join(colDefinitions, ",")))
 			case *ast.ModifyColumnClause:
-				colDefinitions := make([]string, 0)
 				for _, column := range a.Columns {
-					colDefinitions = append(colDefinitions, OracleTypeParse(column))
+					alterOptions = append(alterOptions, fmt.Sprintf("MODIFY %s", OracleTypeParse(column)))
 				}
-				alterOptions = append(alterOptions, fmt.Sprintf("MODIFY COLUMN(%s)", strings.Join(colDefinitions, ",")))
 			case *ast.DropColumnClause:
-				colDefinitions := make([]string, 0)
 				for _, column := range a.Columns {
-					colDefinitions = append(colDefinitions, IdentifierToString(column))
+					alterOptions = append(alterOptions, fmt.Sprintf("DROP COLUMN %s", IdentifierToString(column)))
+					// sort columns ordinals
+					dropIndex := ordinals[IdentifierToString(column)]
+					delete(ordinals, IdentifierToString(column))
+					for k, index := range ordinals {
+						if index > dropIndex {
+							ordinals[k] -= 1
+						}
+					}
 				}
-				alterOptions = append(alterOptions, fmt.Sprintf("DROP COLUMN(%s)", strings.Join(colDefinitions, ",")))
 			case *ast.RenameColumnClause:
 				oldName := IdentifierToString(a.OldName)
 				newName := IdentifierToString(a.NewName)
 				alterOptions = append(alterOptions, fmt.Sprintf("RENAME COLUMN %s TO %s", oldName, newName))
+				ordinals[newName] = ordinals[oldName]
+				delete(ordinals, oldName)
 			case *ast.AddConstraintClause:
 				// todo
 			case *ast.ModifyConstraintClause:
@@ -1004,6 +991,48 @@ func parseDDLSQL(logger hclog.Logger, redoSQL string) (dataEvent common.DataEven
 		}
 	}
 	return
+}
+
+func loadTableConfig(schemaConfig *common.DataSource, tableName string) *common.Table {
+	newtb := &common.Table{}
+
+	newtb.TableSchema = schemaConfig.TableSchema
+	newtb.TableName = tableName
+	schemaConfig.Tables = append(schemaConfig.Tables, newtb)
+	return newtb
+}
+
+func (e *ExtractorOracle) findSchemaConfig(schemaName string) *common.DataSource {
+	if schemaName == "" {
+		return nil
+	}
+	for i := range e.replicateDoDb {
+		if e.replicateDoDb[i].TableSchema == schemaName {
+			return e.replicateDoDb[i]
+		} else if regStr := e.replicateDoDb[i].TableSchemaRegex; regStr != "" {
+			reg, err := regexp.Compile(regStr)
+			if nil != err {
+				continue
+			}
+			if reg.MatchString(schemaName) {
+				return e.replicateDoDb[i]
+			}
+		}
+	}
+	schemaConfig := &common.DataSource{TableSchema: schemaName}
+	e.replicateDoDb = append(e.replicateDoDb, schemaConfig)
+	return schemaConfig
+}
+
+func findTableConfig(schema *common.DataSource, tableName string) *common.Table {
+	if schema != nil {
+		for j := range schema.Tables {
+			if schema.Tables[j].TableName == tableName {
+				return schema.Tables[j]
+			}
+		}
+	}
+	return loadTableConfig(schema, tableName)
 }
 
 func Query(db *gosql.DB, querySQL string, args ...interface{}) ([]map[string]string, error) {

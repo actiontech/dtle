@@ -184,7 +184,7 @@ func (e *ExtractorOracle) Run() {
 
 	e.initDBConnections()
 	e.getSchemaTablesAndMeta()
-	e.LogMinerStream = NewLogMinerStream(e.oracleDB, e.logger, e.replicateDoDb,
+	e.LogMinerStream = NewLogMinerStream(e.oracleDB, e.logger, e.mysqlContext.ReplicateDoDb, e.mysqlContext.ReplicateIgnoreDb,
 		e.mysqlContext.OracleConfig.SCN, 100000)
 	//e.logger.Info("CheckAndApplyLowerCaseTableNames")
 	//e.CheckAndApplyLowerCaseTableNames()
@@ -389,12 +389,15 @@ func (e *ExtractorOracle) getSchemaTablesAndMeta() error {
 	}
 	for _, db := range e.replicateDoDb {
 		for _, tb := range db.Tables {
-			columns, err := e.getTableColumn(db.TableSchema, tb.TableName)
+			columns, err := e.oracleDB.GetColumns(db.TableSchema, tb.TableName)
 			if err != nil {
 				return err
 			}
+			tb.OriginalTableColumns = &common.ColumnList{
+				Ordinals: map[string]int{},
+			}
 			for i, column := range columns {
-				tb.OriginalTableColumns.Ordinals[column.Name] = i
+				tb.OriginalTableColumns.Ordinals[column] = i
 			}
 		}
 	}
@@ -402,9 +405,20 @@ func (e *ExtractorOracle) getSchemaTablesAndMeta() error {
 	return nil
 }
 
+func (e *ExtractorOracle) getCurrentSchema(schema, table string) map[string]int {
+	for _, db := range e.replicateDoDb {
+		for _, tb := range db.Tables {
+			if db.TableSchema == schema && tb.TableName == table {
+				return tb.OriginalTableColumns.Ordinals
+			}
+		}
+	}
+	return map[string]int{}
+}
+
 func (e *ExtractorOracle) inspectTables() (err error) {
 	// Creates a MYSQL Dump based on the options supplied through the dumper.
-	dbsExisted, err := e.LogMinerStream.oracleDB.GetSchemas() // todo merged
+	dbsExisted, err := e.oracleDB.GetSchemas() // todo merged
 	if err != nil {
 		return err
 	}
@@ -588,22 +602,6 @@ func (e *ExtractorOracle) inspectTables() (err error) {
 		e.replicateDoDb = append(e.replicateDoDb, db_mysql)
 	}*/
 
-	return nil
-}
-
-// readTableColumns reads table columns on applier
-func (e *ExtractorOracle) readTableColumns() (err error) {
-	e.logger.Info("Examining table structure on extractor")
-	for _, doDb := range e.replicateDoDb {
-		for _, doTb := range doDb.Tables {
-			doTb.OriginalTableColumns, err = base.GetTableColumnsSqle(e.context, doTb.TableSchema, doTb.TableName)
-			if err != nil {
-				return err
-			}
-			doTb.ColumnMap = mysqlconfig.BuildColumnMapIndex(doTb.ColumnMapFrom, doTb.OriginalTableColumns.Ordinals)
-
-		}
-	}
 	return nil
 }
 

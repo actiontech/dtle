@@ -3,9 +3,140 @@ package extractor
 import (
 	"testing"
 
+	"github.com/actiontech/dtle/drivers/mysql/common"
+
 	"github.com/hashicorp/go-hclog"
 )
 
+func TestBuildFilterSchemaTable(t *testing.T) {
+	replicateDoDb0 := []*common.DataSource{
+		{
+			TableSchema: "db1",
+			Tables: []*common.Table{
+				{
+					TableName:   "tb1",
+					TableSchema: "db1",
+				},
+				{
+					TableName:   "tb2",
+					TableSchema: "db1",
+				},
+				{
+					TableName:   "tb3",
+					TableSchema: "db1",
+				},
+				{
+					TableName: "tb-skip",
+				},
+			},
+		},
+	}
+
+	replicateIgnoreDB0 := []*common.DataSource{}
+	replicateDoDb1 := []*common.DataSource{
+		{
+			TableSchema: "db1",
+			Tables: []*common.Table{
+				{
+					TableName:   "tb1",
+					TableSchema: "db1",
+				},
+				{
+					TableName:   "tb2",
+					TableSchema: "db1",
+				},
+				{
+					TableName:   "tb3",
+					TableSchema: "db1",
+				},
+				{
+					TableName: "tb-skip",
+				},
+			},
+		},
+		{
+			TableSchema: "db2",
+			Tables: []*common.Table{
+				{
+					TableName:   "tb1",
+					TableSchema: "db2",
+				},
+			},
+		},
+		{
+			TableSchema: "db3",
+			Tables: []*common.Table{
+				{
+					TableName:   "tb1",
+					TableSchema: "db3",
+				},
+			},
+		},
+	}
+
+	replicateIgnoreDB1 := []*common.DataSource{
+		{
+			TableSchema: "db1",
+			Tables: []*common.Table{
+				{
+					TableName: "tb1",
+				},
+			},
+		},
+		{
+			TableSchema: "db2",
+			Tables: []*common.Table{
+				{
+					TableName: "tb-skip",
+				},
+			},
+		},
+		{
+			TableSchema: "db3",
+		},
+		{
+			TableSchema: "db4",
+			Tables: []*common.Table{
+				{
+					TableName: "tb1",
+				},
+			},
+		},
+	}
+
+	tests := []struct {
+		name              string
+		replicateDoDb     []*common.DataSource
+		replicateIgnoreDB []*common.DataSource
+		want              string
+	}{
+		{
+			name:              "replicateDoDb0",
+			replicateDoDb:     replicateDoDb0,
+			replicateIgnoreDB: replicateIgnoreDB0,
+			want:              " AND( ( seg_owner = 'db1' AND table_name in ('tb1','tb2','tb3','tb-skip')))"},
+		{
+			name:              "replicateDoDb1",
+			replicateDoDb:     replicateDoDb1,
+			replicateIgnoreDB: replicateIgnoreDB1,
+			want:              " AND( ( seg_owner = 'db1' AND table_name in ('tb1','tb2','tb3','tb-skip')) OR ( seg_owner = 'db2' AND table_name in ('tb1')) OR ( seg_owner = 'db3' AND table_name in ('tb1'))) AND ( seg_owner = 'db1' AND table_name not in ('tb1')) AND ( seg_owner = 'db2' AND table_name not in ('tb-skip')) AND ( seg_owner <> 'db3') AND ( seg_owner = 'db4' AND table_name not in ('tb1'))"},
+		{
+			name:              "empty",
+			replicateDoDb:     []*common.DataSource{},
+			replicateIgnoreDB: []*common.DataSource{},
+			want:              ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			logminer := NewLogMinerStream(nil, hclog.NewNullLogger(), tt.replicateDoDb, tt.replicateIgnoreDB, 0, 100000)
+			filterSQL := logminer.buildFilterSchemaTable()
+			if filterSQL != tt.want {
+				t.Errorf("parseDDLSQL() = %v, want %v", filterSQL, tt.want)
+			}
+		})
+	}
+}
 func TestParseDDLSQL(t *testing.T) {
 
 	tests := []struct {
@@ -252,9 +383,10 @@ func TestParseDDLSQL(t *testing.T) {
 			want: "CREATE TABLE TEST.persons (first_num DECIMAL(15,2),SECOND_NUM BIGINT,THREE_NUM DECIMAL(5,0),LAST_NAME DOUBLE,NUMERIC_NAME NUMERIC(15,2),DECIMAL_NAME DECIMAL(15,2),DEC_NAME DEC(15,2),INTEGER_NAME INT,INT_NAME INT,SMALLINT_NAME DECIMAL(38))"},
 	}
 	logger := hclog.NewNullLogger()
+	extractor := &ExtractorOracle{replicateDoDb: []*common.DataSource{}}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			dataEvent, err := parseDDLSQL(logger, tt.sql)
+			dataEvent, err := extractor.parseDDLSQL(logger, tt.sql)
 			if err != nil {
 				t.Error(err)
 				return
@@ -284,20 +416,21 @@ func TestParseDDLSQLAlter(t *testing.T) {
 			sql: `ALTER TABLE test."persons" MODIFY (
 					alter_new_name1 CHAR ( 13 )) MODIFY (
 					alter_name2 VARCHAR ( 66 ))`,
-			want: "ALTER TABLE TEST.persons MODIFY COLUMN(ALTER_NEW_NAME1 CHAR(13)),MODIFY COLUMN(ALTER_NAME2 VARCHAR(66))"},
+			want: "ALTER TABLE TEST.persons MODIFY ALTER_NEW_NAME1 CHAR(13),MODIFY ALTER_NAME2 VARCHAR(66)"},
 		{
 			name: "alterTableSQLDrop",
 			sql:  `ALTER TABLE "TEST"."persons" DROP ("DROP_NAME1",drop_name2)`,
-			want: "ALTER TABLE TEST.persons DROP COLUMN(DROP_NAME1,DROP_NAME2)"},
+			want: "ALTER TABLE TEST.persons DROP COLUMN DROP_NAME1,DROP COLUMN DROP_NAME2"},
 		{
 			name: "alterTableSQLRename",
 			sql:  `ALTER TABLE "TEST"."persons" RENAME COLUMN "RE_NAME" TO "RE_NAME_NEW"`,
 			want: "ALTER TABLE TEST.persons RENAME COLUMN RE_NAME TO RE_NAME_NEW"},
 		// index
 	}
+	extractor := &ExtractorOracle{}
 	for _, tt := range testAlter {
 		t.Run(tt.name, func(t *testing.T) {
-			dataEvent, err := parseDDLSQL(logger, tt.sql)
+			dataEvent, err := extractor.parseDDLSQL(logger, tt.sql)
 			if err != nil {
 				t.Error(err)
 				return
@@ -322,9 +455,10 @@ func TestParseDDLSQLDROP(t *testing.T) {
 			want: "DROP TABLE TEST.persons"},
 		// index
 	}
+	extractor := &ExtractorOracle{}
 	for _, tt := range testAlter {
 		t.Run(tt.name, func(t *testing.T) {
-			dataEvent, err := parseDDLSQL(logger, tt.sql)
+			dataEvent, err := extractor.parseDDLSQL(logger, tt.sql)
 			if err != nil {
 				t.Error(err)
 				return
