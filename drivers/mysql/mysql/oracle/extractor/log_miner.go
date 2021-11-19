@@ -378,6 +378,7 @@ func (o *OracleBoolean) Scan(value interface{}) error {
 
 type LogMinerTx struct {
 	transactionId string
+	oldestUncommittedScn int64
 	startScn      int64
 	endScn        int64
 	records       []*LogMinerRecord
@@ -436,24 +437,26 @@ func (lc *LogMinerTxCache) startTx(txId string, startScn int64) {
 
 func (lc *LogMinerTxCache) commitTx(txId string, endScn int64) {
 	if el, ok := lc.index[txId]; ok {
+		// delete tx from cache
+		lc.cache.Remove(el)
+		delete(lc.index, txId)
+
 		tx := el.Value.(*LogMinerTx)
+		ft := lc.getFirstActiveTx()
+		tx.oldestUncommittedScn =  ft.startScn // this is the oldest tx start scn in cache.
 		tx.endScn = endScn
+
 		if len(tx.records) != 0 {
 			lc.Handler(tx)
-			//l.ProcessedScn = t.endScn // TODO: support restart, no data lose or no data repeat exec.
 		} else {
 			fmt.Printf("empty transaction %s, start scn: %d, end scn: %d\n",
 				tx.transactionId, tx.startScn, tx.endScn)
 		}
-		delete(lc.index, txId)
-		lc.cache.Remove(el)
 	}
 }
 
 func (lc *LogMinerTxCache) rollbackTx(txId string, endScn int64) {
 	if el, ok := lc.index[txId]; ok {
-		tx := el.Value.(*LogMinerTx)
-		tx.endScn = endScn
 		delete(lc.index, txId)
 		lc.cache.Remove(el)
 	}
@@ -533,6 +536,8 @@ func (e *ExtractorOracle) DataStreamEvents(entriesChannel chan<- *common.BinlogE
 
 func (e *ExtractorOracle) handleSQLs(tx *LogMinerTx) *common.BinlogEntry {
 	entry := common.NewBinlogEntry()
+	entry.Coordinates.LogPos = tx.oldestUncommittedScn
+	entry.Coordinates.LastCommitted = tx.endScn
 	for _, row := range tx.records {
 		dataEvent, err := e.parseToDataEvent(row)
 		if err != nil {
