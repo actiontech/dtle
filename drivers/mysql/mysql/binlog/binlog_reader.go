@@ -753,13 +753,15 @@ func (b *BinlogReader) setDtleQuery(query string) string {
 }
 
 func (b *BinlogReader) sendEntry(entriesChannel chan<- *common.BinlogEntryContext) {
-	if b.entryContext.Entry.IsPartOfBigTx() {
+	isBig := b.entryContext.Entry.IsPartOfBigTx()
+	if isBig {
 		newVal := atomic.AddInt32(&b.BigTxCount, 1)
 		if newVal == 1 {
 			g.AddBigTxJob()
 		}
 	}
-	b.logger.Debug("sendEntry", "gno", b.entryContext.Entry.Coordinates.GNO, "events", len(b.entryContext.Entry.Events))
+	b.logger.Debug("sendEntry", "gno", b.entryContext.Entry.Coordinates.GNO, "events", len(b.entryContext.Entry.Events),
+		"isBig", isBig)
 	atomic.AddInt64(b.memory, int64(b.entryContext.Entry.Size()))
 	entriesChannel <- b.entryContext
 	atomic.AddUint32(&b.extractedTxCount, 1)

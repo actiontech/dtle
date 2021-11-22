@@ -434,6 +434,7 @@ func (e *Extractor) inspectTables() (err error) {
 		}
 		for _, doDb := range doDbs {
 			schemaCtx := common.NewSchemaContext(doDb.TableSchema)
+			schemaCtx.TableSchemaRename = doDb.TableSchemaRename
 			e.replicateDoDb[doDb.TableSchema] = schemaCtx
 
 			existedTables, err := sql.ShowTables(e.db, doDb.TableSchema, e.mysqlContext.ExpandSyntaxSupport)
