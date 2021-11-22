@@ -239,8 +239,8 @@ func OracleTypeParse(td *oracle_ast.ColumnDef) string {
 		colDefinition = fmt.Sprintf("%s %s(%d)%s", IdentifierToString(td.ColumnName), MySQLColTypeVARCHAR, *td.Datatype.(*element.Varchar2).Size, colDefaultString(td.Default))
 	case element.DataDefVarchar2:
 		colDefinition = fmt.Sprintf("%s %s(%d)%s", IdentifierToString(td.ColumnName), MySQLColTypeVARCHAR, *td.Datatype.(*element.Varchar2).Size, colDefaultString(td.Default))
-		//case element.DataDefXML:
-		//	colDefinition = fmt.Sprintf("%s %s(%d)%s", IdentifierToString(td.ColumnName), MySQLColTypeVARCHAR, 30, colDefaultString(td.Default))
+	case element.DataDefXMLType:
+		colDefinition = fmt.Sprintf("%s %s%s", IdentifierToString(td.ColumnName), MySQLColTypeLONGTEXT, colDefaultString(td.Default))
 	}
 	return colDefinition
 }

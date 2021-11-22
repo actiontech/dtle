@@ -45,6 +45,7 @@ const (
 	DataDefSmallInt
 	DataDefDoublePrecision
 	DataDefReal
+	DataDefXMLType
 )
 
 type datatype struct {
@@ -166,5 +167,9 @@ type NClob struct {
 }
 
 type BFile struct {
+	datatype
+}
+
+type XMLType struct {
 	datatype
 }

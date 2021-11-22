@@ -307,6 +307,7 @@ var unReservedKeyword = map[string]int{
 	"varying":                 _varying,
 	"visible":                 _visible,
 	"write":                   _write,
+	"xmltype":                 _XMLType,
 	"year":                    _year,
 	"zone":                    _zone,
 }

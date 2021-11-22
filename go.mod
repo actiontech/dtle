@@ -52,7 +52,7 @@ require (
 	github.com/shirou/gopsutil/v3 v3.21.6-0.20210619153009-7ea8062810b6
 	github.com/siddontang/go v0.0.0-20180604090527-bdc77568d726
 	github.com/siddontang/go-mysql v0.0.0-20200311002057-7a62847fcdb5
-	github.com/sjjian/oracle-sql-parser v0.0.0-20211117114447-657faeff26e9
+	github.com/sjjian/oracle-sql-parser v0.0.0-20211121154024-15e060b960d5
 	github.com/stretchr/testify v1.7.0
 	github.com/swaggo/echo-swagger v1.1.0
 	github.com/swaggo/swag v1.7.0

@@ -29,6 +29,7 @@ func nextQuery(yylex interface{}) string {
 
 %token <str>
 /* reserved keyword */
+/* see: https://docs.oracle.com/en/database/oracle/oracle-database/21/sqlrf/Oracle-SQL-Reserved-Words.html#GUID-55C49D1E-BE08-4C50-A9DD-8593EB925612 */
     _add
     _all
     _alter
@@ -257,6 +258,7 @@ func nextQuery(yylex interface{}) string {
     _varying
     _visible
     _write
+    _XMLType
     _year
     _zone
 
@@ -296,6 +298,7 @@ func nextQuery(yylex interface{}) string {
     StatementList
     TableName
     Identifier
+    IdentifierOrKeyword
     ColumnName
     Datatype
     OralceBuiltInDataTypes
@@ -306,6 +309,7 @@ func nextQuery(yylex interface{}) string {
     LargeObjectDataTypes
     RowIdDataTypes
     AnsiSupportDataTypes
+    OracleSuppliedTypes
     AlterTableClauses
     ColumnClauses
     ConstraintClauses
@@ -339,10 +343,12 @@ func nextQuery(yylex interface{}) string {
     RelTableProps
     RelTableProp
     OutOfLineConstraint
-    ConstraintNameOrEmpty
+    OutOfLineConstraintBody
+    ConstraintName
     ColumnDefConstraint
     InlineConstraintList
     InlineConstraint
+    InlineConstraintBody
     DropConstraintClauses
     DropConstraintClause
 
@@ -386,13 +392,13 @@ EmptyStmt:
 /* +++++++++++++++++++++++++++++++++++++++++++++ base stmt ++++++++++++++++++++++++++++++++++++++++++++ */
 
 TableName:
-    Identifier
+    IdentifierOrKeyword
     {
     	$$ = &ast.TableName{
-	    Table: $1.(*element.Identifier),
-	}
+	        Table: $1.(*element.Identifier),
+	    }
     }
-|   Identifier '.' Identifier
+|   IdentifierOrKeyword '.' IdentifierOrKeyword
     {
     	$$ = &ast.TableName{
 	    Schema:	$1.(*element.Identifier),
@@ -411,7 +417,7 @@ ColumnNameList:
     }
 
 ColumnName:
-    Identifier
+    IdentifierOrKeyword
     {
         $$ = $1
     }
@@ -419,6 +425,27 @@ ColumnName:
 ClusterName:
     Identifier
 |   Identifier '.' Identifier
+
+IndexName:
+    IdentifierOrKeyword
+|   IdentifierOrKeyword '.' IdentifierOrKeyword
+
+UsingIndexName: // for using index clause
+    Identifier
+|   Identifier '.' Identifier
+
+IdentifierOrKeyword:
+    Identifier
+    {
+        $$ = $1
+    }
+|   UnReservedKeyword
+    {
+        $$ = &element.Identifier{
+            Typ: element.IdentifierTypeNonQuoted,
+            Value: $1,
+        }
+    }
 
 Identifier:
     _nonquotedIdentifier
@@ -432,13 +459,6 @@ Identifier:
     {
         $$ = &element.Identifier{
             Typ: element.IdentifierTypeQuoted,
-            Value: $1,
-        }
-    }
-|   UnReservedKeyword
-    {
-        $$ = &element.Identifier{
-            Typ: element.IdentifierTypeNonQuoted,
             Value: $1,
         }
     }
@@ -500,7 +520,7 @@ UnReservedKeyword:
 |   _filesystem_like_logging
 |   _flash_cache
 |   _force
-//|   _foreign TODO: fix conflict
+|   _foreign
 |   _freelist
 |   _freelists
 |   _full
@@ -573,7 +593,7 @@ UnReservedKeyword:
 |   _policy
 |   _precision
 |   _preserve
-//|   _primary TODO: fix conflict
+|   _primary
 |   _priority
 |   _private
 |   _purge
@@ -1121,7 +1141,7 @@ RenameColumnClause:
 /* +++++++++++++++++++++++++++++++++++++ alter table constraint  +++++++++++++++++++++++++++++++++++++ */
 
 ConstraintClauses:
-    _add OutOfLineConstraints
+    _add OutOfLineConstraint // TODO: in docs is _add OutOfLineConstraints, but actual is _add OutOfLineConstraint.
     {
     	$$ = []ast.AlterTableClause{&ast.AddConstraintClause{}}
     }
@@ -1147,9 +1167,9 @@ ConstraintClauses:
     	$$ = $1
     }
 
-OutOfLineConstraints:
-    OutOfLineConstraint
-|   OutOfLineConstraints OutOfLineConstraint
+//OutOfLineConstraints:
+//    OutOfLineConstraint
+//|   OutOfLineConstraints OutOfLineConstraint
 
 DropConstraintClauses:
     DropConstraintClause
@@ -1535,10 +1555,6 @@ IndexType:
 |   _bitmap
 |   _multivalue
 
-IndexName:
-    Identifier
-|   Identifier '.' Identifier
-
 IndexIlmClause:
 
 IndexClause:
@@ -1659,6 +1675,10 @@ Datatype:
         $$ = $1
     }
 |   AnsiSupportDataTypes
+    {
+        $$ = $1
+    }
+|   OracleSuppliedTypes
     {
         $$ = $1
     }
@@ -2172,6 +2192,14 @@ AnsiSupportDataTypes:
         $$ = d
     }
 
+OracleSuppliedTypes:
+    _XMLType
+    {
+        d := &element.XMLType{}
+        d.SetDataDef(element.DataDefXMLType)
+        $$ = d
+    }
+
 /* +++++++++++++++++++++++++++++++++++++++++++++ constraint ++++++++++++++++++++++++++++++++++++++++++++ */
 
 // see https://docs.oracle.com/en/database/oracle/oracle-database/21/sqlrf/constraint.html#GUID-1055EA97-BA6F-4764-A15F-1024FD5B6DFE
@@ -2181,33 +2209,36 @@ AnsiSupportDataTypes:
 //|   InlineRefConstraint
 //|   OutOfLineRefConstraint
 
-ConstraintNameOrEmpty:
-    {
-        $$ = nil
-    }
-|   _constraint Identifier
+ConstraintName:
+    _constraint Identifier
     {
         $$ = $2
     }
 
 InlineConstraint:
-    ConstraintNameOrEmpty InlineConstraintType ConstraintStateOrEmpty
+    ConstraintName InlineConstraintBody
     {
-        constraint := &ast.InlineConstraint{}
-        if $1 != nil {
-            constraint.Name = $1.(*element.Identifier)
-        }
-	constraint.Type = ast.ConstraintType($2)
-	$$ = constraint
+        constraint := $2.(*ast.InlineConstraint)
+        constraint.Name = $1.(*element.Identifier)
+	    $$ = constraint
     }
-|   ConstraintNameOrEmpty ReferencesClause ConstraintStateOrEmpty
+|   InlineConstraintBody
     {
-        constraint := &ast.InlineConstraint{}
-        if $1 != nil {
-            constraint.Name = $1.(*element.Identifier)
-        }
-	constraint.Type = ast.ConstraintTypeReferences
-	$$ = constraint
+	    $$ = $1
+    }
+
+InlineConstraintBody:
+    InlineConstraintType ConstraintStateOrEmpty
+    {
+	    $$ = &ast.InlineConstraint{
+	        Type: ast.ConstraintType($1),
+	    }
+    }
+|   ReferencesClause ConstraintStateOrEmpty
+    {
+	    $$ = &ast.InlineConstraint{
+	        Type: ast.ConstraintTypeReferences,
+	    }
     }
 //|   ConstraintCheckCondition // todo
 
@@ -2249,91 +2280,121 @@ ConstraintStateOrEmpty:
     {
         // empty
     }
-|   ConstraintStateList
+|   ConstraintState
 
-ConstraintStateList:
-    ConstraintState
-|   ConstraintStateList ConstraintState
+//ConstraintStateList:
+//    ConstraintState
+//|   ConstraintStateList ConstraintState
 
-// ref: https://docs.oracle.com/cd/E11882_01/server.112/e41084/clauses002.htm#CJAFFBAA; TODO: is it diff from 12.1 docs?
-ConstraintState:
+//// ref: https://docs.oracle.com/cd/E11882_01/server.112/e41084/clauses002.htm#CJAFFBAA; TODO: is it diff from 12.1 docs?
+//ConstraintState:
+//    _deferrable
+//|   _not _deferrable
+//|   _initially _deferred
+//|   _initially _immediate
+//|   _rely
+//|   _norely
+//|   UsingIndexClause
+//|   _enable
+//|   _disable
+//|   _validate
+//|   _novalidate
+//|   ExceptionsClause
+
+ConstraintState: // todo: support using_index_clause, enable/disable, validate, exceptions_clause
+    ConstraintStateDeferrableClause ConstraintStateRely UsingIndexClause ConstraintStateEnable ConstraintStateValidate ExceptionsClause
+
+ConstraintStateDeferrableClause:
+    {
+        // empty
+    }
+|   ConstraintStateDeferrable
+|   ConstraintStateDeferrable ConstraintStateInitially
+|   ConstraintStateInitially
+|   ConstraintStateInitially ConstraintStateDeferrable
+
+ConstraintStateDeferrable:
     _deferrable
 |   _not _deferrable
-|   _initially _deferred
+
+ConstraintStateInitially:
+    _initially _deferred
 |   _initially _immediate
+
+ConstraintStateRely:
+    {
+        // empty
+    }
 |   _rely
 |   _norely
-|   UsingIndexClause
-|   _enable
-|   _disable
-|   _validate
-|   _novalidate
-|   ExceptionsClause
 
 UsingIndexClause:
-    _using _index IndexName
+    {
+        // empty
+    }
+|   _using _index UsingIndexName
 |   _using _index '(' CreateIndexStmt ')'
 |   _using _index IndexProps
 
-ExceptionsClause:
-    _exceptions _into TableName
+ConstraintStateEnable:
+    {
+        // empty
+    }
+|   _enable
+|   _disable
 
-//ConstraintState: // todo: support using_index_clause, enable/disable, validate, exceptions_clause
-//    ConstraintStateDeferrable ConstraintStateRely
-//|   ConstraintStateDeferrable ConstraintStateDeferredOrImmediate ConstraintStateRely
-//|   ConstraintStateDeferredOrImmediate ConstraintStateRely
-//|   ConstraintStateDeferredOrImmediate ConstraintStateDeferrable ConstraintStateRely
-//
-//ConstraintStateDeferrable:
-//    _deferrable
-//|   _not _deferrable
-//
-//ConstraintStateDeferredOrImmediate:
-//    _initially _deferred
-//|   _initially _immediate
-//
-//ConstraintStateRely:
-//    {
-//        // empty
-//    }
-//|   _rely
-//|   _norely
+ConstraintStateValidate:
+    {
+        // empty
+    }
+|   _validate
+|   _novalidate
+
+ExceptionsClause:
+    {
+        // empty
+    }
+|   _exceptions _into TableName
 
 InlineRefConstraint:
     _scope _is TableName
 |   _with _rowid
-|   ConstraintNameOrEmpty ReferencesClause ConstraintStateOrEmpty
+|   ConstraintName ReferencesClause ConstraintStateOrEmpty
+|   ReferencesClause ConstraintStateOrEmpty
 
 OutOfLineConstraint:
-    ConstraintNameOrEmpty _unique '(' ColumnNameList ')' ConstraintStateOrEmpty
+    ConstraintName OutOfLineConstraintBody
     {
-        constraint := &ast.OutOfLineConstraint{}
-        if $1 != nil {
-            constraint.Name = $1.(*element.Identifier)
-        }
-	constraint.Type = ast.ConstraintTypeUnique
-	constraint.Columns = $4.([]*element.Identifier)
-	$$ = constraint
+        constraint := $2.(*ast.OutOfLineConstraint)
+        constraint.Name = $1.(*element.Identifier)
+	    $$ = constraint
     }
-|    ConstraintNameOrEmpty _primary _key '(' ColumnNameList ')' ConstraintStateOrEmpty
+|   OutOfLineConstraintBody
     {
-        constraint := &ast.OutOfLineConstraint{}
-        if $1 != nil {
-            constraint.Name = $1.(*element.Identifier)
-        }
-	constraint.Type = ast.ConstraintTypePK
-	constraint.Columns = $5.([]*element.Identifier)
-	$$ = constraint
+	    $$ = $1
     }
-|    ConstraintNameOrEmpty _foreign _key '(' ColumnNameList ')' ReferencesClause ConstraintStateOrEmpty
+
+OutOfLineConstraintBody:
+    _unique '(' ColumnNameList ')' ConstraintStateOrEmpty
     {
         constraint := &ast.OutOfLineConstraint{}
-        if $1 != nil {
-            constraint.Name = $1.(*element.Identifier)
-        }
-	constraint.Type = ast.ConstraintTypeReferences
-	constraint.Columns = $5.([]*element.Identifier)
-	$$ = constraint
+	    constraint.Type = ast.ConstraintTypeUnique
+	    constraint.Columns = $3.([]*element.Identifier)
+	    $$ = constraint
+    }
+|    _primary _key '(' ColumnNameList ')' ConstraintStateOrEmpty
+    {
+        constraint := &ast.OutOfLineConstraint{}
+	    constraint.Type = ast.ConstraintTypePK
+	    constraint.Columns = $4.([]*element.Identifier)
+	    $$ = constraint
+    }
+|    _foreign _key '(' ColumnNameList ')' ReferencesClause ConstraintStateOrEmpty
+    {
+        constraint := &ast.OutOfLineConstraint{}
+	    constraint.Type = ast.ConstraintTypeReferences
+	    constraint.Columns = $4.([]*element.Identifier)
+	    $$ = constraint
     }
 //|   ConstraintCheckCondition // todo
 
