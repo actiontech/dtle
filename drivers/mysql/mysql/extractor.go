@@ -48,9 +48,9 @@ type Extractor struct {
 	mysqlContext *common.MySQLDriverConfig
 
 	systemVariables       map[string]string
-	sqlMode             string
-	lowerCaseTableNames mysqlconfig.LowerCaseTableNamesValue
-	MySQLVersion        string
+	sqlMode               string
+	lowerCaseTableNames   mysqlconfig.LowerCaseTableNamesValue
+	MySQLVersion          string
 	TotalTransferredBytes int
 	// Original comment: TotalRowsCopied returns the accurate number of rows being copied (affected)
 	// This is not exactly the same as the rows being iterated via chunks, but potentially close enough.
@@ -59,6 +59,7 @@ type Extractor struct {
 	natsAddr        string
 
 	mysqlVersionDigit int
+	NetWriteTimeout int
 	db                *gosql.DB
 	singletonDB       *gosql.DB
 	dumpers           []*dumper
@@ -102,8 +103,8 @@ type Extractor struct {
 
 	// we need to close all data channel while pausing task runner. and these data channel will be recreate when restart the runner.
 	// to avoid writing closed channel, we need to wait for all goroutines that deal with data channels finishing. wg is used for the waiting.
-	wg         sync.WaitGroup
-	targetGtid string
+	wg              sync.WaitGroup
+	targetGtid      string
 }
 
 func NewExtractor(execCtx *common.ExecContext, cfg *common.MySQLDriverConfig, logger g.LoggerType, storeManager *common.StoreManager, waitCh chan *drivers.ExitResult) (*Extractor, error) {
@@ -642,7 +643,8 @@ func (e *Extractor) initNatsPubClient(natsAddr string) (err error) {
 		ack := &common.BigTxAck{}
 		_, err = ack.Unmarshal(m.Data)
 		e.logger.Debug("bigtx_ack", "gno", ack.GNO, "index", ack.Index)
-		e.binlogReader.HasBigTx.Add(-1)
+
+		atomic.AddInt32(&e.binlogReader.BigTxCount, -1)
 	})
 
 	_, err = e.natsConn.Subscribe(fmt.Sprintf("%s_progress", e.subject), func(m *gonats.Msg) {
@@ -696,6 +698,7 @@ func (e *Extractor) initDBConnections() (err error) {
 		hclog.Fmt("%s:%d", e.mysqlContext.ConnectionConfig.Host, e.mysqlContext.ConnectionConfig.Port))
 
 	e.MySQLVersion = someSysVars.Version
+	e.NetWriteTimeout = someSysVars.NetWriteTimeout
 	e.lowerCaseTableNames = someSysVars.LowerCaseTableNames
 	e.mysqlVersionDigit, err = common.MysqlVersionInDigit(e.MySQLVersion)
 	if err != nil {
@@ -772,7 +775,8 @@ func (e *Extractor) getSchemaTablesAndMeta() error {
 // Cooperate with `initiateStreaming()` using `e.streamerReadyCh`. Any err will be sent thru the chan.
 func (e *Extractor) initBinlogReader(binlogCoordinates *common.BinlogCoordinatesX) {
 	binlogReader, err := binlog.NewBinlogReader(e.execCtx, e.mysqlContext, e.logger.ResetNamed("reader"),
-		e.replicateDoDb, e.context, e.memory2, e.db, e.targetGtid, e.lowerCaseTableNames)
+		e.replicateDoDb, e.context, e.memory2, e.db, e.targetGtid, e.lowerCaseTableNames,
+		e.NetWriteTimeout)
 	if err != nil {
 		e.logger.Error("err at initBinlogReader: NewBinlogReader", "err", err)
 		e.streamerReadyCh <- err

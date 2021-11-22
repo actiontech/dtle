@@ -108,9 +108,10 @@ func GetSomeSysVars(db usql.QueryAble, logger g.LoggerType) (r struct {
 	Version             string
 	TimeZome            string
 	LowerCaseTableNames umconf.LowerCaseTableNamesValue
+	NetWriteTimeout     int
 }) {
-	query := `select @@version, @@time_zone, @@lower_case_table_names`
-	r.Err = db.QueryRow(query).Scan(&r.Version, &r.TimeZome, &r.LowerCaseTableNames)
+	query := `select @@version, @@time_zone, @@lower_case_table_names, @@net_write_timeout`
+	r.Err = db.QueryRow(query).Scan(&r.Version, &r.TimeZome, &r.LowerCaseTableNames, &r.NetWriteTimeout)
 	if r.Err != nil {
 		return
 	}
@@ -123,6 +124,7 @@ func GetSomeSysVars(db usql.QueryAble, logger g.LoggerType) (r struct {
 	logger.Info("got sys_var version", "value", r.Version)
 	logger.Info("got sys_var timezone", "value", r.TimeZome)
 	logger.Info("got sys_var lower_case_table_names", "value", r.LowerCaseTableNames)
+	logger.Info("got sys_var net_write_timeout", "value", r.NetWriteTimeout)
 
 	return r
 }

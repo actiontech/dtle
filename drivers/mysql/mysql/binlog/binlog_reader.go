@@ -73,13 +73,13 @@ type BinlogReader struct {
 	currentCoord      common.BinlogCoordinatesX
 	currentCoordMutex *sync.Mutex
 	// raw config, whose ReplicateDoDB is same as config file (empty-is-all & no dynamically created tables)
-	mysqlContext         *common.MySQLDriverConfig
+	mysqlContext *common.MySQLDriverConfig
 	// dynamic config, include all tables (implicitly assigned or dynamically created)
 	tables map[string]*common.SchemaContext
 
-	hasBeginQuery      bool
-	entryContext       *common.BinlogEntryContext
-	ReMap              map[string]*regexp.Regexp // This is a cache for regexp.
+	hasBeginQuery bool
+	entryContext  *common.BinlogEntryContext
+	ReMap         map[string]*regexp.Regexp // This is a cache for regexp.
 
 	shutdown     bool
 	shutdownCh   chan struct{}
@@ -94,12 +94,13 @@ type BinlogReader struct {
 
 	serverUUID          string
 	lowerCaseTableNames mysqlconfig.LowerCaseTableNamesValue
+	netWriteTimeout     int
 
-	targetGtid     gomysql.GTIDSet
-	currentGtidSet gomysql.GTIDSet
+	targetGtid          gomysql.GTIDSet
+	currentGtidSet      gomysql.GTIDSet
 	currentGtidSetMutex sync.RWMutex
 
-	HasBigTx sync.WaitGroup
+	BigTxCount int32
 }
 
 type SqlFilter struct {
@@ -163,7 +164,7 @@ func parseSqlFilter(strs []string) (*SqlFilter, error) {
 	return s, nil
 }
 
-func NewBinlogReader(execCtx *common.ExecContext, cfg *common.MySQLDriverConfig, logger g.LoggerType, replicateDoDb map[string]*common.SchemaContext, sqleContext *sqle.Context, memory *int64, db *gosql.DB, targetGtid string, lctn mysqlconfig.LowerCaseTableNamesValue) (binlogReader *BinlogReader, err error) {
+func NewBinlogReader(execCtx *common.ExecContext, cfg *common.MySQLDriverConfig, logger g.LoggerType, replicateDoDb map[string]*common.SchemaContext, sqleContext *sqle.Context, memory *int64, db *gosql.DB, targetGtid string, lctn mysqlconfig.LowerCaseTableNamesValue, nwTimeout int) (binlogReader *BinlogReader, err error) {
 
 	sqlFilter, err := parseSqlFilter(cfg.SqlFilter)
 	if err != nil {
@@ -184,6 +185,7 @@ func NewBinlogReader(execCtx *common.ExecContext, cfg *common.MySQLDriverConfig,
 		memory:               memory,
 		db:                   db,
 		lowerCaseTableNames:  lctn,
+		netWriteTimeout:      nwTimeout,
 	}
 
 	binlogReader.serverUUID, err = sql.GetServerUUID(db)
@@ -236,6 +238,7 @@ func NewBinlogReader(execCtx *common.ExecContext, cfg *common.MySQLDriverConfig,
 			ParseTime: false, // must be false, or gencode will complain.
 
 			MemLimitSize: int64(g.MemAvailable * 10 / 2),
+			MemLimitSeconds: binlogReader.netWriteTimeout / 2,
 		}
 		binlogReader.binlogSyncer = replication.NewBinlogSyncer(binlogSyncerConfig)
 	}
@@ -751,7 +754,7 @@ func (b *BinlogReader) setDtleQuery(query string) string {
 
 func (b *BinlogReader) sendEntry(entriesChannel chan<- *common.BinlogEntryContext) {
 	if b.entryContext.Entry.IsPartOfBigTx() {
-		b.HasBigTx.Add(1)
+		atomic.AddInt32(&b.BigTxCount, 1)
 	}
 	b.logger.Debug("sendEntry", "gno", b.entryContext.Entry.Coordinates.GNO, "events", len(b.entryContext.Entry.Events))
 	atomic.AddInt64(b.memory, int64(b.entryContext.Entry.Size()))
@@ -875,7 +878,16 @@ func (b *BinlogReader) DataStreamEvents(entriesChannel chan<- *common.BinlogEntr
 		}
 
 		b.logger.Trace("b.HasBigTx.Wait. before")
-		b.HasBigTx.Wait()
+		for i := 0; atomic.LoadInt32(&b.BigTxCount) > 0; i++ {
+			if b.shutdown {
+				break
+			}
+			if i >= b.netWriteTimeout * 1000 / 10 / 2 {
+				b.logger.Info("reach netWriteTimeout limit. allow reading one event")
+				break
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
 		b.logger.Trace("b.HasBigTx.Wait. after")
 
 		ev, err := b.binlogStreamer.GetEvent(context.Background())
