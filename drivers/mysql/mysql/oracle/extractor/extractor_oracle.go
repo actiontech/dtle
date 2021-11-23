@@ -182,10 +182,17 @@ func (e *ExtractorOracle) Run() {
 	e.logger.Info("Connect nats server", "natsAddr", e.natsAddr)
 	e.natsConn = sc
 
+	startSCN, committedSCN,err :=  e.calculateSCNPos()
+	if err != nil {
+		e.onError(common.TaskStateDead, errors.Wrap(err, "calculateSCNPos"))
+		return
+	}
+
 	e.initDBConnections()
 	e.getSchemaTablesAndMeta()
+
 	e.LogMinerStream = NewLogMinerStream(e.oracleDB, e.logger, e.mysqlContext.ReplicateDoDb, e.mysqlContext.ReplicateIgnoreDb,
-		e.mysqlContext.OracleConfig.SCN, 100000)
+		startSCN, committedSCN, 100000)
 	//e.logger.Info("CheckAndApplyLowerCaseTableNames")
 	//e.CheckAndApplyLowerCaseTableNames()
 	// 字符集同步 todo

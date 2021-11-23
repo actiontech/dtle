@@ -129,7 +129,7 @@ func TestBuildFilterSchemaTable(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			logminer := NewLogMinerStream(nil, hclog.NewNullLogger(), tt.replicateDoDb, tt.replicateIgnoreDB, 0, 100000)
+			logminer := NewLogMinerStream(nil, hclog.NewNullLogger(), tt.replicateDoDb, tt.replicateIgnoreDB,0, 0, 100000)
 			filterSQL := logminer.buildFilterSchemaTable()
 			if filterSQL != tt.want {
 				t.Errorf("parseDDLSQL() = %v, want %v", filterSQL, tt.want)
