@@ -6,8 +6,7 @@ import (
 	"database/sql"
 	"fmt"
 
-	"github.com/godror/godror"
-	"github.com/godror/godror/dsn"
+	_ "github.com/sijms/go-ora/v2"
 )
 
 type OracleConfig struct {
@@ -30,23 +29,14 @@ func (m *OracleConfig) ConnectString() string {
 }
 
 func NewDB(meta *OracleConfig) (*OracleDB, error) {
-	oraDsn := godror.ConnectionParams{
-		CommonParams: godror.CommonParams{
-			Username:      meta.User,
-			ConnectString: meta.ConnectString(),
-			Password:      godror.NewPassword(meta.Password),
-		},
-		PoolParams: godror.PoolParams{
-			MinSessions:    dsn.DefaultPoolMinSessions,
-			MaxSessions:    dsn.DefaultPoolMaxSessions,
-			WaitTimeout:    dsn.DefaultWaitTimeout,
-			MaxLifeTime:    dsn.DefaultMaxLifeTime,
-			SessionTimeout: dsn.DefaultSessionTimeout,
-		},
+	if meta.ServiceName == "" {
+		meta.ServiceName = "xe"
 	}
-	sqlDB := sql.OpenDB(godror.NewConnector(oraDsn))
-
-	err := sqlDB.Ping()
+	sqlDB, err := sql.Open("oracle", fmt.Sprintf("oracle://%s:%s@%s:%d/%s", meta.User, meta.Password, meta.Host, meta.Port, meta.ServiceName))
+	if err != nil {
+		return nil, fmt.Errorf("error on open oracle database connection:%v", err)
+	}
+	err = sqlDB.Ping()
 	if err != nil {
 		return nil, fmt.Errorf("error on ping oracle database connection:%v", err)
 	}

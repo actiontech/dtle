@@ -20,7 +20,7 @@ require (
 	github.com/go-playground/universal-translator v0.17.0 // indirect
 	github.com/go-playground/validator v9.31.0+incompatible
 	github.com/go-sql-driver/mysql v1.5.0
-	github.com/godror/godror v0.24.7
+	github.com/godror/godror v0.24.7 // indirect
 	github.com/hashicorp/go-hclog v0.14.1
 	github.com/hashicorp/nomad v1.1.2
 	github.com/hashicorp/nomad/api v0.0.0-20200529203653-c4416b26d3eb
@@ -52,6 +52,7 @@ require (
 	github.com/shirou/gopsutil/v3 v3.21.6-0.20210619153009-7ea8062810b6
 	github.com/siddontang/go v0.0.0-20180604090527-bdc77568d726
 	github.com/siddontang/go-mysql v0.0.0-20200311002057-7a62847fcdb5
+	github.com/sijms/go-ora/v2 v2.2.15
 	github.com/sjjian/oracle-sql-parser v0.0.0-20211121154024-15e060b960d5
 	github.com/stretchr/testify v1.7.0
 	github.com/swaggo/echo-swagger v1.1.0

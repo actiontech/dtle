@@ -80,8 +80,6 @@ github.com/eapache/go-xerial-snappy
 github.com/eapache/queue
 # github.com/fatih/color v1.9.0
 github.com/fatih/color
-# github.com/go-logfmt/logfmt v0.5.0
-github.com/go-logfmt/logfmt
 # github.com/go-ole/go-ole v1.2.4
 github.com/go-ole/go-ole
 github.com/go-ole/go-ole/oleutil
@@ -102,12 +100,6 @@ github.com/go-playground/universal-translator
 github.com/go-playground/validator
 # github.com/go-sql-driver/mysql v1.5.0
 github.com/go-sql-driver/mysql
-# github.com/godror/godror v0.24.7
-github.com/godror/godror
-github.com/godror/godror/dsn
-github.com/godror/godror/odpi/embed
-github.com/godror/godror/odpi/include
-github.com/godror/godror/odpi/src
 # github.com/gogo/protobuf v1.3.1
 github.com/gogo/protobuf/gogoproto
 github.com/gogo/protobuf/proto
@@ -511,6 +503,13 @@ github.com/siddontang/go-mysql/mysql
 github.com/siddontang/go-mysql/packet
 github.com/siddontang/go-mysql/replication
 github.com/siddontang/go-mysql/utils
+# github.com/sijms/go-ora/v2 v2.2.15
+github.com/sijms/go-ora/v2
+github.com/sijms/go-ora/v2/advanced_nego
+github.com/sijms/go-ora/v2/converters
+github.com/sijms/go-ora/v2/network
+github.com/sijms/go-ora/v2/network/security
+github.com/sijms/go-ora/v2/trace
 # github.com/sirupsen/logrus v1.7.0
 github.com/sirupsen/logrus
 # github.com/sjjian/oracle-sql-parser v0.0.0-20211121154024-15e060b960d5
@@ -667,9 +666,6 @@ golang.org/x/tools/go/ast/astutil
 golang.org/x/tools/go/buildutil
 golang.org/x/tools/go/internal/cgo
 golang.org/x/tools/go/loader
-# golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1
-golang.org/x/xerrors
-golang.org/x/xerrors/internal
 # google.golang.org/appengine v1.6.5
 google.golang.org/appengine
 google.golang.org/appengine/datastore
