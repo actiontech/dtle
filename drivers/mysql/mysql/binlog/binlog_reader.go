@@ -754,7 +754,10 @@ func (b *BinlogReader) setDtleQuery(query string) string {
 
 func (b *BinlogReader) sendEntry(entriesChannel chan<- *common.BinlogEntryContext) {
 	if b.entryContext.Entry.IsPartOfBigTx() {
-		atomic.AddInt32(&b.BigTxCount, 1)
+		newVal := atomic.AddInt32(&b.BigTxCount, 1)
+		if newVal == 1 {
+			g.AddBigTxJob()
+		}
 	}
 	b.logger.Debug("sendEntry", "gno", b.entryContext.Entry.Coordinates.GNO, "events", len(b.entryContext.Entry.Events))
 	atomic.AddInt64(b.memory, int64(b.entryContext.Entry.Size()))
@@ -878,7 +881,7 @@ func (b *BinlogReader) DataStreamEvents(entriesChannel chan<- *common.BinlogEntr
 		}
 
 		b.logger.Trace("b.HasBigTx.Wait. before")
-		for i := 0; atomic.LoadInt32(&b.BigTxCount) > 0; i++ {
+		for i := 0; atomic.LoadInt32(&b.BigTxCount) > 0 || g.BigTxReachMax(); i++ {
 			if b.shutdown {
 				break
 			}

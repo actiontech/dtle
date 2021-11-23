@@ -644,7 +644,13 @@ func (e *Extractor) initNatsPubClient(natsAddr string) (err error) {
 		_, err = ack.Unmarshal(m.Data)
 		e.logger.Debug("bigtx_ack", "gno", ack.GNO, "index", ack.Index)
 
-		atomic.AddInt32(&e.binlogReader.BigTxCount, -1)
+		newVal := atomic.AddInt32(&e.binlogReader.BigTxCount, -1)
+		if newVal == 0 {
+			g.SubBigTxJob()
+		}
+		if newVal < 0 {
+			e.onError(common.TaskStateDead, fmt.Errorf("DTLE_BUG: BigTxCount is less than 0. %v", newVal))
+		}
 	})
 
 	_, err = e.natsConn.Subscribe(fmt.Sprintf("%s_progress", e.subject), func(m *gonats.Msg) {
