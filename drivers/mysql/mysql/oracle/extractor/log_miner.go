@@ -9,19 +9,19 @@ import (
 	"encoding/hex"
 	"fmt"
 	"regexp"
-	"time"
 	"strings"
+	"time"
 
+	"github.com/actiontech/dtle/drivers/mysql/common"
+	"github.com/actiontech/dtle/drivers/mysql/mysql/oracle/config"
+	"github.com/actiontech/dtle/g"
 	"github.com/hashicorp/go-hclog"
+	"github.com/pingcap/parser"
+	_ "github.com/pingcap/tidb/types/parser_driver"
 	"github.com/pkg/errors"
 	oracleParser "github.com/sjjian/oracle-sql-parser"
 	"github.com/sjjian/oracle-sql-parser/ast"
-	"github.com/actiontech/dtle/drivers/mysql/mysql/oracle/config"
-	"github.com/actiontech/dtle/g"
-	"github.com/pingcap/parser"
-	"github.com/actiontech/dtle/drivers/mysql/common"
 	"github.com/thinkeridea/go-extend/exbytes"
-	_ "github.com/pingcap/tidb/types/parser_driver"
 )
 
 func (l *LogMinerStream) GetCurrentSnapshotSCN() (int64, error) {
@@ -280,11 +280,15 @@ WHERE
 
 	scan := func(rows *sql.Rows) (*LogMinerRecord, error) {
 		lr := &LogMinerRecord{}
-		err = rows.Scan(&lr.SCN, &lr.SegOwner, &lr.TableName, &lr.SQLRedo, &lr.SQLUndo, &lr.Operation, &lr.XId,
+		var segOwner, tableName, undoSQL sql.NullString
+		err = rows.Scan(&lr.SCN, &segOwner, &tableName, &lr.SQLRedo, &undoSQL, &lr.Operation, &lr.XId,
 			&lr.Csf, &lr.RowId, &lr.Rollback, &lr.RsId, &lr.StartTime, &lr.Username)
 		if err != nil {
 			return nil, err
 		}
+		lr.SegOwner = segOwner.String
+		lr.TableName = tableName.String
+		lr.SQLUndo = undoSQL.String
 		return lr, nil
 	}
 	var lrs []*LogMinerRecord
@@ -371,11 +375,11 @@ func (o *OracleBoolean) Scan(value interface{}) error {
 //}
 
 type LogMinerTx struct {
-	transactionId string
+	transactionId        string
 	oldestUncommittedScn int64
-	startScn      int64
-	endScn        int64
-	records       []*LogMinerRecord
+	startScn             int64
+	endScn               int64
+	records              []*LogMinerRecord
 }
 
 func (l *LogMinerTx) String() string {
@@ -504,11 +508,11 @@ func (e *ExtractorOracle) calculateSCNPos() (startSCN, committedSCN int64, err e
 	var oldestUncommittedScn int64
 	oldestUncommittedScn, committedSCN, err = e.storeManager.GetOracleSCNPosForJob(e.subject)
 	if err != nil {
-		return 0,0, errors.Wrap(err, "GetOracleSCNPosForJob")
+		return 0, 0, errors.Wrap(err, "GetOracleSCNPosForJob")
 	}
 	// first start
 	if committedSCN == 0 {
-		return  e.mysqlContext.OracleConfig.SCN, 0, nil
+		return e.mysqlContext.OracleConfig.SCN, 0, nil
 	}
 	// all tx has been committed
 	if oldestUncommittedScn == 0 {
@@ -534,7 +538,7 @@ func (e *ExtractorOracle) DataStreamEvents(entriesChannel chan<- *common.BinlogE
 
 	e.LogMinerStream.txCache.Handler = func(tx *LogMinerTx) error {
 		if tx.endScn <= e.LogMinerStream.committedScn {
-			e.logger.Debug("skip SQLs",  "transactionId",  tx.transactionId,
+			e.logger.Debug("skip SQLs", "transactionId", tx.transactionId,
 				"startSCN", tx.startScn, "endSCN", tx.endScn)
 			return nil
 		}
@@ -785,11 +789,11 @@ func (l *LogMinerStream) HandlerRecords(records []*LogMinerRecord) error {
 			l.txCache.rollbackTx(r.TxId(), r.SCN)
 		case OperationCodeDDL:
 			l.txCache.Handler(&LogMinerTx{
-				transactionId: 			"",
-				oldestUncommittedScn: 	l.txCache.getOldestUncommittedSCN(),
-				startScn:      			r.SCN,
-				endScn:        			r.SCN,
-				records:       			[]*LogMinerRecord{r},
+				transactionId:        "",
+				oldestUncommittedScn: l.txCache.getOldestUncommittedSCN(),
+				startScn:             r.SCN,
+				endScn:               r.SCN,
+				records:              []*LogMinerRecord{r},
 			})
 		case OperationCodeInsert, OperationCodeDelete, OperationCodeUpdate:
 			l.txCache.addTxRecord(r)
