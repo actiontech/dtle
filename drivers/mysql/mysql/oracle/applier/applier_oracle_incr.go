@@ -367,6 +367,8 @@ func (a *ApplierOracleIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *comm
 		dbApplier.Tx.Commit()
 		dbApplier.Tx = nil
 	}
+	// TODO: need be executed after tx.Commit success
+	a.EntryExecutedHook(binlogEntry)
 
 	return nil
 }

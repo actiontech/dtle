@@ -10,23 +10,17 @@ import (
 	"fmt"
 	"regexp"
 	"time"
-
-	"github.com/hashicorp/go-hclog"
-
-	oracleParser "github.com/sjjian/oracle-sql-parser"
-	"github.com/sjjian/oracle-sql-parser/ast"
-
-	"github.com/actiontech/dtle/drivers/mysql/mysql/oracle/config"
-
-	"github.com/actiontech/dtle/g"
-
-	"github.com/pingcap/parser"
-
-	"github.com/actiontech/dtle/drivers/mysql/common"
-	"github.com/thinkeridea/go-extend/exbytes"
-
 	"strings"
 
+	"github.com/hashicorp/go-hclog"
+	"github.com/pkg/errors"
+	oracleParser "github.com/sjjian/oracle-sql-parser"
+	"github.com/sjjian/oracle-sql-parser/ast"
+	"github.com/actiontech/dtle/drivers/mysql/mysql/oracle/config"
+	"github.com/actiontech/dtle/g"
+	"github.com/pingcap/parser"
+	"github.com/actiontech/dtle/drivers/mysql/common"
+	"github.com/thinkeridea/go-extend/exbytes"
 	_ "github.com/pingcap/tidb/types/parser_driver"
 )
 
@@ -378,6 +372,7 @@ func (o *OracleBoolean) Scan(value interface{}) error {
 
 type LogMinerTx struct {
 	transactionId string
+	oldestUncommittedScn int64
 	startScn      int64
 	endScn        int64
 	records       []*LogMinerRecord
@@ -422,6 +417,15 @@ func (lc *LogMinerTxCache) getFirstActiveTx() *LogMinerTx {
 	return el.Value.(*LogMinerTx)
 }
 
+func (lc *LogMinerTxCache) getOldestUncommittedSCN() int64 {
+	ft := lc.getFirstActiveTx()
+	if ft != nil {
+		return ft.startScn // this is the oldest tx start scn in cache.
+	} else {
+		return 0
+	}
+}
+
 func (lc *LogMinerTxCache) startTx(txId string, startScn int64) {
 	if _, ok := lc.index[txId]; !ok {
 		tx := &LogMinerTx{
@@ -436,24 +440,25 @@ func (lc *LogMinerTxCache) startTx(txId string, startScn int64) {
 
 func (lc *LogMinerTxCache) commitTx(txId string, endScn int64) {
 	if el, ok := lc.index[txId]; ok {
+		// delete tx from cache
+		lc.cache.Remove(el)
+		delete(lc.index, txId)
+
 		tx := el.Value.(*LogMinerTx)
 		tx.endScn = endScn
+		tx.oldestUncommittedScn = lc.getOldestUncommittedSCN()
+
 		if len(tx.records) != 0 {
 			lc.Handler(tx)
-			//l.ProcessedScn = t.endScn // TODO: support restart, no data lose or no data repeat exec.
 		} else {
 			fmt.Printf("empty transaction %s, start scn: %d, end scn: %d\n",
 				tx.transactionId, tx.startScn, tx.endScn)
 		}
-		delete(lc.index, txId)
-		lc.cache.Remove(el)
 	}
 }
 
 func (lc *LogMinerTxCache) rollbackTx(txId string, endScn int64) {
 	if el, ok := lc.index[txId]; ok {
-		tx := el.Value.(*LogMinerTx)
-		tx.endScn = endScn
 		delete(lc.index, txId)
 		lc.cache.Remove(el)
 	}
@@ -476,20 +481,63 @@ func (lc *LogMinerTxCache) addTxRecord(newRecord *LogMinerRecord) {
 	}
 }
 
+/*
+=================================  Crash Recovery Logic ======================================
+
+    scn1-1   scn2-1              scn3-1       scn2-n             scn1-n      scn3-n
+ |----+--------+-------------------+-------------+-------  * ------------------------------->  // redo log
+      ^        ^                   ^             ^         ^
+    start1   start2              start3       commit2    crash
+      |-------------------------------------------------------------                         // tx 1: active tx
+               |---------------------------------|                                           // tx 2: committed tx
+                                   |--------------------------------------------             // tx 3: active tx
+
+If progress crash between `scn2-n` in `scn1-n`, the `tx 2` has been committed.
+When progress restarted, we can't start with `crash` (scn), this will lose `tx 1` and `tx 3`.
+So, we need to start with `scn1-1`, and ignore the `tx 2`.
+
+scn1-1: oldestUncommittedScn
+scn2-n: committedSCN
+*/
+
+func (e *ExtractorOracle) calculateSCNPos() (startSCN, committedSCN int64, err error) {
+	var oldestUncommittedScn int64
+	oldestUncommittedScn, committedSCN, err = e.storeManager.GetOracleSCNPosForJob(e.subject)
+	if err != nil {
+		return 0,0, errors.Wrap(err, "GetOracleSCNPosForJob")
+	}
+	// first start
+	if committedSCN == 0 {
+		return  e.mysqlContext.OracleConfig.SCN, 0, nil
+	}
+	// all tx has been committed
+	if oldestUncommittedScn == 0 {
+		startSCN = committedSCN
+	} else {
+		startSCN = oldestUncommittedScn - 1
+	}
+	return
+}
+
 func (e *ExtractorOracle) DataStreamEvents(entriesChannel chan<- *common.BinlogEntryContext) error {
 	e.logger.Debug("start oracle. DataStreamEvents")
 
-	if e.mysqlContext.OracleConfig.SCN == 0 {
+	if e.LogMinerStream.startScn == 0 {
 		scn, err := e.LogMinerStream.GetCurrentSnapshotSCN()
 		if err != nil {
 			e.logger.Error("GetCurrentSnapshotSCN", "err", err)
 			return err
 		}
 		e.logger.Debug("current scn", "scn", scn)
-		e.LogMinerStream.CollectedScn = scn
+		e.LogMinerStream.startScn = scn
 	}
 
 	e.LogMinerStream.txCache.Handler = func(tx *LogMinerTx) error {
+		if tx.endScn <= e.LogMinerStream.committedScn {
+			e.logger.Debug("skip SQLs",  "transactionId",  tx.transactionId,
+				"startSCN", tx.startScn, "endSCN", tx.endScn)
+			return nil
+		}
 		Entry := e.handleSQLs(tx)
 		e.logger.Debug("handle SQLs", "Entry", Entry)
 		entriesChannel <- &common.BinlogEntryContext{
@@ -533,6 +581,8 @@ func (e *ExtractorOracle) DataStreamEvents(entriesChannel chan<- *common.BinlogE
 
 func (e *ExtractorOracle) handleSQLs(tx *LogMinerTx) *common.BinlogEntry {
 	entry := common.NewBinlogEntry()
+	entry.Coordinates.LogPos = tx.oldestUncommittedScn
+	entry.Coordinates.LastCommitted = tx.endScn
 	for _, row := range tx.records {
 		dataEvent, err := e.parseToDataEvent(row)
 		if err != nil {
@@ -546,8 +596,8 @@ func (e *ExtractorOracle) handleSQLs(tx *LogMinerTx) *common.BinlogEntry {
 
 type LogMinerStream struct {
 	oracleDB                 *config.OracleDB
-	CollectedScn             int64
-	ProcessedScn             int64
+	startScn                 int64
+	committedScn             int64
 	interval                 int64
 	initialized              bool
 	currentRedoLogSequenceFP string
@@ -558,13 +608,14 @@ type LogMinerStream struct {
 }
 
 func NewLogMinerStream(db *config.OracleDB, logger g.LoggerType, replicateDB, ignoreReplicateDB []*common.DataSource,
-	startScn, interval int64) *LogMinerStream {
+	startScn, committedScn, interval int64) *LogMinerStream {
 	return &LogMinerStream{
 		oracleDB:          db,
 		logger:            logger,
 		replicateDB:       replicateDB,
 		ignoreReplicateDB: ignoreReplicateDB,
-		CollectedScn:      startScn,
+		startScn:          startScn,
+		committedScn:      committedScn,
 		interval:          interval,
 		txCache:           NewLogMinerTxCache(),
 	}
@@ -590,7 +641,7 @@ func (l *LogMinerStream) initLogMiner() error {
 		return err
 	}
 
-	fs, err := l.GetLogFileBySCN(l.CollectedScn)
+	fs, err := l.GetLogFileBySCN(l.startScn)
 	if err != nil {
 		l.logger.Error("GetLogFileBySCN", "err", err)
 		return err
@@ -654,7 +705,7 @@ func (l *LogMinerStream) getEndScn() (int64, error) {
 		l.logger.Error("GetCurrentSnapshotSCN", "err", err)
 		return 0, err
 	}
-	endScn := l.CollectedScn + l.interval
+	endScn := l.startScn + l.interval
 	if endScn < latestScn {
 		return endScn, nil
 	} else {
@@ -690,17 +741,17 @@ func (l *LogMinerStream) Loop() error {
 		if err != nil {
 			return err
 		}
-		if endScn == l.CollectedScn {
+		if endScn == l.startScn {
 			continue
 		}
 
-		err = l.StartLogMinerBySCN2(l.CollectedScn, endScn)
+		err = l.StartLogMinerBySCN2(l.startScn, endScn)
 		if err != nil {
 			fmt.Println("StartLMBySCN ", err)
 			return err
 		}
-		l.logger.Info("Get log miner record form", "StartScn", l.CollectedScn, "EndScn", endScn)
-		records, err := l.GetLogMinerRecord(l.CollectedScn, endScn)
+		l.logger.Info("Get log miner record form", "StartScn", l.startScn, "EndScn", endScn)
+		records, err := l.GetLogMinerRecord(l.startScn, endScn)
 		if err != nil {
 			l.logger.Error("GetLogMinerRecord ", "err", err)
 			return err
@@ -734,15 +785,16 @@ func (l *LogMinerStream) HandlerRecords(records []*LogMinerRecord) error {
 			l.txCache.rollbackTx(r.TxId(), r.SCN)
 		case OperationCodeDDL:
 			l.txCache.Handler(&LogMinerTx{
-				transactionId: "",
-				startScn:      r.SCN,
-				endScn:        r.SCN,
-				records:       []*LogMinerRecord{r},
+				transactionId: 			"",
+				oldestUncommittedScn: 	l.txCache.getOldestUncommittedSCN(),
+				startScn:      			r.SCN,
+				endScn:        			r.SCN,
+				records:       			[]*LogMinerRecord{r},
 			})
 		case OperationCodeInsert, OperationCodeDelete, OperationCodeUpdate:
 			l.txCache.addTxRecord(r)
 		}
-		l.CollectedScn = r.SCN
+		l.startScn = r.SCN
 	}
 	return nil
 }
