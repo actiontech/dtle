@@ -167,7 +167,7 @@ func indexOptionFormat(op *ast.IndexOption) string {
 	return ""
 }
 
-func indexColumnsFormat(keys []*ast.IndexColName) string {
+func indexColumnsFormat(keys []*ast.IndexPartSpecification) string {
 	if keys == nil {
 		return ""
 	}
@@ -186,7 +186,7 @@ func referDefFormat(refer *ast.ReferenceDef) string {
 		return ""
 	}
 	tableName := getTableNameWithQuote(refer.Table)
-	indexColumns := indexColumnsFormat(refer.IndexColNames)
+	indexColumns := indexColumnsFormat(refer.IndexPartSpecifications)
 	format := fmt.Sprintf("REFERENCES %s %s", tableName, indexColumns)
 	if refer.OnDelete.ReferOpt != ast.ReferOptionNoOption {
 		format = fmt.Sprintf("%s ON DELETE %s", format, refer.OnDelete.ReferOpt)

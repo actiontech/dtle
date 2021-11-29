@@ -1045,10 +1045,11 @@ func (b *BinlogReader) resolveQuery(currentSchema string, sql string,
 		}, false)
 		result.isExpand = true
 	case *ast.RenameTableStmt:
-		setTable(v.OldTable, false)
-		mayLowerTable(v.NewTable)
-		for _, t2t := range v.TableToTables {
+		for i, t2t := range v.TableToTables {
 			// TODO handle extra tables in v.TableToTables[1:]
+			if i == 0 {
+				setTable(t2t.OldTable, false)
+			}
 			mayLowerTable(t2t.OldTable)
 			mayLowerTable(t2t.NewTable)
 		}
@@ -1063,7 +1064,6 @@ func (b *BinlogReader) resolveQuery(currentSchema string, sql string,
 		r := &parserformat.RestoreCtx{
 			Flags:     parserformat.DefaultRestoreFlags,
 			In:        bs,
-			JoinLevel: 0,
 		}
 		err = stmt.Restore(r)
 		if err != nil {
