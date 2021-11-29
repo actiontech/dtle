@@ -46,16 +46,10 @@ github.com/armon/go-metrics
 github.com/armon/go-metrics/prometheus
 # github.com/beorn7/perks v1.0.1
 github.com/beorn7/perks/quantile
-# github.com/cespare/xxhash v1.1.0
-github.com/cespare/xxhash
 # github.com/cespare/xxhash/v2 v2.1.1
 github.com/cespare/xxhash/v2
 # github.com/container-storage-interface/spec v1.4.0
 github.com/container-storage-interface/spec/lib/go/csi
-# github.com/coocood/freecache v1.1.1
-github.com/coocood/freecache
-# github.com/coreos/go-semver v0.3.0
-github.com/coreos/go-semver/semver
 # github.com/coreos/go-systemd v0.0.0-20190719114852-fd7a80b32e1f
 github.com/coreos/go-systemd/journal
 # github.com/coreos/pkg v0.0.0-20180928190104-399ea9e2e55f
@@ -65,8 +59,6 @@ github.com/coreos/pkg/capnslog
 github.com/cznic/mathutil
 # github.com/cznic/parser v0.0.0-20181122101858-d773202d5b1f
 ## explicit
-# github.com/cznic/sortutil v0.0.0-20181122101858-f5f958428db8
-github.com/cznic/sortutil
 # github.com/cznic/strutil v0.0.0-20181122101858-275e90344537
 ## explicit
 # github.com/cznic/y v0.0.0-20181122101901-b05e8c2e8d7b
@@ -75,14 +67,9 @@ github.com/cznic/sortutil
 github.com/danjacques/gofslock/fslock
 # github.com/davecgh/go-spew v1.1.1
 github.com/davecgh/go-spew/spew
-# github.com/dgraph-io/ristretto v0.0.1
-github.com/dgraph-io/ristretto
-github.com/dgraph-io/ristretto/z
 # github.com/dgrijalva/jwt-go v3.2.0+incompatible
 ## explicit
 github.com/dgrijalva/jwt-go
-# github.com/dgryski/go-farm v0.0.0-20190423205320-6a90982ecee2
-github.com/dgryski/go-farm
 # github.com/docker/docker v17.12.0-ce-rc1.0.20200330121334-7f8b4b621b5d+incompatible
 github.com/docker/docker/pkg/mount
 # github.com/docker/go-units v0.4.0
@@ -143,12 +130,6 @@ github.com/golang/protobuf/ptypes/timestamp
 github.com/golang/protobuf/ptypes/wrappers
 # github.com/golang/snappy v0.0.3
 github.com/golang/snappy
-# github.com/google/btree v1.0.0
-github.com/google/btree
-# github.com/google/pprof v0.0.0-20210720184732-4bb14d4b1be1
-github.com/google/pprof/profile
-# github.com/google/uuid v1.1.2
-github.com/google/uuid
 # github.com/gorhill/cronexpr v0.0.0-20180427100037-88b0669f7d75
 ## explicit
 # github.com/gorilla/websocket v1.4.2
@@ -160,7 +141,6 @@ github.com/grpc-ecosystem/go-grpc-middleware/logging/zap
 github.com/grpc-ecosystem/go-grpc-middleware/logging/zap/ctxzap
 github.com/grpc-ecosystem/go-grpc-middleware/retry
 github.com/grpc-ecosystem/go-grpc-middleware/tags
-github.com/grpc-ecosystem/go-grpc-middleware/tracing/opentracing
 github.com/grpc-ecosystem/go-grpc-middleware/util/backoffutils
 github.com/grpc-ecosystem/go-grpc-middleware/util/metautils
 # github.com/hashicorp/consul/api v1.8.1
@@ -256,8 +236,6 @@ github.com/hashicorp/yamux
 # github.com/hpcloud/tail v1.0.1-0.20170814160653-37f427138745
 github.com/hpcloud/tail/util
 github.com/hpcloud/tail/watch
-# github.com/iancoleman/strcase v0.0.0-20191112232945-16388991a334
-github.com/iancoleman/strcase
 # github.com/issuj/gofaster v0.0.0-20170702192727-b08f1666d622
 ## explicit
 # github.com/jcmturner/gofork v1.0.0
@@ -265,8 +243,6 @@ github.com/jcmturner/gofork/encoding/asn1
 github.com/jcmturner/gofork/x/crypto/pbkdf2
 # github.com/josharian/intern v1.0.0
 github.com/josharian/intern
-# github.com/json-iterator/go v1.1.9
-github.com/json-iterator/go
 # github.com/julienschmidt/httprouter v1.2.0
 ## explicit
 github.com/julienschmidt/httprouter
@@ -318,10 +294,6 @@ github.com/mitchellh/hashstructure
 github.com/mitchellh/mapstructure
 # github.com/mitchellh/reflectwalk v1.0.1
 github.com/mitchellh/reflectwalk
-# github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd
-github.com/modern-go/concurrent
-# github.com/modern-go/reflect2 v1.0.1
-github.com/modern-go/reflect2
 # github.com/mojocn/base64Captcha v1.3.4
 ## explicit
 github.com/mojocn/base64Captcha
@@ -358,10 +330,6 @@ github.com/nats-io/nkeys
 github.com/nats-io/nuid
 # github.com/nats-io/stan.go v0.6.0
 github.com/nats-io/stan.go/pb
-# github.com/ngaut/pools v0.0.0-20180318154953-b7bc8c42aac7
-github.com/ngaut/pools
-# github.com/ngaut/sync2 v0.0.0-20141008032647-7a24ed77b2ef
-github.com/ngaut/sync2
 # github.com/oklog/run v1.0.1-0.20180308005104-6934b124db28
 github.com/oklog/run
 # github.com/opentracing/opentracing-go v1.1.0
@@ -375,176 +343,43 @@ github.com/outbrain/golib/tests
 # github.com/pierrec/lz4 v2.4.1+incompatible
 github.com/pierrec/lz4
 github.com/pierrec/lz4/internal/xxh32
-# github.com/pingcap/dm v0.0.0-00010101000000-000000000000 => github.com/actiontech/dm v0.0.0-20201207121004-64b8d8152b3b
-## explicit
-github.com/pingcap/dm/dm/config
-github.com/pingcap/dm/dm/pb
-github.com/pingcap/dm/dm/unit
-github.com/pingcap/dm/pkg/binlog
-github.com/pingcap/dm/pkg/binlog/common
-github.com/pingcap/dm/pkg/binlog/event
-github.com/pingcap/dm/pkg/binlog/reader
-github.com/pingcap/dm/pkg/binlog/writer
-github.com/pingcap/dm/pkg/encrypt
-github.com/pingcap/dm/pkg/func-rollback
-github.com/pingcap/dm/pkg/gtid
-github.com/pingcap/dm/pkg/log
-github.com/pingcap/dm/pkg/parser
-github.com/pingcap/dm/pkg/streamer
-github.com/pingcap/dm/pkg/utils
-github.com/pingcap/dm/relay
-github.com/pingcap/dm/relay/common
-github.com/pingcap/dm/relay/reader
-github.com/pingcap/dm/relay/transformer
-github.com/pingcap/dm/relay/writer
 # github.com/pingcap/errors v0.11.5-0.20210425183316-da1aaba5fb63
 github.com/pingcap/errors
 # github.com/pingcap/failpoint v0.0.0-20210316064728-7acb0f0a3dfd
 github.com/pingcap/failpoint
 # github.com/pingcap/kvproto v0.0.0-20211029081837-3c7bd947cf9b
-github.com/pingcap/kvproto/pkg/coprocessor
 github.com/pingcap/kvproto/pkg/deadlock
-github.com/pingcap/kvproto/pkg/debugpb
 github.com/pingcap/kvproto/pkg/disk_usage
 github.com/pingcap/kvproto/pkg/encryptionpb
 github.com/pingcap/kvproto/pkg/eraftpb
 github.com/pingcap/kvproto/pkg/errorpb
 github.com/pingcap/kvproto/pkg/kvrpcpb
 github.com/pingcap/kvproto/pkg/metapb
-github.com/pingcap/kvproto/pkg/mpp
 github.com/pingcap/kvproto/pkg/pdpb
 github.com/pingcap/kvproto/pkg/raft_serverpb
 github.com/pingcap/kvproto/pkg/replication_modepb
-github.com/pingcap/kvproto/pkg/sharedbytes
-github.com/pingcap/kvproto/pkg/span
-github.com/pingcap/kvproto/pkg/tikvpb
 # github.com/pingcap/log v0.0.0-20210906054005-afc726e70354
 github.com/pingcap/log
-# github.com/pingcap/parser v0.0.0-20190613082312-d2cf6071823d
-## explicit
-github.com/pingcap/parser
-github.com/pingcap/parser/ast
-github.com/pingcap/parser/auth
-github.com/pingcap/parser/charset
-github.com/pingcap/parser/format
-github.com/pingcap/parser/model
-github.com/pingcap/parser/mysql
-github.com/pingcap/parser/opcode
-github.com/pingcap/parser/terror
-github.com/pingcap/parser/types
 # github.com/pingcap/tidb v0.0.0-20211120042201-6a3cc3bdac10
 ## explicit
-github.com/pingcap/tidb/bindinfo
 github.com/pingcap/tidb/config
-github.com/pingcap/tidb/ddl
-github.com/pingcap/tidb/ddl/label
-github.com/pingcap/tidb/ddl/placement
-github.com/pingcap/tidb/ddl/util
-github.com/pingcap/tidb/distsql
-github.com/pingcap/tidb/domain
-github.com/pingcap/tidb/domain/globalconfigsync
-github.com/pingcap/tidb/domain/infosync
 github.com/pingcap/tidb/errno
-github.com/pingcap/tidb/expression
-github.com/pingcap/tidb/expression/aggregation
-github.com/pingcap/tidb/infoschema
-github.com/pingcap/tidb/infoschema/perfschema
-github.com/pingcap/tidb/kv
-github.com/pingcap/tidb/lock
-github.com/pingcap/tidb/meta
-github.com/pingcap/tidb/meta/autoid
-github.com/pingcap/tidb/metrics
-github.com/pingcap/tidb/owner
-github.com/pingcap/tidb/planner/core
-github.com/pingcap/tidb/planner/property
-github.com/pingcap/tidb/planner/util
-github.com/pingcap/tidb/privilege
-github.com/pingcap/tidb/privilege/privileges
-github.com/pingcap/tidb/session/txninfo
-github.com/pingcap/tidb/sessionctx
-github.com/pingcap/tidb/sessionctx/binloginfo
 github.com/pingcap/tidb/sessionctx/stmtctx
-github.com/pingcap/tidb/sessionctx/variable
-github.com/pingcap/tidb/statistics
-github.com/pingcap/tidb/statistics/handle
-github.com/pingcap/tidb/store/copr
-github.com/pingcap/tidb/store/driver/backoff
-github.com/pingcap/tidb/store/driver/error
-github.com/pingcap/tidb/store/driver/options
-github.com/pingcap/tidb/store/driver/txn
-github.com/pingcap/tidb/structure
-github.com/pingcap/tidb/table
-github.com/pingcap/tidb/table/tables
-github.com/pingcap/tidb/table/temptable
-github.com/pingcap/tidb/tablecodec
-github.com/pingcap/tidb/telemetry
 github.com/pingcap/tidb/types
 github.com/pingcap/tidb/types/json
 github.com/pingcap/tidb/types/parser_driver
-github.com/pingcap/tidb/util
-github.com/pingcap/tidb/util/admin
-github.com/pingcap/tidb/util/checksum
-github.com/pingcap/tidb/util/chunk
-github.com/pingcap/tidb/util/codec
 github.com/pingcap/tidb/util/collate
 github.com/pingcap/tidb/util/dbterror
-github.com/pingcap/tidb/util/deadlockhistory
-github.com/pingcap/tidb/util/disjointset
 github.com/pingcap/tidb/util/disk
-github.com/pingcap/tidb/util/domainutil
-github.com/pingcap/tidb/util/encrypt
 github.com/pingcap/tidb/util/execdetails
-github.com/pingcap/tidb/util/expensivequery
-github.com/pingcap/tidb/util/fastrand
-github.com/pingcap/tidb/util/gcutil
-github.com/pingcap/tidb/util/generatedexpr
 github.com/pingcap/tidb/util/hack
-github.com/pingcap/tidb/util/hint
-github.com/pingcap/tidb/util/israce
-github.com/pingcap/tidb/util/kvcache
 github.com/pingcap/tidb/util/logutil
 github.com/pingcap/tidb/util/math
 github.com/pingcap/tidb/util/memory
-github.com/pingcap/tidb/util/mock
-github.com/pingcap/tidb/util/mvmap
 github.com/pingcap/tidb/util/parser
-github.com/pingcap/tidb/util/pdapi
-github.com/pingcap/tidb/util/plancodec
-github.com/pingcap/tidb/util/printer
-github.com/pingcap/tidb/util/profile
-github.com/pingcap/tidb/util/ranger
 github.com/pingcap/tidb/util/resourcegrouptag
-github.com/pingcap/tidb/util/rowDecoder
-github.com/pingcap/tidb/util/rowcodec
-github.com/pingcap/tidb/util/sem
-github.com/pingcap/tidb/util/set
-github.com/pingcap/tidb/util/sli
-github.com/pingcap/tidb/util/slice
-github.com/pingcap/tidb/util/sqlexec
-github.com/pingcap/tidb/util/stmtsummary
 github.com/pingcap/tidb/util/stringutil
-github.com/pingcap/tidb/util/tableutil
-github.com/pingcap/tidb/util/texttree
-github.com/pingcap/tidb/util/timeutil
-github.com/pingcap/tidb/util/topsql
-github.com/pingcap/tidb/util/topsql/reporter
-github.com/pingcap/tidb/util/topsql/tracecpu
-github.com/pingcap/tidb/util/trxevents
 github.com/pingcap/tidb/util/versioninfo
-github.com/pingcap/tidb/util/vitess
-# github.com/pingcap/tidb-tools v5.2.2-0.20211019062242-37a8bef2fa17+incompatible
-github.com/pingcap/tidb-tools/pkg/binlog-filter
-github.com/pingcap/tidb-tools/pkg/column-mapping
-github.com/pingcap/tidb-tools/pkg/dbutil
-github.com/pingcap/tidb-tools/pkg/etcd
-github.com/pingcap/tidb-tools/pkg/filter
-github.com/pingcap/tidb-tools/pkg/table-filter
-github.com/pingcap/tidb-tools/pkg/table-router
-github.com/pingcap/tidb-tools/pkg/table-rule-selector
-github.com/pingcap/tidb-tools/pkg/utils
-github.com/pingcap/tidb-tools/pkg/watcher
-github.com/pingcap/tidb-tools/tidb-binlog/node
-github.com/pingcap/tidb-tools/tidb-binlog/pump_client
 # github.com/pingcap/tidb/parser v0.0.0-20211011031125-9b13dc409c5e => github.com/actiontech/tidb/parser v0.0.0-20211129081607-d4929fbb762f
 ## explicit
 github.com/pingcap/tidb/parser
@@ -559,18 +394,13 @@ github.com/pingcap/tidb/parser/terror
 github.com/pingcap/tidb/parser/tidb
 github.com/pingcap/tidb/parser/types
 # github.com/pingcap/tipb v0.0.0-20211105090418-71142a4d40e3
-github.com/pingcap/tipb/go-binlog
 github.com/pingcap/tipb/go-tipb
 github.com/pingcap/tipb/sharedbytes
 # github.com/pkg/errors v0.9.1
 ## explicit
 github.com/pkg/errors
-# github.com/pmezard/go-difflib v1.0.0
-github.com/pmezard/go-difflib/difflib
 # github.com/prometheus/client_golang v1.5.1
 ## explicit
-github.com/prometheus/client_golang/api
-github.com/prometheus/client_golang/api/prometheus/v1
 github.com/prometheus/client_golang/prometheus
 github.com/prometheus/client_golang/prometheus/internal
 github.com/prometheus/client_golang/prometheus/promhttp
@@ -597,7 +427,6 @@ github.com/satori/go.uuid
 # github.com/shirou/gopsutil v3.21.2+incompatible
 ## explicit
 github.com/shirou/gopsutil/cpu
-github.com/shirou/gopsutil/host
 github.com/shirou/gopsutil/internal/common
 github.com/shirou/gopsutil/mem
 github.com/shirou/gopsutil/net
@@ -614,8 +443,6 @@ github.com/shirou/gopsutil/v3/process
 # github.com/siddontang/go v0.0.0-20180604090527-bdc77568d726
 ## explicit
 github.com/siddontang/go/hack
-github.com/siddontang/go/ioutil2
-github.com/siddontang/go/sync2
 # github.com/siddontang/go-log v0.0.0-20180807004314-8d05993dda07
 github.com/siddontang/go-log/log
 github.com/siddontang/go-log/loggers
@@ -628,8 +455,6 @@ github.com/siddontang/go-mysql/replication
 github.com/siddontang/go-mysql/utils
 # github.com/sirupsen/logrus v1.8.1
 github.com/sirupsen/logrus
-# github.com/stretchr/testify v1.7.0
-github.com/stretchr/testify/assert
 # github.com/swaggo/echo-swagger v1.1.0
 ## explicit
 github.com/swaggo/echo-swagger
@@ -640,27 +465,9 @@ github.com/swaggo/files
 github.com/swaggo/swag
 # github.com/tikv/client-go/v2 v2.0.0-alpha.0.20211029104011-2fd3841894de
 github.com/tikv/client-go/v2/config
-github.com/tikv/client-go/v2/error
-github.com/tikv/client-go/v2/internal/client
-github.com/tikv/client-go/v2/internal/kvrpc
-github.com/tikv/client-go/v2/internal/latch
-github.com/tikv/client-go/v2/internal/locate
 github.com/tikv/client-go/v2/internal/logutil
-github.com/tikv/client-go/v2/internal/retry
-github.com/tikv/client-go/v2/internal/unionstore
-github.com/tikv/client-go/v2/kv
-github.com/tikv/client-go/v2/metrics
 github.com/tikv/client-go/v2/oracle
-github.com/tikv/client-go/v2/oracle/oracles
-github.com/tikv/client-go/v2/tikv
-github.com/tikv/client-go/v2/tikvrpc
-github.com/tikv/client-go/v2/txnkv/rangetask
-github.com/tikv/client-go/v2/txnkv/transaction
-github.com/tikv/client-go/v2/txnkv/txnlock
-github.com/tikv/client-go/v2/txnkv/txnsnapshot
-github.com/tikv/client-go/v2/txnkv/txnutil
 github.com/tikv/client-go/v2/util
-github.com/tikv/client-go/v2/util/codec
 # github.com/tikv/pd v1.1.0-beta.0.20211104095303-69c86d05d379
 github.com/tikv/pd/client
 github.com/tikv/pd/pkg/errs
@@ -669,8 +476,6 @@ github.com/tikv/pd/pkg/grpcutil
 github.com/tklauser/go-sysconf
 # github.com/tklauser/numcpus v0.2.2
 github.com/tklauser/numcpus
-# github.com/twmb/murmur3 v1.1.3
-github.com/twmb/murmur3
 # github.com/uber/jaeger-client-go v2.22.1+incompatible
 github.com/uber/jaeger-client-go
 github.com/uber/jaeger-client-go/config
@@ -705,8 +510,6 @@ github.com/vmihailenco/msgpack/v4/codes
 github.com/vmihailenco/tagparser
 github.com/vmihailenco/tagparser/internal
 github.com/vmihailenco/tagparser/internal/parser
-# github.com/wangjohn/quickselect v0.0.0-20161129230411-ed8402a42d5f
-github.com/wangjohn/quickselect
 # github.com/zclconf/go-cty v1.8.0
 github.com/zclconf/go-cty/cty
 github.com/zclconf/go-cty/cty/convert
@@ -716,29 +519,9 @@ github.com/zclconf/go-cty/cty/set
 go.etcd.io/bbolt
 # go.etcd.io/etcd v0.5.0-alpha.5.0.20210512015243-d19fbe541bf9
 ## explicit
-go.etcd.io/etcd/auth/authpb
-go.etcd.io/etcd/clientv3
-go.etcd.io/etcd/clientv3/balancer
-go.etcd.io/etcd/clientv3/balancer/connectivity
-go.etcd.io/etcd/clientv3/balancer/picker
-go.etcd.io/etcd/clientv3/balancer/resolver/endpoint
-go.etcd.io/etcd/clientv3/concurrency
-go.etcd.io/etcd/clientv3/credentials
-go.etcd.io/etcd/etcdserver/api/v3rpc/rpctypes
-go.etcd.io/etcd/etcdserver/etcdserverpb
-go.etcd.io/etcd/mvcc/mvccpb
 go.etcd.io/etcd/pkg/fileutil
-go.etcd.io/etcd/pkg/logutil
-go.etcd.io/etcd/pkg/systemd
 go.etcd.io/etcd/pkg/tlsutil
 go.etcd.io/etcd/pkg/transport
-go.etcd.io/etcd/pkg/types
-go.etcd.io/etcd/raft
-go.etcd.io/etcd/raft/confchange
-go.etcd.io/etcd/raft/quorum
-go.etcd.io/etcd/raft/raftpb
-go.etcd.io/etcd/raft/tracker
-go.etcd.io/etcd/version
 # go.uber.org/atomic v1.9.0
 go.uber.org/atomic
 # go.uber.org/multierr v1.7.0
@@ -817,7 +600,6 @@ golang.org/x/text/width
 # golang.org/x/time v0.0.0-20201208040808-7e3f01d25324
 golang.org/x/time/rate
 # golang.org/x/tools v0.1.5
-golang.org/x/tools/container/intsets
 golang.org/x/tools/go/ast/astutil
 golang.org/x/tools/go/buildutil
 golang.org/x/tools/go/internal/cgo
@@ -878,8 +660,6 @@ google.golang.org/grpc/peer
 google.golang.org/grpc/reflection
 google.golang.org/grpc/reflection/grpc_reflection_v1alpha
 google.golang.org/grpc/resolver
-google.golang.org/grpc/resolver/dns
-google.golang.org/grpc/resolver/passthrough
 google.golang.org/grpc/serviceconfig
 google.golang.org/grpc/stats
 google.golang.org/grpc/status
@@ -965,10 +745,7 @@ gopkg.in/natefinch/lumberjack.v2
 gopkg.in/tomb.v1
 # gopkg.in/yaml.v2 v2.4.0
 gopkg.in/yaml.v2
-# gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b
-gopkg.in/yaml.v3
 # github.com/siddontang/go-mysql => github.com/ffffwh/go-mysql v0.0.0-20210912151044-a63debbbb0a3
 # github.com/araddon/qlbridge => github.com/ffffwh/qlbridge v0.0.0-20181026023605-fc2d5205dad3
-# github.com/pingcap/dm => github.com/actiontech/dm v0.0.0-20201207121004-64b8d8152b3b
 # github.com/pingcap/tidb/parser => github.com/actiontech/tidb/parser v0.0.0-20211129081607-d4929fbb762f
 # google.golang.org/grpc => google.golang.org/grpc v1.29.1

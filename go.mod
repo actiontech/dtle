@@ -44,8 +44,6 @@ require (
 	github.com/nats-io/nuid v1.0.1 // indirect
 	github.com/opentracing/opentracing-go v1.1.0 // indirect
 	github.com/outbrain/golib v0.0.0-20180830062331-ab954725f502
-	github.com/pingcap/dm v0.0.0-00010101000000-000000000000
-	github.com/pingcap/parser v0.0.0-20190613082312-d2cf6071823d // indirect
 	github.com/pingcap/tidb v0.0.0-20211120042201-6a3cc3bdac10
 	github.com/pingcap/tidb/parser v0.0.0-20211011031125-9b13dc409c5e
 	github.com/pkg/errors v0.9.1
@@ -68,8 +66,6 @@ replace github.com/siddontang/go-mysql => github.com/ffffwh/go-mysql v0.0.0-2021
 //replace github.com/Sirupsen/logrus => github.com/sirupsen/logrus v1.4.2
 
 replace github.com/araddon/qlbridge => github.com/ffffwh/qlbridge v0.0.0-20181026023605-fc2d5205dad3
-
-replace github.com/pingcap/dm => github.com/actiontech/dm v0.0.0-20201207121004-64b8d8152b3b
 
 replace github.com/pingcap/tidb/parser => github.com/actiontech/tidb/parser v0.0.0-20211129081607-d4929fbb762f
 
