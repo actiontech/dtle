@@ -27,7 +27,6 @@ import (
 
 	"github.com/actiontech/dtle/drivers/mysql/mysql/mysqlconfig"
 	gonats "github.com/nats-io/go-nats"
-	"github.com/pingcap/tidb/types"
 	uuid "github.com/satori/go.uuid"
 )
 
@@ -705,7 +704,7 @@ func (kr *KafkaRunner) kafkaTransformSnapshotData(
 				case mysqlconfig.BitColumnType:
 					if columnList[i].ColumnType == "bit(1)" {
 						value = false
-						if types.BinaryLiteral(valueStr).Compare(types.BinaryLiteral("\x01")) == 0 {
+						if valueStr == "\x01" {
 							value = true
 						}
 					} else {
@@ -1185,7 +1184,7 @@ func kafkaColumnListToColDefs(colList *common.ColumnList, loc *time.Location) (v
 		case mysqlconfig.BitColumnType:
 			if cols[i].ColumnType == "bit(1)" {
 				if defaultValue != nil {
-					if defaultValue.(types.BinaryLiteral).Compare(types.BinaryLiteral("\x01")) == 0 {
+					if string(defaultValue.([]byte)) == "\x01" {
 						defaultValue = true
 					} else {
 						defaultValue = false

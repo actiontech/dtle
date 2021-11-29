@@ -8,6 +8,7 @@
 //
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
@@ -28,8 +29,6 @@ const (
 type FileLogConfig struct {
 	// Log filename, leave empty to disable file log.
 	Filename string `toml:"filename" json:"filename"`
-	// Is log rotate enabled.
-	LogRotate bool `toml:"log-rotate" json:"log-rotate"`
 	// Max size for a single file, in MB.
 	MaxSize int `toml:"max-size" json:"max-size"`
 	// Max log keep days, default is never deleting.
@@ -58,6 +57,9 @@ type Config struct {
 	// default, stacktraces are captured for WarnLevel and above logs in
 	// development and ErrorLevel and above in production.
 	DisableStacktrace bool `toml:"disable-stacktrace" json:"disable-stacktrace"`
+	// DisableErrorVerbose stops annotating logs with the full verbose error
+	// message.
+	DisableErrorVerbose bool `toml:"disable-error-verbose" json:"disable-error-verbose"`
 	// SamplingConfig sets a sampling strategy for the logger. Sampling caps the
 	// global CPU and I/O load that logging puts on your process while attempting
 	// to preserve a representative subset of your logs.
@@ -71,27 +73,6 @@ type ZapProperties struct {
 	Core   zapcore.Core
 	Syncer zapcore.WriteSyncer
 	Level  zap.AtomicLevel
-}
-
-func newZapTextEncoder(cfg *Config) zapcore.Encoder {
-	cc := zapcore.EncoderConfig{
-		// Keys can be anything except the empty string.
-		TimeKey:        "time",
-		LevelKey:       "level",
-		NameKey:        "name",
-		CallerKey:      "caller",
-		MessageKey:     "message",
-		StacktraceKey:  "stack",
-		LineEnding:     zapcore.DefaultLineEnding,
-		EncodeLevel:    zapcore.CapitalLevelEncoder,
-		EncodeTime:     DefaultTimeEncoder,
-		EncodeDuration: zapcore.StringDurationEncoder,
-		EncodeCaller:   ShortCallerEncoder,
-	}
-	if cfg.DisableTimestamp {
-		cc.TimeKey = ""
-	}
-	return NewTextEncoder(cc)
 }
 
 func (cfg *Config) buildOptions(errSink zapcore.WriteSyncer) []zap.Option {

@@ -26,8 +26,12 @@ var _ = math.Inf
 // proto package needs to be updated.
 const _ = proto.ProtoPackageIsVersion2 // please upgrade the proto package
 
+// NotLeader is the error variant that tells a request be handle by raft leader
+// is sent to raft follower or learner.
 type NotLeader struct {
-	RegionId             uint64       `protobuf:"varint,1,opt,name=region_id,json=regionId,proto3" json:"region_id,omitempty"`
+	// The requested region ID
+	RegionId uint64 `protobuf:"varint,1,opt,name=region_id,json=regionId,proto3" json:"region_id,omitempty"`
+	// Region leader of the requested region
 	Leader               *metapb.Peer `protobuf:"bytes,2,opt,name=leader" json:"leader,omitempty"`
 	XXX_NoUnkeyedLiteral struct{}     `json:"-"`
 	XXX_unrecognized     []byte       `json:"-"`
@@ -38,7 +42,7 @@ func (m *NotLeader) Reset()         { *m = NotLeader{} }
 func (m *NotLeader) String() string { return proto.CompactTextString(m) }
 func (*NotLeader) ProtoMessage()    {}
 func (*NotLeader) Descriptor() ([]byte, []int) {
-	return fileDescriptor_errorpb_0faeae8edd2a8b7a, []int{0}
+	return fileDescriptor_errorpb_d18807c792160011, []int{0}
 }
 func (m *NotLeader) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -81,8 +85,69 @@ func (m *NotLeader) GetLeader() *metapb.Peer {
 	return nil
 }
 
+type DiskFull struct {
+	// The requested store ID
+	StoreId []uint64 `protobuf:"varint,1,rep,packed,name=store_id,json=storeId" json:"store_id,omitempty"`
+	// The detailed info
+	Reason               string   `protobuf:"bytes,2,opt,name=reason,proto3" json:"reason,omitempty"`
+	XXX_NoUnkeyedLiteral struct{} `json:"-"`
+	XXX_unrecognized     []byte   `json:"-"`
+	XXX_sizecache        int32    `json:"-"`
+}
+
+func (m *DiskFull) Reset()         { *m = DiskFull{} }
+func (m *DiskFull) String() string { return proto.CompactTextString(m) }
+func (*DiskFull) ProtoMessage()    {}
+func (*DiskFull) Descriptor() ([]byte, []int) {
+	return fileDescriptor_errorpb_d18807c792160011, []int{1}
+}
+func (m *DiskFull) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *DiskFull) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_DiskFull.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalTo(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (dst *DiskFull) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_DiskFull.Merge(dst, src)
+}
+func (m *DiskFull) XXX_Size() int {
+	return m.Size()
+}
+func (m *DiskFull) XXX_DiscardUnknown() {
+	xxx_messageInfo_DiskFull.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_DiskFull proto.InternalMessageInfo
+
+func (m *DiskFull) GetStoreId() []uint64 {
+	if m != nil {
+		return m.StoreId
+	}
+	return nil
+}
+
+func (m *DiskFull) GetReason() string {
+	if m != nil {
+		return m.Reason
+	}
+	return ""
+}
+
+// StoreNotMatch is the error variant that tells the request is sent to wrong store.
+// (i.e. inconsistency of the store ID that request shows and the real store ID of this server.)
 type StoreNotMatch struct {
-	RequestStoreId       uint64   `protobuf:"varint,1,opt,name=request_store_id,json=requestStoreId,proto3" json:"request_store_id,omitempty"`
+	// Store id in request
+	RequestStoreId uint64 `protobuf:"varint,1,opt,name=request_store_id,json=requestStoreId,proto3" json:"request_store_id,omitempty"`
+	// Actual store id
 	ActualStoreId        uint64   `protobuf:"varint,2,opt,name=actual_store_id,json=actualStoreId,proto3" json:"actual_store_id,omitempty"`
 	XXX_NoUnkeyedLiteral struct{} `json:"-"`
 	XXX_unrecognized     []byte   `json:"-"`
@@ -93,7 +158,7 @@ func (m *StoreNotMatch) Reset()         { *m = StoreNotMatch{} }
 func (m *StoreNotMatch) String() string { return proto.CompactTextString(m) }
 func (*StoreNotMatch) ProtoMessage()    {}
 func (*StoreNotMatch) Descriptor() ([]byte, []int) {
-	return fileDescriptor_errorpb_0faeae8edd2a8b7a, []int{1}
+	return fileDescriptor_errorpb_d18807c792160011, []int{2}
 }
 func (m *StoreNotMatch) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -136,7 +201,10 @@ func (m *StoreNotMatch) GetActualStoreId() uint64 {
 	return 0
 }
 
+// RegionNotFound is the error variant that tells there isn't any region in this TiKV
+// matches the requested region ID.
 type RegionNotFound struct {
+	// The requested region ID
 	RegionId             uint64   `protobuf:"varint,1,opt,name=region_id,json=regionId,proto3" json:"region_id,omitempty"`
 	XXX_NoUnkeyedLiteral struct{} `json:"-"`
 	XXX_unrecognized     []byte   `json:"-"`
@@ -147,7 +215,7 @@ func (m *RegionNotFound) Reset()         { *m = RegionNotFound{} }
 func (m *RegionNotFound) String() string { return proto.CompactTextString(m) }
 func (*RegionNotFound) ProtoMessage()    {}
 func (*RegionNotFound) Descriptor() ([]byte, []int) {
-	return fileDescriptor_errorpb_0faeae8edd2a8b7a, []int{2}
+	return fileDescriptor_errorpb_d18807c792160011, []int{3}
 }
 func (m *RegionNotFound) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -183,10 +251,66 @@ func (m *RegionNotFound) GetRegionId() uint64 {
 	return 0
 }
 
+// RegionNotInitialized is the error variant that tells there isn't any initialized peer
+// matchesthe request region ID.
+type RegionNotInitialized struct {
+	// The request region ID
+	RegionId             uint64   `protobuf:"varint,1,opt,name=region_id,json=regionId,proto3" json:"region_id,omitempty"`
+	XXX_NoUnkeyedLiteral struct{} `json:"-"`
+	XXX_unrecognized     []byte   `json:"-"`
+	XXX_sizecache        int32    `json:"-"`
+}
+
+func (m *RegionNotInitialized) Reset()         { *m = RegionNotInitialized{} }
+func (m *RegionNotInitialized) String() string { return proto.CompactTextString(m) }
+func (*RegionNotInitialized) ProtoMessage()    {}
+func (*RegionNotInitialized) Descriptor() ([]byte, []int) {
+	return fileDescriptor_errorpb_d18807c792160011, []int{4}
+}
+func (m *RegionNotInitialized) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *RegionNotInitialized) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_RegionNotInitialized.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalTo(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (dst *RegionNotInitialized) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_RegionNotInitialized.Merge(dst, src)
+}
+func (m *RegionNotInitialized) XXX_Size() int {
+	return m.Size()
+}
+func (m *RegionNotInitialized) XXX_DiscardUnknown() {
+	xxx_messageInfo_RegionNotInitialized.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_RegionNotInitialized proto.InternalMessageInfo
+
+func (m *RegionNotInitialized) GetRegionId() uint64 {
+	if m != nil {
+		return m.RegionId
+	}
+	return 0
+}
+
+// KeyNotInRegion is the error variant that tells the key the request requires isn't present in
+// this region.
 type KeyNotInRegion struct {
-	Key                  []byte   `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`
-	RegionId             uint64   `protobuf:"varint,2,opt,name=region_id,json=regionId,proto3" json:"region_id,omitempty"`
-	StartKey             []byte   `protobuf:"bytes,3,opt,name=start_key,json=startKey,proto3" json:"start_key,omitempty"`
+	// The requested key
+	Key []byte `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`
+	// The requested region ID
+	RegionId uint64 `protobuf:"varint,2,opt,name=region_id,json=regionId,proto3" json:"region_id,omitempty"`
+	// Start key of the requested region
+	StartKey []byte `protobuf:"bytes,3,opt,name=start_key,json=startKey,proto3" json:"start_key,omitempty"`
+	// Snd key of the requested region
 	EndKey               []byte   `protobuf:"bytes,4,opt,name=end_key,json=endKey,proto3" json:"end_key,omitempty"`
 	XXX_NoUnkeyedLiteral struct{} `json:"-"`
 	XXX_unrecognized     []byte   `json:"-"`
@@ -197,7 +321,7 @@ func (m *KeyNotInRegion) Reset()         { *m = KeyNotInRegion{} }
 func (m *KeyNotInRegion) String() string { return proto.CompactTextString(m) }
 func (*KeyNotInRegion) ProtoMessage()    {}
 func (*KeyNotInRegion) Descriptor() ([]byte, []int) {
-	return fileDescriptor_errorpb_0faeae8edd2a8b7a, []int{3}
+	return fileDescriptor_errorpb_d18807c792160011, []int{5}
 }
 func (m *KeyNotInRegion) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -254,7 +378,11 @@ func (m *KeyNotInRegion) GetEndKey() []byte {
 	return nil
 }
 
+// EpochNotMatch is the error variant that tells a region has been updated.
+// (e.g. by splitting / merging, or raft Confchange.)
+// Hence, a command is based on a stale version of a region.
 type EpochNotMatch struct {
+	// Available regions that may be siblings of the requested one.
 	CurrentRegions       []*metapb.Region `protobuf:"bytes,1,rep,name=current_regions,json=currentRegions" json:"current_regions,omitempty"`
 	XXX_NoUnkeyedLiteral struct{}         `json:"-"`
 	XXX_unrecognized     []byte           `json:"-"`
@@ -265,7 +393,7 @@ func (m *EpochNotMatch) Reset()         { *m = EpochNotMatch{} }
 func (m *EpochNotMatch) String() string { return proto.CompactTextString(m) }
 func (*EpochNotMatch) ProtoMessage()    {}
 func (*EpochNotMatch) Descriptor() ([]byte, []int) {
-	return fileDescriptor_errorpb_0faeae8edd2a8b7a, []int{4}
+	return fileDescriptor_errorpb_d18807c792160011, []int{6}
 }
 func (m *EpochNotMatch) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -301,8 +429,10 @@ func (m *EpochNotMatch) GetCurrentRegions() []*metapb.Region {
 	return nil
 }
 
+// ServerIsBusy is the error variant that tells the server is too busy to response.
 type ServerIsBusy struct {
-	Reason               string   `protobuf:"bytes,1,opt,name=reason,proto3" json:"reason,omitempty"`
+	Reason string `protobuf:"bytes,1,opt,name=reason,proto3" json:"reason,omitempty"`
+	// The suggested backoff time
 	BackoffMs            uint64   `protobuf:"varint,2,opt,name=backoff_ms,json=backoffMs,proto3" json:"backoff_ms,omitempty"`
 	XXX_NoUnkeyedLiteral struct{} `json:"-"`
 	XXX_unrecognized     []byte   `json:"-"`
@@ -313,7 +443,7 @@ func (m *ServerIsBusy) Reset()         { *m = ServerIsBusy{} }
 func (m *ServerIsBusy) String() string { return proto.CompactTextString(m) }
 func (*ServerIsBusy) ProtoMessage()    {}
 func (*ServerIsBusy) Descriptor() ([]byte, []int) {
-	return fileDescriptor_errorpb_0faeae8edd2a8b7a, []int{5}
+	return fileDescriptor_errorpb_d18807c792160011, []int{7}
 }
 func (m *ServerIsBusy) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -356,6 +486,9 @@ func (m *ServerIsBusy) GetBackoffMs() uint64 {
 	return 0
 }
 
+// StaleCommand is the error variant that tells the command is stale, that is,
+// the current request term is lower than current raft term.
+// This can be retried at most time.
 type StaleCommand struct {
 	XXX_NoUnkeyedLiteral struct{} `json:"-"`
 	XXX_unrecognized     []byte   `json:"-"`
@@ -366,7 +499,7 @@ func (m *StaleCommand) Reset()         { *m = StaleCommand{} }
 func (m *StaleCommand) String() string { return proto.CompactTextString(m) }
 func (*StaleCommand) ProtoMessage()    {}
 func (*StaleCommand) Descriptor() ([]byte, []int) {
-	return fileDescriptor_errorpb_0faeae8edd2a8b7a, []int{6}
+	return fileDescriptor_errorpb_d18807c792160011, []int{8}
 }
 func (m *StaleCommand) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -395,8 +528,13 @@ func (m *StaleCommand) XXX_DiscardUnknown() {
 
 var xxx_messageInfo_StaleCommand proto.InternalMessageInfo
 
+// RaftEntryTooLarge is the error variant that tells the request is too large to be serialized to a
+// reasonable small raft entry.
+// (i.e. greater than the configured value `raft_entry_max_size` in `raftstore`)
 type RaftEntryTooLarge struct {
-	RegionId             uint64   `protobuf:"varint,1,opt,name=region_id,json=regionId,proto3" json:"region_id,omitempty"`
+	// The requested region ID
+	RegionId uint64 `protobuf:"varint,1,opt,name=region_id,json=regionId,proto3" json:"region_id,omitempty"`
+	// Size of the raft entry
 	EntrySize            uint64   `protobuf:"varint,2,opt,name=entry_size,json=entrySize,proto3" json:"entry_size,omitempty"`
 	XXX_NoUnkeyedLiteral struct{} `json:"-"`
 	XXX_unrecognized     []byte   `json:"-"`
@@ -407,7 +545,7 @@ func (m *RaftEntryTooLarge) Reset()         { *m = RaftEntryTooLarge{} }
 func (m *RaftEntryTooLarge) String() string { return proto.CompactTextString(m) }
 func (*RaftEntryTooLarge) ProtoMessage()    {}
 func (*RaftEntryTooLarge) Descriptor() ([]byte, []int) {
-	return fileDescriptor_errorpb_0faeae8edd2a8b7a, []int{7}
+	return fileDescriptor_errorpb_d18807c792160011, []int{9}
 }
 func (m *RaftEntryTooLarge) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -450,26 +588,253 @@ func (m *RaftEntryTooLarge) GetEntrySize() uint64 {
 	return 0
 }
 
+// MaxTimestampNotSynced is the error variant that tells the peer has just become a leader and
+// updating the max timestamp in the concurrency manager from PD TSO is ongoing. In this case,
+// the prewrite of an async commit transaction cannot succeed. The client can backoff and
+// resend the request.
+type MaxTimestampNotSynced struct {
+	XXX_NoUnkeyedLiteral struct{} `json:"-"`
+	XXX_unrecognized     []byte   `json:"-"`
+	XXX_sizecache        int32    `json:"-"`
+}
+
+func (m *MaxTimestampNotSynced) Reset()         { *m = MaxTimestampNotSynced{} }
+func (m *MaxTimestampNotSynced) String() string { return proto.CompactTextString(m) }
+func (*MaxTimestampNotSynced) ProtoMessage()    {}
+func (*MaxTimestampNotSynced) Descriptor() ([]byte, []int) {
+	return fileDescriptor_errorpb_d18807c792160011, []int{10}
+}
+func (m *MaxTimestampNotSynced) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *MaxTimestampNotSynced) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_MaxTimestampNotSynced.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalTo(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (dst *MaxTimestampNotSynced) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_MaxTimestampNotSynced.Merge(dst, src)
+}
+func (m *MaxTimestampNotSynced) XXX_Size() int {
+	return m.Size()
+}
+func (m *MaxTimestampNotSynced) XXX_DiscardUnknown() {
+	xxx_messageInfo_MaxTimestampNotSynced.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_MaxTimestampNotSynced proto.InternalMessageInfo
+
+// ReadIndexNotReady is the error variant that tells the read index request is not ready, that is,
+// the current region is in a status that not ready to serve the read index request. For example,
+// region is in splitting or merging status.
+// This can be retried at most time.
+type ReadIndexNotReady struct {
+	// The reason why the region is not ready to serve read index request
+	Reason string `protobuf:"bytes,1,opt,name=reason,proto3" json:"reason,omitempty"`
+	// The requested region ID
+	RegionId             uint64   `protobuf:"varint,2,opt,name=region_id,json=regionId,proto3" json:"region_id,omitempty"`
+	XXX_NoUnkeyedLiteral struct{} `json:"-"`
+	XXX_unrecognized     []byte   `json:"-"`
+	XXX_sizecache        int32    `json:"-"`
+}
+
+func (m *ReadIndexNotReady) Reset()         { *m = ReadIndexNotReady{} }
+func (m *ReadIndexNotReady) String() string { return proto.CompactTextString(m) }
+func (*ReadIndexNotReady) ProtoMessage()    {}
+func (*ReadIndexNotReady) Descriptor() ([]byte, []int) {
+	return fileDescriptor_errorpb_d18807c792160011, []int{11}
+}
+func (m *ReadIndexNotReady) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *ReadIndexNotReady) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_ReadIndexNotReady.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalTo(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (dst *ReadIndexNotReady) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_ReadIndexNotReady.Merge(dst, src)
+}
+func (m *ReadIndexNotReady) XXX_Size() int {
+	return m.Size()
+}
+func (m *ReadIndexNotReady) XXX_DiscardUnknown() {
+	xxx_messageInfo_ReadIndexNotReady.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_ReadIndexNotReady proto.InternalMessageInfo
+
+func (m *ReadIndexNotReady) GetReason() string {
+	if m != nil {
+		return m.Reason
+	}
+	return ""
+}
+
+func (m *ReadIndexNotReady) GetRegionId() uint64 {
+	if m != nil {
+		return m.RegionId
+	}
+	return 0
+}
+
+// ProposalInMergingMode is the error variant that tells the proposal is rejected because raft is
+// in the merging mode. This may happen when BR/Lightning try to ingest SST.
+// This can be retried at most time.
+type ProposalInMergingMode struct {
+	// The requested region ID
+	RegionId             uint64   `protobuf:"varint,1,opt,name=region_id,json=regionId,proto3" json:"region_id,omitempty"`
+	XXX_NoUnkeyedLiteral struct{} `json:"-"`
+	XXX_unrecognized     []byte   `json:"-"`
+	XXX_sizecache        int32    `json:"-"`
+}
+
+func (m *ProposalInMergingMode) Reset()         { *m = ProposalInMergingMode{} }
+func (m *ProposalInMergingMode) String() string { return proto.CompactTextString(m) }
+func (*ProposalInMergingMode) ProtoMessage()    {}
+func (*ProposalInMergingMode) Descriptor() ([]byte, []int) {
+	return fileDescriptor_errorpb_d18807c792160011, []int{12}
+}
+func (m *ProposalInMergingMode) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *ProposalInMergingMode) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_ProposalInMergingMode.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalTo(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (dst *ProposalInMergingMode) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_ProposalInMergingMode.Merge(dst, src)
+}
+func (m *ProposalInMergingMode) XXX_Size() int {
+	return m.Size()
+}
+func (m *ProposalInMergingMode) XXX_DiscardUnknown() {
+	xxx_messageInfo_ProposalInMergingMode.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_ProposalInMergingMode proto.InternalMessageInfo
+
+func (m *ProposalInMergingMode) GetRegionId() uint64 {
+	if m != nil {
+		return m.RegionId
+	}
+	return 0
+}
+
+type DataIsNotReady struct {
+	// The requested region ID
+	RegionId             uint64   `protobuf:"varint,1,opt,name=region_id,json=regionId,proto3" json:"region_id,omitempty"`
+	PeerId               uint64   `protobuf:"varint,2,opt,name=peer_id,json=peerId,proto3" json:"peer_id,omitempty"`
+	SafeTs               uint64   `protobuf:"varint,3,opt,name=safe_ts,json=safeTs,proto3" json:"safe_ts,omitempty"`
+	XXX_NoUnkeyedLiteral struct{} `json:"-"`
+	XXX_unrecognized     []byte   `json:"-"`
+	XXX_sizecache        int32    `json:"-"`
+}
+
+func (m *DataIsNotReady) Reset()         { *m = DataIsNotReady{} }
+func (m *DataIsNotReady) String() string { return proto.CompactTextString(m) }
+func (*DataIsNotReady) ProtoMessage()    {}
+func (*DataIsNotReady) Descriptor() ([]byte, []int) {
+	return fileDescriptor_errorpb_d18807c792160011, []int{13}
+}
+func (m *DataIsNotReady) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *DataIsNotReady) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_DataIsNotReady.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalTo(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (dst *DataIsNotReady) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_DataIsNotReady.Merge(dst, src)
+}
+func (m *DataIsNotReady) XXX_Size() int {
+	return m.Size()
+}
+func (m *DataIsNotReady) XXX_DiscardUnknown() {
+	xxx_messageInfo_DataIsNotReady.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_DataIsNotReady proto.InternalMessageInfo
+
+func (m *DataIsNotReady) GetRegionId() uint64 {
+	if m != nil {
+		return m.RegionId
+	}
+	return 0
+}
+
+func (m *DataIsNotReady) GetPeerId() uint64 {
+	if m != nil {
+		return m.PeerId
+	}
+	return 0
+}
+
+func (m *DataIsNotReady) GetSafeTs() uint64 {
+	if m != nil {
+		return m.SafeTs
+	}
+	return 0
+}
+
+// Error wraps all region errors, indicates an error encountered by a request.
 type Error struct {
-	Message              string             `protobuf:"bytes,1,opt,name=message,proto3" json:"message,omitempty"`
-	NotLeader            *NotLeader         `protobuf:"bytes,2,opt,name=not_leader,json=notLeader" json:"not_leader,omitempty"`
-	RegionNotFound       *RegionNotFound    `protobuf:"bytes,3,opt,name=region_not_found,json=regionNotFound" json:"region_not_found,omitempty"`
-	KeyNotInRegion       *KeyNotInRegion    `protobuf:"bytes,4,opt,name=key_not_in_region,json=keyNotInRegion" json:"key_not_in_region,omitempty"`
-	EpochNotMatch        *EpochNotMatch     `protobuf:"bytes,5,opt,name=epoch_not_match,json=epochNotMatch" json:"epoch_not_match,omitempty"`
-	ServerIsBusy         *ServerIsBusy      `protobuf:"bytes,6,opt,name=server_is_busy,json=serverIsBusy" json:"server_is_busy,omitempty"`
-	StaleCommand         *StaleCommand      `protobuf:"bytes,7,opt,name=stale_command,json=staleCommand" json:"stale_command,omitempty"`
-	StoreNotMatch        *StoreNotMatch     `protobuf:"bytes,8,opt,name=store_not_match,json=storeNotMatch" json:"store_not_match,omitempty"`
-	RaftEntryTooLarge    *RaftEntryTooLarge `protobuf:"bytes,9,opt,name=raft_entry_too_large,json=raftEntryTooLarge" json:"raft_entry_too_large,omitempty"`
-	XXX_NoUnkeyedLiteral struct{}           `json:"-"`
-	XXX_unrecognized     []byte             `json:"-"`
-	XXX_sizecache        int32              `json:"-"`
+	// The error message
+	Message               string                 `protobuf:"bytes,1,opt,name=message,proto3" json:"message,omitempty"`
+	NotLeader             *NotLeader             `protobuf:"bytes,2,opt,name=not_leader,json=notLeader" json:"not_leader,omitempty"`
+	RegionNotFound        *RegionNotFound        `protobuf:"bytes,3,opt,name=region_not_found,json=regionNotFound" json:"region_not_found,omitempty"`
+	KeyNotInRegion        *KeyNotInRegion        `protobuf:"bytes,4,opt,name=key_not_in_region,json=keyNotInRegion" json:"key_not_in_region,omitempty"`
+	EpochNotMatch         *EpochNotMatch         `protobuf:"bytes,5,opt,name=epoch_not_match,json=epochNotMatch" json:"epoch_not_match,omitempty"`
+	ServerIsBusy          *ServerIsBusy          `protobuf:"bytes,6,opt,name=server_is_busy,json=serverIsBusy" json:"server_is_busy,omitempty"`
+	StaleCommand          *StaleCommand          `protobuf:"bytes,7,opt,name=stale_command,json=staleCommand" json:"stale_command,omitempty"`
+	StoreNotMatch         *StoreNotMatch         `protobuf:"bytes,8,opt,name=store_not_match,json=storeNotMatch" json:"store_not_match,omitempty"`
+	RaftEntryTooLarge     *RaftEntryTooLarge     `protobuf:"bytes,9,opt,name=raft_entry_too_large,json=raftEntryTooLarge" json:"raft_entry_too_large,omitempty"`
+	MaxTimestampNotSynced *MaxTimestampNotSynced `protobuf:"bytes,10,opt,name=max_timestamp_not_synced,json=maxTimestampNotSynced" json:"max_timestamp_not_synced,omitempty"`
+	ReadIndexNotReady     *ReadIndexNotReady     `protobuf:"bytes,11,opt,name=read_index_not_ready,json=readIndexNotReady" json:"read_index_not_ready,omitempty"`
+	ProposalInMergingMode *ProposalInMergingMode `protobuf:"bytes,12,opt,name=proposal_in_merging_mode,json=proposalInMergingMode" json:"proposal_in_merging_mode,omitempty"`
+	DataIsNotReady        *DataIsNotReady        `protobuf:"bytes,13,opt,name=data_is_not_ready,json=dataIsNotReady" json:"data_is_not_ready,omitempty"`
+	RegionNotInitialized  *RegionNotInitialized  `protobuf:"bytes,14,opt,name=region_not_initialized,json=regionNotInitialized" json:"region_not_initialized,omitempty"`
+	DiskFull              *DiskFull              `protobuf:"bytes,15,opt,name=disk_full,json=diskFull" json:"disk_full,omitempty"`
+	XXX_NoUnkeyedLiteral  struct{}               `json:"-"`
+	XXX_unrecognized      []byte                 `json:"-"`
+	XXX_sizecache         int32                  `json:"-"`
 }
 
 func (m *Error) Reset()         { *m = Error{} }
 func (m *Error) String() string { return proto.CompactTextString(m) }
 func (*Error) ProtoMessage()    {}
 func (*Error) Descriptor() ([]byte, []int) {
-	return fileDescriptor_errorpb_0faeae8edd2a8b7a, []int{8}
+	return fileDescriptor_errorpb_d18807c792160011, []int{14}
 }
 func (m *Error) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -561,15 +926,63 @@ func (m *Error) GetRaftEntryTooLarge() *RaftEntryTooLarge {
 	return nil
 }
 
+func (m *Error) GetMaxTimestampNotSynced() *MaxTimestampNotSynced {
+	if m != nil {
+		return m.MaxTimestampNotSynced
+	}
+	return nil
+}
+
+func (m *Error) GetReadIndexNotReady() *ReadIndexNotReady {
+	if m != nil {
+		return m.ReadIndexNotReady
+	}
+	return nil
+}
+
+func (m *Error) GetProposalInMergingMode() *ProposalInMergingMode {
+	if m != nil {
+		return m.ProposalInMergingMode
+	}
+	return nil
+}
+
+func (m *Error) GetDataIsNotReady() *DataIsNotReady {
+	if m != nil {
+		return m.DataIsNotReady
+	}
+	return nil
+}
+
+func (m *Error) GetRegionNotInitialized() *RegionNotInitialized {
+	if m != nil {
+		return m.RegionNotInitialized
+	}
+	return nil
+}
+
+func (m *Error) GetDiskFull() *DiskFull {
+	if m != nil {
+		return m.DiskFull
+	}
+	return nil
+}
+
 func init() {
 	proto.RegisterType((*NotLeader)(nil), "errorpb.NotLeader")
+	proto.RegisterType((*DiskFull)(nil), "errorpb.DiskFull")
 	proto.RegisterType((*StoreNotMatch)(nil), "errorpb.StoreNotMatch")
 	proto.RegisterType((*RegionNotFound)(nil), "errorpb.RegionNotFound")
+	proto.RegisterType((*RegionNotInitialized)(nil), "errorpb.RegionNotInitialized")
 	proto.RegisterType((*KeyNotInRegion)(nil), "errorpb.KeyNotInRegion")
 	proto.RegisterType((*EpochNotMatch)(nil), "errorpb.EpochNotMatch")
 	proto.RegisterType((*ServerIsBusy)(nil), "errorpb.ServerIsBusy")
 	proto.RegisterType((*StaleCommand)(nil), "errorpb.StaleCommand")
 	proto.RegisterType((*RaftEntryTooLarge)(nil), "errorpb.RaftEntryTooLarge")
+	proto.RegisterType((*MaxTimestampNotSynced)(nil), "errorpb.MaxTimestampNotSynced")
+	proto.RegisterType((*ReadIndexNotReady)(nil), "errorpb.ReadIndexNotReady")
+	proto.RegisterType((*ProposalInMergingMode)(nil), "errorpb.ProposalInMergingMode")
+	proto.RegisterType((*DataIsNotReady)(nil), "errorpb.DataIsNotReady")
 	proto.RegisterType((*Error)(nil), "errorpb.Error")
 }
 func (m *NotLeader) Marshal() (dAtA []byte, err error) {
@@ -601,6 +1014,50 @@ func (m *NotLeader) MarshalTo(dAtA []byte) (int, error) {
 			return 0, err
 		}
 		i += n1
+	}
+	if m.XXX_unrecognized != nil {
+		i += copy(dAtA[i:], m.XXX_unrecognized)
+	}
+	return i, nil
+}
+
+func (m *DiskFull) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalTo(dAtA)
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *DiskFull) MarshalTo(dAtA []byte) (int, error) {
+	var i int
+	_ = i
+	var l int
+	_ = l
+	if len(m.StoreId) > 0 {
+		dAtA3 := make([]byte, len(m.StoreId)*10)
+		var j2 int
+		for _, num := range m.StoreId {
+			for num >= 1<<7 {
+				dAtA3[j2] = uint8(uint64(num)&0x7f | 0x80)
+				num >>= 7
+				j2++
+			}
+			dAtA3[j2] = uint8(num)
+			j2++
+		}
+		dAtA[i] = 0xa
+		i++
+		i = encodeVarintErrorpb(dAtA, i, uint64(j2))
+		i += copy(dAtA[i:], dAtA3[:j2])
+	}
+	if len(m.Reason) > 0 {
+		dAtA[i] = 0x12
+		i++
+		i = encodeVarintErrorpb(dAtA, i, uint64(len(m.Reason)))
+		i += copy(dAtA[i:], m.Reason)
 	}
 	if m.XXX_unrecognized != nil {
 		i += copy(dAtA[i:], m.XXX_unrecognized)
@@ -650,6 +1107,32 @@ func (m *RegionNotFound) Marshal() (dAtA []byte, err error) {
 }
 
 func (m *RegionNotFound) MarshalTo(dAtA []byte) (int, error) {
+	var i int
+	_ = i
+	var l int
+	_ = l
+	if m.RegionId != 0 {
+		dAtA[i] = 0x8
+		i++
+		i = encodeVarintErrorpb(dAtA, i, uint64(m.RegionId))
+	}
+	if m.XXX_unrecognized != nil {
+		i += copy(dAtA[i:], m.XXX_unrecognized)
+	}
+	return i, nil
+}
+
+func (m *RegionNotInitialized) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalTo(dAtA)
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *RegionNotInitialized) MarshalTo(dAtA []byte) (int, error) {
 	var i int
 	_ = i
 	var l int
@@ -826,6 +1309,121 @@ func (m *RaftEntryTooLarge) MarshalTo(dAtA []byte) (int, error) {
 	return i, nil
 }
 
+func (m *MaxTimestampNotSynced) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalTo(dAtA)
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *MaxTimestampNotSynced) MarshalTo(dAtA []byte) (int, error) {
+	var i int
+	_ = i
+	var l int
+	_ = l
+	if m.XXX_unrecognized != nil {
+		i += copy(dAtA[i:], m.XXX_unrecognized)
+	}
+	return i, nil
+}
+
+func (m *ReadIndexNotReady) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalTo(dAtA)
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *ReadIndexNotReady) MarshalTo(dAtA []byte) (int, error) {
+	var i int
+	_ = i
+	var l int
+	_ = l
+	if len(m.Reason) > 0 {
+		dAtA[i] = 0xa
+		i++
+		i = encodeVarintErrorpb(dAtA, i, uint64(len(m.Reason)))
+		i += copy(dAtA[i:], m.Reason)
+	}
+	if m.RegionId != 0 {
+		dAtA[i] = 0x10
+		i++
+		i = encodeVarintErrorpb(dAtA, i, uint64(m.RegionId))
+	}
+	if m.XXX_unrecognized != nil {
+		i += copy(dAtA[i:], m.XXX_unrecognized)
+	}
+	return i, nil
+}
+
+func (m *ProposalInMergingMode) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalTo(dAtA)
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *ProposalInMergingMode) MarshalTo(dAtA []byte) (int, error) {
+	var i int
+	_ = i
+	var l int
+	_ = l
+	if m.RegionId != 0 {
+		dAtA[i] = 0x8
+		i++
+		i = encodeVarintErrorpb(dAtA, i, uint64(m.RegionId))
+	}
+	if m.XXX_unrecognized != nil {
+		i += copy(dAtA[i:], m.XXX_unrecognized)
+	}
+	return i, nil
+}
+
+func (m *DataIsNotReady) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalTo(dAtA)
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *DataIsNotReady) MarshalTo(dAtA []byte) (int, error) {
+	var i int
+	_ = i
+	var l int
+	_ = l
+	if m.RegionId != 0 {
+		dAtA[i] = 0x8
+		i++
+		i = encodeVarintErrorpb(dAtA, i, uint64(m.RegionId))
+	}
+	if m.PeerId != 0 {
+		dAtA[i] = 0x10
+		i++
+		i = encodeVarintErrorpb(dAtA, i, uint64(m.PeerId))
+	}
+	if m.SafeTs != 0 {
+		dAtA[i] = 0x18
+		i++
+		i = encodeVarintErrorpb(dAtA, i, uint64(m.SafeTs))
+	}
+	if m.XXX_unrecognized != nil {
+		i += copy(dAtA[i:], m.XXX_unrecognized)
+	}
+	return i, nil
+}
+
 func (m *Error) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
@@ -851,81 +1449,141 @@ func (m *Error) MarshalTo(dAtA []byte) (int, error) {
 		dAtA[i] = 0x12
 		i++
 		i = encodeVarintErrorpb(dAtA, i, uint64(m.NotLeader.Size()))
-		n2, err := m.NotLeader.MarshalTo(dAtA[i:])
-		if err != nil {
-			return 0, err
-		}
-		i += n2
-	}
-	if m.RegionNotFound != nil {
-		dAtA[i] = 0x1a
-		i++
-		i = encodeVarintErrorpb(dAtA, i, uint64(m.RegionNotFound.Size()))
-		n3, err := m.RegionNotFound.MarshalTo(dAtA[i:])
-		if err != nil {
-			return 0, err
-		}
-		i += n3
-	}
-	if m.KeyNotInRegion != nil {
-		dAtA[i] = 0x22
-		i++
-		i = encodeVarintErrorpb(dAtA, i, uint64(m.KeyNotInRegion.Size()))
-		n4, err := m.KeyNotInRegion.MarshalTo(dAtA[i:])
+		n4, err := m.NotLeader.MarshalTo(dAtA[i:])
 		if err != nil {
 			return 0, err
 		}
 		i += n4
 	}
-	if m.EpochNotMatch != nil {
-		dAtA[i] = 0x2a
+	if m.RegionNotFound != nil {
+		dAtA[i] = 0x1a
 		i++
-		i = encodeVarintErrorpb(dAtA, i, uint64(m.EpochNotMatch.Size()))
-		n5, err := m.EpochNotMatch.MarshalTo(dAtA[i:])
+		i = encodeVarintErrorpb(dAtA, i, uint64(m.RegionNotFound.Size()))
+		n5, err := m.RegionNotFound.MarshalTo(dAtA[i:])
 		if err != nil {
 			return 0, err
 		}
 		i += n5
 	}
-	if m.ServerIsBusy != nil {
-		dAtA[i] = 0x32
+	if m.KeyNotInRegion != nil {
+		dAtA[i] = 0x22
 		i++
-		i = encodeVarintErrorpb(dAtA, i, uint64(m.ServerIsBusy.Size()))
-		n6, err := m.ServerIsBusy.MarshalTo(dAtA[i:])
+		i = encodeVarintErrorpb(dAtA, i, uint64(m.KeyNotInRegion.Size()))
+		n6, err := m.KeyNotInRegion.MarshalTo(dAtA[i:])
 		if err != nil {
 			return 0, err
 		}
 		i += n6
 	}
-	if m.StaleCommand != nil {
-		dAtA[i] = 0x3a
+	if m.EpochNotMatch != nil {
+		dAtA[i] = 0x2a
 		i++
-		i = encodeVarintErrorpb(dAtA, i, uint64(m.StaleCommand.Size()))
-		n7, err := m.StaleCommand.MarshalTo(dAtA[i:])
+		i = encodeVarintErrorpb(dAtA, i, uint64(m.EpochNotMatch.Size()))
+		n7, err := m.EpochNotMatch.MarshalTo(dAtA[i:])
 		if err != nil {
 			return 0, err
 		}
 		i += n7
 	}
-	if m.StoreNotMatch != nil {
-		dAtA[i] = 0x42
+	if m.ServerIsBusy != nil {
+		dAtA[i] = 0x32
 		i++
-		i = encodeVarintErrorpb(dAtA, i, uint64(m.StoreNotMatch.Size()))
-		n8, err := m.StoreNotMatch.MarshalTo(dAtA[i:])
+		i = encodeVarintErrorpb(dAtA, i, uint64(m.ServerIsBusy.Size()))
+		n8, err := m.ServerIsBusy.MarshalTo(dAtA[i:])
 		if err != nil {
 			return 0, err
 		}
 		i += n8
 	}
-	if m.RaftEntryTooLarge != nil {
-		dAtA[i] = 0x4a
+	if m.StaleCommand != nil {
+		dAtA[i] = 0x3a
 		i++
-		i = encodeVarintErrorpb(dAtA, i, uint64(m.RaftEntryTooLarge.Size()))
-		n9, err := m.RaftEntryTooLarge.MarshalTo(dAtA[i:])
+		i = encodeVarintErrorpb(dAtA, i, uint64(m.StaleCommand.Size()))
+		n9, err := m.StaleCommand.MarshalTo(dAtA[i:])
 		if err != nil {
 			return 0, err
 		}
 		i += n9
+	}
+	if m.StoreNotMatch != nil {
+		dAtA[i] = 0x42
+		i++
+		i = encodeVarintErrorpb(dAtA, i, uint64(m.StoreNotMatch.Size()))
+		n10, err := m.StoreNotMatch.MarshalTo(dAtA[i:])
+		if err != nil {
+			return 0, err
+		}
+		i += n10
+	}
+	if m.RaftEntryTooLarge != nil {
+		dAtA[i] = 0x4a
+		i++
+		i = encodeVarintErrorpb(dAtA, i, uint64(m.RaftEntryTooLarge.Size()))
+		n11, err := m.RaftEntryTooLarge.MarshalTo(dAtA[i:])
+		if err != nil {
+			return 0, err
+		}
+		i += n11
+	}
+	if m.MaxTimestampNotSynced != nil {
+		dAtA[i] = 0x52
+		i++
+		i = encodeVarintErrorpb(dAtA, i, uint64(m.MaxTimestampNotSynced.Size()))
+		n12, err := m.MaxTimestampNotSynced.MarshalTo(dAtA[i:])
+		if err != nil {
+			return 0, err
+		}
+		i += n12
+	}
+	if m.ReadIndexNotReady != nil {
+		dAtA[i] = 0x5a
+		i++
+		i = encodeVarintErrorpb(dAtA, i, uint64(m.ReadIndexNotReady.Size()))
+		n13, err := m.ReadIndexNotReady.MarshalTo(dAtA[i:])
+		if err != nil {
+			return 0, err
+		}
+		i += n13
+	}
+	if m.ProposalInMergingMode != nil {
+		dAtA[i] = 0x62
+		i++
+		i = encodeVarintErrorpb(dAtA, i, uint64(m.ProposalInMergingMode.Size()))
+		n14, err := m.ProposalInMergingMode.MarshalTo(dAtA[i:])
+		if err != nil {
+			return 0, err
+		}
+		i += n14
+	}
+	if m.DataIsNotReady != nil {
+		dAtA[i] = 0x6a
+		i++
+		i = encodeVarintErrorpb(dAtA, i, uint64(m.DataIsNotReady.Size()))
+		n15, err := m.DataIsNotReady.MarshalTo(dAtA[i:])
+		if err != nil {
+			return 0, err
+		}
+		i += n15
+	}
+	if m.RegionNotInitialized != nil {
+		dAtA[i] = 0x72
+		i++
+		i = encodeVarintErrorpb(dAtA, i, uint64(m.RegionNotInitialized.Size()))
+		n16, err := m.RegionNotInitialized.MarshalTo(dAtA[i:])
+		if err != nil {
+			return 0, err
+		}
+		i += n16
+	}
+	if m.DiskFull != nil {
+		dAtA[i] = 0x7a
+		i++
+		i = encodeVarintErrorpb(dAtA, i, uint64(m.DiskFull.Size()))
+		n17, err := m.DiskFull.MarshalTo(dAtA[i:])
+		if err != nil {
+			return 0, err
+		}
+		i += n17
 	}
 	if m.XXX_unrecognized != nil {
 		i += copy(dAtA[i:], m.XXX_unrecognized)
@@ -958,6 +1616,26 @@ func (m *NotLeader) Size() (n int) {
 	return n
 }
 
+func (m *DiskFull) Size() (n int) {
+	var l int
+	_ = l
+	if len(m.StoreId) > 0 {
+		l = 0
+		for _, e := range m.StoreId {
+			l += sovErrorpb(uint64(e))
+		}
+		n += 1 + sovErrorpb(uint64(l)) + l
+	}
+	l = len(m.Reason)
+	if l > 0 {
+		n += 1 + l + sovErrorpb(uint64(l))
+	}
+	if m.XXX_unrecognized != nil {
+		n += len(m.XXX_unrecognized)
+	}
+	return n
+}
+
 func (m *StoreNotMatch) Size() (n int) {
 	var l int
 	_ = l
@@ -974,6 +1652,18 @@ func (m *StoreNotMatch) Size() (n int) {
 }
 
 func (m *RegionNotFound) Size() (n int) {
+	var l int
+	_ = l
+	if m.RegionId != 0 {
+		n += 1 + sovErrorpb(uint64(m.RegionId))
+	}
+	if m.XXX_unrecognized != nil {
+		n += len(m.XXX_unrecognized)
+	}
+	return n
+}
+
+func (m *RegionNotInitialized) Size() (n int) {
 	var l int
 	_ = l
 	if m.RegionId != 0 {
@@ -1064,6 +1754,61 @@ func (m *RaftEntryTooLarge) Size() (n int) {
 	return n
 }
 
+func (m *MaxTimestampNotSynced) Size() (n int) {
+	var l int
+	_ = l
+	if m.XXX_unrecognized != nil {
+		n += len(m.XXX_unrecognized)
+	}
+	return n
+}
+
+func (m *ReadIndexNotReady) Size() (n int) {
+	var l int
+	_ = l
+	l = len(m.Reason)
+	if l > 0 {
+		n += 1 + l + sovErrorpb(uint64(l))
+	}
+	if m.RegionId != 0 {
+		n += 1 + sovErrorpb(uint64(m.RegionId))
+	}
+	if m.XXX_unrecognized != nil {
+		n += len(m.XXX_unrecognized)
+	}
+	return n
+}
+
+func (m *ProposalInMergingMode) Size() (n int) {
+	var l int
+	_ = l
+	if m.RegionId != 0 {
+		n += 1 + sovErrorpb(uint64(m.RegionId))
+	}
+	if m.XXX_unrecognized != nil {
+		n += len(m.XXX_unrecognized)
+	}
+	return n
+}
+
+func (m *DataIsNotReady) Size() (n int) {
+	var l int
+	_ = l
+	if m.RegionId != 0 {
+		n += 1 + sovErrorpb(uint64(m.RegionId))
+	}
+	if m.PeerId != 0 {
+		n += 1 + sovErrorpb(uint64(m.PeerId))
+	}
+	if m.SafeTs != 0 {
+		n += 1 + sovErrorpb(uint64(m.SafeTs))
+	}
+	if m.XXX_unrecognized != nil {
+		n += len(m.XXX_unrecognized)
+	}
+	return n
+}
+
 func (m *Error) Size() (n int) {
 	var l int
 	_ = l
@@ -1101,6 +1846,30 @@ func (m *Error) Size() (n int) {
 	}
 	if m.RaftEntryTooLarge != nil {
 		l = m.RaftEntryTooLarge.Size()
+		n += 1 + l + sovErrorpb(uint64(l))
+	}
+	if m.MaxTimestampNotSynced != nil {
+		l = m.MaxTimestampNotSynced.Size()
+		n += 1 + l + sovErrorpb(uint64(l))
+	}
+	if m.ReadIndexNotReady != nil {
+		l = m.ReadIndexNotReady.Size()
+		n += 1 + l + sovErrorpb(uint64(l))
+	}
+	if m.ProposalInMergingMode != nil {
+		l = m.ProposalInMergingMode.Size()
+		n += 1 + l + sovErrorpb(uint64(l))
+	}
+	if m.DataIsNotReady != nil {
+		l = m.DataIsNotReady.Size()
+		n += 1 + l + sovErrorpb(uint64(l))
+	}
+	if m.RegionNotInitialized != nil {
+		l = m.RegionNotInitialized.Size()
+		n += 1 + l + sovErrorpb(uint64(l))
+	}
+	if m.DiskFull != nil {
+		l = m.DiskFull.Size()
 		n += 1 + l + sovErrorpb(uint64(l))
 	}
 	if m.XXX_unrecognized != nil {
@@ -1202,6 +1971,148 @@ func (m *NotLeader) Unmarshal(dAtA []byte) error {
 			if err := m.Leader.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipErrorpb(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthErrorpb
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.XXX_unrecognized = append(m.XXX_unrecognized, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *DiskFull) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowErrorpb
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= (uint64(b) & 0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: DiskFull: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: DiskFull: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType == 0 {
+				var v uint64
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return ErrIntOverflowErrorpb
+					}
+					if iNdEx >= l {
+						return io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					v |= (uint64(b) & 0x7F) << shift
+					if b < 0x80 {
+						break
+					}
+				}
+				m.StoreId = append(m.StoreId, v)
+			} else if wireType == 2 {
+				var packedLen int
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return ErrIntOverflowErrorpb
+					}
+					if iNdEx >= l {
+						return io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					packedLen |= (int(b) & 0x7F) << shift
+					if b < 0x80 {
+						break
+					}
+				}
+				if packedLen < 0 {
+					return ErrInvalidLengthErrorpb
+				}
+				postIndex := iNdEx + packedLen
+				if postIndex > l {
+					return io.ErrUnexpectedEOF
+				}
+				for iNdEx < postIndex {
+					var v uint64
+					for shift := uint(0); ; shift += 7 {
+						if shift >= 64 {
+							return ErrIntOverflowErrorpb
+						}
+						if iNdEx >= l {
+							return io.ErrUnexpectedEOF
+						}
+						b := dAtA[iNdEx]
+						iNdEx++
+						v |= (uint64(b) & 0x7F) << shift
+						if b < 0x80 {
+							break
+						}
+					}
+					m.StoreId = append(m.StoreId, v)
+				}
+			} else {
+				return fmt.Errorf("proto: wrong wireType = %d for field StoreId", wireType)
+			}
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Reason", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowErrorpb
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= (uint64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthErrorpb
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Reason = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
@@ -1341,6 +2252,76 @@ func (m *RegionNotFound) Unmarshal(dAtA []byte) error {
 		}
 		if fieldNum <= 0 {
 			return fmt.Errorf("proto: RegionNotFound: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field RegionId", wireType)
+			}
+			m.RegionId = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowErrorpb
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.RegionId |= (uint64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		default:
+			iNdEx = preIndex
+			skippy, err := skipErrorpb(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthErrorpb
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.XXX_unrecognized = append(m.XXX_unrecognized, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *RegionNotInitialized) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowErrorpb
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= (uint64(b) & 0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: RegionNotInitialized: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: RegionNotInitialized: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
@@ -1868,6 +2849,334 @@ func (m *RaftEntryTooLarge) Unmarshal(dAtA []byte) error {
 	}
 	return nil
 }
+func (m *MaxTimestampNotSynced) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowErrorpb
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= (uint64(b) & 0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: MaxTimestampNotSynced: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: MaxTimestampNotSynced: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		default:
+			iNdEx = preIndex
+			skippy, err := skipErrorpb(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthErrorpb
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.XXX_unrecognized = append(m.XXX_unrecognized, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *ReadIndexNotReady) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowErrorpb
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= (uint64(b) & 0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: ReadIndexNotReady: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: ReadIndexNotReady: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Reason", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowErrorpb
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= (uint64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthErrorpb
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Reason = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 2:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field RegionId", wireType)
+			}
+			m.RegionId = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowErrorpb
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.RegionId |= (uint64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		default:
+			iNdEx = preIndex
+			skippy, err := skipErrorpb(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthErrorpb
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.XXX_unrecognized = append(m.XXX_unrecognized, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *ProposalInMergingMode) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowErrorpb
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= (uint64(b) & 0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: ProposalInMergingMode: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: ProposalInMergingMode: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field RegionId", wireType)
+			}
+			m.RegionId = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowErrorpb
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.RegionId |= (uint64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		default:
+			iNdEx = preIndex
+			skippy, err := skipErrorpb(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthErrorpb
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.XXX_unrecognized = append(m.XXX_unrecognized, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *DataIsNotReady) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowErrorpb
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= (uint64(b) & 0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: DataIsNotReady: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: DataIsNotReady: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field RegionId", wireType)
+			}
+			m.RegionId = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowErrorpb
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.RegionId |= (uint64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 2:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field PeerId", wireType)
+			}
+			m.PeerId = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowErrorpb
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.PeerId |= (uint64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 3:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field SafeTs", wireType)
+			}
+			m.SafeTs = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowErrorpb
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.SafeTs |= (uint64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		default:
+			iNdEx = preIndex
+			skippy, err := skipErrorpb(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthErrorpb
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.XXX_unrecognized = append(m.XXX_unrecognized, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
 func (m *Error) Unmarshal(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
@@ -2190,6 +3499,204 @@ func (m *Error) Unmarshal(dAtA []byte) error {
 				return err
 			}
 			iNdEx = postIndex
+		case 10:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field MaxTimestampNotSynced", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowErrorpb
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= (int(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthErrorpb
+			}
+			postIndex := iNdEx + msglen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.MaxTimestampNotSynced == nil {
+				m.MaxTimestampNotSynced = &MaxTimestampNotSynced{}
+			}
+			if err := m.MaxTimestampNotSynced.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 11:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ReadIndexNotReady", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowErrorpb
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= (int(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthErrorpb
+			}
+			postIndex := iNdEx + msglen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.ReadIndexNotReady == nil {
+				m.ReadIndexNotReady = &ReadIndexNotReady{}
+			}
+			if err := m.ReadIndexNotReady.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 12:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ProposalInMergingMode", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowErrorpb
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= (int(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthErrorpb
+			}
+			postIndex := iNdEx + msglen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.ProposalInMergingMode == nil {
+				m.ProposalInMergingMode = &ProposalInMergingMode{}
+			}
+			if err := m.ProposalInMergingMode.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 13:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field DataIsNotReady", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowErrorpb
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= (int(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthErrorpb
+			}
+			postIndex := iNdEx + msglen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.DataIsNotReady == nil {
+				m.DataIsNotReady = &DataIsNotReady{}
+			}
+			if err := m.DataIsNotReady.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 14:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field RegionNotInitialized", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowErrorpb
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= (int(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthErrorpb
+			}
+			postIndex := iNdEx + msglen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.RegionNotInitialized == nil {
+				m.RegionNotInitialized = &RegionNotInitialized{}
+			}
+			if err := m.RegionNotInitialized.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 15:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field DiskFull", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowErrorpb
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= (int(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthErrorpb
+			}
+			postIndex := iNdEx + msglen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.DiskFull == nil {
+				m.DiskFull = &DiskFull{}
+			}
+			if err := m.DiskFull.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := skipErrorpb(dAtA[iNdEx:])
@@ -2317,49 +3824,67 @@ var (
 	ErrIntOverflowErrorpb   = fmt.Errorf("proto: integer overflow")
 )
 
-func init() { proto.RegisterFile("errorpb.proto", fileDescriptor_errorpb_0faeae8edd2a8b7a) }
+func init() { proto.RegisterFile("errorpb.proto", fileDescriptor_errorpb_d18807c792160011) }
 
-var fileDescriptor_errorpb_0faeae8edd2a8b7a = []byte{
-	// 651 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x7c, 0x54, 0xcd, 0x6e, 0xd3, 0x4c,
-	0x14, 0xfd, 0xdc, 0x9f, 0x24, 0xbe, 0xb1, 0x9d, 0xd6, 0xea, 0xd7, 0x5a, 0xad, 0x1a, 0x55, 0x16,
-	0xaa, 0xb2, 0x21, 0x88, 0xb2, 0x40, 0x02, 0x09, 0x89, 0xa2, 0x20, 0xa2, 0xb4, 0x01, 0x4d, 0xd8,
-	0x5b, 0x93, 0xf8, 0x26, 0xb5, 0x92, 0x78, 0xca, 0xcc, 0xb8, 0x92, 0xfb, 0x24, 0x3c, 0x02, 0x2b,
-	0x9e, 0x83, 0x25, 0x4b, 0x96, 0xa8, 0xbc, 0x08, 0x9a, 0xf1, 0xe4, 0xc7, 0x41, 0xea, 0x2a, 0x73,
-	0xcf, 0xdc, 0x73, 0x7d, 0x66, 0xce, 0x99, 0x80, 0x8b, 0x9c, 0x33, 0x7e, 0x3b, 0x6c, 0xdf, 0x72,
-	0x26, 0x99, 0x5f, 0x35, 0xe5, 0xb1, 0x33, 0x47, 0x49, 0x17, 0xf0, 0xf1, 0xc1, 0x84, 0x4d, 0x98,
-	0x5e, 0x3e, 0x53, 0x2b, 0x83, 0x36, 0x78, 0x26, 0xa4, 0x5e, 0x16, 0x40, 0xd8, 0x07, 0xbb, 0xcf,
-	0xe4, 0x15, 0xd2, 0x18, 0xb9, 0x7f, 0x02, 0x36, 0xc7, 0x49, 0xc2, 0xd2, 0x28, 0x89, 0x03, 0xeb,
-	0xcc, 0x6a, 0xed, 0x90, 0x5a, 0x01, 0x74, 0x63, 0xff, 0x09, 0x54, 0x66, 0xba, 0x2d, 0xd8, 0x3a,
-	0xb3, 0x5a, 0xf5, 0x0b, 0xa7, 0x6d, 0xbe, 0xf7, 0x09, 0x91, 0x13, 0xb3, 0x17, 0x52, 0x70, 0x07,
-	0x92, 0x71, 0xec, 0x33, 0x79, 0x4d, 0xe5, 0xe8, 0xc6, 0x6f, 0xc1, 0x1e, 0xc7, 0x2f, 0x19, 0x0a,
-	0x19, 0x09, 0xb5, 0xb1, 0x1a, 0xed, 0x19, 0x5c, 0xf7, 0x77, 0x63, 0xff, 0x1c, 0x1a, 0x74, 0x24,
-	0x33, 0x3a, 0x5b, 0x35, 0x6e, 0xe9, 0x46, 0xb7, 0x80, 0x4d, 0x5f, 0xf8, 0x14, 0x3c, 0xa2, 0x45,
-	0xf5, 0x99, 0x7c, 0xcf, 0xb2, 0x34, 0x7e, 0x54, 0x77, 0x98, 0x81, 0xd7, 0xc3, 0xbc, 0xcf, 0x64,
-	0x37, 0x2d, 0x68, 0xfe, 0x1e, 0x6c, 0x4f, 0x31, 0xd7, 0x8d, 0x0e, 0x51, 0xcb, 0xf2, 0x80, 0xad,
-	0x8d, 0x83, 0x9f, 0x80, 0x2d, 0x24, 0xe5, 0x32, 0x52, 0xa4, 0x6d, 0x4d, 0xaa, 0x69, 0xa0, 0x87,
-	0xb9, 0x7f, 0x04, 0x55, 0x4c, 0x63, 0xbd, 0xb5, 0xa3, 0xb7, 0x2a, 0x98, 0xc6, 0x3d, 0xcc, 0xc3,
-	0x0f, 0xe0, 0x76, 0x6e, 0xd9, 0xe8, 0x66, 0x79, 0x11, 0x2f, 0xa1, 0x31, 0xca, 0x38, 0xc7, 0x54,
-	0x46, 0xc5, 0x68, 0x11, 0x58, 0x67, 0xdb, 0xad, 0xfa, 0x85, 0xb7, 0xb8, 0xc8, 0x42, 0x1e, 0xf1,
-	0x4c, 0x5b, 0x51, 0x8a, 0xb0, 0x03, 0xce, 0x00, 0xf9, 0x1d, 0xf2, 0xae, 0xb8, 0xcc, 0x44, 0xee,
-	0x1f, 0x42, 0x85, 0x23, 0x15, 0x2c, 0xd5, 0x27, 0xb0, 0x89, 0xa9, 0xfc, 0x53, 0x80, 0x21, 0x1d,
-	0x4d, 0xd9, 0x78, 0x1c, 0xcd, 0x85, 0x39, 0x85, 0x6d, 0x90, 0x6b, 0x11, 0x7a, 0xe0, 0x0c, 0x24,
-	0x9d, 0xe1, 0x3b, 0x36, 0x9f, 0xd3, 0x34, 0x0e, 0x3f, 0xc2, 0x3e, 0xa1, 0x63, 0xd9, 0x49, 0x25,
-	0xcf, 0x3f, 0x33, 0x76, 0x45, 0xf9, 0x04, 0x1f, 0x4f, 0xc0, 0x29, 0x00, 0xaa, 0xee, 0x48, 0x24,
-	0xf7, 0xb8, 0xf8, 0x80, 0x46, 0x06, 0xc9, 0x3d, 0x86, 0xdf, 0x77, 0x60, 0xb7, 0xa3, 0xb2, 0xe8,
-	0x07, 0x50, 0x9d, 0xa3, 0x10, 0x74, 0x82, 0x46, 0xe2, 0xa2, 0xf4, 0x9f, 0x03, 0xa4, 0x4c, 0x46,
-	0xa5, 0x20, 0xf9, 0xed, 0x45, 0xa0, 0x97, 0x49, 0x24, 0x76, 0xba, 0x0c, 0xe5, 0x5b, 0x15, 0x20,
-	0x2d, 0x49, 0x31, 0xc7, 0xca, 0x70, 0xed, 0x42, 0xfd, 0xe2, 0x68, 0x49, 0x2c, 0xe7, 0x41, 0x25,
-	0xab, 0x94, 0x8f, 0x4b, 0xd8, 0x9f, 0x62, 0xae, 0xf9, 0x49, 0x6a, 0x6e, 0x5f, 0xdb, 0xb5, 0x3e,
-	0xa3, 0x1c, 0x12, 0xe2, 0x4d, 0xcb, 0xa1, 0x79, 0x03, 0x0d, 0x54, 0x7e, 0xea, 0x29, 0x73, 0xe5,
-	0x68, 0xb0, 0xab, 0x27, 0x1c, 0x2e, 0x27, 0x94, 0xfc, 0x26, 0x2e, 0x96, 0xec, 0x7f, 0x0d, 0x9e,
-	0xd0, 0x2e, 0x46, 0x89, 0x88, 0x86, 0x99, 0xc8, 0x83, 0x8a, 0xa6, 0xff, 0xbf, 0xa4, 0xaf, 0x9b,
-	0x4c, 0x1c, 0xb1, 0x6e, 0xf9, 0x2b, 0x70, 0x85, 0xf2, 0x2e, 0x1a, 0x15, 0xe6, 0x05, 0xd5, 0x4d,
-	0xee, 0x9a, 0xb3, 0xc4, 0x11, 0x6b, 0x95, 0x12, 0x5e, 0xbc, 0xa7, 0x95, 0xf0, 0xda, 0x86, 0xf0,
-	0xd2, 0x8b, 0x25, 0xae, 0x28, 0x3d, 0xe0, 0x1e, 0x1c, 0x70, 0x3a, 0x96, 0x51, 0x61, 0xbd, 0x64,
-	0x2c, 0x9a, 0xa9, 0xa8, 0x04, 0xb6, 0x1e, 0x72, 0xbc, 0xf2, 0x60, 0x33, 0x4c, 0x64, 0x9f, 0xff,
-	0x03, 0xd5, 0x8b, 0x63, 0xe8, 0xab, 0xb9, 0x3c, 0xff, 0xf5, 0xad, 0x66, 0xfd, 0x78, 0x68, 0x5a,
-	0x3f, 0x1f, 0x9a, 0xd6, 0xef, 0x87, 0xa6, 0xf5, 0xf5, 0x4f, 0xf3, 0x3f, 0xd8, 0x63, 0x7c, 0xd2,
-	0x96, 0xc9, 0xf4, 0xae, 0x3d, 0xbd, 0xd3, 0xff, 0x51, 0xc3, 0x8a, 0xfe, 0x79, 0xf1, 0x37, 0x00,
-	0x00, 0xff, 0xff, 0xb1, 0xf7, 0x18, 0x5f, 0xf9, 0x04, 0x00, 0x00,
+var fileDescriptor_errorpb_d18807c792160011 = []byte{
+	// 931 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x84, 0x55, 0xdd, 0x6e, 0xdb, 0x36,
+	0x14, 0x9e, 0x93, 0xd4, 0x3f, 0xc7, 0xb6, 0x1c, 0x0b, 0x71, 0xa2, 0xa5, 0x88, 0x51, 0x08, 0x43,
+	0x91, 0x9b, 0x79, 0x58, 0x3a, 0x60, 0xc0, 0x86, 0x0d, 0x58, 0xd6, 0x14, 0x35, 0x52, 0x7b, 0x05,
+	0x1d, 0xa0, 0x97, 0x02, 0x63, 0x1e, 0xbb, 0x82, 0x25, 0xd1, 0x23, 0xa9, 0x20, 0xca, 0x93, 0xec,
+	0x11, 0xf6, 0x28, 0xbb, 0xdc, 0xe5, 0x2e, 0x87, 0xec, 0x1d, 0x76, 0x3d, 0x90, 0x92, 0x65, 0xc9,
+	0xf1, 0xdc, 0x2b, 0xf1, 0x1c, 0x9e, 0xf3, 0xf1, 0xa3, 0xf8, 0x7d, 0x24, 0xb4, 0x51, 0x08, 0x2e,
+	0x96, 0xb7, 0x83, 0xa5, 0xe0, 0x8a, 0xdb, 0xb5, 0x2c, 0x3c, 0x6d, 0x85, 0xa8, 0xe8, 0x2a, 0x7d,
+	0x7a, 0x34, 0xe7, 0x73, 0x6e, 0x86, 0x5f, 0xe9, 0x51, 0x96, 0xed, 0x88, 0x58, 0x2a, 0x33, 0x4c,
+	0x13, 0xee, 0x18, 0x1a, 0x63, 0xae, 0xde, 0x21, 0x65, 0x28, 0xec, 0xe7, 0xd0, 0x10, 0x38, 0xf7,
+	0x79, 0xe4, 0xf9, 0xcc, 0xa9, 0xbc, 0xa8, 0x9c, 0x1f, 0x90, 0x7a, 0x9a, 0x18, 0x32, 0xfb, 0x0b,
+	0xa8, 0x06, 0xa6, 0xcc, 0xd9, 0x7b, 0x51, 0x39, 0x6f, 0x5e, 0xb4, 0x06, 0xd9, 0x7a, 0xef, 0x11,
+	0x05, 0xc9, 0xe6, 0xdc, 0x1f, 0xa0, 0xfe, 0xda, 0x97, 0x8b, 0x37, 0x71, 0x10, 0xd8, 0x9f, 0x43,
+	0x5d, 0x2a, 0x2e, 0x30, 0x45, 0xdb, 0x3f, 0x3f, 0x20, 0x35, 0x13, 0x0f, 0x99, 0x7d, 0x0c, 0x55,
+	0x81, 0x54, 0xf2, 0xc8, 0x80, 0x35, 0x48, 0x16, 0xb9, 0x14, 0xda, 0x13, 0x5d, 0x32, 0xe6, 0x6a,
+	0x44, 0xd5, 0xf4, 0xa3, 0x7d, 0x0e, 0x87, 0x02, 0x7f, 0x8d, 0x51, 0x2a, 0xaf, 0x80, 0xa5, 0x99,
+	0x59, 0x59, 0x7e, 0x92, 0x41, 0xbe, 0x84, 0x0e, 0x9d, 0xaa, 0x98, 0x06, 0xeb, 0xc2, 0x3d, 0x53,
+	0xd8, 0x4e, 0xd3, 0x59, 0x9d, 0xfb, 0x25, 0x58, 0xc4, 0xec, 0x69, 0xcc, 0xd5, 0x1b, 0x1e, 0x47,
+	0x6c, 0xe7, 0xb6, 0xdd, 0x57, 0x70, 0x94, 0x97, 0x0f, 0x23, 0x5f, 0xf9, 0x34, 0xf0, 0x1f, 0xf0,
+	0x13, 0x4d, 0x31, 0x58, 0xd7, 0x98, 0x98, 0x8e, 0xb4, 0xd9, 0x3e, 0x84, 0xfd, 0x05, 0x26, 0xa6,
+	0xb0, 0x45, 0xf4, 0xb0, 0x0c, 0xb0, 0xb7, 0xf1, 0xb3, 0x9f, 0x43, 0x43, 0x2a, 0x2a, 0x94, 0xa7,
+	0x9b, 0xf6, 0x4d, 0x53, 0xdd, 0x24, 0xae, 0x31, 0xb1, 0x4f, 0xa0, 0x86, 0x11, 0x33, 0x53, 0x07,
+	0x66, 0xaa, 0x8a, 0x11, 0xbb, 0xc6, 0xc4, 0x7d, 0x0b, 0xed, 0xab, 0x25, 0x9f, 0x7e, 0xcc, 0xff,
+	0xde, 0xb7, 0xd0, 0x99, 0xc6, 0x42, 0x60, 0xa4, 0xbc, 0x14, 0x5a, 0x9a, 0x83, 0x68, 0x5e, 0x58,
+	0xab, 0xc3, 0x4b, 0xe9, 0x11, 0x2b, 0x2b, 0x4b, 0x43, 0xe9, 0x5e, 0x41, 0x6b, 0x82, 0xe2, 0x0e,
+	0xc5, 0x50, 0x5e, 0xc6, 0x32, 0x29, 0x9c, 0x57, 0xa5, 0x78, 0x5e, 0xf6, 0x19, 0xc0, 0x2d, 0x9d,
+	0x2e, 0xf8, 0x6c, 0xe6, 0x85, 0x32, 0xdb, 0x45, 0x23, 0xcb, 0x8c, 0xa4, 0x6b, 0x41, 0x6b, 0xa2,
+	0x68, 0x80, 0x3f, 0xf3, 0x30, 0xa4, 0x11, 0x73, 0x7f, 0x81, 0x2e, 0xa1, 0x33, 0x75, 0x15, 0x29,
+	0x91, 0xdc, 0x70, 0xfe, 0x8e, 0x8a, 0x39, 0xee, 0x56, 0xdd, 0x19, 0x00, 0xea, 0x6a, 0x4f, 0xfa,
+	0x0f, 0xb8, 0x5a, 0xc0, 0x64, 0x26, 0xfe, 0x03, 0xba, 0x27, 0xd0, 0x1b, 0xd1, 0xfb, 0x1b, 0x3f,
+	0x44, 0xa9, 0x68, 0xb8, 0x1c, 0x73, 0x35, 0x49, 0xa2, 0x29, 0x32, 0xf7, 0x2d, 0x74, 0x09, 0x52,
+	0x36, 0x8c, 0x18, 0xde, 0x8f, 0xb9, 0xd2, 0xe3, 0xff, 0xdf, 0xc5, 0xae, 0xa3, 0x70, 0xbf, 0x81,
+	0xde, 0x7b, 0xc1, 0x97, 0x5c, 0xd2, 0x60, 0x18, 0x8d, 0x50, 0xcc, 0xfd, 0x68, 0x3e, 0xe2, 0x6c,
+	0x37, 0x6f, 0xd7, 0x03, 0xeb, 0x35, 0x55, 0x74, 0x28, 0xf3, 0xc5, 0x77, 0x6e, 0xf3, 0x04, 0x6a,
+	0x4b, 0x44, 0xb1, 0x5e, 0xbf, 0xaa, 0xc3, 0x74, 0x42, 0xd2, 0x19, 0x7a, 0x4a, 0x1a, 0x19, 0x1c,
+	0x90, 0xaa, 0x0e, 0x6f, 0xa4, 0xfb, 0x6f, 0x0d, 0x9e, 0x5d, 0x69, 0xe7, 0xdb, 0x0e, 0xd4, 0x42,
+	0x94, 0x92, 0xce, 0x31, 0xdb, 0xd6, 0x2a, 0xb4, 0xbf, 0x06, 0x88, 0xb8, 0xf2, 0x4a, 0xb6, 0xb5,
+	0x07, 0xab, 0xeb, 0x23, 0xf7, 0x3d, 0x69, 0x44, 0xf9, 0x15, 0xf0, 0x93, 0xf6, 0x9b, 0x61, 0xa9,
+	0x3b, 0x67, 0xda, 0x1f, 0x66, 0xe1, 0xe6, 0xc5, 0x49, 0xde, 0x58, 0xb6, 0x8f, 0x36, 0x62, 0xc9,
+	0x4e, 0x97, 0xd0, 0x5d, 0x60, 0x62, 0xfa, 0xfd, 0x28, 0xd3, 0x9d, 0x11, 0x6a, 0x11, 0xa3, 0x6c,
+	0x0f, 0x62, 0x2d, 0xca, 0x76, 0xf9, 0x11, 0x3a, 0xa8, 0x95, 0x6c, 0x50, 0x42, 0xad, 0x65, 0xe7,
+	0x99, 0x41, 0x38, 0xce, 0x11, 0x4a, 0x4a, 0x27, 0x6d, 0x2c, 0x09, 0xff, 0x7b, 0xb0, 0xa4, 0xd1,
+	0xaf, 0xe7, 0x4b, 0xef, 0x36, 0x96, 0x89, 0x53, 0x35, 0xed, 0xbd, 0xbc, 0xbd, 0x28, 0x6f, 0xd2,
+	0x92, 0x45, 0xb1, 0x7f, 0x07, 0x6d, 0xa9, 0x55, 0xeb, 0x4d, 0x53, 0xd9, 0x3a, 0xb5, 0xcd, 0xde,
+	0x82, 0xa6, 0x49, 0x4b, 0x16, 0x22, 0x4d, 0x3c, 0xbd, 0x7e, 0xd6, 0xc4, 0xeb, 0x1b, 0xc4, 0x4b,
+	0x17, 0x1c, 0x69, 0xcb, 0xd2, 0x7d, 0x77, 0x0d, 0x47, 0x82, 0xce, 0x94, 0x97, 0x8a, 0x5e, 0x71,
+	0xee, 0x05, 0xda, 0x24, 0x4e, 0xc3, 0x80, 0x9c, 0xae, 0xcf, 0x60, 0xd3, 0x46, 0xa4, 0x2b, 0x9e,
+	0x38, 0xeb, 0x03, 0x38, 0x21, 0xbd, 0xf7, 0xd4, 0xca, 0x1e, 0x86, 0x94, 0x34, 0x06, 0x71, 0xc0,
+	0x00, 0xf6, 0x73, 0xc0, 0xad, 0x36, 0x22, 0xbd, 0x70, 0x5b, 0xda, 0xb0, 0x44, 0xca, 0x3c, 0x5f,
+	0xdb, 0xcb, 0xa0, 0xea, 0x30, 0x71, 0x9a, 0x9b, 0x2c, 0x37, 0x2d, 0x48, 0xba, 0xe2, 0x89, 0x2b,
+	0x3f, 0x80, 0xb3, 0xcc, 0x0c, 0xa6, 0x05, 0x13, 0xa6, 0x16, 0xf3, 0x42, 0xce, 0xd0, 0x69, 0x6d,
+	0xb0, 0xdc, 0xea, 0x44, 0xd2, 0x5b, 0x6e, 0x35, 0xe8, 0x25, 0x74, 0x19, 0x55, 0x54, 0x4b, 0x60,
+	0x4d, 0xb1, 0xbd, 0x21, 0xc4, 0xb2, 0x4b, 0x89, 0xc5, 0xca, 0xae, 0x9d, 0xc0, 0x71, 0xc1, 0x0f,
+	0xfe, 0xfa, 0x01, 0x70, 0x2c, 0x03, 0x74, 0xf6, 0xd4, 0x15, 0x85, 0x57, 0x82, 0x1c, 0x89, 0x6d,
+	0x6f, 0xc7, 0x00, 0x1a, 0xcc, 0x97, 0x0b, 0x6f, 0x16, 0x07, 0x81, 0xd3, 0x31, 0x38, 0xdd, 0x35,
+	0xa1, 0xec, 0xf9, 0x24, 0x75, 0xb6, 0x1a, 0x35, 0x53, 0x39, 0x1a, 0x89, 0x5f, 0xbe, 0xfc, 0xeb,
+	0xf7, 0x7a, 0xe5, 0x8f, 0xc7, 0x7e, 0xe5, 0xcf, 0xc7, 0x7e, 0xe5, 0xef, 0xc7, 0x7e, 0xe5, 0xb7,
+	0x7f, 0xfa, 0x9f, 0xc1, 0x21, 0x17, 0xf3, 0x81, 0xf2, 0x17, 0x77, 0x83, 0xc5, 0x9d, 0x79, 0xd9,
+	0x6f, 0xab, 0xe6, 0xf3, 0xea, 0xbf, 0x00, 0x00, 0x00, 0xff, 0xff, 0x86, 0x71, 0x68, 0x11, 0x2f,
+	0x08, 0x00, 0x00,
 }

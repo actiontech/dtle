@@ -18,8 +18,8 @@ import (
 
 	sqle "github.com/actiontech/dtle/drivers/mysql/mysql/sqle/inspector"
 
-	"github.com/pingcap/parser/ast"
-	parsermysql "github.com/pingcap/parser/mysql"
+	"github.com/pingcap/tidb/parser/ast"
+	parsermysql "github.com/pingcap/tidb/parser/mysql"
 
 	"database/sql"
 
@@ -421,7 +421,7 @@ func GetTableColumnsSqle(sqleContext *sqle.Context, schema string,
 		newColumn.ColumnType = col.Tp.String()
 
 		switch col.Tp.Tp {
-		case parsermysql.TypeDecimal, parsermysql.TypeNewDecimal:
+		case parsermysql.TypeUnspecified, parsermysql.TypeNewDecimal:
 			newColumn.Type = umconf.DecimalColumnType
 			newColumn.Precision = col.Tp.Flen
 			newColumn.Scale = col.Tp.Decimal
