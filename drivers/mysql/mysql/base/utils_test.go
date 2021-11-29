@@ -10,7 +10,7 @@ import (
 	gosql "database/sql"
 	"fmt"
 	sqle "github.com/actiontech/dtle/drivers/mysql/mysql/sqle/inspector"
-	"github.com/pingcap/parser"
+	"github.com/pingcap/tidb/parser"
 	"reflect"
 	"testing"
 	"time"

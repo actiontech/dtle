@@ -8,6 +8,7 @@
 //
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
@@ -124,9 +125,10 @@ func putTextEncoder(enc *textEncoder) {
 
 type textEncoder struct {
 	*zapcore.EncoderConfig
-	buf            *buffer.Buffer
-	spaced         bool // include spaces after colons and commas
-	openNamespaces int
+	buf                 *buffer.Buffer
+	spaced              bool // include spaces after colons and commas
+	openNamespaces      int
+	disableErrorVerbose bool
 
 	// for encoding generic values by reflection
 	reflectBuf *buffer.Buffer
@@ -135,11 +137,36 @@ type textEncoder struct {
 
 // NewTextEncoder creates a fast, low-allocation Text encoder. The encoder
 // appropriately escapes all field keys and values.
-func NewTextEncoder(cfg zapcore.EncoderConfig) zapcore.Encoder {
-	return &textEncoder{
-		EncoderConfig: &cfg,
-		buf:           _pool.Get(),
-		spaced:        false,
+func NewTextEncoder(cfg *Config) zapcore.Encoder {
+	cc := zapcore.EncoderConfig{
+		// Keys can be anything except the empty string.
+		TimeKey:        "time",
+		LevelKey:       "level",
+		NameKey:        "name",
+		CallerKey:      "caller",
+		MessageKey:     "message",
+		StacktraceKey:  "stack",
+		LineEnding:     zapcore.DefaultLineEnding,
+		EncodeLevel:    zapcore.CapitalLevelEncoder,
+		EncodeTime:     DefaultTimeEncoder,
+		EncodeDuration: zapcore.StringDurationEncoder,
+		EncodeCaller:   ShortCallerEncoder,
+	}
+	if cfg.DisableTimestamp {
+		cc.TimeKey = ""
+	}
+	switch cfg.Format {
+	case "text", "":
+		return &textEncoder{
+			EncoderConfig:       &cc,
+			buf:                 _pool.Get(),
+			spaced:              false,
+			disableErrorVerbose: cfg.DisableErrorVerbose,
+		}
+	case "json":
+		return zapcore.NewJSONEncoder(cc)
+	default:
+		panic(fmt.Sprintf("unsupport log format: %s", cfg.Format))
 	}
 }
 
@@ -371,6 +398,7 @@ func (enc *textEncoder) cloned() *textEncoder {
 	clone.EncoderConfig = enc.EncoderConfig
 	clone.spaced = enc.spaced
 	clone.openNamespaces = enc.openNamespaces
+	clone.disableErrorVerbose = enc.disableErrorVerbose
 	clone.buf = _pool.Get()
 	return clone
 }
@@ -544,7 +572,7 @@ func (enc *textEncoder) safeAddByteString(s []byte) {
 	}
 }
 
-// See [log-fileds](https://github.com/tikv/rfcs/blob/master/text/2018-12-19-unified-log-format.md#log-fields-section).
+// See [log-fileds](https://github.com/tikv/rfcs/blob/master/text/0018-unified-log-format.md#log-fields-section).
 func (enc *textEncoder) needDoubleQuotes(s string) bool {
 	for i := 0; i < len(s); {
 		b := s[i]
@@ -620,6 +648,9 @@ func (enc *textEncoder) encodeError(f zapcore.Field) {
 	enc.beginQuoteFiled()
 	enc.AddString(f.Key, basic)
 	enc.endQuoteFiled()
+	if enc.disableErrorVerbose {
+		return
+	}
 	if e, isFormatter := err.(fmt.Formatter); isFormatter {
 		verbose := fmt.Sprintf("%+v", e)
 		if verbose != basic {

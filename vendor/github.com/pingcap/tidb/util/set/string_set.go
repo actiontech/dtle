@@ -8,6 +8,7 @@
 //
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
@@ -16,9 +17,13 @@ package set
 // StringSet is a string set.
 type StringSet map[string]struct{}
 
-// NewStringSet builds a float64 set.
-func NewStringSet() StringSet {
-	return make(map[string]struct{})
+// NewStringSet builds a string set.
+func NewStringSet(ss ...string) StringSet {
+	set := make(StringSet, len(ss))
+	for _, s := range ss {
+		set.Insert(s)
+	}
+	return set
 }
 
 // Exist checks whether `val` exists in `s`.
@@ -30,4 +35,20 @@ func (s StringSet) Exist(val string) bool {
 // Insert inserts `val` into `s`.
 func (s StringSet) Insert(val string) {
 	s[val] = struct{}{}
+}
+
+// Intersection returns the intersection of two sets
+func (s StringSet) Intersection(rhs StringSet) StringSet {
+	newSet := NewStringSet()
+	for elt := range s {
+		if rhs.Exist(elt) {
+			newSet.Insert(elt)
+		}
+	}
+	return newSet
+}
+
+// Count returns the number in Set s.
+func (s StringSet) Count() int {
+	return len(s)
 }

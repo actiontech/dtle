@@ -12,8 +12,8 @@ import (
 	"encoding/binary"
 	"github.com/actiontech/dtle/drivers/mysql/common"
 	"github.com/actiontech/dtle/drivers/mysql/mysql/sql"
-	parserformat "github.com/pingcap/parser/format"
-	"github.com/pingcap/parser/model"
+	parserformat "github.com/pingcap/tidb/parser/format"
+	"github.com/pingcap/tidb/parser/model"
 	"github.com/pkg/errors"
 	"os"
 	"path"
@@ -34,8 +34,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/pingcap/parser"
-	"github.com/pingcap/parser/ast"
+	"github.com/pingcap/tidb/parser"
+	"github.com/pingcap/tidb/parser/ast"
 	_ "github.com/pingcap/tidb/types/parser_driver"
 
 	"github.com/actiontech/dtle/drivers/mysql/mysql/base"

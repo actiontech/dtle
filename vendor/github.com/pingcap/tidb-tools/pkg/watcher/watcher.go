@@ -198,7 +198,10 @@ func (w *Watcher) pollEvents(currFileList map[string]os.FileInfo) {
 			continue
 		}
 
-		if !latestFi.ModTime().Equal(currFi.ModTime()) {
+		// ModTime may return timestamp in second level on some file system
+		// So use ModTime + Size to judge modify event will be more precisely
+		if !latestFi.ModTime().Equal(currFi.ModTime()) ||
+			latestFi.Size() != currFi.Size() {
 			// modify
 			select {
 			case <-w.closed:

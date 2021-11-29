@@ -8,6 +8,7 @@
 //
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
@@ -28,7 +29,7 @@ var (
 			Subsystem: "autoid",
 			Name:      "operation_duration_seconds",
 			Help:      "Bucketed histogram of processing time (s) of handled autoid.",
-			Buckets:   prometheus.ExponentialBuckets(0.0005, 2, 22), // 500us ~ 2097s
+			Buckets:   prometheus.ExponentialBuckets(0.0005, 2, 29), // 0.5ms ~ 1.5days
 		}, []string{LblType, LblResult})
 
 	GetSchemaDiff    = "get_schema_diff"
@@ -43,6 +44,6 @@ var (
 			Subsystem: "meta",
 			Name:      "operation_duration_seconds",
 			Help:      "Bucketed histogram of processing time (s) of tidb meta data operations.",
-			Buckets:   prometheus.ExponentialBuckets(0.0005, 2, 22), // 500us ~ 2097s
+			Buckets:   prometheus.ExponentialBuckets(0.0005, 2, 29), // 0.5ms ~ 1.5days
 		}, []string{LblType, LblResult})
 )

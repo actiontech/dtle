@@ -17,7 +17,7 @@ import (
 	"strings"
 
 	"github.com/pingcap/errors"
-	"github.com/pingcap/tidb-tools/pkg/table-rule-selector"
+	selector "github.com/pingcap/tidb-tools/pkg/table-rule-selector"
 )
 
 // TableRule is a rule to route schema/table to target schema/table
@@ -81,7 +81,7 @@ func (r *Table) AddRule(rule *TableRule) error {
 		rule.ToLower()
 	}
 
-	err = r.Insert(rule.SchemaPattern, rule.TablePattern, rule, false)
+	err = r.Insert(rule.SchemaPattern, rule.TablePattern, rule, selector.Insert)
 	if err != nil {
 		return errors.Annotatef(err, "add rule %+v into table router", rule)
 	}
@@ -99,7 +99,7 @@ func (r *Table) UpdateRule(rule *TableRule) error {
 		rule.ToLower()
 	}
 
-	err = r.Insert(rule.SchemaPattern, rule.TablePattern, rule, true)
+	err = r.Insert(rule.SchemaPattern, rule.TablePattern, rule, selector.Replace)
 	if err != nil {
 		return errors.Annotatef(err, "update rule %+v into table router", rule)
 	}
@@ -115,7 +115,7 @@ func (r *Table) RemoveRule(rule *TableRule) error {
 
 	err := r.Remove(rule.SchemaPattern, rule.TablePattern)
 	if err != nil {
-		return errors.Annotatef(err, "remove rule %+v", rule)
+		return errors.Annotatef(err, "remove rule %+v from table router", rule)
 	}
 
 	return nil
@@ -155,7 +155,7 @@ func (r *Table) Route(schema, table string) (string, string, error) {
 	)
 	if len(table) == 0 || len(tableRules) == 0 {
 		if len(schemaRules) > 1 {
-			return "", "", errors.NotSupportedf("route %s/%s to rule set(%d)", schema, table, len(schemaRules))
+			return "", "", errors.NotSupportedf("`%s`.`%s` matches %d schema route rules which is more than one.\nThe first two rules are %+v, %+v.\nIt's", schema, table, len(schemaRules), schemaRules[0], schemaRules[1])
 		}
 
 		if len(schemaRules) == 1 {
@@ -163,7 +163,7 @@ func (r *Table) Route(schema, table string) (string, string, error) {
 		}
 	} else {
 		if len(tableRules) > 1 {
-			return "", "", errors.NotSupportedf("route %s/%s to rule set(%d)", schema, table, len(tableRules))
+			return "", "", errors.NotSupportedf("`%s`.`%s` matches %d table route rules which is more than one.\nThe first two rules are %+v, %+v.\nIt's", schema, table, len(tableRules), tableRules[0], tableRules[1])
 		}
 
 		targetSchema, targetTable = tableRules[0].TargetSchema, tableRules[0].TargetTable

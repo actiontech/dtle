@@ -8,13 +8,13 @@
 //
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
 package meta
 
 import (
-	"context"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
@@ -26,18 +26,21 @@ import (
 	"time"
 
 	"github.com/pingcap/errors"
-	"github.com/pingcap/parser/model"
-	"github.com/pingcap/parser/mysql"
-	"github.com/pingcap/parser/terror"
+	"github.com/pingcap/kvproto/pkg/kvrpcpb"
+	"github.com/pingcap/tidb/errno"
 	"github.com/pingcap/tidb/kv"
 	"github.com/pingcap/tidb/metrics"
+	"github.com/pingcap/tidb/parser/model"
+	"github.com/pingcap/tidb/parser/mysql"
 	"github.com/pingcap/tidb/structure"
+	"github.com/pingcap/tidb/util/dbterror"
 	"github.com/pingcap/tidb/util/logutil"
 	"go.uber.org/zap"
 )
 
 var (
 	globalIDMutex sync.Mutex
+	policyIDMutex sync.Mutex
 )
 
 // Meta structure:
@@ -62,23 +65,49 @@ var (
 	mDBs              = []byte("DBs")
 	mDBPrefix         = "DB"
 	mTablePrefix      = "Table"
+	mSequencePrefix   = "SID"
+	mSeqCyclePrefix   = "SequenceCycle"
 	mTableIDPrefix    = "TID"
+	mIncIDPrefix      = "IID"
+	mRandomIDPrefix   = "TARID"
 	mBootstrapKey     = []byte("BootstrapKey")
 	mSchemaDiffPrefix = "Diff"
+	mPolicies         = []byte("Policies")
+	mPolicyPrefix     = "Policy"
+	mPolicyGlobalID   = []byte("PolicyGlobalID")
+	mPolicyMagicByte  = CurrentMagicByteVer
+)
+
+const (
+	// CurrentMagicByteVer is the current magic byte version, used for future meta compatibility.
+	CurrentMagicByteVer byte = 0x00
+	// PolicyMagicByte handler
+	// 0x00 - 0x3F: Json Handler
+	// 0x40 - 0x7F: Reserved
+	// 0x80 - 0xBF: Reserved
+	// 0xC0 - 0xFF: Reserved
+
+	// type means how to handle the serialized data.
+	typeUnknown int = 0
+	typeJSON    int = 1
+	// todo: customized handler.
 )
 
 var (
-	errInvalidTableKey = terror.ClassMeta.New(codeInvalidTableKey, "invalid table meta key")
-	errInvalidDBKey    = terror.ClassMeta.New(codeInvalidDBKey, "invalid db key")
-
 	// ErrDBExists is the error for db exists.
-	ErrDBExists = terror.ClassMeta.New(codeDatabaseExists, "database already exists")
+	ErrDBExists = dbterror.ClassMeta.NewStd(mysql.ErrDBCreateExists)
 	// ErrDBNotExists is the error for db not exists.
-	ErrDBNotExists = terror.ClassMeta.New(codeDatabaseNotExists, "database doesn't exist")
+	ErrDBNotExists = dbterror.ClassMeta.NewStd(mysql.ErrBadDB)
+	// ErrPolicyExists is the error for policy exists.
+	ErrPolicyExists = dbterror.ClassMeta.NewStd(errno.ErrPlacementPolicyExists)
+	// ErrPolicyNotExists is the error for policy not exists.
+	ErrPolicyNotExists = dbterror.ClassMeta.NewStd(errno.ErrPlacementPolicyNotExists)
 	// ErrTableExists is the error for table exists.
-	ErrTableExists = terror.ClassMeta.New(codeTableExists, "table already exists")
+	ErrTableExists = dbterror.ClassMeta.NewStd(mysql.ErrTableExists)
 	// ErrTableNotExists is the error for table not exists.
-	ErrTableNotExists = terror.ClassMeta.New(codeTableNotExists, "table doesn't exist")
+	ErrTableNotExists = dbterror.ClassMeta.NewStd(mysql.ErrNoSuchTable)
+	// ErrDDLReorgElementNotExist is the error for reorg element not exists.
+	ErrDDLReorgElementNotExist = dbterror.ClassMeta.NewStd(errno.ErrDDLReorgElementNotExist)
 )
 
 // Meta is for handling meta information in a transaction.
@@ -92,7 +121,8 @@ type Meta struct {
 // If the current Meta needs to handle a job, jobListKey is the type of the job's list.
 func NewMeta(txn kv.Transaction, jobListKeys ...JobListKeyType) *Meta {
 	txn.SetOption(kv.Priority, kv.PriorityHigh)
-	txn.SetOption(kv.SyncLog, true)
+	txn.SetOption(kv.SyncLog, struct{}{})
+	txn.SetDiskFullOpt(kvrpcpb.DiskFullOpt_AllowedOnAlmostFull)
 	t := structure.NewStructure(txn, txn, mMetaPrefix)
 	listKey := DefaultJobListKey
 	if len(jobListKeys) != 0 {
@@ -118,9 +148,35 @@ func (m *Meta) GenGlobalID() (int64, error) {
 	return m.txn.Inc(mNextGlobalIDKey, 1)
 }
 
+// GenGlobalIDs generates the next n global IDs.
+func (m *Meta) GenGlobalIDs(n int) ([]int64, error) {
+	globalIDMutex.Lock()
+	defer globalIDMutex.Unlock()
+
+	newID, err := m.txn.Inc(mNextGlobalIDKey, int64(n))
+	if err != nil {
+		return nil, err
+	}
+	origID := newID - int64(n)
+	ids := make([]int64, 0, n)
+	for i := origID + 1; i <= newID; i++ {
+		ids = append(ids, i)
+	}
+	return ids, nil
+}
+
 // GetGlobalID gets current global id.
 func (m *Meta) GetGlobalID() (int64, error) {
 	return m.txn.GetInt64(mNextGlobalIDKey)
+}
+
+// GetPolicyID gets current policy global id.
+func (m *Meta) GetPolicyID() (int64, error) {
+	return m.txn.GetInt64(mPolicyGlobalID)
+}
+
+func (m *Meta) policyKey(policyID int64) []byte {
+	return []byte(fmt.Sprintf("%s:%d", mPolicyPrefix, policyID))
 }
 
 func (m *Meta) dbKey(dbID int64) []byte {
@@ -131,8 +187,24 @@ func (m *Meta) autoTableIDKey(tableID int64) []byte {
 	return []byte(fmt.Sprintf("%s:%d", mTableIDPrefix, tableID))
 }
 
+func (m *Meta) autoIncrementIDKey(tableID int64) []byte {
+	return []byte(fmt.Sprintf("%s:%d", mIncIDPrefix, tableID))
+}
+
+func (m *Meta) autoRandomTableIDKey(tableID int64) []byte {
+	return []byte(fmt.Sprintf("%s:%d", mRandomIDPrefix, tableID))
+}
+
 func (m *Meta) tableKey(tableID int64) []byte {
 	return []byte(fmt.Sprintf("%s:%d", mTablePrefix, tableID))
+}
+
+func (m *Meta) sequenceKey(sequenceID int64) []byte {
+	return []byte(fmt.Sprintf("%s:%d", mSequencePrefix, sequenceID))
+}
+
+func (m *Meta) sequenceCycleKey(sequenceID int64) []byte {
+	return []byte(fmt.Sprintf("%s:%d", mSeqCyclePrefix, sequenceID))
 }
 
 // DDLJobHistoryKey is only used for testing.
@@ -147,25 +219,9 @@ func (m *Meta) GenAutoTableIDKeyValue(dbID, tableID, autoID int64) (key, value [
 	return m.txn.EncodeHashAutoIDKeyValue(dbKey, autoTableIDKey, autoID)
 }
 
-// GenAutoTableID adds step to the auto ID of the table and returns the sum.
-func (m *Meta) GenAutoTableID(dbID, tableID, step int64) (int64, error) {
-	// Check if DB exists.
-	dbKey := m.dbKey(dbID)
-	if err := m.checkDBExists(dbKey); err != nil {
-		return 0, errors.Trace(err)
-	}
-	// Check if table exists.
-	tableKey := m.tableKey(tableID)
-	if err := m.checkTableExists(dbKey, tableKey); err != nil {
-		return 0, errors.Trace(err)
-	}
-
-	return m.txn.HInc(dbKey, m.autoTableIDKey(tableID), step)
-}
-
-// GetAutoTableID gets current auto id with table id.
-func (m *Meta) GetAutoTableID(dbID int64, tableID int64) (int64, error) {
-	return m.txn.HGetInt64(m.dbKey(dbID), m.autoTableIDKey(tableID))
+// GetAutoIDAccessors gets the controller for auto IDs.
+func (m *Meta) GetAutoIDAccessors(dbID, tableID int64) AutoIDAccessors {
+	return NewAutoIDAccessors(m, dbID, tableID)
 }
 
 // GetSchemaVersion gets current global schema version.
@@ -178,10 +234,26 @@ func (m *Meta) GenSchemaVersion() (int64, error) {
 	return m.txn.Inc(mSchemaVersionKey, 1)
 }
 
+func (m *Meta) checkPolicyExists(policyKey []byte) error {
+	v, err := m.txn.HGet(mPolicies, policyKey)
+	if err == nil && v == nil {
+		err = ErrPolicyNotExists.GenWithStack("policy doesn't exist")
+	}
+	return errors.Trace(err)
+}
+
+func (m *Meta) checkPolicyNotExists(policyKey []byte) error {
+	v, err := m.txn.HGet(mPolicies, policyKey)
+	if err == nil && v != nil {
+		err = ErrPolicyExists.GenWithStack("policy already exists")
+	}
+	return errors.Trace(err)
+}
+
 func (m *Meta) checkDBExists(dbKey []byte) error {
 	v, err := m.txn.HGet(mDBs, dbKey)
 	if err == nil && v == nil {
-		err = ErrDBNotExists
+		err = ErrDBNotExists.GenWithStack("database doesn't exist")
 	}
 	return errors.Trace(err)
 }
@@ -189,7 +261,7 @@ func (m *Meta) checkDBExists(dbKey []byte) error {
 func (m *Meta) checkDBNotExists(dbKey []byte) error {
 	v, err := m.txn.HGet(mDBs, dbKey)
 	if err == nil && v != nil {
-		err = ErrDBExists
+		err = ErrDBExists.GenWithStack("database already exists")
 	}
 	return errors.Trace(err)
 }
@@ -197,7 +269,7 @@ func (m *Meta) checkDBNotExists(dbKey []byte) error {
 func (m *Meta) checkTableExists(dbKey []byte, tableKey []byte) error {
 	v, err := m.txn.HGet(dbKey, tableKey)
 	if err == nil && v == nil {
-		err = ErrTableNotExists
+		err = ErrTableNotExists.GenWithStack("table doesn't exist")
 	}
 	return errors.Trace(err)
 }
@@ -205,9 +277,49 @@ func (m *Meta) checkTableExists(dbKey []byte, tableKey []byte) error {
 func (m *Meta) checkTableNotExists(dbKey []byte, tableKey []byte) error {
 	v, err := m.txn.HGet(dbKey, tableKey)
 	if err == nil && v != nil {
-		err = ErrTableExists
+		err = ErrTableExists.GenWithStack("table already exists")
 	}
 	return errors.Trace(err)
+}
+
+// CreatePolicy creates a policy.
+func (m *Meta) CreatePolicy(policy *model.PolicyInfo) error {
+	if policy.ID != 0 {
+		policyKey := m.policyKey(policy.ID)
+		if err := m.checkPolicyNotExists(policyKey); err != nil {
+			return errors.Trace(err)
+		}
+	} else {
+		// Autofill the policy ID.
+		policyIDMutex.Lock()
+		genID, err := m.txn.Inc(mPolicyGlobalID, 1)
+		if err != nil {
+			return errors.Trace(err)
+		}
+		policyIDMutex.Unlock()
+		policy.ID = genID
+	}
+	policyKey := m.policyKey(policy.ID)
+	data, err := json.Marshal(policy)
+	if err != nil {
+		return errors.Trace(err)
+	}
+	return m.txn.HSet(mPolicies, policyKey, attachMagicByte(data))
+}
+
+// UpdatePolicy updates a policy.
+func (m *Meta) UpdatePolicy(policy *model.PolicyInfo) error {
+	policyKey := m.policyKey(policy.ID)
+
+	if err := m.checkPolicyExists(policyKey); err != nil {
+		return errors.Trace(err)
+	}
+
+	data, err := json.Marshal(policy)
+	if err != nil {
+		return errors.Trace(err)
+	}
+	return m.txn.HSet(mPolicies, policyKey, attachMagicByte(data))
 }
 
 // CreateDatabase creates a database with db info.
@@ -266,13 +378,61 @@ func (m *Meta) CreateTableOrView(dbID int64, tableInfo *model.TableInfo) error {
 
 // CreateTableAndSetAutoID creates a table with tableInfo in database,
 // and rebases the table autoID.
-func (m *Meta) CreateTableAndSetAutoID(dbID int64, tableInfo *model.TableInfo, autoID int64) error {
+func (m *Meta) CreateTableAndSetAutoID(dbID int64, tableInfo *model.TableInfo, autoIncID, autoRandID int64) error {
 	err := m.CreateTableOrView(dbID, tableInfo)
 	if err != nil {
 		return errors.Trace(err)
 	}
-	_, err = m.txn.HInc(m.dbKey(dbID), m.autoTableIDKey(tableInfo.ID), autoID)
+	_, err = m.txn.HInc(m.dbKey(dbID), m.autoTableIDKey(tableInfo.ID), autoIncID)
+	if err != nil {
+		return errors.Trace(err)
+	}
+	if tableInfo.AutoRandomBits > 0 {
+		_, err = m.txn.HInc(m.dbKey(dbID), m.autoRandomTableIDKey(tableInfo.ID), autoRandID)
+		if err != nil {
+			return errors.Trace(err)
+		}
+	}
+	return nil
+}
+
+// CreateSequenceAndSetSeqValue creates sequence with tableInfo in database, and rebase the sequence seqValue.
+func (m *Meta) CreateSequenceAndSetSeqValue(dbID int64, tableInfo *model.TableInfo, seqValue int64) error {
+	err := m.CreateTableOrView(dbID, tableInfo)
+	if err != nil {
+		return errors.Trace(err)
+	}
+	_, err = m.txn.HInc(m.dbKey(dbID), m.sequenceKey(tableInfo.ID), seqValue)
 	return errors.Trace(err)
+}
+
+// RestartSequenceValue resets the the sequence value.
+func (m *Meta) RestartSequenceValue(dbID int64, tableInfo *model.TableInfo, seqValue int64) error {
+	// Check if db exists.
+	dbKey := m.dbKey(dbID)
+	if err := m.checkDBExists(dbKey); err != nil {
+		return errors.Trace(err)
+	}
+
+	// Check if table exists.
+	tableKey := m.tableKey(tableInfo.ID)
+	if err := m.checkTableExists(dbKey, tableKey); err != nil {
+		return errors.Trace(err)
+	}
+	return errors.Trace(m.txn.HSet(m.dbKey(dbID), m.sequenceKey(tableInfo.ID), []byte(strconv.FormatInt(seqValue, 10))))
+}
+
+// DropPolicy drops the specified policy.
+func (m *Meta) DropPolicy(policyID int64) error {
+	// Check if policy exists.
+	policyKey := m.policyKey(policyID)
+	if err := m.txn.HClear(policyKey); err != nil {
+		return errors.Trace(err)
+	}
+	if err := m.txn.HDel(mPolicies, policyKey); err != nil {
+		return errors.Trace(err)
+	}
+	return nil
 }
 
 // DropDatabase drops whole database.
@@ -290,10 +450,25 @@ func (m *Meta) DropDatabase(dbID int64) error {
 	return nil
 }
 
+// DropSequence drops sequence in database.
+// Sequence is made of table struct and kv value pair.
+func (m *Meta) DropSequence(dbID int64, tblID int64) error {
+	err := m.DropTableOrView(dbID, tblID)
+	if err != nil {
+		return err
+	}
+	err = m.GetAutoIDAccessors(dbID, tblID).Del()
+	if err != nil {
+		return err
+	}
+	err = m.txn.HDel(m.dbKey(dbID), m.sequenceKey(tblID))
+	return errors.Trace(err)
+}
+
 // DropTableOrView drops table in database.
 // If delAutoID is true, it will delete the auto_increment id key-value of the table.
 // For rename table, we do not need to rename auto_increment id key-value.
-func (m *Meta) DropTableOrView(dbID int64, tblID int64, delAutoID bool) error {
+func (m *Meta) DropTableOrView(dbID int64, tblID int64) error {
 	// Check if db exists.
 	dbKey := m.dbKey(dbID)
 	if err := m.checkDBExists(dbKey); err != nil {
@@ -308,11 +483,6 @@ func (m *Meta) DropTableOrView(dbID int64, tblID int64, delAutoID bool) error {
 
 	if err := m.txn.HDel(dbKey, tableKey); err != nil {
 		return errors.Trace(err)
-	}
-	if delAutoID {
-		if err := m.txn.HDel(dbKey, m.autoTableIDKey(tblID)); err != nil {
-			return errors.Trace(err)
-		}
 	}
 	return nil
 }
@@ -404,6 +574,77 @@ func (m *Meta) GetDatabase(dbID int64) (*model.DBInfo, error) {
 	return dbInfo, errors.Trace(err)
 }
 
+// ListPolicies shows all policies.
+func (m *Meta) ListPolicies() ([]*model.PolicyInfo, error) {
+	res, err := m.txn.HGetAll(mPolicies)
+	if err != nil {
+		return nil, errors.Trace(err)
+	}
+
+	policies := make([]*model.PolicyInfo, 0, len(res))
+	for _, r := range res {
+		value, err := detachMagicByte(r.Value)
+		if err != nil {
+			return nil, errors.Trace(err)
+		}
+		policy := &model.PolicyInfo{}
+		err = json.Unmarshal(value, policy)
+		if err != nil {
+			return nil, errors.Trace(err)
+		}
+		policies = append(policies, policy)
+	}
+	return policies, nil
+}
+
+// GetPolicy gets the database value with ID.
+func (m *Meta) GetPolicy(policyID int64) (*model.PolicyInfo, error) {
+	policyKey := m.policyKey(policyID)
+	value, err := m.txn.HGet(mPolicies, policyKey)
+	if err != nil {
+		return nil, errors.Trace(err)
+	}
+	if value == nil {
+		return nil, ErrPolicyNotExists.GenWithStack("policy id : %d doesn't exist", policyID)
+	}
+
+	value, err = detachMagicByte(value)
+	if err != nil {
+		return nil, errors.Trace(err)
+	}
+
+	policy := &model.PolicyInfo{}
+	err = json.Unmarshal(value, policy)
+	return policy, errors.Trace(err)
+}
+
+func attachMagicByte(data []byte) []byte {
+	data = append(data, 0)
+	copy(data[1:], data)
+	data[0] = mPolicyMagicByte
+	return data
+}
+
+func detachMagicByte(value []byte) ([]byte, error) {
+	magic, data := value[:1], value[1:]
+	switch whichMagicType(magic[0]) {
+	case typeJSON:
+		if magic[0] != CurrentMagicByteVer {
+			return nil, errors.New("incompatible magic type handling module")
+		}
+		return data, nil
+	default:
+		return nil, errors.New("unknown magic type handling module")
+	}
+}
+
+func whichMagicType(b byte) int {
+	if b <= 0x3F {
+		return typeJSON
+	}
+	return typeUnknown
+}
+
 // GetTable gets the table value in database with tableID.
 func (m *Meta) GetTable(dbID int64, tableID int64) (*model.TableInfo, error) {
 	// Check if db exists.
@@ -457,8 +698,13 @@ func (m *Meta) enQueueDDLJob(key []byte, job *model.Job) error {
 }
 
 // EnQueueDDLJob adds a DDL job to the list.
-func (m *Meta) EnQueueDDLJob(job *model.Job) error {
-	return m.enQueueDDLJob(m.jobListKey, job)
+func (m *Meta) EnQueueDDLJob(job *model.Job, jobListKeys ...JobListKeyType) error {
+	listKey := m.jobListKey
+	if len(jobListKeys) != 0 {
+		listKey = jobListKeys[0]
+	}
+
+	return m.enQueueDDLJob(listKey, job)
 }
 
 func (m *Meta) deQueueDDLJob(key []byte) (*model.Job, error) {
@@ -585,27 +831,47 @@ func (m *Meta) jobIDKey(id int64) []byte {
 	return b
 }
 
-func (m *Meta) reorgJobStartHandle(id int64) []byte {
-	// There is no "_start", to make it compatible with the older TiDB versions.
-	return m.jobIDKey(id)
+func (m *Meta) reorgJobCurrentElement(id int64) []byte {
+	b := make([]byte, 0, 12)
+	b = append(b, m.jobIDKey(id)...)
+	b = append(b, "_ele"...)
+	return b
 }
 
-func (m *Meta) reorgJobEndHandle(id int64) []byte {
-	b := make([]byte, 8, 12)
+func (m *Meta) reorgJobStartHandle(id int64, element *Element) []byte {
+	b := make([]byte, 0, 16+len(element.TypeKey))
+	b = append(b, m.jobIDKey(id)...)
+	b = append(b, element.TypeKey...)
+	eID := make([]byte, 8)
+	binary.BigEndian.PutUint64(eID, uint64(element.ID))
+	b = append(b, eID...)
+	return b
+}
+
+func (m *Meta) reorgJobEndHandle(id int64, element *Element) []byte {
+	b := make([]byte, 8, 25)
 	binary.BigEndian.PutUint64(b, uint64(id))
+	b = append(b, element.TypeKey...)
+	eID := make([]byte, 8)
+	binary.BigEndian.PutUint64(eID, uint64(element.ID))
+	b = append(b, eID...)
 	b = append(b, "_end"...)
 	return b
 }
 
-func (m *Meta) reorgJobPhysicalTableID(id int64) []byte {
-	b := make([]byte, 8, 12)
+func (m *Meta) reorgJobPhysicalTableID(id int64, element *Element) []byte {
+	b := make([]byte, 8, 25)
 	binary.BigEndian.PutUint64(b, uint64(id))
+	b = append(b, element.TypeKey...)
+	eID := make([]byte, 8)
+	binary.BigEndian.PutUint64(eID, uint64(element.ID))
+	b = append(b, eID...)
 	b = append(b, "_pid"...)
 	return b
 }
 
-func (m *Meta) addHistoryDDLJob(key []byte, job *model.Job) error {
-	b, err := job.Encode(true)
+func (m *Meta) addHistoryDDLJob(key []byte, job *model.Job, updateRawArgs bool) error {
+	b, err := job.Encode(updateRawArgs)
 	if err == nil {
 		err = m.txn.HSet(key, m.jobIDKey(job.ID), b)
 	}
@@ -613,8 +879,8 @@ func (m *Meta) addHistoryDDLJob(key []byte, job *model.Job) error {
 }
 
 // AddHistoryDDLJob adds DDL job to history.
-func (m *Meta) AddHistoryDDLJob(job *model.Job) error {
-	return m.addHistoryDDLJob(mDDLJobHistoryKey, job)
+func (m *Meta) AddHistoryDDLJob(job *model.Job, updateRawArgs bool) error {
+	return m.addHistoryDDLJob(mDDLJobHistoryKey, job, updateRawArgs)
 }
 
 func (m *Meta) getHistoryDDLJob(key []byte, id int64) (*model.Job, error) {
@@ -642,7 +908,14 @@ func (m *Meta) GetAllHistoryDDLJobs() ([]*model.Job, error) {
 	if err != nil {
 		return nil, errors.Trace(err)
 	}
-	return decodeAndSortJob(pairs)
+	jobs, err := decodeJob(pairs)
+	if err != nil {
+		return nil, errors.Trace(err)
+	}
+	// sort job.
+	sorter := &jobsSorter{jobs: jobs}
+	sort.Sort(sorter)
+	return jobs, nil
 }
 
 // GetLastNHistoryDDLJobs gets latest N history ddl jobs.
@@ -651,10 +924,48 @@ func (m *Meta) GetLastNHistoryDDLJobs(num int) ([]*model.Job, error) {
 	if err != nil {
 		return nil, errors.Trace(err)
 	}
-	return decodeAndSortJob(pairs)
+	return decodeJob(pairs)
 }
 
-func decodeAndSortJob(jobPairs []structure.HashPair) ([]*model.Job, error) {
+// LastJobIterator is the iterator for gets latest history.
+type LastJobIterator struct {
+	iter *structure.ReverseHashIterator
+}
+
+// GetLastHistoryDDLJobsIterator gets latest N history ddl jobs iterator.
+func (m *Meta) GetLastHistoryDDLJobsIterator() (*LastJobIterator, error) {
+	iter, err := structure.NewHashReverseIter(m.txn, mDDLJobHistoryKey)
+	if err != nil {
+		return nil, err
+	}
+	return &LastJobIterator{
+		iter: iter,
+	}, nil
+}
+
+// GetLastJobs gets last several jobs.
+func (i *LastJobIterator) GetLastJobs(num int, jobs []*model.Job) ([]*model.Job, error) {
+	if len(jobs) < num {
+		jobs = make([]*model.Job, 0, num)
+	}
+	jobs = jobs[:0]
+	iter := i.iter
+	for iter.Valid() && len(jobs) < num {
+		job := &model.Job{}
+		err := job.Decode(iter.Value())
+		if err != nil {
+			return nil, errors.Trace(err)
+		}
+		jobs = append(jobs, job)
+		err = iter.Next()
+		if err != nil {
+			return nil, errors.Trace(err)
+		}
+	}
+	return jobs, nil
+}
+
+func decodeJob(jobPairs []structure.HashPair) ([]*model.Job, error) {
 	jobs := make([]*model.Job, 0, len(jobPairs))
 	for _, pair := range jobPairs {
 		job := &model.Job{}
@@ -664,8 +975,6 @@ func decodeAndSortJob(jobPairs []structure.HashPair) ([]*model.Job, error) {
 		}
 		jobs = append(jobs, job)
 	}
-	sorter := &jobsSorter{jobs: jobs}
-	sort.Sort(sorter)
 	return jobs, nil
 }
 
@@ -686,7 +995,7 @@ func (s *jobsSorter) Less(i, j int) bool {
 	return s.jobs[i].ID < s.jobs[j].ID
 }
 
-// GetBootstrapVersion returns the version of the server which boostrap the store.
+// GetBootstrapVersion returns the version of the server which bootstrap the store.
 // If the store is not bootstraped, the version will be zero.
 func (m *Meta) GetBootstrapVersion() (int64, error) {
 	value, err := m.txn.GetInt64(mBootstrapKey)
@@ -699,73 +1008,191 @@ func (m *Meta) FinishBootstrap(version int64) error {
 	return errors.Trace(err)
 }
 
-// UpdateDDLReorgStartHandle saves the job reorganization latest processed start handle for later resuming.
-func (m *Meta) UpdateDDLReorgStartHandle(job *model.Job, startHandle int64) error {
-	err := m.txn.HSet(mDDLJobReorgKey, m.reorgJobStartHandle(job.ID), []byte(strconv.FormatInt(startHandle, 10)))
-	return errors.Trace(err)
+// ElementKeyType is a key type of the element.
+type ElementKeyType []byte
+
+var (
+	// ColumnElementKey is the key for column element.
+	ColumnElementKey ElementKeyType = []byte("_col_")
+	// IndexElementKey is the key for index element.
+	IndexElementKey ElementKeyType = []byte("_idx_")
+)
+
+const elementKeyLen = 5
+
+// Element has the information of the backfill job's type and ID.
+type Element struct {
+	ID      int64
+	TypeKey []byte
+}
+
+// String defines a Stringer function for debugging and pretty printing.
+func (e *Element) String() string {
+	return "ID:" + strconv.FormatInt(e.ID, 10) + "," +
+		"TypeKey:" + string(e.TypeKey)
+}
+
+// EncodeElement encodes an Element into a byte slice.
+// It's exported for testing.
+func (e *Element) EncodeElement() []byte {
+	b := make([]byte, 13)
+	copy(b[:elementKeyLen], e.TypeKey)
+	binary.BigEndian.PutUint64(b[elementKeyLen:], uint64(e.ID))
+	return b
+}
+
+// DecodeElement decodes values from a byte slice generated with an element.
+// It's exported for testing.
+func DecodeElement(b []byte) (*Element, error) {
+	if len(b) < elementKeyLen+8 {
+		return nil, errors.Errorf("invalid encoded element %q length %d", b, len(b))
+	}
+
+	var tp []byte
+	prefix := b[:elementKeyLen]
+	b = b[elementKeyLen:]
+	switch string(prefix) {
+	case string(IndexElementKey):
+		tp = IndexElementKey
+	case string(ColumnElementKey):
+		tp = ColumnElementKey
+	default:
+		return nil, errors.Errorf("invalid encoded element key prefix %q", prefix)
+	}
+
+	id := binary.BigEndian.Uint64(b)
+	return &Element{ID: int64(id), TypeKey: tp}, nil
+}
+
+// UpdateDDLReorgStartHandle saves the job reorganization latest processed element and start handle for later resuming.
+func (m *Meta) UpdateDDLReorgStartHandle(job *model.Job, element *Element, startKey kv.Key) error {
+	err := m.txn.HSet(mDDLJobReorgKey, m.reorgJobCurrentElement(job.ID), element.EncodeElement())
+	if err != nil {
+		return errors.Trace(err)
+	}
+	if startKey != nil {
+		err = m.txn.HSet(mDDLJobReorgKey, m.reorgJobStartHandle(job.ID, element), startKey)
+		if err != nil {
+			return errors.Trace(err)
+		}
+	}
+	return nil
 }
 
 // UpdateDDLReorgHandle saves the job reorganization latest processed information for later resuming.
-func (m *Meta) UpdateDDLReorgHandle(job *model.Job, startHandle, endHandle, physicalTableID int64) error {
-	err := m.txn.HSet(mDDLJobReorgKey, m.reorgJobStartHandle(job.ID), []byte(strconv.FormatInt(startHandle, 10)))
+func (m *Meta) UpdateDDLReorgHandle(job *model.Job, startKey, endKey kv.Key, physicalTableID int64, element *Element) error {
+	err := m.txn.HSet(mDDLJobReorgKey, m.reorgJobCurrentElement(job.ID), element.EncodeElement())
 	if err != nil {
 		return errors.Trace(err)
 	}
-	err = m.txn.HSet(mDDLJobReorgKey, m.reorgJobEndHandle(job.ID), []byte(strconv.FormatInt(endHandle, 10)))
-	if err != nil {
-		return errors.Trace(err)
+	if startKey != nil {
+		err = m.txn.HSet(mDDLJobReorgKey, m.reorgJobStartHandle(job.ID, element), startKey)
+		if err != nil {
+			return errors.Trace(err)
+		}
 	}
-	err = m.txn.HSet(mDDLJobReorgKey, m.reorgJobPhysicalTableID(job.ID), []byte(strconv.FormatInt(physicalTableID, 10)))
+	if endKey != nil {
+		err = m.txn.HSet(mDDLJobReorgKey, m.reorgJobEndHandle(job.ID, element), endKey)
+		if err != nil {
+			return errors.Trace(err)
+		}
+	}
+	err = m.txn.HSet(mDDLJobReorgKey, m.reorgJobPhysicalTableID(job.ID, element), []byte(strconv.FormatInt(physicalTableID, 10)))
 	return errors.Trace(err)
 }
 
-// RemoveDDLReorgHandle removes the job reorganization related handles.
-func (m *Meta) RemoveDDLReorgHandle(job *model.Job) error {
-	err := m.txn.HDel(mDDLJobReorgKey, m.reorgJobStartHandle(job.ID))
+// RemoveReorgElement removes the element of the reorganization information.
+// It's used for testing.
+func (m *Meta) RemoveReorgElement(job *model.Job) error {
+	err := m.txn.HDel(mDDLJobReorgKey, m.reorgJobCurrentElement(job.ID))
 	if err != nil {
 		return errors.Trace(err)
 	}
-	if err = m.txn.HDel(mDDLJobReorgKey, m.reorgJobEndHandle(job.ID)); err != nil {
-		logutil.Logger(context.Background()).Warn("remove DDL reorg end handle", zap.Error(err))
+	return nil
+}
+
+// RemoveDDLReorgHandle removes the job reorganization related handles.
+func (m *Meta) RemoveDDLReorgHandle(job *model.Job, elements []*Element) error {
+	if len(elements) == 0 {
+		return nil
 	}
-	if err = m.txn.HDel(mDDLJobReorgKey, m.reorgJobPhysicalTableID(job.ID)); err != nil {
-		logutil.Logger(context.Background()).Warn("remove DDL reorg physical ID", zap.Error(err))
+
+	err := m.txn.HDel(mDDLJobReorgKey, m.reorgJobCurrentElement(job.ID))
+	if err != nil {
+		return errors.Trace(err)
+	}
+
+	for _, element := range elements {
+		err = m.txn.HDel(mDDLJobReorgKey, m.reorgJobStartHandle(job.ID, element))
+		if err != nil {
+			return errors.Trace(err)
+		}
+		if err = m.txn.HDel(mDDLJobReorgKey, m.reorgJobEndHandle(job.ID, element)); err != nil {
+			logutil.BgLogger().Warn("remove DDL reorg end handle", zap.Error(err))
+		}
+		if err = m.txn.HDel(mDDLJobReorgKey, m.reorgJobPhysicalTableID(job.ID, element)); err != nil {
+			logutil.BgLogger().Warn("remove DDL reorg physical ID", zap.Error(err))
+		}
 	}
 	return nil
 }
 
 // GetDDLReorgHandle gets the latest processed DDL reorganize position.
-func (m *Meta) GetDDLReorgHandle(job *model.Job) (startHandle, endHandle, physicalTableID int64, err error) {
-	startHandle, err = m.txn.HGetInt64(mDDLJobReorgKey, m.reorgJobStartHandle(job.ID))
+func (m *Meta) GetDDLReorgHandle(job *model.Job) (element *Element, startKey, endKey kv.Key, physicalTableID int64, err error) {
+	elementBytes, err := m.txn.HGet(mDDLJobReorgKey, m.reorgJobCurrentElement(job.ID))
+	if err != nil {
+		return nil, nil, nil, 0, errors.Trace(err)
+	}
+	if elementBytes == nil {
+		return nil, nil, nil, 0, ErrDDLReorgElementNotExist
+	}
+	element, err = DecodeElement(elementBytes)
+	if err != nil {
+		return nil, nil, nil, 0, errors.Trace(err)
+	}
+
+	startKey, err = getReorgJobFieldHandle(m.txn, m.reorgJobStartHandle(job.ID, element))
+	if err != nil {
+		return nil, nil, nil, 0, errors.Trace(err)
+	}
+	endKey, err = getReorgJobFieldHandle(m.txn, m.reorgJobEndHandle(job.ID, element))
+	if err != nil {
+		return nil, nil, nil, 0, errors.Trace(err)
+	}
+
+	physicalTableID, err = m.txn.HGetInt64(mDDLJobReorgKey, m.reorgJobPhysicalTableID(job.ID, element))
 	if err != nil {
 		err = errors.Trace(err)
 		return
 	}
-	endHandle, err = m.txn.HGetInt64(mDDLJobReorgKey, m.reorgJobEndHandle(job.ID))
-	if err != nil {
-		err = errors.Trace(err)
-		return
-	}
-	physicalTableID, err = m.txn.HGetInt64(mDDLJobReorgKey, m.reorgJobPhysicalTableID(job.ID))
-	if err != nil {
-		err = errors.Trace(err)
-		return
-	}
+
 	// physicalTableID may be 0, because older version TiDB (without table partition) doesn't store them.
 	// update them to table's in this case.
 	if physicalTableID == 0 {
 		if job.ReorgMeta != nil {
-			endHandle = job.ReorgMeta.EndHandle
+			endKey = kv.IntHandle(job.ReorgMeta.EndHandle).Encoded()
 		} else {
-			endHandle = math.MaxInt64
+			endKey = kv.IntHandle(math.MaxInt64).Encoded()
 		}
 		physicalTableID = job.TableID
-		logutil.Logger(context.Background()).Warn("new TiDB binary running on old TiDB DDL reorg data",
+		logutil.BgLogger().Warn("new TiDB binary running on old TiDB DDL reorg data",
 			zap.Int64("partition ID", physicalTableID),
-			zap.Int64("startHandle", startHandle),
-			zap.Int64("endHandle", endHandle))
+			zap.Stringer("startHandle", startKey),
+			zap.Stringer("endHandle", endKey))
 	}
 	return
+}
+
+func getReorgJobFieldHandle(t *structure.TxStructure, reorgJobField []byte) (kv.Key, error) {
+	bs, err := t.HGet(mDDLJobReorgKey, reorgJobField)
+	if err != nil {
+		return nil, errors.Trace(err)
+	}
+	keyNotFound := bs == nil
+	if keyNotFound {
+		return nil, nil
+	}
+	return bs, nil
 }
 
 func (m *Meta) schemaDiffKey(schemaVersion int64) []byte {
@@ -797,25 +1224,4 @@ func (m *Meta) SetSchemaDiff(diff *model.SchemaDiff) error {
 	err = m.txn.Set(diffKey, data)
 	metrics.MetaHistogram.WithLabelValues(metrics.SetSchemaDiff, metrics.RetLabel(err)).Observe(time.Since(startTime).Seconds())
 	return errors.Trace(err)
-}
-
-// meta error codes.
-const (
-	codeInvalidTableKey terror.ErrCode = 1
-	codeInvalidDBKey                   = 2
-
-	codeDatabaseExists    = 1007
-	codeDatabaseNotExists = 1049
-	codeTableExists       = 1050
-	codeTableNotExists    = 1146
-)
-
-func init() {
-	metaMySQLErrCodes := map[terror.ErrCode]uint16{
-		codeDatabaseExists:    mysql.ErrDBCreateExists,
-		codeDatabaseNotExists: mysql.ErrBadDB,
-		codeTableNotExists:    mysql.ErrNoSuchTable,
-		codeTableExists:       mysql.ErrTableExists,
-	}
-	terror.ErrClassToMySQLCodes[terror.ClassMeta] = metaMySQLErrCodes
 }

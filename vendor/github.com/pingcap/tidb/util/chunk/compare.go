@@ -8,15 +8,17 @@
 //
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
 package chunk
 
 import (
+	"bytes"
 	"sort"
 
-	"github.com/pingcap/parser/mysql"
+	"github.com/pingcap/tidb/parser/mysql"
 	"github.com/pingcap/tidb/types"
 	"github.com/pingcap/tidb/types/json"
 )
@@ -38,7 +40,7 @@ func GetCompareFunc(tp *types.FieldType) CompareFunc {
 		return cmpFloat64
 	case mysql.TypeString, mysql.TypeVarString, mysql.TypeVarchar,
 		mysql.TypeBlob, mysql.TypeTinyBlob, mysql.TypeMediumBlob, mysql.TypeLongBlob:
-		return cmpString
+		return genCmpStringFunc(tp.Collate)
 	case mysql.TypeDate, mysql.TypeDatetime, mysql.TypeTimestamp:
 		return cmpTime
 	case mysql.TypeDuration:
@@ -81,12 +83,18 @@ func cmpUint64(l Row, lCol int, r Row, rCol int) int {
 	return types.CompareUint64(l.GetUint64(lCol), r.GetUint64(rCol))
 }
 
-func cmpString(l Row, lCol int, r Row, rCol int) int {
+func genCmpStringFunc(collation string) func(l Row, lCol int, r Row, rCol int) int {
+	return func(l Row, lCol int, r Row, rCol int) int {
+		return cmpStringWithCollationInfo(l, lCol, r, rCol, collation)
+	}
+}
+
+func cmpStringWithCollationInfo(l Row, lCol int, r Row, rCol int, collation string) int {
 	lNull, rNull := l.IsNull(lCol), r.IsNull(rCol)
 	if lNull || rNull {
 		return cmpNull(lNull, rNull)
 	}
-	return types.CompareString(l.GetString(lCol), r.GetString(rCol))
+	return types.CompareString(l.GetString(lCol), r.GetString(rCol), collation)
 }
 
 func cmpFloat32(l Row, lCol int, r Row, rCol int) int {
@@ -162,6 +170,7 @@ func cmpJSON(l Row, lCol int, r Row, rCol int) int {
 }
 
 // Compare compares the value with ad.
+// We assume that the collation information of the column is the same with the datum.
 func Compare(row Row, colIdx int, ad *types.Datum) int {
 	switch ad.Kind() {
 	case types.KindNull:
@@ -184,8 +193,10 @@ func Compare(row Row, colIdx int, ad *types.Datum) int {
 		return types.CompareFloat64(float64(row.GetFloat32(colIdx)), float64(ad.GetFloat32()))
 	case types.KindFloat64:
 		return types.CompareFloat64(row.GetFloat64(colIdx), ad.GetFloat64())
-	case types.KindString, types.KindBytes, types.KindBinaryLiteral, types.KindMysqlBit:
-		return types.CompareString(row.GetString(colIdx), ad.GetString())
+	case types.KindString:
+		return types.CompareString(row.GetString(colIdx), ad.GetString(), ad.Collation())
+	case types.KindBytes, types.KindBinaryLiteral, types.KindMysqlBit:
+		return bytes.Compare(row.GetBytes(colIdx), ad.GetBytes())
 	case types.KindMysqlDecimal:
 		l, r := row.GetMyDecimal(colIdx), ad.GetMysqlDecimal()
 		return l.Compare(r)
@@ -209,7 +220,7 @@ func Compare(row Row, colIdx int, ad *types.Datum) int {
 	}
 }
 
-// LowerBound searches on the non-decreasing column colIdx,
+// LowerBound searches on the non-decreasing Column colIdx,
 // returns the smallest index i such that the value at row i is not less than `d`.
 func (c *Chunk) LowerBound(colIdx int, d *types.Datum) (index int, match bool) {
 	index = sort.Search(c.NumRows(), func(i int) bool {
@@ -222,7 +233,7 @@ func (c *Chunk) LowerBound(colIdx int, d *types.Datum) (index int, match bool) {
 	return
 }
 
-// UpperBound searches on the non-decreasing column colIdx,
+// UpperBound searches on the non-decreasing Column colIdx,
 // returns the smallest index i such that the value at row i is larger than `d`.
 func (c *Chunk) UpperBound(colIdx int, d *types.Datum) int {
 	return sort.Search(c.NumRows(), func(i int) bool {

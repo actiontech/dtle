@@ -18,8 +18,8 @@ import (
 
 	sqle "github.com/actiontech/dtle/drivers/mysql/mysql/sqle/inspector"
 
-	"github.com/pingcap/parser/ast"
-	parsermysql "github.com/pingcap/parser/mysql"
+	"github.com/pingcap/tidb/parser/ast"
+	parsermysql "github.com/pingcap/tidb/parser/mysql"
 
 	"database/sql"
 

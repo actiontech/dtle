@@ -3,7 +3,7 @@ package inspector
 import (
 	"bytes"
 	"fmt"
-	"github.com/pingcap/parser/ast"
+	"github.com/pingcap/tidb/parser/ast"
 	"strings"
 )
 

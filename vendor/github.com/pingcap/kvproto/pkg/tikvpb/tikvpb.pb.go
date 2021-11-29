@@ -16,6 +16,8 @@ import (
 
 	kvrpcpb "github.com/pingcap/kvproto/pkg/kvrpcpb"
 
+	mpp "github.com/pingcap/kvproto/pkg/mpp"
+
 	raft_serverpb "github.com/pingcap/kvproto/pkg/raft_serverpb"
 
 	context "golang.org/x/net/context"
@@ -46,7 +48,7 @@ func (m *BatchCommandsRequest) Reset()         { *m = BatchCommandsRequest{} }
 func (m *BatchCommandsRequest) String() string { return proto.CompactTextString(m) }
 func (*BatchCommandsRequest) ProtoMessage()    {}
 func (*BatchCommandsRequest) Descriptor() ([]byte, []int) {
-	return fileDescriptor_tikvpb_0f37d68de6f9c811, []int{0}
+	return fileDescriptor_tikvpb_92b152ac586f1929, []int{0}
 }
 func (m *BatchCommandsRequest) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -115,6 +117,10 @@ type BatchCommandsRequest_Request struct {
 	//	*BatchCommandsRequest_Request_Coprocessor
 	//	*BatchCommandsRequest_Request_PessimisticLock
 	//	*BatchCommandsRequest_Request_PessimisticRollback
+	//	*BatchCommandsRequest_Request_CheckTxnStatus
+	//	*BatchCommandsRequest_Request_TxnHeartBeat
+	//	*BatchCommandsRequest_Request_CheckSecondaryLocks
+	//	*BatchCommandsRequest_Request_RawCoprocessor
 	//	*BatchCommandsRequest_Request_Empty
 	Cmd                  isBatchCommandsRequest_Request_Cmd `protobuf_oneof:"cmd"`
 	XXX_NoUnkeyedLiteral struct{}                           `json:"-"`
@@ -126,7 +132,7 @@ func (m *BatchCommandsRequest_Request) Reset()         { *m = BatchCommandsReque
 func (m *BatchCommandsRequest_Request) String() string { return proto.CompactTextString(m) }
 func (*BatchCommandsRequest_Request) ProtoMessage()    {}
 func (*BatchCommandsRequest_Request) Descriptor() ([]byte, []int) {
-	return fileDescriptor_tikvpb_0f37d68de6f9c811, []int{0, 0}
+	return fileDescriptor_tikvpb_92b152ac586f1929, []int{0, 0}
 }
 func (m *BatchCommandsRequest_Request) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -233,6 +239,18 @@ type BatchCommandsRequest_Request_PessimisticLock struct {
 type BatchCommandsRequest_Request_PessimisticRollback struct {
 	PessimisticRollback *kvrpcpb.PessimisticRollbackRequest `protobuf:"bytes,24,opt,name=PessimisticRollback,oneof"`
 }
+type BatchCommandsRequest_Request_CheckTxnStatus struct {
+	CheckTxnStatus *kvrpcpb.CheckTxnStatusRequest `protobuf:"bytes,25,opt,name=CheckTxnStatus,oneof"`
+}
+type BatchCommandsRequest_Request_TxnHeartBeat struct {
+	TxnHeartBeat *kvrpcpb.TxnHeartBeatRequest `protobuf:"bytes,26,opt,name=TxnHeartBeat,oneof"`
+}
+type BatchCommandsRequest_Request_CheckSecondaryLocks struct {
+	CheckSecondaryLocks *kvrpcpb.CheckSecondaryLocksRequest `protobuf:"bytes,33,opt,name=CheckSecondaryLocks,oneof"`
+}
+type BatchCommandsRequest_Request_RawCoprocessor struct {
+	RawCoprocessor *kvrpcpb.RawCoprocessorRequest `protobuf:"bytes,34,opt,name=RawCoprocessor,oneof"`
+}
 type BatchCommandsRequest_Request_Empty struct {
 	Empty *BatchCommandsEmptyRequest `protobuf:"bytes,255,opt,name=Empty,oneof"`
 }
@@ -261,6 +279,10 @@ func (*BatchCommandsRequest_Request_RawBatchScan) isBatchCommandsRequest_Request
 func (*BatchCommandsRequest_Request_Coprocessor) isBatchCommandsRequest_Request_Cmd()         {}
 func (*BatchCommandsRequest_Request_PessimisticLock) isBatchCommandsRequest_Request_Cmd()     {}
 func (*BatchCommandsRequest_Request_PessimisticRollback) isBatchCommandsRequest_Request_Cmd() {}
+func (*BatchCommandsRequest_Request_CheckTxnStatus) isBatchCommandsRequest_Request_Cmd()      {}
+func (*BatchCommandsRequest_Request_TxnHeartBeat) isBatchCommandsRequest_Request_Cmd()        {}
+func (*BatchCommandsRequest_Request_CheckSecondaryLocks) isBatchCommandsRequest_Request_Cmd() {}
+func (*BatchCommandsRequest_Request_RawCoprocessor) isBatchCommandsRequest_Request_Cmd()      {}
 func (*BatchCommandsRequest_Request_Empty) isBatchCommandsRequest_Request_Cmd()               {}
 
 func (m *BatchCommandsRequest_Request) GetCmd() isBatchCommandsRequest_Request_Cmd {
@@ -438,6 +460,34 @@ func (m *BatchCommandsRequest_Request) GetPessimisticRollback() *kvrpcpb.Pessimi
 	return nil
 }
 
+func (m *BatchCommandsRequest_Request) GetCheckTxnStatus() *kvrpcpb.CheckTxnStatusRequest {
+	if x, ok := m.GetCmd().(*BatchCommandsRequest_Request_CheckTxnStatus); ok {
+		return x.CheckTxnStatus
+	}
+	return nil
+}
+
+func (m *BatchCommandsRequest_Request) GetTxnHeartBeat() *kvrpcpb.TxnHeartBeatRequest {
+	if x, ok := m.GetCmd().(*BatchCommandsRequest_Request_TxnHeartBeat); ok {
+		return x.TxnHeartBeat
+	}
+	return nil
+}
+
+func (m *BatchCommandsRequest_Request) GetCheckSecondaryLocks() *kvrpcpb.CheckSecondaryLocksRequest {
+	if x, ok := m.GetCmd().(*BatchCommandsRequest_Request_CheckSecondaryLocks); ok {
+		return x.CheckSecondaryLocks
+	}
+	return nil
+}
+
+func (m *BatchCommandsRequest_Request) GetRawCoprocessor() *kvrpcpb.RawCoprocessorRequest {
+	if x, ok := m.GetCmd().(*BatchCommandsRequest_Request_RawCoprocessor); ok {
+		return x.RawCoprocessor
+	}
+	return nil
+}
+
 func (m *BatchCommandsRequest_Request) GetEmpty() *BatchCommandsEmptyRequest {
 	if x, ok := m.GetCmd().(*BatchCommandsRequest_Request_Empty); ok {
 		return x.Empty
@@ -472,6 +522,10 @@ func (*BatchCommandsRequest_Request) XXX_OneofFuncs() (func(msg proto.Message, b
 		(*BatchCommandsRequest_Request_Coprocessor)(nil),
 		(*BatchCommandsRequest_Request_PessimisticLock)(nil),
 		(*BatchCommandsRequest_Request_PessimisticRollback)(nil),
+		(*BatchCommandsRequest_Request_CheckTxnStatus)(nil),
+		(*BatchCommandsRequest_Request_TxnHeartBeat)(nil),
+		(*BatchCommandsRequest_Request_CheckSecondaryLocks)(nil),
+		(*BatchCommandsRequest_Request_RawCoprocessor)(nil),
 		(*BatchCommandsRequest_Request_Empty)(nil),
 	}
 }
@@ -598,6 +652,26 @@ func _BatchCommandsRequest_Request_OneofMarshaler(msg proto.Message, b *proto.Bu
 	case *BatchCommandsRequest_Request_PessimisticRollback:
 		_ = b.EncodeVarint(24<<3 | proto.WireBytes)
 		if err := b.EncodeMessage(x.PessimisticRollback); err != nil {
+			return err
+		}
+	case *BatchCommandsRequest_Request_CheckTxnStatus:
+		_ = b.EncodeVarint(25<<3 | proto.WireBytes)
+		if err := b.EncodeMessage(x.CheckTxnStatus); err != nil {
+			return err
+		}
+	case *BatchCommandsRequest_Request_TxnHeartBeat:
+		_ = b.EncodeVarint(26<<3 | proto.WireBytes)
+		if err := b.EncodeMessage(x.TxnHeartBeat); err != nil {
+			return err
+		}
+	case *BatchCommandsRequest_Request_CheckSecondaryLocks:
+		_ = b.EncodeVarint(33<<3 | proto.WireBytes)
+		if err := b.EncodeMessage(x.CheckSecondaryLocks); err != nil {
+			return err
+		}
+	case *BatchCommandsRequest_Request_RawCoprocessor:
+		_ = b.EncodeVarint(34<<3 | proto.WireBytes)
+		if err := b.EncodeMessage(x.RawCoprocessor); err != nil {
 			return err
 		}
 	case *BatchCommandsRequest_Request_Empty:
@@ -807,6 +881,38 @@ func _BatchCommandsRequest_Request_OneofUnmarshaler(msg proto.Message, tag, wire
 		err := b.DecodeMessage(msg)
 		m.Cmd = &BatchCommandsRequest_Request_PessimisticRollback{msg}
 		return true, err
+	case 25: // cmd.CheckTxnStatus
+		if wire != proto.WireBytes {
+			return true, proto.ErrInternalBadWireType
+		}
+		msg := new(kvrpcpb.CheckTxnStatusRequest)
+		err := b.DecodeMessage(msg)
+		m.Cmd = &BatchCommandsRequest_Request_CheckTxnStatus{msg}
+		return true, err
+	case 26: // cmd.TxnHeartBeat
+		if wire != proto.WireBytes {
+			return true, proto.ErrInternalBadWireType
+		}
+		msg := new(kvrpcpb.TxnHeartBeatRequest)
+		err := b.DecodeMessage(msg)
+		m.Cmd = &BatchCommandsRequest_Request_TxnHeartBeat{msg}
+		return true, err
+	case 33: // cmd.CheckSecondaryLocks
+		if wire != proto.WireBytes {
+			return true, proto.ErrInternalBadWireType
+		}
+		msg := new(kvrpcpb.CheckSecondaryLocksRequest)
+		err := b.DecodeMessage(msg)
+		m.Cmd = &BatchCommandsRequest_Request_CheckSecondaryLocks{msg}
+		return true, err
+	case 34: // cmd.RawCoprocessor
+		if wire != proto.WireBytes {
+			return true, proto.ErrInternalBadWireType
+		}
+		msg := new(kvrpcpb.RawCoprocessorRequest)
+		err := b.DecodeMessage(msg)
+		m.Cmd = &BatchCommandsRequest_Request_RawCoprocessor{msg}
+		return true, err
 	case 255: // cmd.Empty
 		if wire != proto.WireBytes {
 			return true, proto.ErrInternalBadWireType
@@ -944,6 +1050,26 @@ func _BatchCommandsRequest_Request_OneofSizer(msg proto.Message) (n int) {
 		n += 2 // tag and wire
 		n += proto.SizeVarint(uint64(s))
 		n += s
+	case *BatchCommandsRequest_Request_CheckTxnStatus:
+		s := proto.Size(x.CheckTxnStatus)
+		n += 2 // tag and wire
+		n += proto.SizeVarint(uint64(s))
+		n += s
+	case *BatchCommandsRequest_Request_TxnHeartBeat:
+		s := proto.Size(x.TxnHeartBeat)
+		n += 2 // tag and wire
+		n += proto.SizeVarint(uint64(s))
+		n += s
+	case *BatchCommandsRequest_Request_CheckSecondaryLocks:
+		s := proto.Size(x.CheckSecondaryLocks)
+		n += 2 // tag and wire
+		n += proto.SizeVarint(uint64(s))
+		n += s
+	case *BatchCommandsRequest_Request_RawCoprocessor:
+		s := proto.Size(x.RawCoprocessor)
+		n += 2 // tag and wire
+		n += proto.SizeVarint(uint64(s))
+		n += s
 	case *BatchCommandsRequest_Request_Empty:
 		s := proto.Size(x.Empty)
 		n += 2 // tag and wire
@@ -970,7 +1096,7 @@ func (m *BatchCommandsResponse) Reset()         { *m = BatchCommandsResponse{} }
 func (m *BatchCommandsResponse) String() string { return proto.CompactTextString(m) }
 func (*BatchCommandsResponse) ProtoMessage()    {}
 func (*BatchCommandsResponse) Descriptor() ([]byte, []int) {
-	return fileDescriptor_tikvpb_0f37d68de6f9c811, []int{1}
+	return fileDescriptor_tikvpb_92b152ac586f1929, []int{1}
 }
 func (m *BatchCommandsResponse) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -1046,6 +1172,10 @@ type BatchCommandsResponse_Response struct {
 	//	*BatchCommandsResponse_Response_Coprocessor
 	//	*BatchCommandsResponse_Response_PessimisticLock
 	//	*BatchCommandsResponse_Response_PessimisticRollback
+	//	*BatchCommandsResponse_Response_CheckTxnStatus
+	//	*BatchCommandsResponse_Response_TxnHeartBeat
+	//	*BatchCommandsResponse_Response_CheckSecondaryLocks
+	//	*BatchCommandsResponse_Response_RawCoprocessor
 	//	*BatchCommandsResponse_Response_Empty
 	Cmd                  isBatchCommandsResponse_Response_Cmd `protobuf_oneof:"cmd"`
 	XXX_NoUnkeyedLiteral struct{}                             `json:"-"`
@@ -1057,7 +1187,7 @@ func (m *BatchCommandsResponse_Response) Reset()         { *m = BatchCommandsRes
 func (m *BatchCommandsResponse_Response) String() string { return proto.CompactTextString(m) }
 func (*BatchCommandsResponse_Response) ProtoMessage()    {}
 func (*BatchCommandsResponse_Response) Descriptor() ([]byte, []int) {
-	return fileDescriptor_tikvpb_0f37d68de6f9c811, []int{1, 0}
+	return fileDescriptor_tikvpb_92b152ac586f1929, []int{1, 0}
 }
 func (m *BatchCommandsResponse_Response) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -1164,6 +1294,18 @@ type BatchCommandsResponse_Response_PessimisticLock struct {
 type BatchCommandsResponse_Response_PessimisticRollback struct {
 	PessimisticRollback *kvrpcpb.PessimisticRollbackResponse `protobuf:"bytes,24,opt,name=PessimisticRollback,oneof"`
 }
+type BatchCommandsResponse_Response_CheckTxnStatus struct {
+	CheckTxnStatus *kvrpcpb.CheckTxnStatusResponse `protobuf:"bytes,25,opt,name=CheckTxnStatus,oneof"`
+}
+type BatchCommandsResponse_Response_TxnHeartBeat struct {
+	TxnHeartBeat *kvrpcpb.TxnHeartBeatResponse `protobuf:"bytes,26,opt,name=TxnHeartBeat,oneof"`
+}
+type BatchCommandsResponse_Response_CheckSecondaryLocks struct {
+	CheckSecondaryLocks *kvrpcpb.CheckSecondaryLocksResponse `protobuf:"bytes,33,opt,name=CheckSecondaryLocks,oneof"`
+}
+type BatchCommandsResponse_Response_RawCoprocessor struct {
+	RawCoprocessor *kvrpcpb.RawCoprocessorResponse `protobuf:"bytes,34,opt,name=RawCoprocessor,oneof"`
+}
 type BatchCommandsResponse_Response_Empty struct {
 	Empty *BatchCommandsEmptyResponse `protobuf:"bytes,255,opt,name=Empty,oneof"`
 }
@@ -1192,6 +1334,10 @@ func (*BatchCommandsResponse_Response_RawBatchScan) isBatchCommandsResponse_Resp
 func (*BatchCommandsResponse_Response_Coprocessor) isBatchCommandsResponse_Response_Cmd()         {}
 func (*BatchCommandsResponse_Response_PessimisticLock) isBatchCommandsResponse_Response_Cmd()     {}
 func (*BatchCommandsResponse_Response_PessimisticRollback) isBatchCommandsResponse_Response_Cmd() {}
+func (*BatchCommandsResponse_Response_CheckTxnStatus) isBatchCommandsResponse_Response_Cmd()      {}
+func (*BatchCommandsResponse_Response_TxnHeartBeat) isBatchCommandsResponse_Response_Cmd()        {}
+func (*BatchCommandsResponse_Response_CheckSecondaryLocks) isBatchCommandsResponse_Response_Cmd() {}
+func (*BatchCommandsResponse_Response_RawCoprocessor) isBatchCommandsResponse_Response_Cmd()      {}
 func (*BatchCommandsResponse_Response_Empty) isBatchCommandsResponse_Response_Cmd()               {}
 
 func (m *BatchCommandsResponse_Response) GetCmd() isBatchCommandsResponse_Response_Cmd {
@@ -1369,6 +1515,34 @@ func (m *BatchCommandsResponse_Response) GetPessimisticRollback() *kvrpcpb.Pessi
 	return nil
 }
 
+func (m *BatchCommandsResponse_Response) GetCheckTxnStatus() *kvrpcpb.CheckTxnStatusResponse {
+	if x, ok := m.GetCmd().(*BatchCommandsResponse_Response_CheckTxnStatus); ok {
+		return x.CheckTxnStatus
+	}
+	return nil
+}
+
+func (m *BatchCommandsResponse_Response) GetTxnHeartBeat() *kvrpcpb.TxnHeartBeatResponse {
+	if x, ok := m.GetCmd().(*BatchCommandsResponse_Response_TxnHeartBeat); ok {
+		return x.TxnHeartBeat
+	}
+	return nil
+}
+
+func (m *BatchCommandsResponse_Response) GetCheckSecondaryLocks() *kvrpcpb.CheckSecondaryLocksResponse {
+	if x, ok := m.GetCmd().(*BatchCommandsResponse_Response_CheckSecondaryLocks); ok {
+		return x.CheckSecondaryLocks
+	}
+	return nil
+}
+
+func (m *BatchCommandsResponse_Response) GetRawCoprocessor() *kvrpcpb.RawCoprocessorResponse {
+	if x, ok := m.GetCmd().(*BatchCommandsResponse_Response_RawCoprocessor); ok {
+		return x.RawCoprocessor
+	}
+	return nil
+}
+
 func (m *BatchCommandsResponse_Response) GetEmpty() *BatchCommandsEmptyResponse {
 	if x, ok := m.GetCmd().(*BatchCommandsResponse_Response_Empty); ok {
 		return x.Empty
@@ -1403,6 +1577,10 @@ func (*BatchCommandsResponse_Response) XXX_OneofFuncs() (func(msg proto.Message,
 		(*BatchCommandsResponse_Response_Coprocessor)(nil),
 		(*BatchCommandsResponse_Response_PessimisticLock)(nil),
 		(*BatchCommandsResponse_Response_PessimisticRollback)(nil),
+		(*BatchCommandsResponse_Response_CheckTxnStatus)(nil),
+		(*BatchCommandsResponse_Response_TxnHeartBeat)(nil),
+		(*BatchCommandsResponse_Response_CheckSecondaryLocks)(nil),
+		(*BatchCommandsResponse_Response_RawCoprocessor)(nil),
 		(*BatchCommandsResponse_Response_Empty)(nil),
 	}
 }
@@ -1529,6 +1707,26 @@ func _BatchCommandsResponse_Response_OneofMarshaler(msg proto.Message, b *proto.
 	case *BatchCommandsResponse_Response_PessimisticRollback:
 		_ = b.EncodeVarint(24<<3 | proto.WireBytes)
 		if err := b.EncodeMessage(x.PessimisticRollback); err != nil {
+			return err
+		}
+	case *BatchCommandsResponse_Response_CheckTxnStatus:
+		_ = b.EncodeVarint(25<<3 | proto.WireBytes)
+		if err := b.EncodeMessage(x.CheckTxnStatus); err != nil {
+			return err
+		}
+	case *BatchCommandsResponse_Response_TxnHeartBeat:
+		_ = b.EncodeVarint(26<<3 | proto.WireBytes)
+		if err := b.EncodeMessage(x.TxnHeartBeat); err != nil {
+			return err
+		}
+	case *BatchCommandsResponse_Response_CheckSecondaryLocks:
+		_ = b.EncodeVarint(33<<3 | proto.WireBytes)
+		if err := b.EncodeMessage(x.CheckSecondaryLocks); err != nil {
+			return err
+		}
+	case *BatchCommandsResponse_Response_RawCoprocessor:
+		_ = b.EncodeVarint(34<<3 | proto.WireBytes)
+		if err := b.EncodeMessage(x.RawCoprocessor); err != nil {
 			return err
 		}
 	case *BatchCommandsResponse_Response_Empty:
@@ -1738,6 +1936,38 @@ func _BatchCommandsResponse_Response_OneofUnmarshaler(msg proto.Message, tag, wi
 		err := b.DecodeMessage(msg)
 		m.Cmd = &BatchCommandsResponse_Response_PessimisticRollback{msg}
 		return true, err
+	case 25: // cmd.CheckTxnStatus
+		if wire != proto.WireBytes {
+			return true, proto.ErrInternalBadWireType
+		}
+		msg := new(kvrpcpb.CheckTxnStatusResponse)
+		err := b.DecodeMessage(msg)
+		m.Cmd = &BatchCommandsResponse_Response_CheckTxnStatus{msg}
+		return true, err
+	case 26: // cmd.TxnHeartBeat
+		if wire != proto.WireBytes {
+			return true, proto.ErrInternalBadWireType
+		}
+		msg := new(kvrpcpb.TxnHeartBeatResponse)
+		err := b.DecodeMessage(msg)
+		m.Cmd = &BatchCommandsResponse_Response_TxnHeartBeat{msg}
+		return true, err
+	case 33: // cmd.CheckSecondaryLocks
+		if wire != proto.WireBytes {
+			return true, proto.ErrInternalBadWireType
+		}
+		msg := new(kvrpcpb.CheckSecondaryLocksResponse)
+		err := b.DecodeMessage(msg)
+		m.Cmd = &BatchCommandsResponse_Response_CheckSecondaryLocks{msg}
+		return true, err
+	case 34: // cmd.RawCoprocessor
+		if wire != proto.WireBytes {
+			return true, proto.ErrInternalBadWireType
+		}
+		msg := new(kvrpcpb.RawCoprocessorResponse)
+		err := b.DecodeMessage(msg)
+		m.Cmd = &BatchCommandsResponse_Response_RawCoprocessor{msg}
+		return true, err
 	case 255: // cmd.Empty
 		if wire != proto.WireBytes {
 			return true, proto.ErrInternalBadWireType
@@ -1875,6 +2105,26 @@ func _BatchCommandsResponse_Response_OneofSizer(msg proto.Message) (n int) {
 		n += 2 // tag and wire
 		n += proto.SizeVarint(uint64(s))
 		n += s
+	case *BatchCommandsResponse_Response_CheckTxnStatus:
+		s := proto.Size(x.CheckTxnStatus)
+		n += 2 // tag and wire
+		n += proto.SizeVarint(uint64(s))
+		n += s
+	case *BatchCommandsResponse_Response_TxnHeartBeat:
+		s := proto.Size(x.TxnHeartBeat)
+		n += 2 // tag and wire
+		n += proto.SizeVarint(uint64(s))
+		n += s
+	case *BatchCommandsResponse_Response_CheckSecondaryLocks:
+		s := proto.Size(x.CheckSecondaryLocks)
+		n += 2 // tag and wire
+		n += proto.SizeVarint(uint64(s))
+		n += s
+	case *BatchCommandsResponse_Response_RawCoprocessor:
+		s := proto.Size(x.RawCoprocessor)
+		n += 2 // tag and wire
+		n += proto.SizeVarint(uint64(s))
+		n += s
 	case *BatchCommandsResponse_Response_Empty:
 		s := proto.Size(x.Empty)
 		n += 2 // tag and wire
@@ -1898,7 +2148,7 @@ func (m *BatchRaftMessage) Reset()         { *m = BatchRaftMessage{} }
 func (m *BatchRaftMessage) String() string { return proto.CompactTextString(m) }
 func (*BatchRaftMessage) ProtoMessage()    {}
 func (*BatchRaftMessage) Descriptor() ([]byte, []int) {
-	return fileDescriptor_tikvpb_0f37d68de6f9c811, []int{2}
+	return fileDescriptor_tikvpb_92b152ac586f1929, []int{2}
 }
 func (m *BatchRaftMessage) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -1948,7 +2198,7 @@ func (m *BatchCommandsEmptyRequest) Reset()         { *m = BatchCommandsEmptyReq
 func (m *BatchCommandsEmptyRequest) String() string { return proto.CompactTextString(m) }
 func (*BatchCommandsEmptyRequest) ProtoMessage()    {}
 func (*BatchCommandsEmptyRequest) Descriptor() ([]byte, []int) {
-	return fileDescriptor_tikvpb_0f37d68de6f9c811, []int{3}
+	return fileDescriptor_tikvpb_92b152ac586f1929, []int{3}
 }
 func (m *BatchCommandsEmptyRequest) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -2003,7 +2253,7 @@ func (m *BatchCommandsEmptyResponse) Reset()         { *m = BatchCommandsEmptyRe
 func (m *BatchCommandsEmptyResponse) String() string { return proto.CompactTextString(m) }
 func (*BatchCommandsEmptyResponse) ProtoMessage()    {}
 func (*BatchCommandsEmptyResponse) Descriptor() ([]byte, []int) {
-	return fileDescriptor_tikvpb_0f37d68de6f9c811, []int{4}
+	return fileDescriptor_tikvpb_92b152ac586f1929, []int{4}
 }
 func (m *BatchCommandsEmptyResponse) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -2060,12 +2310,15 @@ const _ = grpc.SupportPackageIsVersion4
 // Client API for Tikv service
 
 type TikvClient interface {
-	// KV commands with mvcc/txn supported.
+	// Commands using a transactional interface.
 	KvGet(ctx context.Context, in *kvrpcpb.GetRequest, opts ...grpc.CallOption) (*kvrpcpb.GetResponse, error)
 	KvScan(ctx context.Context, in *kvrpcpb.ScanRequest, opts ...grpc.CallOption) (*kvrpcpb.ScanResponse, error)
 	KvPrewrite(ctx context.Context, in *kvrpcpb.PrewriteRequest, opts ...grpc.CallOption) (*kvrpcpb.PrewriteResponse, error)
 	KvPessimisticLock(ctx context.Context, in *kvrpcpb.PessimisticLockRequest, opts ...grpc.CallOption) (*kvrpcpb.PessimisticLockResponse, error)
 	KVPessimisticRollback(ctx context.Context, in *kvrpcpb.PessimisticRollbackRequest, opts ...grpc.CallOption) (*kvrpcpb.PessimisticRollbackResponse, error)
+	KvTxnHeartBeat(ctx context.Context, in *kvrpcpb.TxnHeartBeatRequest, opts ...grpc.CallOption) (*kvrpcpb.TxnHeartBeatResponse, error)
+	KvCheckTxnStatus(ctx context.Context, in *kvrpcpb.CheckTxnStatusRequest, opts ...grpc.CallOption) (*kvrpcpb.CheckTxnStatusResponse, error)
+	KvCheckSecondaryLocks(ctx context.Context, in *kvrpcpb.CheckSecondaryLocksRequest, opts ...grpc.CallOption) (*kvrpcpb.CheckSecondaryLocksResponse, error)
 	KvCommit(ctx context.Context, in *kvrpcpb.CommitRequest, opts ...grpc.CallOption) (*kvrpcpb.CommitResponse, error)
 	KvImport(ctx context.Context, in *kvrpcpb.ImportRequest, opts ...grpc.CallOption) (*kvrpcpb.ImportResponse, error)
 	KvCleanup(ctx context.Context, in *kvrpcpb.CleanupRequest, opts ...grpc.CallOption) (*kvrpcpb.CleanupResponse, error)
@@ -2075,7 +2328,7 @@ type TikvClient interface {
 	KvResolveLock(ctx context.Context, in *kvrpcpb.ResolveLockRequest, opts ...grpc.CallOption) (*kvrpcpb.ResolveLockResponse, error)
 	KvGC(ctx context.Context, in *kvrpcpb.GCRequest, opts ...grpc.CallOption) (*kvrpcpb.GCResponse, error)
 	KvDeleteRange(ctx context.Context, in *kvrpcpb.DeleteRangeRequest, opts ...grpc.CallOption) (*kvrpcpb.DeleteRangeResponse, error)
-	// RawKV commands.
+	// Raw commands; no transaction support.
 	RawGet(ctx context.Context, in *kvrpcpb.RawGetRequest, opts ...grpc.CallOption) (*kvrpcpb.RawGetResponse, error)
 	RawBatchGet(ctx context.Context, in *kvrpcpb.RawBatchGetRequest, opts ...grpc.CallOption) (*kvrpcpb.RawBatchGetResponse, error)
 	RawPut(ctx context.Context, in *kvrpcpb.RawPutRequest, opts ...grpc.CallOption) (*kvrpcpb.RawPutResponse, error)
@@ -2085,22 +2338,52 @@ type TikvClient interface {
 	RawScan(ctx context.Context, in *kvrpcpb.RawScanRequest, opts ...grpc.CallOption) (*kvrpcpb.RawScanResponse, error)
 	RawDeleteRange(ctx context.Context, in *kvrpcpb.RawDeleteRangeRequest, opts ...grpc.CallOption) (*kvrpcpb.RawDeleteRangeResponse, error)
 	RawBatchScan(ctx context.Context, in *kvrpcpb.RawBatchScanRequest, opts ...grpc.CallOption) (*kvrpcpb.RawBatchScanResponse, error)
-	// Store commands (to the whole tikv but not a certain region)
+	// Get TTL of the key. Returns 0 if TTL is not set for the key.
+	RawGetKeyTTL(ctx context.Context, in *kvrpcpb.RawGetKeyTTLRequest, opts ...grpc.CallOption) (*kvrpcpb.RawGetKeyTTLResponse, error)
+	// Compare if the value in database equals to `RawCASRequest.previous_value` before putting the new value. If not, this request will have no effect and the value in the database will be returned.
+	RawCompareAndSwap(ctx context.Context, in *kvrpcpb.RawCASRequest, opts ...grpc.CallOption) (*kvrpcpb.RawCASResponse, error)
+	RawChecksum(ctx context.Context, in *kvrpcpb.RawChecksumRequest, opts ...grpc.CallOption) (*kvrpcpb.RawChecksumResponse, error)
+	// Store commands (sent to a each TiKV node in a cluster, rather than a certain region).
 	UnsafeDestroyRange(ctx context.Context, in *kvrpcpb.UnsafeDestroyRangeRequest, opts ...grpc.CallOption) (*kvrpcpb.UnsafeDestroyRangeResponse, error)
-	// SQL push down commands.
+	RegisterLockObserver(ctx context.Context, in *kvrpcpb.RegisterLockObserverRequest, opts ...grpc.CallOption) (*kvrpcpb.RegisterLockObserverResponse, error)
+	CheckLockObserver(ctx context.Context, in *kvrpcpb.CheckLockObserverRequest, opts ...grpc.CallOption) (*kvrpcpb.CheckLockObserverResponse, error)
+	RemoveLockObserver(ctx context.Context, in *kvrpcpb.RemoveLockObserverRequest, opts ...grpc.CallOption) (*kvrpcpb.RemoveLockObserverResponse, error)
+	PhysicalScanLock(ctx context.Context, in *kvrpcpb.PhysicalScanLockRequest, opts ...grpc.CallOption) (*kvrpcpb.PhysicalScanLockResponse, error)
+	// Commands for executing SQL in the TiKV coprocessor (i.e., 'pushed down' to TiKV rather than
+	// executed in TiDB).
 	Coprocessor(ctx context.Context, in *coprocessor.Request, opts ...grpc.CallOption) (*coprocessor.Response, error)
 	CoprocessorStream(ctx context.Context, in *coprocessor.Request, opts ...grpc.CallOption) (Tikv_CoprocessorStreamClient, error)
-	// Raft commands (tikv <-> tikv).
+	BatchCoprocessor(ctx context.Context, in *coprocessor.BatchRequest, opts ...grpc.CallOption) (Tikv_BatchCoprocessorClient, error)
+	// Command for executing custom user requests in TiKV coprocessor_v2.
+	RawCoprocessor(ctx context.Context, in *kvrpcpb.RawCoprocessorRequest, opts ...grpc.CallOption) (*kvrpcpb.RawCoprocessorResponse, error)
+	// Raft commands (sent between TiKV nodes).
 	Raft(ctx context.Context, opts ...grpc.CallOption) (Tikv_RaftClient, error)
 	BatchRaft(ctx context.Context, opts ...grpc.CallOption) (Tikv_BatchRaftClient, error)
 	Snapshot(ctx context.Context, opts ...grpc.CallOption) (Tikv_SnapshotClient, error)
-	// Region commands.
+	// Sent from PD or TiDB to a TiKV node.
 	SplitRegion(ctx context.Context, in *kvrpcpb.SplitRegionRequest, opts ...grpc.CallOption) (*kvrpcpb.SplitRegionResponse, error)
+	// Sent from TiFlash or TiKV to a TiKV node.
 	ReadIndex(ctx context.Context, in *kvrpcpb.ReadIndexRequest, opts ...grpc.CallOption) (*kvrpcpb.ReadIndexResponse, error)
-	// transaction debugger commands.
+	// Commands for debugging transactions.
 	MvccGetByKey(ctx context.Context, in *kvrpcpb.MvccGetByKeyRequest, opts ...grpc.CallOption) (*kvrpcpb.MvccGetByKeyResponse, error)
 	MvccGetByStartTs(ctx context.Context, in *kvrpcpb.MvccGetByStartTsRequest, opts ...grpc.CallOption) (*kvrpcpb.MvccGetByStartTsResponse, error)
+	// Batched commands.
 	BatchCommands(ctx context.Context, opts ...grpc.CallOption) (Tikv_BatchCommandsClient, error)
+	// These are for mpp execution.
+	DispatchMPPTask(ctx context.Context, in *mpp.DispatchTaskRequest, opts ...grpc.CallOption) (*mpp.DispatchTaskResponse, error)
+	CancelMPPTask(ctx context.Context, in *mpp.CancelTaskRequest, opts ...grpc.CallOption) (*mpp.CancelTaskResponse, error)
+	EstablishMPPConnection(ctx context.Context, in *mpp.EstablishMPPConnectionRequest, opts ...grpc.CallOption) (Tikv_EstablishMPPConnectionClient, error)
+	IsAlive(ctx context.Context, in *mpp.IsAliveRequest, opts ...grpc.CallOption) (*mpp.IsAliveResponse, error)
+	// / CheckLeader sends all information (includes region term and epoch) to other stores.
+	// / Once a store receives a request, it checks term and epoch for each region, and sends the regions whose
+	// / term and epoch match with local information in the store.
+	// / After the client collected all responses from all stores, it checks if got a quorum of responses from
+	// / other stores for every region, and decides to advance resolved ts from these regions.
+	CheckLeader(ctx context.Context, in *kvrpcpb.CheckLeaderRequest, opts ...grpc.CallOption) (*kvrpcpb.CheckLeaderResponse, error)
+	// / Get the minimal `safe_ts` from regions at the store
+	GetStoreSafeTS(ctx context.Context, in *kvrpcpb.StoreSafeTSRequest, opts ...grpc.CallOption) (*kvrpcpb.StoreSafeTSResponse, error)
+	// / Get the information about lock waiting from TiKV.
+	GetLockWaitInfo(ctx context.Context, in *kvrpcpb.GetLockWaitInfoRequest, opts ...grpc.CallOption) (*kvrpcpb.GetLockWaitInfoResponse, error)
 }
 
 type tikvClient struct {
@@ -2150,6 +2433,33 @@ func (c *tikvClient) KvPessimisticLock(ctx context.Context, in *kvrpcpb.Pessimis
 func (c *tikvClient) KVPessimisticRollback(ctx context.Context, in *kvrpcpb.PessimisticRollbackRequest, opts ...grpc.CallOption) (*kvrpcpb.PessimisticRollbackResponse, error) {
 	out := new(kvrpcpb.PessimisticRollbackResponse)
 	err := c.cc.Invoke(ctx, "/tikvpb.Tikv/KVPessimisticRollback", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *tikvClient) KvTxnHeartBeat(ctx context.Context, in *kvrpcpb.TxnHeartBeatRequest, opts ...grpc.CallOption) (*kvrpcpb.TxnHeartBeatResponse, error) {
+	out := new(kvrpcpb.TxnHeartBeatResponse)
+	err := c.cc.Invoke(ctx, "/tikvpb.Tikv/KvTxnHeartBeat", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *tikvClient) KvCheckTxnStatus(ctx context.Context, in *kvrpcpb.CheckTxnStatusRequest, opts ...grpc.CallOption) (*kvrpcpb.CheckTxnStatusResponse, error) {
+	out := new(kvrpcpb.CheckTxnStatusResponse)
+	err := c.cc.Invoke(ctx, "/tikvpb.Tikv/KvCheckTxnStatus", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *tikvClient) KvCheckSecondaryLocks(ctx context.Context, in *kvrpcpb.CheckSecondaryLocksRequest, opts ...grpc.CallOption) (*kvrpcpb.CheckSecondaryLocksResponse, error) {
+	out := new(kvrpcpb.CheckSecondaryLocksResponse)
+	err := c.cc.Invoke(ctx, "/tikvpb.Tikv/KvCheckSecondaryLocks", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -2318,9 +2628,72 @@ func (c *tikvClient) RawBatchScan(ctx context.Context, in *kvrpcpb.RawBatchScanR
 	return out, nil
 }
 
+func (c *tikvClient) RawGetKeyTTL(ctx context.Context, in *kvrpcpb.RawGetKeyTTLRequest, opts ...grpc.CallOption) (*kvrpcpb.RawGetKeyTTLResponse, error) {
+	out := new(kvrpcpb.RawGetKeyTTLResponse)
+	err := c.cc.Invoke(ctx, "/tikvpb.Tikv/RawGetKeyTTL", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *tikvClient) RawCompareAndSwap(ctx context.Context, in *kvrpcpb.RawCASRequest, opts ...grpc.CallOption) (*kvrpcpb.RawCASResponse, error) {
+	out := new(kvrpcpb.RawCASResponse)
+	err := c.cc.Invoke(ctx, "/tikvpb.Tikv/RawCompareAndSwap", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *tikvClient) RawChecksum(ctx context.Context, in *kvrpcpb.RawChecksumRequest, opts ...grpc.CallOption) (*kvrpcpb.RawChecksumResponse, error) {
+	out := new(kvrpcpb.RawChecksumResponse)
+	err := c.cc.Invoke(ctx, "/tikvpb.Tikv/RawChecksum", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *tikvClient) UnsafeDestroyRange(ctx context.Context, in *kvrpcpb.UnsafeDestroyRangeRequest, opts ...grpc.CallOption) (*kvrpcpb.UnsafeDestroyRangeResponse, error) {
 	out := new(kvrpcpb.UnsafeDestroyRangeResponse)
 	err := c.cc.Invoke(ctx, "/tikvpb.Tikv/UnsafeDestroyRange", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *tikvClient) RegisterLockObserver(ctx context.Context, in *kvrpcpb.RegisterLockObserverRequest, opts ...grpc.CallOption) (*kvrpcpb.RegisterLockObserverResponse, error) {
+	out := new(kvrpcpb.RegisterLockObserverResponse)
+	err := c.cc.Invoke(ctx, "/tikvpb.Tikv/RegisterLockObserver", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *tikvClient) CheckLockObserver(ctx context.Context, in *kvrpcpb.CheckLockObserverRequest, opts ...grpc.CallOption) (*kvrpcpb.CheckLockObserverResponse, error) {
+	out := new(kvrpcpb.CheckLockObserverResponse)
+	err := c.cc.Invoke(ctx, "/tikvpb.Tikv/CheckLockObserver", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *tikvClient) RemoveLockObserver(ctx context.Context, in *kvrpcpb.RemoveLockObserverRequest, opts ...grpc.CallOption) (*kvrpcpb.RemoveLockObserverResponse, error) {
+	out := new(kvrpcpb.RemoveLockObserverResponse)
+	err := c.cc.Invoke(ctx, "/tikvpb.Tikv/RemoveLockObserver", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *tikvClient) PhysicalScanLock(ctx context.Context, in *kvrpcpb.PhysicalScanLockRequest, opts ...grpc.CallOption) (*kvrpcpb.PhysicalScanLockResponse, error) {
+	out := new(kvrpcpb.PhysicalScanLockResponse)
+	err := c.cc.Invoke(ctx, "/tikvpb.Tikv/PhysicalScanLock", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -2368,8 +2741,49 @@ func (x *tikvCoprocessorStreamClient) Recv() (*coprocessor.Response, error) {
 	return m, nil
 }
 
+func (c *tikvClient) BatchCoprocessor(ctx context.Context, in *coprocessor.BatchRequest, opts ...grpc.CallOption) (Tikv_BatchCoprocessorClient, error) {
+	stream, err := c.cc.NewStream(ctx, &_Tikv_serviceDesc.Streams[1], "/tikvpb.Tikv/BatchCoprocessor", opts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &tikvBatchCoprocessorClient{stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+type Tikv_BatchCoprocessorClient interface {
+	Recv() (*coprocessor.BatchResponse, error)
+	grpc.ClientStream
+}
+
+type tikvBatchCoprocessorClient struct {
+	grpc.ClientStream
+}
+
+func (x *tikvBatchCoprocessorClient) Recv() (*coprocessor.BatchResponse, error) {
+	m := new(coprocessor.BatchResponse)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+func (c *tikvClient) RawCoprocessor(ctx context.Context, in *kvrpcpb.RawCoprocessorRequest, opts ...grpc.CallOption) (*kvrpcpb.RawCoprocessorResponse, error) {
+	out := new(kvrpcpb.RawCoprocessorResponse)
+	err := c.cc.Invoke(ctx, "/tikvpb.Tikv/RawCoprocessor", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *tikvClient) Raft(ctx context.Context, opts ...grpc.CallOption) (Tikv_RaftClient, error) {
-	stream, err := c.cc.NewStream(ctx, &_Tikv_serviceDesc.Streams[1], "/tikvpb.Tikv/Raft", opts...)
+	stream, err := c.cc.NewStream(ctx, &_Tikv_serviceDesc.Streams[2], "/tikvpb.Tikv/Raft", opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -2403,7 +2817,7 @@ func (x *tikvRaftClient) CloseAndRecv() (*raft_serverpb.Done, error) {
 }
 
 func (c *tikvClient) BatchRaft(ctx context.Context, opts ...grpc.CallOption) (Tikv_BatchRaftClient, error) {
-	stream, err := c.cc.NewStream(ctx, &_Tikv_serviceDesc.Streams[2], "/tikvpb.Tikv/BatchRaft", opts...)
+	stream, err := c.cc.NewStream(ctx, &_Tikv_serviceDesc.Streams[3], "/tikvpb.Tikv/BatchRaft", opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -2437,7 +2851,7 @@ func (x *tikvBatchRaftClient) CloseAndRecv() (*raft_serverpb.Done, error) {
 }
 
 func (c *tikvClient) Snapshot(ctx context.Context, opts ...grpc.CallOption) (Tikv_SnapshotClient, error) {
-	stream, err := c.cc.NewStream(ctx, &_Tikv_serviceDesc.Streams[3], "/tikvpb.Tikv/Snapshot", opts...)
+	stream, err := c.cc.NewStream(ctx, &_Tikv_serviceDesc.Streams[4], "/tikvpb.Tikv/Snapshot", opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -2507,7 +2921,7 @@ func (c *tikvClient) MvccGetByStartTs(ctx context.Context, in *kvrpcpb.MvccGetBy
 }
 
 func (c *tikvClient) BatchCommands(ctx context.Context, opts ...grpc.CallOption) (Tikv_BatchCommandsClient, error) {
-	stream, err := c.cc.NewStream(ctx, &_Tikv_serviceDesc.Streams[4], "/tikvpb.Tikv/BatchCommands", opts...)
+	stream, err := c.cc.NewStream(ctx, &_Tikv_serviceDesc.Streams[5], "/tikvpb.Tikv/BatchCommands", opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -2537,15 +2951,104 @@ func (x *tikvBatchCommandsClient) Recv() (*BatchCommandsResponse, error) {
 	return m, nil
 }
 
+func (c *tikvClient) DispatchMPPTask(ctx context.Context, in *mpp.DispatchTaskRequest, opts ...grpc.CallOption) (*mpp.DispatchTaskResponse, error) {
+	out := new(mpp.DispatchTaskResponse)
+	err := c.cc.Invoke(ctx, "/tikvpb.Tikv/DispatchMPPTask", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *tikvClient) CancelMPPTask(ctx context.Context, in *mpp.CancelTaskRequest, opts ...grpc.CallOption) (*mpp.CancelTaskResponse, error) {
+	out := new(mpp.CancelTaskResponse)
+	err := c.cc.Invoke(ctx, "/tikvpb.Tikv/CancelMPPTask", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *tikvClient) EstablishMPPConnection(ctx context.Context, in *mpp.EstablishMPPConnectionRequest, opts ...grpc.CallOption) (Tikv_EstablishMPPConnectionClient, error) {
+	stream, err := c.cc.NewStream(ctx, &_Tikv_serviceDesc.Streams[6], "/tikvpb.Tikv/EstablishMPPConnection", opts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &tikvEstablishMPPConnectionClient{stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+type Tikv_EstablishMPPConnectionClient interface {
+	Recv() (*mpp.MPPDataPacket, error)
+	grpc.ClientStream
+}
+
+type tikvEstablishMPPConnectionClient struct {
+	grpc.ClientStream
+}
+
+func (x *tikvEstablishMPPConnectionClient) Recv() (*mpp.MPPDataPacket, error) {
+	m := new(mpp.MPPDataPacket)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+func (c *tikvClient) IsAlive(ctx context.Context, in *mpp.IsAliveRequest, opts ...grpc.CallOption) (*mpp.IsAliveResponse, error) {
+	out := new(mpp.IsAliveResponse)
+	err := c.cc.Invoke(ctx, "/tikvpb.Tikv/IsAlive", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *tikvClient) CheckLeader(ctx context.Context, in *kvrpcpb.CheckLeaderRequest, opts ...grpc.CallOption) (*kvrpcpb.CheckLeaderResponse, error) {
+	out := new(kvrpcpb.CheckLeaderResponse)
+	err := c.cc.Invoke(ctx, "/tikvpb.Tikv/CheckLeader", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *tikvClient) GetStoreSafeTS(ctx context.Context, in *kvrpcpb.StoreSafeTSRequest, opts ...grpc.CallOption) (*kvrpcpb.StoreSafeTSResponse, error) {
+	out := new(kvrpcpb.StoreSafeTSResponse)
+	err := c.cc.Invoke(ctx, "/tikvpb.Tikv/GetStoreSafeTS", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *tikvClient) GetLockWaitInfo(ctx context.Context, in *kvrpcpb.GetLockWaitInfoRequest, opts ...grpc.CallOption) (*kvrpcpb.GetLockWaitInfoResponse, error) {
+	out := new(kvrpcpb.GetLockWaitInfoResponse)
+	err := c.cc.Invoke(ctx, "/tikvpb.Tikv/GetLockWaitInfo", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // Server API for Tikv service
 
 type TikvServer interface {
-	// KV commands with mvcc/txn supported.
+	// Commands using a transactional interface.
 	KvGet(context.Context, *kvrpcpb.GetRequest) (*kvrpcpb.GetResponse, error)
 	KvScan(context.Context, *kvrpcpb.ScanRequest) (*kvrpcpb.ScanResponse, error)
 	KvPrewrite(context.Context, *kvrpcpb.PrewriteRequest) (*kvrpcpb.PrewriteResponse, error)
 	KvPessimisticLock(context.Context, *kvrpcpb.PessimisticLockRequest) (*kvrpcpb.PessimisticLockResponse, error)
 	KVPessimisticRollback(context.Context, *kvrpcpb.PessimisticRollbackRequest) (*kvrpcpb.PessimisticRollbackResponse, error)
+	KvTxnHeartBeat(context.Context, *kvrpcpb.TxnHeartBeatRequest) (*kvrpcpb.TxnHeartBeatResponse, error)
+	KvCheckTxnStatus(context.Context, *kvrpcpb.CheckTxnStatusRequest) (*kvrpcpb.CheckTxnStatusResponse, error)
+	KvCheckSecondaryLocks(context.Context, *kvrpcpb.CheckSecondaryLocksRequest) (*kvrpcpb.CheckSecondaryLocksResponse, error)
 	KvCommit(context.Context, *kvrpcpb.CommitRequest) (*kvrpcpb.CommitResponse, error)
 	KvImport(context.Context, *kvrpcpb.ImportRequest) (*kvrpcpb.ImportResponse, error)
 	KvCleanup(context.Context, *kvrpcpb.CleanupRequest) (*kvrpcpb.CleanupResponse, error)
@@ -2555,7 +3058,7 @@ type TikvServer interface {
 	KvResolveLock(context.Context, *kvrpcpb.ResolveLockRequest) (*kvrpcpb.ResolveLockResponse, error)
 	KvGC(context.Context, *kvrpcpb.GCRequest) (*kvrpcpb.GCResponse, error)
 	KvDeleteRange(context.Context, *kvrpcpb.DeleteRangeRequest) (*kvrpcpb.DeleteRangeResponse, error)
-	// RawKV commands.
+	// Raw commands; no transaction support.
 	RawGet(context.Context, *kvrpcpb.RawGetRequest) (*kvrpcpb.RawGetResponse, error)
 	RawBatchGet(context.Context, *kvrpcpb.RawBatchGetRequest) (*kvrpcpb.RawBatchGetResponse, error)
 	RawPut(context.Context, *kvrpcpb.RawPutRequest) (*kvrpcpb.RawPutResponse, error)
@@ -2565,22 +3068,52 @@ type TikvServer interface {
 	RawScan(context.Context, *kvrpcpb.RawScanRequest) (*kvrpcpb.RawScanResponse, error)
 	RawDeleteRange(context.Context, *kvrpcpb.RawDeleteRangeRequest) (*kvrpcpb.RawDeleteRangeResponse, error)
 	RawBatchScan(context.Context, *kvrpcpb.RawBatchScanRequest) (*kvrpcpb.RawBatchScanResponse, error)
-	// Store commands (to the whole tikv but not a certain region)
+	// Get TTL of the key. Returns 0 if TTL is not set for the key.
+	RawGetKeyTTL(context.Context, *kvrpcpb.RawGetKeyTTLRequest) (*kvrpcpb.RawGetKeyTTLResponse, error)
+	// Compare if the value in database equals to `RawCASRequest.previous_value` before putting the new value. If not, this request will have no effect and the value in the database will be returned.
+	RawCompareAndSwap(context.Context, *kvrpcpb.RawCASRequest) (*kvrpcpb.RawCASResponse, error)
+	RawChecksum(context.Context, *kvrpcpb.RawChecksumRequest) (*kvrpcpb.RawChecksumResponse, error)
+	// Store commands (sent to a each TiKV node in a cluster, rather than a certain region).
 	UnsafeDestroyRange(context.Context, *kvrpcpb.UnsafeDestroyRangeRequest) (*kvrpcpb.UnsafeDestroyRangeResponse, error)
-	// SQL push down commands.
+	RegisterLockObserver(context.Context, *kvrpcpb.RegisterLockObserverRequest) (*kvrpcpb.RegisterLockObserverResponse, error)
+	CheckLockObserver(context.Context, *kvrpcpb.CheckLockObserverRequest) (*kvrpcpb.CheckLockObserverResponse, error)
+	RemoveLockObserver(context.Context, *kvrpcpb.RemoveLockObserverRequest) (*kvrpcpb.RemoveLockObserverResponse, error)
+	PhysicalScanLock(context.Context, *kvrpcpb.PhysicalScanLockRequest) (*kvrpcpb.PhysicalScanLockResponse, error)
+	// Commands for executing SQL in the TiKV coprocessor (i.e., 'pushed down' to TiKV rather than
+	// executed in TiDB).
 	Coprocessor(context.Context, *coprocessor.Request) (*coprocessor.Response, error)
 	CoprocessorStream(*coprocessor.Request, Tikv_CoprocessorStreamServer) error
-	// Raft commands (tikv <-> tikv).
+	BatchCoprocessor(*coprocessor.BatchRequest, Tikv_BatchCoprocessorServer) error
+	// Command for executing custom user requests in TiKV coprocessor_v2.
+	RawCoprocessor(context.Context, *kvrpcpb.RawCoprocessorRequest) (*kvrpcpb.RawCoprocessorResponse, error)
+	// Raft commands (sent between TiKV nodes).
 	Raft(Tikv_RaftServer) error
 	BatchRaft(Tikv_BatchRaftServer) error
 	Snapshot(Tikv_SnapshotServer) error
-	// Region commands.
+	// Sent from PD or TiDB to a TiKV node.
 	SplitRegion(context.Context, *kvrpcpb.SplitRegionRequest) (*kvrpcpb.SplitRegionResponse, error)
+	// Sent from TiFlash or TiKV to a TiKV node.
 	ReadIndex(context.Context, *kvrpcpb.ReadIndexRequest) (*kvrpcpb.ReadIndexResponse, error)
-	// transaction debugger commands.
+	// Commands for debugging transactions.
 	MvccGetByKey(context.Context, *kvrpcpb.MvccGetByKeyRequest) (*kvrpcpb.MvccGetByKeyResponse, error)
 	MvccGetByStartTs(context.Context, *kvrpcpb.MvccGetByStartTsRequest) (*kvrpcpb.MvccGetByStartTsResponse, error)
+	// Batched commands.
 	BatchCommands(Tikv_BatchCommandsServer) error
+	// These are for mpp execution.
+	DispatchMPPTask(context.Context, *mpp.DispatchTaskRequest) (*mpp.DispatchTaskResponse, error)
+	CancelMPPTask(context.Context, *mpp.CancelTaskRequest) (*mpp.CancelTaskResponse, error)
+	EstablishMPPConnection(*mpp.EstablishMPPConnectionRequest, Tikv_EstablishMPPConnectionServer) error
+	IsAlive(context.Context, *mpp.IsAliveRequest) (*mpp.IsAliveResponse, error)
+	// / CheckLeader sends all information (includes region term and epoch) to other stores.
+	// / Once a store receives a request, it checks term and epoch for each region, and sends the regions whose
+	// / term and epoch match with local information in the store.
+	// / After the client collected all responses from all stores, it checks if got a quorum of responses from
+	// / other stores for every region, and decides to advance resolved ts from these regions.
+	CheckLeader(context.Context, *kvrpcpb.CheckLeaderRequest) (*kvrpcpb.CheckLeaderResponse, error)
+	// / Get the minimal `safe_ts` from regions at the store
+	GetStoreSafeTS(context.Context, *kvrpcpb.StoreSafeTSRequest) (*kvrpcpb.StoreSafeTSResponse, error)
+	// / Get the information about lock waiting from TiKV.
+	GetLockWaitInfo(context.Context, *kvrpcpb.GetLockWaitInfoRequest) (*kvrpcpb.GetLockWaitInfoResponse, error)
 }
 
 func RegisterTikvServer(s *grpc.Server, srv TikvServer) {
@@ -2673,6 +3206,60 @@ func _Tikv_KVPessimisticRollback_Handler(srv interface{}, ctx context.Context, d
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(TikvServer).KVPessimisticRollback(ctx, req.(*kvrpcpb.PessimisticRollbackRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Tikv_KvTxnHeartBeat_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(kvrpcpb.TxnHeartBeatRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(TikvServer).KvTxnHeartBeat(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/tikvpb.Tikv/KvTxnHeartBeat",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(TikvServer).KvTxnHeartBeat(ctx, req.(*kvrpcpb.TxnHeartBeatRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Tikv_KvCheckTxnStatus_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(kvrpcpb.CheckTxnStatusRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(TikvServer).KvCheckTxnStatus(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/tikvpb.Tikv/KvCheckTxnStatus",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(TikvServer).KvCheckTxnStatus(ctx, req.(*kvrpcpb.CheckTxnStatusRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Tikv_KvCheckSecondaryLocks_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(kvrpcpb.CheckSecondaryLocksRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(TikvServer).KvCheckSecondaryLocks(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/tikvpb.Tikv/KvCheckSecondaryLocks",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(TikvServer).KvCheckSecondaryLocks(ctx, req.(*kvrpcpb.CheckSecondaryLocksRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -3001,6 +3588,60 @@ func _Tikv_RawBatchScan_Handler(srv interface{}, ctx context.Context, dec func(i
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Tikv_RawGetKeyTTL_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(kvrpcpb.RawGetKeyTTLRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(TikvServer).RawGetKeyTTL(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/tikvpb.Tikv/RawGetKeyTTL",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(TikvServer).RawGetKeyTTL(ctx, req.(*kvrpcpb.RawGetKeyTTLRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Tikv_RawCompareAndSwap_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(kvrpcpb.RawCASRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(TikvServer).RawCompareAndSwap(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/tikvpb.Tikv/RawCompareAndSwap",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(TikvServer).RawCompareAndSwap(ctx, req.(*kvrpcpb.RawCASRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Tikv_RawChecksum_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(kvrpcpb.RawChecksumRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(TikvServer).RawChecksum(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/tikvpb.Tikv/RawChecksum",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(TikvServer).RawChecksum(ctx, req.(*kvrpcpb.RawChecksumRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _Tikv_UnsafeDestroyRange_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(kvrpcpb.UnsafeDestroyRangeRequest)
 	if err := dec(in); err != nil {
@@ -3015,6 +3656,78 @@ func _Tikv_UnsafeDestroyRange_Handler(srv interface{}, ctx context.Context, dec 
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(TikvServer).UnsafeDestroyRange(ctx, req.(*kvrpcpb.UnsafeDestroyRangeRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Tikv_RegisterLockObserver_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(kvrpcpb.RegisterLockObserverRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(TikvServer).RegisterLockObserver(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/tikvpb.Tikv/RegisterLockObserver",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(TikvServer).RegisterLockObserver(ctx, req.(*kvrpcpb.RegisterLockObserverRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Tikv_CheckLockObserver_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(kvrpcpb.CheckLockObserverRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(TikvServer).CheckLockObserver(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/tikvpb.Tikv/CheckLockObserver",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(TikvServer).CheckLockObserver(ctx, req.(*kvrpcpb.CheckLockObserverRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Tikv_RemoveLockObserver_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(kvrpcpb.RemoveLockObserverRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(TikvServer).RemoveLockObserver(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/tikvpb.Tikv/RemoveLockObserver",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(TikvServer).RemoveLockObserver(ctx, req.(*kvrpcpb.RemoveLockObserverRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Tikv_PhysicalScanLock_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(kvrpcpb.PhysicalScanLockRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(TikvServer).PhysicalScanLock(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/tikvpb.Tikv/PhysicalScanLock",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(TikvServer).PhysicalScanLock(ctx, req.(*kvrpcpb.PhysicalScanLockRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -3056,6 +3769,45 @@ type tikvCoprocessorStreamServer struct {
 
 func (x *tikvCoprocessorStreamServer) Send(m *coprocessor.Response) error {
 	return x.ServerStream.SendMsg(m)
+}
+
+func _Tikv_BatchCoprocessor_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(coprocessor.BatchRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(TikvServer).BatchCoprocessor(m, &tikvBatchCoprocessorServer{stream})
+}
+
+type Tikv_BatchCoprocessorServer interface {
+	Send(*coprocessor.BatchResponse) error
+	grpc.ServerStream
+}
+
+type tikvBatchCoprocessorServer struct {
+	grpc.ServerStream
+}
+
+func (x *tikvBatchCoprocessorServer) Send(m *coprocessor.BatchResponse) error {
+	return x.ServerStream.SendMsg(m)
+}
+
+func _Tikv_RawCoprocessor_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(kvrpcpb.RawCoprocessorRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(TikvServer).RawCoprocessor(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/tikvpb.Tikv/RawCoprocessor",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(TikvServer).RawCoprocessor(ctx, req.(*kvrpcpb.RawCoprocessorRequest))
+	}
+	return interceptor(ctx, in, info, handler)
 }
 
 func _Tikv_Raft_Handler(srv interface{}, stream grpc.ServerStream) error {
@@ -3234,6 +3986,135 @@ func (x *tikvBatchCommandsServer) Recv() (*BatchCommandsRequest, error) {
 	return m, nil
 }
 
+func _Tikv_DispatchMPPTask_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(mpp.DispatchTaskRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(TikvServer).DispatchMPPTask(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/tikvpb.Tikv/DispatchMPPTask",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(TikvServer).DispatchMPPTask(ctx, req.(*mpp.DispatchTaskRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Tikv_CancelMPPTask_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(mpp.CancelTaskRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(TikvServer).CancelMPPTask(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/tikvpb.Tikv/CancelMPPTask",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(TikvServer).CancelMPPTask(ctx, req.(*mpp.CancelTaskRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Tikv_EstablishMPPConnection_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(mpp.EstablishMPPConnectionRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(TikvServer).EstablishMPPConnection(m, &tikvEstablishMPPConnectionServer{stream})
+}
+
+type Tikv_EstablishMPPConnectionServer interface {
+	Send(*mpp.MPPDataPacket) error
+	grpc.ServerStream
+}
+
+type tikvEstablishMPPConnectionServer struct {
+	grpc.ServerStream
+}
+
+func (x *tikvEstablishMPPConnectionServer) Send(m *mpp.MPPDataPacket) error {
+	return x.ServerStream.SendMsg(m)
+}
+
+func _Tikv_IsAlive_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(mpp.IsAliveRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(TikvServer).IsAlive(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/tikvpb.Tikv/IsAlive",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(TikvServer).IsAlive(ctx, req.(*mpp.IsAliveRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Tikv_CheckLeader_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(kvrpcpb.CheckLeaderRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(TikvServer).CheckLeader(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/tikvpb.Tikv/CheckLeader",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(TikvServer).CheckLeader(ctx, req.(*kvrpcpb.CheckLeaderRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Tikv_GetStoreSafeTS_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(kvrpcpb.StoreSafeTSRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(TikvServer).GetStoreSafeTS(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/tikvpb.Tikv/GetStoreSafeTS",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(TikvServer).GetStoreSafeTS(ctx, req.(*kvrpcpb.StoreSafeTSRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Tikv_GetLockWaitInfo_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(kvrpcpb.GetLockWaitInfoRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(TikvServer).GetLockWaitInfo(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/tikvpb.Tikv/GetLockWaitInfo",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(TikvServer).GetLockWaitInfo(ctx, req.(*kvrpcpb.GetLockWaitInfoRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 var _Tikv_serviceDesc = grpc.ServiceDesc{
 	ServiceName: "tikvpb.Tikv",
 	HandlerType: (*TikvServer)(nil),
@@ -3257,6 +4138,18 @@ var _Tikv_serviceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "KVPessimisticRollback",
 			Handler:    _Tikv_KVPessimisticRollback_Handler,
+		},
+		{
+			MethodName: "KvTxnHeartBeat",
+			Handler:    _Tikv_KvTxnHeartBeat_Handler,
+		},
+		{
+			MethodName: "KvCheckTxnStatus",
+			Handler:    _Tikv_KvCheckTxnStatus_Handler,
+		},
+		{
+			MethodName: "KvCheckSecondaryLocks",
+			Handler:    _Tikv_KvCheckSecondaryLocks_Handler,
 		},
 		{
 			MethodName: "KvCommit",
@@ -3331,12 +4224,44 @@ var _Tikv_serviceDesc = grpc.ServiceDesc{
 			Handler:    _Tikv_RawBatchScan_Handler,
 		},
 		{
+			MethodName: "RawGetKeyTTL",
+			Handler:    _Tikv_RawGetKeyTTL_Handler,
+		},
+		{
+			MethodName: "RawCompareAndSwap",
+			Handler:    _Tikv_RawCompareAndSwap_Handler,
+		},
+		{
+			MethodName: "RawChecksum",
+			Handler:    _Tikv_RawChecksum_Handler,
+		},
+		{
 			MethodName: "UnsafeDestroyRange",
 			Handler:    _Tikv_UnsafeDestroyRange_Handler,
 		},
 		{
+			MethodName: "RegisterLockObserver",
+			Handler:    _Tikv_RegisterLockObserver_Handler,
+		},
+		{
+			MethodName: "CheckLockObserver",
+			Handler:    _Tikv_CheckLockObserver_Handler,
+		},
+		{
+			MethodName: "RemoveLockObserver",
+			Handler:    _Tikv_RemoveLockObserver_Handler,
+		},
+		{
+			MethodName: "PhysicalScanLock",
+			Handler:    _Tikv_PhysicalScanLock_Handler,
+		},
+		{
 			MethodName: "Coprocessor",
 			Handler:    _Tikv_Coprocessor_Handler,
+		},
+		{
+			MethodName: "RawCoprocessor",
+			Handler:    _Tikv_RawCoprocessor_Handler,
 		},
 		{
 			MethodName: "SplitRegion",
@@ -3354,11 +4279,40 @@ var _Tikv_serviceDesc = grpc.ServiceDesc{
 			MethodName: "MvccGetByStartTs",
 			Handler:    _Tikv_MvccGetByStartTs_Handler,
 		},
+		{
+			MethodName: "DispatchMPPTask",
+			Handler:    _Tikv_DispatchMPPTask_Handler,
+		},
+		{
+			MethodName: "CancelMPPTask",
+			Handler:    _Tikv_CancelMPPTask_Handler,
+		},
+		{
+			MethodName: "IsAlive",
+			Handler:    _Tikv_IsAlive_Handler,
+		},
+		{
+			MethodName: "CheckLeader",
+			Handler:    _Tikv_CheckLeader_Handler,
+		},
+		{
+			MethodName: "GetStoreSafeTS",
+			Handler:    _Tikv_GetStoreSafeTS_Handler,
+		},
+		{
+			MethodName: "GetLockWaitInfo",
+			Handler:    _Tikv_GetLockWaitInfo_Handler,
+		},
 	},
 	Streams: []grpc.StreamDesc{
 		{
 			StreamName:    "CoprocessorStream",
 			Handler:       _Tikv_CoprocessorStream_Handler,
+			ServerStreams: true,
+		},
+		{
+			StreamName:    "BatchCoprocessor",
+			Handler:       _Tikv_BatchCoprocessor_Handler,
 			ServerStreams: true,
 		},
 		{
@@ -3381,6 +4335,11 @@ var _Tikv_serviceDesc = grpc.ServiceDesc{
 			Handler:       _Tikv_BatchCommands_Handler,
 			ServerStreams: true,
 			ClientStreams: true,
+		},
+		{
+			StreamName:    "EstablishMPPConnection",
+			Handler:       _Tikv_EstablishMPPConnection_Handler,
+			ServerStreams: true,
 		},
 	},
 	Metadata: "tikvpb.proto",
@@ -3818,6 +4777,70 @@ func (m *BatchCommandsRequest_Request_PessimisticRollback) MarshalTo(dAtA []byte
 	}
 	return i, nil
 }
+func (m *BatchCommandsRequest_Request_CheckTxnStatus) MarshalTo(dAtA []byte) (int, error) {
+	i := 0
+	if m.CheckTxnStatus != nil {
+		dAtA[i] = 0xca
+		i++
+		dAtA[i] = 0x1
+		i++
+		i = encodeVarintTikvpb(dAtA, i, uint64(m.CheckTxnStatus.Size()))
+		n28, err := m.CheckTxnStatus.MarshalTo(dAtA[i:])
+		if err != nil {
+			return 0, err
+		}
+		i += n28
+	}
+	return i, nil
+}
+func (m *BatchCommandsRequest_Request_TxnHeartBeat) MarshalTo(dAtA []byte) (int, error) {
+	i := 0
+	if m.TxnHeartBeat != nil {
+		dAtA[i] = 0xd2
+		i++
+		dAtA[i] = 0x1
+		i++
+		i = encodeVarintTikvpb(dAtA, i, uint64(m.TxnHeartBeat.Size()))
+		n29, err := m.TxnHeartBeat.MarshalTo(dAtA[i:])
+		if err != nil {
+			return 0, err
+		}
+		i += n29
+	}
+	return i, nil
+}
+func (m *BatchCommandsRequest_Request_CheckSecondaryLocks) MarshalTo(dAtA []byte) (int, error) {
+	i := 0
+	if m.CheckSecondaryLocks != nil {
+		dAtA[i] = 0x8a
+		i++
+		dAtA[i] = 0x2
+		i++
+		i = encodeVarintTikvpb(dAtA, i, uint64(m.CheckSecondaryLocks.Size()))
+		n30, err := m.CheckSecondaryLocks.MarshalTo(dAtA[i:])
+		if err != nil {
+			return 0, err
+		}
+		i += n30
+	}
+	return i, nil
+}
+func (m *BatchCommandsRequest_Request_RawCoprocessor) MarshalTo(dAtA []byte) (int, error) {
+	i := 0
+	if m.RawCoprocessor != nil {
+		dAtA[i] = 0x92
+		i++
+		dAtA[i] = 0x2
+		i++
+		i = encodeVarintTikvpb(dAtA, i, uint64(m.RawCoprocessor.Size()))
+		n31, err := m.RawCoprocessor.MarshalTo(dAtA[i:])
+		if err != nil {
+			return 0, err
+		}
+		i += n31
+	}
+	return i, nil
+}
 func (m *BatchCommandsRequest_Request_Empty) MarshalTo(dAtA []byte) (int, error) {
 	i := 0
 	if m.Empty != nil {
@@ -3826,11 +4849,11 @@ func (m *BatchCommandsRequest_Request_Empty) MarshalTo(dAtA []byte) (int, error)
 		dAtA[i] = 0xf
 		i++
 		i = encodeVarintTikvpb(dAtA, i, uint64(m.Empty.Size()))
-		n28, err := m.Empty.MarshalTo(dAtA[i:])
+		n32, err := m.Empty.MarshalTo(dAtA[i:])
 		if err != nil {
 			return 0, err
 		}
-		i += n28
+		i += n32
 	}
 	return i, nil
 }
@@ -3862,21 +4885,21 @@ func (m *BatchCommandsResponse) MarshalTo(dAtA []byte) (int, error) {
 		}
 	}
 	if len(m.RequestIds) > 0 {
-		dAtA30 := make([]byte, len(m.RequestIds)*10)
-		var j29 int
+		dAtA34 := make([]byte, len(m.RequestIds)*10)
+		var j33 int
 		for _, num := range m.RequestIds {
 			for num >= 1<<7 {
-				dAtA30[j29] = uint8(uint64(num)&0x7f | 0x80)
+				dAtA34[j33] = uint8(uint64(num)&0x7f | 0x80)
 				num >>= 7
-				j29++
+				j33++
 			}
-			dAtA30[j29] = uint8(num)
-			j29++
+			dAtA34[j33] = uint8(num)
+			j33++
 		}
 		dAtA[i] = 0x12
 		i++
-		i = encodeVarintTikvpb(dAtA, i, uint64(j29))
-		i += copy(dAtA[i:], dAtA30[:j29])
+		i = encodeVarintTikvpb(dAtA, i, uint64(j33))
+		i += copy(dAtA[i:], dAtA34[:j33])
 	}
 	if m.TransportLayerLoad != 0 {
 		dAtA[i] = 0x18
@@ -3905,11 +4928,11 @@ func (m *BatchCommandsResponse_Response) MarshalTo(dAtA []byte) (int, error) {
 	var l int
 	_ = l
 	if m.Cmd != nil {
-		nn31, err := m.Cmd.MarshalTo(dAtA[i:])
+		nn35, err := m.Cmd.MarshalTo(dAtA[i:])
 		if err != nil {
 			return 0, err
 		}
-		i += nn31
+		i += nn35
 	}
 	if m.XXX_unrecognized != nil {
 		i += copy(dAtA[i:], m.XXX_unrecognized)
@@ -3923,11 +4946,11 @@ func (m *BatchCommandsResponse_Response_Get) MarshalTo(dAtA []byte) (int, error)
 		dAtA[i] = 0xa
 		i++
 		i = encodeVarintTikvpb(dAtA, i, uint64(m.Get.Size()))
-		n32, err := m.Get.MarshalTo(dAtA[i:])
+		n36, err := m.Get.MarshalTo(dAtA[i:])
 		if err != nil {
 			return 0, err
 		}
-		i += n32
+		i += n36
 	}
 	return i, nil
 }
@@ -3937,11 +4960,11 @@ func (m *BatchCommandsResponse_Response_Scan) MarshalTo(dAtA []byte) (int, error
 		dAtA[i] = 0x12
 		i++
 		i = encodeVarintTikvpb(dAtA, i, uint64(m.Scan.Size()))
-		n33, err := m.Scan.MarshalTo(dAtA[i:])
+		n37, err := m.Scan.MarshalTo(dAtA[i:])
 		if err != nil {
 			return 0, err
 		}
-		i += n33
+		i += n37
 	}
 	return i, nil
 }
@@ -3951,11 +4974,11 @@ func (m *BatchCommandsResponse_Response_Prewrite) MarshalTo(dAtA []byte) (int, e
 		dAtA[i] = 0x1a
 		i++
 		i = encodeVarintTikvpb(dAtA, i, uint64(m.Prewrite.Size()))
-		n34, err := m.Prewrite.MarshalTo(dAtA[i:])
+		n38, err := m.Prewrite.MarshalTo(dAtA[i:])
 		if err != nil {
 			return 0, err
 		}
-		i += n34
+		i += n38
 	}
 	return i, nil
 }
@@ -3965,11 +4988,11 @@ func (m *BatchCommandsResponse_Response_Commit) MarshalTo(dAtA []byte) (int, err
 		dAtA[i] = 0x22
 		i++
 		i = encodeVarintTikvpb(dAtA, i, uint64(m.Commit.Size()))
-		n35, err := m.Commit.MarshalTo(dAtA[i:])
+		n39, err := m.Commit.MarshalTo(dAtA[i:])
 		if err != nil {
 			return 0, err
 		}
-		i += n35
+		i += n39
 	}
 	return i, nil
 }
@@ -3979,11 +5002,11 @@ func (m *BatchCommandsResponse_Response_Import) MarshalTo(dAtA []byte) (int, err
 		dAtA[i] = 0x2a
 		i++
 		i = encodeVarintTikvpb(dAtA, i, uint64(m.Import.Size()))
-		n36, err := m.Import.MarshalTo(dAtA[i:])
+		n40, err := m.Import.MarshalTo(dAtA[i:])
 		if err != nil {
 			return 0, err
 		}
-		i += n36
+		i += n40
 	}
 	return i, nil
 }
@@ -3993,11 +5016,11 @@ func (m *BatchCommandsResponse_Response_Cleanup) MarshalTo(dAtA []byte) (int, er
 		dAtA[i] = 0x32
 		i++
 		i = encodeVarintTikvpb(dAtA, i, uint64(m.Cleanup.Size()))
-		n37, err := m.Cleanup.MarshalTo(dAtA[i:])
+		n41, err := m.Cleanup.MarshalTo(dAtA[i:])
 		if err != nil {
 			return 0, err
 		}
-		i += n37
+		i += n41
 	}
 	return i, nil
 }
@@ -4007,11 +5030,11 @@ func (m *BatchCommandsResponse_Response_BatchGet) MarshalTo(dAtA []byte) (int, e
 		dAtA[i] = 0x3a
 		i++
 		i = encodeVarintTikvpb(dAtA, i, uint64(m.BatchGet.Size()))
-		n38, err := m.BatchGet.MarshalTo(dAtA[i:])
+		n42, err := m.BatchGet.MarshalTo(dAtA[i:])
 		if err != nil {
 			return 0, err
 		}
-		i += n38
+		i += n42
 	}
 	return i, nil
 }
@@ -4021,11 +5044,11 @@ func (m *BatchCommandsResponse_Response_BatchRollback) MarshalTo(dAtA []byte) (i
 		dAtA[i] = 0x42
 		i++
 		i = encodeVarintTikvpb(dAtA, i, uint64(m.BatchRollback.Size()))
-		n39, err := m.BatchRollback.MarshalTo(dAtA[i:])
+		n43, err := m.BatchRollback.MarshalTo(dAtA[i:])
 		if err != nil {
 			return 0, err
 		}
-		i += n39
+		i += n43
 	}
 	return i, nil
 }
@@ -4035,11 +5058,11 @@ func (m *BatchCommandsResponse_Response_ScanLock) MarshalTo(dAtA []byte) (int, e
 		dAtA[i] = 0x4a
 		i++
 		i = encodeVarintTikvpb(dAtA, i, uint64(m.ScanLock.Size()))
-		n40, err := m.ScanLock.MarshalTo(dAtA[i:])
+		n44, err := m.ScanLock.MarshalTo(dAtA[i:])
 		if err != nil {
 			return 0, err
 		}
-		i += n40
+		i += n44
 	}
 	return i, nil
 }
@@ -4049,11 +5072,11 @@ func (m *BatchCommandsResponse_Response_ResolveLock) MarshalTo(dAtA []byte) (int
 		dAtA[i] = 0x52
 		i++
 		i = encodeVarintTikvpb(dAtA, i, uint64(m.ResolveLock.Size()))
-		n41, err := m.ResolveLock.MarshalTo(dAtA[i:])
+		n45, err := m.ResolveLock.MarshalTo(dAtA[i:])
 		if err != nil {
 			return 0, err
 		}
-		i += n41
+		i += n45
 	}
 	return i, nil
 }
@@ -4063,11 +5086,11 @@ func (m *BatchCommandsResponse_Response_GC) MarshalTo(dAtA []byte) (int, error) 
 		dAtA[i] = 0x5a
 		i++
 		i = encodeVarintTikvpb(dAtA, i, uint64(m.GC.Size()))
-		n42, err := m.GC.MarshalTo(dAtA[i:])
+		n46, err := m.GC.MarshalTo(dAtA[i:])
 		if err != nil {
 			return 0, err
 		}
-		i += n42
+		i += n46
 	}
 	return i, nil
 }
@@ -4077,11 +5100,11 @@ func (m *BatchCommandsResponse_Response_DeleteRange) MarshalTo(dAtA []byte) (int
 		dAtA[i] = 0x62
 		i++
 		i = encodeVarintTikvpb(dAtA, i, uint64(m.DeleteRange.Size()))
-		n43, err := m.DeleteRange.MarshalTo(dAtA[i:])
+		n47, err := m.DeleteRange.MarshalTo(dAtA[i:])
 		if err != nil {
 			return 0, err
 		}
-		i += n43
+		i += n47
 	}
 	return i, nil
 }
@@ -4091,11 +5114,11 @@ func (m *BatchCommandsResponse_Response_RawGet) MarshalTo(dAtA []byte) (int, err
 		dAtA[i] = 0x6a
 		i++
 		i = encodeVarintTikvpb(dAtA, i, uint64(m.RawGet.Size()))
-		n44, err := m.RawGet.MarshalTo(dAtA[i:])
+		n48, err := m.RawGet.MarshalTo(dAtA[i:])
 		if err != nil {
 			return 0, err
 		}
-		i += n44
+		i += n48
 	}
 	return i, nil
 }
@@ -4105,11 +5128,11 @@ func (m *BatchCommandsResponse_Response_RawBatchGet) MarshalTo(dAtA []byte) (int
 		dAtA[i] = 0x72
 		i++
 		i = encodeVarintTikvpb(dAtA, i, uint64(m.RawBatchGet.Size()))
-		n45, err := m.RawBatchGet.MarshalTo(dAtA[i:])
+		n49, err := m.RawBatchGet.MarshalTo(dAtA[i:])
 		if err != nil {
 			return 0, err
 		}
-		i += n45
+		i += n49
 	}
 	return i, nil
 }
@@ -4119,11 +5142,11 @@ func (m *BatchCommandsResponse_Response_RawPut) MarshalTo(dAtA []byte) (int, err
 		dAtA[i] = 0x7a
 		i++
 		i = encodeVarintTikvpb(dAtA, i, uint64(m.RawPut.Size()))
-		n46, err := m.RawPut.MarshalTo(dAtA[i:])
+		n50, err := m.RawPut.MarshalTo(dAtA[i:])
 		if err != nil {
 			return 0, err
 		}
-		i += n46
+		i += n50
 	}
 	return i, nil
 }
@@ -4135,11 +5158,11 @@ func (m *BatchCommandsResponse_Response_RawBatchPut) MarshalTo(dAtA []byte) (int
 		dAtA[i] = 0x1
 		i++
 		i = encodeVarintTikvpb(dAtA, i, uint64(m.RawBatchPut.Size()))
-		n47, err := m.RawBatchPut.MarshalTo(dAtA[i:])
+		n51, err := m.RawBatchPut.MarshalTo(dAtA[i:])
 		if err != nil {
 			return 0, err
 		}
-		i += n47
+		i += n51
 	}
 	return i, nil
 }
@@ -4151,11 +5174,11 @@ func (m *BatchCommandsResponse_Response_RawDelete) MarshalTo(dAtA []byte) (int, 
 		dAtA[i] = 0x1
 		i++
 		i = encodeVarintTikvpb(dAtA, i, uint64(m.RawDelete.Size()))
-		n48, err := m.RawDelete.MarshalTo(dAtA[i:])
+		n52, err := m.RawDelete.MarshalTo(dAtA[i:])
 		if err != nil {
 			return 0, err
 		}
-		i += n48
+		i += n52
 	}
 	return i, nil
 }
@@ -4167,11 +5190,11 @@ func (m *BatchCommandsResponse_Response_RawBatchDelete) MarshalTo(dAtA []byte) (
 		dAtA[i] = 0x1
 		i++
 		i = encodeVarintTikvpb(dAtA, i, uint64(m.RawBatchDelete.Size()))
-		n49, err := m.RawBatchDelete.MarshalTo(dAtA[i:])
+		n53, err := m.RawBatchDelete.MarshalTo(dAtA[i:])
 		if err != nil {
 			return 0, err
 		}
-		i += n49
+		i += n53
 	}
 	return i, nil
 }
@@ -4183,11 +5206,11 @@ func (m *BatchCommandsResponse_Response_RawScan) MarshalTo(dAtA []byte) (int, er
 		dAtA[i] = 0x1
 		i++
 		i = encodeVarintTikvpb(dAtA, i, uint64(m.RawScan.Size()))
-		n50, err := m.RawScan.MarshalTo(dAtA[i:])
+		n54, err := m.RawScan.MarshalTo(dAtA[i:])
 		if err != nil {
 			return 0, err
 		}
-		i += n50
+		i += n54
 	}
 	return i, nil
 }
@@ -4199,11 +5222,11 @@ func (m *BatchCommandsResponse_Response_RawDeleteRange) MarshalTo(dAtA []byte) (
 		dAtA[i] = 0x1
 		i++
 		i = encodeVarintTikvpb(dAtA, i, uint64(m.RawDeleteRange.Size()))
-		n51, err := m.RawDeleteRange.MarshalTo(dAtA[i:])
+		n55, err := m.RawDeleteRange.MarshalTo(dAtA[i:])
 		if err != nil {
 			return 0, err
 		}
-		i += n51
+		i += n55
 	}
 	return i, nil
 }
@@ -4215,11 +5238,11 @@ func (m *BatchCommandsResponse_Response_RawBatchScan) MarshalTo(dAtA []byte) (in
 		dAtA[i] = 0x1
 		i++
 		i = encodeVarintTikvpb(dAtA, i, uint64(m.RawBatchScan.Size()))
-		n52, err := m.RawBatchScan.MarshalTo(dAtA[i:])
+		n56, err := m.RawBatchScan.MarshalTo(dAtA[i:])
 		if err != nil {
 			return 0, err
 		}
-		i += n52
+		i += n56
 	}
 	return i, nil
 }
@@ -4231,11 +5254,11 @@ func (m *BatchCommandsResponse_Response_Coprocessor) MarshalTo(dAtA []byte) (int
 		dAtA[i] = 0x1
 		i++
 		i = encodeVarintTikvpb(dAtA, i, uint64(m.Coprocessor.Size()))
-		n53, err := m.Coprocessor.MarshalTo(dAtA[i:])
+		n57, err := m.Coprocessor.MarshalTo(dAtA[i:])
 		if err != nil {
 			return 0, err
 		}
-		i += n53
+		i += n57
 	}
 	return i, nil
 }
@@ -4247,11 +5270,11 @@ func (m *BatchCommandsResponse_Response_PessimisticLock) MarshalTo(dAtA []byte) 
 		dAtA[i] = 0x1
 		i++
 		i = encodeVarintTikvpb(dAtA, i, uint64(m.PessimisticLock.Size()))
-		n54, err := m.PessimisticLock.MarshalTo(dAtA[i:])
+		n58, err := m.PessimisticLock.MarshalTo(dAtA[i:])
 		if err != nil {
 			return 0, err
 		}
-		i += n54
+		i += n58
 	}
 	return i, nil
 }
@@ -4263,11 +5286,75 @@ func (m *BatchCommandsResponse_Response_PessimisticRollback) MarshalTo(dAtA []by
 		dAtA[i] = 0x1
 		i++
 		i = encodeVarintTikvpb(dAtA, i, uint64(m.PessimisticRollback.Size()))
-		n55, err := m.PessimisticRollback.MarshalTo(dAtA[i:])
+		n59, err := m.PessimisticRollback.MarshalTo(dAtA[i:])
 		if err != nil {
 			return 0, err
 		}
-		i += n55
+		i += n59
+	}
+	return i, nil
+}
+func (m *BatchCommandsResponse_Response_CheckTxnStatus) MarshalTo(dAtA []byte) (int, error) {
+	i := 0
+	if m.CheckTxnStatus != nil {
+		dAtA[i] = 0xca
+		i++
+		dAtA[i] = 0x1
+		i++
+		i = encodeVarintTikvpb(dAtA, i, uint64(m.CheckTxnStatus.Size()))
+		n60, err := m.CheckTxnStatus.MarshalTo(dAtA[i:])
+		if err != nil {
+			return 0, err
+		}
+		i += n60
+	}
+	return i, nil
+}
+func (m *BatchCommandsResponse_Response_TxnHeartBeat) MarshalTo(dAtA []byte) (int, error) {
+	i := 0
+	if m.TxnHeartBeat != nil {
+		dAtA[i] = 0xd2
+		i++
+		dAtA[i] = 0x1
+		i++
+		i = encodeVarintTikvpb(dAtA, i, uint64(m.TxnHeartBeat.Size()))
+		n61, err := m.TxnHeartBeat.MarshalTo(dAtA[i:])
+		if err != nil {
+			return 0, err
+		}
+		i += n61
+	}
+	return i, nil
+}
+func (m *BatchCommandsResponse_Response_CheckSecondaryLocks) MarshalTo(dAtA []byte) (int, error) {
+	i := 0
+	if m.CheckSecondaryLocks != nil {
+		dAtA[i] = 0x8a
+		i++
+		dAtA[i] = 0x2
+		i++
+		i = encodeVarintTikvpb(dAtA, i, uint64(m.CheckSecondaryLocks.Size()))
+		n62, err := m.CheckSecondaryLocks.MarshalTo(dAtA[i:])
+		if err != nil {
+			return 0, err
+		}
+		i += n62
+	}
+	return i, nil
+}
+func (m *BatchCommandsResponse_Response_RawCoprocessor) MarshalTo(dAtA []byte) (int, error) {
+	i := 0
+	if m.RawCoprocessor != nil {
+		dAtA[i] = 0x92
+		i++
+		dAtA[i] = 0x2
+		i++
+		i = encodeVarintTikvpb(dAtA, i, uint64(m.RawCoprocessor.Size()))
+		n63, err := m.RawCoprocessor.MarshalTo(dAtA[i:])
+		if err != nil {
+			return 0, err
+		}
+		i += n63
 	}
 	return i, nil
 }
@@ -4279,11 +5366,11 @@ func (m *BatchCommandsResponse_Response_Empty) MarshalTo(dAtA []byte) (int, erro
 		dAtA[i] = 0xf
 		i++
 		i = encodeVarintTikvpb(dAtA, i, uint64(m.Empty.Size()))
-		n56, err := m.Empty.MarshalTo(dAtA[i:])
+		n64, err := m.Empty.MarshalTo(dAtA[i:])
 		if err != nil {
 			return 0, err
 		}
-		i += n56
+		i += n64
 	}
 	return i, nil
 }
@@ -4636,6 +5723,42 @@ func (m *BatchCommandsRequest_Request_PessimisticRollback) Size() (n int) {
 	}
 	return n
 }
+func (m *BatchCommandsRequest_Request_CheckTxnStatus) Size() (n int) {
+	var l int
+	_ = l
+	if m.CheckTxnStatus != nil {
+		l = m.CheckTxnStatus.Size()
+		n += 2 + l + sovTikvpb(uint64(l))
+	}
+	return n
+}
+func (m *BatchCommandsRequest_Request_TxnHeartBeat) Size() (n int) {
+	var l int
+	_ = l
+	if m.TxnHeartBeat != nil {
+		l = m.TxnHeartBeat.Size()
+		n += 2 + l + sovTikvpb(uint64(l))
+	}
+	return n
+}
+func (m *BatchCommandsRequest_Request_CheckSecondaryLocks) Size() (n int) {
+	var l int
+	_ = l
+	if m.CheckSecondaryLocks != nil {
+		l = m.CheckSecondaryLocks.Size()
+		n += 2 + l + sovTikvpb(uint64(l))
+	}
+	return n
+}
+func (m *BatchCommandsRequest_Request_RawCoprocessor) Size() (n int) {
+	var l int
+	_ = l
+	if m.RawCoprocessor != nil {
+		l = m.RawCoprocessor.Size()
+		n += 2 + l + sovTikvpb(uint64(l))
+	}
+	return n
+}
 func (m *BatchCommandsRequest_Request_Empty) Size() (n int) {
 	var l int
 	_ = l
@@ -4894,6 +6017,42 @@ func (m *BatchCommandsResponse_Response_PessimisticRollback) Size() (n int) {
 	_ = l
 	if m.PessimisticRollback != nil {
 		l = m.PessimisticRollback.Size()
+		n += 2 + l + sovTikvpb(uint64(l))
+	}
+	return n
+}
+func (m *BatchCommandsResponse_Response_CheckTxnStatus) Size() (n int) {
+	var l int
+	_ = l
+	if m.CheckTxnStatus != nil {
+		l = m.CheckTxnStatus.Size()
+		n += 2 + l + sovTikvpb(uint64(l))
+	}
+	return n
+}
+func (m *BatchCommandsResponse_Response_TxnHeartBeat) Size() (n int) {
+	var l int
+	_ = l
+	if m.TxnHeartBeat != nil {
+		l = m.TxnHeartBeat.Size()
+		n += 2 + l + sovTikvpb(uint64(l))
+	}
+	return n
+}
+func (m *BatchCommandsResponse_Response_CheckSecondaryLocks) Size() (n int) {
+	var l int
+	_ = l
+	if m.CheckSecondaryLocks != nil {
+		l = m.CheckSecondaryLocks.Size()
+		n += 2 + l + sovTikvpb(uint64(l))
+	}
+	return n
+}
+func (m *BatchCommandsResponse_Response_RawCoprocessor) Size() (n int) {
+	var l int
+	_ = l
+	if m.RawCoprocessor != nil {
+		l = m.RawCoprocessor.Size()
 		n += 2 + l + sovTikvpb(uint64(l))
 	}
 	return n
@@ -5902,6 +7061,134 @@ func (m *BatchCommandsRequest_Request) Unmarshal(dAtA []byte) error {
 				return err
 			}
 			m.Cmd = &BatchCommandsRequest_Request_PessimisticRollback{v}
+			iNdEx = postIndex
+		case 25:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field CheckTxnStatus", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTikvpb
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= (int(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthTikvpb
+			}
+			postIndex := iNdEx + msglen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			v := &kvrpcpb.CheckTxnStatusRequest{}
+			if err := v.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			m.Cmd = &BatchCommandsRequest_Request_CheckTxnStatus{v}
+			iNdEx = postIndex
+		case 26:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field TxnHeartBeat", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTikvpb
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= (int(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthTikvpb
+			}
+			postIndex := iNdEx + msglen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			v := &kvrpcpb.TxnHeartBeatRequest{}
+			if err := v.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			m.Cmd = &BatchCommandsRequest_Request_TxnHeartBeat{v}
+			iNdEx = postIndex
+		case 33:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field CheckSecondaryLocks", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTikvpb
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= (int(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthTikvpb
+			}
+			postIndex := iNdEx + msglen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			v := &kvrpcpb.CheckSecondaryLocksRequest{}
+			if err := v.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			m.Cmd = &BatchCommandsRequest_Request_CheckSecondaryLocks{v}
+			iNdEx = postIndex
+		case 34:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field RawCoprocessor", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTikvpb
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= (int(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthTikvpb
+			}
+			postIndex := iNdEx + msglen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			v := &kvrpcpb.RawCoprocessorRequest{}
+			if err := v.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			m.Cmd = &BatchCommandsRequest_Request_RawCoprocessor{v}
 			iNdEx = postIndex
 		case 255:
 			if wireType != 2 {
@@ -6917,6 +8204,134 @@ func (m *BatchCommandsResponse_Response) Unmarshal(dAtA []byte) error {
 			}
 			m.Cmd = &BatchCommandsResponse_Response_PessimisticRollback{v}
 			iNdEx = postIndex
+		case 25:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field CheckTxnStatus", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTikvpb
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= (int(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthTikvpb
+			}
+			postIndex := iNdEx + msglen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			v := &kvrpcpb.CheckTxnStatusResponse{}
+			if err := v.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			m.Cmd = &BatchCommandsResponse_Response_CheckTxnStatus{v}
+			iNdEx = postIndex
+		case 26:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field TxnHeartBeat", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTikvpb
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= (int(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthTikvpb
+			}
+			postIndex := iNdEx + msglen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			v := &kvrpcpb.TxnHeartBeatResponse{}
+			if err := v.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			m.Cmd = &BatchCommandsResponse_Response_TxnHeartBeat{v}
+			iNdEx = postIndex
+		case 33:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field CheckSecondaryLocks", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTikvpb
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= (int(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthTikvpb
+			}
+			postIndex := iNdEx + msglen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			v := &kvrpcpb.CheckSecondaryLocksResponse{}
+			if err := v.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			m.Cmd = &BatchCommandsResponse_Response_CheckSecondaryLocks{v}
+			iNdEx = postIndex
+		case 34:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field RawCoprocessor", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTikvpb
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= (int(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthTikvpb
+			}
+			postIndex := iNdEx + msglen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			v := &kvrpcpb.RawCoprocessorResponse{}
+			if err := v.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			m.Cmd = &BatchCommandsResponse_Response_RawCoprocessor{v}
+			iNdEx = postIndex
 		case 255:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Empty", wireType)
@@ -7317,111 +8732,145 @@ var (
 	ErrIntOverflowTikvpb   = fmt.Errorf("proto: integer overflow")
 )
 
-func init() { proto.RegisterFile("tikvpb.proto", fileDescriptor_tikvpb_0f37d68de6f9c811) }
+func init() { proto.RegisterFile("tikvpb.proto", fileDescriptor_tikvpb_92b152ac586f1929) }
 
-var fileDescriptor_tikvpb_0f37d68de6f9c811 = []byte{
-	// 1640 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x94, 0x98, 0xcd, 0x72, 0xdb, 0xb6,
-	0x16, 0xc7, 0x29, 0x5b, 0xfe, 0x82, 0xec, 0xd8, 0x3e, 0xb6, 0x63, 0x1a, 0xd7, 0x5f, 0x61, 0x72,
-	0x73, 0x3d, 0xf7, 0xce, 0xe8, 0xda, 0x49, 0x5a, 0x37, 0x49, 0x9b, 0xba, 0x96, 0x53, 0xc7, 0x91,
-	0x33, 0xe3, 0xa1, 0xd2, 0x36, 0x5d, 0x79, 0x18, 0x09, 0x51, 0x34, 0xfa, 0xa0, 0x4a, 0x52, 0x74,
-	0xfd, 0x26, 0x7d, 0x84, 0x2e, 0xda, 0xf7, 0xe8, 0xb2, 0xcb, 0xce, 0x74, 0xd1, 0x4e, 0xfa, 0x14,
-	0x5d, 0xb5, 0x43, 0x90, 0x00, 0x41, 0x10, 0xa0, 0xd2, 0x95, 0xe9, 0x83, 0xf3, 0x3f, 0x07, 0x20,
-	0x40, 0xfc, 0xce, 0x11, 0x9a, 0x0f, 0x3a, 0xdd, 0x70, 0xf8, 0xba, 0x3a, 0xf4, 0xdc, 0xc0, 0x85,
-	0xe9, 0xf8, 0x3f, 0xbc, 0xdc, 0x74, 0x87, 0x9e, 0xdb, 0x24, 0xbe, 0xef, 0x7a, 0xf1, 0x10, 0x5e,
-	0xe8, 0x86, 0xde, 0xb0, 0xc9, 0x3c, 0xf1, 0x8a, 0xe7, 0xbc, 0x09, 0x2e, 0x7d, 0xe2, 0x85, 0xc4,
-	0xe3, 0xc6, 0xd5, 0xb6, 0xdb, 0x76, 0xe9, 0xe3, 0xff, 0xa3, 0xa7, 0xc4, 0xba, 0xe8, 0x8d, 0xfc,
-	0x80, 0x3e, 0xc6, 0x06, 0xeb, 0xd7, 0x79, 0xb4, 0x7a, 0xec, 0x04, 0xcd, 0xb7, 0x35, 0xb7, 0xdf,
-	0x77, 0x06, 0x2d, 0xdf, 0x26, 0xdf, 0x8c, 0x88, 0x1f, 0xc0, 0x11, 0x9a, 0xf5, 0xe2, 0x47, 0xdf,
-	0x2c, 0xed, 0x4e, 0xee, 0x55, 0xee, 0xdd, 0xa9, 0x26, 0xf3, 0x53, 0xf9, 0x57, 0x93, 0xbf, 0x36,
-	0x57, 0xc1, 0x0e, 0xaa, 0x24, 0xcf, 0x97, 0x9d, 0x96, 0x6f, 0x4e, 0xec, 0x4e, 0xee, 0x95, 0x6d,
-	0x94, 0x98, 0xce, 0x5a, 0x3e, 0xfe, 0xad, 0x82, 0x66, 0x58, 0xba, 0xff, 0xa0, 0xc9, 0x53, 0x12,
-	0x98, 0xa5, 0xdd, 0xd2, 0x5e, 0xe5, 0xde, 0x4a, 0x95, 0x2d, 0xf0, 0x94, 0x04, 0x89, 0xc7, 0x33,
-	0xc3, 0x8e, 0x3c, 0xe0, 0xbf, 0xa8, 0xdc, 0x68, 0x3a, 0x03, 0x73, 0x82, 0x7a, 0xae, 0x72, 0xcf,
-	0xc8, 0x98, 0xba, 0x52, 0x1f, 0xf8, 0x10, 0xcd, 0x5e, 0x78, 0xe4, 0xca, 0xeb, 0x04, 0xc4, 0x9c,
-	0xa4, 0xfe, 0x26, 0xf7, 0x67, 0x03, 0xa9, 0x86, 0xfb, 0xc2, 0x3e, 0x9a, 0x8e, 0x96, 0xd7, 0x09,
-	0xcc, 0x32, 0x55, 0xdd, 0xe4, 0xaa, 0xd8, 0x9c, 0x6a, 0x12, 0xbf, 0x48, 0x71, 0xd6, 0x1f, 0xba,
-	0x5e, 0x60, 0x4e, 0x49, 0x8a, 0xd8, 0x2c, 0x28, 0x62, 0x03, 0xdc, 0x47, 0x33, 0xb5, 0x1e, 0x71,
-	0x06, 0xa3, 0xa1, 0x39, 0x4d, 0x25, 0xeb, 0x69, 0x92, 0xd8, 0x9e, 0x6a, 0x98, 0x67, 0xb4, 0x20,
-	0xfa, 0xf2, 0xa3, 0x57, 0x35, 0x23, 0x2d, 0x88, 0x0d, 0x08, 0x0b, 0x62, 0x26, 0x78, 0x8a, 0x16,
-	0xe8, 0xb3, 0xed, 0xf6, 0x7a, 0xaf, 0x9d, 0x66, 0xd7, 0x9c, 0xa5, 0xe2, 0xad, 0xac, 0x98, 0x8d,
-	0xa6, 0x11, 0xb2, 0xaa, 0x28, 0x7d, 0xf4, 0x5e, 0xcf, 0xdd, 0x66, 0xd7, 0x9c, 0x93, 0xd2, 0xb3,
-	0x01, 0x21, 0x3d, 0x33, 0xc1, 0xa7, 0xa8, 0x62, 0x13, 0xdf, 0xed, 0x85, 0x84, 0x4a, 0x11, 0x95,
-	0xfe, 0x8b, 0x4b, 0x85, 0xb1, 0x54, 0x2d, 0x2a, 0xe0, 0x0e, 0x9a, 0x38, 0xad, 0x99, 0x15, 0xaa,
-	0x83, 0xf4, 0x70, 0xd4, 0x52, 0xf7, 0x89, 0xd3, 0x5a, 0x94, 0xe6, 0x84, 0xf4, 0x48, 0x40, 0x6c,
-	0x67, 0xd0, 0x26, 0xe6, 0xbc, 0x94, 0x46, 0x18, 0x13, 0xd2, 0x08, 0xd6, 0x68, 0x17, 0x6d, 0xe7,
-	0x2a, 0x7a, 0xb9, 0x0b, 0xd2, 0x2e, 0xc6, 0x66, 0x61, 0x17, 0x63, 0x03, 0x5d, 0x99, 0x73, 0xc5,
-	0xf7, 0xe4, 0x86, 0xbc, 0xb2, 0x74, 0x4c, 0x5c, 0x59, 0x6a, 0x4d, 0x52, 0x5e, 0x8c, 0x02, 0x73,
-	0x31, 0x9f, 0xf2, 0x62, 0x24, 0xa5, 0xbc, 0x18, 0x65, 0x52, 0x46, 0xb2, 0x25, 0x4d, 0xca, 0x8c,
-	0x56, 0x54, 0xc0, 0x43, 0x34, 0x67, 0x3b, 0x57, 0xf1, 0xba, 0xcd, 0x65, 0x2a, 0xdf, 0x10, 0xe5,
-	0xc9, 0x1b, 0xe1, 0xe2, 0xd4, 0x1b, 0x9e, 0xa1, 0x1b, 0x2c, 0x52, 0xa2, 0x07, 0xaa, 0xdf, 0xce,
-	0xa5, 0x97, 0x83, 0x48, 0xba, 0xe8, 0xf8, 0xdb, 0xce, 0x15, 0xfd, 0x92, 0x57, 0xa4, 0xe3, 0x9f,
-	0xd8, 0x85, 0xe3, 0x9f, 0x58, 0x92, 0xf4, 0xe2, 0x1e, 0xaf, 0xe6, 0xd3, 0x2b, 0xb7, 0x59, 0xd2,
-	0xc1, 0x31, 0x9a, 0x67, 0x13, 0xa2, 0x73, 0x58, 0xa3, 0x71, 0x36, 0x73, 0xcb, 0xc8, 0x4e, 0x24,
-	0xa3, 0x81, 0x8f, 0x50, 0xa5, 0x96, 0x5e, 0xcd, 0xe6, 0xcd, 0xe4, 0x42, 0x12, 0xaf, 0x6b, 0x61,
-	0x07, 0x04, 0x57, 0xa8, 0xa3, 0xc5, 0x0b, 0xe2, 0xfb, 0x9d, 0x7e, 0xc7, 0x0f, 0x3a, 0x4d, 0xfa,
-	0x4d, 0xac, 0x53, 0xf5, 0x4e, 0x7a, 0x3d, 0x65, 0xc7, 0xd3, 0x40, 0xb2, 0x12, 0xbe, 0x42, 0x2b,
-	0x82, 0x89, 0x7f, 0xe1, 0x26, 0x0d, 0x78, 0x5b, 0x15, 0x30, 0xff, 0x9d, 0xab, 0x22, 0xc0, 0x23,
-	0x34, 0xf5, 0xb4, 0x3f, 0x0c, 0xae, 0xcd, 0xbf, 0xe2, 0x5b, 0xf9, 0x96, 0xf2, 0xfe, 0xa7, 0x2e,
-	0x69, 0xa4, 0x58, 0x72, 0x3c, 0x85, 0x26, 0x9b, 0xfd, 0x96, 0xf5, 0xc3, 0x02, 0x5a, 0x93, 0x68,
-	0xe1, 0x0f, 0xdd, 0x81, 0x4f, 0xe0, 0x04, 0xcd, 0x79, 0xc9, 0x33, 0xe3, 0xcb, 0x5d, 0x0d, 0x5f,
-	0x62, 0xaf, 0x2a, 0x7b, 0xb0, 0x53, 0xe1, 0x58, 0xc4, 0xc0, 0x3e, 0x5a, 0x0d, 0x3c, 0x67, 0xe0,
-	0x47, 0x57, 0xee, 0x65, 0xcf, 0xb9, 0x26, 0xde, 0x65, 0xcf, 0x75, 0x5a, 0x94, 0x06, 0x65, 0x1b,
-	0xf8, 0xd8, 0x79, 0x34, 0x74, 0xee, 0x3a, 0x2d, 0xfc, 0x67, 0x05, 0xcd, 0xf2, 0x59, 0xee, 0x89,
-	0x54, 0x5a, 0xcd, 0x52, 0x29, 0x76, 0x61, 0x58, 0xfa, 0x5f, 0x06, 0x4b, 0x6b, 0x12, 0x96, 0xb8,
-	0x6f, 0xcc, 0xa5, 0xc3, 0x1c, 0x97, 0x36, 0x14, 0x5c, 0xe2, 0xa2, 0x14, 0x4c, 0x07, 0x12, 0x98,
-	0xd6, 0x73, 0x60, 0xe2, 0x22, 0x46, 0xa6, 0x03, 0x89, 0x4c, 0xeb, 0x39, 0x32, 0xa5, 0x92, 0x04,
-	0x4d, 0x0f, 0x64, 0x34, 0x99, 0x79, 0x34, 0x71, 0x11, 0x67, 0xd3, 0x61, 0x8e, 0x4d, 0x1b, 0x0a,
-	0x36, 0xa5, 0x8b, 0xe2, 0x57, 0xe0, 0xe7, 0x6a, 0x38, 0x6d, 0xeb, 0xe0, 0xc4, 0x43, 0x48, 0x74,
-	0x3a, 0xcc, 0xd1, 0x69, 0x43, 0x41, 0xa7, 0x74, 0x02, 0x1c, 0x4f, 0x47, 0x2a, 0x3c, 0x6d, 0xaa,
-	0xf1, 0xc4, 0xe5, 0x19, 0x3e, 0xfd, 0x5b, 0xe0, 0xd3, 0x4a, 0x86, 0x4f, 0xdc, 0x3f, 0x02, 0xd4,
-	0x91, 0x0a, 0x50, 0x9b, 0x6a, 0x40, 0xa5, 0x89, 0xc4, 0x7b, 0xeb, 0x40, 0x22, 0xd4, 0x7a, 0x8e,
-	0x50, 0xe9, 0x6e, 0x26, 0x88, 0x3a, 0x52, 0x21, 0x6a, 0x53, 0x8d, 0x28, 0x61, 0x75, 0x02, 0xa3,
-	0x0e, 0x24, 0x46, 0xad, 0xe7, 0x18, 0x95, 0x49, 0x1a, 0x31, 0xe6, 0x48, 0x05, 0xa9, 0x4d, 0x35,
-	0xa4, 0xf2, 0x49, 0xa3, 0x08, 0x8f, 0xf2, 0x94, 0xc2, 0x2a, 0x4a, 0x71, 0xb5, 0x80, 0xa9, 0x33,
-	0x0d, 0xa6, 0x76, 0xb4, 0x98, 0xe2, 0x51, 0x64, 0x4e, 0x3d, 0x90, 0x39, 0x65, 0xe6, 0x39, 0x95,
-	0x7e, 0x0b, 0x0c, 0x54, 0x67, 0x1a, 0x50, 0xed, 0x68, 0x41, 0x95, 0x99, 0x80, 0xb8, 0xe3, 0x35,
-	0x25, 0xa9, 0xb6, 0x34, 0xa4, 0xe2, 0x61, 0xb2, 0xa8, 0x7a, 0xa8, 0x42, 0xd5, 0x9a, 0x84, 0xaa,
-	0x74, 0x1f, 0x44, 0x56, 0x9d, 0xeb, 0x58, 0xb5, 0xab, 0x67, 0x15, 0x8f, 0x94, 0x83, 0xd5, 0xab,
-	0x22, 0x58, 0xdd, 0x29, 0x86, 0x15, 0x8f, 0xaa, 0xa4, 0xd5, 0x63, 0x89, 0x56, 0x56, 0x11, 0xad,
-	0x78, 0xa8, 0x2c, 0xae, 0x8e, 0xd1, 0x52, 0x7c, 0xa5, 0x38, 0x6f, 0x82, 0x17, 0xc4, 0xf7, 0x9d,
-	0x36, 0x81, 0x2a, 0x2a, 0xf7, 0xfd, 0x36, 0x63, 0x14, 0xae, 0x66, 0x7b, 0x2d, 0xc1, 0xd3, 0xa6,
-	0x7e, 0x56, 0x03, 0x6d, 0x68, 0xf9, 0x08, 0xeb, 0x68, 0x26, 0x88, 0x61, 0x45, 0x99, 0x52, 0xb6,
-	0xa7, 0x03, 0x0a, 0x2a, 0xd8, 0x42, 0xa8, 0x45, 0x7a, 0xce, 0xf5, 0x65, 0xd0, 0xe9, 0x13, 0x0a,
-	0x91, 0xb2, 0x3d, 0x47, 0x2d, 0x2f, 0x3b, 0x7d, 0x62, 0x7d, 0x80, 0xb0, 0x7e, 0x19, 0xda, 0xa8,
-	0xf7, 0x7e, 0x5c, 0x41, 0xe5, 0x97, 0x9d, 0x6e, 0x08, 0x0f, 0xd0, 0x54, 0x3d, 0x8c, 0x3e, 0x65,
-	0x55, 0x67, 0x85, 0x95, 0x60, 0xb3, 0x0c, 0x38, 0x44, 0xd3, 0xf5, 0x90, 0x9e, 0x1f, 0x65, 0x9b,
-	0x85, 0xd5, 0x94, 0xb3, 0x0c, 0xa8, 0x21, 0x54, 0x0f, 0x39, 0xb4, 0xb4, 0x3d, 0x17, 0xd6, 0x53,
-	0xcf, 0x32, 0xe0, 0x15, 0x5a, 0xae, 0x87, 0xf2, 0xf9, 0x19, 0x57, 0x20, 0xe1, 0xb1, 0xa7, 0xd2,
-	0x32, 0xa0, 0x85, 0xd6, 0xea, 0x5f, 0xaa, 0xce, 0xd0, 0xfb, 0x54, 0x4b, 0xf8, 0xbd, 0x4e, 0xa9,
-	0x65, 0xc0, 0x27, 0x68, 0xb6, 0x1e, 0x26, 0x10, 0xd6, 0x34, 0x90, 0x58, 0xc7, 0x6f, 0x26, 0x4f,
-	0x80, 0xac, 0xe9, 0x26, 0xb1, 0x8e, 0xe5, 0x96, 0x01, 0x47, 0x68, 0xae, 0x1e, 0x32, 0x34, 0xeb,
-	0x5a, 0x4b, 0xac, 0x05, 0x3b, 0xdb, 0x44, 0xce, 0x00, 0x6d, 0x9f, 0x89, 0xf5, 0x94, 0xb7, 0x0c,
-	0xb0, 0xd1, 0x62, 0x12, 0x84, 0xbf, 0xe4, 0xe2, 0xa6, 0x13, 0x8f, 0xc1, 0x3e, 0x9b, 0x18, 0x87,
-	0xb7, 0xb6, 0x03, 0xc5, 0x7a, 0xfa, 0x5b, 0x06, 0x9c, 0xa3, 0x85, 0x7a, 0x28, 0x22, 0xbc, 0xa8,
-	0x1d, 0xc5, 0x85, 0xc5, 0x80, 0x65, 0xc0, 0x01, 0x2a, 0xd7, 0xc3, 0xd3, 0x1a, 0x28, 0x7a, 0x53,
-	0xac, 0xaa, 0x07, 0xd8, 0x04, 0xc4, 0x8b, 0xbe, 0xa8, 0x51, 0xc5, 0x85, 0x45, 0x82, 0x65, 0xc0,
-	0x63, 0x56, 0x17, 0x80, 0xa6, 0x67, 0xc5, 0xba, 0x4a, 0xc1, 0x32, 0xe0, 0x79, 0xa6, 0x42, 0x80,
-	0xa2, 0xf6, 0x15, 0x17, 0x16, 0x0e, 0x7c, 0x22, 0x11, 0xc0, 0x35, 0x9d, 0x2c, 0xd6, 0x55, 0x0f,
-	0xd9, 0x89, 0x44, 0x11, 0x8a, 0x9a, 0x5a, 0x5c, 0x58, 0x4c, 0x58, 0x46, 0xd4, 0x60, 0xa4, 0x05,
-	0x81, 0xbe, 0xbf, 0xc5, 0x05, 0x45, 0x85, 0x65, 0x40, 0x43, 0xae, 0x24, 0x60, 0x4c, 0xab, 0x8b,
-	0xc7, 0xd5, 0x18, 0x96, 0x01, 0x4f, 0x78, 0x4d, 0x01, 0xba, 0xae, 0x17, 0x6b, 0xcb, 0x0c, 0x3e,
-	0x29, 0xf1, 0xec, 0x8c, 0x69, 0x80, 0xf1, 0xb8, 0xba, 0xc3, 0x32, 0xe0, 0x45, 0xb6, 0xce, 0x80,
-	0xc2, 0x5e, 0x18, 0x17, 0xd7, 0x1f, 0x96, 0x01, 0x97, 0x08, 0xbe, 0x18, 0xf8, 0xce, 0x1b, 0x72,
-	0x42, 0xfc, 0xc0, 0x73, 0xaf, 0xe3, 0x79, 0x5a, 0x5c, 0x96, 0x1f, 0x64, 0xa1, 0x6f, 0x17, 0xfa,
-	0xf0, 0x04, 0x1f, 0x67, 0x4a, 0x1a, 0x50, 0xf6, 0xdd, 0x58, 0x5d, 0xe2, 0xd0, 0xd3, 0xb1, 0x2c,
-	0xa8, 0x1b, 0x81, 0x47, 0x9c, 0xfe, 0x3f, 0x8c, 0xb1, 0x5f, 0x82, 0xc7, 0xa8, 0x1c, 0x15, 0x00,
-	0x50, 0x50, 0x15, 0xe0, 0x15, 0x69, 0xec, 0xc4, 0x1d, 0x10, 0xcb, 0xd8, 0x2b, 0xc1, 0x13, 0x34,
-	0xc7, 0x8b, 0x0d, 0x30, 0x33, 0xd5, 0xca, 0x7b, 0xe9, 0x3f, 0x43, 0xb3, 0x8d, 0x81, 0x33, 0xf4,
-	0xdf, 0xba, 0x01, 0x6c, 0x4a, 0x4e, 0x6c, 0xa0, 0xf6, 0x76, 0x34, 0xe8, 0xea, 0x43, 0x3c, 0x47,
-	0x95, 0xc6, 0xb0, 0x17, 0x61, 0xa7, 0xdd, 0x71, 0x07, 0xc2, 0xf7, 0x26, 0x58, 0xf3, 0xdf, 0x5b,
-	0x66, 0x30, 0xf3, 0xbd, 0x11, 0xa7, 0x75, 0x36, 0x68, 0x91, 0x6f, 0xc5, 0xef, 0x8d, 0xd9, 0x14,
-	0xdf, 0x5b, 0x3a, 0x24, 0x9e, 0xc2, 0x17, 0x61, 0xb3, 0x79, 0x4a, 0x82, 0xe3, 0xeb, 0x3a, 0xb9,
-	0x16, 0x4e, 0xa1, 0x68, 0xce, 0x9f, 0xc2, 0xec, 0x28, 0x0f, 0xf7, 0x35, 0x5a, 0xe2, 0x23, 0x8d,
-	0xc0, 0xf1, 0x82, 0x97, 0x3e, 0xec, 0xe6, 0x45, 0xc9, 0x10, 0x0b, 0x7b, 0xab, 0xc0, 0x43, 0x20,
-	0xdb, 0x42, 0xa6, 0x24, 0x83, 0xcd, 0xa2, 0x9f, 0xc7, 0xf1, 0x56, 0xe1, 0x8f, 0x1b, 0xd1, 0x6e,
-	0xec, 0x97, 0x8e, 0xef, 0xfe, 0xf2, 0xfd, 0x6c, 0xe9, 0xa7, 0x77, 0xdb, 0xa5, 0x9f, 0xdf, 0x6d,
-	0x97, 0x7e, 0x7f, 0xb7, 0x5d, 0xfa, 0xee, 0x8f, 0x6d, 0x03, 0x2d, 0xb9, 0x5e, 0x9b, 0xaa, 0xab,
-	0xdd, 0x90, 0xfe, 0x68, 0xff, 0x7a, 0x9a, 0xfe, 0xb9, 0xff, 0x77, 0x00, 0x00, 0x00, 0xff, 0xff,
-	0xca, 0x5d, 0x33, 0xb5, 0x31, 0x18, 0x00, 0x00,
+var fileDescriptor_tikvpb_92b152ac586f1929 = []byte{
+	// 2183 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x94, 0x9a, 0xdb, 0x52, 0x1b, 0xc9,
+	0x19, 0x80, 0x47, 0xb6, 0xcc, 0xa1, 0x31, 0xa7, 0x06, 0xcc, 0xd0, 0xcb, 0xc1, 0xcc, 0xb2, 0x1b,
+	0x2a, 0xa9, 0x22, 0xc6, 0xeb, 0xac, 0xb3, 0xbb, 0xc9, 0x06, 0x23, 0xbc, 0x80, 0x05, 0xb5, 0x2a,
+	0x49, 0x9b, 0x75, 0xaa, 0x52, 0x45, 0x35, 0x52, 0x03, 0x2a, 0xa4, 0x19, 0x65, 0xa6, 0x19, 0xac,
+	0xd7, 0xc8, 0x45, 0x2a, 0x8f, 0x90, 0x07, 0xc8, 0x43, 0xe4, 0x22, 0x17, 0xb9, 0xcc, 0x65, 0xca,
+	0xb9, 0xc8, 0x63, 0x24, 0xd5, 0x3d, 0x33, 0x3d, 0xdd, 0x3d, 0xdd, 0x23, 0x72, 0xc5, 0xe8, 0x3f,
+	0xf6, 0xf9, 0xfb, 0xbb, 0x6d, 0xf0, 0x94, 0xf6, 0x6e, 0xe3, 0xe1, 0xe5, 0xde, 0x30, 0x0c, 0x68,
+	0x00, 0x27, 0x92, 0x5f, 0x68, 0xb1, 0x13, 0x0c, 0xc3, 0xa0, 0x43, 0xa2, 0x28, 0x08, 0x13, 0x15,
+	0x9a, 0xbd, 0x8d, 0xc3, 0x61, 0x27, 0xb3, 0x44, 0xd3, 0x83, 0xe1, 0x30, 0xfd, 0x5c, 0x0a, 0xf1,
+	0x15, 0xbd, 0x88, 0x48, 0x18, 0x93, 0x50, 0xe8, 0x97, 0xaf, 0x83, 0xeb, 0x80, 0x7f, 0xfe, 0x9c,
+	0x7d, 0xa5, 0xd2, 0xf9, 0xf0, 0x2e, 0xa2, 0xfc, 0x33, 0x11, 0x78, 0x7f, 0x9c, 0x07, 0xcb, 0x87,
+	0x98, 0x76, 0x6e, 0x6a, 0xc1, 0x60, 0x80, 0xfd, 0x6e, 0xd4, 0x24, 0x7f, 0xb8, 0x23, 0x11, 0x85,
+	0x07, 0x60, 0x2a, 0x4c, 0x3e, 0x23, 0xb7, 0xf2, 0xfc, 0xf1, 0xee, 0xcc, 0xcb, 0x9d, 0xbd, 0xb4,
+	0xa9, 0x26, 0xfb, 0xbd, 0xf4, 0x6f, 0x53, 0x78, 0xc1, 0x2d, 0x30, 0x93, 0x7e, 0x5f, 0xf4, 0xba,
+	0x91, 0xfb, 0xe8, 0xf9, 0xe3, 0xdd, 0x6a, 0x13, 0xa4, 0xa2, 0xd3, 0x6e, 0x84, 0xfe, 0x34, 0x07,
+	0x26, 0xb3, 0x74, 0x3f, 0x01, 0x8f, 0x8f, 0x09, 0x75, 0x2b, 0xcf, 0x2b, 0xbb, 0x33, 0x2f, 0x97,
+	0xf6, 0xb2, 0xbe, 0x1e, 0x13, 0x9a, 0x5a, 0x9c, 0x38, 0x4d, 0x66, 0x01, 0x7f, 0x0a, 0xaa, 0xad,
+	0x0e, 0xf6, 0xdd, 0x47, 0xdc, 0x72, 0x59, 0x58, 0x32, 0x61, 0x6e, 0xca, 0x6d, 0xe0, 0x97, 0x60,
+	0xaa, 0x11, 0x92, 0xfb, 0xb0, 0x47, 0x89, 0xfb, 0x98, 0xdb, 0xbb, 0xc2, 0x3e, 0x53, 0xe4, 0x3e,
+	0xc2, 0x16, 0xbe, 0x00, 0x13, 0xac, 0x7b, 0x3d, 0xea, 0x56, 0xb9, 0xd7, 0x33, 0xe1, 0x95, 0x88,
+	0x73, 0x9f, 0xd4, 0x8e, 0x79, 0x9c, 0x0e, 0x86, 0x41, 0x48, 0xdd, 0x27, 0x9a, 0x47, 0x22, 0x96,
+	0x3c, 0x12, 0x01, 0xfc, 0x02, 0x4c, 0xd6, 0xfa, 0x04, 0xfb, 0x77, 0x43, 0x77, 0x82, 0xbb, 0xac,
+	0xe6, 0x49, 0x12, 0x79, 0xee, 0x93, 0x59, 0xb2, 0x0e, 0xf1, 0xc1, 0x67, 0x43, 0x35, 0xa9, 0x75,
+	0x28, 0x53, 0x48, 0x1d, 0xca, 0x44, 0xf0, 0x2d, 0x98, 0xe5, 0xdf, 0xcd, 0xa0, 0xdf, 0xbf, 0xc4,
+	0x9d, 0x5b, 0x77, 0x8a, 0x3b, 0x6f, 0xa8, 0xce, 0x99, 0x36, 0x8f, 0xa0, 0x7a, 0xb1, 0xf4, 0x6c,
+	0x5c, 0xcf, 0x82, 0xce, 0xad, 0x3b, 0xad, 0xa5, 0xcf, 0x14, 0x52, 0xfa, 0x4c, 0x04, 0x7f, 0x03,
+	0x66, 0x9a, 0x24, 0x0a, 0xfa, 0x31, 0xe1, 0xae, 0x80, 0xbb, 0x7e, 0x22, 0x5c, 0x25, 0x5d, 0xee,
+	0x2d, 0x7b, 0xc0, 0x1d, 0xf0, 0xe8, 0xb8, 0xe6, 0xce, 0x70, 0x3f, 0x98, 0x2f, 0x8e, 0x5a, 0x6e,
+	0xfe, 0xe8, 0xb8, 0xc6, 0xd2, 0x1c, 0x91, 0x3e, 0xa1, 0xa4, 0x89, 0xfd, 0x6b, 0xe2, 0x3e, 0xd5,
+	0xd2, 0x48, 0x3a, 0x29, 0x8d, 0x24, 0x65, 0xb3, 0xd8, 0xc4, 0xf7, 0x6c, 0x70, 0x67, 0xb5, 0x59,
+	0x4c, 0xc4, 0xd2, 0x2c, 0x26, 0x02, 0xde, 0x33, 0x7c, 0x2f, 0xe6, 0x64, 0x4e, 0xef, 0x59, 0xae,
+	0x93, 0x7b, 0x96, 0x4b, 0xd3, 0x94, 0x8d, 0x3b, 0xea, 0xce, 0x17, 0x53, 0x36, 0xee, 0xb4, 0x94,
+	0x8d, 0x3b, 0x25, 0x25, 0x73, 0x5b, 0xb0, 0xa4, 0x54, 0x7c, 0x65, 0x0f, 0xf8, 0x15, 0x98, 0x6e,
+	0xe2, 0xfb, 0xa4, 0xdf, 0xee, 0x22, 0x77, 0x5f, 0x93, 0xdd, 0xd3, 0x11, 0x11, 0xce, 0xb9, 0x35,
+	0x3c, 0x01, 0x73, 0x59, 0xa4, 0xd4, 0x1f, 0x72, 0xff, 0xcd, 0x42, 0x7a, 0x3d, 0x88, 0xe6, 0xc7,
+	0x96, 0x7f, 0x13, 0xdf, 0xf3, 0x9d, 0xbc, 0xa4, 0x2d, 0xff, 0x54, 0x2e, 0x2d, 0xff, 0x54, 0x92,
+	0xa6, 0x97, 0xe7, 0x78, 0xb9, 0x98, 0xde, 0x38, 0xcd, 0x9a, 0x1f, 0x3c, 0x04, 0x4f, 0xb3, 0x06,
+	0xf1, 0x36, 0xac, 0xf0, 0x38, 0xeb, 0x85, 0x6e, 0xa8, 0x0d, 0x51, 0x7c, 0xe0, 0x2f, 0xc1, 0x4c,
+	0x2d, 0x3f, 0xa5, 0xdd, 0x67, 0xe9, 0x81, 0x24, 0x9f, 0xdc, 0xd2, 0x0c, 0x48, 0xa6, 0xb0, 0x0e,
+	0xe6, 0x1b, 0x24, 0x8a, 0x7a, 0x83, 0x5e, 0x44, 0x7b, 0x1d, 0xbe, 0x27, 0x56, 0xb9, 0xf7, 0x56,
+	0x7e, 0x3c, 0xa9, 0xfa, 0x3c, 0x90, 0xee, 0x09, 0x7f, 0x04, 0x4b, 0x92, 0x48, 0xec, 0x70, 0x97,
+	0x07, 0xfc, 0xd4, 0x14, 0xb0, 0xb8, 0xcf, 0x4d, 0x11, 0xd8, 0x68, 0xd7, 0x6e, 0x48, 0xe7, 0xb6,
+	0xfd, 0xc1, 0x6f, 0x51, 0x4c, 0xef, 0x22, 0x77, 0x4d, 0x1b, 0x6d, 0x55, 0x2d, 0x8d, 0xb6, 0xaa,
+	0x60, 0xa3, 0xdd, 0xfe, 0xe0, 0x9f, 0x10, 0x1c, 0xd2, 0x43, 0x82, 0xa9, 0x8b, 0xb4, 0xd1, 0x96,
+	0x95, 0xd2, 0x68, 0xcb, 0x62, 0xd6, 0x4d, 0x1e, 0xb5, 0x45, 0x3a, 0x81, 0xdf, 0xc5, 0xe1, 0x88,
+	0x75, 0x3e, 0x72, 0xb7, 0xb5, 0x6e, 0x1a, 0x6c, 0xa4, 0x6e, 0x1a, 0xb4, 0xe9, 0xa2, 0x92, 0x67,
+	0xd2, 0x2b, 0x2e, 0x2a, 0x49, 0xad, 0x2e, 0x2a, 0x79, 0x5a, 0xbf, 0x06, 0x4f, 0xde, 0x0e, 0x86,
+	0x74, 0xe4, 0xfe, 0x37, 0xc1, 0xd8, 0xb6, 0x11, 0x98, 0xdc, 0x24, 0x0f, 0x92, 0xb8, 0x1c, 0x3e,
+	0x01, 0x8f, 0x3b, 0x83, 0xee, 0xbb, 0xea, 0xd4, 0x27, 0x0b, 0xdb, 0xde, 0x7f, 0xe6, 0xc1, 0x8a,
+	0x06, 0xd9, 0x68, 0x18, 0xf8, 0x11, 0x81, 0x47, 0x60, 0x3a, 0x4c, 0xbf, 0x33, 0x2c, 0x7f, 0x6e,
+	0xc1, 0x72, 0x62, 0xb5, 0x97, 0x7d, 0x34, 0x73, 0xc7, 0xb1, 0x64, 0x86, 0x2f, 0xc0, 0x32, 0x0d,
+	0xb1, 0x1f, 0x31, 0x52, 0x5d, 0xf4, 0xf1, 0x88, 0x84, 0x17, 0xfd, 0x00, 0x77, 0x39, 0x44, 0xab,
+	0x4d, 0x28, 0x74, 0x67, 0x4c, 0x75, 0x16, 0xe0, 0x2e, 0xfa, 0xeb, 0x1c, 0x98, 0x12, 0xad, 0xdc,
+	0x95, 0x61, 0xbe, 0xac, 0xc2, 0x3c, 0x31, 0xc9, 0x68, 0xfe, 0x33, 0x85, 0xe6, 0x2b, 0x1a, 0xcd,
+	0x85, 0x6d, 0x82, 0xf3, 0xd7, 0x05, 0x9c, 0xaf, 0x19, 0x70, 0x2e, 0x9c, 0x72, 0x9e, 0xef, 0x6b,
+	0x3c, 0x5f, 0x2d, 0xf0, 0x5c, 0x38, 0x65, 0x40, 0xdf, 0xd7, 0x80, 0xbe, 0x5a, 0x00, 0x7a, 0xee,
+	0x92, 0x12, 0xfd, 0x95, 0x4e, 0x74, 0xb7, 0x48, 0x74, 0xe1, 0x24, 0x90, 0xfe, 0xba, 0x80, 0xf4,
+	0x35, 0x03, 0xd2, 0xf3, 0x4e, 0x09, 0x72, 0x7c, 0x67, 0x66, 0xfa, 0xa6, 0x8d, 0xe9, 0x22, 0x84,
+	0x06, 0xf5, 0xd7, 0x05, 0xa8, 0xaf, 0x19, 0xa0, 0x9e, 0x37, 0x40, 0x50, 0xfd, 0xc0, 0x44, 0xf5,
+	0x75, 0x33, 0xd5, 0x85, 0xbb, 0x82, 0xf5, 0xcf, 0x24, 0xac, 0x2f, 0x29, 0x58, 0x17, 0xf6, 0x8c,
+	0xeb, 0x07, 0x26, 0xae, 0xaf, 0x9b, 0xb9, 0x9e, 0x27, 0x92, 0x8f, 0xfb, 0x7d, 0x0d, 0xec, 0xab,
+	0x05, 0xb0, 0xe7, 0xb3, 0x99, 0x92, 0xfd, 0xc0, 0x44, 0xf6, 0x75, 0x33, 0xd9, 0xa5, 0xde, 0x49,
+	0x68, 0xdf, 0xd7, 0xd0, 0xbe, 0x5a, 0x40, 0xbb, 0x92, 0x94, 0xa1, 0xf9, 0xc0, 0xc4, 0xf6, 0x75,
+	0x33, 0xdb, 0x8b, 0x49, 0x59, 0x84, 0xaf, 0x8b, 0x70, 0x47, 0x26, 0xb8, 0x0b, 0x6f, 0x89, 0xee,
+	0xa7, 0x16, 0xba, 0x6f, 0x59, 0xe9, 0x2e, 0xa2, 0xe8, 0x78, 0x7f, 0xa5, 0xe3, 0xdd, 0x2d, 0xe2,
+	0x3d, 0xdf, 0x0b, 0x19, 0xdf, 0x4f, 0x2d, 0x7c, 0xdf, 0xb2, 0xf2, 0x5d, 0x69, 0x80, 0x3c, 0xe3,
+	0x35, 0x23, 0xe0, 0x37, 0x2c, 0x80, 0x17, 0x61, 0x54, 0xc2, 0x7f, 0x65, 0x22, 0xfc, 0x8a, 0x46,
+	0xf8, 0x7c, 0x1e, 0x64, 0x16, 0x9c, 0xd9, 0x10, 0xff, 0xdc, 0x8e, 0x78, 0x11, 0xa9, 0xc0, 0xf8,
+	0xf7, 0x65, 0x8c, 0xdf, 0x29, 0x67, 0xbc, 0x88, 0x6a, 0x84, 0xfc, 0xa9, 0x05, 0xf2, 0x5b, 0x56,
+	0xc8, 0xe7, 0x43, 0xae, 0x51, 0xbe, 0x66, 0xa4, 0xfc, 0x86, 0x85, 0xf2, 0xf9, 0x90, 0x2b, 0x98,
+	0x7f, 0x5f, 0x86, 0xf9, 0x9d, 0x72, 0xcc, 0xe7, 0x3d, 0x35, 0x71, 0xfe, 0xd4, 0xc2, 0xf9, 0x2d,
+	0x2b, 0xe7, 0x95, 0xc5, 0x25, 0x4f, 0xee, 0x37, 0x1a, 0xe8, 0xbd, 0x32, 0xd0, 0x8b, 0x28, 0x26,
+	0xd2, 0x1f, 0x82, 0x85, 0xe4, 0x34, 0xc6, 0x57, 0xf4, 0x9c, 0x44, 0x11, 0xbe, 0x26, 0x70, 0x0f,
+	0x54, 0x07, 0xd1, 0x75, 0x86, 0x77, 0xb4, 0xa7, 0xde, 0xee, 0x25, 0xcb, 0x26, 0xb7, 0xf3, 0x5a,
+	0x60, 0xcd, 0x5a, 0x60, 0xc0, 0x55, 0x30, 0x49, 0x13, 0xce, 0x73, 0x1c, 0x57, 0x9b, 0x13, 0x94,
+	0x33, 0x1e, 0x6e, 0x00, 0xd0, 0x25, 0x7d, 0x3c, 0xba, 0xa0, 0xbd, 0x01, 0xe1, 0xfc, 0xad, 0x36,
+	0xa7, 0xb9, 0xa4, 0xdd, 0x1b, 0x10, 0xef, 0x17, 0x00, 0xd9, 0x3b, 0x63, 0x8d, 0xfa, 0xf2, 0xef,
+	0x5b, 0xa0, 0xda, 0xee, 0xdd, 0xc6, 0xf0, 0x15, 0x78, 0x52, 0x8f, 0xd9, 0x29, 0x68, 0xba, 0xcb,
+	0x23, 0x63, 0x4d, 0xe0, 0x39, 0xf0, 0x35, 0x98, 0xa8, 0xc7, 0x7c, 0xeb, 0x19, 0x2f, 0xf6, 0xc8,
+	0x5c, 0x20, 0x78, 0x0e, 0xac, 0x01, 0x50, 0x8f, 0x05, 0xef, 0xad, 0xb7, 0x7c, 0x64, 0x2f, 0x18,
+	0x3c, 0x07, 0xbe, 0x07, 0x8b, 0xf5, 0x58, 0xdf, 0x7a, 0xe3, 0x4a, 0x72, 0x34, 0x76, 0x43, 0x7b,
+	0x0e, 0xec, 0x82, 0x95, 0xfa, 0x6f, 0x4d, 0xdb, 0xef, 0x21, 0xf5, 0x39, 0x7a, 0xd0, 0x06, 0xf7,
+	0x1c, 0xf8, 0x3d, 0x98, 0xab, 0xc7, 0xca, 0x6e, 0x2a, 0x2d, 0xb1, 0x51, 0xf9, 0xd6, 0xf4, 0x1c,
+	0xf8, 0x03, 0x58, 0xa8, 0xc7, 0xda, 0x2e, 0x1f, 0x53, 0xfd, 0xa3, 0x71, 0x07, 0x47, 0x3a, 0x1a,
+	0xb1, 0x69, 0x8b, 0x3e, 0xa4, 0x8c, 0x47, 0x0f, 0x3a, 0x04, 0x3c, 0x07, 0xfe, 0x1a, 0x4c, 0xd5,
+	0xe3, 0xb4, 0x9a, 0xb3, 0x3c, 0xe0, 0x20, 0x5b, 0x21, 0x98, 0xb9, 0xa7, 0x95, 0x9d, 0xe5, 0x35,
+	0x07, 0xd9, 0x8a, 0x42, 0xcf, 0x81, 0x07, 0x60, 0xba, 0x1e, 0x67, 0x35, 0x9e, 0xed, 0x69, 0x07,
+	0x59, 0x2b, 0xc4, 0x6c, 0x49, 0x8b, 0x62, 0xc2, 0xfa, 0xce, 0x83, 0xec, 0xe5, 0xa2, 0xe7, 0xc0,
+	0x26, 0x98, 0x4f, 0x83, 0x88, 0x25, 0x57, 0xfe, 0xe8, 0x83, 0xc6, 0xd4, 0x8f, 0x59, 0xc3, 0x44,
+	0x15, 0x68, 0x7d, 0x01, 0x42, 0xf6, 0x32, 0xd2, 0x73, 0xe0, 0x19, 0x98, 0xad, 0xc7, 0x72, 0x2d,
+	0x58, 0xf6, 0x1c, 0x84, 0x4a, 0xab, 0x4a, 0xcf, 0x81, 0xfb, 0xa0, 0x5a, 0x8f, 0x8f, 0x6b, 0xd0,
+	0xf0, 0x36, 0x84, 0x4c, 0x85, 0x65, 0xd6, 0x00, 0xb9, 0x62, 0x28, 0x7b, 0x28, 0x42, 0xa5, 0xd5,
+	0xa6, 0xe7, 0xc0, 0x6f, 0xb2, 0x02, 0x13, 0x5a, 0xde, 0x8c, 0x90, 0xad, 0xe4, 0xf4, 0x1c, 0xf8,
+	0x4e, 0x29, 0x35, 0x61, 0xd9, 0xf3, 0x11, 0x2a, 0xad, 0x40, 0x45, 0x43, 0x58, 0x25, 0x68, 0x79,
+	0x49, 0x42, 0xb6, 0x32, 0x54, 0x6d, 0x08, 0x8b, 0x50, 0xf6, 0xa8, 0x84, 0x4a, 0xab, 0x52, 0xcf,
+	0x61, 0x37, 0xd5, 0xbc, 0xb2, 0xb4, 0xbf, 0x2f, 0xa1, 0x92, 0xea, 0xd4, 0x73, 0x60, 0x4b, 0x2f,
+	0x49, 0xe1, 0x98, 0xa7, 0x26, 0x34, 0xae, 0x58, 0xf5, 0x1c, 0xf8, 0xad, 0x28, 0x4e, 0xa1, 0xed,
+	0xd5, 0x09, 0x59, 0xeb, 0x55, 0xd1, 0x28, 0x79, 0xed, 0x8c, 0x79, 0x80, 0x42, 0xe3, 0x0a, 0x58,
+	0xcf, 0x81, 0xe7, 0x6a, 0xc1, 0x0a, 0x4b, 0xdf, 0xa2, 0x50, 0x79, 0x21, 0x2b, 0xc2, 0x1d, 0x13,
+	0x5a, 0x27, 0xa3, 0x76, 0xfb, 0x4c, 0x0d, 0x27, 0xc4, 0xc6, 0x70, 0x92, 0x56, 0x84, 0xfb, 0x0e,
+	0x2c, 0xf2, 0x1a, 0x68, 0x30, 0xc4, 0x21, 0x79, 0xe3, 0x77, 0x5b, 0xf7, 0x78, 0xa8, 0xae, 0xb0,
+	0xda, 0x9b, 0x96, 0x71, 0x85, 0x71, 0xb9, 0xb6, 0xc2, 0xf8, 0xc1, 0x1d, 0xdd, 0x0d, 0xd4, 0x15,
+	0x96, 0x49, 0x8d, 0x2b, 0x2c, 0x57, 0x8a, 0x58, 0x17, 0x00, 0xfe, 0xe0, 0x47, 0xf8, 0x8a, 0x1c,
+	0x91, 0x88, 0x86, 0xc1, 0x28, 0x99, 0x0a, 0x4f, 0x78, 0x15, 0x95, 0x59, 0xe4, 0x4f, 0x4b, 0x6d,
+	0x44, 0x02, 0x02, 0x96, 0x9b, 0xe4, 0xba, 0x17, 0x51, 0x12, 0xb2, 0xf3, 0xe6, 0xfb, 0xcb, 0xa4,
+	0x08, 0x83, 0x3b, 0xd2, 0x69, 0x54, 0x54, 0x67, 0x49, 0x3e, 0x1b, 0x63, 0x25, 0xd2, 0xfc, 0x1e,
+	0x2c, 0xf2, 0xde, 0x29, 0x39, 0xb6, 0x55, 0xca, 0x99, 0x12, 0x78, 0x65, 0x26, 0xf2, 0x28, 0x35,
+	0xc9, 0x20, 0x48, 0x8e, 0x4c, 0x11, 0xde, 0x93, 0x1a, 0xa7, 0x2b, 0x8b, 0xa3, 0x64, 0xb2, 0x11,
+	0x09, 0x7e, 0x07, 0x16, 0x1a, 0x37, 0xa3, 0xa8, 0xd7, 0xc1, 0x7d, 0x01, 0x05, 0xa9, 0x26, 0xd2,
+	0x54, 0x59, 0xf0, 0xed, 0x12, 0x0b, 0x11, 0xfa, 0x57, 0xca, 0xfd, 0x0b, 0x1a, 0xdf, 0x56, 0x91,
+	0xf9, 0x3e, 0xc6, 0x4f, 0xa0, 0x45, 0xc9, 0xbb, 0x45, 0x43, 0x82, 0x07, 0xff, 0x67, 0x8c, 0x17,
+	0x15, 0x78, 0x9e, 0x56, 0xe8, 0x72, 0x43, 0xd6, 0x14, 0xf3, 0x84, 0x93, 0xe2, 0x38, 0x33, 0xa8,
+	0xa4, 0x70, 0x2d, 0xfd, 0x16, 0x02, 0xc7, 0xbc, 0x33, 0xa2, 0x71, 0xf7, 0x13, 0x7e, 0xe8, 0x57,
+	0xd9, 0xb5, 0x00, 0x96, 0xdc, 0x15, 0xd0, 0x92, 0xa6, 0x3b, 0x0a, 0x7c, 0xe2, 0x39, 0xbb, 0x15,
+	0xf8, 0x2d, 0x98, 0x16, 0x57, 0x10, 0xe8, 0x2a, 0x37, 0x99, 0x07, 0xf9, 0xbf, 0x01, 0x53, 0x2d,
+	0x1f, 0x0f, 0xa3, 0x9b, 0x80, 0xd5, 0x9b, 0xaa, 0x51, 0xa6, 0xa8, 0xdd, 0xdc, 0xf9, 0xb7, 0xf6,
+	0x10, 0xef, 0xc0, 0x4c, 0x6b, 0xd8, 0x67, 0xe5, 0xd7, 0x75, 0x2f, 0xf0, 0xa5, 0x53, 0x41, 0x92,
+	0x16, 0x4f, 0x05, 0x45, 0xa9, 0x70, 0x87, 0xe0, 0xee, 0xa9, 0xdf, 0x25, 0x1f, 0x64, 0xee, 0x64,
+	0x32, 0x03, 0x77, 0x72, 0x95, 0x7c, 0x7c, 0x9e, 0xc7, 0x9d, 0xce, 0x31, 0xa1, 0x87, 0xa3, 0x3a,
+	0x19, 0x49, 0xc7, 0xa7, 0x2c, 0x2e, 0x1e, 0x9f, 0xaa, 0x56, 0xde, 0x23, 0x42, 0xd3, 0xa2, 0x38,
+	0xa4, 0xed, 0x48, 0xda, 0x23, 0xba, 0xaa, 0xb8, 0x47, 0x8a, 0x16, 0x52, 0x85, 0x37, 0xab, 0x5c,
+	0xd4, 0xe0, 0x7a, 0xd9, 0x3f, 0xd3, 0xa2, 0x8d, 0xd2, 0xd7, 0x62, 0x36, 0x1b, 0x2f, 0x2a, 0xf0,
+	0x04, 0xcc, 0x1f, 0xf5, 0xa2, 0x21, 0xb3, 0x38, 0x6f, 0x34, 0xda, 0x38, 0x62, 0x65, 0xde, 0x60,
+	0x38, 0xdc, 0xcb, 0xa4, 0x4c, 0x94, 0x97, 0x79, 0x45, 0x8d, 0x68, 0xdd, 0x21, 0x98, 0xad, 0x61,
+	0xbf, 0x43, 0xfa, 0x59, 0x9c, 0x67, 0xdc, 0x3a, 0x91, 0xc9, 0x51, 0x56, 0x0b, 0x72, 0x11, 0xa3,
+	0x0d, 0x9e, 0xbd, 0x8d, 0x28, 0xbe, 0xec, 0xf7, 0x22, 0xd6, 0x9c, 0x5a, 0xe0, 0xfb, 0xa4, 0x43,
+	0xd9, 0x42, 0xf1, 0xb8, 0x93, 0x59, 0x99, 0x05, 0x86, 0xdc, 0xe6, 0xbc, 0xd1, 0x38, 0xc2, 0x14,
+	0x37, 0x70, 0xe7, 0x96, 0x50, 0xbe, 0x11, 0xbf, 0x04, 0x93, 0xa7, 0xd1, 0x9b, 0x7e, 0x2f, 0x26,
+	0x70, 0x89, 0x9b, 0xa4, 0xbf, 0xf2, 0x2b, 0xaa, 0x22, 0x14, 0xad, 0x39, 0x01, 0x33, 0xc9, 0x71,
+	0x4b, 0x70, 0x97, 0x84, 0xd2, 0x5a, 0x95, 0xa4, 0xc5, 0xb5, 0xaa, 0x28, 0xd3, 0x4b, 0x74, 0x1d,
+	0xcc, 0x1d, 0x13, 0xda, 0xa2, 0x41, 0x48, 0x5a, 0xf8, 0x8a, 0xb4, 0x5b, 0xf2, 0xc2, 0xcf, 0xa5,
+	0x86, 0x85, 0x2f, 0x2b, 0xd3, 0x60, 0x6d, 0x30, 0x7f, 0x4c, 0x28, 0x3b, 0x3f, 0x7f, 0xc4, 0x3d,
+	0x7a, 0xea, 0x5f, 0x05, 0xd2, 0xcd, 0x55, 0xd3, 0x14, 0x6f, 0xae, 0x05, 0x83, 0x24, 0xea, 0xe1,
+	0xe7, 0xff, 0xfc, 0xcb, 0x54, 0xe5, 0x6f, 0x1f, 0x37, 0x2b, 0xff, 0xf8, 0xb8, 0x59, 0xf9, 0xd7,
+	0xc7, 0xcd, 0xca, 0x9f, 0xff, 0xbd, 0xe9, 0x80, 0x85, 0x20, 0xbc, 0xe6, 0xcb, 0x68, 0xef, 0x36,
+	0xe6, 0xff, 0x8b, 0xe0, 0x72, 0x82, 0xff, 0xf9, 0xe2, 0x7f, 0x01, 0x00, 0x00, 0xff, 0xff, 0x80,
+	0x5c, 0x8a, 0x7a, 0xcd, 0x20, 0x00, 0x00,
 }

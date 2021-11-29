@@ -8,25 +8,29 @@
 //
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
 package chunk
 
 import (
-	"time"
-	"unsafe"
+	"strconv"
 
-	"github.com/pingcap/parser/mysql"
+	"github.com/pingcap/tidb/parser/mysql"
 	"github.com/pingcap/tidb/types"
 	"github.com/pingcap/tidb/types/json"
-	"github.com/pingcap/tidb/util/hack"
 )
 
 // Row represents a row of data, can be used to access values.
 type Row struct {
 	c   *Chunk
 	idx int
+}
+
+// Chunk returns the Chunk which the row belongs to.
+func (r Row) Chunk() *Chunk {
+	return r.c
 }
 
 // IsEmpty returns true if the Row is empty.
@@ -46,91 +50,66 @@ func (r Row) Len() int {
 
 // GetInt64 returns the int64 value with the colIdx.
 func (r Row) GetInt64(colIdx int) int64 {
-	col := r.c.columns[colIdx]
-	return *(*int64)(unsafe.Pointer(&col.data[r.idx*8]))
+	return r.c.columns[colIdx].GetInt64(r.idx)
 }
 
 // GetUint64 returns the uint64 value with the colIdx.
 func (r Row) GetUint64(colIdx int) uint64 {
-	col := r.c.columns[colIdx]
-	return *(*uint64)(unsafe.Pointer(&col.data[r.idx*8]))
+	return r.c.columns[colIdx].GetUint64(r.idx)
 }
 
 // GetFloat32 returns the float32 value with the colIdx.
 func (r Row) GetFloat32(colIdx int) float32 {
-	col := r.c.columns[colIdx]
-	return *(*float32)(unsafe.Pointer(&col.data[r.idx*4]))
+	return r.c.columns[colIdx].GetFloat32(r.idx)
 }
 
 // GetFloat64 returns the float64 value with the colIdx.
 func (r Row) GetFloat64(colIdx int) float64 {
-	col := r.c.columns[colIdx]
-	return *(*float64)(unsafe.Pointer(&col.data[r.idx*8]))
+	return r.c.columns[colIdx].GetFloat64(r.idx)
 }
 
 // GetString returns the string value with the colIdx.
 func (r Row) GetString(colIdx int) string {
-	col := r.c.columns[colIdx]
-	start, end := col.offsets[r.idx], col.offsets[r.idx+1]
-	str := string(hack.String(col.data[start:end]))
-	return str
+	return r.c.columns[colIdx].GetString(r.idx)
 }
 
 // GetBytes returns the bytes value with the colIdx.
 func (r Row) GetBytes(colIdx int) []byte {
-	col := r.c.columns[colIdx]
-	start, end := col.offsets[r.idx], col.offsets[r.idx+1]
-	return col.data[start:end]
+	return r.c.columns[colIdx].GetBytes(r.idx)
 }
 
 // GetTime returns the Time value with the colIdx.
-// TODO: use Time structure directly.
 func (r Row) GetTime(colIdx int) types.Time {
-	col := r.c.columns[colIdx]
-	return readTime(col.data[r.idx*16:])
+	return r.c.columns[colIdx].GetTime(r.idx)
 }
 
 // GetDuration returns the Duration value with the colIdx.
 func (r Row) GetDuration(colIdx int, fillFsp int) types.Duration {
-	col := r.c.columns[colIdx]
-	dur := *(*int64)(unsafe.Pointer(&col.data[r.idx*8]))
-	return types.Duration{Duration: time.Duration(dur), Fsp: fillFsp}
+	return r.c.columns[colIdx].GetDuration(r.idx, fillFsp)
 }
 
 func (r Row) getNameValue(colIdx int) (string, uint64) {
-	col := r.c.columns[colIdx]
-	start, end := col.offsets[r.idx], col.offsets[r.idx+1]
-	if start == end {
-		return "", 0
-	}
-	val := *(*uint64)(unsafe.Pointer(&col.data[start]))
-	name := string(hack.String(col.data[start+8 : end]))
-	return name, val
+	return r.c.columns[colIdx].getNameValue(r.idx)
 }
 
 // GetEnum returns the Enum value with the colIdx.
 func (r Row) GetEnum(colIdx int) types.Enum {
-	name, val := r.getNameValue(colIdx)
-	return types.Enum{Name: name, Value: val}
+	return r.c.columns[colIdx].GetEnum(r.idx)
 }
 
 // GetSet returns the Set value with the colIdx.
 func (r Row) GetSet(colIdx int) types.Set {
-	name, val := r.getNameValue(colIdx)
-	return types.Set{Name: name, Value: val}
+	return r.c.columns[colIdx].GetSet(r.idx)
 }
 
 // GetMyDecimal returns the MyDecimal value with the colIdx.
 func (r Row) GetMyDecimal(colIdx int) *types.MyDecimal {
-	col := r.c.columns[colIdx]
-	return (*types.MyDecimal)(unsafe.Pointer(&col.data[r.idx*types.MyDecimalStructSize]))
+	return r.c.columns[colIdx].GetDecimal(r.idx)
 }
 
 // GetJSON returns the JSON value with the colIdx.
 func (r Row) GetJSON(colIdx int) json.BinaryJSON {
-	col := r.c.columns[colIdx]
-	start, end := col.offsets[r.idx], col.offsets[r.idx+1]
-	return json.BinaryJSON{TypeCode: col.data[start], Value: col.data[start+1 : end]}
+	return r.c.columns[colIdx].GetJSON(r.idx)
 }
 
 // GetDatumRow converts chunk.Row to types.DatumRow.
@@ -170,10 +149,9 @@ func (r Row) GetDatum(colIdx int, tp *types.FieldType) types.Datum {
 		if !r.IsNull(colIdx) {
 			d.SetFloat64(r.GetFloat64(colIdx))
 		}
-	case mysql.TypeVarchar, mysql.TypeVarString, mysql.TypeString,
-		mysql.TypeBlob, mysql.TypeTinyBlob, mysql.TypeMediumBlob, mysql.TypeLongBlob:
+	case mysql.TypeVarchar, mysql.TypeVarString, mysql.TypeString, mysql.TypeBlob, mysql.TypeTinyBlob, mysql.TypeMediumBlob, mysql.TypeLongBlob:
 		if !r.IsNull(colIdx) {
-			d.SetBytes(r.GetBytes(colIdx))
+			d.SetString(r.GetString(colIdx), tp.Collate)
 		}
 	case mysql.TypeDate, mysql.TypeDatetime, mysql.TypeTimestamp:
 		if !r.IsNull(colIdx) {
@@ -200,11 +178,11 @@ func (r Row) GetDatum(colIdx int, tp *types.FieldType) types.Datum {
 		}
 	case mysql.TypeEnum:
 		if !r.IsNull(colIdx) {
-			d.SetMysqlEnum(r.GetEnum(colIdx))
+			d.SetMysqlEnum(r.GetEnum(colIdx), tp.Collate)
 		}
 	case mysql.TypeSet:
 		if !r.IsNull(colIdx) {
-			d.SetMysqlSet(r.GetSet(colIdx))
+			d.SetMysqlSet(r.GetSet(colIdx), tp.Collate)
 		}
 	case mysql.TypeBit:
 		if !r.IsNull(colIdx) {
@@ -218,7 +196,62 @@ func (r Row) GetDatum(colIdx int, tp *types.FieldType) types.Datum {
 	return d
 }
 
+// GetRaw returns the underlying raw bytes with the colIdx.
+func (r Row) GetRaw(colIdx int) []byte {
+	return r.c.columns[colIdx].GetRaw(r.idx)
+}
+
 // IsNull returns if the datum in the chunk.Row is null.
 func (r Row) IsNull(colIdx int) bool {
-	return r.c.columns[colIdx].isNull(r.idx)
+	return r.c.columns[colIdx].IsNull(r.idx)
+}
+
+// CopyConstruct creates a new row and copies this row's data into it.
+func (r Row) CopyConstruct() Row {
+	newChk := renewWithCapacity(r.c, 1, 1)
+	newChk.AppendRow(r)
+	return newChk.GetRow(0)
+}
+
+// ToString returns all the values in a row.
+func (r Row) ToString(ft []*types.FieldType) string {
+	var buf []byte
+	for colIdx := 0; colIdx < r.Chunk().NumCols(); colIdx++ {
+		if r.IsNull(colIdx) {
+			buf = append(buf, "NULL"...)
+		} else {
+			switch ft[colIdx].EvalType() {
+			case types.ETInt:
+				buf = strconv.AppendInt(buf, r.GetInt64(colIdx), 10)
+			case types.ETString:
+				switch ft[colIdx].Tp {
+				case mysql.TypeEnum:
+					buf = append(buf, r.GetEnum(colIdx).String()...)
+				case mysql.TypeSet:
+					buf = append(buf, r.GetSet(colIdx).String()...)
+				default:
+					buf = append(buf, r.GetString(colIdx)...)
+				}
+			case types.ETDatetime, types.ETTimestamp:
+				buf = append(buf, r.GetTime(colIdx).String()...)
+			case types.ETDecimal:
+				buf = append(buf, r.GetMyDecimal(colIdx).ToString()...)
+			case types.ETDuration:
+				buf = append(buf, r.GetDuration(colIdx, ft[colIdx].Decimal).String()...)
+			case types.ETJson:
+				buf = append(buf, r.GetJSON(colIdx).String()...)
+			case types.ETReal:
+				switch ft[colIdx].Tp {
+				case mysql.TypeFloat:
+					buf = strconv.AppendFloat(buf, float64(r.GetFloat32(colIdx)), 'f', -1, 32)
+				case mysql.TypeDouble:
+					buf = strconv.AppendFloat(buf, r.GetFloat64(colIdx), 'f', -1, 64)
+				}
+			}
+		}
+		if colIdx != r.Chunk().NumCols()-1 {
+			buf = append(buf, ", "...)
+		}
+	}
+	return string(buf)
 }

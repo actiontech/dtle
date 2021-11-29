@@ -8,6 +8,7 @@
 //
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
@@ -18,13 +19,15 @@ import (
 	"strings"
 	"time"
 
-	"github.com/pingcap/parser/ast"
-	"github.com/pingcap/parser/mysql"
-	"github.com/pingcap/parser/terror"
+	"github.com/pingcap/failpoint"
+	"github.com/pingcap/tidb/parser/ast"
+	"github.com/pingcap/tidb/parser/mysql"
+	"github.com/pingcap/tidb/parser/terror"
 	"github.com/pingcap/tidb/sessionctx"
+	"github.com/pingcap/tidb/sessionctx/stmtctx"
 	"github.com/pingcap/tidb/sessionctx/variable"
 	"github.com/pingcap/tidb/types"
-	"github.com/pingcap/tidb/types/parser_driver"
+	driver "github.com/pingcap/tidb/types/parser_driver"
 )
 
 func boolToInt64(v bool) int64 {
@@ -55,11 +58,8 @@ func IsValidCurrentTimestampExpr(exprNode ast.ExprNode, fieldType *types.FieldTy
 }
 
 // GetTimeValue gets the time value with type tp.
-func GetTimeValue(ctx sessionctx.Context, v interface{}, tp byte, fsp int) (d types.Datum, err error) {
-	value := types.Time{
-		Type: tp,
-		Fsp:  fsp,
-	}
+func GetTimeValue(ctx sessionctx.Context, v interface{}, tp byte, fsp int8) (d types.Datum, err error) {
+	value := types.NewTime(types.ZeroCoreTime, tp, fsp)
 
 	sc := ctx.GetSessionVars().StmtCtx
 	switch x := v.(type) {
@@ -70,7 +70,7 @@ func GetTimeValue(ctx sessionctx.Context, v interface{}, tp byte, fsp int) (d ty
 			if err != nil {
 				return d, err
 			}
-			value.Time = types.FromGoTime(defaultTime.Truncate(time.Duration(math.Pow10(9-fsp)) * time.Nanosecond))
+			value.SetCoreTime(types.FromGoTime(defaultTime.Truncate(time.Duration(math.Pow10(9-int(fsp))) * time.Nanosecond)))
 			if tp == mysql.TypeTimestamp || tp == mysql.TypeDatetime {
 				err = value.ConvertTimeZone(time.Local, ctx.GetSessionVars().Location())
 				if err != nil {
@@ -105,7 +105,7 @@ func GetTimeValue(ctx sessionctx.Context, v interface{}, tp byte, fsp int) (d ty
 		}
 	case *ast.FuncCallExpr:
 		if x.FnName.L == ast.CurrentTimestamp {
-			d.SetString(strings.ToUpper(ast.CurrentTimestamp))
+			d.SetString(strings.ToUpper(ast.CurrentTimestamp), mysql.DefaultCollationName)
 			return d, nil
 		}
 		return d, errDefaultValue
@@ -135,6 +135,11 @@ func GetTimeValue(ctx sessionctx.Context, v interface{}, tp byte, fsp int) (d ty
 // if timestamp session variable set, use session variable as current time, otherwise use cached time
 // during one sql statement, the "current_time" should be the same
 func getStmtTimestamp(ctx sessionctx.Context) (time.Time, error) {
+	failpoint.Inject("injectNow", func(val failpoint.Value) {
+		v := time.Unix(int64(val.(int)), 0)
+		failpoint.Return(v, nil)
+	})
+
 	now := time.Now()
 
 	if ctx == nil {
@@ -142,13 +147,13 @@ func getStmtTimestamp(ctx sessionctx.Context) (time.Time, error) {
 	}
 
 	sessionVars := ctx.GetSessionVars()
-	timestampStr, err := variable.GetSessionSystemVar(sessionVars, "timestamp")
+	timestampStr, err := variable.GetSessionOrGlobalSystemVar(sessionVars, "timestamp")
 	if err != nil {
 		return now, err
 	}
 
 	if timestampStr != "" {
-		timestamp, err := types.StrToInt(sessionVars.StmtCtx, timestampStr)
+		timestamp, err := types.StrToInt(sessionVars.StmtCtx, timestampStr, false)
 		if err != nil {
 			return time.Time{}, err
 		}
@@ -158,5 +163,5 @@ func getStmtTimestamp(ctx sessionctx.Context) (time.Time, error) {
 		return time.Unix(timestamp, 0), nil
 	}
 	stmtCtx := ctx.GetSessionVars().StmtCtx
-	return stmtCtx.GetNowTsCached(), nil
+	return stmtCtx.GetOrStoreStmtCache(stmtctx.StmtNowTsCacheKey, time.Now()).(time.Time), nil
 }

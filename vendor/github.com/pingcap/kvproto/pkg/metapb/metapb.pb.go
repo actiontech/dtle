@@ -11,6 +11,8 @@ import (
 	proto "github.com/golang/protobuf/proto"
 
 	_ "github.com/gogo/protobuf/gogoproto"
+
+	encryptionpb "github.com/pingcap/kvproto/pkg/encryptionpb"
 )
 
 // Reference imports to suppress errors if they are not otherwise used.
@@ -47,7 +49,40 @@ func (x StoreState) String() string {
 	return proto.EnumName(StoreState_name, int32(x))
 }
 func (StoreState) EnumDescriptor() ([]byte, []int) {
-	return fileDescriptor_metapb_b27fba7b96b2e242, []int{0}
+	return fileDescriptor_metapb_ae2ea404685fd4b3, []int{0}
+}
+
+type PeerRole int32
+
+const (
+	// Voter -> Voter
+	PeerRole_Voter PeerRole = 0
+	// Learner/None -> Learner
+	PeerRole_Learner PeerRole = 1
+	// Learner/None -> Voter
+	PeerRole_IncomingVoter PeerRole = 2
+	// Voter -> Learner
+	PeerRole_DemotingVoter PeerRole = 3
+)
+
+var PeerRole_name = map[int32]string{
+	0: "Voter",
+	1: "Learner",
+	2: "IncomingVoter",
+	3: "DemotingVoter",
+}
+var PeerRole_value = map[string]int32{
+	"Voter":         0,
+	"Learner":       1,
+	"IncomingVoter": 2,
+	"DemotingVoter": 3,
+}
+
+func (x PeerRole) String() string {
+	return proto.EnumName(PeerRole_name, int32(x))
+}
+func (PeerRole) EnumDescriptor() ([]byte, []int) {
+	return fileDescriptor_metapb_ae2ea404685fd4b3, []int{1}
 }
 
 type Cluster struct {
@@ -64,7 +99,7 @@ func (m *Cluster) Reset()         { *m = Cluster{} }
 func (m *Cluster) String() string { return proto.CompactTextString(m) }
 func (*Cluster) ProtoMessage()    {}
 func (*Cluster) Descriptor() ([]byte, []int) {
-	return fileDescriptor_metapb_b27fba7b96b2e242, []int{0}
+	return fileDescriptor_metapb_ae2ea404685fd4b3, []int{0}
 }
 func (m *Cluster) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -120,7 +155,7 @@ func (m *StoreLabel) Reset()         { *m = StoreLabel{} }
 func (m *StoreLabel) String() string { return proto.CompactTextString(m) }
 func (*StoreLabel) ProtoMessage()    {}
 func (*StoreLabel) Descriptor() ([]byte, []int) {
-	return fileDescriptor_metapb_b27fba7b96b2e242, []int{1}
+	return fileDescriptor_metapb_ae2ea404685fd4b3, []int{1}
 }
 func (m *StoreLabel) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -164,21 +199,35 @@ func (m *StoreLabel) GetValue() string {
 }
 
 type Store struct {
-	Id                   uint64        `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
-	Address              string        `protobuf:"bytes,2,opt,name=address,proto3" json:"address,omitempty"`
-	State                StoreState    `protobuf:"varint,3,opt,name=state,proto3,enum=metapb.StoreState" json:"state,omitempty"`
-	Labels               []*StoreLabel `protobuf:"bytes,4,rep,name=labels" json:"labels,omitempty"`
-	Version              string        `protobuf:"bytes,5,opt,name=version,proto3" json:"version,omitempty"`
-	XXX_NoUnkeyedLiteral struct{}      `json:"-"`
-	XXX_unrecognized     []byte        `json:"-"`
-	XXX_sizecache        int32         `json:"-"`
+	Id uint64 `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
+	// Address to handle client requests (kv, cop, etc.)
+	Address string        `protobuf:"bytes,2,opt,name=address,proto3" json:"address,omitempty"`
+	State   StoreState    `protobuf:"varint,3,opt,name=state,proto3,enum=metapb.StoreState" json:"state,omitempty"`
+	Labels  []*StoreLabel `protobuf:"bytes,4,rep,name=labels" json:"labels,omitempty"`
+	Version string        `protobuf:"bytes,5,opt,name=version,proto3" json:"version,omitempty"`
+	// Address to handle peer requests (raft messages from other store).
+	// Empty means same as address.
+	PeerAddress string `protobuf:"bytes,6,opt,name=peer_address,json=peerAddress,proto3" json:"peer_address,omitempty"`
+	// Status address provides the HTTP service for external components
+	StatusAddress string `protobuf:"bytes,7,opt,name=status_address,json=statusAddress,proto3" json:"status_address,omitempty"`
+	GitHash       string `protobuf:"bytes,8,opt,name=git_hash,json=gitHash,proto3" json:"git_hash,omitempty"`
+	// The start timestamp of the current store
+	StartTimestamp int64  `protobuf:"varint,9,opt,name=start_timestamp,json=startTimestamp,proto3" json:"start_timestamp,omitempty"`
+	DeployPath     string `protobuf:"bytes,10,opt,name=deploy_path,json=deployPath,proto3" json:"deploy_path,omitempty"`
+	// The last heartbeat timestamp of the store.
+	LastHeartbeat int64 `protobuf:"varint,11,opt,name=last_heartbeat,json=lastHeartbeat,proto3" json:"last_heartbeat,omitempty"`
+	// If the store is physically destroyed, which means it can never up again.
+	PhysicallyDestroyed  bool     `protobuf:"varint,12,opt,name=physically_destroyed,json=physicallyDestroyed,proto3" json:"physically_destroyed,omitempty"`
+	XXX_NoUnkeyedLiteral struct{} `json:"-"`
+	XXX_unrecognized     []byte   `json:"-"`
+	XXX_sizecache        int32    `json:"-"`
 }
 
 func (m *Store) Reset()         { *m = Store{} }
 func (m *Store) String() string { return proto.CompactTextString(m) }
 func (*Store) ProtoMessage()    {}
 func (*Store) Descriptor() ([]byte, []int) {
-	return fileDescriptor_metapb_b27fba7b96b2e242, []int{2}
+	return fileDescriptor_metapb_ae2ea404685fd4b3, []int{2}
 }
 func (m *Store) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -242,6 +291,55 @@ func (m *Store) GetVersion() string {
 	return ""
 }
 
+func (m *Store) GetPeerAddress() string {
+	if m != nil {
+		return m.PeerAddress
+	}
+	return ""
+}
+
+func (m *Store) GetStatusAddress() string {
+	if m != nil {
+		return m.StatusAddress
+	}
+	return ""
+}
+
+func (m *Store) GetGitHash() string {
+	if m != nil {
+		return m.GitHash
+	}
+	return ""
+}
+
+func (m *Store) GetStartTimestamp() int64 {
+	if m != nil {
+		return m.StartTimestamp
+	}
+	return 0
+}
+
+func (m *Store) GetDeployPath() string {
+	if m != nil {
+		return m.DeployPath
+	}
+	return ""
+}
+
+func (m *Store) GetLastHeartbeat() int64 {
+	if m != nil {
+		return m.LastHeartbeat
+	}
+	return 0
+}
+
+func (m *Store) GetPhysicallyDestroyed() bool {
+	if m != nil {
+		return m.PhysicallyDestroyed
+	}
+	return false
+}
+
 type RegionEpoch struct {
 	// Conf change version, auto increment when add or remove peer
 	ConfVer uint64 `protobuf:"varint,1,opt,name=conf_ver,json=confVer,proto3" json:"conf_ver,omitempty"`
@@ -256,7 +354,7 @@ func (m *RegionEpoch) Reset()         { *m = RegionEpoch{} }
 func (m *RegionEpoch) String() string { return proto.CompactTextString(m) }
 func (*RegionEpoch) ProtoMessage()    {}
 func (*RegionEpoch) Descriptor() ([]byte, []int) {
-	return fileDescriptor_metapb_b27fba7b96b2e242, []int{3}
+	return fileDescriptor_metapb_ae2ea404685fd4b3, []int{3}
 }
 func (m *RegionEpoch) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -302,20 +400,25 @@ func (m *RegionEpoch) GetVersion() uint64 {
 type Region struct {
 	Id uint64 `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
 	// Region key range [start_key, end_key).
-	StartKey             []byte       `protobuf:"bytes,2,opt,name=start_key,json=startKey,proto3" json:"start_key,omitempty"`
-	EndKey               []byte       `protobuf:"bytes,3,opt,name=end_key,json=endKey,proto3" json:"end_key,omitempty"`
-	RegionEpoch          *RegionEpoch `protobuf:"bytes,4,opt,name=region_epoch,json=regionEpoch" json:"region_epoch,omitempty"`
-	Peers                []*Peer      `protobuf:"bytes,5,rep,name=peers" json:"peers,omitempty"`
-	XXX_NoUnkeyedLiteral struct{}     `json:"-"`
-	XXX_unrecognized     []byte       `json:"-"`
-	XXX_sizecache        int32        `json:"-"`
+	StartKey    []byte       `protobuf:"bytes,2,opt,name=start_key,json=startKey,proto3" json:"start_key,omitempty"`
+	EndKey      []byte       `protobuf:"bytes,3,opt,name=end_key,json=endKey,proto3" json:"end_key,omitempty"`
+	RegionEpoch *RegionEpoch `protobuf:"bytes,4,opt,name=region_epoch,json=regionEpoch" json:"region_epoch,omitempty"`
+	Peers       []*Peer      `protobuf:"bytes,5,rep,name=peers" json:"peers,omitempty"`
+	// Encryption metadata for start_key and end_key. encryption_meta.iv is IV for start_key.
+	// IV for end_key is calculated from (encryption_meta.iv + len(start_key)).
+	// The field is only used by PD and should be ignored otherwise.
+	// If encryption_meta is empty (i.e. nil), it means start_key and end_key are unencrypted.
+	EncryptionMeta       *encryptionpb.EncryptionMeta `protobuf:"bytes,6,opt,name=encryption_meta,json=encryptionMeta" json:"encryption_meta,omitempty"`
+	XXX_NoUnkeyedLiteral struct{}                     `json:"-"`
+	XXX_unrecognized     []byte                       `json:"-"`
+	XXX_sizecache        int32                        `json:"-"`
 }
 
 func (m *Region) Reset()         { *m = Region{} }
 func (m *Region) String() string { return proto.CompactTextString(m) }
 func (*Region) ProtoMessage()    {}
 func (*Region) Descriptor() ([]byte, []int) {
-	return fileDescriptor_metapb_b27fba7b96b2e242, []int{4}
+	return fileDescriptor_metapb_ae2ea404685fd4b3, []int{4}
 }
 func (m *Region) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -379,10 +482,17 @@ func (m *Region) GetPeers() []*Peer {
 	return nil
 }
 
+func (m *Region) GetEncryptionMeta() *encryptionpb.EncryptionMeta {
+	if m != nil {
+		return m.EncryptionMeta
+	}
+	return nil
+}
+
 type Peer struct {
 	Id                   uint64   `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
 	StoreId              uint64   `protobuf:"varint,2,opt,name=store_id,json=storeId,proto3" json:"store_id,omitempty"`
-	IsLearner            bool     `protobuf:"varint,3,opt,name=is_learner,json=isLearner,proto3" json:"is_learner,omitempty"`
+	Role                 PeerRole `protobuf:"varint,3,opt,name=role,proto3,enum=metapb.PeerRole" json:"role,omitempty"`
 	XXX_NoUnkeyedLiteral struct{} `json:"-"`
 	XXX_unrecognized     []byte   `json:"-"`
 	XXX_sizecache        int32    `json:"-"`
@@ -392,7 +502,7 @@ func (m *Peer) Reset()         { *m = Peer{} }
 func (m *Peer) String() string { return proto.CompactTextString(m) }
 func (*Peer) ProtoMessage()    {}
 func (*Peer) Descriptor() ([]byte, []int) {
-	return fileDescriptor_metapb_b27fba7b96b2e242, []int{5}
+	return fileDescriptor_metapb_ae2ea404685fd4b3, []int{5}
 }
 func (m *Peer) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -435,11 +545,11 @@ func (m *Peer) GetStoreId() uint64 {
 	return 0
 }
 
-func (m *Peer) GetIsLearner() bool {
+func (m *Peer) GetRole() PeerRole {
 	if m != nil {
-		return m.IsLearner
+		return m.Role
 	}
-	return false
+	return PeerRole_Voter
 }
 
 func init() {
@@ -450,6 +560,7 @@ func init() {
 	proto.RegisterType((*Region)(nil), "metapb.Region")
 	proto.RegisterType((*Peer)(nil), "metapb.Peer")
 	proto.RegisterEnum("metapb.StoreState", StoreState_name, StoreState_value)
+	proto.RegisterEnum("metapb.PeerRole", PeerRole_name, PeerRole_value)
 }
 func (m *Cluster) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
@@ -564,6 +675,50 @@ func (m *Store) MarshalTo(dAtA []byte) (int, error) {
 		i = encodeVarintMetapb(dAtA, i, uint64(len(m.Version)))
 		i += copy(dAtA[i:], m.Version)
 	}
+	if len(m.PeerAddress) > 0 {
+		dAtA[i] = 0x32
+		i++
+		i = encodeVarintMetapb(dAtA, i, uint64(len(m.PeerAddress)))
+		i += copy(dAtA[i:], m.PeerAddress)
+	}
+	if len(m.StatusAddress) > 0 {
+		dAtA[i] = 0x3a
+		i++
+		i = encodeVarintMetapb(dAtA, i, uint64(len(m.StatusAddress)))
+		i += copy(dAtA[i:], m.StatusAddress)
+	}
+	if len(m.GitHash) > 0 {
+		dAtA[i] = 0x42
+		i++
+		i = encodeVarintMetapb(dAtA, i, uint64(len(m.GitHash)))
+		i += copy(dAtA[i:], m.GitHash)
+	}
+	if m.StartTimestamp != 0 {
+		dAtA[i] = 0x48
+		i++
+		i = encodeVarintMetapb(dAtA, i, uint64(m.StartTimestamp))
+	}
+	if len(m.DeployPath) > 0 {
+		dAtA[i] = 0x52
+		i++
+		i = encodeVarintMetapb(dAtA, i, uint64(len(m.DeployPath)))
+		i += copy(dAtA[i:], m.DeployPath)
+	}
+	if m.LastHeartbeat != 0 {
+		dAtA[i] = 0x58
+		i++
+		i = encodeVarintMetapb(dAtA, i, uint64(m.LastHeartbeat))
+	}
+	if m.PhysicallyDestroyed {
+		dAtA[i] = 0x60
+		i++
+		if m.PhysicallyDestroyed {
+			dAtA[i] = 1
+		} else {
+			dAtA[i] = 0
+		}
+		i++
+	}
 	if m.XXX_unrecognized != nil {
 		i += copy(dAtA[i:], m.XXX_unrecognized)
 	}
@@ -655,6 +810,16 @@ func (m *Region) MarshalTo(dAtA []byte) (int, error) {
 			i += n
 		}
 	}
+	if m.EncryptionMeta != nil {
+		dAtA[i] = 0x32
+		i++
+		i = encodeVarintMetapb(dAtA, i, uint64(m.EncryptionMeta.Size()))
+		n2, err := m.EncryptionMeta.MarshalTo(dAtA[i:])
+		if err != nil {
+			return 0, err
+		}
+		i += n2
+	}
 	if m.XXX_unrecognized != nil {
 		i += copy(dAtA[i:], m.XXX_unrecognized)
 	}
@@ -686,15 +851,10 @@ func (m *Peer) MarshalTo(dAtA []byte) (int, error) {
 		i++
 		i = encodeVarintMetapb(dAtA, i, uint64(m.StoreId))
 	}
-	if m.IsLearner {
+	if m.Role != 0 {
 		dAtA[i] = 0x18
 		i++
-		if m.IsLearner {
-			dAtA[i] = 1
-		} else {
-			dAtA[i] = 0
-		}
-		i++
+		i = encodeVarintMetapb(dAtA, i, uint64(m.Role))
 	}
 	if m.XXX_unrecognized != nil {
 		i += copy(dAtA[i:], m.XXX_unrecognized)
@@ -766,6 +926,31 @@ func (m *Store) Size() (n int) {
 	if l > 0 {
 		n += 1 + l + sovMetapb(uint64(l))
 	}
+	l = len(m.PeerAddress)
+	if l > 0 {
+		n += 1 + l + sovMetapb(uint64(l))
+	}
+	l = len(m.StatusAddress)
+	if l > 0 {
+		n += 1 + l + sovMetapb(uint64(l))
+	}
+	l = len(m.GitHash)
+	if l > 0 {
+		n += 1 + l + sovMetapb(uint64(l))
+	}
+	if m.StartTimestamp != 0 {
+		n += 1 + sovMetapb(uint64(m.StartTimestamp))
+	}
+	l = len(m.DeployPath)
+	if l > 0 {
+		n += 1 + l + sovMetapb(uint64(l))
+	}
+	if m.LastHeartbeat != 0 {
+		n += 1 + sovMetapb(uint64(m.LastHeartbeat))
+	}
+	if m.PhysicallyDestroyed {
+		n += 2
+	}
 	if m.XXX_unrecognized != nil {
 		n += len(m.XXX_unrecognized)
 	}
@@ -811,6 +996,10 @@ func (m *Region) Size() (n int) {
 			n += 1 + l + sovMetapb(uint64(l))
 		}
 	}
+	if m.EncryptionMeta != nil {
+		l = m.EncryptionMeta.Size()
+		n += 1 + l + sovMetapb(uint64(l))
+	}
 	if m.XXX_unrecognized != nil {
 		n += len(m.XXX_unrecognized)
 	}
@@ -826,8 +1015,8 @@ func (m *Peer) Size() (n int) {
 	if m.StoreId != 0 {
 		n += 1 + sovMetapb(uint64(m.StoreId))
 	}
-	if m.IsLearner {
-		n += 2
+	if m.Role != 0 {
+		n += 1 + sovMetapb(uint64(m.Role))
 	}
 	if m.XXX_unrecognized != nil {
 		n += len(m.XXX_unrecognized)
@@ -1202,6 +1391,180 @@ func (m *Store) Unmarshal(dAtA []byte) error {
 			}
 			m.Version = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
+		case 6:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field PeerAddress", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowMetapb
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= (uint64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthMetapb
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.PeerAddress = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 7:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field StatusAddress", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowMetapb
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= (uint64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthMetapb
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.StatusAddress = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 8:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field GitHash", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowMetapb
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= (uint64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthMetapb
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.GitHash = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 9:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field StartTimestamp", wireType)
+			}
+			m.StartTimestamp = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowMetapb
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.StartTimestamp |= (int64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 10:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field DeployPath", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowMetapb
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= (uint64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthMetapb
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.DeployPath = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 11:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field LastHeartbeat", wireType)
+			}
+			m.LastHeartbeat = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowMetapb
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.LastHeartbeat |= (int64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 12:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field PhysicallyDestroyed", wireType)
+			}
+			var v int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowMetapb
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= (int(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.PhysicallyDestroyed = bool(v != 0)
 		default:
 			iNdEx = preIndex
 			skippy, err := skipMetapb(dAtA[iNdEx:])
@@ -1487,6 +1850,39 @@ func (m *Region) Unmarshal(dAtA []byte) error {
 				return err
 			}
 			iNdEx = postIndex
+		case 6:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field EncryptionMeta", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowMetapb
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= (int(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthMetapb
+			}
+			postIndex := iNdEx + msglen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.EncryptionMeta == nil {
+				m.EncryptionMeta = &encryptionpb.EncryptionMeta{}
+			}
+			if err := m.EncryptionMeta.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := skipMetapb(dAtA[iNdEx:])
@@ -1578,9 +1974,9 @@ func (m *Peer) Unmarshal(dAtA []byte) error {
 			}
 		case 3:
 			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field IsLearner", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Role", wireType)
 			}
-			var v int
+			m.Role = 0
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return ErrIntOverflowMetapb
@@ -1590,12 +1986,11 @@ func (m *Peer) Unmarshal(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				v |= (int(b) & 0x7F) << shift
+				m.Role |= (PeerRole(b) & 0x7F) << shift
 				if b < 0x80 {
 					break
 				}
 			}
-			m.IsLearner = bool(v != 0)
 		default:
 			iNdEx = preIndex
 			skippy, err := skipMetapb(dAtA[iNdEx:])
@@ -1723,39 +2118,52 @@ var (
 	ErrIntOverflowMetapb   = fmt.Errorf("proto: integer overflow")
 )
 
-func init() { proto.RegisterFile("metapb.proto", fileDescriptor_metapb_b27fba7b96b2e242) }
+func init() { proto.RegisterFile("metapb.proto", fileDescriptor_metapb_ae2ea404685fd4b3) }
 
-var fileDescriptor_metapb_b27fba7b96b2e242 = []byte{
-	// 485 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x64, 0x52, 0xc1, 0x6e, 0xd3, 0x40,
-	0x10, 0xed, 0x3a, 0xb1, 0x93, 0x4c, 0xdc, 0x60, 0x2d, 0x95, 0x70, 0x8b, 0x88, 0x2c, 0x0b, 0x21,
-	0xab, 0x87, 0x80, 0x0a, 0xe2, 0x8a, 0xd4, 0x8a, 0x03, 0xa2, 0x12, 0xd5, 0x16, 0xb8, 0x5a, 0x4e,
-	0x3c, 0x09, 0x56, 0x1c, 0xaf, 0xb5, 0xbb, 0xb1, 0xda, 0x3f, 0xe1, 0xca, 0x0d, 0xf1, 0x25, 0x1c,
-	0x39, 0x72, 0x44, 0xe1, 0x47, 0xd0, 0xee, 0xda, 0x52, 0x44, 0x4e, 0xde, 0x37, 0x6f, 0xe6, 0xcd,
-	0x9b, 0x19, 0x83, 0xbf, 0x41, 0x95, 0xd5, 0xf3, 0x59, 0x2d, 0xb8, 0xe2, 0xd4, 0xb3, 0xe8, 0xec,
-	0x64, 0xc5, 0x57, 0xdc, 0x84, 0x9e, 0xeb, 0x97, 0x65, 0xcf, 0x1e, 0x88, 0xad, 0x54, 0xe6, 0x69,
-	0x03, 0xf1, 0x1b, 0x18, 0x5c, 0x95, 0x5b, 0xa9, 0x50, 0xd0, 0x09, 0x38, 0x45, 0x1e, 0x92, 0x88,
-	0x24, 0x7d, 0xe6, 0x14, 0x39, 0x7d, 0x0a, 0x93, 0x4d, 0x76, 0x97, 0xd6, 0x88, 0x22, 0x5d, 0xf0,
-	0x6d, 0xa5, 0x42, 0x27, 0x22, 0xc9, 0x31, 0xf3, 0x37, 0xd9, 0xdd, 0x0d, 0xa2, 0xb8, 0xd2, 0xb1,
-	0xf8, 0x15, 0xc0, 0xad, 0xe2, 0x02, 0xaf, 0xb3, 0x39, 0x96, 0x34, 0x80, 0xde, 0x1a, 0xef, 0x8d,
-	0xc8, 0x88, 0xe9, 0x27, 0x3d, 0x01, 0xb7, 0xc9, 0xca, 0x2d, 0x9a, 0xe2, 0x11, 0xb3, 0x20, 0xfe,
-	0x46, 0xc0, 0x35, 0x65, 0x07, 0x5d, 0x43, 0x18, 0x64, 0x79, 0x2e, 0x50, 0xca, 0xb6, 0xa2, 0x83,
-	0x34, 0x01, 0x57, 0xaa, 0x4c, 0x61, 0xd8, 0x8b, 0x48, 0x32, 0xb9, 0xa0, 0xb3, 0x76, 0x6e, 0xa3,
-	0x73, 0xab, 0x19, 0x66, 0x13, 0xe8, 0x39, 0x78, 0xa5, 0xb6, 0x23, 0xc3, 0x7e, 0xd4, 0x4b, 0xc6,
-	0xff, 0xa5, 0x1a, 0xa7, 0xac, 0xcd, 0xd0, 0xfd, 0x1a, 0x14, 0xb2, 0xe0, 0x55, 0xe8, 0xda, 0x7e,
-	0x2d, 0x8c, 0x2f, 0x61, 0xcc, 0x70, 0x55, 0xf0, 0xea, 0x6d, 0xcd, 0x17, 0x5f, 0xe8, 0x29, 0x0c,
-	0x17, 0xbc, 0x5a, 0xa6, 0x0d, 0x8a, 0xd6, 0xee, 0x40, 0xe3, 0xcf, 0x28, 0xf6, 0x35, 0x1c, 0xcb,
-	0x74, 0x1a, 0x3f, 0x08, 0x78, 0x56, 0xe4, 0x60, 0xd0, 0xc7, 0x30, 0x92, 0x2a, 0x13, 0x2a, 0xd5,
-	0x0b, 0xd3, 0x65, 0x3e, 0x1b, 0x9a, 0xc0, 0x7b, 0xbc, 0xa7, 0x8f, 0x60, 0x80, 0x55, 0x6e, 0xa8,
-	0x9e, 0xa1, 0x3c, 0xac, 0x72, 0x4d, 0xbc, 0x06, 0x5f, 0x18, 0xbd, 0x14, 0xb5, 0xab, 0xb0, 0x1f,
-	0x91, 0x64, 0x7c, 0xf1, 0xb0, 0x1b, 0x70, 0xcf, 0x30, 0x1b, 0x8b, 0x3d, 0xf7, 0x31, 0xb8, 0xfa,
-	0x90, 0x32, 0x74, 0xcd, 0x46, 0xfc, 0xae, 0x40, 0x1f, 0x92, 0x59, 0x2a, 0xbe, 0x81, 0xbe, 0x86,
-	0x07, 0x4e, 0x4f, 0x61, 0x28, 0xf5, 0xe2, 0xd2, 0x22, 0xef, 0xe6, 0x33, 0xf8, 0x5d, 0x4e, 0x9f,
-	0x00, 0x14, 0x32, 0x2d, 0x31, 0x13, 0x15, 0x0a, 0x63, 0x75, 0xc8, 0x46, 0x85, 0xbc, 0xb6, 0x81,
-	0xf3, 0x17, 0xed, 0xcf, 0x61, 0xae, 0x43, 0x3d, 0x70, 0x3e, 0xd5, 0xc1, 0x11, 0x1d, 0xc3, 0xe0,
-	0xc3, 0x72, 0x59, 0x16, 0x15, 0x06, 0x84, 0x1e, 0xc3, 0xe8, 0x23, 0xdf, 0xcc, 0xa5, 0xe2, 0x15,
-	0x06, 0xce, 0xe5, 0xb3, 0xdf, 0xdf, 0x87, 0xe4, 0xe7, 0x6e, 0x4a, 0x7e, 0xed, 0xa6, 0xe4, 0xcf,
-	0x6e, 0x4a, 0xbe, 0xfe, 0x9d, 0x1e, 0x41, 0xc0, 0xc5, 0x6a, 0xa6, 0x8a, 0x75, 0x33, 0x5b, 0x37,
-	0xe6, 0xbf, 0x9d, 0x7b, 0xe6, 0xf3, 0xf2, 0x5f, 0x00, 0x00, 0x00, 0xff, 0xff, 0xef, 0x6f, 0x43,
-	0x1f, 0xfd, 0x02, 0x00, 0x00,
+var fileDescriptor_metapb_ae2ea404685fd4b3 = []byte{
+	// 700 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x64, 0x54, 0xdb, 0x6e, 0xd3, 0x4a,
+	0x14, 0xad, 0x73, 0xcf, 0x76, 0x92, 0xe6, 0x4c, 0x2b, 0x1d, 0xb7, 0xe7, 0x28, 0x84, 0x88, 0x8b,
+	0xd5, 0x87, 0x00, 0x05, 0xf1, 0x8a, 0xe8, 0x45, 0x6a, 0x45, 0x11, 0xd5, 0xb4, 0x94, 0x47, 0x6b,
+	0x12, 0xef, 0xc6, 0x56, 0x6d, 0x8f, 0x35, 0x33, 0x89, 0x9a, 0x3f, 0xe1, 0x13, 0x10, 0x5f, 0xc2,
+	0x23, 0x8f, 0x3c, 0xa2, 0xf2, 0x05, 0xfc, 0x01, 0x9a, 0x19, 0xbb, 0x17, 0xfa, 0x94, 0x59, 0x6b,
+	0xed, 0xcb, 0xf2, 0xec, 0x3d, 0x81, 0x4e, 0x8a, 0x8a, 0xe5, 0x93, 0x71, 0x2e, 0xb8, 0xe2, 0xa4,
+	0x61, 0xd1, 0x26, 0xc1, 0x6c, 0x2a, 0x96, 0xb9, 0x8a, 0x79, 0x56, 0x6a, 0x9b, 0xeb, 0x33, 0x3e,
+	0xe3, 0xe6, 0xf8, 0x4c, 0x9f, 0x0a, 0x76, 0x55, 0xcc, 0xa5, 0x32, 0x47, 0x4b, 0x8c, 0xde, 0x40,
+	0x73, 0x37, 0x99, 0x4b, 0x85, 0x82, 0xf4, 0xa0, 0x12, 0x87, 0x9e, 0x33, 0x74, 0xfc, 0x1a, 0xad,
+	0xc4, 0x21, 0x79, 0x04, 0xbd, 0x94, 0x5d, 0x06, 0x39, 0xa2, 0x08, 0xa6, 0x7c, 0x9e, 0x29, 0xaf,
+	0x32, 0x74, 0xfc, 0x2e, 0xed, 0xa4, 0xec, 0xf2, 0x18, 0x51, 0xec, 0x6a, 0x6e, 0xf4, 0x0a, 0xe0,
+	0x44, 0x71, 0x81, 0x47, 0x6c, 0x82, 0x09, 0xe9, 0x43, 0xf5, 0x02, 0x97, 0xa6, 0x48, 0x9b, 0xea,
+	0x23, 0x59, 0x87, 0xfa, 0x82, 0x25, 0x73, 0x34, 0xc9, 0x6d, 0x6a, 0xc1, 0xe8, 0x6b, 0x15, 0xea,
+	0x26, 0xed, 0x5e, 0x57, 0x0f, 0x9a, 0x2c, 0x0c, 0x05, 0x4a, 0x59, 0x64, 0x94, 0x90, 0xf8, 0x50,
+	0x97, 0x8a, 0x29, 0xf4, 0xaa, 0x43, 0xc7, 0xef, 0x6d, 0x93, 0x71, 0x71, 0x17, 0xa6, 0xce, 0x89,
+	0x56, 0xa8, 0x0d, 0x20, 0x5b, 0xd0, 0x48, 0xb4, 0x1d, 0xe9, 0xd5, 0x86, 0x55, 0xdf, 0xfd, 0x2b,
+	0xd4, 0x38, 0xa5, 0x45, 0x84, 0xee, 0xb7, 0x40, 0x21, 0x63, 0x9e, 0x79, 0x75, 0xdb, 0xaf, 0x80,
+	0xe4, 0x21, 0x74, 0xcc, 0xb7, 0x97, 0x76, 0x1a, 0x46, 0x76, 0x35, 0xf7, 0xb6, 0xb0, 0xf4, 0x18,
+	0x7a, 0xba, 0xe3, 0x5c, 0x5e, 0x07, 0x35, 0x4d, 0x50, 0xd7, 0xb2, 0x65, 0xd8, 0x06, 0xb4, 0x66,
+	0xb1, 0x0a, 0x22, 0x26, 0x23, 0xaf, 0x65, 0x9b, 0xcc, 0x62, 0x75, 0xc0, 0x64, 0x44, 0x9e, 0xc2,
+	0xaa, 0x54, 0x4c, 0xa8, 0x40, 0xc5, 0x29, 0x4a, 0xc5, 0xd2, 0xdc, 0x6b, 0x0f, 0x1d, 0xbf, 0x4a,
+	0x7b, 0x86, 0x3e, 0x2d, 0x59, 0xf2, 0x00, 0xdc, 0x10, 0xf3, 0x84, 0x2f, 0x83, 0x9c, 0xa9, 0xc8,
+	0x03, 0x53, 0x06, 0x2c, 0x75, 0xcc, 0x54, 0xa4, 0xbd, 0x24, 0x4c, 0xaa, 0x20, 0x42, 0x26, 0xd4,
+	0x04, 0x99, 0xf2, 0x5c, 0x53, 0xa8, 0xab, 0xd9, 0x83, 0x92, 0x24, 0x2f, 0x60, 0x3d, 0x8f, 0x96,
+	0x32, 0x9e, 0xb2, 0x24, 0x59, 0x06, 0x21, 0x4a, 0x25, 0xf8, 0x12, 0x43, 0xaf, 0x33, 0x74, 0xfc,
+	0x16, 0x5d, 0xbb, 0xd1, 0xf6, 0x4a, 0x69, 0xb4, 0x03, 0x2e, 0xc5, 0x59, 0xcc, 0xb3, 0xfd, 0x9c,
+	0x4f, 0x23, 0xfd, 0x35, 0x53, 0x9e, 0x9d, 0x07, 0x0b, 0x14, 0xc5, 0xdc, 0x9a, 0x1a, 0x9f, 0xa1,
+	0xb8, 0x7d, 0x99, 0x15, 0xab, 0x14, 0x70, 0xf4, 0xdb, 0x81, 0x86, 0x2d, 0x72, 0x6f, 0xe2, 0xff,
+	0x41, 0xdb, 0x5e, 0x81, 0xde, 0x1c, 0x9d, 0xd6, 0xa1, 0x2d, 0x43, 0xbc, 0xc3, 0x25, 0xf9, 0x17,
+	0x9a, 0x98, 0x85, 0x46, 0xaa, 0x1a, 0xa9, 0x81, 0x59, 0xa8, 0x85, 0xd7, 0xd0, 0x11, 0xa6, 0x5e,
+	0x80, 0xda, 0x95, 0x57, 0x1b, 0x3a, 0xbe, 0xbb, 0xbd, 0x56, 0x4e, 0xfa, 0x96, 0x61, 0xea, 0x8a,
+	0x5b, 0xee, 0x47, 0x50, 0xd7, 0x13, 0x94, 0x5e, 0xdd, 0xac, 0x46, 0xa7, 0x4c, 0xd0, 0x1b, 0x4d,
+	0xad, 0x44, 0xf6, 0x61, 0xf5, 0xe6, 0x45, 0x05, 0x3a, 0xc0, 0x0c, 0xdf, 0xdd, 0xfe, 0x7f, 0x7c,
+	0xe7, 0xa5, 0xed, 0x5f, 0x83, 0xf7, 0xa8, 0x18, 0xed, 0xe1, 0x1d, 0x3c, 0xfa, 0x04, 0x35, 0x5d,
+	0xf5, 0xde, 0x07, 0x6f, 0x40, 0x4b, 0xea, 0x45, 0x0c, 0xe2, 0xb0, 0xbc, 0x26, 0x83, 0x0f, 0xf5,
+	0x9b, 0xab, 0x09, 0x9e, 0x94, 0x2b, 0xde, 0xbf, 0x63, 0x8e, 0x27, 0x48, 0x8d, 0xba, 0xf5, 0xbc,
+	0x78, 0x73, 0x66, 0xe9, 0x49, 0x03, 0x2a, 0x1f, 0xf3, 0xfe, 0x0a, 0x71, 0xa1, 0xf9, 0xe1, 0xfc,
+	0x3c, 0x89, 0x33, 0xec, 0x3b, 0xa4, 0x0b, 0xed, 0x53, 0x9e, 0x4e, 0xa4, 0xe2, 0x19, 0xf6, 0x2b,
+	0x5b, 0x07, 0xd0, 0x2a, 0x6b, 0x90, 0x36, 0xd4, 0xcf, 0xb8, 0x42, 0x61, 0x53, 0x8e, 0x90, 0x89,
+	0x0c, 0x45, 0xdf, 0x21, 0xff, 0x40, 0xf7, 0x30, 0x9b, 0xf2, 0x34, 0xce, 0x66, 0x56, 0xaf, 0x68,
+	0x6a, 0x0f, 0x53, 0xae, 0xae, 0xa9, 0xea, 0xce, 0x93, 0x1f, 0x5f, 0x5a, 0xce, 0xb7, 0xab, 0x81,
+	0xf3, 0xfd, 0x6a, 0xe0, 0xfc, 0xbc, 0x1a, 0x38, 0x9f, 0x7f, 0x0d, 0x56, 0xa0, 0xcf, 0xc5, 0x6c,
+	0xac, 0xe2, 0x8b, 0xc5, 0xf8, 0x62, 0x61, 0xfe, 0x58, 0x26, 0x0d, 0xf3, 0xf3, 0xf2, 0x4f, 0x00,
+	0x00, 0x00, 0xff, 0xff, 0x84, 0xeb, 0x08, 0x7c, 0xb2, 0x04, 0x00, 0x00,
 }

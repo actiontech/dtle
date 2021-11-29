@@ -8,6 +8,7 @@
 //
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
@@ -25,7 +26,7 @@ var (
 			Subsystem: "statistics",
 			Name:      "auto_analyze_duration_seconds",
 			Help:      "Bucketed histogram of processing time (s) of auto analyze.",
-			Buckets:   prometheus.ExponentialBuckets(0.01, 2, 20), // 10ms ~ 3hours
+			Buckets:   prometheus.ExponentialBuckets(0.01, 2, 24), // 10ms ~ 24h
 		})
 
 	AutoAnalyzeCounter = prometheus.NewCounterVec(
@@ -45,13 +46,13 @@ var (
 			Buckets:   prometheus.ExponentialBuckets(0.01, 2, 14),
 		})
 
-	PseudoEstimation = prometheus.NewCounter(
+	PseudoEstimation = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Namespace: "tidb",
 			Subsystem: "statistics",
 			Name:      "pseudo_estimation_total",
 			Help:      "Counter of pseudo estimation caused by outdated stats.",
-		})
+		}, []string{LblType})
 
 	DumpFeedbackCounter = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
@@ -84,4 +85,13 @@ var (
 			Name:      "high_error_rate_feedback_total",
 			Help:      "Counter of query feedback whose actual count is much different than calculated by current statistics",
 		})
+
+	FastAnalyzeHistogram = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Namespace: "tidb",
+			Subsystem: "statistics",
+			Name:      "fast_analyze_status",
+			Help:      "Bucketed histogram of some stats in fast analyze.",
+			Buckets:   prometheus.ExponentialBuckets(1, 2, 16),
+		}, []string{LblSQLType, LblType})
 )

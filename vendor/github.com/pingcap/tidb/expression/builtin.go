@@ -1,7 +1,3 @@
-// Copyright 2013 The ql Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSES/QL-LICENSE file.
-
 // Copyright 2015 PingCAP, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,60 +8,128 @@
 //
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+
+// Copyright 2013 The ql Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSES/QL-LICENSE file.
+
+//go:generate go run generator/compare_vec.go
+//go:generate go run generator/control_vec.go
+//go:generate go run generator/other_vec.go
+//go:generate go run generator/string_vec.go
+//go:generate go run generator/time_vec.go
 
 package expression
 
 import (
-	"github.com/pingcap/parser/ast"
-	"github.com/pingcap/parser/charset"
-	"github.com/pingcap/parser/mysql"
-	"github.com/pingcap/parser/opcode"
+	"sort"
+	"strings"
+	"sync"
+
+	"github.com/gogo/protobuf/proto"
+	"github.com/pingcap/errors"
+	"github.com/pingcap/tidb/parser/ast"
+	"github.com/pingcap/tidb/parser/charset"
+	"github.com/pingcap/tidb/parser/mysql"
+	"github.com/pingcap/tidb/parser/opcode"
 	"github.com/pingcap/tidb/sessionctx"
+	"github.com/pingcap/tidb/sessionctx/stmtctx"
 	"github.com/pingcap/tidb/types"
 	"github.com/pingcap/tidb/types/json"
 	"github.com/pingcap/tidb/util/chunk"
+	"github.com/pingcap/tidb/util/collate"
 	"github.com/pingcap/tipb/go-tipb"
 )
 
 // baseBuiltinFunc will be contained in every struct that implement builtinFunc interface.
 type baseBuiltinFunc struct {
-	args   []Expression
-	ctx    sessionctx.Context
-	tp     *types.FieldType
-	pbCode tipb.ScalarFuncSig
+	bufAllocator columnBufferAllocator
+	args         []Expression
+	ctx          sessionctx.Context
+	tp           *types.FieldType
+	pbCode       tipb.ScalarFuncSig
+	ctor         collate.Collator
+
+	childrenVectorized bool
+	childrenReversed   bool
+
+	childrenVectorizedOnce *sync.Once
+	childrenReversedOnce   *sync.Once
+
+	collationInfo
 }
 
 func (b *baseBuiltinFunc) PbCode() tipb.ScalarFuncSig {
 	return b.pbCode
 }
 
+// metadata returns the metadata of a function.
+// metadata means some functions contain extra inner fields which will not
+// contain in `tipb.Expr.children` but must be pushed down to coprocessor
+func (b *baseBuiltinFunc) metadata() proto.Message {
+	// We will not use a field to store them because of only
+	// a few functions contain implicit parameters
+	return nil
+}
+
 func (b *baseBuiltinFunc) setPbCode(c tipb.ScalarFuncSig) {
 	b.pbCode = c
 }
 
-func newBaseBuiltinFunc(ctx sessionctx.Context, args []Expression) baseBuiltinFunc {
+func (b *baseBuiltinFunc) setCollator(ctor collate.Collator) {
+	b.ctor = ctor
+}
+
+func (b *baseBuiltinFunc) collator() collate.Collator {
+	return b.ctor
+}
+
+func newBaseBuiltinFunc(ctx sessionctx.Context, funcName string, args []Expression, retType types.EvalType) (baseBuiltinFunc, error) {
 	if ctx == nil {
-		panic("ctx should not be nil")
+		return baseBuiltinFunc{}, errors.New("unexpected nil session ctx")
 	}
-	return baseBuiltinFunc{
+	ec, err := deriveCollation(ctx, funcName, args, retType, retType)
+	if err != nil {
+		return baseBuiltinFunc{}, err
+	}
+
+	bf := baseBuiltinFunc{
+		bufAllocator:           newLocalColumnPool(),
+		childrenVectorizedOnce: new(sync.Once),
+		childrenReversedOnce:   new(sync.Once),
+
 		args: args,
 		ctx:  ctx,
 		tp:   types.NewFieldType(mysql.TypeUnspecified),
 	}
+	bf.SetCharsetAndCollation(ec.Charset, ec.Collation)
+	bf.setCollator(collate.GetCollator(ec.Collation))
+	bf.SetCoercibility(ec.Coer)
+	bf.SetRepertoire(ec.Repe)
+	return bf, nil
 }
 
 // newBaseBuiltinFuncWithTp creates a built-in function signature with specified types of arguments and the return type of the function.
 // argTps indicates the types of the args, retType indicates the return type of the built-in function.
 // Every built-in function needs determined argTps and retType when we create it.
-func newBaseBuiltinFuncWithTp(ctx sessionctx.Context, args []Expression, retType types.EvalType, argTps ...types.EvalType) (bf baseBuiltinFunc) {
+func newBaseBuiltinFuncWithTp(ctx sessionctx.Context, funcName string, args []Expression, retType types.EvalType, argTps ...types.EvalType) (bf baseBuiltinFunc, err error) {
 	if len(args) != len(argTps) {
 		panic("unexpected length of args and argTps")
 	}
 	if ctx == nil {
-		panic("ctx should not be nil")
+		return baseBuiltinFunc{}, errors.New("unexpected nil session ctx")
 	}
+
+	// derive collation information for string function, and we must do it
+	// before doing implicit cast.
+	ec, err := deriveCollation(ctx, funcName, args, retType, argTps...)
+	if err != nil {
+		return
+	}
+
 	for i := range args {
 		switch argTps[i] {
 		case types.ETInt:
@@ -86,6 +150,7 @@ func newBaseBuiltinFuncWithTp(ctx sessionctx.Context, args []Expression, retType
 			args[i] = WrapWithCastAsJSON(ctx, args[i])
 		}
 	}
+
 	var fieldType *types.FieldType
 	switch retType {
 	case types.ETInt:
@@ -112,28 +177,30 @@ func newBaseBuiltinFuncWithTp(ctx sessionctx.Context, args []Expression, retType
 	case types.ETString:
 		fieldType = &types.FieldType{
 			Tp:      mysql.TypeVarString,
-			Flen:    0,
 			Decimal: types.UnspecifiedLength,
+			Charset: ec.Charset,
+			Collate: ec.Collation,
+			Flen:    types.UnspecifiedLength,
 		}
 	case types.ETDatetime:
 		fieldType = &types.FieldType{
 			Tp:      mysql.TypeDatetime,
 			Flen:    mysql.MaxDatetimeWidthWithFsp,
-			Decimal: types.MaxFsp,
+			Decimal: int(types.MaxFsp),
 			Flag:    mysql.BinaryFlag,
 		}
 	case types.ETTimestamp:
 		fieldType = &types.FieldType{
 			Tp:      mysql.TypeTimestamp,
 			Flen:    mysql.MaxDatetimeWidthWithFsp,
-			Decimal: types.MaxFsp,
+			Decimal: int(types.MaxFsp),
 			Flag:    mysql.BinaryFlag,
 		}
 	case types.ETDuration:
 		fieldType = &types.FieldType{
 			Tp:      mysql.TypeDuration,
 			Flen:    mysql.MaxDurationWidthWithFsp,
-			Decimal: types.MaxFsp,
+			Decimal: int(types.MaxFsp),
 			Flag:    mysql.BinaryFlag,
 		}
 	case types.ETJson:
@@ -148,46 +215,142 @@ func newBaseBuiltinFuncWithTp(ctx sessionctx.Context, args []Expression, retType
 	}
 	if mysql.HasBinaryFlag(fieldType.Flag) && fieldType.Tp != mysql.TypeJSON {
 		fieldType.Charset, fieldType.Collate = charset.CharsetBin, charset.CollationBin
-	} else {
-		fieldType.Charset, fieldType.Collate = charset.GetDefaultCharsetAndCollate()
 	}
-	return baseBuiltinFunc{
+	if _, ok := booleanFunctions[funcName]; ok {
+		fieldType.Flag |= mysql.IsBooleanFlag
+	}
+	bf = baseBuiltinFunc{
+		bufAllocator:           newLocalColumnPool(),
+		childrenVectorizedOnce: new(sync.Once),
+		childrenReversedOnce:   new(sync.Once),
+
 		args: args,
 		ctx:  ctx,
 		tp:   fieldType,
 	}
+	bf.SetCharsetAndCollation(ec.Charset, ec.Collation)
+	bf.setCollator(collate.GetCollator(ec.Collation))
+	bf.SetCoercibility(ec.Coer)
+	bf.SetRepertoire(ec.Repe)
+	return bf, nil
+}
+
+// newBaseBuiltinFuncWithFieldType create BaseBuiltinFunc with FieldType charset and collation.
+// do not check and compute collation.
+func newBaseBuiltinFuncWithFieldType(ctx sessionctx.Context, tp *types.FieldType, args []Expression) (baseBuiltinFunc, error) {
+	if ctx == nil {
+		return baseBuiltinFunc{}, errors.New("unexpected nil session ctx")
+	}
+	bf := baseBuiltinFunc{
+		bufAllocator:           newLocalColumnPool(),
+		childrenVectorizedOnce: new(sync.Once),
+		childrenReversedOnce:   new(sync.Once),
+
+		args: args,
+		ctx:  ctx,
+		tp:   types.NewFieldType(mysql.TypeUnspecified),
+	}
+	bf.SetCharsetAndCollation(tp.Charset, tp.Collate)
+	bf.setCollator(collate.GetCollator(tp.Collate))
+	return bf, nil
 }
 
 func (b *baseBuiltinFunc) getArgs() []Expression {
 	return b.args
 }
 
+func (b *baseBuiltinFunc) vecEvalInt(input *chunk.Chunk, result *chunk.Column) error {
+	return errors.Errorf("baseBuiltinFunc.vecEvalInt() should never be called, please contact the TiDB team for help")
+}
+
+func (b *baseBuiltinFunc) vecEvalReal(input *chunk.Chunk, result *chunk.Column) error {
+	return errors.Errorf("baseBuiltinFunc.vecEvalReal() should never be called, please contact the TiDB team for help")
+}
+
+func (b *baseBuiltinFunc) vecEvalString(input *chunk.Chunk, result *chunk.Column) error {
+	return errors.Errorf("baseBuiltinFunc.vecEvalString() should never be called, please contact the TiDB team for help")
+}
+
+func (b *baseBuiltinFunc) vecEvalDecimal(input *chunk.Chunk, result *chunk.Column) error {
+	return errors.Errorf("baseBuiltinFunc.vecEvalDecimal() should never be called, please contact the TiDB team for help")
+}
+
+func (b *baseBuiltinFunc) vecEvalTime(input *chunk.Chunk, result *chunk.Column) error {
+	return errors.Errorf("baseBuiltinFunc.vecEvalTime() should never be called, please contact the TiDB team for help")
+}
+
+func (b *baseBuiltinFunc) vecEvalDuration(input *chunk.Chunk, result *chunk.Column) error {
+	return errors.Errorf("baseBuiltinFunc.vecEvalDuration() should never be called, please contact the TiDB team for help")
+}
+
+func (b *baseBuiltinFunc) vecEvalJSON(input *chunk.Chunk, result *chunk.Column) error {
+	return errors.Errorf("baseBuiltinFunc.vecEvalJSON() should never be called, please contact the TiDB team for help")
+}
+
 func (b *baseBuiltinFunc) evalInt(row chunk.Row) (int64, bool, error) {
-	panic("baseBuiltinFunc.evalInt() should never be called.")
+	return 0, false, errors.Errorf("baseBuiltinFunc.evalInt() should never be called, please contact the TiDB team for help")
 }
 
 func (b *baseBuiltinFunc) evalReal(row chunk.Row) (float64, bool, error) {
-	panic("baseBuiltinFunc.evalReal() should never be called.")
+	return 0, false, errors.Errorf("baseBuiltinFunc.evalReal() should never be called, please contact the TiDB team for help")
 }
 
 func (b *baseBuiltinFunc) evalString(row chunk.Row) (string, bool, error) {
-	panic("baseBuiltinFunc.evalString() should never be called.")
+	return "", false, errors.Errorf("baseBuiltinFunc.evalString() should never be called, please contact the TiDB team for help")
 }
 
 func (b *baseBuiltinFunc) evalDecimal(row chunk.Row) (*types.MyDecimal, bool, error) {
-	panic("baseBuiltinFunc.evalDecimal() should never be called.")
+	return nil, false, errors.Errorf("baseBuiltinFunc.evalDecimal() should never be called, please contact the TiDB team for help")
 }
 
 func (b *baseBuiltinFunc) evalTime(row chunk.Row) (types.Time, bool, error) {
-	panic("baseBuiltinFunc.evalTime() should never be called.")
+	return types.ZeroTime, false, errors.Errorf("baseBuiltinFunc.evalTime() should never be called, please contact the TiDB team for help")
 }
 
 func (b *baseBuiltinFunc) evalDuration(row chunk.Row) (types.Duration, bool, error) {
-	panic("baseBuiltinFunc.evalDuration() should never be called.")
+	return types.Duration{}, false, errors.Errorf("baseBuiltinFunc.evalDuration() should never be called, please contact the TiDB team for help")
 }
 
 func (b *baseBuiltinFunc) evalJSON(row chunk.Row) (json.BinaryJSON, bool, error) {
-	panic("baseBuiltinFunc.evalJSON() should never be called.")
+	return json.BinaryJSON{}, false, errors.Errorf("baseBuiltinFunc.evalJSON() should never be called, please contact the TiDB team for help")
+}
+
+func (b *baseBuiltinFunc) vectorized() bool {
+	return false
+}
+
+func (b *baseBuiltinFunc) supportReverseEval() bool {
+	return false
+}
+
+func (b *baseBuiltinFunc) isChildrenReversed() bool {
+	b.childrenReversedOnce.Do(func() {
+		b.childrenReversed = true
+		for _, arg := range b.args {
+			if !arg.SupportReverseEval() {
+				b.childrenReversed = false
+				break
+			}
+		}
+	})
+	return b.childrenReversed
+}
+
+func (b *baseBuiltinFunc) reverseEval(sc *stmtctx.StatementContext, res types.Datum, rType types.RoundingType) (types.Datum, error) {
+	return types.Datum{}, errors.Errorf("baseBuiltinFunc.reverseEvalInt() should never be called, please contact the TiDB team for help")
+}
+
+func (b *baseBuiltinFunc) isChildrenVectorized() bool {
+	b.childrenVectorizedOnce.Do(func() {
+		b.childrenVectorized = true
+		for _, arg := range b.args {
+			if !arg.Vectorized() {
+				b.childrenVectorized = false
+				break
+			}
+		}
+	})
+	return b.childrenVectorized
 }
 
 func (b *baseBuiltinFunc) getRetTp() *types.FieldType {
@@ -230,6 +393,10 @@ func (b *baseBuiltinFunc) cloneFrom(from *baseBuiltinFunc) {
 	b.ctx = from.ctx
 	b.tp = from.tp
 	b.pbCode = from.pbCode
+	b.bufAllocator = newLocalColumnPool()
+	b.childrenVectorizedOnce = new(sync.Once)
+	b.childrenReversedOnce = new(sync.Once)
+	b.ctor = from.ctor
 }
 
 func (b *baseBuiltinFunc) Clone() builtinFunc {
@@ -244,6 +411,14 @@ type baseBuiltinCastFunc struct {
 	inUnion bool
 }
 
+// metadata returns the metadata of cast functions
+func (b *baseBuiltinCastFunc) metadata() proto.Message {
+	args := &tipb.InUnionMetadata{
+		InUnion: b.inUnion,
+	}
+	return args
+}
+
 func (b *baseBuiltinCastFunc) cloneFrom(from *baseBuiltinCastFunc) {
 	b.baseBuiltinFunc.cloneFrom(&from.baseBuiltinFunc)
 	b.inUnion = from.inUnion
@@ -256,8 +431,53 @@ func newBaseBuiltinCastFunc(builtinFunc baseBuiltinFunc, inUnion bool) baseBuilt
 	}
 }
 
+// vecBuiltinFunc contains all vectorized methods for a builtin function.
+type vecBuiltinFunc interface {
+	// vectorized returns if this builtin function itself supports vectorized evaluation.
+	vectorized() bool
+
+	// isChildrenVectorized returns if its all children support vectorized evaluation.
+	isChildrenVectorized() bool
+
+	// vecEvalInt evaluates this builtin function in a vectorized manner.
+	vecEvalInt(input *chunk.Chunk, result *chunk.Column) error
+
+	// vecEvalReal evaluates this builtin function in a vectorized manner.
+	vecEvalReal(input *chunk.Chunk, result *chunk.Column) error
+
+	// vecEvalString evaluates this builtin function in a vectorized manner.
+	vecEvalString(input *chunk.Chunk, result *chunk.Column) error
+
+	// vecEvalDecimal evaluates this builtin function in a vectorized manner.
+	vecEvalDecimal(input *chunk.Chunk, result *chunk.Column) error
+
+	// vecEvalTime evaluates this builtin function in a vectorized manner.
+	vecEvalTime(input *chunk.Chunk, result *chunk.Column) error
+
+	// vecEvalDuration evaluates this builtin function in a vectorized manner.
+	vecEvalDuration(input *chunk.Chunk, result *chunk.Column) error
+
+	// vecEvalJSON evaluates this builtin function in a vectorized manner.
+	vecEvalJSON(input *chunk.Chunk, result *chunk.Column) error
+}
+
+// reverseBuiltinFunc evaluates the exactly one column value in the function when given a result for expression.
+// For example, the builtinFunc is builtinArithmeticPlusRealSig(2.3, builtinArithmeticMinusRealSig(Column, 3.4))
+// when given the result like 1.0, then the ReverseEval should evaluate the column value 1.0 - 2.3 + 3.4 = 2.1
+type reverseBuiltinFunc interface {
+	// supportReverseEval checks whether the builtinFunc support reverse evaluation.
+	supportReverseEval() bool
+	// isChildrenReversed checks whether the builtinFunc's children support reverse evaluation.
+	isChildrenReversed() bool
+	// reverseEval evaluates the only one column value with given function result.
+	reverseEval(sc *stmtctx.StatementContext, res types.Datum, rType types.RoundingType) (val types.Datum, err error)
+}
+
 // builtinFunc stands for a particular function signature.
 type builtinFunc interface {
+	vecBuiltinFunc
+	reverseBuiltinFunc
+
 	// evalInt evaluates int result of builtinFunc by given row.
 	evalInt(row chunk.Row) (val int64, isNull bool, err error)
 	// evalReal evaluates real representation of builtinFunc by given row.
@@ -284,8 +504,22 @@ type builtinFunc interface {
 	setPbCode(tipb.ScalarFuncSig)
 	// PbCode returns PbCode of this signature.
 	PbCode() tipb.ScalarFuncSig
+	// setCollator sets collator for signature.
+	setCollator(ctor collate.Collator)
+	// collator returns collator of this signature.
+	collator() collate.Collator
+	// metadata returns the metadata of a function.
+	// metadata means some functions contain extra inner fields which will not
+	// contain in `tipb.Expr.children` but must be pushed down to coprocessor
+	metadata() proto.Message
 	// Clone returns a copy of itself.
 	Clone() builtinFunc
+
+	CollationInfo
+}
+
+type builtinFuncNew interface {
+	evalIntWithCtx(ctx sessionctx.Context, row chunk.Row) (val int64, isNull bool, err error)
 }
 
 // baseFunctionClass will be contained in every struct that implement functionClass interface.
@@ -296,17 +530,40 @@ type baseFunctionClass struct {
 }
 
 func (b *baseFunctionClass) verifyArgs(args []Expression) error {
-	l := len(args)
+	return b.verifyArgsByCount(len(args))
+}
+
+func (b *baseFunctionClass) verifyArgsByCount(l int) error {
 	if l < b.minArgs || (b.maxArgs != -1 && l > b.maxArgs) {
 		return ErrIncorrectParameterCount.GenWithStackByArgs(b.funcName)
 	}
 	return nil
 }
 
+// VerifyArgsWrapper verifies a function by its name and the count of the arguments.
+// Note that this function assumes that the function is supported.
+func VerifyArgsWrapper(name string, l int) error {
+	f, ok := funcs[name]
+	if !ok {
+		return nil
+	}
+	return f.verifyArgsByCount(l)
+}
+
 // functionClass is the interface for a function which may contains multiple functions.
 type functionClass interface {
 	// getFunction gets a function signature by the types and the counts of given arguments.
 	getFunction(ctx sessionctx.Context, args []Expression) (builtinFunc, error)
+	// verifyArgsByCount verifies the count of parameters.
+	verifyArgsByCount(l int) error
+}
+
+// functionClassWithName is the interface for a function with a display name extended from functionClass
+type functionClassWithName interface {
+	functionClass
+
+	// getDisplayName gets the display name of a function
+	getDisplayName() string
 }
 
 // funcs holds all registered builtin functions. When new function is added,
@@ -415,11 +672,17 @@ var funcs = map[string]functionClass{
 	ast.Year:             &yearFunctionClass{baseFunctionClass{ast.Year, 1, 1}},
 	ast.YearWeek:         &yearWeekFunctionClass{baseFunctionClass{ast.YearWeek, 1, 2}},
 	ast.LastDay:          &lastDayFunctionClass{baseFunctionClass{ast.LastDay, 1, 1}},
-	ast.TiDBParseTso:     &tidbParseTsoFunctionClass{baseFunctionClass{ast.TiDBParseTso, 1, 1}},
+	// TSO functions
+	ast.TiDBBoundedStaleness: &tidbBoundedStalenessFunctionClass{baseFunctionClass{ast.TiDBBoundedStaleness, 2, 2}},
+	ast.TiDBParseTso:         &tidbParseTsoFunctionClass{baseFunctionClass{ast.TiDBParseTso, 1, 1}},
 
 	// string functions
 	ast.ASCII:           &asciiFunctionClass{baseFunctionClass{ast.ASCII, 1, 1}},
 	ast.Bin:             &binFunctionClass{baseFunctionClass{ast.Bin, 1, 1}},
+	ast.BitLength:       &bitLengthFunctionClass{baseFunctionClass{ast.BitLength, 1, 1}},
+	ast.CharFunc:        &charFunctionClass{baseFunctionClass{ast.CharFunc, 2, -1}},
+	ast.CharLength:      &charLengthFunctionClass{baseFunctionClass{ast.CharLength, 1, 1}},
+	ast.CharacterLength: &charLengthFunctionClass{baseFunctionClass{ast.CharacterLength, 1, 1}},
 	ast.Concat:          &concatFunctionClass{baseFunctionClass{ast.Concat, 1, -1}},
 	ast.ConcatWS:        &concatWSFunctionClass{baseFunctionClass{ast.ConcatWS, 2, -1}},
 	ast.Convert:         &convertFunctionClass{baseFunctionClass{ast.Convert, 2, 2}},
@@ -428,11 +691,12 @@ var funcs = map[string]functionClass{
 	ast.Field:           &fieldFunctionClass{baseFunctionClass{ast.Field, 2, -1}},
 	ast.Format:          &formatFunctionClass{baseFunctionClass{ast.Format, 2, 3}},
 	ast.FromBase64:      &fromBase64FunctionClass{baseFunctionClass{ast.FromBase64, 1, 1}},
+	ast.FindInSet:       &findInSetFunctionClass{baseFunctionClass{ast.FindInSet, 2, 2}},
+	ast.Hex:             &hexFunctionClass{baseFunctionClass{ast.Hex, 1, 1}},
 	ast.InsertFunc:      &insertFunctionClass{baseFunctionClass{ast.InsertFunc, 4, 4}},
 	ast.Instr:           &instrFunctionClass{baseFunctionClass{ast.Instr, 2, 2}},
 	ast.Lcase:           &lowerFunctionClass{baseFunctionClass{ast.Lcase, 1, 1}},
 	ast.Left:            &leftFunctionClass{baseFunctionClass{ast.Left, 2, 2}},
-	ast.Right:           &rightFunctionClass{baseFunctionClass{ast.Right, 2, 2}},
 	ast.Length:          &lengthFunctionClass{baseFunctionClass{ast.Length, 1, 1}},
 	ast.LoadFile:        &loadFileFunctionClass{baseFunctionClass{ast.LoadFile, 1, 1}},
 	ast.Locate:          &locateFunctionClass{baseFunctionClass{ast.Locate, 2, 3}},
@@ -442,13 +706,16 @@ var funcs = map[string]functionClass{
 	ast.Mid:             &substringFunctionClass{baseFunctionClass{ast.Mid, 3, 3}},
 	ast.MakeSet:         &makeSetFunctionClass{baseFunctionClass{ast.MakeSet, 2, -1}},
 	ast.Oct:             &octFunctionClass{baseFunctionClass{ast.Oct, 1, 1}},
+	ast.OctetLength:     &lengthFunctionClass{baseFunctionClass{ast.OctetLength, 1, 1}},
 	ast.Ord:             &ordFunctionClass{baseFunctionClass{ast.Ord, 1, 1}},
 	ast.Position:        &locateFunctionClass{baseFunctionClass{ast.Position, 2, 2}},
 	ast.Quote:           &quoteFunctionClass{baseFunctionClass{ast.Quote, 1, 1}},
 	ast.Repeat:          &repeatFunctionClass{baseFunctionClass{ast.Repeat, 2, 2}},
 	ast.Replace:         &replaceFunctionClass{baseFunctionClass{ast.Replace, 3, 3}},
 	ast.Reverse:         &reverseFunctionClass{baseFunctionClass{ast.Reverse, 1, 1}},
+	ast.Right:           &rightFunctionClass{baseFunctionClass{ast.Right, 2, 2}},
 	ast.RTrim:           &rTrimFunctionClass{baseFunctionClass{ast.RTrim, 1, 1}},
+	ast.Rpad:            &rpadFunctionClass{baseFunctionClass{ast.Rpad, 3, 3}},
 	ast.Space:           &spaceFunctionClass{baseFunctionClass{ast.Space, 1, 1}},
 	ast.Strcmp:          &strcmpFunctionClass{baseFunctionClass{ast.Strcmp, 2, 2}},
 	ast.Substring:       &substringFunctionClass{baseFunctionClass{ast.Substring, 2, 3}},
@@ -456,16 +723,11 @@ var funcs = map[string]functionClass{
 	ast.SubstringIndex:  &substringIndexFunctionClass{baseFunctionClass{ast.SubstringIndex, 3, 3}},
 	ast.ToBase64:        &toBase64FunctionClass{baseFunctionClass{ast.ToBase64, 1, 1}},
 	ast.Trim:            &trimFunctionClass{baseFunctionClass{ast.Trim, 1, 3}},
+	ast.Translate:       &translateFunctionClass{baseFunctionClass{ast.Translate, 3, 3}},
 	ast.Upper:           &upperFunctionClass{baseFunctionClass{ast.Upper, 1, 1}},
 	ast.Ucase:           &upperFunctionClass{baseFunctionClass{ast.Ucase, 1, 1}},
-	ast.Hex:             &hexFunctionClass{baseFunctionClass{ast.Hex, 1, 1}},
 	ast.Unhex:           &unhexFunctionClass{baseFunctionClass{ast.Unhex, 1, 1}},
-	ast.Rpad:            &rpadFunctionClass{baseFunctionClass{ast.Rpad, 3, 3}},
-	ast.BitLength:       &bitLengthFunctionClass{baseFunctionClass{ast.BitLength, 1, 1}},
-	ast.CharFunc:        &charFunctionClass{baseFunctionClass{ast.CharFunc, 2, -1}},
-	ast.CharLength:      &charLengthFunctionClass{baseFunctionClass{ast.CharLength, 1, 1}},
-	ast.CharacterLength: &charLengthFunctionClass{baseFunctionClass{ast.CharacterLength, 1, 1}},
-	ast.FindInSet:       &findInSetFunctionClass{baseFunctionClass{ast.FindInSet, 2, 2}},
+	ast.WeightString:    &weightStringFunctionClass{baseFunctionClass{ast.WeightString, 1, 3}},
 
 	// information functions
 	ast.ConnectionID: &connectionIDFunctionClass{baseFunctionClass{ast.ConnectionID, 0, 0}},
@@ -486,9 +748,10 @@ var funcs = map[string]functionClass{
 	ast.RowCount:     &rowCountFunctionClass{baseFunctionClass{ast.RowCount, 0, 0}},
 	ast.SessionUser:  &userFunctionClass{baseFunctionClass{ast.SessionUser, 0, 0}},
 	ast.SystemUser:   &userFunctionClass{baseFunctionClass{ast.SystemUser, 0, 0}},
-	// This function is used to show tidb-server version info.
-	ast.TiDBVersion:    &tidbVersionFunctionClass{baseFunctionClass{ast.TiDBVersion, 0, 0}},
-	ast.TiDBIsDDLOwner: &tidbIsDDLOwnerFunctionClass{baseFunctionClass{ast.TiDBIsDDLOwner, 0, 0}},
+
+	// See https://dev.mysql.com/doc/refman/8.0/en/performance-schema-functions.html
+	ast.FormatBytes:    &formatBytesFunctionClass{baseFunctionClass{ast.FormatBytes, 1, 1}},
+	ast.FormatNanoTime: &formatNanoTimeFunctionClass{baseFunctionClass{ast.FormatNanoTime, 1, 1}},
 
 	// control functions
 	ast.If:     &ifFunctionClass{baseFunctionClass{ast.If, 3, 3}},
@@ -513,47 +776,50 @@ var funcs = map[string]functionClass{
 	ast.ReleaseAllLocks: &releaseAllLocksFunctionClass{baseFunctionClass{ast.ReleaseAllLocks, 0, 0}},
 	ast.UUID:            &uuidFunctionClass{baseFunctionClass{ast.UUID, 0, 0}},
 	ast.UUIDShort:       &uuidShortFunctionClass{baseFunctionClass{ast.UUIDShort, 0, 0}},
+	ast.VitessHash:      &vitessHashFunctionClass{baseFunctionClass{ast.VitessHash, 1, 1}},
+	ast.UUIDToBin:       &uuidToBinFunctionClass{baseFunctionClass{ast.UUIDToBin, 1, 2}},
+	ast.BinToUUID:       &binToUUIDFunctionClass{baseFunctionClass{ast.BinToUUID, 1, 2}},
 
 	// get_lock() and release_lock() are parsed but do nothing.
 	// It is used for preventing error in Ruby's activerecord migrations.
 	ast.GetLock:     &lockFunctionClass{baseFunctionClass{ast.GetLock, 2, 2}},
 	ast.ReleaseLock: &releaseLockFunctionClass{baseFunctionClass{ast.ReleaseLock, 1, 1}},
 
-	ast.LogicAnd:   &logicAndFunctionClass{baseFunctionClass{ast.LogicAnd, 2, 2}},
-	ast.LogicOr:    &logicOrFunctionClass{baseFunctionClass{ast.LogicOr, 2, 2}},
-	ast.LogicXor:   &logicXorFunctionClass{baseFunctionClass{ast.LogicXor, 2, 2}},
-	ast.GE:         &compareFunctionClass{baseFunctionClass{ast.GE, 2, 2}, opcode.GE},
-	ast.LE:         &compareFunctionClass{baseFunctionClass{ast.LE, 2, 2}, opcode.LE},
-	ast.EQ:         &compareFunctionClass{baseFunctionClass{ast.EQ, 2, 2}, opcode.EQ},
-	ast.NE:         &compareFunctionClass{baseFunctionClass{ast.NE, 2, 2}, opcode.NE},
-	ast.LT:         &compareFunctionClass{baseFunctionClass{ast.LT, 2, 2}, opcode.LT},
-	ast.GT:         &compareFunctionClass{baseFunctionClass{ast.GT, 2, 2}, opcode.GT},
-	ast.NullEQ:     &compareFunctionClass{baseFunctionClass{ast.NullEQ, 2, 2}, opcode.NullEQ},
-	ast.Plus:       &arithmeticPlusFunctionClass{baseFunctionClass{ast.Plus, 2, 2}},
-	ast.Minus:      &arithmeticMinusFunctionClass{baseFunctionClass{ast.Minus, 2, 2}},
-	ast.Mod:        &arithmeticModFunctionClass{baseFunctionClass{ast.Mod, 2, 2}},
-	ast.Div:        &arithmeticDivideFunctionClass{baseFunctionClass{ast.Div, 2, 2}},
-	ast.Mul:        &arithmeticMultiplyFunctionClass{baseFunctionClass{ast.Mul, 2, 2}},
-	ast.IntDiv:     &arithmeticIntDivideFunctionClass{baseFunctionClass{ast.IntDiv, 2, 2}},
-	ast.BitNeg:     &bitNegFunctionClass{baseFunctionClass{ast.BitNeg, 1, 1}},
-	ast.And:        &bitAndFunctionClass{baseFunctionClass{ast.And, 2, 2}},
-	ast.LeftShift:  &leftShiftFunctionClass{baseFunctionClass{ast.LeftShift, 2, 2}},
-	ast.RightShift: &rightShiftFunctionClass{baseFunctionClass{ast.RightShift, 2, 2}},
-	ast.UnaryNot:   &unaryNotFunctionClass{baseFunctionClass{ast.UnaryNot, 1, 1}},
-	ast.Or:         &bitOrFunctionClass{baseFunctionClass{ast.Or, 2, 2}},
-	ast.Xor:        &bitXorFunctionClass{baseFunctionClass{ast.Xor, 2, 2}},
-	ast.UnaryMinus: &unaryMinusFunctionClass{baseFunctionClass{ast.UnaryMinus, 1, 1}},
-	ast.In:         &inFunctionClass{baseFunctionClass{ast.In, 2, -1}},
-	ast.IsTruth:    &isTrueOrFalseFunctionClass{baseFunctionClass{ast.IsTruth, 1, 1}, opcode.IsTruth},
-	ast.IsFalsity:  &isTrueOrFalseFunctionClass{baseFunctionClass{ast.IsFalsity, 1, 1}, opcode.IsFalsity},
-	ast.Like:       &likeFunctionClass{baseFunctionClass{ast.Like, 3, 3}},
-	ast.Regexp:     &regexpFunctionClass{baseFunctionClass{ast.Regexp, 2, 2}},
-	ast.Case:       &caseWhenFunctionClass{baseFunctionClass{ast.Case, 1, -1}},
-	ast.RowFunc:    &rowFunctionClass{baseFunctionClass{ast.RowFunc, 2, -1}},
-	ast.SetVar:     &setVarFunctionClass{baseFunctionClass{ast.SetVar, 2, 2}},
-	ast.GetVar:     &getVarFunctionClass{baseFunctionClass{ast.GetVar, 1, 1}},
-	ast.BitCount:   &bitCountFunctionClass{baseFunctionClass{ast.BitCount, 1, 1}},
-	ast.GetParam:   &getParamFunctionClass{baseFunctionClass{ast.GetParam, 1, 1}},
+	ast.LogicAnd:           &logicAndFunctionClass{baseFunctionClass{ast.LogicAnd, 2, 2}},
+	ast.LogicOr:            &logicOrFunctionClass{baseFunctionClass{ast.LogicOr, 2, 2}},
+	ast.LogicXor:           &logicXorFunctionClass{baseFunctionClass{ast.LogicXor, 2, 2}},
+	ast.GE:                 &compareFunctionClass{baseFunctionClass{ast.GE, 2, 2}, opcode.GE},
+	ast.LE:                 &compareFunctionClass{baseFunctionClass{ast.LE, 2, 2}, opcode.LE},
+	ast.EQ:                 &compareFunctionClass{baseFunctionClass{ast.EQ, 2, 2}, opcode.EQ},
+	ast.NE:                 &compareFunctionClass{baseFunctionClass{ast.NE, 2, 2}, opcode.NE},
+	ast.LT:                 &compareFunctionClass{baseFunctionClass{ast.LT, 2, 2}, opcode.LT},
+	ast.GT:                 &compareFunctionClass{baseFunctionClass{ast.GT, 2, 2}, opcode.GT},
+	ast.NullEQ:             &compareFunctionClass{baseFunctionClass{ast.NullEQ, 2, 2}, opcode.NullEQ},
+	ast.Plus:               &arithmeticPlusFunctionClass{baseFunctionClass{ast.Plus, 2, 2}},
+	ast.Minus:              &arithmeticMinusFunctionClass{baseFunctionClass{ast.Minus, 2, 2}},
+	ast.Mod:                &arithmeticModFunctionClass{baseFunctionClass{ast.Mod, 2, 2}},
+	ast.Div:                &arithmeticDivideFunctionClass{baseFunctionClass{ast.Div, 2, 2}},
+	ast.Mul:                &arithmeticMultiplyFunctionClass{baseFunctionClass{ast.Mul, 2, 2}},
+	ast.IntDiv:             &arithmeticIntDivideFunctionClass{baseFunctionClass{ast.IntDiv, 2, 2}},
+	ast.BitNeg:             &bitNegFunctionClass{baseFunctionClass{ast.BitNeg, 1, 1}},
+	ast.And:                &bitAndFunctionClass{baseFunctionClass{ast.And, 2, 2}},
+	ast.LeftShift:          &leftShiftFunctionClass{baseFunctionClass{ast.LeftShift, 2, 2}},
+	ast.RightShift:         &rightShiftFunctionClass{baseFunctionClass{ast.RightShift, 2, 2}},
+	ast.UnaryNot:           &unaryNotFunctionClass{baseFunctionClass{ast.UnaryNot, 1, 1}},
+	ast.Or:                 &bitOrFunctionClass{baseFunctionClass{ast.Or, 2, 2}},
+	ast.Xor:                &bitXorFunctionClass{baseFunctionClass{ast.Xor, 2, 2}},
+	ast.UnaryMinus:         &unaryMinusFunctionClass{baseFunctionClass{ast.UnaryMinus, 1, 1}},
+	ast.In:                 &inFunctionClass{baseFunctionClass{ast.In, 2, -1}},
+	ast.IsTruthWithoutNull: &isTrueOrFalseFunctionClass{baseFunctionClass{ast.IsTruthWithoutNull, 1, 1}, opcode.IsTruth, false},
+	ast.IsTruthWithNull:    &isTrueOrFalseFunctionClass{baseFunctionClass{ast.IsTruthWithNull, 1, 1}, opcode.IsTruth, true},
+	ast.IsFalsity:          &isTrueOrFalseFunctionClass{baseFunctionClass{ast.IsFalsity, 1, 1}, opcode.IsFalsity, false},
+	ast.Like:               &likeFunctionClass{baseFunctionClass{ast.Like, 3, 3}},
+	ast.Regexp:             &regexpFunctionClass{baseFunctionClass{ast.Regexp, 2, 2}},
+	ast.Case:               &caseWhenFunctionClass{baseFunctionClass{ast.Case, 1, -1}},
+	ast.RowFunc:            &rowFunctionClass{baseFunctionClass{ast.RowFunc, 2, -1}},
+	ast.SetVar:             &setVarFunctionClass{baseFunctionClass{ast.SetVar, 2, 2}},
+	ast.BitCount:           &bitCountFunctionClass{baseFunctionClass{ast.BitCount, 1, 1}},
+	ast.GetParam:           &getParamFunctionClass{baseFunctionClass{ast.GetParam, 1, 1}},
 
 	// encryption and compression functions
 	ast.AesDecrypt:               &aesDecryptFunctionClass{baseFunctionClass{ast.AesDecrypt, 2, 3}},
@@ -600,4 +866,85 @@ var funcs = map[string]functionClass{
 	ast.JSONDepth:         &jsonDepthFunctionClass{baseFunctionClass{ast.JSONDepth, 1, 1}},
 	ast.JSONKeys:          &jsonKeysFunctionClass{baseFunctionClass{ast.JSONKeys, 1, 2}},
 	ast.JSONLength:        &jsonLengthFunctionClass{baseFunctionClass{ast.JSONLength, 1, 2}},
+
+	// TiDB internal function.
+	ast.TiDBDecodeKey: &tidbDecodeKeyFunctionClass{baseFunctionClass{ast.TiDBDecodeKey, 1, 1}},
+	// This function is used to show tidb-server version info.
+	ast.TiDBVersion:          &tidbVersionFunctionClass{baseFunctionClass{ast.TiDBVersion, 0, 0}},
+	ast.TiDBIsDDLOwner:       &tidbIsDDLOwnerFunctionClass{baseFunctionClass{ast.TiDBIsDDLOwner, 0, 0}},
+	ast.TiDBDecodePlan:       &tidbDecodePlanFunctionClass{baseFunctionClass{ast.TiDBDecodePlan, 1, 1}},
+	ast.TiDBDecodeSQLDigests: &tidbDecodeSQLDigestsFunctionClass{baseFunctionClass{ast.TiDBDecodeSQLDigests, 1, 2}},
+
+	// TiDB Sequence function.
+	ast.NextVal: &nextValFunctionClass{baseFunctionClass{ast.NextVal, 1, 1}},
+	ast.LastVal: &lastValFunctionClass{baseFunctionClass{ast.LastVal, 1, 1}},
+	ast.SetVal:  &setValFunctionClass{baseFunctionClass{ast.SetVal, 2, 2}},
+}
+
+// IsFunctionSupported check if given function name is a builtin sql function.
+func IsFunctionSupported(name string) bool {
+	_, ok := funcs[name]
+	return ok
+}
+
+// GetDisplayName translate a function name to its display name
+func GetDisplayName(name string) string {
+	if funClass, ok := funcs[name]; ok {
+		if funClass, ok := funClass.(functionClassWithName); ok {
+			return funClass.getDisplayName()
+		}
+	}
+
+	return name
+}
+
+// GetBuiltinList returns a list of builtin functions
+func GetBuiltinList() []string {
+	res := make([]string, 0, len(funcs))
+	notImplementedFunctions := []string{ast.RowFunc, ast.IsTruthWithNull}
+	for funcName := range funcs {
+		skipFunc := false
+		// Skip not implemented functions
+		for _, notImplFunc := range notImplementedFunctions {
+			if funcName == notImplFunc {
+				skipFunc = true
+			}
+		}
+		// Skip literal functions
+		// (their names are not readable: 'tidb`.(dateliteral, for example)
+		// See: https://github.com/pingcap/parser/pull/591
+		if strings.HasPrefix(funcName, "'tidb`.(") {
+			skipFunc = true
+		}
+		if skipFunc {
+			continue
+		}
+		res = append(res, funcName)
+	}
+	sort.Strings(res)
+	return res
+}
+
+func (b *baseBuiltinFunc) setDecimalAndFlenForDatetime(fsp int) {
+	b.tp.Decimal = fsp
+	b.tp.Flen = mysql.MaxDatetimeWidthNoFsp + fsp
+	if fsp > 0 {
+		// Add the length for `.`.
+		b.tp.Flen++
+	}
+}
+
+func (b *baseBuiltinFunc) setDecimalAndFlenForDate() {
+	b.tp.Decimal = 0
+	b.tp.Flen = mysql.MaxDateWidth
+	b.tp.Tp = mysql.TypeDate
+}
+
+func (b *baseBuiltinFunc) setDecimalAndFlenForTime(fsp int) {
+	b.tp.Decimal = fsp
+	b.tp.Flen = mysql.MaxDurationWidthNoFsp + fsp
+	if fsp > 0 {
+		// Add the length for `.`.
+		b.tp.Flen++
+	}
 }

@@ -25,24 +25,27 @@ const _ = proto.ProtoPackageIsVersion2 // please upgrade the proto package
 type EntryType int32
 
 const (
-	EntryType_EntryNormal     EntryType = 0
-	EntryType_EntryConfChange EntryType = 1
+	EntryType_EntryNormal       EntryType = 0
+	EntryType_EntryConfChange   EntryType = 1
+	EntryType_EntryConfChangeV2 EntryType = 2
 )
 
 var EntryType_name = map[int32]string{
 	0: "EntryNormal",
 	1: "EntryConfChange",
+	2: "EntryConfChangeV2",
 }
 var EntryType_value = map[string]int32{
-	"EntryNormal":     0,
-	"EntryConfChange": 1,
+	"EntryNormal":       0,
+	"EntryConfChange":   1,
+	"EntryConfChangeV2": 2,
 }
 
 func (x EntryType) String() string {
 	return proto.EnumName(EntryType_name, int32(x))
 }
 func (EntryType) EnumDescriptor() ([]byte, []int) {
-	return fileDescriptor_eraftpb_69ef617824e633af, []int{0}
+	return fileDescriptor_eraftpb_0ace5493d3be806a, []int{0}
 }
 
 type MessageType int32
@@ -116,7 +119,45 @@ func (x MessageType) String() string {
 	return proto.EnumName(MessageType_name, int32(x))
 }
 func (MessageType) EnumDescriptor() ([]byte, []int) {
-	return fileDescriptor_eraftpb_69ef617824e633af, []int{1}
+	return fileDescriptor_eraftpb_0ace5493d3be806a, []int{1}
+}
+
+type ConfChangeTransition int32
+
+const (
+	// Automatically use the simple protocol if possible, otherwise fall back
+	// to ConfChangeType::Implicit. Most applications will want to use this.
+	ConfChangeTransition_Auto ConfChangeTransition = 0
+	// Use joint consensus unconditionally, and transition out of them
+	// automatically (by proposing a zero configuration change).
+	//
+	// This option is suitable for applications that want to minimize the time
+	// spent in the joint configuration and do not store the joint configuration
+	// in the state machine (outside of InitialState).
+	ConfChangeTransition_Implicit ConfChangeTransition = 1
+	// Use joint consensus and remain in the joint configuration until the
+	// application proposes a no-op configuration change. This is suitable for
+	// applications that want to explicitly control the transitions, for example
+	// to use a custom payload (via the Context field).
+	ConfChangeTransition_Explicit ConfChangeTransition = 2
+)
+
+var ConfChangeTransition_name = map[int32]string{
+	0: "Auto",
+	1: "Implicit",
+	2: "Explicit",
+}
+var ConfChangeTransition_value = map[string]int32{
+	"Auto":     0,
+	"Implicit": 1,
+	"Explicit": 2,
+}
+
+func (x ConfChangeTransition) String() string {
+	return proto.EnumName(ConfChangeTransition_name, int32(x))
+}
+func (ConfChangeTransition) EnumDescriptor() ([]byte, []int) {
+	return fileDescriptor_eraftpb_0ace5493d3be806a, []int{2}
 }
 
 type ConfChangeType int32
@@ -142,7 +183,7 @@ func (x ConfChangeType) String() string {
 	return proto.EnumName(ConfChangeType_name, int32(x))
 }
 func (ConfChangeType) EnumDescriptor() ([]byte, []int) {
-	return fileDescriptor_eraftpb_69ef617824e633af, []int{2}
+	return fileDescriptor_eraftpb_0ace5493d3be806a, []int{3}
 }
 
 // The entry is a type of change that needs to be applied. It contains two data fields.
@@ -173,7 +214,7 @@ func (m *Entry) Reset()         { *m = Entry{} }
 func (m *Entry) String() string { return proto.CompactTextString(m) }
 func (*Entry) ProtoMessage()    {}
 func (*Entry) Descriptor() ([]byte, []int) {
-	return fileDescriptor_eraftpb_69ef617824e633af, []int{0}
+	return fileDescriptor_eraftpb_0ace5493d3be806a, []int{0}
 }
 func (m *Entry) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -245,19 +286,22 @@ func (m *Entry) GetSyncLog() bool {
 }
 
 type SnapshotMetadata struct {
-	ConfState            *ConfState `protobuf:"bytes,1,opt,name=conf_state,json=confState" json:"conf_state,omitempty"`
-	Index                uint64     `protobuf:"varint,2,opt,name=index,proto3" json:"index,omitempty"`
-	Term                 uint64     `protobuf:"varint,3,opt,name=term,proto3" json:"term,omitempty"`
-	XXX_NoUnkeyedLiteral struct{}   `json:"-"`
-	XXX_unrecognized     []byte     `json:"-"`
-	XXX_sizecache        int32      `json:"-"`
+	// The current `ConfState`.
+	ConfState *ConfState `protobuf:"bytes,1,opt,name=conf_state,json=confState" json:"conf_state,omitempty"`
+	// The applied index.
+	Index uint64 `protobuf:"varint,2,opt,name=index,proto3" json:"index,omitempty"`
+	// The term of the applied index.
+	Term                 uint64   `protobuf:"varint,3,opt,name=term,proto3" json:"term,omitempty"`
+	XXX_NoUnkeyedLiteral struct{} `json:"-"`
+	XXX_unrecognized     []byte   `json:"-"`
+	XXX_sizecache        int32    `json:"-"`
 }
 
 func (m *SnapshotMetadata) Reset()         { *m = SnapshotMetadata{} }
 func (m *SnapshotMetadata) String() string { return proto.CompactTextString(m) }
 func (*SnapshotMetadata) ProtoMessage()    {}
 func (*SnapshotMetadata) Descriptor() ([]byte, []int) {
-	return fileDescriptor_eraftpb_69ef617824e633af, []int{1}
+	return fileDescriptor_eraftpb_0ace5493d3be806a, []int{1}
 }
 func (m *SnapshotMetadata) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -319,7 +363,7 @@ func (m *Snapshot) Reset()         { *m = Snapshot{} }
 func (m *Snapshot) String() string { return proto.CompactTextString(m) }
 func (*Snapshot) ProtoMessage()    {}
 func (*Snapshot) Descriptor() ([]byte, []int) {
-	return fileDescriptor_eraftpb_69ef617824e633af, []int{2}
+	return fileDescriptor_eraftpb_0ace5493d3be806a, []int{2}
 }
 func (m *Snapshot) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -372,9 +416,11 @@ type Message struct {
 	Entries              []*Entry    `protobuf:"bytes,7,rep,name=entries" json:"entries,omitempty"`
 	Commit               uint64      `protobuf:"varint,8,opt,name=commit,proto3" json:"commit,omitempty"`
 	Snapshot             *Snapshot   `protobuf:"bytes,9,opt,name=snapshot" json:"snapshot,omitempty"`
+	RequestSnapshot      uint64      `protobuf:"varint,13,opt,name=request_snapshot,json=requestSnapshot,proto3" json:"request_snapshot,omitempty"`
 	Reject               bool        `protobuf:"varint,10,opt,name=reject,proto3" json:"reject,omitempty"`
 	RejectHint           uint64      `protobuf:"varint,11,opt,name=reject_hint,json=rejectHint,proto3" json:"reject_hint,omitempty"`
 	Context              []byte      `protobuf:"bytes,12,opt,name=context,proto3" json:"context,omitempty"`
+	Priority             uint64      `protobuf:"varint,14,opt,name=priority,proto3" json:"priority,omitempty"`
 	XXX_NoUnkeyedLiteral struct{}    `json:"-"`
 	XXX_unrecognized     []byte      `json:"-"`
 	XXX_sizecache        int32       `json:"-"`
@@ -384,7 +430,7 @@ func (m *Message) Reset()         { *m = Message{} }
 func (m *Message) String() string { return proto.CompactTextString(m) }
 func (*Message) ProtoMessage()    {}
 func (*Message) Descriptor() ([]byte, []int) {
-	return fileDescriptor_eraftpb_69ef617824e633af, []int{3}
+	return fileDescriptor_eraftpb_0ace5493d3be806a, []int{3}
 }
 func (m *Message) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -476,6 +522,13 @@ func (m *Message) GetSnapshot() *Snapshot {
 	return nil
 }
 
+func (m *Message) GetRequestSnapshot() uint64 {
+	if m != nil {
+		return m.RequestSnapshot
+	}
+	return 0
+}
+
 func (m *Message) GetReject() bool {
 	if m != nil {
 		return m.Reject
@@ -497,6 +550,13 @@ func (m *Message) GetContext() []byte {
 	return nil
 }
 
+func (m *Message) GetPriority() uint64 {
+	if m != nil {
+		return m.Priority
+	}
+	return 0
+}
+
 type HardState struct {
 	Term                 uint64   `protobuf:"varint,1,opt,name=term,proto3" json:"term,omitempty"`
 	Vote                 uint64   `protobuf:"varint,2,opt,name=vote,proto3" json:"vote,omitempty"`
@@ -510,7 +570,7 @@ func (m *HardState) Reset()         { *m = HardState{} }
 func (m *HardState) String() string { return proto.CompactTextString(m) }
 func (*HardState) ProtoMessage()    {}
 func (*HardState) Descriptor() ([]byte, []int) {
-	return fileDescriptor_eraftpb_69ef617824e633af, []int{4}
+	return fileDescriptor_eraftpb_0ace5493d3be806a, []int{4}
 }
 func (m *HardState) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -561,8 +621,17 @@ func (m *HardState) GetCommit() uint64 {
 }
 
 type ConfState struct {
-	Nodes                []uint64 `protobuf:"varint,1,rep,packed,name=nodes" json:"nodes,omitempty"`
-	Learners             []uint64 `protobuf:"varint,2,rep,packed,name=learners" json:"learners,omitempty"`
+	Voters   []uint64 `protobuf:"varint,1,rep,packed,name=voters" json:"voters,omitempty"`
+	Learners []uint64 `protobuf:"varint,2,rep,packed,name=learners" json:"learners,omitempty"`
+	// The voters in the outgoing config. If not empty the node is in joint consensus.
+	VotersOutgoing []uint64 `protobuf:"varint,3,rep,packed,name=voters_outgoing,json=votersOutgoing" json:"voters_outgoing,omitempty"`
+	// The nodes that will become learners when the outgoing config is removed.
+	// These nodes are necessarily currently in nodes_joint (or they would have
+	// been added to the incoming config right away).
+	LearnersNext []uint64 `protobuf:"varint,4,rep,packed,name=learners_next,json=learnersNext" json:"learners_next,omitempty"`
+	// If set, the config is joint and Raft will automatically transition into
+	// the final config (i.e. remove the outgoing config) when this is safe.
+	AutoLeave            bool     `protobuf:"varint,5,opt,name=auto_leave,json=autoLeave,proto3" json:"auto_leave,omitempty"`
 	XXX_NoUnkeyedLiteral struct{} `json:"-"`
 	XXX_unrecognized     []byte   `json:"-"`
 	XXX_sizecache        int32    `json:"-"`
@@ -572,7 +641,7 @@ func (m *ConfState) Reset()         { *m = ConfState{} }
 func (m *ConfState) String() string { return proto.CompactTextString(m) }
 func (*ConfState) ProtoMessage()    {}
 func (*ConfState) Descriptor() ([]byte, []int) {
-	return fileDescriptor_eraftpb_69ef617824e633af, []int{5}
+	return fileDescriptor_eraftpb_0ace5493d3be806a, []int{5}
 }
 func (m *ConfState) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -601,9 +670,9 @@ func (m *ConfState) XXX_DiscardUnknown() {
 
 var xxx_messageInfo_ConfState proto.InternalMessageInfo
 
-func (m *ConfState) GetNodes() []uint64 {
+func (m *ConfState) GetVoters() []uint64 {
 	if m != nil {
-		return m.Nodes
+		return m.Voters
 	}
 	return nil
 }
@@ -615,11 +684,32 @@ func (m *ConfState) GetLearners() []uint64 {
 	return nil
 }
 
+func (m *ConfState) GetVotersOutgoing() []uint64 {
+	if m != nil {
+		return m.VotersOutgoing
+	}
+	return nil
+}
+
+func (m *ConfState) GetLearnersNext() []uint64 {
+	if m != nil {
+		return m.LearnersNext
+	}
+	return nil
+}
+
+func (m *ConfState) GetAutoLeave() bool {
+	if m != nil {
+		return m.AutoLeave
+	}
+	return false
+}
+
 type ConfChange struct {
-	Id                   uint64         `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
 	ChangeType           ConfChangeType `protobuf:"varint,2,opt,name=change_type,json=changeType,proto3,enum=eraftpb.ConfChangeType" json:"change_type,omitempty"`
 	NodeId               uint64         `protobuf:"varint,3,opt,name=node_id,json=nodeId,proto3" json:"node_id,omitempty"`
 	Context              []byte         `protobuf:"bytes,4,opt,name=context,proto3" json:"context,omitempty"`
+	Id                   uint64         `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
 	XXX_NoUnkeyedLiteral struct{}       `json:"-"`
 	XXX_unrecognized     []byte         `json:"-"`
 	XXX_sizecache        int32          `json:"-"`
@@ -629,7 +719,7 @@ func (m *ConfChange) Reset()         { *m = ConfChange{} }
 func (m *ConfChange) String() string { return proto.CompactTextString(m) }
 func (*ConfChange) ProtoMessage()    {}
 func (*ConfChange) Descriptor() ([]byte, []int) {
-	return fileDescriptor_eraftpb_69ef617824e633af, []int{6}
+	return fileDescriptor_eraftpb_0ace5493d3be806a, []int{6}
 }
 func (m *ConfChange) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -658,13 +748,6 @@ func (m *ConfChange) XXX_DiscardUnknown() {
 
 var xxx_messageInfo_ConfChange proto.InternalMessageInfo
 
-func (m *ConfChange) GetId() uint64 {
-	if m != nil {
-		return m.Id
-	}
-	return 0
-}
-
 func (m *ConfChange) GetChangeType() ConfChangeType {
 	if m != nil {
 		return m.ChangeType
@@ -686,6 +769,165 @@ func (m *ConfChange) GetContext() []byte {
 	return nil
 }
 
+func (m *ConfChange) GetId() uint64 {
+	if m != nil {
+		return m.Id
+	}
+	return 0
+}
+
+// ConfChangeSingle is an individual configuration change operation. Multiple
+// such operations can be carried out atomically via a ConfChangeV2.
+type ConfChangeSingle struct {
+	ChangeType           ConfChangeType `protobuf:"varint,1,opt,name=change_type,json=changeType,proto3,enum=eraftpb.ConfChangeType" json:"change_type,omitempty"`
+	NodeId               uint64         `protobuf:"varint,2,opt,name=node_id,json=nodeId,proto3" json:"node_id,omitempty"`
+	XXX_NoUnkeyedLiteral struct{}       `json:"-"`
+	XXX_unrecognized     []byte         `json:"-"`
+	XXX_sizecache        int32          `json:"-"`
+}
+
+func (m *ConfChangeSingle) Reset()         { *m = ConfChangeSingle{} }
+func (m *ConfChangeSingle) String() string { return proto.CompactTextString(m) }
+func (*ConfChangeSingle) ProtoMessage()    {}
+func (*ConfChangeSingle) Descriptor() ([]byte, []int) {
+	return fileDescriptor_eraftpb_0ace5493d3be806a, []int{7}
+}
+func (m *ConfChangeSingle) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *ConfChangeSingle) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_ConfChangeSingle.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalTo(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (dst *ConfChangeSingle) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_ConfChangeSingle.Merge(dst, src)
+}
+func (m *ConfChangeSingle) XXX_Size() int {
+	return m.Size()
+}
+func (m *ConfChangeSingle) XXX_DiscardUnknown() {
+	xxx_messageInfo_ConfChangeSingle.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_ConfChangeSingle proto.InternalMessageInfo
+
+func (m *ConfChangeSingle) GetChangeType() ConfChangeType {
+	if m != nil {
+		return m.ChangeType
+	}
+	return ConfChangeType_AddNode
+}
+
+func (m *ConfChangeSingle) GetNodeId() uint64 {
+	if m != nil {
+		return m.NodeId
+	}
+	return 0
+}
+
+// ConfChangeV2 messages initiate configuration changes. They support both the
+// simple "one at a time" membership change protocol and full Joint Consensus
+// allowing for arbitrary changes in membership.
+//
+// The supplied context is treated as an opaque payload and can be used to
+// attach an action on the state machine to the application of the config change
+// proposal. Note that contrary to Joint Consensus as outlined in the Raft
+// paper[1], configuration changes become active when they are *applied* to the
+// state machine (not when they are appended to the log).
+//
+// The simple protocol can be used whenever only a single change is made.
+//
+// Non-simple changes require the use of Joint Consensus, for which two
+// configuration changes are run. The first configuration change specifies the
+// desired changes and transitions the Raft group into the joint configuration,
+// in which quorum requires a majority of both the pre-changes and post-changes
+// configuration. Joint Consensus avoids entering fragile intermediate
+// configurations that could compromise survivability. For example, without the
+// use of Joint Consensus and running across three availability zones with a
+// replication factor of three, it is not possible to replace a voter without
+// entering an intermediate configuration that does not survive the outage of
+// one availability zone.
+//
+// The provided ConfChangeTransition specifies how (and whether) Joint Consensus
+// is used, and assigns the task of leaving the joint configuration either to
+// Raft or the application. Leaving the joint configuration is accomplished by
+// proposing a ConfChangeV2 with only and optionally the Context field
+// populated.
+//
+// For details on Raft membership changes, see:
+//
+// [1]: https://github.com/ongardie/dissertation/blob/master/online-trim.pdf
+type ConfChangeV2 struct {
+	Transition           ConfChangeTransition `protobuf:"varint,1,opt,name=transition,proto3,enum=eraftpb.ConfChangeTransition" json:"transition,omitempty"`
+	Changes              []*ConfChangeSingle  `protobuf:"bytes,2,rep,name=changes" json:"changes,omitempty"`
+	Context              []byte               `protobuf:"bytes,3,opt,name=context,proto3" json:"context,omitempty"`
+	XXX_NoUnkeyedLiteral struct{}             `json:"-"`
+	XXX_unrecognized     []byte               `json:"-"`
+	XXX_sizecache        int32                `json:"-"`
+}
+
+func (m *ConfChangeV2) Reset()         { *m = ConfChangeV2{} }
+func (m *ConfChangeV2) String() string { return proto.CompactTextString(m) }
+func (*ConfChangeV2) ProtoMessage()    {}
+func (*ConfChangeV2) Descriptor() ([]byte, []int) {
+	return fileDescriptor_eraftpb_0ace5493d3be806a, []int{8}
+}
+func (m *ConfChangeV2) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *ConfChangeV2) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_ConfChangeV2.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalTo(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (dst *ConfChangeV2) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_ConfChangeV2.Merge(dst, src)
+}
+func (m *ConfChangeV2) XXX_Size() int {
+	return m.Size()
+}
+func (m *ConfChangeV2) XXX_DiscardUnknown() {
+	xxx_messageInfo_ConfChangeV2.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_ConfChangeV2 proto.InternalMessageInfo
+
+func (m *ConfChangeV2) GetTransition() ConfChangeTransition {
+	if m != nil {
+		return m.Transition
+	}
+	return ConfChangeTransition_Auto
+}
+
+func (m *ConfChangeV2) GetChanges() []*ConfChangeSingle {
+	if m != nil {
+		return m.Changes
+	}
+	return nil
+}
+
+func (m *ConfChangeV2) GetContext() []byte {
+	if m != nil {
+		return m.Context
+	}
+	return nil
+}
+
 func init() {
 	proto.RegisterType((*Entry)(nil), "eraftpb.Entry")
 	proto.RegisterType((*SnapshotMetadata)(nil), "eraftpb.SnapshotMetadata")
@@ -694,8 +936,11 @@ func init() {
 	proto.RegisterType((*HardState)(nil), "eraftpb.HardState")
 	proto.RegisterType((*ConfState)(nil), "eraftpb.ConfState")
 	proto.RegisterType((*ConfChange)(nil), "eraftpb.ConfChange")
+	proto.RegisterType((*ConfChangeSingle)(nil), "eraftpb.ConfChangeSingle")
+	proto.RegisterType((*ConfChangeV2)(nil), "eraftpb.ConfChangeV2")
 	proto.RegisterEnum("eraftpb.EntryType", EntryType_name, EntryType_value)
 	proto.RegisterEnum("eraftpb.MessageType", MessageType_name, MessageType_value)
+	proto.RegisterEnum("eraftpb.ConfChangeTransition", ConfChangeTransition_name, ConfChangeTransition_value)
 	proto.RegisterEnum("eraftpb.ConfChangeType", ConfChangeType_name, ConfChangeType_value)
 }
 func (m *Entry) Marshal() (dAtA []byte, err error) {
@@ -927,6 +1172,16 @@ func (m *Message) MarshalTo(dAtA []byte) (int, error) {
 		i = encodeVarintEraftpb(dAtA, i, uint64(len(m.Context)))
 		i += copy(dAtA[i:], m.Context)
 	}
+	if m.RequestSnapshot != 0 {
+		dAtA[i] = 0x68
+		i++
+		i = encodeVarintEraftpb(dAtA, i, uint64(m.RequestSnapshot))
+	}
+	if m.Priority != 0 {
+		dAtA[i] = 0x70
+		i++
+		i = encodeVarintEraftpb(dAtA, i, uint64(m.Priority))
+	}
 	if m.XXX_unrecognized != nil {
 		i += copy(dAtA[i:], m.XXX_unrecognized)
 	}
@@ -984,10 +1239,10 @@ func (m *ConfState) MarshalTo(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
-	if len(m.Nodes) > 0 {
-		dAtA5 := make([]byte, len(m.Nodes)*10)
+	if len(m.Voters) > 0 {
+		dAtA5 := make([]byte, len(m.Voters)*10)
 		var j4 int
-		for _, num := range m.Nodes {
+		for _, num := range m.Voters {
 			for num >= 1<<7 {
 				dAtA5[j4] = uint8(uint64(num)&0x7f | 0x80)
 				num >>= 7
@@ -1017,6 +1272,50 @@ func (m *ConfState) MarshalTo(dAtA []byte) (int, error) {
 		i++
 		i = encodeVarintEraftpb(dAtA, i, uint64(j6))
 		i += copy(dAtA[i:], dAtA7[:j6])
+	}
+	if len(m.VotersOutgoing) > 0 {
+		dAtA9 := make([]byte, len(m.VotersOutgoing)*10)
+		var j8 int
+		for _, num := range m.VotersOutgoing {
+			for num >= 1<<7 {
+				dAtA9[j8] = uint8(uint64(num)&0x7f | 0x80)
+				num >>= 7
+				j8++
+			}
+			dAtA9[j8] = uint8(num)
+			j8++
+		}
+		dAtA[i] = 0x1a
+		i++
+		i = encodeVarintEraftpb(dAtA, i, uint64(j8))
+		i += copy(dAtA[i:], dAtA9[:j8])
+	}
+	if len(m.LearnersNext) > 0 {
+		dAtA11 := make([]byte, len(m.LearnersNext)*10)
+		var j10 int
+		for _, num := range m.LearnersNext {
+			for num >= 1<<7 {
+				dAtA11[j10] = uint8(uint64(num)&0x7f | 0x80)
+				num >>= 7
+				j10++
+			}
+			dAtA11[j10] = uint8(num)
+			j10++
+		}
+		dAtA[i] = 0x22
+		i++
+		i = encodeVarintEraftpb(dAtA, i, uint64(j10))
+		i += copy(dAtA[i:], dAtA11[:j10])
+	}
+	if m.AutoLeave {
+		dAtA[i] = 0x28
+		i++
+		if m.AutoLeave {
+			dAtA[i] = 1
+		} else {
+			dAtA[i] = 0
+		}
+		i++
 	}
 	if m.XXX_unrecognized != nil {
 		i += copy(dAtA[i:], m.XXX_unrecognized)
@@ -1056,6 +1355,81 @@ func (m *ConfChange) MarshalTo(dAtA []byte) (int, error) {
 	}
 	if len(m.Context) > 0 {
 		dAtA[i] = 0x22
+		i++
+		i = encodeVarintEraftpb(dAtA, i, uint64(len(m.Context)))
+		i += copy(dAtA[i:], m.Context)
+	}
+	if m.XXX_unrecognized != nil {
+		i += copy(dAtA[i:], m.XXX_unrecognized)
+	}
+	return i, nil
+}
+
+func (m *ConfChangeSingle) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalTo(dAtA)
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *ConfChangeSingle) MarshalTo(dAtA []byte) (int, error) {
+	var i int
+	_ = i
+	var l int
+	_ = l
+	if m.ChangeType != 0 {
+		dAtA[i] = 0x8
+		i++
+		i = encodeVarintEraftpb(dAtA, i, uint64(m.ChangeType))
+	}
+	if m.NodeId != 0 {
+		dAtA[i] = 0x10
+		i++
+		i = encodeVarintEraftpb(dAtA, i, uint64(m.NodeId))
+	}
+	if m.XXX_unrecognized != nil {
+		i += copy(dAtA[i:], m.XXX_unrecognized)
+	}
+	return i, nil
+}
+
+func (m *ConfChangeV2) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalTo(dAtA)
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *ConfChangeV2) MarshalTo(dAtA []byte) (int, error) {
+	var i int
+	_ = i
+	var l int
+	_ = l
+	if m.Transition != 0 {
+		dAtA[i] = 0x8
+		i++
+		i = encodeVarintEraftpb(dAtA, i, uint64(m.Transition))
+	}
+	if len(m.Changes) > 0 {
+		for _, msg := range m.Changes {
+			dAtA[i] = 0x12
+			i++
+			i = encodeVarintEraftpb(dAtA, i, uint64(msg.Size()))
+			n, err := msg.MarshalTo(dAtA[i:])
+			if err != nil {
+				return 0, err
+			}
+			i += n
+		}
+	}
+	if len(m.Context) > 0 {
+		dAtA[i] = 0x1a
 		i++
 		i = encodeVarintEraftpb(dAtA, i, uint64(len(m.Context)))
 		i += copy(dAtA[i:], m.Context)
@@ -1184,6 +1558,12 @@ func (m *Message) Size() (n int) {
 	if l > 0 {
 		n += 1 + l + sovEraftpb(uint64(l))
 	}
+	if m.RequestSnapshot != 0 {
+		n += 1 + sovEraftpb(uint64(m.RequestSnapshot))
+	}
+	if m.Priority != 0 {
+		n += 1 + sovEraftpb(uint64(m.Priority))
+	}
 	if m.XXX_unrecognized != nil {
 		n += len(m.XXX_unrecognized)
 	}
@@ -1211,9 +1591,9 @@ func (m *HardState) Size() (n int) {
 func (m *ConfState) Size() (n int) {
 	var l int
 	_ = l
-	if len(m.Nodes) > 0 {
+	if len(m.Voters) > 0 {
 		l = 0
-		for _, e := range m.Nodes {
+		for _, e := range m.Voters {
 			l += sovEraftpb(uint64(e))
 		}
 		n += 1 + sovEraftpb(uint64(l)) + l
@@ -1224,6 +1604,23 @@ func (m *ConfState) Size() (n int) {
 			l += sovEraftpb(uint64(e))
 		}
 		n += 1 + sovEraftpb(uint64(l)) + l
+	}
+	if len(m.VotersOutgoing) > 0 {
+		l = 0
+		for _, e := range m.VotersOutgoing {
+			l += sovEraftpb(uint64(e))
+		}
+		n += 1 + sovEraftpb(uint64(l)) + l
+	}
+	if len(m.LearnersNext) > 0 {
+		l = 0
+		for _, e := range m.LearnersNext {
+			l += sovEraftpb(uint64(e))
+		}
+		n += 1 + sovEraftpb(uint64(l)) + l
+	}
+	if m.AutoLeave {
+		n += 2
 	}
 	if m.XXX_unrecognized != nil {
 		n += len(m.XXX_unrecognized)
@@ -1242,6 +1639,43 @@ func (m *ConfChange) Size() (n int) {
 	}
 	if m.NodeId != 0 {
 		n += 1 + sovEraftpb(uint64(m.NodeId))
+	}
+	l = len(m.Context)
+	if l > 0 {
+		n += 1 + l + sovEraftpb(uint64(l))
+	}
+	if m.XXX_unrecognized != nil {
+		n += len(m.XXX_unrecognized)
+	}
+	return n
+}
+
+func (m *ConfChangeSingle) Size() (n int) {
+	var l int
+	_ = l
+	if m.ChangeType != 0 {
+		n += 1 + sovEraftpb(uint64(m.ChangeType))
+	}
+	if m.NodeId != 0 {
+		n += 1 + sovEraftpb(uint64(m.NodeId))
+	}
+	if m.XXX_unrecognized != nil {
+		n += len(m.XXX_unrecognized)
+	}
+	return n
+}
+
+func (m *ConfChangeV2) Size() (n int) {
+	var l int
+	_ = l
+	if m.Transition != 0 {
+		n += 1 + sovEraftpb(uint64(m.Transition))
+	}
+	if len(m.Changes) > 0 {
+		for _, e := range m.Changes {
+			l = e.Size()
+			n += 1 + l + sovEraftpb(uint64(l))
+		}
 	}
 	l = len(m.Context)
 	if l > 0 {
@@ -1989,6 +2423,44 @@ func (m *Message) Unmarshal(dAtA []byte) error {
 				m.Context = []byte{}
 			}
 			iNdEx = postIndex
+		case 13:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field RequestSnapshot", wireType)
+			}
+			m.RequestSnapshot = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowEraftpb
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.RequestSnapshot |= (uint64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 14:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Priority", wireType)
+			}
+			m.Priority = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowEraftpb
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.Priority |= (uint64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
 		default:
 			iNdEx = preIndex
 			skippy, err := skipEraftpb(dAtA[iNdEx:])
@@ -2165,7 +2637,7 @@ func (m *ConfState) Unmarshal(dAtA []byte) error {
 						break
 					}
 				}
-				m.Nodes = append(m.Nodes, v)
+				m.Voters = append(m.Voters, v)
 			} else if wireType == 2 {
 				var packedLen int
 				for shift := uint(0); ; shift += 7 {
@@ -2205,10 +2677,10 @@ func (m *ConfState) Unmarshal(dAtA []byte) error {
 							break
 						}
 					}
-					m.Nodes = append(m.Nodes, v)
+					m.Voters = append(m.Voters, v)
 				}
 			} else {
-				return fmt.Errorf("proto: wrong wireType = %d for field Nodes", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Voters", wireType)
 			}
 		case 2:
 			if wireType == 0 {
@@ -2272,6 +2744,150 @@ func (m *ConfState) Unmarshal(dAtA []byte) error {
 			} else {
 				return fmt.Errorf("proto: wrong wireType = %d for field Learners", wireType)
 			}
+		case 3:
+			if wireType == 0 {
+				var v uint64
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return ErrIntOverflowEraftpb
+					}
+					if iNdEx >= l {
+						return io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					v |= (uint64(b) & 0x7F) << shift
+					if b < 0x80 {
+						break
+					}
+				}
+				m.VotersOutgoing = append(m.VotersOutgoing, v)
+			} else if wireType == 2 {
+				var packedLen int
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return ErrIntOverflowEraftpb
+					}
+					if iNdEx >= l {
+						return io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					packedLen |= (int(b) & 0x7F) << shift
+					if b < 0x80 {
+						break
+					}
+				}
+				if packedLen < 0 {
+					return ErrInvalidLengthEraftpb
+				}
+				postIndex := iNdEx + packedLen
+				if postIndex > l {
+					return io.ErrUnexpectedEOF
+				}
+				for iNdEx < postIndex {
+					var v uint64
+					for shift := uint(0); ; shift += 7 {
+						if shift >= 64 {
+							return ErrIntOverflowEraftpb
+						}
+						if iNdEx >= l {
+							return io.ErrUnexpectedEOF
+						}
+						b := dAtA[iNdEx]
+						iNdEx++
+						v |= (uint64(b) & 0x7F) << shift
+						if b < 0x80 {
+							break
+						}
+					}
+					m.VotersOutgoing = append(m.VotersOutgoing, v)
+				}
+			} else {
+				return fmt.Errorf("proto: wrong wireType = %d for field VotersOutgoing", wireType)
+			}
+		case 4:
+			if wireType == 0 {
+				var v uint64
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return ErrIntOverflowEraftpb
+					}
+					if iNdEx >= l {
+						return io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					v |= (uint64(b) & 0x7F) << shift
+					if b < 0x80 {
+						break
+					}
+				}
+				m.LearnersNext = append(m.LearnersNext, v)
+			} else if wireType == 2 {
+				var packedLen int
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return ErrIntOverflowEraftpb
+					}
+					if iNdEx >= l {
+						return io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					packedLen |= (int(b) & 0x7F) << shift
+					if b < 0x80 {
+						break
+					}
+				}
+				if packedLen < 0 {
+					return ErrInvalidLengthEraftpb
+				}
+				postIndex := iNdEx + packedLen
+				if postIndex > l {
+					return io.ErrUnexpectedEOF
+				}
+				for iNdEx < postIndex {
+					var v uint64
+					for shift := uint(0); ; shift += 7 {
+						if shift >= 64 {
+							return ErrIntOverflowEraftpb
+						}
+						if iNdEx >= l {
+							return io.ErrUnexpectedEOF
+						}
+						b := dAtA[iNdEx]
+						iNdEx++
+						v |= (uint64(b) & 0x7F) << shift
+						if b < 0x80 {
+							break
+						}
+					}
+					m.LearnersNext = append(m.LearnersNext, v)
+				}
+			} else {
+				return fmt.Errorf("proto: wrong wireType = %d for field LearnersNext", wireType)
+			}
+		case 5:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field AutoLeave", wireType)
+			}
+			var v int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowEraftpb
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= (int(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.AutoLeave = bool(v != 0)
 		default:
 			iNdEx = preIndex
 			skippy, err := skipEraftpb(dAtA[iNdEx:])
@@ -2433,6 +3049,227 @@ func (m *ConfChange) Unmarshal(dAtA []byte) error {
 	}
 	return nil
 }
+func (m *ConfChangeSingle) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowEraftpb
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= (uint64(b) & 0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: ConfChangeSingle: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: ConfChangeSingle: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ChangeType", wireType)
+			}
+			m.ChangeType = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowEraftpb
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.ChangeType |= (ConfChangeType(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 2:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field NodeId", wireType)
+			}
+			m.NodeId = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowEraftpb
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.NodeId |= (uint64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		default:
+			iNdEx = preIndex
+			skippy, err := skipEraftpb(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthEraftpb
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.XXX_unrecognized = append(m.XXX_unrecognized, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *ConfChangeV2) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowEraftpb
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= (uint64(b) & 0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: ConfChangeV2: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: ConfChangeV2: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Transition", wireType)
+			}
+			m.Transition = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowEraftpb
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.Transition |= (ConfChangeTransition(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Changes", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowEraftpb
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= (int(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthEraftpb
+			}
+			postIndex := iNdEx + msglen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Changes = append(m.Changes, &ConfChangeSingle{})
+			if err := m.Changes[len(m.Changes)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 3:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Context", wireType)
+			}
+			var byteLen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowEraftpb
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				byteLen |= (int(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if byteLen < 0 {
+				return ErrInvalidLengthEraftpb
+			}
+			postIndex := iNdEx + byteLen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Context = append(m.Context[:0], dAtA[iNdEx:postIndex]...)
+			if m.Context == nil {
+				m.Context = []byte{}
+			}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipEraftpb(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthEraftpb
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.XXX_unrecognized = append(m.XXX_unrecognized, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
 func skipEraftpb(dAtA []byte) (n int, err error) {
 	l := len(dAtA)
 	iNdEx := 0
@@ -2538,60 +3375,72 @@ var (
 	ErrIntOverflowEraftpb   = fmt.Errorf("proto: integer overflow")
 )
 
-func init() { proto.RegisterFile("eraftpb.proto", fileDescriptor_eraftpb_69ef617824e633af) }
+func init() { proto.RegisterFile("eraftpb.proto", fileDescriptor_eraftpb_0ace5493d3be806a) }
 
-var fileDescriptor_eraftpb_69ef617824e633af = []byte{
-	// 821 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x64, 0x55, 0xcd, 0x6e, 0xe4, 0x44,
-	0x10, 0x8e, 0x3d, 0x3f, 0xf6, 0x94, 0x93, 0x49, 0xa7, 0x08, 0xbb, 0xce, 0x4a, 0x84, 0xd1, 0x9c,
-	0x46, 0x91, 0x58, 0x94, 0x20, 0x24, 0x2e, 0x1c, 0xb2, 0x11, 0x52, 0x56, 0x64, 0xa2, 0xc5, 0x9b,
-	0xe5, 0x3a, 0xea, 0xd8, 0x35, 0x1e, 0xc3, 0xd8, 0x6d, 0xba, 0x7b, 0x96, 0x9d, 0x47, 0x40, 0xe2,
-	0x01, 0x78, 0x09, 0xde, 0x83, 0x23, 0x8f, 0x80, 0xc2, 0x81, 0xd7, 0x40, 0xdd, 0xfe, 0x89, 0x67,
-	0x73, 0xab, 0xaf, 0xba, 0xba, 0xfa, 0xab, 0xaf, 0x3e, 0xcb, 0x70, 0x40, 0x92, 0x2f, 0x75, 0x79,
-	0xff, 0xb2, 0x94, 0x42, 0x0b, 0xf4, 0x6a, 0x38, 0xfd, 0xd3, 0x81, 0xc1, 0x77, 0x85, 0x96, 0x5b,
-	0x3c, 0x07, 0x20, 0x13, 0x2c, 0xf4, 0xb6, 0xa4, 0xd0, 0x99, 0x38, 0xb3, 0xf1, 0x05, 0xbe, 0x6c,
-	0xae, 0xd9, 0x9a, 0xbb, 0x6d, 0x49, 0xd1, 0x88, 0x9a, 0x10, 0x11, 0xfa, 0x9a, 0x64, 0x1e, 0xba,
-	0x13, 0x67, 0xd6, 0x8f, 0x6c, 0x8c, 0xc7, 0x30, 0xc8, 0x8a, 0x84, 0x3e, 0x84, 0x3d, 0x9b, 0xac,
-	0x80, 0xa9, 0x4c, 0xb8, 0xe6, 0x61, 0x7f, 0xe2, 0xcc, 0xf6, 0x23, 0x1b, 0xe3, 0x09, 0xf8, 0x6a,
-	0x5b, 0xc4, 0x8b, 0xb5, 0x48, 0xc3, 0xc1, 0xc4, 0x99, 0xf9, 0x91, 0x67, 0xf0, 0x8d, 0x48, 0x31,
-	0x04, 0x2f, 0x16, 0x85, 0xa6, 0x0f, 0x3a, 0x1c, 0xda, 0x1b, 0x0d, 0x9c, 0x0a, 0x60, 0x6f, 0x0b,
-	0x5e, 0xaa, 0x95, 0xd0, 0x73, 0xd2, 0xdc, 0x36, 0x3a, 0x07, 0x88, 0x45, 0xb1, 0x5c, 0x28, 0xcd,
-	0x75, 0xc5, 0x3c, 0xe8, 0x30, 0xbf, 0x12, 0xc5, 0xf2, 0xad, 0x39, 0x89, 0x46, 0x71, 0x13, 0x3e,
-	0xb2, 0x74, 0x3f, 0x62, 0x69, 0xe7, 0xe9, 0x3d, 0xce, 0x33, 0x7d, 0x07, 0x7e, 0xf3, 0x60, 0x3b,
-	0x85, 0xd3, 0x99, 0xe2, 0x6b, 0xf0, 0xf3, 0x9a, 0x88, 0x6d, 0x16, 0x5c, 0x9c, 0xb4, 0x4f, 0x7f,
-	0xcc, 0x34, 0x6a, 0x4b, 0xa7, 0xff, 0xb9, 0xe0, 0xcd, 0x49, 0x29, 0x9e, 0x12, 0x7e, 0x09, 0x7e,
-	0xae, 0xd2, 0xae, 0xee, 0xc7, 0x6d, 0x8b, 0xba, 0xc6, 0x2a, 0xef, 0xe5, 0x2a, 0xb5, 0xba, 0x8f,
-	0xc1, 0xd5, 0xa2, 0xa6, 0xee, 0x6a, 0x61, 0x78, 0x2d, 0xa5, 0x68, 0x79, 0x9b, 0xb8, 0x9d, 0xa5,
-	0xdf, 0xd9, 0xcd, 0x09, 0xf8, 0x6b, 0x91, 0x2e, 0x6c, 0x7e, 0x60, 0xf3, 0xde, 0x5a, 0xa4, 0x77,
-	0x3b, 0x6b, 0x1b, 0x76, 0x05, 0x99, 0x81, 0x67, 0xb6, 0x9d, 0x91, 0x0a, 0xbd, 0x49, 0x6f, 0x16,
-	0x5c, 0x8c, 0x77, 0x0d, 0x11, 0x35, 0xc7, 0xf8, 0x0c, 0x86, 0xb1, 0xc8, 0xf3, 0x4c, 0x87, 0xbe,
-	0x6d, 0x50, 0x23, 0xfc, 0x02, 0x7c, 0x55, 0xab, 0x10, 0x8e, 0xac, 0x3c, 0x47, 0x4f, 0xe4, 0x89,
-	0xda, 0x12, 0xd3, 0x46, 0xd2, 0x4f, 0x14, 0xeb, 0x10, 0xac, 0x23, 0x6a, 0x84, 0x9f, 0x43, 0x50,
-	0x45, 0x8b, 0x55, 0x56, 0xe8, 0x30, 0xb0, 0x6f, 0x40, 0x95, 0xba, 0xce, 0x0a, 0xdd, 0x75, 0xcc,
-	0xfe, 0xae, 0x63, 0xbe, 0x87, 0xd1, 0x35, 0x97, 0x49, 0xb5, 0xf7, 0x46, 0x15, 0xa7, 0xa3, 0x0a,
-	0x42, 0xff, 0xbd, 0xd0, 0xd4, 0xb8, 0xd8, 0xc4, 0x9d, 0x71, 0x7a, 0xdd, 0x71, 0xa6, 0xdf, 0xc2,
-	0xe8, 0xaa, 0x6b, 0xa2, 0x42, 0x24, 0xa4, 0x42, 0x67, 0xd2, 0x33, 0x9a, 0x59, 0x80, 0x2f, 0xc0,
-	0x5f, 0x13, 0x97, 0x05, 0x49, 0x15, 0xba, 0xf6, 0xa0, 0xc5, 0xd3, 0xdf, 0x1c, 0x00, 0x73, 0xff,
-	0x6a, 0xc5, 0x8b, 0xd4, 0xee, 0x31, 0x4b, 0x6a, 0x2e, 0x6e, 0x96, 0xe0, 0x37, 0x10, 0xc4, 0xf6,
-	0xa4, 0xf2, 0x82, 0x6b, 0xbd, 0xf0, 0x7c, 0xc7, 0xc9, 0xd5, 0x4d, 0x6b, 0x07, 0x88, 0xdb, 0x18,
-	0x9f, 0x83, 0x67, 0x5e, 0x5f, 0x64, 0x49, 0x43, 0xd8, 0xc0, 0xd7, 0x49, 0x57, 0x97, 0xfe, 0x8e,
-	0x2e, 0x67, 0xe7, 0x30, 0x6a, 0x3f, 0x6a, 0x3c, 0x84, 0xc0, 0x82, 0x5b, 0x21, 0x73, 0xbe, 0x66,
-	0x7b, 0xf8, 0x09, 0x1c, 0xda, 0xc4, 0xe3, 0x9b, 0xcc, 0x39, 0xfb, 0xbd, 0x07, 0x41, 0xc7, 0x90,
-	0x08, 0x30, 0x9c, 0xab, 0xf4, 0x7a, 0x53, 0xb2, 0x3d, 0x0c, 0xc0, 0x9b, 0xab, 0xf4, 0x15, 0x71,
-	0xcd, 0x1c, 0x1c, 0x03, 0xcc, 0x55, 0xfa, 0x46, 0x8a, 0x52, 0x28, 0x62, 0x2e, 0x1e, 0xc0, 0x68,
-	0xae, 0xd2, 0xcb, 0xb2, 0xa4, 0x22, 0x61, 0x3d, 0xfc, 0x14, 0x8e, 0x5a, 0x18, 0x91, 0x2a, 0x45,
-	0xa1, 0x88, 0xf5, 0x11, 0x61, 0x3c, 0x57, 0x69, 0x44, 0xbf, 0x6c, 0x48, 0xe9, 0x1f, 0x85, 0x26,
-	0x36, 0xc0, 0x17, 0xf0, 0x6c, 0x37, 0xd7, 0xd6, 0x0f, 0x0d, 0xe9, 0xb9, 0x4a, 0x1b, 0x17, 0x31,
-	0x0f, 0x19, 0xec, 0x1b, 0x3e, 0xc4, 0xa5, 0xbe, 0x37, 0x44, 0x7c, 0x0c, 0xe1, 0xb8, 0x9b, 0x69,
-	0x2f, 0x8f, 0xea, 0xc7, 0xde, 0x15, 0x92, 0x78, 0xbc, 0xe2, 0xf7, 0x6b, 0x62, 0x80, 0x47, 0x70,
-	0x50, 0x37, 0x34, 0x0b, 0xde, 0x28, 0x16, 0xd4, 0x65, 0x57, 0x2b, 0x8a, 0x7f, 0xfe, 0x61, 0x23,
-	0xe4, 0x26, 0x67, 0xfb, 0x35, 0xfd, 0x3b, 0xc9, 0x0b, 0xb5, 0x24, 0x79, 0x43, 0x3c, 0x21, 0xc9,
-	0x0e, 0xea, 0xdb, 0x77, 0x59, 0x4e, 0x62, 0xa3, 0x6f, 0xc5, 0xaf, 0x6c, 0x5c, 0x13, 0x8a, 0x88,
-	0x27, 0xaf, 0xcd, 0xf7, 0xc4, 0x0e, 0xf1, 0x18, 0x58, 0x37, 0x63, 0x08, 0x31, 0x56, 0x77, 0xac,
-	0xa7, 0x7c, 0x23, 0xc9, 0x0e, 0x7f, 0x84, 0x9f, 0xc1, 0xc9, 0x93, 0x74, 0x3b, 0x02, 0x9e, 0x5d,
-	0xc2, 0x78, 0xd7, 0x12, 0x66, 0x09, 0x97, 0x49, 0x72, 0x2b, 0x12, 0x62, 0x7b, 0x66, 0x09, 0x11,
-	0xe5, 0xe2, 0x3d, 0x59, 0xec, 0x98, 0x51, 0x2e, 0x93, 0xe4, 0xa6, 0xf2, 0xa2, 0xcd, 0xb9, 0xaf,
-	0xd8, 0x5f, 0x0f, 0xa7, 0xce, 0xdf, 0x0f, 0xa7, 0xce, 0x3f, 0x0f, 0xa7, 0xce, 0x1f, 0xff, 0x9e,
-	0xee, 0xdd, 0x0f, 0xed, 0x0f, 0xe2, 0xab, 0xff, 0x03, 0x00, 0x00, 0xff, 0xff, 0xcc, 0xa3, 0xf2,
-	0xc5, 0x31, 0x06, 0x00, 0x00,
+var fileDescriptor_eraftpb_0ace5493d3be806a = []byte{
+	// 1012 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x9c, 0x56, 0xcd, 0x6e, 0xe4, 0x44,
+	0x10, 0x8e, 0x3d, 0x93, 0xb1, 0xa7, 0xe6, 0x27, 0x9d, 0x26, 0xec, 0x3a, 0x2b, 0x25, 0x8c, 0x86,
+	0x03, 0x43, 0x24, 0x16, 0x6d, 0x56, 0x48, 0x1c, 0xe0, 0x90, 0x8d, 0x56, 0x4a, 0x44, 0x26, 0x2c,
+	0x4e, 0x36, 0x57, 0xcb, 0xb1, 0x2b, 0x8e, 0x61, 0xdc, 0x6d, 0xba, 0x7b, 0x42, 0xf2, 0x08, 0x48,
+	0x3c, 0x00, 0x07, 0x1e, 0x01, 0x78, 0x0e, 0x8e, 0x3c, 0x02, 0x0a, 0x2f, 0x82, 0xba, 0xdd, 0x76,
+	0x3c, 0xd9, 0x3d, 0x71, 0xab, 0xfa, 0x5c, 0x55, 0xfd, 0xd5, 0x57, 0xd5, 0x2d, 0xc3, 0x08, 0x45,
+	0x7c, 0xa5, 0xca, 0xcb, 0xe7, 0xa5, 0xe0, 0x8a, 0x53, 0xcf, 0xba, 0xd3, 0x3f, 0x1c, 0x58, 0x7f,
+	0xcd, 0x94, 0xb8, 0xa3, 0x2f, 0x00, 0x50, 0x1b, 0x91, 0xba, 0x2b, 0x31, 0x70, 0x26, 0xce, 0x6c,
+	0xbc, 0x4f, 0x9f, 0xd7, 0x69, 0x26, 0xe6, 0xfc, 0xae, 0xc4, 0xb0, 0x8f, 0xb5, 0x49, 0x29, 0x74,
+	0x15, 0x8a, 0x22, 0x70, 0x27, 0xce, 0xac, 0x1b, 0x1a, 0x9b, 0x6e, 0xc1, 0x7a, 0xce, 0x52, 0xbc,
+	0x0d, 0x3a, 0x06, 0xac, 0x1c, 0x1d, 0x99, 0xc6, 0x2a, 0x0e, 0xba, 0x13, 0x67, 0x36, 0x0c, 0x8d,
+	0x4d, 0xb7, 0xc1, 0x97, 0x77, 0x2c, 0x89, 0x16, 0x3c, 0x0b, 0xd6, 0x27, 0xce, 0xcc, 0x0f, 0x3d,
+	0xed, 0x9f, 0xf0, 0x8c, 0x06, 0xe0, 0x25, 0x9c, 0x29, 0xbc, 0x55, 0x41, 0xcf, 0x64, 0xd4, 0xee,
+	0x94, 0x03, 0x39, 0x63, 0x71, 0x29, 0xaf, 0xb9, 0x9a, 0xa3, 0x8a, 0x4d, 0xa1, 0x17, 0x00, 0x09,
+	0x67, 0x57, 0x91, 0x54, 0xb1, 0xaa, 0x98, 0x0f, 0x5a, 0xcc, 0x0f, 0x39, 0xbb, 0x3a, 0xd3, 0x5f,
+	0xc2, 0x7e, 0x52, 0x9b, 0x0f, 0x2c, 0xdd, 0x47, 0x2c, 0x4d, 0x3f, 0x9d, 0x87, 0x7e, 0xa6, 0x6f,
+	0xc1, 0xaf, 0x0f, 0x6c, 0xba, 0x70, 0x5a, 0x5d, 0x7c, 0x01, 0x7e, 0x61, 0x89, 0x98, 0x62, 0x83,
+	0xfd, 0xed, 0xe6, 0xe8, 0xc7, 0x4c, 0xc3, 0x26, 0x74, 0xfa, 0x67, 0x07, 0xbc, 0x39, 0x4a, 0x19,
+	0x67, 0x48, 0x3f, 0x07, 0xbf, 0x90, 0x59, 0x5b, 0xf7, 0xad, 0xa6, 0x84, 0x8d, 0x31, 0xca, 0x7b,
+	0x85, 0xcc, 0x8c, 0xee, 0x63, 0x70, 0x15, 0xb7, 0xd4, 0x5d, 0xc5, 0x35, 0xaf, 0x2b, 0xc1, 0x1b,
+	0xde, 0xda, 0x6e, 0x7a, 0xe9, 0xb6, 0x66, 0xb3, 0x0d, 0xfe, 0x82, 0x67, 0x91, 0xc1, 0xd7, 0x0d,
+	0xee, 0x2d, 0x78, 0x76, 0xbe, 0x32, 0xb6, 0x5e, 0x5b, 0x90, 0x19, 0x78, 0x7a, 0xda, 0x39, 0xca,
+	0xc0, 0x9b, 0x74, 0x66, 0x83, 0xfd, 0xf1, 0xea, 0x42, 0x84, 0xf5, 0x67, 0xfa, 0x04, 0x7a, 0x09,
+	0x2f, 0x8a, 0x5c, 0x05, 0xbe, 0x29, 0x60, 0x3d, 0xfa, 0x19, 0xf8, 0xd2, 0xaa, 0x10, 0xf4, 0x8d,
+	0x3c, 0x9b, 0xef, 0xc8, 0x13, 0x36, 0x21, 0xba, 0x8c, 0xc0, 0xef, 0x31, 0x51, 0x01, 0x98, 0x8d,
+	0xb0, 0x1e, 0xfd, 0x08, 0x06, 0x95, 0x15, 0x5d, 0xe7, 0x4c, 0x05, 0x03, 0x73, 0x06, 0x54, 0xd0,
+	0x51, 0xce, 0x54, 0x7b, 0x63, 0x86, 0x2b, 0x1b, 0x43, 0x3f, 0x05, 0x22, 0xf0, 0xc7, 0x25, 0x4a,
+	0x15, 0x35, 0x4c, 0x46, 0x26, 0x7f, 0xc3, 0xe2, 0xcd, 0x7c, 0x9f, 0x81, 0x5f, 0x8a, 0x9c, 0x8b,
+	0x5c, 0xdd, 0x05, 0x63, 0x13, 0xd2, 0xf8, 0xd3, 0x6f, 0xa0, 0x7f, 0x14, 0x8b, 0xb4, 0x5a, 0x9f,
+	0x5a, 0x5c, 0xa7, 0x25, 0x2e, 0x85, 0xee, 0x0d, 0x57, 0x58, 0x5f, 0x06, 0x6d, 0xb7, 0x54, 0xe9,
+	0xb4, 0x55, 0x99, 0xfe, 0xee, 0x40, 0xbf, 0xd9, 0x4b, 0x1d, 0xa5, 0xa3, 0x85, 0x0c, 0x9c, 0x49,
+	0x47, 0x47, 0x55, 0x9e, 0xa6, 0xb3, 0xc0, 0x58, 0x30, 0xfd, 0xc5, 0x35, 0x5f, 0x1a, 0x9f, 0x7e,
+	0x02, 0x1b, 0x55, 0x54, 0xc4, 0x97, 0x2a, 0xe3, 0x39, 0xcb, 0x82, 0x8e, 0x09, 0x19, 0x57, 0xf0,
+	0xb7, 0x16, 0xa5, 0x1f, 0xc3, 0xa8, 0x4e, 0x8a, 0x98, 0x96, 0xa7, 0x6b, 0xc2, 0x86, 0x35, 0x78,
+	0xaa, 0x35, 0xda, 0x01, 0x88, 0x97, 0x8a, 0x47, 0x0b, 0x8c, 0x6f, 0xd0, 0x5e, 0xc6, 0xbe, 0x46,
+	0x4e, 0x34, 0x30, 0xfd, 0xd9, 0x01, 0xd0, 0x74, 0x0f, 0xaf, 0x63, 0x96, 0x99, 0xf5, 0xcb, 0x53,
+	0xdb, 0xbb, 0x9b, 0xa7, 0xf4, 0x4b, 0x18, 0x24, 0xe6, 0x4b, 0xb5, 0xc2, 0xae, 0x59, 0xe1, 0xa7,
+	0x2b, 0x17, 0xb0, 0xca, 0x34, 0x5b, 0x0c, 0x49, 0x63, 0xd3, 0xa7, 0xe0, 0x31, 0x9e, 0x62, 0x94,
+	0xa7, 0xb5, 0x40, 0xda, 0x3d, 0x4e, 0xdb, 0xe3, 0xec, 0xae, 0x3e, 0x00, 0x08, 0xe4, 0xa1, 0xe0,
+	0x59, 0xce, 0xb2, 0x05, 0x3e, 0x26, 0xe0, 0xfc, 0x2f, 0x02, 0x6e, 0x9b, 0xc0, 0xf4, 0x37, 0x07,
+	0x86, 0x0f, 0x79, 0x17, 0xfb, 0xf4, 0x6b, 0x00, 0x25, 0x62, 0x26, 0x73, 0x95, 0x73, 0x66, 0x8f,
+	0xd8, 0x79, 0xdf, 0x11, 0x4d, 0x50, 0xd8, 0x4a, 0xa0, 0x2f, 0xc1, 0xab, 0x8e, 0xad, 0x46, 0xd9,
+	0x7e, 0x25, 0x1e, 0xb7, 0x13, 0xd6, 0x91, 0x6d, 0x15, 0x3a, 0x2b, 0x2a, 0xec, 0x1d, 0x41, 0xbf,
+	0x79, 0x91, 0xe9, 0x06, 0x0c, 0x8c, 0x73, 0xca, 0x45, 0x11, 0x2f, 0xc8, 0x1a, 0xfd, 0x00, 0x36,
+	0x0c, 0xf0, 0x50, 0x99, 0x38, 0xf4, 0x43, 0xd8, 0x7c, 0x04, 0x5e, 0xec, 0x13, 0x77, 0xef, 0x97,
+	0x0e, 0x0c, 0x5a, 0x8f, 0x0c, 0x05, 0xe8, 0xcd, 0x65, 0x76, 0xb4, 0x2c, 0xc9, 0x1a, 0x1d, 0x80,
+	0x37, 0x97, 0xd9, 0x2b, 0x8c, 0x15, 0x71, 0xe8, 0x18, 0x60, 0x2e, 0xb3, 0x37, 0x82, 0x97, 0x5c,
+	0x22, 0x71, 0xe9, 0x08, 0xfa, 0x73, 0x99, 0x1d, 0x94, 0x25, 0xb2, 0x94, 0x74, 0x74, 0xf9, 0xc6,
+	0x0d, 0x51, 0x96, 0x9c, 0x49, 0x24, 0x5d, 0x4a, 0x61, 0x3c, 0x97, 0x59, 0x58, 0x5d, 0xb4, 0x0b,
+	0xae, 0x90, 0xac, 0xd3, 0x67, 0xf0, 0x64, 0x15, 0x6b, 0xe2, 0x7b, 0xba, 0x97, 0xb9, 0xcc, 0xea,
+	0x1b, 0x49, 0x3c, 0x4a, 0x60, 0xa8, 0xf9, 0x60, 0x2c, 0xd4, 0xa5, 0x26, 0xe2, 0xd3, 0x00, 0xb6,
+	0xda, 0x48, 0x93, 0xdc, 0xb7, 0x87, 0xbd, 0x65, 0x02, 0xe3, 0xe4, 0x3a, 0xbe, 0x5c, 0x20, 0x01,
+	0xba, 0x09, 0x23, 0x5b, 0x50, 0x5f, 0xb6, 0xa5, 0x24, 0x03, 0x1b, 0x76, 0x78, 0x8d, 0xc9, 0x0f,
+	0xdf, 0x2d, 0xb9, 0x58, 0x16, 0x64, 0x68, 0xe9, 0x9b, 0xe1, 0x5d, 0xa1, 0x38, 0xc1, 0x38, 0x45,
+	0x41, 0x46, 0x36, 0xfb, 0x3c, 0x2f, 0x90, 0x2f, 0xd5, 0x29, 0xff, 0x89, 0x8c, 0x2d, 0xa1, 0x10,
+	0xe3, 0xf4, 0x58, 0xbf, 0x91, 0x64, 0x83, 0x6e, 0x01, 0x69, 0x23, 0x9a, 0x10, 0x21, 0xb6, 0xa2,
+	0xed, 0xf2, 0x8d, 0x40, 0xd3, 0xfc, 0x26, 0xdd, 0x81, 0xed, 0x77, 0xe0, 0xa6, 0x05, 0xba, 0xf7,
+	0x15, 0x6c, 0xbd, 0x6f, 0x97, 0xa8, 0x0f, 0xdd, 0x83, 0xa5, 0xe2, 0x64, 0x8d, 0x0e, 0xc1, 0x3f,
+	0x2e, 0xca, 0x45, 0x9e, 0xe4, 0x7a, 0x2a, 0x43, 0xf0, 0x5f, 0xdf, 0x5a, 0xcf, 0xdd, 0x3b, 0x80,
+	0xf1, 0xea, 0xb2, 0xeb, 0x11, 0x1e, 0xa4, 0xe9, 0x29, 0x4f, 0x91, 0xac, 0xe9, 0x11, 0x86, 0x58,
+	0xf0, 0x1b, 0x34, 0xbe, 0xa3, 0x85, 0x38, 0x48, 0xd3, 0x93, 0xea, 0x25, 0x30, 0x98, 0xfb, 0x8a,
+	0xfc, 0x75, 0xbf, 0xeb, 0xfc, 0x7d, 0xbf, 0xeb, 0xfc, 0x73, 0xbf, 0xeb, 0xfc, 0xfa, 0xef, 0xee,
+	0xda, 0x65, 0xcf, 0xfc, 0x32, 0xbc, 0xfc, 0x2f, 0x00, 0x00, 0xff, 0xff, 0x01, 0x2b, 0x4b, 0x47,
+	0x43, 0x08, 0x00, 0x00,
 }

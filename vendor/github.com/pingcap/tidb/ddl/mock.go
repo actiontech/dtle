@@ -4,10 +4,11 @@
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
-//     http://wwm.apache.org/licenses/LICENSE-2.0
+//     http://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
@@ -18,12 +19,14 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/coreos/etcd/clientv3"
 	"github.com/pingcap/errors"
-	"github.com/pingcap/parser/ast"
-	"github.com/pingcap/parser/model"
+	"github.com/pingcap/failpoint"
 	"github.com/pingcap/tidb/ddl/util"
+	"github.com/pingcap/tidb/parser/ast"
+	"github.com/pingcap/tidb/parser/charset"
+	"github.com/pingcap/tidb/parser/model"
 	"github.com/pingcap/tidb/sessionctx"
+	"go.etcd.io/etcd/clientv3"
 )
 
 var _ util.SchemaSyncer = &MockSchemaSyncer{}
@@ -79,9 +82,6 @@ func (s *MockSchemaSyncer) Restart(_ context.Context) error {
 	return nil
 }
 
-// RemoveSelfVersionPath implements SchemaSyncer.RemoveSelfVersionPath interface.
-func (s *MockSchemaSyncer) RemoveSelfVersionPath() error { return nil }
-
 // OwnerUpdateGlobalVersion implements SchemaSyncer.OwnerUpdateGlobalVersion interface.
 func (s *MockSchemaSyncer) OwnerUpdateGlobalVersion(ctx context.Context, version int64) error {
 	select {
@@ -104,10 +104,15 @@ func (s *MockSchemaSyncer) OwnerCheckAllVersions(ctx context.Context, latestVer 
 	for {
 		select {
 		case <-ctx.Done():
+			failpoint.Inject("checkOwnerCheckAllVersionsWaitTime", func(v failpoint.Value) {
+				if v.(bool) {
+					panic("shouldn't happen")
+				}
+			})
 			return errors.Trace(ctx.Err())
 		case <-ticker.C:
 			ver := atomic.LoadInt64(&s.selfSchemaVersion)
-			if ver == latestVer {
+			if ver >= latestVer {
 				return nil
 			}
 		}
@@ -120,8 +125,8 @@ func (s *MockSchemaSyncer) NotifyCleanExpiredPaths() bool { return true }
 // StartCleanWork implements SchemaSyncer.StartCleanWork interface.
 func (s *MockSchemaSyncer) StartCleanWork() {}
 
-// CloseCleanWork implements SchemaSyncer.CloseCleanWork interface.
-func (s *MockSchemaSyncer) CloseCleanWork() {}
+// Close implements SchemaSyncer.Close interface.
+func (s *MockSchemaSyncer) Close() {}
 
 type mockDelRange struct {
 }
@@ -132,12 +137,12 @@ func newMockDelRangeManager() delRangeManager {
 }
 
 // addDelRangeJob implements delRangeManager interface.
-func (dr *mockDelRange) addDelRangeJob(job *model.Job) error {
+func (dr *mockDelRange) addDelRangeJob(ctx context.Context, job *model.Job) error {
 	return nil
 }
 
 // removeFromGCDeleteRange implements delRangeManager interface.
-func (dr *mockDelRange) removeFromGCDeleteRange(jobID, tableID int64) error {
+func (dr *mockDelRange) removeFromGCDeleteRange(ctx context.Context, jobID int64, tableIDs []int64) error {
 	return nil
 }
 
@@ -149,11 +154,12 @@ func (dr *mockDelRange) clear() {}
 
 // MockTableInfo mocks a table info by create table stmt ast and a specified table id.
 func MockTableInfo(ctx sessionctx.Context, stmt *ast.CreateTableStmt, tableID int64) (*model.TableInfo, error) {
-	cols, newConstraints, err := buildColumnsAndConstraints(ctx, stmt.Cols, stmt.Constraints, "", "")
+	chs, coll := charset.GetDefaultCharsetAndCollate()
+	cols, newConstraints, err := buildColumnsAndConstraints(ctx, stmt.Cols, stmt.Constraints, chs, coll)
 	if err != nil {
 		return nil, errors.Trace(err)
 	}
-	tbl, err := buildTableInfo(ctx, nil, stmt.Table.Name, cols, newConstraints)
+	tbl, err := buildTableInfo(ctx, stmt.Table.Name, cols, newConstraints, "", "")
 	if err != nil {
 		return nil, errors.Trace(err)
 	}
@@ -161,10 +167,6 @@ func MockTableInfo(ctx sessionctx.Context, stmt *ast.CreateTableStmt, tableID in
 
 	// The specified charset will be handled in handleTableOptions
 	if err = handleTableOptions(stmt.Options, tbl); err != nil {
-		return nil, errors.Trace(err)
-	}
-
-	if err = resolveDefaultTableCharsetAndCollation(tbl, ""); err != nil {
 		return nil, errors.Trace(err)
 	}
 

@@ -8,6 +8,7 @@
 //
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
@@ -17,8 +18,12 @@ package set
 type Float64Set map[float64]struct{}
 
 // NewFloat64Set builds a float64 set.
-func NewFloat64Set() Float64Set {
-	return make(map[float64]struct{})
+func NewFloat64Set(fs ...float64) Float64Set {
+	x := make(Float64Set, len(fs))
+	for _, f := range fs {
+		x.Insert(f)
+	}
+	return x
 }
 
 // Exist checks whether `val` exists in `s`.
@@ -30,4 +35,9 @@ func (s Float64Set) Exist(val float64) bool {
 // Insert inserts `val` into `s`.
 func (s Float64Set) Insert(val float64) {
 	s[val] = struct{}{}
+}
+
+// Count returns the number in Set s.
+func (s Float64Set) Count() int {
+	return len(s)
 }

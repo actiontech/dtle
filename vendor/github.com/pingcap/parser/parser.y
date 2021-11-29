@@ -37,12 +37,6 @@ import (
 	"github.com/pingcap/parser/types"
 )
 
-// this is local type definition to serve ON UPDATE /ON DELETE
-type OnDeleteUpdateDef struct {
-    OnDelete *ast.OnDeleteOpt
-    OnUpdate *ast.OnUpdateOpt
-}
-
 %}
 
 %union {
@@ -322,6 +316,7 @@ type OnDeleteUpdateDef struct {
 	deallocate	"DEALLOCATE"
 	definer		"DEFINER"
 	delayKeyWrite	"DELAY_KEY_WRITE"
+	directory	"DIRECTORY"
 	disable		"DISABLE"
 	do		"DO"
 	duplicate	"DUPLICATE"
@@ -348,6 +343,7 @@ type OnDeleteUpdateDef struct {
 	function	"FUNCTION"
 	grants		"GRANTS"
 	hash		"HASH"
+	history		"HISTORY"
 	hour		"HOUR"
 	identified	"IDENTIFIED"
 	isolation	"ISOLATION"
@@ -363,6 +359,7 @@ type OnDeleteUpdateDef struct {
 	last		"LAST"
 	less		"LESS"
 	level		"LEVEL"
+	list		"LIST"
 	master		"MASTER"
 	microsecond	"MICROSECOND"
 	minute		"MINUTE"
@@ -381,6 +378,7 @@ type OnDeleteUpdateDef struct {
 	national	"NATIONAL"
 	never		"NEVER"
 	no		"NO"
+	nodegroup	"NODEGROUP"
 	none		"NONE"
 	nulls		"NULLS"
 	offset		"OFFSET"
@@ -432,6 +430,7 @@ type OnDeleteUpdateDef struct {
 	status		"STATUS"
 	swaps		"SWAPS"
 	switchesSym	"SWITCHES"
+	systemTime	"SYSTEM_TIME"
 	open		"OPEN"
 	source	   	"SOURCE"
 	subject		"SUBJECT"
@@ -628,9 +627,7 @@ type OnDeleteUpdateDef struct {
 	BinlogStmt			"Binlog base64 statement"
 	CommitStmt			"COMMIT statement"
 	CreateTableStmt			"CREATE TABLE statement"
-	DropTriggerStmt	    	"DROP TRIGGER statement"
-	DropProcedureStmt	   	"DROP PROCEDURE or FUNCTION statement"
-	CreateViewStmt			"CREATE VIEW  statement"
+	CreateViewStmt			"CREATE VIEW  stetement"
 	CreateUserStmt			"CREATE User statement"
 	CreateRoleStmt			"CREATE Role statement"
 	CreateDatabaseStmt		"Create Database Statement"
@@ -685,9 +682,9 @@ type OnDeleteUpdateDef struct {
 %type   <item>
 	AdminShowSlow			"Admin Show Slow statement"
 	AlterAlgorithm			"Alter table algorithm"
-	AlterTableOptionListOpt		"Alter table option list opt"
 	AlterTableSpec			"Alter table specification"
 	AlterTableSpecList		"Alter table specification list"
+	AlterTableSpecListOpt		"Alter table specification list optional"
 	AnyOrAll			"Any or All for subquery"
 	Assignment			"assignment"
 	AssignmentList			"assignment list"
@@ -760,8 +757,6 @@ type OnDeleteUpdateDef struct {
 	HandleRange			"handle range"
 	HandleRangeList			"handle range list"
 	IfExists			"If Exists"
-	ProcedureOrFunction "Procedure or Function"
-	TriggerOrEvent      "Trigger or Event"
 	IfNotExists			"If Not Exists"
 	IgnoreOptional			"IGNORE or empty"
 	IndexColName			"Index column name"
@@ -809,12 +804,13 @@ type OnDeleteUpdateDef struct {
 	PartitionDefinition		"Partition definition"
 	PartitionDefinitionList 	"Partition definition list"
 	PartitionDefinitionListOpt	"Partition definition list option"
+	PartitionKeyAlgorithmOpt	"ALGORITHM = n option for KEY partition"
+	PartitionMethod			"Partition method"
 	PartitionOpt			"Partition option"
 	PartitionNameList		"Partition name list"
 	PartitionNameListOpt    "table partition names list optional"
 	PartitionNumOpt			"PARTITION NUM option"
 	PartDefValuesOpt		"VALUES {LESS THAN {(expr | value_list) | MAXVALUE} | IN {value_list}"
-	PartDefOptionsOpt		"PartDefOptionList option"
 	PartDefOptionList		"PartDefOption list"
 	PartDefOption			"COMMENT [=] xxx | TABLESPACE [=] tablespace_name | ENGINE [=] xxx"
 	PasswordExpire			"Single password option for create user statement"
@@ -830,9 +826,8 @@ type OnDeleteUpdateDef struct {
 	PrivLevel			"Privilege scope"
 	PrivType			"Privilege type"
 	ReferDef			"Reference definition"
-	OnDelete			"ON DELETE clause"
-	OnUpdate			"ON UPDATE clause"
-	OnDeleteUpdateOpt   "optional ON DELETE clause + ON UPDATE clause"
+	OnDeleteOpt			"optional ON DELETE clause"
+	OnUpdateOpt			"optional ON UPDATE clause"
 	OptGConcatSeparator		"optional GROUP_CONCAT SEPARATOR"
 	ReferOpt			"reference option"
 	RequireList			"require list"
@@ -874,6 +869,10 @@ type OnDeleteUpdateDef struct {
 	StatsPersistentVal		"stats_persistent value"
 	StringName			"string literal or identifier"
 	StringList 			"string list"
+	SubPartDefinition		"SubPartition definition"
+	SubPartDefinitionList		"SubPartition definition list"
+	SubPartDefinitionListOpt	"SubPartition definition list optional"
+	SubPartitionMethod		"SubPartition method"
 	SubPartitionOpt			"SubPartition option"
 	SubPartitionNumOpt		"SubPartition NUM option"
 	Symbol				"Constraint Symbol"
@@ -894,6 +893,7 @@ type OnDeleteUpdateDef struct {
 	TableRefs 			"table references"
 	TableToTable 			"rename table to table"
 	TableToTableList 		"rename table to table by list"
+	LockType			"Table locks type"
 
 	TransactionChar		"Transaction characteristic"
 	TransactionChars	"Transaction characteristic list"
@@ -1016,7 +1016,6 @@ type OnDeleteUpdateDef struct {
 	NationalOpt		"National option"
 	CharsetKw		"charset or charater set"
 	CommaOpt		"optional comma"
-	LockType		"Table locks type"
 	logAnd			"logical and operator"
 	logOr			"logical or operator"
 	LinearOpt		"linear or empty"
@@ -1097,11 +1096,18 @@ Start:
  * See https://dev.mysql.com/doc/refman/5.7/en/alter-table.html
  *******************************************************************************************/
 AlterTableStmt:
-	"ALTER" IgnoreOptional "TABLE" TableName AlterTableSpecList
+	"ALTER" IgnoreOptional "TABLE" TableName AlterTableSpecListOpt PartitionOpt
 	{
+		specs := $5.([]*ast.AlterTableSpec)
+		if $6 != nil {
+			specs = append(specs, &ast.AlterTableSpec{
+				Tp:        ast.AlterTablePartition,
+				Partition: $6.(*ast.PartitionOptions),
+			})
+		}
 		$$ = &ast.AlterTableStmt{
 			Table: $4.(*ast.TableName),
-			Specs: $5.([]*ast.AlterTableSpec),
+			Specs: specs,
 		}
 	}
 |	"ALTER" IgnoreOptional "TABLE" TableName "ANALYZE" "PARTITION" PartitionNameList MaxNumBuckets
@@ -1120,7 +1126,7 @@ AlterTableStmt:
 	}
 
 AlterTableSpec:
-	AlterTableOptionListOpt
+	TableOptionList %prec higherThanComma
 	{
 		$$ = &ast.AlterTableSpec{
 			Tp:	ast.AlterTableOption,
@@ -1138,19 +1144,21 @@ AlterTableSpec:
 		}
 		$$ = op
 	}
-|	"ADD" ColumnKeywordOpt ColumnDef ColumnPosition
+|	"ADD" ColumnKeywordOpt IfNotExists ColumnDef ColumnPosition
 	{
 		$$ = &ast.AlterTableSpec{
+			IfNotExists: 	$3.(bool),
 			Tp: 		ast.AlterTableAddColumns,
-			NewColumns:	[]*ast.ColumnDef{$3.(*ast.ColumnDef)},
-			Position:	$4.(*ast.ColumnPosition),
+			NewColumns:	[]*ast.ColumnDef{$4.(*ast.ColumnDef)},
+			Position:	$5.(*ast.ColumnPosition),
 		}
 	}
-|	"ADD" ColumnKeywordOpt '(' ColumnDefList ')'
+|	"ADD" ColumnKeywordOpt IfNotExists '(' ColumnDefList ')'
 	{
 		$$ = &ast.AlterTableSpec{
+			IfNotExists: 	$3.(bool),
 			Tp: 		ast.AlterTableAddColumns,
-			NewColumns:	$4.([]*ast.ColumnDef),
+			NewColumns:	$5.([]*ast.ColumnDef),
 		}
 	}
 |	"ADD" Constraint
@@ -1161,13 +1169,14 @@ AlterTableSpec:
 			Constraint: constraint,
 		}
 	}
-|	"ADD" "PARTITION" PartitionDefinitionListOpt
+|	"ADD" "PARTITION" IfNotExists PartitionDefinitionListOpt
 	{
 		var defs []*ast.PartitionDefinition
-		if $3 != nil {
-			defs = $3.([]*ast.PartitionDefinition)
+		if $4 != nil {
+			defs = $4.([]*ast.PartitionDefinition)
 		}
 		$$ = &ast.AlterTableSpec{
+			IfNotExists: 	$3.(bool),
 			Tp: ast.AlterTableAddPartitions,
 			PartDefinitions: defs,
 		}
@@ -1186,68 +1195,78 @@ AlterTableSpec:
 			Num: getUint64FromNUM($3),
 		}
 	}
-|	"DROP" ColumnKeywordOpt ColumnName RestrictOrCascadeOpt
+|	"DROP" ColumnKeywordOpt IfExists ColumnName RestrictOrCascadeOpt
 	{
 		$$ = &ast.AlterTableSpec{
+			IfExists: $3.(bool),
 			Tp: ast.AlterTableDropColumn,
-			OldColumnName: $3.(*ast.ColumnName),
+			OldColumnName: $4.(*ast.ColumnName),
 		}
 	}
 |	"DROP" "PRIMARY" "KEY"
 	{
 		$$ = &ast.AlterTableSpec{Tp: ast.AlterTableDropPrimaryKey}
 	}
-|	"DROP" "PARTITION" Identifier
+|	"DROP" "PARTITION" IfExists PartitionNameList %prec lowerThanComma
 	{
 		$$ = &ast.AlterTableSpec{
+			IfExists: $3.(bool),
 			Tp: ast.AlterTableDropPartition,
-			Name: $3,
+			PartitionNames: $4.([]model.CIStr),
 		}
 	}
-|	"TRUNCATE" "PARTITION" Identifier
+|	"TRUNCATE" "PARTITION" PartitionNameList %prec lowerThanComma
 	{
 		$$ = &ast.AlterTableSpec{
 			Tp: ast.AlterTableTruncatePartition,
-			Name: $3,
+			PartitionNames: $3.([]model.CIStr),
 		}
 	}
-|	"DROP" KeyOrIndex Identifier
+|	"DROP" KeyOrIndex IfExists Identifier
 	{
 		$$ = &ast.AlterTableSpec{
+			IfExists: $3.(bool),
 			Tp: ast.AlterTableDropIndex,
-			Name: $3,
+			Name: $4,
 		}
 	}
-|	"DROP" "FOREIGN" "KEY" Symbol
+|	"DROP" "FOREIGN" "KEY" IfExists Symbol
 	{
 		$$ = &ast.AlterTableSpec{
+			IfExists: $4.(bool),
 			Tp: ast.AlterTableDropForeignKey,
-			Name: $4.(string),
+			Name: $5.(string),
 		}
 	}
 |	"DISABLE" "KEYS"
 	{
-		$$ = &ast.AlterTableSpec{}
+		$$ = &ast.AlterTableSpec{
+			Tp: ast.AlterTableDisableKeys,
+		}
 	}
 |	"ENABLE" "KEYS"
 	{
-		$$ = &ast.AlterTableSpec{}
-	}
-|	"MODIFY" ColumnKeywordOpt ColumnDef ColumnPosition
-	{
 		$$ = &ast.AlterTableSpec{
-			Tp:		ast.AlterTableModifyColumn,
-			NewColumns:	[]*ast.ColumnDef{$3.(*ast.ColumnDef)},
-			Position:	$4.(*ast.ColumnPosition),
+			Tp: ast.AlterTableEnableKeys,
 		}
 	}
-|	"CHANGE" ColumnKeywordOpt ColumnName ColumnDef ColumnPosition
+|	"MODIFY" ColumnKeywordOpt IfExists ColumnDef ColumnPosition
 	{
 		$$ = &ast.AlterTableSpec{
-			Tp:    		ast.AlterTableChangeColumn,
-			OldColumnName:	$3.(*ast.ColumnName),
+			IfExists:	$3.(bool),
+			Tp:		ast.AlterTableModifyColumn,
 			NewColumns:	[]*ast.ColumnDef{$4.(*ast.ColumnDef)},
 			Position:	$5.(*ast.ColumnPosition),
+		}
+	}
+|	"CHANGE" ColumnKeywordOpt IfExists ColumnName ColumnDef ColumnPosition
+	{
+		$$ = &ast.AlterTableSpec{
+			IfExists:	$3.(bool),
+			Tp:    		ast.AlterTableChangeColumn,
+			OldColumnName:	$4.(*ast.ColumnName),
+			NewColumns:	[]*ast.ColumnDef{$5.(*ast.ColumnDef)},
+			Position:	$6.(*ast.ColumnPosition),
 		}
 	}
 |	"ALTER" ColumnKeywordOpt ColumnName "SET" "DEFAULT" SignedLiteral
@@ -1393,6 +1412,16 @@ ColumnPosition:
 		}
 	}
 
+AlterTableSpecListOpt:
+	/* empty */
+	{
+		$$ = make([]*ast.AlterTableSpec, 0, 1)
+	}
+|	AlterTableSpecList
+	{
+		$$ = $1
+	}
+
 AlterTableSpecList:
 	AlterTableSpec
 	{
@@ -1520,6 +1549,7 @@ SplitRegionStmt:
 			SplitOpt: $6.(*ast.SplitOption),
 		}
 	}
+
 
 SplitOption:
 	"BETWEEN" RowValue "AND" RowValue "REGIONS" NUM
@@ -1883,21 +1913,22 @@ ConstraintElem:
 		}
 		$$ = c
 	}
-|	KeyOrIndex IndexName IndexTypeOpt '(' IndexColNameList ')' IndexOptionList
+|	KeyOrIndex IfNotExists IndexName IndexTypeOpt '(' IndexColNameList ')' IndexOptionList
 	{
 		c := &ast.Constraint{
-			Tp:	ast.ConstraintIndex,
-			Keys:	$5.([]*ast.IndexColName),
-			Name:	$2.(string),
+			IfNotExists:	$2.(bool),
+			Tp:		ast.ConstraintIndex,
+			Keys:		$6.([]*ast.IndexColName),
+			Name:		$3.(string),
 		}
-		if $7 != nil {
-			c.Option = $7.(*ast.IndexOption)
+		if $8 != nil {
+			c.Option = $8.(*ast.IndexOption)
 		}
-		if $3 != nil {
+		if $4 != nil {
 			if c.Option == nil {
 				c.Option = &ast.IndexOption{}
 			}
-			c.Option.Tp = $3.(model.IndexType)
+			c.Option.Tp = $4.(model.IndexType)
 		}
 		$$ = c
 	}
@@ -1919,59 +1950,53 @@ ConstraintElem:
 		}
 		$$ = c
 	}
-|	"FOREIGN" "KEY" IndexName '(' IndexColNameList ')' ReferDef
+|	"FOREIGN" "KEY" IfNotExists IndexName '(' IndexColNameList ')' ReferDef
 	{
 		$$ = &ast.Constraint{
-			Tp:	ast.ConstraintForeignKey,
-			Keys:	$5.([]*ast.IndexColName),
-			Name:	$3.(string),
-			Refer:	$7.(*ast.ReferenceDef),
+			IfNotExists:	$3.(bool),
+			Tp:		ast.ConstraintForeignKey,
+			Keys:		$6.([]*ast.IndexColName),
+			Name:		$4.(string),
+			Refer:		$8.(*ast.ReferenceDef),
 		}
 	}
 
 ReferDef:
-	"REFERENCES" TableName '(' IndexColNameList ')' OnDeleteUpdateOpt
+	"REFERENCES" TableName '(' IndexColNameList ')' OnDeleteOpt OnUpdateOpt
 	{
+		var onDeleteOpt *ast.OnDeleteOpt
+		if $6 != nil {
+			onDeleteOpt = $6.(*ast.OnDeleteOpt)
+		}
+		var onUpdateOpt *ast.OnUpdateOpt
+		if $7 != nil {
+			onUpdateOpt = $7.(*ast.OnUpdateOpt)
+		}
 		$$ = &ast.ReferenceDef{
 			Table: $2.(*ast.TableName),
 			IndexColNames: $4.([]*ast.IndexColName),
-			OnDelete: $6.(OnDeleteUpdateDef).OnDelete,
-			OnUpdate: $6.(OnDeleteUpdateDef).OnUpdate,
+			OnDelete: onDeleteOpt,
+			OnUpdate: onUpdateOpt,
 		}
 	}
 
-OnDelete:
-	"ON" "DELETE" ReferOpt
+OnDeleteOpt:
+	{
+		$$ = &ast.OnDeleteOpt{}
+	} %prec lowerThanOn
+|	"ON" "DELETE" ReferOpt
 	{
 		$$ = &ast.OnDeleteOpt{ReferOpt: $3.(ast.ReferOptionType)}
 	}
 
-OnUpdate:
-	"ON" "UPDATE" ReferOpt
+OnUpdateOpt:
+	{
+		$$ = &ast.OnUpdateOpt{}
+	} %prec lowerThanOn
+|	"ON" "UPDATE" ReferOpt
 	{
 		$$ = &ast.OnUpdateOpt{ReferOpt: $3.(ast.ReferOptionType)}
 	}
-
-OnDeleteUpdateOpt:
-    OnDelete OnUpdate
-    {
-        $$ = OnDeleteUpdateDef{ $1.(*ast.OnDeleteOpt), $2.(*ast.OnUpdateOpt) }
-	}
-|   OnUpdate OnDelete
-    {
-        $$ = OnDeleteUpdateDef{ $2.(*ast.OnDeleteOpt), $1.(*ast.OnUpdateOpt) }
-	}
-|   OnUpdate
-    {
-        $$ = OnDeleteUpdateDef{ &ast.OnDeleteOpt{}, $1.(*ast.OnUpdateOpt) }
-    } %prec lowerThanOn
-|   OnDelete
-    {
-        $$ = OnDeleteUpdateDef{ $1.(*ast.OnDeleteOpt), &ast.OnUpdateOpt{} }
-    } %prec lowerThanOn
-|   {
-		$$ = OnDeleteUpdateDef{ &ast.OnDeleteOpt{}, &ast.OnUpdateOpt{} }
-	} %prec lowerThanOn
 
 ReferOpt:
 	"RESTRICT"
@@ -2050,27 +2075,28 @@ NumLiteral:
 
 
 CreateIndexStmt:
-	"CREATE" CreateIndexStmtUnique "INDEX" Identifier IndexTypeOpt "ON" TableName '(' IndexColNameList ')' IndexOptionList LockClauseOpt
+	"CREATE" CreateIndexStmtUnique "INDEX" IfNotExists Identifier IndexTypeOpt "ON" TableName '(' IndexColNameList ')' IndexOptionList LockClauseOpt
 	{
 		var indexOption *ast.IndexOption
-		if $11 != nil {
-			indexOption = $11.(*ast.IndexOption)
+		if $12 != nil {
+			indexOption = $12.(*ast.IndexOption)
 			if indexOption.Tp == model.IndexTypeInvalid {
-				if $5 != nil {
-					indexOption.Tp = $5.(model.IndexType)
+				if $6 != nil {
+					indexOption.Tp = $6.(model.IndexType)
 				}
 			}
 		} else {
 			indexOption = &ast.IndexOption{}
-			if $5 != nil {
-				indexOption.Tp = $5.(model.IndexType)
+			if $6 != nil {
+				indexOption.Tp = $6.(model.IndexType)
 			}
 		}
 		$$ = &ast.CreateIndexStmt{
 			Unique:        $2.(bool),
-			IndexName:     $4,
-			Table:         $7.(*ast.TableName),
-			IndexColNames: $9.([]*ast.IndexColName),
+			IfNotExists:   $4.(bool),
+			IndexName:     $5,
+			Table:         $8.(*ast.TableName),
+			IndexColNames: $10.([]*ast.IndexColName),
 			IndexOption:   indexOption,
 		}
 	}
@@ -2184,45 +2210,6 @@ DatabaseOptionList:
 		$$ = append($1.([]*ast.DatabaseOption), $2.(*ast.DatabaseOption))
 	}
 
-DropProcedureStmt:
-    "DROP" ProcedureOrFunction IfExists TableName
-    {
-        $$ = &ast.DropProcedureStmt{
-            IsFunction: $2.(bool),
-            IfExists: $3.(bool),
-            SpName: $4.(*ast.TableName),
-        }
-    }
-
-ProcedureOrFunction:
-    "PROCEDURE"
-    {
-        $$ = false
-    }
-|   "FUNCTION"
-    {
-        $$ = true
-    }
-
-DropTriggerStmt:
-    "DROP" TriggerOrEvent IfExists TableName /* use TableName for schema.trigge_name */
-    {
-        $$ = &ast.DropTriggerStmt{
-            IsEvent: $2.(bool),
-            IfExists: $3.(bool),
-            TriggerName: $4.(*ast.TableName),
-        }
-    }
-
-TriggerOrEvent:
-    "TRIGGER"
-    {
-        $$ = false
-    }
-|   "EVENT"
-    {
-        $$ = true
-    }
 /*******************************************************************
  *
  *  Create Table Statement
@@ -2271,50 +2258,100 @@ PartitionOpt:
 	{
 		$$ = nil
 	}
-|	"PARTITION" "BY" "KEY" '(' ColumnNameList ')' PartitionNumOpt PartitionDefinitionListOpt
+|	"PARTITION" "BY" PartitionMethod PartitionNumOpt SubPartitionOpt PartitionDefinitionListOpt
 	{
-		$$ = nil
+		method := $3.(*ast.PartitionMethod)
+		method.Num = $4.(uint64)
+		sub, _ := $5.(*ast.PartitionMethod)
+		defs, _ := $6.([]*ast.PartitionDefinition)
+		opt := &ast.PartitionOptions{
+			PartitionMethod: *method,
+			Sub:             sub,
+			Definitions:     defs,
+		}
+		if err := opt.Validate(); err != nil {
+			yylex.AppendError(err)
+			return 1
+		}
+		$$ = opt
 	}
-|	"PARTITION" "BY" LinearOpt "HASH" '(' Expression ')' PartitionNumOpt
+
+SubPartitionMethod:
+	LinearOpt "KEY" PartitionKeyAlgorithmOpt '(' ColumnNameListOpt ')'
 	{
-		tmp := &ast.PartitionOptions{
-			Tp: model.PartitionTypeHash,
-			Expr: $6.(ast.ExprNode),
-			// If you do not include a PARTITIONS clause, the number of partitions defaults to 1
-			Num: 1,
-		}
-		if $8 != nil {
-			tmp.Num = getUint64FromNUM($8)
-		}
-		if $3 != "" {
-			yylex.Errorf("linear is not supported, ignore partition")
-			parser.lastErrorAsWarn()
-			tmp = nil
-		}
-		$$ = tmp
-	}
-|	"PARTITION" "BY" "RANGE" '(' Expression ')' PartitionNumOpt SubPartitionOpt PartitionDefinitionListOpt
-	{
-		var defs []*ast.PartitionDefinition
-		if $9 != nil {
-			defs = $9.([]*ast.PartitionDefinition)
-		}
-		$$ = &ast.PartitionOptions{
-			Tp:		model.PartitionTypeRange,
-			Expr:		$5.(ast.ExprNode),
-			Definitions:	defs,
+		$$ = &ast.PartitionMethod{
+			Tp:          model.PartitionTypeKey,
+			Linear:      len($1) != 0,
+			ColumnNames: $5.([]*ast.ColumnName),
 		}
 	}
-|	"PARTITION" "BY" "RANGE" "COLUMNS" '(' ColumnNameList ')' PartitionNumOpt SubPartitionOpt PartitionDefinitionListOpt
+|	LinearOpt "HASH" '(' Expression ')'
 	{
-		var defs []*ast.PartitionDefinition
-		if $10 != nil {
-			defs = $10.([]*ast.PartitionDefinition)
+		$$ = &ast.PartitionMethod{
+			Tp:     model.PartitionTypeHash,
+			Linear: len($1) != 0,
+			Expr:   $4.(ast.ExprNode),
 		}
-		$$ = &ast.PartitionOptions{
-			Tp:		model.PartitionTypeRange,
-			ColumnNames:	$6.([]*ast.ColumnName),
-			Definitions:	defs,
+	}
+
+PartitionKeyAlgorithmOpt:
+	/* empty */
+	{}
+|	"ALGORITHM" '=' NUM
+	{}
+
+PartitionMethod:
+	SubPartitionMethod
+	{
+		$$ = $1
+	}
+|	"RANGE" '(' Expression ')'
+	{
+		$$ = &ast.PartitionMethod{
+			Tp:   model.PartitionTypeRange,
+			Expr: $3.(ast.ExprNode),
+		}
+	}
+|	"RANGE" "COLUMNS" '(' ColumnNameList ')'
+	{
+		$$ = &ast.PartitionMethod{
+			Tp:          model.PartitionTypeRange,
+			ColumnNames: $4.([]*ast.ColumnName),
+		}
+	}
+|	"LIST" '(' Expression ')'
+	{
+		$$ = &ast.PartitionMethod{
+			Tp:   model.PartitionTypeList,
+			Expr: $3.(ast.ExprNode),
+		}
+	}
+|	"LIST" "COLUMNS" '(' ColumnNameList ')'
+	{
+		$$ = &ast.PartitionMethod{
+			Tp:          model.PartitionTypeList,
+			ColumnNames: $4.([]*ast.ColumnName),
+		}
+	}
+|	"SYSTEM_TIME" "INTERVAL" Expression TimeUnit
+	{
+		$$ = &ast.PartitionMethod{
+			Tp:    model.PartitionTypeSystemTime,
+			Expr:  $3.(ast.ExprNode),
+			Unit:  ast.NewValueExpr($4),
+		}
+	}
+|	"SYSTEM_TIME" "LIMIT" LengthNum
+	{
+		$$ = &ast.PartitionMethod{
+			Tp:    model.PartitionTypeSystemTime,
+			Limit: $3.(uint64),
+		}
+	}
+|	"SYSTEM_TIME"
+	{
+		$$ = &ast.PartitionMethod{
+			Tp:    model.PartitionTypeSystemTime,
 		}
 	}
 
@@ -2328,24 +2365,42 @@ LinearOpt:
 	}
 
 SubPartitionOpt:
-	{}
-|	"SUBPARTITION" "BY" "HASH" '(' Expression ')' SubPartitionNumOpt
-	{}
-|	"SUBPARTITION" "BY" "KEY" '(' ColumnNameList ')' SubPartitionNumOpt
-	{}
-
-SubPartitionNumOpt:
-	{}
-|	"SUBPARTITIONS" NUM
-	{}
-
-PartitionNumOpt:
 	{
 		$$ = nil
 	}
-|	"PARTITIONS" NUM
+|	"SUBPARTITION" "BY" SubPartitionMethod SubPartitionNumOpt
 	{
-		$$ = $2
+		method := $3.(*ast.PartitionMethod)
+		method.Num = $4.(uint64)
+		$$ = method
+	}
+
+SubPartitionNumOpt:
+	{
+		$$ = uint64(0)
+	}
+|	"SUBPARTITIONS" LengthNum
+	{
+		res := $2.(uint64)
+		if res == 0 {
+			yylex.AppendError(ast.ErrNoParts.GenWithStackByArgs("subpartitions"))
+			return 1
+		}
+		$$ = res
+	}
+
+PartitionNumOpt:
+	{
+		$$ = uint64(0)
+	}
+|	"PARTITIONS" LengthNum
+	{
+		res := $2.(uint64)
+		if res == 0 {
+			yylex.AppendError(ast.ErrNoParts.GenWithStackByArgs("partitions"))
+			return 1
+		}
+		$$ = res
 	}
 
 PartitionDefinitionListOpt:
@@ -2369,74 +2424,131 @@ PartitionDefinitionList:
 	}
 
 PartitionDefinition:
-	"PARTITION" Identifier PartDefValuesOpt PartDefOptionsOpt
+	"PARTITION" Identifier PartDefValuesOpt PartDefOptionList SubPartDefinitionListOpt
 	{
-		partDef := &ast.PartitionDefinition{
-			Name: model.NewCIStr($2),
+		$$ = &ast.PartitionDefinition{
+			Name:    model.NewCIStr($2),
+			Clause:  $3.(ast.PartitionDefinitionClause),
+			Options: $4.([]*ast.TableOption),
+			Sub:     $5.([]*ast.SubPartitionDefinition),
 		}
-		switch $3.(type) {
-		case []ast.ExprNode:
-			partDef.LessThan = $3.([]ast.ExprNode)
-		case ast.ExprNode:
-			partDef.LessThan = make([]ast.ExprNode, 1)
-			partDef.LessThan[0] = $3.(ast.ExprNode)
-		}
-
-		if comment, ok := $4.(string); ok {
-			partDef.Comment = comment
-		}
-		$$ = partDef
 	}
 
-PartDefOptionsOpt:
+SubPartDefinitionListOpt:
+	/*empty*/
 	{
-		$$ = nil
+		$$ = make([]*ast.SubPartitionDefinition, 0)
 	}
-|	PartDefOptionList
+|	'(' SubPartDefinitionList ')'
 	{
-		$$ = $1
+		$$ = $2
+	}
+
+SubPartDefinitionList:
+	SubPartDefinition
+	{
+		$$ = []*ast.SubPartitionDefinition{$1.(*ast.SubPartitionDefinition)}
+	}
+|	SubPartDefinitionList ',' SubPartDefinition
+	{
+		list := $1.([]*ast.SubPartitionDefinition)
+		$$ = append(list, $3.(*ast.SubPartitionDefinition))
+	}
+
+SubPartDefinition:
+	"SUBPARTITION" Identifier PartDefOptionList
+	{
+		$$ = &ast.SubPartitionDefinition{
+			Name:    model.NewCIStr($2),
+			Options: $3.([]*ast.TableOption),
+		}
 	}
 
 PartDefOptionList:
-	PartDefOption
+	/*empty*/
 	{
-		$$ = $1
+		$$ = make([]*ast.TableOption, 0)
 	}
 |	PartDefOptionList PartDefOption
 	{
-		if $1 != nil {
-			$$ = $1
-		} else {
-			$$ = $2
-		}
+		list := $1.([]*ast.TableOption)
+		$$ = append(list, $2.(*ast.TableOption))
 	}
 
 PartDefOption:
 	"COMMENT" EqOpt stringLit
 	{
-		$$ = $3
+		$$ = &ast.TableOption{Tp: ast.TableOptionComment, StrValue: $3}
 	}
-|	"ENGINE" EqOpt Identifier
+|	"ENGINE" EqOpt StringName
 	{
-		$$ = nil
+		$$ = &ast.TableOption{Tp: ast.TableOptionEngine, StrValue: $3.(string)}
+	}
+|	"DATA" "DIRECTORY" EqOpt stringLit
+	{
+		$$ = &ast.TableOption{Tp: ast.TableOptionDataDirectory, StrValue: $4}
+	}
+|	"INDEX" "DIRECTORY" EqOpt stringLit
+	{
+		$$ = &ast.TableOption{Tp: ast.TableOptionIndexDirectory, StrValue: $4}
+	}
+|	"MAX_ROWS" EqOpt LengthNum
+	{
+		$$ = &ast.TableOption{Tp: ast.TableOptionMaxRows, UintValue: $3.(uint64)}
+	}
+|	"MIN_ROWS" EqOpt LengthNum
+	{
+		$$ = &ast.TableOption{Tp: ast.TableOptionMinRows, UintValue: $3.(uint64)}
 	}
 |	"TABLESPACE" EqOpt Identifier
 	{
-		$$ =  nil
+		$$ = &ast.TableOption{Tp: ast.TableOptionTablespace, StrValue: $3}
 	}
-
+|	"NODEGROUP" EqOpt LengthNum
+	{
+		$$ = &ast.TableOption{Tp: ast.TableOptionNodegroup, UintValue: $3.(uint64)}
+	}
 
 PartDefValuesOpt:
 	{
-		$$ = nil
+		$$ = &ast.PartitionDefinitionClauseNone{}
 	}
 |	"VALUES" "LESS" "THAN" "MAXVALUE"
 	{
-		$$ = &ast.MaxValueExpr{}
+		$$ = &ast.PartitionDefinitionClauseLessThan{
+			Exprs: []ast.ExprNode{&ast.MaxValueExpr{}},
+		}
 	}
 |	"VALUES" "LESS" "THAN" '(' MaxValueOrExpressionList ')'
 	{
-		$$ = $5
+		$$ = &ast.PartitionDefinitionClauseLessThan{
+			Exprs: $5.([]ast.ExprNode),
+		}
+	}
+|	"DEFAULT"
+	{
+		$$ = &ast.PartitionDefinitionClauseIn{}
+	}
+|	"VALUES" "IN" '(' ExpressionList ')'
+	{
+		exprs := $4.([]ast.ExprNode)
+		values := make([][]ast.ExprNode, 0, len(exprs))
+		for _, expr := range exprs {
+			if row, ok := expr.(*ast.RowExpr); ok {
+				values = append(values, row.Values)
+			} else {
+				values = append(values, []ast.ExprNode{expr})
+			}
+		}
+		$$ = &ast.PartitionDefinitionClauseIn{Values: values}
+	}
+|	"HISTORY"
+	{
+		$$ = &ast.PartitionDefinitionClauseHistory{Current: false}
+	}
+|	"CURRENT"
+	{
+		$$ = &ast.PartitionDefinitionClauseHistory{Current: true}
 	}
 
 DuplicateOpt:
@@ -3411,7 +3523,7 @@ UnReservedKeyword:
 | "MICROSECOND" | "MINUTE" | "PLUGINS" | "PRECEDING" | "QUERY" | "QUERIES" | "SECOND" | "SEPARATOR" | "SHARE" | "SHARED" | "SLOW" | "MAX_CONNECTIONS_PER_HOUR" | "MAX_QUERIES_PER_HOUR" | "MAX_UPDATES_PER_HOUR"
 | "MAX_USER_CONNECTIONS" | "REPLICATION" | "CLIENT" | "SLAVE" | "RELOAD" | "TEMPORARY" | "ROUTINE" | "EVENT" | "ALGORITHM" | "DEFINER" | "INVOKER" | "MERGE" | "TEMPTABLE" | "UNDEFINED" | "SECURITY" | "CASCADED"
 | "RECOVER" | "CIPHER" | "SUBJECT" | "ISSUER" | "X509" | "NEVER" | "EXPIRE" | "ACCOUNT" | "INCREMENTAL" | "CPU" | "MEMORY" | "BLOCK" | "IO" | "CONTEXT" | "SWITCHES" | "PAGE" | "FAULTS" | "IPC" | "SWAPS" | "SOURCE"
-| "TRADITIONAL" | "SQL_BUFFER_RESULT"
+| "TRADITIONAL" | "SQL_BUFFER_RESULT" | "DIRECTORY" | "HISTORY" | "LIST" | "NODEGROUP" | "SYSTEM_TIME"
 
 
 TiDBKeyword:
@@ -4904,9 +5016,6 @@ SelectStmtBasic:
 			Distinct:      $2.(*ast.SelectStmtOpts).Distinct,
 			Fields:        $3.(*ast.FieldList),
 		}
-		if st.SelectStmtOpts.TableHints != nil {
-			st.TableHints = st.SelectStmtOpts.TableHints
-		}
 		$$ = st
 	}
 
@@ -4930,6 +5039,9 @@ SelectStmtFromTable:
 	{
 		st := $1.(*ast.SelectStmt)
 		st.From = $3.(*ast.TableRefsClause)
+		if st.SelectStmtOpts.TableHints != nil {
+			st.TableHints = st.SelectStmtOpts.TableHints
+		}
 		lastField := st.Fields.Fields[len(st.Fields.Fields)-1]
 		if lastField.Expr != nil && lastField.AsName.O == "" {
 			lastEnd := parser.endOffset(&yyS[yypt-5])
@@ -6403,20 +6515,6 @@ AdminStmt:
  			Tp: ast.AdminReloadExprPushdownBlacklist,
  		}
  	}
-|	"ADMIN" "PLUGINS" "ENABLE" PluginNameList
- 	{
- 		$$ = &ast.AdminStmt{
- 			Tp: ast.AdminPluginEnable,
- 			Plugins: $4.([]string),
- 		}
- 	}
-|	"ADMIN" "PLUGINS" "DISABLE" PluginNameList
- 	{
- 		$$ = &ast.AdminStmt{
- 			Tp: ast.AdminPluginDisable,
- 			Plugins: $4.([]string),
- 		}
- 	}
 
 AdminShowSlow:
 	"RECENT" NUM
@@ -6523,21 +6621,6 @@ ShowStmt:
                         User:	$4.(*auth.UserIdentity),
                 }
         }
-|	"SHOW" "TABLE" TableName "REGIONS"
-	{
-		$$ = &ast.ShowStmt{
-			Tp:	ast.ShowRegions,
-			Table:	$3.(*ast.TableName),
-		}
-	}
-|	"SHOW" "TABLE" TableName "INDEX" Identifier "REGIONS"
-	{
-		$$ = &ast.ShowStmt{
-			Tp:	ast.ShowRegions,
-			Table:	$3.(*ast.TableName),
-			IndexName: model.NewCIStr($5),
-		}
-	}
 |	"SHOW" "GRANTS"
 	{
 		// See https://dev.mysql.com/doc/refman/5.7/en/show-grants.html
@@ -7061,8 +7144,6 @@ Statement:
 |	CreateDatabaseStmt
 |	CreateIndexStmt
 |	CreateTableStmt
-|   DropTriggerStmt
-|   DropProcedureStmt
 |	CreateViewStmt
 |	CreateUserStmt
 |	CreateRoleStmt
@@ -7222,13 +7303,9 @@ TableElementListOpt:
 	}
 
 TableOption:
-	"ENGINE" StringName
+	PartDefOption
 	{
-		$$ = &ast.TableOption{Tp: ast.TableOptionEngine, StrValue: $2.(string)}
-	}
-|	"ENGINE" eq StringName
-	{
-		$$ = &ast.TableOption{Tp: ast.TableOptionEngine, StrValue: $3.(string)}
+		$$ = $1
 	}
 |	DefaultKwdOpt CharsetKw EqOpt CharsetName
 	{
@@ -7241,10 +7318,6 @@ TableOption:
 |	"AUTO_INCREMENT" EqOpt LengthNum
 	{
 		$$ = &ast.TableOption{Tp: ast.TableOptionAutoIncrement, UintValue: $3.(uint64)}
-	}
-|	"COMMENT" EqOpt stringLit
-	{
-		$$ = &ast.TableOption{Tp: ast.TableOptionComment, StrValue: $3}
 	}
 |	"AVG_ROW_LENGTH" EqOpt LengthNum
 	{
@@ -7269,14 +7342,6 @@ TableOption:
 |	"KEY_BLOCK_SIZE" EqOpt LengthNum
 	{
 		$$ = &ast.TableOption{Tp: ast.TableOptionKeyBlockSize, UintValue: $3.(uint64)}
-	}
-|	"MAX_ROWS" EqOpt LengthNum
-	{
-		$$ = &ast.TableOption{Tp: ast.TableOptionMaxRows, UintValue: $3.(uint64)}
-	}
-|	"MIN_ROWS" EqOpt LengthNum
-	{
-		$$ = &ast.TableOption{Tp: ast.TableOptionMinRows, UintValue: $3.(uint64)}
 	}
 |	"DELAY_KEY_WRITE" EqOpt LengthNum
 	{
@@ -7309,12 +7374,6 @@ StatsPersistentVal:
 	{}
 |	LengthNum
 	{}
-
-AlterTableOptionListOpt:
-	{
-		$$ = []*ast.TableOption{}
-	}
-|	TableOptionList %prec higherThanComma
 
 CreateTableOptionListOpt:
 	/* empty */ %prec lowerThanCreateTableSelect
@@ -8887,11 +8946,18 @@ LoadDataSetItem:
  *********************************************************************/
 
 UnlockTablesStmt:
-	"UNLOCK" TablesTerminalSym {}
+	"UNLOCK" TablesTerminalSym
+	{
+		$$ = &ast.UnlockTablesStmt{}
+	}
 
 LockTablesStmt:
 	"LOCK" TablesTerminalSym TableLockList
-	{}
+        {
+		$$ = &ast.LockTablesStmt{
+			TableLocks: $3.([]ast.TableLock),
+		}
+        }
 
 TablesTerminalSym:
 	"TABLES"
@@ -8899,15 +8965,40 @@ TablesTerminalSym:
 
 TableLock:
 	TableName LockType
+        {
+		$$ = ast.TableLock{
+			Table: $1.(*ast.TableName),
+			Type:  $2.(model.TableLockType),
+		}
+        }
 
 LockType:
 	"READ"
+        {
+		$$ = model.TableLockRead
+        }
 |	"READ" "LOCAL"
+        {
+		$$ = model.TableLockReadLocal
+        }
 |	"WRITE"
+        {
+		$$ = model.TableLockWrite
+        }
+|	"WRITE" "LOCAL"
+        {
+		$$ = model.TableLockWriteLocal
+        }
 
 TableLockList:
 	TableLock
+	{
+		$$ = []ast.TableLock{$1.(ast.TableLock)}
+	}
 |	TableLockList ',' TableLock
+	{
+		$$ = append($1.([]ast.TableLock), $3.(ast.TableLock))
+	}
 
 
 /********************************************************************

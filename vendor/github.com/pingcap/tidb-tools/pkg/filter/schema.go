@@ -13,27 +13,39 @@
 
 package filter
 
-import "strings"
-
-// DM heartbeat schema / table name
-var (
-	DMHeartbeatSchema = "dm_heartbeat"
-	DMHeartbeatTable  = "heartbeat"
+import (
+	"strings"
 )
 
-// mysql system schema
-var systemSchemas = map[string]struct{}{
-	"information_schema": {},
-	"mysql":              {},
-	"performance_schema": {},
-	"sys":                {},
-	DMHeartbeatSchema:    {}, // do not create table in it manually
-}
+var (
+	// DMHeartbeatSchema is the heartbeat schema name
+	DMHeartbeatSchema = "DM_HEARTBEAT"
+	// DMHeartbeatTable is heartbeat table name
+	DMHeartbeatTable = "HEARTBEAT"
+	// InformationSchemaName is the `INFORMATION_SCHEMA` database name.
+	InformationSchemaName = "INFORMATION_SCHEMA"
+	// PerformanceSchemaName is the `PERFORMANCE_SCHEMA` database name.
+	PerformanceSchemaName = "PERFORMANCE_SCHEMA"
+	// MetricSchemaName is the `METRICS_SCHEMA` database name.
+	MetricSchemaName = "METRICS_SCHEMA"
+	// InspectionSchemaName is the `INSPECTION_SCHEMA` database name
+	InspectionSchemaName = "INSPECTION_SCHEMA"
+)
 
-// IsSystemSchema judge schema is system shema or not
+// IsSystemSchema checks whether schema is system schema or not.
 // case insensitive
 func IsSystemSchema(schema string) bool {
-	schema = strings.ToLower(schema)
-	_, ok := systemSchemas[schema]
-	return ok
+	schema = strings.ToUpper(schema)
+	switch schema {
+	case DMHeartbeatSchema, // do not create table in it manually
+		"SYS",   // https://dev.mysql.com/doc/refman/8.0/en/sys-schema.html
+		"MYSQL", // the name of system database.
+		InformationSchemaName,
+		InspectionSchemaName,
+		PerformanceSchemaName,
+		MetricSchemaName:
+		return true
+	default:
+		return false
+	}
 }

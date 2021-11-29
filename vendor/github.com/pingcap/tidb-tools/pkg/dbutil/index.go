@@ -2,13 +2,12 @@ package dbutil
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"sort"
 	"strconv"
 
 	"github.com/pingcap/errors"
-	"github.com/pingcap/parser/model"
+	"github.com/pingcap/tidb/parser/model"
 )
 
 // IndexInfo contains information of table index.
@@ -22,7 +21,7 @@ type IndexInfo struct {
 }
 
 // ShowIndex returns result of executing `show index`
-func ShowIndex(ctx context.Context, db *sql.DB, schemaName string, table string) ([]*IndexInfo, error) {
+func ShowIndex(ctx context.Context, db QueryExecutor, schemaName string, table string) ([]*IndexInfo, error) {
 	/*
 		show index example result:
 		mysql> show index from test;
@@ -34,7 +33,7 @@ func ShowIndex(ctx context.Context, db *sql.DB, schemaName string, table string)
 		+-------+------------+----------+--------------+-------------+-----------+-------------+----------+--------+------+------------+---------+---------------+
 	*/
 	indices := make([]*IndexInfo, 0, 3)
-	query := fmt.Sprintf("SHOW INDEX FROM `%s`.`%s`", schemaName, table)
+	query := fmt.Sprintf("SHOW INDEX FROM %s", TableName(schemaName, table))
 	rows, err := db.QueryContext(ctx, query)
 	if err != nil {
 		return nil, errors.Trace(err)
@@ -73,7 +72,7 @@ func ShowIndex(ctx context.Context, db *sql.DB, schemaName string, table string)
 // * primary key
 // * unique key
 // * normal index which has max cardinality
-func FindSuitableColumnWithIndex(ctx context.Context, db *sql.DB, schemaName string, tableInfo *model.TableInfo) (*model.ColumnInfo, error) {
+func FindSuitableColumnWithIndex(ctx context.Context, db QueryExecutor, schemaName string, tableInfo *model.TableInfo) (*model.ColumnInfo, error) {
 	// find primary key
 	for _, index := range tableInfo.Indices {
 		if index.Primary {

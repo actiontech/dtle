@@ -20,7 +20,7 @@ import (
 	"sync"
 
 	"github.com/pingcap/errors"
-	"github.com/pingcap/tidb-tools/pkg/table-rule-selector"
+	selector "github.com/pingcap/tidb-tools/pkg/table-rule-selector"
 )
 
 var (
@@ -193,7 +193,11 @@ func (m *Mapping) addOrUpdateRule(rule *Rule, isUpdate bool) error {
 	rule.Adjust()
 
 	m.resetCache()
-	err = m.Insert(rule.PatternSchema, rule.PatternTable, rule, isUpdate)
+	if isUpdate {
+		err = m.Insert(rule.PatternSchema, rule.PatternTable, rule, selector.Replace)
+	} else {
+		err = m.Insert(rule.PatternSchema, rule.PatternTable, rule, selector.Insert)
+	}
 	if err != nil {
 		var method string
 		if isUpdate {
@@ -229,7 +233,7 @@ func (m *Mapping) RemoveRule(rule *Rule) error {
 	m.resetCache()
 	err := m.Remove(rule.PatternSchema, rule.PatternTable)
 	if err != nil {
-		return errors.Annotatef(err, "remove rule %+v", rule)
+		return errors.Annotatef(err, "remove rule %+v from mapping", rule)
 	}
 
 	return nil
@@ -335,13 +339,13 @@ func (m *Mapping) queryColumnInfo(schema, table string, columns []string) (*mapp
 	var rule *Rule
 	if len(table) == 0 || len(tableRules) == 0 {
 		if len(schemaRules) != 1 {
-			return nil, errors.NotSupportedf("route %s/%s to rule set(%d)", schema, table, len(schemaRules))
+			return nil, errors.NotSupportedf("`%s`.`%s` matches %d schema column mapping rules which should be one. It's", schema, table, len(schemaRules))
 		}
 
 		rule = schemaRules[0]
 	} else {
 		if len(tableRules) != 1 {
-			return nil, errors.NotSupportedf("route %s/%s to rule set(%d)", schema, table, len(tableRules))
+			return nil, errors.NotSupportedf("`%s`.`%s` matches %d table column mapping rules which should be one. It's", schema, table, len(tableRules))
 		}
 
 		rule = tableRules[0]
@@ -408,7 +412,7 @@ func addPrefix(info *mappingInfo, vals []interface{}) ([]interface{}, error) {
 	prefix := info.rule.Arguments[0]
 	originStr, ok := vals[info.targetPosition].(string)
 	if !ok {
-		return nil, errors.NotValidf("column %d value is not string, but %v", info.targetPosition, vals[info.targetPosition])
+		return nil, errors.NotValidf("column %d value is not string, but %v, which is", info.targetPosition, vals[info.targetPosition])
 	}
 
 	// fast to concatenated string
@@ -424,7 +428,7 @@ func addSuffix(info *mappingInfo, vals []interface{}) ([]interface{}, error) {
 	suffix := info.rule.Arguments[0]
 	originStr, ok := vals[info.targetPosition].(string)
 	if !ok {
-		return nil, errors.NotValidf("column %d value is not string, but %v", info.targetPosition, vals[info.targetPosition])
+		return nil, errors.NotValidf("column %d value is not string, but %v, which is", info.targetPosition, vals[info.targetPosition])
 	}
 
 	rawByte := make([]byte, 0, len(suffix)+len(originStr))
@@ -463,7 +467,7 @@ func partitionID(info *mappingInfo, vals []interface{}) ([]interface{}, error) {
 	case string:
 		originID, err = strconv.ParseInt(rawID, 10, 64)
 		if err != nil {
-			return nil, errors.NotValidf("column %d value is not int, but %v", info.targetPosition, vals[info.targetPosition])
+			return nil, errors.NotValidf("column %d value is not int, but %v, which is", info.targetPosition, vals[info.targetPosition])
 		}
 		isChars = true
 	default:
@@ -471,7 +475,7 @@ func partitionID(info *mappingInfo, vals []interface{}) ([]interface{}, error) {
 	}
 
 	if originID >= maxOriginID || originID < 0 {
-		return nil, errors.NotValidf("id must less than %d, greater than or equal to 0, but got %d", maxOriginID, originID)
+		return nil, errors.NotValidf("id must less than %d, greater than or equal to 0, but got %d, which is", maxOriginID, originID)
 	}
 
 	originID = int64(info.instanceID | info.schemaID | info.tableID | originID)

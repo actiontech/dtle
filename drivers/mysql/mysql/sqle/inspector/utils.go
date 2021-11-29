@@ -9,10 +9,10 @@ import (
 
 	"github.com/actiontech/dtle/drivers/mysql/mysql/sqle/g"
 
-	"github.com/pingcap/parser"
-	"github.com/pingcap/parser/ast"
-	_model "github.com/pingcap/parser/model"
-	"github.com/pingcap/parser/mysql"
+	"github.com/pingcap/tidb/parser"
+	"github.com/pingcap/tidb/parser/ast"
+	_model "github.com/pingcap/tidb/parser/model"
+	"github.com/pingcap/tidb/parser/mysql"
 
 	_ "github.com/pingcap/tidb/types/parser_driver"
 )

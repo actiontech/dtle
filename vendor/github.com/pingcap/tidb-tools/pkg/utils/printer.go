@@ -16,21 +16,37 @@ package utils
 import (
 	"fmt"
 	"runtime"
+
+	"github.com/pingcap/log"
+	"go.uber.org/zap"
 )
 
 // Version information.
 var (
-	Version = "None"
-	BuildTS = "None"
-	GitHash = "None"
+	Version   = "None"
+	BuildTS   = "None"
+	GitHash   = "None"
+	GitBranch = "None"
 )
 
 // GetRawInfo do what its name tells
 func GetRawInfo(app string) string {
 	info := ""
-	info += fmt.Sprintf("%s: v%s\n", app, Version)
+	info += fmt.Sprintf("%s: %s\n", app, Version)
 	info += fmt.Sprintf("Git Commit Hash: %s\n", GitHash)
+	info += fmt.Sprintf("Git Branch: %s\n", GitBranch)
 	info += fmt.Sprintf("UTC Build Time: %s\n", BuildTS)
 	info += fmt.Sprintf("Go Version: %s\n", runtime.Version())
 	return info
+}
+
+// PrintInfo prints the app's basic information in log
+func PrintInfo(app string) {
+	log.Info("Welcome to "+app,
+		zap.String("Release Version", Version),
+		zap.String("Git Commit Hash", GitHash),
+		zap.String("Git Branch", GitBranch),
+		zap.String("UTC Build Time", BuildTS),
+		zap.String("Go Version", runtime.Version()),
+	)
 }

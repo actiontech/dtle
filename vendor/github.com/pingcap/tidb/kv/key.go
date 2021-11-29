@@ -8,12 +8,22 @@
 //
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
 package kv
 
-import "bytes"
+import (
+	"bytes"
+	"encoding/hex"
+	"fmt"
+	"strconv"
+	"strings"
+
+	"github.com/pingcap/tidb/types"
+	"github.com/pingcap/tidb/util/codec"
+)
 
 // Key represents high-level Key type.
 type Key []byte
@@ -21,8 +31,8 @@ type Key []byte
 // Next returns the next key in byte-order.
 func (k Key) Next() Key {
 	// add 0x0 to the end of key
-	buf := make([]byte, len([]byte(k))+1)
-	copy(buf, []byte(k))
+	buf := make([]byte, len(k)+1)
+	copy(buf, k)
 	return buf
 }
 
@@ -38,8 +48,8 @@ func (k Key) Next() Key {
 // If we seek 'rowkey1' Next, we will get 'rowkey1_column1'.
 // If we seek 'rowkey1' PrefixNext, we will get 'rowkey2'.
 func (k Key) PrefixNext() Key {
-	buf := make([]byte, len([]byte(k)))
-	copy(buf, []byte(k))
+	buf := make([]byte, len(k))
+	copy(buf, k)
 	var i int
 	for i = len(k) - 1; i >= 0; i-- {
 		buf[i]++
@@ -65,9 +75,16 @@ func (k Key) HasPrefix(prefix Key) bool {
 	return bytes.HasPrefix(k, prefix)
 }
 
-// Clone returns a copy of the Key.
+// Clone returns a deep copy of the Key.
 func (k Key) Clone() Key {
-	return append([]byte(nil), k...)
+	ck := make([]byte, len(k))
+	copy(ck, k)
+	return ck
+}
+
+// String implements fmt.Stringer interface.
+func (k Key) String() string {
+	return hex.EncodeToString(k)
 }
 
 // KeyRange represents a range where StartKey <= key < EndKey.
@@ -110,16 +127,332 @@ func (r *KeyRange) IsPoint() bool {
 		bytes.Equal(r.StartKey[:diffOneIdx], r.EndKey[:diffOneIdx])
 }
 
-// EncodedKey represents encoded key in low-level storage engine.
-type EncodedKey []byte
-
-// Cmp returns the comparison result of two key.
-// The result will be 0 if a==b, -1 if a < b, and +1 if a > b.
-func (k EncodedKey) Cmp(another EncodedKey) int {
-	return bytes.Compare(k, another)
+// Entry is the entry for key and value
+type Entry struct {
+	Key   Key
+	Value []byte
 }
 
-// Next returns the next key in byte-order.
-func (k EncodedKey) Next() EncodedKey {
-	return EncodedKey(bytes.Join([][]byte{k, Key{0}}, nil))
+// Handle is the ID of a row.
+type Handle interface {
+	// IsInt returns if the handle type is int64.
+	IsInt() bool
+	// IntValue returns the int64 value if IsInt is true, it panics if IsInt returns false.
+	IntValue() int64
+	// Next returns the minimum handle that is greater than this handle.
+	Next() Handle
+	// Equal returns if the handle equals to another handle, it panics if the types are different.
+	Equal(h Handle) bool
+	// Compare returns the comparison result of the two handles, it panics if the types are different.
+	Compare(h Handle) int
+	// Encoded returns the encoded bytes.
+	Encoded() []byte
+	// Len returns the length of the encoded bytes.
+	Len() int
+	// NumCols returns the number of columns of the handle,
+	NumCols() int
+	// EncodedCol returns the encoded column value at the given column index.
+	EncodedCol(idx int) []byte
+	// Data returns the data of all columns of a handle.
+	Data() ([]types.Datum, error)
+	// String implements the fmt.Stringer interface.
+	String() string
+}
+
+// IntHandle implement the Handle interface for int64 type handle.
+type IntHandle int64
+
+// IsInt implements the Handle interface.
+func (ih IntHandle) IsInt() bool {
+	return true
+}
+
+// IntValue implements the Handle interface.
+func (ih IntHandle) IntValue() int64 {
+	return int64(ih)
+}
+
+// Next implements the Handle interface.
+func (ih IntHandle) Next() Handle {
+	return IntHandle(int64(ih) + 1)
+}
+
+// Equal implements the Handle interface.
+func (ih IntHandle) Equal(h Handle) bool {
+	return h.IsInt() && int64(ih) == h.IntValue()
+}
+
+// Compare implements the Handle interface.
+func (ih IntHandle) Compare(h Handle) int {
+	if !h.IsInt() {
+		panic("IntHandle compares to CommonHandle")
+	}
+	ihVal := ih.IntValue()
+	hVal := h.IntValue()
+	if ihVal > hVal {
+		return 1
+	}
+	if ihVal < hVal {
+		return -1
+	}
+	return 0
+}
+
+// Encoded implements the Handle interface.
+func (ih IntHandle) Encoded() []byte {
+	return codec.EncodeInt(nil, int64(ih))
+}
+
+// Len implements the Handle interface.
+func (ih IntHandle) Len() int {
+	return 8
+}
+
+// NumCols implements the Handle interface, not supported for IntHandle type.
+func (ih IntHandle) NumCols() int {
+	panic("not supported in IntHandle")
+}
+
+// EncodedCol implements the Handle interface., not supported for IntHandle type.
+func (ih IntHandle) EncodedCol(idx int) []byte {
+	panic("not supported in IntHandle")
+}
+
+// Data implements the Handle interface.
+func (ih IntHandle) Data() ([]types.Datum, error) {
+	return []types.Datum{types.NewIntDatum(int64(ih))}, nil
+}
+
+// String implements the Handle interface.
+func (ih IntHandle) String() string {
+	return strconv.FormatInt(int64(ih), 10)
+}
+
+// CommonHandle implements the Handle interface for non-int64 type handle.
+type CommonHandle struct {
+	encoded       []byte
+	colEndOffsets []uint16
+}
+
+// NewCommonHandle creates a CommonHandle from a encoded bytes which is encoded by code.EncodeKey.
+func NewCommonHandle(encoded []byte) (*CommonHandle, error) {
+	ch := &CommonHandle{encoded: encoded}
+	if len(encoded) < 9 {
+		padded := make([]byte, 9)
+		copy(padded, encoded)
+		ch.encoded = padded
+	}
+	remain := encoded
+	endOff := uint16(0)
+	for len(remain) > 0 {
+		if remain[0] == 0 {
+			// padded data
+			break
+		}
+		var err error
+		var col []byte
+		col, remain, err = codec.CutOne(remain)
+		if err != nil {
+			return nil, err
+		}
+		endOff += uint16(len(col))
+		ch.colEndOffsets = append(ch.colEndOffsets, endOff)
+	}
+	return ch, nil
+}
+
+// IsInt implements the Handle interface.
+func (ch *CommonHandle) IsInt() bool {
+	return false
+}
+
+// IntValue implements the Handle interface, not supported for CommonHandle type.
+func (ch *CommonHandle) IntValue() int64 {
+	panic("not supported in CommonHandle")
+}
+
+// Next implements the Handle interface.
+func (ch *CommonHandle) Next() Handle {
+	return &CommonHandle{
+		encoded:       Key(ch.encoded).PrefixNext(),
+		colEndOffsets: ch.colEndOffsets,
+	}
+}
+
+// Equal implements the Handle interface.
+func (ch *CommonHandle) Equal(h Handle) bool {
+	return !h.IsInt() && bytes.Equal(ch.encoded, h.Encoded())
+}
+
+// Compare implements the Handle interface.
+func (ch *CommonHandle) Compare(h Handle) int {
+	if h.IsInt() {
+		panic("CommonHandle compares to IntHandle")
+	}
+	return bytes.Compare(ch.encoded, h.Encoded())
+}
+
+// Encoded implements the Handle interface.
+func (ch *CommonHandle) Encoded() []byte {
+	return ch.encoded
+}
+
+// Len implements the Handle interface.
+func (ch *CommonHandle) Len() int {
+	return len(ch.encoded)
+}
+
+// NumCols implements the Handle interface.
+func (ch *CommonHandle) NumCols() int {
+	return len(ch.colEndOffsets)
+}
+
+// EncodedCol implements the Handle interface.
+func (ch *CommonHandle) EncodedCol(idx int) []byte {
+	colStartOffset := uint16(0)
+	if idx > 0 {
+		colStartOffset = ch.colEndOffsets[idx-1]
+	}
+	return ch.encoded[colStartOffset:ch.colEndOffsets[idx]]
+}
+
+// Data implements the Handle interface.
+func (ch *CommonHandle) Data() ([]types.Datum, error) {
+	data := make([]types.Datum, 0, ch.NumCols())
+	for i := 0; i < ch.NumCols(); i++ {
+		encodedCol := ch.EncodedCol(i)
+		_, d, err := codec.DecodeOne(encodedCol)
+		if err != nil {
+			return nil, err
+		}
+		data = append(data, d)
+	}
+	return data, nil
+}
+
+// String implements the Handle interface.
+func (ch *CommonHandle) String() string {
+	data, err := ch.Data()
+	if err != nil {
+		return err.Error()
+	}
+	strs := make([]string, 0, ch.NumCols())
+	for _, datum := range data {
+		str, err := datum.ToString()
+		if err != nil {
+			return err.Error()
+		}
+		strs = append(strs, str)
+	}
+	return fmt.Sprintf("{%s}", strings.Join(strs, ", "))
+}
+
+// HandleMap is the map for Handle.
+type HandleMap struct {
+	ints map[int64]interface{}
+	strs map[string]strHandleVal
+}
+
+type strHandleVal struct {
+	h   Handle
+	val interface{}
+}
+
+// NewHandleMap creates a new map for handle.
+func NewHandleMap() *HandleMap {
+	// Initialize the two maps to avoid checking nil.
+	return &HandleMap{
+		ints: map[int64]interface{}{},
+		strs: map[string]strHandleVal{},
+	}
+}
+
+// Get gets a value by a Handle.
+func (m *HandleMap) Get(h Handle) (v interface{}, ok bool) {
+	if h.IsInt() {
+		v, ok = m.ints[h.IntValue()]
+	} else {
+		var strVal strHandleVal
+		strVal, ok = m.strs[string(h.Encoded())]
+		v = strVal.val
+	}
+	return
+}
+
+// Set sets a value with a Handle.
+func (m *HandleMap) Set(h Handle, val interface{}) {
+	if h.IsInt() {
+		m.ints[h.IntValue()] = val
+	} else {
+		m.strs[string(h.Encoded())] = strHandleVal{
+			h:   h,
+			val: val,
+		}
+	}
+}
+
+// Delete deletes a entry from the map.
+func (m *HandleMap) Delete(h Handle) {
+	if h.IsInt() {
+		delete(m.ints, h.IntValue())
+	} else {
+		delete(m.strs, string(h.Encoded()))
+	}
+}
+
+// Len returns the length of the map.
+func (m *HandleMap) Len() int {
+	return len(m.ints) + len(m.strs)
+}
+
+// Range iterates the HandleMap with fn, the fn returns true to continue, returns false to stop.
+func (m *HandleMap) Range(fn func(h Handle, val interface{}) bool) {
+	for h, val := range m.ints {
+		if !fn(IntHandle(h), val) {
+			return
+		}
+	}
+	for _, strVal := range m.strs {
+		if !fn(strVal.h, strVal.val) {
+			return
+		}
+	}
+}
+
+// PartitionHandle combines a handle and a PartitionID, used to location a row in partitioned table.
+// Now only used in global index.
+// TODO: support PartitionHandle in HandleMap.
+type PartitionHandle struct {
+	Handle
+	PartitionID int64
+}
+
+// NewPartitionHandle creates a PartitionHandle from a normal handle and a pid.
+func NewPartitionHandle(pid int64, h Handle) PartitionHandle {
+	return PartitionHandle{
+		Handle:      h,
+		PartitionID: pid,
+	}
+}
+
+// Equal implements the Handle interface.
+func (ph PartitionHandle) Equal(h Handle) bool {
+	if ph2, ok := h.(PartitionHandle); ok {
+		return ph.PartitionID == ph2.PartitionID && ph.Handle.Equal(ph2.Handle)
+	}
+	return false
+}
+
+// Compare implements the Handle interface.
+func (ph PartitionHandle) Compare(h Handle) int {
+	if ph2, ok := h.(PartitionHandle); ok {
+		if ph.PartitionID < ph2.PartitionID {
+			return -1
+		}
+		if ph.PartitionID > ph2.PartitionID {
+			return 1
+		}
+		return ph.Handle.Compare(ph2.Handle)
+	}
+	panic("PartitonHandle compares to non-parition Handle")
 }

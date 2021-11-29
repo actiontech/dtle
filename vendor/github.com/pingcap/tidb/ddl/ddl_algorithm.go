@@ -8,6 +8,7 @@
 //
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
@@ -16,7 +17,7 @@ package ddl
 import (
 	"fmt"
 
-	"github.com/pingcap/parser/ast"
+	"github.com/pingcap/tidb/parser/ast"
 )
 
 // AlterAlgorithm is used to store supported alter algorithm.
@@ -25,43 +26,51 @@ import (
 // because we never block the DML but costs some time to backfill the index data)
 // See https://dev.mysql.com/doc/refman/8.0/en/alter-table.html#alter-table-performance.
 type AlterAlgorithm struct {
-	supported []ast.AlterAlgorithm
+	// supported MUST store algorithms in the order 'INSTANT, INPLACE, COPY'
+	supported []ast.AlgorithmType
 	// If the alter algorithm is not given, the defAlgorithm will be used.
-	defAlgorithm ast.AlterAlgorithm
+	defAlgorithm ast.AlgorithmType
 }
 
 var (
 	instantAlgorithm = &AlterAlgorithm{
-		supported:    []ast.AlterAlgorithm{ast.AlterAlgorithmInstant},
-		defAlgorithm: ast.AlterAlgorithmInstant,
+		supported:    []ast.AlgorithmType{ast.AlgorithmTypeInstant},
+		defAlgorithm: ast.AlgorithmTypeInstant,
 	}
 
 	inplaceAlgorithm = &AlterAlgorithm{
-		supported:    []ast.AlterAlgorithm{ast.AlterAlgorithmInplace},
-		defAlgorithm: ast.AlterAlgorithmInplace,
+		supported:    []ast.AlgorithmType{ast.AlgorithmTypeInplace},
+		defAlgorithm: ast.AlgorithmTypeInplace,
 	}
-
-	defaultAlgorithm = ast.AlterAlgorithmInstant
 )
 
-func getProperAlgorithm(specify ast.AlterAlgorithm, algorithm *AlterAlgorithm) (ast.AlterAlgorithm, error) {
-	if specify == ast.AlterAlgorithmDefault {
+func getProperAlgorithm(specify ast.AlgorithmType, algorithm *AlterAlgorithm) (ast.AlgorithmType, error) {
+	if specify == ast.AlgorithmTypeDefault {
 		return algorithm.defAlgorithm, nil
 	}
 
+	r := ast.AlgorithmTypeDefault
+
 	for _, a := range algorithm.supported {
-		if specify == a {
-			return specify, nil
+		if specify <= a {
+			r = a
+			break
 		}
 	}
 
-	return algorithm.defAlgorithm, ErrAlterOperationNotSupported.GenWithStackByArgs(fmt.Sprintf("ALGORITHM=%s", specify), fmt.Sprintf("Cannot alter table by %s", specify), fmt.Sprintf("ALGORITHM=%s", algorithm.defAlgorithm))
+	var err error
+	if specify != r {
+		err = ErrAlterOperationNotSupported.GenWithStackByArgs(fmt.Sprintf("ALGORITHM=%s", specify), fmt.Sprintf("Cannot alter table by %s", specify), fmt.Sprintf("ALGORITHM=%s", algorithm.defAlgorithm))
+	}
+	return r, err
 }
 
 // ResolveAlterAlgorithm resolves the algorithm of the alterSpec.
-// If specify algorithm is not supported by the alter action, errAlterOperationNotSupported will be returned.
 // If specify is the ast.AlterAlgorithmDefault, then the default algorithm of the alter action will be returned.
-func ResolveAlterAlgorithm(alterSpec *ast.AlterTableSpec, specify ast.AlterAlgorithm) (ast.AlterAlgorithm, error) {
+// If specify algorithm is not supported by the alter action, it will try to find a better algorithm in the order `INSTANT > INPLACE > COPY`, errAlterOperationNotSupported will be returned.
+// E.g. INSTANT may be returned if specify=INPLACE
+// If failed to choose any valid algorithm, AlgorithmTypeDefault and errAlterOperationNotSupported will be returned
+func ResolveAlterAlgorithm(alterSpec *ast.AlterTableSpec, specify ast.AlgorithmType) (ast.AlgorithmType, error) {
 	switch alterSpec.Tp {
 	// For now, TiDB only support inplace algorithm and instant algorithm.
 	case ast.AlterTableAddConstraint:

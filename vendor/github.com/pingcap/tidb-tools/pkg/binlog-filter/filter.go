@@ -18,7 +18,7 @@ import (
 	"strings"
 
 	"github.com/pingcap/errors"
-	"github.com/pingcap/tidb-tools/pkg/table-rule-selector"
+	selector "github.com/pingcap/tidb-tools/pkg/table-rule-selector"
 )
 
 // ActionType indicates how to handle matched items
@@ -61,6 +61,8 @@ const (
 	RenameTable    EventType = "rename table"
 	CreateIndex    EventType = "create index"
 	DropIndex      EventType = "drop index"
+	CreateView     EventType = "create view"
+	DropView       EventType = "drop view"
 	AlertTable     EventType = "alter table"
 	// if need, add more	AlertTableOption     = "alert table option"
 
@@ -72,7 +74,8 @@ func ClassifyEvent(event EventType) (EventType, error) {
 	switch event {
 	case InsertEvent, UpdateEvent, DeleteEvent:
 		return dml, nil
-	case CreateDatabase, DropDatabase, CreateTable, DropTable, TruncateTable, RenameTable, CreateIndex, DropIndex, AlertTable:
+	case CreateDatabase, DropDatabase, CreateTable, DropTable, TruncateTable, RenameTable,
+		CreateIndex, DropIndex, CreateView, DropView, AlertTable:
 		return ddl, nil
 	case NullEvent:
 		return NullEvent, nil
@@ -156,7 +159,7 @@ func (b *BinlogEvent) AddRule(rule *BinlogEventRule) error {
 		rule.ToLower()
 	}
 
-	err = b.Insert(rule.SchemaPattern, rule.TablePattern, rule, false)
+	err = b.Insert(rule.SchemaPattern, rule.TablePattern, rule, selector.Insert)
 	if err != nil {
 		return errors.Annotatef(err, "add rule %+v into binlog event filter", rule)
 	}
@@ -177,7 +180,7 @@ func (b *BinlogEvent) UpdateRule(rule *BinlogEventRule) error {
 		rule.ToLower()
 	}
 
-	err = b.Insert(rule.SchemaPattern, rule.TablePattern, rule, true)
+	err = b.Insert(rule.SchemaPattern, rule.TablePattern, rule, selector.Replace)
 	if err != nil {
 		return errors.Annotatef(err, "update rule %+v into binlog event filter", rule)
 	}

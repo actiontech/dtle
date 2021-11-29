@@ -3,9 +3,9 @@ package main
 import (
 	"bytes"
 	"github.com/actiontech/dtle/helper/u"
-	tparser "github.com/pingcap/parser"
-	tast "github.com/pingcap/parser/ast"
-	"github.com/pingcap/parser/format"
+	tparser "github.com/pingcap/tidb/parser"
+	tast "github.com/pingcap/tidb/parser/ast"
+	"github.com/pingcap/tidb/parser/format"
 
 	"fmt"
 	_ "github.com/pingcap/tidb/types/parser_driver"
@@ -35,7 +35,6 @@ name varchar(35) DEFAULT NULL
 		//Flags:     format.RestoreKeyWordUppercase | format.RestoreNameBackQuotes | format.RestoreSpacesAroundBinaryOperation,
 		Flags:     format.RestoreKeyWordUppercase | format.RestoreSpacesAroundBinaryOperation,
 		In:        buf,
-		JoinLevel: 0,
 	}
 	switch v := ast.(type) {
 	case *tast.CreateTableStmt:
@@ -47,8 +46,6 @@ name varchar(35) DEFAULT NULL
 			}
 		}
 	case *tast.RenameTableStmt:
-		println(v.OldTable.Name.O)
-		println(v.NewTable.Name.O)
 		println("---")
 		for i := range v.TableToTables {
 			println(v.TableToTables[i].OldTable.Name.O)

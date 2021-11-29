@@ -8,6 +8,7 @@
 //
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
@@ -16,8 +17,9 @@ package sqlexec
 import (
 	"context"
 
-	"github.com/pingcap/parser/ast"
-	"github.com/pingcap/tidb/sessionctx"
+	"github.com/pingcap/kvproto/pkg/kvrpcpb"
+	"github.com/pingcap/tidb/parser"
+	"github.com/pingcap/tidb/parser/ast"
 	"github.com/pingcap/tidb/sessionctx/variable"
 	"github.com/pingcap/tidb/util/chunk"
 )
@@ -32,15 +34,52 @@ import (
 // And in the same time, we do not want this interface becomes a general way to run sql statement.
 // We hope this could be used with some restrictions such as only allowing system tables as target,
 // do not allowing recursion call.
-// For more information please refer to the comments in session.ExecRestrictedSQL().
 // This is implemented in session.go.
 type RestrictedSQLExecutor interface {
-	// ExecRestrictedSQL run sql statement in ctx with some restriction.
-	ExecRestrictedSQL(ctx sessionctx.Context, sql string) ([]chunk.Row, []*ast.ResultField, error)
-	// ExecRestrictedSQLWithSnapshot run sql statement in ctx with some restriction and with snapshot.
-	// If current session sets the snapshot timestamp, then execute with this snapshot timestamp.
-	// Otherwise, execute with the current transaction start timestamp if the transaction is valid.
-	ExecRestrictedSQLWithSnapshot(ctx sessionctx.Context, sql string) ([]chunk.Row, []*ast.ResultField, error)
+	// ParseWithParams is the parameterized version of Parse: it will try to prevent injection under utf8mb4.
+	// It works like printf() in c, there are following format specifiers:
+	// 1. %?: automatic conversion by the type of arguments. E.g. []string -> ('s1','s2'..)
+	// 2. %%: output %
+	// 3. %n: for identifiers, for example ("use %n", db)
+	//
+	// Attention: it does not prevent you from doing parse("select '%?", ";SQL injection!;") => "select '';SQL injection!;'".
+	// One argument should be a standalone entity. It should not "concat" with other placeholders and characters.
+	// This function only saves you from processing potentially unsafe parameters.
+	ParseWithParams(ctx context.Context, sql string, args ...interface{}) (ast.StmtNode, error)
+	// ExecRestrictedStmt run sql statement in ctx with some restriction.
+	ExecRestrictedStmt(ctx context.Context, stmt ast.StmtNode, opts ...OptionFuncAlias) ([]chunk.Row, []*ast.ResultField, error)
+}
+
+// ExecOption is a struct defined for ExecRestrictedStmt option.
+type ExecOption struct {
+	IgnoreWarning bool
+	SnapshotTS    uint64
+	AnalyzeVer    int
+}
+
+// OptionFuncAlias is defined for the optional paramater of ExecRestrictedStmt.
+type OptionFuncAlias = func(option *ExecOption)
+
+// ExecOptionIgnoreWarning tells ExecRestrictedStmt to ignore the warnings.
+var ExecOptionIgnoreWarning OptionFuncAlias = func(option *ExecOption) {
+	option.IgnoreWarning = true
+}
+
+// ExecOptionAnalyzeVer1 tells ExecRestrictedStmt to collect statistics with version1.
+var ExecOptionAnalyzeVer1 OptionFuncAlias = func(option *ExecOption) {
+	option.AnalyzeVer = 1
+}
+
+// ExecOptionAnalyzeVer2 tells ExecRestrictedStmt to collect statistics with version2.
+var ExecOptionAnalyzeVer2 OptionFuncAlias = func(option *ExecOption) {
+	option.AnalyzeVer = 2
+}
+
+// ExecOptionWithSnapshot tells ExecRestrictedStmt to use a snapshot.
+func ExecOptionWithSnapshot(snapshot uint64) OptionFuncAlias {
+	return func(option *ExecOption) {
+		option.SnapshotTS = snapshot
+	}
 }
 
 // SQLExecutor is an interface provides executing normal sql statement.
@@ -48,7 +87,15 @@ type RestrictedSQLExecutor interface {
 // For example, privilege/privileges package need execute SQL, if it use
 // session.Session.Execute, then privilege/privileges and tidb would become a circle.
 type SQLExecutor interface {
+	// Execute is only used by plugins. It can be removed soon.
 	Execute(ctx context.Context, sql string) ([]RecordSet, error)
+	// ExecuteInternal means execute sql as the internal sql.
+	ExecuteInternal(ctx context.Context, sql string, args ...interface{}) (RecordSet, error)
+	ExecuteStmt(ctx context.Context, stmtNode ast.StmtNode) (RecordSet, error)
+	// allowed when tikv disk full happened.
+	SetDiskFullOpt(level kvrpcpb.DiskFullOpt)
+	// clear allowed flag
+	ClearDiskFullOpt()
 }
 
 // SQLParser is an interface provides parsing sql statement.
@@ -56,7 +103,7 @@ type SQLExecutor interface {
 // But a session already has a parser bind in it, so we define this interface and use session as its implementation,
 // thus avoid allocating new parser. See session.SQLParser for more information.
 type SQLParser interface {
-	ParseSQL(sql, charset, collation string) ([]ast.StmtNode, error)
+	ParseSQL(ctx context.Context, sql string, params ...parser.ParseParam) ([]ast.StmtNode, []error, error)
 }
 
 // Statement is an interface for SQL execution.
@@ -67,6 +114,9 @@ type SQLParser interface {
 type Statement interface {
 	// OriginText gets the origin SQL text.
 	OriginText() string
+
+	// GetTextToLog gets the desensitization SQL text for logging.
+	GetTextToLog() string
 
 	// Exec executes SQL and gets a Recordset.
 	Exec(ctx context.Context) (RecordSet, error)
@@ -89,7 +139,7 @@ type RecordSet interface {
 	// Next reads records into chunk.
 	Next(ctx context.Context, req *chunk.Chunk) error
 
-	//NewChunk create a chunk.
+	// NewChunk create a chunk.
 	NewChunk() *chunk.Chunk
 
 	// Close closes the underlying iterator, call Next after Close will
@@ -109,4 +159,21 @@ type MultiQueryNoDelayResult interface {
 	Status() uint16
 	// LastInsertID return last insert id for one statement in multi-queries.
 	LastInsertID() uint64
+}
+
+// DrainRecordSet fetches the rows in the RecordSet.
+func DrainRecordSet(ctx context.Context, rs RecordSet, maxChunkSize int) ([]chunk.Row, error) {
+	var rows []chunk.Row
+	req := rs.NewChunk()
+	for {
+		err := rs.Next(ctx, req)
+		if err != nil || req.NumRows() == 0 {
+			return rows, err
+		}
+		iter := chunk.NewIterator4Chunk(req)
+		for r := iter.Begin(); r != iter.End(); r = iter.Next() {
+			rows = append(rows, r)
+		}
+		req = chunk.Renew(req, maxChunkSize)
+	}
 }

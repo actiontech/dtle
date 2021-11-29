@@ -5,8 +5,8 @@ import (
 	"github.com/actiontech/dtle/drivers/mysql/mysql/sqle/inspector"
 	//"github.com/actiontech/dtle/internal/client/driver/mysql/base"
 	//"github.com/actiontech/dtle/internal/client/driver/mysql/sqle/inspector"
-	"github.com/pingcap/parser"
-	"github.com/pingcap/parser/ast"
+	"github.com/pingcap/tidb/parser"
+	"github.com/pingcap/tidb/parser/ast"
 	"log"
 )
 
