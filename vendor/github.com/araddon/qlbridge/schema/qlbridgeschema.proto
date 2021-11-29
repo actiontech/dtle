@@ -1,6 +1,8 @@
 syntax = "proto3";
 
-package schema;
+package qlbridge.schema;
+
+option go_package = ".";
 
 // protoc --go_out=. *.proto
 

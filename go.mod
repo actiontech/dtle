@@ -65,7 +65,7 @@ replace github.com/siddontang/go-mysql => github.com/ffffwh/go-mysql v0.0.0-2021
 
 //replace github.com/Sirupsen/logrus => github.com/sirupsen/logrus v1.4.2
 
-replace github.com/araddon/qlbridge => github.com/ffffwh/qlbridge v0.0.0-20181026023605-fc2d5205dad3
+replace github.com/araddon/qlbridge => github.com/ffffwh/qlbridge v0.0.0-20211129135511-6866b8e31c89
 
 replace github.com/pingcap/tidb/parser => github.com/actiontech/tidb/parser v0.0.0-20211129081607-d4929fbb762f
 
