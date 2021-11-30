@@ -1,6 +1,7 @@
 package extractor
 
 import (
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -58,8 +59,7 @@ func (v *Stmt) Enter(in ast.Node) (ast.Node, bool) {
 					//service.Logger.Error("sql parser failed",
 					//	zap.String("stmt", v.Marshal()))
 				}
-				data := strings.TrimLeft(strings.TrimRight(sb.String(), "'"), "'")
-				v.NewColumnValues.AbstractValues = append(v.NewColumnValues.AbstractValues, data)
+				v.NewColumnValues.AbstractValues = append(v.NewColumnValues.AbstractValues, columnsValueConverter(sb.String()))
 			}
 		}
 	}
@@ -101,9 +101,57 @@ func beforeData(where ast.ExprNode, before map[string]interface{}) {
 			err = binaryNode.L.Restore(format.NewRestoreCtx(flags, &column))
 			if err != nil {
 			}
-			before[strings.TrimLeft(strings.TrimRight(column.String(), "`"), "`")] = value.String()
+			before[strings.TrimLeft(strings.TrimRight(column.String(), "`"), "`")] = columnsValueConverter(value.String())
 		}
 	}
+}
+
+// type OracleFuncName string
+
+const (
+	NullValue               = "NULL"
+	EmptyCLOBFunction       = "EMPTY_CLOB()"
+	EmptyBLOBFunction       = "EMPTY_BLOB()"
+	HEXTORAW_FUNCTION_START = `HEXTORAW('`
+	CommonFunctionEnd       = `')`
+	InfValue                = `Inf`
+	NInfValue               = `-Inf`
+	NanValue                = `Nan`
+	ToDSintervalStart       = "TO_DSINTERVAL('"
+	ToYMintervalStart       = "TO_YMINTERVAL('"
+)
+
+func columnsValueConverter(value string) interface{} {
+	value = strings.TrimLeft(strings.TrimRight(value, "'"), "'")
+	switch {
+	case value == NullValue:
+		return nil
+	case value == EmptyCLOBFunction:
+		return ""
+	case value == EmptyBLOBFunction:
+		return ""
+	case strings.HasPrefix(value, HEXTORAW_FUNCTION_START) && strings.HasSuffix(value, CommonFunctionEnd):
+		hexval, err := hex.DecodeString(value[10 : len(value)-2])
+		if err != nil {
+			return ""
+		}
+		return hexval
+	case strings.HasPrefix(value, ToDSintervalStart) && strings.HasSuffix(value, CommonFunctionEnd):
+		return value[15 : len(value)-2]
+	case strings.HasPrefix(value, ToYMintervalStart) && strings.HasSuffix(value, CommonFunctionEnd):
+		return value[15 : len(value)-2]
+	// mysql no support (inf -inf nan)
+	case value == InfValue:
+		return nil
+	case value == NInfValue:
+		return nil
+	case value == NInfValue:
+		return nil
+	case value == NanValue:
+		return nil
+	}
+
+	return value
 }
 
 // mysql ddl sql build
@@ -197,7 +245,7 @@ func OracleTypeParse(td *oracle_ast.ColumnDef) string {
 			mysqlNumberType = MySQLColTypeDOUBLE
 		} else {
 			p := num.Precision.Number
-			if num.Scale != nil { // p !=nil  s == nil
+			if num.Scale != nil && *num.Scale != 0 { // p !=nil  s == nil
 				mysqlNumberType = fmt.Sprintf("%s(%d,%d)", MySQLColTypeDECIMAL, p, *num.Scale)
 			} else { // p != nil s != nil
 				switch {
@@ -211,8 +259,11 @@ func OracleTypeParse(td *oracle_ast.ColumnDef) string {
 					mysqlNumberType = MySQLColTypeINT
 				case p < 19:
 					mysqlNumberType = MySQLColTypeBIGINT
-				case p <= 38:
+				case p <= 30:
 					mysqlNumberType = fmt.Sprintf("%s(%d)", MySQLColTypeDECIMAL, p)
+				case p <= 38:
+					// MySQL max
+					mysqlNumberType = fmt.Sprintf("%s(%d)", MySQLColTypeDECIMAL, 30)
 				}
 			}
 		}
@@ -227,11 +278,15 @@ func OracleTypeParse(td *oracle_ast.ColumnDef) string {
 	case element.DataDefReal:
 		colDefinition = fmt.Sprintf("%s %s%s", IdentifierToString(td.ColumnName), MySQLColTypeDOUBLE, colDefaultString(td.Default))
 	case element.DataDefRowId:
-		colDefinition = fmt.Sprintf("%s %s(%d)%s", IdentifierToString(td.ColumnName), MySQLColTypeCHAR, 10, colDefaultString(td.Default))
+		colDefinition = fmt.Sprintf("%s %s(%d)%s", IdentifierToString(td.ColumnName), MySQLColTypeCHAR, 100, colDefaultString(td.Default))
 	case element.DataDefSmallInt:
 		colDefinition = fmt.Sprintf("%s %s(%d)%s", IdentifierToString(td.ColumnName), MySQLColTypeDECIMAL, 38, colDefaultString(td.Default))
 	case element.DataDefTimestamp:
 		// todo with time zone
+		fractionalSecondsPrecision := *td.Datatype.(*element.Timestamp).FractionalSecondsPrecision
+		if fractionalSecondsPrecision > 6 {
+			fractionalSecondsPrecision = 6
+		}
 		colDefinition = fmt.Sprintf("%s %s(%d)%s", IdentifierToString(td.ColumnName), MySQLColTypeDATETIME, *td.Datatype.(*element.Timestamp).FractionalSecondsPrecision, colDefaultString(td.Default))
 	case element.DataDefURowId:
 		colDefinition = fmt.Sprintf("%s %s(%d)%s", IdentifierToString(td.ColumnName), MySQLColTypeVARCHAR, *td.Datatype.(*element.URowId).Size, colDefaultString(td.Default))

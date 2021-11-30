@@ -129,11 +129,99 @@ func TestBuildFilterSchemaTable(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			logminer := NewLogMinerStream(nil, hclog.NewNullLogger(), tt.replicateDoDb, tt.replicateIgnoreDB,0, 0, 100000)
+			logminer := NewLogMinerStream(nil, hclog.NewNullLogger(), tt.replicateDoDb, tt.replicateIgnoreDB, 0, 0, 100000)
 			filterSQL := logminer.buildFilterSchemaTable()
 			if filterSQL != tt.want {
 				t.Errorf("parseDDLSQL() = %v, want %v", filterSQL, tt.want)
 			}
+		})
+	}
+}
+func TestParseDMLSQL(t *testing.T) {
+	tests := []struct {
+		name              string
+		sql               string
+		undo_sql          string
+		want_where_values []interface{}
+		want_new_values   []interface{}
+	}{
+		// NUMBER(*)
+		// BFILE  no support
+		// BINARY_FLOAT
+		// INSERT INTO TEST.TEST("COL1","COL2") VALUES (1, 3.40282E+38F);
+		// INSERT INTO TEST.TEST("COL1","COL2") VALUES (2, BINARY_FLOAT_INFINITY);
+		// INSERT INTO TEST.TEST("COL1","COL2") VALUES (3, -BINARY_FLOAT_INFINITY);
+		// INSERT INTO TEST.TEST("COL1","COL2") VALUES (4, BINARY_FLOAT_NAN);
+		{
+			name:              "BINARY_FLOAT",
+			sql:               `INSERT INTO "TEST"."BINARY_FLOAT"("COL1","COL2") VALUES ('0', '1.17549E-38F');`,
+			undo_sql:          ``,
+			want_where_values: []interface{}{},
+			want_new_values:   []interface{}{"0", "1.17549E-38F"},
+		},
+		{
+			name:              "BINARY_FLOAT",
+			sql:               `INSERT INTO TEST.BINARY_FLOAT("COL1","COL2") VALUES ('1', '3.40282E+38F');`,
+			undo_sql:          ``,
+			want_where_values: []interface{}{},
+			want_new_values:   []interface{}{"1", "3.40282E+38F"},
+		},
+		{
+			name:              "BINARY_FLOAT",
+			sql:               `INSERT INTO "TEST"."BINARY_FLOAT"("COL1","COL2") VALUES ('2', 'Inf');`,
+			undo_sql:          ``,
+			want_where_values: []interface{}{},
+			want_new_values:   []interface{}{"2", nil},
+		},
+		{
+			name:              "BINARY_FLOAT",
+			sql:               `INSERT INTO "TEST"."BINARY_FLOAT"("COL1","COL2") VALUES ('3', '-Inf');`,
+			undo_sql:          ``,
+			want_where_values: []interface{}{},
+			want_new_values:   []interface{}{"3", nil},
+		},
+		{
+			name:              "BINARY_FLOAT",
+			sql:               `INSERT INTO "TEST"."BINARY_FLOAT"("COL1","COL2") VALUES ('4', 'Nan');`,
+			undo_sql:          ``,
+			want_where_values: []interface{}{},
+			want_new_values:   []interface{}{"4", nil},
+		},
+	}
+
+	logger := hclog.NewNullLogger()
+	extractor := &ExtractorOracle{logger: logger, replicateDoDb: []*common.DataSource{}}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// ==== load test config start
+			schemaConfig := extractor.findSchemaConfig("TEST")
+			tableConfig := findTableConfig(schemaConfig, tt.name)
+			tableConfig.OriginalTableColumns = &common.ColumnList{
+				Ordinals: map[string]int{},
+			}
+			for i, column := range []string{"COL1", "COL2"} {
+				tableConfig.OriginalTableColumns.Ordinals[column] = i
+			}
+			// ==== load test config end
+
+			dataEvent, err := extractor.parseDMLSQL(tt.sql, tt.undo_sql)
+			if err != nil {
+				t.Error(err)
+				return
+			}
+
+			for i := 0; i < len(dataEvent.WhereColumnValues.AbstractValues); i++ {
+				if dataEvent.DML == common.UpdateDML {
+					if dataEvent.WhereColumnValues.AbstractValues[i] != tt.want_where_values[i] {
+						t.Errorf("parseDMLSQL() where index %v value = %v, want %v", i, dataEvent.WhereColumnValues.AbstractValues, tt.want_where_values)
+					}
+				}
+				if dataEvent.NewColumnValues.AbstractValues[i] != tt.want_new_values[i] {
+					t.Errorf("parseDMLSQL() new index %v value = %v, want %v", i, dataEvent.NewColumnValues.AbstractValues, tt.want_new_values)
+				}
+			}
+
 		})
 	}
 }
@@ -262,7 +350,7 @@ func TestParseDDLSQL(t *testing.T) {
 		{
 			name: "createTableSQLCharRelation",
 			sql:  `CREATE TABLE TEST.NUMBER_4_COLUMNS(ID INT, C_NUMBER NUMBER(4, 0));`,
-			want: "CREATE TABLE TEST.NUMBER_4_COLUMNS (ID INT,C_NUMBER DECIMAL(4,0))"},
+			want: "CREATE TABLE TEST.NUMBER_4_COLUMNS (ID INT,C_NUMBER SMALLINT)"},
 		//CREATE TABLE TEST.NUMBER_8_COLUMNS(ID INT, C_NUMBER NUMBER(8));
 		{
 			name: "createTableSQLCharRelation",
@@ -272,7 +360,7 @@ func TestParseDDLSQL(t *testing.T) {
 		{
 			name: "createTableSQLCharRelation",
 			sql:  `CREATE TABLE TEST.NUMBER_18_COLUMNS(ID INT, C_NUMBER NUMBER(18, 0));`,
-			want: "CREATE TABLE TEST.NUMBER_18_COLUMNS (ID INT,C_NUMBER DECIMAL(18,0))"},
+			want: "CREATE TABLE TEST.NUMBER_18_COLUMNS (ID INT,C_NUMBER BIGINT)"},
 		//CREATE TABLE TEST.NUMBER_38_COLUMNS(ID INT, C_NUMBER NUMBER(38));
 		{
 			name: "createTableSQLCharRelation",
@@ -380,13 +468,13 @@ func TestParseDDLSQL(t *testing.T) {
 					INT_NAME  INT,
 					SMALLINT_NAME SMALLINT
 				 );`,
-			want: "CREATE TABLE TEST.persons (first_num DECIMAL(15,2),SECOND_NUM BIGINT,THREE_NUM DECIMAL(5,0),LAST_NAME DOUBLE,NUMERIC_NAME NUMERIC(15,2),DECIMAL_NAME DECIMAL(15,2),DEC_NAME DEC(15,2),INTEGER_NAME INT,INT_NAME INT,SMALLINT_NAME DECIMAL(38))"},
+			want: "CREATE TABLE TEST.persons (first_num DECIMAL(15,2),SECOND_NUM BIGINT,THREE_NUM INT,LAST_NAME DOUBLE,NUMERIC_NAME NUMERIC(15,2),DECIMAL_NAME DECIMAL(15,2),DEC_NAME DEC(15,2),INTEGER_NAME INT,INT_NAME INT,SMALLINT_NAME DECIMAL(38))"},
 	}
 	logger := hclog.NewNullLogger()
-	extractor := &ExtractorOracle{replicateDoDb: []*common.DataSource{}}
+	extractor := &ExtractorOracle{logger: logger, replicateDoDb: []*common.DataSource{}}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			dataEvent, err := extractor.parseDDLSQL(logger, tt.sql)
+			dataEvent, err := extractor.parseDDLSQL(tt.sql)
 			if err != nil {
 				t.Error(err)
 				return
@@ -427,10 +515,10 @@ func TestParseDDLSQLAlter(t *testing.T) {
 			want: "ALTER TABLE TEST.persons RENAME COLUMN RE_NAME TO RE_NAME_NEW"},
 		// index
 	}
-	extractor := &ExtractorOracle{}
+	extractor := &ExtractorOracle{logger: logger}
 	for _, tt := range testAlter {
 		t.Run(tt.name, func(t *testing.T) {
-			dataEvent, err := extractor.parseDDLSQL(logger, tt.sql)
+			dataEvent, err := extractor.parseDDLSQL(tt.sql)
 			if err != nil {
 				t.Error(err)
 				return
@@ -455,10 +543,10 @@ func TestParseDDLSQLDROP(t *testing.T) {
 			want: "DROP TABLE TEST.persons"},
 		// index
 	}
-	extractor := &ExtractorOracle{}
+	extractor := &ExtractorOracle{logger: logger}
 	for _, tt := range testAlter {
 		t.Run(tt.name, func(t *testing.T) {
-			dataEvent, err := extractor.parseDDLSQL(logger, tt.sql)
+			dataEvent, err := extractor.parseDDLSQL(tt.sql)
 			if err != nil {
 				t.Error(err)
 				return

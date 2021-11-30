@@ -15,7 +15,6 @@ import (
 	"github.com/actiontech/dtle/drivers/mysql/common"
 	"github.com/actiontech/dtle/drivers/mysql/mysql/oracle/config"
 	"github.com/actiontech/dtle/g"
-	"github.com/hashicorp/go-hclog"
 	"github.com/pingcap/parser"
 	_ "github.com/pingcap/tidb/types/parser_driver"
 	"github.com/pkg/errors"
@@ -843,105 +842,104 @@ func (l *LogMinerStream) HandlerRecords(records []*LogMinerRecord) error {
 //}
 
 func (e *ExtractorOracle) parseToDataEvent(row *LogMinerRecord) (common.DataEvent, error) {
-	e.logger.Debug("============= parse To DataEvent===============", "redoSQL", row.SQLRedo)
 	dataEvent := common.DataEvent{}
-
 	// parse ddl and dml
 	if row.Operation == OperationCodeDDL {
-		//dataEvent.Query = "CREATE TABLE IF NOT EXISTS `runoob_tbl`(\n   `runoob_id` INT UNSIGNED AUTO_INCREMENT,\n   `runoob_title` VARCHAR(100) NOT NULL,\n   `runoob_author` VARCHAR(40) NOT NULL,\n   `submission_date` DATE,\n   PRIMARY KEY ( `runoob_id` )\n)ENGINE=InnoDB DEFAULT CHARSET=utf8"
-		e.logger.Debug("============= ddl stmt parse start===============", "redoSQL", row.SQLRedo)
-		//tableStruct := e.OracleContext.schemas[visitor.Schema].Tables[visitor.Table].RelTable.TableStructs
-		// 列排序问题
 		// 字符集问题
-		dataEvent, err := e.parseDDLSQL(e.logger, row.SQLRedo)
+		dataEvent, err := e.parseDDLSQL(row.SQLRedo)
 		if err != nil {
 			return common.DataEvent{}, err
 		}
-		e.logger.Debug("============= ddl stmt parse end =========", "ddl", dataEvent.Query)
 		return dataEvent, nil
 	} else if row.Operation == OperationCodeDelete || row.Operation == OperationCodeUpdate ||
-		row.Operation == OperationCodeInsert { // insert delete update
-		// dml
-		// redoSQL parse
-		// todo 大小写问题
-		row.SQLRedo = ReplaceQuotesString(row.SQLRedo)
-		row.SQLRedo = ReplaceSpecifiedString(row.SQLRedo, ";", "")
-		p := parser.New()
-		stmt, _, err := p.Parse(row.SQLRedo, "", "")
+		row.Operation == OperationCodeInsert {
+		dataEvent, err := e.parseDMLSQL(row.SQLRedo, row.SQLUndo)
+		if err != nil {
+			return common.DataEvent{}, err
+		}
+		return dataEvent, nil
+	}
+	return dataEvent, fmt.Errorf("parese dateEvent fail , operation Code %v", row.Operation)
+}
+func (e *ExtractorOracle) parseDMLSQL(redoSQL, undoSQL string) (dataEvent common.DataEvent, err error) {
+	e.logger.Debug("============= dml stmt parse start===============", "redoSQL", redoSQL, "undoSQL", undoSQL)
+	// dml
+	// redoSQL parse
+	// todo 大小写问题
+	redoSQL = ReplaceQuotesString(redoSQL)
+	redoSQL = ReplaceSpecifiedString(redoSQL, ";", "")
+	p := parser.New()
+	stmt, _, err := p.Parse(redoSQL, "", "")
+	if err != nil {
+		return dataEvent, err
+	}
+	visitor := &Stmt{}
+	if len(stmt) <= 0 {
+		return dataEvent, fmt.Errorf("parse dml err,stmt lens %d", len(stmt))
+	}
+	(stmt[0]).Accept(visitor)
+	dataEvent = common.DataEvent{
+		CurrentSchema: visitor.Schema,
+		DatabaseName:  visitor.Schema,
+		TableName:     visitor.Table,
+		DML:           visitor.Operation,
+	}
+	e.logger.Debug("SchemaTable", "schema", visitor.Schema, "table", visitor.Table)
+	schemaConfig := e.findSchemaConfig(visitor.Schema)
+	tableConfig := findTableConfig(schemaConfig, visitor.Table)
+	ordinals := tableConfig.OriginalTableColumns.Ordinals
+	e.logger.Debug("columns", "columns", ordinals, "visitorBefore", visitor.Before)
+	visitor.WhereColumnValues.AbstractValues = make([]interface{}, len(ordinals))
+	for column, index := range ordinals {
+		data, ok := visitor.Before[column]
+		if !ok {
+			continue
+		}
+		visitor.WhereColumnValues.AbstractValues[index] = data
+	}
+	dataEvent = common.DataEvent{
+		CurrentSchema:     visitor.Schema,
+		DatabaseName:      visitor.Schema,
+		TableName:         visitor.Table,
+		DML:               visitor.Operation,
+		ColumnCount:       uint64(len(visitor.Columns)),
+		WhereColumnValues: visitor.WhereColumnValues,
+		NewColumnValues:   visitor.NewColumnValues,
+		Table:             nil,
+	}
+	if visitor.Operation == common.UpdateDML {
+		undoSQL = ReplaceQuotesString(undoSQL)
+		undoSQL = ReplaceSpecifiedString(undoSQL, ";", "")
+		undoP := parser.New()
+		stmtP, _, err := undoP.Parse(undoSQL, "", "")
 		if err != nil {
 			return dataEvent, err
 		}
-		visitor := &Stmt{}
-		if len(stmt) <= 0 {
-			return dataEvent, fmt.Errorf("parse dml err,stmt lens %d", len(stmt))
+		undoVisitor := &Stmt{}
+		if len(stmtP) <= 0 {
+			return dataEvent, nil
 		}
-		(stmt[0]).Accept(visitor)
-		dataEvent = common.DataEvent{
-			CurrentSchema: visitor.Schema,
-			DatabaseName:  visitor.Schema,
-			TableName:     visitor.Table,
-			DML:           visitor.Operation,
-		}
-		e.logger.Debug("SchemaTable", "schema", visitor.Schema, "table", visitor.Table)
-		schemaConfig := e.findSchemaConfig(visitor.Schema)
-		tableConfig := findTableConfig(schemaConfig, visitor.Table)
-		ordinals := tableConfig.OriginalTableColumns.Ordinals
-		e.logger.Debug("columns", "columns", ordinals, "visitorBefore", visitor.Before)
-		visitor.WhereColumnValues.AbstractValues = make([]interface{}, len(ordinals))
+		(stmtP[0]).Accept(undoVisitor)
+		undoVisitor.WhereColumnValues.AbstractValues = make([]interface{}, len(ordinals))
 		for column, index := range ordinals {
-			data, ok := visitor.Before[column]
+			data, ok := undoVisitor.Before[column]
 			if !ok {
 				continue
 			}
-			data = strings.TrimLeft(strings.TrimRight(data.(string), "'"), "'")
-			visitor.WhereColumnValues.AbstractValues[index] = data
+			undoVisitor.WhereColumnValues.AbstractValues[index] = data
 		}
-		dataEvent = common.DataEvent{
-			CurrentSchema:     visitor.Schema,
-			DatabaseName:      visitor.Schema,
-			TableName:         visitor.Table,
-			DML:               visitor.Operation,
-			ColumnCount:       uint64(len(visitor.Columns)),
-			WhereColumnValues: visitor.WhereColumnValues,
-			NewColumnValues:   visitor.NewColumnValues,
-			Table:             nil,
-		}
-		if visitor.Operation == common.UpdateDML {
-			row.SQLUndo = ReplaceQuotesString(row.SQLUndo)
-			row.SQLUndo = ReplaceSpecifiedString(row.SQLUndo, ";", "")
-			undoP := parser.New()
-			stmtP, _, err := undoP.Parse(row.SQLUndo, "", "")
-			if err != nil {
-				return dataEvent, err
-			}
-			undoVisitor := &Stmt{}
-			if len(stmtP) <= 0 {
-				return dataEvent, nil
-			}
-			(stmtP[0]).Accept(undoVisitor)
-			undoVisitor.WhereColumnValues.AbstractValues = make([]interface{}, len(ordinals))
-			for column, index := range ordinals {
-				data, ok := undoVisitor.Before[column]
-				if !ok {
-					continue
-				}
-				data = strings.TrimLeft(strings.TrimRight(data.(string), "'"), "'")
-				undoVisitor.WhereColumnValues.AbstractValues[index] = data
-			}
-			dataEvent.NewColumnValues = undoVisitor.WhereColumnValues
-			dataEvent.Query = undoVisitor.WhereColumnValues.String()
-		}
-		e.logger.Debug("============= dml stmt parse end =========", "dml", dataEvent)
-		return dataEvent, nil
+		dataEvent.NewColumnValues = undoVisitor.WhereColumnValues
+		dataEvent.Query = undoVisitor.WhereColumnValues.String()
 	}
-
-	return dataEvent, fmt.Errorf("parese dateEvent fail")
+	e.logger.Debug("============= dml stmt parse end =========", "dml", dataEvent)
+	return dataEvent, nil
 }
 
-func (e *ExtractorOracle) parseDDLSQL(logger hclog.Logger, redoSQL string) (dataEvent common.DataEvent, err error) {
+func (e *ExtractorOracle) parseDDLSQL(redoSQL string) (dataEvent common.DataEvent, err error) {
+	e.logger.Debug("============= ddl stmt parse start===============", "redoSQL", redoSQL)
 	stmt, err := oracleParser.Parser(redoSQL)
 	if err != nil {
-		logger.Error("============= ddl parse err===============", "redoSQL", redoSQL)
+		e.logger.Error("============= ddl parse err===============", "redoSQL", redoSQL)
 		return dataEvent, err
 	}
 	switch s := stmt[0].(type) {
@@ -953,11 +951,11 @@ func (e *ExtractorOracle) parseDDLSQL(logger hclog.Logger, redoSQL string) (data
 		ordinals := make(map[string]int, 0)
 		tableConfig.OriginalTableColumns = &common.ColumnList{Ordinals: ordinals}
 		var columns []string
-		logger.Debug("CreateTableStmt", "schema:", s.TableName.Schema.Value, " table", s.TableName.Table.Value)
+		e.logger.Debug("CreateTableStmt", "schema:", s.TableName.Schema.Value, " table", s.TableName.Table.Value)
 		for _, ts := range s.RelTable.TableStructs {
 			switch td := ts.(type) {
 			case *ast.ColumnDef:
-				logger.Debug("caseColumnDef", "column:", td.ColumnName.Value, " type: ", td.Datatype.DataDef())
+				e.logger.Debug("caseColumnDef", "column:", td.ColumnName.Value, " type: ", td.Datatype.DataDef())
 				columns = append(columns, OracleTypeParse(td))
 				ordinals[IdentifierToString(td.ColumnName)] = len(ordinals)
 			case *ast.OutOfLineConstraint:
@@ -965,7 +963,7 @@ func (e *ExtractorOracle) parseDDLSQL(logger hclog.Logger, redoSQL string) (data
 				for _, c := range td.Columns {
 					columns = append(columns, c.Value)
 				}
-				logger.Debug("caseOutOfLineConstraint", "constraint type: ", td.Type, "constraint value :",
+				e.logger.Debug("caseOutOfLineConstraint", "constraint type: ", td.Type, "constraint value :",
 					strings.Join(columns, ","))
 			}
 		}
@@ -1046,6 +1044,7 @@ func (e *ExtractorOracle) parseDDLSQL(logger hclog.Logger, redoSQL string) (data
 			DML:           common.NotDML,
 		}
 	}
+	e.logger.Debug("============= ddl stmt parse end =========", "ddl", dataEvent.Query)
 	return
 }
 
