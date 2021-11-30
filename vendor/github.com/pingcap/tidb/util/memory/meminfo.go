@@ -119,7 +119,10 @@ func MemUsedCGroup() (uint64, error) {
 }
 
 func init() {
-	if inContainer() {
+	// dtle-mod:
+	// file `/sys/fs/cgroup/memory/memory.limit_in_bytes` does not exist
+	// in cgroup v2
+	if false {
 		MemTotal = MemTotalCGroup
 		MemUsed = MemUsedCGroup
 	} else {

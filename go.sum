@@ -126,8 +126,12 @@ github.com/actiontech/dm v0.0.0-20201207121004-64b8d8152b3b h1:hGfD95pt0awl0bjFB
 github.com/actiontech/dm v0.0.0-20201207121004-64b8d8152b3b/go.mod h1:6Asuw82iAuvtRRUZxpl0I20eKcRU8JP0MCb/WywKTlc=
 github.com/actiontech/golang-live-coverage-report v0.0.0-20210902074032-43aa91afdc2c h1:YdIwOxw+7Y9G30zKgzQZM3gwV99Ei4HBjkOFF3O+48g=
 github.com/actiontech/golang-live-coverage-report v0.0.0-20210902074032-43aa91afdc2c/go.mod h1:HrlppUkZZFRbGKdtH3eN2RTzGioB0cf0QMTMg+Bm6Q8=
+github.com/actiontech/tidb v0.0.0-20211130054959-024cfe0a7c9d h1:Z/G1sH8QSjc+MiNefuRFDtfmCmfYuj5sLYviEBVEzGU=
+github.com/actiontech/tidb v0.0.0-20211130054959-024cfe0a7c9d/go.mod h1:Ol8fbcrb8unIuqAYPJCSNi6uWsjcAGo6useI9SXL67E=
 github.com/actiontech/tidb/parser v0.0.0-20211129081607-d4929fbb762f h1:/FIyU1d/FM/nePfkwmytYZURGkwqKBGyR2KhftuZ6WA=
 github.com/actiontech/tidb/parser v0.0.0-20211129081607-d4929fbb762f/go.mod h1:MAa22tagoj7nv5b1NBcxPkc5CiUNhqj1wuSQnw4f9WE=
+github.com/actiontech/tidb/parser v0.0.0-20211130054959-024cfe0a7c9d h1:npwsDeQsAM+9U0GRIPL3XoxvOEslCFXNHgVIctAe3OU=
+github.com/actiontech/tidb/parser v0.0.0-20211130054959-024cfe0a7c9d/go.mod h1:MAa22tagoj7nv5b1NBcxPkc5CiUNhqj1wuSQnw4f9WE=
 github.com/agext/levenshtein v1.2.1/go.mod h1:JEDfjyjHDjOF/1e4FlBE/PkbqA9OfWu2ki2W0IB5558=
 github.com/ajg/form v1.5.1/go.mod h1:uL1WgH+h2mgNtvBq0339dVnzXdBETtL2LeUXaIv25UY=
 github.com/ajstarks/svgo v0.0.0-20180226025133-644b8db467af/go.mod h1:K08gAheRH3/J6wwsYMMT4xOr94bZjxIelGM0+d/wbFw=
