@@ -365,7 +365,7 @@ func TestParseDDLSQL(t *testing.T) {
 		{
 			name: "createTableSQLCharRelation",
 			sql:  `CREATE TABLE TEST.NUMBER_38_COLUMNS(ID INT, C_NUMBER NUMBER(38));`,
-			want: "CREATE TABLE TEST.NUMBER_38_COLUMNS (ID INT,C_NUMBER DECIMAL(38))"},
+			want: "CREATE TABLE TEST.NUMBER_38_COLUMNS (ID INT,C_NUMBER DECIMAL(30))"},
 		//CREATE TABLE TEST.NUMBER_8_2_COLUMNS(ID INT, C_NUMBER NUMBER(8, 2));
 		{
 			name: "createTableSQLCharRelation",
@@ -405,7 +405,7 @@ func TestParseDDLSQL(t *testing.T) {
 		{
 			name: "createTableSQLCharRelation",
 			sql:  `CREATE TABLE TEST.ROWID_COLUMNS(ID INT, C_ROWID ROWID);`,
-			want: "CREATE TABLE TEST.ROWID_COLUMNS (ID INT,C_ROWID CHAR(10))"},
+			want: "CREATE TABLE TEST.ROWID_COLUMNS (ID INT,C_ROWID CHAR(100))"},
 		//CREATE TABLE TEST.SMALLINT_COLUMNS(ID INT, C_SMALLINT SMALLINT);
 		{
 			name: "createTableSQLCharRelation",
