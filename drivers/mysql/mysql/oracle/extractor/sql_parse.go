@@ -284,7 +284,7 @@ func OracleTypeParse(td *oracle_ast.ColumnDef) string {
 		if fractionalSecondsPrecision > 6 {
 			fractionalSecondsPrecision = 6
 		}
-		colDefinition = fmt.Sprintf("%s %s(%d)%s", IdentifierToString(td.ColumnName), MySQLColTypeDATETIME, *td.Datatype.(*element.Timestamp).FractionalSecondsPrecision, colDefaultString(td.Default))
+		colDefinition = fmt.Sprintf("%s %s(%d)%s", IdentifierToString(td.ColumnName), MySQLColTypeDATETIME, fractionalSecondsPrecision, colDefaultString(td.Default))
 	case element.DataDefURowId:
 		colDefinition = fmt.Sprintf("%s %s(%d)%s", IdentifierToString(td.ColumnName), MySQLColTypeVARCHAR, *td.Datatype.(*element.URowId).Size, colDefaultString(td.Default))
 	case element.DataDefVarchar:
