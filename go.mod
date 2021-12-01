@@ -67,9 +67,9 @@ replace github.com/siddontang/go-mysql => github.com/ffffwh/go-mysql v0.0.0-2021
 
 replace github.com/araddon/qlbridge => github.com/ffffwh/qlbridge v0.0.0-20211129135511-6866b8e31c89
 
-replace github.com/pingcap/tidb => github.com/actiontech/tidb v0.0.0-20211130054959-024cfe0a7c9d
+replace github.com/pingcap/tidb => github.com/actiontech/tidb v0.0.0-20211201045102-50ddce98336f
 
-replace github.com/pingcap/tidb/parser => github.com/actiontech/tidb/parser v0.0.0-20211130054959-024cfe0a7c9d
+replace github.com/pingcap/tidb/parser => github.com/actiontech/tidb/parser v0.0.0-20211201045102-50ddce98336f
 
 // from pingcap/tidb go.mod
 replace google.golang.org/grpc => google.golang.org/grpc v1.29.1

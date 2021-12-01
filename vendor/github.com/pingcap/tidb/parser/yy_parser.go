@@ -180,6 +180,7 @@ func (parser *Parser) lastErrorAsWarn() {
 // ParseOneStmt parses a query and returns an ast.StmtNode.
 // The query must have one statement, otherwise ErrSyntax is returned.
 func (parser *Parser) ParseOneStmt(sql, charset, collation string) (ast.StmtNode, error) {
+	//return nil, fmt.Errorf("mod")
 	stmts, _, err := parser.ParseSQL(sql, CharsetConnection(charset), CollationConnection(collation))
 	if err != nil {
 		return nil, errors.Trace(err)

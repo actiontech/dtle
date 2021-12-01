@@ -304,6 +304,7 @@ import (
 	statsColList          "STATS_COL_LIST"
 	autoIdCache           "AUTO_ID_CACHE"
 	autoIncrement         "AUTO_INCREMENT"
+	srid                  "SRID"
 	autoRandom            "AUTO_RANDOM"
 	autoRandomBase        "AUTO_RANDOM_BASE"
 	avg                   "AVG"
@@ -428,6 +429,14 @@ import (
 	isolation             "ISOLATION"
 	issuer                "ISSUER"
 	jsonType              "JSON"
+	geometryType          "GEOMETRY"
+	pointType             "POINT"
+    linestringType        "LINESTRING"
+	polygonType           "POLYGON"
+    multipointType        "MULTIPOINT"
+    multilinestringType   "MULTILINESTRING"
+    multipolygonType      "MULTIPOLYGON"
+    geometrycollectionType "GEOMETRYCOLLECTION"
 	keyBlockSize          "KEY_BLOCK_SIZE"
 	labels                "LABELS"
 	language              "LANGUAGE"
@@ -1272,6 +1281,7 @@ import (
 	FloatingPointType                      "Approximate value types"
 	BitValueType                           "bit value types"
 	StringType                             "String types"
+	SpatialType                            "Spatial types"
 	BlobType                               "Blob types"
 	TextType                               "Text types"
 	DateAndTimeType                        "Date and Time types"
@@ -3197,6 +3207,11 @@ ColumnOption:
 |	"AUTO_RANDOM" OptFieldLen
 	{
 		$$ = &ast.ColumnOption{Tp: ast.ColumnOptionAutoRandom, AutoRandomBitLength: $2.(int)}
+	}
+|	"SRID" NUM
+	{
+		// reuse field `AutoRandomBitLength`
+		$$ = &ast.ColumnOption{Tp: ast.ColumnOptionSrid, AutoRandomBitLength: int($2.(int64))}
 	}
 
 StorageMedia:
@@ -5880,6 +5895,7 @@ UnReservedKeyword:
 |	"STATS_COL_LIST"
 |	"AUTO_ID_CACHE"
 |	"AUTO_INCREMENT"
+|	"SRID"
 |	"AFTER"
 |	"ALWAYS"
 |	"AVG"
@@ -6006,6 +6022,14 @@ UnReservedKeyword:
 |	"DELAY_KEY_WRITE"
 |	"ISOLATION"
 |	"JSON"
+|	"GEOMETRY"
+|	"POINT"
+|	"LINESTRING"
+|	"POLYGON"
+|	"MULTIPOINT"
+|	"MULTILINESTRING"
+|	"MULTIPOLYGON"
+|	"GEOMETRYCOLLECTION"
 |	"REPEATABLE"
 |	"RESPECT"
 |	"COMMITTED"
@@ -11533,6 +11557,23 @@ Type:
 	NumericType
 |	StringType
 |	DateAndTimeType
+|   SpatialType
+
+SpatialType: SpatialTypeSpecific
+	{
+		x := types.NewFieldType(mysql.TypeGeometry)
+		$$ = x
+	}
+
+SpatialTypeSpecific:
+	"GEOMETRY"
+|	"POINT"
+|	"LINESTRING"
+|	"POLYGON"
+|	"MULTIPOINT"
+|	"MULTILINESTRING"
+|	"MULTIPOLYGON"
+|	"GEOMETRYCOLLECTION"
 
 NumericType:
 	IntegerType OptFieldLen FieldOpts

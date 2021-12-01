@@ -360,7 +360,7 @@ github.com/pingcap/kvproto/pkg/raft_serverpb
 github.com/pingcap/kvproto/pkg/replication_modepb
 # github.com/pingcap/log v0.0.0-20210906054005-afc726e70354
 github.com/pingcap/log
-# github.com/pingcap/tidb v0.0.0-00010101000000-000000000000 => github.com/actiontech/tidb v0.0.0-20211130054959-024cfe0a7c9d
+# github.com/pingcap/tidb v0.0.0-00010101000000-000000000000 => github.com/actiontech/tidb v0.0.0-20211201045102-50ddce98336f
 ## explicit
 github.com/pingcap/tidb/config
 github.com/pingcap/tidb/errno
@@ -380,7 +380,7 @@ github.com/pingcap/tidb/util/parser
 github.com/pingcap/tidb/util/resourcegrouptag
 github.com/pingcap/tidb/util/stringutil
 github.com/pingcap/tidb/util/versioninfo
-# github.com/pingcap/tidb/parser v0.0.0-20211011031125-9b13dc409c5e => github.com/actiontech/tidb/parser v0.0.0-20211130054959-024cfe0a7c9d
+# github.com/pingcap/tidb/parser v0.0.0-20211011031125-9b13dc409c5e => github.com/actiontech/tidb/parser v0.0.0-20211201045102-50ddce98336f
 ## explicit
 github.com/pingcap/tidb/parser
 github.com/pingcap/tidb/parser/ast
@@ -747,6 +747,6 @@ gopkg.in/tomb.v1
 gopkg.in/yaml.v2
 # github.com/siddontang/go-mysql => github.com/ffffwh/go-mysql v0.0.0-20210912151044-a63debbbb0a3
 # github.com/araddon/qlbridge => github.com/ffffwh/qlbridge v0.0.0-20211129135511-6866b8e31c89
-# github.com/pingcap/tidb => github.com/actiontech/tidb v0.0.0-20211130054959-024cfe0a7c9d
-# github.com/pingcap/tidb/parser => github.com/actiontech/tidb/parser v0.0.0-20211130054959-024cfe0a7c9d
+# github.com/pingcap/tidb => github.com/actiontech/tidb v0.0.0-20211201045102-50ddce98336f
+# github.com/pingcap/tidb/parser => github.com/actiontech/tidb/parser v0.0.0-20211201045102-50ddce98336f
 # google.golang.org/grpc => google.golang.org/grpc v1.29.1
