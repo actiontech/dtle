@@ -182,7 +182,31 @@ func (e *ExtractorOracle) Run() {
 	e.logger.Info("Connect nats server", "natsAddr", e.natsAddr)
 	e.natsConn = sc
 
-	startSCN, committedSCN,err :=  e.calculateSCNPos()
+	_, err = e.natsConn.Subscribe(fmt.Sprintf("%s_control2", e.subject), func(m *gonats.Msg) {
+		if m.Data == nil {
+			e.onError(common.TaskStateDead, fmt.Errorf("zero-byte control msg"))
+			return
+		}
+
+		ctrlMsg := &common.ControlMsg{}
+		_, err := ctrlMsg.Unmarshal(m.Data)
+		if err != nil {
+			e.onError(common.TaskStateDead, fmt.Errorf("failed to unmarshal a control msg"))
+			return
+		}
+
+		switch ctrlMsg.Type {
+		case common.ControlMsgError:
+			e.onError(common.TaskStateDead, fmt.Errorf("applier error/restart: %v", ctrlMsg.Msg))
+			return
+		}
+	})
+	if err != nil {
+		e.onError(common.TaskStateDead, errors.Wrap(err, "Subscribe control2"))
+		return
+	}
+
+	startSCN, committedSCN, err := e.calculateSCNPos()
 	if err != nil {
 		e.onError(common.TaskStateDead, errors.Wrap(err, "calculateSCNPos"))
 		return
