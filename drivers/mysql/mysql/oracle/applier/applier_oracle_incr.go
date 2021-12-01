@@ -4,6 +4,7 @@ import (
 	"context"
 	gosql "database/sql"
 	"fmt"
+	"os"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -108,6 +109,10 @@ func (a *ApplierOracleIncr) handleEntry(entryCtx *common.BinlogEntryContext) (er
 		return err
 	}
 	if err := a.ApplyBinlogEvent(0, entryCtx); err != nil {
+		if os.Getenv("SkipErr") == "true" {
+			a.logger.Error("skip : apply binlog event err", "err", err, "entryCtx", entryCtx)
+			return nil
+		}
 		return err
 	}
 	return nil
