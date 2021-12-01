@@ -493,22 +493,27 @@ func (b *BinlogReader) handleQueryEvent(ev *replication.BinlogEvent,
 					b.logger.Debug("ddl is alter table.", "specs", realAst.Specs)
 
 					fromTable := table
-					tableNameX := tableName
+					newSchemaName := realSchema
+					newTableName := tableName
 
 					for _, spec := range realAst.Specs {
 						switch spec.Tp {
 						case ast.AlterTableRenameTable:
 							fromTable = nil
-							tableNameX = spec.NewTable.Name.O
+							newSchemaName = g.StringElse(spec.NewTable.Schema.O, currentSchema)
+							newTableName = spec.NewTable.Name.O
 						case ast.AlterTableAddConstraint, ast.AlterTableDropForeignKey:
 							b.removeFKChild(realSchema, fromTable.TableName)
 						default:
 							// do nothing
 						}
 					}
-					_, err := b.updateTableMeta(currentSchema, fromTable, realSchema, tableNameX, gno, query)
-					if err != nil {
-						return err
+
+					if !b.skipQueryDDL(newSchemaName, newTableName) {
+						_, err := b.updateTableMeta(currentSchema, fromTable, newSchemaName, newTableName, gno, query)
+						if err != nil {
+							return err
+						}
 					}
 				case *ast.RenameTableStmt:
 					for _, tt := range realAst.TableToTables {
