@@ -931,7 +931,7 @@ func (e *ExtractorOracle) parseDMLSQL(redoSQL, undoSQL string) (dataEvent common
 		dataEvent.NewColumnValues = undoVisitor.WhereColumnValues
 		dataEvent.Query = undoVisitor.WhereColumnValues.String()
 	}
-	e.logger.Debug("============= dml stmt parse end =========", "dml", dataEvent)
+	e.logger.Debug("============= dml stmt parse end =========")
 	return dataEvent, nil
 }
 

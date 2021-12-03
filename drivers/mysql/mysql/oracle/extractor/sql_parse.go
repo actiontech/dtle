@@ -4,6 +4,8 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/sjjian/oracle-sql-parser/ast/element"
@@ -109,17 +111,20 @@ func beforeData(where ast.ExprNode, before map[string]interface{}) {
 // type OracleFuncName string
 
 const (
-	NullValue               = "NULL"
-	EmptyCLOBFunction       = "EMPTY_CLOB()"
-	EmptyBLOBFunction       = "EMPTY_BLOB()"
-	HEXTORAW_FUNCTION_START = `HEXTORAW('`
-	CommonFunctionEnd       = `')`
-	InfValue                = `Inf`
-	NInfValue               = `-Inf`
-	NanValue                = `Nan`
-	ToDSintervalStart       = "TO_DSINTERVAL('"
-	ToYMintervalStart       = "TO_YMINTERVAL('"
+	NullValue             = "NULL"
+	EmptyCLOBFunction     = "EMPTY_CLOB()"
+	EmptyBLOBFunction     = "EMPTY_BLOB()"
+	FunctionHEXTORAWStart = `HEXTORAW('`
+	CommonFunctionEnd     = `')`
+	InfValue              = `Inf`
+	NInfValue             = `-Inf`
+	NanValue              = `Nan`
+	ToDSintervalStart     = "TO_DSINTERVAL('"
+	ToYMintervalStart     = "TO_YMINTERVAL('"
+	FunctionUNITSTRStart  = "UNISTR('"
 )
+
+var CONCATENATIONPATTERN = "\\|\\|"
 
 func columnsValueConverter(value string) interface{} {
 	value = strings.TrimLeft(strings.TrimRight(value, "'"), "'")
@@ -130,7 +135,7 @@ func columnsValueConverter(value string) interface{} {
 		return ""
 	case value == EmptyBLOBFunction:
 		return ""
-	case strings.HasPrefix(value, HEXTORAW_FUNCTION_START) && strings.HasSuffix(value, CommonFunctionEnd):
+	case strings.HasPrefix(value, FunctionHEXTORAWStart) && strings.HasSuffix(value, CommonFunctionEnd):
 		hexval, err := hex.DecodeString(value[10 : len(value)-2])
 		if err != nil {
 			return ""
@@ -140,6 +145,8 @@ func columnsValueConverter(value string) interface{} {
 		return value[15 : len(value)-2]
 	case strings.HasPrefix(value, ToYMintervalStart) && strings.HasSuffix(value, CommonFunctionEnd):
 		return value[15 : len(value)-2]
+	case isUnistrFunction(value):
+		return UnitstrConvert(value)
 	// mysql no support (inf -inf nan)
 	case value == InfValue:
 		return nil
@@ -152,6 +159,61 @@ func columnsValueConverter(value string) interface{} {
 	}
 
 	return value
+}
+
+func isUnistrFunction(data string) bool {
+	return strings.HasPrefix(data, FunctionUNITSTRStart) && strings.HasSuffix(data, CommonFunctionEnd)
+}
+
+func UnitstrConvert(data string) string {
+	if data == "" {
+		return data
+	}
+	// Multiple UNISTR function calls maybe concatenated together using "||".
+	// We split the values into their respective parts before parsing each one separately.
+	regex, err := regexp.Compile(CONCATENATIONPATTERN)
+	if err != nil {
+		return ""
+	}
+	parts := regex.Split(data, -1)
+	results := make([]string, len(parts))
+	for i := range parts {
+		trimPart := strings.TrimSpace(parts[i])
+		if isUnistrFunction(trimPart) {
+			results = append(results, UnitstrDecode(trimPart[8:len(trimPart)-2]))
+		} else {
+			results = append(results, data)
+		}
+	}
+	return strings.Join(results, "")
+}
+
+func UnitstrDecode(value string) string {
+	strconv.ParseInt(value, 10, 16)
+	results := make([]string, 0)
+	lens := len(value)
+
+	for i := 0; i < lens; {
+		// if c == '\\' {
+		if value[i] == ' ' {
+			results = append(results, string(value[i]))
+			i++
+		} else {
+			if lens >= (i + 4) {
+				// Read next 4 character hex and convert to character.
+				temp, err := strconv.ParseInt(string(value[i:i+4]), 16, 0)
+				if err != nil {
+					return ""
+				}
+
+				results = append(results, fmt.Sprintf("%c", temp))
+				i += 4
+				continue
+			}
+		}
+
+	}
+	return strings.Join(results, "")
 }
 
 // mysql ddl sql build
