@@ -94,7 +94,7 @@ github.com/go-mysql-org/go-mysql/mysql
 github.com/go-mysql-org/go-mysql/packet
 github.com/go-mysql-org/go-mysql/replication
 github.com/go-mysql-org/go-mysql/utils
-# github.com/go-ole/go-ole v1.2.4
+# github.com/go-ole/go-ole v1.2.6
 github.com/go-ole/go-ole
 github.com/go-ole/go-ole/oleutil
 # github.com/go-openapi/jsonpointer v0.19.5
@@ -271,6 +271,8 @@ github.com/labstack/gommon/random
 # github.com/leodido/go-urn v1.2.1
 ## explicit
 github.com/leodido/go-urn
+# github.com/lufia/plan9stats v0.0.0-20211012122336-39d0f177ccd0
+github.com/lufia/plan9stats
 # github.com/lytics/datemath v0.0.0-20180727225141-3ada1c10b5de
 ## explicit
 github.com/lytics/datemath
@@ -406,6 +408,8 @@ github.com/pingcap/tipb/sharedbytes
 # github.com/pkg/errors v0.9.1
 ## explicit
 github.com/pkg/errors
+# github.com/power-devops/perfstat v0.0.0-20210106213030-5aafc221ea8c
+github.com/power-devops/perfstat
 # github.com/prometheus/client_golang v1.5.1
 ## explicit
 github.com/prometheus/client_golang/prometheus
@@ -432,13 +436,9 @@ github.com/ryanuber/go-glob
 ## explicit
 github.com/satori/go.uuid
 # github.com/shirou/gopsutil v3.21.2+incompatible
-## explicit
-github.com/shirou/gopsutil/cpu
 github.com/shirou/gopsutil/internal/common
 github.com/shirou/gopsutil/mem
-github.com/shirou/gopsutil/net
-github.com/shirou/gopsutil/process
-# github.com/shirou/gopsutil/v3 v3.21.6-0.20210619153009-7ea8062810b6
+# github.com/shirou/gopsutil/v3 v3.21.11
 ## explicit
 github.com/shirou/gopsutil/v3/cpu
 github.com/shirou/gopsutil/v3/disk
@@ -472,9 +472,9 @@ github.com/tikv/client-go/v2/util
 github.com/tikv/pd/client
 github.com/tikv/pd/pkg/errs
 github.com/tikv/pd/pkg/grpcutil
-# github.com/tklauser/go-sysconf v0.3.6
+# github.com/tklauser/go-sysconf v0.3.9
 github.com/tklauser/go-sysconf
-# github.com/tklauser/numcpus v0.2.2
+# github.com/tklauser/numcpus v0.3.0
 github.com/tklauser/numcpus
 # github.com/uber/jaeger-client-go v2.22.1+incompatible
 github.com/uber/jaeger-client-go
@@ -510,6 +510,8 @@ github.com/vmihailenco/msgpack/v4/codes
 github.com/vmihailenco/tagparser
 github.com/vmihailenco/tagparser/internal
 github.com/vmihailenco/tagparser/internal/parser
+# github.com/yusufpapurcu/wmi v1.2.2
+github.com/yusufpapurcu/wmi
 # github.com/zclconf/go-cty v1.8.0
 github.com/zclconf/go-cty/cty
 github.com/zclconf/go-cty/cty/convert
@@ -568,7 +570,7 @@ golang.org/x/net/webdav
 golang.org/x/net/webdav/internal/xml
 # golang.org/x/sync v0.0.0-20210220032951-036812b2e83c
 golang.org/x/sync/singleflight
-# golang.org/x/sys v0.0.0-20210831042530-f4d43177bf5e
+# golang.org/x/sys v0.0.0-20211013075003-97ac67df715c
 golang.org/x/sys/cpu
 golang.org/x/sys/execabs
 golang.org/x/sys/internal/unsafeheader

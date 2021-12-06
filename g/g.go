@@ -3,7 +3,7 @@ package g
 
 import (
 	hclog "github.com/hashicorp/go-hclog"
-	"github.com/shirou/gopsutil/mem"
+	"github.com/shirou/gopsutil/v3/mem"
 	"os"
 	"runtime/debug"
 	"strings"

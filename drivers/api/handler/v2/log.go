@@ -16,7 +16,7 @@ import (
 	"github.com/actiontech/dtle/g"
 	hclog "github.com/hashicorp/go-hclog"
 	"github.com/labstack/echo/v4"
-	"github.com/shirou/gopsutil/process"
+	"github.com/shirou/gopsutil/v3/process"
 )
 
 // @Id UpdateLogLevelV2

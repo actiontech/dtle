@@ -50,8 +50,7 @@ require (
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.5.1
 	github.com/satori/go.uuid v1.2.0
-	github.com/shirou/gopsutil v3.21.2+incompatible
-	github.com/shirou/gopsutil/v3 v3.21.6-0.20210619153009-7ea8062810b6
+	github.com/shirou/gopsutil/v3 v3.21.11
 	github.com/siddontang/go v0.0.0-20180604090527-bdc77568d726
 	github.com/swaggo/echo-swagger v1.1.0
 	github.com/swaggo/swag v1.7.0
