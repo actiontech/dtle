@@ -969,7 +969,7 @@ func (e *ExtractorOracle) parseDDLSQL(redoSQL string) (dataEvent common.DataEven
 		}
 
 		dataEvent = common.DataEvent{
-			Query:         fmt.Sprintf(`CREATE TABLE %s.%s (%s)`, schemaName, tableName, strings.Join(columns, ",")),
+			Query:         fmt.Sprintf(`CREATE TABLE %s.%s (%s) DEFAULT CHARACTER SET=utf8;`, schemaName, tableName, strings.Join(columns, ",")),
 			CurrentSchema: schemaName,
 			DatabaseName:  schemaName,
 			TableName:     tableName,
