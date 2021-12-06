@@ -87,6 +87,20 @@ func (o *OracleDB) CurrentRedoLogSequenceFp() (string, error) {
 	return buf.String(), nil
 }
 
+// reset date/timestamp format
+func (o *OracleDB) NLS_DATE_FORMAT() error {
+	SQL_ALTER_DATE_FORMAT := `ALTER SESSION SET NLS_DATE_FORMAT = 'YYYY-MM-DD HH24:MI:SS'`
+	_, err := o.LogMinerConn.QueryContext(context.TODO(), SQL_ALTER_DATE_FORMAT)
+	if err != nil {
+		return err
+	}
+	NLS_TIMESTAMP_FORMAT := "ALTER SESSION SET NLS_TIMESTAMP_FORMAT = 'YYYY-MM-DD HH24:MI:SS.FF6'"
+	_, err = o.LogMinerConn.QueryContext(context.TODO(), NLS_TIMESTAMP_FORMAT)
+	if err != nil {
+		return err
+	}
+	return nil
+}
 func (o *OracleDB) GetTables(schema string) ([]string, error) {
 	query := fmt.Sprintf(`
 SELECT 

@@ -661,6 +661,13 @@ func (l *LogMinerStream) initLogMiner() error {
 		l.logger.Error("currentRedoLogSequenceFp ", "err", err)
 		return err
 	}
+
+	err = l.oracleDB.NLS_DATE_FORMAT()
+	if err != nil {
+		l.logger.Error("alter date format ", "err", err)
+		return err
+	}
+
 	l.currentRedoLogSequenceFP = fp
 	return nil
 }
