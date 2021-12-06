@@ -1,6 +1,55 @@
 # Changelog
 
-## v4.2.1 - 2020-03-08
+## v4.4.0 - 2021-07-12
+
+**Fixes**
+
+* Split HeaderXForwardedFor header only by comma [#1878](https://github.com/labstack/echo/pull/1878)
+* Fix Timeout middleware Context propagation [#1910](https://github.com/labstack/echo/pull/1910)
+ 
+**Enhancements**
+
+* Bind data using headers as source [#1866](https://github.com/labstack/echo/pull/1866)
+* Adds JWTConfig.ParseTokenFunc to JWT middleware to allow different libraries implementing JWT parsing. [#1887](https://github.com/labstack/echo/pull/1887)
+* Adding tests for Echo#Host [#1895](https://github.com/labstack/echo/pull/1895)
+* Adds RequestIDHandler function to RequestID middleware [#1898](https://github.com/labstack/echo/pull/1898)
+* Allow for custom JSON encoding implementations [#1880](https://github.com/labstack/echo/pull/1880)
+
+## v4.3.0 - 2021-05-08
+
+**Important notes**
+
+* Route matching has improvements for following cases:
+  1. Correctly match routes with parameter part as last part of route (with trailing backslash)
+  2. Considering handlers when resolving routes and search for matching http method handler
+* Echo minimal Go version is now 1.13. 
+
+**Fixes**
+
+* When url ends with slash first param route is the match [#1804](https://github.com/labstack/echo/pull/1812)
+* Router should check if node is suitable as matching route by path+method and if not then continue search in tree [#1808](https://github.com/labstack/echo/issues/1808)
+* Fix timeout middleware not writing response correctly when handler panics [#1864](https://github.com/labstack/echo/pull/1864)
+* Fix binder not working with embedded pointer structs [#1861](https://github.com/labstack/echo/pull/1861)
+* Add Go 1.16 to CI and drop 1.12 specific code [#1850](https://github.com/labstack/echo/pull/1850)
+
+**Enhancements**
+
+* Make KeyFunc public in JWT middleware [#1756](https://github.com/labstack/echo/pull/1756)
+* Add support for optional filesystem to the static middleware [#1797](https://github.com/labstack/echo/pull/1797)
+* Add a custom error handler to key-auth middleware [#1847](https://github.com/labstack/echo/pull/1847)
+* Allow JWT token to be looked up from multiple sources [#1845](https://github.com/labstack/echo/pull/1845)
+
+## v4.2.2 - 2021-04-07
+
+**Fixes**
+
+* Allow proxy middleware to use query part in rewrite (#1802)
+* Fix timeout middleware not sending status code when handler returns an error (#1805)
+* Fix Bind() when target is array/slice and path/query params complains bind target not being struct (#1835)
+* Fix panic in redirect middleware on short host name (#1813)
+* Fix timeout middleware docs (#1836)
+
+## v4.2.1 - 2021-03-08
 
 **Important notes**
 
@@ -22,7 +71,7 @@ A performance regression has been fixed, even bringing better performance than b
 This release was made possible by our **contributors**:
 aldas, clwluvw, lammel, Le0tk0k, maciej-jezierski, rkilingr, stffabi, withshubh
 
-## v4.2.0 - 2020-02-11
+## v4.2.0 - 2021-02-11
 
 **Important notes**
 

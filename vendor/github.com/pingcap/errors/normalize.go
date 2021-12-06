@@ -255,6 +255,26 @@ func (e *Error) Wrap(err error) *Error {
 	return nil
 }
 
+// Unwrap returns cause of the error.
+// It allows Error to work with errors.Is() and errors.As() from the Go
+// standard package.
+func (e *Error) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.cause
+}
+
+// Is checks if e has the same error ID with other.
+// It allows Error to work with errors.Is() from the Go standard package.
+func (e *Error) Is(other error) bool {
+	err, ok := other.(*Error)
+	if !ok {
+		return false
+	}
+	return (e == nil && err == nil) || (e != nil && err != nil && e.ID() == err.ID())
+}
+
 func (e *Error) Cause() error {
 	root := Unwrap(e.cause)
 	if root == nil {
