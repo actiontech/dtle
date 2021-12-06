@@ -11,8 +11,9 @@ import (
 )
 
 type SchemaContext struct {
-	TableSchema            string
-	TableSchemaRename      string
+	TableSchema        string
+	TableSchemaRename  string
+	CreateSchemaString string
 
 	TableMap map[string]*TableContext
 }

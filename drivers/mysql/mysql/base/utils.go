@@ -12,12 +12,15 @@ import (
 	"fmt"
 	"github.com/actiontech/dtle/drivers/mysql/common"
 	"github.com/actiontech/dtle/g"
+	parserformat "github.com/pingcap/tidb/parser/format"
+	"github.com/pingcap/tidb/parser/model"
 	"regexp"
 	"strings"
 	"time"
 
 	sqle "github.com/actiontech/dtle/drivers/mysql/mysql/sqle/inspector"
 
+	"github.com/pingcap/tidb/parser"
 	"github.com/pingcap/tidb/parser/ast"
 	parsermysql "github.com/pingcap/tidb/parser/mysql"
 
@@ -97,7 +100,7 @@ func GetTableColumns(db usql.QueryAble, databaseName, tableName string) (*common
 		return nil, err
 	}
 	if len(columns) == 0 {
-		return nil, fmt.Errorf("found 0 columns on %s.%s", databaseName, tableName, )
+		return nil, fmt.Errorf("found 0 columns on %s.%s", databaseName, tableName)
 	}
 
 	return common.NewColumnList(columns), nil
@@ -634,4 +637,48 @@ WHERE COLUMNS.TABLE_SCHEMA = ? AND COLUMNS.TABLE_NAME = ?`
 	}
 	logger.Debug("Potential unique keys.", "schema", databaseName, "table", tableName, "uniqueKeys", uniqueKeys)
 	return uniqueKeys, nil
+}
+
+// rename schema and add `if not exists`
+func RenameCreateSchemaAddINE(createSchema string, newSchema string) (string, error) {
+	stmt0, err := parser.New().ParseOneStmt(createSchema, "", "")
+	if err != nil {
+		return "", err
+	}
+	stmt, ok := stmt0.(*ast.CreateDatabaseStmt)
+	if !ok {
+		return "", fmt.Errorf("not create schema stmt %v", createSchema)
+	}
+	stmt.Name = newSchema
+	stmt.IfNotExists = true
+
+	return ParserRestore(stmt)
+}
+func ParserRestore(stmt ast.Node) (string, error) {
+	buf := bytes.NewBuffer(nil)
+	err := stmt.Restore(parserformat.NewRestoreCtx(parserformat.DefaultRestoreFlags, buf))
+	if err != nil {
+		return "", err
+	}
+	return buf.String(), nil
+}
+func RenameCreateTable(createTable string, newSchema string, newTable string) (string, error) {
+	stmt0, err := parser.New().ParseOneStmt(createTable, "", "")
+	if err != nil {
+		return "", err
+	}
+	stmt, ok := stmt0.(*ast.CreateTableStmt)
+	if !ok {
+		return "", fmt.Errorf("not create table stmt %v", createTable)
+	}
+	stmt.Table.Schema = model.NewCIStr(newSchema)
+	stmt.Table.Name = model.NewCIStr(newTable)
+
+	buf := bytes.NewBuffer(nil)
+	err = stmt.Restore(parserformat.NewRestoreCtx(parserformat.DefaultRestoreFlags, buf))
+	if err != nil {
+		return "", err
+	}
+
+	return buf.String(), nil
 }

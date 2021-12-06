@@ -27,8 +27,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	gonats "github.com/nats-io/go-nats"
 	gomysql "github.com/go-mysql-org/go-mysql/mysql"
+	gonats "github.com/nats-io/go-nats"
 
 	"os"
 	"regexp"
@@ -432,6 +432,10 @@ func (e *Extractor) inspectTables() (err error) {
 			schemaCtx.TableSchemaRename = doDb.TableSchemaRename
 			e.replicateDoDb[doDb.TableSchema] = schemaCtx
 
+			schemaCtx.CreateSchemaString, err = sql.ShowCreateSchema(e.ctx, e.db, doDb.TableSchema)
+			if err != nil {
+				return err
+			}
 			existedTables, err := sql.ShowTables(e.db, doDb.TableSchema, e.mysqlContext.ExpandSyntaxSupport)
 			if err != nil {
 				return err
@@ -518,8 +522,12 @@ func (e *Extractor) inspectTables() (err error) {
 		}
 	} else { // empty DoDB. replicate all db/tb
 		for _, dbName := range dbsFiltered {
-			ds := &common.DataSource{
-				TableSchema: dbName,
+			schemaCtx := common.NewSchemaContext(dbName)
+			e.replicateDoDb[dbName] = schemaCtx
+
+			schemaCtx.CreateSchemaString, err = sql.ShowCreateSchema(e.ctx, e.db, dbName)
+			if err != nil {
+				return err
 			}
 
 			tbs, err := sql.ShowTables(e.db, dbName, e.mysqlContext.ExpandSyntaxSupport)
@@ -536,14 +544,11 @@ func (e *Extractor) inspectTables() (err error) {
 					continue
 				}
 
-				ds.Tables = append(ds.Tables, tb)
+				err = schemaCtx.AddTable(tb)
+				if err != nil {
+					return err
+				}
 			}
-			schemaCtx := common.NewSchemaContext(ds.TableSchema)
-			err = schemaCtx.AddTables(ds.Tables)
-			if err != nil {
-				return err
-			}
-			e.replicateDoDb[ds.TableSchema] = schemaCtx
 		}
 	}
 
@@ -1305,9 +1310,12 @@ func (e *Extractor) mysqlDump() error {
 			var dbSQL string
 			if strings.ToLower(db.TableSchema) != "mysql" {
 				if db.TableSchemaRename != "" {
-					dbSQL = fmt.Sprintf("CREATE DATABASE IF NOT EXISTS %s", mysqlconfig.EscapeName(db.TableSchemaRename))
+					dbSQL, err = base.RenameCreateSchemaAddINE(db.CreateSchemaString, db.TableSchemaRename)
+					if err != nil {
+						e.onError(common.TaskStateRestart, err)
+					}
 				} else {
-					dbSQL = fmt.Sprintf("CREATE DATABASE IF NOT EXISTS %s", mysqlconfig.EscapeName(db.TableSchema))
+					dbSQL = db.CreateSchemaString
 				}
 
 			}
@@ -1337,18 +1345,22 @@ func (e *Extractor) mysqlDump() error {
 						return err
 					}*/
 				} else if strings.ToLower(tb.TableSchema) != "mysql" {
-					targetSchemaEscaped := mysqlconfig.EscapeName(g.StringElse(db.TableSchemaRename, tb.TableSchema))
-					targetTableEscaped  := mysqlconfig.EscapeName(g.StringElse(tb.TableRename, tb.TableName))
-					tbSQL = append(tbSQL, fmt.Sprintf("USE %s", targetSchemaEscaped))
-					if e.mysqlContext.DropTableIfExists {
-						tbSQL = append(tbSQL, fmt.Sprintf("DROP TABLE IF EXISTS %s", targetTableEscaped))
-					}
 					ctStmt, err := base.ShowCreateTable(e.singletonDB, tb.TableSchema, tb.TableName)
 					if err != nil {
 						return err
 					}
-					// TODO do not use string replace
-					ctStmt = strings.Replace(ctStmt, mysqlconfig.EscapeName(tb.TableName), targetTableEscaped, 1)
+					targetSchema := g.StringElse(db.TableSchemaRename, tb.TableSchema)
+					targetTable := g.StringElse(tb.TableRename, tb.TableName)
+
+					ctStmt, err = base.RenameCreateTable(ctStmt, targetSchema, targetTable)
+					if err != nil {
+						return err
+					}
+
+					if e.mysqlContext.DropTableIfExists {
+						tbSQL = append(tbSQL, fmt.Sprintf("DROP TABLE IF EXISTS %s.%s",
+							mysqlconfig.EscapeName(targetSchema), mysqlconfig.EscapeName(targetTable)))
+					}
 					tbSQL = append(tbSQL, ctStmt)
 				}
 				entry := &common.DumpEntry{

@@ -18,15 +18,7 @@ func main() {
 	log.Println("hello")
 
 	p := tparser.New()
-	sql := `CREATE TABLE t7 (
-id int(11) DEFAULT NULL,
-name varchar(35) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=latin1
-/*!50100 PARTITION BY LIST (id)
-(PARTITION r0 VALUES IN (1,5,9,13,17,21) ENGINE = InnoDB,
- PARTITION r1 VALUES IN (2,6,10,14,18,22) ENGINE = InnoDB,
- PARTITION r2 VALUES IN (3,7,11,15,19,23) ENGINE = InnoDB,
- PARTITION r3 VALUES IN (4,8,12,16,20,24) ENGINE = InnoDB) */`
+	sql := "CREATE DATABASE `db1` /*!40100 DEFAULT CHARACTER SET utf8 */"
 	ast, err := p.ParseOneStmt(sql, "", "")
 
 	u.PanicIfErr(err)
@@ -55,6 +47,10 @@ name varchar(35) DEFAULT NULL
 		}
 	case *tast.GrantStmt:
 		println("is grant")
+	case *tast.CreateDatabaseStmt:
+		for _, opt := range v.Options {
+			println(opt.Tp)
+		}
 	default:
 		println("unknown ast")
 	}

@@ -319,6 +319,18 @@ func ShowDatabases(db *gosql.DB) ([]string, error) {
 	return dbs, rows.Err()
 }
 
+func ShowCreateSchema(ctx context.Context, db *gosql.DB, dbName string) (r string, err error) {
+	query := fmt.Sprintf("SHOW CREATE SCHEMA %s", mysqlconfig.EscapeName(dbName))
+	row := db.QueryRowContext(ctx, query)
+	var dummy interface{}
+	// | Database | Create Database |
+	err = row.Scan(&dummy, &r)
+	if err != nil {
+		return "", err
+	}
+	return r, nil
+}
+
 func ShowTables(db *gosql.DB, dbName string, showType bool) (tables []*common.Table, err error) {
 	// Get table list
 	var query string
