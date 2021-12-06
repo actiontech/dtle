@@ -8,7 +8,7 @@ import (
 	"github.com/actiontech/dtle/drivers/mysql/mysql/sql"
 	"github.com/actiontech/dtle/g"
 	"github.com/satori/go.uuid"
-	mysql "github.com/siddontang/go-mysql/mysql"
+	mysql "github.com/go-mysql-org/go-mysql/mysql"
 	"strconv"
 	"strings"
 )

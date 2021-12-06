@@ -7,7 +7,7 @@ import (
 	"fmt"
 	//. "github.com/actiontech/dtle/helper/u"
 	//"github.com/actiontech/dtle/internal/client/driver/mysql/base"
-	gomysql "github.com/siddontang/go-mysql/mysql"
+	gomysql "github.com/go-mysql-org/go-mysql/mysql"
 )
 
 const (

@@ -18,7 +18,7 @@ import (
 	"github.com/actiontech/dtle/drivers/mysql/common"
 
 	test "github.com/outbrain/golib/tests"
-	gomysql "github.com/siddontang/go-mysql/mysql"
+	gomysql "github.com/go-mysql-org/go-mysql/mysql"
 )
 
 func TestStringContainsAll(t *testing.T) {

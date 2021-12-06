@@ -19,6 +19,7 @@ require (
 	github.com/dgrijalva/jwt-go v3.2.0+incompatible
 	github.com/docker/go-units v0.4.0 // indirect
 	github.com/docker/libkv v0.2.1
+	github.com/go-mysql-org/go-mysql v1.1.3-0.20210705101833-83965e516929
 	github.com/go-playground/universal-translator v0.17.0 // indirect
 	github.com/go-playground/validator v9.31.0+incompatible
 	github.com/go-sql-driver/mysql v1.6.0
@@ -52,7 +53,6 @@ require (
 	github.com/shirou/gopsutil v3.21.2+incompatible
 	github.com/shirou/gopsutil/v3 v3.21.6-0.20210619153009-7ea8062810b6
 	github.com/siddontang/go v0.0.0-20180604090527-bdc77568d726
-	github.com/siddontang/go-mysql v0.0.0-20200311002057-7a62847fcdb5
 	github.com/swaggo/echo-swagger v1.1.0
 	github.com/swaggo/swag v1.7.0
 	github.com/ugorji/go v1.1.7 // indirect
@@ -61,7 +61,7 @@ require (
 	golang.org/x/text v0.3.7
 )
 
-replace github.com/siddontang/go-mysql => github.com/ffffwh/go-mysql v0.0.0-20210912151044-a63debbbb0a3
+replace github.com/go-mysql-org/go-mysql => github.com/ffffwh/go-mysql v0.0.0-20211206100736-edbdc58f729a
 
 //replace github.com/Sirupsen/logrus => github.com/sirupsen/logrus v1.4.2
 

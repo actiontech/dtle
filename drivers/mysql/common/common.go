@@ -10,7 +10,7 @@ import (
 
 	"github.com/actiontech/dtle/g"
 	uuid "github.com/satori/go.uuid"
-	"github.com/siddontang/go-mysql/mysql"
+	"github.com/go-mysql-org/go-mysql/mysql"
 )
 
 const (

@@ -87,6 +87,13 @@ github.com/eapache/go-xerial-snappy
 github.com/eapache/queue
 # github.com/fatih/color v1.10.0
 github.com/fatih/color
+# github.com/go-mysql-org/go-mysql v1.1.3-0.20210705101833-83965e516929 => github.com/ffffwh/go-mysql v0.0.0-20211206100736-edbdc58f729a
+## explicit
+github.com/go-mysql-org/go-mysql/client
+github.com/go-mysql-org/go-mysql/mysql
+github.com/go-mysql-org/go-mysql/packet
+github.com/go-mysql-org/go-mysql/replication
+github.com/go-mysql-org/go-mysql/utils
 # github.com/go-ole/go-ole v1.2.4
 github.com/go-ole/go-ole
 github.com/go-ole/go-ole/oleutil
@@ -446,13 +453,6 @@ github.com/siddontang/go/hack
 # github.com/siddontang/go-log v0.0.0-20180807004314-8d05993dda07
 github.com/siddontang/go-log/log
 github.com/siddontang/go-log/loggers
-# github.com/siddontang/go-mysql v0.0.0-20200311002057-7a62847fcdb5 => github.com/ffffwh/go-mysql v0.0.0-20210912151044-a63debbbb0a3
-## explicit
-github.com/siddontang/go-mysql/client
-github.com/siddontang/go-mysql/mysql
-github.com/siddontang/go-mysql/packet
-github.com/siddontang/go-mysql/replication
-github.com/siddontang/go-mysql/utils
 # github.com/sirupsen/logrus v1.8.1
 github.com/sirupsen/logrus
 # github.com/swaggo/echo-swagger v1.1.0
@@ -745,7 +745,7 @@ gopkg.in/natefinch/lumberjack.v2
 gopkg.in/tomb.v1
 # gopkg.in/yaml.v2 v2.4.0
 gopkg.in/yaml.v2
-# github.com/siddontang/go-mysql => github.com/ffffwh/go-mysql v0.0.0-20210912151044-a63debbbb0a3
+# github.com/go-mysql-org/go-mysql => github.com/ffffwh/go-mysql v0.0.0-20211206100736-edbdc58f729a
 # github.com/araddon/qlbridge => github.com/ffffwh/qlbridge v0.0.0-20211129135511-6866b8e31c89
 # github.com/pingcap/tidb => github.com/actiontech/tidb v0.0.0-20211201045102-50ddce98336f
 # github.com/pingcap/tidb/parser => github.com/actiontech/tidb/parser v0.0.0-20211201045102-50ddce98336f

@@ -4,7 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"github.com/satori/go.uuid"
-	"github.com/siddontang/go-mysql/replication"
+	"github.com/go-mysql-org/go-mysql/replication"
 )
 
 // Do not call this frequently. Cache your result.

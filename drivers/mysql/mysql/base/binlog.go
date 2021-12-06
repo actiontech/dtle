@@ -8,8 +8,8 @@ package base
 
 import (
 	uuid "github.com/satori/go.uuid"
-	gomysql "github.com/siddontang/go-mysql/mysql"
-	"github.com/siddontang/go-mysql/replication"
+	gomysql "github.com/go-mysql-org/go-mysql/mysql"
+	"github.com/go-mysql-org/go-mysql/replication"
 )
 
 type BinlogEvent struct {

@@ -27,7 +27,7 @@ import (
 	"time"
 
 	gonats "github.com/nats-io/go-nats"
-	gomysql "github.com/siddontang/go-mysql/mysql"
+	gomysql "github.com/go-mysql-org/go-mysql/mysql"
 
 	"os"
 	"regexp"

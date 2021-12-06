@@ -23,7 +23,7 @@ import (
 	"github.com/actiontech/dtle/g"
 	"github.com/hashicorp/nomad/plugins/drivers"
 	"github.com/pkg/errors"
-	gomysql "github.com/siddontang/go-mysql/mysql"
+	gomysql "github.com/go-mysql-org/go-mysql/mysql"
 
 	"github.com/actiontech/dtle/drivers/mysql/mysql/mysqlconfig"
 	gonats "github.com/nats-io/go-nats"
