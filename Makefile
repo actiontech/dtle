@@ -7,7 +7,7 @@ DOCKER_IMAGE  := docker-registry:5000/actiontech/universe-compiler-udup:v5
 
 
 PROJECT_NAME  ?= dtle
-VERSION       = 9.9.9.9
+VERSION       = 3.21.11.0
 
 ifdef GOBIN
 PATH := $(GOBIN):$(PATH)
