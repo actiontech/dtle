@@ -127,7 +127,7 @@ const (
 var CONCATENATIONPATTERN = "\\|\\|"
 
 func columnsValueConverter(value string) interface{} {
-	value = value[1 : len(value)-1]
+	value = strings.TrimLeft(strings.TrimRight(value, "'"), "'")
 	switch {
 	case value == NullValue:
 		return nil
