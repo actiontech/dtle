@@ -17,6 +17,12 @@ type UserLoginResV2 struct {
 	Token string `json:"token" example:"this is a jwt token string"`
 }
 
+type LoginWithoutVerifyCodeReqV2 struct {
+	Tenant   string `json:"tenant" form:"tenant" example:"test" validate:"required"`
+	Username string `json:"username" form:"username" example:"test" validate:"required"`
+	Password string `json:"password" form:"password" example:"123456" validate:"required"`
+}
+
 //VerifyCodeReqV2 json request body.
 type VerifyCodeReqV2 struct {
 	CaptchaType string `form:"captcha_type"`
