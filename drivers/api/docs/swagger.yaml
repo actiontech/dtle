@@ -488,6 +488,22 @@ definitions:
           $ref: '#/definitions/models.SchemaItem'
         type: array
     type: object
+  models.LoginWithoutVerifyCodeReqV2:
+    properties:
+      password:
+        example: "123456"
+        type: string
+      tenant:
+        example: test
+        type: string
+      username:
+        example: test
+        type: string
+    required:
+    - password
+    - tenant
+    - username
+    type: object
   models.MenuItem:
     properties:
       admin_only:
@@ -976,8 +992,7 @@ definitions:
   models.ValidateJobRespV2:
     properties:
       driver_config_validated:
-        description: DriverConfigValidated indicates whether the agent validated the
-          driver
+        description: DriverConfigValidated indicates whether the agent validated the driver
         type: boolean
       job_validation_error:
         type: string
@@ -1706,6 +1721,25 @@ paths:
       summary: create base64Captcha
       tags:
       - user
+  /v2/loginWithoutVerifyCode:
+    post:
+      description: user login Without Verify Code
+      operationId: LoginWithoutVerifyCodeV2
+      parameters:
+      - description: user login request
+        in: body
+        name: user
+        required: true
+        schema:
+          $ref: '#/definitions/models.LoginWithoutVerifyCodeReqV2'
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.GetUserLoginResV2'
+      summary: user LoginWithoutVerifyCodeV2
+      tags:
+      - user
   /v2/monitor/task:
     get:
       description: get progress of tasks within an allocation.
@@ -1721,8 +1755,7 @@ paths:
         name: task_name
         required: true
         type: string
-      - description: nomad_http_address is the http address of the nomad that the
-          target dtle is running with. ignore it if you are not sure what to provide
+      - description: nomad_http_address is the http address of the nomad that the target dtle is running with. ignore it if you are not sure what to provide
         in: query
         name: nomad_http_address
         type: string

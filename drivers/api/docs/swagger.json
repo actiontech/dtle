@@ -1142,6 +1142,35 @@
                 }
             }
         },
+        "/v2/loginWithoutVerifyCode": {
+            "post": {
+                "description": "user login Without Verify Code",
+                "tags": [
+                    "user"
+                ],
+                "summary": "user LoginWithoutVerifyCodeV2",
+                "operationId": "LoginWithoutVerifyCodeV2",
+                "parameters": [
+                    {
+                        "description": "user login request",
+                        "name": "user",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.LoginWithoutVerifyCodeReqV2"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.GetUserLoginResV2"
+                        }
+                    }
+                }
+            }
+        },
         "/v2/monitor/task": {
             "get": {
                 "security": [
@@ -2577,6 +2606,28 @@
                     "items": {
                         "$ref": "#/definitions/models.SchemaItem"
                     }
+                }
+            }
+        },
+        "models.LoginWithoutVerifyCodeReqV2": {
+            "type": "object",
+            "required": [
+                "password",
+                "tenant",
+                "username"
+            ],
+            "properties": {
+                "password": {
+                    "type": "string",
+                    "example": "123456"
+                },
+                "tenant": {
+                    "type": "string",
+                    "example": "test"
+                },
+                "username": {
+                    "type": "string",
+                    "example": "test"
                 }
             }
         },
