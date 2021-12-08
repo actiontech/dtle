@@ -8,6 +8,7 @@ package kafka
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/json"
@@ -43,6 +44,7 @@ type KafkaRunner struct {
 	natsConn    *gonats.Conn
 	waitCh      chan *drivers.ExitResult
 
+	ctx        context.Context
 	shutdown   bool
 	shutdownCh chan struct{}
 
@@ -88,8 +90,7 @@ func (kr *KafkaRunner) Finish1() error {
 	return nil
 }
 
-func NewKafkaRunner(execCtx *common.ExecContext, cfg *common.KafkaConfig, logger g.LoggerType,
-	storeManager *common.StoreManager, natsAddr string, waitCh chan *drivers.ExitResult) (kr *KafkaRunner, err error) {
+func NewKafkaRunner(execCtx *common.ExecContext, cfg *common.KafkaConfig, logger g.LoggerType, storeManager *common.StoreManager, natsAddr string, waitCh chan *drivers.ExitResult, ctx context.Context) (kr *KafkaRunner, err error) {
 
 	loc := time.UTC
 	if cfg.TimeZone != "" {
@@ -100,6 +101,7 @@ func NewKafkaRunner(execCtx *common.ExecContext, cfg *common.KafkaConfig, logger
 	}
 
 	kr = &KafkaRunner{
+		ctx:          ctx,
 		subject:      execCtx.Subject,
 		kafkaConfig:  cfg,
 		logger:       logger.Named("kafka").With("job", execCtx.Subject),

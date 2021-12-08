@@ -7,6 +7,7 @@
 package mysql
 
 import (
+	"context"
 	gosql "database/sql"
 	"encoding/binary"
 	"fmt"
@@ -84,6 +85,7 @@ type Extractor struct {
 	shutdown     bool
 	shutdownCh   chan struct{}
 	shutdownLock sync.Mutex
+	ctx          context.Context
 
 	testStub1Delay int64
 
@@ -107,10 +109,11 @@ type Extractor struct {
 	targetGtid      string
 }
 
-func NewExtractor(execCtx *common.ExecContext, cfg *common.MySQLDriverConfig, logger g.LoggerType, storeManager *common.StoreManager, waitCh chan *drivers.ExitResult) (*Extractor, error) {
+func NewExtractor(execCtx *common.ExecContext, cfg *common.MySQLDriverConfig, logger g.LoggerType, storeManager *common.StoreManager, waitCh chan *drivers.ExitResult, ctx context.Context) (*Extractor, error) {
 	logger.Info("NewExtractor", "job", execCtx.Subject)
 
 	e := &Extractor{
+		ctx:             ctx,
 		logger:          logger.Named("extractor").With("job", execCtx.Subject),
 		execCtx:         execCtx,
 		subject:         execCtx.Subject,
@@ -783,7 +786,7 @@ func (e *Extractor) getSchemaTablesAndMeta() error {
 func (e *Extractor) initBinlogReader(binlogCoordinates *common.BinlogCoordinatesX) {
 	binlogReader, err := binlog.NewBinlogReader(e.execCtx, e.mysqlContext, e.logger.ResetNamed("reader"),
 		e.replicateDoDb, e.sqleContext, e.memory2, e.db, e.targetGtid, e.lowerCaseTableNames,
-		e.NetWriteTimeout)
+		e.NetWriteTimeout, e.ctx)
 	if err != nil {
 		e.logger.Error("err at initBinlogReader: NewBinlogReader", "err", err)
 		e.streamerReadyCh <- err

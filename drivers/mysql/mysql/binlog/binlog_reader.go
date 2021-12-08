@@ -82,6 +82,7 @@ type BinlogReader struct {
 	entryContext  *common.BinlogEntryContext
 	ReMap         map[string]*regexp.Regexp // This is a cache for regexp.
 
+	ctx          context.Context
 	shutdown     bool
 	shutdownCh   chan struct{}
 	shutdownLock sync.Mutex
@@ -165,7 +166,11 @@ func parseSqlFilter(strs []string) (*SqlFilter, error) {
 	return s, nil
 }
 
-func NewBinlogReader(execCtx *common.ExecContext, cfg *common.MySQLDriverConfig, logger g.LoggerType, replicateDoDb map[string]*common.SchemaContext, sqleContext *sqle.Context, memory *int64, db *gosql.DB, targetGtid string, lctn mysqlconfig.LowerCaseTableNamesValue, nwTimeout int) (binlogReader *BinlogReader, err error) {
+func NewBinlogReader(
+	execCtx *common.ExecContext, cfg *common.MySQLDriverConfig, logger g.LoggerType,
+	replicateDoDb map[string]*common.SchemaContext, sqleContext *sqle.Context,
+	memory *int64, db *gosql.DB, targetGtid string, lctn mysqlconfig.LowerCaseTableNamesValue,
+	nwTimeout int, ctx context.Context) (binlogReader *BinlogReader, err error) {
 
 	sqlFilter, err := parseSqlFilter(cfg.SqlFilter)
 	if err != nil {
@@ -173,6 +178,7 @@ func NewBinlogReader(execCtx *common.ExecContext, cfg *common.MySQLDriverConfig,
 	}
 
 	binlogReader = &BinlogReader{
+		ctx:                  ctx,
 		execCtx:              execCtx,
 		logger:               logger,
 		currentCoord:         common.BinlogCoordinatesX{},

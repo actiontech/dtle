@@ -101,11 +101,12 @@ func (a *Applier) Finish1() error {
 
 func NewApplier(
 	execCtx *common.ExecContext, cfg *common.MySQLDriverConfig, logger g.LoggerType,
-	storeManager *common.StoreManager, natsAddr string, waitCh chan *drivers.ExitResult, event *eventer.Eventer, taskConfig *drivers.TaskConfig) (a *Applier, err error) {
+	storeManager *common.StoreManager, natsAddr string, waitCh chan *drivers.ExitResult, event *eventer.Eventer, taskConfig *drivers.TaskConfig, ctx context.Context) (a *Applier, err error) {
 
 	logger.Info("NewApplier", "job", execCtx.Subject)
 
 	a = &Applier{
+		ctx:             ctx,
 		logger:          logger.Named("applier").With("job", execCtx.Subject),
 		subject:         execCtx.Subject,
 		mysqlContext:    cfg,
