@@ -23,9 +23,6 @@ import (
 
 	"github.com/cznic/mathutil"
 
-	"github.com/pingcap/dm/pkg/gtid"
-	"github.com/pingcap/dm/pkg/streamer"
-
 	"fmt"
 	"github.com/actiontech/dtle/g"
 	"regexp"
@@ -42,9 +39,14 @@ import (
 	sqle "github.com/actiontech/dtle/drivers/mysql/mysql/sqle/inspector"
 	"github.com/actiontech/dtle/drivers/mysql/mysql/util"
 	hclog "github.com/hashicorp/go-hclog"
+
 	dmrelay "github.com/pingcap/dm/relay"
 	dmconfig "github.com/pingcap/dm/dm/config"
 	dmlog "github.com/pingcap/dm/pkg/log"
+	dmpb "github.com/pingcap/dm/dm/pb"
+	dmretry "github.com/pingcap/dm/relay/retry"
+	dmstreamer "github.com/pingcap/dm/pkg/streamer"
+
 	uuid "github.com/satori/go.uuid"
 	gomysql "github.com/go-mysql-org/go-mysql/mysql"
 	"github.com/go-mysql-org/go-mysql/replication"
@@ -68,9 +70,9 @@ type BinlogReader struct {
 	binlogSyncer    *replication.BinlogSyncer
 	binlogStreamer0 *replication.BinlogStreamer // for the functions added by us.
 	// for relay & streaming
-	binlogStreamer streamer.Streamer
+	binlogStreamer dmstreamer.Streamer
 	// for relay
-	binlogReader      *streamer.BinlogReader
+	binlogReader      *dmstreamer.BinlogReader
 	currentCoord      common.BinlogCoordinatesX
 	currentCoordMutex *sync.Mutex
 	// raw config, whose ReplicateDoDB is same as config file (empty-is-all & no dynamically created tables)
@@ -269,8 +271,6 @@ func (b *BinlogReader) ConnectBinlogStreamer(coordinates common.BinlogCoordinate
 		"file", coordinates.LogFile, "pos", coordinates.LogPos, "gtid", coordinates.GtidSet)
 
 	if b.mysqlContext.BinlogRelay {
-		startPos := gomysql.Position{Pos: uint32(coordinates.LogPos), Name: coordinates.LogFile}
-
 		dbConfig := dmconfig.DBConfig{
 			Host:     b.mysqlContext.ConnectionConfig.Host,
 			Port:     b.mysqlContext.ConnectionConfig.Port,
@@ -278,42 +278,40 @@ func (b *BinlogReader) ConnectBinlogStreamer(coordinates common.BinlogCoordinate
 			Password: b.mysqlContext.ConnectionConfig.Password,
 		}
 
-		// Default to replay position. Change to local relay position if the relay log exists.
-		var relayGtid string = coordinates.GtidSet
-
 		relayConfig := &dmrelay.Config{
-			ServerID:   uint32(b.serverId),
-			Flavor:     "mysql",
-			From:       dbConfig,
-			RelayDir:   b.getBinlogDir(),
-			BinLogName: "",
-			EnableGTID: true,
-			BinlogGTID: relayGtid,
+			EnableGTID:  true,
+			RelayDir:    b.getBinlogDir(),
+			ServerID:    uint32(b.serverId),
+			Flavor:      "mysql",
+			From:        dbConfig,
+			BinLogName:  "",
+			BinlogGTID: coordinates.GtidSet,
+			ReaderRetry: dmretry.ReaderRetryConfig{
+				// value from dm/relay/relay_test.go
+				BackoffRollback: 200 * time.Millisecond,
+				BackoffMax:      1 * time.Second,
+				BackoffMin:      1 * time.Millisecond,
+				BackoffJitter:   true,
+				BackoffFactor:   2,
+			},
 		}
 		b.relay = dmrelay.NewRelay(relayConfig)
-		err = b.relay.Init(context.TODO())
+		err = b.relay.Init(b.ctx)
 		if err != nil {
 			return err
 		}
-
-		meta := b.relay.GetMeta()
-
-		{ // Update relayGtid if metaGtid is not empty, aka if there is local relaylog.
-			_, metaGtid := meta.GTID()
-			metaGtidStr := metaGtid.String()
-			if metaGtidStr != "" {
-				relayGtid = metaGtidStr
-			}
-		}
-
-		changed, err := meta.AdjustWithStartPos(coordinates.LogFile, relayGtid, true, "", "")
-		if err != nil {
-			return err
-		}
-		b.logger.Debug("AdjustWithStartPos.after", "changed", changed)
 
 		var ctx context.Context
-		ctx, b.relayCancelF = context.WithCancel(context.Background())
+		ctx, b.relayCancelF = context.WithCancel(b.ctx)
+
+		{
+			loc, _ := time.LoadLocation("Local") // TODO
+			brConfig := &dmstreamer.BinlogReaderConfig{
+				RelayDir: b.getBinlogDir(),
+				Timezone: loc,
+			}
+			b.binlogReader = dmstreamer.NewBinlogReader(dmlog.L(), brConfig)
+		}
 
 		go func() {
 			pr := b.relay.Process(ctx)
@@ -326,49 +324,44 @@ func (b *BinlogReader) ConnectBinlogStreamer(coordinates common.BinlogCoordinate
 			b.relay.Close()
 		}()
 
-		loc, err := time.LoadLocation("Local") // TODO
-
-		brConfig := &streamer.BinlogReaderConfig{
-			RelayDir: b.getBinlogDir(),
-			Timezone: loc,
-		}
-		b.binlogReader = streamer.NewBinlogReader(dmlog.L(), brConfig)
-
-		targetGtid, err := gtid.ParserGTID("mysql", coordinates.GtidSet)
+		targetGtid, err := gomysql.ParseMysqlGTIDSet(coordinates.GtidSet)
 		if err != nil {
 			return err
 		}
 
-		chWait := make(chan struct{})
-		go func() {
-			for {
-				if b.shutdown {
-					break
-				}
-				if b.relay.IsClosed() {
-					b.logger.Info("Relay: closed. stop waiting")
-					break
-				}
-				_, p := meta.Pos()
-				_, gs := meta.GTID()
-
-				if targetGtid.Contain(gs) {
-					b.logger.Debug("Relay: keep waiting.", "pos", p, "gs", gs)
-				} else {
-					b.logger.Debug("Relay: stop waiting.", "pos", p, "gs", gs)
-					break
-				}
-
-				time.Sleep(1 * time.Second)
+		for {
+			if b.shutdown {
+				break
 			}
-			close(chWait)
-		}()
+			if b.relay.IsClosed() {
+				b.logger.Info("Relay: closed. stop waiting")
+				break
+			}
+			s := b.relay.Status(nil).(*dmpb.RelayStatus)
+			gsStr := s.GetRelayBinlogGtid()
+			p := s.GetRelayBinlog()
 
-		<-chWait
+			gs, err := gomysql.ParseMysqlGTIDSet(gsStr)
+			if err != nil {
+				b.logger.Error("waiting relay. err at ParseMysqlGTIDSet", "err", err)
+				b.relay.Close()
+				break
+			}
+
+			if gs.Contain(targetGtid) {
+				b.logger.Debug("Relay: stop waiting.", "pos", p, "gs", gsStr)
+				break
+			} else {
+				b.logger.Debug("Relay: keep waiting.", "pos", p, "gs", gsStr)
+			}
+
+			time.Sleep(1 * time.Second)
+		}
+
 		if b.relay.IsClosed() {
 			return fmt.Errorf("relay has been closed")
 		}
-		b.binlogStreamer, err = b.binlogReader.StartSyncByPos(startPos)
+		b.binlogStreamer, err = b.binlogReader.StartSyncByGTID(targetGtid)
 		if err != nil {
 			b.logger.Debug("err at StartSync", "err", err)
 			return err
@@ -1268,9 +1261,15 @@ func (b *BinlogReader) Close() error {
 
 	// Historically there was a:
 	if b.mysqlContext.BinlogRelay {
-		b.binlogReader.Close()
-		b.relayCancelF()
-		b.relay.Close()
+		if b.binlogReader != nil {
+			b.binlogReader.Close()
+		}
+		if b.relayCancelF != nil {
+			b.relayCancelF()
+		}
+		if b.relay != nil {
+			b.relay.Close()
+		}
 	} else {
 		b.binlogSyncer.Close()
 	}
@@ -1447,8 +1446,7 @@ func (b *BinlogReader) OnApplierRotate(binlogFile string) {
 	}
 
 	wrappingDir := b.getBinlogDir()
-	// FIXME check CollectAllBinlogFiles usage
-	fs, err := streamer.CollectAllBinlogFiles(wrappingDir)
+	fs, err := os.ReadDir(wrappingDir)
 	if err != nil {
 		logger.Error("ReadDir error", "dir", wrappingDir, "err", err)
 		return
@@ -1460,17 +1458,10 @@ func (b *BinlogReader) OnApplierRotate(binlogFile string) {
 		// https://pingcap.com/docs-cn/v3.0/reference/tools/data-migration/relay-log/
 		// <server-uuid>.<subdir-seq-number>
 		// currently there should only be .000001, but we loop to the last one.
-		subdir := filepath.Join(wrappingDir, fs[i])
-		stat, err := os.Stat(subdir)
-		if err != nil {
-			logger.Error("err at stat", "err", err)
-			return
+		if fs[i].IsDir() {
+			dir = filepath.Join(wrappingDir, fs[i].Name())
 		} else {
-			if stat.IsDir() {
-				dir = subdir
-			} else {
-				// meta-files like server-uuid.index
-			}
+			// meta-files like server-uuid.index
 		}
 	}
 
@@ -1481,7 +1472,7 @@ func (b *BinlogReader) OnApplierRotate(binlogFile string) {
 
 	realBinlogFile := normalizeBinlogFilename(binlogFile)
 
-	cmp, err := streamer.CollectBinlogFilesCmp(dir, realBinlogFile, streamer.FileCmpLess)
+	cmp, err := dmstreamer.CollectBinlogFilesCmp(dir, realBinlogFile, dmstreamer.FileCmpLess)
 	if err != nil {
 		logger.Error("err at cmp", "err", err)
 	}
