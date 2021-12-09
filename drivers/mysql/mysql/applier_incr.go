@@ -307,10 +307,11 @@ func (a *ApplierIncr) handleEntry(entryCtx *common.BinlogEntryContext) (err erro
 	} else {
 		if binlogEntry.Index == 0 {
 			if rotated {
-				a.logger.Debug("binlog rotated", "file", a.replayingBinlogFile)
+				a.logger.Debug("binlog rotated. WaitForAllCommitted before", "file", a.replayingBinlogFile)
 				if !a.mtsManager.WaitForAllCommitted() {
 					return nil // TODO shutdown
 				}
+				a.logger.Debug("binlog rotated. WaitForAllCommitted after", "file", a.replayingBinlogFile)
 				a.mtsManager.lastCommitted = 0
 				a.mtsManager.lastEnqueue = 0
 				a.wsManager.resetCommonParent(0)
@@ -364,6 +365,9 @@ func (a *ApplierIncr) handleEntry(entryCtx *common.BinlogEntryContext) (err erro
 		}
 
 		if binlogEntry.IsPartOfBigTx() {
+			if binlogEntry.Index == 0 {
+				a.mtsManager.lastEnqueue = binlogEntry.Coordinates.SeqenceNumber
+			}
 			err = a.ApplyBinlogEvent(0, entryCtx)
 			if err != nil {
 				return err

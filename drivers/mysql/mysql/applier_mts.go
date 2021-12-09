@@ -56,6 +56,7 @@ func NewMtsManager(shutdownCh chan struct{}, logger g.LoggerType) *MtsManager {
 
 //  This function must be called sequentially.
 func (mm *MtsManager) WaitForAllCommitted() bool {
+	g.Logger.Debug("WaitForAllCommitted", "lc", mm.lastCommitted, "le", mm.lastEnqueue)
 	for {
 		if mm.lastCommitted == mm.lastEnqueue {
 			return true
@@ -102,6 +103,7 @@ func (mm *MtsManager) LcUpdater() {
 			return
 
 		case seqNum := <-mm.chExecuted:
+//			g.Logger.Debug("LcUpdater", "seq", seqNum)
 			if seqNum <= mm.lastCommitted {
 				// ignore it
 			} else {
