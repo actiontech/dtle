@@ -3,11 +3,12 @@ package parser
 import (
 	"bytes"
 	"fmt"
+	"strconv"
+	"strings"
+
 	"github.com/sjjian/oracle-sql-parser/ast"
 	"github.com/timtadh/lexmachine"
 	"github.com/timtadh/lexmachine/machines"
-	"strconv"
-	"strings"
 )
 
 var lexer *lexmachine.Lexer
@@ -22,36 +23,66 @@ func skip(*lexmachine.Scanner, *machines.Match) (interface{}, error) {
 	return nil, nil
 }
 
-func AddTokenBetween(tokenId int, start []byte, end byte) {
-	lexer.Add(start, func(scan *lexmachine.Scanner, match *machines.Match) (interface{}, error) {
-		var buf bytes.Buffer
+type byteScanner struct {
+	text []byte
+	pos  int
+}
+
+func (bs *byteScanner) Next() (byte, bool) {
+	if bs.pos >= len(bs.text) {
+		return 0, false
+	}
+	b := bs.text[bs.pos]
+	bs.pos += 1
+	return b, true
+}
+
+func (bs *byteScanner) LastN(count int) []byte {
+	if bs.pos <= count {
+		return bs.text[:bs.pos]
+	}
+	return bs.text[bs.pos-count : bs.pos]
+}
+
+func AddTokenBetween(left []byte, right []byte, matchEnd bool, action lexmachine.Action) {
+	lexer.Add(left, func(scan *lexmachine.Scanner, match *machines.Match) (interface{}, error) {
 		match.EndLine = match.StartLine
 		match.EndColumn = match.StartColumn
-		for tc := scan.TC; tc < len(scan.Text); tc++ {
-			curByte := scan.Text[tc]
-
-			// calculate location
+		matchRight := false
+		bs := byteScanner{text: scan.Text[scan.TC:]}
+		for {
+			b, has := bs.Next()
+			if !has {
+				break
+			}
 			match.EndColumn += 1
-			if curByte == '\n' {
+			if b == '\n' {
 				match.EndLine += 1
 			}
-			// match end
-			if curByte == end {
-				scan.TC = tc + 1
-				match.TC = scan.TC
-				match.Bytes = buf.Bytes()
-				return scan.Token(tokenId, buf.String(), match), nil
-			} else {
-				// between start and end
-				buf.WriteByte(curByte)
+			if bytes.Equal(right, bs.LastN(len(right))) {
+				matchRight = true
+				break
 			}
 		}
+		if matchRight {
+			match.Bytes = scan.Text[scan.TC : scan.TC+bs.pos-len(right)]
+			scan.TC = scan.TC + bs.pos
+			match.TC = scan.TC
+			return action(scan, match)
+		}
+		if matchEnd {
+			match.Bytes = scan.Text[scan.TC:]
+			scan.TC = scan.TC + bs.pos
+			match.TC = scan.TC
+			return action(scan, match)
+		}
+
 		return nil, fmt.Errorf("unclosed %s with %s, staring at %d, (%d, %d)",
-			string(start), string(end), match.TC, match.StartLine, match.StartColumn)
+			string(left), string(right), match.TC, match.StartLine, match.StartColumn)
 	})
 }
 
-func AddIdentToken(tokenId int, rs string) {
+func AddIdentToken(rs string, action lexmachine.Action) {
 	l := strings.ToLower(rs)
 	u := strings.ToUpper(rs)
 	var regex bytes.Buffer
@@ -65,7 +96,7 @@ func AddIdentToken(tokenId int, rs string) {
 			regex.WriteString("]")
 		}
 	}
-	lexer.Add(regex.Bytes(), token(tokenId))
+	lexer.Add(regex.Bytes(), action)
 }
 
 var stdTokenMap = map[string]int{
@@ -316,17 +347,20 @@ func init() {
 	lexer = lexmachine.NewLexer()
 
 	for keyword, tokenId := range stdTokenMap {
-		AddIdentToken(tokenId, keyword)
+		AddIdentToken(keyword, token(tokenId))
 	}
 	for keyword, tokenId := range reservedKeyword {
-		AddIdentToken(tokenId, keyword)
+		AddIdentToken(keyword, token(tokenId))
 	}
 
 	for keyword, tokenId := range unReservedKeyword {
-		AddIdentToken(tokenId, keyword)
+		AddIdentToken(keyword, token(tokenId))
 	}
 
 	lexer.Add([]byte("( |\t|\n|\r)+"), skip)
+
+	AddTokenBetween([]byte("--"), []byte("\n"), true, skip)
+	AddTokenBetween([]byte(`/\*`), []byte("*/"), false, skip)
 
 	lexer.Add([]byte("[a-zA-Z]+\\w*"), token(_nonquotedIdentifier))
 
@@ -338,8 +372,8 @@ func init() {
 		return s.Token(_intNumber, v, m), nil
 	})
 
-	AddTokenBetween(_doubleQuoteStr, []byte(`"`), byte('"'))
-	AddTokenBetween(_singleQuoteStr, []byte(`'`), byte('\''))
+	AddTokenBetween([]byte("\""), []byte("\""), false, token(_doubleQuoteStr))
+	AddTokenBetween([]byte("'"), []byte("'"), false, token(_singleQuoteStr))
 	err := lexer.CompileNFA()
 	if err != nil {
 		panic(err)

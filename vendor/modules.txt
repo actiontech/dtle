@@ -512,7 +512,7 @@ github.com/sijms/go-ora/v2/network/security
 github.com/sijms/go-ora/v2/trace
 # github.com/sirupsen/logrus v1.7.0
 github.com/sirupsen/logrus
-# github.com/sjjian/oracle-sql-parser v0.0.0-20211121154024-15e060b960d5
+# github.com/sjjian/oracle-sql-parser v0.0.0-20211207111153-46770e720f36
 github.com/sjjian/oracle-sql-parser
 github.com/sjjian/oracle-sql-parser/ast
 github.com/sjjian/oracle-sql-parser/ast/element
