@@ -15,7 +15,7 @@ type OracleConfig struct {
 	Host        string
 	Port        int
 	ServiceName string
-	SCN         int64
+	Scn         int64
 }
 
 type OracleDB struct {

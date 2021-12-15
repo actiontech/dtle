@@ -237,7 +237,6 @@ func (l *LogMinerStream) buildFilterSchemaTable() (filterSchemaTable string) {
 }
 
 func (l *LogMinerStream) GetLogMinerRecord(startScn, endScn int64) ([]*LogMinerRecord, error) {
-	l.logger.Debug("Get logMiner record", "QuerySql", "")
 	// AND table_name IN ('%s')
 	// strings.Join(sourceTableNames, `','`),
 	query := fmt.Sprintf(`
@@ -322,6 +321,7 @@ WHERE
 
 		lrs = append(lrs, lr)
 	}
+	l.logger.Debug("Get logMiner record end")
 	return lrs, nil
 }
 
@@ -511,7 +511,7 @@ func (e *ExtractorOracle) calculateSCNPos() (startSCN, committedSCN int64, err e
 	}
 	// first start
 	if committedSCN == 0 {
-		return e.mysqlContext.OracleConfig.SCN, 0, nil
+		return e.mysqlContext.OracleConfig.Scn, 0, nil
 	}
 	// all tx has been committed
 	if oldestUncommittedScn == 0 {
@@ -958,7 +958,7 @@ func (e *ExtractorOracle) parseDDLSQL(redoSQL string) (dataEvent common.DataEven
 		ordinals := make(map[string]int, 0)
 		tableConfig.OriginalTableColumns = &common.ColumnList{Ordinals: ordinals}
 		var columns []string
-		e.logger.Debug("CreateTableStmt", "schema:", s.TableName.Schema.Value, " table", s.TableName.Table.Value)
+		e.logger.Debug("CreateTableStmt", "schema:", schemaName, " table", s.TableName.Table.Value)
 		for _, ts := range s.RelTable.TableStructs {
 			switch td := ts.(type) {
 			case *ast.ColumnDef:
