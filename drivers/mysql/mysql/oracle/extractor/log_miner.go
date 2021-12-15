@@ -951,7 +951,13 @@ func (e *ExtractorOracle) parseDDLSQL(redoSQL string) (dataEvent common.DataEven
 	}
 	switch s := stmt[0].(type) {
 	case *ast.CreateTableStmt:
-		schemaName := IdentifierToString(s.TableName.Schema)
+		// todo when schema is nil
+		schemaName := ""
+		if s.TableName.Schema == nil {
+			schemaName = "SOE"
+		} else {
+			schemaName = IdentifierToString(s.TableName.Schema)
+		}
 		tableName := IdentifierToString(s.TableName.Table)
 		schemaConfig := e.findSchemaConfig(schemaName)
 		tableConfig := findTableConfig(schemaConfig, tableName)
@@ -983,7 +989,12 @@ func (e *ExtractorOracle) parseDDLSQL(redoSQL string) (dataEvent common.DataEven
 			DML:           common.NotDML,
 		}
 	case *ast.AlterTableStmt:
+		// todo when schema is nil
+		if s.TableName.Schema == nil {
+			return
+		}
 		schemaName := IdentifierToString(s.TableName.Schema)
+
 		tableName := IdentifierToString(s.TableName.Table)
 		schemaConfig := e.findSchemaConfig(schemaName)
 		tableConfig := findTableConfig(schemaConfig, tableName)
