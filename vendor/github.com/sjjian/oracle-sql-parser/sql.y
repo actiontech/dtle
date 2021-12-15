@@ -813,13 +813,11 @@ IdentityOptionsOrEmpty:
     {
         // empty
     }
+|   '(' ')'
 |   '(' IdentityOptions ')'
 
 IdentityOptions:
-    {
-        // empty
-    }
-|   IdentityOption
+    IdentityOption
 |   IdentityOptions IdentityOption
 
 IdentityOption:
@@ -1325,7 +1323,7 @@ SegmentAttrsClause:
 |   SegmentAttrsClause SegmentAttrClause
 
 SegmentAttrClause:
-    PhysicalAttrsClause
+    PhysicalAttrClause // note: is PhysicalAttrsClause in docs.
 |   _tablespace Identifier // TODO: using IdentifierOrKeyword?
 |   _tablespace _set Identifier
 |   LoggingClause
@@ -1347,18 +1345,19 @@ LoggingClause:
 |   _nologging
 |   _filesystem_like_logging
 
-TableCompressionOrEmpty:
-    {
-        // empty
-    }
-|   TableCompression
+//TableCompressionOrEmpty:
+//    {
+//        // empty
+//    }
+//|   TableCompression
 
 TableCompression:
     _compress
 |   _row _store _compress
 |   _row _store _compress _basic
 |   _row _store _compress _advanced
-|   _column _store _compress ColumnCompressProp ColumnCompressLock
+|   _column _store _compress ColumnCompressProp ColumnCompressLock // TODO: conflict 4,5: _row _no
+|   _column _store _compress ColumnCompressProp
 |   _nocompress
 
 ColumnCompressProp:
@@ -1373,10 +1372,7 @@ ColumnCompressProp:
 |   _for _archive _high
 
 ColumnCompressLock:
-    {
-        // empty
-    }
-|   _row _level _locking
+    _row _level _locking
 |   _no _row _level _locking
 
 InmemoryTableClause:
@@ -1401,7 +1397,7 @@ InmemoryMemCompress:
 |   _memcompress _for _capacity
 |   _memcompress _for _capacity _low
 |   _memcompress _for _capacity _high
-|   _no _memcompress
+|   _no _memcompress // TODO: conflict 6,7: _no with "_no _duplicate"
 |   _memcompress _auto
 
 InmemoryProp:
@@ -1463,8 +1459,7 @@ InmemoryColumnClauses:
 |   InmemoryColumnClauses InmemoryColumnClause
 
 InmemoryColumnClause:
-    _inmemory '(' ColumnNameList ')'
-|   _inmemory InmemoryMemCompress '(' ColumnNameList ')'
+    _inmemory InmemoryMemCompress '(' ColumnNameList ')'
 |   _no _inmemory '(' ColumnNameList ')'
 
 IlmClause: // TODO: support IlmPolicyClause IlmPolicyName
@@ -1498,7 +1493,8 @@ OrgClause:
 |   _external ExternalTableClause
 
 HeapOrgTableClause:
-    TableCompressionOrEmpty InmemoryTableClause IlmClause
+//    TableCompressionOrEmpty InmemoryTableClause IlmClause // TODO: table compress in segment?
+    InmemoryTableClause IlmClause
 
 IndexOrgTableClause:
 
@@ -1571,7 +1567,7 @@ IndexAttrs:
 |   IndexAttrs IndexAttr
 
 IndexAttr:
-    PhysicalAttrsClause
+    PhysicalAttrClause // note: is PhysicalAttrsClause in docs.
 |   LoggingClause
 |   _online
 |   _tablespace Identifier
@@ -1908,7 +1904,7 @@ DatetimeDataTypes:
         d.SetDataDef(element.DataDefTimestamp)
         $$ = d
     }
-|   _timestamp '(' _intNumber ')'
+|   _timestamp '(' _intNumber ')' // TODO: conflict 2: "_with rowid"
     {
         precision := $3
         d := &element.Timestamp{FractionalSecondsPrecision: &precision}
@@ -2235,24 +2231,12 @@ InlineConstraintBody:
 	        Type: ast.ConstraintType($1),
 	    }
     }
-//|   InlineConstraintType ConstraintState
-//    {
-//	    $$ = &ast.InlineConstraint{
-//	        Type: ast.ConstraintType($1),
-//	    }
-//    }
-//|   ReferencesClause
+//|   ReferencesClause ConstraintState // TODO: this is defined in docs?
 //    {
 //	    $$ = &ast.InlineConstraint{
 //	        Type: ast.ConstraintTypeReferences,
 //	    }
 //    }
-|   ReferencesClause ConstraintState
-    {
-	    $$ = &ast.InlineConstraint{
-	        Type: ast.ConstraintTypeReferences,
-	    }
-    }
 //|   ConstraintCheckCondition // todo
 
 InlineConstraintType:
@@ -2272,22 +2256,6 @@ InlineConstraintType:
     {
         $$ = int(ast.ConstraintTypePK)
     }
-
-ReferencesClause:
-    _references TableName ColumnNameListOrEmpty ReferencesOnDelete
-
-ColumnNameListOrEmpty:
-    {
-        // empty
-    }
-|   '(' ColumnNameList ')'
-
-ReferencesOnDelete:
-    {
-        // empty
-    }
-|   _on _delete _cascade
-|   _on _delete _set _null
 
 //ConstraintStateList:
 //    ConstraintState
@@ -2318,7 +2286,7 @@ ConstraintStateDeferrableClause:
 |   ConstraintStateDeferrable
 |   ConstraintStateDeferrable ConstraintStateInitially
 |   ConstraintStateInitially
-|   ConstraintStateInitially ConstraintStateDeferrable
+|   ConstraintStateInitially ConstraintStateDeferrable // TODO: conflict 1,3: _not with "_not _null"
 
 ConstraintStateDeferrable:
     _deferrable
@@ -2368,6 +2336,22 @@ InlineRefConstraint:
 |   _with _rowid
 |   ConstraintName ReferencesClause ConstraintState
 |   ReferencesClause ConstraintState
+
+ReferencesClause:
+    _references TableName ColumnNameListOrEmpty ReferencesOnDelete
+
+ColumnNameListOrEmpty:
+    {
+        // empty
+    }
+|   '(' ColumnNameList ')'
+
+ReferencesOnDelete:
+    {
+        // empty
+    }
+|   _on _delete _cascade
+|   _on _delete _set _null
 
 OutOfLineConstraint:
     ConstraintName OutOfLineConstraintBody
@@ -2461,7 +2445,12 @@ SizeUnit:
 /* +++++++++++++++++++++++++++++++++++++++++ memoptimize +++++++++++++++++++++++++++++++++++++++++ */
 
 MemoptimizeForAlterTable:
-    MemoptimizeReadForAlterTable MemoptimizeWriteForAlterTable
+    {
+        // empty
+    }
+|   MemoptimizeReadForAlterTable
+|   MemoptimizeWriteForAlterTable
+|   MemoptimizeReadForAlterTable MemoptimizeWriteForAlterTable
 
 MemoptimizeReadForAlterTable:
     MemoptimizeRead
@@ -2472,19 +2461,18 @@ MemoptimizeWriteForAlterTable:
 |   _no _memoptimize _for _write
 
 Memoptimize:
-    MemoptimizeRead MemoptimizeWrite
+    {
+        // empty
+    }
+|   MemoptimizeRead
+|   MemoptimizeWrite
+|   MemoptimizeRead MemoptimizeWrite
 
 MemoptimizeRead:
-    {
-        // empty
-    }
-|   _memoptimize _for _read
+    _memoptimize _for _read
 
 MemoptimizeWrite:
-    {
-        // empty
-    }
-|   _memoptimize _for _write
+    _memoptimize _for _write
 
 /* +++++++++++++++++++++++++++++++++++++++++++++ expr ++++++++++++++++++++++++++++++++++++++++++++ */
 
@@ -2493,6 +2481,6 @@ MemoptimizeWrite:
 // TODO: support expression
 Expr:
     _intNumber
-|   _doubleQuoteStr
+|   _singleQuoteStr
 
 %%
