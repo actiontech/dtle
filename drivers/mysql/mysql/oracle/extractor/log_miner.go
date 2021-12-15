@@ -982,7 +982,7 @@ func (e *ExtractorOracle) parseDDLSQL(redoSQL string) (dataEvent common.DataEven
 		}
 
 		dataEvent = common.DataEvent{
-			Query:         fmt.Sprintf(`CREATE TABLE %s.%s (%s) DEFAULT CHARACTER SET=utf8`, schemaName, tableName, strings.Join(columns, ",")),
+			Query:         fmt.Sprintf("CREATE TABLE `%s`.`%s` (%s) DEFAULT CHARACTER SET=utf8", schemaName, tableName, strings.Join(columns, ",")),
 			CurrentSchema: schemaName,
 			DatabaseName:  schemaName,
 			TableName:     tableName,
@@ -1016,7 +1016,7 @@ func (e *ExtractorOracle) parseDDLSQL(redoSQL string) (dataEvent common.DataEven
 				}
 			case *ast.DropColumnClause:
 				for _, column := range a.Columns {
-					alterOptions = append(alterOptions, fmt.Sprintf("DROP COLUMN %s", IdentifierToString(column)))
+					alterOptions = append(alterOptions, fmt.Sprintf("DROP COLUMN %s", HandlingForSpecialCharacters(column)))
 					// sort columns ordinals
 					dropIndex := ordinals[IdentifierToString(column)]
 					delete(ordinals, IdentifierToString(column))
@@ -1027,8 +1027,8 @@ func (e *ExtractorOracle) parseDDLSQL(redoSQL string) (dataEvent common.DataEven
 					}
 				}
 			case *ast.RenameColumnClause:
-				oldName := IdentifierToString(a.OldName)
-				newName := IdentifierToString(a.NewName)
+				oldName := HandlingForSpecialCharacters(a.OldName)
+				newName := HandlingForSpecialCharacters(a.NewName)
 				alterOptions = append(alterOptions, fmt.Sprintf("RENAME COLUMN %s TO %s", oldName, newName))
 				ordinals[newName] = ordinals[oldName]
 				delete(ordinals, oldName)
@@ -1042,7 +1042,7 @@ func (e *ExtractorOracle) parseDDLSQL(redoSQL string) (dataEvent common.DataEven
 				// todo
 			}
 		}
-		ddl := fmt.Sprintf("ALTER TABLE %s.%s %s", schemaName, tableName, strings.Join(alterOptions, ","))
+		ddl := fmt.Sprintf("ALTER TABLE `%s`.`%s` %s", schemaName, tableName, strings.Join(alterOptions, ","))
 		dataEvent = common.DataEvent{
 			Query:         ddl,
 			CurrentSchema: schemaName,
@@ -1053,7 +1053,7 @@ func (e *ExtractorOracle) parseDDLSQL(redoSQL string) (dataEvent common.DataEven
 	case *ast.DropTableStmt:
 		schemaName := IdentifierToString(s.TableName.Schema)
 		tableName := IdentifierToString(s.TableName.Table)
-		ddl := fmt.Sprintf("DROP TABLE %s.%s", schemaName, tableName)
+		ddl := fmt.Sprintf("DROP TABLE `%s`.`%s`", schemaName, tableName)
 		dataEvent = common.DataEvent{
 			Query:         ddl,
 			CurrentSchema: schemaName,
