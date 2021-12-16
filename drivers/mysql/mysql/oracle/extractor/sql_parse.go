@@ -111,20 +111,21 @@ func beforeData(where ast.ExprNode, before map[string]interface{}) {
 // type OracleFuncName string
 
 const (
-	NullValue             = "NULL"
-	EmptyCLOBFunction     = "EMPTY_CLOB()"
-	EmptyBLOBFunction     = "EMPTY_BLOB()"
-	FunctionHEXTORAWStart = `HEXTORAW('`
-	CommonFunctionEnd     = `')`
-	InfValue              = `Inf`
-	NInfValue             = `-Inf`
-	NanValue              = `Nan`
-	ToDSintervalStart     = "TO_DSINTERVAL('"
-	ToYMintervalStart     = "TO_YMINTERVAL('"
-	FunctionUNITSTRStart  = "UNISTR('"
-	ToDateFuncStart       = "TO_DATE('"
-	ToDateFuncEnd         = "', 'YYYY-MM-DD HH24:MI:SS')"
-	ToTimestampFuncStart  = "TO_TIMESTAMP('"
+	NullValue              = "NULL"
+	EmptyCLOBFunction      = "EMPTY_CLOB()"
+	EmptyBLOBFunction      = "EMPTY_BLOB()"
+	FunctionHEXTORAWStart  = `HEXTORAW('`
+	CommonFunctionEnd      = `')`
+	InfValue               = `Inf`
+	NInfValue              = `-Inf`
+	NanValue               = `Nan`
+	ToDSintervalStart      = "TO_DSINTERVAL('"
+	ToYMintervalStart      = "TO_YMINTERVAL('"
+	FunctionUNITSTRStart   = "UNISTR('"
+	ToDateFuncStart        = "TO_DATE('"
+	ToDateFuncEnd          = "', 'YYYY-MM-DD HH24:MI:SS')"
+	ToTimestampFuncStart   = "TO_TIMESTAMP('"
+	ToTimestampTzFuncStart = "TO_TIMESTAMP_TZ('"
 )
 
 var CONCATENATIONPATTERN = "\\|\\|"
@@ -155,6 +156,8 @@ func columnsValueConverter(value string) interface{} {
 		return value[9 : len(value)-27]
 	case strings.HasPrefix(value, ToTimestampFuncStart) && strings.HasSuffix(value, CommonFunctionEnd):
 		return value[14 : len(value)-2]
+	case strings.HasPrefix(value, ToTimestampTzFuncStart) && strings.HasSuffix(value, CommonFunctionEnd):
+		return value[17 : len(value)-2]
 	// mysql no support (inf -inf nan)
 	case value == InfValue:
 		return nil
