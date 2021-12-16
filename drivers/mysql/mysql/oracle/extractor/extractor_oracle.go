@@ -216,7 +216,7 @@ func (e *ExtractorOracle) Run() {
 	e.getSchemaTablesAndMeta()
 
 	e.LogMinerStream = NewLogMinerStream(e.oracleDB, e.logger, e.mysqlContext.ReplicateDoDb, e.mysqlContext.ReplicateIgnoreDb,
-		startSCN, committedSCN, 100000)
+		startSCN, committedSCN, 1000)
 	//e.logger.Info("CheckAndApplyLowerCaseTableNames")
 	//e.CheckAndApplyLowerCaseTableNames()
 	// 字符集同步 todo

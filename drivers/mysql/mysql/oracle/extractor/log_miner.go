@@ -236,7 +236,7 @@ func (l *LogMinerStream) buildFilterSchemaTable() (filterSchemaTable string) {
 	return
 }
 
-func (l *LogMinerStream) GetLogMinerRecord(startScn, endScn int64) ([]*LogMinerRecord, error) {
+func (l *LogMinerStream) GetLogMinerRecord(startScn, endScn int64, records chan *LogMinerRecord) error {
 	// AND table_name IN ('%s')
 	// strings.Join(sourceTableNames, `','`),
 	query := fmt.Sprintf(`
@@ -272,7 +272,7 @@ WHERE
 	//l.logger.Debug("Get logMiner record", "QuerySql", query)
 	rows, err := l.oracleDB.LogMinerConn.QueryContext(context.TODO(), query)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	defer rows.Close()
 
@@ -289,11 +289,12 @@ WHERE
 		lr.SQLUndo = undoSQL.String
 		return lr, nil
 	}
-	var lrs []*LogMinerRecord
+	recordsNum := 0
+	// var lrs []*LogMinerRecord
 	for rows.Next() {
 		lr, err := scan(rows)
 		if err != nil {
-			return nil, err
+			return err
 		}
 		// 1 = indicates that either SQL_REDO or SQL_UNDO is greater than 4000 bytes in size
 		// and is continued in the next row returned by the view
@@ -305,7 +306,7 @@ WHERE
 			for rows.Next() {
 				lr2, err := scan(rows)
 				if err != nil {
-					return nil, err
+					return err
 				}
 				redoLog.WriteString(lr2.SQLRedo)
 				undoLog.WriteString(lr2.SQLUndo)
@@ -316,13 +317,11 @@ WHERE
 			lr.SQLRedo = redoLog.String()
 			lr.SQLUndo = undoLog.String()
 		}
-
-		//l.logger.Debug("Get logMiner record", "RedoSQL", lr.SQLRedo, "UndoSQL", lr.SQLUndo, "opretation", lr.Operation)
-
-		lrs = append(lrs, lr)
+		recordsNum += 1
+		records <- lr
 	}
-	l.logger.Debug("Get logMiner record end")
-	return lrs, nil
+	l.logger.Debug("Get logMiner record end", "recordsNum", recordsNum)
+	return nil
 }
 
 type ColumnDefinition struct {
@@ -551,7 +550,7 @@ func (e *ExtractorOracle) DataStreamEvents(entriesChannel chan<- *common.BinlogE
 		return nil
 	}
 
-	err := e.LogMinerStream.Loop()
+	err := e.LoopLogminerRecord()
 	if err != nil {
 		e.logger.Error("LogMinerStreamLoop", "err", err)
 		return err
@@ -723,13 +722,41 @@ func (l *LogMinerStream) getEndScn() (int64, error) {
 	}
 }
 
-func (l *LogMinerStream) Loop() error {
+func (e *ExtractorOracle) LoopLogminerRecord() error {
+	l := e.LogMinerStream
 	err := l.initLogMiner()
 	if err != nil {
 		fmt.Println(err)
 		return err
 	}
 	defer l.stopLogMiner()
+
+	records := make(chan *LogMinerRecord, 100)
+	go func() {
+		for !e.shutdown {
+			r := <-records
+			switch r.Operation {
+			case OperationCodeStart:
+				l.txCache.startTx(r.TxId(), r.SCN)
+			case OperationCodeCommit:
+				l.txCache.commitTx(r.TxId(), r.SCN)
+			case OperationCodeRollback:
+				l.txCache.rollbackTx(r.TxId(), r.SCN)
+			case OperationCodeDDL:
+				l.txCache.Handler(&LogMinerTx{
+					transactionId:        "",
+					oldestUncommittedScn: l.txCache.getOldestUncommittedSCN(),
+					startScn:             r.SCN,
+					endScn:               r.SCN,
+					records:              []*LogMinerRecord{r},
+				})
+			case OperationCodeInsert, OperationCodeDelete, OperationCodeUpdate:
+				l.txCache.addTxRecord(r)
+			}
+			l.startScn = r.SCN
+		}
+		close(records)
+	}()
 
 	for {
 		time.Sleep(5 * time.Second)
@@ -761,13 +788,9 @@ func (l *LogMinerStream) Loop() error {
 			return err
 		}
 		l.logger.Info("Get log miner record form", "StartScn", l.startScn, "EndScn", endScn)
-		records, err := l.GetLogMinerRecord(l.startScn, endScn)
+		err = l.GetLogMinerRecord(l.startScn, endScn, records)
 		if err != nil {
 			l.logger.Error("GetLogMinerRecord ", "err", err)
-			return err
-		}
-		err = l.HandlerRecords(records)
-		if err != nil {
 			return err
 		}
 	}
@@ -784,30 +807,32 @@ const (
 	OperationCodeRollback = 36
 )
 
-func (l *LogMinerStream) HandlerRecords(records []*LogMinerRecord) error {
-	for _, r := range records {
-		switch r.Operation {
-		case OperationCodeStart:
-			l.txCache.startTx(r.TxId(), r.SCN)
-		case OperationCodeCommit:
-			l.txCache.commitTx(r.TxId(), r.SCN)
-		case OperationCodeRollback:
-			l.txCache.rollbackTx(r.TxId(), r.SCN)
-		case OperationCodeDDL:
-			l.txCache.Handler(&LogMinerTx{
-				transactionId:        "",
-				oldestUncommittedScn: l.txCache.getOldestUncommittedSCN(),
-				startScn:             r.SCN,
-				endScn:               r.SCN,
-				records:              []*LogMinerRecord{r},
-			})
-		case OperationCodeInsert, OperationCodeDelete, OperationCodeUpdate:
-			l.txCache.addTxRecord(r)
-		}
-		l.startScn = r.SCN
-	}
-	return nil
-}
+// func (l *LogMinerStream) HandlerRecords(records chan *LogMinerRecord) {
+// 	for !e.shutdown {
+// 		select {
+// 		case r := <-records:
+// 			switch r.Operation {
+// 			case OperationCodeStart:
+// 				l.txCache.startTx(r.TxId(), r.SCN)
+// 			case OperationCodeCommit:
+// 				l.txCache.commitTx(r.TxId(), r.SCN)
+// 			case OperationCodeRollback:
+// 				l.txCache.rollbackTx(r.TxId(), r.SCN)
+// 			case OperationCodeDDL:
+// 				l.txCache.Handler(&LogMinerTx{
+// 					transactionId:        "",
+// 					oldestUncommittedScn: l.txCache.getOldestUncommittedSCN(),
+// 					startScn:             r.SCN,
+// 					endScn:               r.SCN,
+// 					records:              []*LogMinerRecord{r},
+// 				})
+// 			case OperationCodeInsert, OperationCodeDelete, OperationCodeUpdate:
+// 				l.txCache.addTxRecord(r)
+// 			}
+// 			l.startScn = r.SCN
+// 		}
+// 	}
+// }
 
 //func (l *LogMinerStream) queue() ([]*LogMinerRecord, error) {
 //	changed, err := l.checkRedoLogChanged()
