@@ -7,6 +7,7 @@
 package mysql
 
 import (
+	"context"
 	gosql "database/sql"
 	"encoding/binary"
 	"fmt"
@@ -84,10 +85,11 @@ type Extractor struct {
 	shutdown     bool
 	shutdownCh   chan struct{}
 	shutdownLock sync.Mutex
+	ctx          context.Context
 
 	testStub1Delay int64
 
-	context *sqle.Context
+	sqleContext *sqle.Context
 
 	// This must be `<-` after `getSchemaTablesAndMeta()`.
 	gotCoordinateCh chan struct{}
@@ -107,10 +109,11 @@ type Extractor struct {
 	targetGtid      string
 }
 
-func NewExtractor(execCtx *common.ExecContext, cfg *common.MySQLDriverConfig, logger g.LoggerType, storeManager *common.StoreManager, waitCh chan *drivers.ExitResult) (*Extractor, error) {
+func NewExtractor(execCtx *common.ExecContext, cfg *common.MySQLDriverConfig, logger g.LoggerType, storeManager *common.StoreManager, waitCh chan *drivers.ExitResult, ctx context.Context) (*Extractor, error) {
 	logger.Info("NewExtractor", "job", execCtx.Subject)
 
 	e := &Extractor{
+		ctx:             ctx,
 		logger:          logger.Named("extractor").With("job", execCtx.Subject),
 		execCtx:         execCtx,
 		subject:         execCtx.Subject,
@@ -119,7 +122,7 @@ func NewExtractor(execCtx *common.ExecContext, cfg *common.MySQLDriverConfig, lo
 		waitCh:          waitCh,
 		shutdownCh:      make(chan struct{}),
 		testStub1Delay:  0,
-		context:         sqle.NewContext(nil),
+		sqleContext:     sqle.NewContext(nil),
 		gotCoordinateCh: make(chan struct{}),
 		streamerReadyCh: make(chan error),
 		fullCopyDone:    make(chan struct{}),
@@ -134,7 +137,7 @@ func NewExtractor(execCtx *common.ExecContext, cfg *common.MySQLDriverConfig, lo
 		// TODO need a more reliable method to determine queue.empty.
 	})
 
-	e.context.LoadSchemas(nil)
+	e.sqleContext.LoadSchemas(nil)
 	logger.Debug("NewExtractor. after LoadSchemas")
 	if delay, err := strconv.ParseInt(os.Getenv(g.ENV_TESTSTUB1_DELAY), 10, 64); err == nil {
 		e.logger.Info("env", g.ENV_TESTSTUB1_DELAY, delay)
@@ -565,7 +568,7 @@ func (e *Extractor) readTableColumns() (err error) {
 	for _, doDb := range e.replicateDoDb {
 		for _, tbCtx := range doDb.TableMap {
 			doTb := tbCtx.Table
-			tableColumns, fkParentTables, err := base.GetTableColumnsSqle(e.context, doTb.TableSchema, doTb.TableName)
+			tableColumns, fkParentTables, err := base.GetTableColumnsSqle(e.sqleContext, doTb.TableSchema, doTb.TableName)
 			if err != nil {
 				return err
 			}
@@ -737,13 +740,13 @@ func (e *Extractor) getSchemaTablesAndMeta() error {
 	}
 
 	for _, db := range e.replicateDoDb {
-		e.context.AddSchema(db.TableSchema)
-		e.context.LoadTables(db.TableSchema, nil)
+		e.sqleContext.AddSchema(db.TableSchema)
+		e.sqleContext.LoadTables(db.TableSchema, nil)
 
 		if strings.ToLower(db.TableSchema) == "mysql" {
 			continue
 		}
-		e.context.UseSchema(db.TableSchema)
+		e.sqleContext.UseSchema(db.TableSchema)
 
 		for _, tbCtx := range db.TableMap {
 			tb := tbCtx.Table
@@ -763,8 +766,8 @@ func (e *Extractor) getSchemaTablesAndMeta() error {
 				return err
 			}
 
-			e.context.UpdateContext(ast, "mysql")
-			if !e.context.HasTable(tb.TableSchema, tb.TableName) {
+			e.sqleContext.UpdateContext(ast, "mysql")
+			if !e.sqleContext.HasTable(tb.TableSchema, tb.TableName) {
 				err := fmt.Errorf("failed to add table to sqle context. table: %v.%v", db.TableSchema, tb.TableName)
 				e.logger.Error(err.Error())
 				return err
@@ -782,8 +785,8 @@ func (e *Extractor) getSchemaTablesAndMeta() error {
 // Cooperate with `initiateStreaming()` using `e.streamerReadyCh`. Any err will be sent thru the chan.
 func (e *Extractor) initBinlogReader(binlogCoordinates *common.BinlogCoordinatesX) {
 	binlogReader, err := binlog.NewBinlogReader(e.execCtx, e.mysqlContext, e.logger.ResetNamed("reader"),
-		e.replicateDoDb, e.context, e.memory2, e.db, e.targetGtid, e.lowerCaseTableNames,
-		e.NetWriteTimeout)
+		e.replicateDoDb, e.sqleContext, e.memory2, e.db, e.targetGtid, e.lowerCaseTableNames,
+		e.NetWriteTimeout, e.ctx)
 	if err != nil {
 		e.logger.Error("err at initBinlogReader: NewBinlogReader", "err", err)
 		e.streamerReadyCh <- err
