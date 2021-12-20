@@ -148,7 +148,7 @@ func HashTx(entryCtx *common.BinlogEntryContext) (hashes []uint64) {
 		}
 
 		for _, uk := range cols.UniqueKeys {
-			addPKE := func(values *common.ColumnValues) {
+			addPKE := func(row []interface{}) {
 				g.Logger.Debug("writeset use key", "name", uk.Name, "columns", uk.Columns.Ordinals)
 				h := fnv.New64()
 				// hash.WriteXXX never fails
@@ -158,22 +158,19 @@ func HashTx(entryCtx *common.BinlogEntryContext) (hashes []uint64) {
 				_, _ = h.Write([]byte(event.TableName))
 
 				for _, colIndex := range uk.Columns.Ordinals {
-					if values.IsNull(colIndex) {
+					if common.RowColumnIsNull(row, colIndex) {
 						return // do not add
 					}
 					_, _ = h.Write(g.HASH_STRING_SEPARATOR_BYTES)
-					_, _ = h.Write(values.BytesColumn(colIndex))
+					_, _ = h.Write(common.RowGetBytesColumn(row, colIndex))
 				}
 
 				hashVal := h.Sum64()
 				hashes = append(hashes, hashVal)
 
 			}
-			if event.WhereColumnValues != nil {
-				addPKE(event.WhereColumnValues)
-			}
-			if event.NewColumnValues != nil {
-				addPKE(event.NewColumnValues)
+			for i := range event.Rows {
+				addPKE(event.Rows[i])
 			}
 		}
 	}

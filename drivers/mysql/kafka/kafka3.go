@@ -867,11 +867,14 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQueries(dmlEntries []*common.Binlog
 				var beforeValue interface{}
 				var afterValue interface{}
 
-				if before != nil {
-					beforeValue = colList[i].ConvertArg(dataEvent.WhereColumnValues.AbstractValues[i])
-				}
-				if after != nil {
-					afterValue = colList[i].ConvertArg(dataEvent.NewColumnValues.AbstractValues[i])
+				switch dataEvent.DML {
+				case common.InsertDML:
+					afterValue = colList[i].ConvertArg(dataEvent.Rows[0][i])
+				case common.DeleteDML:
+					beforeValue = colList[i].ConvertArg(dataEvent.Rows[0][i])
+				case common.UpdateDML:
+					beforeValue = colList[i].ConvertArg(dataEvent.Rows[0][i])
+					afterValue = colList[i].ConvertArg(dataEvent.Rows[1][i])
 				}
 
 				switch colList[i].Type {

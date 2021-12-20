@@ -131,17 +131,17 @@ func NewTableContext(table *Table) (*TableContext, error) {
 	}, nil
 }
 
-func (t *TableContext) WhereTrue(values *ColumnValues) (bool, error) {
+func (t *TableContext) WhereTrue(row []interface{}) (bool, error) {
 	var m = make(map[string]interface{})
 	for field, idx := range t.WhereCtx.FieldsMap {
-		nCols := len(values.AbstractValues)
+		nCols := len(row)
 		if idx >= nCols {
 			return false, fmt.Errorf("cannot eval 'where' predicate: no enough columns (%v < %v). table %v.%v",
 				nCols, idx, t.Table.TableSchema, t.Table.TableName)
 		}
 
 		//fmt.Printf("**** type of %v %T\n", field, *values.ValuesPointers[idx])
-		rawValue := values.AbstractValues[idx]
+		rawValue := row[idx]
 		var value interface{}
 		if rawValue == nil {
 			value = rawValue

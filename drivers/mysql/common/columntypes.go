@@ -8,22 +8,11 @@ import (
 	"encoding/binary"
 )
 
-func (c *ColumnValues) GetAbstractValues() []interface{} {
-	return c.AbstractValues
+func RowColumnIsNull(row []interface{}, index int) bool {
+	return row[index] == nil
 }
-
-func (c *ColumnValues) StringColumn(index int) string {
-	val := c.GetAbstractValues()[index]
-	if ints, ok := val.([]uint8); ok {
-		return string(ints)
-	}
-	return fmt.Sprintf("%+v", val)
-}
-func (c *ColumnValues) IsNull(index int) bool {
-	return c.GetAbstractValues()[index] == nil
-}
-func (c *ColumnValues) BytesColumn(index int) []byte {
-	val := c.GetAbstractValues()[index]
+func RowGetBytesColumn(row []interface{}, index int) []byte {
+	val := row[index]
 	switch v := val.(type) {
 	case []byte:
 		return v
@@ -34,14 +23,6 @@ func (c *ColumnValues) BytesColumn(index int) []byte {
 		_ = binary.Write(buf, binary.LittleEndian, v)
 		return buf.Bytes()
 	}
-}
-
-func (c *ColumnValues) String() string {
-	stringValues := []string{}
-	for i := range c.GetAbstractValues() {
-		stringValues = append(stringValues, c.StringColumn(i))
-	}
-	return strings.Join(stringValues, ",")
 }
 
 // ColumnList makes for a named list of columns

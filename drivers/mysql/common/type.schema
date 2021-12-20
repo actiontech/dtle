@@ -21,24 +21,6 @@ struct BinlogCoordinateTx {
 	SeqenceNumber int64
 }
 
-struct ColumnValues {
-    AbstractValues []union {
-        string
-        int8
-        int16
-        int32
-        int64
-        uint8
-        uint16
-        uint32
-        uint64
-        []byte
-        float32
-        float64
-        bool
-    }
-}
-
 struct BinlogCoordinatesX {
 	LogFile string
 	LogPos  int64
@@ -57,13 +39,26 @@ struct DataEvent {
 	TableName         string
 	DML               int8
 	ColumnCount       uint64
-	WhereColumnValues *ColumnValues
-	NewColumnValues   *ColumnValues
 	Table             []byte
 	LogPos            int64
 	Timestamp         uint32
 	Flags             []byte
 	FKParent          bool
+	Rows              [][]union {
+        string
+        int8
+        int16
+        int32
+        int64
+        uint8
+        uint16
+        uint32
+        uint64
+        []byte
+        float32
+        float64
+        bool
+    }
 }
 
 struct BinlogEntry {
