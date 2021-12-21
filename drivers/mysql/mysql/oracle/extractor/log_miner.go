@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/actiontech/dtle/drivers/mysql/common"
@@ -540,8 +541,8 @@ func (e *ExtractorOracle) DataStreamEvents(entriesChannel chan<- *common.BinlogE
 				"startSCN", tx.startScn, "endSCN", tx.endScn)
 			return nil
 		}
+		atomic.AddUint32(&e.LogMinerStream.OracleTxNum, 1)
 		Entry := e.handleSQLs(tx)
-		e.logger.Debug("handle SQLs", "Entry", Entry)
 		entriesChannel <- &common.BinlogEntryContext{
 			Entry:        Entry,
 			TableItems:   nil,
@@ -583,6 +584,7 @@ func (e *ExtractorOracle) DataStreamEvents(entriesChannel chan<- *common.BinlogE
 
 func (e *ExtractorOracle) handleSQLs(tx *LogMinerTx) *common.BinlogEntry {
 	entry := common.NewBinlogEntry()
+	entry.Final = true
 	entry.Coordinates.LogPos = tx.oldestUncommittedScn
 	entry.Coordinates.LastCommitted = tx.endScn
 	for _, row := range tx.records {
@@ -607,6 +609,7 @@ type LogMinerStream struct {
 	txCache                  *LogMinerTxCache
 	replicateDB              []*common.DataSource
 	ignoreReplicateDB        []*common.DataSource
+	OracleTxNum              uint32
 }
 
 func NewLogMinerStream(db *config.OracleDB, logger g.LoggerType, replicateDB, ignoreReplicateDB []*common.DataSource,
@@ -733,32 +736,40 @@ func (e *ExtractorOracle) LoopLogminerRecord() error {
 
 	records := make(chan *LogMinerRecord, 100)
 	go func() {
+		defer func() {
+			e.logger.Info("Handler Records goroutine exited")
+		}()
+		timeout := time.After(5 * time.Second)
 		for !e.shutdown {
-			r := <-records
-			switch r.Operation {
-			case OperationCodeStart:
-				l.txCache.startTx(r.TxId(), r.SCN)
-			case OperationCodeCommit:
-				l.txCache.commitTx(r.TxId(), r.SCN)
-			case OperationCodeRollback:
-				l.txCache.rollbackTx(r.TxId(), r.SCN)
-			case OperationCodeDDL:
-				l.txCache.Handler(&LogMinerTx{
-					transactionId:        "",
-					oldestUncommittedScn: l.txCache.getOldestUncommittedSCN(),
-					startScn:             r.SCN,
-					endScn:               r.SCN,
-					records:              []*LogMinerRecord{r},
-				})
-			case OperationCodeInsert, OperationCodeDelete, OperationCodeUpdate:
-				l.txCache.addTxRecord(r)
+			select {
+			case r := <-records:
+				atomic.AddInt64(&e.mysqlContext.DeltaEstimate, 1)
+				switch r.Operation {
+				case OperationCodeStart:
+					l.txCache.startTx(r.TxId(), r.SCN)
+				case OperationCodeCommit:
+					l.txCache.commitTx(r.TxId(), r.SCN)
+				case OperationCodeRollback:
+					l.txCache.rollbackTx(r.TxId(), r.SCN)
+				case OperationCodeDDL:
+					l.txCache.Handler(&LogMinerTx{
+						transactionId:        "",
+						oldestUncommittedScn: l.txCache.getOldestUncommittedSCN(),
+						startScn:             r.SCN,
+						endScn:               r.SCN,
+						records:              []*LogMinerRecord{r},
+					})
+				case OperationCodeInsert, OperationCodeDelete, OperationCodeUpdate:
+					l.txCache.addTxRecord(r)
+				}
+				l.startScn = r.SCN
+			case <-timeout:
+				continue
 			}
-			l.startScn = r.SCN
 		}
-		close(records)
 	}()
 
-	for {
+	for !e.shutdown {
 		time.Sleep(5 * time.Second)
 		changed, err := l.checkRedoLogChanged()
 		if err != nil {
@@ -794,6 +805,7 @@ func (e *ExtractorOracle) LoopLogminerRecord() error {
 			return err
 		}
 	}
+	return nil
 }
 
 const (
@@ -894,7 +906,7 @@ func (e *ExtractorOracle) parseToDataEvent(row *LogMinerRecord) (common.DataEven
 	return dataEvent, fmt.Errorf("parese dateEvent fail , operation Code %v", row.Operation)
 }
 func (e *ExtractorOracle) parseDMLSQL(redoSQL, undoSQL string) (dataEvent common.DataEvent, err error) {
-	e.logger.Debug("============= dml stmt parse start===============", "redoSQL", redoSQL, "undoSQL", undoSQL)
+	// e.logger.Debug("============= dml stmt parse start===============", "redoSQL", redoSQL, "undoSQL", undoSQL)
 	// dml
 	// redoSQL parse
 	// todo 大小写问题
@@ -916,11 +928,11 @@ func (e *ExtractorOracle) parseDMLSQL(redoSQL, undoSQL string) (dataEvent common
 		TableName:     visitor.Table,
 		DML:           visitor.Operation,
 	}
-	e.logger.Debug("SchemaTable", "schema", visitor.Schema, "table", visitor.Table)
+	// e.logger.Debug("SchemaTable", "schema", visitor.Schema, "table", visitor.Table)
 	schemaConfig := e.findSchemaConfig(visitor.Schema)
 	tableConfig := findTableConfig(schemaConfig, visitor.Table)
 	ordinals := tableConfig.OriginalTableColumns.Ordinals
-	e.logger.Debug("columns", "columns", ordinals, "visitorBefore", visitor.Before)
+	// e.logger.Debug("columns", "columns", ordinals, "visitorBefore", visitor.Before)
 	visitor.WhereColumnValues.AbstractValues = make([]interface{}, len(ordinals))
 	for column, index := range ordinals {
 		data, ok := visitor.Before[column]
@@ -963,7 +975,7 @@ func (e *ExtractorOracle) parseDMLSQL(redoSQL, undoSQL string) (dataEvent common
 		dataEvent.NewColumnValues = undoVisitor.WhereColumnValues
 		dataEvent.Query = undoVisitor.WhereColumnValues.String()
 	}
-	e.logger.Debug("============= dml stmt parse end =========")
+	// e.logger.Debug("============= dml stmt parse end =========")
 	return dataEvent, nil
 }
 

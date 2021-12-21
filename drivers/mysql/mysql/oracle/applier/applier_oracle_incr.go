@@ -162,9 +162,12 @@ func (a *ApplierOracleIncr) heterogeneousReplay() {
 			}
 
 			for _, entry := range binlogEntries.Entries {
-				a.binlogEntryQueue <- entry
-				a.logger.Debug("")
-				atomic.AddInt64(a.memory2, int64(entry.Size()))
+				select {
+				case <-a.shutdownCh:
+					return
+				case a.binlogEntryQueue <- entry:
+					atomic.AddInt64(a.memory2, int64(entry.Size()))
+				}
 			}
 
 		case <-t.C:
@@ -368,10 +371,12 @@ func (a *ApplierOracleIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *comm
 			totalDelta += rowDelta
 		}
 	}
-	if true { // todo commit
+	if binlogEntry.Final {
 		dbApplier.Tx.Commit()
 		dbApplier.Tx = nil
+		atomic.AddUint32(&a.appliedTxCount, 1)
 	}
+
 	// TODO: need be executed after tx.Commit success
 	a.EntryExecutedHook(binlogEntry)
 

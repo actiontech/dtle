@@ -216,7 +216,7 @@ func (e *ExtractorOracle) Run() {
 	e.getSchemaTablesAndMeta()
 
 	e.LogMinerStream = NewLogMinerStream(e.oracleDB, e.logger, e.mysqlContext.ReplicateDoDb, e.mysqlContext.ReplicateIgnoreDb,
-		startSCN, committedSCN, 1000)
+		startSCN, committedSCN, 10000)
 	//e.logger.Info("CheckAndApplyLowerCaseTableNames")
 	//e.CheckAndApplyLowerCaseTableNames()
 	// 字符集同步 todo
@@ -283,7 +283,8 @@ func (e *ExtractorOracle) Stats() (*common.TaskStatistics, error) {
 		}
 	}
 
-	extractedTxCount := e.binlogReader.GetExtractedTxCount()
+	extractedTxCount := atomic.LoadUint32(&e.LogMinerStream.OracleTxNum)
+
 	taskResUsage := common.TaskStatistics{
 		ExecMasterRowCount: totalRowsCopied,
 		ExecMasterTxCount:  deltaEstimate,
