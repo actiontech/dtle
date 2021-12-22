@@ -283,7 +283,10 @@ func (e *ExtractorOracle) Stats() (*common.TaskStatistics, error) {
 		}
 	}
 
-	extractedTxCount := atomic.LoadUint32(&e.LogMinerStream.OracleTxNum)
+	var extractedTxCount uint32
+	if e.LogMinerStream != nil {
+		extractedTxCount = atomic.LoadUint32(&e.LogMinerStream.OracleTxNum)
+	}
 
 	taskResUsage := common.TaskStatistics{
 		ExecMasterRowCount: totalRowsCopied,

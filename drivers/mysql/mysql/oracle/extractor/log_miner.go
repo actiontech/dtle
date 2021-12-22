@@ -736,10 +736,12 @@ func (e *ExtractorOracle) LoopLogminerRecord() error {
 
 	records := make(chan *LogMinerRecord, 100)
 	go func() {
+		t := time.NewTicker(time.Second * 5)
 		defer func() {
+			close(records)
+			t.Stop()
 			e.logger.Info("Handler Records goroutine exited")
 		}()
-		timeout := time.After(5 * time.Second)
 		for !e.shutdown {
 			select {
 			case r := <-records:
@@ -763,7 +765,7 @@ func (e *ExtractorOracle) LoopLogminerRecord() error {
 					l.txCache.addTxRecord(r)
 				}
 				l.startScn = r.SCN
-			case <-timeout:
+			case <-t.C:
 				continue
 			}
 		}
