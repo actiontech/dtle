@@ -472,7 +472,8 @@ func (lc *LogMinerTxCache) addTxRecord(newRecord *LogMinerRecord) {
 		tx := el.Value.(*LogMinerTx)
 		// 1 = if the redo record was generated because of a partial or a full rollback of the associated transaction
 		if newRecord.Rollback == 1 {
-			for i, r := range tx.records {
+			for i := len(tx.records) - 1; i >= 0; i-- {
+				r := tx.records[i]
 				if r.RowId == newRecord.RowId {
 					// delete record
 					tx.records = append(tx.records[:i], tx.records[i+1:]...)
