@@ -83,8 +83,8 @@ func (r *rows) Close() error {
 		}
 	}
 	if nextRs != nil {
-		if Log != nil {
-			Log("msg", "rows Close", "nextRs", fmt.Sprintf("%p", nextRs))
+		if logger := getLogger(); logger != nil {
+			logger.Log("msg", "rows Close", "nextRs", fmt.Sprintf("%p", nextRs))
 		}
 		C.dpiStmt_release(nextRs)
 	}
@@ -122,7 +122,8 @@ func (r *rows) ColumnTypeLength(index int) (length int64, ok bool) {
 	case C.DPI_ORACLE_TYPE_CLOB, C.DPI_ORACLE_TYPE_NCLOB,
 		C.DPI_ORACLE_TYPE_BLOB,
 		C.DPI_ORACLE_TYPE_BFILE,
-		C.DPI_NATIVE_TYPE_LOB:
+		C.DPI_NATIVE_TYPE_LOB,
+		C.DPI_ORACLE_TYPE_JSON, C.DPI_ORACLE_TYPE_JSON_OBJECT, C.DPI_ORACLE_TYPE_JSON_ARRAY:
 		return math.MaxInt64, true
 	default:
 		return 0, false
@@ -186,6 +187,8 @@ func (r *rows) ColumnTypeDatabaseTypeName(index int) string {
 		return "BOOLEAN"
 	case C.DPI_ORACLE_TYPE_OBJECT:
 		return "OBJECT"
+	case C.DPI_ORACLE_TYPE_JSON, C.DPI_ORACLE_TYPE_JSON_OBJECT, C.DPI_ORACLE_TYPE_JSON_ARRAY:
+		return "JSON"
 	default:
 		return fmt.Sprintf("OTHER[%d]", r.columns[index].OracleType)
 	}
@@ -261,6 +264,12 @@ func (r *rows) ColumnTypeScanType(index int) reflect.Type {
 		return reflect.TypeOf(&statement{})
 	case C.DPI_ORACLE_TYPE_BOOLEAN, C.DPI_NATIVE_TYPE_BOOLEAN:
 		return reflect.TypeOf(false)
+	case C.DPI_ORACLE_TYPE_JSON:
+		return reflect.TypeOf(JSON{})
+	case C.DPI_ORACLE_TYPE_JSON_OBJECT:
+		return reflect.TypeOf(JSONObject{})
+	case C.DPI_ORACLE_TYPE_JSON_ARRAY:
+		return reflect.TypeOf(JSONArray{})
 	default:
 		return reflect.TypeOf("")
 	}
@@ -282,6 +291,7 @@ func (r *rows) Next(dest []driver.Value) error {
 	if len(dest) != len(r.columns) {
 		return fmt.Errorf("column count mismatch: we have %d columns, but given %d destination", len(r.columns), len(dest))
 	}
+	logger := getLogger()
 
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
@@ -320,15 +330,17 @@ func (r *rows) Next(dest []driver.Value) error {
 			fmt.Printf("fetching max=%d\n", maxRows)
 			start = time.Now()
 		}
-		failed := C.dpiStmt_fetchRows(r.dpiStmt, maxRows, &r.bufferRowIndex, &r.fetched, &moreRows) == C.DPI_FAILURE
+		err := r.statement.checkExecNoLOT(func() C.int {
+			return C.dpiStmt_fetchRows(r.dpiStmt, maxRows, &r.bufferRowIndex, &r.fetched, &moreRows)
+		})
+		failed := err != nil
 		if debugRowsNext {
 			fmt.Printf("failed=%t bri=%d fetched=%d more=%d data=%d cols=%d dur=%s\n", failed, r.bufferRowIndex, r.fetched, moreRows, len(r.data), len(r.columns), time.Since(start))
 		}
 		r.statement.Unlock()
 		if failed {
-			err := r.getError()
-			if Log != nil {
-				Log("msg", "fetch", "error", err)
+			if logger != nil {
+				logger.Log("msg", "fetch", "error", err)
 			}
 			_ = r.Close()
 			if strings.Contains(err.Error(), "DPI-1039: statement was already closed") {
@@ -338,8 +350,8 @@ func (r *rows) Next(dest []driver.Value) error {
 			}
 			return r.err
 		}
-		if Log != nil {
-			Log("msg", "fetched", "bri", r.bufferRowIndex, "fetched", r.fetched, "moreRows", moreRows, "len(data)", len(r.data), "cols", len(r.columns))
+		if logger != nil {
+			logger.Log("msg", "fetched", "bri", r.bufferRowIndex, "fetched", r.fetched, "moreRows", moreRows, "len(data)", len(r.data), "cols", len(r.columns))
 		}
 		if r.fetched == 0 {
 			_ = r.Close()
@@ -351,8 +363,10 @@ func (r *rows) Next(dest []driver.Value) error {
 			for i := range r.columns {
 				var n C.uint32_t
 				var data *C.dpiData
-				if C.dpiVar_getReturnedData(r.vars[i], 0, &n, &data) == C.DPI_FAILURE {
-					return fmt.Errorf("getReturnedData[%d]: %w", i, r.getError())
+				if err = r.statement.checkExecNoLOT(func() C.int {
+					return C.dpiVar_getReturnedData(r.vars[i], 0, &n, &data)
+				}); err != nil {
+					return fmt.Errorf("getReturnedData[%d]: %w", i, err)
 				}
 				r.data[i] = (*[maxArraySize]C.dpiData)(unsafe.Pointer(data))[:n:n]
 				//fmt.Printf("data %d=%+v\n%+v\n", n, data, r.data[i][0])
@@ -371,8 +385,8 @@ func (r *rows) Next(dest []driver.Value) error {
 		typ := col.OracleType
 		d := &r.data[i][r.bufferRowIndex]
 		isNull := d.isNull == 1
-		if false && Log != nil {
-			Log("msg", "Next", "i", i, "row", r.bufferRowIndex, "typ", typ, "null", isNull) //, "data", fmt.Sprintf("%+v", d), "typ", typ)
+		if false && logger != nil {
+			logger.Log("msg", "Next", "i", i, "row", r.bufferRowIndex, "typ", typ, "null", isNull) //, "data", fmt.Sprintf("%+v", d), "typ", typ)
 		}
 
 		switch typ {
@@ -394,7 +408,6 @@ func (r *rows) Next(dest []driver.Value) error {
 
 		case C.DPI_ORACLE_TYPE_NUMBER:
 			if isNull {
-				//if Log != nil { Log("msg", "null", "i", i, "T", fmt.Sprintf("%T", dest[i]), "type", reflect.TypeOf(dest[i])) }
 				dest[i] = nil
 				continue
 			}
@@ -418,12 +431,12 @@ func (r *rows) Next(dest []driver.Value) error {
 				b := (*C.dpiBytes)(unsafe.Pointer(&d.value))
 				s := C.GoStringN(b.ptr, C.int(b.length))
 				dest[i] = s
-				if false && Log != nil {
-					Log("msg", "b", "i", i, "ptr", b.ptr, "length", b.length, "typ", col.NativeType, "int64", C.dpiData_getInt64(d), "dest", dest[i])
+				if false && logger != nil {
+					logger.Log("msg", "b", "i", i, "ptr", b.ptr, "length", b.length, "typ", col.NativeType, "int64", C.dpiData_getInt64(d), "dest", dest[i])
 				}
 			}
-			if false && Log != nil {
-				Log("msg", "num", "t", col.NativeType, "i", i, "dest", fmt.Sprintf("%T %+v", dest[i], dest[i]))
+			if false && logger != nil {
+				logger.Log("msg", "num", "t", col.NativeType, "i", i, "dest", fmt.Sprintf("%T %+v", dest[i], dest[i]))
 			}
 
 		case C.DPI_ORACLE_TYPE_ROWID, C.DPI_NATIVE_TYPE_ROWID:
@@ -436,8 +449,10 @@ func (r *rows) Next(dest []driver.Value) error {
 			cRowid := *((**C.dpiRowid)(unsafe.Pointer(&d.value)))
 			var cBuf *C.char
 			var cLen C.uint32_t
-			if C.dpiRowid_getStringValue(cRowid, &cBuf, &cLen) == C.DPI_FAILURE {
-				return r.getError()
+			if err := r.statement.checkExecNoLOT(func() C.int {
+				return C.dpiRowid_getStringValue(cRowid, &cBuf, &cLen)
+			}); err != nil {
+				return err
 			}
 			dest[i] = C.GoStringN(cBuf, C.int(cLen))
 
@@ -498,8 +513,8 @@ func (r *rows) Next(dest []driver.Value) error {
 				)
 			}
 			if tz == nil {
-				if Log != nil {
-					Log("msg", "DATE", "i", i, "tz", tz, "params", r.conn.params)
+				if logger != nil {
+					logger.Log("msg", "DATE", "i", i, "tz", tz, "params", r.conn.params)
 				}
 			}
 			dest[i] = time.Date(int(ts.year), time.Month(ts.month), int(ts.day), int(ts.hour), int(ts.minute), int(ts.second), int(ts.fsecond), tz)
@@ -533,7 +548,7 @@ func (r *rows) Next(dest []driver.Value) error {
 				}
 				continue
 			}
-			rdr := &dpiLobReader{dpiLob: C.dpiData_getLOB(d), conn: r.conn, IsClob: isClob}
+			rdr := &dpiLobReader{dpiLob: C.dpiData_getLOB(d), drv: r.drv, IsClob: isClob}
 			if isClob && (r.ClobAsString() || !r.LobAsReader()) {
 				sb := stringBuilders.Get()
 				_, err := io.Copy(sb, rdr)
@@ -557,10 +572,11 @@ func (r *rows) Next(dest []driver.Value) error {
 				stmtOptions: r.statement.stmtOptions, // inherit parent statement's options
 			}
 			var colCount C.uint32_t
-			if C.dpiStmt_getNumQueryColumns(st.dpiStmt, &colCount) == C.DPI_FAILURE {
-				err := r.getError()
-				if Log != nil {
-					Log("msg", "Next.getNumQueryColumns", "st", fmt.Sprintf("%p", st.dpiStmt), "error", err)
+			if err := r.statement.checkExecNoLOT(func() C.int {
+				return C.dpiStmt_getNumQueryColumns(st.dpiStmt, &colCount)
+			}); err != nil {
+				if logger != nil {
+					logger.Log("msg", "Next.getNumQueryColumns", "st", fmt.Sprintf("%p", st.dpiStmt), "error", err)
 				}
 				//C.dpiStmt_release(st.dpiStmt)
 				return fmt.Errorf("getNumQueryColumns: %w", err)
@@ -569,8 +585,8 @@ func (r *rows) Next(dest []driver.Value) error {
 			r2, err := st.openRows(int(colCount))
 			st.Unlock()
 			if err != nil {
-				if Log != nil {
-					Log("msg", "Next.openRows", "st", fmt.Sprintf("%p", st.dpiStmt), "error", err)
+				if logger != nil {
+					logger.Log("msg", "Next.openRows", "st", fmt.Sprintf("%p", st.dpiStmt), "error", err)
 				}
 				st.Close()
 				return err
@@ -598,6 +614,31 @@ func (r *rows) Next(dest []driver.Value) error {
 			}
 			dest[i] = o
 
+		case C.DPI_ORACLE_TYPE_JSON, C.DPI_NATIVE_TYPE_JSON:
+			if isNull {
+				dest[i] = nil
+				continue
+			}
+			switch col.NativeType {
+			case C.DPI_NATIVE_TYPE_JSON:
+				dj := *((**C.dpiJson)(unsafe.Pointer(&(d.value))))
+				dest[i] = JSON{dpiJson: dj}
+			default:
+			}
+
+		case C.DPI_NATIVE_TYPE_JSON_OBJECT:
+			if isNull {
+				dest[i] = nil
+				continue
+			}
+			dest[i] = JSONObject{dpiJsonObject: ((*C.dpiJsonObject)(unsafe.Pointer(&d.value)))}
+		case C.DPI_NATIVE_TYPE_JSON_ARRAY:
+			if isNull {
+				dest[i] = nil
+				continue
+			}
+			dest[i] = JSONArray{dpiJsonArray: ((*C.dpiJsonArray)(unsafe.Pointer(&d.value)))}
+
 		default:
 			return fmt.Errorf("unsupported column type %d", typ)
 		}
@@ -610,8 +651,8 @@ func (r *rows) Next(dest []driver.Value) error {
 	if debugRowsNext && r.fetched < 2 {
 		fmt.Printf("bri=%d fetched=%d\n", r.bufferRowIndex, r.fetched)
 	}
-	if Log != nil {
-		Log("msg", "scanned", "row", r.bufferRowIndex, "dest", dest)
+	if logger != nil {
+		logger.Log("msg", "scanned", "row", r.bufferRowIndex, "dest", dest)
 	}
 
 	return nil
@@ -627,8 +668,9 @@ type directRow struct {
 }
 
 func (dr *directRow) Columns() []string {
-	if Log != nil {
-		Log("directRow", "Columns")
+	logger := getLogger()
+	if logger != nil {
+		logger.Log("directRow", "Columns")
 	}
 	switch dr.query {
 	case getConnection:
@@ -652,8 +694,9 @@ func (dr *directRow) Close() error {
 //
 // Next should return io.EOF when there are no more rows.
 func (dr *directRow) Next(dest []driver.Value) error {
-	if Log != nil {
-		Log("directRow", "Next", "query", dr.query, "dest", dest)
+	logger := getLogger()
+	if logger != nil {
+		logger.Log("directRow", "Next", "query", dr.query, "dest", dest)
 	}
 	switch dr.query {
 	case getConnection:
@@ -704,10 +747,11 @@ func (r *rows) NextResultSet() error {
 	st := &statement{conn: r.conn, dpiStmt: r.nextRs}
 
 	var n C.uint32_t
+	logger := getLogger()
 	if err := r.checkExec(func() C.int { return C.dpiStmt_getNumQueryColumns(st.dpiStmt, &n) }); err != nil {
 		err = fmt.Errorf("getNumQueryColumns: %+v: %w", err, io.EOF)
-		if Log != nil {
-			Log("msg", "NextResultSet.getNumQueryColumns", "st", fmt.Sprintf("%p", st.dpiStmt), "error", err)
+		if logger != nil {
+			logger.Log("msg", "NextResultSet.getNumQueryColumns", "st", fmt.Sprintf("%p", st.dpiStmt), "error", err)
 		}
 		//C.dpiStmt_release(st.dpiStmt)
 		return err
@@ -717,8 +761,8 @@ func (r *rows) NextResultSet() error {
 	nr, err := st.openRows(int(n))
 	st.Unlock()
 	if err != nil {
-		if Log != nil {
-			Log("msg", "NextResultSet.openRows", "st", fmt.Sprintf("%p", st.dpiStmt), "error", err)
+		if logger != nil {
+			logger.Log("msg", "NextResultSet.openRows", "st", fmt.Sprintf("%p", st.dpiStmt), "error", err)
 		}
 		st.Close()
 		return err

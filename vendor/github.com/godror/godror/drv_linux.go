@@ -1,4 +1,6 @@
-// +build linux
+//go:build linux && !darwin
+// +build linux,!darwin
+
 // Does not work on MacOS (clang): Issues #148. #149
 
 // Copyright 2017, 2020 The Godror Authors

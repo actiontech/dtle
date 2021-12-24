@@ -15,6 +15,7 @@ require (
 	github.com/go-playground/universal-translator v0.17.0 // indirect
 	github.com/go-playground/validator v9.31.0+incompatible
 	github.com/go-sql-driver/mysql v1.6.0
+	github.com/godror/godror v0.29.0
 	github.com/hashicorp/go-hclog v0.14.1
 	github.com/hashicorp/nomad v1.1.2
 	github.com/hashicorp/nomad/api v0.0.0-20200529203653-c4416b26d3eb
@@ -29,6 +30,7 @@ require (
 	github.com/nats-io/nats-streaming-server v0.17.0
 	github.com/outbrain/golib v0.0.0-20180830062331-ab954725f502
 	github.com/pingcap/dm v0.0.0-00010101000000-000000000000
+	github.com/pingcap/parser v0.0.0-20210415081931-48e7f467fd74
 	github.com/pingcap/tidb v1.1.0-beta.0.20211025024448-36e694bfc536
 	github.com/pingcap/tidb/parser v0.0.0-20211025024448-36e694bfc536
 	github.com/pkg/errors v0.9.1
@@ -36,11 +38,13 @@ require (
 	github.com/satori/go.uuid v1.2.1-0.20181028125025-b2ce2384e17b
 	github.com/shirou/gopsutil/v3 v3.21.11
 	github.com/siddontang/go v0.0.0-20180604090527-bdc77568d726
+	github.com/sijms/go-ora/v2 v2.2.17
+	github.com/sjjian/oracle-sql-parser v0.0.0-20211213072517-76c7fe105991
 	github.com/swaggo/echo-swagger v1.1.0
 	github.com/swaggo/swag v1.7.0
+	github.com/thinkeridea/go-extend v1.3.2
 	golang.org/x/net v0.0.0-20210503060351-7fd8e65b6420
 	golang.org/x/text v0.3.7
-	github.com/sjjian/oracle-sql-parser v0.0.0-20211213072517-76c7fe105991
 )
 
 replace github.com/go-mysql-org/go-mysql => github.com/ffffwh/go-mysql v0.0.0-20211206100736-edbdc58f729a

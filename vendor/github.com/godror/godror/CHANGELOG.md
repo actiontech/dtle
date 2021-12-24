@@ -6,13 +6,62 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
-## [v0.24.7]
+## [v0.29.0]
+### Added
+- Add github.com/godror/knownpb/timestamppb.Timestamp
 ### Changed
-- Recognize uppercased time zone names, too (#153)
+- Remove pbTimestamp (behind timestamppb tag), github.com/UNO-SOFT/knownpb/timestamppb implements driver.Valuer and sql.Scanner.
 
-## [v0.24.5]
+## [v0.28.1]
 ### Changed
-- Let the GLIBC-2.14 -evading `__asm__` trick be Linux-only (fails with clang).
+- ODPI-C v4.3.0
+### Added 
+- Add NewTempLob to the Conn interface for #189.
+
+## [v0.28.0]
+### Changed
+- Remove ObjectType.NewData, to get rid of the dependency on *conn in ObjectType, for #172
+
+## [v0.27.1]
+### Added
+- Size, ReadAt methods to dpiLobReader
+
+## [v0.27.0]
+### Changed
+- Instead of Log package-level variable, use SetLog or SetLogger.
+
+## [v0.26.0]
+### Added
+- Batch type for batching ExecContext calls.
+- Add support for native JSON type support (for DB21.3)
+
+## [v0.25.6]
+### Changed
+- Fix lobReader buffering which caused short reads.
+
+## [v0.25.4]
+### Added
+- Implement use of "google.golang.org/protobuf/types/known/timestamppb".Timestamp,
+  behind the timestamppb tag
+
+### Changed
+- Use dpiConn_setCallTimeout for faster recovers.
+- Faster setTraceTag, drv.init.
+- Buffer dpiLobReader.Read with chunk-sized reads for 
+  * avoiding io.ReadAll short read and
+  * performance
+
+## [v0.25.2]
+### Changed
+- Go 1.14 minimum requirement
+
+## [v0.25.1]
+### Added
+- Add stmtCacheSize, poolMaxSessionPerShard, poolPingInterval params
+- OnInit use context.Context
+
+### Changed
+- Use ODPI-C v4.2.1
 
 ## [v0.24.3]
 ### Added

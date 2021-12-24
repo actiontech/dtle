@@ -15,7 +15,7 @@ import (
 	"github.com/actiontech/dtle/g"
 	"github.com/hashicorp/go-hclog"
 	"github.com/pkg/errors"
-	gomysql "github.com/siddontang/go-mysql/mysql"
+	gomysql "github.com/go-mysql-org/go-mysql/mysql"
 )
 
 type ApplierOracleIncr struct {

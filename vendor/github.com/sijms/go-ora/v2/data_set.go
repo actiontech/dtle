@@ -4,12 +4,13 @@ import (
 	"database/sql/driver"
 	"errors"
 	"fmt"
+	"github.com/sijms/go-ora/v2/network"
 	"github.com/sijms/go-ora/v2/trace"
 	"io"
 	"reflect"
+	"strconv"
+	"strings"
 	"time"
-
-	"github.com/sijms/go-ora/v2/network"
 )
 
 // Compile time Sentinels for implemented Interfaces.
@@ -25,12 +26,12 @@ var _ = driver.RowsColumnTypeNullable((*DataSet)(nil))
 type Row []driver.Value
 
 type DataSet struct {
-	ColumnCount     int
-	RowCount        int
-	UACBufferLength int
-	MaxRowSize      int
+	columnCount     int
+	rowCount        int
+	uACBufferLength int
+	maxRowSize      int
 	Cols            []ParameterInfo
-	Rows            []Row
+	rows            []Row
 	currentRow      Row
 	lasterr         error
 	index           int
@@ -52,17 +53,17 @@ func (dataSet *DataSet) load(session *network.Session) error {
 		return err
 	}
 	columnCount += num * 0x100
-	if columnCount > dataSet.ColumnCount {
-		dataSet.ColumnCount = columnCount
+	if columnCount > dataSet.columnCount {
+		dataSet.columnCount = columnCount
 	}
-	if len(dataSet.currentRow) != dataSet.ColumnCount {
-		dataSet.currentRow = make(Row, dataSet.ColumnCount)
+	if len(dataSet.currentRow) != dataSet.columnCount {
+		dataSet.currentRow = make(Row, dataSet.columnCount)
 	}
-	dataSet.RowCount, err = session.GetInt(4, true, true)
+	dataSet.rowCount, err = session.GetInt(4, true, true)
 	if err != nil {
 		return err
 	}
-	dataSet.UACBufferLength, err = session.GetInt(2, true, true)
+	dataSet.uACBufferLength, err = session.GetInt(2, true, true)
 	if err != nil {
 		return err
 	}
@@ -78,14 +79,14 @@ func (dataSet *DataSet) load(session *network.Session) error {
 // setBitVector bit vector is an array of bit that define which column need to be read
 // from network session
 func (dataSet *DataSet) setBitVector(bitVector []byte) {
-	index := dataSet.ColumnCount / 8
-	if dataSet.ColumnCount%8 > 0 {
+	index := dataSet.columnCount / 8
+	if dataSet.columnCount%8 > 0 {
 		index++
 	}
 	if len(bitVector) > 0 {
 		for x := 0; x < len(bitVector); x++ {
 			for i := 0; i < 8; i++ {
-				if (x*8)+i < dataSet.ColumnCount {
+				if (x*8)+i < dataSet.columnCount {
 					dataSet.Cols[(x*8)+i].getDataFromServer = bitVector[x]&(1<<i) > 0
 				}
 			}
@@ -121,69 +122,165 @@ func (dataSet *DataSet) Scan(dest ...interface{}) error {
 	if dataSet.lasterr != nil {
 		return dataSet.lasterr
 	}
-	if len(dest) != len(dataSet.currentRow) {
-		return fmt.Errorf("go-ora: expected %d destination arguments in Scan, not %d",
-			len(dataSet.currentRow), len(dest))
-	}
-	for i, col := range dataSet.currentRow {
-		if dest[i] == nil {
-			return fmt.Errorf("go-ora: argument %d is nil", i)
+	for srcIndex, destIndex := 0, 0; srcIndex < len(dataSet.currentRow); srcIndex, destIndex = srcIndex+1, destIndex+1 {
+		if destIndex >= len(dest) {
+			return errors.New("go-ora: mismatching between Scan function input count and column count")
 		}
-		destTyp := reflect.TypeOf(dest[i])
+		if dest[destIndex] == nil {
+			return fmt.Errorf("go-ora: argument %d is nil", destIndex)
+		}
+		destTyp := reflect.TypeOf(dest[destIndex])
 		if destTyp.Kind() != reflect.Ptr {
 			return errors.New("go-ora: argument in scan should be passed as pointers")
 		}
-
-		switch col.(type) {
-		case string:
-			switch destTyp.Elem().Kind() {
-			case reflect.String:
-				reflect.ValueOf(dest[i]).Elem().Set(reflect.ValueOf(col))
-			default:
-				return fmt.Errorf("go-ora: column %d require type string", i)
+		col := dataSet.currentRow[srcIndex]
+		result, err := dataSet.setObjectValue(reflect.ValueOf(dest[destIndex]).Elem(), srcIndex)
+		if err != nil {
+			return err
+		}
+		if result {
+			continue
+		}
+		if destTyp.Elem().Kind() != reflect.Struct {
+			return fmt.Errorf("go-ora: column %d require type %v", srcIndex, reflect.TypeOf(col))
+		}
+		processedFields := 0
+		for x := 0; x < destTyp.Elem().NumField(); x++ {
+			if srcIndex+processedFields >= len(dataSet.currentRow) {
+				continue
+				//return errors.New("go-ora: mismatching between Scan function input count and column count")
 			}
-		case int64:
-			switch destTyp.Elem().Kind() {
-			case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-				reflect.ValueOf(dest[i]).Elem().SetInt(reflect.ValueOf(col).Int())
-			case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-				reflect.ValueOf(dest[i]).Elem().SetUint(uint64(reflect.ValueOf(col).Int()))
-			case reflect.Float32, reflect.Float64:
-				reflect.ValueOf(dest[i]).Elem().SetFloat(float64(reflect.ValueOf(col).Int()))
-			default:
-				return fmt.Errorf("go-ora: column %d require an integer", i)
+			//col := dataSet.currentRow[srcIndex + processedFields]
+			f := destTyp.Elem().Field(x)
+			tag := f.Tag.Get("db")
+			if len(tag) == 0 {
+				continue
 			}
-		case float64:
-			switch destTyp.Elem().Kind() {
-			case reflect.Float32, reflect.Float64:
-				reflect.ValueOf(dest[i]).Elem().SetFloat(reflect.ValueOf(col).Float())
-			default:
-				return fmt.Errorf("go-ora: column %d require type float", i)
-			}
-		case time.Time:
-			if destTyp.Elem() == reflect.TypeOf(time.Time{}) {
-				reflect.ValueOf(dest[i]).Elem().Set(reflect.ValueOf(col))
-			} else {
-				return fmt.Errorf("go-ora: column %d require type time.Time", i)
-			}
-		case []byte:
-			if destTyp.Elem() == reflect.TypeOf([]byte{}) {
-				reflect.ValueOf(dest[i]).Elem().Set(reflect.ValueOf(col))
-			} else {
-				return fmt.Errorf("go-ora: column %d require type []byte", i)
-			}
-		default:
-			if reflect.TypeOf(col) == destTyp.Elem() {
-				reflect.ValueOf(dest[i]).Elem().Set(reflect.ValueOf(col))
-			} else {
-				return fmt.Errorf("go-ora: column %d require type %v", i, reflect.TypeOf(col))
+			tag = strings.Trim(tag, "\"")
+			parts := strings.Split(tag, ",")
+			for _, part := range parts {
+				subs := strings.Split(part, ":")
+				if len(subs) != 2 {
+					continue
+				}
+				if strings.TrimSpace(strings.ToLower(subs[0])) == "name" {
+					fieldID := strings.TrimSpace(strings.ToUpper(subs[1]))
+					colInfo := dataSet.Cols[srcIndex+processedFields]
+					if strings.ToUpper(colInfo.Name) != fieldID {
+						continue
+						//return fmt.Errorf(
+						//	"go-ora: column %d name %s is mismatching with tag name %s of structure field",
+						//	srcIndex+processedFields, colInfo.Name, fieldID)
+					}
+					result, err := dataSet.setObjectValue(reflect.ValueOf(dest[destIndex]).Elem().Field(x), srcIndex+processedFields)
+					if err != nil {
+						return err
+					}
+					if !result {
+						return errors.New("only basic types are allowed inside struct object")
+					}
+					processedFields++
+				}
 			}
 		}
+		if processedFields == 0 {
+			return errors.New("passing struct to scan without matching tags")
+		}
+		srcIndex = srcIndex + processedFields - 1
+
 	}
 	return nil
 }
 
-// Err return last error
+// set object value using currentRow[colIndex] return true if succeed or false
+// for non-supported type
+// error means error occur during operation
+func (dataSet DataSet) setObjectValue(obj reflect.Value, colIndex int) (bool, error) {
+	col := dataSet.currentRow[colIndex]
+	switch obj.Type().Kind() {
+	case reflect.String:
+		obj.SetString(getString(col))
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		temp, err := getInt(col)
+		if err != nil {
+			return false, fmt.Errorf("go-ora: column %d require an integer", colIndex)
+		}
+		obj.SetInt(temp)
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		temp, err := getInt(col)
+		if err != nil {
+			return false, fmt.Errorf("go-ora: column %d require an integer", colIndex)
+		}
+		obj.SetUint(uint64(temp))
+	case reflect.Float32, reflect.Float64:
+		temp, err := getFloat(col)
+		if err != nil {
+			return false, fmt.Errorf("go-ora: column %d require type float", colIndex)
+		}
+		obj.SetFloat(temp)
+	default:
+		if obj.Type() == reflect.TypeOf(time.Time{}) {
+			if _, ok := col.(time.Time); ok {
+				obj.Set(reflect.ValueOf(col))
+			} else {
+				return false, fmt.Errorf("go-ora: column %d require type time.Time", colIndex)
+			}
+		} else if obj.Type() == reflect.TypeOf([]byte{}) {
+			if _, ok := col.([]byte); ok {
+				obj.Set(reflect.ValueOf(col))
+			} else {
+				return false, fmt.Errorf("go-ora: column %d require type []byte", colIndex)
+			}
+		} else {
+			return false, nil
+		}
+	}
+	return true, nil
+}
+
+// try to get string data from row field
+func getString(col interface{}) string {
+	if temp, ok := col.(string); ok {
+		return temp
+	} else {
+		return fmt.Sprintf("%v", col)
+	}
+}
+
+// try to get float64 data from row field
+func getFloat(col interface{}) (float64, error) {
+	if temp, ok := col.(float64); ok {
+		return temp, nil
+	} else if temp, ok := col.(int64); ok {
+		return float64(temp), nil
+	} else if temp, ok := col.(string); ok {
+		tempFloat, err := strconv.ParseFloat(temp, 64)
+		if err != nil {
+			return 0, err
+		}
+		return tempFloat, nil
+	} else {
+		return 0, errors.New("unkown type")
+	}
+}
+
+// try to get int64 value from the row field
+func getInt(col interface{}) (int64, error) {
+	if temp, ok := col.(int64); ok {
+		return temp, nil
+	} else if temp, ok := col.(float64); ok {
+		return int64(temp), nil
+	} else if temp, ok := col.(string); ok {
+		tempInt, err := strconv.ParseInt(temp, 10, 64)
+		if err != nil {
+			return 0, err
+		}
+		return tempInt, nil
+	} else {
+		return 0, errors.New("unkown type")
+	}
+}
+
 func (dataSet *DataSet) Err() error {
 	return dataSet.lasterr
 }
@@ -191,20 +288,20 @@ func (dataSet *DataSet) Err() error {
 // Next implement method need for sql.Rows interface
 func (dataSet *DataSet) Next(dest []driver.Value) error {
 	hasMoreRows := dataSet.parent.hasMoreRows()
-	noOfRowsToFetch := len(dataSet.Rows) // dataSet.parent.noOfRowsToFetch()
+	noOfRowsToFetch := len(dataSet.rows) // dataSet.parent.noOfRowsToFetch()
 	hasBLOB := dataSet.parent.hasBLOB()
 	hasLONG := dataSet.parent.hasLONG()
 	if !hasMoreRows && noOfRowsToFetch == 0 {
 		return io.EOF
 	}
-	if dataSet.index > 0 && dataSet.index%len(dataSet.Rows) == 0 {
+	if dataSet.index > 0 && dataSet.index%len(dataSet.rows) == 0 {
 		if hasMoreRows {
-			dataSet.Rows = make([]Row, 0, dataSet.parent.noOfRowsToFetch())
+			dataSet.rows = make([]Row, 0, dataSet.parent.noOfRowsToFetch())
 			err := dataSet.parent.fetch(dataSet)
 			if err != nil {
 				return err
 			}
-			noOfRowsToFetch = len(dataSet.Rows)
+			noOfRowsToFetch = len(dataSet.rows)
 			hasMoreRows = dataSet.parent.hasMoreRows()
 			dataSet.index = 0
 			if !hasMoreRows && noOfRowsToFetch == 0 {
@@ -215,13 +312,14 @@ func (dataSet *DataSet) Next(dest []driver.Value) error {
 		}
 	}
 	if hasMoreRows && (hasBLOB || hasLONG) && dataSet.index == 0 {
+		//dataSet.rows = make([]Row, 0, dataSet.parent.noOfRowsToFetch())
 		if err := dataSet.parent.fetch(dataSet); err != nil {
 			return err
 		}
 	}
-	if dataSet.index%noOfRowsToFetch < len(dataSet.Rows) {
-		for x := 0; x < len(dataSet.Rows[dataSet.index%noOfRowsToFetch]); x++ {
-			dest[x] = dataSet.Rows[dataSet.index%noOfRowsToFetch][x]
+	if dataSet.index%noOfRowsToFetch < len(dataSet.rows) {
+		for x := 0; x < len(dataSet.rows[dataSet.index%noOfRowsToFetch]); x++ {
+			dest[x] = dataSet.rows[dataSet.index%noOfRowsToFetch][x]
 		}
 		dataSet.index++
 		return nil
@@ -257,7 +355,7 @@ func (dataSet *DataSet) Columns() []string {
 }
 
 func (dataSet DataSet) Trace(t trace.Tracer) {
-	for r, row := range dataSet.Rows {
+	for r, row := range dataSet.rows {
 		if r > 25 {
 			break
 		}
